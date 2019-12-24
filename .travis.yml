@@ -10,7 +10,7 @@ os:
 addons:
   apt:
     sources:
-      kalakris-cmake
+      - kalakris-cmake
     packages:
       - cmake
       - systemtap-sdt-dev

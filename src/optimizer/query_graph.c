@@ -1916,13 +1916,13 @@ qo_add_dummy_join_term (QO_ENV * env, QO_NODE * p_node, QO_NODE * on_node)
 static void
 qo_analyze_term (QO_TERM * term, int term_type)
 {
-  QO_ENV *env;
-  PARSER_CONTEXT *parser;
+  QO_ENV *env = NULL;
+  PARSER_CONTEXT *parser = NULL;
   bool merge_applies;
   bool lhs_indexable, rhs_indexable;
-  PT_NODE *pt_expr, *lhs_expr, *rhs_expr;
+  PT_NODE *pt_expr = NULL, *lhs_expr = NULL, *rhs_expr = NULL;
   QO_NODE *head_node = NULL, *tail_node = NULL;
-  QO_SEGMENT *head_seg, *tail_seg;
+  QO_SEGMENT *head_seg = NULL, *tail_seg = NULL;
   BITSET lhs_segs, rhs_segs, lhs_nodes, rhs_nodes;
   BITSET_ITERATOR iter;
   PT_OP_TYPE op_type = PT_AND;

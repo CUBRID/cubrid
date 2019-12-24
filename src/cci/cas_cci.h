@@ -794,7 +794,7 @@ extern "C"
   extern int cci_connect_with_url_ex (char *url, char *user, char *pass, T_CCI_ERROR * err_buf);
   extern int cci_disconnect (int con_handle, T_CCI_ERROR * err_buf);
   extern int cci_end_tran (int con_handle, char type, T_CCI_ERROR * err_buf);
-  extern int cci_prepare (int con_handle, char *sql_stmt, char flag, T_CCI_ERROR * err_buf);
+  extern int cci_prepare (int con_handle, const char *sql_stmt, char flag, T_CCI_ERROR * err_buf);
   extern int cci_get_bind_num (int req_handle);
   extern T_CCI_COL_INFO *cci_get_result_info (int req_handle, T_CCI_CUBRID_STMT * cmd_type, int *num);
   extern int cci_bind_param (int req_handle, int index, T_CCI_A_TYPE a_type,

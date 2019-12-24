@@ -886,7 +886,7 @@ nonscr_display_error (char *buffer, int buf_length)
 
       print_len = (remaining - 3 - separator_len) / 2;
       strncat (buffer, errmsg, print_len);	/* first half */
-      strncat (buffer, separator, separator_len);
+      strcat (buffer, separator);
       strncat (buffer, errmsg + len_errmsg - print_len, print_len);	/* second half */
       remaining -= (print_len * 2 + separator_len);
     }

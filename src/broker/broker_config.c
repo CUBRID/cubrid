@@ -242,8 +242,12 @@ dir_repath (char *path, size_t path_len)
       return;
     }
 
-  strncpy (tmp_str, path, BROKER_PATH_MAX);
-  snprintf (path, path_len, "%s/%s", get_cubrid_home (), tmp_str);
+  strncpy_bufsize (tmp_str, path);
+  if (snprintf (path, path_len, "%s/%s", get_cubrid_home (), tmp_str) < 0)
+    {
+      assert (false);
+      path[0] = '\0';
+    }
 }
 
 /*
@@ -455,8 +459,7 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 
       br_info[num_brs].appl_server_shm_id = ini_gethex (ini, sec_name, "APPL_SERVER_SHM_ID", 0, &lineno);
 
-      strncpy (size_str, ini_getstr (ini, sec_name, "APPL_SERVER_MAX_SIZE", DEFAULT_SERVER_MAX_SIZE, &lineno),
-	       sizeof (size_str));
+      strncpy_bufsize (size_str, ini_getstr (ini, sec_name, "APPL_SERVER_MAX_SIZE", DEFAULT_SERVER_MAX_SIZE, &lineno));
       br_info[num_brs].appl_server_max_size = (int) ut_size_string_to_kbyte (size_str, "M");
       if (br_info[num_brs].appl_server_max_size < 0)
 	{
@@ -464,9 +467,8 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  goto conf_error;
 	}
 
-      strncpy (size_str,
-	       ini_getstr (ini, sec_name, "APPL_SERVER_MAX_SIZE_HARD_LIMIT", DEFAULT_SERVER_HARD_LIMIT, &lineno),
-	       sizeof (size_str));
+      strncpy_bufsize (size_str, ini_getstr (ini, sec_name, "APPL_SERVER_MAX_SIZE_HARD_LIMIT",
+					     DEFAULT_SERVER_HARD_LIMIT, &lineno));
       br_info[num_brs].appl_server_hard_limit = (int) ut_size_string_to_kbyte (size_str, "M");
       if (br_info[num_brs].appl_server_hard_limit <= 0)
 	{
@@ -474,8 +476,7 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  goto conf_error;
 	}
 
-      strncpy (time_str, ini_getstr (ini, sec_name, "SESSION_TIMEOUT", DEFAULT_SESSION_TIMEOUT, &lineno),
-	       sizeof (time_str));
+      strncpy_bufsize (time_str, ini_getstr (ini, sec_name, "SESSION_TIMEOUT", DEFAULT_SESSION_TIMEOUT, &lineno));
       br_info[num_brs].session_timeout = (int) ut_time_string_to_sec (time_str, "sec");
       if (br_info[num_brs].session_timeout < 0)
 	{
@@ -536,8 +537,7 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
       br_info[num_brs].sql_log2 = ini_getuint_max (ini, sec_name, "SQL_LOG2", SQL_LOG2_NONE, SQL_LOG2_MAX, &lineno);
 #endif
 
-      strncpy (size_str, ini_getstr (ini, sec_name, "SQL_LOG_MAX_SIZE", DEFAULT_SQL_LOG_MAX_SIZE, &lineno),
-	       sizeof (size_str));
+      strncpy_bufsize (size_str, ini_getstr (ini, sec_name, "SQL_LOG_MAX_SIZE", DEFAULT_SQL_LOG_MAX_SIZE, &lineno));
       br_info[num_brs].sql_log_max_size = (int) ut_size_string_to_kbyte (size_str, "K");
       if (br_info[num_brs].sql_log_max_size < 0)
 	{
@@ -550,8 +550,7 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  goto conf_error;
 	}
 
-      strncpy (time_str, ini_getstr (ini, sec_name, "LONG_QUERY_TIME", DEFAULT_LONG_QUERY_TIME, &lineno),
-	       sizeof (time_str));
+      strncpy_bufsize (time_str, ini_getstr (ini, sec_name, "LONG_QUERY_TIME", DEFAULT_LONG_QUERY_TIME, &lineno));
       tmp_float = (float) ut_time_string_to_sec (time_str, "sec");
       if (tmp_float < 0 || tmp_float > LONG_QUERY_TIME_LIMIT)
 	{
@@ -561,8 +560,8 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
       /* change float to msec */
       br_info[num_brs].long_query_time = (int) (tmp_float * 1000.0);
 
-      strncpy (time_str, ini_getstr (ini, sec_name, "LONG_TRANSACTION_TIME", DEFAULT_LONG_TRANSACTION_TIME, &lineno),
-	       sizeof (time_str));
+      strncpy_bufsize (time_str, ini_getstr (ini, sec_name, "LONG_TRANSACTION_TIME", DEFAULT_LONG_TRANSACTION_TIME,
+					     &lineno));
       tmp_float = (float) ut_time_string_to_sec (time_str, "sec");
       if (tmp_float < 0 || tmp_float > LONG_TRANSACTION_TIME_LIMIT)
 	{
@@ -583,7 +582,7 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
       br_info[num_brs].job_queue_size =
 	ini_getuint_max (ini, sec_name, "JOB_QUEUE_SIZE", DEFAULT_JOB_QUEUE_SIZE, JOB_QUEUE_MAX_SIZE, &lineno);
 
-      strncpy (time_str, ini_getstr (ini, sec_name, "TIME_TO_KILL", DEFAULT_TIME_TO_KILL, &lineno), sizeof (time_str));
+      strncpy_bufsize (time_str, ini_getstr (ini, sec_name, "TIME_TO_KILL", DEFAULT_TIME_TO_KILL, &lineno));
       br_info[num_brs].time_to_kill = (int) ut_time_string_to_sec (time_str, "sec");
       if (br_info[num_brs].time_to_kill < 0)
 	{
@@ -599,8 +598,8 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  goto conf_error;
 	}
 
-      strncpy (size_str, ini_getstr (ini, sec_name, "ACCESS_LOG_MAX_SIZE", DEFAULT_ACCESS_LOG_MAX_SIZE, &lineno),
-	       sizeof (size_str));
+      strncpy_bufsize (size_str, ini_getstr (ini, sec_name, "ACCESS_LOG_MAX_SIZE", DEFAULT_ACCESS_LOG_MAX_SIZE,
+					     &lineno));
       br_info[num_brs].access_log_max_size = (int) ut_size_string_to_kbyte (size_str, "K");
 
       if (br_info[num_brs].access_log_max_size < 0)
@@ -727,8 +726,7 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  goto conf_error;
 	}
 
-      strncpy (time_str, ini_getstr (ini, sec_name, "RECONNECT_TIME", DEFAULT_RECONNECT_TIME, &lineno),
-	       sizeof (time_str));
+      strncpy_bufsize (time_str, ini_getstr (ini, sec_name, "RECONNECT_TIME", DEFAULT_RECONNECT_TIME, &lineno));
       br_info[num_brs].cas_rctime = (int) ut_time_string_to_sec (time_str, "sec");
       if (br_info[num_brs].cas_rctime < 0)
 	{
@@ -736,8 +734,7 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  goto conf_error;
 	}
 
-      strncpy (time_str, ini_getstr (ini, sec_name, "MAX_QUERY_TIMEOUT", DEFAULT_MAX_QUERY_TIMEOUT, &lineno),
-	       sizeof (time_str));
+      strncpy_bufsize (time_str, ini_getstr (ini, sec_name, "MAX_QUERY_TIMEOUT", DEFAULT_MAX_QUERY_TIMEOUT, &lineno));
       br_info[num_brs].query_timeout = (int) ut_time_string_to_sec (time_str, "sec");
       if (br_info[num_brs].query_timeout < 0)
 	{
@@ -750,8 +747,7 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  goto conf_error;
 	}
 
-      strncpy (time_str, ini_getstr (ini, sec_name, "MYSQL_READ_TIMEOUT", DEFAULT_MYSQL_READ_TIMEOUT, &lineno),
-	       sizeof (time_str));
+      strncpy_bufsize (time_str, ini_getstr (ini, sec_name, "MYSQL_READ_TIMEOUT", DEFAULT_MYSQL_READ_TIMEOUT, &lineno));
       br_info[num_brs].mysql_read_timeout = (int) ut_time_string_to_sec (time_str, "sec");
       if (br_info[num_brs].mysql_read_timeout < 0)
 	{
@@ -764,9 +760,8 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  goto conf_error;
 	}
 
-      strncpy (time_str,
-	       ini_getstr (ini, sec_name, "MYSQL_KEEPALIVE_INTERVAL", DEFAULT_MYSQL_KEEPALIVE_INTERVAL, &lineno),
-	       sizeof (time_str));
+      strncpy_bufsize (time_str, ini_getstr (ini, sec_name, "MYSQL_KEEPALIVE_INTERVAL",
+					     DEFAULT_MYSQL_KEEPALIVE_INTERVAL, &lineno));
       br_info[num_brs].mysql_keepalive_interval = (int) ut_time_string_to_sec (time_str, "sec");
       if (br_info[num_brs].mysql_keepalive_interval < MIN_MYSQL_KEEPALIVE_INTERVAL)
 	{
@@ -818,17 +813,14 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
       /* SHARD PHASE0 */
       br_info[num_brs].proxy_shm_id = ini_gethex (ini, sec_name, "SHARD_PROXY_SHM_ID", 0, &lineno);
 
-      strncpy (br_info[num_brs].shard_db_name,
-	       ini_getstr (ini, sec_name, "SHARD_DB_NAME", DEFAULT_EMPTY_STRING, &lineno),
-	       sizeof (br_info[num_brs].shard_db_name));
+      strncpy_bufsize (br_info[num_brs].shard_db_name, ini_getstr (ini, sec_name, "SHARD_DB_NAME", DEFAULT_EMPTY_STRING,
+								   &lineno));
 
-      strncpy (br_info[num_brs].shard_db_user,
-	       ini_getstr (ini, sec_name, "SHARD_DB_USER", DEFAULT_EMPTY_STRING, &lineno),
-	       sizeof (br_info[num_brs].shard_db_user));
+      strncpy_bufsize (br_info[num_brs].shard_db_user, ini_getstr (ini, sec_name, "SHARD_DB_USER", DEFAULT_EMPTY_STRING,
+								   &lineno));
 
-      strncpy (br_info[num_brs].shard_db_password,
-	       ini_getstr (ini, sec_name, "SHARD_DB_PASSWORD", DEFAULT_EMPTY_STRING, &lineno),
-	       sizeof (br_info[num_brs].shard_db_password));
+      strncpy_bufsize (br_info[num_brs].shard_db_password, ini_getstr (ini, sec_name, "SHARD_DB_PASSWORD",
+								       DEFAULT_EMPTY_STRING, &lineno));
 
       br_info[num_brs].num_proxy = ini_getuint (ini, sec_name, "SHARD_NUM_PROXY", DEFAULT_SHARD_NUM_PROXY, &lineno);
 
@@ -858,17 +850,16 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  goto conf_error;
 	}
 
-      strncpy (br_info[num_brs].shard_connection_file,
-	       ini_getstr (ini, sec_name, "SHARD_CONNECTION_FILE", "shard_connection.txt", &lineno),
-	       sizeof (br_info[num_brs].shard_connection_file));
+      strncpy_bufsize (br_info[num_brs].shard_connection_file, ini_getstr (ini, sec_name, "SHARD_CONNECTION_FILE",
+									   "shard_connection.txt", &lineno));
       if (br_info[num_brs].shard_connection_file[0] == '\0')
 	{
 	  errcode = PARAM_BAD_VALUE;
 	  goto conf_error;
 	}
 
-      strncpy (br_info[num_brs].shard_key_file, ini_getstr (ini, sec_name, "SHARD_KEY_FILE", "shard_key.txt", &lineno),
-	       sizeof (br_info[num_brs].shard_key_file));
+      strncpy_bufsize (br_info[num_brs].shard_key_file, ini_getstr (ini, sec_name, "SHARD_KEY_FILE", "shard_key.txt",
+								    &lineno));
       if (br_info[num_brs].shard_key_file[0] == '\0')
 	{
 	  errcode = PARAM_BAD_VALUE;
@@ -896,9 +887,8 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
       strcpy (br_info[num_brs].shard_key_function_name,
 	      ini_getstr (ini, sec_name, "SHARD_KEY_FUNCTION_NAME", DEFAULT_EMPTY_STRING, &lineno));
 
-      strncpy (size_str,
-	       ini_getstr (ini, sec_name, "SHARD_PROXY_LOG_MAX_SIZE", DEFAULT_SHARD_PROXY_LOG_MAX_SIZE, &lineno),
-	       sizeof (size_str));
+      strncpy_bufsize (size_str, ini_getstr (ini, sec_name, "SHARD_PROXY_LOG_MAX_SIZE",
+					     DEFAULT_SHARD_PROXY_LOG_MAX_SIZE, &lineno));
       br_info[num_brs].proxy_log_max_size = (int) ut_size_string_to_kbyte (size_str, "K");
       if (br_info[num_brs].proxy_log_max_size < 0)
 	{
@@ -927,8 +917,8 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  goto conf_error;
 	}
 
-      strncpy (time_str, ini_getstr (ini, sec_name, "SHARD_PROXY_TIMEOUT", DEFAULT_SHARD_PROXY_TIMEOUT, &lineno),
-	       sizeof (time_str));
+      strncpy_bufsize (time_str, ini_getstr (ini, sec_name, "SHARD_PROXY_TIMEOUT", DEFAULT_SHARD_PROXY_TIMEOUT,
+					     &lineno));
       br_info[num_brs].proxy_timeout = (int) ut_time_string_to_sec (time_str, "sec");
       if (br_info[num_brs].proxy_timeout < 0)
 	{
@@ -941,9 +931,8 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  goto conf_error;
 	}
 
-      strncpy (time_str,
-	       ini_getstr (ini, sec_name, "SHARD_PROXY_CONN_WAIT_TIMEOUT", DEFAULT_SHARD_PROXY_CONN_WAIT_TIMEOUT,
-			   &lineno), sizeof (time_str));
+      strncpy_bufsize (time_str, ini_getstr (ini, sec_name, "SHARD_PROXY_CONN_WAIT_TIMEOUT",
+					     DEFAULT_SHARD_PROXY_CONN_WAIT_TIMEOUT, &lineno));
       br_info[num_brs].proxy_conn_wait_timeout = (int) ut_time_string_to_sec (time_str, "sec");
       if (br_info[num_brs].proxy_conn_wait_timeout < 0)
 	{

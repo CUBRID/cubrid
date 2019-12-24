@@ -1310,8 +1310,11 @@ $ LOADDB
 1241 XASL tree needs recompile.
 1242 Cannot create partition on a class that is part of a hierarchy chain.
 1243 Index loading was aborted after an error.
+1244 Loading shared attributes updates from object files is not supported in CS mode.
+1245 Loading class attributes updates from object files is not supported in CS mode.
+1246 Error getting address and name information. Code : %1$d, message : %2$s.
 
-1244 Last Error
+1247 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -1858,7 +1861,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 79 Invalid isolation level: %1$s schema, %2$s instances.
 80 Isolation level value in MVCC must be 'read committed', 'repeatable read' or 'serializable'.
 81 '%1$s' is an 'auto_increment' object, which is not allowed to be altered as a serial.
-
+82 Invalid JSON: '%1$s'.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** invalid cache ***

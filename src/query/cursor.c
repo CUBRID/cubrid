@@ -33,6 +33,7 @@
 #include "storage_common.h"
 #include "memory_alloc.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "db.h"
 #include "locator_cl.h"
 #include "server_interface.h"
@@ -355,6 +356,7 @@ cursor_fixup_vobjs (DB_VALUE * value_p)
     case DB_TYPE_SEQUENCE:
       /* fixup any set/seq of vobjs into a set/seq of vmops */
       rc = cursor_fixup_set_vobjs (value_p);
+      value_p->need_clear = true;
       break;
 
     default:
@@ -373,7 +375,7 @@ cursor_fixup_vobjs (DB_VALUE * value_p)
  *   db_value(out)      : Set to the set value
  */
 int
-cursor_copy_vobj_to_dbvalue (OR_BUF * buffer_p, DB_VALUE * value_p)
+cursor_copy_vobj_to_dbvalue (struct or_buf *buffer_p, DB_VALUE * value_p)
 {
   int rc;
   DB_VALUE vobj_dbval;

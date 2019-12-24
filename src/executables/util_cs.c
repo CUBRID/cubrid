@@ -158,7 +158,10 @@ backupdb (UTIL_FUNCTION_ARG * arg)
   check = !no_check;
   backup_num_threads = utility_get_option_int_value (arg_map, BACKUP_THREAD_COUNT_S);
   compress_flag = utility_get_option_bool_value (arg_map, BACKUP_COMPRESS_S);
-  skip_activelog = utility_get_option_bool_value (arg_map, BACKUP_EXCEPT_ACTIVE_LOG_S);
+
+  // BACKUP_EXCEPT_ACTIVE_LOG_S is obsoleted. This means backup will always include active log.
+  skip_activelog = false;
+
   sleep_msecs = utility_get_option_int_value (arg_map, BACKUP_SLEEP_MSECS_S);
   sa_mode = utility_get_option_bool_value (arg_map, BACKUP_SA_MODE_S);
 
@@ -284,7 +287,12 @@ backupdb (UTIL_FUNCTION_ARG * arg)
       /* resolve relative path */
       if (getcwd (dirname, PATH_MAX) != NULL)
 	{
-	  snprintf (verbose_file_realpath, PATH_MAX - 1, "%s/%s", dirname, backup_verbose_file);
+	  if (snprintf (verbose_file_realpath, PATH_MAX - 1, "%s/%s", dirname, backup_verbose_file) < 0)
+	    {
+	      assert (false);
+	      db_shutdown ();
+	      goto error_exit;
+	    }
 	  backup_verbose_file = verbose_file_realpath;
 	}
     }
@@ -700,7 +708,7 @@ checkdb (UTIL_FUNCTION_ARG * arg)
 	    {
 	      continue;
 	    }
-	  strncpy (n, p, SM_MAX_IDENTIFIER_LENGTH);
+	  strncpy_bufsize (n, p);
 	  if (da_add (darray, n) != NO_ERROR)
 	    {
 	      util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);
@@ -2584,7 +2592,7 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
   char *binary_name;
   char executable_path[PATH_MAX];
 #endif
-  INT64 start_pageid;
+  INT64 start_pageid = 0;
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -2673,6 +2681,13 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
       error = ER_FAILED;
       goto error_exit;
     }
+
+  /*
+   * Force error log file system parameter as copylogdb;
+   * during a retry loop, `db_restart` will reset the error file name as :
+   * er_init (prm_get_string_value (PRM_ID_ER_LOG_FILE), ... ) 
+   */
+  sysprm_set_force (prm_get_name (PRM_ID_ER_LOG_FILE), er_msg_file);
 
   if (start_pageid < NULL_PAGEID && !HA_DISABLED ())
     {

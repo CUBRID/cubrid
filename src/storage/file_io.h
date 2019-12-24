@@ -474,6 +474,7 @@ extern int fileio_reset_volume (THREAD_ENTRY * thread_p, int vdes, const char *v
 extern int fileio_mount (THREAD_ENTRY * thread_p, const char *db_fullname, const char *vlabel, VOLID volid,
 			 int lockwait, bool dosync);
 extern void fileio_dismount (THREAD_ENTRY * thread_p, int vdes);
+extern void fileio_dismount_without_fsync (THREAD_ENTRY * thread_p, int vdes);
 extern void fileio_dismount_all (THREAD_ENTRY * thread_p);
 extern void *fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_id, size_t page_size);
 extern void *fileio_write_or_add_to_dwb (THREAD_ENTRY * thread_p, int vol_fd, FILEIO_PAGE * io_page_p, PAGEID page_id,
@@ -617,4 +618,5 @@ extern void fileio_page_bitmap_list_destroy (FILEIO_RESTORE_PAGE_BITMAP_LIST * p
 extern int fileio_set_page_checksum (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page);
 extern int fileio_page_check_corruption (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, bool * is_page_corrupted);
 extern void fileio_page_hexa_dump (const char *data, int length);
+extern bool fileio_is_formatted_page (THREAD_ENTRY * thread_p, const char *io_page);
 #endif /* _FILE_IO_H_ */

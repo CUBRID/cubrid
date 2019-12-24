@@ -55,8 +55,8 @@ PARSER_CONTEXT *this_parser;
 int parser_output_host_index = 0;
 extern "C"
 {
-  extern int yyline;
   extern int yycolumn;
+  extern int csql_yyget_lineno ();
 }
 extern int yycolumn_end;
 
@@ -112,7 +112,7 @@ pt_parser_line_col (PT_NODE * node)
   if (node == NULL)
     return;
 
-  node->line_number = yyline;
+  node->line_number = csql_yyget_lineno ();
   node->column_number = yycolumn;
 }
 

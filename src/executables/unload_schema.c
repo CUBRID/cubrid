@@ -722,8 +722,15 @@ export_serial (print_output & output_ctx)
       if (db_get_int (&values[SERIAL_STARTED]) == 1)
 	{
 	  /* Calculate next value of serial */
+	  db_make_null (&diff_value);
 	  error = numeric_db_value_sub (&values[SERIAL_MAX_VAL], &values[SERIAL_CURRENT_VAL], &diff_value);
-	  if (error != NO_ERROR)
+	  if (error == ER_IT_DATA_OVERFLOW)
+	    {
+	      // max - curr might be flooded.
+	      diff_value = values[SERIAL_MAX_VAL];
+	      er_clear ();
+	    }
+	  else if (error != NO_ERROR)
 	    {
 	      goto err;
 	    }
@@ -1919,8 +1926,15 @@ emit_instance_attributes (print_output & output_ctx, DB_OBJECT * class_, const c
 		{
 		  DB_VALUE diff_val, answer_val;
 
+		  db_make_null (&diff_val);
 		  sr_error = numeric_db_value_sub (&max_val, &cur_val, &diff_val);
-		  if (sr_error != NO_ERROR)
+		  if (sr_error == ER_IT_DATA_OVERFLOW)
+		    {
+		      // max - cur might be flooded.
+		      diff_val = max_val;
+		      er_clear ();
+		    }
+		  else if (sr_error != NO_ERROR)
 		    {
 		      pr_clear_value (&sr_name);
 		      continue;
@@ -2346,7 +2360,7 @@ emit_attribute_def (print_output & output_ctx, DB_ATTRIBUTE * attribute, ATTRIBU
       default_expr_type_str = db_default_expression_string (attribute->default_value.default_expr.default_expr_type);
       if (default_expr_type_str != NULL)
 	{
-	  output_ctx (default_expr_type_str);
+	  output_ctx ("%s", default_expr_type_str);
 	}
       else
 	{
@@ -2367,7 +2381,7 @@ emit_attribute_def (print_output & output_ctx, DB_ATTRIBUTE * attribute, ATTRIBU
 	  if (attribute->default_value.default_expr.default_expr_format != NULL)
 	    {
 	      output_ctx (", \'");
-	      output_ctx (attribute->default_value.default_expr.default_expr_format);
+	      output_ctx ("%s", attribute->default_value.default_expr.default_expr_format);
 	      output_ctx ("\'");
 	    }
 
@@ -2384,7 +2398,7 @@ emit_attribute_def (print_output & output_ctx, DB_ATTRIBUTE * attribute, ATTRIBU
       default_expr_type_str = db_default_expression_string (attribute->on_update_default_expr);
       if (default_expr_type_str != NULL)
 	{
-	  output_ctx (default_expr_type_str);
+	  output_ctx ("%s", default_expr_type_str);
 	}
     }
 
@@ -2496,7 +2510,8 @@ emit_unique_def (print_output & output_ctx, DB_OBJECT * class_, const char *clas
 	      output_ctx ("       CONSTRAINT [%s] UNIQUE(", constraint->name);
 	    }
 
-	  for (att = atts; *att != NULL; att++)
+	  int i;
+	  for (att = atts, i = 0; *att != NULL; att++, i++)
 	    {
 	      name = db_attribute_name (*att);
 	      if (att != atts)
@@ -2505,6 +2520,11 @@ emit_unique_def (print_output & output_ctx, DB_OBJECT * class_, const char *clas
 		}
 
 	      output_ctx ("%s%s%s", PRINT_IDENTIFIER (name));
+
+	      if (constraint->asc_desc != NULL && constraint->asc_desc[i] != 0)
+		{
+		  output_ctx ("%s", " DESC");
+		}
 	    }
 	  output_ctx (")");
 
@@ -2579,6 +2599,8 @@ emit_reverse_unique_def (print_output & output_ctx, DB_OBJECT * class_)
 		  output_ctx (", ");
 		}
 	      output_ctx ("%s%s%s", PRINT_IDENTIFIER (name));
+
+	      // reverse unique does not care for direction of the column.
 	    }
 	  output_ctx (");\n");
 	}
@@ -2703,7 +2725,7 @@ emit_index_def (print_output & output_ctx, DB_OBJECT * class_)
 		    {
 		      output_ctx (", ");
 		    }
-		  output_ctx (constraint->func_index_info->expr_str);
+		  output_ctx ("%s", constraint->func_index_info->expr_str);
 		  if (constraint->func_index_info->fi_domain->is_desc)
 		    {
 		      output_ctx ("%s", " DESC");
@@ -3143,7 +3165,7 @@ emit_partition_info (print_output & output_ctx, MOP clsobj)
 	  if (ptr2)
 	    {
 	      *ptr2 = 0;
-	      output_ctx (ptr + 7);
+	      output_ctx ("%s", ptr + 7);
 	      output_ctx (" ) \n ");
 	    }
 	}

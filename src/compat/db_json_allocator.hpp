@@ -20,7 +20,7 @@
 #ifndef _DB_JSON_PRIVATE_ALLOCATOR_
 #define _DB_JSON_PRIVATE_ALLOCATOR_
 
-#include "rapidjson/allocators.h"
+#include "db_rapidjson.hpp"
 
 class JSON_PRIVATE_ALLOCATOR
 {

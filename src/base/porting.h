@@ -87,6 +87,11 @@
   (((long long unsigned) (size) <= ULONG_MAX) \
    || (sizeof (long long unsigned) <= sizeof (size_t)))
 
+#if defined (__cplusplus)
+#include <type_traits>
+#include <utility>
+#endif // C++
+
 #if defined (WINDOWS)
 #include <fcntl.h>
 #include <direct.h>
@@ -135,6 +140,7 @@ extern char *realpath (const char *path, char *resolved_path);
 #define strtok_r            strtok_s
 #define strtoll             _strtoi64
 #define strtoull            _strtoui64
+// todo - remove define stat; name is too common
 #define stat		    _stati64
 #define fstat		    _fstati64
 #define ftime		    _ftime_s
@@ -314,6 +320,26 @@ extern int free_space (const char *, int);
 
 #endif /* WINDOWS */
 
+#define snprintf_dots_truncate(dest, max_len, ...) \
+  if (snprintf (dest, max_len, __VA_ARGS__) < 0) \
+    snprintf (dest + max_len - 4, 4, "...")
+#define strncpy_size(buf, str, size) \
+  strncpy (buf, str, size); buf[(size) - 1] = '\0'
+#if defined (__cplusplus)
+// *INDENT-OFF*
+template<typename T>
+inline void
+check_is_array (const T & a)
+{
+  static_assert (std::is_array<T>::value == 1, "expected array");
+}
+#define strncpy_bufsize(buf, str) \
+  strncpy_size (buf, str, sizeof (buf)); check_is_array (buf)
+// *INDENT-ON*
+#else // not C++
+#define strncpy_bufsize(buf, str) \
+  strncpy_size (buf, str, sizeof (buf))
+#endif // not C++
 
 #if defined (WINDOWS)
 #define PATH_SEPARATOR  '\\'

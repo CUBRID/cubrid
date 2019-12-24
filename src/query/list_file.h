@@ -43,6 +43,8 @@
 #include <stdio.h>
 
 // forward definitions
+struct or_buf;
+typedef struct or_buf OR_BUF;
 struct valptr_list_node;
 struct xasl_node_header;
 

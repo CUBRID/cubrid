@@ -279,6 +279,7 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
   conn->request_id = 0;
   conn->status = CONN_OPEN;
   conn->set_tran_index (NULL_TRAN_INDEX);
+  conn->init_pending_request ();
   conn->invalidate_snapshot = 1;
   err = css_get_next_client_id ();
   if (err < 0)
@@ -306,7 +307,7 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
   conn->session_id = DB_EMPTY_SESSION;
 #if defined(SERVER_MODE)
   conn->session_p = NULL;
-  conn->client_type = BOOT_CLIENT_UNKNOWN;
+  conn->client_type = DB_CLIENT_TYPE_UNKNOWN;
 #endif
 
   err = css_initialize_list (&conn->request_queue, 0);
@@ -838,7 +839,7 @@ css_decrement_num_conn (BOOT_CLIENT_TYPE client_type)
 {
   int i;
 
-  if (client_type == BOOT_CLIENT_UNKNOWN)
+  if (client_type == DB_CLIENT_TYPE_UNKNOWN)
     {
       return;
     }
