@@ -43,6 +43,7 @@
 #include "mem_block.hpp"
 #include "memory_alloc.h"
 #include "language_support.h"
+#include "object_primitive.h"
 #include "object_print.h"
 #include "optimizer.h"
 #include "system_parameter.h"
@@ -140,7 +141,8 @@ static PARSER_VARCHAR *pt_append_quoted_string (const PARSER_CONTEXT * parser, P
 static PARSER_VARCHAR *pt_append_string_prefix (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buf,
 						const PT_NODE * value);
 static bool pt_is_nested_expr (const PT_NODE * node);
-static bool pt_is_allowed_as_function_index (const PT_NODE * expr);
+static bool pt_function_is_allowed_as_function_index (const PT_NODE * func);
+static bool pt_expr_is_allowed_as_function_index (const PT_NODE * expr);
 
 static void pt_init_apply_f (void);
 static void pt_init_init_f (void);
@@ -807,6 +809,14 @@ copy_node_in_tree_pre (PARSER_CONTEXT * parser, PT_NODE * old_node, void *arg, i
 	{
 	  new_node->info.value.db_value_is_in_workspace = 1;
 	}
+    }
+
+  if (new_node->node_type == PT_JSON_TABLE_COLUMN)
+    {
+      PT_JSON_TABLE_COLUMN_INFO *old_col = &old_node->info.json_table_column_info;
+      PT_JSON_TABLE_COLUMN_INFO *new_col = &new_node->info.json_table_column_info;
+      new_col->on_empty.m_default_value = db_value_copy (old_col->on_empty.m_default_value);
+      new_col->on_error.m_default_value = db_value_copy (old_col->on_error.m_default_value);
     }
 
   new_node->parser_id = parser->id;
@@ -1491,6 +1501,14 @@ void
 parser_free_subtrees (PARSER_CONTEXT * parser, PT_NODE * tree)
 {
   (void) parser_walk_leaves (parser, tree, free_node_in_tree_pre, NULL, free_node_in_tree_post, NULL);
+}
+
+// clear node resources and all subtrees
+void
+parser_clear_node (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  parser_free_subtrees (parser, node);
+  parser_free_node_resources (node);
 }
 
 /*
@@ -2216,6 +2234,7 @@ parser_init_node (PT_NODE * node)
       node->data_type = NULL;
       node->xasl_id = NULL;
       node->alias_print = NULL;
+      node->expr_before_const_folding = NULL;
       node->recompile = 0;
       node->cannot_prepare = 0;
       node->partition_pruned = 0;
@@ -2464,6 +2483,11 @@ pt_print_node_value (PARSER_CONTEXT * parser, const PT_NODE * val)
       && (val->node_type != PT_NAME || val->info.name.meta_class != PT_PARAMETER))
     {
       return NULL;
+    }
+
+  if (parser->custom_print & PT_PRINT_ORIGINAL_BEFORE_CONST_FOLDING && val->expr_before_const_folding != NULL)
+    {
+      return val->expr_before_const_folding;
     }
 
   db_val = pt_value_to_db (parser, (PT_NODE *) val);
@@ -12708,7 +12732,9 @@ pt_print_host_var (PARSER_CONTEXT * parser, PT_NODE * p)
 
   if (parser->print_db_value)
     {
-      if (p->info.host_var.var_type == PT_HOST_IN)
+      /* Skip cast to enum type. */
+      if (p->info.host_var.var_type == PT_HOST_IN
+	  && (p->expected_domain == NULL || TP_DOMAIN_TYPE (p->expected_domain) != DB_TYPE_ENUMERATION))
 	{
 	  PT_NODE *save_error_msgs;
 
@@ -14158,12 +14184,12 @@ pt_init_select (PT_NODE * p)
 static PARSER_VARCHAR *
 pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 {
-  PARSER_VARCHAR *q = 0, *r1;
-  PT_NODE *temp, *where_list;
+  PARSER_VARCHAR *q = NULL, *r1 = NULL;
+  PT_NODE *temp = NULL, *where_list = NULL;
   bool set_paren = false;	/* init */
   bool toggle_print_alias = false;
   bool is_first_list;
-  unsigned int save_custom;
+  unsigned int save_custom = 0;
   PT_NODE *from = NULL, *derived_table = NULL;
 
   from = p->info.query.q.select.from;
@@ -18260,16 +18286,62 @@ pt_is_nested_expr (const PT_NODE * node)
 }
 
 /*
- *   pt_is_allowed_as_function_index () : checks if the given operator
- *					  is allowed in the structure of a
- *					  function index
+ *   pt_function_is_allowed_as_function_index () : checks if the given function
+ *						   is allowed in the structure of a function index
+ *   return:
+ *   func(in): parse tree node function
+ */
+static bool
+pt_function_is_allowed_as_function_index (const PT_NODE * func)
+{
+  assert (func != NULL && func->node_type == PT_FUNCTION);
+
+  // TODO: expose get_signatures () of func_type.cpp & filter out funcs returning PT_TYPE_JSON
+  switch (func->info.function.function_type)
+    {
+    case F_BENCHMARK:
+    case F_JSON_OBJECT:
+    case F_JSON_ARRAY:
+    case F_JSON_MERGE:
+    case F_JSON_MERGE_PATCH:
+    case F_JSON_INSERT:
+    case F_JSON_REMOVE:
+    case F_JSON_ARRAY_APPEND:
+    case F_JSON_GET_ALL_PATHS:
+    case F_JSON_REPLACE:
+    case F_JSON_SET:
+    case F_JSON_KEYS:
+    case F_JSON_ARRAY_INSERT:
+    case F_JSON_SEARCH:
+    case F_JSON_EXTRACT:
+      return false;
+    case F_INSERT_SUBSTRING:
+    case F_ELT:
+    case F_JSON_CONTAINS:
+    case F_JSON_CONTAINS_PATH:
+    case F_JSON_DEPTH:
+    case F_JSON_LENGTH:
+    case F_JSON_TYPE:
+    case F_JSON_VALID:
+    case F_JSON_PRETTY:
+    case F_JSON_QUOTE:
+    case F_JSON_UNQUOTE:
+      return true;
+    default:
+      return true;
+    }
+}
+
+/*
+ *   pt_expr_is_allowed_as_function_index () : checks if the given operator
+ *					       is allowed in the structure of a function index
  *   return:
  *   expr(in): expression parse tree node
  */
 static bool
-pt_is_allowed_as_function_index (const PT_NODE * expr)
+pt_expr_is_allowed_as_function_index (const PT_NODE * expr)
 {
-  assert (expr != NULL);
+  assert (expr != NULL && expr->node_type == PT_EXPR);
 
   switch (expr->info.expr.op)
     {
@@ -18432,7 +18504,7 @@ pt_is_function_index_expr (PARSER_CONTEXT * parser, PT_NODE * expr, bool report_
 	}
       return false;
     }
-  if (!pt_is_allowed_as_function_index (expr))
+  if (!pt_expr_is_allowed_as_function_index (expr))
     {
       if (report_error)
 	{
@@ -18456,6 +18528,20 @@ pt_is_function_index_expr (PARSER_CONTEXT * parser, PT_NODE * expr, bool report_
 	  PT_ERRORm (parser, expr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INVALID_FUNCTION_INDEX);
 	}
       return false;
+    }
+
+  if (expr->info.expr.op == PT_FUNCTION_HOLDER)
+    {
+      PT_NODE *func = expr->info.expr.arg1;
+      if (!pt_function_is_allowed_as_function_index (func))
+	{
+	  if (report_error)
+	    {
+	      PT_ERRORmf (parser, expr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTION_CANNOT_BE_USED_FOR_INDEX,
+			  fcode_get_uppercase_name (func->info.function.function_type));
+	    }
+	  return false;
+	}
     }
   return true;
 }
@@ -19036,15 +19122,15 @@ pt_print_json_table_column_info (PARSER_CONTEXT * parser, PT_NODE * p, PARSER_VA
       pstr = pt_append_nulstring (parser, pstr, p->info.json_table_column_info.path);
       pstr = pt_append_nulstring (parser, pstr, "'");
 
-      // print on_error
-      pstr = pt_append_nulstring (parser, pstr, " ");
-      pstr = pt_print_json_table_column_error_or_empty_behavior (parser, pstr, p->info.json_table_column_info.on_error);
-      pstr = pt_append_nulstring (parser, pstr, " ON ERROR");
-
       // print on_empty
       pstr = pt_append_nulstring (parser, pstr, " ");
       pstr = pt_print_json_table_column_error_or_empty_behavior (parser, pstr, p->info.json_table_column_info.on_empty);
       pstr = pt_append_nulstring (parser, pstr, " ON EMPTY");
+
+      // print on_error
+      pstr = pt_append_nulstring (parser, pstr, " ");
+      pstr = pt_print_json_table_column_error_or_empty_behavior (parser, pstr, p->info.json_table_column_info.on_error);
+      pstr = pt_append_nulstring (parser, pstr, " ON ERROR");
       break;
 
     case json_table_column_function::JSON_TABLE_EXISTS:

@@ -78,6 +78,7 @@ extern int log_update_compatibility_and_release (THREAD_ENTRY * thread_p, float 
 #endif
 extern void log_abort_all_active_transaction (THREAD_ENTRY * thread_p);
 extern void log_final (THREAD_ENTRY * thread_p);
+extern void log_stop_ha_delay_registration ();
 extern void log_restart_emergency (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 				   const char *prefix_logname);
 extern void log_append_undoredo_data (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,

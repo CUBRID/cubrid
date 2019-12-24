@@ -51,9 +51,9 @@
 #include "string_opfunc.h"
 #include "thread_daemon.hpp"
 #include "thread_entry_task.hpp"
+#include "thread_lockfree_hash_map.hpp"
 #include "thread_manager.hpp"
 #include "xasl_cache.h"
-
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -67,14 +67,6 @@ static int rv;
 #define SESSIONS_HASH_SIZE 1000
 #define MAX_SESSION_VARIABLES_COUNT 20
 #define MAX_PREPARED_STATEMENTS_COUNT 20
-
-typedef struct active_sessions
-{
-  LF_HASH_TABLE sessions_table;
-  LF_FREELIST session_table_freelist;
-  SESSION_ID last_session_id;
-  int num_holdable_cursors;
-} ACTIVE_SESSIONS;
 
 typedef struct session_info SESSION_INFO;
 struct session_info
@@ -90,7 +82,6 @@ struct session_variable
   DB_VALUE *value;
   SESSION_VARIABLE *next;
 };
-
 
 typedef struct prepared_statement PREPARED_STATEMENT;
 struct prepared_statement
@@ -141,6 +132,13 @@ struct session_state
   int ref_count;
   TZ_REGION session_tz_region;
   int private_lru_index;
+
+  load_session *load_session_p;
+
+  // *INDENT-OFF*
+  session_state ();
+  ~session_state ();
+  // *INDENT-ON*
 };
 
 /* session state manipulation functions */
@@ -173,8 +171,29 @@ static LF_ENTRY_DESCRIPTOR session_state_Descriptor = {
   session_key_increment
 };
 
+// *INDENT-OFF*
+using session_hashmap_type = cubthread::lockfree_hashmap<SESSION_ID, session_state>;
+using session_hashmap_iterator = session_hashmap_type::iterator;
+// *INDENT-ON*
+
+typedef struct active_sessions
+{
+  session_hashmap_type states_hashmap;
+  SESSION_ID last_session_id;
+  int num_holdable_cursors;
+
+  // *INDENT-OFF*
+  active_sessions ()
+    : states_hashmap {}
+    , last_session_id (0)
+    , num_holdable_cursors (0)
+  {
+  }
+  // *INDENT-ON*
+} ACTIVE_SESSIONS;
+
 /* the active sessions storage */
-static ACTIVE_SESSIONS sessions = { LF_HASH_TABLE_INITIALIZER, LF_FREELIST_INITIALIZER, 0, 0 };
+static ACTIVE_SESSIONS sessions;
 
 static int session_remove_expired_sessions (THREAD_ENTRY * thread_p);
 
@@ -211,8 +230,17 @@ static cubthread::daemon *session_Control_daemon = NULL;
 
 static void session_control_daemon_init ();
 static void session_control_daemon_destroy ();
-// *INDENT-ON*
 
+session_state::session_state ()
+{
+  pthread_mutex_init (&mutex, NULL);
+}
+
+session_state::~session_state ()
+{
+  pthread_mutex_destroy (&mutex);
+}
+// *INDENT-ON*
 
 /*
  * session_state_alloc () - allocate a new session state
@@ -282,6 +310,7 @@ session_state_init (void *st)
   session_p->trace_format = QUERY_TRACE_TEXT;
   session_p->private_lru_index = -1;
   session_p->auto_commit = false;
+  session_p->load_session_p = NULL;
 
   return NO_ERROR;
 }
@@ -309,6 +338,8 @@ session_state_uninit (void *st)
   er_log_debug (ARG_FILE_LINE, "session_free_session %u\n", session->id);
 #endif /* SESSION_DEBUG */
 
+  session_stop_attached_threads (session);
+
   /* free session variables */
   vcurent = session->session_variables;
   while (vcurent != NULL)
@@ -317,6 +348,7 @@ session_state_uninit (void *st)
       free_session_variable (vcurent);
       vcurent = vnext;
     }
+  session->session_variables = NULL;
 
   /* free session statements */
   pcurent = session->statements;
@@ -326,6 +358,8 @@ session_state_uninit (void *st)
       session_free_prepared_statement (pcurent);
       pcurent = pnext;
     }
+  session->statements = NULL;
+
   /* free holdable queries */
   qcurent = session->queries;
   while (qcurent)
@@ -337,6 +371,7 @@ session_state_uninit (void *st)
       qcurent = qnext;
       cnt++;
     }
+  session->queries = NULL;
 
   if (session->session_parameters)
     {
@@ -539,17 +574,14 @@ session_control_daemon_destroy ()
 
 /*
  * session_states_init () - Initialize session states area
- *   return: NO_ERROR or error code
  *
  * Note: Creates and initializes a main memory hash table that will be
  * used by session states operations. This routine should only be
  * called once during server boot.
  */
-int
+void
 session_states_init (THREAD_ENTRY * thread_p)
 {
-  int ret;
-
   sessions.last_session_id = 0;
   sessions.num_holdable_cursors = 0;
 
@@ -557,28 +589,11 @@ session_states_init (THREAD_ENTRY * thread_p)
   er_log_debug (ARG_FILE_LINE, "creating session states table\n");
 #endif /* SESSION_DEBUG */
 
-  /* initialize freelist */
-  ret = lf_freelist_init (&sessions.session_table_freelist, 1, 100, &session_state_Descriptor, &sessions_Ts);
-  if (ret != NO_ERROR)
-    {
-      return ret;
-    }
-
-  /* initialize hash table */
-  ret =
-    lf_hash_init (&sessions.sessions_table, &sessions.session_table_freelist, SESSIONS_HASH_SIZE,
-		  &session_state_Descriptor);
-  if (ret != NO_ERROR)
-    {
-      return ret;
-    }
+  sessions.states_hashmap.init (sessions_Ts, THREAD_TS_SESSIONS, SESSIONS_HASH_SIZE, 2, 50, session_state_Descriptor);
 
 #if defined (SERVER_MODE)
   session_control_daemon_init ();
 #endif /* SERVER_MODE */
-
-  /* all ok */
-  return NO_ERROR;
 }
 
 /*
@@ -607,8 +622,7 @@ session_states_finalize (THREAD_ENTRY * thread_p)
 #endif /* SESSION_DEBUG */
 
   /* destroy hash and freelist */
-  lf_hash_destroy (&sessions.sessions_table);
-  lf_freelist_destroy (&sessions.session_table_freelist);
+  sessions.states_hashmap.destroy ();
 }
 
 /*
@@ -623,10 +637,8 @@ session_states_finalize (THREAD_ENTRY * thread_p)
 int
 session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id)
 {
-  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_SESSIONS);
   SESSION_STATE *session_p = NULL;
   SESSION_ID next_session_id;
-  int ret;
 
   assert (id != NULL);
 
@@ -639,12 +651,7 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id)
 
       assert (thread_p->conn_entry->session_p->id == old_id);
 
-      ret = lf_hash_find (t_entry, &sessions.sessions_table, (void *) &old_id, (void **) &session_p);
-      if (ret != NO_ERROR)
-	{
-	  assert (false);
-	  return ER_FAILED;
-	}
+      session_p = sessions.states_hashmap.find (thread_p, old_id);
       if (session_p == NULL)
 	{
 	  thread_p->conn_entry->session_id = DB_EMPTY_SESSION;
@@ -672,12 +679,8 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id)
   *id = next_session_id;
 
   /* insert new entry into hash table */
-  ret = lf_hash_insert (t_entry, &sessions.sessions_table, (void *) id, (void **) &session_p, NULL);
-  if (ret != NO_ERROR)
-    {
-      return ret;
-    }
-  else if (session_p == NULL)
+  (void) sessions.states_hashmap.insert (thread_p, *id, session_p);
+  if (session_p == NULL)
     {
       /* should not happen */
       assert (false);
@@ -713,13 +716,12 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id)
   er_log_debug (ARG_FILE_LINE, "adding session with id %u\n", *id);
   if (prm_get_bool_value (PRM_ID_ER_LOG_DEBUG) == true)
     {
-      LF_HASH_TABLE_ITERATOR it;
+      session_hashmap_iterator it = { thread_p, sessions.states_hashmap };
       SESSION_STATE *state;
 
       er_log_debug (ARG_FILE_LINE, "printing active sessions\n");
 
-      lf_hash_create_iterator (&it, t_entry, &sessions.sessions_table);
-      for (state = lf_hash_iterate (&it); state != NULL; state = lf_hash_iterate (&it))
+      for (state = it.iterate (); state != NULL; state = it.iterate ())
 	{
 	  er_log_debug (ARG_FILE_LINE, "session %u", state->id);
 	}
@@ -739,7 +741,6 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id)
 int
 session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_ID id)
 {
-  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_SESSIONS);
   SESSION_STATE *session_p;
   int error = NO_ERROR, success = 0;
 
@@ -747,12 +748,9 @@ session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_ID id)
   er_log_debug (ARG_FILE_LINE, "removing session %u", id);
 #endif /* SESSION_DEBUG */
 
-  error = lf_hash_find (t_entry, &sessions.sessions_table, (void *) &id, (void **) &session_p);
-  if (error != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-  else if (session_p == NULL)
+  SESSION_ID key_id = id;
+  session_p = sessions.states_hashmap.find (thread_p, key_id);
+  if (session_p == NULL)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
       return ER_SES_SESSION_EXPIRED;
@@ -788,21 +786,17 @@ session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_ID id)
   assert (session_p->ref_count == 0);
 #endif
 
-  error = lf_hash_delete_already_locked (t_entry, &sessions.sessions_table, (void *) &id, session_p, &success);
-  if (error != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-  if (!success)
+  /* Destroy the session related resources like session parameters */
+  (void) session_state_uninit (session_p);
+
+  // delete from hash
+  if (!sessions.states_hashmap.erase_locked (thread_p, key_id, session_p))
     {
       /* we don't have clear operations on this hash table, this shouldn't happen */
       pthread_mutex_unlock (&session_p->mutex);
       assert_release (false);
       return ER_FAILED;
     }
-
-  /* Destroy the session related resources like session parameters */
-  lf_tran_destroy_entry (t_entry);
 
   return error;
 }
@@ -816,7 +810,6 @@ session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_ID id)
 int
 session_check_session (THREAD_ENTRY * thread_p, const SESSION_ID id)
 {
-  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_SESSIONS);
   SESSION_STATE *session_p = NULL;
   int error = NO_ERROR;
 
@@ -831,12 +824,7 @@ session_check_session (THREAD_ENTRY * thread_p, const SESSION_ID id)
 
       assert (thread_p->conn_entry->session_p->id == old_id);
 
-      error = lf_hash_find (t_entry, &sessions.sessions_table, (void *) &old_id, (void **) &session_p);
-      if (error != NO_ERROR)
-	{
-	  assert (false);
-	  return error;
-	}
+      session_p = sessions.states_hashmap.find (thread_p, old_id);
       if (session_p == NULL)
 	{
 	  /* the session in connection entry no longer exists... */
@@ -861,12 +849,9 @@ session_check_session (THREAD_ENTRY * thread_p, const SESSION_ID id)
     }
 #endif
 
-  error = lf_hash_find (t_entry, &sessions.sessions_table, (void *) &id, (void **) &session_p);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-  else if (session_p == NULL)
+  SESSION_ID key_id = id;
+  session_p = sessions.states_hashmap.find (thread_p, key_id);
+  if (session_p == NULL)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
       return ER_SES_SESSION_EXPIRED;
@@ -900,8 +885,7 @@ static int
 session_remove_expired_sessions (THREAD_ENTRY * thread_p)
 {
 #define EXPIRED_SESSION_BUFFER_SIZE 1024
-  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_SESSIONS);
-  LF_HASH_TABLE_ITERATOR it;
+  session_hashmap_iterator it = { thread_p, sessions.states_hashmap };
   SESSION_STATE *state = NULL;
   int err = NO_ERROR, success = 0;
   bool is_expired = false;
@@ -920,10 +904,10 @@ session_remove_expired_sessions (THREAD_ENTRY * thread_p)
    */
   while (!finished)
     {
-      lf_hash_create_iterator (&it, t_entry, &sessions.sessions_table);
+      it.restart ();
       while (true)
 	{
-	  state = (SESSION_STATE *) lf_hash_iterate (&it);
+	  state = it.iterate ();
 	  if (state == NULL)
 	    {
 	      finished = true;
@@ -934,7 +918,7 @@ session_remove_expired_sessions (THREAD_ENTRY * thread_p)
 	  if (session_check_timeout (state, &active_sessions, &is_expired) != NO_ERROR)
 	    {
 	      pthread_mutex_unlock (&state->mutex);
-	      lf_tran_end_with_mb (t_entry);
+	      sessions.states_hashmap.end_tran (thread_p);
 	      err = ER_FAILED;
 	      goto exit_on_end;
 	    }
@@ -950,7 +934,7 @@ session_remove_expired_sessions (THREAD_ENTRY * thread_p)
 		  /* Free current entry mutex. */
 		  pthread_mutex_unlock (&state->mutex);
 		  /* End lock-free transaction started by iterator. */
-		  lf_tran_end_with_mb (t_entry);
+		  sessions.states_hashmap.end_tran (thread_p);
 		  break;
 		}
 	    }
@@ -959,14 +943,7 @@ session_remove_expired_sessions (THREAD_ENTRY * thread_p)
       /* Remove expired sessions. */
       for (sid_index = 0; sid_index < n_expired_sids; sid_index++)
 	{
-	  err = lf_hash_delete (t_entry, &sessions.sessions_table, &expired_sid_buffer[sid_index], &success);
-	  if (err != NO_ERROR)
-	    {
-	      /* I don't think we can expect errors. */
-	      assert (false);
-	      goto exit_on_end;
-	    }
-	  if (!success)
+	  if (!sessions.states_hashmap.erase (thread_p, expired_sid_buffer[sid_index]))
 	    {
 	      /* we don't have clear operations on this hash table, this shouldn't happen */
 	      assert_release (false);
@@ -2092,13 +2069,11 @@ session_get_variable (THREAD_ENTRY * thread_p, const DB_VALUE * name, DB_VALUE *
 int
 session_get_variable_no_copy (THREAD_ENTRY * thread_p, const DB_VALUE * name, DB_VALUE ** result)
 {
-  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_SESSIONS);
   SESSION_ID id;
   SESSION_STATE *state_p = NULL;
   size_t name_len;
   const char *name_str;
   SESSION_VARIABLE *var;
-  int ret;
 
 #if defined (SERVER_MODE)
   /* do not call this function in a multi-threaded context */
@@ -2118,12 +2093,8 @@ session_get_variable_no_copy (THREAD_ENTRY * thread_p, const DB_VALUE * name, DB
       return ER_FAILED;
     }
 
-  ret = lf_hash_find (t_entry, &sessions.sessions_table, (void *) &id, (void **) &state_p);
-  if (ret != NO_ERROR)
-    {
-      return ret;
-    }
-  else if (state_p == NULL)
+  state_p = sessions.states_hashmap.find (thread_p, id);
+  if (state_p == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
       return ER_FAILED;
@@ -2237,19 +2208,12 @@ session_get_exec_stats_and_clear (THREAD_ENTRY * thread_p, const DB_VALUE * name
 void
 session_states_dump (THREAD_ENTRY * thread_p)
 {
-  LF_HASH_TABLE_ITERATOR it;
+  session_hashmap_iterator it = { thread_p, sessions.states_hashmap };
   SESSION_STATE *state;
-  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_SESSIONS);
-  int session_count = 0;
+  size_t session_count = sessions.states_hashmap.get_element_count ();
+  fprintf (stdout, "\nSESSION COUNT = %zu\n", session_count);
 
-  session_count =
-    sessions.session_table_freelist.alloc_cnt - sessions.session_table_freelist.available_cnt -
-    sessions.session_table_freelist.retired_cnt;
-  session_count = MAX (session_count, 0);
-  fprintf (stdout, "\nSESSION COUNT = %d\n", session_count);
-
-  lf_hash_create_iterator (&it, t_entry, &sessions.sessions_table);
-  for (state = (SESSION_STATE *) lf_hash_iterate (&it); state != NULL; state = (SESSION_STATE *) lf_hash_iterate (&it))
+  for (state = it.iterate (); state != NULL; state = it.iterate ())
     {
       session_dump_session (state);
     }
@@ -2798,7 +2762,6 @@ session_get_session_state (THREAD_ENTRY * thread_p)
       return NULL;
     }
 #else
-  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_SESSIONS);
   SESSION_ID id;
   int error = NO_ERROR;
   SESSION_STATE *state_p = NULL;
@@ -2809,13 +2772,8 @@ session_get_session_state (THREAD_ENTRY * thread_p)
       return NULL;
     }
 
-  error = lf_hash_find (t_entry, &sessions.sessions_table, (void *) &id, (void **) &state_p);
-  if (error != NO_ERROR)
-    {
-      assert (false);
-      return NULL;
-    }
-  else if (state_p == NULL)
+  state_p = sessions.states_hashmap.find (thread_p, id);
+  if (state_p == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
       return NULL;
@@ -3146,4 +3104,61 @@ session_set_tran_auto_commit (THREAD_ENTRY * thread_p, bool auto_commit)
   state_p->auto_commit = auto_commit;
 
   return NO_ERROR;
+}
+
+int
+session_set_load_session (THREAD_ENTRY * thread_p, load_session * load_session_p)
+{
+  SESSION_STATE *state_p = NULL;
+
+  state_p = session_get_session_state (thread_p);
+  if (state_p == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  state_p->load_session_p = load_session_p;
+
+  return NO_ERROR;
+}
+
+int
+session_get_load_session (THREAD_ENTRY * thread_p, REFPTR (load_session, load_session_ref_ptr))
+{
+  SESSION_STATE *state_p = NULL;
+
+  state_p = session_get_session_state (thread_p);
+  if (state_p == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  load_session_ref_ptr = state_p->load_session_p;
+
+  return NO_ERROR;
+}
+
+/* 
+ * session_stop_attached_threads - stops extra attached threads (not connection worker thread)
+ *                                 associated with the session
+ *
+ */
+void
+session_stop_attached_threads (void *session_arg)
+{
+#if defined (SERVER_MODE)
+  SESSION_STATE *session = (SESSION_STATE *) session_arg;
+
+  assert (session != NULL);
+
+  // on uninit abort and delete loaddb session
+  if (session->load_session_p != NULL)
+    {
+      session->load_session_p->interrupt ();
+      session->load_session_p->wait_for_completion ();
+
+      delete session->load_session_p;
+      session->load_session_p = NULL;
+    }
+#endif
 }

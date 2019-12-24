@@ -21,10 +21,13 @@
  * unittest_area.c : unit tests for area manager
  */
 
+#include "dbtype_def.h"
+#include "db_set.h"
 #include "porting.h"
 #include "lock_free.h"
 #include "object_domain.h"
 #include "set_object.h"
+
 #include <stdio.h>
 #include <pthread.h>
 #include <sys/time.h>

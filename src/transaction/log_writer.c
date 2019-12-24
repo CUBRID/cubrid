@@ -37,6 +37,7 @@
 #include "error_manager.h"
 #include "message_catalog.h"
 #include "msgcat_set_log.hpp"
+#include "object_representation.h"
 #include "system_parameter.h"
 #include "connection_support.h"
 #include "log_applier.h"
@@ -54,6 +55,7 @@
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif
+#include "string_buffer.hpp"
 
 #define LOGWR_THREAD_SUSPEND_TIMEOUT 	10
 
@@ -73,6 +75,12 @@ struct log_bgarv_header
   LOG_PAGEID start_page_id;
   LOG_PAGEID current_page_id;
   LOG_PAGEID last_sync_pageid;
+};
+
+enum HEADER_FETCH_MODE
+{
+  NORMAL_FETCH_MODE = 0,
+  CHECK_FORMATTED_PAGE
 };
 
 #define logwr_er_log(...) if (prm_get_bool_value (PRM_ID_DEBUG_LOGWR)) _er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
@@ -154,7 +162,7 @@ LOGWR_GLOBAL logwr_Gl = {
 };
 // *INDENT-ON*
 
-static int logwr_fetch_header_page (LOG_PAGE * log_pgptr, int vol_fd);
+static int logwr_fetch_header_page (LOG_PAGE * log_pgptr, int vol_fd, HEADER_FETCH_MODE mode = NORMAL_FETCH_MODE);
 static int logwr_read_log_header (void);
 static int logwr_read_bgarv_log_header (void);
 static int logwr_initialize (const char *db_name, const char *log_path, int mode, LOG_PAGEID start_pageid);
@@ -214,10 +222,16 @@ logwr_to_physical_pageid (LOG_PAGEID logical_pageid)
  * return:
  *   log_pgptr(out):
  *   vol_fd(in):
- * Note:
+ *   mode(in):
+ *
+ * Note: if page contents are unexpected :
+ *        - if is just formatted and mode is CHECK_FORMATTED_PAGE, error code ER_DISK_INCONSISTENT_VOL_HEADER
+ *          is returned (no error is set);
+ *        - otherwise ER_LOG_PAGE_CORRUPTED is returned and error is set
+ *
  */
 static int
-logwr_fetch_header_page (LOG_PAGE * log_pgptr, int vol_fd)
+logwr_fetch_header_page (LOG_PAGE * log_pgptr, int vol_fd, HEADER_FETCH_MODE mode)
 {
   LOG_PAGEID pageid;
   LOG_PHY_PAGEID phy_pageid;
@@ -240,6 +254,11 @@ logwr_fetch_header_page (LOG_PAGE * log_pgptr, int vol_fd)
     {
       if (log_pgptr->hdr.logical_pageid != pageid)
 	{
+	  if (mode == CHECK_FORMATTED_PAGE && fileio_is_formatted_page (NULL, (char *) log_pgptr))
+	    {
+	      /* set error outside this function */
+	      return ER_DISK_INCONSISTENT_VOL_HEADER;
+	    }
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED, 1, pageid);
 	  return ER_LOG_PAGE_CORRUPTED;
 	}
@@ -283,13 +302,27 @@ logwr_read_log_header (void)
 	}
       else
 	{
-	  error = logwr_fetch_header_page (log_pgptr, logwr_Gl.append_vdes);
+	  error = logwr_fetch_header_page (log_pgptr, logwr_Gl.append_vdes, CHECK_FORMATTED_PAGE);
+	  if (error == ER_DISK_INCONSISTENT_VOL_HEADER)
+	    {
+	      /* the page appears to be just formatted (previous instance of log writter was stopped before appending
+	       * expected data; in this case just notify and delete the volume:
+	       * the behavior will be the same as `if (!fileio_is_volume_exist (logwr_Gl.active_name)) branch` */
+	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_DISK_INCONSISTENT_VOL_HEADER, 1,
+		      logwr_Gl.active_name);
+
+	      fileio_dismount_without_fsync (NULL, LOG_DBLOG_ACTIVE_VOLID);
+	      fileio_unformat (NULL, logwr_Gl.active_name);
+	      er_clear ();
+	      return NO_ERROR;
+	    }
+
 	  if (error != NO_ERROR)
 	    {
 	      return error;
 	    }
 
-	  logwr_Gl.hdr = *((LOG_HEADER *) log_pgptr->area);
+	  memcpy (&logwr_Gl.hdr, log_pgptr->area, sizeof (LOG_HEADER));
 
 	  assert (log_pgptr->hdr.logical_pageid == LOGPB_HEADER_PAGE_ID);
 	  assert (log_pgptr->hdr.offset == NULL_OFFSET);
@@ -617,7 +650,7 @@ logwr_set_hdr_and_flush_info (void)
   if (num_toflush > 0)
     {
       log_pgptr = (LOG_PAGE *) logwr_Gl.logpg_area;
-      logwr_Gl.hdr = *((LOG_HEADER *) log_pgptr->area);
+      memcpy (&logwr_Gl.hdr, log_pgptr->area, sizeof (LOG_HEADER));
       logwr_Gl.loghdr_pgptr = log_pgptr;
 
       /* Initialize archive info if it is not set */
@@ -669,7 +702,7 @@ logwr_set_hdr_and_flush_info (void)
       /* If it gets only the header page, compares both of the headers. There is no update for the header information */
       LOG_HEADER hdr;
       log_pgptr = (LOG_PAGE *) logwr_Gl.logpg_area;
-      hdr = *((LOG_HEADER *) log_pgptr->area);
+      memcpy (&hdr, log_pgptr->area, sizeof (LOG_HEADER));
 
       if (hdr.ha_server_state != HA_SERVER_STATE_ACTIVE && hdr.ha_server_state != HA_SERVER_STATE_TO_BE_ACTIVE
 	  && hdr.ha_server_state != HA_SERVER_STATE_TO_BE_STANDBY
@@ -1081,7 +1114,6 @@ logwr_flush_header_page (void)
   LOG_PAGEID logical_pageid;
   LOG_PHY_PAGEID phy_pageid;
   int nbytes;
-  char buffer[1024];
 
   if (logwr_Gl.loghdr_pgptr == NULL)
     {
@@ -1124,11 +1156,12 @@ logwr_flush_header_page (void)
 
   if (prev_ha_server_state != logwr_Gl.hdr.ha_server_state)
     {
-      sprintf (buffer, "change the state of HA server (%s@%s) from '%s' to '%s'", logwr_Gl.db_name,
-	       (logwr_Gl.hostname != NULL) ? logwr_Gl.hostname : "unknown",
-	       css_ha_server_state_string ((HA_SERVER_STATE) prev_ha_server_state),
-	       css_ha_server_state_string ((HA_SERVER_STATE) logwr_Gl.hdr.ha_server_state));
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, buffer);
+      string_buffer error_msg;
+      error_msg ("change the state of HA server (%s@%s) from '%s' to '%s'", logwr_Gl.db_name,
+		 (logwr_Gl.hostname != NULL) ? logwr_Gl.hostname : "unknown",
+		 css_ha_server_state_string ((HA_SERVER_STATE) prev_ha_server_state),
+		 css_ha_server_state_string ((HA_SERVER_STATE) logwr_Gl.hdr.ha_server_state));
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, error_msg.get_buffer ());
     }
   prev_ha_server_state = logwr_Gl.hdr.ha_server_state;
 
@@ -1493,7 +1526,7 @@ logwr_copy_log_header_check (const char *db_name, bool verbose, LOG_LSA * master
     {
 
       loghdr_pgptr = (LOG_PAGE *) logpg_area;
-      hdr = *((LOG_HEADER *) loghdr_pgptr->area);
+      memcpy (&hdr, loghdr_pgptr->area, sizeof (LOG_HEADER));
 
       *master_eof_lsa = hdr.eof_lsa;
 
@@ -1630,8 +1663,8 @@ logwr_reinit_copylog (void)
 #if !defined(WINDOWS)
   DIR *dirp;
   struct dirent *dp;
-  char log_archive_path[PATH_MAX];
-  char archive_log_prefix[PATH_MAX];
+  char log_archive_path[2 * PATH_MAX];
+  char archive_log_prefix[2 * PATH_MAX];
   int archive_log_prefix_len;
   BACKGROUND_ARCHIVING_INFO *bg_arv_info = NULL;
 
@@ -1969,16 +2002,16 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p, char *logpg_area, int *logpg_used
   LOG_PAGEID fpageid, lpageid, pageid;
   char *p;
   LOG_PAGE *log_pgptr;
-  INT64 num_logpgs;
-  LOG_LSA nxio_lsa;
+  UINT64 num_logpgs;
+  LOG_LSA nxio_lsa = LSA_INITIALIZER;
   bool is_hdr_page_only;
   int ha_file_status;
   int error_code;
 
   LOG_ARV_HEADER arvhdr;
   LOG_HEADER *hdr_ptr;
-  int nxarv_num;
-  LOG_PAGEID nxarv_pageid, nxarv_phy_pageid;
+  int nxarv_num = 0;
+  LOG_PAGEID nxarv_pageid = NULL_PAGEID, nxarv_phy_pageid = NULL_PAGEID;
 
   LOG_LSA eof_lsa;
 
@@ -2080,7 +2113,7 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p, char *logpg_area, int *logpg_used
 	    }
 	}
       /* Pack the pages which can be in the page area of Log Writer */
-      if ((lpageid - fpageid + 1) > (LOGWR_COPY_LOG_BUFFER_NPAGES - 1))
+      if (((size_t) (lpageid - fpageid + 1)) > (LOGWR_COPY_LOG_BUFFER_NPAGES - 1))
 	{
 	  lpageid = fpageid + (LOGWR_COPY_LOG_BUFFER_NPAGES - 1) - 1;
 	}
@@ -2095,7 +2128,7 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p, char *logpg_area, int *logpg_used
   log_Gl.hdr.ha_file_status = ha_file_status;
 
   /* Allocate the log page area */
-  num_logpgs = (is_hdr_page_only) ? 1 : (int) ((lpageid - fpageid + 1) + 1);
+  num_logpgs = (is_hdr_page_only) ? 1 : (UINT64) ((lpageid - fpageid + 1) + 1);
 
   assert (lpageid >= fpageid);
   assert (num_logpgs <= LOGWR_COPY_LOG_BUFFER_NPAGES);

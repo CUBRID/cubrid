@@ -87,7 +87,7 @@ static char *unpack_str_array (char *buffer, char ***string_array, int count);
 static int or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align);
 static int or_varbit_length_internal (int bitlen, int align);
 static int or_varchar_length_internal (int charlen, int align);
-static int or_put_varbit_internal (OR_BUF * buf, char *string, int bitlen, int align);
+static int or_put_varbit_internal (OR_BUF * buf, const char *string, int bitlen, int align);
 static int or_packed_json_schema_length (const char *json_schema);
 static int or_packed_json_validator_length (JSON_VALIDATOR * json_validator);
 static char *or_unpack_var_table_internal (char *ptr, int nvars, OR_VARINFO * vars, int offset_size);
@@ -108,7 +108,7 @@ classobj_get_prop (DB_SEQ * properties, const char *name, DB_VALUE * pvalue)
   int error;
   int found, max, i;
   DB_VALUE value;
-  char *tmp_str;
+  const char *tmp_str;
 
   error = NO_ERROR;
   found = 0;
@@ -1174,7 +1174,7 @@ or_varbit_length_internal (int bitlen, int align)
  *    bitlen(in): length of varbit
  */
 int
-or_packed_put_varbit (OR_BUF * buf, char *string, int bitlen)
+or_packed_put_varbit (OR_BUF * buf, const char *string, int bitlen)
 {
   return or_put_varbit_internal (buf, string, bitlen, INT_ALIGNMENT);
 }
@@ -1187,13 +1187,13 @@ or_packed_put_varbit (OR_BUF * buf, char *string, int bitlen)
  *    bitlen(in): length of varbit
  */
 int
-or_put_varbit (OR_BUF * buf, char *string, int bitlen)
+or_put_varbit (OR_BUF * buf, const char *string, int bitlen)
 {
   return or_put_varbit_internal (buf, string, bitlen, CHAR_ALIGNMENT);
 }
 
 static int
-or_put_varbit_internal (OR_BUF * buf, char *string, int bitlen, int align)
+or_put_varbit_internal (OR_BUF * buf, const char *string, int bitlen, int align)
 {
   int net_bitlen;
   int bytelen;
@@ -1655,7 +1655,7 @@ or_put_float (OR_BUF * buf, float fnum)
     }
   else
     {
-      OR_PUT_FLOAT (buf->ptr, &fnum);
+      OR_PUT_FLOAT (buf->ptr, fnum);
       buf->ptr += OR_FLOAT_SIZE;
     }
   return NO_ERROR;
@@ -1704,7 +1704,7 @@ or_put_double (OR_BUF * buf, double dnum)
     }
   else
     {
-      OR_PUT_DOUBLE (buf->ptr, &dnum);
+      OR_PUT_DOUBLE (buf->ptr, dnum);
       buf->ptr += OR_DOUBLE_SIZE;
     }
   return NO_ERROR;
@@ -2760,7 +2760,7 @@ or_pack_float (char *ptr, float number)
 {
   ASSERT_ALIGN (ptr, FLOAT_ALIGNMENT);
 
-  OR_PUT_FLOAT (ptr, &number);
+  OR_PUT_FLOAT (ptr, number);
   return (ptr + OR_FLOAT_SIZE);
 }
 
@@ -2791,7 +2791,7 @@ or_pack_double (char *ptr, double number)
 {
   ptr = PTR_ALIGN (ptr, MAX_ALIGNMENT);
 
-  OR_PUT_DOUBLE (ptr, &number);
+  OR_PUT_DOUBLE (ptr, number);
   return (ptr + OR_DOUBLE_SIZE);
 }
 
@@ -3276,7 +3276,7 @@ or_unpack_log_lsa (char *ptr, log_lsa * lsa)
  *    domain(in): domain of the set (can be NULL)
  */
 char *
-or_unpack_set (char *ptr, SETOBJ ** set, TP_DOMAIN * domain)
+or_unpack_set (char *ptr, setobj ** set, TP_DOMAIN * domain)
 {
   OR_BUF orbuf;
 
@@ -3651,13 +3651,9 @@ static int
 or_packed_json_schema_length (const char *json_schema)
 {
   DB_VALUE val;
-  int len;
+  db_make_string (&val, json_schema);
 
-  // *INDENT-OFF*
-  db_make_string (&val, const_cast <char*>(json_schema));
-  // *INDENT-ON*
-
-  len = tp_String.get_disk_size_of_value (&val);
+  int len = tp_String.get_disk_size_of_value (&val);
 
   pr_clear_value (&val);
 
@@ -5493,7 +5489,7 @@ or_skip_set_header (OR_BUF * buf)
  *    don't pack the class OIDs of object domains.
  */
 int
-or_packed_set_length (SETOBJ * set, int include_domain)
+or_packed_set_length (setobj * set, int include_domain)
 {
   DB_VALUE *value = NULL;
   int len, element_size, bound_bits, offset_table, element_tags, i, bits;
@@ -5582,7 +5578,7 @@ or_packed_set_length (SETOBJ * set, int include_domain)
  *    include_domain(in): non-zero to store full set domain too
  */
 void
-or_put_set (OR_BUF * buf, SETOBJ * set, int include_domain)
+or_put_set (OR_BUF * buf, setobj * set, int include_domain)
 {
   DB_VALUE *value = NULL;
   unsigned int bound_word;
@@ -5757,7 +5753,7 @@ or_put_set (OR_BUF * buf, SETOBJ * set, int include_domain)
  *    stored values of attributes since we can always get the correct
  *    domain by looking in the catalog.
  */
-SETOBJ *
+setobj *
 or_get_set (OR_BUF * buf, TP_DOMAIN * domain)
 {
   SETOBJ *set;
@@ -7174,7 +7170,8 @@ or_get_enumeration (OR_BUF * buf, DB_ENUMERATION * enumeration)
   DB_ENUM_ELEMENT *enum_vals = NULL, *db_enum = NULL;
   int idx = 0, count = 0, error = NO_ERROR;
   DB_VALUE value;
-  char *enum_str = NULL, *value_str;
+  char *enum_str = NULL;
+  const char *value_str = NULL;
   int str_size = 0;
   LANG_COLLATION *lc;
 
@@ -8152,7 +8149,7 @@ or_put_json_schema (OR_BUF * buf, const char *schema)
     }
   else
     {
-      db_make_string_by_const_str (&schema_raw, schema);
+      db_make_string (&schema_raw, schema);
     }
 
   rc = tp_String.data_writeval (buf, &schema_raw);

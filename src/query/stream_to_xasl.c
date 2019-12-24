@@ -904,10 +904,10 @@ stx_restore_xasl_node (THREAD_ENTRY * thread_p, char *ptr)
 /*
  * stx_restore_filter_pred_node () -
  *   return: unpacked pred_expr_with_context
- *   thread_entry(in): 
+ *   thread_entry(in):
  *   ptr(in): pointer to stream
- *  
- * Note: returned pred is private_alloced and should be freed separately after 
+ *
+ * Note: returned pred is private_alloced and should be freed separately after
  *       pred->unpack_info.
  */
 static PRED_EXPR_WITH_CONTEXT *

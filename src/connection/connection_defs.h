@@ -51,6 +51,10 @@
 #include <pthread.h>
 #endif /* !WINDOWS && SERVER_MODE */
 
+#if defined (__cplusplus)
+#include <atomic>
+#endif // C++
+
 #define NUM_MASTER_CHANNEL 1
 
 /*
@@ -66,10 +70,8 @@ enum css_command_type
   SERVER_REQUEST = 3,		/* let new server attach */
   UNUSED_REQUEST = 4,		/* unused request - leave it for compatibility */
   SERVER_REQUEST_NEW = 5,	/* new-style server request */
-  SERVER_REQUEST_CONNECT_NEW_SLAVE = 6,	/* slave server wants to connect to master server */
   MAX_REQUEST
 };
-typedef enum css_command_type CSS_COMMAND_TYPE;
 
 /*
  * These are the responses from the master to a server
@@ -149,9 +151,7 @@ enum css_server_request
   SERVER_REGISTER_HA_PROCESS = 10,
   SERVER_CHANGE_HA_MODE = 11,
   SERVER_DEREGISTER_HA_PROCESS = 12,
-  SERVER_GET_EOF = 13,
-  SERVER_RECEIVE_MASTER_HOSTNAME = 14,
-  SERVER_CONNECT_NEW_SLAVE = 15
+  SERVER_GET_EOF = 13
 };
 typedef enum css_server_request CSS_SERVER_REQUEST;
 
@@ -474,9 +474,18 @@ struct css_conn_entry
   void set_tran_index (int tran_index);
   int get_tran_index (void);
 
+  // request count manipulation
+  void add_pending_request ();
+  void start_request ();
+  bool has_pending_request () const;
+  void init_pending_request ();
+
 private:
   // note - I want to protect this.
   int transaction_id;
+  // *INDENT-OFF*
+  std::atomic<size_t> pending_request_count;
+  // *INDENT-ON*
 #else				// not c++ = c
   int transaction_id;
 #endif				// not c++ = c

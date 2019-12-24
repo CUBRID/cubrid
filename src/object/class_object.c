@@ -317,7 +317,7 @@ classobj_put_prop (DB_SEQ * properties, const char *name, DB_VALUE * pvalue)
   int error;
   int found, max, i;
   DB_VALUE value;
-  char *val_str;
+  const char *val_str;
 
   error = NO_ERROR;
   found = 0;
@@ -367,7 +367,7 @@ classobj_put_prop (DB_SEQ * properties, const char *name, DB_VALUE * pvalue)
 	{
 	  /* start with the property value to avoid growing the array twice */
 	  set_put_element (properties, max + 1, pvalue);
-	  db_make_string_by_const_str (&value, name);
+	  db_make_string (&value, name);
 	  set_put_element (properties, max, &value);
 	  pr_clear_value (&value);
 	}
@@ -397,7 +397,7 @@ classobj_drop_prop (DB_SEQ * properties, const char *name)
   int error;
   int dropped, max, i;
   DB_VALUE value;
-  char *val_str;
+  const char *val_str;
 
   error = NO_ERROR;
   dropped = 0;
@@ -911,7 +911,7 @@ classobj_put_seq_with_name_and_iterate (DB_SEQ * destination, int &index, const 
   int subseq_index = 0;
   int error_code = NO_ERROR;
 
-  db_make_string_by_const_str (&value, name);
+  db_make_string (&value, name);
   classobj_put_value_and_iterate (subseq, subseq_index, value);
 
   error_code = classobj_put_seq_and_iterate (subseq, subseq_index, seq);
@@ -1065,7 +1065,7 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
 	}
     }
 
-  db_make_string_by_const_str (&value, pbuf);
+  db_make_string (&value, pbuf);
   classobj_put_value_and_iterate (constraint, constraint_seq_index, value);
 
   if (pbuf && pbuf != &(buf[0]))
@@ -1079,7 +1079,7 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
       if (attr_name_instead_of_id)
 	{
 	  /* name */
-	  db_make_string_by_const_str (&value, atts[i]->header.name);
+	  db_make_string (&value, atts[i]->header.name);
 	}
       else
 	{
@@ -1219,7 +1219,7 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
   classobj_put_value_and_iterate (constraint, constraint_seq_index, value);
 
   /* comment */
-  db_make_string_by_const_str (&value, comment);
+  db_make_string (&value, comment);
   classobj_put_value_and_iterate (constraint, constraint_seq_index, value);
 
   /* Append the constraint to the unique property sequence */
@@ -1999,7 +1999,7 @@ classobj_change_constraint_comment (DB_SEQ * properties, SM_CLASS_CONSTRAINT * c
       goto end;
     }
 
-  db_make_string_by_const_str (&new_comment, comment);
+  db_make_string (&new_comment, comment);
   error = set_put_element (idx_seq, len - 1, &new_comment);
   if (error != NO_ERROR)
     {
@@ -2046,7 +2046,7 @@ end:
 int
 classobj_btid_from_property_value (DB_VALUE * value, BTID * btid, char **shared_cons_name)
 {
-  char *btid_string;
+  const char *btid_string = NULL;
   int volid, pageid, fileid;
   int args;
 
@@ -2100,7 +2100,7 @@ structure_error:
 int
 classobj_oid_from_property_value (DB_VALUE * value, OID * oid)
 {
-  char *oid_string;
+  const char *oid_string;
   int volid, pageid, slotid;
   int args;
 
@@ -2791,7 +2791,7 @@ classobj_make_foreign_key_ref (DB_SEQ * fk_seq)
 {
   DB_VALUE fvalue;
   SM_FOREIGN_KEY_INFO *fk_info;
-  char *val_str;
+  const char *val_str;
 
   fk_info = (SM_FOREIGN_KEY_INFO *) db_ws_alloc (sizeof (SM_FOREIGN_KEY_INFO));
   if (fk_info == NULL)
@@ -2961,9 +2961,9 @@ classobj_make_index_filter_pred_info (DB_SEQ * pred_seq)
 {
   SM_PREDICATE_INFO *filter_predicate = NULL;
   DB_VALUE fvalue, avalue, v;
-  char *val_str = NULL;
+  const char *val_str = NULL;
   size_t val_str_len = 0;
-  char *buffer = NULL;
+  const char *buffer = NULL;
   int buffer_len = 0;
   DB_SEQ *att_seq = NULL;
   int att_seq_size = 0, i;
@@ -4018,8 +4018,8 @@ classobj_find_cons_index2_col_type_list (SM_CLASS_CONSTRAINT * cons, OID * root_
     }
 
   /* Get local stats including invisible indexes. */
-  local_stats = stats_get_statistics (root_oid, 0);
-  if (local_stats == NULL)
+  int err = stats_get_statistics (root_oid, 0, &local_stats);
+  if (err != NO_ERROR || local_stats == NULL)
     {
       return NULL;
     }
@@ -8097,7 +8097,8 @@ classobj_make_function_index_info (DB_SEQ * func_seq)
 {
   SM_FUNCTION_INFO *fi_info = NULL;
   DB_VALUE val;
-  char *buffer, *ptr;
+  const char *buffer;
+  char *ptr;
   int size;
 
   if (func_seq == NULL)
@@ -8163,7 +8164,8 @@ classobj_make_function_index_info (DB_SEQ * func_seq)
       goto error;
     }
   buffer = db_get_string (&val);
-  ptr = buffer;
+  // use const_cast since of a limitation of or_unpack_* functions which do not accept const
+  ptr = CONST_CAST (char *, buffer);
   ptr = or_unpack_domain (ptr, &(fi_info->fi_domain), NULL);
 
   return fi_info;

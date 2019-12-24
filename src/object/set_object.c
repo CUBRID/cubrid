@@ -30,6 +30,7 @@
 #include <stdio.h>
 #include <assert.h>
 
+#include "area_alloc.h"
 #if !defined (SERVER_MODE)
 #include "authenticate.h"
 #endif // not SERVER_MODE
@@ -37,6 +38,7 @@
 #include "dbtype.h"
 #include "error_manager.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "set_object.h"
 
 #if !defined(SERVER_MODE)
@@ -198,6 +200,12 @@ set_area_final (void)
       area_destroy (Set_Obj_Area);
       Set_Obj_Area = NULL;
     }
+}
+
+void
+set_area_reset ()
+{
+  Set_Ref_Area = Set_Obj_Area = NULL;
 }
 
 /* VALUE BLOCK RESOURCE */
@@ -4471,7 +4479,7 @@ setobj_sort (COL * col)
  */
 
 int
-setobj_find_temporary_oids (SETOBJ * col, LC_OIDSET * oidset)
+setobj_find_temporary_oids (setobj * col, LC_OIDSET * oidset)
 {
   int error;
   DB_VALUE *val;
@@ -6143,10 +6151,12 @@ setobj_print (FILE * fp, COL * col)
  *      return: DB_TYPE
  *  set(in) : set object
  *
+ * NOTE: setobj_type is special; it is declared in dbtype.h because dbtype_function.i requires it and it is exposed
+ *       to other libraries/executable (e.g. cas/cub_cas) and to C-compiled unit csql_grammar.c.
+ *       therefore, struct setobj is used instead of SETOBJ/COL aliases.
  */
-
 DB_TYPE
-setobj_type (COL * set)
+setobj_type (struct setobj *set)
 {
   if (set)
     {

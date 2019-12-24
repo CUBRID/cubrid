@@ -4703,7 +4703,7 @@ ehash_apply_each (THREAD_ENTRY * thread_p, EHID * ehid_p, RECDES * recdes_p, DB_
       break;
 
     case DB_TYPE_OBJECT:
-      *((OID *) (&next_key)) = *(OID *) bucket_record_p;
+      memcpy (&next_key, bucket_record_p, sizeof (OID));
       break;
 #if defined (ENABLE_UNUSED_FUNCTION)
     case DB_TYPE_DOUBLE:

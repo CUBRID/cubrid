@@ -16,29 +16,21 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 #
 
-message(STATUS "Flex loader outputs: ${FLEX_loader_lexer_OUTPUTS}")
-
 set(EXECUTABLE_SOURCES
-  ${BISON_loader_grammar_OUTPUTS}
-  ${FLEX_loader_lexer_OUTPUTS}
   ${EXECUTABLES_DIR}/csql.c
   ${EXECUTABLES_DIR}/csql_session.c
   ${EXECUTABLES_DIR}/csql_result.c
   ${EXECUTABLES_DIR}/csql_support.c
   ${EXECUTABLES_DIR}/csql_result_format.c
-  ${EXECUTABLES_DIR}/extract_schema.cpp  
+  ${EXECUTABLES_DIR}/extract_schema.cpp
   ${EXECUTABLES_DIR}/util_sa.c
   ${EXECUTABLES_DIR}/util_cs.c
   ${EXECUTABLES_DIR}/util_common.c
   ${EXECUTABLES_DIR}/compactdb.c
-  ${EXECUTABLES_DIR}/loaddb.c
   ${EXECUTABLES_DIR}/unloaddb.c
-  ${EXECUTABLES_DIR}/load_object.c
   ${EXECUTABLES_DIR}/unload_object.c
   ${EXECUTABLES_DIR}/unload_schema.c
   ${EXECUTABLES_DIR}/file_hash.c
-  ${EXECUTABLES_DIR}/loader.c
-  ${EXECUTABLES_DIR}/loader_object_table.c
   )
 
 set(EXECUTABLE_HEADERS
@@ -123,6 +115,11 @@ set(BASE_SOURCES
   ${BASE_DIR}/binaryheap.c
   ${BASE_DIR}/tsc_timer.c
   ${BASE_DIR}/lock_free.c
+  ${BASE_DIR}/lockfree_bitmap.cpp
+  ${BASE_DIR}/lockfree_hashmap.cpp
+  ${BASE_DIR}/lockfree_transaction_descriptor.cpp
+  ${BASE_DIR}/lockfree_transaction_table.cpp
+  ${BASE_DIR}/lockfree_transaction_system.cpp
   ${BASE_DIR}/fileline_location.cpp
   ${BASE_DIR}/resource_tracker.cpp
   ${BASE_DIR}/tz_compile.c
@@ -135,6 +132,15 @@ set(BASE_HEADERS
   ${BASE_DIR}/extensible_array.hpp
   ${BASE_DIR}/fileline_location.hpp
   ${BASE_DIR}/locale_helper.hpp
+  ${BASE_DIR}/lockfree_address_marker.hpp
+  ${BASE_DIR}/lockfree_bitmap.hpp
+  ${BASE_DIR}/lockfree_freelist.hpp
+  ${BASE_DIR}/lockfree_hashmap.hpp
+  ${BASE_DIR}/lockfree_transaction_def.hpp
+  ${BASE_DIR}/lockfree_transaction_descriptor.hpp
+  ${BASE_DIR}/lockfree_transaction_reclaimable.hpp
+  ${BASE_DIR}/lockfree_transaction_table.hpp
+  ${BASE_DIR}/lockfree_transaction_system.hpp
   ${BASE_DIR}/mem_block.hpp
   ${BASE_DIR}/memory_private_allocator.cpp
   ${BASE_DIR}/msgcat_set_log.hpp
@@ -147,6 +153,7 @@ set(BASE_HEADERS
   ${BASE_DIR}/porting_inline.hpp
   ${BASE_DIR}/printer.hpp
   ${BASE_DIR}/resource_tracker.hpp
+  ${BASE_DIR}/semaphore.hpp
 )
 
 set(HEAPLAYER_SOURCES
@@ -166,6 +173,21 @@ set(CONNECTION_SOURCES
 set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_interface_cl.c
   )
+
+set(MONITOR_SOURCES
+  ${MONITOR_DIR}/monitor_collect.cpp
+  ${MONITOR_DIR}/monitor_registration.cpp
+  ${MONITOR_DIR}/monitor_statistic.cpp
+  ${MONITOR_DIR}/monitor_transaction.cpp
+)
+
+set(MONITOR_HEADERS
+  ${MONITOR_DIR}/monitor_collect.hpp
+  ${MONITOR_DIR}/monitor_definition.hpp
+  ${MONITOR_DIR}/monitor_registration.hpp
+  ${MONITOR_DIR}/monitor_statistic.hpp
+  ${MONITOR_DIR}/monitor_transaction.hpp
+)
 
 set(PARSER_SOURCES
   ${BISON_csql_grammar_OUTPUTS}
@@ -279,36 +301,6 @@ set(OBJECT_HEADERS
   ${OBJECT_DIR}/lob_locator.hpp
 )
 
-set (REPLICATION_HEADERS
-  ${REPLICATION_DIR}/log_generator.hpp
-  ${REPLICATION_DIR}/log_consumer.hpp
-  ${REPLICATION_DIR}/replication_master_senders_manager.hpp
-  ${REPLICATION_DIR}/replication_object.hpp
-  ${REPLICATION_DIR}/replication_stream_entry.hpp
-  )
-
-set(REPLICATION_SOURCES
-  ${REPLICATION_DIR}/log_consumer.cpp
-  ${REPLICATION_DIR}/log_generator.cpp
-  ${REPLICATION_DIR}/replication_object.cpp
-  ${REPLICATION_DIR}/replication_master_senders_manager.cpp  
-  ${REPLICATION_DIR}/replication_stream_entry.cpp
-  )
-
-set(STREAM_SOURCES
-  ${BASE_DIR}/cubstream.cpp
-  ${BASE_DIR}/multi_thread_stream.cpp
-  )
-
-set (STREAM_HEADERS
-  ${BASE_DIR}/bip_buffer.hpp
-  ${BASE_DIR}/collapsable_circular_queue.hpp
-  ${BASE_DIR}/cubstream.hpp
-  ${BASE_DIR}/multi_thread_stream.hpp
-  ${BASE_DIR}/stream_entry.hpp
-  ${BASE_DIR}/stream_io.hpp
-  )
-
 set(JSP_SOURCES
   ${JSP_DIR}/jsp_cl.c
   ${JSP_DIR}/jsp_sr.c
@@ -318,12 +310,14 @@ set(THREAD_SOURCES
   ${THREAD_DIR}/critical_section_tracker.cpp
   ${THREAD_DIR}/thread_entry.cpp
   ${THREAD_DIR}/thread_entry_task.cpp
+  ${THREAD_DIR}/thread_lockfree_hash_map.cpp
   ${THREAD_DIR}/thread_manager.cpp
   )
 set(THREAD_HEADERS
   ${THREAD_DIR}/critical_section_tracker.hpp
   ${THREAD_DIR}/thread_compat.hpp
   ${THREAD_DIR}/thread_entry.hpp
+  ${THREAD_DIR}/thread_lockfree_hash_map.hpp
   ${THREAD_DIR}/thread_manager.hpp
   )
 
@@ -344,6 +338,7 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/log_lsa.cpp
   ${TRANSACTION_DIR}/log_manager.c
   ${TRANSACTION_DIR}/log_page_buffer.c
+  ${TRANSACTION_DIR}/log_postpone_cache.cpp
   ${TRANSACTION_DIR}/log_recovery.c
   ${TRANSACTION_DIR}/log_system_tran.cpp
   ${TRANSACTION_DIR}/log_tran_table.c
@@ -365,6 +360,7 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/log_archives.hpp
   ${TRANSACTION_DIR}/log_common_impl.h
   ${TRANSACTION_DIR}/log_lsa.hpp
+  ${TRANSACTION_DIR}/log_postpone_cache.hpp
   ${TRANSACTION_DIR}/log_record.hpp
   ${TRANSACTION_DIR}/log_storage.hpp
   ${TRANSACTION_DIR}/log_system_tran.hpp
@@ -431,6 +427,30 @@ set(XASL_HEADERS
   ${XASL_DIR}/xasl_stream.hpp
   )
 
+set(LOADDB_SOURCES
+  ${BISON_loader_grammar_OUTPUT_SOURCE}
+  ${FLEX_loader_lexer_OUTPUTS}
+  ${LOADDB_DIR}/load_common.cpp
+  ${LOADDB_DIR}/load_db.c
+  ${LOADDB_DIR}/load_driver.cpp
+  ${LOADDB_DIR}/load_error_handler.cpp
+  ${LOADDB_DIR}/load_object.c
+  ${LOADDB_DIR}/load_object_table.c
+  ${LOADDB_DIR}/load_sa_loader.cpp
+  ${LOADDB_DIR}/load_semantic_helper.cpp
+  )
+
+set(LOADDB_HEADERS
+  ${BISON_loader_grammar_OUTPUT_HEADER}
+  ${LOADDB_DIR}/load_common.hpp
+  ${LOADDB_DIR}/load_driver.hpp
+  ${LOADDB_DIR}/load_error_handler.hpp
+  ${LOADDB_DIR}/load_object.h
+  ${LOADDB_DIR}/load_object_table.h
+  ${LOADDB_DIR}/load_sa_loader.hpp
+  ${LOADDB_DIR}/load_semantic_helper.hpp
+  )
+
 if(UNIX)
   list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/tcp.c)
   list(APPEND BASE_SOURCES ${BASE_DIR}/dynamic_load.c)
@@ -462,20 +482,17 @@ SET_SOURCE_FILES_PROPERTIES(
   ${EXECUTABLES_DIR}/util_cs.c
   ${EXECUTABLES_DIR}/util_common.c
   ${EXECUTABLES_DIR}/compactdb.c
-  ${EXECUTABLES_DIR}/loaddb.c
   ${EXECUTABLES_DIR}/unloaddb.c
-  ${EXECUTABLES_DIR}/load_object.c
   ${EXECUTABLES_DIR}/unload_object.c
   ${EXECUTABLES_DIR}/unload_schema.c
   ${EXECUTABLES_DIR}/file_hash.c
-  ${EXECUTABLES_DIR}/loader.c
-  ${EXECUTABLES_DIR}/loader_object_table.c
   ${COMPAT_SOURCES}
   ${BASE_SOURCES}
   ${HEAPLAYER_SOURCES}
   ${CONNECTION_SOURCES}
   ${CONNECTION_TCP_SOURCE}
   ${COMMUNICATION_SOURCES}
+  ${MONITOR_SOURCES}
   ${PARSER_DIR}/parser_support.c
   ${PARSER_DIR}/show_meta.c
   ${PARSER_DIR}/double_byte_support.c
@@ -497,8 +514,6 @@ SET_SOURCE_FILES_PROPERTIES(
   ${OPTIMIZER_SOURCES}
   ${QUERY_SOURCES}
   ${OBJECT_SOURCES}
-  ${REPLICATION_SOURCES}
-  ${STREAM_SOURCES}  
   ${JSP_SOURCES}
   ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
@@ -507,15 +522,14 @@ SET_SOURCE_FILES_PROPERTIES(
   ${SESSION_SOURCES}
   ${PROBES_OBJECT}
   ${XASL_SOURCES}
+  ${LOADDB_SOURCES}
   PROPERTIES LANGUAGE CXX
   )
 
 SET_SOURCE_FILES_PROPERTIES(
   ${BASE_DIR}/md5.c
   ${CSQL_GRAMMAR_OUTPUT}
-  ${LOADER_GRAMMAR_OUTPUT}
   ${CSQL_LEXER_OUTPUT}
-  ${LOADER_LEXER_OUTPUT}
   ${ESQL_GRAMMAR_OUTPUT}
   ${ESQL_LEXER_OUTPUT}
   ${COMPAT_SOURCES_C}
@@ -528,7 +542,6 @@ add_library(cubridsa SHARED
   ${COMPAT_SOURCES}
   ${BASE_SOURCES}
   ${BASE_HEADERS}
-  ${BASE_SOURCES}
   ${COMMUNICATION_SOURCES}
   ${COMPAT_SOURCES}
   ${COMPAT_SOURCES_C}
@@ -538,6 +551,8 @@ add_library(cubridsa SHARED
   ${EXECUTABLE_SOURCES}
   ${HEAPLAYER_SOURCES}
   ${JSP_SOURCES}
+  ${MONITOR_HEADERS}
+  ${MONITOR_SOURCES}
   ${OBJECT_HEADERS}
   ${OBJECT_SOURCES}
   ${OPTIMIZER_SOURCES}
@@ -546,10 +561,6 @@ add_library(cubridsa SHARED
   ${PARSER_HEADERS}
   ${PARSER_SOURCES}
   ${PROBES_OBJECT}
-  ${REPLICATION_HEADERS}
-  ${REPLICATION_SOURCES}
-  ${STREAM_HEADERS}  
-  ${STREAM_SOURCES}
   ${THREAD_SOURCES}
   ${TRANSACTION_HEADERS}
   ${TRANSACTION_SOURCES}
@@ -558,6 +569,8 @@ add_library(cubridsa SHARED
   ${STORAGE_SOURCES}
   ${XASL_HEADERS}
   ${XASL_SOURCES}
+  ${LOADDB_SOURCES}
+  ${LOADDB_HEADERS}
   )
 set_target_properties(cubridsa PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 
@@ -601,6 +614,7 @@ target_external_dependencies(cubridsa
   )
 target_include_directories(cubridsa PRIVATE
   ${CMAKE_SOURCE_DIR}/src/heaplayers/util  # this looks ugly
+  ${FLEX_INCLUDE_DIRS}
   ${JAVA_INC}
   )
 target_link_libraries(cubridsa LINK_PRIVATE
@@ -611,6 +625,7 @@ if(UNIX)
   # target_link_libraries(cubridsa LINK_PRIVATE -Wl,-whole-archive cas ${EP_LIBS} -Wl,-no-whole-archive)
   target_link_libraries(cubridsa LINK_PUBLIC ${CURSES_LIBRARIES} ${CMAKE_DL_LIBS})
 endif(UNIX)
+
 add_dependencies(cubridsa gen_csql_grammar gen_csql_lexer gen_loader_grammar gen_loader_lexer)
 #add_dependencies(cubridsa ${EP_TARGETS})
 
@@ -623,7 +638,6 @@ install(TARGETS cubridsa
   RUNTIME DESTINATION ${CUBRID_BINDIR} COMPONENT Library
   LIBRARY DESTINATION ${CUBRID_LIBDIR} COMPONENT Library
   )
-
 
 # install pdb files for debugging on windows
 if(WIN32)

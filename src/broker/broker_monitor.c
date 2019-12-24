@@ -936,7 +936,10 @@ appl_info_display (T_SHM_APPL_SERVER * shm_appl, T_APPL_SERVER_INFO * as_info_p,
     {
       char as_id_str[FIELD_WIDTH_AS_ID];
 
-      snprintf (as_id_str, sizeof (as_id_str), "%d-%d-%d", proxy_id, shard_id, as_id);
+      if (snprintf (as_id_str, sizeof (as_id_str), "%d-%d-%d", proxy_id, shard_id, as_id) < 0)
+	{
+	  return;
+	}
 
       print_value (FIELD_ID, as_id_str, FIELD_T_STRING);
     }

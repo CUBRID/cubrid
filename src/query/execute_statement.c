@@ -63,11 +63,13 @@
 #include "server_interface.h"
 #include "transaction_cl.h"
 #include "object_print.h"
+#include "jansson.h"
 #include "jsp_cl.h"
 #include "optimizer.h"
 #include "memory_alloc.h"
 #include "object_domain.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "trigger_manager.h"
 #include "release_string.h"
 #include "object_accessor.h"
@@ -91,6 +93,9 @@
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
+#define DB_SERIAL_MAX "99999999999999999999999999999999999999"
+#define DB_SERIAL_MIN "-99999999999999999999999999999999999999"
 
 #define UNIQUE_SAVEPOINT_ALTER_TRIGGER "aLTERtRIGGER"
 /*
@@ -138,9 +143,9 @@ struct serial_invariant
   DB_VALUE val2;
   PT_OP_TYPE cmp_op;
   int val1_msgid;		/* the proper message id for val1. 0 means val1 should not be responsible for the
-				 * invariant voilation */
+				 * invariant violation */
   int val2_msgid;		/* the proper message id for val2. 0 means val2 should not be responsible for the
-				 * invariant voilation */
+				 * invariant violation */
   int error_type;		/* ER_QPROC_SERIAL_RANGE_OVERFLOW or ER_INVALID_SERIAL_VALUE */
 };
 
@@ -665,7 +670,7 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
     }
 
   /* name */
-  db_make_string_by_const_str (&value, serial_name);
+  db_make_string (&value, serial_name);
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_NAME, &value);
   pr_clear_value (&value);
   if (error != NO_ERROR)
@@ -729,7 +734,7 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
     }
 
   /* comment */
-  db_make_string_by_const_str (&value, comment);
+  db_make_string (&value, comment);
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_COMMENT, &value);
   pr_clear_value (&value);
   if (error != NO_ERROR)
@@ -740,7 +745,7 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
   /* class name */
   if (class_name)
     {
-      db_make_string_by_const_str (&value, class_name);
+      db_make_string (&value, class_name);
       error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CLASS_NAME, &value);
       pr_clear_value (&value);
       if (error != NO_ERROR)
@@ -752,7 +757,7 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
   /* att name */
   if (att_name)
     {
-      db_make_string_by_const_str (&value, att_name);
+      db_make_string (&value, att_name);
       error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_ATT_NAME, &value);
       pr_clear_value (&value);
       if (error != NO_ERROR)
@@ -875,7 +880,7 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
 
   /* class name */
   pr_clear_value (&value);
-  db_make_string_by_const_str (&value, class_name);
+  db_make_string (&value, class_name);
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CLASS_NAME, &value);
   pr_clear_value (&value);
   if (error != NO_ERROR)
@@ -884,7 +889,7 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
     }
 
   /* att name */
-  db_make_string_by_const_str (&value, att_name);
+  db_make_string (&value, att_name);
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_ATT_NAME, &value);
   pr_clear_value (&value);
   if (error != NO_ERROR)
@@ -1285,11 +1290,10 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *min_val_node;
   PT_NODE *cached_num_node;
 
-  DB_VALUE zero, e37, under_e36;
+  DB_VALUE zero, e38, negative_e38;
   DB_VALUE start_val, inc_val, max_val, min_val, cached_num_val;
   DB_VALUE cmp_result;
-  DB_VALUE result_val;
-  DB_VALUE tmp_val, tmp_val2;
+  DB_VALUE tmp_val;
   DB_VALUE abs_inc_val, range_val;
 
   int min_val_msgid = 0;
@@ -1299,7 +1303,6 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   int ret_msg_id = 0;
   SERIAL_INVARIANT invariants[MAX_SERIAL_INVARIANT];
   int ninvars = 0;
-  unsigned char num[DB_NUMERIC_BUF_SIZE];
   int inc_val_flag = 0, cyclic;
   int cached_num;
   DB_DATA_STATUS data_stat;
@@ -1314,8 +1317,8 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   db_make_null (&value);
   db_make_null (&zero);
-  db_make_null (&e37);
-  db_make_null (&under_e36);
+  db_make_null (&e38);
+  db_make_null (&negative_e38);
   db_make_null (&start_val);
   db_make_null (&inc_val);
   db_make_null (&max_val);
@@ -1360,10 +1363,8 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* get all values as string */
   numeric_coerce_string_to_num ("0", 1, INTL_CODESET_ISO88591, &zero);
-  numeric_coerce_string_to_num ("10000000000000000000000000000000000000", DB_MAX_NUMERIC_PRECISION,
-				INTL_CODESET_ISO88591, &e37);
-  numeric_coerce_string_to_num ("-1000000000000000000000000000000000000", DB_MAX_NUMERIC_PRECISION,
-				INTL_CODESET_ISO88591, &under_e36);
+  numeric_coerce_string_to_num (DB_SERIAL_MAX, strlen (DB_SERIAL_MAX), INTL_CODESET_ISO88591, &e38);
+  numeric_coerce_string_to_num (DB_SERIAL_MIN, strlen (DB_SERIAL_MIN), INTL_CODESET_ISO88591, &negative_e38);
   db_make_int (&cmp_result, 0);
 
   start_val_node = PT_NODE_SR_START_VAL (statement);
@@ -1495,8 +1496,8 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       else
 	{
-	  /* min_val = - 1.0e36; */
-	  db_value_clone (&under_e36, &min_val);
+	  /* min_val */
+	  db_value_clone (&negative_e38, &min_val);
 	}
     }
 
@@ -1525,8 +1526,8 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       if (inc_val_flag > 0)
 	{
-	  /* max_val = 1.0e37; */
-	  db_value_clone (&e37, &max_val);
+	  /* max_val */
+	  db_value_clone (&e38, &max_val);
 	}
       else
 	{
@@ -1567,7 +1568,6 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-
   /* cyclic */
   cyclic = PT_NODE_SR_CYCLIC (statement);
 
@@ -1580,8 +1580,8 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /*
    * the following invariants must hold:
-   * min_val >= under_e36
-   * max_val <= e37
+   * min_val >= negative_e38
+   * max_val <= e38
    * min_val < max_val
    * min_val <= start_val
    * max_val >= start_val
@@ -1590,25 +1590,25 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
    */
 
   /*
-   * invariant for min_val >= under_e36.
+   * invariant for min_val >= negative_e38.
    * if min_val_msgid == MSGCAT_SEMANTIC_SERIAL_START_VAL_INVALID,
    * that means the value of min_val is from start_val, if the invariant
-   * is voilated, start_val invalid error message should be displayed
-   * instead of min_val underflow. the val2_msgid is 0 because under_e36
-   * cannot be the reason which voilates the invariant.
+   * is violated, start_val invalid error message should be displayed
+   * instead of min_val underflow. the val2_msgid is 0 because negative_e38
+   * cannot be the reason which violates the invariant.
    */
-  initialize_serial_invariant (&invariants[ninvars++], min_val, under_e36, PT_GE,
+  initialize_serial_invariant (&invariants[ninvars++], min_val, negative_e38, PT_GE,
 			       ((min_val_msgid == MSGCAT_SEMANTIC_SERIAL_START_VAL_INVALID)
 				? MSGCAT_SEMANTIC_SERIAL_START_VAL_INVALID : MSGCAT_SEMANTIC_SERIAL_MIN_VAL_UNDERFLOW),
 			       0, ER_QPROC_SERIAL_RANGE_OVERFLOW);
 
   /*
-   * invariant for max_val <= e37. Like the above invariant, if
+   * invariant for max_val <= e38. Like the above invariant, if
    * max_val_msgid == MSGCAT_SEMANTIC_SERIAL_START_VAL_INVALID,
    * start_val invalid error message should be displayed if the invariant
-   * is voilated.
+   * is violated.
    */
-  initialize_serial_invariant (&invariants[ninvars++], max_val, e37, PT_LE,
+  initialize_serial_invariant (&invariants[ninvars++], max_val, e38, PT_LE,
 			       ((max_val_msgid == MSGCAT_SEMANTIC_SERIAL_START_VAL_INVALID)
 				? MSGCAT_SEMANTIC_SERIAL_START_VAL_INVALID : MSGCAT_SEMANTIC_SERIAL_MAX_VAL_OVERFLOW),
 			       0, ER_QPROC_SERIAL_RANGE_OVERFLOW);
@@ -1631,59 +1631,60 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /*
    * invariant for abs(inc_val) <= (max_val - min_val).
-   * if this invariant is voilated, inc_val, min_val or max_val should be
+   * if this invariant is violated, inc_val, min_val or max_val should be
    * responsible for it. If max_val_msgid == 0, which means max_val is
    * initialized from a constant, not inputted by user,  in this case, we don't
    * expect max_val should be responsible for the violation.
    */
-  numeric_db_value_sub (&max_val, &min_val, &range_val);
+  error = numeric_db_value_sub (&max_val, &min_val, &range_val);
+  if (error == ER_IT_DATA_OVERFLOW)
+    {
+      // max - min might be flooded. Regard the range is big enough.
+      numeric_coerce_string_to_num (DB_SERIAL_MAX, strlen (DB_SERIAL_MAX), INTL_CODESET_ISO88591, &range_val);
+      er_clear ();
+    }
+
   db_abs_dbval (&abs_inc_val, &inc_val);
   initialize_serial_invariant (&invariants[ninvars++], abs_inc_val, range_val, PT_LE, inc_val_msgid,
 			       (max_val_msgid == 0) ? min_val_msgid : max_val_msgid, ER_INVALID_SERIAL_VALUE);
-
 
   /* cached num */
   cached_num_node = PT_NODE_SR_CACHED_NUM_VAL (statement);
   if (cached_num_node != NULL)
     {
+      DB_VALUE cached_num_int_val, abs_cached_range_val;
       assert (cached_num_node->type_enum == PT_TYPE_INTEGER);
 
       cached_num = cached_num_node->info.value.data_value.i;
 
-      /* result_val = ABS(CEIL((max_val - min_val) / inc_val)) */
-      error = numeric_db_value_sub (&max_val, &min_val, &tmp_val);
+      /* ABS (cache_num * inc_val) <= range_val */
+
+      db_make_int (&cached_num_int_val, cached_num);
+      db_value_domain_init (&cached_num_val, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
+      error = numeric_db_value_coerce_to_num (&cached_num_int_val, &cached_num_val, &data_stat);
       if (error != NO_ERROR)
 	{
 	  goto end;
 	}
-      error = numeric_db_value_div (&tmp_val, &inc_val, &tmp_val2);
+
+      /* ABS (cache_num * inc_val) */
+      error = numeric_db_value_mul (&inc_val, &cached_num_val, &tmp_val);
       if (error != NO_ERROR)
 	{
 	  goto end;
 	}
-      error = db_abs_dbval (&tmp_val, &tmp_val2);
+
+      error = db_abs_dbval (&abs_cached_range_val, &tmp_val);
       if (error != NO_ERROR)
 	{
 	  goto end;
 	}
-      error = db_ceil_dbval (&result_val, &tmp_val);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
+
+      initialize_serial_invariant (&invariants[ninvars++], abs_cached_range_val, range_val, PT_LE,
+				   MSGCAT_SEMANTIC_SERIAL_CACHED_NUM_INVALID_RANGE, 0, ER_INVALID_SERIAL_VALUE);
 
       pr_clear_value (&tmp_val);
-      pr_clear_value (&tmp_val2);
-
-      numeric_coerce_int_to_num (cached_num, num);
-      db_make_numeric (&cached_num_val, num, DB_MAX_NUMERIC_PRECISION, 0);
-
-      /*
-       * must holds: cached_num_val <= result_val
-       * invariant for cached_num_val <= ABS(CEIL((max_val - min_val) / inc_val))
-       */
-      initialize_serial_invariant (&invariants[ninvars++], cached_num_val, result_val, PT_LE,
-				   MSGCAT_SEMANTIC_SERIAL_CACHED_NUM_INVALID_RANGE, 0, ER_INVALID_SERIAL_VALUE);
+      pr_clear_value (&abs_cached_range_val);
     }
   else
     {
@@ -1718,9 +1719,8 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   AU_DISABLE (save);
   au_disable_flag = true;
 
-  error =
-    do_create_serial_internal (&serial_object, p, &start_val, &inc_val, &min_val, &max_val, cyclic, cached_num, 0,
-			       comment, NULL, NULL);
+  error = do_create_serial_internal (&serial_object, p, &start_val, &inc_val, &min_val, &max_val, cyclic, cached_num,
+				     0, comment, NULL, NULL);
 
   AU_ENABLE (save);
   au_disable_flag = false;
@@ -1729,7 +1729,6 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       goto end;
     }
-
 
   if (p != NULL)
     {
@@ -1791,8 +1790,7 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
   db_make_null (&min_val);
 
   numeric_coerce_string_to_num ("0", 1, INTL_CODESET_ISO88591, &zero);
-  numeric_coerce_string_to_num ("99999999999999999999999999999999999999", DB_MAX_NUMERIC_PRECISION,
-				INTL_CODESET_ISO88591, &e38);
+  numeric_coerce_string_to_num (DB_SERIAL_MAX, DB_MAX_NUMERIC_PRECISION, INTL_CODESET_ISO88591, &e38);
 
   assert_release (att->info.attr_def.auto_increment != NULL);
   auto_increment_node = att->info.attr_def.auto_increment;
@@ -2001,7 +1999,9 @@ end:
   pr_clear_value (&min_val);
 
   if (serial_name)
-    free_and_init (serial_name);
+    {
+      free_and_init (serial_name);
+    }
 
   return error;
 }
@@ -2041,8 +2041,7 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser, MOP * seri
   db_make_null (&max_val);
   OID_SET_NULL (&serial_obj_id);
 
-  numeric_coerce_string_to_num ("99999999999999999999999999999999999999", DB_MAX_NUMERIC_PRECISION,
-				INTL_CODESET_ISO88591, &e38);
+  numeric_coerce_string_to_num (DB_SERIAL_MAX, strlen (DB_SERIAL_MAX), INTL_CODESET_ISO88591, &e38);
 
   assert_release (att->info.attr_def.auto_increment != NULL);
   assert (serial_object != NULL);
@@ -2236,24 +2235,21 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *min_val_node;
   PT_NODE *cached_num_node;
 
-  DB_VALUE zero, e37, under_e36;
+  DB_VALUE zero, e38, negative_e38;
   DB_DATA_STATUS data_stat;
   DB_VALUE old_inc_val, old_max_val, old_min_val, old_cached_num;
   DB_VALUE current_val, start_val, cached_num_val;
   DB_VALUE new_inc_val, new_max_val, new_min_val;
   DB_VALUE cmp_result;
-  DB_VALUE result_val;
   DB_VALUE class_name_val;
-  DB_VALUE tmp_val, tmp_val2;
+  DB_VALUE tmp_val;
   DB_VALUE abs_inc_val, range_val;
   int cached_num;
   int ret_msg_id = 0;
   const char *comment = NULL;
 
-  unsigned char num[DB_NUMERIC_BUF_SIZE];
-
   int new_inc_val_flag = 0, new_cyclic;
-  int cur_val_change, inc_val_change, max_val_change, min_val_change, cyclic_change, cached_num_change;
+  bool cur_val_change, inc_val_change, max_val_change, min_val_change, cyclic_change, cached_num_change;
 
   int error = NO_ERROR;
   int save;
@@ -2266,8 +2262,8 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   db_make_null (&value);
   db_make_null (&zero);
-  db_make_null (&e37);
-  db_make_null (&under_e36);
+  db_make_null (&e38);
+  db_make_null (&negative_e38);
   db_make_null (&old_inc_val);
   db_make_null (&old_max_val);
   db_make_null (&old_min_val);
@@ -2280,7 +2276,6 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   db_make_null (&abs_inc_val);
   db_make_null (&range_val);
   OID_SET_NULL (&serial_obj_id);
-
 
   /*
    * find db_serial_class
@@ -2358,7 +2353,9 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   error = db_get (serial_object, SERIAL_ATTR_MAX_VAL, &old_max_val);
   if (error < 0)
-    goto end;
+    {
+      goto end;
+    }
 
   error = db_get (serial_object, SERIAL_ATTR_MIN_VAL, &old_min_val);
   if (error < 0)
@@ -2379,17 +2376,15 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* Now, get new values from node */
 
   numeric_coerce_string_to_num ("0", 1, INTL_CODESET_ISO88591, &zero);
-  numeric_coerce_string_to_num ("10000000000000000000000000000000000000", DB_MAX_NUMERIC_PRECISION,
-				INTL_CODESET_ISO88591, &e37);
-  numeric_coerce_string_to_num ("-1000000000000000000000000000000000000", DB_MAX_NUMERIC_PRECISION,
-				INTL_CODESET_ISO88591, &under_e36);
+  numeric_coerce_string_to_num (DB_SERIAL_MAX, strlen (DB_SERIAL_MAX), INTL_CODESET_ISO88591, &e38);
+  numeric_coerce_string_to_num (DB_SERIAL_MIN, strlen (DB_SERIAL_MIN), INTL_CODESET_ISO88591, &negative_e38);
   db_make_int (&cmp_result, 0);
 
   db_value_domain_init (&new_inc_val, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
   inc_val_node = PT_NODE_SR_INCREMENT_VAL (statement);
   if (inc_val_node != NULL)
     {
-      inc_val_change = 1;
+      inc_val_change = true;
       pval = pt_value_to_db (parser, inc_val_node);
       if (pval == NULL)
 	{
@@ -2421,7 +2416,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
   else
     {
-      inc_val_change = 0;
+      inc_val_change = false;
       /* new_inc_val = old_inc_val; */
       db_value_clone (&old_inc_val, &new_inc_val);
       error = numeric_db_value_compare (&new_inc_val, &zero, &cmp_result);
@@ -2438,7 +2433,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   start_val_node = PT_NODE_SR_START_VAL (statement);
   if (start_val_node != NULL)
     {
-      cur_val_change = 1;
+      cur_val_change = true;
       pval = pt_value_to_db (parser, start_val_node);
       if (pval == NULL)
 	{
@@ -2455,7 +2450,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
   else
     {
-      cur_val_change = 0;
+      cur_val_change = false;
       db_value_clone (&current_val, &start_val);
     }
 
@@ -2464,7 +2459,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   max_val_node = PT_NODE_SR_MAX_VAL (statement);
   if (max_val_node != NULL)
     {
-      max_val_change = 1;
+      max_val_change = true;
       pval = pt_value_to_db (parser, max_val_node);
       if (pval == NULL)
 	{
@@ -2483,11 +2478,11 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       if (PT_NODE_SR_NO_MAX (statement) == 1)
 	{
-	  max_val_change = 1;
+	  max_val_change = true;
 	  if (new_inc_val_flag > 0)
 	    {
-	      /* new_max_val = 1.0e37; */
-	      db_value_clone (&e37, &new_max_val);
+	      /* new_max_val */
+	      db_value_clone (&e38, &new_max_val);
 	    }
 	  else
 	    {
@@ -2502,7 +2497,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       else
 	{
-	  max_val_change = 0;
+	  max_val_change = false;
 	  /* new_max_val = old_max_val; */
 	  db_value_clone (&old_max_val, &new_max_val);
 	}
@@ -2513,7 +2508,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   min_val_node = PT_NODE_SR_MIN_VAL (statement);
   if (min_val_node != NULL)
     {
-      min_val_change = 1;
+      min_val_change = true;
       pval = pt_value_to_db (parser, min_val_node);
       if (pval == NULL)
 	{
@@ -2532,7 +2527,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       if (PT_NODE_SR_NO_MIN (statement) == 1)
 	{
-	  min_val_change = 1;
+	  min_val_change = true;
 
 	  if (new_inc_val_flag > 0)
 	    {
@@ -2546,30 +2541,28 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	  else
 	    {
-	      /* new_min_val = - 1.0e36; */
-	      db_value_clone (&under_e36, &new_min_val);
+	      /* new_min_val */
+	      db_value_clone (&negative_e38, &new_min_val);
 	    }
 	}
       else
 	{
-	  min_val_change = 0;
+	  min_val_change = false;
 	  /* new_min_val = old_min_val; */
 	  db_value_clone (&old_min_val, &new_min_val);
 	}
     }
 
-
   /* cyclic */
   new_cyclic = PT_NODE_SR_CYCLIC (statement);
   if ((new_cyclic == 1) || (PT_NODE_SR_NO_CYCLIC (statement) == 1))
     {
-      cyclic_change = 1;
+      cyclic_change = true;
     }
   else
     {
-      cyclic_change = 0;
+      cyclic_change = false;
     }
-
 
   /*
    * check values
@@ -2578,12 +2571,12 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
    *                   <--> inc_val
    */
 
-  /* invariant for min_val >= under_e36. */
-  initialize_serial_invariant (&invariants[ninvars++], new_min_val, under_e36, PT_GE,
+  /* invariant for min_val >= negative_e38. */
+  initialize_serial_invariant (&invariants[ninvars++], new_min_val, negative_e38, PT_GE,
 			       MSGCAT_SEMANTIC_SERIAL_MIN_VAL_UNDERFLOW, 0, ER_QPROC_SERIAL_RANGE_OVERFLOW);
 
-  /* invariant for max_val <= e37. */
-  initialize_serial_invariant (&invariants[ninvars++], new_max_val, e37, PT_LE, MSGCAT_SEMANTIC_SERIAL_MAX_VAL_OVERFLOW,
+  /* invariant for max_val <= e38. */
+  initialize_serial_invariant (&invariants[ninvars++], new_max_val, e38, PT_LE, MSGCAT_SEMANTIC_SERIAL_MAX_VAL_OVERFLOW,
 			       0, ER_QPROC_SERIAL_RANGE_OVERFLOW);
 
   /* invariant for min_val < max_val. */
@@ -2608,67 +2601,69 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 			       ER_INVALID_SERIAL_VALUE);
 
   /* invariant for abs(inc_val) <= (max_val - min_val). */
-  numeric_db_value_sub (&new_max_val, &new_min_val, &range_val);
+  error = numeric_db_value_sub (&new_max_val, &new_min_val, &range_val);
+  if (error == ER_IT_DATA_OVERFLOW)
+    {
+      // max - min might be flooded. Regard the range is big enough.
+      numeric_coerce_string_to_num (DB_SERIAL_MAX, strlen (DB_SERIAL_MAX), INTL_CODESET_ISO88591, &range_val);
+      er_clear ();
+    }
+
   db_abs_dbval (&abs_inc_val, &new_inc_val);
   initialize_serial_invariant (&invariants[ninvars++], abs_inc_val, range_val, PT_LE,
 			       (inc_val_change) ? MSGCAT_SEMANTIC_SERIAL_INC_VAL_INVALID : 0,
 			       (max_val_change) ? MSGCAT_SEMANTIC_SERIAL_MAX_VAL_INVALID :
 			       MSGCAT_SEMANTIC_SERIAL_MIN_VAL_INVALID, ER_INVALID_SERIAL_VALUE);
 
-
   /* cached num */
   cached_num_node = PT_NODE_SR_CACHED_NUM_VAL (statement);
   if (cached_num_node != NULL)
     {
+      DB_VALUE cached_num_int_val, abs_cached_range_val;
       assert (cached_num_node->type_enum == PT_TYPE_INTEGER);
 
-      cached_num_change = 1;
+      cached_num_change = true;
       cached_num = cached_num_node->info.value.data_value.i;
 
-      /* result_val = ABS(CEIL((max_val - min_val) / inc_val)) */
-      error = numeric_db_value_sub (&new_max_val, &new_min_val, &tmp_val);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
-      error = numeric_db_value_div (&tmp_val, &new_inc_val, &tmp_val2);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
-      error = db_abs_dbval (&tmp_val, &tmp_val2);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
-      error = db_ceil_dbval (&result_val, &tmp_val);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
-      pr_clear_value (&tmp_val);
-      pr_clear_value (&tmp_val2);
+      /* ABS (cache_num * inc_val) <= range_val */
 
-      numeric_coerce_int_to_num (cached_num, num);
-      db_make_numeric (&cached_num_val, num, DB_MAX_NUMERIC_PRECISION, 0);
+      db_make_int (&cached_num_int_val, cached_num);
+      db_value_domain_init (&cached_num_val, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
+      error = numeric_db_value_coerce_to_num (&cached_num_int_val, &cached_num_val, &data_stat);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
 
-      /*
-       * must holds: cached_num_val <= result_val
-       * invariant for cached_num_val <= ABS(CEIL((max_val - min_val) / inc_val))
-       */
-      initialize_serial_invariant (&invariants[ninvars++], cached_num_val, result_val, PT_LE,
+      /* ABS (cache_num * inc_val) */
+      error = numeric_db_value_mul (&new_inc_val, &cached_num_val, &tmp_val);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+
+      error = db_abs_dbval (&abs_cached_range_val, &tmp_val);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+
+      initialize_serial_invariant (&invariants[ninvars++], abs_cached_range_val, range_val, PT_LE,
 				   MSGCAT_SEMANTIC_SERIAL_CACHED_NUM_INVALID_RANGE, 0, ER_INVALID_SERIAL_VALUE);
+
+      pr_clear_value (&tmp_val);
+      pr_clear_value (&abs_cached_range_val);
     }
   else
     {
       if (PT_NODE_SR_NO_CACHE (statement) == 1)
 	{
-	  cached_num_change = 1;
+	  cached_num_change = true;
 	  cached_num = 0;
 	}
       else
 	{
-	  cached_num_change = 0;
+	  cached_num_change = false;
 	}
     }
 
@@ -2786,7 +2781,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       assert (statement->info.serial.comment->node_type == PT_VALUE);
       comment = (char *) PT_VALUE_GET_BYTES (statement->info.serial.comment);
-      db_make_string_by_const_str (&value, comment);
+      db_make_string (&value, comment);
       error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_COMMENT, &value);
       pr_clear_value (&value);
       if (error < 0)
@@ -4386,7 +4381,7 @@ static int map_iso_levels (PARSER_CONTEXT * parser, PT_NODE * statement, DB_TRAN
 static int set_iso_level (PARSER_CONTEXT * parser, DB_TRAN_ISOLATION * tran_isolation, bool * async_ws,
 			  PT_NODE * statement, const DB_VALUE * level);
 static int check_timeout_value (PARSER_CONTEXT * parser, PT_NODE * statement, DB_VALUE * val);
-static char *get_savepoint_name_from_db_value (DB_VALUE * val);
+static const char *get_savepoint_name_from_db_value (DB_VALUE * val);
 
 /*
  * do_attach() - Attaches to named (distributed 2pc) transaction
@@ -4836,7 +4831,7 @@ do_set_optimization_param (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   PT_NODE *p1, *p2;
   DB_VALUE val1, val2;
-  char *plan, *cost;
+  const char *plan, *cost;
 
   db_make_null (&val1);
   db_make_null (&val2);
@@ -5115,7 +5110,7 @@ check_timeout_value (PARSER_CONTEXT * parser, PT_NODE * statement, DB_VALUE * va
  *       type string, a NULL termination will be assumed since the
  *       name came from a parse tree.
  */
-static char *
+const static char *
 get_savepoint_name_from_db_value (DB_VALUE * val)
 {
   if (DB_VALUE_TYPE (val) != DB_TYPE_CHAR && DB_VALUE_TYPE (val) != DB_TYPE_VARCHAR
@@ -6402,15 +6397,15 @@ int
 do_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int error = NO_ERROR;
-  PT_NODE *speclist, *p_node, *comment_node;
-  DB_OBJLIST *triggers, *t;
+  PT_NODE *speclist = NULL, *p_node = NULL, *comment_node = NULL;
+  DB_OBJLIST *triggers = NULL, *t = NULL;
   double priority = TR_LOWEST_PRIORITY;
   DB_TRIGGER_STATUS status;
-  PT_NODE *trigger_owner, *trigger_name = NULL;
-  const char *trigger_owner_name = NULL, *trigger_comment;
+  PT_NODE *trigger_owner = NULL, *trigger_name = NULL;
+  const char *trigger_owner_name = NULL, *trigger_comment = NULL;
   DB_VALUE returnval, trigger_name_val, user_val;
   bool has_trigger_comment = false;
-  TR_TRIGGER *trigger;
+  TR_TRIGGER *trigger = NULL;
   int count;
   bool has_savepoint = false;
 
@@ -6509,8 +6504,8 @@ do_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 		  db_make_null (&returnval);
 
-		  db_make_string_by_const_str (&trigger_name_val, trigger_name->info.name.original);
-		  db_make_string_by_const_str (&user_val, trigger_owner_name);
+		  db_make_string (&trigger_name_val, trigger_name->info.name.original);
+		  db_make_string (&user_val, trigger_owner_name);
 
 		  au_change_trigger_owner_method (t->op, &returnval, &trigger_name_val, &user_val);
 
@@ -13833,7 +13828,7 @@ dbmeth_class_name (DB_OBJECT * self, DB_VALUE * result)
    * course, this gives the responsibility for freeing the cloned
    * string to someone else; is anybody accepting it?
    */
-  db_make_string_by_const_str (result, cname);
+  db_make_string (result, cname);
 }
 
 /*
@@ -14763,14 +14758,28 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       repl_stmt.name = (char *) pt_get_varchar_bytes (name);
     }
 
-  /* it may contain multiple statements */
-  if (strlen (statement->sql_user_text) > statement->sql_user_text_len)
+  if (parser->host_var_count == 0 && parser->auto_param_count == 0)
     {
-      stmt_end = &statement->sql_user_text[statement->sql_user_text_len];
-      stmt_separator = *stmt_end;
-      *stmt_end = '\0';
+      /* it may contain multiple statements */
+      if (strlen (statement->sql_user_text) > statement->sql_user_text_len)
+	{
+	  stmt_end = &statement->sql_user_text[statement->sql_user_text_len];
+	  stmt_separator = *stmt_end;
+	  *stmt_end = '\0';
+	}
+      repl_stmt.stmt_text = statement->sql_user_text;
     }
-  repl_stmt.stmt_text = statement->sql_user_text;
+  else
+    {
+      PT_PRINT_VALUE_FUNC saved_func = parser->print_db_value;
+      int saved_custom_print = parser->custom_print;
+
+      parser->custom_print |= PT_PRINT_ORIGINAL_BEFORE_CONST_FOLDING;
+      parser->print_db_value = pt_print_node_value;
+      repl_stmt.stmt_text = parser_print_tree (parser, statement);
+      parser->print_db_value = saved_func;
+      parser->custom_print = saved_custom_print;
+    }
 
   repl_stmt.db_user = db_get_user_name ();
 

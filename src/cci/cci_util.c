@@ -808,7 +808,7 @@ ut_date_tz_to_str (T_CCI_DATE_TZ * value, T_CCI_U_TYPE u_type, char *str, int si
       int remain_size;
       ut_date_to_str ((T_CCI_DATE *) value, u_type, str, size);
 
-      len = strlen (str);
+      len = (int) strlen (str);
       remain_size = size - len;
       if (remain_size > 1)
 	{
@@ -1081,7 +1081,7 @@ get_pm_offset (char *str, int hh)
       str++;
     }
 
-  len = strlen (str);
+  len = (int) strlen (str);
 
   if ((((len > 2) && (*(str + 2) == ' ')) || (len == 2))
       && ((((*str) == 'p') || ((*str) == 'P')) && ((*(str + 1) == 'm') || (*(str + 1) == 'M'))) && (hh < 12))
@@ -1103,7 +1103,7 @@ skip_ampm_chars (char *str)
       ampm_skipped_chars++;
     }
 
-  len = strlen (str);
+  len = (int) strlen (str);
   if ((len > 2 && (*(str + 2) == ' ')) || (len == 2))
     {
       if (((*str == 'a') || (*str == 'A') || (*str == 'p') || (*str == 'P'))

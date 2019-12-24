@@ -37,6 +37,7 @@
 #include "view_transform.h"
 #include "parser.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 
 #include "dbtype.h"
 
@@ -5695,25 +5696,46 @@ qo_rewrite_hidden_col_as_derived (PARSER_CONTEXT * parser, PT_NODE * node, PT_NO
 	    }
 	  else
 	    {
-	      for (t_node = node->info.query.q.select.list; t_node; t_node = t_node->next)
+	      /* Check whether we can rewrite query as derived. */
+	      bool skip_query_rewrite_as_derived = false;
+	      if (node->info.query.is_subquery == PT_IS_SUBQUERY && node->info.query.order_by != NULL)
 		{
-		  if (t_node->is_hidden_column)
+		  /* If all nodes in select list are hidden columns, we do not rewrite the query as derived
+		   * since we want to avoid null select list. This will avoid the crash for queries like:
+		   * set @a = 1; SELECT  (SELECT @a := @a + 1 FROM db_root ORDER BY @a + 1)
+		   */
+		  skip_query_rewrite_as_derived = true;
+		  for (t_node = node->info.query.q.select.list; t_node; t_node = t_node->next)
 		    {
-		      /* make derived query */
-		      derived = mq_rewrite_query_as_derived (parser, node);
-		      if (derived == NULL)
+		      if (!t_node->is_hidden_column)
 			{
+			  skip_query_rewrite_as_derived = false;
+			}
+		    }
+		}
+
+	      if (!skip_query_rewrite_as_derived)
+		{
+		  for (t_node = node->info.query.q.select.list; t_node; t_node = t_node->next)
+		    {
+		      if (t_node->is_hidden_column)
+			{
+			  /* make derived query */
+			  derived = mq_rewrite_query_as_derived (parser, node);
+			  if (derived == NULL)
+			    {
+			      break;
+			    }
+
+			  PT_NODE_MOVE_NUMBER_OUTERLINK (derived, node);
+			  derived->info.query.q.select.flavor = node->info.query.q.select.flavor;
+			  derived->info.query.is_subquery = node->info.query.is_subquery;
+
+			  /* free old composite query */
+			  parser_free_tree (parser, node);
+			  node = derived;
 			  break;
 			}
-
-		      PT_NODE_MOVE_NUMBER_OUTERLINK (derived, node);
-		      derived->info.query.q.select.flavor = node->info.query.q.select.flavor;
-		      derived->info.query.is_subquery = node->info.query.is_subquery;
-
-		      /* free old composite query */
-		      parser_free_tree (parser, node);
-		      node = derived;
-		      break;
 		    }
 		}
 	    }			/* else */

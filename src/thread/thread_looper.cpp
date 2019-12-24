@@ -70,6 +70,7 @@ namespace cubthread
 
     // we need to use same target function, however for default setup function first argument must be this and not
     // other
+    m_wait_type = other.m_wait_type;
     switch (other.m_wait_type)
       {
       case INF_WAITS:
