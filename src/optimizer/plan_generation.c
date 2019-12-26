@@ -1312,6 +1312,7 @@ make_pred_from_plan (QO_ENV * env, QO_PLAN * plan, PT_NODE ** key_predp, PT_NODE
 {
   BITSET multi_col_segs, multi_col_range_segs;
   int multi_term_num;
+  QO_INDEX_ENTRY *index_entryp = NULL;
 
   /* initialize output parameter */
   if (key_predp != NULL)
@@ -1359,8 +1360,17 @@ make_pred_from_plan (QO_ENV * env, QO_PLAN * plan, PT_NODE ** key_predp, PT_NODE
     {
       if (qo_index_infop->need_copy_multi_range_term != -1)
 	{
-	  /*force-copy multi col range pred to key filter */
-	  bitset_add (&(plan->plan_un.scan.kf_terms), qo_index_infop->need_copy_multi_range_term);
+	  index_entryp = qo_index_infop->ni_entry->head;
+	  if (index_entryp && index_entryp->constraints->func_index_info && index_entryp->cover_segments == false)
+	    {
+	      /* if predicate has function index column then do not permit key-filter. so force-copy to sarg */
+	      bitset_add (&(plan->sarged_terms), qo_index_infop->need_copy_multi_range_term);
+	    }
+	  else
+	    {
+	      /*force-copy multi col range pred to key filter */
+	      bitset_add (&(plan->plan_un.scan.kf_terms), qo_index_infop->need_copy_multi_range_term);
+	    }
 	}
       *key_predp = make_pred_from_bitset (env, &(plan->plan_un.scan.kf_terms), is_always_true);
     }
@@ -4922,6 +4932,7 @@ qo_get_multi_col_range_segs (QO_ENV * env, QO_PLAN * plan, QO_INDEX_ENTRY * inde
 			    {
 			      bitset_add (multi_col_range_segs, seg);
 			      n++;
+			      break;
 			    }
 			}
 		    }

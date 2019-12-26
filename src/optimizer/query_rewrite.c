@@ -4676,7 +4676,7 @@ qo_convert_to_range (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	      func_arg = arg1_prior->info.function.arg_list;
 	      for ( /* none */ ; func_arg; func_arg = func_arg->next)
 		{
-		  if (!pt_is_attr (func_arg))
+		  if (!pt_is_attr (func_arg) && !pt_is_function_index_expression(func_arg))
 		    {
 		      is_attr = false;
 		      break;

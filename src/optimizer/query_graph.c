@@ -2174,6 +2174,13 @@ qo_analyze_term (QO_TERM * term, int term_type)
 			  lhs_indexable = false;
 			  break;
 			}
+		      else if(pt_is_function_index_expr (parser, func_arg, false)
+			      && !pt_is_function_index_expression(func_arg))
+			{
+			  /* check if a segment has been associated with function index expr */
+			  lhs_indexable = false;
+			  break;
+			}
 		      segs++;
 		    }
 		}
@@ -2804,7 +2811,7 @@ set_seg_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_
 	  (void) set_seg_node (tree, env, QO_ENV_TMP_BITSET (env));
 	  if (bitset_cardinality (QO_ENV_TMP_BITSET (env)) - count_bits > 0)
 	    {
-	      *continue_walk = PT_STOP_WALK;
+	      *continue_walk = PT_LIST_WALK;
 	    }
 	}
       break;
