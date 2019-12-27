@@ -2175,7 +2175,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
 			  break;
 			}
 		      else if (pt_is_function_index_expr (parser, func_arg, false)
-			      && !pt_is_function_index_expression (func_arg))
+			       && !pt_is_function_index_expression (func_arg))
 			{
 			  /* check if a segment has been associated with function index expr */
 			  lhs_indexable = false;

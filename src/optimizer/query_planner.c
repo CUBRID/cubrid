@@ -1960,7 +1960,7 @@ qo_iscan_cost (QO_PLAN * planp)
 	  n--;
 	}
 
-      sel_limit = 0.0;	/* init */
+      sel_limit = 0.0;		/* init */
 
       /* set selectivity limit */
       if (i < pkeys_num && cum_statsp->pkeys[i] > 1)
