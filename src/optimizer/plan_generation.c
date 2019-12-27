@@ -2727,6 +2727,7 @@ qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
     {
       index_infop->nterms = 0;
       index_infop->term_exprs = NULL;
+      index_infop->multi_col_pos = NULL;
       index_infop->ni_entry = ni_entryp;
       return index_infop;
     }
@@ -2855,12 +2856,12 @@ qo_free_xasl_index_info (QO_ENV * env, QO_XASL_INDEX_INFO * info)
 	{
 	  free_and_init (info->term_exprs);
 	}
-      /* DEALLOCATE (env, info->multi_col_pos); */
+      /* DEALLOCATE (env, info->term_exprs); */
       if (info->multi_col_pos)
 	{
 	  free_and_init (info->multi_col_pos);
 	}
-      /* DEALLOCATE (env, info->term_exprs); */
+      /* DEALLOCATE (env, info->multi_col_pos); */
       free_and_init (info);
       /* DEALLOCATE(env, info); */
     }
