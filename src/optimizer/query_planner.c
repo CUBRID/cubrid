@@ -1883,7 +1883,7 @@ qo_iscan_cost (QO_PLAN * planp)
       assert (!qo_is_index_iss_scan (planp));
     }
 
-  sel_limit = 0.0;              /* init */
+  sel_limit = 0.0;		/* init */
 
   /* set selectivity limit */
   if (pkeys_num > 0 && cum_statsp->pkeys[0] > 1)
@@ -1900,7 +1900,7 @@ qo_iscan_cost (QO_PLAN * planp)
       else
 	{
 	  if (QO_NODE_NCARD (nodep) == 0)
-	    {                   /* empty class */
+	    {			/* empty class */
 	      sel = 0.0;
 	      is_null_sel = true;
 	    }
@@ -1931,11 +1931,11 @@ qo_iscan_cost (QO_PLAN * planp)
 	  termp = QO_ENV_TERM (QO_NODE_ENV (nodep), t);
 
 	  if (i == 0)
-	    {                   /* the first key-range term of the index scan */
+	    {			/* the first key-range term of the index scan */
 	      sel *= QO_TERM_SELECTIVITY (termp);
 	    }
 	  else
-	    {                   /* apply heuristic factor */
+	    {			/* apply heuristic factor */
 	      if (QO_TERM_SELECTIVITY (termp) < 0.1)
 		{
 		  sel *= QO_TERM_SELECTIVITY (termp) * pow ((double) n, 2);
@@ -1960,7 +1960,7 @@ qo_iscan_cost (QO_PLAN * planp)
 	  n--;
 	}
 
-      sel_limit = 0.0;      /* init */
+      sel_limit = 0.0;	/* init */
 
       /* set selectivity limit */
       if (i < pkeys_num && cum_statsp->pkeys[i] > 1)
@@ -1968,7 +1968,7 @@ qo_iscan_cost (QO_PLAN * planp)
 	  sel_limit = 1.0 / (double) cum_statsp->pkeys[i];
 	}
       else
-	{                   /* can not use btree partial-key statistics */
+	{			/* can not use btree partial-key statistics */
 	  if (cum_statsp->keys > 1)
 	    {
 	      sel_limit = 1.0 / (double) cum_statsp->keys;
