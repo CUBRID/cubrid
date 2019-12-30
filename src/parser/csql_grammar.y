@@ -18794,11 +18794,20 @@ predicate_expr_sub
 				    for (t = rhs; t; t = t->next)
 				      {
 					rhs_cnt = pt_get_expression_count (t);
-					if ((rhs_cnt < 0) || (lhs_cnt == rhs_cnt))
+					if (rhs_cnt < 0)
 					  {
 					    /* can not check negative rhs_cnt. go ahead */
 					    found_match = true;
 					    break;
+					  }
+					else if (lhs_cnt != rhs_cnt)
+					  {
+					    found_match = false;
+					    break;
+					  }
+					else
+					  {
+					    found_match = true;
 					  }
 				      }
 				  }
