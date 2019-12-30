@@ -2746,6 +2746,7 @@ qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
       assert (index_entryp->is_iss_candidate);
 
       index_infop->term_exprs[0] = NULL;
+      index_infop->multi_col_pos[0] = -1;
     }
 
   index_infop->ni_entry = ni_entryp;
