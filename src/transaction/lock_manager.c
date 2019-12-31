@@ -702,8 +702,6 @@ static void lock_increment_class_granules (LK_ENTRY * class_entry);
 
 static void lock_decrement_class_granules (LK_ENTRY * class_entry);
 static LK_ENTRY *lock_find_class_entry (int tran_index, const OID * class_oid);
-static LK_ENTRY *lock_find_class_entry2 (int tran_index, LK_ENTRY * lk_entry_ptr);
-
 
 static void lock_event_log_tran_locks (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_index);
 static void lock_event_log_blocked_lock (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * entry);
@@ -1938,43 +1936,6 @@ lock_find_class_entry (int tran_index, const OID * class_oid)
 	    {
 	      break;
 	    }
-	  entry_ptr = entry_ptr->tran_next;
-	}
-    }
-
-  pthread_mutex_unlock (&tran_lock->hold_mutex);
-
-  return entry_ptr;		/* it might be NULL */
-}
-
-
-static LK_ENTRY *
-lock_find_class_entry2 (int tran_index, LK_ENTRY * lk_entry_ptr)
-{
-  LK_TRAN_LOCK *tran_lock;
-  LK_ENTRY *entry_ptr = NULL;
-  int rv;
-
-  /* The caller is not holding any mutex */
-
-  tran_lock = &lk_Gl.tran_lock_table[tran_index];
-  rv = pthread_mutex_lock (&tran_lock->hold_mutex);
-
-  if (lk_entry_ptr == tran_lock->root_class_hold)
-    {
-      entry_ptr = tran_lock->root_class_hold;
-    }
-  else
-    {
-      entry_ptr = tran_lock->class_hold_list;
-      while (entry_ptr != NULL)
-	{
-	  if (entry_ptr == lk_entry_ptr)
-	    {
-	      break;
-	    }
-
-
 	  entry_ptr = entry_ptr->tran_next;
 	}
     }
@@ -11044,12 +11005,14 @@ lock_unlock_object_logical_with_cleaning (THREAD_ENTRY * thread_p, bool is_res_m
 
   assert (entry_ptr_ptr != NULL && *entry_ptr_ptr != NULL && res_ptr != NULL);
 
+  /* First, check whether the entry was disconnected. */
   entry_ptr = *entry_ptr_ptr;
   *needs_remove_resource = false;
   if (entry_ptr && LK_ENTRY_IS_DISCONNECTED (entry_ptr))
     {
-      /* The entry was disconnected by others. I have to remove it before adding a new lock entry. */
+      /* The entry was disconnected by others. Unlock means to remove it, in this case. */
       lock_remove_disconnected_entry_and_init (thread_p, entry_ptr, false);
+      *entry_ptr_ptr = entry_ptr;
       return true;
     }
 
@@ -11083,7 +11046,7 @@ lock_unlock_object_logical_with_cleaning (THREAD_ENTRY * thread_p, bool is_res_m
 
       if (entry_ptr->resource_version != LK_LI_GET_VERSION (old_logical_lock_info) && !LK_ENTRY_IS_ACTIVE (entry_ptr))
 	{
-	  /* Someone else disconnected me, the entry is obsolete and must be deallocated. */
+	  /* Someone else just disconnected me, the entry is obsolete and must be deallocated. */
 	  assert (LK_ENTRY_IS_DISCONNECTED (entry_ptr));
 	  goto clean_entry;
 	}
@@ -11271,7 +11234,7 @@ lock_object_logical_with_cleaning (THREAD_ENTRY * thread_p, int tran_index, LF_T
   LK_ENTRY *entry_ptr = NULL;
   UINT64 old_logical_lock_info, new_logical_lock_info;
   bool can_lock_logical;
-  LOCK old_lock_mode, new_mode;
+  LOCK old_lock_mode, new_lock_mode;
   bool incompatible_lock = false;
   int ret_val;
   bool update_non2pl_list;
@@ -11279,11 +11242,13 @@ lock_object_logical_with_cleaning (THREAD_ENTRY * thread_p, int tran_index, LF_T
   assert (thread_p != NULL && t_entry_ent != NULL && res_ptr != NULL && requested_lock_mode != NULL_LOCK
 	  && entry_ptr_ptr != NULL);
 
+  /* First, check whether the entry was disconnected. */
   entry_ptr = *entry_ptr_ptr;
   if (entry_ptr && LK_ENTRY_IS_DISCONNECTED (entry_ptr))
     {
       /* The entry was disconnected by others. I have to remove it before adding a new lock entry. */
       lock_remove_disconnected_entry_and_init (thread_p, entry_ptr, false);
+      *entry_ptr_ptr = entry_ptr;
     }
 
   if (!LOCK_IS_ANY_CLASS_RESOURCE_TYPE (res_ptr->key.type))
@@ -11293,19 +11258,19 @@ lock_object_logical_with_cleaning (THREAD_ENTRY * thread_p, int tran_index, LF_T
     }
 
   old_lock_mode = NULL_LOCK;
-  new_mode = requested_lock_mode;
+  new_lock_mode = requested_lock_mode;
   if (entry_ptr == NULL)
     {
       if (is_res_mutex_locked == false)
 	{
 	  /* I need resource mutex to connect a new allocated entry to resource. */
-	  goto clean;
+	  return LK_NOTGRANTED;
 	}
     }
   else if (LK_ENTRY_IS_ACTIVE (entry_ptr))
     {
       old_lock_mode = entry_ptr->granted_mode;
-      new_mode = lock_Conv[old_lock_mode][requested_lock_mode];
+      new_lock_mode = lock_Conv[old_lock_mode][requested_lock_mode];
     }
 
   if (is_new_resource && is_res_mutex_locked)
@@ -11347,17 +11312,17 @@ lock_object_logical_with_cleaning (THREAD_ENTRY * thread_p, int tran_index, LF_T
 	  goto clean;
 	}
 
-      if (old_lock_mode == new_mode)
+      if (old_lock_mode == new_lock_mode)
 	{
 	  /* Lock mode previously added to resource logical info. Need to update lock entry counters. */
 	  LK_RES_STARTS_LOGICAL_LOCK (res_ptr);
 	  break;
 	}
-      assert (old_lock_mode < new_mode);
+      assert (old_lock_mode < new_lock_mode);
 
       /* Add lock to resource, avoids incrementing counter twice for same transaction. */
       new_logical_lock_info = old_logical_lock_info;
-      if (!lock_add_lock_to_logical_lock_info (thread_p, &new_logical_lock_info, new_mode))
+      if (!lock_add_lock_to_logical_lock_info (thread_p, &new_logical_lock_info, new_lock_mode))
 	{
 	  /* Can't compute new lock request and flags. */
 	  incompatible_lock = true;
@@ -11373,7 +11338,7 @@ lock_object_logical_with_cleaning (THREAD_ENTRY * thread_p, int tran_index, LF_T
 	    if (prm_get_bool_value (PRM_ID_LOCK_TRACE_DEBUG))
 	      {
 		(void) lock_debug_add_trace_info (old_logical_lock_info, new_logical_lock_info, &res_ptr->key.oid,
-						  thread_p->tran_index, new_mode, __LINE__);
+						  thread_p->tran_index, new_lock_mode, __LINE__);
 	      }
 	  }
 #endif
@@ -11387,7 +11352,7 @@ lock_object_logical_with_cleaning (THREAD_ENTRY * thread_p, int tran_index, LF_T
 
   /* Someone else can start to change NON2PL flag state, however it will wait for me to finalize current logical lock. */
   assert (LK_IS_LI_NON2PL_DISABLED (old_logical_lock_info) || is_res_mutex_locked == true);
-  update_non2pl_list = LK_IS_LI_NON2PL_ENABLED (old_logical_lock_info) && (new_mode > old_lock_mode);
+  update_non2pl_list = LK_IS_LI_NON2PL_ENABLED (old_logical_lock_info) && (new_lock_mode > old_lock_mode);
 
   /* When we are in logical locking mode (no strong lock), the lock entry information are used only by the thread owner.
    * The other transactions uses logical lock info. However, when logical locking is disabled, we need to know each
@@ -11401,7 +11366,8 @@ lock_object_logical_with_cleaning (THREAD_ENTRY * thread_p, int tran_index, LF_T
    * it should be better to have distinct fields.
    */
   ret_val = lock_res_connect_grant_entry (thread_p, tran_index, t_entry_ent, res_ptr, is_res_mutex_locked,
-					  new_mode, is_instant_duration, class_entry, update_non2pl_list, &entry_ptr);
+					  new_lock_mode, is_instant_duration, class_entry, update_non2pl_list,
+					  &entry_ptr);
   if (ret_val != LK_GRANTED)
     {
       LK_RES_ENDS_LOGICAL_LOCK (res_ptr);
