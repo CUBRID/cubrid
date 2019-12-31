@@ -2053,7 +2053,7 @@ lock_disable_logical_non2pl (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
       if (res_ptr->holder == NULL && res_ptr->waiter == NULL && res_ptr->non2pl == NULL)
 	{
 	  /* Disable logical info since there is no lock entry. */
-	  assert (LK_LI_GET_HIGHEST_LOCK_COUNTER (res_ptr->logical_lock_info));
+	  assert (LK_LI_GET_HIGHEST_LOCK_COUNTER (res_ptr->logical_lock_info) == 0);
 	  new_logical_lock_info = LK_DISABLE_LI (new_logical_lock_info);
 	}
     }
@@ -3741,15 +3741,19 @@ lock_res_connect_grant_entry (THREAD_ENTRY * thread_p, int tran_index, LF_TRAN_E
 	}
 
       /* The lock was previously added to resource. We need to reset and activate the remaining entry fields.
-       * Other transaction can switch to non-logical mode while I'm here - LK_RES_LOGICAL_FLAG. That
-       * transaction is the owner of resource mutex. It will notice that I started a grant entry operation
-       * and waits for me. Any other new transaction has to wait for resource mutex. After all current granting
-       * operations ends (with logical locking), the resource mutex owner will switch to non-logical mode
-       * (recomputes total modes).
+       * Other transaction can switch to non-logical mode while I'm here - LK_RES_LOGICAL_FLAG. That transaction
+       * is the owner of resource mutex. From that moment any other that want to lock/unlock has to wait for
+       * resource mutex. The transaction that just switched to non-logical mode, waits for current grant entry
+       * operations, started but not yet finished . So, it will waits for current transaction too. After all started
+       * grant operations ends (with logical locking), the transaction that switched to non-logical mode, may decide
+       * to remain in non-logical and will recompute total modes. Or, it may try to reactivate logical mode, by
+       * checking locks in holder list. In any case, that transaction will use the holder list (the current entry is
+       * part of the list) to build other information in resource. It is guaranteed that, at that moment, no other
+       * transaction can affect the holder list.
        */
       if (LK_ENTRY_IS_LOGICAL_DELETED (entry_ptr))
 	{
-	  assert (lock <= LK_RES_LI_GET_HIGHEST_LOCK_MODE (res_ptr));
+	  assert (lock <= LK_RES_LI_GET_HIGHEST_LOCK_MODE (res_ptr) || is_res_mutex_locked == false);
 	  assert (update_non2pl == false);
 
 	  entry_ptr->class_entry = class_entry;
