@@ -10164,13 +10164,11 @@ lock_decrement_class_granules (LK_ENTRY * class_entry)
     }
 
   class_entry->ngranules--;
-  assert (class_entry->ngranules >= 0);
   if (class_entry->class_entry != NULL && !OID_IS_ROOTOID (&class_entry->class_entry->res_head->key.oid)
       && LK_ENTRY_IS_ACTIVE (class_entry->class_entry))
     {
       /* This is a class in a class hierarchy so decrement the number of granules for the superclass */
       class_entry->class_entry->ngranules--;
-      assert (class_entry->class_entry->ngranules >= 0);
     }
 }
 #endif /* SERVER_MODE */
