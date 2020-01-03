@@ -2019,7 +2019,8 @@ lock_disable_logical_non2pl (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 {
   UINT64 old_logical_lock_info, new_logical_lock_info;
 
-  if (res_ptr->key.type == LOCK_RESOURCE_CLASS || res_ptr->key.type == LOCK_RESOURCE_ROOT_CLASS)
+  assert (res_ptr != NULL);
+  if (!LOCK_IS_ANY_CLASS_RESOURCE_TYPE (res_ptr->key.type))
     {
       /* Logical info is used only in case of classes. Nothing to do. */
       return false;
@@ -2032,12 +2033,7 @@ lock_disable_logical_non2pl (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
       if (LK_IS_LI_DISABLED (old_logical_lock_info))
 	{
 	  /* Logical lock info was disabled, nothing to do. */
-	  return false;
-	}
-
-      if (LK_IS_LI_NON2PL_DISABLED (old_logical_lock_info))
-	{
-	  /* Already disabled. */
+	  assert (LK_IS_LI_NON2PL_DISABLED (old_logical_lock_info));
 	  return false;
 	}
 
@@ -2810,8 +2806,8 @@ lock_resume (LK_ENTRY * entry_ptr, int state)
       (void) logtb_find_client_name_host_pid (entry_ptr->tran_index, &__client_prog_name, &__client_user_name,
 					      &__client_host_name, &__client_pid);
       fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RESUME_TRAN),
-	       entry_ptr->tran_index, entry_ptr->tran_index, __client_prog_name, __client_user_name, __client_host_name,
-	       __client_pid);
+	       entry_ptr->tran_index, entry_ptr->tran_index, __client_prog_name, __client_user_name,
+	       __client_host_name, __client_pid);
       fflush (stdout);
     }
 
@@ -3547,8 +3543,8 @@ lock_escalate_if_needed (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, int tr
  * Note:hold a lock on the given object with instant duration.
  */
 static int
-lock_internal_hold_lock_object_instant (THREAD_ENTRY * thread_p, int tran_index, const OID * oid, const OID * class_oid,
-					LOCK lock)
+lock_internal_hold_lock_object_instant (THREAD_ENTRY * thread_p, int tran_index, const OID * oid,
+					const OID * class_oid, LOCK lock)
 {
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_RES);
   LK_RES_KEY search_key;
@@ -4331,8 +4327,7 @@ lock_tran_lk_entry:
       pthread_mutex_unlock (&res_ptr->res_mutex);
       if (wait_msecs == LK_ZERO_WAIT)
 	{
-	  LK_ENTRY *p = lock_get_new_entry (tran_index, t_entry_ent,
-					    &lk_Gl.obj_free_entry_list);
+	  LK_ENTRY *p = lock_get_new_entry (tran_index, t_entry_ent, &lk_Gl.obj_free_entry_list);
 
 	  if (p != NULL)
 	    {
@@ -4885,8 +4880,10 @@ lock_demote_class_lock_logical (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK_EN
   assert (LK_RES_IS_LI_ENABLED (res_ptr) && LK_IS_LI_NON2PL_ENABLED (LK_RES_GET_LI (res_ptr)));
   if (enabled_logical_non2pl)
     {
-      (void) lock_disable_logical_non2pl (thread_p, res_ptr);
-      assert (LK_IS_LI_NON2PL_DISABLED (LK_RES_GET_LI (res_ptr)));
+      if (!lock_disable_logical_non2pl (thread_p, res_ptr))
+	{
+	  assert (false);
+	}
     }
 
   return true;
@@ -5303,7 +5300,6 @@ lock_remove_non2pl (THREAD_ENTRY * thread_p, LK_ENTRY * non2pl, int tran_index)
     {
       pthread_mutex_unlock (&res_ptr->res_mutex);
     }
-
 }
 #endif /* SERVER_MODE */
 
@@ -8514,8 +8510,8 @@ lock_force_timeout_expired_wait_transactions (void *thrd_entry)
  *              copies of the object.
  */
 void
-lock_notify_isolation_incons (THREAD_ENTRY * thread_p, bool (*fun) (const OID * class_oid, const OID * oid, void *args),
-			      void *args)
+lock_notify_isolation_incons (THREAD_ENTRY * thread_p,
+			      bool (*fun) (const OID * class_oid, const OID * oid, void *args), void *args)
 {
 #if !defined (SERVER_MODE)
   return;
