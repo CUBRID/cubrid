@@ -3970,8 +3970,15 @@ start:
 					       lock, is_instant_duration, class_entry, &entry_ptr);
 	  if (ret_val != LK_NOTGRANTED)
 	    {
-	      /* Granted or error. Nothing else to do. */
-	      assert (ret_val == LK_GRANTED || er_errid () != NO_ERROR);
+	      if (ret_val == LK_GRANTED)
+		{
+		  *entry_addr_ptr = entry_ptr;
+		}
+	      else
+		{
+		  assert (ret_val == LK_NOTGRANTED_DUE_ERROR && er_errid () != NO_ERROR);
+		}
+
 	      goto end;
 	    }
 
@@ -4012,9 +4019,18 @@ start:
 				       lock, is_instant_duration, class_entry, &entry_ptr);
   if (ret_val != LK_NOTGRANTED)
     {
-      assert (ret_val == LK_GRANTED || er_errid () != NO_ERROR);
       assert (is_res_mutex_locked);
       pthread_mutex_unlock (&res_ptr->res_mutex);
+
+      if (ret_val == LK_GRANTED)
+	{
+	  *entry_addr_ptr = entry_ptr;
+	}
+      else
+	{
+	  assert (ret_val == LK_NOTGRANTED_DUE_ERROR && er_errid () != NO_ERROR);
+	}
+
       goto end;
     }
 
@@ -4280,7 +4296,16 @@ lock_tran_lk_entry:
 	{
 	  /* Granted or error. Nothing else to do. */
 	  pthread_mutex_unlock (&res_ptr->res_mutex);
-	  assert (ret_val == LK_GRANTED || er_errid () != NO_ERROR);
+
+	  if (ret_val == LK_GRANTED)
+	    {
+	      *entry_addr_ptr = entry_ptr;
+	    }
+	  else
+	    {
+	      assert (ret_val == LK_NOTGRANTED_DUE_ERROR && er_errid () != NO_ERROR);
+	    }
+
 	  goto end;
 	}
     }
