@@ -8417,7 +8417,7 @@ lock_get_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid, int tran_in
     {
       rv = pthread_mutex_lock (&tran_lock->hold_mutex);
       entry_ptr = tran_lock->root_class_hold;
-      if (!LK_ENTRY_IS_ACTIVE (entry_ptr))
+      if (entry_ptr != NULL && !LK_ENTRY_IS_ACTIVE (entry_ptr))
 	{
 	  entry_ptr = NULL;
 	}
