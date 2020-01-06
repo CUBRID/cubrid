@@ -974,6 +974,10 @@ cci_url_match (const char *src, char *token[])
   static int match_idx[] = { 2, 3, 4, 5, 6, 7, -1 };
 
   int error = CCI_ER_NO_ERROR;
+  for (int i = 0; match_idx[i] != -1; i++)
+    {
+      token[i] = NULL;
+    }
 
   // *INDENT-OFF*
   using namespace std::regex_constants;
@@ -985,11 +989,6 @@ cci_url_match (const char *src, char *token[])
       bool searched = std::regex_search (src, match, reg);
       if (searched)
 	{
-	  for (int i = 0; match_idx[i] != -1; i++)
-	    {
-	      token[i] = NULL;
-	    }
-
 	  int num_matches = match.size ();
 	  for (int i = 0; match_idx[i] != -1 && match_idx[i] < num_matches; i++)
 	    {
