@@ -32,8 +32,17 @@
 #error Belongs to server module
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
+#if !defined (__cplusplus)
+#error C++ required
+#endif // C++ required
+
+#include "dbtype_def.h"
+#include "log_lsa.hpp"
+#include "mvcc.h"
 #include "storage_common.h"
 #include "system_catalog.h"
+
+#include <atomic>
 
 #define OR_ATT_BTID_PREALLOC 8
 
@@ -54,6 +63,29 @@ struct or_default_value
  *    Built from the disk representation of a class.
  *    Part of the OR_CLASSREP structure hierarchy.
  */
+// *INDENT-OFF*
+// work-around for windows compile error:
+// error C2338: You've instantiated std::atomic<T> with sizeof(T) equal to 2/4/8 and alignof(T) < sizeof(T)
+//
+// it may be removed if support for VS versions older than 2015 is dropped.
+union or_aligned_oid
+{
+  std::int64_t dummy_for_alignemnt;
+  OID oid;
+
+  or_aligned_oid () noexcept = default;
+
+  or_aligned_oid (const OID & arg_oid)
+    : oid (arg_oid)
+  {
+  }
+};
+
+struct or_auto_increment
+{
+  std::atomic<or_aligned_oid> serial_obj;
+};
+// *INDENT-ON*
 
 typedef struct or_attribute OR_ATTRIBUTE;
 struct or_attribute
@@ -73,11 +105,7 @@ struct or_attribute
   BTID *btids;			/* B-tree ID's for indexes and constraints */
   TP_DOMAIN *domain;		/* full domain of this attribute */
 
-  union
-  {
-    double dummy;		/* alignment */
-    OID serial_obj;		/* db_serial's instance */
-  } auto_increment;
+  or_auto_increment auto_increment;
 
   int n_btids;			/* Number of ID's in the btids array */
   BTID index;			/* btree id if indexed */
@@ -213,14 +241,12 @@ extern int or_get_unique_hierarchy (THREAD_ENTRY * thread_p, RECDES * record, in
 extern OR_CLASSREP *or_get_classrep (RECDES * record, int repid);
 extern OR_CLASSREP *or_get_classrep_noindex (RECDES * record, int repid);
 extern OR_CLASSREP *or_classrep_load_indexes (OR_CLASSREP * rep, RECDES * record);
-extern int or_class_get_partition_info (RECDES * record, OR_PARTITION * partition_info, int *has_partition_info,
-					REPR_ID * repr_id);
+extern int or_class_get_partition_info (RECDES * record, OR_PARTITION * partition_info, REPR_ID * repr_id,
+					int *has_partition_info);
 const char *or_get_constraint_comment (RECDES * record, const char *constraint_name);
 extern void or_free_classrep (OR_CLASSREP * rep);
 extern int or_get_attrname (RECDES * record, int attrid, char **string, int *alloced_string);
 extern int or_get_attrcomment (RECDES * record, int attrid, char **string, int *alloced_string);
-extern OR_CLASS *or_get_class (RECDES * record);
-extern void or_free_class (OR_CLASS * class_);
 
 /* OLD STYLE INTERFACE */
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -234,4 +260,12 @@ extern void orc_free_class_info (CLS_INFO * info);
 extern int orc_subclasses_from_record (RECDES * record, int *array_size, OID ** array_ptr);
 extern int orc_superclasses_from_record (RECDES * record, int *array_size, OID ** array_ptr);
 extern OR_CLASSREP **or_get_all_representation (RECDES * record, bool do_indexes, int *count);
+
+extern int or_replace_rep_id (RECDES * record, int repid);
+
+extern int or_mvcc_get_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header);
+extern int or_mvcc_set_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header);
+extern int or_mvcc_add_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header, int bound_bit,
+			       int variable_offset_size);
+extern int or_mvcc_set_log_lsa_to_record (RECDES * record, LOG_LSA * lsa);
 #endif /* _OBJECT_REPRESENTATION_SR_H_ */

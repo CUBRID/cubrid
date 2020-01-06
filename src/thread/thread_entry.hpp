@@ -29,9 +29,11 @@
 #endif // not SERVER_MODE and not SA_MODE
 
 #include "error_context.hpp"
+#include "lockfree_transaction_def.hpp"
 #include "porting.h"        // for pthread_mutex_t, drand48_data
 #include "system.h"         // for UINTPTR, INT64, HL_HEAPID
 
+#include <atomic>
 #include <thread>
 
 #include <cassert>
@@ -43,10 +45,14 @@ struct adj_array;
 struct css_conn_entry;
 // from fault_injection.h
 struct fi_test_item;
+// from log_system_tran.hpp
+class log_system_tdes;
 // from log_compress.h
 struct log_zip;
 // from vacuum.h
 struct vacuum_worker;
+// from xasl_unpack_info.hpp
+struct xasl_unpack_info;
 
 // forward resource trackers
 namespace cubbase
@@ -63,6 +69,10 @@ namespace cubbase
 namespace cubsync
 {
   class critical_section_tracker;
+}
+namespace cubload
+{
+  class driver;
 }
 
 // for lock-free - FIXME
@@ -115,6 +125,7 @@ enum thread_type
   TT_SERVER,
   TT_WORKER,
   TT_DAEMON,
+  TT_LOADDB,
   TT_VACUUM_MASTER,
   TT_VACUUM_WORKER,
   TT_NONE
@@ -216,7 +227,7 @@ namespace cubthread
 
       css_conn_entry *conn_entry;	/* conn entry ptr */
 
-      void *xasl_unpack_info_ptr;	/* XASL_UNPACK_INFO * */
+      xasl_unpack_info *xasl_unpack_info_ptr;     /* XASL_UNPACK_INFO * */
       int xasl_errcode;		/* xasl errorcode */
       int xasl_recursion_depth;
 
@@ -228,7 +239,7 @@ namespace cubthread
       int request_fix_count;
       bool victim_request_fail;
       bool interrupted;		/* is this request/transaction interrupted ? */
-      bool shutdown;		/* is server going down? */
+      std::atomic_bool shutdown;		/* is server going down? */
       bool check_interrupt;		/* check_interrupt == false, during fl_alloc* function call. */
       bool wait_for_latch_promote;	/* this thread is waiting for latch promotion */
       entry *next_wait_thrd;
@@ -269,6 +280,8 @@ namespace cubthread
 #endif
       int m_qlist_count;
 
+      cubload::driver *m_loaddb_driver;
+
       thread_id_t get_id ();
       pthread_t get_posix_id ();
       void register_id ();
@@ -298,9 +311,28 @@ namespace cubthread
 	return m_csect_tracker;
       }
 
+      log_system_tdes *get_system_tdes (void)
+      {
+	return m_systdes;
+      }
+      void set_system_tdes (log_system_tdes *sys_tdes)
+      {
+	m_systdes = sys_tdes;
+      }
+      void reset_system_tdes (void)
+      {
+	m_systdes = NULL;
+      }
+      void claim_system_worker ();
+      void retire_system_worker ();
+
       void end_resource_tracks (void);
       void push_resource_tracks (void);
       void pop_resource_tracks (void);
+
+      void assign_lf_tran_index (lockfree::tran::index idx);
+      lockfree::tran::index pull_lf_tran_index ();
+      lockfree::tran::index get_lf_tran_index ();
 
     private:
       void clear_resources (void);
@@ -317,6 +349,9 @@ namespace cubthread
       cubbase::alloc_tracker &m_alloc_tracker;
       cubbase::pgbuf_tracker &m_pgbuf_tracker;
       cubsync::critical_section_tracker &m_csect_tracker;
+      log_system_tdes *m_systdes;
+
+      lockfree::tran::index m_lf_tran_index;
   };
 
 } // namespace cubthread

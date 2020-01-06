@@ -18,7 +18,7 @@
  */
 
 /*
- * cm_dep.h - 
+ * cm_dep.h -
  */
 
 #ifndef _CM_DEP_H_

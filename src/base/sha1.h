@@ -26,7 +26,7 @@
 
 #include "system.h"
 
-/* 
+/*
  *  This structure will hold context information for the hashing
  *  operation
  */

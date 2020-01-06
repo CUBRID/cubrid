@@ -35,7 +35,7 @@
 // forward declarations
 struct db_value;
 struct tp_domain;
-struct regu_variable_node;
+class regu_variable_node;
 class JSON_DOC;
 class JSON_ITERATOR;
 
@@ -58,7 +58,10 @@ namespace cubxasl
 	json_table_column_function m_function;
 
 	column ();
+
+	void init ();
 	int evaluate (const JSON_DOC &input, size_t ordinality);
+	void clear_xasl (bool is_final_clear = true);
 
       private:
 	int evaluate_extract (const JSON_DOC &input);
@@ -73,25 +76,22 @@ namespace cubxasl
     {
       char *m_path;
       size_t m_ordinality;                    // will be used to count the row ordinality
-      bool m_need_inc_ordinality;
       column *m_output_columns;   // columns part of output only
       size_t m_output_columns_size;
       node *m_nested_nodes;       // nested nodes
       size_t m_nested_nodes_size;
       size_t m_id;                            // identifier for each node
       JSON_ITERATOR *m_iterator;
-      json_table_expand_type m_expand_type;
+      bool m_is_iterable_node;
 
       node (void);
 
-      void clear_columns ();
-      void clear_iterators ();
-      void clear_tree ();
-
-      bool check_need_expand () const;
-      static bool str_ends_with (const std::string &str, const std::string &end);
-      void set_parent_path ();
+      void init ();
+      void clear_columns (bool is_final_clear);
+      void clear_iterators (bool is_final_clear);
+      void clear_xasl (bool is_final_clear = true);
       void init_iterator ();
+      void init_ordinality ();
     };
 
     struct spec_node
@@ -99,6 +99,11 @@ namespace cubxasl
       node *m_root_node;
       regu_variable_node *m_json_reguvar;
       std::size_t m_node_count;               // the total number of nodes
+
+      spec_node ();
+
+      void init ();
+      void clear_xasl (bool is_final_clear = true);
     };
 
   } // namespace json_table

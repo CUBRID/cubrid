@@ -75,7 +75,7 @@ wsa_initialize ()
     }
   /* Since we only support 1.1, set both wVersion and */
   /* wHighVersion to 1.1. */
-  /* 
+  /*
    * lpWsaData->wVersion = MAKEWORD( 1, 1 ); lpWsaData->wHighVersion = MAKEWORD( 1, 1 ); */
 
   return 0;

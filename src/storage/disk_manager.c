@@ -38,7 +38,9 @@
 #endif /* !WINDOWS */
 
 #include "disk_manager.h"
+
 #include "porting.h"
+#include "porting_inline.hpp"
 #include "system_parameter.h"
 #include "error_manager.h"
 #include "language_support.h"
@@ -46,9 +48,13 @@
 #include "xserver_interface.h"
 #include "file_io.h"
 #include "page_buffer.h"
+#include "log_append.hpp"
 #include "log_manager.h"
+#include "log_lsa.hpp"
+#include "log_volids.hpp"
 #include "critical_section.h"
 #include "boot_sr.h"
+#include "tz_support.h"
 #include "db_date.h"
 #include "bit.h"
 #include "fault_injection.h"
@@ -561,9 +567,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
   fault_inject_random_crash ();
 
   /* this log must be flushed. */
-  LOG_CS_ENTER (thread_p);
-  logpb_flush_pages_direct (thread_p);
-  LOG_CS_EXIT (thread_p);
+  logpb_force_flush_pages (thread_p);
   fault_inject_random_crash ();
 
   /* create and initialize the volume. recovery information is initialized in every page. */
@@ -719,7 +723,6 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
     {
       /* todo: understand what this code is supposed to do */
       PAGE_PTR pgptr = NULL;	/* Page pointer */
-      LOG_LSA init_with_temp_lsa;	/* A lsa for temporary purposes */
       bool flushed;
 
       /* Flush the pages so that the log is forced */
@@ -748,13 +751,11 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
 	}
       if (ext_info->voltype == DB_PERMANENT_VOLTYPE)
 	{
-	  LSA_SET_TEMP_LSA (&init_with_temp_lsa);
-
 	  /* Flush all dirty pages and then invalidate them from page buffer pool. So that we can reset the recovery
 	   * information directly using the io module */
 
 	  (void) pgbuf_invalidate_all (thread_p, volid);	/* Flush and invalidate */
-	  error_code = fileio_reset_volume (thread_p, vdes, vol_fullname, max_npages, &init_with_temp_lsa);
+	  error_code = fileio_reset_volume (thread_p, vdes, vol_fullname, max_npages, &PGBUF_TEMP_LSA);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -962,7 +963,7 @@ error:
  *   logchange(in): Whether or not to log the change
  *   flush(in):
  *
- * Note: No logging is intended for exclusive use by the log and recovery manager. It is used when a database 
+ * Note: No logging is intended for exclusive use by the log and recovery manager. It is used when a database
  * 	 is copied or renamed.
  */
 int
@@ -1045,9 +1046,7 @@ disk_set_link (THREAD_ENTRY * thread_p, INT16 volid, INT16 next_volid, const cha
     }
 
   /* Forcing the log here to be safer, especially in the case of permanent temp volumes. */
-  LOG_CS_ENTER (thread_p);
-  logpb_flush_pages_direct (thread_p);
-  LOG_CS_EXIT (thread_p);
+  logpb_force_flush_pages (thread_p);
 
   (void) disk_verify_volume_header (thread_p, addr.pgptr);
 
@@ -1084,7 +1083,7 @@ error:
  *   volid(in): Permanent volume identifier
  *   hfid(in): System boot heap file
  *
- * Note: The system boot file filed of in the volume header is redefined to point to the given value. This function 
+ * Note: The system boot file filed of in the volume header is redefined to point to the given value. This function
  * 	 is called only during the initialization process.
  */
 int
@@ -1687,7 +1686,7 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
    *
    * Once we decide how much we want to expand, we first extend last volume are already extended to their maximum
    * capacities. If last volume is also extended to its maximum capacity, we start adding new volumes.
-   * 
+   *
    * NOTE: The same algorithm is applied to both permanent and temporary files. More exactly, the expansion is allowed
    *       for permanent volumes used for permanent data purpose or temporary files used for temporary data purpose.
    *       Permanent volumes for temporary data purpose can only be added by user and are never extended.
@@ -1900,11 +1899,11 @@ disk_volume_expand (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLTYPE voltype, DK
    * to make sure extension is correctly recovered, we need to:
    * 1. use a system operation (we need to undo change in volume header if expand is not completed).
    * 2. undoredo update on volume header.
-   * 3. log expansion (unattached redo - is always executed). 
+   * 3. log expansion (unattached redo - is always executed).
    * 4. commit system operation (to cancel the volume header change undo).
    * 5. flush log! without this last step, it is still possible to expand the volume without recovery
    * 6. now it is safe to expand volume.
-   * 
+   *
    */
 
   /* round up */
@@ -1969,9 +1968,7 @@ disk_volume_expand (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLTYPE voltype, DK
   FI_TEST (thread_p, FI_TEST_DISK_MANAGER_VOLUME_EXPAND, 0);
 
   /* to be sure expansion really happens on recovery too, we must flush log! */
-  LOG_CS_ENTER (thread_p);
-  logpb_flush_pages_direct (thread_p);
-  LOG_CS_EXIT (thread_p);
+  logpb_force_flush_pages (thread_p);
 
   FI_TEST (thread_p, FI_TEST_DISK_MANAGER_VOLUME_EXPAND, 0);
 
@@ -1979,7 +1976,9 @@ disk_volume_expand (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLTYPE voltype, DK
   error_code = fileio_expand_to (thread_p, volid, volume_new_npages, voltype);
   if (error_code != NO_ERROR)
     {
-      ASSERT_ERROR ();
+      // important note - we just committed volume expansion; we cannot afford any failures here
+      // caller won't update cache!!
+      assert (false);
       return error_code;
     }
 
@@ -2472,25 +2471,17 @@ disk_auto_expand (THREAD_ENTRY * thread_p)
 
 // *INDENT-OFF*
 #if defined (SERVER_MODE)
-// class disk_auto_expansion_daemon_task
-//
-//  description:
-//    disk auto expansion daemon task
-//
-class disk_auto_expansion_daemon_task : public cubthread::entry_task
+static void
+disk_auto_expansion_execute (cubthread::entry & thread_ref)
 {
-  public:
-    void execute (cubthread::entry & thread_ref) override
+  if (!BO_IS_SERVER_RESTARTED ())
     {
-      if (!BO_IS_SERVER_RESTARTED ())
-	{
-	  // wait for boot to finish
-	  return;
-	}
-
-      disk_auto_expand (&thread_ref);
+      // wait for boot to finish
+      return;
     }
-};
+
+  disk_auto_expand (&thread_ref);
+}
 #endif /* SERVER_MODE */
 
 #if defined (SERVER_MODE)
@@ -2507,7 +2498,7 @@ disk_auto_volume_expansion_daemon_init ()
 
   std::chrono::seconds interval_time = std::chrono::seconds (60);
   disk_Auto_volume_expansion_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (interval_time),
-				      new disk_auto_expansion_daemon_task ());
+				      new cubthread::entry_callable_task (disk_auto_expansion_execute));
   */
 }
 #endif /* SERVER_MODE */
@@ -2992,10 +2983,10 @@ disk_volume_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** o
   db_make_int (out_values[idx], vhdr->iopagesize);
   idx++;
 
-  db_make_string_by_const_str (out_values[idx], disk_purpose_to_string (vhdr->purpose));
+  db_make_string (out_values[idx], disk_purpose_to_string (vhdr->purpose));
   idx++;
 
-  db_make_string_by_const_str (out_values[idx], disk_type_to_string (vhdr->type));
+  db_make_string (out_values[idx], disk_type_to_string (vhdr->type));
   idx++;
 
   db_make_int (out_values[idx], vhdr->sect_npgs);
@@ -3030,7 +3021,8 @@ disk_volume_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** o
   db_make_int (out_values[idx], vhdr->db_charset);
   idx++;
 
-  error = db_make_string_copy (out_values[idx], lsa_to_string (buf, sizeof (buf), &vhdr->chkpt_lsa));
+  lsa_to_string (buf, sizeof (buf), &vhdr->chkpt_lsa);
+  error = db_make_string_copy (out_values[idx], buf);
   idx++;
   if (error != NO_ERROR)
     {
@@ -4388,10 +4380,10 @@ error:
 }
 
 /*
- * disk_reserve_from_cache () - First step of sector reservation on disk. This searches the cache for free space in 
- * 				existing volumes. If not enough available sectors were found, volumes will be 
- * 				expanded/added until all sectors could be reserved.  
- * 				NOTE: this will modify the disk cache. It will "move" free sectors from disk cache 
+ * disk_reserve_from_cache () - First step of sector reservation on disk. This searches the cache for free space in
+ * 				existing volumes. If not enough available sectors were found, volumes will be
+ * 				expanded/added until all sectors could be reserved.
+ * 				NOTE: this will modify the disk cache. It will "move" free sectors from disk cache
  * 				to reserve context. If any error occurs, the sectors must be returned to disk cache.
  *
  * return           : Error code
@@ -4682,6 +4674,7 @@ disk_unreserve_ordered_sectors_without_csect (THREAD_ENTRY * thread_p, DB_VOLPUR
   int error_code = NO_ERROR;
 
   context.nsect_total = nsects;
+  context.n_cache_reserve_remaining = nsects;
 
   context.n_cache_vol_reserve = 0;
   context.vsidp = vsids;
@@ -5417,9 +5410,9 @@ disk_vhdr_length_of_varfields (const DISK_VOLUME_HEADER * vhdr)
  *   volid(in): Permanent volume identifier
  *   log_chkpt_lsa(in): Recovery checkpoint for volume
  *
- * Note: The dirty pages of this volume are not written out, not even the header page which maintains the checkpoint 
- * 	 value. The function assumes that all volume pages with lsa smaller that the given one has already been forced
- * 	 to disk (e.g., by the log and recovery manager).
+ * Note: The dirty pages of this volume (except the header page which maintains the checkpoint value) are not
+ * 	 written out. The function assumes that all volume pages with lsa smaller that the given one has already
+ * 	 been forced to disk (e.g., by the log and recovery manager).
  *
  *       When a backup of the database is taken, it is important that the volume header page is forced out.
  *       The checkpoint on the volume is used as an indicator to start a media recovery process, so it may be good idea
@@ -5449,7 +5442,8 @@ disk_set_checkpoint (THREAD_ENTRY * thread_p, INT16 volid, const LOG_LSA * log_c
   (void) disk_verify_volume_header (thread_p, addr.pgptr);
 
   log_skip_logging (thread_p, &addr);
-  pgbuf_set_dirty (thread_p, addr.pgptr, FREE);
+  pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
+  pgbuf_flush (thread_p, addr.pgptr, FREE);
   addr.pgptr = NULL;
 
   return NO_ERROR;
@@ -5552,7 +5546,7 @@ xdisk_get_purpose (THREAD_ENTRY * thread_p, INT16 volid)
  *   vol_purpose(out): Purpose for the given volume
  *   space_info (out): space info of the volume.
  *
- * Note: The free number of pages should be taken as an approximation by the caller since we do not leave the page 
+ * Note: The free number of pages should be taken as an approximation by the caller since we do not leave the page
  * 	 locked after the inquire. That is, someone else can allocate pages
  */
 int
@@ -5674,8 +5668,8 @@ xdisk_get_free_numpages (THREAD_ENTRY * thread_p, INT16 volid)
 }
 
 /*
- * xdisk_is_volume_exist () - 
- *   return: 
+ * xdisk_is_volume_exist () -
+ *   return:
  *   volid(in): volume identifier
  */
 bool
@@ -6226,7 +6220,7 @@ disk_compatible_type_and_purpose (DB_VOLTYPE type, DB_VOLPURPOSE purpose)
 
 /*
  * disk_check_volume () - compare cache and volume and check for inconsistencies
- * 
+ *
  * return        : DISK_VALID if no inconsistency or if all inconsistencies have been fixed
  *                 DISK_ERROR if expected errors occurred
  *                 DISK_INVALID if cache and/or volume header are inconsistent
@@ -6335,6 +6329,8 @@ exit:
       pgbuf_unfix_and_init (thread_p, page_volheader);
     }
 
+  disk_log ("disk_check_volume", "check volume %d is %s", volid, valid == DISK_VALID ? "valid" : "not valid");
+
   csect_exit (thread_p, CSECT_DISK_CHECK);
 
   return valid;
@@ -6420,6 +6416,8 @@ disk_check (THREAD_ENTRY * thread_p, bool repair)
 	  return DISK_INVALID;
 	}
     }
+
+  disk_log ("disk_check", "first check step is %s", valid == DISK_VALID ? "valid" : "not valid");
 
   /* release critical section. we will get it for each volume we check, to avoid blocking all reservations and
    * extensions for a long time. */
@@ -6519,6 +6517,8 @@ disk_check (THREAD_ENTRY * thread_p, bool repair)
 	  return DISK_INVALID;
 	}
     }
+
+  disk_log ("disk_check", "full check is %s", "valid");
 
   /* all valid or all repaired */
   csect_exit (thread_p, CSECT_DISK_CHECK);
@@ -6736,9 +6736,9 @@ disk_volheader_check_magic (THREAD_ENTRY * thread_p, const PAGE_PTR page_volhead
 #endif /* !NDEBUG */
 
 /*
- * disk_sectors_to_extend_npages () - compute the rounded number of sectors necessary to extend a number of pages 
+ * disk_sectors_to_extend_npages () - compute the rounded number of sectors necessary to extend a number of pages
  *
- * return	  : The number of sectors 
+ * return	  : The number of sectors
  * num_pages (in) : required number of pages
  **/
 int

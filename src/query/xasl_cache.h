@@ -34,6 +34,7 @@
 
 // forward definitions
 struct compile_context;
+struct xasl_unpack_info;
 
 /* Objects related to XASL cache entries. The information includes the object OID, the lock required to use the XASL
  * cache entry and the heap file cardinality.
@@ -61,7 +62,7 @@ typedef enum xcache_cleanup_reason XCACHE_CLEANUP_REASON;
 typedef struct xasl_clone XASL_CLONE;
 struct xasl_clone
 {
-  void *xasl_buf;		/* TODO: Make XASL_UNPACK_INFO visible. */
+  xasl_unpack_info *xasl_buf;
   XASL_NODE *xasl;
 };
 #define XASL_CLONE_INITIALIZER { NULL, NULL }
@@ -125,6 +126,13 @@ struct xasl_cache_ent
   INT64 time_last_rt_check;
 
   bool initialized;
+
+  // *INDENT-OFF*
+  xasl_cache_ent ();
+  ~xasl_cache_ent ();
+
+  void init_clone_cache ();
+  // *INDENT-ON*
 };
 
 enum xasl_cache_search_mode
@@ -136,18 +144,25 @@ enum xasl_cache_search_mode
 };
 typedef enum xasl_cache_search_mode XASL_CACHE_SEARCH_MODE;
 
+enum xasl_cache_rt_check_result
+{
+  XASL_CACHE_RECOMPILE_NOT_NEEDED = 0,
+  XASL_CACHE_RECOMPILE_EXECUTE = 1,
+  XASL_CACHE_RECOMPILE_PREPARE = 2
+};
+
 extern int xcache_initialize (THREAD_ENTRY * thread_p);
 extern void xcache_finalize (THREAD_ENTRY * thread_p);
 
 extern int xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, const XASL_CACHE_SEARCH_MODE search_mode,
-			     XASL_CACHE_ENTRY ** xcache_entry, bool * rt_check);
-extern int xcache_find_xasl_id (THREAD_ENTRY * thread_p, const XASL_ID * xid, XASL_CACHE_ENTRY ** xcache_entry,
-				XASL_CLONE * xclone);
+			     XASL_CACHE_ENTRY ** xcache_entry, xasl_cache_rt_check_result * rt_check);
+extern int xcache_find_xasl_id_for_execute (THREAD_ENTRY * thread_p, const XASL_ID * xid,
+					    XASL_CACHE_ENTRY ** xcache_entry, XASL_CLONE * xclone);
 extern void xcache_unfix (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry);
 extern int xcache_insert (THREAD_ENTRY * thread_p, const compile_context * context, XASL_STREAM * stream,
 			  int n_oid, const OID * class_oids, const int *class_locks,
 			  const int *tcards, XASL_CACHE_ENTRY ** xcache_entry);
-extern void xcache_remove_by_oid (THREAD_ENTRY * thread_p, OID * oid);
+extern void xcache_remove_by_oid (THREAD_ENTRY * thread_p, const OID * oid);
 extern void xcache_drop_all (THREAD_ENTRY * thread_p);
 extern void xcache_dump (THREAD_ENTRY * thread_p, FILE * fp);
 

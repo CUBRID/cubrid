@@ -18,7 +18,7 @@
  */
 
 /*
- * cm_utils.c - 
+ * cm_utils.c -
  */
 
 #include "cm_utils.h"

@@ -55,8 +55,8 @@ namespace lockfree
       circular_queue (std::size_t size);
       ~circular_queue ();
 
-      inline bool is_empty () const;              // is query empty?
-      inline bool is_full () const;               // is query full?
+      inline bool is_empty () const;              // is query empty? use it for early outs but don't rely on the answer
+      inline bool is_full () const;               // is query full? use it for early outs but don't rely on the answer
       inline bool is_half_full ();
       inline std::size_t size ();
 

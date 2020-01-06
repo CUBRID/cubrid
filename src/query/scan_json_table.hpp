@@ -73,8 +73,8 @@
 #ifndef _SCAN_JSON_TABLE_HPP_
 #define _SCAN_JSON_TABLE_HPP_
 
-//#include "dbtype_def.h"
 #include "query_evaluator.h"
+#include "storage_common.h"
 
 #include <vector>
 
@@ -94,6 +94,8 @@ class JSON_DOC;
 class JSON_ITERATOR;
 // scan_manager.h
 struct scan_id_struct;
+struct val_descr;
+struct xasl_node;
 
 // thread_entry.hpp
 namespace cubthread
@@ -112,7 +114,7 @@ namespace cubscan
 	// initialize scanner
 	void init (cubxasl::json_table::spec_node &spec);
 	// clear scanner
-	void clear (xasl_node *xasl_p, bool is_final);
+	void clear (xasl_node *xasl_p, bool is_final, bool is_final_clear);
 
 	// open a new scan
 	int open (cubthread::entry *thread_p);
@@ -124,9 +126,10 @@ namespace cubscan
 	// returns error code or NO_ERROR
 	//
 	// sid (in/out) : status and position is updated based on the success of scan
-	int next_scan (cubthread::entry *thread_p, scan_id_struct &sid);
+	int next_scan (cubthread::entry *thread_p, scan_id_struct &sid, SCAN_CODE &sc);
 
 	SCAN_PRED &get_predicate ();
+	void set_value_descriptor (val_descr *vd);
 
 	scanner () = default;
 
@@ -144,7 +147,7 @@ namespace cubscan
 
 	// cursor functions
 	int init_cursor (const JSON_DOC &doc, cubxasl::json_table::node &node, cursor &cursor_out);
-	int set_next_cursor (const cursor &current_cursor, int next_depth);
+	int set_next_cursor (const cursor &current_cursor, size_t next_depth);
 
 	// to start scanning a node, an input document is set
 	int set_input_document (cursor &cursor, const cubxasl::json_table::node &node, const JSON_DOC &document);
@@ -153,13 +156,14 @@ namespace cubscan
 	size_t get_tree_height (const cubxasl::json_table::node &node);
 
 	// recursive scan next called on json table node / cursor
-	int scan_next_internal (cubthread::entry *thread_p, int depth, bool &found_row_output);
+	int scan_next_internal (cubthread::entry *thread_p, size_t depth, bool &found_row_output);
 
 	cubxasl::json_table::spec_node *m_specp;    // pointer to json table spec node in XASL
 	cursor *m_scan_cursor;                      // cursor to keep track progress in each scan node
 	size_t m_scan_cursor_depth;                 // the current level where the cursor was left
 	size_t m_tree_height;                       // will be used to initialize cursor vector
 	scan_pred m_scan_predicate;                 // scan predicate to filter generated rows
+	val_descr *m_vd;
     };
   } // namespace json_table
 } // namespace cubscan

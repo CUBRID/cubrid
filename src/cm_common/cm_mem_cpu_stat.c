@@ -30,7 +30,6 @@
 #include "environment_variable.h"
 #include "cm_utils.h"
 
-
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -384,7 +383,7 @@ get_cpu_time (__int64 * kernel, __int64 * user, __int64 * idle)
   /* this logic allow multi thread init multiple times */
   if (s_symbol_loaded == 0)
     {
-      /* 
+      /*
        * kernel32.dll and ntdll.dll is essential DLL about user process.
        * when a process started, that means kernel32.dll and ntdll.dll
        * already load in process memory space.
@@ -393,7 +392,7 @@ get_cpu_time (__int64 * kernel, __int64 * user, __int64 * idle)
        * not cause kernel32.dll or ntdll.dll unload from current process.
        */
 
-      /* 
+      /*
        * first try find function GetSystemTimes(). Windows OS suport this
        * function since Windows XP SP1, Vista, Server 2003 or Server 2008.
        */
@@ -407,7 +406,7 @@ get_cpu_time (__int64 * kernel, __int64 * user, __int64 * idle)
 	}
       else
 	{
-	  /* 
+	  /*
 	   * OS may be is Windows 2000 or Windows XP. (does not support Windows 9x/NT)
 	   * try find function NtQuerySystemInformation()
 	   */
@@ -1464,7 +1463,8 @@ get_pagesize (void)
 static char *
 strcpy_limit (char *dest, const char *src, int buf_len)
 {
-  strncpy (dest, src, buf_len - 1);
-  dest[buf_len - 1] = '\0';
+  size_t src_len = strnlen (src, buf_len - 1);
+  memcpy (dest, src, src_len);
+  dest[src_len] = '\0';
   return dest;
 }

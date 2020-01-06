@@ -36,7 +36,7 @@
  * This is not intended to be used as character stream, but as bulk operations: users of it
  * reserve / allocate parts of it; there are objects which deal of byte level operations (see : packer)
  */
-namespace mem
+namespace cubmem
 {
 
   class pinnable_buffer : public cubbase::pinnable

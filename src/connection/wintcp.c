@@ -113,7 +113,7 @@ css_windows_startup (void)
   max_socket_fds = wsaData.iMaxSockets;
 
 #if 0
-  /* 
+  /*
    * Establish a blocking "hook" function to prevent Windows messages
    * from being dispatched when we block on reads.
    */
@@ -231,7 +231,7 @@ css_tcp_client_open_with_retry (const char *host_name, int port, bool will_retry
       addr.sin_port = htons (port);
       addr.sin_addr.s_addr = remote_ip;
 
-      /* 
+      /*
        * The master deliberately tries to connect to itself once to
        * prevent multiple masters from running.  In the "good" case,
        * the connect will fail.  Printing the message when that happens
@@ -254,7 +254,7 @@ css_tcp_client_open_with_retry (const char *host_name, int port, bool will_retry
 	    }
 	  else
 	    {
-	      /* 
+	      /*
 	       * See tcp.c for Unix platforms for more information.
 	       * retry the connection a few times in case the server is
 	       * overloaded at the moment.
@@ -343,14 +343,14 @@ css_fd_down (SOCKET fd)
 /*
  * css_gethostname() - interface for the "gethostname" function
  *   return: 0 if success, or error
- *   passed_name(out): buffer for name
- *   length(in): max buffer size
+ *   name(out): buffer for name
+ *   namelen(in): max buffer size
  */
 int
-css_gethostname (char *passed_name, int length)
+css_gethostname (char *name, size_t namelen)
 {
-  const char *name = "PC";
-  char hostname[MAXHOSTNAMELEN];
+  const char *pc_name = "PC";
+  char hostname[CUB_MAXHOSTNAMELEN];
   int err = 0;
 
 #if !defined(SERVER_MODE)
@@ -360,11 +360,11 @@ css_gethostname (char *passed_name, int length)
     }
 #endif /* not SERVER_MODE */
 
-  if (gethostname (hostname, MAXHOSTNAMELEN) != SOCKET_ERROR)
+  if (gethostname (hostname, CUB_MAXHOSTNAMELEN) != SOCKET_ERROR)
     {
       if (strlen (hostname))
 	{
-	  name = hostname;
+	  pc_name = hostname;
 	}
     }
   else
@@ -376,7 +376,7 @@ css_gethostname (char *passed_name, int length)
   css_windows_shutdown ();
 #endif /* not SERVER_MODE */
 
-  strncpy (passed_name, name, length);
+  strncpy (name, pc_name, namelen);
   return err;
 }
 
@@ -389,7 +389,7 @@ unsigned int
 css_gethostid (void)
 {
   struct hostent *hp;
-  char hostname[MAXHOSTNAMELEN];
+  char hostname[CUB_MAXHOSTNAMELEN];
   unsigned int inaddr;
   unsigned int retval;
 
@@ -401,7 +401,7 @@ css_gethostid (void)
 #endif /* not SERVER_MODE */
 
   retval = 0;
-  if (gethostname (hostname, MAXHOSTNAMELEN) == SOCKET_ERROR)
+  if (gethostname (hostname, CUB_MAXHOSTNAMELEN) == SOCKET_ERROR)
     {
       css_Wsa_error = CSS_ER_WINSOCK_HOSTNAME;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_WINSOCK_HOSTNAME, 1, WSAGetLastError ());
@@ -528,7 +528,7 @@ css_tcp_master_open (int port, SOCKET * sockfd)
   int retry_count = 0;
   int bool_value;
 
-  /* 
+  /*
    * We have to create a socket ourselves and bind our well-known
    * address to it.
    */
@@ -551,7 +551,7 @@ css_tcp_master_open (int port, SOCKET * sockfd)
       return ERR_CSS_WINTCP_PORT_ERROR;
     }
 
-  /* 
+  /*
    * Create the socket and Bind our local address so that any
    * client may send to us.
    */
@@ -565,7 +565,7 @@ retry:
       return ERR_CSS_WINTCP_CANNOT_CREATE_STREAM;
     }
 
-  /* 
+  /*
    * Allow the new master to rebind the CUBRID port even if there are
    * clients with open connections from previous masters.
    */
@@ -591,7 +591,7 @@ retry:
       return ERR_CSS_WINTCP_BIND_ABORT;
     }
 
-  /* 
+  /*
    * And set the listen parameter, telling the system that we're
    * ready to accept incoming connection requests.
    */
@@ -685,7 +685,7 @@ css_open_server_connection_socket (void)
       setsockopt (fd, SOL_SOCKET, SO_KEEPALIVE, (const char *) &bool_value, sizeof (int));
     }
 
-  /* 
+  /*
    * Set up an address asking for "any" (the local ?) IP addres
    * and set the port to zero to it will be automatically assigned.
    */
@@ -708,7 +708,7 @@ css_open_server_connection_socket (void)
       goto error;
     }
 
-  /* 
+  /*
    * Set it up to listen for incoming connections.  Note that under Winsock
    * (NetManage version at least), the backlog parameter is silently limited
    * to 5, regardless of what is requested.
@@ -825,7 +825,7 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
     }
 #endif /* not SERVER_MODE */
 
-  /* 
+  /*
    * First try to convert to the host name as a dotted-decimal number.
    * Only if that fails do we call gethostbyname.
    */

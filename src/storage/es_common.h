@@ -24,6 +24,8 @@
 #ifndef _ES_COMMON_H_
 #define _ES_COMMON_H_
 
+#include "system.h"
+
 typedef enum
 {
   ES_NONE = -1,
@@ -39,6 +41,9 @@ typedef enum
 #define ES_OWFS_PATH_POS(uri)	((uri) + sizeof(ES_OWFS_PATH_PREFIX) - 1)
 #define ES_POSIX_PATH_POS(uri)	((uri) + sizeof(ES_POSIX_PATH_PREFIX) - 1)
 #define ES_LOCAL_PATH_POS(uri)	((uri) + sizeof(ES_LOCAL_PATH_PREFIX) - 1)
+
+// note - to use, one must include error_manager.h & system_parameter.h
+#define es_log(...) if (prm_get_bool_value (PRM_ID_DEBUG_ES)) _er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
 
 extern ES_TYPE es_get_type (const char *uri);
 extern const char *es_get_type_string (ES_TYPE type);

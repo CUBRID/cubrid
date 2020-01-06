@@ -73,14 +73,13 @@
 #include "broker_acl.h"
 #include "chartype.h"
 #include "cubrid_getopt.h"
+#include "dbtype_def.h"
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-#include "dbdef.h"
-#else /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
 #define DB_EMPTY_SESSION        (0)
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+#endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 
-#define ADMIN_ERR_MSG_SIZE	1024
+#define ADMIN_ERR_MSG_SIZE	BROKER_PATH_MAX * 2
 
 #define MAKE_VERSION(MAJOR, MINOR)	(((MAJOR) << 8) | (MINOR))
 
@@ -282,8 +281,8 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
       if (strlen (path) + strlen (br_info[i].name) + 1 + NUM_OF_DIGITS (br_info[i].appl_server_max_num) >
 	  MEMBER_SIZE (struct sockaddr_un, sun_path) - 1)
 	{
-	  snprintf (admin_err_msg, sizeof (admin_err_msg) - 1, "The socket path is too long (>%d): %s",
-		    MEMBER_SIZE (struct sockaddr_un, sun_path), path);
+	  snprintf_dots_truncate (admin_err_msg, sizeof (admin_err_msg) - 1, "The socket path is too long (>%d): %s",
+				  MEMBER_SIZE (struct sockaddr_un, sun_path), path);
 	  return -1;
 	}
 #endif /* !WINDOWS */
@@ -733,8 +732,8 @@ admin_restart_cmd (int master_shm_id, const char *broker, int as_index)
 
   if (ut_is_appl_server_ready (pid, &shm_appl->as_info[as_index].service_ready_flag) == false)
     {
-      snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE, "Could not start the application server: %s\n",
-		shm_appl->appl_server_name);
+      snprintf_dots_truncate (admin_err_msg, ADMIN_ERR_MSG_SIZE, "Could not start the application server: %s\n",
+			      shm_appl->appl_server_name);
       goto restart_error;
     }
 
@@ -1925,7 +1924,7 @@ admin_conf_change (int master_shm_id, const char *br_name, const char *conf_name
     {
       int size;
 
-      /* 
+      /*
        * Use "KB" as unit, because MAX_ACCESS_LOG_MAX_SIZE uses this unit.
        * the range of the config value should be verified to avoid the invalid setting.
        */
@@ -2200,8 +2199,8 @@ admin_conf_change (int master_shm_id, const char *br_name, const char *conf_name
 	  goto set_conf_error;
 	}
 
-      strncpy (br_info_p->preferred_hosts, host_name, host_name_len);
-      strncpy (shm_as_p->preferred_hosts, host_name, host_name_len);
+      strcpy (br_info_p->preferred_hosts, host_name);
+      strcpy (shm_as_p->preferred_hosts, host_name);
     }
   else if (strcasecmp (conf_name, "MAX_PREPARED_STMT_COUNT") == 0)
     {

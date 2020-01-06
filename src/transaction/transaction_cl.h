@@ -38,7 +38,6 @@
 #include "locator.h"
 #include "storage_common.h"
 #include "log_comm.h"
-#include "dbdef.h"
 
 #define TM_TRAN_INDEX()      (tm_Tran_index)
 #define TM_TRAN_ISOLATION()  (tm_Tran_isolation)

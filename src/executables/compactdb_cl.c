@@ -27,7 +27,6 @@
 
 #include "porting.h"
 #include "dbtype.h"
-#include "dbdef.h"
 #include "load_object.h"
 #include "db.h"
 #include "locator_cl.h"
@@ -42,6 +41,7 @@
 #include "authenticate.h"
 #include "transaction_cl.h"
 #include "execute_schema.h"
+#include "object_primitive.h"
 
 #define COMPACT_MIN_PAGES 1
 #define COMPACT_MAX_PAGES 20
@@ -53,7 +53,7 @@
 #define COMPACT_CLASS_MAX_LOCK_TIMEOUT 10
 
 static int is_not_system_class (MOBJ class_);
-static int do_reclaim_addresses (const OID ** const class_oids, const int num_class_oids,
+static int do_reclaim_addresses (OID * const *class_oids, const int num_class_oids,
 				 int *const num_classes_fully_processed, const bool verbose,
 				 const int class_lock_timeout);
 static int do_reclaim_class_addresses (const OID class_oid, char **clas_name, bool * const any_class_can_be_referenced,
@@ -830,9 +830,8 @@ compactdb_start (bool verbose_flag, bool delete_old_repr_flag, char *input_filen
     {
       printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_PASS2));
     }
-  status =
-    do_reclaim_addresses ((const OID ** const) class_oids, num_classes, &num_classes_fully_compacted, verbose_flag,
-			  class_lock_timeout);
+  status = do_reclaim_addresses (class_oids, num_classes, &num_classes_fully_compacted, verbose_flag,
+				 class_lock_timeout);
   if (status != NO_ERROR)
     {
       goto error;
@@ -1142,7 +1141,7 @@ compactdb (UTIL_FUNCTION_ARG * arg)
 }
 
 static int
-do_reclaim_addresses (const OID ** const class_oids, const int num_class_oids, int *const num_classes_fully_processed,
+do_reclaim_addresses (OID * const *class_oids, const int num_class_oids, int *const num_classes_fully_processed,
 		      const bool verbose, const int class_lock_timeout)
 {
   bool any_class_can_be_referenced = false;
@@ -1266,7 +1265,7 @@ do_reclaim_class_addresses (const OID class_oid, char **class_name, bool * const
       goto error_exit;
     }
 
-  /* 
+  /*
    * Trying to force an ISX_LOCK on the root class. It somehow happens that
    * we are left with an IX_LOCK in the end...
    */
@@ -1295,7 +1294,7 @@ do_reclaim_class_addresses (const OID class_oid, char **class_name, bool * const
       goto error_exit;
     }
 
-  /* 
+  /*
    * We need an SCH-M lock on the class to process as early as possible so that
    * other transactions don't add references to it in the schema.
    */
@@ -1317,7 +1316,7 @@ do_reclaim_class_addresses (const OID class_oid, char **class_name, bool * const
 
   if (class_->partition != NULL)
     {
-      /* 
+      /*
        * If the current class is a partition of a partitioned class we need
        * to get its parent partitioned table and check for references to its
        * parent too. If table tbl has partition tbl__p__p0, a reference to tbl
@@ -1361,7 +1360,7 @@ do_reclaim_class_addresses (const OID class_oid, char **class_name, bool * const
 
   if (class_->flags & SM_CLASSFLAG_SYSTEM)
     {
-      /* 
+      /*
        * It should be safe to process system classes also but we skip them for
        * now. Please note that class_instances_can_be_referenced () does not
        * check for references from system classes.
@@ -1372,7 +1371,7 @@ do_reclaim_class_addresses (const OID class_oid, char **class_name, bool * const
     }
   else if (class_->flags & SM_CLASSFLAG_REUSE_OID)
     {
-      /* 
+      /*
        * Nobody should be able to hold references to reusable OID tables so it
        * should be safe to reclaim their OIDs and pages no matter what.
        */
@@ -1382,7 +1381,7 @@ do_reclaim_class_addresses (const OID class_oid, char **class_name, bool * const
     {
       if (*any_class_can_be_referenced)
 	{
-	  /* 
+	  /*
 	   * Some class attribute has OBJECT or SET OF OBJECT as the domain.
 	   * This means it can point to instances of any class so we're not
 	   * safe reclaiming OIDs.
@@ -1393,7 +1392,7 @@ do_reclaim_class_addresses (const OID class_oid, char **class_name, bool * const
 	{
 	  bool class_can_be_referenced = false;
 
-	  /* 
+	  /*
 	   * IS_LOCK should be enough for what we need but
 	   * locator_get_all_class_mops seems to lock the instances with the
 	   * lock that it has on their class. So we end up with IX_LOCK on all
@@ -1414,7 +1413,7 @@ do_reclaim_class_addresses (const OID class_oid, char **class_name, bool * const
 	    {
 	      goto error_exit;
 	    }
-	  /* 
+	  /*
 	   * If some attribute has OBJECT or the current class as its domain
 	   * then it's not safe to reclaim the OIDs as some of the references
 	   * might point to deleted objects. We skipped the system classes as
@@ -1423,7 +1422,7 @@ do_reclaim_class_addresses (const OID class_oid, char **class_name, bool * const
 	  can_reclaim_addresses = !class_can_be_referenced && !*any_class_can_be_referenced;
 	  if (lmops != NULL)
 	    {
-	      /* 
+	      /*
 	       * It should be safe now to release all the locks we hold on the
 	       * schema classes (except for the X_LOCK on the current class).
 	       * However, we don't currently have a way of releasing those
@@ -1551,7 +1550,7 @@ class_referenced_by_class (MOP referenced_mop, MOP parent_mop, MOP referring_mop
       goto error_exit;
     }
 
-  /* 
+  /*
    * System classes should not point to any instances of the non-system
    * classes.
    */
@@ -1577,7 +1576,7 @@ class_referenced_by_class (MOP referenced_mop, MOP parent_mop, MOP referring_mop
     }
   else
     {
-      /* 
+      /*
        * View attributes are not "real" references so we can safely ignore
        * them.
        */

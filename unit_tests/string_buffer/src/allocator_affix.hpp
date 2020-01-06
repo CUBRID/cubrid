@@ -44,9 +44,9 @@ namespace allocator
       {
       }
 
-      mem::block allocate (size_t size)
+      cubmem::block allocate (size_t size)
       {
-	mem::block b = m_a.allocate (m_prefix_len + size + m_suffix_len);
+	cubmem::block b = m_a.allocate (m_prefix_len + size + m_suffix_len);
 	if (!b.is_valid ())
 	  return {0, 0};
 	new (b.ptr) Prefix;                       //placement new to initialize Prefix memory
@@ -54,14 +54,14 @@ namespace allocator
 	return {size, b.ptr + m_prefix_len};
       }
 
-      void deallocate (mem::block b)
+      void deallocate (cubmem::block b)
       {
 	//check if Prefix & Suffix are unchanged!
 	//...
 	m_a.deallocate ({m_prefix_len + b.dim + m_suffix_len, b.ptr - m_prefix_len});
       }
 
-      unsigned check (const mem::block &b)
+      unsigned check (const cubmem::block &b)
       {
 	Prefix pfx;
 	Suffix sfx;

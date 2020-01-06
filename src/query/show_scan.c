@@ -38,6 +38,7 @@
 
 #include "query_manager.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "scan_manager.h"
 #include "show_scan.h"
 
@@ -92,7 +93,7 @@ static bool show_scan_Inited = false;
 static SHOW_REQUEST show_Requests[SHOWSTMT_END];
 
 /*
- *  showstmt_scan_init () - initialize the scan functions of 
+ *  showstmt_scan_init () - initialize the scan functions of
  *                          show statments.
  *   return: NULL
  */
@@ -270,7 +271,7 @@ showstmt_next_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 /*
  *  showstmt_start_scan () - before scan.
  *   return: NO_ERROR, or ER_code
- *   thread_p(in): 
+ *   thread_p(in):
  *   s_id(in):
  */
 int
@@ -296,7 +297,7 @@ showstmt_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 /*
  *  showstmt_end_scan () - after scan.
  *   return: NO_ERROR, or ER_code
- *   thread_p(in): 
+ *   thread_p(in):
  *   s_id(in):
  */
 int
@@ -322,7 +323,7 @@ showstmt_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 /*
  *   showstmt_alloc_array_context () - init context for db_values arrays
  *   return: NO_ERROR, or ER_code
- *   thread_p(in): 
+ *   thread_p(in):
  *   num_total(in):
  *   num_col(in):
  */
@@ -360,7 +361,7 @@ on_error:
 /*
  *  showstmt_free_array_context () - free context for db_values arrays
  *   return: NO_ERROR, or ER_code
- *   thread_p(in): 
+ *   thread_p(in):
  *   ctx(in):
  */
 void
@@ -389,7 +390,7 @@ showstmt_free_array_context (THREAD_ENTRY * thread_p, SHOWSTMT_ARRAY_CONTEXT * c
 /*
  *  showstmt_alloc_tuple_in_context () - alloc and return next tuple from context
  *   return:  tuple pointer
- *   thread_p(in): 
+ *   thread_p(in):
  *   ctx(in):
  */
 DB_VALUE *
@@ -543,22 +544,22 @@ thread_scan_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, THREAD_ENTRY
   idx++;
 
   /* Type */
-  db_make_string_by_const_str (&vals[idx], thread_type_to_string (thrd->type));
+  db_make_string (&vals[idx], thread_type_to_string (thrd->type));
   idx++;
 
   /* Status */
-  db_make_string_by_const_str (&vals[idx], thread_status_to_string (thrd->m_status));
+  db_make_string (&vals[idx], thread_status_to_string (thrd->m_status));
   idx++;
 
   /* Resume_status */
-  db_make_string_by_const_str (&vals[idx], thread_resume_status_to_string (thrd->resume_status));
+  db_make_string (&vals[idx], thread_resume_status_to_string (thrd->resume_status));
   idx++;
 
   /* Net_request */
   ival = thrd->net_request_index;
   if (ival != -1)
     {
-      db_make_string_by_const_str (&vals[idx], net_server_request_name (ival));
+      db_make_string (&vals[idx], net_server_request_name (ival));
     }
   else
     {
@@ -731,7 +732,7 @@ thread_scan_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, THREAD_ENTRY
       idx++;
 
       /* Lockwait_state */
-      db_make_string_by_const_str (&vals[idx], lock_wait_state_to_string (thrd->lockwait_state));
+      db_make_string (&vals[idx], lock_wait_state_to_string (thrd->lockwait_state));
       idx++;
     }
   else
@@ -797,7 +798,7 @@ thread_scan_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, THREAD_ENTRY
  * thread_start_scan () -  start scan function for show threads
  *   return: NO_ERROR, or ER_code
  *
- *   thread_p(in): 
+ *   thread_p(in):
  *   type (in):
  *   arg_values(in):
  *   arg_cnt(in):

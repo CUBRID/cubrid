@@ -529,7 +529,7 @@ hm_req_add_to_pool (T_CON_HANDLE * con, char *sql, int mapped_statement_id, T_RE
 }
 
 int
-hm_req_get_from_pool (T_CON_HANDLE * con, T_REQ_HANDLE ** req, char *sql)
+hm_req_get_from_pool (T_CON_HANDLE * con, T_REQ_HANDLE ** req, const char *sql)
 {
   int req_id;
   void *data;
@@ -929,7 +929,7 @@ req_handle_col_info_free (T_REQ_HANDLE * req_handle)
 void
 req_handle_content_free (T_REQ_HANDLE * req_handle, int reuse)
 {
-  /* 
+  /*
    * For reusing invalidated req handle, sql_text and prepare flag of req handle are needed. So, they must not be
    * freed. */
 

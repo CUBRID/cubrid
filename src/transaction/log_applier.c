@@ -32,16 +32,22 @@
 #if !defined (WINDOWS)
 #include <sys/time.h>
 #endif
+#include <signal.h>
 
 #include "log_applier.h"
 
+#include "authenticate.h"
 #include "porting.h"
 #include "utility.h"
 #include "environment_variable.h"
 #include "message_catalog.h"
+#include "msgcat_set_log.hpp"
 #include "log_compress.h"
+#include "log_lsa.hpp"
 #include "parser.h"
-#include "object_print.h"
+#include "object_primitive.h"
+#include "object_representation.h"
+#include "db_value_printer.hpp"
 #include "db.h"
 #include "object_accessor.h"
 #include "locator_cl.h"
@@ -403,7 +409,7 @@ LA_RECDES_POOL la_recdes_pool;
 static bool la_applier_need_shutdown = false;
 static bool la_applier_shutdown_by_signal = false;
 static char la_slave_db_name[DB_MAX_IDENTIFIER_LENGTH + 1];
-static char la_peer_host[MAXHOSTNAMELEN + 1];
+static char la_peer_host[CUB_MAXHOSTNAMELEN + 1];
 
 static bool la_enable_sql_logging = false;
 
@@ -451,6 +457,7 @@ static int la_realloc_recdes_data (RECDES * recdes, int data_size);
 static void la_clear_recdes_pool (void);
 
 static LA_CACHE_PB *la_init_cache_pb (void);
+static unsigned int log_pageid_hash (const void *key, unsigned int htsize);
 static int la_init_cache_log_buffer (LA_CACHE_PB * cache_pb, int slb_cnt, int slb_size);
 static int la_fetch_log_hdr (LA_ACT_LOG * act_log);
 static int la_find_log_pagesize (LA_ACT_LOG * act_log, const char *logpath, const char *dbname, bool check_charset);
@@ -685,7 +692,7 @@ la_log_io_read_with_max_retries (char *vname, int vdes, void *io_pgptr, LOG_PHY_
 
       if (nbytes == 0)
 	{
-	  /* 
+	  /*
 	   * This is an end of file.
 	   * We are trying to read beyond the allocated disk space
 	   */
@@ -2449,6 +2456,27 @@ la_init_cache_pb (void)
 }
 
 /*
+ * log_pageid_hash - hash a LOG_PAGEID key
+ *   return: hash value
+ *   key(in): void pointer to LOG_PAGEID key to hash
+ *   ht_size(in): size of hash table
+ */
+static unsigned int
+log_pageid_hash (const void *key, unsigned int htsize)
+{
+  assert (key != NULL);
+
+  if ((*(const LOG_PAGEID *) key) == LOGPB_HEADER_PAGE_ID)
+    {
+      return 0;
+    }
+
+  assert ((*(const LOG_PAGEID *) key) >= 0);
+
+  return (*(const LOG_PAGEID *) key) % htsize;
+}
+
+/*
  * la_init_cache_log_buffer() - Initialize the cache log buffer area of
  *                                a cache page buffer
  *   return: NO_ERROR or ER_OUT_OF_VIRTUAL_MEMORY
@@ -2473,7 +2501,7 @@ la_init_cache_log_buffer (LA_CACHE_PB * cache_pb, int slb_cnt, int slb_size)
     }
 
   cache_pb->hash_table =
-    mht_create ("log applier cache log buffer hash table", cache_pb->num_buffers * 8, mht_logpageidhash,
+    mht_create ("log applier cache log buffer hash table", cache_pb->num_buffers * 8, log_pageid_hash,
 		mht_compare_logpageids_are_equal);
   if (cache_pb->hash_table == NULL)
     {
@@ -2588,9 +2616,11 @@ la_find_log_pagesize (LA_ACT_LOG * act_log, const char *logpath, const char *dbn
 	  char err_msg[ERR_MSG_SIZE];
 
 	  la_applier_need_shutdown = true;
-	  snprintf (err_msg, sizeof (err_msg) - 1, "Active log file(%s) charset is not valid (%s), expecting %s.",
-		    act_log->path, lang_charset_cubrid_name ((INTL_CODESET) act_log->log_hdr->db_charset),
-		    lang_charset_cubrid_name (lang_charset ()));
+	  snprintf_dots_truncate (err_msg, sizeof (err_msg) - 1,
+				  "Active log file(%s) charset is not valid (%s), expecting %s.",
+				  act_log->path, lang_charset_cubrid_name ((INTL_CODESET) act_log->log_hdr->db_charset),
+				  lang_charset_cubrid_name (lang_charset ()));
+
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, err_msg);
 	  return ER_LOC_INIT;
 	}
@@ -3538,7 +3568,7 @@ la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL 
       else
 	{
 	  /* read the disk value into the db_value */
-	  (*(att->type->data_readval)) (buf, &value, att->domain, -1, true, NULL, 0);
+	  att->type->data_readval (buf, &value, att->domain, -1, true, NULL, 0);
 	}
 
       /* update the column */
@@ -3572,7 +3602,7 @@ la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL 
   for (i = sm_class->fixed_count, j = 0; i < sm_class->att_count && j < sm_class->variable_count;
        i++, j++, att = (SM_ATTRIBUTE *) att->header.next)
     {
-      (*(att->type->data_readval)) (buf, &value, att->domain, vars[j], true, NULL, 0);
+      att->type->data_readval (buf, &value, att->domain, vars[j], true, NULL, 0);
       v_start += vars[j];
       buf->ptr = v_start;
 
@@ -4616,7 +4646,7 @@ static int
 la_flush_repl_items (bool immediate)
 {
   int error = NO_ERROR;
-  int la_err_code;
+  int la_err_code = ER_FAILED;
   WS_REPL_FLUSH_ERR *flush_err;
   MOP class_mop = NULL;
   const char *class_name = "UNKNOWN CLASS";
@@ -4657,7 +4687,7 @@ la_flush_repl_items (bool immediate)
 		}
 
 	      sb.clear ();
-	      help_sprint_value (&flush_err->pkey_value, sb);
+	      db_sprint_value (&flush_err->pkey_value, sb);
 	      snprintf (pkey_str, sizeof (pkey_str) - 1, sb.get_buffer ());
 
 	      if (LC_IS_FLUSH_INSERT (flush_err->operation) == true)
@@ -4845,7 +4875,7 @@ la_apply_delete_log (LA_ITEM * item)
 	  if (sl_write_delete_sql (item->class_name, mclass, la_get_item_pk_value (item)) != NO_ERROR)
 	    {
 	      sb.clear ();
-	      help_sprint_value (&item->key, sb);
+	      db_sprint_value (&item->key, sb);
 	      snprintf (sql_log_err, sizeof (sql_log_err), "failed to write SQL log. class: %s, key: %s",
 			item->class_name, sb.get_buffer ());
 
@@ -4866,7 +4896,7 @@ la_apply_delete_log (LA_ITEM * item)
   if (error != NO_ERROR)
     {
       sb.clear ();
-      help_sprint_value (la_get_item_pk_value (item), sb);
+      db_sprint_value (la_get_item_pk_value (item), sb);
 #if defined (LA_VERBOSE_DEBUG)
       er_log_debug (ARG_FILE_LINE, "apply_delete : error %d %s\n\tclass %s key %s\n", error, er_msg (),
 		    item->class_name, sb.get_buffer ());
@@ -4963,7 +4993,7 @@ la_apply_update_log (LA_ITEM * item)
 
   error = la_repl_add_object (class_obj, item, recdes);
 
-  /* 
+  /*
    * regardless of the success or failure of obj_repl_update_object,
    * we should write sql log.
    */
@@ -5015,7 +5045,7 @@ la_apply_update_log (LA_ITEM * item)
       if (sql_logging_failed == true)
 	{
 	  sb.clear ();
-	  help_sprint_value (la_get_item_pk_value (item), sb);
+	  db_sprint_value (la_get_item_pk_value (item), sb);
 	  snprintf (sql_log_err, sizeof (sql_log_err), "failed to write SQL log. class: %s, key: %s", item->class_name,
 		    sb.get_buffer ());
 
@@ -5029,7 +5059,7 @@ end:
   if (error != NO_ERROR)
     {
       sb.clear ();
-      help_sprint_value (la_get_item_pk_value (item), sb);
+      db_sprint_value (la_get_item_pk_value (item), sb);
 #if defined (LA_VERBOSE_DEBUG)
       er_log_debug (ARG_FILE_LINE, "apply_update : error %d %s\n\tclass %s key %s\n", error, er_msg (),
 		    item->class_name, sb.get_buffer ());
@@ -5198,7 +5228,7 @@ la_apply_insert_log (LA_ITEM * item)
       if (sql_logging_failed == true)
 	{
 	  sb.clear ();
-	  help_sprint_value (la_get_item_pk_value (item), sb);
+	  db_sprint_value (la_get_item_pk_value (item), sb);
 	  snprintf (sql_log_err, sizeof (sql_log_err), "failed to write SQL log. class: %s, key: %s", item->class_name,
 		    sb.get_buffer ());
 
@@ -5212,7 +5242,7 @@ end:
   if (error != NO_ERROR)
     {
       sb.clear ();
-      help_sprint_value (la_get_item_pk_value (item), sb);
+      db_sprint_value (la_get_item_pk_value (item), sb);
 #if defined (LA_VERBOSE_DEBUG)
       er_log_debug (ARG_FILE_LINE, "apply_insert : error %d %s\n\tclass %s key %s\n", error, er_msg (),
 		    item->class_name, sb.get_buffer ());
@@ -5343,7 +5373,7 @@ la_update_query_execute_with_values (const char *sql, int arg_count, DB_VALUE * 
 static int
 la_apply_statement_log (LA_ITEM * item)
 {
-  char *stmt_text;
+  const char *stmt_text = NULL;
   int error = NO_ERROR, error2 = NO_ERROR;
   const char *error_msg = "";
   DB_OBJECT *user = NULL, *save_user = NULL;
@@ -5396,6 +5426,7 @@ la_apply_statement_log (LA_ITEM * item)
 
     case CUBRID_STMT_UPDATE_STATS:
       is_ddl = true;
+      /* FALLTHRU */
 
     case CUBRID_STMT_INSERT:
     case CUBRID_STMT_DELETE:
@@ -5406,7 +5437,7 @@ la_apply_statement_log (LA_ITEM * item)
 	  return NO_ERROR;
 	}
 
-      /* 
+      /*
        * When we create the schema objects, the object's owner must be changed
        * to the appropriate owner.
        * Special alter statement, non partitioned -> partitioned is the same.
@@ -5678,7 +5709,7 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
 	      errid = er_errid ();
 
 	      sb.clear ();
-	      help_sprint_value (la_get_item_pk_value (item), sb);
+	      db_sprint_value (la_get_item_pk_value (item), sb);
 	      sprintf (error_string, "[%s,%s] %s", item->class_name, sb.get_buffer (), db_error_string (1));
 	      er_log_debug (ARG_FILE_LINE, "Internal system failure: %s", error_string);
 
@@ -6124,8 +6155,9 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
 	{
 	  if (la_Info.db_lockf_vdes != NULL_VOLDES)
 	    {
-	      snprintf (buffer, sizeof (buffer), "the state of HA server (%s@%s) is changed to %s", la_slave_db_name,
-			la_peer_host, css_ha_server_state_string ((HA_SERVER_STATE) ha_server_state->state));
+	      snprintf_dots_truncate (buffer, sizeof (buffer) - 1, "the state of HA server (%s@%s) is changed to %s",
+				      la_slave_db_name, la_peer_host,
+				      css_ha_server_state_string ((HA_SERVER_STATE) ha_server_state->state));
 	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, buffer);
 
 	      la_Info.is_role_changed = true;
@@ -6452,7 +6484,7 @@ la_check_mem_size (void)
 #endif
   if (vsize > max_vsize)
     {
-      /* 
+      /*
        * vmem size is more than max_mem_size
        * or grow more than 2 times
        */
@@ -6747,7 +6779,7 @@ la_init (const char *log_path, const int max_mem_size)
 
   la_recdes_pool.is_initialized = false;
 
-  if (db_get_client_type () == BOOT_CLIENT_LOG_APPLIER)
+  if (db_get_client_type () == DB_CLIENT_TYPE_LOG_APPLIER)
     {
       ws_init_repl_objs ();
     }
@@ -6854,7 +6886,7 @@ la_shutdown (void)
       free_and_init (la_Info.act_log.hdr_page);
     }
 
-  if (db_get_client_type () == BOOT_CLIENT_LOG_APPLIER)
+  if (db_get_client_type () == DB_CLIENT_TYPE_LOG_APPLIER)
     {
       ws_clear_all_repl_objs ();
     }
@@ -7603,7 +7635,7 @@ la_create_repl_filter (void)
 
       if (classname_len >= SM_MAX_IDENTIFIER_LENGTH)
 	{
-	  snprintf (error_msg, LINE_MAX, "invalid table name %s", buffer);
+	  snprintf_dots_truncate (error_msg, LINE_MAX - 1, "invalid table name %s", buffer);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_REPL_FILTER_GENERIC, 1, error_msg);
 	  error = ER_HA_LA_REPL_FILTER_GENERIC;
 
@@ -7615,7 +7647,7 @@ la_create_repl_filter (void)
       class_ = locator_find_class (classname);
       if (class_ == NULL)
 	{
-	  snprintf (error_msg, LINE_MAX, "cannot find table [%s] listed in %s", buffer, filter_file);
+	  snprintf_dots_truncate (error_msg, LINE_MAX - 1, "cannot find table [%s] listed in %s", buffer, filter_file);
 	  er_stack_push ();
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_REPL_FILTER_GENERIC, 1, error_msg);
 	  er_stack_pop ();
@@ -7773,11 +7805,11 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
   s = la_get_hostname_from_log_path ((char *) log_path);
   if (s)
     {
-      strncpy (la_peer_host, s, MAXHOSTNAMELEN);
+      strncpy (la_peer_host, s, CUB_MAXHOSTNAMELEN);
     }
   else
     {
-      strncpy (la_peer_host, "unknown", MAXHOSTNAMELEN);
+      strncpy (la_peer_host, "unknown", CUB_MAXHOSTNAMELEN);
     }
 
   /* init la_Info */

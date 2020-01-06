@@ -33,7 +33,6 @@
 #define JP_MAXNAME          256
 
 #include "parser.h"
-#include "dbdef.h"
 #include "chartype.h"
 #include "language_support.h"
 #include "intl_support.h"
@@ -56,8 +55,8 @@ PARSER_CONTEXT *this_parser;
 int parser_output_host_index = 0;
 extern "C"
 {
-  extern int yyline;
   extern int yycolumn;
+  extern int csql_yyget_lineno ();
 }
 extern int yycolumn_end;
 
@@ -113,7 +112,7 @@ pt_parser_line_col (PT_NODE * node)
   if (node == NULL)
     return;
 
-  node->line_number = yyline;
+  node->line_number = csql_yyget_lineno ();
   node->column_number = yycolumn;
 }
 
@@ -685,7 +684,7 @@ pt_check_hint (const char *text, PT_HINT hint_table[], PT_HINT_ENUM * result_hin
 		    }
 		  else if (has_parenthesis && IS_HINT_ON_TABLE (hint_table[i].hint))
 		    {
-		      /* 
+		      /*
 		       * INDEX_SS() or INDEX_LS() means do not apply
 		       * hint, use special node to mark this.
 		       */

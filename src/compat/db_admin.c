@@ -32,7 +32,9 @@
 #include <stdarg.h>
 #include <ctype.h>
 #include <assert.h>
+#include <signal.h>
 
+#include "authenticate.h"
 #include "porting.h"
 #include "system_parameter.h"
 #include "storage_common.h"
@@ -62,15 +64,32 @@
 #if !defined(CS_MODE)
 #include "session.h"
 #endif
+#include "connection_cl.h"
 #include "dbtype.h"
 
 #if !defined(WINDOWS)
 void (*prev_sigfpe_handler) (int) = SIG_DFL;
+#include "tcp.h"
 #else
 #include "wintcp.h"
 #endif /* !WINDOWS */
 
-#include "db_admin.h"
+/* host status for marking abnormal host status */
+typedef struct db_host_status DB_HOST_STATUS;
+struct db_host_status
+{
+  char hostname[CUB_MAXHOSTNAMELEN];
+  int status;
+};
+
+typedef struct db_host_status_list DB_HOST_STATUS_LIST;
+struct db_host_status_list
+{
+  /* preferred_hosts + db-hosts */
+  DB_HOST_STATUS hostlist[MAX_NUM_DB_HOSTS * 2];
+  DB_HOST_STATUS *connected_host_status;
+  int last_host_idx;
+};
 
 /* Some like to assume that the db_ layer is able to recognize that a
  database has not been successfully restarted.  For now, check every
@@ -92,6 +111,8 @@ static DB_HOST_STATUS_LIST db_Host_status_list;
 
 static DB_HOST_STATUS *db_add_host_status (char *hostname, int status);
 static DB_HOST_STATUS *db_find_host_status (char *hostname);
+
+static int db_Client_type = DB_CLIENT_TYPE_DEFAULT;
 
 static void install_static_methods (void);
 static int fetch_set_internal (DB_SET * set, DB_FETCH_MODE purpose, int quit_on_error);
@@ -142,9 +163,9 @@ install_static_methods (void)
 
 int
 db_init (const char *program, int print_version, const char *dbname, const char *db_path, const char *vol_path,
-	 const char *log_path, const char *lob_path, const char *host_name, const bool overwrite,
-	 const char *comments, const char *addmore_vols_file, int npages, int desired_pagesize, int log_npages,
-	 int desired_log_page_size, const char *lang_charset)
+	 const char *log_path, const char *lob_path, const char *host_name, const bool overwrite, const char *comments,
+	 const char *addmore_vols_file, int npages, int desired_pagesize, int log_npages, int desired_log_page_size,
+	 const char *lang_charset)
 {
 #if defined (CUBRID_DEBUG)
   int value;
@@ -233,14 +254,9 @@ db_init (const char *program, int print_version, const char *dbname, const char 
       desired_log_page_size = desired_pagesize;
     }
 
-  client_credential.client_type = BOOT_CLIENT_ADMIN_UTILITY;
-  client_credential.client_info = NULL;
-  client_credential.db_name = (char *) dbname;
-  client_credential.db_user = NULL;
-  client_credential.db_password = NULL;
-  client_credential.program_name = (char *) program;
-  client_credential.login_name = NULL;
-  client_credential.host_name = NULL;
+  client_credential.client_type = DB_CLIENT_TYPE_ADMIN_UTILITY;
+  client_credential.db_name = dbname;
+  client_credential.program_name = program;
   client_credential.process_id = -1;
 
   db_path_info.db_path = (char *) db_path;
@@ -862,7 +878,7 @@ db_restart (const char *program, int print_version, const char *volume)
     }
   else
     {
-      strncpy (db_Program_name, program, PATH_MAX);
+      strncpy_bufsize (db_Program_name, program);
       db_Database_name[0] = '\0';
 
       /* authorization will need to access the database and call some db_ functions so assume connection will be ok
@@ -870,13 +886,8 @@ db_restart (const char *program, int print_version, const char *volume)
       db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
 
       client_credential.client_type = (BOOT_CLIENT_TYPE) db_Client_type;
-      client_credential.client_info = NULL;
-      client_credential.db_name = (char *) volume;
-      client_credential.db_user = NULL;
-      client_credential.db_password = NULL;
-      client_credential.program_name = (char *) program;
-      client_credential.login_name = NULL;
-      client_credential.host_name = NULL;
+      client_credential.db_name = volume;
+      client_credential.program_name = program;
       client_credential.process_id = -1;
       client_credential.preferred_hosts = db_Preferred_hosts;
       client_credential.connect_order = db_Connect_order;
@@ -1923,10 +1934,10 @@ db_get_user_and_host_name (void)
 {
   char *user = NULL;
   char *username = NULL;
-  char hostname[MAXHOSTNAMELEN];
+  char hostname[CUB_MAXHOSTNAMELEN];
   int len;
 
-  if (GETHOSTNAME (hostname, MAXHOSTNAMELEN) != 0)
+  if (GETHOSTNAME (hostname, CUB_MAXHOSTNAMELEN) != 0)
     {
       return NULL;
     }
@@ -2804,7 +2815,7 @@ db_get_host_connected (void)
 #endif
 }
 
- /* 
+ /*
   * db_get_ha_server_state() - get the connected server's HA state
   * return : number defined in HA_SERVER_STATE
   * buffer(out) : buffer where the string of the HA state to be stored.
@@ -2866,7 +2877,7 @@ db_set_session_id (const SESSION_ID session_id)
  * db_find_or_create_session - check if current session is still active
  *                               if not, create a new session
  * return error code or NO_ERROR
- * db_user(in)  : 
+ * db_user(in)  :
  * program_name(in)  :
  * Note: This function will check if the current session is active and will
  *	 create a new one if needed and save user access status in server

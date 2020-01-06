@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -65,7 +65,7 @@ struct btree_stats
   int has_function;		/* is a function index */
   TP_DOMAIN *key_type;		/* The key type for the B+tree */
   int pkeys_size;		/* pkeys array size */
-  int *pkeys;			/* partial keys info for example: index (a, b, ..., x) pkeys[0] -> # of {a} pkeys[1] -> 
+  int *pkeys;			/* partial keys info for example: index (a, b, ..., x) pkeys[0] -> # of {a} pkeys[1] ->
 				 * # of {a, b} ... pkeys[pkeys_size-1] -> # of {a, b, ..., x} */
 #if 0				/* reserved for future use */
   int reserved[BTREE_STATS_RESERVED_NUM];
@@ -94,7 +94,7 @@ struct class_stats
 };
 
 #if !defined(SERVER_MODE)
-extern CLASS_STATS *stats_get_statistics (OID * classoid, unsigned int timestamp);
+extern int stats_get_statistics (OID * classoid, unsigned int timestamp, CLASS_STATS ** stats_p);
 extern void stats_free_statistics (CLASS_STATS * stats);
 extern void stats_dump (const char *classname, FILE * fp);
 #endif /* !SERVER_MODE */

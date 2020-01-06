@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -85,23 +85,23 @@ static int esql_yyinput(char *buff, int max_size);
 			}}
 
 "//"			{	
-				PRINT("tok: %s\n", yytext); 
+				PRINT("tok: %s\n", yytext);
 				ECHO;
-				parser_line_comment(); 
+				parser_line_comment();
 
 			}
 
 
 "/*"			{	
-				PRINT("tok: %s\n", yytext); 
+				PRINT("tok: %s\n", yytext);
 				ECHO;
-				parser_c_comment(); 
+				parser_c_comment();
 			}
 
 "#"			{	
-				PRINT("tok: %s\n", yytext); 
+				PRINT("tok: %s\n", yytext);
 				ECHO;
-				parser_line_comment(); 
+				parser_line_comment();
 			}
 
 "--"			{{
@@ -150,17 +150,17 @@ static int esql_yyinput(char *buff, int max_size);
 
 EXEC[ \t]		{	
 				PRINT("tok: %s\n", yytext);
-				return EXEC; 
+				return EXEC;
 			}
 
 SQLX[ \t\r\n]		{	
 				PRINT("tok: %s\n", yytext);
-				return SQLX; 
+				return SQLX;
 			}
 
 SQL[ \t\r\n]		{	
 				PRINT("tok: %s\n", yytext);
-				return SQLX; 
+				return SQLX;
 			}
 
 [0-9]+			{{
@@ -445,7 +445,7 @@ SQL[ \t\r\n]		{
 			}}
 
 
-%% 
+%%
 
 
 

@@ -145,8 +145,8 @@ init_gcrypt (void)
 
 
 /*
- * str_to_hex() - convert a string to its hexadecimal expreesion string 
- *   return: 
+ * str_to_hex() - convert a string to its hexadecimal expreesion string
+ *   return:
  *   thread_p(in):
  *   src(in):
  *   src_len(in):
@@ -194,7 +194,7 @@ str_to_hex (THREAD_ENTRY * thread_p, const char *src, int src_len, char **dest_p
 
 /*
  * aes_default_gen_key() - if aes's key is not equal to 128, the function generate the 128 length key. like mysql.
- *   return: 
+ *   return:
  *   key(in):
  *   key_len(in):
  *   dest_key(out):
@@ -467,8 +467,8 @@ error_and_free:
  * crypt_sha_one() -
  *   return:
  *   thread_p(in):
- *   src(in): 
- *   src_len(in): 
+ *   src(in):
+ *   src_len(in):
  *   dest_len_p(out):
  * Note:
  */

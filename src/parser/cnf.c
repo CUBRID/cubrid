@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -686,7 +686,7 @@ pt_transform_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 	      rhs_ctx.accumulated_node_type = 0;
 	      (void) parser_walk_tree (parser, rhs, pt_calculate_similarity, &rhs_ctx, NULL, NULL);
 
-	      /* 
+	      /*
 	       * Because the cost of parser_print_tree() is very high. we use
 	       * a simple way to test whether lhs and rhs node are similar.
 	       * Only when they are similar, we call parser_print_tree().
@@ -888,7 +888,7 @@ pt_transform_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 		    {
 		      ;
 		    }
-		  /* if LHS is the last node, this RHS is the last one to be used; so point to directly without cloning 
+		  /* if LHS is the last node, this RHS is the last one to be used; so point to directly without cloning
 		   */
 		  if (lhs_next == NULL)
 		    {

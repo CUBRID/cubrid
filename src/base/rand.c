@@ -33,11 +33,13 @@ unsigned short _rand48_seed[3] = {
   RAND48_SEED_1,
   RAND48_SEED_2
 };
+
 unsigned short _rand48_mult[3] = {
   RAND48_MULT_0,
   RAND48_MULT_1,
   RAND48_MULT_2
 };
+
 unsigned short _rand48_add = RAND48_ADD;
 
 static void

@@ -309,7 +309,7 @@ md5_process_block (const void *buffer, size_t len, struct md5_ctx *ctx)
   UINT32 C = ctx->C;
   UINT32 D = ctx->D;
 
-  /* First increment the byte count.  RFC 1321 specifies the possible length of the file up to 2^64 bits.  Here we only 
+  /* First increment the byte count.  RFC 1321 specifies the possible length of the file up to 2^64 bits.  Here we only
    * compute the number of bytes.  Do a double word increment.  */
   ctx->total[0] += (UINT32) len;
   if (ctx->total[0] < len)
@@ -344,11 +344,11 @@ md5_process_block (const void *buffer, size_t len, struct md5_ctx *ctx)
 #define CYCLIC(w, s) (w = (w << s) | (w >> (32 - s)))
 
       /* Before we start, one word to the strange constants. They are defined in RFC 1321 as
-       * 
+       *
        * T[i] = (int) (4294967296.0 * fabs (sin (i))), i=1..64
-       * 
+       *
        * Here is an equivalent invocation using Perl:
-       * 
+       *
        * perl -e 'foreach(1..64){printf "0x%08x\n", int (4294967296 * abs (sin $_))}' */
 
       /* Round 1.  */

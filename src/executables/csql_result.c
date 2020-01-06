@@ -25,16 +25,18 @@
 
 #include "config.h"
 
-#include <float.h>
-#include <signal.h>
 #include <assert.h>
+#include <float.h>
+#include <setjmp.h>
+#include <signal.h>
 
 #include "csql.h"
+#include "dbtran_def.h"
+#include "dbtype.h"
 #include "memory_alloc.h"
+#include "object_primitive.h"
 #include "porting.h"
 #include "transaction_cl.h"
-
-#include "dbtype.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -530,16 +532,16 @@ get_current_result (int **lengths, const CUR_RESULT_INFO * result_info, bool pla
 
       value_type = DB_VALUE_TYPE (&db_value);
 
-      /* 
+      /*
        * This assert is intended to validate that the server returned the
        * expected types for the query results. See the note in
        * pt_print_value () regarding XASL caching.
        */
-      /* 
+      /*
        * TODO fix this assert if it fails in valid cases. Perhaps it should
        *      allow DB_TYPE_POINTER? What about DB_TYPE_ERROR?
        */
-      /* 
+      /*
        * TODO add a similar check to the ux_* and/or cci_* and/or the server
        *      functions so that the results' types returned through sockets in
        *      CS_MODE are validated.
@@ -582,7 +584,7 @@ get_current_result (int **lengths, const CUR_RESULT_INFO * result_info, bool pla
 	  break;
 
 	default:		/* other types */
-	  /* 
+	  /*
 	   * If we are printing the isolation level, we need to
 	   * interpret it for the user, not just return a meaningless number.
 	   *
@@ -701,7 +703,7 @@ static void (*csql_pipe_save) (int sig);
 static int
 write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp, const CUR_RESULT_INFO * result_info)
 {
-  /* 
+  /*
    * These are volatile to avoid dangerous interaction with the longjmp
    * handler for SIGPIPE problems.  The typedef is necessary so that we
    * can tell the compiler that the top POINTER is volatile, not the
@@ -709,7 +711,6 @@ write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp, const CUR_RE
    */
   typedef char **value_array;
   volatile value_array val;	/* attribute values array */
-  int *len;			/* attribute values lengths */
   volatile int error;		/* to switch return of CSQL_FAILURE/CSQL_SUCCESS */
   int i;			/* loop counter */
   int object_no;		/* result object count */
@@ -732,10 +733,9 @@ write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp, const CUR_RE
   bool is_null;
 
   val = (char **) NULL;
-  len = NULL;
   error = FALSE;
 
-  /* 
+  /*
    * Do this *before* the setjmp to avoid the possibility of the value
    * being clobbered by a longjmp.  Even if some internal thing longjmps
    * to the end of the next block we still need to be able to close the
@@ -762,164 +762,171 @@ write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp, const CUR_RE
 	{
 	  csql_Error_code = CSQL_ERR_SQL_ERROR;
 	  error = TRUE;
-	  goto done;
-	}
-
-      if (csql_arg->skip_column_names == true || csql_arg->line_output == true)
-	{
-	  ;
-	}
-      else if (csql_arg->plain_output == true)
-	{
-	  for (i = 0; i < num_attrs; i++)
-	    {
-	      refined_attr_name = csql_string_to_plain_string (attr_names[i], strlen (attr_names[i]), NULL);
-	      if (refined_attr_name != NULL)
-		{
-		  fprintf (pf, "%s", refined_attr_name);
-		  free_and_init (refined_attr_name);
-		}
-	      else
-		{
-		  fprintf (pf, "UNKNOWN");
-		}
-
-	      if (i == num_attrs - 1)
-		{
-		  fprintf (pf, "\n");
-		}
-	      else
-		{
-		  fprintf (pf, "\t");
-		}
-	    }
 	}
       else
 	{
-	  for (n = i = 0; i < num_attrs; i++)
+	  if (csql_arg->skip_column_names == true || csql_arg->line_output == true)
 	    {
-	      fprintf (pf, "  %*s", (int) (attr_lengths[i]), attr_names[i]);
-	      n += 2 + ((attr_lengths[i] > 0) ? attr_lengths[i] : -attr_lengths[i]);
-	    }
-	  putc ('\n', pf);
-	  for (; n > 0; n--)
-	    {
-	      putc ('=', pf);
-	    }
-	  putc ('\n', pf);
-	}
-
-      for (object_no = 1;; object_no++)
-	{
-	  csql_Row_count = object_no;
-	  /* free previous result */
-	  if (val != NULL)
-	    {
-	      for (i = 0; i < num_attrs; i++)
-		{
-		  free_and_init (val[i]);
-		}
-	      free_and_init (val);
-	    }
-	  if (len)
-	    {
-	      free_and_init (len);
-	    }
-
-	  val = get_current_result (&len, result_info, csql_arg->plain_output);
-	  if (val == NULL)
-	    {
-	      csql_Error_code = CSQL_ERR_SQL_ERROR;
-	      error = TRUE;
-	      goto done;
-	    }
-
-	  if (csql_arg->line_output == true)
-	    {
-	      fprintf (pf, "<%05d>", object_no);
-	      for (i = 0; i < num_attrs; i++)
-		{
-		  fprintf (pf, "%*c", (int) ((i == 0) ? 1 : 8), ' ');
-		  fprintf (pf, "%*s: %s\n", (int) (-max_attr_name_length), attr_names[i], val[i]);
-		}
-	      /* fflush(pf); */
+	      ;
 	    }
 	  else if (csql_arg->plain_output == true)
 	    {
-	      for (i = 0; i < num_attrs - 1; i++)
-		{
-		  fprintf (pf, "%s\t", val[i]);
-		}
-	      fprintf (pf, "%s\n", val[i]);
-	    }
-	  else
-	    {
-	      int padding_size;
-
 	      for (i = 0; i < num_attrs; i++)
 		{
-		  if (strcmp ("NULL", val[i]) == 0)
+		  refined_attr_name = csql_string_to_plain_string (attr_names[i], strlen (attr_names[i]), NULL);
+		  if (refined_attr_name != NULL)
 		    {
-		      is_null = true;
+		      fprintf (pf, "%s", refined_attr_name);
+		      free_and_init (refined_attr_name);
 		    }
 		  else
 		    {
-		      is_null = false;
+		      fprintf (pf, "UNKNOWN");
 		    }
 
-		  column_width = csql_get_column_width (attr_names[i]);
-		  value_width = calculate_width (column_width, csql_string_width, len[i], attr_types[i], is_null);
-
-		  padding_size =
-		    (attr_lengths[i] > 0) ? MAX (attr_lengths[i] - (value_width),
-						 0) : MIN (attr_lengths[i] + (value_width), 0);
-
-		  fprintf (pf, "  ");
-		  if (padding_size > 0)
+		  if (i == num_attrs - 1)
 		    {
-		      /* right justified */
-		      fprintf (pf, "%*s", (int) padding_size, "");
+		      fprintf (pf, "\n");
 		    }
-
-		  value = val[i];
-		  if (is_type_that_has_suffix (attr_types[i]) && is_null == false)
+		  else
 		    {
-		      value[value_width - 1] = '\'';
-		    }
-
-		  fwrite (value, 1, value_width, pf);
-
-		  if (padding_size < 0)
-		    {
-		      /* left justified */
-		      fprintf (pf, "%*s", (int) (-padding_size), "");
+		      fprintf (pf, "\t");
 		    }
 		}
+	    }
+	  else
+	    {
+	      for (n = i = 0; i < num_attrs; i++)
+		{
+		  fprintf (pf, "  %*s", (int) (attr_lengths[i]), attr_names[i]);
+		  n += 2 + ((attr_lengths[i] > 0) ? attr_lengths[i] : -attr_lengths[i]);
+		}
 	      putc ('\n', pf);
-	      /* fflush(pf); */
+	      for (; n > 0; n--)
+		{
+		  putc ('=', pf);
+		}
+	      putc ('\n', pf);
 	    }
 
-	  /* advance to next */
-	  e = db_query_next_tuple (result);
-	  if (e < 0)
+	  for (object_no = 1;; object_no++)
 	    {
-	      csql_Error_code = CSQL_ERR_SQL_ERROR;
-	      error = TRUE;
-	      goto done;
+	      csql_Row_count = object_no;
+	      /* free previous result */
+	      if (val != NULL)
+		{
+		  for (i = 0; i < num_attrs; i++)
+		    {
+		      free_and_init (val[i]);
+		    }
+		  free_and_init (val);
+		}
+	      int *len = NULL;
+
+	      val = get_current_result (&len, result_info, csql_arg->plain_output);
+	      if (val == NULL)
+		{
+		  csql_Error_code = CSQL_ERR_SQL_ERROR;
+		  error = TRUE;
+		  if (len != NULL)
+		    {
+		      free (len);
+		    }
+		  break;
+		}
+
+	      if (csql_arg->line_output == true)
+		{
+		  fprintf (pf, "<%05d>", object_no);
+		  for (i = 0; i < num_attrs; i++)
+		    {
+		      fprintf (pf, "%*c", (int) ((i == 0) ? 1 : 8), ' ');
+		      fprintf (pf, "%*s: %s\n", (int) (-max_attr_name_length), attr_names[i], val[i]);
+		    }
+		  /* fflush(pf); */
+		}
+	      else if (csql_arg->plain_output == true)
+		{
+		  for (i = 0; i < num_attrs - 1; i++)
+		    {
+		      fprintf (pf, "%s\t", val[i]);
+		    }
+		  fprintf (pf, "%s\n", val[i]);
+		}
+	      else
+		{
+		  int padding_size;
+
+		  for (i = 0; i < num_attrs; i++)
+		    {
+		      if (strcmp ("NULL", val[i]) == 0)
+			{
+			  is_null = true;
+			}
+		      else
+			{
+			  is_null = false;
+			}
+
+		      column_width = csql_get_column_width (attr_names[i]);
+		      value_width = calculate_width (column_width, csql_string_width, len[i], attr_types[i], is_null);
+
+		      padding_size =
+			(attr_lengths[i] > 0) ? MAX (attr_lengths[i] - (value_width),
+						     0) : MIN (attr_lengths[i] + (value_width), 0);
+
+		      fprintf (pf, "  ");
+		      if (padding_size > 0)
+			{
+			  /* right justified */
+			  fprintf (pf, "%*s", (int) padding_size, "");
+			}
+
+		      value = val[i];
+		      if (is_type_that_has_suffix (attr_types[i]) && is_null == false)
+			{
+			  value[value_width - 1] = '\'';
+			}
+
+		      fwrite (value, 1, value_width, pf);
+
+		      if (padding_size < 0)
+			{
+			  /* left justified */
+			  fprintf (pf, "%*s", (int) (-padding_size), "");
+			}
+		    }
+		  putc ('\n', pf);
+		  /* fflush(pf); */
+		}
+	      if (len != NULL)
+		{
+		  free (len);
+		}
+
+	      /* advance to next */
+	      e = db_query_next_tuple (result);
+	      if (e < 0)
+		{
+		  csql_Error_code = CSQL_ERR_SQL_ERROR;
+		  error = TRUE;
+		  break;
+		}
+	      else if (e == DB_CURSOR_END)
+		{
+		  break;
+		}
 	    }
-	  else if (e == DB_CURSOR_END)
+	  if (error != TRUE)
 	    {
-	      break;
+	      putc ('\n', pf);
 	    }
 	}
-      putc ('\n', pf);
     }
-
-done:
 
   if (pf)
     {
-      /* 
+      /*
        * Don't care for a sig pipe error when closing pipe.
        *
        * NOTE if I restore to previous signal handler which could be the
@@ -945,19 +952,14 @@ done:
 	}
       free_and_init (val);
     }
-  if (len)
-    {
-      free_and_init (len);
-    }
 
   return ((error) ? CSQL_FAILURE : CSQL_SUCCESS);
 }
 
-
 /*
  * calcluate_width() - calculate column's width
- *   return: width 
- *   column_width(in): column width 
+ *   return: width
+ *   column_width(in): column width
  *   string_width(in): string width
  *   origin_width(in): real width
  *   attr_type(in): type
@@ -1103,7 +1105,7 @@ is_cuttable_type_by_string_width (DB_TYPE type)
 }
 
 /*
- * is_type_that_has_suffix() - check whether this type has suffix or not 
+ * is_type_that_has_suffix() - check whether this type has suffix or not
  *   return: bool
  *   type(in): type
  */

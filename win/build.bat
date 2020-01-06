@@ -138,7 +138,7 @@ if NOT "%EXTRA_VERSION%." == "." (
 ) else (
   if EXIST "%SOURCE_DIR%\.git" (
     for /f "delims=" %%i in ('"%GIT_PATH%" rev-list --count HEAD') do set SERIAL_NUMBER=%%i
-    for /f "delims=" %%i in ('"%GIT_PATH%" rev-parse --short HEAD') do set HASH_TAG=%%i
+    for /f "delims=" %%i in ('"%GIT_PATH%" rev-parse --short=7 HEAD') do set HASH_TAG=%%i
   ) else (
     set EXTRA_VERSION=0000-unknown
     set SERIAL_NUMBER=0000

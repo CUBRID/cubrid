@@ -28,7 +28,10 @@
 #include <assert.h>
 
 #include "transaction_sr.h"
+
 #include "locator_sr.h"
+#include "log_2pc.h"
+#include "log_lsa.hpp"
 #include "log_manager.h"
 #if defined(SERVER_MODE)
 #endif
@@ -69,7 +72,7 @@ xtran_server_commit (THREAD_ENTRY * thread_p, bool retain_lock)
   TRAN_STATE state;
   int tran_index;
 
-  /* 
+  /*
    * Execute some few remaining actions before the log manager is notified of
    * the commit
    */
@@ -141,9 +144,9 @@ tran_server_unilaterally_abort (THREAD_ENTRY * thread_p, int tran_index)
 {
   TRAN_STATE state;
   int save_tran_index;
-  char *client_prog_name;	/* Client user name for transaction */
-  char *client_user_name;	/* Client user name for transaction */
-  char *client_host_name;	/* Client host for transaction */
+  const char *client_prog_name;	/* Client user name for transaction */
+  const char *client_user_name;	/* Client user name for transaction */
+  const char *client_host_name;	/* Client host for transaction */
   int client_pid;		/* Client process identifier for transaction */
 
   if (thread_p == NULL)
@@ -202,7 +205,7 @@ xtran_server_start_topop (THREAD_ENTRY * thread_p, LOG_LSA * topop_lsa)
 {
   int error_code = NO_ERROR;
 
-  /* 
+  /*
    * Execute some few remaining actions before the start top nested action is
    * started by the log manager.
    */
@@ -248,7 +251,7 @@ xtran_server_end_topop (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result, LOG_LS
 
   assert (result == LOG_RESULT_TOPOP_ABORT || result == LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
 
-  /* 
+  /*
    * Execute some few remaining actions before the start top nested action is
    * started by the log manager.
    */
@@ -285,7 +288,7 @@ xtran_server_end_topop (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result, LOG_LS
 	}
       if (result == LOG_RESULT_TOPOP_ABORT)
 	{
-	  log_clear_lob_locator_list (thread_p, tdes, false, topop_lsa);
+	  tx_lob_locator_clear (thread_p, tdes, false, topop_lsa);
 	}
       break;
 
@@ -330,7 +333,7 @@ xtran_server_savepoint (THREAD_ENTRY * thread_p, const char *savept_name, LOG_LS
   LOG_LSA *lsa;
   int error_code = NO_ERROR;
 
-  /* 
+  /*
    * Execute some few remaining actions before the start top nested action is
    * started by the log manager.
    */
@@ -401,7 +404,7 @@ xtran_server_partial_abort (THREAD_ENTRY * thread_p, const char *savept_name, LO
 int
 xtran_server_set_global_tran_info (THREAD_ENTRY * thread_p, int gtrid, void *info, int size)
 {
-  return log_set_global_tran_info (thread_p, gtrid, info, size);
+  return log_2pc_set_global_tran_info (thread_p, gtrid, info, size);
 }
 
 /*
@@ -423,7 +426,7 @@ xtran_server_set_global_tran_info (THREAD_ENTRY * thread_p, int gtrid, void *inf
 int
 xtran_server_get_global_tran_info (THREAD_ENTRY * thread_p, int gtrid, void *buffer, int size)
 {
-  return log_get_global_tran_info (thread_p, gtrid, buffer, size);
+  return log_2pc_get_global_tran_info (thread_p, gtrid, buffer, size);
 }
 
 /*
@@ -704,7 +707,7 @@ bool
 xtran_should_connection_reset (THREAD_ENTRY * thread_p, bool has_updated)
 {
   int client_type;
-  char *hostname;
+  const char *hostname;
   HA_SERVER_STATE ha_state;
   bool should_conn_reset = false;
 
@@ -726,7 +729,7 @@ xtran_should_connection_reset (THREAD_ENTRY * thread_p, bool has_updated)
 	{
 	  thread_p->conn_entry->reset_on_commit = false;
 	}
-      else if (client_type == BOOT_CLIENT_BROKER)
+      else if (client_type == DB_CLIENT_TYPE_BROKER)
 	{
 	  should_conn_reset = true;
 	  er_log_debug (ARG_FILE_LINE,
@@ -752,7 +755,7 @@ xtran_should_connection_reset (THREAD_ENTRY * thread_p, bool has_updated)
 	  thread_p->conn_entry->reset_on_commit = false;
 	}
     }
-  else if (ha_state == HA_SERVER_STATE_ACTIVE && client_type == BOOT_CLIENT_SLAVE_ONLY_BROKER)
+  else if (ha_state == HA_SERVER_STATE_ACTIVE && client_type == DB_CLIENT_TYPE_SLAVE_ONLY_BROKER)
     {
       should_conn_reset = true;
       er_log_debug (ARG_FILE_LINE,

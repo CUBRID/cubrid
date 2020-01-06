@@ -25,6 +25,7 @@
 
 #include <assert.h>
 
+#include "authenticate.h"
 #include "view_transform.h"
 #include "parser.h"
 #include "parser_message.h"
@@ -35,6 +36,7 @@
 
 #include "dbi.h"
 #include "object_accessor.h"
+#include "object_primitive.h"
 #include "locator_cl.h"
 #include "virtual_object.h"
 #include "dbtype.h"
@@ -983,7 +985,7 @@ mq_rewrite_agg_names_post (PARSER_CONTEXT * parser, PT_NODE * node, void *void_a
     {
     case PT_SELECT:
       info->select_stack = pt_pointer_stack_pop (parser, info->select_stack, NULL);
-      /* fall trough */
+      /* FALLTHRU */
 
     case PT_UNION:
     case PT_DIFFERENCE:
@@ -1502,7 +1504,7 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
 
       if (attr_count < val->info.value.data_value.i)
 	{
-	  /* order by is a hidden column and not in attribute list, in this case, we need append a hidden column at the 
+	  /* order by is a hidden column and not in attribute list, in this case, we need append a hidden column at the
 	   * end of the output list. */
 
 	  /* 2 find from spec columns */
@@ -2126,6 +2128,10 @@ mq_substitute_subquery_list_in_statement (PARSER_CONTEXT * parser, PT_NODE * sta
 	{
 	  result_list = parser_append_node (result, result_list);
 	}
+      else if (er_errid_if_has_error () != NO_ERROR || pt_has_error (parser))
+	{
+	  return NULL;
+	}
 
       query_spec = query_spec->next;
     }
@@ -2472,14 +2478,10 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree, PT_NODE * spec_list,
 			    }
 			}
 		    }
-		  else
-		    {
-		      if (er_has_error () || pt_has_error (parser))
-			{
-			  return NULL;
-			}
 
-		      /* a virtual class with no subquery */
+		  if (er_errid_if_has_error () != NO_ERROR || pt_has_error (parser))
+		    {
+		      return NULL;
 		    }
 		}
 	    }
@@ -2544,7 +2546,7 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree, PT_NODE * spec_list,
 	}
       else
 	{
-	  /* Getting here means there were NO vclasses.  all classes involved are "real" classes, so don't rewrite this 
+	  /* Getting here means there were NO vclasses.  all classes involved are "real" classes, so don't rewrite this
 	   * tree. */
 	}
     }
@@ -2913,7 +2915,7 @@ pt_find_only_name_id (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	  /* nothing found ... */
 	  break;
 	}
-      /* fall trough */
+      /* FALLTHRU */
 
     case PT_NAME:
       spec = infop->in.spec;
@@ -4610,7 +4612,7 @@ mq_check_rewrite_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
   from = select_statement->info.query.q.select.from;
   if (from && (from->next || pt_has_aggregate (parser, select_statement)))
     {
-      /* when translating joins, its important to maintain linearity of the translation. The cross-product of unions is 
+      /* when translating joins, its important to maintain linearity of the translation. The cross-product of unions is
        * exponential. Therefore, we convert cross-products of unions to cross-products of derived tables. */
 
       is_union_translation = mq_is_union_translation (parser, from);
@@ -5009,7 +5011,7 @@ mq_check_using_index (PARSER_CONTEXT * parser, PT_NODE * using_index)
       return ER_PT_SEMANTIC;
     }
 
-  /* 
+  /*
    * USING INDEX t.none is incompatible with {USE|FORCE} INDEX [t.]idx
    * Check for USING INDEX class.NONE, class.any-index[(+)] or
    * {USE|FORCE} INDEX (class.any-index) ... USING INDEX class.NONE
@@ -5257,7 +5259,7 @@ mq_set_types (PARSER_CONTEXT * parser, PT_NODE * query_spec, PT_NODE * attribute
 		    }
 		  else
 		    {
-		      /* 
+		      /*
 		       * col_type->info.data_type.virt_type_enum
 		       * IS ALREADY SET!. Don't muck with it.
 		       */
@@ -5470,9 +5472,9 @@ mq_translate_subqueries (PARSER_CONTEXT * parser, DB_OBJECT * class_object, PT_N
 
       if (local_check && query_spec->node_type == PT_SELECT)
 	{
-	  /* We have a local check option for a simple select statement. This is the ANSI test case. It does not handle 
+	  /* We have a local check option for a simple select statement. This is the ANSI test case. It does not handle
 	   * a union with local check option. However, updatable unions are a CUBRID extension, so big deal.
-	   * 
+	   *
 	   * * We capture the local where clause before appending the nested views where clauses. */
 	  query_spec->info.query.q.select.check_where =
 	    parser_copy_tree_list (parser, query_spec->info.query.q.select.where);
@@ -5571,13 +5573,13 @@ mq_invert_assign (PARSER_CONTEXT * parser, PT_NODE * attr, PT_NODE * &expr, PT_N
 static void
 mq_invert_subqueries (PARSER_CONTEXT * parser, PT_NODE * select_statements, PT_NODE * attributes)
 {
-  PT_NODE **column;
-  PT_NODE *attr;
-  PT_NODE *column_next;
-  PT_NODE *attr_next;
-  PT_NODE **column_prev;
-  PT_NODE *inverted;
-  PT_NODE **head;
+  PT_NODE **column = NULL;
+  PT_NODE *attr = NULL;
+  PT_NODE *column_next = NULL;
+  PT_NODE *attr_next = NULL;
+  PT_NODE **column_prev = NULL;
+  PT_NODE *inverted = NULL;
+  PT_NODE **head = NULL;
   PT_NODE *temp = NULL;
 
   while (select_statements)
@@ -5680,7 +5682,7 @@ mq_set_non_updatable_oid (PARSER_CONTEXT * parser, PT_NODE * stmt, PT_NODE * vir
 	  select_list->type_enum = PT_TYPE_OBJECT;
 
 	  /* set vclass_name as literal string */
-	  db_make_string_by_const_str (&vid, db_get_class_name (virt_entity->info.name.db_object));
+	  db_make_string (&vid, db_get_class_name (virt_entity->info.name.db_object));
 	  select_list->info.function.arg_list = pt_dbval_to_value (parser, &vid);
 	  select_list->info.function.function_type = F_SEQUENCE;
 
@@ -6250,12 +6252,12 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
       /* only translate translatable statements */
     case PT_SELECT:
       strict = !PT_SELECT_INFO_IS_FLAGED (node, PT_SELECT_INFO_NO_STRICT_OID_CHECK);
-      /* fall trough */
+      /* FALLTHRU */
 
     case PT_UNION:
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
-      /* 
+      /*
        * The mq_push_paths will convert the expression as CNF. if subquery is
        * in the expression, it may be copied several times. To avoid repeatedly
        * convert the expressions in subqueries and improve performance, we
@@ -6302,7 +6304,7 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
     case PT_UPDATE:
     case PT_MERGE:
     case PT_DO:
-      /* 
+      /*
        * The mq_push_paths will convert the expression as CNF. if subquery is
        * in the expression, it may be copied several times. To avoid repeatedly
        * convert the expressions in subqueries and improve performance, we
@@ -7070,7 +7072,7 @@ mq_get_references_node (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
     {
       /* The only part of a spec node that could contain references to the given spec_id are derived tables,
        * path_entities, path_conjuncts, and on_cond. All the rest of the name nodes for the spec are not references,
-       * but range variables, class names, etc. We don't want to mess with these. We'll handle the ones that we want by 
+       * but range variables, class names, etc. We don't want to mess with these. We'll handle the ones that we want by
        * hand. */
       node->info.spec.derived_table =
 	parser_walk_tree (parser, node->info.spec.derived_table, mq_get_references_node, spec, pt_continue_walk, NULL);
@@ -7084,7 +7086,7 @@ mq_get_references_node (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
       *continue_walk = PT_LIST_WALK;
     }
 
-  /* Data type nodes can not contain any valid references.  They do contain class names and other things we don't want. 
+  /* Data type nodes can not contain any valid references.  They do contain class names and other things we don't want.
    */
   if (node->node_type == PT_DATA_TYPE)
     {
@@ -7946,8 +7948,8 @@ mq_translate_paths (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * root
 
 	      /* the following block of code attempts to gurantee that all candidate subclasses are copied to the
 	       * entity list of the path spec we are about to create.
-	       * 
-	       * * relational proxies are made an exception, because 1) relational proxies can inherently only refer to 
+	       *
+	       * * relational proxies are made an exception, because 1) relational proxies can inherently only refer to
 	       * one table. */
 	      if (db_is_class (real_class->info.name.db_object) > 0)
 		{
@@ -8854,14 +8856,24 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * class_,
 	  spec->info.spec.path_entities = NULL;
 	  if (newspec)
 	    {
-	      if (newspec->info.spec.entity_name == NULL)
+	      if (newspec->info.spec.derived_table_type == PT_DERIVED_JSON_TABLE)
 		{
-		  newspec->info.spec.entity_name = spec->info.spec.entity_name;
-		  /* spec will be free later, we don't want the entity_name will be freed */
-		  spec->info.spec.entity_name = NULL;
+		  /* flat_entity_list is needed to gather referenced oids in xasl_generation
+		   * in pt_spec_to_xasl_class_oid_list */
+		  newspec->info.spec.flat_entity_list = spec->info.spec.flat_entity_list;
+		  spec->info.spec.flat_entity_list = NULL;
+		}
+	      else
+		{
+		  if (newspec->info.spec.entity_name == NULL)
+		    {
+		      newspec->info.spec.entity_name = spec->info.spec.entity_name;
+		      /* spec will be free later, we don't want the entity_name will be freed */
+		      spec->info.spec.entity_name = NULL;
+		    }
+		  newspec->info.spec.range_var->info.name.original = spec->info.spec.range_var->info.name.original;
 		}
 
-	      newspec->info.spec.range_var->info.name.original = spec->info.spec.range_var->info.name.original;
 	      newspec->info.spec.location = spec->info.spec.location;
 	      /* move join info */
 	      if (spec->info.spec.join_type != PT_JOIN_NONE)
@@ -9776,7 +9788,7 @@ mq_push_path (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec, PT_N
 	{
 	  if (!PT_IS_OID_NAME (refs))
 	    {
-	      /* for each referenced attribute, 1) Make a new derived table symbol on referenced and as_attr_lists.  2) 
+	      /* for each referenced attribute, 1) Make a new derived table symbol on referenced and as_attr_lists.  2)
 	       * Create a new path node on each select list made from the referenced name and the column corresponding
 	       * to the join arg1.  3) replace the names in statement corresponding to references with generated name. */
 	      new_col = mq_generate_unique (parser, cols);
@@ -10199,7 +10211,7 @@ mq_set_names_dbobject (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, 
     {
       node->info.name.db_object = info->object;
 
-      /* don't walk entity_name_list/flat_entity_spec do walk list especially for method args list for example: set a = 
+      /* don't walk entity_name_list/flat_entity_spec do walk list especially for method args list for example: set a =
        * func(x, y, z) <-- walk into y, z */
       *continue_walk = PT_LIST_WALK;
     }
@@ -10610,7 +10622,7 @@ mq_update_attribute (DB_OBJECT * vclass_object, const char *attr_name, DB_OBJECT
 	  parser_free_tree (parser, value);
 	  db_make_null (&value_holder->info.value.db_value);
 	  value_holder->info.value.db_value_is_initialized = false;
-	  /* 
+	  /*
 	   * This is a bit of a kludge since there is no way to clean up
 	   * the data_value portion of the info structure.  The value_holder
 	   * node now points into the parse tree, but has been allocated by
@@ -11432,7 +11444,7 @@ mq_rewrite_order_dependent_query (PARSER_CONTEXT * parser, PT_NODE * select, int
   parent->info.query.scan_op_type = select->info.query.scan_op_type;
   parent->info.query.oids_included = select->info.query.oids_included;
 
-  /* 
+  /*
    * we now have the original SELECT (with both order dependent and order
    * independent nodes in the select list) written as a derived table of an
    * empty parent SELECT. first step is to:
@@ -11551,7 +11563,7 @@ mq_rewrite_order_dependent_query (PARSER_CONTEXT * parser, PT_NODE * select, int
 	}
     }
 
-  /* second step is to iterate trough the order dependent nodes (which are now in the parent select list) and, for each 
+  /* second step is to iterate trough the order dependent nodes (which are now in the parent select list) and, for each
    * of them, add nodes in the derived table consisting of all order independent subexpressions */
   list = parent->info.query.q.select.list;
   while (list != NULL)

@@ -44,6 +44,7 @@
  * IMPORTED OTHER HEADER FILES						*
  ************************************************************************/
 #include "cas_error.h"
+#include "dbtran_def.h"
 
 /************************************************************************
  * EXPORTED DEFINITIONS							*
@@ -354,7 +355,8 @@ typedef enum
   /* Disabled type */
   CCI_U_TYPE_TIMETZ = 33,	/* internal use only - RESERVED */
   /* end of disabled types */
-  CCI_U_TYPE_LAST = CCI_U_TYPE_DATETIMELTZ
+  CCI_U_TYPE_JSON = 34,
+  CCI_U_TYPE_LAST = CCI_U_TYPE_JSON
 } T_CCI_U_TYPE;
 
 typedef unsigned char T_CCI_U_EXT_TYPE;
@@ -577,7 +579,6 @@ typedef struct DATASOURCE_T T_CCI_DATASOURCE;
 #endif
 #define CUBRID_STMT_CALL_SP	0x7e
 #define CUBRID_STMT_UNKNOWN	0x7f
-
 /* for backward compatibility */
 #define T_CCI_SQLX_CMD T_CCI_CUBRID_STMT
 
@@ -727,27 +728,7 @@ typedef enum
   CCI_DS_KEY_MAX_POOL_SIZE
 } T_CCI_DATASOURCE_KEY;
 
-#if !defined(CAS)
-#ifdef DBDEF_HEADER_
-typedef int T_CCI_TRAN_ISOLATION;
-#else
-typedef enum
-{
-  TRAN_UNKNOWN_ISOLATION = 0,
-  TRAN_ISOLATION_MIN = 4,
-
-  TRAN_READ_COMMITTED = 4,
-  TRAN_REP_CLASS_COMMIT_INSTANCE = 4,	/* for backward compatibility */
-
-  TRAN_REPEATABLE_READ = 5,
-  TRAN_REP_CLASS_REP_INSTANCE = 5,	/* for backward compatibility */
-
-  TRAN_SERIALIZABLE = 6,
-
-  TRAN_ISOLATION_MAX = 6
-} T_CCI_TRAN_ISOLATION;
-#endif
-#endif
+typedef DB_TRAN_ISOLATION T_CCI_TRAN_ISOLATION;	// alias
 
 typedef enum
 {
@@ -813,7 +794,7 @@ extern "C"
   extern int cci_connect_with_url_ex (char *url, char *user, char *pass, T_CCI_ERROR * err_buf);
   extern int cci_disconnect (int con_handle, T_CCI_ERROR * err_buf);
   extern int cci_end_tran (int con_handle, char type, T_CCI_ERROR * err_buf);
-  extern int cci_prepare (int con_handle, char *sql_stmt, char flag, T_CCI_ERROR * err_buf);
+  extern int cci_prepare (int con_handle, const char *sql_stmt, char flag, T_CCI_ERROR * err_buf);
   extern int cci_get_bind_num (int req_handle);
   extern T_CCI_COL_INFO *cci_get_result_info (int req_handle, T_CCI_CUBRID_STMT * cmd_type, int *num);
   extern int cci_bind_param (int req_handle, int index, T_CCI_A_TYPE a_type,
@@ -922,7 +903,7 @@ extern "C"
   extern int cci_get_shard_id_with_con_handle (int con_h_id, int *shard_id, T_CCI_ERROR * err_buf);
   extern int cci_get_shard_id_with_req_handle (int req_h_id, int *shard_id, T_CCI_ERROR * err_buf);
 
-  /* 
+  /*
    * IMPORTANT: cci_last_insert_id and cci_get_last_insert_id
    *
    *   cci_get_last_insert_id set value as last insert id in con_handle

@@ -32,6 +32,20 @@
 
 namespace cubthread
 {
+  static bool FORCE_THREAD_ALWAYS_ALIVE = false;
+
+  bool
+  wp_is_thread_always_alive_forced ()
+  {
+    return FORCE_THREAD_ALWAYS_ALIVE;
+  }
+
+  void
+  wp_set_force_thread_always_alive ()
+  {
+    FORCE_THREAD_ALWAYS_ALIVE = true;
+  }
+
   //////////////////////////////////////////////////////////////////////////
   // statistics
   //////////////////////////////////////////////////////////////////////////
@@ -130,7 +144,8 @@ namespace cubthread
 	ss << statsp[index] << std::endl;
       }
 
-    _er_log_debug (ARG_FILE_LINE, ss.str ().c_str ());
+    std::string str = ss.str ();
+    _er_log_debug (ARG_FILE_LINE, str.c_str ());
   }
 
 } // namespace cubthread

@@ -370,7 +370,7 @@ struct coll_data
   UCA_L13_W *uca_w_l13;		/* weight array L1, L2, L3 */
   UCA_L4_W *uca_w_l4;
 
-  COLL_CONTRACTION *contr_list;	/* contactions lists; contractions are stored in binary ascending order of UTF-8 buffer 
+  COLL_CONTRACTION *contr_list;	/* contactions lists; contractions are stored in binary ascending order of UTF-8 buffer
 				 */
   int count_contr;
   int contr_min_size;		/* size of smallest contraction buffer (in bytes) */

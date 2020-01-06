@@ -2684,7 +2684,7 @@ conn_restart_client (CI_CONN_STRUCTURE * pconn, const char *program, int print_v
       sprintf (port_string, "%d", port);
       sysprm_set_force ("cubrid_port_id", port_string);
     }
-  client_credential.client_type = BOOT_CLIENT_DEFAULT;
+  client_credential.client_type = DB_CLIENT_TYPE_DEFAULT;
   client_credential.client_info = NULL;
   client_credential.db_name = (char *) volume;
   client_credential.db_user = db_get_user_name ();

@@ -20,6 +20,7 @@
 #include "test_memory_alloc_helper.hpp"
 
 #include "thread_entry.hpp"
+#include "thread_manager.hpp"
 
 #include <iostream>
 #include <mutex>

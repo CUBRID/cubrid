@@ -27,6 +27,8 @@
 
 #ident "$Id$"
 
+#include "porting.h"
+
 #include <time.h>
 
 #if defined(WINDOWS)
@@ -86,7 +88,7 @@ struct t_as_info
   char request_file[64];
   char log_msg[64];
   char database_name[SRV_CON_DBNAME_SIZE];
-  char database_host[MAXHOSTNAMELEN];
+  char database_host[CUB_MAXHOSTNAMELEN];
   time_t last_connect_time;
   INT64 num_requests_received;
   INT64 num_transactions_processed;

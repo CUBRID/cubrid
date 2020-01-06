@@ -104,7 +104,7 @@ typedef enum cci_mht_put_opt CCI_MHT_PUT_OPT;
  * Note: if x is a prime number, the n is prime if X**(n-1) mod n == 1
  */
 
-static unsigned int cci_mht_5str_pseudo_key (void *key, int key_size);
+static unsigned int cci_mht_5str_pseudo_key (const void *key, int key_size);
 
 static unsigned int cci_mht_calculate_htsize (unsigned int ht_size);
 static int cci_mht_rehash (CCI_MHT_TABLE * ht);
@@ -120,7 +120,7 @@ static void *cci_mht_put_internal (CCI_MHT_TABLE * ht, void *key, void *data, CC
  * Note: Based on hash method reported by Diniel J. Bernstein.
  */
 static unsigned int
-cci_mht_5str_pseudo_key (void *key, int key_size)
+cci_mht_5str_pseudo_key (const void *key, int key_size)
 {
   unsigned int hash = 5381;
   int i = 0;
@@ -162,7 +162,7 @@ cci_mht_5str_pseudo_key (void *key, int key_size)
  * Note: Based on hash method reported by Diniel J. Bernstein.
  */
 unsigned int
-cci_mht_5strhash (void *key, unsigned int ht_size)
+cci_mht_5strhash (const void *key, unsigned int ht_size)
 {
   return cci_mht_5str_pseudo_key (key, -1) % ht_size;
 }
@@ -174,9 +174,9 @@ cci_mht_5strhash (void *key, unsigned int ht_size)
  *   key2(in): pointer to string key2
  */
 int
-cci_mht_strcasecmpeq (void *key1, void *key2)
+cci_mht_strcasecmpeq (const void *key1, const void *key2)
 {
-  if ((strcasecmp ((char *) key1, (char *) key2)) == 0)
+  if ((strcasecmp (REINTERPRET_CAST (const char *, key1), REINTERPRET_CAST (const char *, key2)) == 0))
     {
       return TRUE;
     }
@@ -477,7 +477,7 @@ cci_mht_destroy (CCI_MHT_TABLE * ht, bool free_key, bool free_data)
  * Note: For each entry in hash table
  */
 void *
-cci_mht_rem (CCI_MHT_TABLE * ht, void *key, bool free_key, bool free_data)
+cci_mht_rem (CCI_MHT_TABLE * ht, const void *key, bool free_key, bool free_data)
 {
   unsigned int hash;
   CCI_HENTRY_PTR prev_hentry;
@@ -486,7 +486,7 @@ cci_mht_rem (CCI_MHT_TABLE * ht, void *key, bool free_key, bool free_data)
 
   assert (ht != NULL && key != NULL);
 
-  /* 
+  /*
    * Hash the key and make sure that the return value is between 0 and size
    * of hash table
    */
@@ -578,7 +578,7 @@ cci_mht_get (CCI_MHT_TABLE * ht, void *key)
 
   assert (ht != NULL && key != NULL);
 
-  /* 
+  /*
    * Hash the key and make sure that the return value is between 0 and size
    * of hash table
    */
@@ -600,7 +600,7 @@ cci_mht_get (CCI_MHT_TABLE * ht, void *key)
 }
 
 /*
- * cci_mht_put_internal - internal function for cci_mht_put(), 
+ * cci_mht_put_internal - internal function for cci_mht_put(),
  *                        cci_mht_put_new(), and cci_mht_put_data();
  *                        insert an entry associating key with data
  *   return: Returns key if insertion was OK, otherwise, it returns NULL
@@ -624,7 +624,7 @@ cci_mht_put_internal (CCI_MHT_TABLE * ht, void *key, void *data, CCI_MHT_PUT_OPT
 
   assert (ht != NULL && key != NULL);
 
-  /* 
+  /*
    * Hash the key and make sure that the return value is between 0 and size
    * of hash table
    */
@@ -668,7 +668,7 @@ cci_mht_put_internal (CCI_MHT_TABLE * ht, void *key, void *data, CCI_MHT_PUT_OPT
 	}
     }
 
-  /* 
+  /*
    * Link the new entry to the double link list of active entries and the
    * hash itself. The previous entry should point to new one.
    */
@@ -698,7 +698,7 @@ cci_mht_put_internal (CCI_MHT_TABLE * ht, void *key, void *data, CCI_MHT_PUT_OPT
   ht->table[hash] = hentry;
   ht->nentries++;
 
-  /* 
+  /*
    * Rehash if almost all entries of hash table are used and there are at least
    * 5% of collisions
    */
@@ -753,7 +753,7 @@ hostname2uchar (char *host, unsigned char *ip_addr)
 {
   in_addr_t in_addr;
 
-  /* 
+  /*
    * First try to convert to the host name as a dotten-decimal number.
    * Only if that fails do we call gethostbyname.
    */

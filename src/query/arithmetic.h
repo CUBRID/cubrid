@@ -67,17 +67,33 @@ extern int db_width_bucket (DB_VALUE * result, const DB_VALUE * value1, const DB
  */
 extern int db_sleep (DB_VALUE * result, DB_VALUE * value);
 extern int db_crc32_dbval (DB_VALUE * result, DB_VALUE * value);
-extern int db_json_contains_dbval (const DB_VALUE * json, const DB_VALUE * value, const DB_VALUE * path,
-				   DB_VALUE * result);
-extern int db_json_type_dbval (const DB_VALUE * json, DB_VALUE * type);
-extern int db_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * json_res);
-extern int db_json_valid_dbval (const DB_VALUE * json, DB_VALUE * type_res);
-extern int db_json_length_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * res);
-extern int db_json_depth_dbval (DB_VALUE * json, DB_VALUE * res);
-extern int db_json_unquote_dbval (DB_VALUE * json, DB_VALUE * res);
-extern int db_json_pretty_dbval (DB_VALUE * json, DB_VALUE * res);
-extern int db_json_arrayagg_dbval_accumulate (DB_VALUE * dbval, DB_VALUE * res);
-extern int db_json_objectagg_dbval_accumulate (DB_VALUE * json_key, DB_VALUE * json_val, DB_VALUE * json_res);
-extern int db_json_merge (DB_VALUE * json, DB_VALUE * json_res);
 extern int db_least_or_greatest (DB_VALUE * arg1, DB_VALUE * arg2, DB_VALUE * result, bool least);
+
+// json functions
+extern int db_accumulate_json_arrayagg (const DB_VALUE * json_db_val, DB_VALUE * json_res);
+extern int db_accumulate_json_objectagg (const DB_VALUE * json_key, const DB_VALUE * json_db_val, DB_VALUE * json_res);
+extern int db_evaluate_json_array (DB_VALUE * result, DB_VALUE * const *arg, int const num_args);
+extern int db_evaluate_json_array_append (DB_VALUE * result, DB_VALUE * const *arg, int const num_args);
+extern int db_evaluate_json_array_insert (DB_VALUE * result, DB_VALUE * const *arg, int const num_args);
+extern int db_evaluate_json_contains (DB_VALUE * result, DB_VALUE * const *arg, int const num_args);
+extern int db_evaluate_json_contains_path (DB_VALUE * result, DB_VALUE * const *arg, const int num_args);
+extern int db_evaluate_json_depth (DB_VALUE * result, DB_VALUE * const *args, int num_args);
+extern int db_evaluate_json_extract (DB_VALUE * result, DB_VALUE * const *args, int num_args);
+extern int db_evaluate_json_get_all_paths (DB_VALUE * result, DB_VALUE * const *arg, int const num_args);
+extern int db_evaluate_json_insert (DB_VALUE * result, DB_VALUE * const *arg, const int num_args);
+extern int db_evaluate_json_keys (DB_VALUE * result, DB_VALUE * const *arg, const int num_args);
+extern int db_evaluate_json_length (DB_VALUE * result, DB_VALUE * const *args, int num_args);
+extern int db_evaluate_json_merge_preserve (DB_VALUE * result, DB_VALUE * const *arg, int const num_args);
+extern int db_evaluate_json_merge_patch (DB_VALUE * result, DB_VALUE * const *arg, int const num_args);
+extern int db_evaluate_json_object (DB_VALUE * result, DB_VALUE * const *arg, int const num_args);
+extern int db_evaluate_json_pretty (DB_VALUE * result, DB_VALUE * const *args, int num_args);
+extern int db_evaluate_json_quote (DB_VALUE * result, DB_VALUE * const *args, int num_args);
+extern int db_evaluate_json_remove (DB_VALUE * result, DB_VALUE * const *arg, int const num_args);
+extern int db_evaluate_json_replace (DB_VALUE * result, DB_VALUE * const *arg, const int num_args);
+extern int db_evaluate_json_search (DB_VALUE * result, DB_VALUE * const *args, const int num_args);
+extern int db_evaluate_json_set (DB_VALUE * result, DB_VALUE * const *arg, const int num_args);
+extern int db_evaluate_json_type_dbval (DB_VALUE * result, DB_VALUE * const *args, int num_args);
+extern int db_evaluate_json_unquote (DB_VALUE * result, DB_VALUE * const *args, int num_args);
+extern int db_evaluate_json_valid (DB_VALUE * result, DB_VALUE * const *args, int num_args);
+
 #endif /* _ARITHMETIC_H_ */

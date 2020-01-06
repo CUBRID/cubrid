@@ -30,6 +30,7 @@
 #include "storage_common.h"
 #include "object_primitive.h"
 #include "db.h"
+#include "elo.h"
 #include "db_elo.h"
 #include "dbtype.h"
 
@@ -174,7 +175,7 @@ db_elo_read (const DB_ELO * elo, off_t pos, void *buf, size_t count, DB_BIGINT *
  * count(in):
  */
 int
-db_elo_write (DB_ELO * elo, off_t pos, void *buf, size_t count, DB_BIGINT * written_bytes)
+db_elo_write (DB_ELO * elo, off_t pos, const void *buf, size_t count, DB_BIGINT * written_bytes)
 {
   INT64 ret;
 

@@ -190,7 +190,7 @@ int
 nv_add_nvp_int64 (nvplist * ref, const char *name, int64_t value)
 {
   char strbuf[32];
-  sprintf (strbuf, "%lld", value);
+  sprintf (strbuf, "%lld", (long long int) value);
   return (nv_add_nvp (ref, name, strbuf));
 }
 

@@ -1,19 +1,19 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -221,21 +221,15 @@ util_arm_signal_handlers (SIG_HANDLER sigint_handler, SIG_HANDLER sigquit_handle
 
   if (sigint_handler != NULL)
     {
-      if (os_set_signal_handler (SIGINT, SIG_IGN) != SIG_IGN)
-	{
-	  (void) os_set_signal_handler (SIGINT, system_interrupt_handler);
-	  user_interrupt_handler = sigint_handler;
-	}
+      (void) os_set_signal_handler (SIGINT, system_interrupt_handler);
+      user_interrupt_handler = sigint_handler;
     }
 #if !defined(WINDOWS)
   if (sigquit_handler != NULL)
     {
       /* Is this kind of test necessary for the quit signal ? */
-      if (os_set_signal_handler (SIGQUIT, SIG_IGN) != SIG_IGN)
-	{
-	  (void) os_set_signal_handler (SIGQUIT, system_quit_handler);
-	  user_quit_handler = sigquit_handler;
-	}
+      (void) os_set_signal_handler (SIGQUIT, system_quit_handler);
+      user_quit_handler = sigquit_handler;
     }
 #endif
 }

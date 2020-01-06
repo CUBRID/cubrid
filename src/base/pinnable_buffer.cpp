@@ -26,7 +26,7 @@
 #include "pinnable_buffer.hpp"
 #include "pinning.hpp"
 
-namespace mem
+namespace cubmem
 {
 
   int pinnable_buffer::init (char *ptr, const size_t buf_size, cubbase::pinner *referencer)
@@ -42,4 +42,4 @@ namespace mem
     return NO_ERROR;
   }
 
-} /* namespace mem */
+} /* namespace cubmem */
