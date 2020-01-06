@@ -4434,6 +4434,12 @@ db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB
   pattern_char_string_p = db_get_string (pattern);
   pattern_length = db_get_string_size (pattern);
 
+  if (pattern_length == 0)
+    {
+      *result = V_FALSE;
+      goto cleanup;
+    }
+
   /* extract case sensitivity */
   is_case_sensitive = (case_sensitive->data.i != 0);
 
