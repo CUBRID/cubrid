@@ -4503,7 +4503,6 @@ db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB
       error_status = ER_REGEX_EXEC_ERROR;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1, e.what ());
       *result = V_ERROR;
-      goto cleanup;
     }
   // *INDENT-ON*
 
