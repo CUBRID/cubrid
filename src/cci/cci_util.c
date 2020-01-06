@@ -1024,7 +1024,7 @@ cci_url_match (const char *src, char *token[])
 	}
       fprintf (stderr, "regex_error : %s\n", e.what ());
     }
-    // *INDENT-ON*
+  // *INDENT-ON*
 
   if (error != CCI_ER_NO_ERROR)
     {
