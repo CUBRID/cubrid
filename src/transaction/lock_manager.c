@@ -10783,7 +10783,7 @@ lock_unlock_object_logical_with_cleaning (THREAD_ENTRY * thread_p, bool is_res_m
       /* Need mutex since non2pl list needs to be changed. */
       return false;
     }
-  
+
   if (LK_ENTRY_IS_LOGICAL_DELETED (entry_ptr))
     {
       /* Already set. Nothing to do. */
