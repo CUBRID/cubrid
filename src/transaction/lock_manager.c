@@ -9769,24 +9769,29 @@ lock_stop_instant_lock_mode (THREAD_ENTRY * thread_p, int tran_index, bool need_
       assert (tran_index == entry_ptr->tran_index);
 
       next_ptr = entry_ptr->tran_next;
-      count = entry_ptr->instant_lock_count;
-      assert_release (count >= 0);
-      if (need_unlock)
+
+      if (LK_ENTRY_IS_ACTIVE (entry_ptr))
 	{
+	  count = entry_ptr->instant_lock_count;
 	  assert_release (count >= 0);
-	  while (count > 0)
+	  if (need_unlock)
 	    {
-	      lock_internal_perform_unlock_object (thread_p, entry_ptr, false, true);
-	      count--;
+	      assert_release (count >= 0);
+	      while (count > 0)
+		{
+		  lock_internal_perform_unlock_object (thread_p, entry_ptr, false, true);
+		  count--;
+		}
 	    }
+	  entry_ptr->instant_lock_count = 0;
 	}
-      entry_ptr->instant_lock_count = 0;
+
       entry_ptr = next_ptr;
     }
 
   /* remove root class lock */
   entry_ptr = tran_lock->root_class_hold;
-  if (entry_ptr != NULL)
+  if (entry_ptr != NULL && LK_ENTRY_IS_ACTIVE (entry_ptr))
     {
       assert (tran_index == entry_ptr->tran_index);
 
