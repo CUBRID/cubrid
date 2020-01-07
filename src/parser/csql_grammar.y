@@ -18775,13 +18775,12 @@ predicate_expr_sub
                                         if (subq)
                                           {
                                             /* If not PT_TYPE_STAR */
-                                            pt_select_list_to_one_col (this_parser, t, true);     
-                                          }                                        
+                                            pt_select_list_to_one_col (this_parser, t, true);
+                                          }
 					found_paren_set_expr = true;
 				      }
 				  }
 			      }
-
 			    if (found_paren_set_expr == true)
 			      {
 				/* expression number check */
@@ -18793,6 +18792,26 @@ predicate_expr_sub
 				  {
 				    for (t = rhs; t; t = t->next)
 				      {
+					if (!PT_IS_QUERY_NODE_TYPE (t->node_type))
+					  {
+					    if (pt_is_set_type (t))
+					      {
+						if (pt_is_set_type (t->info.value.data_value.set))
+						  {
+						    /* syntax error case : (a,b) in ((1,1),((2,2),(3,3)) */
+						    found_match = false;
+						    rhs_cnt = 0;
+						    break;
+						  }
+					      }
+					    else
+					      {
+						/* syntax error case : (a,b) in ((1,1),2) */
+						found_match = false;
+						rhs_cnt = 0;
+						break;
+					      }
+					  }
 					rhs_cnt = pt_get_expression_count (t);
 					if (rhs_cnt < 0)
 					  {
