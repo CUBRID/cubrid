@@ -7801,7 +7801,7 @@ lock_get_object_lock (const OID * oid, const OID * class_oid)
   if (OID_EQ (oid, oid_Root_class_oid))
     {
       rv = pthread_mutex_lock (&tran_lock->hold_mutex);
-      if (tran_lock->root_class_hold != NULL)
+      if (tran_lock->root_class_hold != NULL && LK_ENTRY_IS_ACTIVE (tran_lock->root_class_hold))
 	{
 	  lock_mode = tran_lock->root_class_hold->granted_mode;
 	}
@@ -8005,7 +8005,7 @@ lock_has_xlock (THREAD_ENTRY * thread_p)
   rv = pthread_mutex_lock (&tran_lock->hold_mutex);
 
   /* 1. check root class lock */
-  if (tran_lock->root_class_hold != NULL)
+  if (tran_lock->root_class_hold != NULL && LK_ENTRY_IS_ACTIVE (tran_lock->root_class_hold))
     {
       lock_mode = tran_lock->root_class_hold->granted_mode;
       if (lock_mode == X_LOCK || lock_mode == IX_LOCK || lock_mode == SIX_LOCK || lock_mode == SCH_M_LOCK)
@@ -8019,12 +8019,16 @@ lock_has_xlock (THREAD_ENTRY * thread_p)
   entry_ptr = tran_lock->class_hold_list;
   while (entry_ptr != NULL)
     {
-      lock_mode = entry_ptr->granted_mode;
-      if (lock_mode == X_LOCK || lock_mode == IX_LOCK || lock_mode == SIX_LOCK || lock_mode == SCH_M_LOCK)
+      if (LK_ENTRY_IS_ACTIVE (entry_ptr))
 	{
-	  pthread_mutex_unlock (&tran_lock->hold_mutex);
-	  return true;
+	  lock_mode = entry_ptr->granted_mode;
+	  if (lock_mode == X_LOCK || lock_mode == IX_LOCK || lock_mode == SIX_LOCK || lock_mode == SCH_M_LOCK)
+	    {
+	      pthread_mutex_unlock (&tran_lock->hold_mutex);
+	      return true;
+	    }
 	}
+
       entry_ptr = entry_ptr->tran_next;
     }
 
@@ -9152,7 +9156,7 @@ lock_unlock_all_shared_get_all_exclusive (THREAD_ENTRY * thread_p, LK_ACQUIRED_L
 
       /* get nobj_locks */
       acqlocks->nobj_locks = (unsigned int) (tran_lock->class_hold_count + tran_lock->inst_hold_count);
-      if (tran_lock->root_class_hold != NULL)
+      if (tran_lock->root_class_hold != NULL && LK_ENTRY_IS_ACTIVE (tran_lock->root_class_hold))
 	{
 	  acqlocks->nobj_locks += 1;
 	}
@@ -9173,7 +9177,7 @@ lock_unlock_all_shared_get_all_exclusive (THREAD_ENTRY * thread_p, LK_ACQUIRED_L
 
       /* collect root class lock information */
       entry_ptr = tran_lock->root_class_hold;
-      if (entry_ptr != NULL)
+      if (entry_ptr != NULL && LK_ENTRY_IS_ACTIVE (entry_ptr))
 	{
 	  assert (tran_index == entry_ptr->tran_index);
 
@@ -9186,6 +9190,11 @@ lock_unlock_all_shared_get_all_exclusive (THREAD_ENTRY * thread_p, LK_ACQUIRED_L
       /* collect general class lock information */
       for (entry_ptr = tran_lock->class_hold_list; entry_ptr != NULL; entry_ptr = entry_ptr->tran_next)
 	{
+	  if (!LK_ENTRY_IS_ACTIVE (entry_ptr))
+	    {
+	      continue;
+	    }
+
 	  assert (tran_index == entry_ptr->tran_index);
 
 	  COPY_OID (&acqlocks->obj[idx].oid, &entry_ptr->res_head->key.oid);
@@ -9198,6 +9207,7 @@ lock_unlock_all_shared_get_all_exclusive (THREAD_ENTRY * thread_p, LK_ACQUIRED_L
       for (entry_ptr = tran_lock->inst_hold_list; entry_ptr != NULL; entry_ptr = entry_ptr->tran_next)
 	{
 	  assert (tran_index == entry_ptr->tran_index);
+	  assert (LK_ENTRY_IS_ACTIVE (entry_ptr));
 
 	  COPY_OID (&acqlocks->obj[idx].oid, &entry_ptr->res_head->key.oid);
 	  COPY_OID (&acqlocks->obj[idx].class_oid, &entry_ptr->res_head->key.class_oid);
