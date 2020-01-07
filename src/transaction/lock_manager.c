@@ -745,7 +745,21 @@ static void lock_get_transaction_lock_waiting_threads_mapfunc (THREAD_ENTRY & th
 							       size_t & count);
 static void lock_get_transaction_lock_waiting_threads (int tran_index, tran_lock_waiters_array_type & tran_lock_waiters,
 						       size_t & count);
-/* Logically locking functions. */
+/* Logically locking functions.
+ * Logical locking is used to avoid as much as possible resource mutex acquisition that creates contention.
+ * At unlock, the transaction entry is logically deleted (mark deleted), so it can be reactivated later
+ * (instead phisically destroying it and recreate it). Logical and physical locking modes can't be mixed.
+ * Commuting between these 2 modes is done in atomic manner.
+ * In logical mode, in some particular cases, we acquire resource mutex. The purpose is to avoid to
+ * commute often between logical and physical, that may create performance issue.
+ * The logical locking is used only for class resource, when total holder modes is maximum IX and there
+ * is no waiter. Positioning of lock entries in holder list is not important since there is no waiting
+ * transaction. However, the position is considered after switching to physical locking mode. Logical
+ * locking considers acquiring, releasing, demoting, non2pl, instant, multiple transaction locks on same.
+ * resource. It is obvious that logical locking is disabled in case of deadlocks (there is no waiter).
+ * Also, logical locking is disabled in case of lock escalation, when requested mode is too strong.
+ * In physical mode, after releasing a lock, commutation to logical is done, if possible.
+ */
 STATIC_INLINE int lock_res_connect_grant_entry (THREAD_ENTRY * thread_p, int tran_index, LF_TRAN_ENTRY * t_entry_ent,
 						LK_RES * res_ptr, bool is_res_mutex_locked, LOCK new_mode,
 						bool is_instant_duration, LK_ENTRY * class_entry, bool update_non2pl,
@@ -10708,7 +10722,7 @@ lock_get_transaction_lock_waiting_threads (int tran_index, tran_lock_waiters_arr
  * entry_ptr_ptr (in/out) : The address of transaction lock entry pointer.
  * needs_remove_resource (out): True, if needs to remove the resource.
  *
- *   Note: This purpose of this function is to speed up lock releasing. It removes the lock mode, decrement
+ *   Note: This purpose of this function is to speed up lock releasing. It removes the lock mode and decrements
  * the counter from logical lock info of the resource and set logical delete flag in lock entry. These operations
  * are done in an atomic manner.
  *         In most of the cases, the function can be called without acquiring resource mutex, to avoid mutex
@@ -10769,8 +10783,7 @@ lock_unlock_object_logical_with_cleaning (THREAD_ENTRY * thread_p, bool is_res_m
       /* Need mutex since non2pl list needs to be changed. */
       return false;
     }
-
-  entry_ptr = *entry_ptr_ptr;
+  
   if (LK_ENTRY_IS_LOGICAL_DELETED (entry_ptr))
     {
       /* Already set. Nothing to do. */
