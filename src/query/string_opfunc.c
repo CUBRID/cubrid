@@ -4562,8 +4562,8 @@ db_string_rlike (const DB_VALUE *src, const DB_VALUE *pattern, const DB_VALUE *c
       }
     catch (std::regex_error &e)
       {
-	// regex execution exception, error_complexity or error_stack
-	error_status = ER_REGEX_EXEC_ERROR;
+	// regex compile exception
+	error_status = ER_REGEX_COMPILE_ERROR;
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1, e.what ());
 	goto cleanup;
       }
@@ -4764,7 +4764,7 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
 				    DB_VALUE_PRECISION (result), db_get_string (result), db_get_string_size (result),
 				    db_get_string_codeset (src), coll_id);
 	  }
-  result->need_clear = true;
+	result->need_clear = true;
 	goto exit;
       }
 
@@ -4794,8 +4794,8 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
       }
     catch (std::regex_error &e)
       {
-	// regex execution exception, error_complexity or error_stack
-	error_status = ER_REGEX_EXEC_ERROR;
+	// regex compile exception
+	error_status = ER_REGEX_COMPILE_ERROR;
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1, e.what ());
 	goto exit;
       }
@@ -4829,7 +4829,7 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
 				    DB_VALUE_PRECISION (result), db_get_string (result), db_get_string_size (result),
 				    db_get_string_codeset (src), coll_id);
 	  }
-  result->need_clear = true;
+	result->need_clear = true;
 	goto exit;
       }
 
