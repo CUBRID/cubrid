@@ -9793,7 +9793,7 @@ pt_to_single_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms, bo
       if (multi_col_pos[i] != -1)
 	{
 	  /* case of multi column term */
-	  if(!pt_is_set_type (rhs) || pt_is_set_type (rhs->info.value.data_value.set) || !multi_col)
+	  if (!pt_is_set_type (rhs) || pt_is_set_type (rhs->info.value.data_value.set) || !multi_col)
 	    {
 	      /* rhs must be set type and NOT set of set */
 	      goto error;
@@ -10508,7 +10508,7 @@ pt_to_rangelist_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms,
 	      if (multi_col_pos[i] != -1)
 		{
 		  /* case of multi column term */
-		  if(!pt_is_set_type (llim) || pt_is_set_type (llim->info.value.data_value.set) || !multi_col)
+		  if (!pt_is_set_type (llim) || pt_is_set_type (llim->info.value.data_value.set) || !multi_col)
 		    {
 		      /* rhs must be set type and NOT set of set */
 		      goto error;
