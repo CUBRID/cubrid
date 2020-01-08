@@ -4301,7 +4301,6 @@ db_string_like (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB_
 }
 
 // *INDENT-OFF*
-#ifdef __cplusplus
 compiled_regex::compiled_regex() : regex (NULL), pattern (NULL) {}
 compiled_regex::~compiled_regex()
 {
@@ -4315,7 +4314,6 @@ compiled_regex::~compiled_regex()
       db_private_free_and_init (NULL, pattern);
     }
 }
-#endif
 
 static int
 regex_compile_internal (const std::string &pattern,
