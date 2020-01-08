@@ -4866,6 +4866,7 @@ lock_demote_class_lock_logical (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK_EN
       return false;
     }
 
+  assert (entry_ptr != NULL && LK_ENTRY_IS_ACTIVE (entry_ptr));
 
   /* Enable logical non2pl. This will block disabling logical locking in lock_object_logical_with_cleaning. */
   enabled_logical_non2pl = lock_enable_logical_non2pl (thread_p, res_ptr);
@@ -4878,12 +4879,6 @@ lock_demote_class_lock_logical (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK_EN
     {
       /* Not possible, I'm the mutex owner and I'm in lock logical mode. */
       assert (false);
-    }
-
-  if (entry_ptr == NULL || !LK_ENTRY_IS_ACTIVE (entry_ptr))
-    {
-      /* If the entry is deleted, nothing to do. */
-      return true;
     }
 
   /* Nobody can switch to lock non-logical mode, since I'm the mutex owner. */
@@ -4931,6 +4926,12 @@ lock_internal_demote_class_lock (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, 
 
   /* The caller is not holding any mutex */
   assert (entry_ptr != NULL);
+
+  if (!LK_ENTRY_IS_ACTIVE (entry_ptr))
+    {
+      /* Nothing to do. No cleaning is required here, since it can be done at the end of transaction. */
+      return NO_ERROR;
+    }
 
   res_ptr = entry_ptr->res_head;
 
