@@ -26,8 +26,7 @@
 
 #include "dbtype_def.h"             // DB_TYPE
 
-#include "system.h"     // for regex38a.h
-#include "libregex38a/regex38a.h"
+#include <regex>
 
 // forward definitions
 class regu_variable_node;
@@ -135,7 +134,7 @@ namespace cubxasl
     regu_variable_node *src;
     regu_variable_node *pattern;
     regu_variable_node *case_sensitive;
-    mutable cub_regex_t *compiled_regex;
+    mutable std::regex *compiled_regex;
     mutable char *compiled_pattern;
   };
 

@@ -35,8 +35,11 @@
 #include "language_support.h"
 #include "numeric_opfunc.h"
 #include "object_domain.h"
-#include "libregex38a/regex38a.h"
 #include "thread_compat.hpp"
+
+#ifdef __cplusplus
+#include <regex>
+#endif
 
 #define QSTR_IS_CHAR(s)          (((s)==DB_TYPE_CHAR) || \
                                  ((s)==DB_TYPE_VARCHAR))
@@ -172,7 +175,6 @@ extern int nchar_compare (const unsigned char *string1, int size1, const unsigne
 			  INTL_CODESET codeset);
 extern int bit_compare (const unsigned char *string1, int size1, const unsigned char *string2, int size2);
 extern int varbit_compare (const unsigned char *string1, int size1, const unsigned char *string2, int size2);
-extern int regex_matches (const char *pattern, const char *str, int reg_flags, bool * match);
 extern int get_last_day (int month, int year);
 extern int get_day (int month, int day, int year);
 
@@ -217,8 +219,12 @@ extern int db_string_pad (const MISC_OPERAND pad_operand, const DB_VALUE * src_s
 			  const DB_VALUE * pad_charset, DB_VALUE * padded_string);
 extern int db_string_like (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB_VALUE * esc_char,
 			   int *result);
+
+#ifdef __cplusplus
 extern int db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB_VALUE * case_sensitive,
-			    cub_regex_t ** comp_regex, char **comp_pattern, int *result);
+			    std::regex ** comp_regex, char **comp_pattern, int *result);
+#endif
+
 extern int db_string_limit_size_string (DB_VALUE * src_string, DB_VALUE * result, const int new_size, int *spare_bytes);
 extern int db_string_fix_string_size (DB_VALUE * src_string);
 extern int db_string_replace (const DB_VALUE * src_string, const DB_VALUE * srch_string, const DB_VALUE * repl_string,
