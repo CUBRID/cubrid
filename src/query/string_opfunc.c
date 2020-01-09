@@ -4375,18 +4375,7 @@ regex_compile (const DB_VALUE *in_pattern, const std::regex_constants::syntax_op
   /* update compiled pattern */
   if (should_compile == true)
     {
-      if (compiled_pattern != NULL)
-	{
-	  /* free old memory */
-	  db_private_free_and_init (NULL, compiled_pattern);
-	}
-
-      if (compiled_regex != NULL)
-	{
-	  /* free old regex object */
-	  delete compiled_regex;
-	  compiled_regex = NULL;
-	}
+      regex_clear (compiled_pattern, compiled_regex);
 
       /* allocate new memory */
       compiled_pattern = (char *) db_private_alloc (NULL, pattern_length + 1);
@@ -4400,11 +4389,11 @@ regex_compile (const DB_VALUE *in_pattern, const std::regex_constants::syntax_op
       memcpy (compiled_pattern, pattern_char_string_p, pattern_length);
       compiled_pattern[pattern_length] = '\0';
 
-    error_status = regex_compile_internal (compiled_pattern, reg_flags, compiled_regex);
-	  if (error_status != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	    }
+      error_status = regex_compile_internal (compiled_pattern, reg_flags, compiled_regex);
+      if (error_status != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	}
     }
 
   return error_status;
