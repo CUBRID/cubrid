@@ -4315,6 +4315,21 @@ compiled_regex::~compiled_regex()
     }
 }
 
+static void
+regex_clear (char *&compiled_pattern, std::regex *&compiled_regex)
+{
+  if (compiled_pattern != NULL)
+    {
+      db_private_free_and_init (NULL, compiled_pattern);
+    }
+
+  if (compiled_regex != NULL)
+    {
+      delete compiled_regex;
+      compiled_regex = NULL;
+    }
+}
+
 static int
 regex_compile_internal (const std::string &pattern,
 			const std::regex_constants::syntax_option_type &reg_flags,
@@ -4423,21 +4438,6 @@ regex_parse_match_type (const DB_VALUE *match_type, std::regex_constants::syntax
     }
 
   return error_status;
-}
-
-static void
-regex_clear (char *&compiled_pattern, std::regex *&compiled_regex)
-{
-  if (compiled_pattern != NULL)
-    {
-      db_private_free_and_init (NULL, compiled_pattern);
-    }
-
-  if (compiled_regex != NULL)
-    {
-      delete compiled_regex;
-      compiled_regex = NULL;
-    }
 }
 // *INDENT-ON*
 

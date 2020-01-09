@@ -75,9 +75,6 @@
  ************************************************************************/
 
 static char is_float_str (char *str);
-static void *cci_reg_malloc (void *dummy, size_t s);
-static void *cci_reg_realloc (void *dummy, void *p, size_t s);
-static void cci_reg_free (void *dummy, void *p);
 static int skip_ampm_chars (char *str);
 static int get_pm_offset (char *str, int hh);
 
@@ -967,24 +964,6 @@ is_float_str (char *str)
     return 1;
 
   return 0;
-}
-
-static void *
-cci_reg_malloc (void *dummy, size_t s)
-{
-  return cci_malloc (s);
-}
-
-static void *
-cci_reg_realloc (void *dummy, void *p, size_t s)
-{
-  return cci_realloc (p, s);
-}
-
-static void
-cci_reg_free (void *dummy, void *p)
-{
-  cci_free (p);
 }
 
 int
