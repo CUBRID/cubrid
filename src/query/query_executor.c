@@ -1543,7 +1543,7 @@ qexec_clear_regu_var (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, REGU_VARIABLE
 	      break;
 	    default:
 	      //any of union member may have been erased
-	      assert (0);
+	      assert (false);
 	      break;
 	    }
 

@@ -157,7 +157,7 @@ regu_variable_node::clear_xasl_local ()
 	    break;
 	    default:
 	      //any of union member may have been erased
-	      assert (0);
+	      assert (false);
 	      break;
 	    }
 

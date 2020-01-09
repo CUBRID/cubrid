@@ -146,7 +146,7 @@ struct function_node
 };
 
 // NOTE: The following union is used when a function needs to store any object temporary in query execution
-// please don't forget to deallocate it, refering regu_variable_node::clear_xasl_local()
+// please don't forget to deallocate it, refering regu_variable_node::clear_xasl_local() and qexec_clear_regu_var()
 union function_tmp_obj
 {
   COMPILED_REGEX *compiled_regex;
