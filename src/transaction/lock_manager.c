@@ -1191,7 +1191,7 @@ lock_initialize_entry_as_granted (LK_ENTRY * entry_ptr, int tran_index, LK_RES *
   entry_ptr->ngranules = 0;
   entry_ptr->instant_lock_count = 0;
   LK_ENTRY_SET_ACTIVE (entry_ptr);
-  if (res->key.type == LOCK_RESOURCE_CLASS || res->key.type == LOCK_RESOURCE_ROOT_CLASS)
+  if (LOCK_IS_ANY_CLASS_RESOURCE_TYPE (res->key.type))
     {
       entry_ptr->resource_version = LK_LI_GET_VERSION (res->logical_lock_info);
     }
@@ -1215,7 +1215,7 @@ lock_initialize_entry_as_blocked (LK_ENTRY * entry_ptr, THREAD_ENTRY * thread_p,
   entry_ptr->class_entry = NULL;
   entry_ptr->ngranules = 0;
   entry_ptr->instant_lock_count = 0;
-  if (res->key.type == LOCK_RESOURCE_CLASS || res->key.type == LOCK_RESOURCE_ROOT_CLASS)
+  if (LOCK_IS_ANY_CLASS_RESOURCE_TYPE (res->key.type))
     {
       entry_ptr->resource_version = LK_LI_GET_VERSION (res->logical_lock_info);
     }
@@ -1963,7 +1963,7 @@ lock_enable_logical_non2pl (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 {
   UINT64 old_logical_lock_info, new_logical_lock_info;
 
-  if (res_ptr->key.type == LOCK_RESOURCE_CLASS || res_ptr->key.type == LOCK_RESOURCE_ROOT_CLASS)
+  if (!LOCK_IS_ANY_CLASS_RESOURCE_TYPE (res_ptr->key.type))
     {
       /* Logical info is used only in case of classes. Nothing to do. */
       return false;
