@@ -33,6 +33,7 @@
 #endif // not SERVER/SA modes
 
 #include "boot.h"
+#include "btree_unique.hpp"
 #include "client_credentials.hpp"
 #include "config.h"
 #include "connection_globals.h"
@@ -47,15 +48,16 @@
 #include "log_comm.h"
 #include "log_common_impl.h"
 #include "log_lsa.hpp"
+#include "log_postpone_cache.hpp"
 #include "log_storage.hpp"
 #include "mvcc.h"
+#include "mvcc_table.hpp"
 #include "porting.h"
 #include "recovery.h"
 #include "release_string.h"
 #include "storage_common.h"
 #include "thread_entry.hpp"
 #include "transaction_transient.hpp"
-#include "log_generator.hpp"
 
 #include <assert.h>
 #if defined(SOLARIS)
@@ -66,9 +68,6 @@
 // forward declarations
 struct bo_restart_arg;
 struct logwr_info;
-
-/* TRANS_STATUS_HISTORY_MAX_SIZE must be a power of 2*/
-#define TRANS_STATUS_HISTORY_MAX_SIZE 2048
 
 #if defined(SERVER_MODE)
 #define TR_TABLE_CS_ENTER(thread_p) \
@@ -180,10 +179,6 @@ struct logwr_info;
   log_Tran_index = (index)
 #endif /* SERVER_MODE */
 
-#define LOG_FIND_TRAN_LOWEST_ACTIVE_MVCCID(tran_index) \
-  (((tran_index) >= 0 && (tran_index) < log_Gl.trantable.num_total_indices) \
-  ? (log_Gl.mvcc_table.transaction_lowest_active_mvccids + tran_index) : NULL)
-
 #define LOG_ISTRAN_ACTIVE(tdes) \
   ((tdes)->state == TRAN_ACTIVE && LOG_ISRESTARTED ())
 
@@ -226,14 +221,6 @@ struct logwr_info;
   ((tdes)->state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS \
    || (tdes)->state == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS)
 
-/* Reserved vacuum workers transaction identifiers.
- * Vacuum workers each need one TRANID to have their system operations
- * isolated and identifiable. Even though usually vacuum workers never undo
- * their work, system operations still need to be undone (if server crashes
- * in the middle of the operation).
- * For this reason, the first VACUUM_MAX_WORKER_COUNT negative TRANID values
- * under NULL_TRANID are reserved for vacuum workers.
- */
 const TRANID LOG_SYSTEM_WORKER_FIRST_TRANID = NULL_TRANID - 1;
 const int LOG_SYSTEM_WORKER_INCR_TRANID = -1;
 
@@ -248,7 +235,7 @@ const int LOG_SYSTEM_WORKER_INCR_TRANID = -1;
 #if defined (SERVER_MODE)
 #define LOG_CHECK_LOG_APPLIER(thread_p) \
   (thread_p != NULL \
-   && logtb_find_client_type (thread_p->tran_index) == BOOT_CLIENT_LOG_APPLIER)
+   && logtb_find_client_type (thread_p->tran_index) == DB_CLIENT_TYPE_LOG_APPLIER)
 #else
 #define LOG_CHECK_LOG_APPLIER(thread_p) (0)
 #endif /* !SERVER_MODE */
@@ -452,67 +439,6 @@ struct log_tran_update_stats
   MHT_TABLE *unique_stats_hash;	/* hash of unique statistics for indexes used during transaction. */
 };
 
-/*
- * MVCC_TRANS_STATUS keep MVCCIDs status in bit area. Thus bit 0 means active
- * MVCCID bit 1 means committed transaction. This structure keep also lowest
- * active MVCCIDs used by VACUUM for MVCCID threshold computation. Also, MVCCIDs
- * of long time transactions MVCCIDs are kept in this structure.
- */
-typedef struct mvcc_trans_status MVCC_TRANS_STATUS;
-struct mvcc_trans_status
-{
-  /* bit area to store MVCCIDS status - size MVCC_BITAREA_MAXIMUM_ELEMENTS */
-  UINT64 *bit_area;
-  /* first MVCCID whose status is stored in bit area */
-  MVCCID bit_area_start_mvccid;
-  /* the area length expressed in bits */
-  unsigned int bit_area_length;
-
-  /* long time transaction mvccid array */
-  MVCCID *long_tran_mvccids;
-  /* long time transactions mvccid array length */
-  unsigned int long_tran_mvccids_length;
-
-  volatile unsigned int version;
-
-  /* lowest active MVCCID */
-  MVCCID lowest_active_mvccid;
-};
-
-#define MVCC_STATUS_INITIALIZER \
-  { NULL, MVCCID_FIRST, 0, NULL, 0, 0, MVCCID_FIRST }
-
-typedef struct mvcctable MVCCTABLE;
-struct mvcctable
-{
-  /* current transaction status */
-  MVCC_TRANS_STATUS current_trans_status;
-
-  /* lowest active MVCCIDs - array of size NUM_TOTAL_TRAN_INDICES */
-  volatile MVCCID *transaction_lowest_active_mvccids;
-
-  /* transaction status history - array of size TRANS_STATUS_HISTORY_MAX_SIZE */
-  MVCC_TRANS_STATUS *trans_status_history;
-  /* the position in transaction status history array */
-  volatile int trans_status_history_position;
-
-  /* protect against getting new MVCCIDs concurrently */
-#if defined(HAVE_ATOMIC_BUILTINS)
-  pthread_mutex_t new_mvccid_lock;
-#endif
-
-  /* protect against current transaction status modifications */
-  pthread_mutex_t active_trans_mutex;
-};
-
-#if defined(HAVE_ATOMIC_BUILTINS)
-#define MVCCTABLE_INITIALIZER \
-  { MVCC_STATUS_INITIALIZER, NULL, NULL, 0, PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER }
-#else
-#define MVCCTABLE_INITIALIZER \
-  { MVCC_STATUS_INITIALIZER, NULL, NULL, 0, PTHREAD_MUTEX_INITIALIZER }
-#endif
-
 typedef struct log_rcv_tdes LOG_RCV_TDES;
 struct log_rcv_tdes
 {
@@ -526,6 +452,8 @@ struct log_rcv_tdes
    * executed atomically (all changes applied or all rollbacked) before executing finish all postpones. to know what
    * to abort, we remember the starting LSA of such operation. */
   LOG_LSA atomic_sysop_start_lsa;
+  LOG_LSA analysis_last_aborted_sysop_lsa;	/* to recover logical redo operation. */
+  LOG_LSA analysis_last_aborted_sysop_start_lsa;	/* to recover logical redo operation. */
 };
 
 typedef struct log_tdes LOG_TDES;
@@ -563,8 +491,7 @@ struct log_tdes
 				 * this site is a participant. */
   int num_unique_btrees;	/* # of unique btrees contained in unique_stat_info array */
   int max_unique_btrees;	/* size of unique_stat_info array */
-  BTREE_UNIQUE_STATS *tran_unique_stats;	/* Store local statistical info for multiple row update performed by
-						 * client. */
+  multi_index_unique_stats m_multiupd_stats;
 #if defined(_AIX)
   sig_atomic_t interrupt;
 #else				/* _AIX */
@@ -613,9 +540,10 @@ struct log_tdes
 
   LOG_RCV_TDES rcv;
 
+  log_postpone_cache m_log_postpone_cache;
+
   // *INDENT-OFF*
 #if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))
-  cubreplication::log_generator replication_log_generator;
 
   bool is_active_worker_transaction () const;
   bool is_system_transaction () const;
@@ -630,6 +558,11 @@ struct log_tdes
 
   void on_sysop_start ();
   void on_sysop_end ();
+
+  // lock global oldest visible mvccid to current value; required for heavy operations that need to do their own
+  // vacuuming, like upgrade domain / reorganize partitions
+  void lock_global_oldest_visible_mvccid ();
+  void unlock_global_oldest_visible_mvccid ();
 #endif
   // *INDENT-ON*
 };
@@ -748,7 +681,7 @@ struct log_global
   /* background log archiving info */
   BACKGROUND_ARCHIVING_INFO bg_archive_info;
 
-  MVCCTABLE mvcc_table;		/* MVCC table */
+  mvcctable mvcc_table;		/* MVCC table */
   GLOBAL_UNIQUE_STATS_TABLE unique_stats_table;	/* global unique statistics */
 
   // *INDENT-OFF*
@@ -879,7 +812,7 @@ extern LOG_PAGE *logpb_create_header_page (THREAD_ENTRY * thread_p);
 extern void logpb_fetch_header (THREAD_ENTRY * thread_p, LOG_HEADER * hdr);
 extern void logpb_fetch_header_with_buffer (THREAD_ENTRY * thread_p, LOG_HEADER * hdr, LOG_PAGE * log_pgptr);
 extern void logpb_flush_header (THREAD_ENTRY * thread_p);
-extern int logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_LSA * req_lsa, LOG_CS_ACCESS_MODE access_mode,
+extern int logpb_fetch_page (THREAD_ENTRY * thread_p, const LOG_LSA * req_lsa, LOG_CS_ACCESS_MODE access_mode,
 			     LOG_PAGE * log_pgptr);
 extern int logpb_copy_page_from_log_buffer (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgptr);
 extern int logpb_copy_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgptr);
@@ -1059,13 +992,11 @@ extern char *logpb_backup_level_info_to_string (char *buf, int buf_size, const L
 extern const char *tran_abort_reason_to_string (TRAN_ABORT_REASON val);
 extern int logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int arg_cnt,
 					 void **ctx);
-extern MVCCID logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p);
 
 extern LOG_PAGEID logpb_find_oldest_available_page_id (THREAD_ENTRY * thread_p);
 extern int logpb_find_oldest_available_arv_num (THREAD_ENTRY * thread_p);
 
-extern int logtb_get_new_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info);
-extern int logtb_get_new_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info);
+extern void logtb_get_new_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info);
 
 extern MVCCID logtb_find_current_mvccid (THREAD_ENTRY * thread_p);
 extern MVCCID logtb_get_current_mvccid (THREAD_ENTRY * thread_p);
@@ -1076,17 +1007,25 @@ extern bool logtb_is_current_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid);
 extern bool logtb_is_mvccid_committed (THREAD_ENTRY * thread_p, MVCCID mvccid);
 extern MVCC_SNAPSHOT *logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p);
 extern void logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed);
+extern void logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 
 extern LOG_TRAN_CLASS_COS *logtb_tran_find_class_cos (THREAD_ENTRY * thread_p, const OID * class_oid, bool create);
-extern int logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, BTID * btid, int n_keys, int n_oids, int n_nulls,
-					   bool write_to_log);
-extern int logtb_tran_update_btid_unique_stats (THREAD_ENTRY * thread_p, BTID * btid, int n_keys, int n_oids,
+extern int logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid, int n_keys, int n_oids,
+					   int n_nulls, bool write_to_log);
+
+// *INDENT-OFF*
+extern int logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const BTID &btid, const btree_unique_stats &ustats,
+                                           bool write_to_log);
+extern int logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const multi_index_unique_stats &multi_stats,
+                                           bool write_to_log);
+// *INDENT-ON*
+
+extern int logtb_tran_update_btid_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid, int n_keys, int n_oids,
 						int n_nulls);
 extern LOG_TRAN_BTID_UNIQUE_STATS *logtb_tran_find_btid_stats (THREAD_ENTRY * thread_p, const BTID * btid, bool create);
 extern int logtb_tran_prepare_count_optim_classes (THREAD_ENTRY * thread_p, const char **classes,
 						   LC_PREFETCH_FLAGS * flags, int n_classes);
 extern void logtb_tran_reset_count_optim_state (THREAD_ENTRY * thread_p);
-extern void logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 extern int logtb_find_log_records_count (int tran_index);
 
 extern int logtb_initialize_global_unique_stats_table (THREAD_ENTRY * thread_p);
@@ -1099,6 +1038,7 @@ extern int logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p, B
 						      int null_delta, int key_delta, bool log);
 extern int logtb_delete_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid);
 extern int logtb_reflect_global_unique_stats_to_btree (THREAD_ENTRY * thread_p);
+extern int logtb_tran_update_all_global_unique_stats (THREAD_ENTRY * thread_p);
 
 extern int log_rv_undoredo_record_partial_changes (THREAD_ENTRY * thread_p, char *rcv_data, int rcv_data_length,
 						   RECDES * record, bool is_undo);
@@ -1108,7 +1048,6 @@ extern char *log_rv_pack_redo_record_changes (char *ptr, int offset_to_data, int
 					      char *new_data);
 extern char *log_rv_pack_undo_record_changes (char *ptr, int offset_to_data, int old_data_size, int new_data_size,
 					      char *old_data);
-extern void logtb_reset_bit_area_start_mvccid (void);
 
 extern void log_set_ha_promotion_time (THREAD_ENTRY * thread_p, INT64 ha_promotion_time);
 extern void log_set_db_restore_time (THREAD_ENTRY * thread_p, INT64 db_restore_time);

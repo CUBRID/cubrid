@@ -763,9 +763,6 @@ css_process_new_connection (SOCKET fd)
 	  /* here the server wants to manage its own connection port */
 	  css_register_new_server2 (conn, rid);
 	  break;
-	case SERVER_REQUEST_CONNECT_NEW_SLAVE:
-	  css_send_to_existing_server (conn, rid, SERVER_CONNECT_NEW_SLAVE);
-	  break;
 	default:
 	  css_free_conn (conn);
 	  break;
@@ -1128,7 +1125,7 @@ main (int argc, char **argv)
   int port_id;
   CSS_CONN_ENTRY *conn;
   static const char suffix[] = "_master.err";
-  char hostname[MAXHOSTNAMELEN + sizeof (suffix)];
+  char hostname[CUB_MAXHOSTNAMELEN + sizeof (suffix)];
   char *errlog = NULL;
   int status = EXIT_SUCCESS;
   const char *msg_format;
@@ -1149,11 +1146,11 @@ main (int argc, char **argv)
     }
 #endif /* WINDOWS */
 
-  if (GETHOSTNAME (hostname, MAXHOSTNAMELEN) == 0)
+  if (GETHOSTNAME (hostname, CUB_MAXHOSTNAMELEN) == 0)
     {
       /* css_gethostname won't null-terminate if the name is overlong.  Put in a guaranteed null-terminator of our own
        * so that strcat doesn't go wild. */
-      hostname[MAXHOSTNAMELEN] = '\0';
+      hostname[CUB_MAXHOSTNAMELEN] = '\0';
       strcat (hostname, suffix);
       errlog = hostname;
     }

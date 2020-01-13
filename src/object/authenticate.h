@@ -44,6 +44,9 @@
 #include "databases_file.h"
 #include "object_fetch.h"
 
+
+class print_output;
+
 /*
  * Authorization Class Names
  */
@@ -234,8 +237,8 @@ extern void au_link_static_methods (void);
 
 /* migration utilities */
 
-extern int au_export_users (FILE * outfp);
-extern int au_export_grants (FILE * outfp, MOP class_mop);
+extern int au_export_users (print_output & output_ctx);
+extern int au_export_grants (print_output & output_ctx, MOP class_mop);
 
 extern int au_get_class_privilege (DB_OBJECT * mop, unsigned int *auth);
 

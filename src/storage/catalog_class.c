@@ -38,6 +38,7 @@
 #include "locator_sr.h"
 #include "xserver_interface.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "query_dump.h"
 #include "tz_support.h"
 #include "db_date.h"
@@ -684,9 +685,8 @@ catcls_find_oid_by_class_name (THREAD_ENTRY * thread_p, const char *name_p, OID 
   DB_VALUE key_val;
   int error = NO_ERROR;
 
-  error =
-    db_make_varchar (&key_val, DB_MAX_IDENTIFIER_LENGTH, (char *) name_p, (int) strlen (name_p), LANG_SYS_CODESET,
-		     LANG_SYS_COLLATION);
+  error = db_make_varchar (&key_val, DB_MAX_IDENTIFIER_LENGTH, name_p, (int) strlen (name_p), LANG_SYS_CODESET,
+			   LANG_SYS_COLLATION);
   if (error != NO_ERROR)
     {
       return error;
@@ -1236,7 +1236,7 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
   int size;
   int error = NO_ERROR;
   const char *default_expr_type_string = NULL;
-  char *def_expr_format_string = NULL;
+  const char *def_expr_format_string = NULL;
   bool with_to_char = false;
 
   error = catcls_expand_or_value_by_def (value_p, &ct_Attribute);
@@ -1366,7 +1366,7 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
   if (att_props != NULL)
     {
       size_t default_value_len = 0;
-      char *default_str_val = NULL;
+      const char *default_str_val = NULL;
 
       if (classobj_get_prop (att_props, "default_expr", &default_expr) > 0)
 	{
@@ -1427,6 +1427,7 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 	      goto error;
 	    }
 	  len = strlen (default_expr_type_string);
+	  char *default_str_val_tmp = NULL;
 
 	  if (with_to_char)
 	    {
@@ -1437,8 +1438,8 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 		      + 6	/* parenthesis, a comma, a blank and quotes */
 		      + (def_expr_format_string ? strlen (def_expr_format_string) : 0));	/* nothing or format */
 
-	      default_str_val = (char *) db_private_alloc (thread_p, len + 1);
-	      if (default_str_val == NULL)
+	      default_str_val_tmp = (char *) db_private_alloc (thread_p, len + 1);
+	      if (default_str_val_tmp == NULL)
 		{
 		  pr_clear_value (&default_expr);
 		  pr_clear_value (&val);
@@ -1446,29 +1447,30 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 		  goto error;
 		}
 
-	      strcpy (default_str_val, default_expr_op_string);
-	      strcat (default_str_val, "(");
-	      strcat (default_str_val, default_expr_type_string);
+	      strcpy (default_str_val_tmp, default_expr_op_string);
+	      strcat (default_str_val_tmp, "(");
+	      strcat (default_str_val_tmp, default_expr_type_string);
 	      if (def_expr_format_string)
 		{
-		  strcat (default_str_val, ", \'");
-		  strcat (default_str_val, def_expr_format_string);
-		  strcat (default_str_val, "\'");
+		  strcat (default_str_val_tmp, ", \'");
+		  strcat (default_str_val_tmp, def_expr_format_string);
+		  strcat (default_str_val_tmp, "\'");
 		}
-	      strcat (default_str_val, ")");
+	      strcat (default_str_val_tmp, ")");
 	    }
 	  else
 	    {
-	      default_str_val = (char *) db_private_alloc (thread_p, len + 1);
-	      if (default_str_val == NULL)
+	      default_str_val_tmp = (char *) db_private_alloc (thread_p, len + 1);
+	      if (default_str_val_tmp == NULL)
 		{
 		  pr_clear_value (&default_expr);
 		  pr_clear_value (&val);
 		  error = ER_OUT_OF_VIRTUAL_MEMORY;
 		  goto error;
 		}
-	      strcpy (default_str_val, default_expr_type_string);
+	      strcpy (default_str_val_tmp, default_expr_type_string);
 	    }
+	  default_str_val = default_str_val_tmp;
 
 	  pr_clear_value (attr_val_p);	/* clean old default value */
 	  db_make_string (attr_val_p, default_str_val);
@@ -2476,7 +2478,8 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 				  goto error;
 				}
 
-			      buffer = db_get_string (&temp);
+			      // use const_cast since of a limitation of or_unpack_* functions which do not accept const
+			      buffer = CONST_CAST (char *, db_get_string (&temp));
 			      ptr = buffer;
 			      ptr = or_unpack_domain (ptr, &fi_domain, NULL);
 
@@ -3469,10 +3472,8 @@ catcls_get_or_value_from_record (THREAD_ENTRY * thread_p, RECDES * record_p, OID
   OR_BUF *buf_p, repr_buffer;
   REPR_ID repr_id;
   DISK_REPR *repr_p = NULL;
-  int error;
 
-  error = catalog_get_last_representation_id (thread_p, class_oid_p, &repr_id);
-  if (error != NO_ERROR)
+  if (catalog_get_last_representation_id (thread_p, class_oid_p, &repr_id) != NO_ERROR)
     {
       goto error;
     }
@@ -3481,7 +3482,6 @@ catcls_get_or_value_from_record (THREAD_ENTRY * thread_p, RECDES * record_p, OID
   if (repr_p == NULL)
     {
       assert (er_errid () != NO_ERROR);
-      error = er_errid ();
       goto error;
     }
 
@@ -3813,7 +3813,7 @@ catcls_insert_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p
 
   /* for replication */
   if (locator_add_or_remove_index (thread_p, &record, oid_p, class_oid_p, true, SINGLE_ROW_INSERT, scan_p, false, false,
-				   hfid_p, NULL) != NO_ERROR)
+				   hfid_p, NULL, false, false) != NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
@@ -3855,7 +3855,7 @@ static int
 catcls_delete_instance (THREAD_ENTRY * thread_p, OID * oid_p, OID * class_oid_p, HFID * hfid_p, HEAP_SCANCACHE * scan_p)
 {
   HEAP_OPERATION_CONTEXT delete_context;
-  RECDES record;
+  RECDES record = RECDES_INITIALIZER;
   OR_VALUE *value_p = NULL;
   OR_VALUE *attrs;
   int i;
@@ -3865,7 +3865,6 @@ catcls_delete_instance (THREAD_ENTRY * thread_p, OID * oid_p, OID * class_oid_p,
   int error = NO_ERROR;
 
   assert (oid_p != NULL && class_oid_p != NULL && hfid_p != NULL && scan_p != NULL);
-  record.data = NULL;
 
 #if defined(SERVER_MODE)
   if (lock_object (thread_p, oid_p, class_oid_p, X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
@@ -3906,7 +3905,7 @@ catcls_delete_instance (THREAD_ENTRY * thread_p, OID * oid_p, OID * class_oid_p,
 
   /* for replication */
   if (locator_add_or_remove_index (thread_p, &record, oid_p, class_oid_p, false, SINGLE_ROW_DELETE, scan_p, false,
-				   false, hfid_p, NULL) != NO_ERROR)
+				   false, hfid_p, NULL, false, false) != NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
@@ -3952,7 +3951,7 @@ static int
 catcls_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p, OID * class_oid_p, HFID * hfid_p,
 			HEAP_SCANCACHE * scan_p, UPDATE_INPLACE_STYLE force_in_place)
 {
-  RECDES record, old_record;
+  RECDES record = RECDES_INITIALIZER, old_record = RECDES_INITIALIZER;
   OR_VALUE *old_value_p = NULL;
   OR_VALUE *attrs, *old_attrs;
   OR_VALUE *subset_p, *attr_p;
@@ -3960,9 +3959,6 @@ catcls_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p
   bool uflag = false;
   int i, j, k;
   int error = NO_ERROR;
-
-  record.data = NULL;
-  old_record.data = NULL;
 
   if (heap_get_visible_version (thread_p, oid_p, class_oid_p, &old_record, scan_p, COPY, NULL_CHN) != S_SUCCESS)
     {
@@ -4395,6 +4391,7 @@ catcls_compile_catalog_classes (THREAD_ENTRY * thread_p)
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
+	      (void) heap_scancache_end (thread_p, &scan);
 	      return error;
 	    }
 
@@ -4581,7 +4578,7 @@ catcls_get_server_compat_info (THREAD_ENTRY * thread_p, INTL_CODESET * charset_i
   scan_cache_inited = false;
 
   /* read values of the single record in heap */
-  error = heap_get_hfid_from_class_oid (thread_p, &class_oid, &hfid);
+  error = heap_get_class_info (thread_p, &class_oid, &hfid, NULL, NULL);
   if (error != NO_ERROR || HFID_IS_NULL (&hfid))
     {
       error = ER_FAILED;
@@ -4621,7 +4618,7 @@ catcls_get_server_compat_info (THREAD_ENTRY * thread_p, INTL_CODESET * charset_i
 	    }
 	  else if (heap_value->attrid == lang_att_id)
 	    {
-	      char *lang_str = NULL;
+	      const char *lang_str = NULL;
 	      size_t lang_str_len;
 
 	      if (DB_IS_NULL (&heap_value->dbvalue))
@@ -4648,7 +4645,7 @@ catcls_get_server_compat_info (THREAD_ENTRY * thread_p, INTL_CODESET * charset_i
 	    }
 	  else if (heap_value->attrid == timezone_id)
 	    {
-	      char *checksum = NULL;
+	      const char *checksum = NULL;
 	      size_t checksum_len;
 
 	      if (DB_IS_NULL (&heap_value->dbvalue))
@@ -4668,7 +4665,7 @@ catcls_get_server_compat_info (THREAD_ENTRY * thread_p, INTL_CODESET * charset_i
 		{
 		  /* Copying length 0 from NULL pointer fails when DUMA is enabled. */
 		  assert (checksum != NULL);
-		  strncpy (timezone_checksum, checksum, checksum_len);
+		  strcpy (timezone_checksum, checksum);
 		}
 	      timezone_checksum[checksum_len] = '\0';
 	    }
@@ -5023,7 +5020,7 @@ catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT ** db_collati
   scan_cache_inited = false;
 
   /* read values of all records in heap */
-  error = heap_get_hfid_from_class_oid (thread_p, &class_oid, &hfid);
+  error = heap_get_class_info (thread_p, &class_oid, &hfid, NULL, NULL);
   if (error != NO_ERROR || HFID_IS_NULL (&hfid))
     {
       error = ER_FAILED;
@@ -5083,7 +5080,7 @@ catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT ** db_collati
 	    }
 	  else if (heap_value->attrid == coll_name_att_id)
 	    {
-	      char *lang_str = NULL;
+	      const char *lang_str = NULL;
 	      size_t lang_str_len;
 
 	      assert (DB_VALUE_DOMAIN_TYPE (&(heap_value->dbvalue)) == DB_TYPE_STRING);
@@ -5103,7 +5100,7 @@ catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT ** db_collati
 	    }
 	  else if (heap_value->attrid == checksum_att_id)
 	    {
-	      char *checksum_str = NULL;
+	      const char *checksum_str = NULL;
 	      size_t str_len;
 
 	      assert (DB_VALUE_DOMAIN_TYPE (&(heap_value->dbvalue)) == DB_TYPE_STRING);
@@ -5244,7 +5241,7 @@ catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p, time_t * log_rec
   heap_scancache_end (thread_p, &scan_cache);
   scan_cache_inited = false;
 
-  error = heap_get_hfid_from_class_oid (thread_p, &class_oid, &hfid);
+  error = heap_get_class_info (thread_p, &class_oid, &hfid, NULL, NULL);
   if (error != NO_ERROR || HFID_IS_NULL (&hfid))
     {
       error = ER_FAILED;

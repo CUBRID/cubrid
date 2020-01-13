@@ -60,6 +60,8 @@
 
 #if defined(WINDOWS)
 #include "wintcp.h"
+#else /* WINDOWS */
+#include "tcp.h"
 #endif /* WINDOWS */
 
 int tm_Tran_index = NULL_TRAN_INDEX;
@@ -515,7 +517,7 @@ tran_unilaterally_abort (void)
 {
   int error_code = NO_ERROR;
   char user_name[L_cuserid + 1];
-  char host[MAXHOSTNAMELEN];
+  char host[CUB_MAXHOSTNAMELEN];
   int pid;
 
   /* Get the user name, host, and process identifier */
@@ -523,7 +525,7 @@ tran_unilaterally_abort (void)
     {
       strcpy (user_name, "(unknown)");
     }
-  if (GETHOSTNAME (host, MAXHOSTNAMELEN) != 0)
+  if (GETHOSTNAME (host, CUB_MAXHOSTNAMELEN) != 0)
     {
       /* unknown error */
       strcpy (host, "(unknown)");

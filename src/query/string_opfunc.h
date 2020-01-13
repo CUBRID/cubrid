@@ -35,8 +35,11 @@
 #include "language_support.h"
 #include "numeric_opfunc.h"
 #include "object_domain.h"
-#include "libregex38a/regex38a.h"
 #include "thread_compat.hpp"
+
+#ifdef __cplusplus
+#include <regex>
+#endif
 
 #define QSTR_IS_CHAR(s)          (((s)==DB_TYPE_CHAR) || \
                                  ((s)==DB_TYPE_VARCHAR))
@@ -172,7 +175,6 @@ extern int nchar_compare (const unsigned char *string1, int size1, const unsigne
 			  INTL_CODESET codeset);
 extern int bit_compare (const unsigned char *string1, int size1, const unsigned char *string2, int size2);
 extern int varbit_compare (const unsigned char *string1, int size1, const unsigned char *string2, int size2);
-extern int regex_matches (const char *pattern, const char *str, int reg_flags, bool * match);
 extern int get_last_day (int month, int year);
 extern int get_day (int month, int day, int year);
 
@@ -217,8 +219,12 @@ extern int db_string_pad (const MISC_OPERAND pad_operand, const DB_VALUE * src_s
 			  const DB_VALUE * pad_charset, DB_VALUE * padded_string);
 extern int db_string_like (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB_VALUE * esc_char,
 			   int *result);
+
+#ifdef __cplusplus
 extern int db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB_VALUE * case_sensitive,
-			    cub_regex_t ** comp_regex, char **comp_pattern, int *result);
+			    std::regex ** comp_regex, char **comp_pattern, int *result);
+#endif
+
 extern int db_string_limit_size_string (DB_VALUE * src_string, DB_VALUE * result, const int new_size, int *spare_bytes);
 extern int db_string_fix_string_size (DB_VALUE * src_string);
 extern int db_string_replace (const DB_VALUE * src_string, const DB_VALUE * srch_string, const DB_VALUE * repl_string,
@@ -236,18 +242,23 @@ extern int db_tz_offset (const DB_VALUE * src_str, DB_VALUE * result_str, DB_DAT
 extern int db_from_tz (DB_VALUE * time_val, DB_VALUE * tz, DB_VALUE * time_val_with_tz);
 extern int db_new_time (DB_VALUE * time_val, DB_VALUE * tz_source, DB_VALUE * tz_dest, DB_VALUE * result_time);
 extern int db_conv_tz (DB_VALUE * time_val, DB_VALUE * result_time);
+extern int db_json_convert_to_utf8 (DB_VALUE * dbval);
+extern int db_json_copy_and_convert_to_utf8 (const DB_VALUE * src_dbval, DB_VALUE * dest_dbval,
+					     const DB_VALUE ** json_str_dbval);
+extern int db_string_convert_to (const DB_VALUE * src_string, DB_VALUE * dest_string, INTL_CODESET dest_codeset,
+				 int dest_col);
 
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int db_string_convert (const DB_VALUE * src_string, DB_VALUE * dest_string);
 #endif
 extern unsigned char *qstr_pad_string (unsigned char *s, int length, INTL_CODESET codeset);
 extern int qstr_bin_to_hex (char *dest, int dest_size, const char *src, int src_size);
-extern int qstr_hex_to_bin (char *dest, int dest_size, char *src, int src_size);
-extern int qstr_bit_to_bin (char *dest, int dest_size, char *src, int src_size);
+extern int qstr_hex_to_bin (char *dest, int dest_size, const char *src, int src_size);
+extern int qstr_bit_to_bin (char *dest, int dest_size, const char *src, int src_size);
 extern void qstr_bit_to_hex_coerce (char *buffer, int buffer_size, const char *src, int src_length, int pad_flag,
 				    int *copy_size, int *truncation);
 extern int db_get_string_length (const DB_VALUE * value);
-extern void qstr_make_typed_string (const DB_TYPE db_type, DB_VALUE * value, const int precision, const DB_C_CHAR src,
+extern void qstr_make_typed_string (const DB_TYPE db_type, DB_VALUE * value, const int precision, DB_CONST_C_CHAR src,
 				    const int s_unit, const int codeset, const int collation_id);
 extern int db_add_months (const DB_VALUE * src_date, const DB_VALUE * nmonth, DB_VALUE * result_date);
 extern int db_last_day (const DB_VALUE * src_date, DB_VALUE * result_day);

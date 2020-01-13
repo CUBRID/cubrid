@@ -47,6 +47,12 @@ namespace test_packing
   class po1 : public cubpacking::packable_object
   {
     public:
+      enum rgb
+      {
+	RED, GREEN, BLUE,
+	MAX
+      };
+
       int i1;
       short sh1;
       std::int64_t b1;
@@ -57,6 +63,7 @@ namespace test_packing
       std::string large_str;
       std::string str1;
       char str2[300];
+      rgb color;
 
     public:
 
@@ -65,7 +72,7 @@ namespace test_packing
 
       bool is_equal (const packable_object *other);
 
-      size_t get_packed_size (cubpacking::packer &serializator) const;
+      size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset = 0) const override;
 
       void generate_obj (void);
   };

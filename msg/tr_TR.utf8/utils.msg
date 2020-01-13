@@ -1,18 +1,18 @@
 $
-$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
 $
-$   This program is free software; you can redistribute it and/or modify 
-$   it under the terms of the GNU General Public License as published by 
+$   This program is free software; you can redistribute it and/or modify
+$   it under the terms of the GNU General Public License as published by
 $   the Free Software Foundation; either version 2 of the License, or
 $   (at your option) any later version.
 $
-$  This program is distributed in the hope that it will be useful, 
-$  but WITHOUT ANY WARRANTY; without even the implied warranty of 
-$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
-$  GNU General Public License for more details. 
+$  This program is distributed in the hope that it will be useful,
+$  but WITHOUT ANY WARRANTY; without even the implied warranty of
+$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+$  GNU General Public License for more details.
 $
-$  You should have received a copy of the GNU General Public License 
-$  along with this program; if not, write to the Free Software 
+$  You should have received a copy of the GNU General Public License
+$  along with this program; if not, write to the Free Software
 $  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 $
 
@@ -270,7 +270,6 @@ geçerli opsiyonlar:\n\
       --no-check               veritabanının tutarlılığını kontrol etmez; varsayılan: kontrol edin\n\
   -t, --thread-count=COUNT     Konu sayısı; Varsayılan olarak: 0 (otomatik)\n\
   -z, --compress               yedekleme birimleri sıkıştırmak; varsayılan: sıkıştırmayı açma\n\
-  -e, --except-active-log      şunlardır: varsayılan; aktif bir log yoğunluğu içermez\n\
       --sleep-msecs=N          sleep N millisecond per 1M read; default: 0\n
 71 Uyumsuz bağımsız değişkenleri, \"%1$s\", ve \"%2$s\"\n
 
@@ -422,46 +421,54 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 45 Sınıf %2$s Derece %1$d zaten tanımlanmış\n
 46 Sınıf %2$s Derece %1$d zaten ayrılmıştır\n
 47 Özniteliği '%1$s 'EŞSİZ aykırı, NULL'a dönüştürülür\n
-48   %1$d örnekleri\n
+48 %1$s %2$d örnekleri\n
 49 Sınıf %1$s\n
 50 Şifre:
 51 \n*** Sınıf istatistikleri güncelleniyor ***\n
 52 %2$d hat yakınlarındaki %1$s (metin '%3$s' oldu)\n
-53 Sözcüksel hata
+53 Sözcüksel hata\n
 54 satır %1$d: \"%2$s\" içinde syntax hata
 55 eksik
 56 %1$s de
 57 Uyumsuz bağımsız değişkenleri, \"%1$s\", ve \"%2$s\"\n
-58 %1$d taahhüt örnekleri\n
+58 %1$s %2$d taahhüt örnekleri\n
 59 \nLoaddb olmayan-optimize edilmiş sürümü çağırılamaz.\n
 60 Hata ayrıştırma \"%1$s\", gibi %2$s tür.\n
+61 Nesne Referans CS modunda desteklenmez.\n
+62 %1$s sınıfı için güncellenmiş istatistikler.\n
 112   %1$d örnekleri\r
-113 Son kararlı hattı: %1$d
+113 Son kararlı hattı: %1$d\n
 114 hata-kontrol-dosyası
 115 yükleme sırasında bir hata(lar) kontrol etmek için giriş dosyası
 116 Toplam %1$8d nesne (ler) eklenen, %2$d nesne (ler) başarısız oldu.\n
 117 Başarısız yük.\n
 118 Sınıf adının uzunluğu en fazla %1$d bayttır.\n
-120 \
+119 Toplam %1$8d nesne kontrol edildi, %2$d nesne başarısız oldu.\n
+120 Veri dosyası '%%class' belirteci içermiyor ve '--table' seçeneği eksik\n
+121 %1$s sınıfı yoksayılır.\n
+122 \
 loaddb: Veritabanına veri alma nesneler ve şemalar.\n\
-kullanım: %1$s loaddb [SEÇENEK] database-name\n\
+kullanım: %1$s loaddb [SEÇENEK] database-name[@host]\n\
 \n\
 geçerli seçenekler:\n\
-  -u, --user=ID                 veritabanı erişimi için kullanıcı kimliği; varsayılan: "public"\n\
-  -p, --password=PASS           kullanıcı şifresi; varsayılan: hiçbir\n\
-      --data-file-check-only    yük olmadan veri dosyası için sözdizimi kontrol edin; varsayılan: yükleme kontrol ettikten sonra\n\
-  -l, --load-only               sözdizimi denetimi olmadan veri dosyası yükleyebilir; varsayılan: yükleme kontrol ettikten sonra\n\
-      --estimated-size=NUMBER   örneklerini tahmin NUMBER; varsayılan: 5000\n\
-  -v, --verbose                 Ayrıntılı durum mesajları sağlamak; varsayılan: devre dışı\n\
-  -c, --periodic-commit=COUNT   Periyodik tamamlama için ekleme COUNT; varsayılan: yükleme sırasında taahhüt yok\n\
-      --no-oid                  OID kullanmayın\n\
-      --no-statistics           yüklerken istatistikleri güncelleştirmeyin\n\
-  -s, --schema-file=FILE[:LINE] FILE ile LINE şeması oluşturun\n\
-  -i, --index-file=FILE[:LINE]  FILE ile LINE dizin oluşturun\n\
-  -d, --data-file=FILE          FILE ile yük verileri\n\
-  -t, --table=TABLE             Veri belgeleri içi kaybolan düzeyindeki şeflerin forum adıdır\n\
-      --error-control-file=FILE Yükleme sırasında bir hata (lar) kontrol etmek için FILE\n\
-      --ignore-class-file=FILE  yük atlamak sınıf adları girdi dosyası\n
+  -S, --SA-mode                  stand-alone modu yürütme\n\
+  -C, --CS-mode                  istemci-sunucu modunda yürütme\n\
+  -u, --user=ID                  veritabanı erişimi için kullanıcı kimliği; varsayılan: "public"\n\
+  -p, --password=PASS            kullanıcı şifresi; varsayılan: hiçbir\n\
+      --data-file-check-only     check syntax for data file without load; default: disabled\n\
+  -l, --load-only                load data file without prior syntax checking; SA_MODE only\n\
+      --estimated-size=NUMBER    örneklerini tahmin NUMBER; varsayılan: 5000\n\
+  -v, --verbose                  Ayrıntılı durum mesajları sağlamak; varsayılan: devre dışı\n\
+  -c, --periodic-commit=COUNT    Periyodik tamamlama için ekleme COUNT; varsayılan: yükleme sırasında taahhüt yok\n\
+      --no-oid                   OID kullanmayın\n\
+      --no-statistics            yüklerken istatistikleri güncelleştirmeyin\n\
+  -s, --schema-file=FILE[:LINE]  FILE ile LINE şeması oluşturun\n\
+  -i, --index-file=FILE[:LINE]   FILE ile LINE dizin oluşturun\n\
+      --trigger-file=FILE[:LINE] create trigger from LINE with FILE\n\
+  -d, --data-file=FILE           FILE ile yük verileri\n\
+  -t, --table=TABLE              Veri belgeleri içi kaybolan düzeyindeki şeflerin forum adıdır\n\
+      --error-control-file=FILE  Yükleme sırasında bir hata (lar) kontrol etmek için FILE\n\
+      --ignore-class-file=FILE   yük atlamak sınıf adları girdi dosyası\n
 
 
 $set 13 MSGCAT_UTIL_SET_UNLOADDB
@@ -903,7 +910,7 @@ geçerli seçenekler:\n\
   -L, --log-path=PATH         Kopyalanan log yoğunlukları için dizin PATH\n\
   -m, --mode=MODE             çalışma modu, varsayılan: sync\n\
                               MODE: sync veya semisync veya async\n\
-  -S, --start-page-id=ID      ilk log sayfası kopyalamak\n 
+  -S, --start-page-id=ID      ilk log sayfası kopyalamak\n
 
 $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
 21 DBA şifrenizi girin:
@@ -1033,19 +1040,19 @@ geçerli seçenekler:\n\
   -f, --force-only    derlemeleri veri tabanında yeni sistem konfigürasyonu ile aynı olacak şekilde günceller.\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
-20 %1$s şifre gir: 
-22 Tran index          User name      Host name      Process id      Program name\n
-23 -------------------------------------------------------------------------------\n
-24 %1$4d%2$-10s %3$14s %4$14s %5$15d %6$17s\n
+20 %1$s şifre gir:
+22 Tran index            User name      Host name      Process id      Program name\n
+23 ---------------------------------------------------------------------------------\n
+24 %1$4d%2$-12s %3$14s %4$14s %5$15d %6$17s\n
 25 Geçişler yok\n
 26 tranlist sadece DBA veya bir DBA grup üyesi tarafından uygulanabilir.\n
 27 sort-key sütun numarası (%1$d) geçersiz.\n
-32 Tran index         Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
-33 %1$4d%2$-10s %3$14d    %4$-25s %5$10.2f %6$12.2f    %7$28s     %8$13s   %9$s\n
-34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
-42 Tran index          User name      Host name      Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
-43 %1$4d%2$-10s %3$14s %4$14s %5$14d    %6$-25s %7$10.2f %8$12.2f    %9$28s     %10$13s   %11$s\n
-44 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
+32 Tran index           Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
+33 %1$4d%2$-12s %3$14d    %4$-25s %5$10.2f %6$12.2f    %7$28s     %8$13s   %9$s\n
+34 ----------------------------------------------------------------------------------------------------------------------------------------------------\n
+42 Tran index            User name      Host name      Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
+43 %1$4d%2$-12s %3$14s %4$14s %5$14d    %6$-25s %7$10.2f %8$12.2f    %9$28s     %10$13s   %11$s\n
+44 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
 45 Tran index : %1$d
 46 SQL_ID: %1$s\n
 59 tranlist standalone mode olarak çalışamaz.\n

@@ -227,7 +227,6 @@ length_const_string (const char *cstring, int *strlen)
   return or_packed_string_length (cstring, strlen);
 }
 
-
 /*
  * length_string_with_null_padding - calculate length with null padding
  *
@@ -675,7 +674,7 @@ locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list, int *ignore_e
 
   mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (copy_area);
 
-  request_size = OR_INT_SIZE * (6 + num_ignore_error_list);
+  request_size = OR_INT_SIZE * (5 + num_ignore_error_list);
   request = (char *) malloc (request_size);
 
   if (request == NULL)
@@ -689,8 +688,13 @@ locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list, int *ignore_e
   num_objs = locator_send_copy_area (copy_area, &content_ptr, NULL, &desc_ptr, &desc_size);
 
   request_ptr = or_pack_int (request, num_objs);
-  request_ptr = or_pack_int (request_ptr, mobjs->start_multi_update);
-  request_ptr = or_pack_int (request_ptr, mobjs->end_multi_update);
+  request_ptr = or_pack_int (request_ptr, mobjs->multi_update_flags);
+
+  // unset start_multi_update flag after first request containing it set
+  if (locator_manyobj_flag_is_set (mobjs, START_MULTI_UPDATE))
+    {
+      locator_manyobj_flag_remove (mobjs, START_MULTI_UPDATE);
+    }
   request_ptr = or_pack_int (request_ptr, desc_size);
   request_ptr = or_pack_int (request_ptr, content_size);
 
@@ -2540,6 +2544,11 @@ tran_server_abort (void)
 const char *
 tran_get_tranlist_state_name (TRAN_STATE state)
 {
+  // You should also change the messages:
+  // MSGCAT_UTIL_SET_TRANLIST.TRANLIST_MSG_QUERY_INFO_ENTRY, MSGCAT_UTIL_SET_TRANLIST.TRANLIST_MSG_FULL_INFO_ENTRY,
+  // MSGCAT_UTIL_SET_TRANLIST.TRANLIST_MSG_SUMMARY_ENTRY and their headings and underscores,
+  // when you add a state longer than the current longest, "(COMMITTING)".
+
   switch (state)
     {
     case TRAN_RECOVERY:
@@ -3318,7 +3327,6 @@ acl_reload ()
   return NO_ERROR;
 #endif /* !CS_MODE */
 }
-
 
 /*
  * acl_dump -
@@ -4119,7 +4127,7 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
     }
   free_and_init (request);
 
-  return NO_ERROR;
+  return req_error;
 #else
   int result = NO_ERROR;
   SESSION_ID id;
@@ -4188,7 +4196,7 @@ csession_end_session (SESSION_ID session_id)
       return ER_FAILED;
     }
 
-  return NO_ERROR;
+  return req_error;
 #else
   int result = NO_ERROR;
 
@@ -5182,16 +5190,17 @@ boot_notify_ha_log_applier_state (HA_LOG_APPLIER_STATE state)
 /*
  * stats_get_statistics_from_server () -
  *
- * return:
+ * return: error code
  *
  *   classoid(in):
  *   timestamp(in):
  *   length_ptr(in):
+ *   stats_buffer(in/out):
  *
  * NOTE:
  */
-char *
-stats_get_statistics_from_server (OID * classoid, unsigned int timestamp, int *length_ptr)
+int
+stats_get_statistics_from_server (OID * classoid, unsigned int timestamp, int *length_ptr, char **stats_buffer)
 {
 #if defined(CS_MODE)
   int req_error;
@@ -5201,6 +5210,9 @@ stats_get_statistics_from_server (OID * classoid, unsigned int timestamp, int *l
   char *request;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply;
+
+  assert (stats_buffer != NULL);
+  *stats_buffer = NULL;
 
   request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
@@ -5214,22 +5226,18 @@ stats_get_statistics_from_server (OID * classoid, unsigned int timestamp, int *l
   if (!req_error)
     {
       or_unpack_int (reply, length_ptr);
-      return area;
+      *stats_buffer = area;
     }
-  else
-    {
-      return NULL;
-    }
-#else /* CS_MODE */
-  char *area;
 
+  return req_error;
+#else /* CS_MODE */
   THREAD_ENTRY *thread_p = enter_server ();
 
-  area = xstats_get_statistics_from_server (thread_p, classoid, timestamp, length_ptr);
+  *stats_buffer = xstats_get_statistics_from_server (thread_p, classoid, timestamp, length_ptr);
 
   exit_server (*thread_p);
 
-  return area;
+  return NO_ERROR;
 #endif /* !CS_MODE */
 }
 
@@ -5383,6 +5391,10 @@ btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id
 	{
 	  btid = NULL;
 	}
+    }
+  else
+    {
+      error = req_error;
     }
 
   free_and_init (request);
@@ -5674,6 +5686,10 @@ btree_delete_index (BTID * btid)
     {
       or_unpack_int (reply, &status);
     }
+  else
+    {
+      status = req_error;
+    }
 
   return status;
 #else /* CS_MODE */
@@ -5748,6 +5764,10 @@ locator_remove_class_from_index (OID * oid, BTID * btid, HFID * hfid)
   if (!req_error)
     {
       or_unpack_int (reply, &status);
+    }
+  else
+    {
+      status = req_error;
     }
 
   return status;
@@ -6049,6 +6069,10 @@ btree_class_test_unique (char *buf, int buf_size)
     {
       or_unpack_int (reply, &status);
     }
+  else
+    {
+      status = req_error;
+    }
 
   return status;
 #else /* CS_MODE */
@@ -6290,7 +6314,6 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, xasl_stream * stream)
 
 #endif /* !CS_MODE */
 }
-
 
 /*
  * qmgr_execute_query - Send a SERVER_QM_EXECUTE request to the server
@@ -6885,7 +6908,7 @@ qp_get_sys_timestamp (DB_VALUE * value)
       db_make_timestamp (value, sysutime);
     }
 
-  return NO_ERROR;
+  return req_error;
 #else /* CS_MODE */
 
   THREAD_ENTRY *thread_p = enter_server ();
@@ -7042,7 +7065,7 @@ serial_decache (OID * oid)
       or_unpack_int (reply, &status);
     }
 
-  return NO_ERROR;
+  return req_error;
 #else /* CS_MODE */
   THREAD_ENTRY *thread_p = enter_server ();
 
@@ -7116,7 +7139,7 @@ perfmon_server_stop_stats (void)
     {
       return ER_FAILED;
     }
-  return NO_ERROR;
+  return req_error;
 #else /* CS_MODE */
 
   THREAD_ENTRY *thread_p = enter_server ();
@@ -7141,10 +7164,9 @@ int
 perfmon_server_copy_stats (UINT64 * to_stats)
 {
 #if defined(CS_MODE)
-  int req_error;
+  int req_error = NO_ERROR;
   char *reply;
   int nr_statistic_values;
-  int err = NO_ERROR;
 
   nr_statistic_values = perfmon_get_number_of_statistic_values ();
   reply = (char *) malloc (nr_statistic_values * OR_INT64_SIZE);
@@ -7169,7 +7191,7 @@ perfmon_server_copy_stats (UINT64 * to_stats)
     }
 
   free_and_init (reply);
-  return err;
+  return req_error;
 
 #else /* CS_MODE */
 
@@ -7195,10 +7217,9 @@ int
 perfmon_server_copy_global_stats (UINT64 * to_stats)
 {
 #if defined(CS_MODE)
-  int req_error;
+  int req_error = NO_ERROR;
   char *reply = NULL;
   int nr_statistic_values;
-  int err = NO_ERROR;
 
   nr_statistic_values = perfmon_get_number_of_statistic_values ();
   reply = (char *) malloc (nr_statistic_values * OR_INT64_SIZE);
@@ -7221,7 +7242,7 @@ perfmon_server_copy_global_stats (UINT64 * to_stats)
     }
 
   free_and_init (reply);
-  return err;
+  return req_error;
 #else /* CS_MODE */
 
   THREAD_ENTRY *thread_p = enter_server ();
@@ -7286,7 +7307,6 @@ catalog_check_rep_dir (OID * class_id, OID * rep_dir_p)
   return success;
 #endif /* !CS_MODE */
 }
-
 
 /*
  * thread_kill_tran_index -
@@ -8491,6 +8511,10 @@ locator_check_fk_validity (OID * cls_oid, HFID * hfid, TP_DOMAIN * key_type, int
     {
       ptr = or_unpack_int (reply, &error);
     }
+  else
+    {
+      error = req_error;
+    }
 
   free_and_init (request);
 
@@ -9218,7 +9242,6 @@ es_posix_rename_file (const char *src_path, const char *metaname, char *new_path
 #endif
 }
 
-
 /*
  * es_posix_get_file_size () - get the size of an esternal file
  *
@@ -9926,6 +9949,208 @@ locator_demote_class_lock (const OID * class_oid, LOCK lock, LOCK * ex_lock)
 	{
 	  ws_set_lock (class_mop, lock);
 	}
+    }
+
+  return rc;
+#else /* CS_MODE */
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}
+
+int
+loaddb_init (cubload::load_args & args)
+{
+#if defined(CS_MODE)
+  int rc = ER_FAILED;
+  packing_packer packer;
+  cubmem::extensible_block eb;
+
+  packer.set_buffer_and_pack_all (eb, args);
+
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  int req_error = net_client_request (NET_SERVER_LD_INIT, eb.get_ptr (), (int) packer.get_current_size (), reply,
+				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      or_unpack_int (reply, &rc);
+    }
+
+  return rc;
+#else /* CS_MODE */
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}
+
+int
+loaddb_install_class (const cubload::batch & batch, bool & class_is_ignored, std::string & class_name)
+{
+#if defined(CS_MODE)
+  int rc = ER_FAILED;
+  packing_packer packer;
+  cubmem::extensible_block eb;
+  int class_ignored = 0;
+  char *ptr = NULL;
+
+  packer.set_buffer_and_pack_all (eb, batch);
+
+  OR_ALIGNED_BUF (3 * OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *area = NULL;
+  int area_size;
+  int req_error = net_client_request2 (NET_SERVER_LD_INSTALL_CLASS, eb.get_ptr (), (int) packer.get_current_size (),
+				       reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
+  if (!req_error)
+    {
+      ptr = or_unpack_int (reply, &area_size);
+      ptr = or_unpack_int (ptr, &rc);
+      ptr = or_unpack_int (ptr, &class_ignored);
+      assert (area_size < DB_MAX_IDENTIFIER_LENGTH);
+
+      class_name = std::string (area, area_size);
+
+      free_and_init (area);
+      class_is_ignored = class_ignored != 0;
+    }
+
+  return rc;
+#else /* CS_MODE */
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}
+
+int
+loaddb_load_batch (const cubload::batch & batch, bool use_temp_batch, bool & is_batch_accepted, load_status & status)
+{
+#if defined(CS_MODE)
+  char *data_reply = NULL;
+  int data_reply_size = 0;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 3) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  packing_packer packer;
+  cubmem::extensible_block eb;
+
+  if (use_temp_batch)
+    {
+      packer.set_buffer_and_pack_all (eb, use_temp_batch);
+    }
+  else
+    {
+      packer.set_buffer_and_pack_all (eb, use_temp_batch, batch);
+    }
+
+  int req_error = net_client_request2 (NET_SERVER_LD_LOAD_BATCH, eb.get_ptr (), (int) packer.get_current_size (), reply,
+				       OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &data_reply, &data_reply_size);
+  if (req_error != NO_ERROR)
+    {
+      return req_error;
+    }
+
+  char *ptr = or_unpack_int (reply, &data_reply_size);
+
+  int rc = ER_FAILED;
+  ptr = or_unpack_int (ptr, &rc);
+  if (rc != NO_ERROR)
+    {
+      free_and_init (data_reply);
+      return rc;
+    }
+
+  int is_batch_accepted_;
+  or_unpack_int (ptr, &is_batch_accepted_);
+  is_batch_accepted = is_batch_accepted_ != 0;
+
+  packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
+  status.unpack (unpacker);
+
+  free_and_init (data_reply);
+
+  return rc;
+#else /* CS_MODE */
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}
+
+int
+loaddb_fetch_status (load_status & status)
+{
+#if defined(CS_MODE)
+  char *data_reply = NULL;
+  int data_reply_size = 0;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  int req_error = net_client_request2 (NET_SERVER_LD_FETCH_STATUS, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL,
+				       0, &data_reply, &data_reply_size);
+  if (req_error != NO_ERROR)
+    {
+      return req_error;
+    }
+
+  or_unpack_int (reply, &data_reply_size);
+
+  if (data_reply_size <= 0)
+    {
+      return ER_FAILED;
+    }
+
+  packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
+  status.unpack (unpacker);
+
+  free_and_init (data_reply);
+
+  return req_error;
+#else /* CS_MODE */
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}
+
+int
+loaddb_destroy ()
+{
+#if defined(CS_MODE)
+  int rc = ER_FAILED;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  int req_error =
+    net_client_request (NET_SERVER_LD_DESTROY, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      or_unpack_int (reply, &rc);
+    }
+
+  return rc;
+#else /* CS_MODE */
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}
+
+int
+loaddb_interrupt ()
+{
+#if defined(CS_MODE)
+  return net_client_request_no_reply (NET_SERVER_LD_INTERRUPT, NULL, 0);
+#else /* CS_MODE */
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}
+
+int
+loaddb_update_stats ()
+{
+#if defined(CS_MODE)
+  int rc = ER_FAILED;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  int req_error =
+    net_client_request (NET_SERVER_LD_UPDATE_STATS, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      or_unpack_int (reply, &rc);
     }
 
   return rc;

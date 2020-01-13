@@ -26,6 +26,7 @@
 #include <iostream>
 
 #include <cassert>
+#include <cstring>
 
 static void test_single_statistics_no_concurrency (void);
 static void test_multithread_accumulation (void);
@@ -131,7 +132,8 @@ static void
 test_single_statistics_no_concurrency_double (void)
 {
 #define check(value) do { statistic_value read; statcol.fetch (&read); \
-                          floating_rep real = *reinterpret_cast<floating_rep*> (&read); floating_rep val = value; \
+                          floating_rep real; std::memcpy (&real, &read, sizeof (floating_rep)); \
+                          floating_rep val = value; \
                           assert (real >= val - 0.01 && real <= val + 0.01); } while (0)
   using namespace cubmonitor;
 

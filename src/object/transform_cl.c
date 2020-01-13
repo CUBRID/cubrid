@@ -163,28 +163,36 @@ static void metharg_to_disk (OR_BUF * buf, SM_METHOD_ARGUMENT * arg);
 static int metharg_size (SM_METHOD_ARGUMENT * arg);
 static SM_METHOD_ARGUMENT *disk_to_metharg (OR_BUF * buf);
 static int methsig_to_disk (OR_BUF * buf, SM_METHOD_SIGNATURE * sig);
+static inline void methsig_to_disk_lwriter (void *buf, void *sig);
 static int methsig_size (SM_METHOD_SIGNATURE * sig);
 static SM_METHOD_SIGNATURE *disk_to_methsig (OR_BUF * buf);
 static int method_to_disk (OR_BUF * buf, SM_METHOD * method);
+static inline void method_to_disk_lwriter (void *buf, void *method);
 static int method_size (SM_METHOD * method);
 static void disk_to_method (OR_BUF * buf, SM_METHOD * method);
 static int methfile_to_disk (OR_BUF * buf, SM_METHOD_FILE * file);
+static inline void methfile_to_disk_lwriter (void *buf, void *file);
 static int methfile_size (SM_METHOD_FILE * file);
 static SM_METHOD_FILE *disk_to_methfile (OR_BUF * buf);
-static int query_spec_to_disk (OR_BUF * buf, SM_QUERY_SPEC * statement);
+static int query_spec_to_disk (OR_BUF * buf, SM_QUERY_SPEC * query_spec);
+static inline void query_spec_to_disk_lwriter (void *buf, void *query_spec);
 static int query_spec_size (SM_QUERY_SPEC * statement);
 static SM_QUERY_SPEC *disk_to_query_spec (OR_BUF * buf);
 static int attribute_to_disk (OR_BUF * buf, SM_ATTRIBUTE * att);
+static inline void attribute_to_disk_lwriter (void *buf, void *att);
 static int attribute_size (SM_ATTRIBUTE * att);
 static void disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att);
 static int resolution_to_disk (OR_BUF * buf, SM_RESOLUTION * res);
+static inline void resolution_to_disk_lwriter (void *buf, void *res);
 static int resolution_size (SM_RESOLUTION * res);
 static SM_RESOLUTION *disk_to_resolution (OR_BUF * buf);
 static int repattribute_to_disk (OR_BUF * buf, SM_REPR_ATTRIBUTE * rat);
+static inline void repattribute_to_disk_lwriter (void *buf, void *rat);
 static int repattribute_size (SM_REPR_ATTRIBUTE * rat);
 static SM_REPR_ATTRIBUTE *disk_to_repattribute (OR_BUF * buf);
 static int representation_size (SM_REPRESENTATION * rep);
 static int representation_to_disk (OR_BUF * buf, SM_REPRESENTATION * rep);
+static inline void representation_to_disk_lwriter (void *buf, void *rep);
 static SM_REPRESENTATION *disk_to_representation (OR_BUF * buf);
 static int check_class_structure (SM_CLASS * class_);
 static int put_class_varinfo (OR_BUF * buf, SM_CLASS * class_);
@@ -203,6 +211,7 @@ static int get_enumeration (OR_BUF * buf, DB_ENUMERATION * enumeration, int expe
 static int tf_attribute_default_expr_to_property (SM_ATTRIBUTE * attr_list);
 
 static int partition_info_to_disk (OR_BUF * buf, SM_PARTITION * partition_info);
+static inline void partition_info_to_disk_lwriter (void *buf, void *partition_info);
 static SM_PARTITION *disk_to_partition_info (OR_BUF * buf);
 static int partition_info_size (SM_PARTITION * partition_info);
 static void or_pack_mop (OR_BUF * buf, MOP mop);
@@ -502,7 +511,7 @@ tf_add_fixup (OR_FIXUP * fix, DB_OBJECT * obj, void *ref)
  *    NULL is returned on error.
  */
 OID *
-tf_need_permanent_oid (OR_BUF * buf, DB_OBJECT * obj)
+tf_need_permanent_oid (or_buf * buf, DB_OBJECT * obj)
 {
   OID *oidp;
 
@@ -533,6 +542,11 @@ tf_need_permanent_oid (OR_BUF * buf, DB_OBJECT * obj)
        */
       if (locator_assign_permanent_oid (obj) == NULL)
 	{
+	  if (er_errid () == NO_ERROR)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_CANT_ASSIGN_OID, 0);
+	    }
+
 	  /* this is serious */
 	  or_abort (buf);
 	}
@@ -814,6 +828,11 @@ tf_mem_to_disk (MOP classmop, MOBJ classobj, MOBJ volatile obj, RECDES * record,
 	   */
 	  if (locator_assign_permanent_oid (classmop) == NULL)
 	    {
+	      if (er_errid () == NO_ERROR)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_CANT_ASSIGN_OID, 0);
+		}
+
 	      or_abort (buf);
 	    }
 	}
@@ -1467,8 +1486,7 @@ string_disk_size (const char *string)
       str_length = 0;
     }
 
-  db_make_varnchar (&value, TP_FLOATING_PRECISION_VALUE, (const DB_C_NCHAR) string, str_length, LANG_SYS_CODESET,
-		    LANG_SYS_COLLATION);
+  db_make_varnchar (&value, TP_FLOATING_PRECISION_VALUE, string, str_length, LANG_SYS_CODESET, LANG_SYS_COLLATION);
   length = tp_VarNChar.get_disk_size_of_value (&value);
 
   /* Clear the compressed_string of DB_VALUE */
@@ -1495,8 +1513,8 @@ static char *
 get_string (OR_BUF * buf, int length)
 {
   DB_VALUE value;
-  char *string = NULL;
   DB_DOMAIN my_domain;
+  char *string = NULL;
 
   /*
    * Make sure this starts off initialized so "readval" won't try to free
@@ -1514,17 +1532,14 @@ get_string (OR_BUF * buf, int length)
   my_domain.collation_id = LANG_SYS_COLLATION;
   my_domain.collation_flag = TP_DOMAIN_COLL_NORMAL;
 
-  tp_VarNChar.data_readval (buf, &value, &my_domain, length, true, NULL, 0);
+  tp_VarNChar.data_readval (buf, &value, &my_domain, length, false, NULL, 0);
 
   if (DB_VALUE_TYPE (&value) == DB_TYPE_VARNCHAR)
     {
-      string = db_get_string (&value);
+      string = ws_copy_string (db_get_string (&value));
     }
-  else
-    {
-      /* not sure what's in it */
-      db_value_clear (&value);
-    }
+
+  db_value_clear (&value);
 
   return string;
 }
@@ -1554,8 +1569,7 @@ put_string (OR_BUF * buf, const char *string)
       str_length = 0;
     }
 
-  db_make_varnchar (&value, TP_FLOATING_PRECISION_VALUE, (const DB_C_NCHAR) string, str_length, LANG_SYS_CODESET,
-		    LANG_SYS_COLLATION);
+  db_make_varnchar (&value, TP_FLOATING_PRECISION_VALUE, string, str_length, LANG_SYS_CODESET, LANG_SYS_COLLATION);
   tp_VarNChar.data_writeval (buf, &value);
   pr_clear_value (&value);
 }
@@ -2092,7 +2106,7 @@ domain_to_disk (OR_BUF * buf, TP_DOMAIN * domain)
 
   if (domain->json_validator)
     {
-      db_make_string_by_const_str (&schema_value, db_json_get_schema_raw_from_validator (domain->json_validator));
+      db_make_string (&schema_value, db_json_get_schema_raw_from_validator (domain->json_validator));
       tp_String.data_writeval (buf, &schema_value);
       pr_clear_value (&schema_value);
     }
@@ -2400,6 +2414,12 @@ methsig_to_disk (OR_BUF * buf, SM_METHOD_SIGNATURE * sig)
   return NO_ERROR;
 }
 
+static inline void
+methsig_to_disk_lwriter (void *buf, void *sig)
+{
+  (void) methsig_to_disk (STATIC_CAST (OR_BUF *, buf), STATIC_CAST (SM_METHOD_SIGNATURE *, sig));
+}
+
 /*
  * methsig_size - Calculate the disk size of a method signature.
  *    return: disk size of signature
@@ -2531,7 +2551,7 @@ method_to_disk (OR_BUF * buf, SM_METHOD * method)
   put_string (buf, method->header.name);
 
   /* signatures */
-  put_substructure_set (buf, (DB_LIST *) method->signatures, (LWRITER) methsig_to_disk,
+  put_substructure_set (buf, (DB_LIST *) method->signatures, methsig_to_disk_lwriter,
 			&tf_Metaclass_methsig.mc_classoid, tf_Metaclass_methsig.mc_repid);
 
   put_property_list (buf, method->properties);
@@ -2542,6 +2562,12 @@ method_to_disk (OR_BUF * buf, SM_METHOD * method)
     }
 
   return NO_ERROR;
+}
+
+static inline void
+method_to_disk_lwriter (void *buf, void *method)
+{
+  (void) method_to_disk (STATIC_CAST (OR_BUF *, buf), STATIC_CAST (SM_METHOD *, method));
 }
 
 /*
@@ -2659,6 +2685,12 @@ methfile_to_disk (OR_BUF * buf, SM_METHOD_FILE * file)
   return NO_ERROR;
 }
 
+static inline void
+methfile_to_disk_lwriter (void *buf, void *file)
+{
+  (void) methfile_to_disk (STATIC_CAST (OR_BUF *, buf), STATIC_CAST (SM_METHOD_FILE *, file));
+}
+
 /*
  * methfile_size - Calculate the disk size of a method file.
  *    return: disk size of the method file
@@ -2736,7 +2768,7 @@ disk_to_methfile (OR_BUF * buf)
  *    statement(in): query_spec statement
  */
 static int
-query_spec_to_disk (OR_BUF * buf, SM_QUERY_SPEC * statement)
+query_spec_to_disk (OR_BUF * buf, SM_QUERY_SPEC * query_spec)
 {
   char *start;
   int offset;
@@ -2746,13 +2778,13 @@ query_spec_to_disk (OR_BUF * buf, SM_QUERY_SPEC * statement)
   offset = tf_Metaclass_query_spec.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_query_spec.mc_n_variable);
 
   or_put_offset (buf, offset);
-  offset += string_disk_size (statement->specification);
+  offset += string_disk_size (query_spec->specification);
 
   or_put_offset (buf, offset);
   buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
 
   /* ATTRIBUTES */
-  put_string (buf, statement->specification);
+  put_string (buf, query_spec->specification);
 
   if (start + offset != buf->ptr)
     {
@@ -2762,6 +2794,11 @@ query_spec_to_disk (OR_BUF * buf, SM_QUERY_SPEC * statement)
   return NO_ERROR;
 }
 
+static inline void
+query_spec_to_disk_lwriter (void *buf, void *query_spec)
+{
+  (void) query_spec_to_disk (STATIC_CAST (OR_BUF *, buf), STATIC_CAST (SM_QUERY_SPEC *, query_spec));
+}
 
 /*
  * query_spec_size - Calculates the disk size of a query_spec statement.
@@ -2916,6 +2953,11 @@ attribute_to_disk (OR_BUF * buf, SM_ATTRIBUTE * att)
   return NO_ERROR;
 }
 
+static inline void
+attribute_to_disk_lwriter (void *buf, void *att)
+{
+  (void) attribute_to_disk (STATIC_CAST (OR_BUF *, buf), STATIC_CAST (SM_ATTRIBUTE *, att));
+}
 
 /*
  * attribute_size - Calculates the disk size of an attribute.
@@ -3059,7 +3101,7 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
 		{
 		  DB_SEQ *def_expr_seq;
 		  DB_VALUE def_expr_op, def_expr_type, def_expr_format;
-		  char *def_expr_format_str;
+		  const char *def_expr_format_str;
 
 		  assert (set_size (db_get_set (&value)) == 3);
 
@@ -3166,6 +3208,11 @@ resolution_to_disk (OR_BUF * buf, SM_RESOLUTION * res)
   return NO_ERROR;
 }
 
+static inline void
+resolution_to_disk_lwriter (void *buf, void *res)
+{
+  (void) resolution_to_disk (STATIC_CAST (OR_BUF *, buf), STATIC_CAST (SM_RESOLUTION *, res));
+}
 
 /*
  * resolution_size - Calculates the disk size of a resolution.
@@ -3293,6 +3340,12 @@ repattribute_to_disk (OR_BUF * buf, SM_REPR_ATTRIBUTE * rat)
   return NO_ERROR;
 }
 
+static inline void
+repattribute_to_disk_lwriter (void *buf, void *rat)
+{
+  (void) repattribute_to_disk (STATIC_CAST (OR_BUF *, buf), STATIC_CAST (SM_REPR_ATTRIBUTE *, rat));
+}
+
 /*
  * repattribute_size - Calculates the disk size for the REPATTRIBUTE.
  *    return: disk size of repattribute
@@ -3403,7 +3456,7 @@ representation_to_disk (OR_BUF * buf, SM_REPRESENTATION * rep)
   /* no longer have the fixed_size field, leave it for future expansion */
   or_put_int (buf, 0);
 
-  put_substructure_set (buf, (DB_LIST *) rep->attributes, (LWRITER) repattribute_to_disk,
+  put_substructure_set (buf, (DB_LIST *) rep->attributes, repattribute_to_disk_lwriter,
 			&tf_Metaclass_repattribute.mc_classoid, tf_Metaclass_repattribute.mc_repid);
 
   put_property_list (buf, NULL);
@@ -3414,6 +3467,12 @@ representation_to_disk (OR_BUF * buf, SM_REPRESENTATION * rep)
     }
 
   return NO_ERROR;
+}
+
+static inline void
+representation_to_disk_lwriter (void *buf, void *rep)
+{
+  (void) representation_to_disk (STATIC_CAST (OR_BUF *, buf), STATIC_CAST (SM_REPRESENTATION *, rep));
 }
 
 /*
@@ -3640,35 +3699,35 @@ put_class_attributes (OR_BUF * buf, SM_CLASS * class_)
   put_string (buf, sm_ch_name ((MOBJ) class_));
   put_string (buf, class_->loader_commands);
 
-  put_substructure_set (buf, (DB_LIST *) class_->representations, (LWRITER) representation_to_disk,
+  put_substructure_set (buf, (DB_LIST *) class_->representations, representation_to_disk_lwriter,
 			&tf_Metaclass_representation.mc_classoid, tf_Metaclass_representation.mc_repid);
 
   put_object_set (buf, class_->users);
 
   put_object_set (buf, class_->inheritance);
 
-  put_substructure_set (buf, (DB_LIST *) class_->attributes, (LWRITER) attribute_to_disk,
+  put_substructure_set (buf, (DB_LIST *) class_->attributes, attribute_to_disk_lwriter,
 			&tf_Metaclass_attribute.mc_classoid, tf_Metaclass_attribute.mc_repid);
 
-  put_substructure_set (buf, (DB_LIST *) class_->shared, (LWRITER) attribute_to_disk,
+  put_substructure_set (buf, (DB_LIST *) class_->shared, attribute_to_disk_lwriter,
 			&tf_Metaclass_attribute.mc_classoid, tf_Metaclass_attribute.mc_repid);
 
-  put_substructure_set (buf, (DB_LIST *) class_->class_attributes, (LWRITER) attribute_to_disk,
+  put_substructure_set (buf, (DB_LIST *) class_->class_attributes, attribute_to_disk_lwriter,
 			&tf_Metaclass_attribute.mc_classoid, tf_Metaclass_attribute.mc_repid);
 
-  put_substructure_set (buf, (DB_LIST *) class_->methods, (LWRITER) method_to_disk, &tf_Metaclass_method.mc_classoid,
+  put_substructure_set (buf, (DB_LIST *) class_->methods, method_to_disk_lwriter, &tf_Metaclass_method.mc_classoid,
 			tf_Metaclass_method.mc_repid);
 
-  put_substructure_set (buf, (DB_LIST *) class_->class_methods, (LWRITER) method_to_disk,
+  put_substructure_set (buf, (DB_LIST *) class_->class_methods, method_to_disk_lwriter,
 			&tf_Metaclass_method.mc_classoid, tf_Metaclass_method.mc_repid);
 
-  put_substructure_set (buf, (DB_LIST *) class_->method_files, (LWRITER) methfile_to_disk,
+  put_substructure_set (buf, (DB_LIST *) class_->method_files, methfile_to_disk_lwriter,
 			&tf_Metaclass_methfile.mc_classoid, tf_Metaclass_methfile.mc_repid);
 
-  put_substructure_set (buf, (DB_LIST *) class_->resolutions, (LWRITER) resolution_to_disk,
+  put_substructure_set (buf, (DB_LIST *) class_->resolutions, resolution_to_disk_lwriter,
 			&tf_Metaclass_resolution.mc_classoid, tf_Metaclass_resolution.mc_repid);
 
-  put_substructure_set (buf, (DB_LIST *) class_->query_spec, (LWRITER) query_spec_to_disk,
+  put_substructure_set (buf, (DB_LIST *) class_->query_spec, query_spec_to_disk_lwriter,
 			&tf_Metaclass_query_spec.mc_classoid, tf_Metaclass_query_spec.mc_repid);
 
   /*
@@ -3682,7 +3741,7 @@ put_class_attributes (OR_BUF * buf, SM_CLASS * class_)
 
   put_string (buf, class_->comment);
 
-  put_substructure_set (buf, (DB_LIST *) class_->partition, (LWRITER) partition_info_to_disk,
+  put_substructure_set (buf, (DB_LIST *) class_->partition, partition_info_to_disk_lwriter,
 			&tf_Metaclass_partition.mc_classoid, tf_Metaclass_partition.mc_repid);
 }
 
@@ -4853,6 +4912,11 @@ partition_info_to_disk (OR_BUF * buf, SM_PARTITION * partition_info)
   return NO_ERROR;
 }
 
+static inline void
+partition_info_to_disk_lwriter (void *buf, void *partition_info)
+{
+  (void) partition_info_to_disk (STATIC_CAST (OR_BUF *, buf), STATIC_CAST (SM_PARTITION *, partition_info));
+}
 
 /*
  * partition_info_size - Calculates the disk size of a sm_partition structure.

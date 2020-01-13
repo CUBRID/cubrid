@@ -74,6 +74,7 @@
 #define _SCAN_JSON_TABLE_HPP_
 
 #include "query_evaluator.h"
+#include "storage_common.h"
 
 #include <vector>
 
@@ -125,7 +126,7 @@ namespace cubscan
 	// returns error code or NO_ERROR
 	//
 	// sid (in/out) : status and position is updated based on the success of scan
-	int next_scan (cubthread::entry *thread_p, scan_id_struct &sid);
+	int next_scan (cubthread::entry *thread_p, scan_id_struct &sid, SCAN_CODE &sc);
 
 	SCAN_PRED &get_predicate ();
 	void set_value_descriptor (val_descr *vd);

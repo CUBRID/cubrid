@@ -401,8 +401,8 @@ qe_end_session (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf)
 }
 
 int
-qe_prepare (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char *sql_stmt, char flag, T_CCI_ERROR * err_buf,
-	    int reuse)
+qe_prepare (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, const char *sql_stmt, char flag,
+	    T_CCI_ERROR * err_buf, int reuse)
 {
   T_NET_BUF net_buf;
   char func_code = CAS_FC_PREPARE;
@@ -425,7 +425,7 @@ qe_prepare (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char *sql_stmt
       return CCI_ER_NO_MORE_MEMORY;
     }
 
-  sql_stmt_size = strlen (req_handle->sql_text) + 1;
+  sql_stmt_size = (int) strlen (req_handle->sql_text) + 1;
 
   net_buf_init (&net_buf);
 
@@ -828,7 +828,7 @@ qe_prepare_and_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, ch
       return CCI_ER_NO_MORE_MEMORY;
     }
 
-  sql_stmt_size = strlen (req_handle->sql_text) + 1;
+  sql_stmt_size = (int) strlen (req_handle->sql_text) + 1;
 
   net_buf_init (&net_buf);
 
@@ -1887,13 +1887,21 @@ qe_schema_info (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, int type, 
   ADD_ARG_INT (&net_buf, type);
 
   if (arg1 == NULL)
-    ADD_ARG_BYTES (&net_buf, NULL, 0);
+    {
+      ADD_ARG_BYTES (&net_buf, NULL, 0);
+    }
   else
-    ADD_ARG_STR (&net_buf, arg1, strlen (arg1) + 1, con_handle->charset);
+    {
+      ADD_ARG_STR (&net_buf, arg1, (int) strlen (arg1) + 1, con_handle->charset);
+    }
   if (arg2 == NULL)
-    ADD_ARG_BYTES (&net_buf, NULL, 0);
+    {
+      ADD_ARG_BYTES (&net_buf, NULL, 0);
+    }
   else
-    ADD_ARG_STR (&net_buf, arg2, strlen (arg2) + 1, con_handle->charset);
+    {
+      ADD_ARG_STR (&net_buf, arg2, (int) strlen (arg2) + 1, con_handle->charset);
+    }
   ADD_ARG_BYTES (&net_buf, &flag, 1);
 
   broker_ver = hm_get_broker_version (con_handle);
@@ -1957,7 +1965,7 @@ qe_oid_get (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char *oid_str,
     {
       for (i = 0; attr_name[i] != NULL; i++)
 	{
-	  ADD_ARG_STR (&net_buf, attr_name[i], strlen (attr_name[i]) + 1, con_handle->charset);
+	  ADD_ARG_STR (&net_buf, attr_name[i], (int) strlen (attr_name[i]) + 1, con_handle->charset);
 	}
     }
 
@@ -2009,12 +2017,16 @@ qe_oid_put (T_CON_HANDLE * con_handle, char *oid_str, char **attr_name, char **n
   ADD_ARG_OBJECT (&net_buf, &oid);
   for (i = 0; attr_name[i] != NULL; i++)
     {
-      ADD_ARG_STR (&net_buf, attr_name[i], strlen (attr_name[i]) + 1, con_handle->charset);
+      ADD_ARG_STR (&net_buf, attr_name[i], (int) strlen (attr_name[i]) + 1, con_handle->charset);
       ADD_ARG_BYTES (&net_buf, &u_type, 1);
       if (new_val[i] == NULL)
-	ADD_ARG_BYTES (&net_buf, NULL, 0);
+	{
+	  ADD_ARG_BYTES (&net_buf, NULL, 0);
+	}
       else
-	ADD_ARG_STR (&net_buf, new_val[i], strlen (new_val[i]) + 1, con_handle->charset);
+	{
+	  ADD_ARG_STR (&net_buf, new_val[i], (int) strlen (new_val[i]) + 1, con_handle->charset);
+	}
     }
 
   if (net_buf.err_code < 0)
@@ -2061,7 +2073,7 @@ qe_oid_put2 (T_CON_HANDLE * con_handle, char *oid_str, char **attr_name, void **
       tmp_cell.flag = BIND_PTR_STATIC;
       tmp_cell.value = NULL;
 
-      ADD_ARG_STR (&net_buf, attr_name[i], strlen (attr_name[i]) + 1, con_handle->charset);
+      ADD_ARG_STR (&net_buf, attr_name[i], (int) strlen (attr_name[i]) + 1, con_handle->charset);
 
       value = NULL;
 
@@ -2074,7 +2086,7 @@ qe_oid_put2 (T_CON_HANDLE * con_handle, char *oid_str, char **attr_name, void **
 	  switch (a_type[i])
 	    {
 	    case CCI_A_TYPE_STR:
-	      data_size = strlen ((char *) (new_val[i])) + 1;
+	      data_size = (int) strlen ((char *) (new_val[i])) + 1;
 	      u_type = CCI_U_TYPE_STRING;
 	      value = new_val[i];
 	      break;
@@ -2236,7 +2248,7 @@ qe_get_class_num_objs (T_CON_HANDLE * con_handle, char *class_name, char flag, i
 
   net_buf_init (&net_buf);
   net_buf_cp_str (&net_buf, &func_code, 1);
-  ADD_ARG_STR (&net_buf, class_name, strlen (class_name) + 1, con_handle->charset);
+  ADD_ARG_STR (&net_buf, class_name, (int) strlen (class_name) + 1, con_handle->charset);
   ADD_ARG_BYTES (&net_buf, &flag, 1);
 
   if (net_buf.err_code < 0)
@@ -2367,7 +2379,7 @@ qe_col_get (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char *oid_str,
 
   ADD_ARG_BYTES (&net_buf, &col_cmd, 1);
   ADD_ARG_OBJECT (&net_buf, &oid);
-  ADD_ARG_STR (&net_buf, col_attr, strlen (col_attr) + 1, con_handle->charset);
+  ADD_ARG_STR (&net_buf, col_attr, (int) strlen (col_attr) + 1, con_handle->charset);
 
   if (net_buf.err_code < 0)
     {
@@ -2598,7 +2610,7 @@ qe_col_size (T_CON_HANDLE * con_handle, char *oid_str, const char *col_attr, int
 
   ADD_ARG_BYTES (&net_buf, &col_cmd, 1);
   ADD_ARG_OBJECT (&net_buf, &oid);
-  ADD_ARG_STR (&net_buf, (char *) col_attr, strlen (col_attr) + 1, con_handle->charset);
+  ADD_ARG_STR (&net_buf, (char *) col_attr, (int) strlen (col_attr) + 1, con_handle->charset);
 
   if (net_buf.err_code < 0)
     {
@@ -2657,12 +2669,16 @@ qe_col_set_add_drop (T_CON_HANDLE * con_handle, char col_cmd, char *oid_str, con
 
   ADD_ARG_BYTES (&net_buf, &col_cmd, 1);
   ADD_ARG_OBJECT (&net_buf, &oid);
-  ADD_ARG_STR (&net_buf, (char *) col_attr, strlen (col_attr) + 1, con_handle->charset);
+  ADD_ARG_STR (&net_buf, (char *) col_attr, (int) strlen (col_attr) + 1, con_handle->charset);
   ADD_ARG_BYTES (&net_buf, &u_type, 1);
   if (value == NULL)
-    ADD_ARG_BYTES (&net_buf, NULL, 0);
+    {
+      ADD_ARG_BYTES (&net_buf, NULL, 0);
+    }
   else
-    ADD_ARG_STR (&net_buf, value, strlen (value) + 1, con_handle->charset);
+    {
+      ADD_ARG_STR (&net_buf, value, (int) strlen (value) + 1, con_handle->charset);
+    }
 
   if (net_buf.err_code < 0)
     {
@@ -2707,7 +2723,7 @@ qe_col_seq_op (T_CON_HANDLE * con_handle, char col_cmd, char *oid_str, const cha
   ADD_ARG_BYTES (&net_buf, &col_cmd, 1);
   ADD_ARG_OBJECT (&net_buf, &oid);
   ADD_ARG_INT (&net_buf, index);
-  ADD_ARG_STR (&net_buf, (char *) col_attr, strlen (col_attr) + 1, con_handle->charset);
+  ADD_ARG_STR (&net_buf, (char *) col_attr, (int) strlen (col_attr) + 1, con_handle->charset);
   if (col_cmd == CCI_COL_SEQ_INSERT || col_cmd == CCI_COL_SEQ_PUT)
     {
       ADD_ARG_BYTES (&net_buf, &u_type, 1);
@@ -2717,7 +2733,7 @@ qe_col_seq_op (T_CON_HANDLE * con_handle, char col_cmd, char *oid_str, const cha
 	}
       else
 	{
-	  ADD_ARG_STR (&net_buf, (char *) value, strlen (value) + 1, con_handle->charset);
+	  ADD_ARG_STR (&net_buf, (char *) value, (int) strlen (value) + 1, con_handle->charset);
 	}
     }
 
@@ -3196,7 +3212,7 @@ qe_execute_batch (T_CON_HANDLE * con_handle, int num_query, char **sql_stmt, T_C
 
   for (i = 0; i < num_query; i++)
     {
-      sql_len = strlen (sql_stmt[i]) + 1;
+      sql_len = (int) strlen (sql_stmt[i]) + 1;
       ADD_ARG_STR (&net_buf, sql_stmt[i], sql_len, con_handle->charset);
     }
 
@@ -3449,7 +3465,7 @@ qe_get_data_str (T_VALUE_BUF * conv_val_buf, T_CCI_U_TYPE u_type, char *col_valu
     }
 
   *((char **) value) = (char *) conv_val_buf->data;
-  *indicator = strlen ((char *) conv_val_buf->data);
+  *indicator = (int) strlen ((char *) conv_val_buf->data);
 
   return 0;
 }
@@ -4113,8 +4129,8 @@ qe_get_attr_type_str (T_CON_HANDLE * con_handle, char *class_name, char *attr_na
 
   net_buf_cp_str (&net_buf, &func_code, 1);
 
-  ADD_ARG_STR (&net_buf, class_name, strlen (class_name) + 1, con_handle->charset);
-  ADD_ARG_STR (&net_buf, attr_name, strlen (attr_name) + 1, con_handle->charset);
+  ADD_ARG_STR (&net_buf, class_name, (int) strlen (class_name) + 1, con_handle->charset);
+  ADD_ARG_STR (&net_buf, attr_name, (int) strlen (attr_name) + 1, con_handle->charset);
 
   if (net_buf.err_code < 0)
     {
@@ -4162,7 +4178,7 @@ qe_get_query_info (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char lo
     {
       int sql_stmt_size;
 
-      sql_stmt_size = strlen (req_handle->sql_text) + 1;
+      sql_stmt_size = (int) strlen (req_handle->sql_text) + 1;
 
       ADD_ARG_STR (&net_buf, req_handle->sql_text, sql_stmt_size, con_handle->charset);
     }
@@ -4221,7 +4237,7 @@ qe_savepoint_cmd (T_CON_HANDLE * con_handle, char cmd, const char *savepoint_nam
   net_buf_cp_str (&net_buf, &func_code, 1);
 
   ADD_ARG_BYTES (&net_buf, &cmd, 1);
-  ADD_ARG_STR (&net_buf, (char *) savepoint_name, strlen (savepoint_name) + 1, con_handle->charset);
+  ADD_ARG_STR (&net_buf, (char *) savepoint_name, (int) strlen (savepoint_name) + 1, con_handle->charset);
 
   if (net_buf.err_code < 0)
     {
@@ -5732,7 +5748,7 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag, void
 	case CCI_U_TYPE_JSON:
 	  if (length == UNMEASURED_LENGTH)
 	    {
-	      bind_value->size = strlen ((const char *) value);
+	      bind_value->size = (int) strlen ((const char *) value);
 	    }
 	  else
 	    {
@@ -5929,7 +5945,7 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag, void
 	      {
 		return CCI_ER_NO_MORE_MEMORY;
 	      }
-	    bind_value->size = sizeof (T_CCI_DATE) + strlen (date_tz.tz);
+	    bind_value->size = (int) (sizeof (T_CCI_DATE) + strlen (date_tz.tz));
 	    bind_value->flag = BIND_PTR_DYNAMIC;
 	  }
 	  break;
@@ -5967,7 +5983,7 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag, void
 	      {
 		return CCI_ER_NO_MORE_MEMORY;
 	      }
-	    bind_value->size = sizeof (T_CCI_DATE) + strlen (date_tz.tz);
+	    bind_value->size = (int) (sizeof (T_CCI_DATE) + strlen (date_tz.tz));
 	    bind_value->flag = BIND_PTR_DYNAMIC;
 	  }
 	  break;
@@ -6019,7 +6035,7 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag, void
 	      {
 		return CCI_ER_NO_MORE_MEMORY;
 	      }
-	    bind_value->size = strlen (buf) + 1;
+	    bind_value->size = (int) strlen (buf) + 1;
 	  }
 	  break;
 	case CCI_U_TYPE_BIGINT:
@@ -6096,7 +6112,7 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag, void
 	      {
 		return CCI_ER_NO_MORE_MEMORY;
 	      }
-	    bind_value->size = strlen (buf) + 1;
+	    bind_value->size = (int) strlen (buf) + 1;
 	  }
 	  break;
 	case CCI_U_TYPE_BIGINT:
@@ -6170,7 +6186,7 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag, void
 	      {
 		return CCI_ER_NO_MORE_MEMORY;
 	      }
-	    bind_value->size = strlen (buf) + 1;
+	    bind_value->size = (int) strlen (buf) + 1;
 	  }
 	  break;
 	case CCI_U_TYPE_BIGINT:
@@ -6243,7 +6259,7 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag, void
 	      {
 		return CCI_ER_NO_MORE_MEMORY;
 	      }
-	    bind_value->size = strlen (buf) + 1;
+	    bind_value->size = (int) strlen (buf) + 1;
 	  }
 	  break;
 	case CCI_U_TYPE_BIGINT:
@@ -6316,7 +6332,7 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag, void
 	    ALLOC_COPY (bind_value->value, buf);
 	    if (bind_value->value == NULL)
 	      return CCI_ER_NO_MORE_MEMORY;
-	    bind_value->size = strlen (buf) + 1;
+	    bind_value->size = (int) strlen (buf) + 1;
 	  }
 	  break;
 	case CCI_U_TYPE_BIGINT:
@@ -6383,7 +6399,7 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag, void
 	    ALLOC_COPY (bind_value->value, buf);
 	    if (bind_value->value == NULL)
 	      return CCI_ER_NO_MORE_MEMORY;
-	    bind_value->size = strlen (buf) + 1;
+	    bind_value->size = (int) strlen (buf) + 1;
 	  }
 	  break;
 	case CCI_U_TYPE_BIGINT:
@@ -6519,7 +6535,7 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag, void
 	      {
 		return CCI_ER_NO_MORE_MEMORY;
 	      }
-	    bind_value->size = sizeof (T_CCI_DATE) + NET_SIZE_TZ (value);
+	    bind_value->size = (int) (sizeof (T_CCI_DATE) + NET_SIZE_TZ (value));
 	    bind_value->flag = BIND_PTR_DYNAMIC;
 	  }
 	  break;

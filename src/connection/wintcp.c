@@ -343,14 +343,14 @@ css_fd_down (SOCKET fd)
 /*
  * css_gethostname() - interface for the "gethostname" function
  *   return: 0 if success, or error
- *   passed_name(out): buffer for name
- *   length(in): max buffer size
+ *   name(out): buffer for name
+ *   namelen(in): max buffer size
  */
 int
-css_gethostname (char *passed_name, int length)
+css_gethostname (char *name, size_t namelen)
 {
-  const char *name = "PC";
-  char hostname[MAXHOSTNAMELEN];
+  const char *pc_name = "PC";
+  char hostname[CUB_MAXHOSTNAMELEN];
   int err = 0;
 
 #if !defined(SERVER_MODE)
@@ -360,11 +360,11 @@ css_gethostname (char *passed_name, int length)
     }
 #endif /* not SERVER_MODE */
 
-  if (gethostname (hostname, MAXHOSTNAMELEN) != SOCKET_ERROR)
+  if (gethostname (hostname, CUB_MAXHOSTNAMELEN) != SOCKET_ERROR)
     {
       if (strlen (hostname))
 	{
-	  name = hostname;
+	  pc_name = hostname;
 	}
     }
   else
@@ -376,7 +376,7 @@ css_gethostname (char *passed_name, int length)
   css_windows_shutdown ();
 #endif /* not SERVER_MODE */
 
-  strncpy (passed_name, name, length);
+  strncpy (name, pc_name, namelen);
   return err;
 }
 
@@ -389,7 +389,7 @@ unsigned int
 css_gethostid (void)
 {
   struct hostent *hp;
-  char hostname[MAXHOSTNAMELEN];
+  char hostname[CUB_MAXHOSTNAMELEN];
   unsigned int inaddr;
   unsigned int retval;
 
@@ -401,7 +401,7 @@ css_gethostid (void)
 #endif /* not SERVER_MODE */
 
   retval = 0;
-  if (gethostname (hostname, MAXHOSTNAMELEN) == SOCKET_ERROR)
+  if (gethostname (hostname, CUB_MAXHOSTNAMELEN) == SOCKET_ERROR)
     {
       css_Wsa_error = CSS_ER_WINSOCK_HOSTNAME;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_WINSOCK_HOSTNAME, 1, WSAGetLastError ());

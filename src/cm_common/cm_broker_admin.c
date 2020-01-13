@@ -461,8 +461,8 @@ job_info_copy (T_CM_JOB_INFO * dest_info, T_JOB_INFO * src_info)
   dest_info->recv_time = src_info->recv_time;
   /* memcpy (dest_info->ip, src_info->ip, 4); */
   ip2str (src_info->ip, dest_info->ipstr);
-  strncpy (dest_info->script, src_info->script, sizeof (dest_info->script) - 1);
-  strncpy (dest_info->prgname, src_info->prgname, sizeof (dest_info->prgname) - 1);
+  strncpy_bufsize (dest_info->script, src_info->script);
+  strncpy_bufsize (dest_info->prgname, src_info->prgname);
 }
 
 static void

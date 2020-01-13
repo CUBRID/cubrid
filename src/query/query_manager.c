@@ -34,6 +34,7 @@
 #include "compile_context.h"
 #include "log_append.hpp"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "xserver_interface.h"
 #include "query_executor.h"
 #include "stream_to_xasl.h"

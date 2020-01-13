@@ -40,6 +40,7 @@
 #include "system_parameter.h"
 #include "storage_common.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "arithmetic.h"
 #include "serial.h"
 #include "session.h"
@@ -4627,7 +4628,7 @@ is_argument_wrapped_with_cast_op (const REGU_VARIABLE * regu_var)
 /*
  * get_hour_minute_or_second () - extract hour, minute or second
  *				  information from datetime depending on
- *				  the value of the op_type variable	
+ *				  the value of the op_type variable
  *   return: error or no error
  *   datetime(in): datetime value
  *   op_type(in): operation type

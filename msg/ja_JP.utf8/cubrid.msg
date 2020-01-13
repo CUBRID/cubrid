@@ -1274,7 +1274,7 @@ $ LOADDB
 1205 Invalid type %1$s. Expecting JSON document compatible data type (STRING or JSON).
 1206 Json PATH "%1$s" does not address a cell in an Json ARRAY.
 1207 Invalid JSON path. Index is larger than allowed by system parameter json_max_array_idx.
-1208 Reserved error for JSON.
+1208 Invalid one/all argument. The one/all argument may only take one of these two values: "one", "all".
 1209 Reserved error for JSON.
 1210 Reserved error for JSON.
 1211 Reserved error for JSON.
@@ -1310,8 +1310,11 @@ $ LOADDB
 1241 XASL tree needs recompile.
 1242 Cannot create partition on a class that is part of a hierarchy chain.
 1243 Index loading was aborted after an error.
+1244 Loading shared attributes updates from object files is not supported in CS mode.
+1245 Loading class attributes updates from object files is not supported in CS mode.
+1246 Error getting address and name information. Code : %1$d, message : %2$s.
 
-1244 ラストエラー
+1247 ラストエラー
 
 $set 6 MSGCAT_SET_INTERNAL
 1 エラーサブシステムにエラー発生(ライン %1$d):
@@ -1858,6 +1861,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 79 正しくないアイソレーションレベル: 「%1$s」スキーマ、「%2$s」オブジェクト。
 80 MVCCで分離レベルの値は、「read committed」、「repeatable read」または「serializable」でなければなりません。
 81 「%1$s」は「auto_increment」オブジェクトです。これはシリアルように変更することが許可されていません。
+82 Invalid JSON: '%1$s'.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** 正しくないキャッシュ ***

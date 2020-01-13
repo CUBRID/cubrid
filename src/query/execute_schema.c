@@ -51,6 +51,7 @@
 #include "set_object.h"
 #include "object_accessor.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "memory_hash.h"
 #include "locator_cl.h"
 #include "network_interface_cl.h"
@@ -1533,8 +1534,8 @@ do_alter_clause_drop_index (PARSER_CONTEXT * const parser, PT_NODE * const alter
     }
 
   error_code =
-    create_or_drop_index_helper (parser, alter->info.alter.constraint_list->info.name.original, (const bool) is_reverse,
-				 (const bool) is_unique, NULL, NULL, NULL, NULL, -1, 0, NULL, NULL, obj,
+    create_or_drop_index_helper (parser, alter->info.alter.constraint_list->info.name.original, is_reverse,
+				 is_unique, NULL, NULL, NULL, NULL, -1, 0, NULL, NULL, obj,
 				 SM_NORMAL_INDEX, DO_INDEX_DROP);
   return error_code;
 }
@@ -3038,7 +3039,7 @@ do_drop_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
     }
 
   error_code =
-    create_or_drop_index_helper (parser, index_name, (const bool) is_reverse, (const bool) is_unique,
+    create_or_drop_index_helper (parser, index_name, is_reverse, is_unique,
 				 statement->info.index.indexed_class, statement->info.index.column_names, NULL, NULL,
 				 statement->info.index.func_pos, statement->info.index.func_no_args,
 				 statement->info.index.function_expr, NULL, obj, statement->info.index.index_status,
@@ -4408,7 +4409,7 @@ do_is_partitioned_subclass (int *is_partitioned, const char *classname, char *ke
 
       if (keyattr)
 	{
-	  char *p = NULL;
+	  const char *p = NULL;
 
 	  keyattr[0] = 0;
 
@@ -5071,7 +5072,7 @@ do_get_partition_keycol (char *keycol, MOP class_)
   int error = NO_ERROR;
   SM_CLASS *smclass;
   DB_VALUE keyname;
-  char *keyname_str;
+  const char *keyname_str;
 
   if (class_ == NULL || keycol == NULL)
     {
@@ -9465,9 +9466,6 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const
 			  && attr_chg_prop.name_space == ID_ATTRIBUTE) ? true : false;
   if (is_srv_update_needed)
     {
-      char tbl_name[DB_MAX_IDENTIFIER_LENGTH];
-
-      strncpy (tbl_name, ctemplate->name, DB_MAX_IDENTIFIER_LENGTH);
       COPY_OID (&class_oid, &(ctemplate->op->oid_info.oid));
       att_id = attr_chg_prop.att_id;
     }
@@ -9733,8 +9731,8 @@ do_alter_change_owner (PARSER_CONTEXT * const parser, PT_NODE * const alter)
 
   db_make_null (&returnval);
 
-  db_make_string_by_const_str (&class_val, class_->info.name.original);
-  db_make_string_by_const_str (&user_val, user->info.name.original);
+  db_make_string (&class_val, class_->info.name.original);
+  db_make_string (&user_val, user->info.name.original);
 
   au_change_owner_method (obj, &returnval, &class_val, &user_val);
 
@@ -15003,20 +15001,12 @@ do_recreate_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_save_info)
 
 	  if (error != NO_ERROR)
 	    {
-	      goto error_exit;
+	      return error;
 	    }
 	}
     }
 
   return NO_ERROR;
-
-error_exit:
-  if (index_save_info != NULL)
-    {
-      sm_free_constraint_info (&index_save_info);
-    }
-
-  return error;
 }
 
 int

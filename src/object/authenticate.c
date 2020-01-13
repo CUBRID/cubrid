@@ -68,7 +68,7 @@
 #include "execute_statement.h"
 #include "optimizer.h"
 #include "network_interface_cl.h"
-#include "dbtype.h"
+#include "printer.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -145,10 +145,8 @@ const char *AU_DBA_USER_NAME = "DBA";
   (IS_ENCODED_SHA2_512 (string) || IS_ENCODED_SHA1 (string) || IS_ENCODED_DES (string))
 
 /* Macro to determine if a dbvalue is a character strign type. */
-#define IS_STRING(n)    (db_value_type(n) == DB_TYPE_VARCHAR  || \
-                         db_value_type(n) == DB_TYPE_CHAR     || \
-                         db_value_type(n) == DB_TYPE_VARNCHAR || \
-                         db_value_type(n) == DB_TYPE_NCHAR)
+#define IS_STRING(n)    DB_IS_STRING (n)
+
 /* Macro to determine if a name is system catalog class */
 #define IS_CATALOG_CLASS(name) \
         (strcmp(name, CT_CLASS_NAME) == 0 || \
@@ -516,7 +514,7 @@ static bool match_password (const char *user, const char *database);
 static int au_set_password_internal (MOP user, const char *password, int encode, char encrypt_prefix);
 
 static int au_add_direct_groups (DB_SET * new_groups, DB_VALUE * value);
-static int au_compute_groups (MOP member, char *name);
+static int au_compute_groups (MOP member, const char *name);
 static int au_add_member_internal (MOP group, MOP member, int new_user);
 
 static int find_grant_entry (DB_SET * grants, MOP class_mop, MOP grantor);
@@ -551,8 +549,8 @@ static void free_class_users (CLASS_USER * users);
 static CLASS_USER *find_or_add_user (CLASS_AUTH * auth, MOP user_obj);
 static int add_class_grant (CLASS_AUTH * auth, MOP source, MOP user, int cache);
 static int build_class_grant_list (CLASS_AUTH * cl_auth, MOP class_mop);
-static void issue_grant_statement (FILE * fp, CLASS_AUTH * auth, CLASS_GRANT * grant, int authbits);
-static int class_grant_loop (CLASS_AUTH * auth, FILE * outfp);
+static void issue_grant_statement (print_output & output_ctx, CLASS_AUTH * auth, CLASS_GRANT * grant, int authbits);
+static int class_grant_loop (print_output & output_ctx, CLASS_AUTH * auth);
 
 static void au_print_cache (int cache, FILE * fp);
 static void au_print_grant_entry (DB_SET * grants, int grant_index, FILE * fp);
@@ -1545,7 +1543,7 @@ au_set_new_auth (MOP au_obj, MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_
       return er_errid ();
     }
 
-  db_make_string_by_const_str (&class_name_val, sm_get_ch_name (class_mop));
+  db_make_string (&class_name_val, sm_get_ch_name (class_mop));
   db_class_inst = obj_find_unique (db_class, "class_name", &class_name_val, AU_FETCH_READ);
   if (db_class_inst == NULL)
     {
@@ -1562,7 +1560,7 @@ au_set_new_auth (MOP au_obj, MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_
       ;
     }
 
-  db_make_varchar (&value, 7, (char *) type_set[i], strlen (type_set[i]), LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  db_make_varchar (&value, 7, type_set[i], strlen (type_set[i]), LANG_SYS_CODESET, LANG_SYS_COLLATION);
   obj_set (au_obj, "auth_type", &value);
 
   db_make_int (&value, (int) grant_option);
@@ -1648,13 +1646,13 @@ au_get_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_CLASS, 0);
       goto exit;
     }
-  db_make_string_by_const_str (&val[INDEX_FOR_CLASS_NAME], class_name);
+  db_make_string (&val[INDEX_FOR_CLASS_NAME], class_name);
 
   for (type = DB_AUTH_SELECT, i = 0; type != auth_type; type = (DB_AUTH) (type << 1), i++)
     {
       ;
     }
-  db_make_string_by_const_str (&val[INDEX_FOR_AUTH_TYPE], type_set[i]);
+  db_make_string (&val[INDEX_FOR_AUTH_TYPE], type_set[i]);
 
   session = db_open_buffer (sql_query);
   if (session == NULL)
@@ -2049,7 +2047,7 @@ au_delete_auth_of_dropping_table (const char *class_name)
       goto release;
     }
 
-  db_make_string_by_const_str (&val, class_name);
+  db_make_string (&val, class_name);
   error = db_push_values (session, 1, &val);
   if (error != NO_ERROR)
     {
@@ -2254,7 +2252,7 @@ au_add_user_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * name, DB_VAL
   int error;
   int exists;
   MOP user;
-  char *tmp;
+  const char *tmp = NULL;
 
   if (name != NULL && IS_STRING (name) && !DB_IS_NULL (name) && ((tmp = db_get_string (name)) != NULL))
     {
@@ -2838,7 +2836,7 @@ au_set_user_comment (MOP user, const char *comment)
 	}
       else
 	{
-	  db_make_string_by_const_str (&value, comment);
+	  db_make_string (&value, comment);
 	  error = obj_set (user, "comment", &value);
 	  pr_clear_value (&value);
 	}
@@ -2904,7 +2902,7 @@ au_add_direct_groups (DB_SET * new_groups, DB_VALUE * value)
  *   name(in): the new member name
  */
 static int
-au_compute_groups (MOP member, char *name)
+au_compute_groups (MOP member, const char *name)
 {
   int error = NO_ERROR;
   DB_SET *new_groups, *direct_groups;
@@ -3036,9 +3034,9 @@ au_add_member_internal (MOP group, MOP member, int new_user)
 {
   int error = NO_ERROR;
   DB_VALUE membervalue, member_name_val, groupvalue;
-  DB_SET *group_groups = NULL, *member_groups, *member_direct_groups;
+  DB_SET *group_groups = NULL, *member_groups = NULL, *member_direct_groups = NULL;
   int save;
-  char *member_name;
+  const char *member_name = NULL;
 
   AU_DISABLE (save);
   db_make_object (&membervalue, member);
@@ -3098,7 +3096,7 @@ au_add_member_internal (MOP group, MOP member, int new_user)
 				}
 			      else
 				{
-				  member_name = (char *) db_get_string (&member_name_val);
+				  member_name = db_get_string (&member_name_val);
 				}
 
 			      error = db_set_add (member_direct_groups, &groupvalue);
@@ -3231,9 +3229,9 @@ au_drop_member (MOP group, MOP member)
 {
   int syserr = NO_ERROR, error = NO_ERROR;
   DB_VALUE groupvalue, member_name_val;
-  DB_SET *groups, *member_groups, *member_direct_groups;
+  DB_SET *groups = NULL, *member_groups = NULL, *member_direct_groups = NULL;
   int save;
-  char *member_name;
+  const char *member_name = NULL;
 
   AU_DISABLE (save);
   db_make_object (&groupvalue, group);
@@ -3270,7 +3268,7 @@ au_drop_member (MOP group, MOP member)
 			}
 		      else
 			{
-			  member_name = (char *) db_get_string (&member_name_val);
+			  member_name = db_get_string (&member_name_val);
 			}
 		      if ((error = db_set_drop (member_direct_groups, &groupvalue)) == NO_ERROR)
 			{
@@ -5172,7 +5170,7 @@ au_change_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_, DB_VAL
   int error = NO_ERROR;
   int is_partition = DB_NOT_PARTITIONED_CLASS, i, savepoint_owner = 0;
   MOP *sub_partitions = NULL;
-  char *class_name = NULL, *owner_name = NULL;
+  const char *class_name = NULL, *owner_name = NULL;
   SM_CLASS *clsobj;
 
   db_make_null (returnval);
@@ -5344,7 +5342,7 @@ au_change_serial_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * serial,
   MOP user = NULL, serial_object = NULL;
   MOP serial_class_mop;
   DB_IDENTIFIER serial_obj_id;
-  char *serial_name, *owner_name;
+  const char *serial_name = NULL, *owner_name = NULL;
   int error = NO_ERROR;
 
   db_make_null (returnval);
@@ -6907,39 +6905,42 @@ char *
 au_get_user_name (MOP obj)
 {
   DB_VALUE value;
-  int error;
-  char *name;
+  db_make_null (&value);
+  char *name = NULL;
 
-  name = NULL;
-  error = obj_get (obj, "name", &value);
+  int error = obj_get (obj, "name", &value);
   if (error == NO_ERROR)
     {
       if (IS_STRING (&value) && !DB_IS_NULL (&value) && db_get_string (&value) != NULL)
 	{
-	  name = db_get_string (&value);
+	  name = ws_copy_string (db_get_string (&value));
 	}
     }
-  return (name);
+
+  db_value_clear (&value);
+
+  return name;
 }
+
 
 /*
  * au_export_users - Generates a sequence of add_user and add_member method
  *                   calls that when evaluated, will re-create the current
  *                   user/group hierarchy.
  *   return: error code
- *   outfp(in): output file
+ *   output_ctx(in/out): print context
  */
 int
-au_export_users (FILE * outfp)
+au_export_users (print_output & output_ctx)
 {
   int error;
-  DB_SET *direct_groups;
+  DB_SET *direct_groups = NULL;
   DB_VALUE value, gvalue;
-  MOP user, pwd;
+  MOP user = NULL, pwd = NULL;
   int g, gcard;
-  char *uname, *str, *gname, *comment;
+  const char *uname = NULL, *str = NULL, *gname = NULL, *comment = NULL;
   char passbuf[AU_MAX_PASSWORD_BUF];
-  char *query;
+  char *query = NULL;
   size_t query_size;
   DB_QUERY_RESULT *query_result;
   DB_QUERY_ERROR query_error;
@@ -7003,7 +7004,7 @@ au_export_users (FILE * outfp)
 	      error = obj_get (pwd, "password", &value);
 	      if (error == NO_ERROR)
 		{
-		  if (!DB_IS_NULL (&value) && IS_STRING (&value))
+		  if (!DB_IS_NULL (&value) && DB_IS_STRING (&value))
 		    {
 		      /*
 		       * copy password string using malloc
@@ -7059,18 +7060,18 @@ au_export_users (FILE * outfp)
 	    {
 	      if (!strlen (passbuf))
 		{
-		  fprintf (outfp, "call [add_user]('%s', '') on class [db_root];\n", uname);
+		  output_ctx ("call [add_user]('%s', '') on class [db_root];\n", uname);
 		}
 	      else
 		{
-		  fprintf (outfp, "call [add_user]('%s', '') on class [db_root] to [auser];\n", uname);
+		  output_ctx ("call [add_user]('%s', '') on class [db_root] to [auser];\n", uname);
 		  if (encrypt_mode == ENCODE_PREFIX_DES)
 		    {
-		      fprintf (outfp, "call [set_password_encoded]('%s') on [auser];\n", passbuf);
+		      output_ctx ("call [set_password_encoded]('%s') on [auser];\n", passbuf);
 		    }
 		  else
 		    {
-		      fprintf (outfp, "call [set_password_encoded_sha1]('%s') on [auser];\n", passbuf);
+		      output_ctx ("call [set_password_encoded_sha1]('%s') on [auser];\n", passbuf);
 		    }
 		}
 	    }
@@ -7078,14 +7079,14 @@ au_export_users (FILE * outfp)
 	    {
 	      if (strlen (passbuf))
 		{
-		  fprintf (outfp, "call [find_user]('%s') on class [db_user] to [auser];\n", uname);
+		  output_ctx ("call [find_user]('%s') on class [db_user] to [auser];\n", uname);
 		  if (encrypt_mode == ENCODE_PREFIX_DES)
 		    {
-		      fprintf (outfp, "call [set_password_encoded]('%s') on [auser];\n", passbuf);
+		      output_ctx ("call [set_password_encoded]('%s') on [auser];\n", passbuf);
 		    }
 		  else
 		    {
-		      fprintf (outfp, "call [set_password_encoded_sha1]('%s') on [auser];\n", passbuf);
+		      output_ctx ("call [set_password_encoded_sha1]('%s') on [auser];\n", passbuf);
 		    }
 		}
 	    }
@@ -7093,9 +7094,9 @@ au_export_users (FILE * outfp)
 	  /* export comment */
 	  if (comment != NULL && comment[0] != '\0')
 	    {
-	      fprintf (outfp, "ALTER USER [%s] ", uname);
-	      help_fprint_describe_comment (outfp, comment);
-	      fprintf (outfp, ";\n");
+	      output_ctx ("ALTER USER [%s] ", uname);
+	      help_print_describe_comment (output_ctx, comment);
+	      output_ctx (";\n");
 	    }
 	}
 
@@ -7113,7 +7114,7 @@ au_export_users (FILE * outfp)
   /* group hierarchy */
   if (db_query_first_tuple (query_result) == DB_CURSOR_SUCCESS)
     {
-      fprintf (outfp, "call [find_user]('PUBLIC') on class [db_user] to [g_public];\n");
+      output_ctx ("call [find_user]('PUBLIC') on class [db_user] to [g_public];\n");
       do
 	{
 	  if (db_query_get_tuple_value (query_result, 0, &user_val) != NO_ERROR)
@@ -7167,13 +7168,13 @@ au_export_users (FILE * outfp)
 		}
 	      else
 		{
-		  gname = (char *) (db_get_string (&value));
+		  gname = db_get_string (&value);
 		}
 
 	      if (gname != NULL)
 		{
-		  fprintf (outfp, "call [find_user]('%s') on class [db_user] to [g_%s];\n", gname, gname);
-		  fprintf (outfp, "call [add_member]('%s') on [g_%s];\n", uname, gname);
+		  output_ctx ("call [find_user]('%s') on class [db_user] to [g_%s];\n", gname, gname);
+		  output_ctx ("call [add_member]('%s') on [g_%s];\n", uname, gname);
 		  ws_free_string (gname);
 		}
 	    }
@@ -7471,17 +7472,18 @@ build_class_grant_list (CLASS_AUTH * cl_auth, MOP class_mop)
   return (error);
 }
 
+
 /*
  * issue_grant_statement - Generates an CSQL "grant" statement.
  *   return: none
- *   fp(in): output file
+ *   output_ctx(in/out): output context
  *   auth(in): class authorization state
  *   grant(in): desired grant
  *   authbits(in): specific authorization to grant
  *   quoted_id_flag(in):
  */
 static void
-issue_grant_statement (FILE * fp, CLASS_AUTH * auth, CLASS_GRANT * grant, int authbits)
+issue_grant_statement (print_output & output_ctx, CLASS_AUTH * auth, CLASS_GRANT * grant, int authbits)
 {
   const char *gtype, *classname;
   char *username;
@@ -7518,34 +7520,35 @@ issue_grant_statement (FILE * fp, CLASS_AUTH * auth, CLASS_GRANT * grant, int au
   classname = sm_get_ch_name (auth->class_mop);
   username = au_get_user_name (grant->user->obj);
 
-  fprintf (fp, "GRANT %s ON ", gtype);
-  fprintf (fp, "[%s]", classname);
+  output_ctx ("GRANT %s ON ", gtype);
+  output_ctx ("[%s]", classname);
 
   if (username != NULL)
     {
-      fprintf (fp, " TO [%s]", username);
+      output_ctx (" TO [%s]", username);
     }
   else
     {
-      fprintf (fp, " TO %s", "???");
+      output_ctx (" TO %s", "???");
     }
 
   if (authbits & (typebit << AU_GRANT_SHIFT))
     {
-      fprintf (fp, " WITH GRANT OPTION");
+      output_ctx (" WITH GRANT OPTION");
     }
-  fprintf (fp, ";\n");
+  output_ctx (";\n");
 
   ws_free_string (username);
 }
+
 
 /*
  * class_grant_loop - Makes a pass on the authorization user list and
  *                    issues grant statements for any users that are able.
  *                    Returns the number of statements issued
  *   return: number of statements issued
+ *   output_ctx(in): output context
  *   auth(in): class authorization state
- *   outfp(in): output file
  *   quoted_id_flag(in):
  *
  * Note:
@@ -7565,7 +7568,7 @@ issue_grant_statement (FILE * fp, CLASS_AUTH * auth, CLASS_GRANT * grant, int au
  * TODO : LP64
  */
 static int
-class_grant_loop (CLASS_AUTH * auth, FILE * outfp)
+class_grant_loop (print_output & output_ctx, CLASS_AUTH * auth)
 {
 #define AU_MIN_BIT 1		/* AU_SELECT */
 #define AU_MAX_BIT 0x40		/* AU_EXECUTE */
@@ -7593,7 +7596,7 @@ class_grant_loop (CLASS_AUTH * auth, FILE * outfp)
 		   */
 		  if ((user->available_auth & authbits) == authbits)
 		    {
-		      issue_grant_statement (outfp, auth, grant, authbits);
+		      issue_grant_statement (output_ctx, auth, grant, authbits);
 		      /* turn on grant bits in the granted user */
 		      grant->user->available_auth |= authbits;
 		      /* turn off the pending grant bits in granting user */
@@ -7629,16 +7632,17 @@ class_grant_loop (CLASS_AUTH * auth, FILE * outfp)
   return (statements);
 }
 
+
 /*
  * au_export_grants() - Issues a sequence of CSQL grant statements related
  *                      to the given class.
  *   return: error code
- *   outfp(in): output file
+ *   output_ctx(in): output context
  *   class_mop(in): class of interest
  *   quoted_id_flag(in):
  */
 int
-au_export_grants (FILE * outfp, MOP class_mop)
+au_export_grants (print_output & output_ctx, MOP class_mop)
 {
   int error = NO_ERROR;
   CLASS_AUTH cl_auth;
@@ -7659,7 +7663,8 @@ au_export_grants (FILE * outfp, MOP class_mop)
   if (error == NO_ERROR)
     {
       /* loop through the grant list, issuing grant statements */
-      while ((statements = class_grant_loop (&cl_auth, outfp)));
+      while ((statements = class_grant_loop (output_ctx, &cl_auth)))
+	;
 
       for (u = cl_auth.users, ecount = 0; u != NULL; u = u->next)
 	{
@@ -7671,11 +7676,10 @@ au_export_grants (FILE * outfp, MOP class_mop)
 	       * should this be setting an error condition ?
 	       * for now, leave a comment in the output file
 	       */
-	      fprintf (outfp, "/*");
-	      fprintf (outfp,
-		       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_GRANT_DUMP_ERROR),
-		       uname);
-	      fprintf (outfp, "*/\n");
+	      output_ctx ("/*");
+	      output_ctx (msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION,
+					  MSGCAT_AUTH_GRANT_DUMP_ERROR), uname);
+	      output_ctx ("*/\n");
 	      ws_free_string (uname);
 	      ecount++;
 	    }
@@ -7691,7 +7695,6 @@ au_export_grants (FILE * outfp, MOP class_mop)
 
   return (error);
 }
-
 
 /*
  * DEBUGGING FUNCTIONS
@@ -7866,7 +7869,7 @@ void
 au_dump_user (MOP user, FILE * fp)
 {
   DB_VALUE value;
-  DB_SET *groups;
+  DB_SET *groups = NULL;
   MOP auth;
   int i, card;
 
@@ -8024,8 +8027,8 @@ au_dump_to_file (FILE * fp)
 {
   MOP user;
   DB_VALUE value;
-  char *query;
-  DB_QUERY_RESULT *query_result;
+  char *query = NULL;
+  DB_QUERY_RESULT *query_result = NULL;
   DB_QUERY_ERROR query_error;
   int error = NO_ERROR;
   DB_VALUE user_val;

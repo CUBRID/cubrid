@@ -46,8 +46,10 @@
 #endif
 #include "elo.h"
 #include "db_elo.h"
+#include "db_set_function.h"
 #include "numeric_opfunc.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "db_json.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
@@ -85,7 +87,6 @@ static int valcnv_Max_set_elements = 10;
 int db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
 #else
 int db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
-int db_Client_type = DB_CLIENT_TYPE_DEFAULT;
 #endif
 int db_Disable_modifications = 0;
 
@@ -133,8 +134,11 @@ db_value_put_null (DB_VALUE * value)
  * the new interface for db_make_* functions will set the value to null, which is wrong.
  * We need to investigate if this set to 0 will work or not.
  */
-#define IS_INVALID_PRECISION(p,m) \
-  (((p) != DB_DEFAULT_PRECISION) && (((p) < 0) || ((p) > (m))))
+inline bool
+IS_INVALID_PRECISION (int p, int m)
+{
+  return (p != DB_DEFAULT_PRECISION) && ((p < 0) || (p > m));
+}
 
 /*
  *  db_value_domain_init() - initialize value container with given type
@@ -830,7 +834,7 @@ db_value_domain_default (DB_VALUE * value, const DB_TYPE type,
       break;
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
-      db_make_bit (value, 1, (const DB_C_BIT) "0", 1);
+      db_make_bit (value, 1, "0", 1);
       break;
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
@@ -960,7 +964,8 @@ db_string_truncate (DB_VALUE * value, const int precision)
 {
   int error = NO_ERROR;
   DB_VALUE src_value;
-  char *string = NULL, *val_str;
+  char *string = NULL;
+  const char *val_str = NULL;
   int length;
   int byte_size;
 
@@ -1978,7 +1983,7 @@ transfer_bit_string (char *buf, int *xflen, int *outlen, const int buflen, const
   DB_DATA_STATUS data_status;
   DB_TYPE db_type;
   int error_code;
-  char *tmp_val_str;
+  const char *tmp_val_str;
 
   if (c_type == DB_TYPE_C_BIT)
     {
@@ -4330,11 +4335,11 @@ valcnv_convert_double_to_string (VALCNV_BUFFER * buffer_p, const double value)
 static VALCNV_BUFFER *
 valcnv_convert_bit_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_p)
 {
-  unsigned char *bit_string_p;
+  const unsigned char *bit_string_p;
   int nibble_len, nibbles, count;
   char tbuf[10];
 
-  bit_string_p = (unsigned char *) db_get_string (value_p);
+  bit_string_p = REINTERPRET_CAST (const unsigned char *, db_get_string (value_p));
   nibble_len = (db_get_string_length (value_p) + 3) / 4;
 
   for (nibbles = 0, count = 0; nibbles < nibble_len - 1; count++, nibbles += 2)
@@ -4476,7 +4481,7 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_
   OID *oid_p;
   DB_SET *set_p;
   DB_ELO *elo_p;
-  char *src_p, *end_p, *p;
+  const char *src_p, *end_p, *p;
   ptrdiff_t len;
 
   DB_MONETARY *money_p;
@@ -4766,7 +4771,7 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_
 	    }
 
 	  currency_symbol_p = lang_currency_symbol (money_p->type);
-	  strncpy (line, currency_symbol_p, strlen (currency_symbol_p));
+	  strcpy (line, currency_symbol_p);
 	  strncpy (line + strlen (currency_symbol_p), (char *) money_string_p->bytes, money_string_p->length);
 	  line[strlen (currency_symbol_p) + money_string_p->length] = '\0';
 
@@ -4909,8 +4914,8 @@ valcnv_convert_value_to_string (DB_VALUE * value_p)
 	  return ER_FAILED;
 	}
 
-      db_make_varchar (&src_value, DB_MAX_STRING_LENGTH,
-		       (char *) buf_p->bytes, CAST_STRLEN (buf_p->length), LANG_SYS_CODESET, LANG_SYS_COLLATION);
+      db_make_varchar (&src_value, DB_MAX_STRING_LENGTH, REINTERPRET_CAST (char *, buf_p->bytes),
+		       CAST_STRLEN (buf_p->length), LANG_SYS_CODESET, LANG_SYS_COLLATION);
 
       pr_clear_value (value_p);
       tp_String.setval (value_p, &src_value, true);
@@ -4986,7 +4991,7 @@ db_convert_json_into_scalar (const DB_VALUE * src, DB_VALUE * dest)
     case DB_JSON_STRING:
       {
 	const char *str = db_json_get_string_from_document (doc);
-	int error_code = db_make_string_by_const_str (dest, str);
+	int error_code = db_make_string (dest, str);
 	if (error_code != NO_ERROR)
 	  {
 	    ASSERT_ERROR ();
@@ -5045,6 +5050,7 @@ db_is_json_value_type (DB_TYPE type)
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NULL:
+    case DB_TYPE_SHORT:
     case DB_TYPE_INTEGER:
     case DB_TYPE_DOUBLE:
     case DB_TYPE_JSON:

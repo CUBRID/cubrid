@@ -1,18 +1,18 @@
 $
-$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
 $
-$   This program is free software; you can redistribute it and/or modify 
-$   it under the terms of the GNU General Public License as published by 
+$   This program is free software; you can redistribute it and/or modify
+$   it under the terms of the GNU General Public License as published by
 $   the Free Software Foundation; either version 2 of the License, or
 $   (at your option) any later version.
 $
-$  This program is distributed in the hope that it will be useful, 
-$  but WITHOUT ANY WARRANTY; without even the implied warranty of 
-$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
-$  GNU General Public License for more details. 
+$  This program is distributed in the hope that it will be useful,
+$  but WITHOUT ANY WARRANTY; without even the implied warranty of
+$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+$  GNU General Public License for more details.
 $
-$  You should have received a copy of the GNU General Public License 
-$  along with this program; if not, write to the Free Software 
+$  You should have received a copy of the GNU General Public License
+$  along with this program; if not, write to the Free Software
 $  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 $
 
@@ -271,7 +271,6 @@ opţiuni valide:\n\
       --no-check               nu se efectuează o verificare de consistenţă a bazei de date; implicit: verificare\n\
   -t, --thread-count=NUMAR     număr de fire de excuţie; implicit: 0(auto)\n\
   -z, --compress               compresia volumelor de backup; implicit: decompresie\n\
-  -e, --except-active-log      nu se include un volum de log activ; implicit: se include\n\
       --sleep-msecs=N          asteapta N milisecunde la fiecare 1MB citit; implicit: 0\n
 71 Argumente incompatibile, \"%1$s\", şi \"%2$s\"\n
 
@@ -434,36 +433,42 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 45 Instanţa %1$d a clasei %2$s a fost deja definită\n
 46 Instanţa %1$d a clasei %2$s a fost deja rezervată\n
 47 Încălcare a constrângerii UNIQUE pentru atributul '%1$s', conversie la NULL\n
-48   %1$d instanţe\n
+48 %1$s %2$d instanţe\n
 49 Clasa %1$s\n
 50 Parola:
 51 \n*** Se actualizează statisticile claselor ***\n
 52 %1$s lânga linia %2$d (textul a fost '%3$s')\n
-53 Eroare lexicală
+53 Eroare lexicală\n
 54 linia %1$d: eroare de sintaxă la \"%2$s\"
 55 absent
 56 în %1$s
 57 Argumente incompatibile, \"%1$s\", şi \"%2$s\"\n
-58 %1$d instanţe commise (salvate)\n
+58 %1$s %2$d instanţe commise (salvate)\n
 59 \nNu se poate invoca versiunea neoptimizată a lui loaddb.\n
 60 Eroare la parsarea lui \"%1$s\", ca fiind de tip %2$s.\n
+61 Referinţa de obiecte nu este acceptată în modul de execuţie independent.\n
+62 Statisticile pentru clasa %1$s au fost updatate.\n
 112   %1$d instanţe\r
-113 Ultima linie salvata (prin commit) : %1$d
+113 Ultima linie salvata (prin commit) : %1$d\n
 114 error-control-file
 115 una sau mai multe erori la încărcarea fişierului de intrare de control
-116 Total %8d object(s) inserted, %d object(s) failed.\n
-117 Load failed.\n
-118 Maximum length of class name is %1$d bytes.\n
-120 \
+116 Total %8d obiect(e) inserate, %d obiect(e) fără success.\n
+117 Încărcarea a eşuat.\n
+118 Lungimea maximă permisă pentru numele clasei este de %1$d octeţi.\n
+119 Total %1$8d obiect(e) verificate, %2$d obiect(e) fără success.\n
+120 Fişierul de date nu conţine specificatorul '%%class' şi opţiunea '--table' lispeşte\n
+121 Clasa %1$s este ignorată.\n
+122 \
 loaddb: Importă obiecte şi scheme în baza de date.\n\
-utilizare: %1$s loaddb [OPŢIUNI] nume-bază-de-date\n\
+utilizare: %1$s loaddb [OPŢIUNI] nume-bază-de-date[@host]\n\
 \n\
 opţiuni valide:\n\
+  -S, --SA-mode                     mod de execuţie independent\n\
+  -C, --CS-mode                     mod de execuţie client-server\n\
   -u, --user=ID                     ID de utilizator pentru acces la baza de date; implicit: "public"\n\
   -p, --password=PAROLA             parola de utilizator; implicit: nulă\n\
-      --data-file-check-only        verifică sintaxa pentru fişierul de date fără a-l încarca;\n\
-                                    implicit: încarcarea se face dupa verificare\n\
-  -l, --load-only                   încarcă fişierul de date fără a verifica sintaxa;\n\
+      --data-file-check-only        verifică sintaxa fișierului fără a-l încărca; implicit: dezactivat\n\
+  -l, --load-only                   încarcă fișierul fără verificarea dinainte a sintaxei; activ doar în SA_MODE\n\
                                     implicit: încărcarea se face după verificare\n\
       --estimated-size=NUMĂR        NUMĂR estimat de instanţe; implicit: 5000\n\
   -v, --verbose                     activează mesaje detaliate de stare; implicit: dezactivate\n\
@@ -472,8 +477,9 @@ opţiuni valide:\n\
       --no-oid                      nu se va folosi OID\n\
       --no-statistics               nu se vor actualiza statisticile în timpul încărcării\n\
   -s, --schema-file=FIŞIER[:LINIE]  creează schema de la linia, respectiv din fişierul specificat\n\
-  -i, --index-file=FIŞIER[:LINIE]   creeaza index de la linia, respectiv din fişierul specificat\n\
-  -d, --data-file=FIŞIER            incarca datele din FIŞIER\n\
+  -i, --index-file=FIŞIER[:LINIE]   creează index de la linia, respectiv din fişierul specificat\n\
+      --trigger-file=FIŞIER[:LINIE] creează trigger de la linia, respectiv din fişierul specificat\n\
+  -d, --data-file=FIŞIER            incarcă datele din FIŞIER\n\
   -t, --table=TABELA                numele tabelei înlocuite pentru antetul de clasă absent din fişierul de date\n\
       --error-control-file=FIŞIER   FIŞIER de control al erorilor în timpul încărcării\n\
       --ignore-class-file=FIŞIER    FIŞIER de intrare cu numele claselor ce nu vor fi încărcate\n
@@ -921,7 +927,7 @@ opţiuni valide:\n\
   -L, --log-path=CALE       CALEA către directorul pentru volumele de log copiate\n\
   -m, --mode=MODE           mod de operare; implicit: sync\n\
                             MOD: sync sau semisync sau async\n\
-  -S, --start-page-id=ID    first log page to copy\n 
+  -S, --start-page-id=ID    prima pagină de log pentru copiere\n
 
 $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
 21 Introduceţi parola de administrator (DBA):
@@ -1055,19 +1061,19 @@ opţiuni valide:\n\
                       configuraţie a sistemului.\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
-20 Introduceţi parola pentru %1$s: 
-22 Index tranzacţie   Nume utilizator   Nume gazda   ID proces      Nume program\n
-23 -------------------------------------------------------------------------------\n
-24 %1$4d%2$-10s %3$14s %4$14s %5$15d %6$17s\n
+20 Introduceţi parola pentru %1$s:
+22 Index tranzacţie     Nume utilizator   Nume gazda   ID proces      Nume program\n
+23 ---------------------------------------------------------------------------------\n
+24 %1$4d%2$-12s %3$14s %4$14s %5$15d %6$17s\n
 25 Nu există tranzacţii\n
 26 tranlist poate fi executat doar de către DBA sau un membru al grupului DBA.\n
 27 Numărul coloanei din cheia de sortare(%1$d) este invalid.\n
-32 Index tranzacţie    ID proces    Nume program         Durată interogare    Durată tranzacţie      Aşteaptă deţinătorul de lock      SQL_ID       Text SQL\n
-33 %1$4d%2$-10s %3$14d    %4$-25s %5$10.2f %6$12.2f    %7$28s     %8$13s   %9$s\n
-34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
-42 Index tranzacţie   Nume utilizator   Nume gazdă   ID proces      Nume program      Durată interogare  Durată tranzacţie        Aşteaptă deţinător de lock      SQL_ID       Text SQL\n
-43 %1$4d%2$-10s %3$14s %4$14s %5$14d    %6$-25s %7$10.2f %8$12.2f    %9$28s     %10$13s   %11$s\n
-44 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
+32 Index tranzacţie      ID proces    Nume program         Durată interogare    Durată tranzacţie      Aşteaptă deţinătorul de lock      SQL_ID       Text SQL\n
+33 %1$4d%2$-12s %3$14d    %4$-25s %5$10.2f %6$12.2f    %7$28s     %8$13s   %9$s\n
+34 ----------------------------------------------------------------------------------------------------------------------------------------------------\n
+42 Index tranzacţie     Nume utilizator   Nume gazdă   ID proces      Nume program      Durată interogare  Durată tranzacţie        Aşteaptă deţinător de lock      SQL_ID       Text SQL\n
+43 %1$4d%2$-12s %3$14s %4$14s %5$14d    %6$-25s %7$10.2f %8$12.2f    %9$28s     %10$13s   %11$s\n
+44 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
 45 Index tranzacţie : %1$d
 46 SQL_ID: %1$s\n
 59 tranlist nu poate fi executat în modul independent.\n

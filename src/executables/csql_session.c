@@ -59,6 +59,7 @@
 static jmp_buf csql_Jmp_buf;
 
 static void csql_pipe_handler (int sig_no);
+static void csql_dump_alltran (volatile TRANS_INFO * info);
 
 
 #define CMD_EMPTY_FLAG	  0x00000000
@@ -725,6 +726,27 @@ error:
     }
 }
 
+static void
+csql_dump_alltran (volatile TRANS_INFO * info)
+{
+  FILE *p_stream;		/* pipe stream to pager */
+
+  if (setjmp (csql_Jmp_buf) == 0)
+    {
+      p_stream = csql_popen (csql_Pager_cmd, csql_Output_fp);
+
+      fprintf (p_stream, csql_get_message (CSQL_KILLTRAN_TITLE_TEXT));
+      for (int i = 0; i < info->num_trans; i++)
+	{
+	  fprintf (p_stream, csql_get_message (CSQL_KILLTRAN_FORMAT), info->tran[i].tran_index,
+		   tran_get_tranlist_state_name (info->tran[i].state), info->tran[i].db_user,
+		   info->tran[i].host_name, info->tran[i].process_id, info->tran[i].program_name);
+	}
+
+      csql_pclose (p_stream, csql_Output_fp);
+    }
+}
+
 /*
  * csql_killtran() - kill a transaction
  *   return: none
@@ -735,7 +757,6 @@ csql_killtran (const char *argument)
 {
   TRANS_INFO *info = NULL;
   int tran_index = -1, i;
-  FILE *p_stream;		/* pipe stream to pager */
 #if !defined(WINDOWS)
   void (*csql_pipe_save) (int sig);
 #endif /* ! WINDOWS */
@@ -752,27 +773,13 @@ csql_killtran (const char *argument)
       goto error;
     }
 
-
   /* dump transaction */
   if (tran_index <= 0)
     {
 #if !defined(WINDOWS)
       csql_pipe_save = signal (SIGPIPE, &csql_pipe_handler);
 #endif /* ! WINDOWS */
-      if (setjmp (csql_Jmp_buf) == 0)
-	{
-	  p_stream = csql_popen (csql_Pager_cmd, csql_Output_fp);
-
-	  fprintf (p_stream, csql_get_message (CSQL_KILLTRAN_TITLE_TEXT));
-	  for (i = 0; i < info->num_trans; i++)
-	    {
-	      fprintf (p_stream, csql_get_message (CSQL_KILLTRAN_FORMAT), info->tran[i].tran_index,
-		       tran_get_tranlist_state_name (info->tran[i].state), info->tran[i].db_user,
-		       info->tran[i].host_name, info->tran[i].process_id, info->tran[i].program_name);
-	    }
-
-	  csql_pclose (p_stream, csql_Output_fp);
-	}
+      csql_dump_alltran (info);
 #if !defined(WINDOWS)
       signal (SIGPIPE, csql_pipe_save);
 #endif /* ! WINDOWS */
@@ -803,7 +810,7 @@ csql_killtran (const char *argument)
 	}
     }
 
-  if (info)
+  if (info != NULL)
     {
       logtb_free_trans_info (info);
     }
@@ -812,7 +819,7 @@ csql_killtran (const char *argument)
 
 error:
   nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
-  if (info)
+  if (info != NULL)
     {
       logtb_free_trans_info (info);
     }

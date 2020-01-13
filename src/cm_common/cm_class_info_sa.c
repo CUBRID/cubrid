@@ -245,7 +245,7 @@ dbmt_user_login (int argc, char *argv[], int opt_begin)
       DB_VALUE v;
       DB_COLLECTION *col;
       int i;
-      char *username;
+      const char *username;
 
       user = db_find_user (dbuser);
       if (user == NULL)

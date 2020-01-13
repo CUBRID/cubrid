@@ -32,11 +32,17 @@
 #error Belongs to server module
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
+#if !defined (__cplusplus)
+#error C++ required
+#endif // C++ required
+
 #include "dbtype_def.h"
 #include "log_lsa.hpp"
 #include "mvcc.h"
 #include "storage_common.h"
 #include "system_catalog.h"
+
+#include <atomic>
 
 #define OR_ATT_BTID_PREALLOC 8
 
@@ -57,6 +63,29 @@ struct or_default_value
  *    Built from the disk representation of a class.
  *    Part of the OR_CLASSREP structure hierarchy.
  */
+// *INDENT-OFF*
+// work-around for windows compile error:
+// error C2338: You've instantiated std::atomic<T> with sizeof(T) equal to 2/4/8 and alignof(T) < sizeof(T)
+//
+// it may be removed if support for VS versions older than 2015 is dropped.
+union or_aligned_oid
+{
+  std::int64_t dummy_for_alignemnt;
+  OID oid;
+
+  or_aligned_oid () noexcept = default;
+
+  or_aligned_oid (const OID & arg_oid)
+    : oid (arg_oid)
+  {
+  }
+};
+
+struct or_auto_increment
+{
+  std::atomic<or_aligned_oid> serial_obj;
+};
+// *INDENT-ON*
 
 typedef struct or_attribute OR_ATTRIBUTE;
 struct or_attribute
@@ -76,11 +105,7 @@ struct or_attribute
   BTID *btids;			/* B-tree ID's for indexes and constraints */
   TP_DOMAIN *domain;		/* full domain of this attribute */
 
-  union
-  {
-    double dummy;		/* alignment */
-    OID serial_obj;		/* db_serial's instance */
-  } auto_increment;
+  or_auto_increment auto_increment;
 
   int n_btids;			/* Number of ID's in the btids array */
   BTID index;			/* btree id if indexed */

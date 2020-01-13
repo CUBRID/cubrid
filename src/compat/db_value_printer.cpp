@@ -27,6 +27,8 @@
 #include "dbtype.h"
 #include "memory_private_allocator.hpp"
 #include "object_primitive.h"
+#include "object_representation.h"
+#include "printer.hpp"
 #include "set_object.h"
 #include "string_buffer.hpp"
 #include "string_opfunc.h"
@@ -43,12 +45,12 @@ namespace
   // DB_VALUE of type DB_TYPE_BIT or DB_TYPE_VARBIT
   void describe_bit_string (string_buffer &buf, const db_value *value, bool pad_byte)
   {
-    unsigned char *bstring;
+    const unsigned char *bstring;
     int nibble_length, nibbles, count;
 
     assert (value != NULL);
 
-    bstring = (unsigned char *) db_get_string (value);
+    bstring = REINTERPRET_CAST (const unsigned char *, db_get_string (value));
     if (bstring == NULL)
       {
 	return;
@@ -242,7 +244,7 @@ void db_value_printer::describe_data (const db_value *value)
   DB_SET      *set = 0;
   db_elo      *elo = 0;
   DB_MIDXKEY *midxkey;
-  char *src, *pos, *end;
+  const char *src, *pos, *end;
   double d;
   char line[1025];
   char *json_body = NULL;
@@ -367,7 +369,7 @@ void db_value_printer::describe_data (const db_value *value)
       set = db_get_set (value);
       if (set != NULL)
 	{
-	  describe_set ((const db_collection *) set);
+	  describe_set (set);
 	}
       else
 	{
@@ -539,7 +541,7 @@ void db_value_printer::describe_midxkey (const db_midxkey *midxkey, int help_Max
 }
 
 //--------------------------------------------------------------------------------
-void db_value_printer::describe_set (const db_collection *set, int help_Max_set_elements)
+void db_value_printer::describe_set (const db_set *set, int help_Max_set_elements)
 {
   DB_VALUE value;
   int size, end, i;
@@ -590,6 +592,37 @@ db_fprint_value (FILE *fp, const db_value *value)
   db_value_printer printer (sb);
   printer.describe_value (value);
   fprintf (fp, "%.*s", (int) sb.len (), sb.get_buffer ());
+}
+
+/*
+ * db_print_value() -  Prints a description of the contents of a DB_VALUE
+ *                        to the file
+ *   return: none
+ *   fp(in) : FILE stream pointer
+ *   value(in) : value to print
+ */
+void
+db_print_value (print_output &output_ctx, const db_value *value)
+{
+  string_buffer *p_sb;
+
+  /* TODO : change 'db_value_printer' to use print_output instead of string_buffer */
+  p_sb = output_ctx.grab_string_buffer ();
+
+  if (p_sb != NULL)
+    {
+      db_value_printer printer (*p_sb);
+      printer.describe_value (value);
+    }
+  else
+    {
+      const size_t BUFFER_SIZE = 1024;
+      string_buffer sb (cubmem::PRIVATE_BLOCK_ALLOCATOR, BUFFER_SIZE);
+
+      db_value_printer printer (sb);
+      printer.describe_value (value);
+      output_ctx ("%.*s", (int) sb.len (), sb.get_buffer ());
+    }
 }
 
 /*

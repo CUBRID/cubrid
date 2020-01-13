@@ -47,6 +47,7 @@
 
 #if !defined(WINDOWS)
 #include <sys/param.h>
+#include <fcntl.h>
 #endif /* WINDOWS */
 
 #include <assert.h>
@@ -54,6 +55,7 @@
 #include "porting.h"
 #include "porting_inline.hpp"
 #include "connection_defs.h"
+#include "language_support.h"
 #include "log_append.hpp"
 #include "log_impl.h"
 #include "log_lsa.hpp"
@@ -62,6 +64,7 @@
 #include "log_volids.hpp"
 #include "log_writer.h"
 #include "lock_manager.h"
+#include "log_system_tran.hpp"
 #include "boot_sr.h"
 #if !defined(SERVER_MODE)
 #include "boot_cl.h"
@@ -101,6 +104,7 @@
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
 #include "crypt_opfunc.h"
+#include "object_representation.h"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -353,6 +357,11 @@ static int logpb_fetch_header_from_active_log (THREAD_ENTRY * thread_p, const ch
 					       LOG_PAGE * log_pgptr);
 static int logpb_compute_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int *checksum_crc32);
 static int logpb_page_has_valid_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, bool * has_valid_checksum);
+
+static bool logpb_is_log_active_from_backup_useful (THREAD_ENTRY * thread_p, const char *active_log_path,
+						    const char *db_full_name);
+static int logpb_peek_header_of_active_log_from_backup (THREAD_ENTRY * thread_p, const char *active_log_path,
+							LOG_HEADER * hdr);
 
 /*
  * FUNCTIONS RELATED TO LOG BUFFERING
@@ -1326,7 +1335,7 @@ logpb_initialize_header (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr, const cha
       return ER_LOG_COMPILATION_RELEASE;
     }
 
-  strncpy (loghdr->db_release, rel_release_string (), REL_MAX_RELEASE_LENGTH);
+  strncpy_bufsize (loghdr->db_release, rel_release_string ());
   loghdr->db_compatibility = rel_disk_compatible ();
   loghdr->db_iopagesize = IO_PAGESIZE;
   loghdr->db_logpagesize = LOG_PAGESIZE;
@@ -1556,6 +1565,91 @@ error:
   return error_code;
 }
 
+// it peeks header page of the backuped log active file
+static int
+logpb_peek_header_of_active_log_from_backup (THREAD_ENTRY * thread_p, const char *active_log_path, LOG_HEADER * hdr)
+{
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
+  LOG_HEADER *log_hdr;
+  LOG_PHY_PAGEID phy_pageid;
+  int error_code = NO_ERROR;
+  LOG_PAGE *log_pgptr;
+
+  assert (active_log_path != NULL);
+  assert (hdr != NULL);
+
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+
+  if (fileio_is_volume_exist (active_log_path) == false)
+    {
+      return ER_FAILED;
+    }
+
+  int log_vdes = fileio_open (active_log_path, O_RDONLY, 0);
+  if (log_vdes == NULL_VOLDES)
+    {
+      return ER_FAILED;
+    }
+
+  phy_pageid = LOGPB_PHYSICAL_HEADER_PAGE_ID;
+  logpb_log ("reading from active log:%s, physical page is : %lld\n", active_log_path, (long long int) phy_pageid);
+
+  log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
+
+  if (fileio_read (thread_p, log_vdes, log_pgptr, phy_pageid, LOG_PAGESIZE) == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_READ, 3, LOGPB_HEADER_PAGE_ID, phy_pageid, active_log_path);
+      error_code = ER_LOG_READ;
+      goto end;
+    }
+
+  log_hdr = (LOG_HEADER *) (log_pgptr->area);
+  *hdr = *log_hdr;
+
+  if (log_pgptr->hdr.logical_pageid != LOGPB_HEADER_PAGE_ID || log_pgptr->hdr.offset != NULL_OFFSET)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED, 1, phy_pageid);
+      error_code = ER_LOG_PAGE_CORRUPTED;
+      goto end;
+    }
+
+end:
+  fileio_close (log_vdes);
+
+  return error_code;
+}
+
+// it probes whether the next archive file exists
+// if the case, the backuped log active file is regarded as unuseful and restore will reset log.
+static bool
+logpb_is_log_active_from_backup_useful (THREAD_ENTRY * thread_p, const char *active_log_path, const char *db_full_name)
+{
+  LOG_HEADER hdr;
+
+  if (logpb_peek_header_of_active_log_from_backup (thread_p, active_log_path, &hdr) != NO_ERROR)
+    {
+      // something bad happened
+      return false;
+    }
+
+  // make next archive name
+  char next_archive_file_path[PATH_MAX], log_path[PATH_MAX];
+
+  fileio_get_directory_path (log_path, active_log_path);
+  fileio_make_log_archive_name (next_archive_file_path, log_path, fileio_get_base_file_name (db_full_name),
+				hdr.nxarv_num);
+
+  if (fileio_is_volume_exist (next_archive_file_path))
+    {
+      // if the next archive exists, regard the backuped log active is older and useless.
+      er_log_debug (ARG_FILE_LINE, "log active from backup is older than available archive (%s).\n",
+		    next_archive_file_path);
+      return false;
+    }
+
+  return true;
+}
+
 /*
  * logpb_flush_header - Flush log header
  *
@@ -1626,7 +1720,8 @@ logpb_flush_header (THREAD_ENTRY * thread_p)
  *              If not, read log page from log.
  */
 int
-logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_LSA * req_lsa, LOG_CS_ACCESS_MODE access_mode, LOG_PAGE * log_pgptr)
+logpb_fetch_page (THREAD_ENTRY * thread_p, const LOG_LSA * req_lsa, LOG_CS_ACCESS_MODE access_mode,
+		  LOG_PAGE * log_pgptr)
 {
   LOG_LSA append_lsa, append_prev_lsa;
   int rv;
@@ -1901,9 +1996,22 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_AC
       assert (LOG_CS_OWN (thread_p));
     }
 
-  if (logpb_is_page_in_archive (pageid)
-      && (LOG_ISRESTARTED () == false || (pageid + LOGPB_ACTIVE_NPAGES) <= log_Gl.hdr.append_lsa.pageid))
+  // some archived pages may be still in active log; check if they can be fetched from active.
+  bool fetch_from_archive = logpb_is_page_in_archive (pageid);
+  if (fetch_from_archive)
     {
+      bool is_archive_page_in_active_log = (pageid + LOGPB_ACTIVE_NPAGES) > log_Gl.hdr.append_lsa.pageid;
+      bool dont_fetch_archive_from_active = !LOG_ISRESTARTED () || log_Gl.hdr.was_active_log_reset;
+
+      if (is_archive_page_in_active_log && !dont_fetch_archive_from_active)
+	{
+	  // can fetch from active
+	  fetch_from_archive = false;
+	}
+    }
+  if (fetch_from_archive)
+    {
+      // fetch from archive
       if (logpb_fetch_from_archive (thread_p, pageid, log_pgptr, NULL, NULL, true) == NULL)
 	{
 #if defined (SERVER_MODE)
@@ -1918,6 +2026,7 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_AC
     }
   else
     {
+      // fetch from active
       LOG_PHY_PAGEID phy_pageid;
 
       /*
@@ -2913,8 +3022,8 @@ logpb_page_get_first_null_block_lsa (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgp
 static int
 logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 {
-  LOG_BUFFER *bufptr;		/* The current buffer log append page scanned */
-  LOG_BUFFER *prv_bufptr;	/* The previous buffer log append page scanned */
+  LOG_BUFFER *bufptr = NULL;	/* The current buffer log append page scanned */
+  LOG_BUFFER *prv_bufptr = NULL;	/* The previous buffer log append page scanned */
   int idxflush;			/* An index into the first log page buffer to flush */
   bool need_sync;		/* How we flush anything ? */
 
@@ -2942,8 +3051,8 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
   INT64 all_writer_thr_end_time = 0;
 
   LOGWR_INFO *writer_info = log_Gl.writer_info;
-  LOGWR_ENTRY *entry;
-  THREAD_ENTRY *wait_thread_p;
+  LOGWR_ENTRY *entry = NULL;
+  THREAD_ENTRY *wait_thread_p = NULL;
 #endif /* SERVER_MODE */
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
@@ -3169,7 +3278,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 
 	  writer_info->trace_last_writer = true;
 	  writer_info->last_writer_elapsed_time = 0;
-	  writer_info->last_writer_client_info.client_type = BOOT_CLIENT_UNKNOWN;
+	  writer_info->last_writer_client_info.client_type = DB_CLIENT_TYPE_UNKNOWN;
 	}
 
       entry = writer_info->writer_list;
@@ -5499,6 +5608,8 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
   log_Gl.hdr.nxarv_pageid = last_pageid + 1;
   log_Gl.hdr.nxarv_phy_pageid = logpb_to_physical_pageid (log_Gl.hdr.nxarv_pageid);
 
+  log_Gl.hdr.was_active_log_reset = false;
+
   logpb_log
     ("In logpb_archive_active_log, new values from log_Gl.hdr.nxarv_pageid = %lld and log_Gl.hdr.nxarv_phy_pageid = %lld\n",
      (long long int) log_Gl.hdr.nxarv_pageid, (long long int) log_Gl.hdr.nxarv_phy_pageid);
@@ -6321,6 +6432,90 @@ logpb_exist_log (THREAD_ENTRY * thread_p, const char *db_fullname, const char *l
   return fileio_is_volume_exist (log_Name_active);
 }
 
+void
+logpb_checkpoint_trans (LOG_INFO_CHKPT_TRANS * chkpt_entries, log_tdes * tdes, int &ntrans, int &ntops,
+			LOG_LSA & smallest_lsa)
+{
+  LOG_INFO_CHKPT_TRANS *chkpt_entry = &chkpt_entries[ntrans];
+  if (tdes != NULL && tdes->trid != NULL_TRANID && !LSA_ISNULL (&tdes->tail_lsa))
+    {
+      chkpt_entry->isloose_end = tdes->isloose_end;
+      chkpt_entry->trid = tdes->trid;
+      chkpt_entry->state = tdes->state;
+      LSA_COPY (&chkpt_entry->head_lsa, &tdes->head_lsa);
+      LSA_COPY (&chkpt_entry->tail_lsa, &tdes->tail_lsa);
+      if (chkpt_entry->state == TRAN_UNACTIVE_ABORTED)
+	{
+	  /*
+	   * Transaction is in the middle of an abort, since rollback does
+	   * is not run in a critical section. Set the undo point to be the
+	   * same as its tail. The recovery process will read the last
+	   * record which is likely a compensating one, and find where to
+	   * continue a rollback operation.
+	   */
+	  LSA_COPY (&chkpt_entry->undo_nxlsa, &tdes->tail_lsa);
+	}
+      else
+	{
+	  LSA_COPY (&chkpt_entry->undo_nxlsa, &tdes->undo_nxlsa);
+	}
+
+      LSA_COPY (&chkpt_entry->posp_nxlsa, &tdes->posp_nxlsa);
+      LSA_COPY (&chkpt_entry->savept_lsa, &tdes->savept_lsa);
+      LSA_COPY (&chkpt_entry->tail_topresult_lsa, &tdes->tail_topresult_lsa);
+      LSA_COPY (&chkpt_entry->start_postpone_lsa, &tdes->rcv.tran_start_postpone_lsa);
+      strncpy (chkpt_entry->user_name, tdes->client.get_db_user (), LOG_USERNAME_MAX);
+      ntrans++;
+      if (tdes->topops.last >= 0 && (tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE))
+	{
+	  ntops += tdes->topops.last + 1;
+	}
+
+      if (LSA_ISNULL (&smallest_lsa) || LSA_GT (&smallest_lsa, &tdes->head_lsa))
+	{
+	  LSA_COPY (&smallest_lsa, &tdes->head_lsa);
+	}
+    }
+}
+
+int
+logpb_checkpoint_topops (THREAD_ENTRY * thread_p, LOG_INFO_CHKPT_SYSOP * &chkpt_topops,
+			 LOG_INFO_CHKPT_TRANS * chkpt_trans, LOG_REC_CHKPT & tmp_chkpt, log_tdes * tdes, int &ntops,
+			 size_t & length_all_tops)
+{
+  if (tdes != NULL && tdes->trid != NULL_TRANID
+      && (!LSA_ISNULL (&tdes->rcv.sysop_start_postpone_lsa) || !LSA_ISNULL (&tdes->rcv.atomic_sysop_start_lsa)))
+    {
+      /* this transaction is running system operation postpone or an atomic system operation
+       * note: we cannot compare tdes->state with TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE. we are
+       *       not synchronizing setting transaction state.
+       *       however, setting tdes->rcv.sysop_start_postpone_lsa is protected by
+       *       log_Gl.prior_info.prior_lsa_mutex. so we check this instead of state.
+       */
+      if (ntops >= tmp_chkpt.ntops)
+	{
+	  tmp_chkpt.ntops += log_Gl.trantable.num_assigned_indices;
+	  length_all_tops = sizeof (*chkpt_topops) * tmp_chkpt.ntops;
+	  LOG_INFO_CHKPT_SYSOP *ptr = (LOG_INFO_CHKPT_SYSOP *) realloc (chkpt_topops, length_all_tops);
+	  if (ptr == NULL)
+	    {
+	      free_and_init (chkpt_trans);
+	      log_Gl.prior_info.prior_lsa_mutex.unlock ();
+	      TR_TABLE_CS_EXIT (thread_p);
+	      return ER_FAILED;
+	    }
+	  chkpt_topops = ptr;
+	}
+
+      LOG_INFO_CHKPT_SYSOP *chkpt_topop = &chkpt_topops[ntops];
+      chkpt_topop->trid = tdes->trid;
+      chkpt_topop->sysop_start_postpone_lsa = tdes->rcv.sysop_start_postpone_lsa;
+      chkpt_topop->atomic_sysop_start_lsa = tdes->rcv.atomic_sysop_start_lsa;
+      ntops++;
+    }
+  return NO_ERROR;
+}
+
 /*
  * logpb_checkpoint - Execute a fuzzy checkpoint
  *
@@ -6363,6 +6558,9 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   void *ptr;
   int flushed_page_cnt = 0, vdes;
   bool detailed_logging = prm_get_bool_value (PRM_ID_LOG_CHKPT_DETAILED);
+  // *INDENT-OFF*
+  log_system_tdes::map_func mapper;
+  // *INDENT-ON*
 
   LOG_CS_ENTER (thread_p);
 
@@ -6496,50 +6694,9 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 	  continue;
 	}
       act_tdes = LOG_FIND_TDES (i);
-      if (act_tdes != NULL && act_tdes->trid != NULL_TRANID && !LSA_ISNULL (&act_tdes->tail_lsa))
-	{
-	  assert (ntrans < tmp_chkpt.ntrans);
-
-	  chkpt_one = &chkpt_trans[ntrans];
-	  chkpt_one->isloose_end = act_tdes->isloose_end;
-	  chkpt_one->trid = act_tdes->trid;
-	  chkpt_one->state = act_tdes->state;
-	  LSA_COPY (&chkpt_one->head_lsa, &act_tdes->head_lsa);
-	  LSA_COPY (&chkpt_one->tail_lsa, &act_tdes->tail_lsa);
-	  if (chkpt_one->state == TRAN_UNACTIVE_ABORTED)
-	    {
-	      /*
-	       * Transaction is in the middle of an abort, since rollback does
-	       * is not run in a critical section. Set the undo point to be the
-	       * same as its tail. The recovery process will read the last
-	       * record which is likely a compensating one, and find where to
-	       * continue a rollback operation.
-	       */
-	      LSA_COPY (&chkpt_one->undo_nxlsa, &act_tdes->tail_lsa);
-	    }
-	  else
-	    {
-	      LSA_COPY (&chkpt_one->undo_nxlsa, &act_tdes->undo_nxlsa);
-	    }
-
-	  LSA_COPY (&chkpt_one->posp_nxlsa, &act_tdes->posp_nxlsa);
-	  LSA_COPY (&chkpt_one->savept_lsa, &act_tdes->savept_lsa);
-	  LSA_COPY (&chkpt_one->tail_topresult_lsa, &act_tdes->tail_topresult_lsa);
-	  LSA_COPY (&chkpt_one->start_postpone_lsa, &act_tdes->rcv.tran_start_postpone_lsa);
-	  strncpy (chkpt_one->user_name, act_tdes->client.get_db_user (), LOG_USERNAME_MAX);
-	  ntrans++;
-	  if (act_tdes->topops.last >= 0 && (act_tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE))
-	    {
-	      ntops += act_tdes->topops.last + 1;
-	    }
-
-	  if (LSA_ISNULL (&smallest_lsa) || LSA_GT (&smallest_lsa, &act_tdes->head_lsa))
-	    {
-	      LSA_COPY (&smallest_lsa, &act_tdes->head_lsa);
-	    }
-	}
+      assert (ntrans < tmp_chkpt.ntrans);
+      logpb_checkpoint_trans (chkpt_trans, act_tdes, ntrans, ntops, smallest_lsa);
     }
-  // todo - what about system worker transaction descriptors??
 
   /*
    * Reset the structure to the correct number of transactions and
@@ -6582,38 +6739,41 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 	      continue;
 	    }
 	  act_tdes = LOG_FIND_TDES (i);
-	  if (act_tdes != NULL && act_tdes->trid != NULL_TRANID
-	      && (!LSA_ISNULL (&act_tdes->rcv.sysop_start_postpone_lsa)
-		  || !LSA_ISNULL (&act_tdes->rcv.atomic_sysop_start_lsa)))
+	  error_code =
+	    logpb_checkpoint_topops (thread_p, chkpt_topops, chkpt_trans, tmp_chkpt, act_tdes, ntops, length_all_tops);
+	  if (error_code != NO_ERROR)
 	    {
-	      /* this transaction is running system operation postpone or an atomic system operation
-	       * note: we cannot compare act_tdes->state with TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE. we are
-	       *       not synchronizing setting transaction state.
-	       *       however, setting tdes->rcv.sysop_start_postpone_lsa is protected by
-	       *       log_Gl.prior_info.prior_lsa_mutex. so we check this instead of state.
-	       */
-	      if (ntops >= tmp_chkpt.ntops)
-		{
-		  tmp_chkpt.ntops += log_Gl.trantable.num_assigned_indices;
-		  length_all_tops = sizeof (*chkpt_topops) * tmp_chkpt.ntops;
-		  ptr = realloc (chkpt_topops, length_all_tops);
-		  if (ptr == NULL)
-		    {
-		      free_and_init (chkpt_trans);
-		      log_Gl.prior_info.prior_lsa_mutex.unlock ();
-		      TR_TABLE_CS_EXIT (thread_p);
-		      goto error_cannot_chkpt;
-		    }
-		  chkpt_topops = (LOG_INFO_CHKPT_SYSOP *) ptr;
-		}
-
-	      chkpt_topone = &chkpt_topops[ntops];
-	      chkpt_topone->trid = act_tdes->trid;
-	      chkpt_topone->sysop_start_postpone_lsa = act_tdes->rcv.sysop_start_postpone_lsa;
-	      chkpt_topone->atomic_sysop_start_lsa = act_tdes->rcv.atomic_sysop_start_lsa;
-	      ntops++;
+	      goto error_cannot_chkpt;
 	    }
 	}
+    }
+  else
+    {
+      tmp_chkpt.ntops = 1;
+      length_all_tops = sizeof (*chkpt_topops) * tmp_chkpt.ntops;
+      chkpt_topops = (LOG_INFO_CHKPT_SYSOP *) malloc (length_all_tops);
+      if (chkpt_topops == NULL)
+	{
+	  free_and_init (chkpt_trans);
+	  log_Gl.prior_info.prior_lsa_mutex.unlock ();
+	  TR_TABLE_CS_EXIT (thread_p);
+	  goto error_cannot_chkpt;
+	}
+    }
+
+  // Checkpoint system transactions' topops
+  // *INDENT-OFF*
+  mapper = [thread_p, &chkpt_topops, &chkpt_trans, &tmp_chkpt, &ntops, &length_all_tops, &error_code] (log_tdes &tdes)
+  {
+    error_code =
+      logpb_checkpoint_topops (thread_p, chkpt_topops, chkpt_trans, tmp_chkpt, &tdes, ntops, length_all_tops);
+  };
+
+  log_system_tdes::map_all_tdes (mapper);
+  // *INDENT-ON*
+  if (error_code != NO_ERROR)
+    {
+      goto error_cannot_chkpt;
     }
 
   assert (sizeof (*chkpt_topops) * ntops <= length_all_tops);
@@ -6839,6 +6999,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   log_Gl.run_nxchkpt_atpageid = (log_Gl.hdr.append_lsa.pageid + log_Gl.chkpt_every_npages);
   /*
    * Clear all tail and heads information of current system transaction
+   * todo - is it safe to clear though?
    */
   logtb_clear_tdes (thread_p, tdes);
 
@@ -7084,6 +7245,8 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
   time_t tmp_time;
   char time_val[CTIME_MAX];
 
+  LOG_PAGEID vacuum_first_pageid = NULL_PAGEID;
+
 #if defined (SERVER_MODE)
   // check whether there is ongoing backup.
   LOG_CS_ENTER (thread_p);
@@ -7186,6 +7349,36 @@ loop:
   else
     {
       first_arv_needed = log_Gl.hdr.nxarv_num;
+    }
+
+  vacuum_first_pageid = vacuum_min_log_pageid_to_keep (thread_p);
+  vacuum_er_log (VACUUM_ER_LOG_ARCHIVES, "First log pageid in vacuum data is %lld\n", vacuum_first_pageid);
+
+  if (vacuum_first_pageid != NULL_PAGEID && logpb_is_page_in_archive (vacuum_first_pageid))
+    {
+      int min_arv_required_for_vacuum = logpb_get_archive_number (thread_p, vacuum_first_pageid);
+
+      vacuum_er_log (VACUUM_ER_LOG_ARCHIVES, "First archive number used for vacuum is %d\n",
+		     min_arv_required_for_vacuum);
+
+      if (min_arv_required_for_vacuum >= 0)
+	{
+	  if (first_arv_needed >= 0)
+	    {
+	      first_arv_needed = MIN (first_arv_needed, min_arv_required_for_vacuum);
+	    }
+	  else
+	    {
+	      first_arv_needed = min_arv_required_for_vacuum;
+	    }
+	}
+      else
+	{
+	  /* Page should be in archive. */
+	  assert (false);
+	}
+
+      vacuum_er_log (VACUUM_ER_LOG_ARCHIVES, "First archive needed for backup is %d\n", first_arv_needed);
     }
 
   /* Get the current checkpoint address */
@@ -7376,6 +7569,8 @@ loop:
 
       if (skip_activelog)
 	{
+	  // unreachable. skip_activelog option is obsoleted.
+	  assert (!skip_activelog);
 	  fprintf (session.verbose_fp, "- not include active log.\n\n");
 	}
 
@@ -7420,6 +7615,7 @@ loop:
     }
 
   /* Begin backing up in earnest */
+  assert (!skip_activelog);
   session.bkup.bkuphdr->skip_activelog = skip_activelog;
 
   if (fileio_start_backup (thread_p, log_Db_fullname, &log_Gl.hdr.db_creation, backup_level, &bkup_start_lsa,
@@ -7527,7 +7723,7 @@ loop:
   LOG_CS_ENTER (thread_p);
 
 #if defined(SERVER_MODE)
-  /* backup the archive logs created during backup existing archive logs */
+
   if (last_arv_needed < log_Gl.hdr.nxarv_num - 1)
     {
       error_code = logpb_backup_needed_archive_logs (thread_p, &session, last_arv_needed + 1, log_Gl.hdr.nxarv_num - 1);
@@ -7600,15 +7796,13 @@ loop:
   /* Now indicate how many volumes were backed up */
   logpb_flush_header (thread_p);
 
-  if (skip_activelog == 0)
+  /* Include active log always. Skipping log active is obsolete. */
+  error_code = fileio_backup_volume (thread_p, &session, log_Name_active, LOG_DBLOG_ACTIVE_VOLID, -1, false);
+  if (error_code != NO_ERROR)
     {
-      error_code = fileio_backup_volume (thread_p, &session, log_Name_active, LOG_DBLOG_ACTIVE_VOLID, -1, false);
-      if (error_code != NO_ERROR)
-	{
-	  LOG_CS_EXIT (thread_p);
-	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_BACKUP_CS_EXIT, 1, log_Name_active);
-	  goto error;
-	}
+      LOG_CS_EXIT (thread_p);
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_BACKUP_CS_EXIT, 1, log_Name_active);
+      goto error;
     }
 
   if (fileio_finish_backup (thread_p, &session) == NULL)
@@ -7932,7 +8126,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 	}
 
       memset (session_storage.bkup.log_path, 0, PATH_MAX);
-      strncpy (session_storage.bkup.log_path, logpath, PATH_MAX);
+      strncpy_bufsize (session_storage.bkup.log_path, logpath);
 
       session = &session_storage;
 
@@ -8142,8 +8336,23 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 
 	      if (volume_name_p == tmp_logfiles_from_backup)
 		{
-		  /* rename temp logfiles if the current file does not exist */
+		  // when an archive exists, always respect it.
+		  // when the active exists and the next archive of it does not, use it to restore.
+		  bool is_backup_log_useful = false;
+
 		  if (stat (to_volname, &stat_buf) != 0 && stat (tmp_logfiles_from_backup, &stat_buf) == 0)
+		    {
+		      is_backup_log_useful = true;
+
+		      if (to_volid == LOG_DBLOG_ACTIVE_VOLID
+			  && !logpb_is_log_active_from_backup_useful (thread_p, tmp_logfiles_from_backup, db_fullname))
+			{
+			  // log active from backup is useless since it is older than the available log archives
+			  is_backup_log_useful = false;
+			}
+		    }
+
+		  if (is_backup_log_useful)
 		    {
 		      if (to_volid == LOG_DBLOG_ACTIVE_VOLID && lgat_vdes != NULL_VOLDES)
 			{
@@ -10362,9 +10571,9 @@ logpb_dump_log_header (FILE * outfp)
 
   fprintf (outfp, "\tMVCC op lsa : (%lld|%d)\n", LSA_AS_ARGS (&log_Gl.hdr.mvcc_op_log_lsa));
 
-  fprintf (outfp, "\tLast block oldest MVCCID : (%lld)\n", (long long int) log_Gl.hdr.last_block_oldest_mvccid);
+  fprintf (outfp, "\tLast block oldest MVCCID : (%lld)\n", (long long int) log_Gl.hdr.oldest_visible_mvccid);
 
-  fprintf (outfp, "\tLast block newest MVCCID : (%lld)\n", (long long int) log_Gl.hdr.last_block_newest_mvccid);
+  fprintf (outfp, "\tLast block newest MVCCID : (%lld)\n", (long long int) log_Gl.hdr.newest_block_mvccid);
 }
 
 /*
@@ -10705,8 +10914,9 @@ logpb_vacuum_reset_log_header_cache (THREAD_ENTRY * thread_p, LOG_HEADER * loghd
 {
   vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA, "Reset vacuum info in loghdr (%p)", loghdr);
   LSA_SET_NULL (&loghdr->mvcc_op_log_lsa);
-  loghdr->last_block_oldest_mvccid = MVCCID_NULL;
-  loghdr->last_block_newest_mvccid = MVCCID_NULL;
+  loghdr->oldest_visible_mvccid = MVCCID_FIRST;
+  loghdr->newest_block_mvccid = MVCCID_NULL;
+  loghdr->does_block_need_vacuum = false;
 }
 
 /*

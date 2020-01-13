@@ -37,11 +37,13 @@
 #include "compile_context.h"
 #include "config.h"
 #include "cursor.h"
-#include "jansson.h"
 #include "json_table_def.h"
 #include "message_catalog.h"
 #include "string_opfunc.h"
 #include "system_parameter.h"
+
+// forward definitions
+struct json_t;
 
 #define MAX_PRINT_ERROR_CONTEXT_LENGTH 64
 
@@ -780,7 +782,9 @@ enum pt_custom_print
 
   PT_CHARSET_COLLATE_USER_ONLY = (0x1 << 19),
 
-  PT_PRINT_USER = (0x1 << 20)
+  PT_PRINT_USER = (0x1 << 20),
+
+  PT_PRINT_ORIGINAL_BEFORE_CONST_FOLDING = (0x1 << 21)
 };
 
 /* all statement node types should be assigned their API statement enumeration */
@@ -3457,6 +3461,7 @@ struct parser_node
   PT_NODE *data_type;		/* for non-primitive types, Sets, objects stec. */
   XASL_ID *xasl_id;		/* XASL_ID for this SQL statement */
   const char *alias_print;	/* the column alias */
+  PARSER_VARCHAR *expr_before_const_folding;	/* text before constant folding (used by value, host var nodes) */
   PT_TYPE_ENUM type_enum;	/* type enumeration tag PT_TYPE_??? */
   CACHE_TIME cache_time;	/* client or server cache time */
   unsigned recompile:1;		/* the statement should be recompiled - used for plan cache */
@@ -3516,7 +3521,7 @@ typedef struct pt_plan_trace_info
   union
   {
     char *text_plan;
-    json_t *json_plan;
+    struct json_t *json_plan;
   } trace;
 } PT_PLAN_TRACE_INFO;
 

@@ -45,7 +45,10 @@
 #include "storage_common.h"
 
 // forward definition
+class btree_unique_stats;
 struct key_val_range;
+struct or_buf;
+typedef struct or_buf OR_BUF;
 
 #define SINGLE_ROW_INSERT    1
 #define SINGLE_ROW_DELETE    2
@@ -531,6 +534,106 @@ struct btree_object_info
 #define BTREE_OBJECT_INFO_INITIALIZER \
   { OID_INITIALIZER, OID_INITIALIZER, BTREE_MVCC_INFO_INITIALIZER }
 
+struct key_oid
+{
+  DB_VALUE m_key;
+  OID m_oid;
+};
+
+// *INDENT-OFF*
+struct page_key_boundary
+{
+  DB_VALUE m_left_key;
+  DB_VALUE m_right_key;
+
+  bool m_is_inf_left_key;
+  bool m_is_inf_right_key;
+
+  page_key_boundary ();
+  ~page_key_boundary ();
+
+  void set_value (DB_VALUE &dest_value, DB_VALUE &src_value, bool &clear_src_value);
+  int set_value (THREAD_ENTRY * thread_p, DB_VALUE &dest_value, BTID_INT * btid, PAGE_PTR page_ptr, const INT16 slot);
+  int set_value (THREAD_ENTRY * thread_p, DB_VALUE &dest_value, BTID_INT * btid, PAGE_PTR page_ptr, RECDES &rec);
+
+  int update_boundary_eq (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr,
+                          DB_VALUE &subtree_value, bool &clear_subtree_value, const INT16 subtree_slot);
+
+  int update_boundary_lt (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr,
+                          RECDES &left_subtree_rec, DB_VALUE &subtree_value, bool &clear_subtree_value);
+
+  int update_boundary_gt_or_eq (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr,
+                                DB_VALUE &subtree_value, bool &clear_subtree_value, const INT16 subtree_slot,
+                                const int key_cnt);
+};
+
+struct btree_insert_list
+{
+  enum
+    {
+      KEY_AVAILABLE = 0,
+      KEY_NOT_AVAILABLE
+    };
+
+  std::vector<key_oid> m_keys_oids;
+  std::vector<key_oid*> m_sorted_keys_oids;
+
+  DB_VALUE *m_curr_key;
+  OID *m_curr_oid;
+  int m_curr_pos;
+
+  const TP_DOMAIN *m_key_type;
+
+  int m_ignored_nulls_cnt;
+
+  page_key_boundary m_boundaries;
+  bool m_use_page_boundary_check;
+
+  bool m_use_sorted_bulk_insert;
+
+  int m_keep_page_iterations;
+  int m_ovf_appends;
+  int m_ovf_appends_new_page;
+
+  btree_insert_list () = delete;
+
+  btree_insert_list (const TP_DOMAIN *&key_type)
+    : m_curr_key (NULL)
+    , m_curr_oid (NULL)
+    , m_curr_pos (0)
+    , m_key_type (key_type)
+    , m_ignored_nulls_cnt (0)
+    , m_use_page_boundary_check (false)
+    , m_use_sorted_bulk_insert (false)
+  {
+  }
+
+  btree_insert_list (DB_VALUE *key, OID *oid);
+
+  ~btree_insert_list ();
+
+  int next_key ();
+
+  OID *get_oid ()
+  {
+    return m_curr_oid;
+  }
+
+  DB_VALUE *get_key ()
+  {
+    return m_curr_key;
+  }
+
+  size_t add_key (const DB_VALUE *key, const OID &oid);
+
+  void reset_boundary_keys ();
+
+  void prepare_list (void);
+
+  bool check_release_latch (THREAD_ENTRY * thread_p, void *arg, PAGE_PTR leaf_page);
+};
+// *INDENT-ON*
+
 /* BTREE_RANGE_SCAN_PROCESS_KEY_FUNC -
  * btree_range_scan internal function that is called for each key that passes
  * range/filter checks.
@@ -570,13 +673,13 @@ extern int btree_estimate_total_numpages (THREAD_ENTRY * thread_p, int dis_key_c
 
 extern int btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc);
 extern int btree_physical_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * oid, OID * class_oid,
-				  int *unique, int op_type, BTREE_UNIQUE_STATS * unique_stat_info);
+				  int *unique, int op_type, btree_unique_stats * unique_stat_info);
 extern int btree_vacuum_insert_mvccid (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_key, OID * oid,
 				       OID * class_oid, MVCCID insert_mvccid);
 extern int btree_vacuum_object (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_key, OID * oid, OID * class_oid,
 				MVCCID delete_mvccid);
 extern int btree_update (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * old_key, DB_VALUE * new_key, OID * cls_oid,
-			 OID * oid, int op_type, BTREE_UNIQUE_STATS * unique_stat_info, int *unique,
+			 OID * oid, int op_type, btree_unique_stats * unique_stat_info, int *unique,
 			 MVCC_REC_HEADER * p_mvcc_rec_header);
 extern int btree_reflect_global_unique_statistics (THREAD_ENTRY * thread_p, GLOBAL_UNIQUE_STATS * unique_stat_info,
 						   bool only_active_tran);
@@ -643,8 +746,9 @@ extern int btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_
 extern int btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, int *btree_att_ids,
 					 int btree_num_att, HEAP_CACHE_ATTRINFO * attr_info, int func_index_col_id);
 extern int btree_coerce_key (DB_VALUE * src_keyp, int keysize, TP_DOMAIN * btree_domainp, int key_minmax);
-extern int btree_set_error (THREAD_ENTRY * thread_p, DB_VALUE * key, OID * obj_oid, OID * class_oid, BTID * btid,
-			    const char *bt_name, int severity, int err_id, const char *filename, int lineno);
+extern int btree_set_error (THREAD_ENTRY * thread_p, const DB_VALUE * key, const OID * obj_oid, const OID * class_oid,
+			    const BTID * btid, const char *bt_name, int severity, int err_id, const char *filename,
+			    int lineno);
 extern DISK_ISVALID btree_repair_prev_link (THREAD_ENTRY * thread_p, OID * oid, BTID * btid, bool repair);
 extern int btree_index_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values, int arg_cnt,
 				   void **ctx);
@@ -665,9 +769,9 @@ extern void btree_leaf_change_first_object (THREAD_ENTRY * thread_p, RECDES * re
 					    OID * class_oidp, BTREE_MVCC_INFO * mvcc_info, int *key_offset,
 					    char **rv_undo_data_ptr, char **rv_redo_data_ptr);
 extern int btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * cls_oid, OID * oid, int op_type,
-			 BTREE_UNIQUE_STATS * unique_stat_info, int *unique, MVCC_REC_HEADER * p_mvcc_rec_header);
+			 btree_unique_stats * unique_stat_info, int *unique, MVCC_REC_HEADER * p_mvcc_rec_header);
 extern int btree_mvcc_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid, OID * oid,
-			      int op_type, BTREE_UNIQUE_STATS * unique_stat_info, int *unique,
+			      int op_type, btree_unique_stats * unique_stat_info, int *unique,
 			      MVCC_REC_HEADER * p_mvcc_rec_header);
 
 extern void btree_set_mvcc_header_ids_for_update (THREAD_ENTRY * thread_p, bool do_delete_only, bool do_insert_only,
@@ -740,6 +844,9 @@ extern void btree_dump_key (FILE * fp, const DB_VALUE * key);
 
 extern int btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * cls_oid,
 					  OID * oid, int unique, BTREE_OP_PURPOSE purpose, LOG_LSA * undo_nxlsa);
+extern int btree_online_index_list_dispatcher (THREAD_ENTRY * thread_p, BTID * btid, OID * cls_oid,
+					       btree_insert_list * insert_list, int unique, BTREE_OP_PURPOSE purpose,
+					       LOG_LSA * undo_nxlsa);
 
 extern int btree_rv_keyval_undo_online_index_tran_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 extern int btree_rv_keyval_undo_online_index_tran_delete (THREAD_ENTRY * thread_p, LOG_RCV * recv);

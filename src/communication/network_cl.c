@@ -56,6 +56,7 @@
 #include "client_support.h"
 #include "perf_monitor.h"
 #include "log_writer.h"
+#include "object_representation.h"
 
 /*
  * To check for errors from the comm system. Note that if we get any error
@@ -103,7 +104,7 @@ unsigned short method_request_id;
 #endif /* CS_MODE */
 
 /* Contains the name of the current sever host machine.  */
-static char net_Server_host[MAXHOSTNAMELEN + 1] = "";
+static char net_Server_host[CUB_MAXHOSTNAMELEN + 1] = "";
 
 /* Contains the name of the current server name. */
 static char net_Server_name[DB_MAX_IDENTIFIER_LENGTH + 1] = "";
@@ -638,6 +639,13 @@ net_histo_setup_names (void)
   net_Req_buffer[NET_SERVER_LOCK_RR].name = "NET_SERVER_LOCK_RR";
   net_Req_buffer[NET_SERVER_TZ_GET_CHECKSUM].name = "NET_SERVER_TZ_GET_CHECKSUM";
   net_Req_buffer[NET_SERVER_SPACEDB].name = "NET_SERVER_SPACEDB";
+
+  net_Req_buffer[NET_SERVER_LD_INIT].name = "NET_SERVER_LD_INIT";
+  net_Req_buffer[NET_SERVER_LD_INSTALL_CLASS].name = "NET_SERVER_LD_INSTALL_CLASS";
+  net_Req_buffer[NET_SERVER_LD_LOAD_BATCH].name = "NET_SERVER_LD_LOAD_BATCH";
+  net_Req_buffer[NET_SERVER_LD_DESTROY].name = "NET_SERVER_LD_DESTROY";
+  net_Req_buffer[NET_SERVER_LD_INTERRUPT].name = "NET_SERVER_LD_INTERRUPT";
+  net_Req_buffer[NET_SERVER_LD_UPDATE_STATS].name = "NET_SERVER_LD_UPDATE_STATS";
 }
 
 /*
@@ -885,7 +893,7 @@ net_client_request_no_reply (int request, char *argbuf, int argsize)
 
   error = NO_ERROR;
 
-  assert (request == NET_SERVER_LOG_SET_INTERRUPT);
+  assert (request == NET_SERVER_LOG_SET_INTERRUPT || request == NET_SERVER_LD_INTERRUPT);
 
   if (net_Server_name[0] == '\0')
     {
@@ -3769,9 +3777,9 @@ net_client_ping_server_with_handshake (int client_type, bool check_capabilities,
   const char *client_release;
   char *server_release, *server_host, *server_handshake, *ptr;
   int error = NO_ERROR;
-  OR_ALIGNED_BUF (REL_MAX_RELEASE_LENGTH + (OR_INT_SIZE * 2) + MAXHOSTNAMELEN) a_request;
+  OR_ALIGNED_BUF (REL_MAX_RELEASE_LENGTH + (OR_INT_SIZE * 2) + CUB_MAXHOSTNAMELEN) a_request;
   char *request = OR_ALIGNED_BUF_START (a_request);
-  OR_ALIGNED_BUF (REL_MAX_RELEASE_LENGTH + (OR_INT_SIZE * 3) + MAXHOSTNAMELEN) a_reply;
+  OR_ALIGNED_BUF (REL_MAX_RELEASE_LENGTH + (OR_INT_SIZE * 3) + CUB_MAXHOSTNAMELEN) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply), *reply_ptr;
   int reply_size = OR_ALIGNED_BUF_SIZE (a_reply);
   int eid, request_size, server_capabilities, server_bit_platform;
@@ -3919,7 +3927,7 @@ net_client_init (const char *dbname, const char *hostname)
    * things to the system console */
 
   /* set our host/server names for further css communication */
-  if (hostname != NULL && strlen (hostname) <= MAXHOSTNAMELEN)
+  if (hostname != NULL && strlen (hostname) <= CUB_MAXHOSTNAMELEN)
     {
       strcpy (net_Server_host, hostname);
       if (dbname != NULL && strlen (dbname) <= DB_MAX_IDENTIFIER_LENGTH)

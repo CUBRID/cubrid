@@ -69,6 +69,7 @@
 
 #if !defined(WINDOWS)
 void (*prev_sigfpe_handler) (int) = SIG_DFL;
+#include "tcp.h"
 #else
 #include "wintcp.h"
 #endif /* !WINDOWS */
@@ -77,7 +78,7 @@ void (*prev_sigfpe_handler) (int) = SIG_DFL;
 typedef struct db_host_status DB_HOST_STATUS;
 struct db_host_status
 {
-  char hostname[MAXHOSTNAMELEN];
+  char hostname[CUB_MAXHOSTNAMELEN];
   int status;
 };
 
@@ -110,6 +111,8 @@ static DB_HOST_STATUS_LIST db_Host_status_list;
 
 static DB_HOST_STATUS *db_add_host_status (char *hostname, int status);
 static DB_HOST_STATUS *db_find_host_status (char *hostname);
+
+static int db_Client_type = DB_CLIENT_TYPE_DEFAULT;
 
 static void install_static_methods (void);
 static int fetch_set_internal (DB_SET * set, DB_FETCH_MODE purpose, int quit_on_error);
@@ -251,7 +254,7 @@ db_init (const char *program, int print_version, const char *dbname, const char 
       desired_log_page_size = desired_pagesize;
     }
 
-  client_credential.client_type = BOOT_CLIENT_ADMIN_UTILITY;
+  client_credential.client_type = DB_CLIENT_TYPE_ADMIN_UTILITY;
   client_credential.db_name = dbname;
   client_credential.program_name = program;
   client_credential.process_id = -1;
@@ -875,7 +878,7 @@ db_restart (const char *program, int print_version, const char *volume)
     }
   else
     {
-      strncpy (db_Program_name, program, PATH_MAX);
+      strncpy_bufsize (db_Program_name, program);
       db_Database_name[0] = '\0';
 
       /* authorization will need to access the database and call some db_ functions so assume connection will be ok
@@ -1931,10 +1934,10 @@ db_get_user_and_host_name (void)
 {
   char *user = NULL;
   char *username = NULL;
-  char hostname[MAXHOSTNAMELEN];
+  char hostname[CUB_MAXHOSTNAMELEN];
   int len;
 
-  if (GETHOSTNAME (hostname, MAXHOSTNAMELEN) != 0)
+  if (GETHOSTNAME (hostname, CUB_MAXHOSTNAMELEN) != 0)
     {
       return NULL;
     }

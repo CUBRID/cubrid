@@ -38,7 +38,6 @@
 #include "memory_alloc.h"
 #include "statistics.h"
 #include "disk_manager.h"
-#include "object_representation.h"
 #include "storage_common.h"
 
 #define CATALOG_DIR_REPR_KEY -2

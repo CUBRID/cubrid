@@ -252,10 +252,8 @@ shard_shm_set_shm_proxy (T_SHM_PROXY * shm_proxy_p, T_BROKER_INFO * br_info_p)
 
   /* SHARD SHARD_KEY_ID */
   shm_proxy_p->shard_key_modular = br_info_p->shard_key_modular;
-  strncpy (shm_proxy_p->shard_key_library_name, br_info_p->shard_key_library_name,
-	   sizeof (br_info_p->shard_key_library_name));
-  strncpy (shm_proxy_p->shard_key_function_name, br_info_p->shard_key_function_name,
-	   sizeof (br_info_p->shard_key_function_name));
+  strncpy_bufsize (shm_proxy_p->shard_key_library_name, br_info_p->shard_key_library_name);
+  strncpy_bufsize (shm_proxy_p->shard_key_function_name, br_info_p->shard_key_function_name);
 
   return;
 }

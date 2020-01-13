@@ -3562,12 +3562,10 @@ static PT_NODE *
 pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
 {
   bool is_agg = 0;
-  REGU_VARIABLE *regu = NULL, *scan_regu = NULL;
-  REGU_VARIABLE *regu_next = NULL, *scan_regu_next = NULL;
+  REGU_VARIABLE *regu = NULL;
   REGU_VARIABLE *percentile_regu = NULL;
   AGGREGATE_TYPE *aggregate_list;
   AGGREGATE_INFO *info = (AGGREGATE_INFO *) arg;
-  REGU_VARIABLE_LIST out_list = NULL;
   VAL_LIST *value_list;
   MOP classop;
   PT_NODE *group_concat_sep_node_save = NULL;
@@ -5733,6 +5731,8 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
 		{
 		  regu->domain->codeset = db_get_string_codeset (val);
 		  regu->domain->collation_id = db_get_string_collation (val);
+		  regu->domain->precision = db_value_precision (val);
+		  regu->domain->scale = db_value_scale (val);
 		  regu->domain = tp_domain_cache (regu->domain);
 		  if (regu->domain == NULL)
 		    {
@@ -6811,8 +6811,8 @@ pt_make_prim_data_type (PARSER_CONTEXT * parser, PT_TYPE_ENUM e)
 void
 pt_to_regu_resolve_domain (int *p_precision, int *p_scale, const PT_NODE * node)
 {
-  char *format_buf;
-  char *fbuf_end_ptr;
+  const char *format_buf;
+  const char *fbuf_end_ptr;
   int format_sz;
   int precision, scale, maybe_sci_notation = 0;
 
@@ -8985,16 +8985,19 @@ static DB_VALUE **
 pt_make_reserved_value_list (PARSER_CONTEXT * parser, PT_RESERVED_NAME_TYPE type)
 {
   DB_VALUE **value_list = NULL;
-  int start, end, size, i;
+  int start = 0, end = 0, size = 0;
 
   PT_GET_RESERVED_NAME_FIRST_AND_LAST (type, start, end);
   size = end - start + 1;
 
-  regu_array_alloc < DB_VALUE * >(&value_list, size);
+  // *INDENT-OFF*
+  regu_array_alloc<DB_VALUE *> (&value_list, size);
+  // *INDENT-ON*
+
   if (value_list)
     {
       /* initialize values */
-      for (i = 0; i < size; i++)
+      for (int i = 0; i < size; ++i)
 	{
 	  regu_alloc (value_list[i]);
 	  if (value_list[i] == NULL)
@@ -11743,7 +11746,7 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 	    {
 	      /* Index scan for key info */
 	      PT_RESERVED_NAME_TYPE reserved_type = RESERVED_NAME_INVALID;
-	      ACCESS_METHOD access_method;
+	      ACCESS_METHOD access_method = ACCESS_METHOD_SEQUENTIAL;
 
 	      if (pt_split_attrs (parser, table_info, where_part, &pred_attrs, &rest_attrs, &reserved_attrs,
 				  &pred_offsets, &rest_offsets, &reserved_offsets) != NO_ERROR)
@@ -12603,8 +12606,8 @@ pt_set_connect_by_xasl (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NOD
 	}
     }
 
-  /* move ORDER SIBLINGS BY column list in the CONNECT BY xasl */
-  if (select_node->info.query.order_siblings == 1)
+  /* move ORDER SIBLINGS BY column list in the CONNECT BY xasl if order_by was not cut out because of aggregates */
+  if (xasl->orderby_list != NULL && select_node->info.query.order_siblings == 1)
     {
       connect_by_xasl->orderby_list = pt_to_order_siblings_by (parser, xasl, connect_by_xasl);
       if (!connect_by_xasl->orderby_list)
