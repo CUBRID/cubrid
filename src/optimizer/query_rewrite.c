@@ -6710,12 +6710,8 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 		  wherep = &derived->info.query.q.select.where;
 
 		  node = derived;
-		  node->info.query.single_tuple = single_tuple_bak;
 		}
-	      else
-		{
-		  node->info.query.single_tuple = single_tuple_bak;
-		}
+	      node->info.query.single_tuple = single_tuple_bak;
 	      node->info.query.limit = limit_node;
 	    }
 	}
