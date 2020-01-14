@@ -1107,6 +1107,10 @@ pt_is_analytic_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *co
     {
       *continue_walk = PT_LIST_WALK;
     }
+  else
+    {
+      *continue_walk = PT_CONTINUE_WALK;
+    }
 
   return tree;
 }
