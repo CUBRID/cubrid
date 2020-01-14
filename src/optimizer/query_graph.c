@@ -2187,6 +2187,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	      if (lhs_indexable)
 		{
 		  QO_TERM_SET_FLAG (term, QO_TERM_MULTI_COLL_PRED);
+		  QO_TERM_SET_FLAG (term, QO_TERM_RANGELIST);
 		  QO_TERM_MULTI_COL_CNT (term) = segs;
 		  QO_TERM_MULTI_COL_SEGS (term) = (int *) malloc (sizeof (int) * segs);
 
