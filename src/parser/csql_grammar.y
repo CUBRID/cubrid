@@ -18839,6 +18839,27 @@ predicate_expr_sub
 				  }
 			      }
 			  }
+			rhs = node->info.expr.arg2;
+			if (PT_IS_COLLECTION_TYPE (rhs->type_enum) && rhs->info.value.data_value.set
+			    && rhs->info.value.data_value.set->next == NULL)
+			  {
+			    /* only one element in set. convert expr as EQ/NE expr. */
+			    PT_NODE *new_arg2;
+
+			    new_arg2 = rhs->info.value.data_value.set;
+
+			    /* free arg2 */
+			    rhs->info.value.data_value.set = NULL;
+			    parser_free_tree (this_parser, node->info.expr.arg2);
+
+			    /* rewrite arg2 */
+			    node->info.expr.arg2 = new_arg2;
+			    node->info.expr.op = (node->info.expr.op == PT_IS_IN) ? PT_EQ : PT_NE;
+			    if (node->info.expr.op == PT_EQ)
+			      {
+				node = pt_rewrite_set_eq_set (this_parser, node);
+			      }
+			  }
 
 			$$ = node;
 
