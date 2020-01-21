@@ -19025,6 +19025,32 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
       goto end;
     }
 
+  if (PT_IS_FUNCTION (opd1) && PT_IS_SET_TYPE (opd1) && opd1->info.function.function_type == F_SEQUENCE)
+    {
+      /* multi column lhs type is changed to PT_VALUE
+         ex) (col1,1) in (..) and col1=1 ==>
+             qo_reduce_equality_terms() ==> function type (1,1) in (...) ==> value type (1,1) */
+      PT_NODE *func_arg = opd1->info.function.arg_list;
+      bool is_const_multi_col = true;
+
+      for ( /* none */ ; func_arg; func_arg = func_arg->next)
+	{
+	  if (func_arg && func_arg->node_type != PT_VALUE)
+	    {
+	      is_const_multi_col = false;
+	      break;
+	    }
+	}
+      if (is_const_multi_col)
+	{
+	  opd1->node_type = PT_VALUE;
+	  func_arg = opd1->info.function.arg_list;
+	  memset (&(opd1->info), 0, sizeof (opd1->info));
+	  opd1->info.value.data_value.set = func_arg;
+	  opd1->type_enum == PT_TYPE_SEQUENCE;
+	}
+    }
+
   if (opd1 && opd1->node_type == PT_VALUE)
     {
       arg1 = pt_value_to_db (parser, opd1);
