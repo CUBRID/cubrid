@@ -25,6 +25,7 @@
 #define _XASL_PREDICATE_HPP_
 
 #include "dbtype_def.h"             // DB_TYPE
+#include "locale_helper.hpp"
 
 #include <regex>
 
@@ -134,7 +135,7 @@ namespace cubxasl
     regu_variable_node *src;
     regu_variable_node *pattern;
     regu_variable_node *case_sensitive;
-    mutable std::regex *compiled_regex;
+    mutable std::basic_regex <char, cublocale::cub_regex_traits> *compiled_regex;
     mutable char *compiled_pattern;
   };
 

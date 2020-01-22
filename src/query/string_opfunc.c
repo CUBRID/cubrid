@@ -55,6 +55,8 @@
 #include "elo.h"
 #include "es_common.h"
 #include "db_elo.h"
+#include "locale_helper.hpp"
+
 #include <algorithm>
 #include <regex>
 #include <string>
@@ -4300,8 +4302,9 @@ db_string_like (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB_
   return ((*result == V_ERROR) ? ER_QSTR_INVALID_ESCAPE_SEQUENCE : error_status);
 }
 
+template< class CharT, class Reg_Traits >
 static int
-regex_compile (const char *pattern, std::regex * &rx_compiled_regex,
+regex_compile (const char *pattern, std::basic_regex<CharT, Reg_Traits> * &rx_compiled_regex,
 	       std::regex_constants::syntax_option_type & reg_flags)
 {
   int error_status = NO_ERROR;
@@ -4309,15 +4312,18 @@ regex_compile (const char *pattern, std::regex * &rx_compiled_regex,
   // *INDENT-OFF*
   try
   {
-    rx_compiled_regex = new std::regex (pattern, reg_flags);
+    rx_compiled_regex = new std::basic_regex<CharT, Reg_Traits> (pattern, reg_flags);
   }
   catch (std::regex_error & e)
   {
     // regex compilation exception
     error_status = ER_REGEX_COMPILE_ERROR;
     er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1, e.what ());
+    if (rx_compiled_regex != NULL)
+      {
     delete rx_compiled_regex;
     rx_compiled_regex = NULL;
+      }
   }
   // *INDENT-ON*
 
@@ -4353,7 +4359,7 @@ regex_compile (const char *pattern, std::regex * &rx_compiled_regex,
 
 int
 db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB_VALUE * case_sensitive,
-		 std::regex ** comp_regex, char **comp_pattern, int *result)
+		 std::basic_regex <char, cublocale::cub_regex_traits> ** comp_regex, char **comp_pattern, int *result)
 {
   QSTR_CATEGORY src_category = QSTR_UNKNOWN;
   QSTR_CATEGORY pattern_category = QSTR_UNKNOWN;
@@ -4370,7 +4376,7 @@ db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB
   char *rx_compiled_pattern = NULL;
 
   // *INDENT-OFF*
-  std::regex *rx_compiled_regex = NULL;
+  std::basic_regex <char, cublocale::cub_regex_traits> *rx_compiled_regex = NULL;
   // *INDENT-ON*
 
   /* check for allocated DB values */
@@ -4481,7 +4487,7 @@ db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB
 	}
       // *INDENT-ON*
 
-      error_status = regex_compile (rx_compiled_pattern, rx_compiled_regex, reg_flags);
+      error_status = regex_compile <char, cublocale::cub_regex_traits> (rx_compiled_pattern, rx_compiled_regex, reg_flags);
       if (error_status != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
