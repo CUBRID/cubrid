@@ -55,7 +55,6 @@
 #include "elo.h"
 #include "es_common.h"
 #include "db_elo.h"
-#include "locale_helper.hpp"
 
 #include <algorithm>
 #include <regex>
@@ -1909,6 +1908,25 @@ db_string_escape_char (char c)
     default:
       return c;
     }
+}
+
+int
+db_string_escape_str_size (const char *src_str, size_t src_size)
+{
+  int res_size = 0;
+  // *INDENT-OFF*
+  std::vector<size_t> special_idx;
+  // *INDENT-ON*
+  for (size_t i = 0; i < src_size; ++i)
+    {
+      unsigned char uc = (unsigned char) src_str[i];
+      if (ESCAPE_CHAR (uc))
+	{
+	  special_idx.push_back (i);
+	}
+    }
+  res_size = src_size + special_idx.size () + 1 /* string terminator */;
+  return res_size;
 }
 
 int
@@ -4302,33 +4320,95 @@ db_string_like (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB_
   return ((*result == V_ERROR) ? ER_QSTR_INVALID_ESCAPE_SEQUENCE : error_status);
 }
 
+// *INDENT-OFF*
+static std::string
+regex_parse_error (std::regex_error &e)
+{
+  std::string error_message;
+  using namespace std::regex_constants;
+  switch (e.code ())
+    {
+    case error_collate:
+      error_message.assign ("regex_error(error_collate): the expression contains an invalid collating element name");
+      break;
+    case error_ctype:
+      error_message.assign ("regex_error(error_ctype): the expression contains an invalid character class name");
+      break;
+    case error_escape:
+      error_message.assign ("regex_error(error_escape): the expression contains an invalid escaped character or a trailing escape");
+      break;
+    case error_backref:
+      error_message.assign ("regex_error(error_backref): the expression contains an invalid back reference");
+      break;
+    case error_brack:
+      error_message.assign ("regex_error(error_brack): the expression contains mismatched square brackets ('[' and ']')");
+      break;
+    case error_paren:
+      error_message.assign ("regex_error(error_paren): the expression contains mismatched parentheses ('(' and ')')");
+      break;
+    case error_brace:
+      error_message.assign ("regex_error(error_brace): the expression contains mismatched curly braces ('{' and '}')");
+      break;
+    case error_badbrace:
+      error_message.assign ("regex_error(error_badbrace): the expression contains an invalid range in a {} expression");
+      break;
+    case error_range:
+      error_message.assign ("regex_error(error_range): the expression contains an invalid character range (e.g. [b-a])");
+      break;
+    case error_space:
+      error_message.assign ("regex_error(error_space): there was not enough memory to convert the expression into a finite state machine");
+      break;
+    case error_badrepeat:
+      error_message.assign ("regex_error(error_badrepeat): one of *?+{ was not preceded by a valid regular expression");
+      break;
+    case error_complexity:
+      error_message.assign ("regex_error(error_complexity): the complexity of an attempted match exceeded a predefined level");
+      break;
+    case error_stack:
+      error_message.assign ("regex_error(error_stack): there was not enough memory to perform a match");
+      break;
+    default:
+      error_message.assign ("regex_error(error_unknown)");
+      break;
+    }
+  return error_message;
+}
+
 template< class CharT, class Reg_Traits >
 static int
-regex_compile (const char *pattern, std::basic_regex<CharT, Reg_Traits> * &rx_compiled_regex,
-	       std::regex_constants::syntax_option_type & reg_flags)
+regex_compile (const CharT *pattern, std::basic_regex<CharT, Reg_Traits> *&rx_compiled_regex,
+	       std::regex_constants::syntax_option_type &reg_flags)
 {
   int error_status = NO_ERROR;
-
-  // *INDENT-OFF*
+  std::basic_string <CharT> pattern_str (pattern);
   try
-  {
-    rx_compiled_regex = new std::basic_regex<CharT, Reg_Traits> (pattern, reg_flags);
-  }
-  catch (std::regex_error & e)
-  {
-    // regex compilation exception
-    error_status = ER_REGEX_COMPILE_ERROR;
-    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1, e.what ());
-    if (rx_compiled_regex != NULL)
-      {
-    delete rx_compiled_regex;
-    rx_compiled_regex = NULL;
-      }
-  }
-  // *INDENT-ON*
+    {
+#if defined(WINDOWS)
+      CharT *collate_elem_pattern = "[[.";
+      int found = pattern_str.find ( std::string (collate_elem_pattern));
+      if (found != std::string::npos)
+	{
+	  throw std::regex_error (std::regex_constants::error_collate);
+	}
+#endif
+      rx_compiled_regex = new std::basic_regex<CharT, Reg_Traits> (pattern_str, reg_flags);
+    }
+  catch (std::regex_error &e)
+    {
+      // regex compilation exception
+      error_status = ER_REGEX_COMPILE_ERROR;
+      std::string error_message = regex_parse_error (e);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1, error_message.c_str ());
+      if (rx_compiled_regex != NULL)
+	{
+	  delete rx_compiled_regex;
+	  rx_compiled_regex = NULL;
+	}
+    }
 
   return error_status;
 }
+// *INDENT-ON*
 
 /*
  * db_string_rlike () - check for match between string and regex
@@ -4357,9 +4437,10 @@ regex_compile (const char *pattern, std::basic_regex<CharT, Reg_Traits> * &rx_co
  *
  */
 
+// *INDENT-OFF*
 int
-db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB_VALUE * case_sensitive,
-		 std::basic_regex <char, cublocale::cub_regex_traits> ** comp_regex, char **comp_pattern, int *result)
+db_string_rlike (const DB_VALUE *src_string, const DB_VALUE *pattern, const DB_VALUE *case_sensitive,
+		 std::basic_regex <char, cub_regex_traits> **comp_regex, char **comp_pattern, int *result)
 {
   QSTR_CATEGORY src_category = QSTR_UNKNOWN;
   QSTR_CATEGORY pattern_category = QSTR_UNKNOWN;
@@ -4375,9 +4456,7 @@ db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB
   char rx_err_buf[REGEX_MAX_ERROR_MSG_SIZE] = { '\0' };
   char *rx_compiled_pattern = NULL;
 
-  // *INDENT-OFF*
-  std::basic_regex <char, cublocale::cub_regex_traits> *rx_compiled_regex = NULL;
-  // *INDENT-ON*
+  std::basic_regex <char, cub_regex_traits> *rx_compiled_regex = NULL;
 
   /* check for allocated DB values */
   assert (src_string != NULL);
@@ -4478,16 +4557,14 @@ db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB
       memcpy (rx_compiled_pattern, pattern_char_string_p, pattern_length);
       rx_compiled_pattern[pattern_length] = '\0';
 
-      // *INDENT-OFF*
       std::regex_constants::syntax_option_type reg_flags = std::regex_constants::ECMAScript;
       reg_flags |= std::regex_constants::nosubs;
       if (!is_case_sensitive)
 	{
 	  reg_flags |= std::regex_constants::icase;
 	}
-      // *INDENT-ON*
 
-      error_status = regex_compile <char, cublocale::cub_regex_traits> (rx_compiled_pattern, rx_compiled_regex, reg_flags);
+      error_status = regex_compile <char, cub_regex_traits> (rx_compiled_pattern, rx_compiled_regex, reg_flags);
       if (error_status != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -4496,21 +4573,20 @@ db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB
 	}
     }
 
-  // *INDENT-OFF*
   try
     {
       std::string src (src_char_string_p, src_length);
       bool match = std::regex_search (src, *rx_compiled_regex);
       *result = match ? V_TRUE : V_FALSE;
     }
-  catch (std::regex_error & e)
+  catch (std::regex_error &e)
     {
       // regex execution exception, error_complexity or error_stack
       error_status = ER_REGEX_EXEC_ERROR;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1, e.what ());
+      std::string error_message = regex_parse_error (e);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1, error_message.c_str ());
       *result = V_ERROR;
     }
-  // *INDENT-ON*
 
 cleanup:
 
@@ -4550,6 +4626,7 @@ cleanup:
   /* return */
   return error_status;
 }
+// *INDENT-ON*
 
 /*
  * db_string_limit_size_string () - limits the size of a string. It limits
