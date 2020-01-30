@@ -177,6 +177,12 @@ struct qo_index_entry
 
   /* Idx of the first range list term; RANGE (r1, r2, ...) */
   int rangelist_term_idx;
+
+  /* segs constrained by the index */
+  BITSET index_segs;
+
+  /* index range condition segments in multiple column term */
+  BITSET multi_col_range_segs;
 };
 
 #define QO_ENTRY_MULTI_COL(entry)       ((entry)->col_num > 1 ? true : false)
@@ -719,6 +725,7 @@ struct qo_term
 #define QO_TERM_MERGEABLE_EDGE      16	/* suitable as a m-join edge ? */
 #define QO_TERM_NON_IDX_SARG_COLL   32	/* not suitable for key range/filter */
 #define QO_TERM_MULTI_COLL_PRED     64	/* multi column && in OP, (a,b) in .. */
+#define QO_TERM_MULTI_COLL_CONST    128	/* multi column && have constant value, (a,1) in .. */
 
 #define QO_TERM_IS_FLAGED(t, f)        (QO_TERM_FLAG(t) & (int) (f))
 #define QO_TERM_SET_FLAG(t, f)         QO_TERM_FLAG(t) |= (int) (f)
@@ -963,6 +970,7 @@ struct qo_xasl_index_info
   /* which col match index col. if -1 then term only have one column. */
   int *multi_col_pos;
   int need_copy_multi_range_term;
+  bool need_copy_to_sarg_term;
 };
 
 #define QO_ON_COND_TERM(term) \

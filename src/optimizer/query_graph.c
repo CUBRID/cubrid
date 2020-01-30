@@ -1945,6 +1945,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
   bitset_init (&rhs_segs, env);
   bitset_init (&lhs_nodes, env);
   bitset_init (&rhs_nodes, env);
+  bitset_init (&multi_col_segs, env);
 
   if (pt_expr->node_type != PT_EXPR)
     {
@@ -2167,21 +2168,35 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	      if (lhs_indexable)
 		{
 		  segs = 0;
+		  bool is_find_local_name = false;
 		  for ( /* none */ ; func_arg; func_arg = func_arg->next)
 		    {
-		      if (!is_local_name (env, func_arg))
+		      if (is_local_name (env, func_arg))
 			{
-			  lhs_indexable = false;
-			  break;
-			}
-		      else if (pt_is_function_index_expr (parser, func_arg, false)
+			  if (pt_is_function_index_expr (parser, func_arg, false)
 			       && !pt_is_function_index_expression (func_arg))
+			    {
+			      /* check if expr can be function index expr && expr is function index expr */
+			      lhs_indexable = false;
+			      break;
+			    }
+			  is_find_local_name = true;
+			}
+		      else if (pt_is_const (func_arg))
 			{
-			  /* check if a segment has been associated with function index expr */
+			  /* multi_col_term having constant value can be indexable */
+			  QO_TERM_SET_FLAG (term, QO_TERM_MULTI_COLL_CONST);
+			}
+		      else
+			{
 			  lhs_indexable = false;
 			  break;
 			}
 		      segs++;
+		    }
+		  if (lhs_indexable && is_find_local_name)
+		    {
+		      lhs_indexable = true;
 		    }
 		}
 	      if (lhs_indexable)
@@ -2724,6 +2739,7 @@ wrapup:
   bitset_delset (&rhs_segs);
   bitset_delset (&lhs_nodes);
   bitset_delset (&rhs_nodes);
+  bitset_delset (&multi_col_segs);
 }
 
 /*
@@ -4632,6 +4648,8 @@ qo_alloc_index (QO_ENV * env, int n)
       entryp->constraints = NULL;
       entryp->ils_prefix_len = 0;
       entryp->rangelist_term_idx = -1;
+      bitset_init (&(entryp->index_segs), env);
+      bitset_init (&(entryp->multi_col_range_segs), env);
     }
 
   return indexp;
@@ -4659,6 +4677,8 @@ qo_free_index (QO_ENV * env, QO_INDEX * indexp)
     {
       entryp = QO_INDEX_INDEX (indexp, i);
       bitset_delset (&(entryp->terms));
+      bitset_delset (&(entryp->index_segs));
+      bitset_delset (&(entryp->multi_col_range_segs));
       for (j = 0; j < entryp->nsegs; j++)
 	{
 	  bitset_delset (&(entryp->seg_equal_terms[j]));
@@ -6398,6 +6418,8 @@ qo_find_index_terms (QO_ENV * env, BITSET * segsp, QO_INDEX_ENTRY * index_entry)
 	}
     }				/* for (t = 0; t < env->nterms; t++) */
 
+  /* add index segs */
+  bitset_union (&(index_entry->index_segs), segsp);
 }
 
 /*
@@ -6456,16 +6478,7 @@ qo_find_index_seg_terms (QO_ENV * env, QO_INDEX_ENTRY * index_entry, int idx, BI
 	    }
 
 	  /* collect this term */
-	  if (QO_TERM_IS_FLAGED (qo_termp, QO_TERM_MULTI_COLL_PRED))
-	    {
-	      /* multiple columns lhs can be indexable when they are a subset of index columns. ex) (a,c) in ... index(a,b,c) */
-	      /* to_do : when multi columns are not subset of index columns, it can be indexable  */
-	      if (bitset_subset (index_segsp, &(QO_TERM_SEGS (qo_termp))))
-		{
-		  bitset_add (&(index_entry->seg_equal_terms[idx]), t);
-		}
-	    }
-	  else if (QO_TERM_IS_FLAGED (qo_termp, QO_TERM_EQUAL_OP))
+	  if (QO_TERM_IS_FLAGED (qo_termp, QO_TERM_EQUAL_OP))
 	    {
 	      bitset_add (&(index_entry->seg_equal_terms[idx]), t);
 	    }

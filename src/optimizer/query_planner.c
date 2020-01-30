@@ -1409,6 +1409,7 @@ qo_scan_new (QO_INFO * info, QO_NODE * node, QO_SCANMETHOD scan_method)
   plan->plan_un.scan.index = NULL;
 
   plan->multi_range_opt_use = PLAN_MULTI_RANGE_OPT_NO;
+  bitset_init (&(plan->plan_un.scan.multi_col_range_segs), info->env);
 
   return plan;
 }
@@ -1424,6 +1425,7 @@ qo_scan_free (QO_PLAN * plan)
 {
   bitset_delset (&(plan->plan_un.scan.terms));
   bitset_delset (&(plan->plan_un.scan.kf_terms));
+  bitset_delset (&(plan->plan_un.scan.multi_col_range_segs));
 }
 
 
@@ -1585,6 +1587,7 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entr
     {
       /* set key-range terms */
       bitset_assign (&(plan->plan_un.scan.terms), range_terms);
+      bitset_assign (&(plan->plan_un.scan.multi_col_range_segs), &(index_entryp->multi_col_range_segs));
       for (t = bitset_iterate (range_terms, &iter); t != -1; t = bitset_next_member (&iter))
 	{
 	  term = QO_ENV_TERM (env, t);
@@ -7491,8 +7494,8 @@ qo_generate_join_index_scan (QO_INFO * infop, JOIN_TYPE join_type, QO_PLAN * out
   BITSET_ITERATOR iter;
   QO_TERM *termp;
   QO_PLAN *inner_plan;
-  int i, t, last_t, j, n, seg;
-  bool found_rangelist, found_multi_rangelist;
+  int i, t, last_t, j, n, seg, rangelist_term_idx;
+  bool found_rangelist;
   BITSET range_terms;
   BITSET empty_terms;
   BITSET remaining_terms;
@@ -7528,7 +7531,7 @@ qo_generate_join_index_scan (QO_INFO * infop, JOIN_TYPE join_type, QO_PLAN * out
     }
 
   found_rangelist = false;
-  found_multi_rangelist = false;
+  rangelist_term_idx = -1;
   for (i = 0; i < index_entryp->nsegs; i++)
     {
       seg = index_entryp->seg_idxs[i];
@@ -7553,7 +7556,7 @@ qo_generate_join_index_scan (QO_INFO * infop, JOIN_TYPE join_type, QO_PLAN * out
 	  if (QO_TERM_IS_FLAGED (termp, QO_TERM_MULTI_COLL_PRED))
 	    {
 	      /* case of multi column term ex) (a,b) in ... */
-	      if (found_rangelist == true)
+	      if (found_rangelist == true && QO_TERM_IDX (termp) != rangelist_term_idx)
 		{
 		  break;	/* already found. give up */
 		}
@@ -7561,7 +7564,8 @@ qo_generate_join_index_scan (QO_INFO * infop, JOIN_TYPE join_type, QO_PLAN * out
 		{
 		  if (QO_TERM_IS_FLAGED (termp, QO_TERM_RANGELIST))
 		    {
-		      found_multi_rangelist = true;
+		      found_rangelist = true;
+		      rangelist_term_idx = QO_TERM_IDX (termp);
 		    }
 		  /* found term */
 		  if (termp->multi_col_segs[j] == seg && BITSET_MEMBER (index_entryp->seg_equal_terms[i], t))
@@ -7573,6 +7577,7 @@ qo_generate_join_index_scan (QO_INFO * infop, JOIN_TYPE join_type, QO_PLAN * out
 		      if (QO_TERM_IS_FLAGED (termp, QO_TERM_EQUAL_OP))
 			{
 			  bitset_add (&range_terms, t);
+			  bitset_add (&(index_entryp->multi_col_range_segs), seg);
 			  n++;
 			}
 		    }
@@ -7593,13 +7598,14 @@ qo_generate_join_index_scan (QO_INFO * infop, JOIN_TYPE join_type, QO_PLAN * out
 			{
 			  if (QO_TERM_IS_FLAGED (termp, QO_TERM_RANGELIST))
 			    {
-			      if (found_rangelist == true || found_multi_rangelist == true)
+			      if (found_rangelist == true)
 				{
 				  break;	/* already found. give up */
 				}
 
 			      /* is the first time */
 			      found_rangelist = true;
+			      rangelist_term_idx = QO_TERM_IDX (termp);
 			    }
 
 			  bitset_add (&range_terms, t);
@@ -7764,10 +7770,16 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep, QO_NODE_INDEX_ENTRY * 
 
   start_column = index_entryp->is_iss_candidate ? 1 : 0;
 
-
   for (i = start_column; i < nsegs - 1; i++)
     {
-      bitset_add (&range_terms, bitset_first_member (&(index_entryp->seg_equal_terms[i])));
+      t = bitset_first_member (&(index_entryp->seg_equal_terms[i]));
+      bitset_add (&range_terms, t);
+
+      /* add multi_col_range_segs */
+      if (QO_TERM_IS_FLAGED (QO_ENV_TERM (infop->env, t), QO_TERM_MULTI_COLL_PRED))
+	{
+	  bitset_add (&(index_entryp->multi_col_range_segs), index_entryp->seg_idxs[i]);
+	}
     }
 
   /* for each terms associated with the last segment */
@@ -7775,6 +7787,11 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep, QO_NODE_INDEX_ENTRY * 
   for (; t != -1; t = bitset_next_member (&iter))
     {
       bitset_add (&range_terms, t);
+      /* add multi_col_range_segs */
+      if (QO_TERM_IS_FLAGED (QO_ENV_TERM (infop->env, t), QO_TERM_MULTI_COLL_PRED))
+	{
+	  bitset_add (&(index_entryp->multi_col_range_segs), index_entryp->seg_idxs[nsegs - 1]);
+	}
 
       /* generate index scan plan */
       planp = qo_index_scan_new (infop, nodep, ni_entryp, QO_SCANMETHOD_INDEX_SCAN, &range_terms, NULL);
@@ -7787,6 +7804,10 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep, QO_NODE_INDEX_ENTRY * 
 
       /* is it safe to ignore the result of qo_check_plan_on_info()? */
       bitset_remove (&range_terms, t);
+      if (QO_TERM_IS_FLAGED (QO_ENV_TERM (infop->env, t), QO_TERM_MULTI_COLL_PRED))
+	{
+	  bitset_remove (&(index_entryp->multi_col_range_segs), index_entryp->seg_idxs[nsegs - 1]);
+	}
     }
 
   bitset_assign (&seg_other_terms, &(index_entryp->seg_other_terms[nsegs - 1]));
