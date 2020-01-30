@@ -145,7 +145,6 @@ set(WITH_EXTERNAL_PREFIX "EXTERNAL" CACHE STRING "External library prefix (defau
 set(WITH_BUNDLED_PREFIX "BUNDLED" CACHE STRING "Bundled library prefix (default: BUNDLED)")
 set(WITH_SYSTEM_PREFIX "SYSTEM" CACHE STRING "System library prefix (default: SYSTEM)")
 
-set(WITH_LIBREGEX     "${WITH_BUNDLED_PREFIX}" CACHE STRING "Build with regex library (default: BUNDLED)")
 set(WITH_LIBEXPAT     "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with expat library (default: EXTERNAL)")
 set(WITH_LIBJANSSON   "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with jansson library (default: EXTERNAL)")
 set(WITH_LIBEDIT      "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with editline library (default: EXTERNAL)")
@@ -193,8 +192,10 @@ if(VERSION_MATCHES_LENGTH GREATER 3)
 else(VERSION_MATCHES_LENGTH GREATER 3)
   find_package(Git)
   if(EXISTS "${CMAKE_SOURCE_DIR}/.git" AND GIT_FOUND)
+    set(CUBRID_MAJOR_START_DATE "2019-12-13")
     if(GIT_VERSION VERSION_GREATER 1.7.6)
-      execute_process(COMMAND ${GIT_EXECUTABLE} rev-list --count HEAD
+      execute_process(COMMAND ${GIT_EXECUTABLE} rev-list --count --after ${CUBRID_MAJOR_START_DATE} HEAD
+        COMMAND awk "{ printf \"%04d\", $1 }"
         OUTPUT_VARIABLE commit_count RESULT_VARIABLE git_result
         ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE
         WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
@@ -209,8 +210,9 @@ else(VERSION_MATCHES_LENGTH GREATER 3)
       #
       # If both fixes fail, just replace execute_process(...) with set (commit_count 0). It is not a critical step to generate the project.
       # Also you may send us a message at https://www.cubrid.org/contact
-      execute_process(COMMAND ${GIT_EXECUTABLE} log --oneline
+      execute_process(COMMAND ${GIT_EXECUTABLE} log --after ${CUBRID_MAJOR_START_DATE} --oneline
         COMMAND wc -l
+        COMMAND awk "{ printf \"%04d\", $1 }"
         OUTPUT_VARIABLE commit_count RESULT_VARIABLE git_result
         ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE
         WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
@@ -264,10 +266,6 @@ if(UNIX)
     if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.4.7)
       message(SEND_ERROR "Cannot compile with gcc version ${CMAKE_CXX_COMPILER_VERSION}. Require at least 4.4.7.")
     endif(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.4.7)
-
-    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.9.0)
-      add_definitions(-D_USE_LIBREGEX_)
-    endif(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.9.0)
 
     # C flags for both debug and release build
     set(CMAKE_C_COMMON_FLAGS "-ggdb -fno-omit-frame-pointer")
@@ -884,49 +882,6 @@ endif(USE_CUBRID_ENV)
 include(ExternalProject)
 set_property(DIRECTORY PROPERTY EP_BASE "${CMAKE_BINARY_DIR}/external")
 set(DEFAULT_CONFIGURE_OPTS <SOURCE_DIR>/configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/external --enable-static --disable-shared --with-pic CFLAGS=-w CXXFLAGS=-w)
-
-# WITH_LIBREGEX can have multiple values with different meanings
-# on Linux:
-# * "BUNDLED" - (default) builds bundled (from external/libregex38a) regex library and uses the library created by the build
-# * "SYSTEM"   - use regex library located in:
-#                  ${WITH_EXTERNAL_LIBS_PATH}
-#                  ${WITH_LIBREGEX_ROOT_PATH}/lib
-#                use regex headers located in:
-#                  ${WITH_EXTERNAL_HEADERS_PATH}
-#                  ${WITH_LIBREGEX_ROOT_PATH}/include
-# on Windows:
-# * "BUNDLED" - (default) uses the prebuilt library from cubrid/win/external
-if(WITH_LIBREGEX STREQUAL "BUNDLED")
-  set(LIBREGEX_TARGET libregex)
-  if(UNIX)
-    externalproject_add(${LIBREGEX_TARGET}
-      SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/libregex38a
-      CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS}
-      BUILD_COMMAND make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/external/lib
-      COMMAND ${CMAKE_COMMAND} -E copy .libs/libregex38a.a ${CMAKE_CURRENT_BINARY_DIR}/external/lib/
-      )
-    list(APPEND EP_TARGETS ${LIBREGEX_TARGET})
-    set(LIBREGEX_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libregex38a.a)
-    set(LIBREGEX_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include/libregex38a)
-  else(UNIX)
-    set(LIBREGEX_LIBS ${CMAKE_SOURCE_DIR}/win/external/lib64/libregex38a.lib)
-    set(LIBREGEX_INCLUDES ${CMAKE_SOURCE_DIR}/win/external/include)
-  endif(UNIX)
-elseif(WITH_LIBREGEX STREQUAL "SYSTEM")
-  if(UNIX)
-    find_library(LIBREGEX_LIBS NAMES libregex38a.a PATHS ${WITH_EXTERNAL_LIBS_PATH} ${WITH_LIBREGEX_ROOT_PATH}/lib REQUIRED)
-    find_path(LIBREGEX_INCLUDES NAMES libregex38a/regex38a.h PATHS ${WITH_EXTERNAL_HEADERS_PATH} ${WITH_LIBREGEX_ROOT_PATH}/include REQUIRED)
-
-    message(STATUS "Found regex library: ${LIBREGEX_LIBS}")
-    message(STATUS "Found regex headers: ${LIBREGEX_INCLUDES}")
-  else(UNIX)
-    message(FATAL_ERROR "WITH_LIBREGEX=SYSTEM is not supported on current OS")
-  endif(UNIX)
-endif()
-list(APPEND EP_INCLUDES ${LIBREGEX_INCLUDES})
-list(APPEND EP_LIBS ${LIBREGEX_LIBS})
 
 # WITH_LIBEXPAT can have multiple values with different meanings
 # on Linux:
