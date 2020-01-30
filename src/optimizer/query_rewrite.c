@@ -4670,13 +4670,14 @@ qo_convert_to_range (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	  arg1_prior = pt_get_first_arg_ignore_prior (dnf_node);
 
 	  is_attr = true;
-	  if (PT_IS_FUNCTION (arg1_prior) && PT_IS_SET_TYPE (arg1_prior))
+	  if (PT_IS_FUNCTION (arg1_prior) && PT_IS_SET_TYPE (arg1_prior)
+	      && arg1_prior->info.function.function_type == F_SEQUENCE)
 	    {
 	      /* multi column case (attr,attr) */
 	      func_arg = arg1_prior->info.function.arg_list;
 	      for ( /* none */ ; func_arg; func_arg = func_arg->next)
 		{
-		  if (!pt_is_attr (func_arg) && !pt_is_function_index_expression (func_arg))
+		  if (!pt_is_attr (func_arg) && !pt_is_function_index_expression (func_arg) && !pt_is_const (func_arg))
 		    {
 		      is_attr = false;
 		      break;
