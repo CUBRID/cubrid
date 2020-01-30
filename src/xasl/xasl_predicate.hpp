@@ -25,11 +25,9 @@
 #define _XASL_PREDICATE_HPP_
 
 #include "dbtype_def.h"             // DB_TYPE
-
-#include <regex>
+#include "string_regex.hpp"
 
 // forward definitions
-struct cub_regex_traits;
 class regu_variable_node;
 
 typedef enum
@@ -135,7 +133,7 @@ namespace cubxasl
     regu_variable_node *src;
     regu_variable_node *pattern;
     regu_variable_node *case_sensitive;
-    mutable std::basic_regex <char, cub_regex_traits> *compiled_regex;
+    mutable cub_regex_object *compiled_regex;
     mutable char *compiled_pattern;
   };
 

@@ -36,10 +36,7 @@
 #include "numeric_opfunc.h"
 #include "object_domain.h"
 #include "thread_compat.hpp"
-
-#ifdef __cplusplus
-#include <regex>
-#endif
+#include "string_regex.hpp"
 
 #define QSTR_IS_CHAR(s)          (((s)==DB_TYPE_CHAR) || \
                                  ((s)==DB_TYPE_VARCHAR))
@@ -221,17 +218,8 @@ extern int db_string_like (const DB_VALUE * src_string, const DB_VALUE * pattern
 			   int *result);
 
 #ifdef __cplusplus
-struct cub_regex_traits : std::regex_traits<char>
-{
-  template< class Iter >
-  string_type lookup_collatename ( Iter first, Iter last ) const
-  {
-    throw std::regex_error (std::regex_constants::error_collate);
-  }
-};
-
 extern int db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB_VALUE * case_sensitive,
-			    std::basic_regex <char, cub_regex_traits> ** comp_regex, char **comp_pattern, int *result);
+			    cub_regex_object ** comp_regex, char **comp_pattern, int *result);
 #endif
 
 extern int db_string_limit_size_string (DB_VALUE * src_string, DB_VALUE * result, const int new_size, int *spare_bytes);
