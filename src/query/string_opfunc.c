@@ -94,8 +94,6 @@
 #define LOB_CHUNK_SIZE	(128 * 1024)
 #define DB_GET_UCHAR(dbval) (REINTERPRET_CAST (const unsigned char *, db_get_string ((dbval))))
 
-#define REGEX_MAX_ERROR_MSG_SIZE  100
-
 /*
  *  This enumeration type is used to categorize the different
  *  string types into function like groups.
