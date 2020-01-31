@@ -4650,6 +4650,7 @@ qo_convert_to_range (PARSER_CONTEXT * parser, PT_NODE ** wherep)
   PT_NODE *arg1_prior, *func_arg;
   DNF_MERGE_RANGE_RESULT result;
   int is_attr;
+  bool is_all_constant;
 
   /* traverse CNF list and keep track of the pointer to previous node */
   cnf_prev = NULL;
@@ -4670,10 +4671,11 @@ qo_convert_to_range (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	  arg1_prior = pt_get_first_arg_ignore_prior (dnf_node);
 
 	  is_attr = true;
+	  is_all_constant = true;
 	  if (PT_IS_FUNCTION (arg1_prior) && PT_IS_SET_TYPE (arg1_prior)
 	      && arg1_prior->info.function.function_type == F_SEQUENCE)
 	    {
-	      /* multi column case (attr,attr) */
+	      /* multi_col_term can convert to range if arg1 is (attr,func_idx_expr,constant) */
 	      func_arg = arg1_prior->info.function.arg_list;
 	      for ( /* none */ ; func_arg; func_arg = func_arg->next)
 		{
@@ -4682,6 +4684,15 @@ qo_convert_to_range (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 		      is_attr = false;
 		      break;
 		    }
+		  else if (!pt_is_const (func_arg))
+		    {
+		      is_all_constant = false;
+		    }
+		}
+	      /* if multi_col_term's columns are all constant value then NOT convert to range for constant folding */
+	      if (is_all_constant)
+		{
+		  is_attr = false;
 		}
 	    }
 	  else
