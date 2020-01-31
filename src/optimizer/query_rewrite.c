@@ -6477,11 +6477,13 @@ qo_do_auto_parameterize (PARSER_CONTEXT * parser, PT_NODE * where)
 	    case PT_RANGE:
 	      for (range = dnf_node->info.expr.arg2; range; range = range->or_next)
 		{
-		  if (pt_is_const_not_hostvar (range->info.expr.arg1) && !PT_IS_NULL_NODE (range->info.expr.arg1))
+		  if (pt_is_const_not_hostvar (range->info.expr.arg1) && !PT_IS_NULL_NODE (range->info.expr.arg1)
+		      && !PT_IS_COLLECTION_TYPE (range->info.expr.arg1->type_enum))
 		    {
 		      range->info.expr.arg1 = pt_rewrite_to_auto_param (parser, range->info.expr.arg1);
 		    }
-		  if (pt_is_const_not_hostvar (range->info.expr.arg2) && !PT_IS_NULL_NODE (range->info.expr.arg2))
+		  if (pt_is_const_not_hostvar (range->info.expr.arg2) && !PT_IS_NULL_NODE (range->info.expr.arg2)
+		      && !PT_IS_COLLECTION_TYPE (range->info.expr.arg2->type_enum))
 		    {
 		      range->info.expr.arg2 = pt_rewrite_to_auto_param (parser, range->info.expr.arg2);
 		    }
