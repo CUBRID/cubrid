@@ -12980,7 +12980,7 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
     }
 
-  if (node->type_enum == PT_TYPE_NONE || node->data_type == NULL)
+  if (node->type_enum == PT_TYPE_NONE || node->data_type == NULL || !(node->info.function.is_type_checked))
     {
       /* determine function result type */
       switch (fcode)
@@ -13368,6 +13368,8 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 	  node->data_type = parser_copy_tree_list (parser, arg_list->data_type);
 	  break;
 	}
+      /* to prevent recheck of function return type at pt_eval_function_type_old() */
+      node->info.function.is_type_checked = true;
     }
 
   /* collation checking */
