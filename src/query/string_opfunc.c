@@ -55,8 +55,9 @@
 #include "elo.h"
 #include "es_common.h"
 #include "db_elo.h"
+#include "string_regex.hpp"
+
 #include <algorithm>
-#include <regex>
 #include <string>
 #if !defined (SERVER_MODE)
 #include "parse_tree.h"
@@ -92,8 +93,6 @@
 
 #define LOB_CHUNK_SIZE	(128 * 1024)
 #define DB_GET_UCHAR(dbval) (REINTERPRET_CAST (const unsigned char *, db_get_string ((dbval))))
-
-#define REGEX_MAX_ERROR_MSG_SIZE  100
 
 /*
  *  This enumeration type is used to categorize the different
@@ -4300,30 +4299,6 @@ db_string_like (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB_
   return ((*result == V_ERROR) ? ER_QSTR_INVALID_ESCAPE_SEQUENCE : error_status);
 }
 
-static int
-regex_compile (const char *pattern, std::regex * &rx_compiled_regex,
-	       std::regex_constants::syntax_option_type & reg_flags)
-{
-  int error_status = NO_ERROR;
-
-  // *INDENT-OFF*
-  try
-  {
-    rx_compiled_regex = new std::regex (pattern, reg_flags);
-  }
-  catch (std::regex_error & e)
-  {
-    // regex compilation exception
-    error_status = ER_REGEX_COMPILE_ERROR;
-    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1, e.what ());
-    delete rx_compiled_regex;
-    rx_compiled_regex = NULL;
-  }
-  // *INDENT-ON*
-
-  return error_status;
-}
-
 /*
  * db_string_rlike () - check for match between string and regex
  *
@@ -4350,10 +4325,9 @@ regex_compile (const char *pattern, std::regex * &rx_compiled_regex,
  *          An illegal pattern is specified.
  *
  */
-
 int
 db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB_VALUE * case_sensitive,
-		 std::regex ** comp_regex, char **comp_pattern, int *result)
+		 cub_regex_object ** comp_regex, char **comp_pattern, int *result)
 {
   QSTR_CATEGORY src_category = QSTR_UNKNOWN;
   QSTR_CATEGORY pattern_category = QSTR_UNKNOWN;
@@ -4366,12 +4340,8 @@ db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB
   bool is_case_sensitive = false;
   int src_length = 0, pattern_length = 0;
 
-  char rx_err_buf[REGEX_MAX_ERROR_MSG_SIZE] = { '\0' };
   char *rx_compiled_pattern = NULL;
-
-  // *INDENT-OFF*
-  std::regex *rx_compiled_regex = NULL;
-  // *INDENT-ON*
+  cub_regex_object *rx_compiled_regex = NULL;
 
   /* check for allocated DB values */
   assert (src_string != NULL);
@@ -4472,39 +4442,39 @@ db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB
       memcpy (rx_compiled_pattern, pattern_char_string_p, pattern_length);
       rx_compiled_pattern[pattern_length] = '\0';
 
-      // *INDENT-OFF*
+// *INDENT-OFF*
       std::regex_constants::syntax_option_type reg_flags = std::regex_constants::ECMAScript;
       reg_flags |= std::regex_constants::nosubs;
       if (!is_case_sensitive)
 	{
 	  reg_flags |= std::regex_constants::icase;
 	}
-      // *INDENT-ON*
-
-      error_status = regex_compile (rx_compiled_pattern, rx_compiled_regex, reg_flags);
+      error_status = cubregex::compile_regex <char, cubregex::cub_reg_traits> (rx_compiled_pattern, rx_compiled_regex, reg_flags);
       if (error_status != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  *result = V_ERROR;
 	  goto cleanup;
 	}
+// *INDENT-ON*
     }
 
-  // *INDENT-OFF*
+// *INDENT-OFF*
   try
     {
       std::string src (src_char_string_p, src_length);
       bool match = std::regex_search (src, *rx_compiled_regex);
       *result = match ? V_TRUE : V_FALSE;
     }
-  catch (std::regex_error & e)
+  catch (std::regex_error &e)
     {
       // regex execution exception, error_complexity or error_stack
       error_status = ER_REGEX_EXEC_ERROR;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1, e.what ());
+      std::string error_message = cubregex::parse_regex_exception (e);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1, error_message.c_str ());
       *result = V_ERROR;
     }
-  // *INDENT-ON*
+// *INDENT-ON*
 
 cleanup:
 
