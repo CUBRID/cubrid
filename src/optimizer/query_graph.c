@@ -2174,7 +2174,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
 		      if (is_local_name (env, func_arg))
 			{
 			  if (pt_is_function_index_expr (parser, func_arg, false)
-			       && !pt_is_function_index_expression (func_arg))
+			      && !pt_is_function_index_expression (func_arg))
 			    {
 			      /* check if expr can be function index expr && expr is function index expr */
 			      lhs_indexable = false;

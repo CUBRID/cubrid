@@ -2710,8 +2710,8 @@ qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
     }
 
   /* check multi column index term */
-  multi_term_num = qo_get_multi_col_range_segs (env, plan, index_entryp, &multi_col_segs, &multi_col_range_segs
-						, &index_segs);
+  multi_term_num =
+    qo_get_multi_col_range_segs (env, plan, index_entryp, &multi_col_segs, &multi_col_range_segs, &index_segs);
   if (multi_term_num != -1)
     {
       /* case of term having multiple columns */
