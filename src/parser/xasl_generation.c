@@ -9792,16 +9792,27 @@ pt_to_single_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms, bo
 
       if (multi_col_pos[i] != -1)
 	{
-	  /* case of multi column term */
-	  if (!pt_is_set_type (rhs) || pt_is_set_type (rhs->info.value.data_value.set) || !multi_col)
+	  /* case of multi column term. case1 : value type, case2 : function type*/
+	  if (pt_is_set_type (rhs) && PT_IS_VALUE_NODE (rhs))
 	    {
-	      /* rhs must be set type and NOT set of set */
+	      rhs = rhs->info.value.data_value.set;
+	    }
+	  else if(pt_is_set_type (rhs) && PT_IS_FUNCTION (rhs) && rhs->info.function.function_type == F_SEQUENCE)
+	    {
+	      rhs = rhs->info.function.arg_list;
+	    }
+	  else
+	    {
+	      /* rhs must be set type and (value or function type) */
 	      goto error;
 	    }
-
-	  rhs = rhs->info.value.data_value.set;
 	  for (pos = 0; pos < multi_col_pos[i]; pos++)
 	    {
+	      if (!rhs && pt_is_set_type (rhs))
+		{
+		  /* must be NOT set of set */
+		  goto error;
+		}
 	      rhs = rhs->next;
 	    }
 	}
@@ -10507,16 +10518,28 @@ pt_to_rangelist_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms,
 
 	      if (multi_col_pos[i] != -1)
 		{
-		  /* case of multi column term */
-		  if (!pt_is_set_type (llim) || pt_is_set_type (llim->info.value.data_value.set) || !multi_col)
+		  /* case of multi column term. case1 : value type, case2 : function type*/
+		  if (pt_is_set_type (llim) && PT_IS_VALUE_NODE (llim))
 		    {
-		      /* rhs must be set type and NOT set of set */
+		      llim = llim->info.value.data_value.set;
+		    }
+		  else if(pt_is_set_type (llim) && PT_IS_FUNCTION (llim) && llim->info.function.function_type == F_SEQUENCE)
+		    {
+		      llim = llim->info.function.arg_list;
+		    }
+		  else
+		    {
+		      /* rhs must be set type and (value or function type) */
 		      goto error;
 		    }
-		  llim = llim->info.value.data_value.set;
 		  ulim = llim;
 		  for (pos = 0; pos < multi_col_pos[i]; pos++)
 		    {
+		      if (!llim && pt_is_set_type (llim))
+			{
+			  /* must be NOT set of set */
+			  goto error;
+			}
 		      llim = llim->next;
 		      ulim = ulim->next;
 		    }
