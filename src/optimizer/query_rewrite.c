@@ -1390,6 +1390,9 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 		      /* add additional equailty-term; is reduced */
 		      *wherep = parser_append_node (parser_copy_tree (parser, expr), *wherep);
 
+		      /* select-list's PT_NODE can have next PT_NODEs. so copy select_list to col node */
+		      col = parser_copy_tree (parser, col);
+
 		      /* reset arg1, arg2 */
 		      arg1 = arg2;
 		      arg2 = col;
