@@ -19030,8 +19030,8 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
   if (PT_IS_FUNCTION (opd1) && PT_IS_SET_TYPE (opd1) && opd1->info.function.function_type == F_SEQUENCE)
     {
       /* multi column lhs type is changed to PT_VALUE
-	 ex) (col1,1) in (..) and col1=1 ==>
-	 qo_reduce_equality_terms() ==> function type (1,1) in (...) ==> value type (1,1) */
+         ex) (col1,1) in (..) and col1=1 ==>
+         qo_reduce_equality_terms() ==> function type (1,1) in (...) ==> value type (1,1) */
       PT_NODE *func_arg = opd1->info.function.arg_list;
       bool is_const_multi_col = true;
 
