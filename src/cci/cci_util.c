@@ -986,8 +986,8 @@ cci_url_match (const char *src, char *token[])
       std::regex reg (pattern, ECMAScript | icase);
 
       std::cmatch match;
-      bool searched = std::regex_search (src, match, reg);
-      if (searched)
+      bool is_matched = std::regex_match (src, match, reg);
+      if (is_matched)
 	{
 	  int num_matches = match.size ();
 	  for (int i = 0; match_idx[i] != -1 && match_idx[i] < num_matches; i++)
