@@ -10523,8 +10523,8 @@ pt_to_rangelist_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms,
 		    {
 		      llim = llim->info.value.data_value.set;
 		    }
-		  else if(pt_is_set_type (llim) && PT_IS_FUNCTION (llim)
-			  && llim->info.function.function_type == F_SEQUENCE)
+		  else if (pt_is_set_type (llim) && PT_IS_FUNCTION (llim)
+			   && llim->info.function.function_type == F_SEQUENCE)
 		    {
 		      llim = llim->info.function.arg_list;
 		    }
