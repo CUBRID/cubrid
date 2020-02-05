@@ -2010,6 +2010,11 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	case PT_IS_IN:
 	case PT_EQ_SOME:
 	  /* temporary guess; LHS could be a indexable segment */
+	  if (op_type == PT_IS_IN || op_type == PT_EQ_SOME)
+	    {
+	      /* 'RANGE LIST' flag is needed for 'IN' OP to avoid duplication of RANGE OP when index scan */
+	      QO_TERM_SET_FLAG (term, QO_TERM_RANGELIST);
+	    }
 	  lhs_indexable = true;
 	  /* FALLTHRU */
 

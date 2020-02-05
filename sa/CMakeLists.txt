@@ -258,6 +258,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/show_scan.c
   ${QUERY_DIR}/stream_to_xasl.c
   ${QUERY_DIR}/string_opfunc.c
+  ${QUERY_DIR}/string_regex.cpp
   ${QUERY_DIR}/vacuum.c
   ${QUERY_DIR}/xasl_cache.c
   ${QUERY_DIR}/xasl_to_stream.c
@@ -268,6 +269,7 @@ set(QUERY_HEADERS
   ${QUERY_DIR}/query_monitoring.hpp
   ${QUERY_DIR}/query_reevaluation.hpp
   ${QUERY_DIR}/scan_json_table.hpp
+  ${QUERY_DIR}/string_regex.hpp
   )
 
 set(OBJECT_SOURCES

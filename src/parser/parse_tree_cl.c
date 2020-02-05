@@ -638,7 +638,7 @@ pt_lambda_node (PARSER_CONTEXT * parser, PT_NODE * tree_or_name, void *void_arg,
 	      if (lambda_arg->type == 1)
 		{
 		  /* at here, do clear. later is updated in pt_semantic_type */
-		  tree_or_name->type_enum = PT_TYPE_NONE;
+		  tree_or_name->info.function.is_type_checked = false;
 		}
 
 	      lambda_arg->replace_num = 0;
