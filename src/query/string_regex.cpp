@@ -252,7 +252,7 @@ namespace cubregex
 	}
 
 	std::wstring repl_wstring;
-	if (cublocale::convert_to_wstring (src_wstring, src, codeset) == false)
+	if (cublocale::convert_to_wstring (repl_wstring, repl, codeset) == false)
 	{
 	  return error_status;
 	}
