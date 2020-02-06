@@ -152,6 +152,10 @@ regu_variable_node::clear_xasl_local ()
 	    {
 	    case F_REGEXP_REPLACE:
 	    {
+        cubregex::clear(
+			    value.funcp->tmp_obj->compiled_regex->regex,
+			    value.funcp->tmp_obj->compiled_regex->pattern
+		    );
 	      delete value.funcp->tmp_obj->compiled_regex;
 	    }
 	    break;

@@ -166,6 +166,11 @@ namespace cubregex
 	{
 	  return error_status;
 	}
+	
+    if (rx_compiled_regex != NULL)
+	{
+	  delete rx_compiled_regex;
+	}
 
     try
       {
@@ -182,7 +187,6 @@ namespace cubregex
 	  }
 #endif
 
-    std::locale loc = cublocale::get_locale (std::string ("utf-8"), cublocale::get_lang_name (collation));
 	rx_compiled_regex = new cub_regex_object ();
 	if (rx_compiled_regex == NULL)
 	{
@@ -190,6 +194,7 @@ namespace cubregex
 	}
 	else
 	{
+        std::locale loc = cublocale::get_locale (std::string ("utf-8"), cublocale::get_lang_name (collation));
 		rx_compiled_regex->imbue (loc);
 		rx_compiled_regex->assign (pattern_wstring, reg_flags);
 	}

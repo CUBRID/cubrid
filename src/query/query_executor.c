@@ -1539,6 +1539,10 @@ qexec_clear_regu_var (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, REGU_VARIABLE
 	    {
 	    case F_REGEXP_REPLACE:
 	      {
+		cubregex::clear(
+			regu_var->value.funcp->tmp_obj->compiled_regex->regex,
+			regu_var->value.funcp->tmp_obj->compiled_regex->pattern
+		);
 		delete regu_var->value.funcp->tmp_obj->compiled_regex;
 	      }
 	      break;
