@@ -23,8 +23,10 @@
 
 #include "string_regex.hpp"
 
+#include "locale_helper.hpp"
 #include "error_manager.h"
 #include "memory_alloc.h"
+#include "language_support.h"
 
 #include <algorithm>
 #include <regex>
@@ -155,9 +157,16 @@ namespace cubregex
   }
 
   int compile (cub_regex_object *&rx_compiled_regex, const std::string &pattern,
-	       const std::regex_constants::syntax_option_type reg_flags)
+	       const std::regex_constants::syntax_option_type reg_flags, const LANG_COLLATION *collation)
   {
     int error_status = NO_ERROR;
+
+	std::wstring pattern_wstring;
+	if (cublocale::convert_to_wstring (pattern_wstring, pattern, collation->codeset) == false)
+	{
+	  return error_status;
+	}
+
     try
       {
 #if defined(WINDOWS)
@@ -165,14 +174,25 @@ namespace cubregex
 	*  And lookup_collatename is not invoked when regex pattern has collating element.
 	*  It is hacky code finding collating element pattern and throw error.
 	*/
-	char *collate_elem_pattern = "[[.";
-	int found = pattern.find ( std::string (collate_elem_pattern));
-	if (found != std::string::npos)
+	wchar_t *collate_elem_pattern = L"[[.";
+	int found = pattern_wstring.find ( std::wstring (collate_elem_pattern));
+	if (found != std::wstring::npos)
 	  {
 	    throw std::regex_error (std::regex_constants::error_collate);
 	  }
 #endif
-	rx_compiled_regex = new cub_regex_object (pattern, reg_flags);
+
+    std::locale loc = cublocale::get_locale (std::string ("utf-8"), cublocale::get_lang_name (collation));
+	rx_compiled_regex = new cub_regex_object ();
+	if (rx_compiled_regex == NULL)
+	{
+		error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+	else
+	{
+		rx_compiled_regex->imbue (loc);
+		rx_compiled_regex->assign (pattern_wstring, reg_flags);
+	}
       }
     catch (std::regex_error &e)
       {
@@ -185,12 +205,20 @@ namespace cubregex
     return error_status;
   }
 
-  int search (bool &result, const cub_regex_object &reg, const std::string &src)
+  int search (bool &result, const cub_regex_object &reg, const std::string &src, const INTL_CODESET codeset)
   {
     int error_status = NO_ERROR;
+
+	std::wstring src_wstring;
+	if (cublocale::convert_to_wstring (src_wstring, src, codeset) == false)
+	{
+	  result = false;
+	  return error_status;
+	}
+
     try
       {
-	result = std::regex_search (src, reg);
+	result = std::regex_search (src_wstring, reg);
       }
     catch (std::regex_error &e)
       {
@@ -205,25 +233,37 @@ namespace cubregex
 
   int replace (std::string &result, const cub_regex_object &reg, const std::string &src,
 	       const std::string &repl, const int position,
-	       const int occurrence)
+	       const int occurrence, const INTL_CODESET codeset)
   {
     assert (position >= 0 && (size_t) position < src.size ());
     assert (occurrence >= 0);
 
     int error_status = NO_ERROR;
 
+	std::wstring src_wstring;
+	if (cublocale::convert_to_wstring (src_wstring, src, codeset) == false)
+	{
+	  return error_status;
+	}
+
+	std::wstring repl_wstring;
+	if (cublocale::convert_to_wstring (src_wstring, src, codeset) == false)
+	{
+	  return error_status;
+	}
+
     /* split source string by position value */
-    result.assign (src.substr (0, position));
-    std::string target (
-	    src.substr (position, src.size () - position)
+	std::wstring result_wstring (src_wstring.substr (0, position));
+    std::wstring target (
+	    src_wstring.substr (position, src_wstring.size () - position)
     );
 
     try
       {
 	if (occurrence == 0)
 	  {
-	    result.append (
-		    std::regex_replace (target, reg, repl)
+	    result_wstring.append (
+		    std::regex_replace (target, reg, repl_wstring)
 	    );
 	  }
 	else
@@ -232,22 +272,22 @@ namespace cubregex
 	    auto reg_end = cub_regex_iterator ();
 
 	    int n = 1;
-	    auto out = std::back_inserter (result);
+	    auto out = std::back_inserter (result_wstring);
 
 	    while (reg_iter != reg_end)
 	      {
 		const cub_regex_results &match_result = *reg_iter;
 
-		std::string match_prefix = match_result.prefix ().str ();
+		std::wstring match_prefix = match_result.prefix ().str ();
 		out = std::copy (match_prefix.begin (), match_prefix.end (), out);
 
 		if (n == occurrence)
 		  {
-		    out = match_result.format (out, repl);
+		    out = match_result.format (out, repl_wstring);
 		  }
 		else
 		  {
-		    std::string match_str = match_result.str ();
+		    std::wstring match_str = match_result.str ();
 		    out = std::copy (match_str.begin (), match_str.end (), out);
 		  }
 
@@ -255,11 +295,16 @@ namespace cubregex
 		++reg_iter;
 		if (reg_iter == reg_end)
 		  {
-		    std::string match_suffix = match_result.suffix (). str ();
+		    std::wstring match_suffix = match_result.suffix (). str ();
 		    out = std::copy (match_suffix.begin (), match_suffix.end (), out);
 		  }
 	      }
 	  }
+
+	  	if (cublocale::convert_to_string (result, result_wstring, codeset) == false)
+		{
+	  		return error_status;
+		}
       }
     catch (std::regex_error &e)
       {
