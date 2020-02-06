@@ -53,8 +53,6 @@ namespace cubregex
     ~compiled_regex ();
   };
 
-  inline void clear_regex (char *&compiled_pattern, std::basic_regex<char, cub_reg_traits> *&compiled_regex);
-
   /* it throws the error_collate when collatename syntax ([[. .]]), which gives an inconsistent result, is detected. */
   struct cub_reg_traits : std::regex_traits<char>
   {
@@ -65,19 +63,22 @@ namespace cubregex
     }
   };
 
+  void clear (cub_regex_object *&compiled_regex, char *&compiled_pattern);
+  int parse_match_type (std::regex_constants::syntax_option_type &reg_flags, std::string &opt_str);
+
   /* because regex_error::what() gives different messages depending on compiler, an error message should be returned by error code of regex_error explicitly. */
   std::string parse_regex_exception (std::regex_error &e);
 
-  int parse_match_type (const std::string &opt_str, std::regex_constants::syntax_option_type &reg_flags);
+  bool check_should_recompile (const cub_regex_object *compiled_regex, const char *compiled_pattern,
+			       const std::string &pattern,
+			       const std::regex_constants::syntax_option_type reg_flags);
 
-  template< class CharT, class Reg_Traits >
-  int compile_regex (const CharT *pattern, std::basic_regex<CharT, Reg_Traits> *&rx_compiled_regex,
-		     std::regex_constants::syntax_option_type &reg_flags);
-
-  template< class CharT, class Reg_Traits >
-  const std::string &replace (const std::basic_regex<CharT, Reg_Traits> &reg, const std::basic_string<CharT> &src,
-			      const std::basic_string<CharT> &repl, const int position,
-			      const int occurrence);
+  int compile (cub_regex_object *&rx_compiled_regex, const std::string &pattern,
+	       const std::regex_constants::syntax_option_type reg_flags);
+  int search (bool &result, const cub_regex_object &reg, const std::string &src);
+  int replace (std::string &result, const cub_regex_object &reg, const std::string &src,
+	       const std::string &repl, const int position,
+	       const int occurrence);
 }
 #endif
 
