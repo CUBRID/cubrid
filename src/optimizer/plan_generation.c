@@ -1356,14 +1356,16 @@ make_pred_from_plan (QO_ENV * env, QO_PLAN * plan, PT_NODE ** key_predp, PT_NODE
   /* make predicate list for key filter */
   if (key_predp != NULL)
     {
-      if (qo_index_infop->need_copy_multi_range_term != -1 && qo_index_infop->need_copy_to_sarg_term)
+      if (qo_index_infop && qo_index_infop->need_copy_multi_range_term != -1
+	  && qo_index_infop->need_copy_to_sarg_term)
 	{
 	  bitset_add (&(plan->sarged_terms), qo_index_infop->need_copy_multi_range_term);
 	}
       else if (qo_index_infop->need_copy_multi_range_term != -1)
 	{
 	  index_entryp = qo_index_infop->ni_entry->head;
-	  if (index_entryp && index_entryp->constraints->func_index_info && index_entryp->cover_segments == false)
+	  if (index_entryp && index_entryp->constraints && index_entryp->constraints->func_index_info
+	      && index_entryp->cover_segments == false)
 	    {
 	      /* if predicate has function index column then do not permit key-filter. so force-copy to sarg */
 	      bitset_add (&(plan->sarged_terms), qo_index_infop->need_copy_multi_range_term);
@@ -4910,7 +4912,10 @@ qo_get_multi_col_range_segs (QO_ENV * env, QO_PLAN * plan, QO_INDEX_ENTRY * inde
 	}
     }
 
-  bitset_assign (index_segs, &(index_entryp->index_segs));
+  if (index_entryp)
+    {
+      bitset_assign (index_segs, &(index_entryp->index_segs));
+    }
   bitset_assign (multi_col_range_segs, &(plan->plan_un.scan.multi_col_range_segs));
 
   return multi_term;
