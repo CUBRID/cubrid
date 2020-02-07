@@ -8525,12 +8525,10 @@ qdata_regexp_replace_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function
     if (function_p->tmp_obj == NULL)
       {
 	function_p->tmp_obj = new function_tmp_obj;
-	function_p->tmp_obj->compiled_regex = new cub_compiled_regex ();
       }
 
-    cub_compiled_regex *&compiled_regex = function_p->tmp_obj->compiled_regex;
     error_status =
-      db_string_regexp_replace (function_p->value, args, no_args, &compiled_regex->regex, &compiled_regex->pattern);
+      db_string_regexp_replace (function_p->value, args, no_args, &function_p->tmp_obj->compiled_regex.regex, &function_p->tmp_obj->compiled_regex.pattern);
     if (error_status != NO_ERROR)
       {
 	goto exit;

@@ -34,14 +34,6 @@
 
 namespace cubregex
 {
-  compiled_regex::compiled_regex() : regex (NULL), pattern (NULL)
-  {}
-
-  compiled_regex::~compiled_regex()
-  {
-    clear (regex, pattern);
-  }
-
   std::string
   parse_regex_exception (std::regex_error &e)
   {
@@ -123,17 +115,17 @@ namespace cubregex
   }
 
   void
-  clear (cub_regex_object *&compiled_regex, char *&compiled_pattern)
+  clear (cub_regex_object *&regex, char *&pattern)
   {
-    if (compiled_pattern != NULL)
+    if (pattern != NULL)
       {
-	db_private_free_and_init (NULL, compiled_pattern);
+	db_private_free_and_init (NULL, pattern);
       }
 
-    if (compiled_regex != NULL)
+    if (regex != NULL)
       {
-	delete compiled_regex;
-	compiled_regex = NULL;
+	delete regex;
+	regex = NULL;
       }
   }
 
@@ -153,10 +145,11 @@ namespace cubregex
       {
 	return true;
       }
+
     return false;
   }
 
-  int compile (cub_regex_object *&rx_compiled_regex, const std::string &pattern,
+  int compile (cub_regex_object *&compiled_regex, const std::string &pattern,
 	       const std::regex_constants::syntax_option_type reg_flags, const LANG_COLLATION *collation)
   {
     int error_status = NO_ERROR;
@@ -165,11 +158,6 @@ namespace cubregex
 	if (cublocale::convert_to_wstring (pattern_wstring, pattern, collation->codeset) == false)
 	{
 	  return error_status;
-	}
-	
-    if (rx_compiled_regex != NULL)
-	{
-	  delete rx_compiled_regex;
 	}
 
     try
@@ -187,16 +175,22 @@ namespace cubregex
 	  }
 #endif
 
-	rx_compiled_regex = new cub_regex_object ();
-	if (rx_compiled_regex == NULL)
+    // delete to avoid memory leak
+    if (compiled_regex != NULL)
+	{
+	  delete compiled_regex;
+	}
+
+	compiled_regex = new cub_regex_object ();
+	if (compiled_regex == NULL)
 	{
 		error_status = ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 	else
 	{
         std::locale loc = cublocale::get_locale (std::string ("utf-8"), cublocale::get_lang_name (collation));
-		rx_compiled_regex->imbue (loc);
-		rx_compiled_regex->assign (pattern_wstring, reg_flags);
+		compiled_regex->imbue (loc);
+		compiled_regex->assign (pattern_wstring, reg_flags);
 	}
       }
     catch (std::regex_error &e)

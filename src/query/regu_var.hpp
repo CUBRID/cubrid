@@ -149,7 +149,7 @@ struct function_node
 // please don't forget to deallocate it, refering regu_variable_node::clear_xasl_local() and qexec_clear_regu_var()
 union function_tmp_obj
 {
-  cub_compiled_regex *compiled_regex;
+  cub_compiled_regex compiled_regex {NULL, NULL};
 };
 
 /* regular variable flags */

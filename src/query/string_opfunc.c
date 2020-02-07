@@ -4470,7 +4470,7 @@ cleanup:
 	}
     }
 
-  if (comp_regex != NULL && comp_pattern != NULL)
+  if ((comp_regex != NULL && comp_pattern != NULL) && rx_compiled_regex != NULL)
     {
       /* pass compiled regex object and compiled pattern out to reuse them */
       *comp_pattern = rx_compiled_pattern;
@@ -4530,6 +4530,7 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
   char *rx_compiled_pattern = NULL;
   cub_regex_object *rx_compiled_regex = NULL;
   db_make_null (result);
+  
   {
     for (int i = 0; i < num_args; i++)
       {
@@ -4616,9 +4617,6 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
 	goto exit;
       }
 
-    LANG_COLLATION *collation = lang_get_collation (coll_id);
-    assert (collation != NULL);
-
     /* check position argument */
     int position_value = (position != NULL) ? db_get_int (position) - 1 : 0;
     if (position_value < 0)
@@ -4669,8 +4667,11 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
       }
 
     /* get compiled pattern and regex object */
-    rx_compiled_pattern = (comp_pattern != NULL) ? *comp_pattern : NULL;
     rx_compiled_regex = (comp_regex != NULL) ? *comp_regex : NULL;
+    rx_compiled_pattern = (comp_pattern != NULL) ? *comp_pattern : NULL;
+
+    LANG_COLLATION *collation = lang_get_collation (coll_id);
+    assert (collation != NULL);
 
     // *INDENT-OFF*
     /* compile pattern if needed */
@@ -4678,6 +4679,7 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
     if (cubregex::check_should_recompile(rx_compiled_regex, rx_compiled_pattern, pattern_string, reg_flags) == true)
     {
       cubregex::clear (rx_compiled_regex, rx_compiled_pattern);
+
       int pattern_length = pattern_string.size ();
       rx_compiled_pattern = (char *) db_private_alloc (NULL, pattern_length + 1);
       if (rx_compiled_pattern == NULL)
@@ -4697,7 +4699,7 @@ db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], int const num_args
       }
     }
 
-    /* perform regular expression according to the occurence value */
+    /* perform regexp replace here */
     std::string result_string;
     std::string src_string (db_get_string (src), db_get_string_size (src));
     std::string repl_string (db_get_string (replace), db_get_string_size (replace));
@@ -4743,19 +4745,19 @@ exit:
 	}
     }
 
-  if (comp_regex != NULL && comp_pattern != NULL)
-    {
+  if ((comp_regex != NULL && comp_pattern != NULL) && rx_compiled_regex != NULL)
+  {
       /* pass compiled regex object and compiled pattern out to reuse them */
-      *comp_pattern = rx_compiled_pattern;
       *comp_regex = rx_compiled_regex;
-    }
+      *comp_pattern = rx_compiled_pattern;
+  }
   else
-    {
+  {
       /* free memory if this function is invoked in constant folding */
       // *INDENT-OFF*
       cubregex::clear (rx_compiled_regex, rx_compiled_pattern);
       // *INDENT-ON*
-    }
+  }
 
   return error_status;
 }
