@@ -1356,8 +1356,7 @@ make_pred_from_plan (QO_ENV * env, QO_PLAN * plan, PT_NODE ** key_predp, PT_NODE
   /* make predicate list for key filter */
   if (key_predp != NULL)
     {
-      if (qo_index_infop && qo_index_infop->need_copy_multi_range_term != -1
-	  && qo_index_infop->need_copy_to_sarg_term)
+      if (qo_index_infop && qo_index_infop->need_copy_multi_range_term != -1 && qo_index_infop->need_copy_to_sarg_term)
 	{
 	  bitset_add (&(plan->sarged_terms), qo_index_infop->need_copy_multi_range_term);
 	}
