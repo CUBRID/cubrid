@@ -540,7 +540,7 @@ static void pt_value_set_collation_info (PARSER_CONTEXT *parser,
 					 PT_NODE *coll_node);
 static void pt_value_set_monetary (PARSER_CONTEXT *parser, PT_NODE *node,
                    const char *str, const char *txt, DB_CURRENCY type);
-static PT_NODE * pt_make_paren_expr_list (PT_NODE * exp);
+static PT_NODE * pt_create_paren_expr_list (PT_NODE * exp);
 static PT_MISC_TYPE parser_attr_type;
 
 static bool allow_attribute_ordering;
@@ -15477,7 +15477,7 @@ primary
 	| '(' expression_list ')' %dprec 4
 		{{
 			PT_NODE *exp = $2;
-			exp = pt_make_paren_expr_list (exp);
+			exp = pt_create_paren_expr_list (exp);
 			$$ = exp;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
@@ -15485,7 +15485,7 @@ primary
 	| ROW '(' expression_list ')' %dprec 4
 		{{
 			PT_NODE *exp = $3;
-			exp = pt_make_paren_expr_list (exp);
+			exp = pt_create_paren_expr_list (exp);
 			$$ = exp;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
@@ -27569,28 +27569,17 @@ pt_jt_append_column_or_nested_node (PT_NODE * jt_node, PT_NODE * jt_col_or_neste
 }
 
 static PT_NODE *
-pt_make_paren_expr_list (PT_NODE * exp)
+pt_create_paren_expr_list (PT_NODE * exp)
 {
-
   PT_NODE *val, *tmp;
 
-  bool is_single_expression = true;
-  if (exp && exp->next != NULL)
+  if (exp && exp->next == NULL)
     {
-      is_single_expression = false;
-    }
-
-  if (is_single_expression)
-    {
-      if (exp && exp->node_type == PT_EXPR)
+      if (exp->node_type == PT_EXPR)
 	{
 	  exp->info.expr.paren_type = 1;
 	}
-
-      if (exp)
-	{
-	  exp->is_paren = 1;
-	}
+      exp->is_paren = 1;
     }
   else
     {

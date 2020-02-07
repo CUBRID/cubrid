@@ -9830,7 +9830,6 @@ pt_to_single_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms, bo
 	{
 	  midx_key = parser_append_node (pt_point (parser, rhs), midx_key);
 	}
-
     }				/* for (i = 0; i < nterms; i++) */
 
   if (midx_key)

@@ -22023,7 +22023,6 @@ error:
  *
  */
 static COLLATION_RESULT
-
 pt_get_collation_of_collection (PARSER_CONTEXT * parser, const PT_NODE * node, PT_COLL_INFER * coll_infer,
 				const bool is_inner_collection, bool * is_first_element)
 {
