@@ -1755,7 +1755,7 @@ qexec_clear_pred (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, PRED_EXPR * pr, b
 	    pg_cnt += qexec_clear_regu_var (thread_p, xasl_p, et_rlike->pattern, is_final);
 	    pg_cnt += qexec_clear_regu_var (thread_p, xasl_p, et_rlike->case_sensitive, is_final);
 
-		/* free memory of compiled regex */
+	    /* free memory of compiled regex */
 	    cubregex::clear (et_rlike->compiled_regex, et_rlike->compiled_pattern);
 	  }
 	  break;
