@@ -47,8 +47,8 @@ namespace cubregex
 {
   struct compiled_regex
   {
-    mutable cub_regex_object *regex;
-    mutable char *pattern;
+    cub_regex_object *regex;
+    char *pattern;
   };
 
   /* it throws the error_collate when collatename syntax ([[. .]]), which gives an inconsistent result, is detected. */
