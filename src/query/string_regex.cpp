@@ -34,6 +34,15 @@
 
 namespace cubregex
 {
+
+  compiled_regex::compiled_regex () : regex (NULL), pattern (NULL)
+  {}
+
+  compiled_regex::~compiled_regex ()
+  {
+    clear (regex, pattern);
+  }
+
   std::string
   parse_regex_exception (std::regex_error &e)
   {
@@ -154,11 +163,11 @@ namespace cubregex
   {
     int error_status = NO_ERROR;
 
-	std::wstring pattern_wstring;
-	if (cublocale::convert_to_wstring (pattern_wstring, pattern, collation->codeset) == false)
-	{
-	  return error_status;
-	}
+    std::wstring pattern_wstring;
+    if (cublocale::convert_to_wstring (pattern_wstring, pattern, collation->codeset) == false)
+      {
+	return error_status;
+      }
 
     try
       {
@@ -175,23 +184,23 @@ namespace cubregex
 	  }
 #endif
 
-    // delete to avoid memory leak
-    if (compiled_regex != NULL)
-	{
-	  delete compiled_regex;
-	}
+	// delete to avoid memory leak
+	if (compiled_regex != NULL)
+	  {
+	    delete compiled_regex;
+	  }
 
 	compiled_regex = new cub_regex_object ();
 	if (compiled_regex == NULL)
-	{
-		error_status = ER_OUT_OF_VIRTUAL_MEMORY;
-	}
+	  {
+	    error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+	  }
 	else
-	{
-        std::locale loc = cublocale::get_locale (std::string ("utf-8"), cublocale::get_lang_name (collation));
-		compiled_regex->imbue (loc);
-		compiled_regex->assign (pattern_wstring, reg_flags);
-	}
+	  {
+	    std::locale loc = cublocale::get_locale (std::string ("utf-8"), cublocale::get_lang_name (collation));
+	    compiled_regex->imbue (loc);
+	    compiled_regex->assign (pattern_wstring, reg_flags);
+	  }
       }
     catch (std::regex_error &e)
       {
@@ -204,29 +213,32 @@ namespace cubregex
     return error_status;
   }
 
-  int search (bool &result, const cub_regex_object &reg, const std::string &src, const INTL_CODESET codeset)
+  int search (int &result, const cub_regex_object &reg, const std::string &src, const INTL_CODESET codeset)
   {
     int error_status = NO_ERROR;
+    bool is_matched = false;
 
-	std::wstring src_wstring;
-	if (cublocale::convert_to_wstring (src_wstring, src, codeset) == false)
-	{
-	  result = false;
-	  return error_status;
-	}
+    std::wstring src_wstring;
+    if (cublocale::convert_to_wstring (src_wstring, src, codeset) == false)
+      {
+	result = V_UNKNOWN;
+	return error_status;
+      }
 
     try
       {
-	result = std::regex_search (src_wstring, reg);
+	is_matched = std::regex_search (src_wstring, reg);
       }
     catch (std::regex_error &e)
       {
 	// regex execution exception
-	result = false;
+	is_matched = false;
 	error_status = ER_REGEX_EXEC_ERROR;
 	std::string error_message = parse_regex_exception (e);
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1, error_message.c_str ());
       }
+
+    result = is_matched ? V_TRUE : V_FALSE;
     return error_status;
   }
 
@@ -239,20 +251,20 @@ namespace cubregex
 
     int error_status = NO_ERROR;
 
-	std::wstring src_wstring;
-	if (cublocale::convert_to_wstring (src_wstring, src, codeset) == false)
-	{
-	  return error_status;
-	}
+    std::wstring src_wstring;
+    if (cublocale::convert_to_wstring (src_wstring, src, codeset) == false)
+      {
+	return error_status;
+      }
 
-	std::wstring repl_wstring;
-	if (cublocale::convert_to_wstring (repl_wstring, repl, codeset) == false)
-	{
-	  return error_status;
-	}
+    std::wstring repl_wstring;
+    if (cublocale::convert_to_wstring (repl_wstring, repl, codeset) == false)
+      {
+	return error_status;
+      }
 
     /* split source string by position value */
-	std::wstring result_wstring (src_wstring.substr (0, position));
+    std::wstring result_wstring (src_wstring.substr (0, position));
     std::wstring target (
 	    src_wstring.substr (position, src_wstring.size () - position)
     );
@@ -300,10 +312,10 @@ namespace cubregex
 	      }
 	  }
 
-	  	if (cublocale::convert_to_string (result, result_wstring, codeset) == false)
-		{
-	  		return error_status;
-		}
+	if (cublocale::convert_to_string (result, result_wstring, codeset) == false)
+	  {
+	    return error_status;
+	  }
       }
     catch (std::regex_error &e)
       {

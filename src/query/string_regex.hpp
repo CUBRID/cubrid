@@ -49,6 +49,9 @@ namespace cubregex
   {
     cub_regex_object *regex;
     char *pattern;
+
+    compiled_regex ();
+    ~compiled_regex ();
   };
 
   /* it throws the error_collate when collatename syntax ([[. .]]), which gives an inconsistent result, is detected. */
@@ -73,7 +76,7 @@ namespace cubregex
 
   int compile (cub_regex_object *&rx_compiled_regex, const std::string &pattern,
 	       const std::regex_constants::syntax_option_type reg_flags, const LANG_COLLATION *collation);
-  int search (bool &result, const cub_regex_object &reg, const std::string &src, const INTL_CODESET codeset);
+  int search (int &result, const cub_regex_object &reg, const std::string &src, const INTL_CODESET codeset);
   int replace (std::string &result, const cub_regex_object &reg, const std::string &src,
 	       const std::string &repl, const int position,
 	       const int occurrence, const INTL_CODESET codeset);
