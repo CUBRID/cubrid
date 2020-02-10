@@ -97,6 +97,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/ini_parser.c
   ${BASE_DIR}/intl_support.c
   ${BASE_DIR}/language_support.c
+  ${BASE_DIR}/locale_helper.cpp
   ${BASE_DIR}/locale_support.c
   ${BASE_DIR}/lockfree_bitmap.cpp
   ${BASE_DIR}/md5.c
