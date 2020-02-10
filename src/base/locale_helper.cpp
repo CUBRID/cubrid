@@ -58,20 +58,21 @@ namespace cublocale
       }
   }
 
-/*
- * convert_to_wstring () -
- *
- * Arguments:
- *        out:  (Out) Output wide string
- *        in: (In) Input string
- *        codeset: (In) code of the input string
- *
- * Returns: bool
- *
- * Note:
- *   This function converts from a multi-byte encoded string into a wide string
- *   to perform locale-aware functionality such as searching or replacing by the regular expression with <regex>
- */
+  /*
+   * convert_to_wstring () -
+   *
+   * Arguments:
+   *        out:  (Out) Output wide string
+   *        in: (In) Input string
+   *        codeset: (In) code of the input string
+   *
+   * Returns: bool
+   *
+   * Note:
+   *   This function converts from a multi-byte encoded string into a wide string
+   *   to perform locale-aware functionality such as searching or replacing by the regular expression with <regex>
+   *   It convert given string into utf8 string and then make wide string
+   */
   bool convert_to_wstring (std::wstring &out, const std::string &in, const INTL_CODESET codeset)
   {
     bool is_success = false;
@@ -141,19 +142,19 @@ namespace cublocale
     return is_success;
   }
 
-/*
- * convert_to_string () -
- *
- * Arguments:
- *        out:  (Out) Output wide string
- *        in: (In) Input string
- *        codeset: (In) code of the input string
- *
- * Returns: bool
- *
- * Note:
- *   This function converts from a wide string into a multi-byte encoded string
- */
+  /*
+   * convert_to_string () -
+   *
+   * Arguments:
+   *        out:  (Out) Output wide string
+   *        in: (In) Input string
+   *        codeset: (In) code of the input string
+   *
+   * Returns: bool
+   *
+   * Note:
+   *   This function converts from a wide string into a multi-byte encoded string
+   */
   bool convert_to_string (std::string &out, const std::wstring &in, const INTL_CODESET codeset)
   {
     bool is_success = false;

@@ -304,6 +304,8 @@ namespace cubregex
 
 		++n;
 		++reg_iter;
+
+		/* last matched result */
 		if (reg_iter == reg_end)
 		  {
 		    std::wstring match_suffix = match_result.suffix (). str ();

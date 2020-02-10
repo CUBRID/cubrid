@@ -4691,7 +4691,7 @@ db_string_regexp_replace (DB_VALUE * result, DB_VALUE * args[], int const num_ar
       rx_compiled_pattern[pattern_length] = '\0';
 
       error_status = cubregex::compile (rx_compiled_regex, pattern_string, reg_flags, collation);
-      if (error_status != NO_ERROR)
+      if (error_status != NO_ERROR || rx_compiled_regex == NULL)
       {
         goto exit;
       }
