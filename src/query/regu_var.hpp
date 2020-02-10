@@ -142,6 +142,14 @@ struct function_node
   DB_VALUE *value;		/* value of the function */
   REGU_VARIABLE_LIST operand;	/* operands */
   FUNC_TYPE ftype;		/* function to call */
+  mutable union function_tmp_obj *tmp_obj;
+};
+
+// NOTE: The following union is used when a function needs to store any object temporary in query execution
+// please don't forget to deallocate it, refering regu_variable_node::clear_xasl_local() and qexec_clear_regu_var()
+union function_tmp_obj
+{
+  cub_compiled_regex *compiled_regex;
 };
 
 /* regular variable flags */

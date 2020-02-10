@@ -29,8 +29,30 @@
 
 #include "error_manager.h"
 
+// forward declarations
 namespace cubregex
 {
+  struct compiled_regex;
+  struct cub_reg_traits;
+}
+
+// alias
+using cub_regex_object = std::basic_regex <char, cubregex::cub_reg_traits>;
+using cub_compiled_regex = cubregex::compiled_regex;
+using cub_regex_iterator = std::regex_iterator<std::string::iterator, char, cubregex::cub_reg_traits>;
+using cub_regex_results = std::match_results <std::string::iterator>;
+
+namespace cubregex
+{
+  struct compiled_regex
+  {
+    cub_regex_object *regex;
+    char *pattern;
+
+    compiled_regex ();
+    ~compiled_regex ();
+  };
+
   /* it throws the error_collate when collatename syntax ([[. .]]), which gives an inconsistent result, is detected. */
   struct cub_reg_traits : std::regex_traits<char>
   {
@@ -41,15 +63,23 @@ namespace cubregex
     }
   };
 
+  void clear (cub_regex_object *&compiled_regex, char *&compiled_pattern);
+  int parse_match_type (std::regex_constants::syntax_option_type &reg_flags, std::string &opt_str);
+
   /* because regex_error::what() gives different messages depending on compiler, an error message should be returned by error code of regex_error explicitly. */
   std::string parse_regex_exception (std::regex_error &e);
 
-  template< class CharT, class Reg_Traits >
-  int compile_regex (const CharT *pattern, std::basic_regex<CharT, Reg_Traits> *&rx_compiled_regex,
-		     std::regex_constants::syntax_option_type &reg_flags);
-}
+  bool check_should_recompile (const cub_regex_object *compiled_regex, const char *compiled_pattern,
+			       const std::string &pattern,
+			       const std::regex_constants::syntax_option_type reg_flags);
 
-using cub_regex_object = std::basic_regex <char, cubregex::cub_reg_traits>;
+  int compile (cub_regex_object *&rx_compiled_regex, const std::string &pattern,
+	       const std::regex_constants::syntax_option_type reg_flags);
+  int search (bool &result, const cub_regex_object &reg, const std::string &src);
+  int replace (std::string &result, const cub_regex_object &reg, const std::string &src,
+	       const std::string &repl, const int position,
+	       const int occurrence);
+}
 #endif
 
 #endif // _STRING_REGEX_HPP_
