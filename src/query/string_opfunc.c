@@ -4394,12 +4394,13 @@ db_string_rlike (const DB_VALUE * src, const DB_VALUE * pattern, const DB_VALUE 
 	reg_flags |= std::regex_constants::icase;
       }
 
+    /* compile pattern if needed */
     std::string pattern_string (db_get_string (pattern), db_get_string_size (pattern));
     if (cubregex::check_should_recompile (rx_compiled_regex, rx_compiled_pattern, pattern_string, reg_flags) == true)
       {
-  cubregex::clear (rx_compiled_regex, rx_compiled_pattern);
+	cubregex::clear (rx_compiled_regex, rx_compiled_pattern);
 	int pattern_length = pattern_string.size ();
-  rx_compiled_pattern = (char *) db_private_alloc (NULL, pattern_length + 1);
+	rx_compiled_pattern = (char *) db_private_alloc (NULL, pattern_length + 1);
 	if (rx_compiled_pattern == NULL)
 	  {
 	    /* out of memory */
@@ -4646,37 +4647,38 @@ db_string_regexp_replace (DB_VALUE * result, DB_VALUE * args[], int const num_ar
     /* compile pattern if needed */
     std::string pattern_string (db_get_string (pattern), db_get_string_size (pattern));
     if (cubregex::check_should_recompile (rx_compiled_regex, rx_compiled_pattern, pattern_string, reg_flags) == true)
-    {
-      cubregex::clear (rx_compiled_regex, rx_compiled_pattern);
-      int pattern_length = pattern_string.size ();
-      rx_compiled_pattern = (char *) db_private_alloc (NULL, pattern_length + 1);
-      if (rx_compiled_pattern == NULL)
-        {
-          /* out of memory */
-          error_status = ER_OUT_OF_VIRTUAL_MEMORY;
-          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-          goto exit;
-        }
-      memcpy (rx_compiled_pattern, pattern_string.c_str (), pattern_length);
-      rx_compiled_pattern[pattern_length] = '\0';
-
-      error_status = cubregex::compile (rx_compiled_regex, rx_compiled_pattern, reg_flags);
-      if (error_status != NO_ERROR)
       {
-        goto exit;
-      }
-    }
+	cubregex::clear (rx_compiled_regex, rx_compiled_pattern);
+	int pattern_length = pattern_string.size ();
+	rx_compiled_pattern = (char *) db_private_alloc (NULL, pattern_length + 1);
+	if (rx_compiled_pattern == NULL)
+	  {
+	    /* out of memory */
+	    error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	    goto exit;
+	  }
+	memcpy (rx_compiled_pattern, pattern_string.c_str (), pattern_length);
+	rx_compiled_pattern[pattern_length] = '\0';
 
-    /* perform regular expression according to the occurence value */
+	error_status = cubregex::compile (rx_compiled_regex, rx_compiled_pattern, reg_flags);
+	if (error_status != NO_ERROR)
+	  {
+	    goto exit;
+	  }
+      }
+
+    /* perform regular expression according to the position and occurence value */
     std::string result_string;
     std::string src_string (db_get_string (src), db_get_string_size (src));
     std::string repl_string (db_get_string (replace), db_get_string_size (replace));
-    error_status = cubregex::replace (result_string, *rx_compiled_regex, src_string, repl_string, position_value, occurrence_value);
-	  if (error_status != NO_ERROR)
-	  {
-	    /* regex execution error */
-	    goto exit;
-	  }
+    error_status = cubregex::replace (result_string, *rx_compiled_regex, src_string, repl_string, position_value,
+				      occurrence_value);
+    if (error_status != NO_ERROR)
+      {
+	/* regex execution error */
+	goto exit;
+      }
     // *INDENT-ON*
 
     /* make result */
