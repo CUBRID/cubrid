@@ -4330,18 +4330,16 @@ db_string_rlike (const DB_VALUE * src, const DB_VALUE * pattern, const DB_VALUE 
 		 cub_regex_object ** comp_regex, char **comp_pattern, int *result)
 {
   int error_status = NO_ERROR;
-  char *rx_compiled_pattern = NULL;
-  cub_regex_object *rx_compiled_regex = NULL;
+
+  /* get compiled pattern and regex object */
+  char *rx_compiled_pattern = (comp_pattern != NULL) ? *comp_pattern : NULL;
+  cub_regex_object *rx_compiled_regex = (comp_regex != NULL) ? *comp_regex : NULL;
 
   {
     /* check for allocated DB values */
     assert (src != NULL);
     assert (pattern != NULL);
     assert (case_sensitive != NULL);
-
-    /* get compiled pattern and regex object */
-    rx_compiled_pattern = (comp_pattern != NULL) ? *comp_pattern : NULL;
-    rx_compiled_regex = (comp_regex != NULL) ? *comp_regex : NULL;
 
     /* check type */
     QSTR_CATEGORY src_category = qstr_get_category (src);
@@ -4446,18 +4444,18 @@ cleanup:
 	}
     }
 
-    if (comp_regex == NULL || comp_pattern == NULL)
+  if (comp_regex == NULL || comp_pattern == NULL)
     {
-        /* free memory if this function is invoked in constant folding */
+      /* free memory if this function is invoked in constant folding */
           // *INDENT-OFF*
         cubregex::clear (rx_compiled_regex, rx_compiled_pattern);
         // *INDENT-ON*
     }
-    else
+  else
     {
       /* pass compiled regex object and compiled pattern out to reuse them */
-        *comp_regex = rx_compiled_regex;
-        *comp_pattern = rx_compiled_pattern;
+      *comp_regex = rx_compiled_regex;
+      *comp_pattern = rx_compiled_pattern;
     }
 
   return error_status;
@@ -4503,14 +4501,12 @@ db_string_regexp_replace (DB_VALUE * result, DB_VALUE * args[], int const num_ar
 			  cub_regex_object ** comp_regex, char **comp_pattern)
 {
   int error_status = NO_ERROR;
-  char *rx_compiled_pattern = NULL;
-  cub_regex_object *rx_compiled_regex = NULL;
+
+  /* get compiled pattern and regex object */
+  char *rx_compiled_pattern = (comp_pattern != NULL) ? *comp_pattern : NULL;
+  cub_regex_object *rx_compiled_regex = (comp_regex != NULL) ? *comp_regex : NULL;
 
   {
-    /* get compiled pattern and regex object */
-    rx_compiled_pattern = (comp_pattern != NULL) ? *comp_pattern : NULL;
-    rx_compiled_regex = (comp_regex != NULL) ? *comp_regex : NULL;
-
     for (int i = 0; i < num_args; i++)
       {
 	DB_VALUE *arg = args[i];
@@ -4718,18 +4714,18 @@ exit:
     }
 
   if (comp_regex == NULL || comp_pattern == NULL)
-  {
+    {
       /* free memory if this function is invoked in constant folding */
       // *INDENT-OFF*
       cubregex::clear (rx_compiled_regex, rx_compiled_pattern);
       // *INDENT-ON*
-  }
+    }
   else
-  {
-    /* pass compiled regex object and compiled pattern out to reuse them */
+    {
+      /* pass compiled regex object and compiled pattern out to reuse them */
       *comp_regex = rx_compiled_regex;
       *comp_pattern = rx_compiled_pattern;
-  }
+    }
 
   return error_status;
 }
