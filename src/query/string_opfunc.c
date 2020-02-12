@@ -4339,6 +4339,10 @@ db_string_rlike (const DB_VALUE * src, const DB_VALUE * pattern, const DB_VALUE 
     assert (pattern != NULL);
     assert (case_sensitive != NULL);
 
+    /* get compiled pattern and regex object */
+    rx_compiled_pattern = (comp_pattern != NULL) ? *comp_pattern : NULL;
+    rx_compiled_regex = (comp_regex != NULL) ? *comp_regex : NULL;
+
     /* check type */
     QSTR_CATEGORY src_category = qstr_get_category (src);
     QSTR_CATEGORY pattern_category = qstr_get_category (pattern);
@@ -4381,10 +4385,6 @@ db_string_rlike (const DB_VALUE * src, const DB_VALUE * pattern, const DB_VALUE 
 	goto cleanup;
       }
 
-    /* get compiled pattern and regex object */
-    rx_compiled_pattern = (comp_pattern != NULL) ? *comp_pattern : NULL;
-    rx_compiled_regex = (comp_regex != NULL) ? *comp_regex : NULL;
-
 // *INDENT-OFF*
     /* extract case sensitivity */
     bool is_case_sensitive = (case_sensitive->data.i != 0);
@@ -4399,10 +4399,9 @@ db_string_rlike (const DB_VALUE * src, const DB_VALUE * pattern, const DB_VALUE 
     std::string pattern_string (db_get_string (pattern), db_get_string_size (pattern));
     if (cubregex::check_should_recompile (rx_compiled_regex, rx_compiled_pattern, pattern_string, reg_flags) == true)
       {
-	cubregex::clear (rx_compiled_regex, rx_compiled_pattern);
-  
+  cubregex::clear (rx_compiled_regex, rx_compiled_pattern);
 	int pattern_length = pattern_string.size ();
-	rx_compiled_pattern = (char *) db_private_alloc (NULL, pattern_length + 1);
+  rx_compiled_pattern = (char *) db_private_alloc (NULL, pattern_length + 1);
 	if (rx_compiled_pattern == NULL)
 	  {
 	    /* out of memory */
@@ -4413,7 +4412,7 @@ db_string_rlike (const DB_VALUE * src, const DB_VALUE * pattern, const DB_VALUE 
 	memcpy (rx_compiled_pattern, pattern_string.c_str (), pattern_length);
 	rx_compiled_pattern[pattern_length] = '\0';
 
-	error_status = cubregex::compile (rx_compiled_regex, pattern_string, reg_flags);
+	error_status = cubregex::compile (rx_compiled_regex, rx_compiled_pattern, reg_flags);
 	if (error_status != NO_ERROR)
 	  {
 	    goto cleanup;
@@ -4447,18 +4446,18 @@ cleanup:
 	}
     }
 
-  if ((comp_regex != NULL && comp_pattern != NULL) && rx_compiled_regex != NULL)
+    if (comp_regex == NULL || comp_pattern == NULL)
+    {
+        /* free memory if this function is invoked in constant folding */
+          // *INDENT-OFF*
+        cubregex::clear (rx_compiled_regex, rx_compiled_pattern);
+        // *INDENT-ON*
+    }
+    else
     {
       /* pass compiled regex object and compiled pattern out to reuse them */
-      *comp_pattern = rx_compiled_pattern;
-      *comp_regex = rx_compiled_regex;
-    }
-  else
-    {
-      /* free memory if this function is invoked in constant folding */
-      // *INDENT-OFF*
-      cubregex::clear (rx_compiled_regex, rx_compiled_pattern);
-      // *INDENT-ON*
+        *comp_regex = rx_compiled_regex;
+        *comp_pattern = rx_compiled_pattern;
     }
 
   return error_status;
@@ -4508,6 +4507,10 @@ db_string_regexp_replace (DB_VALUE * result, DB_VALUE * args[], int const num_ar
   cub_regex_object *rx_compiled_regex = NULL;
 
   {
+    /* get compiled pattern and regex object */
+    rx_compiled_pattern = (comp_pattern != NULL) ? *comp_pattern : NULL;
+    rx_compiled_regex = (comp_regex != NULL) ? *comp_regex : NULL;
+
     for (int i = 0; i < num_args; i++)
       {
 	DB_VALUE *arg = args[i];
@@ -4643,14 +4646,10 @@ db_string_regexp_replace (DB_VALUE * result, DB_VALUE * args[], int const num_ar
 	goto exit;
       }
 
-    /* get compiled pattern and regex object */
-    rx_compiled_pattern = (comp_pattern != NULL) ? *comp_pattern : NULL;
-    rx_compiled_regex = (comp_regex != NULL) ? *comp_regex : NULL;
-
     // *INDENT-OFF*
     /* compile pattern if needed */
     std::string pattern_string (db_get_string (pattern), db_get_string_size (pattern));
-    if (cubregex::check_should_recompile(rx_compiled_regex, rx_compiled_pattern, pattern_string, reg_flags) == true)
+    if (cubregex::check_should_recompile (rx_compiled_regex, rx_compiled_pattern, pattern_string, reg_flags) == true)
     {
       cubregex::clear (rx_compiled_regex, rx_compiled_pattern);
       int pattern_length = pattern_string.size ();
@@ -4665,7 +4664,7 @@ db_string_regexp_replace (DB_VALUE * result, DB_VALUE * args[], int const num_ar
       memcpy (rx_compiled_pattern, pattern_string.c_str (), pattern_length);
       rx_compiled_pattern[pattern_length] = '\0';
 
-      error_status = cubregex::compile (rx_compiled_regex, pattern_string, reg_flags);
+      error_status = cubregex::compile (rx_compiled_regex, rx_compiled_pattern, reg_flags);
       if (error_status != NO_ERROR)
       {
         goto exit;
@@ -4718,19 +4717,19 @@ exit:
 	}
     }
 
-  if ((comp_regex != NULL && comp_pattern != NULL) && rx_compiled_regex != NULL)
-    {
-      /* pass compiled regex object and compiled pattern out to reuse them */
-      *comp_pattern = rx_compiled_pattern;
-      *comp_regex = rx_compiled_regex;
-    }
-  else
-    {
+  if (comp_regex == NULL || comp_pattern == NULL)
+  {
       /* free memory if this function is invoked in constant folding */
       // *INDENT-OFF*
       cubregex::clear (rx_compiled_regex, rx_compiled_pattern);
       // *INDENT-ON*
-    }
+  }
+  else
+  {
+    /* pass compiled regex object and compiled pattern out to reuse them */
+      *comp_regex = rx_compiled_regex;
+      *comp_pattern = rx_compiled_pattern;
+  }
 
   return error_status;
 }

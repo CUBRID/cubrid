@@ -124,15 +124,17 @@ namespace cubregex
   void
   clear (cub_regex_object *&regex, char *&pattern)
   {
-    if (pattern != NULL)
-      {
-	db_private_free_and_init (NULL, pattern);
-      }
-
     if (regex != NULL)
       {
 	delete regex;
 	regex = NULL;
+      }
+
+    if (pattern != NULL)
+      {
+	//delete[] pattern;
+	//pattern = NULL;
+	db_private_free_and_init (NULL, pattern);
       }
   }
 
@@ -155,7 +157,7 @@ namespace cubregex
     return false;
   }
 
-  int compile (cub_regex_object *&rx_compiled_regex, const std::string &pattern,
+  int compile (cub_regex_object *&rx_compiled_regex, const char *pattern,
 	       const std::regex_constants::syntax_option_type reg_flags)
   {
     int error_status = NO_ERROR;
