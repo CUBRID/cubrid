@@ -18394,8 +18394,8 @@ predicate_expr_sub
 			PT_NODE *e, *opd1, *opd2, *subq, *t;
 			PT_OP_TYPE op;
 			bool found_paren_set_expr = false;
-                        int lhs_cnt, rhs_cnt = 0;
-                        bool found_match = false;
+			int lhs_cnt, rhs_cnt = 0;
+			bool found_match = false;
 
 			opd2 = $3;
 			e = parser_make_expression (this_parser, $2, $1, NULL, NULL);
@@ -18425,11 +18425,11 @@ predicate_expr_sub
 				    else
 				      {
 					if (subq)
-                                          {
-                                            /* If not PT_TYPE_STAR */
-                                            pt_select_list_to_one_col (this_parser, opd1, true);     
-                                          }                                        
-                                        found_paren_set_expr = true;
+					  {
+					    /* If not PT_TYPE_STAR */
+					    pt_select_list_to_one_col (this_parser, opd1, true);
+					  }
+					found_paren_set_expr = true;
 				      }
 				  }
 			      }
@@ -18449,12 +18449,12 @@ predicate_expr_sub
 				      }
 				    else
 				      {
-                                        if (subq)
-                                          {
-                                            /* If not PT_TYPE_STAR */
-                                            pt_select_list_to_one_col (this_parser, opd2, true);     
-                                          }                                        
-                                        found_paren_set_expr = true;
+					if (subq)
+					  {
+					    /* If not PT_TYPE_STAR */
+					    pt_select_list_to_one_col (this_parser, opd2, true);
+					  }
+					found_paren_set_expr = true;
 				      }
 				  }
 			      }

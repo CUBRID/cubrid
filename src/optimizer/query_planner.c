@@ -388,8 +388,7 @@ typedef enum PRED_CLASS
   PC_SUBQUERY,
   PC_SET,
   PC_OTHER,
-  PC_MULTI_ATTR,
-  PC_FUNC_SET
+  PC_MULTI_ATTR
 } PRED_CLASS;
 
 static double qo_or_selectivity (QO_ENV * env, double lhs_sel, double rhs_sel);
@@ -1952,7 +1951,7 @@ qo_iscan_cost (QO_PLAN * planp)
 	  /* check upper bound */
 	  sel = MIN (sel, 1.0);
 
-	  /* each term can have multi index column ex) (col1,col1) in ((1,1),..) */
+	  /* each term can have multi index column. e.g.) (a,b) in .. */
 	  for (int j = 0; j < index_entryp->col_num; j++)
 	    {
 	      if (BITSET_MEMBER (QO_TERM_SEGS (termp), index_entryp->seg_idxs[j]))
@@ -9288,7 +9287,6 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	case PC_SUBQUERY:
 	case PC_SET:
 	case PC_OTHER:
-	case PC_FUNC_SET:
 	  /* attr = const */
 
 	  /* check for index on the attribute.  NOTE: For an equality predicate, we treat subqueries as constants. */
@@ -9317,7 +9315,6 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
     case PC_SUBQUERY:
     case PC_SET:
     case PC_OTHER:
-    case PC_FUNC_SET:
 
       switch (pc_rhs)
 	{
@@ -9342,7 +9339,6 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	case PC_SUBQUERY:
 	case PC_SET:
 	case PC_OTHER:
-	case PC_FUNC_SET:
 	  /* const = const */
 
 	  selectivity = DEFAULT_EQUAL_SELECTIVITY;
@@ -9396,7 +9392,6 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	case PC_SUBQUERY:
 	case PC_SET:
 	case PC_OTHER:
-	case PC_FUNC_SET:
 	  /* (attr,attr) = const */
 
 	  multi_attr = lhs->info.function.arg_list;
@@ -9681,7 +9676,7 @@ qo_all_some_in_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 
   /* The only interesting cases are: attr IN set or (attr,attr) IN set or attr IN subquery */
   if ((pc_lhs == PC_MULTI_ATTR || pc_lhs == PC_ATTR)
-      && (pc_rhs == PC_SET || pc_rhs == PC_SUBQUERY || pc_rhs == PC_FUNC_SET))
+      && (pc_rhs == PC_SET || pc_rhs == PC_SUBQUERY))
     {
       if (pc_lhs == PC_MULTI_ATTR)
 	{
@@ -9719,11 +9714,14 @@ qo_all_some_in_selectivity (QO_ENV * env, PT_NODE * pt_expr)
       /* determine cardinality of set or subquery */
       if (pc_rhs == PC_SET)
 	{
-	  list_card = pt_length_of_list (pt_expr->info.expr.arg2->info.value.data_value.set);
-	}
-      else if (pc_rhs == PC_FUNC_SET)
-	{
-	  list_card = pt_length_of_list (pt_expr->info.expr.arg2->info.function.arg_list);
+	  if (pt_is_function (pt_expr->info.expr.arg2))
+	    {
+	      list_card = pt_length_of_list (pt_expr->info.expr.arg2->info.function.arg_list);
+	    }
+	  else
+	    {
+	      list_card = pt_length_of_list (pt_expr->info.expr.arg2->info.value.data_value.set);
+	    }
 	}
       else if (pc_rhs == PC_SUBQUERY)
 	{
@@ -9797,7 +9795,7 @@ qo_classify (PT_NODE * attr)
 		}
 	      else if (func_arg->node_type == PT_HOST_VAR)
 		{
-		  return PC_FUNC_SET;
+		  return PC_SET;
 		}
 	      else
 		{
