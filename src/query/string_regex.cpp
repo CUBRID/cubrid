@@ -167,7 +167,7 @@ namespace cubregex
 	*  It is hacky code finding collating element pattern and throw error.
 	*/
 	char *collate_elem_pattern = "[[.";
-	int found = pattern.find ( std::string (collate_elem_pattern));
+	int found = std::string (pattern).find (collate_elem_pattern);
 	if (found != std::string::npos)
 	  {
 	    throw std::regex_error (std::regex_constants::error_collate);
