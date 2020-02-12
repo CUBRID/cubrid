@@ -4444,18 +4444,18 @@ cleanup:
 	}
     }
 
-  if (comp_regex == NULL || comp_pattern == NULL)
+    if (comp_regex == NULL || comp_pattern == NULL)
     {
-      /* free memory if this function is invoked in constant folding */
+        /* free memory if this function is invoked in constant folding */
           // *INDENT-OFF*
         cubregex::clear (rx_compiled_regex, rx_compiled_pattern);
         // *INDENT-ON*
     }
-  else
+    else
     {
       /* pass compiled regex object and compiled pattern out to reuse them */
-      *comp_regex = rx_compiled_regex;
-      *comp_pattern = rx_compiled_pattern;
+        *comp_regex = rx_compiled_regex;
+        *comp_pattern = rx_compiled_pattern;
     }
 
   return error_status;
@@ -4714,18 +4714,18 @@ exit:
     }
 
   if (comp_regex == NULL || comp_pattern == NULL)
-    {
+  {
       /* free memory if this function is invoked in constant folding */
       // *INDENT-OFF*
       cubregex::clear (rx_compiled_regex, rx_compiled_pattern);
       // *INDENT-ON*
-    }
+  }
   else
-    {
-      /* pass compiled regex object and compiled pattern out to reuse them */
+  {
+    /* pass compiled regex object and compiled pattern out to reuse them */
       *comp_regex = rx_compiled_regex;
       *comp_pattern = rx_compiled_pattern;
-    }
+  }
 
   return error_status;
 }
