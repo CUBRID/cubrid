@@ -9675,8 +9675,7 @@ qo_all_some_in_selectivity (QO_ENV * env, PT_NODE * pt_expr)
   pc_rhs = qo_classify (pt_expr->info.expr.arg2);
 
   /* The only interesting cases are: attr IN set or (attr,attr) IN set or attr IN subquery */
-  if ((pc_lhs == PC_MULTI_ATTR || pc_lhs == PC_ATTR)
-      && (pc_rhs == PC_SET || pc_rhs == PC_SUBQUERY))
+  if ((pc_lhs == PC_MULTI_ATTR || pc_lhs == PC_ATTR) && (pc_rhs == PC_SET || pc_rhs == PC_SUBQUERY))
     {
       if (pc_lhs == PC_MULTI_ATTR)
 	{
