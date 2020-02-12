@@ -132,8 +132,6 @@ namespace cubregex
 
     if (pattern != NULL)
       {
-	//delete[] pattern;
-	//pattern = NULL;
 	db_private_free_and_init (NULL, pattern);
       }
   }
