@@ -323,8 +323,8 @@ STATIC_INLINE void log_prepare_transaction_complete (THREAD_ENTRY * thread_p, LO
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void log_complete_transaction_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool commmitted)
   __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE TRAN_STATE log_get_transaction_state_for_complete_logging (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
-__attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE TRAN_STATE log_get_transaction_state_for_complete_logging (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void log_complete_transaction_logging (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void log_complete_transaction (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_committed)
