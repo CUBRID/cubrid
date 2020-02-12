@@ -548,6 +548,8 @@ struct log_tdes
   log_postpone_cache m_log_postpone_cache;
 
   // *INDENT-OFF*
+
+  cubtx::complete_manager::id_type id_complete;
 #if defined (SERVER_MODE)
   cubreplication::source_copy_context *replication_copy_context;
 #endif

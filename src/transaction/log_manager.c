@@ -83,6 +83,7 @@
 #include "db_value_printer.hpp"
 #include "mem_block.hpp"
 #include "replication_stream_entry.hpp"
+#include "serial.h"
 #include "string_buffer.hpp"
 #include "boot_sr.h"
 #include "thread_daemon.hpp"
@@ -222,8 +223,7 @@ static void log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * td
 static void log_append_group_complete_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 						cubstream::stream_position stream_pos, tx_group & group,
 						LOG_LSA * commit_lsa, bool * has_postpone);
-static void log_change_tran_as_completed (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
-					  LOG_LSA * lsa);
+static void log_change_tran_as_completed (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool iscommitted);
 static void log_append_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
 static void log_append_commit_log_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
 static void log_append_abort_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * abort_lsa);
@@ -314,6 +314,21 @@ static void log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG
 				   int data_size, const char *data);
 
 static int logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, void *args);
+static void log_update_global_unique_statistics (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
+#if defined (SERVER_MODE)
+static void log_tran_update_serial_global_unique_stats (THREAD_ENTRY * thread_p);
+#endif
+
+STATIC_INLINE void log_prepare_transaction_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void log_complete_transaction_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool commmitted)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE TRAN_STATE log_get_transaction_state_for_complete_logging (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
+__attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void log_complete_transaction_logging (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void log_complete_transaction (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_committed)
+  __attribute__ ((ALWAYS_INLINE));
 
 #if defined(SERVER_MODE)
 // *INDENT-OFF*
@@ -2852,13 +2867,12 @@ log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DAT
 }
 
 void
-log_append_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa)
+log_append_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
-  assert (commit_lsa != NULL);
   LOG_PRIOR_NODE *node =
     prior_lsa_alloc_and_copy_data (thread_p, LOG_FINISH_POSTPONE, RV_NOT_DEFINED, NULL, 0, NULL, 0, NULL);
   LOG_LSA lsa = prior_lsa_next_record (thread_p, node, tdes);
-  LSA_COPY (commit_lsa, &lsa);
+  memcpy ((char *) &tdes->id_complete, (char *) &lsa, sizeof (long long));
 }
 
 /*
@@ -4471,6 +4485,7 @@ log_append_group_complete_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, cu
 {
   LOG_PRIOR_NODE *node;
   LOG_LSA lsa;
+  bool local_has_postpone = false;
 
   assert (complete_lsa != NULL);
   complete_lsa->pageid = NULL_LOG_PAGEID;
@@ -4495,10 +4510,7 @@ log_append_group_complete_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, cu
       if (ti.m_tran_state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
         {
 	  v.append (tdes->posp_nxlsa);
-          if (has_postpone)
-            {
-              *has_postpone = true;
-            }
+	  local_has_postpone = true;
         }
     }
   // *INDENT-ON*
@@ -4514,28 +4526,35 @@ log_append_group_complete_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, cu
   // be sure to set tdes->rcv.tran_start_postpone_lsa and do appends under prior_lock
   // to protect against inconsistent checkpoints
   log_Gl.prior_info.prior_lsa_mutex.lock ();
-  // *INDENT-OFF*
-  for (tx_group::node_info &ti : group.get_container ())
-    {
-      LOG_TDES *tdes = LOG_FIND_TDES (ti.m_tran_index);
-      assert (tdes != NULL);
-      if (LSA_ISNULL (&tdes->posp_nxlsa))
-	{
-	  // filter out transactions without postpone
-	  continue;
-	}
-
-      /* TODO - find a better solution. It is dangerous to set transaction state and
-       * LSA here. A simple solution may be to add a small delay at checkpoint.
-       */
-      tdes->state = ti.m_tran_state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
-      tdes->rcv.tran_start_postpone_lsa = tdes->tail_lsa;
-    }
-  // *INDENT-ON*
 
   lsa = prior_lsa_next_record_with_lock (thread_p, node, tdes);
+
+  if (local_has_postpone)
+    {
+      // *INDENT-OFF*
+      for (tx_group::node_info &ti : group.get_container ())
+	{
+	  LOG_TDES *tdes = LOG_FIND_TDES (ti.m_tran_index);
+	  assert (tdes != NULL);
+	  if (LSA_ISNULL (&tdes->posp_nxlsa))
+	    {
+	      // filter out transactions without postpone
+	      continue;
+	    }
+
+	  assert (ti.m_tran_state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE);
+	  tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
+	  tdes->rcv.tran_start_postpone_lsa = lsa;
+	}
+      // *INDENT-ON*
+    }
+
   log_Gl.prior_info.prior_lsa_mutex.unlock ();
 
+  if (has_postpone)
+    {
+      *has_postpone = local_has_postpone;
+    }
   LSA_COPY (complete_lsa, &lsa);
 }
 
@@ -4553,19 +4572,22 @@ log_append_group_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, cubstream::
  *
  *   tdes(in/out): State structure of transaction being committed/aborted.
  *   iscommitted(in): Is transaction been finished as committed ?
- *   lsa(in): commit lsa to flush logs
  *
  */
 static void
-log_change_tran_as_completed (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted, LOG_LSA * lsa)
+log_change_tran_as_completed (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool iscommitted)
 {
-  if (iscommitted == LOG_COMMIT)
+  if (iscommitted)
     {
+      LOG_LSA complete_lsa;
+      assert (tdes->id_complete != cubtx::complete_manager::NULL_ID);
+      memcpy ((char *) &complete_lsa, (char *) &tdes->id_complete, sizeof (long long));
+
       tdes->state = TRAN_UNACTIVE_COMMITTED;
 
       log_Stat.commit_count++;
 
-      logpb_flush_pages (thread_p, lsa);
+      logpb_flush_pages (thread_p, &complete_lsa);
     }
   else
     {
@@ -4581,7 +4603,7 @@ log_change_tran_as_completed (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECT
       (void) ctime_r (&xxtime, time_val);
       fprintf (stdout,
 	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG,
-			       ((iscommitted == LOG_COMMIT) ? MSGCAT_LOG_FINISH_COMMIT : MSGCAT_LOG_FINISH_ABORT)),
+			       ((iscommitted == true) ? MSGCAT_LOG_FINISH_COMMIT : MSGCAT_LOG_FINISH_ABORT)),
 	       tdes->tran_index, tdes->trid, log_Gl.hdr.append_lsa.pageid, log_Gl.hdr.append_lsa.offset, time_val);
       fflush (stdout);
     }
@@ -4753,6 +4775,150 @@ log_cleanup_modified_class_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_L
 }
 
 /*
+ * log_prepare_transaction_complete - prepare transaction complete
+ *
+ * return: nothing
+ *
+ *   thread_p(in): thread entry
+ *   tdes(in): transaction descriptor
+ */
+STATIC_INLINE void
+log_prepare_transaction_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+{
+  /* TODO - This method must be updated when activate new group complete.
+   * Currently, initialize id_complete with prior_lsa. The purpose is to have not null LSA,
+   * which means completing transaction starts.
+   */
+  assert (tdes->id_complete == cubtx::complete_manager::NULL_ID);
+  assert (sizeof (cubtx::complete_manager::id_type) == sizeof (LOG_LSA));
+  memcpy ((char *) &tdes->id_complete, (char *) &log_Gl.prior_info.prior_lsa, sizeof (LOG_LSA));
+}
+
+/*
+ * log_complete_transaction_mvcc - complete transaction MVCC
+ *
+ * return: nothing
+ *
+ *   thread_p(in): thread entry
+ *   tdes(in): transaction descriptor
+ *   committed(in): true, if transaction is commmitted.
+ */
+STATIC_INLINE void
+log_complete_transaction_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
+{
+  /* TODO - this function must be updated when activate new group complete. */
+
+  if (tdes->id_complete == cubtx::complete_manager::NULL_ID)
+    {
+      log_prepare_transaction_complete (thread_p, tdes);
+    }
+
+  assert (tdes->id_complete != cubtx::complete_manager::NULL_ID);
+  logtb_complete_mvcc (thread_p, tdes, committed);
+}
+
+/*
+ * log_get_transaction_state_for_complete_logging - get transaction state for complete logging
+ *
+ * return: transaction state used in complete logging
+ *
+ *   thread_p(in): thread entry
+ *   tdes(in): transaction descriptor
+ *
+ * NOTE: This function must be called when add complete logging. The current transaction state
+ *  can't be TRAN_UNACTIVE_COMMITTED, since it means that transaction already finalized and
+ *  there is nothing to log. In case of any abort state, we are logging TRAN_UNACTIVE_ABORTED.
+ */
+STATIC_INLINE TRAN_STATE
+log_get_transaction_state_for_complete_logging (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+{
+  assert (tdes != NULL);
+  assert (tdes->state == TRAN_UNACTIVE_WILL_COMMIT
+	  || TRAN_UNACTIVE_ABORTED || tdes->state == TRAN_UNACTIVE_UNILATERALLY_ABORTED);
+
+  if (tdes->state == TRAN_UNACTIVE_WILL_COMMIT)
+    {
+      if (LSA_ISNULL (&tdes->posp_nxlsa))
+	{
+	  return TRAN_UNACTIVE_WILL_COMMIT;
+	}
+      else
+	{
+	  return TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
+	}
+    }
+  else
+    {
+      return TRAN_UNACTIVE_ABORTED;
+    }
+}
+
+/*
+ * log_complete_transaction_logging - complete transaction logging
+ *
+ * return: nothing
+ *
+ *   thread_p(in): thread entry
+ *   tdes(in): transaction descriptor
+ */
+STATIC_INLINE void
+log_complete_transaction_logging (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+{
+  tx_group group;
+  LOG_LSA complete_lsa;
+  TRAN_STATE tran_state_for_complete_logging;
+
+  /* TODO - this function must be updated when activate new group complete. */
+
+  if (tdes->id_complete == cubtx::complete_manager::NULL_ID)
+    {
+      log_prepare_transaction_complete (thread_p, tdes);
+    }
+
+  assert (tdes->id_complete != cubtx::complete_manager::NULL_ID);
+
+  tran_state_for_complete_logging = log_get_transaction_state_for_complete_logging (thread_p, tdes);
+
+  group.add (tdes->tran_index, 0, tran_state_for_complete_logging);
+
+  log_append_group_complete (thread_p, tdes, tdes->get_replication_generator ().get_last_end_position (), group,
+			     &complete_lsa, NULL);
+
+  if (tran_state_for_complete_logging != TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
+    {
+      /* The caller must wait for flushing up to complete_lsa. */
+      memcpy ((char *) &tdes->id_complete, (char *) &complete_lsa, sizeof (long long));
+    }
+  else
+    {
+      /* The caller must add finish postpone log record. */
+      assert (tdes->topops.last < 0);
+
+      logpb_flush_pages (thread_p, &complete_lsa);
+    }
+}
+
+/*
+ * log_complete_transaction - complete transaction
+ *
+ * return: nothing
+ *
+ *   thread_p(in): thread entry
+ *   tdes(in): transaction descriptor
+ *  Note: This function must be called after MVCCID completion or/and logging completion.
+ */
+STATIC_INLINE void
+log_complete_transaction (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_committed)
+{
+  /* TODO - this function must be updated when activate new group complete */
+  /* Since we are here, previously a complete MVCC or/and complete logging was already
+   * called. So, we expect not null id_complete.
+   */
+  assert (tdes->id_complete != cubtx::complete_manager::NULL_ID);
+  log_change_tran_as_completed (thread_p, tdes, is_committed);
+}
+
+/*
  * log_commit_local - Perform the local commit operations of a transaction
  *
  * return: state of commit operation
@@ -4771,9 +4937,6 @@ log_cleanup_modified_class_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_L
 TRAN_STATE
 log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bool is_local_tran)
 {
-#if 0
-  cubtx::complete_manager::id_type id = 0xFFFFFFFFFFFFFFFFUL;
-#endif
   qmgr_clear_trans_wakeup (thread_p, tdes->tran_index, false, false);
 
   /* tx_lob_locator_clear and logtb_complete_mvcc operations must be done before entering unactive state because
@@ -4790,11 +4953,12 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
    * statistics for all B-trees and if an error occurs those operations and all operations of current transaction must
    * be rolled back. */
 
-  /* TODO - remove complete MVCC. The GC thread will complete MVCC. */
-  logtb_complete_mvcc (thread_p, tdes, true);
+  /* Update global unique statistics, before completion. */
+  log_update_global_unique_statistics (thread_p, tdes);
 
   // todo: do we really need this? Investigate removing this state assignment
   tdes->state = TRAN_UNACTIVE_WILL_COMMIT;
+
   /* undo_nxlsa is no longer required here and must be reset, in case checkpoint takes a snapshot of this transaction
    * during TRAN_UNACTIVE_WILL_COMMIT phase.
    */
@@ -4811,24 +4975,12 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 
       tdes->get_replication_generator ().on_transaction_commit ();
 
+      log_complete_transaction_mvcc (thread_p, tdes, true);
+
       if (!LSA_ISNULL (&tdes->posp_nxlsa))
 	{
-#if 0
-	  /* TODO  - Activate the following code after stabilizing it. */
-	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
-	    {
-	      /* Need to finish transaction befor waiting for log. */
-	      tdes->get_replication_generator ().on_transaction_commit ();
-	      id = log_Gl.m_tran_complete_mgr->register_transaction (tdes->tran_index, tdes->mvccinfo.id, tdes->state);
-	      /* Wait for postpone logging, before running postpone. */
-	      log_Gl.m_tran_complete_mgr->wait_for_logging (id);
-	      log_do_postpone (thread_p, tdes, &tdes->posp_nxlsa);
-	    }
-	  else
-#endif
-	    {
-	      log_tran_do_postpone (thread_p, tdes);
-	    }
+	  log_complete_transaction_logging (thread_p, tdes);
+	  log_tran_do_postpone (thread_p, tdes);
 	}
 
       /* The files created by this transaction are not new files any longer. Close any query cursors at this moment
@@ -4843,56 +4995,23 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 
       if (is_local_tran)
 	{
-	  LOG_LSA commit_lsa;
-
 	  if (LSA_ISNULL (&tdes->posp_nxlsa))
 	    {
-	      tx_group group;
-	      group.add (tdes->tran_index, 0, tdes->state);
-	      // todo: fix log end stream position when slave
-	      log_append_group_complete (thread_p, tdes, tdes->get_replication_generator ().get_last_end_position (),
-					 group, &commit_lsa, NULL);
+	      log_complete_transaction_logging (thread_p, tdes);
 	    }
 	  else
 	    {
 	      // append finish_postpone only if gc with postpone was appended
-	      log_append_finish_postpone (thread_p, tdes, &commit_lsa);
+	      log_append_finish_postpone (thread_p, tdes);
 	    }
 
-#if 0
-	  /* TODO  - Activate the following code and rewrite all cases with group complete. */
-	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
+	  if (retain_lock != true)
 	    {
-	      /* Register transaction after on_transaction_commit call. */
-	      if (id == 0xFFFFFFFFFFFFFFFFUL)
-		{
-		  /* TODO - consider wakeup GC thread if this is the first transaction in group */
-		  id =
-		    log_Gl.m_tran_complete_mgr->register_transaction (tdes->tran_index, tdes->mvccinfo.id, tdes->state);
-		}
-
-	      if (retain_lock != true)
-		{
-		  /* For consistency, we must complete MVCCID before unlock. Maybe we will consider atomicity here. */
-		  log_Gl.m_tran_complete_mgr->wait_for_complete_mvcc (id);
-		  /* Release the lock since MVCC is completed. */
-		  lock_unlock_all (thread_p);
-		}
-
-	      /* Wait for commit. */
-	      log_Gl.m_tran_complete_mgr->wait_for_complete (id);
+	      lock_unlock_all (thread_p);
 	    }
-	  else
-#endif
-	    {
-	      if (retain_lock != true)
-		{
-		  lock_unlock_all (thread_p);
-		}
 
-	      /* Flush commit log and change the transaction state. */
-	      log_change_tran_as_completed (thread_p, tdes, LOG_COMMIT, &commit_lsa);
-	    }
+	  /* Flush commit log and change the transaction state. */
+	  log_complete_transaction (thread_p, tdes, true);
 	}
       else
 	{
@@ -4901,6 +5020,11 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
     }
   else
     {
+      /* No statistics to update. */
+      assert (tdes->log_upd_stats.unique_stats_hash->nentries == 0);
+
+      log_complete_transaction_mvcc (thread_p, tdes, true);
+
       /*
        * Transaction did not update anything or we are not logging
        */
@@ -4941,9 +5065,6 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 TRAN_STATE
 log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran)
 {
-#if 0
-  cubtx::complete_manager::id_type id;
-#endif
   qmgr_clear_trans_wakeup (thread_p, tdes->tran_index, false, true);
 
   tdes->state = TRAN_UNACTIVE_ABORTED;
@@ -4969,28 +5090,13 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran)
 	  tdes->first_save_entry = NULL;
 	}
 
-#if 0
-      /* TODO  - Activate the following code and rewrite all cases with group complete. */
-      if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
-	{
-	  assert (MVCCID_IS_VALID (tdes->mvccinfo.id));
-	  /* Need to finish transaction befor waiting for log. */
-	  tdes->get_replication_generator ().on_transaction_abort ();
-	  id = log_Gl.m_tran_complete_mgr->register_transaction (tdes->tran_index, tdes->mvccinfo.id, tdes->state);
-	  /* For consistency, we must complete MVCCID before unlock. Maybe we will consider atomicity here. */
-	  log_Gl.m_tran_complete_mgr->wait_for_complete_mvcc (id);
-	  /* Release the lock since MVCC is completed. */
-	  lock_unlock_all (thread_p);
-	}
-      else
-#endif
-	{
-	  /* clear mvccid before releasing the locks */
-	  logtb_complete_mvcc (thread_p, tdes, false);
+      tdes->get_replication_generator ().on_transaction_abort ();
 
-	  /* It is safe to release locks here, since we already completed abort. */
-	  lock_unlock_all (thread_p);
-	}
+      log_complete_transaction_mvcc (thread_p, tdes, false);
+
+      /* It is safe to release locks here, since we already completed abort. */
+      lock_unlock_all (thread_p);
+
     }
   else
     {
@@ -5004,8 +5110,7 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran)
 	  tdes->first_save_entry = NULL;
 	}
 
-      /* clear mvccid before releasing the locks */
-      logtb_complete_mvcc (thread_p, tdes, false);
+      log_complete_transaction_mvcc (thread_p, tdes, false);
 
       lock_unlock_all (thread_p);
 
@@ -5013,9 +5118,6 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran)
     }
 
   tx_lob_locator_clear (thread_p, tdes, false, NULL);
-
-  /* TODO - remove the next call */
-  tdes->get_replication_generator ().on_transaction_abort ();
 
   return tdes->state;
 }
@@ -5107,7 +5209,7 @@ log_commit (THREAD_ENTRY * thread_p, int tran_index, bool retain_lock)
        * This is a local transaction or is a participant of a distributed transaction
        */
       state = log_commit_local (thread_p, tdes, retain_lock, true);
-      state = log_complete (thread_p, tdes, LOG_COMMIT, LOG_NEED_NEWTRID, LOG_ALREADY_WROTE_EOT_LOG);
+      state = log_complete (thread_p, tdes, true, LOG_NEED_NEWTRID, LOG_ALREADY_WROTE_EOT_LOG);
     }
 
   if (log_No_logging)
@@ -5220,7 +5322,7 @@ log_abort (THREAD_ENTRY * thread_p, int tran_index)
        * Perform the server rollback first.
        */
       state = log_abort_local (thread_p, tdes, true);
-      state = log_complete (thread_p, tdes, LOG_ABORT, LOG_NEED_NEWTRID, LOG_NEED_TO_WRITE_EOT_LOG);
+      state = log_complete (thread_p, tdes, false, LOG_NEED_NEWTRID, LOG_NEED_TO_WRITE_EOT_LOG);
     }
 
   perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_ROLLBACKS);
@@ -5341,12 +5443,11 @@ log_abort_partial (THREAD_ENTRY * thread_p, const char *savepoint_name, LOG_LSA 
  *       Find the existing function as log_complete_for_2pc
  */
 TRAN_STATE
-log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted, LOG_GETNEWTRID get_newtrid,
+log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool iscommitted, LOG_GETNEWTRID get_newtrid,
 	      LOG_WRITE_EOT_LOG wrote_eot_log)
 {
   TRAN_STATE state;		/* State of transaction */
 
-  assert (iscommitted == LOG_COMMIT || iscommitted == LOG_ABORT);
   assert (!tdes->is_system_worker_transaction ());
 
   state = tdes->state;
@@ -5358,7 +5459,7 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
   if (LSA_ISNULL (&tdes->tail_lsa))
     {
       /* Transaction did not update any data, thus we do not need to log a commit/abort log record. */
-      if (iscommitted == LOG_COMMIT)
+      if (iscommitted)
 	{
 	  state = TRAN_UNACTIVE_COMMITTED;
 	}
@@ -5377,44 +5478,22 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
       if (wrote_eot_log == LOG_NEED_TO_WRITE_EOT_LOG)
 	{
 	  // take care of calls that want to append commit only after commit_with_postpone
-	  if (iscommitted == LOG_COMMIT)
+	  if (LSA_ISNULL (&tdes->posp_nxlsa) || iscommitted == false)
 	    {
-	      LOG_LSA commit_lsa;
-
-	      if (!LSA_ISNULL (&tdes->posp_nxlsa))
-		{
-		  log_append_finish_postpone (thread_p, tdes, &commit_lsa);
-		}
-	      else
-		{
-		  tx_group group;
-		  group.add (tdes->tran_index, 0, TRAN_UNACTIVE_COMMITTED);
-		  log_append_group_complete (thread_p, tdes, 0, group, &commit_lsa, NULL);
-		}
-
-	      log_change_tran_as_completed (thread_p, tdes, LOG_COMMIT, &commit_lsa);
+	      log_complete_transaction_logging (thread_p, tdes);
 	    }
 	  else
 	    {
-	      LOG_LSA abort_lsa;
-
-	      tx_group group;
-	      group.add (tdes->tran_index, 0, TRAN_UNACTIVE_ABORTED);
-	      log_append_group_complete (thread_p, tdes, 0, group, &abort_lsa, NULL);
-
-	      log_change_tran_as_completed (thread_p, tdes, LOG_ABORT, &abort_lsa);
+	      log_append_finish_postpone (thread_p, tdes);
 	    }
 
-#if 0
-	  /* Wait for commmit. */
-	  log_Gl.m_tran_complete_mgr->wait_for_complete (id);
-#endif
+	  log_complete_transaction (thread_p, tdes, iscommitted);
 
 	  state = tdes->state;
 	}
       else
 	{
-	  assert (iscommitted == LOG_COMMIT && state == TRAN_UNACTIVE_COMMITTED);
+	  assert (iscommitted && state == TRAN_UNACTIVE_COMMITTED);
 	}
 
       /* Unblock global oldest active update. */
@@ -5425,7 +5504,7 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
 	  assert (vacuum_Global_oldest_visible_blockers_counter >= 0);
 	}
 
-      if (iscommitted == LOG_COMMIT)
+      if (iscommitted)
 	{
 	  log_Gl.mvcc_table.reset_transaction_lowest_active (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 	}
@@ -5674,32 +5753,8 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
       /*
        * Transaction updated data or this is a coordinator
        */
-      if (iscommitted == LOG_COMMIT)
-	{
-	  LOG_LSA commit_lsa;
-
-	  /* To write unlock log before releasing locks for transactional consistencies. When a transaction(T2) which
-	   * is resumed by this committing transaction(T1) commits and a crash happens before T1 completes, transaction
-	   * * consistencies will be broken because T1 will be aborted during restart recovery and T2 was already
-	   * committed. */
-	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
-	    {
-	      log_append_repl_info_and_commit_log (thread_p, tdes, &commit_lsa);
-	    }
-	  else
-	    {
-	      log_append_commit_log (thread_p, tdes, &commit_lsa);
-	    }
-
-	  log_change_tran_as_completed (thread_p, tdes, LOG_COMMIT, &commit_lsa);
-	}
-      else
-	{
-	  LOG_LSA abort_lsa;
-
-	  log_append_abort_log (thread_p, tdes, &abort_lsa);
-	  log_change_tran_as_completed (thread_p, tdes, LOG_ABORT, &abort_lsa);
-	}
+      log_complete_transaction_logging (thread_p, tdes);
+      log_complete_transaction (thread_p, tdes, iscommitted);
 
       state = tdes->state;
 
@@ -7890,24 +7945,7 @@ log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * sta
 static void
 log_tran_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
-  if (LSA_ISNULL (&tdes->posp_nxlsa))
-    {
-      return;
-    }
-
-  LOG_LSA commit_lsa;
-
-  assert (tdes->topops.last < 0);
-
-  tx_group group;
-  group.add (tdes->tran_index, 0, TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE);
-
-  log_append_group_complete (thread_p, tdes, tdes->get_replication_generator ().get_last_end_position (), group,
-			     &commit_lsa, NULL);
-
-  logpb_flush_pages (thread_p, &commit_lsa);
-
-  log_append_commit_postpone (thread_p, tdes, &tdes->posp_nxlsa);
+  assert (!LSA_ISNULL (&tdes->posp_nxlsa));
 
   if (tdes->m_log_postpone_cache.do_postpone (*thread_p, tdes->posp_nxlsa))
     {
@@ -10282,6 +10320,91 @@ logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, vo
 
   return error_code;
 }
+
+/*
+* log_update_global_unique_statistics () - Called at commit, updates global unique
+*			     statistics for current transaction.
+*
+* return	  : Nothing.
+* thread_p (in)  : Thread entry.
+* tdes (in)	  : Transaction descriptor.
+*/
+static void
+log_update_global_unique_statistics (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+{
+  assert (tdes != NULL);
+
+  if (tdes->log_upd_stats.unique_stats_hash->nentries == 0)
+    {
+      /* Nothing to update. */
+      return;
+    }
+
+  if (MVCCID_IS_VALID (tdes->mvccinfo.id))
+    {
+      if (logtb_tran_update_all_global_unique_stats (thread_get_thread_entry_info ()) != NO_ERROR)
+	{
+	  assert (false);
+	}
+    }
+  else
+    {
+#if defined(SA_MODE)
+      if (logtb_tran_update_all_global_unique_stats (thread_get_thread_entry_info ()) != NO_ERROR)
+	{
+	  assert (false);
+	}
+#else	/* !SA_MODE */	       /* SERVER_MODE */
+      log_tran_update_serial_global_unique_stats (thread_p);
+#endif /* SERVER_MODE */
+    }
+}
+
+#if defined (SERVER_MODE)
+/*
+* log_tran_update_serial_global_unique_stats () - update serial global unique statistics
+*
+*
+* return	    : error code or NO_ERROR
+* thread_p(in)	    : thread entry
+*
+* Note: this function must be called at the end of transaction (commit)
+*/
+static void
+log_tran_update_serial_global_unique_stats (THREAD_ENTRY * thread_p)
+{
+  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+  int error_code = NO_ERROR;
+  BTID serial_index_btid = BTID_INITIALIZER;
+  LOG_TRAN_BTID_UNIQUE_STATS *serial_unique_stats = NULL;
+
+  assert (tdes != NULL);
+
+  /* There is one unique index that can be modified with no MVCCID being generated: db_serial primary key. This
+   * could happen in a transaction that only does a create serial and commits. Next code makes sure serial
+   * index statistics are reflected. */
+
+  /* Get serial index BTID. */
+  serial_get_index_btid (&serial_index_btid);
+  assert (!BTID_IS_NULL (&serial_index_btid));
+
+  /* Get statistics for serial unique index. */
+  serial_unique_stats = logtb_tran_find_btid_stats (thread_p, &serial_index_btid, false);
+  if (serial_unique_stats != NULL)
+    {
+      /* Reflect serial unique statistics. */
+      if (logtb_update_global_unique_stats_by_delta (thread_p, &serial_index_btid,
+						     serial_unique_stats->tran_stats.num_oids,
+						     serial_unique_stats->tran_stats.num_nulls,
+						     serial_unique_stats->tran_stats.num_keys, true) != NO_ERROR)
+	{
+	  /* No errors are permitted here. */
+	  assert (false);
+	  /* Fall through to do everything we would do in case of no error. */
+	}
+    }
+}
+#endif
 
 //
 // log critical section

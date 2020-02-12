@@ -4358,9 +4358,8 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 
       if (tdes->coord == NULL)
 	{
-	  LOG_LSA finish_lsa;
 	  assert (!LSA_ISNULL (&tdes->posp_nxlsa));
-	  log_append_finish_postpone (thread_p, tdes, &finish_lsa);
+	  (void) log_complete (thread_p, tdes, true, LOG_DONT_NEED_NEWTRID, LOG_NEED_TO_WRITE_EOT_LOG);
 	  logtb_free_tran_index (thread_p, tdes->tran_index);
 	}
     }
@@ -4369,7 +4368,7 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       if (tdes->coord == NULL)
 	{
 	  // add 1-tran gc without postpone
-	  (void) log_complete (thread_p, tdes, LOG_COMMIT, LOG_DONT_NEED_NEWTRID, LOG_NEED_TO_WRITE_EOT_LOG);
+	  (void) log_complete (thread_p, tdes, true, LOG_DONT_NEED_NEWTRID, LOG_ALREADY_WROTE_EOT_LOG);
 	  logtb_free_tran_index (thread_p, tdes->tran_index);
 	}
     }
@@ -4605,7 +4604,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 	  && LSA_ISNULL (&tdes->undo_nxlsa))
 	{
 	  // todo: also take into account mccids set during redo
-	  (void) log_complete (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID, LOG_NEED_TO_WRITE_EOT_LOG);
+	  (void) log_complete (thread_p, tdes, false, LOG_DONT_NEED_NEWTRID, LOG_NEED_TO_WRITE_EOT_LOG);
 	  logtb_free_tran_index (thread_p, tran_index);
 	}
     }
@@ -4963,7 +4962,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		    }
 		  else
 		    {
-		      (void) log_complete (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID, LOG_NEED_TO_WRITE_EOT_LOG);
+		      (void) log_complete (thread_p, tdes, false, LOG_DONT_NEED_NEWTRID, LOG_NEED_TO_WRITE_EOT_LOG);
 		      logtb_free_tran_index (thread_p, tran_index);
 		    }
 		  tdes = NULL;
@@ -4998,7 +4997,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		    }
 		  else
 		    {
-		      (void) log_complete (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID, LOG_NEED_TO_WRITE_EOT_LOG);
+		      (void) log_complete (thread_p, tdes, false, LOG_DONT_NEED_NEWTRID, LOG_NEED_TO_WRITE_EOT_LOG);
 		      logtb_free_tran_index (thread_p, tran_index);
 		    }
 		  tdes = NULL;
@@ -5022,8 +5021,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 			}
 		      else
 			{
-			  (void) log_complete (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID,
-					       LOG_NEED_TO_WRITE_EOT_LOG);
+			  (void) log_complete (thread_p, tdes, false, LOG_DONT_NEED_NEWTRID, LOG_NEED_TO_WRITE_EOT_LOG);
 			  logtb_free_tran_index (thread_p, tran_index);
 			  tdes = NULL;
 			}

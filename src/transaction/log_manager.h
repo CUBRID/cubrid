@@ -149,7 +149,7 @@ extern TRAN_STATE log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, boo
 extern TRAN_STATE log_commit (THREAD_ENTRY * thread_p, int tran_index, bool retain_lock);
 extern TRAN_STATE log_abort (THREAD_ENTRY * thread_p, int tran_index);
 extern TRAN_STATE log_abort_partial (THREAD_ENTRY * thread_p, const char *savepoint_name, LOG_LSA * savept_lsa);
-extern TRAN_STATE log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
+extern TRAN_STATE log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool iscommitted,
 				LOG_GETNEWTRID get_newtrid, LOG_WRITE_EOT_LOG wrote_eot_log);
 extern TRAN_STATE log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
 					LOG_GETNEWTRID get_newtrid);
@@ -171,7 +171,7 @@ extern void log_simulate_crash (THREAD_ENTRY * thread_p, int flush_log, int flus
 #endif
 extern void log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
 				     const VPID * rcv_vpid, int length, const void *data, const LOG_LSA * ref_lsa);
-extern void log_append_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
+extern void log_append_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 extern int log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postpone_lsa,
 				    LOG_TOPOP_RANGE ** out_nxtop_range_stack);
 extern void log_append_repl_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_commit);

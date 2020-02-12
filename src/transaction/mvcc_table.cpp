@@ -461,12 +461,6 @@ mvcctable::complete_mvcc (int tran_index, MVCCID mvccid, bool committed)
   size_t next_index;
   mvcc_trans_status &next_status = next_trans_status_start (next_version, next_index);
 
-  // todo - until we activate count optimization (if ever), should we move this outside mutex?
-  if (committed && logtb_tran_update_all_global_unique_stats (thread_get_thread_entry_info ()) != NO_ERROR)
-    {
-      assert (false);
-    }
-
   // update current trans status
   m_current_trans_status.m_active_mvccs.set_inactive_mvccid (mvccid);
   m_current_trans_status.m_last_completed_mvccid = mvccid;
