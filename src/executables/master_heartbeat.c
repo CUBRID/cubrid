@@ -187,7 +187,7 @@ static void hb_remove_all_procs (HB_PROC_ENTRY * first);
 static HB_PROC_ENTRY *hb_return_proc_by_args (char *args);
 static HB_PROC_ENTRY *hb_return_proc_by_pid (int pid);
 static HB_PROC_ENTRY *hb_return_proc_by_fd (int sfd);
-static void hb_proc_make_arg (char **arg, char *args);
+static void hb_proc_make_arg (char **arg, char *argv);
 static HB_JOB_ARG *hb_deregister_process (HB_PROC_ENTRY * proc);
 #if defined (ENABLE_UNUSED_FUNCTION)
 static void hb_deregister_nodes (char *node_to_dereg);
@@ -2731,7 +2731,7 @@ hb_resource_job_proc_start (HB_JOB_ARG * arg)
   struct timeval now;
   HB_PROC_ENTRY *proc;
   HB_RESOURCE_JOB_ARG *proc_arg = (arg) ? &(arg->resource_job_arg) : NULL;
-  char *argv[HB_MAX_NUM_PROC_ARGV] = { NULL, }, *args;
+  char *argv[HB_MAX_NUM_PROC_ARGV] = { NULL, };
 
   if (arg == NULL || proc_arg == NULL)
     {
@@ -2786,8 +2786,7 @@ hb_resource_job_proc_start (HB_JOB_ARG * arg)
   snprintf (error_string, LINE_MAX, "(args:%s)", proc->args);
   MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2, "Restart the process", error_string);
 
-  args = strdup (proc->args);
-  hb_proc_make_arg (argv, args);
+  hb_proc_make_arg (argv, (char *) proc->argv);
 
   pid = fork ();
   if (pid < 0)
@@ -2802,9 +2801,6 @@ hb_resource_job_proc_start (HB_JOB_ARG * arg)
 	  assert (false);
 	  free_and_init (arg);
 	}
-
-      free (args);
-
       return;
     }
   else if (pid == 0)
@@ -2830,8 +2826,6 @@ hb_resource_job_proc_start (HB_JOB_ARG * arg)
       proc->pid = pid;
       proc->state = HB_PSTATE_STARTED;
       gettimeofday (&proc->stime, NULL);
-
-      free (args);
     }
 
   pthread_mutex_unlock (&hb_Resource->lock);
@@ -3709,18 +3703,19 @@ hb_return_proc_by_fd (int sfd)
  *   argv(in):
  */
 static void
-hb_proc_make_arg (char **arg, char *args)
+hb_proc_make_arg (char **arg, char *argv)
 {
-  char *tok, *save;
+  int i;
 
-  tok = strtok_r (args, " \t\n", &save);
-
-  while (tok)
+  for (i = 0; i < HB_MAX_NUM_PROC_ARGV; i++, arg++, argv += HB_MAX_SZ_PROC_ARGV)
     {
-      (*arg++) = tok;
-      tok = strtok_r (NULL, " \t\n", &save);
-    }
+      if ((*argv == 0))
+	{
+	  break;
+	}
 
+      (*arg) = argv;
+    }
   return;
 }
 
@@ -3961,6 +3956,7 @@ hb_register_new_process (CSS_CONN_ENTRY * conn)
 	    }
 	  memcpy ((void *) &proc->exec_path[0], (void *) &hbp_proc_register->exec_path[0], sizeof (proc->exec_path));
 	  memcpy ((void *) &proc->args[0], (void *) &hbp_proc_register->args[0], sizeof (proc->args));
+	  memcpy ((void *) &proc->argv[0], (void *) &hbp_proc_register->argv[0], sizeof (proc->argv));
 	  hb_Resource->num_procs++;
 	}
 

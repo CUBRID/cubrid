@@ -281,6 +281,7 @@ struct HB_PROC_ENTRY
   int pid;
   char exec_path[HB_MAX_SZ_PROC_EXEC_PATH];
   char args[HB_MAX_SZ_PROC_ARGS];
+  char argv[HB_MAX_NUM_PROC_ARGV][HB_MAX_SZ_PROC_ARGV];
 
   struct timeval frtime;	/* first registered time */
   struct timeval rtime;		/* registerd time */
