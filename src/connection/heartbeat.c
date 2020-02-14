@@ -288,7 +288,6 @@ hb_make_set_hbp_register (int type)
 {
   HBP_PROC_REGISTER *hbp_register;
   char *p, *last;
-  int argc;
   char **argv;
 
   hbp_register = (HBP_PROC_REGISTER *) malloc (sizeof (HBP_PROC_REGISTER));
@@ -305,10 +304,9 @@ hb_make_set_hbp_register (int type)
 
   p = (char *) &hbp_register->args[0];
   last = (char *) (p + sizeof (hbp_register->args));
-  for (argc = 0, argv = hb_Argv; *argv && argc < HB_MAX_NUM_PROC_ARGV; argc++, argv++)
+  for (argv = hb_Argv; *argv; argv++)
     {
       p += snprintf (p, MAX ((last - p), 0), "%s ", *argv);
-      strncpy ((char *) hbp_register->argv[argc], *argv, (HB_MAX_SZ_PROC_ARGV - 1));
     }
 
   return (hbp_register);
