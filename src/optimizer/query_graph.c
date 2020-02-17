@@ -2149,18 +2149,13 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	      switch (op_type)
 		{
 		case PT_EQ:
-		  if (!PT_IS_CONST (rhs_expr))
+		  if (!PT_IS_CONST (rhs_expr) || !QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP))
 		    {
 		      lhs_indexable = false;
-		      break;
 		    }
-		  /* FALLTHRU */
+		  break;
 		case PT_RANGE:
-		  if (QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP))
-		    {
-		      lhs_indexable = true;
-		    }
-		  else
+		  if (!QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP))
 		    {
 		      lhs_indexable = false;
 		    }
@@ -2199,9 +2194,9 @@ qo_analyze_term (QO_TERM * term, int term_type)
 			}
 		      segs++;
 		    }
-		  if (lhs_indexable && is_find_local_name)
+		  if (!is_find_local_name)
 		    {
-		      lhs_indexable = true;
+		      lhs_indexable = false;
 		    }
 		}
 	      if (lhs_indexable)
@@ -2211,7 +2206,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
 		  QO_TERM_MULTI_COL_CNT (term) = segs;
 		  QO_TERM_MULTI_COL_SEGS (term) = (int *) malloc (sizeof (int) * segs);
 
-		  /* set multi col segs ex) (b,a,c) in .. multi_col_segs[0] = b's segnum, [1] = a .. */
+		  /* set multi col segs e.g.) (b,a,c) in .. multi_col_segs[0] = b's segnum, [1] = a .. */
 		  func_arg = lhs_expr->info.function.arg_list;
 		  for (j = 0; func_arg; func_arg = func_arg->next)
 		    {

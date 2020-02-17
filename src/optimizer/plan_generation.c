@@ -2822,7 +2822,6 @@ qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
 	  /* case of multi column term */
 	  /* not need can_use_index's iteration because multi col term having other node's segments isn't indexable */
 	  /* ex) (a.col1,a.col2) in ((a.col1,b.col2)) is not indexable */
-	  pos = -1;
 	  for (i = 0; i < termp->multi_col_cnt; i++)
 	    {
 	      pos = -1;
