@@ -2139,8 +2139,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
 		  lhs_indexable = true;
 		}
 	    }
-	  else if (PT_IS_FUNCTION (lhs_expr) && PT_IS_SET_TYPE (lhs_expr)
-		   && lhs_expr->info.function.function_type == F_SEQUENCE)
+	  else if (pt_is_multi_col_term (lhs_expr))
 	    {
 	      /* multi column case (attr,attr,...) is indexable for RANGE, EQ operation */
 	      func_arg = lhs_expr->info.function.arg_list;

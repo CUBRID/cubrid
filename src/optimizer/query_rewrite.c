@@ -4675,8 +4675,7 @@ qo_convert_to_range (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 
 	  is_attr = true;
 	  is_all_constant = true;
-	  if (PT_IS_FUNCTION (arg1_prior) && PT_IS_SET_TYPE (arg1_prior)
-	      && arg1_prior->info.function.function_type == F_SEQUENCE)
+	  if (pt_is_multi_col_term (arg1_prior))
 	    {
 	      /* multi_col_term can convert to range if arg1 is (attr,func_idx_expr,constant) */
 	      func_arg = arg1_prior->info.function.arg_list;
