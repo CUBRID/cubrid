@@ -164,7 +164,7 @@ namespace cubregex
     int error_status = NO_ERROR;
 
     std::wstring pattern_wstring;
-    if (cublocale::convert_to_wstring (pattern_wstring, std::string(pattern), collation->codeset) == false)
+    if (cublocale::convert_to_wstring (pattern_wstring, std::string (pattern), collation->codeset) == false)
       {
 	return error_status;
       }
@@ -308,7 +308,7 @@ namespace cubregex
 		/* last matched result */
 		if (reg_iter == reg_end)
 		  {
-		    std::wstring match_suffix = match_result.suffix (). str ();
+		    std::wstring match_suffix = match_result.suffix ().str ();
 		    out = std::copy (match_suffix.begin (), match_suffix.end (), out);
 		  }
 	      }

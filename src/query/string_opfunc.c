@@ -4665,8 +4665,8 @@ db_string_regexp_replace (DB_VALUE * result, DB_VALUE * args[], int const num_ar
 	goto exit;
       }
 
-  LANG_COLLATION *collation = lang_get_collation (coll_id);
-  assert (collation != NULL);
+    LANG_COLLATION *collation = lang_get_collation (coll_id);
+    assert (collation != NULL);
 
     // *INDENT-OFF*
     /* compile pattern if needed */
