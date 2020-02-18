@@ -124,15 +124,15 @@ namespace cubregex
   void
   clear (cub_regex_object *&regex, char *&pattern)
   {
-    if (pattern != NULL)
-      {
-	db_private_free_and_init (NULL, pattern);
-      }
-
     if (regex != NULL)
       {
 	delete regex;
 	regex = NULL;
+      }
+
+    if (pattern != NULL)
+      {
+	db_private_free_and_init (NULL, pattern);
       }
   }
 
@@ -155,7 +155,7 @@ namespace cubregex
     return false;
   }
 
-  int compile (cub_regex_object *&rx_compiled_regex, const std::string &pattern,
+  int compile (cub_regex_object *&rx_compiled_regex, const char *pattern,
 	       const std::regex_constants::syntax_option_type reg_flags)
   {
     int error_status = NO_ERROR;
@@ -167,7 +167,7 @@ namespace cubregex
 	*  It is hacky code finding collating element pattern and throw error.
 	*/
 	char *collate_elem_pattern = "[[.";
-	int found = pattern.find ( std::string (collate_elem_pattern));
+	int found = std::string (pattern).find (collate_elem_pattern);
 	if (found != std::string::npos)
 	  {
 	    throw std::regex_error (std::regex_constants::error_collate);
