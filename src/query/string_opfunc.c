@@ -4357,14 +4357,6 @@ db_string_rlike (const DB_VALUE * src, const DB_VALUE * pattern, const DB_VALUE 
 	goto cleanup;
       }
 
-    /* check codeset compatible */
-    if (src_category != pattern_category)
-      {
-	error_status = ER_QSTR_INCOMPATIBLE_CODE_SETS;
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-	goto cleanup;
-      }
-
     if (DB_IS_NULL (src) || DB_IS_NULL (pattern))
       {
 	goto cleanup;
@@ -4380,6 +4372,7 @@ db_string_rlike (const DB_VALUE * src, const DB_VALUE * pattern, const DB_VALUE 
     INTL_CODESET src_codeset = db_get_string_codeset (src);
     INTL_CODESET pattern_codeset = db_get_string_codeset (pattern);
 
+    /* check codeset compatible */
     if ((src_category != pattern_category) || (src_codeset != pattern_codeset))
       {
 	error_status = ER_QSTR_INCOMPATIBLE_CODE_SETS;
