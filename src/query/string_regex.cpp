@@ -237,11 +237,13 @@ namespace cubregex
 
 	    while (reg_iter != reg_end)
 	      {
-		const cub_regex_results &match_result = *reg_iter;
+		const cub_regex_results match_result = *reg_iter;
 
+		/* prefix */
 		std::string match_prefix = match_result.prefix ().str ();
 		out = std::copy (match_prefix.begin (), match_prefix.end (), out);
 
+		/* matched */
 		if (n == occurrence)
 		  {
 		    out = match_result.format (out, repl);
@@ -252,13 +254,25 @@ namespace cubregex
 		    out = std::copy (match_str.begin (), match_str.end (), out);
 		  }
 
-		++n;
 		++reg_iter;
-		if (reg_iter == reg_end)
+
+		/* suffix */
+		if (n == occurrence)
 		  {
+		    size_t match_pos = match_result.position ();
+		    size_t match_length = match_result.length ();
+		    std::string match_suffix = target.substr (match_pos + match_length, std::string::npos);
+		    out = std::copy (match_suffix.begin (), match_suffix.end (), out);
+		    break;
+		  }
+		else if (reg_iter == reg_end)
+		  {
+		    /* end of matching */
 		    std::string match_suffix = match_result.suffix (). str ();
 		    out = std::copy (match_suffix.begin (), match_suffix.end (), out);
 		  }
+
+		++n;
 	      }
 	  }
       }
