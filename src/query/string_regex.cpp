@@ -223,6 +223,10 @@ namespace cubregex
   }
 
 #if defined(WINDOWS)
+  /* HACK: case insensitive doesn't work well on Windows.
+  *  This code transforms source string into lowercase
+  *  and perform searching regular expression pattern.
+  */
   int replace (std::string &result, const cub_regex_object &reg, const std::string &src,
 	       const std::string &repl, const int position,
 	       const int occurrence)
@@ -298,6 +302,7 @@ namespace cubregex
 	    ++n;
 	  }
 
+	/* nothing matched */
 	if (match_pos == -1 && reg_iter == reg_end)
 	  {
 	    out = std::copy (target.begin (), target.end (), out);
@@ -386,7 +391,7 @@ namespace cubregex
 		  }
 		++n;
 	      }
-
+	    /* nothing matched */
 	    if (match_pos == -1 && reg_iter == reg_end)
 	      {
 		out = std::copy (target.begin (), target.end (), out);
