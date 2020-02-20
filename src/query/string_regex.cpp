@@ -191,7 +191,25 @@ namespace cubregex
     int error_status = NO_ERROR;
     try
       {
+#if defined(WINDOWS)
+	/* HACK: case insensitive doesn't work well on Windows.
+	*  This code transforms source string into lowercase
+	*  and perform searching regular expression pattern.
+	*/
+	if (reg.flags() & std::regex_constants::icase)
+	  {
+	    std::string src_lower;
+	    src_lower.resize (src.size ());
+	    std::transform (src.begin(), src.end(), src_lower.begin(), ::tolower);
+	    result = std::regex_search (src_lower, reg);
+	  }
+	else
+	  {
+	    result = std::regex_search (src, reg);
+	  }
+#else
 	result = std::regex_search (src, reg);
+#endif
       }
     catch (std::regex_error &e)
       {
@@ -204,6 +222,11 @@ namespace cubregex
     return error_status;
   }
 
+#if defined(WINDOWS)
+  /* HACK: case insensitive doesn't work well on Windows.
+  *  This code transforms source string into lowercase
+  *  and perform searching regular expression pattern.
+  */
   int replace (std::string &result, const cub_regex_object &reg, const std::string &src,
 	       const std::string &repl, const int position,
 	       const int occurrence)
@@ -219,6 +242,101 @@ namespace cubregex
 	    src.substr (position, src.size () - position)
     );
 
+    std::string target_lowercase;
+    target_lowercase.resize (target.size ());
+    if (reg.flags() & std::regex_constants::icase)
+      {
+	std::transform (target.begin(), target.end(), target_lowercase.begin(), ::tolower);
+      }
+    else
+      {
+	target_lowercase = target;
+      }
+
+    try
+      {
+	auto reg_iter = cub_regex_iterator (target_lowercase.begin (), target_lowercase.end (), reg);
+	auto reg_end = cub_regex_iterator ();
+
+	size_t last_pos = 0;
+	size_t match_pos = -1;
+	size_t match_length;
+	int n = 1;
+	auto out = std::back_inserter (result);
+
+	cub_regex_results match_result;
+	while (reg_iter != reg_end)
+	  {
+	    match_result = *reg_iter;
+
+	    /* prefix */
+	    match_pos = match_result.position ();
+	    match_length = match_result.length ();
+	    std::string match_prefix = target.substr (last_pos, match_pos - last_pos);
+	    out = std::copy (match_prefix.begin (), match_prefix.end (), out);
+
+	    /* match */
+	    if (n == occurrence || occurrence == 0)
+	      {
+		out = match_result.format (out, repl);
+	      }
+	    else
+	      {
+		std::string match_str = target.substr (match_pos, match_length);
+		out = std::copy (match_str.begin (), match_str.end (), out);
+	      }
+
+	    ++reg_iter;
+
+	    /* suffix */
+	    last_pos = match_pos + match_length;
+	    if (((occurrence != 0) && (n == occurrence)) || reg_iter == reg_end)
+	      {
+		std::string match_suffix = target.substr (match_pos + match_length, std::string::npos);
+		out = std::copy (match_suffix.begin (), match_suffix.end (), out);
+		if (occurrence != 0 && n == occurrence)
+		  {
+		    break;
+		  }
+	      }
+	    ++n;
+	  }
+
+	/* nothing matched */
+	if (match_pos == -1 && reg_iter == reg_end)
+	  {
+	    out = std::copy (target.begin (), target.end (), out);
+	  }
+      }
+    catch (std::regex_error &e)
+      {
+	// regex execution exception, error_complexity or error_stack
+	error_status = ER_REGEX_EXEC_ERROR;
+	result.clear ();
+	std::string error_message = cubregex::parse_regex_exception (e);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1, error_message.c_str ());
+      }
+
+    return error_status;
+  }
+#else
+  int replace (std::string &result, const cub_regex_object &reg, const std::string &src,
+	       const std::string &repl, const int position,
+	       const int occurrence)
+  {
+    assert (position >= 0 && (size_t) position < src.size ());
+    assert (occurrence >= 0);
+
+    int error_status = NO_ERROR;
+
+    /* split source string by position value */
+    result.assign (src.substr (0, position));
+    std::string target (
+	    src.substr (position, src.size () - position)
+    );
+
+    size_t match_pos = -1;
+    size_t match_length = 0;
     try
       {
 	if (occurrence == 0)
@@ -237,11 +355,15 @@ namespace cubregex
 
 	    while (reg_iter != reg_end)
 	      {
-		const cub_regex_results &match_result = *reg_iter;
+		const cub_regex_results match_result = *reg_iter;
 
+		/* prefix */
 		std::string match_prefix = match_result.prefix ().str ();
 		out = std::copy (match_prefix.begin (), match_prefix.end (), out);
 
+		/* match */
+		match_pos = match_result.position ();
+		match_length = match_result.length ();
 		if (n == occurrence)
 		  {
 		    out = match_result.format (out, repl);
@@ -252,13 +374,23 @@ namespace cubregex
 		    out = std::copy (match_str.begin (), match_str.end (), out);
 		  }
 
-		++n;
 		++reg_iter;
-		if (reg_iter == reg_end)
+
+		/* suffix */
+		if (n == occurrence || reg_iter == reg_end)
 		  {
+		    /* occurrence option specified or end of matching */
 		    std::string match_suffix = match_result.suffix (). str ();
 		    out = std::copy (match_suffix.begin (), match_suffix.end (), out);
+		    break;
 		  }
+		++n;
+	      }
+
+	    /* nothing matched */
+	    if (match_pos == -1 && reg_iter == reg_end)
+	      {
+		out = std::copy (target.begin (), target.end (), out);
 	      }
 	  }
       }
@@ -273,4 +405,5 @@ namespace cubregex
 
     return error_status;
   }
+#endif
 }
