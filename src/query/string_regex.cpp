@@ -199,7 +199,7 @@ namespace cubregex
 	if (reg.flags() & std::regex_constants::icase)
 	  {
 	    std::string src_lower;
-	    src_lower.reserve (src.size ());
+	    src_lower.resize (src.size ());
 	    std::transform (src.begin(), src.end(), src_lower.begin(), ::tolower);
 	    result = std::regex_search (src_lower, reg);
 	  }
