@@ -377,20 +377,16 @@ namespace cubregex
 		++reg_iter;
 
 		/* suffix */
-		if (n == occurrence)
+		if (n == occurrence || reg_iter == reg_end)
 		  {
-		    std::string match_suffix = target.substr (match_pos + match_length, std::string::npos);
+		    /* occurrence option specified or end of matching */
+		    std::string match_suffix = match_result.suffix (). str ();
 		    out = std::copy (match_suffix.begin (), match_suffix.end (), out);
 		    break;
 		  }
-		else if (reg_iter == reg_end)
-		  {
-		    /* end of matching */
-		    std::string match_suffix = match_result.suffix (). str ();
-		    out = std::copy (match_suffix.begin (), match_suffix.end (), out);
-		  }
 		++n;
 	      }
+
 	    /* nothing matched */
 	    if (match_pos == -1 && reg_iter == reg_end)
 	      {
