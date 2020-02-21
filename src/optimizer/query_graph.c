@@ -124,6 +124,7 @@
 #define BOOL_EXCHANGE(e0,e1)       EXCHANGE_BUILDER(bool,e0,e1)
 #define JOIN_TYPE_EXCHANGE(e0,e1)  EXCHANGE_BUILDER(JOIN_TYPE,e0,e1)
 #define FLAG_EXCHANGE(e0,e1)       EXCHANGE_BUILDER(int,e0,e1)
+#define INT_PTR_EXCHANGE(e0,e1)    EXCHANGE_BUILDER(int *,e0,e1)
 
 #define BISET_EXCHANGE(s0,s1) \
     do { \
@@ -220,7 +221,7 @@ static void qo_partition_init (QO_ENV *, QO_PARTITION *, int);
 static void qo_partition_free (QO_PARTITION *);
 static void qo_partition_dump (QO_PARTITION *, FILE *);
 static void qo_find_index_terms (QO_ENV * env, BITSET * segsp, QO_INDEX_ENTRY * index_entry);
-static void qo_find_index_seg_terms (QO_ENV * env, QO_INDEX_ENTRY * index_entry, int idx);
+static void qo_find_index_seg_terms (QO_ENV * env, QO_INDEX_ENTRY * index_entry, int idx, BITSET * index_segsp);
 static bool qo_find_index_segs (QO_ENV *, SM_CLASS_CONSTRAINT *, QO_NODE *, int *, int, int *, BITSET *);
 static bool qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry);
 static void qo_find_node_indexes (QO_ENV *, QO_NODE *);
@@ -1679,6 +1680,8 @@ qo_add_term (PT_NODE * conjunct, int term_type, QO_ENV * env)
   QO_TERM_RANK (term) = 0;
   QO_TERM_FLAG (term) = 0;	/* init */
   QO_TERM_IDX (term) = env->nterms;
+  QO_TERM_MULTI_COL_SEGS (term) = NULL;	/* init */
+  QO_TERM_MULTI_COL_CNT (term) = 0;	/* init */
 
   env->nterms++;
 
@@ -1920,13 +1923,13 @@ qo_analyze_term (QO_TERM * term, int term_type)
   PARSER_CONTEXT *parser = NULL;
   bool merge_applies;
   bool lhs_indexable, rhs_indexable;
-  PT_NODE *pt_expr = NULL, *lhs_expr = NULL, *rhs_expr = NULL;
+  PT_NODE *pt_expr = NULL, *lhs_expr = NULL, *rhs_expr = NULL, *func_arg = NULL;
   QO_NODE *head_node = NULL, *tail_node = NULL;
   QO_SEGMENT *head_seg = NULL, *tail_seg = NULL;
-  BITSET lhs_segs, rhs_segs, lhs_nodes, rhs_nodes;
+  BITSET lhs_segs, rhs_segs, lhs_nodes, rhs_nodes, multi_col_segs;
   BITSET_ITERATOR iter;
   PT_OP_TYPE op_type = PT_AND;
-  int i, n, t;
+  int i, n, t, segs, j;
 
   env = QO_TERM_ENV (term);
 
@@ -1942,6 +1945,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
   bitset_init (&rhs_segs, env);
   bitset_init (&lhs_nodes, env);
   bitset_init (&rhs_nodes, env);
+  bitset_init (&multi_col_segs, env);
 
   if (pt_expr->node_type != PT_EXPR)
     {
@@ -2133,6 +2137,82 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	      else
 		{
 		  lhs_indexable = true;
+		}
+	    }
+	  else if (pt_is_multi_col_term (lhs_expr))
+	    {
+	      /* multi column case (attr,attr,...) is indexable for RANGE, EQ operation */
+	      func_arg = lhs_expr->info.function.arg_list;
+	      op_type = pt_expr->info.expr.op;
+
+	      switch (op_type)
+		{
+		case PT_EQ:
+		  if (!PT_IS_CONST (rhs_expr) || !QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP))
+		    {
+		      lhs_indexable = false;
+		    }
+		  break;
+		case PT_RANGE:
+		  if (!QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP))
+		    {
+		      lhs_indexable = false;
+		    }
+		  break;
+		default:
+		  lhs_indexable = false;
+		  break;
+		}
+
+	      if (lhs_indexable)
+		{
+		  segs = 0;
+		  bool is_find_local_name = false;
+		  for ( /* none */ ; func_arg; func_arg = func_arg->next)
+		    {
+		      if (is_local_name (env, func_arg))
+			{
+			  if (pt_is_function_index_expr (parser, func_arg, false)
+			      && !pt_is_function_index_expression (func_arg))
+			    {
+			      /* check if expr can be function index expr && expr is function index expr */
+			      lhs_indexable = false;
+			      break;
+			    }
+			  is_find_local_name = true;
+			}
+		      else if (pt_is_const (func_arg))
+			{
+			  /* multi_col_term having constant value can be indexable */
+			  QO_TERM_SET_FLAG (term, QO_TERM_MULTI_COLL_CONST);
+			}
+		      else
+			{
+			  lhs_indexable = false;
+			  break;
+			}
+		      segs++;
+		    }
+		  if (!is_find_local_name)
+		    {
+		      lhs_indexable = false;
+		    }
+		}
+	      if (lhs_indexable)
+		{
+		  QO_TERM_SET_FLAG (term, QO_TERM_MULTI_COLL_PRED);
+		  QO_TERM_SET_FLAG (term, QO_TERM_RANGELIST);
+		  QO_TERM_MULTI_COL_CNT (term) = segs;
+		  QO_TERM_MULTI_COL_SEGS (term) = (int *) malloc (sizeof (int) * segs);
+
+		  /* set multi col segs e.g.) (b,a,c) in .. multi_col_segs[0] = b's segnum, [1] = a .. */
+		  func_arg = lhs_expr->info.function.arg_list;
+		  for (j = 0; func_arg; func_arg = func_arg->next)
+		    {
+		      bitset_init (&multi_col_segs, env);
+		      qo_expr_segs (env, func_arg, &multi_col_segs);
+		      term->multi_col_segs[j++] = bitset_first_member (&multi_col_segs);
+		    }
 		}
 	    }
 	  else
@@ -2395,10 +2475,22 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	}
       QO_ASSERT (env, QO_NODE_IDX (head_node) < QO_NODE_IDX (tail_node));
       QO_ASSERT (env, QO_NODE_IDX (tail_node) > 0);
+
+      if (QO_TERM_IS_FLAGED (term, QO_TERM_MULTI_COLL_PRED))
+	{
+	  /*+ multi col term is only indexable for TC_SARG */
+	  QO_TERM_CAN_USE_INDEX (term) = 0;
+	}
     }
   else
     {				/* n >= 3 */
       QO_TERM_CLASS (term) = QO_TC_OTHER;
+
+      if (QO_TERM_IS_FLAGED (term, QO_TERM_MULTI_COLL_PRED))
+	{
+	  /*+ multi col term is only indexable for TC_SARG */
+	  QO_TERM_CAN_USE_INDEX (term) = 0;
+	}
     }
 
   if (n == 2)
@@ -2646,6 +2738,7 @@ wrapup:
   bitset_delset (&rhs_segs);
   bitset_delset (&lhs_nodes);
   bitset_delset (&rhs_nodes);
+  bitset_delset (&multi_col_segs);
 }
 
 /*
@@ -2734,7 +2827,7 @@ set_seg_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_
 	  (void) set_seg_node (tree, env, QO_ENV_TMP_BITSET (env));
 	  if (bitset_cardinality (QO_ENV_TMP_BITSET (env)) - count_bits > 0)
 	    {
-	      *continue_walk = PT_STOP_WALK;
+	      *continue_walk = PT_LIST_WALK;
 	    }
 	}
       break;
@@ -4554,6 +4647,9 @@ qo_alloc_index (QO_ENV * env, int n)
       entryp->key_limit = NULL;
       entryp->constraints = NULL;
       entryp->ils_prefix_len = 0;
+      entryp->rangelist_term_idx = -1;
+      bitset_init (&(entryp->index_segs), env);
+      bitset_init (&(entryp->multi_col_range_segs), env);
     }
 
   return indexp;
@@ -4581,6 +4677,8 @@ qo_free_index (QO_ENV * env, QO_INDEX * indexp)
     {
       entryp = QO_INDEX_INDEX (indexp, i);
       bitset_delset (&(entryp->terms));
+      bitset_delset (&(entryp->index_segs));
+      bitset_delset (&(entryp->multi_col_range_segs));
       for (j = 0; j < entryp->nsegs; j++)
 	{
 	  bitset_delset (&(entryp->seg_equal_terms[j]));
@@ -5836,6 +5934,8 @@ qo_exchange (QO_TERM * t0, QO_TERM * t1)
   EQCLASSPTR_EXCHANGE (t0->eqclass, t1->eqclass);
   SEGMENTPTR_EXCHANGE (t0->nominal_seg, t1->nominal_seg);
   FLAG_EXCHANGE (t0->flag, t1->flag);
+  INT_PTR_EXCHANGE (t0->multi_col_segs, t1->multi_col_segs);
+  INT_EXCHANGE (t0->multi_col_cnt, t1->multi_col_cnt);
   /*
    * DON'T exchange the 'idx' values!
    */
@@ -6318,6 +6418,8 @@ qo_find_index_terms (QO_ENV * env, BITSET * segsp, QO_INDEX_ENTRY * index_entry)
 	}
     }				/* for (t = 0; t < env->nterms; t++) */
 
+  /* add index segs */
+  bitset_union (&(index_entry->index_segs), segsp);
 }
 
 /*
@@ -6329,10 +6431,11 @@ qo_find_index_terms (QO_ENV * env, BITSET * segsp, QO_INDEX_ENTRY * index_entry)
  *   idx(in): Passed idx of an interested segment
  */
 static void
-qo_find_index_seg_terms (QO_ENV * env, QO_INDEX_ENTRY * index_entry, int idx)
+qo_find_index_seg_terms (QO_ENV * env, QO_INDEX_ENTRY * index_entry, int idx, BITSET * index_segsp)
 {
   int t;
   QO_TERM *qo_termp;
+  BITSET_ITERATOR iter;
 
   /* traverse all terms */
   for (t = 0; t < env->nterms; t++)
@@ -6363,13 +6466,15 @@ qo_find_index_seg_terms (QO_ENV * env, QO_INDEX_ENTRY * index_entry, int idx)
 	  /* check for range list term; RANGE (r1, r2, ...) */
 	  if (QO_TERM_IS_FLAGED (qo_termp, QO_TERM_RANGELIST))
 	    {
-	      if (index_entry->rangelist_seg_idx != -1)
+	      if (index_entry->rangelist_seg_idx != -1 && QO_TERM_IDX (qo_termp) != index_entry->rangelist_term_idx)
 		{
+		  /* (a,b) range (={..},..) if a is rangelist_seg_idx then b can scan using index */
 		  continue;	/* already found. give up */
 		}
 
 	      /* is the first time */
 	      index_entry->rangelist_seg_idx = idx;
+	      index_entry->rangelist_term_idx = QO_TERM_IDX (qo_termp);
 	    }
 
 	  /* collect this term */
@@ -7315,7 +7420,7 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 		  index_entryp->seg_idxs[j] = seg_idx[j];
 		  if (index_entryp->seg_idxs[j] != -1)
 		    {
-		      qo_find_index_seg_terms (env, index_entryp, j);
+		      qo_find_index_seg_terms (env, index_entryp, j, &index_segs);
 		    }
 		}
 	      qo_find_index_terms (env, &index_segs, index_entryp);
@@ -8369,6 +8474,8 @@ qo_term_clear (QO_ENV * env, int idx)
   QO_TERM_INDEX_SEG (term, 0) = NULL;
   QO_TERM_INDEX_SEG (term, 1) = NULL;
   QO_TERM_JOIN_TYPE (term) = NO_JOIN;
+  QO_TERM_MULTI_COL_SEGS (term) = NULL;
+  QO_TERM_MULTI_COL_CNT (term) = 0;
 
   bitset_init (&(QO_TERM_NODES (term)), env);
   bitset_init (&(QO_TERM_SEGS (term)), env);
@@ -8673,6 +8780,10 @@ qo_term_free (QO_TERM * term)
   bitset_delset (&(QO_TERM_NODES (term)));
   bitset_delset (&(QO_TERM_SEGS (term)));
   bitset_delset (&(QO_TERM_SUBQUERIES (term)));
+  if (QO_TERM_MULTI_COL_SEGS (term))
+    {
+      free_and_init (QO_TERM_MULTI_COL_SEGS (term));
+    }
 }
 
 /*
