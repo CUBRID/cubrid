@@ -221,13 +221,32 @@ namespace cubregex
     std::wstring src_wstring;
     if (cublocale::convert_to_wstring (src_wstring, src, codeset) == false)
       {
-	result = V_UNKNOWN;
+	error_status = ER_QSTR_BAD_SRC_CODESET;
+	result = V_FALSE;
 	return error_status;
       }
 
     try
       {
+#if defined(WINDOWS)
+	/* HACK: case insensitive doesn't work well on Windows.
+	*  This code transforms source string into lowercase
+	*  and perform searching regular expression pattern.
+	*/
+	if (reg.flags() & std::regex_constants::icase)
+	  {
+	    std::wstring src_lower;
+	    src_lower.resize (src_wstring.size ());
+	    std::transform (src_wstring.begin(), src_wstring.end(), src_lower.begin(), ::towlower);
+	    is_matched = std::regex_search (src_lower, reg);
+	  }
+	else
+	  {
+	    is_matched = std::regex_search (src_wstring, reg);
+	  }
+#else
 	is_matched = std::regex_search (src_wstring, reg);
+#endif
       }
     catch (std::regex_error &e)
       {
@@ -242,6 +261,11 @@ namespace cubregex
     return error_status;
   }
 
+#if defined(WINDOWS)
+  /* HACK: case insensitive doesn't work well on Windows.
+  *  This code transforms source string into lowercase
+  *  and perform searching regular expression pattern.
+  */
   int replace (std::string &result, const cub_regex_object &reg, const std::string &src,
 	       const std::string &repl, const int position,
 	       const int occurrence, const INTL_CODESET codeset)
@@ -254,12 +278,14 @@ namespace cubregex
     std::wstring src_wstring;
     if (cublocale::convert_to_wstring (src_wstring, src, codeset) == false)
       {
+	error_status = ER_QSTR_BAD_SRC_CODESET;
 	return error_status;
       }
 
     std::wstring repl_wstring;
     if (cublocale::convert_to_wstring (repl_wstring, repl, codeset) == false)
       {
+	error_status = ER_QSTR_BAD_SRC_CODESET;
 	return error_status;
       }
 
@@ -269,6 +295,121 @@ namespace cubregex
 	    src_wstring.substr (position, src_wstring.size () - position)
     );
 
+    std::wstring target_lowercase;
+    if (reg.flags() & std::regex_constants::icase)
+      {
+	target_lowercase.resize (target.size ());
+	std::transform (target.begin(), target.end(), target_lowercase.begin(), ::towlower);
+      }
+    else
+      {
+	target_lowercase = target;
+      }
+
+    try
+      {
+	auto reg_iter = cub_regex_iterator (target_lowercase.begin (), target_lowercase.end (), reg);
+	auto reg_end = cub_regex_iterator ();
+
+	int last_pos = 0;
+	int match_pos = -1;
+	size_t match_length;
+	int n = 1;
+	auto out = std::back_inserter (result);
+
+	cub_regex_results match_result;
+	while (reg_iter != reg_end)
+	  {
+	    match_result = *reg_iter;
+
+	    /* prefix */
+	    match_pos = match_result.position ();
+	    match_length = match_result.length ();
+	    std::wstring match_prefix = target.substr (last_pos, match_pos - last_pos);
+	    out = std::copy (match_prefix.begin (), match_prefix.end (), out);
+
+	    /* match */
+	    if (n == occurrence || occurrence == 0)
+	      {
+		out = match_result.format (out, repl);
+	      }
+	    else
+	      {
+		std::wstring match_str = target.substr (match_pos, match_length);
+		out = std::copy (match_str.begin (), match_str.end (), out);
+	      }
+
+	    ++reg_iter;
+
+	    /* suffix */
+	    last_pos = match_pos + match_length;
+	    if (((occurrence != 0) && (n == occurrence)) || reg_iter == reg_end)
+	      {
+		std::wstring match_suffix = target.substr (match_pos + match_length, std::string::npos);
+		out = std::copy (match_suffix.begin (), match_suffix.end (), out);
+		if (occurrence != 0 && n == occurrence)
+		  {
+		    break;
+		  }
+	      }
+	    ++n;
+	  }
+
+	/* nothing matched */
+	if (match_pos == -1 && reg_iter == reg_end)
+	  {
+	    out = std::copy (target.begin (), target.end (), out);
+	  }
+
+	if (cublocale::convert_to_string (result, result_wstring, codeset) == false)
+	  {
+		error_status = ER_QSTR_BAD_SRC_CODESET;
+	    return error_status;
+	  }
+      }
+    catch (std::regex_error &e)
+      {
+	// regex execution exception, error_complexity or error_stack
+	error_status = ER_REGEX_EXEC_ERROR;
+	result.clear ();
+	std::string error_message = cubregex::parse_regex_exception (e);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1, error_message.c_str ());
+      }
+
+    return error_status;
+  }
+#else
+  int replace (std::string &result, const cub_regex_object &reg, const std::string &src,
+	       const std::string &repl, const int position,
+	       const int occurrence, const INTL_CODESET codeset)
+  {
+    assert (position >= 0 && (size_t) position < src.size ());
+    assert (occurrence >= 0);
+
+    int error_status = NO_ERROR;
+
+    std::wstring src_wstring;
+    if (cublocale::convert_to_wstring (src_wstring, src, codeset) == false)
+      {
+	error_status = ER_QSTR_BAD_SRC_CODESET;
+	return error_status;
+      }
+
+    std::wstring repl_wstring;
+    if (cublocale::convert_to_wstring (repl_wstring, repl, codeset) == false)
+      {
+	error_status = ER_QSTR_BAD_SRC_CODESET;
+	return error_status;
+      }
+
+    /* split source string by position value */
+    std::wstring result_wstring (src_wstring.substr (0, position));
+    std::wstring target (
+	    src_wstring.substr (position, src_wstring.size () - position)
+    );
+
+    int match_pos = -1;
+    size_t match_length = 0;
     try
       {
 	if (occurrence == 0)
@@ -287,11 +428,14 @@ namespace cubregex
 
 	    while (reg_iter != reg_end)
 	      {
-		const cub_regex_results &match_result = *reg_iter;
+		const cub_regex_results match_result = *reg_iter;
 
 		std::wstring match_prefix = match_result.prefix ().str ();
 		out = std::copy (match_prefix.begin (), match_prefix.end (), out);
 
+		/* match */
+		match_pos = match_result.position ();
+		match_length = match_result.length ();
 		if (n == occurrence)
 		  {
 		    out = match_result.format (out, repl_wstring);
@@ -302,22 +446,32 @@ namespace cubregex
 		    out = std::copy (match_str.begin (), match_str.end (), out);
 		  }
 
-		++n;
 		++reg_iter;
 
-		/* last matched result */
-		if (reg_iter == reg_end)
+		/* suffix */
+		if (n == occurrence || reg_iter == reg_end)
 		  {
-		    std::wstring match_suffix = match_result.suffix ().str ();
+		    /* occurrence option specified or end of matching */
+		    std::wstring match_suffix = match_result.suffix (). str ();
 		    out = std::copy (match_suffix.begin (), match_suffix.end (), out);
+		    break;
 		  }
+		++n;
+	      }
+
+	    /* nothing matched */
+	    if (match_pos == -1 && reg_iter == reg_end)
+	      {
+		out = std::copy (target.begin (), target.end (), out);
 	      }
 	  }
 
 	if (cublocale::convert_to_string (result, result_wstring, codeset) == false)
 	  {
+		error_status = ER_QSTR_BAD_SRC_CODESET;
 	    return error_status;
 	  }
+
       }
     catch (std::regex_error &e)
       {
@@ -330,4 +484,5 @@ namespace cubregex
 
     return error_status;
   }
+#endif
 }
