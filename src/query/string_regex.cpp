@@ -166,6 +166,7 @@ namespace cubregex
     std::wstring pattern_wstring;
     if (cublocale::convert_to_wstring (pattern_wstring, std::string (pattern), collation->codeset) == false)
       {
+	error_status = ER_QSTR_BAD_SRC_CODESET;
 	return error_status;
       }
 
@@ -331,7 +332,7 @@ namespace cubregex
 	    /* match */
 	    if (n == occurrence || occurrence == 0)
 	      {
-		out = match_result.format (out, repl);
+		out = match_result.format (out, result_wstring);
 	      }
 	    else
 	      {
