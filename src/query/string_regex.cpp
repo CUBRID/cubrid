@@ -363,7 +363,7 @@ namespace cubregex
 
 	if (cublocale::convert_to_string (result, result_wstring, codeset) == false)
 	  {
-		error_status = ER_QSTR_BAD_SRC_CODESET;
+	    error_status = ER_QSTR_BAD_SRC_CODESET;
 	    return error_status;
 	  }
       }
@@ -468,7 +468,7 @@ namespace cubregex
 
 	if (cublocale::convert_to_string (result, result_wstring, codeset) == false)
 	  {
-		error_status = ER_QSTR_BAD_SRC_CODESET;
+	    error_status = ER_QSTR_BAD_SRC_CODESET;
 	    return error_status;
 	  }
 

@@ -4646,7 +4646,7 @@ db_string_regexp_replace (DB_VALUE * result, DB_VALUE * args[], int const num_ar
     /* check pattern string */
     if (db_get_string_size (pattern) == 0 || position_value >= db_get_string_size (src))
       {
-        goto exit_copy;
+	goto exit_copy;
       }
 
     LANG_COLLATION *collation = lang_get_collation (coll_id);
@@ -4726,20 +4726,20 @@ db_string_regexp_replace (DB_VALUE * result, DB_VALUE * args[], int const num_ar
 
 exit_copy:
   {
-  /* clear error status */
-  error_status = NO_ERROR;
+    /* clear error status */
+    error_status = NO_ERROR;
 
-  const DB_VALUE *src = args[0];
-	pr_clone_value ((DB_VALUE *) src, result);
-	DB_TYPE src_type = DB_VALUE_DOMAIN_TYPE (src);
-	if (src_type == DB_TYPE_CHAR || src_type == DB_TYPE_NCHAR)
-	  {
-	    /* convert CHARACTER(N) to CHARACTER VARYING(N) */
-	    qstr_make_typed_string ((src_type == DB_TYPE_NCHAR ? DB_TYPE_VARNCHAR : DB_TYPE_VARCHAR), result,
-				    DB_VALUE_PRECISION (result), db_get_string (result), db_get_string_size (result),
-				    db_get_string_codeset (src), db_get_string_collation (src));
-	  }
-	result->need_clear = true;
+    const DB_VALUE *src = args[0];
+    pr_clone_value ((DB_VALUE *) src, result);
+    DB_TYPE src_type = DB_VALUE_DOMAIN_TYPE (src);
+    if (src_type == DB_TYPE_CHAR || src_type == DB_TYPE_NCHAR)
+      {
+	/* convert CHARACTER(N) to CHARACTER VARYING(N) */
+	qstr_make_typed_string ((src_type == DB_TYPE_NCHAR ? DB_TYPE_VARNCHAR : DB_TYPE_VARCHAR), result,
+				DB_VALUE_PRECISION (result), db_get_string (result), db_get_string_size (result),
+				db_get_string_codeset (src), db_get_string_collation (src));
+      }
+    result->need_clear = true;
   }
 
 exit:
