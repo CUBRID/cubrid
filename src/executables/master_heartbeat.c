@@ -44,6 +44,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <pthread.h>
+#include <syslog.h>
 #endif
 
 #include "connection_cl.h"
@@ -4479,6 +4480,8 @@ hb_thread_check_disk_failure (void *arg)
 		  pthread_mutex_unlock (&hb_Cluster->lock);
 #if !defined(WINDOWS)
 		  pthread_mutex_unlock (&css_Master_socket_anchor_lock);
+
+		  syslog (LOG_ALERT, "[CUBRID] %s () at %s:%d", __func__, __FILE__, __LINE__);
 #endif /* !WINDOWS */
 
 		  error = hb_resource_job_queue (HB_RJOB_DEMOTE_START_SHUTDOWN, NULL, HB_JOB_TIMER_IMMEDIATELY);
