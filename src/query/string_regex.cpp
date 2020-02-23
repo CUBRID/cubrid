@@ -316,7 +316,7 @@ namespace cubregex
 	int match_pos = -1;
 	size_t match_length;
 	int n = 1;
-	auto out = std::back_inserter (result);
+	auto out = std::back_inserter (result_wstring);
 
 	cub_regex_results match_result;
 	while (reg_iter != reg_end)
@@ -332,7 +332,7 @@ namespace cubregex
 	    /* match */
 	    if (n == occurrence || occurrence == 0)
 	      {
-		out = match_result.format (out, result_wstring);
+		out = match_result.format (out, repl_wstring);
 	      }
 	    else
 	      {
