@@ -89,22 +89,22 @@ namespace cublocale
       {
 	std::string utf8_converted;
 	utf8_converted.resize (in.size() * INTL_CODESET_MULT (INTL_CODESET_UTF8));
-	std::string::pointer utf8_str_ptr = (char *) utf8_converted.data();
+	std::string::pointer utf8_str_ptr = (char *) utf8_converted.data ();
 
 	int conv_status = 0;
 	int conv_size = 0;
 	switch (codeset)
 	  {
 	  case INTL_CODESET_ISO88591:
-	    conv_status = intl_fast_iso88591_to_utf8 ((const unsigned char *) in.data(), in.size(),
+	    conv_status = intl_fast_iso88591_to_utf8 ((const unsigned char *) in.data (), in.size (),
 			  (unsigned char **) &utf8_str_ptr, &conv_size);
 	    break;
 	  case INTL_CODESET_KSC5601_EUC:
-	    conv_status = intl_euckr_to_utf8 ((const unsigned char *) in.data(), in.size(), (unsigned char **) &utf8_str_ptr,
+	    conv_status = intl_euckr_to_utf8 ((const unsigned char *) in.data (), in.size (), (unsigned char **) &utf8_str_ptr,
 					      &conv_size);
 	    break;
 	  case INTL_CODESET_RAW_BYTES:
-	    intl_binary_to_utf8 ((const unsigned char *) in.data(), in.size(), (unsigned char **) &utf8_str_ptr,
+	    intl_binary_to_utf8 ((const unsigned char *) in.data (), in.size (), (unsigned char **) &utf8_str_ptr,
 				 &conv_size);
 	    break;
 	  default:
@@ -134,7 +134,7 @@ namespace cublocale
 	std::wstring converted;
 	int nLen = MultiByteToWideChar (CP_ACP, 0, utf8_str.data (), utf8_str.size (), NULL, NULL);
 	converted.resize (nLen);
-	MultiByteToWideChar(CP_ACP, 0, utf8_str.data (), utf8_str.size (), &converted[0], nLen);
+	MultiByteToWideChar (CP_ACP, 0, utf8_str.data (), utf8_str.size (), &converted[0], nLen);
 #else
 	std::wstring converted = std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> {}.from_bytes (utf8_str);
 #endif
@@ -176,10 +176,10 @@ namespace cublocale
     try
       {
 #if defined(WINDOWS)
-	int nLen = WideCharToMultiByte(CP_ACP, 0, in.data (), in.size (), NULL, 0, NULL, NULL);
+	int nLen = WideCharToMultiByte (CP_ACP, 0, in.data (), in.size (), NULL, 0, NULL, NULL);
 	std::string converted;
 	converted.resize (nLen);
-	WideCharToMultiByte(CP_ACP, 0, in.data (), in.size (), &converted[0], nLen, NULL, NULL);
+	WideCharToMultiByte (CP_ACP, 0, in.data (), in.size (), &converted[0], nLen, NULL, NULL);
 #else
 	std::string converted = std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> {}.to_bytes (in);
 #endif
@@ -199,12 +199,12 @@ namespace cublocale
 	    switch (codeset)
 	      {
 	      case INTL_CODESET_ISO88591:
-		conv_status = intl_utf8_to_iso88591 ((const unsigned char *) converted.data(), converted.size(),
+		conv_status = intl_utf8_to_iso88591 ((const unsigned char *) converted.data (), converted.size (),
 						     (unsigned char **) &to_str_ptr,
 						     &conv_size);
 		break;
 	      case INTL_CODESET_KSC5601_EUC:
-		conv_status = intl_utf8_to_euckr ((const unsigned char *) converted.data(), converted.size(),
+		conv_status = intl_utf8_to_euckr ((const unsigned char *) converted.data (), converted.size (),
 						  (unsigned char **) &to_str_ptr,
 						  &conv_size);
 		break;
