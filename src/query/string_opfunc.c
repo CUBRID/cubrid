@@ -5005,6 +5005,7 @@ exit:
 	  error_status = NO_ERROR;
 	}
     }
+  // *INDENT-ON*
 
   if (comp_regex == NULL || comp_pattern == NULL)
     {
