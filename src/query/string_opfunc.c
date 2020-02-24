@@ -4387,6 +4387,7 @@ db_string_rlike (const DB_VALUE * src, const DB_VALUE * pattern, const DB_VALUE 
     if (coll_id == -1)
       {
 	error_status = ER_QSTR_INCOMPATIBLE_COLLATIONS;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	*result = V_ERROR;
 	goto cleanup;
       }
