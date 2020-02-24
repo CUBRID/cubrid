@@ -4902,7 +4902,7 @@ db_string_regexp_substr (DB_VALUE * result, DB_VALUE * args[], int const num_arg
 
     /* check occurrence argument */
     int occurrence_value = (occurrence != NULL) ? db_get_int (occurrence) : 1;
-    if (occurrence_value < 0)
+    if (occurrence_value < 1)
       {
 	error_status = ER_QPROC_INVALID_PARAMETER;
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
