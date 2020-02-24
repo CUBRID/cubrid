@@ -61,15 +61,7 @@ namespace cubxasl
 	    free_regu_not_null (pe.m_eval_term.et.et_rlike.src);
 	    free_regu_not_null (pe.m_eval_term.et.et_rlike.pattern);
 	    free_regu_not_null (pe.m_eval_term.et.et_rlike.case_sensitive);
-	    if (pe.m_eval_term.et.et_rlike.compiled_regex != NULL)
-	      {
-		delete pe.m_eval_term.et.et_rlike.compiled_regex;
-		pe.m_eval_term.et.et_rlike.compiled_regex = NULL;
-	      }
-	    if (pe.m_eval_term.et.et_rlike.compiled_pattern != NULL)
-	      {
-		db_private_free_and_init (NULL, pe.m_eval_term.et.et_rlike.compiled_pattern);
-	      }
+		cubregex::clear (pe.m_eval_term.et.et_rlike.compiled_regex, pe.m_eval_term.et.et_rlike.compiled_pattern);
 	    break;
 	  }
 	break;

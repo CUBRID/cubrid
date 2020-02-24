@@ -36,10 +36,7 @@
 #include "numeric_opfunc.h"
 #include "object_domain.h"
 #include "thread_compat.hpp"
-
-#ifdef __cplusplus
-#include <regex>
-#endif
+#include "string_regex.hpp"
 
 #define QSTR_IS_CHAR(s)          (((s)==DB_TYPE_CHAR) || \
                                  ((s)==DB_TYPE_VARCHAR))
@@ -221,24 +218,12 @@ extern int db_string_like (const DB_VALUE * src_string, const DB_VALUE * pattern
 			   int *result);
 
 #ifdef __cplusplus
-// *INDENT-OFF*
-typedef struct compiled_regex COMPILED_REGEX;
-struct compiled_regex
-{
-  mutable std::wregex *regex;
-  mutable char *pattern;
-  
-  compiled_regex ();
-  ~compiled_regex ();
-};
-
-extern int db_string_rlike (const DB_VALUE *src_string, const DB_VALUE *pattern, const DB_VALUE *case_sensitive,
-			    std::wregex **comp_regex, char **comp_pattern, int *result);
-extern int db_string_regexp_replace (DB_VALUE *result, DB_VALUE *args[], const int num_args,
-				     std::wregex **comp_regex, char **comp_pattern);
-extern int db_string_regexp_substr (DB_VALUE *result, DB_VALUE *args[], const int num_args,
-				     std::wregex **comp_regex, char **comp_pattern);
-// *INDENT-ON*
+extern int db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB_VALUE * case_sensitive,
+			    cub_regex_object ** comp_regex, char **comp_pattern, int *result);
+extern int db_string_regexp_replace (DB_VALUE * result, DB_VALUE * args[], const int num_args,
+				     cub_regex_object ** comp_regex, char **comp_pattern);
+extern int db_string_regexp_substr (DB_VALUE * result, DB_VALUE * args[], const int num_args,
+				     cub_regex_object ** comp_regex, char **comp_pattern);
 #endif
 
 extern int db_string_limit_size_string (DB_VALUE * src_string, DB_VALUE * result, const int new_size, int *spare_bytes);

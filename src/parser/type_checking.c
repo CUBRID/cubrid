@@ -10186,24 +10186,24 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 		  && (nextcase->info.expr.op == PT_CASE || nextcase->info.expr.op == PT_DECODE))
 		{
 		  /* cast nextcase->arg1 to common type */
-		  arg1 = nextcase->info.expr.arg1;
-		  arg1_type = arg1->type_enum;
-		  if (arg1_type != common_type && arg1_type != PT_TYPE_NULL)
+		  PT_NODE *next_arg1 = nextcase->info.expr.arg1;
+		  PT_TYPE_ENUM next_arg1_type = next_arg1->type_enum;
+		  if (next_arg1_type != common_type && next_arg1_type != PT_TYPE_NULL)
 		    {
-		      if (pt_coerce_expression_argument (parser, nextcase, &arg1, common_type, NULL) != NO_ERROR)
+		      if (pt_coerce_expression_argument (parser, nextcase, &next_arg1, common_type, NULL) != NO_ERROR)
 			{
 			  /* abandon implicit casting and return error */
 			  node->type_enum = PT_TYPE_NONE;
 			  goto error;
 			}
-		      nextcase->info.expr.arg1 = arg1;
+		      nextcase->info.expr.arg1 = next_arg1;
 		      /* nextcase was already evaluated and may have a data_type set. We need to replace it with the
 		       * cast data_type */
 		      nextcase->type_enum = common_type;
 		      if (nextcase->data_type)
 			{
 			  parser_free_tree (parser, nextcase->data_type);
-			  nextcase->data_type = parser_copy_tree_list (parser, arg1->data_type);
+			  nextcase->data_type = parser_copy_tree_list (parser, next_arg1->data_type);
 			}
 		    }
 		  /* set nextcase to nextcase->arg2 and continue */
@@ -12982,7 +12982,7 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
     }
 
-  if (node->type_enum == PT_TYPE_NONE || node->data_type == NULL)
+  if (node->type_enum == PT_TYPE_NONE || node->data_type == NULL || !(node->info.function.is_type_checked))
     {
       /* determine function result type */
       switch (fcode)
@@ -13370,6 +13370,8 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 	  node->data_type = parser_copy_tree_list (parser, arg_list->data_type);
 	  break;
 	}
+      /* to prevent recheck of function return type at pt_eval_function_type_old() */
+      node->info.function.is_type_checked = true;
     }
 
   /* collation checking */
