@@ -28,6 +28,7 @@
 #include <regex>
 
 #include "error_manager.h"
+#include "language_support.h"
 
 // forward declarations
 namespace cubregex
@@ -37,10 +38,10 @@ namespace cubregex
 }
 
 // alias
-using cub_regex_object = std::basic_regex <char, cubregex::cub_reg_traits>;
 using cub_compiled_regex = cubregex::compiled_regex;
-using cub_regex_iterator = std::regex_iterator<std::string::iterator, char, cubregex::cub_reg_traits>;
-using cub_regex_results = std::match_results <std::string::iterator>;
+using cub_regex_object = std::basic_regex <wchar_t, cubregex::cub_reg_traits>;
+using cub_regex_iterator = std::regex_iterator<std::wstring::iterator, wchar_t, cubregex::cub_reg_traits>;
+using cub_regex_results = std::match_results <std::wstring::iterator>;
 
 namespace cubregex
 {
@@ -54,7 +55,7 @@ namespace cubregex
   };
 
   /* it throws the error_collate when collatename syntax ([[. .]]), which gives an inconsistent result, is detected. */
-  struct cub_reg_traits : std::regex_traits<char>
+  struct cub_reg_traits : std::regex_traits<wchar_t>
   {
     template< class Iter >
     string_type lookup_collatename ( Iter first, Iter last ) const
@@ -74,11 +75,11 @@ namespace cubregex
 			       const std::regex_constants::syntax_option_type reg_flags);
 
   int compile (cub_regex_object *&rx_compiled_regex, const char *pattern,
-	       const std::regex_constants::syntax_option_type reg_flags);
-  int search (bool &result, const cub_regex_object &reg, const std::string &src);
+	       const std::regex_constants::syntax_option_type reg_flags, const LANG_COLLATION *collation);
+  int search (int &result, const cub_regex_object &reg, const std::string &src, const INTL_CODESET codeset);
   int replace (std::string &result, const cub_regex_object &reg, const std::string &src,
 	       const std::string &repl, const int position,
-	       const int occurrence);
+	       const int occurrence, const INTL_CODESET codeset);
 }
 #endif
 
