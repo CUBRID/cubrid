@@ -271,7 +271,7 @@ namespace cubregex
 	       const std::string &repl, const int position,
 	       const int occurrence, const INTL_CODESET codeset)
   {
-    assert (position >= 0 && (size_t) position < src.size ());
+    assert (position >= 0);
     assert (occurrence >= 0);
 
     int error_status = NO_ERROR;
@@ -384,7 +384,7 @@ namespace cubregex
 	       const std::string &repl, const int position,
 	       const int occurrence, const INTL_CODESET codeset)
   {
-    assert (position >= 0 && (size_t) position < src.size ());
+    assert (position >= 0);
     assert (occurrence >= 0);
 
     int error_status = NO_ERROR;
