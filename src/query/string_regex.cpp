@@ -487,14 +487,15 @@ namespace cubregex
   }
 #endif
 
-  int substr (std::string &result, bool &is_matched, const cub_regex_object &reg, const std::string &src, const int position,
-	       const int occurrence, const INTL_CODESET codeset)
+  int substr (std::string &result, bool &is_matched, const cub_regex_object &reg, const std::string &src,
+	      const int position,
+	      const int occurrence, const INTL_CODESET codeset)
   {
     assert (position >= 0);
     assert (occurrence >= 1);
 
     int error_status = NO_ERROR;
-	is_matched = false;
+    is_matched = false;
 
     std::wstring src_wstring;
     if (cublocale::convert_to_wstring (src_wstring, src, codeset) == false)
@@ -510,20 +511,20 @@ namespace cubregex
     );
 
 #if defined(WINDOWS)
-	/* HACK: case insensitive doesn't work well on Windows.
-	*  This code transforms source string into lowercase
-	*  and perform searching regular expression pattern.
-	*/
-	std::wstring target_lower;
-	if (reg.flags() & std::regex_constants::icase)
-	  {
-	    target_lower.resize (target.size ());
-	    std::transform (target.begin(), target.end(), target_lower.begin(), ::towlower);
-	  }
-	else
-	  {
-		target_lower = target;
-	  }
+    /* HACK: case insensitive doesn't work well on Windows.
+    *  This code transforms source string into lowercase
+    *  and perform searching regular expression pattern.
+    */
+    std::wstring target_lower;
+    if (reg.flags() & std::regex_constants::icase)
+      {
+	target_lower.resize (target.size ());
+	std::transform (target.begin(), target.end(), target_lower.begin(), ::towlower);
+      }
+    else
+      {
+	target_lower = target;
+      }
 #endif
 
     int match_pos = -1;
@@ -544,8 +545,8 @@ namespace cubregex
 	    cub_regex_results match_result = *reg_iter;
 
 	    /* match */
-		match_pos = match_result.position ();
-		match_length = match_result.length ();
+	    match_pos = match_result.position ();
+	    match_length = match_result.length ();
 	    if (n == occurrence)
 	      {
 		std::wstring match_str = target.substr (match_pos, match_length);

@@ -80,8 +80,9 @@ namespace cubregex
   int replace (std::string &result, const cub_regex_object &reg, const std::string &src,
 	       const std::string &repl, const int position,
 	       const int occurrence, const INTL_CODESET codeset);
-  int substr (std::string &result, bool &is_matched, const cub_regex_object &reg, const std::string &src, const int position,
-	       const int occurrence, const INTL_CODESET codeset);
+  int substr (std::string &result, bool &is_matched, const cub_regex_object &reg, const std::string &src,
+	      const int position,
+	      const int occurrence, const INTL_CODESET codeset);
 }
 #endif
 

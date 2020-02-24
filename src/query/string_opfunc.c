@@ -4812,10 +4812,9 @@ exit:
  *          Invalid parameter exists
  * 
  */
-// *INDENT-OFF*
 int
 db_string_regexp_substr (DB_VALUE * result, DB_VALUE * args[], int const num_args,
-			  cub_regex_object ** comp_regex, char **comp_pattern)
+			 cub_regex_object ** comp_regex, char **comp_pattern)
 {
   int error_status = NO_ERROR;
   db_make_null (result);
@@ -4874,7 +4873,8 @@ db_string_regexp_substr (DB_VALUE * result, DB_VALUE * args[], int const num_arg
       }
 
     /* check codeset compatible */
-    if (qstr_get_category (src) != qstr_get_category (pattern) || db_get_string_codeset (src) != db_get_string_codeset (pattern))
+    if (qstr_get_category (src) != qstr_get_category (pattern)
+	|| db_get_string_codeset (src) != db_get_string_codeset (pattern))
       {
 	error_status = ER_QSTR_INCOMPATIBLE_CODE_SETS;
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
@@ -4985,8 +4985,8 @@ db_string_regexp_substr (DB_VALUE * result, DB_VALUE * args[], int const num_arg
     result_char_string[result_char_size] = '\0';
 
     qstr_make_typed_string ((DB_VALUE_DOMAIN_TYPE (src) == DB_TYPE_NCHAR ? DB_TYPE_VARNCHAR : DB_TYPE_VARCHAR), result,
-			    result_char_size, result_char_string, result_char_size,
-			    db_get_string_codeset (src), coll_id);
+			    result_char_size, result_char_string, result_char_size, db_get_string_codeset (src),
+			    coll_id);
     result->need_clear = true;
     goto exit;
   }
@@ -5005,7 +5005,6 @@ exit:
 	  error_status = NO_ERROR;
 	}
     }
-  // *INDENT-ON*
 
   if (comp_regex == NULL || comp_pattern == NULL)
     {
@@ -5023,6 +5022,7 @@ exit:
 
   return error_status;
 }
+
 // *INDENT-ON*
 
 /*
