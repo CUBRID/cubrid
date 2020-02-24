@@ -4839,9 +4839,9 @@ db_string_regexp_substr (DB_VALUE * result, DB_VALUE * args[], int const num_arg
 
     const DB_VALUE *src = args[0];
     const DB_VALUE *pattern = args[1];
-    const DB_VALUE *position = (num_args >= 4) ? args[3] : NULL;
-    const DB_VALUE *occurrence = (num_args >= 5) ? args[4] : NULL;
-    const DB_VALUE *match_type = (num_args == 6) ? args[5] : NULL;
+    const DB_VALUE *position = (num_args >= 3) ? args[2] : NULL;
+    const DB_VALUE *occurrence = (num_args >= 4) ? args[3] : NULL;
+    const DB_VALUE *match_type = (num_args == 5) ? args[4] : NULL;
 
     /* check type */
     if (!is_char_string (src) || !is_char_string (pattern))
@@ -4954,7 +4954,8 @@ db_string_regexp_substr (DB_VALUE * result, DB_VALUE * args[], int const num_arg
 	error_status = cubregex::compile (rx_compiled_regex, rx_compiled_pattern, reg_flags, collation);
 	if (error_status != NO_ERROR)
 	  {
-		goto exit;
+	    error_status = (error_status == ER_QSTR_BAD_SRC_CODESET) ? NO_ERROR : error_status;
+	    goto exit;
 	  }
       }
 
@@ -4963,32 +4964,35 @@ db_string_regexp_substr (DB_VALUE * result, DB_VALUE * args[], int const num_arg
     bool is_matched = false;
     std::string src_string (db_get_string (src), db_get_string_size (src));
     error_status = cubregex::substr (result_string, is_matched, *rx_compiled_regex, src_string, position_value,
-				      occurrence_value, collation->codeset);
-    if (error_status != NO_ERROR || !is_matched)
+				     occurrence_value, collation->codeset);
+    if (error_status != NO_ERROR)
       {
 	/* regex execution error */
+	error_status = (error_status == ER_QSTR_BAD_SRC_CODESET) ? NO_ERROR : error_status;
 	goto exit;
       }
     // *INDENT-ON*
 
-    /* make result */
-    int result_char_size = result_string.size ();
-    char *result_char_string = (char *) db_private_alloc (NULL, result_char_size + 1);
-    if (result_char_string == NULL)
+    if (is_matched)
       {
-	/* out of memory */
-	error_status = ER_OUT_OF_VIRTUAL_MEMORY;
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-	goto exit;
-      }
-    memcpy (result_char_string, result_string.c_str (), result_char_size);
-    result_char_string[result_char_size] = '\0';
+	/* make result */
+	int result_char_size = result_string.size ();
+	char *result_char_string = (char *) db_private_alloc (NULL, result_char_size + 1);
+	if (result_char_string == NULL)
+	  {
+	    /* out of memory */
+	    error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	    goto exit;
+	  }
+	memcpy (result_char_string, result_string.c_str (), result_char_size);
+	result_char_string[result_char_size] = '\0';
 
-    qstr_make_typed_string ((DB_VALUE_DOMAIN_TYPE (src) == DB_TYPE_NCHAR ? DB_TYPE_VARNCHAR : DB_TYPE_VARCHAR), result,
-			    result_char_size, result_char_string, result_char_size, db_get_string_codeset (src),
-			    coll_id);
-    result->need_clear = true;
-    goto exit;
+	qstr_make_typed_string ((DB_VALUE_DOMAIN_TYPE (src) == DB_TYPE_NCHAR ? DB_TYPE_VARNCHAR : DB_TYPE_VARCHAR),
+				result, result_char_size, result_char_string, result_char_size,
+				db_get_string_codeset (src), coll_id);
+	result->need_clear = true;
+      }
   }
 
 exit:
@@ -5005,7 +5009,6 @@ exit:
 	  error_status = NO_ERROR;
 	}
     }
-  // *INDENT-ON*
 
   if (comp_regex == NULL || comp_pattern == NULL)
     {
