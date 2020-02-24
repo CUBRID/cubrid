@@ -132,9 +132,9 @@ namespace cublocale
       {
 #if defined(WINDOWS)
 	std::wstring converted;
-	int nLen = MultiByteToWideChar (CP_ACP, 0, utf8_str.data (), utf8_str.size (), NULL, NULL);
+	int nLen = MultiByteToWideChar (CP_UTF8, 0, utf8_str.data (), utf8_str.size (), NULL, NULL);
 	converted.resize (nLen);
-	MultiByteToWideChar (CP_ACP, 0, utf8_str.data (), utf8_str.size (), &converted[0], nLen);
+	MultiByteToWideChar (CP_UTF8, 0, utf8_str.data (), utf8_str.size (), &converted[0], nLen);
 #else
 	std::wstring converted = std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> {}.from_bytes (utf8_str);
 #endif
@@ -176,10 +176,10 @@ namespace cublocale
     try
       {
 #if defined(WINDOWS)
-	int nLen = WideCharToMultiByte (CP_ACP, 0, in.data (), in.size (), NULL, 0, NULL, NULL);
+	int nLen = WideCharToMultiByte (CP_UTF8, 0, in.data (), in.size (), NULL, 0, NULL, NULL);
 	std::string converted;
 	converted.resize (nLen);
-	WideCharToMultiByte (CP_ACP, 0, in.data (), in.size (), &converted[0], nLen, NULL, NULL);
+	WideCharToMultiByte (CP_UTF8, 0, in.data (), in.size (), &converted[0], nLen, NULL, NULL);
 #else
 	std::string converted = std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> {}.to_bytes (in);
 #endif
