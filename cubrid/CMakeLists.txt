@@ -91,6 +91,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/ini_parser.c
   ${BASE_DIR}/intl_support.c
   ${BASE_DIR}/language_support.c
+  ${BASE_DIR}/locale_helper.cpp
   ${BASE_DIR}/locale_support.c
   ${BASE_DIR}/lock_free.c
   ${BASE_DIR}/lockfree_bitmap.cpp
@@ -135,6 +136,7 @@ set (BASE_HEADERS
   ${BASE_DIR}/error_manager.h
   ${BASE_DIR}/extensible_array.hpp
   ${BASE_DIR}/fileline_location.hpp
+  ${BASE_DIR}/locale_helper.hpp
   ${BASE_DIR}/lockfree_address_marker.hpp
   ${BASE_DIR}/lockfree_bitmap.hpp
   ${BASE_DIR}/lockfree_freelist.hpp

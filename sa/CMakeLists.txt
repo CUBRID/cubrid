@@ -114,6 +114,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/cubrid_getopt_long.c
   ${BASE_DIR}/binaryheap.c
   ${BASE_DIR}/tsc_timer.c
+  ${BASE_DIR}/locale_helper.cpp
   ${BASE_DIR}/lock_free.c
   ${BASE_DIR}/lockfree_bitmap.cpp
   ${BASE_DIR}/lockfree_hashmap.cpp
@@ -131,6 +132,7 @@ set(BASE_HEADERS
   ${BASE_DIR}/error_manager.h
   ${BASE_DIR}/extensible_array.hpp
   ${BASE_DIR}/fileline_location.hpp
+  ${BASE_DIR}/locale_helper.hpp
   ${BASE_DIR}/lockfree_address_marker.hpp
   ${BASE_DIR}/lockfree_bitmap.hpp
   ${BASE_DIR}/lockfree_freelist.hpp
