@@ -222,6 +222,8 @@ extern int db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * patter
 			    cub_regex_object ** comp_regex, char **comp_pattern, int *result);
 extern int db_string_regexp_replace (DB_VALUE * result, DB_VALUE * args[], const int num_args,
 				     cub_regex_object ** comp_regex, char **comp_pattern);
+extern int db_string_regexp_substr (DB_VALUE * result, DB_VALUE * args[], const int num_args,
+				    cub_regex_object ** comp_regex, char **comp_pattern);
 #endif
 
 extern int db_string_limit_size_string (DB_VALUE * src_string, DB_VALUE * result, const int new_size, int *spare_bytes);

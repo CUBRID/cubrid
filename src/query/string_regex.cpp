@@ -486,4 +486,94 @@ namespace cubregex
     return error_status;
   }
 #endif
+
+  int substr (std::string &result, bool &is_matched, const cub_regex_object &reg, const std::string &src,
+	      const int position, const int occurrence, const INTL_CODESET codeset)
+  {
+    assert (position >= 0);
+    assert (occurrence >= 1);
+
+    int error_status = NO_ERROR;
+    is_matched = false;
+
+    std::wstring src_wstring;
+    if (cublocale::convert_to_wstring (src_wstring, src, codeset) == false)
+      {
+	error_status = ER_QSTR_BAD_SRC_CODESET;
+	return error_status;
+      }
+
+    /* split source string by position value */
+    std::wstring result_wstring;
+    std::wstring target (
+	    src_wstring.substr (position, src_wstring.size () - position)
+    );
+
+#if defined(WINDOWS)
+    /* HACK: case insensitive doesn't work well on Windows.
+    *  This code transforms source string into lowercase
+    *  and perform searching regular expression pattern.
+    */
+    std::wstring target_lower;
+    if (reg.flags() & std::regex_constants::icase)
+      {
+	target_lower.resize (target.size ());
+	std::transform (target.begin(), target.end(), target_lower.begin(), ::towlower);
+      }
+    else
+      {
+	target_lower = target;
+      }
+#endif
+
+    int match_pos = -1;
+    size_t match_length = 0;
+    try
+      {
+#if defined(WINDOWS)
+	auto reg_iter = cub_regex_iterator (target_lower.begin (), target_lower.end (), reg);
+#else
+	auto reg_iter = cub_regex_iterator (target.begin (), target.end (), reg);
+#endif
+	auto reg_end = cub_regex_iterator ();
+	auto out = std::back_inserter (result_wstring);
+
+	int n = 1;
+	while (reg_iter != reg_end)
+	  {
+	    cub_regex_results match_result = *reg_iter;
+
+	    /* match */
+	    match_pos = match_result.position ();
+	    match_length = match_result.length ();
+	    if (n == occurrence)
+	      {
+		std::wstring match_str = target.substr (match_pos, match_length);
+		out = std::copy (match_str.begin (), match_str.end (), out);
+		is_matched = true;
+		break;
+	      }
+	    ++reg_iter;
+	    ++n;
+	  }
+
+	if (cublocale::convert_to_string (result, result_wstring, codeset) == false)
+	  {
+	    error_status = ER_QSTR_BAD_SRC_CODESET;
+	    return error_status;
+	  }
+
+      }
+    catch (std::regex_error &e)
+      {
+	// regex execution exception, error_complexity or error_stack
+	error_status = ER_REGEX_EXEC_ERROR;
+	result.clear ();
+	std::string error_message = cubregex::parse_regex_exception (e);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1, error_message.c_str ());
+      }
+
+    return error_status;
+  }
+
 }

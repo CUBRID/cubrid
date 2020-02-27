@@ -561,6 +561,8 @@ fcode_get_uppercase_name (FUNC_TYPE ftype)
       return "JSON_VALID";
     case F_REGEXP_REPLACE:
       return "REGEXP_REPLACE";
+    case F_REGEXP_SUBSTR:
+      return "REGEXP_SUBSTR";
     default:
       return "***UNKNOWN***";
     }
@@ -709,6 +711,8 @@ fcode_get_lowercase_name (FUNC_TYPE ftype)
       return "json_valid";
     case F_REGEXP_REPLACE:
       return "regexp_replace";
+    case F_REGEXP_SUBSTR:
+      return "regexp_substr";
     default:
       return "unknown function";
     }

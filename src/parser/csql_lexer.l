@@ -725,6 +725,7 @@ int yybuffer_pos;
 [rR][eE][fF][eE][rR][eE][nN][cC][iI][nN][gG]				{ begin_token(yytext);   return REFERENCING; }
 [rR][eE][gG][eE][xX][pP]						{ begin_token(yytext);   return REGEXP; }
 [rR][eE][gG][eE][xX][pP][_][rR][eE][pP][lL][aA][cC][eE]			{ begin_token(yytext);   return REGEXP_REPLACE; }
+[rR][eE][gG][eE][xX][pP][_][sS][uU][bB][sS][tT][rR]				{ begin_token(yytext);   return REGEXP_SUBSTR; }
 [rR][eE][jJ][eE][cC][tT]						{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return REJECT_; }
