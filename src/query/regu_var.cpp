@@ -150,16 +150,16 @@ regu_variable_node::clear_xasl_local ()
 	{
 	  switch (value.funcp->ftype)
 	    {
+	    case F_REGEXP_INSTR:
 	    case F_REGEXP_REPLACE:
 	    case F_REGEXP_SUBSTR:
-	    case F_REGEXP_INSTR:
 	    {
 	      delete value.funcp->tmp_obj->compiled_regex;
 	    }
 	    break;
 	    default:
 	      //any of union member may have been erased
-	      assert (0);
+	      assert (false);
 	      break;
 	    }
 

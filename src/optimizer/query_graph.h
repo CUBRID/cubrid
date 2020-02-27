@@ -174,6 +174,15 @@ struct qo_index_entry
    * in the index.
    */
   bool is_func_index;
+
+  /* Idx of the first range list term; RANGE (r1, r2, ...) */
+  int rangelist_term_idx;
+
+  /* segs constrained by the index */
+  BITSET index_segs;
+
+  /* index range condition segments in multiple column term */
+  BITSET multi_col_range_segs;
 };
 
 #define QO_ENTRY_MULTI_COL(entry)       ((entry)->col_num > 1 ? true : false)
@@ -670,6 +679,13 @@ struct qo_term
   short location;
 
   /*
+   * a segment number of multiple columns ordered by written predicate
+   * ex) (b,a,c) in ... multi_col_segs[0] = b, [1] = a, [2] = c
+   */
+  int *multi_col_segs;
+  int multi_col_cnt;
+
+  /*
    * WARNING!!! WARNING!!! WARNING!!!
    *
    * If you add any more elements to this struct, be sure to update the
@@ -698,6 +714,8 @@ struct qo_term
 #define QO_TERM_INDEX_SEG(t, i) (t)->index_seg[(i)]
 #define QO_TERM_JOIN_TYPE(t)    (t)->join_type
 #define QO_TERM_FLAG(t)	        (t)->flag
+#define QO_TERM_MULTI_COL_SEGS(t)  (t)->multi_col_segs
+#define QO_TERM_MULTI_COL_CNT(t)   (t)->multi_col_cnt
 
 
 #define QO_TERM_EQUAL_OP             1	/* is equal op ? */
@@ -706,6 +724,8 @@ struct qo_term
 #define QO_TERM_COPY_PT_EXPR         8	/* pt_expr is copyed ? */
 #define QO_TERM_MERGEABLE_EDGE      16	/* suitable as a m-join edge ? */
 #define QO_TERM_NON_IDX_SARG_COLL   32	/* not suitable for key range/filter */
+#define QO_TERM_MULTI_COLL_PRED     64	/* multi column && in OP, (a,b) in .. */
+#define QO_TERM_MULTI_COLL_CONST    128	/* multi column && have constant value, (a,1) in .. */
 
 #define QO_TERM_IS_FLAGED(t, f)        (QO_TERM_FLAG(t) & (int) (f))
 #define QO_TERM_SET_FLAG(t, f)         QO_TERM_FLAG(t) |= (int) (f)
@@ -946,6 +966,11 @@ struct qo_xasl_index_info
    *  infomation regarding the index itself.
    */
   struct qo_node_index_entry *ni_entry;
+
+  /* which col match index col. if -1 then term only have one column. */
+  int *multi_col_pos;
+  int need_copy_multi_range_term;
+  bool need_copy_to_sarg_term;
 };
 
 #define QO_ON_COND_TERM(term) \
