@@ -4925,7 +4925,7 @@ db_string_regexp_substr (DB_VALUE * result, DB_VALUE * args[], int const num_arg
     // *INDENT-ON*
 
     /* check pattern string */
-    if (db_get_string_size (pattern) == 0)
+    if (db_get_string_size (pattern) == 0 || position_value >= db_get_string_size (src))
       {
 	goto exit;
       }
