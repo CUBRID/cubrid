@@ -488,8 +488,7 @@ namespace cubregex
 #endif
 
   int substr (std::string &result, bool &is_matched, const cub_regex_object &reg, const std::string &src,
-	      const int position,
-	      const int occurrence, const INTL_CODESET codeset)
+	      const int position, const int occurrence, const INTL_CODESET codeset)
   {
     assert (position >= 0);
     assert (occurrence >= 1);
