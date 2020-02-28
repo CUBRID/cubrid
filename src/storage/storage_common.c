@@ -713,13 +713,10 @@ fcode_get_lowercase_name (FUNC_TYPE ftype)
       return "json_unquote";
     case F_JSON_VALID:
       return "json_valid";
-<<<<<<< HEAD
     case F_REGEXP_COUNT:
       return "regexp_count";
-=======
     case F_REGEXP_INSTR:
       return "regexp_instr";
->>>>>>> origin/CBRD-23073_regexp_instr
     case F_REGEXP_REPLACE:
       return "regexp_replace";
     case F_REGEXP_SUBSTR:
