@@ -4538,6 +4538,7 @@ db_string_regexp_instr (DB_VALUE * result, DB_VALUE * args[], int const num_args
 	/* if any argument is NULL, return NULL */
 	if (DB_IS_NULL (arg))
 	  {
+	    db_make_null (result);
 	    goto exit;
 	  }
       }
@@ -4702,7 +4703,7 @@ db_string_regexp_instr (DB_VALUE * result, DB_VALUE * args[], int const num_args
 exit:
   if (error_status != NO_ERROR)
     {
-      db_make_int (result, 0);
+      db_make_null (result);
       // *INDENT-OFF*
       cubregex::clear (rx_compiled_regex, rx_compiled_pattern);
       // *INDENT-ON*
@@ -4713,6 +4714,22 @@ exit:
 	  error_status = NO_ERROR;
 	}
     }
+
+  if (comp_regex == NULL || comp_pattern == NULL)
+    {
+      /* free memory if this function is invoked in constant folding */
+      // *INDENT-OFF*
+      cubregex::clear (rx_compiled_regex, rx_compiled_pattern);
+      // *INDENT-ON*
+    }
+  else
+    {
+      /* pass compiled regex object and compiled pattern out to reuse them */
+      *comp_regex = rx_compiled_regex;
+      *comp_pattern = rx_compiled_pattern;
+    }
+
+  return error_status;
 }
 
 /*

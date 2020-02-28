@@ -299,7 +299,7 @@ namespace cubregex
       }
 #endif
 
-    int match_idx = 0;
+    int match_idx = -1;
     try
       {
 #if defined(WINDOWS)
@@ -312,11 +312,10 @@ namespace cubregex
 	int n = 1;
 	while (reg_iter != reg_end)
 	  {
-	    cub_regex_results match_result = *reg_iter;
-
 	    /* match */
 	    if (n == occurrence)
 	      {
+		cub_regex_results match_result = *reg_iter;
 		match_idx = match_result.position ();
 		if (return_opt == 1)
 		  {
@@ -328,7 +327,7 @@ namespace cubregex
 	    ++n;
 	  }
 
-	if (match_idx != 0)
+	if (match_idx != -1)
 	  {
 	    result = position + match_idx + 1;
 	  }
