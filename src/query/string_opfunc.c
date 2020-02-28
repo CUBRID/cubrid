@@ -4463,7 +4463,6 @@ cleanup:
 	  error_status = NO_ERROR;
 	}
     }
-  // *INDENT-ON*
 
   if (comp_regex == NULL || comp_pattern == NULL)
     {
@@ -5025,7 +5024,6 @@ exit:
       *comp_regex = rx_compiled_regex;
       *comp_pattern = rx_compiled_pattern;
     }
-  // *INDENT-ON*
 
   return error_status;
 }
