@@ -8528,14 +8528,14 @@ qdata_regexp_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_
     std::function<int(DB_VALUE*, DB_VALUE*[], const int, cub_regex_object**, char**)> regexp_func;
     switch (function_p->ftype)
     {
+      case F_REGEXP_INSTR:
+        regexp_func = db_string_regexp_instr;
+        break;
       case F_REGEXP_REPLACE:
         regexp_func = db_string_regexp_replace;
         break;
       case F_REGEXP_SUBSTR:
         regexp_func = db_string_regexp_substr;
-        break;
-      case F_REGEXP_INSTR:
-        regexp_func = db_string_regexp_instr;
         break;
       default:
         assert (false);

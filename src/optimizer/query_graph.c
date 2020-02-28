@@ -3397,9 +3397,9 @@ get_expr_fcode_rank (FUNC_TYPE fcode)
     case F_JSON_UNQUOTE:
     case F_JSON_VALID:
     case F_INSERT_SUBSTRING:
+    case F_REGEXP_INSTR:
     case F_REGEXP_REPLACE:
     case F_REGEXP_SUBSTR:
-    case F_REGEXP_INSTR:
       return RANK_EXPR_MEDIUM;
     default:
       /* each function must fill its rank */
