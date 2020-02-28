@@ -4511,10 +4511,10 @@ cleanup:
  *
  *      ER_REGEX_EXEC_ERROR:
  *          An regex pattern is too complex or insufficient memory while executing regex matching
- * 
+ *
  *      ER_QPROC_INVALID_PARAMETER:
  *          Invalid parameter exists
- * 
+ *
  */
 int
 db_string_regexp_count (DB_VALUE * result, DB_VALUE * args[], int const num_args,
@@ -4646,6 +4646,7 @@ db_string_regexp_count (DB_VALUE * result, DB_VALUE * args[], int const num_args
   goto exit;
 	  }
       }
+    // *INDENT-ON*
 
     /* perform regular expression according to the position and occurence value */
     int result_value = 0;
@@ -4681,25 +4682,9 @@ exit:
 
   if (comp_regex != NULL)
     {
-      /* pass compiled regex object out */
+      /* pass compiled regex object and compiled pattern out to reuse them */
       *comp_regex = rx_compiled_regex;
-    }
-
-  if (comp_pattern != NULL)
-    {
-      /* pass compiled pattern out */
       *comp_pattern = rx_compiled_pattern;
-    }
-
-  if (error_status != NO_ERROR)
-    {
-      db_make_null (result);
-      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
-	{
-	  /* clear error and return NULL */
-	  er_clear ();
-	  return NO_ERROR;
-	}
     }
 
   return error_status;
@@ -4719,15 +4704,15 @@ exit:
  *
  * Errors:
  *      ER_QSTR_INVALID_DATA_TYPE:
- *          <src>, <pattern> (if it’s not NULL)
+ *          <src>, <pattern>, <replace> (if it’s not NULL)
  *          is not a character string.
  *
  *      ER_QSTR_INCOMPATIBLE_CODE_SETS:
- *          <src_string>, <pattern> (if it’s not NULL)
+ *          <src>, <pattern> (if it’s not NULL)
  *          have different character code sets.
  *
  *      ER_QSTR_INCOMPATIBLE_COLLATIONS:
- *          <src_string>, <pattern> (if it's not NULL)
+ *          <src>, <pattern>, <replace> (if it's not NULL)
  *          are incompatible collations.
  *
  *      ER_REGEX_COMPILE_ERROR:
@@ -4937,6 +4922,7 @@ exit:
 	  error_status = NO_ERROR;
 	}
     }
+  // *INDENT-ON*
 
   if (comp_regex == NULL || comp_pattern == NULL)
     {
@@ -5104,6 +5090,7 @@ db_string_regexp_replace (DB_VALUE * result, DB_VALUE * args[], int const num_ar
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	goto exit;
       }
+    // *INDENT-ON*
 
     // *INDENT-OFF*
     /* match_type argument check */
@@ -5121,7 +5108,6 @@ db_string_regexp_replace (DB_VALUE * result, DB_VALUE * args[], int const num_ar
     // *INDENT-ON*
 
     /* check pattern string */
-    if (db_get_string_size (pattern) == 0 || position_value >= db_get_string_size (src))
       {
 	goto exit_copy;
       }
@@ -5135,12 +5121,6 @@ db_string_regexp_replace (DB_VALUE * result, DB_VALUE * args[], int const num_ar
     if (cubregex::check_should_recompile (rx_compiled_regex, rx_compiled_pattern, pattern_string, reg_flags) == true)
       {
 	cubregex::clear (rx_compiled_regex, rx_compiled_pattern);
-	int pattern_length = pattern_string.size ();
-	rx_compiled_pattern = (char *) db_private_alloc (NULL, pattern_length + 1);
-	if (rx_compiled_pattern == NULL)
-	  {
-	    /* out of memory */
-	    error_status = ER_OUT_OF_VIRTUAL_MEMORY;
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	    goto exit;
 	  }
@@ -5325,6 +5305,7 @@ db_string_regexp_substr (DB_VALUE * result, DB_VALUE * args[], int const num_arg
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	goto exit;
       }
+    // *INDENT-ON*
 
     if (position && !is_integer (position))
       {
