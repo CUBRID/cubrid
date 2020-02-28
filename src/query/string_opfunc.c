@@ -4656,7 +4656,7 @@ db_string_regexp_count (DB_VALUE * result, DB_VALUE * args[], int const num_args
       {
 	/* regex execution error */
 	error_status = (error_status == ER_QSTR_BAD_SRC_CODESET) ? NO_ERROR : error_status;
-  goto exit;
+	goto exit;
       }
     // *INDENT-ON*
 
@@ -5108,6 +5108,7 @@ db_string_regexp_replace (DB_VALUE * result, DB_VALUE * args[], int const num_ar
     // *INDENT-ON*
 
     /* check pattern string */
+    if (db_get_string_size (pattern) == 0 || position_value >= db_get_string_size (src))
       {
 	goto exit_copy;
       }
