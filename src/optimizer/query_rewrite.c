@@ -1390,6 +1390,9 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 		      /* add additional equailty-term; is reduced */
 		      *wherep = parser_append_node (parser_copy_tree (parser, expr), *wherep);
 
+		      /* select-list's PT_NODE can have next PT_NODEs. so copy select_list to col node */
+		      col = parser_copy_tree (parser, col);
+
 		      /* reset arg1, arg2 */
 		      arg1 = arg2;
 		      arg2 = col;
@@ -4647,8 +4650,10 @@ static void
 qo_convert_to_range (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 {
   PT_NODE *cnf_node, *dnf_node, *cnf_prev, *dnf_prev;
-  PT_NODE *arg1_prior;
+  PT_NODE *arg1_prior, *func_arg;
   DNF_MERGE_RANGE_RESULT result;
+  int is_attr;
+  bool is_all_constant;
 
   /* traverse CNF list and keep track of the pointer to previous node */
   cnf_prev = NULL;
@@ -4667,7 +4672,37 @@ qo_convert_to_range (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	    }
 
 	  arg1_prior = pt_get_first_arg_ignore_prior (dnf_node);
-	  if (!pt_is_attr (arg1_prior) && !pt_is_instnum (arg1_prior))
+
+	  is_attr = true;
+	  is_all_constant = true;
+	  if (pt_is_multi_col_term (arg1_prior))
+	    {
+	      /* multi_col_term can convert to range if arg1 is (attr,func_idx_expr,constant) */
+	      func_arg = arg1_prior->info.function.arg_list;
+	      for ( /* none */ ; func_arg; func_arg = func_arg->next)
+		{
+		  if (!pt_is_attr (func_arg) && !pt_is_function_index_expression (func_arg) && !pt_is_const (func_arg))
+		    {
+		      is_attr = false;
+		      break;
+		    }
+		  else if (!pt_is_const (func_arg))
+		    {
+		      is_all_constant = false;
+		    }
+		}
+	      /* if multi_col_term's columns are all constant value then NOT convert to range for constant folding */
+	      if (is_all_constant)
+		{
+		  is_attr = false;
+		}
+	    }
+	  else
+	    {
+	      is_attr = pt_is_attr (arg1_prior);
+	    }
+
+	  if (!is_attr && !pt_is_instnum (arg1_prior))
 	    {
 	      /* LHS is not an attribute */
 	      dnf_prev = dnf_prev ? dnf_prev->or_next : dnf_node;
@@ -6082,12 +6117,12 @@ exit:
 static PT_NODE *
 qo_rewrite_subqueries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-  PT_NODE *cnf_node, *arg1, *arg2, *select_list;
+  PT_NODE *cnf_node, *arg1, *arg2, *select_list, *arg2_list;
   PT_OP_TYPE op_type;
   PT_NODE *new_spec, *new_attr, *new_func;
   int *idx = (int *) arg;
   bool do_rewrite;
-  PT_NODE *save_next, *arg1_next, *new_attr_next, *tmp;
+  PT_NODE *save_next, *arg1_next, *new_attr_next, *tmp, *arg2_next;
   PT_OP_TYPE saved_op_type;
 
   if (node->node_type != PT_SELECT)
@@ -6124,24 +6159,68 @@ qo_rewrite_subqueries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 	  continue;
 	}
 
+      select_list = pt_get_select_list (parser, arg2);
+      if ((op_type == PT_EQ || op_type == PT_IS_IN || op_type == PT_EQ_SOME) && select_list
+	  && PT_IS_COLLECTION_TYPE (arg1->type_enum) && PT_IS_FUNCTION (arg1)
+	  && PT_IS_COLLECTION_TYPE (arg2->type_enum) && (PT_IS_FUNCTION (select_list) || PT_IS_CONST (select_list)))
+	{
+	  /* collection case : (col1,col2) [in or =] (select col1,col2 ...) */
+	  arg1 = arg1->info.function.arg_list;
+	  if (PT_IS_FUNCTION (select_list))
+	    {
+	      arg2_list = select_list->info.function.arg_list;
+	    }
+	  else
+	    {
+	      arg2_list = select_list->info.value.data_value.set;
+	    }
+	}
+      else if (op_type == PT_EQ)
+	{
+	  /* one column subquery is not rewrited to join with derived table. ex) col1 = (select col1 ... ) */
+	  continue;
+	}
+      else
+	{
+	  arg2_list = arg2;
+	}
+
       do_rewrite = false;
       select_list = NULL;
 
       /* should be 'attr op uncorr-subquery', and select list of the subquery should be indexable-column */
-
-      if (tp_valid_indextype (pt_type_enum_to_db (arg1->type_enum))
-	  && (pt_is_attr (arg1) || pt_is_function_index_expression (arg1)))
+      for (arg1_next = arg1, arg2_next = arg2_list; arg1_next && arg2_next;
+	   arg1_next = arg1_next->next, arg2_next = arg2_next->next)
 	{
-	  if (tp_valid_indextype (pt_type_enum_to_db (arg2->type_enum)) && !pt_has_analytic (parser, arg2))
+	  if (tp_valid_indextype (pt_type_enum_to_db (arg1_next->type_enum))
+	      && (pt_is_attr (arg1_next) || pt_is_function_index_expression (arg1_next)))
 	    {
-	      select_list = pt_get_select_list (parser, arg2);
-	      if (select_list != NULL && arg2->info.query.correlation_level == 0)
+	      if (tp_valid_indextype (pt_type_enum_to_db (arg2_next->type_enum)) && !pt_has_analytic (parser, arg2))
 		{
-		  assert (pt_length_of_select_list (select_list, EXCLUDE_HIDDEN_COLUMNS) == 1);
+		  select_list = pt_get_select_list (parser, arg2);
+		  if (select_list != NULL && arg2->info.query.correlation_level == 0)
+		    {
+		      assert (pt_length_of_select_list (select_list, EXCLUDE_HIDDEN_COLUMNS) == 1);
 
-		  /* match 'indexable-attr op indexable-uncorr-subquery' */
-		  do_rewrite = true;
+		      /* match 'indexable-attr op indexable-uncorr-subquery' */
+		      do_rewrite = true;
+		    }
+		  else
+		    {
+		      do_rewrite = false;
+		      break;
+		    }
 		}
+	      else
+		{
+		  do_rewrite = false;
+		  break;
+		}
+	    }
+	  else
+	    {
+	      do_rewrite = false;
+	      break;
 	    }
 	}
 
@@ -6153,6 +6232,13 @@ qo_rewrite_subqueries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 	    case PT_EQ:	/* arg1 = set_func_elements */
 	    case PT_IS_IN:	/* arg1 = set_func_elements, attr */
 	    case PT_EQ_SOME:	/* arg1 = attr */
+	      if (PT_IS_COLLECTION_TYPE (arg2->type_enum) && select_list
+		  && (PT_IS_FUNCTION (select_list) || PT_IS_CONST (select_list)))
+		{
+		  /* if arg2 is collection type then select_list is rewrited to multi col */
+		  pt_select_list_to_one_col (parser, arg2, false);
+		}
+
 	      /* make new derived spec and append it to FROM */
 	      if (mq_make_derived_spec (parser, node, arg2, idx, &new_spec, &new_attr) == NULL)
 		{
@@ -6404,11 +6490,13 @@ qo_do_auto_parameterize (PARSER_CONTEXT * parser, PT_NODE * where)
 	    case PT_RANGE:
 	      for (range = dnf_node->info.expr.arg2; range; range = range->or_next)
 		{
-		  if (pt_is_const_not_hostvar (range->info.expr.arg1) && !PT_IS_NULL_NODE (range->info.expr.arg1))
+		  if (pt_is_const_not_hostvar (range->info.expr.arg1) && !PT_IS_NULL_NODE (range->info.expr.arg1)
+		      && !PT_IS_COLLECTION_TYPE (range->info.expr.arg1->type_enum))
 		    {
 		      range->info.expr.arg1 = pt_rewrite_to_auto_param (parser, range->info.expr.arg1);
 		    }
-		  if (pt_is_const_not_hostvar (range->info.expr.arg2) && !PT_IS_NULL_NODE (range->info.expr.arg2))
+		  if (pt_is_const_not_hostvar (range->info.expr.arg2) && !PT_IS_NULL_NODE (range->info.expr.arg2)
+		      && !PT_IS_COLLECTION_TYPE (range->info.expr.arg2->type_enum))
 		    {
 		      range->info.expr.arg2 = pt_rewrite_to_auto_param (parser, range->info.expr.arg2);
 		    }
@@ -6687,12 +6775,17 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 	  if (limit != NULL)
 	    {
 	      PT_NODE *limit_node;
+	      bool single_tuple_bak;
 
 	      node->info.query.rewrite_limit = 0;
 
 	      /* to move limit clause to derived */
 	      limit_node = node->info.query.limit;
 	      node->info.query.limit = NULL;
+
+	      /* to move single tuple to derived */
+	      single_tuple_bak = node->info.query.single_tuple;
+	      node->info.query.single_tuple = false;
 
 	      derived = mq_rewrite_query_as_derived (parser, node);
 	      if (derived != NULL)
@@ -6706,7 +6799,7 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 
 		  node = derived;
 		}
-
+	      node->info.query.single_tuple = single_tuple_bak;
 	      node->info.query.limit = limit_node;
 	    }
 	}

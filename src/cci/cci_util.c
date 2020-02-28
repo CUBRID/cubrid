@@ -75,9 +75,6 @@
  ************************************************************************/
 
 static char is_float_str (char *str);
-static void *cci_reg_malloc (void *dummy, size_t s);
-static void *cci_reg_realloc (void *dummy, void *p, size_t s);
-static void cci_reg_free (void *dummy, void *p);
 static int skip_ampm_chars (char *str);
 static int get_pm_offset (char *str, int hh);
 
@@ -969,24 +966,6 @@ is_float_str (char *str)
   return 0;
 }
 
-static void *
-cci_reg_malloc (void *dummy, size_t s)
-{
-  return cci_malloc (s);
-}
-
-static void *
-cci_reg_realloc (void *dummy, void *p, size_t s)
-{
-  return cci_realloc (p, s);
-}
-
-static void
-cci_reg_free (void *dummy, void *p)
-{
-  cci_free (p);
-}
-
 int
 cci_url_match (const char *src, char *token[])
 {
@@ -995,56 +974,55 @@ cci_url_match (const char *src, char *token[])
   static int match_idx[] = { 2, 3, 4, 5, 6, 7, -1 };
 
   int error = CCI_ER_NO_ERROR;
+  for (int i = 0; match_idx[i] != -1; i++)
+    {
+      token[i] = NULL;
+    }
 
   // *INDENT-OFF*
   using namespace std::regex_constants;
   try
-  {
-    std::regex reg (pattern, ECMAScript | icase);
+    {
+      std::regex reg (pattern, ECMAScript | icase);
 
-    std::cmatch match;
-    bool searched = std::regex_search (src, match, reg);
-    if (searched)
-      {
-	for (int i = 0; match_idx[i] != -1; i++)
-	  {
-	    token[i] = NULL;
-	  }
-
-	int num_matches = match.size ();
-	for (int i = 0; match_idx[i] != -1 && match_idx[i] < num_matches; i++)
-	  {
-	    std::csub_match sub_by_idx = match[match_idx[i]];
-	    size_t n = sub_by_idx.length ();
-	    token[i] = (char *) MALLOC (n + 1);
-	    if (token[i] == NULL)
-	      {
-		error = CCI_ER_NO_MORE_MEMORY;
-		break;
-	      }
-	    std::string t = sub_by_idx.str ();
-	    strncpy (token[i], t.c_str (), n);
-	    token[i][n] = '\0';
-	  }
-      }
-    else
-      {
-	error = CCI_ER_INVALID_URL;
-      }
-  }
-  catch (std::regex_error & e)
-  {
-    // regex exception
-    if (e.code () == error_stack)
-      {
-	error = CCI_ER_NO_MORE_MEMORY;
-      }
-    else
-      {
-	error = CCI_ER_INVALID_URL;
-      }
-    fprintf (stderr, "regex_error : %s\n", e.what ());
-  }
+      std::cmatch match;
+      bool is_matched = std::regex_match (src, match, reg);
+      if (is_matched)
+	{
+	  int num_matches = match.size ();
+	  for (int i = 0; match_idx[i] != -1 && match_idx[i] < num_matches; i++)
+	    {
+	      std::csub_match sub_by_idx = match[match_idx[i]];
+	      size_t n = sub_by_idx.length ();
+	      token[i] = (char *) MALLOC (n + 1);
+	      if (token[i] == NULL)
+		{
+		  error = CCI_ER_NO_MORE_MEMORY;
+		  break;
+		}
+	      std::string t = sub_by_idx.str ();
+	      strncpy (token[i], t.c_str (), n);
+	      token[i][n] = '\0';
+	    }
+	}
+      else
+	{
+	  error = CCI_ER_INVALID_URL;
+	}
+    }
+  catch (std::regex_error &e)
+    {
+      // regex exception
+      if (e.code () == error_stack)
+	{
+	  error = CCI_ER_NO_MORE_MEMORY;
+	}
+      else
+	{
+	  error = CCI_ER_INVALID_URL;
+	}
+      fprintf (stderr, "regex_error : %s\n", e.what ());
+    }
   // *INDENT-ON*
 
   if (error != CCI_ER_NO_ERROR)

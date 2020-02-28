@@ -73,6 +73,7 @@
 #endif /* ENABLE_SYSTEMTAP */
 #include "db_json.hpp"
 #include "dbtype.h"
+#include "string_regex.hpp"
 #include "thread_entry.hpp"
 #include "regu_var.hpp"
 #include "xasl.h"
@@ -1536,10 +1537,10 @@ qexec_clear_regu_var (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, REGU_VARIABLE
 	{
 	  switch (regu_var->value.funcp->ftype)
 	    {
+	    case F_REGEXP_COUNT:
+	    case F_REGEXP_INSTR:
 	    case F_REGEXP_REPLACE:
 	    case F_REGEXP_SUBSTR:
-	    case F_REGEXP_INSTR:
-	    case F_REGEXP_COUNT:
 	      {
 		delete regu_var->value.funcp->tmp_obj->compiled_regex;
 	      }
@@ -1757,18 +1758,8 @@ qexec_clear_pred (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, PRED_EXPR * pr, b
 	    pg_cnt += qexec_clear_regu_var (thread_p, xasl_p, et_rlike->pattern, is_final);
 	    pg_cnt += qexec_clear_regu_var (thread_p, xasl_p, et_rlike->case_sensitive, is_final);
 
-	    /* free memory of compiled regex object */
-	    if (et_rlike->compiled_regex != NULL)
-	      {
-		delete et_rlike->compiled_regex;
-		et_rlike->compiled_regex = NULL;
-	      }
-
-	    /* free memory of regex compiled pattern */
-	    if (et_rlike->compiled_pattern != NULL)
-	      {
-		db_private_free_and_init (NULL, et_rlike->compiled_pattern);
-	      }
+	    /* free memory of compiled regex */
+	    cubregex::clear (et_rlike->compiled_regex, et_rlike->compiled_pattern);
 	  }
 	  break;
 	}

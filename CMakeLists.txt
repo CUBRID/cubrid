@@ -192,8 +192,10 @@ if(VERSION_MATCHES_LENGTH GREATER 3)
 else(VERSION_MATCHES_LENGTH GREATER 3)
   find_package(Git)
   if(EXISTS "${CMAKE_SOURCE_DIR}/.git" AND GIT_FOUND)
+    set(CUBRID_MAJOR_START_DATE "2019-12-13")
     if(GIT_VERSION VERSION_GREATER 1.7.6)
-      execute_process(COMMAND ${GIT_EXECUTABLE} rev-list --count HEAD
+      execute_process(COMMAND ${GIT_EXECUTABLE} rev-list --count --after ${CUBRID_MAJOR_START_DATE} HEAD
+        COMMAND awk "{ printf \"%04d\", $1 }"
         OUTPUT_VARIABLE commit_count RESULT_VARIABLE git_result
         ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE
         WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
@@ -208,8 +210,9 @@ else(VERSION_MATCHES_LENGTH GREATER 3)
       #
       # If both fixes fail, just replace execute_process(...) with set (commit_count 0). It is not a critical step to generate the project.
       # Also you may send us a message at https://www.cubrid.org/contact
-      execute_process(COMMAND ${GIT_EXECUTABLE} log --oneline
+      execute_process(COMMAND ${GIT_EXECUTABLE} log --after ${CUBRID_MAJOR_START_DATE} --oneline
         COMMAND wc -l
+        COMMAND awk "{ printf \"%04d\", $1 }"
         OUTPUT_VARIABLE commit_count RESULT_VARIABLE git_result
         ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE
         WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
