@@ -74,7 +74,7 @@ enum compat_mode
   COMPAT_CUBRID,
   COMPAT_MYSQL,
   COMPAT_ORACLE
-    /*
+    /* 
      * COMPAT_ANSI, COMPAT_DB2, COMPAT_MAXDB, COMPAT_MSSQL, COMPAT_POSTGRESQL */
 };
 typedef enum compat_mode COMPAT_MODE;
@@ -290,7 +290,7 @@ enum param_id
   PRM_ID_MULTI_RANGE_OPT_LIMIT,
   PRM_ID_INTL_NUMBER_LANG,
   PRM_ID_INTL_DATE_LANG,
-  /* All the compound parameters *must* be at the end of the array so that the changes they cause are not overridden by
+  /* All the compound parameters *must* be at the end of the array so that the changes they cause are not overridden by 
    * other parameters (for example in sysprm_load_and_init the parameters are set to their default in the order they
    * are found in this array). */
   PRM_ID_COMPAT_MODE,
@@ -438,8 +438,10 @@ enum param_id
 
   PRM_ID_HEAP_INFO_CACHE_LOGGING,
 
+  PRM_ID_LOCK_TRACE_DEBUG,
+
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_HEAP_INFO_CACHE_LOGGING
+  PRM_LAST_ID = PRM_ID_LOCK_TRACE_DEBUG
 };
 typedef enum param_id PARAM_ID;
 

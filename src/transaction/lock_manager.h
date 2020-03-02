@@ -73,6 +73,14 @@ typedef enum
   KEY_LOCK_ESCALATED = 2
 } KEY_LOCK_ESCALATION;
 
+
+typedef enum
+{
+  LK_ENTRY_ACTIVE = 0,		/* Active lock entry. */
+  LK_ENTRY_LOGICAL_DELETED = 1,	/* Logical deleted lock entry. */
+  LK_ENTRY_DISCONECTED = 2	/* Disconnected lock entry. */
+} LK_ENTRY_STATUS;
+
 /*****************************/
 /* Lock Heap Entry Structure */
 /*****************************/
@@ -92,10 +100,13 @@ struct lk_entry
   LK_ENTRY *tran_next;		/* list of locks that trans. holds */
   LK_ENTRY *tran_prev;		/* list of locks that trans. holds */
   LK_ENTRY *class_entry;	/* ptr. to class lk_entry */
+  void *parent_tran_lock;
   int ngranules;		/* number of finer granules */
   int instant_lock_count;	/* number of instant lock requests */
   int bind_index_in_tran;
   XASL_ID xasl_id;
+  int resource_version;
+  int status;			/* the status */
 #else				/* not SERVER_MODE */
   int dummy;
 #endif				/* not SERVER_MODE */
@@ -152,11 +163,12 @@ struct lk_composite_lock
 /* type of locking resource */
 typedef enum
 {
-  LOCK_RESOURCE_INSTANCE,	/* An instance resource */
-  LOCK_RESOURCE_CLASS,		/* A class resource */
-  LOCK_RESOURCE_ROOT_CLASS,	/* A root class resource */
-  LOCK_RESOURCE_OBJECT		/* An object resource */
+  LOCK_RESOURCE_INSTANCE = 0x01,	/* An instance resource */
+  LOCK_RESOURCE_CLASS = 0x10,	/* A class resource */
+  LOCK_RESOURCE_ROOT_CLASS = 0x100,	/* A root class resource */
+  LOCK_RESOURCE_OBJECT = 0x1000	/* An object resource */
 } LOCK_RESOURCE_TYPE;
+#define LOCK_IS_ANY_CLASS_RESOURCE_TYPE(res_type) ((res_type) & (LOCK_RESOURCE_ROOT_CLASS | LOCK_RESOURCE_CLASS))
 
 /*
  * Lock Resource key structure
@@ -164,7 +176,7 @@ typedef enum
 typedef struct lk_res_key LK_RES_KEY;
 struct lk_res_key
 {
-  LOCK_RESOURCE_TYPE type;	/* type of resource: class,instance */
+  volatile LOCK_RESOURCE_TYPE type;	/* type of resource: class,instance */
   OID oid;
   OID class_oid;
 };
@@ -185,6 +197,33 @@ struct lk_res
   LK_RES *hash_next;		/* for hash chain */
   LK_RES *stack;		/* for freelist */
   UINT64 del_id;		/* delete transaction ID (for latch free) */
+
+  /* Logical locking information - 64 bytes used to speed up class lock/unlock. Logical lock/unlock allows
+   * to acquire/release lock without protection of resource mutex. To void contention on resource mutex,
+   * atomic operations are prefered on logical lock info and count logical lock fields. Logical operations
+   * does not means that resource mutex is not used at all, in fact it is used only in particular, rare cases.
+   * Logical lock information keeps the following fields:
+   *  - LK_RES_LOGICAL_FLAG flag - set if logical locking is enabled. When it is enabled, the other fields
+   *  can be used to attomically acquire/release lock without using the resource mutex.
+   *  - LK_RES_LOGICAL_NON2PL_FLAG - set if non2pl locks exists. It allows to attomically detects whether
+   *  non2pl locks exists.
+   *  - the highest acquired lock mode - used to detect compatibility between locks.
+   *  - highest lock counter - how many highest locks are holded by transactions. Used to detect when
+   *  highest lock must be recomputed.
+   *  - the resource version - used to attomically detect whether a lock entry is obsolete and must be removed.
+   *  Also, usefull in debug. The version increases when highest lock mode is modified or the resource is
+   * logically deleted. A resource is logically deleted when there is no active lock entry in its lists. Before
+   * deleteing it, all mark deleted entries (LK_ENTRY_LOGICAL_DELETED) are disconnected (LK_ENTRY_DISCONECTED).
+   * It is the owner responsibility to remove its disconnected entries.
+   */
+  volatile UINT64 logical_lock_info;
+
+  /* Count transactions that executes atomic mark/unmark delete. It is used by the transaction that disable
+   * logical locking mode to wait while there are still concurrent trancactions that started logical locking
+   * but didn't finished yet. Enabling/disabling logical locking are done under resource mutex protection.
+   * The alternative may be a read/write lock, but, since we waiting rare, is better to use the counter.
+   */
+  volatile int count_logical_lock;
 
   // *INDENT-OFF*
   lk_res ();

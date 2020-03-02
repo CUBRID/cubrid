@@ -237,6 +237,190 @@ typedef enum
 
 #if defined(SERVER_MODE)
 
+ /* Various constants and macros used to logical delete/insert locks. */
+
+/* Is logical lock mode? */
+#define LK_IS_LOGICAL_LOCK_MODE(mode) \
+  ((mode) <= IX_LOCK)
+
+ /* Set active lock entry. */
+#define LK_ENTRY_SET_ACTIVE(entry) \
+  (assert ((entry) != NULL), ATOMIC_TAS_32 (&(entry)->status, LK_ENTRY_ACTIVE))
+
+ /* Is active lock entry? */
+#define LK_ENTRY_IS_ACTIVE(entry) \
+  (assert ((entry) != NULL), ATOMIC_INC_32 (&(entry)->status, 0) == LK_ENTRY_ACTIVE)
+
+ /* Is lock entry logical deleted? */
+#define LK_ENTRY_IS_LOGICAL_DELETED(entry) \
+  (assert ((entry) != NULL), ATOMIC_INC_32 (&(entry)->status, 0) == LK_ENTRY_LOGICAL_DELETED)
+
+ /* Update lock entry status? */
+#define LK_ENTRY_UPDATE_STATUS(entry, old_status, new_status) \
+  (assert ((entry) != NULL), ATOMIC_CAS_32 (&(entry)->status, old_status, new_status))
+
+ /* Is disconnected lock entry? */
+#define LK_ENTRY_IS_DISCONNECTED(entry)	\
+  (assert ((entry) != NULL), ATOMIC_INC_32 (&(entry)->status, 0) == LK_ENTRY_DISCONECTED)
+
+ /* Get counter of resource highest lock mode. */
+ /* The number of bits for each field. */
+#define LK_RES_LI_HIGHEST_LOCK_COUNTER_NUM_BITS                32
+#define LK_RES_LI_HIGHEST_LOCK_VERSION_NUM_BITS                24
+#define LK_RES_LI_HIGHEST_LOCK_COUNTER_AND_VERSION_NUM_BITS    56
+#define LK_RES_LI_HIGHEST_LOCK_MODE_NUM_BITS                    4
+#define LK_RES_LI_HIGHEST_LOCK_FLAGS_NUM_BITS                   4	/* Reserved 4, used only one */
+
+ /* Counter mask and increment. */
+#define LK_RES_LI_HIGHEST_LOCK_COUNTER_MASK                    0x00000000ffffffffULL
+#define LK_RES_LI_HIGHEST_LOCK_COUNTER_INCREMENT               0x0000000000000001ULL
+
+ /* Lock version mask and increment. */
+#define LK_RES_LI_HIGHEST_LOCK_VERSION_MASK                    0x00ffffff00000000ULL
+#define LK_RES_LI_HIGHEST_LOCK_VERSION_INCREMENT               0x0000000100000000ULL
+
+ /* Lock mode mask. */
+#define LK_RES_LI_HIGHEST_LOCK_MODE_MASK                       0x0f00000000000000ULL
+
+ /* Logical flag. */
+#define LK_RES_LOGICAL_FLAG                    0x8000000000000000ULL
+#define LK_RES_LOGICAL_NON2PL_FLAG	       0x4000000000000000ULL
+#define LK_RES_LOGICAL_FLAGS_MASK	       0xf000000000000000ULL
+
+ /* Get counter of resource highest lock mode. */
+#define LK_LI_GET_HIGHEST_LOCK_COUNTER(logical_lock_info) \
+  ((logical_lock_info) & LK_RES_LI_HIGHEST_LOCK_COUNTER_MASK)
+
+ /* Increment counter of highest lock mode. */
+#define LK_LI_INC_HIGHEST_LOCK_COUNTER(logical_lock_info) \
+  (assert (((logical_lock_info) & LK_RES_LI_HIGHEST_LOCK_COUNTER_MASK) < LK_RES_LI_HIGHEST_LOCK_COUNTER_MASK),  \
+   (logical_lock_info) + LK_RES_LI_HIGHEST_LOCK_COUNTER_INCREMENT)
+
+ /* Decrement counter of resource highest lock mode. */
+#define LK_LI_DEC_HIGHEST_LOCK_COUNTER(logical_lock_info) \
+  (assert (((logical_lock_info) & LK_RES_LI_HIGHEST_LOCK_COUNTER_MASK) > 0ULL),  \
+   (logical_lock_info) - LK_RES_LI_HIGHEST_LOCK_COUNTER_INCREMENT)
+
+ /* Reset counter of resource highest lock mode. */
+#define LK_RES_RESET_HIGHEST_LOCK_COUNTER(logical_lock_info) \
+  ((logical_lock_info) & ~ LK_RES_LI_HIGHEST_LOCK_COUNTER_MASK)
+
+ /* Set counter of resource highest lock mode. */
+#define LK_LI_SET_HIGHEST_LOCK_COUNTER(logical_lock_info, cnt) \
+  (((logical_lock_info) & ~ LK_RES_LI_HIGHEST_LOCK_COUNTER_MASK) | (cnt))
+
+ /* Get version of logical lock info. */
+#define LK_LI_GET_VERSION(logical_lock_info) \
+  (((logical_lock_info) & LK_RES_LI_HIGHEST_LOCK_VERSION_MASK) >> LK_RES_LI_HIGHEST_LOCK_COUNTER_NUM_BITS)
+
+ /* Increment version of logical lock info. */
+#define LK_LI_INC_HIGHEST_LOCK_VERSION(logical_lock_info) \
+  (assert (((logical_lock_info) & LK_RES_LI_HIGHEST_LOCK_VERSION_MASK) <= LK_RES_LI_HIGHEST_LOCK_VERSION_MASK),  \
+   ((logical_lock_info) & LK_RES_LI_HIGHEST_LOCK_VERSION_MASK) < (LK_RES_LI_HIGHEST_LOCK_VERSION_MASK)  \
+   ? (logical_lock_info + LK_RES_LI_HIGHEST_LOCK_VERSION_INCREMENT) \
+   : ((logical_lock_info) & ~ LK_RES_LI_HIGHEST_LOCK_VERSION_MASK))
+
+ /* Get highest lock mode. */
+#define LK_LI_GET_HIGHEST_LOCK_MODE(logical_lock_info) \
+  ((LOCK) (((logical_lock_info) & LK_RES_LI_HIGHEST_LOCK_MODE_MASK) >> LK_RES_LI_HIGHEST_LOCK_COUNTER_AND_VERSION_NUM_BITS))
+
+ /* Set highest lock mode. */
+#define LK_LI_SET_HIGHEST_LOCK_MODE(logical_lock_info, lock_mode) \
+  (((logical_lock_info) & ~LK_RES_LI_HIGHEST_LOCK_MODE_MASK) | ((UINT64)lock_mode << LK_RES_LI_HIGHEST_LOCK_COUNTER_AND_VERSION_NUM_BITS))
+
+ /* Disable logical lock info. */
+#define LK_DISABLE_LI(logical_lock_info) \
+  ((logical_lock_info) & ~LK_RES_LOGICAL_FLAG)
+
+ /* Enable logical lock info. */
+#define LK_ENABLE_LI(logical_lock_info) \
+  ((logical_lock_info) | LK_RES_LOGICAL_FLAG)
+
+ /* Enable logical lock info. */
+#define LK_RES_ENABLE_LI(res_ptr) \
+  ((res_ptr)->logical_lock_info |= LK_RES_LOGICAL_FLAG)
+
+ /* Is logical locking enabled? */
+#define LK_IS_LI_ENABLED(logical_lock_info) \
+  (((logical_lock_info) & LK_RES_LOGICAL_FLAG) != 0ULL)
+
+ /* Is logical locking disabled? */
+#define LK_IS_LI_DISABLED(logical_lock_info) \
+  (!LK_IS_LI_ENABLED (logical_lock_info))
+
+ /* Get resource logical lock info. */
+#define LK_RES_GET_LI(res_ptr) \
+  (ATOMIC_INC_64 (&(res_ptr)->logical_lock_info, 0ULL))
+
+ /* Update resource logical lock info. */
+#define LK_RES_UPDATE_LI(res_ptr, old_logical_lock_info, new_logical_lock_info) \
+  (ATOMIC_CAS_64 (&(res_ptr)->logical_lock_info, old_logical_lock_info, new_logical_lock_info))
+
+ /* Has resource highest lock enabled? */
+#define LK_RES_IS_LI_ENABLED(res_ptr) \
+  (LK_IS_LI_ENABLED (LK_RES_GET_LI (res_ptr)))
+
+ /* Has resource highest lock disabled? */
+#define LK_RES_IS_LI_DISABLED(res_ptr) \
+  (!LK_RES_IS_LI_ENABLED (res_ptr))
+
+ /* Enable logical non2pl lock. */
+#define LK_ENABLE_LI_NON2PL(logical_lock_info) \
+  ((logical_lock_info) | LK_RES_LOGICAL_NON2PL_FLAG)
+
+ /* Disable logical lock info. */
+#define LK_DISABLE_LI_NON2PL(logical_lock_info) \
+  ((logical_lock_info) & ~LK_RES_LOGICAL_NON2PL_FLAG)
+
+ /* Is logical non2pl enabled? */
+#define LK_IS_LI_NON2PL_ENABLED(logical_lock_info) \
+  (((logical_lock_info) & LK_RES_LOGICAL_NON2PL_FLAG) != 0ULL)
+
+ /* Is logical non2pl disabled? */
+#define LK_IS_LI_NON2PL_DISABLED(logical_lock_info) \
+  (!LK_IS_LI_NON2PL_ENABLED (logical_lock_info))
+
+ /* Has logical flag only? */
+#define LK_HAS_LOGICAL_FLAG_ONLY(logical_lock_info) \
+  (((logical_lock_info) & LK_RES_LOGICAL_FLAGS_MASK) == LK_RES_LOGICAL_FLAG)
+
+ /* Has no flag? */
+#define LK_HAS_NO_FLAG(logical_lock_info) \
+  (((logical_lock_info) & LK_RES_LOGICAL_FLAGS_MASK) == 0ULL)
+
+ /* Get resource highest lock mode. */
+#define LK_RES_LI_GET_HIGHEST_LOCK_MODE(res_ptr) \
+  (LK_LI_GET_HIGHEST_LOCK_MODE (LK_RES_GET_LI (res_ptr)))
+
+ /* Init logical locking counter. */
+#define LK_RES_INIT_LOGICAL_LOCK_COUNTER(res_ptr) \
+  ((res_ptr)->count_logical_lock = 0)
+
+ /* Get logical locking counter. */
+#define LK_RES_GET_LOGICAL_LOCK_COUNTER(res_ptr) \
+  (ATOMIC_INC_32 (&(res_ptr)->count_logical_lock, 0))
+
+ /* Starts logical locking. */
+#define LK_RES_STARTS_LOGICAL_LOCK(res_ptr) \
+  (assert ((res_ptr)->count_logical_lock >= 0), ATOMIC_INC_32 (&(res_ptr)->count_logical_lock, 1))
+
+ /* Ends logical locking. */
+#define LK_RES_ENDS_LOGICAL_LOCK(res_ptr) \
+  (assert ((res_ptr)->count_logical_lock > 0), ATOMIC_INC_32 (&(res_ptr)->count_logical_lock, -1))
+
+#if !defined (NDEBUG)
+typedef struct lk_debug_trace_info LK_DEBUG_TRACE_INFO;
+struct lk_debug_trace_info
+{
+  UINT64 old_logical_lock_info;
+  UINT64 new_logical_lock_info;
+  OID oid;
+  int tran_index;
+  int line;
+  LOCK lock;
+};
+#endif
+
 typedef struct lk_lockinfo LK_LOCKINFO;
 struct lk_lockinfo
 {
@@ -343,8 +527,9 @@ struct lk_tran_lock
 /*
  * Lock Manager Global Data Structure
  */
-// *INDENT-OFF*
-using lk_hashmap_type = cubthread::lockfree_hashmap<LK_RES_KEY, LK_RES>;
+
+ // *INDENT-OFF*
+using lk_hashmap_type = cubthread::lockfree_hashmap < LK_RES_KEY, LK_RES >;
 using lk_hashmap_iterator = lk_hashmap_type::iterator;
 // *INDENT-ON*
 
@@ -363,7 +548,7 @@ struct lk_global_data
 
   /* deadlock detection related fields */
   pthread_mutex_t DL_detection_mutex;
-  struct timeval last_deadlock_run;	/* last deadlock detection time */
+  struct timeval last_deadlock_run;	/* last deadlock detetion time */
   LK_WFG_NODE *TWFG_node;	/* transaction WFG node */
   LK_WFG_EDGE *TWFG_edge;	/* transaction WFG edge */
   int max_TWFG_edge;
@@ -477,7 +662,6 @@ static void lock_initialize_entry_as_blocked (LK_ENTRY * entry_ptr, THREAD_ENTRY
 					      LK_RES * res, LOCK lock);
 static void lock_initialize_entry_as_non2pl (LK_ENTRY * entry_ptr, int tran_index, LK_RES * res, LOCK lock);
 static void lock_initialize_resource (LK_RES * res_ptr);
-static void lock_initialize_resource_as_allocated (LK_RES * res_ptr, LOCK lock);
 static unsigned int lock_get_hash_value (const OID * oid, int htsize);
 static int lock_initialize_tran_lock_table (void);
 static void lock_initialize_object_hash_table (void);
@@ -488,7 +672,8 @@ static void lock_insert_into_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tra
 static int lock_delete_from_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran_index);
 static void lock_insert_into_tran_non2pl_list (LK_ENTRY * non2pl, int owner_tran_index);
 static int lock_delete_from_tran_non2pl_list (LK_ENTRY * non2pl, int owner_tran_index);
-static LK_ENTRY *lock_find_tran_hold_entry (THREAD_ENTRY * thread_p, int tran_index, const OID * oid, bool is_class);
+static LK_ENTRY *lock_find_tran_hold_active_entry (THREAD_ENTRY * thread_p, int tran_index, const OID * oid,
+						   bool is_class);
 static bool lock_force_timeout_expired_wait_transactions (void *thrd_entry);
 static bool lock_is_local_deadlock_detection_interval_up (void);
 static void lock_detect_local_deadlock (THREAD_ENTRY * thread_p);
@@ -560,6 +745,92 @@ static void lock_get_transaction_lock_waiting_threads_mapfunc (THREAD_ENTRY & th
 							       size_t & count);
 static void lock_get_transaction_lock_waiting_threads (int tran_index, tran_lock_waiters_array_type & tran_lock_waiters,
 						       size_t & count);
+/* Logically locking functions.
+ * Logical locking is used to avoid as much as possible resource mutex acquisition that creates contention.
+ * At unlock, the transaction entry is logically deleted (mark deleted), so it can be reactivated later
+ * (instead phisically destroying it and recreate it). Logical and physical locking modes can't be mixed.
+ * Commuting between these 2 modes is done in atomic manner.
+ * In logical mode, in some particular cases, we acquire resource mutex. The purpose is to avoid to
+ * commute often between logical and physical, that may create performance issue.
+ * The logical locking is used only for class resource, when total holder modes is maximum IX and there
+ * is no waiter. Positioning of lock entries in holder list is not important since there is no waiting
+ * transaction. However, the position is considered after switching to physical locking mode. Logical
+ * locking considers acquiring, releasing, demoting, non2pl, instant, multiple transaction locks on same.
+ * resource. It is obvious that logical locking is disabled in case of deadlocks (there is no waiter).
+ * Also, logical locking is disabled in case of lock escalation, when requested mode is too strong.
+ * In physical mode, after releasing a lock, commutation to logical is done, if possible.
+ */
+STATIC_INLINE int lock_res_connect_grant_entry (THREAD_ENTRY * thread_p, int tran_index, LF_TRAN_ENTRY * t_entry_ent,
+						LK_RES * res_ptr, bool is_res_mutex_locked, LOCK new_mode,
+						bool is_instant_duration, LK_ENTRY * class_entry, bool update_non2pl,
+						LK_ENTRY ** entry_ptr_ptr) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool lock_enable_logical_non2pl (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool lock_disable_logical_non2pl (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool lock_unlock_object_logical_with_cleaning (THREAD_ENTRY * thread_p, bool is_res_mutex_locked,
+							     bool is_non2pl_lock, LK_RES * res_ptr,
+							     LK_ENTRY ** entry_ptr_ptr, bool * needs_remove_resource)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int lock_object_logical_with_cleaning (THREAD_ENTRY * thread_p, int tran_index,
+						     LF_TRAN_ENTRY * t_entry_ent, LK_RES * res_ptr,
+						     bool is_new_resource, bool is_res_mutex_locked,
+						     LOCK requested_lock_mode, bool is_instant_duration,
+						     LK_ENTRY * class_entry, LK_ENTRY ** entry_ptr_ptr)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int lock_demote_class_lock_logical (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK_ENTRY * entry_ptr,
+						  LOCK to_be_lock) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void lock_remove_lock_from_logical_lock_info (THREAD_ENTRY * thread_p, UINT64 * logical_lock_info,
+							    LOCK lock) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool lock_add_lock_to_resource_logical_lock_info (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LOCK lock)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool lock_is_compatible_with_resource_logical_lock_info (THREAD_ENTRY * thread_p, LK_RES * res_ptr,
+								       LOCK lock) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool lock_add_lock_to_logical_lock_info (THREAD_ENTRY * thread_p, UINT64 * logical_lock_info, LOCK lock)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool lock_is_compatible_with_logical_lock_info (THREAD_ENTRY * thread_p, UINT64 logical_lock_info,
+							      LOCK lock) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool lock_resource_has_mark_deleted_entries (THREAD_ENTRY * thread_p, LK_RES * res_ptr);
+STATIC_INLINE bool lock_resource_enable_logical_locking (THREAD_ENTRY * thread_p, LK_RES * res_ptr,
+							 bool allows_null_lock) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void lock_resource_disable_logical_locking (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool lock_resource_can_enable_logical_locking (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void lock_compute_logical_lock_info (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LOCK * highest_lock_mode,
+						   UINT64 * cnt_highest_lock_mode) __attribute__ ((ALWAYS_INLINE));;
+STATIC_INLINE void lock_res_disconnect_logical_deleted_entries (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool lock_res_disconnect_entry_from_holder_list (THREAD_ENTRY * thread_p, LK_RES * res_ptr,
+							       LK_ENTRY * entry_ptr);
+STATIC_INLINE void lock_resource_recompute_total_holder_mode (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void lock_resource_recompute_total_waiter_mode (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void lock_remove_disconnected_entry (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr,
+						   bool add_lock_to_non2pl) __attribute__ ((ALWAYS_INLINE));
+
+#define lock_remove_resource_and_init(thread_p, res_ptr) \
+  do { \
+    lock_remove_resource ((thread_p), (res_ptr)); \
+    (res_ptr) = NULL; \
+    } while (0)
+
+#define lock_remove_disconnected_entry_and_init(thread_p, entry_ptr, add_lock_to_non2pl) \
+  do { \
+    lock_remove_disconnected_entry ((thread_p), (entry_ptr), (add_lock_to_non2pl)); \
+    (entry_ptr) = NULL; \
+  } while (0)
+
+#if !defined (NDEBUG)
+STATIC_INLINE int lock_debug_add_trace_info (UINT64 old_logical_lock_info, UINT64 new_logical_lock_info, OID * oid,
+					     int tran_index, LOCK lock, int line) __attribute__ ((ALWAYS_INLINE));
+
+/* Debug info for logical locking. */
+#define LK_DEBUG_TRACE_INFO_ARR_SIZE 10000
+LK_DEBUG_TRACE_INFO *lk_debug_trace_arr = NULL;
+unsigned int idx_lk_debug_trace_arr = 0;
+#endif /* !NDEBUG */
 
 // *INDENT-OFF*
 static cubthread::daemon *lock_Deadlock_detect_daemon = NULL;
@@ -730,6 +1001,8 @@ lock_alloc_resource (void)
     {
       pthread_mutex_init (&(res_ptr->res_mutex), NULL);
     }
+  res_ptr->logical_lock_info = 0;
+  LK_RES_INIT_LOGICAL_LOCK_COUNTER (res_ptr);
   return res_ptr;
 }
 
@@ -785,7 +1058,6 @@ lock_uninit_resource (void *res)
   assert (res_ptr->non2pl == NULL);
 
   /* TO BE FILLED IN AS NECESSARY */
-
   return NO_ERROR;
 }
 
@@ -899,6 +1171,7 @@ lock_initialize_entry (LK_ENTRY * entry_ptr)
   entry_ptr->instant_lock_count = 0;
   entry_ptr->bind_index_in_tran = -1;
   XASL_ID_SET_NULL (&entry_ptr->xasl_id);
+  LK_ENTRY_SET_ACTIVE (entry_ptr);
 }
 
 /* initialize lock entry as granted state */
@@ -917,7 +1190,11 @@ lock_initialize_entry_as_granted (LK_ENTRY * entry_ptr, int tran_index, LK_RES *
   entry_ptr->class_entry = NULL;
   entry_ptr->ngranules = 0;
   entry_ptr->instant_lock_count = 0;
-
+  LK_ENTRY_SET_ACTIVE (entry_ptr);
+  if (LOCK_IS_ANY_CLASS_RESOURCE_TYPE (res->key.type))
+    {
+      entry_ptr->resource_version = LK_LI_GET_VERSION (res->logical_lock_info);
+    }
   lock_event_set_xasl_id_to_entry (tran_index, entry_ptr);
 }
 
@@ -938,7 +1215,11 @@ lock_initialize_entry_as_blocked (LK_ENTRY * entry_ptr, THREAD_ENTRY * thread_p,
   entry_ptr->class_entry = NULL;
   entry_ptr->ngranules = 0;
   entry_ptr->instant_lock_count = 0;
-
+  if (LOCK_IS_ANY_CLASS_RESOURCE_TYPE (res->key.type))
+    {
+      entry_ptr->resource_version = LK_LI_GET_VERSION (res->logical_lock_info);
+    }
+  LK_ENTRY_SET_ACTIVE (entry_ptr);
   lock_event_set_xasl_id_to_entry (tran_index, entry_ptr);
 }
 
@@ -958,6 +1239,8 @@ lock_initialize_entry_as_non2pl (LK_ENTRY * entry_ptr, int tran_index, LK_RES * 
   entry_ptr->class_entry = NULL;
   entry_ptr->ngranules = 0;
   entry_ptr->instant_lock_count = 0;
+  entry_ptr->resource_version = 0;
+  LK_ENTRY_SET_ACTIVE (entry_ptr);
 }
 
 /* initialize lock resource as free state */
@@ -974,17 +1257,6 @@ lock_initialize_resource (LK_RES * res_ptr)
   res_ptr->waiter = NULL;
   res_ptr->non2pl = NULL;
   res_ptr->hash_next = NULL;
-}
-
-/* initialize lock resource as allocated state */
-static void
-lock_initialize_resource_as_allocated (LK_RES * res_ptr, LOCK lock)
-{
-  res_ptr->total_holders_mode = lock;
-  res_ptr->total_waiters_mode = NULL_LOCK;
-  res_ptr->holder = NULL;
-  res_ptr->waiter = NULL;
-  res_ptr->non2pl = NULL;
 }
 
 /*
@@ -1101,7 +1373,7 @@ lock_initialize_object_hash_table (void)
   const int block_count = 2;
   const int block_size = (int) MAX ((lk_Gl.max_obj_locks * LK_RES_RATIO) / block_count, 1);
 
-  /* initialize object hash table */
+  /* initialize */
   lk_Gl.m_obj_hash_table.init (obj_lock_res_Ts, THREAD_TS_OBJ_LOCK_RES, obj_hash_size, block_size, block_count,
 			       lk_Obj_lock_res_desc);
 }
@@ -1194,6 +1466,19 @@ lock_remove_resource (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 {
   assert (res_ptr != NULL);
 
+  if (LOCK_IS_ANY_CLASS_RESOURCE_TYPE (res_ptr->key.type))
+    {
+      /* Version field must be kept to detect old entries. Remaining fields must be NULL. */
+      assert (LK_LI_GET_HIGHEST_LOCK_COUNTER (res_ptr->logical_lock_info) == 0ULL);
+      assert (LK_LI_GET_HIGHEST_LOCK_MODE (res_ptr->logical_lock_info) == NULL_LOCK
+	      || LK_LI_GET_HIGHEST_LOCK_MODE (res_ptr->logical_lock_info) == NA_LOCK);
+      assert (LK_HAS_NO_FLAG (res_ptr->logical_lock_info));
+
+      res_ptr->logical_lock_info = LK_LI_SET_HIGHEST_LOCK_MODE (res_ptr->logical_lock_info, NA_LOCK);
+      res_ptr->logical_lock_info = LK_LI_INC_HIGHEST_LOCK_VERSION (res_ptr->logical_lock_info);
+    }
+
+  assert (res_ptr->holder == NULL && res_ptr->waiter == NULL && res_ptr->non2pl == NULL);
   if (!lk_Gl.m_obj_hash_table.erase_locked (thread_p, res_ptr->key, res_ptr))
     {
       /* this should not happen, as the hash entry is mutex protected and no clear operations are performed on the hash
@@ -1244,6 +1529,7 @@ lock_insert_into_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran_index)
       return;
     }
 
+  assert (LK_ENTRY_IS_ACTIVE (entry_ptr));
   tran_lock = &lk_Gl.tran_lock_table[entry_ptr->tran_index];
   rv = pthread_mutex_lock (&tran_lock->hold_mutex);
 
@@ -1258,9 +1544,11 @@ lock_insert_into_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran_index)
 #endif /* CUBRID_DEBUG */
       entry_ptr->tran_next = tran_lock->root_class_hold;
       tran_lock->root_class_hold = entry_ptr;
+      assert (entry_ptr->tran_next != entry_ptr);
       break;
 
     case LOCK_RESOURCE_CLASS:
+
 #if defined(CUBRID_DEBUG)
       if (tran_lock->class_hold_list != NULL)
 	{
@@ -1287,6 +1575,8 @@ lock_insert_into_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran_index)
       entry_ptr->tran_next = tran_lock->class_hold_list;
       tran_lock->class_hold_list = entry_ptr;
       tran_lock->class_hold_count++;
+      assert (entry_ptr->tran_next != entry_ptr);
+
       break;
 
     case LOCK_RESOURCE_INSTANCE:
@@ -1316,6 +1606,7 @@ lock_insert_into_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran_index)
       entry_ptr->tran_next = tran_lock->inst_hold_list;
       tran_lock->inst_hold_list = entry_ptr;
       tran_lock->inst_hold_count++;
+      assert (entry_ptr->tran_next != entry_ptr);
       break;
 
     default:
@@ -1344,6 +1635,7 @@ lock_delete_from_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran_index)
   LK_TRAN_LOCK *tran_lock;
   int rv;
   int error_code = NO_ERROR;
+  LOCK_RESOURCE_TYPE lock_resource_type;
 
   /* The caller is holding a resource mutex */
 
@@ -1354,9 +1646,26 @@ lock_delete_from_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran_index)
     }
 
   tran_lock = &lk_Gl.tran_lock_table[entry_ptr->tran_index];
+  if (!LK_ENTRY_IS_DISCONNECTED (entry_ptr))
+    {
+      lock_resource_type = entry_ptr->res_head->key.type;
+    }
+  else
+    {
+      /* Since the lock entry was disconnected, definitely is a class lock. Check whether is root or not. */
+      if (entry_ptr == tran_lock->root_class_hold)
+	{
+	  lock_resource_type = LOCK_RESOURCE_ROOT_CLASS;
+	}
+      else
+	{
+	  lock_resource_type = LOCK_RESOURCE_CLASS;
+	}
+    }
+
   rv = pthread_mutex_lock (&tran_lock->hold_mutex);
 
-  switch (entry_ptr->res_head->key.type)
+  switch (lock_resource_type)
     {
     case LOCK_RESOURCE_ROOT_CLASS:
       if (entry_ptr != tran_lock->root_class_hold)
@@ -1366,6 +1675,7 @@ lock_delete_from_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran_index)
 		  entry_ptr->res_head->key.oid.pageid, entry_ptr->res_head->key.oid.slotid, entry_ptr->tran_index,
 		  (tran_lock->root_class_hold == NULL ? 0 : 1));
 	  error_code = ER_LK_NOTFOUND_IN_TRAN_HOLD_LIST;
+	  assert (false);
 	}
       else
 	{
@@ -1374,6 +1684,21 @@ lock_delete_from_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran_index)
       break;
 
     case LOCK_RESOURCE_CLASS:
+#if !defined (NDEBUG)
+      {
+	LK_ENTRY *curr = tran_lock->class_hold_list;
+	while (curr != NULL)
+	  {
+	    if (curr == entry_ptr)
+	      {
+		break;
+	      }
+	    curr = curr->tran_next;
+	  }
+	assert (curr != NULL);
+      }
+#endif
+
       if (tran_lock->class_hold_list == entry_ptr)
 	{
 	  tran_lock->class_hold_list = entry_ptr->tran_next;
@@ -1387,16 +1712,35 @@ lock_delete_from_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran_index)
 	  if (entry_ptr->tran_prev)
 	    {
 	      entry_ptr->tran_prev->tran_next = entry_ptr->tran_next;
+	      assert (entry_ptr->tran_prev->tran_next != entry_ptr->tran_prev);
 	    }
 	  if (entry_ptr->tran_next)
 	    {
 	      entry_ptr->tran_next->tran_prev = entry_ptr->tran_prev;
 	    }
 	}
+
       tran_lock->class_hold_count--;
       break;
 
     case LOCK_RESOURCE_INSTANCE:
+
+      assert (LK_ENTRY_IS_ACTIVE (entry_ptr));
+#if !defined (NDEBUG)
+      {
+	LK_ENTRY *curr = tran_lock->inst_hold_list;
+	while (curr != NULL)
+	  {
+	    if (curr == entry_ptr)
+	      {
+		break;
+	      }
+	    curr = curr->tran_next;
+	  }
+	assert (curr != NULL);
+      }
+#endif
+
       if (tran_lock->inst_hold_list == entry_ptr)
 	{
 	  tran_lock->inst_hold_list = entry_ptr->tran_next;
@@ -1410,6 +1754,7 @@ lock_delete_from_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran_index)
 	  if (entry_ptr->tran_prev)
 	    {
 	      entry_ptr->tran_prev->tran_next = entry_ptr->tran_next;
+	      assert (entry_ptr->tran_prev->tran_next != entry_ptr->tran_prev);
 	    }
 	  if (entry_ptr->tran_next)
 	    {
@@ -1453,6 +1798,7 @@ lock_insert_into_tran_non2pl_list (LK_ENTRY * non2pl, int owner_tran_index)
 
   /* The caller is holding a resource mutex */
 
+  assert (non2pl != NULL && LK_ENTRY_IS_ACTIVE (non2pl));
   if (owner_tran_index != non2pl->tran_index)
     {
       assert (owner_tran_index == non2pl->tran_index);
@@ -1495,6 +1841,7 @@ lock_delete_from_tran_non2pl_list (LK_ENTRY * non2pl, int owner_tran_index)
 
   /* The caller is holding a resource mutex */
 
+  assert (non2pl != NULL && LK_ENTRY_IS_ACTIVE (non2pl));
   if (owner_tran_index != non2pl->tran_index)
     {
       assert (owner_tran_index == non2pl->tran_index);
@@ -1602,6 +1949,119 @@ lock_find_class_entry (int tran_index, const OID * class_oid)
 
 #if defined(SERVER_MODE)
 /*
+ * lock_enable_logical_non2pl - Enable logical non2pl.
+ *
+ * return: true, if enable, false otherwise.
+ *
+ *   res_ptr(in): Pointer to lock resource.
+ *
+ * Note: The caller is holding a resource mutex
+ *
+ */
+STATIC_INLINE bool
+lock_enable_logical_non2pl (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
+{
+  UINT64 old_logical_lock_info, new_logical_lock_info;
+
+  if (!LOCK_IS_ANY_CLASS_RESOURCE_TYPE (res_ptr->key.type))
+    {
+      /* Logical info is used only in case of classes. Nothing to do. */
+      return false;
+    }
+
+  do
+    {
+      old_logical_lock_info = LK_RES_GET_LI (res_ptr);
+
+      if (LK_IS_LI_DISABLED (old_logical_lock_info))
+	{
+	  /* Logical lock info was disabled, nothing to do. */
+	  return false;
+	}
+
+      if (LK_IS_LI_NON2PL_ENABLED (old_logical_lock_info))
+	{
+	  /* NON2pl already enabled. Nothing to do. */
+	  return false;
+	}
+
+      new_logical_lock_info = LK_ENABLE_LI_NON2PL (old_logical_lock_info);
+    }
+  while (!LK_RES_UPDATE_LI (res_ptr, old_logical_lock_info, new_logical_lock_info));
+
+  /* Since the current transaction hold the mutex and NON2PL was enabled, future transactions
+   * that acquires/release lock on current resource, will need to acquire resource mutex first.
+   * However, there may be some logical locking operations started, but not finished
+   * yet (see lock_object_logical_with_cleaning). We have to wait for ending of that logical operations.
+   */
+  while (LK_RES_GET_LOGICAL_LOCK_COUNTER (res_ptr) > 0)
+    {
+      /* Waits to finish all current logical locking operations. This rarely happens. */
+      thread_sleep (10);
+    }
+
+  return true;
+}
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
+/*
+ * lock_disable_logical_non2pl - Disable logical non2pl.
+ *
+ * return: true, if disabled, false otherwise.
+ *
+ *   res_ptr(in): pointer to lock resource
+ *
+ * Note: The caller is holding a resource mutex
+ *
+ */
+STATIC_INLINE bool
+lock_disable_logical_non2pl (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
+{
+  UINT64 old_logical_lock_info, new_logical_lock_info;
+
+  assert (res_ptr != NULL);
+  if (!LOCK_IS_ANY_CLASS_RESOURCE_TYPE (res_ptr->key.type))
+    {
+      /* Logical info is used only in case of classes. Nothing to do. */
+      return false;
+    }
+
+  do
+    {
+      old_logical_lock_info = LK_RES_GET_LI (res_ptr);
+
+      if (LK_IS_LI_DISABLED (old_logical_lock_info))
+	{
+	  /* Logical lock info was disabled, nothing to do. */
+	  assert (LK_IS_LI_NON2PL_DISABLED (old_logical_lock_info));
+	  return false;
+	}
+
+      /* Since non2pl flag is set, all transactions doing lock operations on current resource needs
+       * to acquire mutex. Logical lock counter must be 0, so we don't have to wait for others.
+       */
+      assert (LK_RES_GET_LOGICAL_LOCK_COUNTER (res_ptr) == 0);
+
+      new_logical_lock_info = old_logical_lock_info;
+
+      LK_DISABLE_LI_NON2PL (new_logical_lock_info);
+
+      if (res_ptr->holder == NULL && res_ptr->waiter == NULL && res_ptr->non2pl == NULL)
+	{
+	  /* Disable logical info since there is no lock entry. */
+	  assert (LK_LI_GET_HIGHEST_LOCK_COUNTER (res_ptr->logical_lock_info) == 0);
+	  new_logical_lock_info = LK_DISABLE_LI (new_logical_lock_info);
+	}
+    }
+  while (!LK_RES_UPDATE_LI (res_ptr, old_logical_lock_info, new_logical_lock_info));
+
+  return true;
+}
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
+/*
  * lock_add_non2pl_lock - Add a release lock which has never been acquired
  *
  * return: pointer to the lock entry in non2pl list.
@@ -1680,8 +2140,16 @@ lock_add_non2pl_lock (THREAD_ENTRY * thread_p, LK_RES * res_ptr, int tran_index,
       non2pl = lock_get_new_entry (tran_index, t_entry, &lk_Gl.obj_free_entry_list);
       if (non2pl != NULL)
 	{
+	  /* We are under resource mutex protection. Before adding to non2pl set logical non2pl. */
+	  if (res_ptr->non2pl == NULL)
+	    {
+	      (void) lock_enable_logical_non2pl (thread_p, res_ptr);
+	    }
+
 	  lock_initialize_entry_as_non2pl (non2pl, tran_index, res_ptr, lock);
+
 	  non2pl->next = res_ptr->non2pl;
+
 	  res_ptr->non2pl = non2pl;
 	  lock_insert_into_tran_non2pl_list (non2pl, tran_index);
 	}
@@ -1701,8 +2169,8 @@ lock_add_non2pl_lock (THREAD_ENTRY * thread_p, LK_RES * res_ptr, int tran_index,
  *
  * return:
  *
- *   res_ptr(in):
- *   entry_ptr(in):
+ *   res_ptr(in): Pointer to lock resource.
+ *   entry_ptr(in): Pointer to lock entry.
  *
  * Note:This function positions the given lock entry
  *     in the lock holder list of the given lock resource
@@ -1728,6 +2196,7 @@ lock_position_holder_entry (LK_RES * res_ptr, LK_ENTRY * entry_ptr)
       i = res_ptr->holder;
       while (i != NULL)
 	{
+	  /* Consider logical delete lock entries. */
 	  if (i->blocked_mode == NULL_LOCK)
 	    {
 	      break;
@@ -1749,6 +2218,7 @@ lock_position_holder_entry (LK_RES * res_ptr, LK_ENTRY * entry_ptr)
 	{
 	  if (i->blocked_mode != NULL_LOCK)
 	    {
+	      assert (LK_ENTRY_IS_ACTIVE (i));
 	      assert (entry_ptr->blocked_mode >= NULL_LOCK && entry_ptr->granted_mode >= NULL_LOCK);
 	      assert (i->blocked_mode >= NULL_LOCK && i->granted_mode >= NULL_LOCK);
 
@@ -1876,6 +2346,7 @@ lock_set_error_for_timeout (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
 	  continue;
 	}
 
+      assert (entry->blocked_mode == NULL_LOCK || LK_ENTRY_IS_ACTIVE (entry));
       assert (entry->granted_mode >= NULL_LOCK && entry->blocked_mode >= NULL_LOCK);
       compat1 = lock_Comp[entry->granted_mode][entry_ptr->blocked_mode];
       compat2 = lock_Comp[entry->blocked_mode][entry_ptr->blocked_mode];
@@ -1895,6 +2366,7 @@ lock_set_error_for_timeout (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
 	  continue;
 	}
 
+      assert (entry->blocked_mode == NULL_LOCK || LK_ENTRY_IS_ACTIVE (entry));
       assert (entry->granted_mode >= NULL_LOCK && entry->blocked_mode >= NULL_LOCK);
       compat1 = lock_Comp[entry->blocked_mode][entry_ptr->blocked_mode];
       assert (compat1 != LOCK_COMPAT_UNKNOWN);
@@ -2009,6 +2481,7 @@ set_error:
       break;
 
     case LOCK_RESOURCE_INSTANCE:
+      assert (LK_ENTRY_IS_ACTIVE (entry_ptr));
       if (OID_ISTEMP (&entry_ptr->res_head->key.class_oid))
 	{
 	  classname = NULL;
@@ -2138,6 +2611,7 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
   LOG_TDES *tdes;
 
   /* The threads must not hold a page latch to be blocked on a lock request. */
+  assert (entry_ptr != NULL && LK_ENTRY_IS_ACTIVE (entry_ptr));
   assert (lock_is_safe_lock_with_page (thread_p, entry_ptr) || !pgbuf_has_perm_pages_fixed (thread_p));
 
   /* The caller is holding the thread entry mutex */
@@ -2333,8 +2807,8 @@ lock_resume (LK_ENTRY * entry_ptr, int state)
       (void) logtb_find_client_name_host_pid (entry_ptr->tran_index, &__client_prog_name, &__client_user_name,
 					      &__client_host_name, &__client_pid);
       fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RESUME_TRAN),
-	       entry_ptr->tran_index, entry_ptr->tran_index, __client_prog_name, __client_user_name, __client_host_name,
-	       __client_pid);
+	       entry_ptr->tran_index, entry_ptr->tran_index, __client_prog_name, __client_user_name,
+	       __client_host_name, __client_pid);
       fflush (stdout);
     }
 
@@ -2505,9 +2979,11 @@ lock_grant_blocked_holder (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
   while (holder != NULL && holder->blocked_mode != NULL_LOCK)
     {
       /* there are some blocked holders */
+      assert (LK_ENTRY_IS_ACTIVE (holder));
       mode = NULL_LOCK;
       for (h = holder->next; h != NULL; h = h->next)
 	{
+	  assert (LK_ENTRY_IS_ACTIVE (h));
 	  assert (h->granted_mode >= NULL_LOCK && mode >= NULL_LOCK);
 	  mode = lock_Conv[h->granted_mode][mode];
 	  assert (mode != NA_LOCK);
@@ -2560,7 +3036,7 @@ lock_grant_blocked_holder (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 	  holder->granted_mode = holder->blocked_mode;
 	  holder->blocked_mode = NULL_LOCK;
 
-	  /* reflect the granted lock in the non2pl list */
+	  /* reflect the granted lock in the non2pl list that is considered when switch to logical locking. */
 	  lock_update_non2pl_list (thread_p, res_ptr, holder->tran_index, holder->granted_mode);
 
 	  /* Record number of acquired locks */
@@ -2597,6 +3073,10 @@ lock_grant_blocked_holder (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 	}
     }
 
+  /* Try to enable logical locking since total holders mode has changed. */
+  assert (LK_RES_IS_LI_DISABLED (res_ptr));
+  (void) lock_resource_enable_logical_locking (thread_p, res_ptr, false);
+  assert (!lock_resource_has_mark_deleted_entries (thread_p, res_ptr));
 }
 #endif /* SERVER_MODE */
 
@@ -2613,8 +3093,7 @@ static int
 lock_grant_blocked_waiter (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 {
   LK_ENTRY *prev_waiter;
-  LK_ENTRY *waiter, *w;
-  LOCK mode;
+  LK_ENTRY *waiter;
   bool change_total_waiters_mode = false;
   int error_code = NO_ERROR;
   LOCK_COMPATIBILITY compat;
@@ -2625,6 +3104,7 @@ lock_grant_blocked_waiter (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
   waiter = res_ptr->waiter;
   while (waiter != NULL)
     {
+      assert (LK_ENTRY_IS_ACTIVE (waiter));
       assert (waiter->blocked_mode >= NULL_LOCK && res_ptr->total_holders_mode >= NULL_LOCK);
       compat = lock_Comp[waiter->blocked_mode][res_ptr->total_holders_mode];
       assert (compat != LOCK_COMPAT_UNKNOWN);
@@ -2663,7 +3143,10 @@ lock_grant_blocked_waiter (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 	  /* position the lock entry in the holder list */
 	  lock_position_holder_entry (res_ptr, waiter);
 
-	  /* change total_holders_mode */
+	  /* reflect the granted lock in the non2pl list that is considered when switch to logical locking. */
+	  lock_update_non2pl_list (thread_p, res_ptr, waiter->tran_index, waiter->granted_mode);
+
+	  /* change total_holders_mode. We still remain in physical delete mode (non-logical). */
 	  assert (waiter->granted_mode >= NULL_LOCK && res_ptr->total_holders_mode >= NULL_LOCK);
 	  res_ptr->total_holders_mode = lock_Conv[waiter->granted_mode][res_ptr->total_holders_mode];
 	  assert (res_ptr->total_holders_mode != NA_LOCK);
@@ -2671,9 +3154,6 @@ lock_grant_blocked_waiter (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 	  /* insert the lock entry into transaction hold list. */
 	  owner_tran_index = LOG_FIND_THREAD_TRAN_INDEX (waiter->thrd_entry);
 	  lock_insert_into_tran_hold_list (waiter, owner_tran_index);
-
-	  /* reflect the granted lock in the non2pl list */
-	  lock_update_non2pl_list (thread_p, res_ptr, waiter->tran_index, waiter->granted_mode);
 
 	  /* Record number of acquired locks */
 	  perfmon_inc_stat (thread_p, PSTAT_LK_NUM_ACQUIRED_ON_OBJECTS);
@@ -2713,14 +3193,11 @@ lock_grant_blocked_waiter (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 
   if (change_total_waiters_mode == true)
     {
-      mode = NULL_LOCK;
-      for (w = res_ptr->waiter; w != NULL; w = w->next)
-	{
-	  assert (w->blocked_mode >= NULL_LOCK && mode >= NULL_LOCK);
-	  mode = lock_Conv[w->blocked_mode][mode];
-	  assert (mode != NA_LOCK);
-	}
-      res_ptr->total_waiters_mode = mode;
+      lock_resource_recompute_total_waiter_mode (thread_p, res_ptr);
+
+      assert (LK_RES_IS_LI_DISABLED (res_ptr));
+      (void) lock_resource_enable_logical_locking (thread_p, res_ptr, false);
+      assert (!lock_resource_has_mark_deleted_entries (thread_p, res_ptr));
     }
 
   return error_code;
@@ -2745,17 +3222,20 @@ static void
 lock_grant_blocked_waiter_partial (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK_ENTRY * from_whom)
 {
   LK_ENTRY *prev_check;
-  LK_ENTRY *check, *i;
+  LK_ENTRY *check;
   LOCK mode;
   LOCK_COMPATIBILITY compat;
 
   /* the caller is holding a resource mutex */
+
+  assert (res_ptr != NULL && from_whom != NULL);
 
   mode = NULL_LOCK;
   prev_check = NULL;
   check = res_ptr->waiter;
   while (check != from_whom)
     {
+      assert (LK_ENTRY_IS_ACTIVE (check));
       assert (check->blocked_mode >= NULL_LOCK && mode >= NULL_LOCK);
       mode = lock_Conv[check->blocked_mode][mode];
       assert (mode != NA_LOCK);
@@ -2767,6 +3247,7 @@ lock_grant_blocked_waiter_partial (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK
   /* check = from_whom; */
   while (check != NULL)
     {
+      assert (LK_ENTRY_IS_ACTIVE (check));
       assert (check->blocked_mode >= NULL_LOCK && mode >= NULL_LOCK);
       compat = lock_Comp[check->blocked_mode][mode];
       assert (compat != LOCK_COMPAT_UNKNOWN);
@@ -2815,7 +3296,9 @@ lock_grant_blocked_waiter_partial (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK
 	  /* position the lock entry into the holder list */
 	  lock_position_holder_entry (res_ptr, check);
 
-	  /* change total_holders_mode */
+	  /* reflect the granted lock in the non2pl list that is considered when switch to logical locking. */
+	  lock_update_non2pl_list (thread_p, res_ptr, check->tran_index, check->granted_mode);
+
 	  assert (check->granted_mode >= NULL_LOCK && res_ptr->total_holders_mode >= NULL_LOCK);
 	  res_ptr->total_holders_mode = lock_Conv[check->granted_mode][res_ptr->total_holders_mode];
 	  assert (res_ptr->total_holders_mode != NA_LOCK);
@@ -2823,9 +3306,6 @@ lock_grant_blocked_waiter_partial (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK
 	  /* insert into transaction lock hold list */
 	  owner_tran_index = LOG_FIND_THREAD_TRAN_INDEX (check->thrd_entry);
 	  lock_insert_into_tran_hold_list (check, owner_tran_index);
-
-	  /* reflect the granted lock in the non2pl list */
-	  lock_update_non2pl_list (thread_p, res_ptr, check->tran_index, check->granted_mode);
 
 	  /* Record number of acquired locks */
 	  perfmon_inc_stat (thread_p, PSTAT_LK_NUM_ACQUIRED_ON_OBJECTS);
@@ -2874,16 +3354,13 @@ lock_grant_blocked_waiter_partial (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK
     }
   else
     {
-      mode = NULL_LOCK;
-      for (i = res_ptr->waiter; i != NULL; i = i->next)
-	{
-	  assert (i->blocked_mode >= NULL_LOCK && mode >= NULL_LOCK);
-	  mode = lock_Conv[i->blocked_mode][mode];
-	  assert (mode != NA_LOCK);
-	}
-      res_ptr->total_waiters_mode = mode;
+      lock_resource_recompute_total_waiter_mode (thread_p, res_ptr);
     }
 
+  /* Try to enable logical locking since total waiters mode has changed. */
+  assert (LK_RES_IS_LI_DISABLED (res_ptr));
+  (void) lock_resource_enable_logical_locking (thread_p, res_ptr, false);
+  assert (!lock_resource_has_mark_deleted_entries (thread_p, res_ptr));
 }
 #endif /* SERVER_MODE */
 
@@ -3073,8 +3550,8 @@ lock_escalate_if_needed (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, int tr
  * Note:hold a lock on the given object with instant duration.
  */
 static int
-lock_internal_hold_lock_object_instant (THREAD_ENTRY * thread_p, int tran_index, const OID * oid, const OID * class_oid,
-					LOCK lock)
+lock_internal_hold_lock_object_instant (THREAD_ENTRY * thread_p, int tran_index, const OID * oid,
+					const OID * class_oid, LOCK lock)
 {
   LK_RES_KEY search_key;
   LK_RES *res_ptr;
@@ -3082,6 +3559,7 @@ lock_internal_hold_lock_object_instant (THREAD_ENTRY * thread_p, int tran_index,
   LOCK new_mode;
   LOCK group_mode;
   int compat1, compat2;
+  bool is_lock_compat_with_highest_lock_info;
 
 #if defined(LK_DUMP)
   if (lk_Gl.dump_level >= 1)
@@ -3126,8 +3604,17 @@ lock_internal_hold_lock_object_instant (THREAD_ENTRY * thread_p, int tran_index,
     }
 
   /* I am not a lock holder of the lockable object. */
-  if (entry_ptr == NULL)
+  if (entry_ptr == NULL || !LK_ENTRY_IS_ACTIVE (entry_ptr))
     {
+      if (LK_RES_IS_LI_ENABLED (res_ptr))
+	{
+	  is_lock_compat_with_highest_lock_info =
+	    lock_is_compatible_with_resource_logical_lock_info (thread_p, res_ptr, lock);
+
+	  pthread_mutex_unlock (&res_ptr->res_mutex);
+	  return is_lock_compat_with_highest_lock_info ? LK_GRANTED : LK_NOTGRANTED;
+	}
+
       assert (lock >= NULL_LOCK && res_ptr->total_waiters_mode >= NULL_LOCK
 	      && res_ptr->total_holders_mode >= NULL_LOCK);
 
@@ -3135,16 +3622,8 @@ lock_internal_hold_lock_object_instant (THREAD_ENTRY * thread_p, int tran_index,
       compat2 = lock_Comp[lock][res_ptr->total_holders_mode];
       assert (compat1 != LOCK_COMPAT_UNKNOWN && compat2 != LOCK_COMPAT_UNKNOWN);
 
-      if (compat1 == LOCK_COMPAT_YES && compat2 == LOCK_COMPAT_YES)
-	{
-	  pthread_mutex_unlock (&res_ptr->res_mutex);
-	  return LK_GRANTED;
-	}
-      else
-	{
-	  pthread_mutex_unlock (&res_ptr->res_mutex);
-	  return LK_NOTGRANTED;
-	}
+      pthread_mutex_unlock (&res_ptr->res_mutex);
+      return (compat1 == LOCK_COMPAT_YES && compat2 == LOCK_COMPAT_YES) ? LK_GRANTED : LK_NOTGRANTED;
     }
 
   /* I am a lock holder of the lockable object. */
@@ -3161,6 +3640,15 @@ lock_internal_hold_lock_object_instant (THREAD_ENTRY * thread_p, int tran_index,
   else
     {
       /* check the compatibility with other holders' granted mode */
+      if (LK_RES_IS_LI_ENABLED (res_ptr))
+	{
+	  is_lock_compat_with_highest_lock_info =
+	    lock_is_compatible_with_resource_logical_lock_info (thread_p, res_ptr, lock);
+
+	  pthread_mutex_unlock (&res_ptr->res_mutex);
+	  return is_lock_compat_with_highest_lock_info ? LK_GRANTED : LK_NOTGRANTED;
+	}
+
       group_mode = NULL_LOCK;
       for (i = res_ptr->holder; i != NULL; i = i->next)
 	{
@@ -3176,17 +3664,158 @@ lock_internal_hold_lock_object_instant (THREAD_ENTRY * thread_p, int tran_index,
       compat1 = lock_Comp[new_mode][group_mode];
       assert (compat1 != LOCK_COMPAT_UNKNOWN);
 
-      if (compat1 == LOCK_COMPAT_YES)
+      pthread_mutex_unlock (&res_ptr->res_mutex);
+      return (compat1 == LOCK_COMPAT_YES) ? LK_GRANTED : LK_NOTGRANTED;
+    }
+}
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
+/*
+ * lock_res_connect_grant_entry - Connect a grant lock entry
+ *
+ * return: LK_GRANTED/LK_NOTGRANTED_DUE_ERROR
+ *
+ *   thread_p(in): thread entry
+ *   tran_index(in) : thread index
+ *   t_entry_ent(in): LF tran entry
+ *   res_ptr(in): the resource
+ *   is_res_mutex_locked(in): true, if resource mutex is acquired
+ *   lock(in): granted mode
+ *   is_instant_duration(in): true, if is instant duration
+ *   class_entry(in): class entry
+ *   update_non2pl(in): true, if needs to update non2pl
+ *   entry_ptr_ptr(in/out): address of entry pointer
+ */
+STATIC_INLINE int
+lock_res_connect_grant_entry (THREAD_ENTRY * thread_p, int tran_index, LF_TRAN_ENTRY * t_entry_ent,
+			      LK_RES * res_ptr, bool is_res_mutex_locked, LOCK lock,
+			      bool is_instant_duration, LK_ENTRY * class_entry, bool update_non2pl,
+			      LK_ENTRY ** entry_ptr_ptr)
+{
+  LK_ENTRY *entry_ptr = NULL;
+  int ret_val;
+  LOCK prev_granted_mode;
+  LOCK_COMPATIBILITY compat;
+
+  assert (thread_p != NULL && t_entry_ent != NULL && res_ptr != NULL && entry_ptr_ptr != NULL);
+
+  entry_ptr = *entry_ptr_ptr;
+  if (entry_ptr != NULL)
+    {
+      assert (!LK_ENTRY_IS_DISCONNECTED (entry_ptr) && entry_ptr->count >= 0 && entry_ptr->instant_lock_count >= 0);
+      prev_granted_mode = entry_ptr->granted_mode;
+      entry_ptr->granted_mode = lock;
+      entry_ptr->count += 1;
+
+      if (is_instant_duration)
 	{
-	  pthread_mutex_unlock (&res_ptr->res_mutex);
-	  return LK_GRANTED;
+	  if (lock == prev_granted_mode)
+	    {
+	      compat = lock_Comp[lock][prev_granted_mode];
+	      assert (compat != LOCK_COMPAT_UNKNOWN);
+
+	      /* We don't need resource mutex protection here. */
+	      if ((lock >= IX_LOCK && (entry_ptr->instant_lock_count == 0 && prev_granted_mode >= IX_LOCK))
+		  && compat != LOCK_COMPAT_YES)
+		{
+		  /* if the lock is already acquired with incompatible mode by current transaction, remove instant instance
+		   * locks */
+		  lock_stop_instant_lock_mode (thread_p, tran_index, false);
+		}
+	      else
+		{
+		  entry_ptr->instant_lock_count++;
+		  assert (entry_ptr->instant_lock_count > 0);
+		}
+	    }
+	  else
+	    {
+	      entry_ptr->instant_lock_count++;
+	      assert (entry_ptr->instant_lock_count > 0);
+	    }
+	}
+
+      /* The lock was previously added to resource. We need to reset and activate the remaining entry fields.
+       * Other transaction can switch to non-logical mode while I'm here - LK_RES_LOGICAL_FLAG. That transaction
+       * is the owner of resource mutex. From that moment any other that want to lock/unlock has to wait for
+       * resource mutex. The transaction that just switched to non-logical mode, waits for current grant entry
+       * operations, started but not yet finished . So, it will waits for current transaction too. After all started
+       * grant operations ends (with logical locking), the transaction that switched to non-logical mode, may decide
+       * to remain in non-logical and will recompute total modes. Or, it may try to reactivate logical mode, by
+       * checking locks in holder list. In any case, that transaction will use the holder list (the current entry is
+       * part of the list) to build other information in resource. It is guaranteed that, at that moment, no other
+       * transaction can affect the holder list.
+       */
+      if (LK_ENTRY_IS_LOGICAL_DELETED (entry_ptr))
+	{
+	  assert (lock <= LK_RES_LI_GET_HIGHEST_LOCK_MODE (res_ptr) || is_res_mutex_locked == false);
+	  assert (update_non2pl == false);
+
+	  entry_ptr->class_entry = class_entry;
+	  lock_increment_class_granules (class_entry);
+	  entry_ptr->resource_version = LK_LI_GET_VERSION (res_ptr->logical_lock_info);
+	  LK_ENTRY_SET_ACTIVE (entry_ptr);
+	}
+    }
+  else
+    {
+      /* We need resource mutex to connect the new entry to resource. */
+      assert (is_res_mutex_locked);
+
+      entry_ptr = lock_get_new_entry (tran_index, t_entry_ent, &lk_Gl.obj_free_entry_list);
+      if (entry_ptr == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_ALLOC_RESOURCE, 1, "lock_get_new_entry");
+	  ret_val = LK_NOTGRANTED_DUE_ERROR;
+	  return ret_val;
+	}
+
+      /* initialize the lock entry as granted state */
+      lock_initialize_entry_as_granted (entry_ptr, tran_index, res_ptr, lock);
+
+      if (is_instant_duration)
+	{
+	  entry_ptr->instant_lock_count++;
+	  assert (entry_ptr->instant_lock_count > 0);
+	}
+
+      /* to manage granules */
+      entry_ptr->class_entry = class_entry;
+      lock_increment_class_granules (class_entry);
+
+      if (res_ptr->holder == NULL)
+	{
+	  /* add the lock entry into the holder list */
+	  res_ptr->holder = entry_ptr;
 	}
       else
 	{
-	  pthread_mutex_unlock (&res_ptr->res_mutex);
-	  return LK_NOTGRANTED;
+	  /* add the lock entry into the holder list */
+	  lock_position_holder_entry (res_ptr, entry_ptr);
 	}
+
+      /* add the lock entry into the transaction hold list */
+      lock_insert_into_tran_hold_list (entry_ptr, tran_index);
+
+      *entry_ptr_ptr = entry_ptr;
     }
+
+  if (update_non2pl)
+    {
+      /* Reflects the granted lock in the non2pl list. We need resource mutex. */
+      assert (is_res_mutex_locked == true);
+      lock_update_non2pl_list (thread_p, res_ptr, tran_index, lock);
+    }
+
+  /* Record number of acquired locks */
+  perfmon_inc_stat (thread_p, PSTAT_LK_NUM_ACQUIRED_ON_OBJECTS);
+
+#if defined(LK_TRACE_OBJECT)
+  LK_MSG_LOCK_ACQUIRED (entry_ptr);
+#endif /* LK_TRACE_OBJECT */
+
+  return LK_GRANTED;
 }
 #endif /* SERVER_MODE */
 
@@ -3223,7 +3852,7 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, cons
   TRAN_ISOLATION isolation;
   int ret_val;
   LOCK group_mode, old_mode, new_mode;	/* lock mode */
-  LK_RES *res_ptr;
+  LK_RES *res_ptr = NULL;
   LK_ENTRY *entry_ptr = NULL;
   LK_ENTRY *wait_entry_ptr = NULL;
   LK_ENTRY *prev, *curr, *i;
@@ -3236,6 +3865,7 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, cons
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
   UINT64 lock_wait_time;
+  int res_inserted = false;
 
 #if defined(ENABLE_SYSTEMTAP)
   const OID *class_oid_for_marker_p;
@@ -3301,6 +3931,7 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, cons
 
 start:
   assert (!is_res_mutex_locked);
+  res_inserted = false;
 
   if (class_oid != NULL && !OID_IS_ROOTOID (class_oid))
     {
@@ -3332,73 +3963,89 @@ start:
       entry_ptr = lock_find_class_entry (tran_index, oid);
       if (entry_ptr != NULL)
 	{
-	  res_ptr = entry_ptr->res_head;
-	  goto lock_tran_lk_entry;
+	  /* Try logical locking first, without mutex, since is faster. */
+	  ret_val =
+	    lock_object_logical_with_cleaning (thread_p, tran_index, t_entry_ent, entry_ptr->res_head, false, false,
+					       lock, is_instant_duration, class_entry, &entry_ptr);
+	  if (ret_val != LK_NOTGRANTED)
+	    {
+	      if (ret_val == LK_GRANTED)
+		{
+		  *entry_addr_ptr = entry_ptr;
+		}
+	      else
+		{
+		  assert (ret_val == LK_NOTGRANTED_DUE_ERROR && er_errid () != NO_ERROR);
+		}
+
+	      goto end;
+	    }
+
+	  /* Logical lock object without resource mutex not granted. We will try logical or physical with mutex */
+	  if (entry_ptr != NULL && LK_ENTRY_IS_ACTIVE (entry_ptr))
+	    {
+	      res_ptr = entry_ptr->res_head;
+	      goto lock_tran_lk_entry;
+	    }
 	}
     }
 
   /* find or add the lockable object in the lock table */
   search_key = lock_create_search_key ((OID *) oid, (OID *) class_oid);
-  (void) lk_Gl.m_obj_hash_table.find_or_insert (thread_p, search_key, res_ptr);
+  res_inserted = lk_Gl.m_obj_hash_table.find_or_insert (thread_p, search_key, res_ptr);
   if (res_ptr == NULL)
     {
       assert (false);
       return ER_FAILED;
     }
+
   /* Find or insert also locks the resource mutex. */
   is_res_mutex_locked = true;
 
+  /* Try logical locking, while having resource mutex. */
+  ret_val =
+    lock_object_logical_with_cleaning (thread_p, tran_index, t_entry_ent, res_ptr, res_inserted, is_res_mutex_locked,
+				       lock, is_instant_duration, class_entry, &entry_ptr);
+  if (ret_val != LK_NOTGRANTED)
+    {
+      assert (is_res_mutex_locked);
+      pthread_mutex_unlock (&res_ptr->res_mutex);
+
+      if (ret_val == LK_GRANTED)
+	{
+	  *entry_addr_ptr = entry_ptr;
+	}
+      else
+	{
+	  assert (ret_val == LK_NOTGRANTED_DUE_ERROR && er_errid () != NO_ERROR);
+	}
+
+      goto end;
+    }
+
+  /* Non-logical locking case. */
+  assert (LK_RES_IS_LI_DISABLED (res_ptr) && entry_ptr == NULL);
+
   if (res_ptr->holder == NULL && res_ptr->waiter == NULL && res_ptr->non2pl == NULL)
     {
-      /* the lockable object was NOT in the hash chain */
+      /* Non-logical locking. The lockable object was NOT in the hash chain */
       /* the lock request can be granted. */
 
-      /* initialize the lock resource entry */
-      lock_initialize_resource_as_allocated (res_ptr, NULL_LOCK);
-
-      entry_ptr = lock_get_new_entry (tran_index, t_entry_ent, &lk_Gl.obj_free_entry_list);
-      if (entry_ptr == NULL)
+      assert (is_res_mutex_locked);
+      ret_val =
+	lock_res_connect_grant_entry (thread_p, tran_index, t_entry_ent, res_ptr, is_res_mutex_locked, lock,
+				      is_instant_duration, class_entry, false, &entry_ptr);
+      if (ret_val != LK_GRANTED)
 	{
-	  assert (is_res_mutex_locked);
 	  pthread_mutex_unlock (&res_ptr->res_mutex);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_ALLOC_RESOURCE, 1, "lock heap entry");
-	  ret_val = LK_NOTGRANTED_DUE_ERROR;
 	  goto end;
 	}
 
-      /* initialize the lock entry as granted state */
-      lock_initialize_entry_as_granted (entry_ptr, tran_index, res_ptr, lock);
-      if (is_instant_duration)
-	{
-	  entry_ptr->instant_lock_count++;
-	  assert (entry_ptr->instant_lock_count > 0);
-	}
-
-      /* add the lock entry into the holder list */
-      res_ptr->holder = entry_ptr;
-
-      /* to manage granules */
-      entry_ptr->class_entry = class_entry;
-      lock_increment_class_granules (class_entry);
-
-      /* add the lock entry into the transaction hold list */
-      lock_insert_into_tran_hold_list (entry_ptr, tran_index);
-
       res_ptr->total_holders_mode = lock;
-
-      /* Record number of acquired locks */
-      perfmon_inc_stat (thread_p, PSTAT_LK_NUM_ACQUIRED_ON_OBJECTS);
-#if defined(LK_TRACE_OBJECT)
-      LK_MSG_LOCK_ACQUIRED (entry_ptr);
-#endif /* LK_TRACE_OBJECT */
-
-      /* release all mutexes */
-      assert (is_res_mutex_locked);
       pthread_mutex_unlock (&res_ptr->res_mutex);
 
       *entry_addr_ptr = entry_ptr;
 
-      ret_val = LK_GRANTED;
       goto end;
     }
 
@@ -3410,6 +4057,7 @@ start:
     {
       if (entry_ptr->tran_index == tran_index)
 	{
+	  assert (LK_ENTRY_IS_ACTIVE (entry_ptr));
 	  break;
 	}
       entry_ptr = entry_ptr->next;
@@ -3428,52 +4076,23 @@ start:
 
       if (compat1 == LOCK_COMPAT_YES && compat2 == LOCK_COMPAT_YES)
 	{
-	  entry_ptr = lock_get_new_entry (tran_index, t_entry_ent, &lk_Gl.obj_free_entry_list);
-	  if (entry_ptr == NULL)
+	  assert (is_res_mutex_locked);
+
+	  ret_val = lock_res_connect_grant_entry (thread_p, tran_index, t_entry_ent, res_ptr, is_res_mutex_locked,
+						  lock, is_instant_duration, class_entry, true, &entry_ptr);
+	  if (ret_val != LK_GRANTED)
 	    {
 	      pthread_mutex_unlock (&res_ptr->res_mutex);
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_ALLOC_RESOURCE, 1, "lock heap entry");
-
-	      ret_val = LK_NOTGRANTED_DUE_ERROR;
 	      goto end;
 	    }
 
-	  /* initialize the lock entry as granted state */
-	  lock_initialize_entry_as_granted (entry_ptr, tran_index, res_ptr, lock);
-	  if (is_instant_duration)
-	    {
-	      entry_ptr->instant_lock_count++;
-	      assert (entry_ptr->instant_lock_count > 0);
-	    }
-
-	  /* to manage granules */
-	  entry_ptr->class_entry = class_entry;
-	  lock_increment_class_granules (class_entry);
-
-	  /* add the lock entry into the holder list */
-	  lock_position_holder_entry (res_ptr, entry_ptr);
-
-	  /* change total_holders_mode (total mode of holder list) */
 	  assert (lock >= NULL_LOCK && res_ptr->total_holders_mode >= NULL_LOCK);
 	  res_ptr->total_holders_mode = lock_Conv[lock][res_ptr->total_holders_mode];
 	  assert (res_ptr->total_holders_mode != NA_LOCK);
-
-	  /* add the lock entry into the transaction hold list */
-	  lock_insert_into_tran_hold_list (entry_ptr, tran_index);
-
-	  lock_update_non2pl_list (thread_p, res_ptr, tran_index, lock);
-
-	  /* Record number of acquired locks */
-	  perfmon_inc_stat (thread_p, PSTAT_LK_NUM_ACQUIRED_ON_OBJECTS);
-#if defined(LK_TRACE_OBJECT)
-	  LK_MSG_LOCK_ACQUIRED (entry_ptr);
-#endif /* LK_TRACE_OBJECT */
-
-	  assert (is_res_mutex_locked);
 	  pthread_mutex_unlock (&res_ptr->res_mutex);
+
 	  *entry_addr_ptr = entry_ptr;
 
-	  ret_val = LK_GRANTED;
 	  goto end;
 	}
 
@@ -3514,6 +4133,7 @@ start:
       wait_entry_ptr = res_ptr->waiter;
       while (wait_entry_ptr != NULL)
 	{
+	  assert (LK_ENTRY_IS_ACTIVE (wait_entry_ptr));
 	  if (wait_entry_ptr->tran_index == tran_index)
 	    {
 	      break;
@@ -3599,6 +4219,7 @@ start:
       prev = NULL;
       for (i = res_ptr->waiter; i != NULL; i = i->next)
 	{
+	  assert (LK_ENTRY_IS_ACTIVE (i));
 	  prev = i;
 	}
       if (prev == NULL)
@@ -3611,6 +4232,7 @@ start:
 	}
 
       /* change total_waiters_mode (total mode of waiting waiter) */
+      assert (LK_RES_IS_LI_DISABLED (res_ptr));
       assert (lock >= NULL_LOCK && res_ptr->total_waiters_mode >= NULL_LOCK);
       res_ptr->total_waiters_mode = lock_Conv[lock][res_ptr->total_waiters_mode];
       assert (res_ptr->total_waiters_mode != NA_LOCK);
@@ -3620,6 +4242,7 @@ start:
 
 lock_tran_lk_entry:
   /* The object exists in the hash chain & I am a lock holder of the lockable object. */
+  assert (LK_ENTRY_IS_ACTIVE (entry_ptr));
   lock_conversion = true;
   old_mode = entry_ptr->granted_mode;
   assert (lock >= NULL_LOCK && entry_ptr->granted_mode >= NULL_LOCK);
@@ -3628,35 +4251,23 @@ lock_tran_lk_entry:
 
   if (new_mode == entry_ptr->granted_mode)
     {
-      /* a request with either a less exclusive or an equal mode of lock */
-      entry_ptr->count += 1;
-      if (is_instant_duration)
-	{
-	  compat1 = lock_Comp[lock][entry_ptr->granted_mode];
-	  assert (compat1 != LOCK_COMPAT_UNKNOWN);
+      assert (!LK_RES_IS_LI_ENABLED (res_ptr) || entry_ptr->granted_mode <= LK_RES_LI_GET_HIGHEST_LOCK_MODE (res_ptr));
 
-	  if ((lock >= IX_LOCK && (entry_ptr->instant_lock_count == 0 && entry_ptr->granted_mode >= IX_LOCK))
-	      && compat1 != LOCK_COMPAT_YES)
-	    {
-	      /* if the lock is already acquired with incompatible mode by current transaction, remove instant instance
-	       * locks */
-	      lock_stop_instant_lock_mode (thread_p, tran_index, false);
-	    }
-	  else
-	    {
-	      entry_ptr->instant_lock_count++;
-	      assert (entry_ptr->instant_lock_count > 0);
-	    }
-	}
-
+      /* A request with either a less exclusive or an equal mode of lock. */
+      ret_val = lock_res_connect_grant_entry (thread_p, tran_index, t_entry_ent, res_ptr, is_res_mutex_locked,
+					      new_mode, is_instant_duration, class_entry, false, &entry_ptr);
       if (is_res_mutex_locked)
 	{
 	  pthread_mutex_unlock (&res_ptr->res_mutex);
 	}
-      perfmon_inc_stat (thread_p, PSTAT_LK_NUM_RE_REQUESTED_ON_OBJECTS);	/* monitoring */
+
+      if (ret_val != LK_GRANTED)
+	{
+	  goto end;
+	}
+
       *entry_addr_ptr = entry_ptr;
 
-      ret_val = LK_GRANTED;
       goto end;
     }
 
@@ -3665,13 +4276,34 @@ lock_tran_lk_entry:
       /* We need to lock resource mutex. */
       pthread_mutex_lock (&res_ptr->res_mutex);
       is_res_mutex_locked = true;
+
+      /* Since without mutex, didn't acquired lock, try logical locking while having resource mutex. */
+      ret_val =
+	lock_object_logical_with_cleaning (thread_p, tran_index, t_entry_ent, res_ptr, res_inserted,
+					   is_res_mutex_locked, lock, is_instant_duration, class_entry, &entry_ptr);
+      if (ret_val != LK_NOTGRANTED)
+	{
+	  /* Granted or error. Nothing else to do. */
+	  pthread_mutex_unlock (&res_ptr->res_mutex);
+
+	  if (ret_val == LK_GRANTED)
+	    {
+	      *entry_addr_ptr = entry_ptr;
+	    }
+	  else
+	    {
+	      assert (ret_val == LK_NOTGRANTED_DUE_ERROR && er_errid () != NO_ERROR);
+	    }
+
+	  goto end;
+	}
     }
 
   /* check the compatibility with other holders' granted mode */
   group_mode = NULL_LOCK;
   for (i = res_ptr->holder; i != NULL; i = i->next)
     {
-      if (i != entry_ptr)
+      if (i != entry_ptr && LK_ENTRY_IS_ACTIVE (i))
 	{
 	  assert (i->granted_mode >= NULL_LOCK && group_mode >= NULL_LOCK);
 	  group_mode = lock_Conv[i->granted_mode][group_mode];
@@ -3685,20 +4317,19 @@ lock_tran_lk_entry:
 
   if (compat1 == LOCK_COMPAT_YES)
     {
-      entry_ptr->granted_mode = new_mode;
-      entry_ptr->count += 1;
-      if (is_instant_duration)
+      assert (is_res_mutex_locked);
+      ret_val = lock_res_connect_grant_entry (thread_p, tran_index, t_entry_ent, res_ptr, is_res_mutex_locked, new_mode,
+					      is_instant_duration, class_entry, true, &entry_ptr);
+      if (ret_val != LK_GRANTED)
 	{
-	  entry_ptr->instant_lock_count++;
-	  assert (entry_ptr->instant_lock_count > 0);
+	  pthread_mutex_unlock (&res_ptr->res_mutex);
+	  goto end;
 	}
 
       assert (lock >= NULL_LOCK && res_ptr->total_holders_mode >= NULL_LOCK);
       res_ptr->total_holders_mode = lock_Conv[lock][res_ptr->total_holders_mode];
       assert (res_ptr->total_holders_mode != NA_LOCK);
 
-      lock_update_non2pl_list (thread_p, res_ptr, tran_index, lock);
-      assert (is_res_mutex_locked);
       pthread_mutex_unlock (&res_ptr->res_mutex);
 
       goto lock_conversion_treatement;
@@ -3710,8 +4341,7 @@ lock_tran_lk_entry:
       pthread_mutex_unlock (&res_ptr->res_mutex);
       if (wait_msecs == LK_ZERO_WAIT)
 	{
-	  LK_ENTRY *p = lock_get_new_entry (tran_index, t_entry_ent,
-					    &lk_Gl.obj_free_entry_list);
+	  LK_ENTRY *p = lock_get_new_entry (tran_index, t_entry_ent, &lk_Gl.obj_free_entry_list);
 
 	  if (p != NULL)
 	    {
@@ -3791,6 +4421,7 @@ lock_tran_lk_entry:
 
   entry_ptr->thrd_entry = thread_p;
 
+  assert (LK_RES_IS_LI_DISABLED (res_ptr));
   assert (lock >= NULL_LOCK && res_ptr->total_holders_mode >= NULL_LOCK);
   res_ptr->total_holders_mode = lock_Conv[lock][res_ptr->total_holders_mode];
   assert (res_ptr->total_holders_mode != NA_LOCK);
@@ -3816,6 +4447,7 @@ lock_tran_lk_entry:
   lock_position_holder_entry (res_ptr, entry_ptr);
 
 blocked:
+  assert (is_res_mutex_locked);
 
   if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_LOCK_OBJECT))
     {
@@ -3926,6 +4558,7 @@ end:
 }
 #endif /* SERVER_MODE */
 
+
 #if defined(SERVER_MODE)
 /*
  * lock_internal_perform_unlock_object - Performs actual object unlock operation
@@ -3944,27 +4577,28 @@ end:
  *     Otherwise, just decrement the lock count for supporting isolation level.
  */
 static void
-lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, bool release_flag,
-				     bool move_to_non2pl)
+lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr,
+				     bool release_flag, bool move_to_non2pl)
 {
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_ENT);
   int tran_index;
   LK_RES *res_ptr;
-  LK_ENTRY *i;
   LK_ENTRY *prev, *curr;
   LK_ENTRY *from_whom;
-  LOCK mode;
+  LOCK granted_mode;
   int rv;
+  bool disabled_logical_locking = false, is_non2pl_lock = false, needs_remove_resource;
 
 #if defined(LK_DUMP)
   if (lk_Gl.dump_level >= 1)
     {
       fprintf (stderr,
 	       "LK_DUMP::lk_internal_unlock_object()\n"
-	       "  tran(%2d) : oid(%2d|%3d|%3d), class_oid(%2d|%3d|%3d), LOCK(%7s)\n", entry_ptr->tran_index,
-	       entry_ptr->res_head->oid.volid, entry_ptr->res_head->oid.pageid, entry_ptr->res_head->oid.slotid,
-	       entry_ptr->res_head->class_oid.volid, entry_ptr->res_head->class_oid.pageid,
-	       entry_ptr->res_head->class_oid.slotid, LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode));
+	       "  tran(%2d) : oid(%2d|%3d|%3d), class_oid(%2d|%3d|%3d), LOCK(%7s)\n",
+	       entry_ptr->tran_index, entry_ptr->res_head->oid.volid, entry_ptr->res_head->oid.pageid,
+	       entry_ptr->res_head->oid.slotid, entry_ptr->res_head->class_oid.volid,
+	       entry_ptr->res_head->class_oid.pageid, entry_ptr->res_head->class_oid.slotid,
+	       LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode));
     }
 #endif /* LK_DUMP */
 
@@ -3982,6 +4616,7 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
       return;
     }
 
+  is_non2pl_lock = (release_flag == false && move_to_non2pl == true) ? true : false;
   if (release_flag == false)
     {
       entry_ptr->count--;
@@ -3996,10 +4631,44 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
 	  return;
 	}
     }
+  else
+    {
+      /* Try logical unlocking first, without mutex, since is faster. */
+      if (lock_unlock_object_logical_with_cleaning
+	  (thread_p, false, is_non2pl_lock, entry_ptr->res_head, &entry_ptr, &needs_remove_resource))
+	{
+	  /* Succesfully logical unlocked. Nothing to do. */
+	  return;
+	}
+
+      assert (entry_ptr != NULL || LK_ENTRY_IS_ACTIVE (entry_ptr));
+    }
 
   /* hold resource mutex */
   res_ptr = entry_ptr->res_head;
   rv = pthread_mutex_lock (&res_ptr->res_mutex);
+
+  /* Try logical locking, while having resource mutex. */
+  if (lock_unlock_object_logical_with_cleaning
+      (thread_p, true, is_non2pl_lock, res_ptr, &entry_ptr, &needs_remove_resource))
+    {
+      assert (entry_ptr == NULL || LK_ENTRY_IS_LOGICAL_DELETED (entry_ptr));
+      if (needs_remove_resource)
+	{
+	  /* if resource entry is empty, remove it. */
+	  assert (res_ptr->holder == NULL && res_ptr->waiter == NULL && res_ptr->non2pl == NULL);
+
+	  (void) lock_remove_resource (thread_p, res_ptr);
+	}
+      else
+	{
+	  pthread_mutex_unlock (&res_ptr->res_mutex);
+	}
+      return;
+    }
+
+  /* Non-logical unlock. Non-logical operation requires resource mutex always. */
+  assert (LK_RES_IS_LI_DISABLED (res_ptr));
 
   /* check if the transaction is in the holder list */
   prev = NULL;
@@ -4021,6 +4690,7 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
       curr = res_ptr->waiter;
       while (curr != NULL)
 	{
+	  assert (LK_ENTRY_IS_ACTIVE (curr));
 	  if (curr->tran_index == tran_index)
 	    {
 	      break;
@@ -4055,22 +4725,20 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
 	  else
 	    {
 	      /* change only total_waiters_mode */
-	      mode = NULL_LOCK;
-	      for (i = res_ptr->waiter; i != NULL; i = i->next)
-		{
-		  assert (i->blocked_mode >= NULL_LOCK && mode >= NULL_LOCK);
-		  mode = lock_Conv[i->blocked_mode][mode];
-		  assert (mode != NA_LOCK);
-		}
-	      res_ptr->total_waiters_mode = mode;
+	      lock_resource_recompute_total_waiter_mode (thread_p, res_ptr);
+
+	      /* Try to enable logical locking since total holders mode has changed. */
+	      assert (LK_RES_IS_LI_DISABLED (res_ptr));
+	      (void) lock_resource_enable_logical_locking (thread_p, res_ptr, false);
+	      assert (!lock_resource_has_mark_deleted_entries (thread_p, res_ptr));
 	    }
 	}
       else
 	{
 	  assert (false);
 	  /* The transaction is neither the lock holder nor the lock waiter */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_LOST_TRANSACTION, 4, tran_index, res_ptr->key.oid.volid,
-		  res_ptr->key.oid.pageid, res_ptr->key.oid.slotid);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_LOST_TRANSACTION, 4, tran_index,
+		  res_ptr->key.oid.volid, res_ptr->key.oid.pageid, res_ptr->key.oid.slotid);
 	}
 
       pthread_mutex_unlock (&res_ptr->res_mutex);
@@ -4090,6 +4758,7 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
       prev->next = curr->next;
     }
 
+  granted_mode = curr->granted_mode;
   if (release_flag == false && curr->count > 0)
     {
       /* The current transaction was a blocked holder. lock timeout is called or it is selected as a deadlock victim */
@@ -4098,34 +4767,12 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
     }
   else
     {
-      /* remove the lock entry from the transaction lock hold list */
-      (void) lock_delete_from_tran_hold_list (curr, tran_index);
-
-      /* to manage granules */
-      lock_decrement_class_granules (curr->class_entry);
-
-      /* If it's not the end of transaction, it's a non2pl lock */
-      if (release_flag == false && move_to_non2pl == true)
-	{
-	  (void) lock_add_non2pl_lock (thread_p, res_ptr, tran_index, curr->granted_mode);
-	}
-      /* free the lock entry */
-      lock_free_entry (tran_index, t_entry, &lk_Gl.obj_free_entry_list, curr);
+      /* The entry was disconnected from resource. Now, disconnect it from transaction and remove it. */
+      lock_remove_disconnected_entry_and_init (thread_p, entry_ptr, is_non2pl_lock);
     }
 
   /* change total_holders_mode */
-  mode = NULL_LOCK;
-  for (i = res_ptr->holder; i != NULL; i = i->next)
-    {
-      assert (i->granted_mode >= NULL_LOCK && mode >= NULL_LOCK);
-      mode = lock_Conv[i->granted_mode][mode];
-      assert (mode != NA_LOCK);
-
-      assert (i->blocked_mode >= NULL_LOCK && mode >= NULL_LOCK);
-      mode = lock_Conv[i->blocked_mode][mode];
-      assert (mode != NA_LOCK);
-    }
-  res_ptr->total_holders_mode = mode;
+  lock_resource_recompute_total_holder_mode (thread_p, res_ptr);
 
   if (res_ptr->holder == NULL && res_ptr->waiter == NULL)
     {
@@ -4133,20 +4780,23 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
 	{
 	  /* if resource entry is empty, remove it. */
 	  (void) lock_remove_resource (thread_p, res_ptr);
+	  return;
 	}
-      else
-	{
-	  pthread_mutex_unlock (&res_ptr->res_mutex);
-	}
+
+      /* Try to enable logical locking since total holders mode has changed. */
+      assert (LK_RES_IS_LI_DISABLED (res_ptr));
+      (void) lock_resource_enable_logical_locking (thread_p, res_ptr, true);
+      assert (!lock_resource_has_mark_deleted_entries (thread_p, res_ptr));
+
     }
   else
     {
-      /* grant blocked holders and blocked waiters */
+      /* grant blocked holders and blocked waiters. Here, we may switch to logical locking mode. */
       lock_grant_blocked_holder (thread_p, res_ptr);
-
       (void) lock_grant_blocked_waiter (thread_p, res_ptr);
-      pthread_mutex_unlock (&res_ptr->res_mutex);
     }
+
+  pthread_mutex_unlock (&res_ptr->res_mutex);
 }
 #endif /* SERVER_MODE */
 
@@ -4175,7 +4825,7 @@ lock_demote_class_lock (THREAD_ENTRY * thread_p, const OID * oid, LOCK lock, LOC
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
-  entry_ptr = lock_find_tran_hold_entry (thread_p, tran_index, oid, true);
+  entry_ptr = lock_find_tran_hold_active_entry (thread_p, tran_index, oid, true);
   if (entry_ptr == NULL)
     {
       assert (entry_ptr != NULL);
@@ -4189,6 +4839,73 @@ lock_demote_class_lock (THREAD_ENTRY * thread_p, const OID * oid, LOCK lock, LOC
 }
 
 #if defined (SERVER_MODE)
+ /*
+  * lock_demote_class_lock_logical - Demote class lock logical.
+  *
+  * return: error code
+  *
+  *   thread_p(in): thread entry
+  *   res_ptr(in): resource pointer
+  *   entry_ptr(in): entry pointer
+  *   to_be_lock(in): the new lock
+  *
+  *    Note: The caller is holding the resource mutex. We are simulating demote by unlock logical
+  * and then locking logical. We can improve the performance of this function, but, since is rarely
+  * called, it is more important to not affect the other transactions. The main purpose here is
+  * to remain in logical mode.
+  */
+STATIC_INLINE int
+lock_demote_class_lock_logical (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK_ENTRY * entry_ptr, LOCK to_be_lock)
+{
+  LF_TRAN_ENTRY *t_entry_ent = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_ENT);
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  bool enabled_logical_non2pl, needs_remove_resource;
+
+  if (!LK_RES_IS_LI_ENABLED (res_ptr))
+    {
+      return false;
+    }
+
+  assert (entry_ptr != NULL && LK_ENTRY_IS_ACTIVE (entry_ptr));
+
+  /* Enable logical non2pl. This will block disabling logical locking in lock_object_logical_with_cleaning. */
+  enabled_logical_non2pl = lock_enable_logical_non2pl (thread_p, res_ptr);
+
+  /* We can improve the performance of this function in logical mode, but, since is rarely called,
+   * it is more important to not affect the other transactions. The main purpose here is to remain
+   * in logical mode.
+   */
+  if (!lock_unlock_object_logical_with_cleaning (thread_p, true, false, res_ptr, &entry_ptr, &needs_remove_resource))
+    {
+      /* Not possible, I'm the mutex owner and I'm in lock logical mode. */
+      assert (false);
+    }
+
+  /* Nobody can switch to lock non-logical mode, since I'm the mutex owner. */
+  assert (LK_RES_IS_LI_ENABLED (res_ptr) && LK_IS_LI_NON2PL_ENABLED (LK_RES_GET_LI (res_ptr))
+	  && !needs_remove_resource);
+
+  if (lock_object_logical_with_cleaning (thread_p, tran_index, t_entry_ent, res_ptr, false, true, to_be_lock, false,
+					 entry_ptr->class_entry, &entry_ptr) != LK_GRANTED)
+    {
+      /* Not possible, since is a weaker lock than initial and I'm the mutex owner . */
+      assert (false);
+    }
+
+  assert (LK_RES_IS_LI_ENABLED (res_ptr) && LK_IS_LI_NON2PL_ENABLED (LK_RES_GET_LI (res_ptr)));
+  if (enabled_logical_non2pl)
+    {
+      if (!lock_disable_logical_non2pl (thread_p, res_ptr))
+	{
+	  assert (false);
+	}
+    }
+
+  return true;
+}
+#endif /* SERVER_MODE */
+
+#if defined (SERVER_MODE)
 /*
  * lock_internal_demote_class_lock - helper function to lock_demote_class_lock
  *
@@ -4197,6 +4914,7 @@ lock_demote_class_lock (THREAD_ENTRY * thread_p, const OID * oid, LOCK lock, LOC
  *   to_be_lock(in):
  *   ex_lock(out): ex-lock mode
  *
+ * Note: The caller is holding the resource mutex.
  */
 static int
 lock_internal_demote_class_lock (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, LOCK to_be_lock, LOCK * ex_lock)
@@ -4209,16 +4927,23 @@ lock_internal_demote_class_lock (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, 
   /* The caller is not holding any mutex */
   assert (entry_ptr != NULL);
 
+  if (!LK_ENTRY_IS_ACTIVE (entry_ptr))
+    {
+      /* Nothing to do. No cleaning is required here, since it can be done at the end of transaction. */
+      return NO_ERROR;
+    }
+
   res_ptr = entry_ptr->res_head;
 
   // expects a class lock entry
   assert (res_ptr->key.type == LOCK_RESOURCE_CLASS);
-
+  res_ptr = entry_ptr->res_head;
   rv = pthread_mutex_lock (&res_ptr->res_mutex);
 
   /* find the given lock entry in the holder list */
   for (holder = res_ptr->holder; holder != NULL; holder = holder->next)
     {
+      assert (LK_ENTRY_IS_ACTIVE (holder));
       if (holder == entry_ptr)
 	{
 	  break;
@@ -4238,26 +4963,36 @@ lock_internal_demote_class_lock (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, 
 
   // to_be_lock mode should be weaker than the current lock.
   assert (NULL_LOCK < to_be_lock && to_be_lock != U_LOCK && to_be_lock < holder->granted_mode);
+  *ex_lock = holder->granted_mode;
+
+  if (lock_demote_class_lock_logical (thread_p, res_ptr, entry_ptr, to_be_lock))
+    {
+      pthread_mutex_lock (&res_ptr->res_mutex);
+      return NO_ERROR;
+    }
 
 #if defined(LK_DUMP)
   if (lk_Gl.dump_level >= 1)
     {
       fprintf (stderr, "LK_DUMP::lk_demote_class_lock ()\n"
-	       "  tran(%2d) : oid(%d|%d|%d), class_oid(%d|%d|%d), LOCK(%7s -> %7s)\n", entry_ptr->tran_index,
-	       OID_AS_ARGS (&entry_ptr->res_head->key.oid), OID_AS_ARGS (&entry_ptr->res_head->key.class_oid),
+	       "  tran(%2d) : oid(%d|%d|%d), class_oid(%d|%d|%d), LOCK(%7s -> %7s)\n",
+	       entry_ptr->tran_index, OID_AS_ARGS (&entry_ptr->res_head->key.oid),
+	       OID_AS_ARGS (&entry_ptr->res_head->key.class_oid),
 	       LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode), LOCK_TO_LOCKMODE_STRING (to_be_lock));
     }
 #endif /* LK_DUMP */
 
-  *ex_lock = holder->granted_mode;
-
   /* demote the class lock(granted mode) of the lock entry */
   holder->granted_mode = to_be_lock;
 
-  /* change total_holders_mode */
+  /* change total_holders_mode. */
   total_mode = NULL_LOCK;
   for (h = res_ptr->holder; h != NULL; h = h->next)
     {
+      if (!LK_ENTRY_IS_ACTIVE (h))
+	{
+	  continue;
+	}
       assert (h->granted_mode >= NULL_LOCK && total_mode >= NULL_LOCK);
       total_mode = lock_Conv[h->granted_mode][total_mode];
       assert (total_mode != NA_LOCK);
@@ -4268,7 +5003,7 @@ lock_internal_demote_class_lock (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, 
     }
   res_ptr->total_holders_mode = total_mode;
 
-  /* grant the blocked holders and blocked waiters */
+  /* grant the blocked holders and blocked waiters. Here, we may commute to logical locking mode. */
   lock_grant_blocked_holder (thread_p, res_ptr);
   (void) lock_grant_blocked_waiter (thread_p, res_ptr);
 
@@ -4310,7 +5045,7 @@ lock_demote_read_class_lock_for_checksumdb (THREAD_ENTRY * thread_p, int tran_in
   /* The caller is not holding any mutex */
 
   /* demote only one class lock */
-  entry_ptr = lock_find_tran_hold_entry (thread_p, tran_index, class_oid, true);
+  entry_ptr = lock_find_tran_hold_active_entry (thread_p, tran_index, class_oid, true);
   if (entry_ptr == NULL)
     {
       assert (entry_ptr != NULL);
@@ -4408,7 +5143,7 @@ lock_unlock_shared_inst_lock (THREAD_ENTRY * thread_p, int tran_index, const OID
   LK_ENTRY *entry_ptr;
 
   /* unlock the shared instance lock (S_LOCK) */
-  entry_ptr = lock_find_tran_hold_entry (thread_p, tran_index, inst_oid, false);
+  entry_ptr = lock_find_tran_hold_active_entry (thread_p, tran_index, inst_oid, false);
 
   if (entry_ptr != NULL && entry_ptr->granted_mode == S_LOCK)
     {
@@ -4544,6 +5279,7 @@ lock_remove_non2pl (THREAD_ENTRY * thread_p, LK_ENTRY * non2pl, int tran_index)
   curr = res_ptr->non2pl;
   while (curr != NULL)
     {
+      assert (LK_ENTRY_IS_ACTIVE (curr));
       if (curr->tran_index == tran_index)
 	{
 	  break;
@@ -4568,6 +5304,12 @@ lock_remove_non2pl (THREAD_ENTRY * thread_p, LK_ENTRY * non2pl, int tran_index)
     }
   /* (void)lk_delete_from_tran_non2pl_list(curr); */
 
+  /* We are under resource mutex protection. Disable logical non2pl locking. */
+  if (res_ptr->non2pl == NULL)
+    {
+      (void) lock_disable_logical_non2pl (thread_p, res_ptr);
+    }
+
   /* free the lock entry */
   lock_free_entry (tran_index, t_entry, &lk_Gl.obj_free_entry_list, curr);
 
@@ -4579,7 +5321,6 @@ lock_remove_non2pl (THREAD_ENTRY * thread_p, LK_ENTRY * non2pl, int tran_index)
     {
       pthread_mutex_unlock (&res_ptr->res_mutex);
     }
-
 }
 #endif /* SERVER_MODE */
 
@@ -4605,18 +5346,25 @@ lock_update_non2pl_list (THREAD_ENTRY * thread_p, LK_RES * res_ptr, int tran_ind
   LOCK_COMPATIBILITY compat;
 
   /* The caller is holding a resource mutex */
-
   prev = NULL;
   curr = res_ptr->non2pl;
   while (curr != NULL)
     {
+      assert (LK_ENTRY_IS_ACTIVE (curr));
       if (curr->tran_index == tran_index)
 	{			/* same transaction */
 	  /* remove current non2pl entry */
+	  assert (lock >= curr->granted_mode);
 	  next = curr->next;
 	  if (prev == NULL)
 	    {
 	      res_ptr->non2pl = curr->next;
+
+	      /* We are under resource mutex protection. Disable logical non2pl locking. */
+	      if (res_ptr->non2pl == NULL)
+		{
+		  (void) lock_disable_logical_non2pl (thread_p, res_ptr);
+		}
 	    }
 	  else
 	    {
@@ -5006,8 +5754,8 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
 						  &client_pid);
 
 	  n =
-	    snprintf (ptr, unit_size, "%s%s@%s|%s(%d)", ((v == s) ? "" : ", "), client_user_name, client_host_name,
-		      client_prog_name, client_pid);
+	    snprintf (ptr, unit_size, "%s%s@%s|%s(%d)", ((v == s) ? "" : ", "), client_user_name,
+		      client_host_name, client_prog_name, client_pid);
 	  ptr += n;
 	  assert_release (ptr < cycle_info_string + unit_size * num_tran_in_cycle);
 
@@ -5317,13 +6065,13 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
   OID *oid_rr = NULL;
   HEAP_SCANCACHE scan_cache;
   OID real_class_oid;
+  LOCK total_holders_mode;
 
   memset (time_val, 0, sizeof (time_val));
 
   /* dump object identifier */
-  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_OID), res_ptr->key.oid.volid,
-	   res_ptr->key.oid.pageid, res_ptr->key.oid.slotid);
-
+  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_OID),
+	   res_ptr->key.oid.volid, res_ptr->key.oid.pageid, res_ptr->key.oid.slotid);
   /* dump object type related information */
   switch (res_ptr->key.type)
     {
@@ -5444,9 +6192,17 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
     }
 
   /* dump total modes of holders and waiters */
+  if (LK_RES_IS_LI_DISABLED (res_ptr))
+    {
+      total_holders_mode = res_ptr->total_waiters_mode;
+    }
+  else
+    {
+      total_holders_mode = LK_RES_LI_GET_HIGHEST_LOCK_MODE (res_ptr);
+    }
+
   fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_TOTAL_MODE),
-	   LOCK_TO_LOCKMODE_STRING (res_ptr->total_holders_mode),
-	   LOCK_TO_LOCKMODE_STRING (res_ptr->total_waiters_mode));
+	   LOCK_TO_LOCKMODE_STRING (total_holders_mode), LOCK_TO_LOCKMODE_STRING (res_ptr->total_waiters_mode));
 
   num_holders = num_blocked_holders = 0;
   if (res_ptr->holder != NULL)
@@ -5456,10 +6212,14 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 	{
 	  if (entry_ptr->blocked_mode == NULL_LOCK)
 	    {
-	      num_holders++;
+	      if (LK_ENTRY_IS_ACTIVE (entry_ptr))
+		{
+		  num_holders++;
+		}
 	    }
 	  else
 	    {
+	      assert (LK_ENTRY_IS_ACTIVE (entry_ptr));
 	      num_blocked_holders++;
 	    }
 	  entry_ptr = entry_ptr->next;
@@ -5471,14 +6231,14 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
       entry_ptr = res_ptr->waiter;
       while (entry_ptr != NULL)
 	{
+	  assert (LK_ENTRY_IS_ACTIVE (entry_ptr));
 	  num_waiters++;
 	  entry_ptr = entry_ptr->next;
 	}
     }
 
-  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_LOCK_COUNT), num_holders,
-	   num_blocked_holders, num_waiters);
-
+  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_LOCK_COUNT),
+	   num_holders, num_blocked_holders, num_waiters, res_ptr->logical_lock_info);
   /* dump holders */
   if (num_holders > 0)
     {
@@ -5487,22 +6247,25 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
       entry_ptr = res_ptr->holder;
       while (entry_ptr != NULL)
 	{
-	  if (entry_ptr->blocked_mode == NULL_LOCK)
+	  if (LK_ENTRY_IS_ACTIVE (entry_ptr))
 	    {
-	      if (res_ptr->key.type == LOCK_RESOURCE_INSTANCE)
+	      if (entry_ptr->blocked_mode == NULL_LOCK)
 		{
-		  fprintf (outfp,
-			   msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK,
-					   MSGCAT_LK_RES_NON_BLOCKED_HOLDER_ENTRY), "", entry_ptr->tran_index,
-			   LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode), entry_ptr->count);
-		}
-	      else
-		{
-		  fprintf (outfp,
-			   msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK,
-					   MSGCAT_LK_RES_NON_BLOCKED_HOLDER_ENTRY_WITH_GRANULE), "",
-			   entry_ptr->tran_index, LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode), entry_ptr->count,
-			   entry_ptr->ngranules);
+		  if (res_ptr->key.type == LOCK_RESOURCE_INSTANCE)
+		    {
+		      fprintf (outfp,
+			       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK,
+					       MSGCAT_LK_RES_NON_BLOCKED_HOLDER_ENTRY), "", entry_ptr->tran_index,
+			       LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode), entry_ptr->count);
+		    }
+		  else
+		    {
+		      fprintf (outfp,
+			       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK,
+					       MSGCAT_LK_RES_NON_BLOCKED_HOLDER_ENTRY_WITH_GRANULE), "",
+			       entry_ptr->tran_index, LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode),
+			       entry_ptr->count, entry_ptr->ngranules);
+		    }
 		}
 	    }
 	  entry_ptr = entry_ptr->next;
@@ -5516,35 +6279,40 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
       entry_ptr = res_ptr->holder;
       while (entry_ptr != NULL)
 	{
-	  if (entry_ptr->blocked_mode != NULL_LOCK)
+	  if (LK_ENTRY_IS_ACTIVE (entry_ptr))
 	    {
-	      time_t stime = (time_t) (entry_ptr->thrd_entry->lockwait_stime / 1000LL);
-	      if (ctime_r (&stime, time_val) == NULL)
+	      if (entry_ptr->blocked_mode != NULL_LOCK)
 		{
-		  strcpy (time_val, "???");
-		}
+		  time_t stime = (time_t) (entry_ptr->thrd_entry->lockwait_stime / 1000LL);
+		  if (ctime_r (&stime, time_val) == NULL)
+		    {
+		      strcpy (time_val, "???");
+		    }
 
-	      time_str_len = strlen (time_val);
-	      if (time_str_len > 0 && time_val[time_str_len - 1] == '\n')
-		{
-		  time_val[time_str_len - 1] = 0;
-		}
-	      if (res_ptr->key.type == LOCK_RESOURCE_INSTANCE)
-		{
-		  fprintf (outfp,
-			   msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_BLOCKED_HOLDER_ENTRY),
-			   "", entry_ptr->tran_index, LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode),
-			   entry_ptr->count, "", LOCK_TO_LOCKMODE_STRING (entry_ptr->blocked_mode), "", time_val, "",
-			   lock_wait_msecs_to_secs (entry_ptr->thrd_entry->lockwait_msecs));
-		}
-	      else
-		{
-		  fprintf (outfp,
-			   msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK,
-					   MSGCAT_LK_RES_BLOCKED_HOLDER_ENTRY_WITH_GRANULE), "", entry_ptr->tran_index,
-			   LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode), entry_ptr->count, entry_ptr->ngranules,
-			   "", LOCK_TO_LOCKMODE_STRING (entry_ptr->blocked_mode), "", time_val, "",
-			   lock_wait_msecs_to_secs (entry_ptr->thrd_entry->lockwait_msecs));
+		  time_str_len = strlen (time_val);
+		  if (time_str_len > 0 && time_val[time_str_len - 1] == '\n')
+		    {
+		      time_val[time_str_len - 1] = 0;
+		    }
+		  if (res_ptr->key.type == LOCK_RESOURCE_INSTANCE)
+		    {
+		      fprintf (outfp,
+			       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK,
+					       MSGCAT_LK_RES_BLOCKED_HOLDER_ENTRY), "", entry_ptr->tran_index,
+			       LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode), entry_ptr->count, "",
+			       LOCK_TO_LOCKMODE_STRING (entry_ptr->blocked_mode), "", time_val, "",
+			       lock_wait_msecs_to_secs (entry_ptr->thrd_entry->lockwait_msecs));
+		    }
+		  else
+		    {
+		      fprintf (outfp,
+			       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK,
+					       MSGCAT_LK_RES_BLOCKED_HOLDER_ENTRY_WITH_GRANULE), "",
+			       entry_ptr->tran_index, LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode),
+			       entry_ptr->count, entry_ptr->ngranules, "",
+			       LOCK_TO_LOCKMODE_STRING (entry_ptr->blocked_mode), "", time_val, "",
+			       lock_wait_msecs_to_secs (entry_ptr->thrd_entry->lockwait_msecs));
+		    }
 		}
 	    }
 	  entry_ptr = entry_ptr->next;
@@ -5558,17 +6326,18 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
       entry_ptr = res_ptr->waiter;
       while (entry_ptr != NULL)
 	{
+	  assert (LK_ENTRY_IS_ACTIVE (entry_ptr));
 	  time_t stime = (time_t) (entry_ptr->thrd_entry->lockwait_stime / 1000LL);
 	  (void) ctime_r (&stime, time_val);
-
 	  time_str_len = strlen (time_val);
 	  if (time_str_len > 0 && time_val[time_str_len - 1] == '\n')
 	    {
 	      time_val[time_str_len - 1] = 0;
 	    }
-	  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_BLOCKED_WAITER_ENTRY),
-		   "", entry_ptr->tran_index, LOCK_TO_LOCKMODE_STRING (entry_ptr->blocked_mode), "", time_val, "",
-		   lock_wait_msecs_to_secs (entry_ptr->thrd_entry->lockwait_msecs));
+	  fprintf (outfp,
+		   msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_BLOCKED_WAITER_ENTRY),
+		   "", entry_ptr->tran_index, LOCK_TO_LOCKMODE_STRING (entry_ptr->blocked_mode), "", time_val,
+		   "", lock_wait_msecs_to_secs (entry_ptr->thrd_entry->lockwait_msecs));
 	  entry_ptr = entry_ptr->next;
 	}
     }
@@ -5580,10 +6349,13 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
       entry_ptr = res_ptr->non2pl;
       while (entry_ptr != NULL)
 	{
-	  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_NON2PL_RELEASED_ENTRY),
-		   "", entry_ptr->tran_index,
-		   ((entry_ptr->granted_mode == INCON_NON_TWO_PHASE_LOCK) ? "INCON_NON_TWO_PHASE_LOCK"
-		    : LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode)));
+	  assert (LK_ENTRY_IS_ACTIVE (entry_ptr));
+	  fprintf (outfp,
+		   msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK,
+				   MSGCAT_LK_RES_NON2PL_RELEASED_ENTRY), "", entry_ptr->tran_index,
+		   ((entry_ptr->granted_mode ==
+		     INCON_NON_TWO_PHASE_LOCK) ? "INCON_NON_TWO_PHASE_LOCK" :
+		    LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode)));
 	  entry_ptr = entry_ptr->next;
 	}
     }
@@ -5728,7 +6500,7 @@ deadlock_detect_task_execute (cubthread::entry & thread_ref)
 
   if (lk_Gl.deadlock_and_timeout_detector == 0)
     {
-      // if none of the threads were suspended then just return
+      /* check if the lock-wait thread exists */
       return;
     }
 
@@ -5912,7 +6684,7 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
   int wait_msecs;
   TRAN_ISOLATION isolation;
   LOCK new_class_lock;
-  LOCK old_class_lock;
+  LOCK old_class_lock, old_root_class_lock;
   int granted;
   LK_ENTRY *root_class_entry = NULL;
   LK_ENTRY *class_entry = NULL, *superclass_entry = NULL;
@@ -6016,12 +6788,35 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
 
   /* Check if current transaction has already held the class lock. If the class lock is not held, hold the class lock,
    * now. */
-  class_entry = lock_get_class_lock (thread_p, class_oid);
-  old_class_lock = (class_entry) ? class_entry->granted_mode : NULL_LOCK;
-
   if (OID_IS_ROOTOID (class_oid))
     {
-      if (old_class_lock < new_class_lock)
+      old_class_lock = NULL_LOCK;
+      old_root_class_lock = NULL_LOCK;
+      /* Find class lock and root class lock. If not found class lock entry we issue lock request for root class.
+       * Another option, in this case, would be to search for root class lock entry. However, in most of the
+       * cases is better to not search for it.
+       */
+      class_entry = lock_get_class_lock (thread_p, oid);
+      assert (class_entry == NULL || LK_ENTRY_IS_ACTIVE (class_entry));
+      if (class_entry != NULL)
+	{
+	  root_class_entry = class_entry->class_entry;
+	  while (root_class_entry != NULL)
+	    {
+	      if (OID_IS_ROOTOID (&root_class_entry->res_head->key.oid))
+		{
+		  old_root_class_lock =
+		    (LK_ENTRY_IS_ACTIVE (root_class_entry)) ? root_class_entry->granted_mode : NULL_LOCK;
+		  break;
+		}
+
+	      root_class_entry = root_class_entry->class_entry;
+	    }
+
+	  old_class_lock = (LK_ENTRY_IS_ACTIVE (class_entry)) ? class_entry->granted_mode : NULL_LOCK;
+	}
+
+      if (old_root_class_lock < new_class_lock)
 	{
 	  granted = lock_internal_perform_lock_object (thread_p, tran_index, class_oid, NULL, new_class_lock,
 						       wait_msecs, &root_class_entry, NULL);
@@ -6035,12 +6830,23 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
 
       /* NOTE that in case of acquiring a lock on a class object, the higher lock granule of the class object must not
        * be given. */
-      granted = lock_internal_perform_lock_object (thread_p, tran_index, oid, NULL, lock, wait_msecs, &class_entry,
-						   root_class_entry);
+
+      if (old_class_lock >= lock)
+	{
+	  granted = true;
+	  goto end;
+	}
+
+      granted =
+	lock_internal_perform_lock_object (thread_p, tran_index, oid, NULL, lock, wait_msecs, &class_entry,
+					   root_class_entry);
       goto end;
     }
   else
     {
+      class_entry = lock_get_class_lock (thread_p, class_oid);
+      assert (class_entry == NULL || LK_ENTRY_IS_ACTIVE (class_entry));
+      old_class_lock = (class_entry != NULL) ? class_entry->granted_mode : NULL_LOCK;
       if (old_class_lock < new_class_lock)
 	{
 	  if (class_entry != NULL && class_entry->class_entry != NULL
@@ -6052,14 +6858,18 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
 	  else
 	    {
 	      superclass_entry = lock_get_class_lock (thread_p, oid_Root_class_oid);
+	      assert (superclass_entry == NULL || LK_ENTRY_IS_ACTIVE (superclass_entry));
 	    }
 
-	  granted =
-	    lock_internal_perform_lock_object (thread_p, tran_index, class_oid, NULL, new_class_lock, wait_msecs,
-					       &class_entry, superclass_entry);
-	  if (granted != LK_GRANTED)
+	  if (old_class_lock < new_class_lock)
 	    {
-	      goto end;
+	      granted =
+		lock_internal_perform_lock_object (thread_p, tran_index, class_oid, NULL, new_class_lock, wait_msecs,
+						   &class_entry, superclass_entry);
+	      if (granted != LK_GRANTED)
+		{
+		  goto end;
+		}
 	    }
 	}
 
@@ -6075,8 +6885,9 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
 
       /* NOTE that in case of acquiring a lock on an instance object, the class oid of the instance object must be
        * given. */
-      granted = lock_internal_perform_lock_object (thread_p, tran_index, oid, class_oid, lock, wait_msecs, &inst_entry,
-						   class_entry);
+      granted =
+	lock_internal_perform_lock_object (thread_p, tran_index, oid, class_oid, lock, wait_msecs,
+					   &inst_entry, class_entry);
       goto end;
     }
 
@@ -6089,8 +6900,8 @@ end:
     }
   if (MONITOR_WAITING_THREAD (elapsed_time))
     {
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2, "lock object (lock_object)",
-	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2,
+	      "lock object (lock_object)", prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
       er_log_debug (ARG_FILE_LINE, "lock_object: %6d.%06d\n", elapsed_time.tv_sec, elapsed_time.tv_usec);
     }
 #endif
@@ -6179,14 +6990,16 @@ lock_subclass (THREAD_ENTRY * thread_p, const OID * subclass_oid, const OID * su
   /* Check if current transaction has already held the class lock. If the class lock is not held, hold the class lock,
    * now. */
   superclass_entry = lock_get_class_lock (thread_p, superclass_oid);
+  assert (superclass_entry == NULL || LK_ENTRY_IS_ACTIVE (superclass_entry));
   old_superclass_lock = (superclass_entry) ? superclass_entry->granted_mode : NULL_LOCK;
 
 
   if (old_superclass_lock < new_superclass_lock)
     {
       /* superclass is already locked, just promote to the new lock */
-      granted = lock_internal_perform_lock_object (thread_p, tran_index, superclass_oid, NULL, new_superclass_lock,
-						   wait_msecs, &superclass_entry, NULL);
+      granted =
+	lock_internal_perform_lock_object (thread_p, tran_index, superclass_oid, NULL, new_superclass_lock,
+					   wait_msecs, &superclass_entry, NULL);
       if (granted != LK_GRANTED)
 	{
 	  goto end;
@@ -6198,8 +7011,9 @@ lock_subclass (THREAD_ENTRY * thread_p, const OID * subclass_oid, const OID * su
   /* NOTE that in case of acquiring a lock on a class object, the higher lock granule of the class object must not be
    * given. */
 
-  granted = lock_internal_perform_lock_object (thread_p, tran_index, subclass_oid, NULL, lock, wait_msecs,
-					       &subclass_entry, superclass_entry);
+  granted =
+    lock_internal_perform_lock_object (thread_p, tran_index, subclass_oid, NULL, lock, wait_msecs, &subclass_entry,
+				       superclass_entry);
 end:
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
@@ -6209,8 +7023,8 @@ end:
     }
   if (MONITOR_WAITING_THREAD (elapsed_time))
     {
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2, "lock object (lock_object)",
-	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2,
+	      "lock object (lock_object)", prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
       er_log_debug (ARG_FILE_LINE, "lock_object: %6d.%06d\n", elapsed_time.tv_sec, elapsed_time.tv_usec);
     }
 #endif
@@ -6310,6 +7124,7 @@ lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, int cond_flag, LOCK c
   /* acquire the lock on the class */
   /* NOTE that in case of acquiring a lock on a class object, the higher lock granule of the class object is not given. */
   root_class_entry = lock_get_class_lock (thread_p, oid_Root_class_oid);
+  assert (root_class_entry == NULL || LK_ENTRY_IS_ACTIVE (root_class_entry));
   granted = lock_internal_perform_lock_object (thread_p, tran_index, class_oid, NULL, class_lock, wait_msecs,
 					       &class_entry, root_class_entry);
   assert (granted == LK_GRANTED || cond_flag == LK_COND_LOCK || er_errid () != NO_ERROR);
@@ -6474,6 +7289,7 @@ lock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
 
   /* get root class lock mode */
   root_class_entry = lock_get_class_lock (thread_p, oid_Root_class_oid);
+  assert (root_class_entry == NULL || LK_ENTRY_IS_ACTIVE (root_class_entry));
 
   for (i = 0; i < cls_count; i++)
     {
@@ -6563,7 +7379,7 @@ lock_unlock_object_lock_internal (THREAD_ENTRY * thread_p, const OID * oid, cons
 
   /* get transaction table index */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  entry_ptr = lock_find_tran_hold_entry (thread_p, tran_index, oid, is_class);
+  entry_ptr = lock_find_tran_hold_active_entry (thread_p, tran_index, oid, is_class);
 
   if (entry_ptr != NULL)
     {
@@ -6646,7 +7462,7 @@ lock_unlock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_
       CUBRID_LOCK_RELEASE_START (oid, class_oid, lock);
 #endif /* ENABLE_SYSTEMTAP */
 
-      entry_ptr = lock_find_tran_hold_entry (thread_p, tran_index, oid, is_class);
+      entry_ptr = lock_find_tran_hold_active_entry (thread_p, tran_index, oid, is_class);
 
       if (entry_ptr != NULL)
 	{
@@ -6845,8 +7661,7 @@ lock_unlock_all (THREAD_ENTRY * thread_p)
 #else /* !SERVER_MODE */
   int tran_index;
   LK_TRAN_LOCK *tran_lock;
-  LK_ENTRY *entry_ptr;
-
+  LK_ENTRY *entry_ptr, *next;
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tran_lock = &lk_Gl.tran_lock_table[tran_index];
 
@@ -6864,18 +7679,17 @@ lock_unlock_all (THREAD_ENTRY * thread_p)
   entry_ptr = tran_lock->class_hold_list;
   while (entry_ptr != NULL)
     {
-      assert (tran_index == entry_ptr->tran_index);
+      next = entry_ptr->tran_next;
+      assert (entry_ptr != next);
 
       lock_internal_perform_unlock_object (thread_p, entry_ptr, true, false);
-      entry_ptr = tran_lock->class_hold_list;
+      entry_ptr = next;
     }
 
   /* remove root class lock */
   entry_ptr = tran_lock->root_class_hold;
   if (entry_ptr != NULL)
     {
-      assert (tran_index == entry_ptr->tran_index);
-
       lock_internal_perform_unlock_object (thread_p, entry_ptr, true, false);
     }
 
@@ -6903,7 +7717,7 @@ lock_unlock_all (THREAD_ENTRY * thread_p)
 }
 
 static LK_ENTRY *
-lock_find_tran_hold_entry (THREAD_ENTRY * thread_p, int tran_index, const OID * oid, bool is_class)
+lock_find_tran_hold_active_entry (THREAD_ENTRY * thread_p, int tran_index, const OID * oid, bool is_class)
 {
 #if !defined (SERVER_MODE)
   return NULL;
@@ -6914,7 +7728,13 @@ lock_find_tran_hold_entry (THREAD_ENTRY * thread_p, int tran_index, const OID * 
 
   if (is_class)
     {
-      return lock_find_class_entry (tran_index, oid);
+      entry_ptr = lock_find_class_entry (tran_index, oid);
+      if (entry_ptr != NULL && LK_ENTRY_IS_ACTIVE (entry_ptr))
+	{
+	  return entry_ptr;
+	}
+
+      return NULL;
     }
 
   /* search hash */
@@ -6934,6 +7754,8 @@ lock_find_tran_hold_entry (THREAD_ENTRY * thread_p, int tran_index, const OID * 
   entry_ptr = res_ptr->holder;
   for (; entry_ptr != NULL; entry_ptr = entry_ptr->next)
     {
+      /* Instance lock entry is always active. */
+      assert (LK_ENTRY_IS_ACTIVE (entry_ptr));
       if (entry_ptr->tran_index == tran_index)
 	{
 	  break;
@@ -6950,11 +7772,11 @@ lock_find_tran_hold_entry (THREAD_ENTRY * thread_p, int tran_index, const OID * 
  *
  * return:
  *
- *   oid(in): target object identifier
+ *   oid(in): target object ientifier
  *   class_oid(in): class identifier of the target object
+ *   tran_index(in): the transaction table index of target transaction.
  *
- * Note:Find the acquired lock on the given object by the current transaction.
- *
+ * Note:Find the acquired lock on the given object by the given transaction.
  */
 LOCK
 lock_get_object_lock (const OID * oid, const OID * class_oid)
@@ -7000,7 +7822,7 @@ lock_get_object_lock (const OID * oid, const OID * class_oid)
   if (OID_EQ (oid, oid_Root_class_oid))
     {
       rv = pthread_mutex_lock (&tran_lock->hold_mutex);
-      if (tran_lock->root_class_hold != NULL)
+      if (tran_lock->root_class_hold != NULL && LK_ENTRY_IS_ACTIVE (tran_lock->root_class_hold))
 	{
 	  lock_mode = tran_lock->root_class_hold->granted_mode;
 	}
@@ -7014,7 +7836,7 @@ lock_get_object_lock (const OID * oid, const OID * class_oid)
   /* get the granted lock mode acquired on the given class oid */
   if (class_oid == NULL || OID_EQ (class_oid, oid_Root_class_oid))
     {
-      entry_ptr = lock_find_tran_hold_entry (thread_p, tran_index, oid, true);
+      entry_ptr = lock_find_tran_hold_active_entry (thread_p, tran_index, oid, true);
       if (entry_ptr != NULL)
 	{
 	  lock_mode = entry_ptr->granted_mode;
@@ -7022,7 +7844,7 @@ lock_get_object_lock (const OID * oid, const OID * class_oid)
       return lock_mode;		/* might be NULL_LOCK */
     }
 
-  entry_ptr = lock_find_tran_hold_entry (thread_p, tran_index, class_oid, true);
+  entry_ptr = lock_find_tran_hold_active_entry (thread_p, tran_index, class_oid, true);
   if (entry_ptr != NULL)
     {
       lock_mode = entry_ptr->granted_mode;
@@ -7047,7 +7869,7 @@ lock_get_object_lock (const OID * oid, const OID * class_oid)
 	  lock_mode = NULL_LOCK;
 	}
 
-      entry_ptr = lock_find_tran_hold_entry (thread_p, tran_index, oid, false);
+      entry_ptr = lock_find_tran_hold_active_entry (thread_p, tran_index, oid, false);
       if (entry_ptr != NULL)
 	{
 	  lock_mode = entry_ptr->granted_mode;
@@ -7065,6 +7887,7 @@ lock_get_object_lock (const OID * oid, const OID * class_oid)
  *
  *   oid(in): target object ientifier
  *   class_oid(in): class identifier of the target object
+ *   tran_index(in): the transaction table index of target transaction.
  *   lock(in): the lock mode
  *
  * Note: Find whether the transaction holds an enough lock on the object
@@ -7123,7 +7946,7 @@ lock_has_lock_on_object (const OID * oid, const OID * class_oid, LOCK lock)
   if (OID_EQ (oid, oid_Root_class_oid))
     {
       rv = pthread_mutex_lock (&tran_lock->hold_mutex);
-      if (tran_lock->root_class_hold != NULL)
+      if (tran_lock->root_class_hold != NULL && LK_ENTRY_IS_ACTIVE (tran_lock->root_class_hold))
 	{
 	  granted_lock_mode = tran_lock->root_class_hold->granted_mode;
 	}
@@ -7137,7 +7960,8 @@ lock_has_lock_on_object (const OID * oid, const OID * class_oid, LOCK lock)
   /* get the granted lock mode acquired on the given class oid */
   if (class_oid == NULL || OID_EQ (class_oid, oid_Root_class_oid))
     {
-      entry_ptr = lock_find_tran_hold_entry (thread_p, tran_index, oid, true);
+      entry_ptr = lock_find_tran_hold_active_entry (thread_p, tran_index, oid, true);
+      assert (entry_ptr == NULL || LK_ENTRY_IS_ACTIVE (entry_ptr));
       if (entry_ptr != NULL)
 	{
 	  granted_lock_mode = entry_ptr->granted_mode;
@@ -7145,8 +7969,9 @@ lock_has_lock_on_object (const OID * oid, const OID * class_oid, LOCK lock)
       return (lock_Conv[lock][granted_lock_mode] == granted_lock_mode);
     }
 
-  entry_ptr = lock_find_tran_hold_entry (thread_p, tran_index, class_oid, true);
-  if (entry_ptr != NULL)
+  entry_ptr = lock_find_tran_hold_active_entry (thread_p, tran_index, class_oid, true);
+  assert (entry_ptr == NULL || LK_ENTRY_IS_ACTIVE (entry_ptr));
+  if (entry_ptr != NULL && LK_ENTRY_IS_ACTIVE (entry_ptr))
     {
       granted_lock_mode = entry_ptr->granted_mode;
       if (lock_Conv[lock][granted_lock_mode] == granted_lock_mode)
@@ -7159,9 +7984,10 @@ lock_has_lock_on_object (const OID * oid, const OID * class_oid, LOCK lock)
    * case 3: object lock
    */
   /* get the granted lock mode acquired on the given instance/pseudo oid */
-  entry_ptr = lock_find_tran_hold_entry (thread_p, tran_index, oid, false);
+  entry_ptr = lock_find_tran_hold_active_entry (thread_p, tran_index, oid, false);
   if (entry_ptr != NULL)
     {
+      assert (LK_ENTRY_IS_ACTIVE (entry_ptr));
       granted_lock_mode = entry_ptr->granted_mode;
       return 1;
     }
@@ -7200,7 +8026,7 @@ lock_has_xlock (THREAD_ENTRY * thread_p)
   rv = pthread_mutex_lock (&tran_lock->hold_mutex);
 
   /* 1. check root class lock */
-  if (tran_lock->root_class_hold != NULL)
+  if (tran_lock->root_class_hold != NULL && LK_ENTRY_IS_ACTIVE (tran_lock->root_class_hold))
     {
       lock_mode = tran_lock->root_class_hold->granted_mode;
       if (lock_mode == X_LOCK || lock_mode == IX_LOCK || lock_mode == SIX_LOCK || lock_mode == SCH_M_LOCK)
@@ -7214,12 +8040,16 @@ lock_has_xlock (THREAD_ENTRY * thread_p)
   entry_ptr = tran_lock->class_hold_list;
   while (entry_ptr != NULL)
     {
-      lock_mode = entry_ptr->granted_mode;
-      if (lock_mode == X_LOCK || lock_mode == IX_LOCK || lock_mode == SIX_LOCK || lock_mode == SCH_M_LOCK)
+      if (LK_ENTRY_IS_ACTIVE (entry_ptr))
 	{
-	  pthread_mutex_unlock (&tran_lock->hold_mutex);
-	  return true;
+	  lock_mode = entry_ptr->granted_mode;
+	  if (lock_mode == X_LOCK || lock_mode == IX_LOCK || lock_mode == SIX_LOCK || lock_mode == SCH_M_LOCK)
+	    {
+	      pthread_mutex_unlock (&tran_lock->hold_mutex);
+	      return true;
+	    }
 	}
+
       entry_ptr = entry_ptr->tran_next;
     }
 
@@ -7254,8 +8084,8 @@ lock_has_lock_transaction (int tran_index)
 
   tran_lock = &lk_Gl.tran_lock_table[tran_index];
   rv = pthread_mutex_lock (&tran_lock->hold_mutex);
-  if (tran_lock->root_class_hold != NULL || tran_lock->class_hold_list != NULL || tran_lock->inst_hold_list != NULL
-      || tran_lock->non2pl_list != NULL)
+  if (tran_lock->root_class_hold != NULL || tran_lock->class_hold_list != NULL
+      || tran_lock->inst_hold_list != NULL || tran_lock->non2pl_list != NULL)
     {
       lock_hold = true;
     }
@@ -7319,13 +8149,14 @@ lock_is_waiting_transaction (int tran_index)
 
 /*
  * lock_get_class_lock - Get a pointer to lock heap entry acquired by
- *                       the current transaction on given class object
+ *                        given transaction on given class object
  *
  * return:
  *
  *   class_oid(in): target class object identifier
+ *   tran_index(in): target transaction
  *
- * Note:This function finds lock entry acquired by the current transaction
+ * Note:This function finds lock entry acquired by the given transaction
  *     on the given class and then return a pointer to the lock entry.
  */
 LK_ENTRY *
@@ -7376,11 +8207,15 @@ lock_get_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid)
     {
       rv = pthread_mutex_lock (&tran_lock->hold_mutex);
       entry_ptr = tran_lock->root_class_hold;
+      if (entry_ptr != NULL && !LK_ENTRY_IS_ACTIVE (entry_ptr))
+	{
+	  entry_ptr = NULL;
+	}
       pthread_mutex_unlock (&tran_lock->hold_mutex);
     }
   else
     {
-      entry_ptr = lock_find_tran_hold_entry (thread_p, tran_index, class_oid, true);
+      entry_ptr = lock_find_tran_hold_active_entry (thread_p, tran_index, class_oid, true);
     }
 
   return entry_ptr;
@@ -7500,8 +8335,8 @@ lock_force_timeout_expired_wait_transactions (void *thrd_entry)
  *              copies of the object.
  */
 void
-lock_notify_isolation_incons (THREAD_ENTRY * thread_p, bool (*fun) (const OID * class_oid, const OID * oid, void *args),
-			      void *args)
+lock_notify_isolation_incons (THREAD_ENTRY * thread_p,
+			      bool (*fun) (const OID * class_oid, const OID * oid, void *args), void *args)
 {
 #if !defined (SERVER_MODE)
   return;
@@ -7760,6 +8595,7 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
 #endif /* CUBRID_DEBUG */
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LK_LOCK_WAITER_ONLY, 1, "lock_waiter_only_info.log");
 
+	      assert (LK_RES_IS_LI_DISABLED (res_ptr));
 	      if (res_ptr->total_holders_mode != NULL_LOCK)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_TOTAL_HOLDERS_MODE, 1, res_ptr->total_holders_mode);
@@ -7776,11 +8612,16 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
 	    {
 	      break;
 	    }
+
+	  assert (LK_ENTRY_IS_ACTIVE (hi));
 	  for (hj = hi->next; hj != NULL; hj = hj->next)
 	    {
 	      assert (hi->granted_mode >= NULL_LOCK && hi->blocked_mode >= NULL_LOCK);
 	      assert (hj->granted_mode >= NULL_LOCK && hj->blocked_mode >= NULL_LOCK);
-
+	      if (!LK_ENTRY_IS_ACTIVE (hj))
+		{
+		  continue;
+		}
 	      compat1 = lock_Comp[hj->blocked_mode][hi->granted_mode];
 	      compat2 = lock_Comp[hj->blocked_mode][hi->blocked_mode];
 	      assert (compat1 != LOCK_COMPAT_UNKNOWN && compat2 != LOCK_COMPAT_UNKNOWN);
@@ -7803,10 +8644,20 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
       /* from waiters in the waiter to holders */
       for (hi = res_ptr->holder; hi != NULL; hi = hi->next)
 	{
+	  if (!LK_ENTRY_IS_ACTIVE (hi))
+	    {
+	      continue;
+	    }
+
 	  for (hj = res_ptr->waiter; hj != NULL; hj = hj->next)
 	    {
+	      assert (LK_ENTRY_IS_ACTIVE (hi));
 	      assert (hi->granted_mode >= NULL_LOCK && hi->blocked_mode >= NULL_LOCK);
 	      assert (hj->granted_mode >= NULL_LOCK && hj->blocked_mode >= NULL_LOCK);
+	      if (!LK_ENTRY_IS_ACTIVE (hj))
+		{
+		  continue;
+		}
 
 	      compat1 = lock_Comp[hj->blocked_mode][hi->granted_mode];
 	      compat2 = lock_Comp[hj->blocked_mode][hi->blocked_mode];
@@ -7822,6 +8673,7 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
       /* from waiters in the waiter to other waiters in the waiter */
       for (hi = res_ptr->waiter; hi != NULL; hi = hi->next)
 	{
+	  assert (LK_ENTRY_IS_ACTIVE (hi));
 	  for (hj = hi->next; hj != NULL; hj = hj->next)
 	    {
 	      assert (hj->blocked_mode >= NULL_LOCK && hi->blocked_mode >= NULL_LOCK);
@@ -8255,8 +9107,10 @@ lock_reacquire_crash_locks (THREAD_ENTRY * thread_p, LK_ACQUIRED_LOCKS * acqlock
        * lock wait duration       : LK_INFINITE_WAIT
        * conditional lock request : false
        */
-      r = lock_internal_perform_lock_object (thread_p, tran_index, &acqlocks->obj[i].oid, &acqlocks->obj[i].class_oid,
-					     acqlocks->obj[i].lock, LK_INFINITE_WAIT, &dummy_ptr, NULL);
+      r =
+	lock_internal_perform_lock_object (thread_p, tran_index, &acqlocks->obj[i].oid,
+					   &acqlocks->obj[i].class_oid, acqlocks->obj[i].lock,
+					   LK_INFINITE_WAIT, &dummy_ptr, NULL);
       if (r != LK_GRANTED)
 	{
 	  er_log_debug (ARG_FILE_LINE, "lk_reacquire_crash_locks: The lock cannot be reacquired...");
@@ -8323,7 +9177,7 @@ lock_unlock_all_shared_get_all_exclusive (THREAD_ENTRY * thread_p, LK_ACQUIRED_L
 
       /* get nobj_locks */
       acqlocks->nobj_locks = (unsigned int) (tran_lock->class_hold_count + tran_lock->inst_hold_count);
-      if (tran_lock->root_class_hold != NULL)
+      if (tran_lock->root_class_hold != NULL && LK_ENTRY_IS_ACTIVE (tran_lock->root_class_hold))
 	{
 	  acqlocks->nobj_locks += 1;
 	}
@@ -8344,7 +9198,7 @@ lock_unlock_all_shared_get_all_exclusive (THREAD_ENTRY * thread_p, LK_ACQUIRED_L
 
       /* collect root class lock information */
       entry_ptr = tran_lock->root_class_hold;
-      if (entry_ptr != NULL)
+      if (entry_ptr != NULL && LK_ENTRY_IS_ACTIVE (entry_ptr))
 	{
 	  assert (tran_index == entry_ptr->tran_index);
 
@@ -8357,6 +9211,11 @@ lock_unlock_all_shared_get_all_exclusive (THREAD_ENTRY * thread_p, LK_ACQUIRED_L
       /* collect general class lock information */
       for (entry_ptr = tran_lock->class_hold_list; entry_ptr != NULL; entry_ptr = entry_ptr->tran_next)
 	{
+	  if (!LK_ENTRY_IS_ACTIVE (entry_ptr))
+	    {
+	      continue;
+	    }
+
 	  assert (tran_index == entry_ptr->tran_index);
 
 	  COPY_OID (&acqlocks->obj[idx].oid, &entry_ptr->res_head->key.oid);
@@ -8369,6 +9228,7 @@ lock_unlock_all_shared_get_all_exclusive (THREAD_ENTRY * thread_p, LK_ACQUIRED_L
       for (entry_ptr = tran_lock->inst_hold_list; entry_ptr != NULL; entry_ptr = entry_ptr->tran_next)
 	{
 	  assert (tran_index == entry_ptr->tran_index);
+	  assert (LK_ENTRY_IS_ACTIVE (entry_ptr));
 
 	  COPY_OID (&acqlocks->obj[idx].oid, &entry_ptr->res_head->key.oid);
 	  COPY_OID (&acqlocks->obj[idx].class_oid, &entry_ptr->res_head->key.class_oid);
@@ -8462,8 +9322,8 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp)
   fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_NEWLINE));
   for (tran_index = 0; tran_index < lk_Gl.num_trans; tran_index++)
     {
-      if (logtb_find_client_name_host_pid (tran_index, &client_prog_name, &client_user_name, &client_host_name,
-					   &client_pid) != NO_ERROR)
+      if (logtb_find_client_name_host_pid
+	  (tran_index, &client_prog_name, &client_user_name, &client_host_name, &client_pid) != NO_ERROR)
 	{
 	  /* Likely this index is not assigned */
 	  continue;
@@ -8491,13 +9351,16 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp)
 	  sprintf (lock_timeout_string, ": %d", (int) lock_timeout_sec);
 	}
 
-      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_DUMP_TRAN_IDENTIFIERS),
+      fprintf (outfp,
+	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_DUMP_TRAN_IDENTIFIERS),
 	       tran_index, client_prog_name, client_user_name, client_host_name, client_pid);
-      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_DUMP_TRAN_ISOLATION),
+      fprintf (outfp,
+	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_DUMP_TRAN_ISOLATION),
 	       log_isolation_string (isolation));
       fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_DUMP_TRAN_STATE),
 	       log_state_string (state));
-      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_DUMP_TRAN_TIMEOUT_PERIOD),
+      fprintf (outfp,
+	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_DUMP_TRAN_TIMEOUT_PERIOD),
 	       lock_timeout_string);
       fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_NEWLINE));
     }
@@ -8598,6 +9461,7 @@ lock_add_composite_lock (THREAD_ENTRY * thread_p, LK_COMPOSITE_LOCK * comp_lock,
       if (lockcomp->root_class_ptr == NULL)
 	{
 	  lockcomp->root_class_ptr = lock_get_class_lock (thread_p, oid_Root_class_oid);
+	  assert (lockcomp->root_class_ptr == NULL || LK_ENTRY_IS_ACTIVE (lockcomp->root_class_ptr));
 	}
 
       /* initialize lockcomp_class */
@@ -8729,8 +9593,9 @@ lock_finalize_composite_lock (THREAD_ENTRY * thread_p, LK_COMPOSITE_LOCK * comp_
 	  || lockcomp_class->num_inst_oids == prm_get_integer_value (PRM_ID_LK_ESCALATION_AT))
 	{
 	  /* hold X_LOCK on the class object */
-	  value = lock_internal_perform_lock_object (thread_p, lockcomp->tran_index, &lockcomp_class->class_oid, NULL,
-						     X_LOCK, lockcomp->wait_msecs, &dummy, lockcomp->root_class_ptr);
+	  value =
+	    lock_internal_perform_lock_object (thread_p, lockcomp->tran_index, &lockcomp_class->class_oid, NULL,
+					       X_LOCK, lockcomp->wait_msecs, &dummy, lockcomp->root_class_ptr);
 	  if (value != LK_GRANTED)
 	    {
 	      break;
@@ -8919,24 +9784,29 @@ lock_stop_instant_lock_mode (THREAD_ENTRY * thread_p, int tran_index, bool need_
       assert (tran_index == entry_ptr->tran_index);
 
       next_ptr = entry_ptr->tran_next;
-      count = entry_ptr->instant_lock_count;
-      assert_release (count >= 0);
-      if (need_unlock)
+
+      if (LK_ENTRY_IS_ACTIVE (entry_ptr))
 	{
+	  count = entry_ptr->instant_lock_count;
 	  assert_release (count >= 0);
-	  while (count > 0)
+	  if (need_unlock)
 	    {
-	      lock_internal_perform_unlock_object (thread_p, entry_ptr, false, true);
-	      count--;
+	      assert_release (count >= 0);
+	      while (count > 0)
+		{
+		  lock_internal_perform_unlock_object (thread_p, entry_ptr, false, true);
+		  count--;
+		}
 	    }
+	  entry_ptr->instant_lock_count = 0;
 	}
-      entry_ptr->instant_lock_count = 0;
+
       entry_ptr = next_ptr;
     }
 
   /* remove root class lock */
   entry_ptr = tran_lock->root_class_hold;
-  if (entry_ptr != NULL)
+  if (entry_ptr != NULL && LK_ENTRY_IS_ACTIVE (entry_ptr))
     {
       assert (tran_index == entry_ptr->tran_index);
 
@@ -9019,13 +9889,15 @@ lock_is_instant_lock_mode (int tran_index)
 static void
 lock_increment_class_granules (LK_ENTRY * class_entry)
 {
-  if (class_entry == NULL || class_entry->res_head->key.type != LOCK_RESOURCE_CLASS)
+  if (class_entry == NULL || class_entry->res_head->key.type != LOCK_RESOURCE_CLASS
+      || !LK_ENTRY_IS_ACTIVE (class_entry))
     {
       return;
     }
 
   class_entry->ngranules++;
-  if (class_entry->class_entry != NULL && !OID_IS_ROOTOID (&class_entry->class_entry->res_head->key.oid))
+  if (class_entry->class_entry != NULL && !OID_IS_ROOTOID (&class_entry->class_entry->res_head->key.oid)
+      && LK_ENTRY_IS_ACTIVE (class_entry->class_entry))
     {
       /* This is a class in a class hierarchy so increment the number of granules for the superclass */
       class_entry->class_entry->ngranules++;
@@ -9041,13 +9913,15 @@ lock_increment_class_granules (LK_ENTRY * class_entry)
 static void
 lock_decrement_class_granules (LK_ENTRY * class_entry)
 {
-  if (class_entry == NULL || class_entry->res_head->key.type != LOCK_RESOURCE_CLASS)
+  if (class_entry == NULL || class_entry->res_head->key.type != LOCK_RESOURCE_CLASS
+      || !LK_ENTRY_IS_ACTIVE (class_entry))
     {
       return;
     }
 
   class_entry->ngranules--;
-  if (class_entry->class_entry != NULL && !OID_IS_ROOTOID (&class_entry->class_entry->res_head->key.oid))
+  if (class_entry->class_entry != NULL && !OID_IS_ROOTOID (&class_entry->class_entry->res_head->key.oid)
+      && LK_ENTRY_IS_ACTIVE (class_entry->class_entry))
     {
       /* This is a class in a class hierarchy so decrement the number of granules for the superclass */
       class_entry->class_entry->ngranules--;
@@ -9122,6 +9996,7 @@ lock_get_lock_holder_tran_index (THREAD_ENTRY * thread_p, char **out_buf, int wa
   waiter = res->waiter;
   while (waiter != NULL)
     {
+      assert (LK_ENTRY_IS_ACTIVE (waiter));
       if (waiter->tran_index == waiter_index)
 	{
 	  is_valid = true;
@@ -9135,7 +10010,7 @@ lock_get_lock_holder_tran_index (THREAD_ENTRY * thread_p, char **out_buf, int wa
       holder = res->holder;
       while (holder != NULL)
 	{
-	  if (holder->blocked_mode != NULL_LOCK && holder->tran_index == waiter_index)
+	  if (holder->blocked_mode != NULL_LOCK && holder->tran_index == waiter_index && LK_ENTRY_IS_ACTIVE (holder))
 	    {
 	      is_valid = true;
 	      break;
@@ -9154,7 +10029,7 @@ lock_get_lock_holder_tran_index (THREAD_ENTRY * thread_p, char **out_buf, int wa
   holder = res->holder;
   while (holder != NULL)
     {
-      if (holder->tran_index != waiter_index)
+      if (holder->tran_index != waiter_index && LK_ENTRY_IS_ACTIVE (holder))
 	{
 	  holder_number++;
 	}
@@ -9185,6 +10060,7 @@ lock_get_lock_holder_tran_index (THREAD_ENTRY * thread_p, char **out_buf, int wa
   holder = res->holder;
   while (holder && holder->tran_index == waiter_index)
     {
+      assert (LK_ENTRY_IS_ACTIVE (holder));
       holder = holder->next;
     }
 
@@ -9199,7 +10075,7 @@ lock_get_lock_holder_tran_index (THREAD_ENTRY * thread_p, char **out_buf, int wa
   holder = holder->next;
   while (holder != NULL)
     {
-      if (holder->tran_index != waiter_index)
+      if (holder->tran_index != waiter_index && LK_ENTRY_IS_ACTIVE (holder))
 	{
 	  n = snprintf (p, remained_size, ", %d", holder->tran_index);
 	  remained_size -= n;
@@ -9377,7 +10253,7 @@ lock_event_log_blocking_locks (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY 
 
   for (entry = res_ptr->holder; entry != NULL; entry = entry->next)
     {
-      if (entry == wait_entry)
+      if (entry == wait_entry || LK_ENTRY_IS_ACTIVE (entry))
 	{
 	  continue;
 	}
@@ -9407,6 +10283,7 @@ lock_event_log_blocking_locks (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY 
 
   for (entry = res_ptr->waiter; entry != NULL; entry = entry->next)
     {
+      assert (LK_ENTRY_IS_ACTIVE (entry));
       if (entry == wait_entry)
 	{
 	  continue;
@@ -9621,8 +10498,8 @@ lock_rep_read_tran (THREAD_ENTRY * thread_p, LOCK lock, int cond_flag)
       wait_msecs = logtb_find_wait_msecs (tran_index);
     }
 
-  if (lock_internal_perform_lock_object (thread_p, tran_index, rep_read_oid, NULL, lock, wait_msecs, &entry_addr,
-					 NULL) != LK_GRANTED)
+  if (lock_internal_perform_lock_object
+      (thread_p, tran_index, rep_read_oid, NULL, lock, wait_msecs, &entry_addr, NULL) != LK_GRANTED)
     {
       return ER_FAILED;
     }
@@ -9833,3 +10710,1173 @@ lock_get_transaction_lock_waiting_threads (int tran_index, tran_lock_waiters_arr
   thread_get_manager ()->map_entries (lock_get_transaction_lock_waiting_threads_mapfunc, tran_index,
 				      tran_lock_waiters, count);
 }
+
+#if defined(SERVER_MODE)
+/*
+ * lock_unlock_object_logical_with_cleaning () - Logical unlocking with cleaning.
+ *
+ * return		  : true, if succesfully logical unlocked, false otherwise.
+ * thread_p (in)	  : Thred entry.
+ * is_res_mutex_locked(in): True, if resource mutex is locked.
+ * is_non2pl_lock(in)	  : True, if is non2pl lock.
+ * res_ptr(in)		  : Pointer to lock resource.
+ * entry_ptr_ptr (in/out) : The address of transaction lock entry pointer.
+ * needs_remove_resource (out): True, if needs to remove the resource.
+ *
+ *   Note: This purpose of this function is to speed up lock releasing. It removes the lock mode and decrements
+ * the counter from logical lock info of the resource and set logical delete flag in lock entry. These operations
+ * are done in an atomic manner.
+ *         In most of the cases, the function can be called without acquiring resource mutex, to avoid mutex
+ * contention. However, there are some rare cases when logical locking requires mutex acquisition. The best way
+ * for callers, is to call this function without mutex first. If lock is not succesfully released (rare cases
+ * in case of classes), then, the caller can acquire resource mutex and call the function again. If lock was
+ * still not released (rare cases in case of classes), then, physical (non-logical) unlocking must be used.
+ *	  The current function tries fast locking by setting lock status to LK_ENTRY_LOGICAL_DELETED and
+ * updating resource logical info. In order to succesfully release the lock (return true), the following
+ * conditions must be met: current locking mode is logical, there are at least two transactions having active
+ * locks on resource (or having non2pl locks - this is required to avoiding resource leaks, many resources
+ * not used for long time). If, these conditions are true, then, the function does:
+ *	    - updates resource logical information : highest lock and counter.
+ *	    - set lock entry information : status logical deleted and resets several fields.
+ *	  The resource mutex acquisition is not required, if the logical lock counter remains greater than zero
+ * after update. Otherwise, the resource mutex must be acquired by the caller before calling this
+ * function. This is needed since we have to recompute highest lock mode based on resource holder list. Before
+ * recomputing highest lock mode, the logical lock mode is temporary disabled, to force all transactions to
+ * acquire resource mutex (otherwise highest lock recomputation may be wrong!). After recomputation, if highest
+ * lock mode is not null or there is a non2pl lock (other transaction still access the resource), the logical
+ * locking mode is enabled.
+ *        If the above conditions are not met, the function returns false.
+ *	  If no other transaction can access the resource after current unlock (all locks released), the function
+ * disables logical locking mode, disconnect logical deleted entries from resource and notifies that the resource
+ * can be safetely removed by the caller.
+ *        As a side effect, this function does logical information cleaning. Thus, if the entry was disconnected by
+ * its resource, it is removed.
+ */
+STATIC_INLINE bool
+lock_unlock_object_logical_with_cleaning (THREAD_ENTRY * thread_p, bool is_res_mutex_locked, bool is_non2pl_lock,
+					  LK_RES * res_ptr, LK_ENTRY ** entry_ptr_ptr, bool * needs_remove_resource)
+{
+  UINT64 old_logical_lock_info, new_logical_lock_info;
+  int count_logical_lock;
+  LK_ENTRY *entry_ptr;
+  bool allows_null_lock = false;
+
+  assert (entry_ptr_ptr != NULL && *entry_ptr_ptr != NULL && res_ptr != NULL);
+
+  /* First, check whether the entry was disconnected. */
+  entry_ptr = *entry_ptr_ptr;
+  *needs_remove_resource = false;
+  if (entry_ptr && LK_ENTRY_IS_DISCONNECTED (entry_ptr))
+    {
+      /* The entry was disconnected by others. Unlock means to remove it, in this case. */
+      lock_remove_disconnected_entry_and_init (thread_p, entry_ptr, false);
+      *entry_ptr_ptr = entry_ptr;
+      return true;
+    }
+
+  if (!LOCK_IS_ANY_CLASS_RESOURCE_TYPE (res_ptr->key.type))
+    {
+      return false;
+    }
+
+  if (is_non2pl_lock && is_res_mutex_locked == false)
+    {
+      /* Need mutex since non2pl list needs to be changed. */
+      return false;
+    }
+
+  if (LK_ENTRY_IS_LOGICAL_DELETED (entry_ptr))
+    {
+      /* Already set. Nothing to do. */
+      return true;
+    }
+
+  do
+    {
+      old_logical_lock_info = LK_RES_GET_LI (res_ptr);
+
+      if (LK_IS_LI_DISABLED (old_logical_lock_info))
+	{
+	  /* Someone else notified that logical locking is not allowed. */
+	  goto clean_entry;
+	}
+
+      if (entry_ptr->resource_version != LK_LI_GET_VERSION (old_logical_lock_info) && !LK_ENTRY_IS_ACTIVE (entry_ptr))
+	{
+	  /* Someone else just disconnected me, the entry is obsolete and must be deallocated. */
+	  assert (LK_ENTRY_IS_DISCONNECTED (entry_ptr));
+	  goto clean_entry;
+	}
+
+      new_logical_lock_info = old_logical_lock_info;
+      lock_remove_lock_from_logical_lock_info (thread_p, &new_logical_lock_info, entry_ptr->granted_mode);
+      if (LK_LI_GET_HIGHEST_LOCK_COUNTER (new_logical_lock_info) == 0ULL)
+	{
+	  if (is_res_mutex_locked == false)
+	    {
+	      /* Can't atomically set the highest info. Needs logical lock info recomputation. */
+	      return false;
+	    }
+
+	  /* Disable logical locking temporary. The other transactions will wait for resource mutex.
+	   * Recomputes highest lock info. If it is not null lock, reactivate logical locking. Otherwise,
+	   * remove resource. In either case resource version is increased.
+	   */
+	  new_logical_lock_info = LK_DISABLE_LI (new_logical_lock_info);
+	  new_logical_lock_info = LK_LI_SET_HIGHEST_LOCK_MODE (new_logical_lock_info, NULL_LOCK);
+	}
+
+      /* Starts set logical deleted. */
+      count_logical_lock = LK_RES_STARTS_LOGICAL_LOCK (res_ptr);
+
+      if (LK_RES_UPDATE_LI (res_ptr, old_logical_lock_info, new_logical_lock_info))
+	{
+#if !defined (NDEBUG)
+	  if (prm_get_bool_value (PRM_ID_LOCK_TRACE_DEBUG))
+	    {
+	      (void) lock_debug_add_trace_info (old_logical_lock_info, new_logical_lock_info, &res_ptr->key.oid,
+						thread_p->tran_index, entry_ptr->granted_mode, __LINE__);
+	    }
+#endif
+
+	  break;
+	}
+
+      /* Restore counters and try again. */
+      count_logical_lock = LK_RES_ENDS_LOGICAL_LOCK (res_ptr);
+    }
+  while (true);
+
+  /* Resets fields that are set later in lock_logical. */
+  if (!is_non2pl_lock)
+    {
+      entry_ptr->granted_mode = NULL_LOCK;
+      entry_ptr->count = 0;
+      entry_ptr->instant_lock_count = 0;
+
+      /* to manage granules */
+      lock_decrement_class_granules (entry_ptr->class_entry);
+
+      if (!LK_ENTRY_UPDATE_STATUS (entry_ptr, LK_ENTRY_ACTIVE, LK_ENTRY_LOGICAL_DELETED))
+	{
+	  /* Impossible. Other transaction can't disconnect entries while count_logical_lock > 0. */
+	  assert (false);
+	}
+    }
+  else
+    {
+      /* non2pl lock */
+      assert (is_res_mutex_locked);
+      lock_res_disconnect_entry_from_holder_list (thread_p, res_ptr, entry_ptr);
+      lock_remove_disconnected_entry_and_init (thread_p, entry_ptr, true);
+    }
+
+  /* Ends set logical deleted. */
+  count_logical_lock = LK_RES_ENDS_LOGICAL_LOCK (res_ptr);
+  assert (count_logical_lock >= 0);
+
+  if (LK_IS_LI_DISABLED (new_logical_lock_info))
+    {
+      /* I disabled the logical locking. The others waits for me. */
+      assert (LK_RES_IS_LI_DISABLED (res_ptr) && is_res_mutex_locked);
+
+      /* Waits for other transaction to update its entry state. That transactions, started logical operation before me,
+       * by using logical locking without mutex, but didn't finalize the operation. When recomputes logical locking
+       * info, we need the correct state (active or not) of all lock entries.
+       */
+      while (LK_RES_GET_LOGICAL_LOCK_COUNTER (res_ptr) > 0)
+	{
+	  /* Waits to finish all current logical locking operations. This rarely happens. */
+	  thread_sleep (10);
+	}
+
+      /* Enable logical locking, if highest lock is not null or has non2pl. */
+      allows_null_lock = is_non2pl_lock || LK_IS_LI_NON2PL_ENABLED (new_logical_lock_info);
+
+      if (!lock_resource_enable_logical_locking (thread_p, res_ptr, allows_null_lock))
+	{
+	  /* Can't enable logical delete since has null lock. Disconnect all entries to avoid situation when all
+	   * allocated resources are not used long time. Then, remove resource since all entries are disconnected.
+	   */
+	  lock_res_disconnect_logical_deleted_entries (thread_p, res_ptr);
+	  *needs_remove_resource = true;
+	}
+    }
+
+clean_entry:
+
+  if (entry_ptr != NULL)
+    {
+      if (LK_ENTRY_IS_DISCONNECTED (entry_ptr))
+	{
+	  /* The entry was disconnected, remove it now. */
+	  lock_remove_disconnected_entry_and_init (thread_p, entry_ptr, false);
+	}
+      else if (LK_ENTRY_IS_ACTIVE (entry_ptr))
+	{
+	  /* I can't unlock the entry. I need mutex with logical or non-logical unlock. */
+	  assert (is_res_mutex_locked == false || LK_RES_IS_LI_DISABLED (res_ptr));
+	  return false;
+	}
+    }
+
+  assert (entry_ptr == NULL || LK_ENTRY_IS_LOGICAL_DELETED (entry_ptr));
+  *entry_ptr_ptr = entry_ptr;
+
+  return true;
+}
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
+/*
+ * lock_object_logical_with_cleaning () - Logical locking with cleaning.
+ *
+ * return	   : one of following values
+ *              LK_GRANTED
+ *              LK_NOTGRANTED
+ *		LK_NOTGRANTED_DUE_ERROR
+ *
+ * thread_p (in)   : Thread entry.
+ * tran_index (in) : Transaction index.
+ * t_entry_ent(in) : Lock-free transaction entry.
+ * res_ptr(in)     : Pointer to lock resource.
+ * is_new_resource(in) : True, if is new resource, false otherwise.
+ * is_res_mutex_locked (in): True, if acqurired resource mutex
+ * requested_lock_mode (in) : Requested lock mode.
+ * is_instant_duration (in): True, if is instant duration, false otherwise.
+ * class_entry (in): The class entry
+ * entry_ptr_ptr (in/out) : The address of transaction lock entry pointer.
+ *
+ *   Note: The purpose of this function is to speed up lock acquisition. It adds the lock mode and counter to logical
+ * lock information of the resource and set the lock entry fields. These operations are done in an atomic manner.
+ * Logical locking is used only in case of classes.
+ *         In most of the cases, the function can be called without acquiring resource mutex, to avoid mutex
+ * contention. However, there are some rare cases when logical locking requires mutex acquisition. The best way
+ * for callers, is to call this function without mutex first. If lock is not succesfully acquired (rare cases
+ * in case of classes), then, the caller can acquire the resource mutex and call the function again. If the lock
+ * was still not acquried (rare cases in case of classes), then, physical (non-logical) locking must be used.
+ *	   In logical lock mode, at transaction end, the lock is logically (not phisically) released. This means,
+ * the status of lock entry is set to LK_ENTRY_LOGICAL_DELETED and logical info of the resource is updated. These
+ * operations are done in an atomic manner, as described in lock_unlock_object_logical_with_cleaning. The current
+ * function tries fast locking by activating (LK_ENTRY_ACTIVE) the logically deleted entry and updating resource
+ * logical info. In order to succesfully acquire the lock (return LK_GRANT), the following conditions must be met:
+ * current locking mode is logical or can be activated in case of new resources (LK_RES_LOGICAL_FLAG),
+ * requested mode is less or equal than IX, there is no waiter. If these conditions are true, then, the function
+ * does:
+ *	- updates resource logical information : highest lock and counter.
+ *	- set lock entry information : lock mode, counters, class entry, class granules, the resource version.
+ *	The resource mutex acquisition is not required, if the previous state of lock entry was disconnected and
+ * there is no non2pl lock. Otherwise, the resource mutex must be acquired by the caller before calling this
+ * function. This is needed since we have to update resource holder or non2pl lists. It is better to keep logical
+ * lock mode as much as possible (even with resource mutex acquired). Otherwise, switching often from logical
+ * to non-logical and reverse way, may slow down the system.
+ *	If the above conditions are not met, the function returns LK_NOTGRANTED.
+ *	If the lock is too strong and the mutex is acquired, the function disables logical locking mode (switch to
+ * physical mode), as follow: removes LK_RES_LOGICAL_FLAG, waits all transactions that still executes a logical lock
+ * operation to completes, recomputes resource total modes. While logical locking mode is disabled,
+ * all transactions requires resource mutex acquisition at lock/unlock request. Re-enabling logical locking mode
+ * is done when unlocking all strong locks. Enabling logical mode means setting LK_RES_LOGICAL_FLAG flag and
+ * computing logical lock info under resource mutex protection.
+ *	As a side effect, this function does logical information cleaning. Thus, if the entry was disconnected by
+ * its resource, it is removed. Disconnection was made by transaction that disabled logical locking, for instance.
+ * Cleaning a disconnected entry can be done without acquiring resource mutex. Also, this function may decide
+ * to disable logical locking, but only if the resource mutex was acquired.
+ */
+STATIC_INLINE int
+lock_object_logical_with_cleaning (THREAD_ENTRY * thread_p, int tran_index, LF_TRAN_ENTRY * t_entry_ent,
+				   LK_RES * res_ptr, bool is_new_resource, bool is_res_mutex_locked,
+				   LOCK requested_lock_mode, bool is_instant_duration, LK_ENTRY * class_entry,
+				   LK_ENTRY ** entry_ptr_ptr)
+{
+  LK_ENTRY *entry_ptr = NULL;
+  UINT64 old_logical_lock_info, new_logical_lock_info;
+  bool can_lock_logical;
+  LOCK old_lock_mode, new_lock_mode;
+  bool incompatible_lock = false;
+  int ret_val;
+  bool update_non2pl_list;
+
+  assert (thread_p != NULL && t_entry_ent != NULL && res_ptr != NULL && requested_lock_mode != NULL_LOCK
+	  && entry_ptr_ptr != NULL);
+
+  /* First, check whether the entry was disconnected. */
+  entry_ptr = *entry_ptr_ptr;
+  if (entry_ptr && LK_ENTRY_IS_DISCONNECTED (entry_ptr))
+    {
+      /* The entry was disconnected by others. I have to remove it before adding a new lock entry. */
+      lock_remove_disconnected_entry_and_init (thread_p, entry_ptr, false);
+      *entry_ptr_ptr = entry_ptr;
+    }
+
+  if (!LOCK_IS_ANY_CLASS_RESOURCE_TYPE (res_ptr->key.type))
+    {
+      /* Logical locking is allowed only on classes. */
+      return LK_NOTGRANTED;
+    }
+
+  old_lock_mode = NULL_LOCK;
+  new_lock_mode = requested_lock_mode;
+  if (entry_ptr == NULL)
+    {
+      if (is_res_mutex_locked == false)
+	{
+	  /* I need resource mutex to connect a new allocated entry to resource. */
+	  return LK_NOTGRANTED;
+	}
+    }
+  else if (LK_ENTRY_IS_ACTIVE (entry_ptr))
+    {
+      old_lock_mode = entry_ptr->granted_mode;
+      new_lock_mode = lock_Conv[old_lock_mode][requested_lock_mode];
+    }
+
+  if (is_new_resource && is_res_mutex_locked)
+    {
+      /* Enable logical locking. Other transaction can't update logical locking info before me.
+       * That's because is a new resource, so, the other transaction has no entry or has disconnected entry.
+       */
+      (void) lock_resource_enable_logical_locking (thread_p, res_ptr, true);
+    }
+
+  can_lock_logical = true;
+  /* Try to activate the logical deleted entry. */
+  do
+    {
+      /* Get the highest lock with version and flags. */
+      old_logical_lock_info = LK_RES_GET_LI (res_ptr);
+
+      if (!LK_HAS_LOGICAL_FLAG_ONLY (old_logical_lock_info))
+	{
+	  /* Rare cases. */
+	  if (LK_IS_LI_DISABLED (old_logical_lock_info)
+	      || (LK_IS_LI_NON2PL_ENABLED (old_logical_lock_info) && is_res_mutex_locked == false))
+	    {
+	      /* We are here because one of the following happens:
+	       * - Someone else notified that logical locking mode is not allowed.
+	       * - Needs mutex since non2pl list needs to be changed.
+	       * In either case I have to clean disconnected entry, if is the case.
+	       */
+	      goto clean;
+	    }
+	}
+
+      /* Logical info is enabled. Check whether is same resource (the version) and my lock entry was disconnected. */
+      if (entry_ptr != NULL && entry_ptr->resource_version != LK_LI_GET_VERSION (old_logical_lock_info)
+	  && LK_ENTRY_IS_DISCONNECTED (entry_ptr))
+	{
+	  /* Rare case. Someone else disconected me suddenly - no mutex, the entry is obsolete and can be removed. */
+	  assert (is_res_mutex_locked == false);
+	  goto clean;
+	}
+
+      if (old_lock_mode == new_lock_mode)
+	{
+	  /* Lock mode previously added to resource logical info. Need to update lock entry counters. */
+	  LK_RES_STARTS_LOGICAL_LOCK (res_ptr);
+	  break;
+	}
+      assert (old_lock_mode < new_lock_mode);
+
+      /* Add lock to resource, avoids incrementing counter twice for same transaction. */
+      new_logical_lock_info = old_logical_lock_info;
+      if (!lock_add_lock_to_logical_lock_info (thread_p, &new_logical_lock_info, new_lock_mode))
+	{
+	  /* Can't compute new lock request and flags. */
+	  incompatible_lock = true;
+	  goto clean;
+	}
+
+      /* Starts logical locking. Others, can't disconnect my entry, while count_logical_lock > 0. */
+      LK_RES_STARTS_LOGICAL_LOCK (res_ptr);
+      if (LK_RES_UPDATE_LI (res_ptr, old_logical_lock_info, new_logical_lock_info))
+	{
+#if !defined (NDEBUG)
+	  {
+	    if (prm_get_bool_value (PRM_ID_LOCK_TRACE_DEBUG))
+	      {
+		(void) lock_debug_add_trace_info (old_logical_lock_info, new_logical_lock_info, &res_ptr->key.oid,
+						  thread_p->tran_index, new_lock_mode, __LINE__);
+	      }
+	  }
+#endif
+	  break;
+	}
+
+      /* Restore counters and try again. If other disable logical locking mode, I can detect by checking the flag. */
+      LK_RES_ENDS_LOGICAL_LOCK (res_ptr);
+    }
+  while (true);
+
+  /* Someone else can start to change NON2PL flag state, however it will wait for me to finalize current logical lock. */
+  assert (LK_IS_LI_NON2PL_DISABLED (old_logical_lock_info) || is_res_mutex_locked == true);
+  update_non2pl_list = LK_IS_LI_NON2PL_ENABLED (old_logical_lock_info) && (new_lock_mode > old_lock_mode);
+
+  /* When we are in logical locking mode (no strong lock), the lock entry information are used only by the thread owner.
+   * The other transactions uses logical lock info. However, when logical locking is disabled, we need to know each
+   * lock entry status, since we need to recompute total modes. In that case, we have to be sure that there is no
+   * transaction that executes delete/insert logical locking. This is done with count_logical_lock and
+   * LK_RES_LOGICAL_FLAG. The transaction that wants to disable the logical locking mode, acquire the mutex and
+   * remove LK_RES_LOGICAL_FLAG flag, thus blocking any new set/reset call of concurrent transaction. Then, before
+   * computing total modes, it waits while count_logical_lock is greater than 0. This means, that waits for
+   * concurrent delete/insert logical locking previously started and not finished yet.
+   * Another possibility is to include count_logical_lock as a field into resource logical_lock_info. However,
+   * it should be better to have distinct fields.
+   */
+  ret_val = lock_res_connect_grant_entry (thread_p, tran_index, t_entry_ent, res_ptr, is_res_mutex_locked,
+					  new_lock_mode, is_instant_duration, class_entry, update_non2pl_list,
+					  &entry_ptr);
+  if (ret_val != LK_GRANTED)
+    {
+      LK_RES_ENDS_LOGICAL_LOCK (res_ptr);
+      assert (er_errid () != NO_ERROR);
+      return ret_val;
+    }
+
+  /* Ends logical locking . */
+  LK_RES_ENDS_LOGICAL_LOCK (res_ptr);
+
+  *entry_ptr_ptr = entry_ptr;
+
+  return LK_GRANTED;
+
+clean:
+
+  /* We are under mutex protection. Clean if is the case. */
+  if (incompatible_lock && is_res_mutex_locked && LK_RES_IS_LI_ENABLED (res_ptr))
+    {
+      /* Commute to non-logical locking. Possible only when have mutex locked. */
+      lock_resource_disable_logical_locking (thread_p, res_ptr);
+      assert (LK_RES_IS_LI_DISABLED (res_ptr));
+    }
+
+  if (entry_ptr != NULL && LK_ENTRY_IS_DISCONNECTED (entry_ptr))
+    {
+      /* Disconnected entry. It must be removed. */
+      lock_remove_disconnected_entry_and_init (thread_p, entry_ptr, false);
+    }
+
+  *entry_ptr_ptr = entry_ptr;
+
+  return LK_NOTGRANTED;
+}
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
+/*
+ * lock_remove_lock_from_logical_lock_info - Remove lock from logical lock info.
+ *
+ * return: true, if lock removed
+ *
+ *   thread_p(in): thread entry
+ *   logical_lock_info(in/out): logical lock info
+ *   lock(in): lock to remove from logical lock info
+ */
+STATIC_INLINE void
+lock_remove_lock_from_logical_lock_info (THREAD_ENTRY * thread_p, UINT64 * logical_lock_info, LOCK lock)
+{
+  assert (logical_lock_info != NULL);
+  if (lock != LK_LI_GET_HIGHEST_LOCK_MODE (*logical_lock_info))
+    {
+      /* Not highest lock. The counter does not modify. Nothing to do. */
+      assert (lock < LK_LI_GET_HIGHEST_LOCK_MODE (*logical_lock_info));
+    }
+  else
+    {
+      /* Decrement highest lock counter from logical lock info. */
+      *logical_lock_info = LK_LI_DEC_HIGHEST_LOCK_COUNTER (*logical_lock_info);
+    }
+}
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
+/*
+ * lock_add_lock_to_resource_logical_lock_info - Add lock to resource logical lock info.
+ *
+ * return: true, if lock added to resource logical lock info
+ *
+ *   thread_p(in): thread entry
+ *   res_ptr(in): the resource
+ *   lock(in): lock to add to resource logical lock info
+ */
+STATIC_INLINE bool
+lock_add_lock_to_resource_logical_lock_info (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LOCK lock)
+{
+  UINT64 old_logical_lock_info, new_logical_lock_info;
+  assert (LOCK_IS_ANY_CLASS_RESOURCE_TYPE (res_ptr->key.type));
+
+  do
+    {
+      /* Get the highest lock with version and flags. */
+      old_logical_lock_info = LK_RES_GET_LI (res_ptr);
+
+      /* Check whether logical locking is allowed. */
+      if (LK_IS_LI_DISABLED (old_logical_lock_info))
+	{
+	  /* Someone else notified that logical locking is not allowed. My lock entry will be cleaned. */
+	  return false;
+	}
+
+      new_logical_lock_info = old_logical_lock_info;
+      if (!lock_add_lock_to_logical_lock_info (thread_p, &new_logical_lock_info, lock))
+	{
+	  /* Too strong lock. Can't add it to logical lock info. */
+	  return false;
+	}
+    }
+  while (!LK_RES_UPDATE_LI (res_ptr, old_logical_lock_info, new_logical_lock_info));
+
+#if !defined (NDEBUG)
+  {
+    if (prm_get_bool_value (PRM_ID_LOCK_TRACE_DEBUG))
+      {
+	(void) lock_debug_add_trace_info (old_logical_lock_info, new_logical_lock_info, &res_ptr->key.oid,
+					  thread_p->tran_index, lock, __LINE__);
+      }
+  }
+#endif
+
+  return true;
+}
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
+/*
+* lock_is_compatible_with_resource_logical_lock_info - Is lock compatible with resource logical lock info?
+*
+* return: true, if lock compatible, false otherwise
+*
+*   thread_p(in): thread entry
+*   res_ptr(in): resource
+*   lock(in): lock to check compatibility
+*/
+STATIC_INLINE bool
+lock_is_compatible_with_resource_logical_lock_info (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LOCK lock)
+{
+  UINT64 old_logical_lock_info;
+  bool compat;
+  assert (res_ptr != NULL && lock >= NULL_LOCK && LOCK_IS_ANY_CLASS_RESOURCE_TYPE (res_ptr->key.type));
+
+  do
+    {
+      /* Get the highest lock with version and flags. */
+      old_logical_lock_info = LK_RES_GET_LI (res_ptr);
+
+      /* Check whether logical locking is allowed. */
+      assert (LK_IS_LI_ENABLED (old_logical_lock_info));
+
+      compat = lock_is_compatible_with_logical_lock_info (thread_p, old_logical_lock_info, lock);
+
+    }
+  while (!LK_RES_GET_LI (res_ptr) != old_logical_lock_info);
+
+  return compat;
+}
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
+/*
+ * lock_add_lock_to_logical_lock_info - Add lock to logical lock info.
+ *
+ * return: true, if added
+ *
+ *   thread_p(in): thread entry.
+ *   logical_lock_info(in/out): logical lock info.
+ *   lock(in): lock to add to logical lock info.
+ */
+STATIC_INLINE bool
+lock_add_lock_to_logical_lock_info (THREAD_ENTRY * thread_p, UINT64 * logical_lock_info, LOCK lock)
+{
+  LOCK res_highest_lock_mode = NULL_LOCK;
+  UINT64 local_highest_lock_info;
+
+  assert (logical_lock_info != NULL && lock >= NULL_LOCK);
+
+  if (!LK_IS_LOGICAL_LOCK_MODE (lock))
+    {
+      return false;
+    }
+
+  local_highest_lock_info = *logical_lock_info;
+  /* Get highest lock. */
+  if (LK_LI_GET_HIGHEST_LOCK_COUNTER (local_highest_lock_info) > 0ULL)
+    {
+      res_highest_lock_mode = (LOCK) LK_LI_GET_HIGHEST_LOCK_MODE (local_highest_lock_info);
+    }
+
+  /* Check whether the lock is compatible with others. */
+  if (lock_Comp[lock][res_highest_lock_mode] == LOCK_COMPAT_NO)
+    {
+      /* Incompatible lock. I need to disable logical locking and cleanup since I want to acquire a strong lock. */
+      return false;
+    }
+
+  /* Set the new highest lock mode and/or counter. */
+  if (lock == res_highest_lock_mode)
+    {
+      /* Same lock, the highest lock. Needs to increment the counter. */
+      local_highest_lock_info = LK_LI_INC_HIGHEST_LOCK_COUNTER (local_highest_lock_info);
+    }
+  else if (lock > res_highest_lock_mode)
+    {
+      /* Set the new mode and the counter to 1 and increase the version. */
+      local_highest_lock_info = LK_LI_SET_HIGHEST_LOCK_MODE (local_highest_lock_info, lock);
+      local_highest_lock_info
+	= LK_LI_SET_HIGHEST_LOCK_COUNTER (local_highest_lock_info, LK_RES_LI_HIGHEST_LOCK_COUNTER_INCREMENT);
+      local_highest_lock_info = LK_LI_INC_HIGHEST_LOCK_VERSION (local_highest_lock_info);
+    }
+  else
+    {
+      /* No need to modify lock mode or counter. */
+      assert (lock_Conv[lock][res_highest_lock_mode] >= NULL_LOCK
+	      && lock_Conv[lock][res_highest_lock_mode] == res_highest_lock_mode);
+    }
+
+  *logical_lock_info = local_highest_lock_info;
+
+  return true;
+}
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
+/*
+ * lock_is_compatible_with_logical_lock_info - Is lock compatible with logical lock info?
+ *
+ * return: true, if is compatible, false otherwise
+ *
+ *   thread_p(in): thread entry.
+ *   logical_lock_info(in): logical lock info.
+ *   lock(in): lock to check compatibility.
+ */
+STATIC_INLINE bool
+lock_is_compatible_with_logical_lock_info (THREAD_ENTRY * thread_p, UINT64 logical_lock_info, LOCK lock)
+{
+  LOCK res_highest_lock_mode;
+
+  assert (logical_lock_info != NULL && lock >= NULL_LOCK);
+
+  if (lock > IX_LOCK)
+    {
+      return false;
+    }
+
+  /* Get highest lock. */
+  if (LK_LI_GET_HIGHEST_LOCK_COUNTER (logical_lock_info) > 0ULL)
+    {
+      res_highest_lock_mode = (LOCK) LK_LI_GET_HIGHEST_LOCK_MODE (logical_lock_info);
+    }
+  else
+    {
+      /* There is no active lock. */
+      res_highest_lock_mode = NULL_LOCK;
+    }
+
+  /* Check whether the lock is compatible with others. */
+  if (lock_Comp[lock][res_highest_lock_mode] == LOCK_COMPAT_NO)
+    {
+      /* Incompatible lock. */
+      return false;
+    }
+
+  return true;
+}
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
+/*
+ * lock_resource_has_mark_deleted_entries - Check whether the resource has mark deleted entries.
+ *
+ * return: true, if mark deleted entries exists
+ *   thread_p (in): thread entry
+ *   res_ptr (in): the resource
+ *
+ * Note: The caller is holding a resource mutex.
+ */
+STATIC_INLINE bool
+lock_resource_has_mark_deleted_entries (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
+{
+  LK_ENTRY *prev, *curr, *next;
+
+  assert (res_ptr != NULL);
+  prev = NULL;
+  curr = res_ptr->holder;
+  while (curr != NULL)
+    {
+      next = curr->next;
+
+      /* If mark deleted status, replace it with disconnect status. Then, remove from resource holder. */
+      if (LK_ENTRY_IS_LOGICAL_DELETED (curr))
+	{
+	  return true;
+	}
+
+      curr = curr->next;
+    }
+
+  return false;
+}
+#endif
+
+#if defined(SERVER_MODE)
+/*
+ * lock_resource_enable_logical_locking - Enable logical locking on resource.
+ *
+ * return: true, if logical locking enabled, false otherwise
+ *
+ *   thread_p(in): thread entry
+ *   res_ptr(in): the resource
+ *   allows_null_lock(in): true, if allows null highest lock.
+ *
+ * Note: The caller is holding the resource mutex. We allow NULL lock in case that there are any lock entry that
+ *    may be still accessed by any transaction. This is rather an optimization, that avoid to keep
+ *    resources/entries allocated long time, when in fact they are no longer used. Also, is better to avoid
+ *    as much as possible switching often from logical to non-logical, to avoid resource mutex contention. In order
+ *    to speed up locking/unlocking is better to keep logical locking mode as much as possible (but avoiding leaks),
+ *    even if we acquire resource mutex in particular cases.
+ */
+STATIC_INLINE bool
+lock_resource_enable_logical_locking (THREAD_ENTRY * thread_p, LK_RES * res_ptr, bool allows_null_lock)
+{
+  UINT64 old_logical_lock_info, new_logical_lock_info;
+  LOCK highest_lock_mode;
+  UINT64 cnt_highest_lock_mode;
+
+  assert (res_ptr != NULL);
+
+  if (!lock_resource_can_enable_logical_locking (thread_p, res_ptr))
+    {
+      return false;
+    }
+
+  lock_compute_logical_lock_info (thread_p, res_ptr, &highest_lock_mode, &cnt_highest_lock_mode);
+  if (highest_lock_mode == NULL_LOCK && allows_null_lock == false)
+    {
+      return false;
+    }
+
+  /* Advance the version, since we have other locks. */
+
+  old_logical_lock_info = res_ptr->logical_lock_info;
+
+  new_logical_lock_info =
+    LK_LI_SET_HIGHEST_LOCK_COUNTER (old_logical_lock_info,
+				    cnt_highest_lock_mode * LK_RES_LI_HIGHEST_LOCK_COUNTER_INCREMENT);
+
+  new_logical_lock_info = LK_LI_SET_HIGHEST_LOCK_MODE (new_logical_lock_info, highest_lock_mode);
+
+  new_logical_lock_info = LK_LI_INC_HIGHEST_LOCK_VERSION (new_logical_lock_info);
+
+  /* I have the mutex, so I can check total holders mode. */
+  assert (res_ptr->total_holders_mode <= IX_LOCK && res_ptr->total_waiters_mode == NULL_LOCK);
+
+  /* Allows other to use logical locking mechanism, if no waiter and no non2pl. */
+  new_logical_lock_info = LK_ENABLE_LI (new_logical_lock_info);
+
+  if (!LK_RES_UPDATE_LI (res_ptr, old_logical_lock_info, new_logical_lock_info))
+    {
+      /* Not possible, since while is logical locking disabled, no other transaction can change logical lock info. */
+      assert (false);
+    }
+
+#if !defined (NDEBUG)
+  {
+    if (prm_get_bool_value (PRM_ID_LOCK_TRACE_DEBUG))
+      {
+	(void) lock_debug_add_trace_info (old_logical_lock_info, new_logical_lock_info, &res_ptr->key.oid,
+					  thread_p->tran_index, highest_lock_mode, __LINE__);
+      }
+  }
+#endif
+
+  return true;
+}
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
+/*
+ * lock_resource_disable_logical_locking - Disable logical locking on resource.
+ *
+ * return: nothing
+ *
+ *   thread_p(in): thread entry
+ *   res_ptr(in): the resource
+ *
+ * Note: The caller is holding the resource mutex.
+*/
+STATIC_INLINE void
+lock_resource_disable_logical_locking (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
+{
+  UINT64 old_logical_lock_info, new_logical_lock_info;
+
+  do
+    {
+      old_logical_lock_info = res_ptr->logical_lock_info;
+
+      if (LK_IS_LI_DISABLED (old_logical_lock_info))
+	{
+	  /* Nothing to do. Other transaction disabled logical locking before me. */
+	  return;
+	}
+
+      /* Disable logical locking. Clean all fields except version. */
+      new_logical_lock_info = LK_DISABLE_LI (old_logical_lock_info);
+      new_logical_lock_info = LK_LI_SET_HIGHEST_LOCK_MODE (new_logical_lock_info, NULL_LOCK);
+      new_logical_lock_info = LK_LI_SET_HIGHEST_LOCK_COUNTER (new_logical_lock_info, 0ULL);
+
+      /* Increase lock version to allow others to easily detect lock entry disconnection. */
+      new_logical_lock_info = LK_LI_INC_HIGHEST_LOCK_VERSION (new_logical_lock_info);
+    }
+  while (!LK_RES_UPDATE_LI (res_ptr, old_logical_lock_info, new_logical_lock_info));
+
+#if !defined (NDEBUG)
+  {
+    if (prm_get_bool_value (PRM_ID_LOCK_TRACE_DEBUG))
+      {
+	(void) lock_debug_add_trace_info (old_logical_lock_info, new_logical_lock_info, &res_ptr->key.oid,
+					  thread_p->tran_index, LK_LI_GET_HIGHEST_LOCK_MODE (new_logical_lock_info),
+					  __LINE__);
+      }
+  }
+#endif
+
+  /* Just disabled logical locking while holding resource mutex */
+  while (LK_RES_GET_LOGICAL_LOCK_COUNTER (res_ptr) > 0)
+    {
+      /* Waits to finish all current logical locking operations. This rarely happens. */
+      thread_sleep (10);
+    }
+
+  /* Logical locking disabled. Disconnect logically deleted entries. */
+  lock_res_disconnect_logical_deleted_entries (thread_p, res_ptr);
+
+  /* Recomputes total modes, that were not updated while logical locking was enabled. */
+  lock_resource_recompute_total_holder_mode (thread_p, res_ptr);
+  lock_resource_recompute_total_waiter_mode (thread_p, res_ptr);
+}
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
+/*
+* lock_resource_can_enable_logical_locking - can enable logical locking mode?
+*
+* return: true, if can enable logical locking.
+*
+*   thread_p(in): thread entry
+*   res_ptr(in): the resource
+*
+* Note: The caller is holding the resource mutex.
+*/
+STATIC_INLINE bool
+lock_resource_can_enable_logical_locking (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
+{
+  if (!LOCK_IS_ANY_CLASS_RESOURCE_TYPE (res_ptr->key.type))
+    {
+      return false;
+    }
+
+  if (LK_RES_IS_LI_ENABLED (res_ptr))
+    {
+      /* Already enabled. */
+      return false;
+    }
+
+  if (!(res_ptr->total_holders_mode <= IX_LOCK && res_ptr->total_waiters_mode == NULL_LOCK))
+    {
+      return false;
+    }
+
+  return true;
+}
+#endif /* SERVER_MODE */
+
+#if defined (SERVER_MODE)
+/*
+ * lock_compute_logical_lock_info - Recompute logical lock info on specified resource.
+ *
+ * return: nothing
+ *
+ *   thread_p(in): thread entry
+ *   res_ptr(in): the resource
+ *   highest_lock_mode(out): Computed highest lock mode
+ *   cnt_highest_lock_mode(out): Computed highest lock mode counter
+ *
+ * Note: The caller is holding the resource mutex.
+ */
+STATIC_INLINE void
+lock_compute_logical_lock_info (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LOCK * highest_lock_mode,
+				UINT64 * cnt_highest_lock_mode)
+{
+  LK_ENTRY *curr;
+  LOCK mode, max_mode;
+  UINT64 cnt_max_mode;
+
+  assert (res_ptr != NULL && highest_lock_mode != NULL && cnt_highest_lock_mode != NULL);
+
+  mode = NULL_LOCK;
+  max_mode = NULL_LOCK;
+  cnt_max_mode = 0UL;
+  for (curr = res_ptr->holder; curr != NULL; curr = curr->next)
+    {
+      assert (curr->granted_mode >= NULL_LOCK && mode >= NULL_LOCK);
+      if (!LK_ENTRY_IS_ACTIVE (curr))
+	{
+	  continue;
+	}
+
+      mode = curr->granted_mode;
+      if (max_mode <= mode)
+	{
+	  if (max_mode < mode)
+	    {
+	      max_mode = mode;
+	      cnt_max_mode = 0ULL;
+	    }
+
+	  cnt_max_mode = cnt_max_mode + LK_RES_LI_HIGHEST_LOCK_COUNTER_INCREMENT;
+	}
+
+      assert (mode != NA_LOCK);
+      assert (curr->blocked_mode <= NULL_LOCK);
+    }
+
+  *highest_lock_mode = max_mode;
+  *cnt_highest_lock_mode = cnt_max_mode;
+}
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
+/*
+ * lock_res_disconnect_logical_deleted_entries - Disconnect logical deleted entries.
+ *
+ * return: nothing
+ *
+ *   thread_p(in): thread entry
+ *   res_ptr(in): the resource
+ *
+ * Note: The caller is holding the resource mutex. Disconnected entries are stored only in holder list.
+ */
+STATIC_INLINE void
+lock_res_disconnect_logical_deleted_entries (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
+{
+  LK_ENTRY *prev, *curr, *next;
+
+  /* The caller is holding a resource mutex. */
+  assert (LK_IS_LI_DISABLED (res_ptr->logical_lock_info) && res_ptr->count_logical_lock == 0
+	  && LOCK_IS_ANY_CLASS_RESOURCE_TYPE (res_ptr->key.type));
+
+  prev = NULL;
+  curr = res_ptr->holder;
+  while (curr != NULL)
+    {
+      next = curr->next;
+
+      /* If logical deleted status, replace it with disconnect status. Then, remove from resource holder. */
+      if (LK_ENTRY_UPDATE_STATUS (curr, LK_ENTRY_LOGICAL_DELETED, LK_ENTRY_DISCONECTED))
+	{
+	  if (prev == NULL)
+	    {
+	      res_ptr->holder = next;
+	    }
+	  else
+	    {
+	      prev->next = next;
+	    }
+	}
+      else
+	{
+	  prev = curr;
+	}
+
+      curr = next;
+    }
+}
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
+/*
+* lock_res_disconnect_entry_from_holder_list - Disconnect entry from holder list.
+*
+* return: nothing
+*
+*   thread_p(in): thread entry
+*   res_ptr(in/out): Pointer to lock resource.
+*   entry_ptr(in): Pointer to lock entry.
+*
+* Note: The caller is holding the resource mutex.
+*/
+STATIC_INLINE bool
+lock_res_disconnect_entry_from_holder_list (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK_ENTRY * entry_ptr)
+{
+  LK_ENTRY *prev, *curr;
+
+  prev = NULL;
+  curr = res_ptr->holder;
+  while (curr != NULL)
+    {
+      if (curr == entry_ptr)
+	{
+	  /* Found. Remove the entry from the holder list */
+	  if (prev == NULL)
+	    {
+	      res_ptr->holder = curr->next;
+	    }
+	  else
+	    {
+	      prev->next = curr->next;
+	    }
+
+	  return true;
+	}
+
+      prev = curr;
+      curr = curr->next;
+    }
+
+  return false;
+}
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
+/*
+ * lock_resource_recompute_total_holder_mode - Recomputes total holder mode of specified resource.
+ *
+ * return: nothing
+ *
+ *   thread_p(in): thread entry.
+ *   res_ptr(in/out): Pointer to lock resource.
+ *
+ * Note: The caller is holding the resource mutex.
+ */
+STATIC_INLINE void
+lock_resource_recompute_total_holder_mode (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
+{
+  LOCK mode = NULL_LOCK;
+  LK_ENTRY *h;
+
+  assert (res_ptr != NULL);
+
+  assert (LK_RES_IS_LI_DISABLED (res_ptr));
+
+  /* Recompute total holder mode. */
+  mode = NULL_LOCK;
+  for (h = res_ptr->holder; h != NULL; h = h->next)
+    {
+      if (!LK_ENTRY_IS_ACTIVE (h))
+	{
+	  continue;
+	}
+
+      assert (h->granted_mode >= NULL_LOCK && mode >= NULL_LOCK);
+      mode = lock_Conv[h->granted_mode][mode];
+      assert (mode != NA_LOCK);
+
+      assert (h->blocked_mode >= NULL_LOCK && mode >= NULL_LOCK);
+      mode = lock_Conv[h->blocked_mode][mode];
+      assert (mode != NA_LOCK);
+    }
+  res_ptr->total_holders_mode = mode;
+}
+#endif /* SERVER_MODE */
+
+
+#if defined(SERVER_MODE)
+/*
+* lock_resource_recompute_total_waiter_mode - Recomputes total waiter of specified resource.
+*
+* return: nothing
+*
+*   thread_p(in): thread entry
+*   res_ptr(in/out): the resource
+*
+* Note: The caller is holding the resource mutex.
+*/
+STATIC_INLINE void
+lock_resource_recompute_total_waiter_mode (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
+{
+  LOCK mode = NULL_LOCK;
+  LK_ENTRY *w;
+
+  assert (res_ptr != NULL);
+
+  assert (LK_RES_IS_LI_DISABLED (res_ptr));
+
+  /* Recompute total waiter mode */
+  mode = NULL_LOCK;
+  for (w = res_ptr->waiter; w != NULL; w = w->next)
+    {
+      assert (LK_ENTRY_IS_ACTIVE (w));
+      assert (w->blocked_mode >= NULL_LOCK && mode >= NULL_LOCK);
+      mode = lock_Conv[w->blocked_mode][mode];
+      assert (mode != NA_LOCK);
+    }
+
+  res_ptr->total_waiters_mode = mode;
+}
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
+/*
+ * lock_remove_disconnected_entry - Remove disconnected deleted entry.
+ *
+ * return: nothing
+ *
+ *   thread_p(in): thread entry
+ *   entry_ptr(in): the lock entry
+ *   add_lock_to_non2pl(in): true, if needs to add lock to non2pl.
+ */
+STATIC_INLINE void
+lock_remove_disconnected_entry (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, bool add_lock_to_non2pl)
+{
+  assert (entry_ptr != NULL);
+
+  /* I'm here because the entry was previously disconnected from resource. Remove my lock entry. */
+  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_ENT);
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  assert (entry_ptr->tran_index == tran_index);
+
+  /* remove the lock entry from the transaction lock hold list */
+  lock_delete_from_tran_hold_list (entry_ptr, tran_index);
+
+  /* to manage granules */
+  lock_decrement_class_granules (entry_ptr->class_entry);
+
+  if (add_lock_to_non2pl)
+    {
+      /* If it's not the end of transaction, it's a non2pl lock */
+      (void) lock_add_non2pl_lock (thread_p, entry_ptr->res_head, tran_index, entry_ptr->granted_mode);
+    }
+
+  /* free the lock entry */
+  lock_free_entry (tran_index, t_entry, &lk_Gl.obj_free_entry_list, entry_ptr);
+}
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE) && !defined (NDEBUG)
+STATIC_INLINE int
+lock_debug_add_trace_info (UINT64 old_logical_lock_info, UINT64 new_logical_lock_info, OID * oid, int tran_index,
+			   LOCK lock, int line)
+{
+  unsigned int local_idx_lk_debug_trace_arr;
+  if (lk_debug_trace_arr == NULL)
+    {
+      lk_debug_trace_arr = (LK_DEBUG_TRACE_INFO *) malloc (sizeof (LK_DEBUG_TRACE_INFO) * LK_DEBUG_TRACE_INFO_ARR_SIZE);
+      if (lk_debug_trace_arr == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  sizeof (LK_DEBUG_TRACE_INFO) * LK_DEBUG_TRACE_INFO_ARR_SIZE);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      idx_lk_debug_trace_arr = 0;
+    }
+
+  local_idx_lk_debug_trace_arr = idx_lk_debug_trace_arr++;
+  local_idx_lk_debug_trace_arr = local_idx_lk_debug_trace_arr % 10000;
+  lk_debug_trace_arr[local_idx_lk_debug_trace_arr].old_logical_lock_info = old_logical_lock_info;
+  lk_debug_trace_arr[local_idx_lk_debug_trace_arr].new_logical_lock_info = new_logical_lock_info;
+  COPY_OID (&lk_debug_trace_arr[local_idx_lk_debug_trace_arr].oid, oid);
+  lk_debug_trace_arr[local_idx_lk_debug_trace_arr].tran_index = tran_index;
+  lk_debug_trace_arr[local_idx_lk_debug_trace_arr].line = __LINE__;
+  lk_debug_trace_arr[local_idx_lk_debug_trace_arr].lock = lock;
+
+  return NO_ERROR;
+}
+#endif /* defined (SERVER_MODE) && !defined (NDEBUG) */
