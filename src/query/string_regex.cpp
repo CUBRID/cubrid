@@ -262,6 +262,7 @@ namespace cubregex
     return error_status;
   }
 
+<<<<<<< HEAD
   int count (int &result, const cub_regex_object &reg, const std::string &src, const int position,
 	     const INTL_CODESET codeset)
   {
@@ -322,6 +323,8 @@ namespace cubregex
     return error_status;
   }
 
+=======
+>>>>>>> upstream/develop
   int instr (int &result, const cub_regex_object &reg, const std::string &src,
 	     const int position, const int occurrence, const int return_opt, const INTL_CODESET codeset)
   {
