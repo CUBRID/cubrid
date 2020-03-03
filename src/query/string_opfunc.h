@@ -220,6 +220,9 @@ extern int db_string_like (const DB_VALUE * src_string, const DB_VALUE * pattern
 #ifdef __cplusplus
 extern int db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB_VALUE * case_sensitive,
 			    cub_regex_object ** comp_regex, char **comp_pattern, int *result);
+
+extern int db_string_regexp_instr (DB_VALUE * result, DB_VALUE * args[], const int num_args,
+				   cub_regex_object ** comp_regex, char **comp_pattern);
 extern int db_string_regexp_replace (DB_VALUE * result, DB_VALUE * args[], const int num_args,
 				     cub_regex_object ** comp_regex, char **comp_pattern);
 extern int db_string_regexp_substr (DB_VALUE * result, DB_VALUE * args[], const int num_args,

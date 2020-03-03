@@ -559,6 +559,8 @@ fcode_get_uppercase_name (FUNC_TYPE ftype)
       return "JSON_UNQUOTE";
     case F_JSON_VALID:
       return "JSON_VALID";
+    case F_REGEXP_INSTR:
+      return "REGEXP_INSTR";
     case F_REGEXP_REPLACE:
       return "REGEXP_REPLACE";
     case F_REGEXP_SUBSTR:
@@ -709,6 +711,8 @@ fcode_get_lowercase_name (FUNC_TYPE ftype)
       return "json_unquote";
     case F_JSON_VALID:
       return "json_valid";
+    case F_REGEXP_INSTR:
+      return "regexp_instr";
     case F_REGEXP_REPLACE:
       return "regexp_replace";
     case F_REGEXP_SUBSTR:

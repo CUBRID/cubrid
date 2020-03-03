@@ -6887,6 +6887,7 @@ qdata_evaluate_function (THREAD_ENTRY * thread_p, regu_variable_node * function_
       return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
 						       db_evaluate_json_valid);
 
+    case F_REGEXP_INSTR:
     case F_REGEXP_REPLACE:
     case F_REGEXP_SUBSTR:
       return qdata_regexp_function (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
@@ -8527,6 +8528,9 @@ qdata_regexp_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_
     std::function<int(DB_VALUE*, DB_VALUE*[], const int, cub_regex_object**, char**)> regexp_func;
     switch (function_p->ftype)
     {
+      case F_REGEXP_INSTR:
+        regexp_func = db_string_regexp_instr;
+        break;
       case F_REGEXP_REPLACE:
         regexp_func = db_string_regexp_replace;
         break;
