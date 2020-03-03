@@ -5090,8 +5090,8 @@ db_string_regexp_like (DB_VALUE * result, DB_VALUE * args[], int const num_args,
 	error_status = cubregex::compile (rx_compiled_regex, rx_compiled_pattern, reg_flags, collation);
 	if (error_status != NO_ERROR)
 	  {
-  error_status = (error_status == ER_QSTR_BAD_SRC_CODESET) ? NO_ERROR : error_status;
-  goto exit;
+	    error_status = (error_status == ER_QSTR_BAD_SRC_CODESET) ? NO_ERROR : error_status;
+	    goto exit;
 	  }
       }
 
@@ -5101,9 +5101,9 @@ db_string_regexp_like (DB_VALUE * result, DB_VALUE * args[], int const num_args,
     error_status = cubregex::search (result_value, *rx_compiled_regex, src_string, collation->codeset);
     if (error_status != NO_ERROR)
       {
-  /* regex execution error */
-  error_status = (error_status == ER_QSTR_BAD_SRC_CODESET) ? NO_ERROR : error_status;
-  goto exit;
+	/* regex execution error */
+	error_status = (error_status == ER_QSTR_BAD_SRC_CODESET) ? NO_ERROR : error_status;
+	goto exit;
       }
     // *INDENT-ON*
 
