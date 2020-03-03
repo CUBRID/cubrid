@@ -4983,7 +4983,7 @@ exit:
  */
 int
 db_string_regexp_like (DB_VALUE * result, DB_VALUE * args[], int const num_args,
-			cub_regex_object ** comp_regex, char **comp_pattern)
+		       cub_regex_object ** comp_regex, char **comp_pattern)
 {
   int error_status = NO_ERROR;
   db_make_int (result, 0);

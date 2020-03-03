@@ -19853,7 +19853,7 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_TYPE fcode, DB_VALUE 
     case F_REGEXP_INSTR:
       error = db_string_regexp_instr (result, args, num_args, NULL, NULL);
       break;
-    
+
     case F_REGEXP_LIKE:
       error = db_string_regexp_like (result, args, num_args, NULL, NULL);
       break;

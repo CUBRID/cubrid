@@ -226,7 +226,7 @@ extern int db_string_regexp_count (DB_VALUE * result, DB_VALUE * args[], const i
 extern int db_string_regexp_instr (DB_VALUE * result, DB_VALUE * args[], const int num_args,
 				   cub_regex_object ** comp_regex, char **comp_pattern);
 extern int db_string_regexp_like (DB_VALUE * result, DB_VALUE * args[], const int num_args,
-				   cub_regex_object ** comp_regex, char **comp_pattern);
+				  cub_regex_object ** comp_regex, char **comp_pattern);
 extern int db_string_regexp_replace (DB_VALUE * result, DB_VALUE * args[], const int num_args,
 				     cub_regex_object ** comp_regex, char **comp_pattern);
 extern int db_string_regexp_substr (DB_VALUE * result, DB_VALUE * args[], const int num_args,
