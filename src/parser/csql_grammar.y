@@ -1344,6 +1344,7 @@ int g_original_buffer_len;
 %token REFERENCES
 %token REFERENCING
 %token REGEXP
+%token REGEXP_COUNT
 %token REGEXP_INSTR
 %token REGEXP_REPLACE
 %token REGEXP_SUBSTR
@@ -17069,6 +17070,11 @@ reserved_func
 		{{
                     $$ = parser_make_func_with_arg_count (this_parser, F_BENCHMARK, $3, 2, 2);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
+		| REGEXP_COUNT '(' expression_list ')'
+		{{
+			$$ = parser_make_func_with_arg_count (this_parser, F_REGEXP_COUNT, $3, 2, 4);
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
 		| REGEXP_INSTR '(' expression_list ')'
 		{{
