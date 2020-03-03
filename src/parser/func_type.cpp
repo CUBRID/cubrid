@@ -356,6 +356,13 @@ func_all_signatures sig_of_regexp_instr =
   {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_GENERIC_TYPE_CHAR}, {}},
 };
 
+func_all_signatures sig_of_regexp_like =
+{
+// all signatures: src, pattern [,match_type ] -> INTEGER
+  {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING}, {}},
+  {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_CHAR}, {}},
+};
+
 func_all_signatures sig_of_regexp_replace =
 {
 // all signatures: src, pattern, replacement [,position [,occurrence [, match_type]]] -> STRING
@@ -515,6 +522,8 @@ get_signatures (FUNC_TYPE ft)
       return &sig_of_regexp_count;
     case F_REGEXP_INSTR:
       return &sig_of_regexp_instr;
+    case F_REGEXP_LIKE:
+      return &sig_of_regexp_like;
     case F_REGEXP_REPLACE:
       return &sig_of_regexp_replace;
     case F_REGEXP_SUBSTR:

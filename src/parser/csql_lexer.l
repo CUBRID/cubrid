@@ -726,6 +726,7 @@ int yybuffer_pos;
 [rR][eE][gG][eE][xX][pP]						{ begin_token(yytext);   return REGEXP; }
 [rR][eE][gG][eE][xX][pP][_][cC][oO][uU][nN][tT]					{ begin_token(yytext);   return REGEXP_COUNT; }
 [rR][eE][gG][eE][xX][pP][_][iI][nN][sS][tT][rR]					{ begin_token(yytext);   return REGEXP_INSTR; }
+[rR][eE][gG][eE][xX][pP][_][lL][iI][kK][eE]						{ begin_token(yytext);   return REGEXP_LIKE; }
 [rR][eE][gG][eE][xX][pP][_][rR][eE][pP][lL][aA][cC][eE]			{ begin_token(yytext);   return REGEXP_REPLACE; }
 [rR][eE][gG][eE][xX][pP][_][sS][uU][bB][sS][tT][rR]				{ begin_token(yytext);   return REGEXP_SUBSTR; }
 [rR][eE][jJ][eE][cC][tT]						{ begin_token(yytext);
