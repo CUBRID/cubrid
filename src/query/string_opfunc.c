@@ -4986,7 +4986,7 @@ db_string_regexp_like (DB_VALUE * result, DB_VALUE * args[], int const num_args,
 		       cub_regex_object ** comp_regex, char **comp_pattern)
 {
   int error_status = NO_ERROR;
-  db_make_int (result, 0);
+  db_make_null (result);
 
   /* get compiled pattern and regex object */
   char *rx_compiled_pattern = (comp_pattern != NULL) ? *comp_pattern : NULL;
@@ -5002,7 +5002,6 @@ db_string_regexp_like (DB_VALUE * result, DB_VALUE * args[], int const num_args,
 	/* if any argument is NULL, return NULL */
 	if (DB_IS_NULL (arg))
 	  {
-	    db_make_null (result);
 	    goto exit;
 	  }
       }
@@ -5063,6 +5062,7 @@ db_string_regexp_like (DB_VALUE * result, DB_VALUE * args[], int const num_args,
     /* check pattern string */
     if (db_get_string_size (pattern) == 0)
       {
+	db_make_int (result, 0);
 	goto exit;
       }
 
@@ -5090,7 +5090,7 @@ db_string_regexp_like (DB_VALUE * result, DB_VALUE * args[], int const num_args,
 	error_status = cubregex::compile (rx_compiled_regex, rx_compiled_pattern, reg_flags, collation);
 	if (error_status != NO_ERROR)
 	  {
-	error_status = (error_status == ER_QSTR_BAD_SRC_CODESET) ? NO_ERROR : error_status;
+  error_status = (error_status == ER_QSTR_BAD_SRC_CODESET) ? NO_ERROR : error_status;
   goto exit;
 	  }
       }
@@ -5103,7 +5103,7 @@ db_string_regexp_like (DB_VALUE * result, DB_VALUE * args[], int const num_args,
       {
   /* regex execution error */
   error_status = (error_status == ER_QSTR_BAD_SRC_CODESET) ? NO_ERROR : error_status;
-	goto exit;
+  goto exit;
       }
     // *INDENT-ON*
 
