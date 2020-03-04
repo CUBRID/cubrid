@@ -152,6 +152,7 @@ regu_variable_node::clear_xasl_local ()
 	    {
 	    case F_REGEXP_COUNT:
 	    case F_REGEXP_INSTR:
+	    case F_REGEXP_LIKE:
 	    case F_REGEXP_REPLACE:
 	    case F_REGEXP_SUBSTR:
 	    {

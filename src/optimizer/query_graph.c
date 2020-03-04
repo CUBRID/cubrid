@@ -3399,6 +3399,7 @@ get_expr_fcode_rank (FUNC_TYPE fcode)
     case F_INSERT_SUBSTRING:
     case F_REGEXP_COUNT:
     case F_REGEXP_INSTR:
+    case F_REGEXP_LIKE:
     case F_REGEXP_REPLACE:
     case F_REGEXP_SUBSTR:
       return RANK_EXPR_MEDIUM;
