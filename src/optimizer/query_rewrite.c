@@ -1397,7 +1397,7 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 		    {
 		      /* add additional equailty-term; is reduced */
 		      PT_NODE *expr_copy = parser_copy_tree (parser, expr);
-		      PT_EXPR_INFO_SET_FLAG (expr_copy, PT_EXPR_INFO_DONT_AUTOPARAM);
+		      PT_EXPR_INFO_SET_FLAG (expr_copy, PT_EXPR_INFO_DO_NOT_AUTOPARAM);
 		      *wherep = parser_append_node (expr_copy, *wherep);
 
 		      /* select-list's PT_NODE can have next PT_NODEs. so copy select_list to col node */
@@ -6461,7 +6461,7 @@ qo_do_auto_parameterize (PARSER_CONTEXT * parser, PT_NODE * where)
 	      continue;
 	    }
 
-	  if (PT_EXPR_INFO_IS_FLAGED (dnf_node, PT_EXPR_INFO_DONT_AUTOPARAM))
+	  if (PT_EXPR_INFO_IS_FLAGED (dnf_node, PT_EXPR_INFO_DO_NOT_AUTOPARAM))
 	    {
 	      /* copy_pull term from select list of derived table do NOT auto_parameterize */
 	      /* because the query rewrite step is performed in the XASL generation of DELETE and UPDATE. */
