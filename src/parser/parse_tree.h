@@ -2252,6 +2252,7 @@ struct pt_expr_info
 
 #define PT_EXPR_INFO_GROUPBYNUM_LIMIT 32768	/* flag that marks if the expression resulted from a GROUP BY ... LIMIT
 						 * statement */
+#define PT_EXPR_INFO_DO_NOT_AUTOPARAM 65536	/* don't auto parameterize expr at qo_do_auto_parameterize() */
   int flag;			/* flags */
 #define PT_EXPR_INFO_IS_FLAGED(e, f)    ((e)->info.expr.flag & (int) (f))
 #define PT_EXPR_INFO_SET_FLAG(e, f)     (e)->info.expr.flag |= (int) (f)
