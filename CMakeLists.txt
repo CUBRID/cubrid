@@ -900,7 +900,7 @@ if(WITH_LIBEXPAT STREQUAL "EXTERNAL")
   if(UNIX)
     externalproject_add(${LIBEXPAT_TARGET}
       URL                  ${WITH_LIBEXPAT_URL}
-      TIMEOUT              300
+      TIMEOUT              600
       DOWNLOAD_NO_PROGRESS 1
       CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS} --without-xmlwf  --without-docbook
       BUILD_COMMAND        make AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
@@ -945,7 +945,7 @@ if(WITH_LIBJANSSON STREQUAL "EXTERNAL")
   if(UNIX)
     externalproject_add(${LIBJANSSON_TARGET}
       URL                  ${WITH_LIBJANSSON_URL}
-      TIMEOUT              300
+      TIMEOUT              600
       DOWNLOAD_NO_PROGRESS 1
       CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS}
       BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
@@ -1021,7 +1021,7 @@ if(UNIX)
     set(LIBEDIT_TARGET libedit)
     externalproject_add(${LIBEDIT_TARGET}
       URL                  ${WITH_LIBEDIT_URL}
-      TIMEOUT              300
+      TIMEOUT              600
       DOWNLOAD_NO_PROGRESS 1
       CONFIGURE_COMMAND    "LDFLAGS=-L${CMAKE_CURRENT_BINARY_DIR}/external/lib" ${DEFAULT_CONFIGURE_OPTS}
       BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
@@ -1062,7 +1062,7 @@ if(WITH_LIBLZO STREQUAL "EXTERNAL")
     #e.g. http://www.oberhumer.com/opensource/lzo/download/lzo-2.10.tar.gz
     externalproject_add(${LIBLZO_TARGET}
       URL                  ${WITH_LIBLZO_URL}
-      TIMEOUT              300
+      TIMEOUT              600
       DOWNLOAD_NO_PROGRESS 1
       CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS}
       BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
@@ -1101,7 +1101,7 @@ if(UNIX)
   if(WITH_LIBGPG_ERROR STREQUAL "EXTERNAL")
     externalproject_add(${LIBGPG_ERROR_TARGET}
       URL                  ${WITH_LIBGPG_ERROR_URL}
-      TIMEOUT              300
+      TIMEOUT              600
       DOWNLOAD_NO_PROGRESS 1
       CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS} --enable-maintainer-mode --disable-doc --disable-tests
       BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
@@ -1150,7 +1150,7 @@ if(WITH_LIBGCRYPT STREQUAL "EXTERNAL")
     endif()
     externalproject_add(${LIBGCRYPT_TARGET}
       URL                  ${WITH_LIBGCRYPT_URL}
-      TIMEOUT              300
+      TIMEOUT              600
       DOWNLOAD_NO_PROGRESS 1
       CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS} CPPFLAGS=-I${CMAKE_CURRENT_BINARY_DIR}/external/include --enable-maintainer-mode ${WITH_LIBGPG_ERROR_PREFIX}
       BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
@@ -1202,7 +1202,7 @@ set(RAPIDJSON_TARGET rapidjson)
 externalproject_add(${RAPIDJSON_TARGET}
   # tried URL but archive gets downloaded every time. URL_MD5 may help
   URL                  ${WITH_RAPIDJSON_URL}
-  TIMEOUT              300
+  TIMEOUT              600
   DOWNLOAD_NO_PROGRESS 1
   # don't install
   INSTALL_COMMAND      ""
