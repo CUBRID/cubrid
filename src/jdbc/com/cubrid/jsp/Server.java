@@ -46,25 +46,28 @@ public class Server {
 	private static String rootPath;
 
 	private ServerSocket serverSocket;
-
+	
 	private static Logger logger = Logger.getLogger("com.cubrid.jsp");
 
 	private static final String LOG_DIR = "log";
 
-	public Server(String name, String path, String version, String rPath)
+	public Server(String name, String path, String version, String rPath, String port)
 			throws IOException {
 		serverName = name;
 		spPath = path;
 		rootPath = rPath;
-		serverSocket = new ServerSocket(0);
 
 		try {
-			Class.forName("cubrid.jdbc.driver.CUBRIDDriver");
-		} catch (ClassNotFoundException e1) {
-			e1.printStackTrace();
+		  int port_number = Integer.parseInt(port);
+		  serverSocket = new ServerSocket(port_number);
+
+		  Class.forName("cubrid.jdbc.driver.CUBRIDDriver");
+		  System.setSecurityManager(new SpSecurityManager());
+		  System.setProperty("cubrid.server.version", version);
+		} catch (Exception e) {
+			log(e);
+			e.printStackTrace();
 		}
-		System.setSecurityManager(new SpSecurityManager());
-		System.setProperty("cubrid.server.version", version);
 
 		new Thread(new Runnable() {
 			public void run() {
@@ -96,7 +99,7 @@ public class Server {
 
 	public static int start(String[] args) {
 		try {
-			Server server = new Server(args[0], args[1], args[2], args[3]);
+			Server server = new Server(args[0], args[1], args[2], args[3], args[4]);
 			return server.getServerPort();
 		} catch (Exception e) {
 			e.printStackTrace();

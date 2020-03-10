@@ -1572,9 +1572,9 @@ bool PRM_JAVA_STORED_PROCEDURE = false;
 static bool prm_java_stored_procedure_default = false;
 static unsigned int prm_java_stored_procedure_flag = 0;
 
-bool PRM_JAVA_STORED_PROCEDURE_PORT = false;
+int PRM_JAVA_STORED_PROCEDURE_PORT = 0;
 static int prm_java_stored_procedure_port_default = 0;
-static int prm_java_stored_procedure_port_upper = INT_MAX;
+static int prm_java_stored_procedure_port_upper = 65535;
 static int prm_java_stored_procedure_port_lower = 0;
 static unsigned int prm_java_stored_procedure_port_flag = 0;
 

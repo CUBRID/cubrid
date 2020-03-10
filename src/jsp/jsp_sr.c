@@ -356,12 +356,13 @@ jsp_start_server (const char *db_name, const char *path)
   jint res;
   jclass cls, string_cls;
   jmethodID mid;
-  jstring jstr_dbname, jstr_path, jstr_version, jstr_envroot;
+  jstring jstr_dbname, jstr_path, jstr_version, jstr_envroot, jstr_port;
   jobjectArray args;
   JavaVMInitArgs vm_arguments;
   const int vm_n_options = 3;
   JavaVMOption options[vm_n_options];
   char classpath[PATH_MAX + 32], logging_prop[PATH_MAX + 32];
+  char port[5];
   char *loc_p, *locale;
   const char *envroot;
   char jsp_file_path[PATH_MAX];
@@ -490,6 +491,14 @@ jsp_start_server (const char *db_name, const char *path)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, "NewStringUTF");
       goto error;
     }
+  
+  sprintf (port, "%d", prm_get_int_value (PRM_ID_JAVA_STORED_PROCEDURE_PORT));
+  jstr_port = JVM_NewStringUTF (env_p, port);
+  if (jstr_port == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, "NewStringUTF");
+      goto error;
+    }
 
   string_cls = JVM_FindClass (env_p, "java/lang/String");
   if (string_cls == NULL)
@@ -498,7 +507,7 @@ jsp_start_server (const char *db_name, const char *path)
       goto error;
     }
 
-  args = JVM_NewObjectArray (env_p, 4, string_cls, NULL);
+  args = JVM_NewObjectArray (env_p, 5, string_cls, NULL);
   if (args == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, "NewObjectArray");
@@ -509,6 +518,7 @@ jsp_start_server (const char *db_name, const char *path)
   JVM_SetObjectArrayElement (env_p, args, 1, jstr_path);
   JVM_SetObjectArrayElement (env_p, args, 2, jstr_version);
   JVM_SetObjectArrayElement (env_p, args, 3, jstr_envroot);
+  JVM_SetObjectArrayElement (env_p, args, 4, jstr_port);
 
   sp_port = JVM_CallStaticIntMethod (env_p, cls, mid, args);
 
