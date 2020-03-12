@@ -491,7 +491,7 @@ jsp_start_server (const char *db_name, const char *path)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, "NewStringUTF");
       goto error;
     }
-  
+
   sprintf (port, "%d", prm_get_integer_value (PRM_ID_JAVA_STORED_PROCEDURE_PORT));
   jstr_port = JVM_NewStringUTF (env_p, port);
   if (jstr_port == NULL)
