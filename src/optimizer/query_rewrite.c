@@ -1355,6 +1355,14 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 		{
 		  from = node->info.query.q.select.from;
 		}
+	      else if (node->node_type == PT_DELETE)
+		{
+		  from = node->info.delete_.spec;
+		}
+	      else if (node->node_type == PT_UPDATE)
+		{
+		  from = node->info.update.spec;
+		}
 	      else
 		{
 		  from = NULL;	/* not found. step to next */
@@ -1388,7 +1396,9 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 		  if (attr && col && !PT_IS_VALUE_QUERY (col) && qo_is_reduceable_const (col))
 		    {
 		      /* add additional equailty-term; is reduced */
-		      *wherep = parser_append_node (parser_copy_tree (parser, expr), *wherep);
+		      PT_NODE *expr_copy = parser_copy_tree (parser, expr);
+		      PT_EXPR_INFO_SET_FLAG (expr_copy, PT_EXPR_INFO_DO_NOT_AUTOPARAM);
+		      *wherep = parser_append_node (expr_copy, *wherep);
 
 		      /* select-list's PT_NODE can have next PT_NODEs. so copy select_list to col node */
 		      col = parser_copy_tree (parser, col);
@@ -6448,6 +6458,14 @@ qo_do_auto_parameterize (PARSER_CONTEXT * parser, PT_NODE * where)
 	  if (dnf_node->node_type != PT_EXPR)
 	    {
 	      /* dnf_node is not an expression node */
+	      continue;
+	    }
+
+	  if (PT_EXPR_INFO_IS_FLAGED (dnf_node, PT_EXPR_INFO_DO_NOT_AUTOPARAM))
+	    {
+	      /* copy_pull term from select list of derived table do NOT auto_parameterize */
+	      /* because the query rewrite step is performed in the XASL generation of DELETE and UPDATE. */
+	      /* to_do: remove rewriting aptr in the XASL generation of DEL,UPD (pt_to_delete_xasl) */
 	      continue;
 	    }
 

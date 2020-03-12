@@ -2532,7 +2532,7 @@ boot_define_query_spec (MOP class_mop)
       return error_code;
     }
 
-  error_code = smt_add_attribute (def, "spec", "varchar(4096)", NULL);
+  error_code = smt_add_attribute (def, "spec", "varchar(1073741823)", NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;

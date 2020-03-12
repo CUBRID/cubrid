@@ -1632,6 +1632,10 @@ numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
 	{
 	  goto exit_on_error;
 	}
+      else
+	{
+	  er_clear ();
+	}
     }
   else if (ret != NO_ERROR)
     {
@@ -1727,6 +1731,10 @@ numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
       if (ret != NO_ERROR)
 	{
 	  goto exit_on_error;
+	}
+      else
+	{
+	  er_clear ();
 	}
     }
   else if (ret != NO_ERROR)
