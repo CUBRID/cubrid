@@ -362,7 +362,7 @@ jsp_start_server (const char *db_name, const char *path)
   const int vm_n_options = 3;
   JavaVMOption options[vm_n_options];
   char classpath[PATH_MAX + 32], logging_prop[PATH_MAX + 32];
-  char port[6] = {0};
+  char port[6] = { 0 };
   char *loc_p, *locale;
   const char *envroot;
   char jsp_file_path[PATH_MAX];
