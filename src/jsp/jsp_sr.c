@@ -492,7 +492,7 @@ jsp_start_server (const char *db_name, const char *path)
       goto error;
     }
   
-  sprintf (port, "%d", prm_get_int_value (PRM_ID_JAVA_STORED_PROCEDURE_PORT));
+  sprintf (port, "%d", prm_get_integer_value (PRM_ID_JAVA_STORED_PROCEDURE_PORT));
   jstr_port = JVM_NewStringUTF (env_p, port);
   if (jstr_port == NULL)
     {
