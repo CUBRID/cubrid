@@ -6792,6 +6792,12 @@ prm_load_by_section (INI_TABLE * ini, const char *section, bool ignore_section, 
 	    }
 	}
 
+      if (strcmp (section, "common") == 0 && strcmp (prm->name, PRM_NAME_JAVA_STORED_PROCEDURE_PORT) == 0)
+	{
+	  /* ignore specifying port for java stored procedure in common section */
+	  continue;
+	}
+
       error = prm_set (prm, value, true);
       if (error != NO_ERROR)
 	{
