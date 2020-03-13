@@ -31,6 +31,7 @@
 #include "external_sort.h"    // SORTKEY_INFO
 #include "query_list.h"
 #include "storage_common.h"   // AGGREGATE_HASH_STATE, SCAN_CODE, FUNC_TYPE
+#include "xasl.h"
 
 #include <vector>
 
@@ -132,7 +133,7 @@ int qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregat
 
 cubquery::aggregate_hash_key *qdata_alloc_agg_hkey (cubthread::entry *thread_p, int val_cnt, bool alloc_vals);
 void qdata_free_agg_hkey (cubthread::entry *thread_p, cubquery::aggregate_hash_key *key);
-cubquery::aggregate_hash_value *qdata_alloc_agg_hvalue (cubthread::entry *thread_p, int func_cnt);
+cubquery::aggregate_hash_value *qdata_alloc_agg_hvalue (cubthread::entry *thread_p, BUILDLIST_PROC_NODE *proc);
 void qdata_free_agg_hvalue (cubthread::entry *thread_p, cubquery::aggregate_hash_value *value);
 int qdata_get_agg_hkey_size (cubquery::aggregate_hash_key *key);
 int qdata_get_agg_hvalue_size (cubquery::aggregate_hash_value *value, bool ret_delta);

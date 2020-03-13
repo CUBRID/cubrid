@@ -1531,6 +1531,7 @@ qexec_clear_regu_var (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, REGU_VARIABLE
     case TYPE_FUNC:
       pr_clear_value (regu_var->value.funcp->value);
       pg_cnt += qexec_clear_regu_list (thread_p, xasl_p, regu_var->value.funcp->operand, is_final);
+
       break;
     case TYPE_REGUVAL_LIST:
       pg_cnt += qexec_clear_regu_value_list (thread_p, xasl_p, regu_var->value.reguval_list, is_final);
@@ -3744,7 +3745,7 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	}
 
       /* create new value */
-      new_value = qdata_alloc_agg_hvalue (thread_p, proc->g_func_count);
+      new_value = qdata_alloc_agg_hvalue (thread_p, proc);
       if (new_value == NULL)
 	{
 	  qdata_free_agg_hkey (thread_p, new_key);
@@ -24937,8 +24938,8 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
   /*
    * create temp values
    */
-  proc->agg_hash_context->temp_part_value = qdata_alloc_agg_hvalue (thread_p, proc->g_func_count);
-  proc->agg_hash_context->curr_part_value = qdata_alloc_agg_hvalue (thread_p, proc->g_func_count);
+  proc->agg_hash_context->temp_part_value = qdata_alloc_agg_hvalue (thread_p, proc);
+  proc->agg_hash_context->curr_part_value = qdata_alloc_agg_hvalue (thread_p, proc);
 
   if (proc->agg_hash_context->temp_part_value == NULL || proc->agg_hash_context->curr_part_value == NULL)
     {
