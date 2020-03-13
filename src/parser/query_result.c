@@ -520,7 +520,7 @@ pt_get_select_list (PARSER_CONTEXT * parser, PT_NODE * query)
 	      common_type = pt_common_type (attr1->type_enum, attr2->type_enum);
 	    }
 
-	  if (col->type_enum == PT_TYPE_NA || col->type_enum == PT_TYPE_NULL)
+	  if (pt_is_value_node (col) && (col->type_enum == PT_TYPE_NA || col->type_enum == PT_TYPE_NULL))
 	    {
 	      db_make_null (&col->info.value.db_value);
 	    }

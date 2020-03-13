@@ -97,6 +97,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/ini_parser.c
   ${BASE_DIR}/intl_support.c
   ${BASE_DIR}/language_support.c
+  ${BASE_DIR}/locale_helper.cpp
   ${BASE_DIR}/locale_support.c
   ${BASE_DIR}/lockfree_bitmap.cpp
   ${BASE_DIR}/md5.c
@@ -136,6 +137,7 @@ set(BASE_HEADERS
   ${BASE_DIR}/error_manager.h
   ${BASE_DIR}/extensible_array.hpp
   ${BASE_DIR}/fileline_location.hpp
+  ${BASE_DIR}/locale_helper.hpp
   ${BASE_DIR}/lockfree_bitmap.hpp
   ${BASE_DIR}/mem_block.hpp
   ${BASE_DIR}/memory_reference_store.hpp
@@ -227,10 +229,12 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/query_method.c
   ${QUERY_DIR}/regu_var.cpp
   ${QUERY_DIR}/string_opfunc.c
+  ${QUERY_DIR}/string_regex.cpp
   ${QUERY_DIR}/xasl_to_stream.c
   )
 set(QUERY_HEADERS
   ${QUERY_DIR}/query_monitoring.hpp
+  ${QUERY_DIR}/string_regex.hpp
 )
 
 set(OBJECT_SOURCES
