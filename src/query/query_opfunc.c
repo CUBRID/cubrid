@@ -60,6 +60,7 @@
 #include "dbtype.h"
 
 #include <chrono>
+#include <regex>
 
 #define NOT_NULL_VALUE(a, b)	((a) ? (a) : (b))
 #define INITIAL_OID_STACK_SIZE  1
@@ -215,6 +216,9 @@ static int qdata_elt (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_D
 		      QFILE_TUPLE tuple);
 static int qdata_benchmark (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
 			    OID * obj_oid_p, QFILE_TUPLE tuple);
+
+static int qdata_regexp_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
+				  OID * obj_oid_p, QFILE_TUPLE tuple);
 
 static int qdata_convert_operands_to_value_and_call (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p,
 						     VAL_DESCR * val_desc_p, OID * obj_oid_p, QFILE_TUPLE tuple,
@@ -633,12 +637,12 @@ qdata_set_valptr_list_unbound (THREAD_ENTRY * thread_p, valptr_list_node * valpt
 	    {
 	      /* this may be shared with another regu variable that was already evaluated */
 	      pr_clear_value (dbval_p);
-	    }
 
-	  if (db_value_domain_init (dbval_p, DB_VALUE_DOMAIN_TYPE (dbval_p), DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE) !=
-	      NO_ERROR)
-	    {
-	      return ER_FAILED;
+	      if (db_value_domain_init (dbval_p, DB_VALUE_DOMAIN_TYPE (dbval_p), DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE)
+		  != NO_ERROR)
+		{
+		  return ER_FAILED;
+		}
 	    }
 	}
 
@@ -6883,6 +6887,13 @@ qdata_evaluate_function (THREAD_ENTRY * thread_p, regu_variable_node * function_
       return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
 						       db_evaluate_json_valid);
 
+    case F_REGEXP_COUNT:
+    case F_REGEXP_INSTR:
+    case F_REGEXP_LIKE:
+    case F_REGEXP_REPLACE:
+    case F_REGEXP_SUBSTR:
+      return qdata_regexp_function (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
       return ER_FAILED;
@@ -8463,6 +8474,100 @@ qdata_benchmark (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR 
 
   db_make_double (function_p->value, secs.count ());
   return NO_ERROR;
+}
+
+/*
+ * qdata_regexp_function () - Evaluates regexp related functions.
+ *   return: NO_ERROR, or ER_FAILED code
+ *   thread_p   : thread context
+ *   funcp(in)  : function structure pointer
+ *   vd(in)     : value descriptor
+ *   obj_oid(in): object identifier
+ *   tpl(in)    : tuple
+ */
+static int
+qdata_regexp_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
+		       OID * obj_oid_p, QFILE_TUPLE tuple)
+{
+  DB_VALUE *value;
+  REGU_VARIABLE_LIST operand;
+  int error_status = NO_ERROR;
+  int no_args = 0, index = 0;
+  DB_VALUE **args;
+
+  {
+    assert (function_p != NULL);
+    assert (function_p->value != NULL);
+    assert (function_p->operand != NULL);
+
+    operand = function_p->operand;
+
+    while (operand != NULL)
+      {
+	no_args++;
+	operand = operand->next;
+      }
+
+    args = (DB_VALUE **) db_private_alloc (thread_p, sizeof (DB_VALUE *) * no_args);
+
+    operand = function_p->operand;
+    while (operand != NULL)
+      {
+	error_status = fetch_peek_dbval (thread_p, &operand->value, val_desc_p, NULL, obj_oid_p, tuple, &value);
+	if (error_status != NO_ERROR)
+	  {
+	    goto exit;
+	  }
+
+	args[index++] = value;
+
+	operand = operand->next;
+      }
+
+    assert (index == no_args);
+
+    // *INDENT-OFF*
+    std::function<int(DB_VALUE*, DB_VALUE*[], const int, cub_regex_object**, char**)> regexp_func;
+    switch (function_p->ftype)
+    {
+      case F_REGEXP_COUNT:
+        regexp_func = db_string_regexp_count;
+        break;
+      case F_REGEXP_INSTR:
+        regexp_func = db_string_regexp_instr;
+        break;
+      case F_REGEXP_LIKE:
+        regexp_func = db_string_regexp_like;
+        break;
+      case F_REGEXP_REPLACE:
+        regexp_func = db_string_regexp_replace;
+        break;
+      case F_REGEXP_SUBSTR:
+        regexp_func = db_string_regexp_substr;
+        break;
+      default:
+        assert (false);
+        break;
+    }
+    // *INDENT-ON*
+
+    if (function_p->tmp_obj == NULL)
+      {
+	function_p->tmp_obj = new function_tmp_obj;
+	function_p->tmp_obj->compiled_regex = new cub_compiled_regex ();
+      }
+
+    cub_compiled_regex *compiled_regex = function_p->tmp_obj->compiled_regex;
+    error_status = regexp_func (function_p->value, args, no_args, &compiled_regex->regex, &compiled_regex->pattern);
+    if (error_status != NO_ERROR)
+      {
+	goto exit;
+      }
+  }
+
+exit:
+  db_private_free (thread_p, args);
+  return error_status;
 }
 
 static int

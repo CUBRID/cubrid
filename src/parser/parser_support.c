@@ -707,7 +707,9 @@ pt_is_expr_wrapped_function (PARSER_CONTEXT * parser, const PT_NODE * node)
 	  || function_type == F_JSON_REPLACE
 	  || function_type == F_JSON_SEARCH
 	  || function_type == F_JSON_SET
-	  || function_type == F_JSON_TYPE || function_type == F_JSON_UNQUOTE || function_type == F_JSON_VALID)
+	  || function_type == F_JSON_TYPE || function_type == F_JSON_UNQUOTE || function_type == F_JSON_VALID
+	  || function_type == F_REGEXP_COUNT || function_type == F_REGEXP_INSTR || function_type == F_REGEXP_LIKE
+	  || function_type == F_REGEXP_REPLACE || function_type == F_REGEXP_SUBSTR)
 	{
 	  return true;
 	}
@@ -1106,6 +1108,10 @@ pt_is_analytic_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *co
   else if (PT_IS_QUERY_NODE_TYPE (tree->node_type))
     {
       *continue_walk = PT_LIST_WALK;
+    }
+  else
+    {
+      *continue_walk = PT_CONTINUE_WALK;
     }
 
   return tree;

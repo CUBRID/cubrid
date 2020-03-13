@@ -262,6 +262,7 @@ struct json_t;
 #define pt_is_dot_node(n) PT_IS_DOT_NODE(n)
 #define pt_is_expr_node(n) PT_IS_EXPR_NODE(n)
 #define pt_is_function(n) PT_IS_FUNCTION(n)
+#define pt_is_multi_col_term(n) PT_IS_MULTI_COL_TERM(n)
 #define pt_is_name_node(n) PT_IS_NAME_NODE(n)
 #define pt_is_oid_name(n) PT_IS_OID_NAME(n)
 #define pt_is_value_node(n) PT_IS_VALUE_NODE(n)
@@ -314,6 +315,12 @@ struct json_t;
 
 #define PT_IS_FUNCTION(n) \
         ( (n) ? ((n)->node_type == PT_FUNCTION) : false )
+
+#define PT_IS_MULTI_COL_TERM(n) \
+	( ((n) && \
+	   PT_IS_FUNCTION((n)) && \
+	   PT_IS_SET_TYPE ((n)) && \
+	   (n)->info.function.function_type == F_SEQUENCE) ? true : false )
 
 #define PT_IS_NAME_NODE(n) \
         ( (n) ? ((n)->node_type == PT_NAME) : false )
@@ -2245,6 +2252,7 @@ struct pt_expr_info
 
 #define PT_EXPR_INFO_GROUPBYNUM_LIMIT 32768	/* flag that marks if the expression resulted from a GROUP BY ... LIMIT
 						 * statement */
+#define PT_EXPR_INFO_DO_NOT_AUTOPARAM 65536	/* don't auto parameterize expr at qo_do_auto_parameterize() */
   int flag;			/* flags */
 #define PT_EXPR_INFO_IS_FLAGED(e, f)    ((e)->info.expr.flag & (int) (f))
 #define PT_EXPR_INFO_SET_FLAG(e, f)     (e)->info.expr.flag |= (int) (f)
