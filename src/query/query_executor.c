@@ -1532,6 +1532,29 @@ qexec_clear_regu_var (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, REGU_VARIABLE
       pr_clear_value (regu_var->value.funcp->value);
       pg_cnt += qexec_clear_regu_list (thread_p, xasl_p, regu_var->value.funcp->operand, is_final);
 
+      if (regu_var->value.funcp->tmp_obj != NULL)
+	{
+	  switch (regu_var->value.funcp->ftype)
+	    {
+	    case F_REGEXP_COUNT:
+	    case F_REGEXP_INSTR:
+	    case F_REGEXP_LIKE:
+	    case F_REGEXP_REPLACE:
+	    case F_REGEXP_SUBSTR:
+	      {
+		delete regu_var->value.funcp->tmp_obj->compiled_regex;
+	      }
+	      break;
+	    default:
+	      // any member of union func_tmp_obj may have been erased
+	      assert (false);
+	      break;
+	    }
+
+	  delete regu_var->value.funcp->tmp_obj;
+	  regu_var->value.funcp->tmp_obj = NULL;
+	}
+
       break;
     case TYPE_REGUVAL_LIST:
       pg_cnt += qexec_clear_regu_value_list (thread_p, xasl_p, regu_var->value.reguval_list, is_final);
