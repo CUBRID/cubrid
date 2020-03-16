@@ -521,6 +521,11 @@ jsp_start_server (const char *db_name, const char *path)
   JVM_SetObjectArrayElement (env_p, args, 4, jstr_port);
 
   sp_port = JVM_CallStaticIntMethod (env_p, cls, mid, args);
+  if (sp_port == -1)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, sp_port);
+      goto error;
+    }
 
   return 0;
 
