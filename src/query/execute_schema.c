@@ -3670,6 +3670,8 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
   size_t buf_size;
   SM_CLASS *smclass;
   bool reuse_oid = false;
+  bool encrypted_aes = false;
+  bool encrypted_aria = false;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -3740,6 +3742,8 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
     }
 
   reuse_oid = (smclass->flags & SM_CLASSFLAG_REUSE_OID) ? true : false;
+  encrypted_aes = (smclass->flags & SM_CLASSFLAG_ENCRYPTED_AES) ? true : false;
+  encrypted_aria = (smclass->flags & SM_CLASSFLAG_ENCRYPTED_ARIA) ? true : false;
 
   parttemp->info.create_entity.entity_type = PT_CLASS;
   parttemp->info.create_entity.entity_name = parser_new_node (parser, PT_NAME);
@@ -3871,6 +3875,22 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
 	  if (reuse_oid)
 	    {
 	      error = sm_set_class_flag (newpci->obj, SM_CLASSFLAG_REUSE_OID, 1);
+	      if (error != NO_ERROR)
+		{
+		  goto end_create;
+		}
+	    }
+	  if (encrypted_aes)
+	    {
+	      error = sm_set_class_flag (newpci->obj, SM_CLASSFLAG_ENCRYPTED_AES, 1);
+	      if (error != NO_ERROR)
+		{
+		  goto end_create;
+		}
+	    }
+	  if (encrypted_aria)
+	    {
+	      error = sm_set_class_flag (newpci->obj, SM_CLASSFLAG_ENCRYPTED_ARIA, 1);
 	      if (error != NO_ERROR)
 		{
 		  goto end_create;
@@ -8533,6 +8553,8 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   DB_QUERY_TYPE *query_columns = NULL;
   PT_NODE *tbl_opt = NULL;
   bool reuse_oid = false;
+  bool encrypted_aes = false;
+  bool encrypted_aria = false;
   bool do_rollback_on_error = false;
   bool do_abort_class_on_error = false;
   bool do_flush_class_mop = false;
@@ -8616,6 +8638,12 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    case PT_TABLE_OPTION_REUSE_OID:
 	      reuse_oid = true;
 	      break;
+        case PT_TABLE_OPTION_ENCRYPTED_AES:
+          encrypted_aes = true;
+          break;
+        case PT_TABLE_OPTION_ENCRYPTED_ARIA:
+          encrypted_aria = true;
+          break;
 	    case PT_TABLE_OPTION_CHARSET:
 	      tbl_opt_charset = tbl_opt;
 	      break;
@@ -8630,6 +8658,8 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	}
 
+      assert (!(encrypted_aria && encrypted_aes)); // exclusive
+      
       /* validate charset and collation options, if any */
       cs_node = (tbl_opt_charset) ? tbl_opt_charset->info.table_option.val : NULL;
       coll_node = (tbl_opt_coll) ? tbl_opt_coll->info.table_option.val : NULL;
@@ -8782,6 +8812,14 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    {
 	      reuse_oid = true;
 	    }
+	  if (!encrypted_aes && (source_class->flags & SM_CLASSFLAG_ENCRYPTED_AES))
+	    {
+	      encrypted_aes = true;
+	    }
+	  if (!encrypted_aria && (source_class->flags & SM_CLASSFLAG_ENCRYPTED_ARIA))
+	    {
+	      encrypted_aria = true;
+	    }
 	  if (source_class->comment)
 	    {
 	      error = sm_set_class_comment (class_obj, source_class->comment);
@@ -8804,6 +8842,22 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    {
 	      /* Need to flush class mop in order to reflect reuse_oid flag into catalog table. Without flushing it,
 	       * catalog information is incorrect under non-autocommit mode. */
+	      do_flush_class_mop = true;
+	    }
+	}
+      if (encrypted_aes)
+	{
+	  error = sm_set_class_flag (class_obj, SM_CLASSFLAG_ENCRYPTED_AES, 1);
+	  if (error == NO_ERROR)
+	    {
+	      do_flush_class_mop = true;
+	    }
+	}
+      if (encrypted_aria)
+	{
+	  error = sm_set_class_flag (class_obj, SM_CLASSFLAG_ENCRYPTED_ARIA, 1);
+	  if (error == NO_ERROR)
+	    {
 	      do_flush_class_mop = true;
 	    }
 	}
