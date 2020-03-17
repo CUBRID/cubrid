@@ -29,6 +29,11 @@
 #include <ctype.h>
 #include <assert.h>
 
+#define TDE_TEST 1
+#ifdef TDE_TEST
+#include <string.h>
+#endif 
+
 #include "authenticate.h"
 #include "error_manager.h"
 #include "parser.h"
@@ -8657,6 +8662,12 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	      break;
 	    }
 	}
+#ifdef TDE_TEST
+      if (strstr(class_name, "tde") != NULL) // classes including "tde" are for tde test
+    {
+        encrypted_aes=true;        
+    }
+#endif /* TDE_TEST */
 
       assert (!(encrypted_aria && encrypted_aes)); // exclusive
       
