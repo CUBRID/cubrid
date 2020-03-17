@@ -523,7 +523,7 @@ jsp_start_server (const char *db_name, const char *path)
   sp_port = JVM_CallStaticIntMethod (env_p, cls, mid, args);
   if (sp_port == -1)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, sp_port);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, "CallStaticIntMethod");
       goto error;
     }
 
@@ -531,7 +531,6 @@ jsp_start_server (const char *db_name, const char *path)
 
 error:
   jsp_stop_server ();
-  jvm = NULL;
 
   assert (er_errid () != NO_ERROR);
   return er_errid ();
@@ -547,6 +546,12 @@ error:
 int
 jsp_stop_server (void)
 {
+  if (jsp_jvm_is_loaded ())
+    {
+      jvm->DestroyJavaVM ();
+      jvm = NULL;
+    }
+
   return NO_ERROR;
 }
 
