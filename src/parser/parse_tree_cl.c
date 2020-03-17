@@ -7745,6 +7745,12 @@ pt_print_table_option (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TABLE_OPTION_REUSE_OID:
       q = pt_append_nulstring (parser, q, "reuse_oid");
       break;
+    case PT_TABLE_OPTION_ENCRYPTED_AES:
+      q = pt_append_nulstring (parser, q, "encrypted_aes");
+      break;
+    case PT_TABLE_OPTION_ENCRYPTED_ARIA:
+      q = pt_append_nulstring (parser, q, "encrypted_aria");
+      break;
     case PT_TABLE_OPTION_AUTO_INCREMENT:
       q = pt_append_nulstring (parser, q, "auto_increment = ");
       break;
