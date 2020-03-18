@@ -295,17 +295,19 @@ typedef enum
 } SM_CLASS_TYPE;
 
 /*
- *    Flags for misc information about a class.  These must be defined
- *    as powers of two because they are stored packed in a single integer.
+ *    Flags for misc information about a class. 
+ *    It is stored packed in a single integer.
+ *   
+ *    It equals to ORC_CLASS_FLAG_* 
  */
-typedef enum
+typedef enum 
 {
-  SM_CLASSFLAG_SYSTEM = 1,	/* a system defined class */
-  SM_CLASSFLAG_WITHCHECKOPTION = 2,	/* a view with check option */
-  SM_CLASSFLAG_LOCALCHECKOPTION = 4,	/* view w/local check option */
-  SM_CLASSFLAG_REUSE_OID = 8,	/* the class can reuse OIDs */
-  SM_CLASSFLAG_ENCRYPTED_AES = 16,  /* TDE: a class encrypted at rest usign AES */
-  SM_CLASSFLAG_ENCRYPTED_ARIA = 32,  /* TDE: a class encrypted at rest usign ARIA */
+  SM_CLASSFLAG_SYSTEM = 0x00000001,	/* a system defined class */
+  SM_CLASSFLAG_WITHCHECKOPTION = 0x00000002,	/* a view with check option */
+  SM_CLASSFLAG_LOCALCHECKOPTION = 0x00000004,	/* view w/local check option */
+  SM_CLASSFLAG_REUSE_OID = 0x00000008,	/* the class can reuse OIDs */
+  SM_CLASSFLAG_ENCRYPTED_AES = 0x00000010,  /* TDE: a class encrypted at rest usign AES */
+  SM_CLASSFLAG_ENCRYPTED_ARIA = 0x00000020,  /* TDE: a class encrypted at rest usign ARIA */
 } SM_CLASS_FLAG;
 
 /*

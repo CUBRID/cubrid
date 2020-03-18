@@ -965,6 +965,31 @@ enum
   ORC_PARTITION_VAR_ATT_COUNT = ORC_PARTITION_LAST_INDEX
 };
 
+
+/* 
+ * flags
+ * 
+ * It is stored packed in a single integer.
+ * It equals to SM_CLASS_FLAG 
+ */ 
+enum 
+{
+  ORC_CLASSFLAG_SYSTEM = 0x00000001,	/* a system defined class */
+  ORC_CLASSFLAG_WITHCHECKOPTION = 0x00000002,	/* a view with check option */
+  ORC_CLASSFLAG_LOCALCHECKOPTION = 0x00000004,	/* view w/local check option */
+  ORC_CLASSFLAG_REUSE_OID = 0x00000008,	/* the class can reuse OIDs */
+  ORC_CLASSFLAG_ENCRYPTED_AES = 0x00000010,  /* TDE: a class encrypted at rest usign AES */
+  ORC_CLASSFLAG_ENCRYPTED_ARIA = 0x00000020,  /* TDE: a class encrypted at rest usign ARIA */
+};
+
+#define ORC_CLASSFLAG_ENC_MASK      0x00000030 
+#define ORC_CLASSFLAG_ENC_AES_MASK  0x00000010
+#define ORC_CLASSFLAG_ENC_AES_MASK  0x00000020
+
+#define ORC_CLASSFLAG_ENCRYPTED(flags) ((flags) & ORC_CLASSFLAG_ENC_MASK)
+#define ORC_CLASSFLAG_ENCRYPTED_AES(flags) ((flags) & ORC_CLASSFLAG_ENCRYPTED_AES)
+#define ORC_CLASSFLAG_ENCRYPTED_ARIA(flags) ((flags) & ORC_CLASSFLAG_ENCRYPTED_ARIA)
+
 /* MEMORY REPRESENTATION STRUCTURES */
 
 #define OR_BINARY_MAX_LENGTH 65535
