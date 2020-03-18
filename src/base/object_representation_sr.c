@@ -742,6 +742,25 @@ or_class_hfid (RECDES * record, HFID * hfid)
   hfid->hpgid = OR_GET_INT (ptr + ORC_HFID_PAGEID_OFFSET);
 }
 
+/*
+ * or_class_flgas () - Extracts just the flags from the disk representation of
+ *                    a class
+ *   return: void
+ *   record(in): packed disk record containing class
+ *   flags(out): pointer to flags to be filled in
+ *
+ */
+void
+or_class_flags (RECDES * record, int * flags)
+{
+  char *ptr;
+
+  assert (OR_GET_OFFSET_SIZE (record->data) == BIG_VAR_OFFSET_SIZE);
+
+  ptr = record->data + OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT);
+  *flags = OR_GET_INT (ptr + ORC_CLASS_FLAGS);
+}
+
 #if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * or_class_statistics () - extracts the OID of the statistics instance for

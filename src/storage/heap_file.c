@@ -71,6 +71,7 @@
 #include "db_value_printer.hpp"
 #include "log_append.hpp"
 #include "string_buffer.hpp"
+#include "tde.hpp"
 
 #include <set>
 
@@ -750,6 +751,7 @@ static int heap_class_get_partition_info (THREAD_ENTRY * thread_p, const OID * c
 static int heap_get_partition_attributes (THREAD_ENTRY * thread_p, const OID * cls_oid, ATTR_ID * type_id,
 					  ATTR_ID * values_id);
 static int heap_get_class_subclasses (THREAD_ENTRY * thread_p, const OID * class_oid, int *count, OID ** subclasses);
+extern int heap_get_class_enc_algorithm (THREAD_ENTRY * thread_p, const OID * class_oid, TDE_ENC_ALGORITHM * tde_algo);
 
 static unsigned int heap_hash_vpid (const void *key_vpid, unsigned int htsize);
 static int heap_compare_vpid (const void *key_vpid1, const void *key_vpid2);
@@ -10691,6 +10693,53 @@ heap_get_class_subclasses (THREAD_ENTRY * thread_p, const OID * class_oid, int *
   error = orc_subclasses_from_record (&recdes, count, subclasses);
 
   heap_scancache_end (thread_p, &scan_cache);
+
+  return error;
+}
+
+/*
+ * heap_get_class_enc_algorithm () - get TDE_ENC_ALGORITHM of a given class based on the class flags
+ * return : error code or NO_ERROR
+ * thread_p (in)  :
+ * class_oid (in) : OID of the parent class
+ * tde_algo (out)	: TDE_ENC_NONE, TDE_ENC_AES,TDE_ENC_ARIA
+ *
+ * NOTE: this function extracts tde encryption information from class record
+ */
+int
+heap_get_class_enc_algorithm (THREAD_ENTRY * thread_p, const OID * class_oid, TDE_ENC_ALGORITHM * tde_algo)
+{
+  HEAP_SCANCACHE scan_cache;
+  RECDES recdes;
+  int flags;
+  int error = NO_ERROR;
+
+  error = heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (heap_get_class_record (thread_p, class_oid, &recdes, &scan_cache, PEEK) != S_SUCCESS)
+    {
+      heap_scancache_end (thread_p, &scan_cache);
+      return ER_FAILED;
+    }
+
+  or_class_flags (&recdes, &flags);
+
+  heap_scancache_end (thread_p, &scan_cache);
+
+  *tde_algo = TDE_ENC_NONE;
+
+  if (ORC_CLASSFLAG_ENCRYPTED_AES (flags))
+    {
+      *tde_algo = TDE_ENC_AES;
+    }
+  else if (ORC_CLASSFLAG_ENCRYPTED_ARIA (flags))
+    {
+      *tde_algo = TDE_ENC_ARIA;
+    }
 
   return error;
 }
