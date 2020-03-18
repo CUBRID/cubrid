@@ -1985,10 +1985,10 @@ qdata_free_agg_hkey (cubthread::entry *thread_p, aggregate_hash_key *key)
  *   thread_p(in): thread
  */
 aggregate_hash_value *
-qdata_alloc_agg_hvalue (cubthread::entry *thread_p, BUILDLIST_PROC_NODE *proc)
+qdata_alloc_agg_hvalue (cubthread::entry *thread_p, int func_cnt, cubxasl::aggregate_list_node *g_agg_list)
 {
   aggregate_hash_value *value;
-  int i, func_cnt = proc->g_func_count;
+  int i;
   cubxasl::aggregate_list_node *agg_p;
 
   /* alloc structure */
@@ -2025,7 +2025,7 @@ qdata_alloc_agg_hvalue (cubthread::entry *thread_p, BUILDLIST_PROC_NODE *proc)
       value->accumulators[i].value2 = pr_make_value ();
     }
   /* initialize accumulators.value */
-  for (i = 0, agg_p = proc->g_agg_list; agg_p != NULL; agg_p = agg_p->next, i++)
+  for (i = 0, agg_p = g_agg_list; agg_p != NULL; agg_p = agg_p->next, i++)
     {
       /* CAUTION : if modify initializing ACC's value then should change qdata_initialize_aggregate_list() */
       if (agg_p->function == PT_GROUPBY_NUM)

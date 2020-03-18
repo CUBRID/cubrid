@@ -3759,7 +3759,7 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	}
 
       /* create new value */
-      new_value = qdata_alloc_agg_hvalue (thread_p, proc);
+      new_value = qdata_alloc_agg_hvalue (thread_p, proc->g_func_count, proc->g_agg_list);
       if (new_value == NULL)
 	{
 	  qdata_free_agg_hkey (thread_p, new_key);
@@ -24952,8 +24952,8 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
   /*
    * create temp values
    */
-  proc->agg_hash_context->temp_part_value = qdata_alloc_agg_hvalue (thread_p, proc);
-  proc->agg_hash_context->curr_part_value = qdata_alloc_agg_hvalue (thread_p, proc);
+  proc->agg_hash_context->temp_part_value = qdata_alloc_agg_hvalue (thread_p, proc->g_func_count, proc->g_agg_list);
+  proc->agg_hash_context->curr_part_value = qdata_alloc_agg_hvalue (thread_p, proc->g_func_count, proc->g_agg_list);
 
   if (proc->agg_hash_context->temp_part_value == NULL || proc->agg_hash_context->curr_part_value == NULL)
     {
