@@ -969,8 +969,12 @@ is_float_str (char *str)
 int
 cci_url_match (const char *src, char *token[])
 {
+  // *INDENT-OFF*
+  using namespace std::regex_constants;
+  // *INDENT-ON*
   static const char *pattern =
     "cci:cubrid(-oracle|-mysql)?:([a-zA-Z_0-9\\.-]*):([0-9]*):([^:]+):([^:]*):([^:]*):(\\?[a-zA-Z_0-9]+=[^&=?]+(&[a-zA-Z_0-9]+=[^&=?]+)*)?";
+  static const std::regex reg (pattern, ECMAScript | icase | optimize);
   static int match_idx[] = { 2, 3, 4, 5, 6, 7, -1 };
 
   int error = CCI_ER_NO_ERROR;
@@ -980,11 +984,8 @@ cci_url_match (const char *src, char *token[])
     }
 
   // *INDENT-OFF*
-  using namespace std::regex_constants;
   try
     {
-      std::regex reg (pattern, ECMAScript | icase);
-
       std::cmatch match;
       bool is_matched = std::regex_match (src, match, reg);
       if (is_matched)
