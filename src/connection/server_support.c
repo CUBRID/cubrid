@@ -779,7 +779,7 @@ css_process_get_eof_request (SOCKET master_fd)
   OR_ALIGNED_BUF (OR_LOG_LSA_ALIGNED_SIZE + OR_BIGINT_SIZE + OR_INT_SIZE) a_reply;
   char *reply, *ptr = NULL;
   THREAD_ENTRY *thread_p;
-  INT64 num_free_block;
+  INT64 num_free_block = 0;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 

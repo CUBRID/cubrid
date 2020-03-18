@@ -43,7 +43,7 @@
 #include <assert.h>
 #if defined(WINDOWS)
 #include <io.h>
-#else /* WINDOWS */
+#else
 #include <sys/vfs.h>
 #endif /* WINDOWS */
 
@@ -595,7 +595,7 @@ log_get_num_free_block (INT64 * num_free_block)
 {
 #if defined(SOLARIS)
   struct statvfs buf;
-#else /* SOLARIS */
+#else
   struct statfs buf;
 #endif /* SOLARIS */
 
@@ -606,7 +606,7 @@ log_get_num_free_block (INT64 * num_free_block)
   if (statvfs (log_Path, &buf) == 0)
 #elif defined(AIX)
   if (statfs ((char *) log_Path, &buf) == 0)
-#else /* AIX */
+#else
   if (statfs (log_Path, &buf) == 0)
 #endif /* AIX */
     {
