@@ -80,6 +80,7 @@
 #include "xasl_cache.h"
 #include "log_volids.hpp"
 #include "vacuum.h"
+#include "tde.hpp"
 
 #if defined(SERVER_MODE)
 #include "connection_sr.h"
@@ -2379,6 +2380,13 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     {
       goto error;
     }
+
+  error_code = tde_initialize ();
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
   /* we need to manually add root class HFID to cache */
   error_code =
     heap_cache_class_info (thread_p, &boot_Db_parm->rootclass_oid, &boot_Db_parm->rootclass_hfid, FILE_HEAP,

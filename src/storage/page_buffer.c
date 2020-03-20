@@ -59,6 +59,7 @@
 #include "boot_sr.h"
 #include "double_write_buffer.h"
 #include "resource_tracker.hpp"
+#include "tde.hpp"
 
 #if defined(SERVER_MODE)
 #include "connection_error.h"
@@ -142,6 +143,11 @@ static int rv;
 #define CAST_PGPTR_TO_IOPGPTR(io_pgptr, pgptr) \
   do { \
     (io_pgptr) = (FILEIO_PAGE *) ((char *) pgptr - offsetof (FILEIO_PAGE, page)); \
+  } while (0)
+
+#define CAST_IOPGPTR_TO_PGPTR(pgptr, io_pgptr) \
+  do { \
+    (pgptr) = (PAGE_PTR) ((char *) io_pgptr->page); \
   } while (0)
 
 #define CAST_BFPTR_TO_PGPTR(pgptr, bufptr) \
@@ -4366,6 +4372,63 @@ pgbuf_reset_temp_lsa (PAGE_PTR pgptr)
 }
 
 /*
+ * pgbuf_set_encrypted () - set tde encryption algorithm to the page
+ *   return: void
+ *   pgptr(in): Page pointer
+ *   enc_algo (in) : encryption algorithm - NONE, AES, ARIA
+ */
+void
+pgbuf_set_encrypted (PAGE_PTR pgptr, TDE_ENC_ALGORITHM enc_algo)
+{
+  FILEIO_PAGE *iopage = NULL;
+  
+  CAST_PGPTR_TO_IOPGPTR (iopage, pgptr);
+
+  /* It is not supported to chenage encryption algorithm yet */
+  assert (!(iopage->prv.pflag_reserve_1 && FILEIO_PAGE_FLAG_ENCRYPTED_MASK));
+  
+  switch (enc_algo) {
+    case TDE_ENC_AES:
+      iopage->prv.pflag_reserve_1 |= FILEIO_PAGE_FLAG_ENCRYPTED_AES;
+      break;
+    case TDE_ENC_ARIA:
+      iopage->prv.pflag_reserve_1 |= FILEIO_PAGE_FLAG_ENCRYPTED_AES;
+      break;
+    case TDE_ENC_NONE:
+      break; // do nothing
+    default:
+      assert (false);
+  }
+}
+
+/*
+ * pgbuf_get_encrypted () - get tde encryption algorithm of the page
+ *   return: void
+ *   pgptr(in): Page pointer
+ *   enc_algo (out) : encryption algorithm - NONE, AES, ARIA
+ */
+void
+pgbuf_get_encrypted (PAGE_PTR pgptr, TDE_ENC_ALGORITHM * enc_algo)
+{
+  FILEIO_PAGE *iopage = NULL;
+  
+  CAST_PGPTR_TO_IOPGPTR (iopage, pgptr);
+  
+  if (iopage->prv.pflag_reserve_1 & FILEIO_PAGE_FLAG_ENCRYPTED_AES) 
+  {
+    *enc_algo = TDE_ENC_AES;
+  }
+  else if (iopage->prv.pflag_reserve_1 & FILEIO_PAGE_FLAG_ENCRYPTED_ARIA) 
+  {
+    *enc_algo = TDE_ENC_ARIA;
+  }
+  else
+  {
+    *enc_algo = TDE_ENC_NONE;
+  }
+}
+
+/*
  * pgbuf_get_vpid () - Find the volume and page identifier associated with the passed buffer
  *   return: void
  *   pgptr(in): Page pointer
@@ -4624,7 +4687,6 @@ pgbuf_set_bcb_page_vpid (PGBUF_BCB * bufptr, bool force_set_vpid)
 	  bufptr->iopage_buffer->iopage.prv.volid = bufptr->vpid.volid;
 
 	  bufptr->iopage_buffer->iopage.prv.ptype = '\0';
-	  bufptr->iopage_buffer->iopage.prv.pflag_reserve_1 = '\0';
 	  bufptr->iopage_buffer->iopage.prv.p_reserve_1 = 0;
 	  bufptr->iopage_buffer->iopage.prv.p_reserve_2 = 0;
 	  bufptr->iopage_buffer->iopage.prv.p_reserve_3 = 0;
@@ -7409,7 +7471,11 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 			 PGBUF_BUFFER_HASH * hash_anchor, PGBUF_FIX_PERF * perf, bool * try_again)
 {
   PGBUF_BCB *bufptr = NULL;
+  PAGE_PTR pgptr = NULL;
+  TDE_ENC_ALGORITHM enc_algo = TDE_ENC_NONE;
   bool success;
+  char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  FILEIO_PAGE *iopage;
 
 #if defined (ENABLE_SYSTEMTAP)
   bool monitored = false;
@@ -7494,8 +7560,10 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 	  CUBRID_IO_READ_START (query_id);
 	}
 #endif /* ENABLE_SYSTEMTAP */
+  
+  iopage = (FILEIO_PAGE *) PTR_ALIGN (page_buf, MAX_ALIGNMENT);
 
-      if (dwb_read_page (thread_p, vpid, &bufptr->iopage_buffer->iopage, &success) != NO_ERROR)
+      if (dwb_read_page (thread_p, vpid, &iopage, &success) != NO_ERROR)
 	{
 	  /* Should not happen */
 	  assert (false);
@@ -7505,7 +7573,7 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 	{
 	  /* Nothing to do, copied from DWB */
 	}
-      else if (fileio_read (thread_p, fileio_get_volume_descriptor (vpid->volid), &bufptr->iopage_buffer->iopage,
+      else if (fileio_read (thread_p, fileio_get_volume_descriptor (vpid->volid), iopage,
 			    vpid->pageid, IO_PAGESIZE) == NULL)
 	{
 	  /* There was an error in reading the page. Clean the buffer... since it may have been corrupted */
@@ -7531,6 +7599,21 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 	  PGBUF_BCB_CHECK_MUTEX_LEAKS ();
 	  return NULL;
 	}
+
+  CAST_IOPGPTR_TO_PGPTR (pgptr, iopage);
+  pgbuf_get_encrypted (pgptr, &enc_algo);
+  if (enc_algo != TDE_ENC_NONE)
+  {
+    if (tde_decrypt_data_page ((unsigned char*)&bufptr->iopage_buffer->iopage, (unsigned char*)iopage, enc_algo, pgbuf_is_temporary_volume (vpid->volid)) != NO_ERROR)
+    {
+      assert (false);
+      return NULL;
+    }
+  } 
+  else
+  {
+    memcpy ((void *) (&bufptr->iopage_buffer->iopage), (void*) iopage, IO_PAGESIZE);
+  }
 
 #if defined(ENABLE_SYSTEMTAP)
       if (monitored == true)
@@ -9664,7 +9747,8 @@ STATIC_INLINE int
 pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_page_flush_thread, bool * is_bcb_locked)
 {
   char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
-  FILEIO_PAGE *iopage;
+  FILEIO_PAGE *iopage = NULL;
+  PAGE_PTR pgptr = NULL;
   LOG_LSA oldest_unflush_lsa;
   int error = NO_ERROR;
 #if defined(ENABLE_SYSTEMTAP)
@@ -9675,6 +9759,9 @@ pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_p
   DWB_SLOT *dwb_slot = NULL;
   LOG_LSA lsa;
   FILEIO_WRITE_MODE write_mode;
+  bool is_temp = pgbuf_is_temporary_volume (bufptr->vpid.volid); 
+  TDE_ENC_ALGORITHM enc_algo = TDE_ENC_NONE;
+  
 
   PGBUF_BCB_CHECK_OWN (bufptr);
 
@@ -9726,12 +9813,28 @@ pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_p
 
   was_dirty = pgbuf_bcb_mark_is_flushing (thread_p, bufptr);
 
-  uses_dwb = dwb_is_created () && !pgbuf_is_temporary_volume (bufptr->vpid.volid);
+  uses_dwb = dwb_is_created () && !is_temp;
 
 start_copy_page:
+  iopage = (FILEIO_PAGE *) PTR_ALIGN (page_buf, MAX_ALIGNMENT);
+  CAST_BFPTR_TO_PGPTR (pgptr, bufptr);
+  pgbuf_get_encrypted (pgptr, &enc_algo);
+  if (enc_algo != TDE_ENC_NONE)
+  {
+    error = tde_encrypt_data_page ((unsigned char*)&bufptr->iopage_buffer->iopage, (unsigned char*)iopage, enc_algo, is_temp);
+  }
+  else
+  {
+    memcpy ((void *) iopage, (void *) (&bufptr->iopage_buffer->iopage), IO_PAGESIZE);
+  } 
+  if (error != NO_ERROR) 
+  {
+    assert (false);
+    return error;
+  } 
   if (uses_dwb)
     {
-      error = dwb_set_data_on_next_slot (thread_p, &bufptr->iopage_buffer->iopage, false, &dwb_slot);
+      error = dwb_set_data_on_next_slot (thread_p, iopage, false, &dwb_slot);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -9742,9 +9845,6 @@ start_copy_page:
 	  goto copy_unflushed_lsa;
 	}
     }
-
-  iopage = (FILEIO_PAGE *) PTR_ALIGN (page_buf, MAX_ALIGNMENT);
-  memcpy ((void *) iopage, (void *) (&bufptr->iopage_buffer->iopage), IO_PAGESIZE);
 
 copy_unflushed_lsa:
   LSA_COPY (&lsa, &(bufptr->iopage_buffer->iopage.prv.lsa));
@@ -10175,7 +10275,6 @@ pgbuf_check_bcb_page_vpid (PGBUF_BCB * bufptr, bool maybe_deallocated)
 	      || (bufptr->vpid.pageid == bufptr->iopage_buffer->iopage.prv.pageid
 		  && bufptr->vpid.volid == bufptr->iopage_buffer->iopage.prv.volid));
 
-      assert (bufptr->iopage_buffer->iopage.prv.pflag_reserve_1 == '\0');
       assert (bufptr->iopage_buffer->iopage.prv.p_reserve_1 == 0);
       assert (bufptr->iopage_buffer->iopage.prv.p_reserve_2 == 0);
       assert (bufptr->iopage_buffer->iopage.prv.p_reserve_3 == 0);

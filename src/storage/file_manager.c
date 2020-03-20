@@ -163,6 +163,10 @@ struct file_header
 /* File flags. */
 #define FILE_FLAG_NUMERABLE	    0x1	/* Is file numerable */
 #define FILE_FLAG_TEMPORARY	    0x2	/* Is file temporary */
+#define FILE_FLAG_ENCRYPTED_AES 0x4 /* is file encrypted using AES */
+#define FILE_FLAG_ENCRYPTED_ARIA 0x8 /* is file encrypted using ARIA */
+
+#define FILE_FLAG_ENCRYPTED_MASK 0x0000000c /* 0x4 + 0x8 */
 
 #define FILE_IS_NUMERABLE(fh) (((fh)->file_flags & FILE_FLAG_NUMERABLE) != 0)
 #define FILE_IS_TEMPORARY(fh) (((fh)->file_flags & FILE_FLAG_TEMPORARY) != 0)
@@ -726,6 +730,8 @@ static int file_user_page_table_extdata_dump (THREAD_ENTRY * thread_p, const FIL
 static int file_user_page_table_item_dump (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop,
 					   void *args);
 static int file_sector_map_dealloc (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop, void *args);
+static int file_get_encrypted_internal (THREAD_ENTRY * thread_p, const FILE_HEADER * fhead, TDE_ENC_ALGORITHM * enc_algo);
+static int file_set_encrypted_internal (THREAD_ENTRY * thread_p, FILE_HEADER * fhead, TDE_ENC_ALGORITHM enc_algo);
 
 /************************************************************************/
 /* Numerable files section.                                             */
@@ -5231,7 +5237,10 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_in
 #define UNDO_DATA_SIZE (sizeof (VFID) + sizeof (VPID))
   VPID vpid_fhead;
   PAGE_PTR page_fhead = NULL;
+  PAGE_PTR page_alloc = NULL;
   FILE_HEADER *fhead = NULL;
+  FILEIO_PAGE *iopage = NULL;
+  TDE_ENC_ALGORITHM enc_algo = TDE_ENC_NONE;
   bool is_sysop_started = false;
   char undo_log_data_buf[UNDO_DATA_SIZE + MAX_ALIGNMENT];
   char *undo_log_data = PTR_ALIGN (undo_log_data_buf, MAX_ALIGNMENT);
@@ -5303,15 +5312,26 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_in
 	}
     }
 
-  if (f_init)
-    {
+  /* get encryption flag from file header */
+  error_code = file_get_encrypted_internal (thread_p, fhead, &enc_algo);
+  if (error_code != NO_ERROR) {
+	  ASSERT_ERROR_AND_SET (error_code);
+    goto exit;
+  }
+
+  if (f_init || enc_algo != TDE_ENC_NONE || page_out != NULL)
+  {
       /* initialize page */
-      PAGE_PTR page_alloc = pgbuf_fix (thread_p, vpid_out, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      page_alloc = pgbuf_fix (thread_p, vpid_out, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
       if (page_alloc == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
 	  goto exit;
 	}
+  }
+
+  if (f_init)
+    {
       error_code = f_init (thread_p, page_alloc, f_init_args);
       if (error_code != NO_ERROR)
 	{
@@ -5319,29 +5339,26 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_in
 	  pgbuf_unfix (thread_p, page_alloc);
 	  goto exit;
 	}
-      if (page_out != NULL)
-	{
-	  *page_out = page_alloc;
-	}
-      else
-	{
-	  pgbuf_unfix (thread_p, page_alloc);
-	}
     }
   else
-    {
+  {
       assert (FILE_IS_TEMPORARY (fhead));
-      if (page_out != NULL)
-	{
-	  *page_out = pgbuf_fix (thread_p, vpid_out, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-	  if (*page_out == NULL)
-	    {
-	      ASSERT_ERROR_AND_SET (error_code);
-	      goto exit;
-	    }
-	}
-    }
+  }
 
+  if (enc_algo != TDE_ENC_NONE)
+  {
+    pgbuf_set_encrypted (page_alloc, enc_algo);
+  }
+
+  if (page_out == NULL) 
+  {
+	  pgbuf_unfix (thread_p, page_alloc);
+  } 
+  else
+  {
+    *page_out = page_alloc;
+  }
+  
   /* done */
   assert (error_code == NO_ERROR);
 
@@ -5612,6 +5629,146 @@ file_get_sticky_first_page (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * v
   pgbuf_unfix (thread_p, page_fhead);
   return NO_ERROR;
 }
+
+/*
+ * file_set_encrypted () - set encryption algorithm in file header for TDE.
+ *
+ * return        : NO_ERROR
+ * thread_p (in)  : Thread entry
+ * vfid (in)      : File identifier
+ * enc_algo (in) : encryption algorithm - NONE, AES, ARIA
+ *
+ */
+int
+file_set_encrypted (THREAD_ENTRY * thread_p, const VFID * vfid, TDE_ENC_ALGORITHM enc_algo)
+{
+  VPID vpid_fhead;
+  PAGE_PTR page_fhead = NULL;
+  FILE_HEADER *fhead = NULL;
+  int error_code = NO_ERROR;
+
+  /* fix header */
+  FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_fhead == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+  fhead = (FILE_HEADER *) page_fhead;
+
+  if (file_set_encrypted_internal (thread_p, fhead, enc_algo) != NO_ERROR)
+  {
+    assert (false);
+    pgbuf_unfix(thread_p, page_fhead); 
+  }
+  else 
+  {
+	  pgbuf_set_dirty_and_free (thread_p, page_fhead);
+  }
+
+  return NO_ERROR;
+}
+
+/*
+ * file_set_encrypted_internal () - set encryption algorithm in file header for TDE.
+ *
+ * return        : NO_ERROR
+ * thread_p (in)  : Thread entry
+ * fhead (in)      : File identifier
+ * enc_algo (in) : encryption algorithm - NONE, AES, ARIA
+ *
+ */
+int
+file_set_encrypted_internal (THREAD_ENTRY * thread_p, FILE_HEADER * fhead, TDE_ENC_ALGORITHM enc_algo)
+{
+  // Only SET is supported, so prev value has to be NONE
+  assert (!(fhead->file_flags &= FILE_FLAG_ENCRYPTED_MASK));
+
+  switch (enc_algo)
+  {
+    case TDE_ENC_AES:
+      fhead->file_flags |= FILE_FLAG_ENCRYPTED_AES;
+      break;
+    case TDE_ENC_ARIA:
+      fhead->file_flags |= FILE_FLAG_ENCRYPTED_ARIA;
+      break;
+    case TDE_ENC_NONE:
+      fhead->file_flags &= !FILE_FLAG_ENCRYPTED_MASK;
+      break;
+        return ER_FAILED;
+    }
+  
+  return NO_ERROR;
+}
+
+/*
+ * file_get_encrypted () - get encryption algorithm in file header for TDE.
+ *
+ * return        : NO_ERROR
+ * thread_p (in)  : Thread entry
+ * vfid (in)      : File identifier
+ * enc_algo (out) : encryption algorithm - NONE, AES, ARIA
+ *
+ */
+int
+file_get_encrypted (THREAD_ENTRY * thread_p, const VFID * vfid, TDE_ENC_ALGORITHM * enc_algo)
+{
+  VPID vpid_fhead;
+  PAGE_PTR page_fhead = NULL;
+  FILE_HEADER *fhead = NULL;
+  int error_code = NO_ERROR;
+
+  /* fix header */
+  FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_fhead == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+  fhead = (FILE_HEADER *) page_fhead;
+
+  error_code = file_get_encrypted_internal (thread_p, fhead, enc_algo);
+
+  pgbuf_unfix (thread_p, page_fhead);
+
+  return NO_ERROR;
+}
+
+/*
+ * file_get_encrypted_internal () - get encryption algorithm in file header for TDE.
+ *
+ * return        : NO_ERROR
+ * thread_p (in)  : Thread entry
+ * fhead (in)      : File Header
+ * enc_algo (out) : encryption algorithm - NONE, AES, ARIA
+ *
+ */
+int
+file_get_encrypted_internal (THREAD_ENTRY * thread_p, const FILE_HEADER * fhead, TDE_ENC_ALGORITHM * enc_algo)
+{
+  // encrpytion algorithms are exclusive
+  assert (!((fhead->file_flags & FILE_FLAG_ENCRYPTED_AES) &&
+      (fhead->file_flags & FILE_FLAG_ENCRYPTED_ARIA)));
+
+  if (fhead->file_flags & FILE_FLAG_ENCRYPTED_AES)
+  {
+    *enc_algo = TDE_ENC_AES;
+  }
+  else if (fhead->file_flags & FILE_FLAG_ENCRYPTED_ARIA)
+  {
+    *enc_algo = TDE_ENC_ARIA;
+  }
+  else
+  {
+    *enc_algo = TDE_ENC_NONE;
+  }
+  return NO_ERROR;
+}
+
 
 /*
  * file_dealloc () - Deallocate a file page.

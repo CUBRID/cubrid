@@ -5172,6 +5172,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
   const FILE_TYPE file_type = reuse_oid ? FILE_HEAP_REUSE_SLOTS : FILE_HEAP;
   PAGE_TYPE ptype = PAGE_HEAP;
   OID null_oid = OID_INITIALIZER;
+  TDE_ENC_ALGORITHM enc_algo = TDE_ENC_NONE;
 
   int error_code = NO_ERROR;
 
@@ -5235,6 +5236,21 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
       ASSERT_ERROR ();
       goto error;
     }
+ 
+  error_code = heap_get_class_encrypted (thread_p, class_oid, &enc_algo);
+  if (error_code != NO_ERROR)
+  {
+    ASSERT_ERROR ();
+    goto error;
+  }
+
+  error_code = file_set_encrypted (thread_p, &hfid->vfid, enc_algo);
+  if (error_code != NO_ERROR)
+  {
+    ASSERT_ERROR ();
+    goto error;
+  }
+
   error_code = file_alloc_sticky_first_page (thread_p, &hfid->vfid, file_init_page_type, &ptype, &vpid,
 					     &addr_hdr.pgptr);
   if (error_code != NO_ERROR)
@@ -10699,7 +10715,7 @@ heap_get_class_subclasses (THREAD_ENTRY * thread_p, const OID * class_oid, int *
  * heap_get_class_encrypted () - get TDE_ENC_ALGORITHM of a given class based on the class flags
  * return : error code or NO_ERROR
  * thread_p (in)  :
- * class_oid (in) : OID of the parent class
+ * class_oid (in) : OID of the class
  * tde_algo (out)	: TDE_ENC_NONE, TDE_ENC_AES,TDE_ENC_ARIA
  *
  * NOTE: this function extracts tde encryption information from class record
@@ -10711,6 +10727,15 @@ heap_get_class_encrypted (THREAD_ENTRY * thread_p, const OID * class_oid, TDE_EN
   RECDES recdes;
   int flags;
   int error = NO_ERROR;
+
+  assert (class_oid != NULL);
+
+  /* boot parameter heap file */
+  if (OID_ISNULL(class_oid)) 
+  {
+    *tde_algo = TDE_ENC_NONE;
+    return error;
+  }
 
   error = heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
   if (error != NO_ERROR)
