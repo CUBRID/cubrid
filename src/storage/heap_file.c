@@ -751,8 +751,6 @@ static int heap_class_get_partition_info (THREAD_ENTRY * thread_p, const OID * c
 static int heap_get_partition_attributes (THREAD_ENTRY * thread_p, const OID * cls_oid, ATTR_ID * type_id,
 					  ATTR_ID * values_id);
 static int heap_get_class_subclasses (THREAD_ENTRY * thread_p, const OID * class_oid, int *count, OID ** subclasses);
-extern int heap_get_class_enc_algorithm (THREAD_ENTRY * thread_p, const OID * class_oid, TDE_ENC_ALGORITHM * tde_algo);
-
 static unsigned int heap_hash_vpid (const void *key_vpid, unsigned int htsize);
 static int heap_compare_vpid (const void *key_vpid1, const void *key_vpid2);
 static unsigned int heap_hash_hfid (const void *key_hfid, unsigned int htsize);
@@ -10698,7 +10696,7 @@ heap_get_class_subclasses (THREAD_ENTRY * thread_p, const OID * class_oid, int *
 }
 
 /*
- * heap_get_class_enc_algorithm () - get TDE_ENC_ALGORITHM of a given class based on the class flags
+ * heap_get_class_encrypted () - get TDE_ENC_ALGORITHM of a given class based on the class flags
  * return : error code or NO_ERROR
  * thread_p (in)  :
  * class_oid (in) : OID of the parent class
@@ -10707,7 +10705,7 @@ heap_get_class_subclasses (THREAD_ENTRY * thread_p, const OID * class_oid, int *
  * NOTE: this function extracts tde encryption information from class record
  */
 int
-heap_get_class_enc_algorithm (THREAD_ENTRY * thread_p, const OID * class_oid, TDE_ENC_ALGORITHM * tde_algo)
+heap_get_class_encrypted (THREAD_ENTRY * thread_p, const OID * class_oid, TDE_ENC_ALGORITHM * tde_algo)
 {
   HEAP_SCANCACHE scan_cache;
   RECDES recdes;
