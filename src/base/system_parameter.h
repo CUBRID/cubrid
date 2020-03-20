@@ -88,6 +88,7 @@ typedef enum query_trace_format QUERY_TRACE_FORMAT;
 
 /* NOTE:
  * System parameter ids must respect the order in prm_Def array
+ * When adding a new system paramter, insert it before PRM_LAST_ID and change PRM_LAST_ID to it
  */
 enum param_id
 {
