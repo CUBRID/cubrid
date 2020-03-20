@@ -49,7 +49,7 @@ using namespace cubquery;
 //
 static int qdata_aggregate_value_to_accumulator (cubthread::entry *thread_p, cubxasl::aggregate_accumulator *acc,
     cubxasl::aggregate_accumulator_domain *domain, FUNC_TYPE func_type,
-    tp_domain *func_domain, db_value *value);
+    tp_domain *func_domain, db_value *value, bool is_acc_to_acc);
 static int qdata_aggregate_multiple_values_to_accumulator (cubthread::entry *thread_p,
     cubxasl::aggregate_accumulator *acc,
     cubxasl::aggregate_accumulator_domain *domain,
@@ -149,6 +149,7 @@ qdata_initialize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_
 	  continue;
 	}
 
+      /* CAUTION : if modify initializing ACC's value then should change qdata_alloc_agg_hvalue() */
       agg_p->accumulator.curr_cnt = 0;
       if (db_value_domain_init (agg_p->accumulator.value, DB_VALUE_DOMAIN_TYPE (agg_p->accumulator.value),
 				DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE) != NO_ERROR)
@@ -226,7 +227,7 @@ qdata_aggregate_accumulator_to_accumulator (cubthread::entry *thread_p, cubxasl:
     case PT_AVG:
     case PT_SUM:
       // these functions only affect acc.value and new_acc can be treated as an ordinary value
-      error = qdata_aggregate_value_to_accumulator (thread_p, acc, acc_dom, func_type, func_domain, new_acc->value);
+      error = qdata_aggregate_value_to_accumulator (thread_p, acc, acc_dom, func_type, func_domain, new_acc->value, true);
       break;
 
     // for these two situations we just need to merge
@@ -310,7 +311,7 @@ qdata_aggregate_accumulator_to_accumulator (cubthread::entry *thread_p, cubxasl:
 static int
 qdata_aggregate_value_to_accumulator (cubthread::entry *thread_p, cubxasl::aggregate_accumulator *acc,
 				      cubxasl::aggregate_accumulator_domain *domain, FUNC_TYPE func_type,
-				      tp_domain *func_domain, db_value *value)
+				      tp_domain *func_domain, db_value *value, bool is_acc_to_acc)
 {
   DB_VALUE squared;
   bool copy_operator = false;
@@ -354,15 +355,24 @@ qdata_aggregate_value_to_accumulator (cubthread::entry *thread_p, cubxasl::aggre
       break;
 
     case PT_COUNT:
-      if (acc->curr_cnt < 1)
+      if (is_acc_to_acc)
 	{
-	  /* first value */
-	  db_make_int (acc->value, 1);
+	  /* from qdata_aggregate_accumulator_to_accumulator (). value param is number of count */
+	  db_make_int (acc->value, db_get_int (acc->value) + db_get_int (value));
 	}
       else
 	{
-	  /* increment */
-	  db_make_int (acc->value, db_get_int (acc->value) + 1);
+	  /* from qdata_aggregate_multiple_values_to_accumulator(). value param is value of column */
+	  if (acc->curr_cnt < 1)
+	    {
+	      /* first value */
+	      db_make_int (acc->value, 1);
+	    }
+	  else
+	    {
+	      /* increment */
+	      db_make_int (acc->value, db_get_int (acc->value) + 1);
+	    }
 	}
       break;
 
@@ -540,7 +550,7 @@ qdata_aggregate_multiple_values_to_accumulator (cubthread::entry *thread_p, cubx
   // we have only one argument so aggregate only the first db_value
   if (db_values.size () == 1)
     {
-      return qdata_aggregate_value_to_accumulator (thread_p, acc, domain, func_type, func_domain, &db_values[0]);
+      return qdata_aggregate_value_to_accumulator (thread_p, acc, domain, func_type, func_domain, &db_values[0], false);
     }
 
   // maybe this condition will be changed in the future based on the future arguments conditions
@@ -683,11 +693,6 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	    }
 	  else
 	    {
-	      if ((agg_p->function == PT_COUNT || agg_p->function == PT_COUNT_STAR) && DB_IS_NULL (accumulator->value))
-		{
-		  /* we might get a NULL count if aggregating with hash table and group has only one tuple; correct that */
-		  db_make_int (accumulator->value, 0);
-		}
 	      pr_clear_value_vector (db_values);
 	      continue;
 	    }
@@ -1980,10 +1985,11 @@ qdata_free_agg_hkey (cubthread::entry *thread_p, aggregate_hash_key *key)
  *   thread_p(in): thread
  */
 aggregate_hash_value *
-qdata_alloc_agg_hvalue (cubthread::entry *thread_p, int func_cnt)
+qdata_alloc_agg_hvalue (cubthread::entry *thread_p, int func_cnt, cubxasl::aggregate_list_node *g_agg_list)
 {
   aggregate_hash_value *value;
   int i;
+  cubxasl::aggregate_list_node *agg_p;
 
   /* alloc structure */
   value = (aggregate_hash_value *) db_private_alloc (thread_p, sizeof (aggregate_hash_value));
@@ -2011,13 +2017,29 @@ qdata_alloc_agg_hvalue (cubthread::entry *thread_p, int func_cnt)
       value->accumulators = NULL;
     }
 
-  /* alloc DB_VALUEs */
   value->func_count = func_cnt;
+  /* alloc DB_VALUEs */
   for (i = 0; i < func_cnt; i++)
     {
-      value->accumulators[i].curr_cnt = 0;
       value->accumulators[i].value = pr_make_value ();
       value->accumulators[i].value2 = pr_make_value ();
+    }
+  /* initialize accumulators.value */
+  for (i = 0, agg_p = g_agg_list; agg_p != NULL; agg_p = agg_p->next, i++)
+    {
+      /* CAUTION : if modify initializing ACC's value then should change qdata_initialize_aggregate_list() */
+      if (agg_p->function == PT_GROUPBY_NUM)
+	{
+	  /* nothing to do with groupby_num() */
+	  continue;
+	}
+      value->accumulators[i].curr_cnt = 0;
+
+      /* This set is made, because if class is empty, aggregate results should return NULL, except count(*) and count */
+      if (agg_p->function == PT_COUNT_STAR || agg_p->function == PT_COUNT)
+	{
+	  db_make_int (value->accumulators[i].value, 0);
+	}
     }
 
   /* initialize counter */
