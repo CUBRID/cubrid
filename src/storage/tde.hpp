@@ -73,7 +73,7 @@ typedef struct tde_cipher
   unsigned char master_key[TDE_MASTER_KEY_LENGTH];
   TDE_DATA_KEY_CHAIN data_keys;
   
-  std::atomic<std::int64_t> temp_write_counter; // used nonce for temp file page 
+  std::atomic<std::int64_t> temp_write_counter; // used as nonce for temp file page 
 } TDE_CIPHER;
 
 extern TDE_CIPHER tde_Cipher;
@@ -85,7 +85,7 @@ extern TDE_CIPHER tde_Cipher;
 extern int tde_initialize (void); // is gonna be called in boot_restart_server
 extern int tde_generate_data_keys (void); // is gonna be called in xboot_initialize_server()
 
-extern int tde_encrypt_data_page (const unsigned char * iopage_plain, unsigned char * iopage_cipher, TDE_ENC_ALGORITHM enc_algo,  bool is_temp);
+extern int tde_encrypt_data_page (const unsigned char * iopage_plain, unsigned char * iopage_cipher, TDE_ENC_ALGORITHM enc_algo, bool is_temp);
 extern int tde_decrypt_data_page (const unsigned char * iopage_cipher, unsigned char * iopage_plain, TDE_ENC_ALGORITHM enc_algo, bool is_temp);
 extern int tde_encrypt_log_page (const unsigned char * iopage_plain, unsigned char * iopage_cipher, TDE_ENC_ALGORITHM enc_algo);
 extern int tde_decrypt_log_page (const unsigned char * iopage_cipher, unsigned char * iopage_plain, TDE_ENC_ALGORITHM enc_algo);
