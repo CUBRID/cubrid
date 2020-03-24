@@ -26,6 +26,7 @@
 
 #ifdef __cplusplus
 #include <regex>
+#include <locale>
 
 #include "error_manager.h"
 #include "language_support.h"
@@ -61,6 +62,21 @@ namespace cubregex
     string_type lookup_collatename ( Iter first, Iter last ) const
     {
       throw std::regex_error (std::regex_constants::error_collate);
+    }
+
+    bool isctype ( char_type c, char_class_type f ) const
+    {
+#if !defined(WINDOWS)
+      // HACK: matching '[[:blank:]]' for blank character doesn't work on gcc
+      // C++ regex uses std::ctype<char_type>::is () to match character class
+      // It does not support blank char class type so '[[:blank:]]' doesn't work to match ' '(0x20).
+      // For backward compatability, Here use iswblank () explicitly to match blank character.
+      if ((f & std::ctype_base::blank) == 1)
+	{
+	  return std::iswblank (c);
+	}
+#endif
+      return std::regex_traits<char_type>::isctype (c, f);
     }
   };
 
