@@ -671,6 +671,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_ENABLE_NEW_LFHASH "new_lfhash"
 #define PRM_NAME_HEAP_INFO_CACHE_LOGGING "heap_info_cache_logging"
 
+#define PRM_NAME_GENERAL_RESERVE_01 "general_reserve_01"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
@@ -2262,6 +2264,10 @@ static unsigned int prm_new_lfhash_flag = 0;
 bool PRM_HEAP_INFO_CACHE_LOGGING = false;
 static bool prm_heap_info_cache_logging_default = false;
 static unsigned int prm_heap_info_cache_logging_flag = 0;
+
+bool PRM_GENERAL_RESERVE_01 = false;
+static bool prm_general_reserve_01_default = false;
+static unsigned int prm_general_reserve_01_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -4002,13 +4008,13 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) prm_msec_to_sec,
    (DUP_PRM_FUNC) prm_sec_to_msec},
-  {PRM_ID_JAVA_STORED_PROCEDURE,
-   PRM_NAME_JAVA_STORED_PROCEDURE,
-   (PRM_FOR_SERVER),
+  {PRM_ID_GENERAL_RESERVE_01,
+   PRM_NAME_GENERAL_RESERVE_01,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_BOOLEAN,
-   &prm_java_stored_procedure_flag,
-   (void *) &prm_java_stored_procedure_default,
-   (void *) &PRM_JAVA_STORED_PROCEDURE,
+   &prm_general_reserve_01_flag,
+   (void *) &prm_general_reserve_01_default,
+   (void *) &PRM_GENERAL_RESERVE_01,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
@@ -5804,6 +5810,17 @@ static SYSPRM_PARAM prm_Def[] = {
    &prm_heap_info_cache_logging_flag,
    (void *) &prm_heap_info_cache_logging_default,
    (void *) &PRM_HEAP_INFO_CACHE_LOGGING,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_JAVA_STORED_PROCEDURE,
+   PRM_NAME_JAVA_STORED_PROCEDURE,
+   (PRM_FOR_SERVER),
+   PRM_BOOLEAN,
+   &prm_java_stored_procedure_flag,
+   (void *) &prm_java_stored_procedure_default,
+   (void *) &PRM_JAVA_STORED_PROCEDURE,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
