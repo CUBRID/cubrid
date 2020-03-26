@@ -6392,6 +6392,8 @@ heap_ovf_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * ovf_vfid,
       if (docreate == true)
 	{
 	  FILE_DESCRIPTORS des;
+    TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
+    int error_code = NO_ERROR;
 	  /* Create the overflow file. Try to create the overflow file in the same volume where the heap was defined */
 
 	  /* START A TOP SYSTEM OPERATION */
@@ -6408,6 +6410,20 @@ heap_ovf_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * ovf_vfid,
 	      VFID_COPY (&heap_hdr->ovf_vfid, ovf_vfid);
 	      log_append_redo_data (thread_p, RVHF_STATS, &addr_hdr, sizeof (*heap_hdr), heap_hdr);
 	      pgbuf_set_dirty (thread_p, addr_hdr.pgptr, DONT_FREE);
+
+        error_code = heap_get_class_tde_algorithm (thread_p, &heap_hdr->class_oid, &tde_algo);
+        if (error_code != NO_ERROR)
+        {
+          log_sysop_abort (thread_p);
+          ovf_vfid = NULL;
+        }
+
+        error_code = file_set_tde_algorithm (thread_p, ovf_vfid, tde_algo);
+        if (error_code != NO_ERROR)
+        {
+          log_sysop_abort (thread_p);
+          ovf_vfid = NULL;
+        }
 
 	      log_sysop_commit (thread_p);
 	    }
