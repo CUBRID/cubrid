@@ -7604,7 +7604,7 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
   pgbuf_get_tde_algorithm (pgptr, &tde_algo);
   if (tde_algo != TDE_ALGORITHM_NONE)
   {
-    if (tde_decrypt_data_page ((unsigned char*)&bufptr->iopage_buffer->iopage, (unsigned char*)iopage, tde_algo, pgbuf_is_temporary_volume (vpid->volid)) != NO_ERROR)
+    if (tde_decrypt_data_page ((unsigned char*)iopage, (unsigned char*)&bufptr->iopage_buffer->iopage, tde_algo, pgbuf_is_temporary_volume (vpid->volid)) != NO_ERROR)
     {
       assert (false);
       return NULL;
