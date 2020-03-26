@@ -459,7 +459,7 @@ extern int heap_estimate_num_objects (THREAD_ENTRY * thread_p, const HFID * hfid
 extern int heap_get_class_name (THREAD_ENTRY * thread_p, const OID * class_oid, char **class_name);
 extern int heap_get_class_name_alloc_if_diff (THREAD_ENTRY * thread_p, const OID * class_oid, char *guess_classname,
 					      char **class_name_out);
-extern int heap_get_class_encrypted (THREAD_ENTRY * thread_p, const OID * class_oid, TDE_ENC_ALGORITHM * tde_algo);
+extern int heap_get_class_tde_algorithm (THREAD_ENTRY * thread_p, const OID * class_oid, TDE_ALGORITHM * tde_algo);
 extern int heap_get_class_partitions (THREAD_ENTRY * thread_p, const OID * class_oid, OR_PARTITION ** parts,
 				      int *parts_count);
 extern void heap_clear_partition_info (THREAD_ENTRY * thread_p, OR_PARTITION * parts, int parts_count);

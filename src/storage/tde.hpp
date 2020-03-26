@@ -35,17 +35,17 @@
 
 typedef enum 
 {
-    TDE_ENC_NONE,
-    TDE_ENC_AES,
-    TDE_ENC_ARIA,
-} TDE_ENC_ALGORITHM;
+    TDE_ALGORITHM_NONE,
+    TDE_ALGORITHM_AES,
+    TDE_ALGORITHM_ARIA,     
+} TDE_ALGORITHM;
 
 
 /* ENCRYPTION AREA */
-#define TDE_DATA_PAGE_ENC_OFFSET sizeof (FILEIO_PAGE_RESERVED)
-#define TDE_DATA_PAGE_ENC_LENGTH DB_PAGESIZE
-#define TDE_LOG_PAGE_ENC_OFFSET sizeof (LOG_HDRPAGE)
-#define TDE_LOG_PAGE_ENC_LENGTH ((LOG_PAGESIZE) - (TDE_LOG_PAGE_ENC_OFFSET))
+#define TDE_DATA_PAGE_ENC_OFFSET    sizeof (FILEIO_PAGE_RESERVED)
+#define TDE_DATA_PAGE_ENC_LENGTH    DB_PAGESIZE
+#define TDE_LOG_PAGE_ENC_OFFSET     sizeof (LOG_HDRPAGE)
+#define TDE_LOG_PAGE_ENC_LENGTH     ((LOG_PAGESIZE) - (TDE_LOG_PAGE_ENC_OFFSET))
 
 /* 128 bit nonce */
 #define TDE_DATA_PAGE_NONCE_LENGTH  16
@@ -65,7 +65,7 @@ typedef struct tde_data_key_chain
 } TDE_DATA_KEY_CHAIN;
 
 /*
- * tde module 
+ * TDE module 
  */
 typedef struct tde_cipher
 {
@@ -79,16 +79,21 @@ typedef struct tde_cipher
 extern TDE_CIPHER tde_Cipher;
 
 /*
- * tde functions for key management
+ * TDE functions for key management
  */
 
-extern int tde_initialize (void); // is gonna be called in boot_restart_server
+extern int tde_initialize (void); // is gonna be called in boot_restart_server()
+extern int tde_set_master_key (int key_idx); // it must be transaction 
 extern int tde_generate_data_keys (void); // is gonna be called in xboot_initialize_server()
 
-extern int tde_encrypt_data_page (const unsigned char * iopage_plain, unsigned char * iopage_cipher, TDE_ENC_ALGORITHM enc_algo, bool is_temp);
-extern int tde_decrypt_data_page (const unsigned char * iopage_cipher, unsigned char * iopage_plain, TDE_ENC_ALGORITHM enc_algo, bool is_temp);
-extern int tde_encrypt_log_page (const unsigned char * iopage_plain, unsigned char * iopage_cipher, TDE_ENC_ALGORITHM enc_algo);
-extern int tde_decrypt_log_page (const unsigned char * iopage_cipher, unsigned char * iopage_plain, TDE_ENC_ALGORITHM enc_algo);
+/*
+ * TDE functions for encrpytion and decryption
+ */
+
+extern int tde_encrypt_data_page (const unsigned char * iopage_plain, unsigned char * iopage_cipher, TDE_ALGORITHM tde_algo, bool is_temp);
+extern int tde_decrypt_data_page (const unsigned char * iopage_cipher, unsigned char * iopage_plain, TDE_ALGORITHM tde_algo, bool is_temp);
+extern int tde_encrypt_log_page (const unsigned char * iopage_plain, unsigned char * iopage_cipher, TDE_ALGORITHM tde_algo);
+extern int tde_decrypt_log_page (const unsigned char * iopage_cipher, unsigned char * iopage_plain, TDE_ALGORITHM tde_algo);
 
 
 

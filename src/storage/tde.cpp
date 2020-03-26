@@ -40,9 +40,9 @@ static int tde_load_master_key (const char* key_path);
 static int tde_load_data_keys (void);
 static int tde_store_data_keys (void);
 
-static int tde_encrypt_internal (const unsigned char * plain_buffer, int length, TDE_ENC_ALGORITHM enc_algo,  
+static int tde_encrypt_internal (const unsigned char * plain_buffer, int length, TDE_ALGORITHM tde_algo,  
     const unsigned char * key, const unsigned char * nonce, unsigned char * cipher_buffer);
-static int tde_decrypt_internal (const unsigned char * cipher_buffer, int length, TDE_ENC_ALGORITHM enc_algo, 
+static int tde_decrypt_internal (const unsigned char * cipher_buffer, int length, TDE_ALGORITHM tde_algo, 
     const unsigned char * key, const unsigned char * nonce, unsigned char * plain_buffer);
 
 
@@ -52,9 +52,8 @@ tde_initialize (void)
   // TODO
   // 1. tde_Cipher init 
   // 2. tde_Cipher update from boot_db_parm 
-  // 2. master key loading
-  // 3. if first, generate data keys
-  // 4. else, load key
+  // 3. master key loading
+  // 4. data key loading
   //
   
   // for test
@@ -66,7 +65,9 @@ tde_initialize (void)
   return NO_ERROR;
 
 }
-int tde_encrypt_data_page (const unsigned char * iopage_plain, unsigned char * iopage_cipher, TDE_ENC_ALGORITHM enc_algo,  bool is_temp)
+
+int
+tde_encrypt_data_page (const unsigned char * iopage_plain, unsigned char * iopage_cipher, TDE_ALGORITHM tde_algo,  bool is_temp)
 {
   int err = NO_ERROR;
   unsigned char nonce[TDE_DATA_PAGE_NONCE_LENGTH];
@@ -91,13 +92,14 @@ int tde_encrypt_data_page (const unsigned char * iopage_plain, unsigned char * i
   memcpy (iopage_cipher, iopage_plain, IO_PAGESIZE);
    
   err = tde_encrypt_internal (iopage_plain + TDE_DATA_PAGE_ENC_OFFSET, 
-     TDE_DATA_PAGE_ENC_LENGTH, enc_algo, data_key, nonce, 
+     TDE_DATA_PAGE_ENC_LENGTH, tde_algo, data_key, nonce, 
      iopage_cipher + TDE_DATA_PAGE_ENC_OFFSET); 
   
   return err;
 }
 
-int tde_decrypt_data_page (const unsigned char * iopage_cipher, unsigned char * iopage_plain, TDE_ENC_ALGORITHM enc_algo, bool is_temp)
+int
+tde_decrypt_data_page (const unsigned char * iopage_cipher, unsigned char * iopage_plain, TDE_ALGORITHM tde_algo, bool is_temp)
 {
   int err = NO_ERROR;
   unsigned char nonce[TDE_DATA_PAGE_NONCE_LENGTH];
@@ -122,22 +124,26 @@ int tde_decrypt_data_page (const unsigned char * iopage_cipher, unsigned char * 
   memcpy (iopage_plain, iopage_cipher, IO_PAGESIZE);
    
   err = tde_decrypt_internal (iopage_cipher + TDE_DATA_PAGE_ENC_OFFSET, 
-     TDE_DATA_PAGE_ENC_LENGTH, enc_algo, data_key, nonce, 
+     TDE_DATA_PAGE_ENC_LENGTH, tde_algo, data_key, nonce, 
      iopage_plain + TDE_DATA_PAGE_ENC_OFFSET); 
   
   return err;
 }
-int tde_encrypt_log_page (const unsigned char * iopage_plain, unsigned char * iopage_cipher, TDE_ENC_ALGORITHM enc_algo)
-{
-  return NO_ERROR;
-}
-int tde_decrypt_log_page (const unsigned char * iopage_cipher, unsigned char * iopage_plain, TDE_ENC_ALGORITHM enc_algo)
+
+int
+tde_encrypt_log_page (const unsigned char * iopage_plain, unsigned char * iopage_cipher, TDE_ALGORITHM tde_algo)
 {
   return NO_ERROR;
 }
 
 int
-tde_encrypt_internal (const unsigned char * plain_buffer, int length, TDE_ENC_ALGORITHM enc_algo, const unsigned char * key, const unsigned char * nonce, 
+tde_decrypt_log_page (const unsigned char * iopage_cipher, unsigned char * iopage_plain, TDE_ALGORITHM tde_algo)
+{
+  return NO_ERROR;
+}
+
+int
+tde_encrypt_internal (const unsigned char * plain_buffer, int length, TDE_ALGORITHM tde_algo, const unsigned char * key, const unsigned char * nonce, 
     unsigned char* cipher_buffer)
 {
     EVP_CIPHER_CTX *ctx;
@@ -146,7 +152,7 @@ tde_encrypt_internal (const unsigned char * plain_buffer, int length, TDE_ENC_AL
     int cipher_len;
     int err = NO_ERROR;
 
-    assert (enc_algo == TDE_ENC_AES || enc_algo == TDE_ENC_ARIA);
+    assert (tde_algo == TDE_ALGORITHM_AES || tde_algo == TDE_ALGORITHM_ARIA);
 
     if(!(ctx = EVP_CIPHER_CTX_new()))
     {
@@ -154,15 +160,15 @@ tde_encrypt_internal (const unsigned char * plain_buffer, int length, TDE_ENC_AL
         goto exit;
     }
 
-    switch (enc_algo)
+    switch (tde_algo)
     {
-      case TDE_ENC_AES:
+      case TDE_ALGORITHM_AES:
         cipher_type = EVP_aes_256_ctr();
         break;
-      case TDE_ENC_ARIA:
+      case TDE_ALGORITHM_ARIA:
         cipher_type = EVP_aria_256_ctr();
         break;
-      case TDE_ENC_NONE:
+      case TDE_ALGORITHM_NONE:
       deafult:
         assert(false);
     }
@@ -202,7 +208,7 @@ exit:
 }
 
 int
-tde_decrypt_internal (const unsigned char * cipher_buffer, int length, TDE_ENC_ALGORITHM enc_algo, const unsigned char * key, const unsigned char * nonce, 
+tde_decrypt_internal (const unsigned char * cipher_buffer, int length, TDE_ALGORITHM tde_algo, const unsigned char * key, const unsigned char * nonce, 
     unsigned char * plain_buffer)
 {
     EVP_CIPHER_CTX *ctx;
@@ -211,7 +217,7 @@ tde_decrypt_internal (const unsigned char * cipher_buffer, int length, TDE_ENC_A
     int plain_len;
     int err = NO_ERROR;
     
-    assert (enc_algo == TDE_ENC_AES || enc_algo == TDE_ENC_ARIA);
+    assert (tde_algo == TDE_ALGORITHM_AES || tde_algo == TDE_ALGORITHM_ARIA);
 
     if(!(ctx = EVP_CIPHER_CTX_new()))
     {
@@ -219,15 +225,15 @@ tde_decrypt_internal (const unsigned char * cipher_buffer, int length, TDE_ENC_A
         goto exit;
     }
     
-    switch (enc_algo)
+    switch (tde_algo)
     {
-      case TDE_ENC_AES:
+      case TDE_ALGORITHM_AES:
         cipher_type = EVP_aes_256_ctr();
         break;
-      case TDE_ENC_ARIA:
+      case TDE_ALGORITHM_ARIA:
         cipher_type = EVP_aria_256_ctr();
         break;
-      case TDE_ENC_NONE:
+      case TDE_ALGORITHM_NONE:
       deafult:
         assert(false);
     }

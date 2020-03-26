@@ -4372,29 +4372,29 @@ pgbuf_reset_temp_lsa (PAGE_PTR pgptr)
 }
 
 /*
- * pgbuf_set_encrypted () - set tde encryption algorithm to the page
+ * pgbuf_set_tde_algorithm () - set tde encryption algorithm to the page
  *   return: void
  *   pgptr(in): Page pointer
- *   enc_algo (in) : encryption algorithm - NONE, AES, ARIA
+ *   tde_algo (in) : encryption algorithm - NONE, AES, ARIA
  */
 void
-pgbuf_set_encrypted (PAGE_PTR pgptr, TDE_ENC_ALGORITHM enc_algo)
+pgbuf_set_tde_algorithm (PAGE_PTR pgptr, TDE_ALGORITHM tde_algo)
 {
   FILEIO_PAGE *iopage = NULL;
   
   CAST_PGPTR_TO_IOPGPTR (iopage, pgptr);
 
-  /* It is not supported to chenage encryption algorithm yet */
+  /* It is not supported to change encryption algorithm yet */
   assert (!(iopage->prv.pflag_reserve_1 && FILEIO_PAGE_FLAG_ENCRYPTED_MASK));
   
-  switch (enc_algo) {
-    case TDE_ENC_AES:
+  switch (tde_algo) {
+    case TDE_ALGORITHM_AES:
       iopage->prv.pflag_reserve_1 |= FILEIO_PAGE_FLAG_ENCRYPTED_AES;
       break;
-    case TDE_ENC_ARIA:
+    case TDE_ALGORITHM_ARIA:
       iopage->prv.pflag_reserve_1 |= FILEIO_PAGE_FLAG_ENCRYPTED_AES;
       break;
-    case TDE_ENC_NONE:
+    case TDE_ALGORITHM_NONE:
       break; // do nothing
     default:
       assert (false);
@@ -4402,13 +4402,13 @@ pgbuf_set_encrypted (PAGE_PTR pgptr, TDE_ENC_ALGORITHM enc_algo)
 }
 
 /*
- * pgbuf_get_encrypted () - get tde encryption algorithm of the page
+ * pgbuf_get_tde_algorithm () - get tde encryption algorithm of the page
  *   return: void
  *   pgptr(in): Page pointer
- *   enc_algo (out) : encryption algorithm - NONE, AES, ARIA
+ *   tde_algo (out) : encryption algorithm - NONE, AES, ARIA
  */
 void
-pgbuf_get_encrypted (PAGE_PTR pgptr, TDE_ENC_ALGORITHM * enc_algo)
+pgbuf_get_tde_algorithm (PAGE_PTR pgptr, TDE_ALGORITHM * tde_algo)
 {
   FILEIO_PAGE *iopage = NULL;
   
@@ -4416,15 +4416,15 @@ pgbuf_get_encrypted (PAGE_PTR pgptr, TDE_ENC_ALGORITHM * enc_algo)
   
   if (iopage->prv.pflag_reserve_1 & FILEIO_PAGE_FLAG_ENCRYPTED_AES) 
   {
-    *enc_algo = TDE_ENC_AES;
+    *tde_algo = TDE_ALGORITHM_AES;
   }
   else if (iopage->prv.pflag_reserve_1 & FILEIO_PAGE_FLAG_ENCRYPTED_ARIA) 
   {
-    *enc_algo = TDE_ENC_ARIA;
+    *tde_algo = TDE_ALGORITHM_ARIA;
   }
   else
   {
-    *enc_algo = TDE_ENC_NONE;
+    *tde_algo = TDE_ALGORITHM_NONE;
   }
 }
 
@@ -7472,7 +7472,7 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 {
   PGBUF_BCB *bufptr = NULL;
   PAGE_PTR pgptr = NULL;
-  TDE_ENC_ALGORITHM enc_algo = TDE_ENC_NONE;
+  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
   bool success;
   char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   FILEIO_PAGE *iopage;
@@ -7601,10 +7601,10 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 	}
 
   CAST_IOPGPTR_TO_PGPTR (pgptr, iopage);
-  pgbuf_get_encrypted (pgptr, &enc_algo);
-  if (enc_algo != TDE_ENC_NONE)
+  pgbuf_get_tde_algorithm (pgptr, &tde_algo);
+  if (tde_algo != TDE_ALGORITHM_NONE)
   {
-    if (tde_decrypt_data_page ((unsigned char*)&bufptr->iopage_buffer->iopage, (unsigned char*)iopage, enc_algo, pgbuf_is_temporary_volume (vpid->volid)) != NO_ERROR)
+    if (tde_decrypt_data_page ((unsigned char*)&bufptr->iopage_buffer->iopage, (unsigned char*)iopage, tde_algo, pgbuf_is_temporary_volume (vpid->volid)) != NO_ERROR)
     {
       assert (false);
       return NULL;
@@ -9760,7 +9760,7 @@ pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_p
   LOG_LSA lsa;
   FILEIO_WRITE_MODE write_mode;
   bool is_temp = pgbuf_is_temporary_volume (bufptr->vpid.volid); 
-  TDE_ENC_ALGORITHM enc_algo = TDE_ENC_NONE;
+  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
   
 
   PGBUF_BCB_CHECK_OWN (bufptr);
@@ -9818,10 +9818,10 @@ pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_p
 start_copy_page:
   iopage = (FILEIO_PAGE *) PTR_ALIGN (page_buf, MAX_ALIGNMENT);
   CAST_BFPTR_TO_PGPTR (pgptr, bufptr);
-  pgbuf_get_encrypted (pgptr, &enc_algo);
-  if (enc_algo != TDE_ENC_NONE)
+  pgbuf_get_tde_algorithm (pgptr, &tde_algo);
+  if (tde_algo != TDE_ALGORITHM_NONE)
   {
-    error = tde_encrypt_data_page ((unsigned char*)&bufptr->iopage_buffer->iopage, (unsigned char*)iopage, enc_algo, is_temp);
+    error = tde_encrypt_data_page ((unsigned char*)&bufptr->iopage_buffer->iopage, (unsigned char*)iopage, tde_algo, is_temp);
   }
   else
   {

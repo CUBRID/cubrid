@@ -306,8 +306,8 @@ typedef enum
   SM_CLASSFLAG_WITHCHECKOPTION = 0x00000002,	/* a view with check option */
   SM_CLASSFLAG_LOCALCHECKOPTION = 0x00000004,	/* view w/local check option */
   SM_CLASSFLAG_REUSE_OID = 0x00000008,	/* the class can reuse OIDs */
-  SM_CLASSFLAG_ENCRYPTED_AES = 0x00000010,  /* TDE: a class encrypted at rest usign AES */
-  SM_CLASSFLAG_ENCRYPTED_ARIA = 0x00000020,  /* TDE: a class encrypted at rest usign ARIA */
+  SM_CLASSFLAG_ENCRYPTED_AES = 0x00010000,  /* TDE: a class encrypted at rest usign AES */
+  SM_CLASSFLAG_ENCRYPTED_ARIA = 0x00020000,  /* TDE: a class encrypted at rest usign ARIA */
 } SM_CLASS_FLAG;
 
 /*
