@@ -12455,6 +12455,7 @@ select_expression_without_subquery
 			    stmt->info.query.id = (UINTPTR) stmt;
 			    stmt->info.query.q.union_.arg1 = $1;
 			    stmt->info.query.q.union_.arg2 = $9;
+                            stmt->recompile = $1->recompile | $9->recompile;
 
 			    if (arg1 != NULL
 			        && arg1->info.query.is_subquery != PT_IS_SUBQUERY
@@ -12546,6 +12547,7 @@ select_expression
 			    stmt->info.query.id = (UINTPTR) stmt;
 			    stmt->info.query.q.union_.arg1 = $1;
 			    stmt->info.query.q.union_.arg2 = $9;
+                            stmt->recompile = $1->recompile | $9->recompile;
 
 			    if (arg1 != NULL
 			        && arg1->info.query.is_subquery != PT_IS_SUBQUERY
@@ -12636,6 +12638,8 @@ select_expression_without_values_query
 			    stmt->info.query.id = (UINTPTR) stmt;
 			    stmt->info.query.q.union_.arg1 = $1;
 			    stmt->info.query.q.union_.arg2 = $9;
+                            stmt->recompile = $1->recompile | $9->recompile;
+
 			    if (arg1 != NULL
 			        && arg1->info.query.is_subquery != PT_IS_SUBQUERY
 			        && arg1->info.query.order_by != NULL)
@@ -12725,6 +12729,8 @@ select_expression_without_values_query_no_with_clause
 			    stmt->info.query.id = (UINTPTR) stmt;
 			    stmt->info.query.q.union_.arg1 = $1;
 			    stmt->info.query.q.union_.arg2 = $9;
+                            stmt->recompile = $1->recompile | $9->recompile;
+
 			    if (arg1 != NULL
 			        && arg1->info.query.is_subquery != PT_IS_SUBQUERY
 			        && arg1->info.query.order_by != NULL)
@@ -12815,6 +12821,8 @@ select_expression_without_values_and_single_subquery
 			     stmt->info.query.id = (UINTPTR) stmt;
 			     stmt->info.query.q.union_.arg1 = $1;
 			     stmt->info.query.q.union_.arg2 = $9;
+                             stmt->recompile = $1->recompile | $9->recompile;
+
 			     if (arg1 != NULL
 				 && arg1->info.query.is_subquery != PT_IS_SUBQUERY
 				 && arg1->info.query.order_by != NULL)
@@ -13256,6 +13264,7 @@ cte_query_list
 			    stmt->info.query.id = (UINTPTR) stmt;
 			    stmt->info.query.q.union_.arg1 = arg1;
 		            stmt->info.query.q.union_.arg2 = arg2;
+                            stmt->recompile = arg1->recompile | arg2->recompile;
 			  }
 
 			$$ = stmt;

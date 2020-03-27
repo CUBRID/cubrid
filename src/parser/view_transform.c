@@ -3624,6 +3624,7 @@ mq_rewrite_query_as_derived (PARSER_CONTEXT * parser, PT_NODE * query)
 
   /* move query id # */
   new_query->info.query.id = query->info.query.id;
+  new_query->recompile = query->recompile;
   query->info.query.id = 0;
 
   return new_query;
