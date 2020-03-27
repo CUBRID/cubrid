@@ -407,6 +407,12 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_JAVA_STORED_PROCEDURE_PORT "java_stored_procedure_port"
 
+#define PRM_NAME_JAVA_STORED_PROCEDURE_RESERVE_01 "java_stored_procedure_reserve_01"
+
+#define PRM_NAME_JAVA_STORED_PROCEDURE_RESERVE_02 "java_stored_procedure_reserve_02"
+
+#define PRM_NAME_JAVA_STORED_PROCEDURE_RESERVE_03 "java_stored_procedure_reserve_03"
+
 #define PRM_NAME_COMPAT_PRIMARY_KEY "compat_primary_key"
 
 #define PRM_NAME_INTL_MBS_SUPPORT "intl_mbs_support"
@@ -1570,15 +1576,9 @@ static int prm_ha_check_disk_failure_interval_in_secs_upper = INT_MAX;
 static int prm_ha_check_disk_failure_interval_in_secs_lower = 0;
 static unsigned int prm_ha_check_disk_failure_interval_in_secs_flag = 0;
 
-bool PRM_JAVA_STORED_PROCEDURE = false;
-static bool prm_java_stored_procedure_default = false;
-static unsigned int prm_java_stored_procedure_flag = 0;
-
-int PRM_JAVA_STORED_PROCEDURE_PORT = 0;
-static int prm_java_stored_procedure_port_default = 0;
-static int prm_java_stored_procedure_port_upper = 65535;
-static int prm_java_stored_procedure_port_lower = 0;
-static unsigned int prm_java_stored_procedure_port_flag = 0;
+bool PRM_GENERAL_RESERVE_01 = false;
+static bool prm_general_reserve_01_default = false;
+static unsigned int prm_general_reserve_01_flag = 0;
 
 bool PRM_COMPAT_PRIMARY_KEY = false;
 static bool prm_compat_primary_key_default = false;
@@ -2265,9 +2265,27 @@ bool PRM_HEAP_INFO_CACHE_LOGGING = false;
 static bool prm_heap_info_cache_logging_default = false;
 static unsigned int prm_heap_info_cache_logging_flag = 0;
 
-bool PRM_GENERAL_RESERVE_01 = false;
-static bool prm_general_reserve_01_default = false;
-static unsigned int prm_general_reserve_01_flag = 0;
+bool PRM_JAVA_STORED_PROCEDURE = false;
+static bool prm_java_stored_procedure_default = false;
+static unsigned int prm_java_stored_procedure_flag = 0;
+
+int PRM_JAVA_STORED_PROCEDURE_PORT = 0;
+static int prm_java_stored_procedure_port_default = 0;
+static int prm_java_stored_procedure_port_upper = 65535;
+static int prm_java_stored_procedure_port_lower = 0;
+static unsigned int prm_java_stored_procedure_port_flag = 0;
+
+bool PRM_JAVA_STORED_PROCEDURE_RESERVE_01 = false;
+static bool prm_java_stored_procedure_reserve_01_default = false;
+static unsigned int prm_java_stored_procedure_reserve_01_flag = 0;
+
+bool PRM_JAVA_STORED_PROCEDURE_RESERVE_02 = false;
+static bool prm_java_stored_procedure_reserve_02_default = false;
+static unsigned int prm_java_stored_procedure_reserve_02_flag = 0;
+
+bool PRM_JAVA_STORED_PROCEDURE_RESERVE_03 = false;
+static bool prm_java_stored_procedure_reserve_03_default = false;
+static unsigned int prm_java_stored_procedure_reserve_03_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5833,6 +5851,39 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_java_stored_procedure_port_default,
    (void *) &PRM_JAVA_STORED_PROCEDURE_PORT,
    (void *) &prm_java_stored_procedure_port_upper, (void *) &prm_java_stored_procedure_port_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_JAVA_STORED_PROCEDURE_RESERVE_01,
+   PRM_NAME_JAVA_STORED_PROCEDURE_RESERVE_01,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_java_stored_procedure_reserve_01_flag,
+   (void *) &prm_java_stored_procedure_reserve_01_default,
+   (void *) &PRM_JAVA_STORED_PROCEDURE_RESERVE_01,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_JAVA_STORED_PROCEDURE_RESERVE_02,
+   PRM_NAME_JAVA_STORED_PROCEDURE_RESERVE_02,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_java_stored_procedure_reserve_02_flag,
+   (void *) &prm_java_stored_procedure_reserve_02_default,
+   (void *) &PRM_JAVA_STORED_PROCEDURE_RESERVE_02,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_JAVA_STORED_PROCEDURE_RESERVE_03,
+   PRM_NAME_JAVA_STORED_PROCEDURE_RESERVE_03,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_java_stored_procedure_reserve_03_flag,
+   (void *) &prm_java_stored_procedure_reserve_03_default,
+   (void *) &PRM_JAVA_STORED_PROCEDURE_RESERVE_03,
+   (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
