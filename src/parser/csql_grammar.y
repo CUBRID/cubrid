@@ -14662,7 +14662,16 @@ opt_orderby_clause
 
 			if (stmt)
 			  {
-			    stmt->info.query.order_by = order = $5;
+                            PT_NODE *n = NULL;
+
+                            stmt->info.query.order_by = order = n = $5;
+
+                            while (n)
+                              {
+                                resolve_alias_in_expr_node (n, stmt->info.query.q.select.list);
+                                n = n->next;
+                              }
+
 			    if (order)
 			      {				/* not dummy */
 				PT_SELECT_INFO_CLEAR_FLAG (stmt, PT_SELECT_INFO_DUMMY);
