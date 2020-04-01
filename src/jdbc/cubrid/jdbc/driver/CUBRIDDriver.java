@@ -215,8 +215,8 @@ public class CUBRIDDriver implements Driver {
 
 	    u_con.setCharset(connProperties.getCharSet());
 	    u_con.setZeroDateTimeBehavior(connProperties.getZeroDateTimeBehavior());
-            u_con.setResultWithCUBRIDTypes(connProperties.getResultWithCUBRIDTypes());
-
+	    u_con.setResultWithCUBRIDTypes(connProperties.getResultWithCUBRIDTypes());
+	    u_con.setDriverMagicStr(connProperties.getUseSSL());
 	    u_con.setConnectionProperties(connProperties);
 	    u_con.tryConnect();
 	    return new CUBRIDConnection(u_con, url, user);

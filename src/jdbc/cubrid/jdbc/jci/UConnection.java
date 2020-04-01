@@ -85,6 +85,7 @@ public class UConnection {
 
 	// this value is defined in broker/cas_protocol.h
 	private final static String magicString = "CUBRK";
+	private final static String magicStringSSL = "CUBRS";
 	private final static byte CAS_CLIENT_JDBC = 3;
 
 	public static final int PROTOCOL_V0 = 0;
@@ -2420,4 +2421,12 @@ public class UConnection {
 
 		return shardInfo[shard_id];
 	}
+
+    public void setDriverMagicStr(boolean useSSL) {
+        if (useSSL == true) {
+            UJCIUtil.copy_bytes(driverInfo, 0, 5, magicStringSSL);
+        } else {
+            UJCIUtil.copy_bytes(driverInfo, 0, 5, magicString);
+        }
+    }
 }
