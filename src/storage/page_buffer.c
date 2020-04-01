@@ -4374,6 +4374,7 @@ pgbuf_reset_temp_lsa (PAGE_PTR pgptr)
 /*
  * pgbuf_set_tde_algorithm () - set tde encryption algorithm to the page
  *   return: void
+ *   thread_p (in)  : Thread entry
  *   pgptr(in): Page pointer
  *   tde_algo (in) : encryption algorithm - NONE, AES, ARIA
  */
@@ -4397,23 +4398,22 @@ pgbuf_set_tde_algorithm (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, TDE_ALGORITHM 
       iopage->prv.pflag_reserve_1 |= FILEIO_PAGE_FLAG_ENCRYPTED_AES;
       break;
     case TDE_ALGORITHM_NONE:
-      break; // do nothing
+      break;
     default:
       assert (false);
   }
-  // logging
+  
   if (!is_temp)
   {
-    LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
-    addr.pgptr = pgptr;
-    log_append_undoredo_data (thread_p, RVPGBUF_SET_TDE_ALGORITHM, &addr, sizeof (TDE_ALGORITHM), sizeof (TDE_ALGORITHM), &prev_tde_algo, &tde_algo);
+    log_append_undoredo_data2 (thread_p, RVPGBUF_SET_TDE_ALGORITHM, NULL, pgptr, 0, sizeof (TDE_ALGORITHM), sizeof (TDE_ALGORITHM), &prev_tde_algo, &tde_algo);
   }
   pgbuf_set_dirty (thread_p, pgptr, DONT_FREE);
 }
 
 /*
- * pgbuf_rv_set_tde_algorithm () - set tde encryption algorithm to the page
- *   return: void
+ * pgbuf_rv_set_tde_algorithm () - recovery setting tde encryption algorithm to the page
+ *   return        : NO_ERROR, or ER_code
+ *   thread_p (in)  : Thread entry
  *   pgptr(in): Page pointer
  *   tde_algo (in) : encryption algorithm - NONE, AES, ARIA
  */
