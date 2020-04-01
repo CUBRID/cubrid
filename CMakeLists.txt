@@ -1110,7 +1110,7 @@ if(WITH_LIBOPENSSL STREQUAL "EXTERNAL")
     #e.g. https://www.openssl.org/source/openssl-1.1.1d.tar.gz
     externalproject_add(${LIBOPENSSL_TARGET}
       URL                  ${WITH_LIBOPENSSL_URL}
-      TIMEOUT              300
+      TIMEOUT              600
       DOWNLOAD_NO_PROGRESS 1
       CONFIGURE_COMMAND    <SOURCE_DIR>/config --prefix=${CMAKE_CURRENT_BINARY_DIR}/external no-shared # ${DEFAULT_CONFIGURE_OPTS}
       BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
