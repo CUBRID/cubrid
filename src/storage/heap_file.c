@@ -5244,7 +5244,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
     goto error;
   }
 
-  error_code = file_set_tde_algorithm (thread_p, &hfid->vfid, tde_algo);
+  error_code = file_set_tde_algorithm (thread_p, &hfid->vfid, tde_algo, false);
   if (error_code != NO_ERROR)
   {
     ASSERT_ERROR ();
@@ -6418,7 +6418,7 @@ heap_ovf_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * ovf_vfid,
           ovf_vfid = NULL;
         }
 
-        error_code = file_set_tde_algorithm (thread_p, ovf_vfid, tde_algo);
+        error_code = file_set_tde_algorithm (thread_p, ovf_vfid, tde_algo, false);
         if (error_code != NO_ERROR)
         {
           log_sysop_abort (thread_p);

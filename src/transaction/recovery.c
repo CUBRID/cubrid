@@ -825,7 +825,12 @@ struct rvfun RV_fun[] = {
    pgbuf_rv_set_tde_algorithm,
    NULL,
    NULL},
-
+  {RVFL_FHEAD_SET_TDE_ALGORITHM,
+   "RVFL_FHEAD_SET_TDE_ALGORITHM",
+   file_rv_set_tde_algorithm,
+   file_rv_set_tde_algorithm,
+   NULL,
+   NULL},
 };
 
 /*
