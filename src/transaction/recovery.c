@@ -819,6 +819,12 @@ struct rvfun RV_fun[] = {
    heap_rv_postpone_append_pages_to_heap,
    NULL,
    heap_rv_dump_append_pages_to_heap},
+  {RVPGBUF_SET_TDE_ALGORITHM,
+   "RVPGBUF_SET_TDE_ALGORITHM",
+   pgbuf_rv_set_tde_algorithm,
+   pgbuf_rv_set_tde_algorithm,
+   NULL,
+   NULL},
 
 };
 

@@ -4378,15 +4378,17 @@ pgbuf_reset_temp_lsa (PAGE_PTR pgptr)
  *   tde_algo (in) : encryption algorithm - NONE, AES, ARIA
  */
 void
-pgbuf_set_tde_algorithm (PAGE_PTR pgptr, TDE_ALGORITHM tde_algo)
+pgbuf_set_tde_algorithm (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, TDE_ALGORITHM tde_algo, bool is_temp)
 {
   FILEIO_PAGE *iopage = NULL;
+  TDE_ALGORITHM prev_tde_algo = TDE_ALGORITHM_NONE;
   
   CAST_PGPTR_TO_IOPGPTR (iopage, pgptr);
 
+  pgbuf_get_tde_algorithm (pgptr, &prev_tde_algo);
   /* It is not supported to change encryption algorithm yet */
-  assert (!(iopage->prv.pflag_reserve_1 && FILEIO_PAGE_FLAG_ENCRYPTED_MASK));
-  
+  assert (prev_tde_algo == TDE_ALGORITHM_NONE);
+
   switch (tde_algo) {
     case TDE_ALGORITHM_AES:
       iopage->prv.pflag_reserve_1 |= FILEIO_PAGE_FLAG_ENCRYPTED_AES;
@@ -4399,6 +4401,51 @@ pgbuf_set_tde_algorithm (PAGE_PTR pgptr, TDE_ALGORITHM tde_algo)
     default:
       assert (false);
   }
+  // logging
+  if (!is_temp)
+  {
+    LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
+    addr.pgptr = pgptr;
+    log_append_undoredo_data (thread_p, RVPGBUF_SET_TDE_ALGORITHM, &addr, sizeof (TDE_ALGORITHM), sizeof (TDE_ALGORITHM), &prev_tde_algo, &tde_algo);
+  }
+  pgbuf_set_dirty (thread_p, pgptr, DONT_FREE);
+}
+
+/*
+ * pgbuf_rv_set_tde_algorithm () - set tde encryption algorithm to the page
+ *   return: void
+ *   pgptr(in): Page pointer
+ *   tde_algo (in) : encryption algorithm - NONE, AES, ARIA
+ */
+int
+pgbuf_rv_set_tde_algorithm (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  FILEIO_PAGE *iopage = NULL;
+  PAGE_PTR pgptr = rcv->pgptr;
+  TDE_ALGORITHM tde_algo = *((TDE_ALGORITHM*)rcv->data);
+  
+  assert (rcv->length == sizeof (TDE_ALGORITHM));
+
+  CAST_PGPTR_TO_IOPGPTR (iopage, pgptr);
+  
+  /* clear tde encryption bits */
+  iopage->prv.pflag_reserve_1 &= !FILEIO_PAGE_FLAG_ENCRYPTED_MASK; 
+  
+  switch (tde_algo) {
+    case TDE_ALGORITHM_AES:
+      iopage->prv.pflag_reserve_1 |= FILEIO_PAGE_FLAG_ENCRYPTED_AES;
+      break;
+    case TDE_ALGORITHM_ARIA:
+      iopage->prv.pflag_reserve_1 |= FILEIO_PAGE_FLAG_ENCRYPTED_AES;
+      break;
+    case TDE_ALGORITHM_NONE:
+      break; // do nothing
+    default:
+      assert (false);
+      return ER_FAILED;
+  }
+  pgbuf_set_dirty (thread_p, pgptr, DONT_FREE);
+  return NO_ERROR;
 }
 
 /*
