@@ -730,8 +730,8 @@ static int file_user_page_table_extdata_dump (THREAD_ENTRY * thread_p, const FIL
 static int file_user_page_table_item_dump (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop,
 					   void *args);
 static int file_sector_map_dealloc (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop, void *args);
-static int file_get_tde_algorithm_internal (THREAD_ENTRY * thread_p, const FILE_HEADER * fhead, TDE_ALGORITHM * tde_algo);
-static int file_set_tde_algorithm_internal (THREAD_ENTRY * thread_p, FILE_HEADER * fhead, TDE_ALGORITHM tde_algo);
+static int file_get_tde_algorithm_internal (const FILE_HEADER * fhead, TDE_ALGORITHM * tde_algo);
+static int file_set_tde_algorithm_internal (FILE_HEADER * fhead, TDE_ALGORITHM tde_algo);
 
 /************************************************************************/
 /* Numerable files section.                                             */
@@ -5314,7 +5314,7 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_in
     }
 
   /* get encryption flag from file header */
-  error_code = file_get_tde_algorithm_internal (thread_p, fhead, &tde_algo);
+  error_code = file_get_tde_algorithm_internal (fhead, &tde_algo);
   if (error_code != NO_ERROR) {
 	  ASSERT_ERROR_AND_SET (error_code);
     goto exit;
@@ -5330,7 +5330,7 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_in
     }
     is_page_alloc_fixed = true;
     
-    pgbuf_set_tde_algorithm (page_alloc, tde_algo);
+    pgbuf_set_tde_algorithm (thread_p, page_alloc, tde_algo, FILE_IS_TEMPORARY (fhead));
   }
 
   if (f_init)
@@ -5680,7 +5680,7 @@ file_set_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, TDE_ALGORITH
 
   fhead = (FILE_HEADER *) page_fhead;
 
-  if (file_set_tde_algorithm_internal (thread_p, fhead, tde_algo) != NO_ERROR)
+  if (file_set_tde_algorithm_internal (fhead, tde_algo) != NO_ERROR)
   {
     assert (false);
     pgbuf_unfix(thread_p, page_fhead); 
@@ -5703,7 +5703,7 @@ file_set_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, TDE_ALGORITH
  *
  */
 int
-file_set_tde_algorithm_internal (THREAD_ENTRY * thread_p, FILE_HEADER * fhead, TDE_ALGORITHM tde_algo)
+file_set_tde_algorithm_internal (FILE_HEADER * fhead, TDE_ALGORITHM tde_algo)
 {
   // Only SET is supported, so prev value has to be NONE
   assert (!(fhead->file_flags &= FILE_FLAG_ENCRYPTED_MASK));
@@ -5753,7 +5753,7 @@ file_get_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, TDE_ALGORITH
 
   fhead = (FILE_HEADER *) page_fhead;
 
-  error_code = file_get_tde_algorithm_internal (thread_p, fhead, tde_algo);
+  error_code = file_get_tde_algorithm_internal (fhead, tde_algo);
 
   pgbuf_unfix (thread_p, page_fhead);
 
@@ -5770,7 +5770,7 @@ file_get_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, TDE_ALGORITH
  *
  */
 int
-file_get_tde_algorithm_internal (THREAD_ENTRY * thread_p, const FILE_HEADER * fhead, TDE_ALGORITHM * tde_algo)
+file_get_tde_algorithm_internal (const FILE_HEADER * fhead, TDE_ALGORITHM * tde_algo)
 {
   // encrpytion algorithms are exclusive
   assert (!((fhead->file_flags & FILE_FLAG_ENCRYPTED_AES) &&
