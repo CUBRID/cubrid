@@ -4395,7 +4395,7 @@ pgbuf_set_tde_algorithm (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, TDE_ALGORITHM 
       iopage->prv.pflag_reserve_1 |= FILEIO_PAGE_FLAG_ENCRYPTED_AES;
       break;
     case TDE_ALGORITHM_ARIA:
-      iopage->prv.pflag_reserve_1 |= FILEIO_PAGE_FLAG_ENCRYPTED_AES;
+      iopage->prv.pflag_reserve_1 |= FILEIO_PAGE_FLAG_ENCRYPTED_ARIA;
       break;
     case TDE_ALGORITHM_NONE:
       break;
@@ -4436,7 +4436,7 @@ pgbuf_rv_set_tde_algorithm (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       iopage->prv.pflag_reserve_1 |= FILEIO_PAGE_FLAG_ENCRYPTED_AES;
       break;
     case TDE_ALGORITHM_ARIA:
-      iopage->prv.pflag_reserve_1 |= FILEIO_PAGE_FLAG_ENCRYPTED_AES;
+      iopage->prv.pflag_reserve_1 |= FILEIO_PAGE_FLAG_ENCRYPTED_ARIA;
       break;
     case TDE_ALGORITHM_NONE:
       break; // do nothing
