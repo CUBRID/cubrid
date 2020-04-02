@@ -29,6 +29,14 @@
 
 #include "cas_net_buf.h"
 
+enum
+{
+  FN_STATUS_IDLE = -1,
+  FN_STATUS_CONN,
+  FN_STATUS_BUSY,
+  FN_STATUS_DONE
+};
+
 typedef enum
 {
   FN_KEEP_CONN = 0,
