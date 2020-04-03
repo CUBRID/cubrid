@@ -4970,8 +4970,8 @@ fileio_get_number_of_partition_free_pages (const char *path_p, size_t page_size)
     }
   else
     {
-      const size_t io_pagesize_in_block = page_size / buf.f_bsize;
-      npages_of_partition = buf.f_bavail / io_pagesize_in_block;
+      const size_t f_avail_size = buf.f_bsize * buf.f_bavail;
+      npages_of_partition = f_avail_size / page_size;
       if (npages_of_partition < 0 || npages_of_partition > INT_MAX)
 	{
 	  npages_of_partition = INT_MAX;
