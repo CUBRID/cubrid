@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Properties;
 import java.util.StringTokenizer;
 
+import cubrid.jdbc.driver.ConnectionProperties.BooleanConnectionProperty;
 import cubrid.jdbc.jci.BrokerHealthCheck;
 import cubrid.jdbc.jci.UConnection;
 
@@ -348,6 +349,9 @@ public class ConnectionProperties {
     BooleanConnectionProperty useOldBooleanValue = new BooleanConnectionProperty(
 	    "useOldBooleanValue", false);
 
+    BooleanConnectionProperty oracleStyleEmptyString = new BooleanConnectionProperty(
+            "oracleStyleEmptyString", false);
+
     public boolean getLogOnException() {
 	return logOnException.getValueAsBoolean();
     }
@@ -401,5 +405,9 @@ public class ConnectionProperties {
 
     public boolean getUseOldBooleanValue() {
         return useOldBooleanValue.getValueAsBoolean();
+    }
+
+    public boolean getOracleStyleEmptyString() {
+        return oracleStyleEmptyString.getValueAsBoolean();
     }
 }
