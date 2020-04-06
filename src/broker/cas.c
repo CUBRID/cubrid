@@ -899,7 +899,7 @@ cas_main (void)
 #if defined(WINDOWS)
 	as_info->uts_status = UTS_STATUS_BUSY;
 #endif /* WINDOWS */
-        as_info->fn_status = FN_STATUS_BUSY;
+	as_info->fn_status = FN_STATUS_BUSY;
 	as_info->con_status = CON_STATUS_IN_TRAN;
 	as_info->transaction_start_time = time (0);
 	errors_in_transaction = 0;
@@ -1195,7 +1195,7 @@ cas_main (void)
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 	    session_id = db_get_session_id ();
-            as_info->session_id = session_id;
+	    as_info->session_id = session_id;
 
 	    if (shm_appl->access_log == ON)
 	      {
@@ -1256,7 +1256,7 @@ cas_main (void)
 		signal (SIGUSR1, query_cancel);
 #endif /* !WINDOWS */
 		fn_ret = process_request (client_sock_fd, &net_buf, &req_info);
-                as_info->fn_status = FN_STATUS_DONE;
+		as_info->fn_status = FN_STATUS_DONE;
 #ifndef LIBCAS_FOR_JSP
 		is_first_request = false;
 #endif /* !LIBCAS_FOR_JSP */
@@ -1312,7 +1312,7 @@ cas_main (void)
 	CLOSE_SOCKET (client_sock_fd);
 
       finish_cas:
-        as_info->fn_status = FN_STATUS_IDLE;
+	as_info->fn_status = FN_STATUS_IDLE;
 	set_hang_check_time ();
 #if defined(WINDOWS)
 	as_info->close_flag = 1;

@@ -847,42 +847,42 @@ receiver_thr_f (void *arg)
 	  continue;
 	}
 
-      if (strncmp(cas_req_header, "STATUS", 6) == 0)
-        {
-          int status = -1;
-          int pid, i, len;
-          unsigned int session_id;
-      
-          len = read_nbytes_from_client (clt_sock_fd, cas_req_header + SRV_CON_CLIENT_INFO_SIZE, 4);
-          if (len < 0)
-           {
-	         CLOSE_SOCKET (clt_sock_fd);
-	         continue;
-           }
+      if (strncmp (cas_req_header, "STATUS", 6) == 0)
+	{
+	  int status = -1;
+	  int pid, i, len;
+	  unsigned int session_id;
 
-          memcpy ((char *) &pid, cas_req_header + 6, 4);
-          pid = ntohl (pid);
-          memcpy ((char *) &session_id, cas_req_header + 10, 4);
-          session_id = ntohl (session_id);
+	  len = read_nbytes_from_client (clt_sock_fd, cas_req_header + SRV_CON_CLIENT_INFO_SIZE, 4);
+	  if (len < 0)
+	    {
+	      CLOSE_SOCKET (clt_sock_fd);
+	      continue;
+	    }
 
-          if (shm_br->br_info[br_index].shard_flag == OFF)
-           {
-             for (i = 0; i < shm_br->br_info[br_index].appl_server_max_num; i++)
-              {
-	        if (shm_appl->as_info[i].service_flag == SERVICE_ON && shm_appl->as_info[i].pid == pid)
-	          {
-	            if (session_id == shm_appl->as_info[i].session_id)
-	              {
-	                status = shm_appl->as_info[i].fn_status;
-	              }
-	            break;
-	          }
-               }
-             CAS_SEND_ERROR_CODE (clt_sock_fd, status);
-             CLOSE_SOCKET (clt_sock_fd);
-             continue;
-           }
-        }
+	  memcpy ((char *) &pid, cas_req_header + 6, 4);
+	  pid = ntohl (pid);
+	  memcpy ((char *) &session_id, cas_req_header + 10, 4);
+	  session_id = ntohl (session_id);
+
+	  if (shm_br->br_info[br_index].shard_flag == OFF)
+	    {
+	      for (i = 0; i < shm_br->br_info[br_index].appl_server_max_num; i++)
+		{
+		  if (shm_appl->as_info[i].service_flag == SERVICE_ON && shm_appl->as_info[i].pid == pid)
+		    {
+		      if (session_id == shm_appl->as_info[i].session_id)
+			{
+			  status = shm_appl->as_info[i].fn_status;
+			}
+		      break;
+		    }
+		}
+	      CAS_SEND_ERROR_CODE (clt_sock_fd, status);
+	      CLOSE_SOCKET (clt_sock_fd);
+	      continue;
+	    }
+	}
 
       /*
        * Query cancel message (size in bytes)
@@ -896,7 +896,7 @@ receiver_thr_f (void *arg)
        *   CLIENT_PORT can be 0 if the client failed to get its local port.
        */
       else if (strncmp (cas_req_header, "QC", 2) == 0 || strncmp (cas_req_header, "CANCEL", 6) == 0
-	  || strncmp (cas_req_header, "X1", 2) == 0)
+	       || strncmp (cas_req_header, "X1", 2) == 0)
 	{
 	  int ret_code = 0;
 #if !defined(WINDOWS)
