@@ -44,6 +44,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <pthread.h>
+#include <syslog.h>
 #endif
 
 #include "dbi.h"
@@ -3580,6 +3581,7 @@ hb_alloc_new_proc (void)
       p->server_hang = false;
       LSA_SET_NULL (&p->prev_eof);
       LSA_SET_NULL (&p->curr_eof);
+      p->num_free_block = 0;
 
       first_pp = &hb_Resource->procs;
       hb_list_add ((HB_LIST **) first_pp, (HB_LIST *) p);
@@ -3828,6 +3830,7 @@ hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY * conn, SOCKET sfd)
   proc->server_hang = false;
   LSA_SET_NULL (&proc->prev_eof);
   LSA_SET_NULL (&proc->curr_eof);
+  proc->num_free_block = 0;
 
   pthread_mutex_unlock (&hb_Resource->lock);
 
@@ -4181,11 +4184,15 @@ hb_resource_check_server_log_grow (void)
       if (LSA_GT (&proc->curr_eof, &proc->prev_eof) == true)
 	{
 	  LSA_COPY (&proc->prev_eof, &proc->curr_eof);
+	  proc->num_free_block = 0;
 	}
       else
 	{
-	  proc->server_hang = true;
-	  dead_cnt++;
+	  if (proc->num_free_block == 0)
+	    {
+	      proc->server_hang = true;
+	      dead_cnt++;
+	    }
 	}
     }
   if (dead_cnt > 0)
@@ -4234,8 +4241,8 @@ hb_resource_receive_get_eof (CSS_CONN_ENTRY * conn)
 {
   int rv;
   HB_PROC_ENTRY *proc;
-  OR_ALIGNED_BUF (OR_LOG_LSA_ALIGNED_SIZE) a_reply;
-  char *reply;
+  OR_ALIGNED_BUF (OR_LOG_LSA_ALIGNED_SIZE + OR_BIGINT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply, *ptr = NULL;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -4257,7 +4264,8 @@ hb_resource_receive_get_eof (CSS_CONN_ENTRY * conn)
 
   if (proc->state == HB_PSTATE_REGISTERED_AND_ACTIVE)
     {
-      or_unpack_log_lsa (reply, &proc->curr_eof);
+      ptr = or_unpack_log_lsa (reply, &proc->curr_eof);
+      (void) or_unpack_int64 (ptr, &proc->num_free_block);
     }
 
   MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "received eof [%lld|%lld]\n", proc->curr_eof.pageid, proc->curr_eof.offset);
@@ -4462,6 +4470,8 @@ hb_thread_check_disk_failure (void *arg)
 		  pthread_mutex_unlock (&hb_Cluster->lock);
 #if !defined(WINDOWS)
 		  pthread_mutex_unlock (&css_Master_socket_anchor_lock);
+
+		  syslog (LOG_ALERT, "[CUBRID] %s () at %s:%d", __func__, __FILE__, __LINE__);
 #endif /* !WINDOWS */
 
 		  error = hb_resource_job_queue (HB_RJOB_DEMOTE_START_SHUTDOWN, NULL, HB_JOB_TIMER_IMMEDIATELY);

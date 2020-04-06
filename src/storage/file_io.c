@@ -46,6 +46,9 @@
 #include <sys/types.h>
 #include <sys/uio.h>
 #include <sys/vfs.h>
+#if defined (SERVER_MODE)
+#include <syslog.h>
+#endif
 #endif /* WINDOWS */
 
 #ifdef _AIX
@@ -3735,6 +3738,10 @@ fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_i
 	      /* This is an end of file. We are trying to read beyond the allocated disk space */
 	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2, page_id,
 		      fileio_get_volume_label_by_fd (vol_fd, PEEK));
+
+#if defined (SERVER_MODE) && !defined (WINDOWS)
+	      syslog (LOG_ALERT, "[CUBRID] %s () at %s:%d %m", __func__, __FILE__, __LINE__);
+#endif
 	      return NULL;
 	    }
 
