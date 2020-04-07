@@ -938,7 +938,7 @@ receiver_thr_f (void *arg)
       if ((IS_SSL_CLIENT (cas_req_header) && shm_br->br_info[br_index].use_SSL == OFF)
 	  || (!IS_SSL_CLIENT (cas_req_header) && shm_br->br_info[br_index].use_SSL == ON))
 	{
-	  send_error_to_driver (clt_sock_fd, CAS_ER_COMMUNICATION, cas_req_header);
+	  send_error_to_driver (clt_sock_fd, CAS_ER_NOT_AUTHORIZED_CLIENT, cas_req_header);
 	  CLOSE_SOCKET (clt_sock_fd);
 	  continue;
 	}
