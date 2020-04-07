@@ -39,7 +39,7 @@ extern "C"
 #define SRV_CON_MSG_IDX_CLIENT_TYPE	5
 
 #define IS_SSL_CLIENT(driver_info) \
-	(strncmp (driver_info, SRV_CON_CLIENT_MAGIC_STR_SSL, SRV_CON_MSG_IDX_CLIENT_TYPE) == 0)
+	(strncmp (driver_info, SRV_CON_CLIENT_MAGIC_STR_SSL, SRV_CON_CLIENT_MAGIC_LEN) == 0)
 
 /* 8th and 9th-byte (index 7 and 8) are reserved for backward compatibility.
  * 8.4.0 patch 1 or earlier versions hold minor and patch version on them.
