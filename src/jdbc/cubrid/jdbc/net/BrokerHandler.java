@@ -208,14 +208,14 @@ public class BrokerHandler {
     }
 
     private static byte[] CANCEL_INFO = { 'C', 'A', 'N', 'C', 'E', 'L' };
-    private static byte[] STATUS_INFO = { 'S', 'T', 'A', 'T', 'U', 'S' };
+    private static byte[] STATUS_INFO = { 'S', 'T' };
 
     public static int statusBroker(String ip, int port, int process, byte[] session, int timeout)
         throws IOException, UJciException {
 
         int status;
 
-        ByteArrayOutputStream bao = new ByteArrayOutputStream(14);
+        ByteArrayOutputStream bao = new ByteArrayOutputStream(10);
         DataOutputStream dao = new DataOutputStream(bao);
     
         dao.write(STATUS_INFO);

@@ -781,7 +781,7 @@ receiver_thr_f (void *arg)
   int job_count;
   int read_len;
   int one = 1;
-  char cas_req_header[SRV_CON_CLIENT_INFO_SIZE + 4];
+  char cas_req_header[SRV_CON_CLIENT_INFO_SIZE];
   char cas_client_type;
   char driver_version;
   T_BROKER_VERSION client_version;
@@ -847,22 +847,15 @@ receiver_thr_f (void *arg)
 	  continue;
 	}
 
-      if (strncmp (cas_req_header, "STATUS", 6) == 0)
+      if (strncmp (cas_req_header, "ST", 2) == 0)
 	{
 	  int status = -1;
-	  int pid, i, len;
+	  int pid, i;
 	  unsigned int session_id;
 
-	  len = read_nbytes_from_client (clt_sock_fd, cas_req_header + SRV_CON_CLIENT_INFO_SIZE, 4);
-	  if (len < 0)
-	    {
-	      CLOSE_SOCKET (clt_sock_fd);
-	      continue;
-	    }
-
-	  memcpy ((char *) &pid, cas_req_header + 6, 4);
+	  memcpy ((char *) &pid, cas_req_header + 2, 4);
 	  pid = ntohl (pid);
-	  memcpy ((char *) &session_id, cas_req_header + 10, 4);
+	  memcpy ((char *) &session_id, cas_req_header + 6, 4);
 	  session_id = ntohl (session_id);
 
 	  if (shm_br->br_info[br_index].shard_flag == OFF)
@@ -878,10 +871,11 @@ receiver_thr_f (void *arg)
 		      break;
 		    }
 		}
-	      CAS_SEND_ERROR_CODE (clt_sock_fd, status);
-	      CLOSE_SOCKET (clt_sock_fd);
-	      continue;
 	    }
+
+	  CAS_SEND_ERROR_CODE (clt_sock_fd, status);
+	  CLOSE_SOCKET (clt_sock_fd);
+	  continue;
 	}
 
       /*
