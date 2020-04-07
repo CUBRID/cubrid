@@ -8149,11 +8149,10 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 
 	      if (logpb_check_stop_at_time (session, r_args->stopat, (time_t) backup_time) != NO_ERROR)
 		{
-		  error_code = fileio_finish_restore (thread_p, session);
-
-		  fileio_page_bitmap_list_destroy (&page_bitmap_list);
+      error_expected = true;
+		  error_code = ER_FAILED;
 		  LOG_CS_EXIT (thread_p);
-		  return error_code;
+		  goto error;
 		}
 	    }
 	}
