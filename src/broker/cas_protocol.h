@@ -35,7 +35,12 @@ extern "C"
 #define SRV_CON_CLIENT_INFO_SIZE	10
 #define SRV_CON_CLIENT_MAGIC_LEN	5
 #define SRV_CON_CLIENT_MAGIC_STR	"CUBRK"
+#define SRV_CON_CLIENT_MAGIC_STR_SSL	"CUBRS"
 #define SRV_CON_MSG_IDX_CLIENT_TYPE	5
+#define SRV_CON_MSG_IDX_SSL_TYPE        4
+#define SRV_CONL_CLIENT_SSL_FLAG       'S'
+#define IS_SSL_DRIVER(driver_info) \
+	(driver_info[SRV_CON_MSG_IDX_SSL_TYPE] == SRV_CONL_CLIENT_SSL_FLAG)
 
 /* 8th and 9th-byte (index 7 and 8) are reserved for backward compatibility.
  * 8.4.0 patch 1 or earlier versions hold minor and patch version on them.
