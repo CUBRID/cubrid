@@ -1790,7 +1790,7 @@ public class UConnection {
 			inputBuffer = new UInputBuffer(input, this, timeout*1000 + READ_TIMEOUT);
 		}
 		else {
-			inputBuffer = new UInputBuffer(input, this, timeout);
+			inputBuffer = new UInputBuffer(input, this, 0);
 		}
 	
 		if (UJCIUtil.isConsoleDebug()) {
@@ -1811,7 +1811,7 @@ public class UConnection {
 		byte prev_casinfo[] = casinfo;
 		outBuffer.sendData();
 		/* set cas info to UConnection member variable and return InputBuffer */
-		UInputBuffer inputBuffer = new UInputBuffer(input, this, READ_TIMEOUT);
+		UInputBuffer inputBuffer = new UInputBuffer(input, this, 0);
 
 		if (UJCIUtil.isConsoleDebug()) {
 			printCasInfo(prev_casinfo, casinfo);
