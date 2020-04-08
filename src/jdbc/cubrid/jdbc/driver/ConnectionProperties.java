@@ -7,7 +7,6 @@ import java.util.ArrayList;
 import java.util.Properties;
 import java.util.StringTokenizer;
 
-import cubrid.jdbc.driver.ConnectionProperties.BooleanConnectionProperty;
 import cubrid.jdbc.jci.BrokerHealthCheck;
 import cubrid.jdbc.jci.UConnection;
 

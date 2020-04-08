@@ -131,8 +131,6 @@ public class UStatement {
 	private boolean result_cacheable = false;
 	private UStmtCache stmt_cache;
 
-        private ConnectionProperties connectionProperties = new ConnectionProperties();
-	
 	UStatement(UConnection relatedC, UInputBuffer inBuffer,
 	        boolean assign_only, String sql, byte _prepare_flag)
 	        throws UJciException {
