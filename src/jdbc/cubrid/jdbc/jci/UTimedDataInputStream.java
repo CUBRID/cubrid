@@ -145,8 +145,7 @@ public class UTimedDataInputStream {
               throw new SocketTimeoutException(msg);
             }
             if (BrokerHandler.statusBroker(ip, port, pid, session, PING_TIMEOUT) != 1) {
-              String msg = UErrorCode.codeToMessage(UErrorCode.ER_COMMUNICATION);
-              throw new IOException(msg);
+              throw new UJciException(UErrorCode.ER_COMMUNICATION);
             }
           } catch (IOException e) {
             String msg = UErrorCode.codeToMessage(UErrorCode.ER_COMMUNICATION);
