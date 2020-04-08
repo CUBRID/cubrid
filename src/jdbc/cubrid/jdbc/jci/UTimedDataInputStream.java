@@ -147,10 +147,7 @@ public class UTimedDataInputStream {
             if (BrokerHandler.statusBroker(ip, port, pid, session, PING_TIMEOUT) != 1) {
               throw new UJciException(UErrorCode.ER_COMMUNICATION);
             }
-          } catch (IOException e) {
-            String msg = UErrorCode.codeToMessage(UErrorCode.ER_COMMUNICATION);
-            throw new IOException(msg);
-	  }
+          }
         }
     }
 
