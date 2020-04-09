@@ -135,6 +135,7 @@ public class UTimedDataInputStream {
 
     public int read(byte[] b, int off, int len, int timeout) throws IOException, UJciException {
         long begin = System.currentTimeMillis();
+        boolean retry = false;
 
         while (true) {
           try {
@@ -145,7 +146,10 @@ public class UTimedDataInputStream {
               throw new SocketTimeoutException(msg);
             }
             if (BrokerHandler.statusBroker(ip, port, pid, session, PING_TIMEOUT) != 1) {
-              throw new UJciException(UErrorCode.ER_COMMUNICATION);
+              if (retry) {
+                throw new UJciException(UErrorCode.ER_COMMUNICATION);
+              }
+              retry = true;
             }
           }
         }

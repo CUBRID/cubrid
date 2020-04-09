@@ -1971,7 +1971,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 #ifndef LIBCAS_FOR_JSP
   as_info->fn_status = FN_STATUS_BUSY;
 #endif
-  
+
   net_buf->client_version = req_info->client_version;
   set_hang_check_time ();
   fn_ret = (*server_fn) (sock_fd, argc, argv, net_buf, req_info);
