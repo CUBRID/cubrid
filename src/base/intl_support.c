@@ -1453,8 +1453,8 @@ intl_pad_char (const INTL_CODESET codeset, unsigned char *pad_char, int *pad_siz
       break;
 
     case INTL_CODESET_KSC5601_EUC:
-      pad_char[0] = pad_char[1] = '\241';
-      *pad_size = 2;
+      pad_char[0] = ' ';
+      *pad_size = 1;
       break;
 
     case INTL_CODESET_ASCII:
