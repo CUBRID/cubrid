@@ -5313,11 +5313,9 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_in
 	}
     }
 
-  /* get encryption flag from file header */
-  file_get_tde_algorithm_internal (fhead, &tde_algo);
-
-  if (tde_algo != TDE_ALGORITHM_NONE)
+  if (f_init)
   {
+    /* initialize page */
     page_alloc = pgbuf_fix (thread_p, vpid_out, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
     if (page_alloc == NULL)
     {
@@ -5326,22 +5324,6 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_in
     }
     is_page_alloc_fixed = true;
     
-    pgbuf_set_tde_algorithm (thread_p, page_alloc, tde_algo, FILE_IS_TEMPORARY (fhead));
-  }
-
-  if (f_init)
-  {
-    /* initialize page */
-    if (!is_page_alloc_fixed)
-    {
-      page_alloc = pgbuf_fix (thread_p, vpid_out, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-      if (page_alloc == NULL)
-      {
-        ASSERT_ERROR_AND_SET (error_code);
-        goto exit;
-      }
-      is_page_alloc_fixed = true;
-    }
     error_code = f_init (thread_p, page_alloc, f_init_args);
     if (error_code != NO_ERROR)
     {
@@ -5353,6 +5335,30 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_in
   else
   {
     assert (FILE_IS_TEMPORARY (fhead));
+  }
+
+  /*
+   * Set Tde Encryption flags based on the file.
+   * NOTE: It MUST be located after initializing the page (f_init),
+   * because while recovery, logs on a page don't work
+   * before the log classified as RCV_IS_NEW_PAGE_INIT on the page
+   */
+  file_get_tde_algorithm_internal (fhead, &tde_algo);
+
+  if (tde_algo != TDE_ALGORITHM_NONE)
+  {
+    if (!is_page_alloc_fixed)
+    {
+      page_alloc = pgbuf_fix (thread_p, vpid_out, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      if (page_alloc == NULL)
+      {
+        ASSERT_ERROR_AND_SET (error_code);
+        goto exit;
+      }
+      is_page_alloc_fixed = true;
+    }
+    
+    pgbuf_set_tde_algorithm (thread_p, page_alloc, tde_algo, FILE_IS_TEMPORARY (fhead));
   }
   
   if (page_out != NULL)
