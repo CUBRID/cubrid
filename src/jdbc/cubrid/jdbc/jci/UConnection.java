@@ -418,6 +418,10 @@ public class UConnection {
 		return connectionProperties.getUseOldBooleanValue();
 	}
 
+        public boolean getOracleStyleEmpltyString() {
+                return connectionProperties.getOracleStyleEmptyString();
+        }
+
 	synchronized public void addElementToSet(CUBRIDOID oid,
 			String attributeName, Object value) {
 		errorHandler = new UError(this);
