@@ -1,10 +1,6 @@
 pipeline {
   agent none
 
-  triggers {
-    pollSCM('H 1 * * *')
-  }
-
   environment {
     OUTPUT_DIR = 'packages'
     TEST_REPORT = 'reports'
