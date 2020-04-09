@@ -30,6 +30,7 @@
 #include "log_lsa.hpp"
 #include "object_primitive.h"
 #include "object_representation.h"
+#include "transform.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -294,7 +295,7 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
   int tran_index;
   LOG_TDES *tdes;
   LOG_REPL_RECORD *repl_rec;
-  char *class_name;
+  char *class_name = NULL;
   char *ptr;
   int error = NO_ERROR, strlen;
 
@@ -396,8 +397,6 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
 
       /* fill the length of disk image of pk */
       or_pack_int (ptr_to_packed_key_value_size, packed_key_len);
-
-      free_and_init (class_name);
     }
   else
     {
@@ -449,18 +448,30 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
       LOG_REPL_RECORD *recsp = tdes->repl_records;
       int i;
 
-      for (i = 0; i < tdes->fl_mark_repl_recidx; i++)
+      if (strcmp (class_name, CT_SERIAL_NAME) != 0)
 	{
-	  if (recsp[i].must_flush == LOG_REPL_COMMIT_NEED_FLUSH && OID_EQ (&recsp[i].inst_oid, &repl_rec->inst_oid))
+	  for (i = 0; i < tdes->fl_mark_repl_recidx; i++)
 	    {
-	      break;
+	      if (recsp[i].must_flush == LOG_REPL_COMMIT_NEED_FLUSH && OID_EQ (&recsp[i].inst_oid, &repl_rec->inst_oid))
+		{
+		  break;
+		}
+	    }
+
+	  if (i >= tdes->fl_mark_repl_recidx)
+	    {
+	      repl_rec->must_flush = LOG_REPL_NEED_FLUSH;
 	    }
 	}
-
-      if (i >= tdes->fl_mark_repl_recidx)
+      else
 	{
 	  repl_rec->must_flush = LOG_REPL_NEED_FLUSH;
 	}
+    }
+
+  if (class_name != NULL)
+    {
+      free_and_init (class_name);
     }
 
   return error;
