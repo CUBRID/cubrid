@@ -139,7 +139,7 @@ set(WITH_LIBGPG_ERROR_URL "https://gnupg.org/ftp/gcrypt/libgpg-error/libgpg-erro
 set(WITH_LIBGCRYPT_URL "https://gnupg.org/ftp/gcrypt/libgcrypt/libgcrypt-1.5.6.tar.bz2")
 
 # openssl library sources URL
-set(WITH_LIBOPENSSL_URL "https://www.openssl.org/source/openssl-1.1.1d.tar.gz")
+set(WITH_LIBOPENSSL_URL "https://www.openssl.org/source/old/1.1.1/openssl-1.1.1d.tar.gz")
 
 # rapidjson library sources URL
 set(WITH_RAPIDJSON_URL "https://github.com/Tencent/rapidjson/archive/v1.1.0.tar.gz")
