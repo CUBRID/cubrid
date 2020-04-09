@@ -66,6 +66,9 @@ extern LOG_LSA *log_get_restart_lsa (void);
 extern LOG_LSA *log_get_crash_point_lsa (void);
 extern LOG_LSA *log_get_append_lsa (void);
 extern LOG_LSA *log_get_eof_lsa (void);
+#if !defined(WINDOWS)
+extern void log_get_num_free_block (INT64 * num_free_block);
+#endif /* WINDOWS */
 extern bool log_is_logged_since_restart (const LOG_LSA * lsa_ptr);
 extern int log_get_db_start_parameters (INT64 * db_creation, LOG_LSA * chkpt_lsa);
 extern int log_get_num_pages_for_creation (int db_npages);

@@ -47,6 +47,9 @@
 #include <sys/types.h>
 #include <sys/uio.h>
 #include <sys/vfs.h>
+#if defined (SERVER_MODE)
+#include <syslog.h>
+#endif
 #endif /* WINDOWS */
 
 #ifdef _AIX
@@ -4175,6 +4178,10 @@ fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_WRITE_OUT_OF_SPACE, 2, page_id,
 		      fileio_get_volume_label_by_fd (vol_fd, PEEK));
+
+#if defined (SERVER_MODE) && !defined (WINDOWS)
+	      syslog (LOG_ALERT, "[CUBRID] %s () at %s:%d %m", __func__, __FILE__, __LINE__);
+#endif
 	      return NULL;
 	    }
 	  else
