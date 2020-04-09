@@ -1130,7 +1130,7 @@ static unsigned int prm_io_backup_nbuffers_flag = 0;
 UINT64 PRM_IO_BACKUP_MAX_VOLUME_SIZE = 0;
 static UINT64 prm_io_backup_max_volume_size_default = 0;
 static UINT64 prm_io_backup_max_volume_size_lower = 1024 * 32;
-static UINT64 prm_io_backup_max_volume_size_upper = INT_MAX;
+static UINT64 prm_io_backup_max_volume_size_upper = DB_BIGINT_MAX;
 static unsigned int prm_io_backup_max_volume_size_flag = 0;
 
 int PRM_IO_BACKUP_SLEEP_MSECS = 0;
