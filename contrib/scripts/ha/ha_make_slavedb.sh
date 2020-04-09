@@ -723,19 +723,19 @@ function copy_backup_db_from_target()
 	
 	# 1. check if the databases information is already registered.
 	echo -ne "\n - 1. check if the databases information is already registered.\n\n"
-	line=$(grep "^$db_name" $CUBRID_DATABASES/databases.txt) 
+	line=$(grep -w "^$db_name" $CUBRID_DATABASES/databases.txt)
 	if [ -z "$line" ]; then
 		execute "mv -f $CUBRID_DATABASES/databases.txt $CUBRID_DATABASES/databases.txt.$now"
 		scp_cubrid_from $target_host "$CUBRID_DATABASES/databases.txt" "$CUBRID_DATABASES/."
 	else
 		echo -ne "\n - there is already $db_name information in $CUBRID_DATABASES/databases.txt" 
-		echo "[$current_host]$ grep $db_name $CUBRID_DATABASES/databases.txt" 
+		echo "[$current_host]$ grep -w $db_name $CUBRID_DATABASES/databases.txt"
 		echo "$line"
 	fi
 	
 	# 2. get db_vol_path and db_log_path from databases.txt.
 	echo -ne "\n - 2. get db_vol_path and db_log_path from databases.txt.\n\n"
-	line=($(grep "^$db_name" $CUBRID_DATABASES/databases.txt))
+	line=($(grep -w "^$db_name" $CUBRID_DATABASES/databases.txt))
 	db_vol_path=${line[1]}
 	db_log_path=${line[3]}
 	if [ -z "$db_vol_path" -o -z "$db_log_path" ]; then
