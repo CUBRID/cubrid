@@ -6755,7 +6755,7 @@ fileio_initialize_backup (const char *db_full_name_p, const char *backup_destina
       er_log_debug (ARG_FILE_LINE,
 		    "Backup block buffer size %d must be less "
 		    "than backup volume size %ld, resetting buffer size to %d\n", session_p->bkup.iosize,
-		     prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE), buf_size);
+		    prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE), buf_size);
       session_p->bkup.iosize = buf_size;
     }
 
@@ -8578,8 +8578,7 @@ fileio_flush_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p)
       if (prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE) > 0)
 	{
 	  count =
-	    (int) MIN (count,
-		        prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE) - session_p->bkup.voltotalio);
+	    (int) MIN (count, prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE) - session_p->bkup.voltotalio);
 	}
       buffer_p = session_p->bkup.buffer;
       do
