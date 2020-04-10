@@ -128,7 +128,7 @@ static const DB_CHARSET lang_Db_charsets[] = {
    "binary", INTL_CODESET_BINARY, 1},
   {"iso8859-1", "Latin 1 charset - ISO 8859 encoding", " ", "_iso88591",
    "iso88591", INTL_CODESET_ISO88591, 1},
-  {"ksc-euc", "KSC 5601 1990 charset - EUC encoding", "\241\241", "_euckr",
+  {"ksc-euc", "KSC 5601 1990 charset - EUC encoding", " ", "_euckr",
    "euckr", INTL_CODESET_KSC5601_EUC, 2},
   {"utf-8", "UNICODE charset - UTF-8 encoding", " ", "_utf8",
    "utf8", INTL_CODESET_UTF8, 1},
