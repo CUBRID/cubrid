@@ -1453,10 +1453,6 @@ intl_pad_char (const INTL_CODESET codeset, unsigned char *pad_char, int *pad_siz
       break;
 
     case INTL_CODESET_KSC5601_EUC:
-      pad_char[0] = pad_char[1] = '\241';
-      *pad_size = 2;
-      break;
-
     case INTL_CODESET_ASCII:
     case INTL_CODESET_ISO88591:
     case INTL_CODESET_UTF8:
@@ -1491,8 +1487,6 @@ intl_pad_size (INTL_CODESET codeset)
   switch (codeset)
     {
     case INTL_CODESET_KSC5601_EUC:
-      size = 2;
-      break;
     case INTL_CODESET_ISO88591:
     case INTL_CODESET_UTF8:
     case INTL_CODESET_RAW_BYTES:
