@@ -302,25 +302,6 @@ delay_load_dll_exception_filter (PEXCEPTION_POINTERS pep)
 #else /* WINDOWS */
 
 /*
- * jsp_tokenize_jvm_options
- *  return: tokenized array of string
- *
- */
-
-// *INDENT-OFF*
-static std::vector <std::string>
-jsp_tokenize_jvm_options (char *opt_str)
-{
-  std::string str (opt_str);
-  std::istringstream iss (str);
-  std::vector <std::string> options;
-  std::copy (std::istream_iterator <std::string> (iss),
-	     std::istream_iterator <std::string> (), std::back_inserter (options));
-  return options;
-}
-// *INDENT-ON*
-
-/*
  * jsp_get_create_java_vm_func_ptr
  *   return: return java vm function pointer
  *
@@ -362,6 +343,25 @@ jsp_get_create_java_vm_function_ptr (void)
 }
 
 #endif /* !WINDOWS */
+
+/*
+ * jsp_tokenize_jvm_options
+ *  return: tokenized array of string
+ *
+ */
+
+// *INDENT-OFF*
+static std::vector <std::string>
+jsp_tokenize_jvm_options (char *opt_str)
+{
+  std::string str (opt_str);
+  std::istringstream iss (str);
+  std::vector <std::string> options;
+  std::copy (std::istream_iterator <std::string> (iss),
+	     std::istream_iterator <std::string> (), std::back_inserter (options));
+  return options;
+}
+// *INDENT-ON*
 
 /*
  * jsp_start_server -
