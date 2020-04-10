@@ -38,6 +38,10 @@
 #include <jni.h>
 #include <locale.h>
 #include <assert.h>
+#include <vector>
+#include <string>
+#include <sstream>
+#include <iterator>
 
 #include "jsp_sr.h"
 
@@ -298,6 +302,25 @@ delay_load_dll_exception_filter (PEXCEPTION_POINTERS pep)
 #else /* WINDOWS */
 
 /*
+ * jsp_tokenize_jvm_options
+ *  return: tokenized array of string
+ *
+ */
+
+// *INDENT-OFF*
+static std::vector <std::string>
+jsp_tokenize_jvm_options (char *opt_str)
+{
+  std::string str (opt_str);
+  std::istringstream iss (str);
+  std::vector <std::string> options;
+  std::copy (std::istream_iterator <std::string> (iss),
+	     std::istream_iterator <std::string> (), std::back_inserter (options));
+  return options;
+}
+// *INDENT-ON*
+
+/*
  * jsp_get_create_java_vm_func_ptr
  *   return: return java vm function pointer
  *
@@ -359,14 +382,15 @@ jsp_start_server (const char *db_name, const char *path)
   jstring jstr_dbname, jstr_path, jstr_version, jstr_envroot, jstr_port;
   jobjectArray args;
   JavaVMInitArgs vm_arguments;
-  const int vm_n_options = 3;
-  JavaVMOption options[vm_n_options];
+  JavaVMOption *options;
+  int vm_n_options = 3;
   char classpath[PATH_MAX + 32], logging_prop[PATH_MAX + 32];
-  char port[6] = { 0 };
-  char *loc_p, *locale;
+  char disable_sig_handle[] = "-Xrs";
   const char *envroot;
   char jsp_file_path[PATH_MAX];
-  char optionString2[] = "-Xrs";
+  char port[6] = { 0 };
+  char *loc_p, *locale;
+  char *jvm_opt_sysprm = NULL;
   CREATE_VM_FUNC create_vm_func = NULL;
 
   if (!prm_get_bool_value (PRM_ID_JAVA_STORED_PROCEDURE))
@@ -392,9 +416,22 @@ jsp_start_server (const char *db_name, const char *path)
   snprintf (logging_prop, sizeof (logging_prop) - 1, "-Djava.util.logging.config.file=%s",
 	    envvar_javadir_file (jsp_file_path, PATH_MAX, "logging.properties"));
 
+  jvm_opt_sysprm = (char *) prm_get_string_value (PRM_ID_JAVA_STORED_PROCEDURE_JVM_OPTIONS);
+  // *INDENT-OFF*
+  std::vector <std::string> opts = jsp_tokenize_jvm_options (jvm_opt_sysprm);
+  // *INDENT-ON*
+  vm_n_options += opts.size ();
+  options = new JavaVMOption[vm_n_options];
+
+  int idx = 3;
   options[0].optionString = classpath;
   options[1].optionString = logging_prop;
-  options[2].optionString = optionString2;
+  options[2].optionString = disable_sig_handle;
+  for (auto it = opts.begin (); it != opts.end (); ++it)
+    {
+      options[idx++].optionString = const_cast < char *>(it->c_str ());
+    }
+
   vm_arguments.version = JNI_VERSION_1_4;
   vm_arguments.options = options;
   vm_arguments.nOptions = vm_n_options;
@@ -436,6 +473,9 @@ jsp_start_server (const char *db_name, const char *path)
     }
 
 #endif /* !WINDOWS */
+  // *INDENT-OFF*
+  delete[] options;
+  // *INDENT-ON*
 
   setlocale (LC_TIME, locale);
   if (locale != NULL)
