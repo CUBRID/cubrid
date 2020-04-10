@@ -6749,21 +6749,21 @@ fileio_initialize_backup (const char *db_full_name_p, const char *backup_destina
   /* currently, disable the following code. DO NOT DELETE ME NEED FUTURE OPTIMIZATION */
   fileio_determine_backup_buffer_size (session_p, buf_size);
 #endif
-  if ((int) prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE) > 0
-      && (session_p->bkup.iosize >= MIN ((int) prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE), DB_INT32_MAX)))
+  if (prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE) > 0
+      && (session_p->bkup.iosize >= MIN (prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE), DB_INT32_MAX)))
     {
       er_log_debug (ARG_FILE_LINE,
-		    "Backup block buffer size %d must be less "
-		    "than backup volume size %d, resetting buffer size to %d\n", session_p->bkup.iosize,
-		    (int) prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE), buf_size);
-      session_p->bkup.iosize = buf_size;
+		    "Backup block buffer size %ld must be less "
+		    "than backup volume size %ld, resetting buffer size to %d\n", session_p->bkup.iosize,
+		    prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE), buf_size);
+      session_p->bkup.iosize = MIN (buf_size, DB_INT32_MAX);
     }
 
 #if defined(CUBRID_DEBUG)
   /* These print statements are candidates for part of a "verbose" option to backupdb. */
-  fprintf (stdout, "NATURAL BUFFER SIZE %d (%d IO buffer blocks)\n", session_p->bkup.iosize,
+  fprintf (stdout, "NATURAL BUFFER SIZE %ld (%d IO buffer blocks)\n", session_p->bkup.iosize,
 	   session_p->bkup.iosize / buf_size);
-  fprintf (stdout, "BACKUP_MAX_VOLUME_SIZE = %d\n", (int) prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE));
+  fprintf (stdout, "BACKUP_MAX_VOLUME_SIZE = %ld\n", prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE));
 #endif /* CUBRID_DEBUG */
   /*
    * Initialize backup device related information.
@@ -6783,7 +6783,7 @@ fileio_initialize_backup (const char *db_full_name_p, const char *backup_destina
   session_p->bkup.buffer = (char *) malloc (session_p->bkup.iosize);
   if (session_p->bkup.buffer == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) session_p->bkup.iosize);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, session_p->bkup.iosize);
 
       goto error;
     }
@@ -7319,8 +7319,8 @@ fileio_finish_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p
   if (session_p->bkup.count > 0)
     {
 #if defined(CUBRID_DEBUG)
-      fprintf (stdout, "io_backup_end: iosize = %d, count = %d, voltotalio = %ld : EOF JUNK\n", session_p->bkup.iosize,
-	       session_p->bkup.count, session_p->bkup.voltotalio);
+      fprintf (stdout, "io_backup_end: iosize = %ld, count = %ld, voltotalio = %ld : EOF JUNK\n",
+	       session_p->bkup.iosize, session_p->bkup.count, session_p->bkup.voltotalio);
 #endif /* CUBRID_DEBUG */
       /*
        * We must add some junk at the end of the buffered area since some
@@ -8544,20 +8544,20 @@ fileio_flush_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p)
 {
   char *buffer_p;
   ssize_t nbytes;
-  int count;
+  INT64 count;
   bool is_interactive_need_new = false;
   bool is_force_new_bkvol = false;
 
-  if ((int) prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE) > 0
-      && session_p->bkup.count > (int) prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE))
+  if (prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE) > 0
+      && session_p->bkup.count > prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE))
     {
-      er_log_debug (ARG_FILE_LINE, "Backup_flush: Backup aborted because count %d larger than max volume size %d\n",
-		    session_p->bkup.count, (int) prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE));
+      er_log_debug (ARG_FILE_LINE, "Backup_flush: Backup aborted because count %d larger than max volume size %ld\n",
+		    session_p->bkup.count, prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE));
       return ER_FAILED;
     }
 
 #if defined(CUBRID_DEBUG)
-  fprintf (stdout, "io_backup_flush: bkup.count = %d, voltotalio = %ld\n", session_p->bkup.count,
+  fprintf (stdout, "io_backup_flush: bkup.count = %ld, voltotalio = %ld\n", session_p->bkup.count,
 	   session_p->bkup.voltotalio);
 #endif /* CUBRID_DEBUG */
   /*
@@ -8575,11 +8575,10 @@ fileio_flush_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p)
       is_interactive_need_new = false;
       is_force_new_bkvol = false;
       count = session_p->bkup.count;
-      if ((int) prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE) > 0)
+      if (prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE) > 0)
 	{
 	  count =
-	    (int) MIN (count,
-		       (int) prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE) - session_p->bkup.voltotalio);
+	    (int) MIN (count, prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE) - session_p->bkup.voltotalio);
 	}
       buffer_p = session_p->bkup.buffer;
       do
@@ -8643,8 +8642,8 @@ fileio_flush_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p)
 	    }
 
 	  if (is_interactive_need_new || is_force_new_bkvol
-	      || ((int) prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE) > 0
-		  && (session_p->bkup.voltotalio >= (int) prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE))))
+	      || (prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE) > 0
+		  && (session_p->bkup.voltotalio >= prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE))))
 	    {
 #if defined(CUBRID_DEBUG)
 	      fprintf (stdout, "open a new backup volume\n");
@@ -8812,14 +8811,14 @@ fileio_write_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p,
        * a fixed I/O length.  We cannot use io_backup_write because we may
        * have been called recursively from there after the old volume filled.
        */
-      nbytes = session_p->bkup.iosize - session_p->bkup.count;
+      nbytes = CAST_BUFLEN (session_p->bkup.iosize - session_p->bkup.count);
       if (nbytes > to_write_nbytes)
 	{
 	  nbytes = to_write_nbytes;
 	}
 
       memcpy (session_p->bkup.ptr, buffer_p, nbytes);
-      session_p->bkup.count += (int) nbytes;
+      session_p->bkup.count += nbytes;
       session_p->bkup.ptr += nbytes;
       buffer_p += nbytes;
       to_write_nbytes -= nbytes;
@@ -8990,7 +8989,7 @@ fileio_read_restore (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p,
 	  while (session_p->bkup.count > 0)
 	    {
 	      /* Read a backup I/O page. */
-	      nbytes = read (session_p->bkup.vdes, session_p->bkup.ptr, session_p->bkup.count);
+	      nbytes = read (session_p->bkup.vdes, session_p->bkup.ptr, (int) session_p->bkup.count);
 	      if (nbytes <= 0)
 		{
 		  /* An error or EOF was found */
