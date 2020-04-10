@@ -1441,6 +1441,8 @@ static unsigned int prm_ha_copy_sync_mode_flag = 0;
 
 int PRM_HA_APPLY_MAX_MEM_SIZE = HB_DEFAULT_APPLY_MAX_MEM_SIZE;
 static int prm_ha_apply_max_mem_size_default = HB_DEFAULT_APPLY_MAX_MEM_SIZE;
+static int prm_ha_apply_max_mem_size_upper = INT_MAX;
+static int prm_ha_apply_max_mem_size_lower = 0;
 static unsigned int prm_ha_apply_max_mem_size_flag = 0;
 
 int PRM_HA_PORT_ID = HB_DEFAULT_HA_PORT_ID;
@@ -3684,7 +3686,7 @@ static SYSPRM_PARAM prm_Def[] = {
    &prm_ha_apply_max_mem_size_flag,
    (void *) &prm_ha_apply_max_mem_size_default,
    (void *) &PRM_HA_APPLY_MAX_MEM_SIZE,
-   (void *) NULL, (void *) NULL,
+   (void *) &prm_ha_apply_max_mem_size_upper, (void *) &prm_ha_apply_max_mem_size_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
