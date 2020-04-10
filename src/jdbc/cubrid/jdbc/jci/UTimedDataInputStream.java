@@ -49,101 +49,118 @@ public class UTimedDataInputStream {
     private String ip = null;
     private int port = 0;
     private int timeout = 0;
+    private int pid = 0;
+    private byte session[] = {0, 0, 0, 0};
 
     public UTimedDataInputStream(InputStream stream, String ip, int port) {
-	this(stream, ip, port, 0);
+        this(stream, ip, port, 0);
+    }
+
+    public UTimedDataInputStream(InputStream stream, String ip, int port, int pid, byte session[], int timeout) {
+        this.stream = new DataInputStream(stream);
+        this.ip = ip;
+        this.port = port;
+        this.pid = pid;
+        for (int i = 0; i < 4; i++) this.session[i] = session[i + 8];
+        this.timeout = timeout;
     }
 
     public UTimedDataInputStream(InputStream stream, String ip, int port, int timeout) {
-	this.stream = new DataInputStream(stream);
-	this.ip = ip;
-	this.port = port;
-	this.timeout = timeout;
+        this.stream = new DataInputStream(stream);
+        this.ip = ip;
+        this.port = port;
+        this.timeout = timeout;
     }
 
-    public int readInt(int timeout) throws IOException {
-	long begin = System.currentTimeMillis();
+    public int readInt(int timeout) throws IOException, UJciException {
+        long begin = System.currentTimeMillis();
 
-	while (true) {
-	    try {
-		return stream.readInt();
-	    } catch (SocketTimeoutException e) {
-		if (timeout > 0 && timeout - (System.currentTimeMillis() - begin) <= 0) {
-		    String msg = UErrorCode.codeToMessage(UErrorCode.ER_TIMEOUT);
-		    throw new SocketTimeoutException(msg);
-		}
-		BrokerHandler.pingBroker(ip, port, PING_TIMEOUT);
-	    }
-	}
+        while (true) {
+          try {
+            return stream.readInt();
+          } catch (SocketTimeoutException e) {
+            if (timeout > 0 && timeout - (System.currentTimeMillis() - begin) <= 0) {
+              String msg = UErrorCode.codeToMessage(UErrorCode.ER_TIMEOUT);
+              throw new SocketTimeoutException(msg);
+            }
+            BrokerHandler.pingBroker(ip, port, PING_TIMEOUT);
+          }
+        }
     }
 
-    public int readInt() throws IOException {
-	return readInt(timeout);
+    public int readInt() throws IOException, UJciException {
+        return readInt(timeout);
     }
 
-    public void readFully(byte[] b) throws IOException {
-	readFully(b, timeout);
+    public void readFully(byte[] b) throws IOException, UJciException {
+        readFully(b, timeout);
     }
 
-    public void readFully(byte[] b, int timeout) throws IOException {
-	long begin = System.currentTimeMillis();
+    public void readFully(byte[] b, int timeout) throws IOException, UJciException {
+        long begin = System.currentTimeMillis();
 
-	while (true) {
-	    try {
-		stream.readFully(b);
-		return;
-	    } catch (SocketTimeoutException e) {
-		if (timeout > 0 && timeout - (System.currentTimeMillis() - begin) <= 0) {
-		    String msg = UErrorCode.codeToMessage(UErrorCode.ER_TIMEOUT);
-		    throw new SocketTimeoutException(msg);
-		}
-		BrokerHandler.pingBroker(ip, port, PING_TIMEOUT);
-	    }
-	}
+        while (true) {
+          try {
+            stream.readFully(b);
+            return;
+          } catch (SocketTimeoutException e) {
+            if (timeout > 0 && timeout - (System.currentTimeMillis() - begin) <= 0) {
+              String msg = UErrorCode.codeToMessage(UErrorCode.ER_TIMEOUT);
+              throw new SocketTimeoutException(msg);
+            }
+            BrokerHandler.pingBroker(ip, port, PING_TIMEOUT);
+          }
+        }
     }
 
-    public int readByte(byte[] b, int timeout) throws IOException {
-	long begin = System.currentTimeMillis();
+    public int readByte(byte[] b, int timeout) throws IOException, UJciException {
+        long begin = System.currentTimeMillis();
 
-	while (true) {
-	    try {
-		return stream.read(b);
-	    } catch (SocketTimeoutException e) {
-		if (timeout > 0 && timeout - (System.currentTimeMillis() - begin) <= 0) {
-		    String msg = UErrorCode.codeToMessage(UErrorCode.ER_TIMEOUT);
-		    throw new SocketTimeoutException(msg);
-		}
-		BrokerHandler.pingBroker(ip, port, PING_TIMEOUT);
-	    }
-	}
+        while (true) {
+          try {
+            return stream.read(b);
+          } catch (SocketTimeoutException e) {
+            if (timeout > 0 && timeout - (System.currentTimeMillis() - begin) <= 0) {
+              String msg = UErrorCode.codeToMessage(UErrorCode.ER_TIMEOUT);
+              throw new SocketTimeoutException(msg);
+            }
+            BrokerHandler.pingBroker(ip, port, PING_TIMEOUT);
+          }
+        }
     }
 
-    public int readByte(byte[] b) throws IOException {
-	return readByte(b, timeout);
+    public int readByte(byte[] b) throws IOException, UJciException {
+        return readByte(b, timeout);
     }
 
-    public int read(byte[] b, int off, int len, int timeout) throws IOException {
-	long begin = System.currentTimeMillis();
+    public int read(byte[] b, int off, int len, int timeout) throws IOException, UJciException {
+        long begin = System.currentTimeMillis();
+        boolean retry = false;
 
-	while (true) {
-	    try {
-		return stream.read(b, off, len);
-	    } catch (SocketTimeoutException e) {
-		if (timeout > 0 && timeout - (System.currentTimeMillis() - begin) <= 0) {
-		    String msg = UErrorCode.codeToMessage(UErrorCode.ER_TIMEOUT);
-		    throw new SocketTimeoutException(msg);
-		}
-		BrokerHandler.pingBroker(ip, port, PING_TIMEOUT);
-	    }
-	}
+        while (true) {
+          try {
+            return stream.read(b, off, len);
+          } catch (SocketTimeoutException e) {
+            if (timeout > 0 && timeout - (System.currentTimeMillis() - begin) <= 0) {
+              String msg = UErrorCode.codeToMessage(UErrorCode.ER_TIMEOUT);
+              throw new SocketTimeoutException(msg);
+            }
+            if (BrokerHandler.statusBroker(ip, port, pid, session, PING_TIMEOUT) != 1) {
+              if (retry) {
+                throw new UJciException(UErrorCode.ER_COMMUNICATION);
+              }
+              retry = true;
+            }
+          }
+        }
     }
 
-    public int read(byte[] b, int off, int len) throws IOException {
-	return read(b, off, len, timeout);
+    public int read(byte[] b, int off, int len) throws IOException, UJciException {
+        return read(b, off, len, timeout);
     }
     
     public void close() throws IOException {
-    	stream.close();
+        stream.close();
     }
 
 }
