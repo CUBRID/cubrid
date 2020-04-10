@@ -1485,7 +1485,7 @@ intl_pad_size (INTL_CODESET codeset)
   switch (codeset)
     {
     case INTL_CODESET_KSC5601_EUC:
-      size = 2;
+      size = 1;
       break;
     case INTL_CODESET_ISO88591:
     case INTL_CODESET_UTF8:
