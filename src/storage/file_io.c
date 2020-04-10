@@ -6756,7 +6756,7 @@ fileio_initialize_backup (const char *db_full_name_p, const char *backup_destina
 		    "Backup block buffer size %ld must be less "
 		    "than backup volume size %ld, resetting buffer size to %d\n", session_p->bkup.iosize,
 		    prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE), buf_size);
-      session_p->bkup.iosize = MIN(buf_size, DB_INT32_MAX);
+      session_p->bkup.iosize = MIN (buf_size, DB_INT32_MAX);
     }
 
 #if defined(CUBRID_DEBUG)
@@ -7319,8 +7319,8 @@ fileio_finish_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p
   if (session_p->bkup.count > 0)
     {
 #if defined(CUBRID_DEBUG)
-      fprintf (stdout, "io_backup_end: iosize = %ld, count = %ld, voltotalio = %ld : EOF JUNK\n", session_p->bkup.iosize,
-	       session_p->bkup.count, session_p->bkup.voltotalio);
+      fprintf (stdout, "io_backup_end: iosize = %ld, count = %ld, voltotalio = %ld : EOF JUNK\n",
+	       session_p->bkup.iosize, session_p->bkup.count, session_p->bkup.voltotalio);
 #endif /* CUBRID_DEBUG */
       /*
        * We must add some junk at the end of the buffered area since some
@@ -8811,7 +8811,7 @@ fileio_write_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p,
        * a fixed I/O length.  We cannot use io_backup_write because we may
        * have been called recursively from there after the old volume filled.
        */
-      nbytes = CAST_BUFLEN(session_p->bkup.iosize - session_p->bkup.count);
+      nbytes = CAST_BUFLEN (session_p->bkup.iosize - session_p->bkup.count);
       if (nbytes > to_write_nbytes)
 	{
 	  nbytes = to_write_nbytes;
@@ -8989,7 +8989,7 @@ fileio_read_restore (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p,
 	  while (session_p->bkup.count > 0)
 	    {
 	      /* Read a backup I/O page. */
-	      nbytes = read (session_p->bkup.vdes, session_p->bkup.ptr, (int)session_p->bkup.count);
+	      nbytes = read (session_p->bkup.vdes, session_p->bkup.ptr, (int) session_p->bkup.count);
 	      if (nbytes <= 0)
 		{
 		  /* An error or EOF was found */
