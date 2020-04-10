@@ -344,6 +344,40 @@ jsp_get_create_java_vm_function_ptr (void)
 
 #endif /* !WINDOWS */
 
+
+/*
+ * jsp_create_java_vm
+ *   return: create java vm
+ *
+ * Note:
+ */
+static int
+jsp_create_java_vm (JNIEnv ** env_p, JavaVMInitArgs * vm_arguments)
+{
+  int res;
+#if defined(WINDOWS)
+  __try
+  {
+    res = JNI_CreateJavaVM (&jvm, (void **) env_p, vm_arguments);
+  }
+  __except (delay_load_dll_exception_filter (GetExceptionInformation ()))
+  {
+    res = -1;
+  }
+#else /* WINDOWS */
+  CREATE_VM_FUNC create_vm_func = (CREATE_VM_FUNC) jsp_get_create_java_vm_function_ptr ();
+  if (create_vm_func)
+    {
+      res = (*create_vm_func) (&jvm, (void **) env_p, vm_arguments);
+    }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_JVM_LIB_NOT_FOUND, 1, dlerror ());
+    }
+#endif /* WINDOWS */
+  return res;
+}
+
 /*
  * jsp_tokenize_jvm_options
  *  return: tokenized array of string
@@ -391,7 +425,6 @@ jsp_start_server (const char *db_name, const char *path)
   char port[6] = { 0 };
   char *loc_p, *locale;
   char *jvm_opt_sysprm = NULL;
-  CREATE_VM_FUNC create_vm_func = NULL;
 
   if (!prm_get_bool_value (PRM_ID_JAVA_STORED_PROCEDURE))
     {
@@ -420,7 +453,7 @@ jsp_start_server (const char *db_name, const char *path)
   // *INDENT-OFF*
   std::vector <std::string> opts = jsp_tokenize_jvm_options (jvm_opt_sysprm);
   // *INDENT-ON*
-  vm_n_options += opts.size ();
+  vm_n_options += (int) opts.size ();
   options = new JavaVMOption[vm_n_options];
 
   int idx = 3;
@@ -444,38 +477,21 @@ jsp_start_server (const char *db_name, const char *path)
       locale = strdup (loc_p);
     }
 
-#if defined(WINDOWS)
+  res = jsp_create_java_vm (&env_p, &vm_arguments);
+  // *INDENT-OFF*
+  delete[] options;
+  // *INDENT-ON*
 
-  __try
-  {
-    res = JNI_CreateJavaVM (&jvm, (void **) &env_p, &vm_arguments);
-  }
-  __except (delay_load_dll_exception_filter (GetExceptionInformation ()))
-  {
-    res = -1;
-  }
-
-#else /* WINDOWS */
-
-  create_vm_func = (CREATE_VM_FUNC) jsp_get_create_java_vm_function_ptr ();
-  if (create_vm_func)
+#if !defined(WINDOWS)
+  if (er_has_error ())
     {
-      res = (*create_vm_func) (&jvm, (void **) &env_p, &vm_arguments);
-    }
-  else
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_JVM_LIB_NOT_FOUND, 1, dlerror ());
       if (locale != NULL)
 	{
 	  free (locale);
 	}
       return er_errid ();
     }
-
-#endif /* !WINDOWS */
-  // *INDENT-OFF*
-  delete[] options;
-  // *INDENT-ON*
+#endif
 
   setlocale (LC_TIME, locale);
   if (locale != NULL)
