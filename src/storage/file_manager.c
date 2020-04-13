@@ -8576,7 +8576,7 @@ file_tempcache_init (void)
 
   /* allocate file_Tempcache */
   memsize = sizeof (FILE_TEMPCACHE);
-  file_Tempcache = (FILE_TEMPCACHE *) malloc (memsize);
+  file_Tempcache = (FILE_TEMPCACHE *) calloc (1, memsize);
   if (file_Tempcache == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, memsize);
