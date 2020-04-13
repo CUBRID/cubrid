@@ -372,6 +372,7 @@ jsp_create_java_vm (JNIEnv ** env_p, JavaVMInitArgs * vm_arguments)
     }
   else
     {
+      res = -1;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_JVM_LIB_NOT_FOUND, 1, dlerror ());
     }
 #endif /* WINDOWS */
