@@ -463,7 +463,9 @@ jsp_start_server (const char *db_name, const char *path)
   options[2].optionString = disable_sig_handle;
   for (auto it = opts.begin (); it != opts.end (); ++it)
     {
-      options[idx++].optionString = const_cast < char *>(it->c_str ());
+      // *INDENT-OFF*
+      options[idx++].optionString = const_cast <char*> (it->c_str ());
+      // *INDENT-ON*
     }
 
   vm_arguments.version = JNI_VERSION_1_4;
