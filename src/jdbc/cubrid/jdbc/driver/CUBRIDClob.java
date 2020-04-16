@@ -128,6 +128,9 @@ public class CUBRIDClob implements Clob {
 		}
 		if (clobCharLength < 0) {
 			readClobPartially(Long.MAX_VALUE, 1);
+			if (clobCharLength < 0) {
+				return 0;
+			}
 		}
 
 		return clobCharLength;
