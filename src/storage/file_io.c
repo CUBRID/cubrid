@@ -46,6 +46,9 @@
 #include <sys/types.h>
 #include <sys/uio.h>
 #include <sys/vfs.h>
+#if defined (SERVER_MODE)
+#include <syslog.h>
+#endif
 #endif /* WINDOWS */
 
 #ifdef _AIX
@@ -3735,6 +3738,10 @@ fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_i
 	      /* This is an end of file. We are trying to read beyond the allocated disk space */
 	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2, page_id,
 		      fileio_get_volume_label_by_fd (vol_fd, PEEK));
+
+#if defined (SERVER_MODE) && !defined (WINDOWS)
+	      syslog (LOG_ALERT, "[CUBRID] %s () at %s:%d %m", __func__, __FILE__, __LINE__);
+#endif
 	      return NULL;
 	    }
 
@@ -4825,8 +4832,8 @@ fileio_get_number_of_partition_free_pages (const char *path_p, size_t page_size)
     }
   else
     {
-      const size_t io_pagesize_in_block = page_size / buf.f_bsize;
-      npages_of_partition = buf.f_bavail / io_pagesize_in_block;
+      const size_t f_avail_size = buf.f_bsize * buf.f_bavail;
+      npages_of_partition = f_avail_size / page_size;
       if (npages_of_partition < 0 || npages_of_partition > INT_MAX)
 	{
 	  npages_of_partition = INT_MAX;
@@ -6494,15 +6501,15 @@ fileio_initialize_backup (const char *db_full_name_p, const char *backup_destina
   session_p->bkup.buffer = NULL;
   session_p->bkup.bkuphdr = NULL;
   session_p->dbfile.area = NULL;
+
   /* Now find out the type of backup_destination and the best page I/O for the backup. The accepted types are either
    * file, directory, or raw device. */
   while (stat (backup_destination_p, &stbuf) == -1)
     {
       /* 
-       * Could not stat or backup_destination is a file or directory that does
-       * not exist.
-       * If the backup_destination does not exist, try to create it to make
-       * sure that we can write at this backup destination.
+       * Could not stat or backup_destination is a file or directory that does not exist.
+       * If the backup_destination does not exist, try to create it to make sure that we can write at this backup
+       * destination.
        */
       vol_fd = fileio_open (backup_destination_p, FILEIO_DISK_FORMAT_MODE, FILEIO_DISK_PROTECTION_MODE);
       if (vol_fd == NULL_VOLDES)
@@ -6516,11 +6523,10 @@ fileio_initialize_backup (const char *db_full_name_p, const char *backup_destina
 
   if (S_ISDIR (stbuf.st_mode))
     {
-      /* 
+      /*
        * This is a DIRECTORY where the backup is going to be sent.
-       * The name of the backup file in this directory is labeled as
-       * databasename.bkLvNNN (Unix). In this case, we may destroy any previous
-       * backup in this directory.
+       * The name of the backup file in this directory is labeled as databasename.bkLvNNN (Unix).
+       * In this case, we may destroy any previous backup in this directory.
        */
       session_p->bkup.dtype = FILEIO_BACKUP_VOL_DIRECTORY;
       db_nopath_name_p = fileio_get_base_file_name (db_full_name_p);
@@ -6535,11 +6541,9 @@ fileio_initialize_backup (const char *db_full_name_p, const char *backup_destina
     }
   else
     {
-      /* 
-       * ASSUME that everything else is a special file such as a
-       * raw device (character or block special file) which is
-       * not named for I/O purposes. That is, the name of the device or
-       * regular file is used as the backup.
+      /*
+       * ASSUME that everything else is a special file such as a FIFO file, a device(character or block special file)
+       * which is not named for I/O purposes. That is, the name of the device or regular file is used as the backup.
        */
       session_p->bkup.dtype = FILEIO_BACKUP_VOL_DEVICE;
     }
@@ -8702,8 +8706,7 @@ fileio_write_backup_header (FILEIO_BACKUP_SESSION * session_p)
 }
 
 /*
- * fileio_initialize_restore () - Initialize the restore session structure with the given
- *                      information
+ * fileio_initialize_restore () - Initialize the restore session structure with the given information
  *   return: session or NULL
  *   db_fullname(in): Name of the database to backup
  *   backup_src(in): Name of backup device (file or directory)
@@ -8743,8 +8746,8 @@ fileio_initialize_restore (THREAD_ENTRY * thread_p, const char *db_full_name_p, 
   session_p->type = FILEIO_BACKUP_READ;	/* access backup device for read */
   /* save database full-pathname specified in the database-loc-file */
   strncpy (session_p->bkup.loc_db_fullname, is_new_vol_path ? db_full_name_p : "", PATH_MAX);
-  return (fileio_initialize_backup (db_full_name_p, (const char *) backup_source_p, session_p, level, restore_verbose_file_path, 0,	/* no multi-thread */
-				    0 /* no sleep */ ));
+  return (fileio_initialize_backup (db_full_name_p, (const char *) backup_source_p, session_p, level,
+				    restore_verbose_file_path, 0 /* no multi-thread */ , 0 /* no sleep */ ));
 }
 
 /*
