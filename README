@@ -23,13 +23,10 @@ DOWNLOADS and FILE REPOSITORIES
 - http://www.cubrid.org/downloads
 - http://ftp.cubrid.org
 
-HOW TO BUILD/INSTALL CUBRID
+HOW TO INSTALL CUBRID
 ===========================
 - CUBRID Installation:
   http://cubrid.org/downloads
-- CUBRID Source Build Guide
-  Linux: http://cubrid.org/downloads/linux/64-bit/engine/install-source/
-  Windows: http://cubrid.org/downloads/windows/64-bit/engine/install-source/
 - CUBRID Install from package
   Linux: http://cubrid.org/getting_started
   Windows: http://cubrid.org/getting_started
