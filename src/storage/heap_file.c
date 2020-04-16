@@ -5521,6 +5521,8 @@ heap_reuse (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid, c
   HEAP_CHAIN *chain;		/* Chain to next and prev page */
   RECDES recdes;
   VPID last_vpid;
+  TDE_ALGORITHM prev_tde_algo;
+  TDE_ALGORITHM tde_algo;
   int is_header_page;
   int npages = 0;
   int i;
@@ -5546,6 +5548,20 @@ heap_reuse (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid, c
     }
 
   (void) pgbuf_check_page_ptype (thread_p, hdr_pgptr, PAGE_HEAP);
+
+  file_get_tde_algorithm (thread_p, &hfid->vfid, &prev_tde_algo);
+  if (heap_get_class_tde_algorithm (thread_p, class_oid, &tde_algo) != NO_ERROR)
+  {
+    goto error;
+  }
+
+  if (prev_tde_algo != tde_algo)
+  { 
+    if (file_set_tde_algorithm (thread_p, &hfid->vfid, tde_algo, false) != NO_ERROR)
+    {
+      goto error;
+    }
+  }
 
   /*
    * Start scanning every page of the heap and removing the objects.
@@ -5649,6 +5665,11 @@ heap_reuse (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid, c
 	{
 	  goto error;
 	}
+
+      if (prev_tde_algo != tde_algo)
+      {
+        pgbuf_set_tde_algorithm (thread_p, pgptr, tde_algo, false); 
+      }
 
       pgbuf_set_dirty (thread_p, pgptr, FREE);
       pgptr = NULL;

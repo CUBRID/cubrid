@@ -5357,7 +5357,6 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_in
       }
       is_page_alloc_fixed = true;
     }
-    
     pgbuf_set_tde_algorithm (thread_p, page_alloc, tde_algo, FILE_IS_TEMPORARY (fhead));
   }
   
