@@ -4379,16 +4379,20 @@ pgbuf_reset_temp_lsa (PAGE_PTR pgptr)
  *   tde_algo (in) : encryption algorithm - NONE, AES, ARIA
  */
 void
-pgbuf_set_tde_algorithm (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, TDE_ALGORITHM tde_algo, bool is_temp)
+pgbuf_set_tde_algorithm (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, TDE_ALGORITHM tde_algo, bool skip_logging)
 {
   FILEIO_PAGE *iopage = NULL;
   TDE_ALGORITHM prev_tde_algo = TDE_ALGORITHM_NONE;
   
   CAST_PGPTR_TO_IOPGPTR (iopage, pgptr);
 
-  pgbuf_get_tde_algorithm (pgptr, &prev_tde_algo);
-  /* It is not supported to change encryption algorithm yet */
-  assert (prev_tde_algo == TDE_ALGORITHM_NONE);
+  if (!skip_logging)
+  {
+    pgbuf_get_tde_algorithm (pgptr, &prev_tde_algo);
+    log_append_undoredo_data2 (thread_p, RVPGBUF_SET_TDE_ALGORITHM, NULL, pgptr, 0, sizeof (TDE_ALGORITHM), sizeof (TDE_ALGORITHM), &prev_tde_algo, &tde_algo);
+  }
+  
+  iopage->prv.pflag_reserve_1 = (unsigned char) 0;
 
   switch (tde_algo) {
     case TDE_ALGORITHM_AES:
@@ -4403,10 +4407,6 @@ pgbuf_set_tde_algorithm (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, TDE_ALGORITHM 
       assert (false);
   }
   
-  if (!is_temp)
-  {
-    log_append_undoredo_data2 (thread_p, RVPGBUF_SET_TDE_ALGORITHM, NULL, pgptr, 0, sizeof (TDE_ALGORITHM), sizeof (TDE_ALGORITHM), &prev_tde_algo, &tde_algo);
-  }
   pgbuf_set_dirty (thread_p, pgptr, DONT_FREE);
 }
 
@@ -13871,6 +13871,7 @@ pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR page_dealloc)
 {
   PGBUF_BCB *bcb = NULL;
   PAGE_TYPE ptype;
+  FILEIO_PAGE_RESERVED prv;
   int holder_status;
 
   /* how it works: page is "deallocated" by resetting its type to PAGE_UNKNOWN. also prepare bcb for victimization.
@@ -13882,14 +13883,16 @@ pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR page_dealloc)
   CAST_PGPTR_TO_BFPTR (bcb, page_dealloc);
   assert (bcb->fcnt == 1);
 
-  ptype = (PAGE_TYPE) (bcb->iopage_buffer->iopage.prv.ptype);
-  assert (ptype != PAGE_UNKNOWN);
-  log_append_undoredo_data2 (thread_p, RVPGBUF_DEALLOC, NULL, page_dealloc, (PGLENGTH) ptype, sizeof (VPID), 0,
-			     pgbuf_get_vpid_ptr (page_dealloc), NULL);
+  prv = bcb->iopage_buffer->iopage.prv;
+  assert (prv.ptype != PAGE_UNKNOWN);
+  log_append_undoredo_data2 (thread_p, RVPGBUF_DEALLOC, NULL, page_dealloc, 0, sizeof (FILEIO_PAGE_RESERVED), 0,
+			     &prv, NULL);
 
   PGBUF_BCB_LOCK (bcb);
   /* set unknown type */
   bcb->iopage_buffer->iopage.prv.ptype = (char) PAGE_UNKNOWN;
+  /* clear page flags (now only tde algorithm) */
+  bcb->iopage_buffer->iopage.prv.pflag_reserve_1 = (unsigned char) 0;
 
   /* set dirty and mark to move to the bottom of lru */
   pgbuf_bcb_update_flags (thread_p, bcb, PGBUF_BCB_DIRTY_FLAG | PGBUF_BCB_MOVE_TO_LRU_BOTTOM_FLAG, 0);
@@ -13914,6 +13917,7 @@ int
 pgbuf_rv_dealloc_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
   pgbuf_set_page_ptype (thread_p, rcv->pgptr, PAGE_UNKNOWN);
+  pgbuf_set_tde_algorithm (thread_p, rcv->pgptr, TDE_ALGORITHM_NONE, true);
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
   return NO_ERROR;
 }
@@ -13931,26 +13935,59 @@ pgbuf_rv_dealloc_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 int
 pgbuf_rv_dealloc_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
-  VPID *vpid = (VPID *) rcv->data;
   PAGE_PTR page_deallocated = NULL;
-  PAGE_TYPE ptype = (PAGE_TYPE) rcv->offset;
+  FILEIO_PAGE_RESERVED prv = *(FILEIO_PAGE_RESERVED*) rcv->data;
+  VPID vpid;
+  FILEIO_PAGE *iopage;
 
-  assert (rcv->length == sizeof (VPID));
-  assert (!VPID_ISNULL (vpid));
-  assert (ptype > PAGE_UNKNOWN && ptype <= PAGE_LAST);
+  vpid.volid = prv.volid;
+  vpid.pageid = prv.pageid;
+
+  assert (rcv->length == sizeof (FILEIO_PAGE_RESERVED));
+  assert (prv.ptype > PAGE_UNKNOWN && prv.ptype <= PAGE_LAST);
 
   /* fix deallocated page */
-  page_deallocated = pgbuf_fix (thread_p, vpid, OLD_PAGE_DEALLOCATED, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  page_deallocated = pgbuf_fix (thread_p, &vpid, OLD_PAGE_DEALLOCATED, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (page_deallocated == NULL)
     {
       assert_release (false);
       return ER_FAILED;
     }
   assert (pgbuf_get_page_ptype (thread_p, page_deallocated) == PAGE_UNKNOWN);
-  pgbuf_set_page_ptype (thread_p, page_deallocated, ptype);
-  log_append_compensate_with_undo_nxlsa (thread_p, RVPGBUF_COMPENSATE_DEALLOC, vpid, rcv->offset, page_deallocated, 0,
-					 NULL, LOG_FIND_CURRENT_TDES (thread_p), &rcv->reference_lsa);
+  pgbuf_set_page_ptype (thread_p, page_deallocated, (PAGE_TYPE)prv.ptype);
+
+  CAST_PGPTR_TO_IOPGPTR (iopage, page_deallocated);
+  iopage->prv.pflag_reserve_1 = prv.pflag_reserve_1;
+  
+  log_append_compensate_with_undo_nxlsa (thread_p, RVPGBUF_COMPENSATE_DEALLOC, &vpid, 0, page_deallocated, sizeof(FILEIO_PAGE_RESERVED), &prv, LOG_FIND_CURRENT_TDES (thread_p), &rcv->reference_lsa);
   pgbuf_set_dirty_and_free (thread_p, page_deallocated);
+  return NO_ERROR;
+}
+
+/*
+ * pgbuf_rv_dealloc_undo_compensate () - compensation for undo page deallocation. the page is validated by setting its page type back.
+ *
+ * return        : error code
+ * thread_p (in) : thread entry
+ * rcv (in)      : recovery data
+ *
+ */
+int
+pgbuf_rv_dealloc_undo_compensate (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  FILEIO_PAGE_RESERVED prv = *(FILEIO_PAGE_RESERVED*) rcv->data;
+  VPID vpid;
+  FILEIO_PAGE *iopage;
+  
+  assert (rcv->pgptr != NULL);
+  assert (rcv->length == sizeof (FILEIO_PAGE_RESERVED));
+  assert (prv.ptype > PAGE_UNKNOWN && prv.ptype <= PAGE_LAST);
+  
+  CAST_PGPTR_TO_IOPGPTR (iopage, rcv->pgptr);
+
+  pgbuf_set_page_ptype (thread_p, rcv->pgptr, (PAGE_TYPE)prv.ptype);
+  iopage->prv.pflag_reserve_1 = prv.pflag_reserve_1;
+
   return NO_ERROR;
 }
 

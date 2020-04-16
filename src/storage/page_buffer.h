@@ -355,7 +355,7 @@ extern LOG_LSA *pgbuf_get_lsa (PAGE_PTR pgptr);
 extern int pgbuf_page_has_changed (PAGE_PTR pgptr, LOG_LSA * ref_lsa);
 extern const LOG_LSA *pgbuf_set_lsa (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const LOG_LSA * lsa_ptr);
 extern void pgbuf_reset_temp_lsa (PAGE_PTR pgptr);
-extern void pgbuf_set_tde_algorithm (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, TDE_ALGORITHM tde_algo, bool is_temp);
+extern void pgbuf_set_tde_algorithm (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, TDE_ALGORITHM tde_algo, bool skip_logging);
 extern int pgbuf_rv_set_tde_algorithm (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void pgbuf_get_tde_algorithm (PAGE_PTR pgptr, TDE_ALGORITHM * tde_algo);
 extern void pgbuf_get_vpid (PAGE_PTR pgptr, VPID * vpid);
@@ -429,6 +429,7 @@ extern int pgbuf_rv_new_page_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR page_dealloc);
 extern int pgbuf_rv_dealloc_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int pgbuf_rv_dealloc_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int pgbuf_rv_dealloc_undo_compensate (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 
 extern int pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thead_p, const VPID * vpid,
 						     PGBUF_LATCH_MODE latch_mode, PGBUF_LATCH_CONDITION latch_condition,

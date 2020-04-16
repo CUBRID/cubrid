@@ -797,7 +797,7 @@ struct rvfun RV_fun[] = {
    NULL},
   {RVPGBUF_COMPENSATE_DEALLOC,
    "RVPGBUF_COMPENSATE_DEALLOC",
-   pgbuf_rv_new_page_redo,
+   pgbuf_rv_dealloc_undo_compensate,
    NULL,
    NULL,
    NULL},
