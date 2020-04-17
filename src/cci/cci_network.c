@@ -708,7 +708,7 @@ net_recv_msg_timeout (T_CON_HANDLE * con_handle, char **msg, int *msg_size, T_CC
 	}
 
       result_code = net_recv_stream (con_handle->sock_fd, ip_addr, broker_port, tmp_p,
-                                     *(recv_msg_header.msg_body_size_ptr), timeout);
+				     *(recv_msg_header.msg_body_size_ptr), timeout);
       if (con_handle->log_trace_network)
 	{
 	  long elapsed;
