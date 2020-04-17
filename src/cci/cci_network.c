@@ -95,13 +95,12 @@ static int connect_srv (unsigned char *ip_addr, int port, char is_retry, SOCKET 
 #if defined(ENABLE_UNUSED_FUNCTION)
 static int net_send_int (SOCKET sock_fd, int value);
 #endif
-static int net_recv_int (SOCKET sock_fd, int port, int *value);
-static int net_recv_stream (SOCKET sock_fd, int port, char *buf, int size, int timeout);
+static int net_recv_stream (SOCKET sock_fd, unsigned char *ip_addr, int port, char *buf, int size, int timeout);
 static int net_send_stream (SOCKET sock_fd, char *buf, int size);
 static void init_msg_header (MSG_HEADER * header);
 static int net_send_msg_header (SOCKET sock_fd, MSG_HEADER * header);
-static int net_recv_msg_header (SOCKET sock_fd, int port, MSG_HEADER * header, int timeout);
-static bool net_peer_socket_alive (SOCKET sd, int port, int timeout_msec);
+static int net_recv_msg_header (SOCKET sock_fd, unsigned char *ip_addr, int port, MSG_HEADER * header, int timeout);
+static bool net_peer_socket_alive (unsigned char *ip_addr, int port, int timeout_msec);
 static int net_cancel_request_internal (unsigned char *ip_addr, int port, char *msg, int msglen);
 static int net_cancel_request_w_local_port (unsigned char *ip_addr, int port, int pid, unsigned short local_port);
 static int net_cancel_request_wo_local_port (unsigned char *ip_addr, int port, int pid);
@@ -235,7 +234,7 @@ net_connect_srv (T_CON_HANDLE * con_handle, int host_id, T_CCI_ERROR * err_buf, 
       goto connect_srv_error;
     }
 
-  ret_value = net_recv_stream (srv_sock_fd, port, (char *) &err_code, 4, login_timeout);
+  ret_value = net_recv_stream (srv_sock_fd, ip_addr, port, (char *) &err_code, 4, login_timeout);
   if (ret_value < 0)
     {
       err_code = ret_value;
@@ -272,7 +271,7 @@ net_connect_srv (T_CON_HANDLE * con_handle, int host_id, T_CCI_ERROR * err_buf, 
       goto connect_srv_error;
     }
 
-  ret_value = net_recv_msg_header (srv_sock_fd, port, &msg_header, login_timeout);
+  ret_value = net_recv_msg_header (srv_sock_fd, ip_addr, port, &msg_header, login_timeout);
   if (ret_value < 0)
     {
       err_code = ret_value;
@@ -288,7 +287,7 @@ net_connect_srv (T_CON_HANDLE * con_handle, int host_id, T_CCI_ERROR * err_buf, 
       goto connect_srv_error;
     }
 
-  ret_value = net_recv_stream (srv_sock_fd, port, msg_buf, *(msg_header.msg_body_size_ptr), login_timeout);
+  ret_value = net_recv_stream (srv_sock_fd, ip_addr, port, msg_buf, *(msg_header.msg_body_size_ptr), login_timeout);
   if (ret_value < 0)
     {
       FREE_MEM (msg_buf);
@@ -429,7 +428,7 @@ net_cancel_request_internal (unsigned char *ip_addr, int port, char *msg, int ms
       goto cancel_error;
     }
 
-  if (net_recv_stream (srv_sock_fd, port, (char *) &err_code, 4, 0) < 0)
+  if (net_recv_stream (srv_sock_fd, ip_addr, port, (char *) &err_code, 4, 0) < 0)
     {
       err_code = CCI_ER_COMMUNICATION;
       goto cancel_error;
@@ -629,14 +628,17 @@ net_recv_msg_timeout (T_CON_HANDLE * con_handle, char **msg, int *msg_size, T_CC
   MSG_HEADER recv_msg_header;
   int result_code = 0;
   struct timeval ts, te;
+  unsigned char *ip_addr;
   int broker_port;
 
   if (con_handle->alter_host_id < 0)
     {
+      ip_addr = con_handle->ip_addr;
       broker_port = con_handle->port;
     }
   else
     {
+      ip_addr = con_handle->alter_hosts[con_handle->alter_host_id].ip_addr;
       broker_port = con_handle->alter_hosts[con_handle->alter_host_id].port;
     }
 
@@ -655,7 +657,7 @@ net_recv_msg_timeout (T_CON_HANDLE * con_handle, char **msg, int *msg_size, T_CC
     {
       gettimeofday (&ts, NULL);
     }
-  result_code = net_recv_msg_header (con_handle->sock_fd, broker_port, &recv_msg_header, timeout);
+  result_code = net_recv_msg_header (con_handle->sock_fd, ip_addr, broker_port, &recv_msg_header, timeout);
   if (con_handle->log_trace_network)
     {
       long elapsed;
@@ -673,7 +675,7 @@ net_recv_msg_timeout (T_CON_HANDLE * con_handle, char **msg, int *msg_size, T_CC
 
 	  if (con_handle->disconnect_on_query_timeout == false)
 	    {
-	      result_code = net_recv_msg_header (con_handle->sock_fd, broker_port, &recv_msg_header, 0);
+	      result_code = net_recv_msg_header (con_handle->sock_fd, ip_addr, broker_port, &recv_msg_header, 0);
 	    }
 	}
 
@@ -704,8 +706,9 @@ net_recv_msg_timeout (T_CON_HANDLE * con_handle, char **msg, int *msg_size, T_CC
 	{
 	  gettimeofday (&ts, NULL);
 	}
-      result_code =
-	net_recv_stream (con_handle->sock_fd, broker_port, tmp_p, *(recv_msg_header.msg_body_size_ptr), timeout);
+
+      result_code = net_recv_stream (con_handle->sock_fd, ip_addr, broker_port, tmp_p,
+                                     *(recv_msg_header.msg_body_size_ptr), timeout);
       if (con_handle->log_trace_network)
 	{
 	  long elapsed;
@@ -891,7 +894,7 @@ net_check_broker_alive (unsigned char *ip_addr, int port, int timeout_msec)
       goto finish_health_check;
     }
 
-  ret_value = net_recv_stream (sock_fd, port, (char *) &err_code, 4, timeout_msec);
+  ret_value = net_recv_stream (sock_fd, ip_addr, port, (char *) &err_code, 4, timeout_msec);
   if (ret_value < 0)
     {
       goto finish_health_check;
@@ -908,7 +911,7 @@ net_check_broker_alive (unsigned char *ip_addr, int port, int timeout_msec)
       goto finish_health_check;
     }
 
-  if (net_recv_msg_header (sock_fd, port, &msg_header, timeout_msec) < 0)
+  if (net_recv_msg_header (sock_fd, ip_addr, port, &msg_header, timeout_msec) < 0)
     {
       goto finish_health_check;
     }
@@ -993,23 +996,7 @@ net_send_int (SOCKET sock_fd, int value)
 #endif
 
 static int
-net_recv_int (SOCKET sock_fd, int port, int *value)
-{
-  int read_value;
-
-  if (net_recv_stream (sock_fd, port, (char *) &read_value, 4, 0) < 0)
-    {
-      return CCI_ER_COMMUNICATION;
-    }
-
-  read_value = ntohl (read_value);
-  *value = read_value;
-
-  return 0;
-}
-
-static int
-net_recv_stream (SOCKET sock_fd, int port, char *buf, int size, int timeout)
+net_recv_stream (SOCKET sock_fd, unsigned char *ip_addr, int port, char *buf, int size, int timeout)
 {
   int read_len, tot_read_len = 0;
 #if defined(WINDOWS)
@@ -1074,7 +1061,7 @@ net_recv_stream (SOCKET sock_fd, int port, char *buf, int size, int timeout)
 		}
 	    }
 
-	  if (net_peer_socket_alive (sock_fd, port, SOCKET_TIMEOUT) == true)
+	  if (net_peer_socket_alive (ip_addr, port, SOCKET_TIMEOUT) == true)
 	    {
 	      continue;
 	    }
@@ -1114,35 +1101,17 @@ net_recv_stream (SOCKET sock_fd, int port, char *buf, int size, int timeout)
 }
 
 static bool
-net_peer_socket_alive (SOCKET sd, int port, int timeout_msec)
+net_peer_socket_alive (unsigned char *ip_addr, int port, int timeout_msec)
 {
-  unsigned char ip_addr[4];
-  struct sockaddr_in saddr;
-  socklen_t slen;
-
-  slen = sizeof (saddr);
-  if (getpeername (sd, (struct sockaddr *) &saddr, &slen) < 0)
-    {
-      return false;
-    }
-
-  /* if Unix domain socket, the peer(=local) is alive always */
-  if (saddr.sin_family != AF_INET)
-    {
-      return true;
-    }
-
-  memcpy (ip_addr, &saddr.sin_addr, 4);
-
   return net_peer_alive (ip_addr, port, timeout_msec);
 }
 
 static int
-net_recv_msg_header (SOCKET sock_fd, int port, MSG_HEADER * header, int timeout)
+net_recv_msg_header (SOCKET sock_fd, unsigned char *ip_addr, int port, MSG_HEADER * header, int timeout)
 {
   int result_code;
 
-  result_code = net_recv_stream (sock_fd, port, header->buf, MSG_HEADER_SIZE, timeout);
+  result_code = net_recv_stream (sock_fd, ip_addr, port, header->buf, MSG_HEADER_SIZE, timeout);
 
   if (result_code < 0)
     {
