@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
+import java.sql.SQLException;
 
 import cubrid.jdbc.jci.UConnection;
 import cubrid.jdbc.jci.UErrorCode;
@@ -105,6 +106,7 @@ public class BrokerHandler {
             toBroker.connect(brokerAddress);
           }
           else {
+            toBroker.connect(brokerAddress, timeout);
             toBroker.connect(brokerAddress, timeout);
             timeout -= (System.currentTimeMillis() - begin);
             if (timeout <= 0) {
@@ -225,6 +227,20 @@ public class BrokerHandler {
         status = statusRequest(ip, port, bao.toByteArray(), timeout);
 
         return status;
+    }
+
+    public static boolean isValid(String ip, int port, int process, byte[] session, int timeout)
+        throws SQLException {
+
+        try {
+            if (BrokerHandler.statusBroker(ip, port, process, session, timeout) == -2) {
+                return false;
+            }
+        } catch (Exception e) {
+            throw new SQLException("Invalid Connection");
+        }
+
+       return true;
     }
 
     public static void cancelBroker(String ip, int port, int process, int timeout)

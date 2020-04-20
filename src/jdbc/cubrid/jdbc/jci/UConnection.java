@@ -41,6 +41,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
+import java.sql.SQLException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -1830,6 +1831,15 @@ public class UConnection {
 			createJciException(UErrorCode.ER_COMMUNICATION);
 		}
 		return send_recv_msg(true);
+	}
+
+	public boolean isValid(int timeout) throws SQLException {
+		boolean valid = !isClosed;
+
+                if (protoVersionIsAbove(PROTOCOL_V9)) {
+		    valid = BrokerHandler.isValid(CASIp, CASPort, processId, sessionId, timeout);
+		}
+		return valid;
 	}
 
 	void cancel() throws UJciException, IOException {

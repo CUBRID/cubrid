@@ -988,8 +988,14 @@ public class CUBRIDConnection implements Connection {
 	}
 
 	/* JDK 1.6 */
-	public boolean isValid(int arg0) throws SQLException {
-		throw new SQLException(new java.lang.UnsupportedOperationException());
+	public boolean isValid(int timeout) throws SQLException {
+		if (u_con == null || is_closed) return false;
+
+		try {
+			return u_con.isValid(timeout);
+		} catch (SQLException e) {
+			return false;
+		}
 	}
 
 	/* JDK 1.6 */
