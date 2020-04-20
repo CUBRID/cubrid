@@ -107,7 +107,6 @@ public class BrokerHandler {
           }
           else {
             toBroker.connect(brokerAddress, timeout);
-            toBroker.connect(brokerAddress, timeout);
             timeout -= (System.currentTimeMillis() - begin);
             if (timeout <= 0) {
               String msg = UErrorCode.codeToMessage(UErrorCode.ER_TIMEOUT);
