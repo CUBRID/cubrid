@@ -437,7 +437,7 @@ enum param_id
   PRM_ID_ENABLE_NEW_LFHASH,
 
   PRM_ID_HEAP_INFO_CACHE_LOGGING,
-  
+
   PRM_ID_JAVA_STORED_PROCEDURE_JVM_OPTIONS,
 
   /* change PRM_LAST_ID when adding new system parameters */
