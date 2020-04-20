@@ -423,7 +423,6 @@ jsp_start_server (const char *db_name, const char *path)
   char disable_sig_handle[] = "-Xrs";
   const char *envroot;
   char jsp_file_path[PATH_MAX];
-  char port[6] = { 0 };
   char *loc_p, *locale;
   char *jvm_opt_sysprm = NULL;
 
