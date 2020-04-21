@@ -218,7 +218,9 @@ extern "C"
     PROTOCOL_V5 = 5,		/* shard feature, fetch end flag */
     PROTOCOL_V6 = 6,		/* cci/cas4m support unsigned integer type */
     PROTOCOL_V7 = 7,		/* timezone types, to pin xasl entry for retry */
-    CURRENT_PROTOCOL = PROTOCOL_V7
+    PROTOCOL_V8 = 8,		/* JSON type */
+    PROTOCOL_V9 = 9,		/* cas health check: get function status */
+    CURRENT_PROTOCOL = PROTOCOL_V9
   };
   typedef enum t_cas_protocol T_CAS_PROTOCOL;
 

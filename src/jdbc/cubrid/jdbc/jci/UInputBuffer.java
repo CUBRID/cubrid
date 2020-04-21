@@ -74,7 +74,62 @@ class UInputBuffer {
 		byte[] headerData = new byte[8];
 
 		while (totalReadLen < 8) {
-			readLen = input.read(headerData, totalReadLen, 8 - totalReadLen);
+			readLen = input.read(headerData, totalReadLen, 8 - totalReadLen, 0);
+			if (readLen == -1) {
+				throw uconn.createJciException(UErrorCode.ER_ILLEGAL_DATA_SIZE);
+			}
+			totalReadLen = totalReadLen + readLen;
+		}
+
+		capacity = UJCIUtil.bytes2int(headerData, 0);
+		casinfo = new byte[CAS_INFO_SIZE];
+		System.arraycopy(headerData, 4, casinfo, 0, 4);
+		con.setCASInfo(casinfo);
+
+		if (capacity <= 0) {
+			resCode = 0;
+			capacity = 0;
+			return;
+		}
+
+		buffer = new byte[capacity];
+		readData();
+
+		resCode = readInt();
+
+		if (resCode < 0) {
+			int eCode = readInt();
+			String msg;
+			
+			if (con.isRenewedSessionId()) {
+				byte[] newSessionId = new byte[20];
+				
+				msg = readString(remainedCapacity() - newSessionId.length, 
+						 UJCIManager.sysCharsetName);
+				readBytes(newSessionId);
+				con.setNewSessionId (newSessionId);
+			} else {
+				msg = readString(remainedCapacity(), 
+						 UJCIManager.sysCharsetName);
+			}
+			
+			eCode = convertErrorByVersion(resCode, eCode);
+			throw uconn.createJciException(UErrorCode.ER_DBMS, resCode, eCode, msg);
+		}
+	}
+
+	UInputBuffer(UTimedDataInputStream relatedI, UConnection con, int timeout)
+			throws IOException, UJciException {
+		input = relatedI;
+		position = 0;
+		uconn = con;
+
+		int readLen = 0;
+		int totalReadLen = 0;
+		byte[] headerData = new byte[8];
+
+		while (totalReadLen < 8) {
+			readLen = input.read(headerData, totalReadLen, 8 - totalReadLen, timeout);
 			if (readLen == -1) {
 				throw uconn.createJciException(UErrorCode.ER_ILLEGAL_DATA_SIZE);
 			}
@@ -506,7 +561,7 @@ class UInputBuffer {
 		return (new CUBRIDXid(formatId, gid, bid));
 	}
 
-	private void readData() throws IOException {
+	private void readData() throws IOException, UJciException {
 		int realRead = 0, tempRead = 0;
 		while (realRead < capacity) {
 			tempRead = input.read(buffer, realRead, capacity - realRead);
