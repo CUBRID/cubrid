@@ -989,13 +989,13 @@ public class CUBRIDConnection implements Connection {
 
 	/* JDK 1.6 */
 	public boolean isValid(int timeout) throws SQLException {
+		if (timeout < 0) {
+			throw new SQLException();
+		}
+
 		if (u_con == null || is_closed) return false;
 
-		try {
-			return u_con.isValid(timeout);
-		} catch (SQLException e) {
-			return false;
-		}
+		return u_con.isValid(timeout);
 	}
 
 	/* JDK 1.6 */

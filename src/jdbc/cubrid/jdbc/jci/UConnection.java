@@ -173,6 +173,12 @@ public class UConnection {
 
         public final static int READ_TIMEOUT = 10000;
 
+	public final static int FN_STATUS_NONE = -2;
+	public final static int FN_STATUS_IDLE = -1;
+	public final static int FN_STATUS_CONN = 0;
+	public final static int FN_STATUS_BUSY = 1;
+	public final static int FN_STATUS_DONE = 2;
+
 	UOutputBuffer outBuffer;
 	CUBRIDConnection cubridcon;
 
@@ -1835,11 +1841,16 @@ public class UConnection {
 
 	public boolean isValid(int timeout) throws SQLException {
 		boolean valid = !isClosed;
-
-                if (protoVersionIsAbove(PROTOCOL_V9)) {
-		    valid = BrokerHandler.isValid(CASIp, CASPort, processId, sessionId, timeout);
-		}
-		return valid;
+		try {
+			int status = BrokerHandler.statusBroker(CASIp, CASPort, processId, sessionId, timeout);
+			if (status == UConnection.FN_STATUS_NONE) {
+    				return false;
+    	    		}
+    		} catch (Exception e) {
+    			return false;
+    		}
+	
+		return true;
 	}
 
 	void cancel() throws UJciException, IOException {

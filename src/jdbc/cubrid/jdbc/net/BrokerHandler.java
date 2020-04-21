@@ -228,20 +228,6 @@ public class BrokerHandler {
         return status;
     }
 
-    public static boolean isValid(String ip, int port, int process, byte[] session, int timeout)
-        throws SQLException {
-
-        try {
-            if (BrokerHandler.statusBroker(ip, port, process, session, timeout) == -2) {
-                return false;
-            }
-        } catch (Exception e) {
-            throw new SQLException("Invalid Connection");
-        }
-
-       return true;
-    }
-
     public static void cancelBroker(String ip, int port, int process, int timeout)
             throws IOException, UJciException {
         ByteArrayOutputStream bao = new ByteArrayOutputStream(10);
