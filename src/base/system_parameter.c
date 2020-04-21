@@ -405,6 +405,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_JAVA_STORED_PROCEDURE "java_stored_procedure"
 
+#define PRM_NAME_JAVA_STORED_PROCEDURE_JVM_OPTIONS "java_stored_procedure_jvm_options"
+
 #define PRM_NAME_COMPAT_PRIMARY_KEY "compat_primary_key"
 
 #define PRM_NAME_INTL_MBS_SUPPORT "intl_mbs_support"
@@ -1571,6 +1573,10 @@ static unsigned int prm_ha_check_disk_failure_interval_in_secs_flag = 0;
 bool PRM_JAVA_STORED_PROCEDURE = false;
 static bool prm_java_stored_procedure_default = false;
 static unsigned int prm_java_stored_procedure_flag = 0;
+
+const char *PRM_JAVA_STORED_PROCEDURE_JVM_OPTIONS = "";
+static const char *prm_java_stored_procedure_jvm_options_default = "";
+static unsigned int prm_java_stored_procedure_jvm_options_flag = 0;
 
 bool PRM_COMPAT_PRIMARY_KEY = false;
 static bool prm_compat_primary_key_default = false;
@@ -5798,6 +5804,17 @@ static SYSPRM_PARAM prm_Def[] = {
    &prm_heap_info_cache_logging_flag,
    (void *) &prm_heap_info_cache_logging_default,
    (void *) &PRM_HEAP_INFO_CACHE_LOGGING,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_JAVA_STORED_PROCEDURE_JVM_OPTIONS,
+   PRM_NAME_JAVA_STORED_PROCEDURE_JVM_OPTIONS,
+   (PRM_FOR_SERVER),
+   PRM_STRING,
+   &prm_java_stored_procedure_jvm_options_flag,
+   (void *) &prm_java_stored_procedure_jvm_options_default,
+   (void *) &PRM_JAVA_STORED_PROCEDURE_JVM_OPTIONS,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
