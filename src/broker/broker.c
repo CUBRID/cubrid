@@ -847,6 +847,37 @@ receiver_thr_f (void *arg)
 	  continue;
 	}
 
+      if (strncmp (cas_req_header, "ST", 2) == 0)
+	{
+	  int status = FN_STATUS_NONE;
+	  int pid, i;
+	  unsigned int session_id;
+
+	  memcpy ((char *) &pid, cas_req_header + 2, 4);
+	  pid = ntohl (pid);
+	  memcpy ((char *) &session_id, cas_req_header + 6, 4);
+	  session_id = ntohl (session_id);
+
+	  if (shm_br->br_info[br_index].shard_flag == OFF)
+	    {
+	      for (i = 0; i < shm_br->br_info[br_index].appl_server_max_num; i++)
+		{
+		  if (shm_appl->as_info[i].service_flag == SERVICE_ON && shm_appl->as_info[i].pid == pid)
+		    {
+		      if (session_id == shm_appl->as_info[i].session_id)
+			{
+			  status = shm_appl->as_info[i].fn_status;
+			}
+		      break;
+		    }
+		}
+	    }
+
+	  CAS_SEND_ERROR_CODE (clt_sock_fd, status);
+	  CLOSE_SOCKET (clt_sock_fd);
+	  continue;
+	}
+
       /*
        * Query cancel message (size in bytes)
        *
