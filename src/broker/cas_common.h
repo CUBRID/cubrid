@@ -159,11 +159,11 @@ typedef socklen_t T_SOCKLEN;
 
 enum
 {
-   FN_STATUS_NONE = -2,
-   FN_STATUS_IDLE = -1,
-   FN_STATUS_CONN = 0,
-   FN_STATUS_BUSY = 1,
-   FN_STATUS_DONE = 2
+  FN_STATUS_NONE = -2,
+  FN_STATUS_IDLE = -1,
+  FN_STATUS_CONN = 0,
+  FN_STATUS_BUSY = 1,
+  FN_STATUS_DONE = 2
 };
 
 /* default charset for JDBC : ISO8859-1 */
