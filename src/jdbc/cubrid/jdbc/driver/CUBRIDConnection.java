@@ -988,7 +988,7 @@ public class CUBRIDConnection implements Connection {
 	}
 
 	/* JDK 1.6 */
-	public boolean isValid(int timeout) throws SQLException {
+	public synchronized boolean isValid(int timeout) throws SQLException {
 		if (timeout < 0) {
 			throw new SQLException();
 		}

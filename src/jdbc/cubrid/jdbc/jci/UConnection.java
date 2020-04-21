@@ -1840,7 +1840,9 @@ public class UConnection {
 	}
 
 	public boolean isValid(int timeout) throws SQLException {
-		boolean valid = !isClosed;
+		if (protoVersionIsUnder(PROTOCOL_V9)) {
+			return !isClosed;
+		}
 		try {
 			int status = BrokerHandler.statusBroker(CASIp, CASPort, processId, sessionId, timeout);
 			if (status == UConnection.FN_STATUS_NONE) {
