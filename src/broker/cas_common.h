@@ -157,6 +157,15 @@ typedef size_t T_SOCKLEN;
 typedef socklen_t T_SOCKLEN;
 #endif
 
+enum
+{
+  FN_STATUS_NONE = -2,
+  FN_STATUS_IDLE = -1,
+  FN_STATUS_CONN = 0,
+  FN_STATUS_BUSY = 1,
+  FN_STATUS_DONE = 2
+};
+
 /* default charset for JDBC : ISO8859-1 */
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 #define CAS_SCHEMA_DEFAULT_CHARSET (lang_charset ())
