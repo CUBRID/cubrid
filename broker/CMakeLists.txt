@@ -256,7 +256,7 @@ target_link_libraries(cub_cas LINK_PRIVATE cubridcs)
 if(UNIX)
   target_link_libraries(cub_cas LINK_PRIVATE rt)
 else(UNIX)
-  target_link_libraries(cub_cas LINK_PRIVATE ws2_32 dbghelp)
+  target_link_libraries(cub_cas LINK_PRIVATE ws2_32 dbghelp ${LIBOPENSSL_LIBS})
 endif(UNIX)
 
 
