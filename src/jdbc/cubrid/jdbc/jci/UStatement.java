@@ -42,6 +42,7 @@ import java.sql.Blob;
 import java.sql.Clob;
 import java.sql.Date;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Time;
 import java.sql.Timestamp;
 import java.util.ArrayList;
@@ -50,6 +51,7 @@ import java.util.HashMap;
 import cubrid.jdbc.driver.CUBRIDBlob;
 import cubrid.jdbc.driver.CUBRIDClob;
 import cubrid.jdbc.driver.CUBRIDOutResultSet;
+import cubrid.jdbc.driver.ConnectionProperties;
 import cubrid.jdbc.driver.CUBRIDBinaryString;
 import cubrid.sql.CUBRIDOID;
 import cubrid.sql.CUBRIDTimestamptz;
@@ -385,7 +387,10 @@ public class UStatement {
 	}
 
 	public void bind(int index, String value) {
-		bindValue(index, UUType.U_TYPE_STRING, value);
+                if (relatedConnection.getOracleStyleEmpltyString()) {
+                    if ("".equals(value)) value = null;
+		}
+                bindValue(index, UUType.U_TYPE_STRING, value);
 	}
 
 	public void bind(int index, byte[] value) {
@@ -432,6 +437,12 @@ public class UStatement {
 			return;
 		}
 
+                if (type == UUType.U_TYPE_STRING) {
+                    if (relatedConnection.getOracleStyleEmpltyString()) {
+                        if ("".equals(value)) value = null;
+                    }
+                }
+
 		bindValue(index, type, value);
 	}
 
@@ -442,7 +453,16 @@ public class UStatement {
 			collectionData = null;
 		} else {
 			try {
-				collectionData = new CUBRIDArray(values);
+                            if (relatedConnection.getOracleStyleEmpltyString()
+                                    && values[0] instanceof String) {
+                                int length = values.length;
+                                for (int i = 0; i < length; i++) {
+                                    if ("".equals(values[i])) {
+                                        values[i] = null;
+                                    }
+                                }
+                            }
+                            collectionData = new CUBRIDArray(values);
 			} catch (UJciException e) {
 				errorHandler = new UError(relatedConnection);
 				e.toUError(errorHandler);
@@ -462,8 +482,16 @@ public class UStatement {
 	}
 
 	public void bindClob(int index, Clob clob) {
-		bindValue(index, UUType.U_TYPE_CLOB, clob);
-	}
+                try {
+                    if (relatedConnection.getOracleStyleEmpltyString()
+                            && clob != null && clob.length() == 0) {
+                        clob = null;
+                    }
+                } catch (SQLException e) {
+                    relatedConnection.logException(e);
+                }
+                bindValue(index, UUType.U_TYPE_CLOB, clob);
+        }
 
 	public void addBatch() {
 		errorHandler = new UError(relatedConnection);

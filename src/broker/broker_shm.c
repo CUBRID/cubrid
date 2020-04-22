@@ -646,6 +646,9 @@ broker_shm_set_as_info (T_SHM_APPL_SERVER * shm_appl, T_APPL_SERVER_INFO * as_in
   as_info_p->cur_slow_log_mode = br_info_p->slow_log_mode;
 
   as_info_p->as_id = as_index;
+
+  as_info_p->fn_status = -1;
+  as_info_p->session_id = 0;
   return;
 }
 

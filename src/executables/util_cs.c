@@ -2856,10 +2856,6 @@ applylogdb (UTIL_FUNCTION_ARG * arg)
     {
       goto print_applylog_usage;
     }
-  if (max_mem_size > 500)
-    {
-      goto print_applylog_usage;
-    }
 
 #if defined(NDEBUG)
   util_redirect_stdout_to_null ();

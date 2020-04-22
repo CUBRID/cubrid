@@ -30,13 +30,21 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <time.h>
+
+#ifdef _AIX
+#include <sys/statfs.h>
+#endif /* _AIX */
+
 #if defined(SOLARIS)
 #include <netdb.h>
+#include <sys/statvfs.h>
 #endif /* SOLARIS */
 #include <sys/stat.h>
 #include <assert.h>
 #if defined(WINDOWS)
 #include <io.h>
+#else
+#include <sys/vfs.h>
 #endif /* WINDOWS */
 
 #include <sys/types.h>
@@ -574,6 +582,39 @@ log_get_eof_lsa (void)
 {
   return (&log_Gl.hdr.eof_lsa);
 }
+
+/*
+ * log_get_num_free_block -
+ *
+ * return:
+ *
+ * NOTE:
+ */
+#if !defined(WINDOWS)
+void
+log_get_num_free_block (INT64 * num_free_block)
+{
+#if defined(SOLARIS)
+  struct statvfs buf;
+#else
+  struct statfs buf;
+#endif /* SOLARIS */
+
+  memset (&buf, 0, sizeof (buf));
+  *num_free_block = 0;
+
+#if defined(SOLARIS)
+  if (statvfs (log_Path, &buf) == 0)
+#elif defined(AIX)
+  if (statfs ((char *) log_Path, &buf) == 0)
+#else
+  if (statfs (log_Path, &buf) == 0)
+#endif /* AIX */
+    {
+      *num_free_block = (INT64) buf.f_bavail;
+    }
+}
+#endif /* WINDOWS */
 
 /*
  * log_is_logged_since_restart - is log sequence address made after restart ?

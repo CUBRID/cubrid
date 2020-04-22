@@ -47,6 +47,9 @@
 #include <sys/types.h>
 #include <sys/uio.h>
 #include <sys/vfs.h>
+#if defined (SERVER_MODE)
+#include <syslog.h>
+#endif
 #endif /* WINDOWS */
 
 #ifdef _AIX
@@ -4175,6 +4178,10 @@ fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_WRITE_OUT_OF_SPACE, 2, page_id,
 		      fileio_get_volume_label_by_fd (vol_fd, PEEK));
+
+#if defined (SERVER_MODE) && !defined (WINDOWS)
+	      syslog (LOG_ALERT, "[CUBRID] %s () at %s:%d %m", __func__, __FILE__, __LINE__);
+#endif
 	      return NULL;
 	    }
 	  else
@@ -4963,8 +4970,8 @@ fileio_get_number_of_partition_free_pages (const char *path_p, size_t page_size)
     }
   else
     {
-      const size_t io_pagesize_in_block = page_size / buf.f_bsize;
-      npages_of_partition = buf.f_bavail / io_pagesize_in_block;
+      const size_t f_avail_size = buf.f_bsize * buf.f_bavail;
+      npages_of_partition = f_avail_size / page_size;
       if (npages_of_partition < 0 || npages_of_partition > INT_MAX)
 	{
 	  npages_of_partition = INT_MAX;

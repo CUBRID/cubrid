@@ -889,8 +889,8 @@ receiver_thr_f (void *arg)
        *
        *   CLIENT_PORT can be 0 if the client failed to get its local port.
        */
-      if (strncmp (cas_req_header, "QC", 2) == 0 || strncmp (cas_req_header, "CANCEL", 6) == 0
-	  || strncmp (cas_req_header, "X1", 2) == 0)
+      else if (strncmp (cas_req_header, "QC", 2) == 0 || strncmp (cas_req_header, "CANCEL", 6) == 0
+	       || strncmp (cas_req_header, "X1", 2) == 0)
 	{
 	  int ret_code = 0;
 #if !defined(WINDOWS)

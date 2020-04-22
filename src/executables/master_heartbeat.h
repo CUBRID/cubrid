@@ -281,7 +281,6 @@ struct HB_PROC_ENTRY
   int pid;
   char exec_path[HB_MAX_SZ_PROC_EXEC_PATH];
   char args[HB_MAX_SZ_PROC_ARGS];
-  char argv[HB_MAX_NUM_PROC_ARGV][HB_MAX_SZ_PROC_ARGV];
 
   struct timeval frtime;	/* first registered time */
   struct timeval rtime;		/* registerd time */
@@ -294,6 +293,8 @@ struct HB_PROC_ENTRY
 
   LOG_LSA prev_eof;
   LOG_LSA curr_eof;
+
+  INT64 num_free_block;
 
   CSS_CONN_ENTRY *conn;
 

@@ -438,8 +438,10 @@ enum param_id
 
   PRM_ID_HEAP_INFO_CACHE_LOGGING,
 
+  PRM_ID_JAVA_STORED_PROCEDURE_JVM_OPTIONS,
+
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_HEAP_INFO_CACHE_LOGGING
+  PRM_LAST_ID = PRM_ID_JAVA_STORED_PROCEDURE_JVM_OPTIONS
 };
 typedef enum param_id PARAM_ID;
 
