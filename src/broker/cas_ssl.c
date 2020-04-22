@@ -68,15 +68,15 @@
 #define CERT_FILENAME_LEN 512
 #define ER_SSL_GENERAL -1
 
-static SSL	*ssl=NULL;
+static SSL *ssl = NULL;
 bool ssl_client = false;
 
 int
 initSSL (int sd)
 {
-  SSL_CTX	*ctx;  
-  char cert [CERT_FILENAME_LEN];
-  char key [CERT_FILENAME_LEN];
+  SSL_CTX *ctx;
+  char cert[CERT_FILENAME_LEN];
+  char key[CERT_FILENAME_LEN];
   int err_code;
   unsigned long err;
 
@@ -86,51 +86,51 @@ initSSL (int sd)
     }
 
 #if defined(WINDOWS)
-	u_long argp;
-	argp = 0;
-	ioctlsocket (sd, FIONBIO, &argp);
+  u_long argp;
+  argp = 0;
+  ioctlsocket (sd, FIONBIO, &argp);
 #else
-	int flags, oflags;
-	flags = fcntl(sd, F_GETFL, 0);
-	oflags = flags;
-	flags = flags & ~O_NONBLOCK;
+  int flags, oflags;
+  flags = fcntl (sd, F_GETFL, 0);
+  oflags = flags;
+  flags = flags & ~O_NONBLOCK;
 
-	fcntl (sd, F_SETFL, flags);
+  fcntl (sd, F_SETFL, flags);
 #endif
   snprintf (cert, CERT_FILENAME_LEN, "%s/conf/%s", getenv ("CUBRID"), CERTF);
   snprintf (key, CERT_FILENAME_LEN, "%s/conf/%s", getenv ("CUBRID"), KEYF);
 
-  SSL_load_error_strings();
-  SSLeay_add_ssl_algorithms();
+  SSL_load_error_strings ();
+  SSLeay_add_ssl_algorithms ();
   ERR_load_crypto_strings ();
 
-  if ((ctx = SSL_CTX_new(TLSv1_2_server_method())) == NULL)
+  if ((ctx = SSL_CTX_new (TLSv1_2_server_method ())) == NULL)
     {
       return ER_SSL_GENERAL;
     }
 
-  if (SSL_CTX_use_certificate_file(ctx, cert, SSL_FILETYPE_PEM) <= 0 
-      || SSL_CTX_use_PrivateKey_file(ctx, key, SSL_FILETYPE_PEM) <= 0)
+  if (SSL_CTX_use_certificate_file (ctx, cert, SSL_FILETYPE_PEM) <= 0
+      || SSL_CTX_use_PrivateKey_file (ctx, key, SSL_FILETYPE_PEM) <= 0)
     {
       return ER_SSL_GENERAL;
     }
 
-  if ((ssl = SSL_new(ctx)) == NULL)
+  if ((ssl = SSL_new (ctx)) == NULL)
     {
       return ER_SSL_GENERAL;
     }
-	
+
   if (SSL_set_fd (ssl, sd) == 0)
     {
       return ER_SSL_GENERAL;
     }
 
-  err_code = SSL_accept(ssl);
+  err_code = SSL_accept (ssl);
   if (err_code < 0)
     {
       err_code = SSL_get_error (ssl, err_code);
-	err = ERR_get_error ();
-	return ER_SSL_GENERAL;
+      err = ERR_get_error ();
+      return ER_SSL_GENERAL;
     }
 
 #if defined (WINDOWS)
@@ -149,7 +149,7 @@ int
 cas_ssl_read (int sd, char *buf, int size)
 {
   int nread;
-  
+
   if (IS_INVALID_SOCKET (sd) || ssl == NULL)
     {
       return ER_SSL_GENERAL;
@@ -161,7 +161,7 @@ cas_ssl_read (int sd, char *buf, int size)
   ioctlsocket (sd, FIONBIO, &argp);
 #else
   int flags, oflags;
-  flags = fcntl(sd, F_GETFL, 0);
+  flags = fcntl (sd, F_GETFL, 0);
   oflags = flags;
   flags = flags & ~O_NONBLOCK;
   fcntl (sd, F_SETFL, flags);
@@ -179,10 +179,10 @@ cas_ssl_read (int sd, char *buf, int size)
 }
 
 int
-cas_ssl_write (int sd, const char * buf, int size)
+cas_ssl_write (int sd, const char *buf, int size)
 {
   int nwrite;
-	
+
   if (IS_INVALID_SOCKET (sd) || ssl == NULL)
     {
       return ER_SSL_GENERAL;
@@ -193,7 +193,7 @@ cas_ssl_write (int sd, const char * buf, int size)
   ioctlsocket (sd, FIONBIO, &argp);
 #else
   int flags, oflags;
-  flags = fcntl(sd, F_GETFL, 0);
+  flags = fcntl (sd, F_GETFL, 0);
   oflags = flags;
   flags = flags & ~O_NONBLOCK;
   fcntl (sd, F_SETFL, flags);
