@@ -376,6 +376,8 @@ struct t_appl_server_info
   short shard_id;
   short shard_cas_id;
   short as_id;
+  int session_id;
+  int fn_status;
 
   int advance_activate_flag;	/* it is used only in shard */
   int proxy_conn_wait_timeout;	/* it is used only in shard */
