@@ -171,7 +171,7 @@ public class UConnection {
 	public final static int MAX_QUERY_TIMEOUT = 2000000;
 	public final static int MAX_CONNECT_TIMEOUT = 2000000;
 
-  public final static int READ_TIMEOUT = 10000;
+  	public final static int READ_TIMEOUT = 10000;
 
 	public final static int FN_STATUS_NONE = -2;
 	public final static int FN_STATUS_IDLE = -1;
