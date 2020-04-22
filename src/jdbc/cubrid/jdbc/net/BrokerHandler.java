@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
+import java.sql.SQLException;
 
 import cubrid.jdbc.jci.UConnection;
 import cubrid.jdbc.jci.UErrorCode;
