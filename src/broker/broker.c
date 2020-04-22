@@ -849,7 +849,7 @@ receiver_thr_f (void *arg)
 
       if (strncmp (cas_req_header, "ST", 2) == 0)
 	{
-	  int status = -1;
+	  int status = FN_STATUS_NONE;
 	  int pid, i;
 	  unsigned int session_id;
 
