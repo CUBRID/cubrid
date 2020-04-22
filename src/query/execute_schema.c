@@ -8801,13 +8801,6 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	      do_flush_class_mop = true;
 	    }
 	}
-      if (do_flush_class_mop == true)
-  {
-    assert (error == NO_ERROR);
-    assert (class_obj != NULL);
-
-    error = locator_flush_class (class_obj);
-  }
       break;
 
     case PT_CLASS:
@@ -8835,6 +8828,12 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 		  break;
 		}
 	    }
+	}
+      if (locator_create_heap_if_needed (class_obj, reuse_oid) == NULL)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  error = er_errid ();
+	  break;
 	}
       if (reuse_oid)
 	{
@@ -8878,24 +8877,18 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	      do_flush_class_mop = true;
 	    }
 	}
-      if (do_flush_class_mop == true)
-  {
-    assert (error == NO_ERROR);
-    assert (class_obj != NULL);
-
-    error = locator_flush_class (class_obj);
-  }
-      // class has to be flushed before creating new heap for using table options during creating heap
-      if (locator_create_heap_if_needed (class_obj, reuse_oid) == NULL)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
-	  break;
-	}
       break;
 
     default:
       break;
+    }
+
+  if (do_flush_class_mop == true)
+    {
+      assert (error == NO_ERROR);
+      assert (class_obj != NULL);
+
+      error = locator_flush_class (class_obj);
     }
 
   if (error != NO_ERROR)
