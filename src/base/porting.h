@@ -157,6 +157,7 @@ extern "C"
 #define strtoull            _strtoui64
 #define stat		    _stati64
 #define fstat		    _fstati64
+#define ftell		    _ftelli64
 #define ftime		    _ftime_s
 #define timeb		    _timeb
 #define fileno		_fileno
