@@ -49,12 +49,12 @@ import cubrid.jdbc.driver.CUBRIDJdbcInfoTable;
 import cubrid.jdbc.net.BrokerHandler;
 
 public class UConnectionNormal extends UConnection {
-	
+
 	private ArrayList<String> altHosts = null;
 	private int connectedHostId = 0;
-	
+
 	private long lastFailureTime = 0;
-	
+
 	public UConnectionNormal(String ip, int port, String dbname, String user, String passwd,
 			String url) throws CUBRIDException {
 		if (ip != null) {
@@ -74,7 +74,7 @@ public class UConnectionNormal extends UConnection {
 		update_executed = false;
 
 		needReconnection = true;
-	    	errorHandler = new UError(this);
+		errorHandler = new UError(this);
 	}
 
 	public UConnectionNormal(ArrayList<String> altHostList, String dbname, String user,
@@ -93,9 +93,9 @@ public class UConnectionNormal extends UConnection {
 		update_executed = false;
 
 		needReconnection = true;
-	    	errorHandler = new UError(this);
+		errorHandler = new UError(this);
 	}
-	
+
 	public void tryConnect() throws CUBRIDException {
 		initLogger();
 		try {
@@ -118,7 +118,7 @@ public class UConnectionNormal extends UConnection {
 			throw new CUBRIDException(CUBRIDJDBCErrorCode.ioexception_in_stream, e);
 		}
 	}
-	
+
 	public void setAltHosts(ArrayList<String> altHostList)
 			throws CUBRIDException {
 		if (altHostList.size() < 1) {
@@ -140,13 +140,13 @@ public class UConnectionNormal extends UConnection {
 			casPort = CUBRIDDriver.default_port;
 		}
 	}
-	
+
 	@Override
 	public synchronized void setAutoCommit(boolean autoCommit) {
 		if (lastAutoCommit != autoCommit) {
 			lastAutoCommit = autoCommit;
 		}
-		
+
 		/*
 		 * errorHandler = new UError(); if (isClosed == true){
 		 * errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED); return; } try{
@@ -160,16 +160,16 @@ public class UConnectionNormal extends UConnection {
 		 * errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION); }
 		 */
 	}
-	
+
 	@Override
 	public boolean getAutoCommit() {
 		return lastAutoCommit;
 	}
-	
+
 	@Override
 	protected void checkReconnect() throws IOException, UJciException {
 		super.checkReconnect();
-		
+
 		if (getCASInfoStatus() == CAS_INFO_STATUS_INACTIVE
 				&& check_cas() == false) {
 			clientSocketClose();
@@ -182,7 +182,7 @@ public class UConnectionNormal extends UConnection {
 			}
 		}
 	}
-	
+
 	private void sendAppInfo() {
 		String msg;
 		msg = CUBRIDJdbcInfoTable.getValue();
@@ -190,7 +190,7 @@ public class UConnectionNormal extends UConnection {
 			return;
 		check_cas(msg);
 	}
-	
+
 	private void reconnect() throws IOException, UJciException {
 		if (altHosts == null) {
 			reconnectWorker(getLoginEndTimestamp(getBeginTime()));
@@ -237,7 +237,7 @@ public class UConnectionNormal extends UConnection {
 			throw createJciException(UErrorCode.ER_CONNECTION);
 		}
 	}
-	
+
 	private long getLoginEndTimestamp(long timestamp) {
 		int timeout = connectionProperties.getConnectTimeout();
 		if (timeout <= 0) {
@@ -246,7 +246,7 @@ public class UConnectionNormal extends UConnection {
 
 		return timestamp + (timeout * 1000);
 	}
-	
+
 	private void reconnectWorker(long endTimestamp) throws IOException, UJciException {
 		if (UJCIUtil.isConsoleDebug()) {
 			CUBRIDDriver.printDebug(String.format("Try Connect (%s,%d)", casIp, casPort));
@@ -263,11 +263,11 @@ public class UConnectionNormal extends UConnection {
 		client.setSoTimeout(SOCKET_TIMEOUT);
 		needReconnection = false;
 		isClosed = false;
-		
+
 		int isolationLevel = currentIsolationLevel();
 		if (isolationLevel != CUBRIDIsolationLevel.TRAN_UNKNOWN_ISOLATION)
 			setIsolationLevel(isolationLevel);
-		
+
 		int lockTimeout = getLockTimeout ();
 		if (lockTimeout != LOCK_TIMEOUT_NOT_USED)
 			setLockTimeout(lockTimeout);
@@ -275,7 +275,7 @@ public class UConnectionNormal extends UConnection {
 		 * if(!lastAutoCommit) setAutoCommit(lastAutoCommit);
 		 */
 	}
-	
+
 	private int getTimeout(long endTimestamp, int timeout) throws UJciException {
 		if (endTimestamp == 0) {
 			return timeout;
@@ -291,7 +291,7 @@ public class UConnectionNormal extends UConnection {
 
 		return timeout;
 	}
-	
+
 	@Override
 	public synchronized void endTransaction(boolean type) {
 		errorHandler = new UError(this);
@@ -307,7 +307,7 @@ public class UConnectionNormal extends UConnection {
 		try {
 			if (client != null
 					&& getCASInfoStatus() != CAS_INFO_STATUS_INACTIVE) {
-			    	setBeginTime();
+				setBeginTime();
 				checkReconnect();
 				if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 					return;
@@ -333,13 +333,13 @@ public class UConnectionNormal extends UConnection {
 				}
 			}
 		} catch (UJciException e) {
-		    	logException(e);
+			logException(e);
 			e.toUError(errorHandler);
 		} catch (IOException e) {
-		    	logException(e);
+			logException(e);
 			errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
 		} catch (Exception e) {
-		    	logException(e);
+			logException(e);
 			errorHandler.setErrorMessage(UErrorCode.ER_UNKNOWN, e.getMessage());
 		}
 
@@ -352,7 +352,7 @@ public class UConnectionNormal extends UConnection {
 		long currentTime = System.currentTimeMillis() / 1000;
 		int reconnectTime = connectionProperties.getReconnectTime();
 		UUnreachableHostList unreachableHosts = UUnreachableHostList.getInstance();
-		
+
 		if (connectedHostId > 0 && lastFailureTime != 0 && reconnectTime > 0
 				&& currentTime - lastFailureTime > reconnectTime) {
 			if (!unreachableHosts.contains(altHosts.get(0))) {
@@ -375,7 +375,7 @@ public class UConnectionNormal extends UConnection {
 		casInfo[CAS_INFO_STATUS] = CAS_INFO_STATUS_INACTIVE;
 		update_executed = false;
 	}
-	
+
 
 	private void connectDB(int timeout) throws IOException, UJciException {
 		UTimedDataInputStream is = new UTimedDataInputStream(client.getInputStream(), casIp, casPort, timeout);
@@ -389,28 +389,28 @@ public class UConnectionNormal extends UConnection {
 		casInfo = new byte[CAS_INFO_SIZE];
 		is.readFully(casInfo);
 		if (dataLength < 0) {
-		    throw new UJciException(UErrorCode.ER_ILLEGAL_DATA_SIZE);
+			throw new UJciException(UErrorCode.ER_ILLEGAL_DATA_SIZE);
 		}
 
 		// receive data
 		int response = is.readInt();
 		if (response < 0) {
-		    int code = is.readInt();
-		    // the error greater than -10000 with CAS_ERROR_INDICATOR is sent by old broker
-		    // -1018 (CAS_ER_NOT_AUTHORIZED_CLIENT) is especial case
-		    if ((response == UErrorCode.CAS_ERROR_INDICATOR && code > -10000)
-			    || code == -1018) {
-			code -= 9000;
-		    }
-		    byte msg[] = new byte[dataLength - 8];
-		    is.readFully(msg);
-		    throw new UJciException(UErrorCode.ER_DBMS, response, code,
-			    new String(msg, 0, Math.max(msg.length - 1, 0)));
+			int code = is.readInt();
+			// the error greater than -10000 with CAS_ERROR_INDICATOR is sent by old broker
+			// -1018 (CAS_ER_NOT_AUTHORIZED_CLIENT) is especial case
+			if ((response == UErrorCode.CAS_ERROR_INDICATOR && code > -10000)
+					|| code == -1018) {
+				code -= 9000;
+			}
+			byte msg[] = new byte[dataLength - 8];
+			is.readFully(msg);
+			throw new UJciException(UErrorCode.ER_DBMS, response, code,
+					new String(msg, 0, Math.max(msg.length - 1, 0)));
 		}
 
 		casProcessId = response;
 		if (brokerInfo == null) {
-	    		brokerInfo = new byte[BROKER_INFO_SIZE];
+			brokerInfo = new byte[BROKER_INFO_SIZE];
 		}
 		is.readFully(brokerInfo);
 
@@ -420,23 +420,23 @@ public class UConnectionNormal extends UConnection {
 			brokerVersion = makeProtoVersion(version & CAS_PROTO_VER_MASK);
 		} else {
 			brokerVersion = makeBrokerVersion(
-				(int) brokerInfo[BROKER_INFO_MAJOR_VERSION],
-				(int) brokerInfo[BROKER_INFO_MINOR_VERSION],
-				(int) brokerInfo[BROKER_INFO_PATCH_VERSION]);
+					(int) brokerInfo[BROKER_INFO_MAJOR_VERSION],
+					(int) brokerInfo[BROKER_INFO_MINOR_VERSION],
+					(int) brokerInfo[BROKER_INFO_PATCH_VERSION]);
 		}
 
 		protocolVersion = (int)version & CAS_PROTO_VER_MASK;
 
 		if (protoVersionIsAbove(PROTOCOL_V4)) {
-		    casId = is.readInt();
+			casId = is.readInt();
 		} else {
-		    casId = -1;
+			casId = -1;
 		}
-	
+
 		if (protoVersionIsAbove(PROTOCOL_V3)) {
-		    is.readFully(sessionId);
+			is.readFully(sessionId);
 		} else {
-		    oldSessionId = is.readInt();
+			oldSessionId = is.readInt();
 		}
 
 	}
@@ -449,7 +449,7 @@ public class UConnectionNormal extends UConnection {
 		setConnectInfo(info);
 		return true;
 	}
-	
+
 
 	private void setConnectInfo(String info) throws UJciException {
 		StringTokenizer st = new StringTokenizer(info, ":");
@@ -460,7 +460,7 @@ public class UConnectionNormal extends UConnection {
 		casIp = st.nextToken();
 		casPort = Integer.valueOf(st.nextToken()).intValue();
 	}
-	
+
 	@Override
 	protected void closeInternal() {
 		// jci 3.0
@@ -468,7 +468,7 @@ public class UConnectionNormal extends UConnection {
 			disconnect();
 			clientSocketClose();
 		}
-		
+
 		/*
 		 * jci 2.x if (transactionList != null && transactionList.size() > 0)
 		 * endTransaction(false);

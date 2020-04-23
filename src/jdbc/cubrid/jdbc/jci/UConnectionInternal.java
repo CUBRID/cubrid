@@ -43,9 +43,9 @@ import java.net.Socket;
 import cubrid.jdbc.driver.CUBRIDException;
 
 public class UConnectionInternal extends UConnection {
-	
+
 	private Thread curThread;
-	
+
 	public UConnectionInternal(Socket socket, Thread curThread) throws CUBRIDException {
 		errorHandler = new UError(this);
 		try {
@@ -90,7 +90,7 @@ public class UConnectionInternal extends UConnection {
 			throw new CUBRIDException(errorHandler, e);
 		}
 	}
-	
+
 	@Override
 	public void setCharset(String newCharsetName) {
 		if (UJCIUtil.isServerSide()) {
@@ -99,7 +99,7 @@ public class UConnectionInternal extends UConnection {
 					new Object[] { newCharsetName });
 		}
 	}
-	
+
 	@Override
 	public void setZeroDateTimeBehavior(String behavior) {
 		if (UJCIUtil.isServerSide()) {
@@ -108,7 +108,7 @@ public class UConnectionInternal extends UConnection {
 					this.curThread, new Object[] { behavior });
 		}
 	}
-	
+
 	@Override
 	public void setResultWithCUBRIDTypes(String support) {
 		if (UJCIUtil.isServerSide()) {
@@ -117,12 +117,12 @@ public class UConnectionInternal extends UConnection {
 					this.curThread, new Object[] { support });
 		}
 	}
-	
+
 	@Override
 	public void setAutoCommit(boolean autoCommit) {
 		/* do nothing */
 	}
-	
+
 	@Override
 	public boolean getAutoCommit() {
 		return false;
@@ -132,19 +132,19 @@ public class UConnectionInternal extends UConnection {
 	public void endTransaction(boolean type) {
 		/* do nothing */
 	}
-	
+
 	@Override
 	public boolean protoVersionIsAbove(int ver) {
 		/* do not need to check protocol version for internal JDBC */
 		return true;
 	}
-	
+
 	@Override
 	public boolean protoVersionIsUnder(int ver) {
 		/* do not need to check protocol version for internal JDBC */
 		return true;
 	}
-	
+
 	@Override
 	protected void closeInternal() {
 		if (client != null) {

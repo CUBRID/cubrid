@@ -90,7 +90,7 @@ public class CUBRIDPooledConnection implements PooledConnection {
 		}
 
 		if (u_con.check_cas() == false) {
-			u_con.reset_connection();
+			u_con.resetConnection();
 		}
 
 		cubConnection = new CUBRIDConnectionWrapperPooling(u_con, null,
