@@ -224,7 +224,8 @@ extern "C"
     PROTOCOL_V7 = 7,		/* timezone types, to pin xasl entry for retry */
     PROTOCOL_V8 = 8,		/* JSON type */
     PROTOCOL_V9 = 9,		/* cas health check: get function status */
-    CURRENT_PROTOCOL = PROTOCOL_V9
+    PROTOCOL_V10 = 10,		/* Secure Broker/CAS using SSL */
+    CURRENT_PROTOCOL = PROTOCOL_V10
   };
   typedef enum t_cas_protocol T_CAS_PROTOCOL;
 
