@@ -182,21 +182,6 @@ if ERRORLEVEL 1 (echo FAILD. & GOTO :EOF) ELSE echo OK.
 copy %SOURCE_DIR%\README %BUILD_PREFIX%\
 copy %SOURCE_DIR%\CREDITS %BUILD_PREFIX%\
 copy %SOURCE_DIR%\COPYING %BUILD_PREFIX%\
-
-REM copy cubridtray msg file
-copy %SOURCE_DIR%\src\win_tools\cubridtray\msg\UNITRAYEN.txt  %SOURCE_DIR%\msg\en_US\cubridtray.msg
-copy %SOURCE_DIR%\src\win_tools\cubridtray\msg\UNITRAYEN.txt  %SOURCE_DIR%\msg\en_US.utf8\cubridtray.msg
-copy %SOURCE_DIR%\src\win_tools\cubridtray\msg\UNITRAYKO.txt  %SOURCE_DIR%\msg\ko_KR.euckr\cubridtray.msg
-copy %SOURCE_DIR%\src\win_tools\cubridtray\msg\UNITRAYKO.txt  %SOURCE_DIR%\msg\ko_KR.utf8\cubridtray.msg
-copy %SOURCE_DIR%\src\win_tools\cubridtray\msg\UNITRAYEN.txt  %SOURCE_DIR%\msg\tr_TR.utf8\cubridtray.msg
-copy %SOURCE_DIR%\src\win_tools\cubridtray\msg\UNITRAYEN.txt  %SOURCE_DIR%\msg\de_DE.utf8\cubridtray.msg
-copy %SOURCE_DIR%\src\win_tools\cubridtray\msg\UNITRAYEN.txt  %SOURCE_DIR%\msg\es_ES.utf8\cubridtray.msg
-copy %SOURCE_DIR%\src\win_tools\cubridtray\msg\UNITRAYEN.txt  %SOURCE_DIR%\msg\fr_FR.utf8\cubridtray.msg
-copy %SOURCE_DIR%\src\win_tools\cubridtray\msg\UNITRAYEN.txt  %SOURCE_DIR%\msg\it_IT.utf8\cubridtray.msg
-copy %SOURCE_DIR%\src\win_tools\cubridtray\msg\UNITRAYEN.txt  %SOURCE_DIR%\msg\ja_JP.utf8\cubridtray.msg
-copy %SOURCE_DIR%\src\win_tools\cubridtray\msg\UNITRAYEN.txt  %SOURCE_DIR%\msg\km_KH.utf8\cubridtray.msg
-copy %SOURCE_DIR%\src\win_tools\cubridtray\msg\UNITRAYEN.txt  %SOURCE_DIR%\msg\vi_VN.utf8\cubridtray.msg
-copy %SOURCE_DIR%\src\win_tools\cubridtray\msg\UNITRAYEN.txt  %SOURCE_DIR%\msg\zh_CN.utf8\cubridtray.msg
 GOTO :EOF
 
 
