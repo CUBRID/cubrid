@@ -7,6 +7,18 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
+import java.net.UnknownHostException;
+import java.security.KeyManagementException;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
+import java.security.cert.CertificateException;
+import java.security.cert.X509Certificate;
+
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSocket;
+import javax.net.ssl.SSLSocketFactory;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
 
 import cubrid.jdbc.jci.UConnection;
 import cubrid.jdbc.jci.UErrorCode;
@@ -16,9 +28,10 @@ import cubrid.jdbc.jci.UTimedDataInputStream;
 public class BrokerHandler {
     private static int TIMEOUT_UNIT = 1000;
 
-    public static Socket connectBroker(String ip, int port, int timeout)
+    public static Socket connectBroker(String ip, int port, boolean useSSL, int timeout)
 	    throws IOException, UJciException {
 	Socket toBroker = null;
+	Socket toSSLBroker = null;
 	UTimedDataInputStream in = null;
 	DataOutputStream out = null;
 	long begin = System.currentTimeMillis();
@@ -52,7 +65,12 @@ public class BrokerHandler {
 		}
 		throw new UJciException(code);
 	    } else if (code == 0) {
-		return toBroker;
+	        if (useSSL == true) {
+	            toSSLBroker = (Socket)createSSLSocket(toBroker, ip, port);
+	            return (Socket)toSSLBroker;
+	        } else {
+	            return toBroker;
+	        }
 	    }
 
 	    // if (code > 0) { only windows }
@@ -72,7 +90,13 @@ public class BrokerHandler {
 	    }
 
 	    toBroker.setKeepAlive(true);
-	    return toBroker;
+
+	    if (useSSL == true) {
+	        toSSLBroker = (Socket)createSSLSocket(toBroker, ip, code);
+	        return (Socket)toSSLBroker;
+	    } else {
+	        return toBroker;
+	    }
 	} catch (SocketTimeoutException e) {
 	    if (toBroker != null) {
 		toBroker.close();
@@ -187,5 +211,51 @@ public class BrokerHandler {
 	dao.writeInt(process);
 
 	cancelRequest(ip, port, bao.toByteArray(), timeout);
+    }
+
+    private static SSLSocket createSSLSocket(Socket plainSocket, String ip, int port) throws UJciException {
+        SSLSocket sslSocket = null;
+        SSLContext ctx = null;
+        SSLSocketFactory sslsocketfactory = null;
+
+        X509TrustManager tm = new X509TrustManager() {
+            public void checkClientTrusted(X509Certificate[] chain, String authType) throws CertificateException {
+            }
+
+            public void checkServerTrusted(X509Certificate[] xcs, String string) throws CertificateException {
+            }
+
+            public X509Certificate[] getAcceptedIssuers() {
+                return new X509Certificate[0];
+            }
+        };
+
+        try {
+            ctx = SSLContext.getInstance("TLS");
+        } catch (NoSuchAlgorithmException e) {
+            e.printStackTrace();
+            throw new UJciException(UErrorCode.ER_CONNECTION, e);
+        }
+
+        try {
+            ctx.init(null, new TrustManager[] { tm }, new SecureRandom());
+        } catch (KeyManagementException e) {
+            e.printStackTrace();
+            throw new UJciException(UErrorCode.ER_CONNECTION, e);
+        }
+
+        sslsocketfactory = ctx.getSocketFactory();
+        try {
+            sslSocket = (SSLSocket) sslsocketfactory.createSocket(plainSocket, ip, port, true);
+            sslSocket.startHandshake();
+        } catch (UnknownHostException e) {
+            e.printStackTrace();
+            throw new UJciException(UErrorCode.ER_CONNECTION, e);
+        } catch (IOException e) {
+            e.printStackTrace();
+            throw new UJciException(UErrorCode.ER_CONNECTION, e);
+        }
+
+        return sslSocket;
     }
 }

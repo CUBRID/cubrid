@@ -85,6 +85,7 @@ public class UConnection {
 
 	// this value is defined in broker/cas_protocol.h
 	private final static String magicString = "CUBRK";
+	private final static String magicStringSSL = "CUBRS";
 	private final static byte CAS_CLIENT_JDBC = 3;
 
 	public static final int PROTOCOL_V0 = 0;
@@ -1836,7 +1837,8 @@ public class UConnection {
 	}
 
 	int timeout = connectionProperties.getConnectTimeout() * 1000;
-	client = BrokerHandler.connectBroker(CASIp, CASPort, getTimeout(endTimestamp, timeout));
+	boolean useSSL = connectionProperties.getUseSSL();
+	client = BrokerHandler.connectBroker(CASIp, CASPort, useSSL, getTimeout(endTimestamp, timeout));
 	output = new DataOutputStream(client.getOutputStream());
 	input = new UTimedDataInputStream(client.getInputStream(), CASIp, CASPort);
 	connectDB(getTimeout(endTimestamp, timeout));
@@ -1941,6 +1943,8 @@ public class UConnection {
 	} else {
 	    int retry = 0;
 	    UUnreachableHostList unreachableHosts = UUnreachableHostList.getInstance();
+	    boolean useSSL = connectionProperties.getUseSSL();
+	    unreachableHosts.setUseSSL(useSSL);
 	    
 	    do {
 		for (int hostId = 0; hostId < altHosts.size(); hostId++) {
@@ -2420,4 +2424,12 @@ public class UConnection {
 
 		return shardInfo[shard_id];
 	}
+
+    public void setDriverMagicStr(boolean useSSL) {
+        if (useSSL == true) {
+            UJCIUtil.copy_bytes(driverInfo, 0, 5, magicStringSSL);
+        } else {
+            UJCIUtil.copy_bytes(driverInfo, 0, 5, magicString);
+        }
+    }
 }
