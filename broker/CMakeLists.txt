@@ -219,6 +219,7 @@ set(CUB_CAS_SOURCES
   ${BROKER_DIR}/cas_error.c
   ${BROKER_DIR}/broker_acl.c
   ${BROKER_DIR}/cas_meta.c
+  ${BROKER_DIR}/cas_ssl.c
   )
 
 if(UNIX)
