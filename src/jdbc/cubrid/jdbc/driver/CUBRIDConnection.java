@@ -146,9 +146,9 @@ public class CUBRIDConnection implements Connection {
 	public String toString () {
 	  StringBuffer str = new StringBuffer();
 	  str.append(getClass().getName());
-	  str.append(String.format ("(%s:%d, %d, %d)", u_con.CASIp,
-				     u_con.CASPort, u_con.casId,
-				     u_con.processId));
+	  str.append(String.format ("(%s:%d, %d, %d)", u_con.getCasIp(),
+				     u_con.getCasPort(), u_con.getCasId(),
+				     u_con.getCasProcessId()));
 	  return str.toString();
 	}
 

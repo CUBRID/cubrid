@@ -66,22 +66,22 @@ abstract public class UJCIManager {
 		}
 	}
 
-	public static UConnection connect(String ip, int port, String name,
+	public static UConnectionNormal connect(String ip, int port, String name,
 			String user, String passwd, String url)
 			throws java.sql.SQLException {
-		UConnection connection;
+		UConnectionNormal connection;
 
-		connection = new UConnection(ip, port, name, user, passwd, url);
+		connection = new UConnectionNormal(ip, port, name, user, passwd, url);
 		// connectionList.add(connection);
 		return connection;
 	}
 
-	public static UConnection connect(ArrayList<String> aConList, String name,
+	public static UConnectionNormal connect(ArrayList<String> aConList, String name,
 			String user, String passwd, String url)
 			throws java.sql.SQLException {
-		UConnection connection;
+		UConnectionNormal connection;
 
-		connection = new UConnection(aConList, name, user, passwd, url);
+		connection = new UConnectionNormal(aConList, name, user, passwd, url);
 		// connectionList.add(connection);
 		return connection;
 	}
@@ -106,11 +106,11 @@ abstract public class UJCIManager {
 		return url_cache;
 	}
 
-	public static UConnection connectDefault() throws SQLException {
-		Object curThread = Thread.currentThread();
+	public static UConnectionInternal connectDefault() throws SQLException {
+		Thread curThread = Thread.currentThread();
 		Socket s = (Socket) UJCIUtil.invoke("com.cubrid.jsp.ExecuteThread",
 				"getSocket", null, curThread, null);
-		return new UConnection(s, curThread);
+		return new UConnectionInternal(s, curThread);
 	}
 
 	/*

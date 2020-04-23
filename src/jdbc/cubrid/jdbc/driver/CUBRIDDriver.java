@@ -52,6 +52,7 @@ import java.util.regex.Pattern;
 
 import cubrid.jdbc.jci.BrokerHealthCheck;
 import cubrid.jdbc.jci.UConnection;
+import cubrid.jdbc.jci.UConnectionNormal;
 import cubrid.jdbc.jci.UJCIManager;
 import cubrid.jdbc.jci.UJCIUtil;
 
@@ -153,7 +154,7 @@ public class CUBRIDDriver implements Driver {
 	    String prop = matcher.group(7);
 	    int port = default_port;
 
-	    UConnection u_con;
+	    UConnectionNormal u_con;
 	    String resolvedUrl;
 	    ConnectionProperties connProperties;
 
