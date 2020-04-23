@@ -1533,7 +1533,6 @@ public abstract class UConnection {
 		return this.casId;
 	}
 
-
 	public abstract void setAutoCommit(boolean autoCommit);
 
 	public abstract boolean getAutoCommit();

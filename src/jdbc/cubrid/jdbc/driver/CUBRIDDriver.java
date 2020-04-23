@@ -42,10 +42,8 @@ import java.sql.Timestamp;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.List;
 import java.util.Properties;
 import java.util.StringTokenizer;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -202,13 +200,13 @@ public class CUBRIDDriver implements Driver {
 			Collections.shuffle(altHostList);
 		}
 		try {
-		    u_con = UJCIManager.connect(altHostList, db, user, pass, resolvedUrl);
+		    u_con = (UConnectionNormal) UJCIManager.connect(altHostList, db, user, pass, resolvedUrl);
 		} catch (CUBRIDException e) {
 		    throw e;
 		}
 	    } else {
 		try {
-		    u_con = UJCIManager.connect(host, port, db, user, pass, resolvedUrl);
+		    u_con = (UConnectionNormal) UJCIManager.connect(host, port, db, user, pass, resolvedUrl);
 		} catch (CUBRIDException e) {
 		    throw e;
 		}
