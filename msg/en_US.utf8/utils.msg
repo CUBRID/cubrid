@@ -201,7 +201,8 @@ Available command:\n\
     stop        [database-name]\n\
     restart     [database-name]\n\
     status\n\
-    acl         <status|reload> database-name\n
+    acl         <status|reload> database-name\n\
+    javasp      <status|restart> database-name\n
 37 The server was configured for HA.\n
 26 cubrid utility, version %1$s\n\
 usage: %2$s broker <command> [args]\n\

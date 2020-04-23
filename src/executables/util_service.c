@@ -67,7 +67,7 @@ typedef enum
   HEARTBEAT = 4,
   UTIL_HELP = 6,
   UTIL_VERSION = 7,
-  ADMIN = 8,
+  ADMIN = 8
 } UTIL_SERVICE_INDEX_E;
 
 typedef enum
@@ -88,7 +88,8 @@ typedef enum
   SC_APPLYLOGDB,
   GET_SHARID,
   TEST,
-  REPLICATION
+  REPLICATION,
+  JAVASP_UTILITY
 } UTIL_SERVICE_COMMAND_E;
 
 typedef enum
@@ -193,6 +194,7 @@ static UTIL_SERVICE_OPTION_MAP_T us_Service_map[] = {
 #define COMMAND_TYPE_ON         "on"
 #define COMMAND_TYPE_OFF        "off"
 #define COMMAND_TYPE_ACL        "acl"
+#define COMMAND_TYPE_JAVASP     "javasp"
 #define COMMAND_TYPE_RESET      "reset"
 #define COMMAND_TYPE_INFO       "info"
 #define COMMAND_TYPE_COPYLOGDB  "copylogdb"
@@ -205,7 +207,6 @@ static UTIL_SERVICE_OPTION_MAP_T us_Service_map[] = {
 static UTIL_SERVICE_OPTION_MAP_T us_Command_map[] = {
   {START, COMMAND_TYPE_START, MASK_ALL},
   {STOP, COMMAND_TYPE_STOP, MASK_ALL},
-  {RESTART, COMMAND_TYPE_RESTART, MASK_SERVICE | MASK_SERVER | MASK_BROKER},
   {STATUS, COMMAND_TYPE_STATUS, MASK_ALL},
   {DEREGISTER, COMMAND_TYPE_DEREG, MASK_HEARTBEAT},
   {LIST, COMMAND_TYPE_LIST, MASK_HEARTBEAT},
@@ -221,6 +222,7 @@ static UTIL_SERVICE_OPTION_MAP_T us_Command_map[] = {
   {TEST, COMMAND_TYPE_TEST, MASK_BROKER},
   {REPLICATION, COMMAND_TYPE_REPLICATION, MASK_HEARTBEAT},
   {REPLICATION, COMMAND_TYPE_REPLICATION_SHORT, MASK_HEARTBEAT},
+  {JAVASP_UTILITY, COMMAND_TYPE_JAVASP, MASK_SERVER | MASK_BROKER},
   {-1, "", MASK_ALL}
 };
 
@@ -374,6 +376,9 @@ command_string (int command_type)
       break;
     case REPLICATION:
       command = PRINT_CMD_REPLICATION;
+      break;
+    case JAVASP_UTILITY:
+      command = PRINT_CMD_JAVASP;
       break;
     case STOP:
     default:
@@ -1742,6 +1747,51 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 	else if (strcasecmp (argv[0], "status") == 0)
 	  {
 	    const char *args[] = { UTIL_ADMIN_NAME, UTIL_OPTION_ACLDB, argv[1], NULL };
+
+	    status = proc_execute (UTIL_ADMIN_NAME, args, true, false, false, NULL);
+	  }
+	else
+	  {
+	    status = ER_GENERIC_ERROR;
+	    if (show_usage)
+	      {
+		util_service_usage (SERVER);
+		util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_CMD);
+	      }
+
+	    break;
+	  }
+      }
+
+      break;
+
+    case JAVASP_UTILITY:
+      {
+	if (argc != 2)
+	  {
+	    status = ER_GENERIC_ERROR;
+
+	    if (show_usage)
+	      {
+		util_service_usage (SERVER);
+		util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_CMD);
+	      }
+	    break;
+	  }
+
+	if (strcasecmp (argv[0], "restart") == 0)
+	  {
+      /* cub_admin javasp -j <database-name> */
+	    const char *args[] = { UTIL_ADMIN_NAME, UTIL_OPTION_JAVASP, JAVASP_RESTART, argv[1],
+	      NULL
+	    };
+
+	    status = proc_execute (UTIL_ADMIN_NAME, args, true, false, false, NULL);
+	    print_result (PRINT_SERVER_NAME, status, command_type);
+	  }
+	else if (strcasecmp (argv[0], "status") == 0)
+	  {
+	    const char *args[] = { UTIL_ADMIN_NAME, UTIL_OPTION_JAVASP, argv[1], NULL };
 
 	    status = proc_execute (UTIL_ADMIN_NAME, args, true, false, false, NULL);
 	  }

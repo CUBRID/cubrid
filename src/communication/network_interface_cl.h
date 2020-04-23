@@ -179,6 +179,9 @@ extern "C"
 extern int acl_reload (void);
 extern void acl_dump (FILE * outfp);
 
+extern int jsp_restart (void);
+extern void jsp_status (FILE * outfp);
+
 int boot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH_INFO * db_path_info,
 			    bool db_overwrite, const char *file_addmore_vols, DKNPAGES db_npages,
 			    PGLENGTH db_desired_pagesize, DKNPAGES log_npages, PGLENGTH db_desired_log_page_size,

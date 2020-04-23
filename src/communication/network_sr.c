@@ -680,6 +680,16 @@ net_server_init (void)
   req_p->processing_function = sjsp_get_server_port;
   req_p->name = "NET_SERVER_JSP_GET_SERVER_PORT";
 
+  req_p = &net_Requests[NET_SERVER_JSP_RESTART];
+  req_p->action_attribute = OUT_TRANSACTION;
+  req_p->processing_function = sjsp_restart;
+  req_p->name = "NET_SERVER_JSP_RESTART";
+
+  req_p = &net_Requests[NET_SERVER_JSP_STATUS];
+  req_p->action_attribute = OUT_TRANSACTION;
+  req_p->processing_function = sjsp_status;
+  req_p->name = "NET_SERVER_JSP_STATUS";
+
   /* replication */
   req_p = &net_Requests[NET_SERVER_REPL_INFO];
   req_p->action_attribute = IN_TRANSACTION;

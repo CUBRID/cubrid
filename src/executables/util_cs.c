@@ -3618,3 +3618,78 @@ error_exit:
 
   return EXIT_FAILURE;
 }
+
+/*
+ * javasp() -
+ *   return: EXIT_SUCCESS/EXIT_FAILURE
+ */
+int
+javasp (UTIL_FUNCTION_ARG * arg)
+{
+#if defined (CS_MODE)
+  UTIL_ARG_MAP *arg_map = arg->arg_map;
+  char er_msg_file[PATH_MAX];
+  const char *database_name;
+  bool restart;
+  int ret_code = EXIT_SUCCESS;
+
+  if (utility_get_option_string_table_size (arg_map) != 1)
+    {
+      goto print_javasp_usage;
+    }
+
+  restart = utility_get_option_bool_value (arg_map, JAVASP_RESTART_S);
+
+  database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  if (database_name == NULL)
+    {
+      goto print_javasp_usage;
+    }
+
+  if (check_database_name (database_name))
+    {
+      goto error_exit;
+    }
+
+  /* error message log file */
+  sprintf (er_msg_file, "%s_%s.err", database_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
+  /* should have little copyright herald message ? */
+  AU_DISABLE_PASSWORDS ();
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+  db_login ("DBA", NULL);
+
+  if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
+    {
+      fprintf (stderr, "%s\n", db_error_string (3));
+      goto error_exit;
+    }
+
+  if (restart)
+    {
+      ret_code = jsp_restart ();
+      if (ret_code != NO_ERROR)
+	{
+	  fprintf (stderr, "%s\n", db_error_string (3));
+	}
+    }
+  else
+    {
+      jsp_status (stdout);
+    }
+  db_shutdown ();
+
+  return ret_code;
+
+print_javasp_usage:
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_ACLDB, ACLDB_MSG_USAGE),
+	   basename (arg->argv0));
+error_exit:
+  return EXIT_FAILURE;
+#else /* CS_MODE */
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_ACLDB, ACLDB_MSG_NOT_IN_STANDALONE),
+	   basename (arg->argv0));
+  return EXIT_FAILURE;
+#endif /* !CS_MODE */
+}

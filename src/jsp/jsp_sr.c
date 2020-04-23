@@ -100,6 +100,14 @@
 typedef jint (*CREATE_VM_FUNC) (JavaVM **, void **, void *);
 
 #ifdef __cplusplus
+#define JVM_GetEnv(JVM, ENV, VER)	\
+	(JVM)->GetEnv(ENV, VER)
+#define JVM_AttachCurrentThread(JVM, ENV, ARGS)	\
+	(JVM)->AttachCurrentThread(ENV, ARGS)
+#define JVM_DetachCurrentThread(JVM)	\
+	(JVM)->DetachCurrentThread()
+#define JVM_ExceptionOccurred(ENV)	\
+	(ENV)->ExceptionOccurred()
 #define JVM_FindClass(ENV, NAME)	\
 	(ENV)->FindClass(NAME)
 #define JVM_GetStaticMethodID(ENV, CLAZZ, NAME, SIG)	\
@@ -110,9 +118,27 @@ typedef jint (*CREATE_VM_FUNC) (JavaVM **, void **, void *);
 	(ENV)->NewObjectArray(LENGTH, ELEMENTCLASS, INITIALCLASS)
 #define JVM_SetObjectArrayElement(ENV, ARRAY, INDEX, VALUE)	\
 	(ENV)->SetObjectArrayElement(ARRAY, INDEX, VALUE)
+#define JVM_CallStaticVoidMethod(ENV, CLAZZ, METHODID, ARGS)	\
+	(ENV)->CallStaticVoidMethod(CLAZZ, METHODID, ARGS)
 #define JVM_CallStaticIntMethod(ENV, CLAZZ, METHODID, ARGS)	\
 	(ENV)->CallStaticIntMethod(CLAZZ, METHODID, ARGS)
+#define JVM_CallStaticObjectMethod(ENV, CLAZZ, METHODID, ARGS)	\
+	(ENV)->CallStaticObjectMethod(CLAZZ, METHODID, ARGS)
+#define JVM_GetStringUTF(ENV, STRING)	\
+	(ENV)->GetStringUTFChars(STRING, NULL)
+#define JVM_ReleaseStringUTF(ENV, JSTRING, CSTRING)	\
+	(ENV)->ReleaseStringUTFChars(JSTRING, CSTRING)
+#define JVM_GetStringUTFLength(ENV, STRING)	\
+	(ENV)->GetStringUTFLength(STRING)
 #else
+#define JVM_GetEnv(JVM, ENV, VER)	\
+	(*JVM)->GetEnv(JVM, ENV, VER)
+#define JVM_AttachCurrentThread(JVM, ENV, ARGS)	\
+	(*JVM)->AttachCurrentThread(JVM, ENV, ARGS)
+#define JVM_DetachCurrentThread(JVM)	\
+	(*JVM)->DetachCurrentThread(JVM)
+#define JVM_ExceptionOccurred(ENV)	\
+	(*ENV)->ExceptionOccurred(ENV)
 #define JVM_FindClass(ENV, NAME)	\
 	(*ENV)->FindClass(ENV, NAME)
 #define JVM_GetStaticMethodID(ENV, CLAZZ, NAME, SIG)	\
@@ -123,8 +149,18 @@ typedef jint (*CREATE_VM_FUNC) (JavaVM **, void **, void *);
 	(*ENV)->NewObjectArray(ENV, LENGTH, ELEMENTCLASS, INITIALCLASS)
 #define JVM_SetObjectArrayElement(ENV, ARRAY, INDEX, VALUE)	\
 	(*ENV)->SetObjectArrayElement(ENV, ARRAY, INDEX, VALUE)
+#define JVM_CallStaticVoidMethod(ENV, CLAZZ, METHODID, ARGS)	\
+	(*ENV)->CallStaticVoidMethod(ENV, CLAZZ, METHODID, ARGS)
 #define JVM_CallStaticIntMethod(ENV, CLAZZ, METHODID, ARGS)	\
 	(*ENV)->CallStaticIntMethod(ENV, CLAZZ, METHODID, ARGS)
+#define JVM_CallStaticObjectMethod(ENV, CLAZZ, METHODID, ARGS)	\
+	(*ENV)->CallStaticObjectMethod(ENV, CLAZZ, METHODID, ARGS)
+#define JVM_GetStringUTF(ENV, STRING)	\
+	(*ENV)->GetStringUTFChars(ENV, STRING, NULL)
+#define JVM_ReleaseStringUTF(ENV, JSTRING, CSTRING)	\
+	(*ENV)->ReleaseStringUTFChars(ENV, JSTRING, CSTRING)
+#define JVM_GetStringUTFLength(ENV, STRING)	\
+	(*ENV)->GetStringUTFLength(ENV, STRING)
 #endif
 
 JavaVM *jvm = NULL;
@@ -411,9 +447,9 @@ jsp_tokenize_jvm_options (char *opt_str)
 int
 jsp_start_server (const char *db_name, const char *path)
 {
-  JNIEnv *env_p = NULL;
   jint res;
   jclass cls, string_cls;
+  JNIEnv *env_p = NULL;
   jmethodID mid;
   jstring jstr_dbname, jstr_path, jstr_version, jstr_envroot, jstr_port;
   jobjectArray args;
@@ -486,7 +522,7 @@ jsp_start_server (const char *db_name, const char *path)
       // *INDENT-ON*
     }
 
-  vm_arguments.version = JNI_VERSION_1_4;
+  vm_arguments.version = JNI_VERSION_1_6;
   vm_arguments.options = options;
   vm_arguments.nOptions = vm_n_options;
   vm_arguments.ignoreUnrecognized = JNI_TRUE;
@@ -534,7 +570,7 @@ jsp_start_server (const char *db_name, const char *path)
       goto error;
     }
 
-  mid = JVM_GetStaticMethodID (env_p, cls, "start", "([Ljava/lang/String;)I");
+  mid = JVM_GetStaticMethodID (env_p, cls, "main", "([Ljava/lang/String;)V");
   if (mid == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, "GetStaticMethodID");
@@ -598,13 +634,13 @@ jsp_start_server (const char *db_name, const char *path)
   JVM_SetObjectArrayElement (env_p, args, 4, jstr_port);
 
   sp_port = JVM_CallStaticIntMethod (env_p, cls, mid, args);
-  if (sp_port == -1)
+  if (JVM_ExceptionOccurred(env_p) || sp_port == -1)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, "CallStaticIntMethod");
       goto error;
     }
 
-  return 0;
+  return NO_ERROR;
 
 error:
   jsp_stop_server ();
@@ -623,12 +659,21 @@ error:
 int
 jsp_stop_server (void)
 {
+  JNIEnv *env_p = NULL;
+  jclass cls;
+  jmethodID mid;
+  JavaVMAttachArgs args;
+  int error, status;
+
   if (jsp_jvm_is_loaded ())
     {
       jvm = NULL;
     }
 
   return NO_ERROR;
+
+error:
+  return ER_FAILED;
 }
 
 /*

@@ -50,7 +50,8 @@ public class Server {
 	private ServerSocket serverSocket;
 	private Thread socketListener;
 
-	public Server(String name, String path, String version, String rPath, String port)
+	private static Server serverInstance = null;
+	private Server(String name, String path, String version, String rPath, String port)
 			throws IOException {
 		serverName = name;
 		spPath = path;
@@ -61,14 +62,18 @@ public class Server {
 		  serverSocket = new ServerSocket(port_number);
 
 		  Class.forName("cubrid.jdbc.driver.CUBRIDDriver");
-		  System.setSecurityManager(new SpSecurityManager());
+		  // System.setSecurityManager(new SpSecurityManager());
 		  System.setProperty("cubrid.server.version", version);
 		} catch (Exception e) {
 			log(e);
 			e.printStackTrace();
 		}
 
+<<<<<<< HEAD
 		socketListener = new Thread(new Runnable() {
+=======
+		socketListener = new Thread (new Runnable() {
+>>>>>>> draft
 			public void run() {
 				Socket client = null;
 				while (true) {
@@ -78,15 +83,33 @@ public class Server {
 						new ExecuteThread(client).start();
 					} catch (IOException e) {
 						log(e);
+						break;
 					}
 				}
 			}
 		});
+<<<<<<< HEAD
 		socketListener.start();
+=======
+>>>>>>> draft
 	}
 
 	private int getServerPort() {
 		return serverSocket.getLocalPort();
+	}
+
+	private void startSocketListener() {
+		socketListener.setDaemon(true);
+		socketListener.start();
+	}
+
+	private void stopSocketListener() {
+		try {
+			serverSocket.close();
+			serverSocket = null;
+		} catch (IOException e) {
+			log(e);
+		}
 	}
 
 	public static String getServerName() {
@@ -99,8 +122,9 @@ public class Server {
 
 	public static int start(String[] args) {
 		try {
-			Server server = new Server(args[0], args[1], args[2], args[3], args[4]);
-			return server.getServerPort();
+			serverInstance = new Server(args[0], args[1], args[2], args[3], args[4]);
+			serverInstance.startSocketListener();
+			return serverInstance.getServerPort();
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
@@ -108,8 +132,15 @@ public class Server {
 		return -1;
 	}
 
-	public static void main(String[] args) {
-		Server.start(new String[] { "test" });
+	public static void main (String[] args) {
+		Server.start(args);
+	}
+
+	public static void stop(int status) {
+		if (serverInstance != null) {
+			serverInstance.stopSocketListener();
+			serverInstance = null;
+		}
 	}
 
 	public static void log(Throwable ex) {

@@ -88,7 +88,8 @@ typedef enum
   MSGCAT_UTIL_SET_RESTORESLAVE = 53,
   MSGCAT_UTIL_SET_DELVOLDB = 54,
   MSGCAT_UTIL_SET_VACUUMDB = 55,
-  MSGCAT_UTIL_SET_CHECKSUMDB = 56
+  MSGCAT_UTIL_SET_CHECKSUMDB = 56,
+  MSGCAT_UTIL_SET_JAVASP = 57
 } MSGCAT_UTIL_SET;
 
 /* Message id in the set MSGCAT_UTIL_SET_GENERIC */
@@ -731,7 +732,8 @@ typedef enum
   RESTORESLAVE,
   VACUUMDB,
   CHECKSUMDB,
-  LOGFILEDUMP,
+  JAVASP,
+  // LOGFILEDUMP, /* disabled */
 } UTIL_INDEX;
 
 typedef enum
@@ -848,6 +850,7 @@ typedef struct _ha_config
 #define PRINT_CMD_GETID         "getid"
 #define PRINT_CMD_TEST          "test"
 #define PRINT_CMD_REPLICATION	"replication"
+#define PRINT_CMD_JAVASP        "javasp"
 
 #define PRINT_RESULT_SUCCESS    "success"
 #define PRINT_RESULT_FAIL       "fail"
@@ -879,6 +882,8 @@ typedef struct _ha_config
 #define COMMDB_HA_START_UTIL_PROCESS	  "-t"
 
 #define ACLDB_RELOAD            "-r"
+
+#define JAVASP_RESTART          "-j"
 
 #define MASK_ALL                0xFF
 #define MASK_SERVICE            0x01
@@ -931,6 +936,7 @@ typedef struct _ha_config
 #define UTIL_OPTION_RESTORESLAVE                "restoreslave"
 #define UTIL_OPTION_VACUUMDB			"vacuumdb"
 #define UTIL_OPTION_CHECKSUMDB			"checksumdb"
+#define UTIL_OPTION_JAVASP			                "javasp"
 
 /* createdb option list */
 #define CREATE_PAGES_S                          'p'
@@ -1564,6 +1570,10 @@ typedef struct _ha_config
 #define CHECKSUM_SCHEMA_ONLY_S			14002
 #define CHECKSUM_SCHEMA_ONLY_L			"schema-only"
 
+/* javasp option list */
+#define JAVASP_RESTART_S             'j'
+#define JAVASP_RESTART_L				     "restart"
+
 #if defined(WINDOWS)
 #define LIB_UTIL_CS_NAME                "cubridcs.dll"
 #define LIB_UTIL_SA_NAME                "cubridsa.dll"
@@ -1696,6 +1706,7 @@ extern "C"
   extern int restoreslave (UTIL_FUNCTION_ARG * arg_map);
   extern int vacuumdb (UTIL_FUNCTION_ARG * arg_map);
   extern int checksumdb (UTIL_FUNCTION_ARG * arg_map);
+  extern int javasp (UTIL_FUNCTION_ARG * arg_map);
 
   extern void util_admin_usage (const char *argv0);
   extern void util_admin_version (const char *argv0);
