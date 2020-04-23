@@ -57,6 +57,7 @@
 #include "bit.h"
 #include "util_func.h"
 #include "vacuum.h"
+#include "btree_load.h"
 #include "critical_section.h"
 #if defined(SERVER_MODE)
 #include "connection_error.h"
@@ -163,10 +164,10 @@ struct file_header
 /* File flags. */
 #define FILE_FLAG_NUMERABLE	    0x1	/* Is file numerable */
 #define FILE_FLAG_TEMPORARY	    0x2	/* Is file temporary */
-#define FILE_FLAG_ENCRYPTED_AES 0x4 /* is file encrypted using AES */
-#define FILE_FLAG_ENCRYPTED_ARIA 0x8 /* is file encrypted using ARIA */
+#define FILE_FLAG_ENCRYPTED_AES 0x4	/* is file encrypted using AES */
+#define FILE_FLAG_ENCRYPTED_ARIA 0x8	/* is file encrypted using ARIA */
 
-#define FILE_FLAG_ENCRYPTED_MASK 0x0000000c /* 0x4 + 0x8 */
+#define FILE_FLAG_ENCRYPTED_MASK 0x0000000c	/* 0x4 + 0x8 */
 
 #define FILE_IS_NUMERABLE(fh) (((fh)->file_flags & FILE_FLAG_NUMERABLE) != 0)
 #define FILE_IS_TEMPORARY(fh) (((fh)->file_flags & FILE_FLAG_TEMPORARY) != 0)
@@ -425,6 +426,14 @@ struct file_map_context
 
   FILE_MAP_PAGE_FUNC func;
   void *args;
+};
+
+/* FILE_SET_TDE_ALGORITHM_ARGS - args varaible for file_apply_tde_algorithm() */
+typedef struct file_set_tde_algorithm_args FILE_SET_TDE_ALGORITHM_ARGS;
+struct file_set_tde_algorithm_args
+{
+  bool skip_logging;
+  TDE_ALGORITHM tde_algo;
 };
 
 /************************************************************************/
@@ -5314,28 +5323,28 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_in
     }
 
   if (f_init)
-  {
-    /* initialize page */
-    page_alloc = pgbuf_fix (thread_p, vpid_out, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-    if (page_alloc == NULL)
     {
-      ASSERT_ERROR_AND_SET (error_code);
-      goto exit;
+      /* initialize page */
+      page_alloc = pgbuf_fix (thread_p, vpid_out, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      if (page_alloc == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  goto exit;
+	}
+      is_page_alloc_fixed = true;
+
+      error_code = f_init (thread_p, page_alloc, f_init_args);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  pgbuf_unfix (thread_p, page_alloc);
+	  goto exit;
+	}
     }
-    is_page_alloc_fixed = true;
-    
-    error_code = f_init (thread_p, page_alloc, f_init_args);
-    if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      pgbuf_unfix (thread_p, page_alloc);
-      goto exit;
-    }
-  }
   else
-  {
-    assert (FILE_IS_TEMPORARY (fhead));
-  }
+    {
+      assert (FILE_IS_TEMPORARY (fhead));
+    }
 
   /*
    * Set Tde Encryption flags based on the file.
@@ -5346,42 +5355,42 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_in
   file_get_tde_algorithm_internal (fhead, &tde_algo);
 
   if (tde_algo != TDE_ALGORITHM_NONE)
-  {
-    if (!is_page_alloc_fixed)
     {
-      page_alloc = pgbuf_fix (thread_p, vpid_out, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-      if (page_alloc == NULL)
-      {
-        ASSERT_ERROR_AND_SET (error_code);
-        goto exit;
-      }
-      is_page_alloc_fixed = true;
+      if (!is_page_alloc_fixed)
+	{
+	  page_alloc = pgbuf_fix (thread_p, vpid_out, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+	  if (page_alloc == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+	      goto exit;
+	    }
+	  is_page_alloc_fixed = true;
+	}
+      pgbuf_set_tde_algorithm (thread_p, page_alloc, tde_algo, FILE_IS_TEMPORARY (fhead));
     }
-    pgbuf_set_tde_algorithm (thread_p, page_alloc, tde_algo, FILE_IS_TEMPORARY (fhead));
-  }
-  
+
   if (page_out != NULL)
-  {
-    if (!is_page_alloc_fixed)
     {
-      page_alloc = pgbuf_fix (thread_p, vpid_out, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-      if (*page_out == NULL)
-      {
-        ASSERT_ERROR_AND_SET (error_code);
-        goto exit;
-      }
-      is_page_alloc_fixed = true;
+      if (!is_page_alloc_fixed)
+	{
+	  page_alloc = pgbuf_fix (thread_p, vpid_out, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+	  if (*page_out == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+	      goto exit;
+	    }
+	  is_page_alloc_fixed = true;
+	}
+      *page_out = page_alloc;
     }
-    *page_out = page_alloc;
-  }
-  else 
-  { 
-    if (is_page_alloc_fixed)
+  else
     {
-      pgbuf_unfix (thread_p, page_alloc);
+      if (is_page_alloc_fixed)
+	{
+	  pgbuf_unfix (thread_p, page_alloc);
+	}
     }
-  }
-  
+
   /* done */
   assert (error_code == NO_ERROR);
 
@@ -5663,7 +5672,7 @@ file_get_sticky_first_page (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * v
  *
  */
 int
-file_set_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, TDE_ALGORITHM tde_algo, bool is_temp)
+file_set_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, TDE_ALGORITHM tde_algo)
 {
   VPID vpid_fhead;
   PAGE_PTR page_fhead = NULL;
@@ -5683,17 +5692,18 @@ file_set_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, TDE_ALGORITH
   fhead = (FILE_HEADER *) page_fhead;
   file_header_sanity_check (thread_p, fhead);
 
-  file_get_tde_algorithm_internal (fhead, &prev_tde_algo); 
-  
+  file_get_tde_algorithm_internal (fhead, &prev_tde_algo);
+
   /* It is not supported to change encryption algorithm yet */
   assert (prev_tde_algo == TDE_ALGORITHM_NONE);
-  
+
   file_set_tde_algorithm_internal (fhead, tde_algo);
-  
-    if (!is_temp) 
-  {
-    log_append_undoredo_data2 (thread_p, RVFL_FHEAD_SET_TDE_ALGORITHM, NULL, page_fhead, 0, sizeof (TDE_ALGORITHM), sizeof (TDE_ALGORITHM), &prev_tde_algo, &tde_algo);
-  }
+
+  if (!FILE_IS_TEMPORARY (fhead))
+    {
+      log_append_undoredo_data2 (thread_p, RVFL_FHEAD_SET_TDE_ALGORITHM, NULL, page_fhead, 0, sizeof (TDE_ALGORITHM),
+				 sizeof (TDE_ALGORITHM), &prev_tde_algo, &tde_algo);
+    }
   pgbuf_set_dirty_and_free (thread_p, page_fhead);
 
   return NO_ERROR;
@@ -5712,12 +5722,12 @@ file_rv_set_tde_algorithm (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
   PAGE_PTR page_fhead = rcv->pgptr;
   FILE_HEADER *fhead = (FILE_HEADER *) page_fhead;
-  TDE_ALGORITHM tde_algo = *(TDE_ALGORITHM*) rcv->data;
-  
+  TDE_ALGORITHM tde_algo = *(TDE_ALGORITHM *) rcv->data;
+
   assert (rcv->length == sizeof (TDE_ALGORITHM));
 
   file_set_tde_algorithm_internal (fhead, tde_algo);
-  
+
   pgbuf_set_dirty (thread_p, page_fhead, DONT_FREE);
 
   return NO_ERROR;
@@ -5734,7 +5744,7 @@ void
 file_set_tde_algorithm_internal (FILE_HEADER * fhead, TDE_ALGORITHM tde_algo)
 {
   switch (tde_algo)
-  {
+    {
     case TDE_ALGORITHM_AES:
       fhead->file_flags |= FILE_FLAG_ENCRYPTED_AES;
       break;
@@ -5793,21 +5803,105 @@ void
 file_get_tde_algorithm_internal (const FILE_HEADER * fhead, TDE_ALGORITHM * tde_algo)
 {
   // encrpytion algorithms are exclusive
-  assert (!((fhead->file_flags & FILE_FLAG_ENCRYPTED_AES) &&
-      (fhead->file_flags & FILE_FLAG_ENCRYPTED_ARIA)));
+  assert (!((fhead->file_flags & FILE_FLAG_ENCRYPTED_AES) && (fhead->file_flags & FILE_FLAG_ENCRYPTED_ARIA)));
 
   if (fhead->file_flags & FILE_FLAG_ENCRYPTED_AES)
-  {
-    *tde_algo = TDE_ALGORITHM_AES;
-  }
+    {
+      *tde_algo = TDE_ALGORITHM_AES;
+    }
   else if (fhead->file_flags & FILE_FLAG_ENCRYPTED_ARIA)
-  {
-    *tde_algo = TDE_ALGORITHM_ARIA;
-  }
+    {
+      *tde_algo = TDE_ALGORITHM_ARIA;
+    }
   else
-  {
-    *tde_algo = TDE_ALGORITHM_NONE;
-  }
+    {
+      *tde_algo = TDE_ALGORITHM_NONE;
+    }
+}
+
+static int
+file_file_map_set_tde_algorithm (THREAD_ENTRY * thread_p, PAGE_PTR * page, bool * stop, void *args)
+{
+  FILE_SET_TDE_ALGORITHM_ARGS *tde_args = (FILE_SET_TDE_ALGORITHM_ARGS *) args;
+  TDE_ALGORITHM prev_tde_algo = TDE_ALGORITHM_NONE;
+
+  pgbuf_get_tde_algorithm (*page, &prev_tde_algo);
+  if (prev_tde_algo == tde_args->tde_algo)
+    {
+      return NO_ERROR;
+    }
+  else
+    {
+      assert (prev_tde_algo == TDE_ALGORITHM_NONE);
+      pgbuf_set_tde_algorithm (thread_p, *page, tde_args->tde_algo, tde_args->skip_logging);
+    }
+
+  return NO_ERROR;
+}
+
+
+/*
+ * file_apply_tde_algorithm () - set encryption algorithm to file and user pages belonging to the file 
+ *
+ * return        : NO_ERROR, or ER_code
+ * thread_p (in)  : Thread entry
+ * vfid (in)      : File identifier
+ * tde_algo (in) : encryption algorithm - NONE, AES, ARIA
+ *
+ */
+int
+file_apply_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, const TDE_ALGORITHM tde_algo)
+{
+  int error_code = NO_ERROR;
+  FILE_SET_TDE_ALGORITHM_ARGS args;
+  VPID vpid_fhead;
+  PAGE_PTR page_fhead = NULL;
+  FILE_HEADER *fhead = NULL;
+  TDE_ALGORITHM prev_tde_algo = TDE_ALGORITHM_NONE;
+
+  assert (tde_algo != TDE_ALGORITHM_NONE);
+
+  /* fix header */
+  FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_CONDITIONAL_LATCH);
+  if (page_fhead == NULL)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  fhead = (FILE_HEADER *) page_fhead;
+  file_header_sanity_check (thread_p, fhead);
+
+  file_get_tde_algorithm_internal (fhead, &prev_tde_algo);
+
+  if (prev_tde_algo == tde_algo)
+    {
+      /* it is already applied */
+      goto exit;
+    }
+
+  args.skip_logging = FILE_IS_TEMPORARY (fhead);
+  args.tde_algo = tde_algo;
+
+  error_code = file_set_tde_algorithm (thread_p, vfid, tde_algo);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto exit;
+    }
+
+  error_code =
+    file_map_pages (thread_p, vfid, PGBUF_LATCH_WRITE, PGBUF_CONDITIONAL_LATCH, file_file_map_set_tde_algorithm, &args);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto exit;
+    }
+
+exit:
+  pgbuf_unfix (thread_p, page_fhead);
+  return error_code;
 }
 
 
@@ -11344,6 +11438,114 @@ file_descriptor_dump (THREAD_ENTRY * thread_p, const VFID * vfid, FILE * fp)
   file_header_dump_descriptor (thread_p, fhead, fp);
 
   pgbuf_unfix (thread_p, page_fhead);
+  return NO_ERROR;
+}
+
+
+/*
+ * xfile_apply_tde_to_created_files () - set TDE information to all permanent files related with class_oid
+ *
+ * return        : error code
+ * thread_p (in) : thread entry
+ * oid (in)     : class oid
+ */
+int
+xfile_apply_tde_to_created_files (THREAD_ENTRY * thread_p, const OID * class_oid)
+{
+  OR_CLASSREP *or_repr = NULL;
+  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
+  TDE_ALGORITHM prev_tde_algo = TDE_ALGORITHM_NONE;
+  HFID hfid = HFID_INITIALIZER;
+  VFID hovf_vfid;
+  int last_cacheindex = -1;
+  int error_code = NO_ERROR;
+  int i = 0;
+
+  assert (class_oid != NULL);
+  assert (!OID_ISNULL (class_oid));
+
+  or_repr = heap_classrepr_get (thread_p, class_oid, NULL, NULL_REPRID, &last_cacheindex);
+  assert (or_repr != NULL);
+
+  heap_get_class_tde_algorithm (thread_p, class_oid, &tde_algo);
+  assert (tde_algo != TDE_ALGORITHM_NONE);
+
+  /* apply to heap file and heap overflow file */
+  error_code = heap_get_class_info (thread_p, class_oid, &hfid, NULL, NULL);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  error_code = file_apply_tde_algorithm (thread_p, &hfid.vfid, tde_algo);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  if (heap_ovf_find_vfid (thread_p, &hfid, &hovf_vfid, false, PGBUF_UNCONDITIONAL_LATCH) != NULL)
+    {
+      error_code = file_apply_tde_algorithm (thread_p, &hovf_vfid, tde_algo);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+    }
+
+  /* apply to btree files and btree overflow files */
+  for (i = 0; i < or_repr->n_indexes; i++)
+    {
+      VFID bovf_vfid;
+      BTID btid;
+      VFID bvfid;
+      PAGE_PTR root_page = NULL;
+      VPID root_vpid;
+      BTREE_ROOT_HEADER *root_header = NULL;
+
+      btid = or_repr->indexes[i].btid;
+
+      root_vpid.volid = btid.vfid.volid;	/* read the root page */
+      root_vpid.pageid = btid.root_pageid;
+      root_page = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      if (root_page == NULL)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+
+      (void) pgbuf_check_page_ptype (thread_p, root_page, PAGE_BTREE);
+
+      root_header = btree_get_root_header (thread_p, root_page);
+      if (root_header == NULL)
+	{
+	  pgbuf_unfix_and_init (thread_p, root_page);
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+      bovf_vfid = root_header->ovfid;
+
+      pgbuf_unfix_and_init (thread_p, root_page);
+
+      error_code = file_apply_tde_algorithm (thread_p, &btid.vfid, tde_algo);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+
+      if (!VFID_ISNULL (&bovf_vfid))
+	{
+	  error_code = file_apply_tde_algorithm (thread_p, &bovf_vfid, tde_algo);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error_code;
+	    }
+	}
+    }
   return NO_ERROR;
 }
 

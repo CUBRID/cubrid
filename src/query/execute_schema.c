@@ -8638,12 +8638,12 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    case PT_TABLE_OPTION_REUSE_OID:
 	      reuse_oid = true;
 	      break;
-        case PT_TABLE_OPTION_ENCRYPTED_AES:
-          encrypted_aes = true;
-          break;
-        case PT_TABLE_OPTION_ENCRYPTED_ARIA:
-          encrypted_aria = true;
-          break;
+	    case PT_TABLE_OPTION_ENCRYPTED_AES:
+	      encrypted_aes = true;
+	      break;
+	    case PT_TABLE_OPTION_ENCRYPTED_ARIA:
+	      encrypted_aria = true;
+	      break;
 	    case PT_TABLE_OPTION_CHARSET:
 	      tbl_opt_charset = tbl_opt;
 	      break;
@@ -8658,8 +8658,8 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	}
 
-      assert (!(encrypted_aria && encrypted_aes)); // exclusive
-      
+      assert (!(encrypted_aria && encrypted_aes));	// exclusive
+
       /* validate charset and collation options, if any */
       cs_node = (tbl_opt_charset) ? tbl_opt_charset->info.table_option.val : NULL;
       coll_node = (tbl_opt_coll) ? tbl_opt_coll->info.table_option.val : NULL;
@@ -8968,6 +8968,11 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  goto error_exit;
 	}
+    }
+
+  if (encrypted_aria || encrypted_aes)
+    {
+      file_apply_tde_to_created_files (&class_obj->oid_info.oid);
     }
 
   return error;

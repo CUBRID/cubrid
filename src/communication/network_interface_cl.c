@@ -1795,6 +1795,53 @@ heap_reclaim_addresses (const HFID * hfid)
 }
 
 /*
+ * file_apply_tde_to_created_files -
+ *
+ * return:
+ *
+ *   class_oid(in):
+ *
+ * NOTE:
+ */
+int
+file_apply_tde_to_created_files (const OID * class_oid)
+{
+#if defined(CS_MODE)
+  int error = ER_NET_CLIENT_DATA_RECEIVE;
+  int req_error;
+  char *ptr;
+  OR_ALIGNED_BUF (OR_OID_SIZE) a_request;
+  char *request;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+
+  request = OR_ALIGNED_BUF_START (a_request);
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  ptr = or_pack_oid (request, class_oid);
+  req_error =
+    net_client_request (NET_SERVER_FILE_APPLY_TDE_TO_CREATED_FILES, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      ptr = or_unpack_errcode (reply, &error);
+    }
+
+  return error;
+#else /* CS_MODE */
+  int success;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  success = xfile_apply_tde_to_created_files (thread_p, class_oid);
+
+  exit_server (*thread_p);
+
+  return success;
+#endif /* !CS_MODE */
+}
+
+/*
  * disk_get_total_numpages -
  *
  * return:

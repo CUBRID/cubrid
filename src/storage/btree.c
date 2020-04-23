@@ -1967,15 +1967,15 @@ btree_create_overflow_key_file (THREAD_ENTRY * thread_p, BTID_INT * btid)
   /* create file with at least 3 pages */
   error_code = file_create_with_npages (thread_p, FILE_BTREE_OVERFLOW_KEY, 3, &des, &btid->ovfid);
   if (error_code != NO_ERROR)
-  {
-    return error_code;
-  }
+    {
+      return error_code;
+    }
   error_code = heap_get_class_tde_algorithm (thread_p, &btid->topclass_oid, &tde_algo);
   if (error_code != NO_ERROR)
-  {
-    return error_code;
-  }
-  error_code = file_set_tde_algorithm (thread_p, &btid->ovfid, tde_algo, false);
+    {
+      return error_code;
+    }
+  error_code = file_set_tde_algorithm (thread_p, &btid->ovfid, tde_algo);
   return error_code;
 }
 
@@ -32887,20 +32887,27 @@ btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, B
       ASSERT_ERROR ();
       return error_code;
     }
-  
-  error_code = heap_get_class_tde_algorithm (thread_p, class_oid, &tde_algo);
-  if (error_code != NO_ERROR)
-  {
-    ASSERT_ERROR ();
-    return error_code;
-  }
 
-  error_code = file_set_tde_algorithm (thread_p, &btid->vfid, tde_algo, false);
-  if (error_code != NO_ERROR)
-  {
-    ASSERT_ERROR ();
-    return error_code;
-  }
+  error_code = heap_get_class_tde_algorithm (thread_p, class_oid, &tde_algo);
+  if (error_code == NO_ERROR)
+    {
+      /* 
+       * It can happen to fail to get the class record.
+       * For example, a class record that is assigned but not updated poperly yet.
+       * In this case, Setting tde flag is just skipped and it is expected to be done later.
+       * see file_apply_tde_to_created_files() 
+       */
+      error_code = file_set_tde_algorithm (thread_p, &btid->vfid, tde_algo);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+    }
+  else
+    {
+      er_clear ();
+    }
 
   /* index page allocations need to be committed. they are not individually deallocated on undo; all pages are
    * deallocated when the file is destroyed. */

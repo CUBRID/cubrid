@@ -434,6 +434,13 @@ net_server_init (void)
   req_p->processing_function = shf_heap_reclaim_addresses;
   req_p->name = "NET_SERVER_HEAP_RECLAIM_ADDRESSES";
 
+  /* file */
+  req_p = &net_Requests[NET_SERVER_FILE_APPLY_TDE_TO_CREATED_FILES];
+  req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
+  req_p->processing_function = sfile_apply_tde_to_created_files;
+  req_p->name = "NET_SERVER_HEAP_CREATE";
+
+
   /* log */
   req_p = &net_Requests[NET_SERVER_LOG_RESET_WAIT_MSECS];
   req_p->processing_function = slogtb_reset_wait_msecs;

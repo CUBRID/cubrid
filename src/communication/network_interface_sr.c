@@ -2509,6 +2509,38 @@ shf_heap_reclaim_addresses (THREAD_ENTRY * thread_p, unsigned int rid, char *req
 }
 
 /*
+ * sfile_apply_tde_to_created_files -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+sfile_apply_tde_to_created_files (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  int error;
+  char *ptr;
+  OID class_oid;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  ptr = or_unpack_oid (request, &class_oid);
+
+  error = xfile_apply_tde_to_created_files (thread_p, &class_oid);
+  if (error != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  ptr = or_pack_errcode (reply, error);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
  * stran_server_commit -
  *
  * return:

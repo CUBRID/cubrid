@@ -132,6 +132,8 @@ extern int xheap_create (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class
 extern int xheap_destroy (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid);
 extern int xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid);
 
+extern int xfile_apply_tde_to_created_files (THREAD_ENTRY * thread_p, const OID * class_oid);
+
 extern TRAN_STATE xtran_server_commit (THREAD_ENTRY * thrd, bool retain_lock);
 extern TRAN_STATE xtran_server_abort (THREAD_ENTRY * thrd);
 extern int xtran_server_start_topop (THREAD_ENTRY * thread_p, LOG_LSA * topop_lsa);
