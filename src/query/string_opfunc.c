@@ -3924,7 +3924,15 @@ qstr_pad (MISC_OPERAND pad_operand, int pad_length, const unsigned char *pad_cha
   int pad_reminder_size = 0;
   int error_status = NO_ERROR;
 
-  intl_pad_char (codeset, def_pad_char, &def_pad_char_size);
+  if (codeset == INTL_CODESET_KSC5601_EUC)
+    {
+      def_pad_char[0] = ' ';
+      def_pad_char_size = 1;
+    }
+  else
+    {
+      intl_pad_char (codeset, def_pad_char, &def_pad_char_size);
+    }
 
   if (pad_charset_length == 0)
     {
