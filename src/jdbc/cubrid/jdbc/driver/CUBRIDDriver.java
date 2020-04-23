@@ -232,8 +232,8 @@ public class CUBRIDDriver implements Driver {
 			}
 
 			UConnection u_con = UJCIManager.connectDefault();
-			CUBRIDConnection con = new CUBRIDConnection(u_con,
-					"jdbc:default:connection:", "default", true);
+			CUBRIDConnection con = new CUBRIDConnectionDefault(u_con,
+					"jdbc:default:connection:", "default");
 			UJCIUtil.invoke("com.cubrid.jsp.ExecuteThread",
 					"setJdbcConnection", new Class[] { Connection.class }, t,
 					new Object[] { con });
