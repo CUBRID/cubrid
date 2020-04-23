@@ -418,6 +418,14 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  goto conf_error;
 	}
 
+      br_info[num_brs].use_SSL =
+	conf_get_value_table_on_off (ini_getstr (ini, sec_name, "SSL", DEFAULT_SSL_MODE, &lineno));
+      if (br_info[num_brs].use_SSL < 0)
+	{
+	  errcode = PARAM_BAD_VALUE;
+	  goto conf_error;
+	}
+
       br_info[num_brs].appl_server =
 	get_conf_value (ini_getstr (ini, sec_name, "APPL_SERVER", DEFAULT_APPL_SERVER, &lineno), tbl_appl_server);
       if (br_info[num_brs].appl_server < 0)
