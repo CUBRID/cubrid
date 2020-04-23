@@ -1,0 +1,179 @@
+# error message
+1  CUBRID Administrator 
+2  아이콘을 생성할 수 없습니다 !! 
+3  환경 변수(%s)를 찾을 수 없습니다 !! 
+4  프로그램(%s)을 찾을수 없습니다 !! 
+5  마스터를 구동할 수 없습니다 !! 
+6  DB 서버를 작동합니다 (%s) 
+7  DB 서버를 구동할 수 없습니다 !! 
+8  DB 서버를 정지합니다 (%s) 
+9  DB 서버를 정지할 수 없습니다. 
+10  UniCAS 서버를 구동합니다 !! 
+11  UniCAS 서버를 구동할 수 없습니다 !! 
+12  UniCAS 서버를 재 구동합니다 !! 
+13  UniCAS 서버를 재 구동할 수 없습니다 !! 
+14  UniCAS 서버를 정지합니다 !! 
+15  UniCAS 서버를 정지할 수 없습니다 !! 
+16  선택된 broker는 모니터링할 수 없습니다 !! 
+17  unknown version for CUBRID 
+18  unknown version for unicas 
+19  No Volume 
+20  패스를 사용할 수 없습니다 !! 
+21  절대 패스를 사용할 수 없습니다 !! 
+22  Dos 패스를 사용할 수 없습니다 !! 
+23  지정한 파일을 사용할 수 없습니다 !! 
+
+# prompt message
+24  [경고] 모든 서비스가 정지됩니다 /n종료하시겠습니까 ? 
+25  삭제하시겠습니까 ? 
+26  재 구동하시겠습니까 ? 
+
+# title for unicas property 
+27  broker 
+28  status 
+29  server 
+30  port 
+31  queue 
+32  timeout 
+33  sql-log 
+34  auto 
+35  min 
+36  max 
+
+37  id 
+38  pid 
+39  c 
+40  port 
+41  status 
+42  last access time 
+43  action 
+
+# message for each window 
+# IDD_ABOUTBOX 
+44  CUBRID Administrator 
+45  CUBRID Administrator for Windows 2000/NT 
+46  CopyRigths by KCOM (c) 2000,2001 
+47  확인 
+48  버젼 정보 
+49  Version of CUBRID :: 
+50  Version of CUBRID CAS :: 
+
+# IDD_PROPERTY
+51  DB 속성 
+52  경로명 
+53  서버명 
+54  로그경로명 
+55  매니저 구동시 DB 서버를 구동함 
+56  적용 
+57  취소 
+
+# IDD_SHOWRUNDB
+58  구동하고 있는 DB의 볼륨 정보 
+59  Generic Vol. 
+60  Data Vol. 
+61  Index Vol. 
+62  Temp Vol. 
+63  확인 
+64  취소 
+
+# IDD_STARTSERVER
+65  DB 서버 구동 
+66  구동 
+67  취소 
+
+# IDD_STOPSERVER 
+68  DB 서버 정지 
+69  정지 
+70  취소 
+
+# IDD_UC_MONITOR
+71  UniCAS 모니터링 
+72  모니터 
+73  서비스 
+74  서비스 개시 
+75  서비스 중단 
+76  끝내기 
+
+# IDD_UCM_DETAIL
+77  모니터링 (%s) 
+78  추가 
+79  삭제 
+80  재구동 
+81  끝내기 
+
+# IDD_UC_PROPERTY
+82  UniCAS 속성 정보 변경
+83  생성 
+84  변경 
+85  삭제 
+86  적용 
+87  취소 
+88  Master Information 
+89  Master's shared memory 
+90  Log File of Admin 
+
+# IDD_UCP_DETAIL 
+91  정보 (%s) 
+92  Common Property 
+93  Broker Name 
+94  Service ON 
+95  Service OFF 
+96  Server Type 
+97  More >> 
+98  TCP/IP Port 
+99  SM ID 
+100  Application Server 
+101  Automatic adding 
+102  Min 
+103  Max 
+104  Size Limit 
+105  Log Information 
+106  Directory 
+107  Backup ON 
+108  Backup OFF 
+109  SQL Tracking ON 
+110  SQL Tracking OFF 
+111  Time 
+112  Access LOG ON 
+113  Access LOG OFF 
+114  Security 
+115  Security ON 
+116  Security OFF 
+117  File 
+118  ETC 
+119  Enviornment 
+120  Time to Kill 
+121  Session Timeout 
+122  Job Queue size 
+123  적용 
+124  취소 
+
+# IDD_UCP_VAS 
+125  WAS 정보 
+126  Support Encoding script 
+127  Support Session 
+128  Support Cookie 
+129  Trim entry value 
+130  Check OID 
+131  Script root 
+132  file upload 
+133  Error Log 
+134  Delimiter 
+135  적용 
+136  취소 
+
+# IDD_UCP_WAS
+137  VAS 정보
+138  Support Encoding script 
+139  Support Session 
+140  Check OID 
+141  Script root 
+142  file upload 
+143  Error Log 
+144  compress 
+145  priority gap 
+146  적용 
+147  취소 
+
+# 추가된 메시지
+148 [경고] 모든 서비스가 정지됩니다 /n 계속하시겠습니까 ?
