@@ -5863,7 +5863,7 @@ file_apply_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, const TDE_
 
   /* fix header */
   FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
-  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_CONDITIONAL_LATCH);
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (page_fhead == NULL)
     {
       ASSERT_ERROR ();
@@ -5892,7 +5892,8 @@ file_apply_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, const TDE_
     }
 
   error_code =
-    file_map_pages (thread_p, vfid, PGBUF_LATCH_WRITE, PGBUF_CONDITIONAL_LATCH, file_file_map_set_tde_algorithm, &args);
+    file_map_pages (thread_p, vfid, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH, file_file_map_set_tde_algorithm,
+		    &args);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
