@@ -11469,6 +11469,8 @@ xfile_apply_tde_to_created_files (THREAD_ENTRY * thread_p, const OID * class_oid
   assert (or_repr != NULL);
 
   heap_get_class_tde_algorithm (thread_p, class_oid, &tde_algo);
+
+  /* It is expected for flags in the class record to be set in advance */
   assert (tde_algo != TDE_ALGORITHM_NONE);
 
   /* apply to heap file and heap overflow file */
