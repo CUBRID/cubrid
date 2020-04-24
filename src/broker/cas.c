@@ -123,6 +123,10 @@ static void set_db_connection_info (void);
 static void clear_db_connection_info (void);
 static bool need_database_reconnect (void);
 
+extern int initSSL (int);
+extern bool ssl_client;
+extern void cas_ssl_close (int client_sock_fd);
+
 #else /* !LIBCAS_FOR_JSP */
 extern int libcas_main (SOCKET jsp_sock_fd);
 extern void *libcas_get_db_result_set (int h_id);
@@ -880,6 +884,7 @@ cas_main (void)
 #endif /* WINDOWS */
     for (;;)
       {
+	ssl_client = false;
 	error_info_clear ();
 	cas_info[CAS_INFO_STATUS] = CAS_INFO_STATUS_INACTIVE;
 
@@ -1007,6 +1012,17 @@ cas_main (void)
 	else
 	  {
 	    db_info_size = SRV_CON_DB_INFO_SIZE;
+	  }
+
+	if (IS_SSL_CLIENT (req_info.driver_info))
+	  {
+	    err_code = initSSL (client_sock_fd);
+	    if (err_code < 0)
+	      {
+		net_write_error (client_sock_fd, req_info.client_version, req_info.driver_info, cas_info, cas_info_size,
+				 CAS_ERROR_INDICATOR, CAS_ER_COMMUNICATION, NULL);
+		goto finish_cas;
+	      }
 	  }
 
 	if (net_read_stream (client_sock_fd, read_buf, db_info_size) < 0)
@@ -1183,6 +1199,10 @@ cas_main (void)
 		cas_log_write_and_end (0, false, msg_buf);
 		cas_slow_log_write_and_end (NULL, 0, msg_buf);
 
+		if (ssl_client)
+		  {
+		    cas_ssl_close (client_sock_fd);
+		  }
 		CLOSE_SOCKET (client_sock_fd);
 		FREE_MEM (db_err_msg);
 
@@ -1307,6 +1327,11 @@ cas_main (void)
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 	    cas_log_error_handler_end ();
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+	  }
+
+	if (ssl_client)
+	  {
+	    cas_ssl_close (client_sock_fd);
 	  }
 
 	CLOSE_SOCKET (client_sock_fd);
