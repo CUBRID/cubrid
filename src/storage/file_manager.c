@@ -5677,7 +5677,6 @@ file_set_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, TDE_ALGORITH
   VPID vpid_fhead;
   PAGE_PTR page_fhead = NULL;
   FILE_HEADER *fhead = NULL;
-  TDE_ALGORITHM prev_tde_algo = TDE_ALGORITHM_NONE;
   int error_code = NO_ERROR;
 
   /* fix header */
@@ -5692,18 +5691,16 @@ file_set_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, TDE_ALGORITH
   fhead = (FILE_HEADER *) page_fhead;
   file_header_sanity_check (thread_p, fhead);
 
-  file_get_tde_algorithm_internal (fhead, &prev_tde_algo);
-
-  /* It is not supported to change encryption algorithm yet */
-  assert (prev_tde_algo == TDE_ALGORITHM_NONE);
-
-  file_set_tde_algorithm_internal (fhead, tde_algo);
-
   if (!FILE_IS_TEMPORARY (fhead))
     {
+      TDE_ALGORITHM prev_tde_algo = TDE_ALGORITHM_NONE;
+      file_get_tde_algorithm_internal (fhead, &prev_tde_algo);
       log_append_undoredo_data2 (thread_p, RVFL_FHEAD_SET_TDE_ALGORITHM, NULL, page_fhead, 0, sizeof (TDE_ALGORITHM),
 				 sizeof (TDE_ALGORITHM), &prev_tde_algo, &tde_algo);
     }
+
+  file_set_tde_algorithm_internal (fhead, tde_algo);
+
   pgbuf_set_dirty_and_free (thread_p, page_fhead);
 
   return NO_ERROR;
