@@ -33,6 +33,7 @@ set(LIBCAS_SOURCES
   ${BROKER_DIR}/broker_util.c 
   ${BROKER_DIR}/cas_error.c 
   ${BROKER_DIR}/cas_meta.c
+  ${BROKER_DIR}/cas_ssl.c
   )
 
 if(WIN32)
@@ -56,6 +57,6 @@ if(WIN32)
     target_compile_definitions(cas PRIVATE _USE_32BIT_TIME_T)
   endif(TARGET_PLATFORM_BITS EQUAL 32)
 endif(WIN32)
-target_link_libraries(cas ${SYS_LIBS})
+target_link_libraries(cas ${SYS_LIBS} ${LIBOPENSSL_LIBS})
 
 add_dependencies(cas ${EP_TARGETS})

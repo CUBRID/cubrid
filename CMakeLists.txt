@@ -153,6 +153,7 @@ set(WITH_LIBLZO       "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with lzo lib
 set(WITH_LIBGPG_ERROR "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with gpg-error library (default: EXTERNAL)")
 set(WITH_LIBGCRYPT    "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with gcrypt library (default: EXTERNAL)")
 set(WITH_LIBNCURSES   "${WITH_SYSTEM_PREFIX}" CACHE STRING "Build with ncurses library (default: SYSTEM)")
+set(WITH_LIBOPENSSL   "${WITH_BUNDLED_PREFIX}" CACHE STRING "Build with openssl library (default: BUNDLED)")
 
 message(STATUS "Build with Curses library: ${WITH_LIBNCURSES}")
 message(STATUS "Build with editline library: ${WITH_LIBEDIT}")
@@ -161,6 +162,7 @@ message(STATUS "Build with gcrypt library: ${WITH_LIBGCRYPT}")
 message(STATUS "Build with gpg-error library: ${WITH_LIBGPG_ERROR}")
 message(STATUS "Build with expat library: ${WITH_LIBEXPAT}")
 message(STATUS "Build with jansson library: ${WITH_LIBJANSSON}")
+message(STATUS "Build with openssl library: ${WITH_LIBOPENSSL}")
 
 # Version info
 # TODO: remove BUILD_NUMBER file and replace with VERSION file
@@ -1231,6 +1233,23 @@ if (TARGET ${LIBGCRYPT_TARGET})
     add_dependencies(${LIBGCRYPT_TARGET} ${LIBGPG_ERROR_TARGET})
   endif(TARGET ${LIBGPG_ERROR_TARGET})
 endif(TARGET ${LIBGCRYPT_TARGET})
+
+#
+# For OPENSSL
+#
+if(WIN32)
+  set(LIBOPENSSL_LIBS ${WINDOWS_EXTERNAL_DIR}/openssl/lib/libssl.lib)
+  list(APPEND LIBOPENSSL_LIBS ${WINDOWS_EXTERNAL_DIR}/openssl/lib/libcrypto.lib)
+  list(APPEND LIBOPENSSL_LIBS Crypt32 Ws2_32)
+  set(LIBOPENSSL_INCLUDES ${WINDOWS_EXTERNAL_DIR}/openssl/include)
+  list(APPEND EP_INCLUDES ${LIBOPENSSL_INCLUDES})
+  list(APPEND EP_LIBS ${LIBOPENSSL_LIBS})
+  include_directories(${LIBOPENSSL_INCLUDES})
+else(WIN32)
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lssl -lcrypto")
+  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -lssl -lcrypto")
+  set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} -lssl -lcrypto")
+endif()
 
 # For JVM libraries
 if(WIN32)
