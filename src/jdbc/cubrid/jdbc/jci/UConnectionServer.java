@@ -42,11 +42,11 @@ import java.net.Socket;
 
 import cubrid.jdbc.driver.CUBRIDException;
 
-public class UConnectionInternal extends UConnection {
+public class UConnectionServer extends UConnection {
 
 	private Thread curThread;
 
-	public UConnectionInternal(Socket socket, Thread curThread) throws CUBRIDException {
+	public UConnectionServer(Socket socket, Thread curThread) throws CUBRIDException {
 		errorHandler = new UError(this);
 		try {
 			client = socket;

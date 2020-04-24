@@ -50,7 +50,7 @@ import java.util.regex.Pattern;
 
 import cubrid.jdbc.jci.BrokerHealthCheck;
 import cubrid.jdbc.jci.UConnection;
-import cubrid.jdbc.jci.UConnectionNormal;
+import cubrid.jdbc.jci.UConnectionClient;
 import cubrid.jdbc.jci.UJCIManager;
 import cubrid.jdbc.jci.UJCIUtil;
 
@@ -152,7 +152,7 @@ public class CUBRIDDriver implements Driver {
 	    String prop = matcher.group(7);
 	    int port = default_port;
 
-	    UConnectionNormal u_con;
+	    UConnectionClient u_con;
 	    String resolvedUrl;
 	    ConnectionProperties connProperties;
 
@@ -200,13 +200,13 @@ public class CUBRIDDriver implements Driver {
 			Collections.shuffle(altHostList);
 		}
 		try {
-		    u_con = (UConnectionNormal) UJCIManager.connect(altHostList, db, user, pass, resolvedUrl);
+		    u_con = (UConnectionClient) UJCIManager.connect(altHostList, db, user, pass, resolvedUrl);
 		} catch (CUBRIDException e) {
 		    throw e;
 		}
 	    } else {
 		try {
-		    u_con = (UConnectionNormal) UJCIManager.connect(host, port, db, user, pass, resolvedUrl);
+		    u_con = (UConnectionClient) UJCIManager.connect(host, port, db, user, pass, resolvedUrl);
 		} catch (CUBRIDException e) {
 		    throw e;
 		}
