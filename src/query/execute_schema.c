@@ -8972,7 +8972,12 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (encrypted_aria || encrypted_aes)
     {
-      file_apply_tde_to_created_files (&class_obj->oid_info.oid);
+      error = file_apply_tde_to_created_files (&class_obj->oid_info.oid);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+
     }
 
   return error;
