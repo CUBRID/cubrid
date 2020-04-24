@@ -3897,7 +3897,8 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
 		}
 	    }
 
-	  if (locator_create_heap_if_needed (newpci->obj, reuse_oid) == NULL)
+	  if (locator_create_heap_if_needed (newpci->obj, reuse_oid) == NULL
+	      || locator_flush_class (newpci->obj) != NO_ERROR)
 	    {
 	      error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
 	      goto end_create;
@@ -3921,6 +3922,14 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
 		}
 
 	      hashtail = newparts;
+	    }
+	  if (encrypted_aria || encrypted_aes)
+	    {
+	      error = file_apply_tde_to_created_files (&newpci->obj->oid_info.oid);
+	      if (error != NO_ERROR)
+		{
+		  goto end_create;
+		}
 	    }
 	  error = NO_ERROR;
 	}
@@ -4102,12 +4111,42 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
 		  goto end_create;
 		}
 	    }
+	  if (encrypted_aes)
+	    {
+	      error = sm_set_class_flag (newpci->obj, SM_CLASSFLAG_ENCRYPTED_AES, 1);
+	      if (error != NO_ERROR)
+		{
+		  assert (er_errid () != NO_ERROR);
+		  error = er_errid ();
+		  goto end_create;
+		}
+	    }
+	  if (encrypted_aria)
+	    {
+	      error = sm_set_class_flag (newpci->obj, SM_CLASSFLAG_ENCRYPTED_ARIA, 1);
+	      if (error != NO_ERROR)
+		{
+		  assert (er_errid () != NO_ERROR);
+		  error = er_errid ();
+		  goto end_create;
+		}
+	    }
 	  if (locator_create_heap_if_needed (newpci->obj, reuse_oid) == NULL
 	      || locator_flush_class (newpci->obj) != NO_ERROR)
 	    {
 	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	      goto end_create;
+	    }
+	  if (encrypted_aria || encrypted_aes)
+	    {
+	      error = file_apply_tde_to_created_files (&newpci->obj->oid_info.oid);
+	      if (error != NO_ERROR)
+		{
+		  assert (er_errid () != NO_ERROR);
+		  error = er_errid ();
+		  goto end_create;
+		}
 	    }
 
 	  error = NO_ERROR;
