@@ -65,8 +65,10 @@
 
 #define CERTF "cas_ssl_cert.crt"
 #define KEYF "cas_ssl_cert.key"
-#define CERT_FILENAME_LEN 512
-#define ER_SSL_GENERAL -1
+#define CERT_FILENAME_LEN	512
+#define ER_SSL_GENERAL		-1
+#define SOCKET_NONBLOCK		1
+#define SOCKET_BLOCK		0
 
 static SSL *ssl = NULL;
 bool ssl_client = false;
@@ -86,16 +88,15 @@ initSSL (int sd)
     }
 
 #if defined(WINDOWS)
-  u_long argp;
-  argp = 0;
+  u_long argp = SOCKET_BLOCK;
   ioctlsocket (sd, FIONBIO, &argp);
 #else
-  int flags, oflags;
-  flags = fcntl (sd, F_GETFL, 0);
+  int oflags, flags = fcntl (sd, F_GETFL, 0);
   oflags = flags;
   flags = flags & ~O_NONBLOCK;
 
   fcntl (sd, F_SETFL, flags);
+
 #endif
   snprintf (cert, CERT_FILENAME_LEN, "%s/conf/%s", getenv ("CUBRID"), CERTF);
   snprintf (key, CERT_FILENAME_LEN, "%s/conf/%s", getenv ("CUBRID"), KEYF);
@@ -134,7 +135,7 @@ initSSL (int sd)
     }
 
 #if defined (WINDOWS)
-  argp = 1;
+  argp = SOCKET_NONBLOCK;
   ioctlsocket (sd, FIONBIO, &argp);
 #else
   fcntl (sd, F_SETFL, oflags);
@@ -156,12 +157,10 @@ cas_ssl_read (int sd, char *buf, int size)
     }
 
 #if defined(WINDOWS)
-  u_long argp;
-  argp = 0;
+  u_long argp = SOCKET_BLOCK;
   ioctlsocket (sd, FIONBIO, &argp);
 #else
-  int flags, oflags;
-  flags = fcntl (sd, F_GETFL, 0);
+  int oflags, flags = fcntl (sd, F_GETFL, 0);
   oflags = flags;
   flags = flags & ~O_NONBLOCK;
   fcntl (sd, F_SETFL, flags);
@@ -170,7 +169,7 @@ cas_ssl_read (int sd, char *buf, int size)
   nread = SSL_read (ssl, buf, size);
 
 #if defined(WINDOWS)
-  argp = 1;
+  argp = SOCKET_NONBLOCK;
   ioctlsocket (sd, FIONBIO, &argp);
 #else
   fcntl (sd, F_SETFL, oflags);
@@ -188,12 +187,10 @@ cas_ssl_write (int sd, const char *buf, int size)
       return ER_SSL_GENERAL;
     }
 #if defined(WINDOWS)
-  u_long argp;
-  argp = 0;
+  u_long argp = SOCKET_BLOCK;
   ioctlsocket (sd, FIONBIO, &argp);
 #else
-  int flags, oflags;
-  flags = fcntl (sd, F_GETFL, 0);
+  int oflags, flags = fcntl (sd, F_GETFL, 0);
   oflags = flags;
   flags = flags & ~O_NONBLOCK;
   fcntl (sd, F_SETFL, flags);
@@ -202,7 +199,7 @@ cas_ssl_write (int sd, const char *buf, int size)
   nwrite = SSL_write (ssl, buf, size);
 
 #if defined(WINDOWS)
-  argp = 1;
+  argp = SOCKET_NONBLOCK;
   ioctlsocket (sd, FIONBIO, &argp);
 #else
   fcntl (sd, F_SETFL, oflags);
