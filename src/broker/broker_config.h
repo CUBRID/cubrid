@@ -106,7 +106,7 @@
 #define BROKER_INFO_PATH_MAX             (PATH_MAX)
 #define BROKER_INFO_NAME_MAX             (BROKER_INFO_PATH_MAX)
 
-#define DEFAULT_SSL_MODE                 "ON"
+#define DEFAULT_SSL_MODE                 "OFF"
 
 enum t_sql_log_mode_value
 {
