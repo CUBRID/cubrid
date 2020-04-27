@@ -44,7 +44,7 @@ public class UUnreachableHostList {
 
 	private static UUnreachableHostList instance = null;
 	private List<String> unreachableHosts;
-	private boolean useSSL = true;
+	private boolean useSSL = false;
 
 	private UUnreachableHostList() {
 		unreachableHosts = new CopyOnWriteArrayList<String>();
