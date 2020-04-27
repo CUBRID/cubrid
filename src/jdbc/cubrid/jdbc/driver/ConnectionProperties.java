@@ -351,7 +351,7 @@ public class ConnectionProperties {
     BooleanConnectionProperty oracleStyleEmptyString = new BooleanConnectionProperty(
             "oracleStyleEmptyString", false);
 
-    BooleanConnectionProperty useSSL = new BooleanConnectionProperty("useSSL", true);
+    BooleanConnectionProperty useSSL = new BooleanConnectionProperty("useSSL", false);
 
     public boolean getLogOnException() {
 	return logOnException.getValueAsBoolean();
