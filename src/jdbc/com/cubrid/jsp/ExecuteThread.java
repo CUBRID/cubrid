@@ -64,63 +64,45 @@ import com.cubrid.jsp.value.TimeValue;
 import com.cubrid.jsp.value.TimestampValue;
 import com.cubrid.jsp.value.Value;
 
-import cubrid.jdbc.driver.CUBRIDConnection;
+import cubrid.jdbc.driver.CUBRIDConnectionDefault;
 import cubrid.jdbc.driver.CUBRIDResultSet;
 import cubrid.jdbc.jci.UConnection;
 import cubrid.jdbc.jci.UJCIUtil;
 import cubrid.sql.CUBRIDOID;
 
 public class ExecuteThread extends Thread {
+	private String charSet = System.getProperty("file.encoding");
+	
 	public static final int DB_NULL = 0;
-
 	public static final int DB_INT = 1;
-
 	public static final int DB_FLOAT = 2;
-
 	public static final int DB_DOUBLE = 3;
-
 	public static final int DB_STRING = 4;
-
 	public static final int DB_OBJECT = 5;
-
 	public static final int DB_SET = 6;
-
 	public static final int DB_MULTISET = 7;
-
 	public static final int DB_SEQUENCE = 8;
-
 	public static final int DB_TIME = 10;
-
 	public static final int DB_TIMESTAMP = 11;
-
 	public static final int DB_DATE = 12;
-
 	public static final int DB_MONETARY = 13;
-
 	public static final int DB_SHORT = 18;
-
 	public static final int DB_NUMERIC = 22;
-
 	public static final int DB_CHAR = 25;
-
 	public static final int DB_RESULTSET = 28;
-
 	public static final int DB_BIGINT = 31;
-
 	public static final int DB_DATETIME = 32;
 
 	private Socket client;
-
+	private CUBRIDConnectionDefault connection = null;
+	
 	private DataOutputStream toClient;
-
 	private ByteArrayOutputStream byteBuf = new ByteArrayOutputStream(1024);
-
 	private DataOutputStream outBuf = new DataOutputStream(byteBuf);
 
-	private Connection jdbcConnection = null;
-
-	private String charSet = System.getProperty("file.encoding");
-
+	boolean isClosed = false;
+	boolean isProcessing = true;
+	
 	ExecuteThread(Socket client) throws IOException {
 		super();
 		this.client = client;
@@ -132,57 +114,59 @@ public class ExecuteThread extends Thread {
 		return client;
 	}
 
-	private void closeJdbcConnection() {
-		if (jdbcConnection != null) {
+	public void closeJdbcConnection() {
+		if (isClosed == false) {
 			try {
-				jdbcConnection.close();
+				isClosed = true;
+				connection.close();
 			} catch (SQLException e) {
 				Server.log(e);
 			}
-			jdbcConnection = null;
 		}
+	}
+	
+	public void setJdbcConnection(Connection con) {
+		this.connection = (CUBRIDConnectionDefault) con;
+	}
+
+	public Connection getJdbcConnection() {
+		return this.connection;
+	}
+	
+	public Boolean getIsProcessing () {
+		return isProcessing;
 	}
 
 	public void run() {
-		while (true) {
+		StoredProcedure procedure = null;
+		Value result = null;
+		while (isProcessing) {
 			try {
-				Object resolvedResult = null;
-
-				StoredProcedure sp = makeStoredProcedure();
-				Value result = sp.invoke();
-
+				isClosed = false;
+				procedure = makeStoredProcedure();
+				result = procedure.invoke();
+				
+				/* close without clearing JDBC resources */
 				closeJdbcConnection();
-
+				
+				/* send results */
+				Object resolvedResult = null;
 				if (result != null) {
-					resolvedResult = toDbTypeValue(sp.getReturnType(), result);
+					resolvedResult = toDbTypeValue(procedure.getReturnType(), result);
 				}
-
-				byteBuf.reset();
-				sendValue(resolvedResult, outBuf, sp.getReturnType());
-				returnOutArgs(sp, outBuf);
-				outBuf.flush();
-
-				toClient.writeInt(0x2);
-				toClient.writeInt(byteBuf.size() + 4);
-				byteBuf.writeTo(toClient);
-				toClient.writeInt(0x2);
-				toClient.flush();
-
-				sp = null;
-				result = null;
-
-				// toClient.close();
-				// client.close();
-			} catch (Throwable e) {
+				
+				sendResult(resolvedResult, procedure);
+			} catch (Exception e) {
+				
 				if (e instanceof IOException) {
-					break;
+					isProcessing = false;
 				} else if (e instanceof InvocationTargetException) {
 					Server.log(((InvocationTargetException) e)
 							.getTargetException());
 				} else {
 					Server.log(e);
 				}
-				closeJdbcConnection();
+				
 				try {
 					sendError(e, client);
 				} catch (IOException e1) {
@@ -205,7 +189,7 @@ public class ExecuteThread extends Thread {
 		toClient = null;
 		byteBuf = null;
 		outBuf = null;
-		jdbcConnection = null;
+		connection = null;
 		charSet = null;
 	}
 
@@ -336,32 +320,25 @@ public class ExecuteThread extends Thread {
 	private StoredProcedure makeStoredProcedure() throws Exception {
 		DataInputStream dis = new DataInputStream(new BufferedInputStream(
 				this.client.getInputStream()));
-
+		
+		/* read invoke requests */
 		int startCode = dis.readInt();
-		// System.out.println("startCode= " + startCode);
+
 		if (startCode != 0x1)
 			return null;
 
 		int methodSigLength = dis.readInt();
-		// System.out.println("methodSigLength= " + methodSigLength);
 
 		byte[] methodSig = new byte[methodSigLength];
 		dis.readFully(methodSig);
-		// System.out.println("methodSig= " + new String(methodSig));
 
 		int paramCount = dis.readInt();
-		// System.out.println("paramCount= " + paramCount);
 
 		Value[] args = readArguments(dis, paramCount);
-		// for (int i = 0; i < args.length; i++) {
-		// System.out.println("arg[" + i + "]= " + args[i]);
-		// }
 
 		int returnType = dis.readInt();
-		// System.out.println("returnType= " + returnType);
 
 		int endCode = dis.readInt();
-		// System.out.println("endcode= " + endCode);
 		if (startCode != endCode)
 			return null;
 
@@ -548,11 +525,11 @@ public class ExecuteThread extends Thread {
 			bOID[6] = ((byte) ((vol >>> 8) & 0xFF));
 			bOID[7] = ((byte) ((vol >>> 0) & 0xFF));
 
-			if (jdbcConnection == null) {
-				jdbcConnection = DriverManager
+			if (connection == null) {
+				connection = (CUBRIDConnectionDefault) DriverManager
 						.getConnection("jdbc:default:connection:");
 			}
-			arg = new OidValue(new CUBRIDOID((CUBRIDConnection) jdbcConnection,
+			arg = new OidValue(new CUBRIDOID(connection,
 					bOID), mode, dbType);
 		}
 			break;
@@ -565,7 +542,20 @@ public class ExecuteThread extends Thread {
 		}
 		return arg;
 	}
+	
+	private void sendResult (Object result, StoredProcedure procedure) throws IOException, ExecuteException, TypeMismatchException {
+		byteBuf.reset();
+		sendValue(result, outBuf, procedure.getReturnType());
+		returnOutArgs(procedure, outBuf);
+		outBuf.flush();
 
+		toClient.writeInt(0x2);
+		toClient.writeInt(byteBuf.size() + 4);
+		byteBuf.writeTo(toClient);
+		toClient.writeInt(0x2);
+		toClient.flush();
+	}
+	
 	private void sendValue(Object result, DataOutputStream dos, int ret_type)
 			throws IOException {
 		if (result == null) {
@@ -672,14 +662,6 @@ public class ExecuteThread extends Thread {
 		for (int i = 0; i <= pad; i++) {
 			dos.writeByte(0);
 		}
-	}
-
-	public void setJdbcConnection(Connection con) {
-		this.jdbcConnection = con;
-	}
-
-	public Connection getJdbcConnection() {
-		return this.jdbcConnection;
 	}
 
 	public void setCharSet(String conCharsetName) {

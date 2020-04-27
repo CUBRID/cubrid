@@ -295,8 +295,6 @@ public abstract class UConnection {
 		}
 
 		closeInternal();
-
-		isClosed = true;
 	}
 
 	// UFunctionCode.END_TRANSACTION

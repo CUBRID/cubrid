@@ -39,12 +39,14 @@ package cubrid.jdbc.jci;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.Socket;
+import java.util.Vector;
 
 import cubrid.jdbc.driver.CUBRIDException;
 
 public class UConnectionServer extends UConnection {
 
 	private Thread curThread;
+	private UStatementHandlerCache stmtHandlerCache;
 
 	public UConnectionServer(Socket socket, Thread curThread) throws CUBRIDException {
 		errorHandler = new UError(this);
@@ -84,6 +86,9 @@ public class UConnectionServer extends UConnection {
 			UJCIUtil.invoke("com.cubrid.jsp.ExecuteThread", "setCharSet",
 					new Class[] { String.class }, this.curThread,
 					new Object[] { connectionProperties.getCharSet() });
+			
+			stmtHandlerCache = new UStatementHandlerCache ();
+			
 		} catch (IOException e) {
 			UJciException je = new UJciException(UErrorCode.ER_CONNECTION);
 			je.toUError(errorHandler);
@@ -146,9 +151,65 @@ public class UConnectionServer extends UConnection {
 	}
 
 	@Override
+	protected void disconnect() {
+		try {
+			setBeginTime();
+			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
+				return;
+
+			outBuffer.newRequest(output, UFunctionCode.CON_CLOSE);
+			send_recv_msg();
+		} catch (Exception e) {
+		}
+	}
+	
+	@Override
 	protected void closeInternal() {
 		if (client != null) {
 			disconnect();
+			stmtHandlerCache.clearStatus();
+			System.out.println(stmtHandlerCache);
 		}
+	}
+	
+	@Override
+	protected UStatement prepareInternal(String sql, byte flag, boolean recompile)
+			throws IOException, UJciException {
+		UStatement preparedStmt = null;
+		
+		/* try to find cached UStatement */
+		Vector<UStatementEntry> entries = stmtHandlerCache.getEntry(sql);	
+		System.out.println(entries);
+		for (UStatementEntry e: entries) {
+			if (e.isAvailable()) {
+				preparedStmt = e.getStatement();
+				e.setStatus(UStatementEntry.HOLDING);
+				break;
+			}
+		}
+		
+		/* if entry not found, create new UStatement */
+		if (preparedStmt == null) {
+			UStatement newStmt = super.prepareInternal(sql, flag, recompile);
+			entries.add(new UStatementEntry (sql, newStmt));
+			preparedStmt = newStmt;
+		}
+
+		return preparedStmt;
+	}
+	
+	public boolean needClear () {
+		if (UJCIUtil.isServerSide()) {
+			Boolean isProcessing = (Boolean) UJCIUtil.invoke("com.cubrid.jsp.ExecuteThread",
+					"getIsProcessing", new Class[] {},
+					this.curThread, new Object[] {});
+			return !isProcessing;
+		}
+		
+		return true;
+	}
+	
+	public void clear () {
+		stmtHandlerCache.clearEntry();
 	}
 }

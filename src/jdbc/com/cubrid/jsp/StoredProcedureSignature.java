@@ -28,60 +28,8 @@
  *
  */
 
-package cubrid.jdbc.driver;
+package com.cubrid.jsp;
 
-import java.sql.SQLException;
-
-import cubrid.jdbc.jci.UConnection;
-import cubrid.jdbc.jci.UConnectionServer;
-
-/**
- * Title: CUBRID JDBC Driver Description:
- * 
- * @version 2.0
- */
-public class CUBRIDConnectionDefault extends CUBRIDConnection {
-	public CUBRIDConnectionDefault(UConnection u, String r, String s) {
-		super(u, r, s);
-		this.auto_commit = false;
-	}
+public class StoredProcedureSignature {
 	
-	@Override
-	public void setAutoCommit(boolean autoCommit) {
-		/* do nothing */
-	}
-	
-	@Override
-	public void commit() throws SQLException {
-		/* do nothing */
-	}
-	
-	@Override
-	public void rollback() throws SQLException {
-		/* do nothing */
-	}
-	
-	@Override
-	public synchronized void close() throws SQLException {
-		if (is_closed)
-			return;
-		
-		u_con.close();
-		
-		/* assuming that u_con is UConnectionServer */
-		UConnectionServer uServerConnection = (UConnectionServer) u_con;
-		if (uServerConnection.needClear()) {
-			is_closed = true;
-			
-			uServerConnection.clear();
-			clear();
-			u_con = null;
-			url = null;
-			user = null;
-			mdata = null;
-			statements = null;
-			error = null;
-			shard_mdata = null;
-		}
-	}
 }

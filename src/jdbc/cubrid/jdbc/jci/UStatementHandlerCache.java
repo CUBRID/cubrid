@@ -28,60 +28,50 @@
  *
  */
 
-package cubrid.jdbc.driver;
+package cubrid.jdbc.jci;
 
-import java.sql.SQLException;
+import java.util.Map.Entry;
+import java.util.Vector;
+import java.util.concurrent.ConcurrentHashMap;
 
-import cubrid.jdbc.jci.UConnection;
-import cubrid.jdbc.jci.UConnectionServer;
+public class UStatementHandlerCache {
+	private ConcurrentHashMap<String, Vector<UStatementEntry>> stmtHandlerCache;
 
-/**
- * Title: CUBRID JDBC Driver Description:
- * 
- * @version 2.0
- */
-public class CUBRIDConnectionDefault extends CUBRIDConnection {
-	public CUBRIDConnectionDefault(UConnection u, String r, String s) {
-		super(u, r, s);
-		this.auto_commit = false;
+	public UStatementHandlerCache() {
+		stmtHandlerCache = new ConcurrentHashMap<String, Vector<UStatementEntry>> ();
+	}
+
+	public ConcurrentHashMap<String, Vector<UStatementEntry>> getCache() {
+		return stmtHandlerCache;
 	}
 	
-	@Override
-	public void setAutoCommit(boolean autoCommit) {
-		/* do nothing */
-	}
-	
-	@Override
-	public void commit() throws SQLException {
-		/* do nothing */
-	}
-	
-	@Override
-	public void rollback() throws SQLException {
-		/* do nothing */
-	}
-	
-	@Override
-	public synchronized void close() throws SQLException {
-		if (is_closed)
-			return;
+	public Vector<UStatementEntry> getEntry (String sql) {
+		if (!stmtHandlerCache.containsKey(sql)) {
+		   Vector<UStatementEntry> vec = new Vector<UStatementEntry>();
+		   stmtHandlerCache.put(sql, vec);
+		}
 		
-		u_con.close();
-		
-		/* assuming that u_con is UConnectionServer */
-		UConnectionServer uServerConnection = (UConnectionServer) u_con;
-		if (uServerConnection.needClear()) {
-			is_closed = true;
-			
-			uServerConnection.clear();
-			clear();
-			u_con = null;
-			url = null;
-			user = null;
-			mdata = null;
-			statements = null;
-			error = null;
-			shard_mdata = null;
+		return stmtHandlerCache.get(sql);
+	}
+	
+	public void clearEntry () {
+		stmtHandlerCache.clear();
+		stmtHandlerCache = null;
+	}
+	
+	public void clearStatus () {
+		for (Entry<String, Vector<UStatementEntry>> entry : stmtHandlerCache.entrySet()) {
+			Vector<UStatementEntry> cacheEntries = entry.getValue();
+			for (UStatementEntry e: cacheEntries) {
+				e.setStatus(UStatementEntry.AVAILABLE);
+			}
 		}
 	}
+
+	@Override
+	public String toString() {
+		return "UStatementHandlerCache [stmtHandlerCache=" + stmtHandlerCache + "]";
+	}
+	
+	
 }

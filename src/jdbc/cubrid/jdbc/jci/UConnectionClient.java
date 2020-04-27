@@ -469,6 +469,7 @@ public class UConnectionClient extends UConnection {
 			clientSocketClose();
 		}
 
+		isClosed = true;
 		/*
 		 * jci 2.x if (transactionList != null && transactionList.size() > 0)
 		 * endTransaction(false);
