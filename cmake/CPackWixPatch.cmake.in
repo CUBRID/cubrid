@@ -83,6 +83,19 @@
         <util:InternetShortcut xmlns:util="http://schemas.microsoft.com/wix/UtilExtension" Id="OnlineDocumentationShortcut" Name="CUBRID Online Documentation" Target="http://www.cubrid.org/"/>
         <Shortcut Id="UninstallProductShortcut" Name="Uninstall @CPACK_PACKAGE_NAME@" Description="Uninstalls @CPACK_PACKAGE_NAME@" Target="[System64Folder]msiexec.exe" Arguments="/x [ProductCode]"/>
         <RegistryValue Root="HKCU" Key="Software\@CPACK_PACKAGE_VENDOR@\@CPACK_PACKAGE_NAME@" Name="installed" Type="integer" Value="1" KeyPath="yes"/>
+        <RegistryKey Root="HKLM"
+                     Key="SOFTWARE\CUBRID\cmserver"
+                     Action="createAndRemoveOnUninstall">
+            <RegistryValue Name="ROOT_PATH" Type="string" Value="[INSTALL_ROOT]"/>
+            <RegistryValue Name="Version" Type="string" Value="@CPACK_PACKAGE_VERSION_MAJOR@.@CPACK_PACKAGE_VERSION_MINOR@"/>
+        </RegistryKey>
+        <RegistryKey Root="HKLM"
+                     Key="SOFTWARE\CUBRID\CUBRID"
+                     Action="createAndRemoveOnUninstall">
+            <RegistryValue Name="ROOT_PATH" Type="string" Value="[INSTALL_ROOT]"/>
+            <RegistryValue Name="Version" Type="string" Value="@CPACK_PACKAGE_VERSION_MAJOR@.@CPACK_PACKAGE_VERSION_MINOR@"/>
+            <RegistryValue Name="Patch" Type="string" Value="@CPACK_PACKAGE_VERSION_PATCH@"/>
+        </RegistryKey>
       </Component>
     </DirectoryRef>
 <!-- Customized WixUI_InstallDIR -->
