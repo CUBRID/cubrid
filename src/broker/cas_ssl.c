@@ -54,7 +54,6 @@
 #include "broker_filename.h"
 #include "cas_execute.h"
 
-#include <openssl/rsa.h>
 #include <openssl/crypto.h>
 #include <openssl/x509.h>
 #include <openssl/pem.h>
