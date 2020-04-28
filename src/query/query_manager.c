@@ -136,12 +136,15 @@ QMGR_QUERY_TABLE qmgr_Query_table = { NULL, 0, NULL,
   {{PTHREAD_MUTEX_INITIALIZER, NULL, 0}, {PTHREAD_MUTEX_INITIALIZER, NULL, 0}}
 };
 
+void xcache_invalidate_qcaches(THREAD_ENTRY * thread_p, const OID * arg);
+
 #if !defined(SERVER_MODE)
 static struct drand48_data qmgr_rand_buf;
 #endif
 
 static QMGR_PAGE_TYPE qmgr_get_page_type (PAGE_PTR page_p, QMGR_TEMP_FILE * temp_file_p);
 static bool qmgr_is_allowed_result_cache (QUERY_FLAG flag);
+static bool qmgr_can_get_from_cache (QUERY_FLAG flag);
 static bool qmgr_can_get_result_from_cache (QUERY_FLAG flag);
 static void qmgr_put_page_header (PAGE_PTR page_p, QFILE_PAGE_HEADER * header_p);
 
@@ -220,6 +223,21 @@ qmgr_is_allowed_result_cache (QUERY_FLAG flag)
   if (query_cache_mode == QFILE_LIST_QUERY_CACHE_MODE_OFF
       || (query_cache_mode == QFILE_LIST_QUERY_CACHE_MODE_SELECTIVELY_OFF && (flag & RESULT_CACHE_INHIBITED))
       || (query_cache_mode == QFILE_LIST_QUERY_CACHE_MODE_SELECTIVELY_ON && !(flag & RESULT_CACHE_REQUIRED)))
+    {
+      return false;
+    }
+
+  return true;
+}
+
+static bool
+qmgr_can_get_from_cache (QUERY_FLAG flag)
+{
+  int query_cache_mode;
+
+  query_cache_mode = prm_get_integer_value (PRM_ID_LIST_QUERY_CACHE_MODE);
+
+  if (query_cache_mode == QFILE_LIST_QUERY_CACHE_MODE_OFF)
     {
       return false;
     }
@@ -1361,22 +1379,41 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
       goto exit_on_error;
     }
 
+   /* if needed to invalidate query cache, invalidate the cache */
+  if (qmgr_can_get_from_cache (*flag_p))
+    {
+      if (xasl_cache_entry_p->cache_clones && xasl_cache_entry_p->cache_clones->xasl)
+        {
+          switch (xasl_cache_entry_p->cache_clones->xasl->type)
+            {
+              case UPDATE_PROC:
+              case INSERT_PROC:
+              case DELETE_PROC:
+              case MERGE_PROC:
+                xcache_invalidate_qcaches(thread_p, &xasl_cache_entry_p->related_objects[0].oid);
+                break;
+              default:
+                break;
+            }
+        }
+    }
+
   if (qmgr_can_get_result_from_cache (*flag_p))
     {
       /* lookup the list cache with the parameter values (DB_VALUE array) */
       list_cache_entry_p = qfile_lookup_list_cache_entry (thread_p, xasl_cache_entry_p->list_ht_no, &params);
       /* If we've got the cached result, return it. */
       if (list_cache_entry_p)
-	{
-	  /* found the cached result */
-	  cached_result = true;
+        {
+          /* found the cached result */
+          cached_result = true;
 
-	  CACHE_TIME_MAKE (server_cache_time_p, &list_cache_entry_p->time_created);
-	  if (CACHE_TIME_EQ (client_cache_time_p, server_cache_time_p))
-	    {
-	      goto end;
-	    }
-	}
+          CACHE_TIME_MAKE (server_cache_time_p, &list_cache_entry_p->time_created);
+          if (CACHE_TIME_EQ (client_cache_time_p, server_cache_time_p))
+            {
+              goto end;
+            }
+        }
     }
 
   if (client_cache_time_p)

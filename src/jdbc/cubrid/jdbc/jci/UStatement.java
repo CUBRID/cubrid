@@ -104,6 +104,7 @@ public class UStatement {
 	private int fetchedTupleNumber;
 	private boolean isFetchCompleted;
 	private int totalTupleNumber;
+	private int readTupleNumber;
 	private int currentFirstCursor;
 	private int cursorPosition;
 	private int executeResult;
@@ -129,7 +130,7 @@ public class UStatement {
 
 	public int result_cache_lifetime;
 	private boolean result_cacheable = false;
-	private UStmtCache stmt_cache;
+	public UStmtCache stmt_cache;
 
 	UStatement(UConnection relatedC, UInputBuffer inBuffer,
 	        boolean assign_only, String sql, byte _prepare_flag)
@@ -723,7 +724,7 @@ public class UStatement {
 	}
 
 	private void writeExecuteRequest(int maxField, boolean isScrollable,
-	        int queryTimeout)
+	        int queryTimeout, UStatementCacheData cacheData)
 	        throws IOException, UJciException {
 		byte is_auto_commit = (byte) 0, is_forward_only = (byte) 0;
 		long remainingTime = 0;
@@ -757,7 +758,7 @@ public class UStatement {
 			is_forward_only = (byte) 1;
 		}
 		outBuffer.addByte(is_forward_only);
-		outBuffer.addCacheTime(null);
+		outBuffer.addCacheTime(cacheData);
 
 		// query timeout support only if protocol version 1 or above
 		if (relatedConnection.protoVersionIsAbove(UConnection.PROTOCOL_V2)) {
@@ -804,28 +805,37 @@ public class UStatement {
 			executeResult = Math.min(maxFetchSize, executeResult);
 		}
 		totalTupleNumber = executeResult;
+		readTupleNumber = 0;
 		batchParameter = null;
 
 		if (commandTypeIs == CUBRIDCommandType.CUBRID_STMT_SELECT
 		        && totalTupleNumber > 0) {
 			inBuffer.readInt(); // fetch_rescode
+			tuples = new UResultTuple[totalTupleNumber];
 			read_fetch_data(inBuffer, UFunctionCode.FETCH);
 		}
 	}
 
 	private void executeInternal(int maxRow, int maxField,
-	        boolean isScrollable, int queryTimeout) throws UJciException,
+	        boolean isScrollable, int queryTimeout, UStatementCacheData cacheData) throws UJciException,
 	        IOException {
 		UInputBuffer inBuffer = null;
 		errorHandler.clear();
 		relatedConnection.setShardId(UShardInfo.SHARD_ID_INVALID);
 
 		synchronized (relatedConnection) {
-			writeExecuteRequest(maxField, isScrollable, queryTimeout);
+			writeExecuteRequest(maxField, isScrollable, queryTimeout, cacheData);
 			inBuffer = relatedConnection.send_recv_msg();
 		}
 
-		inBuffer.readByte(); // cache_reusable
+		// cache reusable
+		byte cache_reusable = inBuffer.readByte(); // cache_reusable
+		if (cacheData != null && cache_reusable == (byte) 1) {
+            setCacheData(cacheData);
+            return;
+        }
+		// --
+		
 		readResultInfo(inBuffer);
 		readResultMeta(inBuffer);
 
@@ -891,7 +901,16 @@ public class UStatement {
 		boolean isFirstExecInTran = !relatedConnection.isActive();
 
 		try {
-			executeInternal(maxRow, maxField, isScrollable, queryTimeout);
+			executeInternal(maxRow, maxField, isScrollable, queryTimeout, cacheData);
+			//jdbc cache feature
+			if (cacheData != null // && fetchedTupleNumber == totalTupleNumber
+					&& resultInfo.length == 1) {
+				cacheData.setCacheData(totalTupleNumber, tuples, resultInfo);
+			}
+			else if (resultInfo.length > 1) {
+				result_cacheable = false;
+			}
+			//--
 			return;
 		} catch (UJciException e) {
 			relatedConnection.logException(e);
@@ -911,7 +930,7 @@ public class UStatement {
 				try {
 					reset((byte) 0);
 					executeInternal(maxRow, maxField, isScrollable,
-					        queryTimeout);
+					        queryTimeout, cacheData);
 					return;
 				} catch (UJciException e) {
 					relatedConnection.logException(e);
@@ -936,7 +955,7 @@ public class UStatement {
 			    && errorHandler.getJdbcErrorCode() == UErrorCode.CAS_ER_STMT_POOLING) {
 				try {
 					reset(additional_prepare_flag);
-					executeInternal(maxRow, maxField, isScrollable, queryTimeout);
+					executeInternal(maxRow, maxField, isScrollable, queryTimeout, cacheData);
 					return;
 				} catch (UJciException e) {
 					relatedConnection.logException(e);
@@ -1167,7 +1186,7 @@ public class UStatement {
 		/* need not to fetch really */
 		if (currentFirstCursor >= 0
 		        && currentFirstCursor <= cursorPosition
-		        && cursorPosition <= currentFirstCursor + fetchedTupleNumber
+		        && cursorPosition <= currentFirstCursor + readTupleNumber //fetchedTupleNumber
 		                - 1) {
 			return;
 		}
@@ -2247,10 +2266,12 @@ public class UStatement {
 			fetchedTupleNumber = 0;
 		}
 
-		tuples = new UResultTuple[fetchedTupleNumber];
+		//tuples = new UResultTuple[fetchedTupleNumber];
 		for (int i = 0; i < fetchedTupleNumber; i++) {
-			readATuple(i, inBuffer);
+			readATuple(i + readTupleNumber, inBuffer);
 		}
+		readTupleNumber += fetchedTupleNumber;
+
 			if (functionCode == UFunctionCode.GET_GENERATED_KEYS) {
 				isFetchCompleted = true;
 			}
@@ -2408,6 +2429,7 @@ public class UStatement {
 		cursorPosition = currentFirstCursor = 0;
 		fetchedTupleNumber = totalTupleNumber;
 		executeResult = totalTupleNumber;
+		readTupleNumber = totalTupleNumber;
 		realFetched = true;
 	}
 

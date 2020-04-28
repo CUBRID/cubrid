@@ -444,6 +444,7 @@ xcache_entry_init (void *entry)
   /* Add here if anything should be initialized. */
   xcache_entry->related_objects = NULL;
   xcache_entry->ref_count = 0;
+  xcache_entry->list_ht_no = -1;
 
   xcache_entry->sql_info.sql_hash_text = NULL;
   xcache_entry->sql_info.sql_user_text = NULL;
@@ -1667,6 +1668,54 @@ error:
 }
 
 /*
+ * xcache_invalidate_qcaches () - Invalidate all query cache entries which pass the invalidation check.
+ *				  all invalidated query cache entries are removed.
+ *
+ * return		 : Void.
+ * thread_p (in)	 : Thread entry.
+ * invalidate_check (in) : Invalidation check function.
+ * arg (in)		 : Argument for invalidation check function.
+ */
+void
+xcache_invalidate_qcaches (THREAD_ENTRY * thread_p, const OID * oid)
+{
+  bool finished = false;
+  XASL_CACHE_ENTRY *xcache_entry = NULL;
+
+  if (!xcache_Enabled)
+    {
+      return;
+    }
+
+  xcache_hashmap_iterator iter = { thread_p, xcache_Hashmap };
+
+  while (!finished)
+    {
+      /* make sure to start from beginning */
+      iter.restart ();
+
+      /* Iterate through hash, check entry OID's and if one matches the argument, mark the entry for delete and save
+       * it in delete_xids buffer. We cannot delete them from hash while iterating, because the one lock-free
+       * transaction can be used for one hash entry only.
+       */
+      while (true)
+	{
+          xcache_entry = iter.iterate ();
+          if (xcache_entry == NULL)
+            {
+              finished = true;
+              break;
+            }
+	  if (xcache_entry_is_related_to_oid(xcache_entry, oid))
+	    {
+	      qfile_clear_list_cache(thread_p, xcache_entry->list_ht_no, false);
+	      xcache_entry->list_ht_no = -1;
+  	    }
+        }
+    }
+}
+
+/*
  * xcache_invalidate_entries () - Invalidate all cache entries which pass the invalidation check. If there is no
  *				  invalidation check, all cache entries are removed.
  *
@@ -1698,57 +1747,62 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
       /* make sure to start from beginning */
       iter.restart ();
 
-      /* Iterate through hash, check entry OID's and if one matches the argument, mark the entry for delete and save
+      /*
+       * Iterate through hash, check entry OID's and if one matches the argument, mark the entry for delete and save
        * it in delete_xids buffer. We cannot delete them from hash while iterating, because the one lock-free
        * transaction can be used for one hash entry only.
        */
       while (true)
-	{
-	  xcache_entry = iter.iterate ();
-	  if (xcache_entry == NULL)
-	    {
-	      finished = true;
-	      break;
-	    }
+        {
+          xcache_entry = iter.iterate ();
+          if (xcache_entry == NULL)
+            {
+              finished = true;
+              break;
+            }
 
-	  /* Check invalidation conditions. */
-	  if (invalidate_check == NULL || invalidate_check (xcache_entry, arg))
-	    {
-	      /* Mark entry as deleted. */
-	      if (xcache_entry_mark_deleted (thread_p, xcache_entry))
-		{
-		  /*
-		   * Successfully marked for delete. Save it to delete after the iteration.
-		   * No need to acquire the clone mutex, since I'm the unique user.
-		   */
-		  while (xcache_entry->n_cache_clones > 0)
-		    {
-		      xcache_clone_decache (thread_p, &xcache_entry->cache_clones[--xcache_entry->n_cache_clones]);
-		    }
-		  delete_xids[n_delete_xids++] = xcache_entry->xasl_id;
-		}
-	    }
+          /* Check invalidation conditions. */
+          if (invalidate_check == NULL || invalidate_check (xcache_entry, arg))
+            {
+              /* remove qfile cache entry related as list_ht_no */
+              qfile_clear_list_cache(thread_p, xcache_entry->list_ht_no, false);
+              xcache_entry->list_ht_no = -1;
 
-	  if (n_delete_xids == XCACHE_DELETE_XIDS_SIZE)
-	    {
-	      /* Full buffer. Interrupt iteration and we'll start over. */
-	      xcache_Hashmap.end_tran (thread_p);
+              /* Mark entry as deleted. */
+              if (xcache_entry_mark_deleted (thread_p, xcache_entry))
+                {
+                  /*
+                   * Successfully marked for delete. Save it to delete after the iteration.
+                   * No need to acquire the clone mutex, since I'm the unique user.
+                   */
+                  while (xcache_entry->n_cache_clones > 0)
+                    {
+                      xcache_clone_decache (thread_p, &xcache_entry->cache_clones[--xcache_entry->n_cache_clones]);
+                    }
+                  delete_xids[n_delete_xids++] = xcache_entry->xasl_id;
+                }
+             }
 
-	      xcache_log ("xcache_remove_by_oid full buffer\n" XCACHE_LOG_TRAN_TEXT, XCACHE_LOG_TRAN_ARGS (thread_p));
+          if (n_delete_xids == XCACHE_DELETE_XIDS_SIZE)
+            {
+              /* Full buffer. Interrupt iteration and we'll start over. */
+              xcache_Hashmap.end_tran (thread_p);
 
-	      break;
-	    }
-	}
+              xcache_log ("xcache_remove_by_oid full buffer\n" XCACHE_LOG_TRAN_TEXT, XCACHE_LOG_TRAN_ARGS (thread_p));
+
+              break;
+            }
+        }
 
       /* Remove collected entries. */
       for (xid_index = 0; xid_index < n_delete_xids; xid_index++)
-	{
-	  if (!xcache_Hashmap.erase (thread_p, delete_xids[xid_index]))
-	    {
-	      /* I don't think this is expected. */
-	      assert (false);
-	    }
-	}
+        {
+          if (!xcache_Hashmap.erase (thread_p, delete_xids[xid_index]))
+            {
+              /* I don't think this is expected. */
+              assert (false);
+            }
+        }
       n_delete_xids = 0;
     }
 

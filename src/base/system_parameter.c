@@ -10247,7 +10247,7 @@ prm_tune_parameters (void)
    * bit environment. */
   if (query_cache_mode_prm != NULL)
     {
-      prm_set (query_cache_mode_prm, "0", false);
+      //prm_set (query_cache_mode_prm, "0", false);
     }
 
   ha_mode_prm = prm_find (PRM_NAME_HA_MODE, NULL);
