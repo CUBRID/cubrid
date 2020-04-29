@@ -71,6 +71,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/porting.c
   ${BASE_DIR}/area_alloc.c
   ${BASE_DIR}/fixed_alloc.c
+  ${BASE_DIR}/filesys_temp.cpp
   ${BASE_DIR}/mem_block.cpp
   ${BASE_DIR}/memory_private_allocator.cpp
   ${BASE_DIR}/memory_alloc.c
@@ -134,6 +135,8 @@ set(BASE_HEADERS
   ${BASE_DIR}/error_manager.h
   ${BASE_DIR}/extensible_array.hpp
   ${BASE_DIR}/fileline_location.hpp
+  ${BASE_DIR}/filesys.hpp
+  ${BASE_DIR}/filesys_temp.hpp
   ${BASE_DIR}/locale_helper.hpp
   ${BASE_DIR}/lockfree_address_marker.hpp
   ${BASE_DIR}/lockfree_bitmap.hpp

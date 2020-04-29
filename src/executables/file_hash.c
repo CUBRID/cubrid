@@ -35,6 +35,7 @@
 #include "utility.h"
 #include "error_manager.h"
 #include "file_hash.h"
+#include "filesys_temp.hpp"
 #include "memory_alloc.h"
 #include "object_representation.h"
 
@@ -215,7 +216,9 @@ fh_create (const char *name, int est_size, int page_size, int cached_pages, cons
   /* Open the hash file */
   if (!hash_filename || hash_filename[0] == '\0')
     {
-      ht->hash_filename = strdup (tmpnam (NULL));
+      auto[filename, filedes] = filesys::open_temp_filedes ("fhash_");
+      close (filedes);
+      ht->hash_filename = strdup (filename.c_str ());
     }
   else
     {
