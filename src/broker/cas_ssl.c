@@ -104,13 +104,13 @@ initSSL (int sd)
   snprintf (cert, CERT_FILENAME_LEN, "%s/conf/%s", getenv ("CUBRID"), CERTF);
   snprintf (key, CERT_FILENAME_LEN, "%s/conf/%s", getenv ("CUBRID"), KEYF);
 
-#if defined (OPENSSL_API_COMPAT) && OPENSSL_API_COMPAT < 0x10100000L
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
   SSL_load_error_strings ();
   SSLeay_add_ssl_algorithms ();
   ERR_load_crypto_strings ();
 #endif
 
-  if ((ctx = SSL_CTX_new (TLSv1_server_method ())) == NULL)
+  if ((ctx = SSL_CTX_new (TLS_server_method ())) == NULL)
     {
       return ER_SSL_GENERAL;
     }
