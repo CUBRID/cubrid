@@ -8048,23 +8048,21 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 				    }
 				}
 
-			      if (XASL_IS_FLAGED (xasl, XASL_NEED_SINGLE_TUPLE_SCAN))
+			      qualified = (xasl->instnum_pred == NULL || ev_res == V_TRUE);
+			      if (qualified)
 				{
+				  /* one iteration successfully completed */
 				  if (qexec_end_one_iteration (thread_p, xasl, xasl_state, tplrec) != NO_ERROR)
 				    {
 				      return S_ERROR;
 				    }
-				  return S_SUCCESS;
-				}
-
-			      qualified = (xasl->instnum_pred == NULL || ev_res == V_TRUE);
-			      if (qualified
-				  && (qexec_end_one_iteration (thread_p, xasl, xasl_state, tplrec) != NO_ERROR))
-				{
-				  return S_ERROR;
+				  /* only one row is need for exists OP */
+				  if (XASL_IS_FLAGED (xasl, XASL_NEED_SINGLE_TUPLE_SCAN))
+				    {
+				      return S_SUCCESS;
+				    }
 				}
 			    }
-
 			}
 		      else
 			{	/* handle the scan procedure */
@@ -8121,25 +8119,21 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 					}
 				    }
 
-				  if (XASL_IS_FLAGED (xasl, XASL_NEED_SINGLE_TUPLE_SCAN))
+				  qualified = (xasl->instnum_pred == NULL || ev_res == V_TRUE);
+				  if (qualified)
 				    {
+				      /* one iteration successfully completed */
 				      if (qexec_end_one_iteration (thread_p, xasl, xasl_state, tplrec) != NO_ERROR)
 					{
 					  return S_ERROR;
 					}
-				      return S_SUCCESS;
-				    }
-
-				  qualified = (xasl->instnum_pred == NULL || ev_res == V_TRUE);
-
-				  if (qualified
-				      /* one iteration successfully completed */
-				      && qexec_end_one_iteration (thread_p, xasl, xasl_state, tplrec) != NO_ERROR)
-				    {
-				      return S_ERROR;
+				      /* only one row is need for exists OP */
+				      if (XASL_IS_FLAGED (xasl, XASL_NEED_SINGLE_TUPLE_SCAN))
+					{
+					  return S_SUCCESS;
+					}
 				    }
 				}
-
 			    }
 
 			  if (xs_scan != S_END)	/* an error happened */
