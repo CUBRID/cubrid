@@ -2682,6 +2682,7 @@ qdump_print_xasl (xasl_node * xasl_p)
     }
 
   fprintf (foutput, "\ndbval_cnt:%d", xasl_p->dbval_cnt);
+  fprintf (foutput, "\nincludes_tde_class:%d", xasl_p->includes_tde_class);
   fprintf (foutput, "\nquery_alias:%s\n", xasl_p->query_alias ? xasl_p->query_alias : "(NULL)");
   fprintf (foutput, "<end of xasl structure %p>\n", xasl_p);
   fflush (foutput);

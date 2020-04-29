@@ -1031,6 +1031,7 @@ struct xasl_node
   OID *class_oid_list;		/* list of class/serial OIDs referenced in the XASL */
   int *class_locks;		/* list of locks for class_oid_list. */
   int *tcard_list;		/* list of #pages of the class OIDs */
+  bool includes_tde_class;	/* whether there is a tde class in class_oid_list */
   const char *query_alias;
   int dbval_cnt;		/* number of host variables in this XASL */
   bool iscan_oid_order;

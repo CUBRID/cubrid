@@ -940,6 +940,7 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, xasl_st
   int i;
   OID creator_oid, *class_oid_list_p = NULL;
   int n_oid_list, *tcard_list_p = NULL;
+  int includes_tde_class = 0;
   int *class_locks = NULL;
   int dbval_cnt;
   int error_code = NO_ERROR;
@@ -1012,6 +1013,7 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, xasl_st
   p = or_unpack_int (p, &dbval_cnt);
   p = or_unpack_oid (p, &creator_oid);
   p = or_unpack_int (p, &n_oid_list);
+  p = or_unpack_int (p, &includes_tde_class);
 
   if (n_oid_list > 0)
     {
@@ -1045,7 +1047,8 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, xasl_st
     }
 
   error_code =
-    xcache_insert (thread_p, context, stream, n_oid_list, class_oid_list_p, class_locks, tcard_list_p, &cache_entry_p);
+    xcache_insert (thread_p, context, stream, n_oid_list, class_oid_list_p, class_locks, tcard_list_p,
+		   includes_tde_class, &cache_entry_p);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();

@@ -288,6 +288,7 @@ xts_map_xasl_to_stream (const XASL_NODE * xasl_tree, XASL_STREAM * stream)
   header_size = sizeof (int)	/* xasl->dbval_cnt */
     + sizeof (OID)		/* xasl->creator_oid */
     + sizeof (int)		/* xasl->n_oid_list */
+    + sizeof (int)		/* xasl->includes_tde_class */
     + sizeof (OID) * xasl_tree->n_oid_list	/* xasl->class_oid_list */
     + sizeof (int) * xasl_tree->n_oid_list	/* xasl->class_locks */
     + sizeof (int) * xasl_tree->n_oid_list;	/* xasl->tcard_list */
@@ -324,6 +325,7 @@ xts_map_xasl_to_stream (const XASL_NODE * xasl_tree, XASL_STREAM * stream)
   p = or_pack_int (p, xasl_tree->dbval_cnt);
   p = or_pack_oid (p, (OID *) (&xasl_tree->creator_oid));
   p = or_pack_int (p, xasl_tree->n_oid_list);
+  p = or_pack_int (p, xasl_tree->includes_tde_class);
   for (i = 0; i < xasl_tree->n_oid_list; i++)
     {
       p = or_pack_oid (p, &xasl_tree->class_oid_list[i]);
