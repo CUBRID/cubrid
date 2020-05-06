@@ -85,6 +85,7 @@
 #include "tz_support.h"
 #include "perf_monitor.h"
 #include "fault_injection.h"
+#include "tde.hpp"
 #if defined (SERVER_MODE)
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #endif // SERVER_MODE
@@ -668,6 +669,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_REPR_CACHE_LOG "er_log_repr_cache"
 #define PRM_NAME_ENABLE_NEW_LFHASH "new_lfhash"
 #define PRM_NAME_HEAP_INFO_CACHE_LOGGING "heap_info_cache_logging"
+#define PRM_NAME_TDE_ALGORITHM_FOR_TEMP "tde_algorithm_for_temp"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -2254,6 +2256,10 @@ static unsigned int prm_new_lfhash_flag = 0;
 bool PRM_HEAP_INFO_CACHE_LOGGING = false;
 static bool prm_heap_info_cache_logging_default = false;
 static unsigned int prm_heap_info_cache_logging_flag = 0;
+
+int PRM_TDE_ALGORITHM_FOR_TEMP = TDE_ALGORITHM_AES;
+static int prm_tde_algorithm_for_temp_default = TDE_ALGORITHM_AES;
+static unsigned int prm_tde_algorithm_for_temp_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5800,6 +5806,17 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  {PRM_ID_TDE_ALGORITHM_FOR_TEMP,
+   PRM_NAME_TDE_ALGORITHM_FOR_TEMP,
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER),
+   PRM_KEYWORD,
+   &prm_tde_algorithm_for_temp_flag,
+   (void *) &prm_tde_algorithm_for_temp_default,
+   (void *) &PRM_TDE_ALGORITHM_FOR_TEMP,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
 };
 
 #define NUM_PRM ((int)(sizeof(prm_Def)/sizeof(prm_Def[0])))
@@ -5965,6 +5982,12 @@ static KEYVAL ha_repl_filter_type_words[] = {
   {"none", REPL_FILTER_NONE},
   {"include_table", REPL_FILTER_INCLUDE_TBL},
   {"exclude_table", REPL_FILTER_EXCLUDE_TBL}
+};
+
+static KEYVAL tde_algorithm_words[] = {
+  {"none", TDE_ALGORITHM_NONE},
+  {"aes", TDE_ALGORITHM_AES},
+  {"aria", TDE_ALGORITHM_ARIA}
 };
 
 static const char *compat_mode_values_PRM_ANSI_QUOTES[COMPAT_ORACLE + 2] = {
@@ -7902,6 +7925,10 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len, PRM_PRINT_MODE print
 	  keyvalp =
 	    prm_keyword (PRM_GET_INT (prm->value), NULL, ha_repl_filter_type_words, DIM (ha_repl_filter_type_words));
 	}
+      else if (intl_mbs_casecmp (prm->name, PRM_NAME_TDE_ALGORITHM_FOR_TEMP) == 0)
+	{
+	  keyvalp = prm_keyword (PRM_GET_INT (prm->value), NULL, tde_algorithm_words, DIM (tde_algorithm_words));
+	}
       else
 	{
 	  assert (false);
@@ -8197,6 +8224,10 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf, size_
       else if (intl_mbs_casecmp (prm->name, PRM_NAME_HA_REPL_FILTER_TYPE) == 0)
 	{
 	  keyvalp = prm_keyword (value.i, NULL, ha_repl_filter_type_words, DIM (ha_repl_filter_type_words));
+	}
+      else if (intl_mbs_casecmp (prm->name, PRM_NAME_TDE_ALGORITHM_FOR_TEMP) == 0)
+	{
+	  keyvalp = prm_keyword (value.i, NULL, tde_algorithm_words, DIM (tde_algorithm_words));
 	}
       else
 	{
@@ -9400,6 +9431,10 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, SY
 	else if (intl_mbs_casecmp (prm->name, PRM_NAME_HA_REPL_FILTER_TYPE) == 0)
 	  {
 	    keyvalp = prm_keyword (-1, value, ha_repl_filter_type_words, DIM (ha_repl_filter_type_words));
+	  }
+	else if (intl_mbs_casecmp (prm->name, PRM_NAME_TDE_ALGORITHM_FOR_TEMP) == 0)
+	  {
+	    keyvalp = prm_keyword (-1, value, tde_algorithm_words, DIM (tde_algorithm_words));
 	  }
 	else
 	  {

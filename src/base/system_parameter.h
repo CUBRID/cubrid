@@ -438,8 +438,10 @@ enum param_id
 
   PRM_ID_HEAP_INFO_CACHE_LOGGING,
 
+  PRM_ID_TDE_ALGORITHM_FOR_TEMP,
+
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_HEAP_INFO_CACHE_LOGGING
+  PRM_LAST_ID = PRM_ID_TDE_ALGORITHM_FOR_TEMP
 };
 typedef enum param_id PARAM_ID;
 

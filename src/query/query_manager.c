@@ -2494,8 +2494,9 @@ qmgr_get_new_page (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_FILE * tfil
       tfile_vfid_p->temp_file_type = FILE_TEMP;
       if (tfile_vfid_p->tde_encrypted)
 	{
-	  /* TDE_TODO: to get tde algorithm from system variable */
-	  if (file_apply_tde_algorithm (thread_p, &tfile_vfid_p->temp_vfid, TDE_ALGORITHM_AES) != NO_ERROR)
+	  if (file_apply_tde_algorithm (thread_p, &tfile_vfid_p->temp_vfid,
+					(TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_ALGORITHM_FOR_TEMP)) !=
+	      NO_ERROR)
 	    {
 	      file_temp_retire (thread_p, &tfile_vfid_p->temp_vfid);
 	      ASSERT_ERROR ();
@@ -2759,8 +2760,8 @@ qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
   if (query_p->xasl_ent->includes_tde_class)
     {
       tfile_vfid_p->tde_encrypted = true;
-      /* TDE_TODO: to get tde algorithm from system variable */
-      if (file_apply_tde_algorithm (thread_p, &tfile_vfid_p->temp_vfid, TDE_ALGORITHM_AES) != NO_ERROR)
+      if (file_apply_tde_algorithm (thread_p, &tfile_vfid_p->temp_vfid,
+				    (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_ALGORITHM_FOR_TEMP)) != NO_ERROR)
 	{
 	  file_temp_retire (thread_p, &tfile_vfid_p->temp_vfid);
 	  free_and_init (tfile_vfid_p);
