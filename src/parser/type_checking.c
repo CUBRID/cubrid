@@ -12961,23 +12961,6 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_AGG_FUN_WANT_1_ARG,
 		      pt_short_print (parser, node));
 	}
-      else
-	{
-	  /* do special constant folding; COUNT(1), COUNT(?), COUNT(:x), ... -> COUNT(*) */
-	  /* TODO does this belong to type checking or constant folding? */
-	  if (pt_is_const (arg_list))
-	    {
-	      PT_MISC_TYPE all_or_distinct;
-
-	      all_or_distinct = node->info.function.all_or_distinct;
-	      if (fcode == PT_COUNT && all_or_distinct != PT_DISTINCT)
-		{
-		  fcode = node->info.function.function_type = PT_COUNT_STAR;
-		  parser_free_tree (parser, arg_list);
-		  arg_list = node->info.function.arg_list = NULL;
-		}
-	    }
-	}
     }
 
   if (node->type_enum == PT_TYPE_NONE || node->data_type == NULL)
@@ -19891,7 +19874,7 @@ pt_fold_const_function (PARSER_CONTEXT * parser, PT_NODE * func)
     {
       parser_node *arg_list = func->info.function.arg_list;
       /* do special constant folding; COUNT(1), COUNT(?), COUNT(:x), ... -> COUNT(*) */
-      if (pt_is_const (arg_list))
+      if (pt_is_const (arg_list) && !PT_IS_NULL_NODE (arg_list))
 	{
 	  PT_MISC_TYPE all_or_distinct;
 	  all_or_distinct = func->info.function.all_or_distinct;
