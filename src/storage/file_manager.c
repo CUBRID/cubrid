@@ -5888,9 +5888,20 @@ file_apply_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, const TDE_
       goto exit;
     }
 
+
+  /*
+   * It sets tde flags to all the page in the file.
+   *
+   * Note: file_map_pages only allow PGBUF_CONDITIONAL_LATCH mode,
+   * So, If file_apply_tde_algorithm() is called when some pages in the file is fixed, it can be skipped to be applied
+   *
+   * TODO: handle the above case,
+   * 1. restrict this function to only use when no page is fixed
+   * 2. make up later (apply tde to unapplied pages at some moment)
+   * 3. do something like file_map_pages() by using PGBUF_UNCONDITIONAL_LATH (e.g. using watcher)
+   */
   error_code =
-    file_map_pages (thread_p, vfid, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH, file_file_map_set_tde_algorithm,
-		    &args);
+    file_map_pages (thread_p, vfid, PGBUF_LATCH_WRITE, PGBUF_CONDITIONAL_LATCH, file_file_map_set_tde_algorithm, &args);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
