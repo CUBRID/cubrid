@@ -84,6 +84,7 @@ struct qmgr_temp_file
   PAGE_PTR *membuf;
   int membuf_npages;
   QMGR_TEMP_FILE_MEMBUF_TYPE membuf_type;
+  bool tde_encrypted;		/* whether the file of temp_vfid has to be encrypted when flushing (TDE) */
 };
 
 /*
