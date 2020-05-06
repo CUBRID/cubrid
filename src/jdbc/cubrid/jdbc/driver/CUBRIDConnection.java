@@ -175,16 +175,6 @@ public class CUBRIDConnection implements Connection {
 		}
 		auto_commit = autoCommit;
 		u_con.setAutoCommit(autoCommit);
-
-		/*
-		 * Disabled Send to Broker for ServerSide AutoCommit
-		 * synchronized(u_con){ u_con.setAutoCommit(autoCommit); error =
-		 * u_con.getRecentError(); }
-		 * 
-		 * switch (error.getErrorCode()){ case UErrorCode.ER_NO_ERROR:
-		 * auto_commit = autoCommit; break; default: throw new
-		 * CUBRIDException(error); }
-		 */
 	}
 
 	public synchronized boolean getAutoCommit() throws SQLException {
