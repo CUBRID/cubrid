@@ -534,7 +534,7 @@ public class CUBRIDConnection implements Connection {
 
 	// 3.0 api
 
-	synchronized public void setCharset(String charsetName)
+	public synchronized void setCharset(String charsetName)
 			throws java.io.UnsupportedEncodingException {
 		u_con.setCharset(charsetName);
 	}
