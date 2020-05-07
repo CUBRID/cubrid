@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  * Redistribution and use in source and binary forms, with or without modification,
  * are permitted provided that the following conditions are met:
@@ -48,14 +49,14 @@ import cubrid.jdbc.driver.CUBRIDJDBCErrorCode;
 import cubrid.jdbc.driver.CUBRIDJdbcInfoTable;
 import cubrid.jdbc.net.BrokerHandler;
 
-public class UConnectionClient extends UConnection {
+public class UClientSideConnection extends UConnection {
 
 	private ArrayList<String> altHosts = null;
 	private int connectedHostId = 0;
 
 	private long lastFailureTime = 0;
 
-	public UConnectionClient(String ip, int port, String dbname, String user, String passwd,
+	public UClientSideConnection(String ip, int port, String dbname, String user, String passwd,
 			String url) throws CUBRIDException {
 		if (ip != null) {
 			casIp = ip;
@@ -77,7 +78,7 @@ public class UConnectionClient extends UConnection {
 		errorHandler = new UError(this);
 	}
 
-	public UConnectionClient(ArrayList<String> altHostList, String dbname, String user,
+	public UClientSideConnection(ArrayList<String> altHostList, String dbname, String user,
 			String passwd, String url) throws CUBRIDException {
 		setAltHosts(altHostList);
 		if (dbname != null) {

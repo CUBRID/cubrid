@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  * Redistribution and use in source and binary forms, with or without modification,
  * are permitted provided that the following conditions are met:
@@ -42,11 +43,11 @@ import java.net.Socket;
 
 import cubrid.jdbc.driver.CUBRIDException;
 
-public class UConnectionServer extends UConnection {
+public class UServerSideConnection extends UConnection {
 
 	private Thread curThread;
 
-	public UConnectionServer(Socket socket, Thread curThread) throws CUBRIDException {
+	public UServerSideConnection(Socket socket, Thread curThread) throws CUBRIDException {
 		errorHandler = new UError(this);
 		try {
 			client = socket;

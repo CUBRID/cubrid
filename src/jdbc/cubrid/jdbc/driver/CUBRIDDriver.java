@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  * Redistribution and use in source and binary forms, with or without modification,
  * are permitted provided that the following conditions are met:
@@ -50,7 +51,7 @@ import java.util.regex.Pattern;
 
 import cubrid.jdbc.jci.BrokerHealthCheck;
 import cubrid.jdbc.jci.UConnection;
-import cubrid.jdbc.jci.UConnectionClient;
+import cubrid.jdbc.jci.UClientSideConnection;
 import cubrid.jdbc.jci.UJCIManager;
 import cubrid.jdbc.jci.UJCIUtil;
 
@@ -152,7 +153,7 @@ public class CUBRIDDriver implements Driver {
 	    String prop = matcher.group(7);
 	    int port = default_port;
 
-	    UConnectionClient u_con;
+	    UClientSideConnection u_con;
 	    String resolvedUrl;
 	    ConnectionProperties connProperties;
 
@@ -200,13 +201,13 @@ public class CUBRIDDriver implements Driver {
 			Collections.shuffle(altHostList);
 		}
 		try {
-		    u_con = (UConnectionClient) UJCIManager.connect(altHostList, db, user, pass, resolvedUrl);
+		    u_con = (UClientSideConnection) UJCIManager.connect(altHostList, db, user, pass, resolvedUrl);
 		} catch (CUBRIDException e) {
 		    throw e;
 		}
 	    } else {
 		try {
-		    u_con = (UConnectionClient) UJCIManager.connect(host, port, db, user, pass, resolvedUrl);
+		    u_con = (UClientSideConnection) UJCIManager.connect(host, port, db, user, pass, resolvedUrl);
 		} catch (CUBRIDException e) {
 		    throw e;
 		}
@@ -231,7 +232,7 @@ public class CUBRIDDriver implements Driver {
 				return c;
 			}
 
-			UConnection u_con = UJCIManager.connectDefault();
+			UConnection u_con = UJCIManager.connectServerSide();
 			CUBRIDConnection con = new CUBRIDConnectionDefault(u_con,
 					"jdbc:default:connection:", "default");
 			UJCIUtil.invoke("com.cubrid.jsp.ExecuteThread",
