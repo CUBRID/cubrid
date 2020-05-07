@@ -82,9 +82,6 @@
 
 #define SOCKET_TIMEOUT 5000	/* msec */
 
-#define CAS_PROTO_PACK_CCI_NET_VER	\
-	CAS_PROTO_PACK_NET_VER(PROTOCOL_V7)
-
 /************************************************************************
  * PRIVATE TYPE DEFINITIONS						*
  ************************************************************************/

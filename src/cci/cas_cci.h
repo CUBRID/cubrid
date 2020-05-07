@@ -241,6 +241,9 @@ extern "C"
 
 #define CCI_TZ_SIZE 63
 
+#define CAS_PROTO_PACK_CCI_NET_VER      \
+        CAS_PROTO_PACK_NET_VER(PROTOCOL_V7)
+
 /* for cci auto_comit mode support */
   typedef enum
   {
