@@ -51,8 +51,6 @@ import java.util.HashMap;
 import cubrid.jdbc.driver.CUBRIDBlob;
 import cubrid.jdbc.driver.CUBRIDClob;
 import cubrid.jdbc.driver.CUBRIDOutResultSet;
-import cubrid.jdbc.driver.ConnectionProperties;
-import cubrid.jdbc.driver.CUBRIDBinaryString;
 import cubrid.sql.CUBRIDOID;
 import cubrid.sql.CUBRIDTimestamptz;
 
@@ -650,7 +648,7 @@ public class UStatement {
 		}
 
 		try {
-			byte code = UFunctionCode.CURSOR_CLOSE;
+			UFunctionCode code = UFunctionCode.CURSOR_CLOSE;
 			if (relatedConnection.protoVersionIsSame(UConnection.PROTOCOL_V2)) {
 				code = UFunctionCode.CURSOR_CLOSE_FOR_PROTOCOL_V2;
 			}
@@ -2240,7 +2238,7 @@ public class UStatement {
 		}
 	}
 
-	private void read_fetch_data(UInputBuffer inBuffer, byte functionCode)
+	private void read_fetch_data(UInputBuffer inBuffer, UFunctionCode functionCode)
 	        throws UJciException {
 		fetchedTupleNumber = inBuffer.readInt();
 		if (fetchedTupleNumber < 0) {
