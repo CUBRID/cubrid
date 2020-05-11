@@ -48,6 +48,7 @@ import cubrid.sql.CUBRIDTimestamp;
 import cubrid.sql.CUBRIDTimestamptz;
 import cubrid.jdbc.driver.CUBRIDBinaryString;
 import cubrid.jdbc.driver.CUBRIDBlob;
+import cubrid.jdbc.driver.CUBRIDClob;
 import cubrid.jdbc.driver.CUBRIDConnection;
 import cubrid.jdbc.driver.CUBRIDException;
 
@@ -134,6 +135,22 @@ abstract public class UGetTypeConvertedValue {
 		if (data instanceof byte[])
 			return (byte[]) ((byte[]) data).clone();
 
+		throw new UJciException(UErrorCode.ER_TYPE_CONVERSION);
+	}
+
+	static public CUBRIDClob getClob(Object data, CUBRIDConnection conn) throws UJciException {
+		if (data == null)
+			return null;
+		else if (data instanceof CUBRIDClob)
+			return (CUBRIDClob) data;
+		else if (data instanceof String) {
+			try {
+				return new CUBRIDClob(conn, ((String) data).getBytes(),
+						conn.getUConnection().getCharset(), false);
+			} catch (Exception e) {
+				throw new UJciException(UErrorCode.ER_TYPE_CONVERSION);
+			}
+		}
 		throw new UJciException(UErrorCode.ER_TYPE_CONVERSION);
 	}
 

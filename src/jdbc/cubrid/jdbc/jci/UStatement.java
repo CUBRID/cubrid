@@ -1326,11 +1326,11 @@ public class UStatement {
 		if (obj == null)
 			return null;
 
-		if (obj instanceof CUBRIDClob) {
-			return ((CUBRIDClob) obj);
+		try {
+			return (UGetTypeConvertedValue.getClob(obj, relatedConnection.getCUBRIDConnection()));
+		} catch (UJciException e) {
+			e.toUError(errorHandler);
 		}
-
-		errorHandler.setErrorCode(UErrorCode.ER_TYPE_CONVERSION);
 		return null;
 	}
 
