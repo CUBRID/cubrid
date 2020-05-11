@@ -46,6 +46,7 @@
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"	// for thread_sleep
 #include "xasl.h"
+#include "xasl_cache.h"
 
 /* TODO */
 #if !defined (SERVER_MODE)
@@ -3807,6 +3808,7 @@ qfile_sort_list_with_func (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, S
   SORT_INFO info;
   int sort_result, estimated_pages;
   SORT_DUP_OPTION dup_option;
+  QMGR_QUERY_ENTRY *query_p = NULL;
 
   srlist_id = qfile_open_list (thread_p, &list_id_p->type_list, sort_list_p, list_id_p->query_id, flag);
   if (srlist_id == NULL)
@@ -3862,9 +3864,19 @@ qfile_sort_list_with_func (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, S
 
   dup_option = ((option == Q_DISTINCT) ? SORT_ELIM_DUP : SORT_DUP);
 
+  /* find the query entry */
+  query_p = qmgr_get_query_entry (thread_p, list_id_p->query_id, LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+
+  if (query_p == NULL)
+    {
+      /* query entry is not found */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_UNKNOWN_QUERYID, 1, list_id_p->query_id);
+      return NULL;
+    }
+
   sort_result =
     sort_listfile (thread_p, NULL_VOLID, estimated_pages, get_func, &info, put_func, &info, cmp_func, &info.key_info,
-		   dup_option, limit);
+		   dup_option, limit, query_p->xasl_ent->includes_tde_class);
 
   if (sort_result < 0)
     {
