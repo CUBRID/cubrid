@@ -995,7 +995,7 @@ public class CUBRIDConnection implements Connection {
 
 		if (u_con == null || is_closed) return false;
 
-		return u_con.isValid(timeout);
+		return u_con.isValid(timeout * 1000);
 	}
 
 	/* JDK 1.6 */
