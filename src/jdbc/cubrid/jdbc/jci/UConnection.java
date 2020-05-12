@@ -1844,6 +1844,9 @@ public class UConnection {
 			return !isClosed;
 		}
 		try {
+			byte[] session = new byte[4];
+			for (int i = 0; i < 4; i++) session[i] = sessionId[i + 8];
+
 			int status = BrokerHandler.statusBroker(CASIp, CASPort, processId, sessionId, timeout);
 			if (status == UConnection.FN_STATUS_NONE) {
     				return false;
