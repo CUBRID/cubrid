@@ -1975,7 +1975,7 @@ btree_create_overflow_key_file (THREAD_ENTRY * thread_p, BTID_INT * btid)
     {
       return error_code;
     }
-  error_code = file_set_tde_algorithm (thread_p, &btid->ovfid, tde_algo);
+  error_code = file_apply_tde_algorithm (thread_p, &btid->ovfid, tde_algo);
   return error_code;
 }
 
@@ -32897,7 +32897,7 @@ btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, B
        * In this case, Setting tde flag is just skipped and it is expected to be done later.
        * see file_apply_tde_to_class_files() 
        */
-      error_code = file_set_tde_algorithm (thread_p, &btid->vfid, tde_algo);
+      error_code = file_apply_tde_algorithm (thread_p, &btid->vfid, tde_algo);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();

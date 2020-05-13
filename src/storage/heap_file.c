@@ -5203,11 +5203,32 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
 
       if (!HFID_IS_NULL (hfid))
 	{
+	  TDE_ALGORITHM prev_tde_algo = TDE_ALGORITHM_NONE;
 	  /* reuse heap file */
 	  if (heap_reuse (thread_p, hfid, class_oid, reuse_oid) == NULL)
 	    {
 	      ASSERT_ERROR_AND_SET (error_code);
 	      goto error;
+	    }
+
+	  file_get_tde_algorithm (thread_p, &hfid->vfid, &prev_tde_algo);
+	  error_code = heap_get_class_tde_algorithm (thread_p, class_oid, &tde_algo);
+	  if (error_code == NO_ERROR)
+	    {
+	      if (prev_tde_algo != tde_algo)
+		{
+		  error_code = file_apply_tde_algorithm (thread_p, &hfid->vfid, tde_algo);
+		  if (error_code != NO_ERROR)
+		    {
+		      ASSERT_ERROR_AND_SET (error_code);
+		      goto error;
+		    }
+		}
+	    }
+	  else
+	    {
+	      /* just skip to apply tde */
+	      er_clear ();
 	    }
 	  error_code = heap_cache_class_info (thread_p, class_oid, hfid, file_type, NULL);
 	  if (error_code != NO_ERROR)
@@ -5235,21 +5256,6 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
     {
       ASSERT_ERROR ();
       goto error;
-    }
-
-  error_code = heap_get_class_tde_algorithm (thread_p, class_oid, &tde_algo);
-  if (error_code == NO_ERROR)
-    {
-      error_code = file_set_tde_algorithm (thread_p, &hfid->vfid, tde_algo);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto error;
-	}
-    }
-  else
-    {
-      er_clear ();
     }
 
   error_code = file_alloc_sticky_first_page (thread_p, &hfid->vfid, file_init_page_type, &ptype, &vpid,
@@ -5284,6 +5290,22 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
     {
       ASSERT_ERROR ();
       goto error;
+    }
+
+  error_code = heap_get_class_tde_algorithm (thread_p, class_oid, &tde_algo);
+  if (error_code == NO_ERROR)
+    {
+      error_code = file_apply_tde_algorithm (thread_p, &hfid->vfid, tde_algo);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto error;
+	}
+    }
+  else
+    {
+      /* just skip to apply tde */
+      er_clear ();
     }
 
   error_code = heap_cache_class_info (thread_p, class_oid, hfid, file_type, NULL);
@@ -5522,8 +5544,6 @@ heap_reuse (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid, c
   HEAP_CHAIN *chain;		/* Chain to next and prev page */
   RECDES recdes;
   VPID last_vpid;
-  TDE_ALGORITHM prev_tde_algo;
-  TDE_ALGORITHM tde_algo;
   int is_header_page;
   int npages = 0;
   int i;
@@ -5549,20 +5569,6 @@ heap_reuse (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid, c
     }
 
   (void) pgbuf_check_page_ptype (thread_p, hdr_pgptr, PAGE_HEAP);
-
-  file_get_tde_algorithm (thread_p, &hfid->vfid, &prev_tde_algo);
-  if (heap_get_class_tde_algorithm (thread_p, class_oid, &tde_algo) != NO_ERROR)
-    {
-      goto error;
-    }
-
-  if (prev_tde_algo != tde_algo)
-    {
-      if (file_set_tde_algorithm (thread_p, &hfid->vfid, tde_algo) != NO_ERROR)
-	{
-	  goto error;
-	}
-    }
 
   /*
    * Start scanning every page of the heap and removing the objects.
@@ -5665,11 +5671,6 @@ heap_reuse (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid, c
       if (heap_vpid_next (thread_p, hfid, pgptr, &vpid) != NO_ERROR)
 	{
 	  goto error;
-	}
-
-      if (prev_tde_algo != tde_algo)
-	{
-	  pgbuf_set_tde_algorithm (thread_p, pgptr, tde_algo, false);
 	}
 
       pgbuf_set_dirty (thread_p, pgptr, FREE);
@@ -6415,7 +6416,6 @@ heap_ovf_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * ovf_vfid,
 	{
 	  FILE_DESCRIPTORS des;
 	  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
-	  int error_code = NO_ERROR;
 	  /* Create the overflow file. Try to create the overflow file in the same volume where the heap was defined */
 
 	  /* START A TOP SYSTEM OPERATION */
@@ -6433,20 +6433,6 @@ heap_ovf_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * ovf_vfid,
 	      log_append_redo_data (thread_p, RVHF_STATS, &addr_hdr, sizeof (*heap_hdr), heap_hdr);
 	      pgbuf_set_dirty (thread_p, addr_hdr.pgptr, DONT_FREE);
 
-	      error_code = heap_get_class_tde_algorithm (thread_p, &heap_hdr->class_oid, &tde_algo);
-	      if (error_code != NO_ERROR)
-		{
-		  log_sysop_abort (thread_p);
-		  ovf_vfid = NULL;
-		}
-
-	      error_code = file_set_tde_algorithm (thread_p, ovf_vfid, tde_algo);
-	      if (error_code != NO_ERROR)
-		{
-		  log_sysop_abort (thread_p);
-		  ovf_vfid = NULL;
-		}
-
 	      log_sysop_commit (thread_p);
 	    }
 	  else
@@ -6454,6 +6440,15 @@ heap_ovf_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * ovf_vfid,
 	      log_sysop_abort (thread_p);
 	      ovf_vfid = NULL;
 	    }
+	  if (heap_get_class_tde_algorithm (thread_p, &heap_hdr->class_oid, &tde_algo) != NO_ERROR)
+	    {
+	      assert (false);
+	    }
+	  if (file_apply_tde_algorithm (thread_p, ovf_vfid, tde_algo) != NO_ERROR)
+	    {
+	      assert (false);
+	    }
+
 	}
       else
 	{

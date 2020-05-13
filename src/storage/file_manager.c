@@ -739,6 +739,7 @@ static int file_user_page_table_extdata_dump (THREAD_ENTRY * thread_p, const FIL
 static int file_user_page_table_item_dump (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop,
 					   void *args);
 static int file_sector_map_dealloc (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop, void *args);
+static int file_set_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, TDE_ALGORITHM tde_algo);
 static void file_get_tde_algorithm_internal (const FILE_HEADER * fhead, TDE_ALGORITHM * tde_algo);
 static void file_set_tde_algorithm_internal (FILE_HEADER * fhead, TDE_ALGORITHM tde_algo);
 
@@ -5829,7 +5830,6 @@ file_file_map_set_tde_algorithm (THREAD_ENTRY * thread_p, PAGE_PTR * page, bool 
     }
   else
     {
-      assert (prev_tde_algo == TDE_ALGORITHM_NONE);
       pgbuf_set_tde_algorithm (thread_p, *page, tde_args->tde_algo, tde_args->skip_logging);
     }
 
@@ -5855,8 +5855,6 @@ file_apply_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, const TDE_
   PAGE_PTR page_fhead = NULL;
   FILE_HEADER *fhead = NULL;
   TDE_ALGORITHM prev_tde_algo = TDE_ALGORITHM_NONE;
-
-  assert (tde_algo != TDE_ALGORITHM_NONE);
 
   /* fix header */
   FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
