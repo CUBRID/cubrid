@@ -4616,7 +4616,7 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
       /* sort and aggregate partial results */
       if (sort_listfile (thread_p, NULL_VOLID, estimated_pages, &qexec_hash_gby_get_next, &gbstate,
 			 &qexec_hash_gby_put_next, &gbstate, cmp_fn, &gbstate.agg_hash_context->sort_key, SORT_DUP,
-			 NO_SORT_LIMIT, xasl->includes_tde_class) != NO_ERROR)
+			 NO_SORT_LIMIT, query_p->xasl_ent->includes_tde_class) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
