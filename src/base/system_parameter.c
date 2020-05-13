@@ -5985,7 +5985,7 @@ static KEYVAL ha_repl_filter_type_words[] = {
 };
 
 static KEYVAL tde_algorithm_words[] = {
-  {"none", TDE_ALGORITHM_NONE},
+  /* {"none", TDE_ALGORITHM_NONE}, */
   {"aes", TDE_ALGORITHM_AES},
   {"aria", TDE_ALGORITHM_ARIA}
 };
