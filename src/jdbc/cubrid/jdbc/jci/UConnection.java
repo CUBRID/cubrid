@@ -41,6 +41,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
+import java.sql.SQLException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -96,9 +97,10 @@ public class UConnection {
 	public static final int PROTOCOL_V6 = 6;
 	public static final int PROTOCOL_V7 = 7;
 	public static final int PROTOCOL_V8 = 8;
+	public static final int PROTOCOL_V9 = 9;
 
 	/* Current protocol version */
-	private final static byte CAS_PROTOCOL_VERSION = PROTOCOL_V8;
+	private final static byte CAS_PROTOCOL_VERSION = PROTOCOL_V9;
 	private final static byte CAS_PROTO_INDICATOR = 0x40;
 	private final static byte CAS_PROTO_VER_MASK = 0x3F;
 	private final static byte CAS_RENEWED_ERROR_CODE = (byte) 0x80;
@@ -169,6 +171,14 @@ public class UConnection {
 	public final static int MAX_QUERY_TIMEOUT = 2000000;
 	public final static int MAX_CONNECT_TIMEOUT = 2000000;
 
+        public final static int READ_TIMEOUT = 10000;
+
+	public final static int FN_STATUS_NONE = -2;
+	public final static int FN_STATUS_IDLE = -1;
+	public final static int FN_STATUS_CONN = 0;
+	public final static int FN_STATUS_BUSY = 1;
+	public final static int FN_STATUS_DONE = 2;
+
 	UOutputBuffer outBuffer;
 	CUBRIDConnection cubridcon;
 
@@ -198,6 +208,7 @@ public class UConnection {
 	private byte[] broker_info = null;
 	private byte[] casinfo = null;
 	private int brokerVersion = 0;
+	private static int protocolVersion = 0;
 
 	private boolean isServerSideJdbc = false;
 	boolean skip_checkcas = false;
@@ -418,6 +429,10 @@ public class UConnection {
 		return connectionProperties.getUseOldBooleanValue();
 	}
 
+        public boolean getOracleStyleEmpltyString() {
+                return connectionProperties.getOracleStyleEmptyString();
+        }
+
 	synchronized public void addElementToSet(CUBRIDOID oid,
 			String attributeName, Object value) {
 		errorHandler = new UError(this);
@@ -474,7 +489,7 @@ public class UConnection {
 			}
 
 			UInputBuffer inBuffer;
-			inBuffer = send_recv_msg();
+			inBuffer = send_recv_msg(queryTimeout);
 
 			int result;
 			UBatchResult batchResult = new UBatchResult(inBuffer.readInt());
@@ -1778,12 +1793,38 @@ public class UConnection {
 		deferred_close_handle.clear();
 	}
 
+        UInputBuffer send_recv_msg(boolean recv_result, int timeout) throws UJciException,
+			IOException {
+		byte prev_casinfo[] = casinfo;
+		UInputBuffer inputBuffer;
+		outBuffer.sendData();
+		/* set cas info to UConnection member variable and return InputBuffer */
+		if (timeout > 0) {
+			inputBuffer = new UInputBuffer(input, this, timeout*1000 + READ_TIMEOUT);
+		}
+		else {
+			inputBuffer = new UInputBuffer(input, this, 0);
+		}
+	
+		if (UJCIUtil.isConsoleDebug()) {
+			printCasInfo(prev_casinfo, casinfo);
+		}
+		return inputBuffer;
+	}
+	
+	UInputBuffer send_recv_msg(int timeout) throws UJciException, IOException {
+		if (client == null) {
+			createJciException(UErrorCode.ER_COMMUNICATION);
+		}
+		return send_recv_msg(true, timeout);
+	}
+
 	UInputBuffer send_recv_msg(boolean recv_result) throws UJciException,
 			IOException {
 		byte prev_casinfo[] = casinfo;
 		outBuffer.sendData();
 		/* set cas info to UConnection member variable and return InputBuffer */
-		UInputBuffer inputBuffer = new UInputBuffer(input, this);
+		UInputBuffer inputBuffer = new UInputBuffer(input, this, 0);
 
 		if (UJCIUtil.isConsoleDebug()) {
 			printCasInfo(prev_casinfo, casinfo);
@@ -1798,11 +1839,27 @@ public class UConnection {
 		return send_recv_msg(true);
 	}
 
+	public boolean isValid(int timeout) throws SQLException {
+		if (protoVersionIsUnder(PROTOCOL_V9)) {
+			return !isClosed;
+		}
+		try {
+			int status = BrokerHandler.statusBroker(CASIp, CASPort, processId, sessionId, timeout);
+			if (status == UConnection.FN_STATUS_NONE) {
+    				return false;
+    	    		}
+    		} catch (Exception e) {
+    			return false;
+    		}
+	
+		return true;
+	}
+
 	void cancel() throws UJciException, IOException {
 	    if (protoVersionIsAbove(PROTOCOL_V4)) {
-		BrokerHandler.cancelBrokerEx(CASIp, CASPort, processId, 0);
+		BrokerHandler.cancelBrokerEx(CASIp, CASPort, processId, READ_TIMEOUT);
 	    } else {
-	    	BrokerHandler.cancelBroker(CASIp, CASPort, processId, 0);
+	    	BrokerHandler.cancelBroker(CASIp, CASPort, processId, READ_TIMEOUT);
 	    }
 	}
 
@@ -1838,8 +1895,9 @@ public class UConnection {
 	int timeout = connectionProperties.getConnectTimeout() * 1000;
 	client = BrokerHandler.connectBroker(CASIp, CASPort, getTimeout(endTimestamp, timeout));
 	output = new DataOutputStream(client.getOutputStream());
-	input = new UTimedDataInputStream(client.getInputStream(), CASIp, CASPort);
 	connectDB(getTimeout(endTimestamp, timeout));
+
+	input = new UTimedDataInputStream(client.getInputStream(), CASIp, CASPort, processId, sessionId, timeout);
 
 	client.setTcpNoDelay(true);
 	client.setSoTimeout(SOCKET_TIMEOUT);
@@ -1902,6 +1960,8 @@ public class UConnection {
 				(int) broker_info[BROKER_INFO_MINOR_VERSION],
 				(int) broker_info[BROKER_INFO_PATCH_VERSION]);
 		}
+
+		protocolVersion = (int)version & CAS_PROTO_VER_MASK;
 
 		if (protoVersionIsAbove(PROTOCOL_V4)) {
 		    casId = is.readInt();
@@ -2020,6 +2080,13 @@ public class UConnection {
 	public boolean protoVersionIsAbove(int ver) {
 		if (isServerSideJdbc()
 				|| (brokerInfoVersion() >= makeProtoVersion(ver))) {
+			return true;
+		}
+		return false;
+	}
+
+	public static boolean protoVersionIsLower(int ver) {
+		if (protocolVersion < ver){
 			return true;
 		}
 		return false;

@@ -590,6 +590,7 @@ log_get_eof_lsa (void)
  *
  * NOTE:
  */
+#if !defined(WINDOWS)
 void
 log_get_num_free_block (INT64 * num_free_block)
 {
@@ -613,6 +614,7 @@ log_get_num_free_block (INT64 * num_free_block)
       *num_free_block = (INT64) buf.f_bavail;
     }
 }
+#endif /* WINDOWS */
 
 /*
  * log_is_logged_since_restart - is log sequence address made after restart ?
