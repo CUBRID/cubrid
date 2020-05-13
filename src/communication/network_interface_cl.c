@@ -1795,7 +1795,7 @@ heap_reclaim_addresses (const HFID * hfid)
 }
 
 /*
- * file_apply_tde_to_created_files -
+ * file_apply_tde_to_class_files -
  *
  * return:
  *
@@ -1804,7 +1804,7 @@ heap_reclaim_addresses (const HFID * hfid)
  * NOTE:
  */
 int
-file_apply_tde_to_created_files (const OID * class_oid)
+file_apply_tde_to_class_files (const OID * class_oid)
 {
 #if defined(CS_MODE)
   int error = ER_NET_CLIENT_DATA_RECEIVE;
@@ -1820,7 +1820,7 @@ file_apply_tde_to_created_files (const OID * class_oid)
 
   ptr = or_pack_oid (request, class_oid);
   req_error =
-    net_client_request (NET_SERVER_FILE_APPLY_TDE_TO_CREATED_FILES, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+    net_client_request (NET_SERVER_FILE_APPLY_TDE_TO_CLASS_FILES, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
 			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
@@ -1833,7 +1833,7 @@ file_apply_tde_to_created_files (const OID * class_oid)
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  success = xfile_apply_tde_to_created_files (thread_p, class_oid);
+  success = xfile_apply_tde_to_class_files (thread_p, class_oid);
 
   exit_server (*thread_p);
 

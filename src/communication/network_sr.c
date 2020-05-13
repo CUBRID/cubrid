@@ -435,10 +435,10 @@ net_server_init (void)
   req_p->name = "NET_SERVER_HEAP_RECLAIM_ADDRESSES";
 
   /* file */
-  req_p = &net_Requests[NET_SERVER_FILE_APPLY_TDE_TO_CREATED_FILES];
+  req_p = &net_Requests[NET_SERVER_FILE_APPLY_TDE_TO_CLASS_FILES];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
-  req_p->processing_function = sfile_apply_tde_to_created_files;
-  req_p->name = "NET_SERVER_HEAP_CREATE";
+  req_p->processing_function = sfile_apply_tde_to_class_files;
+  req_p->name = "NET_SERVER_FILE_APPLY_TDE_TO_CLASS_FILES";
 
 
   /* log */

@@ -3925,7 +3925,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
 	    }
 	  if (encrypted_aria || encrypted_aes)
 	    {
-	      error = file_apply_tde_to_created_files (&newpci->obj->oid_info.oid);
+	      error = file_apply_tde_to_class_files (&newpci->obj->oid_info.oid);
 	      if (error != NO_ERROR)
 		{
 		  goto end_create;
@@ -4140,7 +4140,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
 	    }
 	  if (encrypted_aria || encrypted_aes)
 	    {
-	      error = file_apply_tde_to_created_files (&newpci->obj->oid_info.oid);
+	      error = file_apply_tde_to_class_files (&newpci->obj->oid_info.oid);
 	      if (error != NO_ERROR)
 		{
 		  assert (er_errid () != NO_ERROR);
@@ -9011,7 +9011,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (encrypted_aria || encrypted_aes)
     {
-      error = file_apply_tde_to_created_files (&class_obj->oid_info.oid);
+      error = file_apply_tde_to_class_files (&class_obj->oid_info.oid);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;

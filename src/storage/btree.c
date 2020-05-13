@@ -32895,7 +32895,7 @@ btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, B
        * It can happen to fail to get the class record.
        * For example, a class record that is assigned but not updated poperly yet.
        * In this case, Setting tde flag is just skipped and it is expected to be done later.
-       * see file_apply_tde_to_created_files() 
+       * see file_apply_tde_to_class_files() 
        */
       error_code = file_set_tde_algorithm (thread_p, &btid->vfid, tde_algo);
       if (error_code != NO_ERROR)

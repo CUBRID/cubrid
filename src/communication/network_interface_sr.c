@@ -2509,7 +2509,7 @@ shf_heap_reclaim_addresses (THREAD_ENTRY * thread_p, unsigned int rid, char *req
 }
 
 /*
- * sfile_apply_tde_to_created_files -
+ * sfile_apply_tde_to_class_files -
  *
  * return:
  *
@@ -2520,7 +2520,7 @@ shf_heap_reclaim_addresses (THREAD_ENTRY * thread_p, unsigned int rid, char *req
  * NOTE:
  */
 void
-sfile_apply_tde_to_created_files (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+sfile_apply_tde_to_class_files (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   int error;
   char *ptr;
@@ -2530,7 +2530,7 @@ sfile_apply_tde_to_created_files (THREAD_ENTRY * thread_p, unsigned int rid, cha
 
   ptr = or_unpack_oid (request, &class_oid);
 
-  error = xfile_apply_tde_to_created_files (thread_p, &class_oid);
+  error = xfile_apply_tde_to_class_files (thread_p, &class_oid);
   if (error != NO_ERROR)
     {
       (void) return_error_to_client (thread_p, rid);

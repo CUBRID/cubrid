@@ -432,5 +432,5 @@ extern int loaddb_fetch_status (load_status & status);
 extern int loaddb_destroy ();
 extern int loaddb_interrupt ();
 extern int loaddb_update_stats ();
-extern int file_apply_tde_to_created_files (const OID * class_oid);
+extern int file_apply_tde_to_class_files (const OID * class_oid);
 #endif /* _NETWORK_INTERFACE_CL_H_ */

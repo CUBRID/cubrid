@@ -11452,14 +11452,14 @@ file_descriptor_dump (THREAD_ENTRY * thread_p, const VFID * vfid, FILE * fp)
 
 
 /*
- * xfile_apply_tde_to_created_files () - set TDE information to all permanent files related with class_oid
+ * xfile_apply_tde_to_class_files () - set TDE information to all permanent files related with class_oid
  *
  * return        : error code
  * thread_p (in) : thread entry
  * oid (in)     : class oid
  */
 int
-xfile_apply_tde_to_created_files (THREAD_ENTRY * thread_p, const OID * class_oid)
+xfile_apply_tde_to_class_files (THREAD_ENTRY * thread_p, const OID * class_oid)
 {
   OR_CLASSREP *or_repr = NULL;
   TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
