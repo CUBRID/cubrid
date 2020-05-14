@@ -305,8 +305,6 @@ struct hb_proc_entry
   LOG_LSA prev_eof;
   LOG_LSA curr_eof;
 
-  INT64 num_free_block;
-
   CSS_CONN_ENTRY *conn;
 
   bool being_shutdown;		/* whether the proc is being shut down */
