@@ -73,7 +73,8 @@ extern "C"
     CAS_CLIENT_JDBC = 3,
     CAS_CLIENT_PHP = 4,
     CAS_CLIENT_OLEDB = 5,
-    CAS_CLIENT_TYPE_MAX = 5
+    CAS_CLIENT_SERVER_SIDE_JDBC = 6,
+    CAS_CLIENT_TYPE_MAX = 6
   } CAS_CLIENT_TYPE;
 
   typedef enum

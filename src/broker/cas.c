@@ -1376,6 +1376,7 @@ libcas_main (SOCKET jsp_sock_fd)
   memset (&req_info, 0, sizeof (req_info));
 
   req_info.client_version = CAS_PROTO_CURRENT_VER;
+  req_info.driver_info[DRIVER_INFO_CLIENT_TYPE] = (char) CAS_CLIENT_SERVER_SIDE_JDBC;
   req_info.driver_info[DRIVER_INFO_FUNCTION_FLAG] = (char) (BROKER_RENEWED_ERROR_CODE | BROKER_SUPPORT_HOLDABLE_RESULT);
   client_sock_fd = jsp_sock_fd;
 

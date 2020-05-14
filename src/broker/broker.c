@@ -762,11 +762,12 @@ send_error_to_driver (int sock, int error, char *driver_info)
 
 static const char *cas_client_type_str[] = {
   "UNKNOWN",			/* CAS_CLIENT_NONE */
-  "CCI",			/* CAS_CLIENT_CCI */
-  "ODBC",			/* CAS_CLIENT_ODBC */
-  "JDBC",			/* CAS_CLIENT_JDBC */
-  "PHP",			/* CAS_CLIENT_PHP */
-  "OLEDB"			/* CAS_CLIENT_OLEDB */
+  "CCI",			    /* CAS_CLIENT_CCI */
+  "ODBC",			    /* CAS_CLIENT_ODBC */
+  "JDBC",			    /* CAS_CLIENT_JDBC */
+  "PHP",			    /* CAS_CLIENT_PHP */
+  "OLEDB",		    /* CAS_CLIENT_OLEDB */
+  "INTERNAL_JDBC" /* CAS_CLIENT_SERVER_SIDE_JDBC */
 };
 
 static THREAD_FUNC

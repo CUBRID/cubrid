@@ -60,6 +60,7 @@
 #include "cas_sql_log2.h"
 #include "dbtype.h"
 #include "object_primitive.h"
+#include "jsp_cl.h"
 
 static FN_RETURN fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
 				      int *ret_srv_h_id);
@@ -76,6 +77,10 @@ static void bind_value_log (struct timeval *log_time, int start, int argc, void 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 void set_query_timeout (T_SRV_HANDLE * srv_handle, int query_timeout);
 
+#ifdef LIBCAS_FOR_JSP
+extern int libcas_get_socket_status ();
+extern int libcas_send_destroy (const SOCKET sockfd);
+#endif
 
 /* functions implemented in transaction_cl.c */
 extern void tran_set_query_timeout (int);
@@ -737,6 +742,16 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 #endif
 
 #endif /* !LIBCAS_FOR_JSP */
+
+#ifdef LIBCAS_FOR_JSP
+/* destroy JDBC resources in stored procedure */
+  if (req_info->driver_info[DRIVER_INFO_CLIENT_TYPE] != CAS_CLIENT_SERVER_SIDE_JDBC
+      && jsp_get_socket_status () != INVALID_SOCKET)
+    {
+      jsp_send_destroy_request ();
+      jsp_close_connection ();
+    }
+#endif
 
   return FN_KEEP_CONN;
 }
