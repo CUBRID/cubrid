@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  * Redistribution and use in source and binary forms, with or without modification, 
  * are permitted provided that the following conditions are met: 
@@ -72,7 +73,14 @@ import cubrid.sql.CUBRIDOID;
 
 public class ExecuteThread extends Thread {
 	private String charSet = System.getProperty("file.encoding");
-	
+
+	private static final int REQ_CODE_INVOKE_SP = 0x01;
+	private static final int REQ_CODE_RESULT = 0x02;
+	private static final int REQ_CODE_ERROR = 0x04;
+	private static final int REQ_CODE_INTERNAL_JDBC = 0x08;
+	private static final int REQ_CODE_DESTROY = 0x10;
+
+	/* DB Types */
 	public static final int DB_NULL = 0;
 	public static final int DB_INT = 1;
 	public static final int DB_FLOAT = 2;
@@ -95,36 +103,34 @@ public class ExecuteThread extends Thread {
 
 	private Socket client;
 	private CUBRIDConnectionDefault connection = null;
-	
-	private DataOutputStream toClient;
+
+	private DataInputStream input;
+	private DataOutputStream output;
 	private ByteArrayOutputStream byteBuf = new ByteArrayOutputStream(1024);
 	private DataOutputStream outBuf = new DataOutputStream(byteBuf);
 
-	boolean isClosed = false;
-	boolean isProcessing = true;
-	
+	boolean isDestroyed = false;
+	boolean isProcessing = false;
+
+	private StoredProcedure storedProcedure = null;
+
 	ExecuteThread(Socket client) throws IOException {
 		super();
 		this.client = client;
-		toClient = new DataOutputStream(new BufferedOutputStream(this.client
-				.getOutputStream()));
+		input = new DataInputStream(new BufferedInputStream(this.client.getInputStream()));
+		output = new DataOutputStream(new BufferedOutputStream(this.client.getOutputStream()));
 	}
 
 	public Socket getSocket() {
 		return client;
 	}
 
-	public void closeJdbcConnection() {
-		if (isClosed == false) {
-			try {
-				isClosed = true;
-				connection.close();
-			} catch (SQLException e) {
-				Server.log(e);
-			}
+	public void closeJdbcConnection() throws IOException, SQLException {
+		if (isProcessing == true && isDestroyed == false) {
+			connection.close(); // set isProcessing = false in close()
 		}
 	}
-	
+
 	public void setJdbcConnection(Connection con) {
 		this.connection = (CUBRIDConnectionDefault) con;
 	}
@@ -132,65 +138,127 @@ public class ExecuteThread extends Thread {
 	public Connection getJdbcConnection() {
 		return this.connection;
 	}
-	
+
+	public void setIsProcessing (Boolean isProcessing) {
+		this.isProcessing = isProcessing;
+	}
+
 	public Boolean getIsProcessing () {
 		return isProcessing;
 	}
 
+	public void setCharSet(String conCharsetName) {
+		this.charSet = conCharsetName;
+	}
+
 	public void run() {
-		StoredProcedure procedure = null;
-		Value result = null;
-		while (isProcessing) {
+		/* main routine handling stored procedure */
+		while (!isDestroyed) {
 			try {
-				isClosed = false;
-				procedure = makeStoredProcedure();
-				result = procedure.invoke();
-				
-				/* close without clearing JDBC resources */
-				closeJdbcConnection();
-				
-				/* send results */
-				Object resolvedResult = null;
-				if (result != null) {
-					resolvedResult = toDbTypeValue(procedure.getReturnType(), result);
-				}
-				
-				sendResult(resolvedResult, procedure);
+				int requestCode = -1;
+				do {
+					requestCode = input.readInt();
+					switch (requestCode) {
+					case REQ_CODE_INVOKE_SP: {
+						processStoredProcedure();
+						break;
+					}
+					case REQ_CODE_DESTROY: {
+						destroyJDBCResources();
+						isDestroyed = true;
+						break;
+					}
+					default: {
+						/* invalid request */
+						//throw new ExecuteException ("invalid request code: " + requestCode);
+					}
+					}
+				} while (requestCode != REQ_CODE_INVOKE_SP && requestCode != REQ_CODE_DESTROY);
 			} catch (Exception e) {
-				
+				isProcessing = false;
+				isDestroyed = true;
 				if (e instanceof IOException) {
-					isProcessing = false;
-				} else if (e instanceof InvocationTargetException) {
-					Server.log(((InvocationTargetException) e)
-							.getTargetException());
+					/* 
+					 * CAS disconnects socket
+					 * 1) end of routine successfully by calling jsp_close_internal_connection ()
+					 * 2) CAS is in invalid state. we do not have to deal with it here.
+					 */
 				} else {
-					Server.log(e);
+					Throwable throwable = e;
+					if (e instanceof InvocationTargetException) {
+						throwable = ((InvocationTargetException) e).getTargetException();
+					}
+					Server.log(throwable);
+					try {
+						sendError(throwable.toString(), client);
+					} catch (IOException e1) {
+						Server.log(e1);
+					}
 				}
-				
-				try {
-					sendError(e, client);
-				} catch (IOException e1) {
-					Server.log(e1);
-				}
-			} finally {
-				closeJdbcConnection();
+				break;
 			}
 		}
 
 		try {
 			byteBuf.close();
 			outBuf.close();
-			toClient.close();
+			output.close();
 			client.close();
 		} catch (IOException e) {
 		}
 
 		client = null;
-		toClient = null;
+		output = null;
 		byteBuf = null;
 		outBuf = null;
 		connection = null;
 		charSet = null;
+	}
+
+	private void processStoredProcedure () throws Exception {
+		StoredProcedure procedure = makeStoredProcedure();
+
+		isProcessing = true;
+		Value result = procedure.invoke();
+
+		/* close without clearing JDBC resources */
+		closeJdbcConnection();
+
+		/* send results */
+		sendResult(result, procedure);
+	}
+
+	private StoredProcedure makeStoredProcedure() throws Exception {
+		int methodSigLength = input.readInt();
+		byte[] methodSig = new byte[methodSigLength];
+		input.readFully(methodSig);
+
+		int paramCount = input.readInt();
+		Value[] args = readArguments(input, paramCount);
+
+		int returnType = input.readInt();
+
+		int endCode = input.readInt();
+		if (endCode != REQ_CODE_INVOKE_SP) {
+			return null;
+		}
+
+		if (storedProcedure == null) {
+			storedProcedure = new StoredProcedure(new String(methodSig), args, returnType);
+		}
+		else {
+			storedProcedure.setArgs(args);
+		}
+		return storedProcedure;
+	}
+
+	private void destroyJDBCResources () throws SQLException, IOException {
+		if (connection != null) {
+			setIsProcessing (true);
+			connection.destroy();
+			connection.close();
+			setIsProcessing (false);
+		}
 	}
 
 	private Object toDbTypeValue(int dbType, Value result)
@@ -300,49 +368,23 @@ public class ExecuteThread extends Thread {
 		return sp.makeReturnValue(obj);
 	}
 
-	private void sendError(Throwable e, Socket socket) throws IOException {
+	public void sendCall() throws IOException {
+		output.writeInt(REQ_CODE_INTERNAL_JDBC);
+		output.flush();
+	}
+
+	private void sendError(String exception, Socket socket) throws IOException {
 		byteBuf.reset();
 
 		sendValue(new Integer(1), outBuf, DB_INT);
-		sendValue(e.toString(), outBuf, DB_STRING);
+		sendValue(exception, outBuf, DB_STRING);
 
 		outBuf.flush();
-		toClient.writeInt(0x4);
-		toClient.writeInt(byteBuf.size() + 4);
-		byteBuf.writeTo(toClient);
-		toClient.writeInt(0x4);
-		toClient.flush();
-
-		// toClient.close();
-		// client.close();
-	}
-
-	private StoredProcedure makeStoredProcedure() throws Exception {
-		DataInputStream dis = new DataInputStream(new BufferedInputStream(
-				this.client.getInputStream()));
-		
-		/* read invoke requests */
-		int startCode = dis.readInt();
-
-		if (startCode != 0x1)
-			return null;
-
-		int methodSigLength = dis.readInt();
-
-		byte[] methodSig = new byte[methodSigLength];
-		dis.readFully(methodSig);
-
-		int paramCount = dis.readInt();
-
-		Value[] args = readArguments(dis, paramCount);
-
-		int returnType = dis.readInt();
-
-		int endCode = dis.readInt();
-		if (startCode != endCode)
-			return null;
-
-		return new StoredProcedure(new String(methodSig), args, returnType);
+		output.writeInt(REQ_CODE_ERROR);
+		output.writeInt(byteBuf.size() + 4);
+		byteBuf.writeTo(output);
+		output.writeInt(REQ_CODE_ERROR);
+		output.flush();
 	}
 
 	private Value[] readArguments(DataInputStream dis, int paramCount)
@@ -351,16 +393,9 @@ public class ExecuteThread extends Thread {
 
 		for (int i = 0; i < paramCount; i++) {
 			int mode = dis.readInt();
-			// System.out.println("mode= " + mode);
-
 			int dbType = dis.readInt();
-			// System.out.println("dbType= " + dbType);
-
 			int paramType = dis.readInt();
-			// System.out.println("paramType= " + paramType);
-
 			int paramSize = dis.readInt();
-			// System.out.println("paramSize= " + paramSize);
 
 			Value arg = readArgument(dis, paramSize, paramType, mode, dbType);
 			args[i] = (arg);
@@ -375,11 +410,7 @@ public class ExecuteThread extends Thread {
 
 		for (int i = 0; i < paramCount; i++) {
 			int paramType = dis.readInt();
-			// System.out.println("paramType= " + paramType);
-
 			int paramSize = dis.readInt();
-			// System.out.println("paramSize= " + paramSize);
-
 			Value arg = readArgument(dis, paramSize, paramType, Value.IN, 0);
 			args[i] = (arg);
 		}
@@ -389,7 +420,7 @@ public class ExecuteThread extends Thread {
 
 	private Value readArgument(DataInputStream dis, int paramSize,
 			int paramType, int mode, int dbType) throws IOException,
-			TypeMismatchException, SQLException {
+	TypeMismatchException, SQLException {
 		Value arg = null;
 		switch (paramType) {
 		case DB_SHORT:
@@ -428,7 +459,7 @@ public class ExecuteThread extends Thread {
 
 			arg = new NumericValue(new String(strValue), mode, dbType);
 		}
-			break;
+		break;
 		case DB_CHAR:
 		case DB_STRING:
 			// assert paramSize == n
@@ -446,7 +477,7 @@ public class ExecuteThread extends Thread {
 			System.arraycopy(paramValue, 0, strValue, 0, i);
 			arg = new StringValue(new String(strValue), mode, dbType);
 		}
-			break;
+		break;
 		case DB_DATE:
 			// assert paramSize == 3
 		{
@@ -456,7 +487,7 @@ public class ExecuteThread extends Thread {
 
 			arg = new DateValue(year, month, day, mode, dbType);
 		}
-			break;
+		break;
 		case DB_TIME:
 			// assert paramSize == 3
 		{
@@ -468,7 +499,7 @@ public class ExecuteThread extends Thread {
 
 			arg = new TimeValue(hour, min, sec, mode, dbType);
 		}
-			break;
+		break;
 		case DB_TIMESTAMP:
 			// assert paramSize == 6
 		{
@@ -484,7 +515,7 @@ public class ExecuteThread extends Thread {
 			arg = new TimestampValue(year, month, day, hour, min, sec, mode,
 					dbType);
 		}
-			break;
+		break;
 		case DB_DATETIME:
 			// assert paramSize == 7
 		{
@@ -501,7 +532,7 @@ public class ExecuteThread extends Thread {
 			arg = new DatetimeValue(year, month, day, hour, min, sec, msec,
 					mode, dbType);
 		}
-			break;
+		break;
 		case DB_SET:
 		case DB_MULTISET:
 		case DB_SEQUENCE: {
@@ -509,7 +540,7 @@ public class ExecuteThread extends Thread {
 			// System.out.println(nCol);
 			arg = new SetValue(readArgumentsForSet(dis, nCol), mode, dbType);
 		}
-			break;
+		break;
 		case DB_OBJECT: {
 			int page = dis.readInt();
 			short slot = (short) dis.readInt();
@@ -532,7 +563,7 @@ public class ExecuteThread extends Thread {
 			arg = new OidValue(new CUBRIDOID(connection,
 					bOID), mode, dbType);
 		}
-			break;
+		break;
 		case DB_NULL:
 			arg = new NullValue(mode, dbType);
 			break;
@@ -542,20 +573,26 @@ public class ExecuteThread extends Thread {
 		}
 		return arg;
 	}
-	
-	private void sendResult (Object result, StoredProcedure procedure) throws IOException, ExecuteException, TypeMismatchException {
+
+	private void sendResult(Value result, StoredProcedure procedure) throws IOException, ExecuteException, TypeMismatchException {
+		Object resolvedResult = null;
+		if (result != null) {
+			resolvedResult = toDbTypeValue(procedure.getReturnType(), result);
+		}
+
 		byteBuf.reset();
-		sendValue(result, outBuf, procedure.getReturnType());
+
+		sendValue(resolvedResult, outBuf, procedure.getReturnType());
 		returnOutArgs(procedure, outBuf);
 		outBuf.flush();
 
-		toClient.writeInt(0x2);
-		toClient.writeInt(byteBuf.size() + 4);
-		byteBuf.writeTo(toClient);
-		toClient.writeInt(0x2);
-		toClient.flush();
+		output.writeInt(REQ_CODE_RESULT);
+		output.writeInt(byteBuf.size() + 4);
+		byteBuf.writeTo(output);
+		output.writeInt(REQ_CODE_RESULT);
+		output.flush();
 	}
-	
+
 	private void sendValue(Object result, DataOutputStream dos, int ret_type)
 			throws IOException {
 		if (result == null) {
@@ -662,9 +699,5 @@ public class ExecuteThread extends Thread {
 		for (int i = 0; i <= pad; i++) {
 			dos.writeByte(0);
 		}
-	}
-
-	public void setCharSet(String conCharsetName) {
-		this.charSet = conCharsetName;
 	}
 }

@@ -41,16 +41,12 @@ import com.cubrid.jsp.exception.TypeMismatchException;
 import cubrid.sql.CUBRIDOID;
 
 public abstract class Value {
-	public static int IN = 1;
-
-	public static int OUT = 2;
-
-	public static int INOUT = 3;
+	public static final int IN = 1;
+	public static final int OUT = 2;
+	public static final int INOUT = 3;
 
 	protected int mode;
-
 	protected Object resolved;
-
 	protected int dbType;
 
 	public Value() {
