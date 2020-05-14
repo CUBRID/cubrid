@@ -7787,10 +7787,14 @@ pt_mark_group_having_pt_name (PARSER_CONTEXT * parser, PT_NODE * node, void *chk
 	parser_walk_tree (parser, node->info.query.q.select.having, pt_mark_pt_name, NULL, NULL, NULL);
     }
 
-  if (node->info.query.order_by != NULL)
+  if (!PT_SELECT_INFO_IS_FLAGED(node, PT_SELECT_INFO_COLS_SCHEMA | PT_SELECT_FULL_INFO_COLS_SCHEMA))
     {
-      node->info.query.order_by =
-	parser_walk_tree (parser, node->info.query.order_by, pt_mark_pt_name, NULL, NULL, NULL);
+
+      if (node->info.query.order_by != NULL)
+        {
+          node->info.query.order_by =
+	    parser_walk_tree (parser, node->info.query.order_by, pt_mark_pt_name, NULL, NULL, NULL);
+        }
     }
 
   return node;
@@ -7992,11 +7996,14 @@ pt_resolve_group_having_alias (PARSER_CONTEXT * parser, PT_NODE * node, void *ch
     }
 
   /* support for alias in ORDER BY */
-  pt_cur = node->info.query.order_by;
-  while (pt_cur != NULL)
+  if (!PT_SELECT_INFO_IS_FLAGED(node, PT_SELECT_INFO_COLS_SCHEMA | PT_SELECT_FULL_INFO_COLS_SCHEMA))
     {
-      pt_resolve_group_having_alias_internal (parser, &pt_cur, node->info.query.q.select.list);
-      pt_cur = pt_cur->next;
+      pt_cur = node->info.query.order_by;
+      while (pt_cur != NULL)
+        {
+          pt_resolve_group_having_alias_internal (parser, &pt_cur, node->info.query.q.select.list);
+          pt_cur = pt_cur->next;
+        }
     }
   return node;
 }
