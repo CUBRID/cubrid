@@ -120,7 +120,7 @@ public class CUBRIDConnectionWrapperXA extends CUBRIDConnection {
 		}
 	}
 
-	void autoCommit() throws SQLException {
+	protected void autoCommit() throws SQLException {
 		if (xa_started == false) {
 			super.autoCommit();
 		}

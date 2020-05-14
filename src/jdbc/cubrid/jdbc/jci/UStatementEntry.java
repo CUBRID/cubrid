@@ -4,20 +4,18 @@ public class UStatementEntry {
 	public static final int AVAILABLE = 0;
 	public static final int HOLDING = 1;
 	
-	private String sql;
 	private UStatement stmt;
 	int status;
 	
-	public UStatementEntry (String sql, UStatement entry) {
-		this.sql = sql;
+	public UStatementEntry (UStatement entry) {
 		this.stmt = entry;
 		this.status = HOLDING;
 	}
 
 	public String getSql() {
-		return sql;
+		return stmt.getQuery();
 	}
-
+	
 	public UStatement getStatement() {
 		return stmt;
 	}
@@ -36,6 +34,6 @@ public class UStatementEntry {
 
 	@Override
 	public String toString() {
-		return "UStatementEntry [sql=" + sql + ", stmt=" + stmt + ", status=" + status + "]";
+		return "UStatementEntry [sql=" + getSql() + ", stmt=" + stmt + ", status=" + status + "]";
 	}
 }

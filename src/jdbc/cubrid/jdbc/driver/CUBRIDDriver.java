@@ -50,7 +50,7 @@ import java.util.regex.Pattern;
 
 import cubrid.jdbc.jci.BrokerHealthCheck;
 import cubrid.jdbc.jci.UConnection;
-import cubrid.jdbc.jci.UConnectionClient;
+import cubrid.jdbc.jci.UClientSideConnection;
 import cubrid.jdbc.jci.UJCIManager;
 import cubrid.jdbc.jci.UJCIUtil;
 
@@ -152,7 +152,7 @@ public class CUBRIDDriver implements Driver {
 	    String prop = matcher.group(7);
 	    int port = default_port;
 
-	    UConnectionClient u_con;
+	    UClientSideConnection u_con;
 	    String resolvedUrl;
 	    ConnectionProperties connProperties;
 
@@ -200,13 +200,13 @@ public class CUBRIDDriver implements Driver {
 			Collections.shuffle(altHostList);
 		}
 		try {
-		    u_con = (UConnectionClient) UJCIManager.connect(altHostList, db, user, pass, resolvedUrl);
+		    u_con = (UClientSideConnection) UJCIManager.connect(altHostList, db, user, pass, resolvedUrl);
 		} catch (CUBRIDException e) {
 		    throw e;
 		}
 	    } else {
 		try {
-		    u_con = (UConnectionClient) UJCIManager.connect(host, port, db, user, pass, resolvedUrl);
+		    u_con = (UClientSideConnection) UJCIManager.connect(host, port, db, user, pass, resolvedUrl);
 		} catch (CUBRIDException e) {
 		    throw e;
 		}
@@ -228,6 +228,9 @@ public class CUBRIDDriver implements Driver {
 					"com.cubrid.jsp.ExecuteThread", "getJdbcConnection", null,
 					t, null);
 			if (c != null) {
+				UJCIUtil.invoke(
+						"com.cubrid.jsp.ExecuteThread", "sendCall", null,
+						t, null);
 				return c;
 			}
 
@@ -237,6 +240,9 @@ public class CUBRIDDriver implements Driver {
 			UJCIUtil.invoke("com.cubrid.jsp.ExecuteThread",
 					"setJdbcConnection", new Class[] { Connection.class }, t,
 					new Object[] { con });
+			UJCIUtil.invoke(
+					"com.cubrid.jsp.ExecuteThread", "sendCall", null,
+					t, null);
 			return con;
 		} else {
 			return null;

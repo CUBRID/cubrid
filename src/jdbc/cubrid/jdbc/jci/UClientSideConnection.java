@@ -1,30 +1,31 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
- * Redistribution and use in source and binary forms, with or without modification,
- * are permitted provided that the following conditions are met:
+ * Redistribution and use in source and binary forms, with or without modification, 
+ * are permitted provided that the following conditions are met: 
  *
- * - Redistributions of source code must retain the above copyright notice,
- *   this list of conditions and the following disclaimer.
+ * - Redistributions of source code must retain the above copyright notice, 
+ *   this list of conditions and the following disclaimer. 
  *
- * - Redistributions in binary form must reproduce the above copyright notice,
- *   this list of conditions and the following disclaimer in the documentation
- *   and/or other materials provided with the distribution.
+ * - Redistributions in binary form must reproduce the above copyright notice, 
+ *   this list of conditions and the following disclaimer in the documentation 
+ *   and/or other materials provided with the distribution. 
  *
- * - Neither the name of the <ORGANIZATION> nor the names of its contributors
- *   may be used to endorse or promote products derived from this software without
- *   specific prior written permission.
+ * - Neither the name of the <ORGANIZATION> nor the names of its contributors 
+ *   may be used to endorse or promote products derived from this software without 
+ *   specific prior written permission. 
  *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
- * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
- * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
- * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
- * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA,
- * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
- * OF SUCH DAMAGE.
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED 
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. 
+ * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, 
+ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, 
+ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, 
+ * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY 
+ * OF SUCH DAMAGE. 
  *
  */
 
@@ -48,14 +49,14 @@ import cubrid.jdbc.driver.CUBRIDJDBCErrorCode;
 import cubrid.jdbc.driver.CUBRIDJdbcInfoTable;
 import cubrid.jdbc.net.BrokerHandler;
 
-public class UConnectionClient extends UConnection {
+public class UClientSideConnection extends UConnection {
 
 	private ArrayList<String> altHosts = null;
 	private int connectedHostId = 0;
 
 	private long lastFailureTime = 0;
 
-	public UConnectionClient(String ip, int port, String dbname, String user, String passwd,
+	public UClientSideConnection(String ip, int port, String dbname, String user, String passwd,
 			String url) throws CUBRIDException {
 		if (ip != null) {
 			casIp = ip;
@@ -77,7 +78,7 @@ public class UConnectionClient extends UConnection {
 		errorHandler = new UError(this);
 	}
 
-	public UConnectionClient(ArrayList<String> altHostList, String dbname, String user,
+	public UClientSideConnection(ArrayList<String> altHostList, String dbname, String user,
 			String passwd, String url) throws CUBRIDException {
 		setAltHosts(altHostList);
 		if (dbname != null) {

@@ -28,57 +28,58 @@
  *
  */
 
+/**
+ * Title:        CUBRID Java Client Interface<p>
+ * Description:  CUBRID Java Client Interface<p>
+ * @version 2.0
+ */
+
 package cubrid.jdbc.jci;
 
-import java.util.Map.Entry;
-import java.util.Vector;
-import java.util.concurrent.ConcurrentHashMap;
+import java.io.IOException;
 
-public class UStatementHandlerCache {
-	private ConcurrentHashMap<String, Vector<UStatementEntry>> stmtHandlerCache;
+import cubrid.sql.CUBRIDOID;
 
-	public UStatementHandlerCache() {
-		stmtHandlerCache = new ConcurrentHashMap<String, Vector<UStatementEntry>> ();
+public class UServerSideStatement extends UStatement {
+
+	public UServerSideStatement(UConnection relatedC, CUBRIDOID oid, String[] attributeName, UInputBuffer inBuffer)
+			throws UJciException {
+		super(relatedC, oid, attributeName, inBuffer);
+		// TODO Auto-generated constructor stub
 	}
 
-	public ConcurrentHashMap<String, Vector<UStatementEntry>> getCache() {
-		return stmtHandlerCache;
+	public UServerSideStatement(UConnection u_con, int srv_handle) throws UJciException, IOException {
+		super(u_con, srv_handle);
+		// TODO Auto-generated constructor stub
+	}
+
+	public UServerSideStatement(UConnection relatedC, String cName, String attributePattern, int type,
+			UInputBuffer inBuffer) throws UJciException {
+		super(relatedC, cName, attributePattern, type, inBuffer);
+		// TODO Auto-generated constructor stub
+	}
+
+	public UServerSideStatement(UConnection relatedC, UInputBuffer inBuffer, boolean assign_only, String sql,
+			byte _prepare_flag) throws UJciException {
+		super(relatedC, inBuffer, assign_only, sql, _prepare_flag);
+		// TODO Auto-generated constructor stub
+	}
+
+	public UServerSideStatement(UStatement u_stmt) {
+		super(u_stmt);
+		// TODO Auto-generated constructor stub
 	}
 	
-	public Vector<UStatementEntry> getEntry (String sql) {
-		if (!stmtHandlerCache.containsKey(sql)) {
-		   Vector<UStatementEntry> vec = new Vector<UStatementEntry>();
-		   stmtHandlerCache.put(sql, vec);
-		}
+	/*
+	@Override
+	public void reset(byte flag) throws UJciException {
 		
-		return stmtHandlerCache.get(sql);
 	}
-	
-	public void clearEntry () {
-		for (Entry<String, Vector<UStatementEntry>> entry : stmtHandlerCache.entrySet()) {
-			Vector<UStatementEntry> cacheEntries = entry.getValue();
-			for (UStatementEntry e: cacheEntries) {
-				UStatement s = e.getStatement();
-				s.closeCursor();
-			}
-		}
-		stmtHandlerCache.clear();
-		stmtHandlerCache = null;
-	}
-	
-	public void clearStatus () {
-		for (Entry<String, Vector<UStatementEntry>> entry : stmtHandlerCache.entrySet()) {
-			Vector<UStatementEntry> cacheEntries = entry.getValue();
-			for (UStatementEntry e: cacheEntries) {
-				e.setStatus(UStatementEntry.AVAILABLE);
-			}
-		}
-	}
+	*/
 
 	@Override
-	public String toString() {
-		return "UStatementHandlerCache [stmtHandlerCache=" + stmtHandlerCache + "]";
+	public synchronized void close(boolean close_srv_handle) {
+		// TODO Auto-generated method stub
+		super.close(close_srv_handle);
 	}
-	
-	
 }
