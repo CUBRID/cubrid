@@ -36,12 +36,16 @@
 #include <process.h>
 #include <sys/timeb.h>
 #include <dbgHelp.h>
+#include <io.h>
+#include <direct.h>
 #else /* WINDOWS */
 #include <unistd.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <sys/socket.h>
 #include <sys/time.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 #endif /* WINDOWS */
 
 #include "cas_common.h"
@@ -84,6 +88,7 @@ initSSL (int sd)
   char key[CERT_FILENAME_LEN];
   int err_code;
   unsigned long err;
+  struct stat sbuf;
 
   if (ssl)
     {
@@ -104,30 +109,46 @@ initSSL (int sd)
   snprintf (cert, CERT_FILENAME_LEN, "%s/conf/%s", getenv ("CUBRID"), CERTF);
   snprintf (key, CERT_FILENAME_LEN, "%s/conf/%s", getenv ("CUBRID"), KEYF);
 
+  if (stat (cert, &sbuf) < 0)
+    {
+      cas_log_write_and_end (0, false, "SSL: Certificate not found: %s", cert);
+      return ER_SSL_GENERAL;
+    }
+
+  if (stat (key, &sbuf) < 0)
+    {
+      cas_log_write_and_end (0, true, "SSL: Private key not found: %s", key);
+      return ER_SSL_GENERAL;
+    }
+
 #if defined (OPENSSL_API_COMPAT) && OPENSSL_API_COMPAT < 0x10100000L
   SSL_load_error_strings ();
   SSLeay_add_ssl_algorithms ();
   ERR_load_crypto_strings ();
 #endif
 
-  if ((ctx = SSL_CTX_new (TLSv1_server_method ())) == NULL)
+  if ((ctx = SSL_CTX_new (TLS_server_method ())) == NULL)
     {
+      cas_log_write_and_end (0, true, "SSL: Initialize failed.");
       return ER_SSL_GENERAL;
     }
 
   if (SSL_CTX_use_certificate_file (ctx, cert, SSL_FILETYPE_PEM) <= 0
       || SSL_CTX_use_PrivateKey_file (ctx, key, SSL_FILETYPE_PEM) <= 0)
     {
+      cas_log_write_and_end (0, true, "SSL: Certificate or Key is coppupted.");
       return ER_SSL_GENERAL;
     }
 
   if ((ssl = SSL_new (ctx)) == NULL)
     {
+      cas_log_write_and_end (0, true, "SSL: Creating SSL context failed.");
       return ER_SSL_GENERAL;
     }
 
   if (SSL_set_fd (ssl, sd) == 0)
     {
+      cas_log_write_and_end (0, true, "SSL: Cannot associate with socket.");
       return ER_SSL_GENERAL;
     }
 
@@ -135,6 +156,7 @@ initSSL (int sd)
   if (err_code < 0)
     {
       err_code = SSL_get_error (ssl, err_code);
+      cas_log_write_and_end (0, true, "SSL: Accept failed.");
       err = ERR_get_error ();
       return ER_SSL_GENERAL;
     }
@@ -158,6 +180,7 @@ cas_ssl_read (int sd, char *buf, int size)
 
   if (IS_INVALID_SOCKET (sd) || ssl == NULL)
     {
+      cas_log_write_and_end (0, true, "SSL: READ attempt for brokern connection");
       return ER_SSL_GENERAL;
     }
 
@@ -189,6 +212,7 @@ cas_ssl_write (int sd, const char *buf, int size)
 
   if (IS_INVALID_SOCKET (sd) || ssl == NULL)
     {
+      cas_log_write_and_end (0, true, "SSL: WRITE attempt for brokern connection");
       return ER_SSL_GENERAL;
     }
 #if defined(WINDOWS)

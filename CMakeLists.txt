@@ -1255,7 +1255,7 @@ if(WITH_LIBOPENSSL STREQUAL "EXTERNAL")
   set(LIBOPENSSL_TARGET libopenssl)
   if(UNIX)
     #compile OpenSSL library given an internet url to a OpenSSL archive
-    #e.g. https://www.openssl.org/source/openssl-1.1.1d.tar.gz
+    #e.g. https://www.openssl.org/source/openssl-1.1.1f.tar.gz
     externalproject_add(${LIBOPENSSL_TARGET}
       URL                  ${WITH_LIBOPENSSL_URL}
       TIMEOUT              600
@@ -1266,26 +1266,23 @@ if(WITH_LIBOPENSSL STREQUAL "EXTERNAL")
       )
     set(LIBOPENSSL_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libssl.a ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libcrypto.a)
     set(LIBOPENSSL_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
-    include_directories(${LIBOPENSSL_INCLUDES})
     list(APPEND EP_TARGETS ${LIBOPENSSL_TARGET})
   else(UNIX)
     set(LIBOPENSSL_LIBS ${WINDOWS_EXTERNAL_DIR}/openssl/lib/libssl.lib)
     list(APPEND LIBOPENSSL_LIBS ${WINDOWS_EXTERNAL_DIR}/openssl/lib/libcrypto.lib)
     list(APPEND LIBOPENSSL_LIBS Crypt32 Ws2_32)
     set(LIBOPENSSL_INCLUDES ${WINDOWS_EXTERNAL_DIR}/openssl/include)
-    list(APPEND EP_INCLUDES ${LIBOPENSSL_INCLUDES})
-    list(APPEND EP_LIBS ${LIBOPENSSL_LIBS})
-    include_directories(${LIBOPENSSL_INCLUDES})
   endif(UNIX)
 else(WITH_LIOPENSSL STREQUAL "SYSTEM")
   if(UNIX)
     find_library(LIBOPENSSL_LIBS NAMES libssl.a libcrypto.a PATHS ${WITH_EXTERNAL_LIBS_PATH} ${WITH_LIBOPENSSL_ROOT_PATH}/lib REQUIRED)
     find_path(LIBOPENSSL_INCLUDES NAMES openssl/conf.h openssl/evp.h PATHS ${WITH_EXTERNAL_HEADERS_PATH} ${WITH_LIBOPENSSL_ROOT_PATH}/include REQUIRED)
-
     message(STATUS "Found openssl library: ${LIBOPENSSL_LIBS}")
     message(STATUS "Found openssl headers: ${LIBOPENSSL_INCLUDES}")
   endif(UNIX)
 endif()
+list(APPEND EP_INCLUDES ${LIBOPENSSL_INCLUDES})
+list(APPEND EP_LIBS ${LIBOPENSSL_LIBS})
 
 # For JVM libraries
 if(WIN32)
