@@ -17103,6 +17103,7 @@ parser_generate_xasl_proc (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * qu
  *   tcard_listp(out):
  *   nump(out):
  *   sizep(out):
+ *   includes_tde_class(out):
  */
 static int
 pt_spec_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * spec, OID ** oid_listp, int **lock_listp,

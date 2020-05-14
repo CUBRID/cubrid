@@ -1338,6 +1338,9 @@ sort_run_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, char **base, lo
  *               returning the first K elements.
  *               Parameter: -1 if not to be used, > 0 if it should be taken
  *               into account. Zero is a reserved value.
+ *   includes_tde_class(in): whether tde-configured class data is included or not,
+ *                           it determines whehter internal temp files are 
+ *                           encrypted or not.
  */
 int
 sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GET_FUNC * get_fn, void *get_arg,
@@ -4455,6 +4458,7 @@ sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
  *   vfid(in): Set to the created file identifier
  *   file_pg_cnt_est(in): Estimated file page count
  *   force_alloc(in): Allocate file pages now ?
+ *   tde_encrypted(in): whether the file has to be encrypted or not for TDE
  */
 static int
 sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est, bool force_alloc, bool tde_encrypted)

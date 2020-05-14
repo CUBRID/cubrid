@@ -1334,6 +1334,7 @@ xcache_need_cleanup (void)
  * class_oids (in)    : Related objects OID's.
  * class_locks (in)   : Related objects locks.
  * tcards (in)	      : Related objects cardinality.
+ * includes_tde_class (in)  : whether tde-configured class is included or not
  * xcache_entry (out) : XASL cache entry.
  */
 int
