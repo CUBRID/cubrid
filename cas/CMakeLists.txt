@@ -51,6 +51,7 @@ if(UNIX)
 endif(UNIX)
 
 target_compile_definitions(cas PRIVATE LIBCAS_FOR_JSP)
+target_include_directories(cas PRIVATE ${EP_INCLUDES})
 if(WIN32)
   target_compile_definitions(cas PRIVATE _MT CAS)
   if(TARGET_PLATFORM_BITS EQUAL 32)
