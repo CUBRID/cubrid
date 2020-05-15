@@ -1571,7 +1571,7 @@ print_tran_entry (const ONE_TRAN_INFO * tran_info, TRANDUMP_LEVEL dump_level, bo
 {
   char *buf = NULL;
   char *query_buf;
-  char tmp_query_buf [32];
+  char tmp_query_buf[32];
 
   if (tran_info == NULL)
     {
@@ -1589,15 +1589,15 @@ print_tran_entry (const ONE_TRAN_INFO * tran_info, TRANDUMP_LEVEL dump_level, bo
 	{
 	  /* print 31 string */
 	  if (full_sqltext == true)
-            {
-              query_buf = tran_info->query_exec_info.query_stmt;
-            }
-          else
-            {
+	    {
+	      query_buf = tran_info->query_exec_info.query_stmt;
+	    }
+	  else
+	    {
 	      strncpy (tmp_query_buf, tran_info->query_exec_info.query_stmt, 32);
 	      tmp_query_buf[31] = '\0';
-              query_buf = tmp_query_buf;
-            }
+	      query_buf = tmp_query_buf;
+	    }
 	}
     }
 
