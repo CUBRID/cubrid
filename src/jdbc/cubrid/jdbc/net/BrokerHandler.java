@@ -293,7 +293,7 @@ public class BrokerHandler {
         };
 
         try {
-            ctx = SSLContext.getInstance("TLSv1");
+            ctx = SSLContext.getInstance("TLS");
         } catch (NoSuchAlgorithmException e) {
             e.printStackTrace();
             throw new UJciException(UErrorCode.ER_CONNECTION, e);
