@@ -20987,11 +20987,12 @@ parser_generate_xasl_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, in
     case PT_UNION:
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
-      if (!node->info.query.xasl)
+      if (node->info.query.xasl)
 	{
-	  (void) pt_query_set_reference (parser, node);
-	  pt_push_symbol_info (parser, node);
+	  node->info.query.xasl = NULL;
 	}
+      (void) pt_query_set_reference (parser, node);
+      pt_push_symbol_info (parser, node);
       break;
 
     default:
