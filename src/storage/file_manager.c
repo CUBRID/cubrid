@@ -171,6 +171,7 @@ struct file_header
 
 #define FILE_IS_NUMERABLE(fh) (((fh)->file_flags & FILE_FLAG_NUMERABLE) != 0)
 #define FILE_IS_TEMPORARY(fh) (((fh)->file_flags & FILE_FLAG_TEMPORARY) != 0)
+#define FILE_IS_TDE_ENCRYPTED(fh) (((fh)->file_flags & FILE_FLAG_ENCRYPTED_MASK) != 0)
 
 #define FILE_CACHE_LAST_FIND_NTH(fh) \
   (FILE_IS_NUMERABLE (fh) && FILE_IS_TEMPORARY (fh) && (fh)->type == FILE_TEMP)
@@ -5371,10 +5372,11 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_in
    * because while recovery, logs on a page don't work
    * before the log classified as RCV_IS_NEW_PAGE_INIT on the page
    */
-  file_get_tde_algorithm_internal (fhead, &tde_algo);
 
-  if (tde_algo != TDE_ALGORITHM_NONE)
+  if (FILE_IS_TDE_ENCRYPTED (fhead))
     {
+      file_get_tde_algorithm_internal (fhead, &tde_algo);
+
       if (!is_page_alloc_fixed)
 	{
 	  page_alloc = pgbuf_fix (thread_p, vpid_out, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
