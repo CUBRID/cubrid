@@ -5768,7 +5768,7 @@ file_set_tde_algorithm_internal (FILE_HEADER * fhead, TDE_ALGORITHM tde_algo)
       fhead->file_flags |= FILE_FLAG_ENCRYPTED_ARIA;
       break;
     case TDE_ALGORITHM_NONE:
-      fhead->file_flags &= !FILE_FLAG_ENCRYPTED_MASK;
+      fhead->file_flags &= ~FILE_FLAG_ENCRYPTED_MASK;
       break;
     }
 }
