@@ -62,11 +62,18 @@ public class BrokerHandler {
           if (code < 0) {
           // in here, all errors are sent by only a broker
           // the error greater than -10000 is sent by old broker
-            if (code > -10000) {
+          if (code > -10000) {
               code -= 9000;
-            }
-            throw new UJciException(code);
-          } else if (code == 0) {
+          }
+
+          // There is an issue that cannot display an error text. (All cas error code)
+          if (code == UErrorCode.CAS_ER_SSL_TYPE_NOT_ALLOWED) {
+              throw new UJciException(UErrorCode.ER_DBMS, UErrorCode.CAS_ERROR_INDICATOR, code, "");
+          } else {
+              throw new UJciException(code);   
+          }
+
+	  } else if (code == 0) {
               if (useSSL == true) {
                   toSSLBroker = (Socket)createSSLSocket(toBroker, ip, port);
                   return (Socket)toSSLBroker;
