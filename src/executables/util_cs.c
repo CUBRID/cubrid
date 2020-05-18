@@ -108,7 +108,7 @@ static void intr_handler (int sig_no);
 static void backupdb_sig_interrupt_handler (int sig_no);
 STATIC_INLINE char *spacedb_get_size_str (char *buf, UINT64 num_pages, T_SPACEDB_SIZE_UNIT size_unit);
 static void print_timestamp (FILE * outfp);
-static int print_tran_entry (const ONE_TRAN_INFO * tran_info, TRANDUMP_LEVEL dump_level, bool full_sqltext);
+static int print_tran_entry (const ONE_TRAN_INFO * tran_info, TRANDUMP_LEVEL dump_level);
 static int tranlist_cmp_f (const void *p1, const void *p2);
 static OID *util_get_class_oids_and_index_btid (dynamic_array * darray, const char *index_name, BTID * index_btid);
 
@@ -1325,7 +1325,7 @@ doesmatch_transaction (const ONE_TRAN_INFO * tran, int *tran_index_list, int ind
  *   dump_level(in) :
  */
 static void
-dump_trantb (TRANS_INFO * info, TRANDUMP_LEVEL dump_level, bool full_sqltext)
+dump_trantb (TRANS_INFO * info, TRANDUMP_LEVEL dump_level)
 {
   int i;
   int num_valid = 0;
@@ -1364,7 +1364,7 @@ dump_trantb (TRANS_INFO * info, TRANDUMP_LEVEL dump_level, bool full_sqltext)
 		}
 
 	      num_valid++;
-	      print_tran_entry (&info->tran[i], dump_level, full_sqltext);
+	      print_tran_entry (&info->tran[i], dump_level);
 	    }
 	}
     }
@@ -1500,7 +1500,7 @@ kill_transactions (TRANS_INFO * info, int *tran_index_list, int list_size, const
 	      if (doesmatch_transaction (&info->tran[i], tran_index_list, list_size, username, hostname, progname,
 					 sql_id))
 		{
-		  print_tran_entry (&info->tran[i], dump_level, false);
+		  print_tran_entry (&info->tran[i], dump_level);
 		}
 	    }
 	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TRANLIST, underscore));
@@ -1544,7 +1544,7 @@ kill_transactions (TRANS_INFO * info, int *tran_index_list, int list_size, const
 			  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TRANLIST, underscore));
 			}
 
-		      print_tran_entry (&info->tran[i], dump_level, false);
+		      print_tran_entry (&info->tran[i], dump_level);
 
 		      if (er_errid () != NO_ERROR)
 			{
@@ -1577,11 +1577,10 @@ kill_transactions (TRANS_INFO * info, int *tran_index_list, int list_size, const
  *   include_query_info(in) :
  */
 static int
-print_tran_entry (const ONE_TRAN_INFO * tran_info, TRANDUMP_LEVEL dump_level, bool full_sqltext)
+print_tran_entry (const ONE_TRAN_INFO * tran_info, TRANDUMP_LEVEL dump_level)
 {
   char *buf = NULL;
-  char *query_buf;
-  char tmp_query_buf[32];
+  char query_buf[32];
 
   if (tran_info == NULL)
     {
@@ -1598,16 +1597,8 @@ print_tran_entry (const ONE_TRAN_INFO * tran_info, TRANDUMP_LEVEL dump_level, bo
       if (tran_info->query_exec_info.query_stmt != NULL)
 	{
 	  /* print 31 string */
-	  if (full_sqltext == true)
-	    {
-	      query_buf = tran_info->query_exec_info.query_stmt;
-	    }
-	  else
-	    {
-	      strncpy (tmp_query_buf, tran_info->query_exec_info.query_stmt, 32);
-	      tmp_query_buf[31] = '\0';
-	      query_buf = tmp_query_buf;
-	    }
+	  strncpy (query_buf, tran_info->query_exec_info.query_stmt, 32);
+	  query_buf[31] = '\0';
 	}
     }
 
@@ -1656,7 +1647,7 @@ tranlist (UTIL_FUNCTION_ARG * arg)
   char *passbuf = NULL;
   TRANS_INFO *info = NULL;
   int error;
-  bool is_summary, include_query_info, full_sqltext = false;
+  bool is_summary, include_query_info;
   TRANDUMP_LEVEL dump_level = TRANDUMP_FULL_INFO;
 
   if (utility_get_option_string_table_size (arg_map) != 1)
@@ -1675,7 +1666,6 @@ tranlist (UTIL_FUNCTION_ARG * arg)
   is_summary = utility_get_option_bool_value (arg_map, TRANLIST_SUMMARY_S);
   tranlist_Sort_column = utility_get_option_int_value (arg_map, TRANLIST_SORT_KEY_S);
   tranlist_Sort_desc = utility_get_option_bool_value (arg_map, TRANLIST_REVERSE_S);
-  full_sqltext = utility_get_option_bool_value (arg_map, TRANLIST_FULL_SQL_S);
 
   if (username == NULL)
     {
@@ -1770,7 +1760,7 @@ tranlist (UTIL_FUNCTION_ARG * arg)
       qsort ((void *) info->tran, info->num_trans, sizeof (ONE_TRAN_INFO), tranlist_cmp_f);
     }
 
-  (void) dump_trantb (info, dump_level, full_sqltext);
+  (void) dump_trantb (info, dump_level);
 
   if (info)
     {
@@ -1955,7 +1945,7 @@ killtran (UTIL_FUNCTION_ARG * arg)
       TRANDUMP_LEVEL dump_level;
 
       dump_level = (include_query_exec_info) ? TRANDUMP_QUERY_INFO : TRANDUMP_SUMMARY;
-      dump_trantb (info, dump_level, false);
+      dump_trantb (info, dump_level);
     }
   else
     {
