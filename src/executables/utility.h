@@ -1173,8 +1173,6 @@ typedef struct _ha_config
 #define TRANLIST_SORT_KEY_L                     "sort-key"
 #define TRANLIST_REVERSE_S                      'r'
 #define TRANLIST_REVERSE_L                      "reverse"
-#define TRANLIST_FULL_SQL_S                     'f'
-#define TRANLIST_FULL_SQL_L                     "full"
 
 
 /* killtran option list */
