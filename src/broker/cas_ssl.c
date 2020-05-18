@@ -121,7 +121,7 @@ initSSL (int sd)
       return ER_SSL_GENERAL;
     }
 
-#if defined (OPENSSL_API_COMPAT) && OPENSSL_API_COMPAT < 0x10100000L
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
   SSL_load_error_strings ();
   SSLeay_add_ssl_algorithms ();
   ERR_load_crypto_strings ();
