@@ -468,6 +468,7 @@ struct file_tempcache_entry
 {
   VFID vfid;
   FILE_TYPE ftype;
+  bool tde_encrypted;
 
   FILE_TEMPCACHE_ENTRY *next;
 };
@@ -3184,11 +3185,12 @@ file_create_temp_internal (THREAD_ENTRY * thread_p, int npages, FILE_TYPE ftype,
       /* what about the number of pages? */
       *vfid_out = tempcache_entry->vfid;
     }
-  if (tde_encrypted)
+
+  if (tempcache_entry->tde_encrypted != tde_encrypted)
     {
-      error_code =
-	file_apply_tde_algorithm (thread_p, vfid_out,
-				  (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_ALGORITHM_FOR_TEMP));
+      TDE_ALGORITHM tde_algo = tde_encrypted ?
+	(TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_ALGORITHM_FOR_TEMP) : TDE_ALGORITHM_NONE;
+      error_code = file_apply_tde_algorithm (thread_p, vfid_out, tde_algo);
       if (error_code != NO_ERROR)
 	{
 	  VFID_SET_NULL (vfid_out);
@@ -3196,6 +3198,8 @@ file_create_temp_internal (THREAD_ENTRY * thread_p, int npages, FILE_TYPE ftype,
 	  file_tempcache_retire_entry (tempcache_entry);
 	  return error_code;
 	}
+
+      tempcache_entry->tde_encrypted = tde_encrypted;
     }
 
   /* save to transaction temporary file list */
@@ -9192,6 +9196,7 @@ file_tempcache_get (THREAD_ENTRY * thread_p, FILE_TYPE ftype, bool numerable, FI
   assert (*entry != NULL);
   (*entry)->next = NULL;
   (*entry)->ftype = ftype;
+  (*entry)->tde_encrypted = false;
   VFID_SET_NULL (&(*entry)->vfid);
 
   file_tempcache_unlock ();
