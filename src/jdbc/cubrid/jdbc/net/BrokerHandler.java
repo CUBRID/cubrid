@@ -65,7 +65,8 @@ public class BrokerHandler {
           if (code > -10000) {
               code -= 9000;
           }
-		
+
+          // There is an issue that cannot display an error text. (All cas error code)
           if (code == UErrorCode.CAS_ER_SSL_TYPE_NOT_ALLOWED) {
               throw new UJciException(UErrorCode.ER_DBMS, UErrorCode.CAS_ERROR_INDICATOR, code, "");
           } else {
