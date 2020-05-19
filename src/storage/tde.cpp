@@ -62,6 +62,8 @@ tde_initialize (void)
   memcpy (tde_Cipher.data_keys.log_key, "23456789012345678901234567890123", TDE_DATA_KEY_LENGTH);
   tde_Cipher.data_keys.is_loaded = true;
 
+  tde_Cipher.temp_write_counter.store(0);
+
   return NO_ERROR;
 
 }
@@ -80,6 +82,7 @@ tde_encrypt_data_page (const unsigned char * iopage_plain, unsigned char * iopag
   {
     // temporary file: p_reserve_1 for nonce TODO: p_reserve_3 -> ?
     data_key = tde_Cipher.data_keys.temp_key;
+    iopage->prv.p_reserve_3 = tde_Cipher.temp_write_counter.fetch_add(1);
     memcpy (nonce, &iopage->prv.p_reserve_3, sizeof(iopage->prv.p_reserve_3)); 
   }
   else 
