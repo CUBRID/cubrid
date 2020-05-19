@@ -40,12 +40,11 @@ import java.util.logging.Logger;
 
 public class Server {
 	private static String serverName;
-
 	private static String spPath;
-
 	private static String rootPath;
-
+	
 	private ServerSocket serverSocket;
+	private File socketFile;
 	
 	private static Logger logger = Logger.getLogger("com.cubrid.jsp");
 
@@ -57,6 +56,9 @@ public class Server {
 		spPath = path;
 		rootPath = rPath;
 
+		// socketFile = new File(rootPath + "/tmp", "javasp.sock");
+		// System.out.println(socketFile.getAbsolutePath());
+		
 		try {
 		  int port_number = Integer.parseInt(port);
 		  serverSocket = new ServerSocket(port_number);
