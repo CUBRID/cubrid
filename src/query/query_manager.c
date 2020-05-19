@@ -2486,12 +2486,23 @@ qmgr_get_new_page (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_FILE * tfil
   /* memory buffer is exhausted; create temp file */
   if (VFID_ISNULL (&tfile_vfid_p->temp_vfid))
     {
-      if (file_create_temp (thread_p, 1, tfile_vfid_p->tde_encrypted, &tfile_vfid_p->temp_vfid) != NO_ERROR)
+      if (file_create_temp (thread_p, 1, &tfile_vfid_p->temp_vfid) != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  return NULL;
 	}
       tfile_vfid_p->temp_file_type = FILE_TEMP;
+      if (tfile_vfid_p->tde_encrypted)
+	{
+	  if (file_apply_tde_algorithm (thread_p, &tfile_vfid_p->temp_vfid,
+					(TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_ALGORITHM_FOR_TEMP)) !=
+	      NO_ERROR)
+	    {
+	      file_temp_retire (thread_p, &tfile_vfid_p->temp_vfid);
+	      ASSERT_ERROR ();
+	      return NULL;
+	    }
+	}
     }
 
   /* try to get pages from an external temp file */
@@ -2705,6 +2716,15 @@ qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
       return NULL;
     }
 
+  VFID_SET_NULL (&tfile_vfid_p->temp_vfid);
+
+  if (file_create_query_area (thread_p, &tfile_vfid_p->temp_vfid) != NO_ERROR)
+    {
+      free_and_init (tfile_vfid_p);
+      return NULL;
+    }
+
+
   tfile_vfid_p->temp_file_type = FILE_QUERY_AREA;
 
   tfile_vfid_p->membuf_last = prm_get_integer_value (PRM_ID_TEMP_MEM_BUFFER_PAGES) - 1;
@@ -2732,20 +2752,22 @@ qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
     {
       /* query entry is not found */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_UNKNOWN_QUERYID, 1, query_id);
+      file_temp_retire (thread_p, &tfile_vfid_p->temp_vfid);
       free_and_init (tfile_vfid_p);
       return NULL;
     }
 
-  tfile_vfid_p->tde_encrypted = query_p->xasl_ent->includes_tde_class;
-
-  VFID_SET_NULL (&tfile_vfid_p->temp_vfid);
-
-  if (file_create_query_area (thread_p, tfile_vfid_p->tde_encrypted, &tfile_vfid_p->temp_vfid) != NO_ERROR)
+  if (query_p->xasl_ent->includes_tde_class)
     {
-      free_and_init (tfile_vfid_p);
-      return NULL;
+      tfile_vfid_p->tde_encrypted = true;
+      if (file_apply_tde_algorithm (thread_p, &tfile_vfid_p->temp_vfid,
+				    (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_ALGORITHM_FOR_TEMP)) != NO_ERROR)
+	{
+	  file_temp_retire (thread_p, &tfile_vfid_p->temp_vfid);
+	  free_and_init (tfile_vfid_p);
+	  return NULL;
+	}
     }
-
   /* chain the tfile_vfid to the query_entry->temp_vfid */
   temp = query_p->temp_vfid;
   query_p->temp_vfid = tfile_vfid_p;

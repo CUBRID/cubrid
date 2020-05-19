@@ -723,7 +723,7 @@ static int file_perm_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, cons
 static int file_rv_dealloc_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool compensate_or_run_postpone);
 
 STATIC_INLINE int file_create_temp_internal (THREAD_ENTRY * thread_p, int npages, FILE_TYPE ftype, bool is_numerable,
-					     bool tde_encrypted, VFID * vfid_out) __attribute__ ((ALWAYS_INLINE));
+					     VFID * vfid_out) __attribute__ ((ALWAYS_INLINE));
 static int file_sector_map_pages (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop, void *args);
 static DISK_ISVALID file_table_check (THREAD_ENTRY * thread_p, const VFID * vfid, DISK_VOLMAP_CLONE * disk_map_clone);
 
@@ -3144,12 +3144,10 @@ file_create_heap (THREAD_ENTRY * thread_p, bool reuse_oid, const OID * class_oid
  * npages (in)       : desired number of pages (ignored when taking file from cache)
  * ftype (in)        : file type
  * is_numerable (in) : true if file must be numerable, false if should be regular file
- * tde_encrypted (in): true if file must be encrypted for TDE
  * vfid_out (out)    : VFID of file (obtained from cache or created).
  */
 STATIC_INLINE int
-file_create_temp_internal (THREAD_ENTRY * thread_p, int npages, FILE_TYPE ftype, bool is_numerable, bool tde_encrypted,
-			   VFID * vfid_out)
+file_create_temp_internal (THREAD_ENTRY * thread_p, int npages, FILE_TYPE ftype, bool is_numerable, VFID * vfid_out)
 {
   FILE_TABLESPACE tablespace;
   FILE_TEMPCACHE_ENTRY *tempcache_entry = NULL;
@@ -3184,19 +3182,6 @@ file_create_temp_internal (THREAD_ENTRY * thread_p, int npages, FILE_TYPE ftype,
       /* what about the number of pages? */
       *vfid_out = tempcache_entry->vfid;
     }
-  if (tde_encrypted)
-    {
-      error_code =
-	file_apply_tde_algorithm (thread_p, vfid_out,
-				  (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_ALGORITHM_FOR_TEMP));
-      if (error_code != NO_ERROR)
-	{
-	  VFID_SET_NULL (vfid_out);
-	  ASSERT_ERROR ();
-	  file_tempcache_retire_entry (tempcache_entry);
-	  return error_code;
-	}
-    }
 
   /* save to transaction temporary file list */
   file_tempcache_push_tran_file (thread_p, tempcache_entry);
@@ -3209,13 +3194,12 @@ file_create_temp_internal (THREAD_ENTRY * thread_p, int npages, FILE_TYPE ftype,
  * return	 : Error code
  * thread_p (in) : Thread entry
  * npages (in)	 : Number of pages
- * tde_encrypted (in): true if file must be encrypted for TDE
  * vfid (out)	 : File identifier
  */
 int
-file_create_temp (THREAD_ENTRY * thread_p, int npages, bool tde_encrypted, VFID * vfid)
+file_create_temp (THREAD_ENTRY * thread_p, int npages, VFID * vfid)
 {
-  return file_create_temp_internal (thread_p, npages, FILE_TEMP, false, tde_encrypted, vfid);
+  return file_create_temp_internal (thread_p, npages, FILE_TEMP, false, vfid);
 }
 
 /*
@@ -3224,13 +3208,12 @@ file_create_temp (THREAD_ENTRY * thread_p, int npages, bool tde_encrypted, VFID 
  * return	 : Error code
  * thread_p (in) : Thread entry
  * npages (in)	 : Number of pages
- * tde_encrypted (in): true if file must be encrypted for TDE
  * vfid (out)	 : File identifier
  */
 int
-file_create_temp_numerable (THREAD_ENTRY * thread_p, int npages, bool tde_encrypted, VFID * vfid)
+file_create_temp_numerable (THREAD_ENTRY * thread_p, int npages, VFID * vfid)
 {
-  return file_create_temp_internal (thread_p, npages, FILE_TEMP, true, tde_encrypted, vfid);
+  return file_create_temp_internal (thread_p, npages, FILE_TEMP, true, vfid);
 }
 
 /*
@@ -3238,13 +3221,12 @@ file_create_temp_numerable (THREAD_ENTRY * thread_p, int npages, bool tde_encryp
  *
  * return	 : Error code
  * thread_p (in) : Thread entry
- * tde_encrypted (in): true if file must be encrypted for TDE
  * vfid (out)	 : File identifier
  */
 int
-file_create_query_area (THREAD_ENTRY * thread_p, bool tde_encrypted, VFID * vfid)
+file_create_query_area (THREAD_ENTRY * thread_p, VFID * vfid)
 {
-  return file_create_temp_internal (thread_p, 1, FILE_QUERY_AREA, false, tde_encrypted, vfid);
+  return file_create_temp_internal (thread_p, 1, FILE_QUERY_AREA, false, vfid);
 }
 
 /*
