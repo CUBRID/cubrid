@@ -367,7 +367,7 @@ public class CUBRIDClob implements Clob {
 
 		remaining_size = lobHandle.getLobSize() - offset;
 
-		if (remaining_size < 0) {
+		if (remaining_size <= 0) {
 			return 0;
 		}
 
