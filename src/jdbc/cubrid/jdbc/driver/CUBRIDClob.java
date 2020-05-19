@@ -448,8 +448,12 @@ public class CUBRIDClob implements Clob {
 		}
 	}
 
-	public String toString() {
-		return lobHandle.toString();
+	public String toString() throws RuntimeException {
+		if (isLobLocator == true) {
+			return lobHandle.toString();
+		} else {
+			throw new RuntimeException("The lob locator does not exist because the column type has changed.");
+		}
 	}
 
 	public boolean equals(Object obj) {
