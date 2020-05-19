@@ -20987,8 +20987,8 @@ parser_generate_xasl_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, in
     case PT_UNION:
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
-      /* The parser tree can be reused when multiple queries are executed through ux_execute_array ().
-	 The XASL object has already been freed at pt_exit_packing_buf (), so only node->info.query.xasl is changed to null. */
+      /* The parser tree can be reused when multiple queries are executed through ux_execute_array (). */
+      /* The XASL object has already been freed at pt_exit_packing_buf (), so only node->info.query.xasl is changed to null. */
       node->info.query.xasl = NULL;
 
       (void) pt_query_set_reference (parser, node);
