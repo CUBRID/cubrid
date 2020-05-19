@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  * Redistribution and use in source and binary forms, with or without modification, 
  * are permitted provided that the following conditions are met: 
@@ -30,34 +31,31 @@
 
 package cubrid.jdbc.jci;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map.Entry;
-import java.util.Vector;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class UStatementHandlerCache {
-	private ConcurrentHashMap<String, Vector<UStatementEntry>> stmtHandlerCache;
+	private ConcurrentHashMap<String, List<UStatementHandlerCacheEntry>> stmtHandlerCache;
 
 	public UStatementHandlerCache() {
-		stmtHandlerCache = new ConcurrentHashMap<String, Vector<UStatementEntry>> ();
+		stmtHandlerCache = new ConcurrentHashMap<String, List<UStatementHandlerCacheEntry>> ();
 	}
 
-	public ConcurrentHashMap<String, Vector<UStatementEntry>> getCache() {
-		return stmtHandlerCache;
-	}
-	
-	public Vector<UStatementEntry> getEntry (String sql) {
+	public List<UStatementHandlerCacheEntry> getEntry (String sql) {
 		if (!stmtHandlerCache.containsKey(sql)) {
-		   Vector<UStatementEntry> vec = new Vector<UStatementEntry>();
-		   stmtHandlerCache.put(sql, vec);
+			List<UStatementHandlerCacheEntry> vec = new ArrayList<UStatementHandlerCacheEntry>();
+			stmtHandlerCache.putIfAbsent(sql, vec);
 		}
 		
 		return stmtHandlerCache.get(sql);
 	}
 	
 	public void clearEntry () {
-		for (Entry<String, Vector<UStatementEntry>> entry : stmtHandlerCache.entrySet()) {
-			Vector<UStatementEntry> cacheEntries = entry.getValue();
-			for (UStatementEntry e: cacheEntries) {
+		for (Entry<String, List<UStatementHandlerCacheEntry>> entry : stmtHandlerCache.entrySet()) {
+			List<UStatementHandlerCacheEntry> cacheEntries = entry.getValue();
+			for (UStatementHandlerCacheEntry e: cacheEntries) {
 				UStatement s = e.getStatement();
 				s.closeCursor();
 			}
@@ -67,18 +65,11 @@ public class UStatementHandlerCache {
 	}
 	
 	public void clearStatus () {
-		for (Entry<String, Vector<UStatementEntry>> entry : stmtHandlerCache.entrySet()) {
-			Vector<UStatementEntry> cacheEntries = entry.getValue();
-			for (UStatementEntry e: cacheEntries) {
-				e.setStatus(UStatementEntry.AVAILABLE);
+		for (Entry<String, List<UStatementHandlerCacheEntry>> entry : stmtHandlerCache.entrySet()) {
+			List<UStatementHandlerCacheEntry> cacheEntries = entry.getValue();
+			for (UStatementHandlerCacheEntry e: cacheEntries) {
+				e.setAvailable(true);
 			}
 		}
 	}
-
-	@Override
-	public String toString() {
-		return "UStatementHandlerCache [stmtHandlerCache=" + stmtHandlerCache + "]";
-	}
-	
-	
 }
