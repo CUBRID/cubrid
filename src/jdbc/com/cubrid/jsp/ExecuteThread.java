@@ -117,7 +117,6 @@ public class ExecuteThread extends Thread {
 	ExecuteThread(Socket client) throws IOException {
 		super();
 		this.client = client;
-		input = new DataInputStream(new BufferedInputStream(this.client.getInputStream()));
 		output = new DataOutputStream(new BufferedOutputStream(this.client.getOutputStream()));
 	}
 
@@ -128,6 +127,8 @@ public class ExecuteThread extends Thread {
 	public void closeJdbcConnection() throws IOException, SQLException {
 		if (isProcessing == true && isDestroyed == false) {
 			connection.close(); // set isProcessing = false in close()
+			/* send end code */
+			sendCall();
 		}
 	}
 
@@ -155,6 +156,7 @@ public class ExecuteThread extends Thread {
 		/* main routine handling stored procedure */
 		while (!isDestroyed) {
 			try {
+				input = new DataInputStream(new BufferedInputStream(this.client.getInputStream()));
 				int requestCode = -1;
 				do {
 					requestCode = input.readInt();
@@ -170,7 +172,8 @@ public class ExecuteThread extends Thread {
 					}
 					default: {
 						/* invalid request */
-						//throw new ExecuteException ("invalid request code: " + requestCode);
+						System.out.println ("invalid request :" + requestCode);
+						throw new ExecuteException ("invalid request code: " + requestCode);
 					}
 					}
 				} while (requestCode != REQ_CODE_INVOKE_SP && requestCode != REQ_CODE_DESTROY);
@@ -368,6 +371,25 @@ public class ExecuteThread extends Thread {
 		return sp.makeReturnValue(obj);
 	}
 
+	private void sendResult(Value result, StoredProcedure procedure) throws IOException, ExecuteException, TypeMismatchException {
+		Object resolvedResult = null;
+		if (result != null) {
+			resolvedResult = toDbTypeValue(procedure.getReturnType(), result);
+		}
+
+		byteBuf.reset();
+
+		sendValue(resolvedResult, outBuf, procedure.getReturnType());
+		returnOutArgs(procedure, outBuf);
+		outBuf.flush();
+
+		output.writeInt(REQ_CODE_RESULT);
+		output.writeInt(byteBuf.size() + 4);
+		byteBuf.writeTo(output);
+		output.writeInt(REQ_CODE_RESULT);
+		output.flush();
+	}
+	
 	public void sendCall() throws IOException {
 		output.writeInt(REQ_CODE_INTERNAL_JDBC);
 		output.flush();
@@ -572,25 +594,6 @@ public class ExecuteThread extends Thread {
 			break;
 		}
 		return arg;
-	}
-
-	private void sendResult(Value result, StoredProcedure procedure) throws IOException, ExecuteException, TypeMismatchException {
-		Object resolvedResult = null;
-		if (result != null) {
-			resolvedResult = toDbTypeValue(procedure.getReturnType(), result);
-		}
-
-		byteBuf.reset();
-
-		sendValue(resolvedResult, outBuf, procedure.getReturnType());
-		returnOutArgs(procedure, outBuf);
-		outBuf.flush();
-
-		output.writeInt(REQ_CODE_RESULT);
-		output.writeInt(byteBuf.size() + 4);
-		byteBuf.writeTo(output);
-		output.writeInt(REQ_CODE_RESULT);
-		output.flush();
 	}
 
 	private void sendValue(Object result, DataOutputStream dos, int ret_type)

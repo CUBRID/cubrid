@@ -56,15 +56,10 @@ public class CUBRIDServerSidePreparedStatement extends CUBRIDPreparedStatement {
 					if (is_closed)
 						return;
 					
-					complete();
 					is_closed = true;
-
-					if (u_stmt != null) {
-						u_stmt.close();
-						u_stmt = null;
-					}
-
 					con.removeStatement(this);
+					
+					/* remove reference */
 					con = null;
 					u_con = null;
 					error = null;

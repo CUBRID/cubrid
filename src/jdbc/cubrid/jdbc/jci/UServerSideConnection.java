@@ -40,7 +40,7 @@ package cubrid.jdbc.jci;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.Socket;
-import java.util.Vector;
+import java.util.List;
 
 import cubrid.jdbc.driver.CUBRIDException;
 
@@ -168,9 +168,8 @@ public class UServerSideConnection extends UConnection {
 				return;
 
 			outBuffer.newRequest(output, UFunctionCode.CON_CLOSE);
-			UInputBuffer inputBuffer = send_recv_msg();
-			/* consume result value (0) from CON_CLOSE */
-			inputBuffer.readInt();
+			UInputBuffer in = send_recv_msg();
+			in.readInt(); // 0
 		} catch (Exception e) {
 		}
 	}
@@ -193,12 +192,12 @@ public class UServerSideConnection extends UConnection {
 		UStatement preparedStmt = null;
 		
 		/* try to find cached UStatement */
-		Vector<UStatementEntry> entries = stmtHandlerCache.getEntry(sql);	
-		for (UStatementEntry e: entries) {
+		List<UStatementHandlerCacheEntry> entries = stmtHandlerCache.getEntry(sql);	
+		for (UStatementHandlerCacheEntry e: entries) {
 			if (e.isAvailable()) {
 				preparedStmt = e.getStatement();
 				preparedStmt.moveCursor(0, UStatement.CURSOR_SET);
-				e.setStatus(UStatementEntry.HOLDING);
+				e.setAvailable(false);
 				break;
 			}
 		}
@@ -206,7 +205,7 @@ public class UServerSideConnection extends UConnection {
 		/* if entry not found, create new UStatement */
 		if (preparedStmt == null) {
 			UStatement newStmt = super.prepareInternal(sql, flag, recompile);
-			entries.add(new UStatementEntry (newStmt));
+			entries.add(new UStatementHandlerCacheEntry (newStmt));
 			preparedStmt = newStmt;
 		}
 		

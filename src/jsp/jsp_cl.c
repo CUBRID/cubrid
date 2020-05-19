@@ -30,6 +30,7 @@
 #include <sys/types.h>
 #include <sys/param.h>
 #include <sys/socket.h>
+#include <sys/un.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
@@ -41,6 +42,7 @@
 #include <windows.h>
 #endif /* not WINDOWS */
 
+#include "tcp.h"
 #include "authenticate.h"
 #include "error_manager.h"
 #include "memory_alloc.h"
@@ -2173,7 +2175,7 @@ jsp_send_destroy_request (const SOCKET sockfd)
   return NO_ERROR;
 }
 
-extern int 
+extern int
 jsp_get_socket_status (void)
 {
   return sock_fds[0];
@@ -2761,6 +2763,15 @@ redo:
       tran_begin_libcas_function ();
       libcas_main (sockfd);	/* jdbc call */
       tran_end_libcas_function ();
+
+      nbytes = jsp_readn (sockfd, (char *) &end_code, (int) sizeof (int));
+      end_code = ntohl (end_code);
+        if (nbytes != (int) sizeof (int) || start_code != end_code)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
+      return ER_SP_NETWORK_ERROR;
+    }
+
       goto redo;
     }
   else if (start_code == SP_CODE_RESULT || start_code == SP_CODE_ERROR)
@@ -2772,14 +2783,15 @@ redo:
 	  goto error;
 	}
 
-    switch (start_code) {
-      case SP_CODE_RESULT:
-      error_code = jsp_receive_result (buffer, ptr, sp_args);
-      break;
-      case SP_CODE_ERROR:
-      error_code = jsp_receive_error (buffer, ptr, sp_args);
-      break;
-    }
+      switch (start_code)
+	{
+	case SP_CODE_RESULT:
+	  error_code = jsp_receive_result (buffer, ptr, sp_args);
+	  break;
+	case SP_CODE_ERROR:
+	  error_code = jsp_receive_error (buffer, ptr, sp_args);
+	  break;
+	}
       if (error_code != NO_ERROR)
 	{
 	  goto error;
@@ -2918,12 +2930,22 @@ static SOCKET
 jsp_connect_server (void)
 {
   struct sockaddr_in tcp_srv_addr;
+  struct sockaddr_un unix_srv_addr;
   SOCKET sockfd = INVALID_SOCKET;
   int success = -1;
   int server_port = -1;
   unsigned int inaddr;
   int b;
   char *server_host = (char *) "127.0.0.1";	/* assume as local host */
+  int domain;
+
+  union
+  {
+    struct sockaddr_in in;
+    struct sockaddr_un un;
+  } saddr_buf;
+  struct sockaddr *saddr = (struct sockaddr *) &saddr_buf;
+  socklen_t slen;
 
   server_port = jsp_get_server_port ();
   if (server_port < 0)
@@ -2937,46 +2959,61 @@ jsp_connect_server (void)
   server_host = net_client_get_server_host ();
 #endif
 
-  memset ((void *) &tcp_srv_addr, 0, sizeof (tcp_srv_addr));
-  tcp_srv_addr.sin_family = AF_INET;
-
   inaddr = inet_addr (server_host);
-  if (inaddr != INADDR_NONE)
+#if 0
+  if (inaddr == inet_addr ("127.0.0.1"))
     {
-      memcpy ((void *) &tcp_srv_addr.sin_addr, (void *) &inaddr, sizeof (inaddr));
+      memset ((void *) &unix_srv_addr, 0, sizeof (unix_srv_addr));
+      unix_srv_addr.sun_family = AF_UNIX;
+      strncpy (unix_saddr.sun_path, css_get_master_domain_path (), sizeof (unix_saddr.sun_path) - 1);
+      slen = sizeof (unix_srv_addr);
+      memcpy ((void *) saddr, (void *) &unix_srv_addr, slen);
     }
   else
+#endif
     {
-      struct hostent *hp;
-      hp = gethostbyname (server_host);
-
-      if (hp == NULL)
+      memset ((void *) &tcp_srv_addr, 0, sizeof (tcp_srv_addr));
+      tcp_srv_addr.sin_family = AF_INET;
+      tcp_srv_addr.sin_port = htons (server_port);
+      
+      if (inaddr != INADDR_NONE)
 	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, server_host);
-	  return INVALID_SOCKET;
-
+	  memcpy ((void *) &tcp_srv_addr.sin_addr, (void *) &inaddr, sizeof (inaddr));
 	}
-      memcpy ((void *) &tcp_srv_addr.sin_addr, (void *) hp->h_addr, hp->h_length);
+      else
+	{
+	  struct hostent *hp;
+	  hp = gethostbyname (server_host);
+
+	  if (hp == NULL)
+	    {
+	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, server_host);
+	      return INVALID_SOCKET;
+	    }
+	  memcpy ((void *) &tcp_srv_addr.sin_addr, (void *) hp->h_addr, hp->h_length);
+	}
+      slen = sizeof (tcp_srv_addr);
+      memcpy ((void *) saddr, (void *) &tcp_srv_addr, slen);
     }
 
-  tcp_srv_addr.sin_port = htons (server_port);
-
-  sockfd = socket (AF_INET, SOCK_STREAM, 0);
+  sockfd = socket (saddr->sa_family, SOCK_STREAM, 0);
   if (IS_INVALID_SOCKET (sockfd))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_CONNECT_JVM, 1, "socket()");
       return INVALID_SOCKET;
     }
+  else
+    {
+      b = 1;
+      setsockopt (sockfd, IPPROTO_TCP, TCP_NODELAY, (char *) &b, sizeof (b));
+    }
 
-  success = connect (sockfd, (struct sockaddr *) &tcp_srv_addr, sizeof (tcp_srv_addr));
+  success = connect (sockfd, saddr, slen);
   if (success < 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_CONNECT_JVM, 1, "connect()");
       return INVALID_SOCKET;
     }
-
-  b = 1;
-  setsockopt (sockfd, IPPROTO_TCP, TCP_NODELAY, (char *) &b, sizeof (b));
 
   return sockfd;
 }
