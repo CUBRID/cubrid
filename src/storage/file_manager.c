@@ -5394,6 +5394,27 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_in
       pgbuf_set_tde_algorithm (thread_p, page_alloc, tde_algo, FILE_IS_TEMPORARY (fhead));
     }
 
+#if !defined (NDEBUG)
+  {
+    TDE_ALGORITHM file_tde_algo = TDE_ALGORITHM_NONE;
+
+    file_get_tde_algorithm_internal (fhead, &file_tde_algo);
+    if (!is_page_alloc_fixed)
+      {
+	page_alloc = pgbuf_fix (thread_p, vpid_out, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+	if (page_alloc == NULL)
+	  {
+	    ASSERT_ERROR_AND_SET (error_code);
+	    goto exit;
+	  }
+	is_page_alloc_fixed = true;
+      }
+    pgbuf_get_tde_algorithm (page_alloc, &tde_algo);
+
+    assert (tde_algo == file_tde_algo);
+  }
+#endif /* NDEBUG */
+
   if (page_out != NULL)
     {
       if (!is_page_alloc_fixed)
@@ -5869,6 +5890,8 @@ file_file_map_set_tde_algorithm (THREAD_ENTRY * thread_p, PAGE_PTR * page, bool 
  * vfid (in)      : File identifier
  * tde_algo (in) : encryption algorithm - NONE, AES, ARIA
  *
+ * NOTDE: The iterating pages part is the same as file_map_pages(). To set TDE to all the pages, unconditional latch has to be latched, but file_map_pages() doesn't support unconditional latch in SERVER_MODE. Becuase this function uses PGBUF_UNCONDITIONAL_LATCH, this has to be called before the file(vfid) is accessed by other thread, or it can cause dead lock (see: file_map_pages()).
+ *
  */
 int
 file_apply_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, const TDE_ALGORITHM tde_algo)
@@ -5878,7 +5901,11 @@ file_apply_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, const TDE_
   VPID vpid_fhead;
   PAGE_PTR page_fhead = NULL;
   FILE_HEADER *fhead = NULL;
+  FILE_EXTENSIBLE_DATA *extdata_ftab;
+  FILE_MAP_CONTEXT context;
   TDE_ALGORITHM prev_tde_algo = TDE_ALGORITHM_NONE;
+
+  assert (vfid != NULL && !VFID_ISNULL (vfid));
 
   /* fix header */
   FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
@@ -5891,6 +5918,14 @@ file_apply_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, const TDE_
 
   fhead = (FILE_HEADER *) page_fhead;
   file_header_sanity_check (thread_p, fhead);
+
+  /* init map context */
+  context.func = file_file_map_set_tde_algorithm;
+  context.args = &args;
+  context.latch_cond = PGBUF_UNCONDITIONAL_LATCH;
+  context.latch_mode = PGBUF_LATCH_WRITE;
+  context.stop = false;
+  context.ftab_collector.partsect_ftab = NULL;
 
   file_get_tde_algorithm_internal (fhead, &prev_tde_algo);
 
@@ -5911,27 +5946,51 @@ file_apply_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, const TDE_
     }
 
 
-  /*
-   * It sets tde flags to all the page in the file.
-   *
-   * Note: file_map_pages only allow PGBUF_CONDITIONAL_LATCH mode,
-   * So, If file_apply_tde_algorithm() is called when some pages in the file is fixed, it can be skipped to be applied
-   *
-   * TODO: handle the above case,
-   * 1. restrict this function to only use when no page is fixed
-   * 2. make up later (apply tde to unapplied pages at some moment)
-   * 3. do something like file_map_pages() by using PGBUF_UNCONDITIONAL_LATH (e.g. using watcher)
-   */
-  error_code =
-    file_map_pages (thread_p, vfid, PGBUF_LATCH_WRITE, PGBUF_CONDITIONAL_LATCH, file_file_map_set_tde_algorithm, &args);
+  /* collect table pages */
+  error_code = file_table_collect_ftab_pages (thread_p, page_fhead, true, &context.ftab_collector);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
       goto exit;
     }
 
+  /* map over partial sectors table */
+  FILE_HEADER_GET_PART_FTAB (fhead, extdata_ftab);
+  context.is_partial = true;
+  error_code = file_extdata_apply_funcs (thread_p, extdata_ftab, NULL, NULL, file_sector_map_pages, &context, false,
+					 NULL, NULL);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto exit;
+    }
+
+  if (!FILE_IS_TEMPORARY (fhead))
+    {
+      /* map over full table */
+      context.is_partial = false;
+      FILE_HEADER_GET_FULL_FTAB (fhead, extdata_ftab);
+      error_code = file_extdata_apply_funcs (thread_p, extdata_ftab, NULL, NULL, file_sector_map_pages, &context,
+					     false, NULL, NULL);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
+    }
+
+  assert (error_code == NO_ERROR);
+
 exit:
-  pgbuf_unfix (thread_p, page_fhead);
+  if (page_fhead != NULL)
+    {
+      pgbuf_unfix (thread_p, page_fhead);
+    }
+  if (context.ftab_collector.partsect_ftab != NULL)
+    {
+      db_private_free (thread_p, context.ftab_collector.partsect_ftab);
+    }
+
   return error_code;
 }
 
