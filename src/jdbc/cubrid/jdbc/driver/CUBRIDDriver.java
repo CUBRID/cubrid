@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  * Redistribution and use in source and binary forms, with or without modification,
  * are permitted provided that the following conditions are met:
@@ -42,16 +43,15 @@ import java.sql.Timestamp;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.List;
 import java.util.Properties;
 import java.util.StringTokenizer;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import cubrid.jdbc.jci.BrokerHealthCheck;
 import cubrid.jdbc.jci.UConnection;
+import cubrid.jdbc.jci.UClientSideConnection;
 import cubrid.jdbc.jci.UJCIManager;
 import cubrid.jdbc.jci.UJCIUtil;
 
@@ -153,7 +153,7 @@ public class CUBRIDDriver implements Driver {
 	    String prop = matcher.group(7);
 	    int port = default_port;
 
-	    UConnection u_con;
+	    UClientSideConnection u_con;
 	    String resolvedUrl;
 	    ConnectionProperties connProperties;
 
@@ -201,13 +201,13 @@ public class CUBRIDDriver implements Driver {
 			Collections.shuffle(altHostList);
 		}
 		try {
-		    u_con = UJCIManager.connect(altHostList, db, user, pass, resolvedUrl);
+		    u_con = (UClientSideConnection) UJCIManager.connect(altHostList, db, user, pass, resolvedUrl);
 		} catch (CUBRIDException e) {
 		    throw e;
 		}
 	    } else {
 		try {
-		    u_con = UJCIManager.connect(host, port, db, user, pass, resolvedUrl);
+		    u_con = (UClientSideConnection) UJCIManager.connect(host, port, db, user, pass, resolvedUrl);
 		} catch (CUBRIDException e) {
 		    throw e;
 		}
@@ -232,9 +232,9 @@ public class CUBRIDDriver implements Driver {
 				return c;
 			}
 
-			UConnection u_con = UJCIManager.connectDefault();
-			CUBRIDConnection con = new CUBRIDConnection(u_con,
-					"jdbc:default:connection:", "default", true);
+			UConnection u_con = UJCIManager.connectServerSide();
+			CUBRIDConnection con = new CUBRIDConnectionDefault(u_con,
+					"jdbc:default:connection:", "default");
 			UJCIUtil.invoke("com.cubrid.jsp.ExecuteThread",
 					"setJdbcConnection", new Class[] { Connection.class }, t,
 					new Object[] { con });
