@@ -55,6 +55,7 @@ public class CUBRIDBlob implements Blob {
 	 */
 	private CUBRIDConnection conn;
 	private boolean isWritable;
+	private boolean isLobLocator;
 	private CUBRIDLobHandle lobHandle;
 
 	private ArrayList<java.io.Flushable> streamList = new ArrayList<java.io.Flushable>();
@@ -74,18 +75,20 @@ public class CUBRIDBlob implements Blob {
 
 		this.conn = conn;
 		isWritable = true;
-		lobHandle = new CUBRIDLobHandle(UUType.U_TYPE_BLOB, packedLobHandle);
+		isLobLocator = true;
+		lobHandle = new CUBRIDLobHandle(UUType.U_TYPE_BLOB, packedLobHandle, isLobLocator);
 	}
 
 	// get blob from existing result set
-	public CUBRIDBlob(CUBRIDConnection conn, byte[] packedLobHandle) throws SQLException {
+	public CUBRIDBlob(CUBRIDConnection conn, byte[] packedLobHandle, boolean isLobLocator) throws SQLException {
 		if (conn == null || packedLobHandle == null) {
 			throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_value);
 		}
 
 		this.conn = conn;
 		isWritable = false;
-		lobHandle = new CUBRIDLobHandle(UUType.U_TYPE_BLOB, packedLobHandle);
+		this.isLobLocator = isLobLocator;
+		lobHandle = new CUBRIDLobHandle(UUType.U_TYPE_BLOB, packedLobHandle, isLobLocator);
 	}
 
 	/*
@@ -124,18 +127,23 @@ public class CUBRIDBlob implements Blob {
 
 		byte[] buf = new byte[length];
 
-		while (length > 0) {
-			read_len = Math.min(length, BLOB_MAX_IO_LENGTH);
-			real_read_len = conn.lobRead(lobHandle.getPackedLobHandle(), pos,
-					buf, total_read_len, read_len);
+		if (isLobLocator) {
+			while (length > 0) {
+				read_len = Math.min(length, BLOB_MAX_IO_LENGTH);
+				real_read_len = conn.lobRead(lobHandle.getPackedLobHandle(), pos,
+						buf, total_read_len, read_len);
 
-			pos += real_read_len;
-			length -= real_read_len;
-			total_read_len += real_read_len;
+				pos += real_read_len;
+				length -= real_read_len;
+				total_read_len += real_read_len;
 
-			if (real_read_len == 0) {
-				break;
+				if (real_read_len == 0) {
+					break;
+				}
 			}
+		} else {
+			System.arraycopy(lobHandle.getPackedLobHandle(), (int) pos, buf, 0, length);
+			total_read_len = length;
 		}
 
 		if (total_read_len < buf.length) {
@@ -253,6 +261,7 @@ public class CUBRIDBlob implements Blob {
 		lobHandle = null;
 		streamList = null;
 		isWritable = false;
+		isLobLocator = true;
 	}
 
 	public CUBRIDLobHandle getLobHandle() {
@@ -278,8 +287,12 @@ public class CUBRIDBlob implements Blob {
 		}
 	}
 
-	public String toString() {
-		return lobHandle.toString();
+	public String toString() throws RuntimeException {
+		if (isLobLocator == true) {
+			return lobHandle.toString();
+		} else {
+			throw new RuntimeException("The lob locator does not exist because the column type has changed.");
+		}
 	}
 
 	public boolean equals(Object obj) {

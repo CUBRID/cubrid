@@ -1312,11 +1312,11 @@ public class UStatement {
 		if (obj == null)
 			return null;
 
-		if (obj instanceof CUBRIDBlob) {
-			return ((CUBRIDBlob) obj);
+		try {
+			return (UGetTypeConvertedValue.getBlob(obj, relatedConnection.getCUBRIDConnection()));
+		} catch (UJciException e) {
+			e.toUError(errorHandler);
 		}
-
-		errorHandler.setErrorCode(UErrorCode.ER_TYPE_CONVERSION);
 		return null;
 	}
 
@@ -1327,11 +1327,11 @@ public class UStatement {
 		if (obj == null)
 			return null;
 
-		if (obj instanceof CUBRIDClob) {
-			return ((CUBRIDClob) obj);
+		try {
+			return (UGetTypeConvertedValue.getClob(obj, relatedConnection.getCUBRIDConnection()));
+		} catch (UJciException e) {
+			e.toUError(errorHandler);
 		}
-
-		errorHandler.setErrorCode(UErrorCode.ER_TYPE_CONVERSION);
 		return null;
 	}
 
@@ -2141,7 +2141,7 @@ public class UStatement {
 		String charsetName;
 
 		size = inBuffer.readInt();
-		if (size <= 0)
+		if (size < 0)
 			return null;
 
 		typeInfo = readTypeFromData(index, inBuffer);
