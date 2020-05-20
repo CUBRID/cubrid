@@ -4898,8 +4898,8 @@ fileio_get_number_of_partition_free_sectors (const char *path_p)
     }
   else
     {
-      const size_t io_sectorsize_in_block = IO_SECTORSIZE / buf.f_bsize;
-      nsectors_of_partition = buf.f_bavail / io_sectorsize_in_block;
+      const size_t f_avail_size = buf.f_bsize * buf.f_bavail;
+      nsectors_of_partition = f_avail_size / IO_SECTORSIZE;
       if (nsectors_of_partition < 0 || nsectors_of_partition > INT_MAX)
 	{
 	  nsectors_of_partition = INT_MAX;
