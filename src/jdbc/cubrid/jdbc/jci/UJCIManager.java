@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  * Redistribution and use in source and binary forms, with or without modification,
  * are permitted provided that the following conditions are met:
@@ -106,7 +107,7 @@ abstract public class UJCIManager {
 		return url_cache;
 	}
 
-	public static UConnection connectDefault() throws SQLException {
+	public static UConnection connectServerSide() throws SQLException {
 		Thread curThread = Thread.currentThread();
 		Socket s = (Socket) UJCIUtil.invoke("com.cubrid.jsp.ExecuteThread",
 				"getSocket", null, curThread, null);

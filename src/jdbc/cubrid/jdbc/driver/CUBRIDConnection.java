@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  * Redistribution and use in source and binary forms, with or without modification, 
  * are permitted provided that the following conditions are met: 
@@ -175,16 +176,6 @@ public class CUBRIDConnection implements Connection {
 		}
 		auto_commit = autoCommit;
 		u_con.setAutoCommit(autoCommit);
-
-		/*
-		 * Disabled Send to Broker for ServerSide AutoCommit
-		 * synchronized(u_con){ u_con.setAutoCommit(autoCommit); error =
-		 * u_con.getRecentError(); }
-		 * 
-		 * switch (error.getErrorCode()){ case UErrorCode.ER_NO_ERROR:
-		 * auto_commit = autoCommit; break; default: throw new
-		 * CUBRIDException(error); }
-		 */
 	}
 
 	public synchronized boolean getAutoCommit() throws SQLException {
@@ -544,7 +535,7 @@ public class CUBRIDConnection implements Connection {
 
 	// 3.0 api
 
-	synchronized public void setCharset(String charsetName)
+	public synchronized void setCharset(String charsetName)
 			throws java.io.UnsupportedEncodingException {
 		u_con.setCharset(charsetName);
 	}

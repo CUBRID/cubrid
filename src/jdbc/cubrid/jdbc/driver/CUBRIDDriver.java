@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  * Redistribution and use in source and binary forms, with or without modification,
  * are permitted provided that the following conditions are met:
@@ -234,7 +235,7 @@ public class CUBRIDDriver implements Driver {
 				return c;
 			}
 
-			UConnection u_con = UJCIManager.connectDefault();
+			UConnection u_con = UJCIManager.connectServerSide();
 			CUBRIDConnection con = new CUBRIDConnectionDefault(u_con,
 					"jdbc:default:connection:", "default");
 			UJCIUtil.invoke("com.cubrid.jsp.ExecuteThread",
