@@ -4172,10 +4172,6 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
       ATOMIC_INC_32 (&file_Tempcache->spacedb_temp.npage_ftab, -fhead->n_page_ftab);
       ATOMIC_INC_32 (&file_Tempcache->spacedb_temp.npage_user, -fhead->n_page_user);
       ATOMIC_INC_32 (&file_Tempcache->spacedb_temp.npage_reserved, -fhead->n_page_free);
-
-      /* Init tde algorithm in user pages. In case of permaent file, it is done in pgbuf_dealloc_page () */
-      file_apply_tde_algorithm (thread_p, vfid, TDE_ALGORITHM_NONE);
-
       pgbuf_unfix_and_init (thread_p, page_fhead);
     }
 
@@ -4321,6 +4317,7 @@ file_temp_retire_internal (THREAD_ENTRY * thread_p, const VFID * vfid, bool was_
 {
   FILE_TEMPCACHE_ENTRY *entry = NULL;
   int error_code = NO_ERROR;
+  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
 
   if (was_preserved)
     {
@@ -4345,6 +4342,16 @@ file_temp_retire_internal (THREAD_ENTRY * thread_p, const VFID * vfid, bool was_
     {
       entry = file_tempcache_pop_tran_file (thread_p, vfid);
       assert (entry != NULL);
+    }
+
+  /* Init tde algorithm in user pages */
+  if (file_get_tde_algorithm (thread_p, vfid, &tde_algo) != NO_ERROR)
+    {
+      assert (false);
+    }
+  if (tde_algo != TDE_ALGORITHM_NONE)
+    {
+      file_apply_tde_algorithm (thread_p, &entry->vfid, TDE_ALGORITHM_NONE);
     }
 
   if (entry != NULL && file_tempcache_put (thread_p, entry))
@@ -9316,9 +9323,6 @@ file_tempcache_put (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_ENTRY * entry)
     }
   /* make sure entry has correct type. */
   entry->ftype = fhead.type;
-
-  /* Init tde algorithm in user pages */
-  file_apply_tde_algorithm (thread_p, &entry->vfid, TDE_ALGORITHM_NONE);
 
   /* lock temporary cache */
   file_tempcache_lock ();
