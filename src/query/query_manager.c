@@ -352,6 +352,7 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
   query_p->query_flag = 0;
   query_p->is_holdable = false;
   query_p->is_preserved = false;
+  query_p->includes_tde_class = false;
 
 #if defined (NDEBUG)
   /* just a safe guard for a release build. I don't expect it will be hit. */
@@ -1012,9 +1013,9 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, xasl_st
   /* get some information from the XASL stream */
   p = or_unpack_int ((char *) stream->buffer, &header_size);
   p = or_unpack_int (p, &dbval_cnt);
+  p = or_unpack_int (p, &includes_tde_class);
   p = or_unpack_oid (p, &creator_oid);
   p = or_unpack_int (p, &n_oid_list);
-  p = or_unpack_int (p, &includes_tde_class);
 
   if (n_oid_list > 0)
     {
@@ -1048,8 +1049,7 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, xasl_st
     }
 
   error_code =
-    xcache_insert (thread_p, context, stream, n_oid_list, class_oid_list_p, class_locks, tcard_list_p,
-		   includes_tde_class, &cache_entry_p);
+    xcache_insert (thread_p, context, stream, n_oid_list, class_oid_list_p, class_locks, tcard_list_p, &cache_entry_p);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -1151,6 +1151,7 @@ qmgr_process_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl_tree, char *xasl_s
 	{
 	  goto exit_on_error;
 	}
+      query_p->includes_tde_class = xasl_p->includes_tde_class;
     }
 
   if (flag & RETURN_GENERATED_KEYS)
@@ -1424,6 +1425,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
   query_p->list_ent = list_cache_entry_p;	/* for qfile_end_use_of_list_cache_entry() */
   query_p->query_status = QUERY_IN_PROGRESS;
   query_p->query_flag = *flag_p;
+  query_p->includes_tde_class = xclone.xasl->includes_tde_class;
   if (*flag_p & RESULT_HOLDABLE)
     {
       query_p->is_holdable = true;
@@ -2664,7 +2666,7 @@ qmgr_create_new_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP
       return NULL;
     }
 
-  if (query_p->xasl_ent->includes_tde_class)
+  if (query_p->includes_tde_class)
     {
       tfile_vfid_p->tde_encrypted = true;
     }
@@ -2757,7 +2759,7 @@ qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
       return NULL;
     }
 
-  if (query_p->xasl_ent->includes_tde_class)
+  if (query_p->includes_tde_class)
     {
       tfile_vfid_p->tde_encrypted = true;
       if (file_apply_tde_algorithm (thread_p, &tfile_vfid_p->temp_vfid,

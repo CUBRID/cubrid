@@ -4616,7 +4616,7 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
       /* sort and aggregate partial results */
       if (sort_listfile (thread_p, NULL_VOLID, estimated_pages, &qexec_hash_gby_get_next, &gbstate,
 			 &qexec_hash_gby_put_next, &gbstate, cmp_fn, &gbstate.agg_hash_context->sort_key, SORT_DUP,
-			 NO_SORT_LIMIT, query_p->xasl_ent->includes_tde_class) != NO_ERROR)
+			 NO_SORT_LIMIT, query_p->includes_tde_class) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
@@ -4697,7 +4697,7 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
 
   if (sort_listfile (thread_p, NULL_VOLID, estimated_pages, &qexec_gby_get_next, &gbstate, &qexec_gby_put_next,
 		     &gbstate, gbstate.cmp_fn, &gbstate.key_info, SORT_DUP, NO_SORT_LIMIT,
-		     query_p->xasl_ent->includes_tde_class) != NO_ERROR)
+		     query_p->includes_tde_class) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
@@ -19453,7 +19453,7 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
 
   if (sort_listfile (thread_p, NULL_VOLID, estimated_pages, &qexec_analytic_get_next, &analytic_state,
 		     &qexec_analytic_put_next, &analytic_state, analytic_state.cmp_fn, &analytic_state.key_info,
-		     SORT_DUP, NO_SORT_LIMIT, query_p->xasl_ent->includes_tde_class) != NO_ERROR)
+		     SORT_DUP, NO_SORT_LIMIT, query_p->includes_tde_class) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }

@@ -1334,13 +1334,12 @@ xcache_need_cleanup (void)
  * class_oids (in)    : Related objects OID's.
  * class_locks (in)   : Related objects locks.
  * tcards (in)	      : Related objects cardinality.
- * includes_tde_class (in)  : whether tde-configured class is included or not
  * xcache_entry (out) : XASL cache entry.
  */
 int
 xcache_insert (THREAD_ENTRY * thread_p, const compile_context * context, XASL_STREAM * stream,
 	       int n_oid, const OID * class_oids, const int *class_locks, const int *tcards,
-	       const int includes_tde_class, XASL_CACHE_ENTRY ** xcache_entry)
+	       XASL_CACHE_ENTRY ** xcache_entry)
 {
   int error_code = NO_ERROR;
   bool inserted = false;
@@ -1461,7 +1460,6 @@ xcache_insert (THREAD_ENTRY * thread_p, const compile_context * context, XASL_ST
       (*xcache_entry)->xasl_id.cache_flag = 1;	/* Start with fix count = 1. */
       (*xcache_entry)->n_related_objects = n_oid;
       (*xcache_entry)->related_objects = related_objects;
-      (*xcache_entry)->includes_tde_class = includes_tde_class;
       (*xcache_entry)->sql_info.sql_hash_text = sql_hash_text;
       (*xcache_entry)->sql_info.sql_user_text = sql_user_text;
       (*xcache_entry)->sql_info.sql_plan_text = sql_plan_text;
