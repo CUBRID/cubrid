@@ -38,14 +38,15 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.net.Socket;
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import com.cubrid.jsp.exception.ExecuteException;
 import com.cubrid.jsp.exception.TypeMismatchException;
@@ -109,8 +110,7 @@ public class ExecuteThread extends Thread {
 	private ByteArrayOutputStream byteBuf = new ByteArrayOutputStream(1024);
 	private DataOutputStream outBuf = new DataOutputStream(byteBuf);
 
-	boolean isDestroyed = false;
-	boolean isProcessing = false;
+	private AtomicInteger status = new AtomicInteger(ExecuteThreadStatus.IDLE.getValue());
 
 	private StoredProcedure storedProcedure = null;
 
@@ -125,10 +125,9 @@ public class ExecuteThread extends Thread {
 	}
 
 	public void closeJdbcConnection() throws IOException, SQLException {
-		if (isProcessing == true && isDestroyed == false) {
-			connection.close(); // set isProcessing = false in close()
-			/* send end code */
-			sendCall();
+		if (connection != null  && compareStatus(ExecuteThreadStatus.CALL)) {
+			connection.close();
+			setStatus (ExecuteThreadStatus.INVOKE);
 		}
 	}
 
@@ -139,13 +138,21 @@ public class ExecuteThread extends Thread {
 	public Connection getJdbcConnection() {
 		return this.connection;
 	}
-
-	public void setIsProcessing (Boolean isProcessing) {
-		this.isProcessing = isProcessing;
+	
+	public void setStatus (Integer value) {
+		this.status.set(value);
 	}
-
-	public Boolean getIsProcessing () {
-		return isProcessing;
+	
+	public void setStatus (ExecuteThreadStatus value) {
+		this.status.set(value.getValue());
+	}
+	
+	public Integer getStatus () {
+		return status.get();
+	}
+	
+	public boolean compareStatus (ExecuteThreadStatus value) {
+		return (status.get() == value.getValue());
 	}
 
 	public void setCharSet(String conCharsetName) {
@@ -154,12 +161,11 @@ public class ExecuteThread extends Thread {
 
 	public void run() {
 		/* main routine handling stored procedure */
-		while (!isDestroyed) {
+		int requestCode = -1;
+		while (!Thread.interrupted()) {
 			try {
-				input = new DataInputStream(new BufferedInputStream(this.client.getInputStream()));
-				int requestCode = -1;
 				do {
-					requestCode = input.readInt();
+					requestCode = listenCommand();
 					switch (requestCode) {
 					case REQ_CODE_INVOKE_SP: {
 						processStoredProcedure();
@@ -167,7 +173,6 @@ public class ExecuteThread extends Thread {
 					}
 					case REQ_CODE_DESTROY: {
 						destroyJDBCResources();
-						isDestroyed = true;
 						break;
 					}
 					default: {
@@ -177,16 +182,17 @@ public class ExecuteThread extends Thread {
 					}
 					}
 				} while (requestCode != REQ_CODE_INVOKE_SP && requestCode != REQ_CODE_DESTROY);
-			} catch (Exception e) {
-				isProcessing = false;
-				isDestroyed = true;
+			} catch (Throwable e) {
 				if (e instanceof IOException) {
+					setStatus(ExecuteThreadStatus.DESTROY);
 					/* 
 					 * CAS disconnects socket
 					 * 1) end of routine successfully by calling jsp_close_internal_connection ()
 					 * 2) CAS is in invalid state. we do not have to deal with it here.
 					 */
+					break;
 				} else {
+					setStatus (ExecuteThreadStatus.ERROR);
 					Throwable throwable = e;
 					if (e instanceof InvocationTargetException) {
 						throwable = ((InvocationTargetException) e).getTargetException();
@@ -198,7 +204,6 @@ public class ExecuteThread extends Thread {
 						Server.log(e1);
 					}
 				}
-				break;
 			}
 		}
 
@@ -217,18 +222,30 @@ public class ExecuteThread extends Thread {
 		connection = null;
 		charSet = null;
 	}
+	
+	private int listenCommand () throws Exception {
+		input = new DataInputStream(new BufferedInputStream(this.client.getInputStream()));
+		setStatus (ExecuteThreadStatus.IDLE);
+		return input.readInt();
+	}
 
 	private void processStoredProcedure () throws Exception {
+		setStatus (ExecuteThreadStatus.PARSE);
 		StoredProcedure procedure = makeStoredProcedure();
-
-		isProcessing = true;
-		Value result = procedure.invoke();
-
-		/* close without clearing JDBC resources */
+		Method m = procedure.getTarget().getMethod();
+		Object[] resolved = procedure.checkArgs(procedure.getArgs());
+		
+		setStatus (ExecuteThreadStatus.INVOKE);
+		Object result = m.invoke(null, resolved);
+		/* close server-side JDBC connection */
 		closeJdbcConnection();
-
+		
 		/* send results */
-		sendResult(result, procedure);
+		setStatus (ExecuteThreadStatus.RESULT);
+		Value resolvedResult = procedure.makeReturnValue(result);
+		sendResult(resolvedResult, procedure);
+		
+		setStatus (ExecuteThreadStatus.IDLE);
 	}
 
 	private StoredProcedure makeStoredProcedure() throws Exception {
@@ -246,21 +263,15 @@ public class ExecuteThread extends Thread {
 			return null;
 		}
 
-		if (storedProcedure == null) {
-			storedProcedure = new StoredProcedure(new String(methodSig), args, returnType);
-		}
-		else {
-			storedProcedure.setArgs(args);
-		}
+		storedProcedure = new StoredProcedure(new String(methodSig), args, returnType);
 		return storedProcedure;
 	}
 
 	private void destroyJDBCResources () throws SQLException, IOException {
+		setStatus(ExecuteThreadStatus.DESTROY);
 		if (connection != null) {
-			setIsProcessing (true);
 			connection.destroy();
 			connection.close();
-			setIsProcessing (false);
 		}
 	}
 
@@ -391,15 +402,22 @@ public class ExecuteThread extends Thread {
 	}
 	
 	public void sendCall() throws IOException {
-		output.writeInt(REQ_CODE_INTERNAL_JDBC);
-		output.flush();
+		if (compareStatus(ExecuteThreadStatus.INVOKE)) {
+			setStatus (ExecuteThreadStatus.CALL);
+			output.writeInt(REQ_CODE_INTERNAL_JDBC);
+			output.flush();
+		}
 	}
 
 	private void sendError(String exception, Socket socket) throws IOException {
 		byteBuf.reset();
 
-		sendValue(new Integer(1), outBuf, DB_INT);
-		sendValue(exception, outBuf, DB_STRING);
+		try {
+			sendValue(new Integer(1), outBuf, DB_INT);
+			sendValue(exception, outBuf, DB_STRING);
+		} catch (ExecuteException e) {
+			// ignore, never happened
+		}
 
 		outBuf.flush();
 		output.writeInt(REQ_CODE_ERROR);
@@ -577,13 +595,8 @@ public class ExecuteThread extends Thread {
 			bOID[5] = ((byte) ((slot >>> 0) & 0xFF));
 			bOID[6] = ((byte) ((vol >>> 8) & 0xFF));
 			bOID[7] = ((byte) ((vol >>> 0) & 0xFF));
-
-			if (connection == null) {
-				connection = (CUBRIDConnectionDefault) DriverManager
-						.getConnection("jdbc:default:connection:");
-			}
-			arg = new OidValue(new CUBRIDOID(connection,
-					bOID), mode, dbType);
+			
+			arg = new OidValue(bOID, mode, dbType);
 		}
 		break;
 		case DB_NULL:
@@ -597,7 +610,7 @@ public class ExecuteThread extends Thread {
 	}
 
 	private void sendValue(Object result, DataOutputStream dos, int ret_type)
-			throws IOException {
+			throws IOException, ExecuteException {
 		if (result == null) {
 			dos.writeInt(DB_NULL);
 		} else if (result instanceof Short) {
@@ -644,6 +657,9 @@ public class ExecuteThread extends Thread {
 			dos.writeInt(UJCIUtil.bytes2short(oid, 4));
 			dos.writeInt(UJCIUtil.bytes2short(oid, 6));
 		} else if (result instanceof ResultSet) {
+			if (((CUBRIDResultSet) result).getServerHandle() == 0) {
+				throw new ExecuteException ("CUBRIDResultSet is not returnable");
+			}
 			dos.writeInt(DB_RESULTSET);
 			dos.writeInt(((CUBRIDResultSet) result).getServerHandle());
 		} else if (result instanceof int[]) {

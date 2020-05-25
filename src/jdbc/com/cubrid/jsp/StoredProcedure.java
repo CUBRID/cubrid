@@ -335,4 +335,8 @@ public class StoredProcedure {
 	public String getSignature() {
 		return signature;
 	}
+	
+	public TargetMethod getTarget() {
+		return target;
+	}
 }

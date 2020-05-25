@@ -45,6 +45,8 @@ import java.util.List;
 import cubrid.jdbc.driver.CUBRIDException;
 
 public class UServerSideConnection extends UConnection {
+	public final static int INVOKE = 2;
+	
 	private final static byte CAS_CLIENT_SERVER_SIDE_JDBC = 6;
 	static {
 		driverInfo[5] = CAS_CLIENT_SERVER_SIDE_JDBC;
@@ -169,7 +171,7 @@ public class UServerSideConnection extends UConnection {
 
 			outBuffer.newRequest(output, UFunctionCode.CON_CLOSE);
 			UInputBuffer in = send_recv_msg();
-			in.readInt(); // 0
+			in.readInt(); // consume result code(0) from fn_con_close
 		} catch (Exception e) {
 		}
 	}
@@ -177,12 +179,11 @@ public class UServerSideConnection extends UConnection {
 	@Override
 	protected void closeInternal() {
 		if (client != null) {
-			UJCIUtil.invoke("com.cubrid.jsp.ExecuteThread", "setIsProcessing",
-					new Class[] { Boolean.class }, this.curThread,
-					new Object[] { new Boolean(false) });
-
 			stmtHandlerCache.clearStatus();
 			disconnect();
+			UJCIUtil.invoke("com.cubrid.jsp.ExecuteThread", "setStatus",
+					new Class[] { Integer.class }, this.curThread,
+					new Object[] { INVOKE });
 		}
 	}
 	
@@ -191,16 +192,19 @@ public class UServerSideConnection extends UConnection {
 			throws IOException, UJciException {
 		UStatement preparedStmt = null;
 		
-		/* try to find cached UStatement */
 		List<UStatementHandlerCacheEntry> entries = stmtHandlerCache.getEntry(sql);	
-		for (UStatementHandlerCacheEntry e: entries) {
-			if (e.isAvailable()) {
-				preparedStmt = e.getStatement();
-				preparedStmt.moveCursor(0, UStatement.CURSOR_SET);
-				e.setAvailable(false);
-				break;
+		/* try to find cached UStatement */
+		//if (!recompile && (flag != UConnection.PREPARE_CALL)) {
+			for (UStatementHandlerCacheEntry e: entries) {
+				if (e.isAvailable()) {
+					preparedStmt = e.getStatement();
+					preparedStmt.initToReuse();
+					preparedStmt.moveCursor(0, UStatement.CURSOR_SET);
+					e.setAvailable(false);
+					break;
+				}
 			}
-		}
+		//}
 		
 		/* if entry not found, create new UStatement */
 		if (preparedStmt == null) {

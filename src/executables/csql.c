@@ -64,6 +64,7 @@
 #include "utility.h"
 #include "tsc_timer.h"
 #include "dbtype.h"
+#include "jsp_cl.h"
 
 #if defined(WINDOWS)
 #include "file_io.h"		/* needed for _wyield() */
@@ -1986,6 +1987,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	}
 
       free_attr_spec (&attr_spec);
+      jsp_close_connection ();
 
       if (result != NULL)
 	{
@@ -2086,6 +2088,7 @@ error:
     }
 
   free_attr_spec (&attr_spec);
+  jsp_close_connection ();
 
   return 1;
 }

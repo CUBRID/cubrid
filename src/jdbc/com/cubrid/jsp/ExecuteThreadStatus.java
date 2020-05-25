@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  * Redistribution and use in source and binary forms, with or without modification, 
  * are permitted provided that the following conditions are met: 
@@ -27,64 +28,24 @@
  * OF SUCH DAMAGE. 
  *
  */
+package com.cubrid.jsp;
 
-package cubrid.jdbc.driver;
-
-import java.sql.SQLException;
-
-import cubrid.jdbc.jci.UConnection;
-import cubrid.jdbc.jci.UStatement;
-
-public class CUBRIDOutResultSet extends CUBRIDResultSet {
-	private boolean created;
-
-	private int srv_handle;
-
-	private UConnection ucon;
-
-	public CUBRIDOutResultSet(UConnection ucon, int srv_handle_id) {
-		super(null);
-		created = false;
-		this.srv_handle = srv_handle_id;
-		this.ucon = ucon;
-		ucon.getCUBRIDConnection().addOutResultSet(this);
+public enum ExecuteThreadStatus {
+	
+	IDLE (0),
+	PARSE (1),
+	INVOKE (2),
+	CALL (3),
+	RESULT (4),
+	DESTROY (5),
+	ERROR (-1);
+	
+	private int status;
+	ExecuteThreadStatus(int status) {
+		this.status = status;
 	}
 	
-	public CUBRIDOutResultSet(UConnection ucon, UStatement s) {
-		super(s);
-		created = false;
-		this.srv_handle = s.getServerHandle();
-		this.ucon = ucon;
-		ucon.getCUBRIDConnection().addOutResultSet(this);
-	}
-
-	public void createInstance() throws Exception {
-		if (created)
-			return;
-		if (srv_handle <= 0)
-			throw new IllegalArgumentException();
-
-		u_stmt = new UStatement(ucon, srv_handle);
-		column_info = u_stmt.getColumnInfo();
-		col_name_to_index = u_stmt.getColumnNameToIndexMap();
-		number_of_rows = u_stmt.getExecuteResult();
-
-		created = true;
-	}
-
-	public void close() throws SQLException {
-		if (is_closed) {
-			return;
-		}
-		is_closed = true;
-
-		clearCurrentRow();
-
-		u_stmt.close();
-
-		streams = null;
-		u_stmt = null;
-		column_info = null;
-		error = null;
+	public int getValue() {
+		return this.status;
 	}
 }

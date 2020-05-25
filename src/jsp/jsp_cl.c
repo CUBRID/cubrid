@@ -179,8 +179,8 @@ extern void libcas_srv_handle_free (int h_id);
 static int jsp_send_call_request (const SOCKET sockfd, const SP_ARGS * sp_args);
 static int jsp_alloc_response (const SOCKET sockfd, char *&buffer);
 static int jsp_receive_response (const SOCKET sockfd, const SP_ARGS * sp_args);
-static int jsp_receive_result (char *buffer, char *&ptr, const SP_ARGS * sp_args);
-static int jsp_receive_error (char *buffer, char *&ptr, const SP_ARGS * sp_args);
+static int jsp_receive_result (char *&buffer, char *&ptr, const SP_ARGS * sp_args);
+static int jsp_receive_error (char *&buffer, char *&ptr, const SP_ARGS * sp_args);
 
 
 static SOCKET jsp_connect_server (void);
@@ -2096,10 +2096,11 @@ jsp_pack_argument (char *buffer, DB_VALUE * value)
 static int
 jsp_send_call_request (const SOCKET sockfd, const SP_ARGS * sp_args)
 {
+  int error_code = NO_ERROR;
   int req_code, arg_count, i, strlen;
   int req_size, nbytes;
   DB_ARG_LIST *p;
-  char *buffer, *ptr;
+  char *buffer = NULL, *ptr = NULL;
 
   req_size =
     (int) sizeof (int) * 4 + or_packed_string_length (sp_args->name, &strlen) + jsp_get_argument_size (sp_args->args);
@@ -2108,7 +2109,8 @@ jsp_send_call_request (const SOCKET sockfd, const SP_ARGS * sp_args)
   if (buffer == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) req_size);
-      return er_errid ();
+      error_code = er_errid ();
+      goto exit;
     }
 
   req_code = SP_CODE_INVOKE;
@@ -2132,13 +2134,17 @@ jsp_send_call_request (const SOCKET sockfd, const SP_ARGS * sp_args)
   nbytes = jsp_writen (sockfd, buffer, req_size);
   if (nbytes != req_size)
     {
-      free_and_init (buffer);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
-      return er_errid ();
+      error_code = er_errid ();
+      goto exit;
     }
 
-  free_and_init (buffer);
-  return NO_ERROR;
+exit:
+  if (buffer)
+    {
+      free_and_init (buffer);
+    }
+  return error_code;
 }
 
 /*
@@ -2178,7 +2184,7 @@ jsp_send_destroy_request (const SOCKET sockfd)
 extern int
 jsp_get_socket_status (void)
 {
-  return sock_fds[0];
+  return (sock_fds[0]);
 }
 
 /*
@@ -2745,7 +2751,7 @@ jsp_receive_response (const SOCKET sockfd, const SP_ARGS * sp_args)
 {
   int nbytes;
   int start_code = -1, end_code = -1;
-  char *buffer, *ptr = NULL;
+  char *buffer = NULL, *ptr = NULL;
   int error_code = NO_ERROR;
 
 redo:
@@ -2763,15 +2769,6 @@ redo:
       tran_begin_libcas_function ();
       libcas_main (sockfd);	/* jdbc call */
       tran_end_libcas_function ();
-
-      nbytes = jsp_readn (sockfd, (char *) &end_code, (int) sizeof (int));
-      end_code = ntohl (end_code);
-        if (nbytes != (int) sizeof (int) || start_code != end_code)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
-      return ER_SP_NETWORK_ERROR;
-    }
-
       goto redo;
     }
   else if (start_code == SP_CODE_RESULT || start_code == SP_CODE_ERROR)
@@ -2780,7 +2777,7 @@ redo:
       error_code = jsp_alloc_response (sockfd, buffer);
       if (error_code != NO_ERROR)
 	{
-	  goto error;
+	  goto exit;
 	}
 
       switch (start_code)
@@ -2794,7 +2791,7 @@ redo:
 	}
       if (error_code != NO_ERROR)
 	{
-	  goto error;
+	  goto exit;
 	}
       /* check request code at the end */
       if (ptr)
@@ -2803,20 +2800,23 @@ redo:
 	  if (start_code != end_code)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, end_code);
-	      free_and_init (buffer);
-	      return ER_SP_NETWORK_ERROR;
+	      error_code = ER_SP_NETWORK_ERROR;
+	      goto exit;
 	    }
 	}
     }
   else
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, start_code);
-      free_and_init (buffer);
-      return ER_SP_NETWORK_ERROR;
+      error_code = ER_SP_NETWORK_ERROR;
+      goto exit;
     }
 
-error:
-  free_and_init (buffer);
+exit:
+  if (buffer)
+    {
+      free_and_init (buffer);
+    }
   return error_code;
 }
 
@@ -2843,14 +2843,13 @@ jsp_alloc_response (const SOCKET sockfd, char *&buffer)
   if (nbytes != res_size)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
-      free_and_init (buffer);
       return ER_SP_NETWORK_ERROR;
     }
   return NO_ERROR;
 }
 
 static int
-jsp_receive_result (char *buffer, char *&ptr, const SP_ARGS * sp_args)
+jsp_receive_result (char *&buffer, char *&ptr, const SP_ARGS * sp_args)
 {
   int error_code = NO_ERROR;
   int i;
@@ -2890,7 +2889,7 @@ jsp_receive_result (char *buffer, char *&ptr, const SP_ARGS * sp_args)
 }
 
 static int
-jsp_receive_error (char *buffer, char *&ptr, const SP_ARGS * sp_args)
+jsp_receive_error (char *&buffer, char *&ptr, const SP_ARGS * sp_args)
 {
   int error_code = NO_ERROR;
   DB_VALUE error_value, error_msg;
@@ -2975,7 +2974,7 @@ jsp_connect_server (void)
       memset ((void *) &tcp_srv_addr, 0, sizeof (tcp_srv_addr));
       tcp_srv_addr.sin_family = AF_INET;
       tcp_srv_addr.sin_port = htons (server_port);
-      
+
       if (inaddr != INADDR_NONE)
 	{
 	  memcpy ((void *) &tcp_srv_addr.sin_addr, (void *) &inaddr, sizeof (inaddr));
@@ -3100,7 +3099,18 @@ end:
   call_cnt--;
   if (call_cnt > 0)
     {
-      jsp_close_internal_connection (sock_fd);
+      if (sock_fds[call_cnt] != INVALID_SOCKET) {
+        if (error == NO_ERROR)
+        {
+          //jsp_send_destroy_request (sock_fd);
+        }
+        jsp_close_internal_connection (sock_fd);
+        sock_fds[call_cnt] = INVALID_SOCKET;
+      }
+    }
+  else if (call_cnt == 0 && error != NO_ERROR)
+    {
+      jsp_close_connection ();
     }
 
   return error;

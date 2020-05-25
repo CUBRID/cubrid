@@ -133,6 +133,7 @@ public class TargetMethod {
 		if (argClassMap.containsKey(className)) {
 			return argClassMap.get(className);
 		} else {
+			//Class.forName(className);
 			return getClass(className);
 		}
 	}

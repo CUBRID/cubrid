@@ -195,6 +195,31 @@ public class UStatement {
 		 * java.sql.Statement.CLOSE_CURRENT_RESULT;
 		 */
 	}
+	
+	public void initToReuse() throws UJciException {
+		if (result_cache_lifetime >= 0 && UJCIManager.result_cache_enable)
+			result_cacheable = true;
+		
+		commandTypeIs = firstStmtType;
+		
+		if (parameterNumber > 0) {
+			bindParameter = new UBindParameter(parameterNumber,
+			        relatedConnection.getDbmsType());
+		}
+		else {
+			bindParameter = null;
+		}
+		batchParameter = null;
+		isFetchCompleted = false;
+		
+		currentFirstCursor = cursorPosition = totalTupleNumber = fetchedTupleNumber = 0;
+		maxFetchSize = 0;
+		realFetched = false;
+		isClosed = false;
+
+		if (commandTypeIs == CUBRIDCommandType.CUBRID_STMT_CALL_SP)
+			columnNumber = parameterNumber + 1;
+	}
 
 	UStatement(UConnection relatedC, CUBRIDOID oid, String attributeName[],
 	        UInputBuffer inBuffer) throws UJciException {

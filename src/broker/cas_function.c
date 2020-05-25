@@ -743,15 +743,13 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 
 #endif /* !LIBCAS_FOR_JSP */
 
-#ifdef LIBCAS_FOR_JSP
 /* destroy JDBC resources in stored procedure */
   if (req_info->driver_info[DRIVER_INFO_CLIENT_TYPE] != CAS_CLIENT_SERVER_SIDE_JDBC
       && jsp_get_socket_status () != INVALID_SOCKET)
     {
-      jsp_send_destroy_request ();
-      jsp_close_connection ();
+      //jsp_send_destroy_request ();
+      //jsp_close_connection ();
     }
-#endif
 
   return FN_KEEP_CONN;
 }
