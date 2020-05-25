@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  * Redistribution and use in source and binary forms, with or without modification, 
  * are permitted provided that the following conditions are met: 
@@ -1311,11 +1312,11 @@ public class UStatement {
 		if (obj == null)
 			return null;
 
-		if (obj instanceof CUBRIDBlob) {
-			return ((CUBRIDBlob) obj);
+		try {
+			return (UGetTypeConvertedValue.getBlob(obj, relatedConnection.getCUBRIDConnection()));
+		} catch (UJciException e) {
+			e.toUError(errorHandler);
 		}
-
-		errorHandler.setErrorCode(UErrorCode.ER_TYPE_CONVERSION);
 		return null;
 	}
 
@@ -1326,11 +1327,11 @@ public class UStatement {
 		if (obj == null)
 			return null;
 
-		if (obj instanceof CUBRIDClob) {
-			return ((CUBRIDClob) obj);
+		try {
+			return (UGetTypeConvertedValue.getClob(obj, relatedConnection.getCUBRIDConnection()));
+		} catch (UJciException e) {
+			e.toUError(errorHandler);
 		}
-
-		errorHandler.setErrorCode(UErrorCode.ER_TYPE_CONVERSION);
 		return null;
 	}
 
@@ -2140,7 +2141,7 @@ public class UStatement {
 		String charsetName;
 
 		size = inBuffer.readInt();
-		if (size <= 0)
+		if (size < 0)
 			return null;
 
 		typeInfo = readTypeFromData(index, inBuffer);
@@ -2203,7 +2204,7 @@ public class UStatement {
 		case UUType.U_TYPE_DATETIMELTZ:
 			return inBuffer.readDatetimetz(dataSize);			
 		case UUType.U_TYPE_OBJECT:
-			return inBuffer.readOID(relatedConnection.cubridcon);
+			return inBuffer.readOID(relatedConnection.getCUBRIDConnection());
 		case UUType.U_TYPE_SET:
 		case UUType.U_TYPE_MULTISET:
 		case UUType.U_TYPE_SEQUENCE: {
@@ -2275,7 +2276,7 @@ public class UStatement {
 	private void readATuple(int index, UInputBuffer inBuffer)
 	        throws UJciException {
 		tuples[index] = new UResultTuple(inBuffer.readInt(), columnNumber);
-		tuples[index].setOid(inBuffer.readOID(relatedConnection.cubridcon));
+		tuples[index].setOid(inBuffer.readOID(relatedConnection.getCUBRIDConnection()));
 		for (int i = 0; i < columnNumber; i++) {
 			tuples[index].setAttribute(i, readAAttribute(i, inBuffer));
 		}
@@ -2358,7 +2359,7 @@ public class UStatement {
 			resultInfo[i] = new UResultInfo(inBuffer.readByte(),
 			        inBuffer.readInt());
 			resultInfo[i].setResultOid(inBuffer
-			        .readOID(relatedConnection.cubridcon));
+			        .readOID(relatedConnection.getCUBRIDConnection()));
 			resultInfo[i].setSrvCacheTime(inBuffer.readInt(),
 			        inBuffer.readInt());
 		}
