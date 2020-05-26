@@ -131,6 +131,23 @@ public class ExecuteThread extends Thread {
 		}
 	}
 
+	public void closeSocket() {
+		try {
+			byteBuf.close();
+			outBuf.close();
+			output.close();
+			client.close();
+		} catch (IOException e) {
+		}
+
+		client = null;
+		output = null;
+		byteBuf = null;
+		outBuf = null;
+		connection = null;
+		charSet = null;
+	}
+
 	public void setJdbcConnection(Connection con) {
 		this.connection = (CUBRIDConnectionDefault) con;
 	}
@@ -138,19 +155,19 @@ public class ExecuteThread extends Thread {
 	public Connection getJdbcConnection() {
 		return this.connection;
 	}
-	
+
 	public void setStatus (Integer value) {
 		this.status.set(value);
 	}
-	
+
 	public void setStatus (ExecuteThreadStatus value) {
 		this.status.set(value.getValue());
 	}
-	
+
 	public Integer getStatus () {
 		return status.get();
 	}
-	
+
 	public boolean compareStatus (ExecuteThreadStatus value) {
 		return (status.get() == value.getValue());
 	}
@@ -177,7 +194,6 @@ public class ExecuteThread extends Thread {
 					}
 					default: {
 						/* invalid request */
-						System.out.println ("invalid request :" + requestCode);
 						throw new ExecuteException ("invalid request code: " + requestCode);
 					}
 					}
@@ -187,11 +203,18 @@ public class ExecuteThread extends Thread {
 					setStatus(ExecuteThreadStatus.DESTROY);
 					/* 
 					 * CAS disconnects socket
-					 * 1) end of routine successfully by calling jsp_close_internal_connection ()
-					 * 2) CAS is in invalid state. we do not have to deal with it here.
+					 * 1) end of the procedure successfully by calling jsp_close_internal_connection ()
+					 * 2) socket is in invalid status. we do not have to deal with it here.
 					 */
 					break;
 				} else {
+					try {
+						if (compareStatus(ExecuteThreadStatus.CALL)) {
+							closeJdbcConnection ();
+						}
+					} catch (Exception e2) {
+						e2.printStackTrace();
+					}
 					setStatus (ExecuteThreadStatus.ERROR);
 					Throwable throwable = e;
 					if (e instanceof InvocationTargetException) {
@@ -206,23 +229,9 @@ public class ExecuteThread extends Thread {
 				}
 			}
 		}
-
-		try {
-			byteBuf.close();
-			outBuf.close();
-			output.close();
-			client.close();
-		} catch (IOException e) {
-		}
-
-		client = null;
-		output = null;
-		byteBuf = null;
-		outBuf = null;
-		connection = null;
-		charSet = null;
+		closeSocket();
 	}
-	
+
 	private int listenCommand () throws Exception {
 		input = new DataInputStream(new BufferedInputStream(this.client.getInputStream()));
 		setStatus (ExecuteThreadStatus.IDLE);
@@ -234,17 +243,18 @@ public class ExecuteThread extends Thread {
 		StoredProcedure procedure = makeStoredProcedure();
 		Method m = procedure.getTarget().getMethod();
 		Object[] resolved = procedure.checkArgs(procedure.getArgs());
-		
+
 		setStatus (ExecuteThreadStatus.INVOKE);
 		Object result = m.invoke(null, resolved);
+
 		/* close server-side JDBC connection */
 		closeJdbcConnection();
-		
+
 		/* send results */
 		setStatus (ExecuteThreadStatus.RESULT);
 		Value resolvedResult = procedure.makeReturnValue(result);
 		sendResult(resolvedResult, procedure);
-		
+
 		setStatus (ExecuteThreadStatus.IDLE);
 	}
 
@@ -400,7 +410,7 @@ public class ExecuteThread extends Thread {
 		output.writeInt(REQ_CODE_RESULT);
 		output.flush();
 	}
-	
+
 	public void sendCall() throws IOException {
 		if (compareStatus(ExecuteThreadStatus.INVOKE)) {
 			setStatus (ExecuteThreadStatus.CALL);
@@ -595,7 +605,7 @@ public class ExecuteThread extends Thread {
 			bOID[5] = ((byte) ((slot >>> 0) & 0xFF));
 			bOID[6] = ((byte) ((vol >>> 8) & 0xFF));
 			bOID[7] = ((byte) ((vol >>> 0) & 0xFF));
-			
+
 			arg = new OidValue(bOID, mode, dbType);
 		}
 		break;
@@ -657,9 +667,6 @@ public class ExecuteThread extends Thread {
 			dos.writeInt(UJCIUtil.bytes2short(oid, 4));
 			dos.writeInt(UJCIUtil.bytes2short(oid, 6));
 		} else if (result instanceof ResultSet) {
-			if (((CUBRIDResultSet) result).getServerHandle() == 0) {
-				throw new ExecuteException ("CUBRIDResultSet is not returnable");
-			}
 			dos.writeInt(DB_RESULTSET);
 			dos.writeInt(((CUBRIDResultSet) result).getServerHandle());
 		} else if (result instanceof int[]) {
