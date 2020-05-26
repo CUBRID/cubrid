@@ -65,26 +65,31 @@ public class OidValue extends Value {
 		this.dbType = dbType;
 	}
 
+	public CUBRIDOID[] toOidArray() throws TypeMismatchException {
+		createInstance();
+		return new CUBRIDOID[] { oidObject };
+	}
+	
 	public CUBRIDOID toOid() throws TypeMismatchException {
-		if (oidObject == null){
+		createInstance();
+		return oidObject;
+	}
+	
+	private void createInstance() {
+		if (oidValue != null && oidObject == null){
 			try {
 				CUBRIDConnectionDefault con = (CUBRIDConnectionDefault) DriverManager
 						.getConnection("jdbc:default:connection:");
 				oidObject = new CUBRIDOID (con, oidValue);
 			} catch (SQLException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
+				oidObject = null;
 			}
 		}
-		return oidObject;
 	}
-
-	public CUBRIDOID[] toOidArray() throws TypeMismatchException {
-		return new CUBRIDOID[] { oidObject };
-	}
-
+	
 	public String toString() {
 		try {
+			createInstance();
 			return oidObject.getOidString();
 		} catch (SQLException e) {
 			Server.log(e);
