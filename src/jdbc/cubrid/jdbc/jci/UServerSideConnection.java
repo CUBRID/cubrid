@@ -194,17 +194,15 @@ public class UServerSideConnection extends UConnection {
 		
 		List<UStatementHandlerCacheEntry> entries = stmtHandlerCache.getEntry(sql);	
 		/* try to find cached UStatement */
-		//if (!recompile && (flag != UConnection.PREPARE_CALL)) {
-			for (UStatementHandlerCacheEntry e: entries) {
-				if (e.isAvailable()) {
-					preparedStmt = e.getStatement();
-					preparedStmt.initToReuse();
-					preparedStmt.moveCursor(0, UStatement.CURSOR_SET);
-					e.setAvailable(false);
-					break;
-				}
+		for (UStatementHandlerCacheEntry e: entries) {
+			if (e.isAvailable()) {
+				preparedStmt = e.getStatement();
+				preparedStmt.initToReuse();
+				preparedStmt.moveCursor(0, UStatement.CURSOR_SET);
+				e.setAvailable(false);
+				break;
 			}
-		//}
+		}
 		
 		/* if entry not found, create new UStatement */
 		if (preparedStmt == null) {

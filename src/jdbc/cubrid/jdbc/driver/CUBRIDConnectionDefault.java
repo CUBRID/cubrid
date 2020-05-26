@@ -36,6 +36,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 
 import cubrid.jdbc.jci.UConnection;
+import cubrid.jdbc.jci.UError;
 import cubrid.jdbc.jci.UServerSideConnection;
 import cubrid.jdbc.jci.UStatement;
 
