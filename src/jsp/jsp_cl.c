@@ -30,7 +30,6 @@
 #include <sys/types.h>
 #include <sys/param.h>
 #include <sys/socket.h>
-#include <sys/un.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
@@ -42,7 +41,6 @@
 #include <windows.h>
 #endif /* not WINDOWS */
 
-#include "tcp.h"
 #include "authenticate.h"
 #include "error_manager.h"
 #include "memory_alloc.h"
@@ -2943,7 +2941,6 @@ jsp_connect_server (void)
   unsigned int inaddr;
   int b;
   char *server_host = (char *) "127.0.0.1";	/* assume as local host */
-  int domain;
 
   union
   {
