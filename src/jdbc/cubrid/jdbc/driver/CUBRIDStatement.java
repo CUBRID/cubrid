@@ -77,7 +77,7 @@ public class CUBRIDStatement implements Statement {
 	int query_timeout;
 	private int type;
 	private int concurrency;
-	private boolean is_scrollable;  
+	private boolean is_scrollable;
 	private boolean is_updatable;
 	private boolean is_holdable;
 	private boolean is_sensitive;

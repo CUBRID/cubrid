@@ -50,14 +50,6 @@ public class CUBRIDOutResultSet extends CUBRIDResultSet {
 		ucon.getCUBRIDConnection().addOutResultSet(this);
 	}
 	
-	public CUBRIDOutResultSet(UConnection ucon, UStatement s) {
-		super(s);
-		created = false;
-		this.srv_handle = s.getServerHandle();
-		this.ucon = ucon;
-		ucon.getCUBRIDConnection().addOutResultSet(this);
-	}
-
 	public void createInstance() throws Exception {
 		if (created)
 			return;

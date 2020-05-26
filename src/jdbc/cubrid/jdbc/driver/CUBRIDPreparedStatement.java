@@ -792,6 +792,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 					if (!completed)
 						complete();
 					checkIsOpen();
+					u_stmt.setAutoCommit(u_con.getAutoCommit());
 					UBatchResult results = u_stmt.executeBatch(query_timeout);
 					setShardId(u_con.getShardId());
 
