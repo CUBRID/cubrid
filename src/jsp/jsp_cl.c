@@ -3111,12 +3111,6 @@ end:
       jsp_close_internal_connection (sock_fd);
       sock_fds[call_cnt] = INVALID_SOCKET;
     }
-  /*
-  else if (call_cnt == 0 && error != NO_ERROR)
-    {
-      jsp_close_connection ();
-    }
-  */
 
   return error;
 }
