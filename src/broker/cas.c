@@ -1372,6 +1372,7 @@ libcas_main (SOCKET jsp_sock_fd)
 {
   T_NET_BUF net_buf;
   SOCKET client_sock_fd;
+  int status = FN_KEEP_CONN;
 
   memset (&req_info, 0, sizeof (req_info));
 
@@ -1384,22 +1385,26 @@ libcas_main (SOCKET jsp_sock_fd)
   net_buf.data = (char *) MALLOC (NET_BUF_ALLOC_SIZE);
   if (net_buf.data == NULL)
     {
-      return 0;
+      return -1;
     }
   net_buf.alloc_size = NET_BUF_ALLOC_SIZE;
 
-  while (1)
+  while (status == FN_KEEP_CONN)
     {
-      if (process_request (client_sock_fd, &net_buf, &req_info) != FN_KEEP_CONN)
-	{
-	  break;
-	}
+      status = process_request (client_sock_fd, &net_buf, &req_info);
     }
 
   net_buf_clear (&net_buf);
   net_buf_destroy (&net_buf);
 
-  return 0;
+  if (status == FN_CLOSE_CONN)
+  {
+    return 0; 
+  }
+  else
+  {
+    return -1;
+  }
 }
 
 void *

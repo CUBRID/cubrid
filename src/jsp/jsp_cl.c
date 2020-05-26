@@ -2158,15 +2158,15 @@ extern int
 jsp_send_destroy_request ()
 {
   for (int i = 0; i < MAX_CALL_COUNT; i++)
-  {
-    int idx = (MAX_CALL_COUNT - 1) - i;
-    if (!IS_INVALID_SOCKET (sock_fds[idx])) 
     {
-      jsp_send_destroy_request (sock_fds[idx]);
-      jsp_close_internal_connection (sock_fds[idx]);
-      sock_fds[idx] = INVALID_SOCKET;
+      int idx = (MAX_CALL_COUNT - 1) - i;
+      if (!IS_INVALID_SOCKET (sock_fds[idx]))
+	{
+	  jsp_send_destroy_request (sock_fds[idx]);
+	  jsp_close_internal_connection (sock_fds[idx]);
+	  sock_fds[idx] = INVALID_SOCKET;
+	}
     }
-  }
   return NO_ERROR;
 }
 
@@ -2175,6 +2175,7 @@ jsp_send_destroy_request (const SOCKET sockfd)
 {
   int nbytes;
   int req_code = 0x10;
+  int res = NO_ERROR;
 
   nbytes = jsp_writen (sockfd, (void *) &req_code, (int) sizeof (int));
   if (nbytes != (int) sizeof (int))
@@ -2184,16 +2185,10 @@ jsp_send_destroy_request (const SOCKET sockfd)
     }
 
   tran_begin_libcas_function ();
-  libcas_main (sockfd);		/* jdbc call to destroy resources */
+  res = libcas_main (sockfd);	/* jdbc call to destroy resources */
   tran_end_libcas_function ();
 
-  return NO_ERROR;
-}
-
-extern int
-jsp_get_socket_status (void)
-{
-  return (sock_fds[0]);
+  return res;
 }
 
 /*
@@ -2776,7 +2771,11 @@ redo:
   if (start_code == SP_CODE_INTERNAL_JDBC)
     {
       tran_begin_libcas_function ();
-      libcas_main (sockfd);	/* jdbc call */
+      error_code = libcas_main (sockfd);	/* jdbc call */
+      if (error_code != NO_ERROR)
+	{
+	  goto exit;
+	}
       tran_end_libcas_function ();
       goto redo;
     }
@@ -2938,7 +2937,6 @@ static SOCKET
 jsp_connect_server (void)
 {
   struct sockaddr_in tcp_srv_addr;
-  struct sockaddr_un unix_srv_addr;
   SOCKET sockfd = INVALID_SOCKET;
   int success = -1;
   int server_port = -1;
@@ -2950,7 +2948,6 @@ jsp_connect_server (void)
   union
   {
     struct sockaddr_in in;
-    struct sockaddr_un un;
   } saddr_buf;
   struct sockaddr *saddr = (struct sockaddr *) &saddr_buf;
   socklen_t slen;
@@ -2968,41 +2965,28 @@ jsp_connect_server (void)
 #endif
 
   inaddr = inet_addr (server_host);
-#if 0
-  if (inaddr == inet_addr ("127.0.0.1"))
+  memset ((void *) &tcp_srv_addr, 0, sizeof (tcp_srv_addr));
+  tcp_srv_addr.sin_family = AF_INET;
+  tcp_srv_addr.sin_port = htons (server_port);
+
+  if (inaddr != INADDR_NONE)
     {
-      memset ((void *) &unix_srv_addr, 0, sizeof (unix_srv_addr));
-      unix_srv_addr.sun_family = AF_UNIX;
-      strncpy (unix_saddr.sun_path, css_get_master_domain_path (), sizeof (unix_saddr.sun_path) - 1);
-      slen = sizeof (unix_srv_addr);
-      memcpy ((void *) saddr, (void *) &unix_srv_addr, slen);
+      memcpy ((void *) &tcp_srv_addr.sin_addr, (void *) &inaddr, sizeof (inaddr));
     }
   else
-#endif
     {
-      memset ((void *) &tcp_srv_addr, 0, sizeof (tcp_srv_addr));
-      tcp_srv_addr.sin_family = AF_INET;
-      tcp_srv_addr.sin_port = htons (server_port);
+      struct hostent *hp;
+      hp = gethostbyname (server_host);
 
-      if (inaddr != INADDR_NONE)
+      if (hp == NULL)
 	{
-	  memcpy ((void *) &tcp_srv_addr.sin_addr, (void *) &inaddr, sizeof (inaddr));
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, server_host);
+	  return INVALID_SOCKET;
 	}
-      else
-	{
-	  struct hostent *hp;
-	  hp = gethostbyname (server_host);
-
-	  if (hp == NULL)
-	    {
-	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, server_host);
-	      return INVALID_SOCKET;
-	    }
-	  memcpy ((void *) &tcp_srv_addr.sin_addr, (void *) hp->h_addr, hp->h_length);
-	}
-      slen = sizeof (tcp_srv_addr);
-      memcpy ((void *) saddr, (void *) &tcp_srv_addr, slen);
+      memcpy ((void *) &tcp_srv_addr.sin_addr, (void *) hp->h_addr, hp->h_length);
     }
+  slen = sizeof (tcp_srv_addr);
+  memcpy ((void *) saddr, (void *) &tcp_srv_addr, slen);
 
   sockfd = socket (saddr->sa_family, SOCK_STREAM, 0);
   if (IS_INVALID_SOCKET (sockfd))
@@ -3106,9 +3090,9 @@ retry:
 
 end:
   call_cnt--;
-  if (call_cnt > 0)
+  if (error != NO_ERROR || is_prepare_call[call_cnt])
     {
-      jsp_close_internal_connection (sock_fd);
+      jsp_send_destroy_request (sock_fd);
       sock_fds[call_cnt] = INVALID_SOCKET;
     }
 

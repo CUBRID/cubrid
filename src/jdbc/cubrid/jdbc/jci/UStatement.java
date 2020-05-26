@@ -197,19 +197,7 @@ public class UStatement {
 	}
 	
 	public void initToReuse() throws UJciException {
-		if (result_cache_lifetime >= 0 && UJCIManager.result_cache_enable)
-			result_cacheable = true;
-		
 		commandTypeIs = firstStmtType;
-		
-		if (parameterNumber > 0) {
-			bindParameter = new UBindParameter(parameterNumber,
-			        relatedConnection.getDbmsType());
-		}
-		else {
-			bindParameter = null;
-		}
-		batchParameter = null;
 		isFetchCompleted = false;
 		
 		currentFirstCursor = cursorPosition = totalTupleNumber = fetchedTupleNumber = 0;

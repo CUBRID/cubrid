@@ -125,12 +125,9 @@ public class ExecuteThread extends Thread {
 	}
 
 	public void closeJdbcConnection() throws IOException, SQLException {
-		if (connection != null) {
-			if(compareStatus(ExecuteThreadStatus.CALL) 
-					|| compareStatus(ExecuteThreadStatus.DESTROY)) {
-				connection.close();
-				setStatus (ExecuteThreadStatus.INVOKE);
-			}
+		if (connection != null && compareStatus(ExecuteThreadStatus.CALL)) {
+			connection.close();
+			setStatus (ExecuteThreadStatus.INVOKE);
 		}
 	}
 
@@ -203,7 +200,7 @@ public class ExecuteThread extends Thread {
 				} while (requestCode != REQ_CODE_INVOKE_SP && requestCode != REQ_CODE_DESTROY);
 			} catch (Throwable e) {
 				if (e instanceof IOException) {
-					setStatus(ExecuteThreadStatus.DESTROY);
+					setStatus(ExecuteThreadStatus.END);
 					/* 
 					 * CAS disconnects socket
 					 * 1) end of the procedure successfully by calling jsp_close_internal_connection ()

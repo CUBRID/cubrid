@@ -38,7 +38,8 @@ public enum ExecuteThreadStatus {
 	CALL (3),
 	RESULT (4),
 	DESTROY (5),
-	ERROR (-1);
+	ERROR (-1),
+	END (-2);
 	
 	private int status;
 	ExecuteThreadStatus(int status) {

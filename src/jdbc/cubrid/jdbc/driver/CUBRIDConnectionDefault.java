@@ -31,12 +31,13 @@
 
 package cubrid.jdbc.driver;
 
+import java.sql.CallableStatement;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import cubrid.jdbc.driver.CUBRIDServerSidePreparedStatement;
 
 import cubrid.jdbc.jci.UConnection;
-import cubrid.jdbc.jci.UError;
 import cubrid.jdbc.jci.UServerSideConnection;
 import cubrid.jdbc.jci.UStatement;
 
@@ -79,6 +80,16 @@ public class CUBRIDConnectionDefault extends CUBRIDConnection {
 	
 	protected UServerSideConnection getJciConnection() {
 		return (UServerSideConnection) u_con;
+	}
+	
+	@Override
+	public synchronized CallableStatement prepareCall(String sql)
+			throws SQLException {
+		UStatement us = prepare(sql, UConnection.PREPARE_CALL);
+		CallableStatement cstmt = new CUBRIDCallableStatement(this, us);
+		addStatement(cstmt);
+
+		return cstmt;
 	}
 	
 	@Override

@@ -194,6 +194,7 @@ public class UServerSideConnection extends UConnection {
 		
 		List<UStatementHandlerCacheEntry> entries = stmtHandlerCache.getEntry(sql);	
 		/* try to find cached UStatement */
+	
 		for (UStatementHandlerCacheEntry e: entries) {
 			if (e.isAvailable()) {
 				preparedStmt = e.getStatement();
