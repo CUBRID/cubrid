@@ -125,9 +125,12 @@ public class ExecuteThread extends Thread {
 	}
 
 	public void closeJdbcConnection() throws IOException, SQLException {
-		if (connection != null  && compareStatus(ExecuteThreadStatus.CALL)) {
-			connection.close();
-			setStatus (ExecuteThreadStatus.INVOKE);
+		if (connection != null) {
+			if(compareStatus(ExecuteThreadStatus.CALL) 
+					|| compareStatus(ExecuteThreadStatus.DESTROY)) {
+				connection.close();
+				setStatus (ExecuteThreadStatus.INVOKE);
+			}
 		}
 	}
 

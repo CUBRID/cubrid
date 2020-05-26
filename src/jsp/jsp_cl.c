@@ -2160,14 +2160,14 @@ jsp_send_destroy_request ()
   for (int i = 0; i < MAX_CALL_COUNT; i++)
   {
     int idx = (MAX_CALL_COUNT - 1) - i;
-    if (IS_INVALID_SOCKET (sock_fds[idx])) 
+    if (!IS_INVALID_SOCKET (sock_fds[idx])) 
     {
+      jsp_send_destroy_request (sock_fds[idx]);
       jsp_close_internal_connection (sock_fds[idx]);
       sock_fds[idx] = INVALID_SOCKET;
     }
   }
   return NO_ERROR;
-  // return jsp_send_destroy_request (sock_fds[0]);
 }
 
 extern int
