@@ -199,12 +199,11 @@ void
 jsp_init (void)
 {
   int i;
-
-  sock_fds[0] = INVALID_SOCKET;
   call_cnt = 0;
 
   for (i = 0; i < MAX_CALL_COUNT; i++)
     {
+      sock_fds[i] = INVALID_SOCKET;
       is_prepare_call[i] = false;
     }
 
@@ -2158,7 +2157,17 @@ exit:
 extern int
 jsp_send_destroy_request ()
 {
-  return jsp_send_destroy_request (sock_fds[0]);
+  for (int i = 0; i < MAX_CALL_COUNT; i++)
+  {
+    int idx = (MAX_CALL_COUNT - 1) - i;
+    if (IS_INVALID_SOCKET (sock_fds[idx])) 
+    {
+      jsp_close_internal_connection (sock_fds[idx]);
+      sock_fds[idx] = INVALID_SOCKET;
+    }
+  }
+  return NO_ERROR;
+  // return jsp_send_destroy_request (sock_fds[0]);
 }
 
 extern int
@@ -3056,7 +3065,7 @@ jsp_execute_stored_procedure (const SP_ARGS * args)
   int retry_count = 0;
 
 retry:
-  if (IS_INVALID_SOCKET (sock_fds[0]) || call_cnt > 0)
+  if (IS_INVALID_SOCKET (sock_fds[call_cnt]))
     {
       sock_fds[call_cnt] = jsp_connect_server ();
       if (IS_INVALID_SOCKET (sock_fds[call_cnt]))
@@ -3099,19 +3108,15 @@ end:
   call_cnt--;
   if (call_cnt > 0)
     {
-      if (sock_fds[call_cnt] != INVALID_SOCKET) {
-        if (error == NO_ERROR)
-        {
-          //jsp_send_destroy_request (sock_fd);
-        }
-        jsp_close_internal_connection (sock_fd);
-        sock_fds[call_cnt] = INVALID_SOCKET;
-      }
+      jsp_close_internal_connection (sock_fd);
+      sock_fds[call_cnt] = INVALID_SOCKET;
     }
+  /*
   else if (call_cnt == 0 && error != NO_ERROR)
     {
       jsp_close_connection ();
     }
+  */
 
   return error;
 }
