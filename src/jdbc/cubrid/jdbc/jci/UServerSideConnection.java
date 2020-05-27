@@ -216,6 +216,6 @@ public class UServerSideConnection extends UConnection {
 	}
 	
 	public void destroy () {
-		stmtHandlerCache.clearEntry();
+		stmtHandlerCache.destroy();
 	}
 }

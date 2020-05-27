@@ -1398,13 +1398,13 @@ libcas_main (SOCKET jsp_sock_fd)
   net_buf_destroy (&net_buf);
 
   if (status == FN_CLOSE_CONN)
-  {
-    return 0; 
-  }
+    {
+      return 0;
+    }
   else
-  {
-    return -1;
-  }
+    {
+      return -1;
+    }
 }
 
 void *

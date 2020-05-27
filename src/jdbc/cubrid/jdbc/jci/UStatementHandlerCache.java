@@ -52,11 +52,12 @@ public class UStatementHandlerCache {
 		return stmtHandlerCache.get(sql);
 	}
 	
-	public void clearEntry () {
+	public void destroy () {
 		for (Entry<String, List<UStatementHandlerCacheEntry>> entry : stmtHandlerCache.entrySet()) {
 			List<UStatementHandlerCacheEntry> cacheEntries = entry.getValue();
 			for (UStatementHandlerCacheEntry e: cacheEntries) {
 				UStatement s = e.getStatement();
+				s.close();
 				s.closeCursor();
 			}
 		}
