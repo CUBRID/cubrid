@@ -1382,19 +1382,16 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
    /* if needed to invalidate query cache, invalidate the cache */
   if (qmgr_can_get_from_cache (*flag_p))
     {
-      if (xasl_cache_entry_p->cache_clones && xasl_cache_entry_p->cache_clones->xasl)
+      switch (xclone.xasl->type)
         {
-          switch (xasl_cache_entry_p->cache_clones->xasl->type)
-            {
-              case UPDATE_PROC:
-              case INSERT_PROC:
-              case DELETE_PROC:
-              case MERGE_PROC:
-                xcache_invalidate_qcaches(thread_p, &xasl_cache_entry_p->related_objects[0].oid);
-                break;
-              default:
-                break;
-            }
+          case UPDATE_PROC:
+          case INSERT_PROC:
+          case DELETE_PROC:
+          case MERGE_PROC:
+            xcache_invalidate_qcaches(thread_p, &xasl_cache_entry_p->related_objects[0].oid);
+            break;
+          default:
+            break;
         }
     }
 
