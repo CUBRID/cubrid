@@ -871,6 +871,7 @@ logpb_locate_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE f
 	  memset (log_bufptr->logpage, LOG_PAGE_INIT_VALUE, LOG_PAGESIZE);
 	  log_bufptr->logpage->hdr.logical_pageid = pageid;
 	  log_bufptr->logpage->hdr.offset = NULL_OFFSET;
+	  log_bufptr->logpage->hdr.dummy1 = 0;
 	}
       else
 	{
@@ -2571,6 +2572,11 @@ logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY current_setdirty)
       return;
     }
 
+  if (log_Gl.append.next_tde_encrypted)
+    {
+      log_Gl.append.log_pgptr->hdr.dummy1 |= LOG_HDRPAGE_FLAG_TDE_ENCRYPTED;
+    }
+
 #if defined(CUBRID_DEBUG)
   {
     log_Stat.last_append_pageid = log_Gl.hdr.append_lsa.pageid;
@@ -4001,6 +4007,9 @@ logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
   /* Record number of append log record in statistics */
   perfmon_inc_stat (thread_p, PSTAT_LOG_NUM_APPENDRECS);
 
+  /* to tde-encrypt pages which is being creating while appending */
+  log_Gl.append.next_tde_encrypted = IS_LOG_RECHDR_TDE_ENCRYPTED (header);
+
   /* Does the new log record fit in this page ? */
   LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (LOG_RECORD_HEADER));
 
@@ -4010,6 +4019,11 @@ logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
     }
 
   assert (log_Gl.append.log_pgptr != NULL);
+
+  if (IS_LOG_RECHDR_TDE_ENCRYPTED (header) && !IS_LOGPAGE_TDE_ENCRYPTED (log_Gl.append.log_pgptr))
+    {
+      log_Gl.append.log_pgptr->hdr.dummy1 |= LOG_HDRPAGE_FLAG_TDE_ENCRYPTED;
+    }
 
   log_rec = (LOG_RECORD_HEADER *) LOG_APPEND_PTR ();
   *log_rec = *header;
@@ -4232,6 +4246,8 @@ logpb_end_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
 
   LOG_APPEND_ALIGN (thread_p, LOG_DONT_SET_DIRTY);
   LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (LOG_RECORD_HEADER));
+
+  log_Gl.append.next_tde_encrypted = false;
 
   /*
    * Find the log_rec portion of the append record, it may not be in the

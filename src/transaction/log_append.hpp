@@ -78,6 +78,8 @@ struct log_append_info
   LOG_LSA prev_lsa;		/* Address of last append log record */
   LOG_PAGE *log_pgptr;		/* The log page which is fixed */
 
+  bool next_tde_encrypted;  /* true if a newly appended page has to be tde-encrypted */
+
   log_append_info ();
   log_append_info (const log_append_info &other);
 
@@ -100,9 +102,6 @@ struct log_prior_node
   char *udata;
   int rlength;
   char *rdata;
-
-  /* It's going to be encrypted when it flushes to disk (TDE) if it contains user data */
-  bool tde_encrypted;
 
   LOG_PRIOR_NODE *next;
 };

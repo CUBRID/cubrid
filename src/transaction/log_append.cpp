@@ -89,6 +89,7 @@ log_append_info::log_append_info ()
   , nxio_lsa (NULL_LSA)
   , prev_lsa (NULL_LSA)
   , log_pgptr (NULL)
+  , next_tde_encrypted (false)
 {
 
 }
@@ -98,6 +99,7 @@ log_append_info::log_append_info (const log_append_info &other)
   , nxio_lsa {other.nxio_lsa.load ()}
   , prev_lsa (other.prev_lsa)
   , log_pgptr (other.log_pgptr)
+  , next_tde_encrypted (other.next_tde_encrypted)
 {
 
 }
@@ -290,6 +292,7 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, LOG
     }
 
   node->log_header.type = rec_type;
+  node->log_header.flags = 0;
 
   node->data_header = NULL;
   node->ulength = 0;
@@ -297,7 +300,6 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, LOG
   node->rlength = 0;
   node->rdata = NULL;
   node->next = NULL;
-  node->tde_encrypted = false;
 
   switch (rec_type)
     {
@@ -424,6 +426,7 @@ prior_lsa_alloc_and_copy_crumbs (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, L
     }
 
   node->log_header.type = rec_type;
+  node->log_header.flags = 0;
 
   node->data_header_length = 0;
   node->data_header = NULL;
@@ -432,7 +435,6 @@ prior_lsa_alloc_and_copy_crumbs (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, L
   node->rlength = 0;
   node->rdata = NULL;
   node->next = NULL;
-  node->tde_encrypted = false;
 
   switch (rec_type)
     {

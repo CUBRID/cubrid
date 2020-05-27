@@ -147,6 +147,7 @@ struct log_rec_header
   LOG_LSA forw_lsa;		/* Forward log address */
   TRANID trid;			/* Transaction identifier of the log record */
   LOG_RECTYPE type;		/* Log record type (e.g., commit, abort) */
+  UINT8 flags; /* flags */
 };
 
 /* Common information of log data records */
@@ -431,5 +432,11 @@ struct log_rec_2pc_particp_ack
    || ((type) == LOG_MVCC_REDO_DATA) \
    || ((type) == LOG_MVCC_UNDOREDO_DATA) \
    || ((type) == LOG_MVCC_DIFF_UNDOREDO_DATA))
+
+/* Definitions for flags in LOG_RECORD_HEADER */
+
+#define LOG_RECHDR_FLAG_TDE_ENCRYPTED 0x1
+
+#define IS_LOG_RECHDR_TDE_ENCRYPTED(log_rechdr) ((log_rechdr)->flags & LOG_RECHDR_FLAG_TDE_ENCRYPTED)
 
 #endif // _LOG_RECORD_HPP_
