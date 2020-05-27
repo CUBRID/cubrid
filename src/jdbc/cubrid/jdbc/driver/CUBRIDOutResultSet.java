@@ -49,7 +49,7 @@ public class CUBRIDOutResultSet extends CUBRIDResultSet {
 		this.ucon = ucon;
 		ucon.getCUBRIDConnection().addOutResultSet(this);
 	}
-	
+
 	public void createInstance() throws Exception {
 		if (created)
 			return;
