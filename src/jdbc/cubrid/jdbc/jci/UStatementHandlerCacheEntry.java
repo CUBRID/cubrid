@@ -9,7 +9,7 @@ public class UStatementHandlerCacheEntry {
 	
 	public UStatementHandlerCacheEntry (UStatement entry) {
 		this.stmt = entry;
-		this.isAvailable = true;
+		this.isAvailable = false;
 	}
 
 	public String getSql() {
