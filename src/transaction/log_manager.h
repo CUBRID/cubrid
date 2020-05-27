@@ -123,11 +123,12 @@ extern void log_append_redo_recdes2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvin
 extern void log_append_dboutside_redo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, int length, const void *data);
 extern void log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr, int length,
 				 const void *data);
-extern void log_append_compensate (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VPID * vpid, PGLENGTH offset,
-				   PAGE_PTR pgptr, int length, const void *data, LOG_TDES * tdes);
-extern void log_append_compensate_with_undo_nxlsa (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VPID * vpid,
-						   PGLENGTH offset, PAGE_PTR pgptr, int length, const void *data,
-						   LOG_TDES * tdes, const LOG_LSA * undo_nxlsa);
+extern void log_append_compensate (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, bool tde_encrypted,
+				   const VPID * vpid, PGLENGTH offset, PAGE_PTR pgptr, int length, const void *data,
+				   LOG_TDES * tdes);
+extern void log_append_compensate_with_undo_nxlsa (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, bool tde_encrypted,
+						   const VPID * vpid, PGLENGTH offset, PAGE_PTR pgptr, int length,
+						   const void *data, LOG_TDES * tdes, const LOG_LSA * undo_nxlsa);
 extern void log_append_ha_server_state (THREAD_ENTRY * thread_p, int state);
 extern void log_append_empty_record (THREAD_ENTRY * thread_p, LOG_RECTYPE logrec_type, LOG_DATA_ADDR * addr);
 extern void log_skip_logging_set_lsa (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr);

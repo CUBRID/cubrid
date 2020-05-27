@@ -33,6 +33,12 @@
 
 #include <cstdint>
 
+/* Definitions for flags in LOG_HDRPAGE */
+#define LOG_HDRPAGE_FLAG_TDE_ENCRYPTED 0x1
+
+#define IS_LOGPAGE_TDE_ENCRYPTED(log_page_p) (log_page_p->hdr.dummy1 & 0x1)
+
+
 const LOG_PAGEID LOGPB_HEADER_PAGE_ID = -9;     /* The first log page in the infinite log sequence. It is always kept
 						 * on the active portion of the log. Log records are not stored on this
 						 * page. This page is backed up in all archive logs */

@@ -297,6 +297,7 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, LOG
   node->rlength = 0;
   node->rdata = NULL;
   node->next = NULL;
+  node->tde_encrypted = false;
 
   switch (rec_type)
     {
@@ -431,6 +432,7 @@ prior_lsa_alloc_and_copy_crumbs (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, L
   node->rlength = 0;
   node->rdata = NULL;
   node->next = NULL;
+  node->tde_encrypted = false;
 
   switch (rec_type)
     {

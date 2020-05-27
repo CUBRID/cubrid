@@ -8273,8 +8273,8 @@ file_rv_user_page_unmark_delete_logical (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   addr.pgptr = page_ftab != NULL ? page_ftab : page_fhead;
   addr.offset = (PGLENGTH) (((char *) vpid_in_table) - addr.pgptr);
   save_lsa = *pgbuf_get_lsa (addr.pgptr);
-  log_append_compensate (thread_p, RVFL_USER_PAGE_MARK_DELETE_COMPENSATE, pgbuf_get_vpid_ptr (addr.pgptr), addr.offset,
-			 addr.pgptr, 0, NULL, LOG_FIND_CURRENT_TDES (thread_p));
+  log_append_compensate (thread_p, RVFL_USER_PAGE_MARK_DELETE_COMPENSATE, false, pgbuf_get_vpid_ptr (addr.pgptr),
+			 addr.offset, addr.pgptr, 0, NULL, LOG_FIND_CURRENT_TDES (thread_p));
 
   file_log ("file_rv_user_page_unmark_delete_logical",
 	    "unmark delete vpid %d|%d in file %d|%d, page %d|%d, "
@@ -10319,7 +10319,7 @@ file_tracker_item_mark_heap_deleted (THREAD_ENTRY * thread_p, PAGE_PTR page_of_i
   save_lsa = *pgbuf_get_lsa (page_of_item);
   if (context->is_undo)
     {
-      log_append_compensate_with_undo_nxlsa (thread_p, RVFL_TRACKER_HEAP_MARK_DELETED,
+      log_append_compensate_with_undo_nxlsa (thread_p, RVFL_TRACKER_HEAP_MARK_DELETED, false,
 					     pgbuf_get_vpid_ptr (page_of_item), index_item, page_of_item, 0, NULL,
 					     LOG_FIND_CURRENT_TDES (thread_p), &context->ref_lsa);
     }

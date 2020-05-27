@@ -286,9 +286,9 @@ static void log_cleanup_modified_class (const tx_transient_class_entry & t, bool
 static void log_cleanup_modified_class_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * savept_lsa,
 					     bool release, bool decache_classrepr);
 
-static void log_append_compensate_internal (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VPID * vpid,
-					    PGLENGTH offset, PAGE_PTR pgptr, int length, const void *data,
-					    LOG_TDES * tdes, const LOG_LSA * undo_nxlsa);
+static void log_append_compensate_internal (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, bool tde_encrypted,
+					    const VPID * vpid, PGLENGTH offset, PAGE_PTR pgptr, int length,
+					    const void *data, LOG_TDES * tdes, const LOG_LSA * undo_nxlsa);
 
 STATIC_INLINE void log_sysop_end_random_exit (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void log_sysop_end_begin (THREAD_ENTRY * thread_p, int *tran_index_out, LOG_TDES ** tdes_out)
@@ -2113,6 +2113,19 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_
       return;
     }
 
+  if (LOG_CONTAINS_USER_DATA (rcvindex))
+    {
+      TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
+
+      assert (addr->vfid != NULL);
+      if (file_get_tde_algorithm (thread_p, addr->vfid, &tde_algo) != NO_ERROR)
+	{
+	  assert (false);
+	  return;
+	}
+      node->tde_encrypted = (tde_algo != TDE_ALGORITHM_NONE);
+    }
+
   start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
   if (LOG_NEED_TO_SET_LSA (rcvindex, addr->pgptr))
@@ -2755,6 +2768,19 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
       return;
     }
 
+  if (LOG_CONTAINS_USER_DATA (rcvindex))
+    {
+      TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
+
+      assert (addr->vfid != NULL);
+      if (file_get_tde_algorithm (thread_p, addr->vfid, &tde_algo) != NO_ERROR)
+	{
+	  assert (false);
+	  return;
+	}
+      node->tde_encrypted = (tde_algo != TDE_ALGORITHM_NONE);
+    }
+
   // redo data must be saved before calling prior_lsa_next_record, which may free this prior node
   tdes->m_log_postpone_cache.add_redo_data (*node);
 
@@ -2847,6 +2873,19 @@ log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DAT
 	  return;
 	}
 
+      if (LOG_CONTAINS_USER_DATA (rcvindex))
+	{
+	  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
+
+	  assert (addr->vfid != NULL);
+	  if (file_get_tde_algorithm (thread_p, addr->vfid, &tde_algo) != NO_ERROR)
+	    {
+	      assert (false);
+	      return;
+	    }
+	  node->tde_encrypted = (tde_algo != TDE_ALGORITHM_NONE);
+	}
+
       run_posp = (LOG_REC_RUN_POSTPONE *) node->data_header;
       run_posp->data.rcvindex = rcvindex;
       run_posp->data.pageid = rcv_vpid->pageid;
@@ -2895,10 +2934,10 @@ log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DAT
  *              records are redo log records and thus, they are never undone.
  */
 void
-log_append_compensate (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VPID * vpid, PGLENGTH offset,
-		       PAGE_PTR pgptr, int length, const void *data, LOG_TDES * tdes)
+log_append_compensate (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, bool tde_encrypted, const VPID * vpid,
+		       PGLENGTH offset, PAGE_PTR pgptr, int length, const void *data, LOG_TDES * tdes)
 {
-  log_append_compensate_internal (thread_p, rcvindex, vpid, offset, pgptr, length, data, tdes, NULL);
+  log_append_compensate_internal (thread_p, rcvindex, tde_encrypted, vpid, offset, pgptr, length, data, tdes, NULL);
 }
 
 /*
@@ -2921,13 +2960,14 @@ log_append_compensate (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VPI
  *		     undoing b-tree operation).
  */
 void
-log_append_compensate_with_undo_nxlsa (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VPID * vpid,
-				       PGLENGTH offset, PAGE_PTR pgptr, int length, const void *data, LOG_TDES * tdes,
-				       const LOG_LSA * undo_nxlsa)
+log_append_compensate_with_undo_nxlsa (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, bool tde_encrypted,
+				       const VPID * vpid, PGLENGTH offset, PAGE_PTR pgptr, int length, const void *data,
+				       LOG_TDES * tdes, const LOG_LSA * undo_nxlsa)
 {
   assert (undo_nxlsa != NULL);
 
-  log_append_compensate_internal (thread_p, rcvindex, vpid, offset, pgptr, length, data, tdes, undo_nxlsa);
+  log_append_compensate_internal (thread_p, rcvindex, tde_encrypted, vpid, offset, pgptr, length, data, tdes,
+				  undo_nxlsa);
 }
 
 /*
@@ -2957,8 +2997,8 @@ log_append_compensate_with_undo_nxlsa (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcv
  *              records are redo log records and thus, they are never undone.
  */
 static void
-log_append_compensate_internal (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VPID * vpid, PGLENGTH offset,
-				PAGE_PTR pgptr, int length, const void *data, LOG_TDES * tdes,
+log_append_compensate_internal (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, bool tde_encrypted, const VPID * vpid,
+				PGLENGTH offset, PAGE_PTR pgptr, int length, const void *data, LOG_TDES * tdes,
 				const LOG_LSA * undo_nxlsa)
 {
   LOG_REC_COMPENSATE *compensate;	/* Compensate log record */
@@ -3005,6 +3045,8 @@ log_append_compensate_internal (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, 
       LSA_COPY (&compensate->undo_nxlsa, &prev_lsa);
     }
   compensate->length = length;
+
+  node->tde_encrypted = tde_encrypted;
 
   start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
@@ -3861,6 +3903,8 @@ log_sysop_end_logical_undo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, cons
       log_record.undo.data.rcvindex = rcvindex;
       log_record.undo.length = undo_size;
     }
+  assert (LOG_CONTAINS_USER_DATA (rcvindex) ? vfid != NULL : true);
+  log_record.vfid = vfid;
 
   log_sysop_commit_internal (thread_p, &log_record, undo_size, undo_data, false);
 }
@@ -4352,11 +4396,32 @@ log_append_sysop_end (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_EN
     }
   else
     {
+      LOG_RCVINDEX rcvindex = RV_NOT_DEFINED;
       /* Save data head. */
       /* First save lastparent_lsa and prv_topresult_lsa. */
       LOG_LSA start_lsa = LSA_INITIALIZER;
 
       memcpy (node->data_header, sysop_end, node->data_header_length);
+
+      if (sysop_end->type == LOG_SYSOP_END_LOGICAL_UNDO)
+	{
+	  rcvindex = sysop_end->undo.data.rcvindex;
+	}
+      else if (sysop_end->type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
+	{
+	  rcvindex = sysop_end->mvcc_undo.undo.data.rcvindex;
+	}
+      if (rcvindex != RV_NOT_DEFINED && LOG_CONTAINS_USER_DATA (rcvindex))
+	{
+	  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
+
+	  assert (sysop_end->vfid != NULL);
+	  if (file_get_tde_algorithm (thread_p, sysop_end->vfid, &tde_algo) != NO_ERROR)
+	    {
+	      assert (false);
+	    }
+	  node->tde_encrypted = (tde_algo != TDE_ALGORITHM_NONE);
+	}
 
       start_lsa = prior_lsa_next_record (thread_p, node, tdes);
       assert (!LSA_ISNULL (&start_lsa));
@@ -7040,7 +7105,8 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
 	}
       else if (!RCV_IS_LOGICAL_LOG (rcv_vpid, rcvindex))
 	{
-	  log_append_compensate (thread_p, rcvindex, rcv_vpid, rcv->offset, rcv->pgptr, rcv->length, rcv->data, tdes);
+	  log_append_compensate (thread_p, rcvindex, IS_LOGPAGE_TDE_ENCRYPTED (log_page_p), rcv_vpid, rcv->offset,
+				 rcv->pgptr, rcv->length, rcv->data, tdes);
 	  /* Invoke Undo recovery function */
 	  rv_err = log_undo_rec_restartable (thread_p, rcvindex, rcv);
 	  if (rv_err != NO_ERROR)
@@ -7115,7 +7181,8 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
        * Unable to fetch page of volume... May need media recovery on such
        * page... write a CLR anyhow
        */
-      log_append_compensate (thread_p, rcvindex, rcv_vpid, rcv->offset, NULL, rcv->length, rcv->data, tdes);
+      log_append_compensate (thread_p, rcvindex, IS_LOGPAGE_TDE_ENCRYPTED (log_page_p), rcv_vpid, rcv->offset, NULL,
+			     rcv->length, rcv->data, tdes);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MAYNEED_MEDIA_RECOVERY, 1,
 	      fileio_get_volume_label (rcv_vpid->volid, PEEK));
       assert (false);

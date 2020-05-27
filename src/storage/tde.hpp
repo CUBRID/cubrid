@@ -55,6 +55,39 @@ typedef enum
 #define TDE_MASTER_KEY_LENGTH 32
 #define TDE_DATA_KEY_LENGTH   32
 
+/* Is log record contains User Data */
+#define LOG_CONTAINS_USER_DATA(rcvindex) \
+  ((rcvindex) == RVHF_INSERT \
+   || (rcvindex) == RVHF_DELETE \
+   || (rcvindex) == RVHF_UPDATE \
+   || (rcvindex) == RVHF_MVCC_INSERT \
+   || (rcvindex) == RVHF_MVCC_DELETE_MODIFY_HOME \
+   || (rcvindex) == RVHF_UPDATE_NOTIFY_VACUUM \
+   || (rcvindex) == RVHF_INSERT_NEWHOME \
+   || (rcvindex) == RVHF_MVCC_REDISTRIBUTE \
+   || (rcvindex) == RVHF_MVCC_UPDATE_OVERFLOW \
+   || (rcvindex) == RVOVF_NEWPAGE_INSERT \
+   || (rcvindex) == RVOVF_PAGE_UPDATE \
+   || (rcvindex) == RVBT_NDRECORD_UPD \
+   || (rcvindex) == RVBT_NDRECORD_INS \
+   || (rcvindex) == RVBT_NDRECORD_DEL \
+   || (rcvindex) == RVBT_COPYPAGE \
+   || (rcvindex) == RVBT_DELETE_OBJECT_PHYSICAL \
+   || (rcvindex) == RVBT_NON_MVCC_INSERT_OBJECT \
+   || (rcvindex) == RVBT_MVCC_INSERT_OBJECT \
+   || (rcvindex) == RVBT_MVCC_INSERT_OBJECT_UNQ \
+   || (rcvindex) == RVBT_RECORD_MODIFY_UNDOREDO \
+   || (rcvindex) == RVBT_RECORD_MODIFY_NO_UNDO \
+   || (rcvindex) == RVBT_RECORD_MODIFY_COMPENSATE \
+   || (rcvindex) == RVBT_DELETE_OBJECT_POSTPONE \
+   || (rcvindex) == RVBT_MARK_DELETED \
+   || (rcvindex) == RVREPL_DATA_INSERT \
+   || (rcvindex) == RVREPL_DATA_UPDATE \
+   || (rcvindex) == RVREPL_DATA_DELETE \
+   || (rcvindex) == RVREPL_DATA_UPDATE_START \
+   || (rcvindex) == RVREPL_DATA_UPDATE_END \
+   || (rcvindex) == RVBT_ONLINE_INDEX_UNDO_TRAN_INSERT \
+   || (rcvindex) == RVBT_ONLINE_INDEX_UNDO_TRAN_DELETE)
 
 typedef struct tde_data_key_chain
 {

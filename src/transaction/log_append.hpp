@@ -101,6 +101,9 @@ struct log_prior_node
   int rlength;
   char *rdata;
 
+  /* It's going to be encrypted when it flushes to disk (TDE) if it contains user data */
+  bool tde_encrypted;
+
   LOG_PRIOR_NODE *next;
 };
 

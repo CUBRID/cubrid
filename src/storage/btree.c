@@ -31066,10 +31066,19 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
     }
   else
     {
-      log_append_compensate_with_undo_nxlsa (thread_p, RVBT_RECORD_MODIFY_COMPENSATE, pgbuf_get_vpid_ptr (*leaf_page),
-					     delete_helper->leaf_addr.offset, *leaf_page, rv_redo_data_length,
-					     rv_redo_data, LOG_FIND_CURRENT_TDES (thread_p),
-					     &delete_helper->reference_lsa);
+      TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
+
+      assert (delete_helper->leaf_addr.vfid != NULL);
+      if (file_get_tde_algorithm (thread_p, delete_helper->leaf_addr.vfid, &tde_algo) != NO_ERROR)
+	{
+	  assert (false);
+	  error_code = ER_FAILED;
+	  goto exit;
+	}
+      log_append_compensate_with_undo_nxlsa (thread_p, RVBT_RECORD_MODIFY_COMPENSATE, tde_algo != TDE_ALGORITHM_NONE,
+					     pgbuf_get_vpid_ptr (*leaf_page), delete_helper->leaf_addr.offset,
+					     *leaf_page, rv_redo_data_length, rv_redo_data,
+					     LOG_FIND_CURRENT_TDES (thread_p), &delete_helper->reference_lsa);
     }
 
   /* Success. */
@@ -32146,10 +32155,18 @@ btree_key_remove_delete_mvccid_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_
     }
   else
     {
-      log_append_compensate_with_undo_nxlsa (thread_p, RVBT_RECORD_MODIFY_COMPENSATE, pgbuf_get_vpid_ptr (leaf_page),
-					     leaf_addr.offset, leaf_page, rv_redo_data_length,
-					     delete_helper->rv_redo_data, LOG_FIND_CURRENT_TDES (thread_p),
-					     &delete_helper->reference_lsa);
+      TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
+
+      assert (leaf_addr.vfid != NULL);
+      if (file_get_tde_algorithm (thread_p, leaf_addr.vfid, &tde_algo) != NO_ERROR)
+	{
+	  assert (false);
+	  return ER_FAILED;
+	}
+      log_append_compensate_with_undo_nxlsa (thread_p, RVBT_RECORD_MODIFY_COMPENSATE, tde_algo != TDE_ALGORITHM_NONE,
+					     pgbuf_get_vpid_ptr (leaf_page), leaf_addr.offset, leaf_page,
+					     rv_redo_data_length, delete_helper->rv_redo_data,
+					     LOG_FIND_CURRENT_TDES (thread_p), &delete_helper->reference_lsa);
     }
   pgbuf_set_dirty (thread_p, leaf_page, DONT_FREE);
 
@@ -32331,6 +32348,7 @@ btree_key_remove_delete_mvccid_non_unique (THREAD_ENTRY * thread_p, BTID_INT * b
 {
   LOG_DATA_ADDR addr;		/* Log address for record. */
   int rv_redo_data_length = 0;	/* Redo recovery data length. */
+  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
 
   LOG_LSA prev_lsa;
 
@@ -32377,9 +32395,18 @@ btree_key_remove_delete_mvccid_non_unique (THREAD_ENTRY * thread_p, BTID_INT * b
   /* Add logging. */
   prev_lsa = *pgbuf_get_lsa (page);
   BTREE_RV_GET_DATA_LENGTH (delete_helper->rv_redo_data_ptr, delete_helper->rv_redo_data, rv_redo_data_length);
-  log_append_compensate_with_undo_nxlsa (thread_p, RVBT_RECORD_MODIFY_COMPENSATE, pgbuf_get_vpid_ptr (page),
-					 addr.offset, page, rv_redo_data_length, delete_helper->rv_redo_data,
-					 LOG_FIND_CURRENT_TDES (thread_p), &delete_helper->reference_lsa);
+
+  assert (addr.vfid != NULL);
+  if (file_get_tde_algorithm (thread_p, addr.vfid, &tde_algo) != NO_ERROR)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  log_append_compensate_with_undo_nxlsa (thread_p, RVBT_RECORD_MODIFY_COMPENSATE, tde_algo != TDE_ALGORITHM_NONE,
+					 pgbuf_get_vpid_ptr (page), addr.offset, page, rv_redo_data_length,
+					 delete_helper->rv_redo_data, LOG_FIND_CURRENT_TDES (thread_p),
+					 &delete_helper->reference_lsa);
 
   FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
 
@@ -32951,13 +32978,13 @@ btree_delete_sysop_end (THREAD_ENTRY * thread_p, BTREE_DELETE_HELPER * helper)
   switch (helper->purpose)
     {
     case BTREE_OP_DELETE_OBJECT_PHYSICAL:
-      log_sysop_end_logical_undo (thread_p, RVBT_DELETE_OBJECT_PHYSICAL, NULL, helper->rv_keyval_data_length,
-				  helper->rv_keyval_data);
+      log_sysop_end_logical_undo (thread_p, RVBT_DELETE_OBJECT_PHYSICAL, helper->leaf_addr.vfid,
+				  helper->rv_keyval_data_length, helper->rv_keyval_data);
       break;
 
     case BTREE_OP_ONLINE_INDEX_TRAN_DELETE:
-      log_sysop_end_logical_undo (thread_p, RVBT_ONLINE_INDEX_UNDO_TRAN_DELETE, NULL, helper->rv_keyval_data_length,
-				  helper->rv_keyval_data);
+      log_sysop_end_logical_undo (thread_p, RVBT_ONLINE_INDEX_UNDO_TRAN_DELETE, helper->leaf_addr.vfid,
+				  helper->rv_keyval_data_length, helper->rv_keyval_data);
       break;
 
     case BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED:
@@ -34884,6 +34911,7 @@ static void
 btree_rv_log_delete_object (THREAD_ENTRY * thread_p, const BTREE_DELETE_HELPER & delete_helper, LOG_DATA_ADDR & addr,
 			    int undo_length, int redo_length, const char *undo_data, const char *redo_data)
 {
+  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
   assert (btree_is_delete_object_purpose (delete_helper.purpose));
 
   if (delete_helper.is_system_op_started)
@@ -34913,10 +34941,15 @@ btree_rv_log_delete_object (THREAD_ENTRY * thread_p, const BTREE_DELETE_HELPER &
 	case BTREE_OP_DELETE_UNDO_INSERT:
 	case BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD:
 	case BTREE_OP_ONLINE_INDEX_UNDO_TRAN_INSERT:
+	  assert (addr.vfid != NULL);
+	  if (file_get_tde_algorithm (thread_p, addr.vfid, &tde_algo) != NO_ERROR)
+	    {
+	      assert (false);
+	    }
 	  log_append_compensate_with_undo_nxlsa (thread_p, RVBT_RECORD_MODIFY_COMPENSATE,
-						 pgbuf_get_vpid_ptr (addr.pgptr), addr.offset, addr.pgptr, redo_length,
-						 redo_data, LOG_FIND_CURRENT_TDES (thread_p),
-						 &delete_helper.reference_lsa);
+						 tde_algo != TDE_ALGORITHM_NONE, pgbuf_get_vpid_ptr (addr.pgptr),
+						 addr.offset, addr.pgptr, redo_length, redo_data,
+						 LOG_FIND_CURRENT_TDES (thread_p), &delete_helper.reference_lsa);
 	  break;
 	case BTREE_OP_DELETE_VACUUM_OBJECT:
 	case BTREE_OP_ONLINE_INDEX_IB_DELETE:
@@ -34944,6 +34977,7 @@ static void
 btree_rv_log_insert_object (THREAD_ENTRY * thread_p, const BTREE_INSERT_HELPER & insert_helper, LOG_DATA_ADDR & addr,
 			    int undo_length, int redo_length, const char *undo_data, const char *redo_data)
 {
+  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
   assert (btree_is_insert_object_purpose (insert_helper.purpose));
 
   if (insert_helper.is_system_op_started)
@@ -34985,9 +35019,15 @@ btree_rv_log_insert_object (THREAD_ENTRY * thread_p, const BTREE_INSERT_HELPER &
 	  break;
 	case BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE:
 	case BTREE_OP_ONLINE_INDEX_UNDO_TRAN_DELETE:
+	  assert (addr.vfid != NULL);
+	  if (file_get_tde_algorithm (thread_p, addr.vfid, &tde_algo) != NO_ERROR)
+	    {
+	      assert (false);
+	    }
 	  log_append_compensate_with_undo_nxlsa (thread_p, RVBT_RECORD_MODIFY_COMPENSATE,
-						 pgbuf_get_vpid_ptr (addr.pgptr), addr.offset, addr.pgptr,
-						 redo_length, redo_data, LOG_FIND_CURRENT_TDES (thread_p),
+						 tde_algo != TDE_ALGORITHM_NONE, pgbuf_get_vpid_ptr (addr.pgptr),
+						 addr.offset, addr.pgptr, redo_length, redo_data,
+						 LOG_FIND_CURRENT_TDES (thread_p),
 						 &insert_helper.compensate_undo_nxlsa);
 	  break;
 	default:

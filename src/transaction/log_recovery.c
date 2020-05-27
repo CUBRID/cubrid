@@ -312,7 +312,8 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_p
 	}
       else if (!RCV_IS_LOGICAL_LOG (rcv_vpid, rcvindex))
 	{
-	  log_append_compensate (thread_p, rcvindex, rcv_vpid, rcv->offset, rcv->pgptr, rcv->length, rcv->data, tdes);
+	  log_append_compensate (thread_p, rcvindex, IS_LOGPAGE_TDE_ENCRYPTED (log_page_p), rcv_vpid, rcv->offset,
+				 rcv->pgptr, rcv->length, rcv->data, tdes);
 
 	  error_code = (*RV_fun[rcvindex].undofun) (thread_p, rcv);
 
@@ -385,7 +386,8 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_p
     }
   else
     {
-      log_append_compensate (thread_p, rcvindex, rcv_vpid, rcv->offset, NULL, rcv->length, rcv->data, tdes);
+      log_append_compensate (thread_p, rcvindex, IS_LOGPAGE_TDE_ENCRYPTED (log_page_p), rcv_vpid, rcv->offset, NULL,
+			     rcv->length, rcv->data, tdes);
       /*
        * Unable to fetch page of volume... May need media recovery on such
        * page
