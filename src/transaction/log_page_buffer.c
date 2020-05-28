@@ -2574,7 +2574,7 @@ logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY current_setdirty)
 
   if (log_Gl.append.next_tde_encrypted)
     {
-      log_Gl.append.log_pgptr->hdr.dummy1 |= LOG_HDRPAGE_FLAG_TDE_ENCRYPTED;
+      logpb_set_tde_algorithm (thread_p, log_Gl.append.log_pgptr, TDE_ALGORITHM_AES);
     }
 
 #if defined(CUBRID_DEBUG)
@@ -4022,7 +4022,7 @@ logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
 
   if (LOG_IS_RECHDR_TDE_ENCRYPTED (header) && !LOG_IS_PAGE_TDE_ENCRYPTED (log_Gl.append.log_pgptr))
     {
-      log_Gl.append.log_pgptr->hdr.dummy1 |= LOG_HDRPAGE_FLAG_TDE_ENCRYPTED;
+      logpb_set_tde_algorithm (thread_p, log_Gl.append.log_pgptr, TDE_ALGORITHM_AES);
     }
 
   log_rec = (LOG_RECORD_HEADER *) LOG_APPEND_PTR ();
@@ -11013,4 +11013,46 @@ size_t
 logpb_get_memsize ()
 {
   return (size_t) log_Pb.num_buffers * (size_t) LOG_PAGESIZE;
+}
+
+TDE_ALGORITHM
+logpb_get_tde_algorithm (const LOG_PAGE * log_pgptr)
+{
+  /* exclusive */
+  assert (!((log_pgptr->hdr.dummy1 & LOG_HDRPAGE_FLAG_ENCRYPTED_AES)
+	    && (log_pgptr->hdr.dummy1 & LOG_HDRPAGE_FLAG_ENCRYPTED_ARIA)));
+
+  if (log_pgptr->hdr.dummy1 & LOG_HDRPAGE_FLAG_ENCRYPTED_AES)
+    {
+      return TDE_ALGORITHM_AES;
+    }
+  else if (log_pgptr->hdr.dummy1 & LOG_HDRPAGE_FLAG_ENCRYPTED_ARIA)
+    {
+      return TDE_ALGORITHM_ARIA;
+    }
+  else
+    {
+      return TDE_ALGORITHM_NONE;
+    }
+}
+
+void
+logpb_set_tde_algorithm (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, const TDE_ALGORITHM tde_algo)
+{
+  /* clear encrypted flag */
+  log_pgptr->hdr.dummy1 &= ~LOG_HDRPAGE_FLAG_ENCRYPTED_MASK;
+
+  switch (tde_algo)
+    {
+    case TDE_ALGORITHM_AES:
+      log_pgptr->hdr.dummy1 |= LOG_HDRPAGE_FLAG_ENCRYPTED_AES;
+      break;
+    case TDE_ALGORITHM_ARIA:
+      log_pgptr->hdr.dummy1 |= LOG_HDRPAGE_FLAG_ENCRYPTED_ARIA;
+      break;
+    case TDE_ALGORITHM_NONE:
+      /* already cleared */
+      break;
+    }
+  logpb_set_dirty (thread_p, log_pgptr);
 }
