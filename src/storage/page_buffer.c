@@ -147,7 +147,7 @@ static int rv;
 
 #define CAST_IOPGPTR_TO_PGPTR(pgptr, io_pgptr) \
   do { \
-    (pgptr) = (PAGE_PTR) ((char *) io_pgptr->page); \
+    (pgptr) = (PAGE_PTR) ((char *) (io_pgptr)->page); \
   } while (0)
 
 #define CAST_BFPTR_TO_PGPTR(pgptr, bufptr) \
@@ -7525,8 +7525,6 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
   PAGE_PTR pgptr = NULL;
   TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
   bool success;
-  char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
-  FILEIO_PAGE *iopage;
 
 #if defined (ENABLE_SYSTEMTAP)
   bool monitored = false;
@@ -7612,9 +7610,7 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 	}
 #endif /* ENABLE_SYSTEMTAP */
 
-      iopage = (FILEIO_PAGE *) PTR_ALIGN (page_buf, MAX_ALIGNMENT);
-
-      if (dwb_read_page (thread_p, vpid, &iopage, &success) != NO_ERROR)
+      if (dwb_read_page (thread_p, vpid, &bufptr->iopage_buffer->iopage, &success) != NO_ERROR)
 	{
 	  /* Should not happen */
 	  assert (false);
@@ -7624,7 +7620,7 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 	{
 	  /* Nothing to do, copied from DWB */
 	}
-      else if (fileio_read (thread_p, fileio_get_volume_descriptor (vpid->volid), iopage,
+      else if (fileio_read (thread_p, fileio_get_volume_descriptor (vpid->volid), &bufptr->iopage_buffer->iopage,
 			    vpid->pageid, IO_PAGESIZE) == NULL)
 	{
 	  /* There was an error in reading the page. Clean the buffer... since it may have been corrupted */
@@ -7651,20 +7647,16 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 	  return NULL;
 	}
 
-      CAST_IOPGPTR_TO_PGPTR (pgptr, iopage);
+      CAST_IOPGPTR_TO_PGPTR (pgptr, &bufptr->iopage_buffer->iopage);
       pgbuf_get_tde_algorithm (pgptr, &tde_algo);
       if (tde_algo != TDE_ALGORITHM_NONE)
 	{
-	  if (tde_decrypt_data_page (iopage, &bufptr->iopage_buffer->iopage, tde_algo,
-				     pgbuf_is_temporary_volume (vpid->volid)) != NO_ERROR)
+	  if (tde_decrypt_data_page (&bufptr->iopage_buffer->iopage, &bufptr->iopage_buffer->iopage,
+				     tde_algo, pgbuf_is_temporary_volume (vpid->volid)) != NO_ERROR)
 	    {
 	      assert (false);
 	      return NULL;
 	    }
-	}
-      else
-	{
-	  memcpy ((void *) (&bufptr->iopage_buffer->iopage), (void *) iopage, IO_PAGESIZE);
 	}
 
 #if defined(ENABLE_SYSTEMTAP)
