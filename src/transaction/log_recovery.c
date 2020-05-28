@@ -4722,7 +4722,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 #endif /* !NDEBUG */
 
 		  log_rv_undo_record (thread_p, &log_lsa, log_pgptr, rcvindex, &rcv_vpid, &rcv, &rcv_lsa, tdes,
-				      undo_unzip_ptr, IS_LOG_RECHDR_TDE_ENCRYPTED (log_rec));
+				      undo_unzip_ptr, LOG_IS_RECHDR_TDE_ENCRYPTED (log_rec));
 		  break;
 
 		case LOG_MVCC_UNDO_DATA:
@@ -4779,7 +4779,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		    }
 #endif /* !NDEBUG */
 		  log_rv_undo_record (thread_p, &log_lsa, log_pgptr, rcvindex, &rcv_vpid, &rcv, &rcv_lsa, tdes,
-				      undo_unzip_ptr, IS_LOG_RECHDR_TDE_ENCRYPTED (log_rec));
+				      undo_unzip_ptr, LOG_IS_RECHDR_TDE_ENCRYPTED (log_rec));
 		  break;
 
 		case LOG_REDO_DATA:
@@ -4836,7 +4836,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 
 		      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_SYSOP_END), &log_lsa, log_pgptr);
 		      log_rv_undo_record (thread_p, &log_lsa, log_pgptr, rcvindex, &rcv_vpid, &rcv, &rcv_lsa, tdes,
-					  undo_unzip_ptr, IS_LOG_RECHDR_TDE_ENCRYPTED (log_rec));
+					  undo_unzip_ptr, LOG_IS_RECHDR_TDE_ENCRYPTED (log_rec));
 		    }
 		  else if (sysop_end->type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
 		    {
@@ -4853,7 +4853,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		      LSA_COPY (&tdes->undo_nxlsa, &sysop_end->lastparent_lsa);
 		      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_SYSOP_END), &log_lsa, log_pgptr);
 		      log_rv_undo_record (thread_p, &log_lsa, log_pgptr, rcvindex, &rcv_vpid, &rcv, &rcv_lsa, tdes,
-					  undo_unzip_ptr, IS_LOG_RECHDR_TDE_ENCRYPTED (log_rec));
+					  undo_unzip_ptr, LOG_IS_RECHDR_TDE_ENCRYPTED (log_rec));
 		    }
 		  else if (sysop_end->type == LOG_SYSOP_END_LOGICAL_COMPENSATE)
 		    {

@@ -4008,7 +4008,7 @@ logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
   perfmon_inc_stat (thread_p, PSTAT_LOG_NUM_APPENDRECS);
 
   /* to tde-encrypt pages which is being creating while appending */
-  log_Gl.append.next_tde_encrypted = IS_LOG_RECHDR_TDE_ENCRYPTED (header);
+  log_Gl.append.next_tde_encrypted = LOG_IS_RECHDR_TDE_ENCRYPTED (header);
 
   /* Does the new log record fit in this page ? */
   LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (LOG_RECORD_HEADER));
@@ -4020,7 +4020,7 @@ logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
 
   assert (log_Gl.append.log_pgptr != NULL);
 
-  if (IS_LOG_RECHDR_TDE_ENCRYPTED (header) && !IS_LOGPAGE_TDE_ENCRYPTED (log_Gl.append.log_pgptr))
+  if (LOG_IS_RECHDR_TDE_ENCRYPTED (header) && !LOG_IS_PAGE_TDE_ENCRYPTED (log_Gl.append.log_pgptr))
     {
       log_Gl.append.log_pgptr->hdr.dummy1 |= LOG_HDRPAGE_FLAG_TDE_ENCRYPTED;
     }

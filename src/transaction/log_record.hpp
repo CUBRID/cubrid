@@ -437,6 +437,6 @@ struct log_rec_2pc_particp_ack
 
 #define LOG_RECHDR_FLAG_TDE_ENCRYPTED 0x1
 
-#define IS_LOG_RECHDR_TDE_ENCRYPTED(log_rechdr) ((log_rechdr)->flags & LOG_RECHDR_FLAG_TDE_ENCRYPTED)
+#define LOG_IS_RECHDR_TDE_ENCRYPTED(log_rechdr) ((log_rechdr)->flags & LOG_RECHDR_FLAG_TDE_ENCRYPTED)
 
 #endif // _LOG_RECORD_HPP_

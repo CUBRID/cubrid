@@ -37,7 +37,7 @@
 
 #define LOG_HDRPAGE_FLAG_TDE_ENCRYPTED 0x1 /* Set if any record in the page has to be tde-encrypted */
 
-#define IS_LOGPAGE_TDE_ENCRYPTED(log_page_p) ((log_page_p)->hdr.dummy1 & LOG_HDRPAGE_FLAG_TDE_ENCRYPTED)
+#define LOG_IS_PAGE_TDE_ENCRYPTED(log_page_p) ((log_page_p)->hdr.dummy1 & LOG_HDRPAGE_FLAG_TDE_ENCRYPTED)
 
 
 const LOG_PAGEID LOGPB_HEADER_PAGE_ID = -9;     /* The first log page in the infinite log sequence. It is always kept
