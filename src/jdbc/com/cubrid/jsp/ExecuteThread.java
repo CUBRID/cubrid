@@ -213,7 +213,6 @@ public class ExecuteThread extends Thread {
 							closeJdbcConnection ();
 						}
 					} catch (Exception e2) {
-						e2.printStackTrace();
 					}
 					setStatus (ExecuteThreadStatus.ERROR);
 					Throwable throwable = e;
