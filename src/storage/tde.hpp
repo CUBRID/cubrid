@@ -33,11 +33,11 @@
 #include "file_io.h"
 #include "log_storage.hpp"
 
-typedef enum 
+typedef enum
 {
-    TDE_ALGORITHM_NONE,
-    TDE_ALGORITHM_AES,
-    TDE_ALGORITHM_ARIA,     
+  TDE_ALGORITHM_NONE,
+  TDE_ALGORITHM_AES,
+  TDE_ALGORITHM_ARIA,
 } TDE_ALGORITHM;
 
 
@@ -98,15 +98,15 @@ typedef struct tde_data_key_chain
 } TDE_DATA_KEY_CHAIN;
 
 /*
- * TDE module 
+ * TDE module
  */
 typedef struct tde_cipher
 {
   bool is_master_key_loaded;
   unsigned char master_key[TDE_MASTER_KEY_LENGTH];
   TDE_DATA_KEY_CHAIN data_keys;
-  
-  std::atomic<std::int64_t> temp_write_counter; // used as nonce for temp file page 
+
+  std::atomic<std::int64_t> temp_write_counter; // used as nonce for temp file page
 } TDE_CIPHER;
 
 extern TDE_CIPHER tde_Cipher;
@@ -116,17 +116,19 @@ extern TDE_CIPHER tde_Cipher;
  */
 
 extern int tde_initialize (void); // is gonna be called in boot_restart_server()
-extern int tde_set_master_key (int key_idx); // it must be transaction 
+extern int tde_set_master_key (int key_idx); // it must be transaction
 extern int tde_generate_data_keys (void); // is gonna be called in xboot_initialize_server()
 
 /*
  * TDE functions for encrpytion and decryption
  */
 
-extern int tde_encrypt_data_page (const unsigned char * iopage_plain, unsigned char * iopage_cipher, TDE_ALGORITHM tde_algo, bool is_temp);
-extern int tde_decrypt_data_page (const unsigned char * iopage_cipher, unsigned char * iopage_plain, TDE_ALGORITHM tde_algo, bool is_temp);
-extern int tde_encrypt_log_page (const unsigned char * iopage_plain, unsigned char * iopage_cipher, TDE_ALGORITHM tde_algo);
-extern int tde_decrypt_log_page (const unsigned char * iopage_cipher, unsigned char * iopage_plain, TDE_ALGORITHM tde_algo);
+extern int tde_encrypt_data_page (FILEIO_PAGE *iopage_plain, FILEIO_PAGE *iopage_cipher, TDE_ALGORITHM tde_algo,
+				  bool is_temp);
+extern int tde_decrypt_data_page (const FILEIO_PAGE *iopage_cipher, FILEIO_PAGE *iopage_plain, TDE_ALGORITHM tde_algo,
+				  bool is_temp);
+extern int tde_encrypt_log_page (const LOG_PAGE *logpage_plain, LOG_PAGE *logpage_cipher, TDE_ALGORITHM tde_algo);
+extern int tde_decrypt_log_page (const LOG_PAGE *logpage_cipher, LOG_PAGE *logpage_plain, TDE_ALGORITHM tde_algo);
 
 
 

@@ -2891,10 +2891,10 @@ log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DAT
 	      return;
 	    }
 
-	  if (tde_algo != TDE_ALGORITHM_NONE);
-	  {
-	    node->log_header.flags |= LOG_RECHDR_FLAG_TDE_ENCRYPTED;
-	  }
+	  if (tde_algo != TDE_ALGORITHM_NONE)
+	    {
+	      node->log_header.flags |= LOG_RECHDR_FLAG_TDE_ENCRYPTED;
+	    }
 	}
 
       run_posp = (LOG_REC_RUN_POSTPONE *) node->data_header;
