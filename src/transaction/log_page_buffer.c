@@ -2071,6 +2071,19 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_AC
 		  goto error;
 		}
 	    }
+	  else
+	    {
+	      /* 
+	       * fetched from active.
+	       * In case of being fetched from archive log, no need to be decrypted 
+	       * because it already decrypted in logpb_fetch_from_archive()
+	       */
+	      TDE_ALGORITHM tde_algo = logpb_get_tde_algorithm ((LOG_PAGE *) log_pgptr);
+	      if (tde_algo != TDE_ALGORITHM_NONE)
+		{
+		  tde_decrypt_log_page ((LOG_PAGE *) log_pgptr, (LOG_PAGE *) log_pgptr, tde_algo);
+		}
+	    }
 	}
     }
 
@@ -2110,7 +2123,8 @@ error:
  *   log_pgptr(in/out):
  */
 int
-logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int num_pages, LOG_PAGE * log_pgptr)
+logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int num_pages, bool decrypt_if_needed,
+				 LOG_PAGE * log_pgptr)
 {
   LOG_PHY_PAGEID phy_start_pageid;
 
@@ -2129,6 +2143,7 @@ logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int
   num_pages = MIN (num_pages, LOGPB_ACTIVE_NPAGES - phy_start_pageid + 1);
 
   perfmon_inc_stat (thread_p, PSTAT_LOG_NUM_IOREADS);
+
   if (fileio_read_pages (thread_p, log_Gl.append.vdes, (char *) log_pgptr, phy_start_pageid, num_pages, LOG_PAGESIZE) ==
       NULL)
     {
@@ -2144,15 +2159,44 @@ logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int
 	}
     }
 
+  if (decrypt_if_needed)
+    {
+      char *ptr = (char *) log_pgptr;
+      int i;
+      for (i = 0; i < num_pages; i++)
+	{
+	  TDE_ALGORITHM tde_algo = logpb_get_tde_algorithm ((LOG_PAGE *) ptr);
+	  if (tde_algo != TDE_ALGORITHM_NONE)
+	    {
+	      tde_decrypt_log_page ((LOG_PAGE *) ptr, (LOG_PAGE *) ptr, tde_algo);
+	    }
+	  ptr += LOG_PAGESIZE;
+	}
+    }
+
 #if !defined(NDEBUG)
   if (log_Gl.rcv_phase == LOG_RESTARTED)
     {
-      char *ptr;
+      char *ptr = NULL;
       int i;
+      char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+      char *aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
       ptr = (char *) log_pgptr;
       for (i = 0; i < num_pages; i++)
 	{
+	  /* checksum is calculated before tde-encryption */
+	  if (!decrypt_if_needed)
+	    {
+	      TDE_ALGORITHM tde_algo = logpb_get_tde_algorithm ((LOG_PAGE *) ptr);
+	      if (tde_algo != TDE_ALGORITHM_NONE)
+		{
+		  tde_decrypt_log_page ((LOG_PAGE *) ptr, (LOG_PAGE *) aligned_log_pgbuf, tde_algo);
+		  logpb_debug_check_log_page (thread_p, (LOG_PAGE *) aligned_log_pgbuf);
+		  ptr += LOG_PAGESIZE;
+		  continue;
+		}
+	    }
 	  logpb_debug_check_log_page (thread_p, (LOG_PAGE *) ptr);
 	  ptr += LOG_PAGESIZE;
 	}
@@ -2178,6 +2222,10 @@ logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAG
   int nbytes, error_code;
   LOG_PHY_PAGEID phy_pageid;
   FILEIO_WRITE_MODE write_mode;
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  LOG_PAGE *buf_pgptr = NULL;
+
+  buf_pgptr = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
   assert (log_pgptr != NULL);
   assert (log_pgptr->hdr.logical_pageid == logical_pageid);
@@ -2200,6 +2248,18 @@ logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAG
   /* log_Gl.append.vdes is only changed while starting or finishing or recovering server. So, log cs is not needed. */
 
   write_mode = dwb_is_created () == true ? FILEIO_WRITE_NO_COMPENSATE_WRITE : FILEIO_WRITE_DEFAULT_WRITE;
+
+  if (LOG_IS_PAGE_TDE_ENCRYPTED (log_pgptr))
+    {
+      error_code = tde_encrypt_log_page (log_pgptr, buf_pgptr, logpb_get_tde_algorithm (log_pgptr));
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+      log_pgptr = buf_pgptr;
+    }
+
   if (fileio_write (thread_p, log_Gl.append.vdes, log_pgptr, phy_pageid, LOG_PAGESIZE, write_mode) == NULL)
     {
       if (er_errid () == ER_IO_WRITE_OUT_OF_SPACE)
@@ -2708,6 +2768,7 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
   LOG_PHY_PAGEID phy_pageid;
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   LOG_PAGE *log_pgptr = NULL;
+  LOG_PAGE *buf_pgptr = NULL;
   LOG_BUFFER *bufptr;
   LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
   BACKGROUND_ARCHIVING_INFO *bg_arv_info = &log_Gl.bg_archive_info;
@@ -2719,6 +2780,8 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
     {
       return;
     }
+
+  buf_pgptr = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
   pageid = bg_arv_info->current_page_id;
   prev_lsa_pageid = log_Gl.append.prev_lsa.pageid;
@@ -2742,7 +2805,7 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
 	  current_lsa.pageid = pageid;
 	  current_lsa.offset = LOG_PAGESIZE;
 	  /* to flush all omitted pages by the previous archiving */
-	  log_pgptr = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+	  log_pgptr = buf_pgptr;
 	  if (logpb_fetch_page (thread_p, &current_lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
 	    {
 	      fileio_dismount (thread_p, bg_arv_info->vdes);
@@ -2761,6 +2824,26 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
 #endif
       phy_pageid = (LOG_PHY_PAGEID) (pageid - bg_arv_info->start_page_id + 1);
       assert_release (phy_pageid > 0);
+
+      if (LOG_IS_PAGE_TDE_ENCRYPTED (log_pgptr))
+	{
+	  int err = NO_ERROR;
+	  if (buf_pgptr != log_pgptr)
+	    {
+	      /* from flush_info->to_flush[] */
+	      err = tde_encrypt_log_page (log_pgptr, buf_pgptr, logpb_get_tde_algorithm (log_pgptr));
+	      log_pgptr = buf_pgptr;
+	    }
+	  else
+	    {
+	      err = tde_encrypt_log_page (log_pgptr, log_pgptr, logpb_get_tde_algorithm (log_pgptr));
+	    }
+	  if (err != NO_ERROR)
+	    {
+	      return;
+	    }
+	}
+
       if (fileio_write (thread_p, bg_arv_info->vdes, log_pgptr, phy_pageid, LOG_PAGESIZE, write_mode) == NULL)
 	{
 	  fileio_dismount (thread_p, bg_arv_info->vdes);
@@ -5111,6 +5194,12 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE *
 	      return NULL;
 	    }
 
+	  TDE_ALGORITHM tde_algo = logpb_get_tde_algorithm (log_pgptr);
+	  if (tde_algo != TDE_ALGORITHM_NONE)
+	    {
+	      tde_decrypt_log_page (log_pgptr, log_pgptr, tde_algo);
+	    }
+
 	  /* Cast the archive information. May be used again */
 	  if (arv_hdr != &log_Gl.archive.hdr)
 	    {
@@ -5570,12 +5659,13 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
     {
       logpb_log ("Dump page %lld in logpb_archive_active_log, num_pages = %d\n", (long long int) pageid, num_pages);
       num_pages = (int) MIN (LOGPB_IO_NPAGES, last_pageid - pageid + 1);
-      num_pages = logpb_read_page_from_active_log (thread_p, pageid, num_pages, log_pgptr);
+      num_pages = logpb_read_page_from_active_log (thread_p, pageid, num_pages, false, log_pgptr);
       if (num_pages <= 0)
 	{
 	  goto error;
 	}
 
+      /* no need to encrypt, it is read as not decrypted (TDE) */
       if (fileio_write_pages (thread_p, vdes, (char *) log_pgptr, ar_phy_pageid, num_pages, LOG_PAGESIZE,
 			      FILEIO_WRITE_NO_COMPENSATE_WRITE) == NULL)
 	{
@@ -10506,7 +10596,7 @@ logpb_background_archiving (THREAD_ENTRY * thread_p)
     {
       num_pages = MIN (LOGPB_IO_NPAGES, (int) (last_page_id - page_id + 1));
 
-      num_pages = logpb_read_page_from_active_log (thread_p, page_id, num_pages, log_pgptr);
+      num_pages = logpb_read_page_from_active_log (thread_p, page_id, num_pages, false, log_pgptr);
       if (num_pages <= 0)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -10514,6 +10604,7 @@ logpb_background_archiving (THREAD_ENTRY * thread_p)
 	  goto error;
 	}
 
+      /* no need to encrypt, it is read as not decrypted (TDE) */
       if (fileio_write_pages (thread_p, vdes, (char *) log_pgptr, phy_pageid, num_pages, LOG_PAGESIZE,
 			      FILEIO_WRITE_NO_COMPENSATE_WRITE) == NULL)
 	{

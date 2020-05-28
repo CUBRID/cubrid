@@ -168,7 +168,7 @@ tde_decrypt_log_page (const LOG_PAGE *logpage_cipher, LOG_PAGE *logpage_plain, T
 
   memcpy (logpage_plain, logpage_cipher, LOG_PAGESIZE);
 
-  err = tde_encrypt_internal (((const unsigned char *)logpage_cipher) + TDE_LOG_PAGE_ENC_OFFSET,
+  err = tde_decrypt_internal (((const unsigned char *)logpage_cipher) + TDE_LOG_PAGE_ENC_OFFSET,
 			      TDE_LOG_PAGE_ENC_LENGTH, tde_algo, data_key, nonce,
 			      ((unsigned char *)logpage_plain) + TDE_LOG_PAGE_ENC_OFFSET);
 
