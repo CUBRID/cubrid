@@ -242,14 +242,14 @@ public class UConnection {
 	}
 
 	static {
-	    driverInfossl = new byte[10];
-        UJCIUtil.copy_bytes(driverInfossl, 0, 5, magicStringSSL);
-        driverInfossl[5] = CAS_CLIENT_JDBC;
-        driverInfossl[6] = CAS_PROTO_INDICATOR | CAS_PROTOCOL_VERSION;
-        driverInfossl[7] = CAS_RENEWED_ERROR_CODE | CAS_SUPPORT_HOLDABLE_RESULT;
-        driverInfossl[8] = 0; // reserved
-        driverInfossl[9] = 0; // reserved
-    }
+		driverInfossl = new byte[10];
+		UJCIUtil.copy_bytes(driverInfossl, 0, 5, magicStringSSL);
+		driverInfossl[5] = CAS_CLIENT_JDBC;
+		driverInfossl[6] = CAS_PROTO_INDICATOR | CAS_PROTOCOL_VERSION;
+		driverInfossl[7] = CAS_RENEWED_ERROR_CODE | CAS_SUPPORT_HOLDABLE_RESULT;
+		driverInfossl[8] = 0; // reserved
+		driverInfossl[9] = 0; // reserved
+	}
 
 	private int lastShardId = UShardInfo.SHARD_ID_INVALID;
 
