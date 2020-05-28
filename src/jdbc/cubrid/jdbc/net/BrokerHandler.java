@@ -56,7 +56,13 @@ public class BrokerHandler {
           toBroker.setKeepAlive(true);
           in = new UTimedDataInputStream(toBroker.getInputStream(), ip, port, timeout);
           out = new DataOutputStream(toBroker.getOutputStream());
-          out.write(UConnection.driverInfo);
+
+          if (useSSL == true) {
+	          out.write(UConnection.driverInfossl);
+          } else {
+              out.write(UConnection.driverInfo);
+          }
+
           out.flush();
           int code = in.readInt();
           if (code < 0) {
