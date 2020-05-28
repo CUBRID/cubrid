@@ -18,7 +18,7 @@
  */
 
 /*
- * tde.cpp - 
+ * tde.cpp -
  */
 
 #ident "$Id$"
@@ -36,241 +36,280 @@
 TDE_CIPHER tde_Cipher; // global var for TDE Module
 
 
-static int tde_load_master_key (const char* key_path);
+static int tde_load_master_key (const char *key_path);
 static int tde_load_data_keys (void);
 static int tde_store_data_keys (void);
 
-static int tde_encrypt_internal (const unsigned char * plain_buffer, int length, TDE_ALGORITHM tde_algo,  
-    const unsigned char * key, const unsigned char * nonce, unsigned char * cipher_buffer);
-static int tde_decrypt_internal (const unsigned char * cipher_buffer, int length, TDE_ALGORITHM tde_algo, 
-    const unsigned char * key, const unsigned char * nonce, unsigned char * plain_buffer);
+static int tde_encrypt_internal (const unsigned char *plain_buffer, int length, TDE_ALGORITHM tde_algo,
+				 const unsigned char *key, const unsigned char *nonce, unsigned char *cipher_buffer);
+static int tde_decrypt_internal (const unsigned char *cipher_buffer, int length, TDE_ALGORITHM tde_algo,
+				 const unsigned char *key, const unsigned char *nonce, unsigned char *plain_buffer);
 
 
-int 
+int
 tde_initialize (void)
 {
   // TODO
-  // 1. tde_Cipher init 
-  // 2. tde_Cipher update from boot_db_parm 
+  // 1. tde_Cipher init
+  // 2. tde_Cipher update from boot_db_parm
   // 3. master key loading
   // 4. data key loading
   //
-  
+
   // for test
   memcpy (tde_Cipher.data_keys.perm_key, "01234567890123456789012345678901", TDE_DATA_KEY_LENGTH);
   memcpy (tde_Cipher.data_keys.temp_key, "12345678901234567890123456789012", TDE_DATA_KEY_LENGTH);
   memcpy (tde_Cipher.data_keys.log_key, "23456789012345678901234567890123", TDE_DATA_KEY_LENGTH);
   tde_Cipher.data_keys.is_loaded = true;
 
-  tde_Cipher.temp_write_counter.store(0);
+  tde_Cipher.temp_write_counter.store (0);
 
   return NO_ERROR;
 
 }
 
 int
-tde_encrypt_data_page (const unsigned char * iopage_plain, unsigned char * iopage_cipher, TDE_ALGORITHM tde_algo,  bool is_temp)
+tde_encrypt_data_page (const unsigned char *iopage_plain, unsigned char *iopage_cipher, TDE_ALGORITHM tde_algo,
+		       bool is_temp)
 {
   int err = NO_ERROR;
   unsigned char nonce[TDE_DATA_PAGE_NONCE_LENGTH];
-  FILEIO_PAGE* iopage = (FILEIO_PAGE*) iopage_plain;
-  const unsigned char * data_key;
-  
-  memset (nonce, 0, TDE_DATA_PAGE_NONCE_LENGTH); 
+  FILEIO_PAGE *iopage = (FILEIO_PAGE *) iopage_plain;
+  const unsigned char *data_key;
+
+  memset (nonce, 0, TDE_DATA_PAGE_NONCE_LENGTH);
 
   if (is_temp)
-  {
-    // temporary file: p_reserve_1 for nonce TODO: p_reserve_3 -> ?
-    data_key = tde_Cipher.data_keys.temp_key;
-    iopage->prv.p_reserve_3 = tde_Cipher.temp_write_counter.fetch_add(1);
-    memcpy (nonce, &iopage->prv.p_reserve_3, sizeof(iopage->prv.p_reserve_3)); 
-  }
-  else 
-  {
-    // permanent file: page lsa for nonce 
-    data_key = tde_Cipher.data_keys.perm_key;
-    memcpy (nonce, &iopage->prv.lsa, sizeof(iopage->prv.lsa)); 
-  }
+    {
+      // temporary file: p_reserve_1 for nonce TODO: p_reserve_3 -> ?
+      data_key = tde_Cipher.data_keys.temp_key;
+      iopage->prv.p_reserve_3 = tde_Cipher.temp_write_counter.fetch_add (1);
+      memcpy (nonce, &iopage->prv.p_reserve_3, sizeof (iopage->prv.p_reserve_3));
+    }
+  else
+    {
+      // permanent file: page lsa for nonce
+      data_key = tde_Cipher.data_keys.perm_key;
+      memcpy (nonce, &iopage->prv.lsa, sizeof (iopage->prv.lsa));
+    }
 
   memcpy (iopage_cipher, iopage_plain, IO_PAGESIZE);
-   
-  err = tde_encrypt_internal (iopage_plain + TDE_DATA_PAGE_ENC_OFFSET, 
-     TDE_DATA_PAGE_ENC_LENGTH, tde_algo, data_key, nonce, 
-     iopage_cipher + TDE_DATA_PAGE_ENC_OFFSET); 
-  
+
+  err = tde_encrypt_internal (iopage_plain + TDE_DATA_PAGE_ENC_OFFSET,
+			      TDE_DATA_PAGE_ENC_LENGTH, tde_algo, data_key, nonce,
+			      iopage_cipher + TDE_DATA_PAGE_ENC_OFFSET);
+
   return err;
 }
 
 int
-tde_decrypt_data_page (const unsigned char * iopage_cipher, unsigned char * iopage_plain, TDE_ALGORITHM tde_algo, bool is_temp)
+tde_decrypt_data_page (const unsigned char *iopage_cipher, unsigned char *iopage_plain, TDE_ALGORITHM tde_algo,
+		       bool is_temp)
 {
   int err = NO_ERROR;
   unsigned char nonce[TDE_DATA_PAGE_NONCE_LENGTH];
-  FILEIO_PAGE* iopage = (FILEIO_PAGE*) iopage_cipher;
-  const unsigned char * data_key;
-  
-  memset (nonce, 0, TDE_DATA_PAGE_NONCE_LENGTH); 
+  FILEIO_PAGE *iopage = (FILEIO_PAGE *) iopage_cipher;
+  const unsigned char *data_key;
+
+  memset (nonce, 0, TDE_DATA_PAGE_NONCE_LENGTH);
 
   if (is_temp)
-  {
-    // temporary file: p_reserve_1 for nonce TODO: p_reserve_3 -> ?
-    data_key = tde_Cipher.data_keys.temp_key;
-    memcpy (nonce, &iopage->prv.p_reserve_3, sizeof(iopage->prv.p_reserve_3)); 
-  }
-  else 
-  {
-    // permanent file: page lsa for nonce 
-    data_key = tde_Cipher.data_keys.perm_key;
-    memcpy (nonce, &iopage->prv.lsa, sizeof(iopage->prv.lsa)); 
-  }
+    {
+      // temporary file: p_reserve_1 for nonce TODO: p_reserve_3 -> ?
+      data_key = tde_Cipher.data_keys.temp_key;
+      memcpy (nonce, &iopage->prv.p_reserve_3, sizeof (iopage->prv.p_reserve_3));
+    }
+  else
+    {
+      // permanent file: page lsa for nonce
+      data_key = tde_Cipher.data_keys.perm_key;
+      memcpy (nonce, &iopage->prv.lsa, sizeof (iopage->prv.lsa));
+    }
 
   memcpy (iopage_plain, iopage_cipher, IO_PAGESIZE);
-   
-  err = tde_decrypt_internal (iopage_cipher + TDE_DATA_PAGE_ENC_OFFSET, 
-     TDE_DATA_PAGE_ENC_LENGTH, tde_algo, data_key, nonce, 
-     iopage_plain + TDE_DATA_PAGE_ENC_OFFSET); 
-  
+
+  err = tde_decrypt_internal (iopage_cipher + TDE_DATA_PAGE_ENC_OFFSET,
+			      TDE_DATA_PAGE_ENC_LENGTH, tde_algo, data_key, nonce,
+			      iopage_plain + TDE_DATA_PAGE_ENC_OFFSET);
+
   return err;
 }
 
 int
-tde_encrypt_log_page (const unsigned char * iopage_plain, unsigned char * iopage_cipher, TDE_ALGORITHM tde_algo)
+tde_encrypt_log_page (const unsigned char *logpage_plain, unsigned char *logpage_cipher, TDE_ALGORITHM tde_algo)
 {
-  return NO_ERROR;
+  // 1. nonce from logpage->hdr->logical_pageid (48bit)
+  // 2. data_key from tde_Cipher.data_keys.log_key;
+  // 3. tde_encrypt only logpage->data part (TDE_LOG_PAGE_ENC_OFFSET, TDE_LOG_PAGE_ENC_LENGTH)
+  int err = NO_ERROR;
+  unsigned char nonce[TDE_LOG_PAGE_NONCE_LENGTH];
+  LOG_PAGE *logpage = (LOG_PAGE *) logpage_plain;
+  const unsigned char *data_key;
+
+  memset (nonce, 0, TDE_LOG_PAGE_NONCE_LENGTH);
+
+  data_key = tde_Cipher.data_keys.log_key;
+  memcpy (nonce, &logpage->hdr.logical_pageid, sizeof (logpage->hdr.logical_pageid));
+
+  memcpy (logpage_cipher, logpage_plain, LOG_PAGESIZE);
+
+  err = tde_encrypt_internal (logpage_plain + TDE_LOG_PAGE_ENC_OFFSET,
+			      TDE_LOG_PAGE_ENC_LENGTH, tde_algo, data_key, nonce,
+			      logpage_cipher + TDE_LOG_PAGE_ENC_OFFSET);
+
+  return err;
 }
 
 int
-tde_decrypt_log_page (const unsigned char * iopage_cipher, unsigned char * iopage_plain, TDE_ALGORITHM tde_algo)
+tde_decrypt_log_page (const unsigned char *logpage_cipher, unsigned char *logpage_plain, TDE_ALGORITHM tde_algo)
 {
-  return NO_ERROR;
+  int err = NO_ERROR;
+  unsigned char nonce[TDE_LOG_PAGE_NONCE_LENGTH];
+  LOG_PAGE *logpage = (LOG_PAGE *) logpage_cipher;
+  const unsigned char *data_key;
+
+  memset (nonce, 0, TDE_LOG_PAGE_NONCE_LENGTH);
+
+  data_key = tde_Cipher.data_keys.log_key;
+  memcpy (nonce, &logpage->hdr.logical_pageid, sizeof (logpage->hdr.logical_pageid));
+
+  memcpy (logpage_plain, logpage_cipher, LOG_PAGESIZE);
+
+  err = tde_encrypt_internal (logpage_cipher + TDE_LOG_PAGE_ENC_OFFSET,
+			      TDE_LOG_PAGE_ENC_LENGTH, tde_algo, data_key, nonce,
+			      logpage_plain + TDE_LOG_PAGE_ENC_OFFSET);
+
+  return err;
 }
 
 int
-tde_encrypt_internal (const unsigned char * plain_buffer, int length, TDE_ALGORITHM tde_algo, const unsigned char * key, const unsigned char * nonce, 
-    unsigned char* cipher_buffer)
+tde_encrypt_internal (const unsigned char *plain_buffer, int length, TDE_ALGORITHM tde_algo, const unsigned char *key,
+		      const unsigned char *nonce,
+		      unsigned char *cipher_buffer)
 {
-    EVP_CIPHER_CTX *ctx;
-    const EVP_CIPHER *cipher_type;
-    int len;
-    int cipher_len;
-    int err = NO_ERROR;
+  EVP_CIPHER_CTX *ctx;
+  const EVP_CIPHER *cipher_type;
+  int len;
+  int cipher_len;
+  int err = NO_ERROR;
 
-    assert (tde_algo == TDE_ALGORITHM_AES || tde_algo == TDE_ALGORITHM_ARIA);
+  assert (tde_algo == TDE_ALGORITHM_AES || tde_algo == TDE_ALGORITHM_ARIA);
 
-    if(!(ctx = EVP_CIPHER_CTX_new()))
+  if (! (ctx = EVP_CIPHER_CTX_new()))
     {
-        err = ER_FAILED; 
-        goto exit;
-    }
-
-    switch (tde_algo)
-    {
-      case TDE_ALGORITHM_AES:
-        cipher_type = EVP_aes_256_ctr();
-        break;
-      case TDE_ALGORITHM_ARIA:
-        cipher_type = EVP_aria_256_ctr();
-        break;
-      case TDE_ALGORITHM_NONE:
-      deafult:
-        assert(false);
-    }
-    
-    if(1 != EVP_EncryptInit_ex(ctx, cipher_type, NULL, key, nonce))
-    {
-        err = ER_FAILED; 
-        goto cleanup;
-    }
-    
-    if(1 != EVP_EncryptUpdate(ctx, cipher_buffer, &len, plain_buffer, length))
-    {
-        err = ER_FAILED; 
-        goto cleanup;
-    }
-    cipher_len = len;
-   
-    // Further ciphertext bytes may be written at finalizing (Partial block).
-    
-    if(1 != EVP_EncryptFinal_ex(ctx, cipher_buffer + len, &len))
-    {
-        err = ER_FAILED; 
-        goto cleanup;
-    }
-    
-    cipher_len += len;
-    
-    // CTR_MODE is stream mode so that there is no need to check,
-    // but check it for safe.
-    assert (cipher_len == length);
-    
-cleanup:
-    EVP_CIPHER_CTX_free(ctx);
-
-exit:
-    return err;
-}
-
-int
-tde_decrypt_internal (const unsigned char * cipher_buffer, int length, TDE_ALGORITHM tde_algo, const unsigned char * key, const unsigned char * nonce, 
-    unsigned char * plain_buffer)
-{
-    EVP_CIPHER_CTX *ctx;
-    const EVP_CIPHER *cipher_type;
-    int len;
-    int plain_len;
-    int err = NO_ERROR;
-    
-    assert (tde_algo == TDE_ALGORITHM_AES || tde_algo == TDE_ALGORITHM_ARIA);
-
-    if(!(ctx = EVP_CIPHER_CTX_new()))
-    {
-        err = ER_FAILED; 
-        goto exit;
-    }
-    
-    switch (tde_algo)
-    {
-      case TDE_ALGORITHM_AES:
-        cipher_type = EVP_aes_256_ctr();
-        break;
-      case TDE_ALGORITHM_ARIA:
-        cipher_type = EVP_aria_256_ctr();
-        break;
-      case TDE_ALGORITHM_NONE:
-      deafult:
-        assert(false);
+      err = ER_FAILED;
+      goto exit;
     }
 
-    if(1 != EVP_DecryptInit_ex(ctx, cipher_type, NULL, key, nonce))
+  switch (tde_algo)
     {
-        err = ER_FAILED; 
-        goto cleanup;
+    case TDE_ALGORITHM_AES:
+      cipher_type = EVP_aes_256_ctr();
+      break;
+    case TDE_ALGORITHM_ARIA:
+      cipher_type = EVP_aria_256_ctr();
+      break;
+    case TDE_ALGORITHM_NONE:
+deafult:
+      assert (false);
     }
 
-    if(1 != EVP_DecryptUpdate(ctx, plain_buffer, &len, cipher_buffer, length))
+  if (1 != EVP_EncryptInit_ex (ctx, cipher_type, NULL, key, nonce))
     {
-        err = ER_FAILED; 
-        goto cleanup;
+      err = ER_FAILED;
+      goto cleanup;
     }
-    plain_len = len;
 
-    // Further plaintext bytes may be written at finalizing (Partial block).
-    if(1 != EVP_DecryptFinal_ex(ctx, plain_buffer + len, &len))
+  if (1 != EVP_EncryptUpdate (ctx, cipher_buffer, &len, plain_buffer, length))
     {
-        err = ER_FAILED; 
-        goto cleanup;
+      err = ER_FAILED;
+      goto cleanup;
     }
-    plain_len += len;
-    
-    // CTR_MODE is stream mode so that there is no need to check,
-    // but check it for safe.
-    assert (plain_len == length); 
+  cipher_len = len;
+
+  // Further ciphertext bytes may be written at finalizing (Partial block).
+
+  if (1 != EVP_EncryptFinal_ex (ctx, cipher_buffer + len, &len))
+    {
+      err = ER_FAILED;
+      goto cleanup;
+    }
+
+  cipher_len += len;
+
+  // CTR_MODE is stream mode so that there is no need to check,
+  // but check it for safe.
+  assert (cipher_len == length);
 
 cleanup:
-    EVP_CIPHER_CTX_free(ctx);
+  EVP_CIPHER_CTX_free (ctx);
 
 exit:
-    return err;
+  return err;
+}
+
+int
+tde_decrypt_internal (const unsigned char *cipher_buffer, int length, TDE_ALGORITHM tde_algo, const unsigned char *key,
+		      const unsigned char *nonce,
+		      unsigned char *plain_buffer)
+{
+  EVP_CIPHER_CTX *ctx;
+  const EVP_CIPHER *cipher_type;
+  int len;
+  int plain_len;
+  int err = NO_ERROR;
+
+  assert (tde_algo == TDE_ALGORITHM_AES || tde_algo == TDE_ALGORITHM_ARIA);
+
+  if (! (ctx = EVP_CIPHER_CTX_new()))
+    {
+      err = ER_FAILED;
+      goto exit;
+    }
+
+  switch (tde_algo)
+    {
+    case TDE_ALGORITHM_AES:
+      cipher_type = EVP_aes_256_ctr();
+      break;
+    case TDE_ALGORITHM_ARIA:
+      cipher_type = EVP_aria_256_ctr();
+      break;
+    case TDE_ALGORITHM_NONE:
+deafult:
+      assert (false);
+    }
+
+  if (1 != EVP_DecryptInit_ex (ctx, cipher_type, NULL, key, nonce))
+    {
+      err = ER_FAILED;
+      goto cleanup;
+    }
+
+  if (1 != EVP_DecryptUpdate (ctx, plain_buffer, &len, cipher_buffer, length))
+    {
+      err = ER_FAILED;
+      goto cleanup;
+    }
+  plain_len = len;
+
+  // Further plaintext bytes may be written at finalizing (Partial block).
+  if (1 != EVP_DecryptFinal_ex (ctx, plain_buffer + len, &len))
+    {
+      err = ER_FAILED;
+      goto cleanup;
+    }
+  plain_len += len;
+
+  // CTR_MODE is stream mode so that there is no need to check,
+  // but check it for safe.
+  assert (plain_len == length);
+
+cleanup:
+  EVP_CIPHER_CTX_free (ctx);
+
+exit:
+  return err;
 
 }
 
