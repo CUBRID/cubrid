@@ -2634,7 +2634,8 @@ logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY current_setdirty)
 
   if (log_Gl.append.next_tde_encrypted)
     {
-      logpb_set_tde_algorithm (thread_p, log_Gl.append.log_pgptr, TDE_ALGORITHM_AES);
+      logpb_set_tde_algorithm (thread_p, log_Gl.append.log_pgptr,
+			       (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_ALGORITHM_FOR_LOG));
     }
 
 #if defined(CUBRID_DEBUG)
@@ -4105,7 +4106,8 @@ logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
 
   if (LOG_IS_RECHDR_TDE_ENCRYPTED (header) && !LOG_IS_PAGE_TDE_ENCRYPTED (log_Gl.append.log_pgptr))
     {
-      logpb_set_tde_algorithm (thread_p, log_Gl.append.log_pgptr, TDE_ALGORITHM_AES);
+      logpb_set_tde_algorithm (thread_p, log_Gl.append.log_pgptr,
+			       (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_ALGORITHM_FOR_LOG));
     }
 
   log_rec = (LOG_RECORD_HEADER *) LOG_APPEND_PTR ();
