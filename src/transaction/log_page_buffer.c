@@ -2714,6 +2714,16 @@ logpb_writev_append_pages (THREAD_ENTRY * thread_p, LOG_PAGE ** to_flush, DKNPAG
   LOG_BUFFER *bufptr;
   LOG_PHY_PAGEID phy_pageid;
   int i;
+  FILEIO_WRITE_MODE write_mode = FILEIO_WRITE_DEFAULT_WRITE;
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  LOG_PAGE *log_pgptr = NULL;
+  LOG_PAGE *buf_pgptr = NULL;
+
+  buf_pgptr = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+
+#if !defined (CS_MODE)
+  write_mode = dwb_is_created () == true ? FILEIO_WRITE_NO_COMPENSATE_WRITE : FILEIO_WRITE_DEFAULT_WRITE;
+#endif
 
   /* In this point, flush buffer cannot be replaced by trans. So, bufptr's pageid and phy_pageid are not changed. */
   if (npages > 0)
@@ -2732,20 +2742,33 @@ logpb_writev_append_pages (THREAD_ENTRY * thread_p, LOG_PAGE ** to_flush, DKNPAG
 	      return NULL;
 	    }
 	}
-
-      if (fileio_writev (thread_p, log_Gl.append.vdes, (void **) to_flush, phy_pageid, npages, LOG_PAGESIZE) == NULL)
+      for (i = 0; i < npages; i++)
 	{
-	  if (er_errid () == ER_IO_WRITE_OUT_OF_SPACE)
+	  log_pgptr = to_flush[i];
+	  if (LOG_IS_PAGE_TDE_ENCRYPTED (log_pgptr))
 	    {
-	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_WRITE_OUT_OF_SPACE, 4, bufptr->pageid,
-		      phy_pageid, log_Name_active, log_Gl.hdr.db_logpagesize);
+	      if (tde_encrypt_log_page (log_pgptr, buf_pgptr, logpb_get_tde_algorithm (log_pgptr)) != NO_ERROR)
+		{
+		  return NULL;
+		}
+	      log_pgptr = buf_pgptr;
 	    }
-	  else
+
+	  if (fileio_write (thread_p, log_Gl.append.vdes, log_pgptr, phy_pageid + i, LOG_PAGESIZE, write_mode) == NULL)
 	    {
-	      er_set_with_oserror (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_WRITE, 3, bufptr->pageid,
-				   phy_pageid, log_Name_active);
+	      if (er_errid () == ER_IO_WRITE_OUT_OF_SPACE)
+		{
+		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_WRITE_OUT_OF_SPACE, 4, bufptr->pageid,
+			  phy_pageid, log_Name_active, log_Gl.hdr.db_logpagesize);
+		}
+	      else
+		{
+		  er_set_with_oserror (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_WRITE, 3, bufptr->pageid,
+				       phy_pageid, log_Name_active);
+		}
+	      to_flush = NULL;
+	      break;
 	    }
-	  to_flush = NULL;
 	}
     }
 
