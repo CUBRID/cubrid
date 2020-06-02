@@ -30,8 +30,11 @@
 #include <atomic>
 
 #include "storage_common.h"
-#include "file_io.h"
-#include "log_storage.hpp"
+
+struct fileio_page;
+typedef fileio_page FILEIO_PAGE;
+struct log_page;
+typedef log_page LOG_PAGE;
 
 typedef enum
 {

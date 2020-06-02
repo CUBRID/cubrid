@@ -31,6 +31,8 @@
 #include <openssl/err.h>
 
 #include "error_code.h"
+#include "file_io.h"
+#include "log_storage.hpp"
 #include "tde.hpp"
 
 TDE_CIPHER tde_Cipher; // global var for TDE Module
