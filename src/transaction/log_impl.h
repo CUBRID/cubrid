@@ -275,21 +275,6 @@ extern int db_Disable_modifications;
 
 #define MAX_NUM_EXEC_QUERY_HISTORY                      100
 
-/* Definitions for flags in LOG_HDRPAGE */
-
-/* 
- * TDE_ALGORITHM to be applied to the log page
- * Set if any record in the page has to be tde-encrypted 
- */
-#define LOG_HDRPAGE_FLAG_ENCRYPTED_AES 0x1
-#define LOG_HDRPAGE_FLAG_ENCRYPTED_ARIA 0x2
-
-#define LOG_HDRPAGE_FLAG_ENCRYPTED_MASK 0x3
-
-#define LOG_IS_PAGE_TDE_ENCRYPTED(log_page_p) \
-  ((log_page_p)->hdr.dummy1 & LOG_HDRPAGE_FLAG_ENCRYPTED_AES \
-   || (log_page_p)->hdr.dummy1 & LOG_HDRPAGE_FLAG_ENCRYPTED_ARIA)
-
 enum log_flush
 { LOG_DONT_NEED_FLUSH, LOG_NEED_FLUSH };
 typedef enum log_flush LOG_FLUSH;
@@ -914,6 +899,8 @@ extern int logpb_remove_all_in_log_path (THREAD_ENTRY * thread_p, const char *db
 					 const char *prefix_logname);
 extern TDE_ALGORITHM logpb_get_tde_algorithm (const LOG_PAGE * log_pgptr);
 extern void logpb_set_tde_algorithm (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, const TDE_ALGORITHM tde_algo);
+
+
 
 extern void log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat);
 extern LOG_LSA *log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr);

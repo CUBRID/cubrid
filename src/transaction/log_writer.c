@@ -44,6 +44,7 @@
 #include "log_storage.hpp"
 #include "log_volids.hpp"
 #include "crypt_opfunc.h"
+#include "tde.hpp"
 #if defined(SERVER_MODE)
 #include "log_append.hpp"
 #include "log_manager.h"
@@ -802,7 +803,7 @@ logwr_copy_necessary_log (LOG_PAGEID to_pageid)
 	      return ER_LOG_PAGE_CORRUPTED;
 	    }
 	}
-
+      /* no need to encrypt, it is read as not decrypted (TDE) if encrypted */
       if (fileio_write_pages (NULL, bg_arv_info->vdes, (char *) log_pgptr, ar_phy_pageid, num_pages, LOG_PAGESIZE,
 			      FILEIO_WRITE_DEFAULT_WRITE) == NULL)
 	{
@@ -826,10 +827,23 @@ logwr_copy_necessary_log (LOG_PAGEID to_pageid)
 static LOG_PAGE **
 logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
 {
+  char log_pgbuf[IO_MAX_PAGE_SIZE * LOGPB_IO_NPAGES + MAX_ALIGNMENT];
   LOG_PAGEID fpageid;
   LOG_PHY_PAGEID phy_pageid;
   BACKGROUND_ARCHIVING_INFO *bg_arv_info = NULL;
+  LOG_PAGE *log_pgptr = NULL;
+  LOG_PAGE *buf_pgptr = NULL;
+  FILEIO_WRITE_MODE write_mode = FILEIO_WRITE_DEFAULT_WRITE;
+  const TDE_ALGORITHM tde_algo = (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_ALGORITHM_FOR_LOG);
   int error = NO_ERROR;
+  int i;
+
+#if !defined (CS_MODE)
+  write_mode = dwb_is_created () == true ? FILEIO_WRITE_NO_COMPENSATE_WRITE : FILEIO_WRITE_DEFAULT_WRITE;
+#endif
+
+
+  buf_pgptr = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
   if (npages > 0)
     {
@@ -861,21 +875,35 @@ logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
 	    }
 
 	  phy_pageid = (LOG_PHY_PAGEID) (fpageid - bg_arv_info->start_page_id + 1);
-	  if (fileio_writev (NULL, bg_arv_info->vdes, (void **) to_flush, phy_pageid, npages, LOG_PAGESIZE) == NULL)
+	  for (i = 0; i < npages; i++)
 	    {
-	      if (er_errid () == ER_IO_WRITE_OUT_OF_SPACE)
+	      log_pgptr = to_flush[i];
+	      if (LOG_IS_PAGE_TDE_ENCRYPTED (log_pgptr))
 		{
-		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_WRITE_OUT_OF_SPACE, 4, fpageid, phy_pageid,
-			  logwr_Gl.bg_archive_name, logwr_Gl.hdr.db_logpagesize);
+		  logwr_set_tde_algorithm (NULL, log_pgptr, tde_algo);
+		  if (tde_encrypt_log_page (log_pgptr, buf_pgptr, tde_algo) != NO_ERROR)
+		    {
+		      return NULL;
+		    }
+		  log_pgptr = buf_pgptr;
 		}
-	      else
+	      if (fileio_write (NULL, bg_arv_info->vdes, log_pgptr, phy_pageid + i, LOG_PAGESIZE, write_mode) == NULL)
 		{
-		  er_set_with_oserror (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_WRITE, 3, fpageid, phy_pageid,
-				       logwr_Gl.bg_archive_name);
+		  if (er_errid () == ER_IO_WRITE_OUT_OF_SPACE)
+		    {
+		      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_WRITE_OUT_OF_SPACE, 4, fpageid, phy_pageid,
+			      logwr_Gl.bg_archive_name, logwr_Gl.hdr.db_logpagesize);
+		    }
+		  else
+		    {
+		      er_set_with_oserror (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_WRITE, 3, fpageid, phy_pageid,
+					   logwr_Gl.bg_archive_name);
+		    }
+		  to_flush = NULL;
+		  return to_flush;
 		}
-	      to_flush = NULL;
-	      return to_flush;
 	    }
+
 	  bg_arv_info->current_page_id = fpageid + (npages - 1);
 	  logwr_er_log ("background archiving  current_page_id[%lld], fpageid[%lld], npages[%d]",
 			bg_arv_info->current_page_id, fpageid, npages);
@@ -890,20 +918,33 @@ logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
 
       /* 2. active write */
       phy_pageid = logwr_to_physical_pageid (fpageid);
-      if (fileio_writev (NULL, logwr_Gl.append_vdes, (void **) to_flush, phy_pageid, npages, LOG_PAGESIZE) == NULL)
+      for (i = 0; i < npages; i++)
 	{
-	  if (er_errid () == ER_IO_WRITE_OUT_OF_SPACE)
+	  log_pgptr = to_flush[i];
+	  if (LOG_IS_PAGE_TDE_ENCRYPTED (log_pgptr))
 	    {
-	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_WRITE_OUT_OF_SPACE, 4, fpageid, phy_pageid,
-		      logwr_Gl.active_name, logwr_Gl.hdr.db_logpagesize);
+	      logwr_set_tde_algorithm (NULL, log_pgptr, tde_algo);
+	      if (tde_encrypt_log_page (log_pgptr, buf_pgptr, tde_algo) != NO_ERROR)
+		{
+		  return NULL;
+		}
+	      log_pgptr = buf_pgptr;
 	    }
-	  else
+	  if (fileio_write (NULL, logwr_Gl.append_vdes, log_pgptr, phy_pageid + i, LOG_PAGESIZE, write_mode) == NULL)
 	    {
-	      er_set_with_oserror (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_WRITE, 3, fpageid, phy_pageid,
-				   logwr_Gl.active_name);
+	      if (er_errid () == ER_IO_WRITE_OUT_OF_SPACE)
+		{
+		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_WRITE_OUT_OF_SPACE, 4, fpageid, phy_pageid,
+			  logwr_Gl.active_name, logwr_Gl.hdr.db_logpagesize);
+		}
+	      else
+		{
+		  er_set_with_oserror (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_WRITE, 3, fpageid, phy_pageid,
+				       logwr_Gl.active_name);
+		}
+	      to_flush = NULL;
+	      return to_flush;
 	    }
-	  to_flush = NULL;
-	  return to_flush;
 	}
     }
   return to_flush;
@@ -1316,7 +1357,7 @@ logwr_archive_active_log (void)
 	      goto error;
 	    }
 	}
-
+      /* no need to encrypt, it is read as not decrypted (TDE) if encrypted */
       if (fileio_write_pages (NULL, vdes, (char *) log_pgptr, ar_phy_pageid, num_pages, LOG_PAGESIZE,
 			      FILEIO_WRITE_DEFAULT_WRITE) == NULL)
 	{
@@ -1829,6 +1870,47 @@ logwr_log_ha_filestat_to_string (enum LOG_HA_FILESTAT val)
       return "SYNCHRONIZED";
     default:
       return "UNKNOWN";
+    }
+}
+
+TDE_ALGORITHM
+logwr_get_tde_algorithm (const LOG_PAGE * log_pgptr)
+{
+  /* exclusive */
+  assert (!((log_pgptr->hdr.dummy1 & LOG_HDRPAGE_FLAG_ENCRYPTED_AES)
+	    && (log_pgptr->hdr.dummy1 & LOG_HDRPAGE_FLAG_ENCRYPTED_ARIA)));
+
+  if (log_pgptr->hdr.dummy1 & LOG_HDRPAGE_FLAG_ENCRYPTED_AES)
+    {
+      return TDE_ALGORITHM_AES;
+    }
+  else if (log_pgptr->hdr.dummy1 & LOG_HDRPAGE_FLAG_ENCRYPTED_ARIA)
+    {
+      return TDE_ALGORITHM_ARIA;
+    }
+  else
+    {
+      return TDE_ALGORITHM_NONE;
+    }
+}
+
+void
+logwr_set_tde_algorithm (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, const TDE_ALGORITHM tde_algo)
+{
+  /* clear encrypted flag */
+  log_pgptr->hdr.dummy1 &= ~LOG_HDRPAGE_FLAG_ENCRYPTED_MASK;
+
+  switch (tde_algo)
+    {
+    case TDE_ALGORITHM_AES:
+      log_pgptr->hdr.dummy1 |= LOG_HDRPAGE_FLAG_ENCRYPTED_AES;
+      break;
+    case TDE_ALGORITHM_ARIA:
+      log_pgptr->hdr.dummy1 |= LOG_HDRPAGE_FLAG_ENCRYPTED_ARIA;
+      break;
+    case TDE_ALGORITHM_NONE:
+      /* already cleared */
+      break;
     }
 }
 

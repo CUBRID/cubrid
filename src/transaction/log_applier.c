@@ -60,6 +60,7 @@
 #include "log_applier_sql_log.h"
 #include "util_func.h"
 #include "dbtype.h"
+#include "tde.hpp"
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif
@@ -652,7 +653,23 @@ la_log_phypageid (LOG_PAGEID logical_pageid)
 static int
 la_log_io_read (char *vname, int vdes, void *io_pgptr, LOG_PHY_PAGEID pageid, int pagesize)
 {
-  return la_log_io_read_with_max_retries (vname, vdes, io_pgptr, pageid, pagesize, -1);
+  int err = NO_ERROR;
+  LOG_PAGE *log_pgptr = (LOG_PAGE *) io_pgptr;
+
+  err = la_log_io_read_with_max_retries (vname, vdes, io_pgptr, pageid, pagesize, -1);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  if (LOG_IS_PAGE_TDE_ENCRYPTED (log_pgptr))
+    {
+      if (tde_decrypt_log_page (log_pgptr, log_pgptr, logwr_get_tde_algorithm (log_pgptr)) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
+  return err;
 }
 
 /*
@@ -1017,6 +1034,15 @@ log_reopen:
 		  pageid - la_Info.arv_log.log_hdr->fpageid + 1, la_Info.arv_log.path);
 
 	  return ER_LOG_READ;
+	}
+    }
+
+  if (LOG_IS_PAGE_TDE_ENCRYPTED ((LOG_PAGE *) data))
+    {
+      if (tde_decrypt_log_page ((LOG_PAGE *) data, (LOG_PAGE *) data, logwr_get_tde_algorithm ((LOG_PAGE *) data)) !=
+	  NO_ERROR)
+	{
+	  return ER_FAILED;
 	}
     }
 
