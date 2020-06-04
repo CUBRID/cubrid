@@ -15577,10 +15577,6 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	      goto analytic_exit_on_error;
 	    }
 
-	  /* clear instnum_flag from buildlist; this can be modified by pt_to_analytic_final_node and in some cases
-	   * will be OR'd with xasl->instnum_flag */
-	  buildlist->a_instnum_flag = 0;
-
 	  /* break up expressions with analytic functions */
 	  select_list_ex = NULL;
 	  select_list_final = NULL;
@@ -15597,7 +15593,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	      node->next = NULL;
 
 	      /* get final select list node */
-	      final_node = pt_to_analytic_final_node (parser, node, &to_ex_list, &buildlist->a_instnum_flag);
+	      final_node = pt_to_analytic_final_node (parser, node, &to_ex_list, &xasl->instnum_flag);
 	      if (final_node == NULL)
 		{
 		  /* error was set somewhere - clean up */
@@ -16022,17 +16018,12 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	    }
 	}
 
-      if ((xasl->instnum_pred != NULL || buildlist->a_instnum_flag & XASL_INSTNUM_FLAG_EVAL_DEFER)
+      if ((xasl->instnum_pred != NULL || xasl->instnum_flag & XASL_INSTNUM_FLAG_EVAL_DEFER)
 	  && pt_has_analytic (parser, select_node))
 	{
-	  /* we have an inst_num() which should not get evaluated in the initial fetch; move it in buildlist,
-	   * qexec_execute_analytic will use it in the final sort */
-	  buildlist->a_instnum_pred = xasl->instnum_pred;
-	  buildlist->a_instnum_val = xasl->instnum_val;
-	  buildlist->a_instnum_flag |= xasl->instnum_flag;
-	  xasl->instnum_pred = NULL;
-	  xasl->instnum_val = NULL;
-	  xasl->instnum_flag = 0;
+	  /* we have an inst_num() which should not get evaluated in the initial fetch(processing stage)
+	   * qexec_execute_analytic(post-processing stage) will use it in the final sort */
+	  xasl->instnum_flag |= XASL_INSTNUM_FLAG_SCAN_STOP_AT_ANALYTIC;
 	}
 
       /* union fields for BUILDLIST_PROC_NODE - BUILDLIST_PROC */

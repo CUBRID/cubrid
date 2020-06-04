@@ -718,7 +718,7 @@ qexec_eval_instnum_pred (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
       xasl->save_instnum_val->data.bigint++;
     }
 
-  if (xasl->instnum_pred)
+  if (xasl->instnum_pred && !(xasl->instnum_flag & XASL_INSTNUM_FLAG_SCAN_STOP_AT_ANALYTIC))
     {
       PRED_EXPR *pr = xasl->instnum_pred;
 
@@ -2420,11 +2420,6 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final)
 	    if (buildlist->g_hash_eligible)
 	      {
 		qexec_free_agg_hash_context (thread_p, buildlist);
-	      }
-	    pg_cnt += qexec_clear_pred (thread_p, xasl, buildlist->a_instnum_pred, is_final);
-	    if (buildlist->a_instnum_val)
-	      {
-		pr_clear_value (buildlist->a_instnum_val);
 	      }
 	  }
       }
@@ -14729,6 +14724,7 @@ qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt, c
 
       tsc_getticks (&start_tick);
     }
+
 #endif /* CUBRID_DEBUG */
 
 #if defined (SERVER_MODE)
@@ -19334,11 +19330,6 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
 
   if (analytic_state.is_last_run)
     {
-      /* for last function, evaluate instnum() predicate while sorting */
-      xasl->instnum_pred = buildlist->a_instnum_pred;
-      xasl->instnum_val = buildlist->a_instnum_val;
-      xasl->instnum_flag = buildlist->a_instnum_flag;
-
       if (xasl->instnum_val != NULL)
 	{
 	  /* initialize counter to zero */
@@ -20040,13 +20031,13 @@ qexec_analytic_eval_instnum_pred (THREAD_ENTRY * thread_p, ANALYTIC_STATE * anal
   int instnum_flag, i;
 
   /* get flag from buildlist */
-  instnum_flag = analytic_state->xasl->proc.buildlist.a_instnum_flag;
+  instnum_flag = analytic_state->xasl->instnum_flag;
 
   /* by default, it's an output record */
   analytic_state->is_output_rec = true;
 
   if (!analytic_state->is_last_run
-      || (analytic_state->xasl->instnum_pred == NULL && !(instnum_flag & XASL_INSTNUM_FLAG_EVAL_DEFER)))
+      || (analytic_state->xasl->instnum_pred == NULL && !(instnum_flag & XASL_INSTNUM_FLAG_SCAN_STOP_AT_ANALYTIC)))
     {
       /* inst_num() is evaluated only for last function, when an INST_NUM() predicate is present or when INST_NUM() is
        * selected */
@@ -20078,14 +20069,17 @@ qexec_analytic_eval_instnum_pred (THREAD_ENTRY * thread_p, ANALYTIC_STATE * anal
       return NO_ERROR;
     }
 
+  analytic_state->xasl->instnum_flag &= ~(XASL_INSTNUM_FLAG_SCAN_STOP_AT_ANALYTIC);
   /* evaluate inst_num() */
   is_output_rec = qexec_eval_instnum_pred (thread_p, analytic_state->xasl, analytic_state->xasl_state);
   if (is_output_rec == V_ERROR)
     {
+      analytic_state->xasl->instnum_flag = instnum_flag;
       return ER_FAILED;
     }
   else
     {
+      analytic_state->xasl->instnum_flag = instnum_flag;
       analytic_state->is_output_rec = (is_output_rec == V_TRUE);
     }
 
