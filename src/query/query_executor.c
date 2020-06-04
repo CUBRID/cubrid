@@ -20037,7 +20037,7 @@ qexec_analytic_eval_instnum_pred (THREAD_ENTRY * thread_p, ANALYTIC_STATE * anal
   analytic_state->is_output_rec = true;
 
   if (!analytic_state->is_last_run
-      || (analytic_state->xasl->instnum_pred == NULL && !(instnum_flag & XASL_INSTNUM_FLAG_SCAN_STOP_AT_ANALYTIC)))
+      || (analytic_state->xasl->instnum_pred == NULL && !(instnum_flag & XASL_INSTNUM_FLAG_EVAL_DEFER)))
     {
       /* inst_num() is evaluated only for last function, when an INST_NUM() predicate is present or when INST_NUM() is
        * selected */
