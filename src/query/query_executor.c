@@ -20074,12 +20074,12 @@ qexec_analytic_eval_instnum_pred (THREAD_ENTRY * thread_p, ANALYTIC_STATE * anal
   is_output_rec = qexec_eval_instnum_pred (thread_p, analytic_state->xasl, analytic_state->xasl_state);
   if (is_output_rec == V_ERROR)
     {
-      analytic_state->xasl->instnum_flag = instnum_flag;
+      analytic_state->xasl->instnum_flag |= XASL_INSTNUM_FLAG_SCAN_STOP_AT_ANALYTIC;
       return ER_FAILED;
     }
   else
     {
-      analytic_state->xasl->instnum_flag = instnum_flag;
+      analytic_state->xasl->instnum_flag |= XASL_INSTNUM_FLAG_SCAN_STOP_AT_ANALYTIC;
       analytic_state->is_output_rec = (is_output_rec == V_TRUE);
     }
 
