@@ -10936,6 +10936,12 @@ pt_instnum_to_key_limit (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xa
       return NO_ERROR;
     }
 
+  /* if there are analytic function and instnum, can't optimize */
+  if (xasl->instnum_flag & XASL_INSTNUM_FLAG_SCAN_STOP_AT_ANALYTIC)
+    {
+      return NO_ERROR;
+    }
+
   limit_infop = qo_get_key_limit_from_instnum (parser, plan, xasl);
   if (!limit_infop)
     {
