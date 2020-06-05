@@ -1040,7 +1040,7 @@ add_instnum_predicate (QO_ENV * env, XASL_NODE * xasl, PT_NODE * pred)
       xasl->instnum_pred = pt_to_pred_expr_with_arg (parser, pred, &flag);
       if (flag & PT_PRED_ARG_INSTNUM_CONTINUE)
 	{
-	  xasl->instnum_flag = XASL_INSTNUM_FLAG_SCAN_CONTINUE;
+	  xasl->instnum_flag |= XASL_INSTNUM_FLAG_SCAN_CONTINUE;
 	}
     }
 

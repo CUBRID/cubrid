@@ -718,7 +718,7 @@ pt_make_connect_by_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NO
   select_xasl->instnum_pred = pt_to_pred_expr_with_arg (parser, instnum_part, &flag);
   if (flag & PT_PRED_ARG_INSTNUM_CONTINUE)
     {
-      select_xasl->instnum_flag = XASL_INSTNUM_FLAG_SCAN_CONTINUE;
+      select_xasl->instnum_flag |= XASL_INSTNUM_FLAG_SCAN_CONTINUE;
     }
 
   if (if_part)
@@ -13999,7 +13999,7 @@ pt_gen_simple_plan (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * pl
 
       if (flag & PT_PRED_ARG_INSTNUM_CONTINUE)
 	{
-	  xasl->instnum_flag = XASL_INSTNUM_FLAG_SCAN_CONTINUE;
+	  xasl->instnum_flag |= XASL_INSTNUM_FLAG_SCAN_CONTINUE;
 	}
 
       if (from->info.spec.path_entities)
@@ -14140,7 +14140,7 @@ pt_gen_simple_merge_plan (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLA
       xasl->instnum_pred = pt_to_pred_expr_with_arg (parser, instnum_part, &flag);
       if (flag & PT_PRED_ARG_INSTNUM_CONTINUE)
 	{
-	  xasl->instnum_flag = XASL_INSTNUM_FLAG_SCAN_CONTINUE;
+	  xasl->instnum_flag |= XASL_INSTNUM_FLAG_SCAN_CONTINUE;
 	}
       pt_set_dptr (parser, if_part, xasl, MATCH_ALL);
 

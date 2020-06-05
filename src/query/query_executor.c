@@ -14724,7 +14724,6 @@ qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt, c
 
       tsc_getticks (&start_tick);
     }
-
 #endif /* CUBRID_DEBUG */
 
 #if defined (SERVER_MODE)
@@ -20036,8 +20035,7 @@ qexec_analytic_eval_instnum_pred (THREAD_ENTRY * thread_p, ANALYTIC_STATE * anal
   /* by default, it's an output record */
   analytic_state->is_output_rec = true;
 
-  if (!analytic_state->is_last_run
-      || (analytic_state->xasl->instnum_pred == NULL && !(instnum_flag & XASL_INSTNUM_FLAG_EVAL_DEFER)))
+  if (!analytic_state->is_last_run && !(instnum_flag & XASL_INSTNUM_FLAG_EVAL_DEFER))
     {
       /* inst_num() is evaluated only for last function, when an INST_NUM() predicate is present or when INST_NUM() is
        * selected */
