@@ -48,9 +48,6 @@ public class UServerSideConnection extends UConnection {
 	public final static int INVOKE = 2;
 	
 	private final static byte CAS_CLIENT_SERVER_SIDE_JDBC = 6;
-	static {
-		driverInfo[5] = CAS_CLIENT_SERVER_SIDE_JDBC;
-	}
 	
 	private Thread curThread;
 	private UStatementHandlerCache stmtHandlerCache;
@@ -68,6 +65,7 @@ public class UServerSideConnection extends UConnection {
 			lastAutoCommit = false;
 			
 			/* initialize default info */
+			driverInfo[5] = CAS_CLIENT_SERVER_SIDE_JDBC;
 			initBrokerInfo ();
 			initCasInfo ();
 
@@ -201,7 +199,7 @@ public class UServerSideConnection extends UConnection {
 				preparedStmt.initToReuse();
 				preparedStmt.moveCursor(0, UStatement.CURSOR_SET);
 				e.setAvailable(false);
-				break;
+				return preparedStmt;
 			}
 		}
 		

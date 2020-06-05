@@ -57,8 +57,8 @@ public class UStatementHandlerCache {
 			List<UStatementHandlerCacheEntry> cacheEntries = entry.getValue();
 			for (UStatementHandlerCacheEntry e: cacheEntries) {
 				UStatement s = e.getStatement();
-				s.close();
 				s.closeCursor();
+				s.close();
 			}
 		}
 		stmtHandlerCache.clear();

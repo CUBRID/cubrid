@@ -745,7 +745,7 @@ public class UStatement {
 		outBuffer.addByte(executeFlag);
 		outBuffer.addInt(maxField < 0 ? 0 : maxField);
 		outBuffer.addInt(0);
-
+		
 		if (firstStmtType == CUBRIDCommandType.CUBRID_STMT_CALL_SP
 		        && bindParameter != null) {
 			outBuffer.addBytes(bindParameter.paramMode);
