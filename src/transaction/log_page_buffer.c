@@ -2632,7 +2632,7 @@ logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY current_setdirty)
       return;
     }
 
-  if (log_Gl.append.next_tde_encrypted)
+  if (log_Gl.append.appending_page_tde_encrypted)
     {
       logpb_set_tde_algorithm (thread_p, log_Gl.append.log_pgptr,
 			       (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_ALGORITHM_FOR_LOG));
@@ -4115,7 +4115,7 @@ logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
   perfmon_inc_stat (thread_p, PSTAT_LOG_NUM_APPENDRECS);
 
   /* to tde-encrypt pages which is being creating while appending */
-  log_Gl.append.next_tde_encrypted = LOG_IS_RECHDR_TDE_ENCRYPTED (header);
+  log_Gl.append.appending_page_tde_encrypted = LOG_IS_RECHDR_TDE_ENCRYPTED (header);
 
   /* Does the new log record fit in this page ? */
   LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (LOG_RECORD_HEADER));
@@ -4355,7 +4355,7 @@ logpb_end_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
   LOG_APPEND_ALIGN (thread_p, LOG_DONT_SET_DIRTY);
   LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (LOG_RECORD_HEADER));
 
-  log_Gl.append.next_tde_encrypted = false;
+  log_Gl.append.appending_page_tde_encrypted = false;
 
   /*
    * Find the log_rec portion of the append record, it may not be in the

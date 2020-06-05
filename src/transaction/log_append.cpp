@@ -89,7 +89,7 @@ log_append_info::log_append_info ()
   , nxio_lsa (NULL_LSA)
   , prev_lsa (NULL_LSA)
   , log_pgptr (NULL)
-  , next_tde_encrypted (false)
+  , appending_page_tde_encrypted (false)
 {
 
 }
@@ -99,7 +99,7 @@ log_append_info::log_append_info (const log_append_info &other)
   , nxio_lsa {other.nxio_lsa.load ()}
   , prev_lsa (other.prev_lsa)
   , log_pgptr (other.log_pgptr)
-  , next_tde_encrypted (other.next_tde_encrypted)
+  , appending_page_tde_encrypted (other.appending_page_tde_encrypted)
 {
 
 }

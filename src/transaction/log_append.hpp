@@ -78,7 +78,7 @@ struct log_append_info
   LOG_LSA prev_lsa;		/* Address of last append log record */
   LOG_PAGE *log_pgptr;		/* The log page which is fixed */
 
-  bool next_tde_encrypted;  /* true if a newly appended page has to be tde-encrypted */
+  bool appending_page_tde_encrypted;  /* true if a newly appended page has to be tde-encrypted */
 
   log_append_info ();
   log_append_info (const log_append_info &other);
