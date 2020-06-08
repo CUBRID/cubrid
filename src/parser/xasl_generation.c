@@ -714,12 +714,7 @@ pt_make_connect_by_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NO
     }
   pt_to_pred_terms (parser, if_part, 0, &connect_by->after_connect_by_pred);
 
-  flag = 0;
-  select_xasl->instnum_pred = pt_to_pred_expr_with_arg (parser, instnum_part, &flag);
-  if (flag & PT_PRED_ARG_INSTNUM_CONTINUE)
-    {
-      select_xasl->instnum_flag |= XASL_INSTNUM_FLAG_SCAN_CONTINUE;
-    }
+  select_xasl = pt_to_instnum_pred (parser, select_xasl, instnum_part);
 
   if (if_part)
     {
@@ -13994,13 +13989,7 @@ pt_gen_simple_plan (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * pl
       /* and pick up any uncorrelated terms */
       pt_to_pred_terms (parser, if_part, 0, &xasl->if_pred);
 
-      flag = 0;
-      xasl->instnum_pred = pt_to_pred_expr_with_arg (parser, instnum_part, &flag);
-
-      if (flag & PT_PRED_ARG_INSTNUM_CONTINUE)
-	{
-	  xasl->instnum_flag |= XASL_INSTNUM_FLAG_SCAN_CONTINUE;
-	}
+      xasl = pt_to_instnum_pred (parser, xasl, instnum_part);
 
       if (from->info.spec.path_entities)
 	{
@@ -14136,12 +14125,7 @@ pt_gen_simple_merge_plan (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLA
       pt_to_pred_terms (parser, if_part, table1->info.spec.id, &xasl->if_pred);
       pt_to_pred_terms (parser, if_part, table2->info.spec.id, &xasl->if_pred);
 
-      flag = 0;
-      xasl->instnum_pred = pt_to_pred_expr_with_arg (parser, instnum_part, &flag);
-      if (flag & PT_PRED_ARG_INSTNUM_CONTINUE)
-	{
-	  xasl->instnum_flag |= XASL_INSTNUM_FLAG_SCAN_CONTINUE;
-	}
+      xasl = pt_to_instnum_pred (parser, xasl, instnum_part);
       pt_set_dptr (parser, if_part, xasl, MATCH_ALL);
 
       pt_set_dptr (parser, select_node->info.query.q.select.list, xasl, MATCH_ALL);
@@ -26208,4 +26192,29 @@ pt_fix_buildlist_aggregate_cume_dist_percent_rank (PARSER_CONTEXT * parser, PT_N
     }				/* for(pnode...) ends */
 
   return NO_ERROR;
+}
+
+/*
+ * pt_to_instnum_pred () -
+ *
+ * return : XASL
+ * parser (in)  :
+ * xasl (in) :
+ * pred (in)
+ */
+XASL_NODE *
+pt_to_instnum_pred (PARSER_CONTEXT * parser, XASL_NODE * xasl, PT_NODE * pred)
+{
+  int flag = 0;
+
+  if (xasl && pred)
+    {
+      xasl->instnum_pred = pt_to_pred_expr_with_arg (parser, pred, &flag);
+      if (flag & PT_PRED_ARG_INSTNUM_CONTINUE)
+	{
+	  xasl->instnum_flag |= XASL_INSTNUM_FLAG_SCAN_CONTINUE;
+	}
+    }
+
+  return xasl;
 }
