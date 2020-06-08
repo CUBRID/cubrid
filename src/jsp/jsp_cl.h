@@ -100,7 +100,7 @@ extern int jsp_call_from_server (DB_VALUE * returnval, DB_VALUE ** argarray, con
 extern void *jsp_get_db_result_set (int h_id);
 extern void jsp_srv_handle_free (int h_id);
 
-extern int jsp_send_destroy_request ();
+extern int jsp_send_destroy_request_all ();
 extern int jsp_send_destroy_request (const SOCKET sockfd);
 
 #endif /* _JSP_CL_H_ */

@@ -408,7 +408,7 @@ EXPORTS
     ini_parser_free
     ini_parser_load
     jsp_get_db_result_set
-    jsp_send_destroy_request
+    jsp_send_destroy_request_all
     jsp_set_prepare_call
     jsp_srv_handle_free
     jsp_unset_prepare_call

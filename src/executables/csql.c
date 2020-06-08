@@ -1919,7 +1919,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	      csql_Num_failures += 1;
 
 	      free_attr_spec (&attr_spec);
-	      jsp_send_destroy_request ();
+	      jsp_send_destroy_request_all ();
 	      continue;
 	    }
 	  goto error;
@@ -2065,7 +2065,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
   return csql_Num_failures;
 
 error:
-  jsp_send_destroy_request ();
+  jsp_send_destroy_request_all ();
   display_error (session, stmt_start_line_no);
   if (do_abort_transaction)
     {

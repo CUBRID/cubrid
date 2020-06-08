@@ -2146,7 +2146,7 @@ exit:
 }
 
 /*
- * jsp_send_destroy_request -
+ * jsp_send_destroy_request_all -
  *   return: error code
  *   sockfd(in): socket description
  *
@@ -2154,7 +2154,7 @@ exit:
  */
 
 extern int
-jsp_send_destroy_request ()
+jsp_send_destroy_request_all ()
 {
   for (int i = 0; i < MAX_CALL_COUNT; i++)
     {
