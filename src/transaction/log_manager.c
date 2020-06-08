@@ -4489,6 +4489,11 @@ log_append_repl_info_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is
 	      continue;
 	    }
 
+	  if (repl_rec->tde_encrypted)
+	    {
+	      node->log_header.flags |= LOG_RECHDR_FLAG_TDE_ENCRYPTED;
+	    }
+
 	  log = (LOG_REC_REPLICATION *) node->data_header;
 	  if (repl_rec->rcvindex == RVREPL_DATA_DELETE || repl_rec->rcvindex == RVREPL_STATEMENT)
 	    {
