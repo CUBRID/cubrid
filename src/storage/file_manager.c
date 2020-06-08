@@ -9433,11 +9433,28 @@ file_tempcache_cache_or_drop_entries (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_EN
 {
   FILE_TEMPCACHE_ENTRY *temp_file;
   FILE_TEMPCACHE_ENTRY *next = NULL;
+  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
 
   for (temp_file = *entries; temp_file != NULL; temp_file = next)
     {
       next = temp_file->next;
       temp_file->next = NULL;
+
+      if (!VFID_ISNULL (&temp_file->vfid))
+	{
+	  /* Init tde algorithm in user pages */
+	  if (file_get_tde_algorithm (thread_p, &temp_file->vfid, &tde_algo) != NO_ERROR)
+	    {
+	      assert (false);
+	    }
+	  if (tde_algo != TDE_ALGORITHM_NONE)
+	    {
+	      if (file_apply_tde_algorithm (thread_p, &temp_file->vfid, TDE_ALGORITHM_NONE) != NO_ERROR)
+		{
+		  assert (false);
+		}
+	    }
+	}
 
       if (!file_tempcache_put (thread_p, temp_file))
 	{
