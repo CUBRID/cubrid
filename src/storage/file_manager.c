@@ -4351,7 +4351,11 @@ file_temp_retire_internal (THREAD_ENTRY * thread_p, const VFID * vfid, bool was_
     }
   if (tde_algo != TDE_ALGORITHM_NONE)
     {
-      file_apply_tde_algorithm (thread_p, &entry->vfid, TDE_ALGORITHM_NONE);
+      error_code = file_apply_tde_algorithm (thread_p, &entry->vfid, TDE_ALGORITHM_NONE);
+      if (error_code != NO_ERROR)
+	{
+	  assert (false);	// TODO just ignore if it is release mode?
+	}
     }
 
   if (entry != NULL && file_tempcache_put (thread_p, entry))
