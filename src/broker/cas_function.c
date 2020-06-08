@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -76,6 +77,7 @@ static void bind_value_log (struct timeval *log_time, int start, int argc, void 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 void set_query_timeout (T_SRV_HANDLE * srv_handle, int query_timeout);
 
+extern int jsp_send_destroy_request_all ();
 
 /* functions implemented in transaction_cl.c */
 extern void tran_set_query_timeout (int);
@@ -737,6 +739,12 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 #endif
 
 #endif /* !LIBCAS_FOR_JSP */
+
+/* destroy JDBC resources in stored procedure */
+  if (req_info->driver_info[DRIVER_INFO_CLIENT_TYPE] != CAS_CLIENT_SERVER_SIDE_JDBC)
+    {
+      jsp_send_destroy_request_all ();
+    }
 
   return FN_KEEP_CONN;
 }

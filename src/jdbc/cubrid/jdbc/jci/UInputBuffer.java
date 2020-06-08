@@ -495,7 +495,7 @@ class UInputBuffer {
 			throws UJciException {
 		try {
 			byte[] packedLobHandle = readBytes(packedLobHandleSize);
-			return new CUBRIDBlob(conn, packedLobHandle);
+			return new CUBRIDBlob(conn, packedLobHandle, true);
 		} catch (Exception e) {
 		    	throw uconn.createJciException(UErrorCode.ER_UNKNOWN);
 		}
@@ -506,7 +506,7 @@ class UInputBuffer {
 		try {
 			byte[] packedLobHandle = readBytes(packedLobHandleSize);
 			return new CUBRIDClob(conn, packedLobHandle, conn.getUConnection()
-					.getCharset());
+					.getCharset(), true);
 		} catch (Exception e) {
 		    	throw uconn.createJciException(UErrorCode.ER_UNKNOWN);
 		}

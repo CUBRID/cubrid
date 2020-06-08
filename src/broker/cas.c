@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -1372,10 +1373,12 @@ libcas_main (SOCKET jsp_sock_fd)
 {
   T_NET_BUF net_buf;
   SOCKET client_sock_fd;
+  int status = FN_KEEP_CONN;
 
   memset (&req_info, 0, sizeof (req_info));
 
   req_info.client_version = CAS_PROTO_CURRENT_VER;
+  req_info.driver_info[DRIVER_INFO_CLIENT_TYPE] = (char) CAS_CLIENT_SERVER_SIDE_JDBC;
   req_info.driver_info[DRIVER_INFO_FUNCTION_FLAG] = (char) (BROKER_RENEWED_ERROR_CODE | BROKER_SUPPORT_HOLDABLE_RESULT);
   client_sock_fd = jsp_sock_fd;
 
@@ -1383,22 +1386,26 @@ libcas_main (SOCKET jsp_sock_fd)
   net_buf.data = (char *) MALLOC (NET_BUF_ALLOC_SIZE);
   if (net_buf.data == NULL)
     {
-      return 0;
+      return -1;
     }
   net_buf.alloc_size = NET_BUF_ALLOC_SIZE;
 
-  while (1)
+  while (status == FN_KEEP_CONN)
     {
-      if (process_request (client_sock_fd, &net_buf, &req_info) != FN_KEEP_CONN)
-	{
-	  break;
-	}
+      status = process_request (client_sock_fd, &net_buf, &req_info);
     }
 
   net_buf_clear (&net_buf);
   net_buf_destroy (&net_buf);
 
-  return 0;
+  if (status == FN_CLOSE_CONN)
+    {
+      return 0;
+    }
+  else
+    {
+      return -1;
+    }
 }
 
 void *
