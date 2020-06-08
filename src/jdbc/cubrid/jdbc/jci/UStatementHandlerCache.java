@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation
- * Copyright (C) 2016 CUBRID Corporation 
+ * Copyright (C) 2016 CUBRID Corporation
  *
  * Redistribution and use in source and binary forms, with or without modification, 
  * are permitted provided that the following conditions are met: 
@@ -29,86 +29,48 @@
  *
  */
 
-/**
- * Title:        CUBRID Java Client Interface<p>
- * Description:  CUBRID Java Client Interface<p>
- * @version 2.0
- */
-
 package cubrid.jdbc.jci;
 
-/**
- * CAS Protocol Function code
- * 
- * since 1.0
- */
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map.Entry;
+import java.util.concurrent.ConcurrentHashMap;
 
-public enum UFunctionCode {
-	/* since 1.0 */
-	
-	END_TRANSACTION (1),
-	PREPARE (2),
-	EXECUTE (3),
-	GET_DB_PARAMETER (4),
-	SET_DB_PARAMETER (5),
-	CLOSE_USTATEMENT (6),
-	CURSOR (7),
-	FETCH (8),
-	GET_SCHEMA_INFO (9),
-	GET_BY_OID (10),
-	PUT_BY_OID (11),
-	GET_DB_VERSION (15),
-	GET_CLASS_NUMBER_OBJECTS (16),
-	RELATED_TO_OID (17),
-	RELATED_TO_COLLECTION (18),
-	/* since 2.0 */
-	NEXT_RESULT (19),
-	EXECUTE_BATCH_STATEMENT (20),
-	EXECUTE_BATCH_PREPAREDSTATEMENT (21),
-	CURSOR_UPDATE (22),
-	GET_QUERY_INFO (24),
+public class UStatementHandlerCache {
+	private ConcurrentHashMap<String, List<UStatementHandlerCacheEntry>> stmtHandlerCache;
 
-	/* since 3.0 */
-	SAVEPOINT (26),
-	PARAMETER_INFO (27),
-	XA_PREPARE (28),
-	XA_RECOVER (29),
-	XA_END_TRAN (30),
+	public UStatementHandlerCache() {
+		stmtHandlerCache = new ConcurrentHashMap<String, List<UStatementHandlerCacheEntry>> ();
+	}
 
-	CON_CLOSE (31),
-	CHECK_CAS (32),
-
-	MAKE_OUT_RS (33),
-
-	GET_GENERATED_KEYS (34),
-
-	NEW_LOB (35),
-	WRITE_LOB (36),
-	READ_LOB (37),
-
-	END_SESSION (38),
-	PREPARE_AND_EXECUTE (41),
-	CURSOR_CLOSE_FOR_PROTOCOL_V2 (41),
-	CURSOR_CLOSE (42),
-	GET_SHARD_INFO (43),
-	SET_CAS_CHANGE_MODE (44),
-	LAST_FUNCTION_CODE (GET_SHARD_INFO);
-	
-	private byte code;
-	UFunctionCode(byte code) {
-		this.code = code;
+	public List<UStatementHandlerCacheEntry> getEntry (String sql) {
+		if (!stmtHandlerCache.containsKey(sql)) {
+			List<UStatementHandlerCacheEntry> vec = new ArrayList<UStatementHandlerCacheEntry>();
+			stmtHandlerCache.putIfAbsent(sql, vec);
+		}
+		
+		return stmtHandlerCache.get(sql);
 	}
 	
-	UFunctionCode(int code) {
-		// FIX ME: possibly overflow 
-		this.code = (byte) code;
+	public void destroy () {
+		for (Entry<String, List<UStatementHandlerCacheEntry>> entry : stmtHandlerCache.entrySet()) {
+			List<UStatementHandlerCacheEntry> cacheEntries = entry.getValue();
+			for (UStatementHandlerCacheEntry e: cacheEntries) {
+				UStatement s = e.getStatement();
+				s.closeCursor();
+				s.close();
+			}
+		}
+		stmtHandlerCache.clear();
+		stmtHandlerCache = null;
 	}
 	
-	UFunctionCode(UFunctionCode code) {
-		this.code = code.getCode();
-	}
-	
-	public byte getCode() {
-		return this.code;
+	public void clearStatus () {
+		for (Entry<String, List<UStatementHandlerCacheEntry>> entry : stmtHandlerCache.entrySet()) {
+			List<UStatementHandlerCacheEntry> cacheEntries = entry.getValue();
+			for (UStatementHandlerCacheEntry e: cacheEntries) {
+				e.setAvailable(true);
+			}
+		}
 	}
 }

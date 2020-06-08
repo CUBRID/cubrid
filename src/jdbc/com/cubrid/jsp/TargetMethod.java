@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  * Redistribution and use in source and binary forms, with or without modification, 
  * are permitted provided that the following conditions are met: 
@@ -43,15 +44,10 @@ import cubrid.sql.CUBRIDOID;
 
 public class TargetMethod {
 	private String className;
-
-	// private Class targetClass;
-
 	private String methodName;
-
 	private Class<?>[] argsTypes;
 
 	private static HashMap<String, Class<?>> argClassMap = new HashMap<String, Class<?>>();
-
 	private static HashMap<String, String> descriptorMap = new HashMap<String, String>();
 
 	static {
@@ -75,7 +71,7 @@ public class TargetMethod {
 		} else {
 			className = signature.substring(0, nameStart - 1);
 		}
-		// targetClass = getClass(className);
+		
 		methodName = signature.substring(nameStart, argStart - 1);
 		String args = signature.substring(argStart, argEnd);
 		argsTypes = classesFor(args);
@@ -214,7 +210,6 @@ public class TargetMethod {
 	public Method getMethod() throws SecurityException, NoSuchMethodException,
 			ClassNotFoundException {
 		return getClass(className).getMethod(methodName, argsTypes);
-		// return targetClass.getMethod(methodName, argsTypes);
 	}
 
 	public Class<?>[] getArgsTypes() {

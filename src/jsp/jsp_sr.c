@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -419,13 +420,16 @@ jsp_start_server (const char *db_name, const char *path)
   JavaVMInitArgs vm_arguments;
   JavaVMOption *options;
   int vm_n_options = 3;
-  char classpath[PATH_MAX + 32], logging_prop[PATH_MAX + 32];
+  char classpath[PATH_MAX + 32], logging_prop[PATH_MAX + 32], option_debug[70];
+  char debug_flag[] = "-Xdebug";
+  char debug_jdwp[] = "-agentlib:jdwp=transport=dt_socket,server=y,address=%d,suspend=n";
   char disable_sig_handle[] = "-Xrs";
   const char *envroot;
   char jsp_file_path[PATH_MAX];
   char port[6] = { 0 };
   char *loc_p, *locale;
   char *jvm_opt_sysprm = NULL;
+  int debug_port = -1;
 
   if (!prm_get_bool_value (PRM_ID_JAVA_STORED_PROCEDURE))
     {
@@ -450,6 +454,12 @@ jsp_start_server (const char *db_name, const char *path)
   snprintf (logging_prop, sizeof (logging_prop) - 1, "-Djava.util.logging.config.file=%s",
 	    envvar_javadir_file (jsp_file_path, PATH_MAX, "logging.properties"));
 
+  debug_port = prm_get_integer_value (PRM_ID_JAVA_STORED_PROCEDURE_DEBUG);
+  if (debug_port != -1)
+    {
+      vm_n_options += 2;	/* set debug flag and debugging port */
+    }
+
   jvm_opt_sysprm = (char *) prm_get_string_value (PRM_ID_JAVA_STORED_PROCEDURE_JVM_OPTIONS);
   // *INDENT-OFF*
   std::vector <std::string> opts = jsp_tokenize_jvm_options (jvm_opt_sysprm);
@@ -461,6 +471,14 @@ jsp_start_server (const char *db_name, const char *path)
   options[0].optionString = classpath;
   options[1].optionString = logging_prop;
   options[2].optionString = disable_sig_handle;
+  if (debug_port != -1)
+    {
+      idx += 2;
+      snprintf (option_debug, sizeof (option_debug) - 1, debug_jdwp, debug_port);
+      options[3].optionString = debug_flag;
+      options[4].optionString = option_debug;
+    }
+
   for (auto it = opts.begin (); it != opts.end (); ++it)
     {
       // *INDENT-OFF*
@@ -607,7 +625,6 @@ jsp_stop_server (void)
 {
   if (jsp_jvm_is_loaded ())
     {
-      jvm->DestroyJavaVM ();
       jvm = NULL;
     }
 
