@@ -45,6 +45,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Properties;
 import java.util.StringTokenizer;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -88,6 +89,7 @@ public class CUBRIDDriver implements Driver {
 	    "jdbc:cubrid(-oracle|-mysql)?:([a-zA-Z_0-9\\.-]*):([0-9]*):([^:]+):([^:]*):([^:]*):(\\?[a-zA-Z_0-9]+=[^&=?]+(&[a-zA-Z_0-9]+=[^&=?]+)*)?";
 	private final static String CUBRID_JDBC_URL_HEADER = "jdbc:cubrid";
 	private final static String JDBC_DEFAULT_CONNECTION = "jdbc:default:connection";
+	private final static AtomicBoolean BROKER_HEALTH_CHECK_STARTED = new AtomicBoolean();
 
 	static {
 		try {
@@ -106,10 +108,6 @@ public class CUBRIDDriver implements Driver {
 				debugOutput = System.out;
 			}
 		}
-		Thread brokerHealthCheck = new Thread(new BrokerHealthCheck());
-		brokerHealthCheck.setDaemon(true);
-		brokerHealthCheck.setContextClassLoader(null);
-		brokerHealthCheck.start();
 	}
 
 	public static void printDebug(String msg) {
@@ -219,6 +217,15 @@ public class CUBRIDDriver implements Driver {
 
 	    u_con.setConnectionProperties(connProperties);
 	    u_con.tryConnect();
+
+		if (!BROKER_HEALTH_CHECK_STARTED.get() && BROKER_HEALTH_CHECK_STARTED.compareAndSet(false, true)) {
+			Thread brokerHealthCheck = new Thread(new BrokerHealthCheck());
+			brokerHealthCheck.setName("Broker Health Check");
+			brokerHealthCheck.setDaemon(true);
+			brokerHealthCheck.setContextClassLoader(null);
+			brokerHealthCheck.start();
+		}
+
 	    return new CUBRIDConnection(u_con, url, user);
 	}
 
