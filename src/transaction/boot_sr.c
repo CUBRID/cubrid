@@ -966,11 +966,10 @@ boot_make_temp_volume_fullname (char *temp_vol_fullname, VOLID temp_volid)
     {
       return;
     }
-  temp_path = fileio_get_directory_path (alloc_tempath, boot_Db_full_name);
-  if (temp_path == NULL)
+  temp_path = (char*) prm_get_string_value(PRM_ID_IO_TEMP_VOLUME_PATH);
+  if (temp_path == NULL || temp_path[0] == '\0')
     {
-      alloc_tempath[0] = '\0';
-      temp_path = alloc_tempath;
+      temp_path = fileio_get_directory_path (alloc_tempath, boot_Db_full_name);
     }
   temp_name = fileio_get_base_file_name (boot_Db_full_name);
 
@@ -1180,11 +1179,10 @@ boot_find_rest_temp_volumes (THREAD_ENTRY * thread_p, VOLID volid,
     {
       return;
     }
-  temp_path = fileio_get_directory_path (alloc_tempath, boot_Db_full_name);
-  if (temp_path == NULL)
+  temp_path = (char*) prm_get_string_value (PRM_ID_IO_TEMP_VOLUME_PATH);
+  if (temp_path == NULL || temp_path[0] == '\0')
     {
-      alloc_tempath[0] = '\0';
-      temp_path = alloc_tempath;
+      temp_path = fileio_get_directory_path(alloc_tempath, boot_Db_full_name);
     }
   temp_name = fileio_get_base_file_name (boot_Db_full_name);
 
