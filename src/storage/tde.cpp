@@ -205,7 +205,7 @@ tde_encrypt_internal (const unsigned char *plain_buffer, int length, TDE_ALGORIT
       cipher_type = EVP_aria_256_ctr();
       break;
     case TDE_ALGORITHM_NONE:
-deafult:
+    default:
       assert (false);
     }
 
@@ -271,7 +271,7 @@ tde_decrypt_internal (const unsigned char *cipher_buffer, int length, TDE_ALGORI
       cipher_type = EVP_aria_256_ctr();
       break;
     case TDE_ALGORITHM_NONE:
-deafult:
+    default:
       assert (false);
     }
 
