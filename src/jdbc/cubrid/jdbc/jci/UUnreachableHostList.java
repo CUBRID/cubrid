@@ -44,6 +44,7 @@ public class UUnreachableHostList {
 
 	private static UUnreachableHostList instance = null;
 	private List<String> unreachableHosts;
+	private boolean useSSL = false;
 
 	private UUnreachableHostList() {
 		unreachableHosts = new CopyOnWriteArrayList<String>();
@@ -107,7 +108,7 @@ public class UUnreachableHostList {
 		long startTime = System.currentTimeMillis();
 
 		try {
-			toBroker = BrokerHandler.connectBroker(ip, port, timeout);
+			toBroker = BrokerHandler.connectBroker(ip, port, useSSL, timeout);
 			if (timeout > 0) {
 				timeout -= (System.currentTimeMillis() - startTime);
 				if (timeout <= 0) {
@@ -141,5 +142,9 @@ public class UUnreachableHostList {
 			if (toBroker != null)
 				toBroker.close();
 		}
+	}
+
+	public void setUseSSL(boolean useSSL) {
+		this.useSSL = useSSL;
 	}
 }
