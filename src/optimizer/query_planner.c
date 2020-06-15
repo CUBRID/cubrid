@@ -1931,11 +1931,7 @@ qo_iscan_cost (QO_PLAN * planp)
       for (t = bitset_iterate (&(planp->plan_un.scan.terms), &iter); t != -1; t = bitset_next_member (&iter))
 	{
 	  termp = QO_ENV_TERM (QO_NODE_ENV (nodep), t);
-
 	  sel *= QO_TERM_SELECTIVITY (termp);
-
-	  /* check upper bound */
-	  sel = MIN (sel, 1.0);
 
 	  /* each term can have multi index column. e.g.) (a,b) in .. */
 	  for (int j = 0; j < index_entryp->col_num; j++)
@@ -1946,6 +1942,8 @@ qo_iscan_cost (QO_PLAN * planp)
 		}
 	    }
 	}
+      /* check upper bound */
+      sel = MIN (sel, 1.0);
 
       sel_limit = 0.0;		/* init */
 
