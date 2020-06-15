@@ -308,14 +308,12 @@ public class BrokerHandler {
         try {
             ctx = SSLContext.getInstance("TLS");
         } catch (NoSuchAlgorithmException e) {
-            e.printStackTrace();
             throw new UJciException(UErrorCode.ER_CONNECTION, e);
         }
 
         try {
             ctx.init(null, new TrustManager[] { tm }, new SecureRandom());
         } catch (KeyManagementException e) {
-            e.printStackTrace();
             throw new UJciException(UErrorCode.ER_CONNECTION, e);
         }
 
@@ -323,11 +321,7 @@ public class BrokerHandler {
         try {
             sslSocket = (SSLSocket) sslsocketfactory.createSocket(plainSocket, ip, port, true);
             sslSocket.startHandshake();
-        } catch (UnknownHostException e) {
-            e.printStackTrace();
-            throw new UJciException(UErrorCode.ER_CONNECTION, e);
         } catch (IOException e) {
-            e.printStackTrace();
             throw new UJciException(UErrorCode.ER_CONNECTION, e);
         }
 
