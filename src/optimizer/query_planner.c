@@ -1932,21 +1932,7 @@ qo_iscan_cost (QO_PLAN * planp)
 	{
 	  termp = QO_ENV_TERM (QO_NODE_ENV (nodep), t);
 
-	  if (i == 0)
-	    {			/* the first key-range term of the index scan */
-	      sel *= QO_TERM_SELECTIVITY (termp);
-	    }
-	  else
-	    {			/* apply heuristic factor */
-	      if (QO_TERM_SELECTIVITY (termp) < 0.1)
-		{
-		  sel *= QO_TERM_SELECTIVITY (termp) * pow ((double) n, 2);
-		}
-	      else
-		{
-		  sel *= QO_TERM_SELECTIVITY (termp);
-		}
-	    }
+	  sel *= QO_TERM_SELECTIVITY (termp);
 
 	  /* check upper bound */
 	  sel = MIN (sel, 1.0);
@@ -1959,7 +1945,6 @@ qo_iscan_cost (QO_PLAN * planp)
 		  i++;
 		}
 	    }
-	  n--;
 	}
 
       sel_limit = 0.0;		/* init */
