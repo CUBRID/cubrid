@@ -6163,7 +6163,7 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 	  nidx_self = MAX (nidx_self, QO_NODE_IDX (node));
 	  if (QO_TERM_IS_FLAGED (term, QO_TERM_OR_PRED) && QO_NODE_IS_OUTER_JOIN (node))
 	    {
-	      is_outerjoin = true; /* for OR predicate */
+	      is_outerjoin = true;	/* for OR predicate */
 	    }
 	}
       if (nidx_self != -1)
