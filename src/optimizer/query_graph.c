@@ -2069,11 +2069,12 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	  break;
 
 	case PT_OR:
+	  QO_TERM_SET_FLAG (term, QO_TERM_OR_PRED);
+	  /* FALLTHRU */
 	case PT_NOT:
 	case PT_XOR:
 	  /* get segments from the expression itself */
 	  qo_expr_segs (env, pt_expr, &lhs_segs);
-	  QO_TERM_SET_FLAG (term, QO_TERM_OR_PRED);
 	  break;
 
 	  /* the other operators that can not be used as term; error case */
