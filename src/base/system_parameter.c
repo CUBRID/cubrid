@@ -1310,8 +1310,8 @@ bool PRM_RETURN_NULL_ON_FUNCTION_ERRORS = false;
 static bool prm_return_null_on_function_errors_default = false;
 static unsigned int prm_return_null_on_function_errors_flag = 0;
 
-bool PRM_ALTER_TABLE_CHANGE_TYPE_STRICT = true;
-static bool prm_alter_table_change_type_strict_default = true;
+bool PRM_ALTER_TABLE_CHANGE_TYPE_STRICT = false;
+static bool prm_alter_table_change_type_strict_default = false;
 static unsigned int prm_alter_table_change_type_strict_flag = 0;
 
 bool PRM_PLUS_AS_CONCAT = true;
@@ -2294,8 +2294,8 @@ bool PRM_JAVA_STORED_PROCEDURE_RESERVE_01 = false;
 static bool prm_java_stored_procedure_reserve_01_default = false;
 static unsigned int prm_java_stored_procedure_reserve_01_flag = 0;
 
-bool PRM_CHECK_TYPE_TRANS_STRICT = true;
-static bool prm_check_type_trans_strict_default = true;
+bool PRM_CHECK_TYPE_TRANS_STRICT = false;
+static bool prm_check_type_trans_strict_default = false;
 static unsigned int prm_check_type_trans_strict_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
