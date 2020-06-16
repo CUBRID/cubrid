@@ -106,6 +106,7 @@ abstract public class UErrorCode {
 	public static final int CAS_ER_NOT_IMPLEMENTED = -10100;
 	public static final int CAS_ER_MAX_CLIENT_EXCEEDED = -10101;
 	public static final int CAS_ER_INVALID_CURSOR_POS = -10102;
+	public static final int CAS_ER_SSL_TYPE_NOT_ALLOWED = -10103;
 	public static final int CAS_ER_IS = -10200;
 
 	public final static int CAS_ERROR_INDICATOR = -1;
@@ -237,6 +238,8 @@ abstract public class UErrorCode {
 		CASMessageString.put(new Integer(CAS_ER_NOT_IMPLEMENTED),
 				"Attempt to use a not supported service");
 		CASMessageString.put(new Integer(CAS_ER_MAX_CLIENT_EXCEEDED), "Proxy refused client connection. max clients exceeded");
+		CASMessageString.put(new Integer(CAS_ER_SSL_TYPE_NOT_ALLOWED), 
+                "The requested SSL mode is not permitted, the CAS server is running in a different mode (check useSSL property).");
 		CASMessageString.put(new Integer(CAS_ER_IS), "Authentication failure");
 	}
 }

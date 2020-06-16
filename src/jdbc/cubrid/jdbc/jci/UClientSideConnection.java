@@ -198,6 +198,8 @@ public class UClientSideConnection extends UConnection {
 		} else {
 			int retry = 0;
 			UUnreachableHostList unreachableHosts = UUnreachableHostList.getInstance();
+			boolean useSSL = connectionProperties.getUseSSL();
+			unreachableHosts.setUseSSL(useSSL);
 
 			do {
 				for (int hostId = 0; hostId < altHosts.size(); hostId++) {
@@ -254,7 +256,8 @@ public class UClientSideConnection extends UConnection {
 		}
 
 		int timeout = connectionProperties.getConnectTimeout() * 1000;
-		client = BrokerHandler.connectBroker(casIp, casPort, getTimeout(endTimestamp, timeout));
+		boolean useSSL = connectionProperties.getUseSSL();
+		client = BrokerHandler.connectBroker(casIp, casPort, useSSL, getTimeout(endTimestamp, timeout));
 		output = new DataOutputStream(client.getOutputStream());
 		connectDB(getTimeout(endTimestamp, timeout));
 
