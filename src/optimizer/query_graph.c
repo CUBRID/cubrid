@@ -6096,7 +6096,7 @@ qo_discover_edges (QO_ENV * env)
 static void
 qo_classify_outerjoin_terms (QO_ENV * env)
 {
-  bool is_null_padded, is_outerjoin;
+  bool is_null_padded, is_outerjoin_for_or_pred;
   int n, i, t;
   BITSET_ITERATOR iter;
   QO_NODE *node, *on_node;
@@ -6156,22 +6156,14 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 	}
 
       nidx_self = -1;		/* init */
-      is_outerjoin = false;
+      is_outerjoin_for_or_pred = false;
       for (t = bitset_iterate (&(QO_TERM_NODES (term)), &iter); t != -1; t = bitset_next_member (&iter))
 	{
 	  node = QO_ENV_NODE (env, t);
 	  nidx_self = MAX (nidx_self, QO_NODE_IDX (node));
 	  if (QO_TERM_IS_FLAGED (term, QO_TERM_OR_PRED) && QO_NODE_IS_OUTER_JOIN (node))
 	    {
-	      is_outerjoin = true;	/* for OR predicate */
-	    }
-	}
-      if (nidx_self != -1)
-	{
-	  node = QO_ENV_NODE (env, nidx_self);
-	  if (QO_NODE_IS_OUTER_JOIN (node))
-	    {
-	      is_outerjoin = true;
+	      is_outerjoin_for_or_pred = true;	/* for OR predicate */
 	    }
 	}
       QO_ASSERT (env, nidx_self < env->nnodes);
@@ -6216,7 +6208,7 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 	    }
 	  else
 	    {
-	      if (is_outerjoin)
+	      if (QO_NODE_IS_OUTER_JOIN (node) || is_outerjoin_for_or_pred)
 		{
 		  QO_TERM_CLASS (term) = QO_TC_AFTER_JOIN;
 
@@ -6232,7 +6224,7 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 	  if (nidx_self >= 0)
 	    {
 	      node = QO_ENV_NODE (env, nidx_self);
-	      if (is_outerjoin)
+	      if (QO_NODE_IS_OUTER_JOIN (node) || is_outerjoin_for_or_pred)
 		{
 		  if (QO_ON_COND_TERM (term))
 		    {
