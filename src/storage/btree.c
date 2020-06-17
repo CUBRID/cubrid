@@ -22687,7 +22687,8 @@ btree_get_root_with_key (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid_i
   bool reuse_btid_int = other_args ? *((bool *) other_args) : false;
 
   /* Get root page and BTID_INT. */
-  *root_page = btree_fix_root_with_info (thread_p, btid, PGBUF_LATCH_READ, NULL, &root_header, (reuse_btid_int ? NULL : btid_int));
+  *root_page =
+    btree_fix_root_with_info (thread_p, btid, PGBUF_LATCH_READ, NULL, &root_header, (reuse_btid_int ? NULL : btid_int));
   if (*root_page == NULL)
     {
       /* Error! */
