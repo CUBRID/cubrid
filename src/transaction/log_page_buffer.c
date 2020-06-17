@@ -7957,7 +7957,7 @@ logpb_check_stop_at_time (FILEIO_BACKUP_SESSION * session, time_t stop_at, time_
 	  ctime_buf2[time_str_len - 1] = 0;
 	}
 
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UPTODATE_ERROR, 2, ctime_buf1, ctime_buf2);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UPTODATE_ERROR, 2, ctime_buf1, ctime_buf2);
 
       return ER_LOG_UPTODATE_ERROR;
     }
