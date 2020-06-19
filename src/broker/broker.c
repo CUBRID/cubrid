@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -766,7 +767,8 @@ static const char *cas_client_type_str[] = {
   "ODBC",			/* CAS_CLIENT_ODBC */
   "JDBC",			/* CAS_CLIENT_JDBC */
   "PHP",			/* CAS_CLIENT_PHP */
-  "OLEDB"			/* CAS_CLIENT_OLEDB */
+  "OLEDB",			/* CAS_CLIENT_OLEDB */
+  "INTERNAL_JDBC"		/* CAS_CLIENT_SERVER_SIDE_JDBC */
 };
 
 static THREAD_FUNC
