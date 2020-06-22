@@ -418,6 +418,11 @@ struct qo_node
    && QO_NODE_INFO_SMCLASS(node)->partition != NULL	\
    && QO_NODE_INFO_SMCLASS(node)->users != NULL)
 
+#define QO_NODE_IS_OUTER_JOIN(node) \
+  (QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_LEFT_OUTER  || \
+   QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_RIGHT_OUTER || \
+   QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_FULL_OUTER)
+
 struct qo_segment
 {
   /*
@@ -726,6 +731,7 @@ struct qo_term
 #define QO_TERM_NON_IDX_SARG_COLL   32	/* not suitable for key range/filter */
 #define QO_TERM_MULTI_COLL_PRED     64	/* multi column && in OP, (a,b) in .. */
 #define QO_TERM_MULTI_COLL_CONST    128	/* multi column && have constant value, (a,1) in .. */
+#define QO_TERM_OR_PRED             256	/* or predicate. e.g.) a=1 or b=2 */
 
 #define QO_TERM_IS_FLAGED(t, f)        (QO_TERM_FLAG(t) & (int) (f))
 #define QO_TERM_SET_FLAG(t, f)         QO_TERM_FLAG(t) |= (int) (f)

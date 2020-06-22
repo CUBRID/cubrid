@@ -1313,8 +1313,9 @@ $ LOADDB
 1244 La carga de actualizaciones de atributos compartidos desde archivos de objetos no es compatible con el modo CS.
 1245 La carga de actualizaciones de atributos de clase desde archivos de objetos no es compatible con el modo CS.
 1246 Error al obtener la información de la dirección y del nombre. Código : %1$d, mensaje : %2$s.
+1247 El tiempo (%1$s) especificado tiene que ser despues del tiempo (%2$s) del respaldo especificado.
 
-1247 Ultimo error
+1248 Ultimo error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %1$d):

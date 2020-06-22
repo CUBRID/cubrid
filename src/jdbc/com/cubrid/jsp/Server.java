@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  * Redistribution and use in source and binary forms, with or without modification, 
  * are permitted provided that the following conditions are met: 
@@ -39,17 +40,15 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 public class Server {
-	private static String serverName;
-
-	private static String spPath;
-
-	private static String rootPath;
-
-	private ServerSocket serverSocket;
-	
-	private static Logger logger = Logger.getLogger("com.cubrid.jsp");
-
+	private static final Logger logger = Logger.getLogger("com.cubrid.jsp");
 	private static final String LOG_DIR = "log";
+	
+	private static String serverName;
+	private static String spPath;
+	private static String rootPath;
+	
+	private ServerSocket serverSocket;
+	private Thread socketListener;
 
 	public Server(String name, String path, String version, String rPath, String port)
 			throws IOException {
@@ -69,7 +68,7 @@ public class Server {
 			e.printStackTrace();
 		}
 
-		new Thread(new Runnable() {
+		socketListener = new Thread(new Runnable() {
 			public void run() {
 				Socket client = null;
 				while (true) {
@@ -82,7 +81,8 @@ public class Server {
 					}
 				}
 			}
-		}).start();
+		});
+		socketListener.start();
 	}
 
 	private int getServerPort() {
