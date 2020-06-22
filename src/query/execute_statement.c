@@ -14150,6 +14150,10 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       AU_SAVE_AND_DISABLE (au_save);	/* this prevents authorization checking during generating XASL */
       /* parser_generate_xasl() will build XASL tree from parse tree */
       contextp->xasl = parser_generate_xasl (parser, statement);
+      if (statement->info.query.oids_included)
+        {
+           contextp->xasl->header.xasl_flag |= RESULT_CACHE_INHIBITED;
+        }
       AU_RESTORE (au_save);
 
       if (contextp->xasl && (err == NO_ERROR) && !pt_has_error (parser))
@@ -14445,7 +14449,7 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       query_flag |= RESULT_CACHE_REQUIRED;
     }
 
-  if (statement->info.query.do_not_cache == 1)
+  if (statement->info.query.do_not_cache == 1 || statement->info.query.oids_included)
     {
       query_flag |= RESULT_CACHE_INHIBITED;
     }

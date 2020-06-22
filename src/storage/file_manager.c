@@ -9038,12 +9038,21 @@ file_get_tempcache_entry_index (THREAD_ENTRY * thread_p)
 void
 file_tempcache_drop_tran_temp_files (THREAD_ENTRY * thread_p)
 {
+  int query_cache_mode;
+
+  query_cache_mode = prm_get_integer_value (PRM_ID_LIST_QUERY_CACHE_MODE);
+
+  if (query_cache_mode != QFILE_LIST_QUERY_CACHE_MODE_OFF)
+    {
+      return;
+    }
+
   if (file_Tempcache->tran_files[file_get_tempcache_entry_index (thread_p)] != NULL)
     {
       file_log ("file_tempcache_drop_tran_temp_files",
-		"drop %d transaction temporary files", file_get_tran_num_temp_files (thread_p));
+                "drop %d transaction temporary files", file_get_tran_num_temp_files (thread_p));
       file_tempcache_cache_or_drop_entries (thread_p,
-					    &file_Tempcache->tran_files[file_get_tempcache_entry_index (thread_p)]);
+                &file_Tempcache->tran_files[file_get_tempcache_entry_index (thread_p)]);
     }
 }
 

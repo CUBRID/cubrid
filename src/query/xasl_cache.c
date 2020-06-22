@@ -1708,6 +1708,7 @@ xcache_invalidate_qcaches (THREAD_ENTRY * thread_p, const OID * oid)
             }
 	  if (xcache_entry_is_related_to_oid(xcache_entry, oid))
 	    {
+	      qfile_list_cache_delete_candidate(xcache_entry);
 	      qfile_clear_list_cache(thread_p, xcache_entry->list_ht_no, false);
 	      xcache_entry->list_ht_no = -1;
   	    }
@@ -1765,6 +1766,7 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
           if (invalidate_check == NULL || invalidate_check (xcache_entry, arg))
             {
               /* remove qfile cache entry related as list_ht_no */
+	      qfile_list_cache_delete_candidate(xcache_entry);
               qfile_clear_list_cache(thread_p, xcache_entry->list_ht_no, false);
               xcache_entry->list_ht_no = -1;
 
@@ -1930,6 +1932,7 @@ xcache_dump (THREAD_ENTRY * thread_p, FILE * fp)
       fprintf (fp, "\n");
       fprintf (fp, "  XASL_ID = { \n");
       fprintf (fp, "              sha1 = { %08x %08x %08x %08x %08x }, \n", SHA1_AS_ARGS (&xcache_entry->xasl_id.sha1));
+      fprintf (fp, "              flag = 0x%08x, \n", xcache_entry->xasl_id.cache_flag);
       fprintf (fp, "	          time_stored = %d sec, %d usec \n",
 	       xcache_entry->xasl_id.time_stored.sec, xcache_entry->xasl_id.time_stored.usec);
       fprintf (fp, "            } \n");

@@ -1493,6 +1493,8 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
       /* mark that the query is completed */
       qmgr_mark_query_as_completed (query_p);
 
+      qfile_list_cache_adjust_candidate(xasl_cache_entry_p);
+
       goto end;			/* OK */
     }
 
@@ -1550,7 +1552,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 	   * is, or make new one */
 	  list_cache_entry_p =
 	    qfile_update_list_cache_entry (thread_p, &xasl_cache_entry_p->list_ht_no, &params, list_id_p,
-					   xasl_cache_entry_p->sql_info.sql_hash_text);
+					   xasl_cache_entry_p);
 	  if (list_cache_entry_p == NULL)
 	    {
 	      char *s;
