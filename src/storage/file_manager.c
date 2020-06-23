@@ -9050,9 +9050,9 @@ file_tempcache_drop_tran_temp_files (THREAD_ENTRY * thread_p)
   if (file_Tempcache->tran_files[file_get_tempcache_entry_index (thread_p)] != NULL)
     {
       file_log ("file_tempcache_drop_tran_temp_files",
-                "drop %d transaction temporary files", file_get_tran_num_temp_files (thread_p));
+		"drop %d transaction temporary files", file_get_tran_num_temp_files (thread_p));
       file_tempcache_cache_or_drop_entries (thread_p,
-                &file_Tempcache->tran_files[file_get_tempcache_entry_index (thread_p)]);
+					    &file_Tempcache->tran_files[file_get_tempcache_entry_index (thread_p)]);
     }
 }
 

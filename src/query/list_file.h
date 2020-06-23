@@ -158,10 +158,10 @@ extern int qfile_finalize_list_cache (THREAD_ENTRY * thread_p);
 extern int qfile_clear_list_cache (THREAD_ENTRY * thread_p, int list_ht_no, bool release);
 extern int qfile_dump_list_cache_internal (THREAD_ENTRY * thread_p, FILE * fp);
 
-extern bool need_qfile_list_cache_cleanup(void);
-extern void qfile_list_cache_delete_candidate (XASL_CACHE_ENTRY *victim);
-extern void qfile_list_cache_add_candidate (XASL_CACHE_ENTRY *victim);
-extern void qfile_list_cache_adjust_candidate (XASL_CACHE_ENTRY *victim);
+extern bool need_qfile_list_cache_cleanup (void);
+extern void qfile_list_cache_delete_candidate (XASL_CACHE_ENTRY * victim);
+extern void qfile_list_cache_add_candidate (XASL_CACHE_ENTRY * victim);
+extern void qfile_list_cache_adjust_candidate (XASL_CACHE_ENTRY * victim);
 
 #if defined (CUBRID_DEBUG)
 extern int qfile_dump_list_cache (THREAD_ENTRY * thread_p, const char *fname);
@@ -172,7 +172,7 @@ QFILE_LIST_CACHE_ENTRY *qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, 
 						       const DB_VALUE_ARRAY * params);
 QFILE_LIST_CACHE_ENTRY *qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr,
 						       const DB_VALUE_ARRAY * params, const QFILE_LIST_ID * list_id,
-						       XASL_CACHE_ENTRY *xasl);
+						       XASL_CACHE_ENTRY * xasl);
 int qfile_end_use_of_list_cache_entry (THREAD_ENTRY * thread_p, QFILE_LIST_CACHE_ENTRY * lent, bool marker);
 
 /* Scan related routines */

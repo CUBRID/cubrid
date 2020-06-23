@@ -1493,7 +1493,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
       /* mark that the query is completed */
       qmgr_mark_query_as_completed (query_p);
 
-      qfile_list_cache_adjust_candidate(xasl_cache_entry_p);
+      qfile_list_cache_adjust_candidate (xasl_cache_entry_p);
 
       goto end;			/* OK */
     }

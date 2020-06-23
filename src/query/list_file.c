@@ -283,14 +283,15 @@ static int qfile_compare_with_null_value (int o0, int o1, SUBKEY_INFO key_info);
 static int qfile_compare_with_interpolation_domain (char *fp0, char *fp1, SUBKEY_INFO * subkey,
 						    SORTKEY_INFO * key_info);
 
-bool need_qfile_list_cache_cleanup()
+bool
+need_qfile_list_cache_cleanup ()
 {
   if (qfile_List_cache.n_entries >= prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_ENTRIES)
-    || qfile_List_cache.n_pages >= prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_PAGES))
+      || qfile_List_cache.n_pages >= prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_PAGES))
     {
       return true;
     }
- return false;
+  return false;
 }
 
 /*
@@ -298,7 +299,7 @@ bool need_qfile_list_cache_cleanup()
  *   v(in): qfile list cache candidate index for victim
 */
 void
-qfile_list_cache_delete_candidate (XASL_CACHE_ENTRY *victim)
+qfile_list_cache_delete_candidate (XASL_CACHE_ENTRY * victim)
 {
   QFILE_LIST_CACHE *candidate = &qfile_List_cache;
 
@@ -330,7 +331,7 @@ qfile_list_cache_delete_candidate (XASL_CACHE_ENTRY *victim)
  *   victim(in): qfile list candidate entry
 */
 void
-qfile_list_cache_add_candidate (XASL_CACHE_ENTRY *victim)
+qfile_list_cache_add_candidate (XASL_CACHE_ENTRY * victim)
 {
   QFILE_LIST_CACHE *candidate = &qfile_List_cache;
 
@@ -343,9 +344,9 @@ qfile_list_cache_add_candidate (XASL_CACHE_ENTRY *victim)
     }
   candidate->lru_tail = victim;
   if (candidate->lru_head == NULL)
-   {
-     candidate->lru_head = victim;
-   }
+    {
+      candidate->lru_head = victim;
+    }
 }
 
 /*
@@ -354,7 +355,7 @@ qfile_list_cache_add_candidate (XASL_CACHE_ENTRY *victim)
  *   victim(in): qfile list candidate entry
  */
 void
-qfile_list_cache_adjust_candidate (XASL_CACHE_ENTRY *victim)
+qfile_list_cache_adjust_candidate (XASL_CACHE_ENTRY * victim)
 {
   QFILE_LIST_CACHE *candidate = &qfile_List_cache;
 
@@ -4905,7 +4906,7 @@ qfile_initialize_list_cache (THREAD_ENTRY * thread_p)
 	  (void) mht_map_no_key (thread_p, qfile_List_cache.list_hts[i], qfile_free_list_cache_entry,
 				 qfile_List_cache.list_hts[i]);
 	  (void) mht_clear (qfile_List_cache.list_hts[i], NULL, NULL);
-          qfile_List_cache.list_hts[i]->build_lru_list = true;
+	  qfile_List_cache.list_hts[i]->build_lru_list = true;
 	}
       (void) memset (qfile_List_cache.ht_assigned, 0, sizeof (bool) * qfile_List_cache.n_hts);
       qfile_List_cache.next_ht_no = 0;
@@ -4929,7 +4930,7 @@ qfile_initialize_list_cache (THREAD_ENTRY * thread_p)
 	    {
 	      goto error;
 	    }
-          qfile_List_cache.list_hts[i]->build_lru_list = true;
+	  qfile_List_cache.list_hts[i]->build_lru_list = true;
 	}
 
       qfile_List_cache.ht_assigned = (bool *) calloc (qfile_List_cache.n_hts, sizeof (bool));
@@ -5599,7 +5600,8 @@ qfile_delete_list_cache_entry (THREAD_ENTRY * thread_p, void *data, void *args)
 	}
 
       /* destroy the temp file of XASL_ID */
-      if (!VFID_ISNULL (&lent->list_id.temp_vfid) && file_temp_retire_preserved (thread_p, &lent->list_id.temp_vfid) != NO_ERROR)
+      if (!VFID_ISNULL (&lent->list_id.temp_vfid)
+	  && file_temp_retire_preserved (thread_p, &lent->list_id.temp_vfid) != NO_ERROR)
 	{
 	  er_log_debug (ARG_FILE_LINE, "ls_delete_list_cache_ent: fl_destroy failed for vfid { %d %d }\n",
 			lent->list_id.temp_vfid.fileid, lent->list_id.temp_vfid.volid);
@@ -5893,7 +5895,7 @@ qfile_select_list_cache_entry (THREAD_ENTRY * thread_p, void *data, void *args)
  */
 QFILE_LIST_CACHE_ENTRY *
 qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr, const DB_VALUE_ARRAY * params,
-			       const QFILE_LIST_ID * list_id, XASL_CACHE_ENTRY *xasl)
+			       const QFILE_LIST_ID * list_id, XASL_CACHE_ENTRY * xasl)
 {
   QFILE_LIST_CACHE_ENTRY *lent, *old, **p, **q, **r;
   MHT_TABLE *ht;
@@ -6026,39 +6028,39 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr, con
       || qfile_List_cache.n_pages >= prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_PAGES))
     {
       bool done = false;
-      int  list_ht_no;
+      int list_ht_no;
       XASL_CACHE_ENTRY *xasl_cache, *del_cache;
       QFILE_LIST_CACHE_ENTRY *centry;
-      int withdrawal_limit = 0.8 *  prm_get_integer_value(PRM_ID_LIST_MAX_QUERY_CACHE_PAGES);
+      int withdrawal_limit = 0.8 * prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_PAGES);
       HENTRY_PTR candidate;
 
       qfile_List_cache.full_counter++;	/* counter */
       xasl_cache = qfile_List_cache.lru_head;
       while (!done && xasl_cache)
-      	{
-          candidate = NULL;
-          list_ht_no = xasl_cache->list_ht_no;
-          candidate = qfile_List_cache.list_hts[list_ht_no]->lru_head;
+	{
+	  candidate = NULL;
+	  list_ht_no = xasl_cache->list_ht_no;
+	  candidate = qfile_List_cache.list_hts[list_ht_no]->lru_head;
 	  while (!done && candidate)
 	    {
-              centry = (QFILE_LIST_CACHE_ENTRY *)candidate->data;
-              candidate = candidate->lru_next;
-              if (centry->last_ta_idx == 0) 
-                {
-	          (void) qfile_delete_list_cache_entry (thread_p, centry, &tran_index);
-	          if (qfile_List_cache.n_pages <= withdrawal_limit)
-	            {
-	              done = true;
-	            }
-                }
+	      centry = (QFILE_LIST_CACHE_ENTRY *) candidate->data;
+	      candidate = candidate->lru_next;
+	      if (centry->last_ta_idx == 0)
+		{
+		  (void) qfile_delete_list_cache_entry (thread_p, centry, &tran_index);
+		  if (qfile_List_cache.n_pages <= withdrawal_limit)
+		    {
+		      done = true;
+		    }
+		}
 	    }
-          del_cache = xasl_cache;
-          xasl_cache = xasl_cache->lru_next;
-          if (!qfile_List_cache.list_hts[list_ht_no]->lru_head)
-            {
-	      qfile_list_cache_delete_candidate(del_cache);
-            }
-        }
+	  del_cache = xasl_cache;
+	  xasl_cache = xasl_cache->lru_next;
+	  if (!qfile_List_cache.list_hts[list_ht_no]->lru_head)
+	    {
+	      qfile_list_cache_delete_candidate (del_cache);
+	    }
+	}
     }
 #endif
 
@@ -6150,9 +6152,9 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr, con
       goto end;
     }
 
-  if (ht->lru_head == ht->lru_tail) /* first entry */
+  if (ht->lru_head == ht->lru_tail)	/* first entry */
     {
-      qfile_list_cache_add_candidate(xasl);
+      qfile_list_cache_add_candidate (xasl);
     }
 
   /* append to the list of uncommitted entries in the transaction */

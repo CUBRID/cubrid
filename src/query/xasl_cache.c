@@ -1700,19 +1700,19 @@ xcache_invalidate_qcaches (THREAD_ENTRY * thread_p, const OID * oid)
        */
       while (true)
 	{
-          xcache_entry = iter.iterate ();
-          if (xcache_entry == NULL)
-            {
-              finished = true;
-              break;
-            }
-	  if (xcache_entry_is_related_to_oid(xcache_entry, oid))
+	  xcache_entry = iter.iterate ();
+	  if (xcache_entry == NULL)
 	    {
-	      qfile_list_cache_delete_candidate(xcache_entry);
-	      qfile_clear_list_cache(thread_p, xcache_entry->list_ht_no, false);
+	      finished = true;
+	      break;
+	    }
+	  if (xcache_entry_is_related_to_oid (xcache_entry, oid))
+	    {
+	      qfile_list_cache_delete_candidate (xcache_entry);
+	      qfile_clear_list_cache (thread_p, xcache_entry->list_ht_no, false);
 	      xcache_entry->list_ht_no = -1;
-  	    }
-        }
+	    }
+	}
     }
 }
 
@@ -1754,57 +1754,57 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
        * transaction can be used for one hash entry only.
        */
       while (true)
-        {
-          xcache_entry = iter.iterate ();
-          if (xcache_entry == NULL)
-            {
-              finished = true;
-              break;
-            }
+	{
+	  xcache_entry = iter.iterate ();
+	  if (xcache_entry == NULL)
+	    {
+	      finished = true;
+	      break;
+	    }
 
-          /* Check invalidation conditions. */
-          if (invalidate_check == NULL || invalidate_check (xcache_entry, arg))
-            {
-              /* remove qfile cache entry related as list_ht_no */
-	      qfile_list_cache_delete_candidate(xcache_entry);
-              qfile_clear_list_cache(thread_p, xcache_entry->list_ht_no, false);
-              xcache_entry->list_ht_no = -1;
+	  /* Check invalidation conditions. */
+	  if (invalidate_check == NULL || invalidate_check (xcache_entry, arg))
+	    {
+	      /* remove qfile cache entry related as list_ht_no */
+	      qfile_list_cache_delete_candidate (xcache_entry);
+	      qfile_clear_list_cache (thread_p, xcache_entry->list_ht_no, false);
+	      xcache_entry->list_ht_no = -1;
 
-              /* Mark entry as deleted. */
-              if (xcache_entry_mark_deleted (thread_p, xcache_entry))
-                {
-                  /*
-                   * Successfully marked for delete. Save it to delete after the iteration.
-                   * No need to acquire the clone mutex, since I'm the unique user.
-                   */
-                  while (xcache_entry->n_cache_clones > 0)
-                    {
-                      xcache_clone_decache (thread_p, &xcache_entry->cache_clones[--xcache_entry->n_cache_clones]);
-                    }
-                  delete_xids[n_delete_xids++] = xcache_entry->xasl_id;
-                }
-             }
+	      /* Mark entry as deleted. */
+	      if (xcache_entry_mark_deleted (thread_p, xcache_entry))
+		{
+		  /*
+		   * Successfully marked for delete. Save it to delete after the iteration.
+		   * No need to acquire the clone mutex, since I'm the unique user.
+		   */
+		  while (xcache_entry->n_cache_clones > 0)
+		    {
+		      xcache_clone_decache (thread_p, &xcache_entry->cache_clones[--xcache_entry->n_cache_clones]);
+		    }
+		  delete_xids[n_delete_xids++] = xcache_entry->xasl_id;
+		}
+	    }
 
-          if (n_delete_xids == XCACHE_DELETE_XIDS_SIZE)
-            {
-              /* Full buffer. Interrupt iteration and we'll start over. */
-              xcache_Hashmap.end_tran (thread_p);
+	  if (n_delete_xids == XCACHE_DELETE_XIDS_SIZE)
+	    {
+	      /* Full buffer. Interrupt iteration and we'll start over. */
+	      xcache_Hashmap.end_tran (thread_p);
 
-              xcache_log ("xcache_remove_by_oid full buffer\n" XCACHE_LOG_TRAN_TEXT, XCACHE_LOG_TRAN_ARGS (thread_p));
+	      xcache_log ("xcache_remove_by_oid full buffer\n" XCACHE_LOG_TRAN_TEXT, XCACHE_LOG_TRAN_ARGS (thread_p));
 
-              break;
-            }
-        }
+	      break;
+	    }
+	}
 
       /* Remove collected entries. */
       for (xid_index = 0; xid_index < n_delete_xids; xid_index++)
-        {
-          if (!xcache_Hashmap.erase (thread_p, delete_xids[xid_index]))
-            {
-              /* I don't think this is expected. */
-              assert (false);
-            }
-        }
+	{
+	  if (!xcache_Hashmap.erase (thread_p, delete_xids[xid_index]))
+	    {
+	      /* I don't think this is expected. */
+	      assert (false);
+	    }
+	}
       n_delete_xids = 0;
     }
 
