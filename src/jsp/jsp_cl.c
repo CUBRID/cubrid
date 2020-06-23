@@ -2771,11 +2771,11 @@ redo:
     {
       tran_begin_libcas_function ();
       error_code = libcas_main (sockfd);	/* jdbc call */
+      tran_end_libcas_function ();
       if (error_code != NO_ERROR)
 	{
 	  goto exit;
 	}
-      tran_end_libcas_function ();
       goto redo;
     }
   else if (start_code == SP_CODE_RESULT || start_code == SP_CODE_ERROR)
