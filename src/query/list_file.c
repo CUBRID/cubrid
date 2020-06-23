@@ -6032,9 +6032,7 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr, con
       int withdrawal_limit = 0.8 *  prm_get_integer_value(PRM_ID_LIST_MAX_QUERY_CACHE_PAGES);
       HENTRY_PTR candidate;
 
-      csect_enter (thread_p, CSECT_QPROC_LIST_CACHE, INF_WAIT);      
       qfile_List_cache.full_counter++;	/* counter */
-
       xasl_cache = qfile_List_cache.lru_head;
       while (!done && xasl_cache)
       	{
@@ -6047,9 +6045,7 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr, con
               candidate = candidate->lru_next;
               if (centry->last_ta_idx == 0) 
                 {
-                  centry->deletion_marker = true;
-                  qfile_List_cache.n_pages -= centry->list_id.page_cnt;
-	          //(void) qfile_delete_list_cache_entry (thread_p, centry, &tran_index);
+	          (void) qfile_delete_list_cache_entry (thread_p, centry, &tran_index);
 	          if (qfile_List_cache.n_pages <= withdrawal_limit)
 	            {
 	              done = true;
@@ -6063,110 +6059,6 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr, con
 	      qfile_list_cache_delete_candidate(del_cache);
             }
         }
-
-      csect_exit(thread_p, CSECT_QPROC_LIST_CACHE);
-#if 0
-      /* at first, examine hash entries to selet candidates */
-      qfile_List_cache_candidate.c_idx = 0;
-      qfile_List_cache_candidate.v_idx = 0;
-      qfile_List_cache_candidate.selcnt = qfile_List_cache_candidate.num_candidates;
-      /* at first, try to find candidates within entries that is not in use */
-      qfile_List_cache_candidate.include_in_use = false;
-
-      /* select candidates from all hash tables */
-      for (n = 0; n < qfile_List_cache.n_hts; n++)
-	{
-	  if (qfile_List_cache.ht_assigned[n])
-	    {
-	      (void) mht_map_no_key (thread_p, qfile_List_cache.list_hts[n], qfile_select_list_cache_entry,
-				     &qfile_List_cache_candidate);
-	    }
-	}
-      if (qfile_List_cache_candidate.c_idx < qfile_List_cache_candidate.num_candidates)
-	{
-	  /* insufficient candidates; try once more */
-	  qfile_List_cache_candidate.include_in_use = true;
-	  for (n = 0; n < qfile_List_cache.n_hts; n++)
-	    {
-	      if (qfile_List_cache.ht_assigned[n])
-		{
-		  (void) mht_map_no_key (thread_p, qfile_List_cache.list_hts[n], qfile_select_list_cache_entry,
-					 &qfile_List_cache_candidate);
-		}
-	    }
-	}
-
-      /* find victims who appears in both groups */
-      k = qfile_List_cache_candidate.v_idx;
-      r = qfile_List_cache_candidate.victims;
-      for (i = 0, p = qfile_List_cache_candidate.time_candidates; i < qfile_List_cache_candidate.num_candidates;
-	   i++, p++)
-	{
-	  for (j = 0, q = qfile_List_cache_candidate.ref_candidates; j < qfile_List_cache_candidate.num_candidates;
-	       j++, q++)
-	    {
-	      if (*p && *q && *p == *q && k < qfile_List_cache_candidate.num_victims)
-		{
-		  *r++ = *p;
-		  k++;
-		  *p = *q = NULL;
-		  break;
-		}
-	    }
-	  if (k >= qfile_List_cache_candidate.num_victims)
-	    {
-	      break;
-	    }
-	}
-
-      /* select more victims if insufficient */
-      if (k < qfile_List_cache_candidate.num_victims)
-	{
-	  /*
-	   * The above victim selection algorithm is not completed yet.
-	   * Two double linked lists for list cache entries are needed to
-	   * implement the algorithm efficiently. One for creation time, and
-	   * the other one for referencing.
-	   * Instead, select from most significant members from each groups.
-	   */
-	  p = qfile_List_cache_candidate.time_candidates;
-	  q = qfile_List_cache_candidate.ref_candidates;
-	  for (i = 0; i < qfile_List_cache_candidate.num_candidates; i++)
-	    {
-	      if (*p)
-		{
-		  *r++ = *p;
-		  k++;
-		  *p = NULL;
-		  if (k >= qfile_List_cache_candidate.num_victims)
-		    {
-		      break;
-		    }
-		}
-	      if (*q)
-		{
-		  *r++ = *q;
-		  k++;
-		  *q = NULL;
-		  if (k >= qfile_List_cache_candidate.num_victims)
-		    {
-		      break;
-		    }
-		}
-	      p++, q++;
-	    }
-	}
-      qfile_List_cache_candidate.c_idx = 0;
-      qfile_List_cache_candidate.v_idx = k;
-
-      /* now, delete victims from the cache */
-      for (k = 0, r = qfile_List_cache_candidate.victims; k < qfile_List_cache_candidate.v_idx; k++, r++)
-	{
-	  old = *r;
-	  (void) qfile_delete_list_cache_entry (thread_p, old, &tran_index);
-	}
-      qfile_List_cache_candidate.v_idx = 0;
-#endif
     }
 #endif
 
