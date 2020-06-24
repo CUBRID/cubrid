@@ -91,6 +91,7 @@
 #define FILEIO_VOLINFO_SUFFIX        "_vinf"
 #define FILEIO_VOLLOCK_SUFFIX        "__lock"
 #define FILEIO_SUFFIX_DWB            "_dwb"
+#define FILEIO_SUFFIX_KEYS           "_keys"
 #define FILEIO_MAX_SUFFIX_LENGTH     7
 
 typedef enum
@@ -544,6 +545,8 @@ extern void fileio_make_backup_volume_info_name (char *backup_volinfo_name, cons
 extern void fileio_make_backup_name (char *backup_name, const char *nopath_volname, const char *backup_path,
 				     FILEIO_BACKUP_LEVEL level, int unit_num);
 extern void fileio_make_dwb_name (char *dwb_name_p, const char *dwb_path_p, const char *db_name_p);
+extern void fileio_make_keys_name (char *keys_name_p, const char *db_name_p);
+extern void fileio_make_keys_name_given_path (char *keys_name_p, const char *keys_path_p, const char *db_name_p);
 extern void fileio_remove_all_backup (THREAD_ENTRY * thread_p, int level);
 extern FILEIO_BACKUP_SESSION *fileio_initialize_backup (const char *db_fullname, const char *backup_destination,
 							FILEIO_BACKUP_SESSION * session, FILEIO_BACKUP_LEVEL level,

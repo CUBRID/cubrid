@@ -5865,6 +5865,38 @@ fileio_make_dwb_name (char *dwb_name_p, const char *dwb_path_p, const char *db_n
   sprintf (dwb_name_p, "%s%s%s%s", dwb_path_p, FILEIO_PATH_SEPARATOR (dwb_path_p), db_name_p, FILEIO_SUFFIX_DWB);
 }
 
+/*
+ * fileio_make_keys_name () - Build the name of KEYS volume (for TDE Master Key)
+ *   return: void
+ *   keys_name_p(out): the name of KEYS volume
+ *   dbname(in): database name
+ *
+ * Note: The caller must have enough space to store the name of the volume
+ *       that is constructed(sprintf). It is recommended to have at least
+ *       DB_MAX_PATH_LENGTH length.
+ */
+void
+fileio_make_keys_name (char *keys_name_p, const char *db_full_name_p)
+{
+  sprintf (keys_name_p, "%s%s", db_full_name_p, FILEIO_SUFFIX_KEYS);
+}
+
+/*
+ * fileio_make_keys_name () - Build the name of KEYS volume (for TDE Master Key)
+ *   return: void
+ *   keys_name_p(out): the name of KEYS volume
+ *   dbname(in): database name
+ *
+ * Note: The caller must have enough space to store the name of the volume
+ *       that is constructed(sprintf). It is recommended to have at least
+ *       DB_MAX_PATH_LENGTH length.
+ */
+void
+fileio_make_keys_name_given_path (char *keys_name_p, const char *keys_path_p, const char *db_name_p)
+{
+  sprintf (keys_name_p, "%s%s%s%s", keys_path_p, FILEIO_PATH_SEPARATOR (keys_path_p), db_name_p, FILEIO_SUFFIX_KEYS);
+}
+
 
 /*
  * fileio_cache () - Cache information related to a mounted volume
