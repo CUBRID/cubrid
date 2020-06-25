@@ -81,7 +81,7 @@
 static SSL *ssl = NULL;
 bool ssl_client = false;
 
-static int cas_ssl_validity_check (SSL_CTX *ctx);
+static int cas_ssl_validity_check (SSL_CTX * ctx);
 
 int
 initSSL (int sd)
@@ -145,7 +145,8 @@ initSSL (int sd)
 
   if ((err_code = cas_ssl_validity_check (ctx)) < 0)
     {
-      cas_log_write (0, true, "SSL: Certificate validity error (%s)", err_code == ER_CERT_EXPIRED ? "Expired" : "Unknow");
+      cas_log_write (0, true, "SSL: Certificate validity error (%s)",
+		     err_code == ER_CERT_EXPIRED ? "Expired" : "Unknow");
       return err_code;
     }
 
@@ -257,24 +258,24 @@ cas_ssl_close (int client_sock_fd)
 }
 
 static int
-cas_ssl_validity_check (SSL_CTX *ctx)
+cas_ssl_validity_check (SSL_CTX * ctx)
 {
   ASN1_TIME *not_before, *not_after;
-  X509 *crt ;
+  X509 *crt;
 
-  crt =  SSL_CTX_get0_certificate(ctx);
+  crt = SSL_CTX_get0_certificate (ctx);
 
-   if (crt == NULL)
-     return ER_SSL_GENERAL;
+  if (crt == NULL)
+    return ER_SSL_GENERAL;
 
   not_after = X509_getm_notAfter (crt);
-  if (X509_cmp_time(not_after, NULL) != 1)
+  if (X509_cmp_time (not_after, NULL) != 1)
     {
       return ER_CERT_EXPIRED;
     }
 
   not_before = X509_getm_notBefore (crt);
-  if (X509_cmp_time(not_before, NULL) != -1)
+  if (X509_cmp_time (not_before, NULL) != -1)
     {
       return ER_SSL_GENERAL;
     }
