@@ -61,7 +61,7 @@ static int tde_generate_keyinfo (TDE_KEYINFO *keyinfo);
 static int tde_generate_keyinfo_internal (TDE_KEYINFO *keyinfo, int mk_index, const unsigned char *master_key,
     const TDE_DATA_KEY_SET *dks);
 static int tde_create_keys_volume (const char *keys_path);
-static int tde_load_mk (const TDE_KEYINFO *keyinfo, const char *mk_path);
+static int tde_load_mk (const TDE_KEYINFO *keyinfo);
 static bool tde_validate_mk (const unsigned char *master_key, const unsigned char *mk_hash);
 static int tde_load_dks (const TDE_KEYINFO *keyinfo, const unsigned char *master_key);
 static int tde_make_mk (unsigned char *master_key);
@@ -147,11 +147,11 @@ tde_cipher_initialize (THREAD_ENTRY *thread_p, const HFID *keyinfo_hfid)
 
   tde_get_keyinfo (thread_p, &keyinfo, tde_Keyinfo_oid, keyinfo_hfid);
 
-  assert (keyinfo.mk_index > 0);
+  assert (keyinfo.mk_index >= 0);
 
   tde_make_keys_volume_fullname (mk_path);
 
-  if (tde_load_mk (&keyinfo, mk_path) != NO_ERROR)
+  if (tde_load_mk (&keyinfo) != NO_ERROR)
     {
       // TODO: failed to load, it is not worng behavior, how to handle it?
       return -1;
@@ -175,13 +175,15 @@ tde_add_mk (int mk_index, const unsigned char *master_key)
 {
   FILE *keyfile_fp = NULL;
   char mk_path[PATH_MAX] = {0, };
-  char format_string[36] = "%d%32s";   /* [keyindex(4byte)][key(32byte)] */
   int err = NO_ERROR;
   int ret = 0;
-  int searched_index = -1;
+  int searched_idx = -1;
+  int deleted_offset = -1;
   char mk[TDE_MASTER_KEY_LENGTH] = {0,};
 
-  keyfile_fp = fopen (mk_path, "r+");
+  tde_make_keys_volume_fullname (mk_path);
+
+  keyfile_fp = fopen (mk_path, "r+b");
   if (keyfile_fp == NULL)
     {
       //TODO error; ER_KEYS_NO_WRITE_ACCESS ?
@@ -191,29 +193,48 @@ tde_add_mk (int mk_index, const unsigned char *master_key)
   /* TODO: search  */
   while (true)
     {
-      ret = fscanf (keyfile_fp, format_string, &searched_index, mk);
-      if (ret == EOF)
+      if (fread (&searched_idx, 1, sizeof (searched_idx), keyfile_fp) != sizeof (searched_idx))
 	{
-	  break;
+	  if (feof (keyfile_fp))
+	    {
+	      break;
+	    }
+	  else
+	    {
+	      // TODO IO ERROR
+	      return -1;
+	    }
 	}
-      if (ret != 2)
+      if (searched_idx == mk_index)
 	{
-	  //TODO error; invalid file format
+	  // TODO error: mk index already exists
 	  return -1;
 	}
-      else if (searched_index == -1)
+      else if (searched_idx == -1 && deleted_offset == -1)
 	{
-	  fseek (keyfile_fp, -36, SEEK_CUR); // TODO Definition으로..
-	  break;
+	  /* insert mk into deleted offset */
+	  deleted_offset = ftell (keyfile_fp) - sizeof (searched_idx);
 	}
+      fseek (keyfile_fp, TDE_MASTER_KEY_LENGTH, SEEK_CUR);
+    }
+
+  fflush (keyfile_fp);
+
+  if (deleted_offset != -1)
+    {
+      fseek (keyfile_fp, deleted_offset, SEEK_SET);
     }
 
   /* add key */
-  err = fprintf (keyfile_fp, format_string, mk_index, master_key);
-  if (err < 0)
+  if (fwrite (&mk_index, 1, sizeof (mk_index), keyfile_fp) != sizeof (mk_index))
     {
-      //TODO error;
-      return -1 ;
+      // TODO IO ERROR
+      return -1;
+    }
+  if (fwrite (master_key, 1, TDE_MASTER_KEY_LENGTH, keyfile_fp) != TDE_MASTER_KEY_LENGTH)
+    {
+      // TODO IO ERROR
+      return -1;
     }
 
   fflush (keyfile_fp);
@@ -347,10 +368,9 @@ static int
 tde_create_keys_volume (const char *mk_path)
 {
   FILE *keyfile_fp = NULL;
-  char format_string[64] = "%d%32s";   /* [keyindex(4byte)][key(32byte)] */
   int err = NO_ERROR;
 
-  keyfile_fp = fopen (mk_path, "w");
+  keyfile_fp = fopen (mk_path, "wb");
   if (keyfile_fp == NULL)
     {
       //TODO error; ER_KEYS_NO_WRITE_ACCESS ?
@@ -362,17 +382,19 @@ tde_create_keys_volume (const char *mk_path)
 }
 
 static int
-tde_load_mk (const TDE_KEYINFO *keyinfo, const char *mk_path)
+tde_load_mk (const TDE_KEYINFO *keyinfo)
 {
   FILE *keyfile_fp = NULL;
-  char format_string[64] = "%d%32s";   /* [keyindex(4byte)][key(32byte)] */
+  char mk_path[PATH_MAX] = {0, };
   int searched_idx = -1;
   unsigned char searched_key[TDE_MASTER_KEY_LENGTH] = {0,};
   bool found = false;
 
-  assert (keyinfo->mk_index > 0);
+  assert (keyinfo->mk_index >= 0);
 
-  keyfile_fp = fopen (mk_path, "r");
+  tde_make_keys_volume_fullname (mk_path);
+
+  keyfile_fp = fopen (mk_path, "rb");
   if (keyfile_fp == NULL)
     {
       //TODO error;
@@ -381,9 +403,29 @@ tde_load_mk (const TDE_KEYINFO *keyinfo, const char *mk_path)
 
   while (true)
     {
-      if (fscanf (keyfile_fp, format_string, &searched_idx, searched_key) != 2)
+      if (fread (&searched_idx, 1, sizeof (searched_idx), keyfile_fp) != sizeof (searched_idx))
 	{
-	  break;
+	  if (feof (keyfile_fp))
+	    {
+	      break;
+	    }
+	  else
+	    {
+	      // TODO IO ERROR
+	      return -1;
+	    }
+	}
+      if (fread (searched_key, 1, TDE_MASTER_KEY_LENGTH, keyfile_fp) != TDE_MASTER_KEY_LENGTH)
+	{
+	  if (feof (keyfile_fp))
+	    {
+	      break;
+	    }
+	  else
+	    {
+	      // TODO IO ERROR
+	      return -1;
+	    }
 	}
       if (searched_idx == keyinfo->mk_index)
 	{
@@ -459,8 +501,7 @@ tde_make_mk (unsigned char *master_key)
 
   assert (master_key != NULL);
 
-  err = RAND_bytes (master_key, TDE_MASTER_KEY_LENGTH);
-  if (err != 1 )
+  if (1 != RAND_bytes (master_key, TDE_MASTER_KEY_LENGTH))
     {
       //TODO error;
       return -1;
@@ -490,8 +531,7 @@ tde_make_dk (unsigned char *data_key)
 
   assert (data_key != NULL);
 
-  err = RAND_bytes (data_key, TDE_DATA_KEY_LENGTH);
-  if (err != 1 )
+  if (1 != RAND_bytes (data_key, TDE_DATA_KEY_LENGTH))
     {
       //TODO error;
       return -1;

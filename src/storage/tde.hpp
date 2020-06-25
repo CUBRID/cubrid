@@ -83,7 +83,7 @@ extern TDE_DATA_KEY_SET tde_Data_keys;
 
 #if !defined(CS_MODE)
 /*
- * It is used to get tde key information stored in heap file.
+ * TDE module stores key information with all tha data keys encrypted and master key hashed.
  */
 typedef struct tde_keyinfo
 {
