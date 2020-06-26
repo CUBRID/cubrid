@@ -1191,7 +1191,7 @@ hm_check_rc_time (T_CON_HANDLE * con_handle)
 }
 
 void
-hm_create_health_check_th (void)
+hm_create_health_check_th(char useSSL)
 {
   int rv;
   pthread_attr_t thread_attr;
@@ -1202,7 +1202,7 @@ hm_create_health_check_th (void)
   rv = pthread_attr_setdetachstate (&thread_attr, PTHREAD_CREATE_DETACHED);
   rv = pthread_attr_setscope (&thread_attr, PTHREAD_SCOPE_SYSTEM);
 #endif /* WINDOWS */
-  rv = pthread_create (&health_check_th, &thread_attr, hm_thread_health_checker, (void *) NULL);
+  rv = pthread_create(&health_check_th, &thread_attr, hm_thread_health_checker, (void *) useSSL);
 }
 
 /************************************************************************
@@ -1469,6 +1469,7 @@ hm_thread_health_checker (void *arg)
   int i;
   unsigned char *ip_addr;
   int port;
+  char useSSL = *((char*)(&arg));
   time_t start_time;
   time_t elapsed_time;
   while (1)
@@ -1478,7 +1479,7 @@ hm_thread_health_checker (void *arg)
 	{
 	  ip_addr = host_status[i].host.ip_addr;
 	  port = host_status[i].host.port;
-	  if (!host_status[i].is_reachable && net_check_broker_alive (ip_addr, port, BROKER_HEALTH_CHECK_TIMEOUT))
+        if (!host_status[i].is_reachable && net_check_broker_alive(ip_addr, port, BROKER_HEALTH_CHECK_TIMEOUT, useSSL))
 	    {
 	      hm_set_host_status_by_addr (ip_addr, port, true);
 	    }

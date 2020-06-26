@@ -908,7 +908,7 @@ recv_again:
 }
 
 bool
-net_check_broker_alive (unsigned char *ip_addr, int port, int timeout_msec)
+net_check_broker_alive (unsigned char *ip_addr, int port, int timeout_msec, char useSSL)
 {
   SOCKET sock_fd;
   MSG_HEADER msg_header;
@@ -919,6 +919,9 @@ net_check_broker_alive (unsigned char *ip_addr, int port, int timeout_msec)
   char *info;
   int err_code, ret_value;
   bool result = false;
+  T_CON_HANDLE * con_handle = NULL;
+  con_handle = (T_CON_HANDLE *)MALLOC(sizeof(T_CON_HANDLE));
+  memset(con_handle, 0, sizeof(T_CON_HANDLE));
 
   init_msg_header (&msg_header);
 
@@ -973,6 +976,36 @@ net_check_broker_alive (unsigned char *ip_addr, int port, int timeout_msec)
   if (err_code < 0)
     {
       goto finish_health_check;
+    }
+
+  if (useSSL == 1)
+    {
+      SSL *ssl = NULL;
+      SSL_CTX *ctx = NULL;
+
+      if (init_ssl() < 0)
+        {
+          goto finish_health_check;
+        }
+
+      ctx = create_sslCtx();
+      if (ctx == NULL)
+        {
+          goto finish_health_check;
+        }
+      con_handle->ctx = ctx;
+
+      ssl = create_ssl(sock_fd, con_handle->ctx);
+      if (ssl == NULL)
+        {
+          goto finish_health_check;
+        }
+      con_handle->ssl = ssl;
+
+      if (connect_ssl(ssl) != 1)
+        {
+          goto finish_health_check;
+        }
     }
 
   if (net_send_stream(con_handle, db_info, SRV_CON_DB_INFO_SIZE) < 0)

@@ -502,15 +502,6 @@ cci_connect_with_url_internal (char *url, char *user, char *pass, T_CCI_ERROR * 
       property = (char *) "";
     }
 
-  /* start health check thread */
-  MUTEX_LOCK (health_check_th_mutex);
-  if (!is_health_check_th_started)
-    {
-      hm_create_health_check_th ();
-      is_health_check_th_started = 1;
-    }
-  MUTEX_UNLOCK (health_check_th_mutex);
-
   con_handle = get_new_connection (host, port, dbname, user, pass);
   if (con_handle == NULL)
     {
@@ -549,6 +540,15 @@ cci_connect_with_url_internal (char *url, char *user, char *pass, T_CCI_ERROR * 
 	  con_handle->alter_host_id = 0;
 	}
     }
+
+  /* start health check thread */
+  MUTEX_LOCK(health_check_th_mutex);
+  if (!is_health_check_th_started)
+  {
+    hm_create_health_check_th(con_handle->useSSL);
+    is_health_check_th_started = 1;
+  }
+  MUTEX_UNLOCK(health_check_th_mutex);
 
   SET_START_TIME_FOR_LOGIN (con_handle);
   error = cas_connect (con_handle, &(con_handle->err_buf));

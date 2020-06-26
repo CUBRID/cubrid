@@ -324,7 +324,7 @@ extern int cci_conn_set_properties (T_CON_HANDLE * handle, char *properties);
 extern void hm_set_host_status (T_CON_HANDLE * con_handle, int host_id, bool is_reachable);
 extern bool hm_is_host_reachable (T_CON_HANDLE * con_handle, int host_id);
 extern void hm_check_rc_time (T_CON_HANDLE * con_handle);
-extern void hm_create_health_check_th (void);
+extern void hm_create_health_check_th(char useSSL);
 
 extern int hm_pool_restore_used_statements (T_CON_HANDLE * connection);
 extern int hm_pool_add_statement_to_use (T_CON_HANDLE * connection, int statement_id);
