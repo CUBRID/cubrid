@@ -954,6 +954,7 @@ prepare_error:
       CLOSE_SOCKET (con_handle->sock_fd);
       con_handle->sock_fd = INVALID_SOCKET;
       con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
+      hm_ssl_free(con_handle);
     }
 
   if (IS_OUT_TRAN (con_handle))
@@ -1569,6 +1570,7 @@ prepare_execute_error:
       CLOSE_SOCKET (con_handle->sock_fd);
       con_handle->sock_fd = INVALID_SOCKET;
       con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
+      hm_ssl_free(con_handle);
     }
 
   if (IS_OUT_TRAN (con_handle))

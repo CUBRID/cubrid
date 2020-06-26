@@ -283,6 +283,42 @@ net_connect_srv (T_CON_HANDLE * con_handle, int host_id, T_CCI_ERROR * err_buf, 
 	  return ret_value;
 	}
     }
+  con_handle->sock_fd = srv_sock_fd;
+  if (con_handle->useSSL == 1)
+    {
+      SSL *ssl = NULL;
+      SSL_CTX *ctx = NULL;
+
+      if (init_ssl() < 0)
+        {
+          err_code = CCI_ER_COMMUNICATION;
+          goto connect_srv_error;
+        }
+
+      ctx = create_sslCtx();
+      if (ctx == NULL)
+        {
+          err_code = CCI_ER_COMMUNICATION;
+          goto connect_srv_error;
+        }
+
+      con_handle->ctx = ctx;
+
+      ssl = create_ssl(srv_sock_fd, con_handle->ctx);
+      if (ssl == NULL)
+        {
+          err_code = CCI_ER_COMMUNICATION;
+          goto connect_srv_error;
+        }
+
+      con_handle->ssl = ssl;
+
+      if (connect_ssl(ssl) != 1)
+        {
+          err_code = CCI_ER_SSL_HANDSHAKE;
+          goto connect_srv_error;
+        }
+    }
 
   if (net_send_stream (con_handle, db_info, SRV_CON_DB_INFO_SIZE) < 0)
     {
@@ -427,6 +463,7 @@ net_connect_srv (T_CON_HANDLE * con_handle, int host_id, T_CCI_ERROR * err_buf, 
 
 connect_srv_error:
   CLOSE_SOCKET (srv_sock_fd);
+  hm_ssl_free(con_handle);
   return err_code;
 }
 
@@ -810,7 +847,7 @@ error_return:
   FREE_MEM (tmp_p);
   CLOSE_SOCKET (con_handle->sock_fd);
   con_handle->sock_fd = INVALID_SOCKET;
-
+  hm_ssl_free(con_handle);
   return result_code;
 }
 
@@ -951,6 +988,7 @@ net_check_broker_alive (unsigned char *ip_addr, int port, int timeout_msec)
 
 finish_health_check:
   CLOSE_SOCKET (sock_fd);
+  hm_ssl_free(con_handle);
   FREE_MEM(con_handle);
   return result;
 }

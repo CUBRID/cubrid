@@ -65,7 +65,8 @@
 #include "cas_protocol.h"
 #include "cci_network.h"
 #include "cci_map.h"
-
+#include "cci_ssl.h"
+#include <cstdint>
 /************************************************************************
  * PRIVATE DEFINITIONS							*
  ************************************************************************/
@@ -265,6 +266,7 @@ hm_con_handle_free (T_CON_HANDLE * con_handle)
 
   hm_req_handle_free_all (con_handle);
   con_handle_content_free (con_handle);
+  hm_ssl_free(con_handle);
   FREE_MEM (con_handle);
 
   return CCI_ER_NO_ERROR;
@@ -1316,7 +1318,9 @@ init_con_handle (T_CON_HANDLE * con_handle, char *ip_str, int port, char *db_nam
   con_handle->slow_query_threshold_millis = 60000;
   con_handle->log_trace_api = false;
   con_handle->log_trace_network = false;
-
+  con_handle->ssl = NULL;
+  con_handle->ctx = NULL;
+  con_handle->useSSL = false;
   con_handle->deferred_max_close_handle_count = DEFERRED_CLOSE_HANDLE_ALLOC_SIZE;
   con_handle->deferred_close_handle_list = (int *) MALLOC (sizeof (int) * con_handle->deferred_max_close_handle_count);
   con_handle->deferred_close_handle_count = 0;
@@ -1496,4 +1500,16 @@ hm_force_close_connection (T_CON_HANDLE * con_handle)
   con_handle->sock_fd = INVALID_SOCKET;
   con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
   con_handle->force_failback = 0;
+  hm_ssl_free(con_handle);
+}
+
+void 
+hm_ssl_free(T_CON_HANDLE * con_handle)
+{
+  if (con_handle->ssl != NULL || con_handle->ctx != NULL)
+    {
+      cleanup_ssl(con_handle->ssl, con_handle->ctx);
+      con_handle->ssl = NULL;
+      con_handle->ctx = NULL;
+    }
 }
