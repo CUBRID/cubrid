@@ -68,9 +68,14 @@
 #include "cas_protocol.h"
 #include "cci_query_execute.h"
 #include "cci_util.h"
+#include "cci_ssl.h"
 #if defined(WINDOWS)
 #include "version.h"
 #endif
+
+#include <openssl/ssl.h>
+#include <openssl/err.h>
+#include <openssl/opensslv.h>
 
 /************************************************************************
  * PRIVATE DEFINITIONS							*
@@ -80,6 +85,11 @@
 	send(SOCKFD, MSG, SIZE, 0)
 #define READ_FROM_SOCKET(SOCKFD, MSG, SIZE)	\
 	recv(SOCKFD, MSG, SIZE, 0)
+
+#define WRITE_TO_SSL_SOCKET(SSL, MSG, SIZE)	\
+	SSL_write(SSL, MSG, SIZE)
+#define READ_FROM_SSL_SOCKET(SSL, MSG, SIZE)	\
+	SSL_read(SSL, MSG, SIZE)
 
 #define SOCKET_TIMEOUT 5000	/* msec */
 
@@ -875,7 +885,8 @@ net_check_broker_alive (unsigned char *ip_addr, int port, int timeout_msec)
     {
       memcpy (client_info, SRV_CON_CLIENT_MAGIC_STR_SSL, SRV_CON_CLIENT_MAGIC_LEN);
     }
-    else {
+    else 
+    {
       memcpy (client_info, SRV_CON_CLIENT_MAGIC_STR, SRV_CON_CLIENT_MAGIC_LEN);
     }
   client_info[SRV_CON_MSG_IDX_CLIENT_TYPE] = cci_client_type;
