@@ -2384,6 +2384,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
+  // 이러면 근데 recovery되지 않은 heap을 읽어 들이겠네? 근데 db_parm도 recovery없이 읽네 
   error_code = tde_cipher_initialize (thread_p, &boot_Db_parm->tde_keys_hfid);
   if (error_code != NO_ERROR)
     {

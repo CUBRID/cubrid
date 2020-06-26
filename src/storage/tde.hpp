@@ -147,12 +147,10 @@ extern TDE_CIPHER tde_Cipher;
 extern int tde_initialize (THREAD_ENTRY *thread_p, HFID *keyinfo_hfid);
 extern int tde_cipher_initialize (THREAD_ENTRY *thread_p, const HFID *keyinfo_hfid);
 extern int tde_add_mk (const int mk_index, const unsigned char *master_key);
-/*
- * TODO
- * tde_change_mk
- * tde_delete_mk
- * tde_print_mk
- */
+extern int tde_change_mk (THREAD_ENTRY *thread_p, const int mk_index);
+extern int tde_delete_mk (const int mk_index);
+// extern int tde_dump_mks ();
+
 /*
  * TDE functions for encrpytion and decryption
  */

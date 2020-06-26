@@ -51,11 +51,11 @@ TDE_DATA_KEY_SET tde_Data_keys; /* data keys for copylogdb, applylogdb from serv
 #if !defined(CS_MODE)
 TDE_CIPHER tde_Cipher; // global var for TDE Module
 
-static OID tde_Keys_oid;	/* Location of keys */
-static OID *tde_Keyinfo_oid = &tde_Keys_oid;
+static OID tde_Keyinfo_oid;	/* Location of keys */
+static HFID tde_Keyinfo_hfid;
 
 static int tde_get_keyinfo (THREAD_ENTRY *thread_p, TDE_KEYINFO *keyinfo, OID *keyinfo_oid, const HFID *hfid);
-static int tde_update_keyinfo (THREAD_ENTRY *thread_p, const TDE_KEYINFO *keyinfo, const OID keyinfo_oid, HFID *hfid);
+static int tde_update_keyinfo (THREAD_ENTRY *thread_p, const TDE_KEYINFO *keyinfo, OID *keyinfo_oid, HFID *hfid);
 static void tde_make_keys_volume_fullname (char *keys_vol_fullname);
 static int tde_generate_keyinfo (TDE_KEYINFO *keyinfo, int mk_index, const unsigned char *master_key,
 				 const TDE_DATA_KEY_SET *dks);
@@ -64,6 +64,7 @@ static int tde_load_mk (const TDE_KEYINFO *keyinfo, unsigned char *master_key);
 static bool tde_validate_mk (const unsigned char *master_key, const unsigned char *mk_hash);
 static int tde_load_dks (const TDE_KEYINFO *keyinfo, const unsigned char *master_key);
 static int tde_make_mk (unsigned char *master_key);
+static int tde_find_mk (const int mk_index, unsigned char *master_key);
 static void tde_make_mk_hash (const unsigned char *master_key, unsigned char *mk_hash);
 static int tde_make_dk (unsigned char *data_key);
 static int tde_encrypt_dk (const unsigned char *dk_plain, TDE_DATA_KEY_TYPE dk_type, const unsigned char *master_key,
@@ -79,8 +80,6 @@ static int tde_decrypt_internal (const unsigned char *cipher_buffer, int length,
 				 const unsigned char *key, const unsigned char *nonce, unsigned char *plain_buffer);
 
 #if !defined(CS_MODE)
-
-
 /*
  *
  */
@@ -117,7 +116,11 @@ tde_initialize (THREAD_ENTRY *thread_p, HFID *keyinfo_hfid)
       return err;
     }
 
-  tde_generate_keyinfo (&keyinfo, 0, default_mk, &dks);
+  err = tde_generate_keyinfo (&keyinfo, 0, default_mk, &dks);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
 
   recdes.area_size = recdes.length = DB_SIZEOF (TDE_KEYINFO);
   recdes.type = REC_HOME;
@@ -133,7 +136,9 @@ tde_initialize (THREAD_ENTRY *thread_p, HFID *keyinfo_hfid)
       return err;
     }
 
-  COPY_OID (tde_Keyinfo_oid, &heapop_context.res_oid);
+  HFID_COPY (&tde_Keyinfo_hfid, keyinfo_hfid);
+  COPY_OID (&tde_Keyinfo_oid, &heapop_context.res_oid);
+
 
   return NO_ERROR;
 }
@@ -145,7 +150,12 @@ tde_cipher_initialize (THREAD_ENTRY *thread_p, const HFID *keyinfo_hfid)
   unsigned char master_key[TDE_MASTER_KEY_LENGTH];
   TDE_KEYINFO keyinfo;
 
-  tde_get_keyinfo (thread_p, &keyinfo, tde_Keyinfo_oid, keyinfo_hfid);
+  if (tde_get_keyinfo (thread_p, &keyinfo, &tde_Keyinfo_oid, keyinfo_hfid) != NO_ERROR)
+    {
+      // TODO: error handling
+      return -1;
+    }
+  HFID_COPY (&tde_Keyinfo_hfid, keyinfo_hfid);
 
   assert (keyinfo.mk_index >= 0);
 
@@ -176,7 +186,6 @@ tde_add_mk (int mk_index, const unsigned char *master_key)
   FILE *keyfile_fp = NULL;
   char mk_path[PATH_MAX] = {0, };
   int err = NO_ERROR;
-  int ret = 0;
   int searched_idx = -1;
   int deleted_offset = -1;
   char mk[TDE_MASTER_KEY_LENGTH] = {0,};
@@ -240,9 +249,163 @@ tde_add_mk (int mk_index, const unsigned char *master_key)
   fflush (keyfile_fp);
   fsync (fileno (keyfile_fp));
 
-  fclose (keyfile_fp);
+  fclose (keyfile_fp); // TODO: 항상 close
 
   return NO_ERROR;
+}
+
+int
+tde_delete_mk (int mk_index)
+{
+  FILE *keyfile_fp = NULL;
+  char mk_path[PATH_MAX] = {0, };
+  int err = NO_ERROR;
+  int searched_idx = -1;
+  char mk[TDE_MASTER_KEY_LENGTH] = {0,};
+  bool found = false;
+
+  const int deleted_mark = -1;
+
+  tde_make_keys_volume_fullname (mk_path);
+
+  keyfile_fp = fopen (mk_path, "r+b");
+  if (keyfile_fp == NULL)
+    {
+      //TODO error; ER_KEYS_NO_WRITE_ACCESS ?
+      return -1;
+    }
+
+  /* TODO: search  */
+  while (true)
+    {
+      if (fread (&searched_idx, 1, sizeof (searched_idx), keyfile_fp) != sizeof (searched_idx))
+	{
+	  if (feof (keyfile_fp))
+	    {
+	      break;
+	    }
+	  else
+	    {
+	      // TODO IO ERROR
+	      return -1;
+	    }
+	}
+      if (searched_idx == mk_index)
+	{
+	  fseek (keyfile_fp, -sizeof (searched_idx), SEEK_CUR);
+	  if (fwrite (&deleted_mark, 1, sizeof (deleted_mark), keyfile_fp) != sizeof (deleted_mark))
+	    {
+	      return -1; // TODO IO ERROR
+	    }
+	  fflush (keyfile_fp);
+	  fsync (fileno (keyfile_fp));
+	  found = true;
+	  break;
+	}
+      fseek (keyfile_fp, TDE_MASTER_KEY_LENGTH, SEEK_CUR);
+    }
+
+  if (!found)
+    {
+      return ER_FAILED; // TODO: not found mk
+    }
+
+  fclose (keyfile_fp); // TODO: 항상 close
+
+  return NO_ERROR;
+}
+
+static int
+tde_find_mk (int mk_index, unsigned char *master_key)
+{
+  FILE *keyfile_fp = NULL;
+  char mk_path[PATH_MAX] = {0, };
+  int err = NO_ERROR;
+  int searched_idx = -1;
+  bool found = false;
+
+  tde_make_keys_volume_fullname (mk_path);
+
+  keyfile_fp = fopen (mk_path, "rb");
+  if (keyfile_fp == NULL)
+    {
+      //TODO error;
+      return -1;
+    }
+
+  while (true)
+    {
+      if (fread (&searched_idx, 1, sizeof (searched_idx), keyfile_fp) != sizeof (searched_idx))
+	{
+	  if (feof (keyfile_fp))
+	    {
+	      break;
+	    }
+	  else
+	    {
+	      // TODO IO ERROR
+	      return -1;
+	    }
+	}
+      if (searched_idx == mk_index)
+	{
+	  if (fread (master_key, 1, TDE_MASTER_KEY_LENGTH, keyfile_fp) != TDE_MASTER_KEY_LENGTH)
+	    {
+	      // TODO IO ERROR
+	      return -1;
+	    }
+	  found = true;
+	  break;
+	}
+      fseek (keyfile_fp, TDE_MASTER_KEY_LENGTH, SEEK_CUR);
+    }
+
+  if (!found)
+    {
+      err = ER_FAILED; // TODO err not found mk
+    }
+
+  fclose (keyfile_fp);
+
+  return NO_ERROR; // TODO not found error
+}
+
+int tde_change_mk (THREAD_ENTRY *thread_p, const int mk_index)
+{
+  TDE_KEYINFO keyinfo;
+  TDE_DATA_KEY_SET dks;
+  unsigned char master_key[TDE_MASTER_KEY_LENGTH] = {0,};
+  int err = NO_ERROR;
+
+  if (!tde_Cipher.is_loaded)
+    {
+      // TODO error, warning
+      return -1;
+    }
+
+  err = tde_find_mk (mk_index, master_key);
+  if (err != NO_ERROR)
+    {
+      // TODO it err is not found, deal with it
+      return -1; // TODO err
+    }
+
+  /* generate keyinfo from tde_Cipher and update heap (on Disk) */
+  err = tde_generate_keyinfo (&keyinfo, mk_index, master_key, &tde_Cipher.data_keys);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  err = tde_update_keyinfo (thread_p, &keyinfo, &tde_Keyinfo_oid, &tde_Keyinfo_hfid);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+  heap_flush (thread_p, &tde_Keyinfo_oid);
+
+  return err;
+
 }
 
 static int
