@@ -55,6 +55,7 @@
 #include "cci_common.h"
 #include "cas_cci.h"
 #include "cas_protocol.h"
+#include <openssl/ssl.h>
 
 /************************************************************************
  * PUBLIC DEFINITIONS							*
@@ -207,6 +208,8 @@ typedef struct
   char *db_passwd;
   char url[SRV_CON_URL_SIZE];
   SOCKET sock_fd;
+  SSL *ssl;
+  SSL_CTX *ctx;
   int max_req_handle;
   T_EXEC_THR_ARG thr_arg;
   T_REQ_HANDLE **req_handle_table;
@@ -248,6 +251,7 @@ typedef struct
   int slow_query_threshold_millis;
   char log_trace_api;
   char log_trace_network;
+  char useSSL;
 
   /* to check timeout */
   struct timeval start_time;	/* function start time to check timeout */
