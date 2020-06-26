@@ -298,9 +298,14 @@ need_qfile_list_cache_cleanup ()
  * qfile_list_cache_del_victim -
  *   v(in): qfile list cache candidate index for victim
 */
-void
-qfile_list_cache_delete_candidate (XASL_CACHE_ENTRY * victim)
+int
+qfile_list_cache_delete_candidate (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * victim)
 {
+  if (csect_enter (thread_p, CSECT_QPROC_LIST_CACHE, INF_WAIT) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
   QFILE_LIST_CACHE *candidate = &qfile_List_cache;
 
   /* remove from LRU list */
@@ -323,6 +328,8 @@ qfile_list_cache_delete_candidate (XASL_CACHE_ENTRY * victim)
       victim->lru_prev->lru_next = victim->lru_next;
       victim->lru_next->lru_prev = victim->lru_prev;
     }
+
+  csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
 }
 
 /*
@@ -330,9 +337,14 @@ qfile_list_cache_delete_candidate (XASL_CACHE_ENTRY * victim)
  *   candidate(in): qfile list cache table
  *   victim(in): qfile list candidate entry
 */
-void
-qfile_list_cache_add_candidate (XASL_CACHE_ENTRY * victim)
+int
+qfile_list_cache_add_candidate (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * victim)
 {
+  if (csect_enter (thread_p, CSECT_QPROC_LIST_CACHE, INF_WAIT) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
   QFILE_LIST_CACHE *candidate = &qfile_List_cache;
 
   /* link new entry to LRU list */
@@ -347,6 +359,8 @@ qfile_list_cache_add_candidate (XASL_CACHE_ENTRY * victim)
     {
       candidate->lru_head = victim;
     }
+
+  csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
 }
 
 /*
@@ -354,9 +368,14 @@ qfile_list_cache_add_candidate (XASL_CACHE_ENTRY * victim)
  *   candidate(in): qfile list cache table
  *   victim(in): qfile list candidate entry
  */
-void
-qfile_list_cache_adjust_candidate (XASL_CACHE_ENTRY * victim)
+int
+qfile_list_cache_adjust_candidate (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * victim)
 {
+  if (csect_enter (thread_p, CSECT_QPROC_LIST_CACHE, INF_WAIT) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
   QFILE_LIST_CACHE *candidate = &qfile_List_cache;
 
   if (candidate->lru_tail != victim)
@@ -379,6 +398,8 @@ qfile_list_cache_adjust_candidate (XASL_CACHE_ENTRY * victim)
       victim->lru_next = NULL;
       candidate->lru_tail = victim;
     }
+
+  csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
 }
 
 
@@ -5112,6 +5133,35 @@ qfile_assign_list_cache (void)
  *   release(in)        :
  */
 int
+qfile_clear_cache_list (THREAD_ENTRY * thread_p, int list_ht_no)
+{
+  if (QFILE_IS_LIST_CACHE_DISABLED)
+    {
+      return ER_FAILED;
+    }
+
+  if (qfile_List_cache.n_hts == 0 || qfile_List_cache.ht_assigned[list_ht_no] == false)
+    {
+      return ER_FAILED;
+    }
+
+  if (csect_enter (thread_p, CSECT_QPROC_LIST_CACHE, INF_WAIT) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  (void) mht_clear (qfile_List_cache.list_hts[list_ht_no], NULL, NULL);
+
+  csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
+}
+
+/*
+ * qfile_clear_list_cache () - Clear out list cache hash table
+ *   return:
+ *   list_ht_no(in)     :
+ *   release(in)        :
+ */
+int
 qfile_clear_list_cache (THREAD_ENTRY * thread_p, int list_ht_no, bool release)
 {
   int rc;
@@ -6058,7 +6108,7 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr, con
 	  xasl_cache = xasl_cache->lru_next;
 	  if (!qfile_List_cache.list_hts[list_ht_no]->lru_head)
 	    {
-	      qfile_list_cache_delete_candidate (del_cache);
+	      qfile_list_cache_delete_candidate (thread_p, del_cache);
 	    }
 	}
     }
@@ -6154,7 +6204,7 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr, con
 
   if (ht->lru_head == ht->lru_tail)	/* first entry */
     {
-      qfile_list_cache_add_candidate (xasl);
+      qfile_list_cache_add_candidate (thread_p, xasl);
     }
 
   /* append to the list of uncommitted entries in the transaction */

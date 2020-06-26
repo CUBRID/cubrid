@@ -155,13 +155,14 @@ extern QFILE_LIST_ID *qfile_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * 
 /* Query result(list file) cache routines */
 extern int qfile_initialize_list_cache (THREAD_ENTRY * thread_p);
 extern int qfile_finalize_list_cache (THREAD_ENTRY * thread_p);
+extern int qfile_clear_cache_list (THREAD_ENTRY * thread_p, int list_ht_no);
 extern int qfile_clear_list_cache (THREAD_ENTRY * thread_p, int list_ht_no, bool release);
 extern int qfile_dump_list_cache_internal (THREAD_ENTRY * thread_p, FILE * fp);
 
 extern bool need_qfile_list_cache_cleanup (void);
-extern void qfile_list_cache_delete_candidate (XASL_CACHE_ENTRY * victim);
-extern void qfile_list_cache_add_candidate (XASL_CACHE_ENTRY * victim);
-extern void qfile_list_cache_adjust_candidate (XASL_CACHE_ENTRY * victim);
+extern int qfile_list_cache_delete_candidate (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * victim);
+extern int qfile_list_cache_add_candidate (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * victim);
+extern int qfile_list_cache_adjust_candidate (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * victim);
 
 #if defined (CUBRID_DEBUG)
 extern int qfile_dump_list_cache (THREAD_ENTRY * thread_p, const char *fname);
