@@ -100,8 +100,6 @@ typedef struct tde_keyinfo
 typedef struct tde_cipher
 {
   bool is_loaded;
-  int mk_index;
-  unsigned char master_key[TDE_MASTER_KEY_LENGTH];
   TDE_DATA_KEY_SET data_keys;
 
   std::atomic<std::int64_t> temp_write_counter; // used as nonce for temp file page

@@ -57,11 +57,10 @@ static OID *tde_Keyinfo_oid = &tde_Keys_oid;
 static int tde_get_keyinfo (THREAD_ENTRY *thread_p, TDE_KEYINFO *keyinfo, OID *keyinfo_oid, const HFID *hfid);
 static int tde_update_keyinfo (THREAD_ENTRY *thread_p, const TDE_KEYINFO *keyinfo, const OID keyinfo_oid, HFID *hfid);
 static void tde_make_keys_volume_fullname (char *keys_vol_fullname);
-static int tde_generate_keyinfo (TDE_KEYINFO *keyinfo);
-static int tde_generate_keyinfo_internal (TDE_KEYINFO *keyinfo, int mk_index, const unsigned char *master_key,
-    const TDE_DATA_KEY_SET *dks);
+static int tde_generate_keyinfo (TDE_KEYINFO *keyinfo, int mk_index, const unsigned char *master_key,
+				 const TDE_DATA_KEY_SET *dks);
 static int tde_create_keys_volume (const char *keys_path);
-static int tde_load_mk (const TDE_KEYINFO *keyinfo);
+static int tde_load_mk (const TDE_KEYINFO *keyinfo, unsigned char *master_key);
 static bool tde_validate_mk (const unsigned char *master_key, const unsigned char *mk_hash);
 static int tde_load_dks (const TDE_KEYINFO *keyinfo, const unsigned char *master_key);
 static int tde_make_mk (unsigned char *master_key);
@@ -118,7 +117,7 @@ tde_initialize (THREAD_ENTRY *thread_p, HFID *keyinfo_hfid)
       return err;
     }
 
-  tde_generate_keyinfo_internal (&keyinfo, 0, default_mk, &dks);
+  tde_generate_keyinfo (&keyinfo, 0, default_mk, &dks);
 
   recdes.area_size = recdes.length = DB_SIZEOF (TDE_KEYINFO);
   recdes.type = REC_HOME;
@@ -143,6 +142,7 @@ int
 tde_cipher_initialize (THREAD_ENTRY *thread_p, const HFID *keyinfo_hfid)
 {
   char mk_path[PATH_MAX] = {0, };
+  unsigned char master_key[TDE_MASTER_KEY_LENGTH];
   TDE_KEYINFO keyinfo;
 
   tde_get_keyinfo (thread_p, &keyinfo, tde_Keyinfo_oid, keyinfo_hfid);
@@ -151,13 +151,13 @@ tde_cipher_initialize (THREAD_ENTRY *thread_p, const HFID *keyinfo_hfid)
 
   tde_make_keys_volume_fullname (mk_path);
 
-  if (tde_load_mk (&keyinfo) != NO_ERROR)
+  if (tde_load_mk (&keyinfo, master_key) != NO_ERROR)
     {
       // TODO: failed to load, it is not worng behavior, how to handle it?
       return -1;
     }
 
-  if (tde_load_dks (&keyinfo, tde_Cipher.master_key) != NO_ERROR)
+  if (tde_load_dks (&keyinfo, master_key) != NO_ERROR)
     {
       // TODO: failed to load, it is wrong behavior, how to handle it?
       return -1;
@@ -322,23 +322,9 @@ tde_make_keys_volume_fullname (char *keys_vol_fullname)
     }
 }
 
-/*
- * tde_key_info (out) :
- */
 static int
-tde_generate_keyinfo (TDE_KEYINFO *keyinfo)
-{
-  int err = NO_ERROR;
-
-  assert (keyinfo != NULL);
-  assert (tde_Cipher.is_loaded);
-
-  return tde_generate_keyinfo_internal (keyinfo, tde_Cipher.mk_index, tde_Cipher.master_key, &tde_Cipher.data_keys);
-}
-
-static int
-tde_generate_keyinfo_internal (TDE_KEYINFO *keyinfo, int mk_index, const unsigned char *master_key,
-			       const TDE_DATA_KEY_SET *dks)
+tde_generate_keyinfo (TDE_KEYINFO *keyinfo, int mk_index, const unsigned char *master_key,
+		      const TDE_DATA_KEY_SET *dks)
 {
   int err = NO_ERROR;
 
@@ -382,7 +368,7 @@ tde_create_keys_volume (const char *mk_path)
 }
 
 static int
-tde_load_mk (const TDE_KEYINFO *keyinfo)
+tde_load_mk (const TDE_KEYINFO *keyinfo, unsigned char *master_key)
 {
   FILE *keyfile_fp = NULL;
   char mk_path[PATH_MAX] = {0, };
@@ -448,7 +434,7 @@ tde_load_mk (const TDE_KEYINFO *keyinfo)
     }
   /* MK has validated */
 
-  memcpy (tde_Cipher.master_key, searched_key, TDE_MASTER_KEY_LENGTH);
+  memcpy (master_key, searched_key, TDE_MASTER_KEY_LENGTH);
 
   return NO_ERROR;
 }
@@ -549,7 +535,7 @@ tde_encrypt_dk (const unsigned char *dk_plain, TDE_DATA_KEY_TYPE dk_type, const 
   tde_dk_nonce (dk_nonce, dk_type);
 
   return tde_encrypt_internal (dk_plain, TDE_DATA_KEY_LENGTH, TDE_DK_ALGORITHM,
-			       tde_Cipher.master_key, dk_nonce, dk_cipher);
+			       master_key, dk_nonce, dk_cipher);
 }
 
 static int
@@ -561,7 +547,7 @@ tde_decrypt_dk (const unsigned char *dk_cipher, TDE_DATA_KEY_TYPE dk_type, const
   tde_dk_nonce (dk_nonce, dk_type);
 
   return tde_decrypt_internal (dk_cipher, TDE_DATA_KEY_LENGTH, TDE_DK_ALGORITHM,
-			       tde_Cipher.master_key, dk_nonce, dk_plain);
+			       master_key, dk_nonce, dk_plain);
 }
 
 static inline void
