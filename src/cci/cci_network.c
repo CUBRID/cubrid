@@ -105,11 +105,13 @@ static int connect_srv (unsigned char *ip_addr, int port, char is_retry, SOCKET 
 #if defined(ENABLE_UNUSED_FUNCTION)
 static int net_send_int (SOCKET sock_fd, int value);
 #endif
-static int net_recv_stream (SOCKET sock_fd, unsigned char *ip_addr, int port, char *buf, int size, int timeout);
-static int net_send_stream (SOCKET sock_fd, char *buf, int size);
+
+static int net_recv_stream (T_CON_HANDLE * con_handle, unsigned char *ip_addr, int port, char *buf, int size, int timeout);
+static int net_send_stream (T_CON_HANDLE * con_handle, char *buf, int size);
 static void init_msg_header (MSG_HEADER * header);
-static int net_send_msg_header (SOCKET sock_fd, MSG_HEADER * header);
-static int net_recv_msg_header (SOCKET sock_fd, unsigned char *ip_addr, int port, MSG_HEADER * header, int timeout);
+static int net_send_msg_header (T_CON_HANDLE * con_handle, MSG_HEADER * header);
+static int net_recv_msg_header (T_CON_HANDLE * con_handle, unsigned char *ip_addr, int port, MSG_HEADER * header, int timeout);
+static bool isSSLAvailable(SSL *ssl, SSL_CTX *ctx, bool useSSL);
 static bool net_peer_socket_alive (unsigned char *ip_addr, int port, int timeout_msec);
 static int net_cancel_request_internal (unsigned char *ip_addr, int port, char *msg, int msglen);
 static int net_cancel_request_w_local_port (unsigned char *ip_addr, int port, int pid, unsigned short local_port);
@@ -245,13 +247,13 @@ net_connect_srv (T_CON_HANDLE * con_handle, int host_id, T_CCI_ERROR * err_buf, 
       return ret_value;
     }
 
-  if (net_send_stream (srv_sock_fd, client_info, SRV_CON_CLIENT_INFO_SIZE) < 0)
+  con_handle->sock_fd = srv_sock_fd;
+  if (net_send_stream (con_handle, client_info, SRV_CON_CLIENT_INFO_SIZE) < 0)
     {
       err_code = CCI_ER_COMMUNICATION;
       goto connect_srv_error;
     }
-
-  ret_value = net_recv_stream (srv_sock_fd, ip_addr, port, (char *) &err_code, 4, login_timeout);
+  ret_value = net_recv_stream (con_handle, ip_addr, port, (char *) &err_code, 4, login_timeout);
   if (ret_value < 0)
     {
       err_code = ret_value;
@@ -282,13 +284,13 @@ net_connect_srv (T_CON_HANDLE * con_handle, int host_id, T_CCI_ERROR * err_buf, 
 	}
     }
 
-  if (net_send_stream (srv_sock_fd, db_info, SRV_CON_DB_INFO_SIZE) < 0)
+  if (net_send_stream (con_handle, db_info, SRV_CON_DB_INFO_SIZE) < 0)
     {
       err_code = CCI_ER_COMMUNICATION;
       goto connect_srv_error;
     }
 
-  ret_value = net_recv_msg_header (srv_sock_fd, ip_addr, port, &msg_header, login_timeout);
+  ret_value = net_recv_msg_header (con_handle, ip_addr, port, &msg_header, login_timeout);
   if (ret_value < 0)
     {
       err_code = ret_value;
@@ -304,7 +306,7 @@ net_connect_srv (T_CON_HANDLE * con_handle, int host_id, T_CCI_ERROR * err_buf, 
       goto connect_srv_error;
     }
 
-  ret_value = net_recv_stream (srv_sock_fd, ip_addr, port, msg_buf, *(msg_header.msg_body_size_ptr), login_timeout);
+  ret_value = net_recv_stream (con_handle, ip_addr, port, msg_buf, *(msg_header.msg_body_size_ptr), login_timeout);
   if (ret_value < 0)
     {
       FREE_MEM (msg_buf);
@@ -433,19 +435,23 @@ net_cancel_request_internal (unsigned char *ip_addr, int port, char *msg, int ms
 {
   SOCKET srv_sock_fd;
   int err_code;
+  T_CON_HANDLE * con_handle = NULL;
+  con_handle = (T_CON_HANDLE *)MALLOC(sizeof(T_CON_HANDLE));
+  memset(con_handle, 0, sizeof(T_CON_HANDLE));
 
   if (connect_srv (ip_addr, port, 0, &srv_sock_fd, 0) < 0)
     {
       return CCI_ER_CONNECT;
     }
 
-  if (net_send_stream (srv_sock_fd, msg, msglen) < 0)
+  con_handle->sock_fd = srv_sock_fd;
+  if (net_send_stream (con_handle, msg, msglen) < 0)
     {
       err_code = CCI_ER_COMMUNICATION;
       goto cancel_error;
     }
 
-  if (net_recv_stream (srv_sock_fd, ip_addr, port, (char *) &err_code, 4, 0) < 0)
+  if (net_recv_stream (con_handle, ip_addr, port, (char *)&err_code, 4, 0) < 0)
     {
       err_code = CCI_ER_COMMUNICATION;
       goto cancel_error;
@@ -456,10 +462,12 @@ net_cancel_request_internal (unsigned char *ip_addr, int port, char *msg, int ms
     goto cancel_error;
 
   CLOSE_SOCKET (srv_sock_fd);
+  FREE_MEM(con_handle);
   return CCI_ER_NO_ERROR;
 
 cancel_error:
   CLOSE_SOCKET (srv_sock_fd);
+  FREE_MEM(con_handle);
   return err_code;
 }
 
@@ -586,7 +594,7 @@ net_send_msg (T_CON_HANDLE * con_handle, char *msg, int size)
     {
       gettimeofday (&ts, NULL);
     }
-  err = net_send_msg_header (con_handle->sock_fd, &send_msg_header);
+  err = net_send_msg_header(con_handle, &send_msg_header);
   if (con_handle->log_trace_network)
     {
       long elapsed;
@@ -604,7 +612,7 @@ net_send_msg (T_CON_HANDLE * con_handle, char *msg, int size)
     {
       gettimeofday (&ts, NULL);
     }
-  err = net_send_stream (con_handle->sock_fd, msg, size);
+  err = net_send_stream(con_handle, msg, size);
   if (con_handle->log_trace_network)
     {
       long elapsed;
@@ -674,7 +682,7 @@ net_recv_msg_timeout (T_CON_HANDLE * con_handle, char **msg, int *msg_size, T_CC
     {
       gettimeofday (&ts, NULL);
     }
-  result_code = net_recv_msg_header (con_handle->sock_fd, ip_addr, broker_port, &recv_msg_header, timeout);
+  result_code = net_recv_msg_header (con_handle, ip_addr, broker_port, &recv_msg_header, timeout);
   if (con_handle->log_trace_network)
     {
       long elapsed;
@@ -692,7 +700,7 @@ net_recv_msg_timeout (T_CON_HANDLE * con_handle, char **msg, int *msg_size, T_CC
 
 	  if (con_handle->disconnect_on_query_timeout == false)
 	    {
-	      result_code = net_recv_msg_header (con_handle->sock_fd, ip_addr, broker_port, &recv_msg_header, 0);
+          result_code = net_recv_msg_header (con_handle, ip_addr, broker_port, &recv_msg_header, 0);
 	    }
 	}
 
@@ -723,9 +731,8 @@ net_recv_msg_timeout (T_CON_HANDLE * con_handle, char **msg, int *msg_size, T_CC
 	{
 	  gettimeofday (&ts, NULL);
 	}
-
-      result_code = net_recv_stream (con_handle->sock_fd, ip_addr, broker_port, tmp_p,
-				     *(recv_msg_header.msg_body_size_ptr), timeout);
+      result_code = net_recv_stream (con_handle, ip_addr, broker_port, tmp_p,
+             *(recv_msg_header.msg_body_size_ptr), timeout);
       if (con_handle->log_trace_network)
 	{
 	  long elapsed;
@@ -913,12 +920,13 @@ net_check_broker_alive (unsigned char *ip_addr, int port, int timeout_msec)
       return false;
     }
 
-  if (net_send_stream (sock_fd, client_info, SRV_CON_CLIENT_INFO_SIZE) < 0)
+  con_handle->sock_fd = sock_fd;
+  if (net_send_stream (con_handle, client_info, SRV_CON_CLIENT_INFO_SIZE) < 0)
     {
       goto finish_health_check;
     }
 
-  ret_value = net_recv_stream (sock_fd, ip_addr, port, (char *) &err_code, 4, timeout_msec);
+  ret_value = net_recv_stream (con_handle, ip_addr, port, (char *)&err_code, 4, timeout_msec);
   if (ret_value < 0)
     {
       goto finish_health_check;
@@ -930,12 +938,12 @@ net_check_broker_alive (unsigned char *ip_addr, int port, int timeout_msec)
       goto finish_health_check;
     }
 
-  if (net_send_stream (sock_fd, db_info, SRV_CON_DB_INFO_SIZE) < 0)
+  if (net_send_stream(con_handle, db_info, SRV_CON_DB_INFO_SIZE) < 0)
     {
       goto finish_health_check;
     }
 
-  if (net_recv_msg_header (sock_fd, ip_addr, port, &msg_header, timeout_msec) < 0)
+  if (net_recv_msg_header (con_handle, ip_addr, port, &msg_header, timeout_msec) < 0)
     {
       goto finish_health_check;
     }
@@ -943,6 +951,7 @@ net_check_broker_alive (unsigned char *ip_addr, int port, int timeout_msec)
 
 finish_health_check:
   CLOSE_SOCKET (sock_fd);
+  FREE_MEM(con_handle);
   return result;
 }
 
@@ -1020,7 +1029,7 @@ net_send_int (SOCKET sock_fd, int value)
 #endif
 
 static int
-net_recv_stream (SOCKET sock_fd, unsigned char *ip_addr, int port, char *buf, int size, int timeout)
+net_recv_stream (T_CON_HANDLE * con_handle, unsigned char *ip_addr, int port, char *buf, int size, int timeout)
 {
   int read_len, tot_read_len = 0;
 #if defined(WINDOWS)
@@ -1034,89 +1043,99 @@ net_recv_stream (SOCKET sock_fd, unsigned char *ip_addr, int port, char *buf, in
 
   while (tot_read_len < size)
     {
+      if (isSSLAvailable(con_handle->ssl, con_handle->ctx, con_handle->useSSL) == false)
+        {
 #if defined(WINDOWS)
-      FD_ZERO (&rfds);
-      FD_SET (sock_fd, &rfds);
 
-      if (timeout <= 0 || timeout > SOCKET_TIMEOUT)
-	{
-	  tv.tv_sec = SOCKET_TIMEOUT / 1000;
-	  tv.tv_usec = (SOCKET_TIMEOUT % 1000) * 1000;
-	}
-      else
-	{
-	  tv.tv_sec = timeout / 1000;
-	  tv.tv_usec = (timeout % 1000) * 1000;
-	}
+          FD_ZERO(&rfds);
+          FD_SET(con_handle->sock_fd, &rfds);
 
-      n = select (sock_fd + 1, &rfds, NULL, NULL, &tv);
+          if (timeout <= 0 || timeout > SOCKET_TIMEOUT)
+            {
+              tv.tv_sec = SOCKET_TIMEOUT / 1000;
+              tv.tv_usec = (SOCKET_TIMEOUT % 1000) * 1000;
+            }
+          else
+            {
+              tv.tv_sec = timeout / 1000;
+              tv.tv_usec = (timeout % 1000) * 1000;
+            }
+
+          n = select(con_handle->sock_fd + 1, &rfds, NULL, NULL, &tv);
 
 #else
-      po[0].fd = sock_fd;
-      po[0].events = POLLIN;
+          po[0].fd = con_handle->sock_fd;
+          po[0].events = POLLIN;
 
-      if (timeout <= 0 || timeout > SOCKET_TIMEOUT)
-	{
-	  polling_timeout = SOCKET_TIMEOUT;
-	}
-      else
-	{
-	  polling_timeout = timeout;
-	}
+          if (timeout <= 0 || timeout > SOCKET_TIMEOUT)
+            {
+              polling_timeout = SOCKET_TIMEOUT;
+            }
+          else
+            {
+              polling_timeout = timeout;
+            }
 
-      n = poll (po, 1, polling_timeout);
+          n = poll(po, 1, polling_timeout);
 
 #endif
+          if (n == 0)
+            {
+              /* select / poll return time out */
+              if (timeout > 0)
+                {
+                  timeout -= SOCKET_TIMEOUT;
+                  if (timeout <= 0)
+                    {
+                      assert(tot_read_len == 0 || size == tot_read_len);
+                      return CCI_ER_QUERY_TIMEOUT;
+                    }
+                  else
+                    {
+                      continue;
+                    }
+                }
 
-      if (n == 0)
-	{
-	  /* select / poll return time out */
-	  if (timeout > 0)
-	    {
-	      timeout -= SOCKET_TIMEOUT;
-	      if (timeout <= 0)
-		{
-		  assert (tot_read_len == 0 || size == tot_read_len);
-		  return CCI_ER_QUERY_TIMEOUT;
-		}
-	      else
-		{
-		  continue;
-		}
-	    }
+              if (net_peer_socket_alive(ip_addr, port, SOCKET_TIMEOUT) == true)
+                {
+                  continue;
+                }
+              else
+                {
+                  return CCI_ER_COMMUNICATION;
+                }
+            }
+          else if (n < 0)
+            {
+              /* select / poll return error */
+              if (errno == EINTR)
+                {
+                  continue;
+                }
 
-	  if (net_peer_socket_alive (ip_addr, port, SOCKET_TIMEOUT) == true)
-	    {
-	      continue;
-	    }
-	  else
-	    {
-	      return CCI_ER_COMMUNICATION;
-	    }
-	}
-      else if (n < 0)
-	{
-	  /* select / poll return error */
-	  if (errno == EINTR)
-	    {
-	      continue;
-	    }
-
-	  return CCI_ER_COMMUNICATION;
-	}
+              return CCI_ER_COMMUNICATION;
+            }
 #if !defined (WINDOWS)
-      else if (po[0].revents & POLLERR || po[0].revents & POLLHUP)
-	{
-	  po[0].revents = 0;
-	  return CCI_ER_COMMUNICATION;
-	}
+          else if (po[0].revents & POLLERR || po[0].revents & POLLHUP)
+            {
+              po[0].revents = 0;
+              return CCI_ER_COMMUNICATION;
+            }
 #endif /* !WINDOWS */
+        }
 
-      read_len = READ_FROM_SOCKET (sock_fd, buf + tot_read_len, size - tot_read_len);
+      if (isSSLAvailable(con_handle->ssl, con_handle->ctx, con_handle->useSSL) == true)
+        {
+          read_len = READ_FROM_SSL_SOCKET(con_handle->ssl, buf + tot_read_len, size - tot_read_len);
+        }
+      else
+        {
+          read_len = READ_FROM_SOCKET(con_handle->sock_fd, buf + tot_read_len, size - tot_read_len);
+        }
       if (read_len <= 0)
-	{
-	  return CCI_ER_COMMUNICATION;
-	}
+        {
+          return CCI_ER_COMMUNICATION;
+        }
 
       tot_read_len += read_len;
     }
@@ -1131,12 +1150,10 @@ net_peer_socket_alive (unsigned char *ip_addr, int port, int timeout_msec)
 }
 
 static int
-net_recv_msg_header (SOCKET sock_fd, unsigned char *ip_addr, int port, MSG_HEADER * header, int timeout)
+net_recv_msg_header (T_CON_HANDLE * con_handle, unsigned char *ip_addr, int port, MSG_HEADER * header, int timeout)
 {
   int result_code;
-
-  result_code = net_recv_stream (sock_fd, ip_addr, port, header->buf, MSG_HEADER_SIZE, timeout);
-
+  result_code = net_recv_stream (con_handle, ip_addr, port, header->buf, MSG_HEADER_SIZE, timeout);
   if (result_code < 0)
     {
       return result_code;
@@ -1152,10 +1169,10 @@ net_recv_msg_header (SOCKET sock_fd, unsigned char *ip_addr, int port, MSG_HEADE
 }
 
 static int
-net_send_msg_header (SOCKET sock_fd, MSG_HEADER * header)
+net_send_msg_header (T_CON_HANDLE * con_handle, MSG_HEADER * header)
 {
   *(header->msg_body_size_ptr) = htonl (*(header->msg_body_size_ptr));
-  if (net_send_stream (sock_fd, header->buf, MSG_HEADER_SIZE) < 0)
+  if (net_send_stream (con_handle, header->buf, MSG_HEADER_SIZE) < 0)
     {
       return CCI_ER_COMMUNICATION;
     }
@@ -1164,12 +1181,19 @@ net_send_msg_header (SOCKET sock_fd, MSG_HEADER * header)
 }
 
 static int
-net_send_stream (SOCKET sock_fd, char *msg, int size)
+net_send_stream (T_CON_HANDLE * con_handle, char *msg, int size)
 {
   int write_len;
   while (size > 0)
     {
-      write_len = WRITE_TO_SOCKET (sock_fd, msg, size);
+      if (isSSLAvailable(con_handle->ssl, con_handle->ctx, con_handle->useSSL) == true)
+        {
+          write_len = WRITE_TO_SSL_SOCKET(con_handle->ssl, msg, size);
+        }
+      else 
+        {
+          write_len = WRITE_TO_SOCKET(con_handle->sock_fd, msg, size);
+        }
       if (write_len <= 0)
 	{
 	  return CCI_ER_COMMUNICATION;
@@ -1375,4 +1399,19 @@ connect_retry:
 
   *ret_sock = sock_fd;
   return CCI_ER_NO_ERROR;
+}
+
+bool 
+isSSLAvailable(SSL *ssl, SSL_CTX *ctx, bool useSSL)
+{
+  if (ssl != NULL
+    && ctx != NULL
+    && useSSL == true)
+    {
+      return true;
+    }
+    else
+    {
+      return false;
+    }
 }
