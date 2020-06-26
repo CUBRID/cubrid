@@ -266,7 +266,7 @@ hm_con_handle_free (T_CON_HANDLE * con_handle)
 
   hm_req_handle_free_all (con_handle);
   con_handle_content_free (con_handle);
-  hm_ssl_free(con_handle);
+  hm_ssl_free (con_handle);
   FREE_MEM (con_handle);
 
   return CCI_ER_NO_ERROR;
@@ -1191,7 +1191,7 @@ hm_check_rc_time (T_CON_HANDLE * con_handle)
 }
 
 void
-hm_create_health_check_th(char useSSL)
+hm_create_health_check_th (char useSSL)
 {
   int rv;
   pthread_attr_t thread_attr;
@@ -1202,7 +1202,7 @@ hm_create_health_check_th(char useSSL)
   rv = pthread_attr_setdetachstate (&thread_attr, PTHREAD_CREATE_DETACHED);
   rv = pthread_attr_setscope (&thread_attr, PTHREAD_SCOPE_SYSTEM);
 #endif /* WINDOWS */
-  rv = pthread_create(&health_check_th, &thread_attr, hm_thread_health_checker, (void *) useSSL);
+  rv = pthread_create (&health_check_th, &thread_attr, hm_thread_health_checker, (void *) useSSL);
 }
 
 /************************************************************************
@@ -1469,7 +1469,7 @@ hm_thread_health_checker (void *arg)
   int i;
   unsigned char *ip_addr;
   int port;
-  char useSSL = *((char*)(&arg));
+  char useSSL = *((char*) (&arg));
   time_t start_time;
   time_t elapsed_time;
   while (1)
@@ -1479,7 +1479,8 @@ hm_thread_health_checker (void *arg)
 	{
 	  ip_addr = host_status[i].host.ip_addr;
 	  port = host_status[i].host.port;
-        if (!host_status[i].is_reachable && net_check_broker_alive(ip_addr, port, BROKER_HEALTH_CHECK_TIMEOUT, useSSL))
+        if (!host_status[i].is_reachable 
+            && net_check_broker_alive (ip_addr, port, BROKER_HEALTH_CHECK_TIMEOUT, useSSL))
 	    {
 	      hm_set_host_status_by_addr (ip_addr, port, true);
 	    }
@@ -1501,15 +1502,15 @@ hm_force_close_connection (T_CON_HANDLE * con_handle)
   con_handle->sock_fd = INVALID_SOCKET;
   con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
   con_handle->force_failback = 0;
-  hm_ssl_free(con_handle);
+  hm_ssl_free (con_handle);
 }
 
-void 
-hm_ssl_free(T_CON_HANDLE * con_handle)
+void
+hm_ssl_free (T_CON_HANDLE * con_handle)
 {
   if (con_handle->ssl != NULL || con_handle->ctx != NULL)
     {
-      cleanup_ssl(con_handle->ssl, con_handle->ctx);
+      cleanup_ssl (con_handle->ssl, con_handle->ctx);
       con_handle->ssl = NULL;
       con_handle->ctx = NULL;
     }

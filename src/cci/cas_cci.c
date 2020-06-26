@@ -542,13 +542,13 @@ cci_connect_with_url_internal (char *url, char *user, char *pass, T_CCI_ERROR * 
     }
 
   /* start health check thread */
-  MUTEX_LOCK(health_check_th_mutex);
-  if (!is_health_check_th_started)
-  {
-    hm_create_health_check_th(con_handle->useSSL);
-    is_health_check_th_started = 1;
-  }
-  MUTEX_UNLOCK(health_check_th_mutex);
+  MUTEX_LOCK (health_check_th_mutex);
+    if (!is_health_check_th_started)
+      {
+        hm_create_health_check_th (con_handle->useSSL);
+        is_health_check_th_started = 1;
+      }
+  MUTEX_UNLOCK (health_check_th_mutex);
 
   SET_START_TIME_FOR_LOGIN (con_handle);
   error = cas_connect (con_handle, &(con_handle->err_buf));
@@ -954,7 +954,7 @@ prepare_error:
       CLOSE_SOCKET (con_handle->sock_fd);
       con_handle->sock_fd = INVALID_SOCKET;
       con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
-      hm_ssl_free(con_handle);
+      hm_ssl_free (con_handle);
     }
 
   if (IS_OUT_TRAN (con_handle))
@@ -1570,7 +1570,7 @@ prepare_execute_error:
       CLOSE_SOCKET (con_handle->sock_fd);
       con_handle->sock_fd = INVALID_SOCKET;
       con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
-      hm_ssl_free(con_handle);
+      hm_ssl_free (con_handle);
     }
 
   if (IS_OUT_TRAN (con_handle))
@@ -4664,7 +4664,8 @@ cci_get_err_msg_internal (int error)
       return "Invalid cursor position";
 
     case CAS_ER_SSL_TYPE_NOT_ALLOWED:
-      return "The requested SSL mode is not permitted, the CAS server is running in a different mode (check useSSL property).";
+      return 
+  "The requested SSL mode is not permitted, the CAS server is running in a different mode (check useSSL property).";
 
     case CAS_ER_IS:
       return "Not used";
@@ -4975,11 +4976,9 @@ cas_connect_internal (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf, int *con
 		  return CCI_ER_NO_ERROR;
 		}
 
-	      if (error == CCI_ER_COMMUNICATION 
-          || error == CCI_ER_CONNECT 
-          || error == CCI_ER_LOGIN_TIMEOUT
-          || error == CCI_ER_SSL_HANDSHAKE
-		  || error == CAS_ER_FREE_SERVER)
+	  if (error == CCI_ER_COMMUNICATION 
+        || error == CCI_ER_CONNECT 
+        || error == CCI_ER_LOGIN_TIMEOUT || error == CCI_ER_SSL_HANDSHAKE || error == CAS_ER_FREE_SERVER)
 		{
 		  hm_set_host_status (con_handle, i, UNREACHABLE);
 		}
@@ -5774,14 +5773,14 @@ cci_datasource_make_url (T_CCI_PROPERTIES * prop, char *new_url, char *url, T_CC
     {
       str = datasource_key[CCI_DS_KEY_USESSL];
 
-      n = snprintf(append_str, rlen, "%c%s=%s", delim, str, useSSL ? "true" : "false");
-      assert(rlen >= 0);
+      n = snprintf (append_str, rlen, "%c%s=%s", delim, str, useSSL ? "true" : "false");
+      assert (rlen >= 0);
       if (rlen < n || n < 0)
         {
-          set_error_buffer(err_buf, CCI_ER_NO_MORE_MEMORY, NULL);
+          set_error_buffer (err_buf, CCI_ER_NO_MORE_MEMORY, NULL);
           return false;
         }
-      strcat(new_url, append_str);
+      strcat (new_url, append_str);
       rlen -= n;
       delim = '&';
 

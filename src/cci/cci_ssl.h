@@ -46,10 +46,10 @@
 #define NON_USESSL      0
 #define USESSL          1
 
-extern int init_ssl(void);
-extern SSL_CTX *create_sslCtx();
-extern SSL* create_ssl(SOCKET srv_sock_fd, SSL_CTX *ctx);
-extern int connect_ssl(SSL *ssl);
-extern void cleanup_ssl(SSL *ssl, SSL_CTX *ctx);
+extern int init_ssl (void);
+extern SSL_CTX *create_sslCtx ();
+extern SSL* create_ssl (SOCKET srv_sock_fd, SSL_CTX *ctx);
+extern int connect_ssl (SSL *ssl);
+extern void cleanup_ssl (SSL *ssl, SSL_CTX *ctx);
 
 #endif /* _CCI_SSL_H_ */

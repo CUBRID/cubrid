@@ -106,12 +106,14 @@ static int connect_srv (unsigned char *ip_addr, int port, char is_retry, SOCKET 
 static int net_send_int (SOCKET sock_fd, int value);
 #endif
 
-static int net_recv_stream (T_CON_HANDLE * con_handle, unsigned char *ip_addr, int port, char *buf, int size, int timeout);
+static int net_recv_stream (T_CON_HANDLE * con_handle, unsigned char *ip_addr, int port, char *buf, int size,
+                      int timeout);
 static int net_send_stream (T_CON_HANDLE * con_handle, char *buf, int size);
 static void init_msg_header (MSG_HEADER * header);
 static int net_send_msg_header (T_CON_HANDLE * con_handle, MSG_HEADER * header);
-static int net_recv_msg_header (T_CON_HANDLE * con_handle, unsigned char *ip_addr, int port, MSG_HEADER * header, int timeout);
-static bool isSSLAvailable(SSL *ssl, SSL_CTX *ctx, bool useSSL);
+static int net_recv_msg_header (T_CON_HANDLE * con_handle, unsigned char *ip_addr, int port, MSG_HEADER * header, 
+                      int timeout);
+static bool isSSLAvailable (SSL *ssl, SSL_CTX *ctx, bool useSSL);
 static bool net_peer_socket_alive (unsigned char *ip_addr, int port, int timeout_msec);
 static int net_cancel_request_internal (unsigned char *ip_addr, int port, char *msg, int msglen);
 static int net_cancel_request_w_local_port (unsigned char *ip_addr, int port, int pid, unsigned short local_port);
@@ -165,7 +167,7 @@ net_connect_srv (T_CON_HANDLE * con_handle, int host_id, T_CCI_ERROR * err_buf, 
 
   if (con_handle->useSSL == 1)
     {
-      memcpy(client_info, SRV_CON_CLIENT_MAGIC_STR_SSL, SRV_CON_CLIENT_MAGIC_LEN);
+      memcpy (client_info, SRV_CON_CLIENT_MAGIC_STR_SSL, SRV_CON_CLIENT_MAGIC_LEN);
     }
     else 
     {
@@ -289,13 +291,13 @@ net_connect_srv (T_CON_HANDLE * con_handle, int host_id, T_CCI_ERROR * err_buf, 
       SSL *ssl = NULL;
       SSL_CTX *ctx = NULL;
 
-      if (init_ssl() < 0)
+      if (init_ssl () < 0)
         {
           err_code = CCI_ER_COMMUNICATION;
           goto connect_srv_error;
         }
 
-      ctx = create_sslCtx();
+      ctx = create_sslCtx ();
       if (ctx == NULL)
         {
           err_code = CCI_ER_COMMUNICATION;
@@ -304,7 +306,7 @@ net_connect_srv (T_CON_HANDLE * con_handle, int host_id, T_CCI_ERROR * err_buf, 
 
       con_handle->ctx = ctx;
 
-      ssl = create_ssl(srv_sock_fd, con_handle->ctx);
+      ssl = create_ssl (srv_sock_fd, con_handle->ctx);
       if (ssl == NULL)
         {
           err_code = CCI_ER_COMMUNICATION;
@@ -313,7 +315,7 @@ net_connect_srv (T_CON_HANDLE * con_handle, int host_id, T_CCI_ERROR * err_buf, 
 
       con_handle->ssl = ssl;
 
-      if (connect_ssl(ssl) != 1)
+      if (connect_ssl (ssl) != 1)
         {
           err_code = CCI_ER_SSL_HANDSHAKE;
           goto connect_srv_error;
