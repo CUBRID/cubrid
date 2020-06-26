@@ -4663,6 +4663,9 @@ cci_get_err_msg_internal (int error)
     case CAS_ER_INVALID_CURSOR_POS:
       return "Invalid cursor position";
 
+    case CAS_ER_SSL_TYPE_NOT_ALLOWED:
+      return "The requested SSL mode is not permitted, the CAS server is running in a different mode (check useSSL property).";
+
     case CAS_ER_IS:
       return "Not used";
 
@@ -4972,7 +4975,10 @@ cas_connect_internal (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf, int *con
 		  return CCI_ER_NO_ERROR;
 		}
 
-	      if (error == CCI_ER_COMMUNICATION || error == CCI_ER_CONNECT || error == CCI_ER_LOGIN_TIMEOUT
+	      if (error == CCI_ER_COMMUNICATION 
+          || error == CCI_ER_CONNECT 
+          || error == CCI_ER_LOGIN_TIMEOUT
+          || error == CCI_ER_SSL_HANDSHAKE
 		  || error == CAS_ER_FREE_SERVER)
 		{
 		  hm_set_host_status (con_handle, i, UNREACHABLE);
