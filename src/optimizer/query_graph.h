@@ -557,6 +557,7 @@ typedef enum
 #define QO_IS_PATH_TERM(t)	(QO_TERM_CLASS(t) & 0x20)
 #define QO_IS_EDGE_TERM(t)	(QO_TERM_CLASS(t) & 0x10)
 #define QO_IS_FAKE_TERM(t)	(QO_TERM_CLASS(t) & 0x08)
+#define QO_IS_DEP_TERM(t)	(QO_TERM_CLASS(t) == QO_TC_DEP_LINK || QO_TERM_CLASS(t) == QO_TC_DEP_JOIN)
 
 struct qo_term
 {
