@@ -354,7 +354,8 @@ cci_conn_set_properties (T_CON_HANDLE * handle, char *properties)
     {"login_timeout", INT_PROPERTY, &handle->login_timeout},
     {"query_timeout", INT_PROPERTY, &handle->query_timeout},
     {"disconnect_on_query_timeout", BOOL_PROPERTY,
-     &handle->disconnect_on_query_timeout}
+     &handle->disconnect_on_query_timeout},
+    {"useSSL", BOOL_PROPERTY, &handle->useSSL},
   };
   int error = CCI_ER_NO_ERROR;
 

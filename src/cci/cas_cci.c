@@ -136,6 +136,8 @@ int wsa_initialize ();
 #define CCI_DS_DEFAULT_ISOLATION_DEFAULT 		TRAN_UNKNOWN_ISOLATION
 #define CCI_DS_DEFAULT_LOCK_TIMEOUT_DEFAULT 		CCI_LOCK_TIMEOUT_DEFAULT
 #define CCI_DS_LOGIN_TIMEOUT_DEFAULT			(CCI_LOGIN_TIMEOUT_DEFAULT)
+#define CCI_DS_USESSL_DEFAULT 	false
+
 
 #define CON_HANDLE_ID_FACTOR            1000000
 #define CON_ID(a) ((a) / CON_HANDLE_ID_FACTOR)
@@ -231,7 +233,8 @@ static const char *datasource_key[] = {
   CCI_DS_PROPERTY_DEFAULT_AUTOCOMMIT,
   CCI_DS_PROPERTY_DEFAULT_ISOLATION,
   CCI_DS_PROPERTY_DEFAULT_LOCK_TIMEOUT,
-  CCI_DS_PROPERTY_MAX_POOL_SIZE
+  CCI_DS_PROPERTY_MAX_POOL_SIZE,
+  CCI_DS_PROPERTY_USESSL
 };
 
 CCI_MALLOC_FUNCTION cci_malloc = malloc;
@@ -5656,6 +5659,7 @@ cci_datasource_make_url (T_CCI_PROPERTIES * prop, char *new_url, char *url, T_CC
   char append_str[LINE_MAX];
   int login_timeout = -1, query_timeout = -1;
   bool disconnect_on_query_timeout;
+  bool useSSL = false;
   int rlen, n;
 
   assert (new_url && url);
@@ -5752,6 +5756,28 @@ cci_datasource_make_url (T_CCI_PROPERTIES * prop, char *new_url, char *url, T_CC
       delim = '&';
 
       reset_error_buffer (err_buf);
+    }
+
+  if (!cci_property_get_bool (prop, CCI_DS_KEY_USESSL, &useSSL, CCI_DS_USESSL_DEFAULT, err_buf))
+    {
+      return false;
+    }
+  else if (err_buf->err_code != CCI_ER_NO_PROPERTY)
+    {
+      str = datasource_key[CCI_DS_KEY_USESSL];
+
+      n = snprintf(append_str, rlen, "%c%s=%s", delim, str, useSSL ? "true" : "false");
+      assert(rlen >= 0);
+      if (rlen < n || n < 0)
+        {
+          set_error_buffer(err_buf, CCI_ER_NO_MORE_MEMORY, NULL);
+          return false;
+        }
+      strcat(new_url, append_str);
+      rlen -= n;
+      delim = '&';
+
+      reset_error_buffer(err_buf);
     }
 
   reset_error_buffer (err_buf);

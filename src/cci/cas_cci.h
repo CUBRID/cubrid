@@ -234,6 +234,8 @@
 #define CCI_DS_PROPERTY_DEFAULT_ISOLATION		"default_isolation"
 /* default lock timeout in sec for connections created by pool*/
 #define CCI_DS_PROPERTY_DEFAULT_LOCK_TIMEOUT		"default_lock_timeout"
+/* flag for security(SSL/TLS)  */
+#define CCI_DS_PROPERTY_USESSL    "useSSL"
 
 #define CCI_TZ_SIZE 63
 
@@ -725,7 +727,8 @@ typedef enum
   CCI_DS_KEY_DEFAULT_AUTOCOMMIT,
   CCI_DS_KEY_DEFAULT_ISOLATION,
   CCI_DS_KEY_DEFAULT_LOCK_TIMEOUT,
-  CCI_DS_KEY_MAX_POOL_SIZE
+  CCI_DS_KEY_MAX_POOL_SIZE,
+  CCI_DS_KEY_USESSL
 } T_CCI_DATASOURCE_KEY;
 
 typedef DB_TRAN_ISOLATION T_CCI_TRAN_ISOLATION;	// alias
