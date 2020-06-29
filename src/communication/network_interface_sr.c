@@ -2540,6 +2540,51 @@ sfile_apply_tde_to_class_files (THREAD_ENTRY * thread_p, unsigned int rid, char 
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
+void
+stde_get_data_keys (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  int area_size;
+  char *reply, *area, *ptr;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  int err = NO_ERROR;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  if (!tde_Cipher.is_loaded)
+    {
+      (void) return_error_to_client (thread_p, rid);
+      area = NULL;
+      area_size = 0;
+      err = ER_FAILED;		// TODO tde is not loaded error
+    }
+  else
+    {
+      area_size = 3 * or_packed_stream_length (TDE_DATA_KEY_LENGTH);
+
+      area = (char *) db_private_alloc (thread_p, area_size);
+      if (area == NULL)
+	{
+	  (void) return_error_to_client (thread_p, rid);
+	  area_size = 0;
+	}
+      else
+	{
+	  ptr = or_pack_stream (ptr, (char *) tde_Cipher.data_keys.perm_key, TDE_DATA_KEY_LENGTH);
+	  ptr = or_pack_stream (ptr, (char *) tde_Cipher.data_keys.temp_key, TDE_DATA_KEY_LENGTH);
+	  ptr = or_pack_stream (ptr, (char *) tde_Cipher.data_keys.log_key, TDE_DATA_KEY_LENGTH);
+	}
+    }
+
+  ptr = or_pack_int (reply, err);
+  ptr = or_pack_int (reply, area_size);
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area, area_size);
+
+  if (area != NULL)
+    {
+      db_private_free_and_init (thread_p, area);
+    }
+}
+
 /*
  * stran_server_commit -
  *

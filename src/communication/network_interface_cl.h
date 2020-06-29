@@ -122,6 +122,8 @@ extern int heap_destroy (const HFID * hfid);
 #endif
 extern int heap_destroy_newly_created (const HFID * hfid, const OID * class_oid);
 extern int heap_reclaim_addresses (const HFID * hfid);
+extern int file_apply_tde_to_class_files (const OID * class_oid);
+extern int tde_get_data_keys (TDE_DATA_KEY_SET * dks);
 extern DKNPAGES disk_get_total_numpages (VOLID volid);
 extern DKNPAGES disk_get_free_numpages (VOLID volid);
 extern char *disk_get_remarks (VOLID volid);
@@ -432,5 +434,4 @@ extern int loaddb_fetch_status (load_status & status);
 extern int loaddb_destroy ();
 extern int loaddb_interrupt ();
 extern int loaddb_update_stats ();
-extern int file_apply_tde_to_class_files (const OID * class_oid);
 #endif /* _NETWORK_INTERFACE_CL_H_ */

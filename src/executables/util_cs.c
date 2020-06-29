@@ -2965,6 +2965,14 @@ retry:
       goto error_exit;
     }
 
+  error = tde_get_data_keys (&tde_Data_keys);
+  if (error != NO_ERROR)
+    {
+      fprintf (stderr, "%s\n", db_error_string (3));
+      (void) db_shutdown ();
+      goto error_exit;
+    }
+
   error = la_apply_log_file (database_name, log_path, max_mem_size);
   if (error != NO_ERROR)
     {
