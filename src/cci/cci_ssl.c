@@ -31,7 +31,7 @@ init_ssl (void)
     {
       return res;
     }
- 
+
   SSL_load_error_strings ();
   ERR_load_crypto_strings ();
   OpenSSL_add_all_algorithms ();
@@ -48,9 +48,9 @@ create_sslCtx ()
   method = TLS_client_method ();
 
   ctx = SSL_CTX_new (method);
-  if (ctx == NULL) 
+  if (ctx == NULL)
     {
-      /*The creation of a new SSL_CTX object failed.*/
+      /*The creation of a new SSL_CTX object failed. */
     }
 
   return ctx;
@@ -58,7 +58,7 @@ create_sslCtx ()
 
 
 SSL *
-create_ssl (SOCKET srv_sock_fd, SSL_CTX *ctx)
+create_ssl (SOCKET srv_sock_fd, SSL_CTX * ctx)
 {
   SSL *ssl;
   int server = (int) srv_sock_fd;
@@ -66,13 +66,13 @@ create_ssl (SOCKET srv_sock_fd, SSL_CTX *ctx)
   ssl = SSL_new (ctx);
   if (ssl == NULL)
     {
-      /*The creation of a new SSL structure failed.*/
+      /*The creation of a new SSL structure failed. */
       return NULL;
     }
 
   if (SSL_set_fd (ssl, server) == 0)
     {
-      /*The operation failed.Check the error stack to find out why.*/
+      /*The operation failed.Check the error stack to find out why. */
       return NULL;
     }
 
@@ -80,14 +80,14 @@ create_ssl (SOCKET srv_sock_fd, SSL_CTX *ctx)
 }
 
 int
-connect_ssl (SSL *ssl)
+connect_ssl (SSL * ssl)
 {
   return SSL_connect (ssl);
 }
 
 
 void
-cleanup_ssl (SSL *ssl, SSL_CTX *ctx)
+cleanup_ssl (SSL * ssl, SSL_CTX * ctx)
 {
   if (ssl != NULL)
     {
@@ -103,5 +103,5 @@ cleanup_ssl (SSL *ssl, SSL_CTX *ctx)
 #if (SSLEAY_VERSION_NUMBER < 0x10100000L)
   ERR_free_strings ();
 #endif
-  
+
 }
