@@ -2188,7 +2188,7 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
 	  if (candidate.xid.cache_flag > 0 || (candidate.xid.cache_flag & XCACHE_ENTRY_FLAGS_MASK))
 	    {
 	      /* Either marked for delete or recompile, fixed (prepared)
-                 or already recompiled. Not a valid candidate. */
+	         or already recompiled. Not a valid candidate. */
 	      continue;
 	    }
 
@@ -2207,7 +2207,7 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
 	{
 	  candidate.xid = xcache_entry->xasl_id;
 	  candidate.xcache = xcache_entry;
-	  if (candidate.xid.cache_flag || (candidate.xid.cache_flag & XCACHE_ENTRY_FLAGS_MASK)
+	  if (candidate.xid.cache_flag > 0 || (candidate.xid.cache_flag & XCACHE_ENTRY_FLAGS_MASK)
 	      || TIME_DIFF_SEC (current_time, candidate.xcache->time_last_used) <= xcache_Time_threshold)
 	    {
 	      continue;
@@ -2234,8 +2234,8 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
 
       if (candidate.xcache->list_ht_no >= 0)
 	{
-	  qfile_clear_list_cache(thread_p, candidate.xcache->list_ht_no, false);
-          qfile_list_cache_delete_candidate(thread_p, candidate.xcache);
+	  qfile_clear_list_cache (thread_p, candidate.xcache->list_ht_no, false);
+	  qfile_list_cache_delete_candidate (thread_p, candidate.xcache);
 	}
 
       /* Set intention to cleanup the entry. */

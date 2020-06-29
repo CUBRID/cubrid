@@ -2177,7 +2177,7 @@ qmgr_clear_trans_wakeup (THREAD_ENTRY * thread_p, int tran_index, bool is_tran_d
       if ((!query_p->is_holdable || is_abort) && query_p->xasl_ent != NULL && query_p->list_ent != NULL)
 	{
 	  (void) qfile_end_use_of_list_cache_entry (thread_p, query_p->list_ent, false);
-          query_p->query_status = QUERY_ENDED;
+	  query_p->query_status = QUERY_ENDED;
 	}
 
       /* remove query entry */
@@ -2185,11 +2185,11 @@ qmgr_clear_trans_wakeup (THREAD_ENTRY * thread_p, int tran_index, bool is_tran_d
       query_p = query_p->next;
       if (q->query_status == QUERY_ENDED)
 	{
-          if (tran_entry_p->query_entry_list_p == q)
-            {
-              tran_entry_p->query_entry_list_p = q->next;
-            }
-          qmgr_free_query_entry (thread_p, tran_entry_p, q);
+	  if (tran_entry_p->query_entry_list_p == q)
+	    {
+	      tran_entry_p->query_entry_list_p = q->next;
+	    }
+	  qmgr_free_query_entry (thread_p, tran_entry_p, q);
 	}
     }
 
