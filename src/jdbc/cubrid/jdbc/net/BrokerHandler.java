@@ -320,9 +320,14 @@ public class BrokerHandler {
         sslsocketfactory = ctx.getSocketFactory();
         try {
             sslSocket = (SSLSocket) sslsocketfactory.createSocket(plainSocket, ip, port, true);
-            sslSocket.startHandshake();
         } catch (IOException e) {
             throw new UJciException(UErrorCode.ER_CONNECTION, e);
+        }
+
+        try {
+            sslSocket.startHandshake();
+        } catch (IOException e) {
+            throw new UJciException(UErrorCode.ER_SSL_HANDSHAKE, e);
         }
 
         return sslSocket;
