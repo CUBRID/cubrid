@@ -4576,6 +4576,9 @@ cci_get_err_msg_internal (int error)
     case CCI_ER_INVALID_SHARD:
       return "Invalid shard";
 
+    case CCI_ER_SSL_HANDSHAKE:
+      return "SSL handshake failure";
+
     case CAS_ER_INTERNAL:
       return "Not used";
 
@@ -4977,8 +4980,7 @@ cas_connect_internal (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf, int *con
 		}
 
 	      if (error == CCI_ER_COMMUNICATION
-		  || error == CCI_ER_CONNECT
-		  || error == CCI_ER_LOGIN_TIMEOUT || error == CCI_ER_SSL_HANDSHAKE || error == CAS_ER_FREE_SERVER)
+		  || error == CCI_ER_CONNECT || error == CCI_ER_LOGIN_TIMEOUT || error == CAS_ER_FREE_SERVER)
 		{
 		  hm_set_host_status (con_handle, i, UNREACHABLE);
 		}
@@ -5960,7 +5962,14 @@ cci_datasource_create (T_CCI_PROPERTIES * prop, T_CCI_ERROR * err_buf)
       id = cci_connect_with_url (new_url, ds->user, ds->pass);
       if (id < 0)
 	{
-	  set_error_buffer (&latest_err_buf, CCI_ER_CONNECT, "Could not connect to database");
+	  if (id == CCI_ER_SSL_HANDSHAKE || id == CAS_ER_SSL_TYPE_NOT_ALLOWED)
+	    {
+	      set_error_buffer (&latest_err_buf, id, NULL);
+	    }
+	  else
+	    {
+	      set_error_buffer (&latest_err_buf, CCI_ER_CONNECT, "Could not connect to database");
+	    }
 	  goto create_datasource_error;
 	}
 
