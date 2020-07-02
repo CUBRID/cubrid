@@ -414,7 +414,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_JAVA_STORED_PROCEDURE_RESERVE_01 "java_stored_procedure_reserve_01"
 
-#define PRM_NAME_CHECK_TYPE_TRANS_STRICT "check_type_trans_strict"
+#define PRM_NAME_TRUNCATED_STRING_TYPE "truncated_string_type"
 
 #define PRM_NAME_COMPAT_PRIMARY_KEY "compat_primary_key"
 
@@ -1310,9 +1310,9 @@ bool PRM_RETURN_NULL_ON_FUNCTION_ERRORS = false;
 static bool prm_return_null_on_function_errors_default = false;
 static unsigned int prm_return_null_on_function_errors_flag = 0;
 
-bool PRM_ALTER_TABLE_CHANGE_TYPE_STRICT = false;
-static bool prm_alter_table_change_type_strict_default = false;
-static unsigned int prm_alter_table_change_type_strict_flag = 0;
+bool PRM_ALTER_TABLE_CHANGE_TYPE_STRICT = true;
+static bool prm_alter_table_change_type_strict_default = true;
+static unsigned int prm_alter_table_change_type_strict_flag = 1;
 
 bool PRM_PLUS_AS_CONCAT = true;
 static bool prm_plus_as_concat_default = true;
@@ -2294,9 +2294,9 @@ bool PRM_JAVA_STORED_PROCEDURE_RESERVE_01 = false;
 static bool prm_java_stored_procedure_reserve_01_default = false;
 static unsigned int prm_java_stored_procedure_reserve_01_flag = 0;
 
-bool PRM_CHECK_TYPE_TRANS_STRICT = false;
-static bool prm_check_type_trans_strict_default = false;
-static unsigned int prm_check_type_trans_strict_flag = 0;
+bool PRM_TRUNCATED_STRING_TYPE = true;
+static bool prm_truncated_string_type_default = true;
+static unsigned int prm_truncated_string_type_flag = 1;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5898,13 +5898,13 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_CHECK_TYPE_TRANS_STRICT,
-   PRM_NAME_CHECK_TYPE_TRANS_STRICT,
+  {PRM_ID_TRUNCATED_STRING_TYPE,
+   PRM_NAME_TRUNCATED_STRING_TYPE,
    (PRM_USER_CHANGE | PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_SESSION | PRM_FOR_HA_CONTEXT),
    PRM_BOOLEAN,
-   &prm_check_type_trans_strict_flag,
-   (void *) &prm_check_type_trans_strict_default,
-   (void *) &PRM_CHECK_TYPE_TRANS_STRICT,
+   &prm_truncated_string_type_flag,
+   (void *) &prm_truncated_string_type_default,
+   (void *) &PRM_TRUNCATED_STRING_TYPE,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
