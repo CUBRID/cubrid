@@ -5897,6 +5897,21 @@ fileio_make_keys_name_given_path (char *keys_name_p, const char *keys_path_p, co
   sprintf (keys_name_p, "%s%s%s%s", keys_path_p, FILEIO_PATH_SEPARATOR (keys_path_p), db_name_p, FILEIO_SUFFIX_KEYS);
 }
 
+/*
+ * fileio_make_ha_sock_name () - Build the name of HA socket name (for sharing TDE Data keys)
+ *   return: void
+ *   keys_name_p(out): the name of KEYS volume
+ *   dbname(in): database name
+ *
+ * Note: The caller must have enough space to store the name of the volume
+ *       that is constructed(sprintf). It is recommended to have at least
+ *       DB_MAX_PATH_LENGTH length.
+ */
+void
+fileio_make_ha_sock_name (char *sock_path_p, const char *base_path_p, const char *sock_name_p)
+{
+  sprintf (sock_path_p, "%s%s%s", base_path_p, FILEIO_PATH_SEPARATOR (base_path_p), sock_name_p);
+}
 
 /*
  * fileio_cache () - Cache information related to a mounted volume

@@ -33,6 +33,12 @@
 #include <sys/time.h>
 #endif
 #include <signal.h>
+#include <pthread.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+
 
 #include "log_applier.h"
 
@@ -552,6 +558,8 @@ static void la_destroy_repl_filter (void);
 static void la_print_repl_filter_info (void);
 
 static int check_reinit_copylog (void);
+
+static THREAD_RET_T THREAD_CALLING_CONVENTION la_process_dk_request (void *arg);
 
 /*
  * la_shutdown_by_signal() - When the process catches the SIGTERM signal,
@@ -8454,4 +8462,96 @@ la_delay_replica (time_t eot_time)
     }
 
   return NO_ERROR;
+}
+
+int
+la_open_sock_for_tde (const char *log_path)
+{
+  int server_sockfd;
+  int rv;
+  char sock_path[PATH_MAX] = { 0, };
+  pid_t pid;
+  pthread_attr_t thread_attr;
+  size_t ts_size;
+  pthread_t master_reader_th;
+
+  struct sockaddr_un serveraddr;
+
+  fileio_make_ha_sock_name (sock_path, log_path, TDE_HA_SOCK_NAME);
+
+  if (access (sock_path, F_OK) == 0)
+    {
+      // TODO ERROR Notification or Warning
+      unlink (sock_path);
+    }
+
+  if ((server_sockfd = socket (AF_UNIX, SOCK_STREAM, 0)) < 0)
+    {
+      //TODO error
+      return -1;
+    }
+
+  bzero (&serveraddr, sizeof (serveraddr));
+  serveraddr.sun_family = AF_UNIX;
+  strcpy (serveraddr.sun_path, sock_path);
+
+  rv = bind (server_sockfd, (struct sockaddr *) &serveraddr, sizeof (serveraddr));
+  if (rv == -1)
+    {
+      return -1;		// TODO error
+    }
+
+  rv = listen (server_sockfd, 5);
+  if (rv == -1)
+    {
+      return -1;		// TODO error
+    }
+  // hb_create_master_reader 를 참조하여 쓰레드 생성
+#if defined(_POSIX_THREAD_ATTR_STACKSIZE)
+  rv = pthread_attr_getstacksize (&thread_attr, &ts_size);
+  if (ts_size != (size_t) prm_get_bigint_value (PRM_ID_THREAD_STACKSIZE))
+    {
+      rv = pthread_attr_setstacksize (&thread_attr, prm_get_bigint_value (PRM_ID_THREAD_STACKSIZE));
+      if (rv != 0)
+	{
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_ATTR_SETSTACKSIZE, 0);
+	  return ER_CSS_PTHREAD_ATTR_SETSTACKSIZE;
+	}
+    }
+#endif /* _POSIX_THREAD_ATTR_STACKSIZE */
+  rv = pthread_create (&master_reader_th, &thread_attr, la_process_dk_request, (void *) &server_sockfd);
+  if (rv != 0)
+    {
+      return -1;		// TODO error
+    }
+  return NO_ERROR;
+}
+
+static THREAD_RET_T THREAD_CALLING_CONVENTION
+la_process_dk_request (void *arg)
+{
+  int client_sockfd, server_sockfd;
+  unsigned int client_len;
+  struct sockaddr_un clientaddr;
+  char buf[10];
+
+  server_sockfd = *(int *) arg;
+
+  client_len = sizeof (clientaddr);
+
+  while (1)
+    {
+      client_sockfd = accept (server_sockfd, (struct sockaddr *) &clientaddr, &client_len);
+      if (read (client_sockfd, buf, 10) <= 0)
+	{
+	  close (client_sockfd);
+	  return (THREAD_RET_T) - 1;	// TODO error Notification?
+	}
+      // TODO request validation?
+      write (client_sockfd, &tde_Data_keys, sizeof (tde_Data_keys));
+      close (client_sockfd);
+    }
+  close (client_sockfd);
+
+  return (THREAD_RET_T) 0;
 }

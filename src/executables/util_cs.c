@@ -2736,13 +2736,6 @@ retry:
   /* PRM_LOG_BACKGROUND_ARCHIVING is always true in CUBRID HA */
   sysprm_set_to_default (prm_get_name (PRM_ID_LOG_BACKGROUND_ARCHIVING), true);
 
-  if (HA_DISABLED ())
-    {
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COPYLOGDB, COPYLOGDB_MSG_NOT_HA_MODE));
-      (void) db_shutdown ();
-      goto error_exit;
-    }
-
   error = logwr_copy_log_file (database_name, log_path, mode, start_pageid);
   if (error != NO_ERROR)
     {
@@ -2968,7 +2961,15 @@ retry:
   error = tde_get_data_keys (&tde_Data_keys);
   if (error != NO_ERROR)
     {
-      fprintf (stderr, "%s\n", db_error_string (3));
+      fprintf (stderr, "%s\n", db_error_string (3));	// TODO error 
+      (void) db_shutdown ();
+      goto error_exit;
+    }
+
+  error = la_open_sock_for_tde (log_path);
+  if (error != NO_ERROR)
+    {
+      fprintf (stderr, "%s\n", db_error_string (3));	// TODO error 
       (void) db_shutdown ();
       goto error_exit;
     }

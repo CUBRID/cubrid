@@ -31,6 +31,8 @@
 #include <dirent.h>
 #endif /* !WINDOWNS */
 #include <signal.h>
+#include "sys/socket.h"
+#include "sys/un.h"
 
 #include "log_writer.h"
 
@@ -159,6 +161,8 @@ LOGWR_GLOBAL logwr_Gl = {
   /* start_pageid */
   -2,
   /* reinit_copylog */
+  false,
+  /* tde_dks_loaded */
   false
 };
 // *INDENT-ON*
@@ -173,6 +177,7 @@ static int logwr_flush_all_append_pages (void);
 static int logwr_archive_active_log (void);
 static int logwr_flush_bgarv_header_page (void);
 static void logwr_reinit_copylog (void);
+static int logwr_get_tde_dk_from_la (void);
 
 /*
  * logwr_to_physical_pageid -
@@ -881,6 +886,17 @@ logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
 	      if (LOG_IS_PAGE_TDE_ENCRYPTED (log_pgptr))
 		{
 		  logwr_set_tde_algorithm (NULL, log_pgptr, tde_algo);
+
+		  while (!logwr_Gl.tde_dks_loaded)
+		    {
+		      if (logwr_get_tde_dk_from_la () != NO_ERROR)
+			{
+			  return NULL;
+			}
+		      sleep (1);
+		      // TODO handle general error and connection error
+		    }
+
 		  if (tde_encrypt_log_page (log_pgptr, buf_pgptr, tde_algo) != NO_ERROR)
 		    {
 		      return NULL;
@@ -924,6 +940,17 @@ logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
 	  if (LOG_IS_PAGE_TDE_ENCRYPTED (log_pgptr))
 	    {
 	      logwr_set_tde_algorithm (NULL, log_pgptr, tde_algo);
+
+	      while (!logwr_Gl.tde_dks_loaded)
+		{
+		  if (logwr_get_tde_dk_from_la () != NO_ERROR)
+		    {
+		      return NULL;
+		    }
+		  sleep (1);
+		  // TODO handle general error and connection error
+		}
+
 	      if (tde_encrypt_log_page (log_pgptr, buf_pgptr, tde_algo) != NO_ERROR)
 		{
 		  return NULL;
@@ -1773,6 +1800,53 @@ logwr_reinit_copylog (void)
 
 #endif /* !WINDOWS */
   return;
+}
+
+static int
+logwr_get_tde_dk_from_la (void)
+{
+  int client_len;
+  int client_sockfd;
+  char sock_path[PATH_MAX];
+  int rv;
+  TDE_DATA_KEY_SET dks;
+
+  struct sockaddr_un clientaddr;
+
+  fileio_make_ha_sock_name (sock_path, logwr_Gl.log_path, TDE_HA_SOCK_NAME);
+
+  client_sockfd = socket (AF_UNIX, SOCK_STREAM, 0);
+  if (client_sockfd == -1)
+    {
+      perror ("error : ");
+      exit (0);
+    }
+
+  bzero (&clientaddr, sizeof (clientaddr));
+  clientaddr.sun_family = AF_UNIX;
+  strcpy (clientaddr.sun_path, sock_path);
+  client_len = sizeof (clientaddr);
+
+  if (connect (client_sockfd, (struct sockaddr *) &clientaddr, client_len) < 0)
+    {
+      return -1;		//TODO error
+    }
+
+  write (client_sockfd, "GET", 3);
+  rv = read (client_sockfd, &dks, sizeof (tde_Data_keys));
+  if (rv != sizeof (tde_Data_keys))
+    {
+      return -1;		//TODO error
+    }
+
+  memcpy (tde_Data_keys.perm_key, dks.perm_key, TDE_DATA_KEY_LENGTH);
+  memcpy (tde_Data_keys.temp_key, dks.temp_key, TDE_DATA_KEY_LENGTH);
+  memcpy (tde_Data_keys.log_key, dks.log_key, TDE_DATA_KEY_LENGTH);
+
+  logwr_Gl.tde_dks_loaded = true;
+
+  close (client_sockfd);
+  return NO_ERROR;
 }
 
 #else /* CS_MODE */

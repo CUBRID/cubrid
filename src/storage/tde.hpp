@@ -79,6 +79,9 @@ typedef tde_data_key_type TDE_DATA_KEY_TYPE;
 
 #if defined(CS_MODE)
 extern TDE_DATA_KEY_SET tde_Data_keys;
+
+#define TDE_HA_SOCK_NAME ".ha_sock"
+
 #endif /* CS_MODE */
 
 #if !defined(CS_MODE)
