@@ -1871,7 +1871,7 @@ tde_get_data_keys (TDE_DATA_KEY_SET * dks)
       ptr = or_unpack_int (ptr, &area_size);
       if (area_size > 0)
 	{
-	  ptr = or_unpack_stream (ptr, (char *) dks->perm_key, TDE_DATA_KEY_LENGTH);
+	  ptr = or_unpack_stream (area, (char *) dks->perm_key, TDE_DATA_KEY_LENGTH);
 	  ptr = or_unpack_stream (ptr, (char *) dks->temp_key, TDE_DATA_KEY_LENGTH);
 	  ptr = or_unpack_stream (ptr, (char *) dks->log_key, TDE_DATA_KEY_LENGTH);
 	}

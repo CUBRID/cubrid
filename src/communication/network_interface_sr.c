@@ -2569,7 +2569,7 @@ stde_get_data_keys (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 	}
       else
 	{
-	  ptr = or_pack_stream (ptr, (char *) tde_Cipher.data_keys.perm_key, TDE_DATA_KEY_LENGTH);
+	  ptr = or_pack_stream (area, (char *) tde_Cipher.data_keys.perm_key, TDE_DATA_KEY_LENGTH);
 	  ptr = or_pack_stream (ptr, (char *) tde_Cipher.data_keys.temp_key, TDE_DATA_KEY_LENGTH);
 	  ptr = or_pack_stream (ptr, (char *) tde_Cipher.data_keys.log_key, TDE_DATA_KEY_LENGTH);
 	}
