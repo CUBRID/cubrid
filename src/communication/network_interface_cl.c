@@ -1857,7 +1857,7 @@ tde_get_data_keys (TDE_DATA_KEY_SET * dks)
   int error = ER_NET_CLIENT_DATA_RECEIVE;
   int req_error, area_size;
   char *ptr;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply, *area;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
