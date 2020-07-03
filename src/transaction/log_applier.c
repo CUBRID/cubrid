@@ -8529,21 +8529,18 @@ la_process_dk_request (void *arg)
 
   while (1)
     {
-      printf ("\nla_process_dk_requset: accepting.. \n");
       client_sockfd = accept (server_sockfd, (struct sockaddr *) &clientaddr, &client_len);
-      printf ("la_process_dk_requset: accepted.. \n");
       if (read (client_sockfd, buf, 10) <= 0)
 	{
 	  close (client_sockfd);
-	  return (THREAD_RET_T) - 1;	// TODO error Notification?
+	  break;
 	}
       // TODO request validation?
       write (client_sockfd, &tde_Data_keys, sizeof (tde_Data_keys));
-      printf ("la_process_dk_requset: write, perm_key: ");
-      write (1, tde_Data_keys.perm_key, TDE_DATA_KEY_LENGTH);
-      printf ("\n");
       close (client_sockfd);
     }
 
-  return (THREAD_RET_T) 0;
+  assert (true);
+  exit (-1);
+  return (THREAD_RET_T) - 1;
 }
