@@ -8473,7 +8473,7 @@ la_open_sock_for_tde (const char *log_path)
   pid_t pid;
   pthread_attr_t thread_attr;
   size_t ts_size;
-  pthread_t master_reader_th;
+  pthread_t processing_th;
 
   struct sockaddr_un serveraddr;
 
@@ -8507,19 +8507,7 @@ la_open_sock_for_tde (const char *log_path)
       return -1;		// TODO error
     }
   // hb_create_master_reader 를 참조하여 쓰레드 생성
-#if defined(_POSIX_THREAD_ATTR_STACKSIZE)
-  rv = pthread_attr_getstacksize (&thread_attr, &ts_size);
-  if (ts_size != (size_t) prm_get_bigint_value (PRM_ID_THREAD_STACKSIZE))
-    {
-      rv = pthread_attr_setstacksize (&thread_attr, prm_get_bigint_value (PRM_ID_THREAD_STACKSIZE));
-      if (rv != 0)
-	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_ATTR_SETSTACKSIZE, 0);
-	  return ER_CSS_PTHREAD_ATTR_SETSTACKSIZE;
-	}
-    }
-#endif /* _POSIX_THREAD_ATTR_STACKSIZE */
-  rv = pthread_create (&master_reader_th, &thread_attr, la_process_dk_request, (void *) &server_sockfd);
+  rv = pthread_create (&processing_th, NULL, la_process_dk_request, (void *) &server_sockfd);
   if (rv != 0)
     {
       return -1;		// TODO error
