@@ -8501,7 +8501,7 @@ la_open_sock_for_tde (const char *log_path)
       return -1;		// TODO error
     }
 
-  rv = listen (server_sockfd, 5);
+  rv = listen (server_sockfd, 1);
   if (rv == -1)
     {
       return -1;		// TODO error
@@ -8529,7 +8529,9 @@ la_process_dk_request (void *arg)
 
   while (1)
     {
+      printf ("\nla_process_dk_requset: accepting.. \n");
       client_sockfd = accept (server_sockfd, (struct sockaddr *) &clientaddr, &client_len);
+      printf ("la_process_dk_requset: accepted.. \n");
       if (read (client_sockfd, buf, 10) <= 0)
 	{
 	  close (client_sockfd);
@@ -8537,9 +8539,11 @@ la_process_dk_request (void *arg)
 	}
       // TODO request validation?
       write (client_sockfd, &tde_Data_keys, sizeof (tde_Data_keys));
+      printf ("la_process_dk_requset: write, perm_key: ");
+      write (1, tde_Data_keys.perm_key, TDE_DATA_KEY_LENGTH);
+      printf ("\n");
       close (client_sockfd);
     }
-  close (client_sockfd);
 
   return (THREAD_RET_T) 0;
 }

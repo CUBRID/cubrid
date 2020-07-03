@@ -1818,8 +1818,7 @@ logwr_get_tde_dk_from_la (void)
   client_sockfd = socket (AF_UNIX, SOCK_STREAM, 0);
   if (client_sockfd == -1)
     {
-      perror ("error : ");
-      exit (0);
+      return -1;		//TODO error
     }
 
   bzero (&clientaddr, sizeof (clientaddr));
@@ -1827,10 +1826,12 @@ logwr_get_tde_dk_from_la (void)
   strcpy (clientaddr.sun_path, sock_path);
   client_len = sizeof (clientaddr);
 
+  printf ("\nlogwr_get_tde_dk_from_la: connecting.. \n");
   if (connect (client_sockfd, (struct sockaddr *) &clientaddr, client_len) < 0)
     {
       return -1;		//TODO error
     }
+  printf ("logwr_get_tde_dk_from_la: connected \n");
 
   write (client_sockfd, "GET", 3);
   rv = read (client_sockfd, &dks, sizeof (tde_Data_keys));
@@ -1838,6 +1839,8 @@ logwr_get_tde_dk_from_la (void)
     {
       return -1;		//TODO error
     }
+  printf ("logwr_get_tde_dk_from_la: read perm_key: ");
+  write (1, tde_Data_keys.perm_key, TDE_DATA_KEY_LENGTH);
 
   memcpy (tde_Data_keys.perm_key, dks.perm_key, TDE_DATA_KEY_LENGTH);
   memcpy (tde_Data_keys.temp_key, dks.temp_key, TDE_DATA_KEY_LENGTH);
