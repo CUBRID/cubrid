@@ -177,7 +177,7 @@ static int logwr_flush_all_append_pages (void);
 static int logwr_archive_active_log (void);
 static int logwr_flush_bgarv_header_page (void);
 static void logwr_reinit_copylog (void);
-static int logwr_get_tde_dk_from_la (void);
+static int logwr_request_tde_dks_from_la (void);
 
 /*
  * logwr_to_physical_pageid -
@@ -889,7 +889,7 @@ logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
 
 		  while (!logwr_Gl.tde_dks_loaded)
 		    {
-		      if (logwr_get_tde_dk_from_la () != NO_ERROR)
+		      if (logwr_request_tde_dks_from_la () != NO_ERROR)
 			{
 			  return NULL;
 			}
@@ -943,7 +943,7 @@ logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
 
 	      while (!logwr_Gl.tde_dks_loaded)
 		{
-		  if (logwr_get_tde_dk_from_la () != NO_ERROR)
+		  if (logwr_request_tde_dks_from_la () != NO_ERROR)
 		    {
 		      return NULL;
 		    }
@@ -1803,7 +1803,7 @@ logwr_reinit_copylog (void)
 }
 
 static int
-logwr_get_tde_dk_from_la (void)
+logwr_request_tde_dks_from_la (void)
 {
   int client_len;
   int client_sockfd;
