@@ -345,6 +345,8 @@ struct la_info
   LA_REPL_FILTER repl_filter;
 
   bool reinit_copylog;
+
+  int tde_sock_for_dks;		/* unix socket for sharing TDE Data keys with copylogd */
 };
 
 typedef struct la_ovf_first_part LA_OVF_FIRST_PART;
@@ -7954,6 +7956,13 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
   last_eof_time = time (NULL);
   LSA_SET_NULL (&last_eof_lsa);
 
+  error = la_open_sock_for_tde (log_path);
+  if (error != NO_ERROR)
+    {
+      // TODO error 
+      return error;
+    }
+
   /* start the main loop */
   do
     {
@@ -8471,7 +8480,6 @@ la_open_sock_for_tde (const char *log_path)
   int rv;
   char sock_path[PATH_MAX] = { 0, };
   pid_t pid;
-  pthread_attr_t thread_attr;
   size_t ts_size;
   pthread_t processing_th;
 
@@ -8507,7 +8515,8 @@ la_open_sock_for_tde (const char *log_path)
       return -1;		// TODO error
     }
   // hb_create_master_reader 를 참조하여 쓰레드 생성
-  rv = pthread_create (&processing_th, NULL, la_process_dk_request, (void *) &server_sockfd);
+  la_Info.tde_sock_for_dks = server_sockfd;
+  rv = pthread_create (&processing_th, NULL, la_process_dk_request, NULL);
   if (rv != 0)
     {
       return -1;		// TODO error
@@ -8523,7 +8532,7 @@ la_process_dk_request (void *arg)
   struct sockaddr_un clientaddr;
   char buf[10];
 
-  server_sockfd = *(int *) arg;
+  server_sockfd = la_Info.tde_sock_for_dks;
 
   client_len = sizeof (clientaddr);
 
