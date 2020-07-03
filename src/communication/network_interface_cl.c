@@ -1867,8 +1867,8 @@ tde_get_data_keys (TDE_DATA_KEY_SET * dks)
 			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
   if (!req_error)
     {
-      ptr = or_unpack_int (reply, &error);
-      ptr = or_unpack_int (ptr, &area_size);
+      ptr = or_unpack_int (reply, &area_size);
+      ptr = or_unpack_int (ptr, &error);
       if (area_size > 0)
 	{
 	  ptr = or_unpack_stream (area, (char *) dks->perm_key, TDE_DATA_KEY_LENGTH);

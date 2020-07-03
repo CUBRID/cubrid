@@ -2575,8 +2575,8 @@ stde_get_data_keys (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 	}
     }
 
-  ptr = or_pack_int (reply, err);
-  ptr = or_pack_int (ptr, area_size);
+  ptr = or_pack_int (reply, area_size);
+  ptr = or_pack_int (ptr, err);
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area, area_size);
 
   if (area != NULL)
