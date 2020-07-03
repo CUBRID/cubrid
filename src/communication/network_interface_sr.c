@@ -2543,7 +2543,7 @@ sfile_apply_tde_to_class_files (THREAD_ENTRY * thread_p, unsigned int rid, char 
 void
 stde_get_data_keys (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  int area_size;
+  int area_size = -1;
   char *reply, *area, *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   int err = NO_ERROR;
@@ -2576,7 +2576,7 @@ stde_get_data_keys (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
     }
 
   ptr = or_pack_int (reply, err);
-  ptr = or_pack_int (reply, area_size);
+  ptr = or_pack_int (ptr, area_size);
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area, area_size);
 
   if (area != NULL)
