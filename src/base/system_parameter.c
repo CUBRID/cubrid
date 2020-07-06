@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -407,6 +408,14 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_JAVA_STORED_PROCEDURE_PORT "java_stored_procedure_port"
 
+#define PRM_NAME_JAVA_STORED_PROCEDURE_JVM_OPTIONS "java_stored_procedure_jvm_options"
+
+#define PRM_NAME_JAVA_STORED_PROCEDURE_DEBUG "java_stored_procedure_debug"
+
+#define PRM_NAME_JAVA_STORED_PROCEDURE_RESERVE_01 "java_stored_procedure_reserve_01"
+
+#define PRM_NAME_TRUNCATED_STRING_TYPE "truncated_string_type"
+
 #define PRM_NAME_COMPAT_PRIMARY_KEY "compat_primary_key"
 
 #define PRM_NAME_INTL_MBS_SUPPORT "intl_mbs_support"
@@ -670,6 +679,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_REPR_CACHE_LOG "er_log_repr_cache"
 #define PRM_NAME_ENABLE_NEW_LFHASH "new_lfhash"
 #define PRM_NAME_HEAP_INFO_CACHE_LOGGING "heap_info_cache_logging"
+
+#define PRM_NAME_GENERAL_RESERVE_01 "general_reserve_01"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -1299,9 +1310,9 @@ bool PRM_RETURN_NULL_ON_FUNCTION_ERRORS = false;
 static bool prm_return_null_on_function_errors_default = false;
 static unsigned int prm_return_null_on_function_errors_flag = 0;
 
-bool PRM_ALTER_TABLE_CHANGE_TYPE_STRICT = false;
-static bool prm_alter_table_change_type_strict_default = false;
-static unsigned int prm_alter_table_change_type_strict_flag = 0;
+bool PRM_ALTER_TABLE_CHANGE_TYPE_STRICT = true;
+static bool prm_alter_table_change_type_strict_default = true;
+static unsigned int prm_alter_table_change_type_strict_flag = 1;
 
 bool PRM_PLUS_AS_CONCAT = true;
 static bool prm_plus_as_concat_default = true;
@@ -1443,6 +1454,8 @@ static unsigned int prm_ha_copy_sync_mode_flag = 0;
 
 int PRM_HA_APPLY_MAX_MEM_SIZE = HB_DEFAULT_APPLY_MAX_MEM_SIZE;
 static int prm_ha_apply_max_mem_size_default = HB_DEFAULT_APPLY_MAX_MEM_SIZE;
+static int prm_ha_apply_max_mem_size_upper = INT_MAX;
+static int prm_ha_apply_max_mem_size_lower = 0;
 static unsigned int prm_ha_apply_max_mem_size_flag = 0;
 
 int PRM_HA_PORT_ID = HB_DEFAULT_HA_PORT_ID;
@@ -1568,15 +1581,9 @@ static int prm_ha_check_disk_failure_interval_in_secs_upper = INT_MAX;
 static int prm_ha_check_disk_failure_interval_in_secs_lower = 0;
 static unsigned int prm_ha_check_disk_failure_interval_in_secs_flag = 0;
 
-bool PRM_JAVA_STORED_PROCEDURE = false;
-static bool prm_java_stored_procedure_default = false;
-static unsigned int prm_java_stored_procedure_flag = 0;
-
-int PRM_JAVA_STORED_PROCEDURE_PORT = 0;
-static int prm_java_stored_procedure_port_default = 0;
-static int prm_java_stored_procedure_port_upper = 65535;
-static int prm_java_stored_procedure_port_lower = 0;
-static unsigned int prm_java_stored_procedure_port_flag = 0;
+bool PRM_GENERAL_RESERVE_01 = false;
+static bool prm_general_reserve_01_default = false;
+static unsigned int prm_general_reserve_01_flag = 0;
 
 bool PRM_COMPAT_PRIMARY_KEY = false;
 static bool prm_compat_primary_key_default = false;
@@ -2262,6 +2269,34 @@ static unsigned int prm_new_lfhash_flag = 0;
 bool PRM_HEAP_INFO_CACHE_LOGGING = false;
 static bool prm_heap_info_cache_logging_default = false;
 static unsigned int prm_heap_info_cache_logging_flag = 0;
+
+bool PRM_JAVA_STORED_PROCEDURE = false;
+static bool prm_java_stored_procedure_default = false;
+static unsigned int prm_java_stored_procedure_flag = 0;
+
+int PRM_JAVA_STORED_PROCEDURE_PORT = 0;
+static int prm_java_stored_procedure_port_default = 0;
+static int prm_java_stored_procedure_port_upper = 65535;
+static int prm_java_stored_procedure_port_lower = 0;
+static unsigned int prm_java_stored_procedure_port_flag = 0;
+
+const char *PRM_JAVA_STORED_PROCEDURE_JVM_OPTIONS = "";
+static const char *prm_java_stored_procedure_jvm_options_default = "";
+static unsigned int prm_java_stored_procedure_jvm_options_flag = 0;
+
+int PRM_JAVA_STORED_PROCEDURE_DEBUG = -1;
+static int prm_java_stored_procedure_debug_default = -1;
+static int prm_java_stored_procedure_debug_upper = 65535;
+static int prm_java_stored_procedure_debug_lower = -1;
+static unsigned int prm_java_stored_procedure_debug_flag = 0;
+
+bool PRM_JAVA_STORED_PROCEDURE_RESERVE_01 = false;
+static bool prm_java_stored_procedure_reserve_01_default = false;
+static unsigned int prm_java_stored_procedure_reserve_01_flag = 0;
+
+bool PRM_TRUNCATED_STRING_TYPE = true;
+static bool prm_truncated_string_type_default = true;
+static unsigned int prm_truncated_string_type_flag = 1;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -3692,7 +3727,7 @@ static SYSPRM_PARAM prm_Def[] = {
    &prm_ha_apply_max_mem_size_flag,
    (void *) &prm_ha_apply_max_mem_size_default,
    (void *) &PRM_HA_APPLY_MAX_MEM_SIZE,
-   (void *) NULL, (void *) NULL,
+   (void *) &prm_ha_apply_max_mem_size_upper, (void *) &prm_ha_apply_max_mem_size_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
@@ -4002,25 +4037,14 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) prm_msec_to_sec,
    (DUP_PRM_FUNC) prm_sec_to_msec},
-  {PRM_ID_JAVA_STORED_PROCEDURE,
-   PRM_NAME_JAVA_STORED_PROCEDURE,
-   (PRM_FOR_SERVER),
+  {PRM_ID_GENERAL_RESERVE_01,
+   PRM_NAME_GENERAL_RESERVE_01,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_BOOLEAN,
-   &prm_java_stored_procedure_flag,
-   (void *) &prm_java_stored_procedure_default,
-   (void *) &PRM_JAVA_STORED_PROCEDURE,
+   &prm_general_reserve_01_flag,
+   (void *) &prm_general_reserve_01_default,
+   (void *) &PRM_GENERAL_RESERVE_01,
    (void *) NULL, (void *) NULL,
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
-  {PRM_ID_JAVA_STORED_PROCEDURE_PORT,
-   PRM_NAME_JAVA_STORED_PROCEDURE_PORT,
-   (PRM_FOR_SERVER),
-   PRM_INTEGER,
-   &prm_java_stored_procedure_port_flag,
-   (void *) &prm_java_stored_procedure_port_default,
-   (void *) &PRM_JAVA_STORED_PROCEDURE_PORT,
-   (void *) &prm_java_stored_procedure_port_upper, (void *) &prm_java_stored_procedure_port_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
@@ -5815,6 +5839,72 @@ static SYSPRM_PARAM prm_Def[] = {
    &prm_heap_info_cache_logging_flag,
    (void *) &prm_heap_info_cache_logging_default,
    (void *) &PRM_HEAP_INFO_CACHE_LOGGING,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_JAVA_STORED_PROCEDURE,
+   PRM_NAME_JAVA_STORED_PROCEDURE,
+   (PRM_FOR_SERVER),
+   PRM_BOOLEAN,
+   &prm_java_stored_procedure_flag,
+   (void *) &prm_java_stored_procedure_default,
+   (void *) &PRM_JAVA_STORED_PROCEDURE,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_JAVA_STORED_PROCEDURE_PORT,
+   PRM_NAME_JAVA_STORED_PROCEDURE_PORT,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   &prm_java_stored_procedure_port_flag,
+   (void *) &prm_java_stored_procedure_port_default,
+   (void *) &PRM_JAVA_STORED_PROCEDURE_PORT,
+   (void *) &prm_java_stored_procedure_port_upper, (void *) &prm_java_stored_procedure_port_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_JAVA_STORED_PROCEDURE_JVM_OPTIONS,
+   PRM_NAME_JAVA_STORED_PROCEDURE_JVM_OPTIONS,
+   (PRM_FOR_SERVER),
+   PRM_STRING,
+   &prm_java_stored_procedure_jvm_options_flag,
+   (void *) &prm_java_stored_procedure_jvm_options_default,
+   (void *) &PRM_JAVA_STORED_PROCEDURE_JVM_OPTIONS,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_JAVA_STORED_PROCEDURE_DEBUG,
+   PRM_NAME_JAVA_STORED_PROCEDURE_DEBUG,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_INTEGER,
+   &prm_java_stored_procedure_debug_flag,
+   (void *) &prm_java_stored_procedure_debug_default,
+   (void *) &PRM_JAVA_STORED_PROCEDURE_DEBUG,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_JAVA_STORED_PROCEDURE_RESERVE_01,
+   PRM_NAME_JAVA_STORED_PROCEDURE_RESERVE_01,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_java_stored_procedure_reserve_01_flag,
+   (void *) &prm_java_stored_procedure_reserve_01_default,
+   (void *) &PRM_JAVA_STORED_PROCEDURE_RESERVE_01,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_TRUNCATED_STRING_TYPE,
+   PRM_NAME_TRUNCATED_STRING_TYPE,
+   (PRM_USER_CHANGE | PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_SESSION | PRM_FOR_HA_CONTEXT),
+   PRM_BOOLEAN,
+   &prm_truncated_string_type_flag,
+   (void *) &prm_truncated_string_type_default,
+   (void *) &PRM_TRUNCATED_STRING_TYPE,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,

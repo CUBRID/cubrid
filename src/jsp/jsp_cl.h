@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -72,6 +73,14 @@ typedef enum
   SP_LANG_JAVA = 1
 } SP_LANG_ENUM;
 
+typedef enum
+{
+  SP_CODE_INVOKE = 0x01,
+  SP_CODE_RESULT = 0x02,
+  SP_CODE_ERROR = 0x04,
+  SP_CODE_INTERNAL_JDBC = 0x08,
+  SP_CODE_DESTROY = 0x10
+} SP_CODE;
 
 extern int jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int jsp_alter_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement);
@@ -91,5 +100,7 @@ extern int jsp_call_from_server (DB_VALUE * returnval, DB_VALUE ** argarray, con
 extern void *jsp_get_db_result_set (int h_id);
 extern void jsp_srv_handle_free (int h_id);
 
+extern int jsp_send_destroy_request_all ();
+extern int jsp_send_destroy_request (const SOCKET sockfd);
 
 #endif /* _JSP_CL_H_ */

@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  * Redistribution and use in source and binary forms, with or without modification, 
  * are permitted provided that the following conditions are met: 
@@ -74,16 +75,16 @@ class UOutputBuffer {
 		initBuffer();
 	}
 
-	void newRequest(OutputStream out, byte func_code) throws IOException {
+	void newRequest(OutputStream out, UFunctionCode func_code) throws IOException {
 		output = out;
 		initBuffer();
-		dataBuffer.writeByte(func_code);
+		dataBuffer.writeByte(func_code.getCode());
 	}
 
-	void newRequest(byte func_code) throws IOException {
+	void newRequest(UFunctionCode func_code) throws IOException {
 		output = u_con.getOutputStream();
 		initBuffer();
-		dataBuffer.writeByte(func_code);
+		dataBuffer.writeByte(func_code.getCode());
 	}
 
 	int addInt(int intValue) throws IOException {

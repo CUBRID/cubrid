@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -64,6 +65,7 @@
 #include "utility.h"
 #include "tsc_timer.h"
 #include "dbtype.h"
+#include "jsp_cl.h"
 
 #if defined(WINDOWS)
 #include "file_io.h"		/* needed for _wyield() */
@@ -1917,7 +1919,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	      csql_Num_failures += 1;
 
 	      free_attr_spec (&attr_spec);
-
+	      jsp_send_destroy_request_all ();
 	      continue;
 	    }
 	  goto error;
@@ -2063,7 +2065,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
   return csql_Num_failures;
 
 error:
-
+  jsp_send_destroy_request_all ();
   display_error (session, stmt_start_line_no);
   if (do_abort_transaction)
     {

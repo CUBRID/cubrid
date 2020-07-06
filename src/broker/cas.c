@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -853,6 +854,7 @@ cas_main (void)
   unset_hang_check_time ();
 
   as_info->service_ready_flag = TRUE;
+  as_info->fn_status = FN_STATUS_CONN;
   as_info->con_status = CON_STATUS_IN_TRAN;
   as_info->transaction_start_time = time (0);
   as_info->cur_keep_con = KEEP_CON_DEFAULT;
@@ -898,6 +900,7 @@ cas_main (void)
 #if defined(WINDOWS)
 	as_info->uts_status = UTS_STATUS_BUSY;
 #endif /* WINDOWS */
+	as_info->fn_status = FN_STATUS_BUSY;
 	as_info->con_status = CON_STATUS_IN_TRAN;
 	as_info->transaction_start_time = time (0);
 	errors_in_transaction = 0;
@@ -1193,6 +1196,7 @@ cas_main (void)
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 	    session_id = db_get_session_id ();
+	    as_info->session_id = session_id;
 
 	    if (shm_appl->access_log == ON)
 	      {
@@ -1253,6 +1257,7 @@ cas_main (void)
 		signal (SIGUSR1, query_cancel);
 #endif /* !WINDOWS */
 		fn_ret = process_request (client_sock_fd, &net_buf, &req_info);
+		as_info->fn_status = FN_STATUS_DONE;
 #ifndef LIBCAS_FOR_JSP
 		is_first_request = false;
 #endif /* !LIBCAS_FOR_JSP */
@@ -1308,6 +1313,7 @@ cas_main (void)
 	CLOSE_SOCKET (client_sock_fd);
 
       finish_cas:
+	as_info->fn_status = FN_STATUS_IDLE;
 	set_hang_check_time ();
 #if defined(WINDOWS)
 	as_info->close_flag = 1;
@@ -1367,10 +1373,12 @@ libcas_main (SOCKET jsp_sock_fd)
 {
   T_NET_BUF net_buf;
   SOCKET client_sock_fd;
+  int status = FN_KEEP_CONN;
 
   memset (&req_info, 0, sizeof (req_info));
 
   req_info.client_version = CAS_PROTO_CURRENT_VER;
+  req_info.driver_info[DRIVER_INFO_CLIENT_TYPE] = (char) CAS_CLIENT_SERVER_SIDE_JDBC;
   req_info.driver_info[DRIVER_INFO_FUNCTION_FLAG] = (char) (BROKER_RENEWED_ERROR_CODE | BROKER_SUPPORT_HOLDABLE_RESULT);
   client_sock_fd = jsp_sock_fd;
 
@@ -1378,22 +1386,26 @@ libcas_main (SOCKET jsp_sock_fd)
   net_buf.data = (char *) MALLOC (NET_BUF_ALLOC_SIZE);
   if (net_buf.data == NULL)
     {
-      return 0;
+      return -1;
     }
   net_buf.alloc_size = NET_BUF_ALLOC_SIZE;
 
-  while (1)
+  while (status == FN_KEEP_CONN)
     {
-      if (process_request (client_sock_fd, &net_buf, &req_info) != FN_KEEP_CONN)
-	{
-	  break;
-	}
+      status = process_request (client_sock_fd, &net_buf, &req_info);
     }
 
   net_buf_clear (&net_buf);
   net_buf_destroy (&net_buf);
 
-  return 0;
+  if (status == FN_CLOSE_CONN)
+    {
+      return 0;
+    }
+  else
+    {
+      return -1;
+    }
 }
 
 void *
@@ -1961,6 +1973,10 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
     {
       ux_set_utype_for_json (CCI_U_TYPE_STRING);
     }
+#endif
+
+#ifndef LIBCAS_FOR_JSP
+  as_info->fn_status = FN_STATUS_BUSY;
 #endif
 
   net_buf->client_version = req_info->client_version;
