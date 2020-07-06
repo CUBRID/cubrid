@@ -1851,7 +1851,7 @@ file_apply_tde_to_class_files (const OID * class_oid)
  * NOTE:
  */
 int
-tde_get_data_keys (TDE_DATA_KEY_SET * dks)
+tde_get_data_keys_from_server ()
 {
 #if defined(CS_MODE)
   int error = ER_NET_CLIENT_DATA_RECEIVE;
@@ -1871,26 +1871,16 @@ tde_get_data_keys (TDE_DATA_KEY_SET * dks)
       ptr = or_unpack_int (ptr, &error);
       if (area_size > 0)
 	{
-	  ptr = or_unpack_stream (area, (char *) dks->perm_key, TDE_DATA_KEY_LENGTH);
-	  ptr = or_unpack_stream (ptr, (char *) dks->temp_key, TDE_DATA_KEY_LENGTH);
-	  ptr = or_unpack_stream (ptr, (char *) dks->log_key, TDE_DATA_KEY_LENGTH);
+	  ptr = or_unpack_stream (area, (char *) tde_Cipher.data_keys.perm_key, TDE_DATA_KEY_LENGTH);
+	  ptr = or_unpack_stream (ptr, (char *) tde_Cipher.data_keys.temp_key, TDE_DATA_KEY_LENGTH);
+	  ptr = or_unpack_stream (ptr, (char *) tde_Cipher.data_keys.log_key, TDE_DATA_KEY_LENGTH);
 	}
       free_and_init (area);
     }
 
   return error;
 #else /* CS_MODE */
-  int error = NO_ERROR;
-
-  THREAD_ENTRY *thread_p = enter_server ();
-
-  memcpy (dks->perm_key, tde_Cipher.data_keys.perm_key, TDE_DATA_KEY_LENGTH);
-  memcpy (dks->temp_key, tde_Cipher.data_keys.temp_key, TDE_DATA_KEY_LENGTH);
-  memcpy (dks->log_key, tde_Cipher.data_keys.log_key, TDE_DATA_KEY_LENGTH);
-
-  exit_server (*thread_p);
-
-  return error;
+  return NO_ERROR;
 #endif /* !CS_MODE */
 }
 

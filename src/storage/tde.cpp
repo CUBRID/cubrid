@@ -44,13 +44,9 @@
 #include "log_storage.hpp"
 #include "tde.hpp"
 
-#if defined(CS_MODE)
-TDE_DATA_KEY_SET tde_Data_keys; /* data keys for copylogdb, applylogdb from server */
-#endif /* CS_MODE */
-
-#if !defined(CS_MODE)
 TDE_CIPHER tde_Cipher; // global var for TDE Module
 
+#if !defined(CS_MODE)
 static OID tde_Keyinfo_oid;	/* Location of keys */
 static HFID tde_Keyinfo_hfid;
 
@@ -811,11 +807,7 @@ tde_encrypt_log_page (const LOG_PAGE *logpage_plain, LOG_PAGE *logpage_cipher, T
 
   memset (nonce, 0, TDE_LOG_PAGE_NONCE_LENGTH);
 
-#if !defined(CS_MODE)
   data_key = tde_Cipher.data_keys.log_key;
-#else
-  data_key = tde_Data_keys.log_key;
-#endif /* !CS_MODE */
 
   memcpy (nonce, &logpage_plain->hdr.logical_pageid, sizeof (logpage_plain->hdr.logical_pageid));
 
@@ -837,11 +829,7 @@ tde_decrypt_log_page (const LOG_PAGE *logpage_cipher, LOG_PAGE *logpage_plain, T
 
   memset (nonce, 0, TDE_LOG_PAGE_NONCE_LENGTH);
 
-#if !defined(CS_MODE)
   data_key = tde_Cipher.data_keys.log_key;
-#else
-  data_key = tde_Data_keys.log_key;
-#endif /* !CS_MODE */
 
   memcpy (nonce, &logpage_cipher->hdr.logical_pageid, sizeof (logpage_cipher->hdr.logical_pageid));
 

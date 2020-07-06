@@ -161,8 +161,6 @@ LOGWR_GLOBAL logwr_Gl = {
   /* start_pageid */
   -2,
   /* reinit_copylog */
-  false,
-  /* tde_dks_loaded */
   false
 };
 // *INDENT-ON*
@@ -887,7 +885,7 @@ logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
 		{
 		  logwr_set_tde_algorithm (NULL, log_pgptr, tde_algo);
 
-		  while (!logwr_Gl.tde_dks_loaded)
+		  while (!tde_Cipher.is_loaded)
 		    {
 		      if (logwr_request_tde_dks_from_la () != NO_ERROR)
 			{
@@ -941,7 +939,7 @@ logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
 	    {
 	      logwr_set_tde_algorithm (NULL, log_pgptr, tde_algo);
 
-	      while (!logwr_Gl.tde_dks_loaded)
+	      while (!tde_Cipher.is_loaded)
 		{
 		  if (logwr_request_tde_dks_from_la () != NO_ERROR)
 		    {
@@ -1832,17 +1830,17 @@ logwr_request_tde_dks_from_la (void)
     }
 
   write (client_sockfd, "GET", 3);
-  rv = read (client_sockfd, &dks, sizeof (tde_Data_keys));
-  if (rv != sizeof (tde_Data_keys))
+  rv = read (client_sockfd, &dks, sizeof (TDE_DATA_KEY_SET));
+  if (rv != sizeof (TDE_DATA_KEY_SET))
     {
       return -1;		//TODO error
     }
 
-  memcpy (tde_Data_keys.perm_key, dks.perm_key, TDE_DATA_KEY_LENGTH);
-  memcpy (tde_Data_keys.temp_key, dks.temp_key, TDE_DATA_KEY_LENGTH);
-  memcpy (tde_Data_keys.log_key, dks.log_key, TDE_DATA_KEY_LENGTH);
+  memcpy (tde_Cipher.data_keys.perm_key, dks.perm_key, TDE_DATA_KEY_LENGTH);
+  memcpy (tde_Cipher.data_keys.temp_key, dks.temp_key, TDE_DATA_KEY_LENGTH);
+  memcpy (tde_Cipher.data_keys.log_key, dks.log_key, TDE_DATA_KEY_LENGTH);
 
-  logwr_Gl.tde_dks_loaded = true;
+  tde_Cipher.is_loaded = true;
 
   close (client_sockfd);
   return NO_ERROR;

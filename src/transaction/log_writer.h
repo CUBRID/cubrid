@@ -109,9 +109,6 @@ struct logwr_global
   LOG_PAGEID start_pageid;
 
   bool reinit_copylog;
-
-  /* whether TDE data keys have acquired from log applier */
-  bool tde_dks_loaded;
 };
 
 #define LOGWR_AT_NEXT_ARCHIVE_PAGE_ID(pageid) \

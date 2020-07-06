@@ -78,11 +78,22 @@ enum tde_data_key_type
 typedef tde_data_key_type TDE_DATA_KEY_TYPE;
 
 #if defined(CS_MODE)
-extern TDE_DATA_KEY_SET tde_Data_keys;
-
 #define TDE_HA_SOCK_NAME ".ha_sock"
-
 #endif /* CS_MODE */
+
+/*
+ * TDE module
+ */
+typedef struct tde_cipher
+{
+  bool is_loaded;
+  TDE_DATA_KEY_SET data_keys;
+#if !defined(CS_MODE)
+  std::atomic<std::int64_t> temp_write_counter; /* used as nonce for temp file page */
+#endif /* !CS_MODE */
+} TDE_CIPHER;
+
+extern TDE_CIPHER tde_Cipher;
 
 #if !defined(CS_MODE)
 /*
@@ -96,19 +107,6 @@ typedef struct tde_keyinfo
   unsigned char dk_temp[TDE_DATA_KEY_LENGTH];
   unsigned char dk_log[TDE_DATA_KEY_LENGTH];
 } TDE_KEYINFO;
-
-/*
- * TDE module
- */
-typedef struct tde_cipher
-{
-  bool is_loaded;
-  TDE_DATA_KEY_SET data_keys;
-
-  std::atomic<std::int64_t> temp_write_counter; // used as nonce for temp file page
-} TDE_CIPHER;
-
-extern TDE_CIPHER tde_Cipher;
 
 /* Is log record contains User Data */
 #define LOG_CONTAINS_USER_DATA(rcvindex) \

@@ -346,7 +346,6 @@ struct la_info
 
   bool reinit_copylog;
 
-  bool tde_dks_loaded;
   int tde_sock_for_dks;		/* unix socket for sharing TDE Data keys with copylogd */
 };
 
@@ -6827,7 +6826,6 @@ la_init (const char *log_path, const int max_mem_size)
 
   la_Info.reinit_copylog = false;
 
-  la_Info.tde_dks_loaded = false;
   la_Info.tde_sock_for_dks = -1;
 
   return;
@@ -7960,11 +7958,11 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
   last_eof_time = time (NULL);
   LSA_SET_NULL (&last_eof_lsa);
 
-  if (!la_Info.tde_dks_loaded)
+  if (!tde_Cipher.is_loaded)
     {
       /* If the client is restarted, it keeps the data keys being used and socket for copylogdb
        * because data keys are never changed. */
-      error = tde_get_data_keys (&tde_Data_keys);
+      error = tde_get_data_keys_from_server ();
       if (error != NO_ERROR)
 	{
 	  // TODO error 
@@ -7976,7 +7974,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	  // TODO error 
 	  return error;
 	}
-      la_Info.tde_dks_loaded = true;
+      tde_Cipher.is_loaded = true;
     }
 
   /* start the main loop */
@@ -8561,7 +8559,7 @@ la_process_dk_request (void *arg)
 	  break;
 	}
       // TODO request validation?
-      write (client_sockfd, &tde_Data_keys, sizeof (tde_Data_keys));
+      write (client_sockfd, &tde_Cipher.data_keys, sizeof (tde_Cipher.data_keys));
       close (client_sockfd);
     }
 
