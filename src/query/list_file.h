@@ -93,13 +93,12 @@ struct qfile_list_cache_entry
 				 * MAX_NTRANS */
   size_t last_ta_idx;		/* index of the last element in TIDs array */
 #endif				/* SERVER_MODE */
+  XASL_CACHE_ENTRY *xcache_entry;	/* xasl_cache entry */
   const char *query_string;	/* query string; information purpose only */
   struct timeval time_created;	/* when this entry created */
   struct timeval time_last_used;	/* when this entry used lastly */
   int ref_count;		/* how many times this query used */
   bool deletion_marker;		/* this entry will be deleted if marker set */
-  QFILE_LIST_CACHE_ENTRY *lru_prev;
-  QFILE_LIST_CACHE_ENTRY *lru_next;
 };
 
 enum
@@ -159,7 +158,6 @@ extern int qfile_clear_cache_list (THREAD_ENTRY * thread_p, int list_ht_no);
 extern int qfile_clear_list_cache (THREAD_ENTRY * thread_p, int list_ht_no, bool release);
 extern int qfile_dump_list_cache_internal (THREAD_ENTRY * thread_p, FILE * fp);
 
-extern bool need_qfile_list_cache_cleanup (void);
 extern int qfile_list_cache_delete_candidate (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * victim);
 extern int qfile_list_cache_add_candidate (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * victim);
 extern int qfile_list_cache_adjust_candidate (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * victim);

@@ -136,7 +136,7 @@ QMGR_QUERY_TABLE qmgr_Query_table = { NULL, 0, NULL,
   {{PTHREAD_MUTEX_INITIALIZER, NULL, 0}, {PTHREAD_MUTEX_INITIALIZER, NULL, 0}}
 };
 
-void xcache_invalidate_qcaches (THREAD_ENTRY * thread_p, const OID * arg);
+int xcache_invalidate_qcaches (THREAD_ENTRY * thread_p, const OID * arg);
 
 #if !defined(SERVER_MODE)
 static struct drand48_data qmgr_rand_buf;
@@ -1380,6 +1380,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
     }
 
   /* if needed to invalidate query cache, invalidate the cache */
+#if 0
   if (qmgr_can_get_from_cache (*flag_p))
     {
       switch (xclone.xasl->type)
@@ -1394,7 +1395,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 	  break;
 	}
     }
-
+#endif
   if (qmgr_can_get_result_from_cache (*flag_p))
     {
       /* lookup the list cache with the parameter values (DB_VALUE array) */
@@ -1492,8 +1493,6 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 
       /* mark that the query is completed */
       qmgr_mark_query_as_completed (query_p);
-
-      qfile_list_cache_adjust_candidate (thread_p, xasl_cache_entry_p);
 
       goto end;			/* OK */
     }
@@ -2051,7 +2050,7 @@ qmgr_clear_relative_cache_entries (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tr
     {
       for (i = 0, class_oid_p = oid_block_p->oid_array; i < oid_block_p->last_oid_idx; i++, class_oid_p++)
 	{
-	  if (qexec_clear_list_cache_by_class (thread_p, class_oid_p) != NO_ERROR)
+	  if (xcache_invalidate_qcaches (thread_p, class_oid_p) != NO_ERROR)
 	    {
 	      er_log_debug (ARG_FILE_LINE,
 			    "qm_clear_trans_wakeup: qexec_clear_list_cache_by_class failed for class { %d %d %d }\n",
@@ -2110,7 +2109,9 @@ qmgr_clear_trans_wakeup (THREAD_ENTRY * thread_p, int tran_index, bool is_tran_d
   /* if the transaction is aborting, clear relative cache entries */
   if (tran_entry_p->modified_classes_p)
     {
+#if 0				/* will be deleted */
       if (is_abort)
+#endif
 	{
 	  qmgr_clear_relative_cache_entries (thread_p, tran_entry_p);
 	}

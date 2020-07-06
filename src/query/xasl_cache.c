@@ -445,6 +445,7 @@ xcache_entry_init (void *entry)
   /* Add here if anything should be initialized. */
   xcache_entry->related_objects = NULL;
   xcache_entry->ref_count = 0;
+  xcache_entry->clr_count = 0;
   xcache_entry->list_ht_no = -1;
 
   xcache_entry->sql_info.sql_hash_text = NULL;
@@ -1679,15 +1680,16 @@ error:
  * invalidate_check (in) : Invalidation check function.
  * arg (in)		 : Argument for invalidation check function.
  */
-void
+int
 xcache_invalidate_qcaches (THREAD_ENTRY * thread_p, const OID * oid)
 {
+  int res = NO_ERROR;
   bool finished = false;
   XASL_CACHE_ENTRY *xcache_entry = NULL;
 
   if (!xcache_Enabled)
     {
-      return;
+      return NO_ERROR;
     }
 
   xcache_hashmap_iterator iter = { thread_p, xcache_Hashmap };
@@ -1709,20 +1711,30 @@ xcache_invalidate_qcaches (THREAD_ENTRY * thread_p, const OID * oid)
 	      finished = true;
 	      break;
 	    }
+	  if (xcache_entry->list_ht_no < 0)
+	    {
+	      continue;
+	    }
 	  if (xcache_entry_is_related_to_oid (xcache_entry, oid))
 	    {
-	      qfile_list_cache_delete_candidate (thread_p, xcache_entry);
-	      qfile_clear_list_cache (thread_p, xcache_entry->list_ht_no, false);
+	      res = qfile_clear_list_cache (thread_p, xcache_entry->list_ht_no, false);
+	      if (res != NO_ERROR)
+		{
+		  finished = true;
+		  break;
+		}
 	      xcache_entry->list_ht_no = -1;
 	    }
 	}
     }
+
+  return res;
 }
 
 /*
  * xcache_invalidate_entries () - Invalidate all cache entries which pass the invalidation check. If there is no
  *				  invalidation check, all cache entries are removed.
- *
+qfile_clear_list_cache *
  * return		 : Void.
  * thread_p (in)	 : Thread entry.
  * invalidate_check (in) : Invalidation check function.
@@ -1768,8 +1780,6 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
 	  /* Check invalidation conditions. */
 	  if (invalidate_check == NULL || invalidate_check (xcache_entry, arg))
 	    {
-	      /* remove qfile cache entry related as list_ht_no */
-	      qfile_list_cache_delete_candidate (thread_p, xcache_entry);
 	      qfile_clear_list_cache (thread_p, xcache_entry->list_ht_no, false);
 	      xcache_entry->list_ht_no = -1;
 
@@ -2230,12 +2240,6 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
       else
 	{
 	  candidate = xcache_Cleanup_array[candidate_index];
-	}
-
-      if (candidate.xcache->list_ht_no >= 0)
-	{
-	  qfile_clear_list_cache (thread_p, candidate.xcache->list_ht_no, false);
-	  qfile_list_cache_delete_candidate (thread_p, candidate.xcache);
 	}
 
       /* Set intention to cleanup the entry. */
