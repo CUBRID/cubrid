@@ -1806,8 +1806,9 @@ logwr_request_tde_dks_from_la (void)
   int client_len;
   int client_sockfd;
   char sock_path[PATH_MAX];
-  int rv;
   TDE_DATA_KEY_SET dks;
+  char *bufptr;
+  int nbytes, len;
 
   struct sockaddr_un clientaddr;
 
@@ -1829,11 +1830,34 @@ logwr_request_tde_dks_from_la (void)
       return -1;		//TODO error
     }
 
-  write (client_sockfd, "GET", 3);
-  rv = read (client_sockfd, &dks, sizeof (TDE_DATA_KEY_SET));
-  if (rv != sizeof (TDE_DATA_KEY_SET))
+  bufptr = logwr_Gl.log_path;
+  len = PATH_MAX;
+  while (len > 0)
     {
-      return -1;		//TODO error
+      nbytes = write (client_sockfd, bufptr, len);
+      if (nbytes < 0)
+	{
+	  //TODO ERROR
+	  assert (false);
+	  break;
+	}
+      bufptr += nbytes;
+      len -= nbytes;
+    }
+
+  bufptr = (char *) &dks;
+  len = sizeof (TDE_DATA_KEY_SET);
+  while (len > 0)
+    {
+      nbytes = read (client_sockfd, bufptr, len);
+      if (nbytes < 0)
+	{
+	  //TODO ERROR
+	  assert (false);
+	  break;
+	}
+      bufptr += nbytes;
+      len -= nbytes;
     }
 
   memcpy (tde_Cipher.data_keys.perm_key, dks.perm_key, TDE_DATA_KEY_LENGTH);

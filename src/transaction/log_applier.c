@@ -7968,7 +7968,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	  // TODO error 
 	  return error;
 	}
-      error = la_open_sock_for_tde (log_path);
+      error = la_open_sock_for_tde ();
       if (error != NO_ERROR)
 	{
 	  // TODO error 
@@ -8488,7 +8488,7 @@ la_delay_replica (time_t eot_time)
 }
 
 int
-la_open_sock_for_tde (const char *log_path)
+la_open_sock_for_tde (void)
 {
   int server_sockfd;
   int rv;
@@ -8499,7 +8499,7 @@ la_open_sock_for_tde (const char *log_path)
 
   struct sockaddr_un serveraddr;
 
-  fileio_make_ha_sock_name (sock_path, log_path, TDE_HA_SOCK_NAME);
+  fileio_make_ha_sock_name (sock_path, la_Info.log_path, TDE_HA_SOCK_NAME);
 
   if (access (sock_path, F_OK) == 0)
     {
@@ -8544,7 +8544,9 @@ la_process_dk_request (void *arg)
   int client_sockfd, server_sockfd;
   unsigned int client_len;
   struct sockaddr_un clientaddr;
-  char buf[10];
+  char buf[PATH_MAX];
+  char *bufptr;
+  int nbytes, len;
 
   server_sockfd = la_Info.tde_sock_for_dks;
 
@@ -8553,13 +8555,42 @@ la_process_dk_request (void *arg)
   while (1)
     {
       client_sockfd = accept (server_sockfd, (struct sockaddr *) &clientaddr, &client_len);
-      if (read (client_sockfd, buf, 10) <= 0)
+      bufptr = buf;
+      len = PATH_MAX;
+      while (len > 0)
 	{
-	  close (client_sockfd);
-	  break;
+	  nbytes = read (client_sockfd, bufptr, len);
+	  if (nbytes < 0)
+	    {
+	      // TODO ERROR
+	      assert (false);
+	      break;
+	    }
+	  bufptr += nbytes;
+	  len -= nbytes;
 	}
-      // TODO request validation?
-      write (client_sockfd, &tde_Cipher.data_keys, sizeof (tde_Cipher.data_keys));
+      if (memcmp (buf, la_Info.log_path, PATH_MAX) == 0)
+	{
+	  bufptr = (char *) &tde_Cipher.data_keys;
+	  len = sizeof (TDE_DATA_KEY_SET);
+	  while (len > 0)
+	    {
+	      nbytes = write (client_sockfd, bufptr, len);
+	      if (nbytes < 0)
+		{
+		  // TODO ERROR
+		  assert (false);
+		  break;
+		}
+	      bufptr += nbytes;
+	      len -= nbytes;
+	    }
+	}
+      else
+	{
+	  // wrong msg
+	  // TODO error notification logging
+	}
       close (client_sockfd);
     }
 
