@@ -346,6 +346,7 @@ struct la_info
 
   bool reinit_copylog;
 
+  bool tde_dks_loaded;
   int tde_sock_for_dks;		/* unix socket for sharing TDE Data keys with copylogd */
 };
 
@@ -6826,6 +6827,9 @@ la_init (const char *log_path, const int max_mem_size)
 
   la_Info.reinit_copylog = false;
 
+  la_Info.tde_dks_loaded = false;
+  la_Info.tde_sock_for_dks = -1;
+
   return;
 }
 
@@ -7956,11 +7960,23 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
   last_eof_time = time (NULL);
   LSA_SET_NULL (&last_eof_lsa);
 
-  error = la_open_sock_for_tde (log_path);
-  if (error != NO_ERROR)
+  if (!la_Info.tde_dks_loaded)
     {
-      // TODO error 
-      return error;
+      /* If the client is restarted, it keeps the data keys being used and socket for copylogdb
+       * because data keys are never changed. */
+      error = tde_get_data_keys (&tde_Data_keys);
+      if (error != NO_ERROR)
+	{
+	  // TODO error 
+	  return error;
+	}
+      error = la_open_sock_for_tde (log_path);
+      if (error != NO_ERROR)
+	{
+	  // TODO error 
+	  return error;
+	}
+      la_Info.tde_dks_loaded = true;
     }
 
   /* start the main loop */
