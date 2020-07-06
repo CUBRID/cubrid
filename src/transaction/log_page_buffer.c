@@ -426,6 +426,7 @@ logpb_initialize_log_buffer (LOG_BUFFER * log_buffer_p, LOG_PAGE * log_pg)
   log_buffer_p->logpage = log_pg;
   log_buffer_p->logpage->hdr.logical_pageid = NULL_PAGEID;
   log_buffer_p->logpage->hdr.offset = NULL_OFFSET;
+  log_buffer_p->logpage->hdr.dummy1 = 0;
 }
 
 /*
@@ -1692,6 +1693,7 @@ logpb_flush_header (THREAD_ENTRY * thread_p)
 
   log_Gl.loghdr_pgptr->hdr.logical_pageid = LOGPB_HEADER_PAGE_ID;
   log_Gl.loghdr_pgptr->hdr.offset = NULL_OFFSET;
+  log_Gl.loghdr_pgptr->hdr.dummy1 = 0;	/* Now flags in header page has always 0 value */
 
   logpb_write_page_to_disk (thread_p, log_Gl.loghdr_pgptr, LOGPB_HEADER_PAGE_ID);
 
@@ -5596,6 +5598,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
 
   malloc_arv_hdr_pgptr->hdr.logical_pageid = LOGPB_HEADER_PAGE_ID;
   malloc_arv_hdr_pgptr->hdr.offset = NULL_OFFSET;
+  malloc_arv_hdr_pgptr->hdr.dummy1 = 0;	/* Now flags in header page has always 0 value */
 
   /* Construct the archive log header */
   arvhdr = (LOG_ARV_HEADER *) malloc_arv_hdr_pgptr->area;
@@ -9127,6 +9130,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
   phy_pageid = LOGPB_PHYSICAL_HEADER_PAGE_ID + 1;
   to_malloc_log_pgptr->hdr.logical_pageid = 0;
   to_malloc_log_pgptr->hdr.offset = NULL_OFFSET;
+  to_malloc_log_pgptr->hdr.dummy1 = 0;
 
   eof = (LOG_RECORD_HEADER *) to_malloc_log_pgptr->area;
   eof->trid = LOG_SYSTEM_TRANID + 1;
@@ -9162,6 +9166,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
    */
   to_malloc_log_pgptr->hdr.logical_pageid = LOGPB_HEADER_PAGE_ID;
   to_malloc_log_pgptr->hdr.offset = NULL_OFFSET;
+  to_malloc_log_pgptr->hdr.dummy1 = 0;
 
   to_hdr = (LOG_HEADER *) to_malloc_log_pgptr->area;
   error_code = logpb_initialize_header (thread_p, to_hdr, to_prefix_logname, log_Gl.hdr.npages + 1, &db_creation);
