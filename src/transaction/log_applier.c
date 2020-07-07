@@ -8594,7 +8594,6 @@ la_process_dk_request (void *arg)
       close (client_sockfd);
     }
 
-  assert (true);
-  exit (-1);
+  assert (false);
   return (THREAD_RET_T) - 1;
 }
