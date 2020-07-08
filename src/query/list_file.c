@@ -388,6 +388,7 @@ qfile_list_cache_cleanup (THREAD_ENTRY * thread_p)
 }
 #endif
 
+#if 0
 /*
  * qfile_list_cache_del_victim -
  *   v(in): qfile list cache candidate index for victim
@@ -501,7 +502,7 @@ qfile_list_cache_adjust_candidate (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * v
 
   return NO_ERROR;
 }
-
+#endif
 
 /* qfile_modify_type_list () -
  *   return:
