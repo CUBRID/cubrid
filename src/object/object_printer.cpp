@@ -1045,21 +1045,20 @@ void object_printer::describe_class (struct db_object *class_op)
   if (sm_is_reuse_oid_class (class_op))
     {
       m_buf (" REUSE_OID");
-
-      if (class_descr.collation != NULL)
-	{
-	  m_buf += ',';
-	}
-      else
-	{
-	  m_buf += ' ';
-	}
+    }
+  else
+    {
+      m_buf (" USE_OID");
     }
 
   /* collation */
   if (class_descr.collation != NULL)
     {
-      m_buf (" COLLATE %s", class_descr.collation);
+      m_buf (", COLLATE %s", class_descr.collation);
+    }
+  else 
+    {
+      m_buf += ' ';
     }
 
   /* methods and class_methods */

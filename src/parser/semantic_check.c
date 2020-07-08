@@ -8194,7 +8194,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   DB_OBJECT *db_obj, *existing_entity;
   int found, partition_status = DB_NOT_PARTITIONED_CLASS;
   int collation_id, charset;
-  bool found_reuse_oid = false;
+  bool found_opt_oid = false, reuse_oid = true;
   bool found_auto_increment = false;
   bool found_tbl_comment = false;
   int error = NO_ERROR;
@@ -8216,8 +8216,9 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
       switch (tbl_opt->info.table_option.option)
 	{
 	case PT_TABLE_OPTION_REUSE_OID:
+	case PT_TABLE_OPTION_USE_OID:
 	  {
-	    if (found_reuse_oid)
+	    if (found_opt_oid)
 	      {
 		PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DUPLICATE_TABLE_OPTION,
 			    parser_print_tree (parser, tbl_opt));
@@ -8225,7 +8226,15 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	      }
 	    else
 	      {
-		found_reuse_oid = true;
+		found_opt_oid = true;
+		if (tbl_opt->info.table_option.option == PT_TABLE_OPTION_REUSE_OID) 
+		  {
+		    reuse_oid = true;
+		  }
+		else
+		  {
+		    reuse_oid = false;
+		  }
 	      }
 	  }
 	  break;
@@ -8358,7 +8367,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
     }
 
   /* enforce composition hierarchy restrictions on attr type defs */
-  pt_check_attribute_domain (parser, all_attrs, entity_type, name->info.name.original, found_reuse_oid, node);
+  pt_check_attribute_domain (parser, all_attrs, entity_type, name->info.name.original, reuse_oid, node);
 
   /* check that any and all super classes do exist */
   for (parent = node->info.create_entity.supclass_list; parent != NULL; parent = parent->next)

@@ -757,6 +757,9 @@ int yybuffer_pos;
 [rR][eE][uU][sS][eE]_[oO][iI][dD]					{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return REUSE_OID; }
+[uU][sS][eE]_[oO][iI][dD]						{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return USE_OID; }
 [rR][eE][vV][eE][rR][sS][eE]						{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return REVERSE; }

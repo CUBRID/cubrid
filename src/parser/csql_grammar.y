@@ -1663,6 +1663,7 @@ int g_original_buffer_len;
 %token <cptr> TRIGGERS
 %token <cptr> UCASE
 %token <cptr> UNCOMMITTED
+%token <cptr> USE_OID
 %token <cptr> VAR_POP
 %token <cptr> VAR_SAMP
 %token <cptr> VARIANCE
@@ -8808,6 +8809,13 @@ table_option
 		{{
 
 			$$ = pt_table_option (this_parser, PT_TABLE_OPTION_REUSE_OID, NULL);
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| USE_OID
+		{{
+
+			$$ = pt_table_option (this_parser, PT_TABLE_OPTION_USE_OID, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
@@ -22548,6 +22556,16 @@ identifier
 
 		DBG_PRINT}}
 	| REUSE_OID
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| USE_OID
 		{{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);

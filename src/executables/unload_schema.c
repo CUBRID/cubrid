@@ -1138,15 +1138,15 @@ emit_schema (print_output & output_ctx, DB_OBJLIST * classes, int do_auth, DB_OB
 	  if (sm_get_class_flag (cl->op, SM_CLASSFLAG_REUSE_OID) > 0)
 	    {
 	      output_ctx (" REUSE_OID");
-	      if (class_ != NULL)
-		{
-		  /* for printing collation */
-		  output_ctx (",");
-		}
+	    } 
+	  else
+	    {
+	      output_ctx (" USE_OID");
 	    }
+
 	  if (class_ != NULL)
 	    {
-	      output_ctx (" COLLATE %s", lang_get_collation_name (class_->collation_id));
+	      output_ctx (", COLLATE %s", lang_get_collation_name (class_->collation_id));
 	    }
 	}
 
