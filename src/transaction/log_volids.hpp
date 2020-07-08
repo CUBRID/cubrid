@@ -54,5 +54,7 @@ const VOLID LOG_DBLOG_ARCHIVE_VOLID = LOG_DBFIRST_VOLID - 20;
 const VOLID LOG_DBCOPY_VOLID = LOG_DBFIRST_VOLID - 19;
 /* Volid of double write buffer */
 const VOLID LOG_DBDWB_VOLID = LOG_DBFIRST_VOLID - 22;
+/* Volid of Transprent Data Encryption Keys (TDE Master keys) */
+const VOLID LOG_DBTDE_KEYS_VOLID = LOG_DBFIRST_VOLID - 23;
 
 #endif // !_LOG_VOLIDS_HPP_
