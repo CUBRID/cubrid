@@ -2052,7 +2052,7 @@ qmgr_clear_relative_cache_entries (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tr
     {
       for (i = 0, class_oid_p = oid_block_p->oid_array; i < oid_block_p->last_oid_idx; i++, class_oid_p++)
 	{
-	  if (xcache_invalidate_qcaches (thread_p, class_oid_p) != NO_ERROR)
+	  if (qexec_clear_list_cache_by_class (thread_p, class_oid_p) != NO_ERROR)
 	    {
 	      er_log_debug (ARG_FILE_LINE,
 			    "qm_clear_trans_wakeup: qexec_clear_list_cache_by_class failed for class { %d %d %d }\n",
