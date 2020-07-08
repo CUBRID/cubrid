@@ -5714,13 +5714,7 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
       /* determine the domain of this host var */
       regu->domain = NULL;
 
-      if (regu->domain == NULL && node->expected_domain)
-	{
-	  /* try to get domain infor from its expected_domain */
-	  regu->domain = node->expected_domain;
-	}
-
-      if (regu->domain == NULL && node->data_type)
+      if (node->data_type)
 	{
 	  /* try to get domain info from its data_type */
 	  regu->domain = pt_xasl_node_to_domain (parser, node);
@@ -5755,6 +5749,12 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
 	    {
 	      regu->domain = pt_xasl_type_enum_to_domain (pt_db_to_type_enum (typ));
 	    }
+	}
+
+      if (regu->domain == NULL && node->expected_domain)
+	{
+	  /* try to get domain infor from its expected_domain */
+	  regu->domain = node->expected_domain;
 	}
 
       if (regu->domain == NULL)
