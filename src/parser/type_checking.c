@@ -20310,7 +20310,8 @@ pt_coerce_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest, PT_TYPE
  *   data_type(in): the data type list of a (desired) set type or the data type of an object or NULL
  */
 int
-pt_coerce_value_explicit (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest, PT_TYPE_ENUM desired_type, PT_NODE * data_type)
+pt_coerce_value_explicit (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest, PT_TYPE_ENUM desired_type,
+			  PT_NODE * data_type)
 {
   return pt_coerce_value_internal (parser, src, dest, desired_type, data_type, false, false);
 }
