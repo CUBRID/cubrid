@@ -73,7 +73,7 @@ static int tde_get_keyinfo (THREAD_ENTRY *thread_p, TDE_KEYINFO *keyinfo, OID *k
 static int tde_update_keyinfo (THREAD_ENTRY *thread_p, const TDE_KEYINFO *keyinfo, OID *keyinfo_oid, HFID *hfid);
 static int tde_generate_keyinfo (TDE_KEYINFO *keyinfo, int mk_index, const unsigned char *master_key,
 				 const TDE_DATA_KEY_SET *dks);
-static int tde_create_keys_volume (THREAD_ENTRY *thread_p, const char *keys_path);
+static int tde_create_keys_volume (const char *db_fullpath);
 static int tde_load_mk (int vdes, const TDE_KEYINFO *keyinfo, unsigned char *master_key);
 static bool tde_validate_mk (const unsigned char *master_key, const unsigned char *mk_hash);
 static int tde_load_dks (const TDE_KEYINFO *keyinfo, const unsigned char *master_key);
@@ -109,18 +109,12 @@ tde_initialize (THREAD_ENTRY *thread_p, HFID *keyinfo_hfid)
   TDE_DATA_KEY_SET dks;
   int vdes = -1;
 
+  err = tde_create_keys_volume (boot_db_full_name());
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
   tde_make_keys_volume_fullname (mk_path, boot_db_full_name());
-  if (fileio_is_volume_exist (mk_path))
-    {
-      // er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_VOLUME_EXISTS, 1, extinfo->name);
-      return ER_BO_VOLUME_EXISTS;
-    }
-
-  if ((vdes = fileio_open (mk_path, O_CREAT | O_RDWR, 0600)) == -1)
-    {
-      return ER_BO_CANNOT_CREATE_VOL;
-    }
-  close (vdes);
 
   vdes = fileio_mount (thread_p, boot_db_full_name (), mk_path, LOG_DBTDE_KEYS_VOLID, false, false);
   if (vdes == NULL_VOLDES)
@@ -131,7 +125,7 @@ tde_initialize (THREAD_ENTRY *thread_p, HFID *keyinfo_hfid)
   err = tde_make_mk (default_mk);
   if (err != NO_ERROR)
     {
-      return err;
+      goto exit;
     }
   tde_add_mk (vdes, TDE_DEFAULT_MK_INDEX, default_mk);
 
@@ -140,13 +134,13 @@ tde_initialize (THREAD_ENTRY *thread_p, HFID *keyinfo_hfid)
   err = tde_make_dk (dks.log_key);
   if (err != NO_ERROR)
     {
-      return err;
+      goto exit;
     }
 
-  err = tde_generate_keyinfo (&keyinfo, 1, default_mk, &dks);
+  err = tde_generate_keyinfo (&keyinfo, TDE_DEFAULT_MK_INDEX, default_mk, &dks);
   if (err != NO_ERROR)
     {
-      return err;
+      goto exit;
     }
 
   recdes.area_size = recdes.length = DB_SIZEOF (TDE_KEYINFO);
@@ -160,15 +154,17 @@ tde_initialize (THREAD_ENTRY *thread_p, HFID *keyinfo_hfid)
   err = heap_insert_logical (thread_p, &heapop_context, NULL);
   if (err != NO_ERROR)
     {
-      return err;
+      goto exit;
     }
 
   HFID_COPY (&tde_Keyinfo_hfid, keyinfo_hfid);
   COPY_OID (&tde_Keyinfo_oid, &heapop_context.res_oid);
 
 // TODO file unmount
+exit:
+  fileio_dismount (thread_p, vdes);
 
-  return NO_ERROR;
+  return err;
 }
 
 int
@@ -217,7 +213,103 @@ tde_cipher_initialize (THREAD_ENTRY *thread_p, const HFID *keyinfo_hfid)
 exit:
   fileio_dismount (thread_p, vdes);
 
+  return err;
+}
+
+static int
+tde_create_keys_volume (const char *db_full_name)
+{
+  char mk_path[PATH_MAX] = {0,};
+  int vdes = -1;
+  tde_make_keys_volume_fullname (mk_path, db_full_name);
+  if (fileio_is_volume_exist (mk_path))
+    {
+      // er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_VOLUME_EXISTS, 1, extinfo->name);
+      return ER_BO_VOLUME_EXISTS;
+    }
+
+  if ((vdes = fileio_open (mk_path, O_CREAT | O_RDWR, 0600)) == -1)
+    {
+      return ER_BO_CANNOT_CREATE_VOL;
+    }
+  fileio_close (vdes);
+
   return NO_ERROR;
+}
+
+int
+tde_copy_keys_volume (THREAD_ENTRY *thread_p, const char *to_db_fullname, const char *from_db_fullname)
+{
+  char mk_path[PATH_MAX] = {0,};
+  char buffer[4096];
+  int from_vdes = -1;
+  int to_vdes = -1;
+  int err = NO_ERROR;
+  int nread = -1;
+#if !defined(WINDOWS)
+  sigset_t new_mask, old_mask;
+#endif /* !WINDOWS */
+
+  tde_make_keys_volume_fullname (mk_path, from_db_fullname);
+
+  if (!fileio_is_volume_exist (mk_path))
+    {
+      // er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_VOLUME_EXISTS, 1, extinfo->name);
+      return ER_BO_VOLUME_EXISTS;
+    }
+  from_vdes = fileio_mount (thread_p, from_db_fullname, mk_path, LOG_DBTDE_KEYS_VOLID, 2, false);
+  if (from_vdes == NULL_VOLDES)
+    {
+      return ER_IO_MOUNT_FAIL;
+    }
+
+  tde_make_keys_volume_fullname (mk_path, to_db_fullname);
+
+  if (!fileio_is_volume_exist (mk_path))
+    {
+      err = tde_create_keys_volume (to_db_fullname);
+      if (err != NO_ERROR)
+	{
+	  fileio_dismount (thread_p, from_vdes);
+	  return err;
+	}
+    }
+  to_vdes = fileio_mount (thread_p, to_db_fullname, mk_path, LOG_DBTDE_KEYS_VOLID, 2, false);
+  if (to_vdes == NULL_VOLDES)
+    {
+      fileio_dismount (thread_p, from_vdes);
+      return ER_IO_MOUNT_FAIL;
+    }
+
+  while ((nread = read (from_vdes, buffer, 4096)) > 0)
+    {
+      char *out_ptr = buffer;
+      ssize_t nwritten = -1;
+
+      do
+	{
+	  nwritten = write (to_vdes, out_ptr, nread);
+
+	  if (nwritten >= 0)
+	    {
+	      nread -= nwritten;
+	      out_ptr += nwritten;
+	    }
+	  else if (errno != EINTR)
+	    {
+	      fileio_dismount (thread_p, from_vdes);
+	      fileio_unformat_and_rename (thread_p, mk_path, NULL);
+	      err = ER_IO_WRITE;
+	      return err;
+	    }
+	}
+      while (nread > 0);
+    }
+
+exit:
+  fileio_dismount (thread_p, from_vdes);
+  fileio_dismount (thread_p, to_vdes);
+  return err;
 }
 
 int
@@ -225,7 +317,6 @@ tde_add_mk (int vdes, int mk_index, const unsigned char *master_key)
 {
   int searched_idx = -1;
   int deleted_offset = -1;
-  char mk[TDE_MASTER_KEY_LENGTH] = {0,};
 #if !defined(WINDOWS)
   sigset_t new_mask, old_mask;
 #endif /* !WINDOWS */
@@ -269,7 +360,7 @@ tde_add_mk (int vdes, int mk_index, const unsigned char *master_key)
 
   /* add key */
   write (vdes, &mk_index, sizeof (mk_index));
-  write (vdes, &master_key, TDE_MASTER_KEY_LENGTH);
+  write (vdes, master_key, TDE_MASTER_KEY_LENGTH);
 
   fsync (vdes);
 
@@ -520,22 +611,6 @@ tde_generate_keyinfo (TDE_KEYINFO *keyinfo, int mk_index, const unsigned char *m
     }
 
   return err;
-}
-
-static int
-tde_create_keys_volume (THREAD_ENTRY *thread_p, const char *mk_path)
-{
-  int vdes = NULL_VOLDES;
-  int err = NO_ERROR;
-
-  vdes = fileio_mount (thread_p, boot_db_full_name (), mk_path, LOG_DBTDE_KEYS_VOLID, 0, false);
-  if (vdes == NULL_VOLDES)
-    {
-      return ER_IO_MOUNT_FAIL;
-    }
-  fileio_dismount (thread_p, vdes);
-
-  return NO_ERROR;
 }
 
 static int

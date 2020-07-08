@@ -9062,6 +9062,15 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
     }
 
   /*
+   * Create and Copy the TDE master key info (_keys)
+   */
+  error_code = tde_copy_keys_volume (thread_p, to_db_fullname, boot_db_full_name ());
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  /*
    * Create a LOG INFORMATION FILE
    */
 
