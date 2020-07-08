@@ -151,6 +151,7 @@ extern int tde_add_mk (int vdes, const int mk_index, const unsigned char *master
 extern int tde_change_mk (THREAD_ENTRY *thread_p, const int mk_index, const unsigned char *master_key);
 extern int tde_delete_mk (int vdes, const int mk_index);
 // extern int tde_dump_mks ();
+extern void tde_make_keys_volume_fullname (char *keys_vol_fullname, const char *db_full_name);
 
 /*
  * TDE functions for encrpytion and decryption

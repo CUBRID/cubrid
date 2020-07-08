@@ -9971,6 +9971,7 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *db_fulln
 		case LOG_DBLOG_INFO_VOLID:
 		case LOG_DBLOG_BKUPINFO_VOLID:
 		case LOG_DBLOG_ACTIVE_VOLID:
+		case LOG_DBTDE_KEYS_VOLID:
 		  continue;
 		default:
 		  fileio_unformat (thread_p, vol_fullname);
@@ -10004,8 +10005,12 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *db_fulln
 	}
     }
 
-  /* Destroy the database volume information */
+  /* destroy the database volume information */
   fileio_make_volume_info_name (vol_fullname, db_fullname);
+  fileio_unformat (thread_p, vol_fullname);
+
+  /* destroy the TDE keys volume information */
+  tde_make_keys_volume_fullname (vol_fullname, db_fullname);
   fileio_unformat (thread_p, vol_fullname);
 
   /* Destroy DWB, if still exists. */
