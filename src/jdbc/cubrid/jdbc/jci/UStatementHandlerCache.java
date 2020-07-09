@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation
- * Copyright (C) 2016 CUBRID Corporation 
+ * Copyright (C) 2016 CUBRID Corporation
  *
  * Redistribution and use in source and binary forms, with or without modification, 
  * are permitted provided that the following conditions are met: 
@@ -31,42 +31,46 @@
 
 package cubrid.jdbc.jci;
 
-public class UResCache {
-	UBindKey key;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map.Entry;
+import java.util.concurrent.ConcurrentHashMap;
 
-	private boolean used;
-	private UStatementCacheData cache_data;
+public class UStatementHandlerCache {
+	private ConcurrentHashMap<String, List<UStatementHandlerCacheEntry>> stmtHandlerCache;
 
-	public UResCache(UBindKey key) {
-		this.key = key;
-
-		cache_data = null;
-		used = true;
+	public UStatementHandlerCache() {
+		stmtHandlerCache = new ConcurrentHashMap<String, List<UStatementHandlerCacheEntry>> ();
 	}
 
-	public UStatementCacheData getCacheData() {
-		used = true;
-
-		return (new UStatementCacheData(cache_data));
+	public List<UStatementHandlerCacheEntry> getEntry (String sql) {
+		if (!stmtHandlerCache.containsKey(sql)) {
+			List<UStatementHandlerCacheEntry> vec = new ArrayList<UStatementHandlerCacheEntry>();
+			stmtHandlerCache.putIfAbsent(sql, vec);
+		}
+		
+		return stmtHandlerCache.get(sql);
 	}
-
-	public void saveCacheData(UStatementCacheData cd) {
-		if (cd.srvCacheTime <= 0)
-			return;
-
-		synchronized (this) {
-			if (cache_data == null || cd.srvCacheTime > cache_data.srvCacheTime) {
-				cache_data = cd;
+	
+	public void destroy () {
+		for (Entry<String, List<UStatementHandlerCacheEntry>> entry : stmtHandlerCache.entrySet()) {
+			List<UStatementHandlerCacheEntry> cacheEntries = entry.getValue();
+			for (UStatementHandlerCacheEntry e: cacheEntries) {
+				UStatement s = e.getStatement();
+				s.closeCursor();
+				s.close();
 			}
 		}
+		stmtHandlerCache.clear();
+		stmtHandlerCache = null;
 	}
-
-	boolean isExpired(long checkTime) {
-		if (cache_data != null && used == false) {
-			return true;
-		} else {
-//			used = false;
-			return false;
+	
+	public void clearStatus () {
+		for (Entry<String, List<UStatementHandlerCacheEntry>> entry : stmtHandlerCache.entrySet()) {
+			List<UStatementHandlerCacheEntry> cacheEntries = entry.getValue();
+			for (UStatementHandlerCacheEntry e: cacheEntries) {
+				e.setAvailable(true);
+			}
 		}
 	}
 }

@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation
- * Copyright (C) 2016 CUBRID Corporation 
+ * Copyright (C) 2016 CUBRID Corporation
  *
  * Redistribution and use in source and binary forms, with or without modification, 
  * are permitted provided that the following conditions are met: 
@@ -28,45 +28,25 @@
  * OF SUCH DAMAGE. 
  *
  */
+package com.cubrid.jsp;
 
-package cubrid.jdbc.jci;
-
-public class UResCache {
-	UBindKey key;
-
-	private boolean used;
-	private UStatementCacheData cache_data;
-
-	public UResCache(UBindKey key) {
-		this.key = key;
-
-		cache_data = null;
-		used = true;
+public enum ExecuteThreadStatus {
+	
+	IDLE (0),
+	PARSE (1),
+	INVOKE (2),
+	CALL (3),
+	RESULT (4),
+	DESTROY (5),
+	ERROR (-1),
+	END (-2);
+	
+	private int status;
+	ExecuteThreadStatus(int status) {
+		this.status = status;
 	}
-
-	public UStatementCacheData getCacheData() {
-		used = true;
-
-		return (new UStatementCacheData(cache_data));
-	}
-
-	public void saveCacheData(UStatementCacheData cd) {
-		if (cd.srvCacheTime <= 0)
-			return;
-
-		synchronized (this) {
-			if (cache_data == null || cd.srvCacheTime > cache_data.srvCacheTime) {
-				cache_data = cd;
-			}
-		}
-	}
-
-	boolean isExpired(long checkTime) {
-		if (cache_data != null && used == false) {
-			return true;
-		} else {
-//			used = false;
-			return false;
-		}
+	
+	public int getValue() {
+		return this.status;
 	}
 }

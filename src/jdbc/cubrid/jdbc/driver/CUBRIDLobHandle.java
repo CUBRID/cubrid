@@ -36,37 +36,43 @@ public class CUBRIDLobHandle {
 	private byte[] packedLobHandle;
 	private String locator;
 
-	public CUBRIDLobHandle(int lobType, byte[] packedLobHandle) {
+	public CUBRIDLobHandle(int lobType, byte[] packedLobHandle, boolean isLobLocator) {
 		this.lobType = lobType;
 		this.packedLobHandle = packedLobHandle;
-		initLob();
+		initLob(isLobLocator);
 	}
 
-	private void initLob() {
+	private void initLob(boolean isLobLocator) {
 		int pos = 0;
 
 		if (packedLobHandle == null) {
 			throw new NullPointerException();
 		}
 
-		pos += 4; // skip db_type
+		if (isLobLocator == true) {
+			pos += 4; // skip db_type
 
-		lobSize = 0;
-		for (int i = pos; i < pos + 8; i++) {
-			lobSize <<= 8;
-			lobSize |= (packedLobHandle[i] & 0xff);
+			lobSize = 0;
+			for (int i = pos; i < pos + 8; i++) {
+				lobSize <<= 8;
+				lobSize |= (packedLobHandle[i] & 0xff);
+			}
+			pos += 8; // lob_size
+
+			int locatorSize = 0;
+			for (int i = pos; i < pos + 4; i++) {
+				locatorSize <<= 8;
+				locatorSize |= (packedLobHandle[i] & 0xff);
+			}
+			pos += 4; // locator_size
+
+			locator = new String(packedLobHandle, pos, locatorSize - 1);
+			// remove terminating null character
+		} else
+		{
+			lobSize = packedLobHandle.length;
+			locator = packedLobHandle.toString();
 		}
-		pos += 8; // lob_size
-
-		int locatorSize = 0;
-		for (int i = pos; i < pos + 4; i++) {
-			locatorSize <<= 8;
-			locatorSize |= (packedLobHandle[i] & 0xff);
-		}
-		pos += 4; // locator_size
-
-		locator = new String(packedLobHandle, pos, locatorSize - 1);
-		// remove terminating null character
 	}
 
 	public void setLobSize(long size) {
