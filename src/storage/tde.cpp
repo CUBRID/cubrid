@@ -271,7 +271,7 @@ tde_copy_keys_volume (THREAD_ENTRY *thread_p, const char *to_db_fullname, const 
 	  return err;
 	}
     }
-  to_vdes = fileio_mount (thread_p, to_db_fullname, mk_path, LOG_DBTDE_KEYS_VOLID, 2, false);
+  to_vdes = fileio_mount (thread_p, to_db_fullname, mk_path, LOG_DBCOPY_VOLID, 2, false);
   if (to_vdes == NULL_VOLDES)
     {
       fileio_dismount (thread_p, from_vdes);
