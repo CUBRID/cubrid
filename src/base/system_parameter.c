@@ -682,7 +682,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_GENERAL_RESERVE_01 "general_reserve_01"
 
-#define PRM_NAME_TB_REUSEOID "table_opt_reuseoid"
+#define PRM_NAME_TB_REUSEOID "use_reuseoid_table"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
