@@ -246,9 +246,6 @@ tde_copy_keys_volume (THREAD_ENTRY *thread_p, const char *to_db_fullname, const 
   int to_vdes = -1;
   int err = NO_ERROR;
   int nread = -1;
-#if !defined(WINDOWS)
-  sigset_t new_mask, old_mask;
-#endif /* !WINDOWS */
 
   tde_make_keys_volume_fullname (mk_path, from_db_fullname);
 
