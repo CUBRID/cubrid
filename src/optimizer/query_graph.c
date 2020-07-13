@@ -6001,7 +6001,7 @@ qo_discover_edges (QO_ENV * env)
  * --+-----+---------------------+----------+---------------+------------------
  * O1|ON   |TC_sarg(on_conn)     |!Right    |!Outer(ex R_on)|TC_sarg(ow TC_dj)
  * O2|ON   |TC_join              |term_tail=|=on_node       |TC_join(ow O3)
- * O3|ON   |TC_other(n>0,on_conn)|-         |!Outer(ex R_on)|TC_other(ow TC_dj)
+ * O3|ON   |TC_other(n>0,on_conn)|-         |!Outer(ex R_on)|TC_dj
  * O4|ON   |TC_other(n==0)       |-         |-              |TC_dj
  * W1|WHERE|TC_sarg              |!Left     |!Right         |TC_sarg(ow TC_aj)
  * W2|WHERE|TC_join              |!Outer    |!Right         |TC_join(ow TC_aj)
@@ -6062,9 +6062,7 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 	    }
 
 	  /* is explicit outer-joined ON cond */
-	  QO_ASSERT (env, QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_LEFT_OUTER
-		     || QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_RIGHT_OUTER
-		     || QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_FULL_OUTER);
+	  QO_ASSERT (env, QO_NODE_IS_OUTER_JOIN (on_node));
 	}
       else
 	{
@@ -6122,9 +6120,7 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 	    }
 	  else
 	    {
-	      if (QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_LEFT_OUTER
-		  || QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_RIGHT_OUTER
-		  || QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_FULL_OUTER)
+	      if (QO_NODE_IS_OUTER_JOIN (node))
 		{
 		  QO_TERM_CLASS (term) = QO_TC_AFTER_JOIN;
 
@@ -6143,13 +6139,14 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 
 	      if (QO_ON_COND_TERM (term))
 		{
-		  ;		/* no restriction on nidx_self; go ahead */
+		  if (QO_NODE_IS_OUTER_JOIN (node))
+		    {
+		      QO_TERM_CLASS (term) = QO_TC_DURING_JOIN;
+		    }
 		}
 	      else
 		{
-		  if (QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_LEFT_OUTER
-		      || QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_RIGHT_OUTER
-		      || QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_FULL_OUTER)
+		  if (QO_NODE_IS_OUTER_JOIN (node))
 		    {
 		      QO_TERM_CLASS (term) = QO_TC_AFTER_JOIN;
 		    }

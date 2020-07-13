@@ -409,6 +409,11 @@ struct qo_node
    && QO_NODE_INFO_SMCLASS(node)->partition != NULL	\
    && QO_NODE_INFO_SMCLASS(node)->users != NULL)
 
+#define QO_NODE_IS_OUTER_JOIN(node) \
+  (QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_LEFT_OUTER  || \
+   QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_RIGHT_OUTER || \
+   QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_FULL_OUTER)
+
 struct qo_segment
 {
   /*
