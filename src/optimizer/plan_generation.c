@@ -60,7 +60,6 @@ static XASL_NODE *add_subqueries (QO_ENV * env, XASL_NODE * xasl, BITSET *);
 static XASL_NODE *add_sort_spec (QO_ENV *, XASL_NODE *, QO_PLAN *, DB_VALUE *, bool);
 static XASL_NODE *add_if_predicate (QO_ENV *, XASL_NODE *, PT_NODE *);
 static XASL_NODE *add_after_join_predicate (QO_ENV *, XASL_NODE *, PT_NODE *);
-static XASL_NODE *add_instnum_predicate (QO_ENV *, XASL_NODE *, PT_NODE *);
 
 static PT_NODE *make_pred_from_bitset (QO_ENV * env, BITSET * predset, ELIGIBILITY_FN safe);
 static void make_pred_from_plan (QO_ENV * env, QO_PLAN * plan, PT_NODE ** key_access_pred, PT_NODE ** access_pred,
@@ -678,7 +677,7 @@ init_list_scan_proc (QO_ENV * env, XASL_NODE * xasl, XASL_NODE * listfile, PT_NO
 
       xasl = add_if_predicate (env, xasl, if_pred);
       xasl = add_after_join_predicate (env, xasl, after_join_pred);
-      xasl = add_instnum_predicate (env, xasl, instnum_pred);
+      xasl = pt_to_instnum_pred (QO_ENV_PARSER (env), xasl, instnum_pred);
 
       /* free pointer node list */
       parser_free_tree (QO_ENV_PARSER (env), access_pred);
@@ -753,7 +752,7 @@ add_access_spec (QO_ENV * env, XASL_NODE * xasl, QO_PLAN * plan)
     }
 
   xasl = add_if_predicate (env, xasl, if_pred);
-  xasl = add_instnum_predicate (env, xasl, instnum_pred);
+  xasl = pt_to_instnum_pred (QO_ENV_PARSER (env), xasl, instnum_pred);
 
 success:
 
@@ -926,7 +925,7 @@ add_sort_spec (QO_ENV * env, XASL_NODE * xasl, QO_PLAN * plan, DB_VALUE * ordby_
 	  PT_NODE *instnum_pred;
 
 	  instnum_pred = make_instnum_pred_from_plan (env, plan);
-	  xasl = add_instnum_predicate (env, xasl, instnum_pred);
+	  xasl = pt_to_instnum_pred (QO_ENV_PARSER (env), xasl, instnum_pred);
 	  /* free pointer node list */
 	  parser_free_tree (QO_ENV_PARSER (env), instnum_pred);
 	}
@@ -1019,27 +1018,6 @@ add_after_join_predicate (QO_ENV * env, XASL_NODE * xasl, PT_NODE * pred)
     {
       parser = QO_ENV_PARSER (env);
       xasl->after_join_pred = pt_to_pred_expr (parser, pred);
-    }
-
-  return xasl;
-}
-
-static XASL_NODE *
-add_instnum_predicate (QO_ENV * env, XASL_NODE * xasl, PT_NODE * pred)
-{
-  PARSER_CONTEXT *parser;
-  int flag;
-
-  if (xasl && pred)
-    {
-      parser = QO_ENV_PARSER (env);
-
-      flag = 0;
-      xasl->instnum_pred = pt_to_pred_expr_with_arg (parser, pred, &flag);
-      if (flag & PT_PRED_ARG_INSTNUM_CONTINUE)
-	{
-	  xasl->instnum_flag = XASL_INSTNUM_FLAG_SCAN_CONTINUE;
-	}
     }
 
   return xasl;
