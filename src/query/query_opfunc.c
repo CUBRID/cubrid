@@ -633,12 +633,12 @@ qdata_set_valptr_list_unbound (THREAD_ENTRY * thread_p, valptr_list_node * valpt
 	    {
 	      /* this may be shared with another regu variable that was already evaluated */
 	      pr_clear_value (dbval_p);
-	    }
 
-	  if (db_value_domain_init (dbval_p, DB_VALUE_DOMAIN_TYPE (dbval_p), DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE) !=
-	      NO_ERROR)
-	    {
-	      return ER_FAILED;
+	      if (db_value_domain_init (dbval_p, DB_VALUE_DOMAIN_TYPE (dbval_p), DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE)
+		  != NO_ERROR)
+		{
+		  return ER_FAILED;
+		}
 	    }
 	}
 
