@@ -7365,6 +7365,9 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
   bool beenwarned;
   bool isincremental = false;	/* Assume full backups */
   bool bkup_in_progress = false;
+
+  char mk_path[PATH_MAX] = { 0, };
+  int keys_vdes = NULL_VOLDES;
 #if defined(SERVER_MODE)
   int rv;
   time_t wait_checkpoint_begin_time;
@@ -7412,6 +7415,15 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
       allbackup_path = real_pathbuf;
     }
 #endif
+
+  /* tde key file has to be mounted to access exclusively with TDE Utility */
+  tde_make_keys_volume_fullname (mk_path, log_Db_fullname);
+  keys_vdes = fileio_mount (thread_p, log_Db_fullname, mk_path, LOG_DBTDE_KEYS_VOLID, 2, false);
+  if (keys_vdes == NULL_VOLDES)
+    {
+      error_code = ER_IO_MOUNT_FAIL;
+      goto error;
+    }
 
   /* Initialization gives us some useful information about the backup location. */
   session.type = FILEIO_BACKUP_WRITE;	/* access backup device for write */
@@ -7814,6 +7826,14 @@ loop:
     }
   while (volid != NULL_VOLID);
 
+
+  error_code = fileio_backup_volume (thread_p, &session, mk_path, LOG_DBTDE_KEYS_VOLID, -1, false);
+  if (error_code != NO_ERROR)
+    {
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_BACKUP_CS_EXIT, 1, log_Name_active);
+      goto error;
+    }
+
 #if defined(SERVER_MODE)
   /*
    * Only when in client/server, we may need to force an archive
@@ -7997,6 +8017,8 @@ loop:
   LOG_CS_EXIT (thread_p);
 #endif /* SERVER_MODE */
 
+  fileio_dismount (thread_p, keys_vdes);
+
   return NO_ERROR;
 
   /* ********* */
@@ -8016,6 +8038,8 @@ error:
   log_Gl.backup_in_progress = false;
   LOG_CS_EXIT (thread_p);
 #endif /* SERVER_MODE */
+
+  fileio_dismount (thread_p, keys_vdes);
 
   return error_code;
 }
@@ -8407,6 +8431,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 		case LOG_DBLOG_INFO_VOLID:
 		case LOG_DBVOLINFO_VOLID:
 		case LOG_DBLOG_ARCHIVE_VOLID:
+		case LOG_DBTDE_KEYS_VOLID:
 
 		  /* We can only take the most recent information, and we do not want to overwrite it with out of data
 		   * information from earlier backups.  This is because we are applying the restoration in reverse time
