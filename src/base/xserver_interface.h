@@ -68,7 +68,8 @@ extern int xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIA
 extern int xboot_unregister_client (REFPTR (THREAD_ENTRY, thread_p), int tran_index);
 extern int xboot_backup (THREAD_ENTRY * thread_p, const char *backup_path, FILEIO_BACKUP_LEVEL backup_level,
 			 bool delete_unneeded_logarchives, const char *backup_verbose_file, int num_threads,
-			 FILEIO_ZIP_METHOD zip_method, FILEIO_ZIP_LEVEL zip_level, int skip_activelog, int sleep_msecs);
+			 FILEIO_ZIP_METHOD zip_method, FILEIO_ZIP_LEVEL zip_level, int skip_activelog, int sleep_msecs,
+			 bool seperate_keys);
 extern DISK_ISVALID xboot_checkdb_table (THREAD_ENTRY * thread_p, int check_flag, OID * oid, BTID * index_btid);
 extern int xboot_check_db_consistency (THREAD_ENTRY * thread_p, int check_flag, OID * oids, int num_oids,
 				       BTID * index_btid);

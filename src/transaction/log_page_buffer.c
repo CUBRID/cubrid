@@ -7340,7 +7340,8 @@ logpb_backup_for_volume (THREAD_ENTRY * thread_p, VOLID volid, LOG_LSA * chkpt_l
 int
 logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_path, FILEIO_BACKUP_LEVEL backup_level,
 	      bool delete_unneeded_logarchives, const char *backup_verbose_file_path, int num_threads,
-	      FILEIO_ZIP_METHOD zip_method, FILEIO_ZIP_LEVEL zip_level, int skip_activelog, int sleep_msecs)
+	      FILEIO_ZIP_METHOD zip_method, FILEIO_ZIP_LEVEL zip_level, int skip_activelog, int sleep_msecs,
+	      bool seperate_keys)
 {
   FILEIO_BACKUP_SESSION session;
   const char *from_vlabel;	/* Name of volume to backup (FROM) */
@@ -7826,12 +7827,23 @@ loop:
     }
   while (volid != NULL_VOLID);
 
-
-  error_code = fileio_backup_volume (thread_p, &session, mk_path, LOG_DBTDE_KEYS_VOLID, -1, false);
-  if (error_code != NO_ERROR)
+  if (seperate_keys == false)
     {
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_BACKUP_CS_EXIT, 1, log_Name_active);
-      goto error;
+      error_code = fileio_backup_volume (thread_p, &session, mk_path, LOG_DBTDE_KEYS_VOLID, -1, false);
+      if (error_code != NO_ERROR)
+	{
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_BACKUP_CS_EXIT, 1, log_Name_active);
+	  goto error;
+	}
+    }
+  else
+    {
+      /* Keep mounting mk file to be exclusive with other tools */
+      error_code = tde_copy_keys_volume (thread_p, session.bkup.name, log_Db_fullname, false, true);
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
     }
 
 #if defined(SERVER_MODE)
@@ -8017,7 +8029,10 @@ loop:
   LOG_CS_EXIT (thread_p);
 #endif /* SERVER_MODE */
 
-  fileio_dismount (thread_p, keys_vdes);
+  if (keys_vdes != NULL_VOLDES)
+    {
+      fileio_dismount (thread_p, keys_vdes);
+    }
 
   return NO_ERROR;
 
@@ -8039,7 +8054,10 @@ error:
   LOG_CS_EXIT (thread_p);
 #endif /* SERVER_MODE */
 
-  fileio_dismount (thread_p, keys_vdes);
+  if (keys_vdes != NULL_VOLDES)
+    {
+      fileio_dismount (thread_p, keys_vdes);
+    }
 
   return error_code;
 }
@@ -9089,7 +9107,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
   /*
    * Create and Copy the TDE master key info (_keys)
    */
-  error_code = tde_copy_keys_volume (thread_p, to_db_fullname, boot_db_full_name ());
+  error_code = tde_copy_keys_volume (thread_p, to_db_fullname, boot_db_full_name (), false, false);
   if (error_code != NO_ERROR)
     {
       goto error;

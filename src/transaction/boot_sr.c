@@ -3764,13 +3764,14 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
 int
 xboot_backup (THREAD_ENTRY * thread_p, const char *backup_path, FILEIO_BACKUP_LEVEL backup_level,
 	      bool delete_unneeded_logarchives, const char *backup_verbose_file, int num_threads,
-	      FILEIO_ZIP_METHOD zip_method, FILEIO_ZIP_LEVEL zip_level, int skip_activelog, int sleep_msecs)
+	      FILEIO_ZIP_METHOD zip_method, FILEIO_ZIP_LEVEL zip_level, int skip_activelog, int sleep_msecs,
+	      bool seperate_keys)
 {
   int error_code;
 
   error_code =
     logpb_backup (thread_p, boot_Db_parm->nvols, backup_path, backup_level, delete_unneeded_logarchives,
-		  backup_verbose_file, num_threads, zip_method, zip_level, skip_activelog, sleep_msecs);
+		  backup_verbose_file, num_threads, zip_method, zip_level, skip_activelog, sleep_msecs, seperate_keys);
   return error_code;
 }
 

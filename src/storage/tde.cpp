@@ -237,7 +237,8 @@ tde_create_keys_volume (const char *db_full_name)
 }
 
 int
-tde_copy_keys_volume (THREAD_ENTRY *thread_p, const char *to_db_fullname, const char *from_db_fullname)
+tde_copy_keys_volume (THREAD_ENTRY *thread_p, const char *to_db_fullname, const char *from_db_fullname,
+		      bool keep_to_mount, bool keep_from_mount)
 {
   char mk_path[PATH_MAX] = {0,};
   char buffer[4096];
@@ -575,7 +576,7 @@ tde_make_keys_volume_fullname (char *keys_vol_fullname, const char *db_full_name
   const char *base_name = NULL;
 
   mk_path = (char *) prm_get_string_value (PRM_ID_IO_KEYS_VOLUME_PATH);
-  if (ignore_parm == false && (mk_path == NULL || mk_path[0] == '\0'))
+  if (ignore_parm || mk_path == NULL || mk_path[0] == '\0')
     {
       fileio_make_keys_name (keys_vol_fullname, db_full_name);
     }
