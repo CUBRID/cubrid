@@ -160,7 +160,6 @@ tde_initialize (THREAD_ENTRY *thread_p, HFID *keyinfo_hfid)
   HFID_COPY (&tde_Keyinfo_hfid, keyinfo_hfid);
   COPY_OID (&tde_Keyinfo_oid, &heapop_context.res_oid);
 
-// TODO file unmount
 exit:
   fileio_dismount (thread_p, vdes);
 
