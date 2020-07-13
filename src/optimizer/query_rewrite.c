@@ -6687,12 +6687,17 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 	  if (limit != NULL)
 	    {
 	      PT_NODE *limit_node;
+	      bool single_tuple_bak;
 
 	      node->info.query.rewrite_limit = 0;
 
 	      /* to move limit clause to derived */
 	      limit_node = node->info.query.limit;
 	      node->info.query.limit = NULL;
+
+	      /* to move single tuple to derived */
+	      single_tuple_bak = node->info.query.single_tuple;
+	      node->info.query.single_tuple = false;
 
 	      derived = mq_rewrite_query_as_derived (parser, node);
 	      if (derived != NULL)
@@ -6706,7 +6711,7 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 
 		  node = derived;
 		}
-
+	      node->info.query.single_tuple = single_tuple_bak;
 	      node->info.query.limit = limit_node;
 	    }
 	}
