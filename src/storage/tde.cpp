@@ -114,7 +114,7 @@ tde_initialize (THREAD_ENTRY *thread_p, HFID *keyinfo_hfid)
     {
       return err;
     }
-  tde_make_keys_volume_fullname (mk_path, boot_db_full_name());
+  tde_make_keys_volume_fullname (mk_path, boot_db_full_name(), false);
 
   vdes = fileio_mount (thread_p, boot_db_full_name (), mk_path, LOG_DBTDE_KEYS_VOLID, false, false);
   if (vdes == NULL_VOLDES)
@@ -175,7 +175,7 @@ tde_cipher_initialize (THREAD_ENTRY *thread_p, const HFID *keyinfo_hfid)
   int err = NO_ERROR;
   int vdes = NULL_VOLDES;
 
-  tde_make_keys_volume_fullname (mk_path, boot_db_full_name());
+  tde_make_keys_volume_fullname (mk_path, boot_db_full_name(), false);
   vdes = fileio_mount (thread_p, boot_db_full_name (), mk_path, LOG_DBTDE_KEYS_VOLID, 2, false);
   if (vdes == NULL_VOLDES)
     {
@@ -220,7 +220,7 @@ tde_create_keys_volume (const char *db_full_name)
 {
   char mk_path[PATH_MAX] = {0,};
   int vdes = -1;
-  tde_make_keys_volume_fullname (mk_path, db_full_name);
+  tde_make_keys_volume_fullname (mk_path, db_full_name, false);
   if (fileio_is_volume_exist (mk_path))
     {
       // er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_VOLUME_EXISTS, 1, extinfo->name);
@@ -246,7 +246,7 @@ tde_copy_keys_volume (THREAD_ENTRY *thread_p, const char *to_db_fullname, const 
   int err = NO_ERROR;
   int nread = -1;
 
-  tde_make_keys_volume_fullname (mk_path, from_db_fullname);
+  tde_make_keys_volume_fullname (mk_path, from_db_fullname, false);
 
   if (!fileio_is_volume_exist (mk_path))
     {
@@ -259,7 +259,7 @@ tde_copy_keys_volume (THREAD_ENTRY *thread_p, const char *to_db_fullname, const 
       return ER_IO_MOUNT_FAIL;
     }
 
-  tde_make_keys_volume_fullname (mk_path, to_db_fullname);
+  tde_make_keys_volume_fullname (mk_path, to_db_fullname, true);
 
   if (!fileio_is_volume_exist (mk_path))
     {
@@ -569,13 +569,13 @@ tde_update_keyinfo (THREAD_ENTRY *thread_p, const TDE_KEYINFO *keyinfo, OID *key
 }
 
 void
-tde_make_keys_volume_fullname (char *keys_vol_fullname, const char *db_full_name)
+tde_make_keys_volume_fullname (char *keys_vol_fullname, const char *db_full_name, bool ignore_parm)
 {
   char *mk_path = NULL;
   const char *base_name = NULL;
 
   mk_path = (char *) prm_get_string_value (PRM_ID_IO_KEYS_VOLUME_PATH);
-  if (mk_path == NULL || mk_path[0] == '\0')
+  if (ignore_parm == false && (mk_path == NULL || mk_path[0] == '\0'))
     {
       fileio_make_keys_name (keys_vol_fullname, db_full_name);
     }

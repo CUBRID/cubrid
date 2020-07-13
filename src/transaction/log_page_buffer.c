@@ -7417,7 +7417,7 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
 #endif
 
   /* tde key file has to be mounted to access exclusively with TDE Utility */
-  tde_make_keys_volume_fullname (mk_path, log_Db_fullname);
+  tde_make_keys_volume_fullname (mk_path, log_Db_fullname, false);
   keys_vdes = fileio_mount (thread_p, log_Db_fullname, mk_path, LOG_DBTDE_KEYS_VOLID, 2, false);
   if (keys_vdes == NULL_VOLDES)
     {
@@ -10044,7 +10044,7 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *db_fulln
   fileio_unformat (thread_p, vol_fullname);
 
   /* destroy the TDE keys volume information */
-  tde_make_keys_volume_fullname (vol_fullname, db_fullname);
+  tde_make_keys_volume_fullname (vol_fullname, db_fullname, false);
   fileio_unformat (thread_p, vol_fullname);
 
   /* Destroy DWB, if still exists. */
