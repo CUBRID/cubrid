@@ -499,6 +499,11 @@ int tde_change_mk (THREAD_ENTRY *thread_p, const int mk_index, const unsigned ch
     {
       return err;
     }
+
+  /* heap_flush() is mandatory. Without this, it cannot be guaranteed
+   * that the master key corresponding key info in heap exists in _keys file.
+   * By calling heap_flush at end of changing key, DBA can remove the previous key after it.
+   */
   heap_flush (thread_p, &tde_Keyinfo_oid);
 
   return err;
