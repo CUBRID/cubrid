@@ -414,7 +414,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_JAVA_STORED_PROCEDURE_RESERVE_01 "java_stored_procedure_reserve_01"
 
-#define PRM_NAME_ALLOW_TRUNCATED_STRING"allow_truncated_string"
+#define PRM_NAME_ALLOW_TRUNCATED_STRING "allow_truncated_string"
 
 #define PRM_NAME_COMPAT_PRIMARY_KEY "compat_primary_key"
 
