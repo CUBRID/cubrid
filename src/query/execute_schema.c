@@ -94,8 +94,8 @@ typedef enum
   SM_ATTR_CHG_NOT_NEEDED = 0,
   SM_ATTR_CHG_ONLY_SCHEMA = 1,
   SM_ATTR_CHG_WITH_ROW_UPDATE = 2,
-  SM_ATTR_CHG_BEST_EFFORT = 3	/* same as SM_ATTR_CHG_WITH_ROW_UPDATE, but there is a significant chance that the
-				 * operation will fail */
+  SM_ATTR_CHG_BEST_EFFORT = 3											       /* same as SM_ATTR_CHG_WITH_ROW_UPDATE, but there is a significant chance that the
+														        * operation will fail */
 } SM_ATTR_CHG_SOL;
 
 /* The ATT_CHG_XXX enum bit flags describe the status of an attribute specific
@@ -146,25 +146,25 @@ enum
 enum
 {
   P_NAME = 0,			/* name of attribute */
-  P_NOT_NULL,			/* constraint NOT NULL */
-  P_DEFAULT_VALUE,		/* DEFAULT VALUE of attribute */
-  P_ON_UPDATE_EXPR,		/* ON UPADTE default of attribute */
-  P_CONSTR_CHECK,		/* constraint CHECK */
-  P_DEFFERABLE,			/* DEFFERABLE */
-  P_ORDER,			/* ORDERING definition */
-  P_AUTO_INCR,			/* has AUTO INCREMENT */
-  P_CONSTR_FK,			/* constraint FOREIGN KEY */
-  P_S_CONSTR_PK,		/* constraint PRIMARY KEY only on one single column : the checked attribute */
-  P_M_CONSTR_PK,		/* constraint PRIMARY KEY on more columns, including checked attribute */
-  P_S_CONSTR_UNI,		/* constraint UNIQUE only on one single column : the checked attribute */
-  P_M_CONSTR_UNI,		/* constraint UNIQUE on more columns, including checked attribute */
-  P_CONSTR_NON_UNI,		/* has a non-unique index defined on it, should apply only for existing schema (as you
-				 * cannot add a non-index with ALTER CHANGE) */
-  P_PREFIX_INDEX,		/* has a prefix index defined on it, should apply only for existing schema (as you
-				 * cannot add a prefix index with ALTER CHANGE) */
-  P_TYPE,			/* type (domain) change */
-  P_IS_PARTITION_COL,		/* class has partitions */
-  P_COMMENT,			/* has comment */
+  P_NOT_NULL,													       /* constraint NOT NULL */
+  P_DEFAULT_VALUE,												       /* DEFAULT VALUE of attribute */
+  P_ON_UPDATE_EXPR,												       /* ON UPADTE default of attribute */
+  P_CONSTR_CHECK,												       /* constraint CHECK */
+  P_DEFFERABLE,													       /* DEFFERABLE */
+  P_ORDER,													       /* ORDERING definition */
+  P_AUTO_INCR,													       /* has AUTO INCREMENT */
+  P_CONSTR_FK,													       /* constraint FOREIGN KEY */
+  P_S_CONSTR_PK,												       /* constraint PRIMARY KEY only on one single column : the checked attribute */
+  P_M_CONSTR_PK,												       /* constraint PRIMARY KEY on more columns, including checked attribute */
+  P_S_CONSTR_UNI,												       /* constraint UNIQUE only on one single column : the checked attribute */
+  P_M_CONSTR_UNI,												       /* constraint UNIQUE on more columns, including checked attribute */
+  P_CONSTR_NON_UNI,												       /* has a non-unique index defined on it, should apply only for existing schema (as you
+														        * cannot add a non-index with ALTER CHANGE) */
+  P_PREFIX_INDEX,												       /* has a prefix index defined on it, should apply only for existing schema (as you
+														        * cannot add a prefix index with ALTER CHANGE) */
+  P_TYPE,													       /* type (domain) change */
+  P_IS_PARTITION_COL,												       /* class has partitions */
+  P_COMMENT,													       /* has comment */
   NUM_ATT_CHG_PROP
 };
 
@@ -484,7 +484,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  error = dbt_drop_query_spec (ctemplate, 1);
 	}
       else if (vlist->next == NULL)
-	{			/* ie, only one element in list */
+	{													       /* ie, only one element in list */
 	  error = dbt_drop_query_spec (ctemplate, vlist->info.value.data_value.i);
 	}
       else
@@ -1260,7 +1260,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	{
 	  constraint_family = SM_CONSTRAINT_NAME;
 	}
-      else			/* if (alter->info.alter.alter_clause. rename.element_type == PT_INDEX_NAME) */
+      else													       /* if (alter->info.alter.alter_clause. rename.element_type == PT_INDEX_NAME) */
 	{
 	  constraint_family = SM_INDEX_NAME;
 	}
@@ -3703,7 +3703,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
     }
 
   if (part_add == -1)
-    {				/* create or apply partition */
+    {														       /* create or apply partition */
       if (!alter_info)
 	{
 	  return NO_ERROR;
@@ -3906,7 +3906,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
 	}
     }
   else
-    {				/* RANGE or LIST */
+    {														       /* RANGE or LIST */
       char *part_name;
 
       for (; parts; parts = parts->next, part_cnt++)
@@ -3944,7 +3944,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
 	    }
 
 	  if (alter->info.alter.code == PT_REORG_PARTITION && parts->partition_pruned)
-	    {			/* reused partition */
+	    {													       /* reused partition */
 	      newpci->obj = ws_find_class (newpci->pname);
 	      if (newpci->obj == NULL)
 		{
@@ -4016,7 +4016,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
 		    }
 		  if (fmin->info.parts.values == NULL)
 		    {
-		      continue;	/* RANGE-MAXVALUE */
+		      continue;											       /* RANGE-MAXVALUE */
 		    }
 		  fmin_val = pt_value_to_db (parser, fmin->info.parts.values);
 		  if (fmin_val == NULL)
@@ -4398,7 +4398,7 @@ do_is_partitioned_subclass (int *is_partitioned, const char *classname, char *ke
 
   if (smclass->partition->pname != NULL)
     {
-      ret = 1;			/* partitioned sub-class */
+      ret = 1;													       /* partitioned sub-class */
     }
   else
     {
@@ -4603,10 +4603,10 @@ do_redistribute_partitions_data (const char *classname, const char *keyname, cha
   if (should_update)
     {
       query_size = 0;
-      query_size += 7;		/* 'UPDATE ' */
+      query_size += 7;												       /* 'UPDATE ' */
       query_size += strlen (classname) + 2;
-      query_size += 5;		/* ' SET ' */
-      query_size += strlen (keyname) * 2 + 6;	/* [keyname]=[keyname]; */
+      query_size += 5;												       /* ' SET ' */
+      query_size += strlen (keyname) * 2 + 6;									       /* [keyname]=[keyname]; */
       query_buf = (char *) malloc (query_size + 1);
       if (query_buf == NULL)
 	{
@@ -4792,7 +4792,7 @@ adjust_partition_range (DB_OBJLIST * objs)
 	}
 
       if (check_flag)
-	{			/* RANGE check */
+	{													       /* RANGE check */
 	  if (subclass->partition->partition_type != PT_PARTITION_RANGE)
 	    {
 	      break;
@@ -4802,7 +4802,7 @@ adjust_partition_range (DB_OBJLIST * objs)
 
       if (subclass->partition->expr != NULL)
 	{
-	  continue;		/* reorg deleted partition */
+	  continue;												       /* reorg deleted partition */
 	}
       error = set_get_element_nocopy (subclass->partition->values, 0, &minval);
       if (error != NO_ERROR)
@@ -4831,7 +4831,7 @@ adjust_partition_range (DB_OBJLIST * objs)
 	  ranges = new_range;
 	}
       else
-	{			/* sort ranges */
+	{													       /* sort ranges */
 	  for (rfind = ranges, prev_range = NULL; rfind; rfind = rfind->next)
 	    {
 	      if (DB_IS_NULL (rfind->max) || db_value_compare (rfind->max, new_range->max) == DB_GT)
@@ -4862,7 +4862,7 @@ adjust_partition_range (DB_OBJLIST * objs)
     {
       wrtval = NULL;
       if (prev_range == NULL)
-	{			/* Min value of first range is low infinite */
+	{													       /* Min value of first range is low infinite */
 	  if (!DB_IS_NULL (rfind->min))
 	    {
 	      db_make_null (&minval);
@@ -4877,7 +4877,7 @@ adjust_partition_range (DB_OBJLIST * objs)
 	    }
 	}
       if (wrtval != NULL)
-	{			/* adjust min value of range */
+	{													       /* adjust min value of range */
 	  dbc = set_create_sequence (0);
 	  if (dbc != NULL)
 	    {
@@ -5360,10 +5360,10 @@ do_create_partition_constraint (PT_NODE * alter, SM_CLASS * root_class, SM_CLASS
     {
       *attrnames = (char *) (*attp)->header.name;
       attrnames++;
-      asc_desc[i] = 0;		/* guess as Asc */
+      asc_desc[i] = 0;												       /* guess as Asc */
       if (DB_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (constraint->type) || key_type->is_desc)
 	{
-	  asc_desc[i] = 1;	/* Desc */
+	  asc_desc[i] = 1;											       /* Desc */
 	}
       i++;
       attp++;
@@ -5382,7 +5382,7 @@ do_create_partition_constraint (PT_NODE * alter, SM_CLASS * root_class, SM_CLASS
 
 	  if (alter_op == PT_REORG_PARTITION && parts->partition_pruned)
 	    {
-	      continue;		/* reused partition */
+	      continue;												       /* reused partition */
 	    }
 	  error = au_fetch_class (subclass_op, &subclass, AU_FETCH_READ, AU_SELECT);
 	  if (error != NO_ERROR)
@@ -8549,9 +8549,10 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   tbl_opt_charset = tbl_opt_coll = cs_node = coll_node = NULL;
   tbl_opt_comment = comment_node = NULL;
 
-  if (prm_get_bool_value (PRM_ID_TB_REUSEOID) == false) {
-    reuse_oid = false;
-  }
+  if (prm_get_bool_value (PRM_ID_TB_REUSEOID) == false)
+    {
+      reuse_oid = false;
+    }
 
   class_name = node->info.create_entity.entity_name->info.name.original;
 
@@ -8705,7 +8706,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
       break;
 
     default:
-      error = ER_GENERIC_ERROR;	/* a system error */
+      error = ER_GENERIC_ERROR;											       /* a system error */
       break;
     }
 
@@ -14830,7 +14831,7 @@ pt_node_to_partition_info (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * en
 	    }
 	}
       if (node->info.parts.values == NULL)
-	{			/* RANGE-MAXVALUE */
+	{													       /* RANGE-MAXVALUE */
 	  db_make_null (&val);
 	  set_add_element (dbc, &val);
 	}

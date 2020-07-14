@@ -87,7 +87,7 @@
 #include "perf_monitor.h"
 #include "fault_injection.h"
 #if defined (SERVER_MODE)
-#include "thread_manager.hpp"	// for thread_get_thread_entry_info
+#include "thread_manager.hpp"											       // for thread_get_thread_entry_info
 #endif // SERVER_MODE
 
 #if defined (SUPPRESS_STRLEN_WARNING)
@@ -702,42 +702,42 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 /*
  * Static flags
  */
-#define PRM_EMPTY_FLAG	    0x00000000	/* empty flag */
-#define PRM_USER_CHANGE     0x00000001	/* user can change, not implemented */
-#define PRM_FOR_CLIENT      0x00000002	/* is for client parameter */
-#define PRM_FOR_SERVER      0x00000004	/* is for server parameter */
-#define PRM_HIDDEN          0x00000008	/* is hidden */
-#define PRM_RELOADABLE      0x00000010	/* is reloadable */
-#define PRM_COMPOUND        0x00000020	/* sets the value of several others */
-#define PRM_TEST_CHANGE     0x00000040	/* can only be changed in the test mode */
-#define PRM_FOR_HA          0x00000080	/* is for heartbeat */
-#define PRM_FOR_SESSION	    0x00000100	/* is a session parameter - all client or client/server parameters that can be
-					 * changed on-line */
-#define PRM_FORCE_SERVER    0x00000200	/* client should get value from server */
-#define PRM_FOR_QRY_STRING  0x00000400	/* if a parameter can affect the plan generation it should be included in the
-					 * query string */
-#define PRM_CLIENT_SESSION  0x00000800	/* mark those client/server session parameters that should not affect the
-					 * server */
-#define PRM_SIZE_UNIT       0x00001000	/* has size unit interface */
-#define PRM_TIME_UNIT       0x00002000	/* has time unit interface */
-#define PRM_DIFFER_UNIT     0x00004000	/* parameter unit need to be changed */
-#define PRM_FOR_HA_CONTEXT  0x00008000	/* should be replicated into HA log applier */
+#define PRM_EMPTY_FLAG	    0x00000000										       /* empty flag */
+#define PRM_USER_CHANGE     0x00000001										       /* user can change, not implemented */
+#define PRM_FOR_CLIENT      0x00000002										       /* is for client parameter */
+#define PRM_FOR_SERVER      0x00000004										       /* is for server parameter */
+#define PRM_HIDDEN          0x00000008										       /* is hidden */
+#define PRM_RELOADABLE      0x00000010										       /* is reloadable */
+#define PRM_COMPOUND        0x00000020										       /* sets the value of several others */
+#define PRM_TEST_CHANGE     0x00000040										       /* can only be changed in the test mode */
+#define PRM_FOR_HA          0x00000080										       /* is for heartbeat */
+#define PRM_FOR_SESSION	    0x00000100										       /* is a session parameter - all client or client/server parameters that can be
+														        * changed on-line */
+#define PRM_FORCE_SERVER    0x00000200										       /* client should get value from server */
+#define PRM_FOR_QRY_STRING  0x00000400										       /* if a parameter can affect the plan generation it should be included in the
+														        * query string */
+#define PRM_CLIENT_SESSION  0x00000800										       /* mark those client/server session parameters that should not affect the
+														        * server */
+#define PRM_SIZE_UNIT       0x00001000										       /* has size unit interface */
+#define PRM_TIME_UNIT       0x00002000										       /* has time unit interface */
+#define PRM_DIFFER_UNIT     0x00004000										       /* parameter unit need to be changed */
+#define PRM_FOR_HA_CONTEXT  0x00008000										       /* should be replicated into HA log applier */
 
-#define PRM_GET_SERVER      0x00010000	/* return the value of server parameter from client/server parameter. Note that
-					 * this flag only can be set if the parameter has PRM_FOR_CLIENT,
-					 * PRM_FOR_SERVER, and PRM_USER_CHANGE flags. */
+#define PRM_GET_SERVER      0x00010000										       /* return the value of server parameter from client/server parameter. Note that
+														        * this flag only can be set if the parameter has PRM_FOR_CLIENT,
+														        * PRM_FOR_SERVER, and PRM_USER_CHANGE flags. */
 
-#define PRM_DEPRECATED      0x40000000	/* is deprecated */
-#define PRM_OBSOLETED       0x80000000	/* is obsoleted */
+#define PRM_DEPRECATED      0x40000000										       /* is deprecated */
+#define PRM_OBSOLETED       0x80000000										       /* is obsoleted */
 
 /*
  * Dynamic flags
  */
-#define PRM_SET             0x00000001	/* has been set */
-#define PRM_ALLOCATED       0x00000002	/* storage has been malloc'd */
-#define PRM_DEFAULT_USED    0x00000004	/* Default value has been used */
-#define PRM_DIFFERENT	    0x00000008	/* mark those parameters that have values different than their default.
-					 * currently used by parameters that should be printed to query string */
+#define PRM_SET             0x00000001										       /* has been set */
+#define PRM_ALLOCATED       0x00000002										       /* storage has been malloc'd */
+#define PRM_DEFAULT_USED    0x00000004										       /* Default value has been used */
+#define PRM_DIFFERENT	    0x00000008										       /* mark those parameters that have values different than their default.
+														        * currently used by parameters that should be printed to query string */
 
 /*
  * Macros to get data type
@@ -2475,7 +2475,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) prm_io_pages_to_size},
   {PRM_ID_PB_BUFFER_FLUSH_RATIO,
    PRM_NAME_PB_BUFFER_FLUSH_RATIO,
-   (PRM_FOR_SERVER | PRM_HIDDEN | PRM_USER_CHANGE),	/* todo: why user change? */
+   (PRM_FOR_SERVER | PRM_HIDDEN | PRM_USER_CHANGE),								       /* todo: why user change? */
    PRM_FLOAT,
    &prm_pb_buffer_flush_ratio_flag,
    (void *) &prm_pb_buffer_flush_ratio_default,
@@ -2574,7 +2574,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_BOSR_MAXTMP_PAGES,
-   PRM_NAME_BOSR_MAXTMP_PAGES,	/* todo: change me */
+   PRM_NAME_BOSR_MAXTMP_PAGES,											       /* todo: change me */
    (PRM_FOR_SERVER),
    PRM_INTEGER,
    &prm_bosr_maxtmp_flag,
@@ -2986,7 +2986,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_PTHREAD_SCOPE_PROCESS,
-   PRM_NAME_PTHREAD_SCOPE_PROCESS,	/* AIX only */
+   PRM_NAME_PTHREAD_SCOPE_PROCESS,										       /* AIX only */
    (PRM_FOR_SERVER),
    PRM_BOOLEAN,
    &prm_pthread_scope_process_flag,
@@ -6094,73 +6094,73 @@ static KEYVAL ha_repl_filter_type_words[] = {
 };
 
 static const char *compat_mode_values_PRM_ANSI_QUOTES[COMPAT_ORACLE + 2] = {
-  NULL,				/* COMPAT_CUBRID */
-  "no",				/* COMPAT_MYSQL */
-  NULL,				/* COMPAT_ORACLE */
+  NULL,														       /* COMPAT_CUBRID */
+  "no",														       /* COMPAT_MYSQL */
+  NULL,														       /* COMPAT_ORACLE */
   PRM_NAME_ANSI_QUOTES
 };
 
 static const char *compat_mode_values_PRM_ORACLE_STYLE_EMPTY_STRING[COMPAT_ORACLE + 2] = {
-  NULL,				/* COMPAT_CUBRID */
-  NULL,				/* COMPAT_MYSQL */
-  "yes",			/* COMPAT_ORACLE */
+  NULL,														       /* COMPAT_CUBRID */
+  NULL,														       /* COMPAT_MYSQL */
+  "yes",													       /* COMPAT_ORACLE */
   PRM_NAME_ORACLE_STYLE_EMPTY_STRING
 };
 
 static const char *compat_mode_values_PRM_ORACLE_STYLE_OUTERJOIN[COMPAT_ORACLE + 2] = {
-  NULL,				/* COMPAT_CUBRID */
-  NULL,				/* COMPAT_MYSQL */
-  "yes",			/* COMPAT_ORACLE */
+  NULL,														       /* COMPAT_CUBRID */
+  NULL,														       /* COMPAT_MYSQL */
+  "yes",													       /* COMPAT_ORACLE */
   PRM_NAME_ORACLE_STYLE_OUTERJOIN
 };
 
 static const char *compat_mode_values_PRM_PIPES_AS_CONCAT[COMPAT_ORACLE + 2] = {
-  NULL,				/* COMPAT_CUBRID */
-  "no",				/* COMPAT_MYSQL */
-  NULL,				/* COMPAT_ORACLE */
+  NULL,														       /* COMPAT_CUBRID */
+  "no",														       /* COMPAT_MYSQL */
+  NULL,														       /* COMPAT_ORACLE */
   PRM_NAME_PIPES_AS_CONCAT
 };
 
 /* Oracle's trigger correlation names are not yet supported. */
 static const char *compat_mode_values_PRM_MYSQL_TRIGGER_CORRELATION_NAMES[COMPAT_ORACLE + 2] = {
-  NULL,				/* COMPAT_CUBRID */
-  "yes",			/* COMPAT_MYSQL */
-  NULL,				/* COMPAT_ORACLE */
+  NULL,														       /* COMPAT_CUBRID */
+  "yes",													       /* COMPAT_MYSQL */
+  NULL,														       /* COMPAT_ORACLE */
   PRM_NAME_MYSQL_TRIGGER_CORRELATION_NAMES
 };
 
 static const char *compat_mode_values_PRM_REQUIRE_LIKE_ESCAPE_CHARACTER[COMPAT_ORACLE + 2] = {
-  NULL,				/* COMPAT_CUBRID */
-  "yes",			/* COMPAT_MYSQL */
-  NULL,				/* COMPAT_ORACLE */
+  NULL,														       /* COMPAT_CUBRID */
+  "yes",													       /* COMPAT_MYSQL */
+  NULL,														       /* COMPAT_ORACLE */
   PRM_NAME_REQUIRE_LIKE_ESCAPE_CHARACTER
 };
 
 static const char *compat_mode_values_PRM_NO_BACKSLASH_ESCAPES[COMPAT_ORACLE + 2] = {
-  NULL,				/* COMPAT_CUBRID */
-  "no",				/* COMPAT_MYSQL */
-  NULL,				/* COMPAT_ORACLE */
+  NULL,														       /* COMPAT_CUBRID */
+  "no",														       /* COMPAT_MYSQL */
+  NULL,														       /* COMPAT_ORACLE */
   PRM_NAME_NO_BACKSLASH_ESCAPES
 };
 
 static const char *compat_mode_values_PRM_ADD_COLUMN_UPDATE_HARD_DEFAULT[COMPAT_ORACLE + 2] = {
-  NULL,				/* COMPAT_CUBRID */
-  "yes",			/* COMPAT_MYSQL */
-  NULL,				/* COMPAT_ORACLE: leave it in cubrid mode for now */
+  NULL,														       /* COMPAT_CUBRID */
+  "yes",													       /* COMPAT_MYSQL */
+  NULL,														       /* COMPAT_ORACLE: leave it in cubrid mode for now */
   PRM_NAME_ADD_COLUMN_UPDATE_HARD_DEFAULT
 };
 
 static const char *compat_mode_values_PRM_RETURN_NULL_ON_FUNCTION_ERRORS[COMPAT_ORACLE + 2] = {
-  NULL,				/* COMPAT_CUBRID */
-  "yes",			/* COMPAT_MYSQL */
-  NULL,				/* COMPAT_ORACLE */
+  NULL,														       /* COMPAT_CUBRID */
+  "yes",													       /* COMPAT_MYSQL */
+  NULL,														       /* COMPAT_ORACLE */
   PRM_NAME_RETURN_NULL_ON_FUNCTION_ERRORS
 };
 
 static const char *compat_mode_values_PRM_PLUS_AS_CONCAT[COMPAT_ORACLE + 2] = {
-  "yes",			/* COMPAT_CUBRID */
-  "no",				/* COMPAT_MYSQL */
-  NULL,				/* COMPAT_ORACLE */
+  "yes",													       /* COMPAT_CUBRID */
+  "no",														       /* COMPAT_MYSQL */
+  NULL,														       /* COMPAT_ORACLE */
   PRM_NAME_PLUS_AS_CONCAT
 };
 
@@ -8856,7 +8856,7 @@ prm_check_range (SYSPRM_PARAM * prm, void *value)
       float val;
       float lower, upper;
 
-      lower = upper = 0;	/* to make compilers be silent */
+      lower = upper = 0;											       /* to make compilers be silent */
       if (PRM_DIFFERENT_UNIT (prm->static_flag))
 	{
 	  if (PRM_HAS_SIZE_UNIT (prm->static_flag))
@@ -9415,7 +9415,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, SY
 	    char save;
 	    int list_size, tmp;
 
-	    val = (int *) calloc (1024, sizeof (int));	/* max size is 1023 */
+	    val = (int *) calloc (1024, sizeof (int));								       /* max size is 1023 */
 	    if (val == NULL)
 	      {
 		size_t size = 1024 * sizeof (int);
@@ -11571,10 +11571,10 @@ sysprm_packed_session_parameters_length (SESSION_PARAM * session_parameters, int
   for (i = 0; i < NUM_SESSION_PRM; i++)
     {
       prm = &session_parameters[i];
-      size += OR_INT_SIZE;	/* prm_id */
-      size += OR_INT_SIZE;	/* flag */
-      size += OR_INT_SIZE;	/* datatype */
-      size +=			/* value */
+      size += OR_INT_SIZE;											       /* prm_id */
+      size += OR_INT_SIZE;											       /* flag */
+      size += OR_INT_SIZE;											       /* datatype */
+      size +=													       /* value */
 	sysprm_packed_sysprm_value_length (session_parameters[i].value, (SYSPRM_DATATYPE) prm->datatype, size + offset);
     }
 
@@ -11686,11 +11686,11 @@ sysprm_packed_assign_values_length (const SYSPRM_ASSIGN_VALUE * assign_values, i
 {
   int size = 0;
 
-  size += OR_INT_SIZE;		/* size of assign_values list */
+  size += OR_INT_SIZE;												       /* size of assign_values list */
 
   for (; assign_values != NULL; assign_values = assign_values->next)
     {
-      size += OR_INT_SIZE;	/* prm_id */
+      size += OR_INT_SIZE;											       /* prm_id */
       size +=
 	sysprm_packed_sysprm_value_length (assign_values->value, GET_PRM_DATATYPE (assign_values->prm_id),
 					   size + offset);
