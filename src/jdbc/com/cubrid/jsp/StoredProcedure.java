@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  * Redistribution and use in source and binary forms, with or without modification, 
  * are permitted provided that the following conditions are met: 
@@ -58,14 +59,14 @@ import com.cubrid.jsp.value.Value;
 import cubrid.sql.CUBRIDOID;
 
 public class StoredProcedure {
+	private String signature;
 	private Value[] args;
-
 	private int returnType;
-
 	private TargetMethod target;
 
 	public StoredProcedure(String signature, Value[] args, int returnType)
 			throws Exception {
+		this.signature = signature;
 		this.args = args;
 		this.returnType = returnType;
 		this.target = TargetMethodCache.getInstance().get(signature);
@@ -259,7 +260,8 @@ public class StoredProcedure {
 	public Value invoke() throws Exception {
 		Method m = target.getMethod();
 		Object[] resolved = checkArgs(args);
-		return makeReturnValue(m.invoke(null, resolved));
+		Object result = m.invoke(null, resolved);
+		return makeReturnValue(result);
 	}
 
 	public Value makeReturnValue(Object o) throws ExecuteException {
@@ -324,5 +326,17 @@ public class StoredProcedure {
 
 	public Value[] getArgs() {
 		return args;
+	}
+	
+	public void setArgs(Value[] args) {
+		this.args = args;
+	}
+	
+	public String getSignature() {
+		return signature;
+	}
+	
+	public TargetMethod getTarget() {
+		return target;
 	}
 }

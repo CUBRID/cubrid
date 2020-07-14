@@ -625,7 +625,6 @@ jsp_stop_server (void)
 {
   if (jsp_jvm_is_loaded ())
     {
-      jvm->DestroyJavaVM ();
       jvm = NULL;
     }
 

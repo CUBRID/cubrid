@@ -52,8 +52,6 @@ import java.util.HashMap;
 import cubrid.jdbc.driver.CUBRIDBlob;
 import cubrid.jdbc.driver.CUBRIDClob;
 import cubrid.jdbc.driver.CUBRIDOutResultSet;
-import cubrid.jdbc.driver.ConnectionProperties;
-import cubrid.jdbc.driver.CUBRIDBinaryString;
 import cubrid.sql.CUBRIDOID;
 import cubrid.sql.CUBRIDTimestamptz;
 
@@ -196,6 +194,19 @@ public class UStatement {
 		 * 3.0 resultset_index = 0; resultset_index_flag =
 		 * java.sql.Statement.CLOSE_CURRENT_RESULT;
 		 */
+	}
+	
+	public void initToReuse() throws UJciException {
+		commandTypeIs = firstStmtType;
+		isFetchCompleted = false;
+		
+		currentFirstCursor = cursorPosition = totalTupleNumber = fetchedTupleNumber = 0;
+		maxFetchSize = 0;
+		realFetched = false;
+		isClosed = false;
+
+		if (commandTypeIs == CUBRIDCommandType.CUBRID_STMT_CALL_SP)
+			columnNumber = parameterNumber + 1;
 	}
 
 	UStatement(UConnection relatedC, CUBRIDOID oid, String attributeName[],
@@ -651,7 +662,7 @@ public class UStatement {
 		}
 
 		try {
-			byte code = UFunctionCode.CURSOR_CLOSE;
+			UFunctionCode code = UFunctionCode.CURSOR_CLOSE;
 			if (relatedConnection.protoVersionIsSame(UConnection.PROTOCOL_V2)) {
 				code = UFunctionCode.CURSOR_CLOSE_FOR_PROTOCOL_V2;
 			}
@@ -734,7 +745,7 @@ public class UStatement {
 		outBuffer.addByte(executeFlag);
 		outBuffer.addInt(maxField < 0 ? 0 : maxField);
 		outBuffer.addInt(0);
-
+		
 		if (firstStmtType == CUBRIDCommandType.CUBRID_STMT_CALL_SP
 		        && bindParameter != null) {
 			outBuffer.addBytes(bindParameter.paramMode);
@@ -2241,7 +2252,7 @@ public class UStatement {
 		}
 	}
 
-	private void read_fetch_data(UInputBuffer inBuffer, byte functionCode)
+	private void read_fetch_data(UInputBuffer inBuffer, UFunctionCode functionCode)
 	        throws UJciException {
 		fetchedTupleNumber = inBuffer.readInt();
 		if (fetchedTupleNumber < 0) {

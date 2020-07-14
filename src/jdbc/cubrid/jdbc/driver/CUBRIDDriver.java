@@ -229,6 +229,9 @@ public class CUBRIDDriver implements Driver {
 					"com.cubrid.jsp.ExecuteThread", "getJdbcConnection", null,
 					t, null);
 			if (c != null) {
+				UJCIUtil.invoke(
+						"com.cubrid.jsp.ExecuteThread", "sendCall", null,
+						t, null);
 				return c;
 			}
 
@@ -238,6 +241,9 @@ public class CUBRIDDriver implements Driver {
 			UJCIUtil.invoke("com.cubrid.jsp.ExecuteThread",
 					"setJdbcConnection", new Class[] { Connection.class }, t,
 					new Object[] { con });
+			UJCIUtil.invoke(
+					"com.cubrid.jsp.ExecuteThread", "sendCall", null,
+					t, null);
 			return con;
 		} else {
 			return null;

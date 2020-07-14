@@ -1604,7 +1604,9 @@
 
 #define ER_GAI_ERROR                                -1246
 
-#define ER_LAST_ERROR                               -1247
+#define ER_LOG_UPTODATE_ERROR                       -1247
+
+#define ER_LAST_ERROR                               -1248
 
 /*
  * CAUTION!
