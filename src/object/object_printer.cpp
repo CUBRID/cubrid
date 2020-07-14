@@ -1048,7 +1048,7 @@ void object_printer::describe_class (struct db_object *class_op)
     }
   else
     {
-      m_buf (" USE_OID");
+      m_buf (" DONT_REUSE_OID");
     }
 
   /* collation */

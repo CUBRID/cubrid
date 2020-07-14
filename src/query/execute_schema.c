@@ -8620,7 +8620,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    case PT_TABLE_OPTION_REUSE_OID:
 	      reuse_oid = true;
 	      break;
-	    case PT_TABLE_OPTION_USE_OID:
+	    case PT_TABLE_OPTION_DONT_REUSE_OID:
 	      reuse_oid = false;
 	      break;
 	    case PT_TABLE_OPTION_CHARSET:

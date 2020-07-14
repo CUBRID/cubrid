@@ -7745,8 +7745,8 @@ pt_print_table_option (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TABLE_OPTION_REUSE_OID:
       q = pt_append_nulstring (parser, q, "reuse_oid");
       break;
-    case PT_TABLE_OPTION_USE_OID:
-      q = pt_append_nulstring (parser, q, "use_oid");
+    case PT_TABLE_OPTION_DONT_REUSE_OID:
+      q = pt_append_nulstring (parser, q, "dont_reuse_oid");
       break;
     case PT_TABLE_OPTION_AUTO_INCREMENT:
       q = pt_append_nulstring (parser, q, "auto_increment = ");

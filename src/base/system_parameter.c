@@ -682,7 +682,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_GENERAL_RESERVE_01 "general_reserve_01"
 
-#define PRM_NAME_TB_REUSEOID "default_tblopt_reuseoid"
+#define PRM_NAME_TB_REUSEOID "create_table_reuseoid"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -2301,8 +2301,8 @@ static bool prm_truncated_string_type_default = true;
 static unsigned int prm_truncated_string_type_flag = 1;
 
 bool PRM_TB_REUSE_OID = true;
-static bool prm_tblopt_reuseoid_default = true;
-static unsigned int prm_tblopt_reuseoid = 1;
+static bool prm_create_table_reuseoid_default = true;
+static unsigned int prm_create_table_reuseoid = 1;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5917,10 +5917,10 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_TB_REUSEOID,
    PRM_NAME_TB_REUSEOID,
-   (PRM_FOR_SERVER | PRM_HIDDEN),
+   (PRM_USER_CHANGE | PRM_FOR_SERVER),
    PRM_BOOLEAN,
-   &prm_tblopt_reuseoid,
-   (void *) &prm_tblopt_reuseoid_default,
+   &prm_create_table_reuseoid,
+   (void *) &prm_create_table_reuseoid_default,
    (void *) &PRM_TB_REUSE_OID,
    (void *) NULL, (void *) NULL,
    (char *) NULL,

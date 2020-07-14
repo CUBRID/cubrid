@@ -1141,7 +1141,7 @@ emit_schema (print_output & output_ctx, DB_OBJLIST * classes, int do_auth, DB_OB
 	    } 
 	  else
 	    {
-	      output_ctx (" USE_OID");
+	      output_ctx (" DONT_REUSE_OID");
 	    }
 
 	  if (class_ != NULL)
