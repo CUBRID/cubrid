@@ -414,7 +414,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_JAVA_STORED_PROCEDURE_RESERVE_01 "java_stored_procedure_reserve_01"
 
-#define PRM_NAME_TRUNCATED_STRING_TYPE "truncated_string_type"
+#define PRM_NAME_ALLOW_TRUNCATED_STRING"allow_truncated_string"
 
 #define PRM_NAME_COMPAT_PRIMARY_KEY "compat_primary_key"
 
@@ -2294,9 +2294,9 @@ bool PRM_JAVA_STORED_PROCEDURE_RESERVE_01 = false;
 static bool prm_java_stored_procedure_reserve_01_default = false;
 static unsigned int prm_java_stored_procedure_reserve_01_flag = 0;
 
-bool PRM_TRUNCATED_STRING_TYPE = true;
-static bool prm_truncated_string_type_default = true;
-static unsigned int prm_truncated_string_type_flag = 1;
+bool PRM_ALLOW_TRUNCATED_STRING = false;
+static bool prm_allow_truncated_string_default = false;
+static unsigned int prm_allow_truncated_string_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5898,13 +5898,13 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_TRUNCATED_STRING_TYPE,
-   PRM_NAME_TRUNCATED_STRING_TYPE,
+  {PRM_ID_ALLOW_TRUNCATED_STRING,
+   PRM_NAME_ALLOW_TRUNCATED_STRING,
    (PRM_USER_CHANGE | PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_SESSION | PRM_FOR_HA_CONTEXT),
    PRM_BOOLEAN,
-   &prm_truncated_string_type_flag,
-   (void *) &prm_truncated_string_type_default,
-   (void *) &PRM_TRUNCATED_STRING_TYPE,
+   &prm_allow_truncated_string_flag,
+   (void *) &prm_allow_truncated_string_default,
+   (void *) &PRM_ALLOW_TRUNCATED_STRING,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,

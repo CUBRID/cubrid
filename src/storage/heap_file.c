@@ -16993,7 +16993,7 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
 	  if (dest_prec < curr_prec)
 	    {
 	      if (prm_get_bool_value (PRM_ID_ALTER_TABLE_CHANGE_TYPE_STRICT) == true
-		  || prm_get_bool_value (PRM_ID_TRUNCATED_STRING_TYPE) == true)
+		  || prm_get_bool_value (PRM_ID_ALLOW_TRUNCATED_STRING) == false)
 		{
 		  error = ER_ALTER_CHANGE_TRUNC_OVERFLOW_NOT_ALLOWED;
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -17043,7 +17043,7 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
 	  bool set_max_value = false;
 
 	  if (prm_get_bool_value (PRM_ID_ALTER_TABLE_CHANGE_TYPE_STRICT) == true
-	      || prm_get_bool_value (PRM_ID_TRUNCATED_STRING_TYPE) == true)
+	      || prm_get_bool_value (PRM_ID_ALLOW_TRUNCATED_STRING) == false)
 	    {
 	      error = ER_ALTER_CHANGE_TRUNC_OVERFLOW_NOT_ALLOWED;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
