@@ -908,7 +908,7 @@ public class UStatement {
 		} else {
 			cursorPosition = -1;
 		}
-		result_cacheable = false;
+		//result_cacheable = true;
 
 		boolean isFirstExecInTran = !relatedConnection.isActive();
 
@@ -2278,7 +2278,7 @@ public class UStatement {
 			fetchedTupleNumber = 0;
 		}
 
-		//tuples = new UResultTuple[fetchedTupleNumber];
+		tuples = new UResultTuple[fetchedTupleNumber];
 		for (int i = 0; i < fetchedTupleNumber; i++) {
 			readATuple(i + readTupleNumber, inBuffer);
 		}
