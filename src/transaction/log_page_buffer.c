@@ -7426,6 +7426,12 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
       goto error;
     }
 
+  if (tde_validate_keys_volume (keys_vdes) == false)
+    {
+      error_code = ER_FAILED;	// TODO err
+      goto error;
+    }
+
   /* Initialization gives us some useful information about the backup location. */
   session.type = FILEIO_BACKUP_WRITE;	/* access backup device for write */
   if (fileio_initialize_backup (log_Db_fullname, allbackup_path, &session, backup_level, backup_verbose_file_path,

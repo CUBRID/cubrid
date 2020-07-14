@@ -96,6 +96,9 @@ typedef struct tde_cipher
 extern TDE_CIPHER tde_Cipher;
 
 #if !defined(CS_MODE)
+
+#define TDE_MK_FILE_CONTENTS_START CUBRID_MAGIC_MAX_LENGTH
+
 /*
  * TDE module stores key information with all tha data keys encrypted and master key hashed.
  */
@@ -147,6 +150,7 @@ typedef struct tde_keyinfo
  */
 extern int tde_initialize (THREAD_ENTRY *thread_p, HFID *keyinfo_hfid);
 extern int tde_cipher_initialize (THREAD_ENTRY *thread_p, const HFID *keyinfo_hfid, const char *mk_path_given);
+extern bool tde_validate_keys_volume (int vdes);
 extern int tde_copy_keys_volume (THREAD_ENTRY *thread_p, const char *to_db_fullname, const char *from_db_fullname,
 				 bool keep_to_mount, bool keep_from_mount);
 extern int tde_add_mk (int vdes, const int mk_index, const unsigned char *master_key);

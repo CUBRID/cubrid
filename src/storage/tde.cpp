@@ -192,6 +192,12 @@ tde_cipher_initialize (THREAD_ENTRY *thread_p, const HFID *keyinfo_hfid, const c
       return ER_IO_MOUNT_FAIL;
     }
 
+  if (tde_validate_keys_volume (vdes) == false)
+    {
+      err = ER_FAILED;
+      goto exit;
+    }
+
   if (tde_get_keyinfo (thread_p, &keyinfo, &tde_Keyinfo_oid, keyinfo_hfid) != NO_ERROR)
     {
       err = ER_FAILED;
@@ -229,21 +235,76 @@ static int
 tde_create_keys_volume (const char *db_full_name)
 {
   char mk_path[PATH_MAX] = {0,};
-  int vdes = -1;
+  int vdes = NULL_VOLDES;
+  int err = NO_ERROR;
+  char magic[CUBRID_MAGIC_MAX_LENGTH] = {0,};
+#if !defined(WINDOWS)
+  sigset_t new_mask, old_mask;
+#endif /* !WINDOWS */
+
+#if !defined(WINDOWS)
+  off_signals (new_mask, old_mask);
+#endif /* !WINDOWS */
+
   tde_make_keys_volume_fullname (mk_path, db_full_name, false);
   if (fileio_is_volume_exist (mk_path))
     {
       // er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_VOLUME_EXISTS, 1, extinfo->name);
-      return ER_BO_VOLUME_EXISTS;
+      err = ER_BO_VOLUME_EXISTS;
+      goto exit;
     }
 
-  if ((vdes = fileio_open (mk_path, O_CREAT | O_RDWR, 0600)) == -1)
+  if ((vdes = fileio_open (mk_path, O_CREAT | O_RDWR, 0600)) == NULL_VOLDES)
     {
-      return ER_BO_CANNOT_CREATE_VOL;
+      err = ER_BO_CANNOT_CREATE_VOL;
+      goto exit;
     }
-  fileio_close (vdes);
 
-  return NO_ERROR;
+  memcpy (magic, CUBRID_MAGIC_KEYS, sizeof (CUBRID_MAGIC_KEYS));
+  write (vdes, magic, CUBRID_MAGIC_MAX_LENGTH);
+
+exit:
+  if (vdes != NULL_VOLDES)
+    {
+      fileio_close (vdes);
+    }
+#if !defined(WINDOWS)
+  restore_signals (old_mask);
+#endif /* !WINDOWS */
+
+  return err;
+}
+
+bool
+tde_validate_keys_volume (int vdes)
+{
+  char magic[CUBRID_MAGIC_MAX_LENGTH] = {0,};
+#if !defined(WINDOWS)
+  sigset_t new_mask, old_mask;
+#endif /* !WINDOWS */
+
+#if !defined(WINDOWS)
+  off_signals (new_mask, old_mask);
+#endif /* !WINDOWS */
+
+  if (lseek (vdes, 0L, SEEK_SET) != 0L)
+    {
+#if !defined(WINDOWS)
+      restore_signals (old_mask);
+#endif /* !WINDOWS */
+      return false; //error
+    }
+
+  read (vdes, magic, CUBRID_MAGIC_MAX_LENGTH);
+  if (memcmp (magic, CUBRID_MAGIC_KEYS, sizeof (CUBRID_MAGIC_MAX_LENGTH)) != 0)
+    {
+      return false;
+    }
+
+#if !defined(WINDOWS)
+  restore_signals (old_mask);
+#endif /* !WINDOWS */
+  return true;
 }
 
 int
@@ -270,6 +331,12 @@ tde_copy_keys_volume (THREAD_ENTRY *thread_p, const char *to_db_fullname, const 
       return ER_IO_MOUNT_FAIL;
     }
 
+  if (tde_validate_keys_volume (from_vdes) == false)
+    {
+      fileio_dismount (thread_p, from_vdes);
+      return -1; // TODO err
+    }
+
   tde_make_keys_volume_fullname (mk_path, to_db_fullname, true);
 
   if (!fileio_is_volume_exist (mk_path))
@@ -286,6 +353,12 @@ tde_copy_keys_volume (THREAD_ENTRY *thread_p, const char *to_db_fullname, const 
     {
       fileio_dismount (thread_p, from_vdes);
       return ER_IO_MOUNT_FAIL;
+    }
+
+  if (lseek (from_vdes, 0L, SEEK_SET) != 0L)
+    {
+      fileio_dismount (thread_p, from_vdes);
+      return -1; // TODO err
     }
 
   while ((nread = read (from_vdes, buffer, 4096)) > 0)
@@ -332,7 +405,7 @@ tde_add_mk (int vdes, int mk_index, const unsigned char *master_key)
   off_signals (new_mask, old_mask);
 #endif /* !WINDOWS */
 
-  if (lseek (vdes, 0L, SEEK_SET) != 0L)
+  if (lseek (vdes, TDE_MK_FILE_CONTENTS_START, SEEK_SET) != TDE_MK_FILE_CONTENTS_START)
     {
 #if !defined(WINDOWS)
       restore_signals (old_mask);
@@ -396,7 +469,7 @@ tde_delete_mk (int vdes, int mk_index)
   off_signals (new_mask, old_mask);
 #endif /* !WINDOWS */
 
-  if (lseek (vdes, 0L, SEEK_SET) != 0L)
+  if (lseek (vdes, TDE_MK_FILE_CONTENTS_START, SEEK_SET) != TDE_MK_FILE_CONTENTS_START)
     {
 #if !defined(WINDOWS)
       restore_signals (old_mask);
@@ -447,7 +520,7 @@ tde_find_mk (int vdes, int mk_index, unsigned char *master_key)
 #if !defined(WINDOWS)
   off_signals (new_mask, old_mask);
 #endif /* !WINDOWS */
-  if (lseek (vdes, 0L, SEEK_SET) != 0L)
+  if (lseek (vdes, TDE_MK_FILE_CONTENTS_START, SEEK_SET) != TDE_MK_FILE_CONTENTS_START)
     {
 #if !defined(WINDOWS)
       restore_signals (old_mask);
@@ -638,7 +711,7 @@ tde_load_mk (int vdes, const TDE_KEYINFO *keyinfo, unsigned char *master_key)
 #if !defined(WINDOWS)
   off_signals (new_mask, old_mask);
 #endif /* !WINDOWS */
-  if (lseek (vdes, 0L, SEEK_SET) != 0L)
+  if (lseek (vdes, TDE_MK_FILE_CONTENTS_START, SEEK_SET) != TDE_MK_FILE_CONTENTS_START)
     {
 #if !defined(WINDOWS)
       restore_signals (old_mask);
