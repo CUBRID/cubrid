@@ -9244,7 +9244,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	      status = DOMAIN_INCOMPATIBLE;
 	    }
 	  else if (data_stat == DATA_STATUS_TRUNCATED &&
-		   (prm_get_bool_value (PRM_ID_ALLOW_TRUNCATED_STRING) == false || coercion_mode == TP_IMPLICIT_COERCION))
+		   (prm_get_bool_value (PRM_ID_ALLOW_TRUNCATED_STRING) == false
+		    || coercion_mode == TP_IMPLICIT_COERCION))
 	    {
 	      status = DOMAIN_OVERFLOW;
 	      pr_clear_value (target);
@@ -9282,7 +9283,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	      status = DOMAIN_INCOMPATIBLE;
 	    }
 	  else if (data_stat == DATA_STATUS_TRUNCATED &&
-		   (prm_get_bool_value (PRM_ID_ALLOW_TRUNCATED_STRING) == false || coercion_mode == TP_IMPLICIT_COERCION))
+		   (prm_get_bool_value (PRM_ID_ALLOW_TRUNCATED_STRING) == false
+		    || coercion_mode == TP_IMPLICIT_COERCION))
 	    {
 	      status = DOMAIN_OVERFLOW;
 	      pr_clear_value (target);
