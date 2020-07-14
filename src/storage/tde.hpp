@@ -146,7 +146,7 @@ typedef struct tde_keyinfo
  * TDE functions for key management
  */
 extern int tde_initialize (THREAD_ENTRY *thread_p, HFID *keyinfo_hfid);
-extern int tde_cipher_initialize (THREAD_ENTRY *thread_p, const HFID *keyinfo_hfid);
+extern int tde_cipher_initialize (THREAD_ENTRY *thread_p, const HFID *keyinfo_hfid, const char *mk_path_given);
 extern int tde_copy_keys_volume (THREAD_ENTRY *thread_p, const char *to_db_fullname, const char *from_db_fullname,
 				 bool keep_to_mount, bool keep_from_mount);
 extern int tde_add_mk (int vdes, const int mk_index, const unsigned char *master_key);

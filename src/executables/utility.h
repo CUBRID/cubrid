@@ -1048,6 +1048,8 @@ typedef struct _ha_config
 #define RESTORE_OUTPUT_FILE_L                   "output-file"
 #define RESTORE_USE_DATABASE_LOCATION_PATH_S    'u'
 #define RESTORE_USE_DATABASE_LOCATION_PATH_L    "use-database-location-path"
+#define RESTORE_KEYS_FILE_PATH_S                'k'
+#define RESTORE_KEYS_FILE_PATH_L                "keys-file-path"
 
 /* addvoldb option list */
 #define ADDVOL_VOLUME_NAME_S                    'n'

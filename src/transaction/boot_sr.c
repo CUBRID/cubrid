@@ -2066,6 +2066,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   char db_lang[LANG_MAX_LANGNAME + 1];
   char timezone_checksum[32 + 1];
   const TZ_DATA *tzd;
+  char *mk_path;
 
   /* language data is loaded in context of server */
   if (lang_init () != NO_ERROR)
@@ -2384,7 +2385,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  error_code = tde_cipher_initialize (thread_p, &boot_Db_parm->tde_keys_hfid);
+  error_code = tde_cipher_initialize (thread_p, &boot_Db_parm->tde_keys_hfid,
+				      r_args == NULL ? NULL : r_args->keys_file_path);
   if (error_code != NO_ERROR)
     {
       goto error;

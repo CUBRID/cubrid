@@ -167,15 +167,25 @@ exit:
 }
 
 int
-tde_cipher_initialize (THREAD_ENTRY *thread_p, const HFID *keyinfo_hfid)
+tde_cipher_initialize (THREAD_ENTRY *thread_p, const HFID *keyinfo_hfid, const char *mk_path_given)
 {
-  char mk_path[PATH_MAX] = {0, };
+  char mk_path_buffer[PATH_MAX] = {0, };
+  const char *mk_path;
   unsigned char master_key[TDE_MASTER_KEY_LENGTH];
   TDE_KEYINFO keyinfo;
   int err = NO_ERROR;
   int vdes = NULL_VOLDES;
 
-  tde_make_keys_volume_fullname (mk_path, boot_db_full_name(), false);
+  if (mk_path_given != NULL)
+    {
+      mk_path = mk_path_given;
+    }
+  else
+    {
+      tde_make_keys_volume_fullname (mk_path_buffer, boot_db_full_name(), false);
+      mk_path = mk_path_buffer;
+    }
+
   vdes = fileio_mount (thread_p, boot_db_full_name (), mk_path, LOG_DBTDE_KEYS_VOLID, 2, false);
   if (vdes == NULL_VOLDES)
     {
