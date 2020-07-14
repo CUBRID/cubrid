@@ -544,7 +544,7 @@ pt_lambda_check_reduce_eq (PARSER_CONTEXT * parser, PT_NODE * tree_or_name, void
     case PT_METHOD_CALL:
       /* can not replace target_class as like: WHERE glo = :gx and data_seek(100) on glo > 0 -> WHERE glo = :gx and
        * data_seek(100) on :gx > 0 */
-      *continue_walk = PT_LIST_WALK;										       /* don't dive into */
+      *continue_walk = PT_LIST_WALK;	/* don't dive into */
       break;
     case PT_EXPR:
       tree = lambda_arg->tree;
@@ -559,7 +559,7 @@ pt_lambda_check_reduce_eq (PARSER_CONTEXT * parser, PT_NODE * tree_or_name, void
 	    case PT_BIT_LENGTH:
 	    case PT_OCTET_LENGTH:
 	    case PT_CHAR_LENGTH:
-	      *continue_walk = PT_LIST_WALK;									       /* don't dive into */
+	      *continue_walk = PT_LIST_WALK;	/* don't dive into */
 	      break;
 	    case PT_CAST:
 	      if (PT_HAS_COLLATION (name->type_enum) && tree_or_name->info.expr.op == PT_CAST
@@ -588,7 +588,7 @@ pt_lambda_check_reduce_eq (PARSER_CONTEXT * parser, PT_NODE * tree_or_name, void
 		  if (cast_coll != name_coll)
 		    {
 		      /* predicate evaluates with different collation */
-		      *continue_walk = PT_LIST_WALK;								       /* don't dive into */
+		      *continue_walk = PT_LIST_WALK;	/* don't dive into */
 		    }
 		}
 	    default:
@@ -663,7 +663,7 @@ pt_lambda_node (PARSER_CONTEXT * parser, PT_NODE * tree_or_name, void *void_arg,
   if (tree_or_name->node_type == PT_EXPR && tree_or_name->info.expr.op == PT_ORDERBY_NUM)
     {
       if (lambda_name->node_type == PT_EXPR && lambda_name->info.expr.op == PT_ORDERBY_NUM)
-	{													       /* found match */
+	{			/* found match */
 	  /* replace 'tree_or_name' node with 'lambda_arg->tree' */
 	  next = tree_or_name->next;
 	  result = parser_copy_tree_list (parser, lambda_arg->tree);
@@ -701,7 +701,7 @@ pt_lambda_node (PARSER_CONTEXT * parser, PT_NODE * tree_or_name, void *void_arg,
   if (pt_name_equal (parser, name_node, lambda_name))
     {
       if (lambda_arg->dont_replace)
-	{													       /* don't replace, only marking */
+	{			/* don't replace, only marking */
 	  temp = pt_get_end_path_node (tree_or_name);
 	  if (temp->node_type == PT_NAME)
 	    {
@@ -724,7 +724,7 @@ pt_lambda_node (PARSER_CONTEXT * parser, PT_NODE * tree_or_name, void *void_arg,
       lambda_arg->replace_num++;
     }
   else
-    {														       /* did not match */
+    {				/* did not match */
       result = tree_or_name;
     }
 
@@ -1340,7 +1340,7 @@ exit_on_error:
       node = list;
       list = list->next;
 
-      node->next = NULL;											       /* cut-off link */
+      node->next = NULL;	/* cut-off link */
       parser_free_tree (parser, node);
     }
 
@@ -2381,7 +2381,7 @@ pt_print_bytes_l (PARSER_CONTEXT * parser, const PT_NODE * p)
     }
 
   while (p->next)
-    {														       /* print in the original order ... */
+    {				/* print in the original order ... */
       p = p->next;
       r = pt_print_bytes (parser, p);
       if (r)
@@ -2430,7 +2430,7 @@ pt_print_bytes_spec_list (PARSER_CONTEXT * parser, const PT_NODE * p)
   q = pt_print_bytes (parser, p);
 
   while (p->next)
-    {														       /* print in the original order ... */
+    {				/* print in the original order ... */
       p = p->next;
       r = pt_print_bytes (parser, p);
 
@@ -2810,7 +2810,7 @@ pt_print_and_list (PARSER_CONTEXT * parser, const PT_NODE * p)
   parser->is_in_and_list = 1;
 
   for (n = p; n; n = n->next)
-    {														       /* print in the original order ... */
+    {				/* print in the original order ... */
       r1 = pt_print_bytes (parser, n);
       if (n->node_type == PT_EXPR && !n->info.expr.paren_type && n->or_next)
 	{
@@ -2881,7 +2881,7 @@ pt_short_print (PARSER_CONTEXT * parser, const PT_NODE * node)
     }
 
 end:
-  parser->max_print_len = 0;											       /* restore */
+  parser->max_print_len = 0;	/* restore */
   return str;
 }
 
@@ -2911,7 +2911,7 @@ pt_short_print_l (PARSER_CONTEXT * parser, const PT_NODE * node)
     }
 
 end:
-  parser->max_print_len = 0;											       /* restore */
+  parser->max_print_len = 0;	/* restore */
   return str;
 }
 
@@ -3180,7 +3180,7 @@ pt_length_of_select_list (PT_NODE * list, int hidden_col)
       return len;
     }
   else
-    {														       /* EXCLUDE_HIDDEN_COLUMNS */
+    {				/* EXCLUDE_HIDDEN_COLUMNS */
       for (len = 0; list; list = list->next)
 	{
 	  if (list->is_hidden_column)
@@ -4075,7 +4075,7 @@ pt_show_type_enum (PT_TYPE_ENUM t)
     default:
       return "unknown";
     }
-  return "unknown";												       /* make the compiler happy */
+  return "unknown";		/* make the compiler happy */
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -4370,7 +4370,7 @@ pt_get_expression_count (PT_NODE * node)
 	      return count;
 	    }
 	  else if (list->next == NULL)
-	    {													       /* single column */
+	    {			/* single column */
 	      if (pt_is_set_type (list))
 		{
 		  if (list->node_type == PT_VALUE)
@@ -4428,10 +4428,10 @@ pt_select_list_to_one_col (PARSER_CONTEXT * parser, PT_NODE * node, bool do_one)
       list = node->info.query.q.select.list;
       if (do_one == true)
 	{
-	  do_rewrite = false;											       /* init */
+	  do_rewrite = false;	/* init */
 	  if (node->info.query.orderby_for)
 	    {
-	      do_rewrite = true;										       /* give up */
+	      do_rewrite = true;	/* give up */
 	    }
 	  else
 	    {
@@ -4440,7 +4440,7 @@ pt_select_list_to_one_col (PARSER_CONTEXT * parser, PT_NODE * node, bool do_one)
 		  /* check orderby_num() exists */
 		  if (col->node_type == PT_EXPR && col->info.expr.op == PT_ORDERBY_NUM)
 		    {
-		      do_rewrite = true;									       /* break */
+		      do_rewrite = true;	/* break */
 		    }
 		}
 	    }
@@ -4515,9 +4515,9 @@ pt_select_list_to_one_col (PARSER_CONTEXT * parser, PT_NODE * node, bool do_one)
       else
 	{
 	  if (pt_length_of_select_list (list, EXCLUDE_HIDDEN_COLUMNS) == 1 && pt_is_set_type (list))
-	    {													       /* one column */
+	    {			/* one column */
 	      col = list;
-	      next = list->next;										       /* save hidden column */
+	      next = list->next;	/* save hidden column */
 	      col->next = NULL;
 
 	      if (list->node_type == PT_VALUE)
@@ -4573,11 +4573,11 @@ pt_check_set_count_set (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2)
   bool e1_is_expr_set, e2_is_expr_set;
   int e1_cnt, e2_cnt, rc;
 
-  rc = 1;													       /* set as NO_ERROR */
+  rc = 1;			/* set as NO_ERROR */
 
   if (arg1->node_type != PT_VALUE || !pt_is_set_type (arg1) || arg2->node_type != PT_VALUE || !pt_is_set_type (arg2))
     {
-      return rc;												       /* give up */
+      return rc;		/* give up */
     }
 
   /* get elements */
@@ -4585,7 +4585,7 @@ pt_check_set_count_set (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2)
   e2 = arg2->info.value.data_value.set;
   for (; e1 && e2; e1 = e1->next, e2 = e2->next)
     {
-      e1_is_expr_set = e2_is_expr_set = false;									       /* init */
+      e1_is_expr_set = e2_is_expr_set = false;	/* init */
       if (e1->node_type == PT_VALUE && pt_is_set_type (e1))
 	{
 	  e1_is_expr_set = true;
@@ -4602,7 +4602,7 @@ pt_check_set_count_set (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2)
 	      /* do recursion */
 	      if (!pt_check_set_count_set (parser, e1, e2))
 		{
-		  rc = 0;											       /* error */
+		  rc = 0;	/* error */
 		}
 	    }
 	  else
@@ -4620,7 +4620,7 @@ pt_check_set_count_set (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2)
 		{
 		  PT_ERRORmf2 (parser, e2, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_ATT_CNT_COL_CNT_NE, e1_cnt,
 			       e2_cnt);
-		  rc = 0;											       /* error */
+		  rc = 0;	/* error */
 		}
 	    }
 	}
@@ -4628,15 +4628,15 @@ pt_check_set_count_set (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2)
 	{
 	  /* unknown error */
 	  PT_ERROR (parser, e2, "check syntax at = or <>.");
-	  rc = 0;												       /* error */
+	  rc = 0;		/* error */
 	}
-    }														       /* for */
+    }				/* for */
 
   if ((e1 || e2) && rc)
     {
       /* unknown error */
       PT_ERROR (parser, e2, "check syntax at = or <>.");
-      rc = 0;													       /* error */
+      rc = 0;			/* error */
     }
 
   return rc;
@@ -4665,7 +4665,7 @@ pt_rewrite_set_eq_set (PARSER_CONTEXT * parser, PT_NODE * exp)
 
   if (arg1->node_type != PT_VALUE || !pt_is_set_type (arg1) || arg2->node_type != PT_VALUE || !pt_is_set_type (arg2))
     {
-      return exp;												       /* give up */
+      return exp;		/* give up */
     }
 
   /* get elements and cut-off link */
@@ -4682,7 +4682,7 @@ pt_rewrite_set_eq_set (PARSER_CONTEXT * parser, PT_NODE * exp)
   e2_next = e2->next;
   e2->next = NULL;
 
-  e1_is_expr_set = e2_is_expr_set = false;									       /* init */
+  e1_is_expr_set = e2_is_expr_set = false;	/* init */
   if (e1->node_type == PT_VALUE && pt_is_set_type (e1))
     {
       e1_is_expr_set = true;
@@ -4727,7 +4727,7 @@ pt_rewrite_set_eq_set (PARSER_CONTEXT * parser, PT_NODE * exp)
 	}
     }
   else
-    {														       /* error */
+    {				/* error */
       PT_ERRORf (parser, exp, "check syntax at %s", pt_show_binopcode (PT_EQ));
       /* free old elements */
       parser_free_tree (parser, e1);
@@ -4749,7 +4749,7 @@ pt_rewrite_set_eq_set (PARSER_CONTEXT * parser, PT_NODE * exp)
       lhs = pt_pop (parser);
 
       /* create '=' expr node */
-      e1_is_expr_set = e2_is_expr_set = false;									       /* init */
+      e1_is_expr_set = e2_is_expr_set = false;	/* init */
       if (e1->node_type == PT_VALUE && pt_is_set_type (e1))
 	{
 	  e1_is_expr_set = true;
@@ -4793,7 +4793,7 @@ pt_rewrite_set_eq_set (PARSER_CONTEXT * parser, PT_NODE * exp)
 	    }
 	}
       else
-	{													       /* error */
+	{			/* error */
 	  PT_ERRORf (parser, exp, "check syntax at %s", pt_show_binopcode (PT_EQ));
 	  /* free old elements */
 	  parser_free_tree (parser, e1);
@@ -5173,7 +5173,7 @@ pt_init_print_f (void)
   pt_print_func_array[PT_CREATE_STORED_PROCEDURE] = pt_print_create_stored_procedure;
   pt_print_func_array[PT_ALTER_STORED_PROCEDURE] = pt_print_alter_stored_procedure;
   pt_print_func_array[PT_DROP_STORED_PROCEDURE] = pt_print_drop_stored_procedure;
-  pt_print_func_array[PT_PREPARE_STATEMENT] = NULL;								       /* prepared statements should never need to be printed */
+  pt_print_func_array[PT_PREPARE_STATEMENT] = NULL;	/* prepared statements should never need to be printed */
   pt_print_func_array[PT_EXECUTE_PREPARE] = NULL;
   pt_print_func_array[PT_DEALLOCATE_PREPARE] = NULL;
   pt_print_func_array[PT_TRUNCATE] = pt_print_truncate;
@@ -5782,7 +5782,7 @@ pt_print_alter_one_clause (PARSER_CONTEXT * parser, PT_NODE * p)
 	    r1 = pt_print_col_def_constraint (parser, c_node);
 
 	    while (c_node->next != NULL)
-	      {													       /* print in the original order ... */
+	      {			/* print in the original order ... */
 		c_node = c_node->next;
 		r2 = pt_print_col_def_constraint (parser, c_node);
 		if (r2 != NULL)
@@ -9379,7 +9379,7 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_JOIN_RIGHT_OUTER:
       q = pt_append_nulstring (parser, q, " right outer join ");
       break;
-    case PT_JOIN_FULL_OUTER:											       /* not used */
+    case PT_JOIN_FULL_OUTER:	/* not used */
       q = pt_append_nulstring (parser, q, " full outer join ");
       break;
       /* case PT_JOIN_UNION: -- does not support */
@@ -9444,7 +9444,7 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
     }
   else if (PT_SPEC_IS_DERIVED (p))
-    {														       /* should be a derived table */
+    {				/* should be a derived table */
       if (p->info.spec.derived_table_type == PT_IS_SET_EXPR)
 	{
 	  q = pt_append_nulstring (parser, q, "table");
@@ -12341,7 +12341,7 @@ pt_print_function (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, ")");
 
       if (!p->info.function.analytic.is_analytic)
-	{													       /* aggregate */
+	{			/* aggregate */
 	  if (p->info.function.order_by)
 	    {
 	      r1 = pt_print_bytes_l (parser, p->info.function.order_by);
@@ -12758,7 +12758,7 @@ pt_print_host_var (PARSER_CONTEXT * parser, PT_NODE * p)
 		{
 		  parser_free_tree (parser, parser->error_msgs);
 		}
-	      parser->error_msgs = save_error_msgs;								       /* restore */
+	      parser->error_msgs = save_error_msgs;	/* restore */
 
 	      return q;
 	    }
@@ -12766,7 +12766,7 @@ pt_print_host_var (PARSER_CONTEXT * parser, PT_NODE * p)
 	    {
 	      parser_free_tree (parser, parser->error_msgs);
 	    }
-	  parser->error_msgs = save_error_msgs;									       /* restore */
+	  parser->error_msgs = save_error_msgs;	/* restore */
 	}
     }
 
@@ -14275,7 +14275,7 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
     }
 
   temp = p->info.query.q.select.list;
-  if (temp && temp->node_type == PT_NODE_LIST)									       /* values(...),... */
+  if (temp && temp->node_type == PT_NODE_LIST)	/* values(...),... */
     {
       q = pt_append_nulstring (parser, q, "values ");
 
@@ -14481,7 +14481,7 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	    {
 	      if ((p->info.query.q.select.hint & PT_HINT_NO_INDEX_SS)
 		  || !(p->info.query.q.select.hint & PT_HINT_INDEX_SS))
-		{												       /* skip scan is disabled */
+		{		/* skip scan is disabled */
 		  q = pt_append_nulstring (parser, q, "INDEX_LS");
 		  if (p->info.query.q.select.index_ls)
 		    {
@@ -16179,7 +16179,7 @@ pt_print_session_variables (PARSER_CONTEXT * parser, PT_NODE * p)
   q = pt_append_varchar (parser, q, r);
 
   while (p->next)
-    {														       /* print in the original order ... */
+    {				/* print in the original order ... */
       p = p->next;
       r = pt_print_bytes (parser, p);
       if (r)
@@ -16524,7 +16524,7 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
       }
       break;
 
-    case PT_TYPE_VARCHAR:											       /* have to check for embedded quotes */
+    case PT_TYPE_VARCHAR:	/* have to check for embedded quotes */
     case PT_TYPE_VARNCHAR:
     case PT_TYPE_VARBIT:
       if (p->info.value.text && prt_cs == INTL_CODESET_NONE && prt_coll_id == -1)
@@ -16607,7 +16607,7 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TYPE_CLOB:
     case PT_TYPE_NULL:
     case PT_TYPE_NA:
-    case PT_TYPE_STAR:												       /* as in count (*) */
+    case PT_TYPE_STAR:		/* as in count (*) */
     case PT_TYPE_OBJECT:
       q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
       break;
@@ -18026,7 +18026,7 @@ pt_restore_assignment_links (PT_NODE * assigns, PT_NODE ** links, int count)
 	    }
 	}
       else
-	{													       /* PT_IS_N_COLUMN_UPDATE_EXPR(lhs) == true */
+	{			/* PT_IS_N_COLUMN_UPDATE_EXPR(lhs) == true */
 	  lhs = lhs->info.expr.arg1;
 	  for (att = lhs; att && (links_idx < count || count == -1); att = att->next)
 	    {
@@ -18125,7 +18125,7 @@ pt_get_assignment_lists (PARSER_CONTEXT * parser, PT_NODE ** select_names, PT_NO
 	  ++(*no_vals);
 	}
       else
-	{													       /* PT_IS_N_COLUMN_UPDATE_EXPR(lhs) == true */
+	{			/* PT_IS_N_COLUMN_UPDATE_EXPR(lhs) == true */
 	  lhs = lhs->info.expr.arg1;
 	  for (att = lhs; att; att = att->next)
 	    {

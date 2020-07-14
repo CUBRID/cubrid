@@ -524,7 +524,7 @@ get_ordered_classes (print_output & output_ctx, MOP * class_table)
 
       filter_system_classes (&classes);
       if (classes == NULL)
-	{													       /* no user class */
+	{			/* no user class */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NODATA_TOBE_UNLOADED, 0);
 	  return NULL;
 	}
@@ -1040,7 +1040,7 @@ extract_indexes_to_file (extract_context & ctxt, const char *output_filename)
       remove (output_filename);
     }
   else
-    {														       /* not empty */
+    {				/* not empty */
       if (err_count == 0)
 	{
 	  output_ctx ("\n");
@@ -1138,7 +1138,7 @@ emit_schema (print_output & output_ctx, DB_OBJLIST * classes, int do_auth, DB_OB
 	  if (sm_get_class_flag (cl->op, SM_CLASSFLAG_REUSE_OID) > 0)
 	    {
 	      output_ctx (" REUSE_OID");
-	    }
+	    } 
 	  else
 	    {
 	      output_ctx (" DONT_REUSE_OID");
@@ -1400,12 +1400,12 @@ emit_query_specs (print_output & output_ctx, DB_OBJLIST * classes)
       for (s = specs, i = 1; s != NULL; s = db_query_spec_next (s), i++)
 	{
 	  if (change_vclass_spec)
-	    {													       /* change the existing spec lists */
+	    {			/* change the existing spec lists */
 	      output_ctx ("ALTER VCLASS %s%s%s CHANGE QUERY %d %s ;\n", PRINT_IDENTIFIER (name), i,
 			  db_query_spec_string (s));
 	    }
 	  else
-	    {													       /* emit the usual statements */
+	    {			/* emit the usual statements */
 	      output_ctx ("ALTER VCLASS %s%s%s ADD QUERY %s ;\n", PRINT_IDENTIFIER (name), db_query_spec_string (s));
 	    }
 	}
@@ -1498,12 +1498,12 @@ emit_query_specs_has_using_index (print_output & output_ctx, DB_OBJLIST * vclass
       for (s = specs, i = 1; s; s = db_query_spec_next (s), i++)
 	{
 	  if (change_vclass_spec)
-	    {													       /* change the existing spec lists */
+	    {			/* change the existing spec lists */
 	      output_ctx ("ALTER VCLASS %s%s%s CHANGE QUERY %d %s ;\n", PRINT_IDENTIFIER (name), i,
 			  db_query_spec_string (s));
 	    }
 	  else
-	    {													       /* emit the usual statements */
+	    {			/* emit the usual statements */
 	      output_ctx ("ALTER VCLASS %s%s%s ADD QUERY %s ;\n", PRINT_IDENTIFIER (name), db_query_spec_string (s));
 	    }
 	}
@@ -1596,7 +1596,7 @@ emit_resolutions (print_output & output_ctx, DB_OBJECT * class_, const char *cla
 	}
 
       output_ctx (";\n");
-    }														       /* if */
+    }				/* if */
 
   return (return_value);
 }
@@ -2311,12 +2311,12 @@ emit_attribute_def (print_output & output_ctx, DB_ATTRIBUTE * attribute, ATTRIBU
       {
 	output_ctx ("       %s%s%s ", PRINT_IDENTIFIER (name));
 	break;
-      }														       /* case INSTANCE_ATTRIBUTE */
+      }				/* case INSTANCE_ATTRIBUTE */
     case SHARED_ATTRIBUTE:
       {
 	output_ctx ("       %s%s%s ", PRINT_IDENTIFIER (name));
 	break;
-      }														       /* case SHARED_ATTRIBUTE */
+      }				/* case SHARED_ATTRIBUTE */
     case CLASS_ATTRIBUTE:
       {
 	/*
@@ -2326,14 +2326,14 @@ emit_attribute_def (print_output & output_ctx, DB_ATTRIBUTE * attribute, ATTRIBU
 	 */
 	output_ctx ("       %s%s%s ", PRINT_IDENTIFIER (name));
 	break;
-      }														       /* case CLASS_ATTRIBUTE */
+      }				/* case CLASS_ATTRIBUTE */
     }
 
   emit_domain_def (output_ctx, db_attribute_domain (attribute));
 
   if (emit_autoincrement_def (output_ctx, attribute) != NO_ERROR)
     {
-      ;														       /* just continue */
+      ;				/* just continue */
     }
 
   if (qualifier == SHARED_ATTRIBUTE)
@@ -2668,7 +2668,7 @@ emit_index_def (print_output & output_ctx, DB_OBJECT * class_)
 
       if (supclass && classobj_find_class_index (supclass, constraint->name) != NULL)
 	{
-	  continue;												       /* same index skip */
+	  continue;		/* same index skip */
 	}
 
       if (constraint->func_index_info)
@@ -2686,16 +2686,16 @@ emit_index_def (print_output & output_ctx, DB_OBJECT * class_)
 		      PRINT_IDENTIFIER (constraint->name), PRINT_IDENTIFIER (cls_name));
 	}
 
-      asc_desc = NULL;												       /* init */
+      asc_desc = NULL;		/* init */
       prefix_length = NULL;
       if (ctype == DB_CONSTRAINT_INDEX)
-	{													       /* is not reverse index */
+	{			/* is not reverse index */
 	  /* need to get asc/desc info */
 	  asc_desc = db_constraint_asc_desc (constraint);
 	  prefix_length = db_constraint_prefix_length (constraint);
 	}
       else if (ctype == DB_CONSTRAINT_UNIQUE)
-	{													       /* is not reverse unique index */
+	{			/* is not reverse unique index */
 	  /* need to get asc/desc info */
 	  asc_desc = db_constraint_asc_desc (constraint);
 	}
@@ -2980,7 +2980,7 @@ emit_method_def (print_output & output_ctx, DB_METHOD * method, METHOD_QUALIFIER
 	    output_ctx ("       %s%s%s(", PRINT_IDENTIFIER (name));
 	  }
 	break;
-      }														       /* case INSTANCE_METHOD */
+      }				/* case INSTANCE_METHOD */
     case CLASS_METHOD:
       {
 	if (name != NULL)
@@ -2988,7 +2988,7 @@ emit_method_def (print_output & output_ctx, DB_METHOD * method, METHOD_QUALIFIER
 	    output_ctx ("CLASS  %s%s%s(", PRINT_IDENTIFIER (name));
 	  }
 	break;
-      }														       /* case CLASS_METHOD */
+      }				/* case CLASS_METHOD */
     }
 
   /*
@@ -3073,7 +3073,7 @@ emit_partition_parts (print_output & output_ctx, SM_PARTITION * partition_info, 
     case PT_PARTITION_RANGE:
       output_ctx (" VALUES LESS THAN ");
       if (!set_get_element_nocopy (partition_info->values, 1, &ele))
-	{													       /* 0:MIN, 1:MAX */
+	{			/* 0:MIN, 1:MAX */
 	  if (DB_IS_NULL (&ele))
 	    {
 	      output_ctx ("MAXVALUE");

@@ -44,8 +44,7 @@
 #include <assert.h>
 
 //--------------------------------------------------------------------------------
-void
-object_printer::describe_comment (const char *comment)
+void object_printer::describe_comment (const char *comment)
 {
   db_value comment_value;
 
@@ -69,8 +68,7 @@ object_printer::describe_comment (const char *comment)
 }
 
 //--------------------------------------------------------------------------------
-void
-object_printer::describe_partition_parts (const sm_partition & parts, class_description::type prt_type)
+void object_printer::describe_partition_parts (const sm_partition &parts, class_description::type prt_type)
 {
   DB_VALUE ele;
   int setsize, i;
@@ -141,8 +139,7 @@ object_printer::describe_partition_parts (const sm_partition & parts, class_desc
  *
  */
 //--------------------------------------------------------------------------------
-void
-object_printer::describe_identifier (const char *identifier, class_description::type prt_type)
+void object_printer::describe_identifier (const char *identifier, class_description::type prt_type)
 {
   if (prt_type == class_description::CSQL_SCHEMA_COMMAND)
     {
@@ -169,9 +166,8 @@ object_printer::describe_identifier (const char *identifier, class_description::
  *
  */
 //--------------------------------------------------------------------------------
-void
-object_printer::describe_domain ( /*const */ tp_domain & domain, class_description::type prt_type,
-				 bool force_print_collation)
+void object_printer::describe_domain (/*const*/tp_domain &domain, class_description::type prt_type,
+    bool force_print_collation)
 {
   TP_DOMAIN *temp_domain;
   char temp_buffer[27];
@@ -232,12 +228,12 @@ object_printer::describe_domain ( /*const */ tp_domain & domain, class_descripti
 	      m_buf ("STRING");
 	      break;
 	    }
-	  /* FALLTHRU */
+	/* FALLTHRU */
 	case DB_TYPE_CHAR:
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARNCHAR:
 	  has_collation = 1;
-	  /* FALLTHRU */
+	/* FALLTHRU */
 	case DB_TYPE_BIT:
 	case DB_TYPE_VARBIT:
 	  strcpy (temp_buffer, temp_domain->type->name);
@@ -335,8 +331,7 @@ object_printer::describe_domain ( /*const */ tp_domain & domain, class_descripti
  *
  */
 //--------------------------------------------------------------------------------
-void
-object_printer::describe_argument (const sm_method_argument & argument, class_description::type prt_type)
+void object_printer::describe_argument (const sm_method_argument &argument, class_description::type prt_type)
 {
   if (argument.domain != NULL)
     {
@@ -363,8 +358,8 @@ object_printer::describe_argument (const sm_method_argument & argument, class_de
  *
  */
 //--------------------------------------------------------------------------------
-void
-object_printer::describe_method (const struct db_object &op, const sm_method & method, class_description::type prt_type)
+void object_printer::describe_method (const struct db_object &op, const sm_method &method,
+				      class_description::type prt_type)
 {
   SM_METHOD_SIGNATURE *signature_p;
 
@@ -414,15 +409,14 @@ object_printer::describe_method (const struct db_object &op, const sm_method & m
  *
  */
 //--------------------------------------------------------------------------------
-void
-object_printer::describe_signature (const sm_method_signature & signature, class_description::type prt_type)
+void object_printer::describe_signature (const sm_method_signature &signature, class_description::type prt_type)
 {
   SM_METHOD_ARGUMENT *argument_p;
   int i;
 
   for (i = 1; i <= signature.num_args; i++)
     {
-      for (argument_p = signature.args; argument_p != NULL && argument_p->index != i; argument_p = argument_p->next)
+      for (argument_p = signature.args; argument_p != NULL && argument_p->index != i; argument_p=argument_p->next)
 	;
 
       if (argument_p != NULL)
@@ -456,9 +450,8 @@ object_printer::describe_signature (const sm_method_signature & signature, class
  *
  */
 //--------------------------------------------------------------------------------
-void
-object_printer::describe_attribute (const struct db_object &cls, const sm_attribute & attribute,
-				    bool is_inherited, class_description::type prt_type, bool force_print_collation)
+void object_printer::describe_attribute (const struct db_object &cls, const sm_attribute &attribute,
+    bool is_inherited, class_description::type prt_type, bool force_print_collation)
 {
   char str_buf[NUMERIC_MAX_STRING_SIZE];
   db_value_printer printer (m_buf);
@@ -606,9 +599,8 @@ object_printer::describe_attribute (const struct db_object &cls, const sm_attrib
  *
  */
 //--------------------------------------------------------------------------------
-void
-object_printer::describe_constraint (const sm_class & cls, const sm_class_constraint & constraint,
-				     class_description::type prt_type)
+void object_printer::describe_constraint (const sm_class &cls, const sm_class_constraint &constraint,
+    class_description::type prt_type)
 {
   SM_ATTRIBUTE **attribute_p;
   const int *asc_desc;
@@ -643,7 +635,7 @@ object_printer::describe_constraint (const sm_class & cls, const sm_class_constr
 	}
 
       m_buf ("%s ON %s (", constraint.name, sm_ch_name ((MOBJ) (&cls)));
-      asc_desc = NULL;												       /* init */
+      asc_desc = NULL;		/* init */
       if (!SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (constraint.type))
 	{
 	  asc_desc = constraint.asc_desc;
@@ -761,7 +753,7 @@ object_printer::describe_constraint (const sm_class & cls, const sm_class_constr
       SM_CLASS *ref_cls;
       SM_CLASS_CONSTRAINT *c;
 
-      ref_clsop = ws_mop (&(constraint.fk_info->ref_class_oid), NULL);
+      ref_clsop = ws_mop (& (constraint.fk_info->ref_class_oid), NULL);
       if (au_fetch_class_force (ref_clsop, &ref_cls, AU_FETCH_READ) != NO_ERROR)
 	{
 	  return;
@@ -835,8 +827,7 @@ object_printer::describe_constraint (const sm_class & cls, const sm_class_constr
  *
  */
 //--------------------------------------------------------------------------------
-void
-object_printer::describe_resolution (const sm_resolution & resolution, class_description::type prt_type)
+void object_printer::describe_resolution (const sm_resolution &resolution, class_description::type prt_type)
 {
   if (prt_type != class_description::SHOW_CREATE_TABLE)
     {
@@ -871,8 +862,7 @@ object_printer::describe_resolution (const sm_resolution & resolution, class_des
  *   file_p(in): method file descriptor
  */
 //--------------------------------------------------------------------------------
-void
-object_printer::describe_method_file (const struct db_object &obj, const sm_method_file & file)
+void object_printer::describe_method_file (const struct db_object &obj, const sm_method_file &file)
 {
   m_buf ("%s", file.name);
 
@@ -892,8 +882,7 @@ object_printer::describe_method_file (const struct db_object &obj, const sm_meth
  *    a condensed versino of the trigger help.
  */
 //--------------------------------------------------------------------------------
-void
-object_printer::describe_class_trigger (const tr_trigger & trigger)
+void object_printer::describe_class_trigger (const tr_trigger &trigger)
 {
   m_buf ("%s : %s %s ", trigger.name, describe_trigger_condition_time (trigger), tr_event_as_string (trigger.event));
 
@@ -915,8 +904,7 @@ object_printer::describe_class_trigger (const tr_trigger & trigger)
  *  trigger(in) :
  */
 //--------------------------------------------------------------------------------
-const char *
-object_printer::describe_trigger_condition_time (const tr_trigger & trigger)
+const char *object_printer::describe_trigger_condition_time (const tr_trigger &trigger)
 {
   DB_TRIGGER_TIME time = TR_TIME_NULL;
 
@@ -938,8 +926,7 @@ object_printer::describe_trigger_condition_time (const tr_trigger & trigger)
  *  trigger(in) :
  */
 //--------------------------------------------------------------------------------
-const char *
-object_printer::describe_trigger_action_time (const tr_trigger & trigger)
+const char *object_printer::describe_trigger_action_time (const tr_trigger &trigger)
 {
   DB_TRIGGER_TIME time = TR_TIME_NULL;
 
@@ -959,8 +946,7 @@ object_printer::describe_trigger_action_time (const tr_trigger & trigger)
  *   class_op(in):
  */
 //--------------------------------------------------------------------------------
-void
-object_printer::describe_class (struct db_object *class_op)
+void object_printer::describe_class (struct db_object *class_op)
 {
   m_buf.clear ();
 
@@ -968,8 +954,8 @@ object_printer::describe_class (struct db_object *class_op)
 
   if (class_descr.init (class_op, class_description::SHOW_CREATE_TABLE, m_buf) != NO_ERROR)
     {
-#if 0														       //what do we do in case of error???
-      int error = er_errid ();
+#if 0 //what do we do in case of error???
+      int error = er_errid();
       assert (error != NO_ERROR);
       if (error == ER_AU_SELECT_FAILURE)
 	{
@@ -978,7 +964,7 @@ object_printer::describe_class (struct db_object *class_op)
 	}
       else
 	{
-	  PT_ERRORc (parser, table_name, er_msg ());
+	  PT_ERRORc (parser, table_name, er_msg());
 	}
 #endif
       return;
@@ -1070,7 +1056,7 @@ object_printer::describe_class (struct db_object *class_op)
     {
       m_buf (", COLLATE %s", class_descr.collation);
     }
-  else
+  else 
     {
       m_buf += ' ';
     }
@@ -1145,7 +1131,7 @@ object_printer::describe_class (struct db_object *class_op)
       if (len > 1)
 	{
 	  m_buf (" (%s", class_descr.partition[1]);
-	  for (size_t i = 2; i < len; ++i)
+	  for (size_t i=2; i<len; ++i)
 	    {
 	      m_buf (", %s", class_descr.partition[i]);
 	    }
@@ -1177,8 +1163,7 @@ object_printer::describe_class (struct db_object *class_op)
  *
  */
 //--------------------------------------------------------------------------------
-void
-object_printer::describe_partition_info (const sm_partition & partinfo)
+void object_printer::describe_partition_info (const sm_partition &partinfo)
 {
   DB_VALUE ele;
   char col_name[DB_MAX_IDENTIFIER_LENGTH + 1];

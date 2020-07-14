@@ -51,7 +51,7 @@ struct json_t;
 #define pt_cat_error(parser, node, setNo, msgNo, ...) \
     pt_frob_error(parser, node, msgcat_message(MSGCAT_CATALOG_CUBRID, setNo, msgNo), ##__VA_ARGS__)
 
-#if 1														       //not necessary anymore thanks to new pt_cat_error() and existing pt_frob_error()
+#if 1				//not necessary anymore thanks to new pt_cat_error() and existing pt_frob_error()
 #define PT_ERROR(parser, node, msg) pt_frob_error(parser, node, msg)
 #define PT_ERRORc(parser, node, msg) pt_frob_error( parser, node, "%s", msg)
 
@@ -73,7 +73,7 @@ struct json_t;
 #define pt_cat_warning(parser, node, setNo, msgNo, ...) \
     pt_frob_warning(parser, node, msgcat_message(MSGCAT_CATALOG_CUBRID, setNo, msgNo), ##__VA_ARGS__)
 
-#if 1														       //not necessary anymore thanks to pt_cat_warning() and existing pt_frob_warning()
+#if 1				//not necessary anymore thanks to pt_cat_warning() and existing pt_frob_warning()
 #define PT_WARNING( parser, node, msg ) pt_frob_warning(parser, node, msg)
 #define PT_WARNINGm(parser, node, setNo, msgNo) pt_cat_warning(parser, node, setNo, msgNo)
 #define PT_WARNINGc( parser, node, msg ) pt_frob_warning(parser, node, msg)
@@ -857,8 +857,8 @@ enum pt_node_type
   PT_SET_NAMES = CUBRID_STMT_SET_NAMES,
   PT_SET_TIMEZONE = CUBRID_STMT_SET_TIMEZONE,
 
-  PT_DIFFERENCE = CUBRID_MAX_STMT_TYPE,										       /* these enumerations must be distinct from statements */
-  PT_INTERSECTION,												       /* difference intersection and union are reported as CUBRID_STMT_SELECT. */
+  PT_DIFFERENCE = CUBRID_MAX_STMT_TYPE,	/* these enumerations must be distinct from statements */
+  PT_INTERSECTION,		/* difference intersection and union are reported as CUBRID_STMT_SELECT. */
   PT_UNION,
 
   PT_ZZ_ERROR_MSG,
@@ -910,7 +910,7 @@ enum pt_node_type
   PT_JSON_TABLE_NODE,
   PT_JSON_TABLE_COLUMN,
 
-  PT_NODE_NUMBER,												       /* This is the number of node types */
+  PT_NODE_NUMBER,		/* This is the number of node types */
   PT_LAST_NODE_NUMBER = PT_NODE_NUMBER
 };
 typedef enum pt_node_type PT_NODE_TYPE;
@@ -942,9 +942,9 @@ enum pt_type_enum
   PT_TYPE_JSON,
 
   /* special values */
-  PT_TYPE_NA,													       /* in SELECT NA */
-  PT_TYPE_NULL,													       /* in assignment and defaults */
-  PT_TYPE_STAR,													       /* select (*), count (*), will be expanded later */
+  PT_TYPE_NA,			/* in SELECT NA */
+  PT_TYPE_NULL,			/* in assignment and defaults */
+  PT_TYPE_STAR,			/* select (*), count (*), will be expanded later */
 
   /* non primitive types */
   PT_TYPE_OBJECT,
@@ -954,7 +954,7 @@ enum pt_type_enum
   PT_TYPE_MIDXKEY,
   PT_TYPE_COMPOUND,
 
-  PT_TYPE_EXPR_SET,												       /* type of parentheses expr set, avail for parser only */
+  PT_TYPE_EXPR_SET,		/* type of parentheses expr set, avail for parser only */
   PT_TYPE_RESULTSET,
 
   PT_TYPE_BIGINT,
@@ -986,7 +986,7 @@ typedef enum
   /* PT_GRANT_OPTION_PRIV, avail for revoke only */
   PT_INDEX_PRIV,
   PT_INSERT_PRIV,
-  PT_REFERENCES_PRIV,												       /* for ANSI compatibility */
+  PT_REFERENCES_PRIV,		/* for ANSI compatibility */
   PT_SELECT_PRIV,
   PT_UPDATE_PRIV
 } PT_PRIV_TYPE;
@@ -1020,71 +1020,71 @@ typedef enum
   PT_META_CLASS,
   PT_META_ATTR,
   PT_PARAMETER,
-  PT_HINT_NAME,													       /* hint argument name */
+  PT_HINT_NAME,			/* hint argument name */
   PT_INDEX_NAME,
-  PT_RESERVED,													       /* reserved names for special attributes */
-  PT_IS_SUBQUERY,												       /* query is sub-query, not directly producing result */
-  PT_IS_UNION_SUBQUERY,												       /* in a union sub-query */
-  PT_IS_UNION_QUERY,												       /* query directly producing result in top level union */
+  PT_RESERVED,			/* reserved names for special attributes */
+  PT_IS_SUBQUERY,		/* query is sub-query, not directly producing result */
+  PT_IS_UNION_SUBQUERY,		/* in a union sub-query */
+  PT_IS_UNION_QUERY,		/* query directly producing result in top level union */
   PT_IS_SET_EXPR,
-  PT_IS_CSELECT,												       /* query is CSELECT, not directly producing result */
-  PT_IS_WHACKED_SPEC,												       /* ignore this one in xasl generation, no cross product */
-  PT_IS_SUBINSERT,												       /* used by value clause of insert */
-  PT_IS_VALUE,													       /* used by value clause of insert */
+  PT_IS_CSELECT,		/* query is CSELECT, not directly producing result */
+  PT_IS_WHACKED_SPEC,		/* ignore this one in xasl generation, no cross product */
+  PT_IS_SUBINSERT,		/* used by value clause of insert */
+  PT_IS_VALUE,			/* used by value clause of insert */
   PT_IS_DEFAULT_VALUE,
   PT_ATTRIBUTE,
   PT_METHOD,
   PT_FUNCTION_RENAME,
   PT_FILE_RENAME,
-  PT_NO_ISOLATION_LEVEL,											       /* value for uninitialized isolation level */
+  PT_NO_ISOLATION_LEVEL,	/* value for uninitialized isolation level */
   PT_SERIALIZABLE,
   PT_REPEATABLE_READ,
   PT_READ_COMMITTED,
-  PT_ISOLATION_LEVEL,												       /* get transaction option */
+  PT_ISOLATION_LEVEL,		/* get transaction option */
   PT_LOCK_TIMEOUT,
-  PT_HOST_IN,													       /* kind of host variable */
+  PT_HOST_IN,			/* kind of host variable */
   PT_HOST_OUT,
   PT_HOST_OUT_DESCR,
-  PT_ACTIVE,													       /* trigger status */
+  PT_ACTIVE,			/* trigger status */
   PT_INACTIVE,
-  PT_BEFORE,													       /* trigger time */
+  PT_BEFORE,			/* trigger time */
   PT_AFTER,
   PT_DEFERRED,
-  PT_REJECT,													       /* trigger action */
+  PT_REJECT,			/* trigger action */
   PT_INVALIDATE_XACTION,
   PT_PRINT,
   PT_EXPRESSION,
-  PT_TRIGGER_TRACE,												       /* trigger options */
+  PT_TRIGGER_TRACE,		/* trigger options */
   PT_TRIGGER_DEPTH,
-  PT_IS_CALL_STMT,												       /* is the method a call statement */
-  PT_IS_MTHD_EXPR,												       /* is the method call part of an expr */
-  PT_IS_CLASS_MTHD,												       /* is the method a class method */
-  PT_IS_INST_MTHD,												       /* is the method an instance method */
-  PT_METHOD_ENTITY,												       /* this entity arose from a method call */
-  PT_IS_SELECTOR_SPEC,												       /* This is the 'real' correspondant of the whacked spec. down in the path entities
-														        * portion. */
-  PT_PATH_INNER,												       /* types of join which may emulate path */
+  PT_IS_CALL_STMT,		/* is the method a call statement */
+  PT_IS_MTHD_EXPR,		/* is the method call part of an expr */
+  PT_IS_CLASS_MTHD,		/* is the method a class method */
+  PT_IS_INST_MTHD,		/* is the method an instance method */
+  PT_METHOD_ENTITY,		/* this entity arose from a method call */
+  PT_IS_SELECTOR_SPEC,		/* This is the 'real' correspondant of the whacked spec. down in the path entities
+				 * portion. */
+  PT_PATH_INNER,		/* types of join which may emulate path */
   PT_PATH_OUTER,
   PT_PATH_OUTER_WEASEL,
-  PT_LOCAL,													       /* local or cascaded view check option */
+  PT_LOCAL,			/* local or cascaded view check option */
   PT_CASCADED,
   PT_CURRENT,
 
-  PT_CHAR_STRING,												       /* denotes the flavor of a literal string */
+  PT_CHAR_STRING,		/* denotes the flavor of a literal string */
   PT_NCHAR_STRING,
   PT_BIT_STRING,
   PT_HEX_STRING,
 
   PT_MATCH_REGULAR,
-  PT_MATCH_FULL,												       /* values to support triggered actions for */
-  PT_MATCH_PARTIAL,												       /* referential integrity constraints */
+  PT_MATCH_FULL,		/* values to support triggered actions for */
+  PT_MATCH_PARTIAL,		/* referential integrity constraints */
   PT_RULE_CASCADE,
   PT_RULE_RESTRICT,
   PT_RULE_SET_NULL,
   PT_RULE_SET_DEFAULT,
   PT_RULE_NO_ACTION,
 
-  PT_LEADING,													       /* trim operation qualifiers */
+  PT_LEADING,			/* trim operation qualifiers */
   PT_TRAILING,
   PT_BOTH,
   PT_NOPUT,
@@ -1092,7 +1092,7 @@ typedef enum
   PT_OUTPUT,
   PT_INPUTOUTPUT,
 
-  PT_MILLISECOND,												       /* datetime components for extract operation */
+  PT_MILLISECOND,		/* datetime components for extract operation */
   PT_SECOND,
   PT_MINUTE,
   PT_HOUR,
@@ -1117,11 +1117,11 @@ typedef enum
   PT_SIMPLE_CASE,
   PT_SEARCHED_CASE,
 
-  PT_OPT_LVL,													       /* Variants of "get/set optimization" statement */
+  PT_OPT_LVL,			/* Variants of "get/set optimization" statement */
   PT_OPT_COST,
 
   PT_SUBSTR_ORG,
-  PT_SUBSTR,													       /* substring qualifier */
+  PT_SUBSTR,			/* substring qualifier */
 
   PT_EQ_TORDER,
 
@@ -1148,11 +1148,11 @@ typedef enum
   PT_TRACE_FORMAT_TEXT,
   PT_TRACE_FORMAT_JSON,
 
-  PT_IS_SHOWSTMT,												       /* query is SHOWSTMT */
+  PT_IS_SHOWSTMT,		/* query is SHOWSTMT */
   PT_IS_CTE_REC_SUBQUERY,
   PT_IS_CTE_NON_REC_SUBQUERY,
 
-  PT_DERIVED_JSON_TABLE,											       // json table spec derivation
+  PT_DERIVED_JSON_TABLE,	// json table spec derivation
 
   // todo: separate into relevant enumerations
 } PT_MISC_TYPE;
@@ -1161,57 +1161,57 @@ typedef enum
 typedef enum
 {
   PT_JOIN_NONE = 0x00,		/* 0000 0000 */
-  PT_JOIN_CROSS = 0x01,												       /* 0000 0001 */
-  PT_JOIN_NATURAL = 0x02,											       /* 0000 0010 -- not used */
-  PT_JOIN_INNER = 0x04,												       /* 0000 0100 */
-  PT_JOIN_LEFT_OUTER = 0x08,											       /* 0000 1000 */
-  PT_JOIN_RIGHT_OUTER = 0x10,											       /* 0001 0000 */
-  PT_JOIN_FULL_OUTER = 0x20,											       /* 0010 0000 -- not used */
-  PT_JOIN_UNION = 0x40												       /* 0100 0000 -- not used */
+  PT_JOIN_CROSS = 0x01,		/* 0000 0001 */
+  PT_JOIN_NATURAL = 0x02,	/* 0000 0010 -- not used */
+  PT_JOIN_INNER = 0x04,		/* 0000 0100 */
+  PT_JOIN_LEFT_OUTER = 0x08,	/* 0000 1000 */
+  PT_JOIN_RIGHT_OUTER = 0x10,	/* 0001 0000 */
+  PT_JOIN_FULL_OUTER = 0x20,	/* 0010 0000 -- not used */
+  PT_JOIN_UNION = 0x40		/* 0100 0000 -- not used */
 } PT_JOIN_TYPE;
 
 typedef enum
 {
   PT_HINT_NONE = 0x00,		/* 0000 0000 *//* no hint */
-  PT_HINT_ORDERED = 0x01,											       /* 0000 0001 *//* force join left-to-right */
-  PT_HINT_NO_INDEX_SS = 0x02,											       /* 0000 0010 *//* disable index skip scan */
-  PT_HINT_INDEX_SS = 0x04,											       /* 0000 0100 *//* enable index skip scan */
-  PT_HINT_SELECT_BTREE_NODE_INFO = 0x08,									       /* temporarily use the unused hint PT_HINT_Y */
+  PT_HINT_ORDERED = 0x01,	/* 0000 0001 *//* force join left-to-right */
+  PT_HINT_NO_INDEX_SS = 0x02,	/* 0000 0010 *//* disable index skip scan */
+  PT_HINT_INDEX_SS = 0x04,	/* 0000 0100 *//* enable index skip scan */
+  PT_HINT_SELECT_BTREE_NODE_INFO = 0x08,	/* temporarily use the unused hint PT_HINT_Y */
   /* SELECT b-tree node information */
-  PT_HINT_USE_NL = 0x10,											       /* 0001 0000 *//* force nl-join */
-  PT_HINT_USE_IDX = 0x20,											       /* 0010 0000 *//* force idx-join */
-  PT_HINT_USE_MERGE = 0x40,											       /* 0100 0000 *//* force m-join */
-  PT_HINT_USE_HASH = 0x80,											       /* 1000 0000 -- not used */
-  PT_HINT_RECOMPILE = 0x0100,											       /* 0000 0001 0000 0000 *//* recompile */
-  PT_HINT_LK_TIMEOUT = 0x0200,											       /* 0000 0010 0000 0000 *//* lock_timeout */
-  PT_HINT_NO_LOGGING = 0x0400,											       /* 0000 0100 0000 0000 *//* no_logging */
-  PT_HINT_UNUSED1 = 0x0800,											       /* 0000 1000 0000 0000 *//* not used */
-  PT_HINT_QUERY_CACHE = 0x1000,											       /* 0001 0000 0000 0000 *//* query_cache */
-  PT_HINT_REEXECUTE = 0x2000,											       /* 0010 0000 0000 0000 *//* reexecute */
-  PT_HINT_JDBC_CACHE = 0x4000,											       /* 0100 0000 0000 0000 *//* jdbc_cache */
-  PT_HINT_USE_SBR = 0x8000,											       /* 1000 0000 0000 0000 *//* statement based replication */
-  PT_HINT_USE_IDX_DESC = 0x10000,										       /* 0001 0000 0000 0000 0000 *//* descending index scan */
-  PT_HINT_NO_COVERING_IDX = 0x20000,										       /* 0010 0000 0000 0000 0000 *//* do not use covering index scan */
-  PT_HINT_INSERT_MODE = 0x40000,										       /* 0100 0000 0000 0000 0000 *//* set insert_executeion_mode */
-  PT_HINT_NO_IDX_DESC = 0x80000,										       /* 1000 0000 0000 0000 0000 *//* do not use descending index scan */
-  PT_HINT_NO_MULTI_RANGE_OPT = 0x100000,									       /* 0001 0000 0000 0000 0000 0000 */
+  PT_HINT_USE_NL = 0x10,	/* 0001 0000 *//* force nl-join */
+  PT_HINT_USE_IDX = 0x20,	/* 0010 0000 *//* force idx-join */
+  PT_HINT_USE_MERGE = 0x40,	/* 0100 0000 *//* force m-join */
+  PT_HINT_USE_HASH = 0x80,	/* 1000 0000 -- not used */
+  PT_HINT_RECOMPILE = 0x0100,	/* 0000 0001 0000 0000 *//* recompile */
+  PT_HINT_LK_TIMEOUT = 0x0200,	/* 0000 0010 0000 0000 *//* lock_timeout */
+  PT_HINT_NO_LOGGING = 0x0400,	/* 0000 0100 0000 0000 *//* no_logging */
+  PT_HINT_UNUSED1 = 0x0800,	/* 0000 1000 0000 0000 *//* not used */
+  PT_HINT_QUERY_CACHE = 0x1000,	/* 0001 0000 0000 0000 *//* query_cache */
+  PT_HINT_REEXECUTE = 0x2000,	/* 0010 0000 0000 0000 *//* reexecute */
+  PT_HINT_JDBC_CACHE = 0x4000,	/* 0100 0000 0000 0000 *//* jdbc_cache */
+  PT_HINT_USE_SBR = 0x8000,	/* 1000 0000 0000 0000 *//* statement based replication */
+  PT_HINT_USE_IDX_DESC = 0x10000,	/* 0001 0000 0000 0000 0000 *//* descending index scan */
+  PT_HINT_NO_COVERING_IDX = 0x20000,	/* 0010 0000 0000 0000 0000 *//* do not use covering index scan */
+  PT_HINT_INSERT_MODE = 0x40000,	/* 0100 0000 0000 0000 0000 *//* set insert_executeion_mode */
+  PT_HINT_NO_IDX_DESC = 0x80000,	/* 1000 0000 0000 0000 0000 *//* do not use descending index scan */
+  PT_HINT_NO_MULTI_RANGE_OPT = 0x100000,	/* 0001 0000 0000 0000 0000 0000 */
   /* do not use multi range optimization */
-  PT_HINT_USE_UPDATE_IDX = 0x200000,										       /* 0010 0000 0000 0000 0000 0000 */
+  PT_HINT_USE_UPDATE_IDX = 0x200000,	/* 0010 0000 0000 0000 0000 0000 */
   /* use index for merge update */
-  PT_HINT_USE_INSERT_IDX = 0x400000,										       /* 0100 0000 0000 0000 0000 0000 */
+  PT_HINT_USE_INSERT_IDX = 0x400000,	/* 0100 0000 0000 0000 0000 0000 */
   /* do not generate SORT-LIMIT plan */
-  PT_HINT_NO_SORT_LIMIT = 0x800000,										       /* 1000 0000 0000 0000 0000 0000 */
-  PT_HINT_NO_HASH_AGGREGATE = 0x1000000,									       /* 0001 0000 0000 0000 0000 0000 0000 */
+  PT_HINT_NO_SORT_LIMIT = 0x800000,	/* 1000 0000 0000 0000 0000 0000 */
+  PT_HINT_NO_HASH_AGGREGATE = 0x1000000,	/* 0001 0000 0000 0000 0000 0000 0000 */
   /* no hash aggregate evaluation */
-  PT_HINT_SKIP_UPDATE_NULL = 0x2000000,										       /* 0010 0000 0000 0000 0000 0000 0000 */
-  PT_HINT_NO_INDEX_LS = 0x4000000,										       /* 0100 0000 0000 0000 0000 0000 0000 *//* enable loose index scan */
-  PT_HINT_INDEX_LS = 0x8000000,											       /* 1000 0000 0000 0000 0000 0000 0000 *//* disable loose index scan */
-  PT_HINT_QUERY_NO_CACHE = 0x10000000,										       /* 0001 0000 0000 0000 0000 0000 0000 0000 *//* don't use the query cache */
-  PT_HINT_SELECT_RECORD_INFO = 0x20000000,									       /* 0010 0000 0000 0000 0000 0000 0000 0000 */
+  PT_HINT_SKIP_UPDATE_NULL = 0x2000000,	/* 0010 0000 0000 0000 0000 0000 0000 */
+  PT_HINT_NO_INDEX_LS = 0x4000000,	/* 0100 0000 0000 0000 0000 0000 0000 *//* enable loose index scan */
+  PT_HINT_INDEX_LS = 0x8000000,	/* 1000 0000 0000 0000 0000 0000 0000 *//* disable loose index scan */
+  PT_HINT_QUERY_NO_CACHE = 0x10000000,	/* 0001 0000 0000 0000 0000 0000 0000 0000 *//* don't use the query cache */
+  PT_HINT_SELECT_RECORD_INFO = 0x20000000,	/* 0010 0000 0000 0000 0000 0000 0000 0000 */
   /* SELECT record info from tuple header instead of data */
-  PT_HINT_SELECT_PAGE_INFO = 0x40000000,									       /* 0100 0000 0000 0000 0000 0000 0000 0000 */
+  PT_HINT_SELECT_PAGE_INFO = 0x40000000,	/* 0100 0000 0000 0000 0000 0000 0000 0000 */
   /* SELECT page header information from heap file instead of record data */
-  PT_HINT_SELECT_KEY_INFO = 0x80000000										       /* 1000 0000 0000 0000 0000 0000 0000 0000 */
+  PT_HINT_SELECT_KEY_INFO = 0x80000000	/* 1000 0000 0000 0000 0000 0000 0000 0000 */
     /* SELECT key information from index b-tree instead of table record data */
 } PT_HINT_ENUM;
 
@@ -1339,7 +1339,7 @@ typedef enum
   PT_EQ_SOME, PT_NE_SOME, PT_GE_SOME, PT_GT_SOME, PT_LT_SOME, PT_LE_SOME,
   PT_EQ_ALL, PT_NE_ALL, PT_GE_ALL, PT_GT_ALL, PT_LT_ALL, PT_LE_ALL,
   PT_EQ, PT_NE, PT_GE, PT_GT, PT_LT, PT_LE, PT_NULLSAFE_EQ,
-  PT_GT_INF, PT_LT_INF,												       /* internal use only */
+  PT_GT_INF, PT_LT_INF,		/* internal use only */
   PT_SETEQ, PT_SETNEQ, PT_SUPERSETEQ, PT_SUPERSET, PT_SUBSET, PT_SUBSETEQ,
   PT_PLUS, PT_MINUS,
   PT_TIMES, PT_DIVIDE, PT_UNARY_MINUS, PT_PRIOR, PT_QPRIOR,
@@ -1347,12 +1347,12 @@ typedef enum
   PT_BIT_NOT, PT_BIT_XOR, PT_BIT_AND, PT_BIT_OR, PT_BIT_COUNT,
   PT_BITSHIFT_LEFT, PT_BITSHIFT_RIGHT, PT_DIV, PT_MOD,
   PT_IF, PT_IFNULL, PT_ISNULL, PT_XOR,
-  PT_ASSIGN,													       /* as in x=y */
+  PT_ASSIGN,			/* as in x=y */
   PT_BETWEEN_AND,
   PT_BETWEEN_GE_LE, PT_BETWEEN_GE_LT, PT_BETWEEN_GT_LE, PT_BETWEEN_GT_LT,
   PT_BETWEEN_EQ_NA,
   PT_BETWEEN_INF_LE, PT_BETWEEN_INF_LT, PT_BETWEEN_GE_INF, PT_BETWEEN_GT_INF,
-  PT_RANGE,													       /* internal use only */
+  PT_RANGE,			/* internal use only */
   PT_MODULUS, PT_RAND, PT_DRAND,
   PT_POSITION, PT_SUBSTRING, PT_OCTET_LENGTH, PT_BIT_LENGTH,
   PT_SUBSTRING_INDEX, PT_MD5, PT_SPACE,
@@ -1406,8 +1406,8 @@ typedef enum
   PT_DATABASE,
   PT_VERSION,
   /* datetime */
-  PT_ADDDATE,													       /* 2 fixed parameter */
-  PT_DATE_ADD,													       /* INTERVAL variant */
+  PT_ADDDATE,			/* 2 fixed parameter */
+  PT_DATE_ADD,			/* INTERVAL variant */
   PT_SUBDATE,
   PT_DATE_SUB,
   PT_DATE_FORMAT,
@@ -1441,7 +1441,7 @@ typedef enum
   PT_CHAR_TO_BLOB, PT_CHAR_TO_CLOB, PT_CLOB_FROM_FILE, PT_CLOB_LENGTH,
   PT_CLOB_TO_CHAR,
   PT_TYPEOF,
-  PT_FUNCTION_HOLDER,												       /* special operator : wrapper for PT_FUNCTION node */
+  PT_FUNCTION_HOLDER,		/* special operator : wrapper for PT_FUNCTION node */
   PT_INDEX_CARDINALITY,
   PT_DEFINE_VARIABLE,
   PT_EVALUATE_VARIABLE,
@@ -1527,20 +1527,20 @@ typedef enum
 typedef enum
 {
   PT_SPEC_FLAG_NONE = 0x0,	/* the spec will not be altered */
-  PT_SPEC_FLAG_UPDATE = 0x01,											       /* the spec will be updated */
-  PT_SPEC_FLAG_DELETE = 0x02,											       /* the spec will be deleted */
-  PT_SPEC_FLAG_HAS_UNIQUE = 0x04,										       /* the spec has unique */
-  PT_SPEC_FLAG_FROM_VCLASS = 0x08,										       /* applicable for derived tables, marks one as a rewritten view */
-  PT_SPEC_FLAG_CONTAINS_OID = 0x10,										       /* classoid and oid were added in the derived table's select list */
-  PT_SPEC_FLAG_FOR_UPDATE_CLAUSE = 0x20,									       /* Used with FOR UPDATE clause */
-  PT_SPEC_FLAG_RECORD_INFO_SCAN = 0x40,										       /* spec will be scanned for record information instead of record data */
-  PT_SPEC_FLAG_PAGE_INFO_SCAN = 0x80,										       /* spec's heap file will scanned page by page for page information. records
-														        * will not be scanned. */
-  PT_SPEC_FLAG_KEY_INFO_SCAN = 0x100,										       /* one of the spec's indexes will be scanned for key information. */
-  PT_SPEC_FLAG_BTREE_NODE_INFO_SCAN = 0x200,									       /* one of the spec's indexes will be scanned for b-tree node info */
-  PT_SPEC_FLAG_MVCC_COND_REEV = 0x400,										       /* the spec is used in mvcc condition reevaluation */
-  PT_SPEC_FLAG_MVCC_ASSIGN_REEV = 0x800,									       /* the spec is used in UPDATE assignment reevaluation */
-  PT_SPEC_FLAG_DOESNT_HAVE_UNIQUE = 0x1000									       /* the spec was checked and does not have any uniques */
+  PT_SPEC_FLAG_UPDATE = 0x01,	/* the spec will be updated */
+  PT_SPEC_FLAG_DELETE = 0x02,	/* the spec will be deleted */
+  PT_SPEC_FLAG_HAS_UNIQUE = 0x04,	/* the spec has unique */
+  PT_SPEC_FLAG_FROM_VCLASS = 0x08,	/* applicable for derived tables, marks one as a rewritten view */
+  PT_SPEC_FLAG_CONTAINS_OID = 0x10,	/* classoid and oid were added in the derived table's select list */
+  PT_SPEC_FLAG_FOR_UPDATE_CLAUSE = 0x20,	/* Used with FOR UPDATE clause */
+  PT_SPEC_FLAG_RECORD_INFO_SCAN = 0x40,	/* spec will be scanned for record information instead of record data */
+  PT_SPEC_FLAG_PAGE_INFO_SCAN = 0x80,	/* spec's heap file will scanned page by page for page information. records
+					 * will not be scanned. */
+  PT_SPEC_FLAG_KEY_INFO_SCAN = 0x100,	/* one of the spec's indexes will be scanned for key information. */
+  PT_SPEC_FLAG_BTREE_NODE_INFO_SCAN = 0x200,	/* one of the spec's indexes will be scanned for b-tree node info */
+  PT_SPEC_FLAG_MVCC_COND_REEV = 0x400,	/* the spec is used in mvcc condition reevaluation */
+  PT_SPEC_FLAG_MVCC_ASSIGN_REEV = 0x800,	/* the spec is used in UPDATE assignment reevaluation */
+  PT_SPEC_FLAG_DOESNT_HAVE_UNIQUE = 0x1000	/* the spec was checked and does not have any uniques */
 } PT_SPEC_FLAG;
 
 typedef enum
@@ -2554,8 +2554,8 @@ extern PT_RESERVED_NAME pt_Reserved_name_table[];
   */
 
 #define NAME_FROM_PT_DOT 1
-#define NAME_FROM_CLASSNAME_DOT_STAR 2										       /* classname.* */
-#define NAME_FROM_STAR 3											       /* * */
+#define NAME_FROM_CLASSNAME_DOT_STAR 2	/* classname.* */
+#define NAME_FROM_STAR 3	/* * */
 #define NAME_IN_PATH_EXPR 4
 
 struct pt_name_info
@@ -2731,26 +2731,26 @@ struct pt_select_info
   unsigned single_table_opt:1;	/* hq optimized for single table */
 };
 
-#define PT_SELECT_INFO_ANSI_JOIN	     0x01								       /* has ANSI join? */
-#define PT_SELECT_INFO_ORACLE_OUTER	     0x02								       /* has Oracle's outer join operator? */
-#define PT_SELECT_INFO_DUMMY		     0x04								       /* is dummy (i.e., 'SELECT * FROM x') ? */
-#define PT_SELECT_INFO_HAS_AGG		     0x08								       /* has any type of aggregation? */
-#define PT_SELECT_INFO_HAS_ANALYTIC	     0x10								       /* has analytic functions */
-#define PT_SELECT_INFO_MULTI_UPDATE_AGG	     0x20								       /* is query for multi-table update using aggregate */
-#define PT_SELECT_INFO_IDX_SCHEMA	     0x40								       /* is show index query */
-#define PT_SELECT_INFO_COLS_SCHEMA	     0x80								       /* is show columns query */
-#define PT_SELECT_FULL_INFO_COLS_SCHEMA	   0x0100								       /* is show columns query */
-#define PT_SELECT_INFO_IS_MERGE_QUERY	   0x0200								       /* is a query of a merge stmt */
-#define	PT_SELECT_INFO_LIST_PUSHER	   0x0400								       /* dummy subquery that pushes a list file descriptor to be used at
-														        * server as its own result */
-#define PT_SELECT_INFO_NO_STRICT_OID_CHECK 0x0800								       /* normally, only OIDs of updatable views are allowed in parse
-														        * trees; however, for MERGE and UPDATE we sometimes want to
-														        * allow OIDs of partially updatable views */
-#define PT_SELECT_INFO_IS_UPD_DEL_QUERY	   0x1000								       /* set if select was built for an UPDATE or DELETE statement */
-#define PT_SELECT_INFO_FOR_UPDATE	   0x2000								       /* FOR UPDATE clause is active */
-#define PT_SELECT_INFO_DISABLE_LOOSE_SCAN  0x4000								       /* loose scan not possible on query */
-#define PT_SELECT_INFO_MVCC_LOCK_NEEDED	   0x8000								       /* lock returned rows */
-#define PT_SELECT_INFO_READ_ONLY         0x010000								       /* read-only system generated queries like show statement */
+#define PT_SELECT_INFO_ANSI_JOIN	     0x01	/* has ANSI join? */
+#define PT_SELECT_INFO_ORACLE_OUTER	     0x02	/* has Oracle's outer join operator? */
+#define PT_SELECT_INFO_DUMMY		     0x04	/* is dummy (i.e., 'SELECT * FROM x') ? */
+#define PT_SELECT_INFO_HAS_AGG		     0x08	/* has any type of aggregation? */
+#define PT_SELECT_INFO_HAS_ANALYTIC	     0x10	/* has analytic functions */
+#define PT_SELECT_INFO_MULTI_UPDATE_AGG	     0x20	/* is query for multi-table update using aggregate */
+#define PT_SELECT_INFO_IDX_SCHEMA	     0x40	/* is show index query */
+#define PT_SELECT_INFO_COLS_SCHEMA	     0x80	/* is show columns query */
+#define PT_SELECT_FULL_INFO_COLS_SCHEMA	   0x0100	/* is show columns query */
+#define PT_SELECT_INFO_IS_MERGE_QUERY	   0x0200	/* is a query of a merge stmt */
+#define	PT_SELECT_INFO_LIST_PUSHER	   0x0400	/* dummy subquery that pushes a list file descriptor to be used at
+							 * server as its own result */
+#define PT_SELECT_INFO_NO_STRICT_OID_CHECK 0x0800	/* normally, only OIDs of updatable views are allowed in parse
+							 * trees; however, for MERGE and UPDATE we sometimes want to
+							 * allow OIDs of partially updatable views */
+#define PT_SELECT_INFO_IS_UPD_DEL_QUERY	   0x1000	/* set if select was built for an UPDATE or DELETE statement */
+#define PT_SELECT_INFO_FOR_UPDATE	   0x2000	/* FOR UPDATE clause is active */
+#define PT_SELECT_INFO_DISABLE_LOOSE_SCAN  0x4000	/* loose scan not possible on query */
+#define PT_SELECT_INFO_MVCC_LOCK_NEEDED	   0x8000	/* lock returned rows */
+#define PT_SELECT_INFO_READ_ONLY         0x010000	/* read-only system generated queries like show statement */
 
 #define PT_SELECT_INFO_IS_FLAGED(s, f)  \
           ((s)->info.query.q.select.flag & (f))
@@ -3140,7 +3140,7 @@ struct pt_constraint_info
 enum pt_pointer_type
 {
   PT_POINTER_NORMAL = 0,	/* normal pointer, gets resolved to node */
-  PT_POINTER_REF = 1												       /* reference pointer - node gets walked by pt_walk_tree */
+  PT_POINTER_REF = 1		/* reference pointer - node gets walked by pt_walk_tree */
 };
 typedef enum pt_pointer_type PT_POINTER_TYPE;
 
@@ -3649,19 +3649,19 @@ enum pt_coll_coerc_lev
 {
   PT_COLLATION_L0_COERC = 0,	/* expressions with COLLATE modifier */
   /* Columns */
-  PT_COLLATION_L1_COERC,											       /* non-binary collations */
-  PT_COLLATION_L1_ISO_BIN_COERC,										       /* with ISO binary coll */
-  PT_COLLATION_L1_BIN_COERC,											       /* with binary collation */
+  PT_COLLATION_L1_COERC,	/* non-binary collations */
+  PT_COLLATION_L1_ISO_BIN_COERC,	/* with ISO binary coll */
+  PT_COLLATION_L1_BIN_COERC,	/* with binary collation */
   /* SELECT values, expressions */
-  PT_COLLATION_L2_COERC,											       /* non-binary collations */
-  PT_COLLATION_L2_BINARY_COERC,											       /* with binary collation */
-  PT_COLLATION_L2_BIN_COERC,											       /* with ISO, UTF8 or EUCKR binary collation */
+  PT_COLLATION_L2_COERC,	/* non-binary collations */
+  PT_COLLATION_L2_BINARY_COERC,	/* with binary collation */
+  PT_COLLATION_L2_BIN_COERC,	/* with ISO, UTF8 or EUCKR binary collation */
   /* special operators (USER()) */
   PT_COLLATION_L3_COERC,
   /* constants (string literals) */
-  PT_COLLATION_L4_COERC,											       /* non-binary collations */
-  PT_COLLATION_L4_BINARY_COERC,											       /* with binary collation */
-  PT_COLLATION_L4_BIN_COERC,											       /* with ISO, UTF8 or EUCKR binary collation */
+  PT_COLLATION_L4_COERC,	/* non-binary collations */
+  PT_COLLATION_L4_BINARY_COERC,	/* with binary collation */
+  PT_COLLATION_L4_BIN_COERC,	/* with ISO, UTF8 or EUCKR binary collation */
   /* HV, session variables */
   PT_COLLATION_L5_COERC,
   /* nodes not having collation (internal use) */
