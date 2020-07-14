@@ -8227,7 +8227,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    else
 	      {
 		found_reuse_oid = true;
-		if (tbl_opt->info.table_option.option == PT_TABLE_OPTION_REUSE_OID) 
+		if (tbl_opt->info.table_option.option == PT_TABLE_OPTION_REUSE_OID)
 		  {
 		    reuse_oid = true;
 		  }

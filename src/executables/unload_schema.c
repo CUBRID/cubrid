@@ -1138,7 +1138,7 @@ emit_schema (print_output & output_ctx, DB_OBJLIST * classes, int do_auth, DB_OB
 	  if (sm_get_class_flag (cl->op, SM_CLASSFLAG_REUSE_OID) > 0)
 	    {
 	      output_ctx (" REUSE_OID");
-	    } 
+	    }
 	  else
 	    {
 	      output_ctx (" DONT_REUSE_OID");
