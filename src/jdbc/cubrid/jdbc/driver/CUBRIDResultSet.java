@@ -274,7 +274,7 @@ public class CUBRIDResultSet implements ResultSet {
 						}
 						is_closed = true;
 
-						u_stmt.moveCursor(0, 0);
+						//u_stmt.moveCursor(0, 0);
 						clearCurrentRow();
 						if (stmt.getResultSetHoldability() == ResultSet.HOLD_CURSORS_OVER_COMMIT) {
 							u_stmt.closeCursor();
