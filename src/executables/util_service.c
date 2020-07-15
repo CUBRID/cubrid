@@ -1319,7 +1319,7 @@ process_service (int command_type, bool process_window_service)
 		  (void) process_manager (command_type, false);
 		}
 
-	      if (util_get_ha_mode_for_sa_utils () != HA_MODE_OFF)
+	      if (strcmp (get_property (SERVICE_START_HEARTBEAT), PROPERTY_ON) == 0)
 		{
 		  (void) process_heartbeat (command_type, 0, NULL);
 		}
@@ -1552,7 +1552,7 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 		      print_message (stderr, MSGCAT_UTIL_GENERIC_HA_MODE);
 		      print_result (PRINT_SERVER_NAME, status, command_type);
 		      util_log_write_errid (MSGCAT_UTIL_GENERIC_HA_MODE);
-		      break;
+		      continue;
 		    }
 		}
 	      if (is_server_running (CHECK_SERVER, token, 0))
@@ -1612,7 +1612,7 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 		      print_message (stderr, MSGCAT_UTIL_GENERIC_HA_MODE);
 		      print_result (PRINT_SERVER_NAME, status, command_type);
 		      util_log_write_errid (MSGCAT_UTIL_GENERIC_HA_MODE);
-		      break;
+		      continue;
 		    }
 		}
 #endif /* !WINDOWS */
@@ -1681,7 +1681,7 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 			  print_message (stderr, MSGCAT_UTIL_GENERIC_HA_MODE);
 			  util_log_write_errid (MSGCAT_UTIL_GENERIC_HA_MODE);
 			  print_result (PRINT_SERVER_NAME, status, command_type);
-			  break;
+			  continue;
 			}
 		    }
 #endif /* !WINDOWS */
@@ -4254,14 +4254,6 @@ process_heartbeat (int command_type, int argc, const char **argv)
   int status = NO_ERROR;
 #if !defined(WINDOWS)
   HA_CONF ha_conf;
-
-  if (util_get_ha_mode_for_sa_utils () == HA_MODE_OFF)
-    {
-      print_message (stderr, MSGCAT_UTIL_GENERIC_NOT_HA_MODE);
-      util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_HA_MODE);
-      print_result (PRINT_HEARTBEAT_NAME, ER_FAILED, command_type);
-      return ER_FAILED;
-    }
 
   memset ((void *) &ha_conf, 0, sizeof (HA_CONF));
   status = util_make_ha_conf (&ha_conf);

@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  * Redistribution and use in source and binary forms, with or without modification, 
  * are permitted provided that the following conditions are met: 
@@ -30,38 +31,67 @@
 
 package com.cubrid.jsp.value;
 
+import java.sql.DriverManager;
 import java.sql.SQLException;
 
 import com.cubrid.jsp.Server;
 import com.cubrid.jsp.exception.TypeMismatchException;
 
+import cubrid.jdbc.driver.CUBRIDConnectionDefault;
 import cubrid.sql.CUBRIDOID;
 
 public class OidValue extends Value {
-	private CUBRIDOID oid;
-
-	public OidValue(CUBRIDOID oid) {
-		super();
-		this.oid = oid;
+	private byte[] oidValue = null;
+	private CUBRIDOID oidObject = null;
+	
+	public OidValue (byte[] oid) {
+		this.oidValue = oid;
+	}
+	
+	public OidValue (CUBRIDOID oid) {
+		this.oidValue = oid.getOID();
+		this.oidObject = oid;
 	}
 
+	public OidValue(byte[] oid, int mode, int dbType) {
+		super(mode);
+		this.oidValue = oid;
+		this.dbType = dbType;
+	}
+	
 	public OidValue(CUBRIDOID oid, int mode, int dbType) {
 		super(mode);
-		this.oid = oid;
+		this.oidObject = oid;
+		this.oidValue = oid.getOID();
 		this.dbType = dbType;
 	}
 
-	public CUBRIDOID toOid() throws TypeMismatchException {
-		return oid;
-	}
-
 	public CUBRIDOID[] toOidArray() throws TypeMismatchException {
-		return new CUBRIDOID[] { oid };
+		createInstance();
+		return new CUBRIDOID[] { oidObject };
 	}
-
+	
+	public CUBRIDOID toOid() throws TypeMismatchException {
+		createInstance();
+		return oidObject;
+	}
+	
+	private void createInstance() {
+		if (oidValue != null && oidObject == null){
+			try {
+				CUBRIDConnectionDefault con = (CUBRIDConnectionDefault) DriverManager
+						.getConnection("jdbc:default:connection:");
+				oidObject = new CUBRIDOID (con, oidValue);
+			} catch (SQLException e) {
+				oidObject = null;
+			}
+		}
+	}
+	
 	public String toString() {
 		try {
-			return oid.getOidString();
+			createInstance();
+			return oidObject.getOidString();
 		} catch (SQLException e) {
 			Server.log(e);
 		}

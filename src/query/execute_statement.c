@@ -13432,16 +13432,6 @@ do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto cleanup;
     }
 
-  /* prevent blob, clob plan cache */
-  for (attr_list = statement->info.insert.attr_list; attr_list != NULL; attr_list = attr_list->next)
-    {
-      if (attr_list->type_enum == PT_TYPE_BLOB || attr_list->type_enum == PT_TYPE_CLOB)
-	{
-	  goto cleanup;
-	}
-    }
-  /* Checks above are required before any early outs. */
-
   error = do_prepare_insert_internal (parser, statement);
 
 cleanup:

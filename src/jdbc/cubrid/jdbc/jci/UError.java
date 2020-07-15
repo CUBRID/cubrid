@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  * Redistribution and use in source and binary forms, with or without modification, 
  * are permitted provided that the following conditions are met: 
@@ -89,14 +90,14 @@ public class UError {
 			if (connection.protoVersionIsAbove(UConnection.PROTOCOL_V4)) {
 				return String.format(
 						"%s[%s-%s:%d,%d,%d],%s[URL-%s].",
-						errorMessage, infoType, connection.CASIp, connection.CASPort,
-						connection.casId, connection.processId,
+						errorMessage, infoType, connection.casIp, connection.casPort,
+						connection.casId, connection.casProcessId,
 						sessionInfo, connection.url);
 			} else {
 				return String.format(
 						"%s[%s-%s:%d,%d],%s[URL-%s].",
-						errorMessage, infoType, connection.CASIp, connection.CASPort,
-						connection.processId, sessionInfo,
+						errorMessage, infoType, connection.casIp, connection.casPort,
+						connection.casProcessId, sessionInfo,
 						connection.url);
 			}
 		}
