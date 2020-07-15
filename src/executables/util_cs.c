@@ -3590,75 +3590,131 @@ int
 tde (UTIL_FUNCTION_ARG * arg)
 {
   UTIL_ARG_MAP *arg_map = arg->arg_map;
-#if defined (SA_MODE)
   char er_msg_file[PATH_MAX];
-#endif /* SA_MODE */
   const char *database_name;
+  bool sa_mode;
+  bool gen_op;
+  bool show_op;
+  bool print_val;
+  int change_idx;
+  int delete_idx;
 
-  if (utility_get_option_string_table_size (arg_map) < 1)
+  if (utility_get_option_string_table_size (arg_map) != 1)
     {
-      goto print_check_usage;
+      goto print_tde_usage;
     }
 
   database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
   if (database_name == NULL)
     {
-      goto print_check_usage;
+      goto print_tde_usage;
     }
 
+  gen_op = utility_get_option_bool_value (arg_map, TDE_GENERATE_KEY_S);
+  show_op = utility_get_option_bool_value (arg_map, TDE_SHOW_KEYS_S);
+  print_val = utility_get_option_bool_value (arg_map, TDE_PRINT_KEY_VALUE_S);
+  change_idx = utility_get_option_int_value (arg_map, TDE_CHANGE_KEY_S);
+  delete_idx = utility_get_option_int_value (arg_map, TDE_DELETE_KEY_S);
+
+  sa_mode = utility_get_option_bool_value (arg_map, TDE_SA_MODE_S);
+
+  if (!gen_op && !show_op && change_idx == -1 && delete_idx == -1)
+    {
+      /* One of opertion has to be given */
+      goto print_tde_usage;
+    }
+
+  /* Checking for exlusiveness for operations  */
+  if (gen_op && (show_op || change_idx != -1 || delete_idx != -1))
+    {
+      goto print_tde_usage;
+    }
+  if (show_op && (gen_op || change_idx != -1 || delete_idx != -1))
+    {
+      goto print_tde_usage;
+    }
+  if (change_idx != -1)
+    {
+      if (gen_op || show_op || delete_idx != -1)
+	{
+	  goto print_tde_usage;
+	}
+      /* Checking input range */
+      if (change_idx < 0)
+	{
+	  goto print_tde_usage;
+	}
+    }
+  if (delete_idx != -1)
+    {
+      if (gen_op || show_op || change_idx != -1)
+	{
+	  goto print_tde_usage;
+	}
+      /* Checking input range */
+      if (delete_idx < 0)
+	{
+	  goto print_tde_usage;
+	}
+    }
+
+  /* extra validation */
   if (check_database_name (database_name))
     {
       goto error_exit;
     }
 
-#if defined(SA_MODE)
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
-  AU_DISABLE_PASSWORDS ();
+  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
+
+  AU_DISABLE_PASSWORDS ();	/* disable authorization for this operation */
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("DBA", NULL);
-  if (db_restart (arg->command_name, TRUE, database_name) == NO_ERROR)
-    {
-      if (db_set_isolation (TRAN_READ_COMMITTED) != NO_ERROR || cvacuum () != NO_ERROR)
-	{
-	  const char *tmpname;
 
-	  if ((tmpname = er_get_msglog_filename ()) == NULL)
-	    {
-	      tmpname = "/dev/null";
-	    }
-	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_VACUUMDB, VACUUMDB_MSG_FAILED),
-				 tmpname);
-
-	  util_log_write_errstr ("%s\n", db_error_string (3));
-	  db_shutdown ();
-	  goto error_exit;
-	}
-      db_shutdown ();
-    }
-  else
+  if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       goto error_exit;
     }
 
-  return EXIT_SUCCESS;
-#else
-  fprintf (stderr,
-	   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_VACUUMDB, VACUUMDB_MSG_CLIENT_SERVER_NOT_AVAILABLE),
-	   basename (arg->argv0));
-  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+  if (db_set_isolation (TRAN_READ_COMMITTED) != NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+      db_shutdown ();
+      goto error_exit;
+    }
+
+  if (gen_op)
+    {
+      printf ("gen key\n");
+    }
+  else if (show_op)
+    {
+      printf ("show keys\n");
+    }
+  else if (change_idx != -1)
+    {
+      printf ("change key\n");
+    }
+  else if (delete_idx != -1)
+    {
+      printf ("delete key\n");
+    }
+
+  db_shutdown ();
 
   return EXIT_SUCCESS;
-#endif
-print_check_usage:
-  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_VACUUMDB, VACUUMDB_MSG_USAGE),
-	   basename (arg->argv0));
-  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
 
+print_tde_usage:
+  fprintf (stderr, "TDE Utility Usage\n");
+  /*
+     fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_BACKUPDB, BACKUPDB_MSG_USAGE),
+     basename (arg->argv0));
+     util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+   */
 error_exit:
-
   return EXIT_FAILURE;
 }

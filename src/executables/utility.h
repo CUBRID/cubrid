@@ -1555,6 +1555,22 @@ typedef struct _ha_config
 #define CHECKSUM_SCHEMA_ONLY_S			14002
 #define CHECKSUM_SCHEMA_ONLY_L			"schema-only"
 
+/* tde option list */
+#define TDE_GENERATE_KEY_S    'n'
+#define TDE_GENERATE_KEY_L    "generate-new-key"
+#define TDE_SHOW_KEYS_S       's'
+#define TDE_SHOW_KEYS_L       "show-keys"
+#define TDE_PRINT_KEY_VALUE_S 'v'
+#define TDE_PRINT_KEY_VALUE_L "print-value"
+#define TDE_SA_MODE_S         'S'
+#define TDE_SA_MODE_L         "SA-mode"
+#define TDE_CS_MODE_S         'C'
+#define TDE_CS_MODE_L         "CS-mode"
+#define TDE_CHANGE_KEY_S      'c'
+#define TDE_CHANGE_KEY_L      "change-key"
+#define TDE_DELETE_KEY_S      'd'
+#define TDE_DELETE_KEY_L      "delete-key"
+
 #if defined(WINDOWS)
 #define LIB_UTIL_CS_NAME                "cubridcs.dll"
 #define LIB_UTIL_SA_NAME                "cubridsa.dll"

@@ -820,10 +820,25 @@ static GETOPT_LONG ua_Checksum_Option[] = {
 };
 
 static UTIL_ARG_MAP ua_Tde_Option_Map[] = {
+  {OPTION_STRING_TABLE, {0}, {0}},
+  {TDE_GENERATE_KEY_S, {ARG_BOOLEAN}, {0}},
+  {TDE_SHOW_KEYS_S, {ARG_BOOLEAN}, {0}},
+  {TDE_PRINT_KEY_VALUE_S, {ARG_BOOLEAN}, {0}},
+  {TDE_SA_MODE_S, {ARG_BOOLEAN}, {0}},
+  {TDE_CS_MODE_S, {ARG_BOOLEAN}, {0}},
+  {TDE_CHANGE_KEY_S, {ARG_INTEGER}, {(void *) -1}},
+  {TDE_DELETE_KEY_S, {ARG_INTEGER}, {(void *) -1}},
   {0, {0}, {0}}
 };
 
 static GETOPT_LONG ua_Tde_Option[] = {
+  {TDE_GENERATE_KEY_L, 0, 0, TDE_GENERATE_KEY_S},
+  {TDE_SHOW_KEYS_L, 0, 0, TDE_SHOW_KEYS_S},
+  {TDE_PRINT_KEY_VALUE_L, 0, 0, TDE_PRINT_KEY_VALUE_S},
+  {TDE_SA_MODE_L, 0, 0, TDE_SA_MODE_S},
+  {TDE_CS_MODE_L, 0, 0, TDE_CS_MODE_S},
+  {TDE_CHANGE_KEY_L, 1, 0, TDE_CHANGE_KEY_S},
+  {TDE_DELETE_KEY_L, 1, 0, TDE_DELETE_KEY_S},
   {0, 0, 0, 0}
 };
 
@@ -867,7 +882,7 @@ static UTIL_MAP ua_Utility_Map[] = {
    ua_RestoreSlave_Option_Map},
   {VACUUMDB, SA_CS, 1, UTIL_OPTION_VACUUMDB, "vacuumdb", ua_Vacuum_Option, ua_Vacuum_Option_Map},
   {CHECKSUMDB, CS_ONLY, 1, UTIL_OPTION_CHECKSUMDB, "checksumdb", ua_Checksum_Option, ua_Checksum_Option_Map},
-  {TDE, SA_CS, 2, UTIL_OPTION_TDE, "tde", ua_Tde_Option, ua_Tde_Option_Map},
+  {TDE, SA_CS, 1, UTIL_OPTION_TDE, "tde", ua_Tde_Option, ua_Tde_Option_Map},
   {-1, -1, 0, 0, 0, 0, 0}
 };
 
