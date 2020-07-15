@@ -186,7 +186,7 @@ tde_cipher_initialize (THREAD_ENTRY *thread_p, const HFID *keyinfo_hfid, const c
       mk_path = mk_path_buffer;
     }
 
-  vdes = fileio_mount (thread_p, boot_db_full_name (), mk_path, LOG_DBTDE_KEYS_VOLID, 2, false);
+  vdes = fileio_mount (thread_p, boot_db_full_name (), mk_path, LOG_DBTDE_KEYS_VOLID, 1, false);
   if (vdes == NULL_VOLDES)
     {
       return ER_IO_MOUNT_FAIL;
@@ -325,7 +325,7 @@ tde_copy_keys_volume (THREAD_ENTRY *thread_p, const char *to_db_fullname, const 
       // er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_VOLUME_EXISTS, 1, extinfo->name);
       return ER_BO_VOLUME_EXISTS;
     }
-  from_vdes = fileio_mount (thread_p, from_db_fullname, mk_path, LOG_DBTDE_KEYS_VOLID, 2, false);
+  from_vdes = fileio_mount (thread_p, from_db_fullname, mk_path, LOG_DBTDE_KEYS_VOLID, 1, false);
   if (from_vdes == NULL_VOLDES)
     {
       return ER_IO_MOUNT_FAIL;

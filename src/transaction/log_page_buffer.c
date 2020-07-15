@@ -7419,7 +7419,7 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
 
   /* tde key file has to be mounted to access exclusively with TDE Utility */
   tde_make_keys_volume_fullname (mk_path, log_Db_fullname, false);
-  keys_vdes = fileio_mount (thread_p, log_Db_fullname, mk_path, LOG_DBTDE_KEYS_VOLID, 2, false);
+  keys_vdes = fileio_mount (thread_p, log_Db_fullname, mk_path, LOG_DBTDE_KEYS_VOLID, 1, false);
   if (keys_vdes == NULL_VOLDES)
     {
       error_code = ER_IO_MOUNT_FAIL;

@@ -3700,7 +3700,7 @@ tde (UTIL_FUNCTION_ARG * arg)
 
   printf ("mk path: %s", mk_path);
 
-  vdes = fileio_mount (NULL, mk_path, mk_path, LOG_DBTDE_KEYS_VOLID, 2, false);
+  vdes = fileio_mount (NULL, mk_path, mk_path, LOG_DBTDE_KEYS_VOLID, 1, false);
   if (vdes == NULL_VOLDES)
     {
       // return ER_IO_MOUNT_FAIL;
