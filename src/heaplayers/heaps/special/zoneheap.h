@@ -3,11 +3,11 @@
 /*
 
   Heap Layers: An Extensible Memory Allocation Infrastructure
-  
+
   Copyright (C) 2000-2020 by Emery Berger
   http://www.emeryberger.com
   emery@cs.umass.edu
-  
+
   Heap Layers is distributed under the terms of the Apache 2.0 license.
 
   You may obtain a copy of the License at
@@ -19,12 +19,12 @@
  * @class ZoneHeap
  * @brief A zone (or arena, or region) based allocator.
  * @author Emery Berger
+ * @date June 2000
  *
  * Uses the superclass to obtain large chunks of memory that are only
  * returned when the heap itself is destroyed.
  *
 */
-
 #ifndef HL_ZONEHEAP_H
 #define HL_ZONEHEAP_H
 
@@ -45,7 +45,9 @@ namespace HL {
       : _sizeRemaining (0),
 	_currentArena (NULL),
 	_pastArenas (NULL)
-    {}
+    {
+      m_chkSize = ChunkSize;
+    }
 
     ~ZoneHeap()
     {
@@ -63,6 +65,11 @@ namespace HL {
 	SuperHeap::free ((void *) _currentArena);
     }
 
+    inline void reset(const int chkSize)
+    {
+      m_chkSize = chkSize;
+    }
+
     inline void * malloc (size_t sz) {
       void * ptr = zoneMalloc (sz);
       //      assert ((size_t) ptr % Alignment == 0);
@@ -77,6 +84,8 @@ namespace HL {
 
 
   private:
+
+    int m_chkSize;
 
     ZoneHeap (const ZoneHeap&);
     ZoneHeap& operator=(const ZoneHeap&);
@@ -93,7 +102,7 @@ namespace HL {
 	  _pastArenas = _currentArena;
 	}
 	// Now get more memory.
-	size_t allocSize = ChunkSize;
+	size_t allocSize = m_chkSize;
 	if (allocSize < sz) {
 	  allocSize = sz;
 	}

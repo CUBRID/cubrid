@@ -3,11 +3,11 @@
 /*
 
   Heap Layers: An Extensible Memory Allocation Infrastructure
-  
+
   Copyright (C) 2000-2020 by Emery Berger
   http://www.emeryberger.com
   emery@cs.umass.edu
-  
+
   Heap Layers is distributed under the terms of the Apache 2.0 license.
 
   You may obtain a copy of the License at
@@ -29,16 +29,26 @@ namespace HL {
 
   template <int ChunkSize, class SuperHeap>
   class ObstackHeap : public SuperHeap {
+
+  private:
+    int m_chkSize;
+
   public:
 
     enum { Alignment = sizeof(double) };
 
     ObstackHeap()
     {
-      // Get one chunk and set the current position marker.
-      currentChunk = makeChunk (NULL, ChunkSize);
-      currentBase = nextPos = (char *) (currentChunk + 1);
-      assert (isValid());
+      currentChunk = NULL;
+      m_chkSize = ChunkSize;
+
+      if (m_chkSize > 0)
+      {
+          // Get one chunk and set the current position marker.
+        currentChunk = makeChunk (NULL, m_chkSize);
+        currentBase = nextPos = (char *) (currentChunk + 1);
+        assert (isValid ());
+      }
     }
 
     ~ObstackHeap() {
@@ -51,6 +61,18 @@ namespace HL {
         SuperHeap::free (ch);
         ch = pch;
       }
+    }
+
+    inline void reset (const int chkSize)
+    {
+      m_chkSize = chkSize;
+      if (m_chkSize > 0 && currentChunk == NULL)
+	{
+	  // Get one chunk and set the current position marker.
+	  currentChunk = makeChunk (NULL, m_chkSize);
+	  currentBase = nextPos = (char *) (currentChunk + 1);
+	  assert (isValid ());
+	}
     }
 
     // "Grow" the current object.
@@ -89,7 +111,7 @@ namespace HL {
       //sz = align(sz > 0 ? sz : 1);
       // If this object can't fit in the current chunk,
       // get another one.
-      if ((int) ((char *) currentChunk->getLimit() - (char *) nextPos) < sz) {
+      if ((ptrdiff_t) ((char *) currentChunk->getLimit() - (char *) nextPos) < (ptrdiff_t) sz) {
         // Allocate a chunk that's large enough to hold the requested size.
         currentChunk = makeChunk (currentChunk, sz);
         if (currentChunk == NULL) {
@@ -98,7 +120,7 @@ namespace HL {
         currentBase = nextPos = (char *) (currentChunk + 1);
         assert (isValid());
       }
-      assert (((int) ((char *) currentChunk->getLimit() - (char *) nextPos) >= sz));
+      assert (((ptrdiff_t) ((char *) currentChunk->getLimit() - (char *) nextPos) >= (ptrdiff_t) sz));
       assert ((char *) (sz + nextPos) <= currentChunk->getLimit());
       // Bump the pointers forward.
       currentBase = nextPos;
@@ -132,7 +154,7 @@ namespace HL {
           abort();
         } else {
           // Get one chunk.
-          currentChunk = makeChunk (NULL, ChunkSize);
+          currentChunk = makeChunk (NULL, m_chkSize);
           currentBase = nextPos = (char *) (currentChunk + 1);
           assert (isValid());
         }
@@ -211,7 +233,7 @@ namespace HL {
     inline ChunkHeader * makeChunk (ChunkHeader * ch, size_t sz) {
       // Round up the allocation size to at least one chunk.
       size_t allocSize
-        = HL::align<Alignment>((sz > ChunkSize - sizeof(ChunkHeader)) ? sz : ChunkSize - sizeof(ChunkHeader));
+        = HL::align<Alignment>((sz > m_chkSize - sizeof(ChunkHeader)) ? sz : m_chkSize - sizeof(ChunkHeader));
       // Make a new chunk.
       void * ptr = SuperHeap::malloc (sizeof(ChunkHeader) + allocSize);
       if (ptr == NULL) {
