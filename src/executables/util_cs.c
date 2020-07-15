@@ -58,6 +58,8 @@
 #include "dynamic_array.h"
 #include "util_func.h"
 #include "xasl.h"
+#include "log_volids.hpp"
+#include "tde.hpp"
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif
@@ -3591,7 +3593,9 @@ tde (UTIL_FUNCTION_ARG * arg)
 {
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   char er_msg_file[PATH_MAX];
+  char mk_path[PATH_MAX] = { 0, };
   const char *database_name;
+  int vdes = NULL_VOLDES;
   bool sa_mode;
   bool gen_op;
   bool show_op;
@@ -3668,7 +3672,7 @@ tde (UTIL_FUNCTION_ARG * arg)
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
-  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
+  // sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
   AU_DISABLE_PASSWORDS ();	/* disable authorization for this operation */
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
@@ -3682,6 +3686,24 @@ tde (UTIL_FUNCTION_ARG * arg)
 
   if (db_set_isolation (TRAN_READ_COMMITTED) != NO_ERROR)
     {
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+      db_shutdown ();
+      goto error_exit;
+    }
+
+  if (tde_get_mk_file_path (mk_path) != NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+      db_shutdown ();
+      goto error_exit;
+    }
+
+  printf ("mk path: %s", mk_path);
+
+  vdes = fileio_mount (NULL, mk_path, mk_path, LOG_DBTDE_KEYS_VOLID, 2, false);
+  if (vdes == NULL_VOLDES)
+    {
+      // return ER_IO_MOUNT_FAIL;
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       db_shutdown ();
       goto error_exit;
@@ -3706,6 +3728,11 @@ tde (UTIL_FUNCTION_ARG * arg)
 
   db_shutdown ();
 
+  if (vdes != NULL_VOLDES)
+    {
+      fileio_dismount (NULL, vdes);
+    }
+
   return EXIT_SUCCESS;
 
 print_tde_usage:
@@ -3716,5 +3743,9 @@ print_tde_usage:
      util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
    */
 error_exit:
+  if (vdes != NULL_VOLDES)
+    {
+      fileio_dismount (NULL, vdes);
+    }
   return EXIT_FAILURE;
 }

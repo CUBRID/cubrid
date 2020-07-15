@@ -445,6 +445,11 @@ net_server_init (void)
   req_p->processing_function = stde_get_data_keys;
   req_p->name = "NET_SERVER_TDE_GET_DATA_KEYS";
 
+  /* tde */
+  req_p = &net_Requests[NET_SERVER_TDE_GET_MK_FILE_PATH];
+  req_p->processing_function = stde_get_mk_file_path;
+  req_p->name = "NET_SERVER_TDE_GET_MK_FILE_PATH";
+
   /* log */
   req_p = &net_Requests[NET_SERVER_LOG_RESET_WAIT_MSECS];
   req_p->processing_function = slogtb_reset_wait_msecs;

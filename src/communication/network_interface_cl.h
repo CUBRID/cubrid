@@ -124,6 +124,7 @@ extern int heap_destroy_newly_created (const HFID * hfid, const OID * class_oid)
 extern int heap_reclaim_addresses (const HFID * hfid);
 extern int file_apply_tde_to_class_files (const OID * class_oid);
 extern int tde_get_data_keys_from_server ();
+extern int tde_get_mk_file_path (char *mk_path);
 extern DKNPAGES disk_get_total_numpages (VOLID volid);
 extern DKNPAGES disk_get_free_numpages (VOLID volid);
 extern char *disk_get_remarks (VOLID volid);

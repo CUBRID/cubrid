@@ -2586,6 +2586,54 @@ stde_get_data_keys (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 }
 
 /*
+ * stde_get_mk_file_path -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+stde_get_mk_file_path (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  char mk_path[PATH_MAX] = { 0, };
+  int pathlen = 0;
+  int area_size = -1;
+  char *reply, *area, *ptr;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  int err = NO_ERROR;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  tde_make_keys_volume_fullname (mk_path, boot_db_full_name (), false);
+
+  area_size = or_packed_string_length (mk_path, &pathlen);
+
+  area = (char *) db_private_alloc (thread_p, area_size);
+  if (area == NULL)
+    {
+      (void) return_error_to_client (thread_p, rid);
+      area_size = 0;
+    }
+  else
+    {
+      ptr = or_pack_string_with_length (area, (char *) mk_path, pathlen);
+    }
+
+  ptr = or_pack_int (reply, area_size);
+  ptr = or_pack_int (ptr, err);
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area, area_size);
+
+  if (area != NULL)
+    {
+      db_private_free_and_init (thread_p, area);
+    }
+}
+
+/*
  * stran_server_commit -
  *
  * return:
