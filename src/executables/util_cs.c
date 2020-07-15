@@ -3581,3 +3581,84 @@ error_exit:
 
   return EXIT_FAILURE;
 }
+
+/*
+ * tde() - tde main routine
+ *   return: EXIT_SUCCESS/EXIT_FAILURE
+ */
+int
+tde (UTIL_FUNCTION_ARG * arg)
+{
+  UTIL_ARG_MAP *arg_map = arg->arg_map;
+#if defined (SA_MODE)
+  char er_msg_file[PATH_MAX];
+#endif /* SA_MODE */
+  const char *database_name;
+
+  if (utility_get_option_string_table_size (arg_map) < 1)
+    {
+      goto print_check_usage;
+    }
+
+  database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  if (database_name == NULL)
+    {
+      goto print_check_usage;
+    }
+
+  if (check_database_name (database_name))
+    {
+      goto error_exit;
+    }
+
+#if defined(SA_MODE)
+  /* error message log file */
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
+  AU_DISABLE_PASSWORDS ();
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+  db_login ("DBA", NULL);
+  if (db_restart (arg->command_name, TRUE, database_name) == NO_ERROR)
+    {
+      if (db_set_isolation (TRAN_READ_COMMITTED) != NO_ERROR || cvacuum () != NO_ERROR)
+	{
+	  const char *tmpname;
+
+	  if ((tmpname = er_get_msglog_filename ()) == NULL)
+	    {
+	      tmpname = "/dev/null";
+	    }
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_VACUUMDB, VACUUMDB_MSG_FAILED),
+				 tmpname);
+
+	  util_log_write_errstr ("%s\n", db_error_string (3));
+	  db_shutdown ();
+	  goto error_exit;
+	}
+      db_shutdown ();
+    }
+  else
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+      goto error_exit;
+    }
+
+  return EXIT_SUCCESS;
+#else
+  fprintf (stderr,
+	   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_VACUUMDB, VACUUMDB_MSG_CLIENT_SERVER_NOT_AVAILABLE),
+	   basename (arg->argv0));
+  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+
+  return EXIT_SUCCESS;
+#endif
+print_check_usage:
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_VACUUMDB, VACUUMDB_MSG_USAGE),
+	   basename (arg->argv0));
+  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+
+error_exit:
+
+  return EXIT_FAILURE;
+}

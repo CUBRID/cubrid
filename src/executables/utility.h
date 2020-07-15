@@ -731,6 +731,7 @@ typedef enum
   RESTORESLAVE,
   VACUUMDB,
   CHECKSUMDB,
+  TDE,
   LOGFILEDUMP,
 } UTIL_INDEX;
 
@@ -931,6 +932,7 @@ typedef struct _ha_config
 #define UTIL_OPTION_RESTORESLAVE                "restoreslave"
 #define UTIL_OPTION_VACUUMDB			"vacuumdb"
 #define UTIL_OPTION_CHECKSUMDB			"checksumdb"
+#define UTIL_OPTION_TDE			                    "tde"
 
 /* createdb option list */
 #define CREATE_PAGES_S                          'p'
@@ -1685,6 +1687,7 @@ extern "C"
   extern int restoreslave (UTIL_FUNCTION_ARG * arg_map);
   extern int vacuumdb (UTIL_FUNCTION_ARG * arg_map);
   extern int checksumdb (UTIL_FUNCTION_ARG * arg_map);
+  extern int tde (UTIL_FUNCTION_ARG * arg_map);
 
   extern void util_admin_usage (const char *argv0);
   extern void util_admin_version (const char *argv0);
