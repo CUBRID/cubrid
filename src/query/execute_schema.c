@@ -10845,7 +10845,7 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
 	  else
 	    {
 	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_PROPERTY_DIFF;
-	      if (attr_db_domain->precision > att->domain->precision)
+	      if (attr_db_domain->precision >= att->domain->precision)
 		{
 		  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
 
