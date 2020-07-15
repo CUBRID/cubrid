@@ -114,7 +114,8 @@ typedef enum
 typedef enum
 {
   QUERY_IN_PROGRESS,
-  QUERY_COMPLETED
+  QUERY_COMPLETED,
+  QUERY_ENDED
 } QMGR_QUERY_STATUS;
 
 typedef struct qmgr_query_entry QMGR_QUERY_ENTRY;

@@ -18,6 +18,7 @@
 
 file(GLOB conf_files "${CMAKE_SOURCE_DIR}/conf/cubrid*.conf*" "${CMAKE_SOURCE_DIR}/conf/shard*.txt")
 file(GLOB locale_files "${CMAKE_SOURCE_DIR}/conf/cubrid*.txt")
+file(GLOB cas_certs "${CMAKE_SOURCE_DIR}/conf/cas_ssl*.*")
 
-install(FILES ${conf_files} ${locale_files}
+install(FILES ${conf_files} ${locale_files} ${cas_certs}
   DESTINATION ${CUBRID_CONFDIR})

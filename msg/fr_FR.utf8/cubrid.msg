@@ -1313,8 +1313,9 @@ $ LOADDB
 1244 Le chargement de mises à jour d'attributs partagés à partir de fichiers objet n'est pas pris en charge en mode CS.
 1245 Le chargement de mises à jour d'attributs de classe à partir de fichiers objets n'est pas pris en charge en mode CS.
 1246 Erreur lors de l'obtention de l'adresse et du nom. Code : %1$d, message : %2$s.
+1247 Le temps (%1$s) spécifié doit être postérieure à l'heure (%2$s) de la sauvegarde spécifiée.
 
-1247 Dernière erreur
+1248 Dernière erreur
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Erreur dans le sous-système d'erreur (ligne %1$d):

@@ -201,4 +201,5 @@ extern SORT_NULLS pt_to_null_ordering (PT_NODE * sort_spec);
 extern int pt_find_omitted_default_expr (PARSER_CONTEXT * parser, DB_OBJECT * class_obj, PT_NODE * specified_attrs,
 					 PT_NODE ** default_expr_attrs);
 extern int pt_append_omitted_on_update_expr_assignments (PARSER_CONTEXT * parser, PT_NODE * assigns, PT_NODE * from);
+extern XASL_NODE *pt_to_instnum_pred (PARSER_CONTEXT * parser, XASL_NODE * xasl, PT_NODE * pred);
 #endif /* _XASL_GENERATION_H_ */

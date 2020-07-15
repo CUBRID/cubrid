@@ -89,7 +89,8 @@ typedef struct xcache_cleanup_candidate XCACHE_CLEANUP_CANDIDATE;
 struct xcache_cleanup_candidate
 {
   XASL_ID xid;
-  struct timeval time_last_used;
+  //struct timeval time_last_used;
+  XASL_CACHE_ENTRY *xcache;
 };
 
 // *INDENT-OFF*
@@ -444,6 +445,7 @@ xcache_entry_init (void *entry)
   /* Add here if anything should be initialized. */
   xcache_entry->related_objects = NULL;
   xcache_entry->ref_count = 0;
+  xcache_entry->clr_count = 0;
   xcache_entry->list_ht_no = -1;
 
   xcache_entry->sql_info.sql_hash_text = NULL;
@@ -1467,6 +1469,8 @@ xcache_insert (THREAD_ENTRY * thread_p, const compile_context * context, XASL_ST
       (*xcache_entry)->stream = *stream;
       (*xcache_entry)->time_last_rt_check = (INT64) time_stored.tv_sec;
       (*xcache_entry)->time_last_used = time_stored;
+      (*xcache_entry)->lru_next = NULL;
+      (*xcache_entry)->lru_prev = NULL;
 
       /* Now that new entry is initialized, we can try to insert it. */
 
@@ -1676,15 +1680,16 @@ error:
  * invalidate_check (in) : Invalidation check function.
  * arg (in)		 : Argument for invalidation check function.
  */
-void
+int
 xcache_invalidate_qcaches (THREAD_ENTRY * thread_p, const OID * oid)
 {
+  int res = NO_ERROR;
   bool finished = false;
   XASL_CACHE_ENTRY *xcache_entry = NULL;
 
   if (!xcache_Enabled)
     {
-      return;
+      return NO_ERROR;
     }
 
   xcache_hashmap_iterator iter = { thread_p, xcache_Hashmap };
@@ -1700,25 +1705,36 @@ xcache_invalidate_qcaches (THREAD_ENTRY * thread_p, const OID * oid)
        */
       while (true)
 	{
-          xcache_entry = iter.iterate ();
-          if (xcache_entry == NULL)
-            {
-              finished = true;
-              break;
-            }
-	  if (xcache_entry_is_related_to_oid(xcache_entry, oid))
+	  xcache_entry = iter.iterate ();
+	  if (xcache_entry == NULL)
 	    {
-	      qfile_clear_list_cache(thread_p, xcache_entry->list_ht_no, false);
+	      finished = true;
+	      break;
+	    }
+	  if (xcache_entry->list_ht_no < 0)
+	    {
+	      continue;
+	    }
+	  if (xcache_entry_is_related_to_oid (xcache_entry, oid))
+	    {
+	      res = qfile_clear_list_cache (thread_p, xcache_entry->list_ht_no, false);
+	      if (res != NO_ERROR)
+		{
+		  finished = true;
+		  break;
+		}
 	      xcache_entry->list_ht_no = -1;
-  	    }
-        }
+	    }
+	}
     }
+
+  return res;
 }
 
 /*
  * xcache_invalidate_entries () - Invalidate all cache entries which pass the invalidation check. If there is no
  *				  invalidation check, all cache entries are removed.
- *
+qfile_clear_list_cache *
  * return		 : Void.
  * thread_p (in)	 : Thread entry.
  * invalidate_check (in) : Invalidation check function.
@@ -1753,56 +1769,55 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
        * transaction can be used for one hash entry only.
        */
       while (true)
-        {
-          xcache_entry = iter.iterate ();
-          if (xcache_entry == NULL)
-            {
-              finished = true;
-              break;
-            }
+	{
+	  xcache_entry = iter.iterate ();
+	  if (xcache_entry == NULL)
+	    {
+	      finished = true;
+	      break;
+	    }
 
-          /* Check invalidation conditions. */
-          if (invalidate_check == NULL || invalidate_check (xcache_entry, arg))
-            {
-              /* remove qfile cache entry related as list_ht_no */
-              qfile_clear_list_cache(thread_p, xcache_entry->list_ht_no, false);
-              xcache_entry->list_ht_no = -1;
+	  /* Check invalidation conditions. */
+	  if (invalidate_check == NULL || invalidate_check (xcache_entry, arg))
+	    {
+	      qfile_clear_list_cache (thread_p, xcache_entry->list_ht_no, true);
+	      xcache_entry->list_ht_no = -1;
 
-              /* Mark entry as deleted. */
-              if (xcache_entry_mark_deleted (thread_p, xcache_entry))
-                {
-                  /*
-                   * Successfully marked for delete. Save it to delete after the iteration.
-                   * No need to acquire the clone mutex, since I'm the unique user.
-                   */
-                  while (xcache_entry->n_cache_clones > 0)
-                    {
-                      xcache_clone_decache (thread_p, &xcache_entry->cache_clones[--xcache_entry->n_cache_clones]);
-                    }
-                  delete_xids[n_delete_xids++] = xcache_entry->xasl_id;
-                }
-             }
+	      /* Mark entry as deleted. */
+	      if (xcache_entry_mark_deleted (thread_p, xcache_entry))
+		{
+		  /*
+		   * Successfully marked for delete. Save it to delete after the iteration.
+		   * No need to acquire the clone mutex, since I'm the unique user.
+		   */
+		  while (xcache_entry->n_cache_clones > 0)
+		    {
+		      xcache_clone_decache (thread_p, &xcache_entry->cache_clones[--xcache_entry->n_cache_clones]);
+		    }
+		  delete_xids[n_delete_xids++] = xcache_entry->xasl_id;
+		}
+	    }
 
-          if (n_delete_xids == XCACHE_DELETE_XIDS_SIZE)
-            {
-              /* Full buffer. Interrupt iteration and we'll start over. */
-              xcache_Hashmap.end_tran (thread_p);
+	  if (n_delete_xids == XCACHE_DELETE_XIDS_SIZE)
+	    {
+	      /* Full buffer. Interrupt iteration and we'll start over. */
+	      xcache_Hashmap.end_tran (thread_p);
 
-              xcache_log ("xcache_remove_by_oid full buffer\n" XCACHE_LOG_TRAN_TEXT, XCACHE_LOG_TRAN_ARGS (thread_p));
+	      xcache_log ("xcache_remove_by_oid full buffer\n" XCACHE_LOG_TRAN_TEXT, XCACHE_LOG_TRAN_ARGS (thread_p));
 
-              break;
-            }
-        }
+	      break;
+	    }
+	}
 
       /* Remove collected entries. */
       for (xid_index = 0; xid_index < n_delete_xids; xid_index++)
-        {
-          if (!xcache_Hashmap.erase (thread_p, delete_xids[xid_index]))
-            {
-              /* I don't think this is expected. */
-              assert (false);
-            }
-        }
+	{
+	  if (!xcache_Hashmap.erase (thread_p, delete_xids[xid_index]))
+	    {
+	      /* I don't think this is expected. */
+	      assert (false);
+	    }
+	}
       n_delete_xids = 0;
     }
 
@@ -2179,15 +2194,15 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
       while ((xcache_entry = iter.iterate ()) != NULL)
 	{
 	  candidate.xid = xcache_entry->xasl_id;
-	  candidate.time_last_used = xcache_entry->time_last_used;
-
-	  if (candidate.xid.cache_flag & XCACHE_ENTRY_FLAGS_MASK)
+	  candidate.xcache = xcache_entry;
+	  if (candidate.xid.cache_flag > 0 || (candidate.xid.cache_flag & XCACHE_ENTRY_FLAGS_MASK))
 	    {
-	      /* Either marked for delete or recompile, or already recompiled. Not a valid candidate. */
+	      /* Either marked for delete or recompile, fixed (prepared)
+	         or already recompiled. Not a valid candidate. */
 	      continue;
 	    }
 
-	  (void) bh_try_insert (bh, &candidate, NULL);
+	  bh_try_insert (bh, &candidate, NULL);
 	}
 
       count = bh->element_count;
@@ -2201,10 +2216,9 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
       while ((xcache_entry = iter.iterate ()) != NULL && count < xcache_Soft_capacity)
 	{
 	  candidate.xid = xcache_entry->xasl_id;
-	  candidate.time_last_used = xcache_entry->time_last_used;
-
-	  if (candidate.xid.cache_flag & XCACHE_ENTRY_FLAGS_MASK
-	      || TIME_DIFF_SEC (current_time, candidate.time_last_used) <= xcache_Time_threshold)
+	  candidate.xcache = xcache_entry;
+	  if (candidate.xid.cache_flag > 0 || (candidate.xid.cache_flag & XCACHE_ENTRY_FLAGS_MASK)
+	      || TIME_DIFF_SEC (current_time, candidate.xcache->time_last_used) <= xcache_Time_threshold)
 	    {
 	      continue;
 	    }
@@ -2227,6 +2241,7 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
 	{
 	  candidate = xcache_Cleanup_array[candidate_index];
 	}
+
       /* Set intention to cleanup the entry. */
       candidate.xid.cache_flag = XCACHE_ENTRY_CLEANUP;
 
@@ -2294,8 +2309,8 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
 static BH_CMP_RESULT
 xcache_compare_cleanup_candidates (const void *left, const void *right, BH_CMP_ARG ignore_arg)
 {
-  struct timeval left_timeval = ((XCACHE_CLEANUP_CANDIDATE *) left)->time_last_used;
-  struct timeval right_timeval = ((XCACHE_CLEANUP_CANDIDATE *) right)->time_last_used;
+  struct timeval left_timeval = ((XCACHE_CLEANUP_CANDIDATE *) left)->xcache->time_last_used;
+  struct timeval right_timeval = ((XCACHE_CLEANUP_CANDIDATE *) right)->xcache->time_last_used;
 
   /* Lesser means placed in binary heap. So return BH_LT for older timeval. */
   if (left_timeval.tv_sec < right_timeval.tv_sec)

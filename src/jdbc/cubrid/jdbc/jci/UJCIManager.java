@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  * Redistribution and use in source and binary forms, with or without modification,
  * are permitted provided that the following conditions are met:
@@ -47,7 +48,7 @@ abstract public class UJCIManager {
 	static Hashtable<UUrlHostKey, UUrlCache> url_cache_table;
 	static ArrayList<UUrlCache> url_cache_remove_list;
 	static JdbcCacheWorker CACHE_Manager;
-	static boolean result_cache_enable = true;
+	static boolean result_cache_enable = false;
 
 	static {
 		// connectionList = new Vector();
@@ -69,9 +70,9 @@ abstract public class UJCIManager {
 	public static UConnection connect(String ip, int port, String name,
 			String user, String passwd, String url)
 			throws java.sql.SQLException {
-		UConnection connection;
+		UClientSideConnection connection;
 
-		connection = new UConnection(ip, port, name, user, passwd, url);
+		connection = new UClientSideConnection(ip, port, name, user, passwd, url);
 		// connectionList.add(connection);
 		return connection;
 	}
@@ -79,9 +80,9 @@ abstract public class UJCIManager {
 	public static UConnection connect(ArrayList<String> aConList, String name,
 			String user, String passwd, String url)
 			throws java.sql.SQLException {
-		UConnection connection;
+		UClientSideConnection connection;
 
-		connection = new UConnection(aConList, name, user, passwd, url);
+		connection = new UClientSideConnection(aConList, name, user, passwd, url);
 		// connectionList.add(connection);
 		return connection;
 	}
@@ -106,11 +107,11 @@ abstract public class UJCIManager {
 		return url_cache;
 	}
 
-	public static UConnection connectDefault() throws SQLException {
-		Object curThread = Thread.currentThread();
+	public static UConnection connectServerSide() throws SQLException {
+		Thread curThread = Thread.currentThread();
 		Socket s = (Socket) UJCIUtil.invoke("com.cubrid.jsp.ExecuteThread",
 				"getSocket", null, curThread, null);
-		return new UConnection(s, curThread);
+		return new UServerSideConnection(s, curThread);
 	}
 
 	/*

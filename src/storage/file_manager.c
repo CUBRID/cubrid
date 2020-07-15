@@ -9038,6 +9038,15 @@ file_get_tempcache_entry_index (THREAD_ENTRY * thread_p)
 void
 file_tempcache_drop_tran_temp_files (THREAD_ENTRY * thread_p)
 {
+  int query_cache_mode;
+
+  query_cache_mode = prm_get_integer_value (PRM_ID_LIST_QUERY_CACHE_MODE);
+
+  if (query_cache_mode != QFILE_LIST_QUERY_CACHE_MODE_OFF)
+    {
+      return;
+    }
+
   if (file_Tempcache->tran_files[file_get_tempcache_entry_index (thread_p)] != NULL)
     {
       file_log ("file_tempcache_drop_tran_temp_files",
