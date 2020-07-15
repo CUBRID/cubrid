@@ -1213,11 +1213,13 @@ qdump_print_value (REGU_VARIABLE * value_p)
   switch (value_p->type)
     {
     case TYPE_DBVAL:
+      fprintf (foutput, "[type:%s]", qdump_data_type_string (DB_VALUE_DOMAIN_TYPE (&value_p->value.dbval)));
       qdump_print_db_value (&value_p->value.dbval);
       return true;
 
     case TYPE_CONSTANT:
     case TYPE_ORDERBY_NUM:
+      fprintf (foutput, "[type:%s]", qdump_data_type_string (DB_VALUE_DOMAIN_TYPE (value_p->value.dbvalptr)));
       qdump_print_db_value (value_p->value.dbvalptr);
       return true;
 
@@ -1229,6 +1231,7 @@ qdump_print_value (REGU_VARIABLE * value_p)
 	}
       return true;
     case TYPE_ATTR_ID:
+      fprintf (foutput, "[type:%s]", qdump_data_type_string (value_p->domain->type->id));
       if (!qdump_print_attribute_id (value_p->value.attr_descr))
 	{
 	  return false;
@@ -1253,6 +1256,7 @@ qdump_print_value (REGU_VARIABLE * value_p)
       return true;
 
     case TYPE_POSITION:
+      fprintf (foutput, "[type:%s]", qdump_data_type_string (value_p->domain->type->id));
       if (!qdump_print_tuple_value_position (value_p->value.pos_descr))
 	{
 	  return false;
@@ -1262,6 +1266,7 @@ qdump_print_value (REGU_VARIABLE * value_p)
 
     case TYPE_POS_VALUE:
     case TYPE_OID:
+      fprintf (foutput, "[type:%s]", qdump_data_type_string (value_p->domain->type->id));
       return true;
 
     case TYPE_FUNC:
