@@ -3725,7 +3725,7 @@ tde (UTIL_FUNCTION_ARG * arg)
 	{
 	  goto error_exit;
 	}
-      if (tde_add_mk (vdes, master_key, &mk_index) != NO_ERROR)
+      if (tde_add_mk (vdes, master_key, &mk_index, time (NULL)) != NO_ERROR)
 	{
 	  goto error_exit;
 	}

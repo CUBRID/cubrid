@@ -72,7 +72,7 @@ static HFID tde_Keyinfo_hfid;
 static int tde_get_keyinfo (THREAD_ENTRY *thread_p, TDE_KEYINFO *keyinfo, OID *keyinfo_oid, const HFID *hfid);
 static int tde_update_keyinfo (THREAD_ENTRY *thread_p, const TDE_KEYINFO *keyinfo, OID *keyinfo_oid, HFID *hfid);
 static int tde_generate_keyinfo (TDE_KEYINFO *keyinfo, int mk_index, const unsigned char *master_key,
-				 const TDE_DATA_KEY_SET *dks);
+				 const time_t created_time, const TDE_DATA_KEY_SET *dks);
 static int tde_create_keys_volume (const char *db_fullpath);
 static int tde_load_mk (int vdes, const TDE_KEYINFO *keyinfo, unsigned char *master_key);
 static bool tde_validate_mk (const unsigned char *master_key, const unsigned char *mk_hash);
@@ -106,6 +106,7 @@ tde_initialize (THREAD_ENTRY *thread_p, HFID *keyinfo_hfid)
   HEAP_OPERATION_CONTEXT heapop_context;
   TDE_KEYINFO keyinfo;
   TDE_DATA_KEY_SET dks;
+  time_t created_time;
   int vdes = -1;
 
   err = tde_create_keys_volume (boot_db_full_name());
@@ -127,7 +128,8 @@ tde_initialize (THREAD_ENTRY *thread_p, HFID *keyinfo_hfid)
       goto exit;
     }
 
-  err = tde_add_mk (vdes, default_mk, &mk_index);
+  created_time = time (NULL);
+  err = tde_add_mk (vdes, default_mk, &mk_index, created_time);
   if (err != NO_ERROR)
     {
       goto exit;
@@ -141,7 +143,7 @@ tde_initialize (THREAD_ENTRY *thread_p, HFID *keyinfo_hfid)
       goto exit;
     }
 
-  err = tde_generate_keyinfo (&keyinfo, mk_index, default_mk, &dks);
+  err = tde_generate_keyinfo (&keyinfo, mk_index, default_mk, created_time, &dks);
   if (err != NO_ERROR)
     {
       goto exit;
@@ -396,7 +398,8 @@ exit:
   return err;
 }
 
-int tde_change_mk (THREAD_ENTRY *thread_p, const int mk_index, const unsigned char *master_key)
+int tde_change_mk (THREAD_ENTRY *thread_p, const int mk_index, const unsigned char *master_key,
+		   const time_t created_time)
 {
   TDE_KEYINFO keyinfo;
   TDE_DATA_KEY_SET dks;
@@ -409,7 +412,7 @@ int tde_change_mk (THREAD_ENTRY *thread_p, const int mk_index, const unsigned ch
     }
 
   /* generate keyinfo from tde_Cipher and update heap (on Disk) */
-  err = tde_generate_keyinfo (&keyinfo, mk_index, master_key, &tde_Cipher.data_keys);
+  err = tde_generate_keyinfo (&keyinfo, mk_index, master_key, created_time, &tde_Cipher.data_keys);
   if (err != NO_ERROR)
     {
       return err;
@@ -510,7 +513,7 @@ tde_make_keys_volume_fullname (char *keys_vol_fullname, const char *db_full_name
 
 static int
 tde_generate_keyinfo (TDE_KEYINFO *keyinfo, int mk_index, const unsigned char *master_key,
-		      const TDE_DATA_KEY_SET *dks)
+		      const time_t created_time, const TDE_DATA_KEY_SET *dks)
 {
   int err = NO_ERROR;
 
@@ -533,6 +536,8 @@ tde_generate_keyinfo (TDE_KEYINFO *keyinfo, int mk_index, const unsigned char *m
       return err;
     }
 
+  keyinfo->created_time = created_time;
+  keyinfo->set_time = time (NULL);
   return err;
 }
 
@@ -798,7 +803,7 @@ tde_print_mk (const unsigned char *master_key)
 }
 
 int
-tde_add_mk (int vdes, const unsigned char *master_key, int *mk_index)
+tde_add_mk (int vdes, const unsigned char *master_key, int *mk_index, time_t created_time)
 {
   TDE_MK_FILE_ITEM adding_item;
   TDE_MK_FILE_ITEM reading_item;
@@ -819,7 +824,7 @@ tde_add_mk (int vdes, const unsigned char *master_key, int *mk_index)
       return -1; //error
     }
 
-  adding_item.created_time = time (NULL);
+  adding_item.created_time = created_time;
   memcpy (adding_item.master_key, master_key, TDE_MASTER_KEY_LENGTH);
 
   while (true)

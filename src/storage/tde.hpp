@@ -114,6 +114,8 @@ extern TDE_CIPHER tde_Cipher;
 typedef struct tde_keyinfo
 {
   int mk_index;
+  time_t created_time;
+  time_t set_time;
   unsigned char mk_hash[TDE_MASTER_KEY_LENGTH];
   unsigned char dk_perm[TDE_DATA_KEY_LENGTH];
   unsigned char dk_temp[TDE_DATA_KEY_LENGTH];
@@ -175,7 +177,7 @@ extern int tde_decrypt_data_page (const FILEIO_PAGE *iopage_cipher, FILEIO_PAGE 
 
 extern int tde_create_mk (unsigned char *master_key);
 extern void tde_print_mk (const unsigned char *master_key);
-extern int tde_add_mk (int vdes, const unsigned char *master_key, int *mk_index);
+extern int tde_add_mk (int vdes, const unsigned char *master_key, int *mk_index, time_t created_time);
 extern int tde_delete_mk (int vdes, const int mk_index);
 extern int tde_dump_mks (int vdes, bool print_value);
 
