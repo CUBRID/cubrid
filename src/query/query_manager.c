@@ -2136,7 +2136,7 @@ qmgr_clear_trans_wakeup (THREAD_ENTRY * thread_p, int tran_index, bool is_tran_d
   query_p = tran_entry_p->query_entry_list_p;
   while (query_p)
     {
-      if (query_p->is_holdable)
+      //if (query_p->is_holdable)
 	{
 	  if (is_abort || is_tran_died)
 	    {

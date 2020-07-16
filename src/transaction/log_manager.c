@@ -4780,7 +4780,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
   LSA_SET_NULL (&tdes->undo_nxlsa);
 
   /* destroy all transaction's remaining temporary files */
-  file_tempcache_drop_tran_temp_files (thread_p);
+  //file_tempcache_drop_tran_temp_files (thread_p);
 
   if (!LSA_ISNULL (&tdes->tail_lsa))
     {
@@ -4879,7 +4879,7 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran)
   tdes->state = TRAN_UNACTIVE_ABORTED;
 
   /* destroy transaction's temporary files */
-  file_tempcache_drop_tran_temp_files (thread_p);
+  //file_tempcache_drop_tran_temp_files (thread_p);
 
   if (!LSA_ISNULL (&tdes->tail_lsa))
     {
