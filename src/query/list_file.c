@@ -5752,7 +5752,7 @@ qfile_delete_list_cache_entry (THREAD_ENTRY * thread_p, void *data, void *args)
 
       /* destroy the temp file of XASL_ID */
       if (!VFID_ISNULL (&lent->list_id.temp_vfid)
-	  && file_temp_retire_preserved (thread_p, &lent->list_id.temp_vfid) != NO_ERROR)
+	  && file_temp_retire (thread_p, &lent->list_id.temp_vfid) != NO_ERROR)
 	{
 	  er_log_debug (ARG_FILE_LINE, "ls_delete_list_cache_ent: fl_destroy failed for vfid { %d %d }\n",
 			lent->list_id.temp_vfid.fileid, lent->list_id.temp_vfid.volid);
