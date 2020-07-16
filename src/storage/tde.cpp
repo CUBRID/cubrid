@@ -77,8 +77,6 @@ static int tde_create_keys_volume (const char *db_fullpath);
 static int tde_load_mk (int vdes, const TDE_KEYINFO *keyinfo, unsigned char *master_key);
 static bool tde_validate_mk (const unsigned char *master_key, const unsigned char *mk_hash);
 static int tde_load_dks (const TDE_KEYINFO *keyinfo, const unsigned char *master_key);
-static int tde_make_mk (unsigned char *master_key);
-static int tde_find_mk (int vdes, const int mk_index, unsigned char *master_key);
 static void tde_make_mk_hash (const unsigned char *master_key, unsigned char *mk_hash);
 static int tde_make_dk (unsigned char *data_key);
 static int tde_encrypt_dk (const unsigned char *dk_plain, TDE_DATA_KEY_TYPE dk_type, const unsigned char *master_key,
@@ -102,6 +100,7 @@ tde_initialize (THREAD_ENTRY *thread_p, HFID *keyinfo_hfid)
 {
   char mk_path[PATH_MAX] = {0, };
   unsigned char default_mk[TDE_MASTER_KEY_LENGTH] = {0,};
+  int mk_index;
   int err = NO_ERROR;
   RECDES recdes;
   HEAP_OPERATION_CONTEXT heapop_context;
@@ -122,12 +121,17 @@ tde_initialize (THREAD_ENTRY *thread_p, HFID *keyinfo_hfid)
       return ER_IO_MOUNT_FAIL;
     }
 
-  err = tde_make_mk (default_mk);
+  err = tde_create_mk (default_mk);
   if (err != NO_ERROR)
     {
       goto exit;
     }
-  tde_add_mk (vdes, TDE_DEFAULT_MK_INDEX, default_mk);
+
+  err = tde_add_mk (vdes, default_mk, &mk_index);
+  if (err != NO_ERROR)
+    {
+      goto exit;
+    }
 
   err = tde_make_dk (dks.perm_key);
   err = tde_make_dk (dks.temp_key);
@@ -137,7 +141,7 @@ tde_initialize (THREAD_ENTRY *thread_p, HFID *keyinfo_hfid)
       goto exit;
     }
 
-  err = tde_generate_keyinfo (&keyinfo, TDE_DEFAULT_MK_INDEX, default_mk, &dks);
+  err = tde_generate_keyinfo (&keyinfo, mk_index, default_mk, &dks);
   if (err != NO_ERROR)
     {
       goto exit;
@@ -393,10 +397,11 @@ exit:
 }
 
 int
-tde_add_mk (int vdes, int mk_index, const unsigned char *master_key)
+tde_add_mk (int vdes, const unsigned char *master_key, int *mk_index)
 {
-  int searched_idx = -1;
-  int deleted_offset = -1;
+  TDE_MK_FILE_ITEM adding_item;
+  TDE_MK_FILE_ITEM reading_item;
+  int location = 0;
 #if !defined(WINDOWS)
   sigset_t new_mask, old_mask;
 #endif /* !WINDOWS */
@@ -413,34 +418,28 @@ tde_add_mk (int vdes, int mk_index, const unsigned char *master_key)
       return -1; //error
     }
 
+  adding_item.created_time = time (NULL);
+  memcpy (adding_item.master_key, master_key, TDE_MASTER_KEY_LENGTH);
+
   while (true)
     {
-      if (read (vdes, &searched_idx, sizeof (searched_idx)) != sizeof (searched_idx))
+      if (read (vdes, &reading_item, TDE_MK_FILE_ITEM_SIZE) != TDE_MK_FILE_ITEM_SIZE)
 	{
 	  break; /* EOF */
 	}
-
-      if (searched_idx == mk_index)
+      if (reading_item.created_time == -1)
 	{
-	  // TODO error: mk index already exists
-	  return -1;
+	  /* invalid item, which means available space */
+	  lseek (vdes, -TDE_MK_FILE_ITEM_SIZE, SEEK_CUR);
+	  break;
 	}
-      else if (searched_idx == -1 && deleted_offset == -1)
-	{
-	  /* insert mk into deleted offset */
-	  deleted_offset = lseek (vdes, 0, SEEK_CUR) - sizeof (searched_idx);
-	}
-      lseek (vdes, TDE_MASTER_KEY_LENGTH, SEEK_CUR);
     }
 
-  if (deleted_offset != -1)
-    {
-      lseek (vdes, deleted_offset, SEEK_SET);
-    }
+  location = lseek (vdes, 0, SEEK_CUR);
+  *mk_index = TDE_MK_FILE_ITEM_INDEX (location);
 
   /* add key */
-  write (vdes, &mk_index, sizeof (mk_index));
-  write (vdes, master_key, TDE_MASTER_KEY_LENGTH);
+  write (vdes, &adding_item, TDE_MK_FILE_ITEM_SIZE);
 
   fsync (vdes);
 
@@ -454,13 +453,11 @@ tde_add_mk (int vdes, int mk_index, const unsigned char *master_key)
 int
 tde_delete_mk (int vdes, int mk_index)
 {
-  FILE *keyfile_fp = NULL;
-  char mk_path[PATH_MAX] = {0, };
   int err = NO_ERROR;
-  int searched_idx = -1;
-  char mk[TDE_MASTER_KEY_LENGTH] = {0,};
-  bool found = false;
-  const int deleted_mark = -1;
+  bool found;
+  int location;
+  TDE_MK_FILE_ITEM item;
+
 #if !defined(WINDOWS)
   sigset_t new_mask, old_mask;
 #endif /* !WINDOWS */
@@ -469,31 +466,34 @@ tde_delete_mk (int vdes, int mk_index)
   off_signals (new_mask, old_mask);
 #endif /* !WINDOWS */
 
-  if (lseek (vdes, TDE_MK_FILE_CONTENTS_START, SEEK_SET) != TDE_MK_FILE_CONTENTS_START)
+  item.created_time = -1; /* mark it invalid */
+
+  location = TDE_MK_FILE_ITEM_OFFSET (mk_index);
+
+  if (lseek (vdes, location, SEEK_SET) != location)
     {
-#if !defined(WINDOWS)
-      restore_signals (old_mask);
-#endif /* !WINDOWS */
-      return -1; //error
+      found = false;
+      goto exit; /* not found */
     }
 
-  while (true)
+  if (read (vdes, &item, TDE_MK_FILE_ITEM_SIZE) != TDE_MK_FILE_ITEM_SIZE)
     {
-      if (read (vdes, &searched_idx, sizeof (searched_idx)) != sizeof (searched_idx))
-	{
-	  break; /* EOF */
-	}
-      if (searched_idx == mk_index)
-	{
-	  lseek (vdes, -sizeof (searched_idx), SEEK_CUR);
-	  write (vdes, &deleted_mark, sizeof (deleted_mark));
-	  fsync (vdes);
-	  found = true;
-	  break;
-	}
-      lseek (vdes, TDE_MASTER_KEY_LENGTH, SEEK_CUR);
+      found = false;
+      goto exit;
     }
 
+  if (item.created_time == -1)
+    {
+      found = false;
+      goto exit;
+    }
+
+  lseek (vdes, -TDE_MK_FILE_ITEM_SIZE, SEEK_CUR);
+  write (vdes, &item, TDE_MK_FILE_ITEM_SIZE);
+  fsync (vdes);
+  found = true;
+
+exit:
 #if !defined(WINDOWS)
   restore_signals (old_mask);
 #endif /* !WINDOWS */
@@ -504,58 +504,6 @@ tde_delete_mk (int vdes, int mk_index)
     }
 
   return NO_ERROR;
-}
-
-static int
-tde_find_mk (int vdes, int mk_index, unsigned char *master_key)
-{
-  char mk_path[PATH_MAX] = {0, };
-  int err = NO_ERROR;
-  int searched_idx = -1;
-  bool found = false;
-#if !defined(WINDOWS)
-  sigset_t new_mask, old_mask;
-#endif /* !WINDOWS */
-
-#if !defined(WINDOWS)
-  off_signals (new_mask, old_mask);
-#endif /* !WINDOWS */
-  if (lseek (vdes, TDE_MK_FILE_CONTENTS_START, SEEK_SET) != TDE_MK_FILE_CONTENTS_START)
-    {
-#if !defined(WINDOWS)
-      restore_signals (old_mask);
-#endif /* !WINDOWS */
-      return -1; //error
-    }
-
-  while (true)
-    {
-      if (read (vdes, &searched_idx, sizeof (searched_idx)) != sizeof (searched_idx))
-	{
-	  break;  /* EOF */
-	}
-      if (searched_idx == mk_index)
-	{
-	  if (read (vdes, master_key, TDE_MASTER_KEY_LENGTH) != TDE_MASTER_KEY_LENGTH)
-	    {
-	      return -1;  /* Error, file is not consistent */
-	    }
-	  found = true;
-	  break;
-	}
-      lseek (vdes, TDE_MASTER_KEY_LENGTH, SEEK_CUR);
-    }
-
-#if !defined(windows)
-  restore_signals (old_mask);
-#endif /* !windows */
-
-  if (!found)
-    {
-      err = ER_FAILED; // TODO err not found mk
-    }
-
-  return NO_ERROR; // TODO not found error
 }
 
 int tde_change_mk (THREAD_ENTRY *thread_p, const int mk_index, const unsigned char *master_key)
@@ -591,6 +539,67 @@ int tde_change_mk (THREAD_ENTRY *thread_p, const int mk_index, const unsigned ch
 
   return err;
 
+}
+
+int tde_dump_mks (int vdes, bool print_value)
+{
+  TDE_MK_FILE_ITEM item;
+  int cnt_valid = 0;
+  int cnt_invalid = 0;
+  int location;
+  struct tm *time_info;
+  char ctime_buf[CTIME_MAX] = {0,};
+  char master_key[TDE_MASTER_KEY_LENGTH + 1] = {0,};
+#if !defined(WINDOWS)
+  sigset_t new_mask, old_mask;
+#endif /* !WINDOWS */
+
+#if !defined(WINDOWS)
+  off_signals (new_mask, old_mask);
+#endif /* !WINDOWS */
+
+  if ((location = lseek (vdes, TDE_MK_FILE_CONTENTS_START, SEEK_SET))
+      != TDE_MK_FILE_CONTENTS_START)
+    {
+      goto exit;
+    }
+
+  printf ("Key Information: \n");
+
+  while (true)
+    {
+      if (read (vdes, &item, TDE_MK_FILE_ITEM_SIZE) != TDE_MK_FILE_ITEM_SIZE)
+	{
+	  break; /* EOF */
+	}
+
+      if (item.created_time == -1)
+	{
+	  cnt_invalid++;
+	}
+      else
+	{
+	  cnt_valid++;
+	  ctime_r (&item.created_time, ctime_buf);
+	  printf ("Index [%ld]\n", TDE_MK_FILE_ITEM_INDEX (location));
+	  printf ("Created Time: %s\n", ctime_buf);
+	  if (print_value)
+	    {
+	      memcpy (master_key, item.master_key, TDE_MASTER_KEY_LENGTH);
+	      printf ("Key: %s\n", master_key);
+	    }
+	}
+      location += TDE_MK_FILE_ITEM_SIZE;
+    }
+  printf ("\n");
+exit:
+  printf ("The number of valid keys: %d\n", cnt_valid);
+  printf ("The number of invalid keys: %d\n", cnt_invalid);
+
+#if !defined(WINDOWS)
+  restore_signals (old_mask);
+#endif /* !WINDOWS */
+  return NO_ERROR;
 }
 
 static int
@@ -701,9 +710,8 @@ tde_generate_keyinfo (TDE_KEYINFO *keyinfo, int mk_index, const unsigned char *m
 static int
 tde_load_mk (int vdes, const TDE_KEYINFO *keyinfo, unsigned char *master_key)
 {
-  int searched_idx = -1;
-  unsigned char searched_key[TDE_MASTER_KEY_LENGTH] = {0,};
-  bool found = false;
+  int location;
+  TDE_MK_FILE_ITEM item;
 #if !defined(WINDOWS)
   sigset_t new_mask, old_mask;
 #endif /* !WINDOWS */
@@ -711,52 +719,41 @@ tde_load_mk (int vdes, const TDE_KEYINFO *keyinfo, unsigned char *master_key)
 #if !defined(WINDOWS)
   off_signals (new_mask, old_mask);
 #endif /* !WINDOWS */
-  if (lseek (vdes, TDE_MK_FILE_CONTENTS_START, SEEK_SET) != TDE_MK_FILE_CONTENTS_START)
-    {
-#if !defined(WINDOWS)
-      restore_signals (old_mask);
-#endif /* !WINDOWS */
-      return -1; //error
-    }
 
   assert (keyinfo->mk_index >= 0);
 
-  while (true)
+  location = TDE_MK_FILE_ITEM_OFFSET (keyinfo->mk_index);
+
+  if (lseek (vdes, location, SEEK_SET) != location)
     {
-      if (read (vdes, &searched_idx, sizeof (searched_idx)) != sizeof (searched_idx))
-	{
-	  break;  /* EOF */
-	}
-      if (read (vdes, searched_key, TDE_MASTER_KEY_LENGTH) != TDE_MASTER_KEY_LENGTH)
-	{
-	  return -1; /* ERROR, the file is not consistent */
-	}
-      if (searched_idx == keyinfo->mk_index)
-	{
-	  found = true;
-	  break;
-	}
+      goto exit; /* not found */
     }
 
-#if !defined(windows)
-  restore_signals (old_mask);
-#endif /* !windows */
-
-  if (!found)
+  if (read (vdes, &item, TDE_MK_FILE_ITEM_SIZE) != TDE_MK_FILE_ITEM_SIZE)
     {
-      // TODO error
-      return -1;
+      goto exit;
     }
+
+  if (item.created_time == -1)
+    {
+      goto exit;
+    }
+
   /* MK has found */
 
-  if (tde_validate_mk (searched_key, keyinfo->mk_hash) == false)
+  if (tde_validate_mk (item.master_key, keyinfo->mk_hash) == false)
     {
       // TODO error
       return -1;
     }
   /* MK has validated */
 
-  memcpy (master_key, searched_key, TDE_MASTER_KEY_LENGTH);
+  memcpy (master_key, item.master_key, TDE_MASTER_KEY_LENGTH);
+
+exit:
+#if !defined(WINDOWS)
+  restore_signals (old_mask);
+#endif /* !WINDOWS */
 
   return NO_ERROR;
 }
@@ -802,8 +799,8 @@ tde_load_dks (const TDE_KEYINFO *keyinfo, const unsigned char *master_key)
   return err;
 }
 
-static int
-tde_make_mk (unsigned char *master_key)
+int
+tde_create_mk (unsigned char *master_key)
 {
   int err = NO_ERROR;
 

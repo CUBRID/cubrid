@@ -60,7 +60,18 @@ typedef enum
 #define TDE_MASTER_KEY_LENGTH 32
 #define TDE_DATA_KEY_LENGTH   32
 
-#define TDE_DEFAULT_MK_INDEX 0
+typedef struct tde_mk_file_item
+{
+  time_t created_time;              /* If it is -1, it is invalid and avaliable for new key */
+  unsigned  char master_key[TDE_MASTER_KEY_LENGTH];
+} TDE_MK_FILE_ITEM;
+
+#define TDE_MK_FILE_CONTENTS_START  CUBRID_MAGIC_MAX_LENGTH
+#define TDE_MK_FILE_ITEM_SIZE       (sizeof (TDE_MK_FILE_ITEM))
+#define TDE_MK_FILE_ITEM_OFFSET(index) \
+  (TDE_MK_FILE_CONTENTS_START + TDE_MK_FILE_ITEM_SIZE * (index))
+#define TDE_MK_FILE_ITEM_INDEX(offset) \
+  (((offset) - TDE_MK_FILE_CONTENTS_START) / TDE_MK_FILE_ITEM_SIZE)
 
 typedef struct tde_data_key_set
 {
@@ -96,8 +107,6 @@ typedef struct tde_cipher
 extern TDE_CIPHER tde_Cipher;
 
 #if !defined(CS_MODE)
-
-#define TDE_MK_FILE_CONTENTS_START CUBRID_MAGIC_MAX_LENGTH
 
 /*
  * TDE module stores key information with all tha data keys encrypted and master key hashed.
@@ -153,10 +162,11 @@ extern int tde_cipher_initialize (THREAD_ENTRY *thread_p, const HFID *keyinfo_hf
 extern bool tde_validate_keys_volume (int vdes);
 extern int tde_copy_keys_volume (THREAD_ENTRY *thread_p, const char *to_db_fullname, const char *from_db_fullname,
 				 bool keep_to_mount, bool keep_from_mount);
-extern int tde_add_mk (int vdes, const int mk_index, const unsigned char *master_key);
+extern int tde_create_mk (unsigned char *master_key);
+extern int tde_add_mk (int vdes, const unsigned char *master_key, int *mk_index);
 extern int tde_change_mk (THREAD_ENTRY *thread_p, const int mk_index, const unsigned char *master_key);
 extern int tde_delete_mk (int vdes, const int mk_index);
-// extern int tde_dump_mks ();
+extern int tde_dump_mks (int vdes, bool print_value);
 extern void tde_make_keys_volume_fullname (char *keys_vol_fullname, const char *db_full_name, bool ignore_parm);
 
 /*
