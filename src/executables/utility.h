@@ -1570,6 +1570,8 @@ typedef struct _ha_config
 #define TDE_CHANGE_KEY_L      "change-key"
 #define TDE_DELETE_KEY_S      'd'
 #define TDE_DELETE_KEY_L      "delete-key"
+#define TDE_DBA_PASSWORD_S    'p'
+#define TDE_DBA_PASSWORD_L    "dba-password"
 
 #if defined(WINDOWS)
 #define LIB_UTIL_CS_NAME                "cubridcs.dll"

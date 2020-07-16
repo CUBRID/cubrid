@@ -3595,6 +3595,7 @@ tde (UTIL_FUNCTION_ARG * arg)
   char er_msg_file[PATH_MAX];
   char mk_path[PATH_MAX] = { 0, };
   const char *database_name;
+  const char *dba_password;
   int vdes = NULL_VOLDES;
   bool sa_mode;
   bool gen_op;
@@ -3619,6 +3620,7 @@ tde (UTIL_FUNCTION_ARG * arg)
   print_val = utility_get_option_bool_value (arg_map, TDE_PRINT_KEY_VALUE_S);
   change_idx = utility_get_option_int_value (arg_map, TDE_CHANGE_KEY_S);
   delete_idx = utility_get_option_int_value (arg_map, TDE_DELETE_KEY_S);
+  dba_password = utility_get_option_string_value (arg_map, KILLTRAN_DBA_PASSWORD_S, 0);
 
   sa_mode = utility_get_option_bool_value (arg_map, TDE_SA_MODE_S);
 
@@ -3676,7 +3678,11 @@ tde (UTIL_FUNCTION_ARG * arg)
 
   AU_DISABLE_PASSWORDS ();	/* disable authorization for this operation */
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-  db_login ("DBA", NULL);
+  if (db_login ("DBA", dba_password) != NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+      goto error_exit;
+    }
 
   if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
     {

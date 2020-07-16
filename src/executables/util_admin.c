@@ -828,6 +828,7 @@ static UTIL_ARG_MAP ua_Tde_Option_Map[] = {
   {TDE_CS_MODE_S, {ARG_BOOLEAN}, {0}},
   {TDE_CHANGE_KEY_S, {ARG_INTEGER}, {(void *) -1}},
   {TDE_DELETE_KEY_S, {ARG_INTEGER}, {(void *) -1}},
+  {TDE_DBA_PASSWORD_S, {ARG_STRING}, {(void *) ""}},
   {0, {0}, {0}}
 };
 
@@ -839,6 +840,7 @@ static GETOPT_LONG ua_Tde_Option[] = {
   {TDE_CS_MODE_L, 0, 0, TDE_CS_MODE_S},
   {TDE_CHANGE_KEY_L, 1, 0, TDE_CHANGE_KEY_S},
   {TDE_DELETE_KEY_L, 1, 0, TDE_DELETE_KEY_S},
+  {TDE_DBA_PASSWORD_L, 1, 0, TDE_DBA_PASSWORD_S},
   {0, 0, 0, 0}
 };
 
