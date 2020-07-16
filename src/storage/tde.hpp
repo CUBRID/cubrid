@@ -162,13 +162,8 @@ extern int tde_cipher_initialize (THREAD_ENTRY *thread_p, const HFID *keyinfo_hf
 extern bool tde_validate_keys_volume (int vdes);
 extern int tde_copy_keys_volume (THREAD_ENTRY *thread_p, const char *to_db_fullname, const char *from_db_fullname,
 				 bool keep_to_mount, bool keep_from_mount);
-extern int tde_create_mk (unsigned char *master_key);
-extern int tde_add_mk (int vdes, const unsigned char *master_key, int *mk_index);
-extern int tde_change_mk (THREAD_ENTRY *thread_p, const int mk_index, const unsigned char *master_key);
-extern int tde_delete_mk (int vdes, const int mk_index);
-extern int tde_dump_mks (int vdes, bool print_value);
 extern void tde_make_keys_volume_fullname (char *keys_vol_fullname, const char *db_full_name, bool ignore_parm);
-
+extern int tde_change_mk (THREAD_ENTRY *thread_p, const int mk_index, const unsigned char *master_key);
 /*
  * TDE functions for encrpytion and decryption
  */
@@ -177,6 +172,12 @@ extern int tde_encrypt_data_page (FILEIO_PAGE *iopage_plain, FILEIO_PAGE *iopage
 extern int tde_decrypt_data_page (const FILEIO_PAGE *iopage_cipher, FILEIO_PAGE *iopage_plain, TDE_ALGORITHM tde_algo,
 				  bool is_temp);
 #endif /* !CS_MODE */
+
+extern int tde_create_mk (unsigned char *master_key);
+extern void tde_print_mk (const unsigned char *master_key);
+extern int tde_add_mk (int vdes, const unsigned char *master_key, int *mk_index);
+extern int tde_delete_mk (int vdes, const int mk_index);
+extern int tde_dump_mks (int vdes, bool print_value);
 
 /* Encryption/Decryption functions for logpage are also needed for applylogdb, copylogdb */
 extern int tde_encrypt_log_page (const LOG_PAGE *logpage_plain, LOG_PAGE *logpage_cipher, TDE_ALGORITHM tde_algo);

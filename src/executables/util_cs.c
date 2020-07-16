@@ -3698,7 +3698,7 @@ tde (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  printf ("mk path: %s", mk_path);
+  printf ("Key File: %s\n", mk_path);
 
   vdes = fileio_mount (NULL, mk_path, mk_path, LOG_DBTDE_KEYS_VOLID, 1, false);
   if (vdes == NULL_VOLDES)
@@ -3709,13 +3709,34 @@ tde (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
+  printf ("\n");
   if (gen_op)
     {
-      printf ("gen key\n");
+      unsigned char master_key[TDE_MASTER_KEY_LENGTH];
+      int mk_index = -1;
+
+      if (tde_create_mk (master_key) != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+      if (tde_add_mk (vdes, master_key, &mk_index) != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+      printf ("A new key has been generated - key index: %d \n", mk_index);
+      if (print_val)
+	{
+	  printf ("Key: ");
+	  tde_print_mk (master_key);
+	  printf ("\n");
+	}
     }
   else if (show_op)
     {
-      printf ("show keys\n");
+      if (tde_dump_mks (vdes, print_val) != NO_ERROR)
+	{
+	  goto error_exit;
+	}
     }
   else if (change_idx != -1)
     {
@@ -3723,7 +3744,11 @@ tde (UTIL_FUNCTION_ARG * arg)
     }
   else if (delete_idx != -1)
     {
-      printf ("delete key\n");
+      if (tde_delete_mk (vdes, delete_idx) != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+      printf ("The Key[%d] has been deleted.\n", delete_idx);
     }
 
   db_shutdown ();
