@@ -1929,6 +1929,53 @@ tde_get_mk_file_path (char *mk_path)
 }
 
 /*
+ * tde_get_set_mk_info -
+ *
+ * return:
+ *
+ *   dks(out):
+ *
+ * NOTE:
+ */
+int
+tde_get_set_mk_info (int *mk_index, time_t * created_time, time_t * set_time)
+{
+#if defined(CS_MODE)
+  int error = ER_NET_CLIENT_DATA_RECEIVE;
+  int req_error, area_size;
+  char *ptr;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE + OR_BIGINT_SIZE + OR_BIGINT_SIZE) a_reply;
+  char *reply, *area;
+  char *path = NULL;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  req_error =
+    net_client_request (NET_SERVER_TDE_GET_SET_MK_INFO, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL,
+			0);
+  if (!req_error)
+    {
+      ptr = or_unpack_errcode (reply, &error);
+      ptr = or_unpack_int (ptr, mk_index);
+      ptr = or_unpack_int64 (ptr, created_time);
+      ptr = or_unpack_int64 (ptr, set_time);
+    }
+
+  return error;
+#else /* CS_MODE */
+  int success;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  success = xtde_get_set_mk_info (thread_p, mk_index, created_time, set_time);
+
+  exit_server (*thread_p);
+
+  return success;
+#endif /* !CS_MODE */
+}
+
+/*
  * disk_get_total_numpages -
  *
  * return:

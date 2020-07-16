@@ -774,6 +774,24 @@ tde_decrypt_data_page (const FILEIO_PAGE *iopage_cipher, FILEIO_PAGE *iopage_pla
   return err;
 }
 
+int
+xtde_get_set_mk_info (THREAD_ENTRY *thread_p, int *mk_index, time_t *created_time, time_t *set_time)
+{
+  TDE_KEYINFO keyinfo;
+
+  assert (tde_Cipher.is_loaded);
+
+  if (tde_get_keyinfo (thread_p, &keyinfo, &tde_Keyinfo_oid, &tde_Keyinfo_hfid) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  *mk_index = keyinfo.mk_index;
+  *created_time = keyinfo.created_time;
+  *set_time = keyinfo.set_time;
+
+  return NO_ERROR;
+}
+
 #endif /* !CS_MODE */
 
 int
@@ -935,7 +953,7 @@ tde_dump_mks (int vdes, bool print_value)
       goto exit;
     }
 
-  printf ("\nKey Information: \n");
+  printf ("Keys Information: \n");
 
   while (true)
     {

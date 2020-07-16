@@ -3739,6 +3739,22 @@ tde (UTIL_FUNCTION_ARG * arg)
     }
   else if (show_op)
     {
+      int mk_index;
+      time_t created_time, set_time;
+      char ctime_buf1[CTIME_MAX];
+      char ctime_buf2[CTIME_MAX];
+
+      if (tde_get_set_mk_info (&mk_index, &created_time, &set_time) != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+      ctime_r (&created_time, ctime_buf1);
+      ctime_r (&set_time, ctime_buf2);
+
+      printf ("The current key set on %s:\n", database_name);
+      printf ("Key Index: %d\n", mk_index);
+      printf ("Created time: %s", ctime_buf1);
+      printf ("Set time: %s\n", ctime_buf2);
       if (tde_dump_mks (vdes, print_val) != NO_ERROR)
 	{
 	  goto error_exit;

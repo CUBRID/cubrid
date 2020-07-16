@@ -2634,6 +2634,40 @@ stde_get_mk_file_path (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 }
 
 /*
+ * stde_get_set_mk_info -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+stde_get_set_mk_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  int error;
+  char *ptr;
+  int mk_index;
+  time_t created_time, set_time;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE + OR_BIGINT_SIZE + OR_BIGINT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  error = xtde_get_set_mk_info (thread_p, &mk_index, &created_time, &set_time);
+  if (error != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  ptr = or_pack_errcode (reply, error);
+  ptr = or_pack_int (ptr, mk_index);
+  ptr = or_pack_int64 (ptr, created_time);
+  ptr = or_pack_int64 (ptr, set_time);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
  * stran_server_commit -
  *
  * return:
