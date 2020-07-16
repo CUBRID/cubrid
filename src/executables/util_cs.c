@@ -3723,10 +3723,12 @@ tde (UTIL_FUNCTION_ARG * arg)
 
       if (tde_create_mk (master_key) != NO_ERROR)
 	{
+	  db_shutdown ();
 	  goto error_exit;
 	}
       if (tde_add_mk (vdes, master_key, &mk_index, time (NULL)) != NO_ERROR)
 	{
+	  db_shutdown ();
 	  goto error_exit;
 	}
       printf ("A new key has been generated - key index: %d \n", mk_index);
@@ -3757,6 +3759,7 @@ tde (UTIL_FUNCTION_ARG * arg)
       printf ("Set time: %s\n", ctime_buf2);
       if (tde_dump_mks (vdes, print_val) != NO_ERROR)
 	{
+	  db_shutdown ();
 	  goto error_exit;
 	}
     }
@@ -3768,17 +3771,20 @@ tde (UTIL_FUNCTION_ARG * arg)
     {
       if (tde_delete_mk (vdes, delete_idx) != NO_ERROR)
 	{
+	  db_shutdown ();
 	  goto error_exit;
 	}
       printf ("The Key[%d] has been deleted.\n", delete_idx);
     }
 
-  db_shutdown ();
-
   if (vdes != NULL_VOLDES)
     {
+      /* It has to be before db_shutdown().
+       * In SA_MODE, fileio_dismount_all() is called in db_shutdown().*/
       fileio_dismount (NULL, vdes);
     }
+
+  db_shutdown ();
 
   return EXIT_SUCCESS;
 
@@ -3790,9 +3796,5 @@ print_tde_usage:
      util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
    */
 error_exit:
-  if (vdes != NULL_VOLDES)
-    {
-      fileio_dismount (NULL, vdes);
-    }
   return EXIT_FAILURE;
 }
