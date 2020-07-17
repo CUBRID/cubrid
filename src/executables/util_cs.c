@@ -3748,6 +3748,7 @@ tde (UTIL_FUNCTION_ARG * arg)
 
       if (tde_get_set_mk_info (&mk_index, &created_time, &set_time) != NO_ERROR)
 	{
+	  db_shutdown ();
 	  goto error_exit;
 	}
       ctime_r (&created_time, ctime_buf1);
