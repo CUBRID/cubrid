@@ -178,6 +178,7 @@ extern int tde_decrypt_data_page (const FILEIO_PAGE *iopage_cipher, FILEIO_PAGE 
 extern int tde_create_mk (unsigned char *master_key);
 extern void tde_print_mk (const unsigned char *master_key);
 extern int tde_add_mk (int vdes, const unsigned char *master_key, int *mk_index, time_t created_time);
+extern int tde_find_mk (int vdes, int mk_index, unsigned char *master_key, time_t *created_time);
 extern int tde_delete_mk (int vdes, const int mk_index);
 extern int tde_dump_mks (int vdes, bool print_value);
 

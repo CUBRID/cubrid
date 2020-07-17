@@ -3766,7 +3766,20 @@ tde (UTIL_FUNCTION_ARG * arg)
     }
   else if (change_idx != -1)
     {
-      printf ("change key\n");
+      int prev_mk_idx;
+      time_t created_time, set_time;
+
+      if (tde_get_set_mk_info (&prev_mk_idx, &created_time, &set_time) != NO_ERROR)
+	{
+	  goto error_exit;
+	  db_shutdown ();
+	}
+      if (tde_change_mk_on_server (change_idx) != NO_ERROR)
+	{
+	  db_shutdown ();
+	  goto error_exit;
+	}
+      printf ("The key is changed from %d to %d\n", prev_mk_idx, change_idx);
     }
   else if (delete_idx != -1)
     {
@@ -3794,8 +3807,8 @@ print_tde_usage:
   /*
      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_BACKUPDB, BACKUPDB_MSG_USAGE),
      basename (arg->argv0));
-     util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
    */
+  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
 error_exit:
   return EXIT_FAILURE;
 }

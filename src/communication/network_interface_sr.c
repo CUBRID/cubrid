@@ -2668,6 +2668,38 @@ stde_get_set_mk_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
 }
 
 /*
+ * stde_change_mk_on_server -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+stde_change_mk_on_server (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  int error;
+  char *ptr;
+  int mk_index;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  ptr = or_unpack_int (request, &mk_index);
+
+  error = xtde_change_mk_without_flock (thread_p, mk_index);
+  if (error != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  ptr = or_pack_errcode (reply, error);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
  * stran_server_commit -
  *
  * return:

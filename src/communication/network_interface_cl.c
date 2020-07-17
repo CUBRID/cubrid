@@ -1976,6 +1976,53 @@ tde_get_set_mk_info (int *mk_index, time_t * created_time, time_t * set_time)
 }
 
 /*
+ * tde_change_mk_server -
+ *
+ * return:
+ *
+ *   dks(out):
+ *
+ * NOTE:
+ */
+int
+tde_change_mk_on_server (int mk_index)
+{
+#if defined(CS_MODE)
+  int error = ER_NET_CLIENT_DATA_RECEIVE;
+  int req_error;
+  char *ptr;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
+  char *request;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+
+  request = OR_ALIGNED_BUF_START (a_request);
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  ptr = or_pack_int (request, mk_index);
+  req_error =
+    net_client_request (NET_SERVER_TDE_CHANGE_MK_ON_SERVER, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      ptr = or_unpack_errcode (reply, &error);
+    }
+
+  return error;
+#else /* CS_MODE */
+  int success;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  success = xtde_change_mk_without_flock (thread_p, mk_index);
+
+  exit_server (*thread_p);
+
+  return success;
+#endif /* !CS_MODE */
+}
+
+/*
  * disk_get_total_numpages -
  *
  * return:

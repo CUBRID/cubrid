@@ -126,6 +126,7 @@ extern int file_apply_tde_to_class_files (const OID * class_oid);
 extern int tde_get_data_keys_from_server ();
 extern int tde_get_mk_file_path (char *mk_path);
 extern int tde_get_set_mk_info (int *mk_index, time_t * created_time, time_t * set_time);
+extern int tde_change_mk_on_server (int mk_index);
 extern DKNPAGES disk_get_total_numpages (VOLID volid);
 extern DKNPAGES disk_get_free_numpages (VOLID volid);
 extern char *disk_get_remarks (VOLID volid);

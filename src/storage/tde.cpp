@@ -408,20 +408,22 @@ int tde_change_mk (THREAD_ENTRY *thread_p, const int mk_index, const unsigned ch
   if (!tde_Cipher.is_loaded)
     {
       // TODO error, warning
-      return -1;
+      goto exit;
     }
 
   /* generate keyinfo from tde_Cipher and update heap (on Disk) */
   err = tde_generate_keyinfo (&keyinfo, mk_index, master_key, created_time, &tde_Cipher.data_keys);
   if (err != NO_ERROR)
     {
-      return err;
+      goto exit;
     }
+
+  log_sysop_start (thread_p);
 
   err = tde_update_keyinfo (thread_p, &keyinfo, &tde_Keyinfo_oid, &tde_Keyinfo_hfid);
   if (err != NO_ERROR)
     {
-      return err;
+      goto exit;
     }
 
   /* heap_flush() is mandatory. Without this, it cannot be guaranteed
@@ -429,6 +431,16 @@ int tde_change_mk (THREAD_ENTRY *thread_p, const int mk_index, const unsigned ch
    * By calling heap_flush at end of changing key, DBA can remove the previous key after it.
    */
   heap_flush (thread_p, &tde_Keyinfo_oid);
+
+exit:
+  if (err == NO_ERROR)
+    {
+      log_sysop_commit (thread_p);
+    }
+  else
+    {
+      log_sysop_abort (thread_p);
+    }
 
   return err;
 
@@ -792,6 +804,42 @@ xtde_get_set_mk_info (THREAD_ENTRY *thread_p, int *mk_index, time_t *created_tim
   return NO_ERROR;
 }
 
+int
+xtde_change_mk_without_flock (THREAD_ENTRY *thread_p, const int mk_index)
+{
+  char mk_path[PATH_MAX] = {0, };
+  unsigned char master_key[TDE_MASTER_KEY_LENGTH] = {0, };
+  time_t created_time;
+  int vdes;
+  int err = NO_ERROR;
+
+  tde_make_keys_volume_fullname (mk_path, boot_db_full_name(), false);
+
+  vdes = fileio_mount (thread_p, boot_db_full_name (), mk_path, LOG_DBTDE_KEYS_VOLID, false, false);
+  if (vdes == NULL_VOLDES)
+    {
+      return ER_IO_MOUNT_FAIL;
+    }
+
+  err = tde_find_mk (vdes, mk_index, master_key, &created_time);
+  if (err != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  err = tde_change_mk (thread_p, mk_index, master_key, created_time);
+  if (err != NO_ERROR)
+    {
+      goto exit;
+    }
+
+exit:
+  fileio_dismount (thread_p, vdes);
+
+  return err;
+
+}
+
 #endif /* !CS_MODE */
 
 int
@@ -870,6 +918,60 @@ tde_add_mk (int vdes, const unsigned char *master_key, int *mk_index, time_t cre
 #if !defined(WINDOWS)
   restore_signals (old_mask);
 #endif /* !WINDOWS */
+
+  return NO_ERROR;
+}
+
+int
+tde_find_mk (int vdes, int mk_index, unsigned char *master_key, time_t *created_time)
+{
+  int err = NO_ERROR;
+  bool found;
+  int location;
+  TDE_MK_FILE_ITEM item;
+
+#if !defined(WINDOWS)
+  sigset_t new_mask, old_mask;
+#endif /* !WINDOWS */
+
+#if !defined(WINDOWS)
+  off_signals (new_mask, old_mask);
+#endif /* !WINDOWS */
+
+  location = TDE_MK_FILE_ITEM_OFFSET (mk_index);
+
+  if (lseek (vdes, location, SEEK_SET) != location)
+    {
+      found = false;
+      goto exit; /* not found */
+    }
+
+  if (read (vdes, &item, TDE_MK_FILE_ITEM_SIZE) != TDE_MK_FILE_ITEM_SIZE)
+    {
+      found = false;
+      goto exit;
+    }
+
+  if (item.created_time == -1)
+    {
+      found = false;
+      goto exit;
+    }
+
+  memcpy (master_key, item.master_key, TDE_MASTER_KEY_LENGTH);
+  *created_time = item.created_time;
+
+  found = true;
+
+exit:
+#if !defined(WINDOWS)
+  restore_signals (old_mask);
+#endif /* !WINDOWS */
+
+  if (!found)
+    {
+      return ER_FAILED; // TODO: not found mk
+    }
 
   return NO_ERROR;
 }

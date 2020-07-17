@@ -453,6 +453,10 @@ net_server_init (void)
   req_p->processing_function = stde_get_set_mk_info;
   req_p->name = "NET_SERVER_TDE_GET_SET_MK_INFO";
 
+  req_p = &net_Requests[NET_SERVER_TDE_CHANGE_MK_ON_SERVER];
+  req_p->processing_function = stde_change_mk_on_server;
+  req_p->name = "NET_SERVER_TDE_CHANGE_MK_ON_SERVER";
+
   /* log */
   req_p = &net_Requests[NET_SERVER_LOG_RESET_WAIT_MSECS];
   req_p->processing_function = slogtb_reset_wait_msecs;
