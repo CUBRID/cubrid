@@ -558,6 +558,7 @@ tde_load_mk (int vdes, const TDE_KEYINFO *keyinfo, unsigned char *master_key)
 {
   int location;
   TDE_MK_FILE_ITEM item;
+  int err = NO_ERROR;
 #if !defined(WINDOWS)
   sigset_t new_mask, old_mask;
 #endif /* !WINDOWS */
@@ -582,6 +583,8 @@ tde_load_mk (int vdes, const TDE_KEYINFO *keyinfo, unsigned char *master_key)
 
   if (item.created_time == -1)
     {
+      /* deleted */
+      err = ER_FAILED;
       goto exit;
     }
 
@@ -590,7 +593,8 @@ tde_load_mk (int vdes, const TDE_KEYINFO *keyinfo, unsigned char *master_key)
   if (tde_validate_mk (item.master_key, keyinfo->mk_hash) == false)
     {
       // TODO error
-      return -1;
+      err = ER_FAILED;
+      goto exit;
     }
   /* MK has validated */
 
@@ -601,7 +605,7 @@ exit:
   restore_signals (old_mask);
 #endif /* !WINDOWS */
 
-  return NO_ERROR;
+  return err;
 }
 
 /* Do validation by comparing boot_Db_parm->tde_mk_hash with SHA-256 */
