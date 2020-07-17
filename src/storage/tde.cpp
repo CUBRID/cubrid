@@ -227,7 +227,7 @@ tde_cipher_initialize (THREAD_ENTRY *thread_p, const HFID *keyinfo_hfid, const c
       goto exit;
     }
 
-  tde_Cipher.temp_write_counter.store (0);
+  __sync_fetch_and_add (&tde_Cipher.temp_write_counter, 1);
 
   tde_Cipher.is_loaded = true;
 
@@ -739,7 +739,7 @@ tde_encrypt_data_page (FILEIO_PAGE *iopage_plain, FILEIO_PAGE *iopage_cipher, TD
     {
       // temporary file: p_reserve_1 for nonce TODO: p_reserve_3 -> ?
       data_key = tde_Cipher.data_keys.temp_key;
-      iopage_plain->prv.p_reserve_3 = tde_Cipher.temp_write_counter.fetch_add (1);
+      iopage_plain->prv.p_reserve_3 = __sync_fetch_and_add (&tde_Cipher.temp_write_counter, 1);
       memcpy (nonce, &iopage_plain->prv.p_reserve_3, sizeof (iopage_plain->prv.p_reserve_3));
     }
   else

@@ -100,7 +100,7 @@ typedef struct tde_cipher
   bool is_loaded;
   TDE_DATA_KEY_SET data_keys;
 #if !defined(CS_MODE)
-  std::atomic<std::int64_t> temp_write_counter; /* used as nonce for temp file page */
+  int64_t temp_write_counter; /* used as nonce for temp file page, it has to be dealt atomically */
 #endif /* !CS_MODE */
 } TDE_CIPHER;
 
