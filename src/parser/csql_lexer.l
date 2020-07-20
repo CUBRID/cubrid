@@ -113,6 +113,7 @@ int yybuffer_pos;
 										csql_yylval.cptr = pt_makename(yytext);
 										return ADDDATE; }
 [aA][dD][dD]_[mM][oO][nN][tT][hH][sS]					{ begin_token(yytext);   return ADD_MONTHS; }
+[aA][eE][sS]        { begin_token(yytext);   return AES; }
 [aA][fF][tT][eE][rR]							{ begin_token(yytext);   return AFTER; }
 [aA][lL][lL]								{ begin_token(yytext);   return ALL; }
 [aA][lL][lL][oO][cC][aA][tT][eE]					{ begin_token(yytext);   return ALLOCATE; }
@@ -126,6 +127,7 @@ int yybuffer_pos;
 										csql_yylval.cptr = pt_makename(yytext);
 										return ARCHIVE; }
 [aA][rR][eE]								{ begin_token(yytext);   return ARE; }
+[aA][rR][iI][aA]								{ begin_token(yytext);   return ARIA; }
 [aA][sS]								{ begin_token(yytext);   return AS; }
 [aA][sS][cC]								{ begin_token(yytext);   return ASC; }
 [aA][sS][sS][eE][rR][tT][iI][oO][nN]					{ begin_token(yytext);   return ASSERTION; }
@@ -294,6 +296,7 @@ int yybuffer_pos;
 										csql_yylval.cptr = pt_makename(yytext);
 										return ELT; }
 [eE][mM][pP][tT][yY]                                                    { begin_token(yytext);   return EMPTY; }
+[eE][nN][cC][rR][yY][pP][tT]        { begin_token(yytext);   return ENCRYPT; }
 [eE][nN][dD]								{ begin_token(yytext);   return END; }
 [eE][nN][uU][mM]							{ begin_token(yytext);	 return ENUM; }
 [eE][qQ][uU][aA][lL][sS]						{ begin_token(yytext);   return EQUALS; }

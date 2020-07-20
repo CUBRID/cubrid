@@ -7757,6 +7757,9 @@ pt_print_table_option (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TABLE_OPTION_COMMENT:
       q = pt_append_nulstring (parser, q, "comment = ");
       break;
+    case PT_TABLE_OPTION_ENCRYPT:
+      q = pt_append_nulstring (parser, q, "encrypt = ");
+      break;
     default:
       break;
     }

@@ -8580,14 +8580,17 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   PARSER_VARCHAR *comment = NULL;
   PT_NODE *tbl_opt_charset, *tbl_opt_coll, *cs_node, *coll_node;
   PT_NODE *tbl_opt_comment, *comment_node, *super_node;
+  PT_NODE *tbl_opt_encrypt, *encrypt_node;
   const char *comment_str = NULL;
   MOP super_class = NULL;
+  int tde_algo_opt = -1;
   TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
 
   CHECK_MODIFICATION_ERROR ();
 
   tbl_opt_charset = tbl_opt_coll = cs_node = coll_node = NULL;
   tbl_opt_comment = comment_node = NULL;
+  tbl_opt_encrypt = encrypt_node = NULL;
 
   class_name = node->info.create_entity.entity_name->info.name.original;
 
@@ -8656,11 +8659,8 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    case PT_TABLE_OPTION_REUSE_OID:
 	      reuse_oid = true;
 	      break;
-	    case PT_TABLE_OPTION_ENCRYPTED_AES:
-	      tde_algo = TDE_ALGORITHM_AES;
-	      break;
-	    case PT_TABLE_OPTION_ENCRYPTED_ARIA:
-	      tde_algo = TDE_ALGORITHM_ARIA;
+	    case PT_TABLE_OPTION_ENCRYPT:
+	      tbl_opt_encrypt = tbl_opt;
 	      break;
 	    case PT_TABLE_OPTION_CHARSET:
 	      tbl_opt_charset = tbl_opt;
@@ -8854,8 +8854,25 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	      do_flush_class_mop = true;
 	    }
 	}
-      if (tde_algo != TDE_ALGORITHM_NONE)
+      if (tbl_opt_encrypt)
 	{
+	  encrypt_node = tbl_opt_encrypt->info.table_option.val;
+	  assert (encrypt_node != NULL && encrypt_node->node_type == PT_VALUE
+		  && encrypt_node->type_enum == PT_TYPE_INTEGER);
+	  tde_algo_opt = encrypt_node->info.value.data_value.i;
+	  /*
+	   *  -1 means using deafult encryption algorithm.
+	   *  Other values but -1, TDE_ALGORITHM_AES, TDE_ALGORITHM_ARIA has been denied by parser.
+	   */
+	  if (tde_algo_opt == -1)
+	    {
+	      tde_algo = (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_ALGORITHM_FOR_LOG);
+	      // TODO PRM_ID_TDE_ALGORITHM_FOR_LOG will be removed and integrated to global default parameter
+	    }
+	  else
+	    {
+	      tde_algo = (TDE_ALGORITHM) tde_algo_opt;
+	    }
 	  error = sm_set_class_tde_algorithm (class_obj, tde_algo);
 	  if (error != NO_ERROR)
 	    {

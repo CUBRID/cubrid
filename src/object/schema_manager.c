@@ -2891,6 +2891,8 @@ sm_set_class_tde_algorithm (MOP classop, TDE_ALGORITHM tde_algo)
   SM_CLASS *class_;
   int error = NO_ERROR;
 
+  assert (tde_algo == TDE_ALGORITHM_NONE || tde_algo == TDE_ALGORITHM_AES || tde_algo == TDE_ALGORITHM_ARIA);
+
   if (classop != NULL)
     {
       error = au_fetch_class_force (classop, &class_, AU_FETCH_UPDATE);
