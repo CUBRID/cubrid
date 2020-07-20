@@ -300,14 +300,12 @@ typedef enum
  *   
  *    It equals to ORC_CLASS_FLAG_* 
  */
-typedef enum 
+typedef enum
 {
   SM_CLASSFLAG_SYSTEM = 0x00000001,	/* a system defined class */
   SM_CLASSFLAG_WITHCHECKOPTION = 0x00000002,	/* a view with check option */
   SM_CLASSFLAG_LOCALCHECKOPTION = 0x00000004,	/* view w/local check option */
   SM_CLASSFLAG_REUSE_OID = 0x00000008,	/* the class can reuse OIDs */
-  SM_CLASSFLAG_ENCRYPTED_AES = 0x00010000,  /* TDE: a class encrypted at rest usign AES */
-  SM_CLASSFLAG_ENCRYPTED_ARIA = 0x00020000,  /* TDE: a class encrypted at rest usign ARIA */
 } SM_CLASS_FLAG;
 
 /*
@@ -768,6 +766,8 @@ struct sm_class
   unsigned int virtual_cache_local_schema_id;
   unsigned int virtual_cache_global_schema_id;
   unsigned int virtual_cache_snapshot_version;
+
+  int tde_encryption_algorithm;
 
   unsigned methods_loaded:1;	/* set when dynamic linking was performed */
   unsigned post_load_cleanup:1;	/* set if post load cleanup has occurred */

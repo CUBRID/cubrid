@@ -743,22 +743,21 @@ or_class_hfid (RECDES * record, HFID * hfid)
 }
 
 /*
- * or_class_flgas () - Extracts just the flags from the disk representation of
- *                    a class
+ * or_class_tde_encryption_algorithm, () - Extracts the tde algorithm from the disk representation of a class
  *   return: void
  *   record(in): packed disk record containing class
- *   flags(out): pointer to flags to be filled in
+ *   tde_algo (out): pointer to tde_algo to be filled in
  *
  */
 void
-or_class_flags (RECDES * record, int * flags)
+or_class_tde_encryption_algorithm (RECDES * record, TDE_ALGORITHM * tde_algo)
 {
   char *ptr;
 
   assert (OR_GET_OFFSET_SIZE (record->data) == BIG_VAR_OFFSET_SIZE);
 
   ptr = record->data + OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT);
-  *flags = OR_GET_INT (ptr + ORC_CLASS_FLAGS);
+  *(int *) tde_algo = OR_GET_INT (ptr + ORC_CLASS_TDE_ENCRYPTION_ALGORITHM);
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)

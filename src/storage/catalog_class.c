@@ -1039,6 +1039,9 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VALU
   /* collation_id */
   tp_Integer.data_readval (buf_p, &attrs[9].value, NULL, -1, true, NULL, 0);
 
+  /* tde_encryption_algorithm */
+  or_advance (buf_p, OR_INT_SIZE);
+
   /* variable */
 
   /* name */

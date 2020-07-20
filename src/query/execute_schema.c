@@ -3670,8 +3670,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
   size_t buf_size;
   SM_CLASS *smclass;
   bool reuse_oid = false;
-  bool encrypted_aes = false;
-  bool encrypted_aria = false;
+  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -3742,8 +3741,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
     }
 
   reuse_oid = (smclass->flags & SM_CLASSFLAG_REUSE_OID) ? true : false;
-  encrypted_aes = (smclass->flags & SM_CLASSFLAG_ENCRYPTED_AES) ? true : false;
-  encrypted_aria = (smclass->flags & SM_CLASSFLAG_ENCRYPTED_ARIA) ? true : false;
+  tde_algo = (TDE_ALGORITHM) smclass->tde_encryption_algorithm;
 
   parttemp->info.create_entity.entity_type = PT_CLASS;
   parttemp->info.create_entity.entity_name = parser_new_node (parser, PT_NAME);
@@ -3880,17 +3878,9 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
 		  goto end_create;
 		}
 	    }
-	  if (encrypted_aes)
+	  if (tde_algo != TDE_ALGORITHM_NONE)
 	    {
-	      error = sm_set_class_flag (newpci->obj, SM_CLASSFLAG_ENCRYPTED_AES, 1);
-	      if (error != NO_ERROR)
-		{
-		  goto end_create;
-		}
-	    }
-	  if (encrypted_aria)
-	    {
-	      error = sm_set_class_flag (newpci->obj, SM_CLASSFLAG_ENCRYPTED_ARIA, 1);
+	      error = sm_set_class_tde_algorithm (newpci->obj, tde_algo);
 	      if (error != NO_ERROR)
 		{
 		  goto end_create;
@@ -3923,7 +3913,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
 
 	      hashtail = newparts;
 	    }
-	  if (encrypted_aria || encrypted_aes)
+	  if (tde_algo != TDE_ALGORITHM_NONE)
 	    {
 	      error = file_apply_tde_to_class_files (&newpci->obj->oid_info.oid);
 	      if (error != NO_ERROR)
@@ -4111,19 +4101,9 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
 		  goto end_create;
 		}
 	    }
-	  if (encrypted_aes)
+	  if (tde_algo != TDE_ALGORITHM_NONE)
 	    {
-	      error = sm_set_class_flag (newpci->obj, SM_CLASSFLAG_ENCRYPTED_AES, 1);
-	      if (error != NO_ERROR)
-		{
-		  assert (er_errid () != NO_ERROR);
-		  error = er_errid ();
-		  goto end_create;
-		}
-	    }
-	  if (encrypted_aria)
-	    {
-	      error = sm_set_class_flag (newpci->obj, SM_CLASSFLAG_ENCRYPTED_ARIA, 1);
+	      error = sm_set_class_tde_algorithm (newpci->obj, tde_algo);
 	      if (error != NO_ERROR)
 		{
 		  assert (er_errid () != NO_ERROR);
@@ -4138,7 +4118,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
 	      error = er_errid ();
 	      goto end_create;
 	    }
-	  if (encrypted_aria || encrypted_aes)
+	  if (tde_algo != TDE_ALGORITHM_NONE)
 	    {
 	      error = file_apply_tde_to_class_files (&newpci->obj->oid_info.oid);
 	      if (error != NO_ERROR)
@@ -8592,8 +8572,6 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   DB_QUERY_TYPE *query_columns = NULL;
   PT_NODE *tbl_opt = NULL;
   bool reuse_oid = false;
-  bool encrypted_aes = false;
-  bool encrypted_aria = false;
   bool do_rollback_on_error = false;
   bool do_abort_class_on_error = false;
   bool do_flush_class_mop = false;
@@ -8604,6 +8582,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   PT_NODE *tbl_opt_comment, *comment_node, *super_node;
   const char *comment_str = NULL;
   MOP super_class = NULL;
+  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -8678,10 +8657,10 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	      reuse_oid = true;
 	      break;
 	    case PT_TABLE_OPTION_ENCRYPTED_AES:
-	      encrypted_aes = true;
+	      tde_algo = TDE_ALGORITHM_AES;
 	      break;
 	    case PT_TABLE_OPTION_ENCRYPTED_ARIA:
-	      encrypted_aria = true;
+	      tde_algo = TDE_ALGORITHM_ARIA;
 	      break;
 	    case PT_TABLE_OPTION_CHARSET:
 	      tbl_opt_charset = tbl_opt;
@@ -8696,8 +8675,6 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	      break;
 	    }
 	}
-
-      assert (!(encrypted_aria && encrypted_aes));	// exclusive
 
       /* validate charset and collation options, if any */
       cs_node = (tbl_opt_charset) ? tbl_opt_charset->info.table_option.val : NULL;
@@ -8851,14 +8828,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    {
 	      reuse_oid = true;
 	    }
-	  if (!encrypted_aes && (source_class->flags & SM_CLASSFLAG_ENCRYPTED_AES))
-	    {
-	      encrypted_aes = true;
-	    }
-	  if (!encrypted_aria && (source_class->flags & SM_CLASSFLAG_ENCRYPTED_ARIA))
-	    {
-	      encrypted_aria = true;
-	    }
+	  tde_algo = (TDE_ALGORITHM) source_class->tde_encryption_algorithm;
 	  if (source_class->comment)
 	    {
 	      error = sm_set_class_comment (class_obj, source_class->comment);
@@ -8884,21 +8854,14 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	      do_flush_class_mop = true;
 	    }
 	}
-      if (encrypted_aes)
+      if (tde_algo != TDE_ALGORITHM_NONE)
 	{
-	  error = sm_set_class_flag (class_obj, SM_CLASSFLAG_ENCRYPTED_AES, 1);
-	  if (error == NO_ERROR)
+	  error = sm_set_class_tde_algorithm (class_obj, tde_algo);
+	  if (error != NO_ERROR)
 	    {
-	      do_flush_class_mop = true;
+	      break;
 	    }
-	}
-      if (encrypted_aria)
-	{
-	  error = sm_set_class_flag (class_obj, SM_CLASSFLAG_ENCRYPTED_ARIA, 1);
-	  if (error == NO_ERROR)
-	    {
-	      do_flush_class_mop = true;
-	    }
+	  do_flush_class_mop = true;
 	}
       error = sm_set_class_collation (class_obj, collation_id);
       if (error != NO_ERROR)
@@ -9009,7 +8972,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
     }
 
-  if (encrypted_aria || encrypted_aes)
+  if (tde_algo != TDE_ALGORITHM_NONE)
     {
       error = file_apply_tde_to_class_files (&class_obj->oid_info.oid);
       if (error != NO_ERROR)

@@ -10782,22 +10782,9 @@ heap_get_class_tde_algorithm (THREAD_ENTRY * thread_p, const OID * class_oid, TD
       return ER_FAILED;
     }
 
-  or_class_flags (&recdes, &flags);
+  or_class_tde_encryption_algorithm (&recdes, tde_algo);
 
   heap_scancache_end (thread_p, &scan_cache);
-
-  if (ORC_CLASSFLAG_ENCRYPTED_AES (flags))
-    {
-      *tde_algo = TDE_ALGORITHM_AES;
-    }
-  else if (ORC_CLASSFLAG_ENCRYPTED_ARIA (flags))
-    {
-      *tde_algo = TDE_ALGORITHM_ARIA;
-    }
-  else
-    {
-      *tde_algo = TDE_ALGORITHM_NONE;
-    }
 
   return error;
 }

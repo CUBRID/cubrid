@@ -27,8 +27,6 @@
 
 #ident "$Id$"
 
-#include <atomic>
-
 #include "storage_common.h"
 
 struct fileio_page;
