@@ -298,7 +298,6 @@ typedef enum
  *    Flags for misc information about a class. 
  *    It is stored packed in a single integer.
  *   
- *    It equals to ORC_CLASS_FLAG_* 
  */
 typedef enum
 {
