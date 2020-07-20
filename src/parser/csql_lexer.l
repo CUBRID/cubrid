@@ -294,12 +294,6 @@ int yybuffer_pos;
 										csql_yylval.cptr = pt_makename(yytext);
 										return ELT; }
 [eE][mM][pP][tT][yY]                                                    { begin_token(yytext);   return EMPTY; }
-[eE][nN][cC][rR][yY][pP][tT][eE][dD]_[aA][eE][sS]   { begin_token(yytext);
-                                        csql_yylval.cptr = pt_makename(yytext);
-                                        return ENCRYPTED_AES; }
-[eE][nN][cC][rR][yY][pP][tT][eE][dD]_[aA][rR][iI][aA]   { begin_token(yytext);
-                                        csql_yylval.cptr = pt_makename(yytext);
-                                        return ENCRYPTED_ARIA; }
 [eE][nN][dD]								{ begin_token(yytext);   return END; }
 [eE][nN][uU][mM]							{ begin_token(yytext);	 return ENUM; }
 [eE][qQ][uU][aA][lL][sS]						{ begin_token(yytext);   return EQUALS; }

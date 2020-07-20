@@ -8195,8 +8195,6 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   int found, partition_status = DB_NOT_PARTITIONED_CLASS;
   int collation_id, charset;
   bool found_reuse_oid = false;
-  bool found_encrypted_aes = false;
-  bool found_encrypted_aria = false;
   bool found_auto_increment = false;
   bool found_tbl_comment = false;
   int error = NO_ERROR;
@@ -8228,36 +8226,6 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    else
 	      {
 		found_reuse_oid = true;
-	      }
-	  }
-	  break;
-
-	case PT_TABLE_OPTION_ENCRYPTED_AES:
-	  {
-	    if (found_encrypted_aes || found_encrypted_aria)
-	      {
-		PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DUPLICATE_TABLE_OPTION,
-			    parser_print_tree (parser, tbl_opt));
-		return;
-	      }
-	    else
-	      {
-		found_encrypted_aes = true;
-	      }
-	  }
-	  break;
-
-	case PT_TABLE_OPTION_ENCRYPTED_ARIA:
-	  {
-	    if (found_encrypted_aes || found_encrypted_aria)
-	      {
-		PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DUPLICATE_TABLE_OPTION,
-			    parser_print_tree (parser, tbl_opt));
-		return;
-	      }
-	    else
-	      {
-		found_encrypted_aria = true;
 	      }
 	  }
 	  break;

@@ -1531,8 +1531,6 @@ int g_original_buffer_len;
 %token <cptr> DECREMENT
 %token <cptr> DENSE_RANK
 %token <cptr> ELT
-%token <cptr> ENCRYPTED_AES
-%token <cptr> ENCRYPTED_ARIA
 %token <cptr> EXPLAIN
 %token <cptr> FIRST_VALUE
 %token <cptr> FULLSCAN
@@ -8810,20 +8808,6 @@ table_option
 		{{
 
 			$$ = pt_table_option (this_parser, PT_TABLE_OPTION_REUSE_OID, NULL);
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| ENCRYPTED_AES
-		{{
-
-			$$ = pt_table_option (this_parser, PT_TABLE_OPTION_ENCRYPTED_AES, NULL);
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| ENCRYPTED_ARIA
-		{{
-
-			$$ = pt_table_option (this_parser, PT_TABLE_OPTION_ENCRYPTED_ARIA, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
@@ -21693,26 +21677,6 @@ identifier
 
 		DBG_PRINT}}
 	| ELT
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| ENCRYPTED_AES
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| ENCRYPTED_ARIA
 		{{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
