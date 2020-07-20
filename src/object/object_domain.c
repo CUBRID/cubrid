@@ -95,7 +95,8 @@
 typedef enum tp_coersion_mode
 {
   TP_EXPLICIT_COERCION = 0,
-  TP_IMPLICIT_COERCION
+  TP_IMPLICIT_COERCION,
+  TP_FORCE_COERCION
 } TP_COERCION_MODE;
 
 /*
@@ -9177,7 +9178,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		      {
 			status = DOMAIN_INCOMPATIBLE;
 		      }
-		    else if (data_stat == DATA_STATUS_TRUNCATED &&
+		    else if (data_stat == DATA_STATUS_TRUNCATED && coercion_mode != TP_FORCE_COERCION &&
 			     (prm_get_bool_value (PRM_ID_ALLOW_TRUNCATED_STRING) == false
 			      || coercion_mode == TP_IMPLICIT_COERCION))
 		      {
@@ -9282,7 +9283,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    {
 	      status = DOMAIN_INCOMPATIBLE;
 	    }
-	  else if (data_stat == DATA_STATUS_TRUNCATED &&
+	  else if (data_stat == DATA_STATUS_TRUNCATED && coercion_mode != TP_FORCE_COERCION &&
 		   (prm_get_bool_value (PRM_ID_ALLOW_TRUNCATED_STRING) == false
 		    || coercion_mode == TP_IMPLICIT_COERCION))
 	    {
@@ -10184,6 +10185,19 @@ tp_value_cast (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_
   TP_COERCION_MODE mode;
 
   mode = (implicit_coercion ? TP_IMPLICIT_COERCION : TP_EXPLICIT_COERCION);
+  return tp_value_cast_internal (src, dest, desired_domain, mode, true, false);
+}
+
+TP_DOMAIN_STATUS
+tp_value_cast_ex (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain, bool implicit_coercion, bool force)
+{
+  TP_COERCION_MODE mode;
+
+  mode = (implicit_coercion ? TP_IMPLICIT_COERCION : TP_EXPLICIT_COERCION);
+  if (force)
+    {
+      mode = TP_FORCE_COERCION;
+    }
   return tp_value_cast_internal (src, dest, desired_domain, mode, true, false);
 }
 
