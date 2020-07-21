@@ -54,7 +54,7 @@ TDE_CIPHER tde_Cipher; // global var for TDE Module
  * It must correspond to TDE_ALGORITHM enum.
  * Each index of tde_Algorithm_str is the value in TDE_ALGORITHM enum.
  */
-static char *tde_Algorithm_str[] =
+static const char *tde_Algorithm_str[] =
 {
   "NONE",       /* TDE_ALGORITHM_NONE */
   "AES",        /* TDE_ALGORITHM_AES */
@@ -1110,12 +1110,15 @@ exit:
   return NO_ERROR;
 }
 
-char *
+const char *
 tde_get_algorithm_name (TDE_ALGORITHM tde_algo)
 {
-  assert (tde_algo == TDE_ALGORITHM_NONE
-	  || tde_algo == TDE_ALGORITHM_AES
-	  || tde_algo == TDE_ALGORITHM_ARIA);
+  if (! (tde_algo == TDE_ALGORITHM_NONE
+	 || tde_algo == TDE_ALGORITHM_AES
+	 || tde_algo == TDE_ALGORITHM_ARIA))
+    {
+      return NULL;
+    }
   return tde_Algorithm_str[tde_algo];
 }
 
