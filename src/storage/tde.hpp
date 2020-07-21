@@ -34,6 +34,10 @@ typedef fileio_page FILEIO_PAGE;
 struct log_page;
 typedef log_page LOG_PAGE;
 
+/*
+ * Each value is also used to be index of tde_Algorithm_str[].
+ * These must be changed togeter
+ */
 typedef enum
 {
   TDE_ALGORITHM_NONE = 0,
@@ -179,6 +183,7 @@ extern int tde_add_mk (int vdes, const unsigned char *master_key, int *mk_index,
 extern int tde_find_mk (int vdes, int mk_index, unsigned char *master_key, time_t *created_time);
 extern int tde_delete_mk (int vdes, const int mk_index);
 extern int tde_dump_mks (int vdes, bool print_value);
+extern char *tde_get_algorithm_name (TDE_ALGORITHM tde_algo);
 
 /* Encryption/Decryption functions for logpage are also needed for applylogdb, copylogdb */
 extern int tde_encrypt_log_page (const LOG_PAGE *logpage_plain, LOG_PAGE *logpage_cipher, TDE_ALGORITHM tde_algo);

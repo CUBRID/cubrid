@@ -56,6 +56,7 @@
 #include "class_object.h"
 #include "object_print.h"
 #include "dbtype.h"
+#include "tde.hpp"
 
 #define CLASS_NAME_MAX 80
 
@@ -1100,6 +1101,7 @@ emit_schema (print_output & output_ctx, DB_OBJLIST * classes, int do_auth, DB_OB
   const char *class_type;
   int has_indexes = 0;
   const char *name;
+  const char *tde_algo_name;
   int is_partitioned = 0;
   SM_CLASS *class_ = NULL;
   /*
@@ -1147,6 +1149,15 @@ emit_schema (print_output & output_ctx, DB_OBJLIST * classes, int do_auth, DB_OB
 	  if (class_ != NULL)
 	    {
 	      output_ctx (" COLLATE %s", lang_get_collation_name (class_->collation_id));
+	    }
+
+	  if (class_ != NULL)
+	    {
+	      tde_algo_name = tde_get_algorithm_name ((TDE_ALGORITHM) class_->tde_encryption_algorithm);
+	      if (strcmp (tde_algo_name, tde_get_algorithm_name (TDE_ALGORITHM_NONE)) != 0)
+		{
+		  output_ctx (" ENCRYPT %s", tde_algo_name);
+		}
 	    }
 	}
 

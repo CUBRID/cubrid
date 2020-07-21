@@ -50,6 +50,17 @@
 
 TDE_CIPHER tde_Cipher; // global var for TDE Module
 
+/*
+ * It must correspond to TDE_ALGORITHM enum.
+ * Each index of tde_Algorithm_str is the value in TDE_ALGORITHM enum.
+ */
+static char *tde_Algorithm_str[] =
+{
+  "NONE",       /* TDE_ALGORITHM_NONE */
+  "AES",        /* TDE_ALGORITHM_AES */
+  "ARIA"        /* TDE_ALGORITHM_ARIA */
+};
+
 #define off_signals(new_mask, old_mask) \
   do {  \
   sigfillset (&(new_mask)); \
@@ -92,6 +103,7 @@ static int tde_decrypt_internal (const unsigned char *cipher_buffer, int length,
 				 const unsigned char *key, const unsigned char *nonce, unsigned char *plain_buffer);
 
 #if !defined(CS_MODE)
+
 /*
  *
  */
@@ -1098,6 +1110,14 @@ exit:
   return NO_ERROR;
 }
 
+char *
+tde_get_algorithm_name (TDE_ALGORITHM tde_algo)
+{
+  assert (tde_algo == TDE_ALGORITHM_NONE
+	  || tde_algo == TDE_ALGORITHM_AES
+	  || tde_algo == TDE_ALGORITHM_ARIA);
+  return tde_Algorithm_str[tde_algo];
+}
 
 int
 tde_encrypt_log_page (const LOG_PAGE *logpage_plain, LOG_PAGE *logpage_cipher, TDE_ALGORITHM tde_algo)
