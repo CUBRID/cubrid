@@ -2444,7 +2444,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
 		    {
 		      if (file_apply_tde_algorithm (thread_p, &sort_param->multipage_file,
 						    (TDE_ALGORITHM)
-						    prm_get_integer_value (PRM_ID_TDE_ALGORITHM_FOR_TEMP)) != NO_ERROR)
+						    prm_get_integer_value (PRM_ID_TDE_DEFAULT_ALGORITHM)) != NO_ERROR)
 			{
 			  file_temp_retire (thread_p, &sort_param->multipage_file);
 			  ASSERT_ERROR ();
@@ -4483,8 +4483,7 @@ sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est, bo
   if (tde_encrypted)
     {
       ret =
-	file_apply_tde_algorithm (thread_p, vfid,
-				  (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_ALGORITHM_FOR_TEMP));
+	file_apply_tde_algorithm (thread_p, vfid, (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_DEFAULT_ALGORITHM));
       if (ret != NO_ERROR)
 	{
 	  ASSERT_ERROR ();

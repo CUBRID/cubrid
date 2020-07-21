@@ -8866,8 +8866,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	   */
 	  if (tde_algo_opt == -1)
 	    {
-	      tde_algo = (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_ALGORITHM_FOR_LOG);
-	      // TODO PRM_ID_TDE_ALGORITHM_FOR_LOG will be removed and integrated to global default parameter
+	      tde_algo = (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_DEFAULT_ALGORITHM);
 	    }
 	  else
 	    {

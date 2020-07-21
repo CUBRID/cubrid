@@ -837,7 +837,7 @@ logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
   LOG_PAGE *log_pgptr = NULL;
   LOG_PAGE *buf_pgptr = NULL;
   FILEIO_WRITE_MODE write_mode = FILEIO_WRITE_DEFAULT_WRITE;
-  const TDE_ALGORITHM tde_algo = (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_ALGORITHM_FOR_LOG);
+  const TDE_ALGORITHM tde_algo = (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_DEFAULT_ALGORITHM);
   int error = NO_ERROR;
   int i;
 

@@ -2497,7 +2497,7 @@ qmgr_get_new_page (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_FILE * tfil
       if (tfile_vfid_p->tde_encrypted)
 	{
 	  if (file_apply_tde_algorithm (thread_p, &tfile_vfid_p->temp_vfid,
-					(TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_ALGORITHM_FOR_TEMP)) !=
+					(TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_DEFAULT_ALGORITHM)) !=
 	      NO_ERROR)
 	    {
 	      file_temp_retire (thread_p, &tfile_vfid_p->temp_vfid);
@@ -2763,7 +2763,7 @@ qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
     {
       tfile_vfid_p->tde_encrypted = true;
       if (file_apply_tde_algorithm (thread_p, &tfile_vfid_p->temp_vfid,
-				    (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_ALGORITHM_FOR_TEMP)) != NO_ERROR)
+				    (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_DEFAULT_ALGORITHM)) != NO_ERROR)
 	{
 	  file_temp_retire (thread_p, &tfile_vfid_p->temp_vfid);
 	  free_and_init (tfile_vfid_p);
