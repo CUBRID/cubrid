@@ -1178,7 +1178,10 @@ valid options:\n\
       --cont-on-error           계산 오류 발생해도 계속 진행\n
 
 $set 57 MSGCAT_UTIL_SET_TDE
-21 DBA 비밀 번호: 
+21 DBA 비밀 번호:
+22 KEY_INDEX는 0보다 크거나 같은 값이어야 합니다.\n
+23 키 연산 (-s, -c, -d, -g) 중 하나가 주어져야 합니다.\n
+24 키 연산 (-s, -c, -d, -g) 중 하나만 주어져야 합니다.\n
 60 \
 tde: Transparent Data Encryption (TDE) 관리\n\
 usage: %1$s tde <operation> [옵션] <데이터베이스-이름>\n\
