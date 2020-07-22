@@ -8549,7 +8549,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   tbl_opt_charset = tbl_opt_coll = cs_node = coll_node = NULL;
   tbl_opt_comment = comment_node = NULL;
 
-  if (prm_get_bool_value (PRM_ID_TB_REUSEOID) == false)
+  if (prm_get_bool_value (PRM_ID_TB_DEFAULT_REUSE_OID) == false)
     {
       reuse_oid = false;
     }

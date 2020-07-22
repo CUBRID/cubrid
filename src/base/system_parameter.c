@@ -682,7 +682,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_GENERAL_RESERVE_01 "general_reserve_01"
 
-#define PRM_NAME_TB_REUSEOID "create_table_reuseoid"
+#define PRM_NAME_TB_DEFAULT_REUSE_OID "create_table_reuseoid"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -5915,8 +5915,8 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_TB_REUSEOID,
-   PRM_NAME_TB_REUSEOID,
+  {PRM_ID_TB_DEFAULT_REUSE_OID,
+   PRM_NAME_TB_DEFAULT_REUSE_OID,
    (PRM_USER_CHANGE | PRM_FOR_SERVER),
    PRM_BOOLEAN,
    &prm_create_table_reuseoid,
