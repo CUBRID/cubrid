@@ -690,6 +690,7 @@ typedef enum
 /* Message id in the set MSGCAT_UTIL_SET_TDE */
 typedef enum
 {
+  TDE_MSG_DBA_PASSWORD = 21,
   TDE_MSG_USAGE = 60
 } MSGCAT_TDE_MSG;
 

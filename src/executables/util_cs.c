@@ -3596,6 +3596,8 @@ tde (UTIL_FUNCTION_ARG * arg)
   char mk_path[PATH_MAX] = { 0, };
   const char *database_name;
   const char *dba_password;
+  char *passbuf;
+  int error = NO_ERROR;
   int vdes = NULL_VOLDES;
   bool sa_mode;
   bool gen_op;
@@ -3674,9 +3676,6 @@ tde (UTIL_FUNCTION_ARG * arg)
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
-  // sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
-
-  AU_DISABLE_PASSWORDS ();	/* disable authorization for this operation */
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   if (db_login ("DBA", dba_password) != NO_ERROR)
     {
@@ -3684,10 +3683,41 @@ tde (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
+  /* first try to restart with the password given (possibly none) */
+  error = db_restart (arg->command_name, TRUE, database_name);
+  if (error)
     {
-      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-      goto error_exit;
+      if (error == ER_AU_INVALID_PASSWORD && (dba_password == NULL || strlen (dba_password) == 0))
+	{
+	  /*
+	   * prompt for a valid password and try again, need a reusable
+	   * password prompter so we can use getpass() on platforms that
+	   * support it.
+	   */
+
+	  /* get password interactively if interactive mode */
+	  passbuf = getpass (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_DBA_PASSWORD));
+	  if (passbuf[0] == '\0')	/* to fit into db_login protocol */
+	    {
+	      passbuf = (char *) NULL;
+	    }
+	  dba_password = passbuf;
+	  if (db_login ("DBA", dba_password) != NO_ERROR)
+	    {
+	      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	      goto error_exit;
+	    }
+	  else
+	    {
+	      error = db_restart (arg->command_name, TRUE, database_name);
+	    }
+	}
+
+      if (error)
+	{
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	  goto error_exit;
+	}
     }
 
   if (db_set_isolation (TRAN_READ_COMMITTED) != NO_ERROR)
