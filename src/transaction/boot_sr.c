@@ -2674,7 +2674,9 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     {
       er_clear ();		/* forget any warning or error to start vacuumming */
       if (!skip_vacuum)
-	xvacuum (thread_p);
+        {
+	  xvacuum (thread_p);
+	}
     }
 #endif
 
