@@ -2673,7 +2673,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   if (r_args == NULL || r_args->is_restore_from_backup == false)
     {
       er_clear ();		/* forget any warning or error to start vacuumming */
-      if (!skip_vacuum) xvacuum (thread_p); 
+      if (!skip_vacuum)
+	xvacuum (thread_p);
     }
 #endif
 
