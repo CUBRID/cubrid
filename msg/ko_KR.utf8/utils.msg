@@ -270,7 +270,8 @@ backupdb: 데이터베이스를 백업합니다.\n\
       --no-check               데이터베이스의 정합성 확인 작업을 수행하지 않습니다; 기본값: 수행\n\
   -t, --thread-count=COUNT     백업을 수행하는 스레드 개수; 기본값: 자동\n\
   -z, --compress               백업 볼륨을 압축합니다; 기본값: 압축하지 않음\n\
-      --sleep-msecs=N          매 1M 읽기 마다 N 밀리초를 쉽니다; 기본값: 0\n
+      --sleep-msecs=N          매 1M 읽기 마다 N 밀리초를 쉽니다; 기본값: 0\n\
+  -k, --seperate_keys          TDE에 사용되는 Key File (_keys)을 백업볼륨에 포함하지 않고 별개의 파일로 분리합니다. \n
 71 \"%1$s\" 와 \"%2$s\" (은)는 함께 사용할 수 없습니다.\n
 
 
@@ -388,7 +389,8 @@ restoredb: 데이터베이스 복구\n\
   -l, --level=LEVEL                 복구에 사용될 백업의 레벨; 기본값: 0(Full backup)\n\
   -p, --partial-recovery            archive 로그가 존재하지 않으면 강제로 partial recovery 수행함\n\
   -o, --output-file=FILE            출력 메시지가 저장될 파일; 기본값: 없음\n\
-  -u, --use-database-location-path  데이터베이스 위치 파일에 설정된 경로에 데이터베이스 볼륨과 로그 볼륨을 복구\n
+  -u, --use-database-location-path  데이터베이스 위치 파일에 설정된 경로에 데이터베이스 볼륨과 로그 볼륨을 복구\n\
+  -k, --keys-file-path              복구에 사용될 키 파일 (_keys)의 경로 \n 
 
 
 $set 12 MSGCAT_UTIL_SET_LOADDB

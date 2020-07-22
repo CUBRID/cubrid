@@ -270,7 +270,8 @@ valid options:\n\
       --no-check               don't check a consistency of the database; default: check\n\
   -t, --thread-count=COUNT     number of threads; default: 0(auto)\n\
   -z, --compress               compress backup volumes; default: uncompress\n\
-      --sleep-msecs=N          sleep N millisecond per 1M read; default: 0\n
+      --sleep-msecs=N          sleep N millisecond per 1M read; default: 0\n\
+  -k, --seperate_keys          keys file (_keys) for TDE is not included in the backup volume, but is seperated into a file instead \n 
 71 Incompatible arguments, \"%1$s\", and \"%2$s\"\n
 
 
@@ -389,7 +390,8 @@ valid options:\n\
   -l, --level=LEVEL                 LEVEL of backup to be restored; see backup usage; default: 0(full backup)\n\
   -p, --partial-recovery            perform partial recovery if any log archive is absent\n\
   -o, --output-file=FILE            redirect output messages to FILE; default: none\n\
-  -u, --use-database-location-path  restore the database and log volumes to the path specified in the database location file\n
+  -u, --use-database-location-path  restore the database and log volumes to the path specified in the database location file\n\
+  -k, --keys-file-path              Path of key file (_keys) for TDE to be used during restoring\n 
 
 
 $set 12 MSGCAT_UTIL_SET_LOADDB
