@@ -4847,6 +4847,36 @@ stx_build_list_spec_type (THREAD_ENTRY * thread_p, char *ptr, LIST_SPEC_TYPE * l
 	}
     }
 
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      list_spec_type->list_regu_list_build = NULL;
+    }
+  else
+    {
+      list_spec_type->list_regu_list_build =
+	stx_restore_regu_variable_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (list_spec_type->list_regu_list_build == NULL)
+	{
+	  goto error;
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      list_spec_type->list_regu_list_probe = NULL;
+    }
+  else
+    {
+      list_spec_type->list_regu_list_probe =
+	stx_restore_regu_variable_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (list_spec_type->list_regu_list_probe == NULL)
+	{
+	  goto error;
+	}
+    }
+
   return ptr;
 
 error:

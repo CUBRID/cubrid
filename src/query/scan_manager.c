@@ -3619,7 +3619,8 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 		     VAL_DESCR * vd,
 		     /* fields of LLIST_SCAN_ID */
 		     QFILE_LIST_ID * list_id, regu_variable_list_node * regu_list_pred, PRED_EXPR * pr,
-		     regu_variable_list_node * regu_list_rest)
+		     regu_variable_list_node * regu_list_rest, regu_variable_list_node * regu_list_build,
+		     regu_variable_list_node * regu_list_probe)
 {
   LLIST_SCAN_ID *llsidp;
   DB_TYPE single_node_type = DB_TYPE_NULL;
@@ -3643,6 +3644,9 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
   /* regulator variable list for other than predicates */
   llsidp->rest_regu_list = regu_list_rest;
+  /* regulator variable list for build, probe */
+  llsidp->build_regu_list = regu_list_build;
+  llsidp->probe_regu_list = regu_list_probe;
 
   return NO_ERROR;
 }

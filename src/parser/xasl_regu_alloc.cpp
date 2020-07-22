@@ -176,6 +176,8 @@ regu_spec_target_init (access_spec_node &spec, TARGET_TYPE type)
     case TARGET_LIST:
       spec.s.list_node.list_regu_list_pred = NULL;
       spec.s.list_node.list_regu_list_rest = NULL;
+      spec.s.list_node.list_regu_list_build = NULL;
+      spec.s.list_node.list_regu_list_probe = NULL;
       ACCESS_SPEC_XASL_NODE (&spec) = NULL;
       break;
     case TARGET_SHOWSTMT:
