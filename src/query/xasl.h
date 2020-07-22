@@ -747,6 +747,8 @@ struct list_spec_node
 {
   REGU_VARIABLE_LIST list_regu_list_pred;	/* regu list for the predicate */
   REGU_VARIABLE_LIST list_regu_list_rest;	/* regu list for rest of attrs */
+  REGU_VARIABLE_LIST list_regu_list_build;	/* regu list for hash build */
+  REGU_VARIABLE_LIST list_regu_list_probe;	/* regu list for hash probe */
   XASL_NODE *xasl_node;		/* the XASL node that contains the list file identifier */
 };
 

@@ -63,7 +63,7 @@ static XASL_NODE *add_after_join_predicate (QO_ENV *, XASL_NODE *, PT_NODE *);
 
 static PT_NODE *make_pred_from_bitset (QO_ENV * env, BITSET * predset, ELIGIBILITY_FN safe);
 static void make_pred_from_plan (QO_ENV * env, QO_PLAN * plan, PT_NODE ** key_access_pred, PT_NODE ** access_pred,
-				 QO_XASL_INDEX_INFO * qo_index_infop);
+				 QO_XASL_INDEX_INFO * qo_index_infop, PT_NODE ** hash_pred);
 static PT_NODE *make_if_pred_from_plan (QO_ENV * env, QO_PLAN * plan);
 static PT_NODE *make_instnum_pred_from_plan (QO_ENV * env, QO_PLAN * plan);
 static PT_NODE *make_namelist_from_projected_segs (QO_ENV * env, QO_PLAN * plan);
@@ -117,7 +117,7 @@ static int qo_get_multi_col_range_segs (QO_ENV * env, QO_PLAN * plan, QO_INDEX_E
 static XASL_NODE *
 make_scan_proc (QO_ENV * env)
 {
-  return ptqo_to_scan_proc (QO_ENV_PARSER (env), NULL, NULL, NULL, NULL, NULL, NULL);
+  return ptqo_to_scan_proc (QO_ENV_PARSER (env), NULL, NULL, NULL, NULL, NULL, NULL, NULL);
 }
 
 
@@ -134,7 +134,7 @@ make_fetch_proc (QO_ENV * env, QO_PLAN * plan)
   PT_NODE *access_pred;
   PT_NODE *if_pred;
 
-  make_pred_from_plan (env, plan, NULL, &access_pred, NULL);
+  make_pred_from_plan (env, plan, NULL, &access_pred, NULL, NULL);
   if_pred = make_if_pred_from_plan (env, plan);
 
   xasl =
@@ -600,7 +600,7 @@ init_class_scan_proc (QO_ENV * env, XASL_NODE * xasl, QO_PLAN * plan)
   PARSER_CONTEXT *parser;
   PT_NODE *spec;
   PT_NODE *key_pred;
-  PT_NODE *access_pred;
+  PT_NODE *access_pred, *hash_pred;
   PT_NODE *if_pred;
   PT_NODE *after_join_pred;
   QO_XASL_INDEX_INFO *info;
@@ -610,8 +610,8 @@ init_class_scan_proc (QO_ENV * env, XASL_NODE * xasl, QO_PLAN * plan)
   spec = QO_NODE_ENTITY_SPEC (plan->plan_un.scan.node);
 
   info = qo_get_xasl_index_info (env, plan);
-  make_pred_from_plan (env, plan, &key_pred, &access_pred, info);
-  xasl = ptqo_to_scan_proc (parser, plan, xasl, spec, key_pred, access_pred, info);
+  make_pred_from_plan (env, plan, &key_pred, &access_pred, info, &hash_pred);
+  xasl = ptqo_to_scan_proc (parser, plan, xasl, spec, key_pred, access_pred, info, hash_pred);
 
   /* free pointer node list */
   parser_free_tree (parser, key_pred);
@@ -727,9 +727,9 @@ add_access_spec (QO_ENV * env, XASL_NODE * xasl, QO_PLAN * plan)
     }
 
   info = qo_get_xasl_index_info (env, plan);
-  make_pred_from_plan (env, plan, &key_pred, &access_pred, info);
+  make_pred_from_plan (env, plan, &key_pred, &access_pred, info, NULL);
 
-  xasl->spec_list = pt_to_spec_list (parser, class_spec, key_pred, access_pred, plan, info, NULL);
+  xasl->spec_list = pt_to_spec_list (parser, class_spec, key_pred, access_pred, plan, info, NULL, NULL);
   if (xasl->spec_list == NULL)
     {
       goto exit_on_error;
@@ -1286,7 +1286,7 @@ exit_on_error:
  */
 static void
 make_pred_from_plan (QO_ENV * env, QO_PLAN * plan, PT_NODE ** key_predp, PT_NODE ** predp,
-		     QO_XASL_INDEX_INFO * qo_index_infop)
+		     QO_XASL_INDEX_INFO * qo_index_infop, PT_NODE ** hash_predp)
 {
   QO_INDEX_ENTRY *index_entryp = NULL;
 
@@ -1295,10 +1295,13 @@ make_pred_from_plan (QO_ENV * env, QO_PLAN * plan, PT_NODE ** key_predp, PT_NODE
     {
       *key_predp = NULL;
     }
-
   if (predp != NULL)
     {
       *predp = NULL;
+    }
+  if (hash_predp != NULL)
+    {
+      *hash_predp = NULL;
     }
 
   if (plan->plan_type == QO_PLANTYPE_FOLLOW)
@@ -1320,9 +1323,16 @@ make_pred_from_plan (QO_ENV * env, QO_PLAN * plan, PT_NODE ** key_predp, PT_NODE
       bitset_difference (&(plan->sarged_terms), &(plan->plan_un.scan.terms));
       /* exclude key-filter terms from sarged terms */
       bitset_difference (&(plan->sarged_terms), &(plan->plan_un.scan.kf_terms));
+      /* exclude hash terms from sarged terms */
+      /*bitset_difference (&(plan->sarged_terms), &(plan->plan_un.scan.hash_terms));*/
     }
   while (0);
 
+  /* make predicate list for hash key */
+  if (hash_predp != NULL)
+    {
+      *hash_predp = make_pred_from_bitset (env, &(plan->plan_un.scan.hash_terms), is_always_true);
+    }
   /* if key filter(predicates) is not required */
   if (predp != NULL && (key_predp == NULL || qo_index_infop == NULL))
     {
@@ -1786,6 +1796,8 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	    }
 	  /* exclude totally after join term and push into inner */
 	  bitset_difference (&predset, &taj_terms);
+
+	  bitset_assign (&(inner->plan_un.scan.hash_terms), &(plan->plan_un.join.hash_terms));
 
 	  /*
 	   * In case of outer join, we should not use sarg terms as key filter terms.
@@ -2944,9 +2956,9 @@ qo_add_hq_iterations_access_spec (QO_PLAN * plan, xasl_node * xasl)
   parser = QO_ENV_PARSER (env);
 
   index_info = qo_get_xasl_index_info (env, plan);
-  make_pred_from_plan (env, plan, &key_pred, &access_pred, index_info);
+  make_pred_from_plan (env, plan, &key_pred, &access_pred, index_info, NULL);
 
-  xasl->spec_list = pt_to_spec_list (parser, class_spec, key_pred, access_pred, plan, index_info, NULL);
+  xasl->spec_list = pt_to_spec_list (parser, class_spec, key_pred, access_pred, plan, index_info, NULL, NULL);
 
   if_pred = make_if_pred_from_plan (env, plan);
   if (if_pred)
