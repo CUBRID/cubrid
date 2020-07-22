@@ -72,6 +72,7 @@ $       52      dump_tz
 $       53      restoreslave
 $       54      delvoldb
 $       56      checksumdb
+$       57      tde
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Invalid length or character '%1$c' in database name '%2$s'\n
@@ -182,6 +183,7 @@ Available administrator's utilities:\n\
     dump_tz\n\
     vacuumdb\n\
     checksumdb\n\
+    tde\n\
 \n\
 %4$s is a tool for DBMS.\n\
 For additional information, see http://www.cubrid.org\n
@@ -1186,3 +1188,19 @@ valid options:\n\
       --resume                  resume calculating checksum\n\
       --schema-only             check only schema consistency\n\
       --cont-on-error           continue on calculation error\n
+
+$set 57 MSGCAT_UTIL_SET_TDE
+60 \
+tde: Transparent Data Encryption (TDE) management\n\
+usage: %1$s tde OPERATION [OPTION] database-name\n\
+\n\
+valid options:\n\
+  -S, --SA-mode                stand-alone mode execution\n\
+  -C, --CS-mode                client-server mode execution\n\
+  -p, --dba-password=PASS      password of the DBA user; will prompt if don't specify\n\
+  -v, --print-value            print key value when using -s, -n option\n\
+OPERATIONs:\n\
+    -s, --show_keys               print key information set on the database and the key file (_keys)\n\
+    -n, --generate-new-key        generate a new key in the key file (_keys)\n\
+    -d, --delete-key=KEY_INDEX    delete a key in the key file (_keys)\n\
+    -c, --change-key=KEY_INDEX    change the key set on the database for another key in the key file (_keys)\n

@@ -3803,11 +3803,7 @@ tde (UTIL_FUNCTION_ARG * arg)
   return EXIT_SUCCESS;
 
 print_tde_usage:
-  fprintf (stderr, "TDE Utility Usage\n");
-  /*
-     fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_BACKUPDB, BACKUPDB_MSG_USAGE),
-     basename (arg->argv0));
-   */
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_USAGE), basename (arg->argv0));
   util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
 error_exit:
   return EXIT_FAILURE;

@@ -72,6 +72,7 @@ $       52      dump_tz
 $       53      restoreslave
 $       54      delvoldb
 $       56      checksumdb
+$       57      tde
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 크기가 잘못되었거나, 잘못된 문자 '%1$c'이(가) 데이터베이스 이름 '%2$s'에 포함되어 있습니다\n
@@ -124,6 +125,7 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     dump_tz\n\
     restoreslave\n\
     vacuumdb\n\
+    tde\n\
 \n\
 %4$s (은)는 DBMS 관리 도구입니다.\n\
 추가적인 정보는 다음 사이트를 참조하세요. http://www.cubrid.org\n
@@ -182,6 +184,7 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     dump_tz\n\
     vacuumdb\n\
     checksumdb\n\
+    tde\n\
 \n\
 %4$s (은)는 DBMS  도구입니다.\n\
 추가적인 정보는 다음 사이트를 참조하세요. http://www.cubrid.org\n
@@ -1173,3 +1176,19 @@ valid options:\n\
       --resume                  체크섬 계산 복귀\n\
       --schema-only             스키마 일관성만 검사\n\
       --cont-on-error           계산 오류 발생해도 계속 진행\n
+
+$set 57 MSGCAT_UTIL_SET_TDE
+60 \
+tde: Transparent Data Encryption (TDE) 관리\n\
+usage: %1$s tde <operation> [옵션] <데이터베이스-이름>\n\
+\n\
+valid options:\n\
+  -S, --SA-mode                   독립 모드 실행\n\
+  -C, --CS-mode                   클라이언트 서버 모드 실행\n\
+  -p, --dba-password=PASS         DBA 패스워드; 지정되지 않은 경우 프롬프트\n\
+  -v, --print-value               -s, -n 사용 시 출력 결과물에 키 값을 포함\n\
+operations:\n\
+    -s, --show_keys               데이터베이스에 등록된 키, 키 파일 (_keys)내의 키들에 대한 정보를 출력 \n\
+    -n, --generate-new-key        키 파일 (_keys)에 새로운 키를 추가\n\
+    -d, --delete-key=KEY_INDEX    키 파일 (_keys)의 한 키를 제거\n\
+    -c, --change-key=KEY_INDEX    데이터베이스에 등록된 키를 키 파일 (_keys)에 존재하는 다른 키로 변경\n
