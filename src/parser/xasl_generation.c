@@ -17456,10 +17456,18 @@ pt_make_aptr_parent_node (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE typ
       if (PT_IS_QUERY_NODE_TYPE (node->node_type))
 	{
 	  PT_NODE *namelist;
+	  REGU_VARIABLE_LIST regu_var_list;
 
 	  namelist = NULL;
 
 	  aptr = parser_generate_xasl (parser, node);
+	  if (type == UPDATE_PROC)
+	    {
+	      for (regu_var_list = aptr->outptr_list->valptrp; regu_var_list; regu_var_list = regu_var_list->next)
+		{
+		  regu_var_list->value.flags |= REGU_VARIABLE_UPD_INS_LIST;
+		}
+	    }
 	  if (aptr != NULL)
 	    {
 	      XASL_CLEAR_FLAG (aptr, XASL_TOP_MOST_XASL);
