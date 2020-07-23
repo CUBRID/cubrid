@@ -36,7 +36,6 @@
 
 #if defined(WINDOWS)
 #include <winsock2.h>
-#include <windows.h>
 #else
 #include <sys/socket.h>
 #include "netinet/in.h"
@@ -46,7 +45,6 @@
 #define NON_USESSL      0
 #define USESSL          1
 
-extern int init_ssl (void);
 extern SSL_CTX *create_sslCtx ();
 extern SSL *create_ssl (SOCKET srv_sock_fd, SSL_CTX * ctx);
 extern int connect_ssl (SSL * ssl);

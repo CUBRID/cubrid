@@ -22,23 +22,6 @@
 #include "cci_ssl.h"
 
 
-int
-init_ssl (void)
-{
-  int res = 0;
-  res = SSL_library_init ();
-  if (res < 0)
-    {
-      return res;
-    }
-
-  SSL_load_error_strings ();
-  ERR_load_crypto_strings ();
-  OpenSSL_add_all_algorithms ();
-
-  return 0;
-}
-
 SSL_CTX *
 create_sslCtx ()
 {
@@ -99,9 +82,4 @@ cleanup_ssl (SSL * ssl, SSL_CTX * ctx)
     {
       SSL_CTX_free (ctx);
     }
-
-#if (SSLEAY_VERSION_NUMBER < 0x10100000L)
-  ERR_free_strings ();
-#endif
-
 }
