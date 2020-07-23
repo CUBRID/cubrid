@@ -460,8 +460,8 @@ net_connect_srv (T_CON_HANDLE * con_handle, int host_id, T_CCI_ERROR * err_buf, 
   return CCI_ER_NO_ERROR;
 
 connect_srv_error:
-  CLOSE_SOCKET (srv_sock_fd);
   hm_ssl_free (con_handle);
+  CLOSE_SOCKET (srv_sock_fd);
   return err_code;
 }
 
@@ -496,11 +496,13 @@ net_cancel_request_internal (unsigned char *ip_addr, int port, char *msg, int ms
   if (err_code < 0)
     goto cancel_error;
 
+  hm_ssl_free (con_handle);
   CLOSE_SOCKET (srv_sock_fd);
   FREE_MEM (con_handle);
   return CCI_ER_NO_ERROR;
 
 cancel_error:
+  hm_ssl_free (con_handle);
   CLOSE_SOCKET (srv_sock_fd);
   FREE_MEM (con_handle);
   return err_code;
@@ -843,9 +845,9 @@ net_recv_msg_timeout (T_CON_HANDLE * con_handle, char **msg, int *msg_size, T_CC
 
 error_return:
   FREE_MEM (tmp_p);
+  hm_ssl_free (con_handle);
   CLOSE_SOCKET (con_handle->sock_fd);
   con_handle->sock_fd = INVALID_SOCKET;
-  hm_ssl_free (con_handle);
   return result_code;
 }
 
@@ -999,8 +1001,8 @@ net_check_broker_alive (unsigned char *ip_addr, int port, int timeout_msec, char
   result = true;
 
 finish_health_check:
-  CLOSE_SOCKET (sock_fd);
   hm_ssl_free (con_handle);
+  CLOSE_SOCKET (sock_fd);
   FREE_MEM (con_handle);
   return result;
 }

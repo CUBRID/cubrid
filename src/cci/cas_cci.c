@@ -954,10 +954,10 @@ prepare_error:
 
   if (error == CCI_ER_QUERY_TIMEOUT && con_handle->disconnect_on_query_timeout)
     {
+      hm_ssl_free (con_handle);
       CLOSE_SOCKET (con_handle->sock_fd);
       con_handle->sock_fd = INVALID_SOCKET;
       con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
-      hm_ssl_free (con_handle);
     }
 
   if (IS_OUT_TRAN (con_handle))
@@ -1570,10 +1570,10 @@ prepare_execute_error:
 
   if (error == CCI_ER_QUERY_TIMEOUT && con_handle->disconnect_on_query_timeout)
     {
+      hm_ssl_free (con_handle);
       CLOSE_SOCKET (con_handle->sock_fd);
       con_handle->sock_fd = INVALID_SOCKET;
       con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
-      hm_ssl_free (con_handle);
     }
 
   if (IS_OUT_TRAN (con_handle))
@@ -3239,6 +3239,7 @@ cci_execute_batch (int mapped_conn_id, int num_query, char **sql_stmt, T_CCI_QUE
 
   if (error == CCI_ER_QUERY_TIMEOUT && con_handle->disconnect_on_query_timeout)
     {
+      hm_ssl_free (con_handle);
       CLOSE_SOCKET (con_handle->sock_fd);
       con_handle->sock_fd = INVALID_SOCKET;
       con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
@@ -4942,6 +4943,7 @@ cas_connect_internal (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf, int *con
     {
       if (!IS_INVALID_SOCKET (con_handle->sock_fd))
 	{
+	  hm_ssl_free (con_handle);
 	  CLOSE_SOCKET (con_handle->sock_fd);
 	  con_handle->sock_fd = INVALID_SOCKET;
 	  con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
@@ -4952,6 +4954,7 @@ cas_connect_internal (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf, int *con
     {
       return CCI_ER_NO_ERROR;
     }
+  hm_ssl_free (con_handle);
   CLOSE_SOCKET (con_handle->sock_fd);
   con_handle->sock_fd = INVALID_SOCKET;
   con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;

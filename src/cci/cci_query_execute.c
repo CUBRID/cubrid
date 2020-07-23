@@ -260,9 +260,9 @@ qe_con_close (T_CON_HANDLE * con_handle)
 con_close_end:
 
   net_buf_clear (&net_buf);
+  hm_ssl_free (con_handle);
   CLOSE_SOCKET (con_handle->sock_fd);
   con_handle->sock_fd = INVALID_SOCKET;
-  hm_ssl_free (con_handle);
   return 0;
 }
 
