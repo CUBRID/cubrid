@@ -5962,17 +5962,10 @@ cci_datasource_create (T_CCI_PROPERTIES * prop, T_CCI_ERROR * err_buf)
 	  goto create_datasource_error;
 	}
 
-      id = cci_connect_with_url (new_url, ds->user, ds->pass);
+      id = cci_connect_with_url_ex (new_url, ds->user, ds->pass, &latest_err_buf);
       if (id < 0)
 	{
-	  if (id == CCI_ER_SSL_HANDSHAKE || id == CAS_ER_SSL_TYPE_NOT_ALLOWED)
-	    {
-	      set_error_buffer (&latest_err_buf, id, NULL);
-	    }
-	  else
-	    {
-	      set_error_buffer (&latest_err_buf, CCI_ER_CONNECT, "Could not connect to database");
-	    }
+	  set_error_buffer (&latest_err_buf, id, NULL);
 	  goto create_datasource_error;
 	}
 
