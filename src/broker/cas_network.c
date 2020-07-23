@@ -322,42 +322,18 @@ net_read_stream (SOCKET sock_fd, char *buf, int size)
 }
 
 int
-net_read_stream_plain (SOCKET sock_fd, char *buf, int size)
-{
-  while (size > 0)
-    {
-      int read_len;
-
-      read_len = read_buffer (sock_fd, buf, size);
-
-      if (read_len < 0)
-	{
-#ifdef _DEBUG
-	  if (!is_net_timed_out ())
-	    printf ("read error %d\n", read_len);
-#endif
-	  return -1;
-	}
-      buf += read_len;
-      size -= read_len;
-    }
-
-  return 0;
-}
-
-int
 net_read_header (SOCKET sock_fd, MSG_HEADER * header)
 {
   int retval = 0;
 
   if (cas_info_size > 0)
     {
-      retval = net_read_stream_plain (sock_fd, header->buf, MSG_HEADER_SIZE);
+      retval = net_read_stream (sock_fd, header->buf, MSG_HEADER_SIZE);
       *(header->msg_body_size_ptr) = ntohl (*(header->msg_body_size_ptr));
     }
   else
     {
-      retval = net_read_stream_plain (sock_fd, (char *) header->msg_body_size_ptr, 4);
+      retval = net_read_stream (sock_fd, (char *) header->msg_body_size_ptr, 4);
     }
 
   return retval;
@@ -610,7 +586,7 @@ retry_poll:
 	{
 #endif /* ASYNC_MODE */
 	  /* RECEIVE NEW REQUEST */
-	  read_len = ssl_client ? cas_ssl_read (sock_fd, buf, size) : READ_FROM_SOCKET (sock_fd, buf, size);
+	  read_len = READ_FROM_SOCKET (sock_fd, buf, size);
 #if defined(ASYNC_MODE)
 	}
     }
@@ -672,7 +648,7 @@ retry_poll:
       else if (po[0].revents & POLLOUT)
 	{
 #endif /* ASYNC_MODE */
-	  write_len = ssl_client ? cas_ssl_write (sock_fd, buf, size) : WRITE_TO_SOCKET (sock_fd, buf, size);
+	  write_len = WRITE_TO_SOCKET (sock_fd, buf, size);
 #if defined(ASYNC_MODE)
 	}
     }
