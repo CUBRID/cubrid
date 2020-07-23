@@ -254,6 +254,11 @@ Available command:\n\
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 WARNING: -t option is ignored in stand-alone mode execution.\n
 31 ERROR: Destination-path does not exist or is not a directory.\n
+32 WARNING: By using --seperate-keys option, it seperates the key file (_keys) from the backup volume.\n\
+If the key file is lost, restoring (restoredb) may not work properly even if there is the backup volume.\n
+33 WARNING: The backup volume includes the key file (_keys).\n\
+If a table is TDE-encrypted, it can cause a security problem for that data.\n\
+To seperate the key file to prevent it, use --seperate-keys option.\n
 60 \
 backupdb: Backup a database.\n\
 usage: %1$s backupdb [OPTION] database-name\n\

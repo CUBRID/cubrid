@@ -197,6 +197,17 @@ backupdb (UTIL_FUNCTION_ARG * arg)
       backup_zip_level = FILEIO_ZIP_LZO1X_DEFAULT_LEVEL;
     }
 
+  if (seperate_keys)
+    {
+      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_BACKUPDB,
+					     BACKUPDB_USING_SEPERATE_KEYS));
+    }
+  else
+    {
+      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_BACKUPDB,
+					     BACKUPDB_NOT_USING_SEPERATE_KEYS));
+    }
+
   /* extra validation */
   if (check_database_name (database_name))
     {
