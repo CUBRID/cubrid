@@ -1604,7 +1604,16 @@
 
 #define ER_GAI_ERROR                                -1246
 
-#define ER_LAST_ERROR                               -1247
+#define ER_TDE_INVALID_KEYS_VOLUME                  -1247
+#define ER_TDE_MASTER_KEY_NOT_FOUND                 -1248
+#define ER_TDE_INVALID_MASTER_KEY                   -1249
+#define ER_TDE_ENCRYPTION_ERROR                     -1250
+#define ER_TDE_DECRYPTION_ERROR                     -1251
+#define ER_TDE_CIPHER_IS_NOT_LOADED                 -1252
+#define ER_TDE_KEY_CREATION_FAIL                    -1253
+//#define ER_TDE_MASTER_KEY_DELETED
+
+#define ER_LAST_ERROR                               -1253
 
 /*
  * CAUTION!
