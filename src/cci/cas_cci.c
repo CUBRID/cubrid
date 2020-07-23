@@ -207,9 +207,11 @@ static const char *build_number = "VERSION=" MAKE_STR (BUILD_NUMBER);
 #if defined(WINDOWS)
 static HANDLE con_handle_table_mutex;
 static HANDLE health_check_th_mutex;
+HANDLE create_ssl_mutex;
 #else
 static T_MUTEX con_handle_table_mutex = PTHREAD_MUTEX_INITIALIZER;
 static T_MUTEX health_check_th_mutex = PTHREAD_MUTEX_INITIALIZER;
+T_MUTEX create_ssl_mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif
 
 static char init_flag = 0;
@@ -301,6 +303,7 @@ cci_init ()
       cci_init_flag = 0;
 #if defined(WINDOWS)
       MUTEX_INIT (con_handle_table_mutex);
+      MUTEX_INIT (create_ssl_mutex);
 #endif
     }
 }

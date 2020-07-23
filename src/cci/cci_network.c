@@ -55,6 +55,7 @@
 #include <netinet/tcp.h>
 #include <sys/time.h>
 #include <poll.h>
+#include <pthread.h>
 #endif
 
 /************************************************************************
@@ -102,6 +103,12 @@
 	    RES = recv((CON_HANDLE)->sock_fd, MSG, SIZE, 0);		\
 	  }								\
 	} while (0)
+
+#if defined(WINDOWS)
+extern HANDLE create_ssl_mutex;
+#else
+extern T_MUTEX create_ssl_mutex;
+#endif
 
 #define SOCKET_TIMEOUT 5000	/* msec */
 
@@ -300,12 +307,15 @@ net_connect_srv (T_CON_HANDLE * con_handle, int host_id, T_CCI_ERROR * err_buf, 
   con_handle->sock_fd = srv_sock_fd;
   if (con_handle->useSSL == USESSL)
     {
+      MUTEX_LOCK (create_ssl_mutex);
 
       if (createSSL (con_handle, srv_sock_fd) < 0)
 	{
+	  MUTEX_UNLOCK (create_ssl_mutex);
 	  err_code = CCI_ER_COMMUNICATION;
 	  goto connect_srv_error;
 	}
+      MUTEX_UNLOCK (create_ssl_mutex);
     }
 
   if (net_send_stream (con_handle, db_info, SRV_CON_DB_INFO_SIZE) < 0)
@@ -968,10 +978,13 @@ net_check_broker_alive (unsigned char *ip_addr, int port, int timeout_msec, char
 
   if (useSSL == USESSL)
     {
+      MUTEX_LOCK (create_ssl_mutex);
       if (createSSL (con_handle, sock_fd) < 0)
 	{
+	  MUTEX_UNLOCK (create_ssl_mutex);
 	  goto finish_health_check;
 	}
+      MUTEX_UNLOCK (create_ssl_mutex);
     }
 
   if (net_send_stream (con_handle, db_info, SRV_CON_DB_INFO_SIZE) < 0)
