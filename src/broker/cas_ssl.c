@@ -84,7 +84,7 @@ bool ssl_client = false;
 static int cas_ssl_validity_check (SSL_CTX * ctx);
 
 int
-initSSL (int sd)
+cas_init_ssl (int sd)
 {
   SSL_CTX *ctx;
   char cert[CERT_FILENAME_LEN];
@@ -154,12 +154,15 @@ initSSL (int sd)
   if ((ssl = SSL_new (ctx)) == NULL)
     {
       cas_log_write_and_end (0, true, "SSL: Creating SSL context failed.");
+      SSL_CTX_free (ctx);
       return ER_SSL_GENERAL;
     }
 
   if (SSL_set_fd (ssl, sd) == 0)
     {
       cas_log_write_and_end (0, true, "SSL: Cannot associate with socket.");
+      SSL_free (ssl);
+      ssl = NULL;
       return ER_SSL_GENERAL;
     }
 
@@ -167,8 +170,10 @@ initSSL (int sd)
   if (err_code < 0)
     {
       err_code = SSL_get_error (ssl, err_code);
-      cas_log_write_and_end (0, true, "SSL: Accept failed.");
       err = ERR_get_error ();
+      cas_log_write_and_end (0, true, "SSL: Accept failed - '%s'", ERR_error_string(err, NULL));
+      SSL_free (ssl);
+      ssl = NULL;
       return ER_SSL_GENERAL;
     }
 

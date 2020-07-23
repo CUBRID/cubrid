@@ -124,7 +124,7 @@ static void set_db_connection_info (void);
 static void clear_db_connection_info (void);
 static bool need_database_reconnect (void);
 
-extern int initSSL (int);
+extern int cas_init_ssl (int);
 extern bool ssl_client;
 extern void cas_ssl_close (int client_sock_fd);
 
@@ -1017,7 +1017,7 @@ cas_main (void)
 
 	if (IS_SSL_CLIENT (req_info.driver_info))
 	  {
-	    err_code = initSSL (client_sock_fd);
+	    err_code = cas_init_ssl (client_sock_fd);
 	    if (err_code < 0)
 	      {
 		net_write_error (client_sock_fd, req_info.client_version, req_info.driver_info, cas_info, cas_info_size,
