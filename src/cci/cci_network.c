@@ -922,13 +922,14 @@ net_check_broker_alive (unsigned char *ip_addr, int port, int timeout_msec, char
   T_CON_HANDLE *con_handle = NULL;
   con_handle = (T_CON_HANDLE *) MALLOC (sizeof (T_CON_HANDLE));
   memset (con_handle, 0, sizeof (T_CON_HANDLE));
+  con_handle->useSSL = useSSL;
 
   init_msg_header (&msg_header);
 
   memset (client_info, 0, sizeof (client_info));
   memset (db_info, 0, sizeof (db_info));
 
-  if (useSSL == USESSL)
+  if (con_handle->useSSL == USESSL)
     {
       memcpy (client_info, SRV_CON_CLIENT_MAGIC_STR_SSL, SRV_CON_CLIENT_MAGIC_LEN);
     }
@@ -978,7 +979,7 @@ net_check_broker_alive (unsigned char *ip_addr, int port, int timeout_msec, char
       goto finish_health_check;
     }
 
-  if (useSSL == USESSL)
+  if (con_handle->useSSL == USESSL)
     {
       MUTEX_LOCK (create_ssl_mutex);
       if (createSSL (con_handle, sock_fd) < 0)
