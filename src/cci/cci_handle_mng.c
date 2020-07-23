@@ -1318,8 +1318,8 @@ init_con_handle (T_CON_HANDLE * con_handle, char *ip_str, int port, char *db_nam
   con_handle->slow_query_threshold_millis = 60000;
   con_handle->log_trace_api = false;
   con_handle->log_trace_network = false;
-  con_handle->ssl = NULL;
-  con_handle->ctx = NULL;
+  con_handle->ssl_handle.ssl = NULL;
+  con_handle->ssl_handle.ctx = NULL;
   con_handle->useSSL = false;
   con_handle->deferred_max_close_handle_count = DEFERRED_CLOSE_HANDLE_ALLOC_SIZE;
   con_handle->deferred_close_handle_list = (int *) MALLOC (sizeof (int) * con_handle->deferred_max_close_handle_count);
@@ -1331,6 +1331,7 @@ init_con_handle (T_CON_HANDLE * con_handle, char *ip_str, int port, char *db_nam
 
   con_handle->shard_id = CCI_SHARD_ID_INVALID;
 
+  con_handle->ssl_handle.is_connected = false;
   return 0;
 }
 
@@ -1508,10 +1509,14 @@ hm_force_close_connection (T_CON_HANDLE * con_handle)
 void
 hm_ssl_free (T_CON_HANDLE * con_handle)
 {
-  if (con_handle->ssl != NULL || con_handle->ctx != NULL)
+  if (con_handle != NULL)
     {
-      cleanup_ssl (con_handle->ssl, con_handle->ctx);
-      con_handle->ssl = NULL;
-      con_handle->ctx = NULL;
+      if (con_handle->ssl_handle.ssl != NULL || con_handle->ssl_handle.ctx != NULL)
+	{
+	  cleanup_ssl (con_handle->ssl_handle.ssl, con_handle->ssl_handle.ctx);
+	  con_handle->ssl_handle.ssl = NULL;
+	  con_handle->ssl_handle.ctx = NULL;
+	  con_handle->ssl_handle.is_connected = false;
+	}
     }
 }

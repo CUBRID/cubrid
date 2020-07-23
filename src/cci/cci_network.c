@@ -86,10 +86,22 @@
 #define READ_FROM_SOCKET(SOCKFD, MSG, SIZE)	\
 	recv(SOCKFD, MSG, SIZE, 0)
 
-#define WRITE_TO_SSL_SOCKET(SSL, MSG, SIZE)	\
-	SSL_write(SSL, MSG, SIZE)
-#define READ_FROM_SSL_SOCKET(SSL, MSG, SIZE)	\
-	SSL_read(SSL, MSG, SIZE)
+#define SEND_DATA(RES, CON_HANDLE, MSG, SIZE)				\
+	do {								\
+	  if ((CON_HANDLE)->ssl_handle.is_connected == true) {		\
+	    RES = SSL_write((CON_HANDLE)->ssl_handle.ssl, MSG, SIZE);	\
+	  } else {							\
+	    RES = send((CON_HANDLE)->sock_fd, MSG, SIZE, 0);		\
+	  }								\
+	} while (0)
+#define RECV_DATA(RES, CON_HANDLE, MSG, SIZE)				\
+	do {								\
+	  if ((CON_HANDLE)->ssl_handle.is_connected == true) {		\
+	    RES = SSL_read((CON_HANDLE)->ssl_handle.ssl, MSG, SIZE);	\
+	  } else {							\
+	    RES = recv((CON_HANDLE)->sock_fd, MSG, SIZE, 0);		\
+	  }								\
+	} while (0)
 
 #define SOCKET_TIMEOUT 5000	/* msec */
 
@@ -113,12 +125,12 @@ static void init_msg_header (MSG_HEADER * header);
 static int net_send_msg_header (T_CON_HANDLE * con_handle, MSG_HEADER * header);
 static int net_recv_msg_header (T_CON_HANDLE * con_handle, unsigned char *ip_addr, int port, MSG_HEADER * header,
 				int timeout);
-static bool isSSLAvailable (SSL * ssl, SSL_CTX * ctx, bool useSSL);
 static bool net_peer_socket_alive (unsigned char *ip_addr, int port, int timeout_msec);
 static int net_cancel_request_internal (unsigned char *ip_addr, int port, char *msg, int msglen);
 static int net_cancel_request_w_local_port (unsigned char *ip_addr, int port, int pid, unsigned short local_port);
 static int net_cancel_request_wo_local_port (unsigned char *ip_addr, int port, int pid);
 
+static int createSSL (T_CON_HANDLE * con_handle, SOCKET sock_fd);
 /************************************************************************
  * INTERFACE VARIABLES							*
  ************************************************************************/
@@ -165,7 +177,7 @@ net_connect_srv (T_CON_HANDLE * con_handle, int host_id, T_CCI_ERROR * err_buf, 
   memset (client_info, 0, sizeof (client_info));
   memset (db_info, 0, sizeof (db_info));
 
-  if (con_handle->useSSL == 1)
+  if (con_handle->useSSL == USESSL)
     {
       memcpy (client_info, SRV_CON_CLIENT_MAGIC_STR_SSL, SRV_CON_CLIENT_MAGIC_LEN);
     }
@@ -286,38 +298,12 @@ net_connect_srv (T_CON_HANDLE * con_handle, int host_id, T_CCI_ERROR * err_buf, 
 	}
     }
   con_handle->sock_fd = srv_sock_fd;
-  if (con_handle->useSSL == 1)
+  if (con_handle->useSSL == USESSL)
     {
-      SSL *ssl = NULL;
-      SSL_CTX *ctx = NULL;
 
-      if (init_ssl () < 0)
+      if (createSSL (con_handle, srv_sock_fd) < 0)
 	{
 	  err_code = CCI_ER_COMMUNICATION;
-	  goto connect_srv_error;
-	}
-
-      ctx = create_sslCtx ();
-      if (ctx == NULL)
-	{
-	  err_code = CCI_ER_COMMUNICATION;
-	  goto connect_srv_error;
-	}
-
-      con_handle->ctx = ctx;
-
-      ssl = create_ssl (srv_sock_fd, con_handle->ctx);
-      if (ssl == NULL)
-	{
-	  err_code = CCI_ER_COMMUNICATION;
-	  goto connect_srv_error;
-	}
-
-      con_handle->ssl = ssl;
-
-      if (connect_ssl (ssl) != 1)
-	{
-	  err_code = CCI_ER_SSL_HANDSHAKE;
 	  goto connect_srv_error;
 	}
     }
@@ -930,7 +916,7 @@ net_check_broker_alive (unsigned char *ip_addr, int port, int timeout_msec, char
   memset (client_info, 0, sizeof (client_info));
   memset (db_info, 0, sizeof (db_info));
 
-  if (useSSL == 1)
+  if (useSSL == USESSL)
     {
       memcpy (client_info, SRV_CON_CLIENT_MAGIC_STR_SSL, SRV_CON_CLIENT_MAGIC_LEN);
     }
@@ -980,31 +966,9 @@ net_check_broker_alive (unsigned char *ip_addr, int port, int timeout_msec, char
       goto finish_health_check;
     }
 
-  if (useSSL == 1)
+  if (useSSL == USESSL)
     {
-      SSL *ssl = NULL;
-      SSL_CTX *ctx = NULL;
-
-      if (init_ssl () < 0)
-	{
-	  goto finish_health_check;
-	}
-
-      ctx = create_sslCtx ();
-      if (ctx == NULL)
-	{
-	  goto finish_health_check;
-	}
-      con_handle->ctx = ctx;
-
-      ssl = create_ssl (sock_fd, con_handle->ctx);
-      if (ssl == NULL)
-	{
-	  goto finish_health_check;
-	}
-      con_handle->ssl = ssl;
-
-      if (connect_ssl (ssl) != 1)
+      if (createSSL (con_handle, sock_fd) < 0)
 	{
 	  goto finish_health_check;
 	}
@@ -1116,7 +1080,10 @@ net_recv_stream (T_CON_HANDLE * con_handle, unsigned char *ip_addr, int port, ch
 
   while (tot_read_len < size)
     {
-      if (isSSLAvailable (con_handle->ssl, con_handle->ctx, con_handle->useSSL) == false)
+      if (con_handle->ssl_handle.is_connected == true && SSL_has_pending (con_handle->ssl_handle.ssl) > 0)
+	{
+	}
+      else
 	{
 #if defined(WINDOWS)
 
@@ -1197,14 +1164,8 @@ net_recv_stream (T_CON_HANDLE * con_handle, unsigned char *ip_addr, int port, ch
 #endif /* !WINDOWS */
 	}
 
-      if (isSSLAvailable (con_handle->ssl, con_handle->ctx, con_handle->useSSL) == true)
-	{
-	  read_len = READ_FROM_SSL_SOCKET (con_handle->ssl, buf + tot_read_len, size - tot_read_len);
-	}
-      else
-	{
-	  read_len = READ_FROM_SOCKET (con_handle->sock_fd, buf + tot_read_len, size - tot_read_len);
-	}
+      RECV_DATA (read_len, con_handle, buf + tot_read_len, size - tot_read_len);
+
       if (read_len <= 0)
 	{
 	  return CCI_ER_COMMUNICATION;
@@ -1256,17 +1217,11 @@ net_send_msg_header (T_CON_HANDLE * con_handle, MSG_HEADER * header)
 static int
 net_send_stream (T_CON_HANDLE * con_handle, char *msg, int size)
 {
-  int write_len;
+  int write_len = 0;
   while (size > 0)
     {
-      if (isSSLAvailable (con_handle->ssl, con_handle->ctx, con_handle->useSSL) == true)
-	{
-	  write_len = WRITE_TO_SSL_SOCKET (con_handle->ssl, msg, size);
-	}
-      else
-	{
-	  write_len = WRITE_TO_SOCKET (con_handle->sock_fd, msg, size);
-	}
+      SEND_DATA (write_len, con_handle, msg, size);
+
       if (write_len <= 0)
 	{
 	  return CCI_ER_COMMUNICATION;
@@ -1474,15 +1429,49 @@ connect_retry:
   return CCI_ER_NO_ERROR;
 }
 
-bool
-isSSLAvailable (SSL * ssl, SSL_CTX * ctx, bool useSSL)
+static int
+createSSL (T_CON_HANDLE * con_handle, SOCKET sock_fd)
 {
-  if (ssl != NULL && ctx != NULL && useSSL == true)
+  SSL *ssl = NULL;
+  SSL_CTX *ctx = NULL;
+  int err_code = CCI_ER_NO_ERROR;
+
+  if (sock_fd == INVALID_SOCKET)
     {
-      return true;
+      err_code = CCI_ER_COMMUNICATION;
+      return err_code;
     }
-  else
+
+  if (con_handle->useSSL != USESSL)
     {
-      return false;
+      err_code = CCI_ER_COMMUNICATION;
+      return err_code;
     }
+
+  ctx = create_sslCtx ();
+  if (ctx == NULL)
+    {
+      err_code = CCI_ER_COMMUNICATION;
+      return err_code;
+    }
+
+  con_handle->ssl_handle.ctx = ctx;
+
+  ssl = create_ssl (sock_fd, con_handle->ssl_handle.ctx);
+  if (ssl == NULL)
+    {
+      err_code = CCI_ER_COMMUNICATION;
+      return err_code;
+    }
+
+  con_handle->ssl_handle.ssl = ssl;
+
+  if (connect_ssl (ssl) != 1)
+    {
+      err_code = CCI_ER_SSL_HANDSHAKE;
+      return err_code;
+    }
+
+  con_handle->ssl_handle.is_connected = true;
+  return err_code;
 }

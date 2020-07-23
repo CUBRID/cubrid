@@ -196,6 +196,13 @@ typedef struct
 
 typedef struct
 {
+  SSL *ssl;
+  SSL_CTX *ctx;
+  bool is_connected;
+} T_SSL_HANDLE;
+
+typedef struct
+{
   int id;
   char used;
   char is_retry;
@@ -208,8 +215,6 @@ typedef struct
   char *db_passwd;
   char url[SRV_CON_URL_SIZE];
   SOCKET sock_fd;
-  SSL *ssl;
-  SSL_CTX *ctx;
   int max_req_handle;
   T_EXEC_THR_ARG thr_arg;
   T_REQ_HANDLE **req_handle_table;
@@ -267,6 +272,10 @@ typedef struct
 
   /* shard */
   int shard_id;
+
+  /* ssl */
+  T_SSL_HANDLE ssl_handle;
+
 } T_CON_HANDLE;
 
 /************************************************************************
