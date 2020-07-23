@@ -171,7 +171,7 @@ cas_init_ssl (int sd)
     {
       err_code = SSL_get_error (ssl, err_code);
       err = ERR_get_error ();
-      cas_log_write_and_end (0, true, "SSL: Accept failed - '%s'", ERR_error_string(err, NULL));
+      cas_log_write_and_end (0, true, "SSL: Accept failed - '%s'", ERR_error_string (err, NULL));
       SSL_free (ssl);
       ssl = NULL;
       return ER_SSL_GENERAL;
