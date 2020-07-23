@@ -325,7 +325,7 @@ main (int argc, char *argv[])
       goto print_usage;
     }
 
-  if (csql_arg.sa_mode && csql_arg.cs_mode)
+  if (csql_arg.sa_mode && (csql_arg.cs_mode || csql_arg.write_on_standby))
     {
       /* Don't allow both at once. */
       goto print_usage;
@@ -334,10 +334,10 @@ main (int argc, char *argv[])
     {
       /* Don't allow to skip vacuum on CS mode
          goto print_usage;
-         }
-         else if (explicit_single_line && csql_arg.single_line_execution == false)
-         {
-         /* Don't allow both at once. */
+    }
+  else if (explicit_single_line && csql_arg.single_line_execution == false)
+    {
+      /* Don't allow both at once. */
       goto print_usage;
     }
   else if (csql_arg.sa_mode)
