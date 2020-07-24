@@ -2530,7 +2530,17 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	    }
 	  else
 	    {
-	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_analysis");
+	      if (er_errid () == ER_TDE_CIPHER_IS_NOT_LOADED)
+		{
+		  /* TDE Moudle has to be loaded because there are some TDE-encrypted log pages */
+		  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+				     "log_recovery_analysis: log page %lld has been encrypted (TDE) and cannot be decrypted",
+				     log_page_p->hdr.logical_pageid);
+		}
+	      else
+		{
+		  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_analysis");
+		}
 	      return;
 	    }
 	}
