@@ -7654,7 +7654,16 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 	  if (tde_decrypt_data_page (&bufptr->iopage_buffer->iopage, &bufptr->iopage_buffer->iopage,
 				     tde_algo, pgbuf_is_temporary_volume (vpid->volid)) != NO_ERROR)
 	    {
-	      assert (false);
+	      ASSERT_ERROR ();
+	      pgbuf_put_bcb_into_invalid_list (thread_p, bufptr);
+	      (void) pgbuf_unlock_page (thread_p, hash_anchor, vpid, true);
+#if defined(ENABLE_SYSTEMTAP)
+	      if (monitored == true)
+		{
+		  CUBRID_IO_READ_END (query_id, IO_PAGESIZE, 1);
+		}
+#endif /* ENABLE_SYSTEMTAP */
+	      PGBUF_BCB_CHECK_MUTEX_LEAKS ();
 	      return NULL;
 	    }
 	}
@@ -9866,15 +9875,15 @@ start_copy_page:
   if (tde_algo != TDE_ALGORITHM_NONE)
     {
       error = tde_encrypt_data_page (&bufptr->iopage_buffer->iopage, iopage, tde_algo, is_temp);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error;
+	}
     }
   else
     {
       memcpy ((void *) iopage, (void *) (&bufptr->iopage_buffer->iopage), IO_PAGESIZE);
-    }
-  if (error != NO_ERROR)
-    {
-      assert (false);
-      return error;
     }
   if (uses_dwb)
     {

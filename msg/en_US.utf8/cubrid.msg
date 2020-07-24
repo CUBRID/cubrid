@@ -1313,8 +1313,15 @@ $ LOADDB
 1244 Loading shared attributes updates from object files is not supported in CS mode.
 1245 Loading class attributes updates from object files is not supported in CS mode.
 1246 Error getting address and name information. Code : %1$d, message : %2$s.
-
-1247 Last Error
+1247 Invalid Key file : %1$s
+1248 Cannot find the %1$dth master key.
+1249 The master key set on the database and what is giben don't match. The key index set on the database: %1$d
+1250 Error while TDE-encrypting
+1251 Error while TDE-decrypting
+1252 TDE Moudle is not loaded
+1253 Cannot create a TDE key
+1254 Cannot load TDE module. You can't use TDE feature
+1255 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

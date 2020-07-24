@@ -1199,6 +1199,7 @@ $set 57 MSGCAT_UTIL_SET_TDE
 22 KEY_INDEX has to be greater than or equal to 0\n
 23 One of key operations(-s, -c, -d, -g) has to be given\n
 24 Only one of key opersations (-s, -c, -d, -g) has to be given\n
+25 It fails to get the key information set on the database\n
 60 \
 tde: Transparent Data Encryption (TDE) management\n\
 usage: %1$s tde OPERATION [OPTION] database-name\n\

@@ -167,7 +167,6 @@ extern bool tde_validate_keys_volume (int vdes);
 extern int tde_copy_keys_volume (THREAD_ENTRY *thread_p, const char *to_db_fullname, const char *from_db_fullname,
 				 bool keep_to_mount, bool keep_from_mount);
 extern void tde_make_keys_volume_fullname (char *keys_vol_fullname, const char *db_full_name, bool ignore_parm);
-extern int tde_change_mk (THREAD_ENTRY *thread_p, const int mk_index, const unsigned char *master_key);
 /*
  * TDE functions for encrpytion and decryption
  */

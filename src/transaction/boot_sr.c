@@ -2389,7 +2389,9 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 				      r_args == NULL ? NULL : r_args->keys_file_path);
   if (error_code != NO_ERROR)
     {
-      goto error;
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_LOAD_FAIL, 0);
+      fprintf (stderr, "%s\n", er_msg ());
+      error_code = NO_ERROR;
     }
 
   /* we need to manually add root class HFID to cache */

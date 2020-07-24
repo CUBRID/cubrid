@@ -43,6 +43,7 @@
 #include "file_io.h"
 #endif /* !CS_MODE */
 
+#include "error_manager.h"
 #include "error_code.h"
 #include "log_storage.hpp"
 #include "log_volids.hpp"
@@ -85,6 +86,7 @@ static int tde_generate_keyinfo (TDE_KEYINFO *keyinfo, int mk_index, const unsig
 static int tde_create_keys_volume (const char *db_fullpath);
 static int tde_load_mk (int vdes, const TDE_KEYINFO *keyinfo, unsigned char *master_key);
 static bool tde_validate_mk (const unsigned char *master_key, const unsigned char *mk_hash);
+static int tde_change_mk (THREAD_ENTRY *thread_p, const int mk_index, const unsigned char *master_key);
 static int tde_load_dks (const TDE_KEYINFO *keyinfo, const unsigned char *master_key);
 static void tde_make_mk_hash (const unsigned char *master_key, unsigned char *mk_hash);
 static int tde_create_dk (unsigned char *data_key);
@@ -129,7 +131,8 @@ tde_initialize (THREAD_ENTRY *thread_p, HFID *keyinfo_hfid)
   vdes = fileio_mount (thread_p, boot_db_full_name (), mk_path, LOG_DBTDE_KEYS_VOLID, false, false);
   if (vdes == NULL_VOLDES)
     {
-      return ER_IO_MOUNT_FAIL;
+      ASSERT_ERROR();
+      return er_errid();
     }
 
   err = tde_create_mk (default_mk);
@@ -205,11 +208,13 @@ tde_cipher_initialize (THREAD_ENTRY *thread_p, const HFID *keyinfo_hfid, const c
   vdes = fileio_mount (thread_p, boot_db_full_name (), mk_path, LOG_DBTDE_KEYS_VOLID, 1, false);
   if (vdes == NULL_VOLDES)
     {
-      return ER_IO_MOUNT_FAIL;
+      ASSERT_ERROR();
+      return er_errid();
     }
 
   if (tde_validate_keys_volume (vdes) == false)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_INVALID_KEYS_VOLUME, 1, mk_path);
       err = ER_TDE_INVALID_KEYS_VOLUME;
       goto exit;
     }
@@ -263,13 +268,14 @@ tde_create_keys_volume (const char *db_full_name)
   tde_make_keys_volume_fullname (mk_path, db_full_name, false);
   if (fileio_is_volume_exist (mk_path))
     {
-      // er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_VOLUME_EXISTS, 1, extinfo->name);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_VOLUME_EXISTS, 1, mk_path);
       err = ER_BO_VOLUME_EXISTS;
       goto exit;
     }
 
   if ((vdes = fileio_open (mk_path, O_CREAT | O_RDWR, 0600)) == NULL_VOLDES)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANNOT_CREATE_VOL, 2, mk_path, db_full_name);
       err = ER_BO_CANNOT_CREATE_VOL;
       goto exit;
     }
@@ -336,18 +342,20 @@ tde_copy_keys_volume (THREAD_ENTRY *thread_p, const char *to_db_fullname, const 
 
   if (!fileio_is_volume_exist (mk_path))
     {
-      // er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_VOLUME_EXISTS, 1, extinfo->name);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_VOLUME_EXISTS, 1, mk_path);
       return ER_BO_VOLUME_EXISTS;
     }
   from_vdes = fileio_mount (thread_p, from_db_fullname, mk_path, LOG_DBTDE_KEYS_VOLID, 1, false);
   if (from_vdes == NULL_VOLDES)
     {
-      return ER_IO_MOUNT_FAIL;
+      ASSERT_ERROR();
+      return er_errid();
     }
 
   if (tde_validate_keys_volume (from_vdes) == false)
     {
       fileio_dismount (thread_p, from_vdes);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_INVALID_KEYS_VOLUME, 1, mk_path);
       return ER_TDE_INVALID_KEYS_VOLUME;
     }
 
@@ -365,8 +373,10 @@ tde_copy_keys_volume (THREAD_ENTRY *thread_p, const char *to_db_fullname, const 
   to_vdes = fileio_mount (thread_p, to_db_fullname, mk_path, LOG_DBCOPY_VOLID, 2, false);
   if (to_vdes == NULL_VOLDES)
     {
+      ASSERT_ERROR ();
+      err = er_errid();
       fileio_dismount (thread_p, from_vdes);
-      return ER_IO_MOUNT_FAIL;
+      return err;
     }
 
   if (lseek (from_vdes, 0L, SEEK_SET) != 0L)
@@ -394,6 +404,7 @@ tde_copy_keys_volume (THREAD_ENTRY *thread_p, const char *to_db_fullname, const 
 	    {
 	      fileio_dismount (thread_p, from_vdes);
 	      fileio_unformat_and_rename (thread_p, mk_path, NULL);
+	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_WRITE, 0);
 	      return ER_IO_WRITE;
 	    }
 	}
@@ -405,8 +416,9 @@ tde_copy_keys_volume (THREAD_ENTRY *thread_p, const char *to_db_fullname, const 
   return err;
 }
 
-int tde_change_mk (THREAD_ENTRY *thread_p, const int mk_index, const unsigned char *master_key,
-		   const time_t created_time)
+static int
+tde_change_mk (THREAD_ENTRY *thread_p, const int mk_index, const unsigned char *master_key,
+	       const time_t created_time)
 {
   TDE_KEYINFO keyinfo;
   TDE_DATA_KEY_SET dks;
@@ -415,6 +427,7 @@ int tde_change_mk (THREAD_ENTRY *thread_p, const int mk_index, const unsigned ch
   if (!tde_Cipher.is_loaded)
     {
       err = ER_TDE_CIPHER_IS_NOT_LOADED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_IS_NOT_LOADED, 0);
       goto exit;
     }
 
@@ -581,18 +594,21 @@ tde_load_mk (int vdes, const TDE_KEYINFO *keyinfo, unsigned char *master_key)
   if (lseek (vdes, location, SEEK_SET) != location)
     {
       err = ER_TDE_MASTER_KEY_NOT_FOUND;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_MASTER_KEY_NOT_FOUND, 1, keyinfo->mk_index);
       goto exit;
     }
 
   if (read (vdes, &item, TDE_MK_FILE_ITEM_SIZE) != TDE_MK_FILE_ITEM_SIZE)
     {
       err = ER_TDE_MASTER_KEY_NOT_FOUND;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_MASTER_KEY_NOT_FOUND, 1, keyinfo->mk_index);
       goto exit;
     }
 
   if (item.created_time == -1)
     {
       err = ER_TDE_MASTER_KEY_NOT_FOUND;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_MASTER_KEY_NOT_FOUND, 1, keyinfo->mk_index);
       goto exit;
     }
 
@@ -601,6 +617,7 @@ tde_load_mk (int vdes, const TDE_KEYINFO *keyinfo, unsigned char *master_key)
   if (tde_validate_mk (item.master_key, keyinfo->mk_hash) == false)
     {
       err = ER_TDE_INVALID_MASTER_KEY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_INVALID_MASTER_KEY, 1, keyinfo->mk_index);
       goto exit;
     }
   /* MK has validated */
@@ -677,6 +694,7 @@ tde_create_dk (unsigned char *data_key)
 
   if (1 != RAND_bytes (data_key, TDE_DATA_KEY_LENGTH))
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_KEY_CREATION_FAIL, 0);
       return ER_TDE_KEY_CREATION_FAIL;
     }
 
@@ -737,6 +755,13 @@ tde_encrypt_data_page (FILEIO_PAGE *iopage_plain, FILEIO_PAGE *iopage_cipher, TD
   unsigned char nonce[TDE_DATA_PAGE_NONCE_LENGTH];
   const unsigned char *data_key;
 
+  if (tde_Cipher.is_loaded == false)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_IS_NOT_LOADED, 0);
+      return ER_TDE_CIPHER_IS_NOT_LOADED;
+    }
+
+
   memset (nonce, 0, TDE_DATA_PAGE_NONCE_LENGTH);
 
   if (is_temp)
@@ -770,6 +795,12 @@ tde_decrypt_data_page (const FILEIO_PAGE *iopage_cipher, FILEIO_PAGE *iopage_pla
   unsigned char nonce[TDE_DATA_PAGE_NONCE_LENGTH];
   const unsigned char *data_key;
 
+  if (tde_Cipher.is_loaded == false)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_IS_NOT_LOADED, 0);
+      return ER_TDE_CIPHER_IS_NOT_LOADED;
+    }
+
   memset (nonce, 0, TDE_DATA_PAGE_NONCE_LENGTH);
 
   if (is_temp)
@@ -802,6 +833,7 @@ xtde_get_set_mk_info (THREAD_ENTRY *thread_p, int *mk_index, time_t *created_tim
 
   if (!tde_Cipher.is_loaded)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_IS_NOT_LOADED, 0);
       return ER_TDE_CIPHER_IS_NOT_LOADED;
     }
 
@@ -831,6 +863,7 @@ xtde_change_mk_without_flock (THREAD_ENTRY *thread_p, const int mk_index)
   vdes = fileio_mount (thread_p, boot_db_full_name (), mk_path, LOG_DBTDE_KEYS_VOLID, false, false);
   if (vdes == NULL_VOLDES)
     {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1, mk_path);
       return ER_IO_MOUNT_FAIL;
     }
 
@@ -862,6 +895,7 @@ tde_create_mk (unsigned char *master_key)
 
   if (1 != RAND_bytes (master_key, TDE_MASTER_KEY_LENGTH))
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_KEY_CREATION_FAIL, 0);
       return ER_TDE_KEY_CREATION_FAIL;
     }
 
@@ -979,6 +1013,7 @@ exit:
 
   if (!found)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_MASTER_KEY_NOT_FOUND, 1, mk_index);
       return ER_TDE_MASTER_KEY_NOT_FOUND;
     }
 
@@ -1034,6 +1069,7 @@ exit:
 
   if (!found)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_MASTER_KEY_NOT_FOUND, 1, mk_index);
       return ER_TDE_MASTER_KEY_NOT_FOUND;
     }
 
@@ -1060,7 +1096,7 @@ tde_dump_mks (int vdes, bool print_value)
   if ((location = lseek (vdes, TDE_MK_FILE_CONTENTS_START, SEEK_SET))
       != TDE_MK_FILE_CONTENTS_START)
     {
-      goto exit;
+      return ER_FAILED;
     }
 
   printf ("Keys Information: \n");
@@ -1121,6 +1157,12 @@ tde_encrypt_log_page (const LOG_PAGE *logpage_plain, LOG_PAGE *logpage_cipher, T
   unsigned char nonce[TDE_LOG_PAGE_NONCE_LENGTH];
   const unsigned char *data_key;
 
+  if (tde_Cipher.is_loaded == false)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_IS_NOT_LOADED, 0);
+      return ER_TDE_CIPHER_IS_NOT_LOADED;
+    }
+
   memset (nonce, 0, TDE_LOG_PAGE_NONCE_LENGTH);
 
   data_key = tde_Cipher.data_keys.log_key;
@@ -1139,6 +1181,12 @@ tde_decrypt_log_page (const LOG_PAGE *logpage_cipher, LOG_PAGE *logpage_plain, T
 {
   unsigned char nonce[TDE_LOG_PAGE_NONCE_LENGTH];
   const unsigned char *data_key;
+
+  if (tde_Cipher.is_loaded == false)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_IS_NOT_LOADED, 0);
+      return ER_TDE_CIPHER_IS_NOT_LOADED;
+    }
 
   memset (nonce, 0, TDE_LOG_PAGE_NONCE_LENGTH);
 
@@ -1216,6 +1264,10 @@ cleanup:
   EVP_CIPHER_CTX_free (ctx);
 
 exit:
+  if (err != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_ENCRYPTION_ERROR, 0);
+    }
   return err;
 }
 
@@ -1279,6 +1331,10 @@ cleanup:
   EVP_CIPHER_CTX_free (ctx);
 
 exit:
+  if (err != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_DECRYPTION_ERROR, 0);
+    }
   return err;
 
 }

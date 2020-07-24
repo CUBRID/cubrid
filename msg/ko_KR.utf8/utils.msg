@@ -1187,6 +1187,7 @@ $set 57 MSGCAT_UTIL_SET_TDE
 22 KEY_INDEX는 0보다 크거나 같은 값이어야 합니다.\n
 23 키 연산 (-s, -c, -d, -g) 중 하나가 주어져야 합니다.\n
 24 키 연산 (-s, -c, -d, -g) 중 하나만 주어져야 합니다.\n
+25 데이터베이스에 등록된 키 정보를 가져올 수 없습니다.\n
 60 \
 tde: Transparent Data Encryption (TDE) 관리\n\
 usage: %1$s tde <operation> [옵션] <데이터베이스-이름>\n\

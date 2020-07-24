@@ -2083,7 +2083,11 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_AC
 	      TDE_ALGORITHM tde_algo = logpb_get_tde_algorithm ((LOG_PAGE *) log_pgptr);
 	      if (tde_algo != TDE_ALGORITHM_NONE)
 		{
-		  tde_decrypt_log_page ((LOG_PAGE *) log_pgptr, (LOG_PAGE *) log_pgptr, tde_algo);
+		  if (tde_decrypt_log_page ((LOG_PAGE *) log_pgptr, (LOG_PAGE *) log_pgptr, tde_algo) != NO_ERROR)
+		    {
+		      ASSERT_ERROR ();
+		      goto error;
+		    }
 		}
 	    }
 	}
@@ -2170,7 +2174,11 @@ logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int
 	  TDE_ALGORITHM tde_algo = logpb_get_tde_algorithm ((LOG_PAGE *) ptr);
 	  if (tde_algo != TDE_ALGORITHM_NONE)
 	    {
-	      tde_decrypt_log_page ((LOG_PAGE *) ptr, (LOG_PAGE *) ptr, tde_algo);
+	      if (tde_decrypt_log_page ((LOG_PAGE *) ptr, (LOG_PAGE *) ptr, tde_algo) != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  return -1;
+		}
 	    }
 	  ptr += LOG_PAGESIZE;
 	}
@@ -2193,7 +2201,11 @@ logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int
 	      TDE_ALGORITHM tde_algo = logpb_get_tde_algorithm ((LOG_PAGE *) ptr);
 	      if (tde_algo != TDE_ALGORITHM_NONE)
 		{
-		  tde_decrypt_log_page ((LOG_PAGE *) ptr, (LOG_PAGE *) aligned_log_pgbuf, tde_algo);
+		  if (tde_decrypt_log_page ((LOG_PAGE *) ptr, (LOG_PAGE *) aligned_log_pgbuf, tde_algo) != NO_ERROR)
+		    {
+		      ASSERT_ERROR ();
+		      return -1;
+		    }
 		  logpb_debug_check_log_page (thread_p, (LOG_PAGE *) aligned_log_pgbuf);
 		  ptr += LOG_PAGESIZE;
 		  continue;
@@ -2866,6 +2878,8 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
 	    }
 	  if (err != NO_ERROR)
 	    {
+	      bg_arv_info->vdes = NULL_VOLDES;
+	      fileio_dismount (thread_p, bg_arv_info->vdes);
 	      return;
 	    }
 	}
@@ -5224,7 +5238,11 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE *
 	  TDE_ALGORITHM tde_algo = logpb_get_tde_algorithm (log_pgptr);
 	  if (tde_algo != TDE_ALGORITHM_NONE)
 	    {
-	      tde_decrypt_log_page (log_pgptr, log_pgptr, tde_algo);
+	      if (tde_decrypt_log_page (log_pgptr, log_pgptr, tde_algo) != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  return NULL;
+		}
 	    }
 
 	  /* Cast the archive information. May be used again */
@@ -7428,7 +7446,7 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
 
   if (tde_validate_keys_volume (keys_vdes) == false)
     {
-      error_code = ER_FAILED;	// TODO err
+      error_code = ER_TDE_INVALID_KEYS_VOLUME;
       goto error;
     }
 
@@ -7838,7 +7856,6 @@ loop:
       error_code = fileio_backup_volume (thread_p, &session, mk_path, LOG_DBTDE_KEYS_VOLID, -1, false);
       if (error_code != NO_ERROR)
 	{
-	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_BACKUP_CS_EXIT, 1, log_Name_active);
 	  goto error;
 	}
     }

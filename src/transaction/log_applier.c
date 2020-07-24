@@ -674,9 +674,10 @@ la_log_io_read (char *vname, int vdes, void *io_pgptr, LOG_PHY_PAGEID pageid, in
 
   if (LOG_IS_PAGE_TDE_ENCRYPTED (log_pgptr))
     {
-      if (tde_decrypt_log_page (log_pgptr, log_pgptr, logwr_get_tde_algorithm (log_pgptr)) != NO_ERROR)
+      err = tde_decrypt_log_page (log_pgptr, log_pgptr, logwr_get_tde_algorithm (log_pgptr));
+      if (err != NO_ERROR)
 	{
-	  return ER_FAILED;
+	  return err;
 	}
     }
   return err;
@@ -1049,10 +1050,11 @@ log_reopen:
 
   if (LOG_IS_PAGE_TDE_ENCRYPTED ((LOG_PAGE *) data))
     {
-      if (tde_decrypt_log_page ((LOG_PAGE *) data, (LOG_PAGE *) data, logwr_get_tde_algorithm ((LOG_PAGE *) data)) !=
-	  NO_ERROR)
+      error = tde_decrypt_log_page ((LOG_PAGE *) data, (LOG_PAGE *) data, logwr_get_tde_algorithm ((LOG_PAGE *) data));
+      if (error != NO_ERROR)
 	{
-	  return ER_FAILED;
+	  ASSERT_ERROR ();
+	  return error;
 	}
     }
 

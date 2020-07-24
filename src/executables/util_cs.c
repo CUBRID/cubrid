@@ -3754,10 +3754,11 @@ tde (UTIL_FUNCTION_ARG * arg)
 
   printf ("Key File: %s\n", mk_path);
 
+  /* There is no need to call fileio_dismount() for 'vdes' 
+   * because it is dismounted in db_shutdown() */
   vdes = fileio_mount (NULL, mk_path, mk_path, LOG_DBTDE_KEYS_VOLID, 1, false);
   if (vdes == NULL_VOLDES)
     {
-      // return ER_IO_MOUNT_FAIL;
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       db_shutdown ();
       goto error_exit;
@@ -3771,11 +3772,13 @@ tde (UTIL_FUNCTION_ARG * arg)
 
       if (tde_create_mk (master_key) != NO_ERROR)
 	{
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
 	  db_shutdown ();
 	  goto error_exit;
 	}
       if (tde_add_mk (vdes, master_key, &mk_index, time (NULL)) != NO_ERROR)
 	{
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
 	  db_shutdown ();
 	  goto error_exit;
 	}
@@ -3794,20 +3797,25 @@ tde (UTIL_FUNCTION_ARG * arg)
       char ctime_buf1[CTIME_MAX];
       char ctime_buf2[CTIME_MAX];
 
-      if (tde_get_set_mk_info (&mk_index, &created_time, &set_time) != NO_ERROR)
-	{
-	  db_shutdown ();
-	  goto error_exit;
-	}
-      ctime_r (&created_time, ctime_buf1);
-      ctime_r (&set_time, ctime_buf2);
-
       printf ("The current key set on %s:\n", database_name);
-      printf ("Key Index: %d\n", mk_index);
-      printf ("Created time: %s", ctime_buf1);
-      printf ("Set time: %s\n", ctime_buf2);
+      if (tde_get_set_mk_info (&mk_index, &created_time, &set_time) == NO_ERROR)
+	{
+	  ctime_r (&created_time, ctime_buf1);
+	  ctime_r (&set_time, ctime_buf2);
+
+	  printf ("Key Index: %d\n", mk_index);
+	  printf ("Created time: %s", ctime_buf1);
+	  printf ("Set time: %s\n", ctime_buf2);
+	}
+      else
+	{
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_NO_SET_MK_INFO));
+	}
+      printf ("\n");
       if (tde_dump_mks (vdes, print_val) != NO_ERROR)
 	{
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
 	  db_shutdown ();
 	  goto error_exit;
 	}
@@ -3819,11 +3827,13 @@ tde (UTIL_FUNCTION_ARG * arg)
 
       if (tde_get_set_mk_info (&prev_mk_idx, &created_time, &set_time) != NO_ERROR)
 	{
-	  goto error_exit;
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
 	  db_shutdown ();
+	  goto error_exit;
 	}
       if (tde_change_mk_on_server (change_idx) != NO_ERROR)
 	{
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
 	  db_shutdown ();
 	  goto error_exit;
 	}
@@ -3833,17 +3843,11 @@ tde (UTIL_FUNCTION_ARG * arg)
     {
       if (tde_delete_mk (vdes, delete_idx) != NO_ERROR)
 	{
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
 	  db_shutdown ();
 	  goto error_exit;
 	}
       printf ("The Key[%d] has been deleted.\n", delete_idx);
-    }
-
-  if (vdes != NULL_VOLDES)
-    {
-      /* It has to be before db_shutdown().
-       * In SA_MODE, fileio_dismount_all() is called in db_shutdown().*/
-      fileio_dismount (NULL, vdes);
     }
 
   db_shutdown ();
