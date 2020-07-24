@@ -1613,7 +1613,7 @@
 #define ER_TDE_KEY_CREATION_FAIL                    -1253
 //#define ER_TDE_MASTER_KEY_DELETED
 
-#define ER_LAST_ERROR                               -1253
+#define ER_LAST_ERROR                               -1254
 
 /*
  * CAUTION!
