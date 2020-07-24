@@ -87,7 +87,7 @@ static int tde_load_mk (int vdes, const TDE_KEYINFO *keyinfo, unsigned char *mas
 static bool tde_validate_mk (const unsigned char *master_key, const unsigned char *mk_hash);
 static int tde_load_dks (const TDE_KEYINFO *keyinfo, const unsigned char *master_key);
 static void tde_make_mk_hash (const unsigned char *master_key, unsigned char *mk_hash);
-static int tde_make_dk (unsigned char *data_key);
+static int tde_create_dk (unsigned char *data_key);
 static int tde_encrypt_dk (const unsigned char *dk_plain, TDE_DATA_KEY_TYPE dk_type, const unsigned char *master_key,
 			   unsigned char *dk_cipher);
 static int tde_decrypt_dk (const unsigned char *dk_cipher, TDE_DATA_KEY_TYPE dk_type, const unsigned char *master_key,
@@ -145,9 +145,9 @@ tde_initialize (THREAD_ENTRY *thread_p, HFID *keyinfo_hfid)
       goto exit;
     }
 
-  err = tde_make_dk (dks.perm_key);
-  err = tde_make_dk (dks.temp_key);
-  err = tde_make_dk (dks.log_key);
+  err = tde_create_dk (dks.perm_key);
+  err = tde_create_dk (dks.temp_key);
+  err = tde_create_dk (dks.log_key);
   if (err != NO_ERROR)
     {
       goto exit;
@@ -671,7 +671,7 @@ tde_make_mk_hash (const unsigned char *master_key, unsigned char *mk_hash)
 }
 
 static int
-tde_make_dk (unsigned char *data_key)
+tde_create_dk (unsigned char *data_key)
 {
   assert (data_key != NULL);
 
