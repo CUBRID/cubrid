@@ -1378,27 +1378,35 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
     {
       goto exit_on_error;
     }
-#if 0
   /* if needed to invalidate query cache, invalidate the cache */
   if (qmgr_can_get_from_cache (*flag_p))
     {
       int i;
+      bool invalidate = false;
+
       switch (xclone.xasl->type)
 	{
 	case UPDATE_PROC:
 	case INSERT_PROC:
 	case DELETE_PROC:
 	case MERGE_PROC:
+	  invalidate = true;
+	  break;
+	default:
+	  if (xclone.xasl->upd_del_class_cnt > 0)
+	    {
+	      invalidate = true;
+	    }
+	}
+
+      if (invalidate)
+	{
 	  for (i = 0; i < xasl_cache_entry_p->n_related_objects; i++)
 	    {
 	      xcache_invalidate_qcaches (thread_p, &xasl_cache_entry_p->related_objects[i].oid);
 	    }
-	  break;
-	default:
-	  break;
 	}
     }
-#endif
   if (qmgr_can_get_result_from_cache (*flag_p))
     {
       /* lookup the list cache with the parameter values (DB_VALUE array) */
@@ -2059,7 +2067,7 @@ qmgr_clear_relative_cache_entries (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tr
 			    "qm_clear_trans_wakeup: qexec_clear_list_cache_by_class failed for class { %d %d %d }\n",
 			    class_oid_p->pageid, class_oid_p->slotid, class_oid_p->volid);
 	    }
-	  qmgr_add_modified_class(thread_p, class_oid_p);
+	  qmgr_add_modified_class (thread_p, class_oid_p);
 	}
     }
 }
@@ -2139,29 +2147,29 @@ qmgr_clear_trans_wakeup (THREAD_ENTRY * thread_p, int tran_index, bool is_tran_d
   while (query_p)
     {
       //if (query_p->is_holdable)
-	{
-	  if (is_abort || is_tran_died)
-	    {
-	      /* Make sure query entry info is not leaked in session. */
-	      xsession_clear_query_entry_info (thread_p, query_p->query_id);
-	    }
-	  else
-	    {
-	      /* this is a commit and we have to add the result to the holdable queries list. */
-	      if (query_p->query_status != QUERY_COMPLETED)
-		{
-		  er_log_debug (ARG_FILE_LINE, "query %d not completed !\n", query_p->query_id);
-		}
-	      else
-		{
-		  er_log_debug (ARG_FILE_LINE, "query %d is completed!\n", query_p->query_id);
-		}
-	      xsession_store_query_entry_info (thread_p, query_p);
-	      /* reset result info */
-	      query_p->list_id = NULL;
-	      query_p->temp_vfid = NULL;
-	    }
-	}
+      {
+	if (is_abort || is_tran_died)
+	  {
+	    /* Make sure query entry info is not leaked in session. */
+	    xsession_clear_query_entry_info (thread_p, query_p->query_id);
+	  }
+	else
+	  {
+	    /* this is a commit and we have to add the result to the holdable queries list. */
+	    if (query_p->query_status != QUERY_COMPLETED)
+	      {
+		er_log_debug (ARG_FILE_LINE, "query %d not completed !\n", query_p->query_id);
+	      }
+	    else
+	      {
+		er_log_debug (ARG_FILE_LINE, "query %d is completed!\n", query_p->query_id);
+	      }
+	    xsession_store_query_entry_info (thread_p, query_p);
+	    /* reset result info */
+	    query_p->list_id = NULL;
+	    query_p->temp_vfid = NULL;
+	  }
+      }
       /* destroy the query result if not destroyed yet */
       if (query_p->list_id)
 	{
