@@ -1378,7 +1378,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
     {
       goto exit_on_error;
     }
-
+#if 0
   /* if needed to invalidate query cache, invalidate the cache */
   if (qmgr_can_get_from_cache (*flag_p))
     {
@@ -1398,6 +1398,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 	  break;
 	}
     }
+#endif
   if (qmgr_can_get_result_from_cache (*flag_p))
     {
       /* lookup the list cache with the parameter values (DB_VALUE array) */
@@ -2058,6 +2059,7 @@ qmgr_clear_relative_cache_entries (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tr
 			    "qm_clear_trans_wakeup: qexec_clear_list_cache_by_class failed for class { %d %d %d }\n",
 			    class_oid_p->pageid, class_oid_p->slotid, class_oid_p->volid);
 	    }
+	  qmgr_add_modified_class(thread_p, class_oid_p);
 	}
     }
 }
