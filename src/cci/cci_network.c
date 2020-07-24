@@ -87,22 +87,15 @@
 #define READ_FROM_SOCKET(SOCKFD, MSG, SIZE)	\
 	recv(SOCKFD, MSG, SIZE, 0)
 
-#define SEND_DATA(RES, CON_HANDLE, MSG, SIZE)				\
-	do {								\
-	  if ((CON_HANDLE)->ssl_handle.is_connected == true) {		\
-	    RES = SSL_write((CON_HANDLE)->ssl_handle.ssl, MSG, SIZE);	\
-	  } else {							\
-	    RES = send((CON_HANDLE)->sock_fd, MSG, SIZE, 0);		\
-	  }								\
-	} while (0)
-#define RECV_DATA(RES, CON_HANDLE, MSG, SIZE)				\
-	do {								\
-	  if ((CON_HANDLE)->ssl_handle.is_connected == true) {		\
-	    RES = SSL_read((CON_HANDLE)->ssl_handle.ssl, MSG, SIZE);	\
-	  } else {							\
-	    RES = recv((CON_HANDLE)->sock_fd, MSG, SIZE, 0);		\
-	  }								\
-	} while (0)
+#define SEND_DATA(CON_HANDLE, MSG, SIZE)				\
+	(((CON_HANDLE)->ssl_handle.is_connected == true) ?		\
+	SSL_write((CON_HANDLE)->ssl_handle.ssl, MSG, SIZE) :		\
+        send((CON_HANDLE)->sock_fd, MSG, SIZE, 0))
+
+#define RECV_DATA(CON_HANDLE, MSG, SIZE)				\
+	(((CON_HANDLE)->ssl_handle.is_connected == true) ?		\
+	SSL_read((CON_HANDLE)->ssl_handle.ssl, MSG, SIZE) :		\
+	recv((CON_HANDLE)->sock_fd, MSG, SIZE, 0))
 
 #if defined(WINDOWS)
 extern HANDLE create_ssl_mutex;
@@ -1180,7 +1173,7 @@ net_recv_stream (T_CON_HANDLE * con_handle, unsigned char *ip_addr, int port, ch
 #endif /* !WINDOWS */
 	}
 
-      RECV_DATA (read_len, con_handle, buf + tot_read_len, size - tot_read_len);
+      read_len = RECV_DATA (con_handle, buf + tot_read_len, size - tot_read_len);
 
       if (read_len <= 0)
 	{
@@ -1236,7 +1229,7 @@ net_send_stream (T_CON_HANDLE * con_handle, char *msg, int size)
   int write_len = 0;
   while (size > 0)
     {
-      SEND_DATA (write_len, con_handle, msg, size);
+      write_len = SEND_DATA (con_handle, msg, size);
 
       if (write_len <= 0)
 	{
