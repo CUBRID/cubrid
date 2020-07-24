@@ -1089,10 +1089,7 @@ net_recv_stream (T_CON_HANDLE * con_handle, unsigned char *ip_addr, int port, ch
 
   while (tot_read_len < size)
     {
-      if (con_handle->ssl_handle.is_connected == true && SSL_has_pending (con_handle->ssl_handle.ssl) > 0)
-	{
-	}
-      else
+      if (con_handle->ssl_handle.is_connected == false || SSL_has_pending (con_handle->ssl_handle.ssl) <= 0)
 	{
 #if defined(WINDOWS)
 
