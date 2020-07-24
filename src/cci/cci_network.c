@@ -1457,7 +1457,7 @@ createSSL (T_CON_HANDLE * con_handle, SOCKET sock_fd)
       return err_code;
     }
 
-  ctx = create_sslCtx ();
+  ctx = create_ssl_ctx ();
   if (ctx == NULL)
     {
       err_code = CCI_ER_COMMUNICATION;
@@ -1469,7 +1469,8 @@ createSSL (T_CON_HANDLE * con_handle, SOCKET sock_fd)
   ssl = create_ssl (sock_fd, con_handle->ssl_handle.ctx);
   if (ssl == NULL)
     {
-      err_code = CCI_ER_COMMUNICATION;
+      cleanup_ssl_ctx (con_handle->ssl_handle.ctx);
+      con_handle->ssl_handle.ctx = NULL;
       return err_code;
     }
 
@@ -1477,7 +1478,10 @@ createSSL (T_CON_HANDLE * con_handle, SOCKET sock_fd)
 
   if (connect_ssl (ssl) != 1)
     {
-      err_code = CCI_ER_SSL_HANDSHAKE;
+      cleanup_ssl (con_handle->ssl_handle.ssl);
+      cleanup_ssl_ctx (con_handle->ssl_handle.ctx);
+      con_handle->ssl_handle.ssl = NULL;
+      con_handle->ssl_handle.ctx = NULL;
       return err_code;
     }
 

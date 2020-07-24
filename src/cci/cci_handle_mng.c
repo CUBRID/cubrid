@@ -1515,7 +1515,8 @@ hm_ssl_free (T_CON_HANDLE * con_handle)
     {
       if (con_handle->ssl_handle.ssl != NULL || con_handle->ssl_handle.ctx != NULL)
 	{
-	  cleanup_ssl (con_handle->ssl_handle.ssl, con_handle->ssl_handle.ctx);
+	  cleanup_ssl (con_handle->ssl_handle.ssl);
+	  cleanup_ssl_ctx (con_handle->ssl_handle.ctx);
 	  con_handle->ssl_handle.ssl = NULL;
 	  con_handle->ssl_handle.ctx = NULL;
 	  con_handle->ssl_handle.is_connected = false;

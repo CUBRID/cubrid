@@ -23,7 +23,7 @@
 
 
 SSL_CTX *
-create_sslCtx ()
+create_ssl_ctx ()
 {
   const SSL_METHOD *method;
   SSL_CTX *ctx = NULL;
@@ -70,14 +70,18 @@ connect_ssl (SSL * ssl)
 
 
 void
-cleanup_ssl (SSL * ssl, SSL_CTX * ctx)
+cleanup_ssl (SSL * ssl)
 {
   if (ssl != NULL)
     {
       SSL_shutdown (ssl);
       SSL_free (ssl);
     }
+}
 
+void
+cleanup_ssl_ctx (SSL_CTX * ctx)
+{
   if (ctx != NULL)
     {
       SSL_CTX_free (ctx);
