@@ -130,7 +130,7 @@ static int net_cancel_request_internal (unsigned char *ip_addr, int port, char *
 static int net_cancel_request_w_local_port (unsigned char *ip_addr, int port, int pid, unsigned short local_port);
 static int net_cancel_request_wo_local_port (unsigned char *ip_addr, int port, int pid);
 
-static int createSSL (T_CON_HANDLE * con_handle, SOCKET sock_fd);
+static int ssl_session_init (T_CON_HANDLE * con_handle, SOCKET sock_fd);
 /************************************************************************
  * INTERFACE VARIABLES							*
  ************************************************************************/
@@ -302,7 +302,7 @@ net_connect_srv (T_CON_HANDLE * con_handle, int host_id, T_CCI_ERROR * err_buf, 
     {
       MUTEX_LOCK (create_ssl_mutex);
 
-      if (createSSL (con_handle, srv_sock_fd) < 0)
+      if (ssl_session_init (con_handle, srv_sock_fd) < 0)
 	{
 	  MUTEX_UNLOCK (create_ssl_mutex);
 	  err_code = CCI_ER_COMMUNICATION;
@@ -975,7 +975,7 @@ net_check_broker_alive (unsigned char *ip_addr, int port, int timeout_msec, char
   if (con_handle->useSSL == USESSL)
     {
       MUTEX_LOCK (create_ssl_mutex);
-      if (createSSL (con_handle, sock_fd) < 0)
+      if (ssl_session_init (con_handle, sock_fd) < 0)
 	{
 	  MUTEX_UNLOCK (create_ssl_mutex);
 	  goto finish_health_check;
@@ -1439,29 +1439,21 @@ connect_retry:
 }
 
 static int
-createSSL (T_CON_HANDLE * con_handle, SOCKET sock_fd)
+ssl_session_init (T_CON_HANDLE * con_handle, SOCKET sock_fd)
 {
   SSL *ssl = NULL;
   SSL_CTX *ctx = NULL;
   int err_code = CCI_ER_NO_ERROR;
 
-  if (sock_fd == INVALID_SOCKET)
+  if (sock_fd == INVALID_SOCKET || (con_handle != NULL && con_handle->useSSL != USESSL))
     {
-      err_code = CCI_ER_COMMUNICATION;
-      return err_code;
-    }
-
-  if (con_handle->useSSL != USESSL)
-    {
-      err_code = CCI_ER_COMMUNICATION;
-      return err_code;
+      return CCI_ER_COMMUNICATION;
     }
 
   ctx = create_ssl_ctx ();
   if (ctx == NULL)
     {
-      err_code = CCI_ER_COMMUNICATION;
-      return err_code;
+      return CCI_ER_COMMUNICATION;
     }
 
   con_handle->ssl_handle.ctx = ctx;
@@ -1471,7 +1463,7 @@ createSSL (T_CON_HANDLE * con_handle, SOCKET sock_fd)
     {
       cleanup_ssl_ctx (con_handle->ssl_handle.ctx);
       con_handle->ssl_handle.ctx = NULL;
-      return err_code;
+      return CCI_ER_COMMUNICATION;
     }
 
   con_handle->ssl_handle.ssl = ssl;
@@ -1482,7 +1474,7 @@ createSSL (T_CON_HANDLE * con_handle, SOCKET sock_fd)
       cleanup_ssl_ctx (con_handle->ssl_handle.ctx);
       con_handle->ssl_handle.ssl = NULL;
       con_handle->ssl_handle.ctx = NULL;
-      return err_code;
+      return CCI_ER_SSL_HANDSHAKE;
     }
 
   con_handle->ssl_handle.is_connected = true;
