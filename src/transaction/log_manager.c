@@ -7276,11 +7276,11 @@ log_undo_rec_restartable (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_RC
 static void
 log_dump_record_header_to_string (LOG_RECORD_HEADER * log, char *buf, size_t len)
 {
-  const char *fmt = "TYPE[%d], TRID[%d], PREV[%lld,%d], BACK[%lld,%d], FORW[%lld,%d]";
+  const char *fmt = "TYPE[%d], FLAGS[%d], TRID[%d], PREV[%lld,%d], BACK[%lld,%d], FORW[%lld,%d]";
 
-  snprintf (buf, len, fmt, log->type, log->trid, (long long int) log->prev_tranlsa.pageid, log->prev_tranlsa.offset,
-	    (long long int) log->back_lsa.pageid, log->back_lsa.offset, (long long int) log->forw_lsa.pageid,
-	    log->forw_lsa.offset);
+  snprintf (buf, len, fmt, log->type, log->flags, log->trid, (long long int) log->prev_tranlsa.pageid,
+	    log->prev_tranlsa.offset, (long long int) log->back_lsa.pageid, log->back_lsa.offset,
+	    (long long int) log->forw_lsa.pageid, log->forw_lsa.offset);
 }
 
 /*
