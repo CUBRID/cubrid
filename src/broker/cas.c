@@ -124,8 +124,8 @@ static void set_db_connection_info (void);
 static void clear_db_connection_info (void);
 static bool need_database_reconnect (void);
 
-extern int cas_init_ssl (int);
 extern bool ssl_client;
+extern int cas_init_ssl (int);
 extern void cas_ssl_close (int client_sock_fd);
 
 #else /* !LIBCAS_FOR_JSP */
