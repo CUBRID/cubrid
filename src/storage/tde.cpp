@@ -1230,6 +1230,7 @@ tde_encrypt_internal (const unsigned char *plain_buffer, int length, TDE_ALGORIT
       break;
     case TDE_ALGORITHM_NONE:
     default:
+      cipher_type = NULL;
       assert (false);
     }
 
@@ -1299,6 +1300,7 @@ tde_decrypt_internal (const unsigned char *cipher_buffer, int length, TDE_ALGORI
       break;
     case TDE_ALGORITHM_NONE:
     default:
+      cipher_type = NULL;
       assert (false);
     }
 
