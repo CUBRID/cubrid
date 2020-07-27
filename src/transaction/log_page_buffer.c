@@ -3371,6 +3371,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
       LSA_COPY (&eof.back_lsa, &log_Gl.append.prev_lsa);
       LSA_SET_NULL (&eof.forw_lsa);
       eof.type = LOG_END_OF_LOG;
+      eof.flags = 0;
 
       logpb_start_append (thread_p, &eof);
     }
