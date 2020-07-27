@@ -13,7 +13,6 @@ extern void hl_fixed_free (UINTPTR heap_id, void *ptr);
 extern UINTPTR hl_register_ostk_heap (int chunk_size);
 extern void hl_unregister_ostk_heap (UINTPTR heap_id);
 extern void *hl_ostk_alloc (UINTPTR heap_id, size_t sz);
-extern void *hl_ostk_realloc (UINTPTR heap_id, void *ptr, size_t sz);
 extern void hl_ostk_free (UINTPTR heap_id, void *ptr);
 
 extern UINTPTR hl_register_lea_heap (void);

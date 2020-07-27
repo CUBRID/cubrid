@@ -109,24 +109,6 @@ hl_ostk_alloc (UINTPTR heap_id, size_t sz)
   return NULL;
 }
 
-void *
-hl_ostk_realloc (UINTPTR heap_id, void *ptr, size_t sz)
-{
-  TheObstackHeapType *th = (TheObstackHeapType *) heap_id;
-  if (th)
-    {
-      void *new_ptr = th->malloc (sz);
-      size_t old_sz = th->getSize (ptr);
-
-      memcpy (new_ptr, ptr, (old_sz > sz ? sz : old_sz));
-
-      // free at a time
-      // if (ptr) th->free (ptr);
-      return new_ptr;
-    }
-  return NULL;
-}
-
 void
 hl_ostk_free (UINTPTR heap_id, void *ptr)
 {
