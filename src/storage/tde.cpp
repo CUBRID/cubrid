@@ -853,6 +853,7 @@ int
 xtde_change_mk_without_flock (THREAD_ENTRY *thread_p, const int mk_index)
 {
   char mk_path[PATH_MAX] = {0, };
+  TDE_KEYINFO keyinfo;
   unsigned char master_key[TDE_MASTER_KEY_LENGTH] = {0, };
   time_t created_time;
   int vdes;
@@ -873,6 +874,25 @@ xtde_change_mk_without_flock (THREAD_ENTRY *thread_p, const int mk_index)
       goto exit;
     }
 
+  err = tde_get_keyinfo (thread_p, &keyinfo, &tde_Keyinfo_oid, &tde_Keyinfo_hfid);
+  if (err != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  /* if the same key with the key set on the database */
+  if (mk_index == keyinfo.mk_index && tde_validate_mk (master_key, keyinfo.mk_hash))
+    {
+      goto exit;
+    }
+
+  /* The previous key has to exist */
+  err = tde_find_mk (vdes, keyinfo.mk_index, NULL, NULL);
+  if (err != NO_ERROR)
+    {
+      goto exit;
+    }
+
   err = tde_change_mk (thread_p, mk_index, master_key, created_time);
   if (err != NO_ERROR)
     {
@@ -881,9 +901,7 @@ xtde_change_mk_without_flock (THREAD_ENTRY *thread_p, const int mk_index)
 
 exit:
   fileio_dismount (thread_p, vdes);
-
   return err;
-
 }
 
 #endif /* !CS_MODE */
@@ -1001,8 +1019,14 @@ tde_find_mk (int vdes, int mk_index, unsigned char *master_key, time_t *created_
       goto exit;
     }
 
-  memcpy (master_key, item.master_key, TDE_MASTER_KEY_LENGTH);
-  *created_time = item.created_time;
+  if (master_key != NULL)
+    {
+      memcpy (master_key, item.master_key, TDE_MASTER_KEY_LENGTH);
+    }
+  if (created_time != NULL)
+    {
+      *created_time = item.created_time;
+    }
 
   found = true;
 

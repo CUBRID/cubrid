@@ -3825,22 +3825,41 @@ tde (UTIL_FUNCTION_ARG * arg)
       int prev_mk_idx;
       time_t created_time, set_time;
 
+
       if (tde_get_set_mk_info (&prev_mk_idx, &created_time, &set_time) != NO_ERROR)
 	{
 	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
 	  db_shutdown ();
 	  goto error_exit;
 	}
+
+      printf ("Try to change the key from %d to %d..\n", prev_mk_idx, change_idx);
+      /* no need to check if the previous key exists or not. It is going to be checked on changing on server */
       if (tde_change_mk_on_server (change_idx) != NO_ERROR)
 	{
 	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
 	  db_shutdown ();
 	  goto error_exit;
 	}
-      printf ("The key is changed from %d to %d\n", prev_mk_idx, change_idx);
+      printf ("The key has been changed from %d to %d\n", prev_mk_idx, change_idx);
     }
   else if (delete_idx != -1)
     {
+      int mk_index;
+      time_t created_time, set_time;
+
+      if (tde_get_set_mk_info (&mk_index, &created_time, &set_time) != NO_ERROR)
+	{
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	  db_shutdown ();
+	  goto error_exit;
+	}
+      if (mk_index == delete_idx)
+	{
+	  PRINT_AND_LOG_ERR_MSG ("The key set on the database can't be deleted\n");
+	  db_shutdown ();
+	  goto error_exit;
+	}
       if (tde_delete_mk (vdes, delete_idx) != NO_ERROR)
 	{
 	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
