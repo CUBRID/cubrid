@@ -2975,7 +2975,7 @@ get_term_subqueries (QO_ENV * env, QO_TERM * term)
   PT_NODE *pt_expr, *next;
   WALK_INFO info;
 
-  if (QO_IS_FAKE_TERM (term))
+  if (QO_IS_DEP_TERM (term))
     {
       /*
        * This is a pseudo-term introduced to keep track of derived
@@ -8230,6 +8230,12 @@ qo_node_dump (QO_NODE * node, FILE * f)
     {
       fputs (" (outer-dep-set ", f);
       bitset_print (&(QO_NODE_OUTER_DEP_SET (node)), f);
+      fputs (")", f);
+    }
+  if (!bitset_is_empty (&(QO_NODE_DEP_SET (node))))
+    {
+      fputs (" (dep-set ", f);
+      bitset_print (&(QO_NODE_DEP_SET (node)), f);
       fputs (")", f);
     }
 
