@@ -1924,6 +1924,8 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	case S_LIST_SCAN:
 	  pg_cnt += qexec_clear_regu_list (thread_p, xasl_p, p->s_id.s.llsid.scan_pred.regu_list, is_final);
 	  pg_cnt += qexec_clear_regu_list (thread_p, xasl_p, p->s_id.s.llsid.rest_regu_list, is_final);
+	  pg_cnt += qexec_clear_regu_list (thread_p, xasl_p, p->s_id.s.llsid.hash_list_scan.build_regu_list, is_final);
+	  pg_cnt += qexec_clear_regu_list (thread_p, xasl_p, p->s_id.s.llsid.hash_list_scan.probe_regu_list, is_final);
 	  break;
 	case S_SET_SCAN:
 	  pg_cnt += qexec_clear_regu_list (thread_p, xasl_p, p->s_id.s.ssid.scan_pred.regu_list, is_final);

@@ -45,6 +45,7 @@
 #include "access_json_table.hpp"
 #include "scan_json_table.hpp"
 #include "storage_common.h"	/* for PAGEID */
+#include "query_hash_scan.h"
 
 // forward definitions
 struct indx_info;
@@ -245,13 +246,12 @@ struct index_node_scan_id
 typedef struct llist_scan_id LLIST_SCAN_ID;
 struct llist_scan_id
 {
-  QFILE_LIST_ID *list_id;	/* Points to XASL tree */
-  QFILE_LIST_SCAN_ID lsid;	/* List File Scan Identifier */
-  SCAN_PRED scan_pred;		/* scan predicates(filters) */
+  QFILE_LIST_ID *list_id;	 /* Points to XASL tree */
+  QFILE_LIST_SCAN_ID lsid;	 /* List File Scan Identifier */
+  SCAN_PRED scan_pred;		 /* scan predicates(filters) */
   regu_variable_list_node *rest_regu_list;	/* regulator variable list */
-  regu_variable_list_node *build_regu_list;	/* regulator variable list */
-  regu_variable_list_node *probe_regu_list;	/* regulator variable list */
-  QFILE_TUPLE_RECORD *tplrecp;	/* tuple record pointer; output param */
+  QFILE_TUPLE_RECORD *tplrecp;	 /* tuple record pointer; output param */
+  HASH_LIST_SCAN hash_list_scan; /* for hash scan */
 };
 
 typedef struct showstmt_scan_id SHOWSTMT_SCAN_ID;
