@@ -7913,6 +7913,10 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 	  hvalue =
 	    (HASH_SCAN_VALUE *) mht_get2 (llsidp->hash_list_scan.hash_table, key,
 					  (void **) &llsidp->hash_list_scan.curr_hash_entry);
+	  if (hvalue == NULL)
+	    {
+	      return S_END;
+	    }
 	  *tuple = hvalue->tuple;
 	  scan_id_p->position = S_ON;
 	  return S_SUCCESS;
