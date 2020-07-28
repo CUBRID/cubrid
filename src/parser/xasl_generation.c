@@ -3388,7 +3388,7 @@ pt_filter_pseudo_specs (PARSER_CONTEXT * parser, PT_NODE * spec)
       spec->info.spec.id = (UINTPTR) spec;
       spec->info.spec.only_all = PT_ONLY;
       spec->info.spec.meta_class = PT_CLASS;
-      spec->info.spec.entity_name = pt_name (parser, "db_root");
+      spec->info.spec.entity_name = pt_name (parser, "dual");
       if (spec->info.spec.entity_name == NULL)
 	{
 	  parser_free_node (parser, spec);
