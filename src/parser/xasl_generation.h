@@ -164,7 +164,8 @@ extern VAL_LIST *pt_to_val_list (PARSER_CONTEXT * parser, UINTPTR id);
 extern SORT_LIST *pt_to_orderby (PARSER_CONTEXT * parser, PT_NODE * order_list, PT_NODE * root);
 extern XASL_NODE *pt_skeleton_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * namelist);
 extern XASL_NODE *ptqo_to_scan_proc (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xasl, PT_NODE * spec,
-				     PT_NODE * where_key_part, PT_NODE * where_part, QO_XASL_INDEX_INFO * info, PT_NODE * where_hash_part);
+				     PT_NODE * where_key_part, PT_NODE * where_part, QO_XASL_INDEX_INFO * info,
+				     PT_NODE * where_hash_part);
 extern XASL_NODE *ptqo_to_list_scan_proc (PARSER_CONTEXT * parser, XASL_NODE * xasl, PROC_TYPE type,
 					  XASL_NODE * listfile, PT_NODE * namelist, PT_NODE * pred, int *poslist);
 extern SORT_LIST *ptqo_single_orderby (PARSER_CONTEXT * parser);

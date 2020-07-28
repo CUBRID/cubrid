@@ -3672,7 +3672,7 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
       /* create hash table */
       llsidp->hash_list_scan.hash_table =
-      mht_create ("Hash List Scan", llsidp->list_id->tuple_cnt, qdata_hash_scan_key, qdata_hscan_key_eq);
+	mht_create ("Hash List Scan", llsidp->list_id->tuple_cnt, qdata_hash_scan_key, qdata_hscan_key_eq);
       if (llsidp->hash_list_scan.hash_table == NULL)
 	{
 	  return S_ERROR;
@@ -4787,10 +4787,11 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       /* clear hash list scan table */
       if (llsidp->hash_list_scan.hash_table != NULL)
 	{
-	  #if 0
-	  (void) mht_dump (thread_p, stdout, llsidp->hash_list_scan.hash_table, false, qdata_print_hash_scan_entry, NULL); */
-	  #endif
-	  (void) mht_clear (llsidp->hash_list_scan.hash_table, qdata_free_hscan_entry, (void *) thread_p);
+#if 0
+	  (void) mht_dump (thread_p, stdout, llsidp->hash_list_scan.hash_table, false, qdata_print_hash_scan_entry,
+			   NULL);
+#endif
+	  mht_clear (llsidp->hash_list_scan.hash_table, qdata_free_hscan_entry, (void *) thread_p);	  
 	  mht_destroy (llsidp->hash_list_scan.hash_table);
 	}
       /* free temp keys and values */
@@ -7801,7 +7802,8 @@ scan_next_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       /* fetch the values for the predicate from the tuple */
       if (scan_id->val_list)
 	{
-	  if (fetch_val_list (thread_p, llsidp->scan_pred.regu_list, scan_id->vd, NULL, NULL, tplrec.tpl, PEEK) != NO_ERROR)
+	  if (fetch_val_list (thread_p, llsidp->scan_pred.regu_list, scan_id->vd, NULL, NULL, tplrec.tpl, PEEK) !=
+	      NO_ERROR)
 	    {
 	      return S_ERROR;
 	    }
@@ -7900,14 +7902,17 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 	{
 	  /* init curr_hash_entry */
 	  llsidp->hash_list_scan.curr_hash_entry = NULL;
-          /* build key */
-	  if (qdata_build_hscan_key (thread_p, scan_id->vd, llsidp->hash_list_scan.probe_regu_list, NULL, key) != NO_ERROR)
+	  /* build key */
+	  if (qdata_build_hscan_key (thread_p, scan_id->vd, llsidp->hash_list_scan.probe_regu_list, NULL, key) !=
+	      NO_ERROR)
 	    {
 	      return S_ERROR;
 	    }
 
-          /* get value from hash table */
-	  hvalue = (HASH_SCAN_VALUE *) mht_get2 (llsidp->hash_list_scan.hash_table, key, (void**) &llsidp->hash_list_scan.curr_hash_entry);
+	  /* get value from hash table */
+	  hvalue = 
+	    (HASH_SCAN_VALUE *) mht_get2 (llsidp->hash_list_scan.hash_table, key,
+					  (void**) &llsidp->hash_list_scan.curr_hash_entry);
 	  *tuple = hvalue->tuple;
 	  scan_id_p->position = S_ON;
 	  return S_SUCCESS;
@@ -7927,7 +7932,7 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 	}
       else
 	{
-	  scan_id_p->position = S_AFTER; /* S_AFTER ??? */
+	  scan_id_p->position = S_AFTER;
 	  return S_END;
 	}
     }

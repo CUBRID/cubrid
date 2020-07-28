@@ -32,8 +32,8 @@
 #include "query_hash_scan.h"
 #include "db_value_printer.hpp"
 
-static bool safe_memcpy(void* data, void* source, int size);
-static DB_VALUE_COMPARE_RESULT qdata_hscan_key_compare (HASH_SCAN_KEY *ckey1, HASH_SCAN_KEY *ckey2, int *diff_pos);
+static bool safe_memcpy (void *data, void *source, int size);
+static DB_VALUE_COMPARE_RESULT qdata_hscan_key_compare (HASH_SCAN_KEY * ckey1, HASH_SCAN_KEY * ckey2, int *diff_pos);
 
 /*
  * qdata_alloc_hscan_key () - allocate new hash key
@@ -43,7 +43,7 @@ static DB_VALUE_COMPARE_RESULT qdata_hscan_key_compare (HASH_SCAN_KEY *ckey1, HA
  *   alloc_vals(in): if true will allocate dbvalues
  */
 HASH_SCAN_KEY *
-qdata_alloc_hscan_key (cubthread::entry *thread_p, int val_cnt, bool alloc_vals)
+qdata_alloc_hscan_key (cubthread::entry * thread_p, int val_cnt, bool alloc_vals)
 {
   HASH_SCAN_KEY *key;
   int i;
@@ -82,7 +82,7 @@ qdata_alloc_hscan_key (cubthread::entry *thread_p, int val_cnt, bool alloc_vals)
  *   key(in): hash key
  */
 void
-qdata_free_hscan_key (cubthread::entry *thread_p, HASH_SCAN_KEY *key)
+qdata_free_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key)
 {
   int i = 0;
 
@@ -147,7 +147,7 @@ qdata_hash_scan_key (const void *key, unsigned int ht_size)
  *   diff_pos(out): if not equal, position of difference, otherwise -1
  */
 static DB_VALUE_COMPARE_RESULT
-qdata_hscan_key_compare (HASH_SCAN_KEY *ckey1, HASH_SCAN_KEY *ckey2, int *diff_pos)
+qdata_hscan_key_compare (HASH_SCAN_KEY * ckey1, HASH_SCAN_KEY * ckey2, int *diff_pos)
 {
   DB_VALUE_COMPARE_RESULT result;
   int i;
@@ -210,7 +210,7 @@ qdata_hscan_key_eq (const void *key1, const void *key2)
  */
 int
 qdata_build_hscan_key (THREAD_ENTRY * thread_p, val_descr * vd, REGU_VARIABLE_LIST regu_list, QFILE_TUPLE tpl,
-		      HASH_SCAN_KEY * key)
+		       HASH_SCAN_KEY * key)
 {
   int rc = NO_ERROR;
 
@@ -219,8 +219,7 @@ qdata_build_hscan_key (THREAD_ENTRY * thread_p, val_descr * vd, REGU_VARIABLE_LI
   key->val_count = 0;
   while (regu_list != NULL)
     {
-      rc =
-	fetch_peek_dbval (thread_p, &regu_list->value, vd, NULL, NULL, tpl, &key->values[key->val_count]);
+      rc = fetch_peek_dbval (thread_p, &regu_list->value, vd, NULL, NULL, tpl, &key->values[key->val_count]);
       if (rc != NO_ERROR)
 	{
 	  return rc;
@@ -261,7 +260,8 @@ qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *key
     }
 
   fprintf (fp, "LIST_CACHE_ENTRY (%p) {\n", data);
-  fprintf (fp, "data_size = [%d]  data = [%.*s]\n",QFILE_GET_TUPLE_LENGTH (data2->tuple),QFILE_GET_TUPLE_LENGTH (data2->tuple),data2->tuple);
+  fprintf (fp, "data_size = [%d]  data = [%.*s]\n",QFILE_GET_TUPLE_LENGTH (data2->tuple),
+	   QFILE_GET_TUPLE_LENGTH (data2->tuple), data2->tuple);
 
   fprintf (fp, "key : ");
   for (int i = 0; i < key2->val_count; i++)
@@ -281,7 +281,7 @@ qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *key
  *   key(in): source key
  */
 HASH_SCAN_KEY *
-qdata_copy_hscan_key (cubthread::entry *thread_p, HASH_SCAN_KEY *key)
+qdata_copy_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key)
 {
   HASH_SCAN_KEY *new_key = NULL;
   int i = 0;
@@ -313,11 +313,11 @@ qdata_copy_hscan_key (cubthread::entry *thread_p, HASH_SCAN_KEY *key)
  *   thread_p(in): thread
  */
 HASH_SCAN_VALUE *
-qdata_alloc_hscan_value (cubthread::entry *thread_p, QFILE_TUPLE tpl)
+qdata_alloc_hscan_value (cubthread::entry * thread_p, QFILE_TUPLE tpl)
 {
   HASH_SCAN_VALUE *value;
   int tuple_size = QFILE_GET_TUPLE_LENGTH (tpl);
-  
+
   /* alloc structure */
   value = (HASH_SCAN_VALUE *) db_private_alloc (thread_p, sizeof (HASH_SCAN_VALUE));
   if (value == NULL)
@@ -334,7 +334,7 @@ qdata_alloc_hscan_value (cubthread::entry *thread_p, QFILE_TUPLE tpl)
       return NULL;
     }
   /* save tuple */
-  if (!safe_memcpy(value->tuple, tpl, tuple_size))
+  if (!safe_memcpy (value->tuple, tpl, tuple_size))
     {
       qdata_free_hscan_value (thread_p, value);
       return NULL;
@@ -342,9 +342,10 @@ qdata_alloc_hscan_value (cubthread::entry *thread_p, QFILE_TUPLE tpl)
   return value;
 }
 
-static bool safe_memcpy(void* data, void* source, int size)
+static bool
+safe_memcpy (void *data, void *source, int size)
 {
-  if(size < 0) 
+  if (size < 0)
    {
      return false;
    }

@@ -1323,8 +1323,6 @@ make_pred_from_plan (QO_ENV * env, QO_PLAN * plan, PT_NODE ** key_predp, PT_NODE
       bitset_difference (&(plan->sarged_terms), &(plan->plan_un.scan.terms));
       /* exclude key-filter terms from sarged terms */
       bitset_difference (&(plan->sarged_terms), &(plan->plan_un.scan.kf_terms));
-      /* exclude hash terms from sarged terms */
-      /*bitset_difference (&(plan->sarged_terms), &(plan->plan_un.scan.hash_terms));*/
     }
   while (0);
 

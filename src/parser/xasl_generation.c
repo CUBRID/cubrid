@@ -447,8 +447,8 @@ static int pt_split_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info, PT_
 			   PT_NODE ** rest_attrs, PT_NODE ** reserved_attrs, int **pred_offsets, int **rest_offsets,
 			   int **reserved_offsets);
 
-static int pt_split_hash_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info, PT_NODE * pred, PT_NODE ** build_attrs,
-			   PT_NODE ** probe_attrs);
+static int pt_split_hash_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info, PT_NODE * pred,
+				PT_NODE ** build_attrs, PT_NODE ** probe_attrs);
 
 static int pt_to_index_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info, QO_XASL_INDEX_INFO * index_pred,
 			      PT_NODE * pred, PT_NODE ** pred_attrs, int **pred_offsets);
@@ -487,7 +487,8 @@ static ACCESS_SPEC_TYPE *pt_make_class_access_spec (PARSER_CONTEXT * parser, PT_
 
 static ACCESS_SPEC_TYPE *pt_make_list_access_spec (XASL_NODE * xasl, ACCESS_METHOD access, INDX_INFO * indexptr,
 						   PRED_EXPR * where_pred, REGU_VARIABLE_LIST attr_list_pred,
-						   REGU_VARIABLE_LIST attr_list_rest, REGU_VARIABLE_LIST attr_list_build,
+						   REGU_VARIABLE_LIST attr_list_rest,
+						   REGU_VARIABLE_LIST attr_list_build,
 						   REGU_VARIABLE_LIST attr_list_probe);
 
 static ACCESS_SPEC_TYPE *pt_make_showstmt_access_spec (PRED_EXPR * where_pred, SHOWSTMT_TYPE show_type,
@@ -2846,7 +2847,7 @@ exit_on_error:
  */
 static int
 pt_split_hash_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info, PT_NODE * pred, PT_NODE ** build_attrs,
-		PT_NODE ** probe_attrs)
+		     PT_NODE ** probe_attrs)
 {
   PT_NODE *tmp = NULL, *pointer = NULL;
   PT_NODE *build_nodes = NULL;
@@ -3230,7 +3231,7 @@ pt_is_spec_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *void_arg, int *c
 {
   if (pt_is_name_node (tree))
     {
-      UINTPTR *spec_id = (UINTPTR *)void_arg;
+      UINTPTR *spec_id = (UINTPTR *) void_arg;
       if (tree->info.name.spec_id == spec_id[0])
 	{
 	  *continue_walk = PT_STOP_WALK;
@@ -12253,7 +12254,8 @@ pt_to_showstmt_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * whe
  *   where_part(in):
  */
 static ACCESS_SPEC_TYPE *
-pt_to_subquery_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * subquery, PT_NODE * where_part, PT_NODE * where_hash_part)
+pt_to_subquery_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * subquery, PT_NODE * where_part,
+				PT_NODE * where_hash_part)
 {
   XASL_NODE *subquery_proc;
   PT_NODE *saved_current_class;
@@ -12539,7 +12541,8 @@ pt_to_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_key_pa
       /* derived table index_part better be NULL here! */
       if (spec->info.spec.derived_table_type == PT_IS_SUBQUERY)
 	{
-	  access = pt_to_subquery_table_spec_list (parser, spec, spec->info.spec.derived_table, where_part, where_hash_part);
+	  access =
+	    pt_to_subquery_table_spec_list (parser, spec, spec->info.spec.derived_table, where_part, where_hash_part);
 	}
       else if (spec->info.spec.derived_table_type == PT_IS_SET_EXPR)
 	{
@@ -13855,7 +13858,8 @@ ptqo_to_list_scan_proc (PARSER_CONTEXT * parser, XASL_NODE * xasl, PROC_TYPE pro
       free_and_init (attr_offsets);
 
       xasl->spec_list =
-	pt_make_list_access_spec (listfile, ACCESS_METHOD_SEQUENTIAL, NULL, pred_expr, regu_attributes, NULL, NULL, NULL);
+	pt_make_list_access_spec (listfile, ACCESS_METHOD_SEQUENTIAL, NULL, pred_expr, regu_attributes, NULL, NULL,
+				  NULL);
 
       if (xasl->spec_list == NULL || xasl->val_list == NULL)
 	{
@@ -17638,7 +17642,8 @@ pt_make_aptr_parent_node (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE typ
 		  if (regu_attributes != NULL)
 		    {
 		      xasl->spec_list =
-			pt_make_list_access_spec (aptr, ACCESS_METHOD_SEQUENTIAL, NULL, NULL, regu_attributes, NULL, NULL, NULL);
+			pt_make_list_access_spec (aptr, ACCESS_METHOD_SEQUENTIAL, NULL, NULL, regu_attributes, NULL,
+						  NULL, NULL);
 		    }
 		}
 	      else

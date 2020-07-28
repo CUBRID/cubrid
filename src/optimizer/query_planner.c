@@ -3389,8 +3389,7 @@ qo_cp_new (QO_INFO * info, QO_PLAN * outer, QO_PLAN * inner, BITSET * sarged_ter
 		      QO_JOINMETHOD_NL_JOIN, outer, inner, &empty_terms /* join_terms */ ,
 		      &empty_terms /* duj_terms */ ,
 		      &empty_terms /* afj_terms */ ,
-		      sarged_terms, pinned_subqueries,
-		      &empty_terms /* hash_terms */ );
+		      sarged_terms, pinned_subqueries, &empty_terms /* hash_terms */ );
 
   bitset_delset (&empty_terms);
 
@@ -5947,7 +5946,8 @@ qo_examine_merge_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_
   n =
     qo_check_plan_on_info (info,
 			   qo_join_new (info, join_type, QO_JOINMETHOD_MERGE_JOIN, outer_plan, inner_plan,
-					sm_join_terms, duj_terms, afj_terms, sarged_terms, pinned_subqueries, &empty_terms));
+					sm_join_terms, duj_terms, afj_terms, sarged_terms, pinned_subqueries,
+					&empty_terms));
 
 exit:
 
