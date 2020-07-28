@@ -1425,6 +1425,7 @@ qo_scan_free (QO_PLAN * plan)
 {
   bitset_delset (&(plan->plan_un.scan.terms));
   bitset_delset (&(plan->plan_un.scan.kf_terms));
+  bitset_delset (&(plan->plan_un.scan.hash_terms));
   bitset_delset (&(plan->plan_un.scan.multi_col_range_segs));
 }
 

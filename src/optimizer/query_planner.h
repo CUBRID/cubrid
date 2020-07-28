@@ -156,7 +156,7 @@ struct qo_plan
       bool index_loose;		/* loose index scan flag */
       QO_NODE_INDEX_ENTRY *index;
       BITSET multi_col_range_segs;	/* range condition segs for multi_col_term */
-      BITSET hash_terms;
+      BITSET hash_terms;	/* hash_terms for hash list scan */
     } scan;
 
     /*
@@ -187,7 +187,7 @@ struct qo_plan
       BITSET during_join_terms;	/* during join terms */
       BITSET other_outer_join_terms;	/* for merge outer join only */
       BITSET after_join_terms;	/* after join terms */
-      BITSET hash_terms;
+      BITSET hash_terms;	/* hash_terms for hash list scan */
     } join;
 
     struct
