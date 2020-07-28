@@ -249,7 +249,7 @@ qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *key
   HASH_SCAN_VALUE *data2 = (HASH_SCAN_VALUE *) data;
   HASH_SCAN_KEY *key2 = (HASH_SCAN_KEY *) key;
   QFILE_TUPLE_VALUE_TYPE_LIST *list = (QFILE_TUPLE_VALUE_TYPE_LIST *) args;
-  
+
   if (!data2 || !key2)
     {
       return false;
@@ -260,7 +260,7 @@ qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *key
     }
 
   fprintf (fp, "LIST_CACHE_ENTRY (%p) {\n", data);
-  fprintf (fp, "data_size = [%d]  data = [%.*s]\n",QFILE_GET_TUPLE_LENGTH (data2->tuple),
+  fprintf (fp, "data_size = [%d]  data = [%.*s]\n", QFILE_GET_TUPLE_LENGTH (data2->tuple),
 	   QFILE_GET_TUPLE_LENGTH (data2->tuple), data2->tuple);
 
   fprintf (fp, "key : ");
@@ -346,10 +346,10 @@ static bool
 safe_memcpy (void *data, void *source, int size)
 {
   if (size < 0)
-   {
-     return false;
-   }
-  memcpy(data, source, (size_t)size);
+    {
+      return false;
+    }
+  memcpy (data, source, (size_t) size);
   return true;
 }
 
@@ -359,7 +359,7 @@ safe_memcpy (void *data, void *source, int size)
  *   key(in): hash value
  */
 void
-qdata_free_hscan_value (cubthread::entry *thread_p, HASH_SCAN_VALUE *value)
+qdata_free_hscan_value (cubthread::entry * thread_p, HASH_SCAN_VALUE * value)
 {
   int i = 0;
 

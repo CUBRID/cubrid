@@ -57,20 +57,18 @@ namespace hashscan
 
 // legacy aliases
 using HASH_SCAN_VALUE = hashscan::hash_scan_value;
-using
-  HASH_SCAN_KEY = hashscan::hash_scan_key;
-using
-  HASH_LIST_SCAN = hashscan::hash_list_scan;
+using HASH_SCAN_KEY = hashscan::hash_scan_key;
+using HASH_LIST_SCAN = hashscan::hash_list_scan;
 
 HASH_SCAN_KEY *
-qdata_alloc_hscan_key (cubthread::entry *thread_p, int val_cnt, bool alloc_vals);
+qdata_alloc_hscan_key (cubthread::entry * thread_p, int val_cnt, bool alloc_vals);
 HASH_SCAN_VALUE *
-qdata_alloc_hscan_value (cubthread::entry *thread_p, QFILE_TUPLE tpl);
+qdata_alloc_hscan_value (cubthread::entry * thread_p, QFILE_TUPLE tpl);
 
 void
-qdata_free_hscan_key (cubthread::entry *thread_p, HASH_SCAN_KEY *key);
+qdata_free_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key);
 void
-qdata_free_hscan_value (cubthread::entry *thread_p, HASH_SCAN_VALUE *value);
+qdata_free_hscan_value (cubthread::entry * thread_p, HASH_SCAN_VALUE * value);
 int
 qdata_free_hscan_entry (const void *key, void *data, void *args);
 
@@ -79,11 +77,11 @@ qdata_hscan_key_eq (const void *key1, const void *key2);
 
 int
 qdata_build_hscan_key (THREAD_ENTRY * thread_p, val_descr * vd, REGU_VARIABLE_LIST regu_list,
-			   QFILE_TUPLE tpl, HASH_SCAN_KEY * key);
+		       QFILE_TUPLE tpl, HASH_SCAN_KEY * key);
 unsigned int
 qdata_hash_scan_key (const void *key, unsigned int ht_size);
 HASH_SCAN_KEY *
-qdata_copy_hscan_key (cubthread::entry *thread_p, HASH_SCAN_KEY *key);
+qdata_copy_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key);
 
 int
 qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *key, void *data, void *args);

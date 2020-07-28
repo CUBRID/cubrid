@@ -4791,7 +4791,7 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  (void) mht_dump (thread_p, stdout, llsidp->hash_list_scan.hash_table, false, qdata_print_hash_scan_entry,
 			   NULL);
 #endif
-	  mht_clear (llsidp->hash_list_scan.hash_table, qdata_free_hscan_entry, (void *) thread_p);	  
+	  mht_clear (llsidp->hash_list_scan.hash_table, qdata_free_hscan_entry, (void *) thread_p);
 	  mht_destroy (llsidp->hash_list_scan.hash_table);
 	}
       /* free temp keys and values */
@@ -7910,9 +7910,9 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 	    }
 
 	  /* get value from hash table */
-	  hvalue = 
+	  hvalue =
 	    (HASH_SCAN_VALUE *) mht_get2 (llsidp->hash_list_scan.hash_table, key,
-					  (void**) &llsidp->hash_list_scan.curr_hash_entry);
+					  (void **) &llsidp->hash_list_scan.curr_hash_entry);
 	  *tuple = hvalue->tuple;
 	  scan_id_p->position = S_ON;
 	  return S_SUCCESS;

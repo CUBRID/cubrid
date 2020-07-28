@@ -1795,8 +1795,8 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	  /* exclude totally after join term and push into inner */
 	  bitset_difference (&predset, &taj_terms);
 
-	  /* copy hash join term to inner for hash list scan*/
-	  if (qo_is_seq_scan (inner) && !bitset_is_empty(&(plan->plan_un.join.hash_terms)))
+	  /* copy hash join term to inner for hash list scan */
+	  if (qo_is_seq_scan (inner) && !bitset_is_empty (&(plan->plan_un.join.hash_terms)))
 	    {
 	      bitset_assign (&(inner->plan_un.scan.hash_terms), &(plan->plan_un.join.hash_terms));
 	    }
