@@ -123,7 +123,7 @@ extern VOLID boot_find_next_permanent_volid (THREAD_ENTRY * thread_p);
 extern int boot_reset_db_parm (THREAD_ENTRY * thread_p);
 
 extern int boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db_name, bool from_backup,
-				CHECK_ARGS * check_coll_and_timezone, BO_RESTART_ARG * r_args);
+				CHECK_ARGS * check_coll_and_timezone, BO_RESTART_ARG * r_args, bool skip_vacuum);
 extern int xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart, const char *db_name,
 				      BO_RESTART_ARG * r_args);
 extern bool xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_final);
