@@ -83,7 +83,7 @@ static int tde_get_keyinfo (THREAD_ENTRY *thread_p, TDE_KEYINFO *keyinfo, OID *k
 static int tde_update_keyinfo (THREAD_ENTRY *thread_p, const TDE_KEYINFO *keyinfo, OID *keyinfo_oid, HFID *hfid);
 static int tde_generate_keyinfo (TDE_KEYINFO *keyinfo, int mk_index, const unsigned char *master_key,
 				 const time_t created_time, const TDE_DATA_KEY_SET *dks);
-static int tde_create_keys_volume (const char *db_fullpath);
+static int tde_create_keys_file (const char *db_fullpath);
 static int tde_load_mk (int vdes, const TDE_KEYINFO *keyinfo, unsigned char *master_key);
 static bool tde_validate_mk (const unsigned char *master_key, const unsigned char *mk_hash);
 static int tde_change_mk (THREAD_ENTRY *thread_p, const int mk_index, const unsigned char *master_key);
@@ -121,7 +121,7 @@ tde_initialize (THREAD_ENTRY *thread_p, HFID *keyinfo_hfid)
   time_t created_time;
   int vdes = -1;
 
-  err = tde_create_keys_volume (boot_db_full_name());
+  err = tde_create_keys_file (boot_db_full_name());
   if (err != NO_ERROR)
     {
       return err;
@@ -251,7 +251,7 @@ exit:
 }
 
 static int
-tde_create_keys_volume (const char *db_full_name)
+tde_create_keys_file (const char *db_full_name)
 {
   char mk_path[PATH_MAX] = {0,};
   int vdes = NULL_VOLDES;
@@ -363,7 +363,7 @@ tde_copy_keys_volume (THREAD_ENTRY *thread_p, const char *to_db_fullname, const 
 
   if (!fileio_is_volume_exist (mk_path))
     {
-      err = tde_create_keys_volume (to_db_fullname);
+      err = tde_create_keys_file (to_db_fullname);
       if (err != NO_ERROR)
 	{
 	  fileio_dismount (thread_p, from_vdes);
