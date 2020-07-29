@@ -139,8 +139,8 @@ static BTREE_ISCAN_OID_LIST *scan_Iscan_oid_buf_list = NULL;
 static int scan_Iscan_oid_buf_list_count = 0;
 
 #define SCAN_ISCAN_OID_BUF_LIST_DEFAULT_SIZE 10
-/* temp limit : 2M */
-#define HASH_LIST_SCAN_LIMIT 2,539,520
+/* temp limit : 8M */
+#define HASH_LIST_SCAN_LIMIT 8388608
 
 static void scan_init_scan_pred (SCAN_PRED * scan_pred_p, regu_variable_list_node * regu_list, PRED_EXPR * pred_expr,
 				 PR_EVAL_FNC pr_eval_fnc);
@@ -207,7 +207,7 @@ static int scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_ter
 static SCAN_CODE scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * tuple);
-static bool check_hash_list_scan (LLIST_SCAN_ID * llsidp);
+static bool check_hash_list_scan (LLIST_SCAN_ID * llsidp, int * val_cnt);
 
 /*
  * scan_init_iss () - initialize index skip scan structure
@@ -3632,6 +3632,7 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 		     regu_variable_list_node * regu_list_probe)
 {
   LLIST_SCAN_ID *llsidp;
+  int val_cnt;
   DB_TYPE single_node_type = DB_TYPE_NULL;
 
   /* scan type is LIST SCAN */
@@ -3659,18 +3660,10 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   llsidp->hlsid.build_regu_list = regu_list_build;
   llsidp->hlsid.probe_regu_list = regu_list_probe;
 
-  /* create hash table for list scan                              */
-  /* todo : Need to check if hash list scan is possible.          */
-  /*        1. count of list file tuple > 0                       */
-  /*        2. regu_list_build, regu_list_probe is not null       */
-  /*        3. list file size check                               */
-  /*        4. The number of probe regu_var and build regu match  */
-  /*llsidp->hlsid.hash_list_scan_yn = check_hash_list_scan (llsidp);*/
-  llsidp->hlsid.hash_list_scan_yn = false;
-  if (regu_list_build && regu_list_probe)
+  /* check if hash list scan is possible? */
+  llsidp->hlsid.hash_list_scan_yn = check_hash_list_scan (llsidp, &val_cnt);
+  if (llsidp->hlsid.hash_list_scan_yn)
     {
-      int val_cnt;
-
       /* create hash table */
       llsidp->hlsid.hash_table =
 	mht_create ("Hash List Scan", llsidp->list_id->tuple_cnt, qdata_hash_scan_key, qdata_hscan_key_eq);
@@ -3679,10 +3672,6 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 	  return S_ERROR;
 	}
 
-      for (val_cnt = 0; regu_list_build; val_cnt++)
-	{
-	  regu_list_build = regu_list_build->next;
-	}
       /* alloc temp key */
       llsidp->hlsid.temp_key = qdata_alloc_hscan_key (thread_p, val_cnt, false);
       if (scan_reset_scan_block (thread_p, scan_id) == S_ERROR)
@@ -4788,9 +4777,10 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       /* clear hash list scan table */
       if (llsidp->hlsid.hash_table != NULL)
 	{
-#if 0
-	  (void) mht_dump (thread_p, stdout, llsidp->hlsid.hash_table, false, qdata_print_hash_scan_entry,
+#if 1
+	  (void) mht_dump (thread_p, stdout, llsidp->hlsid.hash_table, -1, qdata_print_hash_scan_entry,
 			   NULL);
+	  printf ("temp file : tuple count = %d, file_size = %dK\n", llsidp->list_id->tuple_cnt, llsidp->list_id->page_cnt * 16);
 #endif
 	  mht_clear (llsidp->hlsid.hash_table, qdata_free_hscan_entry, (void *) thread_p);
 	  mht_destroy (llsidp->hlsid.hash_table);
@@ -7966,18 +7956,45 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
  *      5. list file from dptr is not allowed <== need to check
 */
 static bool
-check_hash_list_scan (LLIST_SCAN_ID * llsidp)
+check_hash_list_scan (LLIST_SCAN_ID * llsidp, int * val_cnt)
 {
-  /* count of tuple of list file > 0 */
-  if (llsidp->lsid.list_id.tuple_cnt <= 0)
-    {
-      return false;
-    }
+  int build_cnt, probe_cnt;
+  regu_variable_list_node *build, *probe;
 
-  if (llsidp->lsid.list_id.page_cnt * 16384 > HASH_LIST_SCAN_LIMIT)
+  /* count of tuple of list file > 0 */
+  if (llsidp->list_id->tuple_cnt <= 0)
     {
       return false;
     }
+  /* list file size check */
+  if (llsidp->list_id->page_cnt * 16384 > HASH_LIST_SCAN_LIMIT)
+    {
+      return false;
+    }
+  /* regu_list_build, regu_list_probe is not null */
+  if (llsidp->hlsid.build_regu_list == NULL || llsidp->hlsid.probe_regu_list == NULL)
+    {
+      return false;
+    }
+  /* The number of probe regu_var and build regu match */
+  build = llsidp->hlsid.build_regu_list;
+  probe = llsidp->hlsid.probe_regu_list;
+
+  for (build_cnt = 0; build; build_cnt++)
+    {
+      build = build->next;
+    }
+  for (probe_cnt = 0; probe; probe_cnt++)
+    {
+      probe = probe->next;
+    }
+  if (build_cnt != probe_cnt)
+    {
+      return false;
+    }
+  *val_cnt = build_cnt;
+
+  /* to_do : 5. list file from dptr is not allowed <== need to check */
 
   return true;
 }

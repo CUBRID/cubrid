@@ -1160,7 +1160,11 @@ mht_dump (THREAD_ENTRY * thread_p, FILE * out_fp, const MHT_TABLE * ht, const in
 	   "HTABLE NAME = %s, SIZE = %d, REHASH_AT = %d,\n" "NENTRIES = %d, NPREALLOC = %d, NCOLLISIONS = %d\n\n",
 	   ht->name, ht->size, ht->rehash_at, ht->nentries, ht->nprealloc_entries, ht->ncollisions);
 
-  if (print_id_opt)
+ if (print_id_opt == -1)
+    {
+      /* noting to do */
+    }
+  else if (print_id_opt)
     {
       /* Need to print the index vector id. Therefore, scan the whole table */
       for (hvector = ht->table, i = 0; i < ht->size; hvector++, i++)
