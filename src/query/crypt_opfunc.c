@@ -705,7 +705,8 @@ crypt_md5_buffer_hex (const char *buffer, size_t len, char *resblock)
     {
       return ec;
     }
-  str_to_hex_prealloced (resblock, MD5_CHECKSUM_LEN, resblock, MD5_CHECKSUM_LEN, HEX_LOWERCASE);
+  str_to_hex_prealloced (resblock, MD5_CHECKSUM_LEN, resblock, MD5_CHECKSUM_HEX_LEN, HEX_LOWERCASE);
+  return NO_ERROR;
 }
 
 /*
