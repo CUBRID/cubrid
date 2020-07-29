@@ -9955,7 +9955,6 @@ qstr_bit_coerce (const unsigned char *src, int src_length, int src_precision, DB
 	}
       else
 	{
-          i++;
           for (; i < (src_padded_length + 4) / 8; i++)
 	    {
 	      if (src[i])
