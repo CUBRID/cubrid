@@ -1809,6 +1809,7 @@ logwr_request_tde_dks_from_la (void)
   TDE_DATA_KEY_SET dks;
   char *bufptr;
   int nbytes, len;
+  int err_msg = NO_ERROR;
 
   struct sockaddr_un clientaddr;
 
@@ -1844,6 +1845,29 @@ logwr_request_tde_dks_from_la (void)
       bufptr += nbytes;
       len -= nbytes;
     }
+
+  /* read error message */
+  bufptr = (char *) &err_msg;
+  len = sizeof (err_msg);
+  while (len > 0)
+    {
+      nbytes = read (client_sockfd, bufptr, len);
+      if (nbytes < 0)
+	{
+	  //TODO ERROR
+	  assert (false);
+	  break;
+	}
+      bufptr += nbytes;
+      len -= nbytes;
+    }
+
+  if (err_msg != NO_ERROR)
+    {
+      return err_msg;
+    }
+
+  /* read data keys */
 
   bufptr = (char *) &dks;
   len = sizeof (TDE_DATA_KEY_SET);

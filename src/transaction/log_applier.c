@@ -7960,23 +7960,14 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
   last_eof_time = time (NULL);
   LSA_SET_NULL (&last_eof_lsa);
 
-  if (!tde_Cipher.is_loaded)
+  error = tde_get_data_keys_from_server ();
+  if (error == NO_ERROR)
     {
-      /* If the client is restarted, it keeps the data keys being used and socket for copylogdb
-       * because data keys are never changed. */
-      error = tde_get_data_keys_from_server ();
+      error = la_start_dk_sharing ();
       if (error != NO_ERROR)
 	{
-	  // TODO error 
 	  return error;
 	}
-      error = la_open_sock_for_tde ();
-      if (error != NO_ERROR)
-	{
-	  // TODO error 
-	  return error;
-	}
-      tde_Cipher.is_loaded = true;
     }
 
   /* start the main loop */
@@ -8490,7 +8481,7 @@ la_delay_replica (time_t eot_time)
 }
 
 int
-la_open_sock_for_tde (void)
+la_start_dk_sharing (void)
 {
   int server_sockfd;
   int rv;
@@ -8505,7 +8496,6 @@ la_open_sock_for_tde (void)
 
   if (access (sock_path, F_OK) == 0)
     {
-      // TODO ERROR Notification or Warning
       unlink (sock_path);
     }
 
@@ -8549,6 +8539,8 @@ la_process_dk_request (void *arg)
   char buf[PATH_MAX];
   char *bufptr;
   int nbytes, len;
+  int error = NO_ERROR;
+  bool no_error = true;
 
   server_sockfd = la_Info.tde_sock_for_dks;
 
@@ -8571,7 +8563,46 @@ la_process_dk_request (void *arg)
 	  bufptr += nbytes;
 	  len -= nbytes;
 	}
-      if (memcmp (buf, la_Info.log_path, PATH_MAX) == 0)
+
+      if (memcmp (buf, la_Info.log_path, PATH_MAX) != 0)
+	{
+	  /* wrong request */
+	  error = ER_FAILED;	/* TODO maybe ER_TDE_WRONG_DK_REQUEST */
+	  goto send_msg;
+	}
+
+      /* the request is valid */
+      if (!tde_Cipher.is_loaded)
+	{
+	  /* If the client is restarted, it keeps the data keys being used and socket for copylogdb
+	   * because data keys are never changed. */
+	  error = tde_get_data_keys_from_server ();
+	  if (error != NO_ERROR)
+	    {
+	      goto send_msg;
+	    }
+	  tde_Cipher.is_loaded = true;
+	}
+
+    send_msg:
+      /* send error message */
+      bufptr = (char *) &error;
+      len = sizeof (error);
+      while (len > 0)
+	{
+	  nbytes = write (client_sockfd, bufptr, len);
+	  if (nbytes < 0)
+	    {
+	      // TODO ERROR
+	      assert (false);
+	      break;
+	    }
+	  bufptr += nbytes;
+	  len -= nbytes;
+	}
+
+      /* send data keys */
+      if (no_error)
 	{
 	  bufptr = (char *) &tde_Cipher.data_keys;
 	  len = sizeof (TDE_DATA_KEY_SET);
@@ -8587,13 +8618,8 @@ la_process_dk_request (void *arg)
 	      bufptr += nbytes;
 	      len -= nbytes;
 	    }
+	  close (client_sockfd);
 	}
-      else
-	{
-	  // wrong msg
-	  // TODO error notification logging
-	}
-      close (client_sockfd);
     }
 
   assert (false);
