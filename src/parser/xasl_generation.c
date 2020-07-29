@@ -2830,18 +2830,14 @@ exit_on_error:
 }
 
 /*
- * pt_split_attrs () - Split the attr_list into two lists without destroying
+ * pt_split_hash_attrs () - Split the attr_list into two lists without destroying
  *      the original list
  *   return:
  *   parser(in):
  *   table_info(in):
  *   pred(in):
- *   pred_attrs(out):
- *   rest_attrs(out):
- *   reserved_attrs(out):
- *   pred_offsets(out):
- *   rest_offsets(out):
- *   reserved_offsets(out):
+ *   build_attrs(out):
+ *   probe_attrs(out):
  *
  * Note :
  */

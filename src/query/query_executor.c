@@ -1924,8 +1924,8 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	case S_LIST_SCAN:
 	  pg_cnt += qexec_clear_regu_list (thread_p, xasl_p, p->s_id.s.llsid.scan_pred.regu_list, is_final);
 	  pg_cnt += qexec_clear_regu_list (thread_p, xasl_p, p->s_id.s.llsid.rest_regu_list, is_final);
-	  pg_cnt += qexec_clear_regu_list (thread_p, xasl_p, p->s_id.s.llsid.hash_list_scan.build_regu_list, is_final);
-	  pg_cnt += qexec_clear_regu_list (thread_p, xasl_p, p->s_id.s.llsid.hash_list_scan.probe_regu_list, is_final);
+	  pg_cnt += qexec_clear_regu_list (thread_p, xasl_p, p->s_id.s.llsid.hlsid.build_regu_list, is_final);
+	  pg_cnt += qexec_clear_regu_list (thread_p, xasl_p, p->s_id.s.llsid.hlsid.probe_regu_list, is_final);
 	  break;
 	case S_SET_SCAN:
 	  pg_cnt += qexec_clear_regu_list (thread_p, xasl_p, p->s_id.s.ssid.scan_pred.regu_list, is_final);
@@ -4723,7 +4723,7 @@ wrapup:
     result = (gbstate.state == NO_ERROR || gbstate.state == SORT_PUT_STOP) ? NO_ERROR : ER_FAILED;
 
     /* check merge result */
-    if (result == NO_ERROR && XASL_IS_FLAGED (xasl, XASL_IS_MERGE_QUERY) && list_id->tuple_cnt != gbstate.input_recs)
+    if (XASL_IS_FLAGED (xasl, XASL_IS_MERGE_QUERY) && list_id->tuple_cnt != gbstate.input_recs)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MERGE_TOO_MANY_SOURCE_ROWS, 0);
 	result = ER_FAILED;

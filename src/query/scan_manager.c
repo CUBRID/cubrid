@@ -74,9 +74,6 @@ static int rv;
 
 #define GET_NTH_OID(oid_setp, n) ((OID *)((OID *)(oid_setp) + (n)))
 
-/* default number of hash entries */
-#define HASH_LIST_SCAN_DEFAULT_TABLE_SIZE 1000
-
 /* ISS_RANGE_DETAILS stores information about the two ranges we use
  * interchangeably in Index Skip Scan mode: along with the real range, we
  * use a "fake" one to obtain the next value for the index's first column.
@@ -3656,8 +3653,8 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
   /* init for hash list scan */
   /* regulator variable list for build, probe */
-  llsidp->hash_list_scan.build_regu_list = regu_list_build;
-  llsidp->hash_list_scan.probe_regu_list = regu_list_probe;
+  llsidp->hlsid.build_regu_list = regu_list_build;
+  llsidp->hlsid.probe_regu_list = regu_list_probe;
 
   /* create hash table for list scan                              */
   /* todo : Need to check if hash list scan is possible.          */
@@ -3665,15 +3662,15 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   /*        2. regu_list_build, regu_list_probe is not null       */
   /*        3. list file size check                               */
   /*        4. The number of probe regu_var and build regu match  */
-  llsidp->hash_list_scan.hash_list_scan_yn = false;
+  llsidp->hlsid.hash_list_scan_yn = false;
   if (regu_list_build && regu_list_probe)
     {
       int val_cnt;
 
       /* create hash table */
-      llsidp->hash_list_scan.hash_table =
+      llsidp->hlsid.hash_table =
 	mht_create ("Hash List Scan", llsidp->list_id->tuple_cnt, qdata_hash_scan_key, qdata_hscan_key_eq);
-      if (llsidp->hash_list_scan.hash_table == NULL)
+      if (llsidp->hlsid.hash_table == NULL)
 	{
 	  return S_ERROR;
 	}
@@ -3683,7 +3680,7 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 	  regu_list_build = regu_list_build->next;
 	}
       /* alloc temp key */
-      llsidp->hash_list_scan.temp_key = qdata_alloc_hscan_key (thread_p, val_cnt, false);
+      llsidp->hlsid.temp_key = qdata_alloc_hscan_key (thread_p, val_cnt, false);
       if (scan_reset_scan_block (thread_p, scan_id) == S_ERROR)
 	{
 	  return S_ERROR;
@@ -3692,7 +3689,7 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 	{
 	  return S_ERROR;
 	}
-      llsidp->hash_list_scan.hash_list_scan_yn = true;
+      llsidp->hlsid.hash_list_scan_yn = true;
     }
 
   return NO_ERROR;
@@ -4785,20 +4782,20 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
     case S_LIST_SCAN:
       llsidp = &scan_id->s.llsid;
       /* clear hash list scan table */
-      if (llsidp->hash_list_scan.hash_table != NULL)
+      if (llsidp->hlsid.hash_table != NULL)
 	{
 #if 0
-	  (void) mht_dump (thread_p, stdout, llsidp->hash_list_scan.hash_table, false, qdata_print_hash_scan_entry,
+	  (void) mht_dump (thread_p, stdout, llsidp->hlsid.hash_table, false, qdata_print_hash_scan_entry,
 			   NULL);
 #endif
-	  mht_clear (llsidp->hash_list_scan.hash_table, qdata_free_hscan_entry, (void *) thread_p);
-	  mht_destroy (llsidp->hash_list_scan.hash_table);
+	  mht_clear (llsidp->hlsid.hash_table, qdata_free_hscan_entry, (void *) thread_p);
+	  mht_destroy (llsidp->hlsid.hash_table);
 	}
       /* free temp keys and values */
-      if (llsidp->hash_list_scan.temp_key != NULL)
+      if (llsidp->hlsid.temp_key != NULL)
 	{
-	  qdata_free_hscan_key (thread_p, llsidp->hash_list_scan.temp_key);
-	  llsidp->hash_list_scan.temp_key = NULL;
+	  qdata_free_hscan_key (thread_p, llsidp->hlsid.temp_key);
+	  llsidp->hlsid.temp_key = NULL;
 	}
       break;
 
@@ -4980,7 +4977,7 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       break;
 
     case S_LIST_SCAN:
-      if (scan_id->s.llsid.hash_list_scan.hash_list_scan_yn)
+      if (scan_id->s.llsid.hlsid.hash_list_scan_yn)
 	{
 	  status = scan_next_hash_list_scan (thread_p, scan_id);
 	}
@@ -7731,7 +7728,7 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   HASH_SCAN_VALUE *new_value;
 
   llsidp = &scan_id->s.llsid;
-  key = llsidp->hash_list_scan.temp_key;
+  key = llsidp->hlsid.temp_key;
 
   tplrec.size = 0;
   tplrec.tpl = (QFILE_TUPLE) NULL;
@@ -7753,7 +7750,7 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       scan_id->scan_stats.read_rows++;
 
       /* build key */
-      if (qdata_build_hscan_key (thread_p, scan_id->vd, llsidp->hash_list_scan.build_regu_list, NULL, key) != NO_ERROR)
+      if (qdata_build_hscan_key (thread_p, scan_id->vd, llsidp->hlsid.build_regu_list, NULL, key) != NO_ERROR)
 	{
 	  return S_ERROR;
 	}
@@ -7770,7 +7767,7 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  return S_ERROR;
 	}
       /* add to hash table */
-      mht_put_new (llsidp->hash_list_scan.hash_table, (void *) new_key, (void *) new_value);
+      mht_put_new (llsidp->hlsid.hash_table, (void *) new_key, (void *) new_value);
     }
 
   return qp_scan;
@@ -7893,17 +7890,17 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
   QFILE_LIST_SCAN_ID *scan_id_p;
 
   llsidp = &scan_id->s.llsid;
-  key = llsidp->hash_list_scan.temp_key;
+  key = llsidp->hlsid.temp_key;
   scan_id_p = &llsidp->lsid;
 
   if (scan_id_p->position == S_BEFORE)
     {
-      if (llsidp->hash_list_scan.hash_table->nentries > 0)
+      if (llsidp->hlsid.hash_table->nentries > 0)
 	{
 	  /* init curr_hash_entry */
-	  llsidp->hash_list_scan.curr_hash_entry = NULL;
+	  llsidp->hlsid.curr_hash_entry = NULL;
 	  /* build key */
-	  if (qdata_build_hscan_key (thread_p, scan_id->vd, llsidp->hash_list_scan.probe_regu_list, NULL, key) !=
+	  if (qdata_build_hscan_key (thread_p, scan_id->vd, llsidp->hlsid.probe_regu_list, NULL, key) !=
 	      NO_ERROR)
 	    {
 	      return S_ERROR;
@@ -7911,8 +7908,8 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 
 	  /* get value from hash table */
 	  hvalue =
-	    (HASH_SCAN_VALUE *) mht_get2 (llsidp->hash_list_scan.hash_table, key,
-					  (void **) &llsidp->hash_list_scan.curr_hash_entry);
+	    (HASH_SCAN_VALUE *) mht_get2 (llsidp->hlsid.hash_table, key,
+					  (void **) &llsidp->hlsid.curr_hash_entry);
 	  if (hvalue == NULL)
 	    {
 	      return S_END;
@@ -7928,10 +7925,10 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
     }
   else if (scan_id_p->position == S_ON)
     {
-      if (llsidp->hash_list_scan.curr_hash_entry->next)
+      if (llsidp->hlsid.curr_hash_entry->next)
 	{
-	  llsidp->hash_list_scan.curr_hash_entry = llsidp->hash_list_scan.curr_hash_entry->next;
-	  *tuple = ((HASH_SCAN_VALUE *) llsidp->hash_list_scan.curr_hash_entry->data)->tuple;
+	  llsidp->hlsid.curr_hash_entry = llsidp->hlsid.curr_hash_entry->next;
+	  *tuple = ((HASH_SCAN_VALUE *) llsidp->hlsid.curr_hash_entry->data)->tuple;
 	  return S_SUCCESS;
 	}
       else

@@ -251,7 +251,7 @@ struct llist_scan_id
   SCAN_PRED scan_pred;		/* scan predicates(filters) */
   regu_variable_list_node *rest_regu_list;	/* regulator variable list */
   QFILE_TUPLE_RECORD *tplrecp;	/* tuple record pointer; output param */
-  HASH_LIST_SCAN hash_list_scan;	/* for hash scan */
+  HASH_LIST_SCAN hlsid;	/* for hash scan */
 };
 
 typedef struct showstmt_scan_id SHOWSTMT_SCAN_ID;
