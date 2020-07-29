@@ -1310,9 +1310,9 @@ bool PRM_RETURN_NULL_ON_FUNCTION_ERRORS = false;
 static bool prm_return_null_on_function_errors_default = false;
 static unsigned int prm_return_null_on_function_errors_flag = 0;
 
-bool PRM_ALTER_TABLE_CHANGE_TYPE_STRICT = true;
-static bool prm_alter_table_change_type_strict_default = true;
-static unsigned int prm_alter_table_change_type_strict_flag = 1;
+bool PRM_ALTER_TABLE_CHANGE_TYPE_STRICT = false;
+static bool prm_alter_table_change_type_strict_default = false;
+static unsigned int prm_alter_table_change_type_strict_flag = 0;
 
 bool PRM_PLUS_AS_CONCAT = true;
 static bool prm_plus_as_concat_default = true;
@@ -2294,9 +2294,9 @@ bool PRM_JAVA_STORED_PROCEDURE_RESERVE_01 = false;
 static bool prm_java_stored_procedure_reserve_01_default = false;
 static unsigned int prm_java_stored_procedure_reserve_01_flag = 0;
 
-bool PRM_ALLOW_TRUNCATED_STRING = false;
-static bool prm_allow_truncated_string_default = false;
-static unsigned int prm_allow_truncated_string_flag = 0;
+bool PRM_ALLOW_TRUNCATED_STRING = true;
+static bool prm_allow_truncated_string_default = true;
+static unsigned int prm_allow_truncated_string_flag = 1;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 

@@ -139,6 +139,8 @@ static BTREE_ISCAN_OID_LIST *scan_Iscan_oid_buf_list = NULL;
 static int scan_Iscan_oid_buf_list_count = 0;
 
 #define SCAN_ISCAN_OID_BUF_LIST_DEFAULT_SIZE 10
+/* temp limit : 2M */
+#define HASH_LIST_SCAN_LIMIT 2,539,520
 
 static void scan_init_scan_pred (SCAN_PRED * scan_pred_p, regu_variable_list_node * regu_list, PRED_EXPR * pred_expr,
 				 PR_EVAL_FNC pr_eval_fnc);
@@ -205,6 +207,7 @@ static int scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_ter
 static SCAN_CODE scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * tuple);
+static bool check_hash_list_scan (LLIST_SCAN_ID * llsidp);
 
 /*
  * scan_init_iss () - initialize index skip scan structure
@@ -3662,6 +3665,7 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   /*        2. regu_list_build, regu_list_probe is not null       */
   /*        3. list file size check                               */
   /*        4. The number of probe regu_var and build regu match  */
+  /*llsidp->hlsid.hash_list_scan_yn = check_hash_list_scan (llsidp);*/
   llsidp->hlsid.hash_list_scan_yn = false;
   if (regu_list_build && regu_list_probe)
     {
@@ -7948,4 +7952,32 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
     }
 
   return qp_scan;
+}
+
+/*
+ * check_hash_list_scan () - Check if hash list scan is possible
+ *   return: bool
+ *   llsidp (in): list scan id pointer
+ *   node :
+ *      1. count of tuple of list file > 0
+ *      2. list file size check
+ *      3. regu_list_build, regu_list_probe is not null
+ *      4. The number of probe regu_var and build regu match
+ *      5. list file from dptr is not allowed <== need to check
+*/
+static bool
+check_hash_list_scan (LLIST_SCAN_ID * llsidp)
+{
+  /* count of tuple of list file > 0 */
+  if (llsidp->lsid.list_id.tuple_cnt <= 0)
+    {
+      return false;
+    }
+
+  if (llsidp->lsid.list_id.page_cnt * 16384 > HASH_LIST_SCAN_LIMIT)
+    {
+      return false;
+    }
+
+  return true;
 }
