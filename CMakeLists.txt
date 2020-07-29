@@ -129,9 +129,6 @@ set(WITH_LIBJANSSON_URL "http://www.digip.org/jansson/releases/jansson-2.10.tar.
 # editline library sources URL
 set(WITH_LIBEDIT_URL "http://thrysoee.dk/editline/libedit-20170329-3.1.tar.gz")
 
-# lzo library sources URL
-set(WITH_LIBLZO_URL "http://www.oberhumer.com/opensource/lzo/download/lzo-2.10.tar.gz")
-
 # gpg-error library sources URL
 set(WITH_LIBGPG_ERROR_URL "https://gnupg.org/ftp/gcrypt/libgpg-error/libgpg-error-1.27.tar.bz2")
 
@@ -148,14 +145,12 @@ set(WITH_SYSTEM_PREFIX "SYSTEM" CACHE STRING "System library prefix (default: SY
 set(WITH_LIBEXPAT     "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with expat library (default: EXTERNAL)")
 set(WITH_LIBJANSSON   "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with jansson library (default: EXTERNAL)")
 set(WITH_LIBEDIT      "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with editline library (default: EXTERNAL)")
-set(WITH_LIBLZO       "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with lzo library (default: EXTERNAL)")
 set(WITH_LIBGPG_ERROR "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with gpg-error library (default: EXTERNAL)")
 set(WITH_LIBGCRYPT    "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with gcrypt library (default: EXTERNAL)")
 set(WITH_LIBNCURSES   "${WITH_SYSTEM_PREFIX}" CACHE STRING "Build with ncurses library (default: SYSTEM)")
 
 message(STATUS "Build with Curses library: ${WITH_LIBNCURSES}")
 message(STATUS "Build with editline library: ${WITH_LIBEDIT}")
-message(STATUS "Build with lzo library: ${WITH_LIBLZO}")
 message(STATUS "Build with gcrypt library: ${WITH_LIBGCRYPT}")
 message(STATUS "Build with gpg-error library: ${WITH_LIBGPG_ERROR}")
 message(STATUS "Build with expat library: ${WITH_LIBEXPAT}")
@@ -1045,49 +1040,6 @@ if(UNIX)
 endif(UNIX)
 list(APPEND EP_LIBS ${LIBEDIT_LIBS})
 list(APPEND EP_INCLUDES ${LIBEDIT_INCLUDES})
-
-# WITH_LIBLZO can have multiple values with different meanings
-# on Linux:
-# * "EXTERNAL" - (default) builds lzo library from URL stored in ${WITH_LIBLZO_URL} uses the library created by the build
-# * "SYSTEM"   - use lzo library located in:
-#                  ${WITH_EXTERNAL_LIBS_PATH}
-#                  ${WITH_LIBLZO_ROOT_PATH}/lib
-#                use lzo headers located in:
-#                  ${WITH_EXTERNAL_HEADERS_PATH}
-#                  ${WITH_LIBLZO_ROOT_PATH}/include
-# on Windows:
-# * "EXTERNAL" - (default) uses the prebuilt library from cubrid/win/external
-if(WITH_LIBLZO STREQUAL "EXTERNAL")
-  set(LIBLZO_TARGET liblzo)
-  if(UNIX)
-    #compile LZO library given an internet url to a LZO archive
-    #e.g. http://www.oberhumer.com/opensource/lzo/download/lzo-2.10.tar.gz
-    externalproject_add(${LIBLZO_TARGET}
-      URL                  ${WITH_LIBLZO_URL}
-      TIMEOUT              600
-      DOWNLOAD_NO_PROGRESS 1
-      CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS}
-      BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      )
-    set(LIBLZO_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/liblzo2.a)
-    set(LIBLZO_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
-    list(APPEND EP_TARGETS ${LIBLZO_TARGET})
-  else(UNIX)
-    set(LIBLZO_LIBS ${CMAKE_SOURCE_DIR}/win/external/lib64/lzo2.lib)
-    set(LIBLZO_INCLUDES ${CMAKE_SOURCE_DIR}/win/external/include)
-  endif(UNIX)
-else(WITH_LIBLZO STREQUAL "SYSTEM")
-  if(UNIX)
-    find_library(LIBLZO_LIBS NAMES liblzo2.a PATHS ${WITH_EXTERNAL_LIBS_PATH} ${WITH_LIBLZO_ROOT_PATH}/lib REQUIRED)
-    find_path(LIBLZO_INCLUDES NAMES lzo/lzoconf.h lzo/lzo1x.h PATHS ${WITH_EXTERNAL_HEADERS_PATH} ${WITH_LIBLZO_ROOT_PATH}/include REQUIRED)
-
-    message(STATUS "Found lzo library: ${LIBLZO_LIBS}")
-    message(STATUS "Found lzo headers: ${LIBLZO_INCLUDES}")
-  endif(UNIX)
-endif()
-list(APPEND EP_INCLUDES ${LIBLZO_INCLUDES})
-list(APPEND EP_LIBS ${LIBLZO_LIBS})
 
 # WITH_LIBGPG_ERROR can have multiple values with different meanings
 # on Linux:

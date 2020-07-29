@@ -628,7 +628,6 @@ target_external_dependencies(cubridsa
   LIBJANSSON
   LIBGPG_ERROR
   LIBGCRYPT
-  LIBLZO
   LIBEXPAT
   LIBEDIT
   )
