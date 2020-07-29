@@ -62,6 +62,8 @@
 
 #define AES128_BLOCK_LEN (128/8)
 #define AES128_KEY_LEN (128/8)
+#define MD5_CHECKSUM_LEN 16
+#define MD5_CHECKSUM_HEX_LEN (32 + 1)
 
 #if defined(SERVER_MODE)
 static pthread_mutex_t gcrypt_init_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -101,10 +103,13 @@ static const char *const crypt_lib_fail_info[] = {
   "Unknown error!"
 };
 
+static const char lower_hextable[] = "0123456789abcdef";
+static const char upper_hextable[] = "0123456789ABCDEF";
+
 static int init_gcrypt (void);
 static int crypt_sha_functions (THREAD_ENTRY * thread_p, const char *src, int src_len, SHA_FUNCTION sha_func,
 				char **dest_p, int *dest_len_p);
-static char *str_to_hex (THREAD_ENTRY * thread_p, const char *src, int src_len, char **dest_p, int *dest_len_p);
+static int crypt_md5_buffer_binary (const char *buffer, size_t len, char *resblock);
 static void aes_default_gen_key (const char *key, int key_len, char *dest_key, int dest_key_len);
 
 /*
@@ -163,6 +168,33 @@ init_gcrypt (void)
   return NO_ERROR;
 }
 
+void
+str_to_hex_prealloced (const char *src, int src_len, char *dest, int dest_len, HEX_LETTERCASE lettercase)
+{
+  int i = src_len;
+  unsigned char item_num = 0;
+  const char *hextable;
+
+  assert (src != NULL && dest != NULL);
+  assert (dest_len >= (src_len * 2 + 1));
+
+  if (lettercase == HEX_UPPERCASE)
+    {
+      hextable = upper_hextable;
+    }
+  else
+    {
+      hextable = lower_hextable;
+    }
+  while (i > 0)
+    {
+      --i;
+      item_num = (unsigned char) src[i];
+      dest[2 * i] = hextable[item_num / 16];
+      dest[2 * i + 1] = hextable[item_num % 16];
+    }
+  dest[src_len * 2] = '\0';
+}
 
 /*
  * str_to_hex() - convert a string to its hexadecimal expreesion string
@@ -174,11 +206,11 @@ init_gcrypt (void)
  *   dest_len_p(out):
  * Note:
  */
-static char *
-str_to_hex (THREAD_ENTRY * thread_p, const char *src, int src_len, char **dest_p, int *dest_len_p)
+char *
+str_to_hex (THREAD_ENTRY * thread_p, const char *src, int src_len, char **dest_p, int *dest_len_p,
+	    HEX_LETTERCASE lettercase)
 {
-  static const char hextable[] = "0123456789ABCDEF";
-  int dest_len = 2 * src_len;
+  int dest_len = 2 * src_len + 1;
   int i = 0;
   unsigned char item_num = 0;
   char *dest;
@@ -198,14 +230,7 @@ str_to_hex (THREAD_ENTRY * thread_p, const char *src, int src_len, char **dest_p
       return NULL;
     }
 
-  while (i < src_len)
-    {
-      item_num = (unsigned char) src[i];
-      dest[2 * i] = hextable[item_num / 16];
-      dest[2 * i + 1] = hextable[item_num % 16];
-      i++;
-    }
-
+  str_to_hex_prealloced (src, src_len, dest, dest_len, lettercase);
   *dest_p = dest;
   *dest_len_p = dest_len;
   return dest;
@@ -555,7 +580,10 @@ crypt_sha_functions (THREAD_ENTRY * thread_p, const char *src, int src_len, SHA_
   // *INDENT-OFF*
   deleted_unique_ptr<EVP_MD_CTX> context (EVP_MD_CTX_new (), [] (EVP_MD_CTX * ctxt_ptr)
     {
-      EVP_MD_CTX_free (ctxt_ptr);
+      if (ctxt_ptr != NULL)
+	{
+	  EVP_MD_CTX_free (ctxt_ptr);
+	}
     });
   // *INDENT-ON*
 
@@ -607,7 +635,7 @@ crypt_sha_functions (THREAD_ENTRY * thread_p, const char *src, int src_len, SHA_
       return ER_ENCRYPTION_LIB_FAILED;
     }
 
-  dest_hex = str_to_hex (thread_p, (char *) hash, lengthOfHash, &dest_hex, &dest_hex_len);
+  dest_hex = str_to_hex (thread_p, (char *) hash, lengthOfHash, &dest_hex, &dest_hex_len, HEX_UPPERCASE);
   if (dest_hex == NULL)
     {
       return ER_OUT_OF_VIRTUAL_MEMORY;
@@ -617,6 +645,67 @@ crypt_sha_functions (THREAD_ENTRY * thread_p, const char *src, int src_len, SHA_
   *dest_len_p = dest_hex_len;
 
   return NO_ERROR;
+}
+
+static int
+crypt_md5_buffer_binary (const char *buffer, size_t len, char *resblock)
+{
+  if (buffer == NULL || resblock == NULL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+  // *INDENT-OFF*
+  deleted_unique_ptr<EVP_MD_CTX> context (EVP_MD_CTX_new (), [] (EVP_MD_CTX *ctxt_ptr)
+    {
+      if (ctxt_ptr != NULL)
+	{
+	  EVP_MD_CTX_free (ctxt_ptr); 
+	}
+    });
+  // *INDENT-ON*
+
+  if (context == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_INIT_ERR]);
+      return ER_ENCRYPTION_LIB_FAILED;
+    }
+
+  if (EVP_DigestInit (context.get (), EVP_md5 ()) == 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_INIT_ERR]);
+      return ER_ENCRYPTION_LIB_FAILED;
+    }
+  if (EVP_DigestUpdate (context.get (), buffer, len) == 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_CRYPT_ERR]);
+      return ER_ENCRYPTION_LIB_FAILED;
+    }
+  unsigned int md_len;
+  if (EVP_DigestFinal (context.get (), (unsigned char *) resblock, &md_len) == 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_CRYPT_ERR]);
+      return ER_ENCRYPTION_LIB_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+int
+crypt_md5_buffer_hex (const char *buffer, size_t len, char *resblock)
+{
+  int ec = NO_ERROR;
+  if (buffer == NULL || resblock == NULL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+  ec = crypt_md5_buffer_binary (buffer, len, resblock);
+  if (ec != NO_ERROR)
+    {
+      return ec;
+    }
+  str_to_hex_prealloced (resblock, MD5_CHECKSUM_LEN, resblock, MD5_CHECKSUM_LEN, HEX_LOWERCASE);
 }
 
 /*

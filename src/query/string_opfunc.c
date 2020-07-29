@@ -45,7 +45,6 @@
 #include "tz_support.h"
 #include "db_date.h"
 #include "misc_string.h"
-#include "md5.h"
 #include "crypt_opfunc.h"
 #include "base64.h"
 #include "tz_support.h"
@@ -2770,9 +2769,11 @@ db_string_md5 (DB_VALUE const *val, DB_VALUE * result)
 
 	  db_make_null (&hash_string);
 
-	  md5_buffer (db_get_string (val), db_get_string_length (val), hashString);
-
-	  md5_hash_to_hex (hashString, hashString);
+	  error_status = crypt_md5_buffer_hex (db_get_string (val), db_get_string_length (val), hashString);
+	  if (error_status != NO_ERROR)
+	    {
+	      return error_status;
+	    }
 
 	  /* dump result as hex string */
 	  qstr_make_typed_string (DB_TYPE_CHAR, &hash_string, 32, hashString, 32, db_get_string_codeset (val),
