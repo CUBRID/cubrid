@@ -189,8 +189,8 @@ backupdb (UTIL_FUNCTION_ARG * arg)
 
   if (compress_flag)
     {
-      backup_zip_method = FILEIO_ZIP_LZO1X_METHOD;
-      backup_zip_level = FILEIO_ZIP_LZO1X_DEFAULT_LEVEL;
+      backup_zip_method = FILEIO_ZIP_LZ4_METHOD;
+      backup_zip_level = FILEIO_ZIP_LZ4_DEFAULT_LEVEL;
     }
 
   /* extra validation */
