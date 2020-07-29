@@ -454,6 +454,20 @@ set(LOADDB_HEADERS
   ${LOADDB_DIR}/load_semantic_helper.hpp
   )
 
+set(LZ4_SOURCES
+  ${LZ4_DIR}/lz4.c
+  ${LZ4_DIR}/lz4frame.c
+  ${LZ4_DIR}/lz4hc.c
+  ${LZ4_DIR}/xxhash.c
+)
+
+set(LZ4_HEADERS
+  ${LZ4_DIR}/lz4.h
+  ${LZ4_DIR}/lz4frame.h
+  ${LZ4_DIR}/lz4hc.h
+  ${LZ4_DIR}/xxhash.h
+)
+
 if(UNIX)
   list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/tcp.c)
   list(APPEND BASE_SOURCES ${BASE_DIR}/dynamic_load.c)
@@ -495,6 +509,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${CONNECTION_SOURCES}
   ${CONNECTION_TCP_SOURCE}
   ${COMMUNICATION_SOURCES}
+  ${LZ4_SOURCES}
   ${MONITOR_SOURCES}
   ${PARSER_DIR}/parser_support.c
   ${PARSER_DIR}/show_meta.c
@@ -554,6 +569,8 @@ add_library(cubridsa SHARED
   ${EXECUTABLE_SOURCES}
   ${HEAPLAYER_SOURCES}
   ${JSP_SOURCES}
+  ${LZ4_SOURCES}
+  ${LZ4_HEADERS}
   ${MONITOR_HEADERS}
   ${MONITOR_SOURCES}
   ${OBJECT_HEADERS}

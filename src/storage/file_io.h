@@ -33,6 +33,7 @@
 #include "log_lsa.hpp"
 #include "lzo/lzoconf.h"
 #include "lzo/lzo1x.h"
+#include "lz4.h"
 #include "memory_hash.h"
 #include "porting.h"
 #include "porting_inline.hpp"
@@ -99,6 +100,7 @@ typedef enum
 {
   FILEIO_ZIP_NONE_METHOD,	/* None */
   FILEIO_ZIP_LZO1X_METHOD,	/* LZO1X */
+  FILEIO_ZIP_LZ4_METHOD,	/* LZ4X */
   FILEIO_ZIP_ZLIB_METHOD,	/* ZLIB */
   FILEIO_ZIP_UNDEFINED_METHOD	/* Undefined (must be highest ordinal value) */
 } FILEIO_ZIP_METHOD;
@@ -118,7 +120,8 @@ typedef enum
   FILEIO_ZIP_UNDEFINED_LEVEL,	/* Undefined (must be highest ordinal value) */
   FILEIO_ZIP_LZO1X_999_LEVEL = FILEIO_ZIP_9_LEVEL,
   FILEIO_ZIP_LZO1X_DEFAULT_LEVEL = FILEIO_ZIP_1_LEVEL,
-  FILEIO_ZIP_ZLIB_DEFAULT_LEVEL = FILEIO_ZIP_6_LEVEL
+  FILEIO_ZIP_ZLIB_DEFAULT_LEVEL = FILEIO_ZIP_6_LEVEL,
+  FILEIO_ZIP_LZ4_DEFAULT_LEVEL = FILEIO_ZIP_1_LEVEL
 } FILEIO_ZIP_LEVEL;
 
 typedef enum

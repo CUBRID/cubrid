@@ -1119,6 +1119,9 @@
 #define ER_IO_LZO_COMPRESS_FAIL                     -896
 #define ER_IO_LZO_DECOMPRESS_FAIL                   -897
 
+#define ER_IO_LZ4_COMPRESS_FAIL                     -896
+#define ER_IO_LZ4_DECOMPRESS_FAIL                   -897
+
 #define ER_REPL_ERROR                               -898
 
 #define ER_INVALID_PARTITION_REQUEST                -899

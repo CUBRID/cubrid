@@ -500,6 +500,7 @@ set(HEAPLAYERS_DIR           ${CMAKE_SOURCE_DIR}/src/heaplayers)
 set(JDBC_DIR                 ${CMAKE_SOURCE_DIR}/src/jdbc)
 set(JSP_DIR                  ${CMAKE_SOURCE_DIR}/src/jsp)
 set(LOADDB_DIR               ${CMAKE_SOURCE_DIR}/src/loaddb)
+set(LZ4_DIR                  ${CMAKE_SOURCE_DIR}/src/lz4)    # LZ4 version 1.9.2
 set(MONITOR_DIR              ${CMAKE_SOURCE_DIR}/src/monitor)
 set(OBJECT_DIR               ${CMAKE_SOURCE_DIR}/src/object)
 set(ODBC_DIR                 ${CMAKE_SOURCE_DIR}/src/odbc)
@@ -530,6 +531,7 @@ include_directories(
   src/heaplayers
   src/jsp
   src/loaddb
+  src/lz4
   src/monitor
   src/object
   src/optimizer

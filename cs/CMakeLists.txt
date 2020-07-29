@@ -175,6 +175,20 @@ set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_cl.c
   )
 
+set(LZ4_SOURCES
+  ${LZ4_DIR}/lz4.c
+  ${LZ4_DIR}/lz4frame.c
+  ${LZ4_DIR}/lz4hc.c
+  ${LZ4_DIR}/xxhash.c
+)
+
+set(LZ4_HEADERS
+  ${LZ4_DIR}/lz4.h
+  ${LZ4_DIR}/lz4frame.h
+  ${LZ4_DIR}/lz4hc.h
+  ${LZ4_DIR}/xxhash.h
+)
+
 set(PARSER_SOURCES
   ${BISON_csql_grammar_OUTPUTS}
   ${FLEX_csql_lexer_OUTPUTS}
@@ -384,6 +398,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${CONNECTION_SOURCES}
   ${CONNECTION_TCP_SOURCE}
   ${COMMUNICATION_SOURCES}
+  ${LZ4_SOURCES}
   ${PARSER_DIR}/cnf.c
   ${PARSER_DIR}/compile.c
   ${PARSER_DIR}/double_byte_support.c
@@ -434,6 +449,8 @@ add_library(cubridcs SHARED
   ${ES_SOURCES}
   ${COMMUNICATION_SOURCES}
   ${CONNECTION_SOURCES}
+  ${LZ4_HEADERS}
+  ${LZ4_SOURCES}
   ${CONNECTION_TCP_SOURCE}
   ${HEAPLAYER_SOURCES}
   ${OBJECT_HEADERS}
