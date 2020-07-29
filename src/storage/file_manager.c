@@ -5718,6 +5718,13 @@ file_set_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, TDE_ALGORITH
   FILE_HEADER *fhead = NULL;
   int error_code = NO_ERROR;
 
+  if (!tde_Cipher.is_loaded)
+    {
+      error_code = ER_TDE_CIPHER_IS_NOT_LOADED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_IS_NOT_LOADED, 0);
+      return error_code;
+    }
+
   /* fix header */
   FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
   page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
