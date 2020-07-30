@@ -10782,7 +10782,7 @@ heap_get_class_tde_algorithm (THREAD_ENTRY * thread_p, const OID * class_oid, TD
       return ER_FAILED;
     }
 
-  or_class_tde_encryption_algorithm (&recdes, tde_algo);
+  or_class_tde_algorithm (&recdes, tde_algo);
 
   heap_scancache_end (thread_p, &scan_cache);
 

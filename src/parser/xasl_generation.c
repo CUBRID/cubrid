@@ -17196,7 +17196,7 @@ pt_spec_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * spec, O
 			    {
 			      assert (smclass->stats->heap_num_pages >= 0);
 			      *(t_list + o_num - 1) = smclass->stats->heap_num_pages;
-			      if (smclass->tde_encryption_algorithm != TDE_ALGORITHM_NONE)
+			      if (smclass->tde_algorithm != TDE_ALGORITHM_NONE)
 				{
 				  *includes_tde_class = 1;
 				}
@@ -18084,7 +18084,7 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  if (smclass && smclass->stats)
 	    {
-	      if (smclass->tde_encryption_algorithm != TDE_ALGORITHM_NONE)
+	      if (smclass->tde_algorithm != TDE_ALGORITHM_NONE)
 		{
 		  xasl->includes_tde_class = 1;
 		}
@@ -18119,7 +18119,7 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  if (smclass && smclass->stats)
 	    {
-	      if (smclass->tde_encryption_algorithm != TDE_ALGORITHM_NONE)
+	      if (smclass->tde_algorithm != TDE_ALGORITHM_NONE)
 		{
 		  xasl->includes_tde_class = 1;
 		}
@@ -25310,7 +25310,7 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
   xasl->includes_tde_class = aptr->includes_tde_class;
   if (smclass && smclass->stats)
     {
-      if (smclass->tde_encryption_algorithm != TDE_ALGORITHM_NONE)
+      if (smclass->tde_algorithm != TDE_ALGORITHM_NONE)
 	{
 	  xasl->includes_tde_class = 1;
 	}

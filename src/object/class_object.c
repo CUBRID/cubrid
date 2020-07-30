@@ -6642,7 +6642,7 @@ classobj_make_class (const char *name)
   class_->constraints = NULL;
   class_->comment = NULL;
 
-  class_->tde_encryption_algorithm = (int) TDE_ALGORITHM_NONE;
+  class_->tde_algorithm = (int) TDE_ALGORITHM_NONE;
 
   if (name != NULL)
     {

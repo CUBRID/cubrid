@@ -2898,7 +2898,7 @@ sm_set_class_tde_algorithm (MOP classop, TDE_ALGORITHM tde_algo)
       error = au_fetch_class_force (classop, &class_, AU_FETCH_UPDATE);
       if (error == NO_ERROR)
 	{
-	  class_->tde_encryption_algorithm = (int) tde_algo;
+	  class_->tde_algorithm = (int) tde_algo;
 	}
     }
 
@@ -2923,7 +2923,7 @@ sm_get_class_tde_algorithm (MOP classop, TDE_ALGORITHM * tde_algo)
   error = au_fetch_class_force (classop, &class_, AU_FETCH_READ);
   if (error == NO_ERROR)
     {
-      *tde_algo = (TDE_ALGORITHM) class_->tde_encryption_algorithm;
+      *tde_algo = (TDE_ALGORITHM) class_->tde_algorithm;
     }
 
   return error;

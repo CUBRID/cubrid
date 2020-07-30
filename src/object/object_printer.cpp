@@ -1064,7 +1064,7 @@ void object_printer::describe_class (struct db_object *class_op)
       m_buf (" COLLATE %s", class_descr.collation);
     }
 
-  /* tde_encryption_algorithm */
+  /* tde_algorithm */
   if (sm_get_class_tde_algorithm (class_op, &tde_algo) == NO_ERROR)
     {
       if (tde_algo != TDE_ALGORITHM_NONE)

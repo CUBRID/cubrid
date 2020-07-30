@@ -3741,7 +3741,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
     }
 
   reuse_oid = (smclass->flags & SM_CLASSFLAG_REUSE_OID) ? true : false;
-  tde_algo = (TDE_ALGORITHM) smclass->tde_encryption_algorithm;
+  tde_algo = (TDE_ALGORITHM) smclass->tde_algorithm;
 
   parttemp->info.create_entity.entity_type = PT_CLASS;
   parttemp->info.create_entity.entity_name = parser_new_node (parser, PT_NAME);
@@ -8828,7 +8828,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    {
 	      reuse_oid = true;
 	    }
-	  tde_algo = (TDE_ALGORITHM) source_class->tde_encryption_algorithm;
+	  tde_algo = (TDE_ALGORITHM) source_class->tde_algorithm;
 	  if (source_class->comment)
 	    {
 	      error = sm_set_class_comment (class_obj, source_class->comment);
