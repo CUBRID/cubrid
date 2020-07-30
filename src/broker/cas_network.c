@@ -78,6 +78,10 @@ static int net_timeout = NET_DEFAULT_TIMEOUT;
 extern bool ssl_client;
 extern int cas_ssl_write (int sock_fd, const char *buf, int size);
 extern int cas_ssl_read (int sock_fd, char *buf, int size);
+extern bool is_ssl_data_ready (int sock_fd);
+
+#define READ_FROM_NET(sd, buf, size) ssl_client ? cas_ssl_read (sd, buf, size) : \
+	READ_FROM_SOCKET(sd, buf, size)
 
 SOCKET
 #if defined(WINDOWS)
@@ -304,8 +308,12 @@ net_read_stream (SOCKET sock_fd, char *buf, int size)
     {
       int read_len;
 
-      read_len = ssl_client ? cas_ssl_read (sock_fd, buf, size) : read_buffer (sock_fd, buf, size);
+      read_len = read_buffer (sock_fd, buf, size);
 
+      if (ssl_client && read_len == 0)
+	{
+	  continue;
+	}
       if (read_len <= 0)
 	{
 #ifdef _DEBUG
@@ -523,6 +531,7 @@ static int
 read_buffer (SOCKET sock_fd, char *buf, int size)
 {
   int read_len = -1;
+  bool ssl_data_ready = false;
 #if defined(ASYNC_MODE)
   struct pollfd po[2] = { {0, 0, 0}, {0, 0, 0} };
   int timeout, po_size, n;
@@ -552,7 +561,15 @@ read_buffer (SOCKET sock_fd, char *buf, int size)
     }
 
 retry_poll:
-  n = poll (po, po_size, timeout);
+  if (ssl_client && is_ssl_data_ready (sock_fd))
+    {
+      po[0].revents = POLLIN;
+      n = 1;
+    }
+  else
+    {
+      n = poll (po, po_size, timeout);
+    }
   if (n < 0)
     {
       if (errno == EINTR)
@@ -586,13 +603,13 @@ retry_poll:
 	{
 #endif /* ASYNC_MODE */
 	  /* RECEIVE NEW REQUEST */
-	  read_len = READ_FROM_SOCKET (sock_fd, buf, size);
+	  read_len = READ_FROM_NET (sock_fd, buf, size);
 #if defined(ASYNC_MODE)
 	}
     }
 #endif /* ASYNC_MODE */
 
-  if (read_len <= 0)
+  if ((!ssl_client && read_len <= 0) || (ssl_client && read_len < 0))
     {
       net_error_flag = 1;
     }

@@ -287,3 +287,9 @@ cas_ssl_validity_check (SSL_CTX * ctx)
 
   return 0;
 }
+
+bool
+is_ssl_data_ready (int sock_fd)
+{
+  return (SSL_has_pending (ssl) == 1 ? true : false);
+}
