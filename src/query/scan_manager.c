@@ -207,7 +207,7 @@ static int scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_ter
 static SCAN_CODE scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * tuple);
-static bool check_hash_list_scan (LLIST_SCAN_ID * llsidp, int * val_cnt);
+static bool check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt);
 
 /*
  * scan_init_iss () - initialize index skip scan structure
@@ -4778,9 +4778,9 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       if (llsidp->hlsid.hash_table != NULL)
 	{
 #if 1
-	  (void) mht_dump (thread_p, stdout, llsidp->hlsid.hash_table, -1, qdata_print_hash_scan_entry,
-			   NULL);
-	  printf ("temp file : tuple count = %d, file_size = %dK\n", llsidp->list_id->tuple_cnt, llsidp->list_id->page_cnt * 16);
+	  (void) mht_dump (thread_p, stdout, llsidp->hlsid.hash_table, -1, qdata_print_hash_scan_entry, NULL);
+	  printf ("temp file : tuple count = %d, file_size = %dK\n", llsidp->list_id->tuple_cnt,
+		  llsidp->list_id->page_cnt * 16);
 #endif
 	  mht_clear (llsidp->hlsid.hash_table, qdata_free_hscan_entry, (void *) thread_p);
 	  mht_destroy (llsidp->hlsid.hash_table);
@@ -7900,7 +7900,8 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 	    }
 
 	  /* get value from hash table */
-	  hvalue = (HASH_SCAN_VALUE *) mht_get2 (llsidp->hlsid.hash_table, key, (void **) &llsidp->hlsid.curr_hash_entry);
+	  hvalue =
+	    (HASH_SCAN_VALUE *) mht_get2 (llsidp->hlsid.hash_table, key, (void **) &llsidp->hlsid.curr_hash_entry);
 	  if (hvalue == NULL)
 	    {
 	      return S_END;
@@ -7953,7 +7954,7 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
  *      5. list file from dptr is not allowed <== need to check
 */
 static bool
-check_hash_list_scan (LLIST_SCAN_ID * llsidp, int * val_cnt)
+check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt)
 {
   int build_cnt, probe_cnt;
   regu_variable_list_node *build, *probe;

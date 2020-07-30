@@ -277,7 +277,8 @@ qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *key
  *   key(in): source key
  */
 HASH_SCAN_KEY *
-qdata_copy_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key, REGU_VARIABLE_LIST probe_regu_list, val_descr * vd)
+qdata_copy_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key, REGU_VARIABLE_LIST probe_regu_list,
+		      val_descr * vd)
 {
   HASH_SCAN_KEY *new_key = NULL;
   int i = 0, rc = NO_ERROR;
@@ -315,7 +316,7 @@ qdata_copy_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key, REGU_VAR
 	      else
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (vtype1),
-		      pr_type_name (vtype2));
+			  pr_type_name (vtype2));
 		  return NULL;
 		}
 	    }
