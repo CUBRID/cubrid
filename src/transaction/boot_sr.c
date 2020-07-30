@@ -5105,6 +5105,11 @@ boot_remove_all_volumes (THREAD_ENTRY * thread_p, const char *db_fullname, const
 	{
 	  goto error_rem_allvols;
 	}
+      error_code = tde_cipher_initialize (thread_p, &boot_Db_parm->tde_keys_hfid, NULL);
+      if (error_code != NO_ERROR)
+	{
+	  goto error_rem_allvols;
+	}
 
       /* Find the rest of the volumes and mount them */
       error_code = boot_find_rest_volumes (thread_p, NULL, LOG_DBFIRST_VOLID, boot_mount, NULL);
