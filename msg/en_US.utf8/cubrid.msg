@@ -1315,7 +1315,7 @@ $ LOADDB
 1246 Error getting address and name information. Code : %1$d, message : %2$s.
 1247 Invalid Key file : %1$s
 1248 Cannot find the %1$dth master key.
-1249 The master key set on the database and what is giben don't match. The key index set on the database: %1$d
+1249 The master key set on the database and what is given don't match. The key index set on the database: %1$d
 1250 Error while TDE-encrypting
 1251 Error while TDE-decrypting
 1252 TDE Moudle is not loaded
