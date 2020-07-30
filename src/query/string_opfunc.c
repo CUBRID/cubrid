@@ -9949,12 +9949,13 @@ qstr_bit_coerce (const unsigned char *src, int src_length, int src_precision, DB
     {
       int i, n = 0;
       i = dest_precision / 8;
-      if (src[i] & (0x80 >> (dest_precision % 8)))
+      if (src[i] & (0x80 >> (dest_precision % 8)) || ((src[i] << (dest_precision % 8)) & 0xff))
 	{
           *data_status = DATA_STATUS_TRUNCATED;
 	}
       else
 	{
+	  i++; /* for check reamin trailing bits */
           for (; i < (src_padded_length + 4) / 8; i++)
 	    {
 	      if (src[i])
