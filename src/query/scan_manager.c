@@ -7744,12 +7744,12 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       scan_id->scan_stats.read_rows++;
 
       /* build key */
-      if (qdata_build_hscan_key (thread_p, scan_id->vd, llsidp->hlsid.build_regu_list, NULL, key) != NO_ERROR)
+      if (qdata_build_hscan_key (thread_p, scan_id->vd, llsidp->hlsid.build_regu_list, key) != NO_ERROR)
 	{
 	  return S_ERROR;
 	}
       /* create new key */
-      new_key = qdata_copy_hscan_key (thread_p, key);
+      new_key = qdata_copy_hscan_key (thread_p, key, llsidp->hlsid.probe_regu_list, scan_id->vd);
       if (new_key == NULL)
 	{
 	  return S_ERROR;
@@ -7894,16 +7894,13 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 	  /* init curr_hash_entry */
 	  llsidp->hlsid.curr_hash_entry = NULL;
 	  /* build key */
-	  if (qdata_build_hscan_key (thread_p, scan_id->vd, llsidp->hlsid.probe_regu_list, NULL, key) !=
-	      NO_ERROR)
+	  if (qdata_build_hscan_key (thread_p, scan_id->vd, llsidp->hlsid.probe_regu_list, key) != NO_ERROR)
 	    {
 	      return S_ERROR;
 	    }
 
 	  /* get value from hash table */
-	  hvalue =
-	    (HASH_SCAN_VALUE *) mht_get2 (llsidp->hlsid.hash_table, key,
-					  (void **) &llsidp->hlsid.curr_hash_entry);
+	  hvalue = (HASH_SCAN_VALUE *) mht_get2 (llsidp->hlsid.hash_table, key, (void **) &llsidp->hlsid.curr_hash_entry);
 	  if (hvalue == NULL)
 	    {
 	      return S_END;

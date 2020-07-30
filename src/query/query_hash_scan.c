@@ -31,6 +31,7 @@
 #include "string_opfunc.h"
 #include "query_hash_scan.h"
 #include "db_value_printer.hpp"
+#include "dbtype.h"
 
 static bool safe_memcpy (void *data, void *source, int size);
 static DB_VALUE_COMPARE_RESULT qdata_hscan_key_compare (HASH_SCAN_KEY * ckey1, HASH_SCAN_KEY * ckey2, int *diff_pos);
@@ -203,14 +204,9 @@ qdata_hscan_key_eq (const void *key1, const void *key2)
  *   thread_p(in): thread
  *   key(out): aggregate key
  *   regu_list(in): reguvar list for fetching values
- *
- * NOTE: the DB_VALUEs in the key structure are transient. If key will be
- * stored for later use, a deep copy of DB_VALUEs must be performed using
- * qexec_copy_agg_key().
  */
 int
-qdata_build_hscan_key (THREAD_ENTRY * thread_p, val_descr * vd, REGU_VARIABLE_LIST regu_list, QFILE_TUPLE tpl,
-		       HASH_SCAN_KEY * key)
+qdata_build_hscan_key (THREAD_ENTRY * thread_p, val_descr * vd, REGU_VARIABLE_LIST regu_list, HASH_SCAN_KEY * key)
 {
   int rc = NO_ERROR;
 
@@ -219,7 +215,7 @@ qdata_build_hscan_key (THREAD_ENTRY * thread_p, val_descr * vd, REGU_VARIABLE_LI
   key->val_count = 0;
   while (regu_list != NULL)
     {
-      rc = fetch_peek_dbval (thread_p, &regu_list->value, vd, NULL, NULL, tpl, &key->values[key->val_count]);
+      rc = fetch_peek_dbval (thread_p, &regu_list->value, vd, NULL, NULL, NULL, &key->values[key->val_count]);
       if (rc != NO_ERROR)
 	{
 	  return rc;
@@ -281,10 +277,13 @@ qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *key
  *   key(in): source key
  */
 HASH_SCAN_KEY *
-qdata_copy_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key)
+qdata_copy_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key, REGU_VARIABLE_LIST probe_regu_list, val_descr * vd)
 {
   HASH_SCAN_KEY *new_key = NULL;
-  int i = 0;
+  int i = 0, rc = NO_ERROR;
+  DB_VALUE *probe_val, temp;
+  DB_TYPE vtype1, vtype2;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
 
   if (key)
     {
@@ -298,7 +297,32 @@ qdata_copy_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key)
       new_key->val_count = key->val_count;
       for (i = 0; i < key->val_count; i++)
 	{
-	  new_key->values[i] = pr_copy_value (key->values[i]);
+	  rc = fetch_peek_dbval (thread_p, &probe_regu_list->value, vd, NULL, NULL, NULL, &probe_val);
+	  if (rc != NO_ERROR)
+	    {
+	      return NULL;
+	    }
+	  vtype1 = DB_VALUE_DOMAIN_TYPE (probe_val);
+	  vtype2 = DB_VALUE_DOMAIN_TYPE (key->values[i]);
+
+	  if (vtype1 != vtype2)
+	    {
+	      status = tp_value_coerce (key->values[i], &temp, tp_domain_resolve_default (vtype1));
+	      if (status == DOMAIN_COMPATIBLE)
+		{
+		  new_key->values[i] = pr_copy_value (&temp);
+		}
+	      else
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (vtype1),
+		      pr_type_name (vtype2));
+		  return NULL;
+		}
+	    }
+	  else
+	    {
+	      new_key->values[i] = pr_copy_value (key->values[i]);
+	    }
 	}
 
       new_key->free_values = true;
