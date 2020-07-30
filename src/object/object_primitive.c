@@ -4163,7 +4163,7 @@ mr_index_cmpdisk_datetime (void *mem1, void *mem2, TP_DOMAIN * domain, int do_co
       return DB_EQ;
     }
 
-  COPYMEM (unsigned int, &dt1.date, (char *) mem1 + OR_DATETIME_DATE);
+  COPYMEM (unsigned int, &dt1.date, (char *)mem1 + OR_DATETIME_DATE);
   COPYMEM (unsigned int, &dt1.time, (char *) mem1 + OR_DATETIME_TIME);
   COPYMEM (unsigned int, &dt2.date, (char *) mem2 + OR_DATETIME_DATE);
   COPYMEM (unsigned int, &dt2.time, (char *) mem2 + OR_DATETIME_TIME);
@@ -7779,8 +7779,8 @@ clean_up:
 
 DB_VALUE_COMPARE_RESULT
 pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int total_order, int num_index_term,
-		    int *start_colp, int *result_size1, int *result_size2, int *diff_column, bool *dom_is_desc,
-		    bool *next_dom_is_desc)
+		    int *start_colp, int *result_size1, int *result_size2, int *diff_column, bool * dom_is_desc,
+		    bool * next_dom_is_desc)
 {
   DB_VALUE_COMPARE_RESULT c = DB_UNK;
   int i;

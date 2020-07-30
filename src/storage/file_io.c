@@ -11749,7 +11749,7 @@ fileio_page_bitmap_dump (FILE * out_fp, const FILEIO_RESTORE_PAGE_BITMAP * page_
  *   is_page_corrupted (out): true, if the page is corrupted.
  */
 int
-fileio_page_check_corruption (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, bool *is_page_corrupted)
+fileio_page_check_corruption (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, bool * is_page_corrupted)
 {
   assert (io_page != NULL && is_page_corrupted != NULL);
 
