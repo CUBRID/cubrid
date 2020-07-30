@@ -315,8 +315,8 @@ qdata_copy_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key, REGU_VAR
 		}
 	      else
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (vtype1),
-			  pr_type_name (vtype2));
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (vtype2),
+			  pr_type_name (vtype1));
 		  return NULL;
 		}
 	    }
@@ -324,6 +324,7 @@ qdata_copy_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key, REGU_VAR
 	    {
 	      new_key->values[i] = pr_copy_value (key->values[i]);
 	    }
+	  probe_regu_list = probe_regu_list->next;
 	}
 
       new_key->free_values = true;
