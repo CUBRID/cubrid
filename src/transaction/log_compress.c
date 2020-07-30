@@ -93,7 +93,9 @@ log_zip (LOG_ZIP * log_zip, LOG_ZIP_SIZE_T length, const void *data)
   /* save original data length */
   memcpy (log_zip->log_data, &length, sizeof (LOG_ZIP_SIZE_T));
 
-  zip_len = LZ4_compress_default ((const char *) data, log_zip->log_data + sizeof (LOG_ZIP_SIZE_T), length, buf_size - sizeof (LOG_ZIP_SIZE_T));
+  zip_len =
+    LZ4_compress_default ((const char *) data, log_zip->log_data + sizeof (LOG_ZIP_SIZE_T), length,
+			  buf_size - sizeof (LOG_ZIP_SIZE_T));
   if (zip_len > 0)
     {
       log_zip->data_length = (LOG_ZIP_SIZE_T) zip_len + sizeof (LOG_ZIP_SIZE_T);
@@ -169,7 +171,8 @@ log_unzip (LOG_ZIP * log_unzip, LOG_ZIP_SIZE_T length, void *data)
 
   decompressed = false;
 
-  unzip_len = LZ4_decompress_safe ((const char *) data + sizeof (LOG_ZIP_SIZE_T), (char *) log_unzip->log_data, length, buf_size);
+  unzip_len =
+    LZ4_decompress_safe ((const char *) data + sizeof (LOG_ZIP_SIZE_T), (char *) log_unzip->log_data, length, buf_size);
   if (unzip_len > 0)
     {
       log_unzip->data_length = (LOG_ZIP_SIZE_T) unzip_len;

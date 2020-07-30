@@ -64,6 +64,7 @@ XXH64       13.8 GB/s            1.9 GB/s
 XXH32        6.8 GB/s            6.0 GB/s
 */
 
+// *INDENT-OFF*
 #ifndef XXHASH_H_5627135585666179
 #define XXHASH_H_5627135585666179 1
 
@@ -319,10 +320,11 @@ struct XXH64_state_s {
 #endif
 
 #endif /* XXH_STATIC_LINKING_ONLY */
-
+// *INDENT-ON*
 
 #if defined (__cplusplus)
 }
 #endif
 
 #endif /* XXHASH_H_5627135585666179 */
+// *INDENT-ON*

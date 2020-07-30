@@ -40,6 +40,7 @@
  * Select how default compression functions will allocate memory for their hash table,
  * in memory stack (0:default, fastest), or in memory heap (1:requires malloc()).
  */
+// *INDENT-OFF*
 #ifndef LZ4_HEAPMODE
 #  define LZ4_HEAPMODE 0
 #endif
@@ -2396,3 +2397,4 @@ char* LZ4_slideInputBuffer (void* state)
 }
 
 #endif   /* LZ4_COMMONDEFS_ONLY */
+// *INDENT-ON*

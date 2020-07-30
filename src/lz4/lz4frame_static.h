@@ -33,6 +33,7 @@
    - LZ4 public forum : https://groups.google.com/forum/#!forum/lz4c
 */
 
+// *INDENT-OFF*
 #ifndef LZ4FRAME_STATIC_H_0398209384
 #define LZ4FRAME_STATIC_H_0398209384
 
@@ -45,3 +46,4 @@
 #include "lz4frame.h"
 
 #endif /* LZ4FRAME_STATIC_H_0398209384 */
+// *INDENT-ON*

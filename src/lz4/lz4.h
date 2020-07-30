@@ -32,6 +32,8 @@
     - LZ4 homepage : http://www.lz4.org
     - LZ4 source repository : https://github.com/lz4/lz4
 */
+
+// *INDENT-OFF*
 #if defined (__cplusplus)
 extern "C" {
 #endif
@@ -762,3 +764,4 @@ LZ4LIB_API void LZ4_resetStream (LZ4_stream_t* streamPtr);
 #if defined (__cplusplus)
 }
 #endif
+// *INDENT-ON*

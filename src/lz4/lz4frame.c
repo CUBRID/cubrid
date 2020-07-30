@@ -44,6 +44,7 @@
 /*-************************************
 *  Compiler Options
 **************************************/
+// *INDENT-OFF*
 #ifdef _MSC_VER    /* Visual Studio */
 #  pragma warning(disable : 4127)        /* disable: C4127: conditional expression is constant */
 #endif
@@ -1858,3 +1859,4 @@ size_t LZ4F_decompress_usingDict(LZ4F_dctx* dctx,
                            srcBuffer, srcSizePtr,
                            decompressOptionsPtr);
 }
+// *INDENT-ON*

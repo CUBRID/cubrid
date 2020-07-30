@@ -307,7 +307,7 @@ extern int pr_free_ext_value (DB_VALUE * value);
 extern DB_VALUE_COMPARE_RESULT pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion,
 						   int total_order, int num_index_term, int *start_colp,
 						   int *result_size1, int *result_size2, int *diff_column,
-						   bool * dom_is_desc, bool * next_dom_is_desc);
+						   bool *dom_is_desc, bool *next_dom_is_desc);
 extern int pr_midxkey_element_disk_size (char *mem, DB_DOMAIN * domain);
 extern int pr_midxkey_get_element_nocopy (const DB_MIDXKEY * midxkey, int index, DB_VALUE * value, int *prev_indexp,
 					  char **prev_ptrp);
@@ -339,8 +339,8 @@ extern int pr_get_compressed_data_from_buffer (struct or_buf *buf, char *data, i
 extern int pr_get_size_and_write_string_to_buffer (struct or_buf *buf, char *val_p, DB_VALUE * value, int *val_size,
 						   int align);
 
-extern int pr_data_compress_string (const char* string, int str_length, char *compressed_string,
-                                    int compress_buffer_size, int *compressed_length);
+extern int pr_data_compress_string (const char *string, int str_length, char *compressed_string,
+				    int compress_buffer_size, int *compressed_length);
 
 extern int pr_clear_compressed_string (DB_VALUE * value);
 extern int pr_do_db_value_string_compression (DB_VALUE * value);

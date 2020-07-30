@@ -42,6 +42,7 @@
  * except to extract common constant such as LZ4_VERSION_NUMBER.
  * */
 
+// *INDENT-OFF*
 #ifndef LZ4F_H_09782039843
 #define LZ4F_H_09782039843
 
@@ -613,3 +614,4 @@ LZ4FLIB_STATIC_API size_t LZ4F_decompress_usingDict(
 #endif
 
 #endif  /* defined(LZ4F_STATIC_LINKING_ONLY) && !defined(LZ4F_H_STATIC_09782039843) */
+// *INDENT-ON*

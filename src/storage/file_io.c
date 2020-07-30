@@ -7612,7 +7612,8 @@ fileio_compress_backup_node (FILEIO_NODE * node_p, FILEIO_BACKUP_HEADER * backup
     {
     case FILEIO_ZIP_LZ4_METHOD:
       /* The alternative is compress faster - best speed, but, require more memory alloc */
-      local_buf_len = LZ4_compress_default ((char*) node_p->area, zip_page->buf, (int) node_p->nread, node_p->zip_info->buf_size);
+      local_buf_len =
+	LZ4_compress_default ((char *) node_p->area, zip_page->buf, (int) node_p->nread, node_p->zip_info->buf_size);
       if (local_buf_len <= 0)
 	{
 	  /* best reduction */
@@ -7624,8 +7625,7 @@ fileio_compress_backup_node (FILEIO_NODE * node_p, FILEIO_BACKUP_HEADER * backup
 	  fprintf (stdout,
 		   "internal error - compression failed: node->pageid = %d, node->nread = %d, "
 		   "buf_len = %d, buf_size = %d\n",
-		   node_p->pageid, node_p->nread, local_buf_len,
-		   node_p->zip_info->buf_size);
+		   node_p->pageid, node_p->nread, local_buf_len, node_p->zip_info->buf_size);
 #endif /* CUBRID_DEBUG */
 	  goto exit_on_error;
 	}
@@ -7686,7 +7686,7 @@ fileio_write_backup_node (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * sessi
     case FILEIO_ZIP_LZ4_METHOD:
       /* Skip allocated block size inside of FILEIO_ZIP_PAGE */
 
-      session_p->dbfile.area = (FILEIO_BACKUP_PAGE*) &node_p->zip_info->zip_page;
+      session_p->dbfile.area = (FILEIO_BACKUP_PAGE *) & node_p->zip_info->zip_page;
       node_p->nread = sizeof (int) + node_p->zip_info->zip_page.buf_len;
       break;
     case FILEIO_ZIP_ZLIB_METHOD:
@@ -10049,7 +10049,7 @@ fileio_decompress_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION
 	zip_page = &node->zip_info->zip_page;
 
 	save_area_p = session_p->dbfile.area;	/* save link */
-	session_p->dbfile.area = (FILEIO_BACKUP_PAGE*) zip_page;
+	session_p->dbfile.area = (FILEIO_BACKUP_PAGE *) zip_page;
 
 	rv = fileio_read_restore (thread_p, session_p, sizeof (int));
 	session_p->dbfile.area = save_area_p;	/* restore link */
@@ -10090,7 +10090,9 @@ fileio_decompress_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION
 	      }
 
 	    /* decompress - use safe decompressor as data might be corrupted during a file transfer */
-	    unzip_len = LZ4_decompress_safe ((const char *) zip_page->buf, (char *) session_p->dbfile.area, zip_page->buf_len, nbytes);
+	    unzip_len =
+	      LZ4_decompress_safe ((const char *) zip_page->buf, (char *) session_p->dbfile.area, zip_page->buf_len,
+				   nbytes);
 	    if (unzip_len < 0 || unzip_len != nbytes)
 	      {
 		error = ER_IO_LZ4_DECOMPRESS_FAIL;
@@ -11747,7 +11749,7 @@ fileio_page_bitmap_dump (FILE * out_fp, const FILEIO_RESTORE_PAGE_BITMAP * page_
  *   is_page_corrupted (out): true, if the page is corrupted.
  */
 int
-fileio_page_check_corruption (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, bool * is_page_corrupted)
+fileio_page_check_corruption (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, bool *is_page_corrupted)
 {
   assert (io_page != NULL && is_page_corrupted != NULL);
 

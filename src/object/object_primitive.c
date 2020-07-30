@@ -4163,7 +4163,7 @@ mr_index_cmpdisk_datetime (void *mem1, void *mem2, TP_DOMAIN * domain, int do_co
       return DB_EQ;
     }
 
-  COPYMEM (unsigned int, &dt1.date, (char *)mem1 + OR_DATETIME_DATE);
+  COPYMEM (unsigned int, &dt1.date, (char *) mem1 + OR_DATETIME_DATE);
   COPYMEM (unsigned int, &dt1.time, (char *) mem1 + OR_DATETIME_TIME);
   COPYMEM (unsigned int, &dt2.date, (char *) mem2 + OR_DATETIME_DATE);
   COPYMEM (unsigned int, &dt2.time, (char *) mem2 + OR_DATETIME_TIME);
@@ -7779,8 +7779,8 @@ clean_up:
 
 DB_VALUE_COMPARE_RESULT
 pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int total_order, int num_index_term,
-		    int *start_colp, int *result_size1, int *result_size2, int *diff_column, bool * dom_is_desc,
-		    bool * next_dom_is_desc)
+		    int *start_colp, int *result_size1, int *result_size2, int *diff_column, bool *dom_is_desc,
+		    bool *next_dom_is_desc)
 {
   DB_VALUE_COMPARE_RESULT c = DB_UNK;
   int i;
@@ -10817,7 +10817,8 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		    }
 
 		  /* decompressing the string */
-		  decompressed_size = LZ4_decompress_safe (new_, decompressed_string, compressed_size, expected_decompressed_size);
+		  decompressed_size =
+		    LZ4_decompress_safe (new_, decompressed_string, compressed_size, expected_decompressed_size);
 		  if (decompressed_size < 0)
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZ4_DECOMPRESS_FAIL, 0);
@@ -13683,7 +13684,8 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 		    }
 
 		  /* decompressing the string */
-		  decompressed_size = LZ4_decompress_safe (new_, decompressed_string, compressed_size, expected_decompressed_size);
+		  decompressed_size =
+		    LZ4_decompress_safe (new_, decompressed_string, compressed_size, expected_decompressed_size);
 		  if (decompressed_size < 0)
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZ4_DECOMPRESS_FAIL, 0);
@@ -15884,7 +15886,7 @@ pr_get_size_and_write_string_to_buffer (struct or_buf *buf, char *val_p, DB_VALU
   /* Step 1 : Compress, if possible, the dbvalue */
   /* Alloc memory for the compressed string */
   compress_buffer_size = LZ4_compressBound (str_length);
-  compressed_string = (char*) malloc (compress_buffer_size);
+  compressed_string = (char *) malloc (compress_buffer_size);
   if (compressed_string == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, compress_buffer_size);
@@ -16111,11 +16113,13 @@ pr_write_uncompressed_string_to_buffer (OR_BUF * buf, const char *string, int si
  *
  */
 int
-pr_data_compress_string (const char *string, int str_length, char *compressed_string, int compress_buffer_size , int *compressed_length)
+pr_data_compress_string (const char *string, int str_length, char *compressed_string, int compress_buffer_size,
+			 int *compressed_length)
 {
   int compressed_length_local = 0;
 
-  assert (string != NULL && compressed_string != NULL && compressed_length != NULL && str_length >= 0 && compress_buffer_size >= 0);
+  assert (string != NULL && compressed_string != NULL && compressed_length != NULL && str_length >= 0
+	  && compress_buffer_size >= 0);
 
   if (!OR_IS_STRING_LENGTH_COMPRESSABLE (str_length))
     {

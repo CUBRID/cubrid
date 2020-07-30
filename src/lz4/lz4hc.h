@@ -31,6 +31,8 @@
    - LZ4 source repository : https://github.com/lz4/lz4
    - LZ4 public forum : https://groups.google.com/forum/#!forum/lz4c
 */
+
+// *INDENT-OFF*
 #ifndef LZ4_HC_H_19834876238432
 #define LZ4_HC_H_19834876238432
 
@@ -435,3 +437,4 @@ LZ4LIB_STATIC_API void LZ4_attach_HC_dictionary(
 
 #endif   /* LZ4_HC_SLO_098092834 */
 #endif   /* LZ4_HC_STATIC_LINKING_ONLY */
+// *INDENT-ON*

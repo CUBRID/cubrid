@@ -33,7 +33,6 @@
 */
 /* note : lz4hc is not an independent module, it requires lz4.h/lz4.c for proper compilation */
 
-
 /* *************************************
 *  Tuning Parameter
 ***************************************/
@@ -43,6 +42,8 @@
  *  in stack (0:fastest), or in heap (1:requires malloc()).
  *  Since workplace is rather large, heap mode is recommended.
  */
+
+// *INDENT-OFF*
 #ifndef LZ4HC_HEAPMODE
 #  define LZ4HC_HEAPMODE 1
 #endif
@@ -1536,3 +1537,4 @@ static int LZ4HC_compress_optimal ( LZ4HC_CCtx_internal* ctx,
      }
      return 0;
  }
+ // *INDENT-ON*

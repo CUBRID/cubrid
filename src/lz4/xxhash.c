@@ -49,6 +49,8 @@
  * See http://stackoverflow.com/a/32095106/646947 for details.
  * Prefer these methods in priority order (0 > 1 > 2)
  */
+
+// *INDENT-OFF*
 #ifndef XXH_FORCE_MEMORY_ACCESS   /* can be defined externally, on command line for example */
 #  if defined(__GNUC__) && ( defined(__ARM_ARCH_6__) || defined(__ARM_ARCH_6J__) \
                         || defined(__ARM_ARCH_6K__) || defined(__ARM_ARCH_6Z__) \
@@ -1028,3 +1030,4 @@ XXH_PUBLIC_API XXH64_hash_t XXH64_hashFromCanonical(const XXH64_canonical_t* src
 }
 
 #endif  /* XXH_NO_LONG_LONG */
+// *INDENT-ON*
