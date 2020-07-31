@@ -9823,13 +9823,13 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  SET_EXPECTED_DOMAIN (arg2, d);
 	  pt_preset_hostvar (parser, arg2);
 	}
-      if (PT_IS_VALUE_NODE (arg2) && arg1->type_enum != arg2->type_enum)
+/*      if (PT_IS_VALUE_NODE (arg2) && arg1->type_enum != arg2->type_enum)
 	{
 	  if (pt_coerce_value_explicit (parser, arg2, arg2, arg1_type, arg1->data_type) != NO_ERROR)
 	    {
 	      goto error;
 	    }
-	}
+	}*/
       break;
 
     case PT_LIKE_ESCAPE:
