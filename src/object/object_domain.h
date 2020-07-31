@@ -457,8 +457,7 @@ extern "C"
 					 bool implicit_coercion);
 
   extern TP_DOMAIN_STATUS tp_value_cast_ex (const DB_VALUE * src, DB_VALUE * dest,
-							 const TP_DOMAIN * desired_domain, bool implicit_coercion,
-							 bool force);
+					    const TP_DOMAIN * desired_domain, bool implicit_coercion, bool force);
 
   extern TP_DOMAIN_STATUS tp_value_cast_preserve_domain (const DB_VALUE * src, DB_VALUE * dest,
 							 const TP_DOMAIN * desired_domain, bool implicit_coercion,

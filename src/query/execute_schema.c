@@ -10829,8 +10829,8 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
       attr_chg_properties->p[P_TYPE] &= ~ATT_CHG_PROPERTY_UNCHANGED;
 
       if (TP_IS_CHAR_BIT_TYPE (TP_DOMAIN_TYPE (attr_db_domain))
-	  && (TP_IS_CHAR_TYPE(TP_DOMAIN_TYPE (attr_db_domain)) == TP_IS_CHAR_TYPE(TP_DOMAIN_TYPE (att->domain))
-	  || (TP_IS_BIT_TYPE(TP_DOMAIN_TYPE (attr_db_domain)) == TP_IS_BIT_TYPE(TP_DOMAIN_TYPE (att->domain)))))
+	  && (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (attr_db_domain)) == TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (att->domain))
+	      || (TP_IS_BIT_TYPE (TP_DOMAIN_TYPE (attr_db_domain)) == TP_IS_BIT_TYPE (TP_DOMAIN_TYPE (att->domain)))))
 	{
 	  if (tp_domain_match (attr_db_domain, att->domain, TP_STR_MATCH) != 0)
 	    {
