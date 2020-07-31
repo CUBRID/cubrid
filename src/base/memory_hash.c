@@ -1479,6 +1479,7 @@ mht_put_orderly (MHT_TABLE * ht, const void *key, void *data)
   assert (ht != NULL && key != NULL);
   return mht_put_orderly_internal (ht, key, data, MHT_OPT_INSERT_ONLY);
 }
+
 /*
  * mht_put_if_not_exists - insert only if the same key not exists.
  *   return: Return existing data if duplicated key found,
