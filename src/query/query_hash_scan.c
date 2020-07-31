@@ -298,12 +298,7 @@ qdata_copy_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key, REGU_VAR
       new_key->val_count = key->val_count;
       for (i = 0; i < key->val_count; i++)
 	{
-	  rc = fetch_peek_dbval (thread_p, &probe_regu_list->value, vd, NULL, NULL, NULL, &probe_val);
-	  if (rc != NO_ERROR)
-	    {
-	      return NULL;
-	    }
-	  vtype1 = DB_VALUE_DOMAIN_TYPE (probe_val);
+	  vtype1 = REGU_VARIABLE_GET_TYPE (probe_regu_list->value);
 	  vtype2 = DB_VALUE_DOMAIN_TYPE (key->values[i]);
 
 	  if (vtype1 != vtype2)
