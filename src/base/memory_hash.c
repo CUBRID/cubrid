@@ -104,6 +104,7 @@ static int mht_rehash (MHT_TABLE * ht);
 
 static const void *mht_put_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt);
 static const void *mht_put2_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt);
+static const void *mht_put_orderly_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt);
 
 static unsigned int mht_get_shiftmult32 (unsigned int key, const unsigned int ht_size);
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -1472,6 +1473,12 @@ mht_put_new (MHT_TABLE * ht, const void *key, void *data)
   return mht_put_internal (ht, key, data, MHT_OPT_INSERT_ONLY);
 }
 
+const void *
+mht_put_orderly (MHT_TABLE * ht, const void *key, void *data)
+{
+  assert (ht != NULL && key != NULL);
+  return mht_put_orderly_internal (ht, key, data, MHT_OPT_INSERT_ONLY);
+}
 /*
  * mht_put_if_not_exists - insert only if the same key not exists.
  *   return: Return existing data if duplicated key found,
@@ -2289,3 +2296,70 @@ mht_get_linear_hash32 (const unsigned int key, const unsigned int ht_size)
   return ret;
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
+
+/*
+ * mht_put_orderly_internal
+ *   internal function for mht_put_orderly()
+ *   put data in the order.
+ *   eliminates unnecessary logic to improve performance for hash list scan.
+ *
+ *   return: key
+ *   ht(in/out): hash table (set as a side effect)
+ *   key(in): hashing key
+ *   data(in): data associated with hashing key
+ *   opt(in): options;
+ */
+static const void *
+mht_put_orderly_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt)
+{
+  unsigned int hash;
+  HENTRY_PTR hentry;
+
+  assert (ht != NULL && key != NULL);
+
+  /*
+   * Hash the key and make sure that the return value is between 0 and size
+   * of hash table
+   */
+  hash = (*ht->hash_func) (key, ht->size);
+  if (hash >= ht->size)
+    {
+      hash %= ht->size;
+    }
+
+  /* This is a new entry */
+  if (ht->nprealloc_entries > 0)
+    {
+      ht->nprealloc_entries--;
+      hentry = ht->prealloc_entries;
+      ht->prealloc_entries = ht->prealloc_entries->next;
+    }
+  else
+    {
+      hentry = (HENTRY_PTR) db_fixed_alloc (ht->heap_id, DB_SIZEOF (HENTRY));
+      if (hentry == NULL)
+	{
+	  return NULL;
+	}
+    }
+
+  hentry->key = key;
+  hentry->data = data;
+
+  /* To input in order, use the act_next variable as tail. */
+  /* lru and act-related logics are not used for hash list scan, so delete them. */
+  if (ht->table[hash] == NULL)
+    {
+      ht->table[hash] = hentry;
+    }
+  else
+    {
+      ht->table[hash]->act_next->next = hentry;
+      ht->ncollisions++;
+    }
+  hentry->next = NULL;
+  ht->table[hash]->act_next = hentry;
+  ht->nentries++;
+
+  return key;
+}

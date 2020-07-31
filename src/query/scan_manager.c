@@ -7761,7 +7761,10 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  return S_ERROR;
 	}
       /* add to hash table */
-      mht_put_new (llsidp->hlsid.hash_table, (void *) new_key, (void *) new_value);
+      if (mht_put_orderly (llsidp->hlsid.hash_table, (void *) new_key, (void *) new_value) == NULL)
+	{
+	  return S_ERROR;
+	}
     }
 
   return qp_scan;
