@@ -1,7 +1,7 @@
 defaults: &defaults
   working_directory: /home
   docker:
-    - image: cubridci/cubridci:10.2 
+    - image: cubridci/cubridci:10.2
 
 test_defaults: &test_defaults
   steps:
