@@ -8216,7 +8216,6 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
       switch (tbl_opt->info.table_option.option)
 	{
 	case PT_TABLE_OPTION_REUSE_OID:
-	case PT_TABLE_OPTION_DONT_REUSE_OID:
 	  {
 	    if (found_reuse_oid_option)
 	      {
@@ -8227,17 +8226,26 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    else
 	      {
 		found_reuse_oid_option = true;
-		if (tbl_opt->info.table_option.option == PT_TABLE_OPTION_REUSE_OID)
-		  {
-		    reuse_oid = true;
-		  }
-		else
-		  {
-		    reuse_oid = false;
-		  }
+		reuse_oid = true;
 	      }
 	  }
 	  break;
+
+        case PT_TABLE_OPTION_DONT_REUSE_OID:
+          {
+            if (found_reuse_oid_option)
+              {
+                PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DUPLICATE_TABLE_OPTION,
+                            parser_print_tree (parser, tbl_opt));
+                return;
+              }
+            else
+              {
+                found_reuse_oid_option = true;
+                reuse_oid = false;
+              }
+          }
+          break;
 
 	case PT_TABLE_OPTION_AUTO_INCREMENT:
 	  {
