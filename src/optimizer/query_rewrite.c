@@ -1632,7 +1632,7 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 		      continue;	/* give up */
 		    }
 		  db_make_null (&dbval_res);
-		  if (tp_value_cast (dbval, &dbval_res, dom, false) != DOMAIN_COMPATIBLE)
+		  if (tp_value_cast_force (dbval, &dbval_res, dom, false) != DOMAIN_COMPATIBLE)
 		    {
 		      PT_ERRORmf2 (parser, arg2, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
 				   pt_short_print (parser, arg2), pt_show_type_enum (arg1->type_enum));
