@@ -7975,6 +7975,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
   error = tde_get_data_keys_from_server ();
   if (error == NO_ERROR)
     {
+      tde_Cipher.is_loaded = true;
       error = la_start_dk_sharing ();
       if (error != NO_ERROR)
 	{
