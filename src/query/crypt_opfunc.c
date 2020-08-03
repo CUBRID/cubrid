@@ -40,6 +40,7 @@
 #include <arpa/inet.h>
 #endif
 
+#include "CRC.h"
 #include "thread_compat.hpp"
 #include "porting.h"
 #include "error_code.h"
@@ -712,52 +713,19 @@ crypt_md5_buffer_hex (const char *buffer, size_t len, char *resblock)
 
 /*
  * crypt_crc32() -
- *   return: error code
- *   thread_p(in):
+ *   return:
  *   src(in): original message
  *   src_len(in): length of original message
  *   dest(out): crc32 result
  * Note:
  */
-int
-crypt_crc32 (THREAD_ENTRY * thread_p, const char *src, int src_len, int *dest)
+void
+crypt_crc32 (const char *src, int src_len, int *dest)
 {
-  int hash_length;
-  char *hash_result;
-  int error_status = NO_ERROR;
-
-  assert (src != NULL);
-
-#if defined (SERVER_MODE)
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-#endif // SERVER_MODE
-
-  if (init_gcrypt () != NO_ERROR)
-    {
-      return ER_ENCRYPTION_LIB_FAILED;
-    }
-
-  hash_length = gcry_md_get_algo_dlen (GCRY_MD_CRC32);
-  hash_result = (char *) db_private_alloc (thread_p, hash_length);
-  if (hash_result == NULL)
-    {
-      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
-      goto exit_and_free;
-    }
-
-  gcry_md_hash_buffer (GCRY_MD_CRC32, hash_result, src, src_len);
-
-  *dest = htonl (*(UINT32 *) hash_result);
-
-exit_and_free:
-  if (hash_result != NULL)
-    {
-      db_private_free_and_init (thread_p, hash_result);
-    }
-  return error_status;
+  assert (src != NULL && dest != NULL);
+// *INDENT-OFF*
+  *dest = CRC::Calculate (src, src_len, CRC::CRC_32 ());
+// *INDENT-ON*
 }
 
 /*
@@ -774,9 +742,8 @@ crypt_generate_random_bytes (char *dest, int length)
 
   if (RAND_bytes ((unsigned char *) dest, length) != 1)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1,
-	      crypt_lib_fail_info[CRYPT_LIB_CRYPT_ERR]);
-      return ER_ENCRYPTION_LIB_FAILED;   
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_CRYPT_ERR]);
+      return ER_ENCRYPTION_LIB_FAILED;
     }
 
   return NO_ERROR;
