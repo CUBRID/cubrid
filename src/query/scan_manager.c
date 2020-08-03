@@ -4774,22 +4774,25 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
     case S_LIST_SCAN:
       llsidp = &scan_id->s.llsid;
-      /* clear hash list scan table */
-      if (llsidp->hlsid.hash_table != NULL)
+      if (llsidp->hlsid.hash_list_scan_yn)
 	{
+	  /* clear hash list scan table */
+	  if (llsidp->hlsid.hash_table != NULL)
+	    {
 #if 1
-	  (void) mht_dump (thread_p, stdout, llsidp->hlsid.hash_table, -1, qdata_print_hash_scan_entry, NULL);
-	  printf ("temp file : tuple count = %d, file_size = %dK\n", llsidp->list_id->tuple_cnt,
-		  llsidp->list_id->page_cnt * 16);
+	      (void) mht_dump (thread_p, stdout, llsidp->hlsid.hash_table, -1, qdata_print_hash_scan_entry, NULL);
+	      printf ("temp file : tuple count = %d, file_size = %dK\n", llsidp->list_id->tuple_cnt,
+		      llsidp->list_id->page_cnt * 16);
 #endif
-	  mht_clear (llsidp->hlsid.hash_table, qdata_free_hscan_entry, (void *) thread_p);
-	  mht_destroy (llsidp->hlsid.hash_table);
-	}
-      /* free temp keys and values */
-      if (llsidp->hlsid.temp_key != NULL)
-	{
-	  qdata_free_hscan_key (thread_p, llsidp->hlsid.temp_key);
-	  llsidp->hlsid.temp_key = NULL;
+	      mht_clear (llsidp->hlsid.hash_table, qdata_free_hscan_entry, (void *) thread_p);
+	      mht_destroy (llsidp->hlsid.hash_table);
+	    }
+	  /* free temp keys and values */
+	  if (llsidp->hlsid.temp_key != NULL)
+	    {
+	      qdata_free_hscan_key (thread_p, llsidp->hlsid.temp_key);
+	      llsidp->hlsid.temp_key = NULL;
+	    }
 	}
       break;
 
