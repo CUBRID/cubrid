@@ -8231,21 +8231,21 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	  }
 	  break;
 
-        case PT_TABLE_OPTION_DONT_REUSE_OID:
-          {
-            if (found_reuse_oid_option)
-              {
-                PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DUPLICATE_TABLE_OPTION,
-                            parser_print_tree (parser, tbl_opt));
-                return;
-              }
-            else
-              {
-                found_reuse_oid_option = true;
-                reuse_oid = false;
-              }
-          }
-          break;
+	case PT_TABLE_OPTION_DONT_REUSE_OID:
+	  {
+	    if (found_reuse_oid_option)
+	      {
+		PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DUPLICATE_TABLE_OPTION,
+			    parser_print_tree (parser, tbl_opt));
+		return;
+	      }
+	    else
+	      {
+		found_reuse_oid_option = true;
+		reuse_oid = false;
+	      }
+	  }
+	  break;
 
 	case PT_TABLE_OPTION_AUTO_INCREMENT:
 	  {
