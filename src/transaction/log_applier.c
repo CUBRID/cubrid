@@ -8540,7 +8540,6 @@ la_process_dk_request (void *arg)
   char *bufptr;
   int nbytes, len;
   int error = NO_ERROR;
-  bool no_error = true;
 
   server_sockfd = la_Info.tde_sock_for_dks;
 
@@ -8564,27 +8563,20 @@ la_process_dk_request (void *arg)
 	  len -= nbytes;
 	}
 
-      if (memcmp (buf, la_Info.log_path, PATH_MAX) != 0)
-	{
-	  /* wrong request */
-	  error = ER_FAILED;	/* TODO maybe ER_TDE_WRONG_DK_REQUEST */
-	  goto send_msg;
-	}
-
-      /* the request is valid */
       if (!tde_Cipher.is_loaded)
 	{
-	  /* If the client is restarted, it keeps the data keys being used and socket for copylogdb
-	   * because data keys are never changed. */
-	  error = tde_get_data_keys_from_server ();
-	  if (error != NO_ERROR)
+	  error = ER_TDE_CIPHER_IS_NOT_LOADED;
+	}
+      else
+	{
+	  /* validate the msg from copylogdb */
+	  if (memcmp (buf, la_Info.log_path, PATH_MAX) != 0)
 	    {
-	      goto send_msg;
+	      /* wrong request */
+	      error = ER_FAILED;	/* TODO maybe ER_TDE_WRONG_DK_REQUEST */
 	    }
-	  tde_Cipher.is_loaded = true;
 	}
 
-    send_msg:
       /* send error message */
       bufptr = (char *) &error;
       len = sizeof (error);
@@ -8602,7 +8594,7 @@ la_process_dk_request (void *arg)
 	}
 
       /* send data keys */
-      if (no_error)
+      if (error == NO_ERROR)
 	{
 	  bufptr = (char *) &tde_Cipher.data_keys;
 	  len = sizeof (TDE_DATA_KEY_SET);

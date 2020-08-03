@@ -175,7 +175,7 @@ static int logwr_flush_all_append_pages (void);
 static int logwr_archive_active_log (void);
 static int logwr_flush_bgarv_header_page (void);
 static void logwr_reinit_copylog (void);
-static int logwr_request_tde_dks_from_la (void);
+static int logwr_load_tde (void);
 
 /*
  * logwr_to_physical_pageid -
@@ -840,6 +840,7 @@ logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
   const TDE_ALGORITHM tde_algo = (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_DEFAULT_ALGORITHM);
   int error = NO_ERROR;
   int i;
+  int tde_load_retries = 3;
 
 #if !defined (CS_MODE)
   write_mode = dwb_is_created () == true ? FILEIO_WRITE_NO_COMPENSATE_WRITE : FILEIO_WRITE_DEFAULT_WRITE;
@@ -887,12 +888,19 @@ logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
 
 		  while (!tde_Cipher.is_loaded)
 		    {
-		      if (logwr_request_tde_dks_from_la () != NO_ERROR)
+		      error = logwr_load_tde ();
+		      if (error != NO_ERROR)
 			{
+			  ASSERT_ERROR ();
+			  if (tde_load_retries-- > 0)
+			    {
+			      //TODO er_set NOTIFICATION
+			      sleep (1);
+			      er_clear ();
+			      continue;
+			    }
 			  return NULL;
 			}
-		      sleep (1);
-		      // TODO handle general error and connection error
 		    }
 
 		  if (tde_encrypt_log_page (log_pgptr, buf_pgptr, tde_algo) != NO_ERROR)
@@ -930,6 +938,8 @@ logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
 	    }
 	}
 
+      tde_load_retries = 3;
+
       /* 2. active write */
       phy_pageid = logwr_to_physical_pageid (fpageid);
       for (i = 0; i < npages; i++)
@@ -941,12 +951,19 @@ logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
 
 	      while (!tde_Cipher.is_loaded)
 		{
-		  if (logwr_request_tde_dks_from_la () != NO_ERROR)
+		  error = logwr_load_tde ();
+		  if (error != NO_ERROR)
 		    {
+		      ASSERT_ERROR ();
+		      if (tde_load_retries-- > 0)
+			{
+			  //TODO er_set NOTIFICATION
+			  sleep (1);
+			  er_clear ();
+			  continue;
+			}
 		      return NULL;
 		    }
-		  sleep (1);
-		  // TODO handle general error and connection error
 		}
 
 	      if (tde_encrypt_log_page (log_pgptr, buf_pgptr, tde_algo) != NO_ERROR)
@@ -1801,7 +1818,7 @@ logwr_reinit_copylog (void)
 }
 
 static int
-logwr_request_tde_dks_from_la (void)
+logwr_load_tde (void)
 {
   int client_len;
   int client_sockfd;
