@@ -671,15 +671,6 @@ la_log_io_read (char *vname, int vdes, void *io_pgptr, LOG_PHY_PAGEID pageid, in
     {
       return err;
     }
-
-  if (LOG_IS_PAGE_TDE_ENCRYPTED (log_pgptr))
-    {
-      err = tde_decrypt_log_page (log_pgptr, log_pgptr, logwr_get_tde_algorithm (log_pgptr));
-      if (err != NO_ERROR)
-	{
-	  return err;
-	}
-    }
   return err;
 }
 
@@ -1109,10 +1100,22 @@ la_log_fetch (LOG_PAGEID pageid, LA_CACHE_BUFFER * cache_buffer)
 	  error =
 	    la_log_io_read (la_Info.act_log.path, la_Info.act_log.log_vdes, &cache_buffer->logpage, phy_pageid,
 			    la_Info.act_log.db_logpagesize);
+
 	  if (error != NO_ERROR)
 	    {
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LOG_READ, 3, pageid, phy_pageid, la_Info.act_log.path);
 	      return ER_LOG_READ;
+	    }
+
+	  if (LOG_IS_PAGE_TDE_ENCRYPTED (&cache_buffer->logpage))
+	    {
+	      error =
+		tde_decrypt_log_page (&cache_buffer->logpage, &cache_buffer->logpage,
+				      logwr_get_tde_algorithm (&cache_buffer->logpage));
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
 	    }
 	  cache_buffer->in_archive = false;
 	}
@@ -7195,6 +7198,15 @@ check_applied_info_end:
 	  error =
 	    la_log_io_read (la_Info.act_log.path, la_Info.act_log.log_vdes, logpage, la_log_phypageid (page_num),
 			    la_Info.act_log.db_logpagesize);
+
+	  if (error != NO_ERROR && LOG_IS_PAGE_TDE_ENCRYPTED (logpage))
+	    {
+	      error = tde_decrypt_log_page (logpage, logpage, logwr_get_tde_algorithm (logpage));
+	      if (error != NO_ERROR)
+		{
+		  goto check_copied_info_end;
+		}
+	    }
 	}
 
       if (error != NO_ERROR)
