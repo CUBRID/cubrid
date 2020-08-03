@@ -1111,7 +1111,7 @@ static bool prm_qo_dump_default = false;
 static unsigned int prm_qo_dump_flag = 0;
 
 #if !defined (SERVER_MODE) && !defined (SA_MODE)
-#define CSS_MAX_CLIENT_COUNT 2000
+#define CSS_MAX_CLIENT_COUNT 4000
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 int PRM_CSS_MAX_CLIENTS = 100;
 static int prm_css_max_clients_default = 100;
