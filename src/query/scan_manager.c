@@ -7957,13 +7957,15 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
  *      2. list file size check
  *      3. regu_list_build, regu_list_probe is not null
  *      4. The number of probe regu_var and build regu match
- *      5. list file from dptr is not allowed <== need to check
+ *      5. type of regu var is not oid && vobj
+ *      6. list file from dptr is not allowed <== need to check
 */
 static bool
 check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt)
 {
-  int build_cnt, probe_cnt;
+  int build_cnt;
   regu_variable_list_node *build, *probe;
+  DB_TYPE vtype1, vtype2;
 
   /* count of tuple of list file > 0 */
   if (llsidp->list_id->tuple_cnt <= 0)
@@ -7980,25 +7982,36 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt)
     {
       return false;
     }
-  /* The number of probe regu_var and build regu match */
+
   build = llsidp->hlsid.build_regu_list;
   probe = llsidp->hlsid.probe_regu_list;
 
-  for (build_cnt = 0; build; build_cnt++)
+  for (build_cnt = 0; build && probe; build_cnt++)
     {
+      /* type of regu var is not oid && vobj */
+      /* This is the case when type coercion is impossible. so use list scan */
+      /* In the list scan, Vobj is converted to oid for comparison at tp_value_compare_with_error(). */
+      vtype1 = REGU_VARIABLE_GET_TYPE (probe->value);
+      vtype2 = REGU_VARIABLE_GET_TYPE (build->value);
+
+      if (((vtype1 == DB_TYPE_OBJECT || vtype1 == DB_TYPE_VOBJ) && vtype2 == DB_TYPE_OID) ||
+	  ((vtype2 == DB_TYPE_OBJECT || vtype2 == DB_TYPE_VOBJ) && vtype1 == DB_TYPE_OID))
+	{
+	  return false;
+	}
       build = build->next;
-    }
-  for (probe_cnt = 0; probe; probe_cnt++)
-    {
       probe = probe->next;
     }
-  if (build_cnt != probe_cnt)
+  /* The number of probe regu_var and build regu match */
+  if (build != NULL || probe != NULL)
     {
       return false;
     }
   *val_cnt = build_cnt;
 
-  /* to_do : 5. list file from dptr is not allowed <== need to check */
+
+
+  /* to_do : 6. list file from dptr is not allowed <== need to check */
 
   return true;
 }
