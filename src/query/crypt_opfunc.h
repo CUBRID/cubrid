@@ -46,7 +46,7 @@ extern char *str_to_hex (THREAD_ENTRY * thread_p, const char *src, int src_len, 
 			 HEX_LETTERCASE lettercase);
 extern void str_to_hex_prealloced (const char *src, int src_len, char *dest, int dest_len, HEX_LETTERCASE lettercase);
 
-extern int crypt_generate_random_bytes (THREAD_ENTRY * thread_p, char *dest, int length);
+extern int crypt_generate_random_bytes (char *dest, int length);
 extern int crypt_crc32 (THREAD_ENTRY * thread_p, const char *src, int src_len, int *dest);
 
 #endif

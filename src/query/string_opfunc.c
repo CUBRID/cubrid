@@ -27150,7 +27150,7 @@ db_guid (THREAD_ENTRY * thread_p, DB_VALUE * result)
   db_make_null (result);
 
   /* Generate random bytes */
-  error_code = crypt_generate_random_bytes (thread_p, guid_bytes, GUID_STANDARD_BYTES_LENGTH);
+  error_code = crypt_generate_random_bytes (guid_bytes, GUID_STANDARD_BYTES_LENGTH);
 
   if (error_code != NO_ERROR)
     {
