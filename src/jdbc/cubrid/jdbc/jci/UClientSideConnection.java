@@ -444,6 +444,13 @@ public class UClientSideConnection extends UConnection {
 			oldSessionId = is.readInt();
 		}
 
+		if (protoVersionIsAbove(PROTOCOL_V7)) {
+			setIsolationLevelMin(CUBRIDIsolationLevel.TRAN_READ_COMMITTED);
+			setIsolationLevelMax(CUBRIDIsolationLevel.TRAN_SERIALIZABLE);
+		} else {
+			setIsolationLevelMin(CUBRIDIsolationLevel.TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE);
+			setIsolationLevelMax(CUBRIDIsolationLevel.TRAN_SERIALIZABLE);
+		}
 	}
 
 	private boolean setActiveHost(int hostId) throws UJciException {
