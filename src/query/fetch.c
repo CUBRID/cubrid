@@ -2353,7 +2353,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	    }
 	  else
 	    {
-	      dom_status = tp_value_cast_ex (peek_right, arithptr->value, arithptr->domain, false, true);
+	      dom_status = tp_value_cast_force (peek_right, arithptr->value, arithptr->domain, false);
 	    }
 
 	  if (dom_status != DOMAIN_COMPATIBLE)

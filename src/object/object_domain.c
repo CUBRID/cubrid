@@ -10189,16 +10189,11 @@ tp_value_cast (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_
 }
 
 TP_DOMAIN_STATUS
-tp_value_cast_ex (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain, bool implicit_coercion,
-		  bool force)
+tp_value_cast_force (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain, bool implicit_coercion)
 {
   TP_COERCION_MODE mode;
 
-  mode = (implicit_coercion ? TP_IMPLICIT_COERCION : TP_EXPLICIT_COERCION);
-  if (force)
-    {
-      mode = TP_FORCE_COERCION;
-    }
+  mode = TP_FORCE_COERCION;
   return tp_value_cast_internal (src, dest, desired_domain, mode, true, false);
 }
 
