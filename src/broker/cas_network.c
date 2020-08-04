@@ -312,10 +312,6 @@ net_read_stream (SOCKET sock_fd, char *buf, int size)
 
       read_len = read_buffer (sock_fd, buf, size);
 
-      if (ssl_client && read_len == 0)
-	{
-	  continue;
-	}
       if (read_len <= 0)
 	{
 #ifdef _DEBUG
@@ -611,7 +607,7 @@ retry_poll:
     }
 #endif /* ASYNC_MODE */
 
-  if ((!ssl_client && read_len <= 0) || (ssl_client && read_len < 0))
+  if (read_len <= 0)
     {
       net_error_flag = 1;
     }
