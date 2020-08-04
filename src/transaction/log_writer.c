@@ -957,7 +957,7 @@ logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
 		      ASSERT_ERROR ();
 		      if (tde_load_retries-- > 0)
 			{
-			  //TODO er_set NOTIFICATION
+			  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_LOAD_FAIL, 0);
 			  sleep (1);
 			  er_clear ();
 			  continue;
