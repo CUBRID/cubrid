@@ -325,8 +325,8 @@ struct fileio_backup_buffer
   char current_path[PATH_MAX];
 
   int dtype;			/* Set to the type (dir, file, dev) */
-  int iosize;			/* Optimal I/O pagesize for backup device */
-  int count;			/* Number of current buffered bytes */
+  INT64 iosize;			/* Optimal I/O pagesize for backup device */
+  INT64 count;			/* Number of current buffered bytes */
   INT64 voltotalio;		/* Total number of bytes that have been either read or written (current volume) */
   INT64 alltotalio;		/* total for all volumes */
   char *buffer;			/* Pointer to the buffer */
