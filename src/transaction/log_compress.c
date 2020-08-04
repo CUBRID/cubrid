@@ -173,7 +173,7 @@ log_unzip (LOG_ZIP * log_unzip, LOG_ZIP_SIZE_T length, void *data)
 
   unzip_len =
     LZ4_decompress_safe ((const char *) data + sizeof (LOG_ZIP_SIZE_T), (char *) log_unzip->log_data, length, buf_size);
-  if (unzip_len > 0)
+  if (unzip_len >= 0)
     {
       log_unzip->data_length = (LOG_ZIP_SIZE_T) unzip_len;
       /* if the uncompressed data length != original length, then it means that uncompression failed */
