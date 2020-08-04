@@ -82,6 +82,8 @@ extern bool is_ssl_data_ready (int sock_fd);
 
 #define READ_FROM_NET(sd, buf, size) ssl_client ? cas_ssl_read (sd, buf, size) : \
 	READ_FROM_SOCKET(sd, buf, size)
+#define WRITE_TO_NET(sd, buf, size) ssl_client ? cas_ssl_write (sd, buf, size) : \
+       WRITE_TO_SOCKET(sd, buf, size)
 
 SOCKET
 #if defined(WINDOWS)
@@ -286,7 +288,7 @@ net_write_stream (SOCKET sock_fd, const char *buf, int size)
     {
       int write_len;
 
-      write_len = ssl_client ? cas_ssl_write (sock_fd, buf, size) : write_buffer (sock_fd, buf, size);
+      write_len = write_buffer (sock_fd, buf, size);
 
       if (write_len <= 0)
 	{
@@ -665,7 +667,7 @@ retry_poll:
       else if (po[0].revents & POLLOUT)
 	{
 #endif /* ASYNC_MODE */
-	  write_len = WRITE_TO_SOCKET (sock_fd, buf, size);
+	  write_len = WRITE_TO_NET (sock_fd, buf, size);
 #if defined(ASYNC_MODE)
 	}
     }
