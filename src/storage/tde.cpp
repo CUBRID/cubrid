@@ -1140,7 +1140,7 @@ tde_dump_mks (int vdes, bool print_value)
 	{
 	  cnt_valid++;
 	  ctime_r (&item.created_time, ctime_buf);
-	  printf ("Index [%ld] ", TDE_MK_FILE_ITEM_INDEX (location));
+	  printf ("Key Index: %ld ", TDE_MK_FILE_ITEM_INDEX (location));
 	  printf ("created on %s", ctime_buf);
 	  if (print_value)
 	    {
@@ -1154,8 +1154,7 @@ tde_dump_mks (int vdes, bool print_value)
   printf ("\n");
 
 exit:
-  printf ("The number of valid keys: %d\n", cnt_valid);
-  printf ("The number of invalid keys: %d\n", cnt_invalid);
+  printf ("The number of keys: %d\n", cnt_valid);
 
 #if !defined(WINDOWS)
   restore_signals (old_mask);

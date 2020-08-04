@@ -1199,17 +1199,22 @@ $set 57 MSGCAT_UTIL_SET_TDE
 22 KEY_INDEX has to be greater than or equal to 0\n
 23 One of key operations(-s, -c, -d, -g) has to be given\n
 24 Only one of key opersations (-s, -c, -d, -g) has to be given\n
-25 It fails to get the key information set on the database\n
+25 It has failed to get the key information set on the database\n
+26 Trying to change the key from the key (index: %1$d) to the key (index: %2$d)..\n
+27 The key has been changed from the key (index: %1$d) to the eky (index: %2$d)\n
+28 The key set on the database cannot be deleted\n
+29 The key (index: %1$d) has been deleted\n
+30 A new key has been generated - key index: %1$d created on %2$s
 60 \
 tde: Transparent Data Encryption (TDE) management\n\
-usage: %1$s tde OPERATION [OPTION] database-name\n\
+usage: %1$s tde OPERATION(-s|-n|-d|-c) [OPTION] database-name\n\
 \n\
 valid options:\n\
   -S, --SA-mode                stand-alone mode execution\n\
   -C, --CS-mode                client-server mode execution\n\
   -p, --dba-password=PASS      password of the DBA user; will prompt if don't specify\n\
   -v, --print-value            print key value when using -s, -n option\n\
-OPERATIONs:\n\
+OPERATIONs: one of the operations must be given, and they are exclusive \n\
     -s, --show_keys               print key information set on the database and the key file (_keys)\n\
     -n, --generate-new-key        generate a new key in the key file (_keys)\n\
     -d, --delete-key=KEY_INDEX    delete a key in the key file (_keys)\n\

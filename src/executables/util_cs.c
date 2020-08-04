@@ -3640,32 +3640,36 @@ tde (UTIL_FUNCTION_ARG * arg)
   if (!gen_op && !show_op && change_idx == -1 && delete_idx == -1)
     {
       /* One of opertion has to be given */
-      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_USE_OP));
+      PRINT_AND_LOG_ERR_MSG ("FAILURE: %s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_USE_OP));
       goto error_exit;
     }
 
   /* Checking for exlusiveness for operations  */
   if (gen_op && (show_op || change_idx != -1 || delete_idx != -1))
     {
-      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_USE_OP_EXCLUSIVE));
+      PRINT_AND_LOG_ERR_MSG ("FAILURE: %s",
+			     msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_USE_OP_EXCLUSIVE));
       goto error_exit;
     }
   if (show_op && (gen_op || change_idx != -1 || delete_idx != -1))
     {
-      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_USE_OP_EXCLUSIVE));
+      PRINT_AND_LOG_ERR_MSG ("FAILURE: %s",
+			     msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_USE_OP_EXCLUSIVE));
       goto error_exit;
     }
   if (change_idx != -1)
     {
       if (gen_op || show_op || delete_idx != -1)
 	{
-	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_USE_OP_EXCLUSIVE));
+	  PRINT_AND_LOG_ERR_MSG ("FAILURE: %s",
+				 msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_USE_OP_EXCLUSIVE));
 	  goto error_exit;
 	}
       /* Checking input range */
       if (change_idx < 0)
 	{
-	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_KEYINDEX_BOUND));
+	  PRINT_AND_LOG_ERR_MSG ("FAILURE: %s",
+				 msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_KEYINDEX_BOUND));
 	  goto error_exit;
 	}
     }
@@ -3673,13 +3677,15 @@ tde (UTIL_FUNCTION_ARG * arg)
     {
       if (gen_op || show_op || change_idx != -1)
 	{
-	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_USE_OP_EXCLUSIVE));
+	  PRINT_AND_LOG_ERR_MSG ("FAILURE: %s",
+				 msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_USE_OP_EXCLUSIVE));
 	  goto error_exit;
 	}
       /* Checking input range */
       if (delete_idx < 0)
 	{
-	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_KEYINDEX_BOUND));
+	  PRINT_AND_LOG_ERR_MSG ("FAILURE: %s",
+				 msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_KEYINDEX_BOUND));
 	  goto error_exit;
 	}
     }
@@ -3769,6 +3775,8 @@ tde (UTIL_FUNCTION_ARG * arg)
     {
       unsigned char master_key[TDE_MASTER_KEY_LENGTH];
       int mk_index = -1;
+      time_t created_time = time (NULL);
+      char ctime_buf[CTIME_MAX];
 
       if (tde_create_mk (master_key) != NO_ERROR)
 	{
@@ -3776,13 +3784,15 @@ tde (UTIL_FUNCTION_ARG * arg)
 	  db_shutdown ();
 	  goto error_exit;
 	}
-      if (tde_add_mk (vdes, master_key, &mk_index, time (NULL)) != NO_ERROR)
+      if (tde_add_mk (vdes, master_key, &mk_index, created_time) != NO_ERROR)
 	{
 	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
 	  db_shutdown ();
 	  goto error_exit;
 	}
-      printf ("A new key has been generated - key index: %d \n", mk_index);
+      ctime_r (&created_time, ctime_buf);
+      printf ("SUCCESS: ");
+      printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_MK_GENERATED), mk_index, ctime_buf);
       if (print_val)
 	{
 	  printf ("Key: ");
@@ -3804,8 +3814,8 @@ tde (UTIL_FUNCTION_ARG * arg)
 	  ctime_r (&set_time, ctime_buf2);
 
 	  printf ("Key Index: %d\n", mk_index);
-	  printf ("Created time: %s", ctime_buf1);
-	  printf ("Set time: %s\n", ctime_buf2);
+	  printf ("Created on %s", ctime_buf1);
+	  printf ("Set     on %s", ctime_buf2);
 	}
       else
 	{
@@ -3825,7 +3835,6 @@ tde (UTIL_FUNCTION_ARG * arg)
       int prev_mk_idx;
       time_t created_time, set_time;
 
-
       if (tde_get_set_mk_info (&prev_mk_idx, &created_time, &set_time) != NO_ERROR)
 	{
 	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
@@ -3833,15 +3842,16 @@ tde (UTIL_FUNCTION_ARG * arg)
 	  goto error_exit;
 	}
 
-      printf ("Try to change the key from %d to %d..\n", prev_mk_idx, change_idx);
+      printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_MK_CHANGING), prev_mk_idx, change_idx);
       /* no need to check if the previous key exists or not. It is going to be checked on changing on server */
       if (tde_change_mk_on_server (change_idx) != NO_ERROR)
 	{
-	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	  PRINT_AND_LOG_ERR_MSG ("FAILURE: %s\n", db_error_string (3));
 	  db_shutdown ();
 	  goto error_exit;
 	}
-      printf ("The key has been changed from %d to %d\n", prev_mk_idx, change_idx);
+      printf ("SUCCESS: ");
+      printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_MK_CHANGED), prev_mk_idx, change_idx);
     }
   else if (delete_idx != -1)
     {
@@ -3850,23 +3860,26 @@ tde (UTIL_FUNCTION_ARG * arg)
 
       if (tde_get_set_mk_info (&mk_index, &created_time, &set_time) != NO_ERROR)
 	{
-	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	  PRINT_AND_LOG_ERR_MSG ("FAILURE: %s\n", db_error_string (3));
 	  db_shutdown ();
 	  goto error_exit;
 	}
       if (mk_index == delete_idx)
 	{
-	  PRINT_AND_LOG_ERR_MSG ("The key set on the database can't be deleted\n");
+	  PRINT_AND_LOG_ERR_MSG ("FAILURE: %s",
+				 msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE,
+						 TDE_MSG_MK_SET_ON_DATABASE_DELETE));
 	  db_shutdown ();
 	  goto error_exit;
 	}
       if (tde_delete_mk (vdes, delete_idx) != NO_ERROR)
 	{
-	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	  PRINT_AND_LOG_ERR_MSG ("FAILURE: %s\n", db_error_string (3));
 	  db_shutdown ();
 	  goto error_exit;
 	}
-      printf ("The Key[%d] has been deleted.\n", delete_idx);
+      printf ("SUCCESS: ");
+      printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_MK_DELETED), delete_idx);
     }
 
   db_shutdown ();
