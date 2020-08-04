@@ -495,7 +495,6 @@ set(HEAPLAYERS_DIR           ${CMAKE_SOURCE_DIR}/src/heaplayers)
 set(JDBC_DIR                 ${CMAKE_SOURCE_DIR}/src/jdbc)
 set(JSP_DIR                  ${CMAKE_SOURCE_DIR}/src/jsp)
 set(LOADDB_DIR               ${CMAKE_SOURCE_DIR}/src/loaddb)
-set(LZ4_DIR                  ${CMAKE_SOURCE_DIR}/src/lz4)    # LZ4 version 1.9.2
 set(MONITOR_DIR              ${CMAKE_SOURCE_DIR}/src/monitor)
 set(OBJECT_DIR               ${CMAKE_SOURCE_DIR}/src/object)
 set(ODBC_DIR                 ${CMAKE_SOURCE_DIR}/src/odbc)
@@ -526,7 +525,6 @@ include_directories(
   src/heaplayers
   src/jsp
   src/loaddb
-  src/lz4
   src/monitor
   src/object
   src/optimizer
@@ -1040,6 +1038,33 @@ if(UNIX)
 endif(UNIX)
 list(APPEND EP_LIBS ${LIBEDIT_LIBS})
 list(APPEND EP_INCLUDES ${LIBEDIT_INCLUDES})
+
+# LZ4
+#
+set(LZ4_TARGET lz4)
+if(WIN32)
+  externalproject_add(${LZ4_TARGET}
+    URL "https://github.com/lz4/lz4/releases/download/v1.9.2/lz4_win64_v1_9_2.zip"
+    CONFIGURE_COMMAND ""
+    BUILD_COMMAND ""
+    INSTALL_COMMAND ""
+  )
+  set(LZ4_INCLUDES ${CMAKE_BINARY_DIR}/external/Source/lz4/include)
+  set(LZ4_LIBS ${CMAKE_BINARY_DIR}/external/Source/lz4/dll/liblz4.dll.a)
+else()
+  externalproject_add(${LZ4_TARGET}
+    GIT_REPOSITORY https://github.com/lz4/lz4
+    GIT_TAG fdf2ef5             # https://github.com/lz4/lz4/releases/tag/v1.9.2
+    CONFIGURE_COMMAND ""        # no configure
+    BUILD_IN_SOURCE true        # lz4 Makefile is designed to run locally
+    BUILD_COMMAND make CFLAGS="-fPIC"  # to allow static linking in shared library
+    INSTALL_COMMAND ""          # suppress install
+  )
+  set(LZ4_INCLUDES ${CMAKE_BINARY_DIR}/external/Source/lz4/lib)
+  set(LZ4_LIBS ${CMAKE_BINARY_DIR}/external/Source/lz4/lib/liblz4.a)
+endif()
+list(APPEND EP_LIBS ${LZ4_LIBS})
+list(APPEND EP_INCLUDES ${LZ4_INCLUDES})
 
 # WITH_LIBGPG_ERROR can have multiple values with different meanings
 # on Linux:
