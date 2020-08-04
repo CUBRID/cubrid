@@ -8510,14 +8510,14 @@ la_start_dk_sharing (void)
     {
       if (unlink (sock_path) < 0)
 	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_DK_SHARING_SOCK_UNLINK, 0);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_DK_SHARING_SOCK_UNLINK, 1, sock_path);
 	  return ER_TDE_DK_SHARING_SOCK_UNLINK;
 	}
     }
 
   if ((server_sockfd = socket (AF_UNIX, SOCK_STREAM, 0)) < 0)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_DK_SHARING_SOCK_OPEN, 0);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_DK_SHARING_SOCK_OPEN, 1, sock_path);
       return ER_TDE_DK_SHARING_SOCK_OPEN;
     }
 
@@ -8527,16 +8527,16 @@ la_start_dk_sharing (void)
 
   if (bind (server_sockfd, (struct sockaddr *) &serveraddr, sizeof (serveraddr)) < 0)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_DK_SHARING_SOCK_BIND, 0);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_DK_SHARING_SOCK_BIND, 1, sock_path);
       return ER_TDE_DK_SHARING_SOCK_BIND;
     }
 
   if (listen (server_sockfd, 1) < 0)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_DK_SHARING_SOCK_LISTEN, 0);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_DK_SHARING_SOCK_LISTEN, 1, sock_path);
       return ER_TDE_DK_SHARING_SOCK_LISTEN;
     }
-  // hb_create_master_reader 를 참조하여 쓰레드 생성
+
   la_Info.tde_sock_for_dks = server_sockfd;
   if (pthread_create (&processing_th, NULL, la_process_dk_request, NULL) < 0)
     {
