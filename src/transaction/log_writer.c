@@ -1835,7 +1835,8 @@ logwr_load_tde (void)
   client_sockfd = socket (AF_UNIX, SOCK_STREAM, 0);
   if (client_sockfd == -1)
     {
-      return -1;		//TODO error
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_DK_SHARING_SOCK_OPEN, 0);
+      return ER_TDE_DK_SHARING_SOCK_OPEN;
     }
 
   bzero (&clientaddr, sizeof (clientaddr));
@@ -1845,7 +1846,8 @@ logwr_load_tde (void)
 
   if (connect (client_sockfd, (struct sockaddr *) &clientaddr, client_len) < 0)
     {
-      return -1;		//TODO error
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_DK_SHARING_SOCK_CONNECT, 0);
+      return ER_TDE_DK_SHARING_SOCK_CONNECT;
     }
 
   bufptr = logwr_Gl.log_path;
@@ -1855,9 +1857,18 @@ logwr_load_tde (void)
       nbytes = write (client_sockfd, bufptr, len);
       if (nbytes < 0)
 	{
-	  //TODO ERROR
-	  assert (false);
-	  break;
+	  switch (errno)
+	    {
+	    case EINTR:
+	    case EAGAIN:
+	      continue;
+	    default:
+	      {
+		close (client_sockfd);
+		er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_DK_SHARING_SOCK_WRITE, 0);
+		return ER_TDE_DK_SHARING_SOCK_WRITE;
+	      }
+	    }
 	}
       bufptr += nbytes;
       len -= nbytes;
@@ -1871,9 +1882,18 @@ logwr_load_tde (void)
       nbytes = read (client_sockfd, bufptr, len);
       if (nbytes < 0)
 	{
-	  //TODO ERROR
-	  assert (false);
-	  break;
+	  switch (errno)
+	    {
+	    case EINTR:
+	    case EAGAIN:
+	      continue;
+	    default:
+	      {
+		close (client_sockfd);
+		er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_DK_SHARING_SOCK_READ, 0);
+		return ER_TDE_DK_SHARING_SOCK_READ;
+	      }
+	    }
 	}
       bufptr += nbytes;
       len -= nbytes;
@@ -1881,6 +1901,7 @@ logwr_load_tde (void)
 
   if (err_msg != NO_ERROR)
     {
+      close (client_sockfd);
       return err_msg;
     }
 
@@ -1893,9 +1914,18 @@ logwr_load_tde (void)
       nbytes = read (client_sockfd, bufptr, len);
       if (nbytes < 0)
 	{
-	  //TODO ERROR
-	  assert (false);
-	  break;
+	  switch (errno)
+	    {
+	    case EINTR:
+	    case EAGAIN:
+	      continue;
+	    default:
+	      {
+		close (client_sockfd);
+		er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_DK_SHARING_SOCK_READ, 0);
+		return ER_TDE_DK_SHARING_SOCK_READ;
+	      }
+	    }
 	}
       bufptr += nbytes;
       len -= nbytes;

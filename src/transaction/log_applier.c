@@ -8497,7 +8497,6 @@ int
 la_start_dk_sharing (void)
 {
   int server_sockfd;
-  int rv;
   char sock_path[PATH_MAX] = { 0, };
   pid_t pid;
   size_t ts_size;
@@ -8509,36 +8508,40 @@ la_start_dk_sharing (void)
 
   if (access (sock_path, F_OK) == 0)
     {
-      unlink (sock_path);
+      if (unlink (sock_path) < 0)
+	{
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_DK_SHARING_SOCK_UNLINK, 0);
+	  return ER_TDE_DK_SHARING_SOCK_UNLINK;
+	}
     }
 
   if ((server_sockfd = socket (AF_UNIX, SOCK_STREAM, 0)) < 0)
     {
-      //TODO error
-      return -1;
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_DK_SHARING_SOCK_OPEN, 0);
+      return ER_TDE_DK_SHARING_SOCK_OPEN;
     }
 
   bzero (&serveraddr, sizeof (serveraddr));
   serveraddr.sun_family = AF_UNIX;
   strcpy (serveraddr.sun_path, sock_path);
 
-  rv = bind (server_sockfd, (struct sockaddr *) &serveraddr, sizeof (serveraddr));
-  if (rv == -1)
+  if (bind (server_sockfd, (struct sockaddr *) &serveraddr, sizeof (serveraddr)) < 0)
     {
-      return -1;		// TODO error
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_DK_SHARING_SOCK_BIND, 0);
+      return ER_TDE_DK_SHARING_SOCK_BIND;
     }
 
-  rv = listen (server_sockfd, 1);
-  if (rv == -1)
+  if (listen (server_sockfd, 1) < 0)
     {
-      return -1;		// TODO error
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_DK_SHARING_SOCK_LISTEN, 0);
+      return ER_TDE_DK_SHARING_SOCK_LISTEN;
     }
   // hb_create_master_reader 를 참조하여 쓰레드 생성
   la_Info.tde_sock_for_dks = server_sockfd;
-  rv = pthread_create (&processing_th, NULL, la_process_dk_request, NULL);
-  if (rv != 0)
+  if (pthread_create (&processing_th, NULL, la_process_dk_request, NULL) < 0)
     {
-      return -1;		// TODO error
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_DK_SHARING_PTHREAD_CREATE, 0);
+      return ER_TDE_DK_SHARING_PTHREAD_CREATE;
     }
   return NO_ERROR;
 }
@@ -8561,6 +8564,10 @@ la_process_dk_request (void *arg)
   while (1)
     {
       client_sockfd = accept (server_sockfd, (struct sockaddr *) &clientaddr, &client_len);
+      if (client_sockfd < 0)
+	{
+	  continue;
+	}
       bufptr = buf;
       len = PATH_MAX;
       while (len > 0)
@@ -8568,25 +8575,36 @@ la_process_dk_request (void *arg)
 	  nbytes = read (client_sockfd, bufptr, len);
 	  if (nbytes < 0)
 	    {
-	      // TODO ERROR
-	      assert (false);
-	      break;
+	      switch (errno)	// errno is thread-local on linux
+		{
+		case EINTR:
+		case EAGAIN:
+		  continue;
+		default:
+		  {
+		    error = ER_TDE_DK_SHARING_SOCK_READ;
+		    break;
+		  }
+		}
 	    }
 	  bufptr += nbytes;
 	  len -= nbytes;
 	}
 
-      if (!tde_Cipher.is_loaded)
+      if (error == NO_ERROR)
 	{
-	  error = ER_TDE_CIPHER_IS_NOT_LOADED;
-	}
-      else
-	{
-	  /* validate the msg from copylogdb */
-	  if (memcmp (buf, la_Info.log_path, PATH_MAX) != 0)
+	  if (!tde_Cipher.is_loaded)
 	    {
-	      /* wrong request */
-	      error = ER_FAILED;	/* TODO maybe ER_TDE_WRONG_DK_REQUEST */
+	      error = ER_TDE_CIPHER_IS_NOT_LOADED;
+	    }
+	  else
+	    {
+	      /* validate the msg from copylogdb */
+	      if (memcmp (buf, la_Info.log_path, PATH_MAX) != 0)
+		{
+		  /* wrong request */
+		  error = ER_TDE_WRONG_DK_REQUEST;
+		}
 	    }
 	}
 
@@ -8598,9 +8616,17 @@ la_process_dk_request (void *arg)
 	  nbytes = write (client_sockfd, bufptr, len);
 	  if (nbytes < 0)
 	    {
-	      // TODO ERROR
-	      assert (false);
-	      break;
+	      switch (errno)
+		{
+		case EINTR:
+		case EAGAIN:
+		  continue;
+		default:
+		  {
+		    error = ER_TDE_DK_SHARING_SOCK_WRITE;
+		    break;
+		  }
+		}
 	    }
 	  bufptr += nbytes;
 	  len -= nbytes;
@@ -8616,15 +8642,23 @@ la_process_dk_request (void *arg)
 	      nbytes = write (client_sockfd, bufptr, len);
 	      if (nbytes < 0)
 		{
-		  // TODO ERROR
-		  assert (false);
-		  break;
+		  switch (errno)
+		    {
+		    case EINTR:
+		    case EAGAIN:
+		      continue;
+		    default:
+		      {
+			error = ER_TDE_DK_SHARING_SOCK_WRITE;
+			break;
+		      }
+		    }
 		}
 	      bufptr += nbytes;
 	      len -= nbytes;
 	    }
-	  close (client_sockfd);
 	}
+      close (client_sockfd);
     }
 
   assert (false);
