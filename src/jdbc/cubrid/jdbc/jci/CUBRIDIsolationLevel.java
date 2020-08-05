@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2016 CUBRID Corporation 
  *
  * Redistribution and use in source and binary forms, with or without modification, 
  * are permitted provided that the following conditions are met: 
@@ -43,9 +44,10 @@ package cubrid.jdbc.jci;
  */
 
 abstract public class CUBRIDIsolationLevel {
-	public final static int TRAN_MIN = 4;
-	public final static int TRAN_MAX = 6;
 	public final static int TRAN_UNKNOWN_ISOLATION = 0;
+	public final static int TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE = 1;
+	public final static int TRAN_COMMIT_CLASS_COMMIT_INSTANCE = 2;
+	public final static int TRAN_REP_CLASS_UNCOMMIT_INSTANCE = 3;
 	public final static int TRAN_READ_COMMITTED = 4;
 	public final static int TRAN_REPEATABLE_READ = 5;
 	public final static int TRAN_SERIALIZABLE = 6;

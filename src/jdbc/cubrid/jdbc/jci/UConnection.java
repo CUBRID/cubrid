@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2016 CUBRID Corporation
  *
  * Redistribution and use in source and binary forms, with or without modification,
  * are permitted provided that the following conditions are met:
@@ -252,6 +253,9 @@ public class UConnection {
 	}
 
 	private int lastShardId = UShardInfo.SHARD_ID_INVALID;
+
+	private static int isolationLevelMin = CUBRIDIsolationLevel.TRAN_READ_COMMITTED;
+	private static int isolationLevelMax = CUBRIDIsolationLevel.TRAN_SERIALIZABLE;
 
     private int numShard = 0;
 	UShardInfo[] shardInfo = null;
@@ -1191,8 +1195,8 @@ public class UConnection {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			return;
 		}
-		if (level < CUBRIDIsolationLevel.TRAN_MIN
-				|| level > CUBRIDIsolationLevel.TRAN_MAX) {
+		if (level < getIsolationLevelMin()
+				|| level > getIsolationLevelMax()) {
 			errorHandler.setErrorCode(UErrorCode.ER_ISO_TYPE);
 			return;
 		}
@@ -1748,6 +1752,22 @@ public class UConnection {
 		return lastIsolationLevel;
 	}
 	
+	void setIsolationLevelMin (int level) {
+		isolationLevelMin = level;
+	}
+
+	int getIsolationLevelMin () {
+		return isolationLevelMin;
+	}
+
+	void setIsolationLevelMax (int level) {
+		isolationLevelMax = level;
+	}
+
+	int getIsolationLevelMax () {
+		return isolationLevelMax;
+	}
+
 	public static byte[] createDBInfo(String dbname, String user, String passwd, String url) {
 		// see broker/cas_protocol.h
 		// #define SRV_CON_DBNAME_SIZE 32
@@ -1991,6 +2011,13 @@ public class UConnection {
 		    oldSessionId = is.readInt();
 		}
 
+		if (protoVersionIsAbove(PROTOCOL_V7)) {
+			setIsolationLevelMin(CUBRIDIsolationLevel.TRAN_READ_COMMITTED);
+			setIsolationLevelMax(CUBRIDIsolationLevel.TRAN_SERIALIZABLE);
+		} else {
+			setIsolationLevelMin(CUBRIDIsolationLevel.TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE);
+			setIsolationLevelMax(CUBRIDIsolationLevel.TRAN_SERIALIZABLE);
+		}
 	}
 
 	private boolean setActiveHost(int hostId) throws UJciException {
