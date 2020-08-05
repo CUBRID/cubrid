@@ -56,6 +56,7 @@
 
 #include "gcrypt.h"
 
+#include <openssl/err.h>
 #include <openssl/evp.h>
 #include <openssl/sha.h>
 #include <openssl/rand.h>
@@ -64,6 +65,7 @@
 
 #define AES128_BLOCK_LEN (128/8)
 #define AES128_KEY_LEN (128/8)
+#define DES_BLOCK_LEN (8)
 #define MD5_CHECKSUM_LEN 16
 #define MD5_CHECKSUM_HEX_LEN (32 + 1)
 
@@ -268,7 +270,7 @@ aes_default_gen_key (const char *key, int key_len, char *dest_key, int dest_key_
 }
 
 /*
- * crypt_aes_default_encrypt() - like mysql's aes_encrypt. Use AES-128/ECB/PKCS7 method.
+ * crypt_default_encrypt() - like mysql's aes_encrypt. Use (AES-128/DES)/ECB/PKCS7 method.
  *   return:
  *   thread_p(in):
  *   src(in): source string
@@ -280,20 +282,39 @@ aes_default_gen_key (const char *key, int key_len, char *dest_key, int dest_key_
  * Note:
  */
 int
-crypt_aes_default_encrypt (THREAD_ENTRY * thread_p, const char *src, int src_len, const char *key, int key_len,
-			   char **dest_p, int *dest_len_p)
+crypt_default_encrypt (THREAD_ENTRY * thread_p, const char *src, int src_len, const char *key, int key_len,
+		       char **dest_p, int *dest_len_p, CIPHER_ENCRYPTION_TYPE enc_type)
 {
-  gcry_error_t i_gcrypt_err;
-  gcry_cipher_hd_t aes_ctx;
-  char new_key[AES128_KEY_LEN];
   int pad;
   int padding_src_len;
+  int ciphertext_len = 0;
   char *padding_src = NULL;
   char *dest = NULL;
   int error_status = NO_ERROR;
 
   assert (src != NULL);
   assert (key != NULL);
+  const EVP_CIPHER *cipher;
+  int block_len;
+  char new_key[AES128_KEY_LEN + 1];
+  const char *key_arg = NULL;
+  switch (enc_type)
+    {
+      case AES_128_ECB:
+        cipher = EVP_aes_128_ecb ();
+	block_len = AES128_BLOCK_LEN;
+	aes_default_gen_key (key, key_len, new_key, AES128_KEY_LEN);
+	new_key[AES128_KEY_LEN] = '\0';
+	key_arg = new_key;
+      break;
+      case DES_ECB:
+        cipher = EVP_des_ecb ();
+	block_len = DES_BLOCK_LEN;
+	key_arg = key;
+      break;
+      default:
+        return ER_FAILED;
+    }
 
 #if defined (SERVER_MODE)
   if (thread_p == NULL)
@@ -305,83 +326,76 @@ crypt_aes_default_encrypt (THREAD_ENTRY * thread_p, const char *src, int src_len
   *dest_p = NULL;
   *dest_len_p = 0;
 
-  if (init_gcrypt () != NO_ERROR)
+  // *INDENT-OFF*
+  deleted_unique_ptr<EVP_CIPHER_CTX> context (EVP_CIPHER_CTX_new (), [] (EVP_CIPHER_CTX *ctxt_ptr)
     {
+      if (ctxt_ptr != NULL)
+	{
+	  EVP_CIPHER_CTX_free (ctxt_ptr);
+	}
+    });
+  // *INDENT-ON*
+
+  if (context == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1,
+	      crypt_lib_fail_info[CRYPT_LIB_INIT_ERR]);
       return ER_ENCRYPTION_LIB_FAILED;
     }
 
-  i_gcrypt_err = gcry_cipher_open (&aes_ctx, GCRY_CIPHER_AES, GCRY_CIPHER_MODE_ECB, 0);
-  if (i_gcrypt_err != GPG_ERR_NO_ERROR)
+  if (EVP_EncryptInit (context.get (), cipher, (const unsigned char *) key_arg, NULL) != 1)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1,
-	      crypt_lib_fail_info[CRYPT_LIB_OPEN_CIPHER_ERR]);
+	      crypt_lib_fail_info[CRYPT_LIB_INIT_ERR]);
       return ER_ENCRYPTION_LIB_FAILED;
     }
 
   /* PKCS7 */
-  if ((src_len % AES128_BLOCK_LEN) == 0)
+  if ((src_len % block_len) == 0)
     {
-      pad = AES128_BLOCK_LEN;
+      pad = block_len;
       padding_src_len = src_len + pad;
     }
   else
     {
-      padding_src_len = (int) ceil ((double) src_len / AES128_BLOCK_LEN) * AES128_BLOCK_LEN;
+      padding_src_len = (int) ceil ((double) src_len / block_len) * block_len;
       pad = padding_src_len - src_len;
     }
 
   padding_src = (char *) db_private_alloc (thread_p, padding_src_len);
   if (padding_src == NULL)
     {
-      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
-      goto exit_and_free;
+      return ER_OUT_OF_VIRTUAL_MEMORY;
     }
   memcpy (padding_src, src, src_len);
   memset (padding_src + src_len, pad, pad);
 
-  aes_default_gen_key (key, key_len, new_key, AES128_KEY_LEN);
-  i_gcrypt_err = gcry_cipher_setkey (aes_ctx, new_key, AES128_KEY_LEN);
-  if (i_gcrypt_err != GPG_ERR_NO_ERROR)
-    {
-      error_status = ER_ENCRYPTION_LIB_FAILED;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1,
-	      crypt_lib_fail_info[CRYPT_LIB_SET_KEY_ERR]);
-      goto exit_and_free;
-    }
-
   dest = (char *) db_private_alloc (thread_p, padding_src_len);
   if (dest == NULL)
     {
-      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
-      goto exit_and_free;
+      db_private_free_and_init (thread_p, padding_src);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  i_gcrypt_err = gcry_cipher_encrypt (aes_ctx, dest, padding_src_len, padding_src, padding_src_len);
-  if (i_gcrypt_err != GPG_ERR_NO_ERROR)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_CRYPT_ERR]);
-      error_status = ER_ENCRYPTION_LIB_FAILED;
-      goto exit_and_free;
-    }
-
-  *dest_len_p = padding_src_len;
-  *dest_p = dest;
-
-exit_and_free:
-  if (padding_src != NULL)
+  ciphertext_len = padding_src_len;
+  if (EVP_EncryptUpdate (context.get (), (unsigned char *) dest, &ciphertext_len, (const unsigned char *) padding_src,
+			 padding_src_len) != 1)
     {
       db_private_free_and_init (thread_p, padding_src);
-    }
-  if ((dest != NULL) && (error_status != NO_ERROR))
-    {
       db_private_free_and_init (thread_p, dest);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_CRYPT_ERR]);
+      return ER_ENCRYPTION_LIB_FAILED;
     }
-  gcry_cipher_close (aes_ctx);
-  return error_status;
+
+  *dest_len_p = ciphertext_len;
+  *dest_p = dest;
+
+  db_private_free_and_init (thread_p, padding_src);
+  return NO_ERROR;
 }
 
 /*
- * crypt_aes_default_decrypt() - like mysql's aes_decrypt. Use AES-128/ECB/PKCS7 method.
+ * crypt_default_decrypt() - like mysql's aes_decrypt. Use AES-128/ECB/PKCS7 method.
  *   return:
  *   thread_p(in):
  *   src(in): source string
@@ -393,20 +407,36 @@ exit_and_free:
  * Note:
  */
 int
-crypt_aes_default_decrypt (THREAD_ENTRY * thread_p, const char *src, int src_len, const char *key, int key_len,
-			   char **dest_p, int *dest_len_p)
+crypt_default_decrypt (THREAD_ENTRY * thread_p, const char *src, int src_len, const char *key, int key_len,
+		       char **dest_p, int *dest_len_p, CIPHER_ENCRYPTION_TYPE enc_type)
 {
-  gcry_error_t i_gcrypt_err;
-  gcry_cipher_hd_t aes_ctx;
   char *dest = NULL;
-  int dest_len = 0;
-  char new_key[AES128_KEY_LEN];
+  int dest_len;
+  int error_status = NO_ERROR;
   int pad, pad_len;
   int i;
-  int error_status = NO_ERROR;
 
-  assert (src != NULL);
-  assert (key != NULL);
+  const EVP_CIPHER *cipher;
+  int block_len;
+  char new_key[AES128_KEY_LEN + 1];
+  const char *key_arg = NULL;
+  switch (enc_type)
+    {
+      case AES_128_ECB:
+        cipher = EVP_aes_128_ecb ();
+	block_len = AES128_BLOCK_LEN;
+	aes_default_gen_key (key, key_len, new_key, AES128_KEY_LEN);
+	new_key[AES128_KEY_LEN] = '\0';
+	key_arg = new_key;
+      break;
+      case DES_ECB:
+        cipher = EVP_des_ecb ();
+	block_len = DES_BLOCK_LEN;
+	key_arg = key;
+      break;
+      default:
+        return ER_FAILED;
+    }
 
 #if defined (SERVER_MODE)
   if (thread_p == NULL)
@@ -415,25 +445,39 @@ crypt_aes_default_decrypt (THREAD_ENTRY * thread_p, const char *src, int src_len
     }
 #endif // SERVER_MODE
 
+  assert (src != NULL);
+  assert (key != NULL);
+
   *dest_p = NULL;
   *dest_len_p = 0;
 
   /* src is not a string encrypted by aes_default_encrypt, return NULL */
-  if (src_len % AES128_BLOCK_LEN)
+  if (src_len % block_len)
     {
       return NO_ERROR;
     }
 
-  if (init_gcrypt () != NO_ERROR)
+  // *INDENT-OFF*
+  deleted_unique_ptr<EVP_CIPHER_CTX> context (EVP_CIPHER_CTX_new (), [] (EVP_CIPHER_CTX *ctxt_ptr)
     {
+      if (ctxt_ptr != NULL)
+	{
+	  EVP_CIPHER_CTX_free (ctxt_ptr);
+	}
+    });
+  // *INDENT-ON*
+
+  if (context == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1,
+	      crypt_lib_fail_info[CRYPT_LIB_INIT_ERR]);
       return ER_ENCRYPTION_LIB_FAILED;
     }
 
-  i_gcrypt_err = gcry_cipher_open (&aes_ctx, GCRY_CIPHER_AES, GCRY_CIPHER_MODE_ECB, 0);
-  if (i_gcrypt_err != GPG_ERR_NO_ERROR)
+  if (EVP_DecryptInit (context.get (), cipher, (const unsigned char *) key_arg, NULL) != 1)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1,
-	      crypt_lib_fail_info[CRYPT_LIB_OPEN_CIPHER_ERR]);
+	      crypt_lib_fail_info[CRYPT_LIB_INIT_ERR]);
       return ER_ENCRYPTION_LIB_FAILED;
     }
 
@@ -441,25 +485,22 @@ crypt_aes_default_decrypt (THREAD_ENTRY * thread_p, const char *src, int src_len
   if (dest == NULL)
     {
       error_status = ER_OUT_OF_VIRTUAL_MEMORY;
-      goto error_and_free;
+      return error_status;
     }
 
-  aes_default_gen_key (key, key_len, new_key, AES128_KEY_LEN);
-  i_gcrypt_err = gcry_cipher_setkey (aes_ctx, new_key, AES128_KEY_LEN);
-  if (i_gcrypt_err != GPG_ERR_NO_ERROR)
+  int len;
+  if (EVP_DecryptUpdate (context.get (), (unsigned char *) dest, &len, (const unsigned char *) src, src_len) != 1)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1,
-	      crypt_lib_fail_info[CRYPT_LIB_SET_KEY_ERR]);
-      error_status = ER_ENCRYPTION_LIB_FAILED;
-      goto error_and_free;
-    }
-
-  i_gcrypt_err = gcry_cipher_decrypt (aes_ctx, dest, src_len, src, src_len);
-  if (i_gcrypt_err != GPG_ERR_NO_ERROR)
-    {
-      error_status = ER_ENCRYPTION_LIB_FAILED;
+      db_private_free_and_init (thread_p, dest);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_CRYPT_ERR]);
-      goto error_and_free;
+      return ER_ENCRYPTION_LIB_FAILED; 
+    }
+
+  if (EVP_DecryptFinal (context.get (), (unsigned char *) dest + len, &len) != 1)
+    {
+      db_private_free_and_init (thread_p, dest);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_CRYPT_ERR]);
+      return ER_ENCRYPTION_LIB_FAILED; 
     }
 
   /* PKCS7 */
@@ -469,11 +510,8 @@ crypt_aes_default_decrypt (THREAD_ENTRY * thread_p, const char *src, int src_len
       if (pad > AES128_BLOCK_LEN)
 	{
 	  /* src is not a string encrypted by aes_default_encrypt, return NULL */
-	  if (dest != NULL)
-	    {
-	      db_private_free_and_init (thread_p, dest);
-	    }
-	  goto error_and_free;
+	  db_private_free_and_init (thread_p, dest);
+	  return ER_FAILED;
 	}
       i = src_len - 2;
       pad_len = 1;
@@ -490,24 +528,14 @@ crypt_aes_default_decrypt (THREAD_ENTRY * thread_p, const char *src, int src_len
       else
 	{
 	  /* src is not a string encrypted by aes_default_encrypt, return NULL */
-	  if (dest != NULL)
-	    {
-	      db_private_free_and_init (thread_p, dest);
-	    }
-	  goto error_and_free;
+	  db_private_free_and_init (thread_p, dest);
+	  return ER_FAILED;
 	}
     }
 
   *dest_p = dest;
   *dest_len_p = dest_len;
-
-error_and_free:
-  if ((dest != NULL) && (error_status != NO_ERROR))
-    {
-      db_private_free_and_init (thread_p, dest);
-    }
-  gcry_cipher_close (aes_ctx);
-  return error_status;
+  return NO_ERROR;
 }
 
 /*

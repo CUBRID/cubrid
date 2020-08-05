@@ -2625,8 +2625,8 @@ db_string_aes_encrypt (DB_VALUE const *src, DB_VALUE const *key, DB_VALUE * resu
   if (QSTR_IS_ANY_CHAR (src_type) && QSTR_IS_ANY_CHAR (key_type))
     {
       error_status =
-	crypt_aes_default_encrypt (NULL, db_get_string (src), db_get_string_length (src), db_get_string (key),
-				   db_get_string_length (key), &result_strp, &result_len);
+	crypt_default_encrypt (NULL, db_get_string (src), db_get_string_length (src), db_get_string (key),
+			       db_get_string_length (key), &result_strp, &result_len, AES_128_ECB);
       if (error_status != NO_ERROR)
 	{
 	  goto error;
@@ -2693,8 +2693,8 @@ db_string_aes_decrypt (DB_VALUE const *src, DB_VALUE const *key, DB_VALUE * resu
   if (QSTR_IS_ANY_CHAR (src_type) && QSTR_IS_ANY_CHAR (key_type))
     {
       error_status =
-	crypt_aes_default_decrypt (NULL, db_get_string (src), db_get_string_length (src), db_get_string (key),
-				   db_get_string_length (key), &result_strp, &result_len);
+	crypt_default_decrypt (NULL, db_get_string (src), db_get_string_length (src), db_get_string (key),
+			       db_get_string_length (key), &result_strp, &result_len, AES_128_ECB);
       if (error_status != NO_ERROR)
 	{
 	  goto error;

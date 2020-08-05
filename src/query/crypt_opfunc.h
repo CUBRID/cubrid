@@ -34,10 +34,16 @@ typedef enum
   HEX_UPPERCASE
 } HEX_LETTERCASE;
 
-extern int crypt_aes_default_encrypt (THREAD_ENTRY * thread_p, const char *src, int src_len, const char *key,
-				      int key_len, char **dest_p, int *dest_len_p);
-extern int crypt_aes_default_decrypt (THREAD_ENTRY * thread_p, const char *src, int src_len, const char *key,
-				      int key_len, char **dest_p, int *dest_len_p);
+typedef enum
+{
+  AES_128_ECB,
+  DES_ECB
+} CIPHER_ENCRYPTION_TYPE;
+
+extern int crypt_default_encrypt (THREAD_ENTRY * thread_p, const char *src, int src_len, const char *key,
+				  int key_len, char **dest_p, int *dest_len_p, CIPHER_ENCRYPTION_TYPE enc_type);
+extern int crypt_default_decrypt (THREAD_ENTRY * thread_p, const char *src, int src_len, const char *key,
+				  int key_len, char **dest_p, int *dest_len_p, CIPHER_ENCRYPTION_TYPE enc_type);
 extern int crypt_sha_one (THREAD_ENTRY * thread_p, const char *src, int src_len, char **dest_p, int *dest_len_p);
 extern int crypt_sha_two (THREAD_ENTRY * thread_p, const char *src, int src_len, int need_hash_len, char **dest_p,
 			  int *dest_len_p);
