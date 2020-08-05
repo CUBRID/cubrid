@@ -1042,15 +1042,15 @@ list(APPEND EP_INCLUDES ${LIBEDIT_INCLUDES})
 # LZ4
 #
 set(LZ4_TARGET lz4)
-if(WIN32)
-  externalproject_add(${LZ4_TARGET}
-    URL "https://github.com/lz4/lz4/releases/download/v1.9.2/lz4_win64_v1_9_2.zip"
-    CONFIGURE_COMMAND ""
-    BUILD_COMMAND ""
-    INSTALL_COMMAND ""
+if(WIN32) # msvc-built lz4 v1.9.2 libraries 
+  set(LZ4_INCLUDES ${WINDOWS_EXTERNAL_DIR}/lz4/include)
+  set(LZ4_LIBS ${WINDOWS_EXTERNAL_DIR}/lz4/bin/liblz4.lib)
+  set(LZ4_DLL ${WINDOWS_EXTERNAL_DIR}/lz4/bin/liblz4.dll)
+
+  add_custom_target(${LZ4_TARGET}
+    COMMAND ${CMAKE_COMMAND} -E echo "  copying ${LZ4_DLL} to ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/liblz4.dll"
+    COMMAND ${CMAKE_COMMAND} -E copy ${LZ4_DLL} ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/liblz4.dll
   )
-  set(LZ4_INCLUDES ${CMAKE_BINARY_DIR}/external/Source/lz4/include)
-  set(LZ4_LIBS ${CMAKE_BINARY_DIR}/external/Source/lz4/dll/liblz4.dll.a)
 else()
   externalproject_add(${LZ4_TARGET}
     GIT_REPOSITORY https://github.com/lz4/lz4
