@@ -1201,7 +1201,7 @@ $set 57 MSGCAT_UTIL_SET_TDE
 24 Only one of key opersations (-s, -c, -d, -g) has to be given\n
 25 It has failed to get the key information set on the database\n
 26 Trying to change the key from the key (index: %1$d) to the key (index: %2$d)..\n
-27 The key has been changed from the key (index: %1$d) to the eky (index: %2$d)\n
+27 The key has been changed from the key (index: %1$d) to the key (index: %2$d)\n
 28 The key set on the database cannot be deleted\n
 29 The key (index: %1$d) has been deleted\n
 30 A new key has been generated - key index: %1$d created on %2$s

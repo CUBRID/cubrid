@@ -1314,23 +1314,24 @@ $ LOADDB
 1245 Loading class attributes updates from object files is not supported in CS mode.
 1246 Error getting address and name information. Code : %1$d, message : %2$s.
 1247 Invalid Key file : %1$s
-1248 Cannot find the %1$dth master key.
+1248 Cannot find the master key (index: %1$d).
 1249 The master key set on the database and what is given don't match. The key index set on the database: %1$d
-1250 Error while TDE-encrypting
-1251 Error while TDE-decrypting
-1252 TDE Moudle is not loaded
-1253 Cannot create a TDE key
-1254 Cannot load TDE module. You can't use TDE feature
-1255 A wrong request for Data Keys 
-1256 Cannot open the unix domain socket (%1$s) for sharing TDE Data Key 
-1257 Cannot bind the unix domain socket (%1$s) for sharing TDE Data Key 
-1258 Cannot listen the unix domain socket (%1$s) for sharing TDE Data Key 
-1259 Error while accepting the client (copylogdb) for sharing TDE Data Key 
-1260 Error while connecting to the server (applylogdb) for sharing TDE Data Key 
-1261 Error while reading on the socket for sharing TDE Data Key 
-1262 Error while writing on the socket for sharing TDE Data Key
-1263 Cannot unlink (%1$s) to open the unix domain socket for sharing TDE Data Key 
-1264 Cannot create a thread for sharing TDE Data Key 
+1250 Error while TDE-encrypting.
+1251 Error while TDE-decrypting.
+1252 TDE Moudle is not loaded.
+1253 Cannot create a TDE key.
+1254 Cannot load TDE module. You can't use TDE feature.\n\
+Check the path of the key file (_keys) and make sure that it includes proper key.
+1255 A wrong request for Data Keys.
+1256 Cannot open the unix domain socket (%1$s) for sharing TDE Data Key.
+1257 Cannot bind the unix domain socket (%1$s) for sharing TDE Data Key.
+1258 Cannot listen the unix domain socket (%1$s) for sharing TDE Data Key.
+1259 Error while accepting the client (copylogdb) for sharing TDE Data Key.
+1260 Error while connecting to the server (applylogdb) for sharing TDE Data Key.
+1261 Error while reading on the socket for sharing TDE Data Key.
+1262 Error while writing on the socket for sharing TDE Data Key.
+1263 Cannot unlink (%1$s) to open the unix domain socket for sharing TDE Data Key.
+1264 Cannot create a thread for sharing TDE Data Key.
 1265 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL

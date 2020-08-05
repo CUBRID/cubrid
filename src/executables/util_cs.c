@@ -3761,7 +3761,7 @@ tde (UTIL_FUNCTION_ARG * arg)
 
   /* There is no need to call fileio_dismount() for 'vdes' 
    * because it is dismounted in db_shutdown() */
-  vdes = fileio_mount (NULL, mk_path, mk_path, LOG_DBTDE_KEYS_VOLID, 1, false);
+  vdes = fileio_mount (NULL, database_name, mk_path, LOG_DBTDE_KEYS_VOLID, 1, false);
   if (vdes == NULL_VOLDES)
     {
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
@@ -3779,13 +3779,13 @@ tde (UTIL_FUNCTION_ARG * arg)
 
       if (tde_create_mk (master_key) != NO_ERROR)
 	{
-	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	  PRINT_AND_LOG_ERR_MSG ("FAILURE: %s\n", db_error_string (3));
 	  db_shutdown ();
 	  goto error_exit;
 	}
       if (tde_add_mk (vdes, master_key, &mk_index, created_time) != NO_ERROR)
 	{
-	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	  PRINT_AND_LOG_ERR_MSG ("FAILURE: %s\n", db_error_string (3));
 	  db_shutdown ();
 	  goto error_exit;
 	}
@@ -3836,7 +3836,7 @@ tde (UTIL_FUNCTION_ARG * arg)
 
       if (tde_get_set_mk_info (&prev_mk_idx, &created_time, &set_time) != NO_ERROR)
 	{
-	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	  PRINT_AND_LOG_ERR_MSG ("FAILURE: %s\n", db_error_string (3));
 	  db_shutdown ();
 	  goto error_exit;
 	}
