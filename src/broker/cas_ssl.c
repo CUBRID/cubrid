@@ -1,5 +1,4 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation.
  * Copyright (c) 2020 CUBRID Corp
  *
  *   This program is free software; you can redistribute it and/or modify
@@ -74,14 +73,17 @@
 #define KEYF "cas_ssl_cert.key"
 #define CERT_FILENAME_LEN	512
 #define ER_SSL_GENERAL		-1
+#define ER_CERT_EXPIRED		-2
+#define ER_CERT_COPPUPTED	-3
 #define SOCKET_NONBLOCK		1
 #define SOCKET_BLOCK		0
 
 static SSL *ssl = NULL;
 bool ssl_client = false;
+static int cas_ssl_validity_check (SSL_CTX * ctx);
 
 int
-initSSL (int sd)
+cas_init_ssl (int sd)
 {
   SSL_CTX *ctx;
   char cert[CERT_FILENAME_LEN];
@@ -112,7 +114,7 @@ initSSL (int sd)
   if (stat (cert, &sbuf) < 0)
     {
       cas_log_write_and_end (0, false, "SSL: Certificate not found: %s", cert);
-      return ER_SSL_GENERAL;
+      return ER_CERT_COPPUPTED;
     }
 
   if (stat (key, &sbuf) < 0)
@@ -130,25 +132,35 @@ initSSL (int sd)
   if ((ctx = SSL_CTX_new (TLS_server_method ())) == NULL)
     {
       cas_log_write_and_end (0, true, "SSL: Initialize failed.");
-      return ER_SSL_GENERAL;
+      return ER_CERT_COPPUPTED;
     }
 
   if (SSL_CTX_use_certificate_file (ctx, cert, SSL_FILETYPE_PEM) <= 0
       || SSL_CTX_use_PrivateKey_file (ctx, key, SSL_FILETYPE_PEM) <= 0)
     {
       cas_log_write_and_end (0, true, "SSL: Certificate or Key is coppupted.");
-      return ER_SSL_GENERAL;
+      return ER_CERT_COPPUPTED;
+    }
+
+  if ((err_code = cas_ssl_validity_check (ctx)) < 0)
+    {
+      cas_log_write (0, true, "SSL: Certificate validity error (%s)",
+                     err_code == ER_CERT_EXPIRED ? "Expired" : "Unknow");
+      return err_code;
     }
 
   if ((ssl = SSL_new (ctx)) == NULL)
     {
       cas_log_write_and_end (0, true, "SSL: Creating SSL context failed.");
+      SSL_CTX_free (ctx);
       return ER_SSL_GENERAL;
     }
 
   if (SSL_set_fd (ssl, sd) == 0)
     {
       cas_log_write_and_end (0, true, "SSL: Cannot associate with socket.");
+      SSL_free (ssl);
+      ssl = NULL;
       return ER_SSL_GENERAL;
     }
 
@@ -156,8 +168,10 @@ initSSL (int sd)
   if (err_code < 0)
     {
       err_code = SSL_get_error (ssl, err_code);
-      cas_log_write_and_end (0, true, "SSL: Accept failed.");
       err = ERR_get_error ();
+      cas_log_write_and_end (0, true, "SSL: Accept failed - '%s'", ERR_error_string (err, NULL));
+      SSL_free (ssl);
+      ssl = NULL;
       return ER_SSL_GENERAL;
     }
 
@@ -244,4 +258,36 @@ cas_ssl_close (int client_sock_fd)
       SSL_free (ssl);
       ssl = NULL;
     }
+}
+
+static int
+cas_ssl_validity_check (SSL_CTX * ctx)
+{
+  ASN1_TIME *not_before, *not_after;
+  X509 *crt;
+
+  crt = SSL_CTX_get0_certificate (ctx);
+
+  if (crt == NULL)
+    return ER_SSL_GENERAL;
+
+  not_after = X509_getm_notAfter (crt);
+  if (X509_cmp_time (not_after, NULL) != 1)
+    {
+      return ER_CERT_EXPIRED;
+    }
+
+  not_before = X509_getm_notBefore (crt);
+  if (X509_cmp_time (not_before, NULL) != -1)
+    {
+      return ER_SSL_GENERAL;
+    }
+
+  return 0;
+}
+
+bool
+is_ssl_data_ready (int sock_fd)
+{
+  return (SSL_has_pending (ssl) == 1 ? true : false);
 }

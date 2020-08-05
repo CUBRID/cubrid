@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2016 CUBRID Corporation
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -123,8 +124,8 @@ static void set_db_connection_info (void);
 static void clear_db_connection_info (void);
 static bool need_database_reconnect (void);
 
-extern int initSSL (int);
 extern bool ssl_client;
+extern int cas_init_ssl (int);
 extern void cas_ssl_close (int client_sock_fd);
 
 #else /* !LIBCAS_FOR_JSP */
@@ -1016,7 +1017,7 @@ cas_main (void)
 
 	if (IS_SSL_CLIENT (req_info.driver_info))
 	  {
-	    err_code = initSSL (client_sock_fd);
+	    err_code = cas_init_ssl (client_sock_fd);
 	    if (err_code < 0)
 	      {
 		net_write_error (client_sock_fd, req_info.client_version, req_info.driver_info, cas_info, cas_info_size,
@@ -1329,12 +1330,12 @@ cas_main (void)
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 	  }
 
+	CLOSE_SOCKET (client_sock_fd);
+
 	if (ssl_client)
 	  {
 	    cas_ssl_close (client_sock_fd);
 	  }
-
-	CLOSE_SOCKET (client_sock_fd);
 
       finish_cas:
 	as_info->fn_status = FN_STATUS_IDLE;
