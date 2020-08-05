@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (c) 2016 CUBRID Corporation.
  *
  * Redistribution and use in source and binary forms, with or without modification,
  * are permitted provided that the following conditions are met:
@@ -55,6 +56,7 @@
 #include "cci_common.h"
 #include "cas_cci.h"
 #include "cas_protocol.h"
+#include <openssl/ssl.h>
 
 /************************************************************************
  * PUBLIC DEFINITIONS							*
@@ -195,6 +197,13 @@ typedef struct
 
 typedef struct
 {
+  SSL *ssl;
+  SSL_CTX *ctx;
+  bool is_connected;
+} T_SSL_HANDLE;
+
+typedef struct
+{
   int id;
   char used;
   char is_retry;
@@ -248,6 +257,7 @@ typedef struct
   int slow_query_threshold_millis;
   char log_trace_api;
   char log_trace_network;
+  char useSSL;
 
   /* to check timeout */
   struct timeval start_time;	/* function start time to check timeout */
@@ -263,6 +273,10 @@ typedef struct
 
   /* shard */
   int shard_id;
+
+  /* ssl */
+  T_SSL_HANDLE ssl_handle;
+
 } T_CON_HANDLE;
 
 /************************************************************************
@@ -320,7 +334,7 @@ extern int cci_conn_set_properties (T_CON_HANDLE * handle, char *properties);
 extern void hm_set_host_status (T_CON_HANDLE * con_handle, int host_id, bool is_reachable);
 extern bool hm_is_host_reachable (T_CON_HANDLE * con_handle, int host_id);
 extern void hm_check_rc_time (T_CON_HANDLE * con_handle);
-extern void hm_create_health_check_th (void);
+extern void hm_create_health_check_th (char useSSL);
 
 extern int hm_pool_restore_used_statements (T_CON_HANDLE * connection);
 extern int hm_pool_add_statement_to_use (T_CON_HANDLE * connection, int statement_id);
@@ -329,6 +343,8 @@ extern bool hm_is_empty_session (T_CCI_SESSION_ID * id);
 extern void hm_make_empty_session (T_CCI_SESSION_ID * id);
 
 extern void hm_force_close_connection (T_CON_HANDLE * con_handle);
+
+extern void hm_ssl_free (T_CON_HANDLE * con_handle);
 /************************************************************************
  * PUBLIC VARIABLES							*
  ************************************************************************/

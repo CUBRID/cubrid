@@ -8532,7 +8532,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   PT_NODE *create_index = NULL;
   DB_QUERY_TYPE *query_columns = NULL;
   PT_NODE *tbl_opt = NULL;
-  bool reuse_oid = false;
+  bool reuse_oid = true;
   bool do_rollback_on_error = false;
   bool do_abort_class_on_error = false;
   bool do_flush_class_mop = false;
@@ -8548,6 +8548,11 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 
   tbl_opt_charset = tbl_opt_coll = cs_node = coll_node = NULL;
   tbl_opt_comment = comment_node = NULL;
+
+  if (prm_get_bool_value (PRM_ID_TB_DEFAULT_REUSE_OID) == false)
+    {
+      reuse_oid = false;
+    }
 
   class_name = node->info.create_entity.entity_name->info.name.original;
 
@@ -8615,6 +8620,9 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    {
 	    case PT_TABLE_OPTION_REUSE_OID:
 	      reuse_oid = true;
+	      break;
+	    case PT_TABLE_OPTION_DONT_REUSE_OID:
+	      reuse_oid = false;
 	      break;
 	    case PT_TABLE_OPTION_CHARSET:
 	      tbl_opt_charset = tbl_opt;
@@ -10816,7 +10824,8 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
   }
 
   /* special case : TYPE */
-  if (tp_domain_match (attr_db_domain, att->domain, TP_EXACT_MATCH) != 0)
+  if ((tp_domain_match (attr_db_domain, att->domain, TP_EXACT_MATCH) != 0)
+      && (tp_domain_match (attr_db_domain, att->domain, TP_STR_MATCH) != 0))
     {
       attr_chg_properties->p[P_TYPE] |= ATT_CHG_PROPERTY_UNCHANGED;
     }
@@ -10827,8 +10836,9 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
       /* remove "UNCHANGED" flag */
       attr_chg_properties->p[P_TYPE] &= ~ATT_CHG_PROPERTY_UNCHANGED;
 
-      if (TP_DOMAIN_TYPE (attr_db_domain) == TP_DOMAIN_TYPE (att->domain)
-	  && TP_IS_CHAR_BIT_TYPE (TP_DOMAIN_TYPE (attr_db_domain)))
+      if (TP_IS_CHAR_BIT_TYPE (TP_DOMAIN_TYPE (attr_db_domain))
+	  && (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (attr_db_domain)) == TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (att->domain))
+	      || (TP_IS_BIT_TYPE (TP_DOMAIN_TYPE (attr_db_domain)) == TP_IS_BIT_TYPE (TP_DOMAIN_TYPE (att->domain)))))
 	{
 	  if (tp_domain_match (attr_db_domain, att->domain, TP_STR_MATCH) != 0)
 	    {
@@ -10837,7 +10847,7 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
 	  else
 	    {
 	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_PROPERTY_DIFF;
-	      if (attr_db_domain->precision > att->domain->precision)
+	      if (attr_db_domain->precision >= att->domain->precision)
 		{
 		  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
 
