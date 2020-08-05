@@ -145,7 +145,7 @@ cas_init_ssl (int sd)
   if ((err_code = cas_ssl_validity_check (ctx)) < 0)
     {
       cas_log_write (0, true, "SSL: Certificate validity error (%s)",
-                     err_code == ER_CERT_EXPIRED ? "Expired" : "Unknow");
+		     err_code == ER_CERT_EXPIRED ? "Expired" : "Unknow");
       return err_code;
     }
 
