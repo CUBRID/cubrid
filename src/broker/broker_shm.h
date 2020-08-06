@@ -135,7 +135,7 @@
 
 #define MAX_PROXY_NUM            8
 
-#define APPL_SERVER_NUM_LIMIT    2048
+#define APPL_SERVER_NUM_LIMIT    4096
 
 #define SHM_BROKER_PATH_MAX      (PATH_MAX)
 #define SHM_PROXY_NAME_MAX       (SHM_BROKER_PATH_MAX)

@@ -1231,6 +1231,7 @@ qdump_print_value (REGU_VARIABLE * value_p)
 	}
       return true;
     case TYPE_ATTR_ID:
+      fprintf (foutput, "[type:%s]", qdump_data_type_string (value_p->domain->type->id));
       if (!qdump_print_attribute_id (value_p->value.attr_descr))
 	{
 	  return false;
@@ -1255,6 +1256,7 @@ qdump_print_value (REGU_VARIABLE * value_p)
       return true;
 
     case TYPE_POSITION:
+      fprintf (foutput, "[type:%s]", qdump_data_type_string (value_p->domain->type->id));
       if (!qdump_print_tuple_value_position (value_p->value.pos_descr))
 	{
 	  return false;

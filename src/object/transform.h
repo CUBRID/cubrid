@@ -143,6 +143,7 @@ typedef struct tf_ct_class
 #define CT_AUTHORIZATION_NAME      "db_authorization"
 #define CT_AUTHORIZATIONS_NAME     "db_authorizations"
 #define CT_CHARSET_NAME		   "_db_charset"
+#define CT_DUAL_NAME               "dual"
 
 /* catalog vclasses */
 #define CTV_CLASS_NAME             "db_class"

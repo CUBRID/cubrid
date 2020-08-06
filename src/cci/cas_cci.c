@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (c) 2016 CUBRID Corporation.
  *
  * Redistribution and use in source and binary forms, with or without modification,
  * are permitted provided that the following conditions are met:
@@ -136,6 +137,8 @@ int wsa_initialize ();
 #define CCI_DS_DEFAULT_ISOLATION_DEFAULT 		TRAN_UNKNOWN_ISOLATION
 #define CCI_DS_DEFAULT_LOCK_TIMEOUT_DEFAULT 		CCI_LOCK_TIMEOUT_DEFAULT
 #define CCI_DS_LOGIN_TIMEOUT_DEFAULT			(CCI_LOGIN_TIMEOUT_DEFAULT)
+#define CCI_DS_USESSL_DEFAULT 	false
+
 
 #define CON_HANDLE_ID_FACTOR            1000000
 #define CON_ID(a) ((a) / CON_HANDLE_ID_FACTOR)
@@ -205,9 +208,11 @@ static const char *build_number = "VERSION=" MAKE_STR (BUILD_NUMBER);
 #if defined(WINDOWS)
 static HANDLE con_handle_table_mutex;
 static HANDLE health_check_th_mutex;
+HANDLE create_ssl_mutex;
 #else
 static T_MUTEX con_handle_table_mutex = PTHREAD_MUTEX_INITIALIZER;
 static T_MUTEX health_check_th_mutex = PTHREAD_MUTEX_INITIALIZER;
+T_MUTEX create_ssl_mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif
 
 static char init_flag = 0;
@@ -231,7 +236,8 @@ static const char *datasource_key[] = {
   CCI_DS_PROPERTY_DEFAULT_AUTOCOMMIT,
   CCI_DS_PROPERTY_DEFAULT_ISOLATION,
   CCI_DS_PROPERTY_DEFAULT_LOCK_TIMEOUT,
-  CCI_DS_PROPERTY_MAX_POOL_SIZE
+  CCI_DS_PROPERTY_MAX_POOL_SIZE,
+  CCI_DS_PROPERTY_USESSL
 };
 
 CCI_MALLOC_FUNCTION cci_malloc = malloc;
@@ -298,6 +304,7 @@ cci_init ()
       cci_init_flag = 0;
 #if defined(WINDOWS)
       MUTEX_INIT (con_handle_table_mutex);
+      MUTEX_INIT (create_ssl_mutex);
 #endif
     }
 }
@@ -499,15 +506,6 @@ cci_connect_with_url_internal (char *url, char *user, char *pass, T_CCI_ERROR * 
       property = (char *) "";
     }
 
-  /* start health check thread */
-  MUTEX_LOCK (health_check_th_mutex);
-  if (!is_health_check_th_started)
-    {
-      hm_create_health_check_th ();
-      is_health_check_th_started = 1;
-    }
-  MUTEX_UNLOCK (health_check_th_mutex);
-
   con_handle = get_new_connection (host, port, dbname, user, pass);
   if (con_handle == NULL)
     {
@@ -546,6 +544,15 @@ cci_connect_with_url_internal (char *url, char *user, char *pass, T_CCI_ERROR * 
 	  con_handle->alter_host_id = 0;
 	}
     }
+
+  /* start health check thread */
+  MUTEX_LOCK (health_check_th_mutex);
+  if (!is_health_check_th_started)
+    {
+      hm_create_health_check_th (con_handle->useSSL);
+      is_health_check_th_started = 1;
+    }
+  MUTEX_UNLOCK (health_check_th_mutex);
 
   SET_START_TIME_FOR_LOGIN (con_handle);
   error = cas_connect (con_handle, &(con_handle->err_buf));
@@ -948,6 +955,7 @@ prepare_error:
 
   if (error == CCI_ER_QUERY_TIMEOUT && con_handle->disconnect_on_query_timeout)
     {
+      hm_ssl_free (con_handle);
       CLOSE_SOCKET (con_handle->sock_fd);
       con_handle->sock_fd = INVALID_SOCKET;
       con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
@@ -1563,6 +1571,7 @@ prepare_execute_error:
 
   if (error == CCI_ER_QUERY_TIMEOUT && con_handle->disconnect_on_query_timeout)
     {
+      hm_ssl_free (con_handle);
       CLOSE_SOCKET (con_handle->sock_fd);
       con_handle->sock_fd = INVALID_SOCKET;
       con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
@@ -3231,6 +3240,7 @@ cci_execute_batch (int mapped_conn_id, int num_query, char **sql_stmt, T_CCI_QUE
 
   if (error == CCI_ER_QUERY_TIMEOUT && con_handle->disconnect_on_query_timeout)
     {
+      hm_ssl_free (con_handle);
       CLOSE_SOCKET (con_handle->sock_fd);
       con_handle->sock_fd = INVALID_SOCKET;
       con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
@@ -4571,6 +4581,9 @@ cci_get_err_msg_internal (int error)
     case CCI_ER_INVALID_SHARD:
       return "Invalid shard";
 
+    case CCI_ER_SSL_HANDSHAKE:
+      return "SSL handshake failure";
+
     case CAS_ER_INTERNAL:
       return "Not used";
 
@@ -4657,6 +4670,10 @@ cci_get_err_msg_internal (int error)
 
     case CAS_ER_INVALID_CURSOR_POS:
       return "Invalid cursor position";
+
+    case CAS_ER_SSL_TYPE_NOT_ALLOWED:
+      return
+	"The requested SSL mode is not permitted, the CAS server is running in a different mode (check useSSL property).";
 
     case CAS_ER_IS:
       return "Not used";
@@ -4927,6 +4944,7 @@ cas_connect_internal (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf, int *con
     {
       if (!IS_INVALID_SOCKET (con_handle->sock_fd))
 	{
+	  hm_ssl_free (con_handle);
 	  CLOSE_SOCKET (con_handle->sock_fd);
 	  con_handle->sock_fd = INVALID_SOCKET;
 	  con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
@@ -4937,6 +4955,7 @@ cas_connect_internal (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf, int *con
     {
       return CCI_ER_NO_ERROR;
     }
+  hm_ssl_free (con_handle);
   CLOSE_SOCKET (con_handle->sock_fd);
   con_handle->sock_fd = INVALID_SOCKET;
   con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
@@ -4967,8 +4986,8 @@ cas_connect_internal (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf, int *con
 		  return CCI_ER_NO_ERROR;
 		}
 
-	      if (error == CCI_ER_COMMUNICATION || error == CCI_ER_CONNECT || error == CCI_ER_LOGIN_TIMEOUT
-		  || error == CAS_ER_FREE_SERVER)
+	      if (error == CCI_ER_COMMUNICATION
+		  || error == CCI_ER_CONNECT || error == CCI_ER_LOGIN_TIMEOUT || error == CAS_ER_FREE_SERVER)
 		{
 		  hm_set_host_status (con_handle, i, UNREACHABLE);
 		}
@@ -5656,6 +5675,7 @@ cci_datasource_make_url (T_CCI_PROPERTIES * prop, char *new_url, char *url, T_CC
   char append_str[LINE_MAX];
   int login_timeout = -1, query_timeout = -1;
   bool disconnect_on_query_timeout;
+  bool useSSL = false;
   int rlen, n;
 
   assert (new_url && url);
@@ -5741,6 +5761,28 @@ cci_datasource_make_url (T_CCI_PROPERTIES * prop, char *new_url, char *url, T_CC
       str = datasource_key[CCI_DS_KEY_DISCONNECT_ON_QUERY_TIMEOUT];
 
       n = snprintf (append_str, rlen, "%c%s=%s", delim, str, disconnect_on_query_timeout ? "true" : "false");
+      assert (rlen >= 0);
+      if (rlen < n || n < 0)
+	{
+	  set_error_buffer (err_buf, CCI_ER_NO_MORE_MEMORY, NULL);
+	  return false;
+	}
+      strcat (new_url, append_str);
+      rlen -= n;
+      delim = '&';
+
+      reset_error_buffer (err_buf);
+    }
+
+  if (!cci_property_get_bool (prop, CCI_DS_KEY_USESSL, &useSSL, CCI_DS_USESSL_DEFAULT, err_buf))
+    {
+      return false;
+    }
+  else if (err_buf->err_code != CCI_ER_NO_PROPERTY)
+    {
+      str = datasource_key[CCI_DS_KEY_USESSL];
+
+      n = snprintf (append_str, rlen, "%c%s=%s", delim, str, useSSL ? "true" : "false");
       assert (rlen >= 0);
       if (rlen < n || n < 0)
 	{
@@ -5924,10 +5966,10 @@ cci_datasource_create (T_CCI_PROPERTIES * prop, T_CCI_ERROR * err_buf)
 	  goto create_datasource_error;
 	}
 
-      id = cci_connect_with_url (new_url, ds->user, ds->pass);
+      id = cci_connect_with_url_ex (new_url, ds->user, ds->pass, &latest_err_buf);
       if (id < 0)
 	{
-	  set_error_buffer (&latest_err_buf, CCI_ER_CONNECT, "Could not connect to database");
+	  set_error_buffer (&latest_err_buf, id, NULL);
 	  goto create_datasource_error;
 	}
 

@@ -3266,7 +3266,7 @@ pt_filter_pseudo_specs (PARSER_CONTEXT * parser, PT_NODE * spec)
       spec->info.spec.id = (UINTPTR) spec;
       spec->info.spec.only_all = PT_ONLY;
       spec->info.spec.meta_class = PT_CLASS;
-      spec->info.spec.entity_name = pt_name (parser, "db_root");
+      spec->info.spec.entity_name = pt_name (parser, "dual");
       if (spec->info.spec.entity_name == NULL)
 	{
 	  parser_free_node (parser, spec);
@@ -17456,6 +17456,7 @@ pt_make_aptr_parent_node (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE typ
       if (PT_IS_QUERY_NODE_TYPE (node->node_type))
 	{
 	  PT_NODE *namelist;
+	  REGU_VARIABLE_LIST regu_var_list;
 
 	  namelist = NULL;
 
@@ -17467,6 +17468,15 @@ pt_make_aptr_parent_node (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE typ
 	      if (type == UPDATE_PROC)
 		{
 		  PT_NODE *col;
+
+		  if (aptr->outptr_list)
+		    {
+		      for (regu_var_list = aptr->outptr_list->valptrp; regu_var_list;
+			   regu_var_list = regu_var_list->next)
+			{
+			  regu_var_list->value.flags |= REGU_VARIABLE_UPD_INS_LIST;
+			}
+		    }
 
 		  for (col = pt_get_select_list (parser, node); col != NULL; col = col->next)
 		    {
