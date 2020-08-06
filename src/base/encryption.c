@@ -30,18 +30,9 @@
 #include <stdio.h>
 #elif defined (HAVE_RPC_DES_CRYPT_H)
 #include <rpc/des_crypt.h>
-#elif defined (HAVE_LIBGCRYPT)
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <assert.h>
-
-// disable gcrypt compile warnings
-#define GCRYPT_NO_MPI_MACROS
-#define GCRYPT_NO_DEPRECATED
-#include <gcrypt.h>
-#else
-#error "libgcrypt or rpc/des_crypt.h file required"
+#else // OPENSSL
+#include "crypt_opfunc.h"
+#include "error_code.h"
 #endif
 
 #include "encryption.h"
@@ -53,16 +44,9 @@ static BYTE des_Keyblob[] = {
   0x08, 0x00, 0x00, 0x00,	// key length, in bytes
   'U', '9', 'a', '$', 'y', '1', '@', 'z'	// DES key with parity
 };
-#elif defined (HAVE_RPC_DES_CRYPT_H)
-static char crypt_Key[8];
-#elif defined (HAVE_LIBGCRYPT)
-/* libgcrypt cipher handle */
-static gcry_cipher_hd_t cipher_Hd;
+#else
 static char crypt_Key[8];
 #endif /* WINDOWS */
-
-#include "crypt_opfunc.h"
-#include "error_code.h"
 
 /*
  * crypt_seed - Prepares a set of seeds for the encryption algorithm
@@ -90,7 +74,7 @@ crypt_seed (const char *key)
 #elif defined (HAVE_RPC_DES_CRYPT_H)
   memcpy (crypt_Key, key, 8);
   des_setparity (crypt_Key);
-#elif defined (HAVE_LIBGCRYPT)
+#else
   memcpy (crypt_Key, key, 8);
 #endif /* WINDOWS */
 }
@@ -183,7 +167,10 @@ crypt_encrypt_printable (const char *line, char *crypt, int maxlen)
     }
   memcpy (crypt, inbuf, inlen);
   outlen = inlen;
-#elif defined (HAVE_LIBGCRYPT)
+
+  crypt[outlen] = '\0';
+  return (outlen);
+#else
   int outlen = 0;
   int line_len = (int) strlen (line);
   char *dest = NULL;
@@ -197,9 +184,9 @@ crypt_encrypt_printable (const char *line, char *crypt, int maxlen)
   memcpy (crypt, dest, outlen);
   db_private_free_and_init (NULL, dest);
 
-#endif /* WINDOWS */
   crypt[outlen] = '\0';
   return (outlen);
+#endif
 }
 
 /*
@@ -217,19 +204,20 @@ crypt_decrypt_printable (const char *crypt, char *decrypt, int maxlen)
 #if defined (WINDOWS)
   /* We don't need to decrypt */
   return -1;
-#elif defined (HAVE_LIBGCRYPT) || defined (HAVE_RPC_DES_CRYPT_H)
-  int outlen, inlen, padding_size;
+#else
+  int outlen;
+#if defined (HAVE_RPC_DES_CRYPT_H)
+  int inlen, padding_size;
   int i;
 
   inlen = strlen (crypt);
-#if defined (HAVE_RPC_DES_CRYPT_H)
   memcpy (decrypt, crypt, inlen);
   if (DES_FAILED (ecb_crypt (crypt_Key, decrypt, inlen, DES_DECRYPT)))
     {
       return -1;
     }
   outlen = inlen;
-#elif defined (HAVE_LIBGCRYPT)
+#else // OPENSSL
   char *dest = NULL;
   int ec = crypt_default_decrypt (NULL, crypt, inlen, crypt_Key, (int) sizeof crypt_Key, &dest, &outlen, DES_ECB);
   if (ec != NO_ERROR)

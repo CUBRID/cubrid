@@ -110,7 +110,6 @@ install(TARGETS
 
 # install external pre-built DLLs
 install(FILES
-  ${CMAKE_SOURCE_DIR}/win/external/gcrypt/bin/gcrypt.dll
   ${CMAKE_SOURCE_DIR}/win/external/gpg-error/bin/gpg-error.dll
   DESTINATION ${CUBRID_BINDIR} COMPONENT Library
   )

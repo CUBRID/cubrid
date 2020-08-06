@@ -51,30 +51,15 @@
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #endif // SERVER_MODE
 
-#define GCRYPT_NO_MPI_MACROS
-#define GCRYPT_NO_DEPRECATED
-
-#include "gcrypt.h"
-
-#include <openssl/err.h>
 #include <openssl/evp.h>
 #include <openssl/sha.h>
 #include <openssl/rand.h>
-
-#define GCRYPT_SECURE_MEMORY_LEN (16*1024)
 
 #define AES128_BLOCK_LEN (128/8)
 #define AES128_KEY_LEN (128/8)
 #define DES_BLOCK_LEN (8)
 #define MD5_CHECKSUM_LEN 16
 #define MD5_CHECKSUM_HEX_LEN (32 + 1)
-
-#if defined(SERVER_MODE)
-static pthread_mutex_t gcrypt_init_mutex = PTHREAD_MUTEX_INITIALIZER;
-GCRY_THREAD_OPTION_PTHREAD_IMPL;
-#endif
-
-static int gcrypt_initialized = 0;
 
 typedef enum
 {
@@ -110,67 +95,10 @@ static const char *const crypt_lib_fail_info[] = {
 static const char lower_hextable[] = "0123456789abcdef";
 static const char upper_hextable[] = "0123456789ABCDEF";
 
-static int init_gcrypt (void);
 static int crypt_sha_functions (THREAD_ENTRY * thread_p, const char *src, int src_len, SHA_FUNCTION sha_func,
 				char **dest_p, int *dest_len_p);
 static int crypt_md5_buffer_binary (const char *buffer, size_t len, char *resblock);
 static void aes_default_gen_key (const char *key, int key_len, char *dest_key, int dest_key_len);
-
-/*
- * init_gcrypt() -- Initialize libgcrypt
- *   return: Success, returns NO_ERROR.
- */
-static int
-init_gcrypt (void)
-{
-  if (gcrypt_initialized == 0)
-    {
-#if defined(SERVER_MODE)
-      pthread_mutex_lock (&gcrypt_init_mutex);
-
-      if (gcrypt_initialized == 1)
-	{
-	  /* It means other concurrent thread has initialized gcrypt when the thread blocked by
-	   * pthread_mutex_lock(&gcrypt_init_mutex). */
-	  pthread_mutex_unlock (&gcrypt_init_mutex);
-	  return NO_ERROR;
-	}
-
-      if (gcry_control (GCRYCTL_SET_THREAD_CBS, &gcry_threads_pthread) != GPG_ERR_NO_ERROR)
-	{
-	  pthread_mutex_unlock (&gcrypt_init_mutex);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1,
-		  crypt_lib_fail_info[CRYPT_LIB_INIT_ERR]);
-	  return ER_ENCRYPTION_LIB_FAILED;
-	}
-#endif
-      gcry_check_version (NULL);
-
-      /* allocate secure memory */
-      gcry_control (GCRYCTL_SUSPEND_SECMEM_WARN);
-      gcry_control (GCRYCTL_INIT_SECMEM, GCRYPT_SECURE_MEMORY_LEN, 0);
-      gcry_control (GCRYCTL_RESUME_SECMEM_WARN);
-      // tell gcrypt that initialization has completed.
-      gcry_control (GCRYCTL_INITIALIZATION_FINISHED, 0);
-      // check indeed initialization was finished. it returns 1 on success, 0 on failure.
-      if (!gcry_control (GCRYCTL_INITIALIZATION_FINISHED_P))
-	{
-#if defined(SERVER_MODE)
-	  pthread_mutex_unlock (&gcrypt_init_mutex);
-#endif
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1,
-		  crypt_lib_fail_info[CRYPT_LIB_INIT_ERR]);
-	  return ER_ENCRYPTION_LIB_FAILED;
-	}
-      // init successful
-      gcrypt_initialized = 1;
-#if defined(SERVER_MODE)
-      pthread_mutex_unlock (&gcrypt_init_mutex);
-#endif
-      return NO_ERROR;
-    }
-  return NO_ERROR;
-}
 
 void
 str_to_hex_prealloced (const char *src, int src_len, char *dest, int dest_len, HEX_LETTERCASE lettercase)
@@ -300,20 +228,20 @@ crypt_default_encrypt (THREAD_ENTRY * thread_p, const char *src, int src_len, co
   const char *key_arg = NULL;
   switch (enc_type)
     {
-      case AES_128_ECB:
-        cipher = EVP_aes_128_ecb ();
-	block_len = AES128_BLOCK_LEN;
-	aes_default_gen_key (key, key_len, new_key, AES128_KEY_LEN);
-	new_key[AES128_KEY_LEN] = '\0';
-	key_arg = new_key;
+    case AES_128_ECB:
+      cipher = EVP_aes_128_ecb ();
+      block_len = AES128_BLOCK_LEN;
+      aes_default_gen_key (key, key_len, new_key, AES128_KEY_LEN);
+      new_key[AES128_KEY_LEN] = '\0';
+      key_arg = new_key;
       break;
-      case DES_ECB:
-        cipher = EVP_des_ecb ();
-	block_len = DES_BLOCK_LEN;
-	key_arg = key;
+    case DES_ECB:
+      cipher = EVP_des_ecb ();
+      block_len = DES_BLOCK_LEN;
+      key_arg = key;
       break;
-      default:
-        return ER_FAILED;
+    default:
+      return ER_FAILED;
     }
 
 #if defined (SERVER_MODE)
@@ -338,15 +266,13 @@ crypt_default_encrypt (THREAD_ENTRY * thread_p, const char *src, int src_len, co
 
   if (context == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1,
-	      crypt_lib_fail_info[CRYPT_LIB_INIT_ERR]);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_INIT_ERR]);
       return ER_ENCRYPTION_LIB_FAILED;
     }
 
   if (EVP_EncryptInit (context.get (), cipher, (const unsigned char *) key_arg, NULL) != 1)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1,
-	      crypt_lib_fail_info[CRYPT_LIB_INIT_ERR]);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_INIT_ERR]);
       return ER_ENCRYPTION_LIB_FAILED;
     }
 
@@ -422,20 +348,20 @@ crypt_default_decrypt (THREAD_ENTRY * thread_p, const char *src, int src_len, co
   const char *key_arg = NULL;
   switch (enc_type)
     {
-      case AES_128_ECB:
-        cipher = EVP_aes_128_ecb ();
-	block_len = AES128_BLOCK_LEN;
-	aes_default_gen_key (key, key_len, new_key, AES128_KEY_LEN);
-	new_key[AES128_KEY_LEN] = '\0';
-	key_arg = new_key;
+    case AES_128_ECB:
+      cipher = EVP_aes_128_ecb ();
+      block_len = AES128_BLOCK_LEN;
+      aes_default_gen_key (key, key_len, new_key, AES128_KEY_LEN);
+      new_key[AES128_KEY_LEN] = '\0';
+      key_arg = new_key;
       break;
-      case DES_ECB:
-        cipher = EVP_des_ecb ();
-	block_len = DES_BLOCK_LEN;
-	key_arg = key;
+    case DES_ECB:
+      cipher = EVP_des_ecb ();
+      block_len = DES_BLOCK_LEN;
+      key_arg = key;
       break;
-      default:
-        return ER_FAILED;
+    default:
+      return ER_FAILED;
     }
 
 #if defined (SERVER_MODE)
@@ -469,15 +395,13 @@ crypt_default_decrypt (THREAD_ENTRY * thread_p, const char *src, int src_len, co
 
   if (context == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1,
-	      crypt_lib_fail_info[CRYPT_LIB_INIT_ERR]);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_INIT_ERR]);
       return ER_ENCRYPTION_LIB_FAILED;
     }
 
   if (EVP_DecryptInit (context.get (), cipher, (const unsigned char *) key_arg, NULL) != 1)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1,
-	      crypt_lib_fail_info[CRYPT_LIB_INIT_ERR]);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_INIT_ERR]);
       return ER_ENCRYPTION_LIB_FAILED;
     }
 
@@ -493,14 +417,14 @@ crypt_default_decrypt (THREAD_ENTRY * thread_p, const char *src, int src_len, co
     {
       db_private_free_and_init (thread_p, dest);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_CRYPT_ERR]);
-      return ER_ENCRYPTION_LIB_FAILED; 
+      return ER_ENCRYPTION_LIB_FAILED;
     }
 
   if (EVP_DecryptFinal (context.get (), (unsigned char *) dest + len, &len) != 1)
     {
       db_private_free_and_init (thread_p, dest);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_CRYPT_ERR]);
-      return ER_ENCRYPTION_LIB_FAILED; 
+      return ER_ENCRYPTION_LIB_FAILED;
     }
 
   /* PKCS7 */

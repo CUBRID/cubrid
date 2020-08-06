@@ -135,9 +135,6 @@ set(WITH_LIBLZO_URL "http://www.oberhumer.com/opensource/lzo/download/lzo-2.10.t
 # gpg-error library sources URL
 set(WITH_LIBGPG_ERROR_URL "https://gnupg.org/ftp/gcrypt/libgpg-error/libgpg-error-1.27.tar.bz2")
 
-# gcrypt library sources URL
-set(WITH_LIBGCRYPT_URL "https://gnupg.org/ftp/gcrypt/libgcrypt/libgcrypt-1.5.6.tar.bz2")
-
 # rapidjson library sources URL
 set(WITH_RAPIDJSON_URL "https://github.com/Tencent/rapidjson/archive/v1.1.0.tar.gz")
 
@@ -153,14 +150,12 @@ set(WITH_LIBJANSSON   "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with jansson
 set(WITH_LIBEDIT      "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with editline library (default: EXTERNAL)")
 set(WITH_LIBLZO       "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with lzo library (default: EXTERNAL)")
 set(WITH_LIBGPG_ERROR "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with gpg-error library (default: EXTERNAL)")
-set(WITH_LIBGCRYPT    "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with gcrypt library (default: EXTERNAL)")
 set(WITH_LIBNCURSES   "${WITH_SYSTEM_PREFIX}" CACHE STRING "Build with ncurses library (default: SYSTEM)")
 set(WITH_LIBOPENSSL   "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with openssl library (default: EXTERNAL)")
 
 message(STATUS "Build with Curses library: ${WITH_LIBNCURSES}")
 message(STATUS "Build with editline library: ${WITH_LIBEDIT}")
 message(STATUS "Build with lzo library: ${WITH_LIBLZO}")
-message(STATUS "Build with gcrypt library: ${WITH_LIBGCRYPT}")
 message(STATUS "Build with gpg-error library: ${WITH_LIBGPG_ERROR}")
 message(STATUS "Build with expat library: ${WITH_LIBEXPAT}")
 message(STATUS "Build with jansson library: ${WITH_LIBJANSSON}")
@@ -681,11 +676,6 @@ int main() {
 include(TestBigEndian)
 test_big_endian(WORDS_BIGENDIAN)
 
-find_library(GCRYPT_LIBRARIES gcrypt)
-if(GCRYPT_LIBRARIES)
-  set(HAVE_LIBGCRYPT 1)
-endif(GCRYPT_LIBRARIES)
-
 if(UNIX)
   include(FindThreads)
 endif(UNIX)
@@ -1138,60 +1128,6 @@ if (TARGET ${LIBGPG_ERROR_TARGET})
   list(APPEND EP_TARGETS ${LIBGPG_ERROR_TARGET})
 endif(TARGET ${LIBGPG_ERROR_TARGET})
 
-# WITH_LIBGCRYPT can have multiple values with different meanings
-# on Linux:
-# * "EXTERNAL" - (default) builds gcrypt library from URL stored in ${LIBGCRYPT_TARGET} uses the library created by the build
-# * "SYSTEM"   - use gcrypt library located in:
-#                  ${WITH_EXTERNAL_LIBS_PATH}
-#                  ${WITH_LIBGCRYPT_ROOT_PATH}/lib
-#                use gcrypt headers located in:
-#                  ${WITH_EXTERNAL_HEADERS_PATH}
-#                  ${WITH_LIBGCRYPT_ROOT_PATH}/include
-set(LIBGCRYPT_TARGET libgcrypt)
-if(WITH_LIBGCRYPT STREQUAL "EXTERNAL")
-  if(UNIX)
-    if(TARGET ${LIBGPG_ERROR_TARGET})
-      set(WITH_LIBGPG_ERROR_PREFIX "--with-gpg-error-prefix=${CMAKE_CURRENT_BINARY_DIR}/external")
-    endif()
-    externalproject_add(${LIBGCRYPT_TARGET}
-      URL                  ${WITH_LIBGCRYPT_URL}
-      TIMEOUT              600
-      DOWNLOAD_NO_PROGRESS 1
-      CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS} CPPFLAGS=-I${CMAKE_CURRENT_BINARY_DIR}/external/include --enable-maintainer-mode ${WITH_LIBGPG_ERROR_PREFIX}
-      BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      )
-
-    set(LIBGCRYPT_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libgcrypt.a)
-    set(LIBGCRYPT_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
-  else(UNIX)
-    set(LIBGCRYPT_DIR ${WINDOWS_EXTERNAL_DIR}/gcrypt)
-    set(LIBGCRYPT_LIBS ${LIBGCRYPT_DIR}/lib/gcrypt.lib)
-    set(LIBGCRYPT_INCLUDES ${LIBGCRYPT_DIR}/include)
-    set(LIBGCRYPT_DLL ${LIBGCRYPT_DIR}/bin/gcrypt.dll)
-    add_custom_target(libgcrypt
-      COMMAND ${CMAKE_COMMAND} -E echo "  copying ${LIBGCRYPT_DLL} to ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/gcrypt.dll"
-      COMMAND ${CMAKE_COMMAND} -E copy ${LIBGCRYPT_DLL} ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/gcrypt.dll
-    )
-  endif(UNIX)
-elseif(WITH_LIBGCRYPT STREQUAL "SYSTEM")
-  if(UNIX)
-    find_library(LIBGCRYPT_LIBS NAMES libgcrypt.a PATHS ${WITH_EXTERNAL_LIBS_PATH} ${WITH_LIBGCRYPT_ROOT_PATH}/lib REQUIRED)
-    find_path(LIBGCRYPT_INCLUDES NAMES gcrypt.h PATHS ${WITH_EXTERNAL_HEADERS_PATH} ${WITH_LIBGCRYPT_ROOT_PATH}/include REQUIRED)
-
-    message(STATUS "Found gcrypt library: ${LIBGCRYPT_LIBS}")
-    message(STATUS "Found gcrypt headers: ${LIBGCRYPT_INCLUDES}")
-  endif(UNIX)
-endif()
-list(APPEND EP_INCLUDES ${LIBGCRYPT_INCLUDES})
-list(APPEND EP_LIBS ${LIBGCRYPT_LIBS})
-if (TARGET ${LIBGCRYPT_TARGET})
-  list(APPEND EP_TARGETS ${LIBGCRYPT_TARGET})
-  if(TARGET ${LIBGPG_ERROR_TARGET})
-    add_dependencies(${LIBGCRYPT_TARGET} ${LIBGPG_ERROR_TARGET})
-  endif(TARGET ${LIBGPG_ERROR_TARGET})
-endif(TARGET ${LIBGCRYPT_TARGET})
-
 # WITH_LOBOPENSSL can have multiple values with different meanings
 # on Linux:
 # * "EXTERNAL" - (default) builds openssl library from URL stored in ${WITH_LIBOPENSSL_URL} uses the library created by the build
@@ -1245,50 +1181,6 @@ if(WIN32)
   endif(TARGET_PLATFORM_BITS EQUAL 32)
   list(APPEND JVM_LIBS -DELAYLOAD:jvm.dll)
 endif(WIN32)
-
-# WITH_LOBOPENSSL can have multiple values with different meanings
-# on Linux:
-# * "EXTERNAL" - (default) builds openssl library from URL stored in ${WITH_LIBOPENSSL_URL} uses the library created by the build
-# * "SYSTEM"   - use openssl library located in:
-#                  ${WITH_EXTERNAL_LIBS_PATH}
-#                  ${WITH_LIBOPENSSL_ROOT_PATH}/lib
-#                use openssl headers located in:
-#                  ${WITH_EXTERNAL_HEADERS_PATH}
-#                  ${WITH_LIBOPENSSL_ROOT_PATH}/include
-# on Windows:
-# * "EXTERNAL" - (default) uses the prebuilt library from cubrid/win/external
-if(WITH_LIBOPENSSL STREQUAL "EXTERNAL")
-  set(LIBOPENSSL_TARGET libopenssl)
-  if(UNIX)
-    #compile OpenSSL library given an internet url to a OpenSSL archive
-    #e.g. https://www.openssl.org/source/openssl-1.1.1f.tar.gz
-    externalproject_add(${LIBOPENSSL_TARGET}
-      URL                  ${WITH_LIBOPENSSL_URL}
-      TIMEOUT              600
-      DOWNLOAD_NO_PROGRESS 1
-      CONFIGURE_COMMAND    <SOURCE_DIR>/config --prefix=${CMAKE_CURRENT_BINARY_DIR}/external no-threads no-shared # ${DEFAULT_CONFIGURE_OPTS}
-      BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND      make install_sw AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      )
-    set(LIBOPENSSL_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libssl.a ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libcrypto.a)
-    set(LIBOPENSSL_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
-    list(APPEND EP_TARGETS ${LIBOPENSSL_TARGET})
-  else(UNIX)
-    set(LIBOPENSSL_LIBS ${WINDOWS_EXTERNAL_DIR}/openssl/lib/libssl.lib)
-    list(APPEND LIBOPENSSL_LIBS ${WINDOWS_EXTERNAL_DIR}/openssl/lib/libcrypto.lib)
-    list(APPEND LIBOPENSSL_LIBS Crypt32 Ws2_32)
-    set(LIBOPENSSL_INCLUDES ${WINDOWS_EXTERNAL_DIR}/openssl/include)
-  endif(UNIX)
-else(WITH_LIOPENSSL STREQUAL "SYSTEM")
-  if(UNIX)
-    find_library(LIBOPENSSL_LIBS NAMES libssl.a libcrypto.a PATHS ${WITH_EXTERNAL_LIBS_PATH} ${WITH_LIBOPENSSL_ROOT_PATH}/lib REQUIRED)
-    find_path(LIBOPENSSL_INCLUDES NAMES openssl/conf.h openssl/evp.h PATHS ${WITH_EXTERNAL_HEADERS_PATH} ${WITH_LIBOPENSSL_ROOT_PATH}/include REQUIRED)
-    message(STATUS "Found openssl library: ${LIBOPENSSL_LIBS}")
-    message(STATUS "Found openssl headers: ${LIBOPENSSL_INCLUDES}")
-  endif(UNIX)
-endif()
-list(APPEND EP_INCLUDES ${LIBOPENSSL_INCLUDES})
-list(APPEND EP_LIBS ${LIBOPENSSL_LIBS})
 
 # rapidjson
 set(RAPIDJSON_TARGET rapidjson)

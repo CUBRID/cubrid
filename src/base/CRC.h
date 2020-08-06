@@ -55,6 +55,8 @@
         #define CRCPP_INCLUDE_ESOTERIC_CRC_DEFINITIONS  - Define to include definitions for little-used CRCs. 
 */
 
+// *INDENT-OFF*
+
 #ifndef CRCPP_CRC_H_
 #define CRCPP_CRC_H_
 
@@ -1703,3 +1705,5 @@ inline const CRC::Parameters<crcpp_uint64, 64> & CRC::CRC_64()
 #endif
 
 #endif // CRCPP_CRC_H_
+
+// *INDENT-ON*
