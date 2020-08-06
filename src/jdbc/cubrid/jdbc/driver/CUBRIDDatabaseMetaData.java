@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2016 CUBRID Corporation
  *
  * Redistribution and use in source and binary forms, with or without modification, 
  * are permitted provided that the following conditions are met: 
@@ -735,14 +736,28 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 	public synchronized boolean supportsTransactionIsolationLevel(int level)
 			throws SQLException {
 		checkIsOpen();
-		switch (level) {
-		case Connection.TRANSACTION_READ_COMMITTED:
-		case Connection.TRANSACTION_REPEATABLE_READ:
-		case Connection.TRANSACTION_SERIALIZABLE:
-		case CUBRIDConnection.TRAN_REP_CLASS_COMMIT_INSTANCE:
-			return true;
-		default:
-			return false;
+		if (u_con.protoVersionIsAbove(UConnection.PROTOCOL_V7)) {
+			switch (level) {
+			case Connection.TRANSACTION_READ_COMMITTED:
+			case Connection.TRANSACTION_REPEATABLE_READ:
+			case Connection.TRANSACTION_SERIALIZABLE:
+			case CUBRIDConnection.TRAN_REP_CLASS_COMMIT_INSTANCE:
+				return true;
+			default:
+				return false;
+	                }
+		} else {
+			switch (level) {
+			case Connection.TRANSACTION_READ_COMMITTED:
+			case Connection.TRANSACTION_READ_UNCOMMITTED:
+			case Connection.TRANSACTION_REPEATABLE_READ:
+			case Connection.TRANSACTION_SERIALIZABLE:
+			case CUBRIDConnection.TRAN_REP_CLASS_COMMIT_INSTANCE:
+			case CUBRIDConnection.TRAN_REP_CLASS_UNCOMMIT_INSTANCE:
+				return true;
+			default:
+				return false;
+	                }
 		}
 	}
 
