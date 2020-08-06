@@ -1213,13 +1213,13 @@ qdump_print_value (REGU_VARIABLE * value_p)
   switch (value_p->type)
     {
     case TYPE_DBVAL:
-      fprintf (foutput, "[type:%s]", qdump_data_type_string (DB_VALUE_DOMAIN_TYPE (&value_p->value.dbval)));
+      fprintf (foutput, "[type:%s]", qdump_data_type_string (value_p->domain->type->id));
       qdump_print_db_value (&value_p->value.dbval);
       return true;
 
     case TYPE_CONSTANT:
     case TYPE_ORDERBY_NUM:
-      fprintf (foutput, "[type:%s]", qdump_data_type_string (DB_VALUE_DOMAIN_TYPE (value_p->value.dbvalptr)));
+      fprintf (foutput, "[type:%s]", qdump_data_type_string (value_p->domain->type->id));
       qdump_print_db_value (value_p->value.dbvalptr);
       return true;
 
