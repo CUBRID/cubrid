@@ -5917,7 +5917,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_TB_DEFAULT_REUSE_OID,
    PRM_NAME_TB_DEFAULT_REUSE_OID,
-   (PRM_USER_CHANGE | PRM_FOR_SERVER),
+   (PRM_USER_CHANGE | PRM_FOR_CLIENT | PRM_FOR_SESSION),
    PRM_BOOLEAN,
    &prm_create_table_reuseoid,
    (void *) &prm_create_table_reuseoid_default,
