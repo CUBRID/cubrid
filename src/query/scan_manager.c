@@ -3682,6 +3682,8 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 	{
 	  return S_ERROR;
 	}
+      scan_end_scan (thread_p, scan_id);
+
       llsidp->hlsid.hash_list_scan_yn = true;
     }
   else
