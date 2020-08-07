@@ -4716,6 +4716,8 @@ xts_process_list_spec_type (char *ptr, const LIST_SPEC_TYPE * list_spec)
     }
   ptr = or_pack_int (ptr, offset);
 
+  ptr = or_pack_int (ptr, list_spec->hash_list_scan_yn);
+
   return ptr;
 }
 
@@ -6660,6 +6662,7 @@ xts_sizeof_list_spec_type (const LIST_SPEC_TYPE * list_spec)
 	   + PTR_SIZE		/* list_regu_list_rest */
 	   + PTR_SIZE		/* list_regu_list_build */
 	   + PTR_SIZE		/* list_regu_list_probe */
+	   + OR_INT_SIZE	/* hash_list_scan_yn */
 	   + PTR_SIZE);		/* xasl_node */
 
   return size;

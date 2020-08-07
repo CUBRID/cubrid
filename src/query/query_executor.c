@@ -6634,7 +6634,8 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	scan_open_list_scan (thread_p, s_id, grouped, curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
 			     ACCESS_SPEC_LIST_ID (curr_spec), curr_spec->s.list_node.list_regu_list_pred,
 			     curr_spec->where_pred, curr_spec->s.list_node.list_regu_list_rest,
-			     curr_spec->s.list_node.list_regu_list_build, curr_spec->s.list_node.list_regu_list_probe);
+			     curr_spec->s.list_node.list_regu_list_build, curr_spec->s.list_node.list_regu_list_probe,
+			     curr_spec->s.list_node.hash_list_scan_yn);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();

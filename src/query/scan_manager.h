@@ -431,7 +431,7 @@ extern int scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				/* fields of LLIST_SCAN_ID */
 				QFILE_LIST_ID * list_id, regu_variable_list_node * regu_list_pred, PRED_EXPR * pr,
 				regu_variable_list_node * regu_list_rest, regu_variable_list_node * regu_list_build,
-				regu_variable_list_node * regu_list_probe);
+				regu_variable_list_node * regu_list_probe, int hash_list_scan_yn);
 extern int scan_open_showstmt_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				    /* fields of SCAN_ID */
 				    int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval,

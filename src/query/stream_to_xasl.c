@@ -4877,6 +4877,8 @@ stx_build_list_spec_type (THREAD_ENTRY * thread_p, char *ptr, LIST_SPEC_TYPE * l
 	}
     }
 
+  ptr = or_unpack_int (ptr, (int *) &list_spec_type->hash_list_scan_yn);
+
   return ptr;
 
 error:

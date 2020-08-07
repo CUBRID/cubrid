@@ -207,7 +207,7 @@ static int scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_ter
 static SCAN_CODE scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * tuple);
-static bool check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt);
+static bool check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_yn);
 
 /*
  * scan_init_iss () - initialize index skip scan structure
@@ -3629,7 +3629,7 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 		     /* fields of LLIST_SCAN_ID */
 		     QFILE_LIST_ID * list_id, regu_variable_list_node * regu_list_pred, PRED_EXPR * pr,
 		     regu_variable_list_node * regu_list_rest, regu_variable_list_node * regu_list_build,
-		     regu_variable_list_node * regu_list_probe)
+		     regu_variable_list_node * regu_list_probe, int hash_list_scan_yn)
 {
   LLIST_SCAN_ID *llsidp;
   int val_cnt;
@@ -3661,8 +3661,8 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   llsidp->hlsid.probe_regu_list = regu_list_probe;
 
   /* check if hash list scan is possible? */
-  llsidp->hlsid.hash_list_scan_yn = check_hash_list_scan (llsidp, &val_cnt);
-  if (llsidp->hlsid.hash_list_scan_yn)
+  llsidp->hlsid.hash_list_scan_yn = false;
+  if (check_hash_list_scan (llsidp, &val_cnt, hash_list_scan_yn))
     {
       /* create hash table */
       llsidp->hlsid.hash_table =
@@ -3683,6 +3683,12 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 	  return S_ERROR;
 	}
       llsidp->hlsid.hash_list_scan_yn = true;
+    }
+  else
+    {
+      llsidp->hlsid.hash_table = NULL;
+      llsidp->hlsid.temp_key = NULL;
+      llsidp->hlsid.curr_hash_entry = NULL;
     }
 
   return NO_ERROR;
@@ -7961,11 +7967,17 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
  *      6. list file from dptr is not allowed <== need to check
 */
 static bool
-check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt)
+check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_yn)
 {
   int build_cnt;
   regu_variable_list_node *build, *probe;
   DB_TYPE vtype1, vtype2;
+
+  /* no_hash_list_scan sql hint check */
+  if (hash_list_scan_yn == 0)
+    {
+      return false;
+    }
 
   /* count of tuple of list file > 0 */
   if (llsidp->list_id->tuple_cnt <= 0)

@@ -14065,6 +14065,19 @@ pt_gen_optimized_plan (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
 		  xasl->spec_list->indexptr->groupby_desc = 1;
 		}
 	    }
+
+	  /* if the user asked for NO_HASH_LIST_SCAN, force it on all list scan */
+	  if (select_node->info.query.q.select.hint & PT_HINT_NO_HASH_LIST_SCAN)
+	    {
+	      XASL_NODE *ptr;
+	      for (ptr = xasl; ptr; ptr = ptr->scan_ptr)
+		{
+		  if (ptr->spec_list && ptr->spec_list->type == TARGET_LIST)
+		    {
+		      ptr->spec_list->s.list_node.hash_list_scan_yn = 0;
+		    }
+		}
+	    }
 	}
     }
 
