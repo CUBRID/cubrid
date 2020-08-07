@@ -3664,6 +3664,16 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   llsidp->hlsid.hash_list_scan_yn = false;
   if (check_hash_list_scan (llsidp, &val_cnt, hash_list_scan_yn))
     {
+      bool on_trace;
+      TSC_TICKS start_tick, end_tick;
+      TSCTIMEVAL tv_diff;
+
+      on_trace = thread_is_on_trace (thread_p);
+      if (on_trace)
+	{
+	  tsc_getticks (&start_tick);
+	}
+
       /* create hash table */
       llsidp->hlsid.hash_table =
 	mht_create ("Hash List Scan", llsidp->list_id->tuple_cnt, qdata_hash_scan_key, qdata_hscan_key_eq);
@@ -3685,6 +3695,13 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
       scan_end_scan (thread_p, scan_id);
 
       llsidp->hlsid.hash_list_scan_yn = true;
+
+      if (on_trace)
+	{
+	  tsc_getticks (&end_tick);
+	  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+	  TSC_ADD_TIMEVAL (scan_id->scan_stats.elapsed_hash_build, tv_diff);
+	}
     }
   else
     {
@@ -7643,7 +7660,14 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
       break;
 
     case S_LIST_SCAN:
-      fprintf (fp, "(temp");
+      if (scan_id->s.llsid.hlsid.hash_list_scan_yn)
+	{
+	  fprintf (fp, "(hash temp buildtime : %d,", TO_MSEC (scan_id->scan_stats.elapsed_hash_build));
+	}
+      else
+	{
+	  fprintf (fp, "(temp");
+	}
       break;
 
     case S_SHOWSTMT_SCAN:
