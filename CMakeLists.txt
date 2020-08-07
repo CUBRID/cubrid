@@ -1246,6 +1246,50 @@ if(WIN32)
   list(APPEND JVM_LIBS -DELAYLOAD:jvm.dll)
 endif(WIN32)
 
+# WITH_LOBOPENSSL can have multiple values with different meanings
+# on Linux:
+# * "EXTERNAL" - (default) builds openssl library from URL stored in ${WITH_LIBOPENSSL_URL} uses the library created by the build
+# * "SYSTEM"   - use openssl library located in:
+#                  ${WITH_EXTERNAL_LIBS_PATH}
+#                  ${WITH_LIBOPENSSL_ROOT_PATH}/lib
+#                use openssl headers located in:
+#                  ${WITH_EXTERNAL_HEADERS_PATH}
+#                  ${WITH_LIBOPENSSL_ROOT_PATH}/include
+# on Windows:
+# * "EXTERNAL" - (default) uses the prebuilt library from cubrid/win/external
+if(WITH_LIBOPENSSL STREQUAL "EXTERNAL")
+  set(LIBOPENSSL_TARGET libopenssl)
+  if(UNIX)
+    #compile OpenSSL library given an internet url to a OpenSSL archive
+    #e.g. https://www.openssl.org/source/openssl-1.1.1f.tar.gz
+    externalproject_add(${LIBOPENSSL_TARGET}
+      URL                  ${WITH_LIBOPENSSL_URL}
+      TIMEOUT              600
+      DOWNLOAD_NO_PROGRESS 1
+      CONFIGURE_COMMAND    <SOURCE_DIR>/config --prefix=${CMAKE_CURRENT_BINARY_DIR}/external no-threads no-shared # ${DEFAULT_CONFIGURE_OPTS}
+      BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND      make install_sw AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      )
+    set(LIBOPENSSL_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libssl.a ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libcrypto.a)
+    set(LIBOPENSSL_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
+    list(APPEND EP_TARGETS ${LIBOPENSSL_TARGET})
+  else(UNIX)
+    set(LIBOPENSSL_LIBS ${WINDOWS_EXTERNAL_DIR}/openssl/lib/libssl.lib)
+    list(APPEND LIBOPENSSL_LIBS ${WINDOWS_EXTERNAL_DIR}/openssl/lib/libcrypto.lib)
+    list(APPEND LIBOPENSSL_LIBS Crypt32 Ws2_32)
+    set(LIBOPENSSL_INCLUDES ${WINDOWS_EXTERNAL_DIR}/openssl/include)
+  endif(UNIX)
+else(WITH_LIOPENSSL STREQUAL "SYSTEM")
+  if(UNIX)
+    find_library(LIBOPENSSL_LIBS NAMES libssl.a libcrypto.a PATHS ${WITH_EXTERNAL_LIBS_PATH} ${WITH_LIBOPENSSL_ROOT_PATH}/lib REQUIRED)
+    find_path(LIBOPENSSL_INCLUDES NAMES openssl/conf.h openssl/evp.h PATHS ${WITH_EXTERNAL_HEADERS_PATH} ${WITH_LIBOPENSSL_ROOT_PATH}/include REQUIRED)
+    message(STATUS "Found openssl library: ${LIBOPENSSL_LIBS}")
+    message(STATUS "Found openssl headers: ${LIBOPENSSL_INCLUDES}")
+  endif(UNIX)
+endif()
+list(APPEND EP_INCLUDES ${LIBOPENSSL_INCLUDES})
+list(APPEND EP_LIBS ${LIBOPENSSL_LIBS})
+
 # rapidjson
 set(RAPIDJSON_TARGET rapidjson)
 externalproject_add(${RAPIDJSON_TARGET}

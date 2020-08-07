@@ -27,6 +27,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <memory>
 #include <memory.h>
 #include <string.h>
 #include <math.h>
@@ -54,6 +55,9 @@
 
 #include "gcrypt.h"
 
+#include <openssl/evp.h>
+#include <openssl/sha.h>
+
 #define GCRYPT_SECURE_MEMORY_LEN (16*1024)
 
 #define AES128_BLOCK_LEN (128/8)
@@ -75,6 +79,20 @@ typedef enum
   CRYPT_LIB_UNKNOWN_ERR
 } CRYPT_LIB_ERROR;
 
+typedef enum
+{
+  SHA_ONE,
+  SHA_TWO_224,
+  SHA_TWO_256,
+  SHA_TWO_384,
+  SHA_TWO_512,
+} SHA_FUNCTION;
+
+// *INDENT-OFF*
+template<typename T>
+using deleted_unique_ptr = std::unique_ptr<T, std::function<void (T *)>>;
+// *INDENT-ON*
+
 static const char *const crypt_lib_fail_info[] = {
   "Initialization failure!",
   "Open cipher failure!",
@@ -84,6 +102,8 @@ static const char *const crypt_lib_fail_info[] = {
 };
 
 static int init_gcrypt (void);
+static int crypt_sha_functions (THREAD_ENTRY * thread_p, const char *src, int src_len, SHA_FUNCTION sha_func,
+				char **dest_p, int *dest_len_p);
 static char *str_to_hex (THREAD_ENTRY * thread_p, const char *src, int src_len, char **dest_p, int *dest_len_p);
 static void aes_default_gen_key (const char *key, int key_len, char *dest_key, int dest_key_len);
 
@@ -475,55 +495,7 @@ error_and_free:
 int
 crypt_sha_one (THREAD_ENTRY * thread_p, const char *src, int src_len, char **dest_p, int *dest_len_p)
 {
-  int hash_length;
-  char *dest = NULL;
-  char *dest_hex = NULL;
-  int dest_len;
-  int dest_hex_len;
-  int error_status = NO_ERROR;
-
-  assert (src != NULL);
-
-#if defined (SERVER_MODE)
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-#endif // SERVER_MODE
-
-  *dest_p = NULL;
-
-  if (init_gcrypt () != NO_ERROR)
-    {
-      return ER_ENCRYPTION_LIB_FAILED;
-    }
-
-  hash_length = gcry_md_get_algo_dlen (GCRY_MD_SHA1);
-  dest = (char *) db_private_alloc (thread_p, hash_length);
-  if (dest == NULL)
-    {
-      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
-      goto exit_and_free;
-    }
-
-  dest_len = hash_length;
-  gcry_md_hash_buffer (GCRY_MD_SHA1, dest, src, src_len);
-  dest_hex = str_to_hex (thread_p, dest, dest_len, &dest_hex, &dest_hex_len);
-  if (dest_hex == NULL)
-    {
-      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
-      goto exit_and_free;
-    }
-
-  *dest_p = dest_hex;
-  *dest_len_p = dest_hex_len;
-
-exit_and_free:
-  if (dest != NULL)
-    {
-      db_private_free_and_init (thread_p, dest);
-    }
-  return error_status;
+  return crypt_sha_functions (thread_p, src, src_len, SHA_ONE, dest_p, dest_len_p);
 }
 
 /*
@@ -540,14 +512,35 @@ exit_and_free:
 int
 crypt_sha_two (THREAD_ENTRY * thread_p, const char *src, int src_len, int need_hash_len, char **dest_p, int *dest_len_p)
 {
-  int hash_length;
-  int algo;
-  char *dest = NULL;
-  int dest_len;
+  SHA_FUNCTION sha_func;
+
+  switch (need_hash_len)
+    {
+    case 0:
+    case 256:
+      sha_func = SHA_TWO_256;
+      break;
+    case 224:
+      sha_func = SHA_TWO_224;
+      break;
+    case 384:
+      sha_func = SHA_TWO_384;
+      break;
+    case 512:
+      sha_func = SHA_TWO_512;
+      break;
+    default:
+      return NO_ERROR;
+    }
+  return crypt_sha_functions (thread_p, src, src_len, sha_func, dest_p, dest_len_p);
+}
+
+static int
+crypt_sha_functions (THREAD_ENTRY * thread_p, const char *src, int src_len, SHA_FUNCTION sha_func, char **dest_p,
+		     int *dest_len_p)
+{
   char *dest_hex = NULL;
   int dest_hex_len;
-  int error_status = NO_ERROR;
-
   assert (src != NULL);
 
 #if defined (SERVER_MODE)
@@ -559,56 +552,71 @@ crypt_sha_two (THREAD_ENTRY * thread_p, const char *src, int src_len, int need_h
 
   *dest_p = NULL;
 
-  switch (need_hash_len)
+  // *INDENT-OFF*
+  deleted_unique_ptr<EVP_MD_CTX> context (EVP_MD_CTX_new (), [] (EVP_MD_CTX * ctxt_ptr)
     {
-    case 0:
-    case 256:
-      algo = GCRY_MD_SHA256;
-      break;
-    case 224:
-      algo = GCRY_MD_SHA224;
-      break;
-    case 384:
-      algo = GCRY_MD_SHA384;
-      break;
-    case 512:
-      algo = GCRY_MD_SHA512;
-      break;
-    default:
-      return NO_ERROR;
-    }
+      EVP_MD_CTX_free (ctxt_ptr);
+    });
+  // *INDENT-ON*
 
-  if (init_gcrypt () != NO_ERROR)
+  if (context == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_INIT_ERR]);
       return ER_ENCRYPTION_LIB_FAILED;
     }
 
-  hash_length = gcry_md_get_algo_dlen (algo);
-  dest_len = hash_length;
-  dest = (char *) db_private_alloc (thread_p, hash_length);
-  if (dest == NULL)
+  int rc;
+  switch (sha_func)
     {
-      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
-      goto exit_and_free;
+    case SHA_ONE:
+      rc = EVP_DigestInit (context.get (), EVP_sha1 ());
+      break;
+    case SHA_TWO_256:
+      rc = EVP_DigestInit (context.get (), EVP_sha256 ());
+      break;
+    case SHA_TWO_224:
+      rc = EVP_DigestInit (context.get (), EVP_sha224 ());
+      break;
+    case SHA_TWO_384:
+      rc = EVP_DigestInit (context.get (), EVP_sha384 ());
+      break;
+    case SHA_TWO_512:
+      rc = EVP_DigestInit (context.get (), EVP_sha512 ());
+      break;
+    default:
+      assert (false);
+      return ER_FAILED;
+    }
+  if (rc == 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_INIT_ERR]);
+      return ER_ENCRYPTION_LIB_FAILED;
     }
 
-  gcry_md_hash_buffer (algo, dest, src, src_len);
-  dest_hex = str_to_hex (thread_p, dest, dest_len, &dest_hex, &dest_hex_len);
+  if (EVP_DigestUpdate (context.get (), src, src_len) == 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_CRYPT_ERR]);
+      return ER_ENCRYPTION_LIB_FAILED;
+    }
+
+  unsigned char hash[EVP_MAX_MD_SIZE];
+  unsigned int lengthOfHash = 0;
+  if (EVP_DigestFinal (context.get (), hash, &lengthOfHash) == 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_CRYPT_ERR]);
+      return ER_ENCRYPTION_LIB_FAILED;
+    }
+
+  dest_hex = str_to_hex (thread_p, (char *) hash, lengthOfHash, &dest_hex, &dest_hex_len);
   if (dest_hex == NULL)
     {
-      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
-      goto exit_and_free;
+      return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
   *dest_p = dest_hex;
   *dest_len_p = dest_hex_len;
 
-exit_and_free:
-  if (dest != NULL)
-    {
-      db_private_free_and_init (thread_p, dest);
-    }
-  return error_status;
+  return NO_ERROR;
 }
 
 /*

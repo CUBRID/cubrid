@@ -614,6 +614,7 @@ target_external_dependencies(cubridsa
   LIBLZO
   LIBEXPAT
   LIBEDIT
+  LIBOPENSSL
   )
 target_include_directories(cubridsa PRIVATE
   ${CMAKE_SOURCE_DIR}/src/heaplayers/util  # this looks ugly
