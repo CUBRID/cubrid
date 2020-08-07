@@ -97,8 +97,9 @@ typedef enum
 typedef enum
 {
   FILEIO_ZIP_NONE_METHOD,	/* None */
-  FILEIO_ZIP_LZ4_METHOD,	/* LZ4X */
+  FILEIO_ZIP_LZO1X_METHOD,	/* LZO1X - Unsupported */
   FILEIO_ZIP_ZLIB_METHOD,	/* ZLIB */
+  FILEIO_ZIP_LZ4_METHOD,	/* LZ4X */
   FILEIO_ZIP_UNDEFINED_METHOD	/* Undefined (must be highest ordinal value) */
 } FILEIO_ZIP_METHOD;
 

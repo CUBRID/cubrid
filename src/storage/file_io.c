@@ -6955,6 +6955,8 @@ fileio_finalize_backup_thread (FILEIO_BACKUP_SESSION * session_p, FILEIO_ZIP_MET
 	      free_and_init (node->zip_info);
 	    }
 	  break;
+	case FILEIO_ZIP_LZO1X_METHOD:
+	  break;
 	case FILEIO_ZIP_ZLIB_METHOD:
 	  break;
 	default:
@@ -7477,6 +7479,8 @@ fileio_allocate_node (FILEIO_QUEUE * queue_p, FILEIO_BACKUP_HEADER * backup_head
       node_p->zip_info->buf_size = buf_size;
 
       break;
+    case FILEIO_ZIP_LZO_METHOD:
+      break;
     case FILEIO_ZIP_ZLIB_METHOD:
       break;
     default:
@@ -7644,6 +7648,12 @@ fileio_compress_backup_node (FILEIO_NODE * node_p, FILEIO_BACKUP_HEADER * backup
 	  memcpy (zip_page->buf, node_p->area, node_p->nread);
 	}
       break;
+    case FILEIO_ZIP_LZO1X_METHOD:
+      error = ER_LOG_DBBACKUP_FAIL;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 4, backup_header_p->zip_method,
+	      fileio_get_zip_method_string (backup_header_p->zip_method), backup_header_p->zip_level,
+	      fileio_get_zip_level_string (backup_header_p->zip_level));
+      goto exit_on_error;
     case FILEIO_ZIP_ZLIB_METHOD:
       break;
     default:
@@ -7689,6 +7699,12 @@ fileio_write_backup_node (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * sessi
       session_p->dbfile.area = (FILEIO_BACKUP_PAGE *) & node_p->zip_info->zip_page;
       node_p->nread = sizeof (int) + node_p->zip_info->zip_page.buf_len;
       break;
+    case FILEIO_ZIP_LZO1X_METHOD:
+      error = ER_LOG_DBBACKUP_FAIL;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 4, backup_header_p->zip_method,
+	      fileio_get_zip_method_string (backup_header_p->zip_method), backup_header_p->zip_level,
+	      fileio_get_zip_level_string (backup_header_p->zip_level));
+      goto exit_on_error;
     case FILEIO_ZIP_ZLIB_METHOD:
       break;
     default:
@@ -10118,6 +10134,7 @@ fileio_decompress_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION
       }
       break;
 
+    case FILEIO_ZIP_LZO1X_METHOD:
     case FILEIO_ZIP_ZLIB_METHOD:
     default:
       error = ER_IO_RESTORE_READ_ERROR;
@@ -10674,6 +10691,9 @@ fileio_get_zip_method_string (FILEIO_ZIP_METHOD zip_method)
     {
     case FILEIO_ZIP_NONE_METHOD:
       return ("NONE");
+
+    case FILEIO_ZIP_LZO1X_METHOD:
+      return ("LZO1X");
 
     case FILEIO_ZIP_LZ4_METHOD:
       return ("LZ4");
