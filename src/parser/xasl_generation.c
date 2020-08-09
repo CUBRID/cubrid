@@ -2872,7 +2872,7 @@ pt_split_hash_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info, PT_NODE *
 
 	  if (!pt_is_expr_node (node))
 	    {
-	      goto exit_on_error;
+	      continue;
 	    }
 	  else
 	    {
@@ -2882,10 +2882,16 @@ pt_split_hash_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info, PT_NODE *
 
 	      arg1 = node->info.expr.arg1;
 	      arg2 = node->info.expr.arg2;
-	      UINTPTR spec_id[2];
-	      spec_id[0] = table_info->spec_id;
-	      spec_id[1] = 0;
+	      UINTPTR spec_id[2], spec_id2[2];
+	      spec_id[0] = spec_id2[0] = table_info->spec_id;
+	      spec_id[1] = spec_id2[1] = 0;
 	      parser_walk_tree (parser, arg1, pt_is_spec_node, &spec_id, NULL, NULL);
+	      parser_walk_tree (parser, arg2, pt_is_spec_node, &spec_id2, NULL, NULL);
+
+	      if (spec_id[1] == spec_id2[1])
+		{
+		  goto exit_on_error;
+		}
 
 	      if (spec_id[1])
 		{
