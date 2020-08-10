@@ -139,8 +139,6 @@ static BTREE_ISCAN_OID_LIST *scan_Iscan_oid_buf_list = NULL;
 static int scan_Iscan_oid_buf_list_count = 0;
 
 #define SCAN_ISCAN_OID_BUF_LIST_DEFAULT_SIZE 10
-/* temp limit : 8M */
-#define HASH_LIST_SCAN_LIMIT 8388608
 
 static void scan_init_scan_pred (SCAN_PRED * scan_pred_p, regu_variable_list_node * regu_list, PRED_EXPR * pred_expr,
 				 PR_EVAL_FNC pr_eval_fnc);
@@ -7998,6 +7996,7 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
   int build_cnt;
   regu_variable_list_node *build, *probe;
   DB_TYPE vtype1, vtype2;
+  UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
 
   /* no_hash_list_scan sql hint check */
   if (hash_list_scan_yn == 0)
@@ -8011,7 +8010,7 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
       return false;
     }
   /* list file size check */
-  if (llsidp->list_id->page_cnt * 16384 > HASH_LIST_SCAN_LIMIT)
+  if ((UINT64)(llsidp->list_id->page_cnt * DB_PAGESIZE) > mem_limit)
     {
       return false;
     }
