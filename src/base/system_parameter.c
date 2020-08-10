@@ -466,7 +466,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_IO_TEMP_VOLUME_PATH "temp_volume_path"
 
-#define PRM_NAME_IO_KEYS_FILE_PATH "keys_file_path"
+#define PRM_NAME_TDE_KEYS_FILE_PATH "tde_keys_file_path"
 
 #define PRM_NAME_IO_VOLUME_EXT_PATH "volume_extension_path"
 
@@ -1698,9 +1698,9 @@ const char *PRM_IO_TEMP_VOLUME_PATH = "";
 static char *prm_io_temp_volume_path_default = NULL;
 static unsigned int prm_io_temp_volume_path_flag = 0;
 
-const char *PRM_IO_KEYS_FILE_PATH = "";
-static char *prm_io_keys_file_path_default = NULL;
-static unsigned int prm_io_keys_file_path_flag = 0;
+const char *PRM_TDE_KEYS_FILE_PATH = "";
+static char *prm_tde_keys_file_path_default = NULL;
+static unsigned int prm_tde_keys_file_path_flag = 0;
 
 const char *PRM_IO_VOLUME_EXT_PATH = "";
 static char *prm_io_volume_ext_path_default = NULL;
@@ -4353,17 +4353,6 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_IO_KEYS_FILE_PATH,
-   PRM_NAME_IO_KEYS_FILE_PATH,
-   (PRM_FOR_SERVER | PRM_FOR_CLIENT),
-   PRM_STRING,
-   &prm_io_keys_file_path_flag,
-   (void *) &prm_io_keys_file_path_default,
-   (void *) &PRM_IO_KEYS_FILE_PATH,
-   (void *) NULL, (void *) NULL,
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
   {PRM_ID_IO_VOLUME_EXT_PATH,
    PRM_NAME_IO_VOLUME_EXT_PATH,
    (PRM_FOR_SERVER | PRM_USER_CHANGE),
@@ -5819,6 +5808,17 @@ static SYSPRM_PARAM prm_Def[] = {
    &prm_heap_info_cache_logging_flag,
    (void *) &prm_heap_info_cache_logging_default,
    (void *) &PRM_HEAP_INFO_CACHE_LOGGING,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_TDE_KEYS_FILE_PATH,
+   PRM_NAME_TDE_KEYS_FILE_PATH,
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT),
+   PRM_STRING,
+   &prm_tde_keys_file_path_flag,
+   (void *) &prm_tde_keys_file_path_default,
+   (void *) &PRM_TDE_KEYS_FILE_PATH,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,

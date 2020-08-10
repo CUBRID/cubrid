@@ -531,7 +531,7 @@ tde_make_keys_volume_fullname (char *keys_vol_fullname, const char *db_full_name
   char *mk_path = NULL;
   const char *base_name = NULL;
 
-  mk_path = (char *) prm_get_string_value (PRM_ID_IO_KEYS_FILE_PATH);
+  mk_path = (char *) prm_get_string_value (PRM_ID_TDE_KEYS_FILE_PATH);
   if (ignore_parm || mk_path == NULL || mk_path[0] == '\0')
     {
       fileio_make_keys_name (keys_vol_fullname, db_full_name);
