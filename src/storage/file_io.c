@@ -7479,7 +7479,7 @@ fileio_allocate_node (FILEIO_QUEUE * queue_p, FILEIO_BACKUP_HEADER * backup_head
       node_p->zip_info->buf_size = buf_size;
 
       break;
-    case FILEIO_ZIP_LZO_METHOD:
+    case FILEIO_ZIP_LZO1X_METHOD:
       break;
     case FILEIO_ZIP_ZLIB_METHOD:
       break;
