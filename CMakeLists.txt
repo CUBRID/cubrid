@@ -132,9 +132,6 @@ set(WITH_LIBEDIT_URL "http://thrysoee.dk/editline/libedit-20170329-3.1.tar.gz")
 # lzo library sources URL
 set(WITH_LIBLZO_URL "http://www.oberhumer.com/opensource/lzo/download/lzo-2.10.tar.gz")
 
-# gpg-error library sources URL
-set(WITH_LIBGPG_ERROR_URL "https://gnupg.org/ftp/gcrypt/libgpg-error/libgpg-error-1.27.tar.bz2")
-
 # rapidjson library sources URL
 set(WITH_RAPIDJSON_URL "https://github.com/Tencent/rapidjson/archive/v1.1.0.tar.gz")
 
@@ -149,14 +146,12 @@ set(WITH_LIBEXPAT     "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with expat l
 set(WITH_LIBJANSSON   "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with jansson library (default: EXTERNAL)")
 set(WITH_LIBEDIT      "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with editline library (default: EXTERNAL)")
 set(WITH_LIBLZO       "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with lzo library (default: EXTERNAL)")
-set(WITH_LIBGPG_ERROR "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with gpg-error library (default: EXTERNAL)")
 set(WITH_LIBNCURSES   "${WITH_SYSTEM_PREFIX}" CACHE STRING "Build with ncurses library (default: SYSTEM)")
 set(WITH_LIBOPENSSL   "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with openssl library (default: EXTERNAL)")
 
 message(STATUS "Build with Curses library: ${WITH_LIBNCURSES}")
 message(STATUS "Build with editline library: ${WITH_LIBEDIT}")
 message(STATUS "Build with lzo library: ${WITH_LIBLZO}")
-message(STATUS "Build with gpg-error library: ${WITH_LIBGPG_ERROR}")
 message(STATUS "Build with expat library: ${WITH_LIBEXPAT}")
 message(STATUS "Build with jansson library: ${WITH_LIBJANSSON}")
 message(STATUS "Build with openssl library: ${WITH_LIBOPENSSL}")
@@ -1081,52 +1076,6 @@ else(WITH_LIBLZO STREQUAL "SYSTEM")
 endif()
 list(APPEND EP_INCLUDES ${LIBLZO_INCLUDES})
 list(APPEND EP_LIBS ${LIBLZO_LIBS})
-
-# WITH_LIBGPG_ERROR can have multiple values with different meanings
-# on Linux:
-# * "EXTERNAL" - (default) builds gpg-error library from URL stored in ${WITH_LIBGPG_ERROR_URL} uses the library created by the build
-# * "SYSTEM"   - use gpg-error library located in:
-#                  ${WITH_EXTERNAL_LIBS_PATH}
-#                  ${WITH_LIBGPG_ERROR_ROOT_PATH}/lib
-#                use gpg-error headers located in:
-#                  ${WITH_EXTERNAL_HEADERS_PATH}
-#                  ${WITH_LIBGPG_ERROR_ROOT_PATH}/include
-set(LIBGPG_ERROR_TARGET libgpg-error)
-if(UNIX)
-  if(WITH_LIBGPG_ERROR STREQUAL "EXTERNAL")
-    externalproject_add(${LIBGPG_ERROR_TARGET}
-      URL                  ${WITH_LIBGPG_ERROR_URL}
-      TIMEOUT              600
-      DOWNLOAD_NO_PROGRESS 1
-      CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS} --enable-maintainer-mode --disable-doc --disable-tests
-      BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      )
-    set(LIBGPG_ERROR_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libgpg-error.a)
-    set(LIBGPG_ERROR_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
-  elseif(WITH_LIBGPG_ERROR STREQUAL "SYSTEM")
-    find_library(LIBGPG_ERROR_LIBS NAMES libgpg-error.a PATHS ${WITH_EXTERNAL_LIBS_PATH} ${WITH_LIBGPG_ERROR_ROOT_PATH}/lib REQUIRED)
-    find_path(LIBGPG_ERROR_INCLUDES NAMES gpg-error.h gpgrt.h PATHS ${WITH_EXTERNAL_HEADERS_PATH} ${WITH_LIBGPG_ERROR_ROOT_PATH}/include REQUIRED)
-
-    message(STATUS "Found gpg-error library: ${LIBGPG_ERROR_LIBS}")
-    message(STATUS "Found gpg-error headers: ${LIBGPG_ERROR_INCLUDES}")
-  endif()
-elseif(WIN32)
-  # use bundled
-  set (LIBGPG_ERROR_DIR ${WINDOWS_EXTERNAL_DIR}/gpg-error)
-  set (LIBGPG_ERROR_LIBS ${LIBGPG_ERROR_DIR}/lib/gpg-error.lib)
-  set (LIBGPG_ERROR_INCLUDES ${LIBGPG_ERROR_DIR}/include)
-  SET (LIBGPG_ERROR_DLL ${LIBGPG_ERROR_DIR}/bin/gpg-error.dll)
-  add_custom_target(${LIBGPG_ERROR_TARGET}
-      COMMAND ${CMAKE_COMMAND} -E echo "  copying ${LIBGPG_ERROR_DLL} to ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/gpg-error.dll"
-      COMMAND ${CMAKE_COMMAND} -E copy ${LIBGPG_ERROR_DLL} ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/gpg-error.dll
-    )
-endif()
-list(APPEND EP_INCLUDES ${LIBGPG_ERROR_INCLUDES})
-list(APPEND EP_LIBS ${LIBGPG_ERROR_LIBS})
-if (TARGET ${LIBGPG_ERROR_TARGET})
-  list(APPEND EP_TARGETS ${LIBGPG_ERROR_TARGET})
-endif(TARGET ${LIBGPG_ERROR_TARGET})
 
 # WITH_LOBOPENSSL can have multiple values with different meanings
 # on Linux:

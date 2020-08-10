@@ -607,7 +607,6 @@ endif(UNIX)
 target_external_dependencies(cubridsa
   LIBEXPAT
   LIBJANSSON
-  LIBGPG_ERROR
   LIBLZO
   LIBEXPAT
   LIBEDIT
