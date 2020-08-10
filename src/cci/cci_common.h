@@ -239,6 +239,11 @@ enum t_fn_status_type
   FN_STATUS_DONE = 2
 };
 
+#define SRV_STATUS_REQUEST_INFO_SIZE           10
+#define SRV_STATUS_REQUEST_MSG_ID_SIZE         2
+#define SRV_STATUS_REQUEST_CAS_ID_POS          2
+#define SRV_STATUS_REQUEST_SESSION_ID_POS      6
+
 /************************************************************************
  * PUBLIC TYPE DEFINITIONS						*
  ************************************************************************/
