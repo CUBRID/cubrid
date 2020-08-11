@@ -130,6 +130,8 @@ static bool net_peer_socket_alive (unsigned char *ip_addr, int port, int timeout
 static int net_cancel_request_internal (unsigned char *ip_addr, int port, char *msg, int msglen);
 static int net_cancel_request_w_local_port (unsigned char *ip_addr, int port, int pid, unsigned short local_port);
 static int net_cancel_request_wo_local_port (unsigned char *ip_addr, int port, int pid);
+static int net_status_request (unsigned char *ip_addr, int port, int cas_pid, char *sessionid, int timeout_msec);
+static int net_status_recv_stream (SOCKET sock_fd, char *buf, int size, int timeout);
 
 static int ssl_session_init (T_CON_HANDLE * con_handle, SOCKET sock_fd);
 /************************************************************************
@@ -901,6 +903,144 @@ recv_again:
   return true;
 }
 
+static int
+net_status_request_internal (unsigned char *ip_addr, int port, int cas_pid, char *sessionid, int timeout_msec)
+{
+  SOCKET sock_fd;
+  int ret, recv_data;
+  char status_request_info[SRV_STATUS_REQUEST_INFO_SIZE];
+  const char *msg_id = "ST";
+  unsigned int conv_cas_pid;
+
+  conv_cas_pid = htonl (cas_pid);
+  memset (status_request_info, 0x00, SRV_STATUS_REQUEST_INFO_SIZE);
+  memcpy (status_request_info, msg_id, SRV_STATUS_REQUEST_MSG_ID_SIZE);
+  memcpy (status_request_info + SRV_STATUS_REQUEST_CAS_ID_POS, (char *) &conv_cas_pid, sizeof (int));
+  memcpy (status_request_info + SRV_STATUS_REQUEST_SESSION_ID_POS, sessionid + 8, SESSION_ID_SIZE);
+
+  if (connect_srv (ip_addr, port, 0, &sock_fd, timeout_msec) != CCI_ER_NO_ERROR)
+    {
+      CLOSE_SOCKET (sock_fd);
+      return FN_STATUS_NONE;
+    }
+
+  ret = WRITE_TO_SOCKET (sock_fd, status_request_info, SRV_STATUS_REQUEST_INFO_SIZE);
+  if (ret < 0)
+    {
+      CLOSE_SOCKET (sock_fd);
+      return FN_STATUS_NONE;
+    }
+
+  ret = net_status_recv_stream (sock_fd, (char *) &recv_data, sizeof (int), timeout_msec);
+  if (ret < 0)
+    {
+      CLOSE_SOCKET (sock_fd);
+      return FN_STATUS_NONE;
+    }
+
+  CLOSE_SOCKET (sock_fd);
+  ret = ntohl (recv_data);
+  return ret;
+}
+
+static int
+net_status_recv_stream (SOCKET sock_fd, char *buf, int size, int timeout)
+{
+  int read_len, tot_read_len = 0;
+#if defined(WINDOWS)
+  fd_set rfds;
+  struct timeval tv;
+#else
+  struct pollfd po[1] = { {0, 0, 0} };
+  int polling_timeout;
+#endif
+  int n;
+
+  while (tot_read_len < size)
+    {
+#if defined(WINDOWS)
+
+      FD_ZERO (&rfds);
+      FD_SET (sock_fd, &rfds);
+
+      if (timeout <= 0 || timeout > SOCKET_TIMEOUT)
+	{
+	  tv.tv_sec = SOCKET_TIMEOUT / 1000;
+	  tv.tv_usec = (SOCKET_TIMEOUT % 1000) * 1000;
+	}
+      else
+	{
+	  tv.tv_sec = timeout / 1000;
+	  tv.tv_usec = (timeout % 1000) * 1000;
+	}
+
+      n = select (sock_fd + 1, &rfds, NULL, NULL, &tv);
+
+#else
+      po[0].fd = sock_fd;
+      po[0].events = POLLIN;
+
+      if (timeout <= 0 || timeout > SOCKET_TIMEOUT)
+	{
+	  polling_timeout = SOCKET_TIMEOUT;
+	}
+      else
+	{
+	  polling_timeout = timeout;
+	}
+
+      n = poll (po, 1, polling_timeout);
+
+#endif
+      if (n == 0)
+	{
+	  /* select / poll return time out */
+	  if (timeout > 0)
+	    {
+	      timeout -= SOCKET_TIMEOUT;
+	      if (timeout <= 0)
+		{
+		  assert (tot_read_len == 0 || size == tot_read_len);
+		  return CCI_ER_COMMUNICATION;
+		}
+	      else
+		{
+		  continue;
+		}
+	    }
+	}
+      else if (n < 0)
+	{
+	  /* select / poll return error */
+	  if (errno == EINTR)
+	    {
+	      continue;
+	    }
+
+	  return CCI_ER_COMMUNICATION;
+	}
+#if !defined (WINDOWS)
+      else if (po[0].revents & POLLERR || po[0].revents & POLLHUP)
+	{
+	  po[0].revents = 0;
+	  return CCI_ER_COMMUNICATION;
+	}
+#endif /* !WINDOWS */
+
+
+      read_len = READ_FROM_SOCKET (sock_fd, buf + tot_read_len, size - tot_read_len);
+
+      if (read_len <= 0)
+	{
+	  return CCI_ER_COMMUNICATION;
+	}
+
+      tot_read_len += read_len;
+    }
+
+  return 0;
+}
+
 bool
 net_check_broker_alive (unsigned char *ip_addr, int port, int timeout_msec, char useSSL)
 {
@@ -1087,6 +1227,8 @@ net_recv_stream (T_CON_HANDLE * con_handle, unsigned char *ip_addr, int port, ch
   int polling_timeout;
 #endif
   int n;
+  bool retry = false;
+  T_BROKER_VERSION broker_ver;
 
   while (tot_read_len < size)
     {
@@ -1143,13 +1285,30 @@ net_recv_stream (T_CON_HANDLE * con_handle, unsigned char *ip_addr, int port, ch
 		    }
 		}
 
-	      if (net_peer_socket_alive (ip_addr, port, SOCKET_TIMEOUT) == true)
+	      broker_ver = hm_get_broker_version (con_handle);
+	      if (hm_broker_understand_the_protocol (broker_ver, PROTOCOL_V9))
 		{
-		  continue;
+		  if (net_status_request (ip_addr, port, con_handle->cas_pid, con_handle->session_id.id, SOCKET_TIMEOUT)
+		      != FN_STATUS_BUSY)
+		    {
+		      if (retry)
+			{
+			  return CCI_ER_COMMUNICATION;
+			}
+		      retry = true;
+		      continue;
+		    }
 		}
 	      else
 		{
-		  return CCI_ER_COMMUNICATION;
+		  if (net_peer_socket_alive (ip_addr, port, SOCKET_TIMEOUT) == true)
+		    {
+		      continue;
+		    }
+		  else
+		    {
+		      return CCI_ER_COMMUNICATION;
+		    }
 		}
 	    }
 	  else if (n < 0)
@@ -1188,6 +1347,12 @@ static bool
 net_peer_socket_alive (unsigned char *ip_addr, int port, int timeout_msec)
 {
   return net_peer_alive (ip_addr, port, timeout_msec);
+}
+
+static int
+net_status_request (unsigned char *ip_addr, int port, int cas_pid, char *sessionid, int timeout_msec)
+{
+  return net_status_request_internal (ip_addr, port, cas_pid, sessionid, timeout_msec);
 }
 
 static int
