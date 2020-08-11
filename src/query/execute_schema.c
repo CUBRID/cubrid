@@ -8636,11 +8636,11 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
 
       /* get default value of reuse_oid from system parameter, if don't use table option related reuse_oid */
-      if (!found_reuse_oid_option) 
-      {
-         reuse_oid = prm_get_bool_value (PRM_ID_TB_DEFAULT_REUSE_OID);
-      }
-    
+      if (!found_reuse_oid_option)
+	{
+	  reuse_oid = prm_get_bool_value (PRM_ID_TB_DEFAULT_REUSE_OID);
+	}
+
       /* validate charset and collation options, if any */
       cs_node = (tbl_opt_charset) ? tbl_opt_charset->info.table_option.val : NULL;
       coll_node = (tbl_opt_coll) ? tbl_opt_coll->info.table_option.val : NULL;
