@@ -912,7 +912,7 @@ net_status_request_internal (unsigned char *ip_addr, int port, int cas_pid, char
   const char *msg_id = "ST";
   unsigned int conv_cas_pid;
 
-  conv_cas_pid = ntohl (cas_pid);
+  conv_cas_pid = htonl (cas_pid);
   memset (status_request_info, 0x00, SRV_STATUS_REQUEST_INFO_SIZE);
   memcpy (status_request_info, msg_id, SRV_STATUS_REQUEST_MSG_ID_SIZE);
   memcpy (status_request_info + SRV_STATUS_REQUEST_CAS_ID_POS, (char *) &conv_cas_pid, sizeof (int));
