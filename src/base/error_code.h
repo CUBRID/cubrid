@@ -1612,6 +1612,7 @@
 #define ER_TDE_CIPHER_IS_NOT_LOADED                 -1252
 #define ER_TDE_KEY_CREATION_FAIL                    -1253
 #define ER_TDE_CIPHER_LOAD_FAIL                     -1254
+#if 0
 #define ER_TDE_WRONG_DK_REQUEST                     -1255
 #define ER_TDE_DK_SHARING_SOCK_OPEN                 -1256
 #define ER_TDE_DK_SHARING_SOCK_BIND                 -1257
@@ -1622,9 +1623,10 @@
 #define ER_TDE_DK_SHARING_SOCK_WRITE                -1262
 #define ER_TDE_DK_SHARING_SOCK_UNLINK               -1263
 #define ER_TDE_DK_SHARING_PTHREAD_CREATE            -1264
+#endif
 //#define ER_TDE_MASTER_KEY_DELETED
 
-#define ER_LAST_ERROR                               -1265
+#define ER_LAST_ERROR                               -1255
 
 /*
  * CAUTION!

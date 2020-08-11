@@ -1841,6 +1841,7 @@ file_apply_tde_to_class_files (const OID * class_oid)
 #endif /* !CS_MODE */
 }
 
+#if 0
 /*
  * tde_get_data_keys -
  *
@@ -1883,6 +1884,7 @@ tde_get_data_keys_from_server ()
   return NO_ERROR;
 #endif /* !CS_MODE */
 }
+#endif /* TDE for replication log is disabled */
 
 /*
  * tde_get_mk_file_path -

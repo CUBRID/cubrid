@@ -90,25 +90,27 @@ enum tde_data_key_type
 };
 typedef tde_data_key_type TDE_DATA_KEY_TYPE;
 
+#if 0
 #if defined(CS_MODE)
 #define TDE_HA_SOCK_NAME ".ha_sock"
 #endif /* CS_MODE */
+#endif /* TDE for replication log is disabled */
 
+#if !defined(CS_MODE)
 /*
  * TDE module
+ *
+ * Note: Now TDE for replication log is disabled,
+ * so CS_MODE version tde_cipher is not needed.
  */
 typedef struct tde_cipher
 {
   bool is_loaded;
   TDE_DATA_KEY_SET data_keys;
-#if !defined(CS_MODE)
   int64_t temp_write_counter; /* used as nonce for temp file page, it has to be dealt atomically */
-#endif /* !CS_MODE */
 } TDE_CIPHER;
 
 extern TDE_CIPHER tde_Cipher;
-
-#if !defined(CS_MODE)
 
 /*
  * TDE module stores key information with all tha data keys encrypted and master key hashed.
@@ -174,6 +176,12 @@ extern int tde_encrypt_data_page (FILEIO_PAGE *iopage_plain, FILEIO_PAGE *iopage
 				  bool is_temp);
 extern int tde_decrypt_data_page (const FILEIO_PAGE *iopage_cipher, FILEIO_PAGE *iopage_plain, TDE_ALGORITHM tde_algo,
 				  bool is_temp);
+
+/* Encryption/Decryption functions for logpage are also needed for applylogdb, copylogdb,
+ * but TDE for replication log is disabled now */
+extern int tde_encrypt_log_page (const LOG_PAGE *logpage_plain, LOG_PAGE *logpage_cipher, TDE_ALGORITHM tde_algo);
+extern int tde_decrypt_log_page (const LOG_PAGE *logpage_cipher, LOG_PAGE *logpage_plain, TDE_ALGORITHM tde_algo);
+
 #endif /* !CS_MODE */
 
 extern int tde_create_mk (unsigned char *master_key);
@@ -183,9 +191,4 @@ extern int tde_find_mk (int vdes, int mk_index, unsigned char *master_key, time_
 extern int tde_delete_mk (int vdes, const int mk_index);
 extern int tde_dump_mks (int vdes, bool print_value);
 extern const char *tde_get_algorithm_name (TDE_ALGORITHM tde_algo);
-
-/* Encryption/Decryption functions for logpage are also needed for applylogdb, copylogdb */
-extern int tde_encrypt_log_page (const LOG_PAGE *logpage_plain, LOG_PAGE *logpage_cipher, TDE_ALGORITHM tde_algo);
-extern int tde_decrypt_log_page (const LOG_PAGE *logpage_cipher, LOG_PAGE *logpage_plain, TDE_ALGORITHM tde_algo);
-
 #endif /* _TDE_HPP_ */

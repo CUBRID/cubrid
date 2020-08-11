@@ -5897,6 +5897,7 @@ fileio_make_keys_name_given_path (char *keys_name_p, const char *keys_path_p, co
   sprintf (keys_name_p, "%s%s%s%s", keys_path_p, FILEIO_PATH_SEPARATOR (keys_path_p), db_name_p, FILEIO_SUFFIX_KEYS);
 }
 
+#if 0
 /*
  * fileio_make_ha_sock_name () - Build the name of HA socket name (for sharing TDE Data keys)
  *   return: void
@@ -5912,6 +5913,7 @@ fileio_make_ha_sock_name (char *sock_path_p, const char *base_path_p, const char
 {
   sprintf (sock_path_p, "%s%s%s", base_path_p, FILEIO_PATH_SEPARATOR (base_path_p), sock_name_p);
 }
+#endif /* TDE for replication log is disabled */
 
 /*
  * fileio_cache () - Cache information related to a mounted volume

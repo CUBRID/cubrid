@@ -1322,17 +1322,7 @@ $ LOADDB
 1253 Cannot create a TDE key.
 1254 Cannot load TDE module. You can't use TDE feature.\n\
 Check the path of the key file (_keys) and make sure that it includes proper key.
-1255 A wrong request for Data Keys.
-1256 Cannot open the unix domain socket (%1$s) for sharing TDE Data Key.
-1257 Cannot bind the unix domain socket (%1$s) for sharing TDE Data Key.
-1258 Cannot listen the unix domain socket (%1$s) for sharing TDE Data Key.
-1259 Error while accepting the client (copylogdb) for sharing TDE Data Key.
-1260 Error while connecting to the server (applylogdb) for sharing TDE Data Key.
-1261 Error while reading on the socket for sharing TDE Data Key.
-1262 Error while writing on the socket for sharing TDE Data Key.
-1263 Cannot unlink (%1$s) to open the unix domain socket for sharing TDE Data Key.
-1264 Cannot create a thread for sharing TDE Data Key.
-1265 Last Error
+1255 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

@@ -66,7 +66,9 @@
 #include "log_applier_sql_log.h"
 #include "util_func.h"
 #include "dbtype.h"
+#if 0
 #include "tde.hpp"
+#endif /* TDE for replication log is disabled */
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif
@@ -345,8 +347,9 @@ struct la_info
   LA_REPL_FILTER repl_filter;
 
   bool reinit_copylog;
-
+#if 0
   int tde_sock_for_dks;		/* unix socket for sharing TDE Data keys with copylogd */
+#endif				/* TDE for replication log is disabled */
 };
 
 typedef struct la_ovf_first_part LA_OVF_FIRST_PART;
@@ -561,7 +564,9 @@ static void la_print_repl_filter_info (void);
 
 static int check_reinit_copylog (void);
 
+#if 0
 static THREAD_RET_T THREAD_CALLING_CONVENTION la_process_dk_request (void *arg);
+#endif /* TDE for replication log is disabled */
 
 /*
  * la_shutdown_by_signal() - When the process catches the SIGTERM signal,
@@ -1039,6 +1044,7 @@ log_reopen:
 	}
     }
 
+#if 0
   if (LOG_IS_PAGE_TDE_ENCRYPTED ((LOG_PAGE *) data))
     {
       error = tde_decrypt_log_page ((LOG_PAGE *) data, (LOG_PAGE *) data, logwr_get_tde_algorithm ((LOG_PAGE *) data));
@@ -1048,6 +1054,7 @@ log_reopen:
 	  return error;
 	}
     }
+#endif /* TDE for replication log is disabled */
 
   return error;
 }
@@ -1106,7 +1113,7 @@ la_log_fetch (LOG_PAGEID pageid, LA_CACHE_BUFFER * cache_buffer)
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LOG_READ, 3, pageid, phy_pageid, la_Info.act_log.path);
 	      return ER_LOG_READ;
 	    }
-
+#if 0
 	  if (LOG_IS_PAGE_TDE_ENCRYPTED (&cache_buffer->logpage))
 	    {
 	      error =
@@ -1117,6 +1124,7 @@ la_log_fetch (LOG_PAGEID pageid, LA_CACHE_BUFFER * cache_buffer)
 		  return error;
 		}
 	    }
+#endif /* TDE for replication log is disabled */
 	  cache_buffer->in_archive = false;
 	}
 
@@ -6831,7 +6839,9 @@ la_init (const char *log_path, const int max_mem_size)
 
   la_Info.reinit_copylog = false;
 
+#if 0
   la_Info.tde_sock_for_dks = -1;
+#endif /* TDE for replication log is disabled */
 
   return;
 }
@@ -7199,6 +7209,7 @@ check_applied_info_end:
 	    la_log_io_read (la_Info.act_log.path, la_Info.act_log.log_vdes, logpage, la_log_phypageid (page_num),
 			    la_Info.act_log.db_logpagesize);
 
+#if 0
 	  if (error != NO_ERROR && LOG_IS_PAGE_TDE_ENCRYPTED (logpage))
 	    {
 	      error = tde_decrypt_log_page (logpage, logpage, logwr_get_tde_algorithm (logpage));
@@ -7207,6 +7218,7 @@ check_applied_info_end:
 		  goto check_copied_info_end;
 		}
 	    }
+#endif /* TDE for replication log is disabled */
 	}
 
       if (error != NO_ERROR)
@@ -7971,7 +7983,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
   gettimeofday (&time_commit, NULL);
   last_eof_time = time (NULL);
   LSA_SET_NULL (&last_eof_lsa);
-
+#if 0
   error = tde_get_data_keys_from_server ();
   if (error == NO_ERROR)
     {
@@ -7982,6 +7994,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	  return error;
 	}
     }
+#endif /* TDE for replication log is disabled */
 
   /* start the main loop */
   do
@@ -8493,6 +8506,7 @@ la_delay_replica (time_t eot_time)
   return NO_ERROR;
 }
 
+#if 0
 int
 la_start_dk_sharing (void)
 {
@@ -8664,3 +8678,4 @@ la_process_dk_request (void *arg)
   assert (false);
   return (THREAD_RET_T) - 1;
 }
+#endif /* TDE for replication log is disabled */
