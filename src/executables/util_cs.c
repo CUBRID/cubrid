@@ -1903,7 +1903,7 @@ killtran (UTIL_FUNCTION_ARG * arg)
     }
 
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
- 
+
   if (db_login ("DBA", dba_password) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
