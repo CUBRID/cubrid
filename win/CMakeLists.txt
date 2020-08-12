@@ -125,7 +125,7 @@ install(FILES
   RENAME libexpat.dll
  )
  install(FILES
-   ${CMAKE_BINARY_DIR}/external/Source/lz4/dll/liblz4.dll.a
+   ${CMAKE_BINARY_DIR}/win/external/lz4/bin/liblz4.dll
    DESTINATION ${CUBRID_BINDIR} COMPONENT Library
  )
 
