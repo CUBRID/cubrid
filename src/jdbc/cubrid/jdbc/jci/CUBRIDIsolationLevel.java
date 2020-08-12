@@ -43,9 +43,10 @@ package cubrid.jdbc.jci;
  */
 
 abstract public class CUBRIDIsolationLevel {
-	public final static int TRAN_MIN = 4;
-	public final static int TRAN_MAX = 6;
 	public final static int TRAN_UNKNOWN_ISOLATION = 0;
+	public final static int TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE = 1;
+	public final static int TRAN_COMMIT_CLASS_COMMIT_INSTANCE = 2;
+	public final static int TRAN_REP_CLASS_UNCOMMIT_INSTANCE = 3;
 	public final static int TRAN_READ_COMMITTED = 4;
 	public final static int TRAN_REPEATABLE_READ = 5;
 	public final static int TRAN_SERIALIZABLE = 6;

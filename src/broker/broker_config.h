@@ -106,6 +106,8 @@
 #define BROKER_INFO_PATH_MAX             (PATH_MAX)
 #define BROKER_INFO_NAME_MAX             (BROKER_INFO_PATH_MAX)
 
+#define DEFAULT_SSL_MODE                 "OFF"
+
 enum t_sql_log_mode_value
 {
   SQL_LOG_MODE_NONE = 0,
@@ -277,6 +279,8 @@ struct t_broker_info
   char ignore_shard_hint;
   int proxy_timeout;
   /* to here, these are used only in shard */
+
+  char use_SSL;
 };
 
 extern int broker_config_read (const char *conf_file, T_BROKER_INFO * br_info, int *num_broker, int *br_shm_id,

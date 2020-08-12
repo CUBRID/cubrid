@@ -190,6 +190,7 @@ static int boot_define_ha_apply_info (MOP class_mop);
 static int boot_define_collations (MOP class_mop);
 static int boot_add_charsets (MOP class_mop);
 static int boot_define_charsets (MOP class_mop);
+static int boot_define_dual (MOP class_mop);
 static int boot_define_view_class (void);
 static int boot_define_view_super_class (void);
 static int boot_define_view_vclass (void);
@@ -3930,6 +3931,83 @@ boot_define_charsets (MOP class_mop)
   return NO_ERROR;
 }
 
+#define CT_DUAL_DUMMY   "dummy"
+
+  /*
+   * boot_define_dual :
+   *
+   * returns : NO_ERROR if all OK, ER_ status otherwise
+   *
+   *   class(IN) :
+   */
+
+static int
+boot_define_dual (MOP class_mop)
+{
+  SM_TEMPLATE *def;
+  int error_code = NO_ERROR;
+  DB_OBJECT *obj;
+  DB_VALUE val;
+  char *dummy = "X";
+
+  def = smt_edit_class_mop (class_mop, AU_ALTER);
+  if (def == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
+
+  error_code = smt_add_attribute (def, CT_DUAL_DUMMY, "varchar(1)", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = sm_update_class (def, NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  if (locator_has_heap (class_mop) == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
+
+  error_code = au_change_owner (class_mop, Au_dba_user);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = au_grant (Au_public_user, class_mop, AU_SELECT, false);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  obj = db_create_internal (class_mop);
+  if (obj == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
+  error_code = db_make_varchar (&val, 1, dummy, strlen (dummy), LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = db_put_internal (obj, CT_DUAL_DUMMY, &val);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  return NO_ERROR;
+}
+
 /*
  * catcls_class_install :
  *
@@ -3964,7 +4042,8 @@ catcls_class_install (void)
     {CT_SERIAL_NAME, boot_define_serial},
     {CT_HA_APPLY_INFO_NAME, boot_define_ha_apply_info},
     {CT_COLLATION_NAME, boot_define_collations},
-    {CT_CHARSET_NAME, boot_define_charsets}
+    {CT_CHARSET_NAME, boot_define_charsets},
+    {CT_DUAL_NAME, boot_define_dual}
   };
   // *INDENT-ON*
 

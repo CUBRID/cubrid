@@ -682,6 +682,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_GENERAL_RESERVE_01 "general_reserve_01"
 
+#define PRM_NAME_TB_DEFAULT_REUSE_OID "create_table_reuseoid"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
@@ -1111,7 +1113,7 @@ static bool prm_qo_dump_default = false;
 static unsigned int prm_qo_dump_flag = 0;
 
 #if !defined (SERVER_MODE) && !defined (SA_MODE)
-#define CSS_MAX_CLIENT_COUNT 2000
+#define CSS_MAX_CLIENT_COUNT 4000
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 int PRM_CSS_MAX_CLIENTS = 100;
 static int prm_css_max_clients_default = 100;
@@ -2297,6 +2299,10 @@ static unsigned int prm_java_stored_procedure_reserve_01_flag = 0;
 bool PRM_ALLOW_TRUNCATED_STRING = false;
 static bool prm_allow_truncated_string_default = false;
 static unsigned int prm_allow_truncated_string_flag = 0;
+
+bool PRM_TB_REUSE_OID = true;
+static bool prm_create_table_reuseoid_default = true;
+static unsigned int prm_create_table_reuseoid = 1;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5905,6 +5911,17 @@ static SYSPRM_PARAM prm_Def[] = {
    &prm_allow_truncated_string_flag,
    (void *) &prm_allow_truncated_string_default,
    (void *) &PRM_ALLOW_TRUNCATED_STRING,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_TB_DEFAULT_REUSE_OID,
+   PRM_NAME_TB_DEFAULT_REUSE_OID,
+   (PRM_USER_CHANGE | PRM_FOR_CLIENT | PRM_FOR_SESSION),
+   PRM_BOOLEAN,
+   &prm_create_table_reuseoid,
+   (void *) &prm_create_table_reuseoid_default,
+   (void *) &PRM_TB_REUSE_OID,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
