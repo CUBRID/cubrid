@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (c) 2016 CUBRID Corporation.
  *
  * Redistribution and use in source and binary forms, with or without modification,
  * are permitted provided that the following conditions are met:
@@ -228,6 +229,20 @@ typedef unsigned long in_addr_t;
 
 
 #define MAX_NUMERIC_PRECISION	38
+
+enum t_fn_status_type
+{
+  FN_STATUS_NONE = -2,
+  FN_STATUS_IDLE = -1,
+  FN_STATUS_CONN = 0,
+  FN_STATUS_BUSY = 1,
+  FN_STATUS_DONE = 2
+};
+
+#define SRV_STATUS_REQUEST_INFO_SIZE           10
+#define SRV_STATUS_REQUEST_MSG_ID_SIZE         2
+#define SRV_STATUS_REQUEST_CAS_ID_POS          2
+#define SRV_STATUS_REQUEST_SESSION_ID_POS      6
 
 /************************************************************************
  * PUBLIC TYPE DEFINITIONS						*
