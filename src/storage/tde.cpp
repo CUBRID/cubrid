@@ -240,7 +240,7 @@ tde_cipher_initialize (THREAD_ENTRY *thread_p, const HFID *keyinfo_hfid, const c
       goto exit;
     }
 
-  __sync_fetch_and_add (&tde_Cipher.temp_write_counter, 1);
+  tde_Cipher.temp_write_counter = 0;
 
   tde_Cipher.is_loaded = true;
 
