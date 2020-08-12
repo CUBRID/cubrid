@@ -55,6 +55,7 @@ struct hash_list_scan
   HENTRY_PTR curr_hash_entry;	/* current hash entry */
 };
 
+// *INDENT-OFF*
 HASH_SCAN_KEY *qdata_alloc_hscan_key (THREAD_ENTRY * thread_p, int val_cnt, bool alloc_vals);
 HASH_SCAN_VALUE *qdata_alloc_hscan_value (THREAD_ENTRY * thread_p, QFILE_TUPLE tpl);
 
@@ -70,3 +71,4 @@ HASH_SCAN_KEY *qdata_copy_hscan_key (THREAD_ENTRY * thread_p, HASH_SCAN_KEY * ke
 				     REGU_VARIABLE_LIST probe_regu_list, val_descr * vd);
 
 int qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *key, void *data, void *args);
+// *INDENT-ON*
