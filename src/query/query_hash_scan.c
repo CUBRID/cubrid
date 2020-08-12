@@ -307,6 +307,7 @@ qdata_copy_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key, REGU_VAR
 	      if (status != DOMAIN_COMPATIBLE)
 		{
 		  new_key->val_count = ++i;
+		  new_key->free_values = true;
 		  qdata_free_hscan_key (thread_p, new_key);
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (vtype2),
 			  pr_type_name (vtype1));
