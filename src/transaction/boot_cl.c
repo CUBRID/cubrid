@@ -4051,7 +4051,8 @@ catcls_class_install (void)
     {CT_SERIAL_NAME, boot_define_serial},
     {CT_HA_APPLY_INFO_NAME, boot_define_ha_apply_info},
     {CT_COLLATION_NAME, boot_define_collations},
-    {CT_CHARSET_NAME, boot_define_charsets}
+    {CT_CHARSET_NAME, boot_define_charsets},
+    {CT_DUAL_NAME, boot_define_dual}
   };
   // *INDENT-ON*
 
