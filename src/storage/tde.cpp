@@ -340,11 +340,6 @@ tde_copy_keys_volume (THREAD_ENTRY *thread_p, const char *to_db_fullname, const 
 
   tde_make_keys_volume_fullname (mk_path, from_db_fullname, false);
 
-  if (!fileio_is_volume_exist (mk_path))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_VOLUME_EXISTS, 1, mk_path);
-      return ER_BO_VOLUME_EXISTS;
-    }
   from_vdes = fileio_mount (thread_p, from_db_fullname, mk_path, LOG_DBTDE_KEYS_VOLID, 1, false);
   if (from_vdes == NULL_VOLDES)
     {
