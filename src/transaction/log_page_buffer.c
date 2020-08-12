@@ -879,7 +879,6 @@ logpb_locate_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE f
 	  stat_page_found = PERF_PAGE_MODE_OLD_LOCK_WAIT;
 	  if (logpb_read_page_from_file (thread_p, pageid, LOG_CS_FORCE_USE, log_bufptr->logpage) != NO_ERROR)
 	    {
-	      assert_release (false);
 	      return NULL;
 	    }
 	}
