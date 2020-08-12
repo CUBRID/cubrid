@@ -2385,13 +2385,16 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  error_code = tde_cipher_initialize (thread_p, &boot_Db_parm->tde_keys_hfid,
-				      r_args == NULL ? NULL : r_args->keys_file_path);
-  if (error_code != NO_ERROR)
+  if (prm_get_bool_value (PRM_ID_TDE_ENABLE))
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_LOAD_FAIL, 0);
-      fprintf (stderr, "%s\n", er_msg ());
-      error_code = NO_ERROR;
+      error_code = tde_cipher_initialize (thread_p, &boot_Db_parm->tde_keys_hfid,
+					  r_args == NULL ? NULL : r_args->keys_file_path);
+      if (error_code != NO_ERROR)
+	{
+	  error_code = ER_TDE_CIPHER_LOAD_FAIL;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_LOAD_FAIL, 0);
+	  goto error;
+	}
     }
 
   /* we need to manually add root class HFID to cache */
@@ -5105,10 +5108,15 @@ boot_remove_all_volumes (THREAD_ENTRY * thread_p, const char *db_fullname, const
 	{
 	  goto error_rem_allvols;
 	}
-      error_code = tde_cipher_initialize (thread_p, &boot_Db_parm->tde_keys_hfid, NULL);
-      if (error_code != NO_ERROR)
+      if (prm_get_bool_value (PRM_ID_TDE_ENABLE))
 	{
-	  goto error_rem_allvols;
+	  error_code = tde_cipher_initialize (thread_p, &boot_Db_parm->tde_keys_hfid, NULL);
+	  if (error_code != NO_ERROR)
+	    {
+	      error_code = ER_TDE_CIPHER_LOAD_FAIL;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_LOAD_FAIL, 0);
+	      goto error_rem_allvols;
+	    }
 	}
 
       /* Find the rest of the volumes and mount them */

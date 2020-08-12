@@ -5720,8 +5720,8 @@ file_set_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, TDE_ALGORITH
 
   if (!tde_Cipher.is_loaded)
     {
-      error_code = ER_TDE_CIPHER_IS_NOT_LOADED;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_IS_NOT_LOADED, 0);
+      error_code = prm_get_bool_value (PRM_ID_TDE_ENABLE) ? ER_TDE_CIPHER_IS_NOT_LOADED : ER_TDE_DISABLED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
       return error_code;
     }
 

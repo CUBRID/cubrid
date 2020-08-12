@@ -2555,7 +2555,7 @@ stde_get_data_keys (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
       (void) return_error_to_client (thread_p, rid);
       area = NULL;
       area_size = 0;
-      err = ER_TDE_CIPHER_IS_NOT_LOADED;
+      err = prm_get_bool_value (PRM_ID_TDE_ENABLE) ? ER_TDE_CIPHER_IS_NOT_LOADED : ER_TDE_DISABLED;
     }
   else
     {

@@ -141,6 +141,8 @@ backupdb (UTIL_FUNCTION_ARG * arg)
   struct stat st_buf;
   char real_pathbuf[PATH_MAX];
   char verbose_file_realpath[PATH_MAX];
+  char prm_buf[LINE_MAX], *prm_val;
+  bool tde_enabled;
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -195,16 +197,6 @@ backupdb (UTIL_FUNCTION_ARG * arg)
     {
       backup_zip_method = FILEIO_ZIP_LZO1X_METHOD;
       backup_zip_level = FILEIO_ZIP_LZO1X_DEFAULT_LEVEL;
-    }
-
-  if (seperate_keys)
-    {
-      printf ("%s\n", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_BACKUPDB, BACKUPDB_USING_SEPERATE_KEYS));
-    }
-  else
-    {
-      printf ("%s\n", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_BACKUPDB,
-				      BACKUPDB_NOT_USING_SEPERATE_KEYS));
     }
 
   /* extra validation */
@@ -308,6 +300,34 @@ backupdb (UTIL_FUNCTION_ARG * arg)
 	      goto error_exit;
 	    }
 	  backup_verbose_file = verbose_file_realpath;
+	}
+    }
+
+  /* Print warning if tde is not disabled */
+  strcpy (prm_buf, prm_get_name (PRM_ID_TDE_ENABLE));
+  if (db_get_system_parameters (prm_buf, LINE_MAX - 1) != NO_ERROR)
+    {
+      db_shutdown ();
+      goto error_exit;
+    }
+  prm_val = strchr (prm_buf, '=');
+  if (prm_val == NULL)
+    {
+      db_shutdown ();
+      goto error_exit;
+    }
+  tde_enabled = strcmp (prm_val + 1, "y") == 0;
+  if (tde_enabled)
+    {
+      if (seperate_keys)
+	{
+	  printf ("%s\n",
+		  msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_BACKUPDB, BACKUPDB_USING_SEPERATE_KEYS));
+	}
+      else
+	{
+	  printf ("%s\n", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_BACKUPDB,
+					  BACKUPDB_NOT_USING_SEPERATE_KEYS));
 	}
     }
 
@@ -3687,6 +3707,20 @@ tde (UTIL_FUNCTION_ARG * arg)
 				 msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_KEYINDEX_BOUND));
 	  goto error_exit;
 	}
+    }
+
+  /* initialize system parameters */
+  if (sysprm_load_and_init (database_name, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
+    {
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);
+      return EXIT_FAILURE;
+    }
+
+  if (!prm_get_bool_value (PRM_ID_TDE_ENABLE))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_DISABLED, 0);
+      PRINT_AND_LOG_ERR_MSG ("FAILURE: %s\n", db_error_string (3));
+      goto error_exit;
     }
 
   /* extra validation */

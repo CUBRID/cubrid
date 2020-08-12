@@ -7438,17 +7438,28 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
 
   /* tde key file has to be mounted to access exclusively with TDE Utility */
   tde_make_keys_volume_fullname (mk_path, log_Db_fullname, false);
-  keys_vdes = fileio_mount (thread_p, log_Db_fullname, mk_path, LOG_DBTDE_KEYS_VOLID, 1, false);
+  keys_vdes = fileio_mount (thread_p, log_Db_fullname, mk_path, LOG_DBTDE_KEYS_VOLID, 2, false);
   if (keys_vdes == NULL_VOLDES)
     {
-      error_code = ER_IO_MOUNT_FAIL;
-      goto error;
+      if (prm_get_bool_value (PRM_ID_TDE_ENABLE))
+	{
+	  error_code = ER_IO_MOUNT_FAIL;
+	  goto error;
+	}
+      /* else, error has been already er_set() in filio_mound() */
     }
 
   if (tde_validate_keys_volume (keys_vdes) == false)
     {
-      error_code = ER_TDE_INVALID_KEYS_VOLUME;
-      goto error;
+      if (prm_get_bool_value (PRM_ID_TDE_ENABLE))
+	{
+	  error_code = ER_TDE_INVALID_KEYS_VOLUME;
+	  goto error;
+	}
+      else
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_INVALID_KEYS_VOLUME, 1, mk_path);
+	}
     }
 
   /* Initialization gives us some useful information about the backup location. */
@@ -7857,7 +7868,10 @@ loop:
       error_code = fileio_backup_volume (thread_p, &session, mk_path, LOG_DBTDE_KEYS_VOLID, -1, false);
       if (error_code != NO_ERROR)
 	{
-	  goto error;
+	  if (prm_get_bool_value (PRM_ID_TDE_ENABLE))
+	    {
+	      goto error;
+	    }
 	}
     }
   else
@@ -7866,6 +7880,7 @@ loop:
       error_code = tde_copy_keys_volume (thread_p, session.bkup.name, log_Db_fullname, false, true);
       if (error_code != NO_ERROR)
 	{
+	  /* Even if tde is disabled, it fails when --seperate-key option is given */
 	  goto error;
 	}
     }
@@ -9134,7 +9149,10 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
   error_code = tde_copy_keys_volume (thread_p, to_db_fullname, boot_db_full_name (), false, false);
   if (error_code != NO_ERROR)
     {
-      goto error;
+      if (prm_get_bool_value (PRM_ID_TDE_ENABLE))
+	{
+	  goto error;
+	}
     }
 
   /*
