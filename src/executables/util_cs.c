@@ -3659,53 +3659,40 @@ tde (UTIL_FUNCTION_ARG * arg)
   if (!gen_op && !show_op && change_idx == -1 && delete_idx == -1)
     {
       /* One of opertion has to be given */
-      PRINT_AND_LOG_ERR_MSG ("FAILURE: %s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_USE_OP));
-      goto error_exit;
+      goto print_tde_usage;
     }
 
   /* Checking for exlusiveness for operations  */
   if (gen_op && (show_op || change_idx != -1 || delete_idx != -1))
     {
-      PRINT_AND_LOG_ERR_MSG ("FAILURE: %s",
-			     msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_USE_OP_EXCLUSIVE));
-      goto error_exit;
+      goto print_tde_usage;
     }
   if (show_op && (gen_op || change_idx != -1 || delete_idx != -1))
     {
-      PRINT_AND_LOG_ERR_MSG ("FAILURE: %s",
-			     msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_USE_OP_EXCLUSIVE));
-      goto error_exit;
+      goto print_tde_usage;
     }
   if (change_idx != -1)
     {
       if (gen_op || show_op || delete_idx != -1)
 	{
-	  PRINT_AND_LOG_ERR_MSG ("FAILURE: %s",
-				 msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_USE_OP_EXCLUSIVE));
-	  goto error_exit;
+	  goto print_tde_usage;
 	}
       /* Checking input range */
       if (change_idx < 0)
 	{
-	  PRINT_AND_LOG_ERR_MSG ("FAILURE: %s",
-				 msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_KEYINDEX_BOUND));
-	  goto error_exit;
+	  goto print_tde_usage;
 	}
     }
   if (delete_idx != -1)
     {
       if (gen_op || show_op || change_idx != -1)
 	{
-	  PRINT_AND_LOG_ERR_MSG ("FAILURE: %s",
-				 msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_USE_OP_EXCLUSIVE));
-	  goto error_exit;
+	  goto print_tde_usage;
 	}
       /* Checking input range */
       if (delete_idx < 0)
 	{
-	  PRINT_AND_LOG_ERR_MSG ("FAILURE: %s",
-				 msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_KEYINDEX_BOUND));
-	  goto error_exit;
+	  goto print_tde_usage;
 	}
     }
 
