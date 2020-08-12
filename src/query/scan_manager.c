@@ -3682,7 +3682,7 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
       /* alloc temp key */
       llsidp->hlsid.temp_key = qdata_alloc_hscan_key (thread_p, val_cnt, false);
-      if (scan_reset_scan_block (thread_p, scan_id) == S_ERROR)
+      if (scan_start_scan (thread_p, scan_id) != NO_ERROR)
 	{
 	  return S_ERROR;
 	}
@@ -4797,25 +4797,22 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
     case S_LIST_SCAN:
       llsidp = &scan_id->s.llsid;
-      if (llsidp->hlsid.hash_list_scan_yn)
+      /* clear hash list scan table */
+      if (llsidp->hlsid.hash_table != NULL)
 	{
-	  /* clear hash list scan table */
-	  if (llsidp->hlsid.hash_table != NULL)
-	    {
 #if 1
 	      (void) mht_dump (thread_p, stdout, llsidp->hlsid.hash_table, -1, qdata_print_hash_scan_entry, NULL);
 	      printf ("temp file : tuple count = %d, file_size = %dK\n", llsidp->list_id->tuple_cnt,
 		      llsidp->list_id->page_cnt * 16);
 #endif
-	      mht_clear (llsidp->hlsid.hash_table, qdata_free_hscan_entry, (void *) thread_p);
-	      mht_destroy (llsidp->hlsid.hash_table);
-	    }
-	  /* free temp keys and values */
-	  if (llsidp->hlsid.temp_key != NULL)
-	    {
-	      qdata_free_hscan_key (thread_p, llsidp->hlsid.temp_key);
-	      llsidp->hlsid.temp_key = NULL;
-	    }
+	  mht_clear (llsidp->hlsid.hash_table, qdata_free_hscan_entry, (void *) thread_p);
+	  mht_destroy (llsidp->hlsid.hash_table);
+	}
+      /* free temp keys and values */
+      if (llsidp->hlsid.temp_key != NULL)
+	{
+	  qdata_free_hscan_key (thread_p, llsidp->hlsid.temp_key);
+	  llsidp->hlsid.temp_key = NULL;
 	}
       break;
 
@@ -7988,7 +7985,7 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
  *      3. regu_list_build, regu_list_probe is not null
  *      4. The number of probe regu_var and build regu match
  *      5. type of regu var is not oid && vobj
- *      6. list file from dptr is not allowed <== need to check
+ *      6. list file from dptr is not allowed
 */
 static bool
 check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_yn)
@@ -8010,7 +8007,7 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
       return false;
     }
   /* list file size check */
-  if ((UINT64)(llsidp->list_id->page_cnt * DB_PAGESIZE) > mem_limit)
+  if ((UINT64) (llsidp->list_id->page_cnt * DB_PAGESIZE) > mem_limit)
     {
       return false;
     }
@@ -8046,9 +8043,8 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
     }
   *val_cnt = build_cnt;
 
-
-
-  /* to_do : 6. list file from dptr is not allowed <== need to check */
+  /* 6. list file from dptr is not allowed */
+  /* Since dptr is searched after scan_open_scan, it is checked when llsidp->list_id->tuple_cnt <= 0 */
 
   return true;
 }

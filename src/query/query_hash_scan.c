@@ -281,8 +281,7 @@ qdata_copy_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key, REGU_VAR
 		      val_descr * vd)
 {
   HASH_SCAN_KEY *new_key = NULL;
-  int i = 0, rc = NO_ERROR;
-  DB_VALUE *probe_val, temp;
+  int i = 0;
   DB_TYPE vtype1, vtype2;
   TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
 
@@ -303,13 +302,12 @@ qdata_copy_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key, REGU_VAR
 
 	  if (vtype1 != vtype2)
 	    {
-	      status = tp_value_coerce (key->values[i], &temp, tp_domain_resolve_default (vtype1));
-	      if (status == DOMAIN_COMPATIBLE)
+	      new_key->values[i] = pr_make_value ();
+	      status = tp_value_coerce (key->values[i], new_key->values[i], probe_regu_list->value.domain);
+	      if (status != DOMAIN_COMPATIBLE)
 		{
-		  new_key->values[i] = pr_copy_value (&temp);
-		}
-	      else
-		{
+		  new_key->val_count = ++i;
+		  qdata_free_hscan_key (thread_p, new_key);
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (vtype2),
 			  pr_type_name (vtype1));
 		  return NULL;
