@@ -6157,6 +6157,11 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
 		{
 		  return error;
 		}
+	      else if (error == ER_TDE_DISABLED || error == ER_TDE_CIPHER_IS_NOT_LOADED)
+		{
+		  la_applier_need_shutdown = true;
+		  return error;
+		}
 
 	      if (!LSA_ISNULL (&lsa_apply))
 		{
