@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (c) 2016 CUBRID Corporation.
  *
  * Redistribution and use in source and binary forms, with or without modification,
  * are permitted provided that the following conditions are met:
@@ -93,7 +94,7 @@ extern int net_recv_file (SOCKET sock_fd, int port, int file_size, int out_fd);
 extern int net_cancel_request (T_CON_HANDLE * con_handle);
 extern int net_check_cas_request (T_CON_HANDLE * con_handle);
 extern bool net_peer_alive (unsigned char *ip_addr, int port, int timeout_msec);
-extern bool net_check_broker_alive (unsigned char *ip_addr, int port, int timeout_msec);
+extern bool net_check_broker_alive (unsigned char *ip_addr, int port, int timeout_msec, char useSSL);
 /************************************************************************
  * EXPORTED VARIABLES							*
  ************************************************************************/

@@ -30,6 +30,7 @@ set(CASCCI_SOURCES
   ${CCI_DIR}/cci_log.cpp
   ${CCI_DIR}/cci_map.cpp
   ${CCI_DIR}/cci_properties.c
+  ${CCI_DIR}/cci_ssl.c
   )
 if(WIN32)
   list(APPEND CASCCI_SOURCES ${CCI_DIR}/cci_wsa_init.c)
@@ -46,6 +47,7 @@ set_target_properties(cascci PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUB
 set_target_properties(cascci PROPERTIES PUBLIC_HEADER "${CCI_DIR}/cas_cci.h;${COMPAT_DIR}/dbtran_def.h;${BROKER_DIR}/cas_error.h")
 target_include_directories(cascci PRIVATE ${EP_INCLUDES})
 target_link_libraries(cascci LINK_PRIVATE ${EP_LIBS} ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(cascci ${CMAKE_DL_LIBS})
 if(WIN32)
   target_compile_definitions(cascci PRIVATE CAS_CCI_DL)
   if(TARGET_PLATFORM_BITS EQUAL 32)
