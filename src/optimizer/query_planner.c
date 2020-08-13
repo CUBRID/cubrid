@@ -7064,7 +7064,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 #endif /* CORRELATED_INDEX */
 
 	/* STEP 5-3: examine nl-join */
-	/* sm_join_terms is a mergeable term for SM join. In hash list scan, mergeable term is used as hash term.*/
+	/* sm_join_terms is a mergeable term for SM join. In hash list scan, mergeable term is used as hash term. */
 	/* The mergeable term and the hash term have the same characteristics. */
 	/* If the characteristics for mergeable terms are changed, the logic for hash terms should be separated. */
 	/* mergeable term : equi-term, symmetrical term, e.g. TBL1.a = TBL2.a, function(TAB1.a) = function(TAB2.a) */
