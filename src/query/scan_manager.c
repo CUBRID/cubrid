@@ -42,7 +42,6 @@
 #include "query_evaluator.h"
 #include "query_opfunc.h"
 #include "query_reevaluation.hpp"
-#include "query_aggregate.hpp"
 #include "regu_var.hpp"
 #include "locator_sr.h"
 #include "log_lsa.hpp"
