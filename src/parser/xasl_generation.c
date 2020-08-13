@@ -2890,7 +2890,7 @@ pt_split_hash_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info, PT_NODE *
 
 	      if (spec_id[1] == spec_id2[1])
 		{
-		  goto exit_on_error;
+		  continue;
 		}
 
 	      if (spec_id[1])
