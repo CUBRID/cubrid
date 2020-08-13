@@ -5769,11 +5769,8 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
 		}
 	      else if (errid == ER_TDE_DISABLED || errid == ER_TDE_CIPHER_IS_NOT_LOADED)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, errid, 0);
-		  snprintf (buf, sizeof (buf), "It cannot proceed to apply replication log.");
-		  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, buf);
-		  LA_SLEEP (10, 0);
-		  continue;
+		  error = errid;
+		  goto end;
 		}
 	      else if (la_ignore_on_error (errid) == false && la_retry_on_error (errid) == true)
 		{
