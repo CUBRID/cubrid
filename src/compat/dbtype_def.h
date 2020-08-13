@@ -529,7 +529,7 @@ extern "C"
 #define DB_NUMERIC_UNDERFLOW_LIMIT 1e-38
 
 /* The maximum precision that can be specified for a CHAR(n) domain. */
-#define DB_MAX_CHAR_PRECISION DB_MAX_STRING_LENGTH
+#define DB_MAX_CHAR_PRECISION (DB_MAX_STRING_LENGTH/4)
 
 /* The maximum precision that can be specified for a CHARACTER VARYING domain.*/
 #define DB_MAX_VARCHAR_PRECISION DB_MAX_STRING_LENGTH
