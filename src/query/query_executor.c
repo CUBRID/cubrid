@@ -1160,14 +1160,14 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	  GOTO_EXIT_ON_ERROR;
 	}
 
-      if (XASL_IS_FLAGED(xasl, XASL_IS_MERGE_QUERY))
+      if (XASL_IS_FLAGED (xasl, XASL_IS_MERGE_QUERY))
 	{
 	  if (xasl->outptr_list)
 	    {
 	      if (xasl->outptr_list->valptrp)
 		{
-	          REGU_VARIABLE_LIST valptrp;
-	          for (valptrp = xasl->outptr_list->valptrp; valptrp; valptrp = valptrp->next)
+		  REGU_VARIABLE_LIST valptrp;
+		  for (valptrp = xasl->outptr_list->valptrp; valptrp; valptrp = valptrp->next)
 		    {
 		      valptrp->value.flags |= REGU_VARIABLE_UPD_INS_LIST;
 		    }
@@ -13972,9 +13972,9 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 
 	      if (xptr2->status == XASL_CLEARED || xptr2->status == XASL_INITIALIZED)
 		{
-		  if (XASL_IS_FLAGED(xasl, XASL_IS_MERGE_QUERY))
+		  if (XASL_IS_FLAGED (xasl, XASL_IS_MERGE_QUERY))
 		    {
-		      XASL_SET_FLAG(xptr2, XASL_IS_MERGE_QUERY);
+		      XASL_SET_FLAG (xptr2, XASL_IS_MERGE_QUERY);
 		    }
 
 		  if (qexec_execute_mainblock (thread_p, xptr2, xasl_state, NULL) != NO_ERROR)
