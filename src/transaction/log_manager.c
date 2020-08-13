@@ -2125,7 +2125,11 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_
 	}
       if (tde_algo != TDE_ALGORITHM_NONE)
 	{
-	  node->log_header.flags |= LOG_RECHDR_FLAG_TDE_ENCRYPTED;
+	  if (prior_set_tde_encrypted (node) != NO_ERROR)
+	    {
+	      assert (false);
+	      return;
+	    }
 	}
     }
 
@@ -2784,7 +2788,11 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
 
       if (tde_algo != TDE_ALGORITHM_NONE)
 	{
-	  node->log_header.flags |= LOG_RECHDR_FLAG_TDE_ENCRYPTED;
+	  if (prior_set_tde_encrypted (node) != NO_ERROR)
+	    {
+	      assert (false);
+	      return;
+	    }
 	}
     }
 
@@ -2893,7 +2901,11 @@ log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DAT
 
 	  if (tde_algo != TDE_ALGORITHM_NONE)
 	    {
-	      node->log_header.flags |= LOG_RECHDR_FLAG_TDE_ENCRYPTED;
+	      if (prior_set_tde_encrypted (node) != NO_ERROR)
+		{
+		  assert (false);
+		  return;
+		}
 	    }
 	}
 
@@ -3059,7 +3071,11 @@ log_append_compensate_internal (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, 
 
   if (tde_encrypted)
     {
-      node->log_header.flags |= LOG_RECHDR_FLAG_TDE_ENCRYPTED;
+      if (prior_set_tde_encrypted (node) != NO_ERROR)
+	{
+	  assert (false);
+	  return;
+	}
     }
 
   start_lsa = prior_lsa_next_record (thread_p, node, tdes);
@@ -4437,7 +4453,11 @@ log_append_sysop_end (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_EN
 	    }
 	  if (tde_algo != TDE_ALGORITHM_NONE)
 	    {
-	      node->log_header.flags |= LOG_RECHDR_FLAG_TDE_ENCRYPTED;
+	      if (prior_set_tde_encrypted (node) != NO_ERROR)
+		{
+		  assert (false);
+		  return;
+		}
 	    }
 	}
 
@@ -4491,7 +4511,11 @@ log_append_repl_info_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is
 
 	  if (repl_rec->tde_encrypted)
 	    {
-	      node->log_header.flags |= LOG_RECHDR_FLAG_TDE_ENCRYPTED;
+	      if (prior_set_tde_encrypted (node) != NO_ERROR)
+		{
+		  assert (false);
+		  return;
+		}
 	    }
 
 	  log = (LOG_REC_REPLICATION *) node->data_header;

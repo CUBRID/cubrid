@@ -11258,6 +11258,7 @@ logpb_get_tde_algorithm (const LOG_PAGE * log_pgptr)
 void
 logpb_set_tde_algorithm (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, const TDE_ALGORITHM tde_algo)
 {
+  assert (tde_Cipher.is_loaded || tde_algo == TDE_ALGORITHM_NONE);
   /* clear encrypted flag */
   log_pgptr->hdr.dummy1 &= ~LOG_HDRPAGE_FLAG_ENCRYPTED_MASK;
 

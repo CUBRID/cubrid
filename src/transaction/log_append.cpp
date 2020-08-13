@@ -1551,6 +1551,21 @@ prior_lsa_next_record_with_lock (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, l
   return prior_lsa_next_record_internal (thread_p, node, tdes, LOG_PRIOR_LSA_WITH_LOCK);
 }
 
+int
+prior_set_tde_encrypted (log_prior_node *node)
+{
+  int error_code = NO_ERROR;
+  if (!tde_Cipher.is_loaded)
+    {
+      error_code = prm_get_bool_value (PRM_ID_TDE_ENABLE) ? ER_TDE_CIPHER_IS_NOT_LOADED : ER_TDE_DISABLED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+      return error_code;
+    }
+
+  node->log_header.flags |= LOG_RECHDR_FLAG_TDE_ENCRYPTED;
+  return error_code;
+}
+
 /*
  * prior_lsa_start_append:
  *

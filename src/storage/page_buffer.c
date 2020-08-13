@@ -4384,6 +4384,8 @@ pgbuf_set_tde_algorithm (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, TDE_ALGORITHM 
   FILEIO_PAGE *iopage = NULL;
   TDE_ALGORITHM prev_tde_algo = TDE_ALGORITHM_NONE;
 
+  assert (tde_Cipher.is_loaded || tde_algo == TDE_ALGORITHM_NONE);
+
   CAST_PGPTR_TO_IOPGPTR (iopage, pgptr);
 
   if (!skip_logging)
