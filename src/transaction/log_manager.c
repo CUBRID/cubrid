@@ -7344,6 +7344,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
   LOG_ZIP *log_unzip_ptr = NULL;
   int data_header_size = 0;
   bool is_mvcc_op = false;
+  bool is_tde_encrypted = false;
 
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
@@ -7434,6 +7435,8 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 	  LSA_COPY (&prev_tranlsa, &log_rec->prev_tranlsa);
 	  LSA_COPY (&tdes->undo_nxlsa, &prev_tranlsa);
 
+	  is_tde_encrypted = LOG_IS_RECHDR_TDE_ENCRYPTED (log_rec);
+
 	  switch (log_rec->type)
 	    {
 	    case LOG_MVCC_UNDOREDO_DATA:
@@ -7484,7 +7487,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 	      LOG_READ_ADD_ALIGN (thread_p, data_header_size, &log_lsa, log_pgptr);
 
 	      log_rollback_record (thread_p, &log_lsa, log_pgptr, rcvindex, &rcv_vpid, &rcv, tdes, log_unzip_ptr,
-				   LOG_IS_RECHDR_TDE_ENCRYPTED (log_rec));
+				   is_tde_encrypted);
 	      break;
 
 	    case LOG_MVCC_UNDO_DATA:
@@ -7523,7 +7526,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 	      LOG_READ_ADD_ALIGN (thread_p, data_header_size, &log_lsa, log_pgptr);
 
 	      log_rollback_record (thread_p, &log_lsa, log_pgptr, rcvindex, &rcv_vpid, &rcv, tdes, log_unzip_ptr,
-				   LOG_IS_RECHDR_TDE_ENCRYPTED (log_rec));
+				   is_tde_encrypted);
 	      break;
 
 	    case LOG_COMPENSATE:
@@ -7564,7 +7567,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 
 		  LOG_READ_ADD_ALIGN (thread_p, sizeof (*sysop_end), &log_lsa, log_pgptr);
 		  log_rollback_record (thread_p, &log_lsa, log_pgptr, rcvindex, &rcv_vpid, &rcv, tdes, log_unzip_ptr,
-				       LOG_IS_RECHDR_TDE_ENCRYPTED (log_rec));
+				       is_tde_encrypted);
 		}
 	      else if (sysop_end->type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
 		{
@@ -7581,7 +7584,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 
 		  LOG_READ_ADD_ALIGN (thread_p, sizeof (*sysop_end), &log_lsa, log_pgptr);
 		  log_rollback_record (thread_p, &log_lsa, log_pgptr, rcvindex, &rcv_vpid, &rcv, tdes, log_unzip_ptr,
-				       LOG_IS_RECHDR_TDE_ENCRYPTED (log_rec));
+				       is_tde_encrypted);
 		}
 	      else if (sysop_end->type == LOG_SYSOP_END_LOGICAL_COMPENSATE)
 		{
