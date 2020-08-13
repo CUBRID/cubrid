@@ -258,6 +258,9 @@ public abstract class UConnection {
 	private int numShard = 0;
 	UShardInfo[] shardInfo = null;
 
+	private static int isolationLevelMin = CUBRIDIsolationLevel.TRAN_READ_COMMITTED;
+	private static int isolationLevelMax = CUBRIDIsolationLevel.TRAN_SERIALIZABLE;
+
 	/*
 	 * main methods
 	 */
@@ -940,8 +943,8 @@ public abstract class UConnection {
 			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
 			return;
 		}
-		if (level < CUBRIDIsolationLevel.TRAN_MIN
-				|| level > CUBRIDIsolationLevel.TRAN_MAX) {
+		if (level < getIsolationLevelMin()
+				|| level > getIsolationLevelMax()) {
 			errorHandler.setErrorCode(UErrorCode.ER_ISO_TYPE);
 			return;
 		}
@@ -1753,6 +1756,22 @@ public abstract class UConnection {
 
 	public int currentIsolationLevel() {
 		return lastIsolationLevel;
+	}
+
+	void setIsolationLevelMin (int level) {
+		isolationLevelMin = level;
+	}
+
+	int getIsolationLevelMin () {
+		return isolationLevelMin;
+	}
+
+	void setIsolationLevelMax (int level) {
+		isolationLevelMax = level;
+	}
+
+	int getIsolationLevelMax () {
+		return isolationLevelMax;
 	}
 
 	public static byte[] createDBInfo(String dbname, String user, String passwd, String url) {
