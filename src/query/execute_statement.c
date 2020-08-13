@@ -15900,7 +15900,7 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       statement->info.merge.flags |= PT_MERGE_INFO_SERVER_OP;
 
       /* make query string */
-      parser->dont_prt_long_string = 1;
+      parser->dont_prt_long_string = 0;
       parser->long_string_skipped = 0;
       parser->print_type_ambiguity = 0;
       PT_NODE_PRINT_TO_ALIAS (parser, statement, (PT_CONVERT_RANGE | PT_PRINT_QUOTES | PT_PRINT_USER));
