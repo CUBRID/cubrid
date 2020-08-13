@@ -5767,6 +5767,11 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
 		  error = ER_NET_CANT_CONNECT_SERVER;
 		  goto end;
 		}
+	      else if (errid == ER_TDE_DISABLED || errid == ER_TDE_CIPHER_IS_NOT_LOADED)
+		{
+		  error = errid;
+		  goto end;
+		}
 	      else if (la_ignore_on_error (errid) == false && la_retry_on_error (errid) == true)
 		{
 		  snprintf (buf, sizeof (buf), "attempts to try applying failed replication log again. (error:%d)",
