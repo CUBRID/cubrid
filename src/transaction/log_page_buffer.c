@@ -8248,6 +8248,8 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
   char time_val[CTIME_MAX];
   int loop_cnt = 0;
   char tmp_logfiles_from_backup[PATH_MAX];
+  char bk_mk_path[PATH_MAX];
+  char bkpath_without_units[PATH_MAX];
   char *volume_name_p;
   struct stat stat_buf;
   int error_code = NO_ERROR, success = NO_ERROR;
@@ -8290,6 +8292,8 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 	  goto error;
 	}
     }
+
+  nopath_name = fileio_get_base_file_name (db_fullname);
 
   /* The enum type can be negative in Windows. */
   while (success == NO_ERROR && try_level >= FILEIO_BACKUP_FULL_LEVEL && try_level < FILEIO_BACKUP_UNDEFINED_LEVEL)
@@ -8471,6 +8475,13 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 							  (FILEIO_BACKUP_LEVEL) r_args->level, to_volname);
 		  volume_name_p = tmp_logfiles_from_backup;
 		}
+	      else if (to_volid == LOG_DBTDE_KEYS_VOLID)
+		{
+		  fileio_make_backup_name (bkpath_without_units, nopath_name, session->bkup.current_path,
+					   (FILEIO_BACKUP_LEVEL) r_args->level, FILEIO_NO_BACKUP_UNITS);
+		  tde_make_keys_volume_fullname (bk_mk_path, bkpath_without_units, true);
+		  volume_name_p = bk_mk_path;
+		}
 	      else
 		{
 		  volume_name_p = to_volname;
@@ -8633,7 +8644,6 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
     }
 
   /* make bkvinf file */
-  nopath_name = fileio_get_base_file_name (db_fullname);
   fileio_make_backup_volume_info_name (from_volbackup, logpath, nopath_name);
   backup_volinfo_fp = fopen (from_volbackup, "w");
   if (backup_volinfo_fp != NULL)
