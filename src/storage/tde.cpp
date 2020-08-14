@@ -195,7 +195,7 @@ tde_cipher_initialize (THREAD_ENTRY *thread_p, const HFID *keyinfo_hfid, const c
   int err = NO_ERROR;
   int vdes = NULL_VOLDES;
 
-  if (mk_path_given != NULL)
+  if (mk_path_given != NULL && mk_path_given[0] != '\0')
     {
       mk_path = mk_path_given;
     }

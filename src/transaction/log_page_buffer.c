@@ -8455,6 +8455,18 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
       if (first_time)
 	{
 	  LSA_COPY (&session->bkup.last_chkpt_lsa, &session->bkup.bkuphdr->chkpt_lsa);
+
+	  /* 
+	   * The tde key file (_keys) which is going to be used during restart
+	   * is the thing in the first level (the highest level).
+	   */
+	  fileio_make_backup_name (bkpath_without_units, nopath_name, session->bkup.current_path,
+				   (FILEIO_BACKUP_LEVEL) r_args->level, FILEIO_NO_BACKUP_UNITS);
+	  tde_make_keys_volume_fullname (bk_mk_path, bkpath_without_units, true);
+	  if (r_args->keys_file_path[0] == '\0')
+	    {
+	      memcpy (r_args->keys_file_path, bk_mk_path, PATH_MAX);
+	    }
 	}
 
       while (success == NO_ERROR)
@@ -8475,11 +8487,9 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 							  (FILEIO_BACKUP_LEVEL) r_args->level, to_volname);
 		  volume_name_p = tmp_logfiles_from_backup;
 		}
-	      else if (to_volid == LOG_DBTDE_KEYS_VOLID)
+	      else if (to_volid == LOG_DBTDE_KEYS_VOLID && first_time)
 		{
-		  fileio_make_backup_name (bkpath_without_units, nopath_name, session->bkup.current_path,
-					   (FILEIO_BACKUP_LEVEL) r_args->level, FILEIO_NO_BACKUP_UNITS);
-		  tde_make_keys_volume_fullname (bk_mk_path, bkpath_without_units, true);
+		  /* Only the first _keys file is being restored. */
 		  volume_name_p = bk_mk_path;
 		}
 	      else
