@@ -46,6 +46,7 @@
 #define NULL_VOLDES   (-1)	/* Value of a null (invalid) vol descriptor */
 
 #define FILEIO_INITIAL_BACKUP_UNITS    0
+#define FILEIO_NO_BACKUP_UNITS         -1
 
 /* Note: this value must be at least as large as PATH_MAX */
 #define FILEIO_MAX_USER_RESPONSE_SIZE 2000

@@ -7386,6 +7386,8 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
   bool bkup_in_progress = false;
 
   char mk_path[PATH_MAX] = { 0, };
+  char bkpath_without_units[PATH_MAX] = { 0, };
+  const char *db_nopath_name_p;
   int keys_vdes = NULL_VOLDES;
 #if defined(SERVER_MODE)
   int rv;
@@ -7875,8 +7877,11 @@ loop:
     }
   else
     {
+      db_nopath_name_p = fileio_get_base_file_name (log_Db_fullname);
+      fileio_make_backup_name (bkpath_without_units, db_nopath_name_p, session.bkup.current_path, backup_level,
+			       FILEIO_NO_BACKUP_UNITS);
       /* Keep mounting mk file to be exclusive with other tools */
-      error_code = tde_copy_keys_volume (thread_p, session.bkup.name, log_Db_fullname, false, true);
+      error_code = tde_copy_keys_volume (thread_p, bkpath_without_units, log_Db_fullname, false, true);
       if (error_code != NO_ERROR)
 	{
 	  /* Even if tde is disabled, it fails when --seperate-key option is given */

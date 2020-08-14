@@ -5844,8 +5844,17 @@ void
 fileio_make_backup_name (char *backup_name_p, const char *no_path_vol_name_p, const char *backup_path_p,
 			 FILEIO_BACKUP_LEVEL level, int unit_num)
 {
-  sprintf (backup_name_p, "%s%c%s%s%dv%03d", backup_path_p, PATH_SEPARATOR, no_path_vol_name_p, FILEIO_SUFFIX_BACKUP,
-	   level, unit_num);
+  if (unit_num >= 0)
+    {
+      sprintf (backup_name_p, "%s%c%s%s%dv%03d", backup_path_p, PATH_SEPARATOR, no_path_vol_name_p,
+	       FILEIO_SUFFIX_BACKUP, level, unit_num);
+    }
+  else
+    {
+      /* without unit number, usually with FILEIO_NO_BACKUP_UNITS */
+      sprintf (backup_name_p, "%s%c%s%s%d", backup_path_p, PATH_SEPARATOR, no_path_vol_name_p, FILEIO_SUFFIX_BACKUP,
+	       level);
+    }
 }
 
 /*
