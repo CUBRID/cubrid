@@ -635,8 +635,7 @@ crypt_md5_buffer_binary (const char *buffer, size_t len, char *resblock)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_CRYPT_ERR]);
       return ER_ENCRYPTION_LIB_FAILED;
     }
-  unsigned int md_len;
-  if (EVP_DigestFinal (context.get (), (unsigned char *) resblock, &md_len) == 0)
+  if (EVP_DigestFinal (context.get (), (unsigned char *) resblock, NULL) == 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_CRYPT_ERR]);
       return ER_ENCRYPTION_LIB_FAILED;
