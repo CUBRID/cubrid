@@ -1745,7 +1745,7 @@ tranlist (UTIL_FUNCTION_ARG * arg)
 #else
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-  if (error = db_login ("DBA", NULL) || (error = db_restart (arg->command_name, TRUE, database_name)))
+  if (db_login ("DBA", NULL) || db_restart (arg->command_name, TRUE, database_name))
     {
       PRINT_AND_LOG_ERR_MSG ("%s: %s. \n\n", arg->command_name, db_error_string (3));
       goto error_exit;
