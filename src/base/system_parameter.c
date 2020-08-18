@@ -2891,7 +2891,7 @@ static SYSPRM_PARAM prm_Def[] = {
    &prm_css_max_clients_flag,
    (void *) &prm_css_max_clients_default,
    (void *) &PRM_CSS_MAX_CLIENTS,
-   (void *) &prm_css_max_clients_upper, 
+   (void *) &prm_css_max_clients_upper,
    (void *) &prm_css_max_clients_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
