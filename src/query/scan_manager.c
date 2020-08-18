@@ -8024,8 +8024,8 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
       /* type of regu var is not oid && vobj */
       /* This is the case when type coercion is impossible. so use list scan */
       /* In the list scan, Vobj is converted to oid for comparison at tp_value_compare_with_error(). */
-      vtype1 = REGU_VARIABLE_GET_TYPE (probe->value);
-      vtype2 = REGU_VARIABLE_GET_TYPE (build->value);
+      vtype1 = REGU_VARIABLE_GET_TYPE (&probe->value);
+      vtype2 = REGU_VARIABLE_GET_TYPE (&build->value);
 
       if (((vtype1 == DB_TYPE_OBJECT || vtype1 == DB_TYPE_VOBJ) && vtype2 == DB_TYPE_OID) ||
 	  ((vtype2 == DB_TYPE_OBJECT || vtype2 == DB_TYPE_VOBJ) && vtype1 == DB_TYPE_OID))

@@ -15597,6 +15597,8 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       pt_end_query (parser, query_id_self);
     }
 
+
+
   /* do insert part */
   if (err >= NO_ERROR && (values_list = statement->info.merge.insert.value_clauses) != NULL)
     {
