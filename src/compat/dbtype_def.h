@@ -528,7 +528,9 @@ extern "C"
 /* The lower limit for a number that can be represented by a numeric type */
 #define DB_NUMERIC_UNDERFLOW_LIMIT 1e-38
 
-/* The maximum precision that can be specified for a CHAR(n) domain. */
+/* The maximum precision of CHAR(n) domain that can be specified for an INTL_UTF8_MAX_CHAR_SIZE.
+ * We may need to define this functionally as the maximum precision will depend on the size multiplier of the codeset.
+ */
 #define DB_MAX_CHAR_PRECISION (DB_MAX_STRING_LENGTH/4)
 
 /* The maximum precision that can be specified for a CHARACTER VARYING domain.*/
