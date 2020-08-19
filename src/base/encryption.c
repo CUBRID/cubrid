@@ -36,6 +36,7 @@
 #endif
 
 #include "encryption.h"
+#include "memory_alloc.h"
 #include "sha1.h"
 
 #if defined (WINDOWS)
@@ -204,13 +205,13 @@ crypt_decrypt_printable (const char *crypt, char *decrypt, int maxlen)
 #if defined (WINDOWS)
   /* We don't need to decrypt */
   return -1;
-#else
-  int outlen;
-#if defined (HAVE_RPC_DES_CRYPT_H)
-  int inlen, padding_size;
-  int i;
+#else // OPENSSL && HAVE_RPC_DES_CRYPT_H
+  int inlen, outlen;
+  int padding_size;
+  inlen = (int) strlen (crypt);
 
-  inlen = strlen (crypt);
+#if defined (HAVE_RPC_DES_CRYPT_H)
+
   memcpy (decrypt, crypt, inlen);
   if (DES_FAILED (ecb_crypt (crypt_Key, decrypt, inlen, DES_DECRYPT)))
     {
@@ -218,9 +219,10 @@ crypt_decrypt_printable (const char *crypt, char *decrypt, int maxlen)
     }
   outlen = inlen;
 #else // OPENSSL
+
   char *dest = NULL;
   int ec = crypt_default_decrypt (NULL, crypt, inlen, crypt_Key, (int) sizeof crypt_Key, &dest, &outlen, DES_ECB);
-  if (ec != NO_ERROR)
+  if (ec != NO_ERROR || dest == NULL)
     {
       return -1;
     }
@@ -235,7 +237,7 @@ crypt_decrypt_printable (const char *crypt, char *decrypt, int maxlen)
       return -1;
     }
 
-  for (i = 1; i < padding_size; i++)
+  for (int i = 1; i < padding_size; i++)
     {
       if (decrypt[outlen - 1 - i] != padding_size)
 	{
