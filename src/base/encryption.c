@@ -191,68 +191,6 @@ crypt_encrypt_printable (const char *line, char *crypt, int maxlen)
 }
 
 /*
- * crypt_decrypt_printable - decrypts a line that was encrypted with
- *                           crypt_encrypt_printable
- *   return: number of chars in decrypted string
- *   crypt(in): buffer to decrypt
- *   decrypt(out): decrypted output buffer
- *   maxlen(in): maximum length of output buffer
- *
- */
-int
-crypt_decrypt_printable (const char *crypt, char *decrypt, int maxlen)
-{
-#if defined (WINDOWS)
-  /* We don't need to decrypt */
-  return -1;
-#else // OPENSSL && HAVE_RPC_DES_CRYPT_H
-  int inlen, outlen;
-  int padding_size;
-  inlen = (int) strlen (crypt);
-
-#if defined (HAVE_RPC_DES_CRYPT_H)
-
-  memcpy (decrypt, crypt, inlen);
-  if (DES_FAILED (ecb_crypt (crypt_Key, decrypt, inlen, DES_DECRYPT)))
-    {
-      return -1;
-    }
-  outlen = inlen;
-#else // OPENSSL
-
-  char *dest = NULL;
-  int ec = crypt_default_decrypt (NULL, crypt, inlen, crypt_Key, (int) sizeof crypt_Key, &dest, &outlen, DES_ECB);
-  if (ec != NO_ERROR || dest == NULL)
-    {
-      return -1;
-    }
-  memcpy (decrypt, dest, outlen);
-  db_private_free_and_init (NULL, dest);
-#endif /* HAVE_RPC_DES_CRYPT_H */
-
-  /* Check PKCS style padding */
-  padding_size = decrypt[outlen - 1];
-  if ((padding_size < 1) || (padding_size > 8))
-    {
-      return -1;
-    }
-
-  for (int i = 1; i < padding_size; i++)
-    {
-      if (decrypt[outlen - 1 - i] != padding_size)
-	{
-	  return -1;
-	}
-    }
-
-  outlen -= padding_size;
-  decrypt[outlen] = '\0';
-
-  return (outlen);
-#endif /* WINDOWS */
-}
-
-/*
  * crypt_encrypt_sha1_printable -
  *   return: number of chars in encrypted string
  *   line(in): line to hash
