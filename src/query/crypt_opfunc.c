@@ -303,7 +303,6 @@ crypt_default_encrypt (THREAD_ENTRY * thread_p, const char *src, int src_len, co
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  ciphertext_len = padding_src_len;
   if (EVP_EncryptUpdate (context.get (), (unsigned char *) dest, &ciphertext_len, (const unsigned char *) padding_src,
 			 padding_src_len) != 1)
     {
