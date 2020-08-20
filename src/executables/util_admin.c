@@ -1071,7 +1071,7 @@ util_get_library_name (int utility_index)
 	  }
       }
     }
-  if (utility_index == VACUUMDB)
+  if (utility_index == VACUUMDB || utility_index == TDE)
     {
       return LIB_UTIL_SA_NAME;
     }

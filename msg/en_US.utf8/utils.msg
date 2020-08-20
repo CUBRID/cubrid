@@ -1207,8 +1207,6 @@ tde: Transparent Data Encryption (TDE) management\n\
 usage: %1$s tde OPERATION(-s|-n|-d|-c) [OPTION] database-name\n\
 \n\
 valid options:\n\
-  -S, --SA-mode                stand-alone mode execution\n\
-  -C, --CS-mode                client-server mode execution\n\
   -p, --dba-password=PASS      password of the DBA user; will prompt if don't specify\n\
   -v, --print-value            print key value when using -s, -n option\n\
 OPERATIONs: one of the operations must be given, and they are exclusive \n\

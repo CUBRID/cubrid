@@ -3610,7 +3610,6 @@ tde (UTIL_FUNCTION_ARG * arg)
   char *passbuf;
   int error = NO_ERROR;
   int vdes = NULL_VOLDES;
-  bool sa_mode;
   bool gen_op;
   bool show_op;
   bool print_val;
@@ -3634,8 +3633,6 @@ tde (UTIL_FUNCTION_ARG * arg)
   change_idx = utility_get_option_int_value (arg_map, TDE_CHANGE_KEY_S);
   delete_idx = utility_get_option_int_value (arg_map, TDE_DELETE_KEY_S);
   dba_password = utility_get_option_string_value (arg_map, KILLTRAN_DBA_PASSWORD_S, 0);
-
-  sa_mode = utility_get_option_bool_value (arg_map, TDE_SA_MODE_S);
 
   if (!gen_op && !show_op && change_idx == -1 && delete_idx == -1)
     {

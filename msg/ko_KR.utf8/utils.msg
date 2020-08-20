@@ -1195,8 +1195,6 @@ tde: Transparent Data Encryption (TDE) 관리\n\
 usage: %1$s tde <operation> [옵션] <데이터베이스-이름>\n\
 \n\
 valid options:\n\
-  -S, --SA-mode                   독립 모드 실행\n\
-  -C, --CS-mode                   클라이언트 서버 모드 실행\n\
   -p, --dba-password=PASS         DBA 패스워드; 지정되지 않은 경우 프롬프트\n\
   -v, --print-value               -s, -n 사용 시 출력 결과물에 키 값을 포함\n\
 operations:\n\
