@@ -5767,7 +5767,7 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
 		  error = ER_NET_CANT_CONNECT_SERVER;
 		  goto end;
 		}
-	      else if (errid == ER_TDE_DISABLED || errid == ER_TDE_CIPHER_IS_NOT_LOADED)
+	      else if (errid == ER_TDE_CIPHER_IS_NOT_LOADED)
 		{
 		  error = errid;
 		  goto end;
@@ -6157,7 +6157,7 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
 		{
 		  return error;
 		}
-	      else if (error == ER_TDE_DISABLED || error == ER_TDE_CIPHER_IS_NOT_LOADED)
+	      else if (error == ER_TDE_CIPHER_IS_NOT_LOADED)
 		{
 		  la_applier_need_shutdown = true;
 		  return error;
