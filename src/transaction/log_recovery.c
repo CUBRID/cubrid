@@ -2530,7 +2530,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	    }
 	  else
 	    {
-	      if (er_errid () == ER_TDE_CIPHER_IS_NOT_LOADED || er_errid () == ER_TDE_DISABLED)
+	      if (er_errid () == ER_TDE_CIPHER_IS_NOT_LOADED)
 		{
 		  /* TDE Moudle has to be loaded because there are some TDE-encrypted log pages */
 		  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,

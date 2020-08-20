@@ -421,8 +421,8 @@ tde_change_mk (THREAD_ENTRY *thread_p, const int mk_index, const unsigned char *
 
   if (!tde_Cipher.is_loaded)
     {
-      err = prm_get_bool_value (PRM_ID_TDE_ENABLE) ? ER_TDE_CIPHER_IS_NOT_LOADED : ER_TDE_DISABLED;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+      err = ER_TDE_CIPHER_IS_NOT_LOADED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_IS_NOT_LOADED, 0);
       goto exit;
     }
 
@@ -752,9 +752,8 @@ tde_encrypt_data_page (FILEIO_PAGE *iopage_plain, FILEIO_PAGE *iopage_cipher, TD
 
   if (tde_Cipher.is_loaded == false)
     {
-      err = prm_get_bool_value (PRM_ID_TDE_ENABLE) ? ER_TDE_CIPHER_IS_NOT_LOADED : ER_TDE_DISABLED;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
-      return err;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_IS_NOT_LOADED, 0);
+      return ER_TDE_CIPHER_IS_NOT_LOADED;
     }
 
 
@@ -793,9 +792,8 @@ tde_decrypt_data_page (const FILEIO_PAGE *iopage_cipher, FILEIO_PAGE *iopage_pla
 
   if (tde_Cipher.is_loaded == false)
     {
-      err = prm_get_bool_value (PRM_ID_TDE_ENABLE) ? ER_TDE_CIPHER_IS_NOT_LOADED : ER_TDE_DISABLED;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
-      return err;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_IS_NOT_LOADED, 0);
+      return ER_TDE_CIPHER_IS_NOT_LOADED;
     }
 
   memset (nonce, 0, TDE_DATA_PAGE_NONCE_LENGTH);
@@ -830,9 +828,8 @@ xtde_get_set_mk_info (THREAD_ENTRY *thread_p, int *mk_index, time_t *created_tim
 
   if (!tde_Cipher.is_loaded)
     {
-      err = prm_get_bool_value (PRM_ID_TDE_ENABLE) ? ER_TDE_CIPHER_IS_NOT_LOADED : ER_TDE_DISABLED;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
-      return err;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_IS_NOT_LOADED, 0);
+      return ER_TDE_CIPHER_IS_NOT_LOADED;
     }
 
   err = tde_get_keyinfo (thread_p, &keyinfo, &tde_Keyinfo_oid, &tde_Keyinfo_hfid);
@@ -907,13 +904,11 @@ tde_encrypt_log_page (const LOG_PAGE *logpage_plain, LOG_PAGE *logpage_cipher, T
 {
   unsigned char nonce[TDE_LOG_PAGE_NONCE_LENGTH];
   const unsigned char *data_key;
-  int err = NO_ERROR;
 
   if (tde_Cipher.is_loaded == false)
     {
-      err = prm_get_bool_value (PRM_ID_TDE_ENABLE) ? ER_TDE_CIPHER_IS_NOT_LOADED : ER_TDE_DISABLED;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
-      return err;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_IS_NOT_LOADED, 0);
+      return ER_TDE_CIPHER_IS_NOT_LOADED;
     }
 
   memset (nonce, 0, TDE_LOG_PAGE_NONCE_LENGTH);
@@ -924,10 +919,9 @@ tde_encrypt_log_page (const LOG_PAGE *logpage_plain, LOG_PAGE *logpage_cipher, T
 
   memcpy (logpage_cipher, logpage_plain, LOG_PAGESIZE);
 
-  err = tde_encrypt_internal (((const unsigned char *)logpage_plain) + TDE_LOG_PAGE_ENC_OFFSET,
-			      TDE_LOG_PAGE_ENC_LENGTH, tde_algo, data_key, nonce,
-			      ((unsigned char *)logpage_cipher) + TDE_LOG_PAGE_ENC_OFFSET);
-  return err;
+  return tde_encrypt_internal (((const unsigned char *)logpage_plain) + TDE_LOG_PAGE_ENC_OFFSET,
+			       TDE_LOG_PAGE_ENC_LENGTH, tde_algo, data_key, nonce,
+			       ((unsigned char *)logpage_cipher) + TDE_LOG_PAGE_ENC_OFFSET);
 }
 
 int
@@ -935,13 +929,11 @@ tde_decrypt_log_page (const LOG_PAGE *logpage_cipher, LOG_PAGE *logpage_plain, T
 {
   unsigned char nonce[TDE_LOG_PAGE_NONCE_LENGTH];
   const unsigned char *data_key;
-  int err = NO_ERROR;
 
   if (tde_Cipher.is_loaded == false)
     {
-      err = prm_get_bool_value (PRM_ID_TDE_ENABLE) ? ER_TDE_CIPHER_IS_NOT_LOADED : ER_TDE_DISABLED;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
-      return err;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_IS_NOT_LOADED, 0);
+      return ER_TDE_CIPHER_IS_NOT_LOADED;
     }
 
   memset (nonce, 0, TDE_LOG_PAGE_NONCE_LENGTH);
@@ -952,10 +944,9 @@ tde_decrypt_log_page (const LOG_PAGE *logpage_cipher, LOG_PAGE *logpage_plain, T
 
   memcpy (logpage_plain, logpage_cipher, LOG_PAGESIZE);
 
-  err = tde_decrypt_internal (((const unsigned char *)logpage_cipher) + TDE_LOG_PAGE_ENC_OFFSET,
-			      TDE_LOG_PAGE_ENC_LENGTH, tde_algo, data_key, nonce,
-			      ((unsigned char *)logpage_plain) + TDE_LOG_PAGE_ENC_OFFSET);
-  return err;
+  return tde_decrypt_internal (((const unsigned char *)logpage_cipher) + TDE_LOG_PAGE_ENC_OFFSET,
+			       TDE_LOG_PAGE_ENC_LENGTH, tde_algo, data_key, nonce,
+			       ((unsigned char *)logpage_plain) + TDE_LOG_PAGE_ENC_OFFSET);
 }
 
 static int
