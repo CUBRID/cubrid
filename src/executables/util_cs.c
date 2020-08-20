@@ -199,12 +199,13 @@ backupdb (UTIL_FUNCTION_ARG * arg)
 
   if (seperate_keys)
     {
-      printf ("%s\n", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_BACKUPDB, BACKUPDB_USING_SEPERATE_KEYS));
+      util_log_write_warnstr (msgcat_message
+			      (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_BACKUPDB, BACKUPDB_USING_SEPERATE_KEYS));
     }
   else
     {
-      printf ("%s\n", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_BACKUPDB,
-				      BACKUPDB_NOT_USING_SEPERATE_KEYS));
+      util_log_write_warnstr (msgcat_message
+			      (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_BACKUPDB, BACKUPDB_NOT_USING_SEPERATE_KEYS));
     }
 
   /* extra validation */

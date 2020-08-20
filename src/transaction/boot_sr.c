@@ -2385,12 +2385,13 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
+  er_set_print_property (ER_DO_NOT_PRINT);
   error_code = tde_cipher_initialize (thread_p, &boot_Db_parm->tde_keys_hfid,
 				      r_args == NULL ? NULL : r_args->keys_file_path);
+  er_set_print_property (ER_PRINT_TO_CONSOLE);
   if (error_code != NO_ERROR)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_LOAD_FAIL, 0);
-      fprintf (stderr, "%s\n", er_msg ());
       error_code = NO_ERROR;
     }
 

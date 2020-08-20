@@ -1612,8 +1612,10 @@
 #define ER_TDE_CIPHER_IS_NOT_LOADED                 -1252
 #define ER_TDE_KEY_CREATION_FAIL                    -1253
 #define ER_TDE_CIPHER_LOAD_FAIL                     -1254
+#define ER_TDE_COPY_KEYS_FILE_FAIL                  -1255
+#define ER_TDE_BACKUP_KEYS_FILE_FAIL                -1256
 
-#define ER_LAST_ERROR                               -1255
+#define ER_LAST_ERROR                               -1257
 
 /*
  * CAUTION!

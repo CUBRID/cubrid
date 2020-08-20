@@ -7437,20 +7437,11 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
     }
 #endif
 
-  /* tde key file has to be mounted to access exclusively with TDE Utility */
+  /* tde key file has to be mounted to access exclusively with TDE Utility if it exists */
   tde_make_keys_volume_fullname (mk_path, log_Db_fullname, false);
+  er_set_print_property (ER_DO_NOT_PRINT);
   keys_vdes = fileio_mount (thread_p, log_Db_fullname, mk_path, LOG_DBTDE_KEYS_VOLID, 1, false);
-  if (keys_vdes == NULL_VOLDES)
-    {
-      error_code = ER_IO_MOUNT_FAIL;
-      goto error;
-    }
-
-  if (tde_validate_keys_volume (keys_vdes) == false)
-    {
-      error_code = ER_TDE_INVALID_KEYS_VOLUME;
-      goto error;
-    }
+  er_set_print_property (ER_PRINT_TO_CONSOLE);
 
   /* Initialization gives us some useful information about the backup location. */
   session.type = FILEIO_BACKUP_WRITE;	/* access backup device for write */
@@ -7855,10 +7846,13 @@ loop:
 
   if (seperate_keys == false)
     {
+      er_set_print_property (ER_DO_NOT_PRINT);
       error_code = fileio_backup_volume (thread_p, &session, mk_path, LOG_DBTDE_KEYS_VOLID, -1, false);
+      er_set_print_property (ER_PRINT_TO_CONSOLE);
       if (error_code != NO_ERROR)
 	{
-	  goto error;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_BACKUP_KEYS_FILE_FAIL, 0);
+	  /* keep going without master key file (_keys) */
 	}
     }
   else
@@ -9153,12 +9147,15 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
     }
 
   /*
-   * Create and Copy the TDE master key info (_keys)
+   * Create and Copy the TDE master key file (_keys)
    */
+  er_set_print_property (ER_DO_NOT_PRINT);
   error_code = tde_copy_keys_volume (thread_p, to_db_fullname, boot_db_full_name (), false, false);
+  er_set_print_property (ER_PRINT_TO_CONSOLE);
   if (error_code != NO_ERROR)
     {
-      goto error;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_COPY_KEYS_FILE_FAIL, 0);
+      /* keep going with out master key file */
     }
 
   /*

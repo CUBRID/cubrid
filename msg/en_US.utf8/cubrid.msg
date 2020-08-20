@@ -1322,6 +1322,8 @@ $ LOADDB
 1253 Cannot create a TDE key.
 1254 Cannot load TDE module. You can't use TDE feature.\n\
 Check the path of the key file (_keys) and make sure that it includes proper key.
+1255 Cannot copy key file (_keys). You can't use TDE feature on the copied database.
+1256 Cannot backup key file (_keys). You can't use TDE feature on the restored database based on this backup volume.
 1255 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
