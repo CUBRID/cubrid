@@ -553,16 +553,17 @@ geçerli seçenekler:\n\
   -i, --input-class-file=FILE       tablo adlarının girişi FILE\n\
                                     class_name liste boş olmalıdır\n\
                                     varsayılan: kompakt tüm sınıflar\n\
-                                    CS-mode sadece etkinleştirilmiş,\n\
   -p, --pages-commited-once=NUMBER  maksimum sayfa sayısı bir kez işlemek için\n\
                                     varsayılan: 10\n\
                                     CS-mode sadece etkinleştirilmiş\n\
   -S, --SA-mode                     stand-alone modu yürütme\n\
   -C, --CS-mode                     istemci-sunucu modunda yürütme\n\
   -d, --delete-old-repr             katalogdan eski sınıf temsilleri silmek; varsayılan: devre dışı\n\
-  class_name_list                   CS-mode sadece etkinleştirilmiş\n\
   -I, --Instance-lock-timeout       Örneğin kilidi için zaman aşımı\n\
-  -c, --class-lock-timeout          sınıf kilidi için zaman aşımı\n
+                                    CS-mode sadece etkinleştirilmiş,\n\
+  -c, --class-lock-timeout          sınıf kilidi için zaman aşımı\n\
+                                    CS-mode sadece etkinleştirilmiş,\n\
+  class_name_list                   sınıf adı listesi sıkıştırılacak\n
 
 $set 15 MSGCAT_UTIL_SET_COMMDB
 21 Host üzerinde çalışan CUBRID Master %1$s \n başlandı %2$s

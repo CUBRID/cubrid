@@ -1296,6 +1296,8 @@ typedef struct _ha_config
 #define COMPACT_INSTANCE_LOCK_TIMEOUT_L		"Instance-lock-timeout"
 #define COMPACT_CLASS_LOCK_TIMEOUT_S		'c'
 #define COMPACT_CLASS_LOCK_TIMEOUT_L		"class-lock-timeout"
+#define COMPACT_STANDBY_CS_MODE_S               12000
+#define COMPACT_STANDBY_CS_MODE_L               "standby"
 
 /* sqlx option list */
 #define CSQL_SA_MODE_S                          'S'
