@@ -1196,7 +1196,6 @@ usage: %1$s tde <operation> [옵션] <데이터베이스-이름>\n\
 \n\
 valid options:\n\
   -p, --dba-password=PASS         DBA 패스워드; 지정되지 않은 경우 프롬프트\n\
-  -v, --print-value               -s, -n 사용 시 출력 결과물에 키 값을 포함\n\
 operations:\n\
     -s, --show_keys               데이터베이스에 등록된 키, 키 파일 (_keys)내의 키들에 대한 정보를 출력 \n\
     -n, --generate-new-key        키 파일 (_keys)에 새로운 키를 추가\n\

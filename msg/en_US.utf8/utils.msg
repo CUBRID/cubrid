@@ -1208,7 +1208,6 @@ usage: %1$s tde OPERATION(-s|-n|-d|-c) [OPTION] database-name\n\
 \n\
 valid options:\n\
   -p, --dba-password=PASS      password of the DBA user; will prompt if don't specify\n\
-  -v, --print-value            print key value when using -s, -n option\n\
 OPERATIONs: one of the operations must be given, and they are exclusive \n\
     -s, --show_keys               print key information set on the database and the key file (_keys)\n\
     -n, --generate-new-key        generate a new key in the key file (_keys)\n\
