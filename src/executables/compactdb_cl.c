@@ -880,7 +880,7 @@ compactdb (UTIL_FUNCTION_ARG * arg)
     {
       db_set_client_type (DB_CLIENT_TYPE_ADMIN_COMPACTDB_WOS);
     }
-  else 
+  else
     {
       db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
     }

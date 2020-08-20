@@ -123,22 +123,23 @@ compactdb (UTIL_FUNCTION_ARG * arg)
   table_size = utility_get_option_string_table_size (arg_map);
   if (table_size > 1 && input_filename != NULL)
     {
-      compact_usage(arg->argv0);
+      compact_usage (arg->argv0);
       return ER_GENERIC_ERROR;
     }
   else if (table_size > 1)
     {
       tables = (char **) malloc (sizeof (char *) * table_size - 1);
       if (tables == NULL)
-        {
-          PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_FAILURE));
-          return ER_GENERIC_ERROR;
-        }
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_FAILURE));
+	  return ER_GENERIC_ERROR;
+	}
 
       for (i = 1; i < table_size; i++)
-        {
-          tables[i - 1] = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, i);
-        }
+	{
+	  tables[i - 1] = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, i);
+	}
     }
 
   sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
@@ -152,7 +153,7 @@ compactdb (UTIL_FUNCTION_ARG * arg)
     }
   else
     {
-      status = compactdb_start (verbose_flag, input_filename, tables, table_size-1);
+      status = compactdb_start (verbose_flag, input_filename, tables, table_size - 1);
       if (status != 0)
 	{
 	  util_log_write_errstr ("%s\n", db_error_string (3));
@@ -182,7 +183,7 @@ compactdb_start (bool verbose_flag, char *input_filename, char **input_class_nam
   THREAD_ENTRY *thread_p = NULL;
   MOP *class_mops = NULL;
   int num_class_mops = 0;
-  bool skip_phase3=false;
+  bool skip_phase3 = false;
 
   /*
    * Build class name table
@@ -191,37 +192,37 @@ compactdb_start (bool verbose_flag, char *input_filename, char **input_class_nam
   if (prm_get_integer_value (PRM_ID_COMPACTDB_PAGE_RECLAIM_ONLY) != 2)
     {
       if (input_filename && input_class_names && input_class_length > 0)
-        {
-          return ER_FAILED;
-        }
+	{
+	  return ER_FAILED;
+	}
 
       if (input_class_names && input_class_length > 0)
-        {
-          status = get_class_mops (input_class_names, input_class_length, &class_mops, &num_class_mops);
-          if (status != NO_ERROR)
-            {
+	{
+	  status = get_class_mops (input_class_names, input_class_length, &class_mops, &num_class_mops);
+	  if (status != NO_ERROR)
+	    {
 	      goto clean;
-            }
-	    skip_phase3 = true;
-        }
+	    }
+	  skip_phase3 = true;
+	}
       else if (input_filename)
-        {
+	{
 	  status = get_class_mops_from_file (input_filename, &class_mops, &num_class_mops);
-          if (status != NO_ERROR)
-            {
-              goto clean;
-            }
-	    skip_phase3 = true;
-        }
-      else 
-        {
+	  if (status != NO_ERROR)
+	    {
+	      goto clean;
+	    }
+	  skip_phase3 = true;
+	}
+      else
+	{
 	  class_table = locator_get_all_mops (sm_Root_class_mop, DB_FETCH_QUERY_READ, NULL);
 	  if (class_table == NULL)
 	    {
-	      goto clean;		/* error */
+	      goto clean;	/* error */
 	    }
-          num_class_mops = class_table->num;
-          class_mops = class_table->mops;
+	  num_class_mops = class_table->num;
+	  class_mops = class_table->mops;
 	}
     }
 
@@ -340,14 +341,14 @@ clean:
   else
     {
       if (class_mops)
-        {
-          for (i = 0; i < num_class_mops; i++)
-            {
-              class_mops[i] = NULL;
-            }
+	{
+	  for (i = 0; i < num_class_mops; i++)
+	    {
+	      class_mops[i] = NULL;
+	    }
 
-          free_and_init (class_mops);
-        }
+	  free_and_init (class_mops);
+	}
     }
 
   return status;
