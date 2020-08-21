@@ -117,25 +117,25 @@ get_class_mops (char **class_names, int num_class, MOP ** class_list, int *num_c
   for (i = 0; i < num_class; i++)
     {
       if (class_names[i] == NULL || strlen (class_names[i]) == 0)
-	{
+        {
 	  goto error;
-	}
+        }
 
       sm_downcase_name (class_names[i], downcase_class_name, SM_MAX_IDENTIFIER_LENGTH);
 
       class_ = locator_find_class (downcase_class_name);
       if (class_ != NULL)
-	{
+        {
 	  (*class_list)[(*num_class_list)] = class_;
 	  (*num_class_list)++;
-	}
+        }
       else
-	{
+        {
 	  printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_CLASS),
 		  downcase_class_name);
 
 	  printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_INVALID_CLASS));
-	}
+        }
     }
 
   return NO_ERROR;
@@ -206,33 +206,33 @@ get_class_mops_from_file (const char *input_filename, MOP ** class_list, int *nu
   for (i = 0; i < num_class; ++i)
     {
       if (fgets ((char *) buffer, DB_MAX_IDENTIFIER_LENGTH, input_file) == NULL)
-	{
+        {
 	  status = ER_FAILED;
 	  goto end;
-	}
+        }
 
       ptr = strchr (buffer, '\n');
       if (ptr)
-	{
+        {
 	  len = CAST_BUFLEN (ptr - buffer);
-	}
+        }
       else
-	{
+        {
 	  len = (int) strlen (buffer);
-	}
+        }
 
       if (len < 1)
-	{
+        {
 	  status = ER_FAILED;
 	  goto end;
-	}
+        }
 
       class_names[i] = (char *) malloc (DB_SIZEOF (char) * (len + 1));
       if (class_names[i] == NULL)
-	{
+        {
 	  status = ER_FAILED;
 	  goto end;
-	}
+        }
 
       strncpy (class_names[i], buffer, len);
       class_names[i][len] = 0;
@@ -250,9 +250,9 @@ end:
   if (class_names)
     {
       for (i = 0; i < num_class; i++)
-	{
+        {
 	  free_and_init (class_names[i]);
-	}
+        }
 
       free (class_names);
       class_names = NULL;
