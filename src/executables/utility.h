@@ -1338,6 +1338,8 @@ typedef struct _ha_config
 #define CSQL_PLAIN_OUTPUT_L                     "plain-output"
 #define CSQL_SKIP_COL_NAMES_S                   'N'
 #define CSQL_SKIP_COL_NAMES_L                   "skip-column-names"
+#define CSQL_SKIP_VACUUM_S			12017
+#define CSQL_SKIP_VACUUM_L			"skip-vacuum"
 
 #define COMMDB_SERVER_LIST_S                    'P'
 #define COMMDB_SERVER_LIST_L                    "server-list"

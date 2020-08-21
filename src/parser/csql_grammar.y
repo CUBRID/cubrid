@@ -1530,6 +1530,7 @@ int g_original_buffer_len;
 %token <cptr> DATE_SUB
 %token <cptr> DECREMENT
 %token <cptr> DENSE_RANK
+%token <cptr> DONT_REUSE_OID
 %token <cptr> ELT
 %token <cptr> EXPLAIN
 %token <cptr> FIRST_VALUE
@@ -8808,6 +8809,13 @@ table_option
 		{{
 
 			$$ = pt_table_option (this_parser, PT_TABLE_OPTION_REUSE_OID, NULL);
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| DONT_REUSE_OID
+		{{
+
+			$$ = pt_table_option (this_parser, PT_TABLE_OPTION_DONT_REUSE_OID, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
@@ -22548,6 +22556,16 @@ identifier
 
 		DBG_PRINT}}
 	| REUSE_OID
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| DONT_REUSE_OID
 		{{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
