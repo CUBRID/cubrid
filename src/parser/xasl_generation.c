@@ -2855,12 +2855,15 @@ pt_split_hash_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info, PT_NODE *
   PT_NODE *arg1, *arg2;
   bool has_reserved = false;
 
-  build_nodes = NULL;		/* init */
+  assert (build_attrs != NULL && *build_attrs == NULL);
+  assert (probe_attrs != NULL && *probe_attrs == NULL);
   *build_attrs = NULL;
   *probe_attrs = NULL;
 
   if (table_info->attribute_list == NULL)
-    return NO_ERROR;		/* nothing to do */
+    {
+      return NO_ERROR;		/* nothing to do */
+    }
 
   if (pred)
     {
