@@ -181,12 +181,7 @@ get_class_mops_from_file (const char *input_filename, MOP ** class_list, int *nu
 
   *class_list = NULL;
   *num_class_mops = 0;
-  if (get_num_requested_class (input_filename, &num_class) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  if (num_class == 0)
+  if (get_num_requested_class (input_filename, &num_class) != NO_ERROR || num_class == 0)
     {
       return ER_FAILED;
     }
@@ -256,11 +251,7 @@ end:
     {
       for (i = 0; i < num_class; i++)
 	{
-	  if (class_names[i] != NULL)
-	    {
-	      free (class_names[i]);
-	      class_names[i] = NULL;
-	    }
+	  free_and_init (class_names[i]);
 	}
 
       free (class_names);
