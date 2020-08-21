@@ -1182,11 +1182,6 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	  GOTO_EXIT_ON_ERROR;
 	}
 
-      if (XASL_IS_FLAGED (xasl, XASL_IS_MERGE_QUERY))
-	{
-	  qexec_set_upd_ins_flag (xasl);
-	}
-
       tpldescr_status = qexec_generate_tuple_descriptor (thread_p, xasl->list_id, xasl->outptr_list, &xasl_state->vd);
       if (tpldescr_status == QPROC_TPLDESCR_FAILURE)
 	{
