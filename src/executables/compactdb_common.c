@@ -118,7 +118,7 @@ get_class_mops (char **class_names, int num_class, MOP ** class_list, int *num_c
     {
       if (class_names[i] == NULL || strlen (class_names[i]) == 0)
         {
-	  goto error;
+          goto error;
         }
 
       sm_downcase_name (class_names[i], downcase_class_name, SM_MAX_IDENTIFIER_LENGTH);
@@ -126,15 +126,15 @@ get_class_mops (char **class_names, int num_class, MOP ** class_list, int *num_c
       class_ = locator_find_class (downcase_class_name);
       if (class_ != NULL)
         {
-	  (*class_list)[(*num_class_list)] = class_;
-	  (*num_class_list)++;
+          (*class_list)[(*num_class_list)] = class_;
+          (*num_class_list)++;
         }
       else
         {
-	  printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_CLASS),
+          printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_CLASS),
 		  downcase_class_name);
 
-	  printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_INVALID_CLASS));
+          printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_INVALID_CLASS));
         }
     }
 
