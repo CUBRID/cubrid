@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -446,9 +447,10 @@ enum param_id
   PRM_ID_JAVA_STORED_PROCEDURE_RESERVE_01,
   PRM_ID_ALLOW_TRUNCATED_STRING,
   PRM_ID_TB_DEFAULT_REUSE_OID,
+  PRM_ID_USE_STAT_ESTIMATION,
 
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_TB_DEFAULT_REUSE_OID
+  PRM_LAST_ID = PRM_ID_USE_STAT_ESTIMATION
 };
 typedef enum param_id PARAM_ID;
 

@@ -38,6 +38,7 @@
 #include "object_primitive.h"
 #include "object_representation.h"
 #include "thread_entry.hpp"
+#include "system_parameter.h"
 
 #define SQUARE(n) ((n)*(n))
 
@@ -454,6 +455,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
   int key_size;
   int lk_grant_code;
   CATALOG_ACCESS_INFO catalog_access_info = CATALOG_ACCESS_INFO_INITIALIZER;
+  bool use_stat_estimation = prm_get_bool_value (PRM_ID_USE_STAT_ESTIMATION);
 
   /* init */
   cls_info_p = NULL;
@@ -583,7 +585,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
   assert (cls_info_p->ci_tot_objects >= 0);
   assert (cls_info_p->ci_tot_pages >= 0);
 
-  if (HFID_IS_NULL (&cls_info_p->ci_hfid))
+  if (HFID_IS_NULL (&cls_info_p->ci_hfid) || !use_stat_estimation)
     {
       /* The class does not have a heap file (i.e. it has no instances); so no statistics can be obtained for this
        * class */
@@ -684,7 +686,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
 	      npages = MAX (npages, 1);	/* safe-guard */
 	    }
 	  assert (npages > 0);
-	  if (npages > btree_stats_p->pages)
+	  if (npages > btree_stats_p->pages && use_stat_estimation)
 	    {
 	      OR_PUT_INT (buf_p, (btree_stats_p->leafs + (npages - btree_stats_p->pages)));
 	      buf_p += OR_INT_SIZE;
@@ -708,7 +710,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
 	  buf_p += OR_INT_SIZE;
 
 	  /* check and handle with estimation, since pkeys[] is not gathered before update stats */
-	  if (estimated_nobjs > 0)
+	  if (estimated_nobjs > 0 && use_stat_estimation)
 	    {
 	      /* is non-empty index */
 	      btree_stats_p->keys = MAX (btree_stats_p->keys, 1);
@@ -746,7 +748,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
 	  for (k = 0; k < btree_stats_p->pkeys_size; k++)
 	    {
 	      /* check and handle with estimation, since pkeys[] is not gathered before update stats */
-	      if (estimated_nobjs > 0)
+	      if (estimated_nobjs > 0 && use_stat_estimation)
 		{
 		  /* is non-empty index */
 		  btree_stats_p->pkeys[k] = MAX (btree_stats_p->pkeys[k], 1);
