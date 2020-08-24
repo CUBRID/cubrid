@@ -48,7 +48,7 @@ abstract public class UJCIManager {
 	static Hashtable<UUrlHostKey, UUrlCache> url_cache_table;
 	static ArrayList<UUrlCache> url_cache_remove_list;
 	static JdbcCacheWorker CACHE_Manager;
-	static boolean result_cache_enable = false;
+	static boolean result_cache_enable = true;
 
 	static {
 		// connectionList = new Vector();

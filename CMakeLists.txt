@@ -141,6 +141,9 @@ set(WITH_LIBGCRYPT_URL "https://gnupg.org/ftp/gcrypt/libgcrypt/libgcrypt-1.5.6.t
 # rapidjson library sources URL
 set(WITH_RAPIDJSON_URL "https://github.com/Tencent/rapidjson/archive/v1.1.0.tar.gz")
 
+# openssl library sources URL
+set(WITH_LIBOPENSSL_URL "https://www.openssl.org/source/old/1.1.1/openssl-1.1.1f.tar.gz")
+
 set(WITH_EXTERNAL_PREFIX "EXTERNAL" CACHE STRING "External library prefix (default: EXTERNAL)")
 set(WITH_BUNDLED_PREFIX "BUNDLED" CACHE STRING "Bundled library prefix (default: BUNDLED)")
 set(WITH_SYSTEM_PREFIX "SYSTEM" CACHE STRING "System library prefix (default: SYSTEM)")
@@ -152,6 +155,7 @@ set(WITH_LIBLZO       "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with lzo lib
 set(WITH_LIBGPG_ERROR "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with gpg-error library (default: EXTERNAL)")
 set(WITH_LIBGCRYPT    "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with gcrypt library (default: EXTERNAL)")
 set(WITH_LIBNCURSES   "${WITH_SYSTEM_PREFIX}" CACHE STRING "Build with ncurses library (default: SYSTEM)")
+set(WITH_LIBOPENSSL   "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with openssl library (default: EXTERNAL)")
 
 message(STATUS "Build with Curses library: ${WITH_LIBNCURSES}")
 message(STATUS "Build with editline library: ${WITH_LIBEDIT}")
@@ -160,6 +164,7 @@ message(STATUS "Build with gcrypt library: ${WITH_LIBGCRYPT}")
 message(STATUS "Build with gpg-error library: ${WITH_LIBGPG_ERROR}")
 message(STATUS "Build with expat library: ${WITH_LIBEXPAT}")
 message(STATUS "Build with jansson library: ${WITH_LIBJANSSON}")
+message(STATUS "Build with openssl library: ${WITH_LIBOPENSSL}")
 
 # Version info
 # TODO: remove BUILD_NUMBER file and replace with VERSION file
@@ -694,8 +699,8 @@ configure_file(cmake/version.h.cmake version.h)
 if(CMAKE_SYSTEM_NAME MATCHES "Linux")
   # Definitions for system
   add_definitions(-DGCC -DLINUX -D_GNU_SOURCE -DI386 -DX86)
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wwrite-strings -Wno-cast-qual -Wmissing-prototypes -Wredundant-decls -Wextra -Wno-unused -Wno-format-security")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wwrite-strings -Wno-cast-qual -Wredundant-decls -Wextra -Wno-unused -Wno-unused-parameter -Wno-format-security")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wwrite-strings -Wno-cast-qual -Wmissing-prototypes -Wredundant-decls -Wextra -Wno-unused -Wno-format-security -pthread")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wwrite-strings -Wno-cast-qual -Wredundant-decls -Wextra -Wno-unused -Wno-unused-parameter -Wno-format-security -pthread")
 
   if(SIZEOF_OFF64_T)
     add_definitions( -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64)
@@ -1187,6 +1192,50 @@ if (TARGET ${LIBGCRYPT_TARGET})
   endif(TARGET ${LIBGPG_ERROR_TARGET})
 endif(TARGET ${LIBGCRYPT_TARGET})
 
+# WITH_LOBOPENSSL can have multiple values with different meanings
+# on Linux:
+# * "EXTERNAL" - (default) builds openssl library from URL stored in ${WITH_LIBOPENSSL_URL} uses the library created by the build
+# * "SYSTEM"   - use openssl library located in:
+#                  ${WITH_EXTERNAL_LIBS_PATH}
+#                  ${WITH_LIBOPENSSL_ROOT_PATH}/lib
+#                use openssl headers located in:
+#                  ${WITH_EXTERNAL_HEADERS_PATH}
+#                  ${WITH_LIBOPENSSL_ROOT_PATH}/include
+# on Windows:
+# * "EXTERNAL" - (default) uses the prebuilt library from cubrid/win/external
+if(WITH_LIBOPENSSL STREQUAL "EXTERNAL")
+  set(LIBOPENSSL_TARGET libopenssl)
+  if(UNIX)
+    #compile OpenSSL library given an internet url to a OpenSSL archive
+    #e.g. https://www.openssl.org/source/openssl-1.1.1f.tar.gz
+    externalproject_add(${LIBOPENSSL_TARGET}
+      URL                  ${WITH_LIBOPENSSL_URL}
+      TIMEOUT              600
+      DOWNLOAD_NO_PROGRESS 1
+      CONFIGURE_COMMAND    <SOURCE_DIR>/config --prefix=${CMAKE_CURRENT_BINARY_DIR}/external no-shared # ${DEFAULT_CONFIGURE_OPTS}
+      BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND      make install_sw AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      )
+    set(LIBOPENSSL_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libssl.a ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libcrypto.a)
+    set(LIBOPENSSL_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
+    list(APPEND EP_TARGETS ${LIBOPENSSL_TARGET})
+  else(UNIX)
+    set(LIBOPENSSL_LIBS ${WINDOWS_EXTERNAL_DIR}/openssl/lib/libssl.lib)
+    list(APPEND LIBOPENSSL_LIBS ${WINDOWS_EXTERNAL_DIR}/openssl/lib/libcrypto.lib)
+    list(APPEND LIBOPENSSL_LIBS Crypt32 Ws2_32)
+    set(LIBOPENSSL_INCLUDES ${WINDOWS_EXTERNAL_DIR}/openssl/include)
+  endif(UNIX)
+else(WITH_LIOPENSSL STREQUAL "SYSTEM")
+  if(UNIX)
+    find_library(LIBOPENSSL_LIBS NAMES libssl.a libcrypto.a PATHS ${WITH_EXTERNAL_LIBS_PATH} ${WITH_LIBOPENSSL_ROOT_PATH}/lib REQUIRED)
+    find_path(LIBOPENSSL_INCLUDES NAMES openssl/conf.h openssl/evp.h PATHS ${WITH_EXTERNAL_HEADERS_PATH} ${WITH_LIBOPENSSL_ROOT_PATH}/include REQUIRED)
+    message(STATUS "Found openssl library: ${LIBOPENSSL_LIBS}")
+    message(STATUS "Found openssl headers: ${LIBOPENSSL_INCLUDES}")
+  endif(UNIX)
+endif()
+list(APPEND EP_INCLUDES ${LIBOPENSSL_INCLUDES})
+list(APPEND EP_LIBS ${LIBOPENSSL_LIBS})
+
 # For JVM libraries
 if(WIN32)
   if(TARGET_PLATFORM_BITS EQUAL 32)
@@ -1367,10 +1416,13 @@ if(WIN32)
     set(WIX_SUPPORTED_PLATFORM_CONDITION "Not VersionNT64")
     if(MSVC90)
       set(WIX_VCREDIST_MSM Microsoft_VC90_CRT_x86.msm)
+      set(WIX_VCREDIST_MFC_MSM Microsoft_VC90_MFC_x86.msm)
     elseif(MSVC10)
       set(WIX_VCREDIST_MSM Microsoft_VC100_CRT_x86.msm)
+      set(WIX_VCREDIST_MFC_MSM Microsoft_VC100_MFC_x86.msm)
     elseif(MSVC_VERSION GREATER_EQUAL 1910)
       set(WIX_VCREDIST_MSM Microsoft_VC141_CRT_x86.msm)
+      set(WIX_VCREDIST_MFC_MSM Microsoft_VC141_MFC_x86.msm)
     else()
       message(WARNING "Cannot generate MSI installer with unsupported compiler version")
     endif()
@@ -1380,10 +1432,13 @@ if(WIN32)
     set(WIX_SUPPORTED_PLATFORM_CONDITION "VersionNT64")
     if(MSVC90)
       set(WIX_VCREDIST_MSM Microsoft_VC90_CRT_x86_x64.msm)
+      set(WIX_VCREDIST_MFC_MSM Microsoft_VC90_MFC_x86_x64.msm)
     elseif(MSVC10)
       set(WIX_VCREDIST_MSM Microsoft_VC100_CRT_x64.msm)
+      set(WIX_VCREDIST_MFC_MSM Microsoft_VC100_MFC_x64.msm)
     elseif(MSVC_VERSION GREATER_EQUAL 1910) # ref. https://cmake.org/cmake/help/v3.9/variable/MSVC_VERSION.html
       set(WIX_VCREDIST_MSM Microsoft_VC141_CRT_x64.msm)
+      set(WIX_VCREDIST_MFC_MSM Microsoft_VC141_MFC_x64.msm)
     else()
       message(WARNING "Cannot generate MSI installer with unsupported compiler version")
     endif()

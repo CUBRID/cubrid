@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -413,6 +414,14 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
       br_info[num_brs].service_flag =
 	conf_get_value_table_on_off (ini_getstr (ini, sec_name, "SERVICE", "ON", &lineno));
       if (br_info[num_brs].service_flag < 0)
+	{
+	  errcode = PARAM_BAD_VALUE;
+	  goto conf_error;
+	}
+
+      br_info[num_brs].use_SSL =
+	conf_get_value_table_on_off (ini_getstr (ini, sec_name, "SSL", DEFAULT_SSL_MODE, &lineno));
+      if (br_info[num_brs].use_SSL < 0)
 	{
 	  errcode = PARAM_BAD_VALUE;
 	  goto conf_error;

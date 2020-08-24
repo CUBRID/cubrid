@@ -142,6 +142,7 @@ main (int argc, char *argv[])
     {CSQL_NO_TRIGGER_ACTION_L, 0, 0, CSQL_NO_TRIGGER_ACTION_S},
     {CSQL_PLAIN_OUTPUT_L, 0, 0, CSQL_PLAIN_OUTPUT_S},
     {CSQL_SKIP_COL_NAMES_L, 0, 0, CSQL_SKIP_COL_NAMES_S},
+    {CSQL_SKIP_VACUUM_L, 0, 0, CSQL_SKIP_VACUUM_S},
     {VERSION_L, 0, 0, VERSION_S},
     {0, 0, 0, 0}
   };
@@ -278,6 +279,10 @@ main (int argc, char *argv[])
 	  csql_arg.skip_column_names = true;
 	  break;
 
+	case CSQL_SKIP_VACUUM_S:
+	  csql_arg.skip_vacuum = true;
+	  break;
+
 	case VERSION_S:
 	  utility_csql_print (MSGCAT_UTIL_GENERIC_VERSION, UTIL_CSQL_NAME, PRODUCT_STRING);
 	  goto exit_on_end;
@@ -320,14 +325,19 @@ main (int argc, char *argv[])
       goto print_usage;
     }
 
-  if (csql_arg.sa_mode && csql_arg.cs_mode)
+  if (csql_arg.sa_mode && (csql_arg.cs_mode || csql_arg.write_on_standby))
     {
       /* Don't allow both at once. */
       goto print_usage;
     }
-  else if (explicit_single_line && csql_arg.single_line_execution == false)
+  else if (!csql_arg.sa_mode && csql_arg.skip_vacuum)
     {
-      /* Don't allow both at once. */
+      /* Don't allow to skip vacuum on CS mode
+         goto print_usage;
+         }
+         else if (explicit_single_line && csql_arg.single_line_execution == false)
+         {
+         /* Don't allow both at once. */
       goto print_usage;
     }
   else if (csql_arg.sa_mode)

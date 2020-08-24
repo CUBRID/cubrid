@@ -4719,7 +4719,7 @@ wrapup:
     result = (gbstate.state == NO_ERROR || gbstate.state == SORT_PUT_STOP) ? NO_ERROR : ER_FAILED;
 
     /* check merge result */
-    if (XASL_IS_FLAGED (xasl, XASL_IS_MERGE_QUERY) && list_id->tuple_cnt != gbstate.input_recs)
+    if (result == NO_ERROR && XASL_IS_FLAGED (xasl, XASL_IS_MERGE_QUERY) && list_id->tuple_cnt != gbstate.input_recs)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MERGE_TOO_MANY_SOURCE_ROWS, 0);
 	result = ER_FAILED;
@@ -11450,6 +11450,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	  for (regu_list = insert->valptr_lists[i]->valptrp, vallist = xasl->val_list->valp, k = num_default_expr;
 	       k < val_no; k++, regu_list = regu_list->next, vallist = vallist->next)
 	    {
+	      regu_list->value.flags |= REGU_VARIABLE_STRICT_TYPE_CAST;
 	      if (fetch_peek_dbval (thread_p, &regu_list->value, &xasl_state->vd, &class_oid, NULL, NULL, &valp) !=
 		  NO_ERROR)
 		{
@@ -14951,6 +14952,7 @@ tranid_compare (const void *t1, const void *t2)
 int
 qexec_clear_list_cache_by_class (THREAD_ENTRY * thread_p, const OID * class_oid)
 {
+  xcache_invalidate_qcaches (thread_p, class_oid);
 #if 0
   /* TODO: Update this in xasl_cache.c */
   XASL_CACHE_ENTRY *ent;

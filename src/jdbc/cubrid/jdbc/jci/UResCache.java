@@ -65,7 +65,7 @@ public class UResCache {
 		if (cache_data != null && used == false) {
 			return true;
 		} else {
-//			used = false;
+			used = false;
 			return false;
 		}
 	}

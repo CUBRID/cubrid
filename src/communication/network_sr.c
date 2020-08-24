@@ -1336,7 +1336,7 @@ net_server_start (const char *server_name)
   net_server_init ();
   css_initialize_server_interfaces (net_server_request, net_server_conn_down);
 
-  if (boot_restart_server (thread_p, true, server_name, false, &check_coll_and_timezone, NULL) != NO_ERROR)
+  if (boot_restart_server (thread_p, true, server_name, false, &check_coll_and_timezone, NULL, false) != NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();

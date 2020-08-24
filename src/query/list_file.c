@@ -5168,8 +5168,8 @@ qfile_finalize_list_cache (THREAD_ENTRY * thread_p)
     {
       for (i = 0; i < qfile_List_cache.n_hts; i++)
 	{
-	  (void) mht_map_no_key (thread_p, qfile_List_cache.list_hts[i], qfile_free_list_cache_entry,
-				 qfile_List_cache.list_hts[i]);
+	  bool del = true;
+	  (void) mht_map_no_key (thread_p, qfile_List_cache.list_hts[i], qfile_end_use_of_list_cache_entry_local, &del);
 	  mht_destroy (qfile_List_cache.list_hts[i]);
 	}
       free_and_init (qfile_List_cache.list_hts);
