@@ -12400,6 +12400,7 @@ update_subclasses (DB_OBJLIST * subclasses)
   int num_indexes;
   DB_OBJLIST *sub;
   SM_CLASS *class_;
+  bool use_stat_estimation = prm_get_bool_value (PRM_ID_USE_STAT_ESTIMATION);
 
   for (sub = subclasses; sub != NULL && error == NO_ERROR; sub = sub->next)
     {
@@ -12428,7 +12429,8 @@ update_subclasses (DB_OBJLIST * subclasses)
 		      /* an error has happened */
 		      error = num_indexes;
 		    }
-		  else if (!class_->dont_decache_constraints_or_flush && class_->class_type == SM_CLASS_CT)
+		  else if (!class_->dont_decache_constraints_or_flush && class_->class_type == SM_CLASS_CT
+			   && use_stat_estimation)
 		    {
 		      error = sm_update_statistics (sub->op, STATS_WITH_SAMPLING);
 		    }
@@ -12549,6 +12551,7 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
   SM_CLASS *class_;
   DB_OBJLIST *cursupers, *oldsupers, *newsupers, *cursubs, *newsubs;
   SM_TEMPLATE *flat;
+  bool use_stat_estimation = prm_get_bool_value (PRM_ID_USE_STAT_ESTIMATION);
 
   sm_bump_local_schema_version ();
   class_ = NULL;
@@ -12770,7 +12773,7 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
   class_->new_ = NULL;
 
   /* All objects are updated, now we can update class statistics also. */
-  if (template_->class_type == SM_CLASS_CT)
+  if (template_->class_type == SM_CLASS_CT && use_stat_estimation)
     {
       error = sm_update_statistics (template_->op, STATS_WITH_SAMPLING);
       if (error != NO_ERROR)
