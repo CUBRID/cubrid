@@ -858,7 +858,7 @@ compactdb (UTIL_FUNCTION_ARG * arg)
 
   if (table_size > 1)
     {
-      tables = (char **) malloc (sizeof (char *) * table_size - 1);
+      tables = (char **) malloc (sizeof (char *) * (table_size - 1));
       if (tables == NULL)
 	{
 	  PRINT_AND_LOG_ERR_MSG (msgcat_message
