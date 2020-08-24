@@ -406,8 +406,14 @@ tde_copy_keys_volume (THREAD_ENTRY *thread_p, const char *to_db_fullname, const 
       while (nread > 0);
     }
 
-  fileio_dismount (thread_p, from_vdes);
-  fileio_dismount (thread_p, to_vdes);
+  if (!keep_from_mount)
+    {
+      fileio_dismount (thread_p, from_vdes);
+    }
+  if (!keep_to_mount)
+    {
+      fileio_dismount (thread_p, to_vdes);
+    }
   return err;
 }
 
