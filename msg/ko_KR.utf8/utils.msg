@@ -553,16 +553,17 @@ compactdb: 데이터베이스에서 사용되지 않는 영역을 해제.\n\
   -i, --input-class-file=FILE       테이블 이름을 포함하는 FILE 이름\n\
                                     해당 옵션 사용 시 [테이블1 테이블2 ...]이 생략되어야 함\n\
                                     기본값: 모든 테이블들의 공간을 정리함\n\
-                                    클라이언트 서버 모드에서만 가능\n\
   -p, --pages-commited-once=NUMBER  한 번에 커밋할 수 있는 최대 페이지 개수\n\
                                     기본값: 10\n\
                                     클라이언트 서버 실행 모드에서만 가능\n\
   -S, --SA-mode                     독립 모드 실행\n\
   -C, --CS-mode                     클라이언트 서버 모드 실행\n\
   -d, --delete-old-repr             카탈로그에서 과거 테이블 표현을 삭제; 기본값: 사용 안 함\n\
-  [테이블1 테이블2 ...]             클라이언트 서버 모드에서만 가능\n\
   -I, --Instance-lock-timeout       인스턴스 잠금에 대한 타임아웃\n\
-  -c, --class-lock-timeout          클래스 잠금에 대한 타임아웃\n
+                                    클라이언트 서버 모드에서만 가능\n\
+  -c, --class-lock-timeout          클래스 잠금에 대한 타임아웃\n\
+                                    클라이언트 서버 모드에서만 가능\n\
+  [테이블1 테이블2 ...]             정리할 테이블 리스트\n
 
 $set 15 MSGCAT_UTIL_SET_COMMDB
 21 CUBRID master가 호스트 %1$s 에서 수행 중입니다. %2$s 에 시작되어
