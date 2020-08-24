@@ -8439,7 +8439,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 
 	  /* 
 	   * The tde key file (_keys) which is going to be used during restart
-	   * is the thing in the first level (the highest level).
+	   * is the thing in the first time (the highest level).
 	   */
 	  fileio_make_backup_name (bkpath_without_units, nopath_name, session->bkup.current_path,
 				   (FILEIO_BACKUP_LEVEL) r_args->level, FILEIO_NO_BACKUP_UNITS);
