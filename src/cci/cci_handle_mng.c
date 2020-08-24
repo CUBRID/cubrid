@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (c) 2016 CUBRID Corporation.
  *
  * Redistribution and use in source and binary forms, with or without modification,
  * are permitted provided that the following conditions are met:
@@ -65,7 +66,8 @@
 #include "cas_protocol.h"
 #include "cci_network.h"
 #include "cci_map.h"
-
+#include "cci_ssl.h"
+#include <cstdint>
 /************************************************************************
  * PRIVATE DEFINITIONS							*
  ************************************************************************/
@@ -244,6 +246,7 @@ hm_con_handle_alloc (char *ip_str, int port, char *db_name, char *db_user, char 
   return con_handle;
 
 error_end:
+  hm_ssl_free (con_handle);
   FREE_MEM (con_handle);
   return NULL;
 }
@@ -259,12 +262,14 @@ hm_con_handle_free (T_CON_HANDLE * con_handle)
   con_handle_table[con_handle->id - 1] = NULL;
   if (!IS_INVALID_SOCKET (con_handle->sock_fd))
     {
+      hm_ssl_free (con_handle);
       CLOSE_SOCKET (con_handle->sock_fd);
       con_handle->sock_fd = INVALID_SOCKET;
     }
 
   hm_req_handle_free_all (con_handle);
   con_handle_content_free (con_handle);
+  hm_ssl_free (con_handle);
   FREE_MEM (con_handle);
 
   return CCI_ER_NO_ERROR;
@@ -1189,7 +1194,7 @@ hm_check_rc_time (T_CON_HANDLE * con_handle)
 }
 
 void
-hm_create_health_check_th (void)
+hm_create_health_check_th (char useSSL)
 {
   int rv;
   pthread_attr_t thread_attr;
@@ -1200,7 +1205,7 @@ hm_create_health_check_th (void)
   rv = pthread_attr_setdetachstate (&thread_attr, PTHREAD_CREATE_DETACHED);
   rv = pthread_attr_setscope (&thread_attr, PTHREAD_SCOPE_SYSTEM);
 #endif /* WINDOWS */
-  rv = pthread_create (&health_check_th, &thread_attr, hm_thread_health_checker, (void *) NULL);
+  rv = pthread_create (&health_check_th, &thread_attr, hm_thread_health_checker, (void *) useSSL);
 }
 
 /************************************************************************
@@ -1316,7 +1321,9 @@ init_con_handle (T_CON_HANDLE * con_handle, char *ip_str, int port, char *db_nam
   con_handle->slow_query_threshold_millis = 60000;
   con_handle->log_trace_api = false;
   con_handle->log_trace_network = false;
-
+  con_handle->ssl_handle.ssl = NULL;
+  con_handle->ssl_handle.ctx = NULL;
+  con_handle->useSSL = false;
   con_handle->deferred_max_close_handle_count = DEFERRED_CLOSE_HANDLE_ALLOC_SIZE;
   con_handle->deferred_close_handle_list = (int *) MALLOC (sizeof (int) * con_handle->deferred_max_close_handle_count);
   con_handle->deferred_close_handle_count = 0;
@@ -1327,6 +1334,7 @@ init_con_handle (T_CON_HANDLE * con_handle, char *ip_str, int port, char *db_nam
 
   con_handle->shard_id = CCI_SHARD_ID_INVALID;
 
+  con_handle->ssl_handle.is_connected = false;
   return 0;
 }
 
@@ -1465,6 +1473,7 @@ hm_thread_health_checker (void *arg)
   int i;
   unsigned char *ip_addr;
   int port;
+  char useSSL = *((char *) (&arg));
   time_t start_time;
   time_t elapsed_time;
   while (1)
@@ -1474,7 +1483,8 @@ hm_thread_health_checker (void *arg)
 	{
 	  ip_addr = host_status[i].host.ip_addr;
 	  port = host_status[i].host.port;
-	  if (!host_status[i].is_reachable && net_check_broker_alive (ip_addr, port, BROKER_HEALTH_CHECK_TIMEOUT))
+	  if (!host_status[i].is_reachable
+	      && net_check_broker_alive (ip_addr, port, BROKER_HEALTH_CHECK_TIMEOUT, useSSL))
 	    {
 	      hm_set_host_status_by_addr (ip_addr, port, true);
 	    }
@@ -1492,8 +1502,25 @@ void
 hm_force_close_connection (T_CON_HANDLE * con_handle)
 {
   con_handle->alter_host_id = -1;
+  hm_ssl_free (con_handle);
   CLOSE_SOCKET (con_handle->sock_fd);
   con_handle->sock_fd = INVALID_SOCKET;
   con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
   con_handle->force_failback = 0;
+}
+
+void
+hm_ssl_free (T_CON_HANDLE * con_handle)
+{
+  if (con_handle != NULL)
+    {
+      if (con_handle->ssl_handle.ssl != NULL || con_handle->ssl_handle.ctx != NULL)
+	{
+	  cleanup_ssl (con_handle->ssl_handle.ssl);
+	  cleanup_ssl_ctx (con_handle->ssl_handle.ctx);
+	  con_handle->ssl_handle.ssl = NULL;
+	  con_handle->ssl_handle.ctx = NULL;
+	  con_handle->ssl_handle.is_connected = false;
+	}
+    }
 }

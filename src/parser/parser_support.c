@@ -6741,7 +6741,7 @@ pt_make_query_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
    */
   pt_add_string_col_to_sel_list (parser, select, table_name->info.name.original, "TABLE");
   pt_add_string_col_to_sel_list (parser, select, strbuf.get_buffer (), "CREATE TABLE");
-  pt_add_table_name_to_from_list (parser, select, "db_root", NULL, DB_AUTH_SELECT);
+  pt_add_table_name_to_from_list (parser, select, "dual", NULL, DB_AUTH_SELECT);
   return select;
 }
 

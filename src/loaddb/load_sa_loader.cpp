@@ -2948,7 +2948,7 @@ ldr_numeric_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *v
   int precision, scale;
   int err = NO_ERROR;
 
-  precision = (int) len - 1 - (str[0] == '+' || str[0] == '-' || str[0] == '.');
+  precision = (int) len - 1 - (str[0] == '+' || str[0] == '-');
   scale = (int) len - (int) strcspn (str, ".") - 1;
 
   CHECK_PARSE_ERR (err, db_value_domain_init (val, DB_TYPE_NUMERIC, precision, scale), context, DB_TYPE_NUMERIC, str);

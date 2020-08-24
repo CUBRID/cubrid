@@ -2682,10 +2682,18 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
 	{
 	  client_type = DB_CLIENT_TYPE_ADMIN_CSQL_WOS;
 	}
+      else if (csql_arg->skip_vacuum)
+	{
+	  client_type = DB_CLIENT_TYPE_SKIP_VACUUM_ADMIN_CSQL;
+	}
     }
   else if (csql_arg->read_only)
     {
       client_type = DB_CLIENT_TYPE_READ_ONLY_CSQL;
+    }
+  else if (csql_arg->skip_vacuum)
+    {
+      client_type = DB_CLIENT_TYPE_SKIP_VACUUM_CSQL;
     }
   else
     {

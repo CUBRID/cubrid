@@ -267,6 +267,7 @@ extern "C"
     bool trigger_action_flag;
     bool plain_output;
     bool skip_column_names;
+    bool skip_vacuum;
     int string_width;
 #if defined(CSQL_NO_LONGGING)
     bool no_logging;

@@ -6472,6 +6472,11 @@ qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIA
   assert (regu_var_p != NULL);
   assert (regu_var_p->domain != NULL);
 
+  if (REGU_VARIABLE_IS_FLAGED (regu_var_p, REGU_VARIABLE_UPD_INS_LIST))
+    {
+      REGU_VARIABLE_SET_FLAG (regu_var_p, REGU_VARIABLE_STRICT_TYPE_CAST);
+    }
+
   result = fetch_peek_dbval (thread_p, regu_var_p, val_desc_p, NULL, NULL, NULL, &peek_value_p);
   if (result != NO_ERROR)
     {
