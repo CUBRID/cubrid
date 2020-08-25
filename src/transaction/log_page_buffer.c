@@ -7386,6 +7386,7 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
   bool bkup_in_progress = false;
 
   char mk_path[PATH_MAX] = { 0, };
+  char seperate_mk_path[PATH_MAX] = { 0, };
   char bkpath_without_units[PATH_MAX] = { 0, };
   const char *db_nopath_name_p;
   int keys_vdes = NULL_VOLDES;
@@ -7860,8 +7861,9 @@ loop:
       db_nopath_name_p = fileio_get_base_file_name (log_Db_fullname);
       fileio_make_backup_name (bkpath_without_units, db_nopath_name_p, session.bkup.current_path, backup_level,
 			       FILEIO_NO_BACKUP_UNITS);
+      tde_make_keys_volume_fullname (seperate_mk_path, bkpath_without_units, false);
       /* Keep mounting mk file to be exclusive with other tools */
-      error_code = tde_copy_keys_volume (thread_p, bkpath_without_units, log_Db_fullname, false, true);
+      error_code = tde_copy_keys_volume (thread_p, seperate_mk_path, mk_path, false, true);
       if (error_code != NO_ERROR)
 	{
 	  goto error;
@@ -9120,6 +9122,8 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
   int error_code;
   char format_string[64];
   FILEIO_WRITE_MODE write_mode;
+  char from_mk_path[PATH_MAX] = { 0, };
+  char to_mk_path[PATH_MAX] = { 0, };
 
   db_creation = time (NULL);
 
@@ -9149,8 +9153,10 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
   /*
    * Create and Copy the TDE master key file (_keys)
    */
+  tde_make_keys_volume_fullname (from_mk_path, boot_db_full_name (), false);
+  tde_make_keys_volume_fullname (to_mk_path, to_db_fullname, false);
   er_set_print_property (ER_DO_NOT_PRINT);
-  error_code = tde_copy_keys_volume (thread_p, to_db_fullname, boot_db_full_name (), false, false);
+  error_code = tde_copy_keys_volume (thread_p, to_mk_path, from_mk_path, false, false);
   er_set_print_property (ER_PRINT_TO_CONSOLE);
   if (error_code != NO_ERROR)
     {

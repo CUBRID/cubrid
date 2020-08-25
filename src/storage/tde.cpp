@@ -83,7 +83,7 @@ static int tde_get_keyinfo (THREAD_ENTRY *thread_p, TDE_KEYINFO *keyinfo, OID *k
 static int tde_update_keyinfo (THREAD_ENTRY *thread_p, const TDE_KEYINFO *keyinfo, OID *keyinfo_oid, HFID *hfid);
 static int tde_generate_keyinfo (TDE_KEYINFO *keyinfo, int mk_index, const unsigned char *master_key,
 				 const time_t created_time, const TDE_DATA_KEY_SET *dks);
-static int tde_create_keys_file (const char *db_fullpath);
+static int tde_create_keys_file (const char *keyfile_fullname);
 static int tde_load_mk (int vdes, const TDE_KEYINFO *keyinfo, unsigned char *master_key);
 static bool tde_validate_mk (const unsigned char *master_key, const unsigned char *mk_hash);
 static int tde_change_mk (THREAD_ENTRY *thread_p, const int mk_index, const unsigned char *master_key);
@@ -121,12 +121,12 @@ tde_initialize (THREAD_ENTRY *thread_p, HFID *keyinfo_hfid)
   time_t created_time;
   int vdes = -1;
 
-  err = tde_create_keys_file (boot_db_full_name());
+  tde_make_keys_volume_fullname (mk_path, boot_db_full_name(), false);
+  err = tde_create_keys_file (mk_path);
   if (err != NO_ERROR)
     {
       return err;
     }
-  tde_make_keys_volume_fullname (mk_path, boot_db_full_name(), false);
 
   vdes = fileio_mount (thread_p, boot_db_full_name (), mk_path, LOG_DBTDE_KEYS_VOLID, false, false);
   if (vdes == NULL_VOLDES)
@@ -251,9 +251,8 @@ exit:
 }
 
 static int
-tde_create_keys_file (const char *db_full_name)
+tde_create_keys_file (const char *keyfile_fullname)
 {
-  char mk_path[PATH_MAX] = {0,};
   int vdes = NULL_VOLDES;
   int err = NO_ERROR;
   char magic[CUBRID_MAGIC_MAX_LENGTH] = {0,};
@@ -265,17 +264,16 @@ tde_create_keys_file (const char *db_full_name)
   off_signals (new_mask, old_mask);
 #endif /* !WINDOWS */
 
-  tde_make_keys_volume_fullname (mk_path, db_full_name, false);
-  if (fileio_is_volume_exist (mk_path))
+  if (fileio_is_volume_exist (keyfile_fullname))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_VOLUME_EXISTS, 1, mk_path);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_VOLUME_EXISTS, 1, keyfile_fullname);
       err = ER_BO_VOLUME_EXISTS;
       goto exit;
     }
 
-  if ((vdes = fileio_open (mk_path, O_CREAT | O_RDWR, 0600)) == NULL_VOLDES)
+  if ((vdes = fileio_open (keyfile_fullname, O_CREAT | O_RDWR, 0600)) == NULL_VOLDES)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANNOT_CREATE_VOL, 2, mk_path, db_full_name);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANNOT_CREATE_VOL, 2, keyfile_fullname, "");
       err = ER_BO_CANNOT_CREATE_VOL;
       goto exit;
     }
@@ -328,19 +326,16 @@ tde_validate_keys_volume (int vdes)
 }
 
 int
-tde_copy_keys_volume (THREAD_ENTRY *thread_p, const char *to_db_fullname, const char *from_db_fullname,
+tde_copy_keys_volume (THREAD_ENTRY *thread_p, const char *to_keyfile_fullname, const char *from_keyfile_fullname,
 		      bool keep_to_mount, bool keep_from_mount)
 {
-  char mk_path[PATH_MAX] = {0,};
   char buffer[4096];
   int from_vdes = -1;
   int to_vdes = -1;
   int err = NO_ERROR;
   int nread = -1;
 
-  tde_make_keys_volume_fullname (mk_path, from_db_fullname, false);
-
-  from_vdes = fileio_mount (thread_p, from_db_fullname, mk_path, LOG_DBTDE_KEYS_VOLID, 1, false);
+  from_vdes = fileio_mount (thread_p, boot_db_full_name (), from_keyfile_fullname, LOG_DBTDE_KEYS_VOLID, 1, false);
   if (from_vdes == NULL_VOLDES)
     {
       ASSERT_ERROR();
@@ -350,22 +345,21 @@ tde_copy_keys_volume (THREAD_ENTRY *thread_p, const char *to_db_fullname, const 
   if (tde_validate_keys_volume (from_vdes) == false)
     {
       fileio_dismount (thread_p, from_vdes);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_INVALID_KEYS_VOLUME, 1, mk_path);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_INVALID_KEYS_VOLUME, 1, from_keyfile_fullname);
       return ER_TDE_INVALID_KEYS_VOLUME;
     }
 
-  tde_make_keys_volume_fullname (mk_path, to_db_fullname, true);
-
-  if (!fileio_is_volume_exist (mk_path))
+  if (!fileio_is_volume_exist (to_keyfile_fullname))
     {
-      err = tde_create_keys_file (to_db_fullname);
+      err = tde_create_keys_file (to_keyfile_fullname);
       if (err != NO_ERROR)
 	{
 	  fileio_dismount (thread_p, from_vdes);
 	  return err;
 	}
     }
-  to_vdes = fileio_mount (thread_p, to_db_fullname, mk_path, LOG_DBCOPY_VOLID, 2, false);
+
+  to_vdes = fileio_mount (thread_p, boot_db_full_name (), to_keyfile_fullname, LOG_DBCOPY_VOLID, 2, false);
   if (to_vdes == NULL_VOLDES)
     {
       ASSERT_ERROR ();
@@ -377,7 +371,7 @@ tde_copy_keys_volume (THREAD_ENTRY *thread_p, const char *to_db_fullname, const 
   if (lseek (from_vdes, 0L, SEEK_SET) != 0L)
     {
       fileio_dismount (thread_p, from_vdes);
-      fileio_unformat_and_rename (thread_p, mk_path, NULL);
+      fileio_unformat_and_rename (thread_p, to_keyfile_fullname, NULL);
       return ER_FAILED;
     }
 
@@ -398,7 +392,7 @@ tde_copy_keys_volume (THREAD_ENTRY *thread_p, const char *to_db_fullname, const 
 	  else if (errno != EINTR)
 	    {
 	      fileio_dismount (thread_p, from_vdes);
-	      fileio_unformat_and_rename (thread_p, mk_path, NULL);
+	      fileio_unformat_and_rename (thread_p, to_keyfile_fullname, NULL);
 	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_WRITE, 0);
 	      return ER_IO_WRITE;
 	    }
