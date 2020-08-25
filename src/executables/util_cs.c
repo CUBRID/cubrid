@@ -3834,6 +3834,14 @@ tde (UTIL_FUNCTION_ARG * arg)
 	  db_shutdown ();
 	  goto error_exit;
 	}
+
+      if (db_commit_transaction () != NO_ERROR)
+	{
+	  PRINT_AND_LOG_ERR_MSG ("FAILURE: E%s\n", db_error_string (3));
+	  db_shutdown ();
+	  goto error_exit;
+	}
+
       printf ("SUCCESS: ");
       printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_MK_CHANGED), prev_mk_idx, change_idx);
     }

@@ -420,22 +420,20 @@ tde_change_mk (THREAD_ENTRY *thread_p, const int mk_index, const unsigned char *
     {
       err = ER_TDE_CIPHER_IS_NOT_LOADED;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_IS_NOT_LOADED, 0);
-      goto exit;
+      return err;
     }
 
   /* generate keyinfo from tde_Cipher and update heap (on Disk) */
   err = tde_generate_keyinfo (&keyinfo, mk_index, master_key, created_time, &tde_Cipher.data_keys);
   if (err != NO_ERROR)
     {
-      goto exit;
+      return err;
     }
-
-  log_sysop_start (thread_p);
 
   err = tde_update_keyinfo (thread_p, &keyinfo, &tde_Keyinfo_oid, &tde_Keyinfo_hfid);
   if (err != NO_ERROR)
     {
-      goto exit;
+      return err;
     }
 
   /* heap_flush() is mandatory. Without this, it cannot be guaranteed
@@ -444,18 +442,7 @@ tde_change_mk (THREAD_ENTRY *thread_p, const int mk_index, const unsigned char *
    */
   heap_flush (thread_p, &tde_Keyinfo_oid);
 
-exit:
-  if (err == NO_ERROR)
-    {
-      log_sysop_commit (thread_p);
-    }
-  else
-    {
-      log_sysop_abort (thread_p);
-    }
-
   return err;
-
 }
 
 int
