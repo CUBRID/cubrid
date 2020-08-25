@@ -79,14 +79,11 @@ TDE_CIPHER tde_Cipher; // global var for TDE Module
 static OID tde_Keyinfo_oid;	/* Location of keys */
 static HFID tde_Keyinfo_hfid;
 
-static int tde_get_keyinfo (THREAD_ENTRY *thread_p, TDE_KEYINFO *keyinfo, OID *keyinfo_oid, const HFID *hfid);
 static int tde_update_keyinfo (THREAD_ENTRY *thread_p, const TDE_KEYINFO *keyinfo, OID *keyinfo_oid, HFID *hfid);
 static int tde_generate_keyinfo (TDE_KEYINFO *keyinfo, int mk_index, const unsigned char *master_key,
 				 const time_t created_time, const TDE_DATA_KEY_SET *dks);
 static int tde_create_keys_file (const char *keyfile_fullname);
-static int tde_load_mk (int vdes, const TDE_KEYINFO *keyinfo, unsigned char *master_key);
 static bool tde_validate_mk (const unsigned char *master_key, const unsigned char *mk_hash);
-static int tde_change_mk (THREAD_ENTRY *thread_p, const int mk_index, const unsigned char *master_key);
 static int tde_load_dks (const TDE_KEYINFO *keyinfo, const unsigned char *master_key);
 static void tde_make_mk_hash (const unsigned char *master_key, unsigned char *mk_hash);
 static int tde_create_dk (unsigned char *data_key);
@@ -100,7 +97,6 @@ static int tde_encrypt_internal (const unsigned char *plain_buffer, int length, 
 static int tde_decrypt_internal (const unsigned char *cipher_buffer, int length, TDE_ALGORITHM tde_algo,
 				 const unsigned char *key, const unsigned char *nonce, unsigned char *plain_buffer);
 #endif /* !CS_MODE */
-
 
 #if !defined(CS_MODE)
 
@@ -219,12 +215,13 @@ tde_cipher_initialize (THREAD_ENTRY *thread_p, const HFID *keyinfo_hfid, const c
       goto exit;
     }
 
-  err = tde_get_keyinfo (thread_p, &keyinfo, &tde_Keyinfo_oid, keyinfo_hfid);
+  HFID_COPY (&tde_Keyinfo_hfid, keyinfo_hfid);
+
+  err = tde_get_keyinfo (thread_p, &keyinfo);
   if (err != NO_ERROR)
     {
       goto exit;
     }
-  HFID_COPY (&tde_Keyinfo_hfid, keyinfo_hfid);
 
   assert (keyinfo.mk_index >= 0);
 
@@ -411,7 +408,7 @@ tde_copy_keys_volume (THREAD_ENTRY *thread_p, const char *to_keyfile_fullname, c
   return err;
 }
 
-static int
+int
 tde_change_mk (THREAD_ENTRY *thread_p, const int mk_index, const unsigned char *master_key,
 	       const time_t created_time)
 {
@@ -461,8 +458,8 @@ exit:
 
 }
 
-static int
-tde_get_keyinfo (THREAD_ENTRY *thread_p, TDE_KEYINFO *keyinfo, OID *keyinfo_oid, const HFID *hfid)
+int
+tde_get_keyinfo (THREAD_ENTRY *thread_p, TDE_KEYINFO *keyinfo)
 {
   RECDES recdes;
   HEAP_SCANCACHE scan_cache;
@@ -471,8 +468,8 @@ tde_get_keyinfo (THREAD_ENTRY *thread_p, TDE_KEYINFO *keyinfo, OID *keyinfo_oid,
   recdes.area_size = recdes.length = DB_SIZEOF (TDE_KEYINFO);
   recdes.data = (char *) keyinfo;
 
-  heap_scancache_quick_start_with_class_hfid (thread_p, &scan_cache, hfid);
-  scan = heap_first (thread_p, hfid, NULL, keyinfo_oid, &recdes, &scan_cache, COPY);
+  heap_scancache_quick_start_with_class_hfid (thread_p, &scan_cache, &tde_Keyinfo_hfid);
+  scan = heap_first (thread_p, &tde_Keyinfo_hfid, NULL, &tde_Keyinfo_oid, &recdes, &scan_cache, COPY);
   heap_scancache_end (thread_p, &scan_cache);
 
   if (scan != S_SUCCESS)
@@ -568,7 +565,7 @@ tde_generate_keyinfo (TDE_KEYINFO *keyinfo, int mk_index, const unsigned char *m
   return err;
 }
 
-static int
+int
 tde_load_mk (int vdes, const TDE_KEYINFO *keyinfo, unsigned char *master_key)
 {
   int location;
@@ -832,7 +829,7 @@ xtde_get_set_mk_info (THREAD_ENTRY *thread_p, int *mk_index, time_t *created_tim
       return ER_TDE_CIPHER_IS_NOT_LOADED;
     }
 
-  err = tde_get_keyinfo (thread_p, &keyinfo, &tde_Keyinfo_oid, &tde_Keyinfo_hfid);
+  err = tde_get_keyinfo (thread_p, &keyinfo);
   if (err != NO_ERROR)
     {
       return err;
@@ -869,7 +866,7 @@ xtde_change_mk_without_flock (THREAD_ENTRY *thread_p, const int mk_index)
       goto exit;
     }
 
-  err = tde_get_keyinfo (thread_p, &keyinfo, &tde_Keyinfo_oid, &tde_Keyinfo_hfid);
+  err = tde_get_keyinfo (thread_p, &keyinfo);
   if (err != NO_ERROR)
     {
       goto exit;
@@ -1225,6 +1222,51 @@ exit:
       return ER_TDE_MASTER_KEY_NOT_FOUND;
     }
 
+  return NO_ERROR;
+}
+
+int
+tde_find_first_mk (int vdes, int *mk_index, unsigned char *master_key, time_t *created_time)
+{
+  TDE_MK_FILE_ITEM item;
+  bool found = false;
+  int location;
+  int index = 0;
+
+#if !defined(WINDOWS)
+  sigset_t new_mask, old_mask;
+#endif /* !WINDOWS */
+
+#if !defined(WINDOWS)
+  off_signals (new_mask, old_mask);
+#endif /* !WINDOWS */
+
+  location = TDE_MK_FILE_ITEM_OFFSET (0);
+
+  if (lseek (vdes, location, SEEK_SET) != location)
+    {
+      found = false;
+      goto exit; /* not found */
+    }
+
+  while (read (vdes, &item, TDE_MK_FILE_ITEM_SIZE) == TDE_MK_FILE_ITEM_SIZE)
+    {
+      if (item.created_time != -1)
+	{
+	  *mk_index = index;
+	  *created_time = item.created_time;
+	  memcpy (master_key, item.master_key, TDE_MASTER_KEY_LENGTH);
+	  found = true;
+	  break;
+	}
+      index++;
+    }
+
+exit:
+  assert (found); /* mk file is supposed to have one key to the least */
+#if !defined(WINDOWS)
+  restore_signals (old_mask);
+#endif /* !WINDOWS */
   return NO_ERROR;
 }
 

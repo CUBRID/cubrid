@@ -29,6 +29,10 @@
 
 #include "storage_common.h"
 
+#if defined (SA_MODE)
+#include "boot_sr.h"
+#endif
+
 struct fileio_page;
 typedef fileio_page FILEIO_PAGE;
 struct log_page;
@@ -166,9 +170,13 @@ typedef struct tde_keyinfo
 extern int tde_initialize (THREAD_ENTRY *thread_p, HFID *keyinfo_hfid);
 extern int tde_cipher_initialize (THREAD_ENTRY *thread_p, const HFID *keyinfo_hfid, const char *mk_path_given);
 extern bool tde_validate_keys_volume (int vdes);
+extern int tde_load_mk (int vdes, const TDE_KEYINFO *keyinfo, unsigned char *master_key);
 extern int tde_copy_keys_volume (THREAD_ENTRY *thread_p, const char *to_db_fullname, const char *from_db_fullname,
 				 bool keep_to_mount, bool keep_from_mount);
+extern int tde_change_mk (THREAD_ENTRY *thread_p, const int mk_index, const unsigned char *master_key,
+			  const time_t created_time);
 extern void tde_make_keys_volume_fullname (char *keys_vol_fullname, const char *db_full_name, bool ignore_parm);
+extern int tde_get_keyinfo (THREAD_ENTRY *thread_p, TDE_KEYINFO *keyinfo);
 /*
  * TDE functions for encrpytion and decryption
  */
@@ -188,6 +196,7 @@ extern int tde_create_mk (unsigned char *master_key);
 extern void tde_print_mk (const unsigned char *master_key);
 extern int tde_add_mk (int vdes, const unsigned char *master_key, int *mk_index, time_t created_time);
 extern int tde_find_mk (int vdes, int mk_index, unsigned char *master_key, time_t *created_time);
+extern int tde_find_first_mk (int vdes, int *mk_index, unsigned char *master_key, time_t *created_time);
 extern int tde_delete_mk (int vdes, const int mk_index);
 extern int tde_dump_mks (int vdes, bool print_value);
 extern const char *tde_get_algorithm_name (TDE_ALGORITHM tde_algo);

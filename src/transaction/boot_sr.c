@@ -30,6 +30,7 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <fcntl.h>
 
 #if defined(SOLARIS)
 #include <netdb.h>
@@ -81,6 +82,7 @@
 #include "log_volids.hpp"
 #include "vacuum.h"
 #include "tde.hpp"
+#include "porting.h"
 
 #if defined(SERVER_MODE)
 #include "connection_sr.h"
@@ -2898,8 +2900,111 @@ xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart, const cha
     }
   else
     {
+      if (tde_Cipher.is_loaded)
+	{
+	  er_set_print_property (ER_DO_NOT_PRINT);
+	  boot_reset_mk_after_restart_from_backup (thread_p, r_args);
+	  er_set_print_property (ER_PRINT_TO_CONSOLE);
+	}
       return LOG_FIND_THREAD_TRAN_INDEX (thread_p);
     }
+}
+
+/*
+ * (1) It finds out the mk file where the master key set on database is stored
+ * and set the mk file as the primary mk file. 
+ * (2) If there isn't the master key, the first master key on a mk file is set for the database.
+ *
+ * In the case of (2), assuming the mk file on server, not from backup, has been being managed,
+ * it respects the mk file on server first.
+ */
+int
+boot_reset_mk_after_restart_from_backup (THREAD_ENTRY * thread_p, BO_RESTART_ARG * r_args)
+{
+  TDE_KEYINFO keyinfo;
+  char mk_path[PATH_MAX] = { 0, };
+  char mk_path_old[PATH_MAX] = { 0, };
+  unsigned char master_key[TDE_MASTER_KEY_LENGTH];
+  time_t created_time;
+  int mk_index;
+  int server_mk_vdes, backup_mk_vdes;
+  int err = NO_ERROR;
+
+  assert (tde_Cipher.is_loaded);
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  err = tde_get_keyinfo (thread_p, &keyinfo);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  /* Check the mk file on the server */
+  tde_make_keys_volume_fullname (mk_path, boot_db_full_name (), false);
+
+  server_mk_vdes = fileio_mount (thread_p, boot_db_full_name (), mk_path, LOG_DBTDE_KEYS_VOLID, 2, false);
+  if (server_mk_vdes != NULL_VOLDES && tde_validate_keys_volume (server_mk_vdes))
+    {
+      err = tde_load_mk (server_mk_vdes, &keyinfo, master_key);
+      if (err == NO_ERROR)
+	{
+	  /* case (1)-1. There is the master key on server mk file:
+	   * Nothing to do */
+	  goto exit;
+	}
+    }
+
+  if (r_args->keys_file_path[0] != '\0')
+    {
+      /* No need to mount. The mk file from backup is not accessed by others */
+      backup_mk_vdes = fileio_open (r_args->keys_file_path, O_RDWR, 0600);
+      if (backup_mk_vdes != NULL_VOLDES && tde_validate_keys_volume (backup_mk_vdes))
+	{
+	  err = tde_load_mk (backup_mk_vdes, &keyinfo, master_key);
+	  if (err == NO_ERROR)
+	    {
+	      /* case (1)-2. There is the master key on backup mk file:
+	       * replace the server mk file with backup mk file */
+	      if (server_mk_vdes != NULL_VOLDES)
+		{
+		  strcpy (mk_path_old, mk_path);
+		  strcat (mk_path_old, "_old");
+		  fileio_unformat_and_rename (thread_p, mk_path, mk_path_old);
+		  server_mk_vdes = NULL_VOLDES;
+		}
+	      tde_copy_keys_volume (thread_p, mk_path, r_args->keys_file_path, false, false);
+	      goto exit;
+	    }
+	}
+    }
+
+  if (server_mk_vdes != NULL_VOLDES)
+    {
+      /* case (2)-1, set the first key on server mk file as mk */
+      tde_find_first_mk (server_mk_vdes, &mk_index, master_key, &created_time);
+    }
+  else
+    {
+      /* case (2)-2, set the first key on backup mk file as mk */
+      tde_find_first_mk (backup_mk_vdes, &mk_index, master_key, &created_time);
+      tde_copy_keys_volume (thread_p, mk_path, r_args->keys_file_path, false, false);
+    }
+  err = tde_change_mk (thread_p, mk_index, master_key, created_time);
+
+exit:
+  if (server_mk_vdes != NULL_VOLDES)
+    {
+      fileio_dismount (thread_p, server_mk_vdes);
+    }
+  if (backup_mk_vdes != NULL_VOLDES)
+    {
+      fileio_close (backup_mk_vdes);
+    }
+  return err;
 }
 
 /*
