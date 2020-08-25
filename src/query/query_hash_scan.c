@@ -1,5 +1,4 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation
  * Copyright (C) 2016 CUBRID Corporation
  *
  *   This program is free software; you can redistribute it and/or modify
@@ -70,6 +69,17 @@ qdata_alloc_hscan_key (cubthread::entry * thread_p, int val_cnt, bool alloc_vals
       for (i = 0; i < val_cnt; i++)
 	{
 	  key->values[i] = pr_make_value ();
+	  if (key->values[i] == NULL)
+	    {
+	      for (int j = --i; j >= 0; j--)
+		{
+		  pr_free_value (key->values[j]);
+		}
+	      db_private_free (thread_p, key->values);
+	      db_private_free (thread_p, key);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE *));
+	      return NULL;
+	    }
 	}
     }
 

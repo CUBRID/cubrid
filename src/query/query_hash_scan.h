@@ -1,5 +1,4 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation
  * Copyright (C) 2016 CUBRID Corporation
  *
  *   This program is free software; you can redistribute it and/or modify
