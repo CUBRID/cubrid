@@ -1614,8 +1614,12 @@
 #define ER_TDE_CIPHER_LOAD_FAIL                     -1254
 #define ER_TDE_COPY_KEYS_FILE_FAIL                  -1255
 #define ER_TDE_BACKUP_KEYS_FILE_FAIL                -1256
+#define ER_TDE_RESTORE_KEY_FOUND_ONLY_FROM_BACKUP   -1257
+#define ER_TDE_RESTORE_MAKE_KEYS_FILE_OLD           -1258
+#define ER_TDE_RESTORE_COPY_KEYS_FILE               -1259
+#define ER_TDE_RESTORE_CHANGE_MASTER_KEY            -1260
 
-#define ER_LAST_ERROR                               -1257
+#define ER_LAST_ERROR                               -1261
 
 /*
  * CAUTION!

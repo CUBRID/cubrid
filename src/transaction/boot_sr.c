@@ -2903,7 +2903,11 @@ xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart, const cha
       if (tde_Cipher.is_loaded)
 	{
 	  er_set_print_property (ER_DO_NOT_PRINT);
-	  boot_reset_mk_after_restart_from_backup (thread_p, r_args);
+	  if (boot_reset_mk_after_restart_from_backup (thread_p, r_args) != NO_ERROR)
+	    {
+	      er_set_print_property (ER_PRINT_TO_CONSOLE);
+	      return NULL_TRAN_INDEX;
+	    }
 	  er_set_print_property (ER_PRINT_TO_CONSOLE);
 	}
       return LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -2924,10 +2928,12 @@ boot_reset_mk_after_restart_from_backup (THREAD_ENTRY * thread_p, BO_RESTART_ARG
   TDE_KEYINFO keyinfo;
   char mk_path[PATH_MAX] = { 0, };
   char mk_path_old[PATH_MAX] = { 0, };
+  char ctime_buf[CTIME_MAX];
   unsigned char master_key[TDE_MASTER_KEY_LENGTH];
   time_t created_time;
   int mk_index;
-  int server_mk_vdes, backup_mk_vdes;
+  int server_mk_vdes = NULL_VOLDES;
+  int backup_mk_vdes = NULL_VOLDES;
   int err = NO_ERROR;
 
   assert (tde_Cipher.is_loaded);
@@ -2940,7 +2946,7 @@ boot_reset_mk_after_restart_from_backup (THREAD_ENTRY * thread_p, BO_RESTART_ARG
   err = tde_get_keyinfo (thread_p, &keyinfo);
   if (err != NO_ERROR)
     {
-      return err;
+      goto exit;
     }
 
   /* Check the mk file on the server */
@@ -2971,12 +2977,24 @@ boot_reset_mk_after_restart_from_backup (THREAD_ENTRY * thread_p, BO_RESTART_ARG
 	       * replace the server mk file with backup mk file */
 	      if (server_mk_vdes != NULL_VOLDES)
 		{
+		  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_TDE_RESTORE_KEY_FOUND_ONLY_FROM_BACKUP, 1,
+			  mk_path);
+
 		  strcpy (mk_path_old, mk_path);
 		  strcat (mk_path_old, "_old");
 		  fileio_unformat_and_rename (thread_p, mk_path, mk_path_old);
 		  server_mk_vdes = NULL_VOLDES;
+
+		  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_TDE_RESTORE_MAKE_KEYS_FILE_OLD, 2, mk_path,
+			  mk_path_old);
 		}
-	      tde_copy_keys_volume (thread_p, mk_path, r_args->keys_file_path, false, false);
+	      err = tde_copy_keys_volume (thread_p, mk_path, r_args->keys_file_path, false, false);
+	      if (err != NO_ERROR)
+		{
+		  goto exit;
+		}
+	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_TDE_RESTORE_COPY_KEYS_FILE, 2, r_args->keys_file_path,
+		      mk_path);
 	      goto exit;
 	    }
 	}
@@ -2985,22 +3003,42 @@ boot_reset_mk_after_restart_from_backup (THREAD_ENTRY * thread_p, BO_RESTART_ARG
   if (server_mk_vdes != NULL_VOLDES)
     {
       /* case (2)-1, set the first key on server mk file as mk */
-      tde_find_first_mk (server_mk_vdes, &mk_index, master_key, &created_time);
+      err = tde_find_first_mk (server_mk_vdes, &mk_index, master_key, &created_time);
+      if (err != NO_ERROR)
+	{
+	  goto exit;
+	}
     }
   else
     {
       /* case (2)-2, set the first key on backup mk file as mk */
-      tde_find_first_mk (backup_mk_vdes, &mk_index, master_key, &created_time);
-      tde_copy_keys_volume (thread_p, mk_path, r_args->keys_file_path, false, false);
+      err = tde_find_first_mk (backup_mk_vdes, &mk_index, master_key, &created_time);
+      if (err != NO_ERROR)
+	{
+	  goto exit;
+	}
+      err = tde_copy_keys_volume (thread_p, mk_path, r_args->keys_file_path, false, false);
+      if (err != NO_ERROR)
+	{
+	  goto exit;
+	}
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_TDE_RESTORE_COPY_KEYS_FILE, 2, r_args->keys_file_path,
+	      mk_path);
     }
   err = tde_change_mk (thread_p, mk_index, master_key, created_time);
   if (err != NO_ERROR)
     {
-      return err;
+      goto exit;
     }
+  ctime_r (&keyinfo.created_time, ctime_buf);
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_TDE_RESTORE_CHANGE_MASTER_KEY, 3, keyinfo.mk_index, ctime_buf,
+	  mk_index);
+
   if (xtran_server_commit (thread_p, false) != TRAN_UNACTIVE_COMMITTED)
     {
-      return err;
+      ASSERT_ERROR ();
+      err = er_errid ();
+      goto exit;
     }
 
 exit:
