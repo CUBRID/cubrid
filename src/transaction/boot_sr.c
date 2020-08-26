@@ -2994,6 +2994,14 @@ boot_reset_mk_after_restart_from_backup (THREAD_ENTRY * thread_p, BO_RESTART_ARG
       tde_copy_keys_volume (thread_p, mk_path, r_args->keys_file_path, false, false);
     }
   err = tde_change_mk (thread_p, mk_index, master_key, created_time);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+  if (xtran_server_commit (thread_p, false) != TRAN_UNACTIVE_COMMITTED)
+    {
+      return err;
+    }
 
 exit:
   if (server_mk_vdes != NULL_VOLDES)
