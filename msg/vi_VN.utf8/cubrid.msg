@@ -1314,8 +1314,9 @@ $ LOADDB
 1245 Loading class attributes updates from object files is not supported in CS mode.
 1246 Error getting address and name information. Code : %1$d, message : %2$s.
 1247 The time(%1$s) specified must be after the time(%2$s) of the specified backup.
+1248 Attribute "%1$s.%2$s" cannot be made NULL.
 
-1248 Last Error
+1249 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

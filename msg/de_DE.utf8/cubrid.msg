@@ -1314,8 +1314,9 @@ $ LOADDB
 1245 Das Laden von Aktualisierungen von Klassenattributen aus Objektdateien wird im CS-Modus nicht unterstützt.
 1246 Fehler beim Abrufen der Adress- und Namensinformationen. Fehlerkode : %1$d, Meldung : %2$s.
 1247 Die angegebene Zeit (%1$s) muss später als (%2$s), die Zeit der angegebenen Sicherung.
+1248 Attribut "%1$s.%2$s" darf nicht NULL sein.
 
-1248 Letzter Fehler
+1249 Letzter Fehler
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Fehler in Fehler-Subsystem (Zeile %1$d):
