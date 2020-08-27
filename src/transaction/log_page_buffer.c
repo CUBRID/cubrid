@@ -7440,9 +7440,7 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
 
   /* tde key file has to be mounted to access exclusively with TDE Utility if it exists */
   tde_make_keys_volume_fullname (mk_path, log_Db_fullname, false);
-  er_set_print_property (ER_DO_NOT_PRINT);
   keys_vdes = fileio_mount (thread_p, log_Db_fullname, mk_path, LOG_DBTDE_KEYS_VOLID, 1, false);
-  er_set_print_property (ER_PRINT_TO_CONSOLE);
 
   /* Initialization gives us some useful information about the backup location. */
   session.type = FILEIO_BACKUP_WRITE;	/* access backup device for write */
@@ -7847,9 +7845,7 @@ loop:
 
   if (seperate_keys == false)
     {
-      er_set_print_property (ER_DO_NOT_PRINT);
       error_code = fileio_backup_volume (thread_p, &session, mk_path, LOG_DBTDE_KEYS_VOLID, -1, false);
-      er_set_print_property (ER_PRINT_TO_CONSOLE);
       if (error_code != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_BACKUP_KEYS_FILE_FAIL, 0);
@@ -9155,9 +9151,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
    */
   tde_make_keys_volume_fullname (from_mk_path, boot_db_full_name (), false);
   tde_make_keys_volume_fullname (to_mk_path, to_db_fullname, false);
-  er_set_print_property (ER_DO_NOT_PRINT);
   error_code = tde_copy_keys_volume (thread_p, to_mk_path, from_mk_path, false, false);
-  er_set_print_property (ER_PRINT_TO_CONSOLE);
   if (error_code != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_COPY_KEYS_FILE_FAIL, 0);

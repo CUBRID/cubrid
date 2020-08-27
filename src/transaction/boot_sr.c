@@ -2387,10 +2387,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  er_set_print_property (ER_DO_NOT_PRINT);
   error_code = tde_cipher_initialize (thread_p, &boot_Db_parm->tde_keys_hfid,
 				      r_args == NULL ? NULL : r_args->keys_file_path);
-  er_set_print_property (ER_PRINT_TO_CONSOLE);
   if (error_code != NO_ERROR)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_LOAD_FAIL, 0);
@@ -2902,13 +2900,10 @@ xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart, const cha
     {
       if (tde_Cipher.is_loaded)
 	{
-	  er_set_print_property (ER_DO_NOT_PRINT);
 	  if (boot_reset_mk_after_restart_from_backup (thread_p, r_args) != NO_ERROR)
 	    {
-	      er_set_print_property (ER_PRINT_TO_CONSOLE);
 	      return NULL_TRAN_INDEX;
 	    }
-	  er_set_print_property (ER_PRINT_TO_CONSOLE);
 	}
       return LOG_FIND_THREAD_TRAN_INDEX (thread_p);
     }
