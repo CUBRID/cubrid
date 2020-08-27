@@ -10332,7 +10332,6 @@ pgbuf_check_bcb_page_vpid (PGBUF_BCB * bufptr, bool maybe_deallocated)
 
       assert (bufptr->iopage_buffer->iopage.prv.p_reserve_1 == 0);
       assert (bufptr->iopage_buffer->iopage.prv.p_reserve_2 == 0);
-      assert (bufptr->iopage_buffer->iopage.prv.p_reserve_3 == 0);
 
       return (bufptr->vpid.pageid == bufptr->iopage_buffer->iopage.prv.pageid
 	      && bufptr->vpid.volid == bufptr->iopage_buffer->iopage.prv.volid);

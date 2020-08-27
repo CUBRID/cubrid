@@ -2055,7 +2055,6 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
       assert (last_written_vol_fd != NULL_VOLDES);
 
       assert (p_dwb_ordered_slots[i].io_page->prv.p_reserve_2 == 0);
-      assert (p_dwb_ordered_slots[i].io_page->prv.p_reserve_3 == 0);
       assert (p_dwb_ordered_slots[i].vpid.pageid == p_dwb_ordered_slots[i].io_page->prv.pageid
 	      && p_dwb_ordered_slots[i].vpid.volid == p_dwb_ordered_slots[i].io_page->prv.volid);
 
@@ -2214,7 +2213,6 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, bool file_sync_help
       s2 = &p_dwb_ordered_slots[i + 1];
 
       assert (s1->io_page->prv.p_reserve_2 == 0);
-      assert (s1->io_page->prv.p_reserve_3 == 0);
 
       if (!VPID_ISNULL (&s1->vpid) && VPID_EQ (&s1->vpid, &s2->vpid))
 	{
@@ -2591,7 +2589,6 @@ dwb_set_slot_data (THREAD_ENTRY * thread_p, DWB_SLOT * dwb_slot, FILEIO_PAGE * i
   assert (dwb_slot != NULL && io_page_p != NULL);
 
   assert (io_page_p->prv.p_reserve_2 == 0);
-  assert (io_page_p->prv.p_reserve_3 == 0);
 
   if (io_page_p->prv.pageid != NULL_PAGEID)
     {
