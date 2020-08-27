@@ -4742,7 +4742,7 @@ pgbuf_set_bcb_page_vpid (PGBUF_BCB * bufptr, bool force_set_vpid)
 	  bufptr->iopage_buffer->iopage.prv.ptype = '\0';
 	  bufptr->iopage_buffer->iopage.prv.p_reserve_1 = 0;
 	  bufptr->iopage_buffer->iopage.prv.p_reserve_2 = 0;
-	  bufptr->iopage_buffer->iopage.prv.p_reserve_3 = 0;
+	  bufptr->iopage_buffer->iopage.prv.tde_nonce = 0;
 	}
     }
 }
@@ -4925,7 +4925,7 @@ pgbuf_initialize_bcb_table (void)
       ioptr->iopage.prv.pflag_reserve_1 = '\0';
       ioptr->iopage.prv.p_reserve_1 = 0;
       ioptr->iopage.prv.p_reserve_2 = 0;
-      ioptr->iopage.prv.p_reserve_3 = 0;
+      ioptr->iopage.prv.tde_nonce = 0;
 
       bufptr->iopage_buffer = ioptr;
       ioptr->bcb = bufptr;
@@ -10367,7 +10367,7 @@ pgbuf_scramble (FILEIO_PAGE * iopage)
   iopage->prv.pflag_reserve_1 = '\0';
   iopage->prv.p_reserve_1 = 0;
   iopage->prv.p_reserve_2 = 0;
-  iopage->prv.p_reserve_3 = 0;
+  iopage->prv.tde_nonce = 0;
 }
 
 /*

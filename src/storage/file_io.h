@@ -189,7 +189,7 @@ struct fileio_page_reserved
   unsigned char pflag_reserve_1;	/* unused - Reserved field */
   INT32 p_reserve_1;
   INT32 p_reserve_2;		/* unused - Reserved field */
-  INT64 p_reserve_3;		/* unused - Reserved field */
+  INT64 tde_nonce;		/* tde nonce. atomic counter for temp pages, lsa for perm pages */
 };
 
 typedef struct fileio_page_watermark FILEIO_PAGE_WATERMARK;

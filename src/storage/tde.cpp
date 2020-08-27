@@ -746,17 +746,17 @@ tde_encrypt_data_page (FILEIO_PAGE *iopage_plain, FILEIO_PAGE *iopage_cipher, TD
 
   if (is_temp)
     {
-      // temporary file: p_reserve_1 for nonce TODO: p_reserve_3 -> ?
+      // temporary file: atomic counter for nonce
       data_key = tde_Cipher.data_keys.temp_key;
-      iopage_plain->prv.p_reserve_3 = ATOMIC_INC_64 (&tde_Cipher.temp_write_counter, 1);
+      iopage_plain->prv.tde_nonce = ATOMIC_INC_64 (&tde_Cipher.temp_write_counter, 1);
     }
   else
     {
       // permanent file: page lsa for nonce
       data_key = tde_Cipher.data_keys.perm_key;
-      memcpy (&iopage_plain->prv.p_reserve_3, &iopage_plain->prv.lsa, sizeof (iopage_plain->prv.lsa));
+      memcpy (&iopage_plain->prv.tde_nonce, &iopage_plain->prv.lsa, sizeof (iopage_plain->prv.lsa));
     }
-  memcpy (nonce, &iopage_plain->prv.p_reserve_3, sizeof (iopage_plain->prv.p_reserve_3));
+  memcpy (nonce, &iopage_plain->prv.tde_nonce, sizeof (iopage_plain->prv.tde_nonce));
 
   memcpy (iopage_cipher, iopage_plain, IO_PAGESIZE);
 
@@ -785,7 +785,7 @@ tde_decrypt_data_page (const FILEIO_PAGE *iopage_cipher, FILEIO_PAGE *iopage_pla
 
   if (is_temp)
     {
-      // temporary file: p_reserve_1 for nonce TODO: p_reserve_3 -> ?
+      // temporary file: atomic counter for nonce
       data_key = tde_Cipher.data_keys.temp_key;
     }
   else
@@ -793,7 +793,7 @@ tde_decrypt_data_page (const FILEIO_PAGE *iopage_cipher, FILEIO_PAGE *iopage_pla
       // permanent file: page lsa for nonce
       data_key = tde_Cipher.data_keys.perm_key;
     }
-  memcpy (nonce, &iopage_cipher->prv.p_reserve_3, sizeof (iopage_cipher->prv.p_reserve_3));
+  memcpy (nonce, &iopage_cipher->prv.tde_nonce, sizeof (iopage_cipher->prv.tde_nonce));
 
   memcpy (iopage_plain, iopage_cipher, IO_PAGESIZE);
 
