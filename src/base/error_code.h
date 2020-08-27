@@ -1606,9 +1606,7 @@
 
 #define ER_LOG_UPTODATE_ERROR                       -1247
 
-#define ER_LOADDB_OBJ_ATTRIBUTE_CANT_BE_NULL        -1248
-
-#define ER_LAST_ERROR                               -1249
+#define ER_LAST_ERROR                               -1248
 
 /*
  * CAUTION!

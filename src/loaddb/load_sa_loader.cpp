@@ -2091,8 +2091,11 @@ ldr_null_db_generic (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRI
 
   if (att->flags & SM_ATTFLAG_NON_NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOADDB_OBJ_ATTRIBUTE_CANT_BE_NULL, 2, context->class_name, att->header.name);
-      CHECK_ERR (err, ER_LOADDB_OBJ_ATTRIBUTE_CANT_BE_NULL);
+      char class_attr[512];
+
+      snprintf (class_attr, 512, "%s.%s", context->class_name, att->header.name);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_ATTRIBUTE_CANT_BE_NULL, 1, class_attr);
+      CHECK_ERR (err, ER_OBJ_ATTRIBUTE_CANT_BE_NULL);
     }
   else
     {
@@ -4961,8 +4964,11 @@ ldr_act_check_missing_non_null_attrs (LDR_CONTEXT *context)
 	  /* not found */
 	  if (i >= context->num_attrs)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOADDB_OBJ_ATTRIBUTE_CANT_BE_NULL, 2, context->class_name, att->header.name);
-	      CHECK_ERR (err, ER_LOADDB_OBJ_ATTRIBUTE_CANT_BE_NULL);
+	      char class_attr[512];
+
+	      snprintf (class_attr, 512, "%s.%s", context->class_name, att->header.name);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_ATTRIBUTE_CANT_BE_NULL, 1, class_attr);
+	      CHECK_ERR (err, ER_OBJ_ATTRIBUTE_CANT_BE_NULL);
 	    }
 	}
     }
