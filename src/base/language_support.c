@@ -204,14 +204,14 @@ static INTL_CODESET lang_get_default_codeset (const INTL_LANG intl_id);
 static int lang_fastcmp_iso_88591 (const LANG_COLLATION * lang_coll, const unsigned char *string1, const int size1,
 				   const unsigned char *string2, const int size2);
 static int lang_fastcmp_iso_88591_ts (const LANG_COLLATION * lang_coll, const unsigned char *string1, const int size1,
-				   const unsigned char *string2, const int size2);
+				      const unsigned char *string2, const int size2);
 static int lang_strmatch_iso_88591 (const LANG_COLLATION * lang_coll, bool is_match, const unsigned char *str1,
 				    int size1, const unsigned char *str2, int size2, const unsigned char *escape,
 				    const bool has_last_escape, int *str1_match_size);
 static int lang_fastcmp_byte (const LANG_COLLATION * lang_coll, const unsigned char *string1, const int size1,
 			      const unsigned char *string2, const int size2);
 static int lang_fastcmp_byte_ts (const LANG_COLLATION * lang_coll, const unsigned char *string1, const int size1,
-			      const unsigned char *string2, const int size2);
+				 const unsigned char *string2, const int size2);
 static int lang_fastcmp_binary (const LANG_COLLATION * lang_coll, const unsigned char *string1, const int size1,
 				const unsigned char *string2, const int size2);
 static int lang_strmatch_binary (const LANG_COLLATION * lang_coll, bool is_match, const unsigned char *str1, int size1,
@@ -224,7 +224,7 @@ static int lang_next_coll_byte (const LANG_COLLATION * lang_coll, const unsigned
 static int lang_strcmp_utf8 (const LANG_COLLATION * lang_coll, const unsigned char *str1, const int size1,
 			     const unsigned char *str2, const int size2);
 static int lang_strcmp_utf8_ts (const LANG_COLLATION * lang_coll, const unsigned char *str1, const int size1,
-			     const unsigned char *str2, const int size2);
+				const unsigned char *str2, const int size2);
 static int lang_strmatch_utf8 (const LANG_COLLATION * lang_coll, bool is_match, const unsigned char *str1, int size1,
 			       const unsigned char *str2, int size2, const unsigned char *escape,
 			       const bool has_last_escape, int *str1_match_size);
@@ -296,7 +296,7 @@ static void lang_init_coll_Utf8_tr_cs (LANG_COLLATION * lang_coll);
 static int lang_fastcmp_ko (const LANG_COLLATION * lang_coll, const unsigned char *string1, int size1,
 			    const unsigned char *string2, int size2);
 static int lang_fastcmp_ko_ts (const LANG_COLLATION * lang_coll, const unsigned char *string1, int size1,
-			    const unsigned char *string2, int size2);
+			       const unsigned char *string2, int size2);
 static int lang_strmatch_ko (const LANG_COLLATION * lang_coll, bool is_match, const unsigned char *str1, int size1,
 			     const unsigned char *str2, int size2, const unsigned char *escape,
 			     const bool has_last_escape, int *str1_match_size);
@@ -2906,7 +2906,7 @@ lang_strcmp_utf8 (const LANG_COLLATION * lang_coll, const unsigned char *str1, c
 
 static int
 lang_strcmp_utf8_ts (const LANG_COLLATION * lang_coll, const unsigned char *str1, const int size1,
-		  const unsigned char *str2, const int size2)
+		     const unsigned char *str2, const int size2)
 {
   int dummy;
 
@@ -5551,7 +5551,7 @@ lang_fastcmp_iso_88591 (const LANG_COLLATION * lang_coll, const unsigned char *s
 
 static int
 lang_fastcmp_iso_88591_ts (const LANG_COLLATION * lang_coll, const unsigned char *string1, const int size1,
-			const unsigned char *string2, const int size2)
+			   const unsigned char *string2, const int size2)
 {
   int n, i, cmp;
   unsigned char c1, c2;
@@ -5765,7 +5765,7 @@ lang_fastcmp_byte (const LANG_COLLATION * lang_coll, const unsigned char *string
 
 static int
 lang_fastcmp_byte_ts (const LANG_COLLATION * lang_coll, const unsigned char *string1, const int size1,
-		   const unsigned char *string2, const int size2)
+		      const unsigned char *string2, const int size2)
 {
   int cmp, i, size;
 
@@ -6285,7 +6285,7 @@ lang_fastcmp_ko (const LANG_COLLATION * lang_coll, const unsigned char *string1,
 
 static int
 lang_fastcmp_ko_ts (const LANG_COLLATION * lang_coll, const unsigned char *string1, int size1,
-		 const unsigned char *string2, int size2)
+		    const unsigned char *string2, int size2)
 {
   int dummy;
 
