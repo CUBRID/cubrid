@@ -11615,7 +11615,7 @@ fileio_initialize_res (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, PGLENGTH 
   io_page->prv.volid = -1;
 
   io_page->prv.ptype = '\0';
-  io_page->prv.pflag_reserve_1 = '\0';
+  io_page->prv.pflag = '\0';
   io_page->prv.p_reserve_1 = 0;
   io_page->prv.p_reserve_2 = 0;
   io_page->prv.tde_nonce = 0;

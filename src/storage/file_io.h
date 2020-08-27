@@ -186,7 +186,7 @@ struct fileio_page_reserved
   INT32 pageid;			/* Page identifier */
   INT16 volid;			/* Volume identifier where the page reside */
   unsigned char ptype;		/* Page type */
-  unsigned char pflag_reserve_1;	/* unused - Reserved field */
+  unsigned char pflag;
   INT32 p_reserve_1;
   INT32 p_reserve_2;		/* unused - Reserved field */
   INT64 tde_nonce;		/* tde nonce. atomic counter for temp pages, lsa for perm pages */
