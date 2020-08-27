@@ -1140,7 +1140,8 @@ valid options:\n\
       --list                        display a list of backup volumes without restoring\n\
   -B, --backup-file-path=PATH       PATH is a directory of backup volumes to be restored\n\
   -o, --output-file=FILE            redirect output messages to FILE; default: none\n\
-  -u, --use-database-location-path  restore the database and log volumes to the path specified in the database location file\n
+  -u, --use-database-location-path  restore the database and log volumes to the path specified in the database location file\n\
+  -k, --keys-file-path              Path of key file (_keys) for TDE to be used during restoring\n 
 
 $set 54 MSGCAT_UTIL_SET_DELVOLDB
 21 Ready to remove the following volumes:\n\n

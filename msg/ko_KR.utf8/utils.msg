@@ -1128,7 +1128,8 @@ valid options:\n\
       --list                        실제 복원하지 않고 백업 볼륨의 리스트만 출력\n\
   -B, --backup-file-path=PATH       복원할 백업 볼륨의 디렉터리 경로\n\
   -o, --output-file=FILE            출력 메시지를 FILE로 변경; 기본값: 없음\n\
-  -u, --use-database-location-path  데이터베이스와 로그 볼륨을 데이터베이스 경로 파일에 명시된 경로로 복원\n
+  -u, --use-database-location-path  데이터베이스와 로그 볼륨을 데이터베이스 경로 파일에 명시된 경로로 복원\n\
+  -k, --keys-file-path              복구에 사용될 키 파일 (_keys)의 경로 \n 
 
 $set 54 MSGCAT_UTIL_SET_DELVOLDB
 21 Ready to remove the following volumes:\n\n

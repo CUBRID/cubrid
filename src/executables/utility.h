@@ -1542,6 +1542,8 @@ typedef struct _ha_config
 #define RESTORESLAVE_OUTPUT_FILE_L                   "output-file"
 #define RESTORESLAVE_USE_DATABASE_LOCATION_PATH_S    'u'
 #define RESTORESLAVE_USE_DATABASE_LOCATION_PATH_L    "use-database-location-path"
+#define RESTORESLAVE_KEYS_FILE_PATH_S                'k'
+#define RESTORESLAVE_KEYS_FILE_PATH_L                "keys-file-path"
 
 /* vacuumdb option list */
 #define VACUUM_SA_MODE_S                         'S'
