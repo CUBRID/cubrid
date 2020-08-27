@@ -270,7 +270,8 @@ tde_create_keys_file (const char *keyfile_fullname)
 
   if ((vdes = fileio_open (keyfile_fullname, O_CREAT | O_RDWR, 0600)) == NULL_VOLDES)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANNOT_CREATE_VOL, 2, keyfile_fullname, "");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANNOT_CREATE_VOL, 3, keyfile_fullname, boot_db_full_name(),
+	      er_get_msglog_filename());
       err = ER_BO_CANNOT_CREATE_VOL;
       goto exit;
     }
