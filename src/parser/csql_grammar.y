@@ -23343,7 +23343,7 @@ char_string
 			  {
 			    pt_value_set_charset_coll (this_parser, node,
 						       INTL_CODESET_KSC5601_EUC,
-						       LANG_COLL_EUCKR_BINARY,
+						       LANG_COLL_EUCKR_BINARY_TS,
 						       true);
 			    node->info.value.has_cs_introducer = true;
 			  }
@@ -23364,7 +23364,7 @@ char_string
 			  {
 			    pt_value_set_charset_coll (this_parser, node,
 						       INTL_CODESET_ISO88591,
-						       LANG_COLL_ISO_BINARY,
+						       LANG_COLL_ISO_BINARY_TS,
 						       true);
 			    node->info.value.has_cs_introducer = true;
 			  }
@@ -23385,7 +23385,7 @@ char_string
 			  {
 			    pt_value_set_charset_coll (this_parser, node,
 						       INTL_CODESET_UTF8,
-						       LANG_COLL_UTF8_BINARY,
+						       LANG_COLL_UTF8_BINARY_TS,
 						       true);
 			    node->info.value.has_cs_introducer = true;
 			  }
@@ -27366,7 +27366,7 @@ pt_value_set_charset_coll (PARSER_CONTEXT *parser, PT_NODE *node,
       if (collation_id != LANG_GET_BINARY_COLLATION (codeset_id))
 	{
 	  assert (collation_id != LANG_SYS_COLLATION);
-	  node->info.value.print_collation = false;
+	  node->info.value.print_collation = true;
 	}
     }
 }

@@ -58,7 +58,9 @@
 
 #define LANG_IS_COERCIBLE_COLL(c)	\
   ((c) == LANG_COLL_ISO_BINARY || (c) == LANG_COLL_UTF8_BINARY	\
-   || (c) == LANG_COLL_EUCKR_BINARY)
+   || (c) == LANG_COLL_EUCKR_BINARY) || \
+  ((c) == LANG_COLL_ISO_BINARY_TS || (c) == LANG_COLL_UTF8_BINARY_TS \
+   || (c) == LANG_COLL_EUCKR_BINARY_TS)
 
 /* common collation to be used at runtime */
 #define LANG_RT_COMMON_COLL(c1, c2, coll)     \
