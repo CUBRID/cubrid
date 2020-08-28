@@ -271,8 +271,8 @@ static int lang_split_key_iso (const LANG_COLLATION * lang_coll, const bool is_d
 			       const int size1, const unsigned char *str2, const int size2, const unsigned char **key,
 			       int *byte_size);
 static int lang_split_key_iso_ts (const LANG_COLLATION * lang_coll, const bool is_desc, const unsigned char *str1,
-			       const int size1, const unsigned char *str2, const int size2, const unsigned char **key,
-			       int *byte_size);
+				  const int size1, const unsigned char *str2, const int size2,
+				  const unsigned char **key, int *byte_size);
 static int lang_split_key_byte (const LANG_COLLATION * lang_coll, const bool is_desc, const unsigned char *str1,
 				const int size1, const unsigned char *str2, const int size2, const unsigned char **key,
 				int *byte_size);
@@ -283,8 +283,8 @@ static int lang_split_key_utf8 (const LANG_COLLATION * lang_coll, const bool is_
 				const int size1, const unsigned char *str2, const int size2, const unsigned char **key,
 				int *byte_size);
 static int lang_split_key_utf8_ts (const LANG_COLLATION * lang_coll, const bool is_desc, const unsigned char *str1,
-				const int size1, const unsigned char *str2, const int size2, const unsigned char **key,
-				int *byte_size);
+				   const int size1, const unsigned char *str2, const int size2,
+				   const unsigned char **key, int *byte_size);
 static int lang_split_key_w_exp (const LANG_COLLATION * lang_coll, const bool is_desc, const unsigned char *str1,
 				 const int size1, const unsigned char *str2, const int size2, const unsigned char **key,
 				 int *byte_size);
@@ -292,8 +292,8 @@ static int lang_split_key_euc (const LANG_COLLATION * lang_coll, const bool is_d
 			       const int size1, const unsigned char *str2, const int size2, const unsigned char **key,
 			       int *byte_size);
 static int lang_split_key_euc_ts (const LANG_COLLATION * lang_coll, const bool is_desc, const unsigned char *str1,
-			       const int size1, const unsigned char *str2, const int size2, const unsigned char **key,
-			       int *byte_size);
+				  const int size1, const unsigned char *str2, const int size2,
+				  const unsigned char **key, int *byte_size);
 static unsigned int lang_mht2str_byte (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size);
 static unsigned int lang_mht2str_default (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size);
 static unsigned int lang_mht2str_utf8 (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size);
@@ -4802,7 +4802,7 @@ lang_split_key_iso (const LANG_COLLATION * lang_coll, const bool is_desc, const 
 
 static int
 lang_split_key_iso_ts (const LANG_COLLATION * lang_coll, const bool is_desc, const unsigned char *str1, const int size1,
-		    const unsigned char *str2, const int size2, const unsigned char **key, int *byte_size)
+		       const unsigned char *str2, const int size2, const unsigned char **key, int *byte_size)
 {
   const unsigned char *str1_end, *str2_end;
   const unsigned char *str1_begin, *str2_begin;
@@ -5051,8 +5051,9 @@ lang_split_key_utf8 (const LANG_COLLATION * lang_coll, const bool is_desc, const
 }
 
 static int
-lang_split_key_utf8_ts (const LANG_COLLATION * lang_coll, const bool is_desc, const unsigned char *str1, const int size1,
-		     const unsigned char *str2, const int size2, const unsigned char **key, int *byte_size)
+lang_split_key_utf8_ts (const LANG_COLLATION * lang_coll, const bool is_desc, const unsigned char *str1,
+			const int size1, const unsigned char *str2, const int size2, const unsigned char **key,
+			int *byte_size)
 {
   const unsigned char *str1_end, *str2_end;
   const unsigned char *str1_begin, *str2_begin;
@@ -5419,7 +5420,7 @@ lang_split_key_euc (const LANG_COLLATION * lang_coll, const bool is_desc, const 
 
 static int
 lang_split_key_euc_ts (const LANG_COLLATION * lang_coll, const bool is_desc, const unsigned char *str1, const int size1,
-		    const unsigned char *str2, const int size2, const unsigned char **key, int *byte_size)
+		       const unsigned char *str2, const int size2, const unsigned char **key, int *byte_size)
 {
   const unsigned char *str1_next, *str2_next;
   int key_size, char1_size, char2_size;
