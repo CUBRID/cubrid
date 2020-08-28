@@ -1314,9 +1314,8 @@ $ LOADDB
 1245 Aggiornamento degli attributi di classe dai file oggetto non è supportato in modalità CS.
 1246 Errore durante il recupero delle informazioni sull'indirizzo e sul nome. Codice : %1$d, Messaggio : %2$s.
 1247 Il tempo (%1$s) deve essere specificato dopo il tempo (%2$s) del backup specificato.
-1248 Attributo "%1$s.%2$s" non può essere fatto NULL.
 
-1249 Ultimo errore
+1248 Ultimo errore
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Errore nel sottosistema di errore (linea %1$d):

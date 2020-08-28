@@ -1314,9 +1314,8 @@ $ LOADDB
 1245 Loading class attributes updates from object files is not supported in CS mode.
 1246 Error getting address and name information. Code : %1$d, message : %2$s.
 1247 復旧時点(%1$s)は必ずバックアップ時点(%2$s)の後に指定してください。
-1248 アトリビュート「%1$s.%2$s」はNULLになってはいけません。
 
-1249 ラストエラー
+1248 ラストエラー
 
 $set 6 MSGCAT_SET_INTERNAL
 1 エラーサブシステムにエラー発生(ライン %1$d):
