@@ -582,41 +582,45 @@ db_string_unique_prefix (const DB_VALUE * db_string1, const DB_VALUE * db_string
 
       intl_pad_char (codeset, pad, &pad_size);
 
-    trim_again:
-      /* We need to implicitly trim both strings since we don't want padding for the result (its of varying type) and
-       * since padding can mask the logical end of both of the strings.  Trimming depends on codeset. */
-      if (pad_size == 1)
+      if (collation_id < LANG_COLL_ISO_BINARY_TS)
 	{
-	  for (t = string1 + (size1 - 1); t >= string1 && *t == pad[0]; t--, size1--)
-	    {
-	      ;
-	    }
-	  for (t = string2 + (size2 - 1); t >= string2 && *t == pad[0]; t--, size2--)
-	    {
-	      ;
-	    }
-	}
-      else
-	{
-	  assert (pad_size == 2);
+    	  trim_again:
+      	  /* We need to implicitly trim both strings since we don't want padding for the result (its of varying type) and
+       	  * since padding can mask the logical end of both of the strings.  Trimming depends on codeset. */
 
-	  for (t = string1 + (size1 - 2); t >= string1 && *t == pad[0] && *(t + 1) == pad[1];
-	       t--, t--, size1--, size1--)
+          if (pad_size == 1)
 	    {
-	      ;
+	      for (t = string1 + (size1 - 1); t >= string1 && *t == pad[0]; t--, size1--)
+	        {
+	          ;
+	        }
+	      for (t = string2 + (size2 - 1); t >= string2 && *t == pad[0]; t--, size2--)
+	        {
+	          ;
+	        }
 	    }
-
-	  for (t = string2 + (size2 - 2); t >= string2 && *t == pad[0] && *(t + 1) == pad[1];
-	       t--, t--, size2--, size2--)
+          else
 	    {
-	      ;
-	    }
+	      assert (pad_size == 2);
 
-	  if (codeset == INTL_CODESET_KSC5601_EUC)
-	    {
-	      /* trim also ASCII space */
-	      intl_pad_char (INTL_CODESET_ISO88591, pad, &pad_size);
-	      goto trim_again;
+	      for (t = string1 + (size1 - 2); t >= string1 && *t == pad[0] && *(t + 1) == pad[1];
+	           t--, t--, size1--, size1--)
+	        {
+	          ;
+	        }
+
+	      for (t = string2 + (size2 - 2); t >= string2 && *t == pad[0] && *(t + 1) == pad[1];
+	           t--, t--, size2--, size2--)
+	        {
+	          ;
+	        }
+
+	      if (codeset == INTL_CODESET_KSC5601_EUC)
+	        {
+	          /* trim also ASCII space */
+	          intl_pad_char (INTL_CODESET_ISO88591, pad, &pad_size);
+	          goto trim_again;
+	        }
 	    }
 	}
 

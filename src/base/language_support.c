@@ -270,6 +270,9 @@ static int lang_next_coll_seq_utf8_w_contr (const LANG_COLLATION * lang_coll, co
 static int lang_split_key_iso (const LANG_COLLATION * lang_coll, const bool is_desc, const unsigned char *str1,
 			       const int size1, const unsigned char *str2, const int size2, const unsigned char **key,
 			       int *byte_size);
+static int lang_split_key_iso_ts (const LANG_COLLATION * lang_coll, const bool is_desc, const unsigned char *str1,
+			       const int size1, const unsigned char *str2, const int size2, const unsigned char **key,
+			       int *byte_size);
 static int lang_split_key_byte (const LANG_COLLATION * lang_coll, const bool is_desc, const unsigned char *str1,
 				const int size1, const unsigned char *str2, const int size2, const unsigned char **key,
 				int *byte_size);
@@ -279,10 +282,16 @@ static int lang_split_key_binary (const LANG_COLLATION * lang_coll, const bool i
 static int lang_split_key_utf8 (const LANG_COLLATION * lang_coll, const bool is_desc, const unsigned char *str1,
 				const int size1, const unsigned char *str2, const int size2, const unsigned char **key,
 				int *byte_size);
+static int lang_split_key_utf8_ts (const LANG_COLLATION * lang_coll, const bool is_desc, const unsigned char *str1,
+				const int size1, const unsigned char *str2, const int size2, const unsigned char **key,
+				int *byte_size);
 static int lang_split_key_w_exp (const LANG_COLLATION * lang_coll, const bool is_desc, const unsigned char *str1,
 				 const int size1, const unsigned char *str2, const int size2, const unsigned char **key,
 				 int *byte_size);
 static int lang_split_key_euc (const LANG_COLLATION * lang_coll, const bool is_desc, const unsigned char *str1,
+			       const int size1, const unsigned char *str2, const int size2, const unsigned char **key,
+			       int *byte_size);
+static int lang_split_key_euc_ts (const LANG_COLLATION * lang_coll, const bool is_desc, const unsigned char *str1,
 			       const int size1, const unsigned char *str2, const int size2, const unsigned char **key,
 			       int *byte_size);
 static unsigned int lang_mht2str_byte (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size);
@@ -390,12 +399,11 @@ static LANG_COLLATION coll_Iso88591_en_cs_ts = {
   lang_fastcmp_iso_88591_ts,
   lang_strmatch_iso_88591,
   lang_next_alpha_char_iso88591,
-  lang_split_key_iso,
+  lang_split_key_iso_ts,
   lang_mht2str_default,
   NULL
 };
 
-/* locale data */
 /* locale data */
 static LANG_LOCALE_DATA lc_English_iso88591 = {
   NULL,
@@ -434,6 +442,7 @@ static LANG_LOCALE_DATA lc_English_iso88591 = {
   false
 };
 
+/* locale data */
 static LANG_LOCALE_DATA lc_English_utf8 = {
   NULL,
   LANG_NAME_ENGLISH,
@@ -578,7 +587,7 @@ static LANG_COLLATION coll_Utf8_ko_cs_ts = {
   lang_strcmp_utf8_ts,
   lang_strmatch_utf8,
   lang_next_coll_char_utf8,
-  lang_split_key_utf8,
+  lang_split_key_utf8_ts,
   lang_mht2str_utf8,
   lang_init_coll_Utf8_en_cs
 };
@@ -653,7 +662,7 @@ static LANG_COLLATION coll_Euckr_bin_ts = {
   lang_fastcmp_ko_ts,
   lang_strmatch_ko,
   lang_next_alpha_char_ko,
-  lang_split_key_euc,
+  lang_split_key_euc_ts,
   lang_mht2str_ko,
   NULL
 };
@@ -766,7 +775,7 @@ static LANG_COLLATION coll_Iso_binary_ts = {
   lang_fastcmp_iso_88591_ts,
   lang_strmatch_iso_88591,
   lang_next_alpha_char_iso88591,
-  lang_split_key_iso,
+  lang_split_key_iso_ts,
   lang_mht2str_default,
   NULL
 };
@@ -804,7 +813,7 @@ static LANG_COLLATION coll_Utf8_binary_ts = {
   lang_strmatch_utf8,
   /* 'next' and 'split_point' functions must handle UTF-8 chars */
   lang_next_coll_char_utf8,
-  lang_split_key_utf8,
+  lang_split_key_utf8_ts,
   lang_mht2str_byte,
   NULL
 };
@@ -4791,6 +4800,63 @@ lang_split_key_iso (const LANG_COLLATION * lang_coll, const bool is_desc, const 
   return NO_ERROR;
 }
 
+static int
+lang_split_key_iso_ts (const LANG_COLLATION * lang_coll, const bool is_desc, const unsigned char *str1, const int size1,
+		    const unsigned char *str2, const int size2, const unsigned char **key, int *byte_size)
+{
+  const unsigned char *str1_end, *str2_end;
+  const unsigned char *str1_begin, *str2_begin;
+  int key_size;
+
+  assert (key != NULL);
+  assert (byte_size != NULL);
+
+  str1_end = str1 + size1;
+  str2_end = str2 + size2;
+  str1_begin = str1;
+  str2_begin = str2;
+
+  for (; str1 < str1_end && str2 < str2_end; str1++, str2++)
+    {
+      if (*str1 != *str2)
+	{
+	  assert ((!is_desc && *str1 < *str2) || (is_desc && *str1 > *str2));
+	  break;
+	}
+    }
+
+  if (!is_desc)
+    {				/* normal index */
+      *key = (unsigned char *) str2_begin;
+
+      str2++;
+      assert (str2 <= str2_end);
+      key_size = CAST_BUFLEN (str2 - str2_begin);
+    }
+  else
+    {				/* reverse index */
+      assert (is_desc);
+
+      str1++;
+      if (str1 >= str1_end)
+	{
+	  /* str1 exhaused or at last char, we use str2 as key */
+	  *key = (unsigned char *) str2_begin;
+	  key_size = CAST_BUFLEN (str2_end - str2_begin);
+	}
+      else
+	{
+	  assert (str1 < str1_end);
+	  *key = (unsigned char *) str1_begin;
+	  key_size = CAST_BUFLEN (str1 - str1_begin);
+	}
+    }
+
+  *byte_size = key_size;
+
+  return NO_ERROR;
+}
+
 /*
  * lang_split_key_byte() - finds the prefix key :
  *			   collations  with byte-characters (ISO charset) and
@@ -4964,6 +5030,77 @@ lang_split_key_utf8 (const LANG_COLLATION * lang_coll, const bool is_desc, const
 	      break;
 	    }
 	}
+
+      if (str1 >= str1_end)
+	{
+	  /* str1 exhaused or at last char, we use str2 as key */
+	  *key = (unsigned char *) str2_begin;
+	  key_size = CAST_BUFLEN (str2_end - str2_begin);
+	}
+      else
+	{
+	  assert (str1 < str1_end);
+	  *key = (unsigned char *) str1_begin;
+	  key_size = CAST_BUFLEN (str1 - str1_begin);
+	}
+    }
+
+  *byte_size = key_size;
+
+  return NO_ERROR;
+}
+
+static int
+lang_split_key_utf8_ts (const LANG_COLLATION * lang_coll, const bool is_desc, const unsigned char *str1, const int size1,
+		     const unsigned char *str2, const int size2, const unsigned char **key, int *byte_size)
+{
+  const unsigned char *str1_end, *str2_end;
+  const unsigned char *str1_begin, *str2_begin;
+  unsigned char *str1_next, *str2_next;
+  unsigned int w1, w2;
+  int key_size;
+  const COLL_DATA *coll = &(lang_coll->coll);
+
+  assert (key != NULL);
+  assert (byte_size != NULL);
+
+  str1_end = str1 + size1;
+  str2_end = str2 + size2;
+  str1_begin = str1;
+  str2_begin = str2;
+
+  for (; str1 < str1_end && str2 < str2_end;)
+    {
+      w1 = lang_get_w_first_el (coll, str1, CAST_BUFLEN (str1_end - str1), &str1_next);
+      w2 = lang_get_w_first_el (coll, str2, CAST_BUFLEN (str2_end - str2), &str2_next);
+
+      if (w1 != w2)
+	{
+	  assert ((!is_desc && w1 < w2) || (is_desc && w1 > w2));
+	  break;
+	}
+
+      str1 = str1_next;
+      str2 = str2_next;
+    }
+
+  if (!is_desc)
+    {				/* normal index */
+      *key = (unsigned char *) str2_begin;
+
+      /* common part plus a character with non-zero weight from str2 */
+      w2 = lang_get_w_first_el (coll, str2, CAST_BUFLEN (str2_end - str2), &str2_next);
+      str2 = str2_next;
+
+      assert (str2 <= str2_end);
+      key_size = CAST_BUFLEN (str2 - str2_begin);
+    }
+  else
+    {				/* reverse index */
+      assert (is_desc);
+      /* common part plus a character with non-zero weight from str1 */
+      w1 = lang_get_w_first_el (coll, str1, CAST_BUFLEN (str1_end - str1), &str1_next);
+      str1 = str1_next;
 
       if (str1 >= str1_end)
 	{
@@ -5280,6 +5417,73 @@ lang_split_key_euc (const LANG_COLLATION * lang_coll, const bool is_desc, const 
   return NO_ERROR;
 }
 
+static int
+lang_split_key_euc_ts (const LANG_COLLATION * lang_coll, const bool is_desc, const unsigned char *str1, const int size1,
+		    const unsigned char *str2, const int size2, const unsigned char **key, int *byte_size)
+{
+  const unsigned char *str1_next, *str2_next;
+  int key_size, char1_size, char2_size;
+  const unsigned char *str1_end, *str2_end;
+  const unsigned char *str1_begin, *str2_begin;
+
+  assert (key != NULL);
+  assert (byte_size != NULL);
+
+  str1_end = str1 + size1;
+  str2_end = str2 + size2;
+  str1_begin = str1;
+  str2_begin = str2;
+
+  for (; str1 < str1_end && str2 < str2_end;)
+    {
+      str1_next = intl_nextchar_euc (str1, &char1_size);
+      str2_next = intl_nextchar_euc (str2, &char2_size);
+
+      if (char1_size != char2_size || memcmp (str1, str2, char1_size) != 0)
+	{
+	  break;
+	}
+
+      str1 = str1_next;
+      str2 = str2_next;
+    }
+
+  if (!is_desc)
+    {				/* normal index */
+      *key = (unsigned char *) str2_begin;
+
+      str2_next = intl_nextchar_euc (str2, &char2_size);
+      str2 = str2_next;
+
+      assert (str2 <= str2_end);
+      key_size = CAST_BUFLEN (str2 - str2_begin);
+    }
+  else
+    {				/* reverse index */
+      assert (is_desc);
+
+      str1_next = intl_nextchar_euc (str1, &char1_size);
+      str1 = str1_next;
+
+      if (str1 >= str1_end)
+	{
+	  /* str1 exhaused or at last char, we use str2 as key */
+	  *key = (unsigned char *) str2_begin;
+	  key_size = CAST_BUFLEN (str2_end - str2_begin);
+	}
+      else
+	{
+	  assert (str1 < str1_end);
+	  *key = (unsigned char *) str1_begin;
+	  key_size = CAST_BUFLEN (str1 - str1_begin);
+	}
+    }
+
+  *byte_size = key_size;
+
+  return NO_ERROR;
+}
+
 /*
  * English Locale Data
  */
@@ -5295,7 +5499,8 @@ lang_initloc_en_iso88591 (LANG_LOCALE_DATA * ld)
   assert (ld != NULL);
 
   coll_Iso_binary.default_lang = ld;
-  coll_Iso88591_en_cs.default_lang = ld;
+  coll_Iso_binary_ts.default_lang = ld;
+  coll_Iso88591_en_cs_ts.default_lang = ld;
   coll_Iso88591_en_ci.default_lang = ld;
 
   ld->is_initialized = true;
@@ -5449,6 +5654,7 @@ lang_initloc_en_utf8 (LANG_LOCALE_DATA * ld)
 
   /* other initializations to follow here */
   coll_Utf8_binary.default_lang = ld;
+  coll_Utf8_binary_ts.default_lang = ld;
   coll_Utf8_en_cs.default_lang = ld;
   coll_Utf8_en_ci.default_lang = ld;
 
@@ -5543,10 +5749,6 @@ lang_fastcmp_iso_88591 (const LANG_COLLATION * lang_coll, const unsigned char *s
 	}
     }
   return cmp;
-
-#undef PAD
-#undef SPACE
-#undef ZERO
 }
 
 static int
@@ -5560,7 +5762,15 @@ lang_fastcmp_iso_88591_ts (const LANG_COLLATION * lang_coll, const unsigned char
   for (i = 0, cmp = 0; i < n && cmp == 0; i++)
     {
       c1 = *string1++;
+      if (c1 == SPACE)
+	{
+	  c1 = ZERO;
+	}
       c2 = *string2++;
+      if (c2 == SPACE)
+	{
+	  c2 = ZERO;
+	}
       cmp = c1 - c2;
     }
 
@@ -5570,6 +5780,9 @@ lang_fastcmp_iso_88591_ts (const LANG_COLLATION * lang_coll, const unsigned char
     }
 
   return size1 - size2;
+#undef PAD
+#undef SPACE
+#undef ZERO
 }
 
 /*
@@ -6137,6 +6350,7 @@ lang_initloc_ko_utf8 (LANG_LOCALE_DATA * ld)
   assert (ld != NULL);
 
   coll_Utf8_ko_cs.default_lang = ld;
+  coll_Utf8_ko_cs_ts.default_lang = ld;
 
   ld->is_initialized = true;
 }
@@ -6153,6 +6367,7 @@ lang_initloc_ko_euc (LANG_LOCALE_DATA * ld)
   assert (ld != NULL);
 
   coll_Euckr_bin.default_lang = ld;
+  coll_Euckr_bin_ts.default_lang = ld;
 
   ld->is_initialized = true;
 }

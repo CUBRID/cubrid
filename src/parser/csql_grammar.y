@@ -27366,7 +27366,7 @@ pt_value_set_charset_coll (PARSER_CONTEXT *parser, PT_NODE *node,
       if (collation_id != LANG_GET_BINARY_COLLATION (codeset_id))
 	{
 	  assert (collation_id != LANG_SYS_COLLATION);
-	  node->info.value.print_collation = true;
+	  node->info.value.print_collation = false;
 	}
     }
 }
