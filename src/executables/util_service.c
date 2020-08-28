@@ -235,6 +235,7 @@ static UTIL_SERVICE_PROPERTY_T us_Property_map[] = {
 
 
 static const char **Argv;
+static int ha_mode_in_common;
 
 static int util_get_service_option_mask (int util_type);
 static int util_get_command_option_mask (int command_type);
@@ -567,6 +568,8 @@ main (int argc, char *argv[])
 
       return EXIT_FAILURE;
     }
+
+  ha_mode_in_common = prm_get_integer_value (PRM_ID_HA_MODE_FOR_SA_UTILS_ONLY);
 
   if (util_type == ADMIN)
     {
@@ -4254,6 +4257,14 @@ process_heartbeat (int command_type, int argc, const char **argv)
   int status = NO_ERROR;
 #if !defined(WINDOWS)
   HA_CONF ha_conf;
+
+  if (ha_mode_in_common == HA_MODE_OFF)
+    {
+      print_message (stderr, MSGCAT_UTIL_GENERIC_NOT_HA_MODE);
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_HA_MODE);
+      print_result (PRINT_HEARTBEAT_NAME, ER_FAILED, command_type);
+      return ER_FAILED;
+    }
 
   memset ((void *) &ha_conf, 0, sizeof (HA_CONF));
   status = util_make_ha_conf (&ha_conf);
