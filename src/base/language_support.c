@@ -304,8 +304,8 @@ static void lang_init_coll_Utf8_en_cs (LANG_COLLATION * lang_coll);
 static void lang_init_coll_Utf8_tr_cs (LANG_COLLATION * lang_coll);
 static int lang_fastcmp_ko (const LANG_COLLATION * lang_coll, const unsigned char *string1, int size1,
 			    const unsigned char *string2, int size2);
-static int lang_fastcmp_ko_ts (const LANG_COLLATION * lang_coll, const unsigned char *string1, int size1,
-			       const unsigned char *string2, int size2);
+static int lang_fastcmp_ko_ts (const LANG_COLLATION * lang_coll, const unsigned char *str1, int size1,
+			       const unsigned char *str2, int size2);
 static int lang_strmatch_ko (const LANG_COLLATION * lang_coll, bool is_match, const unsigned char *str1, int size1,
 			     const unsigned char *str2, int size2, const unsigned char *escape,
 			     const bool has_last_escape, int *str1_match_size);
@@ -2914,12 +2914,62 @@ lang_strcmp_utf8 (const LANG_COLLATION * lang_coll, const unsigned char *str1, c
 }
 
 static int
-lang_strcmp_utf8_ts (const LANG_COLLATION * lang_coll, const unsigned char *str1, const int size1,
-		     const unsigned char *str2, const int size2)
+lang_strcmp_utf8_ts (const LANG_COLLATION * lang_coll, const unsigned char *str1, int size1,
+		     const unsigned char *str2, int size2)
 {
-  int dummy;
+  const unsigned char *str1_end;
+  const unsigned char *str2_end;
+  const unsigned char *str1_begin;
+  unsigned char *str1_next, *str2_next;
+  unsigned int cp1, cp2, w_cp1, w_cp2;
+  const int alpha_cnt = lang_coll->coll.w_count;
+  const unsigned int *weight_ptr = lang_coll->coll.weights;
 
-  return lang_strmatch_utf8 (lang_coll, true, str1, size1, str2, size2, NULL, false, &dummy);
+  str1_begin = str1;
+  str1_end = str1 + size1;
+  str2_end = str2 + size2;
+
+  for (; str1 < str1_end && str2 < str2_end;)
+    {
+      assert (str1_end - str1 > 0);
+      assert (str2_end - str2 > 0);
+
+      cp1 = intl_utf8_to_cp (str1, CAST_BUFLEN (str1_end - str1), &str1_next);
+      cp2 = intl_utf8_to_cp (str2, CAST_BUFLEN (str2_end - str2), &str2_next);
+
+      if (cp1 < (unsigned int) alpha_cnt)
+	{
+	  w_cp1 = weight_ptr[cp1];
+	}
+      else
+	{
+	  w_cp1 = cp1;
+	}
+
+      if (cp2 < (unsigned int) alpha_cnt)
+	{
+	  w_cp2 = weight_ptr[cp2];
+	}
+      else
+	{
+	  w_cp2 = cp2;
+	}
+
+      if (w_cp1 != w_cp2)
+	{
+	  return (w_cp1 < w_cp2) ? (-1) : 1;
+	}
+
+      str1 = str1_next;
+      str2 = str2_next;
+    }
+
+  size1 = CAST_BUFLEN (str1_end - str1);
+  size2 = CAST_BUFLEN (str2_end - str2);
+
+  assert (size1 == 0 || size2 == 0);
+
+  return size1 - size2;
 }
 
 /*
@@ -3032,7 +3082,7 @@ lang_strmatch_utf8 (const LANG_COLLATION * lang_coll, bool is_match, const unsig
 
       if (is_match)
 	{
-	  return 1;
+	  return 0;
 	}
 
       if (lang_str_utf8_trail_zero_weights (lang_coll, str1, CAST_BUFLEN (str1_end - str1)) != 0)
@@ -6500,12 +6550,79 @@ lang_fastcmp_ko (const LANG_COLLATION * lang_coll, const unsigned char *string1,
 }
 
 static int
-lang_fastcmp_ko_ts (const LANG_COLLATION * lang_coll, const unsigned char *string1, int size1,
-		    const unsigned char *string2, int size2)
+lang_fastcmp_ko_ts (const LANG_COLLATION * lang_coll, const unsigned char *str1, int size1,
+		    const unsigned char *str2, int size2)
 {
-  int dummy;
+  const unsigned char *str1_end;
+  const unsigned char *str2_end;
+  const unsigned char *str1_next;
+  const unsigned char *str2_next;
+  const unsigned char *str1_begin;
+  int char1_size, char2_size, cmp = 0;
+  unsigned int c1, c2;
 
-  return lang_strmatch_ko (lang_coll, true, string1, size1, string2, size2, NULL, false, &dummy);
+  assert (size1 >= 0 && size2 >= 0);
+
+#define EUC_SPACE 0xa1
+#define ASCII_SPACE 0x20
+#define ZERO '\0'
+
+  str1_begin = str1;
+  str1_end = str1 + size1;
+  str2_end = str2 + size2;
+
+  for (; str1 < str1_end && str2 < str2_end;)
+    {
+      assert (str1_end - str1 > 0);
+      assert (str2_end - str2 > 0);
+
+      str1_next = intl_nextchar_euc (str1, &char1_size);
+      str2_next = intl_nextchar_euc (str2, &char2_size);
+
+      c1 = *str1;
+      c2 = *str2;
+      if (*str1 == ASCII_SPACE || (*str1 == EUC_SPACE && str1 + 1 < str1_end && *(str1 + 1) == EUC_SPACE))
+	{
+	  c1 = ZERO;
+	}
+
+      if (*str2 == ASCII_SPACE || (*str2 == EUC_SPACE && str2 + 1 < str2_end && *(str2 + 1) == EUC_SPACE))
+	{
+	  c2 = ZERO;
+	}
+
+      if (c1 == c2 && c1 == 0)
+	{
+	  ;
+	}
+      else if (char1_size != char2_size)
+	{
+	  return (char1_size < char2_size) ? (-1) : 1;
+	}
+      else
+	{
+	  cmp = memcmp (str1, str2, char1_size);
+	  if (cmp != 0)
+	    {
+	      return cmp;
+	    }
+	}
+
+      str1 = str1_next;
+      str2 = str2_next;
+    }
+
+  size1 = CAST_BUFLEN (str1_end - str1);
+  size2 = CAST_BUFLEN (str2_end - str2);
+
+  assert (size1 == 0 || size2 == 0);
+  assert (cmp == 0);
+
+  return size1 - size2;
+
+#undef EUC_SPACE
+#undef ASCII_SPACE
+#undef ZERO
 }
 
 /*
@@ -6711,7 +6828,7 @@ lang_strmatch_ko (const LANG_COLLATION * lang_coll, bool is_match, const unsigne
 
       if (is_match)
 	{
-	  return 1;
+	  return 0;
 	}
 
       for (; str1 < str1_end;)
