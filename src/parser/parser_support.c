@@ -8512,13 +8512,13 @@ pt_check_grammar_charset_collation (PARSER_CONTEXT * parser, PT_NODE * charset_n
       switch (*charset)
 	{
 	case INTL_CODESET_ISO88591:
-	  *coll_id = LANG_COLL_ISO_BINARY;
+	  *coll_id = LANG_COLL_ISO_BINARY_TS;
 	  break;
 	case INTL_CODESET_KSC5601_EUC:
-	  *coll_id = LANG_COLL_EUCKR_BINARY;
+	  *coll_id = LANG_COLL_EUCKR_BINARY_TS;
 	  break;
 	case INTL_CODESET_UTF8:
-	  *coll_id = LANG_COLL_UTF8_BINARY;
+	  *coll_id = LANG_COLL_UTF8_BINARY_TS;
 	  break;
 	default:
 	  assert (*charset == INTL_CODESET_BINARY);
