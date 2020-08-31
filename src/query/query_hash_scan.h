@@ -21,6 +21,9 @@
 // query_hash_scan - interface for hash list scan during queries
 //
 
+#ifndef _QUERY_HASH_SCAN_H_
+#define _QUERY_HASH_SCAN_H_
+
 #if !defined (SERVER_MODE) && !defined (SA_MODE)
 #error Wrong module
 #endif // not server and not SA mode
@@ -58,7 +61,7 @@ struct hash_list_scan
 HASH_SCAN_KEY *qdata_alloc_hscan_key (THREAD_ENTRY * thread_p, int val_cnt, bool alloc_vals);
 HASH_SCAN_VALUE *qdata_alloc_hscan_value (THREAD_ENTRY * thread_p, QFILE_TUPLE tpl);
 
-void qdata_free_hscan_key (THREAD_ENTRY * thread_p, HASH_SCAN_KEY * key);
+void qdata_free_hscan_key (THREAD_ENTRY * thread_p, HASH_SCAN_KEY * key, int val_count);
 void qdata_free_hscan_value (THREAD_ENTRY * thread_p, HASH_SCAN_VALUE * value);
 int qdata_free_hscan_entry (const void *key, void *data, void *args);
 
@@ -70,3 +73,5 @@ HASH_SCAN_KEY *qdata_copy_hscan_key (THREAD_ENTRY * thread_p, HASH_SCAN_KEY * ke
 				     REGU_VARIABLE_LIST probe_regu_list, val_descr * vd);
 
 int qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *key, void *data, void *args);
+
+#endif				/* _QUERY_HASH_SCAN_H_ */

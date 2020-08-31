@@ -272,9 +272,9 @@ REGU_VARIABLE_CLEAR_FLAG (regu_variable_node *regu, int flag)
 DB_TYPE
 REGU_VARIABLE_GET_TYPE (const regu_variable_node *regu)
 {
-  if (regu && regu->domain && regu->domain->type)
+  if (regu)
     {
-      return regu->domain->type->get_id();
+      return TP_DOMAIN_TYPE (regu->domain);
     }
   return DB_TYPE_UNKNOWN;
 }

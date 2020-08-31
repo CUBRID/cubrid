@@ -4811,7 +4811,7 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       /* free temp keys and values */
       if (llsidp->hlsid.temp_key != NULL)
 	{
-	  qdata_free_hscan_key (thread_p, llsidp->hlsid.temp_key);
+	  qdata_free_hscan_key (thread_p, llsidp->hlsid.temp_key, NULL);
 	  llsidp->hlsid.temp_key = NULL;
 	}
       break;
@@ -8007,7 +8007,7 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
       return false;
     }
   /* list file size check */
-  if ((UINT64) (llsidp->list_id->page_cnt * DB_PAGESIZE) > mem_limit)
+  if ((UINT64)llsidp->list_id->page_cnt * DB_PAGESIZE > mem_limit)
     {
       return false;
     }

@@ -71,12 +71,8 @@ qdata_alloc_hscan_key (cubthread::entry * thread_p, int val_cnt, bool alloc_vals
 	  key->values[i] = pr_make_value ();
 	  if (key->values[i] == NULL)
 	    {
-	      for (int j = --i; j >= 0; j--)
-		{
-		  pr_free_value (key->values[j]);
-		}
-	      db_private_free (thread_p, key->values);
-	      db_private_free (thread_p, key);
+	      key->free_values = true;
+	      qdata_free_hscan_key (thread_p, key, i);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE *));
 	      return NULL;
 	    }
@@ -94,20 +90,29 @@ qdata_alloc_hscan_key (cubthread::entry * thread_p, int val_cnt, bool alloc_vals
  *   key(in): hash key
  */
 void
-qdata_free_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key)
+qdata_free_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key, int val_count)
 {
-  int i = 0;
+  int cnt;
 
   if (key == NULL)
     {
       return;
     }
 
+  if (val_count == NULL)
+    {
+      cnt = key->val_count;
+    }
+  else
+    {
+      cnt = val_count;
+    }
+
   if (key->values != NULL)
     {
       if (key->free_values)
 	{
-	  for (i = 0; i < key->val_count; i++)
+	  for (int i = 0; i < cnt; i++)
 	    {
 	      if (key->values[i])
 		{
@@ -314,12 +319,19 @@ qdata_copy_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key, REGU_VAR
 	  if (vtype1 != vtype2)
 	    {
 	      new_key->values[i] = pr_make_value ();
+	      if (new_key->values[i] == NULL)
+		{
+		  new_key->free_values = true;
+		  qdata_free_hscan_key (thread_p, new_key, i);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE *));
+		  return NULL;
+		}
+
 	      status = tp_value_coerce (key->values[i], new_key->values[i], probe_regu_list->value.domain);
 	      if (status != DOMAIN_COMPATIBLE)
 		{
-		  new_key->val_count = ++i;
 		  new_key->free_values = true;
-		  qdata_free_hscan_key (thread_p, new_key);
+		  qdata_free_hscan_key (thread_p, new_key, ++i);
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (vtype2),
 			  pr_type_name (vtype1));
 		  return NULL;
@@ -392,8 +404,6 @@ safe_memcpy (void *data, void *source, int size)
 void
 qdata_free_hscan_value (cubthread::entry * thread_p, HASH_SCAN_VALUE * value)
 {
-  int i = 0;
-
   if (value == NULL)
     {
       return;
@@ -421,7 +431,7 @@ int
 qdata_free_hscan_entry (const void *key, void *data, void *args)
 {
   /* free key */
-  qdata_free_hscan_key ((cubthread::entry *) args, (HASH_SCAN_KEY *) key);
+  qdata_free_hscan_key ((cubthread::entry *) args, (HASH_SCAN_KEY *) key, NULL);
 
   /* free tuple */
   qdata_free_hscan_value ((cubthread::entry *) args, (HASH_SCAN_VALUE *) data);
