@@ -2300,9 +2300,9 @@ bool PRM_ALLOW_TRUNCATED_STRING = false;
 static bool prm_allow_truncated_string_default = false;
 static unsigned int prm_allow_truncated_string_flag = 0;
 
-bool PRM_TB_REUSE_OID = true;
-static bool prm_create_table_reuseoid_default = true;
-static unsigned int prm_create_table_reuseoid = 1;
+bool PRM_TB_REUSE_OID = false;
+static bool prm_create_table_reuseoid_default = false;
+static unsigned int prm_create_table_reuseoid = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
