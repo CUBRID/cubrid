@@ -5,6 +5,21 @@
 <!-- Check System -->
     <Condition Message="This application is only supported on Windows Vista, Windows Server 2008, or higher."><![CDATA[Installed OR (VersionNT >= 600)]]></Condition>
     <Condition Message="This installer is only supported on Windows @WIX_SUPPORTED_PLATFORM@."><![CDATA[Installed OR @WIX_SUPPORTED_PLATFORM_CONDITION@]]></Condition>
+
+    <UI>
+      <Dialog Id="UpdateWarningDlg" Width="284" Height="73" Title="Check for update" NoMinimize="yes">
+        <Control Id="Text" Type="Text" X="38" Y="8" Width="240" Height="40" TabSkip="no">
+          <Text>Installation may fail if the latest version of the Windows 7 security patch is not installed.</Text>
+        </Control>
+        <Control Id="OK" Type="PushButton" X="114" Y="52" Width="56" Height="17" Default="yes" Cancel="yes" Text="OK">
+          <Publish Event="EndDialog" Value="Return">1</Publish>
+        </Control>
+      </Dialog>
+      <InstallUISequence>
+        <Show Dialog="UpdateWarningDlg" Before="ResumeDlg"><![CDATA[VersionNT = 601]]></Show>
+      </InstallUISequence>
+    </UI>
+
 <!-- Check Java requirements ONLY on "install", but not on modify or uninstall -->
     <Property Id="JAVA_CURRENT_VERSION">
       <RegistrySearch Id="JRE_CURRENT_VERSION_REGSEARCH" Root="HKLM" Key="SOFTWARE\JavaSoft\Java Runtime Environment" Name="CurrentVersion" Type="raw"/>
