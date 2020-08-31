@@ -5551,6 +5551,7 @@ lang_initloc_en_iso88591 (LANG_LOCALE_DATA * ld)
 
   coll_Iso_binary.default_lang = ld;
   coll_Iso_binary_ts.default_lang = ld;
+  coll_Iso88591_en_cs.default_lang = ld;
   coll_Iso88591_en_cs_ts.default_lang = ld;
   coll_Iso88591_en_ci.default_lang = ld;
 
