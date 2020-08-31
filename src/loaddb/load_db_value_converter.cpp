@@ -481,7 +481,7 @@ namespace cubload
   int
   to_db_numeric (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
-    int precision = (int) str_size - 1 - (str[0] == '+' || str[0] == '-' || str[0] == '.');
+    int precision = (int) str_size - 1 - (str[0] == '+' || str[0] == '-');
     int scale = (int) str_size - (int) strcspn (str, ".") - 1;
 
     int error_code = db_value_domain_init (val, DB_TYPE_NUMERIC, precision, scale);

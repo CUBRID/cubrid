@@ -552,16 +552,17 @@ compactdb: データベースで使用しない領域を解除。\n\
   -i, --input-class-file=FILE       テーブル名が入っているファイルを入力\n\
                                     class_nameリストは必ず空いている必要があります。\n\
                                     デフォルト: すべてのクラスをコンパクト\n\
-                                    クライアントーサーバモードでしか作動しない。\n\
   -p, --pages-commited-once=NUMBER  一回にコミットする最大ページ数\n\
                                     デフォルト: 10\n\
                                     クライアントーサーバモードでしか作動しない。\n\
   -S, --SA-mode                     スタンドアロンモードで実行\n\
   -C, --CS-mode                     クライアントーサーバモードで実行\n\
   -d, --delete-old-repr             カタログから古いクラス情報を削除; デフォルト: 削除しない\n\
-  class_name_list                   クライアントーサーバモードでしか作動しない。\n\
   -I, --Instance-lock-timeout       インスタンスロックのタイムアウト\n\
-  -c, --class-lock-timeout          クラスロックのタイムアウト\n
+                                    クライアントーサーバモードでしか作動しない。\n\
+  -c, --class-lock-timeout          クラスロックのタイムアウト\n\
+                                    クライアントーサーバモードでしか作動しない。\n\
+  class_name_list                   圧縮するクラス名のリスト\n
 
 $set 15 MSGCAT_UTIL_SET_COMMDB
 21 CUBRIDマスターがホスト%1$sで実行中です。%2$sに始まって

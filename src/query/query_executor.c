@@ -11450,6 +11450,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	  for (regu_list = insert->valptr_lists[i]->valptrp, vallist = xasl->val_list->valp, k = num_default_expr;
 	       k < val_no; k++, regu_list = regu_list->next, vallist = vallist->next)
 	    {
+	      regu_list->value.flags |= REGU_VARIABLE_STRICT_TYPE_CAST;
 	      if (fetch_peek_dbval (thread_p, &regu_list->value, &xasl_state->vd, &class_oid, NULL, NULL, &valp) !=
 		  NO_ERROR)
 		{
@@ -25014,6 +25015,15 @@ qexec_free_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * proc
   if (!proc->g_hash_eligible)
     {
       return;
+    }
+
+  /* clear group by regular var list */
+  for (REGU_VARIABLE_LIST p = proc->g_regu_list; p; p = p->next)
+    {
+      if (p->value.vfetch_to != NULL)
+	{
+	  pr_clear_value (p->value.vfetch_to);
+	}
     }
 
   /* free value array */

@@ -225,8 +225,7 @@ public class UClientSideConnection extends UConnection {
 							if (errno == UErrorCode.ER_COMMUNICATION
 									|| errno == UErrorCode.ER_CONNECTION
 									|| errno == UErrorCode.ER_TIMEOUT
-									|| errno == UErrorCode.CAS_ER_FREE_SERVER
-									|| errno == UErrorCode.ER_SSL_HANDSHAKE) {
+									|| errno == UErrorCode.CAS_ER_FREE_SERVER) {
 								unreachableHosts.add(altHosts.get(hostId));
 							} else {
 								throw e;
@@ -444,6 +443,13 @@ public class UClientSideConnection extends UConnection {
 			oldSessionId = is.readInt();
 		}
 
+		if (protoVersionIsAbove(PROTOCOL_V7)) {
+			setIsolationLevelMin(CUBRIDIsolationLevel.TRAN_READ_COMMITTED);
+			setIsolationLevelMax(CUBRIDIsolationLevel.TRAN_SERIALIZABLE);
+		} else {
+			setIsolationLevelMin(CUBRIDIsolationLevel.TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE);
+			setIsolationLevelMax(CUBRIDIsolationLevel.TRAN_SERIALIZABLE);
+		}
 	}
 
 	private boolean setActiveHost(int hostId) throws UJciException {

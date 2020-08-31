@@ -187,6 +187,8 @@ static void jsp_close_internal_connection (const SOCKET sockfd);
 static int jsp_execute_stored_procedure (const SP_ARGS * args);
 static int jsp_do_call_stored_procedure (DB_VALUE * returnval, DB_ARG_LIST * args, const char *name);
 
+extern bool ssl_client;
+
 /*
  * jsp_init - Initialize Java Stored Procedure
  *   return: none
@@ -3045,6 +3047,7 @@ jsp_execute_stored_procedure (const SP_ARGS * args)
   int error = NO_ERROR;
   SOCKET sock_fd;
   int retry_count = 0;
+  bool mode = ssl_client;
 
 retry:
   if (IS_INVALID_SOCKET (sock_fds[call_cnt]))
@@ -3084,7 +3087,9 @@ retry:
 	}
     }
 
+  ssl_client = false;
   error = jsp_receive_response (sock_fd, args);
+  ssl_client = mode;
 
 end:
   call_cnt--;

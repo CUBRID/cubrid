@@ -18,6 +18,7 @@
 
 set(EXECUTABLE_SOURCES
   ${EXECUTABLES_DIR}/compactdb_cl.c
+  ${EXECUTABLES_DIR}/compactdb_common.c
   ${EXECUTABLES_DIR}/csql.c
   ${EXECUTABLES_DIR}/csql_result.c
   ${EXECUTABLES_DIR}/csql_result_format.c
@@ -367,6 +368,7 @@ endif(UNIX)
 
 SET_SOURCE_FILES_PROPERTIES(
   ${EXECUTABLES_DIR}/compactdb_cl.c
+  ${EXECUTABLES_DIR}/compactdb_common.c
   ${EXECUTABLES_DIR}/csql.c
   ${EXECUTABLES_DIR}/csql_result.c
   ${EXECUTABLES_DIR}/csql_result_format.c

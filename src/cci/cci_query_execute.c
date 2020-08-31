@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (c) 2016 CUBRID Corporation.
  *
  * Redistribution and use in source and binary forms, with or without modification,
  * are permitted provided that the following conditions are met:
@@ -260,9 +261,9 @@ qe_con_close (T_CON_HANDLE * con_handle)
 con_close_end:
 
   net_buf_clear (&net_buf);
+  hm_ssl_free (con_handle);
   CLOSE_SOCKET (con_handle->sock_fd);
   con_handle->sock_fd = INVALID_SOCKET;
-
   return 0;
 }
 

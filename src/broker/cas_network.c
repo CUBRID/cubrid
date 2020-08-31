@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -73,6 +74,16 @@ static bool net_timeout_flag = false;
 
 static char net_error_flag;
 static int net_timeout = NET_DEFAULT_TIMEOUT;
+
+extern bool ssl_client;
+extern int cas_ssl_write (int sock_fd, const char *buf, int size);
+extern int cas_ssl_read (int sock_fd, char *buf, int size);
+extern bool is_ssl_data_ready (int sock_fd);
+
+#define READ_FROM_NET(sd, buf, size) ssl_client ? cas_ssl_read (sd, buf, size) : \
+	READ_FROM_SOCKET(sd, buf, size)
+#define WRITE_TO_NET(sd, buf, size) ssl_client ? cas_ssl_write (sd, buf, size) : \
+       WRITE_TO_SOCKET(sd, buf, size)
 
 SOCKET
 #if defined(WINDOWS)
@@ -328,7 +339,7 @@ net_read_header (SOCKET sock_fd, MSG_HEADER * header)
     }
   else
     {
-      retval = net_read_int (sock_fd, header->msg_body_size_ptr);
+      retval = net_read_stream (sock_fd, (char *) header->msg_body_size_ptr, 4);
     }
 
   return retval;
@@ -518,6 +529,7 @@ static int
 read_buffer (SOCKET sock_fd, char *buf, int size)
 {
   int read_len = -1;
+  bool ssl_data_ready = false;
 #if defined(ASYNC_MODE)
   struct pollfd po[2] = { {0, 0, 0}, {0, 0, 0} };
   int timeout, po_size, n;
@@ -547,7 +559,15 @@ read_buffer (SOCKET sock_fd, char *buf, int size)
     }
 
 retry_poll:
-  n = poll (po, po_size, timeout);
+  if (ssl_client && is_ssl_data_ready (sock_fd))
+    {
+      po[0].revents = POLLIN;
+      n = 1;
+    }
+  else
+    {
+      n = poll (po, po_size, timeout);
+    }
   if (n < 0)
     {
       if (errno == EINTR)
@@ -581,7 +601,7 @@ retry_poll:
 	{
 #endif /* ASYNC_MODE */
 	  /* RECEIVE NEW REQUEST */
-	  read_len = READ_FROM_SOCKET (sock_fd, buf, size);
+	  read_len = READ_FROM_NET (sock_fd, buf, size);
 #if defined(ASYNC_MODE)
 	}
     }
@@ -643,7 +663,7 @@ retry_poll:
       else if (po[0].revents & POLLOUT)
 	{
 #endif /* ASYNC_MODE */
-	  write_len = WRITE_TO_SOCKET (sock_fd, buf, size);
+	  write_len = WRITE_TO_NET (sock_fd, buf, size);
 #if defined(ASYNC_MODE)
 	}
     }
