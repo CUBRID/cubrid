@@ -280,10 +280,10 @@ static char *object_to_string (DB_OBJECT * object, int format);
 static char *numeric_to_string (DB_VALUE * value, bool commas);
 static char *bit_to_string (DB_VALUE * value, char string_delimiter, bool plain_string);
 static char *set_to_string (DB_VALUE * value, char begin_notation, char end_notation, int max_entries,
-			    bool plain_string);
+			    bool plain_string, CSQL_OUTPUT_TYPE output_type, char column_encolser);
 static char *duplicate_string (const char *string);
 static char *string_to_string (const char *string_value, char string_delimiter, char string_introducer, int length,
-			       int *result_length, bool plain_string);
+			       int *result_length, bool plain_string, bool change_single_quote);
 static int get_object_print_format (void);
 
 /*
@@ -965,7 +965,7 @@ bit_to_string (DB_VALUE * value, char string_delimiter, bool plain_string)
       return (NULL);		/* Should never get here */
     }
 
-  return_string = string_to_string (temp_string, string_delimiter, 'X', strlen (temp_string), NULL, plain_string);
+  return_string = string_to_string (temp_string, string_delimiter, 'X', strlen (temp_string), NULL, plain_string, false);
   free_and_init (temp_string);
 
   return (return_string);
@@ -979,9 +979,11 @@ bit_to_string (DB_VALUE * value, char string_delimiter, bool plain_string)
  *   end_notation(in): character to use to denote end of set
  *   max_entries(in): maximum number of entries to convert. -1 for all
  *   plain_string(in): refine string for plain output
+ *   output_type(in): query output or loaddb output
+ *   column_encloser(in): column encloser for query output
  */
 static char *
-set_to_string (DB_VALUE * value, char begin_notation, char end_notation, int max_entries, bool plain_string)
+set_to_string (DB_VALUE * value, char begin_notation, char end_notation, int max_entries, bool plain_string, CSQL_OUTPUT_TYPE output_type, char column_encloser)
 {
   int cardinality, total_string_length, i;
   char **string_array;
@@ -1044,7 +1046,7 @@ set_to_string (DB_VALUE * value, char begin_notation, char end_notation, int max
 	{
 	  goto finalize;
 	}
-      string_array[i] = csql_db_value_as_string (&element, NULL, plain_string);
+      string_array[i] = csql_db_value_as_string (&element, NULL, plain_string, output_type, column_encloser);
       db_value_clear (&element);
       if (string_array[i] == NULL)
 	{
@@ -1224,15 +1226,17 @@ csql_string_to_plain_string (const char *string_value, int length, int *result_l
  *   length(in): length of the source string
  *   result_length(out): : length of output string
  *   plain_string(in): refine string for plain output
+ *   change_single_quote(in): refine string for query output
  */
 static char *
 string_to_string (const char *string_value, char string_delimiter, char string_introducer, int length,
-		  int *result_length, bool plain_string)
+		  int *result_length, bool plain_string, bool change_single_quote)
 {
   char *return_string;
   char *ptr;
   char *con_buf_ptr = NULL;
   int con_buf_size = 0;
+  int num_found = 0, i = 0;
 
   if (plain_string == true)
     {
@@ -1249,7 +1253,30 @@ string_to_string (const char *string_value, char string_delimiter, char string_i
       return NULL;
     }
 
-  if ((return_string = (char *) malloc (length + 4)) == NULL)
+  if (change_single_quote == true)
+    {
+      ptr = (char *) string_value;
+
+      while (*ptr != '\0')
+       {
+         if (*ptr == '\'')
+           {
+             num_found++;
+           }
+         ptr++;
+       }
+    }
+
+  if (num_found == 0) 
+    {
+      return_string = (char *) malloc (length + 4);
+    }
+  else
+    {
+      return_string = (char *) malloc (length + 4 + num_found);
+    }
+
+   if (!return_string)
     {
       return (NULL);
     }
@@ -1260,10 +1287,31 @@ string_to_string (const char *string_value, char string_delimiter, char string_i
       *ptr++ = string_introducer;
     }
   *ptr++ = string_delimiter;
-  memcpy (ptr, string_value, length);
-  ptr[length] = string_delimiter;
-  ptr = ptr + length + 1;
-  *ptr = 0;
+
+  if (change_single_quote == true)
+    {
+      for (i = 0; i < length; i++)
+        {
+          if (string_value[i] == '\'')
+            {
+              *(ptr++) = string_value[i];
+              *(ptr++) = '\'';
+            }
+          else
+            {
+              *(ptr++) = string_value[i];
+            }
+         }
+      *(ptr++) = string_delimiter;
+      *ptr = '\0';
+    }
+  else 
+    {
+      memcpy (ptr, string_value, length);
+      ptr[length] = string_delimiter;
+      ptr = ptr + length + 1;
+      *ptr = '\0';
+    }
 
   if (csql_text_utf8_to_console != NULL
       && (*csql_text_utf8_to_console) (return_string, strlen (return_string), &con_buf_ptr, &con_buf_size) == NO_ERROR)
@@ -1289,13 +1337,17 @@ string_to_string (const char *string_value, char string_delimiter, char string_i
  *   value(in): value to convert
  *   length(out): length of output string
  *   plain_output(in): refine string for plain output
+ *   output_type(in): query output or loaddb output
+ *   column_encloser(in): column encloser for query output
  */
 char *
-csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
+csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string, CSQL_OUTPUT_TYPE output_type, char column_encloser)
 {
   char *result = NULL;
   char *json_body = NULL;
   int len = 0;
+  char string_delimiter =  (output_type != CSQL_UNKNOWN_OUTPUT) ? column_encloser : default_string_profile.string_delimiter;
+  bool change_single_quote = (output_type != CSQL_UNKNOWN_OUTPUT);
 
   if (value == NULL)
     {
@@ -1394,7 +1446,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
 	      }
 	  }
 
-	result = string_to_string (str, default_string_profile.string_delimiter, '\0', bytes_size, &len, plain_string);
+	result = string_to_string (str, string_delimiter, '\0', bytes_size, &len, plain_string, change_single_quote);
 
 	if (decomposed != NULL)
 	  {
@@ -1435,7 +1487,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
 	      }
 	  }
 
-	result = string_to_string (str, default_string_profile.string_delimiter, 'N', bytes_size, &len, plain_string);
+	result = string_to_string (str, string_delimiter, 'N', bytes_size, &len, plain_string, change_single_quote);
 
 	if (decomposed != NULL)
 	  {
@@ -1445,7 +1497,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
       break;
     case DB_TYPE_VARBIT:
     case DB_TYPE_BIT:
-      result = bit_to_string (value, default_string_profile.string_delimiter, plain_string);
+      result = bit_to_string (value, string_delimiter, plain_string);
       if (result)
 	{
 	  len = strlen (result);
@@ -1478,16 +1530,28 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
       result = duplicate_string (json_body);
       db_private_free (NULL, json_body);
       if (result)
-	{
-	  len = strlen (result);
-	}
+        {
+          if (output_type == CSQL_QUERY_OUTPUT || output_type == CSQL_LOADDB_OUTPUT)
+            {
+              char *new_result;
+
+              new_result = string_to_string (result, column_encloser, '\0', strlen(result), &len, false, change_single_quote);
+
+              if (new_result)
+                {
+                  free (result);
+                  result = new_result;
+                }
+            }
+          len = strlen (result);
+        }
       break;
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
       result =
 	set_to_string (value, default_set_profile.begin_notation, default_set_profile.end_notation,
-		       default_set_profile.max_entries, plain_string);
+		       default_set_profile.max_entries, plain_string, output_type, column_encloser);
       if (result)
 	{
 	  len = strlen (result);
@@ -1498,7 +1562,14 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
 	char buf[TIME_BUF_SIZE];
 	if (db_time_to_string (buf, sizeof (buf), db_get_time (value)))
 	  {
-	    result = duplicate_string (buf);
+            if (output_type == CSQL_QUERY_OUTPUT || output_type == CSQL_LOADDB_OUTPUT)
+              {
+	        result = string_to_string (buf, column_encloser, '\0', strlen(buf), &len, false, false);
+              }
+            else
+              {
+	        result = duplicate_string (buf);
+              }
 	  }
 	if (result)
 	  {
@@ -1549,6 +1620,18 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
       result = date_as_string (db_get_date (value), default_date_profile.format);
       if (result)
 	{
+          if (output_type == CSQL_QUERY_OUTPUT || output_type == CSQL_LOADDB_OUTPUT)
+            {
+              char *new_result;
+
+	      new_result = string_to_string (result, column_encloser, '\0', strlen(result), &len, false, false);
+
+              if (new_result) 
+                {
+                  free (result);
+                  result = new_result;
+                }
+            }
 	  len = strlen (result);
 	}
       break;
@@ -1557,7 +1640,14 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
 	char buf[TIMESTAMP_BUF_SIZE];
 	if (db_utime_to_string (buf, sizeof (buf), db_get_timestamp (value)))
 	  {
-	    result = duplicate_string (buf);
+            if (output_type == CSQL_QUERY_OUTPUT || output_type == CSQL_LOADDB_OUTPUT)
+              {
+                result = string_to_string (buf, column_encloser, '\0', strlen(buf), &len, false, false);
+              }
+            else
+              {
+                result = duplicate_string (buf);
+              }
 	  }
 
 	if (result)
@@ -1572,7 +1662,14 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
 	DB_TIMESTAMPTZ *ts_tz = db_get_timestamptz (value);
 	if (db_timestamptz_to_string (buf, sizeof (buf), &(ts_tz->timestamp), &(ts_tz->tz_id)))
 	  {
-	    result = duplicate_string (buf);
+            if (output_type == CSQL_QUERY_OUTPUT || output_type == CSQL_LOADDB_OUTPUT)
+              {
+                result = string_to_string (buf, column_encloser, '\0', strlen(buf), &len, false, false);
+              }
+            else
+              {
+                result = duplicate_string (buf);
+              }
 	  }
 
 	if (result)
@@ -1587,7 +1684,14 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
 
 	if (db_timestampltz_to_string (buf, sizeof (buf), db_get_timestamp (value)))
 	  {
-	    result = duplicate_string (buf);
+            if (output_type == CSQL_QUERY_OUTPUT || output_type == CSQL_LOADDB_OUTPUT)
+              {
+                result = string_to_string (buf, column_encloser, '\0', strlen(buf), &len, false, false);
+              }
+            else
+              {
+                result = duplicate_string (buf);
+              }
 	  }
 
 	if (result)
@@ -1601,7 +1705,14 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
 	char buf[DATETIME_BUF_SIZE];
 	if (db_datetime_to_string (buf, sizeof (buf), db_get_datetime (value)))
 	  {
-	    result = duplicate_string (buf);
+            if (output_type == CSQL_QUERY_OUTPUT || output_type == CSQL_LOADDB_OUTPUT)
+              {
+                result = string_to_string (buf, column_encloser, '\0', strlen(buf), &len, false, false);
+              }
+            else
+              {
+                result = duplicate_string (buf);
+              }
 	  }
 
 	if (result)
@@ -1616,7 +1727,14 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
 	DB_DATETIMETZ *dt_tz = db_get_datetimetz (value);
 	if (db_datetimetz_to_string (buf, sizeof (buf), &(dt_tz->datetime), &(dt_tz->tz_id)))
 	  {
-	    result = duplicate_string (buf);
+            if (output_type == CSQL_QUERY_OUTPUT || output_type == CSQL_LOADDB_OUTPUT)
+              {
+                result = string_to_string (buf, column_encloser, '\0', strlen(buf), &len, false, false);
+              }
+            else
+              {
+                result = duplicate_string (buf);
+              }
 	  }
 
 	if (result)
@@ -1631,7 +1749,14 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
 
 	if (db_datetimeltz_to_string (buf, sizeof (buf), db_get_datetime (value)))
 	  {
-	    result = duplicate_string (buf);
+            if (output_type == CSQL_QUERY_OUTPUT || output_type == CSQL_LOADDB_OUTPUT)
+              {
+                result = string_to_string (buf, column_encloser, '\0', strlen(buf), &len, false, false);
+              }
+            else
+              {
+                result = duplicate_string (buf);
+              }
 	  }
 
 	if (result)
@@ -1672,6 +1797,18 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
 	const char *str;
 	char *decomposed = NULL;
 
+        if (output_type == CSQL_LOADDB_OUTPUT)
+          {
+            result = bigint_to_string (SHORT_TO_INT (db_get_enum_short (value)), default_short_profile.fieldwidth,
+                                       default_short_profile.leadingzeros, default_short_profile.leadingsymbol,
+                                       default_short_profile.commas, default_short_profile.format);
+            if (result)
+              {
+                len = strlen (result);
+              }
+            break;
+          } 
+
 	if (db_get_enum_short (value) == 0 && db_get_enum_string (value) == NULL)
 	  {
 	    /* ENUM special error value */
@@ -1706,7 +1843,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
 	      }
 	  }
 
-	result = string_to_string (str, default_string_profile.string_delimiter, '\0', bytes_size, &len, plain_string);
+	result = string_to_string (str, default_string_profile.string_delimiter, '\0', bytes_size, &len, plain_string, change_single_quote);
 	if (decomposed != NULL)
 	  {
 	    free_and_init (decomposed);

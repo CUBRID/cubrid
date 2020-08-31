@@ -1342,6 +1342,14 @@ typedef struct _ha_config
 #define CSQL_SKIP_COL_NAMES_L                   "skip-column-names"
 #define CSQL_SKIP_VACUUM_S			12017
 #define CSQL_SKIP_VACUUM_L			"skip-vacuum"
+#define CSQL_QUERY_OUTPUT_S			'q'
+#define CSQL_QUERY_OUTPUT_L			"query-output"
+#define CSQL_QUERY_COLUMN_DELIMITER_S		12018
+#define CSQL_QUERY_COLUMN_DELIMITER_L		"delimiter"
+#define CSQL_QUERY_COLUMN_ENCLOSER_S		12019
+#define CSQL_QUERY_COLUMN_ENCLOSER_L		"encloser"
+#define CSQL_LOADDB_OUTPUT_S			12020
+#define CSQL_LOADDB_OUTPUT_L			"loaddb-output"
 
 #define COMMDB_SERVER_LIST_S                    'P'
 #define COMMDB_SERVER_LIST_L                    "server-list"

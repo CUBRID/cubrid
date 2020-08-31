@@ -2043,7 +2043,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	    }
 	}
 
-      if (csql_arg->plain_output == false)
+      if (csql_arg->plain_output == false && csql_arg->query_output == false && csql_arg->loaddb_output == false)
 	{
 	  fprintf (csql_Output_fp, "%s\n", stmt_msg);
 	}
