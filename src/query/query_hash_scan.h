@@ -74,4 +74,4 @@ HASH_SCAN_KEY *qdata_copy_hscan_key (THREAD_ENTRY * thread_p, HASH_SCAN_KEY * ke
 
 int qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *key, void *data, void *args);
 
-#endif				/* _QUERY_HASH_SCAN_H_ */
+#endif /* _QUERY_HASH_SCAN_H_ */

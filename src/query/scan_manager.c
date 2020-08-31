@@ -8007,7 +8007,7 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
       return false;
     }
   /* list file size check */
-  if ((UINT64)llsidp->list_id->page_cnt * DB_PAGESIZE > mem_limit)
+  if ((UINT64) llsidp->list_id->page_cnt * DB_PAGESIZE > mem_limit)
     {
       return false;
     }
