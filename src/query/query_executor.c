@@ -25017,6 +25017,15 @@ qexec_free_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * proc
       return;
     }
 
+  /* clear group by regular var list */
+  for (REGU_VARIABLE_LIST p = proc->g_regu_list; p; p = p->next)
+    {
+      if (p->value.vfetch_to != NULL)
+	{
+	  pr_clear_value (p->value.vfetch_to);
+	}
+    }
+
   /* free value array */
   if (proc->agg_hash_context->temp_dbval_array != NULL)
     {
