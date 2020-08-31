@@ -4544,9 +4544,9 @@ fetch_val_list (THREAD_ENTRY * thread_p, regu_variable_list_node * regu_list, va
 	      rc = fetch_peek_dbval (thread_p, &regup->value, vd, class_oid, obj_oid, tpl, &tmp);
 	    }
 
-	  pr_clear_value (regup->value.vfetch_to);
 	  if (rc != NO_ERROR)
 	    {
+	      pr_clear_value (regup->value.vfetch_to);
 	      return ER_FAILED;
 	    }
 
