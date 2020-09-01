@@ -556,16 +556,17 @@ options valids:\n\
   -i, --input-class-file=FICHIER    FICHIER d'entrée des noms de tables\n\
                                     liste class_name doit être vide\n\
                                     par défaut: compactage de toutes les classes\n\
-                                    activé seulement en mode client-serveur\n\
   -p, --pages-commited-once=NOMBRE  NOMBRE maximum de pages d'enregistrer une fois\n\
                                     par défaut: 10\n\
                                     activé seulement en mode client-serveur\n\
   -S, --SA-mode                     exécution en mode autonome\n\
   -C, --CS-mode                     exécution en mode client-serveur\n\
   -d, --delete-old-repr             supprime des représentations anciennes des classes à partir du catalogue; par défaut: désactivé\n\
-  class_name_list                   activé seulement en mode client-serveur\n\
   -I, --Instance-lock-timeout       délai d'attente de verrouillage d'instance\n\
-  -c, --class-lock-timeout          délai d'attente de verrouillage de classes\n
+                                    activé seulement en mode client-serveur\n\
+  -c, --class-lock-timeout          délai d'attente de verrouillage de classes\n\
+                                    activé seulement en mode client-serveur\n\
+  class_name_list                   liste de noms de classe être compactés\n
 
 $set 15 MSGCAT_UTIL_SET_COMMDB
 21 Le maître CUBRID en cours d'exécution sur l'hôte %1$s \na été lancé à %2$s

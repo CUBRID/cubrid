@@ -568,16 +568,17 @@ opţiuni valide:\n\
   -i, --input-class-file=FIŞIER     fişier de intrare cu numele tabelelor\n\
                                     Lista de nume de clase (class_name) trebuie sa fie vidă\n\
                                     implicit: se compactează toate clasele\n\
-                                    activat numai în modul client-server (CS)\n\
   -p, --pages-commited-once=NUMĂR   numărul maxim de pagini ce pot fi comise/salvate o dată\n\
                                     implicit: 10\n\
                                     activat numai în modul client-server\n\
   -S, --SA-mode                     mod de execuţie independent\n\
   -C, --CS-mode                     mod de execuţie client-server\n\
   -d, --delete-old-repr             şterge reprezentările vechi ale claselor din catalog; implicit: dezactivat\n\
-  class_name_list                   activat numai în modul client-server\n\
   -I, --Instance-lock-timeout       timp de expirare pentru blocajele de instanţă\n\
-  -c, --class-lock-timeout          timp de expirare pentru blocajele de clasă\n
+                                    activat numai în modul client-server (CS)\n\
+  -c, --class-lock-timeout          timp de expirare pentru blocajele de clasă\n\
+                                    activat numai în modul client-server (CS)\n\
+  class_name_list                   lista numelui clasei să fie compactată\n
 
 $set 15 MSGCAT_UTIL_SET_COMMDB
 21 Procesul principal CUBRID master, aflat în funcţiune pe maşina gazdă %1$s \na fost pornit la %2$s

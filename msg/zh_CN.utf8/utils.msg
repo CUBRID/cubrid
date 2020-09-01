@@ -553,16 +553,17 @@ compactdb: 释放数据库中未使用的空间.\n\
   -i, --input-class-file=FILE       类名的输入文件\n\
                                     class_name 列表必须为空\n\
                                     默认: 压缩所有的类\n\
-                                    只在CS模式中有效\n\
   -p, --pages-commited-once=NUMBER  一次提交的最大页数目\n\
                                     默认: 10\n\
                                     只在CS模式中可用\n\
   -S, --SA-mode                     单机模式执行\n\
   -C, --CS-mode                     客户端-服务端模式执行\n\
   -d, --delete-old-repr             从目录中删除旧的类表述; 默认: 不使用\n\
-  class_name_list                   只在CS模式中有效\n\
   -I, --Instance-lock-timeout       实例锁的超时\n\
-  -c, --class-lock-timeout          类锁的超时\n
+                                    只在CS模式中有效\n\
+  -c, --class-lock-timeout          类锁的超时\n\
+                                    只在CS模式中有效\n\
+  class_name_list                   压缩类名列表\n
 
 $set 15 MSGCAT_UTIL_SET_COMMDB
 21 运行在主机 %1$s 上的 CUBRID master进程\n在 %2$s 启动.
