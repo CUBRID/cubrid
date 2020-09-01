@@ -613,9 +613,9 @@ target_external_dependencies(cubridsa
   LIBJANSSON
   LIBGPG_ERROR
   LIBGCRYPT
-  LIBLZO
   LIBEXPAT
   LIBEDIT
+  LZ4
   )
 target_include_directories(cubridsa PRIVATE
   ${FLEX_INCLUDE_DIRS}

@@ -1116,8 +1116,8 @@
 #define ER_SP_NOT_EXIST                             -894
 #define ER_SP_INVALID_TYPE                          -895
 
-#define ER_IO_LZO_COMPRESS_FAIL                     -896
-#define ER_IO_LZO_DECOMPRESS_FAIL                   -897
+#define ER_IO_LZ4_COMPRESS_FAIL                     -896
+#define ER_IO_LZ4_DECOMPRESS_FAIL                   -897
 
 #define ER_REPL_ERROR                               -898
 

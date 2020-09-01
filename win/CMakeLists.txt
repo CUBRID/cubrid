@@ -124,6 +124,10 @@ install(FILES
   DESTINATION ${CUBRID_BINDIR} COMPONENT Library
   RENAME libexpat.dll
  )
+ install(FILES
+   ${CMAKE_BINARY_DIR}/win/external/lz4/bin/liblz4.dll
+   DESTINATION ${CUBRID_BINDIR} COMPONENT Library
+ )
 
 # install pdb files for debugging on windows
 install(DIRECTORY
