@@ -20170,13 +20170,13 @@ primitive_type
 				dt->info.data_type.has_cs_spec = false;
 			      }
 
-			    if (coll_node)
+			    if (coll_node || coll_id != LANG_SYS_COLLATION)
 			      {
 				dt->info.data_type.has_coll_spec = true;
 			      }
 			    else
 			      {
-				dt->info.data_type.has_coll_spec = false;
+			        dt->info.data_type.has_coll_spec = false;
 			      }
 			  }
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (typ), dt);
