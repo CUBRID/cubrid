@@ -20170,7 +20170,7 @@ primitive_type
 				dt->info.data_type.has_cs_spec = false;
 			      }
 
-			    if (coll_node || coll_id != LANG_SYS_COLLATION)
+			    if (coll_node)
 			      {
 				dt->info.data_type.has_coll_spec = true;
 			      }
@@ -20363,14 +20363,7 @@ primitive_type
 				  }
 				else
 				  {
-				    if ((typ == PT_TYPE_VARCHAR || typ == PT_TYPE_VARNCHAR) && coll_id != LANG_SYS_COLLATION)
-				      {
-				        dt->info.data_type.has_coll_spec = true;
-				      }
-				    else
-				      {
-				        dt->info.data_type.has_coll_spec = false;
-				      }
+				    dt->info.data_type.has_coll_spec = false;
 				  }
 
 				break;

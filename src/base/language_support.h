@@ -62,14 +62,21 @@
   ((c) == LANG_COLL_ISO_BINARY_TS || (c) == LANG_COLL_UTF8_BINARY_TS \
    || (c) == LANG_COLL_EUCKR_BINARY_TS)
 
+#define LANG_IS_SAME_COLLATION(c1,c2)   \
+  (((c1) - (c2)) == 10 || ((c2) - (c1)) == 10)
+
 /* common collation to be used at runtime */
 #define LANG_RT_COMMON_COLL(c1, c2, coll)     \
-  do {					      \
-    coll = -1;				      \
-    if ((c1) == (c2))			      \
-      {					      \
-	coll = (c1);			      \
-      }					      \
+  do {                                        \
+    coll = -1;                                \
+    if ((c1) == (c2))                         \
+      {                                       \
+        coll = (c1);                          \
+      }                                       \
+    else if (LANG_IS_SAME_COLLATION(c1,c2))   \
+      {                                       \
+        coll = ((c1) > (c2))?(c1):(c2);       \
+      }                                       \
     else if (LANG_IS_COERCIBLE_COLL (c1))     \
       {					      \
 	if (!LANG_IS_COERCIBLE_COLL (c2))     \
