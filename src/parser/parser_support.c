@@ -8525,10 +8525,10 @@ pt_check_grammar_charset_collation (PARSER_CONTEXT * parser, PT_NODE * charset_n
 	  *coll_id = LANG_COLL_BINARY;
 	  return NO_ERROR;
 	}
-	if (type == PT_TYPE_VARCHAR || type == PT_TYPE_VARNCHAR)
-	  {
-	    *coll_id = *coll_id + 10; /* for trailing space sensitive */
-	  }
+      if (type == PT_TYPE_VARCHAR || type == PT_TYPE_VARNCHAR)
+	{
+	  *coll_id = *coll_id + 10;	/* for trailing space sensitive */
+	}
     }
 
   return NO_ERROR;
