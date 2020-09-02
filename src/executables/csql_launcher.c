@@ -293,54 +293,54 @@ main (int argc, char *argv[])
 	  csql_arg.skip_vacuum = true;
 	  break;
 
-        case CSQL_QUERY_OUTPUT_S:
-          csql_arg.query_output = true;
-          break;
+	case CSQL_QUERY_OUTPUT_S:
+	  csql_arg.query_output = true;
+	  break;
 
-        case CSQL_QUERY_COLUMN_DELIMITER_S:
-          {
-            int len = strlen(optarg);
+	case CSQL_QUERY_COLUMN_DELIMITER_S:
+	  {
+	    int len = strlen (optarg);
 
-            if (len == 1)
-              {
-                csql_arg.column_delimiter = optarg[0];
-              }
-            else if (len >= 2 && optarg[0] == '\\')
-              {
-                if (optarg[1] == 't')
-                  {
-                    csql_arg.column_delimiter = '\t';
-                  }
-                else if (optarg[1] == 'n')
-                  {
-                    csql_arg.column_delimiter = '\n';
-                  }
-                else
-                  {
-                    csql_arg.column_delimiter = optarg[0];
-                  }
-              }
-            else
-              {
-                csql_arg.column_delimiter = ',';
-              }
-          }
-          break;
+	    if (len == 1)
+	      {
+		csql_arg.column_delimiter = optarg[0];
+	      }
+	    else if (len >= 2 && optarg[0] == '\\')
+	      {
+		if (optarg[1] == 't')
+		  {
+		    csql_arg.column_delimiter = '\t';
+		  }
+		else if (optarg[1] == 'n')
+		  {
+		    csql_arg.column_delimiter = '\n';
+		  }
+		else
+		  {
+		    csql_arg.column_delimiter = optarg[0];
+		  }
+	      }
+	    else
+	      {
+		csql_arg.column_delimiter = ',';
+	      }
+	  }
+	  break;
 
-        case CSQL_QUERY_COLUMN_ENCLOSURE_S:
-          if (strlen(optarg) >= 1)
-            {
-              csql_arg.column_enclosure = optarg[0];
-            }
-          else 
-            {
-              csql_arg.column_enclosure = '\'';
-            }
-          break;
+	case CSQL_QUERY_COLUMN_ENCLOSURE_S:
+	  if (strlen (optarg) >= 1)
+	    {
+	      csql_arg.column_enclosure = optarg[0];
+	    }
+	  else
+	    {
+	      csql_arg.column_enclosure = '\'';
+	    }
+	  break;
 
-        case CSQL_LOADDB_OUTPUT_S:
-          csql_arg.loaddb_output = true;
-          break;
+	case CSQL_LOADDB_OUTPUT_S:
+	  csql_arg.loaddb_output = true;
+	  break;
 
 	case VERSION_S:
 	  utility_csql_print (MSGCAT_UTIL_GENERIC_VERSION, UTIL_CSQL_NAME, PRODUCT_STRING);
@@ -378,18 +378,18 @@ main (int argc, char *argv[])
     {
       check_output++;
     }
-  
-  if (csql_arg.query_output == true) 
+
+  if (csql_arg.query_output == true)
     {
       if (csql_arg.column_delimiter == -1)
-        {
-          csql_arg.column_delimiter = ',';
-        }
+	{
+	  csql_arg.column_delimiter = ',';
+	}
 
       if (csql_arg.column_enclosure == -1)
-        {
-          csql_arg.column_enclosure = '\'';
-        }
+	{
+	  csql_arg.column_enclosure = '\'';
+	}
       check_output++;
     }
   else if (csql_arg.column_delimiter != -1 || csql_arg.column_enclosure != -1)
@@ -406,10 +406,10 @@ main (int argc, char *argv[])
     }
 
   if (check_output > 1)
-   {
-     /* can't use -p, -q, and --loaddb-output together */
-     goto print_usage;
-   }
+    {
+      /* can't use -p, -q, and --loaddb-output together */
+      goto print_usage;
+    }
 
   if (csql_arg.sysadm && (csql_arg.user_name == NULL || strcasecmp (csql_arg.user_name, "DBA")))
     {
@@ -430,12 +430,12 @@ main (int argc, char *argv[])
     }
   else if (!csql_arg.sa_mode && csql_arg.skip_vacuum)
     {
-       /* Don't allow to skip vacuum on CS mode
-       goto print_usage;
-    }
-  else if (explicit_single_line && csql_arg.single_line_execution == false)
-    {
-      /* Don't allow both at once. */
+      /* Don't allow to skip vacuum on CS mode
+         goto print_usage;
+         }
+         else if (explicit_single_line && csql_arg.single_line_execution == false)
+         {
+         /* Don't allow both at once. */
       goto print_usage;
     }
   else if (csql_arg.sa_mode)
