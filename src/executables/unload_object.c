@@ -126,6 +126,7 @@ static const char *prohibited_classes[] = {
   CT_PARTITION_NAME,
   CT_COLLATION_NAME,
   CT_CHARSET_NAME,
+  CT_DUAL_NAME,
   /* catalog vclasses */
   CTV_CLASS_NAME,
   CTV_SUPER_CLASS_NAME,
