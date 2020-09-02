@@ -199,7 +199,7 @@ csql_results (const CSQL_ARGUMENT * csql_arg, DB_QUERY_RESULT * result, DB_QUERY
   /* trivial case - no results */
   if (result == NULL || (err = db_query_first_tuple (result)) == DB_CURSOR_END)
     {
-      if (csql_arg->plain_output == false && csql_arg->query_output == false && csql_arg->loaddb_output)
+      if (csql_arg->plain_output == false && csql_arg->query_output == false && csql_arg->loaddb_output == false)
 	{
 	  display_empty_result (stmt_type, line_no);
 	}
