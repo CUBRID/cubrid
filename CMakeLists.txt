@@ -129,9 +129,6 @@ set(WITH_LIBJANSSON_URL "http://www.digip.org/jansson/releases/jansson-2.10.tar.
 # editline library sources URL
 set(WITH_LIBEDIT_URL "http://thrysoee.dk/editline/libedit-20170329-3.1.tar.gz")
 
-# lzo library sources URL
-set(WITH_LIBLZO_URL "http://www.oberhumer.com/opensource/lzo/download/lzo-2.10.tar.gz")
-
 # rapidjson library sources URL
 set(WITH_RAPIDJSON_URL "https://github.com/Tencent/rapidjson/archive/v1.1.0.tar.gz")
 
@@ -145,13 +142,11 @@ set(WITH_SYSTEM_PREFIX "SYSTEM" CACHE STRING "System library prefix (default: SY
 set(WITH_LIBEXPAT     "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with expat library (default: EXTERNAL)")
 set(WITH_LIBJANSSON   "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with jansson library (default: EXTERNAL)")
 set(WITH_LIBEDIT      "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with editline library (default: EXTERNAL)")
-set(WITH_LIBLZO       "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with lzo library (default: EXTERNAL)")
 set(WITH_LIBNCURSES   "${WITH_SYSTEM_PREFIX}" CACHE STRING "Build with ncurses library (default: SYSTEM)")
 set(WITH_LIBOPENSSL   "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with openssl library (default: EXTERNAL)")
 
 message(STATUS "Build with Curses library: ${WITH_LIBNCURSES}")
 message(STATUS "Build with editline library: ${WITH_LIBEDIT}")
-message(STATUS "Build with lzo library: ${WITH_LIBLZO}")
 message(STATUS "Build with expat library: ${WITH_LIBEXPAT}")
 message(STATUS "Build with jansson library: ${WITH_LIBJANSSON}")
 message(STATUS "Build with openssl library: ${WITH_LIBOPENSSL}")
@@ -1034,48 +1029,32 @@ endif(UNIX)
 list(APPEND EP_LIBS ${LIBEDIT_LIBS})
 list(APPEND EP_INCLUDES ${LIBEDIT_INCLUDES})
 
-# WITH_LIBLZO can have multiple values with different meanings
-# on Linux:
-# * "EXTERNAL" - (default) builds lzo library from URL stored in ${WITH_LIBLZO_URL} uses the library created by the build
-# * "SYSTEM"   - use lzo library located in:
-#                  ${WITH_EXTERNAL_LIBS_PATH}
-#                  ${WITH_LIBLZO_ROOT_PATH}/lib
-#                use lzo headers located in:
-#                  ${WITH_EXTERNAL_HEADERS_PATH}
-#                  ${WITH_LIBLZO_ROOT_PATH}/include
-# on Windows:
-# * "EXTERNAL" - (default) uses the prebuilt library from cubrid/win/external
-if(WITH_LIBLZO STREQUAL "EXTERNAL")
-  set(LIBLZO_TARGET liblzo)
-  if(UNIX)
-    #compile LZO library given an internet url to a LZO archive
-    #e.g. http://www.oberhumer.com/opensource/lzo/download/lzo-2.10.tar.gz
-    externalproject_add(${LIBLZO_TARGET}
-      URL                  ${WITH_LIBLZO_URL}
-      TIMEOUT              600
-      DOWNLOAD_NO_PROGRESS 1
-      CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS}
-      BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      )
-    set(LIBLZO_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/liblzo2.a)
-    set(LIBLZO_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
-    list(APPEND EP_TARGETS ${LIBLZO_TARGET})
-  else(UNIX)
-    set(LIBLZO_LIBS ${CMAKE_SOURCE_DIR}/win/external/lib64/lzo2.lib)
-    set(LIBLZO_INCLUDES ${CMAKE_SOURCE_DIR}/win/external/include)
-  endif(UNIX)
-else(WITH_LIBLZO STREQUAL "SYSTEM")
-  if(UNIX)
-    find_library(LIBLZO_LIBS NAMES liblzo2.a PATHS ${WITH_EXTERNAL_LIBS_PATH} ${WITH_LIBLZO_ROOT_PATH}/lib REQUIRED)
-    find_path(LIBLZO_INCLUDES NAMES lzo/lzoconf.h lzo/lzo1x.h PATHS ${WITH_EXTERNAL_HEADERS_PATH} ${WITH_LIBLZO_ROOT_PATH}/include REQUIRED)
+# LZ4
+#
+set(LZ4_TARGET lz4)
+if(WIN32) # msvc-built lz4 v1.9.2 libraries 
+  set(LZ4_INCLUDES ${WINDOWS_EXTERNAL_DIR}/lz4/include)
+  set(LZ4_LIBS ${WINDOWS_EXTERNAL_DIR}/lz4/bin/liblz4.lib)
+  set(LZ4_DLL ${WINDOWS_EXTERNAL_DIR}/lz4/bin/liblz4.dll)
 
-    message(STATUS "Found lzo library: ${LIBLZO_LIBS}")
-    message(STATUS "Found lzo headers: ${LIBLZO_INCLUDES}")
-  endif(UNIX)
+  add_custom_target(${LZ4_TARGET}
+    COMMAND ${CMAKE_COMMAND} -E echo "  copying ${LZ4_DLL} to ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/liblz4.dll"
+    COMMAND ${CMAKE_COMMAND} -E copy ${LZ4_DLL} ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/liblz4.dll
+  )
+else()
+  externalproject_add(${LZ4_TARGET}
+    GIT_REPOSITORY https://github.com/lz4/lz4
+    GIT_TAG fdf2ef5             # https://github.com/lz4/lz4/releases/tag/v1.9.2
+    CONFIGURE_COMMAND ""        # no configure
+    BUILD_IN_SOURCE true        # lz4 Makefile is designed to run locally
+    BUILD_COMMAND make CFLAGS="-fPIC"  # to allow static linking in shared library
+    INSTALL_COMMAND ""          # suppress install
+  )
+  set(LZ4_INCLUDES ${CMAKE_BINARY_DIR}/external/Source/lz4/lib)
+  set(LZ4_LIBS ${CMAKE_BINARY_DIR}/external/Source/lz4/lib/liblz4.a)
 endif()
-list(APPEND EP_INCLUDES ${LIBLZO_INCLUDES})
-list(APPEND EP_LIBS ${LIBLZO_LIBS})
+list(APPEND EP_LIBS ${LZ4_LIBS})
+list(APPEND EP_INCLUDES ${LZ4_INCLUDES})
 
 # WITH_LOBOPENSSL can have multiple values with different meanings
 # on Linux:
@@ -1301,10 +1280,13 @@ if(WIN32)
     set(WIX_SUPPORTED_PLATFORM_CONDITION "Not VersionNT64")
     if(MSVC90)
       set(WIX_VCREDIST_MSM Microsoft_VC90_CRT_x86.msm)
+      set(WIX_VCREDIST_MFC_MSM Microsoft_VC90_MFC_x86.msm)
     elseif(MSVC10)
       set(WIX_VCREDIST_MSM Microsoft_VC100_CRT_x86.msm)
+      set(WIX_VCREDIST_MFC_MSM Microsoft_VC100_MFC_x86.msm)
     elseif(MSVC_VERSION GREATER_EQUAL 1910)
       set(WIX_VCREDIST_MSM Microsoft_VC141_CRT_x86.msm)
+      set(WIX_VCREDIST_MFC_MSM Microsoft_VC141_MFC_x86.msm)
     else()
       message(WARNING "Cannot generate MSI installer with unsupported compiler version")
     endif()
@@ -1314,10 +1296,13 @@ if(WIN32)
     set(WIX_SUPPORTED_PLATFORM_CONDITION "VersionNT64")
     if(MSVC90)
       set(WIX_VCREDIST_MSM Microsoft_VC90_CRT_x86_x64.msm)
+      set(WIX_VCREDIST_MFC_MSM Microsoft_VC90_MFC_x86_x64.msm)
     elseif(MSVC10)
       set(WIX_VCREDIST_MSM Microsoft_VC100_CRT_x64.msm)
+      set(WIX_VCREDIST_MFC_MSM Microsoft_VC100_MFC_x64.msm)
     elseif(MSVC_VERSION GREATER_EQUAL 1910) # ref. https://cmake.org/cmake/help/v3.9/variable/MSVC_VERSION.html
       set(WIX_VCREDIST_MSM Microsoft_VC141_CRT_x64.msm)
+      set(WIX_VCREDIST_MFC_MSM Microsoft_VC141_MFC_x64.msm)
     else()
       message(WARNING "Cannot generate MSI installer with unsupported compiler version")
     endif()

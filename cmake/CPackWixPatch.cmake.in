@@ -23,14 +23,24 @@
         <Show Dialog="JavaWarningDlg" Before="ResumeDlg"><![CDATA[NOT Installed AND JAVA_CURRENT_VERSION < "1.6"]]></Show>
       </InstallUISequence>
     </UI>
-<!-- Install the Visual C++ Redistributable -->
+<!-- Install the Visual C++ Redistributable for CRT-->
     <DirectoryRef Id="TARGETDIR">
       <Merge Id="VCRedist" SourceFile="$(env.ProgramFiles)\Common Files\Merge Modules\@WIX_VCREDIST_MSM@" DiskId="1" Language="0"/>
     </DirectoryRef>
     <Feature Id="VCRedist" Title="Visual C++ Runtime" AllowAdvertise="no" Display="hidden" Level="1">
       <MergeRef Id="VCRedist"/>
 <?endif?>
-    </Feature>
+    </Feature>	
+	
+<!-- Install the Visual C++ Redistributable for MFC -->
+    <DirectoryRef Id="TARGETDIR">
+      <Merge Id="VCMFCRedist" SourceFile="$(env.ProgramFiles)\Common Files\Merge Modules\@WIX_VCREDIST_MFC_MSM@" DiskId="1" Language="0"/>
+    </DirectoryRef>
+    <Feature Id="VCMFCRedist" Title="Visual C++ Runtime" AllowAdvertise="no" Display="hidden" Level="1">
+      <MergeRef Id="VCMFCRedist"/>
+<?endif?>
+    </Feature>	
+
 <!-- Create Env Var -->
     <ComponentGroup Id="CG_CREATE_ENV_VARS" Directory="CM_DP_Application.bin">
       <Component Id="CM_CREATE_ENV_VARS" Guid="{5a720552-96df-4eb4-b305-ac86d4276748}" KeyPath="yes">

@@ -491,7 +491,7 @@ if(WIN32)
   target_link_libraries(cubrid LINK_PRIVATE ws2_32 ${JVM_LIBS})
   set_target_properties(cubrid PROPERTIES LINK_FLAGS "/DEF:\"${CMAKE_SOURCE_DIR}/win/libcubrid/libcubrid.def\"" LINK_FLAGS_RELEASE "/NODEFAULTLIB:libcmt.lib" LINK_FLAGS_DEBUG "/NODEFAULTLIB:msvcrt.lib")
 endif(WIN32)
-target_include_directories(cubrid PRIVATE ${CMAKE_SOURCE_DIR}/src/heaplayers/util ${JAVA_INC} ${EP_INCLUDES} ${FLEX_INCLUDE_DIRS})
+target_include_directories(cubrid PRIVATE ${JAVA_INC} ${EP_INCLUDES} ${FLEX_INCLUDE_DIRS})
 if(UNIX)
   target_link_libraries(cubrid LINK_PRIVATE -Wl,-whole-archive ${EP_LIBS} -Wl,-no-whole-archive)
   target_link_libraries(cubrid LINK_PUBLIC ${CURSES_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} ${CMAKE_DL_LIBS})
@@ -523,7 +523,6 @@ if(AT_LEAST_ONE_UNIT_TEST)
     )
 
   target_include_directories(cubrid-win-lib PRIVATE
-    ${CMAKE_SOURCE_DIR}/src/heaplayers/util
     ${JAVA_INC}
     ${EP_INCLUDES}
     ${FLEX_INCLUDE_DIRS}

@@ -27,6 +27,7 @@ set(EXECUTABLE_SOURCES
   ${EXECUTABLES_DIR}/util_cs.c
   ${EXECUTABLES_DIR}/util_common.c
   ${EXECUTABLES_DIR}/compactdb.c
+  ${EXECUTABLES_DIR}/compactdb_common.c
   ${EXECUTABLES_DIR}/unloaddb.c
   ${EXECUTABLES_DIR}/unload_object.c
   ${EXECUTABLES_DIR}/unload_schema.c
@@ -484,6 +485,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${EXECUTABLES_DIR}/util_cs.c
   ${EXECUTABLES_DIR}/util_common.c
   ${EXECUTABLES_DIR}/compactdb.c
+  ${EXECUTABLES_DIR}/compactdb_common.c
   ${EXECUTABLES_DIR}/unloaddb.c
   ${EXECUTABLES_DIR}/unload_object.c
   ${EXECUTABLES_DIR}/unload_schema.c
@@ -607,13 +609,12 @@ endif(UNIX)
 target_external_dependencies(cubridsa
   LIBEXPAT
   LIBJANSSON
-  LIBLZO
   LIBEXPAT
   LIBEDIT
   LIBOPENSSL
+  LZ4
   )
 target_include_directories(cubridsa PRIVATE
-  ${CMAKE_SOURCE_DIR}/src/heaplayers/util  # this looks ugly
   ${FLEX_INCLUDE_DIRS}
   ${JAVA_INC}
   )

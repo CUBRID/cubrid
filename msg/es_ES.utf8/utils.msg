@@ -553,16 +553,17 @@ opciones validas:\n\
   -i, --input-class-file=FILE       ARCHIVO de entrada de nombres de tabla\n\
                                     lista class_name debe ser vacia\n\
                                     estandar: compactar todas clases\n\
-                                    habilitado solo en modo CS\n\
   -p, --pages-commited-once=NUMBER  numero maximo de paginas para cometer a la vez\n\
                                     estandar: 10\n\
                                     habilitado solo en modo CS\n\
   -S, --SA-mode                     modo de ejecucion independiente\n\
   -C, --CS-mode                     modo de ejecucion cliente-servidor\n\
   -d, --delete-old-repr             eliminar representaciones viejas de clase del catalogo; estandar: inhabilitado\n\
-  class_name_list                   habilitado solo en modo CS\n\
   -I, --Instance-lock-timeout       tiempo de expirar para bloqueo de instancia\n\
-  -c, --class-lock-timeout          tiempo de expirar para bloqueo de clase\n
+                                    habilitado solo en modo CS\n\
+  -c, --class-lock-timeout          tiempo de expirar para bloqueo de clase\n\
+                                    habilitado solo en modo CS\n\
+  class_name_list                   Nombres de clase compresivos\n
 
 $set 15 MSGCAT_UTIL_SET_COMMDB
 21 CUBRID master ejecutado en host %1$s \nha sido reinicializado a %2$s
