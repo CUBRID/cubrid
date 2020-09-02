@@ -709,9 +709,9 @@ metadata_of_page_buffer_status (void)
     {"Num_temp_pages", "int"},
     {"Num_pages_created", "bigint"},
     {"Num_pages_written", "bigint"},
-    {"pages_written_rate", "numeric(20,10)"},
+    {"Pages_written_rate", "numeric(20,10)"},
     {"Num_pages_read", "bigint"},
-    {"pages_read_rate", "numeric(20,10)"},
+    {"Pages_read_rate", "numeric(20,10)"},
     {"Num_flusher_waiting_threads", "int"}
   };
 
