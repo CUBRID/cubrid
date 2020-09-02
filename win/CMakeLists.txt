@@ -108,12 +108,6 @@ install(TARGETS
   RUNTIME DESTINATION ${CUBRID_BINDIR} COMPONENT Application
   )
 
-# install external pre-built DLLs
-install(FILES
-  ${CMAKE_SOURCE_DIR}/win/external/gcrypt/bin/gcrypt.dll
-  ${CMAKE_SOURCE_DIR}/win/external/gpg-error/bin/gpg-error.dll
-  DESTINATION ${CUBRID_BINDIR} COMPONENT Library
-  )
 install(FILES
   ${CMAKE_SOURCE_DIR}/win/external/dll/jansson64.dll
   DESTINATION ${CUBRID_BINDIR} COMPONENT Library

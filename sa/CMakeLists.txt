@@ -77,7 +77,6 @@ set(BASE_SOURCES
   ${BASE_DIR}/databases_file.c
   ${BASE_DIR}/encryption.c
   ${BASE_DIR}/sha1.c
-  ${BASE_DIR}/md5.c
   ${BASE_DIR}/base64.c
   ${BASE_DIR}/error_context.cpp
   ${BASE_DIR}/error_manager.c
@@ -532,7 +531,6 @@ SET_SOURCE_FILES_PROPERTIES(
   )
 
 SET_SOURCE_FILES_PROPERTIES(
-  ${BASE_DIR}/md5.c
   ${CSQL_GRAMMAR_OUTPUT}
   ${CSQL_LEXER_OUTPUT}
   ${ESQL_GRAMMAR_OUTPUT}
@@ -611,10 +609,9 @@ endif(UNIX)
 target_external_dependencies(cubridsa
   LIBEXPAT
   LIBJANSSON
-  LIBGPG_ERROR
-  LIBGCRYPT
   LIBEXPAT
   LIBEDIT
+  LIBOPENSSL
   LZ4
   )
 target_include_directories(cubridsa PRIVATE

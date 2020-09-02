@@ -101,7 +101,6 @@ set(BASE_SOURCES
   ${BASE_DIR}/locale_helper.cpp
   ${BASE_DIR}/locale_support.c
   ${BASE_DIR}/lockfree_bitmap.cpp
-  ${BASE_DIR}/md5.c
   ${BASE_DIR}/mem_block.cpp
   ${BASE_DIR}/memory_alloc.c
   ${BASE_DIR}/memory_hash.c
@@ -417,7 +416,6 @@ SET_SOURCE_FILES_PROPERTIES(
   PROPERTIES LANGUAGE CXX
   )
 SET_SOURCE_FILES_PROPERTIES(
-  ${BASE_DIR}/md5.c
   ${CSQL_GRAMMAR_OUTPUT}
   ${CSQL_LEXER_OUTPUT}
   ${ESQL_GRAMMAR_OUTPUT}

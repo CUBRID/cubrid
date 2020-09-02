@@ -99,7 +99,6 @@ set(BASE_SOURCES
   ${BASE_DIR}/lockfree_transaction_descriptor.cpp
   ${BASE_DIR}/lockfree_transaction_table.cpp
   ${BASE_DIR}/lockfree_transaction_system.cpp
-  ${BASE_DIR}/md5.c
   ${BASE_DIR}/mem_block.cpp
   ${BASE_DIR}/memory_alloc.c
   ${BASE_DIR}/memory_hash.c
@@ -428,11 +427,6 @@ SET_SOURCE_FILES_PROPERTIES(
   ${TRANSACTION_SOURCES}
   ${XASL_SOURCES}
   PROPERTIES LANGUAGE CXX
-  )
-
-SET_SOURCE_FILES_PROPERTIES(
-  ${BASE_DIR}/md5.c
-  PROPERTIES LANGUAGE C
   )
 
 set (CUBRID_LIB_SOURCES

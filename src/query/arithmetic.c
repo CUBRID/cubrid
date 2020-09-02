@@ -5044,12 +5044,7 @@ db_crc32_dbval (DB_VALUE * result, DB_VALUE * value)
 
       if (QSTR_IS_ANY_CHAR (type))
 	{
-	  error_status = crypt_crc32 (NULL, db_get_string (value), db_get_string_size (value), &hash_result);
-	  if (error_status != NO_ERROR)
-	    {
-	      goto error;
-	    }
-
+	  crypt_crc32 (db_get_string (value), db_get_string_size (value), &hash_result);
 	  db_make_int (result, hash_result);
 	}
       else
