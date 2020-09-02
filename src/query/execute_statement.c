@@ -16522,7 +16522,7 @@ do_set_names (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       error =
 	pt_check_grammar_charset_collation (parser, statement->info.set_names.charset_node,
-					    statement->info.set_names.collation_node, &charset_id, &collation_id);
+					    statement->info.set_names.collation_node, &charset_id, &collation_id, PT_TYPE_CHAR);
     }
 
   if (error == NO_ERROR)

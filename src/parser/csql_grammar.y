@@ -5256,7 +5256,7 @@ alter_clause_for_alter_list
 			  }
 
 			if (pt_check_grammar_charset_collation (this_parser, cs_node,
-								coll_node, &charset, &coll_id) == NO_ERROR)
+								coll_node, &charset, &coll_id, PT_TYPE_CHAR) == NO_ERROR)
 			  {
 			    if (node)
 			      {
@@ -5285,7 +5285,7 @@ alter_clause_for_alter_list
 			  }
 
 			if (pt_check_grammar_charset_collation (this_parser, NULL,
-								coll_node, &charset, &coll_id) == NO_ERROR)
+								coll_node, &charset, &coll_id, PT_TYPE_CHAR) == NO_ERROR)
 			  {
 			    if (node)
 			      {
@@ -19664,7 +19664,7 @@ of_cast_data_type
 			      case PT_TYPE_CHAR:
 			      case PT_TYPE_NCHAR:
 				if (pt_check_grammar_charset_collation
-				    (this_parser, charset_node, coll_node, &charset, &coll_id) == NO_ERROR)
+				    (this_parser, charset_node, coll_node, &charset, &coll_id, typ) == NO_ERROR)
 				  {
 				    dt->info.data_type.units = charset;
 				    dt->info.data_type.collation_id = coll_id;
@@ -20150,7 +20150,7 @@ primitive_type
 
 			    if (pt_check_grammar_charset_collation
 				  (this_parser, charset_node,
-				   coll_node, &charset, &coll_id) == NO_ERROR)
+				   coll_node, &charset, &coll_id, typ) == NO_ERROR)
 			      {
 				dt->info.data_type.units = charset;
 				dt->info.data_type.collation_id = coll_id;
@@ -20337,7 +20337,7 @@ primitive_type
 			      case PT_TYPE_VARNCHAR:
 				if (pt_check_grammar_charset_collation
 				      (this_parser, charset_node,
-				       coll_node, &charset, &coll_id) == NO_ERROR)
+				       coll_node, &charset, &coll_id, typ) == NO_ERROR)
 				  {
 				    dt->info.data_type.units = charset;
 				    dt->info.data_type.collation_id = coll_id;
@@ -20363,8 +20363,16 @@ primitive_type
 				  }
 				else
 				  {
-				    dt->info.data_type.has_coll_spec = false;
+				    if ((typ == PT_TYPE_VARCHAR || typ == PT_TYPE_VARNCHAR) && coll_id != LANG_SYS_COLLATION)
+				      {
+				        dt->info.data_type.has_coll_spec = true;
+				      }
+				    else
+				      {
+				        dt->info.data_type.has_coll_spec = false;
+				      }
 				  }
+
 				break;
 
 			      case PT_TYPE_BIT:
@@ -20557,7 +20565,7 @@ primitive_type
 			    else if (pt_check_grammar_charset_collation (
 					this_parser, charset_node,
 					coll_node, &charset,
-					&coll_id) == NO_ERROR)
+					&coll_id, PT_TYPE_CHAR) == NO_ERROR)
 			      {
 				if (charset_node)
 				  {
@@ -20906,7 +20914,7 @@ opt_using_charset
 			if (charset_node)
 			{
 			  if (pt_check_grammar_charset_collation
-			      (this_parser, charset_node, NULL, &charset, &dummy) == 0)
+			      (this_parser, charset_node, NULL, &charset, &dummy, PT_TYPE_CHAR) == 0)
 			    {
 			      parser_free_node (this_parser, charset_node);
 			    }
@@ -20944,7 +20952,7 @@ opt_using_charset
 			if (temp_node)
 			{
 			  if (pt_check_grammar_charset_collation
-				(this_parser, temp_node, NULL, &charset, &dummy) == 0)
+				(this_parser, temp_node, NULL, &charset, &dummy, PT_TYPE_CHAR) == 0)
 			    {
 				parser_free_node (this_parser, temp_node);
 			    }
@@ -23343,7 +23351,7 @@ char_string
 			  {
 			    pt_value_set_charset_coll (this_parser, node,
 						       INTL_CODESET_KSC5601_EUC,
-						       LANG_COLL_EUCKR_BINARY_TS,
+						       LANG_COLL_EUCKR_BINARY,
 						       true);
 			    node->info.value.has_cs_introducer = true;
 			  }
@@ -23364,7 +23372,7 @@ char_string
 			  {
 			    pt_value_set_charset_coll (this_parser, node,
 						       INTL_CODESET_ISO88591,
-						       LANG_COLL_ISO_BINARY_TS,
+						       LANG_COLL_ISO_BINARY,
 						       true);
 			    node->info.value.has_cs_introducer = true;
 			  }
@@ -23385,7 +23393,7 @@ char_string
 			  {
 			    pt_value_set_charset_coll (this_parser, node,
 						       INTL_CODESET_UTF8,
-						       LANG_COLL_UTF8_BINARY_TS,
+						       LANG_COLL_UTF8_BINARY,
 						       true);
 			    node->info.value.has_cs_introducer = true;
 			  }

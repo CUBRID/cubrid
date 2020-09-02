@@ -8441,7 +8441,7 @@ pt_mark_spec_list_for_update (PARSER_CONTEXT * parser, PT_NODE * statement)
  */
 int
 pt_check_grammar_charset_collation (PARSER_CONTEXT * parser, PT_NODE * charset_node, PT_NODE * coll_node, int *charset,
-				    int *coll_id)
+				    int *coll_id, PT_TYPE_ENUM type)
 {
   bool has_user_charset = false;
 
@@ -8512,19 +8512,23 @@ pt_check_grammar_charset_collation (PARSER_CONTEXT * parser, PT_NODE * charset_n
       switch (*charset)
 	{
 	case INTL_CODESET_ISO88591:
-	  *coll_id = LANG_COLL_ISO_BINARY_TS;
+	  *coll_id = LANG_COLL_ISO_BINARY;
 	  break;
 	case INTL_CODESET_KSC5601_EUC:
-	  *coll_id = LANG_COLL_EUCKR_BINARY_TS;
+	  *coll_id = LANG_COLL_EUCKR_BINARY;
 	  break;
 	case INTL_CODESET_UTF8:
-	  *coll_id = LANG_COLL_UTF8_BINARY_TS;
+	  *coll_id = LANG_COLL_UTF8_BINARY;
 	  break;
 	default:
 	  assert (*charset == INTL_CODESET_BINARY);
 	  *coll_id = LANG_COLL_BINARY;
-	  break;
+	  return NO_ERROR;
 	}
+	if (type == PT_TYPE_VARCHAR || type == PT_TYPE_VARNCHAR)
+	  {
+	    *coll_id = *coll_id + 10; /* for trailing space sensitive */
+	  }
     }
 
   return NO_ERROR;
