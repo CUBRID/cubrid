@@ -146,7 +146,7 @@ main (int argc, char *argv[])
     {CSQL_SKIP_VACUUM_L, 0, 0, CSQL_SKIP_VACUUM_S},
     {CSQL_QUERY_OUTPUT_L, 0, 0, CSQL_QUERY_OUTPUT_S},
     {CSQL_QUERY_COLUMN_DELIMITER_L, 1, 0, CSQL_QUERY_COLUMN_DELIMITER_S},
-    {CSQL_QUERY_COLUMN_ENCLOSER_L, 1, 0, CSQL_QUERY_COLUMN_ENCLOSER_S},
+    {CSQL_QUERY_COLUMN_ENCLOSURE_L, 1, 0, CSQL_QUERY_COLUMN_ENCLOSURE_S},
     {CSQL_LOADDB_OUTPUT_L, 0, 0, CSQL_LOADDB_OUTPUT_S},
     {VERSION_L, 0, 0, VERSION_S},
     {0, 0, 0, 0}
@@ -161,7 +161,7 @@ main (int argc, char *argv[])
   csql_arg.query_output = false;
   csql_arg.loaddb_output = false;
   csql_arg.column_delimiter = -1;
-  csql_arg.column_encloser = -1;
+  csql_arg.column_enclosure = -1;
   utility_make_getopt_optstring (csql_option, option_string);
 
   while (1)
@@ -327,14 +327,14 @@ main (int argc, char *argv[])
           }
           break;
 
-        case CSQL_QUERY_COLUMN_ENCLOSER_S:
+        case CSQL_QUERY_COLUMN_ENCLOSURE_S:
           if (strlen(optarg) >= 1)
             {
-              csql_arg.column_encloser = optarg[0];
+              csql_arg.column_enclosure = optarg[0];
             }
           else 
             {
-              csql_arg.column_encloser = '\'';
+              csql_arg.column_enclosure = '\'';
             }
           break;
 
@@ -386,22 +386,22 @@ main (int argc, char *argv[])
           csql_arg.column_delimiter = ',';
         }
 
-      if (csql_arg.column_encloser == -1)
+      if (csql_arg.column_enclosure == -1)
         {
-          csql_arg.column_encloser = '\'';
+          csql_arg.column_enclosure = '\'';
         }
       check_output++;
     }
-  else if (csql_arg.column_delimiter != -1 || csql_arg.column_encloser != -1)
+  else if (csql_arg.column_delimiter != -1 || csql_arg.column_enclosure != -1)
     {
-      /* delimiter and encloser can only use with query_output option */
+      /* delimiter and enclosure can only use with query_output option */
       goto print_usage;
     }
 
   if (csql_arg.loaddb_output == true)
     {
       csql_arg.column_delimiter = ' ';
-      csql_arg.column_encloser = '\'';
+      csql_arg.column_enclosure = '\'';
       check_output++;
     }
 

@@ -980,10 +980,10 @@ bit_to_string (DB_VALUE * value, char string_delimiter, bool plain_string)
  *   max_entries(in): maximum number of entries to convert. -1 for all
  *   plain_string(in): refine string for plain output
  *   output_type(in): query output or loaddb output
- *   column_encloser(in): column encloser for query output
+ *   column_enclosure(in): column enclosure for query output
  */
 static char *
-set_to_string (DB_VALUE * value, char begin_notation, char end_notation, int max_entries, bool plain_string, CSQL_OUTPUT_TYPE output_type, char column_encloser)
+set_to_string (DB_VALUE * value, char begin_notation, char end_notation, int max_entries, bool plain_string, CSQL_OUTPUT_TYPE output_type, char column_enclosure)
 {
   int cardinality, total_string_length, i;
   char **string_array;
@@ -1046,7 +1046,7 @@ set_to_string (DB_VALUE * value, char begin_notation, char end_notation, int max
 	{
 	  goto finalize;
 	}
-      string_array[i] = csql_db_value_as_string (&element, NULL, plain_string, output_type, column_encloser);
+      string_array[i] = csql_db_value_as_string (&element, NULL, plain_string, output_type, column_enclosure);
       db_value_clear (&element);
       if (string_array[i] == NULL)
 	{
@@ -1338,16 +1338,16 @@ string_to_string (const char *string_value, char string_delimiter, char string_i
  *   length(out): length of output string
  *   plain_output(in): refine string for plain output
  *   output_type(in): query output or loaddb output
- *   column_encloser(in): column encloser for query output
+ *   column_enclosure(in): column enclosure for query output
  */
 char *
-csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string, CSQL_OUTPUT_TYPE output_type, char column_encloser)
+csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string, CSQL_OUTPUT_TYPE output_type, char column_enclosure)
 {
   char *result = NULL;
   char *json_body = NULL;
   int len = 0;
-  char string_delimiter =  (output_type != CSQL_UNKNOWN_OUTPUT) ? column_encloser : default_string_profile.string_delimiter;
-  bool change_single_quote = (output_type != CSQL_UNKNOWN_OUTPUT);
+  char string_delimiter =  (output_type != CSQL_UNKNOWN_OUTPUT) ? column_enclosure : default_string_profile.string_delimiter;
+  bool change_single_quote = (output_type == CSQL_QUERY_OUTPUT && column_enclosure == '\'');
 
   if (value == NULL)
     {
@@ -1535,7 +1535,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string, CSQL_
             {
               char *new_result;
 
-              new_result = string_to_string (result, column_encloser, '\0', strlen(result), &len, false, change_single_quote);
+              new_result = string_to_string (result, column_enclosure, '\0', strlen(result), &len, false, change_single_quote);
 
               if (new_result)
                 {
@@ -1551,7 +1551,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string, CSQL_
     case DB_TYPE_SEQUENCE:
       result =
 	set_to_string (value, default_set_profile.begin_notation, default_set_profile.end_notation,
-		       default_set_profile.max_entries, plain_string, output_type, column_encloser);
+		       default_set_profile.max_entries, plain_string, output_type, column_enclosure);
       if (result)
 	{
 	  len = strlen (result);
@@ -1564,7 +1564,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string, CSQL_
 	  {
             if (output_type == CSQL_QUERY_OUTPUT || output_type == CSQL_LOADDB_OUTPUT)
               {
-	        result = string_to_string (buf, column_encloser, '\0', strlen(buf), &len, false, false);
+	        result = string_to_string (buf, column_enclosure, '\0', strlen(buf), &len, false, false);
               }
             else
               {
@@ -1624,7 +1624,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string, CSQL_
             {
               char *new_result;
 
-	      new_result = string_to_string (result, column_encloser, '\0', strlen(result), &len, false, false);
+	      new_result = string_to_string (result, column_enclosure, '\0', strlen(result), &len, false, false);
 
               if (new_result) 
                 {
@@ -1642,7 +1642,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string, CSQL_
 	  {
             if (output_type == CSQL_QUERY_OUTPUT || output_type == CSQL_LOADDB_OUTPUT)
               {
-                result = string_to_string (buf, column_encloser, '\0', strlen(buf), &len, false, false);
+                result = string_to_string (buf, column_enclosure, '\0', strlen(buf), &len, false, false);
               }
             else
               {
@@ -1664,7 +1664,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string, CSQL_
 	  {
             if (output_type == CSQL_QUERY_OUTPUT || output_type == CSQL_LOADDB_OUTPUT)
               {
-                result = string_to_string (buf, column_encloser, '\0', strlen(buf), &len, false, false);
+                result = string_to_string (buf, column_enclosure, '\0', strlen(buf), &len, false, false);
               }
             else
               {
@@ -1686,7 +1686,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string, CSQL_
 	  {
             if (output_type == CSQL_QUERY_OUTPUT || output_type == CSQL_LOADDB_OUTPUT)
               {
-                result = string_to_string (buf, column_encloser, '\0', strlen(buf), &len, false, false);
+                result = string_to_string (buf, column_enclosure, '\0', strlen(buf), &len, false, false);
               }
             else
               {
@@ -1707,7 +1707,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string, CSQL_
 	  {
             if (output_type == CSQL_QUERY_OUTPUT || output_type == CSQL_LOADDB_OUTPUT)
               {
-                result = string_to_string (buf, column_encloser, '\0', strlen(buf), &len, false, false);
+                result = string_to_string (buf, column_enclosure, '\0', strlen(buf), &len, false, false);
               }
             else
               {
@@ -1729,7 +1729,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string, CSQL_
 	  {
             if (output_type == CSQL_QUERY_OUTPUT || output_type == CSQL_LOADDB_OUTPUT)
               {
-                result = string_to_string (buf, column_encloser, '\0', strlen(buf), &len, false, false);
+                result = string_to_string (buf, column_enclosure, '\0', strlen(buf), &len, false, false);
               }
             else
               {
@@ -1751,7 +1751,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string, CSQL_
 	  {
             if (output_type == CSQL_QUERY_OUTPUT || output_type == CSQL_LOADDB_OUTPUT)
               {
-                result = string_to_string (buf, column_encloser, '\0', strlen(buf), &len, false, false);
+                result = string_to_string (buf, column_enclosure, '\0', strlen(buf), &len, false, false);
               }
             else
               {
@@ -1843,7 +1843,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string, CSQL_
 	      }
 	  }
 
-	result = string_to_string (str, default_string_profile.string_delimiter, '\0', bytes_size, &len, plain_string, change_single_quote);
+	result = string_to_string (str, string_delimiter, '\0', bytes_size, &len, plain_string, change_single_quote);
 	if (decomposed != NULL)
 	  {
 	    free_and_init (decomposed);

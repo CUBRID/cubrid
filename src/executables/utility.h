@@ -1346,9 +1346,9 @@ typedef struct _ha_config
 #define CSQL_QUERY_OUTPUT_L			"query-output"
 #define CSQL_QUERY_COLUMN_DELIMITER_S		12018
 #define CSQL_QUERY_COLUMN_DELIMITER_L		"delimiter"
-#define CSQL_QUERY_COLUMN_ENCLOSER_S		12019
-#define CSQL_QUERY_COLUMN_ENCLOSER_L		"encloser"
-#define CSQL_LOADDB_OUTPUT_S			12020
+#define CSQL_QUERY_COLUMN_ENCLOSURE_S		12019
+#define CSQL_QUERY_COLUMN_ENCLOSURE_L		"enclosure"
+#define CSQL_LOADDB_OUTPUT_S			'd'
 #define CSQL_LOADDB_OUTPUT_L			"loaddb-output"
 
 #define COMMDB_SERVER_LIST_S                    'P'

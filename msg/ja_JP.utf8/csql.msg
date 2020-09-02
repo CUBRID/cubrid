@@ -40,13 +40,17 @@ $set 1 MSGCAT_CSQL_SET_CSQL
   -c, --command=ARG            CSQLコマンド\n\
   -l, --line-output            一つのラインでバリューを表示\n\
   -r, --read-only              リードオンリーモード\n\
-  -t, --plain-output           display results in a script-friendly format (only works with -c and -i)\n\
-  -N, --skip-column-names      do not display column names in results (only works with -c and -i)\n\
+  -t, --plain-output           スクリプトに適した形式で結果を表示します（-cおよび-iでのみ機能します）\n\
+  -q, --query-output           クエリに適した形式で結果を表示します（-cおよび-iでのみ機能します）\n\
+  -d, --loaddb-output          loaddbに適した形式で結果を表示します（-cおよび-iでのみ機能します）\n\
+  -N, --skip-column-names      結果に列名を表示しません（-cおよび-iでのみ機能します）\n\
       --string-width           ストリングタイプの格コラムが表示される長さを制限する。\n\
       --no-auto-commit         自動コミットしない\n\
       --no-pager               ページ単位で表示しない\n\
       --no-single-line         シングルラインで実行しない\n\
       --no-trigger-action      トリガーアクションを無効にする\n\
+      --delimiter=ARG          列間の区切り文字（-qでのみ機能）\n\
+      --enclosure=ARG          結果文字列のエンクロージャ（-qでのみ機能）\n\
 \n\
 追加情報は「http://www.cubrid.org」で得られます。\n
 41 %1$s: 正しくない環境バリアブル「%2$s_MODE」 \n%3$s、または%4$sしかできません。\n
