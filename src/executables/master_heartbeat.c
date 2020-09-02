@@ -4197,11 +4197,11 @@ hb_resource_check_server_log_grow (void)
 	  if (proc->is_curr_eof_received)
 	    {
 #if !defined(WINDOWS)
-	      syslog (LOG_ALERT, "[CUBRID] no change to eof [%lld|%lld] received from (pid:%d)", proc->curr_eof.pageid,
-		      proc->curr_eof.offset, proc->pid);
+	      syslog (LOG_ALERT, "[CUBRID] no change to eof [%lld|%d] received from (pid:%d)",
+		      LSA_AS_ARGS (&proc->curr_eof), proc->pid);
 #endif
-	      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "no change to eof [%lld|%lld] received from (pid:%d)\n",
-				   proc->curr_eof.pageid, proc->curr_eof.offset, proc->pid);
+	      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "no change to eof [%lld|%d] received from (pid:%d)\n",
+				   LSA_AS_ARGS (&proc->curr_eof), proc->pid);
 	    }
 	  else
 	    {
@@ -4286,7 +4286,7 @@ hb_resource_receive_get_eof (CSS_CONN_ENTRY * conn)
       proc->is_curr_eof_received = true;
     }
 
-  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "received eof [%lld|%lld]\n", proc->curr_eof.pageid, proc->curr_eof.offset);
+  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "received eof [%lld|%d]\n", LSA_AS_ARGS (&proc->curr_eof));
 
   pthread_mutex_unlock (&hb_Resource->lock);
 
