@@ -1851,7 +1851,7 @@ try_again:
       pgbuf_hit = true;
 #endif /* ENABLE_SYSTEMTAP */
 
-      pgbuf_Pool.show_status.now.num_hit++;
+      ATOMIC_INC_64 (&(pgbuf_Pool.show_status.now.num_hit), 1);
 
       if (fetch_mode == NEW_PAGE)
 	{
@@ -2072,7 +2072,7 @@ try_again:
       assert (fetch_mode != NEW_PAGE || pgbuf_is_lsa_temporary (pgptr));
     }
 
-  pgbuf_Pool.show_status.now.num_page_request++;
+  ATOMIC_INC_64 (&(pgbuf_Pool.show_status.now.num_page_request), 1);
 
   /* Record number of fetches in statistics */
   if (perf.is_perf_tracking)
@@ -7537,7 +7537,7 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
     {
       /* Record number of reads in statistics */
       perfmon_inc_stat (thread_p, PSTAT_PB_NUM_IOREADS);
-      pgbuf_Pool.show_status.now.num_pages_read++;
+      ATOMIC_INC_64 (&(pgbuf_Pool.show_status.now.num_pages_read), 1);
 
 #if defined(ENABLE_SYSTEMTAP)
       query_id = qmgr_get_current_query_id (thread_p);
@@ -7652,8 +7652,8 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 	  perfmon_inc_stat (thread_p, PSTAT_SORT_NUM_DATA_PAGES);
 	}
 
-      pgbuf_Pool.show_status.now.num_pages_created++;
-      pgbuf_Pool.show_status.now.num_hit++;
+      ATOMIC_INC_64 (&(pgbuf_Pool.show_status.now.num_pages_created), 1);
+      ATOMIC_INC_64 (&(pgbuf_Pool.show_status.now.num_hit), 1);
     }
 
   return bufptr;
@@ -9854,7 +9854,7 @@ copy_unflushed_lsa:
     }
   else
     {
-      pgbuf_Pool.show_status.now.num_pages_written++;
+      ATOMIC_INC_64 (&(pgbuf_Pool.show_status.now.num_pages_written), 1);
 
       /* Record number of writes in statistics */
       write_mode = (dwb_is_created () == true ? FILEIO_WRITE_NO_COMPENSATE_WRITE : FILEIO_WRITE_DEFAULT_WRITE);
