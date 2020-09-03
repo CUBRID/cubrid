@@ -809,6 +809,8 @@ int g_original_buffer_len;
 %type <node> opt_class_attr_def_list
 %type <node> class_or_normal_attr_def_list
 %type <node> view_attr_def_list
+%type <node> attr_def_comment_list
+%type <node> attr_def_comment
 %type <node> attr_def_list
 %type <node> attr_def_list_with_commas
 %type <node> attr_def
@@ -5294,14 +5296,6 @@ alter_clause_for_alter_list
 			  }
 		DBG_PRINT}}
 	| class_comment_spec
-		{{
-			PT_NODE *node = parser_get_alter_node();
-			if (node)
-			  {
-			    node->info.alter.code = PT_CHANGE_TABLE_COMMENT;
-			    node->info.alter.alter_clause.comment.tbl_comment = $1;
-			  }
-		DBG_PRINT}}
 	;
 
 alter_clause_cubrid_specific
@@ -10516,6 +10510,46 @@ column_default_constraint_def
 
 			attr_node = parser_get_attr_def_one ();
 			attr_node->info.attr_def.data_default = node;
+
+		DBG_PRINT}}
+	;
+
+attr_def_comment_list
+	: attr_def_comment_list ',' attr_def_comment
+		{{
+
+			$$ = parser_make_link ($1, $3);
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos);
+
+		DBG_PRINT}}
+	| attr_def_comment
+		{{
+
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos);
+
+		DBG_PRINT}}
+	;
+
+attr_def_comment
+	: identifier opt_equalsign comment_value
+		{{
+
+			PT_NODE *attr_node = parser_new_node (this_parser, PT_ATTR_DEF);
+
+			if (attr_node)
+			  {
+				attr_node->info.attr_def.attr_name = $1;
+				attr_node->info.attr_def.comment = $3;
+			  }
+
+			if (attr_node != NULL && attr_node->info.attr_def.attr_type != PT_SHARED)
+			  {
+				attr_node->info.attr_def.attr_type = parser_attr_type;
+			  }
+
+			$$ = attr_node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos);
 
 		DBG_PRINT}}
 	;
@@ -20765,7 +20799,33 @@ class_comment_spec
 			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, node);
 			  }
 
-			$$ = node;
+			PT_NODE *alter_node = parser_get_alter_node();
+
+			if (alter_node)
+			  {
+				alter_node->info.alter.code = PT_CHANGE_TABLE_COMMENT;
+				alter_node->info.alter.alter_clause.comment.tbl_comment = node;
+			  }
+		DBG_PRINT}}
+	| COMMENT ON_ opt_of_column_attribute attr_def_comment_list
+		{{
+			PT_NODE *alter_node = parser_get_alter_node();
+
+			if (alter_node)
+			  {
+				alter_node->info.alter.code = PT_CHANGE_COLUMN_COMMENT;
+				alter_node->info.alter.alter_clause.attr_mthd.attr_def_list = $4;
+			  }
+		DBG_PRINT}}
+	| COMMENT ON_ CLASS ATTRIBUTE attr_def_comment_list 
+		{{
+			PT_NODE *alter_node = parser_get_alter_node();
+
+			if (alter_node)
+			  {
+				alter_node->info.alter.code = PT_CHANGE_COLUMN_COMMENT;
+				alter_node->info.alter.alter_clause.attr_mthd.attr_def_list = $5;
+			  }
 		DBG_PRINT}}
 	;
 
