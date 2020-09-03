@@ -698,28 +698,6 @@ static int qexec_get_attr_default (THREAD_ENTRY * thread_p, OR_ATTRIBUTE * attr,
  */
 
 /*
- * qexec_set_upd_ins_flag () -
- *   return: none
- *   xasl(in)   : xasl node for update or insert
- *   	outptr_list->valptr->value.flags set REGU_VARIABLE_UP_INS_LIST
- */
-static void
-qexec_set_upd_ins_flag (XASL_NODE * xasl)
-{
-  if (xasl->outptr_list)
-    {
-      if (xasl->outptr_list->valptrp)
-	{
-	  REGU_VARIABLE_LIST valptrp;
-	  for (valptrp = xasl->outptr_list->valptrp; valptrp; valptrp = valptrp->next)
-	    {
-	      valptrp->value.flags |= REGU_VARIABLE_UPD_INS_LIST;
-	    }
-	}
-    }
-}
-
-/*
  * qexec_eval_instnum_pred () -
  *   return:
  *   xasl(in)   :
@@ -23525,7 +23503,6 @@ qexec_execute_merge (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
       XASL_NODE *xptr = xasl->proc.merge.insert_xasl;
       if (xptr && xptr->aptr_list)
 	{
-	  qexec_set_upd_ins_flag (xptr->aptr_list);
 	  error = qexec_execute_mainblock (thread_p, xptr->aptr_list, xasl_state, NULL);
 	}
     }
