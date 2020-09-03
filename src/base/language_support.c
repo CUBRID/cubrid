@@ -351,6 +351,23 @@ static LANG_COLLATION coll_Utf8_en_cs = {
   lang_init_coll_Utf8_en_cs
 };
 
+static LANG_COLLATION coll_Utf8_en_cs_ts = {
+  INTL_CODESET_UTF8, 1, 1, DEFAULT_COLL_OPTIONS, NULL,
+  /* collation data */
+  {LANG_COLL_UTF8_EN_CS_TS, "utf8_en_cs_ts",
+   LANG_COLL_GENERIC_SORT_OPT,
+   lang_Weight_EN_cs, lang_Next_alpha_char_EN_cs, LANG_CHAR_COUNT_EN,
+   LANG_COLL_NO_EXP,
+   LANG_COLL_NO_CONTR,
+   "1bdb1b1f630edc508be37f66dfdce7b0"},
+  lang_fastcmp_byte_ts,
+  lang_strmatch_utf8,
+  lang_next_coll_char_utf8,
+  lang_split_key_utf8_ts,
+  lang_mht2str_byte,
+  lang_init_coll_Utf8_en_cs
+};
+
 /*
  * lang_init_common_en_ci () - init collation data for English case
  *			       insensitive (no matter the charset)
@@ -835,6 +852,23 @@ static LANG_COLLATION coll_Iso88591_en_ci = {
   lang_init_coll_en_ci
 };
 
+static LANG_COLLATION coll_Iso88591_en_ci_ts = {
+  INTL_CODESET_ISO88591, 1, 0, CI_COLL_OPTIONS, NULL,
+  /* collation data */
+  {LANG_COLL_ISO_EN_CI_TS, "iso88591_en_ci_ts",
+   LANG_COLL_GENERIC_SORT_OPT,
+   lang_Weight_EN_ci, lang_Next_alpha_char_EN_ci, LANG_CHAR_COUNT_EN,
+   LANG_COLL_NO_EXP,
+   LANG_COLL_NO_CONTR,
+   "b3fb4c073fbc76c5ec302da9128d9542"},
+  lang_fastcmp_byte_ts,
+  lang_strmatch_iso_88591,
+  lang_next_coll_byte,
+  lang_split_key_byte,
+  lang_mht2str_byte,
+  lang_init_coll_en_ci
+};
+
 static LANG_COLLATION coll_Utf8_en_ci = {
   INTL_CODESET_UTF8, 1, 1, CI_COLL_OPTIONS, NULL,
   /* collation data */
@@ -848,6 +882,23 @@ static LANG_COLLATION coll_Utf8_en_ci = {
   lang_strmatch_utf8,
   lang_next_coll_char_utf8,
   lang_split_key_utf8,
+  lang_mht2str_byte,
+  lang_init_coll_en_ci
+};
+
+static LANG_COLLATION coll_Utf8_en_ci_ts = {
+  INTL_CODESET_UTF8, 1, 1, CI_COLL_OPTIONS, NULL,
+  /* collation data */
+  {LANG_COLL_UTF8_EN_CI_TS, "utf8_en_ci_ts",
+   LANG_COLL_GENERIC_SORT_OPT,
+   lang_Weight_EN_ci, lang_Next_alpha_char_EN_ci, LANG_CHAR_COUNT_EN,
+   LANG_COLL_NO_EXP,
+   LANG_COLL_NO_CONTR,
+   "3050bc8e9814b196f4bbb84759aab77c"},
+  lang_fastcmp_byte_ts,
+  lang_strmatch_utf8,
+  lang_next_coll_char_utf8,
+  lang_split_key_utf8_ts,
   lang_mht2str_byte,
   lang_init_coll_en_ci
 };
@@ -921,6 +972,9 @@ static LANG_COLLATION *built_In_collations[] = {
   &coll_Iso_binary_ts,
   &coll_Utf8_binary_ts,
   &coll_Iso88591_en_cs_ts,
+  &coll_Iso88591_en_ci_ts,
+  &coll_Utf8_en_cs_ts,
+  &coll_Utf8_en_ci_ts,
   &coll_Utf8_ko_cs_ts,
   &coll_Euckr_bin_ts
 };
@@ -5554,6 +5608,7 @@ lang_initloc_en_iso88591 (LANG_LOCALE_DATA * ld)
   coll_Iso88591_en_cs.default_lang = ld;
   coll_Iso88591_en_cs_ts.default_lang = ld;
   coll_Iso88591_en_ci.default_lang = ld;
+  coll_Iso88591_en_ci_ts.default_lang = ld;
 
   ld->is_initialized = true;
 }
@@ -5708,7 +5763,9 @@ lang_initloc_en_utf8 (LANG_LOCALE_DATA * ld)
   coll_Utf8_binary.default_lang = ld;
   coll_Utf8_binary_ts.default_lang = ld;
   coll_Utf8_en_cs.default_lang = ld;
+  coll_Utf8_en_cs_ts.default_lang = ld;
   coll_Utf8_en_ci.default_lang = ld;
+  coll_Utf8_en_ci_ts.default_lang = ld;
 
   ld->is_initialized = true;
 }
