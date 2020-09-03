@@ -20806,6 +20806,8 @@ class_comment_spec
 				alter_node->info.alter.code = PT_CHANGE_TABLE_COMMENT;
 				alter_node->info.alter.alter_clause.comment.tbl_comment = node;
 			  }
+
+			$$ = node;
 		DBG_PRINT}}
 	| COMMENT ON_ opt_of_column_attribute attr_def_comment_list
 		{{
