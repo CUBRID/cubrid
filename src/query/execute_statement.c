@@ -13869,7 +13869,7 @@ dbmeth_print (DB_OBJECT * self, DB_VALUE * result, DB_VALUE * msg)
 int
 do_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  do_select_internal (parser, statement, false);
+  return do_select_internal (parser, statement, false);
 }
 
 /*
@@ -13883,7 +13883,7 @@ do_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 int
 do_select_for_ins_upd (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  do_select_internal (parser, statement, true);
+  return do_select_internal (parser, statement, true);
 }
 
 /*
