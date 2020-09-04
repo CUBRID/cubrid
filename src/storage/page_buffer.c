@@ -772,6 +772,9 @@ struct pgbuf_buffer_pool
   lockfree::circular_queue<int> *shared_lrus_with_victims;
   /* *INDENT-ON* */
 
+#if defined (SERVER_MODE)
+  pthread_mutex_t show_status_mutex;
+#endif
   PGBUF_SHOW_STATUS show_status;
 };
 
@@ -1471,6 +1474,9 @@ pgbuf_initialize (void)
       goto error;
     }
 
+#if defined(SERVER_MODE)
+  pthread_mutex_init (&pgbuf_Pool.show_status_mutex, NULL);
+#endif
   pgbuf_Pool.show_status.old.print_out_time = time (NULL);
 
   return NO_ERROR;
@@ -1663,6 +1669,10 @@ pgbuf_finalize (void)
       delete pgbuf_Pool.shared_lrus_with_victims;
       pgbuf_Pool.shared_lrus_with_victims = NULL;
     }
+
+#if defined(SERVER_MODE)
+  pthread_mutex_destroy (&pgbuf_Pool.show_status_mutex);
+#endif
 }
 
 /*
@@ -15941,6 +15951,10 @@ pgbuf_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int
 
   *ptr = NULL;
 
+#if defined(SERVER_MODE)
+  (void) pthread_mutex_lock (&pgbuf_Pool.show_status_mutex);
+#endif
+
   pgbuf_scan_bcb_table ();
 
   ctx = showstmt_alloc_array_context (thread_p, 1, num_cols);
@@ -16069,6 +16083,10 @@ pgbuf_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int
 
   *ptr = ctx;
 
+#if defined(SERVER_MODE)
+  pthread_mutex_unlock (&pgbuf_Pool.show_status_mutex);
+#endif
+
   return NO_ERROR;
 
 exit_on_error:
@@ -16077,6 +16095,10 @@ exit_on_error:
     {
       showstmt_free_array_context (thread_p, ctx);
     }
+
+#if defined(SERVER_MODE)
+  pthread_mutex_unlock (&pgbuf_Pool.show_status_mutex);
+#endif
 
   return error;
 }
