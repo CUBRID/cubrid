@@ -35,6 +35,10 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
+#if defined(WINDOWS)
+#include <io.h>
+#endif /* WINDOWS */
+
 #if !defined(CS_MODE)
 #include "heap_file.h"
 #include "btree.h"
