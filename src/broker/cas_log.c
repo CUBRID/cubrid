@@ -91,11 +91,11 @@ static char cas_log_error_flag;
 #endif
 static FILE *log_fp = NULL, *slow_log_fp = NULL;
 static char log_filepath[BROKER_PATH_MAX], slow_log_filepath[BROKER_PATH_MAX];
-static long saved_log_fpos = 0;
+static INT64 saved_log_fpos = 0;
 
 static size_t cas_fwrite (const void *ptr, size_t size, size_t nmemb, FILE * stream);
-static long int cas_ftell (FILE * stream);
-static int cas_fseek (FILE * stream, long int offset, int whence);
+static INT64 cas_ftell (FILE * stream);
+static int cas_fseek (FILE * stream, INT64 offset, int whence);
 static FILE *cas_fopen (const char *path, const char *mode);
 #if defined (WINDOWS)
 static FILE *cas_fopen_and_lock (const char *path, const char *mode);
@@ -1215,14 +1215,14 @@ cas_fwrite (const void *ptr, size_t size, size_t nmemb, FILE * stream)
   return result;
 }
 
-static long int
+static INT64
 cas_ftell (FILE * stream)
 {
   return ftell (stream);
 }
 
 static int
-cas_fseek (FILE * stream, long int offset, int whence)
+cas_fseek (FILE * stream, INT64 offset, int whence)
 {
   bool is_prev_time_set;
   int result;

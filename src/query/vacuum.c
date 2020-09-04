@@ -3487,7 +3487,7 @@ vacuum_worker_allocate_resources (THREAD_ENTRY * thread_p, VACUUM_WORKER * worke
     }
 
   /* Allocate log_zip */
-  worker->log_zip_p = log_zip_alloc (IO_PAGESIZE, false);
+  worker->log_zip_p = log_zip_alloc (IO_PAGESIZE);
   if (worker->log_zip_p == NULL)
     {
       vacuum_er_log_error (VACUUM_ER_LOG_WORKER, "%s", "Could not allocate log zip.");

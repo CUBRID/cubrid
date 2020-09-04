@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -766,7 +767,8 @@ static const char *cas_client_type_str[] = {
   "ODBC",			/* CAS_CLIENT_ODBC */
   "JDBC",			/* CAS_CLIENT_JDBC */
   "PHP",			/* CAS_CLIENT_PHP */
-  "OLEDB"			/* CAS_CLIENT_OLEDB */
+  "OLEDB",			/* CAS_CLIENT_OLEDB */
+  "INTERNAL_JDBC"		/* CAS_CLIENT_SERVER_SIDE_JDBC */
 };
 
 static THREAD_FUNC
@@ -847,6 +849,37 @@ receiver_thr_f (void *arg)
 	  continue;
 	}
 
+      if (strncmp (cas_req_header, "ST", 2) == 0)
+	{
+	  int status = FN_STATUS_NONE;
+	  int pid, i;
+	  unsigned int session_id;
+
+	  memcpy ((char *) &pid, cas_req_header + 2, 4);
+	  pid = ntohl (pid);
+	  memcpy ((char *) &session_id, cas_req_header + 6, 4);
+	  session_id = ntohl (session_id);
+
+	  if (shm_br->br_info[br_index].shard_flag == OFF)
+	    {
+	      for (i = 0; i < shm_br->br_info[br_index].appl_server_max_num; i++)
+		{
+		  if (shm_appl->as_info[i].service_flag == SERVICE_ON && shm_appl->as_info[i].pid == pid)
+		    {
+		      if (session_id == shm_appl->as_info[i].session_id)
+			{
+			  status = shm_appl->as_info[i].fn_status;
+			}
+		      break;
+		    }
+		}
+	    }
+
+	  CAS_SEND_ERROR_CODE (clt_sock_fd, status);
+	  CLOSE_SOCKET (clt_sock_fd);
+	  continue;
+	}
+
       /*
        * Query cancel message (size in bytes)
        *
@@ -858,8 +891,8 @@ receiver_thr_f (void *arg)
        *
        *   CLIENT_PORT can be 0 if the client failed to get its local port.
        */
-      if (strncmp (cas_req_header, "QC", 2) == 0 || strncmp (cas_req_header, "CANCEL", 6) == 0
-	  || strncmp (cas_req_header, "X1", 2) == 0)
+      else if (strncmp (cas_req_header, "QC", 2) == 0 || strncmp (cas_req_header, "CANCEL", 6) == 0
+	       || strncmp (cas_req_header, "X1", 2) == 0)
 	{
 	  int ret_code = 0;
 #if !defined(WINDOWS)
@@ -926,10 +959,19 @@ receiver_thr_f (void *arg)
 	}
 
       cas_client_type = cas_req_header[SRV_CON_MSG_IDX_CLIENT_TYPE];
-      if (strncmp (cas_req_header, SRV_CON_CLIENT_MAGIC_STR, SRV_CON_CLIENT_MAGIC_LEN) != 0
+      if (!(strncmp (cas_req_header, SRV_CON_CLIENT_MAGIC_STR, SRV_CON_CLIENT_MAGIC_LEN) == 0
+	    || strncmp (cas_req_header, SRV_CON_CLIENT_MAGIC_STR_SSL, SRV_CON_CLIENT_MAGIC_LEN) == 0)
 	  || cas_client_type < CAS_CLIENT_TYPE_MIN || cas_client_type > CAS_CLIENT_TYPE_MAX)
 	{
-	  send_error_to_driver (clt_sock_fd, CAS_ER_COMMUNICATION, cas_req_header);
+	  send_error_to_driver (clt_sock_fd, CAS_ER_NOT_AUTHORIZED_CLIENT, cas_req_header);
+	  CLOSE_SOCKET (clt_sock_fd);
+	  continue;
+	}
+
+      if ((IS_SSL_CLIENT (cas_req_header) && shm_br->br_info[br_index].use_SSL == OFF)
+	  || (!IS_SSL_CLIENT (cas_req_header) && shm_br->br_info[br_index].use_SSL == ON))
+	{
+	  send_error_to_driver (clt_sock_fd, CAS_ER_SSL_TYPE_NOT_ALLOWED, cas_req_header);
 	  CLOSE_SOCKET (clt_sock_fd);
 	  continue;
 	}

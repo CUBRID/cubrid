@@ -45,7 +45,6 @@
 #include "tz_support.h"
 #include "db_date.h"
 #include "misc_string.h"
-#include "md5.h"
 #include "crypt_opfunc.h"
 #include "base64.h"
 #include "tz_support.h"
@@ -2626,8 +2625,8 @@ db_string_aes_encrypt (DB_VALUE const *src, DB_VALUE const *key, DB_VALUE * resu
   if (QSTR_IS_ANY_CHAR (src_type) && QSTR_IS_ANY_CHAR (key_type))
     {
       error_status =
-	crypt_aes_default_encrypt (NULL, db_get_string (src), db_get_string_length (src), db_get_string (key),
-				   db_get_string_length (key), &result_strp, &result_len);
+	crypt_default_encrypt (NULL, db_get_string (src), db_get_string_length (src), db_get_string (key),
+			       db_get_string_length (key), &result_strp, &result_len, AES_128_ECB);
       if (error_status != NO_ERROR)
 	{
 	  goto error;
@@ -2694,8 +2693,8 @@ db_string_aes_decrypt (DB_VALUE const *src, DB_VALUE const *key, DB_VALUE * resu
   if (QSTR_IS_ANY_CHAR (src_type) && QSTR_IS_ANY_CHAR (key_type))
     {
       error_status =
-	crypt_aes_default_decrypt (NULL, db_get_string (src), db_get_string_length (src), db_get_string (key),
-				   db_get_string_length (key), &result_strp, &result_len);
+	crypt_default_decrypt (NULL, db_get_string (src), db_get_string_length (src), db_get_string (key),
+			       db_get_string_length (key), &result_strp, &result_len, AES_128_ECB);
       if (error_status != NO_ERROR)
 	{
 	  goto error;
@@ -2770,9 +2769,11 @@ db_string_md5 (DB_VALUE const *val, DB_VALUE * result)
 
 	  db_make_null (&hash_string);
 
-	  md5_buffer (db_get_string (val), db_get_string_length (val), hashString);
-
-	  md5_hash_to_hex (hashString, hashString);
+	  error_status = crypt_md5_buffer_hex (db_get_string (val), db_get_string_length (val), hashString);
+	  if (error_status != NO_ERROR)
+	    {
+	      return error_status;
+	    }
 
 	  /* dump result as hex string */
 	  qstr_make_typed_string (DB_TYPE_CHAR, &hash_string, 32, hashString, 32, db_get_string_codeset (val),
@@ -4030,7 +4031,15 @@ qstr_pad (MISC_OPERAND pad_operand, int pad_length, const unsigned char *pad_cha
   int pad_reminder_size = 0;
   int error_status = NO_ERROR;
 
-  intl_pad_char (codeset, def_pad_char, &def_pad_char_size);
+  if (codeset == INTL_CODESET_KSC5601_EUC)
+    {
+      def_pad_char[0] = ' ';
+      def_pad_char_size = 1;
+    }
+  else
+    {
+      intl_pad_char (codeset, def_pad_char, &def_pad_char_size);
+    }
 
   if (pad_charset_length == 0)
     {
@@ -9939,8 +9948,25 @@ qstr_bit_coerce (const unsigned char *src, int src_length, int src_precision, DB
    */
   if (src_padded_length > dest_precision)
     {
+      int i, n = 0;
+      i = dest_precision / 8;
+      if (src[i] & (0x80 >> (dest_precision % 8)) || ((src[i] << (dest_precision % 8)) & 0xff))
+	{
+	  *data_status = DATA_STATUS_TRUNCATED;
+	}
+      else
+	{
+	  i++;			/* for check reamin trailing bits */
+	  for (; i < (src_padded_length + 4) / 8; i++)
+	    {
+	      if (src[i])
+		{
+		  *data_status = DATA_STATUS_TRUNCATED;
+		  break;
+		}
+	    }
+	}
       src_padded_length = dest_precision;
-      *data_status = DATA_STATUS_TRUNCATED;
     }
 
   copy_length = MIN (src_length, src_padded_length);
@@ -27124,7 +27150,7 @@ db_guid (THREAD_ENTRY * thread_p, DB_VALUE * result)
   db_make_null (result);
 
   /* Generate random bytes */
-  error_code = crypt_generate_random_bytes (thread_p, guid_bytes, GUID_STANDARD_BYTES_LENGTH);
+  error_code = crypt_generate_random_bytes (guid_bytes, GUID_STANDARD_BYTES_LENGTH);
 
   if (error_code != NO_ERROR)
     {

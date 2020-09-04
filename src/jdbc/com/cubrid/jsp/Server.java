@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  * Redistribution and use in source and binary forms, with or without modification, 
  * are permitted provided that the following conditions are met: 
@@ -39,34 +40,35 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 public class Server {
-	private static String serverName;
-
-	private static String spPath;
-
-	private static String rootPath;
-
-	private ServerSocket serverSocket;
-
-	private static Logger logger = Logger.getLogger("com.cubrid.jsp");
-
+	private static final Logger logger = Logger.getLogger("com.cubrid.jsp");
 	private static final String LOG_DIR = "log";
+	
+	private static String serverName;
+	private static String spPath;
+	private static String rootPath;
+	
+	private ServerSocket serverSocket;
+	private Thread socketListener;
 
-	public Server(String name, String path, String version, String rPath)
+	public Server(String name, String path, String version, String rPath, String port)
 			throws IOException {
 		serverName = name;
 		spPath = path;
 		rootPath = rPath;
-		serverSocket = new ServerSocket(0);
 
 		try {
-			Class.forName("cubrid.jdbc.driver.CUBRIDDriver");
-		} catch (ClassNotFoundException e1) {
-			e1.printStackTrace();
-		}
-		System.setSecurityManager(new SpSecurityManager());
-		System.setProperty("cubrid.server.version", version);
+		  int port_number = Integer.parseInt(port);
+		  serverSocket = new ServerSocket(port_number);
 
-		new Thread(new Runnable() {
+		  Class.forName("cubrid.jdbc.driver.CUBRIDDriver");
+		  System.setSecurityManager(new SpSecurityManager());
+		  System.setProperty("cubrid.server.version", version);
+		} catch (Exception e) {
+			log(e);
+			e.printStackTrace();
+		}
+
+		socketListener = new Thread(new Runnable() {
 			public void run() {
 				Socket client = null;
 				while (true) {
@@ -79,7 +81,8 @@ public class Server {
 					}
 				}
 			}
-		}).start();
+		});
+		socketListener.start();
 	}
 
 	private int getServerPort() {
@@ -96,7 +99,7 @@ public class Server {
 
 	public static int start(String[] args) {
 		try {
-			Server server = new Server(args[0], args[1], args[2], args[3]);
+			Server server = new Server(args[0], args[1], args[2], args[3], args[4]);
 			return server.getServerPort();
 		} catch (Exception e) {
 			e.printStackTrace();

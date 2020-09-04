@@ -1116,8 +1116,8 @@
 #define ER_SP_NOT_EXIST                             -894
 #define ER_SP_INVALID_TYPE                          -895
 
-#define ER_IO_LZO_COMPRESS_FAIL                     -896
-#define ER_IO_LZO_DECOMPRESS_FAIL                   -897
+#define ER_IO_LZ4_COMPRESS_FAIL                     -896
+#define ER_IO_LZ4_DECOMPRESS_FAIL                   -897
 
 #define ER_REPL_ERROR                               -898
 
@@ -1618,8 +1618,9 @@
 #define ER_TDE_RESTORE_MAKE_KEYS_FILE_OLD           -1258
 #define ER_TDE_RESTORE_COPY_KEYS_FILE               -1259
 #define ER_TDE_RESTORE_CHANGE_MASTER_KEY            -1260
+#define ER_LOG_UPTODATE_ERROR                       -1261
 
-#define ER_LAST_ERROR                               -1261
+#define ER_LAST_ERROR                               -1262
 
 /*
  * CAUTION!

@@ -2720,7 +2720,7 @@ la_apply_pre (void)
 
   if (la_Info.undo_unzip_ptr == NULL)
     {
-      la_Info.undo_unzip_ptr = log_zip_alloc (la_Info.act_log.db_iopagesize, false);
+      la_Info.undo_unzip_ptr = log_zip_alloc (la_Info.act_log.db_iopagesize);
       if (la_Info.undo_unzip_ptr == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, la_Info.act_log.db_iopagesize);
@@ -2730,7 +2730,7 @@ la_apply_pre (void)
 
   if (la_Info.redo_unzip_ptr == NULL)
     {
-      la_Info.redo_unzip_ptr = log_zip_alloc (la_Info.act_log.db_iopagesize, false);
+      la_Info.redo_unzip_ptr = log_zip_alloc (la_Info.act_log.db_iopagesize);
       if (la_Info.redo_unzip_ptr == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, la_Info.act_log.db_iopagesize);
@@ -3903,8 +3903,8 @@ la_get_undoredo_diff (LOG_PAGE ** pgptr, LOG_PAGEID * pageid, PGLENGTH * offset,
 	{
 	  free_and_init (*undo_data);
 
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZO_DECOMPRESS_FAIL, 0);
-	  return ER_IO_LZO_DECOMPRESS_FAIL;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZ4_DECOMPRESS_FAIL, 0);
+	  return ER_IO_LZ4_DECOMPRESS_FAIL;
 	}
     }
 
@@ -4199,8 +4199,8 @@ la_get_log_data (LOG_RECORD_HEADER * lrec, LOG_LSA * lsa, LOG_PAGE * pgptr, unsi
 		{
 		  free_and_init (undo_data);
 		}
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZO_DECOMPRESS_FAIL, 0);
-	      return ER_IO_LZO_DECOMPRESS_FAIL;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZ4_DECOMPRESS_FAIL, 0);
+	      return ER_IO_LZ4_DECOMPRESS_FAIL;
 	    }
 	}
 
@@ -4495,8 +4495,8 @@ la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec, LOG_PAGE * pgptr, void **
 				    {
 				      free_and_init (undo_data);
 				    }
-				  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZO_DECOMPRESS_FAIL, 0);
-				  return ER_IO_LZO_DECOMPRESS_FAIL;
+				  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZ4_DECOMPRESS_FAIL, 0);
+				  return ER_IO_LZ4_DECOMPRESS_FAIL;
 				}
 			    }
 
@@ -7860,14 +7860,6 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
   (void) os_set_signal_handler (SIGTERM, la_shutdown_by_signal);
   (void) os_set_signal_handler (SIGPIPE, SIG_IGN);
 #endif /* ! WINDOWS */
-
-  if (lzo_init () != LZO_E_OK)
-    {
-      /* may be impossible */
-      er_log_debug (ARG_FILE_LINE, "Cannot initialize LZO");
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      return ER_GENERIC_ERROR;
-    }
 
   strncpy (la_slave_db_name, database_name, DB_MAX_IDENTIFIER_LENGTH);
   s = strchr (la_slave_db_name, '@');

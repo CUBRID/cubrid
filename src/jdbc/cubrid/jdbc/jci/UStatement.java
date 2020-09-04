@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  * Redistribution and use in source and binary forms, with or without modification, 
  * are permitted provided that the following conditions are met: 
@@ -42,6 +43,7 @@ import java.sql.Blob;
 import java.sql.Clob;
 import java.sql.Date;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Time;
 import java.sql.Timestamp;
 import java.util.ArrayList;
@@ -50,7 +52,6 @@ import java.util.HashMap;
 import cubrid.jdbc.driver.CUBRIDBlob;
 import cubrid.jdbc.driver.CUBRIDClob;
 import cubrid.jdbc.driver.CUBRIDOutResultSet;
-import cubrid.jdbc.driver.CUBRIDBinaryString;
 import cubrid.sql.CUBRIDOID;
 import cubrid.sql.CUBRIDTimestamptz;
 
@@ -193,6 +194,19 @@ public class UStatement {
 		 * 3.0 resultset_index = 0; resultset_index_flag =
 		 * java.sql.Statement.CLOSE_CURRENT_RESULT;
 		 */
+	}
+	
+	public void initToReuse() throws UJciException {
+		commandTypeIs = firstStmtType;
+		isFetchCompleted = false;
+		
+		currentFirstCursor = cursorPosition = totalTupleNumber = fetchedTupleNumber = 0;
+		maxFetchSize = 0;
+		realFetched = false;
+		isClosed = false;
+
+		if (commandTypeIs == CUBRIDCommandType.CUBRID_STMT_CALL_SP)
+			columnNumber = parameterNumber + 1;
 	}
 
 	UStatement(UConnection relatedC, CUBRIDOID oid, String attributeName[],
@@ -385,7 +399,10 @@ public class UStatement {
 	}
 
 	public void bind(int index, String value) {
-		bindValue(index, UUType.U_TYPE_STRING, value);
+                if (relatedConnection.getOracleStyleEmpltyString()) {
+                    if ("".equals(value)) value = null;
+		}
+                bindValue(index, UUType.U_TYPE_STRING, value);
 	}
 
 	public void bind(int index, byte[] value) {
@@ -432,6 +449,12 @@ public class UStatement {
 			return;
 		}
 
+                if (type == UUType.U_TYPE_STRING) {
+                    if (relatedConnection.getOracleStyleEmpltyString()) {
+                        if ("".equals(value)) value = null;
+                    }
+                }
+
 		bindValue(index, type, value);
 	}
 
@@ -442,7 +465,16 @@ public class UStatement {
 			collectionData = null;
 		} else {
 			try {
-				collectionData = new CUBRIDArray(values);
+                            if (relatedConnection.getOracleStyleEmpltyString()
+                                    && values[0] instanceof String) {
+                                int length = values.length;
+                                for (int i = 0; i < length; i++) {
+                                    if ("".equals(values[i])) {
+                                        values[i] = null;
+                                    }
+                                }
+                            }
+                            collectionData = new CUBRIDArray(values);
 			} catch (UJciException e) {
 				errorHandler = new UError(relatedConnection);
 				e.toUError(errorHandler);
@@ -462,8 +494,16 @@ public class UStatement {
 	}
 
 	public void bindClob(int index, Clob clob) {
-		bindValue(index, UUType.U_TYPE_CLOB, clob);
-	}
+                try {
+                    if (relatedConnection.getOracleStyleEmpltyString()
+                            && clob != null && clob.length() == 0) {
+                        clob = null;
+                    }
+                } catch (SQLException e) {
+                    relatedConnection.logException(e);
+                }
+                bindValue(index, UUType.U_TYPE_CLOB, clob);
+        }
 
 	public void addBatch() {
 		errorHandler = new UError(relatedConnection);
@@ -622,7 +662,7 @@ public class UStatement {
 		}
 
 		try {
-			byte code = UFunctionCode.CURSOR_CLOSE;
+			UFunctionCode code = UFunctionCode.CURSOR_CLOSE;
 			if (relatedConnection.protoVersionIsSame(UConnection.PROTOCOL_V2)) {
 				code = UFunctionCode.CURSOR_CLOSE_FOR_PROTOCOL_V2;
 			}
@@ -705,7 +745,7 @@ public class UStatement {
 		outBuffer.addByte(executeFlag);
 		outBuffer.addInt(maxField < 0 ? 0 : maxField);
 		outBuffer.addInt(0);
-
+		
 		if (firstStmtType == CUBRIDCommandType.CUBRID_STMT_CALL_SP
 		        && bindParameter != null) {
 			outBuffer.addBytes(bindParameter.paramMode);
@@ -1283,11 +1323,11 @@ public class UStatement {
 		if (obj == null)
 			return null;
 
-		if (obj instanceof CUBRIDBlob) {
-			return ((CUBRIDBlob) obj);
+		try {
+			return (UGetTypeConvertedValue.getBlob(obj, relatedConnection.getCUBRIDConnection()));
+		} catch (UJciException e) {
+			e.toUError(errorHandler);
 		}
-
-		errorHandler.setErrorCode(UErrorCode.ER_TYPE_CONVERSION);
 		return null;
 	}
 
@@ -1298,11 +1338,11 @@ public class UStatement {
 		if (obj == null)
 			return null;
 
-		if (obj instanceof CUBRIDClob) {
-			return ((CUBRIDClob) obj);
+		try {
+			return (UGetTypeConvertedValue.getClob(obj, relatedConnection.getCUBRIDConnection()));
+		} catch (UJciException e) {
+			e.toUError(errorHandler);
 		}
-
-		errorHandler.setErrorCode(UErrorCode.ER_TYPE_CONVERSION);
 		return null;
 	}
 
@@ -2112,7 +2152,7 @@ public class UStatement {
 		String charsetName;
 
 		size = inBuffer.readInt();
-		if (size <= 0)
+		if (size < 0)
 			return null;
 
 		typeInfo = readTypeFromData(index, inBuffer);
@@ -2175,7 +2215,7 @@ public class UStatement {
 		case UUType.U_TYPE_DATETIMELTZ:
 			return inBuffer.readDatetimetz(dataSize);			
 		case UUType.U_TYPE_OBJECT:
-			return inBuffer.readOID(relatedConnection.cubridcon);
+			return inBuffer.readOID(relatedConnection.getCUBRIDConnection());
 		case UUType.U_TYPE_SET:
 		case UUType.U_TYPE_MULTISET:
 		case UUType.U_TYPE_SEQUENCE: {
@@ -2212,7 +2252,7 @@ public class UStatement {
 		}
 	}
 
-	private void read_fetch_data(UInputBuffer inBuffer, byte functionCode)
+	private void read_fetch_data(UInputBuffer inBuffer, UFunctionCode functionCode)
 	        throws UJciException {
 		fetchedTupleNumber = inBuffer.readInt();
 		if (fetchedTupleNumber < 0) {
@@ -2247,7 +2287,7 @@ public class UStatement {
 	private void readATuple(int index, UInputBuffer inBuffer)
 	        throws UJciException {
 		tuples[index] = new UResultTuple(inBuffer.readInt(), columnNumber);
-		tuples[index].setOid(inBuffer.readOID(relatedConnection.cubridcon));
+		tuples[index].setOid(inBuffer.readOID(relatedConnection.getCUBRIDConnection()));
 		for (int i = 0; i < columnNumber; i++) {
 			tuples[index].setAttribute(i, readAAttribute(i, inBuffer));
 		}
@@ -2330,7 +2370,7 @@ public class UStatement {
 			resultInfo[i] = new UResultInfo(inBuffer.readByte(),
 			        inBuffer.readInt());
 			resultInfo[i].setResultOid(inBuffer
-			        .readOID(relatedConnection.cubridcon));
+			        .readOID(relatedConnection.getCUBRIDConnection()));
 			resultInfo[i].setSrvCacheTime(inBuffer.readInt(),
 			        inBuffer.readInt());
 		}

@@ -42,7 +42,7 @@
 #include "message_catalog.h"
 #include "language_support.h"
 #include "system_parameter.h"
-#include "md5.h"
+#include "crypt_opfunc.h"
 #if !defined(WINDOWS)
 #include <netinet/in.h>
 #endif /* !WINDOWS */
@@ -7384,6 +7384,7 @@ locale_compute_coll_checksum (COLL_DATA * cd)
   int input_size = 0;
   char *input_buf = NULL;
   char *buf_pos;
+  int error_code = NO_ERROR;
   int cp, w;
 
   if (cd->uca_opt.sett_expansions)
@@ -7521,13 +7522,10 @@ locale_compute_coll_checksum (COLL_DATA * cd)
   assert (buf_pos - input_buf == input_size);
 
   memset (cd->checksum, 0, sizeof (cd->checksum));
-  md5_buffer (input_buf, input_size, cd->checksum);
+  error_code = crypt_md5_buffer_hex (input_buf, input_size, cd->checksum);
 
   free (input_buf);
-
-  md5_hash_to_hex (cd->checksum, cd->checksum);
-
-  return NO_ERROR;
+  return error_code;
 }
 
 /*
@@ -7596,6 +7594,7 @@ locale_compute_locale_checksum (LOCALE_DATA * ld)
   int input_size = 0;
   char *input_buf = NULL;
   char *buf_pos;
+  int error_code = NO_ERROR;
   int cp;
 
   input_size += sizeof (ld->dateFormat);
@@ -7794,13 +7793,10 @@ locale_compute_locale_checksum (LOCALE_DATA * ld)
   assert (buf_pos - input_buf == input_size);
 
   memset (ld->checksum, 0, sizeof (ld->checksum));
-  md5_buffer (input_buf, input_size, ld->checksum);
+  error_code = crypt_md5_buffer_hex (input_buf, input_size, ld->checksum);
 
   free (input_buf);
-
-  md5_hash_to_hex (ld->checksum, ld->checksum);
-
-  return NO_ERROR;
+  return error_code;
 }
 
 /*

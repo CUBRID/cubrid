@@ -6814,7 +6814,7 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward, LOG_PAGEID sta
 
   if (log_dump_ptr == NULL)
     {
-      log_dump_ptr = log_zip_alloc (IO_PAGESIZE, false);
+      log_dump_ptr = log_zip_alloc (IO_PAGESIZE);
       if (log_dump_ptr == NULL)
 	{
 	  fprintf (out_fp, " Error memory alloc... Quit\n");
@@ -7385,7 +7385,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 
   isdone = false;
 
-  log_unzip_ptr = log_zip_alloc (IO_PAGESIZE, false);
+  log_unzip_ptr = log_zip_alloc (IO_PAGESIZE);
 
   if (log_unzip_ptr == NULL)
     {
@@ -9478,7 +9478,7 @@ log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA pro
 
   if (is_zipped)
     {
-      log_unzip_ptr = log_zip_alloc (IO_PAGESIZE, false);
+      log_unzip_ptr = log_zip_alloc (IO_PAGESIZE);
       if (log_unzip_ptr == NULL)
 	{
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_get_undo_record");

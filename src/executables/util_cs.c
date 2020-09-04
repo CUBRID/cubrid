@@ -110,7 +110,7 @@ static void intr_handler (int sig_no);
 static void backupdb_sig_interrupt_handler (int sig_no);
 STATIC_INLINE char *spacedb_get_size_str (char *buf, UINT64 num_pages, T_SPACEDB_SIZE_UNIT size_unit);
 static void print_timestamp (FILE * outfp);
-static int print_tran_entry (const ONE_TRAN_INFO * tran_info, TRANDUMP_LEVEL dump_level);
+static int print_tran_entry (const ONE_TRAN_INFO * tran_info, TRANDUMP_LEVEL dump_level, bool full_sqltext);
 static int tranlist_cmp_f (const void *p1, const void *p2);
 static OID *util_get_class_oids_and_index_btid (dynamic_array * darray, const char *index_name, BTID * index_btid);
 
@@ -193,8 +193,8 @@ backupdb (UTIL_FUNCTION_ARG * arg)
 
   if (compress_flag)
     {
-      backup_zip_method = FILEIO_ZIP_LZO1X_METHOD;
-      backup_zip_level = FILEIO_ZIP_LZO1X_DEFAULT_LEVEL;
+      backup_zip_method = FILEIO_ZIP_LZ4_METHOD;
+      backup_zip_level = FILEIO_ZIP_LZ4_DEFAULT_LEVEL;
     }
 
   if (seperate_keys)
@@ -1341,7 +1341,7 @@ doesmatch_transaction (const ONE_TRAN_INFO * tran, int *tran_index_list, int ind
  *   dump_level(in) :
  */
 static void
-dump_trantb (TRANS_INFO * info, TRANDUMP_LEVEL dump_level)
+dump_trantb (TRANS_INFO * info, TRANDUMP_LEVEL dump_level, bool full_sqltext)
 {
   int i;
   int num_valid = 0;
@@ -1380,7 +1380,7 @@ dump_trantb (TRANS_INFO * info, TRANDUMP_LEVEL dump_level)
 		}
 
 	      num_valid++;
-	      print_tran_entry (&info->tran[i], dump_level);
+	      print_tran_entry (&info->tran[i], dump_level, full_sqltext);
 	    }
 	}
     }
@@ -1516,7 +1516,7 @@ kill_transactions (TRANS_INFO * info, int *tran_index_list, int list_size, const
 	      if (doesmatch_transaction (&info->tran[i], tran_index_list, list_size, username, hostname, progname,
 					 sql_id))
 		{
-		  print_tran_entry (&info->tran[i], dump_level);
+		  print_tran_entry (&info->tran[i], dump_level, false);
 		}
 	    }
 	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TRANLIST, underscore));
@@ -1560,7 +1560,7 @@ kill_transactions (TRANS_INFO * info, int *tran_index_list, int list_size, const
 			  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TRANLIST, underscore));
 			}
 
-		      print_tran_entry (&info->tran[i], dump_level);
+		      print_tran_entry (&info->tran[i], dump_level, false);
 
 		      if (er_errid () != NO_ERROR)
 			{
@@ -1593,10 +1593,11 @@ kill_transactions (TRANS_INFO * info, int *tran_index_list, int list_size, const
  *   include_query_info(in) :
  */
 static int
-print_tran_entry (const ONE_TRAN_INFO * tran_info, TRANDUMP_LEVEL dump_level)
+print_tran_entry (const ONE_TRAN_INFO * tran_info, TRANDUMP_LEVEL dump_level, bool full_sqltext)
 {
   char *buf = NULL;
-  char query_buf[32];
+  char *query_buf;
+  char tmp_query_buf[32];
 
   if (tran_info == NULL)
     {
@@ -1613,8 +1614,16 @@ print_tran_entry (const ONE_TRAN_INFO * tran_info, TRANDUMP_LEVEL dump_level)
       if (tran_info->query_exec_info.query_stmt != NULL)
 	{
 	  /* print 31 string */
-	  strncpy (query_buf, tran_info->query_exec_info.query_stmt, 32);
-	  query_buf[31] = '\0';
+	  if (full_sqltext == true)
+	    {
+	      query_buf = tran_info->query_exec_info.query_stmt;
+	    }
+	  else
+	    {
+	      strncpy (tmp_query_buf, tran_info->query_exec_info.query_stmt, 32);
+	      tmp_query_buf[31] = '\0';
+	      query_buf = tmp_query_buf;
+	    }
 	}
     }
 
@@ -1663,7 +1672,7 @@ tranlist (UTIL_FUNCTION_ARG * arg)
   char *passbuf = NULL;
   TRANS_INFO *info = NULL;
   int error;
-  bool is_summary, include_query_info;
+  bool is_summary, include_query_info, full_sqltext = false;
   TRANDUMP_LEVEL dump_level = TRANDUMP_FULL_INFO;
 
   if (utility_get_option_string_table_size (arg_map) != 1)
@@ -1682,6 +1691,7 @@ tranlist (UTIL_FUNCTION_ARG * arg)
   is_summary = utility_get_option_bool_value (arg_map, TRANLIST_SUMMARY_S);
   tranlist_Sort_column = utility_get_option_int_value (arg_map, TRANLIST_SORT_KEY_S);
   tranlist_Sort_desc = utility_get_option_bool_value (arg_map, TRANLIST_REVERSE_S);
+  full_sqltext = utility_get_option_bool_value (arg_map, TRANLIST_FULL_SQL_S);
 
   if (username == NULL)
     {
@@ -1705,6 +1715,7 @@ tranlist (UTIL_FUNCTION_ARG * arg)
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
+#if defined(NEED_PRIVILEGE_PASSWORD)
   error = db_restart_ex (arg->command_name, database_name, username, password, NULL, DB_CLIENT_TYPE_ADMIN_UTILITY);
   if (error != NO_ERROR)
     {
@@ -1747,6 +1758,15 @@ tranlist (UTIL_FUNCTION_ARG * arg)
       db_shutdown ();
       goto error_exit;
     }
+#else
+  AU_DISABLE_PASSWORDS ();
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+  if (db_login ("DBA", NULL) || db_restart (arg->command_name, TRUE, database_name))
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s: %s. \n\n", arg->command_name, db_error_string (3));
+      goto error_exit;
+    }
+#endif
 
   /*
    * Get the current state of transaction table information. All the
@@ -1776,7 +1796,7 @@ tranlist (UTIL_FUNCTION_ARG * arg)
       qsort ((void *) info->tran, info->num_trans, sizeof (ONE_TRAN_INFO), tranlist_cmp_f);
     }
 
-  (void) dump_trantb (info, dump_level);
+  (void) dump_trantb (info, dump_level, full_sqltext);
 
   if (info)
     {
@@ -1891,7 +1911,15 @@ killtran (UTIL_FUNCTION_ARG * arg)
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
+  /* disable password, if don't use kill option */
+  if (isbatch == 0)
+    {
+      dba_password = NULL;
+      AU_DISABLE_PASSWORDS ();
+    }
+
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+
   if (db_login ("DBA", dba_password) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
@@ -1961,7 +1989,7 @@ killtran (UTIL_FUNCTION_ARG * arg)
       TRANDUMP_LEVEL dump_level;
 
       dump_level = (include_query_exec_info) ? TRANDUMP_QUERY_INFO : TRANDUMP_SUMMARY;
-      dump_trantb (info, dump_level);
+      dump_trantb (info, dump_level, false);
     }
   else
     {
@@ -2862,10 +2890,6 @@ applylogdb (UTIL_FUNCTION_ARG * arg)
       log_path = realpath (log_path, log_path_buf);
     }
   if (log_path == NULL)
-    {
-      goto print_applylog_usage;
-    }
-  if (max_mem_size > 500)
     {
       goto print_applylog_usage;
     }

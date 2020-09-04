@@ -12,7 +12,7 @@
     <UI>
       <Dialog Id="JavaWarningDlg" Width="284" Height="73" Title="Java Runtime" NoMinimize="yes">
         <Control Id="Text" Type="Text" X="38" Y="8" Width="240" Height="40" TabSkip="no">
-          <Text>JRE version 1.5 or higher for Windows @WIX_SUPPORTED_PLATFORM@ is required for Java Stored Procedure to function correctly. You may proceed with installation, but be sure to install JRE if you will be using Java Stored Procedure.</Text>
+          <Text>JRE version 1.6 or higher for Windows @WIX_SUPPORTED_PLATFORM@ is required for SSL and Java Stored Procedure to function correctly. You may proceed with installation, but be sure to install JRE if you will be using it.</Text>
         </Control>
         <Control Id="OK" Type="PushButton" X="114" Y="52" Width="56" Height="17" Default="yes" Cancel="yes" Text="OK">
           <Publish Event="EndDialog" Value="Return">1</Publish>
@@ -20,17 +20,27 @@
       </Dialog>
       <InstallUISequence>
 <!-- Warn if Java is not installed -->
-        <Show Dialog="JavaWarningDlg" Before="ResumeDlg"><![CDATA[NOT Installed AND JAVA_CURRENT_VERSION < "1.5"]]></Show>
+        <Show Dialog="JavaWarningDlg" Before="ResumeDlg"><![CDATA[NOT Installed AND JAVA_CURRENT_VERSION < "1.6"]]></Show>
       </InstallUISequence>
     </UI>
-<!-- Install the Visual C++ Redistributable -->
+<!-- Install the Visual C++ Redistributable for CRT-->
     <DirectoryRef Id="TARGETDIR">
       <Merge Id="VCRedist" SourceFile="$(env.ProgramFiles)\Common Files\Merge Modules\@WIX_VCREDIST_MSM@" DiskId="1" Language="0"/>
     </DirectoryRef>
     <Feature Id="VCRedist" Title="Visual C++ Runtime" AllowAdvertise="no" Display="hidden" Level="1">
       <MergeRef Id="VCRedist"/>
 <?endif?>
-    </Feature>
+    </Feature>	
+	
+<!-- Install the Visual C++ Redistributable for MFC -->
+    <DirectoryRef Id="TARGETDIR">
+      <Merge Id="VCMFCRedist" SourceFile="$(env.ProgramFiles)\Common Files\Merge Modules\@WIX_VCREDIST_MFC_MSM@" DiskId="1" Language="0"/>
+    </DirectoryRef>
+    <Feature Id="VCMFCRedist" Title="Visual C++ Runtime" AllowAdvertise="no" Display="hidden" Level="1">
+      <MergeRef Id="VCMFCRedist"/>
+<?endif?>
+    </Feature>	
+
 <!-- Create Env Var -->
     <ComponentGroup Id="CG_CREATE_ENV_VARS" Directory="CM_DP_Application.bin">
       <Component Id="CM_CREATE_ENV_VARS" Guid="{5a720552-96df-4eb4-b305-ac86d4276748}" KeyPath="yes">
@@ -83,6 +93,19 @@
         <util:InternetShortcut xmlns:util="http://schemas.microsoft.com/wix/UtilExtension" Id="OnlineDocumentationShortcut" Name="CUBRID Online Documentation" Target="http://www.cubrid.org/"/>
         <Shortcut Id="UninstallProductShortcut" Name="Uninstall @CPACK_PACKAGE_NAME@" Description="Uninstalls @CPACK_PACKAGE_NAME@" Target="[System64Folder]msiexec.exe" Arguments="/x [ProductCode]"/>
         <RegistryValue Root="HKCU" Key="Software\@CPACK_PACKAGE_VENDOR@\@CPACK_PACKAGE_NAME@" Name="installed" Type="integer" Value="1" KeyPath="yes"/>
+        <RegistryKey Root="HKLM"
+                     Key="SOFTWARE\CUBRID\cmserver"
+                     Action="createAndRemoveOnUninstall">
+            <RegistryValue Name="ROOT_PATH" Type="string" Value="[INSTALL_ROOT]"/>
+            <RegistryValue Name="Version" Type="string" Value="@CPACK_PACKAGE_VERSION_MAJOR@.@CPACK_PACKAGE_VERSION_MINOR@"/>
+        </RegistryKey>
+        <RegistryKey Root="HKLM"
+                     Key="SOFTWARE\CUBRID\CUBRID"
+                     Action="createAndRemoveOnUninstall">
+            <RegistryValue Name="ROOT_PATH" Type="string" Value="[INSTALL_ROOT]"/>
+            <RegistryValue Name="Version" Type="string" Value="@CPACK_PACKAGE_VERSION_MAJOR@.@CPACK_PACKAGE_VERSION_MINOR@"/>
+            <RegistryValue Name="Patch" Type="string" Value="@CPACK_PACKAGE_VERSION_PATCH@"/>
+        </RegistryKey>
       </Component>
     </DirectoryRef>
 <!-- Customized WixUI_InstallDIR -->

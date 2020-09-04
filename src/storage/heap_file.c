@@ -17022,6 +17022,7 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
   int force_count = 0, updated_n_attrs_id = 0;
   ATTR_ID atts_id[1] = { 0 };
   DB_VALUE orig_value;
+  TP_DOMAIN_STATUS status;
 
   db_make_null (&orig_value);
 
@@ -17074,11 +17075,8 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
       if (QSTR_IS_ANY_CHAR_OR_BIT (src_type) && QSTR_IS_ANY_CHAR_OR_BIT (dest_type))
 	{
 	  /* check phase of ALTER TABLE .. CHANGE should not allow changing the domains from one flavour to another : */
-	  assert ((QSTR_IS_CHAR (src_type) && QSTR_IS_CHAR (dest_type))
-		  || (!QSTR_IS_CHAR (src_type) && !QSTR_IS_CHAR (dest_type)));
-
-	  assert ((QSTR_IS_NATIONAL_CHAR (src_type) && QSTR_IS_NATIONAL_CHAR (dest_type))
-		  || (!QSTR_IS_NATIONAL_CHAR (src_type) && !QSTR_IS_NATIONAL_CHAR (dest_type)));
+	  assert ((QSTR_IS_ANY_CHAR (src_type) && QSTR_IS_ANY_CHAR (dest_type))
+		  || (!QSTR_IS_ANY_CHAR (src_type) && !QSTR_IS_ANY_CHAR (dest_type)));
 
 	  assert ((QSTR_IS_BIT (src_type) && QSTR_IS_BIT (dest_type))
 		  || (!QSTR_IS_BIT (src_type) && !QSTR_IS_BIT (dest_type)));
@@ -17086,7 +17084,8 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
 	  /* check string truncation */
 	  if (dest_prec < curr_prec)
 	    {
-	      if (prm_get_bool_value (PRM_ID_ALTER_TABLE_CHANGE_TYPE_STRICT) == true)
+	      if (prm_get_bool_value (PRM_ID_ALTER_TABLE_CHANGE_TYPE_STRICT) == true
+		  || prm_get_bool_value (PRM_ID_ALLOW_TRUNCATED_STRING) == false)
 		{
 		  error = ER_ALTER_CHANGE_TRUNC_OVERFLOW_NOT_ALLOWED;
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -17109,7 +17108,8 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
 
       if (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (dest_dom))
 	  && !(TP_IS_CHAR_TYPE (src_type) || src_type == DB_TYPE_ENUMERATION)
-	  && prm_get_bool_value (PRM_ID_ALTER_TABLE_CHANGE_TYPE_STRICT) == false)
+	  && prm_get_bool_value (PRM_ID_ALTER_TABLE_CHANGE_TYPE_STRICT) == false
+	  && prm_get_bool_value (PRM_ID_ALLOW_TRUNCATED_STRING) == true)
 	{
 	  /* If destination is char/varchar, we need to first cast the value to a string with no precision, then to
 	   * destination type with the desired precision. */
@@ -17122,12 +17122,18 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
 	    {
 	      string_dom = tp_domain_resolve_default (DB_TYPE_VARCHAR);
 	    }
-	  error = db_value_coerce (&(value->dbvalue), &(value->dbvalue), string_dom);
+	  if ((status = tp_value_cast (&(value->dbvalue), &(value->dbvalue), string_dom, false)) != DOMAIN_COMPATIBLE)
+	    {
+	      error = tp_domain_status_er_set (status, ARG_FILE_LINE, &(value->dbvalue), string_dom);
+	    }
 	}
 
       if (error == NO_ERROR)
 	{
-	  error = db_value_coerce (&(value->dbvalue), &(value->dbvalue), dest_dom);
+	  if ((status = tp_value_cast (&(value->dbvalue), &(value->dbvalue), dest_dom, false)) != DOMAIN_COMPATIBLE)
+	    {
+	      error = tp_domain_status_er_set (status, ARG_FILE_LINE, &(value->dbvalue), dest_dom);
+	    }
 	}
       if (error != NO_ERROR)
 	{
@@ -17135,7 +17141,9 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
 	  bool set_min_value = false;
 	  bool set_max_value = false;
 
-	  if (prm_get_bool_value (PRM_ID_ALTER_TABLE_CHANGE_TYPE_STRICT) == true)
+	  if (prm_get_bool_value (PRM_ID_ALTER_TABLE_CHANGE_TYPE_STRICT) == true
+	      || (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (dest_dom))
+		  && prm_get_bool_value (PRM_ID_ALLOW_TRUNCATED_STRING) == false))
 	    {
 	      error = ER_ALTER_CHANGE_TRUNC_OVERFLOW_NOT_ALLOWED;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);

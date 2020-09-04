@@ -8194,7 +8194,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   DB_OBJECT *db_obj, *existing_entity;
   int found, partition_status = DB_NOT_PARTITIONED_CLASS;
   int collation_id, charset;
-  bool found_reuse_oid = false;
+  bool found_reuse_oid_option = false, reuse_oid = true;
   bool found_auto_increment = false;
   bool found_tbl_comment = false;
   bool found_tbl_encrypt = false;
@@ -8218,7 +8218,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	case PT_TABLE_OPTION_REUSE_OID:
 	  {
-	    if (found_reuse_oid)
+	    if (found_reuse_oid_option)
 	      {
 		PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DUPLICATE_TABLE_OPTION,
 			    parser_print_tree (parser, tbl_opt));
@@ -8226,7 +8226,24 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	      }
 	    else
 	      {
-		found_reuse_oid = true;
+		found_reuse_oid_option = true;
+		reuse_oid = true;
+	      }
+	  }
+	  break;
+
+	case PT_TABLE_OPTION_DONT_REUSE_OID:
+	  {
+	    if (found_reuse_oid_option)
+	      {
+		PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DUPLICATE_TABLE_OPTION,
+			    parser_print_tree (parser, tbl_opt));
+		return;
+	      }
+	    else
+	      {
+		found_reuse_oid_option = true;
+		reuse_oid = false;
 	      }
 	  }
 	  break;
@@ -8315,6 +8332,12 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
     }
 
+  /* get default value of reuse_oid from system parameter, if don't use table option related reuse_oid */
+  if (!found_reuse_oid_option)
+    {
+      reuse_oid = prm_get_bool_value (PRM_ID_TB_DEFAULT_REUSE_OID);
+    }
+
   /* validate charset and collation options, if any */
   cs_node = (tbl_opt_charset) ? tbl_opt_charset->info.table_option.val : NULL;
   coll_node = (tbl_opt_coll) ? tbl_opt_coll->info.table_option.val : NULL;
@@ -8373,7 +8396,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
     }
 
   /* enforce composition hierarchy restrictions on attr type defs */
-  pt_check_attribute_domain (parser, all_attrs, entity_type, name->info.name.original, found_reuse_oid, node);
+  pt_check_attribute_domain (parser, all_attrs, entity_type, name->info.name.original, reuse_oid, node);
 
   /* check that any and all super classes do exist */
   for (parent = node->info.create_entity.supclass_list; parent != NULL; parent = parent->next)

@@ -718,7 +718,7 @@ qexec_eval_instnum_pred (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
       xasl->save_instnum_val->data.bigint++;
     }
 
-  if (xasl->instnum_pred)
+  if (xasl->instnum_pred && !(xasl->instnum_flag & XASL_INSTNUM_FLAG_SCAN_STOP_AT_ANALYTIC))
     {
       PRED_EXPR *pr = xasl->instnum_pred;
 
@@ -2421,11 +2421,6 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final)
 	      {
 		qexec_free_agg_hash_context (thread_p, buildlist);
 	      }
-	    pg_cnt += qexec_clear_pred (thread_p, xasl, buildlist->a_instnum_pred, is_final);
-	    if (buildlist->a_instnum_val)
-	      {
-		pr_clear_value (buildlist->a_instnum_val);
-	      }
 	  }
       }
       break;
@@ -3759,7 +3754,7 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	}
 
       /* create new value */
-      new_value = qdata_alloc_agg_hvalue (thread_p, proc->g_func_count);
+      new_value = qdata_alloc_agg_hvalue (thread_p, proc->g_func_count, proc->g_agg_list);
       if (new_value == NULL)
 	{
 	  qdata_free_agg_hkey (thread_p, new_key);
@@ -4736,7 +4731,7 @@ wrapup:
     result = (gbstate.state == NO_ERROR || gbstate.state == SORT_PUT_STOP) ? NO_ERROR : ER_FAILED;
 
     /* check merge result */
-    if (XASL_IS_FLAGED (xasl, XASL_IS_MERGE_QUERY) && list_id->tuple_cnt != gbstate.input_recs)
+    if (result == NO_ERROR && XASL_IS_FLAGED (xasl, XASL_IS_MERGE_QUERY) && list_id->tuple_cnt != gbstate.input_recs)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MERGE_TOO_MANY_SOURCE_ROWS, 0);
 	result = ER_FAILED;
@@ -8059,14 +8054,22 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 				      return S_SUCCESS;
 				    }
 				}
+
 			      qualified = (xasl->instnum_pred == NULL || ev_res == V_TRUE);
-			      if (qualified
-				  && (qexec_end_one_iteration (thread_p, xasl, xasl_state, tplrec) != NO_ERROR))
+			      if (qualified)
 				{
-				  return S_ERROR;
+				  /* one iteration successfully completed */
+				  if (qexec_end_one_iteration (thread_p, xasl, xasl_state, tplrec) != NO_ERROR)
+				    {
+				      return S_ERROR;
+				    }
+				  /* only one row is need for exists OP */
+				  if (XASL_IS_FLAGED (xasl, XASL_NEED_SINGLE_TUPLE_SCAN))
+				    {
+				      return S_SUCCESS;
+				    }
 				}
 			    }
-
 			}
 		      else
 			{	/* handle the scan procedure */
@@ -8122,16 +8125,22 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 					  return S_SUCCESS;
 					}
 				    }
-				  qualified = (xasl->instnum_pred == NULL || ev_res == V_TRUE);
 
-				  if (qualified
-				      /* one iteration successfully completed */
-				      && qexec_end_one_iteration (thread_p, xasl, xasl_state, tplrec) != NO_ERROR)
+				  qualified = (xasl->instnum_pred == NULL || ev_res == V_TRUE);
+				  if (qualified)
 				    {
-				      return S_ERROR;
+				      /* one iteration successfully completed */
+				      if (qexec_end_one_iteration (thread_p, xasl, xasl_state, tplrec) != NO_ERROR)
+					{
+					  return S_ERROR;
+					}
+				      /* only one row is need for exists OP */
+				      if (XASL_IS_FLAGED (xasl, XASL_NEED_SINGLE_TUPLE_SCAN))
+					{
+					  return S_SUCCESS;
+					}
 				    }
 				}
-
 			    }
 
 			  if (xs_scan != S_END)	/* an error happened */
@@ -11453,6 +11462,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	  for (regu_list = insert->valptr_lists[i]->valptrp, vallist = xasl->val_list->valp, k = num_default_expr;
 	       k < val_no; k++, regu_list = regu_list->next, vallist = vallist->next)
 	    {
+	      regu_list->value.flags |= REGU_VARIABLE_STRICT_TYPE_CAST;
 	      if (fetch_peek_dbval (thread_p, &regu_list->value, &xasl_state->vd, &class_oid, NULL, NULL, &valp) !=
 		  NO_ERROR)
 		{
@@ -19333,11 +19343,6 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
 
   if (analytic_state.is_last_run)
     {
-      /* for last function, evaluate instnum() predicate while sorting */
-      xasl->instnum_pred = buildlist->a_instnum_pred;
-      xasl->instnum_val = buildlist->a_instnum_val;
-      xasl->instnum_flag = buildlist->a_instnum_flag;
-
       if (xasl->instnum_val != NULL)
 	{
 	  /* initialize counter to zero */
@@ -20050,7 +20055,7 @@ qexec_analytic_eval_instnum_pred (THREAD_ENTRY * thread_p, ANALYTIC_STATE * anal
   int instnum_flag, i;
 
   /* get flag from buildlist */
-  instnum_flag = analytic_state->xasl->proc.buildlist.a_instnum_flag;
+  instnum_flag = analytic_state->xasl->instnum_flag;
 
   /* by default, it's an output record */
   analytic_state->is_output_rec = true;
@@ -20088,8 +20093,14 @@ qexec_analytic_eval_instnum_pred (THREAD_ENTRY * thread_p, ANALYTIC_STATE * anal
       return NO_ERROR;
     }
 
+  analytic_state->xasl->instnum_flag &= ~(XASL_INSTNUM_FLAG_SCAN_STOP_AT_ANALYTIC);
   /* evaluate inst_num() */
   is_output_rec = qexec_eval_instnum_pred (thread_p, analytic_state->xasl, analytic_state->xasl_state);
+  if (instnum_flag & XASL_INSTNUM_FLAG_SCAN_STOP_AT_ANALYTIC)
+    {
+      analytic_state->xasl->instnum_flag |= XASL_INSTNUM_FLAG_SCAN_STOP_AT_ANALYTIC;
+    }
+
   if (is_output_rec == V_ERROR)
     {
       return ER_FAILED;
@@ -24976,8 +24987,8 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
   /*
    * create temp values
    */
-  proc->agg_hash_context->temp_part_value = qdata_alloc_agg_hvalue (thread_p, proc->g_func_count);
-  proc->agg_hash_context->curr_part_value = qdata_alloc_agg_hvalue (thread_p, proc->g_func_count);
+  proc->agg_hash_context->temp_part_value = qdata_alloc_agg_hvalue (thread_p, proc->g_func_count, proc->g_agg_list);
+  proc->agg_hash_context->curr_part_value = qdata_alloc_agg_hvalue (thread_p, proc->g_func_count, proc->g_agg_list);
 
   if (proc->agg_hash_context->temp_part_value == NULL || proc->agg_hash_context->curr_part_value == NULL)
     {
@@ -25028,6 +25039,15 @@ qexec_free_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * proc
   if (!proc->g_hash_eligible)
     {
       return;
+    }
+
+  /* clear group by regular var list */
+  for (REGU_VARIABLE_LIST p = proc->g_regu_list; p; p = p->next)
+    {
+      if (p->value.vfetch_to != NULL)
+	{
+	  pr_clear_value (p->value.vfetch_to);
+	}
     }
 
   /* free value array */

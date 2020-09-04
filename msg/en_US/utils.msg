@@ -554,16 +554,17 @@ valid options:\n\
   -i, --input-class-file=FILE       input FILE of table names\n\
                                     class_name list must be empty\n\
                                     default: compact all classes\n\
-                                    enabled in CS-mode only\n\
   -p, --pages-commited-once=NUMBER  maximum number of pages to commit once\n\
                                     default: 10\n\
                                     enabled in CS-mode only\n\
   -S, --SA-mode                     stand-alone mode execution\n\
   -C, --CS-mode                     client-server mode execution\n\
   -d, --delete-old-repr             delete old class representations from catalog; default: disabled\n\
-  class_name_list                   enabled in CS-mode only\n\
   -I, --Instance-lock-timeout       timeout for instance lock\n\
-  -c, --class-lock-timeout          timeout for class lock\n
+                                    enabled in CS-mode only\n\
+  -c, --class-lock-timeout          timeout for class lock\n\
+                                    enabled in CS-mode only\n\
+  class_name_list                   list of class name be compacted\n 
 
 $set 15 MSGCAT_UTIL_SET_COMMDB
 21 The CUBRID master running on host %1$s \nwas started at %2$s

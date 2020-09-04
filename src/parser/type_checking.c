@@ -252,6 +252,8 @@ static bool pt_is_explicit_coerce_allowed_for_default_value (PARSER_CONTEXT * pa
 static int pt_coerce_value_internal (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest,
 				     PT_TYPE_ENUM desired_type, PT_NODE * data_type, bool check_string_precision,
 				     bool implicit_coercion);
+static int pt_coerce_value_explicit (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest, PT_TYPE_ENUM desired_type,
+				     PT_NODE * data_type);
 #if defined(ENABLE_UNUSED_FUNCTION)
 static int generic_func_casecmp (const void *a, const void *b);
 static void init_generic_funcs (void);
@@ -9347,7 +9349,6 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	      node->type_enum = PT_TYPE_DATETIMETZ;
 	    }
 	  break;
-
 	default:
 	  break;
 	}
@@ -9821,6 +9822,13 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  d = tp_domain_cache (d);
 	  SET_EXPECTED_DOMAIN (arg2, d);
 	  pt_preset_hostvar (parser, arg2);
+	}
+      if (PT_IS_VALUE_NODE (arg2))
+	{
+	  if (pt_coerce_value_explicit (parser, arg2, arg2, arg1_type, arg1->data_type) != NO_ERROR)
+	    {
+	      goto error;
+	    }
 	}
       break;
 
@@ -12965,23 +12973,6 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_AGG_FUN_WANT_1_ARG,
 		      pt_short_print (parser, node));
-	}
-      else
-	{
-	  /* do special constant folding; COUNT(1), COUNT(?), COUNT(:x), ... -> COUNT(*) */
-	  /* TODO does this belong to type checking or constant folding? */
-	  if (pt_is_const (arg_list))
-	    {
-	      PT_MISC_TYPE all_or_distinct;
-
-	      all_or_distinct = node->info.function.all_or_distinct;
-	      if (fcode == PT_COUNT && all_or_distinct != PT_DISTINCT)
-		{
-		  fcode = node->info.function.function_type = PT_COUNT_STAR;
-		  parser_free_tree (parser, arg_list);
-		  arg_list = node->info.function.arg_list = NULL;
-		}
-	    }
 	}
     }
 
@@ -19943,7 +19934,7 @@ pt_fold_const_function (PARSER_CONTEXT * parser, PT_NODE * func)
     {
       parser_node *arg_list = func->info.function.arg_list;
       /* do special constant folding; COUNT(1), COUNT(?), COUNT(:x), ... -> COUNT(*) */
-      if (pt_is_const (arg_list))
+      if (pt_is_const (arg_list) && !PT_IS_NULL_NODE (arg_list))
 	{
 	  PT_MISC_TYPE all_or_distinct;
 	  all_or_distinct = func->info.function.all_or_distinct;
@@ -20307,6 +20298,22 @@ int
 pt_coerce_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest, PT_TYPE_ENUM desired_type, PT_NODE * data_type)
 {
   return pt_coerce_value_internal (parser, src, dest, desired_type, data_type, false, true);
+}
+
+/*
+ * pt_coerce_value_explicit () - coerce a PT_VALUE into another PT_VALUE of compatible type
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   parser(in):
+ *   src(in): a pointer to the original PT_VALUE
+ *   dest(out): a pointer to the coerced PT_VALUE
+ *   desired_type(in): the desired type of the coerced result
+ *   data_type(in): the data type list of a (desired) set type or the data type of an object or NULL
+ */
+int
+pt_coerce_value_explicit (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest, PT_TYPE_ENUM desired_type,
+			  PT_NODE * data_type)
+{
+  return pt_coerce_value_internal (parser, src, dest, desired_type, data_type, true, false);
 }
 
 /*

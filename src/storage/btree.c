@@ -14163,9 +14163,10 @@ btree_locate_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, 
   assert (!BTREE_INVALID_INDEX_ID (btid_int->sys_btid));
 
   *found_p = false;
+  bool reuse_btid_int = true;
 
   /* Advance in b-tree following key until leaf node is reached. */
-  error = btree_search_key_and_apply_functions (thread_p, btid_int->sys_btid, NULL, key, NULL, NULL,
+  error = btree_search_key_and_apply_functions (thread_p, btid_int->sys_btid, btid_int, key, NULL, &reuse_btid_int,
 						btree_advance_and_find_key, slot_id, NULL, NULL, &search_key,
 						&leaf_page);
   if (error != NO_ERROR)
@@ -22696,8 +22697,11 @@ btree_get_root_with_key (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid_i
   assert (is_leaf != NULL);
   assert (search_key != NULL);
 
+  bool reuse_btid_int = other_args ? *((bool *) other_args) : false;
+
   /* Get root page and BTID_INT. */
-  *root_page = btree_fix_root_with_info (thread_p, btid, PGBUF_LATCH_READ, NULL, &root_header, btid_int);
+  *root_page =
+    btree_fix_root_with_info (thread_p, btid, PGBUF_LATCH_READ, NULL, &root_header, (reuse_btid_int ? NULL : btid_int));
   if (*root_page == NULL)
     {
       /* Error! */

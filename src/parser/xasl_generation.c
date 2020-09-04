@@ -717,12 +717,7 @@ pt_make_connect_by_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NO
     }
   pt_to_pred_terms (parser, if_part, 0, &connect_by->after_connect_by_pred);
 
-  flag = 0;
-  select_xasl->instnum_pred = pt_to_pred_expr_with_arg (parser, instnum_part, &flag);
-  if (flag & PT_PRED_ARG_INSTNUM_CONTINUE)
-    {
-      select_xasl->instnum_flag = XASL_INSTNUM_FLAG_SCAN_CONTINUE;
-    }
+  select_xasl = pt_to_instnum_pred (parser, select_xasl, instnum_part);
 
   if (if_part)
     {
@@ -1548,6 +1543,12 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *ar
 	    case PT_EXISTS:
 	      regu_var1 = pt_to_regu_variable (parser, node->info.expr.arg1, UNBOX_AS_TABLE);
 	      pred = pt_make_pred_term_comp (regu_var1, NULL, R_EXISTS, data_type);
+
+	      /* exists op must fetch one tuple */
+	      if (regu_var1 && regu_var1->xasl)
+		{
+		  XASL_SET_FLAG (regu_var1->xasl, XASL_NEED_SINGLE_TUPLE_SCAN);
+		}
 	      break;
 
 	    case PT_IS_NULL:
@@ -3268,7 +3269,7 @@ pt_filter_pseudo_specs (PARSER_CONTEXT * parser, PT_NODE * spec)
       spec->info.spec.id = (UINTPTR) spec;
       spec->info.spec.only_all = PT_ONLY;
       spec->info.spec.meta_class = PT_CLASS;
-      spec->info.spec.entity_name = pt_name (parser, "db_root");
+      spec->info.spec.entity_name = pt_name (parser, "dual");
       if (spec->info.spec.entity_name == NULL)
 	{
 	  parser_free_node (parser, spec);
@@ -10933,6 +10934,12 @@ pt_instnum_to_key_limit (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xa
       return NO_ERROR;
     }
 
+  /* if there are analytic function and instnum, can't optimize */
+  if (xasl->instnum_flag & XASL_INSTNUM_FLAG_SCAN_STOP_AT_ANALYTIC)
+    {
+      return NO_ERROR;
+    }
+
   limit_infop = qo_get_key_limit_from_instnum (parser, plan, xasl);
   if (!limit_infop)
     {
@@ -13985,13 +13992,7 @@ pt_gen_simple_plan (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * pl
       /* and pick up any uncorrelated terms */
       pt_to_pred_terms (parser, if_part, 0, &xasl->if_pred);
 
-      flag = 0;
-      xasl->instnum_pred = pt_to_pred_expr_with_arg (parser, instnum_part, &flag);
-
-      if (flag & PT_PRED_ARG_INSTNUM_CONTINUE)
-	{
-	  xasl->instnum_flag = XASL_INSTNUM_FLAG_SCAN_CONTINUE;
-	}
+      xasl = pt_to_instnum_pred (parser, xasl, instnum_part);
 
       if (from->info.spec.path_entities)
 	{
@@ -14127,12 +14128,7 @@ pt_gen_simple_merge_plan (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLA
       pt_to_pred_terms (parser, if_part, table1->info.spec.id, &xasl->if_pred);
       pt_to_pred_terms (parser, if_part, table2->info.spec.id, &xasl->if_pred);
 
-      flag = 0;
-      xasl->instnum_pred = pt_to_pred_expr_with_arg (parser, instnum_part, &flag);
-      if (flag & PT_PRED_ARG_INSTNUM_CONTINUE)
-	{
-	  xasl->instnum_flag = XASL_INSTNUM_FLAG_SCAN_CONTINUE;
-	}
+      xasl = pt_to_instnum_pred (parser, xasl, instnum_part);
       pt_set_dptr (parser, if_part, xasl, MATCH_ALL);
 
       pt_set_dptr (parser, select_node->info.query.q.select.list, xasl, MATCH_ALL);
@@ -15574,10 +15570,6 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	      goto analytic_exit_on_error;
 	    }
 
-	  /* clear instnum_flag from buildlist; this can be modified by pt_to_analytic_final_node and in some cases
-	   * will be OR'd with xasl->instnum_flag */
-	  buildlist->a_instnum_flag = 0;
-
 	  /* break up expressions with analytic functions */
 	  select_list_ex = NULL;
 	  select_list_final = NULL;
@@ -15594,7 +15586,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	      node->next = NULL;
 
 	      /* get final select list node */
-	      final_node = pt_to_analytic_final_node (parser, node, &to_ex_list, &buildlist->a_instnum_flag);
+	      final_node = pt_to_analytic_final_node (parser, node, &to_ex_list, &xasl->instnum_flag);
 	      if (final_node == NULL)
 		{
 		  /* error was set somewhere - clean up */
@@ -16019,17 +16011,12 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	    }
 	}
 
-      if ((xasl->instnum_pred != NULL || buildlist->a_instnum_flag & XASL_INSTNUM_FLAG_EVAL_DEFER)
+      if ((xasl->instnum_pred != NULL || xasl->instnum_flag & XASL_INSTNUM_FLAG_EVAL_DEFER)
 	  && pt_has_analytic (parser, select_node))
 	{
-	  /* we have an inst_num() which should not get evaluated in the initial fetch; move it in buildlist,
-	   * qexec_execute_analytic will use it in the final sort */
-	  buildlist->a_instnum_pred = xasl->instnum_pred;
-	  buildlist->a_instnum_val = xasl->instnum_val;
-	  buildlist->a_instnum_flag |= xasl->instnum_flag;
-	  xasl->instnum_pred = NULL;
-	  xasl->instnum_val = NULL;
-	  xasl->instnum_flag = 0;
+	  /* we have an inst_num() which should not get evaluated in the initial fetch(processing stage)
+	   * qexec_execute_analytic(post-processing stage) will use it in the final sort */
+	  xasl->instnum_flag |= XASL_INSTNUM_FLAG_SCAN_STOP_AT_ANALYTIC;
 	}
 
       /* union fields for BUILDLIST_PROC_NODE - BUILDLIST_PROC */
@@ -17477,6 +17464,7 @@ pt_make_aptr_parent_node (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE typ
       if (PT_IS_QUERY_NODE_TYPE (node->node_type))
 	{
 	  PT_NODE *namelist;
+	  REGU_VARIABLE_LIST regu_var_list;
 
 	  namelist = NULL;
 
@@ -17488,6 +17476,15 @@ pt_make_aptr_parent_node (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE typ
 	      if (type == UPDATE_PROC)
 		{
 		  PT_NODE *col;
+
+		  if (aptr->outptr_list)
+		    {
+		      for (regu_var_list = aptr->outptr_list->valptrp; regu_var_list;
+			   regu_var_list = regu_var_list->next)
+			{
+			  regu_var_list->value.flags |= REGU_VARIABLE_UPD_INS_LIST;
+			}
+		    }
 
 		  for (col = pt_get_select_list (parser, node); col != NULL; col = col->next)
 		    {
@@ -21018,11 +21015,12 @@ parser_generate_xasl_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, in
     case PT_UNION:
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
-      if (!node->info.query.xasl)
-	{
-	  (void) pt_query_set_reference (parser, node);
-	  pt_push_symbol_info (parser, node);
-	}
+      /* The parser tree can be reused when multiple queries are executed through ux_execute_array (). */
+      /* The XASL object has already been freed at pt_exit_packing_buf (), so only node->info.query.xasl is changed to null. */
+      node->info.query.xasl = NULL;
+
+      (void) pt_query_set_reference (parser, node);
+      pt_push_symbol_info (parser, node);
       break;
 
     default:
@@ -26261,4 +26259,29 @@ pt_fix_buildlist_aggregate_cume_dist_percent_rank (PARSER_CONTEXT * parser, PT_N
     }				/* for(pnode...) ends */
 
   return NO_ERROR;
+}
+
+/*
+ * pt_to_instnum_pred () -
+ *
+ * return : XASL
+ * parser (in)  :
+ * xasl (in) :
+ * pred (in)
+ */
+XASL_NODE *
+pt_to_instnum_pred (PARSER_CONTEXT * parser, XASL_NODE * xasl, PT_NODE * pred)
+{
+  int flag = 0;
+
+  if (xasl && pred)
+    {
+      xasl->instnum_pred = pt_to_pred_expr_with_arg (parser, pred, &flag);
+      if (flag & PT_PRED_ARG_INSTNUM_CONTINUE)
+	{
+	  xasl->instnum_flag |= XASL_INSTNUM_FLAG_SCAN_CONTINUE;
+	}
+    }
+
+  return xasl;
 }

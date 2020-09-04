@@ -2861,37 +2861,6 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDLIST_PROC_NOD
 	}
     }
 
-  ptr = or_unpack_int (ptr, &offset);
-  if (offset == 0)
-    {
-      stx_build_list_proc->a_instnum_pred = NULL;
-    }
-  else
-    {
-      stx_build_list_proc->a_instnum_pred = stx_restore_pred_expr (thread_p, &xasl_unpack_info->packed_xasl[offset]);
-      if (stx_build_list_proc->a_instnum_pred == NULL)
-	{
-	  goto error;
-	}
-    }
-
-  ptr = or_unpack_int (ptr, &offset);
-  if (offset == 0)
-    {
-      stx_build_list_proc->a_instnum_val = NULL;
-    }
-  else
-    {
-      stx_build_list_proc->a_instnum_val = stx_restore_db_value (thread_p, &xasl_unpack_info->packed_xasl[offset]);
-      if (stx_build_list_proc->a_instnum_val == NULL)
-	{
-	  goto error;
-	}
-      assert (stx_build_list_proc->a_instnum_val->need_clear == false);
-    }
-
-  ptr = or_unpack_int (ptr, (int *) &stx_build_list_proc->a_instnum_flag);
-
   return ptr;
 
 error:

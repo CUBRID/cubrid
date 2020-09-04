@@ -35,6 +35,7 @@
         ((client_type) == DB_CLIENT_TYPE_DEFAULT \
          || (client_type) == DB_CLIENT_TYPE_CSQL \
          || (client_type) == DB_CLIENT_TYPE_READ_ONLY_CSQL \
+         || (client_type) == DB_CLIENT_TYPE_SKIP_VACUUM_CSQL \
          || (client_type) == DB_CLIENT_TYPE_BROKER \
          || (client_type) == DB_CLIENT_TYPE_READ_ONLY_BROKER \
          || (client_type) == DB_CLIENT_TYPE_RW_BROKER_REPLICA_ONLY \
@@ -49,8 +50,10 @@
 
 #define BOOT_ADMIN_CLIENT_TYPE(client_type) \
         ((client_type) == DB_CLIENT_TYPE_ADMIN_UTILITY \
+         || (client_type) == DB_CLIENT_TYPE_ADMIN_COMPACTDB_WOS \
          || (client_type) == DB_CLIENT_TYPE_ADMIN_CSQL \
-         || (client_type) == DB_CLIENT_TYPE_ADMIN_CSQL_WOS)
+         || (client_type) == DB_CLIENT_TYPE_ADMIN_CSQL_WOS \
+         || (client_type) == DB_CLIENT_TYPE_SKIP_VACUUM_ADMIN_CSQL)
 
 #define BOOT_LOG_REPLICATOR_TYPE(client_type) \
         ((client_type) == DB_CLIENT_TYPE_LOG_COPIER \
@@ -59,6 +62,8 @@
 #define BOOT_CSQL_CLIENT_TYPE(client_type) \
         ((client_type) == DB_CLIENT_TYPE_CSQL \
         || (client_type) == DB_CLIENT_TYPE_READ_ONLY_CSQL \
+        || (client_type) == DB_CLIENT_TYPE_SKIP_VACUUM_CSQL \
+        || (client_type) == DB_CLIENT_TYPE_SKIP_VACUUM_ADMIN_CSQL \
         || (client_type) == DB_CLIENT_TYPE_ADMIN_CSQL \
         || (client_type) == DB_CLIENT_TYPE_ADMIN_CSQL_WOS)
 
@@ -77,7 +82,8 @@
 #define BOOT_WRITE_ON_STANDY_CLIENT_TYPE(client_type) \
   ((client_type) == DB_CLIENT_TYPE_LOG_APPLIER \
       || (client_type) == DB_CLIENT_TYPE_RW_BROKER_REPLICA_ONLY \
-      || (client_type) == DB_CLIENT_TYPE_ADMIN_CSQL_WOS)
+      || (client_type) == DB_CLIENT_TYPE_ADMIN_CSQL_WOS \
+      || (client_type) == DB_CLIENT_TYPE_ADMIN_COMPACTDB_WOS)
 
 /*
  * BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE()

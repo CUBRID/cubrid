@@ -1196,6 +1196,8 @@ typedef struct _ha_config
 #define TRANLIST_SORT_KEY_L                     "sort-key"
 #define TRANLIST_REVERSE_S                      'r'
 #define TRANLIST_REVERSE_L                      "reverse"
+#define TRANLIST_FULL_SQL_S                     'f'
+#define TRANLIST_FULL_SQL_L                     "full"
 
 
 /* killtran option list */
@@ -1317,6 +1319,8 @@ typedef struct _ha_config
 #define COMPACT_INSTANCE_LOCK_TIMEOUT_L		"Instance-lock-timeout"
 #define COMPACT_CLASS_LOCK_TIMEOUT_S		'c'
 #define COMPACT_CLASS_LOCK_TIMEOUT_L		"class-lock-timeout"
+#define COMPACT_STANDBY_CS_MODE_S               12000
+#define COMPACT_STANDBY_CS_MODE_L               "standby"
 
 /* sqlx option list */
 #define CSQL_SA_MODE_S                          'S'
@@ -1359,6 +1363,8 @@ typedef struct _ha_config
 #define CSQL_PLAIN_OUTPUT_L                     "plain-output"
 #define CSQL_SKIP_COL_NAMES_S                   'N'
 #define CSQL_SKIP_COL_NAMES_L                   "skip-column-names"
+#define CSQL_SKIP_VACUUM_S			12017
+#define CSQL_SKIP_VACUUM_L			"skip-vacuum"
 
 #define COMMDB_SERVER_LIST_S                    'P'
 #define COMMDB_SERVER_LIST_L                    "server-list"

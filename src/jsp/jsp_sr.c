@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -38,6 +39,10 @@
 #include <jni.h>
 #include <locale.h>
 #include <assert.h>
+#include <vector>
+#include <string>
+#include <sstream>
+#include <iterator>
 
 #include "jsp_sr.h"
 
@@ -340,6 +345,60 @@ jsp_get_create_java_vm_function_ptr (void)
 
 #endif /* !WINDOWS */
 
+
+/*
+ * jsp_create_java_vm
+ *   return: create java vm
+ *
+ * Note:
+ */
+static int
+jsp_create_java_vm (JNIEnv ** env_p, JavaVMInitArgs * vm_arguments)
+{
+  int res;
+#if defined(WINDOWS)
+  __try
+  {
+    res = JNI_CreateJavaVM (&jvm, (void **) env_p, vm_arguments);
+  }
+  __except (delay_load_dll_exception_filter (GetExceptionInformation ()))
+  {
+    res = -1;
+  }
+#else /* WINDOWS */
+  CREATE_VM_FUNC create_vm_func = (CREATE_VM_FUNC) jsp_get_create_java_vm_function_ptr ();
+  if (create_vm_func)
+    {
+      res = (*create_vm_func) (&jvm, (void **) env_p, vm_arguments);
+    }
+  else
+    {
+      res = -1;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_JVM_LIB_NOT_FOUND, 1, dlerror ());
+    }
+#endif /* WINDOWS */
+  return res;
+}
+
+/*
+ * jsp_tokenize_jvm_options
+ *  return: tokenized array of string
+ *
+ */
+
+// *INDENT-OFF*
+static std::vector <std::string>
+jsp_tokenize_jvm_options (char *opt_str)
+{
+  std::string str (opt_str);
+  std::istringstream iss (str);
+  std::vector <std::string> options;
+  std::copy (std::istream_iterator <std::string> (iss),
+	     std::istream_iterator <std::string> (), std::back_inserter (options));
+  return options;
+}
+// *INDENT-ON*
+
 /*
  * jsp_start_server -
  *   return: Error Code
@@ -356,17 +415,21 @@ jsp_start_server (const char *db_name, const char *path)
   jint res;
   jclass cls, string_cls;
   jmethodID mid;
-  jstring jstr_dbname, jstr_path, jstr_version, jstr_envroot;
+  jstring jstr_dbname, jstr_path, jstr_version, jstr_envroot, jstr_port;
   jobjectArray args;
   JavaVMInitArgs vm_arguments;
-  const int vm_n_options = 3;
-  JavaVMOption options[vm_n_options];
-  char classpath[PATH_MAX + 32], logging_prop[PATH_MAX + 32];
-  char *loc_p, *locale;
+  JavaVMOption *options;
+  int vm_n_options = 3;
+  char classpath[PATH_MAX + 32], logging_prop[PATH_MAX + 32], option_debug[70];
+  char debug_flag[] = "-Xdebug";
+  char debug_jdwp[] = "-agentlib:jdwp=transport=dt_socket,server=y,address=%d,suspend=n";
+  char disable_sig_handle[] = "-Xrs";
   const char *envroot;
   char jsp_file_path[PATH_MAX];
-  char optionString2[] = "-Xrs";
-  CREATE_VM_FUNC create_vm_func = NULL;
+  char port[6] = { 0 };
+  char *loc_p, *locale;
+  char *jvm_opt_sysprm = NULL;
+  int debug_port = -1;
 
   if (!prm_get_bool_value (PRM_ID_JAVA_STORED_PROCEDURE))
     {
@@ -391,9 +454,38 @@ jsp_start_server (const char *db_name, const char *path)
   snprintf (logging_prop, sizeof (logging_prop) - 1, "-Djava.util.logging.config.file=%s",
 	    envvar_javadir_file (jsp_file_path, PATH_MAX, "logging.properties"));
 
+  debug_port = prm_get_integer_value (PRM_ID_JAVA_STORED_PROCEDURE_DEBUG);
+  if (debug_port != -1)
+    {
+      vm_n_options += 2;	/* set debug flag and debugging port */
+    }
+
+  jvm_opt_sysprm = (char *) prm_get_string_value (PRM_ID_JAVA_STORED_PROCEDURE_JVM_OPTIONS);
+  // *INDENT-OFF*
+  std::vector <std::string> opts = jsp_tokenize_jvm_options (jvm_opt_sysprm);
+  // *INDENT-ON*
+  vm_n_options += (int) opts.size ();
+  options = new JavaVMOption[vm_n_options];
+
+  int idx = 3;
   options[0].optionString = classpath;
   options[1].optionString = logging_prop;
-  options[2].optionString = optionString2;
+  options[2].optionString = disable_sig_handle;
+  if (debug_port != -1)
+    {
+      idx += 2;
+      snprintf (option_debug, sizeof (option_debug) - 1, debug_jdwp, debug_port);
+      options[3].optionString = debug_flag;
+      options[4].optionString = option_debug;
+    }
+
+  for (auto it = opts.begin (); it != opts.end (); ++it)
+    {
+      // *INDENT-OFF*
+      options[idx++].optionString = const_cast <char*> (it->c_str ());
+      // *INDENT-ON*
+    }
+
   vm_arguments.version = JNI_VERSION_1_4;
   vm_arguments.options = options;
   vm_arguments.nOptions = vm_n_options;
@@ -406,35 +498,21 @@ jsp_start_server (const char *db_name, const char *path)
       locale = strdup (loc_p);
     }
 
-#if defined(WINDOWS)
+  res = jsp_create_java_vm (&env_p, &vm_arguments);
+  // *INDENT-OFF*
+  delete[] options;
+  // *INDENT-ON*
 
-  __try
-  {
-    res = JNI_CreateJavaVM (&jvm, (void **) &env_p, &vm_arguments);
-  }
-  __except (delay_load_dll_exception_filter (GetExceptionInformation ()))
-  {
-    res = -1;
-  }
-
-#else /* WINDOWS */
-
-  create_vm_func = (CREATE_VM_FUNC) jsp_get_create_java_vm_function_ptr ();
-  if (create_vm_func)
+#if !defined(WINDOWS)
+  if (er_has_error ())
     {
-      res = (*create_vm_func) (&jvm, (void **) &env_p, &vm_arguments);
-    }
-  else
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_JVM_LIB_NOT_FOUND, 1, dlerror ());
       if (locale != NULL)
 	{
 	  free (locale);
 	}
       return er_errid ();
     }
-
-#endif /* !WINDOWS */
+#endif
 
   setlocale (LC_TIME, locale);
   if (locale != NULL)
@@ -491,6 +569,14 @@ jsp_start_server (const char *db_name, const char *path)
       goto error;
     }
 
+  sprintf (port, "%d", prm_get_integer_value (PRM_ID_JAVA_STORED_PROCEDURE_PORT));
+  jstr_port = JVM_NewStringUTF (env_p, port);
+  if (jstr_port == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, "NewStringUTF");
+      goto error;
+    }
+
   string_cls = JVM_FindClass (env_p, "java/lang/String");
   if (string_cls == NULL)
     {
@@ -498,7 +584,7 @@ jsp_start_server (const char *db_name, const char *path)
       goto error;
     }
 
-  args = JVM_NewObjectArray (env_p, 4, string_cls, NULL);
+  args = JVM_NewObjectArray (env_p, 5, string_cls, NULL);
   if (args == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, "NewObjectArray");
@@ -509,14 +595,19 @@ jsp_start_server (const char *db_name, const char *path)
   JVM_SetObjectArrayElement (env_p, args, 1, jstr_path);
   JVM_SetObjectArrayElement (env_p, args, 2, jstr_version);
   JVM_SetObjectArrayElement (env_p, args, 3, jstr_envroot);
+  JVM_SetObjectArrayElement (env_p, args, 4, jstr_port);
 
   sp_port = JVM_CallStaticIntMethod (env_p, cls, mid, args);
+  if (sp_port == -1)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, "CallStaticIntMethod");
+      goto error;
+    }
 
   return 0;
 
 error:
   jsp_stop_server ();
-  jvm = NULL;
 
   assert (er_errid () != NO_ERROR);
   return er_errid ();
@@ -532,6 +623,11 @@ error:
 int
 jsp_stop_server (void)
 {
+  if (jsp_jvm_is_loaded ())
+    {
+      jvm = NULL;
+    }
+
   return NO_ERROR;
 }
 

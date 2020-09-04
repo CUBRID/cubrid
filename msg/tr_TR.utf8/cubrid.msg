@@ -1313,8 +1313,9 @@ $ LOADDB
 1244 SHARED niteliklerinin güncellemelerini nesne dosyalarından güncelleme CS modunda desteklenmiyor.
 1245 CLASS niteliklerinin güncellemelerini nesne dosyalarından güncelleme CS modunda desteklenmiyor.
 1246 Adres ve ad bilgisi alınırken hata oluştu. Kod: %1$d, mesaj: %2$s.
+1247 Belirtilen zaman (%1$s) Belirtilen yedekleme süresi (%2$s) dan sonra olmalıdır.
 
-1247 Son Hata
+1248 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):

@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -35,7 +36,11 @@ extern "C"
 #define SRV_CON_CLIENT_INFO_SIZE	10
 #define SRV_CON_CLIENT_MAGIC_LEN	5
 #define SRV_CON_CLIENT_MAGIC_STR	"CUBRK"
+#define SRV_CON_CLIENT_MAGIC_STR_SSL    "CUBRS"
 #define SRV_CON_MSG_IDX_CLIENT_TYPE	5
+
+#define IS_SSL_CLIENT(driver_info) \
+        (strncmp (driver_info, SRV_CON_CLIENT_MAGIC_STR_SSL, SRV_CON_CLIENT_MAGIC_LEN) == 0)
 
 /* 8th and 9th-byte (index 7 and 8) are reserved for backward compatibility.
  * 8.4.0 patch 1 or earlier versions hold minor and patch version on them.
@@ -73,7 +78,8 @@ extern "C"
     CAS_CLIENT_JDBC = 3,
     CAS_CLIENT_PHP = 4,
     CAS_CLIENT_OLEDB = 5,
-    CAS_CLIENT_TYPE_MAX = 5
+    CAS_CLIENT_SERVER_SIDE_JDBC = 6,
+    CAS_CLIENT_TYPE_MAX = 6
   } CAS_CLIENT_TYPE;
 
   typedef enum
@@ -219,7 +225,9 @@ extern "C"
     PROTOCOL_V6 = 6,		/* cci/cas4m support unsigned integer type */
     PROTOCOL_V7 = 7,		/* timezone types, to pin xasl entry for retry */
     PROTOCOL_V8 = 8,		/* JSON type */
-    CURRENT_PROTOCOL = PROTOCOL_V8
+    PROTOCOL_V9 = 9,		/* cas health check: get function status */
+    PROTOCOL_V10 = 10,		/* Secure Broker/CAS using SSL */
+    CURRENT_PROTOCOL = PROTOCOL_V10
   };
   typedef enum t_cas_protocol T_CAS_PROTOCOL;
 

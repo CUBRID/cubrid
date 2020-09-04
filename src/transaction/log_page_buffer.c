@@ -472,7 +472,7 @@ logpb_compute_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int 
       p += sample_nbytes;
     }
 
-  error_code = crypt_crc32 (thread_p, (char *) buf, (int) sizeof_buf, checksum_crc32);
+  crypt_crc32 ((char *) buf, (int) sizeof_buf, checksum_crc32);
 
   /* Restores the saved checksum */
   log_pgptr->hdr.checksum = saved_checksum_crc32;
@@ -8153,10 +8153,9 @@ logpb_check_stop_at_time (FILEIO_BACKUP_SESSION * session, time_t stop_at, time_
 	  ctime_buf2[time_str_len - 1] = 0;
 	}
 
-      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_UPTODATE_ERROR), ctime_buf1,
-	       ctime_buf2);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UPTODATE_ERROR, 2, ctime_buf1, ctime_buf2);
 
-      return ER_FAILED;
+      return ER_LOG_UPTODATE_ERROR;
     }
 
   return NO_ERROR;
@@ -8346,14 +8345,12 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 		{
 		  backup_time = session->bkup.bkuphdr->start_time;
 		}
-
-	      if (logpb_check_stop_at_time (session, r_args->stopat, (time_t) backup_time) != NO_ERROR)
+	      error_code = logpb_check_stop_at_time (session, r_args->stopat, (time_t) backup_time);
+	      if (error_code != NO_ERROR)
 		{
-		  error_code = fileio_finish_restore (thread_p, session);
-
-		  fileio_page_bitmap_list_destroy (&page_bitmap_list);
 		  LOG_CS_EXIT (thread_p);
-		  return error_code;
+		  error_expected = true;
+		  goto error;
 		}
 	    }
 	}
@@ -8609,13 +8606,15 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 	    {
 	      r_args->stopat = (time_t) session->bkup.bkuphdr->end_time;
 	    }
-	  else if (r_args->stopat > 0
-		   && logpb_check_stop_at_time (session, r_args->stopat,
-						(time_t) session->bkup.bkuphdr->end_time) != NO_ERROR)
+	  else if (r_args->stopat > 0)
 	    {
-	      LOG_CS_EXIT (thread_p);
-	      error_code = ER_FAILED;
-	      goto error;
+	      error_code = logpb_check_stop_at_time (session, r_args->stopat, (time_t) session->bkup.bkuphdr->end_time);
+	      if (error_code != NO_ERROR)
+		{
+		  LOG_CS_EXIT (thread_p);
+		  error_expected = true;
+		  goto error;
+		}
 	    }
 	}
 

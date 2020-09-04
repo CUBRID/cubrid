@@ -236,6 +236,7 @@ static UTIL_SERVICE_PROPERTY_T us_Property_map[] = {
 
 
 static const char **Argv;
+static int ha_mode_in_common;
 
 static int util_get_service_option_mask (int util_type);
 static int util_get_command_option_mask (int command_type);
@@ -568,6 +569,8 @@ main (int argc, char *argv[])
 
       return EXIT_FAILURE;
     }
+
+  ha_mode_in_common = prm_get_integer_value (PRM_ID_HA_MODE_FOR_SA_UTILS_ONLY);
 
   if (util_type == ADMIN)
     {
@@ -1320,7 +1323,7 @@ process_service (int command_type, bool process_window_service)
 		  (void) process_manager (command_type, false);
 		}
 
-	      if (util_get_ha_mode_for_sa_utils () != HA_MODE_OFF)
+	      if (strcmp (get_property (SERVICE_START_HEARTBEAT), PROPERTY_ON) == 0)
 		{
 		  (void) process_heartbeat (command_type, 0, NULL);
 		}
@@ -1553,7 +1556,7 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 		      print_message (stderr, MSGCAT_UTIL_GENERIC_HA_MODE);
 		      print_result (PRINT_SERVER_NAME, status, command_type);
 		      util_log_write_errid (MSGCAT_UTIL_GENERIC_HA_MODE);
-		      break;
+		      continue;
 		    }
 		}
 	      if (is_server_running (CHECK_SERVER, token, 0))
@@ -1613,7 +1616,7 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 		      print_message (stderr, MSGCAT_UTIL_GENERIC_HA_MODE);
 		      print_result (PRINT_SERVER_NAME, status, command_type);
 		      util_log_write_errid (MSGCAT_UTIL_GENERIC_HA_MODE);
-		      break;
+		      continue;
 		    }
 		}
 #endif /* !WINDOWS */
@@ -1682,7 +1685,7 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 			  print_message (stderr, MSGCAT_UTIL_GENERIC_HA_MODE);
 			  util_log_write_errid (MSGCAT_UTIL_GENERIC_HA_MODE);
 			  print_result (PRINT_SERVER_NAME, status, command_type);
-			  break;
+			  continue;
 			}
 		    }
 #endif /* !WINDOWS */
@@ -2435,6 +2438,18 @@ us_hb_copylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf, const char *db
 	}
       num_db_found++;
 
+      prm_set_integer_value (PRM_ID_HA_MODE_FOR_SA_UTILS_ONLY, HA_MODE_FAIL_BACK);
+      status = sysprm_load_and_init (dbs[i], NULL, SYSPRM_IGNORE_INTL_PARAMS);
+      if (status != NO_ERROR)
+	{
+	  goto ret;
+	}
+
+      if (util_get_ha_mode_for_sa_utils () == HA_MODE_OFF)
+	{
+	  continue;
+	}
+
       for (j = 0; j < num_nodes; j++)
 	{
 	  if (node_name != NULL && strcmp (nc[j].node_name, node_name) != 0)
@@ -2704,6 +2719,18 @@ us_hb_applylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf, const char *d
 	  continue;
 	}
       num_db_found++;
+
+      prm_set_integer_value (PRM_ID_HA_MODE_FOR_SA_UTILS_ONLY, HA_MODE_FAIL_BACK);
+      status = sysprm_load_and_init (dbs[i], NULL, SYSPRM_IGNORE_INTL_PARAMS);
+      if (status != NO_ERROR)
+	{
+	  goto ret;
+	}
+
+      if (util_get_ha_mode_for_sa_utils () == HA_MODE_OFF)
+	{
+	  continue;
+	}
 
       for (j = 0; j < num_nodes; j++)
 	{
@@ -2997,6 +3024,23 @@ us_hb_server_start (HA_CONF * ha_conf, const char *db_name)
 
       if (!is_server_running (CHECK_SERVER, dbs[i], 0))
 	{
+	  prm_set_integer_value (PRM_ID_HA_MODE_FOR_SA_UTILS_ONLY, HA_MODE_FAIL_BACK);
+	  status = sysprm_load_and_init (dbs[i], NULL, SYSPRM_IGNORE_INTL_PARAMS);
+	  if (status != NO_ERROR)
+	    {
+	      util_log_write_errid (MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);
+	      print_result (PRINT_SERVER_NAME, status, START);
+	      break;
+	    }
+
+	  if (util_get_ha_mode_for_sa_utils () == HA_MODE_OFF)
+	    {
+	      print_message (stderr, MSGCAT_UTIL_GENERIC_NOT_HA_MODE);
+	      print_result (PRINT_SERVER_NAME, status, START);
+	      util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_HA_MODE);
+	      continue;
+	    }
+
 	  status = process_server (START, 1, &(dbs[i]), true, false, false);
 	  if (status != NO_ERROR)
 	    {
@@ -4256,7 +4300,7 @@ process_heartbeat (int command_type, int argc, const char **argv)
 #if !defined(WINDOWS)
   HA_CONF ha_conf;
 
-  if (util_get_ha_mode_for_sa_utils () == HA_MODE_OFF)
+  if (ha_mode_in_common == HA_MODE_OFF)
     {
       print_message (stderr, MSGCAT_UTIL_GENERIC_NOT_HA_MODE);
       util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_HA_MODE);

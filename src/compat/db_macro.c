@@ -1782,7 +1782,7 @@ db_value_coerce (const DB_VALUE * src, DB_VALUE * dest, const DB_DOMAIN * desire
   TP_DOMAIN_STATUS status;
   int err = NO_ERROR;
 
-  status = tp_value_cast (src, dest, desired_domain, false);
+  status = tp_value_cast_force (src, dest, desired_domain, false);
   if (status != DOMAIN_COMPATIBLE)
     {
       err = tp_domain_status_er_set (status, ARG_FILE_LINE, src, desired_domain);
