@@ -2437,6 +2437,18 @@ us_hb_copylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf, const char *db
 	}
       num_db_found++;
 
+      prm_set_integer_value (PRM_ID_HA_MODE_FOR_SA_UTILS_ONLY, HA_MODE_FAIL_BACK);
+      status = sysprm_load_and_init (dbs[i], NULL, SYSPRM_IGNORE_INTL_PARAMS);
+      if (status != NO_ERROR)
+	{
+	  goto ret;
+	}
+
+      if (util_get_ha_mode_for_sa_utils () == HA_MODE_OFF)
+	{
+	  continue;
+	}
+
       for (j = 0; j < num_nodes; j++)
 	{
 	  if (node_name != NULL && strcmp (nc[j].node_name, node_name) != 0)
@@ -2706,6 +2718,18 @@ us_hb_applylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf, const char *d
 	  continue;
 	}
       num_db_found++;
+
+      prm_set_integer_value (PRM_ID_HA_MODE_FOR_SA_UTILS_ONLY, HA_MODE_FAIL_BACK);
+      status = sysprm_load_and_init (dbs[i], NULL, SYSPRM_IGNORE_INTL_PARAMS);
+      if (status != NO_ERROR)
+	{
+	  goto ret;
+	}
+
+      if (util_get_ha_mode_for_sa_utils () == HA_MODE_OFF)
+	{
+	  continue;
+	}
 
       for (j = 0; j < num_nodes; j++)
 	{
@@ -2999,6 +3023,23 @@ us_hb_server_start (HA_CONF * ha_conf, const char *db_name)
 
       if (!is_server_running (CHECK_SERVER, dbs[i], 0))
 	{
+	  prm_set_integer_value (PRM_ID_HA_MODE_FOR_SA_UTILS_ONLY, HA_MODE_FAIL_BACK);
+	  status = sysprm_load_and_init (dbs[i], NULL, SYSPRM_IGNORE_INTL_PARAMS);
+	  if (status != NO_ERROR)
+	    {
+	      util_log_write_errid (MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);
+	      print_result (PRINT_SERVER_NAME, status, START);
+	      break;
+	    }
+
+	  if (util_get_ha_mode_for_sa_utils () == HA_MODE_OFF)
+	    {
+	      print_message (stderr, MSGCAT_UTIL_GENERIC_NOT_HA_MODE);
+	      print_result (PRINT_SERVER_NAME, status, START);
+	      util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_HA_MODE);
+	      continue;
+	    }
+
 	  status = process_server (START, 1, &(dbs[i]), true, false, false);
 	  if (status != NO_ERROR)
 	    {
