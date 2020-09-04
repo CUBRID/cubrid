@@ -9524,6 +9524,8 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols, co
 {
   char from_volname[PATH_MAX];	/* Name of new volume */
   char to_volname[PATH_MAX];	/* Name of "to" volume */
+  char from_mk_path[PATH_MAX];
+  char to_mk_path[PATH_MAX];
   char *alloc_extpath = NULL;	/* Copy path for specific volume */
   FILE *to_volinfo_fp = NULL;	/* Pointer to new volinfo file */
   const char *ext_name;
@@ -9723,6 +9725,15 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols, co
     {
       goto error;
     }
+
+  tde_make_keys_volume_fullname (from_mk_path, boot_db_full_name (), false);
+  tde_make_keys_volume_fullname (to_mk_path, to_db_fullname, false);
+
+  if (fileio_rename (LOG_DBTDE_KEYS_VOLID, from_mk_path, to_mk_path) != NULL)
+    {
+      /* Nothing, tde keys file can be unavailable */
+    }
+
 
   fileio_make_log_info_name (to_volname, to_logpath, to_prefix_logname);
   logpb_create_log_info (to_volname, to_db_fullname);
