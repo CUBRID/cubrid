@@ -311,6 +311,7 @@ qdata_copy_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key, REGU_VAR
     {
       /* copy values */
       new_key->val_count = key->val_count;
+      new_key->free_values = true;
       for (i = 0; i < key->val_count; i++)
 	{
 	  vtype1 = REGU_VARIABLE_GET_TYPE (&probe_regu_list->value);
@@ -321,7 +322,6 @@ qdata_copy_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key, REGU_VAR
 	      new_key->values[i] = pr_make_value ();
 	      if (new_key->values[i] == NULL)
 		{
-		  new_key->free_values = true;
 		  qdata_free_hscan_key (thread_p, new_key, i);
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE *));
 		  return NULL;
@@ -330,7 +330,6 @@ qdata_copy_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key, REGU_VAR
 	      status = tp_value_coerce (key->values[i], new_key->values[i], probe_regu_list->value.domain);
 	      if (status != DOMAIN_COMPATIBLE)
 		{
-		  new_key->free_values = true;
 		  qdata_free_hscan_key (thread_p, new_key, ++i);
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (vtype2),
 			  pr_type_name (vtype1));
@@ -340,11 +339,15 @@ qdata_copy_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key, REGU_VAR
 	  else
 	    {
 	      new_key->values[i] = pr_copy_value (key->values[i]);
+	      if (new_key->values[i] == NULL)
+		{
+		  qdata_free_hscan_key (thread_p, new_key, i);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE *));
+		  return NULL;
+		}
 	    }
 	  probe_regu_list = probe_regu_list->next;
 	}
-
-      new_key->free_values = true;
     }
 
   return new_key;
@@ -412,12 +415,10 @@ qdata_free_hscan_value (cubthread::entry * thread_p, HASH_SCAN_VALUE * value)
   /* free values */
   if (value->tuple != NULL)
     {
-      db_private_free (thread_p, value->tuple);
-      value->tuple = NULL;
+      db_private_free_and_init (thread_p, value->tuple);
     }
   /* free structure */
-  db_private_free (thread_p, value);
-  value = NULL;
+  db_private_free_and_init (thread_p, value);
 }
 
 /*
