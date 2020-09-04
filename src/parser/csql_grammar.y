@@ -26334,15 +26334,6 @@ parser_keyword_func (const char *name, PT_NODE * args)
       a2 = a1->next;
       a1->next = NULL;
 
-      if(a2->node_type == PT_VALUE
-         && PT_IS_STRING_TYPE(a2->type_enum)
-         && strcasecmp((const char *) a2->info.value.data_value.str->bytes, "default") == 0)
-        {
-          PT_ERRORf (this_parser, a2, "check syntax at %s",
-                     parser_print_tree (this_parser, a2));
-          return NULL;
-        }
-
       return parser_make_expression (this_parser, key->op, a1, a2, NULL);
 
     case PT_TRUNC:
@@ -26375,16 +26366,6 @@ parser_keyword_func (const char *name, PT_NODE * args)
       a1 = args;
       a2 = a1->next;
       a1->next = NULL;
-
-      /* prevent user input "default" */
-      if (a2->node_type == PT_VALUE
-          && a2->type_enum == PT_TYPE_CHAR
-          && strcasecmp ((const char *) a2->info.value.data_value.str->bytes, "default") == 0)
-        {
-          PT_ERRORf (this_parser, a2, "check syntax at %s",
-                     parser_print_tree (this_parser, a2));
-          return NULL;
-        }
 
       return parser_make_expression (this_parser, key->op, a1, a2, NULL);
 
