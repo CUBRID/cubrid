@@ -29,10 +29,12 @@
 #include <errno.h>
 #if !defined(WINDOWS)
 #include <dirent.h>
-#endif /* !WINDOWNS */
-#include <signal.h>
+#if 0
 #include "sys/socket.h"
 #include "sys/un.h"
+#endif /* TDE for replication log is disabled */
+#endif /* !WINDOWNS */
+#include <signal.h>
 
 #include "log_writer.h"
 
