@@ -4083,9 +4083,12 @@ pt_attr_check_default_cs_coll (PARSER_CONTEXT * parser, PT_NODE * attr, int defa
 	{
 	  /* use binary collation of attribute's charset specifier */
 	  attr_coll = LANG_GET_BINARY_COLLATION (attr_cs);
-	  if (attr->data_type->type_enum == PT_TYPE_VARCHAR || attr->data_type->type_enum == PT_TYPE_VARNCHAR)
+	  if (attr_coll < LANG_COLL_BINARY)
 	    {
-	      attr_coll += 10;
+	      if (attr->data_type->type_enum == PT_TYPE_VARCHAR || attr->data_type->type_enum == PT_TYPE_VARNCHAR)
+		{
+		  attr_coll += COLL_TS;
+		}
 	    }
 	}
     }
@@ -4099,11 +4102,11 @@ pt_attr_check_default_cs_coll (PARSER_CONTEXT * parser, PT_NODE * attr, int defa
     {
       /* attribute does not have a codeset or collation spec; use defaults */
       attr_coll = default_coll;
-      if (default_coll < 10)
+      if (default_coll < LANG_COLL_BINARY)
 	{
 	  if (attr->data_type->type_enum == PT_TYPE_VARCHAR || attr->data_type->type_enum == PT_TYPE_VARNCHAR)
 	    {
-	      attr_coll += 10;
+	      attr_coll += COLL_TS;
 	    }
 	}
       if (default_cs == -1)

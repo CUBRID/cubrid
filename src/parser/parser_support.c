@@ -8527,7 +8527,7 @@ pt_check_grammar_charset_collation (PARSER_CONTEXT * parser, PT_NODE * charset_n
 	}
       if (type == PT_TYPE_VARCHAR || type == PT_TYPE_VARNCHAR)
 	{
-	  *coll_id = *coll_id + 10;	/* for trailing space sensitive */
+	  *coll_id = *coll_id + COLL_TS;	/* for trailing space sensitive */
 	}
     }
 
