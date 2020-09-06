@@ -4878,23 +4878,6 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	    PT_ERRORm (parser, alter, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_ALTER_CHANGE_ONLY_TABLE);
 	    break;
 	  }
-	
-	for (attr = alter->info.alter.alter_clause.attr_mthd.attr_def_list; attr; attr = attr->next)
-	  { 
-	    if (PT_HAS_COLLATION (attr->type_enum) && attr->node_type == PT_ATTR_DEF)
-	      { 
-		if (pt_attr_check_default_cs_coll (parser, attr, -1, collation_id) != NO_ERROR)
-		  { 
-		    return;
-		  }
-	      }
-	  }
-	
-	pt_check_attribute_domain (parser, att_def, type, NULL, reuse_oid, alter);
-	for (attr = alter->info.alter.alter_clause.attr_mthd.attr_def_list; attr; attr = attr->next)
-	  { 
-	    attr->info.attr_def.data_default = pt_check_data_default (parser, attr->info.attr_def.data_default);
-	  }
       }
       break;
 

@@ -4334,8 +4334,8 @@ smt_change_attribute (SM_TEMPLATE * template_, const char *name, const char *new
       assert (name_space == ID_ATTRIBUTE);
     }
 
-  // att->type = new_domain->type;
-  // att->domain = new_domain;
+  att->type = new_domain->type;
+  att->domain = new_domain;
 
   /* change name */
   if (new_name != NULL)

@@ -75,6 +75,7 @@
 #define UNIQUE_SAVEPOINT_ALTER_INDEX "aLTERiNDEX"
 #define UNIQUE_SAVEPOINT_CHANGE_DEF_COLL "cHANGEdEFAULTcOLL"
 #define UNIQUE_SAVEPOINT_CHANGE_TBL_COMMENT "cHANGEtBLcOMMENT"
+#define UNIQUE_SAVEPOINT_CHANGE_COLUMN_COMMENT "cHANGEcOLUMNcOMMENT"
 #define UNIQUE_SAVEPOINT_CREATE_USER_ENTITY "cREATEuSEReNTITY"
 #define UNIQUE_SAVEPOINT_DROP_USER_ENTITY "dROPuSEReNTITY"
 #define UNIQUE_SAVEPOINT_ALTER_USER_ENTITY "aLTERuSEReNTITY"
@@ -10027,49 +10028,50 @@ exit:
  *   alter(in/out): Parse tree of a PT_CHANGE_COLUMN_COMMENT clause
  */
 static int
-do_alter_change_col_comment (PARSER_CONTEXT * const parser, PT_NODE * const alter)
+do_alter_change_col_comment (PARSER_CONTEXT * const parser, PT_NODE * const alter_node)
 {
   int error = NO_ERROR;
-  const PT_ALTER_CODE alter_code = alter->info.alter.code;
-  const char *entity_name = NULL;
-  DB_OBJECT *class_obj = NULL;
-  DB_CTMPL *ctemplate = NULL;
   SM_ATTR_CHG_SOL change_mode = SM_ATTR_CHG_ONLY_SCHEMA;
   SM_ATTR_PROP_CHG attr_chg_prop;
-  bool tran_saved = false;
-  MOP class_mop = NULL;
-  OID *usr_oid_array = NULL; //--
-  int user_count = 0;
-  int i;
-  bool has_partitions = false; //--
-  bool is_srv_update_needed = false;
-  OID class_oid;
-  int att_id = -1;
-
-  PT_NODE *attr_node = NULL;
+  SM_ATTRIBUTE *found_attr = NULL;
+  SM_NAME_SPACE name_space = ID_NULL;
+  const PT_ALTER_CODE alter_code = alter_node->info.alter.code;
+  const char *entity_name = NULL;
+  PT_NODE *attr_node = NULL; 
+  const char *attr_name = NULL;
   PT_NODE *comment_node = NULL;
-  PARSER_VARCHAR *comment = NULL;
+  PARSER_VARCHAR *comment_str = NULL;
+  DB_OBJECT *class_obj = NULL;
+  DB_CTMPL *ctemplate = NULL;
+  MOP class_mop = NULL;
+  OID class_oid;
+  bool tran_saved = false;
 
   assert (alter_code == PT_CHANGE_COLUMN_COMMENT);
-  assert (alter->info.alter.super.resolution_list == NULL);
+  assert (alter_node->info.alter.super.resolution_list == NULL);
 
-  attr_node = alter->info.alter.alter_clause.attr_mthd.attr_def_list;
+  attr_node = alter_node->info.alter.alter_clause.attr_mthd.attr_def_list;
   comment_node = attr_node->info.attr_def.comment;
 
   assert (comment_node != NULL && comment_node->node_type == PT_VALUE);
 
-  comment = comment_node->info.value.data_value.str;
-
   OID_SET_NULL (&class_oid);
   reset_att_property_structure (&attr_chg_prop);
 
-  entity_name = alter->info.alter.entity_name->info.name.original;
+  entity_name = alter_node->info.alter.entity_name->info.name.original;
   if (entity_name == NULL)
     {
       error = ER_UNEXPECTED;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "Expecting a class or virtual class name.");
       goto exit;
     }
+
+  error = tran_system_savepoint (UNIQUE_SAVEPOINT_CHANGE_COLUMN_COMMENT);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+  tran_saved = true;
 
   class_obj = db_find_class (entity_name);
   if (class_obj == NULL)
@@ -10099,54 +10101,88 @@ do_alter_change_col_comment (PARSER_CONTEXT * const parser, PT_NODE * const alte
       /* when dbt_edit_class fails (e.g. because the server unilaterally aborts us), we must record the associated
        * error message into the parser.	 Otherwise, we may get a confusing error msg of the form: "so_and_so is not a
        * class". */
-      pt_record_error (parser, parser->statement_number - 1, alter->line_number, alter->column_number, er_msg (), NULL);
+      pt_record_error (parser, parser->statement_number - 1, alter_node->line_number, alter_node->column_number, er_msg (), NULL);
       error = er_errid ();
       goto exit;
     }
 
-  error =
-    check_change_attribute (parser, ctemplate, alter->info.alter.alter_clause.attr_mthd.attr_def_list,
-                            alter->info.alter.alter_clause.attr_mthd.attr_old_name,
-                            &(alter->info.alter.constraint_list), &attr_chg_prop, &change_mode);
-  if (error != NO_ERROR)
+  attr_name = get_attr_name (attr_node);
+
+  /* get the attribute structure */                                                                                  
+  error =                                                                                                            
+    smt_find_attribute (ctemplate, attr_name, (attr_chg_prop.name_space == ID_CLASS_ATTRIBUTE) ? 1 : 0, &found_attr);
+  if (error != NO_ERROR)                                                                                             
+    {                                                                                                                
+      return error;                                                                                                  
+    }                                                                                                                
+
+  assert (found_attr != NULL);
+
+  attr_chg_prop.name_space = found_attr->header.name_space;
+
+  if (attr_node->info.attr_def.attr_type == PT_NORMAL)
     {
+      attr_chg_prop.new_name_space = ID_ATTRIBUTE;
+    }
+  else if (attr_node->info.attr_def.attr_type == PT_SHARED)
+    {
+      attr_chg_prop.new_name_space = ID_SHARED_ATTRIBUTE;
+    }
+
+  /* consolidate properties : */
+  {
+    int i = 0;
+
+    for (i = 0; i < NUM_ATT_CHG_PROP; i++)
+      {
+        int *const p = &(attr_chg_prop.p[i]);
+	
+	*p = 0;
+        *p |= ATT_CHG_PROPERTY_PRESENT_OLD;
+        *p |= ATT_CHG_PROPERTY_UNCHANGED;
+      }
+
+    attr_chg_prop.p[P_COMMENT] &= ~ATT_CHG_PROPERTY_UNCHANGED;
+  }
+
+  /* comment */
+  attr_chg_prop.p[P_COMMENT] |= ATT_CHG_PROPERTY_LOST;
+  comment_str = comment_node->info.value.data_value.str;
+  if (comment_str != NULL)
+    {
+      attr_chg_prop.p[P_COMMENT] |= ATT_CHG_PROPERTY_DIFF;
+      /* remove "LOST" flag */
+      attr_chg_prop.p[P_COMMENT] &= ~ATT_CHG_PROPERTY_LOST;
+    }
+
+  if ((attr_chg_prop.name_space == ID_SHARED_ATTRIBUTE && attr_chg_prop.new_name_space == ID_ATTRIBUTE)
+      || (attr_chg_prop.name_space == ID_ATTRIBUTE && attr_chg_prop.new_name_space == ID_SHARED_ATTRIBUTE))
+    {
+      error = ER_ALTER_CHANGE_ATTR_TO_FROM_SHARED_NOT_ALLOWED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, attr_name);
       goto exit;
     }
 
-  error = tran_system_savepoint (UNIQUE_SAVEPOINT_CHANGE_ATTR);
-  if (error != NO_ERROR)
+  if (is_att_prop_set (attr_chg_prop.p[P_COMMENT], ATT_CHG_PROPERTY_DIFF))
     {
-      goto exit;
+      ctemplate->attributes->comment = ws_copy_string ((char *) pt_get_varchar_bytes (comment_str));
+      if (ctemplate->attributes->comment == NULL)
+        {
+          error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
+          goto exit;
+        }
     }
-  tran_saved = true;
-
-  error =
-    do_change_att_schema_only (parser, ctemplate, alter->info.alter.alter_clause.attr_mthd.attr_def_list,
-			      alter->info.alter.alter_clause.attr_mthd.attr_old_name,
-			      alter->info.alter.constraint_list, &attr_chg_prop, &change_mode);
-
-  if (error != NO_ERROR)
+  else if (is_att_prop_set (attr_chg_prop.p[P_COMMENT], ATT_CHG_PROPERTY_LOST))
     {
-      goto exit;
+      if (ctemplate->attributes->comment != NULL)
+        {
+          ws_free_string (ctemplate->attributes->comment);
+          ctemplate->attributes->comment = NULL;
+        }
     }
 
   /* save class MOP */
   class_mop = ctemplate->op;
-
-  /* check foreign key constraints */
-  error = do_check_fk_constraints (ctemplate, alter->info.alter.constraint_list);
-  if (error != NO_ERROR)
-    {
-      goto exit;
-    }
-
-  is_srv_update_needed = ((change_mode == SM_ATTR_CHG_WITH_ROW_UPDATE || change_mode == SM_ATTR_CHG_BEST_EFFORT)
-			 && attr_chg_prop.name_space == ID_ATTRIBUTE) ? true : false;
-  if (is_srv_update_needed)
-    {
-      COPY_OID (&class_oid, &(ctemplate->op->oid_info.oid));
-      att_id = attr_chg_prop.att_id;
-    }
 
   /* force schema update to server */
   class_obj = dbt_finish_class (ctemplate);
@@ -10159,201 +10195,6 @@ do_alter_change_col_comment (PARSER_CONTEXT * const parser, PT_NODE * const alte
   /* set NULL, avoid 'abort_class' in case of error */
   ctemplate = NULL;
 
-  if (attr_chg_prop.constr_info != NULL)
-    {
-      SM_CONSTRAINT_INFO *saved_constr = NULL;
-
-      for (saved_constr = attr_chg_prop.constr_info; saved_constr != NULL; saved_constr = saved_constr->next)
-       {
-	 if (saved_constr->func_index_info || saved_constr->filter_predicate)
-	   {
-	     if (saved_constr->func_index_info)
-	       {
-		 error = do_recreate_func_index_constr (parser, saved_constr, NULL, alter, NULL, NULL);
-		 if (error != NO_ERROR)
-		   {
-		     goto exit;
-		   }
-	       }
-	     if (saved_constr->filter_predicate)
-	       {
-		 error = do_recreate_filter_index_constr (parser, saved_constr->filter_predicate, alter, NULL, NULL);
-		 if (error != NO_ERROR)
-		   {
-		     goto exit;
-		   }
-	       }
-
-	     if (!is_srv_update_needed)
-	       {
-		 const char *att_names[2];
-		 PT_NODE *att_old_name = alter->info.alter.alter_clause.attr_mthd.attr_old_name;
-
-		 if (att_old_name != NULL)
-		   {
-		     assert (att_old_name->node_type == PT_NAME);
-		     att_names[0] = att_old_name->info.name.original;
-		     att_names[1] = NULL;
-
-		     assert (alter->info.alter.alter_clause.attr_mthd.attr_old_name->node_type == PT_NAME);
-		     error =
-		       sm_drop_constraint (class_mop, saved_constr->constraint_type, saved_constr->name, att_names,
-					   false, false);
-
-		     if (error != NO_ERROR)
-		       {
-			 goto exit;
-		       }
-
-		     error = sm_add_constraint (class_mop, saved_constr->constraint_type, saved_constr->name,
-						(const char **) saved_constr->att_names, saved_constr->asc_desc,
-						saved_constr->prefix_length, false, saved_constr->filter_predicate,
-						saved_constr->func_index_info, saved_constr->comment,
-						saved_constr->index_status);
-		     if (error != NO_ERROR)
-		       {
-			 goto exit;
-		       }
-		   }
-	       }
-	   }
-       }
-    }
-
-  if (is_srv_update_needed || is_att_prop_set (attr_chg_prop.p[P_TYPE], ATT_CHG_TYPE_PREC_INCR))
-    {
-      error = do_drop_att_constraints (class_mop, attr_chg_prop.constr_info);
-      if (error != NO_ERROR)
-       {
-	 goto exit;
-       }
-
-      /* perform UPDATE or each row */
-      if (is_srv_update_needed)
-       {
-	 assert (att_id >= 0);
-	 assert (!OID_ISNULL (&class_oid));
-
-	 if (has_partitions)
-	   {
-	     assert (user_count > 0);
-	     assert (usr_oid_array != NULL);
-
-	     for (i = 0; i < user_count; i++)
-	       {
-		 error = do_run_upgrade_instances_domain (parser, &(usr_oid_array[i]), att_id);
-		 if (error != NO_ERROR)
-		   {
-		     goto exit;
-		   }
-	       }
-	   }
-	 else
-	   {
-	     error = do_run_upgrade_instances_domain (parser, &class_oid, att_id);
-	     if (error != NO_ERROR)
-	       {
-		 goto exit;
-	       }
-	   }
-       }
-
-      error = sort_constr_info_list (&(attr_chg_prop.constr_info));
-      if (error != NO_ERROR)
-       {
-	 er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UNEXPECTED, 1, "Sorting constraints failed.");
-	 goto exit;
-       }
-
-      error = do_recreate_att_constraints (class_mop, attr_chg_prop.constr_info);
-      if (error != NO_ERROR)
-       {
-	 goto exit;
-       }
-    }
-  else
-    {
-      assert (change_mode == SM_ATTR_CHG_ONLY_SCHEMA);
-    }
-
-  /* create any new constraints: */
-  if (attr_chg_prop.new_constr_info != NULL)
-    {
-      SM_CONSTRAINT_INFO *ci = NULL;
-
-      error = sort_constr_info_list (&(attr_chg_prop.new_constr_info));
-      if (error != NO_ERROR)
-       {
-	 er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UNEXPECTED, 1, "Sorting constraints failed.");
-	 goto exit;
-       }
-
-      /* add new constraints */
-      for (ci = attr_chg_prop.new_constr_info; ci != NULL; ci = ci->next)
-       {
-	 if (ci->constraint_type == DB_CONSTRAINT_NOT_NULL)
-	   {
-	     const char *att_name = *(ci->att_names);
-
-	     if (alter->info.alter.hint & PT_HINT_SKIP_UPDATE_NULL)
-	       {
-		 error = db_add_constraint (class_mop, ci->constraint_type, NULL, (const char **) ci->att_names, 0);
-	       }
-	     else if (!prm_get_bool_value (PRM_ID_ALTER_TABLE_CHANGE_TYPE_STRICT))
-	       {
-		 char query[SM_MAX_IDENTIFIER_LENGTH * 4 + 36] = { 0 };
-		 const char *class_name = NULL;
-		 const char *hard_default =
-		   get_hard_default_for_type (alter->info.alter.alter_clause.attr_mthd.attr_def_list->type_enum);
-		 int update_rows_count = 0;
-
-		 class_name = db_get_class_name (class_mop);
-		 if (class_name == NULL)
-		   {
-		     error = ER_UNEXPECTED;
-		     er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "Cannot get class name of mop.");
-		     goto exit;
-		   }
-
-		 assert (class_name != NULL && att_name != NULL && hard_default != NULL);
-
-		 snprintf (query, SM_MAX_IDENTIFIER_LENGTH * 4 + 30, "UPDATE [%s] SET [%s]=%s WHERE [%s] IS NULL",
-			   class_name, att_name, hard_default, att_name);
-		 error = do_run_update_query_for_class (query, class_mop, &update_rows_count);
-		 if (error != NO_ERROR)
-		   {
-		     goto exit;
-		   }
-
-		 if (update_rows_count > 0)
-		   {
-		     er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_ALTER_CHANGE_ADD_NOT_NULL_SET_HARD_DEFAULT, 0);
-		   }
-		 error = db_add_constraint (class_mop, ci->constraint_type, NULL, (const char **) ci->att_names, 0);
-	       }
-	     else
-	       {
-		 error = db_constrain_non_null (class_mop, *(ci->att_names), 0, 1);
-	       }
-	     if (error != NO_ERROR)
-	       {
-		 goto exit;
-	       }
-	   }
-	 else
-	   {
-	     assert (ci->constraint_type == DB_CONSTRAINT_UNIQUE || ci->constraint_type == DB_CONSTRAINT_PRIMARY_KEY);
-
-	     error = db_add_constraint (class_mop, ci->constraint_type, NULL, (const char **) ci->att_names, 0);
-	   }
-
-	 if (error != NO_ERROR)
-	   {
-	     goto exit;
-	   }
-       }
-    }
-
 exit:
 
   if (ctemplate != NULL)
@@ -10364,17 +10205,7 @@ exit:
 
   if (error != NO_ERROR && tran_saved && error != ER_LK_UNILATERALLY_ABORTED)
     {
-      (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_CHANGE_ATTR);
-    }
-
-  if (attr_chg_prop.constr_info != NULL)
-    {
-      sm_free_constraint_info (&(attr_chg_prop.constr_info));
-    }
-
-  if (attr_chg_prop.new_constr_info != NULL)
-    {
-      sm_free_constraint_info (&(attr_chg_prop.new_constr_info));
+      (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_CHANGE_COLUMN_COMMENT);
     }
 
   return error;
@@ -10436,15 +10267,12 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 	}
     }
 
-/*
-  if (validate_attribute_domain (parser, attribute, smt_get_class_type (ctemplate) == SM_CLASS_CT ? true : false)
-      && (*(parser->statements))->info.alter.code != PT_CHANGE_COLUMN_COMMENT)
+  if (validate_attribute_domain (parser, attribute, smt_get_class_type (ctemplate) == SM_CLASS_CT ? true : false))
     {
-      /* validate_attribute_domain() is assumed to issue whatever messages are pertinent. *
+      /* validate_attribute_domain() is assumed to issue whatever messages are pertinent. */
       error = ER_FAILED;
       goto exit;
     }
-*/
 
   if (*change_mode == SM_ATTR_CHG_ONLY_SCHEMA)
     {
@@ -11183,8 +11011,7 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
   }
 
   /* special case : TYPE */
-  if (tp_domain_match (attr_db_domain, att->domain, TP_EXACT_MATCH) != 0
-     || (*(parser->statements))->info.alter.code == PT_CHANGE_COLUMN_COMMENT)
+  if (tp_domain_match (attr_db_domain, att->domain, TP_EXACT_MATCH) != 0)
     {
       attr_chg_properties->p[P_TYPE] |= ATT_CHG_PROPERTY_UNCHANGED;
     }
