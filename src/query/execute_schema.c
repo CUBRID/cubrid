@@ -10058,7 +10058,7 @@ do_alter_change_col_comment (PARSER_CONTEXT * const parser, PT_NODE * const alte
       error = ER_UNEXPECTED;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "Expecting a class or virtual class name.");
       goto exit;
-    } 
+    }
 
   class_obj = db_find_class (entity_name);
   if (class_obj == NULL)
@@ -10067,26 +10067,26 @@ do_alter_change_col_comment (PARSER_CONTEXT * const parser, PT_NODE * const alte
       error = er_errid ();
       goto exit;
     }
-  
+
   error = locator_flush_class (class_obj);
   if (error != NO_ERROR)
     {
       /* don't overwrite error */
       goto exit;
     }
-  
+
   /* force exclusive lock on class, even though it should have been already acquired */
   if (locator_fetch_class (class_obj, DB_FETCH_WRITE) == NULL)
     {
       error = ER_FAILED;
       goto exit;
     }
-  
+
   error = tran_system_savepoint (UNIQUE_SAVEPOINT_CHANGE_COLUMN_COMMENT);
   if (error != NO_ERROR)
     {
       goto exit;
-    } 
+    }
   tran_saved = true;
 
   attr_node = alter_node->info.alter.alter_clause.attr_mthd.attr_def_list;
@@ -10109,13 +10109,13 @@ do_alter_change_col_comment (PARSER_CONTEXT * const parser, PT_NODE * const alte
 
       assert (comment_node != NULL && comment_node->node_type == PT_VALUE);
 
-      /* get the attribute structure */                                                                                  
-      error =                                                                                                            
+      /* get the attribute structure */
+      error =
 	smt_find_attribute (ctemplate, attr_name, (attr_chg_prop.name_space == ID_CLASS_ATTRIBUTE) ? 1 : 0, &found_attr);
-      if (error != NO_ERROR)                                                                                             
-	{                                                                                                                
-	  return error;                                                                                                  
-	}                                                                                                                
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
 
       assert (found_attr != NULL);
 

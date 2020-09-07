@@ -4877,7 +4877,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 
 	    attr_def = attr_def->next;
 	  }
-	
+
 	if (alter->info.alter.entity_type != PT_CLASS)
 	  {
 	    PT_ERRORm (parser, alter, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_ALTER_CHANGE_ONLY_TABLE);
