@@ -10096,7 +10096,7 @@ do_alter_change_col_comment (PARSER_CONTEXT * const parser, PT_NODE * const alte
       if (ctemplate == NULL)
 	{
 	  /* when dbt_edit_class fails (e.g. because the server unilaterally aborts us), we must record the associated
-	   * error message into the parser.      Otherwise, we may get a confusing error msg of the form: "so_and_so is not a
+	   * error message into the parser. Otherwise, we may get a confusing error msg of the form: "so_and_so is not a
 	   * class". */
 	  pt_record_error (parser, parser->statement_number - 1, alter_node->line_number, alter_node->column_number,
 			   er_msg (), NULL);
