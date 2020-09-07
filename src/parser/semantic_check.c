@@ -4865,12 +4865,15 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 
     case PT_CHANGE_COLUMN_COMMENT:										
       {
-	PT_NODE *const att_def = alter->info.alter.alter_clause.attr_mthd.attr_def_list;
+	PT_NODE *attr_def = NULL;
 
-	if (att_def->next != NULL || att_def->node_type != PT_ATTR_DEF)
+	for (attr_def = alter->info.alter.alter_clause.attr_mthd.attr_def_list; attr_def != NULL; attr_def = attr_def->next)
 	  {
-	    assert (false);
-	    break;
+	    if (attr_def->node_type != PT_ATTR_DEF)
+	    {
+	      assert (false);
+	      break;
+	    }
 	  }
 	
 	if (alter->info.alter.entity_type != PT_CLASS)
