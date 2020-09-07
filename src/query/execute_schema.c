@@ -10092,16 +10092,16 @@ do_alter_change_col_comment (PARSER_CONTEXT * const parser, PT_NODE * const alte
   attr_node = alter_node->info.alter.alter_clause.attr_mthd.attr_def_list;
   while (attr_node != NULL)
     {
-      ctemplate = dbt_edit_class (class_obj);                                                                                        
+      ctemplate = dbt_edit_class (class_obj);
       if (ctemplate == NULL)
-        {
-          /* when dbt_edit_class fails (e.g. because the server unilaterally aborts us), we must record the associated
-           * error message into the parser.      Otherwise, we may get a confusing error msg of the form: "so_and_so is not a
-           * class". */
-          pt_record_error (parser, parser->statement_number - 1, alter_node->line_number, alter_node->column_number, er_msg (), NULL);
-          error = er_errid ();
-          goto exit;
-        }
+	{
+	  /* when dbt_edit_class fails (e.g. because the server unilaterally aborts us), we must record the associated
+	   * error message into the parser.      Otherwise, we may get a confusing error msg of the form: "so_and_so is not a
+	   * class". */
+	  pt_record_error (parser, parser->statement_number - 1, alter_node->line_number, alter_node->column_number, er_msg (), NULL);
+	  error = er_errid ();
+	  goto exit;
+	}
 
       attr_name = get_attr_name (attr_node);
 
@@ -10111,76 +10111,76 @@ do_alter_change_col_comment (PARSER_CONTEXT * const parser, PT_NODE * const alte
 
       /* get the attribute structure */                                                                                  
       error =                                                                                                            
-        smt_find_attribute (ctemplate, attr_name, (attr_chg_prop.name_space == ID_CLASS_ATTRIBUTE) ? 1 : 0, &found_attr);
+	smt_find_attribute (ctemplate, attr_name, (attr_chg_prop.name_space == ID_CLASS_ATTRIBUTE) ? 1 : 0, &found_attr);
       if (error != NO_ERROR)                                                                                             
-        {                                                                                                                
-          return error;                                                                                                  
-        }                                                                                                                
+	{                                                                                                                
+	  return error;                                                                                                  
+	}                                                                                                                
 
       assert (found_attr != NULL);
 
       attr_chg_prop.name_space = found_attr->header.name_space;
 
       if (attr_node->info.attr_def.attr_type == PT_NORMAL)
-        {
-          attr_chg_prop.new_name_space = ID_ATTRIBUTE;
-        }
+	{
+	  attr_chg_prop.new_name_space = ID_ATTRIBUTE;
+	}
       else if (attr_node->info.attr_def.attr_type == PT_SHARED)
-        {
-          attr_chg_prop.new_name_space = ID_SHARED_ATTRIBUTE;
-        }
+	{
+	  attr_chg_prop.new_name_space = ID_SHARED_ATTRIBUTE;
+	}
 
       /* consolidate properties : */
       {
-        int i = 0;
+	int i = 0;
 
-        for (i = 0; i < NUM_ATT_CHG_PROP; i++)
-          {
-            int *const p = &(attr_chg_prop.p[i]);
-            
-            *p = 0;
-            *p |= ATT_CHG_PROPERTY_PRESENT_OLD;
-            *p |= ATT_CHG_PROPERTY_UNCHANGED;
-          }
+	for (i = 0; i < NUM_ATT_CHG_PROP; i++)
+	  {
+	    int *const p = &(attr_chg_prop.p[i]);
+	    
+	    *p = 0;
+	    *p |= ATT_CHG_PROPERTY_PRESENT_OLD;
+	    *p |= ATT_CHG_PROPERTY_UNCHANGED;
+	  }
 
-        attr_chg_prop.p[P_COMMENT] &= ~ATT_CHG_PROPERTY_UNCHANGED;
+	attr_chg_prop.p[P_COMMENT] &= ~ATT_CHG_PROPERTY_UNCHANGED;
       }
 
       /* comment */
       attr_chg_prop.p[P_COMMENT] |= ATT_CHG_PROPERTY_LOST;
       comment_str = comment_node->info.value.data_value.str;
       if (comment_str != NULL)
-        {
-          attr_chg_prop.p[P_COMMENT] |= ATT_CHG_PROPERTY_DIFF;
-          /* remove "LOST" flag */
-          attr_chg_prop.p[P_COMMENT] &= ~ATT_CHG_PROPERTY_LOST;
-        }
+	{
+	  attr_chg_prop.p[P_COMMENT] |= ATT_CHG_PROPERTY_DIFF;
+	  /* remove "LOST" flag */
+	  attr_chg_prop.p[P_COMMENT] &= ~ATT_CHG_PROPERTY_LOST;
+	}
 
       if ((attr_chg_prop.name_space == ID_SHARED_ATTRIBUTE && attr_chg_prop.new_name_space == ID_ATTRIBUTE)
-          || (attr_chg_prop.name_space == ID_ATTRIBUTE && attr_chg_prop.new_name_space == ID_SHARED_ATTRIBUTE))
-        {
-          error = ER_ALTER_CHANGE_ATTR_TO_FROM_SHARED_NOT_ALLOWED;
-          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, attr_name);
-          goto exit;
-        }
+	  || (attr_chg_prop.name_space == ID_ATTRIBUTE && attr_chg_prop.new_name_space == ID_SHARED_ATTRIBUTE))
+	{
+	  error = ER_ALTER_CHANGE_ATTR_TO_FROM_SHARED_NOT_ALLOWED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, attr_name);
+	  goto exit;
+	}
 
       if (is_att_prop_set (attr_chg_prop.p[P_COMMENT], ATT_CHG_PROPERTY_DIFF))
-        {
-          found_attr->comment = ws_copy_string ((char *) pt_get_varchar_bytes (comment_str));
-          if (found_attr->comment == NULL)
-            {
-              error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
-              goto exit;
-            }
-        }
+	{
+	  found_attr->comment = ws_copy_string ((char *) pt_get_varchar_bytes (comment_str));
+	  if (found_attr->comment == NULL)
+	    {
+	      error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
+	      goto exit;
+	    }
+	}
       else if (is_att_prop_set (attr_chg_prop.p[P_COMMENT], ATT_CHG_PROPERTY_LOST))
-        {
-          if (found_attr->comment != NULL)
-            {
-              ws_free_string (found_attr->comment);
-              found_attr->comment = NULL;
-            }
-        }
+	{
+	  if (found_attr->comment != NULL)
+	    {
+	      ws_free_string (found_attr->comment);
+	      found_attr->comment = NULL;
+	    }
+	}
 
       /* save class MOP */
       class_mop = ctemplate->op;
@@ -10188,11 +10188,11 @@ do_alter_change_col_comment (PARSER_CONTEXT * const parser, PT_NODE * const alte
       /* force schema update to server */
       class_obj = dbt_finish_class (ctemplate);
       if (class_obj == NULL)
-        {
-          assert (er_errid () != NO_ERROR);
-          error = er_errid ();
-          goto exit;
-        }
+	{
+	  assert (er_errid () != NO_ERROR);
+	  error = er_errid ();
+	  goto exit;
+	}
 
       attr_node = attr_node->next;
     }

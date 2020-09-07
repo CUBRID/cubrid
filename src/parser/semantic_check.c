@@ -4867,19 +4867,19 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
       {
 	PT_NODE *attr_def = alter->info.alter.alter_clause.attr_mthd.attr_def_list;
 
-	while(attr_def != NULL)
+	while (attr_def != NULL)
 	  {
 	    if (attr_def->node_type != PT_ATTR_DEF)
 	      {
-	        assert (false);
-	        break;
+		assert (false);
+		break;
 	      }
 
 	    attr_def = attr_def->next;
 	  }
 	
 	if (alter->info.alter.entity_type != PT_CLASS)
-	  { 
+	  {
 	    PT_ERRORm (parser, alter, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_ALTER_CHANGE_ONLY_TABLE);
 	    break;
 	  }
