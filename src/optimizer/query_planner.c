@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -176,7 +177,7 @@ static bool qo_check_new_best_plan_on_info (QO_INFO *, QO_PLAN *);
 static int qo_check_plan_on_info (QO_INFO *, QO_PLAN *);
 static int qo_examine_idx_join (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BITSET *, BITSET *, BITSET *);
 static int qo_examine_nl_join (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BITSET *, BITSET *, BITSET *, BITSET *,
-			       BITSET *, int);
+			       BITSET *, int, BITSET *);
 static int qo_examine_merge_join (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BITSET *, BITSET *, BITSET *, BITSET *,
 				  BITSET *);
 static int qo_examine_correlated_index (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BITSET *, BITSET *, BITSET *);
@@ -220,7 +221,7 @@ static QO_PLAN *qo_worst_new (QO_ENV *);
 static QO_PLAN *qo_cp_new (QO_INFO *, QO_PLAN *, QO_PLAN *, BITSET *, BITSET *);
 static QO_PLAN *qo_follow_new (QO_INFO *, QO_PLAN *, QO_TERM *, BITSET *, BITSET *);
 static QO_PLAN *qo_join_new (QO_INFO *, JOIN_TYPE, QO_JOINMETHOD, QO_PLAN *, QO_PLAN *, BITSET *, BITSET *, BITSET *,
-			     BITSET *, BITSET *);
+			     BITSET *, BITSET *, BITSET *);
 static QO_PLAN *qo_sort_new (QO_PLAN *, QO_EQCLASS *, SORT_TYPE);
 static QO_PLAN *qo_seq_scan_new (QO_INFO *, QO_NODE *);
 static QO_PLAN *qo_index_scan_new (QO_INFO *, QO_NODE *, QO_NODE_INDEX_ENTRY *, QO_SCANMETHOD, BITSET *, BITSET *);
@@ -1401,6 +1402,7 @@ qo_scan_new (QO_INFO * info, QO_NODE * node, QO_SCANMETHOD scan_method)
   bitset_assign (&(plan->subqueries), &(QO_NODE_SUBQUERIES (node)));
   bitset_init (&(plan->plan_un.scan.terms), info->env);
   bitset_init (&(plan->plan_un.scan.kf_terms), info->env);
+  bitset_init (&(plan->plan_un.scan.hash_terms), info->env);
   plan->plan_un.scan.index_equi = false;
   plan->plan_un.scan.index_cover = false;
   plan->plan_un.scan.index_iss = false;
@@ -1424,6 +1426,7 @@ qo_scan_free (QO_PLAN * plan)
 {
   bitset_delset (&(plan->plan_un.scan.terms));
   bitset_delset (&(plan->plan_un.scan.kf_terms));
+  bitset_delset (&(plan->plan_un.scan.hash_terms));
   bitset_delset (&(plan->plan_un.scan.multi_col_range_segs));
 }
 
@@ -2603,7 +2606,7 @@ qo_sort_cost (QO_PLAN * planp)
 static QO_PLAN *
 qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_PLAN * outer, QO_PLAN * inner,
 	     BITSET * join_terms, BITSET * duj_terms, BITSET * afj_terms, BITSET * sarged_terms,
-	     BITSET * pinned_subqueries)
+	     BITSET * pinned_subqueries, BITSET * hash_terms)
 {
   QO_PLAN *plan = NULL;
   QO_NODE *node = NULL;
@@ -2747,9 +2750,12 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
   bitset_init (&(plan->plan_un.join.join_terms), info->env);
   bitset_init (&(plan->plan_un.join.during_join_terms), info->env);
   bitset_init (&(plan->plan_un.join.after_join_terms), info->env);
+  bitset_init (&(plan->plan_un.join.hash_terms), info->env);
 
   /* set join terms */
   bitset_assign (&(plan->plan_un.join.join_terms), join_terms);
+  /* set hash terms */
+  bitset_assign (&(plan->plan_un.join.hash_terms), hash_terms);
   /* add to out terms */
   bitset_union (&sarg_out_terms, &(plan->plan_un.join.join_terms));
 
@@ -3385,7 +3391,7 @@ qo_cp_new (QO_INFO * info, QO_PLAN * outer, QO_PLAN * inner, BITSET * sarged_ter
 		      QO_JOINMETHOD_NL_JOIN, outer, inner, &empty_terms /* join_terms */ ,
 		      &empty_terms /* duj_terms */ ,
 		      &empty_terms /* afj_terms */ ,
-		      sarged_terms, pinned_subqueries);
+		      sarged_terms, pinned_subqueries, &empty_terms /* hash_terms */ );
 
   bitset_delset (&empty_terms);
 
@@ -5668,7 +5674,7 @@ exit:
 static int
 qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INFO * inner, BITSET * nl_join_terms,
 		    BITSET * duj_terms, BITSET * afj_terms, BITSET * sarged_terms, BITSET * pinned_subqueries,
-		    int idx_join_plan_n)
+		    int idx_join_plan_n, BITSET * hash_terms)
 {
   int n = 0;
   QO_PLAN *outer_plan, *inner_plan;
@@ -5797,7 +5803,7 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
   n =
     qo_check_plan_on_info (info,
 			   qo_join_new (info, join_type, QO_JOINMETHOD_NL_JOIN, outer_plan, inner_plan, nl_join_terms,
-					duj_terms, afj_terms, sarged_terms, pinned_subqueries));
+					duj_terms, afj_terms, sarged_terms, pinned_subqueries, hash_terms));
 
 exit:
 
@@ -5828,6 +5834,8 @@ qo_examine_merge_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_
   int t;
   BITSET_ITERATOR iter;
   QO_TERM *term;
+  BITSET empty_terms;
+  bitset_init (&empty_terms, info->env);
 
   /* If any of the sarged terms are fake terms, we can't implement this join as a merge join, because the timing
    * assumptions required by the fake terms won't be satisfied.  Nested loops are the only joins that will work.
@@ -5940,7 +5948,8 @@ qo_examine_merge_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_
   n =
     qo_check_plan_on_info (info,
 			   qo_join_new (info, join_type, QO_JOINMETHOD_MERGE_JOIN, outer_plan, inner_plan,
-					sm_join_terms, duj_terms, afj_terms, sarged_terms, pinned_subqueries));
+					sm_join_terms, duj_terms, afj_terms, sarged_terms, pinned_subqueries,
+					&empty_terms));
 
 exit:
 
@@ -7056,9 +7065,13 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 #endif /* CORRELATED_INDEX */
 
 	/* STEP 5-3: examine nl-join */
+	/* sm_join_terms is a mergeable term for SM join. In hash list scan, mergeable term is used as hash term. */
+	/* The mergeable term and the hash term have the same characteristics. */
+	/* If the characteristics for mergeable terms are changed, the logic for hash terms should be separated. */
+	/* mergeable term : equi-term, symmetrical term, e.g. TBL1.a = TBL2.a, function(TAB1.a) = function(TAB2.a) */
 	kept +=
 	  qo_examine_nl_join (new_info, join_type, head_info, tail_info, &nl_join_terms, &duj_terms, &afj_terms,
-			      &sarged_terms, &pinned_subqueries, idx_join_plan_n);
+			      &sarged_terms, &pinned_subqueries, idx_join_plan_n, &sm_join_terms);
 
 #if 1				/* MERGE_JOINS */
 	/* STEP 5-4: examine merge-join */
@@ -7641,7 +7654,7 @@ qo_generate_join_index_scan (QO_INFO * infop, JOIN_TYPE join_type, QO_PLAN * out
 	    qo_check_plan_on_info (infop,
 				   qo_join_new (infop, join_type, QO_JOINMETHOD_IDX_JOIN, outer_plan, inner_plan,
 						&empty_terms, &empty_terms, afj_terms, &remaining_terms,
-						pinned_subqueries));
+						pinned_subqueries, &empty_terms));
 	}
     }
 
