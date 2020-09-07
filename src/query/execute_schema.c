@@ -10139,7 +10139,7 @@ do_alter_change_col_comment (PARSER_CONTEXT * const parser, PT_NODE * const alte
 	for (i = 0; i < NUM_ATT_CHG_PROP; i++)
 	  {
 	    int *const p = &(attr_chg_prop.p[i]);
-	    
+
 	    *p = 0;
 	    *p |= ATT_CHG_PROPERTY_PRESENT_OLD;
 	    *p |= ATT_CHG_PROPERTY_UNCHANGED;
