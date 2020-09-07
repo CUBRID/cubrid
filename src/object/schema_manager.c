@@ -14577,6 +14577,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
   bool set_savepoint = false;
   int partition_type;
   MOP *sub_partitions = NULL;
+  bool use_stat_estimation = prm_get_bool_value (PRM_ID_USE_STAT_ESTIMATION);
 
   if (att_names == NULL)
     {
@@ -14785,7 +14786,16 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	      goto error_exit;
 	    }
 	}
-
+      else if (!use_stat_estimation)
+	{
+	  /* if NOT use_stat_estimation then stats is not updated at update_class() */
+	  /* this routine is for create index statement */
+	  error = sm_update_statistics (newmop, STATS_WITH_SAMPLING);
+	  if (error != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+	}
       break;
 
     case DB_CONSTRAINT_NOT_NULL:
