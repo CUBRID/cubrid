@@ -164,7 +164,7 @@ str_to_hex (THREAD_ENTRY * thread_p, const char *src, int src_len, char **dest_p
 
   str_to_hex_prealloced (src, src_len, dest, dest_len, lettercase);
   *dest_p = dest;
-  *dest_len_p = dest_len;
+  *dest_len_p = dest_len - 1;
   return dest;
 }
 
