@@ -10037,7 +10037,7 @@ do_alter_change_col_comment (PARSER_CONTEXT * const parser, PT_NODE * const alte
   SM_NAME_SPACE name_space = ID_NULL;
   const PT_ALTER_CODE alter_code = alter_node->info.alter.code;
   const char *entity_name = NULL;
-  PT_NODE *attr_node = NULL; 
+  PT_NODE *attr_node = NULL;
   const char *attr_name = NULL;
   PT_NODE *comment_node = NULL;
   PARSER_VARCHAR *comment_str = NULL;
@@ -10089,7 +10089,8 @@ do_alter_change_col_comment (PARSER_CONTEXT * const parser, PT_NODE * const alte
     } 
   tran_saved = true;
 
-  for (attr_node = alter_node->info.alter.alter_clause.attr_mthd.attr_def_list; attr_node != NULL; attr_node = attr_node->next)
+  attr_node = alter_node->info.alter.alter_clause.attr_mthd.attr_def_list;
+  while (attr_node != NULL)
     {
       ctemplate = dbt_edit_class (class_obj);                                                                                        
       if (ctemplate == NULL)
@@ -10192,6 +10193,8 @@ do_alter_change_col_comment (PARSER_CONTEXT * const parser, PT_NODE * const alte
           error = er_errid ();
           goto exit;
         }
+
+      attr_node = attr_node->next;
     }
 
     /* set NULL, avoid 'abort_class' in case of error */
