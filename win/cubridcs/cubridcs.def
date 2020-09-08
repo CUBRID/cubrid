@@ -493,6 +493,7 @@ EXPORTS
     compactdb
     acldb
     vacuumdb
+    tde
 ;
 ; libesql reference's functions
 ;

@@ -165,6 +165,7 @@ EXPORTS
 	synccoll_force
 	restoreslave
 	vacuumdb
+  tde
 
 ;
 ;	enable below two functions when
