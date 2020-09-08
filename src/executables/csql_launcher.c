@@ -317,7 +317,7 @@ main (int argc, char *argv[])
 		  }
 		else
 		  {
-		    csql_arg.column_delimiter = optarg[0];
+		    csql_arg.column_delimiter = optarg[1];
 		  }
 	      }
 	    else
