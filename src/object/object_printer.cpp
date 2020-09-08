@@ -40,7 +40,7 @@
 #include "string_buffer.hpp"
 #include "trigger_manager.h"
 #include "work_space.h"
-#include "tde.hpp"
+#include "tde.h"
 
 #include <assert.h>
 

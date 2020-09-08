@@ -18,7 +18,7 @@
  */
 
 /*
- * tde.cpp -
+ * tde.c -
  */
 
 #ident "$Id$"
@@ -51,17 +51,16 @@
 #include "error_code.h"
 #include "log_storage.hpp"
 #include "log_volids.hpp"
-#include "tde.hpp"
+#include "tde.h"
 
 /*
  * It must correspond to TDE_ALGORITHM enum.
  * Each index of tde_Algorithm_str is the value in TDE_ALGORITHM enum.
  */
-static const char *tde_Algorithm_str[] =
-{
-  "NONE",       /* TDE_ALGORITHM_NONE */
-  "AES",        /* TDE_ALGORITHM_AES */
-  "ARIA"        /* TDE_ALGORITHM_ARIA */
+static const char *tde_Algorithm_str[] = {
+  "NONE",			/* TDE_ALGORITHM_NONE */
+  "AES",			/* TDE_ALGORITHM_AES */
+  "ARIA"			/* TDE_ALGORITHM_ARIA */
 };
 
 #define off_signals(new_mask, old_mask) \
@@ -78,17 +77,17 @@ static const char *tde_Algorithm_str[] =
 #define restore_signals(old_mask) sigprocmask(SIG_SETMASK, &(old_mask), NULL)
 
 #if !defined(CS_MODE)
-TDE_CIPHER tde_Cipher; // global var for TDE Module
+TDE_CIPHER tde_Cipher;		// global var for TDE Module
 
 static OID tde_Keyinfo_oid;	/* Location of keys */
 static HFID tde_Keyinfo_hfid;
 
-static int tde_update_keyinfo (THREAD_ENTRY *thread_p, const TDE_KEYINFO *keyinfo, OID *keyinfo_oid, HFID *hfid);
-static int tde_generate_keyinfo (TDE_KEYINFO *keyinfo, int mk_index, const unsigned char *master_key,
-				 const time_t created_time, const TDE_DATA_KEY_SET *dks);
+static int tde_update_keyinfo (THREAD_ENTRY * thread_p, const TDE_KEYINFO * keyinfo, OID * keyinfo_oid, HFID * hfid);
+static int tde_generate_keyinfo (TDE_KEYINFO * keyinfo, int mk_index, const unsigned char *master_key,
+				 const time_t created_time, const TDE_DATA_KEY_SET * dks);
 static int tde_create_keys_file (const char *keyfile_fullname);
 static bool tde_validate_mk (const unsigned char *master_key, const unsigned char *mk_hash);
-static int tde_load_dks (const TDE_KEYINFO *keyinfo, const unsigned char *master_key);
+static int tde_load_dks (const TDE_KEYINFO * keyinfo, const unsigned char *master_key);
 static void tde_make_mk_hash (const unsigned char *master_key, unsigned char *mk_hash);
 static int tde_create_dk (unsigned char *data_key);
 static int tde_encrypt_dk (const unsigned char *dk_plain, TDE_DATA_KEY_TYPE dk_type, const unsigned char *master_key,
@@ -108,10 +107,10 @@ static int tde_decrypt_internal (const unsigned char *cipher_buffer, int length,
  *
  */
 int
-tde_initialize (THREAD_ENTRY *thread_p, HFID *keyinfo_hfid)
+tde_initialize (THREAD_ENTRY * thread_p, HFID * keyinfo_hfid)
 {
-  char mk_path[PATH_MAX] = {0, };
-  unsigned char default_mk[TDE_MASTER_KEY_LENGTH] = {0,};
+  char mk_path[PATH_MAX] = { 0, };
+  unsigned char default_mk[TDE_MASTER_KEY_LENGTH] = { 0, };
   int mk_index;
   int err = NO_ERROR;
   RECDES recdes;
@@ -121,7 +120,7 @@ tde_initialize (THREAD_ENTRY *thread_p, HFID *keyinfo_hfid)
   time_t created_time;
   int vdes = -1;
 
-  tde_make_keys_volume_fullname (mk_path, boot_db_full_name(), false);
+  tde_make_keys_volume_fullname (mk_path, boot_db_full_name (), false);
   err = tde_create_keys_file (mk_path);
   if (err != NO_ERROR)
     {
@@ -131,8 +130,8 @@ tde_initialize (THREAD_ENTRY *thread_p, HFID *keyinfo_hfid)
   vdes = fileio_mount (thread_p, boot_db_full_name (), mk_path, LOG_DBTDE_KEYS_VOLID, false, false);
   if (vdes == NULL_VOLDES)
     {
-      ASSERT_ERROR();
-      return er_errid();
+      ASSERT_ERROR ();
+      return er_errid ();
     }
 
   err = tde_create_mk (default_mk);
@@ -186,9 +185,9 @@ exit:
 }
 
 int
-tde_cipher_initialize (THREAD_ENTRY *thread_p, const HFID *keyinfo_hfid, const char *mk_path_given)
+tde_cipher_initialize (THREAD_ENTRY * thread_p, const HFID * keyinfo_hfid, const char *mk_path_given)
 {
-  char mk_path_buffer[PATH_MAX] = {0, };
+  char mk_path_buffer[PATH_MAX] = { 0, };
   const char *mk_path;
   unsigned char master_key[TDE_MASTER_KEY_LENGTH];
   TDE_KEYINFO keyinfo;
@@ -201,15 +200,15 @@ tde_cipher_initialize (THREAD_ENTRY *thread_p, const HFID *keyinfo_hfid, const c
     }
   else
     {
-      tde_make_keys_volume_fullname (mk_path_buffer, boot_db_full_name(), false);
+      tde_make_keys_volume_fullname (mk_path_buffer, boot_db_full_name (), false);
       mk_path = mk_path_buffer;
     }
 
   vdes = fileio_mount (thread_p, boot_db_full_name (), mk_path, LOG_DBTDE_KEYS_VOLID, 1, false);
   if (vdes == NULL_VOLDES)
     {
-      ASSERT_ERROR();
-      return er_errid();
+      ASSERT_ERROR ();
+      return er_errid ();
     }
 
   if (tde_validate_keys_volume (vdes) == false)
@@ -256,7 +255,7 @@ tde_create_keys_file (const char *keyfile_fullname)
 {
   int vdes = NULL_VOLDES;
   int err = NO_ERROR;
-  char magic[CUBRID_MAGIC_MAX_LENGTH] = {0,};
+  char magic[CUBRID_MAGIC_MAX_LENGTH] = { 0, };
 #if !defined(WINDOWS)
   sigset_t new_mask, old_mask;
 #endif /* !WINDOWS */
@@ -274,8 +273,8 @@ tde_create_keys_file (const char *keyfile_fullname)
 
   if ((vdes = fileio_open (keyfile_fullname, O_CREAT | O_RDWR, 0600)) == NULL_VOLDES)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANNOT_CREATE_VOL, 3, keyfile_fullname, boot_db_full_name(),
-	      er_get_msglog_filename());
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANNOT_CREATE_VOL, 3, keyfile_fullname, boot_db_full_name (),
+	      er_get_msglog_filename ());
       err = ER_BO_CANNOT_CREATE_VOL;
       goto exit;
     }
@@ -298,7 +297,7 @@ exit:
 bool
 tde_validate_keys_volume (int vdes)
 {
-  char magic[CUBRID_MAGIC_MAX_LENGTH] = {0,};
+  char magic[CUBRID_MAGIC_MAX_LENGTH] = { 0, };
 #if !defined(WINDOWS)
   sigset_t new_mask, old_mask;
 #endif /* !WINDOWS */
@@ -328,7 +327,7 @@ tde_validate_keys_volume (int vdes)
 }
 
 int
-tde_copy_keys_volume (THREAD_ENTRY *thread_p, const char *to_keyfile_fullname, const char *from_keyfile_fullname,
+tde_copy_keys_volume (THREAD_ENTRY * thread_p, const char *to_keyfile_fullname, const char *from_keyfile_fullname,
 		      bool keep_to_mount, bool keep_from_mount)
 {
   char buffer[4096];
@@ -340,8 +339,8 @@ tde_copy_keys_volume (THREAD_ENTRY *thread_p, const char *to_keyfile_fullname, c
   from_vdes = fileio_mount (thread_p, boot_db_full_name (), from_keyfile_fullname, LOG_DBTDE_KEYS_VOLID, 1, false);
   if (from_vdes == NULL_VOLDES)
     {
-      ASSERT_ERROR();
-      return er_errid();
+      ASSERT_ERROR ();
+      return er_errid ();
     }
 
   if (tde_validate_keys_volume (from_vdes) == false)
@@ -365,7 +364,7 @@ tde_copy_keys_volume (THREAD_ENTRY *thread_p, const char *to_keyfile_fullname, c
   if (to_vdes == NULL_VOLDES)
     {
       ASSERT_ERROR ();
-      err = er_errid();
+      err = er_errid ();
       fileio_dismount (thread_p, from_vdes);
       return err;
     }
@@ -414,8 +413,7 @@ tde_copy_keys_volume (THREAD_ENTRY *thread_p, const char *to_keyfile_fullname, c
 }
 
 int
-tde_change_mk (THREAD_ENTRY *thread_p, const int mk_index, const unsigned char *master_key,
-	       const time_t created_time)
+tde_change_mk (THREAD_ENTRY * thread_p, const int mk_index, const unsigned char *master_key, const time_t created_time)
 {
   TDE_KEYINFO keyinfo;
   TDE_DATA_KEY_SET dks;
@@ -451,7 +449,7 @@ tde_change_mk (THREAD_ENTRY *thread_p, const int mk_index, const unsigned char *
 }
 
 int
-tde_get_keyinfo (THREAD_ENTRY *thread_p, TDE_KEYINFO *keyinfo)
+tde_get_keyinfo (THREAD_ENTRY * thread_p, TDE_KEYINFO * keyinfo)
 {
   RECDES recdes;
   HEAP_SCANCACHE scan_cache;
@@ -473,7 +471,7 @@ tde_get_keyinfo (THREAD_ENTRY *thread_p, TDE_KEYINFO *keyinfo)
 }
 
 static int
-tde_update_keyinfo (THREAD_ENTRY *thread_p, const TDE_KEYINFO *keyinfo, OID *keyinfo_oid, HFID *hfid)
+tde_update_keyinfo (THREAD_ENTRY * thread_p, const TDE_KEYINFO * keyinfo, OID * keyinfo_oid, HFID * hfid)
 {
   HEAP_SCANCACHE scan_cache;
   HEAP_OPERATION_CONTEXT update_context;
@@ -528,8 +526,8 @@ tde_make_keys_volume_fullname (char *keys_vol_fullname, const char *db_full_name
 }
 
 static int
-tde_generate_keyinfo (TDE_KEYINFO *keyinfo, int mk_index, const unsigned char *master_key,
-		      const time_t created_time, const TDE_DATA_KEY_SET *dks)
+tde_generate_keyinfo (TDE_KEYINFO * keyinfo, int mk_index, const unsigned char *master_key,
+		      const time_t created_time, const TDE_DATA_KEY_SET * dks)
 {
   int err = NO_ERROR;
 
@@ -558,7 +556,7 @@ tde_generate_keyinfo (TDE_KEYINFO *keyinfo, int mk_index, const unsigned char *m
 }
 
 int
-tde_load_mk (int vdes, const TDE_KEYINFO *keyinfo, unsigned char *master_key)
+tde_load_mk (int vdes, const TDE_KEYINFO * keyinfo, unsigned char *master_key)
 {
   int location;
   TDE_MK_FILE_ITEM item;
@@ -633,9 +631,9 @@ tde_validate_mk (const unsigned char *master_key, const unsigned char *mk_hash)
 
 /* MK MUST be loaded earlier */
 static int
-tde_load_dks (const TDE_KEYINFO *keyinfo, const unsigned char *master_key)
+tde_load_dks (const TDE_KEYINFO * keyinfo, const unsigned char *master_key)
 {
-  unsigned char dk_nonce[TDE_DK_NONCE_LENGTH] = {0,};
+  unsigned char dk_nonce[TDE_DK_NONCE_LENGTH] = { 0, };
   int err = NO_ERROR;
 
   err = tde_decrypt_dk (keyinfo->dk_perm, TDE_DATA_KEY_TYPE_PERM, master_key, tde_Cipher.data_keys.perm_key);
@@ -689,24 +687,22 @@ static int
 tde_encrypt_dk (const unsigned char *dk_plain, TDE_DATA_KEY_TYPE dk_type, const unsigned char *master_key,
 		unsigned char *dk_cipher)
 {
-  unsigned char dk_nonce[TDE_DK_NONCE_LENGTH] = {0,};
+  unsigned char dk_nonce[TDE_DK_NONCE_LENGTH] = { 0, };
 
   tde_dk_nonce (dk_nonce, dk_type);
 
-  return tde_encrypt_internal (dk_plain, TDE_DATA_KEY_LENGTH, TDE_DK_ALGORITHM,
-			       master_key, dk_nonce, dk_cipher);
+  return tde_encrypt_internal (dk_plain, TDE_DATA_KEY_LENGTH, TDE_DK_ALGORITHM, master_key, dk_nonce, dk_cipher);
 }
 
 static int
 tde_decrypt_dk (const unsigned char *dk_cipher, TDE_DATA_KEY_TYPE dk_type, const unsigned char *master_key,
 		unsigned char *dk_plain)
 {
-  unsigned char dk_nonce[TDE_DK_NONCE_LENGTH] = {0,};
+  unsigned char dk_nonce[TDE_DK_NONCE_LENGTH] = { 0, };
 
   tde_dk_nonce (dk_nonce, dk_type);
 
-  return tde_decrypt_internal (dk_cipher, TDE_DATA_KEY_LENGTH, TDE_DK_ALGORITHM,
-			       master_key, dk_nonce, dk_plain);
+  return tde_decrypt_internal (dk_cipher, TDE_DATA_KEY_LENGTH, TDE_DK_ALGORITHM, master_key, dk_nonce, dk_plain);
 }
 
 static inline void
@@ -732,8 +728,7 @@ tde_dk_nonce (unsigned char *dk_nonce, TDE_DATA_KEY_TYPE dk_type)
 }
 
 int
-tde_encrypt_data_page (FILEIO_PAGE *iopage_plain, FILEIO_PAGE *iopage_cipher, TDE_ALGORITHM tde_algo,
-		       bool is_temp)
+tde_encrypt_data_page (FILEIO_PAGE * iopage_plain, FILEIO_PAGE * iopage_cipher, TDE_ALGORITHM tde_algo, bool is_temp)
 {
   int err = NO_ERROR;
   unsigned char nonce[TDE_DATA_PAGE_NONCE_LENGTH];
@@ -764,15 +759,15 @@ tde_encrypt_data_page (FILEIO_PAGE *iopage_plain, FILEIO_PAGE *iopage_cipher, TD
 
   memcpy (iopage_cipher, iopage_plain, IO_PAGESIZE);
 
-  err = tde_encrypt_internal (((const unsigned char *)iopage_plain) + TDE_DATA_PAGE_ENC_OFFSET,
+  err = tde_encrypt_internal (((const unsigned char *) iopage_plain) + TDE_DATA_PAGE_ENC_OFFSET,
 			      TDE_DATA_PAGE_ENC_LENGTH, tde_algo, data_key, nonce,
-			      ((unsigned char *)iopage_cipher) + TDE_DATA_PAGE_ENC_OFFSET);
+			      ((unsigned char *) iopage_cipher) + TDE_DATA_PAGE_ENC_OFFSET);
 
   return err;
 }
 
 int
-tde_decrypt_data_page (const FILEIO_PAGE *iopage_cipher, FILEIO_PAGE *iopage_plain, TDE_ALGORITHM tde_algo,
+tde_decrypt_data_page (const FILEIO_PAGE * iopage_cipher, FILEIO_PAGE * iopage_plain, TDE_ALGORITHM tde_algo,
 		       bool is_temp)
 {
   int err = NO_ERROR;
@@ -801,15 +796,15 @@ tde_decrypt_data_page (const FILEIO_PAGE *iopage_cipher, FILEIO_PAGE *iopage_pla
 
   memcpy (iopage_plain, iopage_cipher, IO_PAGESIZE);
 
-  err = tde_decrypt_internal (((const unsigned char *)iopage_cipher) + TDE_DATA_PAGE_ENC_OFFSET,
+  err = tde_decrypt_internal (((const unsigned char *) iopage_cipher) + TDE_DATA_PAGE_ENC_OFFSET,
 			      TDE_DATA_PAGE_ENC_LENGTH, tde_algo, data_key, nonce,
-			      ((unsigned char *)iopage_plain) + TDE_DATA_PAGE_ENC_OFFSET);
+			      ((unsigned char *) iopage_plain) + TDE_DATA_PAGE_ENC_OFFSET);
 
   return err;
 }
 
 int
-xtde_get_set_mk_info (THREAD_ENTRY *thread_p, int *mk_index, time_t *created_time, time_t *set_time)
+xtde_get_set_mk_info (THREAD_ENTRY * thread_p, int *mk_index, time_t * created_time, time_t * set_time)
 {
   TDE_KEYINFO keyinfo;
   int err = NO_ERROR;
@@ -833,16 +828,16 @@ xtde_get_set_mk_info (THREAD_ENTRY *thread_p, int *mk_index, time_t *created_tim
 }
 
 int
-xtde_change_mk_without_flock (THREAD_ENTRY *thread_p, const int mk_index)
+xtde_change_mk_without_flock (THREAD_ENTRY * thread_p, const int mk_index)
 {
-  char mk_path[PATH_MAX] = {0, };
+  char mk_path[PATH_MAX] = { 0, };
   TDE_KEYINFO keyinfo;
-  unsigned char master_key[TDE_MASTER_KEY_LENGTH] = {0, };
+  unsigned char master_key[TDE_MASTER_KEY_LENGTH] = { 0, };
   time_t created_time;
   int vdes;
   int err = NO_ERROR;
 
-  tde_make_keys_volume_fullname (mk_path, boot_db_full_name(), false);
+  tde_make_keys_volume_fullname (mk_path, boot_db_full_name (), false);
 
   vdes = fileio_mount (thread_p, boot_db_full_name (), mk_path, LOG_DBTDE_KEYS_VOLID, false, false);
   if (vdes == NULL_VOLDES)
@@ -888,7 +883,7 @@ exit:
 }
 
 int
-tde_encrypt_log_page (const LOG_PAGE *logpage_plain, LOG_PAGE *logpage_cipher, TDE_ALGORITHM tde_algo)
+tde_encrypt_log_page (const LOG_PAGE * logpage_plain, LOG_PAGE * logpage_cipher, TDE_ALGORITHM tde_algo)
 {
   unsigned char nonce[TDE_LOG_PAGE_NONCE_LENGTH];
   const unsigned char *data_key;
@@ -907,13 +902,13 @@ tde_encrypt_log_page (const LOG_PAGE *logpage_plain, LOG_PAGE *logpage_cipher, T
 
   memcpy (logpage_cipher, logpage_plain, LOG_PAGESIZE);
 
-  return tde_encrypt_internal (((const unsigned char *)logpage_plain) + TDE_LOG_PAGE_ENC_OFFSET,
+  return tde_encrypt_internal (((const unsigned char *) logpage_plain) + TDE_LOG_PAGE_ENC_OFFSET,
 			       TDE_LOG_PAGE_ENC_LENGTH, tde_algo, data_key, nonce,
-			       ((unsigned char *)logpage_cipher) + TDE_LOG_PAGE_ENC_OFFSET);
+			       ((unsigned char *) logpage_cipher) + TDE_LOG_PAGE_ENC_OFFSET);
 }
 
 int
-tde_decrypt_log_page (const LOG_PAGE *logpage_cipher, LOG_PAGE *logpage_plain, TDE_ALGORITHM tde_algo)
+tde_decrypt_log_page (const LOG_PAGE * logpage_cipher, LOG_PAGE * logpage_plain, TDE_ALGORITHM tde_algo)
 {
   unsigned char nonce[TDE_LOG_PAGE_NONCE_LENGTH];
   const unsigned char *data_key;
@@ -932,15 +927,14 @@ tde_decrypt_log_page (const LOG_PAGE *logpage_cipher, LOG_PAGE *logpage_plain, T
 
   memcpy (logpage_plain, logpage_cipher, LOG_PAGESIZE);
 
-  return tde_decrypt_internal (((const unsigned char *)logpage_cipher) + TDE_LOG_PAGE_ENC_OFFSET,
+  return tde_decrypt_internal (((const unsigned char *) logpage_cipher) + TDE_LOG_PAGE_ENC_OFFSET,
 			       TDE_LOG_PAGE_ENC_LENGTH, tde_algo, data_key, nonce,
-			       ((unsigned char *)logpage_plain) + TDE_LOG_PAGE_ENC_OFFSET);
+			       ((unsigned char *) logpage_plain) + TDE_LOG_PAGE_ENC_OFFSET);
 }
 
 static int
 tde_encrypt_internal (const unsigned char *plain_buffer, int length, TDE_ALGORITHM tde_algo, const unsigned char *key,
-		      const unsigned char *nonce,
-		      unsigned char *cipher_buffer)
+		      const unsigned char *nonce, unsigned char *cipher_buffer)
 {
   EVP_CIPHER_CTX *ctx;
   const EVP_CIPHER *cipher_type;
@@ -950,7 +944,7 @@ tde_encrypt_internal (const unsigned char *plain_buffer, int length, TDE_ALGORIT
 
   assert (tde_algo == TDE_ALGORITHM_AES || tde_algo == TDE_ALGORITHM_ARIA);
 
-  if (! (ctx = EVP_CIPHER_CTX_new()))
+  if (!(ctx = EVP_CIPHER_CTX_new ()))
     {
       err = ER_TDE_ENCRYPTION_ERROR;
       goto exit;
@@ -959,10 +953,10 @@ tde_encrypt_internal (const unsigned char *plain_buffer, int length, TDE_ALGORIT
   switch (tde_algo)
     {
     case TDE_ALGORITHM_AES:
-      cipher_type = EVP_aes_256_ctr();
+      cipher_type = EVP_aes_256_ctr ();
       break;
     case TDE_ALGORITHM_ARIA:
-      cipher_type = EVP_aria_256_ctr();
+      cipher_type = EVP_aria_256_ctr ();
       break;
     case TDE_ALGORITHM_NONE:
     default:
@@ -1020,7 +1014,7 @@ tde_decrypt_internal (const unsigned char *cipher_buffer, int length, TDE_ALGORI
 
   assert (tde_algo == TDE_ALGORITHM_AES || tde_algo == TDE_ALGORITHM_ARIA);
 
-  if (! (ctx = EVP_CIPHER_CTX_new()))
+  if (!(ctx = EVP_CIPHER_CTX_new ()))
     {
       err = ER_TDE_DECRYPTION_ERROR;
       goto exit;
@@ -1029,10 +1023,10 @@ tde_decrypt_internal (const unsigned char *cipher_buffer, int length, TDE_ALGORI
   switch (tde_algo)
     {
     case TDE_ALGORITHM_AES:
-      cipher_type = EVP_aes_256_ctr();
+      cipher_type = EVP_aes_256_ctr ();
       break;
     case TDE_ALGORITHM_ARIA:
-      cipher_type = EVP_aria_256_ctr();
+      cipher_type = EVP_aria_256_ctr ();
       break;
     case TDE_ALGORITHM_NONE:
     default:
@@ -1096,7 +1090,7 @@ void
 tde_print_mk (const unsigned char *master_key)
 {
   int i;
-  for (i=0; i < TDE_MASTER_KEY_LENGTH; i++)
+  for (i = 0; i < TDE_MASTER_KEY_LENGTH; i++)
     {
       printf ("%02x", master_key[i]);
     }
@@ -1131,7 +1125,7 @@ tde_add_mk (int vdes, const unsigned char *master_key, int *mk_index, time_t cre
     {
       if (read (vdes, &reading_item, TDE_MK_FILE_ITEM_SIZE) != TDE_MK_FILE_ITEM_SIZE)
 	{
-	  break; /* EOF */
+	  break;		/* EOF */
 	}
       if (reading_item.created_time == -1)
 	{
@@ -1157,7 +1151,7 @@ tde_add_mk (int vdes, const unsigned char *master_key, int *mk_index, time_t cre
 }
 
 int
-tde_find_mk (int vdes, int mk_index, unsigned char *master_key, time_t *created_time)
+tde_find_mk (int vdes, int mk_index, unsigned char *master_key, time_t * created_time)
 {
   bool found;
   int location;
@@ -1176,7 +1170,7 @@ tde_find_mk (int vdes, int mk_index, unsigned char *master_key, time_t *created_
   if (lseek (vdes, location, SEEK_SET) != location)
     {
       found = false;
-      goto exit; /* not found */
+      goto exit;		/* not found */
     }
 
   if (read (vdes, &item, TDE_MK_FILE_ITEM_SIZE) != TDE_MK_FILE_ITEM_SIZE)
@@ -1217,7 +1211,7 @@ exit:
 }
 
 int
-tde_find_first_mk (int vdes, int *mk_index, unsigned char *master_key, time_t *created_time)
+tde_find_first_mk (int vdes, int *mk_index, unsigned char *master_key, time_t * created_time)
 {
   TDE_MK_FILE_ITEM item;
   bool found = false;
@@ -1237,7 +1231,7 @@ tde_find_first_mk (int vdes, int *mk_index, unsigned char *master_key, time_t *c
   if (lseek (vdes, location, SEEK_SET) != location)
     {
       found = false;
-      goto exit; /* not found */
+      goto exit;		/* not found */
     }
 
   while (read (vdes, &item, TDE_MK_FILE_ITEM_SIZE) == TDE_MK_FILE_ITEM_SIZE)
@@ -1254,7 +1248,7 @@ tde_find_first_mk (int vdes, int *mk_index, unsigned char *master_key, time_t *c
     }
 
 exit:
-  assert (found); /* mk file is supposed to have one key to the least */
+  assert (found);		/* mk file is supposed to have one key to the least */
 #if !defined(WINDOWS)
   restore_signals (old_mask);
 #endif /* !WINDOWS */
@@ -1281,7 +1275,7 @@ tde_delete_mk (int vdes, int mk_index)
   if (lseek (vdes, location, SEEK_SET) != location)
     {
       found = false;
-      goto exit; /* not found */
+      goto exit;		/* not found */
     }
 
   if (read (vdes, &item, TDE_MK_FILE_ITEM_SIZE) != TDE_MK_FILE_ITEM_SIZE)
@@ -1296,7 +1290,7 @@ tde_delete_mk (int vdes, int mk_index)
       goto exit;
     }
 
-  item.created_time = -1; /* mark it invalid */
+  item.created_time = -1;	/* mark it invalid */
 
   lseek (vdes, -TDE_MK_FILE_ITEM_SIZE, SEEK_CUR);
   write (vdes, &item, TDE_MK_FILE_ITEM_SIZE);
@@ -1325,7 +1319,7 @@ tde_dump_mks (int vdes, bool print_value)
   int cnt_invalid = 0;
   int location;
   int i;
-  char ctime_buf[CTIME_MAX] = {0,};
+  char ctime_buf[CTIME_MAX] = { 0, };
 #if !defined(WINDOWS)
   sigset_t new_mask, old_mask;
 #endif /* !WINDOWS */
@@ -1334,8 +1328,7 @@ tde_dump_mks (int vdes, bool print_value)
   off_signals (new_mask, old_mask);
 #endif /* !WINDOWS */
 
-  if ((location = lseek (vdes, TDE_MK_FILE_CONTENTS_START, SEEK_SET))
-      != TDE_MK_FILE_CONTENTS_START)
+  if ((location = lseek (vdes, TDE_MK_FILE_CONTENTS_START, SEEK_SET)) != TDE_MK_FILE_CONTENTS_START)
     {
       return ER_FAILED;
     }
@@ -1346,7 +1339,7 @@ tde_dump_mks (int vdes, bool print_value)
     {
       if (read (vdes, &item, TDE_MK_FILE_ITEM_SIZE) != TDE_MK_FILE_ITEM_SIZE)
 	{
-	  break; /* EOF */
+	  break;		/* EOF */
 	}
 
       if (item.created_time == -1)
@@ -1382,9 +1375,7 @@ exit:
 const char *
 tde_get_algorithm_name (TDE_ALGORITHM tde_algo)
 {
-  if (! (tde_algo == TDE_ALGORITHM_NONE
-	 || tde_algo == TDE_ALGORITHM_AES
-	 || tde_algo == TDE_ALGORITHM_ARIA))
+  if (!(tde_algo == TDE_ALGORITHM_NONE || tde_algo == TDE_ALGORITHM_AES || tde_algo == TDE_ALGORITHM_ARIA))
     {
       return NULL;
     }

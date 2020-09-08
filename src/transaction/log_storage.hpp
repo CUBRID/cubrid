@@ -30,7 +30,7 @@
 #include "storage_common.h"
 #include "system.h"
 #include "transaction_global.hpp"
-#include "tde.hpp"
+#include "tde.h"
 
 #include <cstdint>
 

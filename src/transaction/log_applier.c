@@ -67,7 +67,7 @@
 #include "util_func.h"
 #include "dbtype.h"
 #if 0
-#include "tde.hpp"
+#include "tde.h"
 #endif /* TDE for replication log is disabled */
 #if !defined(WINDOWS)
 #include "heartbeat.h"

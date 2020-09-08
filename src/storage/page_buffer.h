@@ -36,7 +36,7 @@
 #include "mem_block.hpp"
 #include "perf_monitor.h"
 #include "storage_common.h"
-#include "tde.hpp"
+#include "tde.h"
 
 #define FREE			true	/* Free page buffer */
 #define DONT_FREE		false	/* Don't free the page buffer */
@@ -355,7 +355,8 @@ extern LOG_LSA *pgbuf_get_lsa (PAGE_PTR pgptr);
 extern int pgbuf_page_has_changed (PAGE_PTR pgptr, LOG_LSA * ref_lsa);
 extern const LOG_LSA *pgbuf_set_lsa (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const LOG_LSA * lsa_ptr);
 extern void pgbuf_reset_temp_lsa (PAGE_PTR pgptr);
-extern void pgbuf_set_tde_algorithm (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, TDE_ALGORITHM tde_algo, bool skip_logging);
+extern void pgbuf_set_tde_algorithm (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, TDE_ALGORITHM tde_algo,
+				     bool skip_logging);
 extern int pgbuf_rv_set_tde_algorithm (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void pgbuf_get_tde_algorithm (PAGE_PTR pgptr, TDE_ALGORITHM * tde_algo);
 extern void pgbuf_get_vpid (PAGE_PTR pgptr, VPID * vpid);

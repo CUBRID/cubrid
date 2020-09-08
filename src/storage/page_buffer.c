@@ -59,7 +59,7 @@
 #include "boot_sr.h"
 #include "double_write_buffer.h"
 #include "resource_tracker.hpp"
-#include "tde.hpp"
+#include "tde.h"
 
 #if defined(SERVER_MODE)
 #include "connection_error.h"

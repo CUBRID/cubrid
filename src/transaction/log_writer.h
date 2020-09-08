@@ -30,7 +30,7 @@
 #include "log_archives.hpp"
 #include "log_common_impl.h"
 #include "log_lsa.hpp"
-#include "tde.hpp"
+#include "tde.h"
 #include "storage_common.h"
 #if defined (SERVER_MODE)
 #include "thread_compat.hpp"

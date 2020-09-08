@@ -42,7 +42,7 @@
 #include "log_comm.h"
 #include "log_lsa.hpp"
 #include "file_io.h"
-#include "tde.hpp"
+#include "tde.h"
 
 #if defined (SERVER_MODE)
 #define AUTO_ADD_VOL_EXPAND_NPAGES        (20)

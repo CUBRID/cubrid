@@ -54,7 +54,7 @@
 #include "string_buffer.hpp"
 #include "dbtype.h"
 #include "parser_allocator.hpp"
-#include "tde.hpp"
+#include "tde.h"
 
 #include <malloc.h>
 

@@ -58,7 +58,7 @@
 #include "storage_common.h"
 #include "thread_entry.hpp"
 #include "transaction_transient.hpp"
-#include "tde.hpp"
+#include "tde.h"
 
 #include <assert.h>
 #if defined(SOLARIS)

@@ -326,7 +326,7 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/statistics_sr.c
   ${STORAGE_DIR}/storage_common.c
   ${STORAGE_DIR}/system_catalog.c
-  ${STORAGE_DIR}/tde.cpp
+  ${STORAGE_DIR}/tde.c
   )
 set(STORAGE_HEADERS
   ${STORAGE_DIR}/btree_unique.hpp

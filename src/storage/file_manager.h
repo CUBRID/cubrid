@@ -34,7 +34,7 @@
 #include "log_manager.h"
 #include "oid.h"
 #include "page_buffer.h"
-#include "tde.hpp"
+#include "tde.h"
 
 typedef enum
 {

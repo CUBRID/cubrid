@@ -81,7 +81,7 @@
 #include "xasl_cache.h"
 #include "log_volids.hpp"
 #include "vacuum.h"
-#include "tde.hpp"
+#include "tde.h"
 #include "porting.h"
 
 #if defined(SERVER_MODE)

@@ -59,7 +59,7 @@
 #include "util_func.h"
 #include "xasl.h"
 #include "log_volids.hpp"
-#include "tde.hpp"
+#include "tde.h"
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif

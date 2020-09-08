@@ -56,7 +56,7 @@
 #include "class_object.h"
 #include "object_print.h"
 #include "dbtype.h"
-#include "tde.hpp"
+#include "tde.h"
 
 #define CLASS_NAME_MAX 80
 

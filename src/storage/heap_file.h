@@ -40,7 +40,7 @@
 #include "perf_monitor.h"
 #include "storage_common.h"
 #include "thread_compat.hpp"
-#include "tde.hpp"
+#include "tde.h"
 
 // forward declarations
 class multi_index_unique_stats;

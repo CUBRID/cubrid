@@ -71,7 +71,7 @@
 #include "db_value_printer.hpp"
 #include "log_append.hpp"
 #include "string_buffer.hpp"
-#include "tde.hpp"
+#include "tde.h"
 
 #include <set>
 

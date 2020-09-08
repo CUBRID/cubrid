@@ -49,7 +49,7 @@
 #include "log_volids.hpp"
 #include "crypt_opfunc.h"
 #if 0
-#include "tde.hpp"
+#include "tde.h"
 #endif /* TDE for replication log is disabled */
 #if defined(SERVER_MODE)
 #include "log_append.hpp"
