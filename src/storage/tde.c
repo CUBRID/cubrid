@@ -842,8 +842,8 @@ xtde_change_mk_without_flock (THREAD_ENTRY * thread_p, const int mk_index)
   vdes = fileio_mount (thread_p, boot_db_full_name (), mk_path, LOG_DBTDE_KEYS_VOLID, false, false);
   if (vdes == NULL_VOLDES)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1, mk_path);
-      return ER_IO_MOUNT_FAIL;
+      ASSERT_ERROR ();
+      return er_errid ();
     }
 
   err = tde_find_mk (vdes, mk_index, master_key, &created_time);
