@@ -8317,10 +8317,16 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
     }
 
-  /* get default value of reuse_oid from system parameter, if don't use table option related reuse_oid */
+  /* get default value of reuse_oid from system parameter and create pt_node and add it into table_option_list, if don't use table option related reuse_oid */
   if (!found_reuse_oid_option)
     {
+      PT_NODE *tmp;
+
       reuse_oid = prm_get_bool_value (PRM_ID_TB_DEFAULT_REUSE_OID);
+      tmp = pt_table_option (parser, reuse_oid ? PT_TABLE_OPTION_REUSE_OID : PT_TABLE_OPTION_DONT_REUSE_OID, NULL);
+
+      tmp->next = node->info.create_entity.table_option_list;
+      node->info.create_entity.table_option_list = tmp;
     }
 
   /* validate charset and collation options, if any */

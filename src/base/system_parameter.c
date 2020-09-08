@@ -2304,7 +2304,7 @@ static unsigned int prm_allow_truncated_string_flag = 0;
 
 bool PRM_TB_REUSE_OID = true;
 static bool prm_create_table_reuseoid_default = true;
-static unsigned int prm_create_table_reuseoid = 1;
+static unsigned int prm_create_table_reuseoid = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5921,7 +5921,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_TB_DEFAULT_REUSE_OID,
    PRM_NAME_TB_DEFAULT_REUSE_OID,
-   (PRM_USER_CHANGE | PRM_FOR_CLIENT | PRM_FOR_SESSION),
+   (PRM_USER_CHANGE | PRM_FOR_CLIENT | PRM_FOR_SESSION | PRM_FOR_HA_CONTEXT),
    PRM_BOOLEAN,
    &prm_create_table_reuseoid,
    (void *) &prm_create_table_reuseoid_default,
@@ -5929,7 +5929,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
+   (DUP_PRM_FUNC) NULL}
 };
 
 #define NUM_PRM ((int)(sizeof(prm_Def)/sizeof(prm_Def[0])))
