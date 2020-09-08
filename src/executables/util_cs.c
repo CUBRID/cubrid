@@ -3768,14 +3768,18 @@ tde (UTIL_FUNCTION_ARG * arg)
 
   printf ("Key File: %s\n", mk_path);
 
-  /* There is no need to call fileio_dismount() for 'vdes' 
-   * because it is dismounted in db_shutdown() */
-  vdes = fileio_mount (NULL, database_name, mk_path, LOG_DBTDE_KEYS_VOLID, 1, false);
-  if (vdes == NULL_VOLDES)
+  /* For all ops but change (-c), mount mk file */
+  if (change_idx == -1)
     {
-      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-      db_shutdown ();
-      goto error_exit;
+      /* There is no need to call fileio_dismount() for 'vdes' 
+       * because it is dismounted in db_shutdown() */
+      vdes = fileio_mount (NULL, database_name, mk_path, LOG_DBTDE_KEYS_VOLID, 1, false);
+      if (vdes == NULL_VOLDES)
+	{
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	  db_shutdown ();
+	  goto error_exit;
+	}
     }
 
   printf ("\n");
