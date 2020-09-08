@@ -5296,6 +5296,15 @@ alter_clause_for_alter_list
 			  }
 		DBG_PRINT}}
 	| class_comment_spec
+		{{
+			PT_NODE *alter_node = parser_get_alter_node();
+
+			if (alter_node != NULL && alter_node->info.alter.code != PT_CHANGE_COLUMN_COMMENT)
+			  {
+				alter_node->info.alter.code = PT_CHANGE_TABLE_COMMENT;
+				alter_node->info.alter.alter_clause.comment.tbl_comment = $1;
+			  }
+		DBG_PRINT}}
 	;
 
 alter_clause_cubrid_specific
@@ -20797,14 +20806,6 @@ class_comment_spec
                                 SM_MAX_CLASS_COMMENT_LENGTH);
 			      }
 			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, node);
-			  }
-
-			PT_NODE *alter_node = parser_get_alter_node();
-
-			if (alter_node)
-			  {
-				alter_node->info.alter.code = PT_CHANGE_TABLE_COMMENT;
-				alter_node->info.alter.alter_clause.comment.tbl_comment = node;
 			  }
 
 			$$ = node;
