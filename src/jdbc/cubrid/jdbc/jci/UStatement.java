@@ -820,10 +820,13 @@ public class UStatement {
 		readTupleNumber = 0;
 		batchParameter = null;
 
+		if (totalTupleNumber > 0) {
+			tuples = new UResultTuple[totalTupleNumber];
+		}
+
 		if (commandTypeIs == CUBRIDCommandType.CUBRID_STMT_SELECT
 		        && totalTupleNumber > 0) {
 			inBuffer.readInt(); // fetch_rescode
-			tuples = new UResultTuple[totalTupleNumber];
 			read_fetch_data(inBuffer, UFunctionCode.FETCH);
 		}
 	}
@@ -2278,7 +2281,6 @@ public class UStatement {
 			fetchedTupleNumber = 0;
 		}
 
-		tuples = new UResultTuple[fetchedTupleNumber];
 		for (int i = 0; i < fetchedTupleNumber; i++) {
 			readATuple(i + readTupleNumber, inBuffer);
 		}
