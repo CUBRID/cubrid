@@ -1908,7 +1908,6 @@ killtran (UTIL_FUNCTION_ARG * arg)
 	{
 	  goto print_killtran_usage;
 	}
-      dba_password = NULL;
       AU_DISABLE_PASSWORDS ();
     }
 
