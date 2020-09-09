@@ -1395,8 +1395,8 @@ int PRM_FILTER_PRED_MAX_CACHE_CLONES = 10;
 static int prm_filter_pred_max_cache_clones_default = 10;
 static unsigned int prm_filter_pred_max_cache_clones_flag = 0;
 
-int PRM_LIST_QUERY_CACHE_MODE = 1;
-static int prm_list_query_cache_mode_default = 1;	/* disabled */
+int PRM_LIST_QUERY_CACHE_MODE = 0;
+static int prm_list_query_cache_mode_default = 0;	/* disabled */
 static int prm_list_query_cache_mode_upper = 2;
 static int prm_list_query_cache_mode_lower = 0;
 static unsigned int prm_list_query_cache_mode_flag = 1;
