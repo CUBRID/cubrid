@@ -1651,8 +1651,10 @@ tranlist (UTIL_FUNCTION_ARG * arg)
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   char er_msg_file[PATH_MAX];
   const char *database_name;
+#if defined(NEED_PRIVILEGE_PASSWORD)
   const char *username;
   const char *password;
+#endif
   char *passbuf = NULL;
   TRANS_INFO *info = NULL;
   int error;
@@ -1670,18 +1672,22 @@ tranlist (UTIL_FUNCTION_ARG * arg)
       goto print_tranlist_usage;
     }
 
+#if defined(NEED_PRIVILEGE_PASSWORD)
   username = utility_get_option_string_value (arg_map, TRANLIST_USER_S, 0);
   password = utility_get_option_string_value (arg_map, TRANLIST_PASSWORD_S, 0);
+#endif
   is_summary = utility_get_option_bool_value (arg_map, TRANLIST_SUMMARY_S);
   tranlist_Sort_column = utility_get_option_int_value (arg_map, TRANLIST_SORT_KEY_S);
   tranlist_Sort_desc = utility_get_option_bool_value (arg_map, TRANLIST_REVERSE_S);
   full_sqltext = utility_get_option_bool_value (arg_map, TRANLIST_FULL_SQL_S);
 
+#if defined(NEED_PRIVILEGE_PASSWORD)
   if (username == NULL)
     {
       /* default : DBA user */
       username = "DBA";
     }
+#endif
 
   if (check_database_name (database_name) != NO_ERROR)
     {
@@ -1820,7 +1826,7 @@ killtran (UTIL_FUNCTION_ARG * arg)
   const char *kill_user;
   const char *kill_host;
   const char *kill_sql_id;
-  const char *dba_password;
+  const char *dba_password = NULL;
   bool dump_trantab_flag;
   bool force = true;
   int isbatch;
@@ -1898,6 +1904,10 @@ killtran (UTIL_FUNCTION_ARG * arg)
   /* disable password, if don't use kill option */
   if (isbatch == 0)
     {
+      if (dba_password != NULL && strlen(dba_password) > 0)
+        {
+          goto print_killtran_usage;
+        }
       dba_password = NULL;
       AU_DISABLE_PASSWORDS ();
     }

@@ -1163,10 +1163,12 @@ typedef struct _ha_config
 #define PLANDUMP_OUTPUT_FILE_L                  "output-file"
 
 /* tranlist option list */
+#if defined(NEED_PRIVILEGE_PASSWORD)
 #define TRANLIST_USER_S                         'u'
 #define TRANLIST_USER_L                         "user"
 #define TRANLIST_PASSWORD_S                     'p'
 #define TRANLIST_PASSWORD_L                     "password"
+#endif
 #define TRANLIST_SUMMARY_S                      's'
 #define TRANLIST_SUMMARY_L                      "summary"
 #define TRANLIST_SORT_KEY_S                     'k'
