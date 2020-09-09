@@ -809,6 +809,7 @@ opzioni valide:\n\
       --kill-program-name=NOME       chiudere tutte le transazioni con programma client NOME\n\
       --kill-sql-id=SQL_ID           chiudere tutte le transazioni con SQL_ID\n\
   -p, --dba-password=PASS            la password dell'utente DBA; richiesta se non specificherà\n\
+                                     (funziona solo con le opzioni -i o --kill. Altrimenti, ottiene l'errore)\n\
   -d, --display-information          visualizzare le informazioni sulle transazioni attive\n\
   -q, --query-exec-info              visualizzare le informazioni sulle esecuzione query di transazioni attive\n\
   -f, --force                        chiudere la transazione senza una richiesta per la verifica\n
@@ -1062,8 +1063,6 @@ tranlist: Dump le informazioni delle transazioni attive.\n\
 usage: %1$s tranlist [OPZIONE] nome-database\n\
 \n\
 opzioni valide:\n\
-  -u, --user=ID                utente per l'accesso al database; predefinito: utente DBA\n\
-  -p, --password=PASS          password utente; predefinito: nessuno\n\
   -s, --summary                stampa informazioni riepilogative della transazione\n\
       --sort-key=COLUMN_NUMBER numero di colonna da ordinare\n\
       --reverse                invertire l'ordinamento\n

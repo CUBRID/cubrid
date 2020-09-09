@@ -1826,7 +1826,7 @@ killtran (UTIL_FUNCTION_ARG * arg)
   const char *kill_user;
   const char *kill_host;
   const char *kill_sql_id;
-  const char *dba_password = NULL;
+  const char *dba_password;
   bool dump_trantab_flag;
   bool force = true;
   int isbatch;
@@ -1904,7 +1904,7 @@ killtran (UTIL_FUNCTION_ARG * arg)
   /* disable password, if don't use kill option */
   if (isbatch == 0)
     {
-      if (dba_password != NULL && strlen(dba_password) > 0)
+      if (dba_password != NULL)
         {
           goto print_killtran_usage;
         }

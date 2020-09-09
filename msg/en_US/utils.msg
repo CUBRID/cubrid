@@ -811,7 +811,7 @@ valid options:\n\
       --kill-program-name=NAME       kill all transactions with client program NAME\n\
       --kill-sql-id=SQL_ID           kill all transactions with SQL_ID\n\
   -p, --dba-password=PASS            password of the DBA user; will prompt if don't specify\n\
-                                     (only work with killing options, otherwise occurs error)\n\
+                                     (only work with -i or --kill options, otherwise occurs error)\n\
   -d, --display-information          display information about active transactions\n\
   -q, --query-exec-info              display information about query execution information of active transactions\n\
   -f, --force                        kill the transaction without a prompt for verification\n

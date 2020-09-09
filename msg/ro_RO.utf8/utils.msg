@@ -826,6 +826,7 @@ valid options:\n\
       --kill-program-name=NUME       întrerupe toate tranzacţiile cu numele programului client specificat\n\
       --kill-sql-id=SQL_ID           întrerupe toate tranzacţiile cu SQL_ID\n\
   -p, --dba-password=PAROLA          PAROLA utilizatorului DBA; va fi solicitată dacă nu este specificată\n\
+                                     (funcționează numai cu opțiuni -i sau --kill. În caz contrar, apare eroare)\n\
   -d, --display-information          afişează informaţii despre tranzacţiile active\n\
   -q, --query-exec-info              afişează informaţii despre execuţia interogărilor din tranzacţiile active\n\
   -f, --force                        intrerupe fortat tranzacţia fără a solicita vreo verificare\n
@@ -1083,8 +1084,6 @@ tranlist: Varsă informaţii despre tranzacţiile active.\n\
 utilizare: %1$s tranlist [OPŢIUNI] nume-bază-de-date\n\
 \n\
 opţiuni valide:\n\
-  -u, --user=ID                ID de utilizator pentru accesul la baza de date; implicit: utilizator DBA\n\
-  -p, --password=PAROLA        parola de utilizator; default: nul\n\
   -s, --summary                afişează informaţii sumare despre tranzacţii\n\
       --sort-key=NUMAR_COLOANA numărul coloanei de sortare\n\
       --reverse                inversează rezultatul sortării\n
