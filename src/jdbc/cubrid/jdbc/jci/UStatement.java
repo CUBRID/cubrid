@@ -2278,6 +2278,7 @@ public class UStatement {
 			fetchedTupleNumber = 0;
 		}
 
+		tuples = new UResultTuple[fetchedTupleNumber];
 		for (int i = 0; i < fetchedTupleNumber; i++) {
 			readATuple(i + readTupleNumber, inBuffer);
 		}
