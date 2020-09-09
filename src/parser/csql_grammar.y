@@ -10550,10 +10550,6 @@ attr_def_comment
 			  {
 				attr_node->info.attr_def.attr_name = $1;
 				attr_node->info.attr_def.comment = $3;
-			  }
-
-			if (attr_node != NULL && attr_node->info.attr_def.attr_type != PT_SHARED)
-			  {
 				attr_node->info.attr_def.attr_type = parser_attr_type;
 			  }
 
@@ -20810,17 +20806,11 @@ class_comment_spec
 
 			$$ = node;
 		DBG_PRINT}}
-	| COMMENT ON_ opt_of_column_attribute attr_def_comment_list
-		{{
-			PT_NODE *alter_node = parser_get_alter_node();
-
-			if (alter_node)
-			  {
-				alter_node->info.alter.code = PT_CHANGE_COLUMN_COMMENT;
-				alter_node->info.alter.alter_clause.attr_mthd.attr_def_list = $4;
-			  }
-		DBG_PRINT}}
-	| COMMENT ON_ CLASS ATTRIBUTE attr_def_comment_list 
+	| COMMENT					/* 1 */
+	  ON_						/* 2 */
+	  opt_of_column_attribute			/* 3 */
+		{ parser_attr_type = PT_NORMAL; }	/* 4 */
+	  attr_def_comment_list				/* 5 */
 		{{
 			PT_NODE *alter_node = parser_get_alter_node();
 
@@ -20828,6 +20818,20 @@ class_comment_spec
 			  {
 				alter_node->info.alter.code = PT_CHANGE_COLUMN_COMMENT;
 				alter_node->info.alter.alter_clause.attr_mthd.attr_def_list = $5;
+			  }
+		DBG_PRINT}}
+	| COMMENT					/* 1 */
+	  ON_						/* 2 */
+	  CLASS ATTRIBUTE				/* 3, 4 */
+		{ parser_attr_type = PT_META_ATTR; }	/* 5 */
+	  attr_def_comment_list 			/* 6 */
+		{{
+			PT_NODE *alter_node = parser_get_alter_node();
+
+			if (alter_node)                                                                 
+			  {
+				alter_node->info.alter.code = PT_CHANGE_COLUMN_COMMENT;
+				alter_node->info.alter.alter_clause.attr_mthd.attr_def_list = $6;
 			  }
 		DBG_PRINT}}
 	;
