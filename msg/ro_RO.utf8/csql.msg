@@ -40,13 +40,17 @@ optiuni valide:\n\
   -c, --command=ARG            comenzi CSQL\n\
   -l, --line-output            afişarea fiecărei valori pe o singură linie\n\
   -r, --read-only              mod read-only\n\
-  -t, --plain-output           afișarea rezultatelor neformatate (doar împreună cu -c și -i)\n\
+  -t, --plain-output           afișează rezultatele într-un format compatibil cu scriptul (doar împreună cu -c și -i)\n\
+  -q, --query-output           afișează rezultatele într-un format compatibil cu interogările (doar împreună cu -c și -i)\n\
+  -d, --loaddb-output          afișează rezultatele într-un format prietenos cu loaddb (doar împreună cu -c și -i)\n\
   -N, --skip-column-names      afișarea rezultatelor fără numele coloanelor (doar împreună cu -c și -i)\n\
       --string-width           lăţimea de afişare a fiecărei coloane de tip string\n\
       --no-auto-commit         dezactivarea modului de execuţie auto-commit\n\
       --no-pager               dezactivarea paginatorilor\n\
       --no-single-line         dezactivarea modului de execuţie linie cu linie\n\
       --no-trigger-action      dezactivarea acţiunilor declanşatorilor\n\
+      --delimiter=ARG          delimitator între coloană (doar împreună cu -q)\n\
+      --enclosure=ARG          incintă pentru un șir de rezultate (doar împreună cu -q)\n\
 \n\
 Pentru informaţii suplimentare accesaţi http://www.cubrid.org\n
 41 %1$s: valoarea de mediu pentru %2$s_MODE este incorectă. \nTrebuie să fie %3$s sau %4$s.\n

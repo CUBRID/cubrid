@@ -40,13 +40,17 @@ $set 1 MSGCAT_CSQL_SET_CSQL
   -c, --command=ARG            CSQL命令\n\
   -l, --line-output            每个值都用单独的行表示\n\
   -r, --read-only              只读模式\n\
-  -t, --plain-output           display results in a script-friendly format (only works with -c and -i)\n\
-  -N, --skip-column-names      do not display column names in results (only works with -c and -i)\n\
+  -t, --plain-output           以脚本友好的格式显示结果（仅适用于-c和-i）\n\
+  -q, --query-output           以查询友好的格式显示结果（仅适用于-c和-i）\n\
+  -d, --loaddb-output          以loaddb友好格式显示结果（仅适用于-c和-i）\n\
+  -N, --skip-column-names      不在结果中显示列名（仅适用于-c和-i）\n\
       --string-width           用这个宽度显示每个字符串类型的列\n\
       --no-auto-commit         禁用自动提交执行模式\n\
       --no-pager               不要将查询结果分页\n\
       --no-single-line         关闭单行执行模式\n\
       --no-trigger-action      禁用触发器动作\n\
+      --delimiter=ARG          列之间的分隔符（仅适用于-q)\n\
+      --enclosure=ARG          结果字符串的附件（仅适用于-q)\n\
 \n\
 额外的信息, 请浏览 http://www.cubrid.org\n
 41 %1$s: 环境变量 %2$s_MODE 的值不正确. \n应该是 %3$s 或 %4$s.\n

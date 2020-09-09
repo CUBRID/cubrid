@@ -40,13 +40,17 @@ gültigen Optionen:\n\
   -c, --command=ARG            CSQL-Befehle\n\
   -l, --line-output            jeden Wert in einer Zeile anzeigen\n\
   -r, --read-only              Nur-Lese-Modus\n\
-  -t, --plain-output           Darstellungsarten ergeben in einem Drucker-freundlichen Format angezeigt  (funktioniert nur mit -c and -i)\n\
+  -t, --plain-output           Darstellungsarten ergeben in einem Drucker-freundlichen Format angezeigt (funktioniert nur mit -c and -i)\n\
+  -q, --query-output           Darstellungsarten ergeben in einem abfrage-freundlichen Format angezeigt (funktioniert nur mit -c und -i)\n\
+  -d, --loaddb-output          Darstellungsarten ergeben in einem loaddb-freundlichen Format angezeigt (funktioniert nur mit -c und -i)\n\
   -N, --skip-column-names      Spaltendarstellung in Ergebnisse nicht anzuzeigen (funktioniert nur mit -c and -i)\n\
       --string-width           jede Spalte der Art String in dieser Breite anzeigen\n\
       --no-auto-commit         Auto-Commit-Modus deaktivieren\n\
       --no-pager               Pager nicht verwenden\n\
       --no-single-line         Ausführung ausgerichtet auf einer Zeile deaktivieren\n\
       --no-trigger-action      deaktivieren Trigger Aktion\n\
+      --delimiter=ARG          Trennzeichen zwischen Spalte (funktioniert nur mit -q)\n\
+      --enclosure=ARG          Gehäuse für eine Ergebniszeichenfolge (funktioniert nur mit -q)\n\
 \n\
 Für weitere Informationen, siehe http://www.cubrid.org\n
 41 %1$s: der Umgebungswert von %2$s_MODE ist inkorrekt. \nEr sollte entweder %3$s oder %4$s sein.\n
