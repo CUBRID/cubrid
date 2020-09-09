@@ -333,14 +333,15 @@ extern int pr_area_init (void);
 extern void pr_area_final (void);
 
 extern int pr_complete_enum_value (DB_VALUE * value, struct tp_domain *domain);
-extern int pr_get_compression_length (const char *string, int charlen);
+extern int pr_get_compression_length (const char *string, int str_length);
 extern int pr_get_compressed_data_from_buffer (struct or_buf *buf, char *data, int compressed_size,
-					       int decompressed_size);
+					       int expected_decompressed_size);
 extern int pr_get_size_and_write_string_to_buffer (struct or_buf *buf, char *val_p, DB_VALUE * value, int *val_size,
 						   int align);
 
 extern int pr_data_compress_string (const char *string, int str_length, char *compressed_string,
-				    int *compressed_length);
+				    int compress_buffer_size, int *compressed_length);
+
 extern int pr_clear_compressed_string (DB_VALUE * value);
 extern int pr_do_db_value_string_compression (DB_VALUE * value);
 
@@ -351,9 +352,6 @@ extern int pr_Enable_string_compression;
 
 /* 1 size byte, 4 bytes the compressed size, 4 bytes the decompressed size, length and the max alignment */
 #define PRIM_STRING_MAXIMUM_DISK_SIZE(length) (OR_BYTE_SIZE + OR_INT_SIZE + OR_INT_SIZE + (length) + MAX_ALIGNMENT)
-
-/* Worst case scenario for compression from their FAQ */
-#define LZO_COMPRESSED_STRING_SIZE(str_length) ((str_length) + ((str_length) / 16) + 64 + 3)
 
 //////////////////////////////////////////////////////////////////////////
 // Inline/template implementation

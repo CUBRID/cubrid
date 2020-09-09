@@ -553,16 +553,17 @@ opzioni valide:\n\
   -i, --input-class-file=FILE       input FILE di nomi di tabella\n\
                                     class_name lista deve essere vuoto\n\
                                     predefinito: compact tutte le classi\n\
-                                    abilitato solo nel modo CS\n\
   -p, --pages-commited-once=NUMBER  numero massimo di pagine per commettere ogni volta\n\
                                     predefinito: 10\n\
                                     abilitato solo nel modo CS\n\
   -S, --SA-mode                     modalità di esecuzione stand-alone\n\
   -C, --CS-mode                     modalità di esecuzione client-server\n\
   -d, --delete-old-repr             eliminare vecchie rappresentazioni di classe dal catalogo; predefinito: non attivo\n\
-  class_name_list                   abilitato solo nel modo CS\n\
   -I, --Instance-lock-timeout       timeout per instance lock\n\
-  -c, --class-lock-timeout          timeout per class lock\n
+                                    abilitato solo nel modo CS\n\
+  -c, --class-lock-timeout          timeout per class lock\n\
+                                    abilitato solo nel modo CS\n\
+  class_name_list                   lista dei nomi di classe da comprimere\n
 
 $set 15 MSGCAT_UTIL_SET_COMMDB
 21 Il CUBRID master in esecuzione su host %1$s \nera iniziata a %2$s

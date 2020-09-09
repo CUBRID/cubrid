@@ -32,7 +32,6 @@
 extern void crypt_seed (const char *seed);
 
 extern int crypt_encrypt_printable (const char *line, char *crypt, int maxlen);
-extern int crypt_decrypt_printable (const char *crypt, char *decrypt, int maxlen);
 extern int crypt_encrypt_sha1_printable (const char *line, char *crypt, int maxlen);
 
 #endif /* _ENCRYPTION_H_ */

@@ -39,7 +39,7 @@
 
 #include "tz_compile.h"
 #include "xml_parser.h"
-#include "md5.h"
+#include "crypt_opfunc.h"
 #include "db_query.h"
 #include "dbtype.h"
 
@@ -6471,10 +6471,9 @@ tzc_compute_timezone_checksum (TZ_DATA * tzd, TZ_GEN_TYPE type)
     }
 
   memset (tzd->checksum, 0, sizeof (tzd->checksum));
-  md5_buffer (input_buf, size, tzd->checksum);
-  free (input_buf);
-  md5_hash_to_hex (tzd->checksum, tzd->checksum);
+  error = crypt_md5_buffer_hex (input_buf, size, tzd->checksum);
 
+  free (input_buf);
   return error;
 }
 

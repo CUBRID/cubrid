@@ -552,7 +552,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_USE_BTREE_FENCE_KEY "use_btree_fence_key"
 
 #define PRM_NAME_OPTIMIZER_ENABLE_MERGE_JOIN "optimizer_enable_merge_join"
-#define PRM_NAME_OPTIMIZER_RESERVE_01 "optimizer_reserve_01"
+#define PRM_NAME_MAX_HASH_LIST_SCAN_SIZE "max_hash_list_scan_size"
 #define PRM_NAME_OPTIMIZER_RESERVE_02 "optimizer_reserve_02"
 #define PRM_NAME_OPTIMIZER_RESERVE_03 "optimizer_reserve_03"
 #define PRM_NAME_OPTIMIZER_RESERVE_04 "optimizer_reserve_04"
@@ -1878,9 +1878,11 @@ bool PRM_OPTIMIZER_ENABLE_MERGE_JOIN = false;
 static bool prm_optimizer_enable_merge_join_default = false;
 static unsigned int prm_optimizer_enable_merge_join_flag = 0;
 
-bool PRM_OPTIMIZER_RESERVE_01 = false;
-static bool prm_optimizer_reserve_01_default = false;
-static unsigned int prm_optimizer_reserve_01_flag = 0;
+UINT64 PRM_MAX_HASH_LIST_SCAN_SIZE = 4 * 1024 * 1024;	/* 4 MB */
+static UINT64 prm_max_hash_list_scan_size_default = 4 * 1024 * 1024;	/* 4 MB */
+static UINT64 prm_max_hash_list_scan_size_lower = 0;	/* 0 */
+static UINT64 prm_max_hash_list_scan_size_upper = 128 * 1024 * 1024;	/* 128 MB */
+static unsigned int prm_max_hash_list_scan_size_flag = 0;
 
 bool PRM_OPTIMIZER_RESERVE_02 = false;
 static bool prm_optimizer_reserve_02_default = false;
@@ -4830,14 +4832,15 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_OPTIMIZER_RESERVE_01,
-   PRM_NAME_OPTIMIZER_RESERVE_01,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
-   PRM_BOOLEAN,
-   &prm_optimizer_reserve_01_flag,
-   (void *) &prm_optimizer_reserve_01_default,
-   (void *) &PRM_OPTIMIZER_RESERVE_01,
-   (void *) NULL, (void *) NULL,
+  {PRM_ID_MAX_HASH_LIST_SCAN_SIZE,
+   PRM_NAME_MAX_HASH_LIST_SCAN_SIZE,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_SIZE_UNIT),
+   PRM_BIGINT,
+   &prm_max_hash_list_scan_size_flag,
+   (void *) &prm_max_hash_list_scan_size_default,
+   (void *) &PRM_MAX_HASH_LIST_SCAN_SIZE,
+   (void *) &prm_max_hash_list_scan_size_upper,
+   (void *) &prm_max_hash_list_scan_size_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},

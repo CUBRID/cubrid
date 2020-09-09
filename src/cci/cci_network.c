@@ -118,6 +118,7 @@ static int connect_srv (unsigned char *ip_addr, int port, char is_retry, SOCKET 
 #if defined(ENABLE_UNUSED_FUNCTION)
 static int net_send_int (SOCKET sock_fd, int value);
 #endif
+
 static int net_recv_stream (T_CON_HANDLE * con_handle, unsigned char *ip_addr, int port, char *buf, int size,
 			    int timeout);
 static int net_send_stream (T_CON_HANDLE * con_handle, char *buf, int size);

@@ -40,7 +40,7 @@
 #include "stream_to_xasl.h"
 #include "session.h"
 #include "filter_pred_cache.h"
-#include "md5.h"
+#include "crypt_opfunc.h"
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
@@ -3442,9 +3442,12 @@ qmgr_get_sql_id (THREAD_ENTRY * thread_p, char **sql_id_buf, char *query, size_t
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  md5_buffer (query, sql_len, hashstring);	/* 16 bytes hash value */
-
-  md5_hash_to_hex (hashstring, hashstring);
+  int ec = crypt_md5_buffer_hex (query, sql_len, hashstring);
+  if (ec != NO_ERROR)
+    {
+      free (ret_buf);
+      return ec;
+    }
 
   /* copy last 13 hexa-digit to ret_buf */
   strncpy (ret_buf, hashstring + 19, QMGR_SQL_ID_LENGTH);
