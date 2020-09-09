@@ -119,7 +119,7 @@ main (int argc, char *argv[])
   CSQL_ARGUMENT csql_arg;
   DSO_HANDLE util_library;
   CSQL csql;
-  int check_output = 0;
+  int check_output_style = 0;
   bool explicit_single_line = false;
 
   GETOPT_LONG csql_option[] = {
@@ -376,7 +376,7 @@ main (int argc, char *argv[])
 
   if (csql_arg.plain_output == true)
     {
-      check_output++;
+      check_output_style++;
     }
 
   if (csql_arg.query_output == true)
@@ -390,7 +390,7 @@ main (int argc, char *argv[])
 	{
 	  csql_arg.column_enclosure = '\'';
 	}
-      check_output++;
+      check_output_style++;
     }
   else if (csql_arg.column_delimiter != -1 || csql_arg.column_enclosure != -1)
     {
@@ -402,10 +402,10 @@ main (int argc, char *argv[])
     {
       csql_arg.column_delimiter = ' ';
       csql_arg.column_enclosure = '\'';
-      check_output++;
+      check_output_style++;
     }
 
-  if (check_output > 1)
+  if (check_output_style > 1)
     {
       /* can't use -p, -q, and --loaddb-output together */
       goto print_usage;

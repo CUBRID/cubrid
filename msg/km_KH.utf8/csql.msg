@@ -41,8 +41,8 @@ valid options:\n\
   -l, --line-output            display each value in a line\n\
   -r, --read-only              read-only mode\n\
   -t, --plain-output           display results in a script-friendly format (only works with -c and -i)\n\
-  -t, --query-output           display results in a query-friendly format (only works with -c and -i)\n\
-  -t, --loaddb-output          display results in a loaddb-friendly format (only works with -c and -i)\n\
+  -q, --query-output           display results in a query-friendly format (only works with -c and -i)\n\
+  -d, --loaddb-output          display results in a loaddb-friendly format (only works with -c and -i)\n\
   -N, --skip-column-names      do not display column names in results (only works with -c and -i)\n\
       --string-width           display each column which is a string type in this width\n\
       --no-auto-commit         disable auto commit mode execution\n\

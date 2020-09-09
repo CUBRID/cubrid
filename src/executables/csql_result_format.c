@@ -1269,16 +1269,7 @@ string_to_string (const char *string_value, char string_delimiter, char string_i
 	}
     }
 
-  if (num_found == 0)
-    {
-      return_string = (char *) malloc (length + 4);
-    }
-  else
-    {
-      return_string = (char *) malloc (length + 4 + num_found);
-    }
-
-  if (!return_string)
+  if ((return_string = (char *) malloc (length + 4 + num_found)) == NULL)
     {
       return (NULL);
     }

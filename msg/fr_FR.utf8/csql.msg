@@ -41,8 +41,8 @@ valid options:\n\
   -l, --line-output            afficher chaque valeur dans une ligne\n\
   -r, --read-only              mode lecture seule\n\
   -t, --plain-output           afficher les résultats dans un format accueillant aux scripts (fonctionne seulement avec -c et -i)\n\
-  -t, --plain-output           afficher les résultats dans un format accueillant aux query (fonctionne seulement avec -c et -i)\n\
-  -t, --plain-output           afficher les résultats dans un format accueillant aux loaddb (fonctionne seulement avec -c et -i)\n\
+  -q, --query-output           afficher les résultats dans un format accueillant aux query (fonctionne seulement avec -c et -i)\n\
+  -d, --loaddb-output          afficher les résultats dans un format accueillant aux loaddb (fonctionne seulement avec -c et -i)\n\
   -N, --skip-column-names      ne pas afficher les nomes des colonnes dans les résultats (fonctionne seulement avec -c et -i)\n\
       --string-width           afficher chaque colonne qui est un type chaîne de caractères dans cette largeur\n\
       --no-auto-commit         désactiver le mode de validation automatique\n\
