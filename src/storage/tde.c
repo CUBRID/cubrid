@@ -115,10 +115,12 @@ tde_initialize (THREAD_ENTRY * thread_p, HFID * keyinfo_hfid)
   int err = NO_ERROR;
   RECDES recdes;
   HEAP_OPERATION_CONTEXT heapop_context;
-  TDE_KEYINFO keyinfo;
   TDE_DATA_KEY_SET dks;
   time_t created_time;
   int vdes = -1;
+  TDE_KEYINFO keyinfo;
+  char recdes_buffer[sizeof (int) + sizeof (TDE_KEYINFO)];
+  int repid_and_flag_bits = 0;
 
   tde_make_keys_volume_fullname (mk_path, boot_db_full_name (), false);
   err = tde_create_keys_file (mk_path);
@@ -161,9 +163,13 @@ tde_initialize (THREAD_ENTRY * thread_p, HFID * keyinfo_hfid)
       goto exit;
     }
 
-  recdes.area_size = recdes.length = DB_SIZEOF (TDE_KEYINFO);
+  /* HACK: to prevent the record from adjuestment in vacuum_rv_check_at_undo() while UNDOing */
+  memcpy (recdes_buffer, &repid_and_flag_bits, sizeof (int));
+  memcpy (recdes_buffer + sizeof (int), &keyinfo, sizeof (TDE_KEYINFO));
+
+  recdes.length = recdes.area_size = sizeof (recdes_buffer);
   recdes.type = REC_HOME;
-  recdes.data = (char *) &keyinfo;
+  recdes.data = (char *) recdes_buffer;
 
   /* Prepare context */
   heap_create_insert_context (&heapop_context, keyinfo_hfid, NULL, &recdes, NULL);
@@ -454,9 +460,16 @@ tde_get_keyinfo (THREAD_ENTRY * thread_p, TDE_KEYINFO * keyinfo)
   RECDES recdes;
   HEAP_SCANCACHE scan_cache;
   SCAN_CODE scan = S_SUCCESS;
+  char recdes_buffer[sizeof (int) + sizeof (TDE_KEYINFO)];
+  int repid_and_flag_bits = 0;
+  int error_code = NO_ERROR;
 
-  recdes.area_size = recdes.length = DB_SIZEOF (TDE_KEYINFO);
-  recdes.data = (char *) keyinfo;
+  /* HACK: to prevent the record from adjuestment in vacuum_rv_check_at_undo() while UNDOing */
+  memcpy (recdes_buffer, &repid_and_flag_bits, sizeof (int));
+  memcpy (recdes_buffer + sizeof (int), &keyinfo, sizeof (TDE_KEYINFO));
+
+  recdes.length = recdes.area_size = sizeof (recdes_buffer);
+  recdes.data = (char *) recdes_buffer;
 
   heap_scancache_quick_start_with_class_hfid (thread_p, &scan_cache, &tde_Keyinfo_hfid);
   scan = heap_first (thread_p, &tde_Keyinfo_hfid, NULL, &tde_Keyinfo_oid, &recdes, &scan_cache, COPY);
@@ -467,6 +480,9 @@ tde_get_keyinfo (THREAD_ENTRY * thread_p, TDE_KEYINFO * keyinfo)
       assert (false);
       return ER_FAILED;
     }
+
+  memcpy (keyinfo, recdes_buffer + sizeof (int), sizeof (TDE_KEYINFO));
+
   return NO_ERROR;
 }
 
@@ -476,13 +492,18 @@ tde_update_keyinfo (THREAD_ENTRY * thread_p, const TDE_KEYINFO * keyinfo, OID * 
   HEAP_SCANCACHE scan_cache;
   HEAP_OPERATION_CONTEXT update_context;
   RECDES recdes;
-
+  char recdes_buffer[sizeof (int) + sizeof (TDE_KEYINFO)];
+  int repid_and_flag_bits = 0;
   int error_code = NO_ERROR;
 
-  recdes.length = recdes.area_size = sizeof (TDE_KEYINFO);
-  recdes.data = (char *) keyinfo;
+  /* HACK: to prevent the record from adjuestment in vacuum_rv_check_at_undo() while UNDOing */
+  memcpy (recdes_buffer, &repid_and_flag_bits, sizeof (int));
+  memcpy (recdes_buffer + sizeof (int), keyinfo, sizeof (TDE_KEYINFO));
 
-  /* note that we start a scan cache with NULL class_oid. That's because boot_Db_parm_oid doesn't really have a class!
+  recdes.length = recdes.area_size = sizeof (recdes_buffer);
+  recdes.data = (char *) recdes_buffer;
+
+  /* note that we start a scan cache with NULL class_oid. That's because ketinfo_oid doesn't really have a class!
    * we have to start the scan cache this way so it can cache also cache file type for heap_update_logical.
    * otherwise it will try to read it from cache using root class OID. which actually has its own heap file and its own
    * heap file type.
