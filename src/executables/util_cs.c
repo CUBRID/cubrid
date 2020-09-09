@@ -1905,9 +1905,9 @@ killtran (UTIL_FUNCTION_ARG * arg)
   if (isbatch == 0)
     {
       if (dba_password != NULL)
-        {
-          goto print_killtran_usage;
-        }
+	{
+	  goto print_killtran_usage;
+	}
       dba_password = NULL;
       AU_DISABLE_PASSWORDS ();
     }
