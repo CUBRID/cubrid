@@ -8532,7 +8532,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   PT_NODE *create_index = NULL;
   DB_QUERY_TYPE *query_columns = NULL;
   PT_NODE *tbl_opt = NULL;
-  bool reuse_oid = true;
+  bool found_reuse_oid_option = false, reuse_oid = true;
   bool do_rollback_on_error = false;
   bool do_abort_class_on_error = false;
   bool do_flush_class_mop = false;
@@ -8614,9 +8614,11 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	  switch (tbl_opt->info.table_option.option)
 	    {
 	    case PT_TABLE_OPTION_REUSE_OID:
+              found_reuse_oid_option = true;
 	      reuse_oid = true;
 	      break;
 	    case PT_TABLE_OPTION_DONT_REUSE_OID:
+              found_reuse_oid_option = true;
 	      reuse_oid = false;
 	      break;
 	    case PT_TABLE_OPTION_CHARSET:
@@ -8632,6 +8634,12 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	      break;
 	    }
 	}
+
+      /* get default value of reuse_oid from system parameter, if don't use table option related reuse_oid */
+      if (!found_reuse_oid_option)
+        {
+          reuse_oid = prm_get_bool_value (PRM_ID_TB_DEFAULT_REUSE_OID);
+        }
 
       /* validate charset and collation options, if any */
       cs_node = (tbl_opt_charset) ? tbl_opt_charset->info.table_option.val : NULL;

@@ -8324,9 +8324,12 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 
       reuse_oid = prm_get_bool_value (PRM_ID_TB_DEFAULT_REUSE_OID);
       tmp = pt_table_option (parser, reuse_oid ? PT_TABLE_OPTION_REUSE_OID : PT_TABLE_OPTION_DONT_REUSE_OID, NULL);
-
-      tmp->next = node->info.create_entity.table_option_list;
-      node->info.create_entity.table_option_list = tmp;
+      
+      if (tmp) 
+        {
+          tmp->next = node->info.create_entity.table_option_list;
+          node->info.create_entity.table_option_list = tmp;
+        }
     }
 
   /* validate charset and collation options, if any */
