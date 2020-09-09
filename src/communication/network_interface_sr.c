@@ -4898,7 +4898,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   has_updated = false;
 
 null_list:
-#if 0
+#if 1
   if (list_id == NULL && !CACHE_TIME_EQ (&clt_cache_time, &srv_cache_time))
 #else
   if (list_id == NULL)

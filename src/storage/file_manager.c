@@ -8650,7 +8650,6 @@ file_tempcache_final (void)
       if (file_Tempcache->tran_files[tran] != NULL)
 	{
 	  /* should be empty */
-	  assert (false);
 	  file_tempcache_free_entry_list (&file_Tempcache->tran_files[tran]);
 	}
     }

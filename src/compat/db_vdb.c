@@ -500,7 +500,7 @@ db_compile_statement_local (DB_SESSION * session)
   int stmt_ndx;
   PT_NODE *statement = NULL;
   PT_NODE *statement_result = NULL;
-  DB_QUERY_TYPE *qtype;
+  DB_QUERY_TYPE *qtype, *q;
   CUBRID_STMT_TYPE cmd_type;
   int err;
   static long seed = 0;
@@ -629,6 +629,16 @@ db_compile_statement_local (DB_SESSION * session)
 	   * related to the original text. It may guess wrong about attribute/column updatability. Thats what they
 	   * asked for. */
 	  qtype = pt_fillin_type_size (parser, statement, qtype, DB_NO_OIDS, false, false);
+
+	  /* check implicit oid included for excluding result cache */
+	  for (q = qtype; q; q = q->next)
+	    {
+	      if (q->col_type == DB_COL_PATH)
+		{
+		  statement->info.query.do_not_cache = 1;
+		  break;
+		}
+	    }
 	}
     }
 
