@@ -125,6 +125,7 @@ Available admin utility-name:\n\
     dump_tz\n\
     restoreslave\n\
     vacuumdb\n\
+    tde\n\
 \n\
 %4$s is a tool for DBMS.\n\
 For additional information, see http://www.cubrid.org\n
