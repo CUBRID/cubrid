@@ -821,6 +821,7 @@ typedef struct _ha_config
 #define UTIL_CUBRID             "cubrid" UTIL_EXE_EXT
 #define UTIL_COPYLOGDB          "copylogdb" UTIL_EXE_EXT
 #define UTIL_APPLYLOGDB         "applylogdb" UTIL_EXE_EXT
+#define UTIL_JAVASP_NAME        "cub_javasp" UTIL_EXE_EXT
 
 #define PROPERTY_ON             "on"
 #define PROPERTY_OFF            "off"
@@ -832,6 +833,7 @@ typedef struct _ha_config
 #define PRINT_BROKER_NAME       "cubrid broker"
 #define PRINT_MANAGER_NAME      "cubrid manager server"
 #define PRINT_HEARTBEAT_NAME    "cubrid heartbeat"
+#define PRINT_JAVASP_NAME       "cubrid javasp"
 #define PRINT_HA_PROCS_NAME     "HA processes"
 
 #define PRINT_CMD_SERVICE       "service"
@@ -892,6 +894,7 @@ typedef struct _ha_config
 #define MASK_MANAGER            0x08
 #define MASK_ADMIN              0x20
 #define MASK_HEARTBEAT          0x40
+#define MASK_JAVASP             0x80
 
 /* utility option list */
 #define UTIL_OPTION_CREATEDB                    "createdb"
@@ -1571,8 +1574,14 @@ typedef struct _ha_config
 #define CHECKSUM_SCHEMA_ONLY_L			"schema-only"
 
 /* javasp option list */
-#define JAVASP_RESTART_S             'j'
-#define JAVASP_RESTART_L				     "restart"
+#define JAVASP_START_S             't'
+#define JAVASP_START_L				     "javasp-start"
+
+#define JAVASP_STOP_S             's'
+#define JAVASP_STOP_L				     "javasp-stop"
+
+#define JAVASP_RESTART_S             'r'
+#define JAVASP_RESTART_L				     "javasp-restart"
 
 #if defined(WINDOWS)
 #define LIB_UTIL_CS_NAME                "cubridcs.dll"

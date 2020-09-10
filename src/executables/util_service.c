@@ -67,7 +67,8 @@ typedef enum
   HEARTBEAT = 4,
   UTIL_HELP = 6,
   UTIL_VERSION = 7,
-  ADMIN = 8
+  ADMIN = 8,
+  JAVASP_UTILITY = 9
 } UTIL_SERVICE_INDEX_E;
 
 typedef enum
@@ -88,8 +89,7 @@ typedef enum
   SC_APPLYLOGDB,
   GET_SHARID,
   TEST,
-  REPLICATION,
-  JAVASP_UTILITY
+  REPLICATION
 } UTIL_SERVICE_COMMAND_E;
 
 typedef enum
@@ -133,6 +133,7 @@ typedef struct
 #define UTIL_TYPE_MANAGER       "manager"
 #define UTIL_TYPE_HEARTBEAT     "heartbeat"
 #define UTIL_TYPE_HB_SHORT      "hb"
+#define UTIL_TYPE_JAVASP        "javasp"
 
 static UTIL_SERVICE_OPTION_MAP_T us_Service_map[] = {
   {SERVICE, UTIL_TYPE_SERVICE, MASK_SERVICE},
@@ -141,6 +142,7 @@ static UTIL_SERVICE_OPTION_MAP_T us_Service_map[] = {
   {MANAGER, UTIL_TYPE_MANAGER, MASK_MANAGER},
   {HEARTBEAT, UTIL_TYPE_HEARTBEAT, MASK_HEARTBEAT},
   {HEARTBEAT, UTIL_TYPE_HB_SHORT, MASK_HEARTBEAT},
+  {JAVASP_UTILITY, UTIL_TYPE_JAVASP, MASK_JAVASP},
   {UTIL_HELP, "--help", MASK_ALL},
   {UTIL_VERSION, "--version", MASK_ALL},
   {ADMIN, UTIL_OPTION_CREATEDB, MASK_ADMIN},
@@ -222,7 +224,6 @@ static UTIL_SERVICE_OPTION_MAP_T us_Command_map[] = {
   {TEST, COMMAND_TYPE_TEST, MASK_BROKER},
   {REPLICATION, COMMAND_TYPE_REPLICATION, MASK_HEARTBEAT},
   {REPLICATION, COMMAND_TYPE_REPLICATION_SHORT, MASK_HEARTBEAT},
-  {JAVASP_UTILITY, COMMAND_TYPE_JAVASP, MASK_SERVER | MASK_BROKER},
   {-1, "", MASK_ALL}
 };
 
@@ -252,6 +253,7 @@ static int process_server (int command_type, int argc, char **argv, bool show_us
 			   bool process_window_service);
 static int process_broker (int command_type, int argc, const char **argv, bool process_window_service);
 static int process_manager (int command_type, bool process_window_service);
+static int process_javasp_server (int command_type, int argc, const char **argv, bool process_window_service);
 static int process_heartbeat (int command_type, int argc, const char **argv);
 static int process_heartbeat_start (HA_CONF * ha_conf, int argc, const char **argv);
 static int process_heartbeat_stop (HA_CONF * ha_conf, int argc, const char **argv);
@@ -376,9 +378,6 @@ command_string (int command_type)
       break;
     case REPLICATION:
       command = PRINT_CMD_REPLICATION;
-      break;
-    case JAVASP_UTILITY:
-      command = PRINT_CMD_JAVASP;
       break;
     case STOP:
     default:
@@ -666,6 +665,9 @@ main (int argc, char *argv[])
 #else
       status = process_heartbeat (command_type, argc - 3, (const char **) &argv[3]);
 #endif /* !WINDOWs */
+      break;
+    case JAVASP_UTILITY:
+      status = process_javasp_server (command_type, argc - 3, (const char **) &argv[3], process_window_service);
       break;
     default:
       goto usage;
@@ -1764,51 +1766,6 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
       }
 
       break;
-
-    case JAVASP_UTILITY:
-      {
-	if (argc != 2)
-	  {
-	    status = ER_GENERIC_ERROR;
-
-	    if (show_usage)
-	      {
-		util_service_usage (SERVER);
-		util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_CMD);
-	      }
-	    break;
-	  }
-
-	if (strcasecmp (argv[0], "restart") == 0)
-	  {
-      /* cub_admin javasp -j <database-name> */
-	    const char *args[] = { UTIL_ADMIN_NAME, UTIL_OPTION_JAVASP, JAVASP_RESTART, argv[1],
-	      NULL
-	    };
-
-	    status = proc_execute (UTIL_ADMIN_NAME, args, true, false, false, NULL);
-	    print_result (PRINT_SERVER_NAME, status, command_type);
-	  }
-	else if (strcasecmp (argv[0], "status") == 0)
-	  {
-	    const char *args[] = { UTIL_ADMIN_NAME, UTIL_OPTION_JAVASP, argv[1], NULL };
-
-	    status = proc_execute (UTIL_ADMIN_NAME, args, true, false, false, NULL);
-	  }
-	else
-	  {
-	    status = ER_GENERIC_ERROR;
-	    if (show_usage)
-	      {
-		util_service_usage (SERVER);
-		util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_CMD);
-	      }
-
-	    break;
-	  }
-      }
-
-      break;
     default:
       status = ER_GENERIC_ERROR;
       break;
@@ -2238,8 +2195,8 @@ process_manager (int command_type, bool process_window_service)
       print_message (stderr, MSGCAT_UTIL_GENERIC_MANAGER_NOT_INSTALLED);
       util_log_write_errid (MSGCAT_UTIL_GENERIC_MANAGER_NOT_INSTALLED);
       return ER_GENERIC_ERROR;
-    }
 
+    }
   manager_status = is_manager_running (0);
   if (manager_status == MANAGER_SERVER_STATUS_ERROR)
     {
@@ -2326,6 +2283,86 @@ process_manager (int command_type, bool process_window_service)
       break;
     }
 
+  return status;
+}
+
+/*
+ * process_javasp_server -
+ *
+ * return:
+ *
+ *      command_type(in):
+ *      cms_port(in):
+ *
+ */
+static int
+process_javasp_server (int command_type, int argc, const char **argv, bool process_window_service)
+{
+  int status = NO_ERROR;
+  bool is_javasp_enabled = false;
+  int port = 0;
+  char javasp_server_path[PATH_MAX];
+  const char *db_name = NULL;
+
+  javasp_server_path[0] = '\0';
+  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_JAVASP_NAME, command_string (command_type));
+  (void) envvar_bindir_file (javasp_server_path, PATH_MAX, UTIL_JAVASP_NAME);
+
+  db_name = (argc >= 1) ? argv[0] : NULL;
+  if (db_name != NULL)
+    {
+      status = sysprm_load_and_init (db_name, NULL, SYSPRM_IGNORE_INTL_PARAMS);
+      if (status != NO_ERROR)
+	{
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);
+	  goto exit;
+	}
+    }
+  else
+    {
+      // db name is not given error
+      goto exit;
+    }
+  
+  is_javasp_enabled = (bool) prm_get_bool_value (PRM_ID_JAVA_STORED_PROCEDURE);
+  if (is_javasp_enabled == false)
+  {
+    printf ("disabled");
+    // print to user with error, javasp is disabled
+  }
+
+  switch (command_type)
+    {
+      case START:
+        {
+          int pid;
+      	  const char *args[] = { UTIL_JAVASP_NAME, COMMAND_TYPE_START, db_name, NULL };
+	        status = proc_execute (UTIL_JAVASP_NAME, args, false, false, false, &pid);
+        }
+        break;
+      case STOP:
+        {
+          const char *args[] = { UTIL_JAVASP_NAME, COMMAND_TYPE_STOP, db_name, NULL };
+	        status = proc_execute (UTIL_JAVASP_NAME, args, false, false, false, NULL);
+        }
+        break;
+      case RESTART:
+        status = process_javasp_server (STOP, argc, argv, process_window_service);
+        status = process_javasp_server (START, argc, argv, process_window_service);
+        break;
+      case STATUS:
+        {
+          const char *args[] = { UTIL_JAVASP_NAME, COMMAND_TYPE_STATUS, db_name, NULL };
+	        status = proc_execute (UTIL_JAVASP_NAME, args, false, false, false, NULL);
+        }
+        break;
+      default:
+        util_service_usage (JAVASP_UTILITY);
+        status = ER_GENERIC_ERROR;
+        break;
+    }
+
+exit:
   return status;
 }
 

@@ -3668,7 +3668,7 @@ javasp (UTIL_FUNCTION_ARG * arg)
 
   if (restart)
     {
-      ret_code = jsp_restart ();
+      //ret_code = jsp_restart ();
       if (ret_code != NO_ERROR)
 	{
 	  fprintf (stderr, "%s\n", db_error_string (3));
@@ -3676,7 +3676,7 @@ javasp (UTIL_FUNCTION_ARG * arg)
     }
   else
     {
-      jsp_status (stdout);
+      //jsp_status (stdout);
     }
   db_shutdown ();
 

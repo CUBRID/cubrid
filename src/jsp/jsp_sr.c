@@ -445,7 +445,7 @@ jsp_tokenize_jvm_options (char *opt_str)
  */
 
 int
-jsp_start_server (const char *db_name, const char *path)
+jsp_start_server (const char *db_name, const char *path, int port)
 {
   jint res;
   jclass cls, string_cls;
@@ -462,15 +462,10 @@ jsp_start_server (const char *db_name, const char *path)
   char disable_sig_handle[] = "-Xrs";
   const char *envroot;
   char jsp_file_path[PATH_MAX];
-  char port[6] = { 0 };
+  char port_str[6] = { 0 };
   char *loc_p, *locale;
   char *jvm_opt_sysprm = NULL;
   int debug_port = -1;
-
-  if (!prm_get_bool_value (PRM_ID_JAVA_STORED_PROCEDURE))
-    {
-      return NO_ERROR;
-    }
 
   if (jvm != NULL)
     {
@@ -605,8 +600,8 @@ jsp_start_server (const char *db_name, const char *path)
       goto error;
     }
 
-  sprintf (port, "%d", prm_get_integer_value (PRM_ID_JAVA_STORED_PROCEDURE_PORT));
-  jstr_port = JVM_NewStringUTF (env_p, port);
+  sprintf (port_str, "%d", port);
+  jstr_port = JVM_NewStringUTF (env_p, port_str);
   if (jstr_port == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, "NewStringUTF");
@@ -665,11 +660,13 @@ jsp_stop_server (void)
   JavaVMAttachArgs args;
   int error, status;
 
+  /*
   if (jsp_jvm_is_loaded ())
     {
       jvm = NULL;
     }
-
+  */
+ 
   return NO_ERROR;
 
 error:

@@ -62,7 +62,7 @@ public class Server {
 		  serverSocket = new ServerSocket(port_number);
 
 		  Class.forName("cubrid.jdbc.driver.CUBRIDDriver");
-		  // System.setSecurityManager(new SpSecurityManager());
+		  System.setSecurityManager(new SpSecurityManager());
 		  System.setProperty("cubrid.server.version", version);
 		} catch (Exception e) {
 			log(e);
@@ -132,15 +132,16 @@ public class Server {
 		return -1;
 	}
 
-	public static void main (String[] args) {
-		Server.start(args);
-	}
-
 	public static void stop(int status) {
 		if (serverInstance != null) {
 			serverInstance.stopSocketListener();
-			serverInstance = null;
+			serverInstance = null; 
 		}
+		System.exit (status);
+	}
+
+	public static void main (String[] args) {
+		Server.start(args);
 	}
 
 	public static void log(Throwable ex) {

@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation
- * Copyright (C) 2016 CUBRID Corporation
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -20,19 +19,7 @@
 
 
 /*
- * jsp_sr.h - Java Stored Procedure Server Module Header
+ * jsp_common.h - Java Stored Procedure Server Module Header
  *
  * Note:
  */
-
-#ifndef _JSP_SR_H_
-#define _JSP_SR_H_
-
-#ident "$Id$"
-
-extern int jsp_start_server (const char *server_name, const char *path, int port_number);
-extern int jsp_stop_server (void);
-extern int jsp_server_port (void);
-extern int jsp_jvm_is_loaded (void);
-
-#endif /* _JSP_SR_H_ */

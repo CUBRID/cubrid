@@ -2060,6 +2060,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   char db_lang[LANG_MAX_LANGNAME + 1];
   char timezone_checksum[32 + 1];
   const TZ_DATA *tzd;
+  int jsp_port;
 
   /* language data is loaded in context of server */
   if (lang_init () != NO_ERROR)
@@ -2282,15 +2283,16 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   tsc_init ();
 #endif /* !SERVER_MODE */
 
-  // Initialize java stored procedure server
-  error_code = jsp_start_server (db_name, db->pathname);
+  /* *INDENT-OFF* */
+#if defined (SA_MODE)
+  // Initialize java stored procedure server for standalone mode
+  jsp_port = prm_get_integer_value (PRM_ID_JAVA_STORED_PROCEDURE_PORT);
+  error_code = jsp_start_server (db_name, db->pathname, jsp_port);
   if (error_code != NO_ERROR)
     {
       goto error;
     }
 
-  /* *INDENT-OFF* */
-#if defined (SA_MODE)
   // thread_manager was not initialized
   assert (thread_p == NULL);
   cubthread::initialize (thread_p);
