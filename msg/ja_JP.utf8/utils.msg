@@ -148,6 +148,7 @@ cubrid 管理者ユーティリティー、バージョン　%1$s\n\
     broker\n\
     manager\n\
     heartbeat\n\
+    javasp\n\
 \n\
 正しい管理者ユーティリティー名:\n\
     addvoldb\n\

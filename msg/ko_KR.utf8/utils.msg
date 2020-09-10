@@ -148,6 +148,7 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     broker\n\
     manager\n\
     heartbeat\n\
+    javasp\n\
 \n\
 가용한 관리자 유틸리티 이름:\n\
     addvoldb\n\

@@ -202,8 +202,7 @@ Available command:\n\
     stop        [database-name]\n\
     restart     [database-name]\n\
     status\n\
-    acl         <status|reload> database-name\n\
-    javasp      <status|restart> database-name\n
+    acl         <status|reload> database-name\n
 37 The server was configured for HA.\n
 26 cubrid utility, version %1$s\n\
 usage: %2$s broker <command> [args]\n\
@@ -250,6 +249,14 @@ Available command:\n\
 41 cubrid manager server is not installed.\n
 42 Invalid argument.\n
 43 File(%1$s) open error.\n
+44 cubrid utility, version %1$s\n\
+usage: %2$s javasp <command> [args]\n\
+\n\
+Available command:\n\
+    start       [database-name]\n\
+    stop        [database-name]\n\
+    restart     [database-name]\n\
+    status      [database-name]\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 WARNING: -t option is ignored in stand-alone mode execution.\n

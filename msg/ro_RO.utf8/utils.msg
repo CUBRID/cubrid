@@ -148,6 +148,7 @@ Utilitare de serviciu disponibile:\n\
     broker\n\
     manager\n\
     heartbeat\n\
+    javasp\n\
 \n\
 Utilitare de administrare disponibile:\n\
     addvoldb\n\

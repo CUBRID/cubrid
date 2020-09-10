@@ -38,6 +38,7 @@
 #define		CUBRID_UTIL_SHARD			"shard"
 #define		CUBRID_UTIL_MANAGER			"manager"
 #define		CUBRID_UTIL_SERVER			"server"
+#define 	CUBRID_UTIL_JAVASP 			"javasp"
 
 #define		CUBRID_COMMAND_START			"start"
 #define		CUBRID_COMMAND_STOP			"stop"
@@ -56,6 +57,8 @@
 #define		SERVICE_CONTROL_SERVER_STOP	181
 #define		SERVICE_CONTROL_SERVICE_START	190
 #define		SERVICE_CONTROL_SERVICE_STOP	191
+#define		SERVICE_CONTROL_JAVASP_START	200
+#define		SERVICE_CONTROL_JAVASP_STOP		201
 
 void WriteLog (char *p_logfile, char *p_format, ...);
 void GetCurDateTime (char *p_buf, char *p_form);
@@ -287,6 +290,16 @@ _tmain (int argc, char *argv[])
 		   _stricmp (argv[2], CUBRID_COMMAND_OFF) == 0)
 	    {
 	      service_control_code = SERVICE_CONTROL_BROKER_OFF;
+	    }
+	  else if (_stricmp (argv[1], CUBRID_UTIL_JAVASP) == 0 &&
+		   _stricmp (argv[2], CUBRID_COMMAND_START) == 0)
+	    {
+	      service_control_code = SERVICE_CONTROL_JAVASP_START;
+	    }
+	  else if (_stricmp (argv[1], CUBRID_UTIL_JAVASP) == 0 &&
+		   _stricmp (argv[2], CUBRID_COMMAND_STOP) == 0)
+	    {
+	      service_control_code = SERVICE_CONTROL_JAVASP_STOP;
 	    }
 	  else
 	    {

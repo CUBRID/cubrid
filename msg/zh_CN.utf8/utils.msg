@@ -148,6 +148,7 @@ cubrid 管理工具，版本 %1$s\n\
     broker\n\
     manager\n\
     heartbeat\n\
+    javasp\n\
 \n\
 可用的管理员工具:\n\
     addvoldb\n\

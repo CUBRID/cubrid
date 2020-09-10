@@ -148,6 +148,7 @@ Servizi disponibili:\n\
     broker\n\
     manager\n\
     heartbeat\n\
+    javasp\n\
 \n\
 Utilità amministrazione disponibili:\n\
     addvoldb\n\

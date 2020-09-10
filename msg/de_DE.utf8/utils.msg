@@ -148,6 +148,7 @@ Vorhandene Serviceutilities:\n\
     broker\n\
     manager\n\
     heartbeat\n\
+    javasp\n\
 \n\
 Vorhandene Administratorutilities:\n\
     addvoldb\n\

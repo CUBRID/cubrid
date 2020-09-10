@@ -46,10 +46,10 @@ void vSetStatus (DWORD dwState, DWORD dwAccept =
 		 SERVICE_ACCEPT_STOP | SERVICE_ACCEPT_PAUSE_CONTINUE);
 void SetCUBRIDEnvVar ();
 char *read_string_value_in_registry (HKEY key, char *sub_key, char *name);
-SERVICE_STATUS_HANDLE g_hXSS;	//¼­ºñ½º È¯°æ ±Û·Î¹ú ÇÚµé
-DWORD g_XSS;			//¼­ºñ½ºÀÇ ÇöÀç »óÅÂ¸¦ ÀúÀåÇÏ´Â º¯¼ö
-BOOL g_bPause;			//¼­ºñ½º°¡ ÁßÁöÀÎ°¡ ¾Æ´Ñ°¡
-HANDLE g_hExitEvent;		//¼­ºñ½º¸¦ ÁßÁö ½ÃÅ³¶§ ÀÌº¥Æ®¸¦ »ç¿ëÇÏ¿© ¾²·¹µå¸¦ ÁßÁöÇÑ´Ù
+SERVICE_STATUS_HANDLE g_hXSS;	//ï¿½ï¿½ï¿½ï¿½ È¯ï¿½ï¿½ ï¿½Û·Î¹ï¿½ ï¿½Úµï¿½
+DWORD g_XSS;			//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Â¸ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ï´ï¿½ ï¿½ï¿½ï¿½ï¿½
+BOOL g_bPause;			//ï¿½ï¿½ï¿½ñ½º°ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Î°ï¿½ ï¿½Æ´Ñ°ï¿½
+HANDLE g_hExitEvent;		//ï¿½ï¿½ï¿½ñ½º¸ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½Å³ï¿½ï¿½ ï¿½Ìºï¿½Æ®ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½Ï¿ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½å¸¦ ï¿½ï¿½ï¿½ï¿½ï¿½Ñ´ï¿½
 BOOL g_isRunning = false;
 #define		WM_SERVICE_STOP		WM_USER+1
 #define		WM_SERVICE_START	WM_USER+2
@@ -66,6 +66,8 @@ BOOL g_isRunning = false;
 #define		SERVICE_CONTROL_SERVER_STOP	181
 #define		SERVICE_CONTROL_SERVICE_START	190
 #define		SERVICE_CONTROL_SERVICE_STOP	191
+#define		SERVICE_CONTROL_JAVASP_START	200
+#define		SERVICE_CONTROL_JAVASP_STOP		201
 
 #define		CUBRID_UTIL_CUBRID		"cubrid.exe"
 #define		CUBRID_UTIL_SERVICE		"service"
@@ -73,6 +75,7 @@ BOOL g_isRunning = false;
 #define		CUBRID_UTIL_SHARD		"shard"
 #define		CUBRID_UTIL_MANAGER		"manager"
 #define		CUBRID_UTIL_SERVER		"server"
+#define 	CUBRID_UTIL_JAVASP 		"javasp"
 
 #define		CUBRID_COMMAND_START		"start"
 #define		CUBRID_COMMAND_STOP		"stop"
@@ -169,7 +172,7 @@ vSetStatus (DWORD dwState, DWORD dwAccept)
   ss.dwCheckPoint = 0;
   ss.dwWaitHint = 0;
 
-  //ÇöÀç »óÅÂ º¸°ü
+  //ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
   g_XSS = dwState;
   SetServiceStatus (g_hXSS, &ss);
 }
@@ -320,6 +323,21 @@ vHandler (DWORD opcode)
 	args[4] = "--for-windows-service";
 	args[5] = NULL;
       }
+    case SERVICE_CONTROL_JAVASP_START:
+      {
+	args[1] = CUBRID_UTIL_JAVASP;
+	args[2] = CUBRID_COMMAND_START;
+	args[4] = "--for-windows-service";
+	args[5] = NULL;
+      }
+      break;
+    case SERVICE_CONTROL_JAVASP_STOP:
+      {
+	args[1] = CUBRID_UTIL_JAVASP;
+	args[2] = CUBRID_COMMAND_STOP;
+	args[4] = "--for-windows-service";
+	args[5] = NULL;
+      }
       break;
     default:
       vSetStatus (g_XSS);
@@ -330,6 +348,8 @@ vHandler (DWORD opcode)
 
   if (opcode == SERVICE_CONTROL_SERVER_START ||
       opcode == SERVICE_CONTROL_SERVER_STOP ||
+      opcode == SERVICE_CONTROL_JAVASP_START ||
+      opcode == SERVICE_CONTROL_JAVASP_STOP ||
       opcode == SERVICE_CONTROL_BROKER_ON ||
       opcode == SERVICE_CONTROL_BROKER_OFF)
     {
@@ -341,7 +361,7 @@ vHandler (DWORD opcode)
     {
       g_isRunning = false;
 
-      //¾²·¹µå¸¦ ½ÇÇàÁßÀÌ¸é ¸ØÃá´Ù
+      //ï¿½ï¿½ï¿½ï¿½ï¿½å¸¦ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ì¸ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½
       SetEvent (g_hExitEvent);
       vSetStatus (SERVICE_STOPPED);
     }

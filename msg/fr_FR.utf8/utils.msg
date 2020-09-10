@@ -148,6 +148,7 @@ Utilitaires de service disponibles\n\
     broker\n\
     manager\n\
     heartbeat\n\
+    javasp\n\
 \n\
 Utilitaires d'administrateur disponibles:\n\
     addvoldb\n\

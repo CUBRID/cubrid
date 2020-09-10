@@ -35,9 +35,12 @@ import java.io.File;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.List;
 import java.util.logging.FileHandler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.lang.management.ManagementFactory;
+import java.lang.management.RuntimeMXBean;
 
 public class Server {
 	private static final Logger logger = Logger.getLogger("com.cubrid.jsp");
@@ -46,6 +49,8 @@ public class Server {
 	private static String serverName;
 	private static String spPath;
 	private static String rootPath;
+	
+	private static List<String> jvmArguments = null;
 	
 	private ServerSocket serverSocket;
 	private Thread socketListener;
@@ -64,16 +69,14 @@ public class Server {
 		  Class.forName("cubrid.jdbc.driver.CUBRIDDriver");
 		  System.setSecurityManager(new SpSecurityManager());
 		  System.setProperty("cubrid.server.version", version);
+
+		  getJVMArguments (); /* store jvm options */
 		} catch (Exception e) {
 			log(e);
 			e.printStackTrace();
 		}
 
-<<<<<<< HEAD
-		socketListener = new Thread(new Runnable() {
-=======
 		socketListener = new Thread (new Runnable() {
->>>>>>> draft
 			public void run() {
 				Socket client = null;
 				while (true) {
@@ -88,14 +91,6 @@ public class Server {
 				}
 			}
 		});
-<<<<<<< HEAD
-		socketListener.start();
-=======
->>>>>>> draft
-	}
-
-	private int getServerPort() {
-		return serverSocket.getLocalPort();
 	}
 
 	private void startSocketListener() {
@@ -112,19 +107,43 @@ public class Server {
 		}
 	}
 
+	public ServerSocket getServerSocket() {
+		return serverSocket;
+	}
+
+	public static Server getServer() {
+		return serverInstance;
+	}
+
 	public static String getServerName() {
 		return serverName;
 	}
 
+	public static int getServerPort() {
+		try {
+		  return getServer().getServerSocket().getLocalPort();
+		} catch (Exception e) {
+		  return -1;
+		}
+	}
+
 	public static String getSpPath() {
 		return spPath;
+	}
+	
+	public static List<String> getJVMArguments() {
+		if (jvmArguments == null) {
+			RuntimeMXBean runtimeMxBean = ManagementFactory.getRuntimeMXBean();
+			jvmArguments = runtimeMxBean.getInputArguments();
+		}
+		return jvmArguments;
 	}
 
 	public static int start(String[] args) {
 		try {
 			serverInstance = new Server(args[0], args[1], args[2], args[3], args[4]);
 			serverInstance.startSocketListener();
-			return serverInstance.getServerPort();
+			return serverInstance.getServerSocket().getLocalPort();
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
@@ -133,10 +152,7 @@ public class Server {
 	}
 
 	public static void stop(int status) {
-		if (serverInstance != null) {
-			serverInstance.stopSocketListener();
-			serverInstance = null; 
-		}
+		getServer().stopSocketListener();
 		System.exit (status);
 	}
 
@@ -146,7 +162,6 @@ public class Server {
 
 	public static void log(Throwable ex) {
 		FileHandler logHandler = null;
-
 		try {
 			logHandler = new FileHandler(rootPath + File.separatorChar
 					+ LOG_DIR + File.separatorChar + serverName + "_java.log",

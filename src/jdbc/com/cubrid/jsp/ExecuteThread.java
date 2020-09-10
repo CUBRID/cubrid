@@ -81,6 +81,11 @@ public class ExecuteThread extends Thread {
 	private static final int REQ_CODE_INTERNAL_JDBC = 0x08;
 	private static final int REQ_CODE_DESTROY = 0x10;
 
+	private static final int REQ_CODE_UTIL_PING = 0xDE;
+	private static final int REQ_CODE_UTIL_STATUS = 0xEE;
+	private static final int REQ_CODE_UTIL_TERMINATE_THREAD = 0xFE;
+	private static final int REQ_CODE_UTIL_TERMINATE_SERVER = 0xFF; // to shutdown javasp server
+
 	/* DB Types */
 	public static final int DB_NULL = 0;
 	public static final int DB_INT = 1;
@@ -181,23 +186,49 @@ public class ExecuteThread extends Thread {
 		int requestCode = -1;
 		while (!Thread.interrupted()) {
 			try {
-				do {
-					requestCode = listenCommand();
-					switch (requestCode) {
-					case REQ_CODE_INVOKE_SP: {
-						processStoredProcedure();
-						break;
-					}
-					case REQ_CODE_DESTROY: {
-						destroyJDBCResources();
-						break;
-					}
-					default: {
-						/* invalid request */
-						throw new ExecuteException ("invalid request code: " + requestCode);
-					}
-					}
-				} while (requestCode != REQ_CODE_INVOKE_SP && requestCode != REQ_CODE_DESTROY);
+				requestCode = listenCommand();
+				switch (requestCode) {
+				/* the following two request codes are for processing java stored procedure routine */
+				case REQ_CODE_INVOKE_SP: {
+					processStoredProcedure();
+					break;
+				}
+				case REQ_CODE_DESTROY: {
+					destroyJDBCResources();
+					break;
+				}
+
+				/* the following request codes are for javasp utility */
+				case REQ_CODE_UTIL_PING: {
+					String ping = "JAVASP_PING";
+					output.writeInt (ping.length());
+					output.writeBytes (ping);
+					output.flush();
+					break;
+				}
+				case REQ_CODE_UTIL_STATUS: {
+					String dbName = Server.getServerName();
+					output.writeInt(dbName.length() + 4);
+					output.writeInt (Server.getServerPort());
+					output.writeInt(dbName.length());
+					output.writeBytes (dbName);
+					output.flush();
+					break;
+				}
+				case REQ_CODE_UTIL_TERMINATE_THREAD: {
+					Thread.currentThread().interrupt();
+					break;
+				}
+				case REQ_CODE_UTIL_TERMINATE_SERVER: {
+					Server.stop (0);
+					break;
+				}
+
+				/* invalid request */
+				default: {
+					throw new ExecuteException ("invalid request code: " + requestCode);
+				}
+				}
 			} catch (Throwable e) {
 				if (e instanceof IOException) {
 					setStatus(ExecuteThreadStatus.END);

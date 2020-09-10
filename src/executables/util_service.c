@@ -68,7 +68,7 @@ typedef enum
   UTIL_HELP = 6,
   UTIL_VERSION = 7,
   ADMIN = 8,
-  JAVASP_UTILITY = 9
+  JAVASP_UTIL = 20
 } UTIL_SERVICE_INDEX_E;
 
 typedef enum
@@ -99,6 +99,8 @@ typedef enum
   SERVICE_START_MANAGER,
   SERVER_START_LIST,
   SERVICE_START_HEARTBEAT,
+  SERVICE_START_JAVASP,
+  JAVASP_START_LIST,
 } UTIL_SERVICE_PROPERTY_E;
 
 typedef enum
@@ -142,7 +144,7 @@ static UTIL_SERVICE_OPTION_MAP_T us_Service_map[] = {
   {MANAGER, UTIL_TYPE_MANAGER, MASK_MANAGER},
   {HEARTBEAT, UTIL_TYPE_HEARTBEAT, MASK_HEARTBEAT},
   {HEARTBEAT, UTIL_TYPE_HB_SHORT, MASK_HEARTBEAT},
-  {JAVASP_UTILITY, UTIL_TYPE_JAVASP, MASK_JAVASP},
+  {JAVASP_UTIL, UTIL_TYPE_JAVASP, MASK_JAVASP},
   {UTIL_HELP, "--help", MASK_ALL},
   {UTIL_VERSION, "--version", MASK_ALL},
   {ADMIN, UTIL_OPTION_CREATEDB, MASK_ADMIN},
@@ -196,7 +198,6 @@ static UTIL_SERVICE_OPTION_MAP_T us_Service_map[] = {
 #define COMMAND_TYPE_ON         "on"
 #define COMMAND_TYPE_OFF        "off"
 #define COMMAND_TYPE_ACL        "acl"
-#define COMMAND_TYPE_JAVASP     "javasp"
 #define COMMAND_TYPE_RESET      "reset"
 #define COMMAND_TYPE_INFO       "info"
 #define COMMAND_TYPE_COPYLOGDB  "copylogdb"
@@ -209,6 +210,7 @@ static UTIL_SERVICE_OPTION_MAP_T us_Service_map[] = {
 static UTIL_SERVICE_OPTION_MAP_T us_Command_map[] = {
   {START, COMMAND_TYPE_START, MASK_ALL},
   {STOP, COMMAND_TYPE_STOP, MASK_ALL},
+  {RESTART, COMMAND_TYPE_RESTART, MASK_SERVICE | MASK_SERVER | MASK_BROKER | MASK_JAVASP},
   {STATUS, COMMAND_TYPE_STATUS, MASK_ALL},
   {DEREGISTER, COMMAND_TYPE_DEREG, MASK_HEARTBEAT},
   {LIST, COMMAND_TYPE_LIST, MASK_HEARTBEAT},
@@ -233,6 +235,7 @@ static UTIL_SERVICE_PROPERTY_T us_Property_map[] = {
   {SERVICE_START_MANAGER, NULL},
   {SERVER_START_LIST, NULL},
   {SERVICE_START_HEARTBEAT, NULL},
+  {SERVICE_START_JAVASP, NULL},
   {-1, NULL}
 };
 
@@ -279,6 +282,8 @@ static const char *command_string (int command_type);
 static bool is_server_running (const char *type, const char *server_name, int pid);
 static int is_broker_running (void);
 static UTIL_MANAGER_SERVER_STATUS_E is_manager_running (unsigned int sleep_time);
+static bool is_javasp_running (const char *server_name);
+static bool javasp_mkdir (const char *path, mode_t mode);
 
 #if defined(WINDOWS)
 static bool is_windows_service_running (unsigned int sleep_time);
@@ -666,7 +671,7 @@ main (int argc, char *argv[])
       status = process_heartbeat (command_type, argc - 3, (const char **) &argv[3]);
 #endif /* !WINDOWs */
       break;
-    case JAVASP_UTILITY:
+    case JAVASP_UTIL:
       status = process_javasp_server (command_type, argc - 3, (const char **) &argv[3], process_window_service);
       break;
     default:
@@ -2287,6 +2292,47 @@ process_manager (int command_type, bool process_window_service)
 }
 
 /*
+ * is_javasp_running -
+ *
+ * return:
+ *
+ */
+
+static bool
+is_javasp_running (const char *server_name)
+{
+  FILE *input;
+  char buf[32];
+  char cmd[PATH_MAX] = { 0 }, exec_path[PATH_MAX] =
+  {
+  0};
+
+  make_exec_abspath (exec_path, PATH_MAX, (char *) UTIL_JAVASP_NAME);
+  if (snprintf (cmd, PATH_MAX, "%s %s %s", exec_path, "ping", server_name) < 0)
+    {
+      return false;
+    }
+
+  input = popen (cmd, "r");
+  if (input == NULL)
+    {
+      return false;
+    }
+
+  memset (buf, '\0', sizeof (buf));
+
+  if ((fgets (buf, 32, input) == NULL) || strncmp (buf, "JAVASP_PING", 11) != 0)
+    {
+      pclose (input);
+      return false;
+    }
+
+  pclose (input);
+
+  return true;
+}
+
+/*
  * process_javasp_server -
  *
  * return:
@@ -2299,71 +2345,150 @@ static int
 process_javasp_server (int command_type, int argc, const char **argv, bool process_window_service)
 {
   int status = NO_ERROR;
-  bool is_javasp_enabled = false;
-  int port = 0;
-  char javasp_server_path[PATH_MAX];
   const char *db_name = NULL;
 
-  javasp_server_path[0] = '\0';
-  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_JAVASP_NAME, command_string (command_type));
-  (void) envvar_bindir_file (javasp_server_path, PATH_MAX, UTIL_JAVASP_NAME);
-
+  /* check db_name argument */
   db_name = (argc >= 1) ? argv[0] : NULL;
-  if (db_name != NULL)
+  if (db_name == NULL)
     {
-      status = sysprm_load_and_init (db_name, NULL, SYSPRM_IGNORE_INTL_PARAMS);
-      if (status != NO_ERROR)
-	{
-	  util_log_write_errid (MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);
-	  goto exit;
-	}
-    }
-  else
-    {
-      // db name is not given error
+      util_service_usage (JAVASP_UTIL);
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_CMD);
+      status = ER_GENERIC_ERROR;
       goto exit;
     }
-  
-  is_javasp_enabled = (bool) prm_get_bool_value (PRM_ID_JAVA_STORED_PROCEDURE);
-  if (is_javasp_enabled == false)
-  {
-    printf ("disabled");
-    // print to user with error, javasp is disabled
-  }
 
   switch (command_type)
     {
-      case START:
-        {
-          int pid;
-      	  const char *args[] = { UTIL_JAVASP_NAME, COMMAND_TYPE_START, db_name, NULL };
-	        status = proc_execute (UTIL_JAVASP_NAME, args, false, false, false, &pid);
-        }
-        break;
-      case STOP:
-        {
-          const char *args[] = { UTIL_JAVASP_NAME, COMMAND_TYPE_STOP, db_name, NULL };
-	        status = proc_execute (UTIL_JAVASP_NAME, args, false, false, false, NULL);
-        }
-        break;
-      case RESTART:
-        status = process_javasp_server (STOP, argc, argv, process_window_service);
-        status = process_javasp_server (START, argc, argv, process_window_service);
-        break;
-      case STATUS:
-        {
-          const char *args[] = { UTIL_JAVASP_NAME, COMMAND_TYPE_STATUS, db_name, NULL };
-	        status = proc_execute (UTIL_JAVASP_NAME, args, false, false, false, NULL);
-        }
-        break;
-      default:
-        util_service_usage (JAVASP_UTILITY);
-        status = ER_GENERIC_ERROR;
-        break;
+    case START:
+      {
+	print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_3S, PRINT_JAVASP_NAME, PRINT_CMD_START, db_name);
+
+	if (is_javasp_running (db_name))
+	  {
+	    status = ER_GENERIC_ERROR;
+	    print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_2S, PRINT_JAVASP_NAME, db_name);
+	    util_log_write_errid (MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_2S, PRINT_JAVASP_NAME, db_name);
+	  }
+	else
+	  {
+	    int pid;
+	    if (process_window_service)
+	      {
+#if defined(WINDOWS)
+		const char *args[] = { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_JAVASP,
+		  COMMAND_TYPE_START, NULL
+		};
+
+		status = proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true, false, false, &pid);
+		status = (is_javasp_running (db_name)) ? NO_ERROR : ER_GENERIC_ERROR;
+#endif
+	      }
+	    else
+	      {
+		const char *args[] = { UTIL_JAVASP_NAME, COMMAND_TYPE_START, db_name, NULL };
+		status = proc_execute (UTIL_JAVASP_NAME, args, false, false, false, &pid);
+		status = (is_javasp_running (db_name)) ? NO_ERROR : ER_GENERIC_ERROR;
+	      }
+	    print_result (PRINT_JAVASP_NAME, status, command_type);
+	  }
+      }
+      break;
+    case STOP:
+      {
+	print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_3S, PRINT_JAVASP_NAME, PRINT_CMD_STOP, db_name);
+	if (is_javasp_running (db_name))
+	  {
+	    if (process_window_service)
+	      {
+#if defined(WINDOWS)
+		const char *args[] = { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_JAVASP,
+		  COMMAND_TYPE_STOP, NULL
+		};
+
+		status = proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true, false, false, NULL);
+		status = (is_javasp_running (db_name)) ? ER_GENERIC_ERROR : NO_ERROR;
+#endif
+	      }
+	    else
+	      {
+		const char *args[] = { UTIL_JAVASP_NAME, COMMAND_TYPE_STOP, db_name, NULL };
+		status = proc_execute (UTIL_JAVASP_NAME, args, true, false, false, NULL);
+		if (status == NO_ERROR)
+		  {
+		    status = (is_javasp_running (db_name)) ? ER_GENERIC_ERROR : NO_ERROR;
+		  }
+	      }
+	  }
+	else
+	  {
+	    status = ER_GENERIC_ERROR;
+	    print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_JAVASP_NAME, db_name);
+	    util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_JAVASP_NAME, db_name);
+	  }
+	print_result (PRINT_JAVASP_NAME, status, command_type);
+      }
+      break;
+    case RESTART:
+      status = process_javasp_server (STOP, argc, argv, process_window_service);
+      status = process_javasp_server (START, argc, argv, process_window_service);
+      break;
+    case STATUS:
+      {
+	print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_3S, PRINT_JAVASP_NAME, PRINT_CMD_STATUS, db_name);
+	if (is_javasp_running (db_name))
+	  {
+	    const char *args[] = { UTIL_JAVASP_NAME, COMMAND_TYPE_STATUS, db_name, NULL };
+	    status = proc_execute (UTIL_JAVASP_NAME, args, true, false, false, NULL);
+	  }
+	else
+	  {
+	    print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_JAVASP_NAME, db_name);
+	    util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_JAVASP_NAME, db_name);
+	  }
+      }
+      break;
+    default:
+      status = ER_GENERIC_ERROR;
+      break;
     }
 
 exit:
   return status;
+}
+
+static bool
+javasp_mkdir (const char *path, mode_t mode)
+{
+  char dir_path[PATH_MAX];
+  struct stat statbuf;
+
+  dir_path[0] = '\0';
+  envvar_vardir_file (dir_path, PATH_MAX, "javasp/");
+  printf ("%s\n", dir_path);
+
+  if (stat (path, &statbuf) == 0 && S_ISDIR (statbuf.st_mode))
+    {
+      return true;
+    }
+
+  cub_dirname_r (path, dir_path, PATH_MAX);
+  if (stat (dir_path, &statbuf) == -1)
+    {
+      if (errno == ENOENT && javasp_mkdir (dir_path, mode))
+	{
+	  return mkdir (path, mode) == 0;
+	}
+      else
+	{
+	  return false;
+	}
+    }
+  else if (S_ISDIR (statbuf.st_mode))
+    {
+      return mkdir (path, mode) == 0;
+    }
+
+  return false;
 }
 
 static bool
@@ -4487,6 +4612,8 @@ load_properties (void)
   bool broker_flag = false;
   bool manager_flag = false;
   bool heartbeat_flag = false;
+  bool javasp_flag = false;
+
   char *value = NULL;
 
   if (sysprm_load_and_init (NULL, NULL, SYSPRM_IGNORE_INTL_PARAMS) != NO_ERROR)
@@ -4524,6 +4651,10 @@ load_properties (void)
 	    {
 	      heartbeat_flag = true;
 	    }
+	  else if (strcmp (util, UTIL_TYPE_JAVASP) == 0)
+	    {
+	      javasp_flag = true;
+	    }
 	  else
 	    {
 	      error_msg = utility_get_generic_message (MSGCAT_UTIL_GENERIC_INVALID_PARAMETER);
@@ -4537,6 +4668,7 @@ load_properties (void)
   us_Property_map[SERVICE_START_BROKER].property_value = strdup (broker_flag ? PROPERTY_ON : PROPERTY_OFF);
   us_Property_map[SERVICE_START_MANAGER].property_value = strdup (manager_flag ? PROPERTY_ON : PROPERTY_OFF);
   us_Property_map[SERVICE_START_HEARTBEAT].property_value = strdup (heartbeat_flag ? PROPERTY_ON : PROPERTY_OFF);
+  us_Property_map[SERVICE_START_JAVASP].property_value = strdup (javasp_flag ? PROPERTY_ON : PROPERTY_OFF);
 
   /* get service::server list */
   value = prm_get_string_value (PRM_ID_SERVICE_SERVER_LIST);

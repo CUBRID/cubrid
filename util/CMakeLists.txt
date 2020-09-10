@@ -29,6 +29,7 @@ set_target_properties(cubridesql PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.$
 set_target_properties(cubridesql PROPERTIES PUBLIC_HEADER "${EXECUTABLES_DIR}/cubrid_esql.h")
 target_include_directories(cubridesql PRIVATE ${EP_INCLUDES})
 target_compile_definitions(cubridesql PRIVATE ${COMMON_DEFS} PRODUCE_ANSI_CODE UCI_TEMPORARY)
+target_link_libraries(cubridesql LINK_PRIVATE cubridcs)
 if(WIN32)
   set_target_properties(cubridesql PROPERTIES OUTPUT_NAME libesql)
   target_compile_definitions(cubridesql PRIVATE YY_CHAR=char)
@@ -197,11 +198,15 @@ else(UNIX)
   target_link_libraries(loadjava LINK_PRIVATE cubridcs)
 endif(UNIX)
 
-set(JAVASP_SERVER_SOURCES ${EXECUTABLES_DIR}/javasp.c)
+set(JAVASP_SERVER_SOURCES 
+  ${EXECUTABLES_DIR}/javasp.cpp
+  ${JSP_DIR}/jsp_common.c
+  ${JSP_DIR}/jsp_file.c
+)
 SET_SOURCE_FILES_PROPERTIES(
   ${JAVASP_SERVER_SOURCES}
   PROPERTIES LANGUAGE CXX
-  )
+)
 if(WIN32)
   list(APPEND JAVASP_SERVER_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
 endif(WIN32)

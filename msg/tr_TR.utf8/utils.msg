@@ -148,6 +148,7 @@ Mevcut hizmetin programları:\n\
     broker\n\
     manager\n\
     heartbeat\n\
+    javasp\n\
 \n\
 Mevcut yönetici programları:\n\
     addvoldb\n\

@@ -20,50 +20,46 @@
 
 
 /*
- * jsp_common.h - Java Stored Procedure Server Module Header
+ * jsp_file.h - Java Stored Procedure Server Module Header
  *
  * Note:
  */
 
-#ifndef _JSP_COMMON_H_
-#define _JSP_COMMON_H_
+#ifndef _JSP_FILE_H_
+#define _JSP_FILE_H_
 
 #ident "$Id$"
 
-#if !defined(WINDOWS)
-#include <sys/socket.h>
-#else /* not WINDOWS */
-#include <winsock2.h>
-#endif /* not WINDOWS */
-
 #include "porting.h"
 
-typedef enum
-{
-  SP_CODE_INVOKE = 0x01,
-  SP_CODE_RESULT = 0x02,
-  SP_CODE_ERROR = 0x04,
-  SP_CODE_INTERNAL_JDBC = 0x08,
-  SP_CODE_DESTROY = 0x10,
+#define JAVASP_LOG_BASE_DIR                 "log/javasp/"
+#define JAVASP_VAR_BASE_DIR                 "var/javasp/"
 
-  SP_CODE_UTIL_PING = 0xDE,
-  SP_CODE_UTIL_STATUS = 0xEE,
-  SP_CODE_UTIL_TERMINATE_THREAD = 0xFE,
-  SP_CODE_UTIL_TERMINATE_SERVER = 0xFF
-} SP_CODE;
+#define JAVASP_NAME                         "javasp"
+
+typedef struct javasp_server_info JAVASP_SERVER_INFO;
+struct javasp_server_info
+{
+  int pid;
+  int port;
+};
 
 #ifdef __cplusplus
 extern "C"
 {
 #endif
 
-  SOCKET jsp_connect_server (int server_port);
-  void jsp_disconnect_server (const SOCKET sockfd);
-  int jsp_writen (SOCKET fd, const void *vptr, int n);
-  int jsp_readn (SOCKET fd, void *vptr, int n);
+  extern bool javasp_get_info_file (char *buf, size_t len, const char *db_name);
+  extern bool javasp_get_error_file (char *buf, size_t len, const char *db_name);
+  extern bool javasp_get_log_file (char *buf, size_t len, const char *db_name);
+
+  extern bool javasp_get_info_dir ();
+
+  extern JAVASP_SERVER_INFO javasp_read_info (const char *info_path);
+  extern bool javasp_write_info (const char *info_path, JAVASP_SERVER_INFO info);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif				/* _JSP_COMMON_H_ */
+#endif				/* _JSP_FILE_H_ */
