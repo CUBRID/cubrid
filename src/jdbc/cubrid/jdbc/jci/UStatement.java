@@ -2121,6 +2121,7 @@ public class UStatement {
 				}
 			}
 			tuples = null;
+			readTupleNumber = 0;
 			getResCache().setExpire();
 		}
 	}

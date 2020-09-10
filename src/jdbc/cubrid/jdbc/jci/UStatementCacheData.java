@@ -56,7 +56,7 @@ public class UStatementCacheData {
 		this.tuples = tuples;
 		this.resultInfo = resultInfo;
 		if (resultInfo.length == 1)
-			this.srvCacheTime = 0L; //resultInfo[0].getSrvCacheTime();
+			this.srvCacheTime = resultInfo[0].getSrvCacheTime();
 		else
 			this.srvCacheTime = 0L;
 	}
