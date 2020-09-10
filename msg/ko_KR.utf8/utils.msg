@@ -260,6 +260,7 @@ $set 2 MSGCAT_UTIL_SET_BACKUPDB
 33 경고: 키 파일 (_keys)를 백업 볼륨에 포함합니다.\n\
 만약 TDE 기능으로 암호화된 테이블이 볼륨내에 존재할 경우, 보안상의 문제가 생길 수 있습니다.\n\
 키 파일이 분리를 위해선 --serperate-keys 옵션을 사용하세요.\n
+34 에러: --seperate-key 옵션 사용시 FIFO 파일을 대상 경로로 설정할 수 없습니다.\n
 60 \
 backupdb: 데이터베이스를 백업합니다.\n\
 사용법: %1$s backupdb [옵션] <데이터베이스 이름>\n\

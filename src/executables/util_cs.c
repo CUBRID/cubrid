@@ -197,17 +197,6 @@ backupdb (UTIL_FUNCTION_ARG * arg)
       backup_zip_level = FILEIO_ZIP_LZ4_DEFAULT_LEVEL;
     }
 
-  if (seperate_keys)
-    {
-      util_log_write_warnstr (msgcat_message
-			      (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_BACKUPDB, BACKUPDB_USING_SEPERATE_KEYS));
-    }
-  else
-    {
-      util_log_write_warnstr (msgcat_message
-			      (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_BACKUPDB, BACKUPDB_NOT_USING_SEPERATE_KEYS));
-    }
-
   /* extra validation */
   if (check_database_name (database_name))
     {
@@ -240,7 +229,27 @@ backupdb (UTIL_FUNCTION_ARG * arg)
 						     BACKUPDB_INVALID_PATH));
 	      goto error_exit;
 	    }
+#if !defined (WINDOWS)
+	  else if (seperate_keys)	/* FIFO file and --seperate_keys is exclusive */
+	    {
+	      PRINT_AND_LOG_ERR_MSG (msgcat_message
+				     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_BACKUPDB,
+				      BACKUPDB_FIFO_KEYS_NOT_SUPPORTED));
+	      goto error_exit;
+	    }
+#endif /* !WINDOWS */
 	}
+    }
+
+  if (seperate_keys)
+    {
+      util_log_write_warnstr (msgcat_message
+			      (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_BACKUPDB, BACKUPDB_USING_SEPERATE_KEYS));
+    }
+  else
+    {
+      util_log_write_warnstr (msgcat_message
+			      (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_BACKUPDB, BACKUPDB_NOT_USING_SEPERATE_KEYS));
     }
 
   /* error message log file */
