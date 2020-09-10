@@ -64,7 +64,7 @@
 
 #define COLL_TS	15
 
-#define LANG_IS_SAME_COLLATION(c1,c2)   \
+#define COLL_IS_SAME_VARIATION(c1,c2)   \
   (((c1) - (c2)) == COLL_TS || ((c2) - (c1)) == COLL_TS)
 
 /* common collation to be used at runtime */
@@ -75,7 +75,7 @@
       {                                       \
         coll = (c1);                          \
       }                                       \
-    else if (LANG_IS_SAME_COLLATION(c1,c2))   \
+    else if (COLL_IS_SAME_VARIATION(c1,c2))   \
       {                                       \
         coll = ((c1) > (c2))?(c1):(c2);       \
       }                                       \
