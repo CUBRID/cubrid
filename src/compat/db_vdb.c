@@ -841,11 +841,14 @@ db_get_jdbccachehint (DB_SESSION * session, int stmt_ndx, int *life_time)
 
   if (statement->info.query.q.select.hint & PT_HINT_JDBC_CACHE)
     {
-      if (life_time != NULL && statement->info.query.q.select.jdbc_life_time->info.name.original != NULL)
+      if (statement->info.query.q.select.jdbc_life_time)
 	{
-	  *life_time = atoi (statement->info.query.q.select.jdbc_life_time->info.name.original);
+          if (life_time != NULL && statement->info.query.q.select.jdbc_life_time->info.name.original != NULL)
+	    {
+	      *life_time = atoi (statement->info.query.q.select.jdbc_life_time->info.name.original);
+	    }
+          return true;
 	}
-      return true;
     }
 
   return false;
