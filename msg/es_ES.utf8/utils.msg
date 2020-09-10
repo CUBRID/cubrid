@@ -809,6 +809,7 @@ opciones validas:\n\
       --kill-program-name=NAME       matar todas transacciones con NOMBRE de programa de cliente\n\
       --kill-sql-id=SQL_ID           matar todas transacciones con SQL_ID\n\
   -p, --dba-password=PASS            contrasena del utilizador DBA; va a ser pedida si no es especificado\n\
+                                     (solo funciona con las opciones -i o --kill. De lo contrario, obtiene un error)\n\
   -d, --display-information          mostrar informacion relacionada a las transacciones activas\n\
   -q, --query-exec-info              mostrar informacion sobre informacion de ejecucion de transacciones activas de la consulta\n\
   -f, --force                        matar la transaccion sin un aviso para verificar\n
@@ -1062,8 +1063,6 @@ tranlist: Imprimir informacion de transaccion activa.\n\
 uso: %1$s tranlist [OPTION] database-name\n\
 \n\
 opciones validas:\n\
-  -u, --user=ID                ID de utilizador para acceso a la base de datos; estandar: utilizador DBA\n\
-  -p, --password=PASS          clave del utilizador; estandar: ninguna\n\
   -s, --summary                imprimir resume de informacion de la transaccion\n\
       --sort-key=COLUMN_NUMBER numero de la columna de ordenacion \n\
       --reverse                invierte el resultado de la clasificacion\n

@@ -809,6 +809,7 @@ killtran: 管理数据库的事务.\n\
       --kill-program-name=NAME       通过客户端程序名取消所有事务\n\
       --kill-sql-id=SQL_ID           取消所有sql-id为SQL_ID的事务\n\
   -p, --dba-password=PASS            DBA用户的密码; 如果没有指定将提示输入\n\
+                                     (仅与-i或--kill选项一起使用。否则会出错)\n\
   -d, --display-information          显示关于活动事务的信息\n\
   -q, --query-exec-info              显示活动事务查询执行的信息\n\
   -f, --force                        取消事务而不需要核对提示\n
@@ -1062,8 +1063,6 @@ tranlist: 输出活动事务信息.\n\
 用法: %1$s tranlist [选项] 数据库名\n\
 \n\
 可用选项:\n\
-  -u, --user=ID                访问数据库的用户ID; default: DBA user\n\
-  -p, --password=PASS          用户密码; default: none\n\
   -s, --summary                打印事务的汇总信息\n\
       --sort-key=COLUMN_NUMBER 列序号将被排序\n\
       --reverse                反转排序结果\n

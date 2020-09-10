@@ -234,7 +234,9 @@ static bool
 util_is_password_argument (int index, int value)
 {
   if ((index == KILLTRAN && value == KILLTRAN_DBA_PASSWORD_S)
+#if defined(TRANLIST_PASSWORD_S)
       || (index == TRANLIST && value == TRANLIST_PASSWORD_S)
+#endif
       || (index == LOADDB && value == LOAD_PASSWORD_S) || (index == UNLOADDB && value == UNLOAD_PASSWORD_S))
     {
       return true;
