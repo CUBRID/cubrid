@@ -148,6 +148,7 @@ Available service's utilities:\n\
     broker\n\
     manager\n\
     heartbeat\n\
+    javasp\n\
 \n\
 Available administrator's utilities:\n\
     addvoldb\n\
