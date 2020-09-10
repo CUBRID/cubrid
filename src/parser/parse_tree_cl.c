@@ -18357,6 +18357,7 @@ pt_expr_is_allowed_as_function_index (const PT_NODE * expr)
 	  break;
 	}
       /* FALLTHRU */
+    /* if add it here, add it to validate_regu_key_function_index () as well */
     case PT_MOD:
     case PT_LEFT:
     case PT_RIGHT:

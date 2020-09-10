@@ -24028,6 +24028,7 @@ validate_regu_key_function_index (REGU_VARIABLE * regu_var)
     {
       switch (regu_var->value.arithptr->opcode)
 	{
+	/* if add it here, add it to pt_expr_is_allowed_as_function_index() as well */
 	case T_MOD:
 	case T_LEFT:
 	case T_RIGHT:
@@ -24068,6 +24069,7 @@ validate_regu_key_function_index (REGU_VARIABLE * regu_var)
 	case T_POSITION:
 	case T_LOWER:
 	case T_UPPER:
+	case T_CHAR_LENGTH:
 	case T_LTRIM:
 	case T_RTRIM:
 	case T_FROM_UNIXTIME:
@@ -24108,14 +24110,33 @@ validate_regu_key_function_index (REGU_VARIABLE * regu_var)
 	case T_FORMAT:
 	case T_DATE_FORMAT:
 	case T_ADDDATE:
+	case T_DATE_ADD:
 	case T_DATEDIFF:
 	case T_TIMEDIFF:
 	case T_SUBDATE:
+	case T_DATE_SUB:
+	case T_BIT_LENGTH:
+	case T_OCTET_LENGTH:
+	case T_IFNULL:
+	case T_LOCATE:
+	case T_SUBSTRING:
+	case T_NVL:
+	case T_NVL2:
+	case T_NULLIF:
+	case T_TO_CHAR:
+	case T_TO_DATE:
+	case T_TO_DATETIME:
+	case T_TO_TIMESTAMP:
+	case T_TO_TIME:
+	case T_TO_NUMBER:
+	case T_TRIM:
 	case T_INET_ATON:
 	case T_INET_NTOA:
 	case T_TO_BASE64:
 	case T_FROM_BASE64:
 	case T_TZ_OFFSET:
+	case T_TO_DATETIME_TZ:
+	case T_TO_TIMESTAMP_TZ:
 	case T_CRC32:
 	case T_CONV_TZ:
 	  break;
