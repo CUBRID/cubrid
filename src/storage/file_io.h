@@ -31,8 +31,7 @@
 #include "config.h"
 #include "dbtype_def.h"
 #include "log_lsa.hpp"
-#include "lzo/lzoconf.h"
-#include "lzo/lzo1x.h"
+#include "lz4.h"
 #include "memory_hash.h"
 #include "porting.h"
 #include "porting_inline.hpp"
@@ -98,27 +97,18 @@ typedef enum
 typedef enum
 {
   FILEIO_ZIP_NONE_METHOD,	/* None */
-  FILEIO_ZIP_LZO1X_METHOD,	/* LZO1X */
+  FILEIO_ZIP_LZO1X_METHOD,	/* LZO1X - Unsupported */
   FILEIO_ZIP_ZLIB_METHOD,	/* ZLIB */
+  FILEIO_ZIP_LZ4_METHOD,	/* LZ4X */
   FILEIO_ZIP_UNDEFINED_METHOD	/* Undefined (must be highest ordinal value) */
 } FILEIO_ZIP_METHOD;
 
 typedef enum
 {
   FILEIO_ZIP_NONE_LEVEL,	/* None */
-  FILEIO_ZIP_1_LEVEL,		/* best speed */
-  FILEIO_ZIP_2_LEVEL,
-  FILEIO_ZIP_3_LEVEL,
-  FILEIO_ZIP_4_LEVEL,
-  FILEIO_ZIP_5_LEVEL,
-  FILEIO_ZIP_6_LEVEL,
-  FILEIO_ZIP_7_LEVEL,
-  FILEIO_ZIP_8_LEVEL,
-  FILEIO_ZIP_9_LEVEL,		/* best compression */
+  FILEIO_ZIP_1_LEVEL,
   FILEIO_ZIP_UNDEFINED_LEVEL,	/* Undefined (must be highest ordinal value) */
-  FILEIO_ZIP_LZO1X_999_LEVEL = FILEIO_ZIP_9_LEVEL,
-  FILEIO_ZIP_LZO1X_DEFAULT_LEVEL = FILEIO_ZIP_1_LEVEL,
-  FILEIO_ZIP_ZLIB_DEFAULT_LEVEL = FILEIO_ZIP_6_LEVEL
+  FILEIO_ZIP_LZ4_DEFAULT_LEVEL = FILEIO_ZIP_1_LEVEL
 } FILEIO_ZIP_LEVEL;
 
 typedef enum
@@ -366,8 +356,15 @@ struct fileio_backup_db_buffer
 typedef struct file_zip_page FILEIO_ZIP_PAGE;
 struct file_zip_page
 {
-  lzo_uint buf_len;		/* compressed block size */
-  lzo_byte buf[1];		/* data block */
+  int buf_len;			/* compressed block size */
+  char buf[1];			/* data block */
+};
+
+typedef struct file_zip_info FILEIO_ZIP_INFO;
+struct file_zip_info
+{
+  int buf_size;			/* allocated block size */
+  FILEIO_ZIP_PAGE zip_page;	/* zip page */
 };
 
 typedef struct fileio_node FILEIO_NODE;
@@ -379,8 +376,7 @@ struct fileio_node
   bool writeable;
   ssize_t nread;
   FILEIO_BACKUP_PAGE *area;	/* Area to read/write the page */
-  FILEIO_ZIP_PAGE *zip_page;	/* Area to compress/decompress the page */
-  lzo_bytep wrkmem;
+  FILEIO_ZIP_INFO *zip_info;	/* Zip info containing area to compress/decompress the page */
 };
 
 typedef struct fileio_queue FILEIO_QUEUE;

@@ -1163,10 +1163,12 @@ typedef struct _ha_config
 #define PLANDUMP_OUTPUT_FILE_L                  "output-file"
 
 /* tranlist option list */
+#if defined(NEED_PRIVILEGE_PASSWORD)
 #define TRANLIST_USER_S                         'u'
 #define TRANLIST_USER_L                         "user"
 #define TRANLIST_PASSWORD_S                     'p'
 #define TRANLIST_PASSWORD_L                     "password"
+#endif
 #define TRANLIST_SUMMARY_S                      's'
 #define TRANLIST_SUMMARY_L                      "summary"
 #define TRANLIST_SORT_KEY_S                     'k'
@@ -1296,6 +1298,8 @@ typedef struct _ha_config
 #define COMPACT_INSTANCE_LOCK_TIMEOUT_L		"Instance-lock-timeout"
 #define COMPACT_CLASS_LOCK_TIMEOUT_S		'c'
 #define COMPACT_CLASS_LOCK_TIMEOUT_L		"class-lock-timeout"
+#define COMPACT_STANDBY_CS_MODE_S               12000
+#define COMPACT_STANDBY_CS_MODE_L               "standby"
 
 /* sqlx option list */
 #define CSQL_SA_MODE_S                          'S'
@@ -1340,6 +1344,14 @@ typedef struct _ha_config
 #define CSQL_SKIP_COL_NAMES_L                   "skip-column-names"
 #define CSQL_SKIP_VACUUM_S			12017
 #define CSQL_SKIP_VACUUM_L			"skip-vacuum"
+#define CSQL_QUERY_OUTPUT_S			'q'
+#define CSQL_QUERY_OUTPUT_L			"query-output"
+#define CSQL_QUERY_COLUMN_DELIMITER_S		12018
+#define CSQL_QUERY_COLUMN_DELIMITER_L		"delimiter"
+#define CSQL_QUERY_COLUMN_ENCLOSURE_S		12019
+#define CSQL_QUERY_COLUMN_ENCLOSURE_L		"enclosure"
+#define CSQL_LOADDB_OUTPUT_S			'd'
+#define CSQL_LOADDB_OUTPUT_L			"loaddb-output"
 
 #define COMMDB_SERVER_LIST_S                    'P'
 #define COMMDB_SERVER_LIST_L                    "server-list"

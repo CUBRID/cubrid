@@ -41,12 +41,16 @@ opciones validas:\n\
   -l, --line-output            muestra cada valor en una linea\n\
   -r, --read-only              modo read-only\n\
   -t, --plain-output           mostrar resultados en un formato script-amigable (solo funciona con -c y -i)\n\
+  -q, --query-output           mostrar resultados en un formato query-amigable (solo funciona con -c y -i)\n\
+  -d, --loaddb-output          mostrar resultados en un formato loaddb-amigable (solo funciona con -c y -i)\n\
   -N, --skip-column-names      no mostrar nombres de columnas en resultados (solo funciona con -c y -i)\n\
       --string-width           muestra cada columna de tipo string en esta anchura\n\
       --no-auto-commit         inhabilitar modo de ejecucion cometer automaticamente\n\
       --no-pager               no utilize pager\n\
       --no-single-line         desactivar modo de ejecucion linea suelta\n\
       --no-trigger-action      inhabilitar accion del trigger\n\
+      --delimiter=ARG          delimitador entre columna (solo funciona con -q)\n\
+      --enclosure=ARG          recinto para una cadena de resultado (solo funciona con -q)\n\
 \n\
 Para mas informacion, vea http://www.cubrid.org\n
 41 %1$s: el valor de entorno de %2$s_MODE es incorrecto. \nDeberia ser sea %3$s o %4$s.\n

@@ -293,6 +293,7 @@ struct HB_PROC_ENTRY
 
   LOG_LSA prev_eof;
   LOG_LSA curr_eof;
+  bool is_curr_eof_received;
 
   CSS_CONN_ENTRY *conn;
 

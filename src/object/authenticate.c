@@ -175,7 +175,7 @@ const char *AU_DBA_USER_NAME = "DBA";
          strcmp(name, CT_AUTHORIZATION_NAME) == 0 || \
          strcmp(name, CT_AUTHORIZATIONS_NAME) == 0 || \
 	 strcmp(name, CT_CHARSET_NAME) == 0 || \
-   strcmp(name, CT_DUAL_NAME) == 0)
+	 strcmp(name, CT_DUAL_NAME) == 0)
 
 enum fetch_by
 {

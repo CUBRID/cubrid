@@ -159,7 +159,8 @@ static jmp_buf csql_Jmp_buf;
 
 static const char *csql_cmd_string (CUBRID_STMT_TYPE stmt_type, const char *default_string);
 static void display_empty_result (int stmt_type, int line_no);
-static char **get_current_result (int **len, const CUR_RESULT_INFO * result_info, bool plain_output);
+static char **get_current_result (int **len, const CUR_RESULT_INFO * result_info, bool plain_output, bool query_output,
+				  bool loaddb_output, char column_enclosure);
 static int write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp, const CUR_RESULT_INFO * result_info);
 static char *uncontrol_strdup (const char *from);
 static char *uncontrol_strndup (const char *from, int length);
@@ -199,7 +200,7 @@ csql_results (const CSQL_ARGUMENT * csql_arg, DB_QUERY_RESULT * result, DB_QUERY
   /* trivial case - no results */
   if (result == NULL || (err = db_query_first_tuple (result)) == DB_CURSOR_END)
     {
-      if (csql_arg->plain_output == false)
+      if (csql_arg->plain_output == false && csql_arg->query_output == false && csql_arg->loaddb_output == false)
 	{
 	  display_empty_result (stmt_type, line_no);
 	}
@@ -484,12 +485,16 @@ display_empty_result (int stmt_type, int line_no)
  *   lengths(out): lengths of returned values
  *   result_info(in): pointer to current query result info structure
  *   plain_output(in): refine string for plain output
+ *   query_output(in): refine string for query output
+ *   loaddb_output(in): refine string for loaddb output
+ *   column_enclosure(in): column enclosure for query output
  *
  * Note:
  *   Caller should be responsible for free the return array and its elements.
  */
 static char **
-get_current_result (int **lengths, const CUR_RESULT_INFO * result_info, bool plain_output)
+get_current_result (int **lengths, const CUR_RESULT_INFO * result_info, bool plain_output, bool query_output,
+		    bool loaddb_output, char column_enclosure)
 {
   int i;
   char **val = NULL;		/* temporary array for values */
@@ -625,8 +630,22 @@ get_current_result (int **lengths, const CUR_RESULT_INFO * result_info, bool pla
 	  else
 	    {
 	      char *temp;
+	      CSQL_OUTPUT_TYPE output_type;
 
-	      temp = csql_db_value_as_string (&db_value, &len[i], plain_output);
+	      if (query_output == true)
+		{
+		  output_type = CSQL_QUERY_OUTPUT;
+		}
+	      else if (loaddb_output == true)
+		{
+		  output_type = CSQL_LOADDB_OUTPUT;;
+		}
+	      else
+		{
+		  output_type = CSQL_UNKNOWN_OUTPUT;
+		}
+
+	      temp = csql_db_value_as_string (&db_value, &len[i], plain_output, output_type, column_enclosure);
 	      if (temp == NULL)
 		{
 		  csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;
@@ -729,6 +748,7 @@ write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp, const CUR_RE
   int max_attr_name_length = result_info->max_attr_name_length;
   int column_width;
   int csql_string_width = csql_arg->string_width;
+  char csql_column_delimiter;
   int value_width;
   bool is_null;
 
@@ -749,7 +769,7 @@ write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp, const CUR_RE
       csql_pipe_save = os_set_signal_handler (SIGPIPE, &csql_pipe_handler);
 #endif /* !WINDOWS */
 
-      if (csql_arg->plain_output == false)
+      if (csql_arg->plain_output == false && csql_arg->query_output == false && csql_arg->loaddb_output == false)
 	{
 	  csql_fputs ("\n=== ", pf);
 	  snprintf (csql_Scratch_text, SCRATCH_TEXT_LEN, csql_get_message (CSQL_RESULT_STMT_TITLE_FORMAT),
@@ -769,8 +789,10 @@ write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp, const CUR_RE
 	    {
 	      ;
 	    }
-	  else if (csql_arg->plain_output == true)
+	  else if (csql_arg->plain_output == true || csql_arg->query_output == true)
 	    {
+	      csql_column_delimiter = (csql_arg->query_output == true) ? csql_arg->column_delimiter : '\t';
+
 	      for (i = 0; i < num_attrs; i++)
 		{
 		  refined_attr_name = csql_string_to_plain_string (attr_names[i], strlen (attr_names[i]), NULL);
@@ -790,7 +812,33 @@ write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp, const CUR_RE
 		    }
 		  else
 		    {
-		      fprintf (pf, "\t");
+		      fprintf (pf, "%c", csql_column_delimiter);
+		    }
+		}
+	    }
+	  else if (csql_arg->loaddb_output == true)
+	    {
+	      fprintf (pf, "%%class [ ] (");
+	      for (i = 0; i < num_attrs; i++)
+		{
+		  refined_attr_name = csql_string_to_plain_string (attr_names[i], strlen (attr_names[i]), NULL);
+		  if (refined_attr_name != NULL)
+		    {
+		      fprintf (pf, "[%s]", refined_attr_name);
+		      free_and_init (refined_attr_name);
+		    }
+		  else
+		    {
+		      fprintf (pf, "UNKNOWN");
+		    }
+
+		  if (i == num_attrs - 1)
+		    {
+		      fprintf (pf, ")\n");
+		    }
+		  else
+		    {
+		      fprintf (pf, " ");
 		    }
 		}
 	    }
@@ -823,7 +871,9 @@ write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp, const CUR_RE
 		}
 	      int *len = NULL;
 
-	      val = get_current_result (&len, result_info, csql_arg->plain_output);
+	      val =
+		get_current_result (&len, result_info, csql_arg->plain_output, csql_arg->query_output,
+				    csql_arg->loaddb_output, csql_arg->column_enclosure);
 	      if (val == NULL)
 		{
 		  csql_Error_code = CSQL_ERR_SQL_ERROR;
@@ -850,6 +900,14 @@ write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp, const CUR_RE
 		  for (i = 0; i < num_attrs - 1; i++)
 		    {
 		      fprintf (pf, "%s\t", val[i]);
+		    }
+		  fprintf (pf, "%s\n", val[i]);
+		}
+	      else if (csql_arg->query_output == true || csql_arg->loaddb_output == true)
+		{
+		  for (i = 0; i < num_attrs - 1; i++)
+		    {
+		      fprintf (pf, "%s%c", val[i], csql_arg->column_delimiter);
 		    }
 		  fprintf (pf, "%s\n", val[i]);
 		}

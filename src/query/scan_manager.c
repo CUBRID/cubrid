@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -199,6 +200,12 @@ static SCAN_CODE scan_get_next_iss_value (THREAD_ENTRY * thread_p, SCAN_ID * sca
 static SCAN_CODE call_get_next_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SCAN_ID * isidp,
 					     bool should_go_to_next_value);
 static int scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_term);
+
+/* for hash list scan */
+static SCAN_CODE scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
+static SCAN_CODE scan_next_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
+static SCAN_CODE scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * tuple);
+static bool check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_yn);
 
 /*
  * scan_init_iss () - initialize index skip scan structure
@@ -3619,9 +3626,11 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 		     VAL_DESCR * vd,
 		     /* fields of LLIST_SCAN_ID */
 		     QFILE_LIST_ID * list_id, regu_variable_list_node * regu_list_pred, PRED_EXPR * pr,
-		     regu_variable_list_node * regu_list_rest)
+		     regu_variable_list_node * regu_list_rest, regu_variable_list_node * regu_list_build,
+		     regu_variable_list_node * regu_list_probe, int hash_list_scan_yn)
 {
   LLIST_SCAN_ID *llsidp;
+  int val_cnt;
   DB_TYPE single_node_type = DB_TYPE_NULL;
 
   /* scan type is LIST SCAN */
@@ -3643,6 +3652,61 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
   /* regulator variable list for other than predicates */
   llsidp->rest_regu_list = regu_list_rest;
+
+  /* init for hash list scan */
+  /* regulator variable list for build, probe */
+  llsidp->hlsid.build_regu_list = regu_list_build;
+  llsidp->hlsid.probe_regu_list = regu_list_probe;
+
+  /* check if hash list scan is possible? */
+  llsidp->hlsid.hash_list_scan_yn = false;
+  if (check_hash_list_scan (llsidp, &val_cnt, hash_list_scan_yn))
+    {
+      bool on_trace;
+      TSC_TICKS start_tick, end_tick;
+      TSCTIMEVAL tv_diff;
+
+      on_trace = thread_is_on_trace (thread_p);
+      if (on_trace)
+	{
+	  tsc_getticks (&start_tick);
+	}
+
+      /* create hash table */
+      llsidp->hlsid.hash_table =
+	mht_create ("Hash List Scan", llsidp->list_id->tuple_cnt, qdata_hash_scan_key, qdata_hscan_key_eq);
+      if (llsidp->hlsid.hash_table == NULL)
+	{
+	  return S_ERROR;
+	}
+
+      /* alloc temp key */
+      llsidp->hlsid.temp_key = qdata_alloc_hscan_key (thread_p, val_cnt, false);
+      if (scan_start_scan (thread_p, scan_id) != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
+      if (scan_build_hash_list_scan (thread_p, scan_id) == S_ERROR)
+	{
+	  return S_ERROR;
+	}
+      scan_end_scan (thread_p, scan_id);
+
+      llsidp->hlsid.hash_list_scan_yn = true;
+
+      if (on_trace)
+	{
+	  tsc_getticks (&end_tick);
+	  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+	  TSC_ADD_TIMEVAL (scan_id->scan_stats.elapsed_hash_build, tv_diff);
+	}
+    }
+  else
+    {
+      llsidp->hlsid.hash_table = NULL;
+      llsidp->hlsid.temp_key = NULL;
+      llsidp->hlsid.curr_hash_entry = NULL;
+    }
 
   return NO_ERROR;
 }
@@ -4616,6 +4680,7 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 {
   INDX_SCAN_ID *isidp;
   SHOWSTMT_SCAN_ID *stsidp;
+  LLIST_SCAN_ID *llsidp;
 
   if (scan_id == NULL || scan_id->status == S_CLOSED)
     {
@@ -4731,6 +4796,24 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       break;
 
     case S_LIST_SCAN:
+      llsidp = &scan_id->s.llsid;
+      /* clear hash list scan table */
+      if (llsidp->hlsid.hash_table != NULL)
+	{
+#if 0
+	  (void) mht_dump (thread_p, stdout, llsidp->hlsid.hash_table, -1, qdata_print_hash_scan_entry, NULL);
+	  printf ("temp file : tuple count = %d, file_size = %dK\n", llsidp->list_id->tuple_cnt,
+		  llsidp->list_id->page_cnt * 16);
+#endif
+	  mht_clear (llsidp->hlsid.hash_table, qdata_free_hscan_entry, (void *) thread_p);
+	  mht_destroy (llsidp->hlsid.hash_table);
+	}
+      /* free temp keys and values */
+      if (llsidp->hlsid.temp_key != NULL)
+	{
+	  qdata_free_hscan_key (thread_p, llsidp->hlsid.temp_key, NULL);
+	  llsidp->hlsid.temp_key = NULL;
+	}
       break;
 
     case S_SHOWSTMT_SCAN:
@@ -4911,7 +4994,14 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       break;
 
     case S_LIST_SCAN:
-      status = scan_next_list_scan (thread_p, scan_id);
+      if (scan_id->s.llsid.hlsid.hash_list_scan_yn)
+	{
+	  status = scan_next_hash_list_scan (thread_p, scan_id);
+	}
+      else
+	{
+	  status = scan_next_list_scan (thread_p, scan_id);
+	}
       break;
 
     case S_SHOWSTMT_SCAN:
@@ -7565,7 +7655,14 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
       break;
 
     case S_LIST_SCAN:
-      fprintf (fp, "(temp");
+      if (scan_id->s.llsid.hlsid.hash_list_scan_yn)
+	{
+	  fprintf (fp, "(hash temp buildtime : %d,", TO_MSEC (scan_id->scan_stats.elapsed_hash_build));
+	}
+      else
+	{
+	  fprintf (fp, "(temp");
+	}
       break;
 
     case S_SHOWSTMT_SCAN:
@@ -7637,3 +7734,317 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
     }
 }
 #endif
+
+/*
+ * scan_build_hash_list_scan () - build hash table from list
+ *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
+ *   scan_id(in/out): Scan identifier
+ *
+ * Note: If an error occurs, S_ERROR is returned.
+ */
+static SCAN_CODE
+scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
+{
+  LLIST_SCAN_ID *llsidp;
+  SCAN_CODE qp_scan;
+  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+  HASH_SCAN_KEY *key, *new_key;
+  HASH_SCAN_VALUE *new_value;
+
+  llsidp = &scan_id->s.llsid;
+  key = llsidp->hlsid.temp_key;
+
+  tplrec.size = 0;
+  tplrec.tpl = (QFILE_TUPLE) NULL;
+
+  resolve_domains_on_list_scan (llsidp, scan_id->val_list);
+
+  while ((qp_scan = qfile_scan_list_next (thread_p, &llsidp->lsid, &tplrec, PEEK)) == S_SUCCESS)
+    {
+      /* fetch the values for the predicate from the tuple */
+      if (scan_id->val_list)
+	{
+	  if (fetch_val_list (thread_p, llsidp->scan_pred.regu_list, scan_id->vd, NULL, NULL, tplrec.tpl, PEEK) !=
+	      NO_ERROR)
+	    {
+	      return S_ERROR;
+	    }
+	}
+
+      scan_id->scan_stats.read_rows++;
+
+      /* build key */
+      if (qdata_build_hscan_key (thread_p, scan_id->vd, llsidp->hlsid.build_regu_list, key) != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
+      /* create new key */
+      new_key = qdata_copy_hscan_key (thread_p, key, llsidp->hlsid.probe_regu_list, scan_id->vd);
+      if (new_key == NULL)
+	{
+	  return S_ERROR;
+	}
+      /* create new value */
+      new_value = qdata_alloc_hscan_value (thread_p, tplrec.tpl);
+      if (new_value == NULL)
+	{
+	  return S_ERROR;
+	}
+      /* add to hash table */
+      if (mht_put_orderly (llsidp->hlsid.hash_table, (void *) new_key, (void *) new_value) == NULL)
+	{
+	  return S_ERROR;
+	}
+    }
+
+  return qp_scan;
+}
+
+/*
+ * scan_next_hash_list_scan () - The scan is moved to the next hash list scan item.
+ *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
+ *   scan_id(in/out): Scan identifier
+ *
+ * Note: If there are no more scan items, S_END is returned. If an error occurs, S_ERROR is returned.
+ */
+static SCAN_CODE
+scan_next_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
+{
+  LLIST_SCAN_ID *llsidp;
+  SCAN_CODE qp_scan;
+  DB_LOGICAL ev_res;
+  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+
+  tplrec.size = 0;
+  tplrec.tpl = (QFILE_TUPLE) NULL;
+
+  llsidp = &scan_id->s.llsid;
+
+  while ((qp_scan = scan_hash_probe_next (thread_p, scan_id, &tplrec.tpl)) == S_SUCCESS)
+    {
+
+      /* fetch the values for the predicate from the tuple */
+      if (scan_id->val_list)
+	{
+	  if (fetch_val_list (thread_p, llsidp->scan_pred.regu_list, scan_id->vd, NULL, NULL, tplrec.tpl, PEEK) !=
+	      NO_ERROR)
+	    {
+	      return S_ERROR;
+	    }
+	}
+
+      scan_id->scan_stats.read_rows++;
+
+      /* evaluate the predicate to see if the tuple qualifies */
+      ev_res = V_TRUE;
+      if (llsidp->scan_pred.pr_eval_fnc && llsidp->scan_pred.pred_expr)
+	{
+	  ev_res = (*llsidp->scan_pred.pr_eval_fnc) (thread_p, llsidp->scan_pred.pred_expr, scan_id->vd, NULL);
+	  if (ev_res == V_ERROR)
+	    {
+	      return S_ERROR;
+	    }
+	}
+
+      if (scan_id->qualification == QPROC_QUALIFIED)
+	{
+	  if (ev_res != V_TRUE)	/* V_FALSE || V_UNKNOWN */
+	    {
+	      continue;		/* not qualified, continue to the next tuple */
+	    }
+	}
+      else if (scan_id->qualification == QPROC_NOT_QUALIFIED)
+	{
+	  if (ev_res != V_FALSE)	/* V_TRUE || V_UNKNOWN */
+	    {
+	      continue;		/* qualified, continue to the next tuple */
+	    }
+	}
+      else if (scan_id->qualification == QPROC_QUALIFIED_OR_NOT)
+	{
+	  if (ev_res == V_TRUE)
+	    {
+	      scan_id->qualification = QPROC_QUALIFIED;
+	    }
+	  else if (ev_res == V_FALSE)
+	    {
+	      scan_id->qualification = QPROC_NOT_QUALIFIED;
+	    }
+	  else			/* V_UNKNOWN */
+	    {
+	      /* nop */
+	      ;
+	    }
+	}
+      else
+	{			/* invalid value; the same as QPROC_QUALIFIED */
+	  if (ev_res != V_TRUE)	/* V_FALSE || V_UNKNOWN */
+	    {
+	      continue;		/* not qualified, continue to the next tuple */
+	    }
+	}
+
+      scan_id->scan_stats.qualified_rows++;
+
+      /* fetch the rest of the values from the tuple */
+      if (scan_id->val_list)
+	{
+	  if (fetch_val_list (thread_p, llsidp->rest_regu_list, scan_id->vd, NULL, NULL, tplrec.tpl, PEEK) != NO_ERROR)
+	    {
+	      return S_ERROR;
+	    }
+	}
+      return S_SUCCESS;
+    }
+
+  return qp_scan;
+}
+
+/*
+ * scan_next_hash_list_scan () - The scan is moved to the next hash list scan item.
+ *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
+ *   scan_id(in/out): Scan identifier
+ *
+ * Note: If there are no more scan items, S_END is returned. If an error occurs, S_ERROR is returned.
+ */
+static SCAN_CODE
+scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * tuple)
+{
+  LLIST_SCAN_ID *llsidp;
+  SCAN_CODE qp_scan;
+  HASH_SCAN_KEY *key;
+  HASH_SCAN_VALUE *hvalue;
+  QFILE_LIST_SCAN_ID *scan_id_p;
+
+  llsidp = &scan_id->s.llsid;
+  key = llsidp->hlsid.temp_key;
+  scan_id_p = &llsidp->lsid;
+
+  if (scan_id_p->position == S_BEFORE)
+    {
+      if (llsidp->hlsid.hash_table->nentries > 0)
+	{
+	  /* init curr_hash_entry */
+	  llsidp->hlsid.curr_hash_entry = NULL;
+	  /* build key */
+	  if (qdata_build_hscan_key (thread_p, scan_id->vd, llsidp->hlsid.probe_regu_list, key) != NO_ERROR)
+	    {
+	      return S_ERROR;
+	    }
+
+	  /* get value from hash table */
+	  hvalue =
+	    (HASH_SCAN_VALUE *) mht_get2 (llsidp->hlsid.hash_table, key, (void **) &llsidp->hlsid.curr_hash_entry);
+	  if (hvalue == NULL)
+	    {
+	      return S_END;
+	    }
+	  *tuple = hvalue->tuple;
+	  scan_id_p->position = S_ON;
+	  return S_SUCCESS;
+	}
+      else
+	{
+	  return S_END;
+	}
+    }
+  else if (scan_id_p->position == S_ON)
+    {
+      if (llsidp->hlsid.curr_hash_entry->next)
+	{
+	  llsidp->hlsid.curr_hash_entry = llsidp->hlsid.curr_hash_entry->next;
+	  *tuple = ((HASH_SCAN_VALUE *) llsidp->hlsid.curr_hash_entry->data)->tuple;
+	  return S_SUCCESS;
+	}
+      else
+	{
+	  scan_id_p->position = S_AFTER;
+	  return S_END;
+	}
+    }
+  else if (scan_id_p->position == S_AFTER)
+    {
+      return S_END;
+    }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_UNKNOWN_CRSPOS, 0);
+      return S_ERROR;
+    }
+
+  return qp_scan;
+}
+
+/*
+ * check_hash_list_scan () - Check if hash list scan is possible
+ *   return: bool
+ *   llsidp (in): list scan id pointer
+ *   node :
+ *      1. count of tuple of list file > 0
+ *      2. list file size check
+ *      3. regu_list_build, regu_list_probe is not null
+ *      4. The number of probe regu_var and build regu match
+ *      5. type of regu var is not oid && vobj
+ *      6. list file from dptr is not allowed
+*/
+static bool
+check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_yn)
+{
+  int build_cnt;
+  regu_variable_list_node *build, *probe;
+  DB_TYPE vtype1, vtype2;
+  UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
+
+  /* no_hash_list_scan sql hint check */
+  if (hash_list_scan_yn == 0)
+    {
+      return false;
+    }
+
+  /* count of tuple of list file > 0 */
+  if (llsidp->list_id->tuple_cnt <= 0)
+    {
+      return false;
+    }
+  /* list file size check */
+  if ((UINT64) llsidp->list_id->page_cnt * DB_PAGESIZE > mem_limit)
+    {
+      return false;
+    }
+  /* regu_list_build, regu_list_probe is not null */
+  if (llsidp->hlsid.build_regu_list == NULL || llsidp->hlsid.probe_regu_list == NULL)
+    {
+      return false;
+    }
+
+  build = llsidp->hlsid.build_regu_list;
+  probe = llsidp->hlsid.probe_regu_list;
+
+  for (build_cnt = 0; build && probe; build_cnt++)
+    {
+      /* type of regu var is not oid && vobj */
+      /* This is the case when type coercion is impossible. so use list scan */
+      /* In the list scan, Vobj is converted to oid for comparison at tp_value_compare_with_error(). */
+      vtype1 = REGU_VARIABLE_GET_TYPE (&probe->value);
+      vtype2 = REGU_VARIABLE_GET_TYPE (&build->value);
+
+      if (((vtype1 == DB_TYPE_OBJECT || vtype1 == DB_TYPE_VOBJ) && vtype2 == DB_TYPE_OID) ||
+	  ((vtype2 == DB_TYPE_OBJECT || vtype2 == DB_TYPE_VOBJ) && vtype1 == DB_TYPE_OID))
+	{
+	  return false;
+	}
+      build = build->next;
+      probe = probe->next;
+    }
+  /* The number of probe regu_var and build regu match */
+  if (build != NULL || probe != NULL)
+    {
+      return false;
+    }
+  *val_cnt = build_cnt;
+
+  /* 6. list file from dptr is not allowed */
+  /* Since dptr is searched after scan_open_scan, it is checked when llsidp->list_id->tuple_cnt <= 0 */
+
+  return true;
+}
