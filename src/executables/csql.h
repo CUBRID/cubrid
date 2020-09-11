@@ -245,6 +245,13 @@ extern "C"
     CSQL_SUCCESS = 0
   };
 
+  typedef enum
+  {
+    CSQL_UNKNOWN_OUTPUT = 1,
+    CSQL_QUERY_OUTPUT,
+    CSQL_LOADDB_OUTPUT
+  } CSQL_OUTPUT_TYPE;
+
   typedef struct
   {
     const char *db_name;
@@ -269,6 +276,10 @@ extern "C"
     bool skip_column_names;
     bool skip_vacuum;
     int string_width;
+    bool query_output;
+    char column_delimiter;
+    char column_enclosure;
+    bool loaddb_output;
 #if defined(CSQL_NO_LONGGING)
     bool no_logging;
 #endif				/* CSQL_NO_LONGGING */
@@ -346,7 +357,8 @@ extern "C"
   extern void csql_help_info (const char *command, int aucommit_flag);
   extern void csql_killtran (const char *argument);
 
-  extern char *csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string);
+  extern char *csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string, CSQL_OUTPUT_TYPE output_type,
+					char cloumn_enclosure);
 
   extern char *csql_string_to_plain_string (const char *string_value, int length, int *result_length);
 

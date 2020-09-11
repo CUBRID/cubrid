@@ -40,13 +40,17 @@ geçerli ayarlar:\n\
   -c, --command=ARG            CSQL-komutları\n\
   -l, --line-output            bir çizgi üzerinde her değeri görüntüle\n\
   -r, --read-only              sadece-oku modu\n\
-  -t, --plain-output           komut dostu formatta göster sonuçları (-c ve -i sadece çalışır)\n\
+  -t, --plain-output           sonuçları komut dosyası için uygun bir formatta görüntülemek (-c ve -i sadece çalışır)\n\
+  -q, --query-output           sonuçları sorguyla uyumlu bir biçimde göster (-c ve -i sadece çalışır)\n\
+  -d, --loaddb-output          sonuçları loaddb için uygun bir formatta görüntüleyin (-c ve -i sadece çalışır)\n\
   -N, --skip-column-names      sonuçlarında sütun adları gösterilmeyecek (-c ve -i sadece çalışır)\n\
       --string-width           bu genişlikte bir dizin tipi olan her sütunu görüntüler\n\
       --no-auto-commit         Otomatik tamamlama modu yürütme devre dışı\n\
       --no-pager               pager kullanmayın\n\
       --no-single-line         tek satır odaklı yürütmeyi kapatın\n\
       --no-trigger-action      tetikleyicileri devre dışı bırak\n\
+      --delimiter=ARG          sütunlar arası sınırlayıcı (-q sadece çalışır)\n\
+      --enclosure=ARG          bir sonuç dizesi için kapsam (-q sadece çalışır)\n\
 \n\
 Ek bilgi için, adresine bakın http://www.cubrid.org\n
 41 %1$s: doğru olmayan %2$s_MODE ortam değeri. \n%3$s veya %4$s olmalıdır.\n

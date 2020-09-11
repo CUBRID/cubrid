@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -45,6 +46,7 @@
 #include "access_json_table.hpp"
 #include "scan_json_table.hpp"
 #include "storage_common.h"	/* for PAGEID */
+#include "query_hash_scan.h"
 
 // forward definitions
 struct indx_info;
@@ -250,6 +252,7 @@ struct llist_scan_id
   SCAN_PRED scan_pred;		/* scan predicates(filters) */
   regu_variable_list_node *rest_regu_list;	/* regulator variable list */
   QFILE_TUPLE_RECORD *tplrecp;	/* tuple record pointer; output param */
+  HASH_LIST_SCAN hlsid;		/* for hash scan */
 };
 
 typedef struct showstmt_scan_id SHOWSTMT_SCAN_ID;
@@ -319,6 +322,9 @@ struct scan_stats
   bool multi_range_opt;
   bool index_skip_scan;
   bool loose_index_scan;
+
+  /* hash list scan */
+  struct timeval elapsed_hash_build;
 };
 
 typedef struct scan_id_struct SCAN_ID;
@@ -428,7 +434,8 @@ extern int scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				val_list_node * val_list, val_descr * vd,
 				/* fields of LLIST_SCAN_ID */
 				QFILE_LIST_ID * list_id, regu_variable_list_node * regu_list_pred, PRED_EXPR * pr,
-				regu_variable_list_node * regu_list_rest);
+				regu_variable_list_node * regu_list_rest, regu_variable_list_node * regu_list_build,
+				regu_variable_list_node * regu_list_probe, int hash_list_scan_yn);
 extern int scan_open_showstmt_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				    /* fields of SCAN_ID */
 				    int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval,

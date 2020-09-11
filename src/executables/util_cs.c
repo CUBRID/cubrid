@@ -189,8 +189,8 @@ backupdb (UTIL_FUNCTION_ARG * arg)
 
   if (compress_flag)
     {
-      backup_zip_method = FILEIO_ZIP_LZO1X_METHOD;
-      backup_zip_level = FILEIO_ZIP_LZO1X_DEFAULT_LEVEL;
+      backup_zip_method = FILEIO_ZIP_LZ4_METHOD;
+      backup_zip_level = FILEIO_ZIP_LZ4_DEFAULT_LEVEL;
     }
 
   /* extra validation */
@@ -1651,8 +1651,10 @@ tranlist (UTIL_FUNCTION_ARG * arg)
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   char er_msg_file[PATH_MAX];
   const char *database_name;
+#if defined(NEED_PRIVILEGE_PASSWORD)
   const char *username;
   const char *password;
+#endif
   char *passbuf = NULL;
   TRANS_INFO *info = NULL;
   int error;
@@ -1670,18 +1672,22 @@ tranlist (UTIL_FUNCTION_ARG * arg)
       goto print_tranlist_usage;
     }
 
+#if defined(NEED_PRIVILEGE_PASSWORD)
   username = utility_get_option_string_value (arg_map, TRANLIST_USER_S, 0);
   password = utility_get_option_string_value (arg_map, TRANLIST_PASSWORD_S, 0);
+#endif
   is_summary = utility_get_option_bool_value (arg_map, TRANLIST_SUMMARY_S);
   tranlist_Sort_column = utility_get_option_int_value (arg_map, TRANLIST_SORT_KEY_S);
   tranlist_Sort_desc = utility_get_option_bool_value (arg_map, TRANLIST_REVERSE_S);
   full_sqltext = utility_get_option_bool_value (arg_map, TRANLIST_FULL_SQL_S);
 
+#if defined(NEED_PRIVILEGE_PASSWORD)
   if (username == NULL)
     {
       /* default : DBA user */
       username = "DBA";
     }
+#endif
 
   if (check_database_name (database_name) != NO_ERROR)
     {
@@ -1699,6 +1705,7 @@ tranlist (UTIL_FUNCTION_ARG * arg)
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
+#if defined(NEED_PRIVILEGE_PASSWORD)
   error = db_restart_ex (arg->command_name, database_name, username, password, NULL, DB_CLIENT_TYPE_ADMIN_UTILITY);
   if (error != NO_ERROR)
     {
@@ -1741,6 +1748,15 @@ tranlist (UTIL_FUNCTION_ARG * arg)
       db_shutdown ();
       goto error_exit;
     }
+#else
+  AU_DISABLE_PASSWORDS ();
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+  if (db_login ("DBA", NULL) || db_restart (arg->command_name, TRUE, database_name))
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s: %s. \n\n", arg->command_name, db_error_string (3));
+      goto error_exit;
+    }
+#endif
 
   /*
    * Get the current state of transaction table information. All the
@@ -1885,7 +1901,18 @@ killtran (UTIL_FUNCTION_ARG * arg)
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
+  /* disable password, if don't use kill option */
+  if (isbatch == 0)
+    {
+      if (dba_password != NULL)
+	{
+	  goto print_killtran_usage;
+	}
+      AU_DISABLE_PASSWORDS ();
+    }
+
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+
   if (db_login ("DBA", dba_password) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));

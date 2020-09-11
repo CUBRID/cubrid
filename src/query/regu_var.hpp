@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -28,6 +29,7 @@
 #include "object_domain.h"
 #include "query_list.h"
 #include "string_opfunc.h"
+#include "object_primitive.h"
 
 #include <functional>
 
@@ -163,6 +165,8 @@ const int REGU_VARIABLE_INFER_COLLATION = 0x20;	/* infer collation for default p
 const int REGU_VARIABLE_FETCH_ALL_CONST = 0x40;	/* is all constant */
 const int REGU_VARIABLE_FETCH_NOT_CONST = 0x80;	/* is not constant */
 const int REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE = 0x100;	/* clears regu variable at clone decache */
+const int REGU_VARIABLE_UPD_INS_LIST = 0x200;	/* for update or insert query */
+const int REGU_VARIABLE_STRICT_TYPE_CAST = 0x400;/* for update or insert query */
 
 class regu_variable_node
 {
@@ -170,7 +174,6 @@ class regu_variable_node
     REGU_DATATYPE type;
 
     int flags;			/* flags */
-
     TP_DOMAIN *domain;		/* domain of the value in this regu variable */
     TP_DOMAIN *original_domain;	/* original domain, used at execution in case of XASL clones */
     DB_VALUE *vfetch_to;		/* src db_value to fetch into in qp_fetchvlist */
@@ -242,6 +245,7 @@ struct regu_ptr_list_node
 inline bool REGU_VARIABLE_IS_FLAGED (const regu_variable_node *regu, int flag);
 inline void REGU_VARIABLE_SET_FLAG (regu_variable_node *regu, int flag);
 inline void REGU_VARIABLE_CLEAR_FLAG (regu_variable_node *regu, int flag);
+inline DB_TYPE REGU_VARIABLE_GET_TYPE (const regu_variable_node *regu);
 
 //////////////////////////////////////////////////////////////////////////
 // inline/template implementation
@@ -265,4 +269,13 @@ REGU_VARIABLE_CLEAR_FLAG (regu_variable_node *regu, int flag)
   regu->flags &= ~flag;
 }
 
+DB_TYPE
+REGU_VARIABLE_GET_TYPE (const regu_variable_node *regu)
+{
+  if (regu)
+    {
+      return TP_DOMAIN_TYPE (regu->domain);
+    }
+  return DB_TYPE_UNKNOWN;
+}
 #endif /* _REGU_VAR_HPP_ */

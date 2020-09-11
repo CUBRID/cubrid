@@ -1514,6 +1514,7 @@ int g_original_buffer_len;
 %token <cptr> BIT_AND
 %token <cptr> BIT_OR
 %token <cptr> BIT_XOR
+%token <cptr> BUFFER
 %token <cptr> CACHE
 %token <cptr> CAPACITY
 %token <cptr> CHARACTER_SET_
@@ -1532,6 +1533,7 @@ int g_original_buffer_len;
 %token <cptr> DATE_SUB
 %token <cptr> DECREMENT
 %token <cptr> DENSE_RANK
+%token <cptr> DONT_REUSE_OID
 %token <cptr> ELT
 %token <cptr> EXPLAIN
 %token <cptr> FIRST_VALUE
@@ -7092,6 +7094,10 @@ show_type
 		{{
 			$$ = SHOWSTMT_JOB_QUEUES;
 		}}
+	| PAGE BUFFER STATUS
+		{{
+			$$ = SHOWSTMT_PAGE_BUFFER_STATUS;
+		}}
 	| TIMEZONES
 		{{
 			$$ = SHOWSTMT_TIMEZONES;
@@ -8811,6 +8817,13 @@ table_option
 		{{
 
 			$$ = pt_table_option (this_parser, PT_TABLE_OPTION_REUSE_OID, NULL);
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| DONT_REUSE_OID
+		{{
+
+			$$ = pt_table_option (this_parser, PT_TABLE_OPTION_DONT_REUSE_OID, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
@@ -22624,6 +22637,16 @@ identifier
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| DONT_REUSE_OID
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	| REVERSE
 		{{
 
@@ -22972,6 +22995,16 @@ identifier
 
 		DBG_PRINT}}
 	| BIT_XOR
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| BUFFER
 		{{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -25965,6 +25998,8 @@ PT_HINT parser_hint_table[] = {
   ,
   {"NO_HASH_AGGREGATE", NULL, PT_HINT_NO_HASH_AGGREGATE}
   ,
+  {"NO_HASH_LIST_SCAN", NULL, PT_HINT_NO_HASH_LIST_SCAN}
+  ,
   {"SKIP_UPDATE_NULL", NULL, PT_HINT_SKIP_UPDATE_NULL}
   ,
   {"NO_INDEX_LS", NULL, PT_HINT_NO_INDEX_LS}
@@ -26383,15 +26418,6 @@ parser_keyword_func (const char *name, PT_NODE * args)
       a2 = a1->next;
       a1->next = NULL;
 
-      if(a2->node_type == PT_VALUE
-         && PT_IS_STRING_TYPE(a2->type_enum)
-         && strcasecmp((const char *) a2->info.value.data_value.str->bytes, "default") == 0)
-        {
-          PT_ERRORf (this_parser, a2, "check syntax at %s",
-                     parser_print_tree (this_parser, a2));
-          return NULL;
-        }
-
       return parser_make_expression (this_parser, key->op, a1, a2, NULL);
 
     case PT_TRUNC:
@@ -26424,16 +26450,6 @@ parser_keyword_func (const char *name, PT_NODE * args)
       a1 = args;
       a2 = a1->next;
       a1->next = NULL;
-
-      /* prevent user input "default" */
-      if (a2->node_type == PT_VALUE
-          && a2->type_enum == PT_TYPE_CHAR
-          && strcasecmp ((const char *) a2->info.value.data_value.str->bytes, "default") == 0)
-        {
-          PT_ERRORf (this_parser, a2, "check syntax at %s",
-                     parser_print_tree (this_parser, a2));
-          return NULL;
-        }
 
       return parser_make_expression (this_parser, key->op, a1, a2, NULL);
 

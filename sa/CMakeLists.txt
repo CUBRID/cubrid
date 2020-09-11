@@ -27,6 +27,7 @@ set(EXECUTABLE_SOURCES
   ${EXECUTABLES_DIR}/util_cs.c
   ${EXECUTABLES_DIR}/util_common.c
   ${EXECUTABLES_DIR}/compactdb.c
+  ${EXECUTABLES_DIR}/compactdb_common.c
   ${EXECUTABLES_DIR}/unloaddb.c
   ${EXECUTABLES_DIR}/unload_object.c
   ${EXECUTABLES_DIR}/unload_schema.c
@@ -76,7 +77,6 @@ set(BASE_SOURCES
   ${BASE_DIR}/databases_file.c
   ${BASE_DIR}/encryption.c
   ${BASE_DIR}/sha1.c
-  ${BASE_DIR}/md5.c
   ${BASE_DIR}/base64.c
   ${BASE_DIR}/error_context.cpp
   ${BASE_DIR}/error_manager.c
@@ -244,6 +244,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/numeric_opfunc.c
   ${QUERY_DIR}/partition.c
   ${QUERY_DIR}/query_aggregate.cpp
+  ${QUERY_DIR}/query_hash_scan.c
   ${QUERY_DIR}/query_analytic.cpp
   ${QUERY_DIR}/query_cl.c
   ${QUERY_DIR}/query_dump.c
@@ -267,6 +268,7 @@ set(QUERY_SOURCES
   )
 set(QUERY_HEADERS
   ${QUERY_DIR}/query_aggregate.hpp
+  ${QUERY_DIR}/query_hash_scan.h
   ${QUERY_DIR}/query_analytic.hpp
   ${QUERY_DIR}/query_monitoring.hpp
   ${QUERY_DIR}/query_reevaluation.hpp
@@ -485,6 +487,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${EXECUTABLES_DIR}/util_cs.c
   ${EXECUTABLES_DIR}/util_common.c
   ${EXECUTABLES_DIR}/compactdb.c
+  ${EXECUTABLES_DIR}/compactdb_common.c
   ${EXECUTABLES_DIR}/unloaddb.c
   ${EXECUTABLES_DIR}/unload_object.c
   ${EXECUTABLES_DIR}/unload_schema.c
@@ -530,7 +533,6 @@ SET_SOURCE_FILES_PROPERTIES(
   )
 
 SET_SOURCE_FILES_PROPERTIES(
-  ${BASE_DIR}/md5.c
   ${CSQL_GRAMMAR_OUTPUT}
   ${CSQL_LEXER_OUTPUT}
   ${ESQL_GRAMMAR_OUTPUT}
@@ -609,14 +611,12 @@ endif(UNIX)
 target_external_dependencies(cubridsa
   LIBEXPAT
   LIBJANSSON
-  LIBGPG_ERROR
-  LIBGCRYPT
-  LIBLZO
   LIBEXPAT
   LIBEDIT
+  LIBOPENSSL
+  LZ4
   )
 target_include_directories(cubridsa PRIVATE
-  ${CMAKE_SOURCE_DIR}/src/heaplayers/util  # this looks ugly
   ${FLEX_INCLUDE_DIRS}
   ${JAVA_INC}
   )

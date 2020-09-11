@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -7745,6 +7746,9 @@ pt_print_table_option (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TABLE_OPTION_REUSE_OID:
       q = pt_append_nulstring (parser, q, "reuse_oid");
       break;
+    case PT_TABLE_OPTION_DONT_REUSE_OID:
+      q = pt_append_nulstring (parser, q, "dont_reuse_oid");
+      break;
     case PT_TABLE_OPTION_AUTO_INCREMENT:
       q = pt_append_nulstring (parser, q, "auto_increment = ");
       break;
@@ -14468,6 +14472,11 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	  if (p->info.query.q.select.hint & PT_HINT_NO_HASH_AGGREGATE)
 	    {
 	      q = pt_append_nulstring (parser, q, "NO_HASH_AGGREGATE ");
+	    }
+
+	  if (p->info.query.q.select.hint & PT_HINT_NO_HASH_LIST_SCAN)
+	    {
+	      q = pt_append_nulstring (parser, q, "NO_HASH_LIST_SCAN ");
 	    }
 
 	  if (p->info.query.q.select.hint & PT_HINT_NO_INDEX_LS)

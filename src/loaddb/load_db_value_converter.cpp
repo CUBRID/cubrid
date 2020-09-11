@@ -214,9 +214,7 @@ namespace cubload
   {
     if (attr->get_repr ().is_notnull)
       {
-	int error_code = ER_OBJ_ATTRIBUTE_CANT_BE_NULL;
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, attr->get_name ());
-	return error_code;
+	return ER_OBJ_ATTRIBUTE_CANT_BE_NULL;
       }
     else
       {

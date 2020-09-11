@@ -829,12 +829,11 @@ or_packed_put_varchar (OR_BUF * buf, char *string, int charlen)
 static int
 or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 {
-  int net_charlen = 0;
+  int net_charlen = 0, compress_buffer_size;
   char *compressed_string = NULL;
   int rc = NO_ERROR;
   bool compressable = false;
-  lzo_uint compressed_length = 0;
-  lzo_voidp wrkmem = NULL;
+  int compressed_length = 0;
   int error_abort = 0;
 
   error_abort = buf->error_abort;
@@ -859,53 +858,44 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 
   if (compressable == true)
     {
-      if (!pr_Enable_string_compression)	/* compression is not set */
+      if (!pr_Enable_string_compression || charlen > LZ4_MAX_INPUT_SIZE)	/* compression is not set */
 	{
 	  compressed_length = 0;
 	  goto after_compression;
 	}
-      /* Future optimization : use a preallocated object for wrkmem in thread_entry. */
-      /* Alloc memory */
-      wrkmem = (lzo_voidp) malloc (LZO1X_1_MEM_COMPRESS);
-      if (wrkmem == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) LZO1X_1_MEM_COMPRESS);
-	  rc = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto cleanup;
-	}
-      memset (wrkmem, 0x00, LZO1X_1_MEM_COMPRESS);
+
+      assert (OR_IS_STRING_LENGTH_COMPRESSABLE (charlen));
 
       /* Alloc memory for the compressed string */
-      /* Worst case LZO compression size from their FAQ */
-      compressed_string = (char *) malloc (LZO_COMPRESSED_STRING_SIZE (charlen));
+      compress_buffer_size = LZ4_compressBound (charlen);
+      compressed_string = (char *) malloc (compress_buffer_size);
       if (compressed_string == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, (size_t) (LZO_COMPRESSED_STRING_SIZE (charlen)));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (compress_buffer_size));
 	  rc = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto cleanup;
 	}
 
       /* Compress the string */
-      rc = lzo1x_1_compress ((lzo_bytep) string, (lzo_uint) charlen, (lzo_bytep) compressed_string,
-			     &compressed_length, wrkmem);
-      if (rc != LZO_E_OK)
+      compressed_length = LZ4_compress_default (string, compressed_string, charlen, compress_buffer_size);
+      if (compressed_length <= 0)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZO_COMPRESS_FAIL, 4, FILEIO_ZIP_LZO1X_METHOD,
-		  fileio_get_zip_method_string (FILEIO_ZIP_LZO1X_METHOD), FILEIO_ZIP_LZO1X_DEFAULT_LEVEL,
-		  fileio_get_zip_level_string (FILEIO_ZIP_LZO1X_DEFAULT_LEVEL));
-	  rc = ER_IO_LZO_COMPRESS_FAIL;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZ4_COMPRESS_FAIL, 4, FILEIO_ZIP_LZ4_METHOD,
+		  fileio_get_zip_method_string (FILEIO_ZIP_LZ4_METHOD), FILEIO_ZIP_LZ4_DEFAULT_LEVEL,
+		  fileio_get_zip_level_string (FILEIO_ZIP_LZ4_DEFAULT_LEVEL));
+	  rc = ER_IO_LZ4_COMPRESS_FAIL;
 	  goto cleanup;
 	}
+      assert (compressed_length <= compress_buffer_size);
 
-      if (compressed_length >= (lzo_uint) (charlen - 8))
+      if (compressed_length >= charlen - 8)
 	{
 	  /* Compression successful but its length exceeds the original length of the string. */
 	  compressed_length = 0;
 	}
 
       /* Store the compression size */
-      assert (compressed_length < (lzo_uint) (charlen - 8));
+      assert (compressed_length < charlen - 8);
     after_compression:
       OR_PUT_INT (&net_charlen, compressed_length);
       rc = or_put_data (buf, (char *) &net_charlen, OR_INT_SIZE);
@@ -972,11 +962,6 @@ cleanup:
   if (compressed_string != NULL)
     {
       free_and_init (compressed_string);
-    }
-
-  if (wrkmem != NULL)
-    {
-      free_and_init (wrkmem);
     }
 
   buf->error_abort = error_abort;

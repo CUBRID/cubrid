@@ -554,16 +554,17 @@ valid options:\n\
   -i, --input-class-file=FILE       input FILE of table names\n\
                                     class_name list must be empty\n\
                                     default: compact all classes\n\
-                                    enabled in CS-mode only\n\
   -p, --pages-commited-once=NUMBER  maximum number of pages to commit once\n\
                                     default: 10\n\
                                     enabled in CS-mode only\n\
   -S, --SA-mode                     stand-alone mode execution\n\
   -C, --CS-mode                     client-server mode execution\n\
   -d, --delete-old-repr             delete old class representations from catalog; default: disabled\n\
-  class_name_list                   enabled in CS-mode only\n\
   -I, --Instance-lock-timeout       timeout for instance lock\n\
-  -c, --class-lock-timeout          timeout for class lock\n
+                                    enabled in CS-mode only\n\
+  -c, --class-lock-timeout          timeout for class lock\n\
+                                    enabled in CS-mode only\n\
+  class_name_list                   list of class name be compacted\n 
 
 $set 15 MSGCAT_UTIL_SET_COMMDB
 21 The CUBRID master running on host %1$s \nwas started at %2$s
@@ -810,6 +811,7 @@ valid options:\n\
       --kill-program-name=NAME       kill all transactions with client program NAME\n\
       --kill-sql-id=SQL_ID           kill all transactions with SQL_ID\n\
   -p, --dba-password=PASS            password of the DBA user; will prompt if don't specify\n\
+                                     (only work with -i or --kill options, otherwise occurs error)\n\
   -d, --display-information          display information about active transactions\n\
   -q, --query-exec-info              display information about query execution information of active transactions\n\
   -f, --force                        kill the transaction without a prompt for verification\n
@@ -1063,8 +1065,6 @@ tranlist: Dump active transaction information.\n\
 usage: %1$s tranlist [OPTION] database-name\n\
 \n\
 valid options:\n\
-  -u, --user=ID                user ID for database access; default: DBA user\n\
-  -p, --password=PASS          user password; default: none\n\
   -s, --summary                print summarized information of transaction\n\
       --sort-key=COLUMN_NUMBER column number to be sorted\n\
       --reverse                reverse the sort result\n

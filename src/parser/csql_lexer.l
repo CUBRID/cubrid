@@ -158,6 +158,9 @@ int yybuffer_pos;
 [bB][oO][tT][hH]							{ begin_token(yytext);   return BOTH_; }
 [bB][rR][eE][aA][dD][tT][hH]						{ begin_token(yytext);   return BREADTH; }
 [bB][yY]								{ begin_token(yytext);   return BY; }
+[bB][uU][fF][fF][eE][rR]						{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return BUFFER; }
 [cC][aA][lL][lL]							{ begin_token(yytext);   return CALL; }
 [cC][aA][cC][hH][eE]							{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
@@ -287,6 +290,9 @@ int yybuffer_pos;
 [dD][uU][pP][lL][iI][cC][aA][tT][eE]					{ begin_token(yytext);   return DUPLICATE_; }
 [dD][aA][tT][eE]							{ begin_token(yytext);   return Date; }
 [dD][oO][uU][bB][lL][eE]						{ begin_token(yytext);   return Double; }
+[dD][oO][nN][tT]_[Rr][Ee][uU][sS][eE]_[oO][iI][dD]			{ begin_token(yytext);
+									  csql_yylval.cptr = pt_makename(yytext);
+									  return DONT_REUSE_OID; }
 [eE][aA][cC][hH]							{ begin_token(yytext);   return EACH; }
 [eE][lL][sS][eE]							{ begin_token(yytext);   return ELSE; }
 [eE][lL][sS][eE][iI][fF]						{ begin_token(yytext);   return ELSEIF; }

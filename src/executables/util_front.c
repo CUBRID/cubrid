@@ -165,8 +165,10 @@ static ARG_MAP_TABLE ua_Check_map[] = {
 };
 
 static ARG_MAP_TABLE ua_Tranlist_map[] = {
+#if defined(NEED_PRIVILEGE_PASSWORD)
   {"-u", "--" TRANLIST_USER_L},
   {"-p", "--" TRANLIST_PASSWORD_L},
+#endif
   {"-s", "--" TRANLIST_SUMMARY_L},
   {"-k", "--" TRANLIST_SORT_KEY_L},
   {"-r", "--" TRANLIST_REVERSE_L},

@@ -1410,6 +1410,9 @@ extern int or_put_json_schema (OR_BUF * buf, const char *schema);
 /* Because of the VARNCHAR and STRING encoding, this one could not be changed for over 255, just lower. */
 #define OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION 255
 
+#define OR_IS_STRING_LENGTH_COMPRESSABLE(str_length) \
+  ((str_length) >= OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION && (str_length) <= LZ4_MAX_INPUT_SIZE)
+
 /*
  * or_get_string_size_byte - read string size byte value from or buffer
  *    return: byte value read

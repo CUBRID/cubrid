@@ -553,16 +553,17 @@ compactdb: 데이터베이스에서 사용되지 않는 영역을 해제.\n\
   -i, --input-class-file=FILE       테이블 이름을 포함하는 FILE 이름\n\
                                     해당 옵션 사용 시 [테이블1 테이블2 ...]이 생략되어야 함\n\
                                     기본값: 모든 테이블들의 공간을 정리함\n\
-                                    클라이언트 서버 모드에서만 가능\n\
   -p, --pages-commited-once=NUMBER  한 번에 커밋할 수 있는 최대 페이지 개수\n\
                                     기본값: 10\n\
                                     클라이언트 서버 실행 모드에서만 가능\n\
   -S, --SA-mode                     독립 모드 실행\n\
   -C, --CS-mode                     클라이언트 서버 모드 실행\n\
   -d, --delete-old-repr             카탈로그에서 과거 테이블 표현을 삭제; 기본값: 사용 안 함\n\
-  [테이블1 테이블2 ...]             클라이언트 서버 모드에서만 가능\n\
   -I, --Instance-lock-timeout       인스턴스 잠금에 대한 타임아웃\n\
-  -c, --class-lock-timeout          클래스 잠금에 대한 타임아웃\n
+                                    클라이언트 서버 모드에서만 가능\n\
+  -c, --class-lock-timeout          클래스 잠금에 대한 타임아웃\n\
+                                    클라이언트 서버 모드에서만 가능\n\
+  [테이블1 테이블2 ...]             정리할 테이블 리스트\n
 
 $set 15 MSGCAT_UTIL_SET_COMMDB
 21 CUBRID master가 호스트 %1$s 에서 수행 중입니다. %2$s 에 시작되어
@@ -808,6 +809,7 @@ killtran: 데이터베이스 transaction 제거 관리\n\
       --kill-program-name=NAME       NAME으로 지정되는 모든 트랜잭션 종료\n\
       --kill-sql-id=SQL_ID           SQL_ID에 해당하는 질의를 실행중인 모든 트랜잭션 종료\n\
   -p, --dba-password=PASS            DBA 패스워드; 지정되지 않은 경우 프롬프트\n\
+                                     (-i 또는 --kill 옵션과 사용 가능, 그외는 오류 발생)\n\
   -d, --display-information          현재 활성화된 트랜잭션에 대한 정보 보여줌\n\
   -q, --query-exec-info              현재 활성화된 트랜잭션에 대한 질의 수행정보를 보여줌\n\
   -f, --force                        사용자 확인 없이 지정된 트랜잭션 종료\n
@@ -1058,8 +1060,6 @@ tranlist: 활성화된 트랜잭션 정보 출력.\n\
 사용법: %1$s tranlist [옵션] database-name\n\
 \n\
 valid options:\n\
-  -u, --user=ID                데이터베이스 접근에 관한 사용자 이름; 기본값: DBA\n\
-  -p, --password=PASS          사용자 패스워드; 기본값: 없음\n\
   -s, --summary                질의정보 및 락 정보 생략\n\
       --sort-key=COLUMN_NUMBER 정렬할 컬럼번호; 기본값 : 1\n\
       --reverse                내림차순 정렬수행; 기본값 : 오름차순 정렬\n
