@@ -401,7 +401,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 25 \n*** syntax kontrolü ***\n\n
 26 %1$d hataları algılandı.\n
 27 \n*** Ekleme nesneleri ***\n\n
-28 Toplam %1$8d nesneleri eklenir.\n
+28 Toplam %1$ld nesneleri eklenir.\n
 29 Toplam %1$8d varsayılan içeriği ile eklenen nesneleri başvurulan.\n
 30 \n*** İşlem İşlemek ***\n
 31 \n*** Veritabanı Kapama ***\n
@@ -421,7 +421,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 45 Sınıf %2$s Derece %1$d zaten tanımlanmış\n
 46 Sınıf %2$s Derece %1$d zaten ayrılmıştır\n
 47 Özniteliği '%1$s 'EŞSİZ aykırı, NULL'a dönüştürülür\n
-48 %1$s %2$d örnekleri\n
+48 %1$s %2$ld örnekleri\n
 49 Sınıf %1$s\n
 50 Şifre:
 51 \n*** Sınıf istatistikleri güncelleniyor ***\n
@@ -431,7 +431,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 55 eksik
 56 %1$s de
 57 Uyumsuz bağımsız değişkenleri, \"%1$s\", ve \"%2$s\"\n
-58 %1$s %2$d taahhüt örnekleri\n
+58 %1$s %2$ld taahhüt örnekleri\n
 59 \nLoaddb olmayan-optimize edilmiş sürümü çağırılamaz.\n
 60 Hata ayrıştırma \"%1$s\", gibi %2$s tür.\n
 61 Nesne Referans CS modunda desteklenmez.\n
@@ -440,7 +440,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 113 Son kararlı hattı: %1$d\n
 114 hata-kontrol-dosyası
 115 yükleme sırasında bir hata(lar) kontrol etmek için giriş dosyası
-116 Toplam %1$8d nesne (ler) eklenen, %2$d nesne (ler) başarısız oldu.\n
+116 Toplam %1$ld nesne (ler) eklenen, %2$ld nesne (ler) başarısız oldu.\n
 117 Başarısız yük.\n
 118 Sınıf adının uzunluğu en fazla %1$d bayttır.\n
 119 Toplam %1$8d nesne kontrol edildi, %2$d nesne başarısız oldu.\n

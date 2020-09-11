@@ -171,8 +171,8 @@ const std::size_t LDR_MAX_ARGS = 32;
 
 typedef struct ldr_context LDR_CONTEXT;
 
-typedef void (*LDR_POST_COMMIT_HANDLER) (int);
-typedef void (*LDR_POST_INTERRUPT_HANDLER) (int);
+typedef void (*LDR_POST_COMMIT_HANDLER) (int64_t);
+typedef void (*LDR_POST_INTERRUPT_HANDLER) (int64_t);
 
 typedef int (*LDR_SETTER) (LDR_CONTEXT *, const char *, size_t, SM_ATTRIBUTE *);
 typedef int (*LDR_ELEM) (LDR_CONTEXT *, const char *, size_t, DB_VALUE *);
@@ -273,8 +273,8 @@ struct ldr_context
   int err_count;		/* Current error count for instance */
   int err_total;		/* Total error counter */
 
-  int inst_count;		/* Instance count for this class */
-  int inst_total;		/* Total instance count */
+  int64_t inst_count;		/* Instance count for this class */
+  int64_t inst_total;		/* Total instance count */
   int inst_num;			/* Instance id of current instance */
 
   int flush_total;		/* Total number of flushes performed */
@@ -357,10 +357,10 @@ static LDR_ELEM elem_converter[NUM_LDR_TYPES];
  * Total_objects
  *    Global total object count.
  */
-static int Total_objects = 0;
-static int Last_committed_line = 0;
+static int64_t Total_objects = 0;
+static int64_t Last_committed_line = 0;
 static int Total_fails = 0;
-static int Total_objects_loaded = 0;	/* The number of objects inserted if an interrupted occurred. */
+static int64_t Total_objects_loaded = 0;	/* The number of objects inserted if an interrupted occurred. */
 
 /*
  * ldr_post_commit_handler
@@ -479,15 +479,15 @@ static void ldr_init_driver ();
 static int ldr_final (void);
 
 /* Statistics updating/retrieving functions */
-static void ldr_stats (int *errors, int *objects, int *defaults, int *lastcommit, int *fails);
+static void ldr_stats (int *errors, int64_t *objects, int *defaults, int64_t *lastcommit, int *fails);
 static int ldr_update_statistics (void);
 
 /* Callback functions  */
 static void ldr_register_post_commit_handler ();
 static void ldr_register_post_interrupt_handler ();
 static void ldr_signal_handler (void);
-static void ldr_report_num_of_commits (int num_committed);
-static void ldr_get_num_of_inserted_objects (int num_objects);
+static void ldr_report_num_of_commits (int64_t num_committed);
+static void ldr_get_num_of_inserted_objects (int64_t num_objects);
 
 /* Action to initialize the parser context to deal with a new class */
 static void ldr_act_init_context (LDR_CONTEXT *context, const char *class_name, size_t len);
@@ -4595,7 +4595,7 @@ static int
 check_commit (LDR_CONTEXT *context)
 {
   int err = NO_ERROR;
-  int committed_instances = 0;
+  int64_t committed_instances = 0;
 
   /* Check interrupt flag */
   if (ldr_Load_interrupted)
@@ -6205,10 +6205,10 @@ void
 ldr_sa_load (load_args *args, int *status, bool *interrupted)
 {
   int errors = 0;
-  int objects = 0;
+  int64_t objects = 0;
   int defaults = 0;
   int fails = 0;
-  int lastcommit = 0;
+  int64_t lastcommit = 0;
   int ldr_init_ret = NO_ERROR;
 
   std::ifstream object_file (args->object_file);
@@ -6420,7 +6420,7 @@ ldr_register_post_commit_handler ()
  *    fails(out): return fail count
  */
 static void
-ldr_stats (int *errors, int *objects, int *defaults, int *lastcommit, int *fails)
+ldr_stats (int *errors, int64_t *objects, int *defaults, int64_t *lastcommit, int *fails)
 {
   if (errors != NULL)
     {
@@ -6697,7 +6697,7 @@ ldr_signal_handler (void)
  *    verbose commit parameter was specified.
  */
 static void
-ldr_report_num_of_commits (int num_committed)
+ldr_report_num_of_commits (int64_t num_committed)
 {
   print_log_msg (ldr_Current_context->args->verbose_commit,
 		 msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_COMMITTED_INSTANCES),
@@ -6711,7 +6711,7 @@ ldr_report_num_of_commits (int num_committed)
  *    num_objects(in): number of inserted object to set
  */
 static void
-ldr_get_num_of_inserted_objects (int num_objects)
+ldr_get_num_of_inserted_objects (int64_t num_objects)
 {
   Total_objects_loaded = num_objects;
 }

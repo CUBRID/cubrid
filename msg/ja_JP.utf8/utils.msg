@@ -401,7 +401,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 25 \n*** 文法チェック ***\n\n
 26 %1$d個のエラーが検出されました。\n
 27 \n*** オブジェクト挿入中 ***\n\n
-28 総%1$8d個のオブジェクトが挿入されました。\n
+28 総%1$ld個のオブジェクトが挿入されました。\n
 29 総%1$8d個のれレファレンスされたオブジェクトがデフォルトバリューで入力されました。\n
 30 \n*** トランザクションコミット中 ***\n
 31 \n*** データベースを閉まっています ***\n
@@ -421,7 +421,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 45 クラス「%2$s」のインスタンス「%1$d」はすでに正義されました。\n
 46 クラス「%2$s」のインスタンス「%1$d」はもう使用されました。\n
 47 アトリビュート「%1$s」のUNIQUE違反。NULLに変換しました。\n
-48 %1$s %2$d インスタンス\n
+48 %1$s %2$ld インスタンス\n
 49 クラス %1$s\n
 50 パスワード:
 51 \n*** クラススタティスティックス情報を更新中 ***\n
@@ -431,7 +431,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 55 missing
 56 in %1$s
 57 一緒に使えないパラメーター「%1$s」と「%2$s」\n
-58 %1$s %2$dインスタンスをコミットしました。\n
+58 %1$s %2$ldインスタンスをコミットしました。\n
 59 \n以前バージョンのloaddbが実行できません。\n
 60 「%1$s」を「%2$s」タイプにパーシングエラー \n
 61 Object Reference is not supported in CS mode.\n
@@ -440,7 +440,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 113 最後にコミットされたライン : %1$d\n
 114 エラーコントロールファイル
 115 ロードする時にエラー制御のための入力ファイル
-116 Total %1$8d object(s) inserted, %2$d object(s) failed.\n
+116 Total %1$ld object(s) inserted, %2$ld object(s) failed.\n
 117 Load failed.\n
 118 Maximum length of class name is %1$d bytes.\n
 119 Total %1$8d object(s) checked, %2$d object(s) failed.\n
