@@ -10100,7 +10100,7 @@ do_alter_change_col_comment (PARSER_CONTEXT * const parser, PT_NODE * const alte
   tran_saved = true;
 
   attr_node = alter_node->info.alter.alter_clause.attr_mthd.attr_def_list;
-  while (attr_node)
+  while (attr_node != NULL)
     {
       attr_name = get_attr_name (attr_node);
 

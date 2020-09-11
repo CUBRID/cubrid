@@ -20814,7 +20814,7 @@ class_comment_spec
 		{{
 			PT_NODE *alter_node = parser_get_alter_node();
 
-			if (alter_node)
+			if (alter_node != NULL)
 			  {
 				alter_node->info.alter.code = PT_CHANGE_COLUMN_COMMENT;
 				alter_node->info.alter.alter_clause.attr_mthd.attr_def_list = $5;
@@ -20828,7 +20828,7 @@ class_comment_spec
 		{{
 			PT_NODE *alter_node = parser_get_alter_node();
 
-			if (alter_node)                                                                 
+			if (alter_node != NULL)
 			  {
 				alter_node->info.alter.code = PT_CHANGE_COLUMN_COMMENT;
 				alter_node->info.alter.alter_clause.attr_mthd.attr_def_list = $6;
