@@ -5714,11 +5714,19 @@ lang_fastcmp_byte (const LANG_COLLATION * lang_coll, const unsigned char *string
 	{
 	  c1 = ZERO;
 	}
+      else
+	{
+	  c1 = weight[c1];
+	}
 
       c2 = *string2++;
       if (c2 == SPACE)
 	{
 	  c2 = ZERO;
+	}
+      else
+	{
+	  c2 = weight[c2];
 	}
 
       cmp = c1 - c2;
