@@ -215,8 +215,6 @@ static bool lang_is_codeset_allowed (const INTL_LANG intl_id, const INTL_CODESET
 static int lang_get_builtin_lang_id_from_name (const char *lang_name, INTL_LANG * lang_id);
 static INTL_CODESET lang_get_default_codeset (const INTL_LANG intl_id);
 
-static int lang_fastcmp_iso_88591 (const LANG_COLLATION * lang_coll, const unsigned char *string1, const int size1,
-				   const unsigned char *string2, const int size2);
 static int lang_strmatch_byte (const LANG_COLLATION * lang_coll, bool is_match, const unsigned char *str1,
 			       int size1, const unsigned char *str2, int size2, const unsigned char *escape,
 			       const bool has_last_escape, int *str1_match_size);
@@ -5323,7 +5321,7 @@ lang_split_key_euckr (const LANG_COLLATION * lang_coll, const bool is_desc, cons
 	  str1_next = intl_nextchar_euc (str1, &char1_size);
 	  if (*str1 == ASCII_SPACE || *str1 == 0 || (*str1 == EUC_SPACE && char1_size == 2 && *(str1 + 1) == EUC_SPACE))
 	    {
-	      is_zero_weight = (weight[SPACE] == 0);	//true;
+	      is_zero_weight = (weight[SPACE] == 0);
 	    }
 	  str1 = str1_next;
 	  if (!is_zero_weight)
@@ -5675,7 +5673,7 @@ lang_initloc_en_utf8 (LANG_LOCALE_DATA * ld)
 }
 
 /*
- * lang_fastcmp_iso_88591 () - compare two character strings of ISO-8859-1
+ * lang_fastcmp_byte () - compare two character strings of ISO-8859-1 and etc
  *			       codeset
  *
  * Arguments:
@@ -6355,59 +6353,6 @@ lang_fastcmp_ko (const LANG_COLLATION * lang_coll, const unsigned char *string1,
 	}
     }
   return c1 - c2;
-}
-
-static int
-lang_fastcmp_ko_ts (const LANG_COLLATION * lang_coll, const unsigned char *string1, int size1,
-		    const unsigned char *string2, int size2)
-{
-  int cmp;
-  unsigned char c1, c2;
-  const unsigned char *str1_end;
-  const unsigned char *str2_end;
-
-  assert (size1 >= 0 && size2 >= 0);
-
-  str1_end = string1 + size1;
-  str2_end = string2 + size2;
-
-  for (cmp = 0; string1 < str1_end && string2 < str2_end && cmp == 0;)
-    {
-      c1 = *string1++;
-      if (c1 == ASCII_SPACE)
-	{
-	  c1 = ZERO;
-	}
-      else if (c1 == EUC_SPACE && string1 < str1_end && *string1 == EUC_SPACE)
-	{
-	  c1 = ZERO;
-	  string1++;
-	}
-
-      c2 = *string2++;
-      if (c2 == ASCII_SPACE)
-	{
-	  c2 = ZERO;
-	}
-      else if (c2 == EUC_SPACE && string2 < str2_end && *string2 == EUC_SPACE)
-	{
-	  c2 = ZERO;
-	  string2++;
-	}
-      cmp = c1 - c2;
-    }
-
-  size1 = CAST_BUFLEN (str1_end - string1);
-  size2 = CAST_BUFLEN (str2_end - string2);
-
-  assert (size1 == 0 || size2 == 0);
-
-  if (cmp != 0)
-    {
-      return cmp;
-    }
-
-  return size1 - size2;
 }
 
 /*
