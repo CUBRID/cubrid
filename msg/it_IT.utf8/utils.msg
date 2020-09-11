@@ -440,7 +440,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 113 Ultima linea committed : %1$d\n
 114 error-control-file
 115 file di input per il controllo di errori durante il carico
-116 Totale oggetti %1$d inseriti, %2$ld oggetti non riusciti.\n
+116 Totale oggetti %1$ld inseriti, %2$ld oggetti non riusciti.\n
 117 Caricamento fallito.\n
 118 La lunghezza massima del nome della classe è %1$d byte.\n
 119 Totale %1$8d oggetti controllati, %2$d oggetti non riusciti.\n
