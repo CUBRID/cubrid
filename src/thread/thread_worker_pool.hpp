@@ -642,7 +642,7 @@ namespace cubthread
 	// I am responsible with stopping threads
       }
 
-    const std::chrono::seconds time_wait_to_thread_stop (30);   // timeout duration = 30 secs
+    const std::chrono::seconds time_wait_to_thread_stop (60);   // timeout duration = 60 secs
     const std::chrono::milliseconds time_spin_sleep (10);       // sleep between spins for 10 milliseconds
 
     // loop until all workers are stopped or until timeout expires
