@@ -18,11 +18,11 @@
 #ifndef HL_SPINLOCK_H
 #define HL_SPINLOCK_H
 
-#if (__cplusplus < 201103) || defined(__SUNPRO_CC)	// Still no support for atomic...
+#if (__cplusplus < 201103) || defined(__SUNPRO_CC) // Still no support for atomic...
 #include "spinlock-old.h"
 #else
 
-#include <atomic>		// C++11
+#include <atomic> // C++11
 
 #if defined(unix)
 #include <sched.h>
@@ -86,89 +86,75 @@
 
 */
 
-namespace HL
-{
+namespace HL {
 
-  class SpinLockType
-  {
+  class SpinLockType {
   private:
-    std::atomic < bool > _mutex;
+    std::atomic<bool> _mutex;
   public:
+  
+    SpinLockType()
+      : _mutex (false)
+    {}
+  
+    ~SpinLockType()
+    {}
 
-    SpinLockType ():_mutex (false)
-    {
+    inline void lock() {
+      if (_mutex.exchange(true)) {
+	contendedLock();
+      }
     }
 
-     ~SpinLockType ()
-    {
+    inline bool didLock() {
+      return !_mutex.exchange(true);
     }
 
-    inline void lock ()
-    {
-      if (_mutex.exchange (true))
-	{
-	  contendedLock ();
-	}
-    }
-
-    inline bool didLock ()
-    {
-      return !_mutex.exchange (true);
-    }
-
-    inline void unlock ()
-    {
+    inline void unlock() {
       _mutex = false;
     }
 
   private:
 
-    NO_INLINE void contendedLock ()
-    {
+    NO_INLINE
+    void contendedLock() {
       const int MAX_SPIN = 1000;
-      while (true)
-	{
-	  if (!_mutex.exchange (true))
-	    {
-	      return;
-	    }
-	  int count = 0;
-	  while (_mutex && (count < MAX_SPIN))
-	    {
-	      _MM_PAUSE;
-	      count++;
-	    }
-	  if (count == MAX_SPIN)
-	    {
-	      yieldProcessor ();
-	    }
+      while (true) {
+	if (!_mutex.exchange(true)) {
+	  return;
 	}
+	int count = 0;
+	while (_mutex && (count < MAX_SPIN)) {
+	  _MM_PAUSE;
+	  count++;
+	}
+	if (count == MAX_SPIN) {
+	  yieldProcessor();
+	}
+      }
     }
 
     // Is this system a multiprocessor?
-    inline bool onMultiprocessor (void)
-    {
+    inline bool onMultiprocessor (void) {
       static CPUInfo cpuInfo;
-      return (cpuInfo.getNumProcessors () > 1);
+      return (cpuInfo.getNumProcessors() > 1);
     }
 
-    inline void yieldProcessor (void)
-    {
+    inline void yieldProcessor (void) {
 #if defined(_WIN32)
-      Sleep (0);
+      Sleep(0);
 #elif defined(__SVR4)
-      thr_yield ();
+      thr_yield();
 #else
-      sched_yield ();
+      sched_yield();
 #endif
     }
 
-    enum
-    { MAX_SPIN_LIMIT = 1024 };
+    enum { MAX_SPIN_LIMIT = 1024 };
   };
 
   typedef SpinLockType SpinLock;
-
+  
 }
 
 #endif

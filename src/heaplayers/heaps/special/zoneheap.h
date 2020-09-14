@@ -33,98 +33,88 @@
 #include "utility/align.h"
 #include "wrappers/mallocinfo.h"
 
-namespace HL
-{
+namespace HL {
 
-  template < class SuperHeap, size_t ChunkSize > class ZoneHeap:public SuperHeap
-  {
+  template <class SuperHeap, size_t ChunkSize>
+  class ZoneHeap : public SuperHeap {
   public:
 
-    enum
-    { Alignment = SuperHeap::Alignment };
+    enum { Alignment = SuperHeap::Alignment };
 
-      ZoneHeap ():_sizeRemaining (0), _currentArena (NULL), _pastArenas (NULL)
+    ZoneHeap()
+      : _sizeRemaining (0),
+	_currentArena (NULL),
+	_pastArenas (NULL)
     {
       m_chkSize = ChunkSize;
     }
 
-     ~ZoneHeap ()
+    ~ZoneHeap()
     {
       // printf ("deleting arenas!\n");
       // Delete all of our arenas.
-      Arena *ptr = _pastArenas;
-      while (ptr != NULL)
-	{
-	  void *oldPtr = (void *) ptr;
-	  ptr = ptr->nextArena;
-	  //printf ("deleting %x\n", ptr);
-	  SuperHeap::free (oldPtr);
-	}
+      Arena * ptr = _pastArenas;
+      while (ptr != NULL) {
+	void * oldPtr = (void *) ptr;
+	ptr = ptr->nextArena;
+	//printf ("deleting %x\n", ptr);
+	SuperHeap::free (oldPtr);
+      }
       if (_currentArena != NULL)
 	//printf ("deleting %x\n", _currentArena);
 	SuperHeap::free ((void *) _currentArena);
     }
 
-    inline void reset (const int chkSize)
+    inline void reset(const int chkSize)
     {
       m_chkSize = chkSize;
     }
 
-    inline void *malloc (size_t sz)
-    {
-      void *ptr = zoneMalloc (sz);
+    inline void * malloc (size_t sz) {
+      void * ptr = zoneMalloc (sz);
       //      assert ((size_t) ptr % Alignment == 0);
       return ptr;
     }
 
     /// Free in a zone allocator is a no-op.
-    inline void free (void *)
-    {
-    }
+    inline void free (void *) {}
 
     /// Remove in a zone allocator is a no-op.
-    inline int remove (void *)
-    {
-      return 0;
-    }
+    inline int remove (void *) { return 0; }
 
 
   private:
 
     int m_chkSize;
 
-    ZoneHeap (const ZoneHeap &);
-    ZoneHeap & operator= (const ZoneHeap &);
+    ZoneHeap (const ZoneHeap&);
+    ZoneHeap& operator=(const ZoneHeap&);
 
-    inline void *zoneMalloc (size_t sz)
-    {
-      void *ptr;
+    inline void * zoneMalloc (size_t sz) {
+      void * ptr;
       // Round up size to an aligned value.
-      sz = HL::align < HL::MallocInfo::Alignment > (sz);
+      sz = HL::align<HL::MallocInfo::Alignment>(sz);
       // Get more space in our arena if there's not enough room in this one.
-      if ((_currentArena == NULL) || (_sizeRemaining < sz))
-	{
-	  // First, add this arena to our past arena list.
-	  if (_currentArena != NULL)
-	    {
-	      _currentArena->nextArena = _pastArenas;
-	      _pastArenas = _currentArena;
-	    }
-	  // Now get more memory.
-	  size_t allocSize = m_chkSize;
-	  if (allocSize < sz)
-	    {
-	      allocSize = sz;
-	    }
-	  _currentArena = (Arena *) SuperHeap::malloc (allocSize + sizeof (Arena));
-	  if (_currentArena == NULL)
-	    {
-	      return NULL;
-	    }
-	  _currentArena->arenaSpace = (char *) (_currentArena + 1);
-	  _currentArena->nextArena = NULL;
-	  _sizeRemaining = allocSize;
+      if ((_currentArena == NULL) || (_sizeRemaining < sz)) {
+	// First, add this arena to our past arena list.
+	if (_currentArena != NULL) {
+	  _currentArena->nextArena = _pastArenas;
+	  _pastArenas = _currentArena;
 	}
+	// Now get more memory.
+	size_t allocSize = m_chkSize;
+	if (allocSize < sz) {
+	  allocSize = sz;
+	}
+	_currentArena =
+	  (Arena *) SuperHeap::malloc (allocSize + sizeof(Arena));
+	if (_currentArena == NULL) {
+	  return NULL;
+	}
+	_currentArena->arenaSpace = (char *) (_currentArena + 1);
+	_currentArena->nextArena = NULL;
+	_sizeRemaining = allocSize;
+      }
       // Bump the pointer and update the amount of memory remaining.
       _sizeRemaining -= sz;
       ptr = _currentArena->arenaSpace;
@@ -133,27 +123,26 @@ namespace HL
       //      assert ((size_t) ptr % SuperHeap::Alignment == 0);
       return ptr;
     }
-
-    class Arena
-    {
+  
+    class Arena {
     public:
-      Arena ()
-      {
-	static_assert ((sizeof (Arena) % HL::MallocInfo::Alignment == 0), "Alignment must match Arena size.");
+      Arena() {
+	static_assert((sizeof(Arena) % HL::MallocInfo::Alignment == 0),
+		      "Alignment must match Arena size.");
       }
 
-      Arena *nextArena;
-      char *arenaSpace;
+      Arena * nextArena;
+      char * arenaSpace;
     };
-
+    
     /// Space left in the current arena.
     size_t _sizeRemaining;
 
     /// The current arena.
-    Arena *_currentArena;
+    Arena * _currentArena;
 
     /// A linked list of past arenas.
-    Arena *_pastArenas;
+    Arena * _pastArenas;
   };
 
 }

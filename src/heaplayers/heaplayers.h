@@ -31,9 +31,7 @@
 
 #include <assert.h>
 
-namespace HL
-{
-}
+namespace HL {}
 
 // Define HL_EXECUTABLE_HEAP as 1 if you want that (i.e., you're doing
 // dynamic code generation).
@@ -105,4 +103,4 @@ namespace HL
 #pragma warning( pop )
 #endif
 
-#endif				// _HEAPLAYERS_H_
+#endif // _HEAPLAYERS_H_

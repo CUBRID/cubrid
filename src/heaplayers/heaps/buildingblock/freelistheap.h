@@ -34,42 +34,35 @@
 #define NULL 0
 #endif
 
-namespace HL
-{
+namespace HL {
 
-  template < class SuperHeap > class FreelistHeap:public SuperHeap
-  {
+  template <class SuperHeap>
+  class FreelistHeap : public SuperHeap {
   public:
 
-    inline void *malloc (size_t sz)
-    {
+    inline void * malloc (size_t sz) {
       // Check the free list first.
-      void *ptr = _freelist.get ();
+      void * ptr = _freelist.get();
       // If it's empty, get more memory;
       // otherwise, advance the free list pointer.
-      if (ptr == 0)
-	{
-	  ptr = SuperHeap::malloc (sz);
-	}
+      if (ptr == 0) {
+        ptr = SuperHeap::malloc (sz);
+      }
       return ptr;
     }
 
-    inline void free (void *ptr)
-    {
-      if (ptr == 0)
-	{
-	  return;
-	}
+    inline void free (void * ptr) {
+      if (ptr == 0) {
+        return;
+      }
       _freelist.insert (ptr);
     }
 
-    inline void clear (void)
-    {
-      void *ptr;
-      while ((ptr = _freelist.get ()))
-	{
-	  SuperHeap::free (ptr);
-	}
+    inline void clear (void) {
+      void * ptr;
+      while ((ptr = _freelist.get())) {
+        SuperHeap::free (ptr);
+      }
     }
 
   private:

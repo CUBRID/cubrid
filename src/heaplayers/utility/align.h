@@ -10,16 +10,16 @@
 #pragma clang diagnostic ignored "-Wunused-variable"
 #endif
 
-namespace HL
-{
+namespace HL {
 
   /// @name  align
   /// @brief Rounds up a value to the next multiple of v.
   /// @note  Argument must be a power of two.
-  template < size_t Alignment > inline size_t align (size_t v)
-  {
-    static_assert ((Alignment & (Alignment - 1)) == 0, "Alignment must be a power of two.");
-    return ((v + (Alignment - 1)) & ~(Alignment - 1));
+  template <size_t Alignment>
+  inline size_t align (size_t v) {
+    static_assert((Alignment & (Alignment-1)) == 0,
+		  "Alignment must be a power of two.");
+    return ((v + (Alignment-1)) & ~(Alignment-1));
   }
 
 }

@@ -21,48 +21,40 @@
 #include <mutex>
 #include <cstddef>
 
-namespace HL
-{
+namespace HL {
 
-  template < class LockType, class Super > class LockedHeap:public Super
-  {
+  template <class LockType, class Super>
+  class LockedHeap : public Super {
   public:
 
-    enum
-    { Alignment = Super::Alignment };
+    enum { Alignment = Super::Alignment };
 
-    inline void *malloc (size_t sz)
-    {
-      std::lock_guard < LockType > l (thelock);
+    inline void * malloc (size_t sz) {
+      std::lock_guard<LockType> l (thelock);
       return Super::malloc (sz);
     }
 
-    inline void free (void *ptr)
-    {
-      std::lock_guard < LockType > l (thelock);
+    inline void free (void * ptr) {
+      std::lock_guard<LockType> l (thelock);
       Super::free (ptr);
     }
 
-    inline size_t getSize (void *ptr) const
-    {
-      std::lock_guard < LockType > l (thelock);
+    inline size_t getSize (void * ptr) const {
+      std::lock_guard<LockType> l (thelock);
       return Super::getSize (ptr);
     }
 
-    inline size_t getSize (void *ptr)
-    {
-      std::lock_guard < LockType > l (thelock);
+    inline size_t getSize (void * ptr) {
+      std::lock_guard<LockType> l (thelock);
       return Super::getSize (ptr);
     }
 
-    inline void lock ()
-    {
-      thelock.lock ();
+    inline void lock() {
+      thelock.lock();
     }
 
-    inline void unlock ()
-    {
-      thelock.unlock ();
+    inline void unlock() {
+      thelock.unlock();
     }
 
   private:

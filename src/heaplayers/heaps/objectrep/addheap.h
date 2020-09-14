@@ -23,42 +23,36 @@
 #include <assert.h>
 #include "utility/lcm.h"
 
-namespace HL
-{
+namespace HL {
 
-  template < class Add, class SuperHeap > class AddHeap:public SuperHeap
-  {
+  template <class Add, class SuperHeap>
+  class AddHeap : public SuperHeap {
   public:
 
-    inline void *malloc (size_t sz)
-    {
-      void *ptr = SuperHeap::malloc (sz + HeaderSize);
-      void *newPtr = (char *) ptr + HeaderSize;
-        return newPtr;
+    inline void * malloc (size_t sz) {
+      void * ptr = SuperHeap::malloc (sz + HeaderSize);
+      void * newPtr = (char *) ptr + HeaderSize;
+      return newPtr;
     }
 
-    inline void free (void *ptr)
-    {
-      SuperHeap::free (getOriginal (ptr));
+    inline void free (void * ptr) {
+      SuperHeap::free (getOriginal(ptr));
     }
 
-    inline size_t getSize (void *ptr)
-    {
-      return SuperHeap::getSize (getOriginal (ptr));
+    inline size_t getSize (void * ptr) {
+      return SuperHeap::getSize (getOriginal(ptr));
     }
 
   private:
 
-    inline void *getOriginal (void *ptr)
-    {
-      void *origPtr = (void *) ((char *) ptr - HeaderSize);
+    inline void * getOriginal (void * ptr) {
+      void * origPtr = (void *) ((char *) ptr - HeaderSize);
       return origPtr;
     }
 
     // A size that preserves existing alignment restrictions.
     // Beware: can seriously increase size requirements.
-    enum
-    { HeaderSize = lcm < (int) SuperHeap::Alignment, sizeof (Add) >::value };
+    enum { HeaderSize = lcm<(int) SuperHeap::Alignment, sizeof(Add)>::value };
 
   };
 
