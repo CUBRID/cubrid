@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -747,6 +748,9 @@ struct list_spec_node
 {
   REGU_VARIABLE_LIST list_regu_list_pred;	/* regu list for the predicate */
   REGU_VARIABLE_LIST list_regu_list_rest;	/* regu list for rest of attrs */
+  REGU_VARIABLE_LIST list_regu_list_build;	/* regu list for hash build */
+  REGU_VARIABLE_LIST list_regu_list_probe;	/* regu list for hash probe */
+  int hash_list_scan_yn;	/* Is hash list scan possible? */
   XASL_NODE *xasl_node;		/* the XASL node that contains the list file identifier */
 };
 

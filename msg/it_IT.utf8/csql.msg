@@ -40,13 +40,17 @@ opzioni valide:\n\
   -c, --command=ARG            commandi-CSQL\n\
   -l, --line-output            ogni valore visualizzato in una riga\n\
   -r, --read-only              modalità read-only\n\
-  -t, --plain-output           visualizzare i risultati in un formato script-friendly (funziona solo con - c e -i)\n\
-  -N, --skip-column-names      non visualizzare i nomi delle colonne nei risultati (funziona solo con - c e -i)\n\
+  -t, --plain-output           visualizzare i risultati in un formato script-friendly (funziona solo con -c e -i)\n\
+  -q, --query-output           visualizzare i risultati in un formato query-friendly (funziona solo con -c e -i)\n\
+  -d, --loaddb-output          visualizzare i risultati in un formato loaddb-friendly (funziona solo con -c e -i)\n\
+  -N, --skip-column-names      non visualizzare i nomi delle colonne nei risultati (funziona solo con -c e -i)\n\
       --string-width           visualizzare ogni colonna che è un tipo stringa in questa larghezza\n\
       --no-auto-commit         disattivare modalità di esecuzione auto-commit\n\
       --no-pager               non utilizzare pager\n\
       --no-single-line         disattivare l'esecuzione orientata singola riga\n\
       --no-trigger-action      disattivare l'azione del trigger\n\
+      --delimiter=ARG          delimitatore tra le colonne (funziona solo con -q)\n\
+      --enclosure=ARG          allegato per una stringa di risultato (funziona solo con -q)\n\
 \n\
 Per ulteriori informazioni, vedere http://www.cubrid.org\n
 41 %1$s: non è corretto il valore di ambiente di %2$s_MODE. \nDovrebbe essere %3$s o %4$s.\n

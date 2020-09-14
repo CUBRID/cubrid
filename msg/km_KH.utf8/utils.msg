@@ -811,6 +811,7 @@ valid options:\n\
       --kill-program-name=NAME       kill all transactions with client program NAME\n\
       --kill-sql-id=SQL_ID           kill all transactions with SQL_ID\n\
   -p, --dba-password=PASS            password of the DBA user; will prompt if don't specify\n\
+                                     (only work with -i or --kill options. Otherwise, gets error)\n\
   -d, --display-information          display information about active transactions\n\
   -q, --query-exec-info              display information about query execution information of active transactions\n\
   -f, --force                        kill the transaction without a prompt for verification\n
@@ -1064,8 +1065,6 @@ tranlist: Dump active transaction information.\n\
 usage: %1$s tranlist [OPTION] database-name\n\
 \n\
 valid options:\n\
-  -u, --user=ID                user ID for database access; default: DBA user\n\
-  -p, --password=PASS          user password; default: none\n\
   -s, --summary                print summarized information of transaction\n\
       --sort-key=COLUMN_NUMBER column number to be sorted\n\
       --reverse                reverse the sort result\n

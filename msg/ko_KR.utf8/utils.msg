@@ -820,6 +820,7 @@ killtran: 데이터베이스 transaction 제거 관리\n\
       --kill-program-name=NAME       NAME으로 지정되는 모든 트랜잭션 종료\n\
       --kill-sql-id=SQL_ID           SQL_ID에 해당하는 질의를 실행중인 모든 트랜잭션 종료\n\
   -p, --dba-password=PASS            DBA 패스워드; 지정되지 않은 경우 프롬프트\n\
+                                     (-i 또는 --kill 옵션과 사용 가능, 그외는 오류 발생)\n\
   -d, --display-information          현재 활성화된 트랜잭션에 대한 정보 보여줌\n\
   -q, --query-exec-info              현재 활성화된 트랜잭션에 대한 질의 수행정보를 보여줌\n\
   -f, --force                        사용자 확인 없이 지정된 트랜잭션 종료\n
@@ -1070,8 +1071,6 @@ tranlist: 활성화된 트랜잭션 정보 출력.\n\
 사용법: %1$s tranlist [옵션] database-name\n\
 \n\
 valid options:\n\
-  -u, --user=ID                데이터베이스 접근에 관한 사용자 이름; 기본값: DBA\n\
-  -p, --password=PASS          사용자 패스워드; 기본값: 없음\n\
   -s, --summary                질의정보 및 락 정보 생략\n\
       --sort-key=COLUMN_NUMBER 정렬할 컬럼번호; 기본값 : 1\n\
       --reverse                내림차순 정렬수행; 기본값 : 오름차순 정렬\n

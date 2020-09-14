@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -104,6 +105,7 @@ extern void *mht_get2 (const MHT_TABLE * ht, const void *key, void **last);
 extern const void *mht_put (MHT_TABLE * ht, const void *key, void *data);
 extern const void *mht_put_data (MHT_TABLE * ht, const void *key, void *data);
 extern const void *mht_put_new (MHT_TABLE * ht, const void *key, void *data);
+extern const void *mht_put_orderly (MHT_TABLE * ht, const void *key, void *data);
 extern const void *mht_put_if_not_exists (MHT_TABLE * ht, const void *key, void *data);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern const void *mht_put2 (MHT_TABLE * ht, const void *key, void *data);
