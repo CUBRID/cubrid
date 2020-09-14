@@ -95,6 +95,9 @@ static unsigned int lang_Next_alpha_char_EN_ci_ts[LANG_CHAR_COUNT_EN];
 static unsigned int lang_Weight_TR[LANG_CHAR_COUNT_TR];
 static unsigned int lang_Next_alpha_char_TR[LANG_CHAR_COUNT_TR];
 
+static unsigned int lang_Weight_TR_ts[LANG_CHAR_COUNT_TR];
+static unsigned int lang_Next_alpha_char_TR_ts[LANG_CHAR_COUNT_TR];
+
 #define DEFAULT_COLL_OPTIONS {true, true, true}
 #define CI_COLL_OPTIONS {false, false, true}
 
@@ -297,11 +300,7 @@ static unsigned int lang_mht2str_utf8 (const LANG_COLLATION * lang_coll, const u
 static unsigned int lang_mht2str_utf8_exp (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size);
 static unsigned int lang_mht2str_ko (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size);
 static void lang_init_coll_en_ci (LANG_COLLATION * lang_coll);
-static void lang_init_coll_en_ci_ts (LANG_COLLATION * lang_coll);
-static void lang_init_coll_Utf8_en_cs (LANG_COLLATION * lang_coll);
-static void lang_init_coll_Utf8_en_cs_ts (LANG_COLLATION * lang_coll);
-static void lang_init_coll_euckr (LANG_COLLATION * lang_coll);
-static void lang_init_coll_euckr_ts (LANG_COLLATION * lang_coll);
+static void lang_init_coll_en_cs (LANG_COLLATION * lang_coll);
 static void lang_init_coll_Utf8_tr_cs (LANG_COLLATION * lang_coll);
 static int lang_fastcmp_ko (const LANG_COLLATION * lang_coll, const unsigned char *string1, int size1,
 			    const unsigned char *string2, int size2);
@@ -330,7 +329,7 @@ static void lang_initloc_en_iso88591 (LANG_LOCALE_DATA * ld);
 
 static void lang_initloc_en_binary (LANG_LOCALE_DATA * ld);
 
-static void lang_init_common_en_cs (void);
+static void lang_init_common_en_cs (COLL_DATA * coll_data);
 
 
 static LANG_COLLATION coll_Utf8_en_cs = {
@@ -347,7 +346,7 @@ static LANG_COLLATION coll_Utf8_en_cs = {
   lang_next_coll_char_utf8,
   lang_split_key_utf8,
   lang_mht2str_byte,
-  lang_init_coll_Utf8_en_cs
+  lang_init_coll_en_cs
 };
 
 static LANG_COLLATION coll_Utf8_en_cs_ts = {
@@ -364,15 +363,10 @@ static LANG_COLLATION coll_Utf8_en_cs_ts = {
   lang_next_coll_char_utf8,
   lang_split_key_utf8,
   lang_mht2str_byte,
-  lang_init_coll_Utf8_en_cs_ts
+  lang_init_coll_en_cs
 };
 
-/*
- * lang_init_common_en_ci () - init collation data for English case
- *			       insensitive (no matter the charset)
- *   return:
- */
-static void lang_init_common_en_ci (void);
+static void lang_init_common_en_ci (COLL_DATA * coll_data);
 
 static void lang_initloc_en_utf8 (LANG_LOCALE_DATA * ld);
 
@@ -588,7 +582,7 @@ static LANG_COLLATION coll_Utf8_ko_cs = {
   lang_next_coll_char_utf8,
   lang_split_key_utf8,
   lang_mht2str_utf8,
-  lang_init_coll_Utf8_en_cs
+  lang_init_coll_en_cs
 };
 
 static LANG_COLLATION coll_Utf8_ko_cs_ts = {
@@ -605,7 +599,7 @@ static LANG_COLLATION coll_Utf8_ko_cs_ts = {
   lang_next_coll_char_utf8,
   lang_split_key_utf8,
   lang_mht2str_utf8,
-  lang_init_coll_Utf8_en_cs_ts
+  lang_init_coll_en_cs
 };
 
 /* built-in support of Korean in UTF-8 : date-time conversions as in English
@@ -663,7 +657,7 @@ static LANG_COLLATION coll_Euckr_bin = {
   lang_next_alpha_char_ko,
   lang_split_key_euckr,
   lang_mht2str_ko,
-  lang_init_coll_euckr
+  lang_init_coll_en_cs
 };
 
 static LANG_COLLATION coll_Euckr_bin_ts = {
@@ -680,7 +674,7 @@ static LANG_COLLATION coll_Euckr_bin_ts = {
   lang_next_alpha_char_ko,
   lang_split_key_euckr,
   lang_mht2str_ko,
-  lang_init_coll_euckr_ts
+  lang_init_coll_en_cs
 };
 
 /* built-in support of Korean in EUC-KR : date-time conversions as in English
@@ -865,7 +859,7 @@ static LANG_COLLATION coll_Iso88591_en_ci_ts = {
   lang_next_coll_byte,
   lang_split_key_byte,
   lang_mht2str_byte,
-  lang_init_coll_en_ci_ts
+  lang_init_coll_en_ci
 };
 
 static LANG_COLLATION coll_Utf8_en_ci = {
@@ -899,7 +893,7 @@ static LANG_COLLATION coll_Utf8_en_ci_ts = {
   lang_next_coll_char_utf8,
   lang_split_key_utf8,
   lang_mht2str_byte,
-  lang_init_coll_en_ci_ts
+  lang_init_coll_en_ci
 };
 
 static LANG_COLLATION coll_Utf8_tr_cs = {
@@ -919,6 +913,23 @@ static LANG_COLLATION coll_Utf8_tr_cs = {
   lang_init_coll_Utf8_tr_cs
 };
 
+
+static LANG_COLLATION coll_Utf8_tr_cs_ts = {
+  INTL_CODESET_UTF8, 1, 1, DEFAULT_COLL_OPTIONS, NULL,
+  /* collation data */
+  {LANG_COLL_UTF8_TR_CS_TS, "utf8_tr_cs_ts",
+   LANG_COLL_GENERIC_SORT_OPT,
+   lang_Weight_TR_ts, lang_Next_alpha_char_TR_ts, LANG_CHAR_COUNT_TR,
+   LANG_COLL_NO_EXP,
+   LANG_COLL_NO_CONTR,
+   "52f12f045d2fc90c3a818d0b334485d7"},
+  lang_strcmp_utf8,
+  lang_strmatch_utf8,
+  lang_next_coll_char_utf8,
+  lang_split_key_utf8,
+  lang_mht2str_utf8,
+  lang_init_coll_Utf8_tr_cs
+};
 
 static LANG_LOCALE_DATA lc_Turkish_utf8 = {
   NULL,
@@ -974,6 +985,7 @@ static LANG_COLLATION *built_In_collations[] = {
   &coll_Iso88591_en_ci_ts,
   &coll_Utf8_en_cs_ts,
   &coll_Utf8_en_ci_ts,
+  &coll_Utf8_tr_cs_ts,
   &coll_Utf8_ko_cs_ts,
   &coll_Euckr_bin_ts
 };
@@ -5390,133 +5402,94 @@ lang_initloc_en_binary (LANG_LOCALE_DATA * ld)
 /*
  * lang_init_common_en_cs () - init collation data for English case
  *			       sensitive (no matter the charset)
+ *			       with optional ts (trailing space sensitive)
+ *   in: coll_dat (collation data)
  *   return:
  */
 static void
-lang_init_common_en_cs (void)
+lang_init_common_en_cs (COLL_DATA * coll_data)
 {
   int i;
   static bool is_common_en_cs_init = false;
-
-  if (is_common_en_cs_init)
-    {
-      return;
-    }
-
-  for (i = 0; i < LANG_CHAR_COUNT_EN; i++)
-    {
-      lang_Weight_EN_cs[i] = i;
-      lang_Next_alpha_char_EN_cs[i] = i + 1;
-    }
-
-  lang_Weight_EN_cs[32] = 0;
-  lang_Next_alpha_char_EN_cs[32] = 1;
-
-  is_common_en_cs_init = true;
-}
-
-/*
- * lang_init_common_en_cs_ts () - init collation data for English case
- *			       sensitive (no matter the charset) with trailing space sensitive
- *   return:
- */
-static void
-lang_init_common_en_cs_ts (void)
-{
-  int i;
   static bool is_common_en_cs_ts_init = false;
 
-  if (is_common_en_cs_ts_init)
+  if (is_common_en_cs_init && is_common_en_cs_ts_init)
     {
       return;
     }
 
-  for (i = 0; i < LANG_CHAR_COUNT_EN; i++)
+  for (i = 0; i < coll_data->w_count; i++)
     {
-      lang_Weight_EN_cs_ts[i] = i;
-      lang_Next_alpha_char_EN_cs_ts[i] = i + 1;
+      coll_data->weights[i] = i;
+      coll_data->next_cp[i] = i + 1;
     }
 
-  is_common_en_cs_ts_init = true;
+  if (coll_data->coll_id < COLL_TS)
+    {
+      coll_data->weights[32] = 0;
+      coll_data->next_cp[32] = 1;
+      is_common_en_cs_init = true;
+    }
+  else
+    {
+      is_common_en_cs_ts_init = true;
+    }
 }
 
 /*
  * lang_init_common_en_ci () - init collation data for English case
  *			       insensitive (no matter the charset)
+ *			       with optional ts (trailing space sensitive)
+ *   in: coll_data (collation data)
  *   return:
  */
 static void
-lang_init_common_en_ci (void)
+lang_init_common_en_ci (COLL_DATA * coll_data)
 {
   int i;
   static bool is_common_en_ci_init = false;
-
-  if (is_common_en_ci_init)
-    {
-      return;
-    }
-
-  for (i = 0; i < LANG_CHAR_COUNT_EN; i++)
-    {
-      lang_Weight_EN_ci[i] = i;
-      lang_Next_alpha_char_EN_ci[i] = i + 1;
-    }
-
-  for (i = 'a'; i <= (int) 'z'; i++)
-    {
-      lang_Weight_EN_ci[i] = i - ('a' - 'A');
-      lang_Next_alpha_char_EN_ci[i] = i + 1 - ('a' - 'A');
-    }
-
-  lang_Next_alpha_char_EN_ci['z'] = lang_Next_alpha_char_EN_ci['Z'];
-  lang_Next_alpha_char_EN_ci['a' - 1] = lang_Next_alpha_char_EN_ci['A' - 1];
-
-  lang_Weight_EN_ci[32] = 0;
-  lang_Next_alpha_char_EN_ci[32] = 1;
-
-  is_common_en_ci_init = true;
-}
-
-/*
- * lang_init_common_en_ci_ts () - init collation data for English case
- *			       insensitive (no matter the charset) with trailing space sensitive
- *   return:
- */
-static void
-lang_init_common_en_ci_ts (void)
-{
-  int i;
   static bool is_common_en_ci_ts_init = false;
 
-  if (is_common_en_ci_ts_init)
+  if (is_common_en_ci_init && is_common_en_ci_ts_init)
     {
       return;
     }
 
-  for (i = 0; i < LANG_CHAR_COUNT_EN; i++)
+  for (i = 0; i < coll_data->w_count; i++)
     {
-      lang_Weight_EN_ci_ts[i] = i;
-      lang_Next_alpha_char_EN_ci_ts[i] = i + 1;
+      coll_data->weights[i] = i;
+      coll_data->next_cp[i] = i + 1;
     }
 
   for (i = 'a'; i <= (int) 'z'; i++)
     {
-      lang_Weight_EN_ci_ts[i] = i - ('a' - 'A');
-      lang_Next_alpha_char_EN_ci_ts[i] = i + 1 - ('a' - 'A');
+      coll_data->weights[i] = i - ('a' - 'A');
+      coll_data->next_cp[i] = i + 1 - ('a' - 'A');
     }
 
-  lang_Next_alpha_char_EN_ci_ts['z'] = lang_Next_alpha_char_EN_ci_ts['Z'];
-  lang_Next_alpha_char_EN_ci_ts['a' - 1] = lang_Next_alpha_char_EN_ci_ts['A' - 1];
+  coll_data->next_cp['z'] = coll_data->next_cp['Z'];
+  coll_data->next_cp['a' - 1] = coll_data->next_cp['A' - 1];
 
-  is_common_en_ci_ts_init = true;
+  if (coll_data->coll_id < COLL_TS)
+    {
+      coll_data->weights[32] = 0;
+      coll_data->next_cp[32] = 1;
+      is_common_en_ci_init = true;
+    }
+  else
+    {
+      is_common_en_ci_ts_init = true;
+    }
 }
 
 /*
- * lang_init_coll_Utf8_en_cs () - init collation UTF8 English case sensitive
+ * lang_init_coll_en_cs () - init collation for English case sensitive
+ * 			     on no matter charset (iso88591, utf8, euckr)
+ * 			     with optional ts (trailing space sensitive)
  *   return:
  */
 static void
-lang_init_coll_Utf8_en_cs (LANG_COLLATION * lang_coll)
+lang_init_coll_en_cs (LANG_COLLATION * lang_coll)
 {
   assert (lang_coll != NULL);
 
@@ -5526,35 +5499,15 @@ lang_init_coll_Utf8_en_cs (LANG_COLLATION * lang_coll)
     }
 
   /* init data */
-  lang_init_common_en_cs ();
+  lang_init_common_en_cs (&lang_coll->coll);
 
   lang_coll->need_init = false;
 }
 
 /*
- * lang_init_coll_Utf8_en_cs_ts () - init collation UTF8 English case sensitive
- * 				     with trailing space sensitvie
- *   return:
- */
-static void
-lang_init_coll_Utf8_en_cs_ts (LANG_COLLATION * lang_coll)
-{
-  assert (lang_coll != NULL);
-
-  if (!(lang_coll->need_init))
-    {
-      return;
-    }
-
-  /* init data */
-  lang_init_common_en_cs_ts ();
-
-  lang_coll->need_init = false;
-}
-
-/*
- * lang_init_coll_en_ci () - init collation English case insensitive; applies
- *			     to both ISO and UTF-8 charset
+ * lang_init_coll_en_ci () - init collation for English case insensitive
+ * 			     on no matter charset (iso88591, utf8, euckr)
+ * 			     with optional ts (trailing space sensitive)
  *   return:
  */
 static void
@@ -5568,69 +5521,7 @@ lang_init_coll_en_ci (LANG_COLLATION * lang_coll)
     }
 
   /* init data */
-  lang_init_common_en_ci ();
-
-  lang_coll->need_init = false;
-}
-
-/*
- * lang_init_coll_en_ci_ts () - init collation English case insensitive; applies
- *			     to both ISO and UTF-8 charset with trailing space sensitive
- *   return:
- */
-static void
-lang_init_coll_en_ci_ts (LANG_COLLATION * lang_coll)
-{
-  assert (lang_coll != NULL);
-
-  if (!(lang_coll->need_init))
-    {
-      return;
-    }
-
-  /* init data */
-  lang_init_common_en_ci_ts ();
-
-  lang_coll->need_init = false;
-}
-
-/*
- * lang_init_coll_euckr () - init collation EucKr
- *   return:
- */
-static void
-lang_init_coll_euckr (LANG_COLLATION * lang_coll)
-{
-  assert (lang_coll != NULL);
-
-  if (!(lang_coll->need_init))
-    {
-      return;
-    }
-
-  /* init data */
-  lang_init_common_en_cs ();
-
-  lang_coll->need_init = false;
-}
-
-/*
- * lang_init_coll_Utf8_en_cs_ts () - init collation UTF8 English case sensitive
- * 				     with trailing space sensitvie
- *   return:
- */
-static void
-lang_init_coll_euckr_ts (LANG_COLLATION * lang_coll)
-{
-  assert (lang_coll != NULL);
-
-  if (!(lang_coll->need_init))
-    {
-      return;
-    }
-
-  /* init data */
-  lang_init_common_en_cs_ts ();
+  lang_init_common_en_ci (&lang_coll->coll);
 
   lang_coll->need_init = false;
 }
@@ -5996,6 +5887,8 @@ static void
 lang_init_coll_Utf8_tr_cs (LANG_COLLATION * lang_coll)
 {
   int i;
+  unsigned int *lang_Weight_TR;
+  unsigned int *lang_Next_alpha_char_TR;
 
   const unsigned int special_upper_cp[] = {
     0xc7,			/* capital C with cedilla */
@@ -6026,6 +5919,9 @@ lang_init_coll_Utf8_tr_cs (LANG_COLLATION * lang_coll)
       return;
     }
 
+  lang_Weight_TR = lang_coll->coll.weights;
+  lang_Next_alpha_char_TR = lang_coll->coll.next_cp;
+
   for (i = 0; i < LANG_CHAR_COUNT_TR; i++)
     {
       lang_Weight_TR[i] = i;
@@ -6033,8 +5929,11 @@ lang_init_coll_Utf8_tr_cs (LANG_COLLATION * lang_coll)
       lang_Next_alpha_char_TR[i] = i + 1;
     }
 
-  lang_Weight_TR[32] = 0;
-  lang_Next_alpha_char_TR[32] = 1;
+  if (lang_coll->coll.coll_id < COLL_TS)
+    {
+      lang_Weight_TR[32] = 0;
+      lang_Next_alpha_char_TR[32] = 1;
+    }
 
   assert (DIM (special_lower_cp) == DIM (special_upper_cp));
 
