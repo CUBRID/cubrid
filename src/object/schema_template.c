@@ -4547,7 +4547,7 @@ smt_change_class_shared_attribute_domain (SM_ATTRIBUTE * att, DB_DOMAIN * new_do
 
   /* cast the value to new domain : explicit cast */
   new_value = pr_make_ext_value ();
-  cast_status = db_value_coerce (current_value, new_value, new_domain);
+  cast_status = tp_value_cast (current_value, new_value, new_domain, false);
   if (cast_status == DOMAIN_COMPATIBLE)
     {
       pr_clear_value (&att->default_value.value);
