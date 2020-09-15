@@ -31,6 +31,7 @@
 #include <openssl/err.h>
 #include <openssl/sha.h>
 #include <openssl/rand.h>
+#include <signal.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
