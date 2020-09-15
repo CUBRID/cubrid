@@ -125,27 +125,53 @@ tde_initialize (THREAD_ENTRY * thread_p, HFID * keyinfo_hfid)
 
   tde_make_keys_volume_fullname (mk_path, boot_db_full_name (), false);
   err = tde_create_keys_file (mk_path);
-  if (err != NO_ERROR)
+  if (err == NO_ERROR)
     {
-      return err;
-    }
+      vdes = fileio_mount (thread_p, boot_db_full_name (), mk_path, LOG_DBTDE_KEYS_VOLID, false, false);
+      if (vdes == NULL_VOLDES)
+	{
+	  ASSERT_ERROR ();
+	  err = er_errid ();
+	  goto exit;
+	}
 
-  vdes = fileio_mount (thread_p, boot_db_full_name (), mk_path, LOG_DBTDE_KEYS_VOLID, false, false);
-  if (vdes == NULL_VOLDES)
+      err = tde_create_mk (default_mk);
+      if (err != NO_ERROR)
+	{
+	  goto exit;
+	}
+
+      created_time = time (NULL);
+      err = tde_add_mk (vdes, default_mk, &mk_index, created_time);
+      if (err != NO_ERROR)
+	{
+	  goto exit;
+	}
+    }
+  else if (err == ER_BO_VOLUME_EXISTS)
     {
-      ASSERT_ERROR ();
-      return er_errid ();
-    }
+      vdes = fileio_mount (thread_p, boot_db_full_name (), mk_path, LOG_DBTDE_KEYS_VOLID, false, false);
+      if (vdes == NULL_VOLDES)
+	{
+	  ASSERT_ERROR ();
+	  err = er_errid ();
+	  goto exit;
+	}
 
-  err = tde_create_mk (default_mk);
-  if (err != NO_ERROR)
-    {
-      goto exit;
-    }
+      if (tde_validate_keys_volume (vdes) == false)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_INVALID_KEYS_VOLUME, 1, mk_path);
+	  err = ER_TDE_INVALID_KEYS_VOLUME;
+	  goto exit;
+	}
 
-  created_time = time (NULL);
-  err = tde_add_mk (vdes, default_mk, &mk_index, created_time);
-  if (err != NO_ERROR)
+      err = tde_find_first_mk (vdes, &mk_index, default_mk, &created_time);
+      if (err != NO_ERROR)
+	{
+	  goto exit;
+	}
+    }
+  else
     {
       goto exit;
     }
