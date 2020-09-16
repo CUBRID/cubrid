@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -843,11 +844,11 @@ db_get_jdbccachehint (DB_SESSION * session, int stmt_ndx, int *life_time)
     {
       if (statement->info.query.q.select.jdbc_life_time)
 	{
-          if (life_time != NULL && statement->info.query.q.select.jdbc_life_time->info.name.original != NULL)
+	  if (life_time != NULL && statement->info.query.q.select.jdbc_life_time->info.name.original != NULL)
 	    {
 	      *life_time = atoi (statement->info.query.q.select.jdbc_life_time->info.name.original);
 	    }
-          return true;
+	  return true;
 	}
     }
 

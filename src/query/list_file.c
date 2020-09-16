@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -381,122 +382,6 @@ qfile_list_cache_cleanup (THREAD_ENTRY * thread_p)
     }
 
   bh_destroy (thread_p, bh);
-
-  return NO_ERROR;
-}
-#endif
-
-#if 0
-/*
- * qfile_list_cache_del_victim -
- *   v(in): qfile list cache candidate index for victim
-*/
-int
-qfile_list_cache_delete_candidate (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * victim)
-{
-  if (csect_enter (thread_p, CSECT_QPROC_LIST_CACHE, INF_WAIT) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  QFILE_LIST_CACHE *candidate = &qfile_List_cache;
-
-  /* remove from LRU list */
-  if (candidate->lru_head == candidate->lru_tail)
-    {
-      candidate->lru_head = candidate->lru_tail = NULL;
-    }
-  else if (candidate->lru_head == victim)
-    {
-      candidate->lru_head = victim->lru_next;
-      victim->lru_next->lru_prev = NULL;
-    }
-  else if (candidate->lru_tail == victim)
-    {
-      candidate->lru_tail = victim->lru_prev;
-      victim->lru_prev->lru_next = NULL;
-    }
-  else
-    {
-      victim->lru_prev->lru_next = victim->lru_next;
-      victim->lru_next->lru_prev = victim->lru_prev;
-    }
-
-  csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
-
-  return NO_ERROR;
-}
-
-/*
- * qfile_list_cache_add_candidate -
- *   candidate(in): qfile list cache table
- *   victim(in): qfile list candidate entry
-*/
-int
-qfile_list_cache_add_candidate (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * victim)
-{
-  if (csect_enter (thread_p, CSECT_QPROC_LIST_CACHE, INF_WAIT) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  QFILE_LIST_CACHE *candidate = &qfile_List_cache;
-
-  /* link new entry to LRU list */
-  victim->lru_next = NULL;
-  victim->lru_prev = candidate->lru_tail;
-  if (candidate->lru_tail)
-    {
-      candidate->lru_tail->lru_next = victim;
-    }
-  candidate->lru_tail = victim;
-  if (candidate->lru_head == NULL)
-    {
-      candidate->lru_head = victim;
-    }
-
-  csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
-
-  return NO_ERROR;
-}
-
-/*
- * qfile_list_cache_adjust_victim -
- *   candidate(in): qfile list cache table
- *   victim(in): qfile list candidate entry
- */
-int
-qfile_list_cache_adjust_candidate (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * victim)
-{
-  if (csect_enter (thread_p, CSECT_QPROC_LIST_CACHE, INF_WAIT) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  QFILE_LIST_CACHE *candidate = &qfile_List_cache;
-
-  if (candidate->lru_tail != victim)
-    {
-      if (candidate->lru_head == victim)
-	{
-	  candidate->lru_head = victim->lru_next;
-	}
-
-      /* unlink */
-      victim->lru_next->lru_prev = victim->lru_prev;
-      if (victim->lru_prev)
-	{
-	  victim->lru_prev->lru_next = victim->lru_next;
-	}
-
-      /* add at end */
-      candidate->lru_tail->lru_next = victim;
-      victim->lru_prev = candidate->lru_tail;
-      victim->lru_next = NULL;
-      candidate->lru_tail = victim;
-    }
-
-  csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
 
   return NO_ERROR;
 }

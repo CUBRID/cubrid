@@ -129,7 +129,7 @@ public class UStatement {
 
 	public int result_cache_lifetime;
 	private boolean result_cacheable = false;
-	public UStmtCache stmt_cache;
+	private UStmtCache stmt_cache;
 
 	UStatement(UConnection relatedC, UInputBuffer inBuffer,
 	        boolean assign_only, String sql, byte _prepare_flag)
@@ -840,11 +840,11 @@ public class UStatement {
 		}
 
 		// cache reusable
-		byte cache_reusable = inBuffer.readByte(); // cache_reusable
+		byte cache_reusable = inBuffer.readByte();
 		if (cacheData != null && cache_reusable == (byte) 1) {
-            setCacheData(cacheData);
-            return;
-        }
+                	setCacheData(cacheData);
+                	return;
+        	}
 		// --
 		
 		readResultInfo(inBuffer);
@@ -913,8 +913,7 @@ public class UStatement {
 		try {
 			executeInternal(maxRow, maxField, isScrollable, queryTimeout, cacheData);
 			//jdbc cache feature
-			if (cacheData != null // && fetchedTupleNumber == totalTupleNumber
-					&& resultInfo.length == 1) {
+			if (cacheData != null && resultInfo.length == 1) {
 				cacheData.setCacheData(totalTupleNumber, tuples, resultInfo);
 			}
 			else if (resultInfo.length > 1) {

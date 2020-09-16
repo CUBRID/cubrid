@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -1731,7 +1732,6 @@ xcache_invalidate_qcaches (THREAD_ENTRY * thread_p, const OID * oid)
 /*
  * xcache_invalidate_entries () - Invalidate all cache entries which pass the invalidation check. If there is no
  *				  invalidation check, all cache entries are removed.
-qfile_clear_list_cache *
  * return		 : Void.
  * thread_p (in)	 : Thread entry.
  * invalidate_check (in) : Invalidation check function.
@@ -2199,7 +2199,7 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
 	      continue;
 	    }
 
-	  bh_try_insert (bh, &candidate, NULL);
+	  (void) bh_try_insert (bh, &candidate, NULL);
 	}
 
       count = bh->element_count;
