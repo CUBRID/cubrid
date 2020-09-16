@@ -1992,7 +1992,7 @@ xqmgr_end_query (THREAD_ENTRY * thread_p, QUERY_ID query_id)
   if (query_p->xasl_ent && query_p->list_ent)
     {
       (void) qfile_end_use_of_list_cache_entry (thread_p, query_p->list_ent, false);
-      query_p->query_status = QUERY_ENDED;
+      query_p->query_status = QUERY_CLOSED;
     }
 
   /* destroy query result list file */
@@ -2191,13 +2191,13 @@ qmgr_clear_trans_wakeup (THREAD_ENTRY * thread_p, int tran_index, bool is_tran_d
 	    {
 	      (void) qfile_end_use_of_list_cache_entry (thread_p, query_p->list_ent, false);
 	    }
-	  query_p->query_status = QUERY_ENDED;
+	  query_p->query_status = QUERY_CLOSED;
 	}
 
       /* remove query entry */
       q = query_p;
       query_p = query_p->next;
-      if (q->query_status == QUERY_ENDED)
+      if (q->query_status == QUERY_CLOSED)
 	{
 	  if (tran_entry_p->query_entry_list_p == q)
 	    {

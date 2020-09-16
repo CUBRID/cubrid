@@ -116,7 +116,7 @@ typedef enum
 {
   QUERY_IN_PROGRESS,
   QUERY_COMPLETED,		/* execution completed */
-  QUERY_ENDED			/* cursor closed or aborted */
+  QUERY_CLOSED,			/* cursor closed or aborted */
 } QMGR_QUERY_STATUS;
 
 typedef struct qmgr_query_entry QMGR_QUERY_ENTRY;
