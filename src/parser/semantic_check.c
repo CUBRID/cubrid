@@ -8344,7 +8344,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   collation_id = LANG_SYS_COLLATION;
   if ((cs_node != NULL || coll_node != NULL)
       && pt_check_grammar_charset_collation (parser, cs_node, coll_node, &charset, &collation_id,
-					     PT_TYPE_CHAR) != NO_ERROR)
+					     false) != NO_ERROR)
     {
       return;
     }
