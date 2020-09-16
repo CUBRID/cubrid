@@ -5285,7 +5285,7 @@ alter_clause_for_alter_list
 			  }
 
 			if (pt_check_grammar_charset_collation (this_parser, NULL,
-								coll_node, &charset, &coll_id, PT_TYPE_CHAR) == NO_ERROR)
+								coll_node, &charset, &coll_id, false) == NO_ERROR)
 			  {
 			    if (node)
 			      {
@@ -20946,7 +20946,7 @@ opt_using_charset
 			if (temp_node)
 			{
 			  if (pt_check_grammar_charset_collation
-				(this_parser, temp_node, NULL, &charset, &dummy, PT_TYPE_CHAR) == 0)
+				(this_parser, temp_node, NULL, &charset, &dummy, false) == 0)
 			    {
 				parser_free_node (this_parser, temp_node);
 			    }
