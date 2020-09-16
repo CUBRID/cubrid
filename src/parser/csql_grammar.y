@@ -5256,7 +5256,7 @@ alter_clause_for_alter_list
 			  }
 
 			if (pt_check_grammar_charset_collation (this_parser, cs_node,
-								coll_node, &charset, &coll_id, PT_TYPE_CHAR) == NO_ERROR)
+								coll_node, &charset, &coll_id, false) == NO_ERROR)
 			  {
 			    if (node)
 			      {
@@ -19664,7 +19664,7 @@ of_cast_data_type
 			      case PT_TYPE_CHAR:
 			      case PT_TYPE_NCHAR:
 				if (pt_check_grammar_charset_collation
-				    (this_parser, charset_node, coll_node, &charset, &coll_id, typ) == NO_ERROR)
+				    (this_parser, charset_node, coll_node, &charset, &coll_id, false) == NO_ERROR)
 				  {
 				    dt->info.data_type.units = charset;
 				    dt->info.data_type.collation_id = coll_id;
@@ -20150,7 +20150,7 @@ primitive_type
 
 			    if (pt_check_grammar_charset_collation
 				  (this_parser, charset_node,
-				   coll_node, &charset, &coll_id, typ) == NO_ERROR)
+				   coll_node, &charset, &coll_id, true) == NO_ERROR)
 			      {
 				dt->info.data_type.units = charset;
 				dt->info.data_type.collation_id = coll_id;
@@ -20337,7 +20337,8 @@ primitive_type
 			      case PT_TYPE_VARNCHAR:
 				if (pt_check_grammar_charset_collation
 				      (this_parser, charset_node,
-				       coll_node, &charset, &coll_id, typ) == NO_ERROR)
+				       coll_node, &charset, &coll_id,
+				       (typ == PT_TYPE_VARCHAR || typ == PT_TYPE_VARNCHAR)) == NO_ERROR)
 				  {
 				    dt->info.data_type.units = charset;
 				    dt->info.data_type.collation_id = coll_id;
@@ -20558,7 +20559,7 @@ primitive_type
 			    else if (pt_check_grammar_charset_collation (
 					this_parser, charset_node,
 					coll_node, &charset,
-					&coll_id, PT_TYPE_CHAR) == NO_ERROR)
+					&coll_id, false) == NO_ERROR)
 			      {
 				if (charset_node)
 				  {
@@ -20907,7 +20908,7 @@ opt_using_charset
 			if (charset_node)
 			{
 			  if (pt_check_grammar_charset_collation
-			      (this_parser, charset_node, NULL, &charset, &dummy, PT_TYPE_CHAR) == 0)
+			      (this_parser, charset_node, NULL, &charset, &dummy, false) == 0)
 			    {
 			      parser_free_node (this_parser, charset_node);
 			    }

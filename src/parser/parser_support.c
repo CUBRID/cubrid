@@ -8441,7 +8441,7 @@ pt_mark_spec_list_for_update (PARSER_CONTEXT * parser, PT_NODE * statement)
  */
 int
 pt_check_grammar_charset_collation (PARSER_CONTEXT * parser, PT_NODE * charset_node, PT_NODE * coll_node, int *charset,
-				    int *coll_id, PT_TYPE_ENUM type)
+				    int *coll_id, bool is_varchar_type)
 {
   bool has_user_charset = false;
 
@@ -8525,7 +8525,7 @@ pt_check_grammar_charset_collation (PARSER_CONTEXT * parser, PT_NODE * charset_n
 	  *coll_id = LANG_COLL_BINARY;
 	  return NO_ERROR;
 	}
-      if (type == PT_TYPE_VARCHAR || type == PT_TYPE_VARNCHAR)
+      if (is_varchar_type)
 	{
 	  *coll_id = *coll_id + COLL_TS;	/* for trailing space sensitive */
 	}
