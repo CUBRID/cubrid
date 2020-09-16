@@ -2389,7 +2389,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 				      r_args == NULL ? NULL : r_args->keys_file_path);
   if (error_code != NO_ERROR)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_LOAD_FAIL, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_LOAD_FAIL, 0);
       error_code = NO_ERROR;
     }
 
