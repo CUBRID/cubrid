@@ -4811,7 +4811,7 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       /* free temp keys and values */
       if (llsidp->hlsid.temp_key != NULL)
 	{
-	  qdata_free_hscan_key (thread_p, llsidp->hlsid.temp_key, NULL);
+	  qdata_free_hscan_key (thread_p, llsidp->hlsid.temp_key, llsidp->hlsid.temp_key->val_count);
 	  llsidp->hlsid.temp_key = NULL;
 	}
       break;
