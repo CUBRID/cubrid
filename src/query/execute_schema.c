@@ -8839,7 +8839,18 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    {
 	      reuse_oid = true;
 	    }
+
 	  tde_algo = (TDE_ALGORITHM) source_class->tde_algorithm;
+	  if (tde_algo != TDE_ALGORITHM_NONE)
+	    {
+	      error = sm_set_class_tde_algorithm (class_obj, tde_algo);
+	      if (error != NO_ERROR)
+		{
+		  break;
+		}
+	      do_flush_class_mop = true;
+	    }
+
 	  if (source_class->comment)
 	    {
 	      error = sm_set_class_comment (class_obj, source_class->comment);
