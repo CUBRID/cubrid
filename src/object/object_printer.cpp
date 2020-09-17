@@ -953,6 +953,7 @@ void object_printer::describe_class (struct db_object *class_op)
 
   class_description class_descr;
   TDE_ALGORITHM tde_algo;
+  const char *tde_algo_str;
 
   if (class_descr.init (class_op, class_description::SHOW_CREATE_TABLE, m_buf) != NO_ERROR)
     {
@@ -1064,7 +1065,9 @@ void object_printer::describe_class (struct db_object *class_op)
     {
       if (tde_algo != TDE_ALGORITHM_NONE)
 	{
-	  m_buf (" ENCRYPT %s", tde_get_algorithm_name (tde_algo));
+	  tde_algo_str = tde_get_algorithm_name (tde_algo);
+	  assert (tde_algo_str != NULL);
+	  m_buf (" ENCRYPT %s", tde_algo_str);
 	}
     }
 

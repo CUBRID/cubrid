@@ -1154,6 +1154,7 @@ emit_schema (print_output & output_ctx, DB_OBJLIST * classes, int do_auth, DB_OB
 	  if (class_ != NULL)
 	    {
 	      tde_algo_name = tde_get_algorithm_name ((TDE_ALGORITHM) class_->tde_algorithm);
+	      assert (tde_algo_name != NULL);
 	      if (strcmp (tde_algo_name, tde_get_algorithm_name (TDE_ALGORITHM_NONE)) != 0)
 		{
 		  output_ctx (" ENCRYPT %s", tde_algo_name);
