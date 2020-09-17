@@ -2790,6 +2790,8 @@ qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
       return NULL;
     }
 
+  file_temp_preserve (thread_p, &tfile_vfid_p->temp_vfid);
+
   /* chain the tfile_vfid to the query_entry->temp_vfid */
   temp = query_p->temp_vfid;
   query_p->temp_vfid = tfile_vfid_p;
