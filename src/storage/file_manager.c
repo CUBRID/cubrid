@@ -741,7 +741,7 @@ static int file_user_page_table_item_dump (THREAD_ENTRY * thread_p, const void *
 					   void *args);
 static int file_sector_map_dealloc (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop, void *args);
 static int file_set_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, TDE_ALGORITHM tde_algo);
-static void file_get_tde_algorithm_internal (const FILE_HEADER * fhead, TDE_ALGORITHM * tde_algo);
+static TDE_ALGORITHM file_get_tde_algorithm_internal (const FILE_HEADER * fhead);
 static void file_set_tde_algorithm_internal (FILE_HEADER * fhead, TDE_ALGORITHM tde_algo);
 
 /************************************************************************/
@@ -5372,7 +5372,7 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_in
 
   if (FILE_IS_TDE_ENCRYPTED (fhead))
     {
-      file_get_tde_algorithm_internal (fhead, &tde_algo);
+      tde_algo = file_get_tde_algorithm_internal (fhead);
 
       if (!is_page_alloc_fixed)
 	{
@@ -5389,9 +5389,7 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_in
 
 #if !defined (NDEBUG)
   {
-    TDE_ALGORITHM file_tde_algo = TDE_ALGORITHM_NONE;
-
-    file_get_tde_algorithm_internal (fhead, &file_tde_algo);
+    TDE_ALGORITHM file_tde_algo = file_get_tde_algorithm_internal (fhead);
     if (!is_page_alloc_fixed)
       {
 	page_alloc = pgbuf_fix (thread_p, vpid_out, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
@@ -5739,8 +5737,7 @@ file_set_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, TDE_ALGORITH
 
   if (!FILE_IS_TEMPORARY (fhead))
     {
-      TDE_ALGORITHM prev_tde_algo = TDE_ALGORITHM_NONE;
-      file_get_tde_algorithm_internal (fhead, &prev_tde_algo);
+      TDE_ALGORITHM prev_tde_algo = file_get_tde_algorithm_internal (fhead);
       log_append_undoredo_data2 (thread_p, RVFL_FHEAD_SET_TDE_ALGORITHM, NULL, page_fhead, 0, sizeof (TDE_ALGORITHM),
 				 sizeof (TDE_ALGORITHM), &prev_tde_algo, &tde_algo);
     }
@@ -5831,7 +5828,7 @@ file_get_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, TDE_ALGORITH
 
   fhead = (FILE_HEADER *) page_fhead;
 
-  file_get_tde_algorithm_internal (fhead, tde_algo);
+  *tde_algo = file_get_tde_algorithm_internal (fhead);
 
   pgbuf_unfix (thread_p, page_fhead);
 
@@ -5845,23 +5842,23 @@ file_get_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, TDE_ALGORITH
  * tde_algo (out) : encryption algorithm - NONE, AES, ARIA
  *
  */
-void
-file_get_tde_algorithm_internal (const FILE_HEADER * fhead, TDE_ALGORITHM * tde_algo)
+TDE_ALGORITHM
+file_get_tde_algorithm_internal (const FILE_HEADER * fhead)
 {
   // encrpytion algorithms are exclusive
   assert (!((fhead->file_flags & FILE_FLAG_ENCRYPTED_AES) && (fhead->file_flags & FILE_FLAG_ENCRYPTED_ARIA)));
 
   if (fhead->file_flags & FILE_FLAG_ENCRYPTED_AES)
     {
-      *tde_algo = TDE_ALGORITHM_AES;
+      return TDE_ALGORITHM_AES;
     }
   else if (fhead->file_flags & FILE_FLAG_ENCRYPTED_ARIA)
     {
-      *tde_algo = TDE_ALGORITHM_ARIA;
+      return TDE_ALGORITHM_ARIA;
     }
   else
     {
-      *tde_algo = TDE_ALGORITHM_NONE;
+      return TDE_ALGORITHM_NONE;
     }
 }
 
@@ -5930,7 +5927,7 @@ file_apply_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, const TDE_
   context.stop = false;
   context.ftab_collector.partsect_ftab = NULL;
 
-  file_get_tde_algorithm_internal (fhead, &prev_tde_algo);
+  prev_tde_algo = file_get_tde_algorithm_internal (fhead);
 
   if (prev_tde_algo == tde_algo)
     {
