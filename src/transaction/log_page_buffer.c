@@ -7359,7 +7359,7 @@ int
 logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_path, FILEIO_BACKUP_LEVEL backup_level,
 	      bool delete_unneeded_logarchives, const char *backup_verbose_file_path, int num_threads,
 	      FILEIO_ZIP_METHOD zip_method, FILEIO_ZIP_LEVEL zip_level, int skip_activelog, int sleep_msecs,
-	      bool seperate_keys)
+	      bool separate_keys)
 {
   FILEIO_BACKUP_SESSION session;
   const char *from_vlabel;	/* Name of volume to backup (FROM) */
@@ -7386,7 +7386,7 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
   bool bkup_in_progress = false;
 
   char mk_path[PATH_MAX] = { 0, };
-  char seperate_mk_path[PATH_MAX] = { 0, };
+  char separate_mk_path[PATH_MAX] = { 0, };
   char bkpath_without_units[PATH_MAX] = { 0, };
   const char *db_nopath_name_p;
   int keys_vdes = NULL_VOLDES;
@@ -7843,7 +7843,7 @@ loop:
     }
   while (volid != NULL_VOLID);
 
-  if (seperate_keys == false)
+  if (separate_keys == false)
     {
       error_code = fileio_backup_volume (thread_p, &session, mk_path, LOG_DBTDE_KEYS_VOLID, -1, false);
       if (error_code != NO_ERROR)
@@ -7857,9 +7857,9 @@ loop:
       db_nopath_name_p = fileio_get_base_file_name (log_Db_fullname);
       fileio_make_backup_name (bkpath_without_units, db_nopath_name_p, session.bkup.current_path, backup_level,
 			       FILEIO_NO_BACKUP_UNITS);
-      tde_make_keys_volume_fullname (seperate_mk_path, bkpath_without_units, false);
+      tde_make_keys_volume_fullname (separate_mk_path, bkpath_without_units, false);
       /* Keep mounting mk file to be exclusive with other tools */
-      error_code = tde_copy_keys_volume (thread_p, seperate_mk_path, mk_path, false, true);
+      error_code = tde_copy_keys_volume (thread_p, separate_mk_path, mk_path, false, true);
       if (error_code != NO_ERROR)
 	{
 	  goto error;

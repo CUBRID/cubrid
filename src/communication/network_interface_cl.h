@@ -197,7 +197,7 @@ int boot_register_client (BOOT_CLIENT_CREDENTIAL * client_credential, int client
 extern int boot_unregister_client (int tran_index);
 extern int boot_backup (const char *backup_path, FILEIO_BACKUP_LEVEL backup_level, bool delete_unneeded_logarchives,
 			const char *backup_verbose_file, int num_threads, FILEIO_ZIP_METHOD zip_method,
-			FILEIO_ZIP_LEVEL zip_level, int skip_activelog, int sleep_msecs, bool seperate_keys);
+			FILEIO_ZIP_LEVEL zip_level, int skip_activelog, int sleep_msecs, bool separate_keys);
 extern VOLID boot_add_volume_extension (DBDEF_VOL_EXT_INFO * ext_info);
 extern int boot_check_db_consistency (int check_flag, OID * oids, int num_oids, BTID * idx_btid);
 extern int boot_find_number_permanent_volumes (void);

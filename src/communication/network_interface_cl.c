@@ -3827,7 +3827,7 @@ boot_unregister_client (int tran_index)
 int
 boot_backup (const char *backup_path, FILEIO_BACKUP_LEVEL backup_level, bool delete_unneeded_logarchives,
 	     const char *backup_verbose_file, int num_threads, FILEIO_ZIP_METHOD zip_method, FILEIO_ZIP_LEVEL zip_level,
-	     int skip_activelog, int sleep_msecs, bool seperate_keys)
+	     int skip_activelog, int sleep_msecs, bool separate_keys)
 {
 #if defined(CS_MODE)
   int success = ER_FAILED;
@@ -3862,7 +3862,7 @@ boot_backup (const char *backup_path, FILEIO_BACKUP_LEVEL backup_level, bool del
   ptr = or_pack_int (ptr, zip_level);
   ptr = or_pack_int (ptr, skip_activelog);
   ptr = or_pack_int (ptr, sleep_msecs);
-  ptr = or_pack_int (ptr, seperate_keys);
+  ptr = or_pack_int (ptr, separate_keys);
   req_error =
     net_client_request_with_callback (NET_SERVER_BO_BACKUP, request, request_size, reply,
 				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0, &rd1, &d1, &rd2, &d2, NULL,
@@ -3882,7 +3882,7 @@ boot_backup (const char *backup_path, FILEIO_BACKUP_LEVEL backup_level, bool del
   THREAD_ENTRY *thread_p = enter_server ();
 
   success = xboot_backup (thread_p, backup_path, backup_level, delete_unneeded_logarchives, backup_verbose_file,
-			  num_threads, zip_method, zip_level, skip_activelog, sleep_msecs, seperate_keys);
+			  num_threads, zip_method, zip_level, skip_activelog, sleep_msecs, separate_keys);
 
   exit_server (*thread_p);
 

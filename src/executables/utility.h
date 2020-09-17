@@ -138,8 +138,8 @@ typedef enum
 {
   BACKUPDB_INVALID_THREAD_NUM_OPT = 30,
   BACKUPDB_INVALID_PATH = 31,
-  BACKUPDB_USING_SEPERATE_KEYS = 32,
-  BACKUPDB_NOT_USING_SEPERATE_KEYS = 33,
+  BACKUPDB_USING_SEPARATE_KEYS = 32,
+  BACKUPDB_NOT_USING_SEPARATE_KEYS = 33,
   BACKUPDB_FIFO_KEYS_NOT_SUPPORTED = 34,
   BACKUPDB_MSG_USAGE = 60
 } MSGCAT_BACKUPDB_MSG;
@@ -1048,8 +1048,8 @@ typedef struct _ha_config
 #define BACKUP_EXCEPT_ACTIVE_LOG_L              "except-active-log"
 #define BACKUP_SLEEP_MSECS_S                    10600
 #define BACKUP_SLEEP_MSECS_L                    "sleep-msecs"
-#define BACKUP_SEPERATE_KEYS_S                  'k'
-#define BACKUP_SEPERATE_KEYS_L                  "seperate-keys"
+#define BACKUP_SEPARATE_KEYS_S                  'k'
+#define BACKUP_SEPARATE_KEYS_L                  "separate-keys"
 
 
 /* restoredb option list */

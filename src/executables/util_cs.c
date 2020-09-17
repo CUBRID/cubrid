@@ -133,7 +133,7 @@ backupdb (UTIL_FUNCTION_ARG * arg)
   int backup_num_threads;
   bool compress_flag;
   bool sa_mode;
-  bool seperate_keys;
+  bool separate_keys;
   FILEIO_ZIP_METHOD backup_zip_method = FILEIO_ZIP_NONE_METHOD;
   FILEIO_ZIP_LEVEL backup_zip_level = FILEIO_ZIP_NONE_LEVEL;
   bool skip_activelog = false;
@@ -167,7 +167,7 @@ backupdb (UTIL_FUNCTION_ARG * arg)
 
   sleep_msecs = utility_get_option_int_value (arg_map, BACKUP_SLEEP_MSECS_S);
   sa_mode = utility_get_option_bool_value (arg_map, BACKUP_SA_MODE_S);
-  seperate_keys = utility_get_option_bool_value (arg_map, BACKUP_SEPERATE_KEYS_S);
+  separate_keys = utility_get_option_bool_value (arg_map, BACKUP_SEPARATE_KEYS_S);
 
   /* Range checking of input */
   if (backup_level < 0 || backup_level >= FILEIO_BACKUP_UNDEFINED_LEVEL)
@@ -230,7 +230,7 @@ backupdb (UTIL_FUNCTION_ARG * arg)
 	      goto error_exit;
 	    }
 #if !defined (WINDOWS)
-	  else if (seperate_keys)	/* FIFO file and --seperate_keys is exclusive */
+	  else if (separate_keys)	/* FIFO file and --separate_keys is exclusive */
 	    {
 	      PRINT_AND_LOG_ERR_MSG (msgcat_message
 				     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_BACKUPDB,
@@ -241,15 +241,15 @@ backupdb (UTIL_FUNCTION_ARG * arg)
 	}
     }
 
-  if (seperate_keys)
+  if (separate_keys)
     {
       util_log_write_warnstr (msgcat_message
-			      (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_BACKUPDB, BACKUPDB_USING_SEPERATE_KEYS));
+			      (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_BACKUPDB, BACKUPDB_USING_SEPARATE_KEYS));
     }
   else
     {
       util_log_write_warnstr (msgcat_message
-			      (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_BACKUPDB, BACKUPDB_NOT_USING_SEPERATE_KEYS));
+			      (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_BACKUPDB, BACKUPDB_NOT_USING_SEPARATE_KEYS));
     }
 
   /* error message log file */
@@ -323,7 +323,7 @@ backupdb (UTIL_FUNCTION_ARG * arg)
 
   if (boot_backup (backup_path, (FILEIO_BACKUP_LEVEL) backup_level, remove_log_archives, backup_verbose_file,
 		   backup_num_threads, backup_zip_method, backup_zip_level, skip_activelog, sleep_msecs,
-		   seperate_keys) != NO_ERROR)
+		   separate_keys) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       db_shutdown ();

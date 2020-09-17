@@ -3498,7 +3498,7 @@ sboot_backup (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reql
   FILEIO_ZIP_LEVEL zip_level;
   int skip_activelog;
   int sleep_msecs;
-  int seperate_keys;
+  int separate_keys;
 
   ptr = or_unpack_string_nocopy (request, &backup_path);
   ptr = or_unpack_int (ptr, (int *) &backup_level);
@@ -3509,11 +3509,11 @@ sboot_backup (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reql
   ptr = or_unpack_int (ptr, (int *) &zip_level);
   ptr = or_unpack_int (ptr, (int *) &skip_activelog);
   ptr = or_unpack_int (ptr, (int *) &sleep_msecs);
-  ptr = or_unpack_int (ptr, (int *) &seperate_keys);
+  ptr = or_unpack_int (ptr, (int *) &separate_keys);
 
   success =
     xboot_backup (thread_p, backup_path, backup_level, delete_unneeded_logarchives, backup_verbose_file, num_threads,
-		  zip_method, zip_level, skip_activelog, sleep_msecs, seperate_keys);
+		  zip_method, zip_level, skip_activelog, sleep_msecs, separate_keys);
 
   if (success != NO_ERROR)
     {
