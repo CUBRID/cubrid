@@ -10128,7 +10128,7 @@ do_alter_change_col_comment (PARSER_CONTEXT * const parser, PT_NODE * const alte
       error = smt_find_attribute (ctemplate, attr_name, (name_space == ID_CLASS_ATTRIBUTE) ? 1 : 0, &found_attr);
       if (error != NO_ERROR)
 	{
-	  return error;
+	  goto exit;
 	}
 
       assert (found_attr != NULL);
@@ -10145,13 +10145,9 @@ do_alter_change_col_comment (PARSER_CONTEXT * const parser, PT_NODE * const alte
 	      goto exit;
 	    }
 	}
-      else if (comment_str == NULL)
+      else
 	{
-	  if (found_attr->comment != NULL)
-	    {
-	      ws_free_string (found_attr->comment);
-	      found_attr->comment = NULL;
-	    }
+	  ws_free_string_and_init (found_attr->comment);
 	}
 
       attr_node = attr_node->next;
@@ -10173,11 +10169,9 @@ do_alter_change_col_comment (PARSER_CONTEXT * const parser, PT_NODE * const alte
   ctemplate = NULL;
 
 exit:
-
   if (ctemplate != NULL)
     {
       dbt_abort_class (ctemplate);
-      ctemplate = NULL;
     }
 
   if (error != NO_ERROR && tran_saved && error != ER_LK_UNILATERALLY_ABORTED)
