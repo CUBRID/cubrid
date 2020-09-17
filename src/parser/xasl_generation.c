@@ -308,7 +308,7 @@ typedef struct xasl_supp_info
   OID *class_oid_list;		/* list of class/serial OIDs referenced in the XASL */
   int *class_locks;		/* list of locks required for each class in class_oid_list. */
   int *tcard_list;		/* list of #pages of the class OIDs */
-  int n_oid_list;		/* number OIDs in the list0<F9> */
+  int n_oid_list;		/* number OIDs in the list */
   int oid_list_size;		/* size of the list */
   int includes_tde_class;	/* whether there are some tde class in class_oid_list: 0 or 1 */
 } XASL_SUPP_INFO;
