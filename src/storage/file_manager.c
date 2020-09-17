@@ -333,12 +333,14 @@ static bool file_Logging = false;
  "\t\tvfid = %d|%d \n" \
  "\t\t%s \n" \
  "\t\t%s \n" \
+ "\t\ttde_algorithm: %s \n" \
  "\t\tpage: total = %d, user = %d, table = %d, free = %d \n" \
  "\t\tsector: total = %d, partial = %d, full = %d, empty = %d \n"
 #define FILE_HEAD_ALLOC_AS_ARGS(fhead) \
   VFID_AS_ARGS (&(fhead)->self), \
   FILE_PERM_TEMP_STRING (FILE_IS_TEMPORARY (fhead)), \
   FILE_NUMERABLE_REGULAR_STRING (FILE_IS_NUMERABLE (fhead)), \
+  tde_get_algorithm_name (file_get_tde_algorithm_internal (fhead)), \
   (fhead)->n_page_total, (fhead)->n_page_user, (fhead)->n_page_ftab, (fhead)->n_page_free, \
   (fhead)->n_sector_total, (fhead)->n_sector_partial, (fhead)->n_sector_full, (fhead)->n_sector_empty
 
