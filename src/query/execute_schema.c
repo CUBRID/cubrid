@@ -10169,6 +10169,7 @@ do_alter_change_col_comment (PARSER_CONTEXT * const parser, PT_NODE * const alte
   ctemplate = NULL;
 
 exit:
+
   if (ctemplate != NULL)
     {
       dbt_abort_class (ctemplate);
