@@ -29,10 +29,10 @@
 #include <errno.h>
 #if !defined(WINDOWS)
 #include <dirent.h>
-#if 0
+#ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
 #include "sys/socket.h"
 #include "sys/un.h"
-#endif /* TDE for replication log is disabled */
+#endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
 #endif /* !WINDOWNS */
 #include <signal.h>
 
@@ -48,9 +48,9 @@
 #include "log_storage.hpp"
 #include "log_volids.hpp"
 #include "crypt_opfunc.h"
-#if 0
+#ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
 #include "tde.h"
-#endif /* TDE for replication log is disabled */
+#endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
 #if defined(SERVER_MODE)
 #include "log_append.hpp"
 #include "log_manager.h"
@@ -179,9 +179,9 @@ static int logwr_flush_all_append_pages (void);
 static int logwr_archive_active_log (void);
 static int logwr_flush_bgarv_header_page (void);
 static void logwr_reinit_copylog (void);
-#if 0
+#ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
 static int logwr_load_tde (void);
-#endif /* TDE for replication log is disabled */
+#endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
 
 /*
  * logwr_to_physical_pageid -
@@ -841,9 +841,9 @@ logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
   LOG_PHY_PAGEID phy_pageid;
   BACKGROUND_ARCHIVING_INFO *bg_arv_info = NULL;
   LOG_PAGE *log_pgptr = NULL;
-#if 0
+#ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
   LOG_PAGE *buf_pgptr = NULL;
-#endif /* TDE for replication log is disabled */
+#endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
   FILEIO_WRITE_MODE write_mode = FILEIO_WRITE_DEFAULT_WRITE;
   const TDE_ALGORITHM tde_algo = (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_DEFAULT_ALGORITHM);
   int error = NO_ERROR;
@@ -854,9 +854,9 @@ logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
   write_mode = dwb_is_created () == true ? FILEIO_WRITE_NO_COMPENSATE_WRITE : FILEIO_WRITE_DEFAULT_WRITE;
 #endif
 
-#if 0
+#ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
   buf_pgptr = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
-#endif /* TDE for replication log is disabled */
+#endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
 
   if (npages > 0)
     {
@@ -891,7 +891,7 @@ logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
 	  for (i = 0; i < npages; i++)
 	    {
 	      log_pgptr = to_flush[i];
-#if 0
+#ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
 	      if (LOG_IS_PAGE_TDE_ENCRYPTED (log_pgptr))
 		{
 		  logwr_set_tde_algorithm (NULL, log_pgptr, tde_algo);
@@ -919,7 +919,7 @@ logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
 		    }
 		  log_pgptr = buf_pgptr;
 		}
-#endif /* TDE for replication log is disabled */
+#endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
 	      if (fileio_write (NULL, bg_arv_info->vdes, log_pgptr, phy_pageid + i, LOG_PAGESIZE, write_mode) == NULL)
 		{
 		  if (er_errid () == ER_IO_WRITE_OUT_OF_SPACE)
@@ -956,7 +956,7 @@ logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
       for (i = 0; i < npages; i++)
 	{
 	  log_pgptr = to_flush[i];
-#if 0
+#ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
 	  if (LOG_IS_PAGE_TDE_ENCRYPTED (log_pgptr))
 	    {
 	      logwr_set_tde_algorithm (NULL, log_pgptr, tde_algo);
@@ -984,7 +984,7 @@ logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
 		}
 	      log_pgptr = buf_pgptr;
 	    }
-#endif /* TDE for replication log is disabled */
+#endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
 	  if (fileio_write (NULL, logwr_Gl.append_vdes, log_pgptr, phy_pageid + i, LOG_PAGESIZE, write_mode) == NULL)
 	    {
 	      if (er_errid () == ER_IO_WRITE_OUT_OF_SPACE)
@@ -1830,7 +1830,7 @@ logwr_reinit_copylog (void)
   return;
 }
 
-#if 0
+#ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
 static int
 logwr_load_tde (void)
 {
@@ -1954,7 +1954,7 @@ logwr_load_tde (void)
   close (client_sockfd);
   return NO_ERROR;
 }
-#endif /* TDE for replication log is disabled */
+#endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
 
 #else /* CS_MODE */
 int
@@ -2054,7 +2054,7 @@ logwr_log_ha_filestat_to_string (enum LOG_HA_FILESTAT val)
     }
 }
 
-#if 0
+#ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
 TDE_ALGORITHM
 logwr_get_tde_algorithm (const LOG_PAGE * log_pgptr)
 {
@@ -2095,7 +2095,7 @@ logwr_set_tde_algorithm (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, const TD
       break;
     }
 }
-#endif /* TDE for replication log is disabled */
+#endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
 
 #if defined(SERVER_MODE)
 static int logwr_register_writer_entry (LOGWR_ENTRY ** wr_entry_p, THREAD_ENTRY * thread_p, LOG_PAGEID fpageid,

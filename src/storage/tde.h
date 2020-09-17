@@ -94,11 +94,11 @@ enum tde_data_key_type
 };
 typedef tde_data_key_type TDE_DATA_KEY_TYPE;
 
-#if 0
+#ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
 #if defined(CS_MODE)
 #define TDE_HA_SOCK_NAME ".ha_sock"
 #endif /* CS_MODE */
-#endif /* TDE for replication log is disabled */
+#endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
 
 #if !defined(CS_MODE)
 /*

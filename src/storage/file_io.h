@@ -544,9 +544,9 @@ extern void fileio_make_backup_name (char *backup_name, const char *nopath_volna
 extern void fileio_make_dwb_name (char *dwb_name_p, const char *dwb_path_p, const char *db_name_p);
 extern void fileio_make_keys_name (char *keys_name_p, const char *db_name_p);
 extern void fileio_make_keys_name_given_path (char *keys_name_p, const char *keys_path_p, const char *db_name_p);
-#if 0
+#ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
 extern void fileio_make_ha_sock_name (char *sock_path_p, const char *base_path_p, const char *sock_name_p);
-#endif /* TDE for replication log is disabled */
+#endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
 extern void fileio_remove_all_backup (THREAD_ENTRY * thread_p, int level);
 extern FILEIO_BACKUP_SESSION *fileio_initialize_backup (const char *db_fullname, const char *backup_destination,
 							FILEIO_BACKUP_SESSION * session, FILEIO_BACKUP_LEVEL level,
