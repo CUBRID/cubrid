@@ -10137,8 +10137,8 @@ do_alter_change_col_comment (PARSER_CONTEXT * const parser, PT_NODE * const alte
       comment_str = comment_node->info.value.data_value.str;
 
       ws_free_string_and_init (found_attr->comment);
-	found_attr->comment = ws_copy_string ((char *) pt_get_varchar_bytes (comment_str));
-	if (found_attr->comment == NULL && comment_str != NULL)
+      found_attr->comment = ws_copy_string ((char *) pt_get_varchar_bytes (comment_str));
+      if (found_attr->comment == NULL && comment_str != NULL)
 	{
 	  error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
 	  goto exit;
@@ -10163,7 +10163,6 @@ do_alter_change_col_comment (PARSER_CONTEXT * const parser, PT_NODE * const alte
   ctemplate = NULL;
 
 exit:
-
   if (ctemplate != NULL)
     {
       dbt_abort_class (ctemplate);
