@@ -239,7 +239,7 @@ function get_output_from_replica()
 	mkdir $output
 	
 	for replica_host in ${replica_hosts[@]}; do
-		scp_from_expect "$cubrid_user" "$server_password" $output $replica_host $output/$replica_host
+		scp_from_expect "$cubrid_user" "$server_password" $output $replica_host $output/$replica_host 
 	done
 }
 
