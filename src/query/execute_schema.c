@@ -10136,18 +10136,12 @@ do_alter_change_col_comment (PARSER_CONTEXT * const parser, PT_NODE * const alte
       /* comment */
       comment_str = comment_node->info.value.data_value.str;
 
-      if (comment_str != NULL)
+      ws_free_string_and_init (found_attr->comment);
+	found_attr->comment = ws_copy_string ((char *) pt_get_varchar_bytes (comment_str));
+	if (found_attr->comment == NULL && comment_str != NULL)
 	{
-	  found_attr->comment = ws_copy_string ((char *) pt_get_varchar_bytes (comment_str));
-	  if (found_attr->comment == NULL)
-	    {
-	      error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
-	      goto exit;
-	    }
-	}
-      else
-	{
-	  ws_free_string_and_init (found_attr->comment);
+	  error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
+	  goto exit;
 	}
 
       attr_node = attr_node->next;
