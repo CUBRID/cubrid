@@ -5397,7 +5397,7 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_in
 	  if (tde_algo != TDE_ALGORITHM_NONE)
 	    {
 	      fprintf (stdout, "TRACE TDE: file_alloc(): set tde bit in pflag\n"
-		       "VFID = %d|%d, VPID = %d|%d, tde_algorithm = %s\n",
+		       "VFID = %d|%d, VPID = %d|%d, tde_algorithm of the file = %s\n",
 		       VFID_AS_ARGS (&fhead->self), VPID_AS_ARGS (vpid_out), tde_get_algorithm_name (tde_algo));
 	      fflush (stdout);
 	    }
