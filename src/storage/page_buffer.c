@@ -4446,6 +4446,13 @@ pgbuf_set_tde_algorithm (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, TDE_ALGORITHM 
 
   CAST_PGPTR_TO_IOPGPTR (iopage, pgptr);
 
+  prev_tde_algo = pgbuf_get_tde_algorithm (pgptr);
+
+  if (prev_tde_algo == tde_algo)
+    {
+      return;
+    }
+
 #if !defined(NDEBUG)
   if (prm_get_bool_value (PRM_ID_TDE_TRACE_DEBUG))
     {
@@ -4458,7 +4465,6 @@ pgbuf_set_tde_algorithm (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, TDE_ALGORITHM 
 
   if (!skip_logging)
     {
-      prev_tde_algo = pgbuf_get_tde_algorithm (pgptr);
       log_append_undoredo_data2 (thread_p, RVPGBUF_SET_TDE_ALGORITHM, NULL, pgptr, 0, sizeof (TDE_ALGORITHM),
 				 sizeof (TDE_ALGORITHM), &prev_tde_algo, &tde_algo);
     }
