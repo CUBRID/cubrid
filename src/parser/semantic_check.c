@@ -8194,7 +8194,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   DB_OBJECT *db_obj, *existing_entity;
   int found, partition_status = DB_NOT_PARTITIONED_CLASS;
   int collation_id, charset;
-  bool found_reuse_oid_option = false, reuse_oid = true;
+  bool found_reuse_oid_option = false, reuse_oid = false;
   bool found_auto_increment = false;
   bool found_tbl_comment = false;
   int error = NO_ERROR;
