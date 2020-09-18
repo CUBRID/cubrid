@@ -688,6 +688,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_TB_DEFAULT_REUSE_OID "create_table_reuseoid"
 
+#define PRM_NAME_TDE_TRACE_DEBUG "tde_trace_debug"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
@@ -2317,6 +2319,10 @@ static unsigned int prm_allow_truncated_string_flag = 0;
 bool PRM_TB_REUSE_OID = true;
 static bool prm_create_table_reuseoid_default = true;
 static unsigned int prm_create_table_reuseoid = 0;
+
+bool PRM_TDE_TRACE_DEBUG = false;
+static bool prm_tde_trace_debug_default = false;
+static unsigned int prm_tde_trace_debug_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5960,6 +5966,17 @@ static SYSPRM_PARAM prm_Def[] = {
    &prm_create_table_reuseoid,
    (void *) &prm_create_table_reuseoid_default,
    (void *) &PRM_TB_REUSE_OID,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_TDE_TRACE_DEBUG,
+   PRM_NAME_TDE_TRACE_DEBUG,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_tde_trace_debug_flag,
+   (void *) &prm_tde_trace_debug_default,
+   (void *) &PRM_TDE_TRACE_DEBUG,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,

@@ -4083,6 +4083,21 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
 
   fhead = (FILE_HEADER *) page_fhead;
 
+#if !defined(NDEBUG)
+  if (prm_get_bool_value (PRM_ID_TDE_TRACE_DEBUG))
+    {
+      TDE_ALGORITHM tde_algo = file_get_tde_algorithm_internal (fhead);
+      if (tde_algo != TDE_ALGORITHM_NONE)
+	{
+	  fprintf (stdout, "TRACE TDE: file_destroy(): clear tde bit in pflag in all user pages\n"
+		   "VFID = %d|%d, # of encrypting (user) pages = %d,\n"
+		   "tde algorithm = %s\n", VFID_AS_ARGS (&fhead->self), fhead->n_page_user,
+		   tde_get_algorithm_name (tde_algo));
+	  fflush (stdout);
+	}
+    }
+#endif /* !NDEBUG */
+
   assert (is_temp == FILE_IS_TEMPORARY (fhead));
   assert (FILE_IS_TEMPORARY (fhead) || log_check_system_op_is_started (thread_p));
 
@@ -5376,6 +5391,19 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_in
     {
       tde_algo = file_get_tde_algorithm_internal (fhead);
 
+#if !defined (NDEBUG)
+      if (prm_get_bool_value (PRM_ID_TDE_TRACE_DEBUG))
+	{
+	  if (tde_algo != TDE_ALGORITHM_NONE)
+	    {
+	      fprintf (stdout, "TRACE TDE: file_alloc(): set tde bit in pflag\n"
+		       "VFID = %d|%d, VPID = %d|%d, tde_algorithm = %s\n",
+		       VFID_AS_ARGS (&fhead->self), VPID_AS_ARGS (vpid_out), tde_get_algorithm_name (tde_algo));
+	      fflush (stdout);
+	    }
+	}
+#endif /* NDEBUG */
+
       if (!is_page_alloc_fixed)
 	{
 	  page_alloc = pgbuf_fix (thread_p, vpid_out, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
@@ -5737,6 +5765,15 @@ file_set_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, TDE_ALGORITH
   fhead = (FILE_HEADER *) page_fhead;
   file_header_sanity_check (thread_p, fhead);
 
+#if !defined(NDEBUG)
+  if (prm_get_bool_value (PRM_ID_TDE_TRACE_DEBUG))
+    {
+      fprintf (stdout, "TRACE TDE: file_set_tde_algorithm(): \n"
+	       "VFID = %d|%d, tde_algorithm = %s\n", VFID_AS_ARGS (&fhead->self), tde_get_algorithm_name (tde_algo));
+      fflush (stdout);
+    }
+#endif /* !NDEBUG */
+
   if (!FILE_IS_TEMPORARY (fhead))
     {
       TDE_ALGORITHM prev_tde_algo = file_get_tde_algorithm_internal (fhead);
@@ -5936,6 +5973,18 @@ file_apply_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, const TDE_
       /* it is already applied */
       goto exit;
     }
+
+#if !defined(NDEBUG)
+  if (prm_get_bool_value (PRM_ID_TDE_TRACE_DEBUG))
+    {
+      fprintf (stdout, "TRACE TDE: file_apply_tde_algorithm(): \n"
+	       "VFID = %d|%d, # of encrypting (user) pages = %d,\n"
+	       "tde algorithm = %s\n", VFID_AS_ARGS (&fhead->self), fhead->n_page_user,
+	       tde_get_algorithm_name (tde_algo));
+      fflush (stdout);
+    }
+#endif /* !NDEBUG */
+
 
   args.skip_logging = FILE_IS_TEMPORARY (fhead);
   args.tde_algo = tde_algo;
