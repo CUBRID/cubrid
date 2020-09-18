@@ -33,7 +33,7 @@ Before you run ha_make_slavedb.sh, you should configure some parameters in ha_ma
      backup_option=
      restore_option=
      scp_option="-l 131072"  # default - limit : 16M*1024*8=131072
-
+     ssh_port=22
 
 3. How to use
 
