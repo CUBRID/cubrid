@@ -358,7 +358,7 @@ extern void pgbuf_reset_temp_lsa (PAGE_PTR pgptr);
 extern void pgbuf_set_tde_algorithm (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, TDE_ALGORITHM tde_algo,
 				     bool skip_logging);
 extern int pgbuf_rv_set_tde_algorithm (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void pgbuf_get_tde_algorithm (PAGE_PTR pgptr, TDE_ALGORITHM * tde_algo);
+extern TDE_ALGORITHM pgbuf_get_tde_algorithm (PAGE_PTR pgptr);
 extern void pgbuf_get_vpid (PAGE_PTR pgptr, VPID * vpid);
 extern VPID *pgbuf_get_vpid_ptr (PAGE_PTR pgptr);
 extern PGBUF_LATCH_MODE pgbuf_get_latch_mode (PAGE_PTR pgptr);

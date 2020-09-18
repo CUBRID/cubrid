@@ -5402,7 +5402,7 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_in
 	  }
 	is_page_alloc_fixed = true;
       }
-    pgbuf_get_tde_algorithm (page_alloc, &tde_algo);
+    tde_algo = pgbuf_get_tde_algorithm (page_alloc);
 
     assert (tde_algo == file_tde_algo);
   }
@@ -5870,7 +5870,7 @@ file_file_map_set_tde_algorithm (THREAD_ENTRY * thread_p, PAGE_PTR * page, bool 
   FILE_SET_TDE_ALGORITHM_ARGS *tde_args = (FILE_SET_TDE_ALGORITHM_ARGS *) args;
   TDE_ALGORITHM prev_tde_algo = TDE_ALGORITHM_NONE;
 
-  pgbuf_get_tde_algorithm (*page, &prev_tde_algo);
+  prev_tde_algo = pgbuf_get_tde_algorithm (*page);
   if (prev_tde_algo == tde_args->tde_algo)
     {
       return NO_ERROR;
