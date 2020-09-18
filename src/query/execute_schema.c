@@ -8532,7 +8532,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   PT_NODE *create_index = NULL;
   DB_QUERY_TYPE *query_columns = NULL;
   PT_NODE *tbl_opt = NULL;
-  bool found_reuse_oid_option = false, reuse_oid = true;
+  bool found_reuse_oid_option = false, reuse_oid = false;
   bool do_rollback_on_error = false;
   bool do_abort_class_on_error = false;
   bool do_flush_class_mop = false;
