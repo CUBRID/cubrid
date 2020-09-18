@@ -421,7 +421,8 @@ int
 qdata_free_hscan_entry (const void *key, void *data, void *args)
 {
   /* free key */
-  qdata_free_hscan_key ((cubthread::entry *) args, (HASH_SCAN_KEY *) key, ((HASH_SCAN_KEY *) key)->val_count);
+  qdata_free_hscan_key ((cubthread::entry *) args, (HASH_SCAN_KEY *) key,
+			key ? ((HASH_SCAN_KEY *) key)->val_count : 0);
 
   /* free tuple */
   qdata_free_hscan_value ((cubthread::entry *) args, (HASH_SCAN_VALUE *) data);
