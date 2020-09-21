@@ -436,7 +436,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 60 Errore durante l'analisi di \"%1$s\", come tipo %2$s.\n
 61 Riferimento oggetto non è supportato in modalità CS.\n
 62 Statistiche aggiornate per la classe %1$s.\n
-112   %1$d instanze\r
+112   %1$ld instanze\r
 113 Ultima linea committed : %1$d\n
 114 error-control-file
 115 file di input per il controllo di errori durante il carico

@@ -448,7 +448,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 60 Eroare la parsarea lui \"%1$s\", ca fiind de tip %2$s.\n
 61 Referinţa de obiecte nu este acceptată în modul de execuţie independent.\n
 62 Statisticile pentru clasa %1$s au fost updatate.\n
-112   %1$d instanţe\r
+112   %1$ld instanţe\r
 113 Ultima linie salvata (prin commit) : %1$d\n
 114 error-control-file
 115 una sau mai multe erori la încărcarea fişierului de intrare de control

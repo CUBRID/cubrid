@@ -436,7 +436,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 60 Parse-Fehler \"%1$s\", wie %2$s Typ.\n
 61 Objektreferenz wird im CS-Modus nicht unterstützt.\n
 62 Aktualisierte Statistiken für die Klasse %1$s.\n
-112   %1$d Instanzen\r
+112   %1$ld Instanzen\r
 113 Letzte festgeschriebene Zeile: %1$d\n
 114 Fehler-Kontroll-Datei
 115 Eingangsdatei für Fehlerkontrolle während Ladung

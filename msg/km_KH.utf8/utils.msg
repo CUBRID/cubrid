@@ -437,7 +437,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 60 Error parsing \"%1$s\", as %2$s type.\n
 61 Object Reference is not supported in CS mode.\n
 62 Updated statistics for class %1$s.\n
-112   %1$d instances\r
+112   %1$ld instances\r
 113 Last committed line : %1$d\n
 114 error-control-file
 115 input file to control error(s) during loading

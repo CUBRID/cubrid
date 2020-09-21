@@ -436,7 +436,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 60 「%1$s」を「%2$s」タイプにパーシングエラー \n
 61 Object Reference is not supported in CS mode.\n
 62 Updated statistics for class %1$s.\n
-112   %1$d個のインスタンス\r
+112   %1$ld個のインスタンス\r
 113 最後にコミットされたライン : %1$d\n
 114 エラーコントロールファイル
 115 ロードする時にエラー制御のための入力ファイル

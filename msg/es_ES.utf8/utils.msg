@@ -436,7 +436,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 60 Error al analizar \"%1$s\", como tipo %2$s.\n
 61 La referencia de objeto no es compatible con el modo CS.\n
 62 Estadísticas actualizadas para la clase %1$s.\n
-112 %1$d instancias\r
+112 %1$ld instancias\r
 113 Ultima linea cometida: %1$d\n
 114 error-control-file
 115 archivo de entrada para controlar error(es) al cargar

@@ -436,7 +436,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 60 Hata ayrıştırma \"%1$s\", gibi %2$s tür.\n
 61 Nesne Referans CS modunda desteklenmez.\n
 62 %1$s sınıfı için güncellenmiş istatistikler.\n
-112   %1$d örnekleri\r
+112   %1$ld örnekleri\r
 113 Son kararlı hattı: %1$d\n
 114 hata-kontrol-dosyası
 115 yükleme sırasında bir hata(lar) kontrol etmek için giriş dosyası
