@@ -24181,7 +24181,7 @@ outofmem:
 static bool
 validate_regu_key_function_index (REGU_VARIABLE * regu_var)
 {
-  /* if add it here, add it to pt_expr_is_allowed_as_function_index () as well */
+  /* if add it here, add it to pt_expr_is_allowed_as_function_index() as well */
   if (regu_var->type == TYPE_INARITH)
     {
       switch (regu_var->value.arithptr->opcode)
