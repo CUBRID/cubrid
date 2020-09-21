@@ -10612,9 +10612,9 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
   char *new_ = NULL, *start = NULL;
   int str_length;
   int rc = NO_ERROR;
-  int compressed_size = 0, decompressed_size = 0;
+  int compressed_size = 0, expected_decompressed_size = 0;
   char *decompressed_string = NULL, *string = NULL, *compressed_string = NULL;
-  lzo_uint decompression_size = 0;
+  int decompressed_size = 0;
   bool compressed_need_clear = false;
 
   if (value == NULL)
@@ -10656,7 +10656,7 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 	    }
 	  /* Get the compressed size and uncompressed size from the buffer, and point the buf->ptr
 	   * towards the data stored in the buffer */
-	  rc = or_get_varchar_compression_lengths (buf, &compressed_size, &decompressed_size);
+	  rc = or_get_varchar_compression_lengths (buf, &compressed_size, &expected_decompressed_size);
 	  if (rc != NO_ERROR)
 	    {
 	      return rc;
@@ -10666,24 +10666,24 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 	    {
 	      str_length = compressed_size;
 
-	      string = (char *) db_private_alloc (NULL, decompressed_size + 1);
+	      string = (char *) db_private_alloc (NULL, expected_decompressed_size + 1);
 	      if (string == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			  decompressed_size * sizeof (char));
+			  expected_decompressed_size * sizeof (char));
 		  rc = ER_OUT_OF_VIRTUAL_MEMORY;
 		  goto cleanup;
 		}
 
 	      start = buf->ptr;
 
-	      rc = pr_get_compressed_data_from_buffer (buf, string, compressed_size, decompressed_size);
+	      rc = pr_get_compressed_data_from_buffer (buf, string, compressed_size, expected_decompressed_size);
 	      if (rc != NO_ERROR)
 		{
 		  goto cleanup;
 		}
-	      string[decompressed_size] = '\0';
-	      db_make_varchar (value, precision, string, decompressed_size, TP_DOMAIN_CODESET (domain),
+	      string[expected_decompressed_size] = '\0';
+	      db_make_varchar (value, precision, string, expected_decompressed_size, TP_DOMAIN_CODESET (domain),
 			       TP_DOMAIN_COLLATION (domain));
 	      value->need_clear = true;
 
@@ -10705,8 +10705,8 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 	    {
 	      assert (compressed_size == 0);
 
-	      str_length = decompressed_size;
-	      db_make_varchar (value, precision, buf->ptr, decompressed_size, TP_DOMAIN_CODESET (domain),
+	      str_length = expected_decompressed_size;
+	      db_make_varchar (value, precision, buf->ptr, expected_decompressed_size, TP_DOMAIN_CODESET (domain),
 			       TP_DOMAIN_COLLATION (domain));
 	      value->need_clear = false;
 	      db_set_compressed_string (value, NULL, DB_UNCOMPRESSABLE, false);
@@ -10732,7 +10732,7 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 	    }			/* size != -1 */
 
 	  /* Get the length of the string, be it compressed or uncompressed. */
-	  rc = or_get_varchar_compression_lengths (buf, &compressed_size, &decompressed_size);
+	  rc = or_get_varchar_compression_lengths (buf, &compressed_size, &expected_decompressed_size);
 	  if (rc != NO_ERROR)
 	    {
 	      return ER_FAILED;
@@ -10740,7 +10740,7 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 	  if (compressed_size <= 0)
 	    {
 	      assert (compressed_size == 0);
-	      str_length = decompressed_size;
+	      str_length = expected_decompressed_size;
 	    }
 	  else
 	    {
@@ -10802,34 +10802,30 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 	      if (compressed_size > 0)
 		{
 		  /* String was compressed */
-		  assert (decompressed_size > 0);
+		  assert (expected_decompressed_size > 0);
 
-		  decompression_size = 0;
+		  decompressed_size = 0;
 
 		  /* Handle decompression */
-		  decompressed_string = (char *) db_private_alloc (NULL, decompressed_size + 1);
+		  decompressed_string = (char *) db_private_alloc (NULL, expected_decompressed_size + 1);
 		  if (decompressed_string == NULL)
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			      (size_t) decompressed_size * sizeof (char));
+			      (size_t) expected_decompressed_size * sizeof (char));
 		      rc = ER_OUT_OF_VIRTUAL_MEMORY;
 		      goto cleanup;
 		    }
 
 		  /* decompressing the string */
-		  rc = lzo1x_decompress ((lzo_bytep) new_, (lzo_uint) compressed_size,
-					 (lzo_bytep) decompressed_string, &decompression_size, NULL);
-		  if (rc != LZO_E_OK)
+		  decompressed_size =
+		    LZ4_decompress_safe (new_, decompressed_string, compressed_size, expected_decompressed_size);
+		  if (decompressed_size < 0)
 		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZO_DECOMPRESS_FAIL, 0);
-		      rc = ER_IO_LZO_DECOMPRESS_FAIL;
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZ4_DECOMPRESS_FAIL, 0);
+		      rc = ER_IO_LZ4_DECOMPRESS_FAIL;
 		      goto cleanup;
 		    }
-		  if (decompression_size != (lzo_uint) decompressed_size)
-		    {
-		      /* Decompression failed. It shouldn't. */
-		      assert (false);
-		    }
+		  assert (decompressed_size == expected_decompressed_size);
 
 		  compressed_string = (char *) db_private_alloc (NULL, compressed_size + 1);
 		  if (compressed_string == NULL)
@@ -10850,7 +10846,7 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		    }
 
 		  new_ = decompressed_string;
-		  str_length = decompressed_size;
+		  str_length = expected_decompressed_size;
 		}
 
 	      new_[str_length] = '\0';	/* append the kludge NULL terminator */
@@ -13472,7 +13468,7 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
   INTL_CODESET codeset;
 #endif
   char *new_ = NULL, *start = NULL, *string = NULL, *compressed_string = NULL;
-  int str_length, decompressed_size = 0, compressed_size = 0;
+  int str_length, expected_decompressed_size = 0, compressed_size = 0;
   char *decompressed_string = NULL;
   int rc = NO_ERROR;
   bool compressed_need_clear = false;
@@ -13526,7 +13522,7 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 	   * If compressed_size is set to -1, then the string is not compressed at all.
 	   * If compressed_size is set to 0, the string was attempted to be compressed, however it failed.
 	   */
-	  rc = or_get_varchar_compression_lengths (buf, &compressed_size, &decompressed_size);
+	  rc = or_get_varchar_compression_lengths (buf, &compressed_size, &expected_decompressed_size);
 	  if (rc != NO_ERROR)
 	    {
 	      return rc;
@@ -13535,11 +13531,11 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 	  if (compressed_size > 0)
 	    {
 	      str_length = compressed_size;
-	      string = (char *) db_private_alloc (NULL, decompressed_size + 1);
+	      string = (char *) db_private_alloc (NULL, expected_decompressed_size + 1);
 	      if (string == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			  decompressed_size * sizeof (char));
+			  expected_decompressed_size * sizeof (char));
 		  rc = ER_OUT_OF_VIRTUAL_MEMORY;
 		  return rc;
 		}
@@ -13547,14 +13543,14 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 	      start = buf->ptr;
 
 	      /* Getting data from the buffer. */
-	      rc = pr_get_compressed_data_from_buffer (buf, string, compressed_size, decompressed_size);
+	      rc = pr_get_compressed_data_from_buffer (buf, string, compressed_size, expected_decompressed_size);
 
 	      if (rc != NO_ERROR)
 		{
 		  goto cleanup;
 		}
-	      string[decompressed_size] = '\0';
-	      db_make_varnchar (value, precision, string, decompressed_size, TP_DOMAIN_CODESET (domain),
+	      string[expected_decompressed_size] = '\0';
+	      db_make_varnchar (value, precision, string, expected_decompressed_size, TP_DOMAIN_CODESET (domain),
 				TP_DOMAIN_COLLATION (domain));
 	      value->need_clear = true;
 
@@ -13574,8 +13570,8 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 	  else
 	    {
 	      /* If there is no decompression, then buf->ptr points to the data stored in buffer. */
-	      str_length = decompressed_size;
-	      db_make_varnchar (value, precision, buf->ptr, decompressed_size, TP_DOMAIN_CODESET (domain),
+	      str_length = expected_decompressed_size;
+	      db_make_varnchar (value, precision, buf->ptr, expected_decompressed_size, TP_DOMAIN_CODESET (domain),
 				TP_DOMAIN_COLLATION (domain));
 	      value->need_clear = false;
 	      compressed_size = DB_UNCOMPRESSABLE;
@@ -13603,7 +13599,7 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 	      start = buf->ptr;
 	    }			/* size != -1 */
 
-	  rc = or_get_varchar_compression_lengths (buf, &compressed_size, &decompressed_size);
+	  rc = or_get_varchar_compression_lengths (buf, &compressed_size, &expected_decompressed_size);
 	  if (rc != NO_ERROR)
 	    {
 	      return ER_FAILED;
@@ -13612,7 +13608,7 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 	  if (compressed_size <= 0)
 	    {
 	      assert (compressed_size == 0);
-	      str_length = decompressed_size;
+	      str_length = expected_decompressed_size;
 	    }
 	  else
 	    {
@@ -13672,36 +13668,33 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 	      if (compressed_size > 0)
 		{
 		  /* String was compressed */
-		  lzo_uint decompression_size = 0;
+		  int decompressed_size = 0;
 
-		  assert (decompressed_size > 0);
+		  assert (expected_decompressed_size > 0);
 
 		  /* Handle decompression */
-		  decompressed_string = (char *) db_private_alloc (NULL, decompressed_size + 1);
+		  decompressed_string = (char *) db_private_alloc (NULL, expected_decompressed_size + 1);
 
 		  if (decompressed_string == NULL)
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			      (size_t) decompressed_size * sizeof (char));
+			      (size_t) expected_decompressed_size * sizeof (char));
 		      rc = ER_OUT_OF_VIRTUAL_MEMORY;
 		      goto cleanup;
 		    }
 
 		  /* decompressing the string */
-		  rc = lzo1x_decompress ((lzo_bytep) new_, (lzo_uint) compressed_size,
-					 (lzo_bytep) decompressed_string, &decompression_size, NULL);
-		  if (rc != LZO_E_OK)
+		  decompressed_size =
+		    LZ4_decompress_safe (new_, decompressed_string, compressed_size, expected_decompressed_size);
+		  if (decompressed_size < 0)
 		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZO_DECOMPRESS_FAIL, 0);
-		      rc = ER_IO_LZO_DECOMPRESS_FAIL;
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZ4_DECOMPRESS_FAIL, 0);
+		      rc = ER_IO_LZ4_DECOMPRESS_FAIL;
 		      goto cleanup;
 		    }
 
-		  if (decompression_size != (lzo_uint) decompressed_size)
-		    {
-		      /* Decompression failed. It shouldn't. */
-		      assert (false);
-		    }
+		  assert (decompressed_size == expected_decompressed_size);
+
 		  /* The compressed string stored in buf is now decompressed in decompressed_string
 		   * and is needed now to be copied over new_. */
 
@@ -13724,7 +13717,7 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 		    }
 
 		  new_ = decompressed_string;
-		  str_length = decompressed_size;
+		  str_length = expected_decompressed_size;
 		}
 
 	      if (TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL)
@@ -15743,32 +15736,29 @@ mr_cmpval_enumeration (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, in
  * buf(in)					  : The buffer from which is needed decompression.
  * data(out)					  : The result of the decompression. !!! Needs to be alloc'ed !!!
  * compressed_size(in)				  : The compressed data size.
- * decompressed_size(in)			  : The uncompressed data size.
+ * expected_decompressed_sizes(in)		  : The expected uncompressed data size.
  */
 int
-pr_get_compressed_data_from_buffer (struct or_buf *buf, char *data, int compressed_size, int decompressed_size)
+pr_get_compressed_data_from_buffer (struct or_buf *buf, char *data, int compressed_size, int expected_decompressed_size)
 {
   int rc = NO_ERROR;
 
   /* Check if the string needs decompression */
   if (compressed_size > 0)
     {
-      lzo_uint decompression_size = 0;
+      int decompressed_size = 0;
       /* Handle decompression */
 
       /* decompressing the string */
-      rc = lzo1x_decompress ((lzo_bytep) buf->ptr, (lzo_uint) compressed_size, (lzo_bytep) data, &decompression_size,
-			     NULL);
-      if (rc != LZO_E_OK)
+      decompressed_size = LZ4_decompress_safe (buf->ptr, data, compressed_size, expected_decompressed_size);
+      if (decompressed_size < 0)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZO_DECOMPRESS_FAIL, 0);
-	  return ER_IO_LZO_DECOMPRESS_FAIL;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZ4_DECOMPRESS_FAIL, 0);
+	  return ER_IO_LZ4_DECOMPRESS_FAIL;
 	}
-      if (decompression_size != (lzo_uint) decompressed_size)
-	{
-	  /* Decompression failed. It shouldn't. */
-	  assert (false);
-	}
+
+      assert (decompressed_size == expected_decompressed_size);
+
       data[decompressed_size] = '\0';
     }
   else
@@ -15776,8 +15766,8 @@ pr_get_compressed_data_from_buffer (struct or_buf *buf, char *data, int compress
       /* String is not compressed and buf->ptr is pointing towards an array of chars of length equal to
        * decompressed_size */
 
-      rc = or_get_data (buf, data, decompressed_size);
-      data[decompressed_size] = '\0';
+      rc = or_get_data (buf, data, expected_decompressed_size);
+      data[expected_decompressed_size] = '\0';
     }
 
   return rc;
@@ -15789,74 +15779,58 @@ pr_get_compressed_data_from_buffer (struct or_buf *buf, char *data, int compress
  * return()				  : The length of the compression, based on the new encoding of varchar.
  *					    If the compression fails, then it returns charlen.
  * string(in)				  : The string to be compressed.
- * charlen(in)				  : The length of the string to be compressed.
+ * str_length(in)				  : The length of the string to be compressed.
  */
 int
-pr_get_compression_length (const char *string, int charlen)
+pr_get_compression_length (const char *string, int str_length)
 {
-  lzo_voidp wrkmem;
   char *compressed_string = NULL;
-  lzo_uint compressed_length = 0;
+  int compressed_length = 0;
   int rc = NO_ERROR;
-  int length = 0;
+  int length = 0, compress_buffer_size;
 
-  length = charlen;
-
-  if (!pr_Enable_string_compression)	/* compression is not set */
+  assert (str_length >= OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION);
+  if (!pr_Enable_string_compression || str_length > LZ4_MAX_INPUT_SIZE)	/* compression is not set */
     {
-      return length;
+      return str_length;
     }
-  wrkmem = (lzo_voidp) malloc (LZO1X_1_MEM_COMPRESS);
-  if (wrkmem == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) LZO1X_1_MEM_COMPRESS);
-      goto cleanup;
-    }
-
-  memset (wrkmem, 0x00, LZO1X_1_MEM_COMPRESS);
 
   /* Alloc memory for the compressed string */
-  /* Worst case LZO compression size from their FAQ */
-  compressed_string = (char *) malloc (LZO_COMPRESSED_STRING_SIZE (length));
+  compress_buffer_size = LZ4_compressBound (str_length);
+  compressed_string = (char *) malloc (compress_buffer_size);
   if (compressed_string == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, (size_t) (LZO_COMPRESSED_STRING_SIZE (length)));
-      goto cleanup;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) compress_buffer_size);
+      return str_length;
     }
 
   /* Compress the string */
-  rc = lzo1x_1_compress ((lzo_bytep) string, (lzo_uint) length, (lzo_bytep) compressed_string, &compressed_length,
-			 wrkmem);
-  if (rc != LZO_E_OK)
+  compressed_length = LZ4_compress_default (string, compressed_string, str_length, compress_buffer_size);
+  if (compressed_length <= 0)
     {
       /* We should not be having any kind of errors here. Because if this compression fails, there is not warranty
        * that the compression from putting data into buffer will fail as well. This needs to be checked but for now
        * we leave it as it is.
        */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZO_COMPRESS_FAIL, 4, FILEIO_ZIP_LZO1X_METHOD,
-	      fileio_get_zip_method_string (FILEIO_ZIP_LZO1X_METHOD), FILEIO_ZIP_LZO1X_DEFAULT_LEVEL,
-	      fileio_get_zip_level_string (FILEIO_ZIP_LZO1X_DEFAULT_LEVEL));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZ4_COMPRESS_FAIL, 4, FILEIO_ZIP_LZ4_METHOD,
+	      fileio_get_zip_method_string (FILEIO_ZIP_LZ4_METHOD), FILEIO_ZIP_LZ4_DEFAULT_LEVEL,
+	      fileio_get_zip_level_string (FILEIO_ZIP_LZ4_DEFAULT_LEVEL));
       goto cleanup;
     }
+  assert (compressed_length <= compress_buffer_size);
 
-  if (compressed_length < (lzo_uint) (charlen - 8))
+  if (compressed_length < str_length - 8)
     {
       /* Compression successful */
-      length = (int) compressed_length;
+      length = compressed_length;
     }
   else
     {
       /* Compression failed */
-      length = charlen;
+      length = str_length;
     }
 
 cleanup:
-  /* Free the working memory needed for compression */
-  if (wrkmem != NULL)
-    {
-      free_and_init (wrkmem);
-    }
 
   if (compressed_string != NULL)
     {
@@ -15886,8 +15860,7 @@ pr_get_size_and_write_string_to_buffer (struct or_buf *buf, char *val_p, DB_VALU
   const char *string = NULL, *str = NULL;
   char *compressed_string = NULL;
   int rc = NO_ERROR, str_length = 0, length = 0;
-  lzo_uint compression_length = 0;
-  lzo_bytep wrkmem = NULL;
+  int compression_length = 0, compress_buffer_size;
   bool compressed = false;
   int save_error_abort = 0;
 
@@ -15902,7 +15875,7 @@ pr_get_size_and_write_string_to_buffer (struct or_buf *buf, char *val_p, DB_VALU
   str_length = db_get_string_size (value);
   *val_size = 0;
 
-  if (!pr_Enable_string_compression)	/* compression is not set */
+  if (!pr_Enable_string_compression || db_get_string_size (value) > LZ4_MAX_INPUT_SIZE)	/* compression is not set */
     {
       length = str_length;
       compression_length = 0;
@@ -15911,44 +15884,32 @@ pr_get_size_and_write_string_to_buffer (struct or_buf *buf, char *val_p, DB_VALU
     }
 
   /* Step 1 : Compress, if possible, the dbvalue */
-  wrkmem = (unsigned char *) malloc (LZO1X_1_MEM_COMPRESS);
-  if (wrkmem == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) LZO1X_1_MEM_COMPRESS);
-      rc = ER_OUT_OF_VIRTUAL_MEMORY;
-      goto cleanup;
-    }
-
-  memset (wrkmem, 0x00, LZO1X_1_MEM_COMPRESS);
-
   /* Alloc memory for the compressed string */
-  /* Worst case LZO compression size from their FAQ */
-  compressed_string = (char *) malloc (LZO_COMPRESSED_STRING_SIZE (str_length));
+  compress_buffer_size = LZ4_compressBound (str_length);
+  compressed_string = (char *) malloc (compress_buffer_size);
   if (compressed_string == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      (size_t) LZO_COMPRESSED_STRING_SIZE (str_length));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, compress_buffer_size);
       rc = ER_OUT_OF_VIRTUAL_MEMORY;
       goto cleanup;
     }
 
-  /* Compress the string */
-  rc = lzo1x_1_compress ((lzo_bytep) string, (lzo_uint) str_length, (lzo_bytep) compressed_string, &compression_length,
-			 wrkmem);
-  if (rc != LZO_E_OK)
+  compression_length = LZ4_compress_default (string, compressed_string, str_length, compress_buffer_size);
+  if (compression_length <= 0)
     {
       /* We should not be having any kind of errors here. Because if this compression fails, there is not warranty
        * that the compression from putting data into buffer will fail as well. This needs to be checked but for now
        * we leave it as it is.
        */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZO_COMPRESS_FAIL, 4, FILEIO_ZIP_LZO1X_METHOD,
-	      fileio_get_zip_method_string (FILEIO_ZIP_LZO1X_METHOD), FILEIO_ZIP_LZO1X_DEFAULT_LEVEL,
-	      fileio_get_zip_level_string (FILEIO_ZIP_LZO1X_DEFAULT_LEVEL));
-      rc = ER_IO_LZO_COMPRESS_FAIL;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZ4_COMPRESS_FAIL, 4, FILEIO_ZIP_LZ4_METHOD,
+	      fileio_get_zip_method_string (FILEIO_ZIP_LZ4_METHOD), FILEIO_ZIP_LZ4_DEFAULT_LEVEL,
+	      fileio_get_zip_level_string (FILEIO_ZIP_LZ4_DEFAULT_LEVEL));
+      rc = ER_IO_LZ4_COMPRESS_FAIL;
       goto cleanup;
     }
+  assert (compression_length <= compress_buffer_size);
 
-  if (compression_length < (lzo_uint) (str_length - 8))
+  if (compression_length < str_length - 8)
     {
       /* Compression successful */
       length = (int) compression_length;
@@ -16007,11 +15968,6 @@ cleanup:
       free_and_init (compressed_string);
     }
 
-  if (wrkmem != NULL)
-    {
-      free_and_init (wrkmem);
-    }
-
   if (rc == ER_TF_BUFFER_OVERFLOW)
     {
       return or_overflow (buf);
@@ -16038,7 +15994,8 @@ pr_write_compressed_string_to_buffer (OR_BUF * buf, const char *compressed_strin
   int storage_length = 0;
   int rc = NO_ERROR;
 
-  assert (decompressed_length >= OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION);
+  assert (decompressed_length >= OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION
+	  && (compressed_length <= 0 || decompressed_length <= LZ4_MAX_INPUT_SIZE));
 
   /* store the size prefix */
   rc = or_put_byte (buf, 0xFF);
@@ -16151,52 +16108,43 @@ pr_write_uncompressed_string_to_buffer (OR_BUF * buf, const char *string, int si
  *  string(in)		      :- String to be compressed.
  *  str_length(in)	      :- The size of the string.
  *  compressed_string(out)    :- The compressed string. Needs to be alloced!!!!!
- *  compressed_length(out)    :- The size of the compressed string. If it's -1 after this, it means
- *			      :- compression failed, so the compressed_string can be free'd.
+ *  compress_buffer_size(in)  :- The compressed string buffer size.
+ *  compressed_length(out)    :- The compressed string length.
  *
  */
 int
-pr_data_compress_string (const char *string, int str_length, char *compressed_string, int *compressed_length)
+pr_data_compress_string (const char *string, int str_length, char *compressed_string, int compress_buffer_size,
+			 int *compressed_length)
 {
-  int rc = NO_ERROR;
-  lzo_voidp wrkmem = NULL;
-  lzo_uint compressed_length_local = 0;
+  int compressed_length_local = 0;
 
-  *compressed_length = 0;
+  assert (string != NULL && compressed_string != NULL && compressed_length != NULL && str_length >= 0
+	  && compress_buffer_size >= 0);
 
-  if (str_length < OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+  if (!OR_IS_STRING_LENGTH_COMPRESSABLE (str_length))
     {
-      return rc;
+      *compressed_length = 0;
+      return NO_ERROR;
     }
 
   if (!pr_Enable_string_compression)	/* compression is not set */
     {
       *compressed_length = -1;
-      return rc;
+      return NO_ERROR;
     }
-
-  wrkmem = (lzo_voidp) malloc (LZO1X_1_MEM_COMPRESS);
-  if (wrkmem == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) LZO1X_1_MEM_COMPRESS);
-      rc = ER_OUT_OF_VIRTUAL_MEMORY;
-      goto cleanup;
-    }
-  memset (wrkmem, 0x00, LZO1X_1_MEM_COMPRESS);
 
   /* Compress the string */
-  rc = lzo1x_1_compress ((lzo_bytep) string, (lzo_uint) str_length, (lzo_bytep) compressed_string,
-			 &compressed_length_local, wrkmem);
-  if (rc != LZO_E_OK)
+  compressed_length_local = LZ4_compress_default (string, compressed_string, str_length, compress_buffer_size);
+  if (compressed_length_local <= 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZO_COMPRESS_FAIL, 4, FILEIO_ZIP_LZO1X_METHOD,
-	      fileio_get_zip_method_string (FILEIO_ZIP_LZO1X_METHOD), FILEIO_ZIP_LZO1X_DEFAULT_LEVEL,
-	      fileio_get_zip_level_string (FILEIO_ZIP_LZO1X_DEFAULT_LEVEL));
-      rc = ER_IO_LZO_COMPRESS_FAIL;
-      goto cleanup;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZ4_COMPRESS_FAIL, 4, FILEIO_ZIP_LZ4_METHOD,
+	      fileio_get_zip_method_string (FILEIO_ZIP_LZ4_METHOD), FILEIO_ZIP_LZ4_DEFAULT_LEVEL,
+	      fileio_get_zip_level_string (FILEIO_ZIP_LZ4_DEFAULT_LEVEL));
+      return ER_IO_LZ4_COMPRESS_FAIL;
     }
+  assert (compressed_length_local <= compress_buffer_size);
 
-  if (compressed_length_local >= (lzo_uint) (str_length - 8))
+  if (compressed_length_local >= str_length - 8)
     {
       /* Compression successful but its length exceeds the original length of the string. */
       /* We will also be freeing the compressed_string since we will not need it anymore. */
@@ -16205,23 +16153,10 @@ pr_data_compress_string (const char *string, int str_length, char *compressed_st
   else
     {
       /* Compression successful */
-      *compressed_length = (int) compressed_length_local;
-
-      /* Clean the wrkmem */
-      if (wrkmem != NULL)
-	{
-	  free_and_init (wrkmem);
-	}
-      return rc;
+      *compressed_length = compressed_length_local;
     }
 
-cleanup:
-  if (wrkmem != NULL)
-    {
-      free_and_init (wrkmem);
-    }
-
-  return rc;
+  return NO_ERROR;
 }
 
 /*
@@ -16287,7 +16222,7 @@ pr_do_db_value_string_compression (DB_VALUE * value)
   const char *string;
   char *compressed_string;
   int rc = NO_ERROR;
-  int src_size = 0, compressed_size;
+  int src_size = 0, compressed_size, compressed_length;
 
   if (value == NULL || DB_IS_NULL (value))
     {
@@ -16311,7 +16246,7 @@ pr_do_db_value_string_compression (DB_VALUE * value)
   string = db_get_string (value);
   src_size = db_get_string_size (value);
 
-  if (!pr_Enable_string_compression || src_size < OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+  if (!pr_Enable_string_compression || !OR_IS_STRING_LENGTH_COMPRESSABLE (src_size))
     {
       /* Either compression was disabled or the source size is less than the compression threshold. */
       value->data.ch.medium.compressed_buf = NULL;
@@ -16320,26 +16255,26 @@ pr_do_db_value_string_compression (DB_VALUE * value)
     }
 
   /* Alloc memory for compression */
-  compressed_string = (char *) db_private_alloc (NULL, LZO_COMPRESSED_STRING_SIZE (src_size));
+  compressed_size = LZ4_compressBound (src_size);
+  compressed_string = (char *) db_private_alloc (NULL, compressed_size);
   if (compressed_string == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, (size_t) (LZO_COMPRESSED_STRING_SIZE (src_size)));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, compressed_size);
       rc = ER_OUT_OF_VIRTUAL_MEMORY;
       return rc;
     }
 
-  rc = pr_data_compress_string (string, src_size, compressed_string, &compressed_size);
+  rc = pr_data_compress_string (string, src_size, compressed_string, compressed_size, &compressed_length);
   if (rc != NO_ERROR)
     {
       ASSERT_ERROR ();
       goto error;
     }
 
-  if (compressed_size > 0)
+  if (compressed_length > 0)
     {
       /* Compression successful */
-      db_set_compressed_string (value, compressed_string, compressed_size, true);
+      db_set_compressed_string (value, compressed_string, compressed_length, true);
       return rc;
     }
   else

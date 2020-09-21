@@ -552,16 +552,17 @@ compactdb: データベースで使用しない領域を解除。\n\
   -i, --input-class-file=FILE       テーブル名が入っているファイルを入力\n\
                                     class_nameリストは必ず空いている必要があります。\n\
                                     デフォルト: すべてのクラスをコンパクト\n\
-                                    クライアントーサーバモードでしか作動しない。\n\
   -p, --pages-commited-once=NUMBER  一回にコミットする最大ページ数\n\
                                     デフォルト: 10\n\
                                     クライアントーサーバモードでしか作動しない。\n\
   -S, --SA-mode                     スタンドアロンモードで実行\n\
   -C, --CS-mode                     クライアントーサーバモードで実行\n\
   -d, --delete-old-repr             カタログから古いクラス情報を削除; デフォルト: 削除しない\n\
-  class_name_list                   クライアントーサーバモードでしか作動しない。\n\
   -I, --Instance-lock-timeout       インスタンスロックのタイムアウト\n\
-  -c, --class-lock-timeout          クラスロックのタイムアウト\n
+                                    クライアントーサーバモードでしか作動しない。\n\
+  -c, --class-lock-timeout          クラスロックのタイムアウト\n\
+                                    クライアントーサーバモードでしか作動しない。\n\
+  class_name_list                   圧縮するクラス名のリスト\n
 
 $set 15 MSGCAT_UTIL_SET_COMMDB
 21 CUBRIDマスターがホスト%1$sで実行中です。%2$sに始まって
@@ -807,6 +808,7 @@ killtran: データベーストランザクションを管理\n\
       --kill-program-name=NAME       NAMEに対するトランザクションを全部終了\n\
       --kill-sql-id=SQL_ID           SQL_IDに対するすべてのトランザクションを中止する。\n\
   -p, --dba-password=PASS            DBAパスワード; 指定されてない場合は入力プロンプトが表示される。\n\
+                                     (-iまたは--killオプションでのみ機能します。そうでない場合、エラーが発生します)\n\
   -d, --display-information          現在アクティブトランザクションの情報を表示\n\
   -q, --query-exec-info              アクティブトランザクションのクエリ実行情報を表示する。\n\
   -f, --force                        強制に確認なしでトランザクションを終了\n
@@ -1060,8 +1062,6 @@ tranlist: アクティブトランザクション情報をダンプします。\
 使い方: %1$s tranlist [オプション] データベース名\n\
 \n\
 オプション:\n\
-  -u, --user=ID                データベースに接続するユーザーID; デフォルト: DBAユーザー\n\
-  -p, --password=PASS          ユーザーパスワード; デフォルト: なし\n\
   -s, --summary                トランザクション情報を要約して出力する。\n\
       --sort-key=COLUMN_NUMBER ソートされるカラム番号\n\
       --reverse                ソート結果を逆にする。\n

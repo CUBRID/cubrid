@@ -30,21 +30,13 @@
 #include <stdio.h>
 #elif defined (HAVE_RPC_DES_CRYPT_H)
 #include <rpc/des_crypt.h>
-#elif defined (HAVE_LIBGCRYPT)
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <assert.h>
-
-// disable gcrypt compile warnings
-#define GCRYPT_NO_MPI_MACROS
-#define GCRYPT_NO_DEPRECATED
-#include <gcrypt.h>
-#else
-#error "libgcrypt or rpc/des_crypt.h file required"
+#else // OPENSSL
+#include "crypt_opfunc.h"
+#include "error_code.h"
 #endif
 
 #include "encryption.h"
+#include "memory_alloc.h"
 #include "sha1.h"
 
 #if defined (WINDOWS)
@@ -53,11 +45,8 @@ static BYTE des_Keyblob[] = {
   0x08, 0x00, 0x00, 0x00,	// key length, in bytes
   'U', '9', 'a', '$', 'y', '1', '@', 'z'	// DES key with parity
 };
-#elif defined (HAVE_RPC_DES_CRYPT_H)
+#else
 static char crypt_Key[8];
-#elif defined (HAVE_LIBGCRYPT)
-/* libgcrypt cipher handle */
-static gcry_cipher_hd_t cipher_Hd;
 #endif /* WINDOWS */
 
 /*
@@ -86,17 +75,8 @@ crypt_seed (const char *key)
 #elif defined (HAVE_RPC_DES_CRYPT_H)
   memcpy (crypt_Key, key, 8);
   des_setparity (crypt_Key);
-#elif defined (HAVE_LIBGCRYPT)
-  char iv[] = { 1, 4, 2, 2, 3, 1, 1, 9 };
-  gcry_error_t err;
-
-  gcry_check_version (NULL);
-  err = gcry_cipher_open (&cipher_Hd, GCRY_CIPHER_DES, GCRY_CIPHER_MODE_ECB, 0);
-  assert (err == 0);
-  err = gcry_cipher_setkey (cipher_Hd, key, 8);	/* 56 bits from 8 bytes */
-  assert (err == 0);
-  err = gcry_cipher_setiv (cipher_Hd, iv, 8);	/* 64 bits */
-  assert (err == 0);
+#else
+  memcpy (crypt_Key, key, 8);
 #endif /* WINDOWS */
 }
 
@@ -161,7 +141,7 @@ crypt_encrypt_printable (const char *line, char *crypt, int maxlen)
       return -1;
     }
   return (dwCount);
-#elif defined (HAVE_LIBGCRYPT) || defined (HAVE_RPC_DES_CRYPT_H)
+#elif defined (HAVE_RPC_DES_CRYPT_H)
   int outlen, inlen;
   int i;
   int padlen;
@@ -182,80 +162,32 @@ crypt_encrypt_printable (const char *line, char *crypt, int maxlen)
 
   inlen += padlen;
 
-#if defined (HAVE_RPC_DES_CRYPT_H)
   if (DES_FAILED (ecb_crypt (crypt_Key, (char *) inbuf, inlen, DES_ENCRYPT)))
     {
       return -1;
     }
   memcpy (crypt, inbuf, inlen);
-#elif defined (HAVE_LIBGCRYPT)
-  if (gcry_cipher_encrypt (cipher_Hd, crypt, maxlen, inbuf, inlen))
-    {
-      return -1;
-    }
-  gcry_cipher_close (cipher_Hd);
-#endif /* HAVE_RPC_DES_CRYPT_H */
   outlen = inlen;
+
   crypt[outlen] = '\0';
   return (outlen);
-#endif /* WINDOWS */
-}
+#else
+  int outlen = 0;
+  int line_len = (int) strlen (line);
+  char *dest = NULL;
 
-/*
- * crypt_decrypt_printable - decrypts a line that was encrypted with
- *                           crypt_encrypt_printable
- *   return: number of chars in decrypted string
- *   crypt(in): buffer to decrypt
- *   decrypt(out): decrypted output buffer
- *   maxlen(in): maximum length of output buffer
- *
- */
-int
-crypt_decrypt_printable (const char *crypt, char *decrypt, int maxlen)
-{
-#if defined (WINDOWS)
-  /* We don't need to decrypt */
-  return -1;
-#elif defined (HAVE_LIBGCRYPT) || defined (HAVE_RPC_DES_CRYPT_H)
-  int outlen, inlen, padding_size;
-  int i;
-
-  inlen = strlen (crypt);
-#if defined (HAVE_RPC_DES_CRYPT_H)
-  memcpy (decrypt, crypt, inlen);
-  if (DES_FAILED (ecb_crypt (crypt_Key, decrypt, inlen, DES_DECRYPT)))
-    {
-      return -1;
-    }
-#elif defined (HAVE_LIBGCRYPT)
-  if (gcry_cipher_decrypt (cipher_Hd, decrypt, maxlen, crypt, inlen))
-    {
-      return -1;
-    }
-  gcry_cipher_close (cipher_Hd);
-#endif /* HAVE_RPC_DES_CRYPT_H */
-
-  outlen = inlen;
-  /* Check PKCS style padding */
-  padding_size = decrypt[outlen - 1];
-  if ((padding_size < 1) || (padding_size > 8))
+  int ec = crypt_default_encrypt (NULL, line, line_len, crypt_Key, (int) sizeof crypt_Key, &dest, &outlen, DES_ECB);
+  if (ec != NO_ERROR)
     {
       return -1;
     }
 
-  for (i = 1; i < padding_size; i++)
-    {
-      if (decrypt[outlen - 1 - i] != padding_size)
-	{
-	  return -1;
-	}
-    }
+  memcpy (crypt, dest, outlen);
+  db_private_free_and_init (NULL, dest);
 
-  outlen -= padding_size;
-  decrypt[outlen] = '\0';
-
+  crypt[outlen] = '\0';
   return (outlen);
-#endif /* WINDOWS */
+#endif
 }
 
 /*

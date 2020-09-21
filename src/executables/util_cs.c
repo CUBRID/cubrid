@@ -189,8 +189,8 @@ backupdb (UTIL_FUNCTION_ARG * arg)
 
   if (compress_flag)
     {
-      backup_zip_method = FILEIO_ZIP_LZO1X_METHOD;
-      backup_zip_level = FILEIO_ZIP_LZO1X_DEFAULT_LEVEL;
+      backup_zip_method = FILEIO_ZIP_LZ4_METHOD;
+      backup_zip_level = FILEIO_ZIP_LZ4_DEFAULT_LEVEL;
     }
 
   /* extra validation */
@@ -1651,8 +1651,10 @@ tranlist (UTIL_FUNCTION_ARG * arg)
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   char er_msg_file[PATH_MAX];
   const char *database_name;
+#if defined(NEED_PRIVILEGE_PASSWORD)
   const char *username;
   const char *password;
+#endif
   char *passbuf = NULL;
   TRANS_INFO *info = NULL;
   int error;
@@ -1670,18 +1672,22 @@ tranlist (UTIL_FUNCTION_ARG * arg)
       goto print_tranlist_usage;
     }
 
+#if defined(NEED_PRIVILEGE_PASSWORD)
   username = utility_get_option_string_value (arg_map, TRANLIST_USER_S, 0);
   password = utility_get_option_string_value (arg_map, TRANLIST_PASSWORD_S, 0);
+#endif
   is_summary = utility_get_option_bool_value (arg_map, TRANLIST_SUMMARY_S);
   tranlist_Sort_column = utility_get_option_int_value (arg_map, TRANLIST_SORT_KEY_S);
   tranlist_Sort_desc = utility_get_option_bool_value (arg_map, TRANLIST_REVERSE_S);
   full_sqltext = utility_get_option_bool_value (arg_map, TRANLIST_FULL_SQL_S);
 
+#if defined(NEED_PRIVILEGE_PASSWORD)
   if (username == NULL)
     {
       /* default : DBA user */
       username = "DBA";
     }
+#endif
 
   if (check_database_name (database_name) != NO_ERROR)
     {
@@ -1898,7 +1904,10 @@ killtran (UTIL_FUNCTION_ARG * arg)
   /* disable password, if don't use kill option */
   if (isbatch == 0)
     {
-      dba_password = NULL;
+      if (dba_password != NULL)
+	{
+	  goto print_killtran_usage;
+	}
       AU_DISABLE_PASSWORDS ();
     }
 

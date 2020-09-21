@@ -24340,7 +24340,7 @@ heap_update_set_prev_version (THREAD_ENTRY * thread_p, const OID * oid, PGBUF_WA
   PGBUF_WATCHER overflow_pg_watcher;
 
   assert (oid != NULL && !OID_ISNULL (oid) && prev_version_lsa != NULL && !LSA_ISNULL (prev_version_lsa));
-  assert (prev_version_lsa->pageid > 0 && prev_version_lsa->offset >= 0);
+  assert (prev_version_lsa->pageid >= 0 && prev_version_lsa->offset >= 0);
 
   /* the home page should be already fixed */
   assert (home_pg_watcher != NULL && home_pg_watcher->pgptr != NULL);

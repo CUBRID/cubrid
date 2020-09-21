@@ -19,6 +19,7 @@ backup_dest_path=
 backup_option=
 restore_option=
 scp_option="-l 131072"		# default - limit : 16M*1024*8=131072
+ssh_port=22
 
 #################################################################################
 # program variables
@@ -132,7 +133,7 @@ function ssh_cubrid()
 	if $verbose; then
 		echo "[$cubrid_user@$host]$ $command"
 	fi
-	ssh -t $cubrid_user@$host "export PATH=$PATH; export LD_LIBRARY_PATH=$LD_LIBRARY_PATH; export CUBRID=$CUBRID; export CUBRID_DATABASES=$CUBRID_DATABASES; $command"
+	ssh -p $ssh_port -t $cubrid_user@$host "export PATH=$PATH; export LD_LIBRARY_PATH=$LD_LIBRARY_PATH; export CUBRID=$CUBRID; export CUBRID_DATABASES=$CUBRID_DATABASES; $command"
 }
 
 function ssh_expect()
@@ -166,7 +167,7 @@ function ssh_expect()
 	if [ ! -z "$command5" ]; then
 		echo "[$user@$host]$ $command5"
 	fi
-	expect $CURR_DIR/expect/ssh.exp "$user" "$password" "$host" "$command1" "$command2" "$command3" "$command4" "$command5" >/dev/null 2>&1
+	expect $CURR_DIR/expect/ssh.exp "$user" "$password" "$host" "$ssh_port" "$command1" "$command2" "$command3" "$command4" "$command5" >/dev/null 2>&1
 }
 
 function scp_cubrid_to()
@@ -177,8 +178,8 @@ function scp_cubrid_to()
 	source=$2
 	target=$3
 
-	echo "[$cubrid_user@$current_host]$ scp $scp_option -r $source $cubrid_user@$host:$target"
-	scp $scp_option -r $source $cubrid_user@$host:$target
+	echo "[$cubrid_user@$current_host]$ scp -P $ssh_port $scp_option -r $source $cubrid_user@$host:$target"
+	scp -P $ssh_port $scp_option -r $source $cubrid_user@$host:$target
 }
 
 function scp_to_expect()
@@ -193,8 +194,8 @@ function scp_to_expect()
 	host=$4
 	target=$5
 	
-	echo "[$user@$current_host]$ scp $scp_option -r $source $user@$host:$target"
-	expect $CURR_DIR/expect/scp_to.exp "$user" "$password" "$source" "$host" "$target" >/dev/null 2>&1
+	echo "[$user@$current_host]$ scp -P $ssh_port $scp_option -r $source $user@$host:$target"
+	expect $CURR_DIR/expect/scp_to.exp "$user" "$password" "$source" "$host" "$target" "$ssh_port" >/dev/null 2>&1
 }
 
 function scp_from_expect()
@@ -209,8 +210,8 @@ function scp_from_expect()
 	host=$4
 	target=$5
 	
-	echo "[$user@$current_host]$ scp $scp_option -r $user@$host:$source $target"
-	expect $CURR_DIR/expect/scp_from.exp "$user" "$password" "$source" "$host" "$target" >/dev/null 2>&1
+	echo "[$user@$current_host]$ scp -P $ssh_port $scp_option -r $user@$host:$source $target"
+	expect $CURR_DIR/expect/scp_from.exp "$user" "$password" "$source" "$host" "$target" "$ssh_port" >/dev/null 2>&1
 }
 
 function scp_cubrid_from()
@@ -223,7 +224,7 @@ function scp_cubrid_from()
 	source=$2
 	target=$3
 
-	scp $scp_option -r $cubrid_user@$host:$source $target
+	scp -P $ssh_port $scp_option -r $cubrid_user@$host:$source $target
 }
 
 function get_output_from_replica()

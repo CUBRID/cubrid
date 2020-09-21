@@ -201,6 +201,9 @@
 #define FILEIO_RESTORE_DBVOLS_IO_PAGE_SIZE(sess)  \
   ((sess)->bkup.bkuphdr->bkpagesize + FILEIO_BACKUP_PAGE_OVERHEAD)
 
+#define FILEIO_DBVOLS_IO_PAGE_SIZE(backup_header_p)  \
+  ((backup_header_p)->bkpagesize + FILEIO_BACKUP_PAGE_OVERHEAD)
+
 #define FILEIO_BACKUP_FILE_HEADER_PAGE_SIZE  \
   (sizeof(FILEIO_BACKUP_FILE_HEADER) + offsetof(FILEIO_BACKUP_PAGE, iopage))
 
@@ -6946,16 +6949,13 @@ fileio_finalize_backup_thread (FILEIO_BACKUP_SESSION * session_p, FILEIO_ZIP_MET
       node_next = node->next;
       switch (zip_method)
 	{
+	case FILEIO_ZIP_LZ4_METHOD:
+	  if (node->zip_info != NULL)
+	    {
+	      free_and_init (node->zip_info);
+	    }
+	  break;
 	case FILEIO_ZIP_LZO1X_METHOD:
-	  if (node->wrkmem != NULL)
-	    {
-	      free_and_init (node->wrkmem);
-	    }
-
-	  if (node->zip_page != NULL)
-	    {
-	      free_and_init (node->zip_page);
-	    }
 	  break;
 	case FILEIO_ZIP_ZLIB_METHOD:
 	  break;
@@ -7163,28 +7163,15 @@ fileio_start_backup (THREAD_ENTRY * thread_p, const char *db_full_name_p, INT64 
       backup_header_p->bkpagesize *= FILEIO_FULL_LEVEL_EXP;
     }
 
-  switch (zip_method)
-    {
-    case FILEIO_ZIP_LZO1X_METHOD:
-      if (lzo_init () != LZO_E_OK)
-	{
-#if defined(CUBRID_DEBUG)
-	  fprintf (stdout, "internal error - lzo_init() failed !!!\n");
-	  fprintf (stdout,
-		   "(this usually indicates a compiler bug - try recompiling\nwithout optimizations, and enable "
-		   "`-DLZO_DEBUG' for diagnostics)\n");
-#endif /* CUBRID_DEBUG */
-	  goto error;
-	}
-      break;
-    case FILEIO_ZIP_ZLIB_METHOD:
-      break;
-    default:
-      break;
-    }
-
   backup_header_p->zip_method = zip_method;
   backup_header_p->zip_level = zip_level;
+
+  if (backup_header_p->zip_method == FILEIO_ZIP_LZ4_METHOD
+      && FILEIO_DBVOLS_IO_PAGE_SIZE (backup_header_p) > LZ4_MAX_INPUT_SIZE)
+    {
+      goto error;
+    }
+
   /* Now write this information to the backup volume. */
   if (fileio_write_backup_header (session_p) != NO_ERROR)
     {
@@ -7450,7 +7437,7 @@ fileio_allocate_node (FILEIO_QUEUE * queue_p, FILEIO_BACKUP_HEADER * backup_head
 {
   FILEIO_NODE *node_p;
   int size;
-  size_t zip_page_size, wrkmem_size;
+  int zip_info_size, buf_size;
 
   if (queue_p->free_list)	/* re-use already alloced nodes */
     {
@@ -7468,9 +7455,8 @@ fileio_allocate_node (FILEIO_QUEUE * queue_p, FILEIO_BACKUP_HEADER * backup_head
     }
 
   node_p->area = NULL;
-  node_p->zip_page = NULL;
-  node_p->wrkmem = NULL;
-  size = backup_header_p->bkpagesize + FILEIO_BACKUP_PAGE_OVERHEAD;
+  node_p->zip_info = NULL;
+  size = FILEIO_DBVOLS_IO_PAGE_SIZE (backup_header_p);
   node_p->area = (FILEIO_BACKUP_PAGE *) malloc (size);
   if (node_p == NULL)
     {
@@ -7480,32 +7466,20 @@ fileio_allocate_node (FILEIO_QUEUE * queue_p, FILEIO_BACKUP_HEADER * backup_head
 
   switch (backup_header_p->zip_method)
     {
+    case FILEIO_ZIP_LZ4_METHOD:
+      assert (size <= LZ4_MAX_INPUT_SIZE);
+      buf_size = LZ4_compressBound (size);
+      zip_info_size = offsetof (FILEIO_ZIP_INFO, zip_page) + sizeof (int) + buf_size;
+      node_p->zip_info = (FILEIO_ZIP_INFO *) malloc (zip_info_size);
+      if (node_p->zip_info == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, zip_info_size);
+	  goto exit_on_error;
+	}
+      node_p->zip_info->buf_size = buf_size;
+
+      break;
     case FILEIO_ZIP_LZO1X_METHOD:
-      zip_page_size = sizeof (lzo_uint) + size + size / 16 + 64 + 3;
-      node_p->zip_page = (FILEIO_ZIP_PAGE *) malloc (zip_page_size);
-      if (node_p->zip_page == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, zip_page_size);
-	  goto exit_on_error;
-	}
-
-      if (backup_header_p->zip_level == FILEIO_ZIP_LZO1X_999_LEVEL)
-	{
-	  /* best reduction */
-	  wrkmem_size = LZO1X_999_MEM_COMPRESS;
-	}
-      else
-	{
-	  /* best speed */
-	  wrkmem_size = LZO1X_1_MEM_COMPRESS;
-	}
-
-      node_p->wrkmem = (lzo_bytep) malloc (wrkmem_size);
-      if (node_p->wrkmem == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, wrkmem_size);
-	  goto exit_on_error;
-	}
       break;
     case FILEIO_ZIP_ZLIB_METHOD:
       break;
@@ -7520,14 +7494,9 @@ exit_on_error:
 
   if (node_p)
     {
-      if (node_p->wrkmem)
+      if (node_p->zip_info)
 	{
-	  free_and_init (node_p->wrkmem);
-	}
-
-      if (node_p->zip_page)
-	{
-	  free_and_init (node_p->zip_page);
+	  free_and_init (node_p->zip_info);
 	}
 
       if (node_p->area)
@@ -7631,62 +7600,60 @@ fileio_delete_queue_head (FILEIO_QUEUE * queue_p)
 static int
 fileio_compress_backup_node (FILEIO_NODE * node_p, FILEIO_BACKUP_HEADER * backup_header_p)
 {
-  int error = NO_ERROR;
-  int rv;
+  int error = NO_ERROR, local_buf_len;
+  FILEIO_ZIP_PAGE *zip_page;
 
-  if (!node_p || !backup_header_p)
+  if (!node_p || !node_p->zip_info || !backup_header_p)
     {
       goto exit_on_error;
     }
 
   assert (node_p->nread >= 0);
 
+  zip_page = &node_p->zip_info->zip_page;
+
   switch (backup_header_p->zip_method)
     {
-    case FILEIO_ZIP_LZO1X_METHOD:
-      if (backup_header_p->zip_level == FILEIO_ZIP_LZO1X_999_LEVEL)
+    case FILEIO_ZIP_LZ4_METHOD:
+      /* The alternative is compress faster - best speed, but, require more memory alloc */
+      local_buf_len =
+	LZ4_compress_default ((char *) node_p->area, zip_page->buf, (int) node_p->nread, node_p->zip_info->buf_size);
+      if (local_buf_len <= 0)
 	{
 	  /* best reduction */
-	  rv =
-	    lzo1x_999_compress ((lzo_bytep) node_p->area, (lzo_uint) node_p->nread, node_p->zip_page->buf,
-				&node_p->zip_page->buf_len, node_p->wrkmem);
-	}
-      else
-	{
-	  /* best speed */
-	  rv =
-	    lzo1x_1_compress ((lzo_bytep) node_p->area, (lzo_uint) node_p->nread, node_p->zip_page->buf,
-			      &node_p->zip_page->buf_len, node_p->wrkmem);
-	}
-      if (rv != LZO_E_OK || (node_p->zip_page->buf_len > (size_t) (node_p->nread + node_p->nread / 16 + 64 + 3)))
-	{
-	  /* this should NEVER happen */
-	  error = ER_IO_LZO_COMPRESS_FAIL;
+	  error = ER_IO_LZ4_COMPRESS_FAIL;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 4, backup_header_p->zip_method,
 		  fileio_get_zip_method_string (backup_header_p->zip_method), backup_header_p->zip_level,
 		  fileio_get_zip_level_string (backup_header_p->zip_level));
 #if defined(CUBRID_DEBUG)
 	  fprintf (stdout,
-		   "internal error - compression failed: %d, node->pageid = %d, node->nread = %d, "
-		   "node->zip_page->buf_len = %d, node->nread + node->nread / 16 + 64 + 3 = %d\n", rv,
-		   node_p->pageid, node_p->nread, node_p->zip_page->buf_len,
-		   node_p->nread + node_p->nread / 16 + 64 + 3);
+		   "internal error - compression failed: node->pageid = %d, node->nread = %d, "
+		   "buf_len = %d, buf_size = %d\n",
+		   node_p->pageid, node_p->nread, local_buf_len, node_p->zip_info->buf_size);
 #endif /* CUBRID_DEBUG */
 	  goto exit_on_error;
 	}
 
-      if (node_p->zip_page->buf_len < (size_t) node_p->nread)
+      assert (local_buf_len < node_p->zip_info->buf_size);
+
+      if ((ssize_t) local_buf_len < node_p->nread)
 	{
 	  /* already write compressed block */
-	  ;
+	  zip_page->buf_len = local_buf_len;
 	}
       else
 	{
 	  /* not compressible - write uncompressed block */
-	  node_p->zip_page->buf_len = (lzo_uint) node_p->nread;
-	  memcpy (node_p->zip_page->buf, node_p->area, node_p->nread);
+	  zip_page->buf_len = (int) node_p->nread;
+	  memcpy (zip_page->buf, node_p->area, node_p->nread);
 	}
       break;
+    case FILEIO_ZIP_LZO1X_METHOD:
+      error = ER_LOG_DBBACKUP_FAIL;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 4, backup_header_p->zip_method,
+	      fileio_get_zip_method_string (backup_header_p->zip_method), backup_header_p->zip_level,
+	      fileio_get_zip_level_string (backup_header_p->zip_level));
+      goto exit_on_error;
     case FILEIO_ZIP_ZLIB_METHOD:
       break;
     default:
@@ -7726,10 +7693,18 @@ fileio_write_backup_node (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * sessi
 
   switch (backup_header_p->zip_method)
     {
-    case FILEIO_ZIP_LZO1X_METHOD:
-      session_p->dbfile.area = (FILEIO_BACKUP_PAGE *) node_p->zip_page;
-      node_p->nread = sizeof (lzo_uint) + node_p->zip_page->buf_len;
+    case FILEIO_ZIP_LZ4_METHOD:
+      /* Skip allocated block size inside of FILEIO_ZIP_PAGE */
+
+      session_p->dbfile.area = (FILEIO_BACKUP_PAGE *) & node_p->zip_info->zip_page;
+      node_p->nread = sizeof (int) + node_p->zip_info->zip_page.buf_len;
       break;
+    case FILEIO_ZIP_LZO1X_METHOD:
+      error = ER_LOG_DBBACKUP_FAIL;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 4, backup_header_p->zip_method,
+	      fileio_get_zip_method_string (backup_header_p->zip_method), backup_header_p->zip_level,
+	      fileio_get_zip_level_string (backup_header_p->zip_level));
+      goto exit_on_error;
     case FILEIO_ZIP_ZLIB_METHOD:
       break;
     default:
@@ -8430,7 +8405,7 @@ fileio_backup_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p
       goto error;
     }
 
-  node_p->nread = backup_header_p->bkpagesize + FILEIO_BACKUP_PAGE_OVERHEAD;
+  node_p->nread = FILEIO_DBVOLS_IO_PAGE_SIZE (backup_header_p);
   memset (&node_p->area->iopage, '\0', backup_header_p->bkpagesize);
   FILEIO_SET_BACKUP_PAGE_ID (node_p->area, FILEIO_BACKUP_FILE_END_PAGE_ID, backup_header_p->bkpagesize);
 
@@ -10074,9 +10049,11 @@ fileio_decompress_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION
 	}
       break;
 
-    case FILEIO_ZIP_LZO1X_METHOD:
+    case FILEIO_ZIP_LZ4_METHOD:
       {
 	int rv;
+	FILEIO_ZIP_PAGE *zip_page;
+
 	/* alloc queue node */
 	node = fileio_allocate_node (queue_p, backup_header_p);
 	if (node == NULL)
@@ -10084,10 +10061,13 @@ fileio_decompress_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION
 	    goto exit_on_error;
 	  }
 
-	save_area_p = session_p->dbfile.area;	/* save link */
-	session_p->dbfile.area = (FILEIO_BACKUP_PAGE *) node->zip_page;
+	assert (node->zip_info != NULL);
+	zip_page = &node->zip_info->zip_page;
 
-	rv = fileio_read_restore (thread_p, session_p, sizeof (lzo_uint));
+	save_area_p = session_p->dbfile.area;	/* save link */
+	session_p->dbfile.area = (FILEIO_BACKUP_PAGE *) zip_page;
+
+	rv = fileio_read_restore (thread_p, session_p, sizeof (int));
 	session_p->dbfile.area = save_area_p;	/* restore link */
 	if (rv != NO_ERROR)
 	  {
@@ -10097,9 +10077,9 @@ fileio_decompress_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION
 	  }
 
 	/* sanity check of the size values */
-	if (node->zip_page->buf_len > (size_t) nbytes || node->zip_page->buf_len == 0)
+	if (zip_page->buf_len > nbytes || zip_page->buf_len == 0)
 	  {
-	    error = ER_IO_LZO_COMPRESS_FAIL;	/* may be compress fail */
+	    error = ER_IO_LZ4_COMPRESS_FAIL;	/* may be compress fail */
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 4, backup_header_p->zip_method,
 		    fileio_get_zip_method_string (backup_header_p->zip_method), backup_header_p->zip_level,
 		    fileio_get_zip_level_string (backup_header_p->zip_level));
@@ -10108,15 +10088,15 @@ fileio_decompress_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION
 #endif /* CUBRID_DEBUG */
 	    goto exit_on_error;
 	  }
-	else if (node->zip_page->buf_len < (size_t) nbytes)
+	else if (zip_page->buf_len < nbytes)
 	  {
 	    /* read compressed block data */
-	    lzo_uint unzip_len;
+	    int unzip_len;
 
 	    save_area_p = session_p->dbfile.area;	/* save link */
-	    session_p->dbfile.area = (FILEIO_BACKUP_PAGE *) node->zip_page->buf;
+	    session_p->dbfile.area = (FILEIO_BACKUP_PAGE *) zip_page->buf;
 
-	    rv = fileio_read_restore (thread_p, session_p, (int) node->zip_page->buf_len);
+	    rv = fileio_read_restore (thread_p, session_p, zip_page->buf_len);
 	    session_p->dbfile.area = save_area_p;	/* restore link */
 	    if (rv != NO_ERROR)
 	      {
@@ -10126,13 +10106,12 @@ fileio_decompress_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION
 	      }
 
 	    /* decompress - use safe decompressor as data might be corrupted during a file transfer */
-	    unzip_len = nbytes;
-	    rv =
-	      lzo1x_decompress_safe (node->zip_page->buf, node->zip_page->buf_len, (lzo_bytep) session_p->dbfile.area,
-				     &unzip_len, NULL);
-	    if (rv != LZO_E_OK || unzip_len != (size_t) nbytes)
+	    unzip_len =
+	      LZ4_decompress_safe ((const char *) zip_page->buf, (char *) session_p->dbfile.area, zip_page->buf_len,
+				   nbytes);
+	    if (unzip_len < 0 || unzip_len != nbytes)
 	      {
-		error = ER_IO_LZO_DECOMPRESS_FAIL;
+		error = ER_IO_LZ4_DECOMPRESS_FAIL;
 		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 #if defined(CUBRID_DEBUG)
 		fprintf (stdout, "io_restore_volume_decompress_read: compressed data violation\n");
@@ -10143,7 +10122,7 @@ fileio_decompress_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION
 	else
 	  {
 	    /* no compressed block */
-	    rv = fileio_read_restore (thread_p, session_p, (int) node->zip_page->buf_len);
+	    rv = fileio_read_restore (thread_p, session_p, zip_page->buf_len);
 	    if (rv != NO_ERROR)
 	      {
 		error = ER_IO_RESTORE_READ_ERROR;
@@ -10155,6 +10134,7 @@ fileio_decompress_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION
       }
       break;
 
+    case FILEIO_ZIP_LZO1X_METHOD:
     case FILEIO_ZIP_ZLIB_METHOD:
     default:
       error = ER_IO_RESTORE_READ_ERROR;
@@ -10715,6 +10695,9 @@ fileio_get_zip_method_string (FILEIO_ZIP_METHOD zip_method)
     case FILEIO_ZIP_LZO1X_METHOD:
       return ("LZO1X");
 
+    case FILEIO_ZIP_LZ4_METHOD:
+      return ("LZ4");
+
     case FILEIO_ZIP_ZLIB_METHOD:
       return ("ZLIB");
 
@@ -10736,32 +10719,8 @@ fileio_get_zip_level_string (FILEIO_ZIP_LEVEL zip_level)
     case FILEIO_ZIP_NONE_LEVEL:
       return ("NONE");
 
-    case FILEIO_ZIP_1_LEVEL:	/* case FILEIO_ZIP_LZO1X_DEFAULT_LEVEL: */
-      return ("ZIP LEVEL 1 - BEST SPEED");
-
-    case FILEIO_ZIP_2_LEVEL:
-      return ("ZIP LEVEL 2");
-
-    case FILEIO_ZIP_3_LEVEL:
-      return ("ZIP LEVEL 3");
-
-    case FILEIO_ZIP_4_LEVEL:
-      return ("ZIP LEVEL 4");
-
-    case FILEIO_ZIP_5_LEVEL:
-      return ("ZIP LEVEL 5");
-
-    case FILEIO_ZIP_6_LEVEL:	/* case FILEIO_ZIP_ZLIB_DEFAULT_LEVEL: */
-      return ("ZIP LEVEL 6 - NORMAL");
-
-    case FILEIO_ZIP_7_LEVEL:
-      return ("ZIP LEVEL 7");
-
-    case FILEIO_ZIP_8_LEVEL:
-      return ("ZIP LEVEL 8");
-
-    case FILEIO_ZIP_9_LEVEL:	/* case FILEIO_ZIP_LZO1X_999_LEVEL: */
-      return ("ZIP LEVEL 9 - BEST REDUCTION");
+    case FILEIO_ZIP_1_LEVEL:
+      return ("ZIP LEVEL 1");
 
     default:
       return ("UNKNOWN");

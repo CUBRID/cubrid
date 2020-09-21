@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -4846,6 +4847,38 @@ stx_build_list_spec_type (THREAD_ENTRY * thread_p, char *ptr, LIST_SPEC_TYPE * l
 	  goto error;
 	}
     }
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      list_spec_type->list_regu_list_build = NULL;
+    }
+  else
+    {
+      list_spec_type->list_regu_list_build =
+	stx_restore_regu_variable_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (list_spec_type->list_regu_list_build == NULL)
+	{
+	  goto error;
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      list_spec_type->list_regu_list_probe = NULL;
+    }
+  else
+    {
+      list_spec_type->list_regu_list_probe =
+	stx_restore_regu_variable_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (list_spec_type->list_regu_list_probe == NULL)
+	{
+	  goto error;
+	}
+    }
+
+  ptr = or_unpack_int (ptr, (int *) &list_spec_type->hash_list_scan_yn);
 
   return ptr;
 

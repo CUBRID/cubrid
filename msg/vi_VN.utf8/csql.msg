@@ -41,12 +41,16 @@ valid options:\n\
   -l, --line-output            display each value in a line\n\
   -r, --read-only              read-only mode\n\
   -t, --plain-output           display results in a script-friendly format (only works with -c and -i)\n\
+  -q, --query-output           display results in a query-friendly format (only works with -c and -i)\n\
+  -d, --loaddb-output          display results in a loaddb-friendly format (only works with -c and -i)\n\
   -N, --skip-column-names      do not display column names in results (only works with -c and -i)\n\
       --string-width           display each column which is a string type in this width\n\
       --no-auto-commit         disable auto commit mode execution\n\
       --no-pager               do not use pager\n\
       --no-single-line         turn off single line oriented execution\n\
       --no-trigger-action      disable trigger action\n\
+      --delimiter=ARG          delimiter between columns (only work wirh -q)\n\
+      --enclosure=ARG          enclosure for a result string (only work wirh -q)\n\
 \n\
 For additional information, see http://www.cubrid.org\n
 41 %1$s: the environment value of %2$s_MODE is incorrect. \nIt should be either %3$s or %4$s.\n

@@ -1792,7 +1792,7 @@ logwr_check_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
       p += sample_nbytes;
     }
 
-  error_code = crypt_crc32 (thread_p, (char *) buf, (int) sizeof_buf, &checksum_crc32);
+  crypt_crc32 ((char *) buf, (int) sizeof_buf, &checksum_crc32);
 
   /* Restores the saved checksum */
   log_pgptr->hdr.checksum = saved_checksum_crc32;

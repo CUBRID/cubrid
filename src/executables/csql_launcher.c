@@ -119,6 +119,7 @@ main (int argc, char *argv[])
   CSQL_ARGUMENT csql_arg;
   DSO_HANDLE util_library;
   CSQL csql;
+  int check_output_style = 0;
   bool explicit_single_line = false;
 
   GETOPT_LONG csql_option[] = {
@@ -143,6 +144,10 @@ main (int argc, char *argv[])
     {CSQL_PLAIN_OUTPUT_L, 0, 0, CSQL_PLAIN_OUTPUT_S},
     {CSQL_SKIP_COL_NAMES_L, 0, 0, CSQL_SKIP_COL_NAMES_S},
     {CSQL_SKIP_VACUUM_L, 0, 0, CSQL_SKIP_VACUUM_S},
+    {CSQL_QUERY_OUTPUT_L, 0, 0, CSQL_QUERY_OUTPUT_S},
+    {CSQL_QUERY_COLUMN_DELIMITER_L, 1, 0, CSQL_QUERY_COLUMN_DELIMITER_S},
+    {CSQL_QUERY_COLUMN_ENCLOSURE_L, 1, 0, CSQL_QUERY_COLUMN_ENCLOSURE_S},
+    {CSQL_LOADDB_OUTPUT_L, 0, 0, CSQL_LOADDB_OUTPUT_S},
     {VERSION_L, 0, 0, VERSION_S},
     {0, 0, 0, 0}
   };
@@ -152,6 +157,11 @@ main (int argc, char *argv[])
   csql_arg.single_line_execution = true;
   csql_arg.string_width = 0;
   csql_arg.trigger_action_flag = true;
+  csql_arg.plain_output = false;
+  csql_arg.query_output = false;
+  csql_arg.loaddb_output = false;
+  csql_arg.column_delimiter = -1;
+  csql_arg.column_enclosure = -1;
   utility_make_getopt_optstring (csql_option, option_string);
 
   while (1)
@@ -283,6 +293,55 @@ main (int argc, char *argv[])
 	  csql_arg.skip_vacuum = true;
 	  break;
 
+	case CSQL_QUERY_OUTPUT_S:
+	  csql_arg.query_output = true;
+	  break;
+
+	case CSQL_QUERY_COLUMN_DELIMITER_S:
+	  {
+	    int len = strlen (optarg);
+
+	    if (len == 1)
+	      {
+		csql_arg.column_delimiter = optarg[0];
+	      }
+	    else if (len >= 2 && optarg[0] == '\\')
+	      {
+		if (optarg[1] == 't')
+		  {
+		    csql_arg.column_delimiter = '\t';
+		  }
+		else if (optarg[1] == 'n')
+		  {
+		    csql_arg.column_delimiter = '\n';
+		  }
+		else
+		  {
+		    csql_arg.column_delimiter = optarg[1];
+		  }
+	      }
+	    else
+	      {
+		csql_arg.column_delimiter = ',';
+	      }
+	  }
+	  break;
+
+	case CSQL_QUERY_COLUMN_ENCLOSURE_S:
+	  if (strlen (optarg) >= 1)
+	    {
+	      csql_arg.column_enclosure = optarg[0];
+	    }
+	  else
+	    {
+	      csql_arg.column_enclosure = '\'';
+	    }
+	  break;
+
+	case CSQL_LOADDB_OUTPUT_S:
+	  csql_arg.loaddb_output = true;
+	  break;
+
 	case VERSION_S:
 	  utility_csql_print (MSGCAT_UTIL_GENERIC_VERSION, UTIL_CSQL_NAME, PRODUCT_STRING);
 	  goto exit_on_end;
@@ -311,6 +370,45 @@ main (int argc, char *argv[])
     {
       csql_arg.skip_column_names = false;
       csql_arg.plain_output = false;
+      csql_arg.query_output = false;
+      csql_arg.loaddb_output = false;
+    }
+
+  if (csql_arg.plain_output == true)
+    {
+      check_output_style++;
+    }
+
+  if (csql_arg.query_output == true)
+    {
+      if (csql_arg.column_delimiter == -1)
+	{
+	  csql_arg.column_delimiter = ',';
+	}
+
+      if (csql_arg.column_enclosure == -1)
+	{
+	  csql_arg.column_enclosure = '\'';
+	}
+      check_output_style++;
+    }
+  else if (csql_arg.column_delimiter != -1 || csql_arg.column_enclosure != -1)
+    {
+      /* delimiter and enclosure can only use with query_output option */
+      goto print_usage;
+    }
+
+  if (csql_arg.loaddb_output == true)
+    {
+      csql_arg.column_delimiter = ' ';
+      csql_arg.column_enclosure = '\'';
+      check_output_style++;
+    }
+
+  if (check_output_style > 1)
+    {
+      /* can't use -p, -q, and --loaddb-output together */
+      goto print_usage;
     }
 
   if (csql_arg.sysadm && (csql_arg.user_name == NULL || strcasecmp (csql_arg.user_name, "DBA")))

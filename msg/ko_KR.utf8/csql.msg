@@ -32,7 +32,7 @@ $set 1 MSGCAT_CSQL_SET_CSQL
   -S, --SA-mode                독립 모드 실행\n\
   -C, --CS-mode                클라이언트 서버 모드 실행\n\
   -u, --user=ARG               사용자 이름\n\
-  -p, --password=ARG            비밀번호 문자열, 없는 경우 ""\n\
+  -p, --password=ARG           비밀번호 문자열, 없는 경우 ""\n\
   -e, --error-continue         에러 발생 시 계속 수행\n\
   -i, --input-file=ARG         입력 파일 이름\n\
   -o, --output-file=ARG        출력 파일 이름\n\
@@ -41,12 +41,16 @@ $set 1 MSGCAT_CSQL_SET_CSQL
   -l, --line-output            한 라인 내에 값 표시\n\
   -r, --read-only              읽기 전용 모드\n\
   -t, --plain-output           스크립트 사용에 용이한 포맷으로 결과 값 출력 (-c와 -i 옵션 사용 시 적용)\n\
+  -q, --query-output           질의문 만들기에 용이한 포맷으로 결과 값 출력 (-c와 -i 옵션 사용 시 적용)\n\
+  -d, --loaddb-output          loaddb로 만들기에 용이한 포맷으로 결과 값 출력 (-c와 -i 옵션 사용 시 적용)\n\
   -N, --skip-column-names      결과 값 컬럼 이름 숨김 (-c와 -i 옵션 사용 시 적용)\n\
       --string-width           각 문자열 컬럼 값을 출력할 길이\n\
       --no-auto-commit         자동 커밋 안 함\n\
       --no-pager               페이지 단위로 표시 안 함\n\
       --no-single-line         단일 라인 실행 안 함\n\
       --no-trigger-action      트리거 실행 안함\n\
+      --delimiter=ARG          컬럼간 구분자 (-q에서만 사용 가능)\n\
+      --enclosure=ARG          결과 문자열 엔클러저 (-q에서만 사용 가능)\n\
 \n\
 추가적인 정보는 http://www.cubrid.org 에서 얻을 수 있습니다.\n
 41 %1$s: 환경 변수 %2$s_MODE 의 값이 틀림. \n%3$s 또는 %4$s 이어야 합니다.\n

@@ -281,7 +281,10 @@ namespace cubload
       {
 	if (attr.second->is_notnull)
 	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_ATTRIBUTE_CANT_BE_NULL, 1, attr.first.c_str ());
+	    char class_attr[512];
+
+	    snprintf (class_attr, 512, "%s.%s", class_name, attr.first.c_str ());
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_ATTRIBUTE_CANT_BE_NULL, 1, class_attr);
 	    heap_scancache_end (&thread_ref, &scancache);
 	    heap_attrinfo_end (&thread_ref, &attrinfo);
 	    m_error_handler.on_failure ();
@@ -700,6 +703,13 @@ namespace cubload
       {
 	m_error_handler.log_date_time_conversion_error (token, pr_type_name (attr.get_domain ().type->get_id ()));
       }
+    else if (error_code == ER_OBJ_ATTRIBUTE_CANT_BE_NULL)
+           {
+              char class_attr[512];
+
+              snprintf (class_attr, 512, "%s.%s", m_class_entry->get_class_name (), attr.get_name ());
+              er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, class_attr);
+           }
 
     return error_code;
   }
@@ -733,6 +743,15 @@ namespace cubload
     error_code = func (full_mon_str_p, full_mon_str_len, &attr, &db_val);
     if (error_code != NO_ERROR)
       {
+
+	if (error_code == ER_OBJ_ATTRIBUTE_CANT_BE_NULL)
+	  {
+            char class_attr[512];
+
+            snprintf (class_attr, 512, "%s.%s", m_class_entry->get_class_name (), attr.get_name ());
+            er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, class_attr);
+	  }
+
 	return error_code;
       }
 

@@ -552,16 +552,17 @@ gültige Optionen:\n\
   -i, --input-class-file=DATEI      Eingabedatei mit Tabellennamen \n\
                                     Klassenname Liste muss leer sein \n\
                                     Standard: alle Klassen komprimieren\n\
-                                    Nur in CS-Modus aktiviert\n\
   -p, --pages-commited-once=ANZAHL  maximale Anzahl der Seiten, die einmal festgeschrieben werden dürfen \n\
                                     Standard: 10\n\
                                     Nur in CS-Modus aktiviert\n\
   -S, --SA-mode                     Stand-Alone-Ausführung\n\
   -C, --CS-mode                     Client-Server-Ausführung\n\
   -d, --delete-old-repr             alte Klasserepräsentierungen aus dem Katalog löschen; Standard: inaktiv\n\
-  class_name_list                   Nur in CS-Modus aktiviert\n\
   -I, --Instance-lock-timeout       Timeout für Instanz-Lock\n\
-  -c, --class-lock-timeout          Timeout für Klassen-Lock \n
+                                    Nur in CS-Modus aktiviert\n\
+  -c, --class-lock-timeout          Timeout für Klassen-Lock \n\
+                                    Nur in CS-Modus aktiviert\n\
+  class_name_list                   Liste der zu komprimierenden Klassennamen\n
 
 $set 15 MSGCAT_UTIL_SET_COMMDB
 21 Der CUBRID Master auf Host %1$s \nwurde am %2$s gestartet
@@ -807,6 +808,7 @@ gültige Optionen:\n\
       --kill-program-name=NAME       alle Transaktionen mit Client-Programm NAME abbrechen\n\
       --kill-sql-id=SQL_ID           alle Transaktionen mit SQL_ID schließen\n\
   -p, --dba-password=PASSWORT        Passwort des DBA-Benutzers; es wird angefordert, wenn nicht angegeben\n\
+                                     (Arbeiten Sie nur mit den Optionen -i oder --kill. Andernfalls wird ein Fehler angezeigt)\n\
   -d, --display-information          Information über aktive Transaktionen anzeigen \n\
   -q, --query-exec-info              Informationen zur Abfrageausführung anzeigen; Informationen zur aktiven Transaktionen\n\
   -f, --force                        Transaktion ohne Bestätigung abbrechen \n
@@ -1060,8 +1062,6 @@ tranlist: Informationen der aktiven Transaktion wegwerfen.\n\
 usage: %1$s tranlist [OPTION] Datenbankname\n\
 \n\
 gültige Optionen:\n\
-  -u, --user=ID                Benutzer ID für Datenbankzugang; Standardwert: DBA Benutzer\n\
-  -p, --password=PASS          Benutzerpasswort; Standardwert: Keinen\n\
   -s, --summary                zusammengefasste Transaktionsinformationen anzeigen\n\
       --sort-key=SPALTENNUMMER Spalte zu sortieren\n\
       --reverse                Ergebnisse umgekehrt sortieren\n
