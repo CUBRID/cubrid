@@ -18355,6 +18355,7 @@ pt_expr_is_allowed_as_function_index (const PT_NODE * expr)
 {
   assert (expr != NULL && expr->node_type == PT_EXPR);
 
+  /* if add it here, add it to validate_regu_key_function_index () as well */
   switch (expr->info.expr.op)
     {
     case PT_CAST:
