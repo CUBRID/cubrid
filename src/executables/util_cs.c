@@ -2808,7 +2808,7 @@ error_exit:
 
   if (logwr_force_shutdown () == false
       && (error == ER_NET_SERVER_CRASHED || error == ER_NET_CANT_CONNECT_SERVER || error == ER_BO_CONNECT_FAILED
-	  || error == ERR_CSS_TCP_CANNOT_CONNECT_TO_MASTER))
+	  || error == ERR_CSS_TCP_CANNOT_CONNECT_TO_MASTER || error == ERR_CSS_TCP_CONNECT_TIMEDOUT))
     {
       (void) sleep (sleep_nsecs);
       /* sleep 1, 2, 4, 8, etc; don't wait for more than 1/2 min */
