@@ -14483,7 +14483,7 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       query_flag |= RESULT_CACHE_REQUIRED;
     }
 
-  if (statement->info.query.do_not_cache == 1)
+  if (statement->info.query.do_not_cache == 1 || statement->info.query.oids_included)
     {
       query_flag |= RESULT_CACHE_INHIBITED;
     }

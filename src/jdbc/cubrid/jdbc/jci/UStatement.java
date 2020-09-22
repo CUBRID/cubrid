@@ -150,6 +150,7 @@ public class UStatement {
 			UUrlCache url_cache = relatedC.getUrlCache();
 			stmt_cache = url_cache.getStmtCache(sql);
 		}
+		else result_cacheable = false;
 	}
 
 	private void init(UConnection relatedC, UInputBuffer inBuffer, String sql,
