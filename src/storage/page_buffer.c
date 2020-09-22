@@ -4505,26 +4505,8 @@ pgbuf_rv_set_tde_algorithm (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
   assert (rcv->length == sizeof (TDE_ALGORITHM));
 
-  CAST_PGPTR_TO_IOPGPTR (iopage, pgptr);
+  pgbuf_set_tde_algorithm (thread_p, pgptr, tde_algo, true);
 
-  /* clear tde encryption bits */
-  iopage->prv.pflag &= ~FILEIO_PAGE_FLAG_ENCRYPTED_MASK;
-
-  switch (tde_algo)
-    {
-    case TDE_ALGORITHM_AES:
-      iopage->prv.pflag |= FILEIO_PAGE_FLAG_ENCRYPTED_AES;
-      break;
-    case TDE_ALGORITHM_ARIA:
-      iopage->prv.pflag |= FILEIO_PAGE_FLAG_ENCRYPTED_ARIA;
-      break;
-    case TDE_ALGORITHM_NONE:
-      break;			// do nothing, already cleared
-    default:
-      assert (false);
-      return ER_FAILED;
-    }
-  pgbuf_set_dirty (thread_p, pgptr, DONT_FREE);
   return NO_ERROR;
 }
 
