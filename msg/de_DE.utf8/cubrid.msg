@@ -184,7 +184,7 @@ $set 5 MSGCAT_SET_ERROR
 116 Datenbank "%1$s" ist unbekannt, oder die Datei "databases.txt" kann nicht zugegriffen werden.
 117 Der absolute Pfad für die Datenbank ist zu lang. Die kombinierte Länge des Pfads "%1$s" plus der Name "%2$s" ist %3$d; die kombinierte Länge muss kleiner als %4$d sein.
 118 Aktuelles Verzeichnis konnte nicht gefunden werden.
-119 Der lokale Hostname konnte nicht gefunden werden.
+119 Kann ("%1$s") in /etc/hosts nicht finden. Bitte überprüfen Sie die Berechtigungen der Datei oder ob der Hostname vorhanden ist.
 120 Der maximale Zahl (%1$d) der Datenträger wurde überschritten.
 121 Es wird versucht, einen permanenten Datenträger "%1$s" von der Datenbank zu entfernen.
 122 Kann auf den Katalog der Systemmeldungen nicht zugreifen.
@@ -415,7 +415,7 @@ $set 5 MSGCAT_SET_ERROR
 347 Es konnte keine Leitung zum Master-Server erstellt werden.
 348 Entweder Dienst- oder Port-ID angegeben werden.
 349 Unbekannter Dienst für TCP: %1$s.
-350 Fehler beim Abrufen der lokalen Host durch Namen für Host "%1$s". Host nicht gefunden.
+350 Kann ("%1$s") in /etc/hosts nicht finden. Bitte überprüfen Sie die Berechtigungen der Datei oder ob der Hostname vorhanden ist.
 351 TCP-Socket konnte nicht erstellt werden.
 352 tcp_open: konnte keine reservierte TCP-Port erhalten.
 353 Verbindung zum Master-Server auf Host "%1$s" kann nicht erstellt werden.
@@ -1312,7 +1312,7 @@ $ LOADDB
 1243 Das Laden des Index wurde nach einem Fehler abgebrochen.
 1244 Das Laden von Aktualisierungen gemeinsam genutzter Attribute aus Objektdateien wird im CS-Modus nicht unterstützt.
 1245 Das Laden von Aktualisierungen von Klassenattributen aus Objektdateien wird im CS-Modus nicht unterstützt.
-1246 Fehler beim Abrufen der Adress- und Namensinformationen. Fehlerkode : %1$d, Meldung : %2$s.
+1246 Adresse und kanonischer Name für ("%1$s") in /etc/hosts können nicht abgerufen werden. Bitte überprüfen Sie die Berechtigung der Datei oder ob der Hostname vorhanden ist.
 1247 Die angegebene Zeit (%1$s) muss später als (%2$s), die Zeit der angegebenen Sicherung.
 
 1248 Letzter Fehler

@@ -184,7 +184,7 @@ $set 5 MSGCAT_SET_ERROR
 116 Database "%1$s" is unknown, or the file "databases.txt" cannot be accessed.
 117 Absolute pathname for the database is too long. The combined length of the path "%1$s" plus the name "%2$s" is %3$d; the combined length must be less than %4$d.
 118 Failed to locate current working directory.
-119 Unable to find local hostname.
+119 Cannot find ("%1$s") in /etc/hosts. Please check permissions of the file or if there is the hostname.
 120 The maximum number of volumes (%1$d) has been exceeded.
 121 Trying to remove "%1$s" a permanent volume from the database.
 122 Unable to access system message catalog.
@@ -415,7 +415,7 @@ $set 5 MSGCAT_SET_ERROR
 347 Could not establish a pipe to the master server.
 348 Must specify either service or port identifier.
 349 Unknown service for TCP: %1$s.
-350 Error getting local host by name for host "%1$s". Host not found.
+350 Cannot find ("%1$s") in /etc/hosts. Please check permissions of the file or if there is the hostname.
 351 Cannot create TCP socket.
 352 tcp_open: cannot get a reserved TCP port.
 353 Cannot make connection to master server on host "%1$s".
@@ -1312,7 +1312,7 @@ $ LOADDB
 1243 Index loading was aborted after an error.
 1244 Loading shared attributes updates from object files is not supported in CS mode.
 1245 Loading class attributes updates from object files is not supported in CS mode.
-1246 Error getting address and name information. Code : %1$d, message : %2$s.
+1246 Cannot get address and canonical name  for ("%1$s") in /etc/hosts. Please check permission of the file or if there is the hostname.
 1247 The time(%1$s) specified must be after the time(%2$s) of the specified backup.
 
 1248 Last Error

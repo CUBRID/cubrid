@@ -134,7 +134,7 @@ css_gethostname (char *name, size_t namelen)
   int gai_error = getaddrinfo (hostname, NULL, &hints, &result);
   if (gai_error != 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GAI_ERROR, 2, gai_error, gai_strerror (gai_error));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GAI_ERROR, 1, hostname);
       return ER_GAI_ERROR;
     }
 
@@ -249,7 +249,7 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
 
       if (gethostbyname_r (host, &hent, buf, sizeof (buf), &hp, &herr) != 0 || hp == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, host);
 	  return ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	}
       memcpy ((void *) ip_addr, (void *) hent.h_addr, hent.h_length);
@@ -260,7 +260,7 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
 
       if (gethostbyname_r (host, &hent, buf, sizeof (buf), &herr) == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, host);
 	  return ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	}
       memcpy ((void *) ip_addr, (void *) hent.h_addr, hent.h_length);
@@ -270,7 +270,7 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
 
       if (gethostbyname_r (host, &hent, &ht_data) == -1)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, host);
 	  return ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	}
       memcpy ((void *) ip_addr, (void *) hent.h_addr, hent.h_length);
@@ -285,7 +285,7 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
       if (hp == NULL)
 	{
 	  pthread_mutex_unlock (&gethostbyname_lock);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, host);
 	  return ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	}
       memcpy ((void *) ip_addr, (void *) hp->h_addr, hp->h_length);
