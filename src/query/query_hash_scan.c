@@ -92,27 +92,16 @@ qdata_alloc_hscan_key (cubthread::entry * thread_p, int val_cnt, bool alloc_vals
 void
 qdata_free_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key, int val_count)
 {
-  int cnt;
-
   if (key == NULL)
     {
       return;
-    }
-
-  if (val_count == NULL)
-    {
-      cnt = key->val_count;
-    }
-  else
-    {
-      cnt = val_count;
     }
 
   if (key->values != NULL)
     {
       if (key->free_values)
 	{
-	  for (int i = 0; i < cnt; i++)
+	  for (int i = 0; i < val_count; i++)
 	    {
 	      if (key->values[i])
 		{
@@ -432,7 +421,8 @@ int
 qdata_free_hscan_entry (const void *key, void *data, void *args)
 {
   /* free key */
-  qdata_free_hscan_key ((cubthread::entry *) args, (HASH_SCAN_KEY *) key, NULL);
+  qdata_free_hscan_key ((cubthread::entry *) args, (HASH_SCAN_KEY *) key,
+			key ? ((HASH_SCAN_KEY *) key)->val_count : 0);
 
   /* free tuple */
   qdata_free_hscan_value ((cubthread::entry *) args, (HASH_SCAN_VALUE *) data);
