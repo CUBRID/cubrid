@@ -515,11 +515,6 @@ repl_log_insert_statement (THREAD_ENTRY * thread_p, REPL_INFO_SBR * repl_info)
       return NO_ERROR;
     }
 
-  if (thread_p->no_logging)
-    {
-      return NO_ERROR;
-    }
-
   /* check the replication log array status, if we need to alloc? */
   if (REPL_LOG_IS_NOT_EXISTS (tran_index)
       && ((error = repl_log_info_alloc (tdes, REPL_LOG_INFO_ALLOC_SIZE, false)) != NO_ERROR))
