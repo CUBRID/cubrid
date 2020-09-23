@@ -75,6 +75,7 @@
 #define UNIQUE_SAVEPOINT_ALTER_INDEX "aLTERiNDEX"
 #define UNIQUE_SAVEPOINT_CHANGE_DEF_COLL "cHANGEdEFAULTcOLL"
 #define UNIQUE_SAVEPOINT_CHANGE_TBL_COMMENT "cHANGEtBLcOMMENT"
+#define UNIQUE_SAVEPOINT_CHANGE_COLUMN_COMMENT "cHANGEcOLUMNcOMMENT"
 #define UNIQUE_SAVEPOINT_CREATE_USER_ENTITY "cREATEuSEReNTITY"
 #define UNIQUE_SAVEPOINT_DROP_USER_ENTITY "dROPuSEReNTITY"
 #define UNIQUE_SAVEPOINT_ALTER_USER_ENTITY "aLTERuSEReNTITY"
@@ -261,6 +262,7 @@ static int do_alter_change_owner (PARSER_CONTEXT * const parser, PT_NODE * const
 static int do_alter_change_default_cs_coll (PARSER_CONTEXT * const parser, PT_NODE * const alter);
 
 static int do_alter_change_tbl_comment (PARSER_CONTEXT * const parser, PT_NODE * const alter);
+static int do_alter_change_col_comment (PARSER_CONTEXT * const parser, PT_NODE * const alter);
 
 static int do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attribute,
 				      PT_NODE * old_name_node, PT_NODE * constraints, SM_ATTR_PROP_CHG * attr_chg_prop,
@@ -1686,6 +1688,9 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  break;
 	case PT_CHANGE_TABLE_COMMENT:
 	  error_code = do_alter_change_tbl_comment (parser, crt_clause);
+	  break;
+	case PT_CHANGE_COLUMN_COMMENT:
+	  error_code = do_alter_change_col_comment (parser, crt_clause);
 	  break;
 	default:
 	  /* This code might not correctly handle a list of ALTER clauses so we keep crt_clause->next to NULL during
@@ -10024,6 +10029,150 @@ exit:
     {
       (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_CHANGE_TBL_COMMENT);
     }
+  return error;
+}
+
+/*
+ * do_alter_change_col_comment() - change the column comment
+ *   return: Error code
+ *   parser(in): Parser context
+ *   alter(in/out): Parse tree of a PT_CHANGE_COLUMN_COMMENT clause
+ */
+static int
+do_alter_change_col_comment (PARSER_CONTEXT * const parser, PT_NODE * const alter_node)
+{
+  int error = NO_ERROR;
+  int meta = 0, shared = 0;
+  SM_ATTRIBUTE *found_attr = NULL;
+  SM_NAME_SPACE name_space = ID_NULL;
+  const PT_ALTER_CODE alter_code = alter_node->info.alter.code;
+  const char *entity_name = NULL;
+  PT_NODE *attr_node = NULL;
+  const char *attr_name = NULL;
+  PT_NODE *comment_node = NULL;
+  PARSER_VARCHAR *comment_str = NULL;
+  DB_OBJECT *class_obj = NULL;
+  DB_CTMPL *ctemplate = NULL;
+  MOP class_mop = NULL;
+  OID class_oid;
+  bool tran_saved = false;
+
+  assert (alter_code == PT_CHANGE_COLUMN_COMMENT);
+
+  OID_SET_NULL (&class_oid);
+
+  entity_name = alter_node->info.alter.entity_name->info.name.original;
+  if (entity_name == NULL)
+    {
+      error = ER_UNEXPECTED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "Expecting a class or virtual class name.");
+      goto exit;
+    }
+
+  class_obj = db_find_class (entity_name);
+  if (class_obj == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      goto exit;
+    }
+
+  error = locator_flush_class (class_obj);
+  if (error != NO_ERROR)
+    {
+      /* don't overwrite error */
+      goto exit;
+    }
+
+  /* force exclusive lock on class, even though it should have been already acquired */
+  if (locator_fetch_class (class_obj, DB_FETCH_WRITE) == NULL)
+    {
+      error = ER_FAILED;
+      goto exit;
+    }
+
+  ctemplate = dbt_edit_class (class_obj);
+  if (ctemplate == NULL)
+    {
+      /* when dbt_edit_class fails (e.g. because the server unilaterally aborts us), we must record the associated
+       * error message into the parser. Otherwise, we may get a confusing error msg of the form: "so_and_so is not a
+       * class". */
+      pt_record_error (parser, parser->statement_number - 1, alter_node->line_number, alter_node->column_number,
+		       er_msg (), NULL);
+      error = er_errid ();
+      goto exit;
+    }
+
+  error = tran_system_savepoint (UNIQUE_SAVEPOINT_CHANGE_COLUMN_COMMENT);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+  tran_saved = true;
+
+  attr_node = alter_node->info.alter.alter_clause.attr_mthd.attr_def_list;
+  while (attr_node != NULL)
+    {
+      attr_name = get_attr_name (attr_node);
+
+      comment_node = attr_node->info.attr_def.comment;
+
+      assert (comment_node != NULL);
+      assert (comment_node->node_type == PT_VALUE);
+
+      meta = (attr_node->info.attr_def.attr_type == PT_META_ATTR);
+      shared = (attr_node->info.attr_def.attr_type == PT_SHARED);
+      name_space = (meta) ? ID_CLASS_ATTRIBUTE : ((shared) ? ID_SHARED_ATTRIBUTE : ID_ATTRIBUTE);
+
+      /* get the attribute structure */
+      error = smt_find_attribute (ctemplate, attr_name, (name_space == ID_CLASS_ATTRIBUTE) ? 1 : 0, &found_attr);
+      if (error != NO_ERROR)
+	{
+	  goto exit;
+	}
+
+      assert (found_attr != NULL);
+
+      /* comment */
+      comment_str = comment_node->info.value.data_value.str;
+
+      ws_free_string_and_init (found_attr->comment);
+      found_attr->comment = ws_copy_string ((char *) pt_get_varchar_bytes (comment_str));
+      if (found_attr->comment == NULL && comment_str != NULL)
+	{
+	  error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
+	  goto exit;
+	}
+
+      attr_node = attr_node->next;
+    }
+
+  /* save class MOP */
+  class_mop = ctemplate->op;
+
+  /* force schema update to server */
+  class_obj = dbt_finish_class (ctemplate);
+  if (class_obj == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      goto exit;
+    }
+
+  /* set NULL, avoid 'abort_class' in case of error */
+  ctemplate = NULL;
+
+exit:
+  if (ctemplate != NULL)
+    {
+      dbt_abort_class (ctemplate);
+    }
+
+  if (error != NO_ERROR && tran_saved && error != ER_LK_UNILATERALLY_ABORTED)
+    {
+      (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_CHANGE_COLUMN_COMMENT);
+    }
+
   return error;
 }
 
