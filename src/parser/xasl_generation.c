@@ -328,7 +328,7 @@ typedef struct corr_info
 FILE *query_Plan_dump_fp = NULL;
 char *query_Plan_dump_filename = NULL;
 
-static XASL_SUPP_INFO xasl_Supp_info = { NULL, NULL, NULL, NULL, 0, 0, false };
+static XASL_SUPP_INFO xasl_Supp_info = { NULL, NULL, NULL, NULL, 0, 0, 0 };
 
 static const int OID_LIST_GROWTH = 10;
 
