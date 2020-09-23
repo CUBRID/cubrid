@@ -18227,7 +18227,10 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  (void) memcpy (xasl->class_locks + 1, aptr->class_locks, sizeof (int) * aptr->n_oid_list);
 	  (void) memcpy (xasl->tcard_list + 1, aptr->tcard_list, sizeof (int) * aptr->n_oid_list);
 
-	  xasl->includes_tde_class = aptr->includes_tde_class;
+	  if (aptr->includes_tde_class)
+	    {
+	      xasl->includes_tde_class = aptr->includes_tde_class;
+	    }
 
 	  /* set spec oid */
 	  xasl->class_oid_list[0] = insert->class_oid;
