@@ -58,16 +58,27 @@
 
 #define LANG_IS_COERCIBLE_COLL(c)	\
   ((c) == LANG_COLL_ISO_BINARY || (c) == LANG_COLL_UTF8_BINARY	\
-   || (c) == LANG_COLL_EUCKR_BINARY)
+   || (c) == LANG_COLL_EUCKR_BINARY) || \
+  ((c) == LANG_COLL_ISO_BINARY_TS || (c) == LANG_COLL_UTF8_BINARY_TS \
+   || (c) == LANG_COLL_EUCKR_BINARY_TS)
+
+#define COLL_TS	15
+
+#define COLL_IS_SAME_VARIATION(c1,c2)   \
+  (((c1) - (c2)) == COLL_TS || ((c2) - (c1)) == COLL_TS)
 
 /* common collation to be used at runtime */
 #define LANG_RT_COMMON_COLL(c1, c2, coll)     \
-  do {					      \
-    coll = -1;				      \
-    if ((c1) == (c2))			      \
-      {					      \
-	coll = (c1);			      \
-      }					      \
+  do {                                        \
+    coll = -1;                                \
+    if ((c1) == (c2))                         \
+      {                                       \
+        coll = (c1);                          \
+      }                                       \
+    else if (COLL_IS_SAME_VARIATION(c1,c2))   \
+      {                                       \
+        coll = ((c1) > (c2))?(c1):(c2);       \
+      }                                       \
     else if (LANG_IS_COERCIBLE_COLL (c1))     \
       {					      \
 	if (!LANG_IS_COERCIBLE_COLL (c2))     \
@@ -112,7 +123,16 @@ enum
   LANG_COLL_UTF8_TR_CS = 6,
   LANG_COLL_UTF8_KO_CS = 7,
   LANG_COLL_EUCKR_BINARY = 8,
-  LANG_COLL_BINARY = 9
+  LANG_COLL_BINARY = 9,
+  LANG_COLL_ISO_BINARY_TS = LANG_COLL_ISO_BINARY + COLL_TS,
+  LANG_COLL_UTF8_BINARY_TS = LANG_COLL_UTF8_BINARY + COLL_TS,
+  LANG_COLL_ISO_EN_CS_TS = LANG_COLL_ISO_EN_CS + COLL_TS,
+  LANG_COLL_ISO_EN_CI_TS = LANG_COLL_ISO_EN_CI + COLL_TS,
+  LANG_COLL_UTF8_EN_CS_TS = LANG_COLL_UTF8_EN_CS + COLL_TS,
+  LANG_COLL_UTF8_EN_CI_TS = LANG_COLL_UTF8_EN_CI + COLL_TS,
+  LANG_COLL_UTF8_TR_CS_TS = LANG_COLL_UTF8_TR_CS + COLL_TS,
+  LANG_COLL_UTF8_KO_CS_TS = LANG_COLL_UTF8_KO_CS + COLL_TS,
+  LANG_COLL_EUCKR_BINARY_TS = LANG_COLL_EUCKR_BINARY + COLL_TS
 };
 
 #define LANG_GET_BINARY_COLLATION(c) (((c) == INTL_CODESET_UTF8) \
