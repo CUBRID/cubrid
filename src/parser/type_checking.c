@@ -8446,6 +8446,7 @@ pt_wrap_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * arg, PT_TYPE_ENUM new_t
 
   new_att->type_enum = new_type;
   new_att->info.expr.op = PT_CAST;
+  PT_EXPR_INFO_SET_FLAG (new_att, PT_EXPR_INFO_CAST_WRAP);
   new_att->info.expr.cast_type = new_dt;
   new_att->info.expr.arg1 = arg;
   new_att->next = next_att;
