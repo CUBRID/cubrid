@@ -465,6 +465,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
     case T_BIN:
     case T_CAST:
     case T_CAST_NOFAIL:
+    case T_CAST_WRAP:
     case T_EXTRACT:
     case T_FLOOR:
     case T_CEIL:
@@ -2318,6 +2319,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       break;
 
     case T_CAST:
+    case T_CAST_WRAP:
       if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_APPLY_COLLATION))
 	{
 	  pr_clone_value (peek_right, arithptr->value);
@@ -2347,7 +2349,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	}
       else
 	{
-	  if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_STRICT_TYPE_CAST))
+	  if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_STRICT_TYPE_CAST) && arithptr->opcode == T_CAST_WRAP)
 	    {
 	      dom_status = tp_value_cast (peek_right, arithptr->value, arithptr->domain, false);
 	    }

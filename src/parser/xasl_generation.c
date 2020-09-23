@@ -8737,7 +8737,14 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		      }
 		    else
 		      {
-			op = T_CAST;
+			if (PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_CAST_WRAP))
+			  {
+			    op = T_CAST_WRAP;
+			  }
+			else
+			  {
+			    op = T_CAST;
+			  }
 		      }
 
 		    if (PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_CAST_COLL_MODIFIER))
