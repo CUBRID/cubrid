@@ -32,11 +32,6 @@
 
 #include "porting.h"
 
-#define JAVASP_LOG_BASE_DIR                 "log/javasp/"
-#define JAVASP_VAR_BASE_DIR                 "var/javasp/"
-
-#define JAVASP_NAME                         "javasp"
-
 typedef struct javasp_server_info JAVASP_SERVER_INFO;
 struct javasp_server_info
 {

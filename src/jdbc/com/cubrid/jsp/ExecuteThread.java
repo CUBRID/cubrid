@@ -46,6 +46,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import com.cubrid.jsp.exception.ExecuteException;
@@ -208,10 +209,19 @@ public class ExecuteThread extends Thread {
 				}
 				case REQ_CODE_UTIL_STATUS: {
 					String dbName = Server.getServerName();
-					output.writeInt(dbName.length() + 4);
+					List<String> vm_args = Server.getJVMArguments();
+					int length = getLengthtoSend(dbName) + 12;
+					for (String arg : vm_args) {
+						length += getLengthtoSend(arg) + 4;
+					}
+					output.writeInt (length);
 					output.writeInt (Server.getServerPort());
-					output.writeInt(dbName.length());
-					output.writeBytes (dbName);
+					packAndSendRawString (dbName, output);
+
+					output.writeInt (vm_args.size());
+					for (String arg : vm_args) {
+						packAndSendRawString (arg, output);
+					}
 					output.flush();
 					break;
 				}
@@ -737,6 +747,37 @@ public class ExecuteThread extends Thread {
 			}
 		} else
 			;
+	}
+	
+	private int getLengthtoSend(String str)	throws IOException {
+		byte b[] = str.getBytes();
+
+		int len = b.length + 1;
+		
+		int bits = len & 3;
+		int pad = 0;
+
+		if (bits != 0)
+			pad = 4 - bits;
+
+		return len + pad;
+	}
+	
+	private void packAndSendRawString(String str, DataOutputStream dos) throws IOException {
+		byte b[] = str.getBytes();
+
+		int len = b.length + 1;
+		int bits = len & 3;
+		int pad = 0;
+
+		if (bits != 0)
+			pad = 4 - bits;
+
+		dos.writeInt(len + pad);
+		dos.write(b);
+		for (int i = 0; i <= pad; i++) {
+			dos.writeByte(0);
+		}
 	}
 
 	private void packAndSendString(String str, DataOutputStream dos)

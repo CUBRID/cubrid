@@ -36,6 +36,9 @@
 #include <winsock2.h>
 #endif /* not WINDOWS */
 
+#include <vector>
+#include <string>
+
 #include "porting.h"
 
 typedef enum
@@ -51,6 +54,15 @@ typedef enum
   SP_CODE_UTIL_TERMINATE_THREAD = 0xFE,
   SP_CODE_UTIL_TERMINATE_SERVER = 0xFF
 } SP_CODE;
+
+typedef struct javasp_status_info JAVASP_STATUS_INFO;
+struct javasp_status_info
+{
+  int pid;
+  int port;
+  char *db_name;
+    std::vector < std::string > vm_args;
+};
 
 #ifdef __cplusplus
 extern "C"

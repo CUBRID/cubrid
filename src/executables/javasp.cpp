@@ -61,16 +61,17 @@
 #include "jsp_sr.h"
 
 #define JAVASP_PING_DATA  "JAVASP_PING"
-#define JAVASP_PING_SIZE  sizeof(JAVASP_PING_DATA)
+#define JAVASP_PING_LEN   sizeof(JAVASP_PING_DATA)
 
 static int javasp_start_server (const char *db_name, char *path, const int server_port);
 static int javasp_stop_server (const SOCKET socket);
 static int javasp_check_server (const char *db_name);
-static int javasp_status_server (const SOCKET socket, char **check_db_name, int *check_db_name_len,
-				 int *check_server_port);
+static int javasp_status_server (const SOCKET socket, int pid);
 static int javasp_ping_server (const SOCKET socket, char *buf);
 
 static bool javasp_is_running (const int server_port);
+static bool javasp_is_terminated_process (int pid);
+static void javasp_dump_status (FILE *fp, JAVASP_STATUS_INFO status_info);
 
 /*
  * main() - javasp main function
@@ -85,6 +86,8 @@ main (int argc, char *argv[])
   SOCKET socket = INVALID_SOCKET;
 
   char javasp_info_file[PATH_MAX];
+  char javasp_error_file[PATH_MAX];
+
   JAVASP_SERVER_INFO jsp_info;
   {
 #if !defined(WINDOWS)
@@ -102,13 +105,16 @@ main (int argc, char *argv[])
 	goto exit;
       }
 
-    ER_SAFE_INIT (NULL, ER_NEVER_EXIT);
-
     /* check argument number */
     if (argc == 3)
       {
 	command = argv[1];
 	db_name = argv[2];
+      }
+    else if (argc == 2)
+      {
+	command = "start";
+	db_name = argv[1];
       }
     else
       {
@@ -121,15 +127,19 @@ main (int argc, char *argv[])
     DB_INFO *db = cfg_find_db (db_name);
     if (db == NULL)
       {
-	fprintf (stderr, "database '%s' does not exist.\n", db_name);
+	PRINT_AND_LOG_ERR_MSG ("database '%s' does not exist.\n", db_name);
 	status = ER_GENERIC_ERROR;
 	goto exit;
       }
+
+    javasp_get_error_file (javasp_error_file, sizeof (javasp_error_file), db_name);
+    ER_SAFE_INIT (javasp_error_file, ER_NEVER_EXIT);
 
     // load system parameter
     status = sysprm_load_and_init (db_name, NULL, SYSPRM_IGNORE_INTL_PARAMS);
     if (status != NO_ERROR)
       {
+	PRINT_AND_LOG_ERR_MSG ("Failed to load system paramter");
 	status = ER_GENERIC_ERROR;
 	goto exit;
       }
@@ -137,7 +147,7 @@ main (int argc, char *argv[])
     // check java stored procedure is not enabled
     if (prm_get_bool_value (PRM_ID_JAVA_STORED_PROCEDURE) == false)
       {
-	fprintf (stderr, "%s parameter is not enabled\n", prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE));
+	PRINT_AND_LOG_ERR_MSG ("%s parameter is not enabled\n", prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE));
 	status = ER_GENERIC_ERROR;
 	goto exit;
       }
@@ -151,7 +161,7 @@ main (int argc, char *argv[])
 	  }
 	else
 	  {
-	    fprintf (stderr, "Error while opening file: %s\n", javasp_info_file);
+	    PRINT_AND_LOG_ERR_MSG ("Error while opening file: %s\n", javasp_info_file);
 	    status = ER_GENERIC_ERROR;
 	    goto exit;
 	  }
@@ -160,7 +170,7 @@ main (int argc, char *argv[])
       {
 	char javasp_dir[PATH_MAX] = {0};
 	envvar_vardir_file (javasp_dir, sizeof (javasp_dir), "javasp");
-	fprintf (stderr, "Error while creating or opening folder: %s\n", javasp_dir);
+	PRINT_AND_LOG_ERR_MSG ("Error while creating or opening folder: %s\n", javasp_dir);
 	status = ER_GENERIC_ERROR;
 	goto exit;
       }
@@ -182,7 +192,7 @@ main (int argc, char *argv[])
 	    assert ((start_port != 0) ? (jsp_server_port () == start_port) : true);
 
 	    jsp_info.pid = getpid();
-	    jsp_info.port = jsp_server_port (); /* set for randomly assigned port number */
+	    jsp_info.port = jsp_server_port (); /* set randomly assigned port number */
 	    javasp_write_info (javasp_info_file, jsp_info);
 
 	    while (true)
@@ -197,31 +207,17 @@ main (int argc, char *argv[])
 	if (socket != INVALID_SOCKET)
 	  {
 	    status = javasp_stop_server (socket);
-	    if (status != NO_ERROR)
+	    if (!javasp_is_terminated_process (jsp_info.pid))
 	      {
-		status = ER_GENERIC_ERROR;
-		goto exit;
-	      }
-
-	    jsp_disconnect_server (socket);
-	    socket = INVALID_SOCKET;
-
-	    socket = jsp_connect_server (jsp_info.port);
-	    if (socket != INVALID_SOCKET)
-	      {
-		// error: server is running already
-		printf ("javasp_stop_server failed, still running");
-
 		kill (jsp_info.pid, SIGINT);
-
-		status = EXIT_FAILURE;
-		goto exit;
 	      }
-
-	    jsp_info.pid = -1;
-	    jsp_info.port = -1;
-	    javasp_get_info_file (javasp_info_file, sizeof (javasp_info_file), db_name);
-	    javasp_write_info (javasp_info_file, jsp_info);
+	    else
+	      {
+		jsp_info.pid = -1;
+		jsp_info.port = -1;
+		javasp_get_info_file (javasp_info_file, sizeof (javasp_info_file), db_name);
+		javasp_write_info (javasp_info_file, jsp_info);
+	      }
 	  }
 	else
 	  {
@@ -240,7 +236,7 @@ main (int argc, char *argv[])
 	socket = jsp_connect_server (jsp_info.port);
 	if (socket != INVALID_SOCKET)
 	  {
-	    status = javasp_status_server (socket, &check_db_name, &check_db_name_len, &check_port);
+	    status = javasp_status_server (socket, jsp_info.pid);
 	    if (status != NO_ERROR)
 	      {
 		// error: server is running already
@@ -248,18 +244,6 @@ main (int argc, char *argv[])
 		status = EXIT_FAILURE;
 		goto exit;
 	      }
-
-	    /*
-	        if (port != check_port || strncasecmp (db_name, check_db_name, check_db_name_len) != 0)
-	          {
-	    	// weird situation
-	    	printf ("db name differnet %s, %s", db_name, check_db_name);
-	    	status = EXIT_FAILURE;
-	    	goto exit;
-	          }
-	    */
-
-	    fprintf (stdout, "Java Stored Procedure Server (%s, pid %d, port %d)", db_name, jsp_info.pid, check_port);
 	  }
 	else
 	  {
@@ -271,7 +255,7 @@ main (int argc, char *argv[])
       }
     else if (strcasecmp (command, "ping") == 0)
       {
-	char buffer[12] = {0};
+	char buffer[JAVASP_PING_LEN] = {0};
 	socket = jsp_connect_server (jsp_info.port);
 	if (socket != INVALID_SOCKET)
 	  {
@@ -327,13 +311,16 @@ javasp_stop_server (const SOCKET socket)
 }
 
 static int
-javasp_status_server (const SOCKET socket, char **check_db_name, int *check_db_name_len, int *check_server_port)
+javasp_status_server (const SOCKET socket, int pid)
 {
   int status = NO_ERROR;
   char *buffer = NULL, *ptr = NULL;
   OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_request;
   char *request = OR_ALIGNED_BUF_START (a_request);
-  assert (check_db_name != NULL && check_server_port != NULL);
+
+  JAVASP_STATUS_INFO status_info;
+  status_info.pid = pid;
+  status_info.db_name = NULL;
   {
     if (socket == INVALID_SOCKET)
       {
@@ -345,8 +332,8 @@ javasp_status_server (const SOCKET socket, char **check_db_name, int *check_db_n
     ptr = or_pack_int (request, SP_CODE_UTIL_STATUS);
     ptr = or_pack_int (ptr, SP_CODE_UTIL_TERMINATE_THREAD);
 
-    int nbytes = jsp_writen (socket, request, (int) sizeof (int));
-    if (nbytes != (int) sizeof (int))
+    int nbytes = jsp_writen (socket, request, (int) sizeof (int) * 2);
+    if (nbytes != (int) sizeof (int) * 2)
       {
 	// stopping failed
 	status = ER_SP_NOT_RUNNING_JVM;
@@ -376,8 +363,17 @@ javasp_status_server (const SOCKET socket, char **check_db_name, int *check_db_n
 	goto exit;
       }
 
-    ptr = or_unpack_int (buffer, check_server_port);
-    ptr = or_unpack_string_alloc (ptr, check_db_name);
+    int num_args = 0;
+    ptr = or_unpack_int (buffer, &status_info.port);
+    ptr = or_unpack_string_nocopy (ptr, &status_info.db_name);
+    ptr = or_unpack_int (ptr, &num_args);
+    for (int i = 0; i < num_args; i++)
+      {
+	char *arg = NULL;
+	ptr = or_unpack_string_nocopy (ptr, &arg);
+	status_info.vm_args.push_back (std::string (arg));
+      }
+    javasp_dump_status (stdout, status_info);
   }
 
 exit:
@@ -385,6 +381,7 @@ exit:
     {
       free_and_init (buffer);
     }
+
   return status;
 }
 
@@ -406,8 +403,8 @@ javasp_ping_server (const SOCKET socket, char *buf)
     ptr = or_pack_int (request, SP_CODE_UTIL_PING);
     ptr = or_pack_int (ptr, SP_CODE_UTIL_TERMINATE_THREAD);
 
-    int nbytes = jsp_writen (socket, request, (int) sizeof (int));
-    if (nbytes != (int) sizeof (int))
+    int nbytes = jsp_writen (socket, request, (int) sizeof (int) * 2);
+    if (nbytes != (int) sizeof (int) * 2)
       {
 	// stopping failed
 	status = ER_SP_NOT_RUNNING_JVM;
@@ -435,17 +432,33 @@ exit:
   return status;
 }
 
+static void javasp_dump_status (FILE *fp, JAVASP_STATUS_INFO status_info)
+{
+  fprintf (stdout, "Java Stored Procedure Server (%s, pid %d, port %d)\n", status_info.db_name, status_info.pid,
+	   status_info.port);
+  if (status_info.vm_args.size() > 0)
+    {
+      fprintf (stdout, "Java VM arguments :\n");
+      fprintf (fp, " -------------------------------------------------\n");
+      for (int i = 0; i < status_info.vm_args.size(); i++)
+	{
+	  fprintf (stdout, "  %s\n", status_info.vm_args[i].c_str());
+	}
+      fprintf (fp, " -------------------------------------------------\n");
+    }
+}
+
 static bool javasp_is_running (const int server_port)
 {
   // check server running
   bool result = false;
-  char buffer[JAVASP_PING_SIZE] = {0};
+  char buffer[JAVASP_PING_LEN] = {0};
   SOCKET socket = jsp_connect_server (server_port);
   if (socket != INVALID_SOCKET)
     {
       if (javasp_ping_server (socket, buffer) == NO_ERROR)
 	{
-	  if (strncmp (buffer, JAVASP_PING_DATA, JAVASP_PING_SIZE) == 0)
+	  if (strncmp (buffer, JAVASP_PING_DATA, JAVASP_PING_LEN) == 0)
 	    {
 	      result = true;
 	    }
@@ -453,4 +466,38 @@ static bool javasp_is_running (const int server_port)
       jsp_disconnect_server (server_port);
     }
   return result;
+}
+
+/*
+ * javasp_is_terminated_process () -
+ *   return:
+ *   pid(in):
+ *   TODO there exists same function in file_io.c and util_service.c
+ */
+static bool
+javasp_is_terminated_process (int pid)
+{
+#if defined(WINDOWS)
+  HANDLE h_process;
+
+  h_process = OpenProcess (PROCESS_QUERY_INFORMATION, FALSE, pid);
+  if (h_process == NULL)
+    {
+      return true;
+    }
+  else
+    {
+      CloseHandle (h_process);
+      return false;
+    }
+#else /* WINDOWS */
+  if (kill (pid, 0) == -1)
+    {
+      return true;
+    }
+  else
+    {
+      return false;
+    }
+#endif /* WINDOWS */
 }

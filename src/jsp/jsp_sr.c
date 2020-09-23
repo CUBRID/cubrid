@@ -180,7 +180,6 @@ static void *jsp_get_create_java_vm_function_ptr (void);
 
 JavaVM *jvm = NULL;
 jint sp_port = -1;
-char info_path[PATH_MAX];
 
 #if defined(WINDOWS)
 
@@ -353,7 +352,7 @@ static void *
 jsp_get_create_java_vm_function_ptr (void)
 {
   char *java_home = NULL;
-  char jvm_library_path[PATH_MAX] = {0};
+  char jvm_library_path[PATH_MAX] = { 0 };
   void *libVM_p;
 
   libVM_p = dlopen (JVM_LIB_FILE, RTLD_NOW | RTLD_LOCAL);
@@ -460,7 +459,9 @@ jsp_start_server (const char *db_name, const char *path, int port)
   JavaVMInitArgs vm_arguments;
   JavaVMOption *options;
   int vm_n_options = 3;
-  char classpath[PATH_MAX + 32] = {0}, logging_prop[PATH_MAX + 32] = {0}, error_log[PATH_MAX + 32], option_debug[70];
+  char classpath[PATH_MAX + 32] = { 0 };
+  char logging_prop[PATH_MAX + 32] = { 0 };
+  char option_debug[70];
   char debug_flag[] = "-Xdebug";
   char debug_jdwp[] = "-agentlib:jdwp=transport=dt_socket,server=y,address=%d,suspend=n";
   char disable_sig_handle[] = "-Xrs";
@@ -488,9 +489,6 @@ jsp_start_server (const char *db_name, const char *path, int port)
 
     snprintf (logging_prop, sizeof (logging_prop) - 1, "-Djava.util.logging.config.file=%s",
 	      envvar_javadir_file (jsp_file_path, PATH_MAX, "logging.properties"));
-
-    snprintf (error_log, sizeof (error_log) - 1, "-XX:ErrorFile=%s_%s",
-	      envvar_logdir_file (jsp_file_path, PATH_MAX, db_name), "java.err");
 
     debug_port = prm_get_integer_value (PRM_ID_JAVA_STORED_PROCEDURE_DEBUG);
     if (debug_port != -1)
@@ -683,9 +681,10 @@ jsp_server_port (void)
   return sp_port;
 #else
   // check $CUBRID/var/javasp_<db_name>.info
-  JAVASP_SERVER_INFO jsp_info = {-1, -1};
-  javasp_get_info_file (info_path, sizeof(info_path), boot_db_name ());
-  jsp_info = javasp_read_info (info_path); 
+  JAVASP_SERVER_INFO jsp_info = { -1, -1 };
+  char info_path[PATH_MAX] = { 0 };
+  javasp_get_info_file (info_path, sizeof (info_path), boot_db_name ());
+  jsp_info = javasp_read_info (info_path);
   return jsp_info.port;
 #endif
 }
