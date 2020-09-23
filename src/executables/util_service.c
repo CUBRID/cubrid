@@ -2200,7 +2200,6 @@ process_manager (int command_type, bool process_window_service)
       print_message (stderr, MSGCAT_UTIL_GENERIC_MANAGER_NOT_INSTALLED);
       util_log_write_errid (MSGCAT_UTIL_GENERIC_MANAGER_NOT_INSTALLED);
       return ER_GENERIC_ERROR;
-
     }
   manager_status = is_manager_running (0);
   if (manager_status == MANAGER_SERVER_STATUS_ERROR)
@@ -2454,41 +2453,6 @@ process_javasp_server (int command_type, int argc, const char **argv, bool proce
 
 exit:
   return status;
-}
-
-static bool
-javasp_mkdir (const char *path, mode_t mode)
-{
-  char dir_path[PATH_MAX];
-  struct stat statbuf;
-
-  dir_path[0] = '\0';
-  envvar_vardir_file (dir_path, PATH_MAX, "javasp/");
-  printf ("%s\n", dir_path);
-
-  if (stat (path, &statbuf) == 0 && S_ISDIR (statbuf.st_mode))
-    {
-      return true;
-    }
-
-  cub_dirname_r (path, dir_path, PATH_MAX);
-  if (stat (dir_path, &statbuf) == -1)
-    {
-      if (errno == ENOENT && javasp_mkdir (dir_path, mode))
-	{
-	  return mkdir (path, mode) == 0;
-	}
-      else
-	{
-	  return false;
-	}
-    }
-  else if (S_ISDIR (statbuf.st_mode))
-    {
-      return mkdir (path, mode) == 0;
-    }
-
-  return false;
 }
 
 static bool

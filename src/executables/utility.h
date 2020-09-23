@@ -732,8 +732,7 @@ typedef enum
   RESTORESLAVE,
   VACUUMDB,
   CHECKSUMDB,
-  JAVASP,
-  // LOGFILEDUMP, /* disabled */
+  LOGFILEDUMP,
 } UTIL_INDEX;
 
 typedef enum
