@@ -236,7 +236,7 @@ public class ExecuteThread extends Thread {
 
 				/* invalid request */
 				default: {
-					throw new ExecuteException ("invalid request code: " + requestCode);
+					// throw new ExecuteException ("invalid request code: " + requestCode);
 				}
 				}
 			} catch (Throwable e) {
