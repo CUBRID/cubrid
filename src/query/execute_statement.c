@@ -13953,20 +13953,20 @@ do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_u
 
   xasl = parser_generate_xasl (parser, statement);
 
-  if (for_ins_upd)
-    {
-      if (xasl->outptr_list)
-	{
-	  for (REGU_VARIABLE_LIST regu_var_list = xasl->outptr_list->valptrp; regu_var_list;
-	       regu_var_list = regu_var_list->next)
-	    {
-	      regu_var_list->value.flags |= REGU_VARIABLE_UPD_INS_LIST;
-	    }
-	}
-    }
-
   if (xasl && !pt_has_error (parser))
     {
+      if (for_ins_upd)
+	{
+	  if (xasl->outptr_list)
+	    {
+	      for (REGU_VARIABLE_LIST regu_var_list = xasl->outptr_list->valptrp; regu_var_list;
+		   regu_var_list = regu_var_list->next)
+		{
+		  regu_var_list->value.flags |= REGU_VARIABLE_UPD_INS_LIST;
+		}
+	    }
+	}
+
       if (pt_false_where (parser, statement))
 	{
 	  /* there is no results, this is a compile time false where clause */
