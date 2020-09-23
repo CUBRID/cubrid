@@ -3618,3 +3618,63 @@ error_exit:
 
   return EXIT_FAILURE;
 }
+
+/*
+ * logdump() - logdump main routine
+ *   return: EXIT_SUCCESS/EXIT_FAILURE
+ */
+int logdump (UTIL_FUNCTION_ARG * arg)
+{
+  UTIL_ARG_MAP *arg_map = arg->arg_map;
+  char er_msg_file[PATH_MAX];
+  const char *database_name;
+
+  if(utility_get_option_string_table_size (arg_map) != 1)
+  {
+    goto print_logdump_usage;
+  }
+
+  database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  if (database_name == NULL)
+  {
+    goto print_logdump_usage;
+  }
+
+  if (check_database_name (database_name))
+  {
+    goto error_exit;
+  }
+
+  /* error message log file */
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
+  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
+
+  AU_DISABLE_PASSWORDS ();
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+  db_login ("DBA", NULL);
+  if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string(3));
+      goto error_exit;
+    }
+
+  if (db_set_isolation (TRAN_READ_COMMITTED) != NO_ERROR || cvacuum () != NO_ERROR)
+	{
+    PRINT_AND_LOG_ERR_MSG  ("%s\n", db_error_string(3));
+    goto error_exit;
+  }
+	
+  db_shutdown ();
+
+  return EXIT_SUCCESS;
+
+print_logdump_usage:
+  fprintf (stderr, "LOGDUMP Utility Usage");
+
+error_exit:
+
+  return EXIT_FAILURE;
+
+}
