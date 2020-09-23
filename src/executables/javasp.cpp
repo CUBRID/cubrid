@@ -81,7 +81,7 @@ int
 main (int argc, char *argv[])
 {
   int status = NO_ERROR;
-  char *command;
+  const char *command;
   char *db_name = NULL;
   SOCKET socket = INVALID_SOCKET;
 
@@ -97,13 +97,6 @@ main (int argc, char *argv[])
 	goto exit;
       }
 #endif /* ! WINDOWS */
-
-    /* initialize message catalog for argument parsing and usage() */
-    if (utility_initialize () != NO_ERROR)
-      {
-	status = ER_GENERIC_ERROR;
-	goto exit;
-      }
 
     /* check argument number */
     if (argc == 3)
@@ -123,6 +116,15 @@ main (int argc, char *argv[])
 	goto exit;
       }
 
+    if (strcasecmp (command, "ping") == 0)
+      {
+	// redirect stderr
+	freopen ("/dev/null", "w", stderr);
+      }
+
+    javasp_get_error_file (javasp_error_file, sizeof (javasp_error_file), db_name);
+    ER_SAFE_INIT (javasp_error_file, ER_NEVER_EXIT);
+
     /* check database exists */
     DB_INFO *db = cfg_find_db (db_name);
     if (db == NULL)
@@ -132,8 +134,6 @@ main (int argc, char *argv[])
 	goto exit;
       }
 
-    javasp_get_error_file (javasp_error_file, sizeof (javasp_error_file), db_name);
-    ER_SAFE_INIT (javasp_error_file, ER_NEVER_EXIT);
 
     // load system parameter
     status = sysprm_load_and_init (db_name, NULL, SYSPRM_IGNORE_INTL_PARAMS);
@@ -227,6 +227,19 @@ main (int argc, char *argv[])
 	    goto exit;
 	  }
       }
+    else if (strcasecmp (command, "ping") == 0)
+      {
+	// redicred stderr
+	char buffer[JAVASP_PING_LEN] = {0};
+	socket = jsp_connect_server (jsp_info.port);
+	if (socket != INVALID_SOCKET)
+	  {
+	    if (javasp_ping_server (socket, buffer) == NO_ERROR)
+	      {
+		fprintf (stdout, buffer);
+	      }
+	  }
+      }
     else if (strcasecmp (command, "status") == 0)
       {
 	char *check_db_name = NULL;
@@ -251,18 +264,6 @@ main (int argc, char *argv[])
 	    printf ("server is not running");
 	    status = EXIT_FAILURE;
 	    goto exit;
-	  }
-      }
-    else if (strcasecmp (command, "ping") == 0)
-      {
-	char buffer[JAVASP_PING_LEN] = {0};
-	socket = jsp_connect_server (jsp_info.port);
-	if (socket != INVALID_SOCKET)
-	  {
-	    if (javasp_ping_server (socket, buffer) == NO_ERROR)
-	      {
-		fprintf (stdout, buffer);
-	      }
 	  }
       }
     else
@@ -436,11 +437,12 @@ static void javasp_dump_status (FILE *fp, JAVASP_STATUS_INFO status_info)
 {
   fprintf (stdout, "Java Stored Procedure Server (%s, pid %d, port %d)\n", status_info.db_name, status_info.pid,
 	   status_info.port);
-  if (status_info.vm_args.size() > 0)
+  auto vm_args_len = status_info.vm_args.size();
+  if (vm_args_len > 0)
     {
       fprintf (stdout, "Java VM arguments :\n");
       fprintf (fp, " -------------------------------------------------\n");
-      for (int i = 0; i < status_info.vm_args.size(); i++)
+      for (int i = 0; i < (int) vm_args_len; i++)
 	{
 	  fprintf (stdout, "  %s\n", status_info.vm_args[i].c_str());
 	}
