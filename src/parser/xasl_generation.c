@@ -17336,13 +17336,16 @@ pt_spec_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * spec, O
 		    {
 		      if (au_fetch_class (class_obj, &smclass, AU_FETCH_READ, AU_SELECT) == NO_ERROR)
 			{
-			  if (smclass && smclass->stats)
+			  if (smclass)
 			    {
-			      assert (smclass->stats->heap_num_pages >= 0);
-			      *(t_list + o_num - 1) = smclass->stats->heap_num_pages;
 			      if (smclass->tde_algorithm != TDE_ALGORITHM_NONE)
 				{
 				  *includes_tde_class = 1;
+				}
+			      if (smclass->stats)
+				{
+				  assert (smclass->stats->heap_num_pages >= 0);
+				  *(t_list + o_num - 1) = smclass->stats->heap_num_pages;
 				}
 			    }
 			}
@@ -18197,9 +18200,6 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  OID_SET_NULL (&xasl->creator_oid);
 	}
 
-      assert (locator_is_class (class_obj, DB_FETCH_QUERY_READ) > 0);
-      (void) au_fetch_class (class_obj, &smclass, AU_FETCH_READ, AU_SELECT);
-
       /* list of class OIDs used in this XASL */
       if (xasl->aptr_list != NULL)
 	{
@@ -18235,14 +18235,6 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  xasl->tcard_list[0] = XASL_CLASS_NO_TCARD;	/* init #pages */
 
 	  xasl->dbval_cnt = aptr->dbval_cnt;
-
-	  if (smclass && smclass->stats)
-	    {
-	      if (smclass->tde_algorithm != TDE_ALGORITHM_NONE)
-		{
-		  xasl->includes_tde_class = 1;
-		}
-	    }
 	}
       else
 	{
@@ -18270,13 +18262,16 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  xasl->class_oid_list[0] = insert->class_oid;
 	  xasl->class_locks[0] = (int) IX_LOCK;
 	  xasl->tcard_list[0] = XASL_CLASS_NO_TCARD;	/* init #pages */
+	}
 
-	  if (smclass && smclass->stats)
+      assert (locator_is_class (class_obj, DB_FETCH_QUERY_READ) > 0);
+      (void) au_fetch_class (class_obj, &smclass, AU_FETCH_READ, AU_SELECT);
+
+      if (smclass)
+	{
+	  if (smclass->tde_algorithm != TDE_ALGORITHM_NONE)
 	    {
-	      if (smclass->tde_algorithm != TDE_ALGORITHM_NONE)
-		{
-		  xasl->includes_tde_class = 1;
-		}
+	      xasl->includes_tde_class = 1;
 	    }
 	}
     }
@@ -25463,7 +25458,7 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
   xasl->dbval_cnt = aptr->dbval_cnt;
 
   xasl->includes_tde_class = aptr->includes_tde_class;
-  if (smclass && smclass->stats)
+  if (smclass)
     {
       if (smclass->tde_algorithm != TDE_ALGORITHM_NONE)
 	{
