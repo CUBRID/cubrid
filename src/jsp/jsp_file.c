@@ -27,12 +27,12 @@
 
 #include "jsp_file.h"
 
-#include "porting.h"
-#include "environment_variable.h"
-
 #if defined (WINDOWS)
 #include <io.h>
 #endif
+
+#include "porting.h"
+#include "environment_variable.h"
 
 #include <assert.h>
 #include <errno.h>

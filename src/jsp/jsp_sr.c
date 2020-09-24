@@ -45,7 +45,7 @@
 #include <iterator>
 
 #include "jsp_sr.h"
-#include "jsp_file.c"
+#include "jsp_file.h"
 
 #include "boot_sr.h"
 #include "environment_variable.h"
