@@ -283,7 +283,6 @@ static bool is_server_running (const char *type, const char *server_name, int pi
 static int is_broker_running (void);
 static UTIL_MANAGER_SERVER_STATUS_E is_manager_running (unsigned int sleep_time);
 static bool is_javasp_running (const char *server_name);
-static bool javasp_mkdir (const char *path, mode_t mode);
 
 #if defined(WINDOWS)
 static bool is_windows_service_running (unsigned int sleep_time);
