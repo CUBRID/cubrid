@@ -38,7 +38,7 @@
 #define		CUBRID_UTIL_SHARD			"shard"
 #define		CUBRID_UTIL_MANAGER			"manager"
 #define		CUBRID_UTIL_SERVER			"server"
-#define 	CUBRID_UTIL_JAVASP 			"javasp"
+#define		CUBRID_UTIL_JAVASP			"javasp"
 
 #define		CUBRID_COMMAND_START			"start"
 #define		CUBRID_COMMAND_STOP			"stop"
