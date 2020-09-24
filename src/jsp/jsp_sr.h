@@ -30,8 +30,17 @@
 
 #ident "$Id$"
 
+#if defined(__cplusplus)
+extern "C"
+{
+#endif
+
 extern int jsp_start_server (const char *server_name, const char *path, int port_number);
 extern int jsp_server_port (void);
 extern int jsp_jvm_is_loaded (void);
+
+#if defined(__cplusplus)
+}
+#endif
 
 #endif /* _JSP_SR_H_ */

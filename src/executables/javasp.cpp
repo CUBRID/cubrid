@@ -53,6 +53,7 @@
 #include "environment_variable.h"
 #include "system_parameter.h"
 #include "error_code.h"
+#include "error_manager.h"
 #include "message_catalog.h"
 #include "utility.h"
 #include "databases_file.h"
@@ -83,15 +84,20 @@ int
 main (int argc, char *argv[])
 {
   int status = NO_ERROR;
-  const char *command;
+  const char *command = NULL;
   char *db_name = NULL;
   SOCKET socket = INVALID_SOCKET;
 
   char javasp_info_file[PATH_MAX];
   char javasp_error_file[PATH_MAX];
 
+#if defined(WINDOWS)
+  FARPROC jsp_old_hook = NULL;
+#endif /* WINDOWS */
+
   JAVASP_SERVER_INFO jsp_info;
   {
+
 #if !defined(WINDOWS)
     if (os_set_signal_handler (SIGPIPE, SIG_IGN) == SIG_ERR)
       {
@@ -121,11 +127,22 @@ main (int argc, char *argv[])
     if (strcasecmp (command, "ping") == 0)
       {
 	// redirect stderr
-	freopen ("/dev/null", "w", stderr);
+  FILE *f;
+  const char* nullStream = "/dev/null";
+#if defined (WINDOWS) 
+  nullStream = "nul";
+#endif
+	if ((f = freopen (nullStream, "w", stderr)) == NULL)
+  {
+    assert (false);
+  }
+  fclose (f);
       }
-
-    javasp_get_error_file (javasp_error_file, sizeof (javasp_error_file), db_name);
-    ER_SAFE_INIT (javasp_error_file, ER_NEVER_EXIT);
+    
+    /* error message file */
+    char er_msg_file[PATH_MAX];
+    snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_java.err", db_name);
+    er_init (er_msg_file, ER_NEVER_EXIT);
 
     /* check database exists */
     DB_INFO *db = cfg_find_db (db_name);
@@ -135,7 +152,6 @@ main (int argc, char *argv[])
 	status = ER_GENERIC_ERROR;
 	goto exit;
       }
-
 
     // load system parameter
     status = sysprm_load_and_init (db_name, NULL, SYSPRM_IGNORE_INTL_PARAMS);
@@ -176,6 +192,11 @@ main (int argc, char *argv[])
 	status = ER_GENERIC_ERROR;
 	goto exit;
       }
+
+  #if defined(WINDOWS)
+    // socket startup for windows
+    windows_socket_startup (jsp_old_hook);
+  #endif /* WINDOWS */
 
     /* javasp command main routine */
     if (strcasecmp (command, "start") == 0)
@@ -221,22 +242,8 @@ main (int argc, char *argv[])
 	else
 	  {
 	    // error: server is not running
-	    printf ("server is not running");
 	    status = EXIT_FAILURE;
 	    goto exit;
-	  }
-      }
-    else if (strcasecmp (command, "ping") == 0)
-      {
-	// redicred stderr
-	char buffer[JAVASP_PING_LEN] = {0};
-	socket = jsp_connect_server (jsp_info.port);
-	if (socket != INVALID_SOCKET)
-	  {
-	    if (javasp_ping_server (socket, buffer) == NO_ERROR)
-	      {
-		fprintf (stdout, buffer);
-	      }
 	  }
       }
     else if (strcasecmp (command, "status") == 0)
@@ -265,6 +272,19 @@ main (int argc, char *argv[])
 	    goto exit;
 	  }
       }
+    else if (strcasecmp (command, "ping") == 0)
+      {
+	char buffer[JAVASP_PING_LEN] = {0};
+	socket = jsp_connect_server (jsp_info.port);
+	if (socket != INVALID_SOCKET)
+	  {
+	    if (javasp_ping_server (socket, buffer) == NO_ERROR)
+	      {
+		fprintf (stdout, "%s\n", buffer);
+	      }
+	  }
+    goto exit;
+      }
     else
       {
 	assert (false);
@@ -277,6 +297,11 @@ exit:
     {
       jsp_disconnect_server (socket);
     }
+
+#if defined(WINDOWS)
+  windows_socket_shutdown (jsp_old_hook);
+#endif /* WINDOWS */
+
   return status;
 }
 
@@ -289,7 +314,8 @@ javasp_start_server (const char *db_name, char *path, const int server_port)
   setsid ();
 #endif
 
-  return jsp_start_server (db_name, path, server_port);
+  status = jsp_start_server (db_name, path, server_port);
+  return status;
 }
 
 static int

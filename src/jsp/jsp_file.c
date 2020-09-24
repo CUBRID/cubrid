@@ -25,19 +25,21 @@
  * Note:
  */
 
-#include "jsp_file.h"
-
 #if defined (WINDOWS)
 #include <io.h>
 #endif
 
-#include "porting.h"
-#include "environment_variable.h"
+#include "jsp_file.h"
 
-#include <assert.h>
-#include <errno.h>
-#include <stdlib.h>
-#include <stdio.h>
+#include "porting.h"
+
+#include <cassert>
+#include <cerrno>
+#include <cstdlib>
+#include <cstdio>
+
+
+#include "environment_variable.h"
 
 bool
 javasp_get_info_dir ()
@@ -89,9 +91,9 @@ bool
 javasp_get_error_file (char *buf, size_t len, const char *db_name)
 {
   char javasp_logdir[PATH_MAX];
-  envvar_logdir_file (javasp_logdir, sizeof (javasp_logdir), "javasp");
+  envvar_logdir_file (javasp_logdir, sizeof (javasp_logdir), "");
 
-  if (snprintf (buf, len, "%s/javasp_%s.err", javasp_logdir, db_name) < 0)
+  if (snprintf (buf, len, "%s/%s_java.err", javasp_logdir, db_name) < 0)
     {
       assert (false);
       buf[0] = '\0';
@@ -104,9 +106,9 @@ bool
 javasp_get_log_file (char *buf, size_t len, const char *db_name)
 {
   char javasp_logdir[PATH_MAX];
-  envvar_logdir_file (javasp_logdir, sizeof (javasp_logdir), "javasp");
+  envvar_logdir_file (javasp_logdir, sizeof (javasp_logdir), "");
 
-  if (snprintf (buf, len, "%s/javasp_%s.log", javasp_logdir, db_name) < 0)
+  if (snprintf (buf, len, "%s/%s_java.log", javasp_logdir, db_name) < 0)
     {
       assert (false);
       buf[0] = '\0';

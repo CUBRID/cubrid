@@ -253,7 +253,8 @@ _tmain (int argc, char *argv[])
   else if (argc == 4)
     {
       if (_stricmp (argv[1], CUBRID_UTIL_SERVER) == 0 ||
-	  _stricmp (argv[1], CUBRID_UTIL_BROKER) == 0)
+	  _stricmp (argv[1], CUBRID_UTIL_BROKER) == 0 ||
+	  _stricmp (argv[1], CUBRID_UTIL_JAVASP) == 0)
 	{
 	  SERVICE_STATUS ss;
 	  int service_control_code;
@@ -404,7 +405,7 @@ vctrlService (void)
     }
 
   service_description.lpDescription =
-    "Service to execute master,broker,database server and manager server processes for CUBRID.\r\n"
+    "Service to execute master,broker,database server, manager server and javasp server processes for CUBRID.\r\n"
     "Service start/stop menu is equal to the command of \"cubrid service start/stop\".\r\n"
     "If you setup \"startup type\" of this service to \"Disabled\", you can't use \"cubrid service\" command.";
 

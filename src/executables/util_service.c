@@ -637,7 +637,7 @@ main (int argc, char *argv[])
     {
       process_window_service = false;
     }
-  else if ((util_type == SERVER || util_type == BROKER) && (argc > 4)
+  else if ((util_type == SERVER || util_type == BROKER || util_type == JAVASP_UTIL) && (argc > 4)
 	   && strcmp ((char *) argv[4], "--for-windows-service") == 0)
     {
       process_window_service = false;
@@ -2343,15 +2343,12 @@ is_javasp_running (const char *server_name)
 {
   FILE *input;
   char buf[32];
-  char cmd[PATH_MAX] = { 0 }, exec_path[PATH_MAX] =
-  {
-  0};
+  char cmd[PATH_MAX] = { 0 };
 
-  make_exec_abspath (exec_path, PATH_MAX, (char *) UTIL_JAVASP_NAME);
-  if (snprintf (cmd, PATH_MAX, "%s %s %s", exec_path, "ping", server_name) < 0)
-    {
-      return false;
-    }
+  (void) envvar_bindir_file (cmd, PATH_MAX, UTIL_JAVASP_NAME);
+
+  strcat (cmd, " ping ");
+  strcat (cmd, server_name);
 
   input = popen (cmd, "r");
   if (input == NULL)
@@ -2361,7 +2358,7 @@ is_javasp_running (const char *server_name)
 
   memset (buf, '\0', sizeof (buf));
 
-  if ((fgets (buf, 32, input) == NULL) || strncmp (buf, "JAVASP_PING", 11) != 0)
+  if ((fgets (buf, 16, input) == NULL) || strncmp (buf, "JAVASP_PING", 11) != 0)
     {
       pclose (input);
       return false;
@@ -2390,20 +2387,19 @@ process_javasp_server (int command_type, int argc, const char **argv, bool proce
   int status = NO_ERROR;
   char *db_name = NULL;
 
-  if (argc == 0)
+  if (argc == 0) /* cubrid service command */
     {
       if (us_Property_map[SERVER_START_LIST].property_value != NULL)
 	{
 	  strncpy (buf, us_Property_map[SERVER_START_LIST].property_value, sizeof (buf) - 1);
 	}
     }
-  else if (argc == 1)
+  else /* cubrid javasp command */
     {
-      /* check db_name argument */
       strncpy (buf, argv[0], sizeof (buf) - 1);
-      db_name = strtok_r (list, delim, &save);
     }
-  else
+
+  if (command_type != STATUS && strlen (buf) == 0)
     {
       util_service_usage (JAVASP_UTIL);
       util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_CMD);
@@ -2433,25 +2429,38 @@ process_javasp_server (int command_type, int argc, const char **argv, bool proce
 	    else
 	      {
 		int pid;
+    int waited_seconds = 0;
+
 		if (process_window_service)
 		  {
 #if defined(WINDOWS)
 		    const char *args[] = { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_JAVASP,
-		      COMMAND_TYPE_START, NULL
+		      COMMAND_TYPE_START, db_name, NULL
 		    };
-
-		    status = proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true, false, false, &pid);
-		    sleep (1);	/* wait to start */
-		    status = (is_javasp_running (db_name)) ? NO_ERROR : ER_GENERIC_ERROR;
+		    status = proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true, false, false, NULL);
 #endif
 		  }
 		else
 		  {
 		    const char *args[] = { UTIL_JAVASP_NAME, db_name, NULL };
-		    status = proc_execute (UTIL_JAVASP_NAME, args, false, false, false, &pid);
-		    sleep (1);	/* wait to start */
-		    status = (is_javasp_running (db_name)) ? NO_ERROR : ER_GENERIC_ERROR;
+        status = proc_execute (UTIL_JAVASP_NAME, args, false, false, false, &pid);
 		  }
+      status = ER_GENERIC_ERROR;
+      while (status != NO_ERROR && waited_seconds < 5)
+      {
+        sleep (1);	/* wait to start */
+        
+        if (is_javasp_running (db_name))
+        {
+          status = NO_ERROR;
+          break;
+        }
+        else
+        {
+          PRINT_AND_LOG_ERR_MSG ("Waiting for javasp server to start... (%d/%d)", ++waited_seconds, 5);
+        }
+      }
+        
 		print_result (PRINT_JAVASP_NAME, status, command_type);
 	      }
 	  }
@@ -2465,7 +2474,7 @@ process_javasp_server (int command_type, int argc, const char **argv, bool proce
 		  {
 #if defined(WINDOWS)
 		    const char *args[] = { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_JAVASP,
-		      COMMAND_TYPE_STOP, NULL
+		      COMMAND_TYPE_STOP, db_name, NULL
 		    };
 
 		    status = proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true, false, false, NULL);

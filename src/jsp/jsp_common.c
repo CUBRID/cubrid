@@ -47,7 +47,6 @@
 #include "porting.h"
 #include "error_manager.h"
 
-
 /*
  * jsp_connect_server
  *   return: connect fail - return Error Code
@@ -255,3 +254,75 @@ jsp_readn (SOCKET fd, void *vptr, int n)
 
   return (n - nleft);		/* return >= 0 */
 }
+
+#if defined(WINDOWS)
+/*
+ * windows_blocking_hook() -
+ *   return: false
+ *
+ * Note: WINDOWS Code
+ */
+
+BOOL
+windows_blocking_hook ()
+{
+  return false;
+}
+
+/*
+ * windows_socket_startup() -
+ *   return: return -1 on error otherwise return 1
+ *
+ * Note:
+ */
+
+int
+windows_socket_startup (FARPROC hook)
+{
+  WORD wVersionRequested;
+  WSADATA wsaData;
+  int err;
+
+  hook = NULL;
+  wVersionRequested = 0x101;
+  err = WSAStartup (wVersionRequested, &wsaData);
+  if (err != 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_WINSOCK_STARTUP, 1, err);
+      return (-1);
+    }
+
+  /* Establish a blocking "hook" function to prevent Windows messages from being dispatched when we block on reads. */
+  hook = WSASetBlockingHook ((FARPROC) windows_blocking_hook);
+  if (hook == NULL)
+    {
+      /* couldn't set up our hook */
+      err = WSAGetLastError ();
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_WINSOCK_STARTUP, 1, err);
+      (void) WSACleanup ();
+      return -1;
+    }
+
+  return 1;
+}
+
+/*
+ * windows_socket_shutdown() -
+ *   return:
+ *
+ * Note:
+ */
+
+void
+windows_socket_shutdown (FARPROC hook)
+{
+  int err;
+
+  if (hook != NULL)
+    {
+      (void) WSASetBlockingHook (hook);
+    }
+
+  err = WSACleanup ();
+}
+#endif /* WINDOWS */

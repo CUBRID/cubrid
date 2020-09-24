@@ -113,9 +113,7 @@ static int call_cnt = 0;
 static bool is_prepare_call[MAX_CALL_COUNT];
 
 #if defined(WINDOWS)
-FARPROC jsp_old_hook = NULL;
-static int windows_socket_startup (void);
-static void windows_socket_shutdown (void);
+static FARPROC jsp_old_hook = NULL;
 #endif /* WINDOWS */
 
 static SP_TYPE_ENUM jsp_map_pt_misc_to_sp_type (PT_MISC_TYPE pt_enum);
@@ -198,7 +196,7 @@ jsp_init (void)
     }
 
 #if defined(WINDOWS)
-  windows_socket_startup ();
+  windows_socket_startup (jsp_old_hook);
 #endif /* WINDOWS */
 }
 
@@ -1243,79 +1241,6 @@ error:
 
   return err;
 }
-
-#if defined(WINDOWS)
-
-/*
- * windows_blocking_hook() -
- *   return: false
- *
- * Note: WINDOWS Code
- */
-
-BOOL
-windows_blocking_hook ()
-{
-  return false;
-}
-
-/*
- * windows_socket_startup() -
- *   return: return -1 on error otherwise return 1
- *
- * Note:
- */
-
-static int
-windows_socket_startup ()
-{
-  WORD wVersionRequested;
-  WSADATA wsaData;
-  int err;
-
-  jsp_old_hook = NULL;
-  wVersionRequested = 0x101;
-  err = WSAStartup (wVersionRequested, &wsaData);
-  if (err != 0)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_WINSOCK_STARTUP, 1, err);
-      return (-1);
-    }
-
-  /* Establish a blocking "hook" function to prevent Windows messages from being dispatched when we block on reads. */
-  jsp_old_hook = WSASetBlockingHook ((FARPROC) windows_blocking_hook);
-  if (jsp_old_hook == NULL)
-    {
-      /* couldn't set up our hook */
-      err = WSAGetLastError ();
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_WINSOCK_STARTUP, 1, err);
-      (void) WSACleanup ();
-      return -1;
-    }
-
-  return 1;
-}
-
-/*
- * windows_socket_shutdown() -
- *   return:
- *
- * Note:
- */
-
-static void
-windows_socket_shutdown ()
-{
-  int err;
-
-  if (jsp_old_hook != NULL)
-    {
-      (void) WSASetBlockingHook (jsp_old_hook);
-    }
-
-  err = WSACleanup ();
-}
-#endif /* WINDOWS */
 
 /*
  * jsp_get_value_size -

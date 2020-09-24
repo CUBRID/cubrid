@@ -164,7 +164,7 @@ public class Server {
 		FileHandler logHandler = null;
 		try {
 			logHandler = new FileHandler(rootPath + File.separatorChar
-					+ LOG_DIR + File.separatorChar + "javasp" + File.separatorChar + serverName + "_java.log",
+					+ LOG_DIR + File.separatorChar + serverName + "_java.log",
 					true);
 			logger.addHandler(logHandler);
 			logger.log(Level.SEVERE, "", ex);

@@ -195,6 +195,8 @@ vHandler (DWORD opcode)
 
   if (opcode == SERVICE_CONTROL_SERVER_START ||
       opcode == SERVICE_CONTROL_SERVER_STOP ||
+      opcode == SERVICE_CONTROL_JAVASP_START ||
+      opcode == SERVICE_CONTROL_JAVASP_STOP ||
       opcode == SERVICE_CONTROL_BROKER_ON ||
       opcode == SERVICE_CONTROL_BROKER_OFF)
     {
