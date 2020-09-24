@@ -30,6 +30,10 @@
 #include "porting.h"
 #include "environment_variable.h"
 
+#if defined (WINDOWS)
+#include <io.h>
+#endif
+
 #include <assert.h>
 #include <errno.h>
 #include <stdlib.h>
