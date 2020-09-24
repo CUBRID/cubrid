@@ -415,6 +415,32 @@ qfile_clone_list_id (const QFILE_LIST_ID * list_id_p, bool is_include_sort_list)
 void
 qfile_clear_list_id (QFILE_LIST_ID * list_id_p)
 {
+#if !defined(NDEBUG)
+  QMGR_QUERY_ENTRY *query_p;
+  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+  int tran_index;
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+  query_p = qmgr_get_query_entry (thread_p, list_id_p->query_id, tran_index);
+  if (query_p != NULL && query_p->includes_tde_class)
+    {
+      if (list_id_p->tfile_vfid)
+	{
+	  assert (list_id_p->tfile_vfid->tde_encrypted);
+	}
+
+      if (!VFID_ISNULL (&list_id_p->temp_vfid))
+	{
+	  if (file_get_tde_algorithm (thread_p, &list_id_p->temp_vfid, &tde_algo) != NO_ERROR)
+	    {
+	      assert (tde_algo != TDE_ALGORITHM_NONE);
+	    }
+	}
+    }
+#endif /* !NDEBUG */
+
   qfile_update_qlist_count (thread_get_thread_entry_info (), list_id_p, -1);
 
   if (list_id_p->tpl_descr.f_valp)
