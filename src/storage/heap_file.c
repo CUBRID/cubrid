@@ -18827,14 +18827,7 @@ heap_mvcc_log_home_no_change (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * p_addr)
       p_addr->offset |= HEAP_RV_FLAG_VACUUM_STATUS_CHANGE;
     }
 
-  if (thread_p->no_logging)
-    {
-      log_append_undo_data (thread_p, RVHF_MVCC_NO_MODIFY_HOME, p_addr, 0, NULL);
-    }
-  else
-    {
-      log_append_undoredo_data (thread_p, RVHF_MVCC_NO_MODIFY_HOME, p_addr, 0, 0, NULL, NULL);
-    }
+  log_append_undoredo_data (thread_p, RVHF_MVCC_NO_MODIFY_HOME, p_addr, 0, 0, NULL, NULL);
 }
 
 /*
