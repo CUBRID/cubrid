@@ -1061,17 +1061,11 @@ tranlist: Ȱ��ȭ�� Ʈ����� ���� ���.\n\
 ����: %1$s tranlist [�ɼ�] database-name\n\
 \n\
 valid options:\n\
-<<<<<<< HEAD
-  -s, --summary                �������� �� �� ���� ����\n\
-      --sort-key=COLUMN_NUMBER ������ �÷���ȣ; �⺻�� : 1\n\
-      --reverse                �������� ���ļ���; �⺻�� : �������� ����\n
-=======
   -u, --user=ID                �����ͺ��̽� ���ٿ� ���� ����� �̸�; �⺻��: DBA\n\
   -p, --password=PASS          ����� �н�����; �⺻��: ����\n\
   -s, --summary                �������� �� �� ���� ����\n\
       --sort-key=COLUMN_NUMBER ������ �÷���ȣ; �⺻�� : 1\n\
       --reverse                �������� ���ļ���; �⺻�� : �������� ����\n
->>>>>>> add msg for javasp usage
 
 $set 51 MSGCAT_UTIL_SET_GEN_TZ
 59 ��ȿ���� ���� ���� ��尡 �����Ǿ����ϴ�.\n
