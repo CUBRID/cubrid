@@ -46,6 +46,8 @@
 #else /* not WINDOWS */
 #include <winsock2.h>
 #include <windows.h>
+#include <process.h>
+#include <io.h>
 #endif /* not WINDOWS */
 
 #include "environment_variable.h"
@@ -72,6 +74,7 @@ static int javasp_ping_server (const SOCKET socket, char *buf);
 static bool javasp_is_running (const int server_port);
 static bool javasp_is_terminated_process (int pid);
 static void javasp_dump_status (FILE *fp, JAVASP_STATUS_INFO status_info);
+static void javasp_terminate_process (int pid);
 
 /*
  * main() - javasp main function
@@ -209,15 +212,12 @@ main (int argc, char *argv[])
 	    status = javasp_stop_server (socket);
 	    if (!javasp_is_terminated_process (jsp_info.pid))
 	      {
-		kill (jsp_info.pid, SIGINT);
+		javasp_terminate_process (jsp_info.pid);
 	      }
-	    else
-	      {
-		jsp_info.pid = -1;
-		jsp_info.port = -1;
-		javasp_get_info_file (javasp_info_file, sizeof (javasp_info_file), db_name);
-		javasp_write_info (javasp_info_file, jsp_info);
-	      }
+	    jsp_info.pid = -1;
+	    jsp_info.port = -1;
+	    javasp_get_info_file (javasp_info_file, sizeof (javasp_info_file), db_name);
+	    javasp_write_info (javasp_info_file, jsp_info);
 	  }
 	else
 	  {
@@ -502,4 +502,21 @@ javasp_is_terminated_process (int pid)
       return false;
     }
 #endif /* WINDOWS */
+}
+
+static void
+javasp_terminate_process (int pid)
+{
+#if defined(WINDOWS)
+  HANDLE phandle;
+
+  phandle = OpenProcess (PROCESS_TERMINATE, FALSE, pid);
+  if (phandle)
+    {
+      TerminateProcess (phandle, 0);
+      CloseHandle (phandle);
+    }
+#else /* ! WINDOWS */
+  kill (pid, SIGTERM);
+#endif /* ! WINDOWS */
 }
