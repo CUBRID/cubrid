@@ -1152,6 +1152,16 @@ qmgr_process_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl_tree, char *xasl_s
 	  goto exit_on_error;
 	}
       query_p->includes_tde_class = xasl_p->includes_tde_class;
+#if !defined(NDEBUG)
+      if (prm_get_bool_value (PRM_ID_TDE_TRACE_DEBUG))
+	{
+	  if (query_p->includes_tde_class)
+	    {
+	      fprintf (stdout, "TRACE TDE: qmgr_process_query(): \n" "includes_tde_algorithm = true \n");
+	      fflush (stdout);
+	    }
+	}
+#endif /* !NDEBUG */
     }
 
   if (flag & RETURN_GENERATED_KEYS)
@@ -1434,6 +1444,17 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
     {
       query_p->is_holdable = false;
     }
+
+#if !defined(NDEBUG)
+  if (prm_get_bool_value (PRM_ID_TDE_TRACE_DEBUG))
+    {
+      if (query_p->includes_tde_class)
+	{
+	  fprintf (stdout, "TRACE TDE: xqmgr_execute_query(): \n" "includes_tde_algorithm = true \n");
+	  fflush (stdout);
+	}
+    }
+#endif /* !NDEBUG */
 
   /* add the entry to the query table */
   qmgr_add_query_entry (thread_p, query_p, tran_index);
