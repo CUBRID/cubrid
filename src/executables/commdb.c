@@ -104,10 +104,6 @@ static int process_deact_stop_all (CSS_CONN_ENTRY * conn);
 static int process_activate_heartbeat (CSS_CONN_ENTRY * conn);
 static int process_ha_start_util_process (CSS_CONN_ENTRY * conn, char *args);
 
-static int process_javasp_start (CSS_CONN_ENTRY * conn);
-static int process_javasp_stop (CSS_CONN_ENTRY * conn);
-static int process_javasp_restart (CSS_CONN_ENTRY * conn);
-
 static int process_batch_command (CSS_CONN_ENTRY * conn);
 
 static char *commdb_Arg_server_name = NULL;
