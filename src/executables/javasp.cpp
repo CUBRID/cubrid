@@ -67,7 +67,6 @@
 
 static int javasp_start_server (const char *db_name, char *path, const int server_port);
 static int javasp_stop_server (const SOCKET socket);
-static int javasp_check_server (const char *db_name);
 static int javasp_status_server (const SOCKET socket, int pid);
 static int javasp_ping_server (const SOCKET socket, char *buf);
 
