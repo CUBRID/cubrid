@@ -57,8 +57,8 @@
 #define		SERVICE_CONTROL_SERVER_STOP	181
 #define		SERVICE_CONTROL_SERVICE_START	190
 #define		SERVICE_CONTROL_SERVICE_STOP	191
-#define		SERVICE_CONTROL_JAVASP_START	200
-#define		SERVICE_CONTROL_JAVASP_STOP		201
+#define		SERVICE_CONTROL_JAVASP_START	210
+#define		SERVICE_CONTROL_JAVASP_STOP		211
 
 void WriteLog (char *p_logfile, char *p_format, ...);
 void GetCurDateTime (char *p_buf, char *p_form);
