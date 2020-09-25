@@ -4457,7 +4457,7 @@ pgbuf_set_tde_algorithm (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, TDE_ALGORITHM 
   if (prm_get_bool_value (PRM_ID_TDE_TRACE_DEBUG))
     {
       fprintf (stdout, "TRACE TDE: pgbuf_set_tde_algorithm(): \n"
-	       "VPID = %d|%d, tde_algorithm = %s\n",
+	       "\tVPID = %d|%d, tde_algorithm = %s\n",
 	       iopage->prv.volid, iopage->prv.pageid, tde_get_algorithm_name (tde_algo));
       fflush (stdout);
     }
@@ -13969,7 +13969,7 @@ pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR page_dealloc)
       if (bcb->iopage_buffer->iopage.prv.pflag & FILEIO_PAGE_FLAG_ENCRYPTED_MASK)
 	{
 	  fprintf (stdout, "TRACE TDE: pgbuf_dealloc_page(): clear tde bit in pflag\n"
-		   "VPID = %d|%d, tde_algorithm = %s\n",
+		   "\tVPID = %d|%d, tde_algorithm = %s\n",
 		   VPID_AS_ARGS (&bcb->vpid), tde_get_algorithm_name (pgbuf_get_tde_algorithm (page_dealloc)));
 	  fflush (stdout);
 	}

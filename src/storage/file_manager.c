@@ -4090,8 +4090,8 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
       if (tde_algo != TDE_ALGORITHM_NONE)
 	{
 	  fprintf (stdout, "TRACE TDE: file_destroy(): clear tde bit in pflag in all user pages\n"
-		   "VFID = %d|%d, # of encrypting (user) pages = %d,\n"
-		   "tde algorithm = %s\n", VFID_AS_ARGS (&fhead->self), fhead->n_page_user,
+		   "\tVFID = %d|%d, # of encrypting (user) pages = %d,\n"
+		   "\ttde algorithm = %s\n", VFID_AS_ARGS (&fhead->self), fhead->n_page_user,
 		   tde_get_algorithm_name (tde_algo));
 	  fflush (stdout);
 	}
@@ -5397,7 +5397,7 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_in
 	  if (tde_algo != TDE_ALGORITHM_NONE)
 	    {
 	      fprintf (stdout, "TRACE TDE: file_alloc(): set tde bit in pflag\n"
-		       "VFID = %d|%d, VPID = %d|%d, tde_algorithm of the file = %s\n",
+		       "\tVFID = %d|%d, VPID = %d|%d, tde_algorithm of the file = %s\n",
 		       VFID_AS_ARGS (&fhead->self), VPID_AS_ARGS (vpid_out), tde_get_algorithm_name (tde_algo));
 	      fflush (stdout);
 	    }
@@ -5769,7 +5769,7 @@ file_set_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, TDE_ALGORITH
   if (prm_get_bool_value (PRM_ID_TDE_TRACE_DEBUG))
     {
       fprintf (stdout, "TRACE TDE: file_set_tde_algorithm(): \n"
-	       "VFID = %d|%d, tde_algorithm = %s\n", VFID_AS_ARGS (&fhead->self), tde_get_algorithm_name (tde_algo));
+	       "\tVFID = %d|%d, tde_algorithm = %s\n", VFID_AS_ARGS (&fhead->self), tde_get_algorithm_name (tde_algo));
       fflush (stdout);
     }
 #endif /* !NDEBUG */
@@ -5978,8 +5978,8 @@ file_apply_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, const TDE_
   if (prm_get_bool_value (PRM_ID_TDE_TRACE_DEBUG))
     {
       fprintf (stdout, "TRACE TDE: file_apply_tde_algorithm(): \n"
-	       "VFID = %d|%d, # of encrypting (user) pages = %d,\n"
-	       "tde algorithm = %s\n", VFID_AS_ARGS (&fhead->self), fhead->n_page_user,
+	       "\tVFID = %d|%d, # of encrypting (user) pages = %d,\n"
+	       "\ttde algorithm = %s\n", VFID_AS_ARGS (&fhead->self), fhead->n_page_user,
 	       tde_get_algorithm_name (tde_algo));
       fflush (stdout);
     }

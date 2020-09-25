@@ -1157,7 +1157,7 @@ qmgr_process_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl_tree, char *xasl_s
 	{
 	  if (query_p->includes_tde_class)
 	    {
-	      fprintf (stdout, "TRACE TDE: qmgr_process_query(): \n" "includes_tde_algorithm = true \n");
+	      fprintf (stdout, "TRACE TDE: qmgr_process_query(): \n" "\tincludes_tde_algorithm = true \n");
 	      fflush (stdout);
 	    }
 	}
@@ -1450,7 +1450,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
     {
       if (query_p->includes_tde_class)
 	{
-	  fprintf (stdout, "TRACE TDE: xqmgr_execute_query(): \n" "includes_tde_algorithm = true \n");
+	  fprintf (stdout, "TRACE TDE: xqmgr_execute_query(): \n" "\tincludes_tde_algorithm = true \n");
 	  fflush (stdout);
 	}
     }
