@@ -488,10 +488,10 @@ opţiuni valide:\n\
 $set 13 MSGCAT_UTIL_SET_UNLOADDB
 41 Valoarea pentru cached-pages este invalidă.\n
 42 Valoarea pentru cached-page-size este invalidă.\n
-43 %1$d obiecte vărsate.\n
+43 %1$ld obiecte vărsate.\n
 44 Clasa %1$s
 45 , %1$d instanţe.\n
-46 Doar %1$d din %2$d obiecte vărsate cu succes.\n
+46 Doar %1$ld din %2$ld obiecte vărsate cu succes.\n
 47 directorul de ieşire este prea lung.\n
 48 LSA : %1$d %2$d \n
 49 Parola:

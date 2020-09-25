@@ -474,10 +474,10 @@ opciones validas:\n\
 $set 13 MSGCAT_UTIL_SET_UNLOADDB
 41 valor de cached-pages no es valido.\n
 42 valor de cached-page-size no es valido.\n
-43 %1$d objetos botados.\n
+43 %1$ld objetos botados.\n
 44 Clase %1$s
 45 , %1$d instancias.\n
-46 Solo %1$d de %2$d objetos botados con exito.\n
+46 Solo %1$ld de %2$ld objetos botados con exito.\n
 47 directorio de salida es demasiado largo.\n
 48 LSA : %1$d %2$d \n
 49 Contrasena:

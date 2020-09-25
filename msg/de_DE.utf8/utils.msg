@@ -473,10 +473,10 @@ gültige Optionen:\n\
 $set 13 MSGCAT_UTIL_SET_UNLOADDB
 41 Cached-Seiten-Anzahl ungültig.\n
 42 Cached-Seitengröße ungültig.\n
-43 %1$d Objekte exportiert.\n
+43 %1$ld Objekte exportiert.\n
 44 Klasse %1$s
 45 , %1$d Instanzen.\n
-46 Nur %1$d von %2$d Objekten erfolgreich exportiert.\n
+46 Nur %1$ld von %2$ld Objekten erfolgreich exportiert.\n
 47 Ausgabeverzeichnis zu lang.\n
 48 LSA : %1$d %2$d \n
 49 Passwort:
