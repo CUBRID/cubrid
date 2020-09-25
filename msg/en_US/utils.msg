@@ -402,7 +402,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 25 \n*** Checking syntax ***\n\n
 26 %1$d errors detected.\n
 27 \n*** Inserting objects ***\n\n
-28 Total %1$8d objects inserted.\n
+28 Total %1$ld objects inserted.\n
 29 Total %1$8d referenced objects inserted with default contents.\n
 30 \n*** Committing the transaction ***\n
 31 \n*** Closing the database ***\n
@@ -422,7 +422,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 45 Instance %1$d of class %2$s has already been defined\n
 46 Instance %1$d of class %2$s has already been reserved\n
 47 UNIQUE violation on attribute '%1$s', converted to NULL\n
-48 %1$s %2$d instances\n
+48 %1$s %2$ld instances\n
 49 Class %1$s\n
 50 Password:
 51 \n*** Updating class statistics ***\n
@@ -432,16 +432,16 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 55 missing
 56 in %1$s
 57 Incompatible arguments, \"%1$s\", and \"%2$s\"\n
-58 %1$s %2$d instances committed\n
+58 %1$s %2$ld instances committed\n
 59 \nCannot invoke non-optimized version of loaddb.\n
 60 Error parsing \"%1$s\", as %2$s type.\n
 61 Object Reference is not supported in CS mode.\n
 62 Updated statistics for class %1$s.\n
-112   %1$d instances\r
+112   %1$ld instances\r
 113 Last committed line : %1$d\n
 114 error-control-file
 115 input file to control error(s) during loading
-116 Total %1$8d object(s) inserted, %2$d object(s) failed.\n
+116 Total %1$ld object(s) inserted, %2$ld object(s) failed.\n
 117 Load failed.\n
 118 Maximum length of class name is %1$d bytes.\n
 119 Total %1$8d object(s) checked, %2$d object(s) failed.\n

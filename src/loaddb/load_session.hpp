@@ -114,11 +114,11 @@ namespace cubload
 
       void fetch_status (load_status &status, bool has_lock = false);
 
-      void stats_update_rows_committed (int rows_committed);
-      int stats_get_rows_committed ();
+      void stats_update_rows_committed (int64_t rows_committed);
+      int64_t stats_get_rows_committed ();
 
-      void stats_update_last_committed_line (int last_committed_line);
-      void stats_update_current_line (int current_line);
+      void stats_update_last_committed_line (int64_t last_committed_line);
+      void stats_update_current_line (int64_t current_line);
 
       void update_class_statistics (cubthread::entry &thread_ref);
       const load_args &get_args ();

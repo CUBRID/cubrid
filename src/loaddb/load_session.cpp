@@ -425,20 +425,20 @@ namespace cubload
   }
 
   void
-  session::stats_update_rows_committed (int rows_committed)
+  session::stats_update_rows_committed (int64_t rows_committed)
   {
     std::unique_lock<std::mutex> ulock (m_mutex);
     m_stats.rows_committed += rows_committed;
   }
 
-  int
+  int64_t
   session::stats_get_rows_committed ()
   {
     return m_stats.rows_committed;
   }
 
   void
-  session::stats_update_last_committed_line (int last_committed_line)
+  session::stats_update_last_committed_line (int64_t last_committed_line)
   {
     if (last_committed_line <= m_stats.last_committed_line)
       {
@@ -457,7 +457,7 @@ namespace cubload
   }
 
   void
-  session::stats_update_current_line (int current_line)
+  session::stats_update_current_line (int64_t current_line)
   {
     update_atomic_value_with_max (m_stats.current_line, current_line);
   }
@@ -466,7 +466,7 @@ namespace cubload
   void
   session::update_atomic_value_with_max (std::atomic<T> &atomic_val, T new_max)
   {
-    int curr_max;
+    int64_t curr_max;
 
     do
       {

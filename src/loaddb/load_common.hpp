@@ -37,7 +37,7 @@
 namespace cubload
 {
 
-  using batch_id = int;
+  using batch_id = int64_t;
   using class_id = int;
 
   const class_id NULL_CLASS_ID = 0;
@@ -49,7 +49,7 @@ namespace cubload
   {
     public:
       batch ();
-      batch (batch_id id, class_id clsid, std::string &content, int line_offset, int rows);
+      batch (batch_id id, class_id clsid, std::string &content, int64_t line_offset, int64_t rows);
 
       batch (batch &&other) noexcept; // MoveConstructible
       batch &operator= (batch &&other) noexcept; // MoveAssignable
@@ -59,9 +59,9 @@ namespace cubload
 
       batch_id get_id () const;
       class_id get_class_id () const;
-      int get_line_offset () const;
+      int64_t get_line_offset () const;
       const std::string &get_content () const;
-      int get_rows_number () const;
+      int64_t get_rows_number () const;
 
       void pack (cubpacking::packer &serializator) const override;
       void unpack (cubpacking::unpacker &deserializator) override;
@@ -71,12 +71,12 @@ namespace cubload
       batch_id m_id;
       class_id m_clsid;
       std::string m_content;
-      int m_line_offset;
-      int m_rows;
+      int64_t m_line_offset;
+      int64_t m_rows;
   };
 
-  using batch_handler = std::function<int (const batch &)>;
-  using class_handler = std::function<int (const batch &, bool &)>;
+  using batch_handler = std::function<int64_t (const batch &)>;
+  using class_handler = std::function<int64_t (const batch &, bool &)>;
 
   /*
    * loaddb executables command line arguments
@@ -253,9 +253,9 @@ namespace cubload
 
   struct stats : public cubpacking::packable_object
   {
-    int rows_committed; // equivalent of 'last_commit' from SA_MODE
-    std::atomic<int> current_line;
-    int last_committed_line;
+    int64_t rows_committed; // equivalent of 'last_commit' from SA_MODE
+    std::atomic<int64_t> current_line;
+    int64_t last_committed_line;
     int rows_failed; // // equivalent of 'errors' from SA_MODE
     std::string error_message;
     std::string log_message;
