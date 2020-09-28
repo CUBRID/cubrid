@@ -1156,6 +1156,7 @@ qmgr_process_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl_tree, char *xasl_s
 
   /* execute the query with the value list, if any */
   query_p->list_id = qexec_execute_query (thread_p, xasl_p, dbval_count, dbvals_p, query_p->query_id);
+  thread_p->no_logging = false;
 
   /* Note: qexec_execute_query() returns listid (NOT NULL) even if an error was occurred. We should check the error
    * condition and free listid. */
