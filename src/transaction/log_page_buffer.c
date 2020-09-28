@@ -2647,8 +2647,10 @@ logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY current_setdirty)
 
   if (log_Gl.append.appending_page_tde_encrypted)
     {
-      logpb_set_tde_algorithm (thread_p, log_Gl.append.log_pgptr,
-			       (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_DEFAULT_ALGORITHM));
+      TDE_ALGORITHM tde_algo = (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_DEFAULT_ALGORITHM);
+      logpb_set_tde_algorithm (thread_p, log_Gl.append.log_pgptr, tde_algo);
+      logpb_log ("logpb_next_append_page: set tde_algorithm to appending page, "
+		 "tde_algorithm = %s\n", tde_get_algorithm_name (tde_algo));
     }
 
 #if defined(CUBRID_DEBUG)
@@ -4143,10 +4145,21 @@ logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
 
   assert (log_Gl.append.log_pgptr != NULL);
 
-  if (LOG_IS_RECHDR_TDE_ENCRYPTED (header) && !LOG_IS_PAGE_TDE_ENCRYPTED (log_Gl.append.log_pgptr))
+  if (LOG_IS_RECHDR_TDE_ENCRYPTED (header))
     {
-      logpb_set_tde_algorithm (thread_p, log_Gl.append.log_pgptr,
-			       (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_DEFAULT_ALGORITHM));
+      if (!LOG_IS_PAGE_TDE_ENCRYPTED (log_Gl.append.log_pgptr))
+	{
+	  TDE_ALGORITHM tde_algo = (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_DEFAULT_ALGORITHM);
+	  logpb_set_tde_algorithm (thread_p, log_Gl.append.log_pgptr, tde_algo);
+	  logpb_log ("logpb_start_append: set tde_algorithm to existing page, "
+		     "tde_algorithm = %s\n", tde_get_algorithm_name (tde_algo));
+	}
+      else
+	{
+	  logpb_log ("logpb_start_append: tde_algorithm already set to existing page, "
+		     "tde_algorithm = %s\n",
+		     tde_get_algorithm_name (logpb_get_tde_algorithm (log_Gl.append.log_pgptr)));
+	}
     }
 
   log_rec = (LOG_RECORD_HEADER *) LOG_APPEND_PTR ();
