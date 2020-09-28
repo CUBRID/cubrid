@@ -9492,8 +9492,12 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 	  && p->info.spec.range_var->info.name.original[0])
 	{
 	  r1 = pt_print_bytes (parser, p->info.spec.range_var);
-	  q = pt_append_nulstring (parser, q, " ");
-	  q = pt_append_varchar (parser, q, r1);
+
+	  if (r1->length != q->length || memcmp (&r1->bytes, &q->bytes, q->length))
+	    {
+	      q = pt_append_nulstring (parser, q, " ");
+	      q = pt_append_varchar (parser, q, r1);
+	    }
 	}
       parser->custom_print = save_custom;
     }
@@ -12906,7 +12910,16 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
   b = pt_append_varchar (parser, b, r1);
   if (r2)
     {
+      char *class_name = NULL;
+
       b = pt_append_nulstring (parser, b, " (");
+
+      while (class_name = strstr ((char *) r2->bytes, (char *) r1->bytes))
+	{
+	  strcpy (class_name, class_name + r1->length + 1);
+	  r2->length = r2->length - r1->length - 1;
+	}
+
       b = pt_append_varchar (parser, b, r2);
       b = pt_append_nulstring (parser, b, ") ");
     }
