@@ -2367,6 +2367,26 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
       return;
     }
 
+  if (LOG_CONTAINS_USER_DATA (rcvindex))
+    {
+      TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
+
+      assert (addr->vfid != NULL);
+      if (file_get_tde_algorithm (thread_p, addr->vfid, &tde_algo) != NO_ERROR)
+	{
+	  assert (false);
+	  return;
+	}
+      if (tde_algo != TDE_ALGORITHM_NONE)
+	{
+	  if (prior_set_tde_encrypted (node) != NO_ERROR)
+	    {
+	      assert (false);
+	      return;
+	    }
+	}
+    }
+
   start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
   /*
