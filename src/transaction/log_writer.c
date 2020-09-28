@@ -2059,14 +2059,14 @@ TDE_ALGORITHM
 logwr_get_tde_algorithm (const LOG_PAGE * log_pgptr)
 {
   /* exclusive */
-  assert (!((log_pgptr->hdr.dummy1 & LOG_HDRPAGE_FLAG_ENCRYPTED_AES)
-	    && (log_pgptr->hdr.dummy1 & LOG_HDRPAGE_FLAG_ENCRYPTED_ARIA)));
+  assert (!((log_pgptr->hdr.flags & LOG_HDRPAGE_FLAG_ENCRYPTED_AES)
+	    && (log_pgptr->hdr.flags & LOG_HDRPAGE_FLAG_ENCRYPTED_ARIA)));
 
-  if (log_pgptr->hdr.dummy1 & LOG_HDRPAGE_FLAG_ENCRYPTED_AES)
+  if (log_pgptr->hdr.flags & LOG_HDRPAGE_FLAG_ENCRYPTED_AES)
     {
       return TDE_ALGORITHM_AES;
     }
-  else if (log_pgptr->hdr.dummy1 & LOG_HDRPAGE_FLAG_ENCRYPTED_ARIA)
+  else if (log_pgptr->hdr.flags & LOG_HDRPAGE_FLAG_ENCRYPTED_ARIA)
     {
       return TDE_ALGORITHM_ARIA;
     }
@@ -2080,15 +2080,15 @@ void
 logwr_set_tde_algorithm (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, const TDE_ALGORITHM tde_algo)
 {
   /* clear encrypted flag */
-  log_pgptr->hdr.dummy1 &= ~LOG_HDRPAGE_FLAG_ENCRYPTED_MASK;
+  log_pgptr->hdr.flags &= ~LOG_HDRPAGE_FLAG_ENCRYPTED_MASK;
 
   switch (tde_algo)
     {
     case TDE_ALGORITHM_AES:
-      log_pgptr->hdr.dummy1 |= LOG_HDRPAGE_FLAG_ENCRYPTED_AES;
+      log_pgptr->hdr.flags |= LOG_HDRPAGE_FLAG_ENCRYPTED_AES;
       break;
     case TDE_ALGORITHM_ARIA:
-      log_pgptr->hdr.dummy1 |= LOG_HDRPAGE_FLAG_ENCRYPTED_ARIA;
+      log_pgptr->hdr.flags |= LOG_HDRPAGE_FLAG_ENCRYPTED_ARIA;
       break;
     case TDE_ALGORITHM_NONE:
       /* already cleared */
