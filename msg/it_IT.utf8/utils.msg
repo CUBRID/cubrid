@@ -474,10 +474,10 @@ opzioni valide:\n\
 $set 13 MSGCAT_UTIL_SET_UNLOADDB
 41 cached-pages valore non è valido.\n
 42 cached-page-size valore non è valido.\n
-43 %1$d oggetti dumped.\n
+43 %1$ld oggetti dumped.\n
 44 Class %1$s
 45 , %1$d instanze.\n
-46 Solo %1$d di %2$d objects dumped ok.\n
+46 Solo %1$ld di %2$ld objects dumped ok.\n
 47 directory di output è troppo lungo.\n
 48 LSA : %1$d %2$d \n
 49 Password:

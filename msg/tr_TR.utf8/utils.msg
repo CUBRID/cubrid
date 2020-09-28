@@ -474,10 +474,10 @@ geçerli seçenekler:\n\
 $set 13 MSGCAT_UTIL_SET_UNLOADDB
 41 önbelleğe alınmış sayfaları değeri geçersiz.\n
 42 önbelleğe alınmış sayfa boyutu değeri geçersiz.\n
-43 %1$d nesneler atılıyor.\n
+43 %1$ld nesneler atılıyor.\n
 44 Class %1$s
 45 , %1$d örnekleri.\n
-46 %2$d nesneleri yalnızca %1$d tanesinde başarılı atılıyor.\n
+46 %2$ld nesneleri yalnızca %1$ld tanesinde başarılı atılıyor.\n
 47 çıkış dizin çok uzun.\n
 48 LSA : %1$d %2$d \n
 49 Şifre:

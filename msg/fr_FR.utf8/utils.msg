@@ -477,10 +477,10 @@ options valids:\n\
 $set 13 MSGCAT_UTIL_SET_UNLOADDB
 41 Valeur de cached-pages n'est pas valide.\n
 42 Valeur de cached-page-size n'est pas valide.\n
-43 %1$d objects sauvegardées.\n
+43 %1$ld objects sauvegardées.\n
 44 Classe %1$s
 45 , %1$d instances.\n
-46 Seulement %1$d de  %2$d objets sauvegardées avec succès.\n
+46 Seulement %1$ld de  %2$ld objets sauvegardées avec succès.\n
 47 répertoire de sortie est trop long.\n
 48 LSA : %1$d %2$d \n
 49 Mot de passe:
