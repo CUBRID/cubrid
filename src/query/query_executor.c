@@ -13644,6 +13644,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   bool instant_lock_mode_started = false;
   bool mvcc_select_lock_needed;
+  bool old_no_logging;
 
   /*
    * Pre_processing
@@ -13737,7 +13738,13 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	{
 	  old_wait_msecs = xlogtb_reset_wait_msecs (thread_p, xasl->proc.insert.wait_msecs);
 	}
+
+      old_no_logging = thread_p->no_logging;
+
       error = qexec_execute_insert (thread_p, xasl, xasl_state, false);
+
+      thread_p->no_logging = old_no_logging;
+
       if (old_wait_msecs != XASL_WAIT_MSECS_NOCHANGE)
 	{
 	  (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
