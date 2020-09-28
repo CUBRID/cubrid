@@ -1483,6 +1483,14 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
   prm_enable_sort_parallel = false;
 #endif
 
+#if !defined(NDEBUG)
+  if (prm_get_bool_value (PRM_ID_TDE_TRACE_DEBUG))
+    {
+      fprintf (stdout, "TRACE TDE: sort_listfile(): tde_encrypted = true \n");
+      fflush (stdout);
+    }
+#endif /* !NDEBUG */
+
 #if defined(SERVER_MODE)
   if (prm_enable_sort_parallel == true)
     {
