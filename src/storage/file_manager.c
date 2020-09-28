@@ -5905,18 +5905,7 @@ static int
 file_file_map_set_tde_algorithm (THREAD_ENTRY * thread_p, PAGE_PTR * page, bool * stop, void *args)
 {
   FILE_SET_TDE_ALGORITHM_ARGS *tde_args = (FILE_SET_TDE_ALGORITHM_ARGS *) args;
-  TDE_ALGORITHM prev_tde_algo = TDE_ALGORITHM_NONE;
-
-  prev_tde_algo = pgbuf_get_tde_algorithm (*page);
-  if (prev_tde_algo == tde_args->tde_algo)
-    {
-      return NO_ERROR;
-    }
-  else
-    {
-      pgbuf_set_tde_algorithm (thread_p, *page, tde_args->tde_algo, tde_args->skip_logging);
-    }
-
+  pgbuf_set_tde_algorithm (thread_p, *page, tde_args->tde_algo, tde_args->skip_logging);
   return NO_ERROR;
 }
 
