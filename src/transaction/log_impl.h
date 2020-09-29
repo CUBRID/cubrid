@@ -820,7 +820,7 @@ extern int logpb_copy_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid
 extern int logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE access_mode,
 				      LOG_PAGE * log_pgptr);
 extern int logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int num_pages,
-					    bool decrypt_if_needed, LOG_PAGE * log_pgptr);
+					    bool decrypt_needed, LOG_PAGE * log_pgptr);
 extern int logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAGEID logical_pageid);
 extern PGLENGTH logpb_find_header_parameters (THREAD_ENTRY * thread_p, const bool force_read_log_header,
 					      const char *db_fullname, const char *logpath,

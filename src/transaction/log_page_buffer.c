@@ -2128,7 +2128,7 @@ error:
  *   log_pgptr(in/out):
  */
 int
-logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int num_pages, bool decrypt_if_needed,
+logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int num_pages, bool decrypt_needed,
 				 LOG_PAGE * log_pgptr)
 {
   LOG_PHY_PAGEID phy_start_pageid;
@@ -2164,7 +2164,7 @@ logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int
 	}
     }
 
-  if (decrypt_if_needed)
+  if (decrypt_needed)
     {
       char *ptr = (char *) log_pgptr;
       int i;
@@ -2195,7 +2195,7 @@ logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int
       for (i = 0; i < num_pages; i++)
 	{
 	  /* checksum is calculated before tde-encryption */
-	  if (!decrypt_if_needed)
+	  if (!decrypt_needed)
 	    {
 	      TDE_ALGORITHM tde_algo = logpb_get_tde_algorithm ((LOG_PAGE *) ptr);
 	      if (tde_algo != TDE_ALGORITHM_NONE)
