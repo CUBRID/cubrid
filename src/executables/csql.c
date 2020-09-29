@@ -66,6 +66,8 @@
 #include "tsc_timer.h"
 #include "dbtype.h"
 #include "jsp_cl.h"
+#include "api_compat.h"
+#include "cas_log.h"
 
 #if defined(WINDOWS)
 #include "file_io.h"		/* needed for _wyield() */
@@ -219,6 +221,7 @@ static int csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg);
 static void csql_set_trace (const char *arg_str);
 static void csql_display_trace (void);
 static bool csql_is_auto_commit_requested (const CSQL_ARGUMENT * csql_arg);
+static int get_host_ip (unsigned char *ip_addr);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 #if !defined(WINDOWS)
@@ -1839,6 +1842,19 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
       /* Start the execution of stms */
       stmt_msg[0] = '\0';
 
+      cas_set_ddl_log_enable (is_ddl_stmt_type (session->statements[num_stmts]->sql_user_text));
+      if (is_ddl_stmt_type (session->statements[num_stmts]->sql_user_text) != 0)
+	{
+	  unsigned char ip_addr[16] = { "0" };
+
+	  get_host_ip (ip_addr);
+	  csql_ddl_log_open ("csql");
+	  csql_ddl_log_write ("CLIENT IP %s \n", ip_addr);
+	  csql_ddl_log_write ("USER NAME : %s \n", csql_arg->user_name);
+	  csql_ddl_log_write ("DB NAME : %s \n", csql_arg->db_name);
+	  csql_ddl_log_write ("%s \n", session->statements[num_stmts]->sql_user_text);
+	}
+
       if (csql_Is_time_on)
 	{
 	  tsc_getticks (&start_tick);
@@ -2047,13 +2063,14 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	{
 	  fprintf (csql_Output_fp, "%s\n", stmt_msg);
 	}
-
+      csql_ddl_log_write ("%s\n", stmt_msg);
       db_drop_statement (session, stmt_id);
     }
 
   snprintf (csql_Scratch_text, SCRATCH_TEXT_LEN, csql_get_message (CSQL_EXECUTE_END_MSG_FORMAT),
 	    num_stmts - csql_Num_failures);
   csql_display_msg (csql_Scratch_text);
+  csql_ddl_log_write_end ("\n%s\n\n", csql_Scratch_text);
 
   db_close_session (session);
 
@@ -2081,6 +2098,7 @@ error:
   snprintf (csql_Scratch_text, SCRATCH_TEXT_LEN, csql_get_message (CSQL_EXECUTE_END_MSG_FORMAT),
 	    num_stmts - csql_Num_failures);
   csql_display_msg (csql_Scratch_text);
+  csql_ddl_log_write_end ("\n%s\n\n", csql_Scratch_text);
 
   if (session)
     {
@@ -3137,4 +3155,26 @@ csql_is_auto_commit_requested (const CSQL_ARGUMENT * csql_arg)
   assert (csql_arg != NULL);
 
   return csql_arg->auto_commit && prm_get_bool_value (PRM_ID_CSQL_AUTO_COMMIT);
+}
+
+static int
+get_host_ip (unsigned char *ip_addr)
+{
+  char hostname[CUB_MAXHOSTNAMELEN];
+  struct hostent *hp;
+  char *ip;
+
+  if (gethostname (hostname, sizeof (hostname)) < 0)
+    {
+      return -1;
+    }
+  if ((hp = gethostbyname (hostname)) == NULL)
+    {
+      return -1;
+    }
+
+  ip = inet_ntoa (*(struct in_addr *) *hp->h_addr_list);
+  memcpy (ip_addr, ip, strlen (ip));
+
+  return 0;
 }

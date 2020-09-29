@@ -229,6 +229,8 @@ fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
 	  cas_log_end (SQL_LOG_MODE_NONE, elapsed_sec, elapsed_msec);
 	}
     }
+  cas_ddl_log_end (elapsed_sec, elapsed_msec);
+
   gettimeofday (&tran_start_time, NULL);
   gettimeofday (&query_start_time, NULL);
   tran_timeout = 0;
@@ -320,6 +322,9 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
     }
 
   net_arg_get_str (&sql_stmt, &sql_size, argv[0]);
+
+  cas_set_ddl_log_enable (is_ddl_stmt_type (sql_stmt));
+
   net_arg_get_char (flag, argv[1]);
   if (argc > 2)
     {
@@ -351,6 +356,8 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 
   cas_log_write_nonl (query_seq_num_next_value (), false, "prepare %d ", flag);
   cas_log_write_query_string (sql_stmt, sql_size - 1);
+  cas_ddl_log_write_nonl (query_seq_num_next_value (), false, "prepare %d ", flag);
+  cas_ddl_log_write_query_string (sql_stmt, sql_size - 1);
 
 #ifndef LIBCAS_FOR_JSP
   SQL_LOG2_COMPILE_BEGIN (as_info->cur_sql_log2, ((const char *) sql_stmt));
@@ -389,6 +396,10 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 		 (srv_h_id < 0) ? err_info.err_number : srv_h_id, (srv_handle != NULL
 								   && srv_handle->use_plan_cache) ? " (PC)" : "",
 		 get_error_log_eids (err_info.err_number));
+  cas_ddl_log_write (query_seq_num_current_value (), false, "prepare srv_h_id %s%d%s%s", (srv_h_id < 0) ? "error:" : "",
+		     (srv_h_id < 0) ? err_info.err_number : srv_h_id, (srv_handle != NULL
+								       && srv_handle->use_plan_cache) ? " (PC)" : "",
+		     get_error_log_eids (err_info.err_number));
 
 #ifndef LIBCAS_FOR_JSP
   if (srv_h_id < 0)
@@ -613,9 +624,11 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 #endif /* !LIBCAS_FOR_JSP */
 
   cas_log_write_nonl (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "%s srv_h_id %d ", exec_func_name, srv_h_id);
+  cas_ddl_log_write_nonl (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "%s srv_h_id %d ", exec_func_name, srv_h_id);
   if (srv_handle->sql_stmt != NULL)
     {
       cas_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt));
+      cas_ddl_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt));
     }
   cas_log_debug (ARG_FILE_LINE, "%s%s", auto_commit_mode ? "auto_commit_mode " : "",
 		 forward_only_cursor ? "forward_only_cursor " : "");
@@ -675,6 +688,10 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 		 (ret_code < 0) ? "error:" : "", err_number_execute, get_tuple_count (srv_handle), elapsed_sec,
 		 elapsed_msec, (client_cache_reusable == TRUE) ? " (CC)" : "",
 		 (srv_handle->use_query_cache == true) ? " (QC)" : "", eid_string);
+  cas_ddl_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "%s %s%d tuple %d time %d.%03d%s%s%s",
+		     exec_func_name, (ret_code < 0) ? "error:" : "", err_number_execute, get_tuple_count (srv_handle),
+		     elapsed_sec, elapsed_msec, (client_cache_reusable == TRUE) ? " (CC)" : "",
+		     (srv_handle->use_query_cache == true) ? " (QC)" : "", eid_string);
 #ifndef LIBCAS_FOR_JSP
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
   plan = db_get_execution_plan ();
@@ -1721,7 +1738,9 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "execute_array %s%d tuple %d time %d.%03d%s%s%s",
 		 (ret_code < 0) ? "error:" : "", err_info.err_number, get_tuple_count (srv_handle), elapsed_sec,
 		 elapsed_msec, "", (srv_handle->use_query_cache == true) ? " (QC)" : "", eid_string);
-
+  cas_ddl_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "execute_array %s%d tuple %d time %d.%03d%s%s%s",
+		     (ret_code < 0) ? "error:" : "", err_info.err_number, get_tuple_count (srv_handle), elapsed_sec,
+		     elapsed_msec, "", (srv_handle->use_query_cache == true) ? " (QC)" : "", eid_string);
 #ifndef LIBCAS_FOR_JSP
   query_timeout =
     ut_check_timeout (&query_start_time, &exec_end, shm_appl->long_query_time, &elapsed_sec, &elapsed_msec);

@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -9573,14 +9574,18 @@ ux_auto_commit (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   if (req_info->need_auto_commit == TRAN_AUTOCOMMIT)
     {
       cas_log_write (0, false, "auto_commit %s", tran_was_latest_query_committed ()? "(local)" : "(server)");
+      cas_ddl_log_write (0, false, "auto_commit %s", tran_was_latest_query_committed ()? "(local)" : "(server)");
       err_code = ux_end_tran (CCI_TRAN_COMMIT, true);
       cas_log_write (0, false, "auto_commit %d", err_code);
+      cas_ddl_log_write (0, false, "auto_commit %d", err_code);
     }
   else if (req_info->need_auto_commit == TRAN_AUTOROLLBACK)
     {
       cas_log_write (0, false, "auto_commit %s", tran_was_latest_query_aborted ()? "(local)" : "(server)");
+      cas_ddl_log_write (0, false, "auto_commit %s", tran_was_latest_query_aborted ()? "(local)" : "(server)");
       err_code = ux_end_tran (CCI_TRAN_ROLLBACK, true);
       cas_log_write (0, false, "auto_rollback %d", err_code);
+      cas_ddl_log_write (0, false, "auto_rollback %d", err_code);
     }
   else
     {
@@ -9621,6 +9626,7 @@ ux_auto_commit (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 	  cas_log_end (SQL_LOG_MODE_NONE, elapsed_sec, elapsed_msec);
 	}
     }
+  cas_ddl_log_end (elapsed_sec, elapsed_msec);
   gettimeofday (&tran_start_time, NULL);
   gettimeofday (&query_start_time, NULL);
   tran_timeout = 0;

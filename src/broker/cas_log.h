@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -74,4 +75,20 @@ extern void cas_slow_log_write_and_end (struct timeval *log_time, unsigned int s
 extern void cas_slow_log_write2 (const char *fmt, ...);
 extern void cas_slow_log_write_value_string (char *value, int size);
 extern void cas_slow_log_write_query_string (char *query, int size);
+
+extern void cas_set_ddl_log_enable (char is_ddl_stmt);
+extern void cas_set_ddl_log_info (char *db_name, char *user_name, char *ip, char *client_version);
+extern void cas_ddl_log_open (char *br_name);
+extern void cas_ddl_log_close (bool flag);
+extern void cas_ddl_log_end (int run_time_sec, int run_time_msec);
+extern void cas_ddl_log_write_nonl (unsigned int seq_num, bool unit_start, const char *fmt, ...);
+extern void cas_ddl_log_write (unsigned int seq_num, bool unit_start, const char *fmt, ...);
+extern void cas_ddl_log_write_and_end (struct timeval *log_time, unsigned int seq_num, const char *fmt, ...);
+extern void cas_ddl_log_write_query_string (char *query, int size);
+
+extern void csql_ddl_log_open (const char *log_file_name);
+extern void csql_ddl_log_write (const char *fmt, ...);
+extern void csql_ddl_log_write_end (const char *fmt, ...);
+
+extern char is_ddl_stmt_type (char *stmt);
 #endif /* _CAS_LOG_H_ */

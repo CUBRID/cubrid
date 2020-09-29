@@ -684,6 +684,10 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_TB_DEFAULT_REUSE_OID "create_table_reuseoid"
 
+#define PRM_NAME_DDL_AUDIT_LOG "ddl_audit_log"
+#define PRM_NAME_DDL_AUDIT_LOG_DIR "ddl_audit_log_dir"
+#define PRM_NAME_DDL_AUDIT_LOG_SIZE "ddl_audit_log_size"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
@@ -2305,6 +2309,20 @@ static unsigned int prm_allow_truncated_string_flag = 0;
 bool PRM_TB_REUSE_OID = true;
 static bool prm_create_table_reuseoid_default = true;
 static unsigned int prm_create_table_reuseoid = 0;
+
+bool PRM_DDL_AUDIT_LOG = false;
+static bool prm_ddl_audit_log_default = false;
+static unsigned int prm_ddl_audit_log_flag = 0;
+
+const char *PRM_DDL_AUDIT_LOG_DIR = "log/ddl_audit";
+static const char *prm_ddl_audit_log_dir_default = "log/ddl_audit";
+static unsigned int prm_ddl_audit_log_dir_flag = 0;
+
+UINT64 PRM_DDL_AUDIT_LOG_SIZE = 10485760ULL;
+static UINT64 prm_ddl_audit_log_size_default = 10485760ULL;	/* 10M */
+static UINT64 prm_ddl_audit_log_size_lower = 10485760ULL;	/* 10M */
+static UINT64 prm_ddl_audit_log_size_upper = 2147483648ULL;	/* 2G */
+static unsigned int prm_ddl_audit_log_size_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5929,7 +5947,41 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL}
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_DDL_AUDIT_LOG,
+   PRM_NAME_DDL_AUDIT_LOG,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION),
+   PRM_BOOLEAN,
+   &prm_ddl_audit_log_flag,
+   (void *) &prm_ddl_audit_log_default,
+   (void *) &PRM_DDL_AUDIT_LOG,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_DDL_AUDIT_LOG_DIR,
+   PRM_NAME_DDL_AUDIT_LOG_DIR,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION),
+   PRM_STRING,
+   &prm_ddl_audit_log_dir_flag,
+   (void *) &prm_ddl_audit_log_dir_default,
+   (void *) &PRM_DDL_AUDIT_LOG_DIR,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_DDL_AUDIT_LOG_SIZE,
+   PRM_NAME_DDL_AUDIT_LOG_SIZE,
+   (PRM_SIZE_UNIT),
+   PRM_BIGINT,
+   &prm_ddl_audit_log_size_flag,
+   (void *) &prm_ddl_audit_log_size_default,
+   (void *) &PRM_DDL_AUDIT_LOG_SIZE,
+   (void *) &prm_ddl_audit_log_size_upper,
+   (void *) &prm_ddl_audit_log_size_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
 };
 
 #define NUM_PRM ((int)(sizeof(prm_Def)/sizeof(prm_Def[0])))

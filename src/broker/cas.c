@@ -748,6 +748,7 @@ conn_retry:
 	cas_log_write_and_end (0, false, "STATE idle");
 	cas_log_close (true);
 	cas_slow_log_close ();
+	cas_ddl_log_close (true);
 	sql_log2_end (true);
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
 	cas_error_log_close (true);
@@ -1271,6 +1272,8 @@ cas_main (void)
 	    con_status_before_check_cas = -1;
 	    is_first_request = true;
 #endif /* !LIBCAS_FOR_JSP */
+	    cas_set_ddl_log_info (db_name, db_user, client_ip_str, as_info->driver_version);
+
 	    fn_ret = FN_KEEP_CONN;
 	    while (fn_ret == FN_KEEP_CONN)
 	      {
@@ -1357,6 +1360,7 @@ cas_main (void)
 	cas_log_write_and_end (0, false, "STATE idle");
 	cas_log_close (true);
 	cas_slow_log_close ();
+	cas_ddl_log_close (true);
 	sql_log2_end (true);
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
 	cas_error_log_close (true);
@@ -1633,6 +1637,7 @@ cas_free (bool from_sighandler)
   cas_log_write_and_end (0, true, "CAS TERMINATED pid %d", getpid ());
   cas_log_close (true);
   cas_slow_log_close ();
+  cas_ddl_log_close (true);
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
   cas_error_log_close (true);
 #endif

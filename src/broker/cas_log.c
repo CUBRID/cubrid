@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -56,6 +57,9 @@
 #include "cas_db_inc.h"
 #endif
 
+#include "system_parameter.h"
+#include "environment_variable.h"
+
 #if defined(WINDOWS)
 typedef int mode_t;
 #endif /* WINDOWS */
@@ -63,6 +67,9 @@ typedef int mode_t;
 #define CAS_LOG_BUFFER_SIZE (8192)
 #define SQL_LOG_BUFFER_SIZE 163840
 #define ACCESS_LOG_IS_DENIED_TYPE(T)  ((T)==ACL_REJECTED)
+
+#define COMM_LOG_TYPE           (1)
+#define DDL_AUDIT_LOG_TYPE      (2)
 
 static const char *get_access_log_type_string (ACCESS_LOG_TYPE type);
 static char cas_log_buffer[CAS_LOG_BUFFER_SIZE];	/* 8K buffer */
@@ -93,13 +100,35 @@ static FILE *log_fp = NULL, *slow_log_fp = NULL;
 static char log_filepath[BROKER_PATH_MAX], slow_log_filepath[BROKER_PATH_MAX];
 static INT64 saved_log_fpos = 0;
 
+static char is_ddl_stmt_flag = 0;
+static FILE *ddl_log_fp = NULL;
+static FILE *csql_ddl_log_fp = NULL;
+static char ddl_log_filepath[BROKER_PATH_MAX];
+static char csql_ddl_log_filepath[BROKER_PATH_MAX];
+static INT64 saved_ddl_log_fpos = 0;
+static char *make_ddl_log_filename (char *filename_buf, size_t buf_size, const char *br_name);
+static void ddl_log_file_backup (const char *path);
+#if defined(WINDOWS)
+static void unix_style_path (char *path);
+#endif /* WINDOWS */
+static int create_dir_ddl_log (const char *new_dir);
+typedef struct t_connect_info T_CONNECT_INFO;
+struct t_connect_info
+{
+  char db_name[DB_MAX_IDENTIFIER_LENGTH];
+  char user_name[DB_MAX_USER_LENGTH];
+  char ip_addr[16];
+  char driver_version[SRV_CON_VER_STR_MAX_SIZE];
+};
+static T_CONNECT_INFO connect_info;
+
 static size_t cas_fwrite (const void *ptr, size_t size, size_t nmemb, FILE * stream);
 static INT64 cas_ftell (FILE * stream);
 static int cas_fseek (FILE * stream, INT64 offset, int whence);
 static FILE *cas_fopen (const char *path, const char *mode);
-#if defined (WINDOWS)
 static FILE *cas_fopen_and_lock (const char *path, const char *mode);
-#endif
+
+
 static int cas_fclose (FILE * fp);
 static int cas_ftruncate (int fd, off_t length);
 static int cas_fflush (FILE * stream);
@@ -464,7 +493,7 @@ cas_log_write_nonl (unsigned int seq_num, bool unit_start, const char *fmt, ...)
 }
 
 static void
-cas_log_query_cancel (int dummy, ...)
+cas_log_query_cancel (int log_type, int dummy, ...)
 {
 #ifndef LIBCAS_FOR_JSP
   va_list ap;
@@ -473,11 +502,20 @@ cas_log_query_cancel (int dummy, ...)
   bool log_mode;
   struct timeval tv;
 
-  if (log_fp == NULL || query_cancel_flag != 1)
+  if (log_type == COMM_LOG_TYPE)
     {
-      return;
+      if (log_fp == NULL || query_cancel_flag != 1)
+	{
+	  return;
+	}
     }
-
+  else
+    {
+      if (ddl_log_fp == NULL || query_cancel_flag != 1)
+	{
+	  return;
+	}
+    }
   tv.tv_sec = query_cancel_time / 1000;
   tv.tv_usec = (query_cancel_time % 1000) * 1000;
 
@@ -493,12 +531,21 @@ cas_log_query_cancel (int dummy, ...)
       snprintf (buf, LINE_MAX, "query_cancel");
     }
 
-  log_mode = as_info->cur_sql_log_mode == SQL_LOG_MODE_ALL;
-  va_start (ap, dummy);
-  cas_log_write_internal (log_fp, &tv, 0, log_mode, buf, ap);
-  va_end (ap);
-  cas_fputc ('\n', log_fp);
-
+  if (log_type == COMM_LOG_TYPE)
+    {
+      log_mode = as_info->cur_sql_log_mode == SQL_LOG_MODE_ALL;
+      va_start (ap, dummy);
+      cas_log_write_internal (log_fp, &tv, 0, log_mode, buf, ap);
+      va_end (ap);
+      cas_fputc ('\n', log_fp);
+    }
+  else
+    {
+      va_start (ap, dummy);
+      cas_log_write_internal (ddl_log_fp, &tv, 0, false, buf, ap);
+      va_end (ap);
+      cas_fputc ('\n', log_fp);
+    }
   query_cancel_flag = 0;
 #endif /* LIBCAS_FOR_JSP */
 }
@@ -512,7 +559,7 @@ cas_log_write (unsigned int seq_num, bool unit_start, const char *fmt, ...)
       cas_log_open (shm_appl->broker_name);
     }
 
-  cas_log_query_cancel (0);
+  cas_log_query_cancel (COMM_LOG_TYPE, 0);
 
   if (log_fp != NULL)
     {
@@ -1167,6 +1214,349 @@ cas_slow_log_write_query_string (char *query, int size)
 #endif /* LIBCAS_FOR_JSP */
 }
 
+static char *
+make_ddl_log_filename (char *filename_buf, size_t buf_size, const char *br_name)
+{
+  char *dir_name;
+  const char *env_root = NULL;
+  int ret = 0;
+
+  assert (filename_buf != NULL);
+
+  env_root = envvar_root ();
+
+#ifndef LIBCAS_FOR_JSP
+  dir_name = (char *) prm_get_string_value (PRM_ID_DDL_AUDIT_LOG_DIR);
+
+  if (cas_shard_flag == ON)
+    {
+      if (dir_name != NULL && dir_name[0] != '\0')
+	{
+	  ret = snprintf (filename_buf, buf_size, "%s/%s/%s_%d.ddl.log", env_root, dir_name, br_name, shm_proxy_id + 1,
+			  shm_shard_id, shm_shard_cas_id + 1);
+	}
+      else if (dir_name != NULL && dir_name[0] == '\0')
+	{
+	  ret = snprintf (filename_buf, buf_size, "%s/%s_%d.ddl.log", env_root, br_name, shm_proxy_id + 1,
+			  shm_shard_id, shm_shard_cas_id + 1);
+	}
+    }
+  else
+    {
+      if (dir_name != NULL && dir_name[0] != '\0')
+	{
+	  ret = snprintf (filename_buf, buf_size, "%s/%s/%s_%d.ddl.log", env_root, dir_name, br_name, shm_as_index + 1);
+	}
+      else if (dir_name != NULL && dir_name[0] == '\0')
+	{
+	  ret = snprintf (filename_buf, buf_size, "%s/%s_%d.ddl.log", env_root, br_name, shm_as_index + 1);
+	}
+    }
+#else /* LIBCAS_FOR_JSP */
+  dir_name = (char *) prm_get_string_value (PRM_ID_DDL_AUDIT_LOG_DIR);
+  if (dir_name != NULL && dir_name[0] != '\0')
+    {
+      ret = snprintf (filename_buf, buf_size, "%s/%s/%s_ddl.log", env_root, dir_name, br_name);
+    }
+  else if (dir_name != NULL && dir_name[0] == '\0')
+    {
+      ret = snprintf (filename_buf, buf_size, "%s/%s_ddl.log", env_root, br_name);
+    }
+#endif
+
+  if (ret < 0)
+    {
+      assert (false);
+      filename_buf[0] = '\0';
+    }
+#if defined(WINDOWS)
+  unix_style_path (filename_buf);
+#endif
+
+  return filename_buf;
+}
+
+void
+cas_set_ddl_log_enable (char is_ddl_stmt)
+{
+#ifndef LIBCAS_FOR_JSP
+  is_ddl_stmt_flag = is_ddl_stmt;
+  cas_ddl_log_write_and_end (0, true, "CLIENT IP : %s", connect_info.ip_addr);
+  cas_ddl_log_write_and_end (0, true, "DB NAME : %s", connect_info.db_name);
+  cas_ddl_log_write_and_end (0, true, "USER NAME : %s", connect_info.user_name);
+  cas_ddl_log_write_and_end (0, true, "CLIENT VERSION : %s", connect_info.driver_version);
+#else
+  is_ddl_stmt_flag = is_ddl_stmt;
+#endif
+}
+
+void
+cas_ddl_log_open (char *br_name)
+{
+#ifndef LIBCAS_FOR_JSP
+  char dir[PATH_MAX], *tpath;
+
+  if (ddl_log_fp != NULL)
+    {
+      cas_ddl_log_close (true);
+    }
+
+  if (br_name != NULL)
+    {
+      make_ddl_log_filename (ddl_log_filepath, BROKER_PATH_MAX, br_name);
+
+      assert (ddl_log_filepath != NULL);
+
+      tpath = strdup (ddl_log_filepath);
+      create_dir_ddl_log (tpath);
+    }
+
+  /* note: in "a+" mode, output is always appended */
+  ddl_log_fp = cas_fopen (ddl_log_filepath, "a+");
+
+  if (ddl_log_fp != NULL)
+    {
+      cas_fseek (ddl_log_fp, 0, SEEK_END);
+      saved_ddl_log_fpos = cas_ftell (ddl_log_fp);
+    }
+#endif /* LIBCAS_FOR_JSP */
+}
+
+void
+cas_ddl_log_close (bool flag)
+{
+#ifndef LIBCAS_FOR_JSP
+  if (ddl_log_fp != NULL)
+    {
+      if (flag)
+	{
+	  cas_fseek (ddl_log_fp, saved_ddl_log_fpos, SEEK_SET);
+	  cas_ftruncate (cas_fileno (ddl_log_fp), saved_ddl_log_fpos);
+	}
+      cas_fclose (ddl_log_fp);
+      ddl_log_fp = NULL;
+      saved_ddl_log_fpos = 0;
+    }
+#endif /* LIBCAS_FOR_JSP */
+}
+
+void
+cas_ddl_log_end (int run_time_sec, int run_time_msec)
+{
+#ifndef LIBCAS_FOR_JSP
+  if (ddl_log_fp == NULL && prm_get_bool_value (PRM_ID_DDL_AUDIT_LOG) == TRUE)
+    {
+      cas_ddl_log_open (shm_appl->broker_name);
+    }
+
+  if (ddl_log_fp != NULL && is_ddl_stmt_flag > 0 && prm_get_bool_value (PRM_ID_DDL_AUDIT_LOG) == TRUE)
+    {
+      if (run_time_sec >= 0 && run_time_msec >= 0)
+	{
+	  cas_ddl_log_write (0, false, "*** elapsed time %d.%03d\n", run_time_sec, run_time_msec);
+	}
+
+      cas_ddl_log_write (0, false, "END OF LOG\n\n");
+      cas_fflush (ddl_log_fp);
+
+      saved_ddl_log_fpos = cas_ftell (ddl_log_fp);
+
+      if ((saved_ddl_log_fpos) > prm_get_bigint_value (PRM_ID_DDL_AUDIT_LOG_SIZE))
+	{
+	  cas_ddl_log_close (true);
+	  ddl_log_file_backup (ddl_log_filepath);
+	  cas_ddl_log_open (NULL);
+	}
+    }
+#endif /* LIBCAS_FOR_JSP */
+}
+
+void
+cas_ddl_log_write_and_end (struct timeval *log_time, unsigned int seq_num, const char *fmt, ...)
+{
+#ifndef LIBCAS_FOR_JSP
+  if (ddl_log_fp == NULL && prm_get_bool_value (PRM_ID_DDL_AUDIT_LOG) == TRUE)
+    {
+      cas_ddl_log_open (shm_appl->broker_name);
+    }
+
+  if (ddl_log_fp != NULL && is_ddl_stmt_flag > 0 && prm_get_bool_value (PRM_ID_DDL_AUDIT_LOG) == TRUE)
+    {
+      va_list ap;
+
+      va_start (ap, fmt);
+      cas_log_write_internal (ddl_log_fp, log_time, seq_num, false, fmt, ap);
+      va_end (ap);
+
+      cas_fputc ('\n', ddl_log_fp);
+      cas_fflush (ddl_log_fp);
+    }
+#endif /* LIBCAS_FOR_JSP */
+}
+
+void
+cas_ddl_log_write_nonl (unsigned int seq_num, bool unit_start, const char *fmt, ...)
+{
+#ifndef LIBCAS_FOR_JSP
+  if (ddl_log_fp == NULL && prm_get_bool_value (PRM_ID_DDL_AUDIT_LOG) == TRUE)
+    {
+      cas_ddl_log_open (shm_appl->broker_name);
+    }
+
+  if (ddl_log_fp != NULL && is_ddl_stmt_flag > 0 && prm_get_bool_value (PRM_ID_DDL_AUDIT_LOG) == TRUE)
+    {
+      va_list ap;
+
+      if (unit_start)
+	{
+	  saved_ddl_log_fpos = cas_ftell (ddl_log_fp);
+	}
+      va_start (ap, fmt);
+      cas_log_write_internal (ddl_log_fp, NULL, seq_num, false, fmt, ap);
+      va_end (ap);
+    }
+#endif /* LIBCAS_FOR_JSP */
+}
+
+void
+cas_ddl_log_write (unsigned int seq_num, bool unit_start, const char *fmt, ...)
+{
+#ifndef LIBCAS_FOR_JSP
+  if (ddl_log_fp == NULL && prm_get_bool_value (PRM_ID_DDL_AUDIT_LOG) == TRUE)
+    {
+      cas_log_open (shm_appl->broker_name);
+    }
+
+  cas_log_query_cancel (DDL_AUDIT_LOG_TYPE, 0);
+
+  if (ddl_log_fp != NULL && is_ddl_stmt_flag > 0 && prm_get_bool_value (PRM_ID_DDL_AUDIT_LOG) == TRUE)
+    {
+      va_list ap;
+
+      if (unit_start)
+	{
+	  saved_ddl_log_fpos = cas_ftell (ddl_log_fp);
+	}
+      va_start (ap, fmt);
+      cas_log_write_internal (ddl_log_fp, NULL, seq_num, false, fmt, ap);
+      va_end (ap);
+      cas_fputc ('\n', ddl_log_fp);
+    }
+#endif /* LIBCAS_FOR_JSP */
+}
+
+void
+cas_ddl_log_write_query_string (char *query, int size)
+{
+#ifndef LIBCAS_FOR_JSP
+  if (ddl_log_fp == NULL && prm_get_bool_value (PRM_ID_DDL_AUDIT_LOG) == TRUE)
+    {
+      cas_ddl_log_open (shm_appl->broker_name);
+    }
+
+  if (ddl_log_fp != NULL && query != NULL && is_ddl_stmt_flag > 0 && prm_get_bool_value (PRM_ID_DDL_AUDIT_LOG) == TRUE)
+    {
+      char *s;
+
+      for (s = query; *s; s++)
+	{
+	  if (*s == '\n' || *s == '\r')
+	    {
+	      cas_fputc (' ', ddl_log_fp);
+	    }
+	  else
+	    {
+	      cas_fputc (*s, ddl_log_fp);
+	    }
+	}
+      cas_fputc ('\n', ddl_log_fp);
+    }
+#endif /* LIBCAS_FOR_JSP */
+}
+
+void
+cas_set_ddl_log_info (char *db_name, char *user_name, char *ip, char *client_version)
+{
+#ifndef LIBCAS_FOR_JSP
+  memset (&connect_info, 0, sizeof (struct t_connect_info));
+  strncpy (connect_info.db_name, db_name, strlen (db_name));
+  strncpy (connect_info.user_name, user_name, strlen (user_name));
+  strncpy (connect_info.ip_addr, ip, strlen (ip));
+  strncpy (connect_info.driver_version, client_version, strlen (client_version));
+#endif /* LIBCAS_FOR_JSP */
+}
+
+void
+csql_ddl_log_open (const char *log_file_name)
+{
+#if defined(LIBCAS_FOR_JSP)
+  char dir[PATH_MAX], *tpath;
+
+  if (log_file_name != NULL)
+    {
+      make_ddl_log_filename (csql_ddl_log_filepath, BROKER_PATH_MAX, log_file_name);
+
+      assert (csql_ddl_log_filepath != NULL);
+
+      tpath = strdup (csql_ddl_log_filepath);
+      create_dir_ddl_log (tpath);
+    }
+
+  csql_ddl_log_fp = cas_fopen_and_lock (csql_ddl_log_filepath, "a");
+
+  if (csql_ddl_log_fp != NULL)
+    {
+      cas_fseek (csql_ddl_log_fp, 0, SEEK_END);
+    }
+#endif
+}
+
+void
+csql_ddl_log_write (const char *fmt, ...)
+{
+#if defined(LIBCAS_FOR_JSP)
+  if (csql_ddl_log_fp == NULL || is_ddl_stmt_flag == 0 || prm_get_bool_value (PRM_ID_DDL_AUDIT_LOG) == FALSE)
+    {
+      return;
+    }
+
+  if (csql_ddl_log_fp != NULL)
+    {
+      va_list ap;
+
+      va_start (ap, fmt);
+      cas_log_write_internal (csql_ddl_log_fp, NULL, 0, false, fmt, ap);
+      va_end (ap);
+    }
+#endif
+}
+
+void
+csql_ddl_log_write_end (const char *fmt, ...)
+{
+#if defined(LIBCAS_FOR_JSP)
+  if (csql_ddl_log_fp == NULL || is_ddl_stmt_flag == 0 || prm_get_bool_value (PRM_ID_DDL_AUDIT_LOG) == FALSE)
+    {
+      return;
+    }
+
+  csql_ddl_log_write (fmt);
+
+  if (ftell (csql_ddl_log_fp) > prm_get_bigint_value (PRM_ID_DDL_AUDIT_LOG_SIZE))
+    {
+      cas_fclose (csql_ddl_log_fp);
+      ddl_log_file_backup (csql_ddl_log_filepath);
+      csql_ddl_log_open (NULL);
+    }
+
+  if (csql_ddl_log_fp != NULL)
+    {
+      cas_fclose (csql_ddl_log_fp);
+      csql_ddl_log_fp = NULL;
+    }
+#endif
+}
+
 static bool
 cas_log_begin_hang_check_time (void)
 {
@@ -1247,7 +1637,6 @@ cas_fopen (const char *path, const char *mode)
   return result;
 }
 
-#if defined (WINDOWS)
 static FILE *
 cas_fopen_and_lock (const char *path, const char *mode)
 {
@@ -1279,7 +1668,6 @@ retry:
 
   return result;
 }
-#endif
 
 static int
 cas_fclose (FILE * fp)
@@ -1433,4 +1821,113 @@ get_access_log_type_string (ACCESS_LOG_TYPE type)
 #endif
 
   return "";
+}
+
+static void
+ddl_log_file_backup (const char *path)
+{
+#if defined(LIBCAS_FOR_JSP)
+  char backup_file[PATH_MAX];
+
+  sprintf (backup_file, "%s.bak", path);
+
+  cas_unlink (backup_file);
+  cas_rename (path, backup_file);
+#endif
+}
+
+char
+is_ddl_stmt_type (char *stmt)
+{
+  if (strncasecmp (stmt, "create", 6) == 0)
+    {
+      return 1;
+    }
+  else if (strncasecmp (stmt, "drop", 4) == 0)
+    {
+      return 1;
+    }
+  else if (strncasecmp (stmt, "alter", 5) == 0)
+    {
+      return 1;
+    }
+  else if (strncasecmp (stmt, "rename", 6) == 0)
+    {
+      return 1;
+    }
+  else if (strncasecmp (stmt, "truncate", 8) == 0)
+    {
+      return 1;
+    }
+  else
+    {
+      return 0;
+    }
+}
+
+#if defined(WINDOWS)
+static void
+unix_style_path (char *path)
+{
+  char *p;
+  for (p = path; *p; p++)
+    {
+      if (*p == '\\')
+	*p = '/';
+    }
+}
+#endif /* WINDOWS */
+
+static int
+create_dir_ddl_log (const char *new_dir)
+{
+  char *p, path[BROKER_PATH_MAX];
+
+  if (new_dir == NULL)
+    return -1;
+
+  strcpy (path, new_dir);
+  trim (path);
+
+
+#if defined(WINDOWS)
+  unix_style_path (path);
+#endif /* WINDOWS */
+
+  p = path;
+#if defined(WINDOWS)
+  if (path[0] == '/')
+    p = path + 1;
+  else if (strlen (path) > 3 && path[2] == '/')
+    p = path + 3;
+#else /* WINDOWS */
+  if (path[0] == '/')
+    {
+      p = path + 1;
+    }
+#endif /* WINDOWS */
+
+  while (p != NULL)
+    {
+      p = strchr (p, '/');
+      if (p == NULL)
+	return 0;
+
+      if (p != NULL)
+	*p = '\0';
+
+      if (access (path, F_OK) < 0)
+	{
+	  if (mkdir (path, 0777) < 0)
+	    {
+	      return -1;
+	    }
+	}
+      if (p != NULL)
+	{
+	  *p = '/';
+	  p++;
+	}
+    }
+  return 0;
 }
