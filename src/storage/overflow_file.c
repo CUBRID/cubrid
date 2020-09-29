@@ -230,7 +230,7 @@ overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID * ovf_vpid
 
       memcpy (copyto, data, copy_length);
 
-      if (file_type != FILE_TEMP)
+      if (file_type != FILE_TEMP && thread_p->no_logging != true)
 	{
 	  log_append_redo_data (thread_p, RVOVF_NEWPAGE_INSERT, &addr,
 				copy_length + CAST_BUFLEN (copyto - (char *) addr.pgptr), (char *) addr.pgptr);
@@ -511,7 +511,10 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ov
       data += copy_length;
       length -= copy_length;
 
-      log_append_redo_data (thread_p, RVOVF_PAGE_UPDATE, &addr, copy_length + hdr_length, (char *) addr.pgptr);
+      if (thread_p->no_logging != true)
+	{
+	  log_append_redo_data (thread_p, RVOVF_PAGE_UPDATE, &addr, copy_length + hdr_length, (char *) addr.pgptr);
+	}
 
       if (length > 0)
 	{
