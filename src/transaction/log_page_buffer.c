@@ -2262,6 +2262,9 @@ logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAG
 
   write_mode = dwb_is_created () == true ? FILEIO_WRITE_NO_COMPENSATE_WRITE : FILEIO_WRITE_DEFAULT_WRITE;
 
+  logpb_log ("logpb_write_page_to_disk: The page (%lld) is being tde-encrypted: %d\n", (long long int) logical_pageid,
+	     LOG_IS_PAGE_TDE_ENCRYPTED (log_pgptr));
+
   if (LOG_IS_PAGE_TDE_ENCRYPTED (log_pgptr))
     {
       error_code = tde_encrypt_log_page (log_pgptr, buf_pgptr, logpb_get_tde_algorithm (log_pgptr));
@@ -2649,8 +2652,9 @@ logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY current_setdirty)
     {
       TDE_ALGORITHM tde_algo = (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_DEFAULT_ALGORITHM);
       logpb_set_tde_algorithm (thread_p, log_Gl.append.log_pgptr, tde_algo);
-      logpb_log ("logpb_next_append_page: set tde_algorithm to appending page, "
-		 "tde_algorithm = %s\n", tde_get_algorithm_name (tde_algo));
+      logpb_log ("logpb_next_append_page: set tde_algorithm to appending page (%lld), "
+		 "tde_algorithm = %s\n", (long long int) log_Gl.append.log_pgptr->hdr.logical_pageid,
+		 tde_get_algorithm_name (tde_algo));
     }
 
 #if defined(CUBRID_DEBUG)
@@ -2760,6 +2764,9 @@ logpb_writev_append_pages (THREAD_ENTRY * thread_p, LOG_PAGE ** to_flush, DKNPAG
       for (i = 0; i < npages; i++)
 	{
 	  log_pgptr = to_flush[i];
+
+	  logpb_log ("logpb_writev_append_pages: The page (%lld) is being tde-encrypted: %d\n",
+		     (long long int) log_pgptr->hdr.logical_pageid, LOG_IS_PAGE_TDE_ENCRYPTED (log_pgptr));
 	  if (LOG_IS_PAGE_TDE_ENCRYPTED (log_pgptr))
 	    {
 	      if (tde_encrypt_log_page (log_pgptr, buf_pgptr, logpb_get_tde_algorithm (log_pgptr)) != NO_ERROR)
@@ -2863,6 +2870,9 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
 #endif
       phy_pageid = (LOG_PHY_PAGEID) (pageid - bg_arv_info->start_page_id + 1);
       assert_release (phy_pageid > 0);
+
+      logpb_log ("logpb_write_toflush_pages_to_archive: The page (%lld) is being tde-encrypted: %d\n",
+		 (long long int) pageid, LOG_IS_PAGE_TDE_ENCRYPTED (log_pgptr));
 
       if (LOG_IS_PAGE_TDE_ENCRYPTED (log_pgptr))
 	{
@@ -4156,13 +4166,14 @@ logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
 	{
 	  TDE_ALGORITHM tde_algo = (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_DEFAULT_ALGORITHM);
 	  logpb_set_tde_algorithm (thread_p, log_Gl.append.log_pgptr, tde_algo);
-	  logpb_log ("logpb_start_append: set tde_algorithm to existing page, "
-		     "tde_algorithm = %s\n", tde_get_algorithm_name (tde_algo));
+	  logpb_log ("logpb_start_append: set tde_algorithm to existing page (%lld), "
+		     "tde_algorithm = %s\n", (long long int) log_Gl.append.log_pgptr->hdr.logical_pageid,
+		     tde_get_algorithm_name (tde_algo));
 	}
       else
 	{
-	  logpb_log ("logpb_start_append: tde_algorithm already set to existing page, "
-		     "tde_algorithm = %s\n",
+	  logpb_log ("logpb_start_append: tde_algorithm already set to existing page (%lld), "
+		     "tde_algorithm = %s\n", (long long int) log_Gl.append.log_pgptr->hdr.logical_pageid,
 		     tde_get_algorithm_name (logpb_get_tde_algorithm (log_Gl.append.log_pgptr)));
 	}
     }
