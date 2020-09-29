@@ -20348,25 +20348,11 @@ heap_log_insert_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_
       else if (recdes_p->type == REC_NEWHOME)
 	{
 	  /* replication for REC_NEWHOME is performed by following the link (OID) from REC_RELOCATION */
-	  if (thread_p->no_logging)
-	    {
-	      log_append_undo_recdes (thread_p, RVHF_INSERT_NEWHOME, &log_addr, NULL);
-	    }
-	  else
-	    {
-	      log_append_undoredo_recdes (thread_p, RVHF_INSERT_NEWHOME, &log_addr, NULL, recdes_p);
-	    }
+	  log_append_undoredo_recdes (thread_p, RVHF_INSERT_NEWHOME, &log_addr, NULL, recdes_p);
 	}
       else
 	{
-	  if (thread_p->no_logging)
-	    {
-	      log_append_undo_recdes (thread_p, RVHF_INSERT, &log_addr, NULL);
-	    }
-	  else
-	    {
-	      log_append_undoredo_recdes (thread_p, RVHF_INSERT, &log_addr, NULL, recdes_p);
-	    }
+	  log_append_undoredo_recdes (thread_p, RVHF_INSERT, &log_addr, NULL, recdes_p);
 	}
     }
 }
@@ -21477,14 +21463,7 @@ heap_log_delete_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_
   else
     {
       /* log record descriptor */
-      if (thread_p->no_logging)
-	{
-	  log_append_undo_recdes (thread_p, RVHF_DELETE, &log_addr, recdes_p);
-	}
-      else
-	{
-	  log_append_undoredo_recdes (thread_p, RVHF_DELETE, &log_addr, recdes_p, NULL);
-	}
+      log_append_undoredo_recdes (thread_p, RVHF_DELETE, &log_addr, recdes_p, NULL);
     }
 
   if (undo_lsa)
@@ -22237,7 +22216,7 @@ heap_log_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_
 	}
     }
 
-  if (thread_p->no_logging)
+  if (thread_p->no_logging && LOG_IS_MVCC_HEAP_OPERATION (rcvindex))
     {
       log_append_undo_recdes (thread_p, rcvindex, &address, old_recdes_p);
     }
