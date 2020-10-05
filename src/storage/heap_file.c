@@ -21569,6 +21569,7 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
   int error_code = NO_ERROR;
   bool is_old_home_updated;
   RECDES new_home_recdes;
+  VFID ovf_vfid;
 
   assert (context != NULL);
   assert (context->type == HEAP_OPERATION_UPDATE);
@@ -21614,8 +21615,14 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 	  goto exit;
 	}
 
+      if (heap_ovf_find_vfid (thread_p, &context->hfid, &ovf_vfid, false, PGBUF_UNCONDITIONAL_LATCH) == NULL)
+	{
+	  error_code = ER_FAILED;
+	  goto exit;
+	}
+
       /* actual logging */
-      log_append_undo_recdes2 (thread_p, RVHF_MVCC_UPDATE_OVERFLOW, NULL, first_pgptr, -1, &ovf_recdes);
+      log_append_undo_recdes2 (thread_p, RVHF_MVCC_UPDATE_OVERFLOW, &ovf_vfid, first_pgptr, -1, &ovf_recdes);
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
       pgbuf_set_dirty (thread_p, first_pgptr, FREE);
