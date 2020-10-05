@@ -1545,13 +1545,21 @@ prior_lsa_next_record_with_lock (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, l
 }
 
 int
-prior_set_tde_encrypted (log_prior_node *node)
+prior_set_tde_encrypted (log_prior_node *node, LOG_RCVINDEX recvindex)
 {
   if (!tde_Cipher.is_loaded)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_IS_NOT_LOADED, 0);
       return ER_TDE_CIPHER_IS_NOT_LOADED;
     }
+
+#if !defined(NDEBUG)
+  if (prm_get_bool_value (PRM_ID_TDE_TRACE_DEBUG))
+    {
+      fprintf (stdout, "TRACE TDE: prior_set_tde_encrypted: rcvindex= %s\n", rv_rcvindex_string (recvindex));
+      fflush (stdout);
+    }
+#endif /* !NDEBUG */
 
   node->log_header.flags |= LOG_RECHDR_FLAG_TDE_ENCRYPTED;
   return NO_ERROR;
