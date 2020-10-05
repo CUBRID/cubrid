@@ -184,7 +184,7 @@ $set 5 MSGCAT_SET_ERROR
 116 Base de datos "%1$s" es desconocida, o el archivo "databases.txt" no se puede accesar.
 117 El nombre de ruta absoluto para la base de datos es demasiado largo. La longitud combinada de la ruta "%1$s" y el nombre "%2$s" es %3$d; la longitud combinada debe ser inferior a %4$d.
 118 No se ha podido localizar el directorio de trabajo actual.
-119 Incapaz de encontrar el hostname local.
+119 Ne eblas trovi ("%1$s") en /etc/hosts. Bonvolu kontroli permesojn de la dosiero aŭ se estas la gastnomo.
 120 El numero maximo de volumenes (%1$d) ha sido excedido.
 121 Tratando de eliminar "%1$s", un volumen permanente de la base de datos.
 122 No se puede acceder al catálogo del sistema de mensajes.
@@ -415,7 +415,7 @@ $set 5 MSGCAT_SET_ERROR
 347 No se puede establecer un tunel hacia el servidor maestro.
 348 Debe especificar un identificador sea de servicio o de puerto.
 349 Servicio desconocido para TCP: %1$s.
-350 Error al obtener el nombre del host local para el host "%1$s". Host no encontrado.
+350 Ne eblas trovi ("%1$s") en /etc/hosts. Bonvolu kontroli permesojn de la dosiero aŭ se estas la gastnomo.
 351 No se puede crear enchufe TCP.
 352 tcp_open: no se puede obtener un puerto TCP reservado.
 353 No se puede establecer conexion hacia el servidor maestro en host "%1$s".
@@ -1312,7 +1312,7 @@ $ LOADDB
 1243 La carga del índice se canceló después de un error.
 1244 La carga de actualizaciones de atributos compartidos desde archivos de objetos no es compatible con el modo CS.
 1245 La carga de actualizaciones de atributos de clase desde archivos de objetos no es compatible con el modo CS.
-1246 Error al obtener la información de la dirección y del nombre. Código : %1$d, mensaje : %2$s.
+1246 Ne eblas ricevi adreson kaj kanonikan nomon por ("%1$s") en /etc/hosts. Bonvolu kontroli la permeson de la dosiero aŭ se estas la gastnomo.
 1247 El tiempo (%1$s) especificado tiene que ser despues del tiempo (%2$s) del respaldo especificado.
 
 1248 Ultimo error

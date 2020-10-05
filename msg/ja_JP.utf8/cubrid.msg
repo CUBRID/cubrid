@@ -184,7 +184,7 @@ $set 5 MSGCAT_SET_ERROR
 116 データベース「%1$s」がないか、またはファイル「databases.txt」にアクセスできません。
 117 データベースに対する絶対パスが長過ぎます。パス「%1$s」と名前「%2$s」を合わせた長さは「%3$d」なので、「%4$d」より少ない必要があります。
 118 現在作業ディレクトリーが決められません。
-119 ローカルホスト名がありません。
+119 /etc/hostsに("%1$s")が見つかりません。ファイルの権限を確認するか、ホスト名があるかどうかを確認してください。
 120 ボリュームの最大数「%1$d」を超えました。
 121 データベースの永久ボリューム「%1$s」削除します。
 122 システムメッセージカタログが使えません。
@@ -415,7 +415,7 @@ $set 5 MSGCAT_SET_ERROR
 347 マスターサーバーとのバイプが生成できません。
 348 サービスやポート番号を明視してください。
 349 わからないTCPサービスです: %1$s。
-350 「%1$s」マッチする名前のホストがありません。
+350 /etc/hostsに("%1$s")が見つかりません。ファイルの権限を確認するか、ホスト名があるかどうかを確認してください。
 351 TCPソケットが作れません。
 352 tcp_open: 予約されたTCPポートが獲得できません。
 353 ホスト「%1$s」のマスターサーバーに接続できません。
@@ -1312,7 +1312,7 @@ $ LOADDB
 1243 Index loading was aborted after an error.
 1244 Loading shared attributes updates from object files is not supported in CS mode.
 1245 Loading class attributes updates from object files is not supported in CS mode.
-1246 Error getting address and name information. Code : %1$d, message : %2$s.
+1246 /etc/hostsの("%1$s")のアドレスと正規名を取得できません。ファイルの権限を確認するか、ホスト名があるかどうかを確認してください。
 1247 復旧時点(%1$s)は必ずバックアップ時点(%2$s)の後に指定してください。
 
 1248 ラストエラー
