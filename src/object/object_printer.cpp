@@ -1067,7 +1067,7 @@ void object_printer::describe_class (struct db_object *class_op)
 	{
 	  tde_algo_str = tde_get_algorithm_name (tde_algo);
 	  assert (tde_algo_str != NULL);
-	  m_buf (" ENCRYPT %s", tde_algo_str);
+	  m_buf (" ENCRYPT=%s", tde_algo_str);
 	}
     }
 
