@@ -209,11 +209,7 @@ if(WIN32)
   list(APPEND JAVASP_SERVER_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
 endif(WIN32)
 add_executable(cub_javasp ${JAVASP_SERVER_SOURCES})
-if(UNIX)
-  target_link_libraries(cub_javasp LINK_PRIVATE cubrid)
-else(UNIX)
-  target_link_libraries(cub_javasp LINK_PRIVATE cubridsa)
-endif(UNIX)
+target_link_libraries(cub_javasp LINK_PRIVATE cubridsa)
 
 set(CUB_ADMIN_SOURCES
   ${EXECUTABLES_DIR}/util_admin.c
