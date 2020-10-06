@@ -12400,7 +12400,6 @@ update_subclasses (DB_OBJLIST * subclasses)
   int num_indexes;
   DB_OBJLIST *sub;
   SM_CLASS *class_;
-  bool use_stat_estimation = prm_get_bool_value (PRM_ID_USE_STAT_ESTIMATION);
 
   for (sub = subclasses; sub != NULL && error == NO_ERROR; sub = sub->next)
     {
@@ -12429,8 +12428,7 @@ update_subclasses (DB_OBJLIST * subclasses)
 		      /* an error has happened */
 		      error = num_indexes;
 		    }
-		  else if (!class_->dont_decache_constraints_or_flush && class_->class_type == SM_CLASS_CT
-			   && use_stat_estimation)
+		  else if (!class_->dont_decache_constraints_or_flush && class_->class_type == SM_CLASS_CT)
 		    {
 		      error = sm_update_statistics (sub->op, STATS_WITH_SAMPLING);
 		    }
@@ -12551,7 +12549,6 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
   SM_CLASS *class_;
   DB_OBJLIST *cursupers, *oldsupers, *newsupers, *cursubs, *newsubs;
   SM_TEMPLATE *flat;
-  bool use_stat_estimation = prm_get_bool_value (PRM_ID_USE_STAT_ESTIMATION);
 
   sm_bump_local_schema_version ();
   class_ = NULL;
@@ -12773,7 +12770,7 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
   class_->new_ = NULL;
 
   /* All objects are updated, now we can update class statistics also. */
-  if (template_->class_type == SM_CLASS_CT && use_stat_estimation)
+  if (template_->class_type == SM_CLASS_CT)
     {
       error = sm_update_statistics (template_->op, STATS_WITH_SAMPLING);
       if (error != NO_ERROR)
@@ -14577,7 +14574,6 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
   bool set_savepoint = false;
   int partition_type;
   MOP *sub_partitions = NULL;
-  bool use_stat_estimation = prm_get_bool_value (PRM_ID_USE_STAT_ESTIMATION);
 
   if (att_names == NULL)
     {
@@ -14783,16 +14779,6 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	  if (error != NO_ERROR)
 	    {
 	      smt_quit (def);
-	      goto error_exit;
-	    }
-	}
-      else if (!use_stat_estimation)
-	{
-	  /* if NOT use_stat_estimation then stats is not updated at update_class() */
-	  /* this routine is for create index statement */
-	  error = sm_update_statistics (newmop, STATS_WITH_SAMPLING);
-	  if (error != NO_ERROR)
-	    {
 	      goto error_exit;
 	    }
 	}
