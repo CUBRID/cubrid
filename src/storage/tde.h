@@ -154,8 +154,6 @@ typedef struct tde_keyinfo
    || (rcvindex) == RVBT_RECORD_MODIFY_UNDOREDO \
    || (rcvindex) == RVBT_RECORD_MODIFY_NO_UNDO \
    || (rcvindex) == RVBT_RECORD_MODIFY_COMPENSATE \
-   || (rcvindex) == RVBT_DELETE_OBJECT_POSTPONE \
-   || (rcvindex) == RVBT_MARK_DELETED \
    || (rcvindex) == RVREPL_DATA_INSERT \
    || (rcvindex) == RVREPL_DATA_UPDATE \
    || (rcvindex) == RVREPL_DATA_DELETE \
