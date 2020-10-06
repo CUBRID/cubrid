@@ -2387,14 +2387,14 @@ process_javasp_server (int command_type, int argc, const char **argv, bool proce
   int status = NO_ERROR;
   char *db_name = NULL;
 
-  if (argc == 0) /* cubrid service command */
+  if (argc == 0)		/* cubrid service command */
     {
       if (us_Property_map[SERVER_START_LIST].property_value != NULL)
 	{
 	  strncpy (buf, us_Property_map[SERVER_START_LIST].property_value, sizeof (buf) - 1);
 	}
     }
-  else /* cubrid javasp command */
+  else				/* cubrid javasp command */
     {
       strncpy (buf, argv[0], sizeof (buf) - 1);
     }
@@ -2429,7 +2429,7 @@ process_javasp_server (int command_type, int argc, const char **argv, bool proce
 	    else
 	      {
 		int pid;
-    int waited_seconds = 0;
+		int waited_seconds = 0;
 
 		if (process_window_service)
 		  {
@@ -2443,24 +2443,24 @@ process_javasp_server (int command_type, int argc, const char **argv, bool proce
 		else
 		  {
 		    const char *args[] = { UTIL_JAVASP_NAME, db_name, NULL };
-        status = proc_execute (UTIL_JAVASP_NAME, args, false, false, false, &pid);
+		    status = proc_execute (UTIL_JAVASP_NAME, args, false, false, false, &pid);
 		  }
-      status = ER_GENERIC_ERROR;
-      while (status != NO_ERROR && waited_seconds < 5)
-      {
-        sleep (1);	/* wait to start */
-        
-        if (is_javasp_running (db_name))
-        {
-          status = NO_ERROR;
-          break;
-        }
-        else
-        {
-          PRINT_AND_LOG_ERR_MSG ("Waiting for javasp server to start... (%d/%d)", ++waited_seconds, 5);
-        }
-      }
-        
+		status = ER_GENERIC_ERROR;
+		while (status != NO_ERROR && waited_seconds < 5)
+		  {
+		    sleep (1);	/* wait to start */
+
+		    if (is_javasp_running (db_name))
+		      {
+			status = NO_ERROR;
+			break;
+		      }
+		    else
+		      {
+			PRINT_AND_LOG_ERR_MSG ("Waiting for javasp server to start... (%d/%d)", ++waited_seconds, 5);
+		      }
+		  }
+
 		print_result (PRINT_JAVASP_NAME, status, command_type);
 	      }
 	  }

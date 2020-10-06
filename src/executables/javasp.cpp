@@ -127,18 +127,18 @@ main (int argc, char *argv[])
     if (strcasecmp (command, "ping") == 0)
       {
 	// redirect stderr
-  FILE *f;
-  const char* nullStream = "/dev/null";
-#if defined (WINDOWS) 
-  nullStream = "nul";
+	FILE *f;
+	const char *nullStream = "/dev/null";
+#if defined (WINDOWS)
+	nullStream = "nul";
 #endif
 	if ((f = freopen (nullStream, "w", stderr)) == NULL)
-  {
-    assert (false);
-  }
-  fclose (f);
+	  {
+	    assert (false);
+	  }
+	fclose (f);
       }
-    
+
     /* error message file */
     char er_msg_file[PATH_MAX];
     snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_java.err", db_name);
@@ -193,10 +193,10 @@ main (int argc, char *argv[])
 	goto exit;
       }
 
-  #if defined(WINDOWS)
+#if defined(WINDOWS)
     // socket startup for windows
     windows_socket_startup (jsp_old_hook);
-  #endif /* WINDOWS */
+#endif /* WINDOWS */
 
     /* javasp command main routine */
     if (strcasecmp (command, "start") == 0)
@@ -283,7 +283,7 @@ main (int argc, char *argv[])
 		fprintf (stdout, "%s\n", buffer);
 	      }
 	  }
-    goto exit;
+	goto exit;
       }
     else
       {

@@ -61,7 +61,7 @@ struct javasp_status_info
   int pid;
   int port;
   char *db_name;
-  std::vector < std::string > vm_args;
+    std::vector < std::string > vm_args;
 };
 
 #ifdef __cplusplus
@@ -75,9 +75,9 @@ extern "C"
   int jsp_readn (SOCKET fd, void *vptr, int n);
 
 #if defined(WINDOWS)
-extern int windows_socket_startup (FARPROC hook);
-extern void windows_socket_shutdown (FARPROC hook);
-#endif /* WINDOWS */
+  extern int windows_socket_startup (FARPROC hook);
+  extern void windows_socket_shutdown (FARPROC hook);
+#endif				/* WINDOWS */
 
 #ifdef __cplusplus
 }
