@@ -1184,7 +1184,7 @@ check_all_services_status (unsigned int sleep_time, UTIL_ALL_SERVICES_STATUS exp
 	}
     }
 
-  if (strcmp (get_property (SERVICE_START_SERVER), PROPERTY_ON) == 0
+  if (strcmp (get_property (SERVICE_START_JAVASP), PROPERTY_ON) == 0
       && us_Property_map[SERVER_START_LIST].property_value != NULL)
     {
       char buf[4096];
@@ -1202,7 +1202,7 @@ check_all_services_status (unsigned int sleep_time, UTIL_ALL_SERVICES_STATUS exp
 	    {
 	      break;
 	    }
-	  /* check whether cub_server is running */
+	  /* check whether cub_javasp is running */
 	  ret = is_javasp_running (token);
 	  if ((expected_status == ALL_SERVICES_RUNNING && !ret) || (expected_status == ALL_SERVICES_STOPPED && ret))
 	    {
