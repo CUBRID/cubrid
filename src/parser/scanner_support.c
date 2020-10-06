@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -433,6 +434,12 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 		}
 	      break;
 	    case PT_HINT_NO_HASH_AGGREGATE:
+	      if (node->node_type == PT_SELECT)
+		{
+		  node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
+		}
+	      break;
+	    case PT_HINT_NO_HASH_LIST_SCAN:
 	      if (node->node_type == PT_SELECT)
 		{
 		  node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);

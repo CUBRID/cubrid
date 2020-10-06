@@ -3096,8 +3096,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
   log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
-  undo_unzip_ptr = log_zip_alloc (LOGAREA_SIZE, false);
-  redo_unzip_ptr = log_zip_alloc (LOGAREA_SIZE, false);
+  undo_unzip_ptr = log_zip_alloc (LOGAREA_SIZE);
+  redo_unzip_ptr = log_zip_alloc (LOGAREA_SIZE);
 
   if (undo_unzip_ptr == NULL || redo_unzip_ptr == NULL)
     {
@@ -4581,7 +4581,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 
   log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
-  undo_unzip_ptr = log_zip_alloc (LOGAREA_SIZE, false);
+  undo_unzip_ptr = log_zip_alloc (LOGAREA_SIZE);
   if (undo_unzip_ptr == NULL)
     {
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_undo");

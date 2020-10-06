@@ -568,16 +568,17 @@ opţiuni valide:\n\
   -i, --input-class-file=FIŞIER     fişier de intrare cu numele tabelelor\n\
                                     Lista de nume de clase (class_name) trebuie sa fie vidă\n\
                                     implicit: se compactează toate clasele\n\
-                                    activat numai în modul client-server (CS)\n\
   -p, --pages-commited-once=NUMĂR   numărul maxim de pagini ce pot fi comise/salvate o dată\n\
                                     implicit: 10\n\
                                     activat numai în modul client-server\n\
   -S, --SA-mode                     mod de execuţie independent\n\
   -C, --CS-mode                     mod de execuţie client-server\n\
   -d, --delete-old-repr             şterge reprezentările vechi ale claselor din catalog; implicit: dezactivat\n\
-  class_name_list                   activat numai în modul client-server\n\
   -I, --Instance-lock-timeout       timp de expirare pentru blocajele de instanţă\n\
-  -c, --class-lock-timeout          timp de expirare pentru blocajele de clasă\n
+                                    activat numai în modul client-server (CS)\n\
+  -c, --class-lock-timeout          timp de expirare pentru blocajele de clasă\n\
+                                    activat numai în modul client-server (CS)\n\
+  class_name_list                   lista numelui clasei să fie compactată\n
 
 $set 15 MSGCAT_UTIL_SET_COMMDB
 21 Procesul principal CUBRID master, aflat în funcţiune pe maşina gazdă %1$s \na fost pornit la %2$s
@@ -825,6 +826,7 @@ valid options:\n\
       --kill-program-name=NUME       întrerupe toate tranzacţiile cu numele programului client specificat\n\
       --kill-sql-id=SQL_ID           întrerupe toate tranzacţiile cu SQL_ID\n\
   -p, --dba-password=PAROLA          PAROLA utilizatorului DBA; va fi solicitată dacă nu este specificată\n\
+                                     (funcționează numai cu opțiuni -i sau --kill. În caz contrar, apare eroare)\n\
   -d, --display-information          afişează informaţii despre tranzacţiile active\n\
   -q, --query-exec-info              afişează informaţii despre execuţia interogărilor din tranzacţiile active\n\
   -f, --force                        intrerupe fortat tranzacţia fără a solicita vreo verificare\n
@@ -1082,8 +1084,6 @@ tranlist: Varsă informaţii despre tranzacţiile active.\n\
 utilizare: %1$s tranlist [OPŢIUNI] nume-bază-de-date\n\
 \n\
 opţiuni valide:\n\
-  -u, --user=ID                ID de utilizator pentru accesul la baza de date; implicit: utilizator DBA\n\
-  -p, --password=PAROLA        parola de utilizator; default: nul\n\
   -s, --summary                afişează informaţii sumare despre tranzacţii\n\
       --sort-key=NUMAR_COLOANA numărul coloanei de sortare\n\
       --reverse                inversează rezultatul sortării\n

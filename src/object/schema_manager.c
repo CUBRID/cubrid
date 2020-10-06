@@ -70,7 +70,7 @@
 #include "execute_schema.h"
 #include "release_string.h"
 #include "execute_statement.h"
-#include "md5.h"
+#include "crypt_opfunc.h"
 
 #include "db.h"
 #include "object_accessor.h"
@@ -14128,6 +14128,7 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 	   * names */
 	  char *name_all = NULL;
 	  int size_class_and_attrs = DB_MAX_IDENTIFIER_LENGTH - 1 - strlen (prefix) - 32 - 1;
+	  int ec = NO_ERROR;
 
 	  name_all = (char *) malloc (name_length + 1);
 	  if (name_all == NULL)
@@ -14145,10 +14146,12 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 		}
 	    }
 
-	  md5_buffer (name_all, strlen (name_all), md5_str);
-	  md5_hash_to_hex (md5_str, md5_str);
-
+	  ec = crypt_md5_buffer_hex (name_all, strlen (name_all), md5_str);
 	  free_and_init (name_all);
+	  if (ec != NO_ERROR)
+	    {
+	      goto exit;
+	    }
 
 	  if (n_attrs > MAX_ATTR_IN_AUTO_GEN_NAME)
 	    {

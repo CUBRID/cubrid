@@ -69,6 +69,8 @@ static int class_referenced_by_attributes (MOP referenced_class, MOP parent_mop,
 					   bool * const any_class_can_be_referenced);
 static void class_referenced_by_domain (MOP referenced_class, TP_DOMAIN * const domain,
 					bool * const class_can_be_referenced, bool * const any_class_can_be_referenced);
+extern int get_class_mops (char **class_names, int num_class, MOP ** class_list, int *num_class_list);
+extern int get_class_mops_from_file (const char *input_filename, MOP ** class_list, int *num_class_mops);
 
 
 /*
@@ -84,231 +86,6 @@ compactdb_usage (const char *argv0)
   exec_name = basename ((char *) argv0);
   util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
   printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, 60), exec_name);
-}
-
-/*
- * get_num_requested_class - Get the number of class from specified
- * input file
- *    return: error code
- *    input_filename(in): input file name
- *    num_class(out) : pointer to returned number of classes
- */
-static int
-get_num_requested_class (const char *input_filename, int *num_class)
-{
-  FILE *input_file;
-  char buffer[DB_MAX_IDENTIFIER_LENGTH];
-
-  if (input_filename == NULL || num_class == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  input_file = fopen (input_filename, "r");
-  if (input_file == NULL)
-    {
-      perror (input_filename);
-      return ER_FAILED;
-    }
-
-  *num_class = 0;
-  while (fgets ((char *) buffer, DB_MAX_IDENTIFIER_LENGTH, input_file) != NULL)
-    {
-      (*num_class)++;
-    }
-
-  fclose (input_file);
-
-  return NO_ERROR;
-}
-
-/*
- * get_class_mops - Get the list of mops of specified classes
- *    return: error code
- *    class_names(in): the names of the classes
- *    num_class(in): the number of classes
- *    class_list(out): pointer to returned list of mops
- *    num_class_list(out): pointer to returned number of mops
- */
-static int
-get_class_mops (char **class_names, int num_class, MOP ** class_list, int *num_class_list)
-{
-  int i, status = NO_ERROR;
-  char downcase_class_name[SM_MAX_IDENTIFIER_LENGTH];
-  DB_OBJECT *class_ = NULL;
-
-  if (class_names == NULL || num_class <= 0 || class_list == NULL || num_class_list == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  *num_class_list = 0;
-  *class_list = (DB_OBJECT **) malloc (DB_SIZEOF (DB_OBJECT *) * (num_class));
-  if (*class_list == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  for (i = 0; i < num_class; ++i)
-    {
-      (*class_list)[i] = NULL;
-    }
-
-  for (i = 0; i < num_class; i++)
-    {
-      if (class_names[i] == NULL || strlen (class_names[i]) == 0)
-	{
-	  status = ER_FAILED;
-	  goto error;
-	}
-
-      sm_downcase_name (class_names[i], downcase_class_name, SM_MAX_IDENTIFIER_LENGTH);
-
-      class_ = locator_find_class (downcase_class_name);
-      if (class_ != NULL)
-	{
-	  (*class_list)[(*num_class_list)] = class_;
-	  (*num_class_list)++;
-	}
-      else
-	{
-	  printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_CLASS),
-		  downcase_class_name);
-
-	  printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_INVALID_CLASS));
-	}
-    }
-
-  return status;
-
-error:
-  if (*class_list)
-    {
-      free (*class_list);
-      *class_list = NULL;
-    }
-
-  if (num_class_list)
-    {
-      *num_class_list = 0;
-    }
-
-  return status;
-}
-
-/*
- * get_class_mops_from_file - Get a list of class mops from specified file
- *    return: error code
- *    input_filename(in): input file name
- *    class_list(out): pointer to returned list of class mops
- *    num_class_mops(out): pointer to returned number of mops
- */
-static int
-get_class_mops_from_file (const char *input_filename, MOP ** class_list, int *num_class_mops)
-{
-  int status = NO_ERROR;
-  int i = 0;
-  FILE *input_file;
-  char buffer[DB_MAX_IDENTIFIER_LENGTH];
-  char **class_names = NULL;
-  int num_class = 0;
-  int len = 0;
-  char *ptr = NULL;
-
-  if (input_filename == NULL || class_list == NULL || num_class_mops == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  *class_list = NULL;
-  *num_class_mops = 0;
-  if (get_num_requested_class (input_filename, &num_class) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  if (num_class == 0)
-    {
-      return ER_FAILED;
-    }
-
-  input_file = fopen (input_filename, "r");
-  if (input_file == NULL)
-    {
-      perror (input_filename);
-      return ER_FAILED;
-    }
-
-  class_names = (char **) malloc (DB_SIZEOF (char *) * num_class);
-  if (class_names == NULL)
-    {
-      return ER_FAILED;
-    }
-  for (i = 0; i < num_class; i++)
-    {
-      class_names[i] = NULL;
-    }
-
-  for (i = 0; i < num_class; ++i)
-    {
-      if (fgets ((char *) buffer, DB_MAX_IDENTIFIER_LENGTH, input_file) == NULL)
-	{
-	  status = ER_FAILED;
-	  goto end;
-	}
-
-      ptr = strchr (buffer, '\n');
-      if (ptr)
-	{
-	  len = CAST_BUFLEN (ptr - buffer);
-	}
-      else
-	{
-	  len = (int) strlen (buffer);
-	}
-
-      if (len < 1)
-	{
-	  status = ER_FAILED;
-	  goto end;
-	}
-
-      class_names[i] = (char *) malloc (DB_SIZEOF (char) * (len + 1));
-      if (class_names[i] == NULL)
-	{
-	  status = ER_FAILED;
-	  goto end;
-	}
-
-      strncpy (class_names[i], buffer, len);
-      class_names[i][len] = 0;
-    }
-
-  status = get_class_mops (class_names, num_class, class_list, num_class_mops);
-
-end:
-
-  if (input_file)
-    {
-      fclose (input_file);
-    }
-
-  if (class_names)
-    {
-      for (i = 0; i < num_class; i++)
-	{
-	  if (class_names[i] != NULL)
-	    {
-	      free (class_names[i]);
-	      class_names[i] = NULL;
-	    }
-	}
-
-      free (class_names);
-      class_names = NULL;
-    }
-
-  return status;
 }
 
 /*
@@ -1012,7 +789,7 @@ compactdb (UTIL_FUNCTION_ARG * arg)
   int error;
   int i, status = 0;
   const char *database_name;
-  bool verbose_flag = 0, delete_old_repr_flag = 0;
+  bool verbose_flag = 0, delete_old_repr_flag = 0, standby_compactdb_flag = 0;
   char *input_filename = NULL;
   int maximum_processed_space = 10 * DB_PAGESIZE, pages;
   int instance_lock_timeout, class_lock_timeout;
@@ -1021,6 +798,7 @@ compactdb (UTIL_FUNCTION_ARG * arg)
 
   database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
   verbose_flag = utility_get_option_bool_value (arg_map, COMPACT_VERBOSE_S);
+  standby_compactdb_flag = utility_get_option_bool_value (arg_map, COMPACT_STANDBY_CS_MODE_S);
   input_filename = utility_get_option_string_value (arg_map, COMPACT_INPUT_CLASS_FILE_S, 0);
 
   pages = utility_get_option_int_value (arg_map, COMPACT_PAGES_COMMITED_ONCE_S);
@@ -1080,7 +858,7 @@ compactdb (UTIL_FUNCTION_ARG * arg)
 
   if (table_size > 1)
     {
-      tables = (char **) malloc (sizeof (char *) * table_size - 1);
+      tables = (char **) malloc (sizeof (char *) * (table_size - 1));
       if (tables == NULL)
 	{
 	  PRINT_AND_LOG_ERR_MSG (msgcat_message
@@ -1097,7 +875,16 @@ compactdb (UTIL_FUNCTION_ARG * arg)
   sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
   AU_DISABLE_PASSWORDS ();
-  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+
+  if (standby_compactdb_flag)
+    {
+      db_set_client_type (DB_CLIENT_TYPE_ADMIN_COMPACTDB_WOS);
+    }
+  else
+    {
+      db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+    }
+
   if ((error = db_login ("DBA", NULL)) || (error = db_restart (arg->argv0, TRUE, database_name)))
     {
       PRINT_AND_LOG_ERR_MSG ("%s: %s.\n", exec_name, db_error_string (3));

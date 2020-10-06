@@ -3589,6 +3589,7 @@ hb_alloc_new_proc (void)
       p->prev = NULL;
       p->being_shutdown = false;
       p->server_hang = false;
+      p->is_curr_eof_received = false;
       LSA_SET_NULL (&p->prev_eof);
       LSA_SET_NULL (&p->curr_eof);
 
@@ -3833,6 +3834,7 @@ hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY * conn, SOCKET sfd)
 
   proc->state = HB_PSTATE_DEAD;
   proc->server_hang = false;
+  proc->is_curr_eof_received = false;
   LSA_SET_NULL (&proc->prev_eof);
   LSA_SET_NULL (&proc->curr_eof);
 
@@ -4191,6 +4193,23 @@ hb_resource_check_server_log_grow (void)
 	{
 	  proc->server_hang = true;
 	  dead_cnt++;
+
+	  if (proc->is_curr_eof_received)
+	    {
+#if !defined(WINDOWS)
+	      syslog (LOG_ALERT, "[CUBRID] no change to eof [%lld|%d] received from (pid:%d)",
+		      LSA_AS_ARGS (&proc->curr_eof), proc->pid);
+#endif
+	      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "no change to eof [%lld|%d] received from (pid:%d)\n",
+				   LSA_AS_ARGS (&proc->curr_eof), proc->pid);
+	    }
+	  else
+	    {
+#if !defined(WINDOWS)
+	      syslog (LOG_ALERT, "[CUBRID] no response to eof request from (pid:%d)", proc->pid);
+#endif
+	      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "no response to eof request from (pid:%d)\n", proc->pid);
+	    }
 	}
     }
   if (dead_cnt > 0)
@@ -4222,6 +4241,7 @@ hb_resource_send_get_eof (void)
       if (proc->state == HB_PSTATE_REGISTERED_AND_ACTIVE)
 	{
 	  css_send_heartbeat_request (proc->conn, SERVER_GET_EOF);
+	  proc->is_curr_eof_received = false;
 	}
     }
 
@@ -4263,9 +4283,10 @@ hb_resource_receive_get_eof (CSS_CONN_ENTRY * conn)
   if (proc->state == HB_PSTATE_REGISTERED_AND_ACTIVE)
     {
       or_unpack_log_lsa (reply, &proc->curr_eof);
+      proc->is_curr_eof_received = true;
     }
 
-  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "received eof [%lld|%lld]\n", proc->curr_eof.pageid, proc->curr_eof.offset);
+  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "received eof [%lld|%d]\n", LSA_AS_ARGS (&proc->curr_eof));
 
   pthread_mutex_unlock (&hb_Resource->lock);
 

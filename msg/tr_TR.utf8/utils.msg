@@ -553,16 +553,17 @@ geçerli seçenekler:\n\
   -i, --input-class-file=FILE       tablo adlarının girişi FILE\n\
                                     class_name liste boş olmalıdır\n\
                                     varsayılan: kompakt tüm sınıflar\n\
-                                    CS-mode sadece etkinleştirilmiş,\n\
   -p, --pages-commited-once=NUMBER  maksimum sayfa sayısı bir kez işlemek için\n\
                                     varsayılan: 10\n\
                                     CS-mode sadece etkinleştirilmiş\n\
   -S, --SA-mode                     stand-alone modu yürütme\n\
   -C, --CS-mode                     istemci-sunucu modunda yürütme\n\
   -d, --delete-old-repr             katalogdan eski sınıf temsilleri silmek; varsayılan: devre dışı\n\
-  class_name_list                   CS-mode sadece etkinleştirilmiş\n\
   -I, --Instance-lock-timeout       Örneğin kilidi için zaman aşımı\n\
-  -c, --class-lock-timeout          sınıf kilidi için zaman aşımı\n
+                                    CS-mode sadece etkinleştirilmiş,\n\
+  -c, --class-lock-timeout          sınıf kilidi için zaman aşımı\n\
+                                    CS-mode sadece etkinleştirilmiş,\n\
+  class_name_list                   sınıf adı listesi sıkıştırılacak\n
 
 $set 15 MSGCAT_UTIL_SET_COMMDB
 21 Host üzerinde çalışan CUBRID Master %1$s \n başlandı %2$s
@@ -808,6 +809,7 @@ geçerli seçenekler:\n\
       --kill-program-name=NAME       istemci programı NAME ile tüm işlemleri iptal etme\n\
       --kill-sql-id=SQL_ID           li tüm geçişleri sonlandırır\n\
   -p, --dba-password=PASS            DBA kullanıcı şifresi; belirtmezseniz isteyecektir\n\
+                                     (yalnızca -i veya --kill seçenekleriyle çalışır. Aksi takdirde hata alır)\n\
   -d, --display-information          etkin işlemler hakkında bilgi görüntülemek\n\
   -q, --query-exec-info              aktif geçişlerin sorgulama çalışması bilgisi hakkında bilgiyi görüntüler\n\
   -f, --force                        doğrulaması için bir istemi olmadan işlemi iptal etme\n
@@ -1061,8 +1063,6 @@ tranlist: Aktif geçiş bilgisini boşalt.\n\
 kullanım: %1$s tranlist [SEÇENEK] database-name\n\
 \n\
 geçerli seçenekler:\n\
-  -u, --user=ID                veri tabanı erişimi için kullanıcı kimliği; default: DBA user\n\
-  -p, --password=PASS          kullanıcı şifresi; default: none\n\
   -s, --summary                geçişin sonuçlandırılmış bilgisini yazdır\n\
       --sort-key=COLUMN_NUMBER Sıralanacak sütun numarası\n\
       --reverse                Sıralama sonucu ters\n

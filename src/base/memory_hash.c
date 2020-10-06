@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -104,6 +105,7 @@ static int mht_rehash (MHT_TABLE * ht);
 
 static const void *mht_put_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt);
 static const void *mht_put2_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt);
+static const void *mht_put_orderly_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt);
 
 static unsigned int mht_get_shiftmult32 (unsigned int key, const unsigned int ht_size);
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -1160,7 +1162,11 @@ mht_dump (THREAD_ENTRY * thread_p, FILE * out_fp, const MHT_TABLE * ht, const in
 	   "HTABLE NAME = %s, SIZE = %d, REHASH_AT = %d,\n" "NENTRIES = %d, NPREALLOC = %d, NCOLLISIONS = %d\n\n",
 	   ht->name, ht->size, ht->rehash_at, ht->nentries, ht->nprealloc_entries, ht->ncollisions);
 
-  if (print_id_opt)
+  if (print_id_opt == -1)
+    {
+      /* noting to do */
+    }
+  else if (print_id_opt)
     {
       /* Need to print the index vector id. Therefore, scan the whole table */
       for (hvector = ht->table, i = 0; i < ht->size; hvector++, i++)
@@ -1466,6 +1472,13 @@ mht_put_new (MHT_TABLE * ht, const void *key, void *data)
 {
   assert (ht != NULL && key != NULL);
   return mht_put_internal (ht, key, data, MHT_OPT_INSERT_ONLY);
+}
+
+const void *
+mht_put_orderly (MHT_TABLE * ht, const void *key, void *data)
+{
+  assert (ht != NULL && key != NULL);
+  return mht_put_orderly_internal (ht, key, data, MHT_OPT_INSERT_ONLY);
 }
 
 /*
@@ -2285,3 +2298,70 @@ mht_get_linear_hash32 (const unsigned int key, const unsigned int ht_size)
   return ret;
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
+
+/*
+ * mht_put_orderly_internal
+ *   internal function for mht_put_orderly()
+ *   put data in the order.
+ *   eliminates unnecessary logic to improve performance for hash list scan.
+ *
+ *   return: key
+ *   ht(in/out): hash table (set as a side effect)
+ *   key(in): hashing key
+ *   data(in): data associated with hashing key
+ *   opt(in): options;
+ */
+static const void *
+mht_put_orderly_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt)
+{
+  unsigned int hash;
+  HENTRY_PTR hentry;
+
+  assert (ht != NULL && key != NULL);
+
+  /*
+   * Hash the key and make sure that the return value is between 0 and size
+   * of hash table
+   */
+  hash = (*ht->hash_func) (key, ht->size);
+  if (hash >= ht->size)
+    {
+      hash %= ht->size;
+    }
+
+  /* This is a new entry */
+  if (ht->nprealloc_entries > 0)
+    {
+      ht->nprealloc_entries--;
+      hentry = ht->prealloc_entries;
+      ht->prealloc_entries = ht->prealloc_entries->next;
+    }
+  else
+    {
+      hentry = (HENTRY_PTR) db_fixed_alloc (ht->heap_id, DB_SIZEOF (HENTRY));
+      if (hentry == NULL)
+	{
+	  return NULL;
+	}
+    }
+
+  hentry->key = key;
+  hentry->data = data;
+
+  /* To input in order, use the act_next variable as tail. */
+  /* lru and act-related logics are not used for hash list scan, so delete them. */
+  if (ht->table[hash] == NULL)
+    {
+      ht->table[hash] = hentry;
+    }
+  else
+    {
+      ht->table[hash]->act_next->next = hentry;
+      ht->ncollisions++;
+    }
+  hentry->next = NULL;
+  ht->table[hash]->act_next = hentry;
+  ht->nentries++;
+
+  return key;
+}

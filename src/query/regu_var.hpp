@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -28,6 +29,7 @@
 #include "object_domain.h"
 #include "query_list.h"
 #include "string_opfunc.h"
+#include "object_primitive.h"
 
 #include <functional>
 
@@ -243,6 +245,7 @@ struct regu_ptr_list_node
 inline bool REGU_VARIABLE_IS_FLAGED (const regu_variable_node *regu, int flag);
 inline void REGU_VARIABLE_SET_FLAG (regu_variable_node *regu, int flag);
 inline void REGU_VARIABLE_CLEAR_FLAG (regu_variable_node *regu, int flag);
+inline DB_TYPE REGU_VARIABLE_GET_TYPE (const regu_variable_node *regu);
 
 //////////////////////////////////////////////////////////////////////////
 // inline/template implementation
@@ -266,4 +269,13 @@ REGU_VARIABLE_CLEAR_FLAG (regu_variable_node *regu, int flag)
   regu->flags &= ~flag;
 }
 
+DB_TYPE
+REGU_VARIABLE_GET_TYPE (const regu_variable_node *regu)
+{
+  if (regu)
+    {
+      return TP_DOMAIN_TYPE (regu->domain);
+    }
+  return DB_TYPE_UNKNOWN;
+}
 #endif /* _REGU_VAR_HPP_ */
