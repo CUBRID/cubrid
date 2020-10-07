@@ -684,7 +684,7 @@ jsp_server_port (void)
   JAVASP_SERVER_INFO jsp_info = { -1, -1 };
   char info_path[PATH_MAX] = { 0 };
   javasp_get_info_file (info_path, sizeof (info_path), boot_db_name ());
-  jsp_info = javasp_read_info (info_path);
+  javasp_read_info (info_path, jsp_info);
   return jsp_info.port;
 #endif
 }

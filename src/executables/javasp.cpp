@@ -123,8 +123,13 @@ main (int argc, char *argv[])
 	goto exit;
       }
 
-    /* initialize message */
-    if (command.compare ("ping") != 0)
+    /* initialize error manager */
+    if (command.compare ("ping") == 0)
+      {
+	// supress error message
+	er_init (NULL_DEVICE, ER_NEVER_EXIT);
+      }
+    else
       {
 	/* error message log file */
 	char er_msg_file[PATH_MAX];
@@ -170,9 +175,6 @@ main (int argc, char *argv[])
 	    return ER_GENERIC_ERROR;
 	  }
 
-	// supress error message
-	er_init (NULL_DEVICE, ER_NEVER_EXIT);
-
 	char buffer[JAVASP_PING_LEN] = {0};
 	if (javasp_ping_server (jsp_info.port, buffer) == NO_ERROR)
 	  {
@@ -186,12 +188,7 @@ main (int argc, char *argv[])
     */
 
     // load system parameter
-    status = sysprm_load_and_init (db_name.c_str (), NULL, SYSPRM_IGNORE_INTL_PARAMS);
-    if (status != NO_ERROR)
-      {
-	PRINT_AND_LOG_ERR_MSG ("Failed to load system paramter");
-	goto exit;
-      }
+    sysprm_load_and_init (db_name.c_str (), NULL, SYSPRM_IGNORE_INTL_PARAMS);
 
     // check java stored procedure is not enabled
     if (prm_get_bool_value (PRM_ID_JAVA_STORED_PROCEDURE) == false)
@@ -223,7 +220,7 @@ main (int argc, char *argv[])
       }
     else
       {
-	assert (false);
+	PRINT_AND_LOG_ERR_MSG ("Invalid command: %s\n", command.c_str ());
 	status = ER_GENERIC_ERROR;
       }
 
@@ -241,7 +238,10 @@ exit:
 	{
 	  fprintf (stdout, "ERROR");
 	}
-      fclose (redirect);
+      if (redirect)
+	{
+	  fclose (redirect);
+	}
     }
 
   return status;
@@ -283,8 +283,14 @@ javasp_start_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_na
 	{
 	  char info_path[PATH_MAX] = {0};
 	  JAVASP_SERVER_INFO jsp_new_info { getpid(), jsp_server_port () };
-	  javasp_get_info_file (info_path, sizeof (info_path), db_name.c_str ());
-	  javasp_write_info (info_path, jsp_new_info);
+
+	  if (!javasp_get_info_file (info_path, sizeof (info_path), db_name.c_str ())
+	      || !javasp_write_info (info_path, jsp_new_info))
+	    {
+	      /* failed to write info file */
+	      status = ER_GENERIC_ERROR;
+	      PRINT_AND_LOG_ERR_MSG ("Error while writing to file: %s\n", info_path);
+	    }
 	}
     }
 
@@ -551,19 +557,18 @@ javasp_reset_file (const std::string &db_name)
 static int
 javasp_get_server_info (const std::string &db_name, JAVASP_SERVER_INFO &info)
 {
-  int status = NO_ERROR;
   char info_path[PATH_MAX];
-  if (javasp_get_info_dir () && javasp_get_info_file (info_path, sizeof (info_path), db_name.c_str ()))
+  if (javasp_get_info_dir ()
+      && javasp_get_info_file (info_path, sizeof (info_path), db_name.c_str ()))
     {
-      info = javasp_read_info (info_path);
+      javasp_read_info (info_path, info);
+      return NO_ERROR;
     }
   else
     {
       PRINT_AND_LOG_ERR_MSG ("Error while opening file: %s\n", info_path);
-      status = MSGCAT_UTIL_GENERIC_FILEOPEN_ERROR;
+      return ER_GENERIC_ERROR;
     }
-
-  return status;
 }
 
 static int
@@ -605,7 +610,8 @@ javasp_check_argument (int argc, char *argv[], std::string &command, std::string
     }
   else
     {
-      status = MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT;
+      PRINT_AND_LOG_ERR_MSG ("Invalid number of arguments: %d\n", argc);
+      status = ER_GENERIC_ERROR;
     }
 
   return status;

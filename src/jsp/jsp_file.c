@@ -117,19 +117,20 @@ javasp_get_log_file (char *buf, size_t len, const char *db_name)
   return true;
 }
 
-JAVASP_SERVER_INFO
-javasp_read_info (const char *info_path)
+bool
+javasp_read_info (const char *info_path, JAVASP_SERVER_INFO & info)
 {
-  FILE *fp;
-  JAVASP_SERVER_INFO info = { -1, -1 };
+  FILE *fp = NULL;
 
   fp = fopen (info_path, "r");
   if (fp)
     {
       fscanf (fp, "%d %d", &info.pid, &info.port);
       fclose (fp);
+      return true;
     }
-  return info;
+
+  return false;
 }
 
 bool

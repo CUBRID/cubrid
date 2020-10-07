@@ -2378,7 +2378,7 @@ is_javasp_running (const char *server_name)
       return JAVASP_SERVER_STOPPED;
     }
 
-  if (strcmp (buf, server_name) != 0)
+  if (strcmp (buf, server_name) == 0)
     {
       pclose (input);
       return JAVASP_SERVER_RUNNING;
@@ -2451,6 +2451,7 @@ process_javasp_start (const char *db_name, bool process_window_service)
 	    }
 	}
     }
+
   print_result (PRINT_JAVASP_NAME, status, START);
   return status;
 }
@@ -2461,7 +2462,7 @@ process_javasp_stop (const char *db_name, bool process_window_service)
   int status = NO_ERROR;
 
   print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_3S, PRINT_JAVASP_NAME, PRINT_CMD_STOP, db_name);
-  if (is_javasp_running (db_name) != JAVASP_SERVER_STOPPED)
+  if (is_javasp_running (db_name) == JAVASP_SERVER_RUNNING)
     {
       if (process_window_service)
 	{
@@ -2471,7 +2472,7 @@ process_javasp_stop (const char *db_name, bool process_window_service)
 	  };
 
 	  status = proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true, false, false, NULL);
-	  status = (is_javasp_running (db_name) == JAVASP_SERVER_RUNNING) ? ER_GENERIC_ERROR : NO_ERROR;
+	  status = (is_javasp_running (db_name) != JAVASP_SERVER_STOPPED) ? ER_GENERIC_ERROR : NO_ERROR;
 #endif
 	}
       else
@@ -2481,7 +2482,7 @@ process_javasp_stop (const char *db_name, bool process_window_service)
 	  if (status == NO_ERROR)
 	    {
 	      sleep (1);	/* wait to stop */
-	      status = (is_javasp_running (db_name) == JAVASP_SERVER_RUNNING) ? ER_GENERIC_ERROR : NO_ERROR;
+	      status = (is_javasp_running (db_name) != JAVASP_SERVER_STOPPED) ? ER_GENERIC_ERROR : NO_ERROR;
 	    }
 	}
     }
@@ -2500,16 +2501,19 @@ process_javasp_status (const char *db_name)
 {
   int status = NO_ERROR;
   print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_3S, PRINT_JAVASP_NAME, PRINT_CMD_STATUS, db_name);
-  if (is_javasp_running (db_name) == JAVASP_SERVER_RUNNING)
+
+  UTIL_JAVASP_SERVER_STATUS_E javasp_status = is_javasp_running (db_name);
+  if (javasp_status == JAVASP_SERVER_RUNNING)
     {
       const char *args[] = { UTIL_JAVASP_NAME, COMMAND_TYPE_STATUS, db_name, NULL };
       status = proc_execute (UTIL_JAVASP_NAME, args, true, false, false, NULL);
     }
-  else
+  else if (javasp_status == JAVASP_SERVER_STOPPED)
     {
       print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_JAVASP_NAME, db_name);
       util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_JAVASP_NAME, db_name);
     }
+
   return status;
 }
 

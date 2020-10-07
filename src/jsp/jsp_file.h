@@ -50,7 +50,7 @@ extern "C"
 
   extern bool javasp_get_info_dir ();
 
-  extern JAVASP_SERVER_INFO javasp_read_info (const char *info_path);
+  extern bool javasp_read_info (const char *info_path, JAVASP_SERVER_INFO & info);
   extern bool javasp_write_info (const char *info_path, JAVASP_SERVER_INFO info);
 
 #ifdef __cplusplus
