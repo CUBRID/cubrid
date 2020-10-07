@@ -143,6 +143,7 @@ typedef struct tde_keyinfo
    || (rcvindex) == RVHF_MVCC_UPDATE_OVERFLOW \
    || (rcvindex) == RVOVF_NEWPAGE_INSERT \
    || (rcvindex) == RVOVF_PAGE_UPDATE \
+   || (rcvindex) == RVBT_INS_PGRECORDS \
    || (rcvindex) == RVBT_NDRECORD_UPD \
    || (rcvindex) == RVBT_NDRECORD_INS \
    || (rcvindex) == RVBT_NDRECORD_DEL \
