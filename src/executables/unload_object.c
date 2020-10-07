@@ -149,23 +149,23 @@ static const char *prohibited_classes[] = {
   NULL
 };
 
-static int class_objects = 0;
-static int total_objects = 0;
+static int64_t class_objects = 0;
+static int64_t total_objects = 0;
 static int failed_objects = 0;
 
-static int approximate_class_objects = 0;
+static int64_t approximate_class_objects = 0;
 static char *gauge_class_name;
-static int total_approximate_class_objects = 0;
+static int64_t total_approximate_class_objects = 0;
 
 
 #define OBJECT_SUFFIX "_objects"
 
 #define HEADER_FORMAT 	"-------------------------------+--------------------------------\n""    %-25s  |  %23s \n""-------------------------------+--------------------------------\n"
-#define MSG_FORMAT 		"    %-25s  |  %10d (%3d%% / %3d%%)"
+#define MSG_FORMAT 		"    %-25s  |  %10ld (%3d%% / %5d%%)"
 static FILE *unloadlog_file = NULL;
 
 
-static int get_estimated_objs (HFID * hfid, int *est_objects);
+static int get_estimated_objs (HFID * hfid, int64_t *est_objects);
 static int set_referenced_subclasses (DB_OBJECT * class_);
 static bool check_referenced_domain (DB_DOMAIN * dom_list, bool set_cls_ref, int *num_cls_refp);
 static void extractobjects_cleanup (void);
@@ -187,7 +187,7 @@ static int all_classes_processed (void);
  *    est_objects(out): estimated number of object
  */
 static int
-get_estimated_objs (HFID * hfid, int *est_objects)
+get_estimated_objs (HFID * hfid, int64_t *est_objects)
 {
   int ignore_npages;
   int nobjs = 0;
@@ -434,7 +434,7 @@ extract_objects (const char *exec_name, const char *output_dirname, const char *
 {
   int i, error;
   HFID *hfid;
-  int est_objects = 0;
+  int64_t est_objects = 0;
   int cache_size;
   SM_CLASS *class_ptr;
   const char **cptr;
@@ -1023,7 +1023,6 @@ gauge_alarm_handler (int sig)
 #endif
   return;
 }
-
 
 /*
  * process_class - dump one class in loader format

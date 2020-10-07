@@ -15595,7 +15595,14 @@ heap_mvcc_log_insert (THREAD_ENTRY * thread_p, RECDES * p_recdes, LOG_DATA_ADDR 
 
   /* Append redo crumbs; undo crumbs not necessary as the spage_delete physical operation uses the offset field of the
    * address */
-  log_append_undoredo_crumbs (thread_p, RVHF_MVCC_INSERT, p_addr, 0, n_redo_crumbs, NULL, redo_crumbs);
+  if (thread_p->no_logging)
+    {
+      log_append_undo_crumbs (thread_p, RVHF_MVCC_INSERT, p_addr, 0, NULL);
+    }
+  else
+    {
+      log_append_undoredo_crumbs (thread_p, RVHF_MVCC_INSERT, p_addr, 0, n_redo_crumbs, NULL, redo_crumbs);
+    }
 }
 
 /*
@@ -15781,7 +15788,14 @@ heap_mvcc_log_delete (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * p_addr, LOG_RCVIN
   assert ((ptr - redo_data_buffer) <= (int) sizeof (redo_data_buffer));
 
   /* Log append undo/redo crumbs */
-  log_append_undoredo_data (thread_p, rcvindex, p_addr, 0, redo_data_size, NULL, redo_data_p);
+  if (thread_p->no_logging)
+    {
+      log_append_undo_data (thread_p, rcvindex, p_addr, 0, NULL);
+    }
+  else
+    {
+      log_append_undoredo_data (thread_p, rcvindex, p_addr, 0, redo_data_size, NULL, redo_data_p);
+    }
 }
 
 /*
@@ -18787,7 +18801,14 @@ heap_mvcc_log_home_change_on_delete (THREAD_ENTRY * thread_p, RECDES * old_recde
       p_addr->offset |= HEAP_RV_FLAG_VACUUM_STATUS_CHANGE;
     }
 
-  log_append_undoredo_recdes (thread_p, RVHF_MVCC_DELETE_MODIFY_HOME, p_addr, old_recdes, new_recdes);
+  if (thread_p->no_logging)
+    {
+      log_append_undo_recdes (thread_p, RVHF_MVCC_DELETE_MODIFY_HOME, p_addr, old_recdes);
+    }
+  else
+    {
+      log_append_undoredo_recdes (thread_p, RVHF_MVCC_DELETE_MODIFY_HOME, p_addr, old_recdes, new_recdes);
+    }
 }
 
 /*
@@ -22200,7 +22221,14 @@ heap_log_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_
 	}
     }
 
-  log_append_undoredo_recdes (thread_p, rcvindex, &address, old_recdes_p, new_recdes_p);
+  if (thread_p->no_logging && LOG_IS_MVCC_HEAP_OPERATION (rcvindex))
+    {
+      log_append_undo_recdes (thread_p, rcvindex, &address, old_recdes_p);
+    }
+  else
+    {
+      log_append_undoredo_recdes (thread_p, rcvindex, &address, old_recdes_p, new_recdes_p);
+    }
 }
 
 /*
