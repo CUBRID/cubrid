@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation 
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
@@ -46,10 +47,10 @@ void vSetStatus (DWORD dwState, DWORD dwAccept =
 		 SERVICE_ACCEPT_STOP | SERVICE_ACCEPT_PAUSE_CONTINUE);
 void SetCUBRIDEnvVar ();
 char *read_string_value_in_registry (HKEY key, char *sub_key, char *name);
-SERVICE_STATUS_HANDLE g_hXSS;	//���� ȯ�� �۷ι� �ڵ�
-DWORD g_XSS;			//������ ���� ���¸� �����ϴ� ����
-BOOL g_bPause;			//���񽺰� �����ΰ� �ƴѰ�
-HANDLE g_hExitEvent;		//���񽺸� ���� ��ų�� �̺�Ʈ�� ����Ͽ� �����带 �����Ѵ�
+SERVICE_STATUS_HANDLE g_hXSS;	// Global handle for service environments
+DWORD g_XSS;			// Variable that saves the current state of the service
+BOOL g_bPause;			// Store whether the service is stopped or not
+HANDLE g_hExitEvent;		// When stopping a service, use an event to stop a thread
 BOOL g_isRunning = false;
 #define		WM_SERVICE_STOP		WM_USER+1
 #define		WM_SERVICE_START	WM_USER+2
@@ -172,7 +173,7 @@ vSetStatus (DWORD dwState, DWORD dwAccept)
   ss.dwCheckPoint = 0;
   ss.dwWaitHint = 0;
 
-  //���� ���� ����
+  // Saves Current state
   g_XSS = dwState;
   SetServiceStatus (g_hXSS, &ss);
 }
@@ -363,7 +364,7 @@ vHandler (DWORD opcode)
     {
       g_isRunning = false;
 
-      //�����带 �������̸� �����
+      // Stop if thread is running
       SetEvent (g_hExitEvent);
       vSetStatus (SERVICE_STOPPED);
     }
