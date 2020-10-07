@@ -10,7 +10,6 @@ EXPORTS
     au_get_public_user
     au_get_dba_user
     cfg_free_directory
-    cfg_find_db
     cfg_find_db_list
     cfg_read_directory
     check_database_name
@@ -75,7 +74,6 @@ EXPORTS
     do_is_partitioned_subclass
     er_errid
     er_errid_if_has_error
-    er_msg
     fileio_make_volume_info_name
     locator_has_heap
     ntohi64
@@ -84,7 +82,6 @@ EXPORTS
     pgbuf_fix_debug
     pgbuf_get_vpid_ptr
     pgbuf_set_dirty
-    prm_get_name
     prm_get_master_port_id
     prm_get_bool_value
     prm_get_float_value
@@ -92,6 +89,7 @@ EXPORTS
     prm_get_integer_value
     prm_get_bigint_value
     prm_get_string_value
+    prm_get_name
     rel_copy_version_string
     rel_build_number
     rel_build_os
@@ -138,19 +136,20 @@ EXPORTS
     tr_map_trigger
     er_init
     er_final
-    prm_get_name
     jsp_connect_server
-    jsp_disconnect_server
-    jsp_writen
-    jsp_readn
-    jsp_start_server
-    jsp_server_port
-    javasp_get_info_file
-    javasp_get_error_file
-    javasp_get_info_dir
-    javasp_read_info
-    javasp_write_info
+	jsp_disconnect_server
+	jsp_writen
+	jsp_readn
+	jsp_start_server
+	jsp_server_port
+	javasp_get_info_file
+	javasp_get_error_file
+	javasp_get_info_dir
+	javasp_read_info
+	javasp_write_info
+;
 ; utility functions
+;
 	createdb
 	renamedb
 	copydb
@@ -795,7 +794,6 @@ EXPORTS
     envvar_root
     envvar_set
     envvar_bindir_file
-    envvar_vardir_file
     catcls_get_db_collation
     lang_get_collation
     lang_init
@@ -825,4 +823,4 @@ EXPORTS
     or_unpack_int
     or_unpack_string_nocopy
     windows_socket_startup
-    windows_socket_shutdown
+    windows_socket_shutdown 

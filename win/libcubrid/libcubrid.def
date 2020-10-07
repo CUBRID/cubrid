@@ -9,6 +9,7 @@ EXPORTS
 	util_log_write_errid
 	util_log_write_errstr
 	util_log_write_command
+
 ;
 ;   porting.h
 ;
