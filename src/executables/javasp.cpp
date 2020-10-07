@@ -98,6 +98,9 @@ int
 main (int argc, char *argv[])
 {
   int status = NO_ERROR;
+  FILE *redirect = NULL; /* for ping */
+  std::string command, db_name;
+
 #if defined(WINDOWS)
   FARPROC jsp_old_hook = NULL;
 #else
@@ -107,44 +110,30 @@ main (int argc, char *argv[])
       goto exit;
     }
 #endif /* WINDOWS */
+
   {
     /*
     * COMMON PART FOR PING AND OTHER COMMANDS
     */
 
-    if (utility_initialize () != NO_ERROR)
-      {
-	return EXIT_FAILURE;
-      }
-
     /* check arguments, get command and database name */
-    std::string command, db_name;
     status = javasp_check_argument (argc, argv, command, db_name);
     if (status != NO_ERROR)
       {
 	goto exit;
       }
 
-    if (command.compare ("ping") == 0)
-      {
-	// redirect stderr
-	FILE *f = NULL;
-	if ((f = freopen (NULL_DEVICE, "w", stderr)) == NULL)
-	  {
-	    assert (false);
-	  }
-
-	// supress error message
-	er_init (NULL_DEVICE, ER_NEVER_EXIT);
-      }
-    else
+    /* initialize message */
+    if (command.compare ("ping") != 0)
       {
 	/* error message log file */
 	char er_msg_file[PATH_MAX];
-	snprintf (er_msg_file, sizeof (er_msg_file) - 1, "./%s_java.err", db_name.c_str ());
-	if (er_init (er_msg_file, ER_NEVER_EXIT) != NO_ERROR)
+	snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_java.err", db_name.c_str ());
+	status = er_init (er_msg_file, ER_NEVER_EXIT);
+	if (status != NO_ERROR)
 	  {
 	    PRINT_AND_LOG_ERR_MSG ("Failed to initialize error manager.\n");
+	    goto exit;
 	  }
       }
 
@@ -164,11 +153,26 @@ main (int argc, char *argv[])
 	goto exit;
       }
 
+#if defined(WINDOWS)
+    // socket startup for windows
+    windows_socket_startup (jsp_old_hook);
+#endif /* WINDOWS */
+
     /*
     * PROCESS PING
     */
     if (command.compare ("ping") == 0)
       {
+	// redirect stderr
+	if ((redirect = freopen (NULL_DEVICE, "w", stderr)) == NULL)
+	  {
+	    assert (false);
+	    return ER_GENERIC_ERROR;
+	  }
+
+	// supress error message
+	er_init (NULL_DEVICE, ER_NEVER_EXIT);
+
 	char buffer[JAVASP_PING_LEN] = {0};
 	if (javasp_ping_server (jsp_info.port, buffer) == NO_ERROR)
 	  {
@@ -197,11 +201,6 @@ main (int argc, char *argv[])
 	goto exit;
       }
 
-#if defined(WINDOWS)
-    // socket startup for windows
-    windows_socket_startup (jsp_old_hook);
-#endif /* WINDOWS */
-
     /* javasp command main routine */
     if (command.compare ("start") == 0)
       {
@@ -226,15 +225,24 @@ main (int argc, char *argv[])
       {
 	assert (false);
 	status = ER_GENERIC_ERROR;
-	goto exit;
       }
+
+#if defined(WINDOWS)
+    // socket shutdown for windows
+    windows_socket_shutdown (jsp_old_hook);
+#endif /* WINDOWS */
   }
 
 exit:
 
-#if defined(WINDOWS)
-  windows_socket_shutdown (jsp_old_hook);
-#endif /* WINDOWS */
+  if (command.compare ("ping") == 0)
+    {
+      if (status != NO_ERROR)
+	{
+	  fprintf (stdout, "ERROR");
+	}
+      fclose (redirect);
+    }
 
   return status;
 }
@@ -568,7 +576,7 @@ javasp_check_database (const std::string &db_name, std::string &path)
   if (db == NULL)
     {
       PRINT_AND_LOG_ERR_MSG ("database '%s' does not exist.\n", db_name.c_str ());
-      status = ER_FAILED;
+      status = ER_GENERIC_ERROR;
     }
   else
     {
