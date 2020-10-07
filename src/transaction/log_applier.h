@@ -43,6 +43,7 @@
    (error == ER_LK_OBJECT_DL_TIMEOUT_SIMPLE_MSG)      || \
    (error == ER_LK_OBJECT_DL_TIMEOUT_CLASS_MSG)       || \
    (error == ER_LK_OBJECT_DL_TIMEOUT_CLASSOF_MSG)     || \
+   (error == ER_TDE_CIPHER_IS_NOT_LOADED)             || \
    (error == ER_LK_DEADLOCK_CYCLE_DETECTED))
 
 typedef enum
