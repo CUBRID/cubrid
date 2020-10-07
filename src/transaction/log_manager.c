@@ -2115,15 +2115,7 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_
 
   if (LOG_CONTAINS_USER_DATA (rcvindex))
     {
-      TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
-
-      assert (addr->vfid != NULL);
-      if (file_get_tde_algorithm (thread_p, addr->vfid, &tde_algo) != NO_ERROR)
-	{
-	  assert (false);
-	  return;
-	}
-      if (tde_algo != TDE_ALGORITHM_NONE)
+      if (pgbuf_get_tde_algorithm (addr->pgptr) != TDE_ALGORITHM_NONE)
 	{
 	  if (prior_set_tde_encrypted (node, rcvindex) != NO_ERROR)
 	    {
@@ -2251,16 +2243,7 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
 
   if (LOG_CONTAINS_USER_DATA (rcvindex))
     {
-      TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
-
-      assert (addr->vfid != NULL);
-      if (file_get_tde_algorithm (thread_p, addr->vfid, &tde_algo) != NO_ERROR)
-	{
-	  assert (false);
-	  return;
-	}
-
-      if (tde_algo != TDE_ALGORITHM_NONE)
+      if (pgbuf_get_tde_algorithm (addr->pgptr) != TDE_ALGORITHM_NONE)
 	{
 	  if (prior_set_tde_encrypted (node, rcvindex) != NO_ERROR)
 	    {
@@ -2390,15 +2373,7 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
 
   if (LOG_CONTAINS_USER_DATA (rcvindex))
     {
-      TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
-
-      assert (addr->vfid != NULL);
-      if (file_get_tde_algorithm (thread_p, addr->vfid, &tde_algo) != NO_ERROR)
-	{
-	  assert (false);
-	  return;
-	}
-      if (tde_algo != TDE_ALGORITHM_NONE)
+      if (pgbuf_get_tde_algorithm (addr->pgptr) != TDE_ALGORITHM_NONE)
 	{
 	  if (prior_set_tde_encrypted (node, rcvindex) != NO_ERROR)
 	    {
@@ -2818,16 +2793,7 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
 
   if (LOG_CONTAINS_USER_DATA (rcvindex))
     {
-      TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
-
-      assert (addr->vfid != NULL);
-      if (file_get_tde_algorithm (thread_p, addr->vfid, &tde_algo) != NO_ERROR)
-	{
-	  assert (false);
-	  return;
-	}
-
-      if (tde_algo != TDE_ALGORITHM_NONE)
+      if (pgbuf_get_tde_algorithm (addr->pgptr) != TDE_ALGORITHM_NONE)
 	{
 	  if (prior_set_tde_encrypted (node, rcvindex) != NO_ERROR)
 	    {
@@ -2931,16 +2897,7 @@ log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DAT
 
       if (LOG_CONTAINS_USER_DATA (rcvindex))
 	{
-	  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
-
-	  assert (addr->vfid != NULL);
-	  if (file_get_tde_algorithm (thread_p, addr->vfid, &tde_algo) != NO_ERROR)
-	    {
-	      assert (false);
-	      return;
-	    }
-
-	  if (tde_algo != TDE_ALGORITHM_NONE)
+	  if (pgbuf_get_tde_algorithm (addr->pgptr) != TDE_ALGORITHM_NONE)
 	    {
 	      if (prior_set_tde_encrypted (node, rcvindex) != NO_ERROR)
 		{
@@ -4483,7 +4440,7 @@ log_append_sysop_end (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_EN
 	  rcvindex = sysop_end->mvcc_undo.undo.data.rcvindex;
 	}
 
-      if (rcvindex != RV_NOT_DEFINED && LOG_CONTAINS_USER_DATA (rcvindex))
+      if (LOG_CONTAINS_USER_DATA (rcvindex))
 	{
 	  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
 
