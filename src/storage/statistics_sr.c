@@ -38,6 +38,7 @@
 #include "object_primitive.h"
 #include "object_representation.h"
 #include "thread_entry.hpp"
+#include "system_parameter.h"
 
 #define SQUARE(n) ((n)*(n))
 
@@ -454,6 +455,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
   int key_size;
   int lk_grant_code;
   CATALOG_ACCESS_INFO catalog_access_info = CATALOG_ACCESS_INFO_INITIALIZER;
+  bool use_stat_estimation = prm_get_bool_value (PRM_ID_USE_STAT_ESTIMATION);
 
   /* init */
   cls_info_p = NULL;
@@ -593,6 +595,15 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
       OR_PUT_INT (buf_p, cls_info_p->ci_tot_pages);	/* #pages */
       buf_p += OR_INT_SIZE;
     }
+  else if (!use_stat_estimation)
+    {
+      /* use statistics info */
+      OR_PUT_INT (buf_p, cls_info_p->ci_tot_objects);	/* #objects */
+      buf_p += OR_INT_SIZE;
+
+      OR_PUT_INT (buf_p, MAX (cls_info_p->ci_tot_pages, 1));	/* #pages */
+      buf_p += OR_INT_SIZE;
+    }
   else
     {
       /* use estimates from the heap since it is likely that its estimates are more accurate than the ones gathered at
@@ -684,7 +695,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
 	      npages = MAX (npages, 1);	/* safe-guard */
 	    }
 	  assert (npages > 0);
-	  if (npages > btree_stats_p->pages)
+	  if (npages > btree_stats_p->pages && use_stat_estimation)
 	    {
 	      OR_PUT_INT (buf_p, (btree_stats_p->leafs + (npages - btree_stats_p->pages)));
 	      buf_p += OR_INT_SIZE;
@@ -708,7 +719,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
 	  buf_p += OR_INT_SIZE;
 
 	  /* check and handle with estimation, since pkeys[] is not gathered before update stats */
-	  if (estimated_nobjs > 0)
+	  if (estimated_nobjs > 0 && use_stat_estimation)
 	    {
 	      /* is non-empty index */
 	      btree_stats_p->keys = MAX (btree_stats_p->keys, 1);
@@ -746,7 +757,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
 	  for (k = 0; k < btree_stats_p->pkeys_size; k++)
 	    {
 	      /* check and handle with estimation, since pkeys[] is not gathered before update stats */
-	      if (estimated_nobjs > 0)
+	      if (estimated_nobjs > 0 && use_stat_estimation)
 		{
 		  /* is non-empty index */
 		  btree_stats_p->pkeys[k] = MAX (btree_stats_p->pkeys[k], 1);
