@@ -2113,7 +2113,7 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_
       return;
     }
 
-  if (LOG_CONTAINS_USER_DATA (rcvindex))
+  if (LOG_MAY_CONTAIN_USER_DATA (rcvindex))
     {
       if (pgbuf_get_tde_algorithm (addr->pgptr) != TDE_ALGORITHM_NONE)
 	{
@@ -2241,7 +2241,7 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
       return;
     }
 
-  if (LOG_CONTAINS_USER_DATA (rcvindex))
+  if (LOG_MAY_CONTAIN_USER_DATA (rcvindex))
     {
       if (pgbuf_get_tde_algorithm (addr->pgptr) != TDE_ALGORITHM_NONE)
 	{
@@ -2371,7 +2371,7 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
       return;
     }
 
-  if (LOG_CONTAINS_USER_DATA (rcvindex))
+  if (LOG_MAY_CONTAIN_USER_DATA (rcvindex))
     {
       if (pgbuf_get_tde_algorithm (addr->pgptr) != TDE_ALGORITHM_NONE)
 	{
@@ -2791,7 +2791,7 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
       return;
     }
 
-  if (LOG_CONTAINS_USER_DATA (rcvindex))
+  if (LOG_MAY_CONTAIN_USER_DATA (rcvindex))
     {
       if (pgbuf_get_tde_algorithm (addr->pgptr) != TDE_ALGORITHM_NONE)
 	{
@@ -2895,7 +2895,7 @@ log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DAT
 	  return;
 	}
 
-      if (LOG_CONTAINS_USER_DATA (rcvindex))
+      if (LOG_MAY_CONTAIN_USER_DATA (rcvindex))
 	{
 	  if (pgbuf_get_tde_algorithm (addr->pgptr) != TDE_ALGORITHM_NONE)
 	    {
@@ -3931,7 +3931,7 @@ log_sysop_end_logical_undo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, cons
       log_record.undo.data.rcvindex = rcvindex;
       log_record.undo.length = undo_size;
     }
-  assert (LOG_CONTAINS_USER_DATA (rcvindex) ? vfid != NULL : true);
+  assert (LOG_MAY_CONTAIN_USER_DATA (rcvindex) ? vfid != NULL : true);
   log_record.vfid = vfid;
 
   log_sysop_commit_internal (thread_p, &log_record, undo_size, undo_data, false);
@@ -4440,7 +4440,7 @@ log_append_sysop_end (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_EN
 	  rcvindex = sysop_end->mvcc_undo.undo.data.rcvindex;
 	}
 
-      if (LOG_CONTAINS_USER_DATA (rcvindex))
+      if (LOG_MAY_CONTAIN_USER_DATA (rcvindex))
 	{
 	  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
 

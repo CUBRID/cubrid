@@ -131,7 +131,7 @@ typedef struct tde_keyinfo
 } TDE_KEYINFO;
 
 /* Is log record contains User Data */
-#define LOG_CONTAINS_USER_DATA(rcvindex) \
+#define LOG_MAY_CONTAIN_USER_DATA(rcvindex) \
   ((rcvindex) == RVHF_INSERT \
    || (rcvindex) == RVHF_DELETE \
    || (rcvindex) == RVHF_UPDATE \
