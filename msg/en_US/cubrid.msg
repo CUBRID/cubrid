@@ -1314,12 +1314,12 @@ $ LOADDB
 1245 Loading class attributes updates from object files is not supported in CS mode.
 1246 Error getting address and name information. Code : %1$d, message : %2$s.
 1247 Invalid Key file : %1$s
-1248 Cannot find the master key (index: %1$d).
+1248 Cannot find the key (index: %1$d).
 1249 The master key set on the database and what is given don't match. The key index set on the database: %1$d
 1250 Error while TDE-encrypting.
 1251 Error while TDE-decrypting.
 1252 TDE Moudle is not loaded.
-1253 Cannot create a TDE key.
+1253 Cannot create a key.
 1254 Cannot load TDE module. You can't use TDE feature.\n\
 Check the path of the key file (_keys) and make sure that it includes proper key.
 1255 Cannot copy key file (_keys). You can't use TDE feature on the copied database.

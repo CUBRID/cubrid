@@ -3883,7 +3883,7 @@ tde (UTIL_FUNCTION_ARG * arg)
 
       if (db_commit_transaction () != NO_ERROR)
 	{
-	  PRINT_AND_LOG_ERR_MSG ("FAILURE: E%s\n", db_error_string (3));
+	  PRINT_AND_LOG_ERR_MSG ("FAILURE: %s\n", db_error_string (3));
 	  db_shutdown ();
 	  goto error_exit;
 	}
