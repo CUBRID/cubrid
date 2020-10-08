@@ -10146,7 +10146,7 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *db_fulln
   fileio_unformat (thread_p, vol_fullname);
 
   /* destroy the TDE keys volume information */
-  tde_make_keys_volume_fullname (vol_fullname, db_fullname, false);
+  tde_make_keys_volume_fullname (vol_fullname, db_fullname, true);
   fileio_unformat (thread_p, vol_fullname);
 
   /* Destroy DWB, if still exists. */
