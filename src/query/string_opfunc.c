@@ -581,7 +581,7 @@ db_string_unique_prefix (const DB_VALUE * db_string1, const DB_VALUE * db_string
 
       intl_pad_char (codeset, pad, &pad_size);
 
-      if (collation_id < LANG_COLL_ISO_BINARY_TS)
+      if (collation_id >= LANG_COLL_ISO_BINARY_TI && collation_id < LANG_MAX_BUILTIN_COLLATIONS)
 	{
 	trim_again:
 	  /* We need to implicitly trim both strings since we don't want padding for the result (its of varying type) and

@@ -168,6 +168,8 @@ static COMPARE_BETWEEN_OPERATOR pt_Compare_between_operator_table[] = {
 /* maximum number of overloads for an expression */
 #define MAX_OVERLOADS 16
 
+#define IS_SAME_VARIATION(c1,c2) ((c1) == (c2) || ((c1 < COLL_TI || c2 < COLL_TI) && ((c1) - (c2) == COLL_TI || (c2) - (c1) == COLL_TI)))
+
 /* SQL expression signature */
 typedef struct expression_signature
 {
@@ -22950,7 +22952,6 @@ int
 pt_common_collation (PT_COLL_INFER * arg1_coll_infer, PT_COLL_INFER * arg2_coll_infer, PT_COLL_INFER * arg3_coll_infer,
 		     const int args_w_coll, bool op_has_3_args, int *common_coll, INTL_CODESET * common_cs)
 {
-#define IS_SAME_VARIATION(c1,c2) ((c1) == (c2) || (c1) - (c2) == COLL_TS || (c2) - (c1) == COLL_TS)
 #define MORE_COERCIBLE(arg1_coll_infer, arg2_coll_infer)		     \
   ((((arg1_coll_infer)->can_force_cs) && !((arg2_coll_infer)->can_force_cs)) \
    || ((arg1_coll_infer)->coerc_level > (arg2_coll_infer)->coerc_level	     \
@@ -22979,11 +22980,18 @@ pt_common_collation (PT_COLL_INFER * arg1_coll_infer, PT_COLL_INFER * arg2_coll_
 	{
 	  goto error;
 	}
-      *common_coll = arg2_coll_infer->coll_id;
+      if (arg2_coll_infer->coll_id > arg1_coll_infer->coll_id)
+	{
+	  *common_coll = arg1_coll_infer->coll_id;
+	}
+      else
+	{
+	  *common_coll = arg2_coll_infer->coll_id;
+	}
       *common_cs = arg2_coll_infer->codeset;
 
       /* check arg3 */
-      if (op_has_3_args && arg3_coll_infer->coll_id != *common_coll)
+      if (op_has_3_args && !IS_SAME_VARIATION (arg3_coll_infer->coll_id, *common_coll))
 	{
 	  bool set_arg3 = false;
 
@@ -23014,8 +23022,11 @@ pt_common_collation (PT_COLL_INFER * arg1_coll_infer, PT_COLL_INFER * arg2_coll_
 		  goto error;
 		}
 
-	      *common_coll = arg3_coll_infer->coll_id;
-	      *common_cs = arg3_coll_infer->codeset;
+	      if (*common_coll > arg3_coll_infer->coll_id)
+		{
+		  *common_coll = arg3_coll_infer->coll_id;
+		  *common_cs = arg3_coll_infer->codeset;
+		}
 	    }
 	  else
 	    {
@@ -23042,11 +23053,19 @@ pt_common_collation (PT_COLL_INFER * arg1_coll_infer, PT_COLL_INFER * arg2_coll_
 	  goto error;
 	}
 
-      *common_coll = arg1_coll_infer->coll_id;
+      if ((arg2_coll_infer->coll_id > arg1_coll_infer->coll_id))
+	{
+	  *common_coll = arg1_coll_infer->coll_id;
+	}
+      else
+	{
+	  *common_coll = arg2_coll_infer->coll_id;
+	}
+
       *common_cs = arg1_coll_infer->codeset;
 
       /* check arg3 */
-      if (op_has_3_args && arg3_coll_infer->coll_id != *common_coll)
+      if (op_has_3_args && !IS_SAME_VARIATION (arg3_coll_infer->coll_id, *common_coll))
 	{
 	  bool set_arg3 = false;
 	  if (MORE_COERCIBLE (arg1_coll_infer, arg3_coll_infer))
@@ -23077,8 +23096,11 @@ pt_common_collation (PT_COLL_INFER * arg1_coll_infer, PT_COLL_INFER * arg2_coll_
 		  goto error;
 		}
 
-	      *common_coll = arg3_coll_infer->coll_id;
-	      *common_cs = arg3_coll_infer->codeset;
+	      if (*common_coll > arg3_coll_infer->coll_id)
+		{
+		  *common_coll = arg3_coll_infer->coll_id;
+		  *common_cs = arg3_coll_infer->codeset;
+		}
 	    }
 	  else
 	    {
@@ -23420,7 +23442,7 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
 	    }
 	}
 
-      if (arg1_coll_inf.coll_id == arg2_coll_inf.coll_id && arg2_coll_inf.coll_id == arg3_coll_inf.coll_id
+      if (arg1_coll_inf.coll_id == arg2_coll_inf.coll_id && arg2_coll_inf.coll_id != arg3_coll_inf.coll_id
 	  && (arg1_type != PT_TYPE_MAYBE && arg2_type != PT_TYPE_MAYBE && arg2_type != PT_TYPE_MAYBE)
 	  && (arg1_need_coerce == false && arg2_need_coerce == false && arg3_need_coerce == false))
 	{
