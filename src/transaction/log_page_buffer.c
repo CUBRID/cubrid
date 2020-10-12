@@ -7886,7 +7886,7 @@ loop:
       db_nopath_name_p = fileio_get_base_file_name (log_Db_fullname);
       fileio_make_backup_name (bkpath_without_units, db_nopath_name_p, session.bkup.current_path, backup_level,
 			       FILEIO_NO_BACKUP_UNITS);
-      tde_make_keys_volume_fullname (separate_mk_path, bkpath_without_units, false);
+      tde_make_keys_volume_fullname (separate_mk_path, bkpath_without_units, true);
       /* Keep mounting mk file to be exclusive with other tools */
       error_code = tde_copy_keys_volume (thread_p, separate_mk_path, mk_path, false, true);
       if (error_code != NO_ERROR)
