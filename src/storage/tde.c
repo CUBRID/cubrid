@@ -221,7 +221,7 @@ int
 tde_cipher_initialize (THREAD_ENTRY * thread_p, const HFID * keyinfo_hfid, const char *mk_path_given)
 {
   char mk_path_buffer[PATH_MAX] = { 0, };
-  const char *mk_path;
+  const char *mk_path = NULL;
   unsigned char master_key[TDE_MASTER_KEY_LENGTH];
   TDE_KEYINFO keyinfo;
   int err = NO_ERROR;
@@ -230,18 +230,23 @@ tde_cipher_initialize (THREAD_ENTRY * thread_p, const HFID * keyinfo_hfid, const
   if (mk_path_given != NULL && mk_path_given[0] != '\0')
     {
       mk_path = mk_path_given;
+      vdes = fileio_mount (thread_p, boot_db_full_name (), mk_path, LOG_DBTDE_KEYS_VOLID, 1, false);
+      /* 
+       * When restoredb, backup _keys file is given.
+       * if it is fail to mount, try to use normal key file ([db]_keys) below
+       */
     }
-  else
+
+  if (mk_path == NULL || vdes == NULL_VOLDES)
     {
       tde_make_keys_volume_fullname (mk_path_buffer, boot_db_full_name (), false);
       mk_path = mk_path_buffer;
-    }
-
-  vdes = fileio_mount (thread_p, boot_db_full_name (), mk_path, LOG_DBTDE_KEYS_VOLID, 1, false);
-  if (vdes == NULL_VOLDES)
-    {
-      ASSERT_ERROR ();
-      return er_errid ();
+      vdes = fileio_mount (thread_p, boot_db_full_name (), mk_path, LOG_DBTDE_KEYS_VOLID, 1, false);
+      if (vdes == NULL_VOLDES)
+	{
+	  ASSERT_ERROR ();
+	  return er_errid ();
+	}
     }
 
   if (tde_validate_keys_volume (vdes) == false)
