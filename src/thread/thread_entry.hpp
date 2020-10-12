@@ -257,6 +257,8 @@ namespace cubthread
       char *log_data_ptr;
       int log_data_length;
 
+      bool no_logging;
+
       int net_request_index;	/* request index of net server functions */
 
       struct vacuum_worker *vacuum_worker;	/* Vacuum worker info */

@@ -184,7 +184,7 @@ $set 5 MSGCAT_SET_ERROR
 116 Base de données "%1$s" est inconnu, ou le fichier "databases.txt" n'est pas accessible.
 117 Nom de chemin absolu pour la base de données est trop long. La longueur totale de le chemin "%1$s" et le nom "%2$s" est %3$d; la longueur combinée doit être inférieur à %4$d.
 118 Impossible de localiser le répertoire de travail courant.
-119 Impossible de trouver hôte local.
+119 Impossible de trouver ("%1$s") dans /etc/hosts. Veuillez vérifier les autorisations du fichier ou s'il existe le nom d'hôte.
 120 Le nombre maximal de volumes (%1$d) a été dépassé.
 121 Tentative de supprimer "%1$s" un volume permanente de la base de données.
 122 Impossible d'accéder au catalogue de messages du système.
@@ -415,7 +415,7 @@ $set 5 MSGCAT_SET_ERROR
 347 Impossible de créer un pipe vers le serveur maître.
 348 Doit spécifier un service ou un identificateur de port.
 349 Service inconnu pour TCP: %1$s.
-350 Erreur de récupération de l'hôte local par le nom pour l'hôte "%1$s". Hôte introuvable.
+350 Impossible de trouver ("%1$s") dans /etc/hosts. Veuillez vérifier les autorisations du fichier ou s'il existe le nom d'hôte.
 351 Impossible de créer un socket TCP.
 352 tcp_open: ne peut pas obtenir un port TCP réservé.
 353 Impossible d'établir la connexion au serveur maître sur l'hôte "%1$s".
@@ -1312,7 +1312,7 @@ $ LOADDB
 1243 Le chargement de l'index a été abandonné après une erreur
 1244 Le chargement de mises à jour d'attributs partagés à partir de fichiers objet n'est pas pris en charge en mode CS.
 1245 Le chargement de mises à jour d'attributs de classe à partir de fichiers objets n'est pas pris en charge en mode CS.
-1246 Erreur lors de l'obtention de l'adresse et du nom. Code : %1$d, message : %2$s.
+1246 Impossible d'obtenir l'adresse et le nom canonique de ("%1$s") dans /etc/hosts. Veuillez vérifier l'autorisation du fichier ou s'il existe le nom d'hôte.
 1247 Le temps (%1$s) spécifié doit être postérieure à l'heure (%2$s) de la sauvegarde spécifiée.
 
 1248 Dernière erreur

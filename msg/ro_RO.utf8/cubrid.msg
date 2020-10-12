@@ -184,7 +184,7 @@ $set 5 MSGCAT_SET_ERROR
 116 Baza de date "%1$s" nu este cunoscută sau fişierul "databases.txt" nu poate fi accesat.
 117 Calea absolută la baza de date este prea lungă. Lungimea combinată a căii "%1$s" plus numele "%2$s" este %3$d; lungimea combinată trebuie să fie mai mică decât %4$d.
 118 Nu s-a putut localiza directorul de lucru curent.
-119 Nu s-a putut găsi numele local de gazdă.
+119 Nu se poate găsi ("%1$s") în /etc/hosts. Vă rugăm să verificați permisiunile fișierului sau dacă există numele gazdei.
 120 Numărul maxim de volume (%1$d) a fost depăşit.
 121 Tentativă de ştergere "%1$s" a unui volum permanent al bazei de date.
 122 Nu se poate accesa catalogul de mesaje de sistem.
@@ -415,7 +415,7 @@ $set 5 MSGCAT_SET_ERROR
 347 Nu s-a putut crea un pipe către serverul principal (master).
 348 Trebuie specificat un serviciu sau un identificator de port.
 349 Serviciu de TCP necunoscut: %1$s.
-350 Eroare la preluarea adresei pe baza numelui pentru "%1$s". Numele de gazdă nu a fost găsit.
+350 Nu se poate găsi ("%1$s") în /etc/hosts. Vă rugăm să verificați permisiunile fișierului sau dacă există numele gazdei.
 351 Nu s-a putut crea un socket TCP.
 352 tcp_open: nu se poate obţine un port TCP rezervat.
 353 Nu s-a putut stabili conexiunea către serverul principal (master) pe maşina "%1$s".
@@ -1312,7 +1312,7 @@ $ LOADDB
 1243 Încărcarea indexului a fost oprită din cauza unei erori.
 1244 Încărcarea atributelor de tip "shared" nu este suportată in modul client-server.
 1245 Încărcarea atributelor de tip "class" nu este suportată in modul client-server.
-1246 Eroare la obţinerea informaţiilor de adresă și nume. Cod : %1$d, mesaj : %2$s.
+1246 Nu se poate obține adresa și numele canonic pentru ("%1$s") în /etc/hosts. Vă rugăm să verificați permisiunea fișierului sau dacă există numele gazdei.
 1247 Momentul specificat (%1$s) trebuie să îl succeadă pe cel al copiei de rezervă specificate(%2$s).
 
 1248 Ultima eroare

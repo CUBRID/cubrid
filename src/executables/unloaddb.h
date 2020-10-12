@@ -39,7 +39,7 @@ extern char *input_filename;
 extern struct text_output *obj_out;
 extern int page_size;
 extern int cached_pages;
-extern int est_size;
+extern int64_t est_size;
 extern char *hash_filename;
 extern int debug_flag;
 extern bool verbose_flag;

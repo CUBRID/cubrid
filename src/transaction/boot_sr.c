@@ -3939,7 +3939,7 @@ xboot_copy (REFPTR (THREAD_ENTRY, thread_p), const char *from_dbname, const char
 #if 0				/* use Unix-domain socket for localhost */
       if (GETHOSTNAME (new_db_server_host_buf, CUB_MAXHOSTNAMELEN) != 0)
 	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 0);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, new_db_server_host_buf);
 	  error_code = ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	  goto error;
 	}
@@ -4297,7 +4297,7 @@ xboot_soft_rename (THREAD_ENTRY * thread_p, const char *old_db_name, const char 
 #if 0				/* use Unix-domain socekt for localhost */
       if (GETHOSTNAME (new_db_server_host_buf, CUB_MAXHOSTNAMELEN) != 0)
 	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 0);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, new_db_server_host_buf);
 	  error_code = ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	  goto end;
 	}

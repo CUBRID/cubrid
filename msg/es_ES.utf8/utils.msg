@@ -401,7 +401,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 25 \n*** Verificar sintaxis ***\n\n
 26 %1$d errores detectados.\n
 27 \n*** Insertando objetos ***\n\n
-28 Total %1$8d objetos insertados. \n
+28 Total %1$ld objetos insertados. \n
 29 Total %1$8d objetos referenciados insertados con contenidos estandar.\n
 30 \n*** Cometiendo la transaccion ***\n
 31 \n*** Cerrando la base de datos ***\n
@@ -421,7 +421,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 45 Instancia %1$d de la clase %2$s ha sido ya definida\n
 46 Instancia %1$d de la clase %2$s ha sido ya reservada\n
 47 Violacion UNIQUE en atributo '%1$s', convertida en NULL\n
-48 %1$s %2$d instancias\n
+48 %1$s %2$ld instancias\n
 49 Clase %1$s\n
 50 Contrasena:
 51 \n*** Actualizando estadisticas de clase ***\n
@@ -431,16 +431,16 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 55 faltando
 56 en %1$s
 57 Argumentos incompatibles, \"%1$s\", y \"%2$s\"\n
-58 %1$s %2$d instancias cometidas\n
+58 %1$s %2$ld instancias cometidas\n
 59 No se pueden apelar versiones no-optimizadas de loaddb.\n
 60 Error al analizar \"%1$s\", como tipo %2$s.\n
 61 La referencia de objeto no es compatible con el modo CS.\n
 62 Estadísticas actualizadas para la clase %1$s.\n
-112 %1$d instancias\r
+112 %1$ld instancias\r
 113 Ultima linea cometida: %1$d\n
 114 error-control-file
 115 archivo de entrada para controlar error(es) al cargar
-116 Total %8d object(s) inserted, %d object(s) failed.\n
+116 Total %ld object(s) inserted, %2$ld object(s) failed.\n
 117 Carga fallida.\n
 118 La longitud máxima del nombre de la clase es %1$d bytes.\n
 119 Total de %1$8d objeto(s) verificado, %2$d objeto(s) falló. \n
@@ -474,10 +474,10 @@ opciones validas:\n\
 $set 13 MSGCAT_UTIL_SET_UNLOADDB
 41 valor de cached-pages no es valido.\n
 42 valor de cached-page-size no es valido.\n
-43 %1$d objetos botados.\n
+43 %1$ld objetos botados.\n
 44 Clase %1$s
 45 , %1$d instancias.\n
-46 Solo %1$d de %2$d objetos botados con exito.\n
+46 Solo %1$ld de %2$ld objetos botados con exito.\n
 47 directorio de salida es demasiado largo.\n
 48 LSA : %1$d %2$d \n
 49 Contrasena:

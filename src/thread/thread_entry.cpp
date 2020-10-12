@@ -116,6 +116,7 @@ namespace cubthread
     , log_zip_redo (NULL)
     , log_data_ptr (NULL)
     , log_data_length (0)
+    , no_logging (false)
     , net_request_index (-1)
     , vacuum_worker (NULL)
     , sort_stats_active (false)
@@ -253,6 +254,8 @@ namespace cubthread
       {
 	free (log_data_ptr);
       }
+
+    no_logging = false;
 
     end_resource_tracks ();
 
