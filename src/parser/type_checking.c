@@ -23442,7 +23442,7 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
 	    }
 	}
 
-      if (arg1_coll_inf.coll_id == arg2_coll_inf.coll_id && arg2_coll_inf.coll_id != arg3_coll_inf.coll_id
+      if (arg1_coll_inf.coll_id == arg2_coll_inf.coll_id && arg2_coll_inf.coll_id == arg3_coll_inf.coll_id
 	  && (arg1_type != PT_TYPE_MAYBE && arg2_type != PT_TYPE_MAYBE && arg2_type != PT_TYPE_MAYBE)
 	  && (arg1_need_coerce == false && arg2_need_coerce == false && arg3_need_coerce == false))
 	{
