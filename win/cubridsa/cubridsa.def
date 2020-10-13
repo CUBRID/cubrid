@@ -10,6 +10,7 @@ EXPORTS
     au_get_public_user
     au_get_dba_user
     cfg_free_directory
+    cfg_find_db
     cfg_find_db_list
     cfg_read_directory
     check_database_name
