@@ -304,11 +304,7 @@ javasp_stop_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_nam
   int status = NO_ERROR;
 
   socket = jsp_connect_server (jsp_info.port);
-  if (socket == INVALID_SOCKET)
-    {
-      status = ER_SP_CANNOT_CONNECT_JVM;
-    }
-  else
+  if (socket != INVALID_SOCKET)
     {
       char *buffer = NULL;
       int req_size = (int) sizeof (int);
@@ -318,7 +314,8 @@ javasp_stop_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_nam
       nbytes = jsp_writen (socket, (void *) &stop_code, (int) sizeof (int));
       if (nbytes != (int) sizeof (int))
 	{
-	  status = ER_SP_NETWORK_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
+	  status = er_errid ();
 	}
       jsp_disconnect_server (socket);
 
@@ -338,14 +335,10 @@ javasp_status_server (const JAVASP_SERVER_INFO jsp_info)
 {
   int status = NO_ERROR;
   char *buffer = NULL;
+  SOCKET socket = INVALID_SOCKET;
 
-  SOCKET socket = jsp_connect_server (jsp_info.port);
-  if (socket == INVALID_SOCKET)
-    {
-      status = ER_SP_CANNOT_CONNECT_JVM;
-      goto exit;
-    }
-  else
+  socket = jsp_connect_server (jsp_info.port);
+  if (socket != INVALID_SOCKET)
     {
       char *ptr = NULL;
       OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_request;
@@ -357,8 +350,8 @@ javasp_status_server (const JAVASP_SERVER_INFO jsp_info)
       int nbytes = jsp_writen (socket, request, (int) sizeof (int) * 2);
       if (nbytes != (int) sizeof (int) * 2)
 	{
-	  // stopping failed
-	  status = ER_SP_NOT_RUNNING_JVM;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
+	  status = er_errid ();
 	  goto exit;
 	}
 
@@ -366,7 +359,8 @@ javasp_status_server (const JAVASP_SERVER_INFO jsp_info)
       nbytes = jsp_readn (socket, (char *) &res_size, (int) sizeof (int));
       if (nbytes != (int) sizeof (int))
 	{
-	  status = ER_SP_NETWORK_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
+	  status = er_errid ();
 	  goto exit;
 	}
       res_size = ntohl (res_size);
@@ -381,7 +375,8 @@ javasp_status_server (const JAVASP_SERVER_INFO jsp_info)
       nbytes = jsp_readn (socket, buffer, res_size);
       if (nbytes != res_size)
 	{
-	  status = ER_SP_NETWORK_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
+	  status = er_errid ();
 	  goto exit;
 	}
 
@@ -420,45 +415,43 @@ javasp_ping_server (const int server_port, char *buf)
   char *ptr = NULL;
   SOCKET socket = INVALID_SOCKET;
 
-  {
-    socket = jsp_connect_server (server_port);
-    if (socket == INVALID_SOCKET)
-      {
-	// server is not running
-	status = ER_SP_CANNOT_CONNECT_JVM;
-	goto exit;
-      }
+  socket = jsp_connect_server (server_port);
+  if (socket != INVALID_SOCKET)
+    {
 
-    ptr = or_pack_int (request, SP_CODE_UTIL_PING);
-    ptr = or_pack_int (ptr, SP_CODE_UTIL_TERMINATE_THREAD);
+      ptr = or_pack_int (request, SP_CODE_UTIL_PING);
+      ptr = or_pack_int (ptr, SP_CODE_UTIL_TERMINATE_THREAD);
 
-    int nbytes = jsp_writen (socket, request, (int) sizeof (int) * 2);
-    if (nbytes != (int) sizeof (int) * 2)
-      {
-	// stopping failed
-	status = ER_SP_NOT_RUNNING_JVM;
-	goto exit;
-      }
+      int nbytes = jsp_writen (socket, request, (int) sizeof (int) * 2);
+      if (nbytes != (int) sizeof (int) * 2)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
+	  status = er_errid ();
+	  goto exit;
+	}
 
-    int res_size = 0;
-    nbytes = jsp_readn (socket, (char *) &res_size, (int) sizeof (int));
-    if (nbytes != (int) sizeof (int))
-      {
-	status = ER_SP_NETWORK_ERROR;
-	goto exit;
-      }
-    res_size = ntohl (res_size);
+      int res_size = 0;
+      nbytes = jsp_readn (socket, (char *) &res_size, (int) sizeof (int));
+      if (nbytes != (int) sizeof (int))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
+	  status = er_errid ();
+	  goto exit;
+	}
+      res_size = ntohl (res_size);
 
-    nbytes = jsp_readn (socket, buf, res_size);
-    if (nbytes != res_size)
-      {
-	status = ER_SP_NETWORK_ERROR;
-	goto exit;
-      }
-  }
+      nbytes = jsp_readn (socket, buf, res_size);
+      if (nbytes != res_size)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
+	  status = er_errid ();
+	  goto exit;
+	}
+    }
 
 exit:
   jsp_disconnect_server (socket);
+
   return status;
 }
 
