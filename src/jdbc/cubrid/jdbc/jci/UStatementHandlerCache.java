@@ -37,7 +37,7 @@ import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class UStatementHandlerCache {
-	private ConcurrentHashMap<String, List<UStatementHandlerCacheEntry>> stmtHandlerCache;
+	private ConcurrentHashMap<String, List<UStatementHandlerCacheEntry>> stmtHandlerCache = null;
 
 	public UStatementHandlerCache() {
 		stmtHandlerCache = new ConcurrentHashMap<String, List<UStatementHandlerCacheEntry>> ();
@@ -48,23 +48,21 @@ public class UStatementHandlerCache {
 			List<UStatementHandlerCacheEntry> vec = new ArrayList<UStatementHandlerCacheEntry>();
 			stmtHandlerCache.putIfAbsent(sql, vec);
 		}
-		
+
 		return stmtHandlerCache.get(sql);
 	}
-	
+
 	public void destroy () {
 		for (Entry<String, List<UStatementHandlerCacheEntry>> entry : stmtHandlerCache.entrySet()) {
 			List<UStatementHandlerCacheEntry> cacheEntries = entry.getValue();
 			for (UStatementHandlerCacheEntry e: cacheEntries) {
 				UStatement s = e.getStatement();
-				s.closeCursor();
 				s.close();
 			}
 		}
 		stmtHandlerCache.clear();
-		stmtHandlerCache = null;
 	}
-	
+
 	public void clearStatus () {
 		for (Entry<String, List<UStatementHandlerCacheEntry>> entry : stmtHandlerCache.entrySet()) {
 			List<UStatementHandlerCacheEntry> cacheEntries = entry.getValue();
