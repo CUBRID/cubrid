@@ -329,7 +329,7 @@ delay_load_dll_exception_filter (PEXCEPTION_POINTERS pep)
     {
     case VcppException (ERROR_SEVERITY_ERROR, ERROR_MOD_NOT_FOUND):
     case VcppException (ERROR_SEVERITY_ERROR, ERROR_PROC_NOT_FOUND):
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_JVM_LIB_NOT_FOUND, 1, "jvm.dll");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_JVM_LIB_NOT_FOUND, 1, "Failed to load jvm.dll");
       break;
 
     default:
@@ -374,7 +374,8 @@ jsp_get_create_java_vm_function_ptr (void)
 	}
       else
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_JVM_LIB_NOT_FOUND, 1, dlerror ());
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_JVM_LIB_NOT_FOUND, 1,
+		  "Failed to find 'JAVA_HOME' environment variable");
 	  return NULL;
 	}
     }
@@ -413,7 +414,6 @@ jsp_create_java_vm (JNIEnv ** env_p, JavaVMInitArgs * vm_arguments)
   else
     {
       res = -1;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_JVM_LIB_NOT_FOUND, 1, dlerror ());
     }
 #endif /* WINDOWS */
   return res;
@@ -478,11 +478,6 @@ jsp_start_server (const char *db_name, const char *path, int port)
       }
 
     envroot = envvar_root ();
-    if (envroot == NULL)
-      {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, "envvar_root");
-	return ER_SP_CANNOT_START_JVM;
-      }
 
     snprintf (classpath, sizeof (classpath) - 1, "-Djava.class.path=%s",
 	      envvar_javadir_file (jsp_file_path, PATH_MAX, "jspserver.jar"));
@@ -563,7 +558,8 @@ jsp_start_server (const char *db_name, const char *path, int port)
 
     if (res < 0)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, "JNI_CreateJavaVM");
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1,
+		"Failed to load or initialize Java VM by JNI_CreateJavaVM()");
 	jvm = NULL;
 	return er_errid ();
       }
@@ -578,35 +574,40 @@ jsp_start_server (const char *db_name, const char *path, int port)
     mid = JVM_GetStaticMethodID (env_p, cls, "main", "([Ljava/lang/String;)V");
     if (mid == NULL)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, "GetStaticMethodID");
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1,
+		"GetStaticMethodID: " "com/cubrid/jsp/Server.main([Ljava/lang/String;)V");
 	goto error;
       }
 
     jstr_dbname = JVM_NewStringUTF (env_p, db_name);
     if (jstr_dbname == NULL)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, "NewStringUTF");
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1,
+		"Failed to construct a new 'java.lang.String object' by NewStringUTF()");
 	goto error;
       }
 
     jstr_path = JVM_NewStringUTF (env_p, path);
     if (jstr_path == NULL)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, "NewStringUTF");
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1,
+		"Failed to construct a new 'java.lang.String object' by NewStringUTF()");
 	goto error;
       }
 
     jstr_version = JVM_NewStringUTF (env_p, rel_build_number ());
     if (jstr_version == NULL)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, "NewStringUTF");
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1,
+		"Failed to construct a new 'java.lang.String object' by NewStringUTF()");
 	goto error;
       }
 
     jstr_envroot = JVM_NewStringUTF (env_p, envroot);
     if (jstr_envroot == NULL)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, "NewStringUTF");
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1,
+		"Failed to construct a new 'java.lang.String object' by NewStringUTF()");
 	goto error;
       }
 
@@ -614,7 +615,8 @@ jsp_start_server (const char *db_name, const char *path, int port)
     jstr_port = JVM_NewStringUTF (env_p, port_str);
     if (jstr_port == NULL)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, "NewStringUTF");
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1,
+		"Failed to construct a new 'java.lang.String object' by NewStringUTF()");
 	goto error;
       }
 
@@ -628,7 +630,8 @@ jsp_start_server (const char *db_name, const char *path, int port)
     args = JVM_NewObjectArray (env_p, 5, string_cls, NULL);
     if (args == NULL)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, "NewObjectArray");
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1,
+		"Failed to construct a new java array by NewObjectArray()");
 	goto error;
       }
 
@@ -641,7 +644,8 @@ jsp_start_server (const char *db_name, const char *path, int port)
     sp_port = JVM_CallStaticIntMethod (env_p, cls, mid, args);
     if (JVM_ExceptionOccurred (env_p) || sp_port == -1)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, "CallStaticIntMethod");
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1,
+		"Error occured while starting Java SP Server by CallStaticIntMethod()");
 	goto error;
       }
 
