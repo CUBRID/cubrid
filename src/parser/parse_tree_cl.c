@@ -12914,43 +12914,30 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
 
       if (p->info.insert.hint & PT_HINT_USE_SBR)
 	{
-	  char *class_name = NULL;
-	  char *column_list = NULL;
-	  char *pos = NULL;
+	  PARSER_VARCHAR *column_list = NULL;
+	  PT_NODE *attr = NULL;
 
-	  class_name = (char *) r1->bytes;
-	  column_list = (char *) r2->bytes;
+	  attr = p->info.insert.attr_list;
 
-#if !defined(NDEBUG)
-	  assert (class_name != NULL && strlen (class_name) != 0 && strlen (class_name) != r1->length);
-	  assert (column_list != NULL && strlen (column_list) != 0 && strlen (column_list) != r2->length);
-#endif
-
-	  while (pos = strstr (column_list, class_name))
+	  while (attr)
 	    {
-	      strcpy (pos, pos + r1->length + 1);
-	      r2->length -= (r1->length + 1);
+	      column_list = pt_append_nulstring (parser, column_list, attr->info.name.original);
 
-	      pos = strstr (pos, ",");
+	      attr = attr->next;
 
-	      if (pos != NULL)
+	      if (attr)
 		{
-		  column_list = pos;
-		}
-	      else
-		{
-		  break;
+		  column_list = pt_append_nulstring (parser, column_list, ", ");
 		}
 	    }
 
-#if !defined(NDEBUG)
-	  column_list = (char *) r2->bytes;
-
-	  assert (strlen (column_list) != r2->length && r2->length <= 0);
-#endif
+	  b = pt_append_varchar (parser, b, column_list);
+	}
+      else
+	{
+	  b = pt_append_varchar (parser, b, r2);
 	}
 
-      b = pt_append_varchar (parser, b, r2);
       b = pt_append_nulstring (parser, b, ") ");
     }
   else
