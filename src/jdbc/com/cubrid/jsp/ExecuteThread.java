@@ -70,9 +70,7 @@ import cubrid.jdbc.driver.CUBRIDConnectionDefault;
 import cubrid.jdbc.driver.CUBRIDResultSet;
 import cubrid.jdbc.jci.UConnection;
 import cubrid.jdbc.jci.UJCIUtil;
-import cubrid.jdbc.jci.UJCIManager;
 import cubrid.sql.CUBRIDOID;
-import java.sql.DriverManager;
 
 public class ExecuteThread extends Thread {
 	private String charSet = System.getProperty("file.encoding");
@@ -107,7 +105,6 @@ public class ExecuteThread extends Thread {
 
 	private Socket client;
 	private CUBRIDConnectionDefault connection = null;
-	private String threadName = null;
 
 	private DataInputStream input;
 	private DataOutputStream output;
@@ -243,11 +240,6 @@ public class ExecuteThread extends Thread {
 		StoredProcedure procedure = makeStoredProcedure();
 		Method m = procedure.getTarget().getMethod();
 		Object[] resolved = procedure.checkArgs(procedure.getArgs());
-
-		if (threadName == null || threadName.equalsIgnoreCase (m.getName())) {
-			threadName = m.getName();
-			Thread.currentThread().setName(threadName);
-		}
 
 		setStatus (ExecuteThreadStatus.INVOKE);
 		Object result = m.invoke(null, resolved);
