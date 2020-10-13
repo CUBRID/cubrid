@@ -2676,7 +2676,7 @@ pt_split_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info, PT_NODE * pred
   int cur_pred, cur_rest, cur_reserved, num_attrs, i;
   PT_NODE *attr_list = NULL;
   PT_NODE *node = NULL, *save_node = NULL, *save_next = NULL;
-  PT_NODE *ref_node = NULL, *ref_node_copy = NULL;
+  PT_NODE *ref_node = NULL;
   bool has_reserved = false;
 
   pred_nodes = NULL;		/* init */
@@ -2743,9 +2743,8 @@ pt_split_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info, PT_NODE * pred
 	      save_next = node->next;
 	      node->next = NULL;
 
-	      ref_node = mq_get_references (parser, node, table_info->class_spec);
-	      ref_node_copy = parser_copy_tree (parser, ref_node);
-	      pred_nodes = parser_append_node (ref_node_copy, pred_nodes);
+	      ref_node = mq_get_references_helper (parser, node, table_info->class_spec, false);
+	      pred_nodes = parser_append_node (ref_node, pred_nodes);
 
 	      /* restore node link */
 	      node->next = save_next;
