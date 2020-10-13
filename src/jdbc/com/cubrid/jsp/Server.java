@@ -41,6 +41,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.lang.management.ManagementFactory;
 import java.lang.management.RuntimeMXBean;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class Server {
 	private static final Logger logger = Logger.getLogger("com.cubrid.jsp");
@@ -54,6 +55,7 @@ public class Server {
 	
 	private ServerSocket serverSocket;
 	private Thread socketListener;
+	private AtomicBoolean shutdown;
 
 	private static Server serverInstance = null;
 	private Server(String name, String path, String version, String rPath, String port)
@@ -61,6 +63,7 @@ public class Server {
 		serverName = name;
 		spPath = path;
 		rootPath = rPath;
+		shutdown = new AtomicBoolean(false);
 
 		try {
 		  int port_number = Integer.parseInt(port);
@@ -152,6 +155,7 @@ public class Server {
 	}
 
 	public static void stop(int status) {
+		getServer().setShutdown();
 		getServer().stopSocketListener();
 		System.exit (status);
 	}
@@ -178,5 +182,13 @@ public class Server {
 				}
 			}
 		}
+	}
+
+	public void setShutdown() {
+		shutdown.set(true);
+	}
+
+	public boolean getShutdown() {
+		return shutdown.get();
 	}
 }

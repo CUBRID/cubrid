@@ -37,6 +37,9 @@ import java.security.Permission;
 
 public class SpSecurityManager extends SecurityManager {
 	public void checkExit(int status) {
+		if (Server.getShutdown() == false) {
+		  throw new SecurityException();
+		}
 	}
 
 	public void checkAccept(String host, int port) {
