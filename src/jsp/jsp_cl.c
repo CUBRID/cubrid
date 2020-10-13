@@ -1980,22 +1980,42 @@ jsp_send_destroy_request_all ()
 extern int
 jsp_send_destroy_request (const SOCKET sockfd)
 {
-  int res = NO_ERROR;
-  char buffer[(int) sizeof (int)];
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
+  char *request = OR_ALIGNED_BUF_START (a_request);
 
-  or_pack_int (buffer, SP_CODE_DESTROY);
-  int nbytes = jsp_writen (sockfd, buffer, (int) sizeof (int));
+  or_pack_int (request, SP_CODE_DESTROY);
+  int nbytes = jsp_writen (sockfd, request, (int) sizeof (int));
   if (nbytes != (int) sizeof (int))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, "destroy");
       return er_errid ();
     }
 
-  tran_begin_libcas_function ();
-  res = libcas_main (sockfd);	/* jdbc call to destroy resources */
-  tran_end_libcas_function ();
+  /* read request code */
+  int code;
+  nbytes = jsp_readn (sockfd, (char *) &code, (int) sizeof (int));
+  if (nbytes != (int) sizeof (int))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
+      return ER_SP_NETWORK_ERROR;
+    }
+  code = ntohl (code);
 
-  return res;
+  if (code == SP_CODE_DESTROY)
+    {
+      bool mode = ssl_client;
+      ssl_client = false;
+      tran_begin_libcas_function ();
+      libcas_main (sockfd);	/* jdbc call */
+      tran_end_libcas_function ();
+      ssl_client = mode;
+    }
+  else				/* SP_CODE_END */
+    {
+      /* end */
+    }
+
+  return NO_ERROR;
 }
 
 /*
@@ -2751,23 +2771,37 @@ jsp_execute_stored_procedure (const SP_ARGS * args)
 retry:
   if (IS_INVALID_SOCKET (sock_fds[call_cnt]))
     {
-      if (server_port == -1)
+      if (server_port == -1)	/* try to connect at the first time */
 	{
 	  server_port = jsp_get_server_port ();
 	}
-      sock_fds[call_cnt] = jsp_connect_server (server_port);
 
-      /* ask port number of javasp server from cub_server and try connection again  */
-      if (IS_INVALID_SOCKET (sock_fds[call_cnt]))
+      if (server_port != -1)
 	{
-	  server_port = jsp_get_server_port ();
 	  sock_fds[call_cnt] = jsp_connect_server (server_port);
-	}
 
-      if (IS_INVALID_SOCKET (sock_fds[call_cnt]))
+	  /* ask port number of javasp server from cub_server and try connection again  */
+	  if (IS_INVALID_SOCKET (sock_fds[call_cnt]))
+	    {
+	      server_port = jsp_get_server_port ();
+	      sock_fds[call_cnt] = jsp_connect_server (server_port);
+	    }
+
+	  /* Java SP Server may have a problem */
+	  if (IS_INVALID_SOCKET (sock_fds[call_cnt]))
+	    {
+	      if (server_port == -1)
+		{
+		  er_clear ();	/* ER_SP_CANNOT_CONNECT_JVM in jsp_connect_server() */
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NOT_RUNNING_JVM, 0);
+		}
+	      return er_errid ();
+	    }
+	}
+      else
 	{
-	  server_port = -1;
-	  assert (er_errid () != NO_ERROR);
+	  /* Java SP Server is not running */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NOT_RUNNING_JVM, 0);
 	  return er_errid ();
 	}
     }
@@ -2808,6 +2842,7 @@ end:
   if (error != NO_ERROR || is_prepare_call[call_cnt])
     {
       jsp_send_destroy_request (sock_fd);
+      jsp_disconnect_server (sock_fd);
       sock_fds[call_cnt] = INVALID_SOCKET;
     }
 

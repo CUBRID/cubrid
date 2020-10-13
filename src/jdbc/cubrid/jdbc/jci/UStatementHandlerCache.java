@@ -37,7 +37,7 @@ import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class UStatementHandlerCache {
-	private ConcurrentHashMap<String, List<UStatementHandlerCacheEntry>> stmtHandlerCache;
+	private ConcurrentHashMap<String, List<UStatementHandlerCacheEntry>> stmtHandlerCache = null;
 
 	public UStatementHandlerCache() {
 		stmtHandlerCache = new ConcurrentHashMap<String, List<UStatementHandlerCacheEntry>> ();
@@ -62,7 +62,6 @@ public class UStatementHandlerCache {
 			}
 		}
 		stmtHandlerCache.clear();
-		stmtHandlerCache = null;
 	}
 	
 	public void clearStatus () {

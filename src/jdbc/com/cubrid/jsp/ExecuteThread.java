@@ -67,6 +67,7 @@ import com.cubrid.jsp.value.TimeValue;
 import com.cubrid.jsp.value.TimestampValue;
 import com.cubrid.jsp.value.Value;
 
+import cubrid.jdbc.driver.CUBRIDConnection;
 import cubrid.jdbc.driver.CUBRIDConnectionDefault;
 import cubrid.jdbc.driver.CUBRIDResultSet;
 import cubrid.jdbc.jci.UConnection;
@@ -81,6 +82,7 @@ public class ExecuteThread extends Thread {
 	private static final int REQ_CODE_ERROR = 0x04;
 	private static final int REQ_CODE_INTERNAL_JDBC = 0x08;
 	private static final int REQ_CODE_DESTROY = 0x10;
+	private static final int REQ_CODE_END = 0x20;
 
 	private static final int REQ_CODE_UTIL_PING = 0xDE;
 	private static final int REQ_CODE_UTIL_STATUS = 0xEE;
@@ -110,6 +112,7 @@ public class ExecuteThread extends Thread {
 
 	private Socket client;
 	private CUBRIDConnectionDefault connection = null;
+	private String threadName = null;
 
 	private DataInputStream input;
 	private DataOutputStream output;
@@ -196,6 +199,7 @@ public class ExecuteThread extends Thread {
 				}
 				case REQ_CODE_DESTROY: {
 					destroyJDBCResources();
+					Thread.currentThread().interrupt();
 					break;
 				}
 
@@ -250,9 +254,7 @@ public class ExecuteThread extends Thread {
 					break;
 				} else {
 					try {
-						if (compareStatus(ExecuteThreadStatus.CALL)) {
-							closeJdbcConnection ();
-						}
+						closeJdbcConnection ();
 					} catch (Exception e2) {
 					}
 					setStatus (ExecuteThreadStatus.ERROR);
@@ -282,6 +284,12 @@ public class ExecuteThread extends Thread {
 		setStatus (ExecuteThreadStatus.PARSE);
 		StoredProcedure procedure = makeStoredProcedure();
 		Method m = procedure.getTarget().getMethod();
+
+		if (threadName == null || threadName.equalsIgnoreCase (m.getName())) {
+			threadName = m.getName();
+			Thread.currentThread().setName(threadName);
+		}
+
 		Object[] resolved = procedure.checkArgs(procedure.getArgs());
 
 		setStatus (ExecuteThreadStatus.INVOKE);
@@ -319,9 +327,15 @@ public class ExecuteThread extends Thread {
 
 	private void destroyJDBCResources () throws SQLException, IOException {
 		setStatus(ExecuteThreadStatus.DESTROY);
-		if (connection != null) {
+		
+		if (getJdbcConnection() != null) {
+			output.writeInt(REQ_CODE_DESTROY);
+			output.flush();
 			connection.destroy();
-			connection.close();
+			connection = null;
+		} else {
+			output.writeInt(REQ_CODE_END);
+			output.flush();
 		}
 	}
 

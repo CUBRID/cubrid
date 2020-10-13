@@ -164,6 +164,8 @@ public class UServerSideConnection extends UConnection {
 	protected void disconnect() {
 		try {
 			setBeginTime();
+			checkReconnect();
+			
 			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 				return;
 
