@@ -166,6 +166,7 @@ public class Server {
 
 	public static void log(Throwable ex) {
 		FileHandler logHandler = null;
+		
 		try {
 			logHandler = new FileHandler(rootPath + File.separatorChar
 					+ LOG_DIR + File.separatorChar + serverName + "_java.log",
