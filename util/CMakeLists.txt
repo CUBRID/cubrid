@@ -1,5 +1,6 @@
 #
-# Copyright (C) 2016 Search Solution Corporation. All rights reserved.
+# Copyright (C) 2008 Search Solution Corporation
+# Copyright (C) 2016 CUBRID Corporation
 #
 #   This program is free software; you can redistribute it and/or modify
 #   it under the terms of the GNU General Public License as published by
@@ -29,7 +30,6 @@ set_target_properties(cubridesql PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.$
 set_target_properties(cubridesql PROPERTIES PUBLIC_HEADER "${EXECUTABLES_DIR}/cubrid_esql.h")
 target_include_directories(cubridesql PRIVATE ${EP_INCLUDES})
 target_compile_definitions(cubridesql PRIVATE ${COMMON_DEFS} PRODUCE_ANSI_CODE UCI_TEMPORARY)
-target_link_libraries(cubridesql LINK_PRIVATE cubridcs)
 if(WIN32)
   set_target_properties(cubridesql PROPERTIES OUTPUT_NAME libesql)
   target_compile_definitions(cubridesql PRIVATE YY_CHAR=char)
