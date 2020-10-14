@@ -145,8 +145,10 @@ EXPORTS
 	jsp_server_port
 	javasp_get_info_file
 	javasp_get_error_file
-	javasp_get_info_dir
+	javasp_open_info_dir
+    javasp_open_info
 	javasp_read_info
+    javasp_reset_info
 	javasp_write_info
 ;
 ; utility functions
