@@ -2946,10 +2946,10 @@ boot_reset_mk_after_restart_from_backup (THREAD_ENTRY * thread_p, BO_RESTART_ARG
     }
 
   /* Check the mk file on the server */
-  tde_make_keys_volume_fullname (mk_path, boot_db_full_name (), false);
+  tde_make_keys_file_fullname (mk_path, boot_db_full_name (), false);
 
   server_mk_vdes = fileio_mount (thread_p, boot_db_full_name (), mk_path, LOG_DBTDE_KEYS_VOLID, 2, false);
-  if (server_mk_vdes != NULL_VOLDES && tde_validate_keys_volume (server_mk_vdes))
+  if (server_mk_vdes != NULL_VOLDES && tde_validate_keys_file (server_mk_vdes))
     {
       err = tde_load_mk (server_mk_vdes, &keyinfo, master_key);
       if (err == NO_ERROR)
@@ -2964,7 +2964,7 @@ boot_reset_mk_after_restart_from_backup (THREAD_ENTRY * thread_p, BO_RESTART_ARG
     {
       /* No need to mount. The mk file from backup is not accessed by others */
       backup_mk_vdes = fileio_open (r_args->keys_file_path, O_RDWR, 0600);
-      if (backup_mk_vdes != NULL_VOLDES && tde_validate_keys_volume (backup_mk_vdes))
+      if (backup_mk_vdes != NULL_VOLDES && tde_validate_keys_file (backup_mk_vdes))
 	{
 	  err = tde_load_mk (backup_mk_vdes, &keyinfo, master_key);
 	  if (err == NO_ERROR)
@@ -2984,7 +2984,7 @@ boot_reset_mk_after_restart_from_backup (THREAD_ENTRY * thread_p, BO_RESTART_ARG
 		  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_TDE_RESTORE_MAKE_KEYS_FILE_OLD, 2, mk_path,
 			  mk_path_old);
 		}
-	      err = tde_copy_keys_volume (thread_p, mk_path, r_args->keys_file_path, false, false);
+	      err = tde_copy_keys_file (thread_p, mk_path, r_args->keys_file_path, false, false);
 	      if (err != NO_ERROR)
 		{
 		  goto exit;
@@ -3013,7 +3013,7 @@ boot_reset_mk_after_restart_from_backup (THREAD_ENTRY * thread_p, BO_RESTART_ARG
 	{
 	  goto exit;
 	}
-      err = tde_copy_keys_volume (thread_p, mk_path, r_args->keys_file_path, false, false);
+      err = tde_copy_keys_file (thread_p, mk_path, r_args->keys_file_path, false, false);
       if (err != NO_ERROR)
 	{
 	  goto exit;

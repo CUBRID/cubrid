@@ -7468,7 +7468,7 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
 #endif
 
   /* tde key file has to be mounted to access exclusively with TDE Utility if it exists */
-  tde_make_keys_volume_fullname (mk_path, log_Db_fullname, false);
+  tde_make_keys_file_fullname (mk_path, log_Db_fullname, false);
   keys_vdes = fileio_mount (thread_p, log_Db_fullname, mk_path, LOG_DBTDE_KEYS_VOLID, 1, false);
 
   /* Initialization gives us some useful information about the backup location. */
@@ -7886,9 +7886,9 @@ loop:
       db_nopath_name_p = fileio_get_base_file_name (log_Db_fullname);
       fileio_make_backup_name (bkpath_without_units, db_nopath_name_p, session.bkup.current_path, backup_level,
 			       FILEIO_NO_BACKUP_UNITS);
-      tde_make_keys_volume_fullname (separate_mk_path, bkpath_without_units, true);
+      tde_make_keys_file_fullname (separate_mk_path, bkpath_without_units, true);
       /* Keep mounting mk file to be exclusive with other tools */
-      error_code = tde_copy_keys_volume (thread_p, separate_mk_path, mk_path, false, true);
+      error_code = tde_copy_keys_file (thread_p, separate_mk_path, mk_path, false, true);
       if (error_code != NO_ERROR)
 	{
 	  goto error;
@@ -8465,7 +8465,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 	   */
 	  fileio_make_backup_name (bkpath_without_units, nopath_name, session->bkup.current_path,
 				   (FILEIO_BACKUP_LEVEL) r_args->level, FILEIO_NO_BACKUP_UNITS);
-	  tde_make_keys_volume_fullname (bk_mk_path, bkpath_without_units, true);
+	  tde_make_keys_file_fullname (bk_mk_path, bkpath_without_units, true);
 	  if (r_args->keys_file_path[0] == '\0')
 	    {
 	      memcpy (r_args->keys_file_path, bk_mk_path, PATH_MAX);
@@ -9177,9 +9177,9 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
   /*
    * Create and Copy the TDE master key file (_keys)
    */
-  tde_make_keys_volume_fullname (from_mk_path, boot_db_full_name (), false);
-  tde_make_keys_volume_fullname (to_mk_path, to_db_fullname, false);
-  error_code = tde_copy_keys_volume (thread_p, to_mk_path, from_mk_path, false, false);
+  tde_make_keys_file_fullname (from_mk_path, boot_db_full_name (), false);
+  tde_make_keys_file_fullname (to_mk_path, to_db_fullname, false);
+  error_code = tde_copy_keys_file (thread_p, to_mk_path, from_mk_path, false, false);
   if (error_code != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_COPY_KEYS_FILE_FAIL, 0);
@@ -9755,8 +9755,8 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols, co
       goto error;
     }
 
-  tde_make_keys_volume_fullname (from_mk_path, boot_db_full_name (), false);
-  tde_make_keys_volume_fullname (to_mk_path, to_db_fullname, false);
+  tde_make_keys_file_fullname (from_mk_path, boot_db_full_name (), false);
+  tde_make_keys_file_fullname (to_mk_path, to_db_fullname, false);
 
   if (fileio_rename (LOG_DBTDE_KEYS_VOLID, from_mk_path, to_mk_path) != NULL)
     {
@@ -10146,7 +10146,7 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *db_fulln
   fileio_unformat (thread_p, vol_fullname);
 
   /* destroy the TDE keys volume information */
-  tde_make_keys_volume_fullname (vol_fullname, db_fullname, true);
+  tde_make_keys_file_fullname (vol_fullname, db_fullname, true);
   fileio_unformat (thread_p, vol_fullname);
 
   /* Destroy DWB, if still exists. */

@@ -1925,7 +1925,7 @@ tde_get_mk_file_path (char *mk_path)
 
   return error;
 #else /* CS_MODE */
-  tde_make_keys_volume_fullname (mk_path, boot_db_full_name (), false);
+  tde_make_keys_file_fullname (mk_path, boot_db_full_name (), false);
   return NO_ERROR;
 #endif /* !CS_MODE */
 }

@@ -168,13 +168,13 @@ typedef struct tde_keyinfo
  */
 extern int tde_initialize (THREAD_ENTRY * thread_p, HFID * keyinfo_hfid);
 extern int tde_cipher_initialize (THREAD_ENTRY * thread_p, const HFID * keyinfo_hfid, const char *mk_path_given);
-extern bool tde_validate_keys_volume (int vdes);
+extern bool tde_validate_keys_file (int vdes);
 extern int tde_load_mk (int vdes, const TDE_KEYINFO * keyinfo, unsigned char *master_key);
-extern int tde_copy_keys_volume (THREAD_ENTRY * thread_p, const char *to_db_fullname, const char *from_db_fullname,
-				 bool keep_to_mount, bool keep_from_mount);
+extern int tde_copy_keys_file (THREAD_ENTRY * thread_p, const char *to_db_fullname, const char *from_db_fullname,
+			       bool keep_to_mount, bool keep_from_mount);
 extern int tde_change_mk (THREAD_ENTRY * thread_p, const int mk_index, const unsigned char *master_key,
 			  const time_t created_time);
-extern void tde_make_keys_volume_fullname (char *keys_vol_fullname, const char *db_full_name, bool ignore_parm);
+extern void tde_make_keys_file_fullname (char *keys_vol_fullname, const char *db_full_name, bool ignore_parm);
 extern int tde_get_keyinfo (THREAD_ENTRY * thread_p, TDE_KEYINFO * keyinfo);
 /*
  * TDE functions for encrpytion and decryption

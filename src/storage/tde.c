@@ -123,7 +123,7 @@ tde_initialize (THREAD_ENTRY * thread_p, HFID * keyinfo_hfid)
   char recdes_buffer[sizeof (int) + sizeof (TDE_KEYINFO)];
   int repid_and_flag_bits = 0;
 
-  tde_make_keys_volume_fullname (mk_path, boot_db_full_name (), false);
+  tde_make_keys_file_fullname (mk_path, boot_db_full_name (), false);
   err = tde_create_keys_file (mk_path);
   if (err == NO_ERROR)
     {
@@ -158,7 +158,7 @@ tde_initialize (THREAD_ENTRY * thread_p, HFID * keyinfo_hfid)
 	  goto exit;
 	}
 
-      if (tde_validate_keys_volume (vdes) == false)
+      if (tde_validate_keys_file (vdes) == false)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_INVALID_KEYS_VOLUME, 1, mk_path);
 	  err = ER_TDE_INVALID_KEYS_VOLUME;
@@ -239,7 +239,7 @@ tde_cipher_initialize (THREAD_ENTRY * thread_p, const HFID * keyinfo_hfid, const
 
   if (mk_path == NULL || vdes == NULL_VOLDES)
     {
-      tde_make_keys_volume_fullname (mk_path_buffer, boot_db_full_name (), false);
+      tde_make_keys_file_fullname (mk_path_buffer, boot_db_full_name (), false);
       mk_path = mk_path_buffer;
       vdes = fileio_mount (thread_p, boot_db_full_name (), mk_path, LOG_DBTDE_KEYS_VOLID, 1, false);
       if (vdes == NULL_VOLDES)
@@ -249,7 +249,7 @@ tde_cipher_initialize (THREAD_ENTRY * thread_p, const HFID * keyinfo_hfid, const
 	}
     }
 
-  if (tde_validate_keys_volume (vdes) == false)
+  if (tde_validate_keys_file (vdes) == false)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_INVALID_KEYS_VOLUME, 1, mk_path);
       err = ER_TDE_INVALID_KEYS_VOLUME;
@@ -333,7 +333,7 @@ exit:
 }
 
 bool
-tde_validate_keys_volume (int vdes)
+tde_validate_keys_file (int vdes)
 {
   char magic[CUBRID_MAGIC_MAX_LENGTH] = { 0, };
 #if !defined(WINDOWS)
@@ -365,8 +365,8 @@ tde_validate_keys_volume (int vdes)
 }
 
 int
-tde_copy_keys_volume (THREAD_ENTRY * thread_p, const char *to_keyfile_fullname, const char *from_keyfile_fullname,
-		      bool keep_to_mount, bool keep_from_mount)
+tde_copy_keys_file (THREAD_ENTRY * thread_p, const char *to_keyfile_fullname, const char *from_keyfile_fullname,
+		    bool keep_to_mount, bool keep_from_mount)
 {
   char buffer[4096];
   int from_vdes = -1;
@@ -381,7 +381,7 @@ tde_copy_keys_volume (THREAD_ENTRY * thread_p, const char *to_keyfile_fullname, 
       return er_errid ();
     }
 
-  if (tde_validate_keys_volume (from_vdes) == false)
+  if (tde_validate_keys_file (from_vdes) == false)
     {
       fileio_dismount (thread_p, from_vdes);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_INVALID_KEYS_VOLUME, 1, from_keyfile_fullname);
@@ -561,7 +561,7 @@ tde_update_keyinfo (THREAD_ENTRY * thread_p, const TDE_KEYINFO * keyinfo, OID * 
 }
 
 void
-tde_make_keys_volume_fullname (char *keys_vol_fullname, const char *db_full_name, bool ignore_parm)
+tde_make_keys_file_fullname (char *keys_vol_fullname, const char *db_full_name, bool ignore_parm)
 {
   char *mk_path = NULL;
   const char *base_name = NULL;
@@ -890,7 +890,7 @@ xtde_change_mk_without_flock (THREAD_ENTRY * thread_p, const int mk_index)
   int vdes;
   int err = NO_ERROR;
 
-  tde_make_keys_volume_fullname (mk_path, boot_db_full_name (), false);
+  tde_make_keys_file_fullname (mk_path, boot_db_full_name (), false);
 
   vdes = fileio_mount (thread_p, boot_db_full_name (), mk_path, LOG_DBTDE_KEYS_VOLID, false, false);
   if (vdes == NULL_VOLDES)

@@ -2608,7 +2608,7 @@ stde_get_mk_file_path (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  tde_make_keys_volume_fullname (mk_path, boot_db_full_name (), false);
+  tde_make_keys_file_fullname (mk_path, boot_db_full_name (), false);
 
   area_size = or_packed_string_length (mk_path, &pathlen);
 
