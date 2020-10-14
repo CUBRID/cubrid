@@ -4084,17 +4084,12 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
   fhead = (FILE_HEADER *) page_fhead;
 
 #if !defined(NDEBUG)
-  if (prm_get_bool_value (PRM_ID_TDE_TRACE_DEBUG))
+  if (file_get_tde_algorithm_internal (fhead) != TDE_ALGORITHM_NONE)
     {
-      TDE_ALGORITHM tde_algo = file_get_tde_algorithm_internal (fhead);
-      if (tde_algo != TDE_ALGORITHM_NONE)
-	{
-	  fprintf (stdout, "TRACE TDE: file_destroy(): clear tde bit in pflag in all user pages\n"
-		   "\tVFID = %d|%d, # of encrypting (user) pages = %d,\n"
-		   "\ttde algorithm = %s\n", VFID_AS_ARGS (&fhead->self), fhead->n_page_user,
-		   tde_get_algorithm_name (tde_algo));
-	  fflush (stdout);
-	}
+      er_log_debug (ARG_FILE_LINE,
+		    "TDE: file_destroy(): clear tde bit in pflag in all user pages, VFID = %d|%d, # of encrypting (user) pages = %d, tde algorithm = %s\n",
+		    VFID_AS_ARGS (&fhead->self), fhead->n_page_user,
+		    tde_get_algorithm_name (file_get_tde_algorithm_internal (fhead)));
     }
 #endif /* !NDEBUG */
 
@@ -5392,15 +5387,11 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_in
       tde_algo = file_get_tde_algorithm_internal (fhead);
 
 #if !defined (NDEBUG)
-      if (prm_get_bool_value (PRM_ID_TDE_TRACE_DEBUG))
+      if (tde_algo != TDE_ALGORITHM_NONE)
 	{
-	  if (tde_algo != TDE_ALGORITHM_NONE)
-	    {
-	      fprintf (stdout, "TRACE TDE: file_alloc(): set tde bit in pflag\n"
-		       "\tVFID = %d|%d, VPID = %d|%d, tde_algorithm of the file = %s\n",
-		       VFID_AS_ARGS (&fhead->self), VPID_AS_ARGS (vpid_out), tde_get_algorithm_name (tde_algo));
-	      fflush (stdout);
-	    }
+	  er_log_debug (ARG_FILE_LINE,
+			"TDE: file_alloc(): set tde bit in pflag, VFID = %d|%d, VPID = %d|%d, tde_algorithm of the file = %s\n",
+			VFID_AS_ARGS (&fhead->self), VPID_AS_ARGS (vpid_out), tde_get_algorithm_name (tde_algo));
 	}
 #endif /* NDEBUG */
 
@@ -5765,15 +5756,6 @@ file_set_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, TDE_ALGORITH
   fhead = (FILE_HEADER *) page_fhead;
   file_header_sanity_check (thread_p, fhead);
 
-#if !defined(NDEBUG)
-  if (prm_get_bool_value (PRM_ID_TDE_TRACE_DEBUG))
-    {
-      fprintf (stdout, "TRACE TDE: file_set_tde_algorithm(): \n"
-	       "\tVFID = %d|%d, tde_algorithm = %s\n", VFID_AS_ARGS (&fhead->self), tde_get_algorithm_name (tde_algo));
-      fflush (stdout);
-    }
-#endif /* !NDEBUG */
-
   if (!FILE_IS_TEMPORARY (fhead))
     {
       TDE_ALGORITHM prev_tde_algo = file_get_tde_algorithm_internal (fhead);
@@ -5837,6 +5819,11 @@ file_set_tde_algorithm_internal (FILE_HEADER * fhead, TDE_ALGORITHM tde_algo)
       /* already cleared */
       break;
     }
+
+#if !defined(NDEBUG)
+  er_log_debug (ARG_FILE_LINE, "TDE: file_set_tde_algorithm_internal(): VFID = %d|%d, tde_algorithm = %s\n",
+		VFID_AS_ARGS (&fhead->self), tde_get_algorithm_name (tde_algo));
+#endif /* !NDEBUG */
 }
 
 /*
@@ -5964,14 +5951,9 @@ file_apply_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, const TDE_
     }
 
 #if !defined(NDEBUG)
-  if (prm_get_bool_value (PRM_ID_TDE_TRACE_DEBUG))
-    {
-      fprintf (stdout, "TRACE TDE: file_apply_tde_algorithm(): \n"
-	       "\tVFID = %d|%d, # of encrypting (user) pages = %d,\n"
-	       "\ttde algorithm = %s\n", VFID_AS_ARGS (&fhead->self), fhead->n_page_user,
-	       tde_get_algorithm_name (tde_algo));
-      fflush (stdout);
-    }
+  er_log_debug (ARG_FILE_LINE,
+		"TDE: file_apply_tde_algorithm(): VFID = %d|%d, # of encrypting (user) pages = %d, tde algorithm = %s\n",
+		VFID_AS_ARGS (&fhead->self), fhead->n_page_user, tde_get_algorithm_name (tde_algo));
 #endif /* !NDEBUG */
 
 
