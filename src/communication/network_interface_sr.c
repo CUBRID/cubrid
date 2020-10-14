@@ -9300,7 +9300,7 @@ sboot_get_locales_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request
       LANG_COLLATION *lc = lang_get_collation (i);
 
       assert (lc != NULL);
-      if (i != 0 && lc->coll.coll_id == LANG_COLL_ISO_BINARY)
+      if (i != LANG_COLL_DEFAULT && lc->coll.coll_id == LANG_COLL_BINARY)
 	{
 	  /* iso88591 binary collation added only once */
 	  continue;
@@ -9347,7 +9347,7 @@ sboot_get_locales_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
 	  assert (lc != NULL);
 
-	  if (i != 0 && lc->coll.coll_id == LANG_COLL_ISO_BINARY)
+	  if (i != LANG_COLL_DEFAULT && lc->coll.coll_id == LANG_COLL_BINARY)
 	    {
 	      continue;
 	    }

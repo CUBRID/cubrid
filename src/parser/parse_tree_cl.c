@@ -12913,14 +12913,36 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
       char *class_name = NULL;
 
       b = pt_append_nulstring (parser, b, " (");
-
+#if 0
       while (class_name = strstr ((char *) r2->bytes, (char *) r1->bytes))
 	{
 	  strcpy (class_name, class_name + r1->length + 1);
 	  r2->length = r2->length - r1->length - 1;
 	}
+#endif
+      if (p->info.insert.hint & PT_HINT_USE_SBR)
+	{
+	  PARSER_VARCHAR *column_list = NULL;
+	  PT_NODE *attr = NULL;
 
-      b = pt_append_varchar (parser, b, r2);
+	  attr = p->info.insert.attr_list;
+
+	  while (attr)
+	    {
+	      column_list = pt_append_nulstring (parser, column_list, attr->info.name.original);
+	      attr = attr->next;
+	      if (attr)
+		{
+		  column_list = pt_append_nulstring (parser, column_list, ", ");
+		}
+	    }
+	  b = pt_append_varchar (parser, b, column_list);
+	}
+      else
+	{
+	  b = pt_append_varchar (parser, b, r2);
+	}
+
       b = pt_append_nulstring (parser, b, ") ");
     }
   else

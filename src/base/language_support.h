@@ -56,10 +56,10 @@
 #define LANG_COERCIBLE_COLL LANG_SYS_COLLATION
 #define LANG_COERCIBLE_CODESET LANG_SYS_CODESET
 
+#define COLL_TI	15
+
 extern bool lang_coll_coercible (int coll_id);
 extern int lang_coll_variation (int coll_id);
-
-#define COLL_TI	15
 
 #define LANG_IS_COERCIBLE_COLL(c) lang_coll_coercible(c)
 
@@ -118,6 +118,7 @@ enum
   LANG_COLL_UTF8_KO_CS = 7,
   LANG_COLL_EUCKR_BINARY = 8,
   LANG_COLL_BINARY = 9,
+  LANG_COLL_DEFAULT = LANG_COLL_BINARY,
   LANG_COLL_ISO_BINARY_TI = LANG_COLL_ISO_BINARY + COLL_TI,
   LANG_COLL_UTF8_BINARY_TI = LANG_COLL_UTF8_BINARY + COLL_TI,
   LANG_COLL_ISO_EN_CS_TI = LANG_COLL_ISO_EN_CS + COLL_TI,

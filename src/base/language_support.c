@@ -59,9 +59,6 @@
 #define EUC_SPACE 0xa1		/* for euckr */
 #define ASCII_SPACE 0x20
 
-bool lang_coll_coercible (int coll_id);
-int lang_coll_variation (int coll_id);
-
 static INTL_LANG lang_Lang_id = INTL_LANG_ENGLISH;
 static INTL_CODESET lang_Loc_charset = INTL_CODESET_ISO88591;
 static char lang_Loc_name[LANG_MAX_LANGNAME] = LANG_NAME_DEFAULT;
@@ -1049,9 +1046,7 @@ lang_init_builtin (void)
   /* init all collation placeholders with ISO binary collation */
   for (i = 0; i < LANG_MAX_COLLATIONS; i++)
     {
-      lang_Collations[i] = &coll_Iso_binary;
-      lang_Collations[i]->coll_variation = -1;
-      lang_Collations[i]->coll_coercible = false;
+      lang_Collations[i] = &coll_Binary;
     }
 
   /* built-in collations : order of registration should match colation ID */
@@ -1776,7 +1771,7 @@ register_collation (LANG_COLLATION * coll)
 
   assert (lang_Collations[id] != NULL);
 
-  if (lang_Collations[id]->coll.coll_id != LANG_COLL_ISO_BINARY)
+  if (lang_Collations[id]->coll.coll_id != LANG_COLL_DEFAULT)
     {
       char err_msg[ERR_MSG_SIZE];
       snprintf (err_msg, sizeof (err_msg) - 1,
