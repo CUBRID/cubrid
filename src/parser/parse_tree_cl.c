@@ -12921,7 +12921,7 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
 
 	  while (attr)
 	    {
-	      column_list = pt_append_nulstring (parser, column_list, attr->info.name.original);
+	      column_list = pt_append_name (parser, column_list, attr->info.name.original);
 
 	      attr = attr->next;
 
