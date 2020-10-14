@@ -249,6 +249,14 @@ Vorhandene Befehle:\n\
 41 cubrid manager server nicht installiert ist.\n
 42 Parameter ist Ungültig.\n
 43 Datei(%1$s) offene Fehler.\n
+44 Cubrid Utility, Version %1$s\n\
+Anwendung: %2$s javasp <Befehl> [args]\n\
+\n\
+Vorhandene Befehle:\n\
+    start       [database-name]\n\
+    stop        [database-name]\n\
+    restart     [database-name]\n\
+    status      [database-name]\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 WARNUNG: -t Option wird in Stand-Alone-Ausführung ignoriert.\n
