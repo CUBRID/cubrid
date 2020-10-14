@@ -14046,6 +14046,19 @@ pgbuf_rv_dealloc_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   CAST_PGPTR_TO_IOPGPTR (iopage, page_deallocated);
   iopage->prv.pflag = prv.pflag;
 
+#if !defined(NDEBUG)
+  if (prm_get_bool_value (PRM_ID_TDE_TRACE_DEBUG))
+    {
+      if (iopage->prv.pflag & FILEIO_PAGE_FLAG_ENCRYPTED_MASK)
+	{
+	  fprintf (stdout, "TRACE TDE: pgbuf_rv_dealloc_page(): reset tde bit in pflag\n"
+		   "\tVPID = %d|%d, tde_algorithm = %s\n",
+		   VPID_AS_ARGS (&vpid), tde_get_algorithm_name (pgbuf_get_tde_algorithm (page_deallocated)));
+	  fflush (stdout);
+	}
+    }
+#endif /* !NDEBUG */
+
   log_append_compensate_with_undo_nxlsa (thread_p, RVPGBUF_COMPENSATE_DEALLOC, false, &vpid, 0, page_deallocated,
 					 sizeof (FILEIO_PAGE_RESERVED), &prv, LOG_FIND_CURRENT_TDES (thread_p),
 					 &rcv->reference_lsa);
@@ -14076,6 +14089,19 @@ pgbuf_rv_dealloc_undo_compensate (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
   pgbuf_set_page_ptype (thread_p, rcv->pgptr, (PAGE_TYPE) prv.ptype);
   iopage->prv.pflag = prv.pflag;
+
+#if !defined(NDEBUG)
+  if (prm_get_bool_value (PRM_ID_TDE_TRACE_DEBUG))
+    {
+      if (iopage->prv.pflag & FILEIO_PAGE_FLAG_ENCRYPTED_MASK)
+	{
+	  fprintf (stdout, "TRACE TDE: pgbuf_rv_dealloc_page(): reset tde bit in pflag\n"
+		   "\tVPID = %d|%d, tde_algorithm = %s\n",
+		   VPID_AS_ARGS (&vpid), tde_get_algorithm_name (pgbuf_get_tde_algorithm (rcv->pgptr)));
+	  fflush (stdout);
+	}
+    }
+#endif /* !NDEBUG */
 
   return NO_ERROR;
 }
