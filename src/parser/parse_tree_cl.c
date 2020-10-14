@@ -12932,7 +12932,7 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
     {
       b = pt_append_nulstring (parser, b, " (");
 
-      if (p->info.insert.hint & PT_HINT_USE_SBR)
+      if ((p->info.insert.hint & PT_HINT_USE_SBR) && (parser->custom_print & PT_PRINT_ORIGINAL_BEFORE_CONST_FOLDING))
 	{
 	  PARSER_VARCHAR *column_list = NULL;
 	  PT_NODE *attr = NULL;
