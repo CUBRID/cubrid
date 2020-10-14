@@ -54,7 +54,6 @@
 #include "memory_alloc.h"
 #include "error_manager.h"
 
-
 #if defined(sparc)
 #define JVM_LIB_PATH "jre/lib/sparc/client"
 #elif defined(WINDOWS)
@@ -166,6 +165,9 @@ typedef jint (*CREATE_VM_FUNC) (JavaVM **, void **, void *);
 	(*ENV)->GetStringUTFLength(ENV, STRING)
 #endif
 
+JavaVM *jvm = NULL;
+jint sp_port = -1;
+
 #if defined(WINDOWS)
 int get_java_root_path (char *path);
 FARPROC WINAPI delay_load_hook (unsigned dliNotify, PDelayLoadInfo pdli);
@@ -177,9 +179,6 @@ extern PfnDliHook __pfnDliFailureHook2 = delay_load_hook;
 #else /* WINDOWS */
 static void *jsp_get_create_java_vm_function_ptr (void);
 #endif /* !WINDOWS */
-
-JavaVM *jvm = NULL;
-jint sp_port = -1;
 
 #if defined(WINDOWS)
 
@@ -654,20 +653,6 @@ jsp_start_server (const char *db_name, const char *path, int port)
 error:
   assert (er_errid () != NO_ERROR);
   return er_errid ();
-}
-
-/*
- * jsp_server_port
- *   return: if disable jsp function and return -1
- *              enable jsp function and return jsp server port
- *
- * Note:
- */
-
-void
-jsp_set_server_port (int port)
-{
-  sp_port = port;
 }
 
 /*
