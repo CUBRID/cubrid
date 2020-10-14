@@ -32,17 +32,15 @@
 #include "jsp_file.h"
 
 #include "porting.h"
-
-#include <cassert>
-#include <cerrno>
-#include <cstdlib>
-#include <cstdio>
-
-
 #include "environment_variable.h"
 
+#include <assert.h>
+#include <errno.h>
+#include <stdlib.h>
+#include <stdio.h>
+
 bool
-javasp_get_info_dir ()
+javasp_open_info_dir ()
 {
   char javasp_dir[PATH_MAX];
   envvar_vardir_file (javasp_dir, sizeof (javasp_dir), "javasp");
@@ -72,13 +70,28 @@ javasp_get_info_dir ()
   return true;
 }
 
+FILE *
+javasp_open_info (const char *db_name, const char *mode)
+{
+  FILE *fp = NULL;
+  char file_name[PATH_MAX];
+  char file_path[PATH_MAX];
+
+  snprintf (file_name, PATH_MAX, "%s/javasp_%s.info", "javasp", db_name);
+  envvar_vardir_file (file_path, PATH_MAX, file_name);
+
+  fp = fopen (file_path, mode);
+
+  return fp;
+}
+
 bool
 javasp_get_info_file (char *buf, size_t len, const char *db_name)
 {
   char javasp_vardir[PATH_MAX];
-  envvar_vardir_file (javasp_vardir, sizeof (javasp_vardir), "javasp");
+  envvar_vardir_file (javasp_vardir, PATH_MAX, "javasp");
 
-  if (snprintf (buf, len, "%s/javasp_%s.info", javasp_vardir, db_name) < 0)
+  if (snprintf (buf, len, "%s/%s_java.err", javasp_vardir, db_name) < 0)
     {
       assert (false);
       buf[0] = '\0';
@@ -118,11 +131,11 @@ javasp_get_log_file (char *buf, size_t len, const char *db_name)
 }
 
 bool
-javasp_read_info (const char *info_path, JAVASP_SERVER_INFO & info)
+javasp_read_info (const char *db_name, JAVASP_SERVER_INFO & info)
 {
   FILE *fp = NULL;
 
-  fp = fopen (info_path, "r");
+  fp = javasp_open_info (db_name, "r");
   if (fp)
     {
       fscanf (fp, "%d %d", &info.pid, &info.port);
@@ -134,10 +147,11 @@ javasp_read_info (const char *info_path, JAVASP_SERVER_INFO & info)
 }
 
 bool
-javasp_write_info (const char *info_path, JAVASP_SERVER_INFO info)
+javasp_write_info (const char *db_name, JAVASP_SERVER_INFO info)
 {
-  FILE *fp;
-  fp = fopen (info_path, "w");
+  FILE *fp = NULL;
+
+  fp = javasp_open_info (db_name, "w");
   if (fp)
     {
       fprintf (fp, "%d %d", info.pid, info.port);
@@ -145,4 +159,13 @@ javasp_write_info (const char *info_path, JAVASP_SERVER_INFO info)
       return true;
     }
   return false;
+}
+
+bool
+javasp_reset_info (const char *db_name)
+{
+  JAVASP_SERVER_INFO reset_info
+  {
+  -1, -1};
+  return javasp_write_info (db_name, reset_info);
 }

@@ -85,7 +85,6 @@ static bool javasp_is_terminated_process (int pid);
 static void javasp_terminate_process (int pid);
 
 static int javasp_get_server_info (const std::string &db_name, JAVASP_SERVER_INFO &info);
-static void javasp_reset_file (const std::string &db_name);
 
 static int javasp_check_argument (int argc, char *argv[], std::string &command, std::string &db_name);
 static int javasp_check_database (const std::string &db_name, std::string &db_path);
@@ -110,7 +109,6 @@ main (int argc, char *argv[])
       goto exit;
     }
 #endif /* WINDOWS */
-
   {
     /*
     * COMMON PART FOR PING AND OTHER COMMANDS
@@ -281,14 +279,18 @@ javasp_start_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_na
 
       if (status == NO_ERROR)
 	{
-	  char info_path[PATH_MAX] = {0};
 	  JAVASP_SERVER_INFO jsp_new_info { getpid(), jsp_server_port () };
 
-	  if (!javasp_get_info_file (info_path, sizeof (info_path), db_name.c_str ())
-	      || !javasp_write_info (info_path, jsp_new_info))
+	  if ((javasp_open_info_dir () && javasp_write_info (db_name.c_str (), jsp_new_info)))
+	    {
+	      /* succeed */
+	    }
+	  else
 	    {
 	      /* failed to write info file */
 	      status = ER_GENERIC_ERROR;
+	      char info_path[PATH_MAX];
+	      javasp_get_info_file (info_path, PATH_MAX, db_name.c_str ());
 	      PRINT_AND_LOG_ERR_MSG ("Error while writing to file: %s\n", info_path);
 	    }
 	}
@@ -324,7 +326,7 @@ javasp_stop_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_nam
 	  javasp_terminate_process (jsp_info.pid);
 	}
 
-      javasp_reset_file (db_name);
+      javasp_reset_info (db_name.c_str ());
     }
 
   return status;
@@ -538,27 +540,18 @@ javasp_terminate_process (int pid)
 #endif /* ! WINDOWS */
 }
 
-static void
-javasp_reset_file (const std::string &db_name)
-{
-  char info_path[PATH_MAX] = {0};
-  JAVASP_SERVER_INFO reset_info {-1, -1};
-  javasp_get_info_file (info_path, sizeof (info_path), db_name.c_str ());
-  javasp_write_info (info_path, reset_info);
-}
-
 static int
 javasp_get_server_info (const std::string &db_name, JAVASP_SERVER_INFO &info)
 {
-  char info_path[PATH_MAX];
-  if (javasp_get_info_dir ()
-      && javasp_get_info_file (info_path, sizeof (info_path), db_name.c_str ()))
+  if (javasp_open_info_dir ()
+      && javasp_read_info (db_name.c_str(), info))
     {
-      javasp_read_info (info_path, info);
       return NO_ERROR;
     }
   else
     {
+      char info_path[PATH_MAX];
+      javasp_get_info_file (info_path, PATH_MAX, db_name.c_str ());
       PRINT_AND_LOG_ERR_MSG ("Error while opening file: %s\n", info_path);
       return ER_GENERIC_ERROR;
     }

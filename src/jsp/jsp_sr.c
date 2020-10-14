@@ -686,9 +686,7 @@ jsp_server_port (void)
 #else
   // check $CUBRID/var/javasp_<db_name>.info
   JAVASP_SERVER_INFO jsp_info = { -1, -1 };
-  char info_path[PATH_MAX] = { 0 };
-  javasp_get_info_file (info_path, sizeof (info_path), boot_db_name ());
-  javasp_read_info (info_path, jsp_info);
+  javasp_read_info (boot_db_name (), jsp_info);
   return jsp_info.port;
 #endif
 }

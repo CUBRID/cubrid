@@ -31,6 +31,7 @@
 #ident "$Id$"
 
 #include "porting.h"
+#include <stdio.h>
 
 typedef struct javasp_server_info JAVASP_SERVER_INFO;
 struct javasp_server_info
@@ -44,14 +45,16 @@ extern "C"
 {
 #endif
 
+  extern bool javasp_open_info_dir ();
+  extern FILE *javasp_open_info (const char *db_name, const char *mode);
+
+  extern bool javasp_read_info (const char *db_name, JAVASP_SERVER_INFO & info);
+  extern bool javasp_write_info (const char *db_name, JAVASP_SERVER_INFO info);
+  extern bool javasp_reset_info (const char *db_name);
+
   extern bool javasp_get_info_file (char *buf, size_t len, const char *db_name);
   extern bool javasp_get_error_file (char *buf, size_t len, const char *db_name);
   extern bool javasp_get_log_file (char *buf, size_t len, const char *db_name);
-
-  extern bool javasp_get_info_dir ();
-
-  extern bool javasp_read_info (const char *info_path, JAVASP_SERVER_INFO & info);
-  extern bool javasp_write_info (const char *info_path, JAVASP_SERVER_INFO info);
 
 #ifdef __cplusplus
 }
