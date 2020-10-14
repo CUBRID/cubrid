@@ -56,27 +56,20 @@
 #define LANG_COERCIBLE_COLL LANG_SYS_COLLATION
 #define LANG_COERCIBLE_CODESET LANG_SYS_CODESET
 
-#define LANG_IS_COERCIBLE_COLL(c)	\
-  ((c) == LANG_COLL_ISO_BINARY || (c) == LANG_COLL_UTF8_BINARY	\
-   || (c) == LANG_COLL_EUCKR_BINARY) || \
-  ((c) == LANG_COLL_ISO_BINARY_TI || (c) == LANG_COLL_UTF8_BINARY_TI \
-   || (c) == LANG_COLL_EUCKR_BINARY_TI)
+extern bool lang_coll_coercible (int coll_id);
+extern int lang_coll_variation (int coll_id);
 
 #define COLL_TI	15
 
-#define COLL_IS_SAME_VARIATION(c1,c2)   \
-  (c1 < LANG_MAX_BUILTIN_COLLATIONS && c2 < LANG_MAX_BUILTIN_COLLATIONS \
-   && (((c1) - (c2)) == COLL_TI || ((c2) - (c1)) == COLL_TI))
+#define LANG_IS_COERCIBLE_COLL(c) lang_coll_coercible(c)
+
+#define COLL_IS_SAME_VARIATION(c1,c2) (c1 == c2 || c1 == lang_coll_variation(c2))
 
 /* common collation to be used at runtime */
 #define LANG_RT_COMMON_COLL(c1, c2, coll)     \
   do {                                        \
     coll = -1;                                \
-    if ((c1) == (c2))                         \
-      {                                       \
-        coll = (c1);                          \
-      }                                       \
-    else if (COLL_IS_SAME_VARIATION(c1,c2))   \
+    if (COLL_IS_SAME_VARIATION(c1,c2))   \
       {                                       \
         coll = ((c1) > (c2))?(c1):(c2);       \
       }                                       \
@@ -133,7 +126,8 @@ enum
   LANG_COLL_UTF8_EN_CI_TI = LANG_COLL_UTF8_EN_CI + COLL_TI,
   LANG_COLL_UTF8_TR_CS_TI = LANG_COLL_UTF8_TR_CS + COLL_TI,
   LANG_COLL_UTF8_KO_CS_TI = LANG_COLL_UTF8_KO_CS + COLL_TI,
-  LANG_COLL_EUCKR_BINARY_TI = LANG_COLL_EUCKR_BINARY + COLL_TI
+  LANG_COLL_EUCKR_BINARY_TI = LANG_COLL_EUCKR_BINARY + COLL_TI,
+  LANG_COLL_BUILTIN_MAX = LANG_COLL_EUCKR_BINARY_TI
 };
 
 #define LANG_GET_BINARY_COLLATION(c) (((c) == INTL_CODESET_UTF8) \
@@ -191,6 +185,8 @@ struct lang_collation
   /* default language to use for this collation (for casing functions) */
   LANG_LOCALE_DATA *default_lang;
 
+  int coll_variation;		/* variation ti and ts collation */
+  bool coll_coercible;		/* coercible between binary collations */
   COLL_DATA coll;		/* collation data */
   /* string compare */
   int (*fastcmp) (const LANG_COLLATION * lang_coll, const unsigned char *string1, const int size1,
