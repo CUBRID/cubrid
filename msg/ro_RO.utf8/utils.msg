@@ -249,6 +249,14 @@ Comenzi disponibile:\n\
 41 cubrid manager server nu este instalat.\n
 42 Argument invalid.\n
 43 Eroare la deschiderea fişierului(%1$s).\n
+44 utilitar CUBRID, versiunea %1$s\n\
+utilizare: %2$s javasp <command> [args]\n\
+\n\
+Comenzi disponibile:\n\
+    start       [database-name]\n\
+    stop        [database-name]\n\
+    restart     [database-name]\n\
+    status      [database-name]\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 AVERTIESMENT: opţiunea -t este ignorată în modul de execuţie independent.\n

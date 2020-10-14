@@ -249,6 +249,14 @@ Commandi disponibili:\n\
 41 Cubrid Manager server non è installato.\n
 42 Argomento non valido.\n
 43 Errore di apertura file(%1$s).\n
+44 utilità cubrid, versione %1$s\n\
+uso: %2$s javasp <commando> [args]\n\
+\n\
+Commandi disponibili:\n\
+    start       [database-name]\n\
+    stop        [database-name]\n\
+    restart     [database-name]\n\
+    status      [database-name]\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 ATTENZIONE: opzione -t viene ignorata in modalità di esecuzione stand-alone.\n

@@ -249,6 +249,14 @@ cubrid 管理工具，版本 %1$s\n\
 41 没有安装 cubrid manager 服务.\n
 42 无效的参数.\n
 43 打开文件 (%1$s) 时出错.\n
+44 cubrid 应用工具, 版本 %1$s\n\
+用法: %2$s javasp <命令> [参数]\n\
+\n\
+可用命令:\n\
+    start       [数据库名]\n\
+    stop        [数据库名]\n\
+    restart     [数据库名]\n\
+    status      [数据库名]\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 警告: 在单机模式下 -t 选项将被忽略.\n

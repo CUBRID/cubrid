@@ -249,6 +249,14 @@ Mevcut komut:\n\
 41 CUBRID sunucu yöneticisi yüklü değildir.\n
 42 Değişken geçersiz.\n
 43 (%1$s) dosya açma hatası.\n
+44 cubrid yardımcı programı, sürüm %1$s\n\
+kullanım: %2$s javasp <komut> [args]\n\
+\n\
+Mevcut komut:\n\
+    start       [database-name]\n\
+    stop        [database-name]\n\
+    restart     [database-name]\n\
+    status      [database-name]\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 UYARI: -t seçeneği stand-alone modu yürütülmesine göz ardı edilir.\n
