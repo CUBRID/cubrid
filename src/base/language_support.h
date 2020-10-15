@@ -140,6 +140,7 @@ enum
 
   /* collation and charset do be used by system : */
 #define LANG_SYS_COLLATION  (LANG_GET_BINARY_COLLATION(lang_charset()))
+#define LANG_SYS_VARIATION  (LANG_SYS_COLLATION + COLL_TI)
 
 #define LANG_SYS_CODESET  lang_charset()
 
