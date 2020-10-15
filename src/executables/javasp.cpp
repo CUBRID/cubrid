@@ -132,12 +132,7 @@ main (int argc, char *argv[])
 	/* error message log file */
 	char er_msg_file[PATH_MAX];
 	snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_java.err", db_name.c_str ());
-	status = er_init (er_msg_file, ER_NEVER_EXIT);
-	if (status != NO_ERROR)
-	  {
-	    PRINT_AND_LOG_ERR_MSG ("Failed to initialize error manager.\n");
-	    goto exit;
-	  }
+	er_init (er_msg_file, ER_NEVER_EXIT);
       }
 
     /* check database exists and get path name of database */
@@ -153,6 +148,10 @@ main (int argc, char *argv[])
     status = javasp_get_server_info (db_name, jsp_info);
     if (status != NO_ERROR)
       {
+	char info_path[PATH_MAX], err_msg[PATH_MAX];
+	javasp_get_info_file (info_path, PATH_MAX, db_name.c_str ());
+	snprintf (err_msg, PATH_MAX, "Error while opening file (%s)", info_path);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, err_msg);
 	goto exit;
       }
 
@@ -194,8 +193,10 @@ main (int argc, char *argv[])
 	// check java stored procedure is not enabled
 	if (prm_get_bool_value (PRM_ID_JAVA_STORED_PROCEDURE) == false)
 	  {
-	    PRINT_AND_LOG_ERR_MSG ("%s parameter is not enabled\n", prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE));
-	    status = ER_GENERIC_ERROR;
+	    char err_msg[PATH_MAX];
+	    snprintf (err_msg, PATH_MAX, "%s system parameter is not enabled", prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE));
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, err_msg);
+	    status = ER_SP_CANNOT_START_JVM;
 	    goto exit;
 	  }
 
@@ -218,7 +219,7 @@ main (int argc, char *argv[])
       }
     else
       {
-	PRINT_AND_LOG_ERR_MSG ("Invalid command: %s\n", command.c_str ());
+	fprintf (stderr, "Invalid command: %s\n", command.c_str ());
 	status = ER_GENERIC_ERROR;
       }
 
@@ -288,10 +289,11 @@ javasp_start_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_na
 	  else
 	    {
 	      /* failed to write info file */
-	      status = ER_GENERIC_ERROR;
-	      char info_path[PATH_MAX];
+	      char info_path[PATH_MAX], err_msg[PATH_MAX];
 	      javasp_get_info_file (info_path, PATH_MAX, db_name.c_str ());
-	      PRINT_AND_LOG_ERR_MSG ("Error while writing to file: %s\n", info_path);
+	      snprintf (err_msg, PATH_MAX, "Error while writing to file: (%s)", info_path);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, err_msg);
+	      status = ER_SP_CANNOT_START_JVM;
 	    }
 	}
     }
@@ -550,9 +552,6 @@ javasp_get_server_info (const std::string &db_name, JAVASP_SERVER_INFO &info)
     }
   else
     {
-      char info_path[PATH_MAX];
-      javasp_get_info_file (info_path, PATH_MAX, db_name.c_str ());
-      PRINT_AND_LOG_ERR_MSG ("Error while opening file: %s\n", info_path);
       return ER_GENERIC_ERROR;
     }
 }
@@ -566,7 +565,7 @@ javasp_check_database (const std::string &db_name, std::string &path)
   DB_INFO *db = cfg_find_db (db_name.c_str ());
   if (db == NULL)
     {
-      PRINT_AND_LOG_ERR_MSG ("database '%s' does not exist.\n", db_name.c_str ());
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_DATABASE, 1, db_name.c_str ());
       status = ER_GENERIC_ERROR;
     }
   else
@@ -596,7 +595,7 @@ javasp_check_argument (int argc, char *argv[], std::string &command, std::string
     }
   else
     {
-      PRINT_AND_LOG_ERR_MSG ("Invalid number of arguments: %d\n", argc);
+      fprintf (stderr, "Invalid number of arguments: %d\n", argc);
       status = ER_GENERIC_ERROR;
     }
 
