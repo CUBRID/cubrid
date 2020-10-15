@@ -1153,8 +1153,7 @@ qmgr_process_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl_tree, char *xasl_s
 	}
       query_p->includes_tde_class = xasl_p->includes_tde_class;
 #if !defined(NDEBUG)
-      er_log_debug (ARG_FILE_LINE, "TDE: qmgr_process_query(): includes_tde_algorithm = %d\n",
-		    query_p->includes_tde_class);
+      er_log_debug (ARG_FILE_LINE, "TDE: qmgr_process_query(): includes_tde_class = %d\n", query_p->includes_tde_class);
 #endif /* !NDEBUG */
     }
 
@@ -1440,8 +1439,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
     }
 
 #if !defined(NDEBUG)
-  er_log_debug (ARG_FILE_LINE, "TDE: xqmgr_execute_query(): includes_tde_algorithm = %d\n",
-		query_p->includes_tde_class);
+  er_log_debug (ARG_FILE_LINE, "TDE: xqmgr_execute_query(): includes_tde_class = %d\n", query_p->includes_tde_class);
 #endif /* !NDEBUG */
 
   /* add the entry to the query table */
