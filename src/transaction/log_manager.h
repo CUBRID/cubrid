@@ -108,10 +108,8 @@ extern void log_append_undoredo_recdes2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX r
 					 PAGE_PTR pgptr, PGLENGTH offset, const RECDES * undo_recdes,
 					 const RECDES * redo_recdes);
 
-#if defined(ENABLE_UNUSED_FUNCTION)
 extern void log_append_undo_recdes (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
 				    const RECDES * recdes);
-#endif
 extern void log_append_undo_recdes2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VFID * vfid, PAGE_PTR pgptr,
 				     PGLENGTH offset, const RECDES * recdes);
 

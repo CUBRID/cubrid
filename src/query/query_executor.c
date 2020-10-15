@@ -8760,6 +8760,8 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
   bool need_locking;
   UPDDEL_CLASS_INSTANCE_LOCK_INFO class_instance_lock_info, *p_class_instance_lock_info = NULL;
 
+  thread_p->no_logging = (bool) update->no_logging;
+
   /* get the snapshot, before acquiring locks, since the transaction may be blocked and we need the snapshot when
    * update starts, not later */
   (void) logtb_get_mvcc_snapshot (thread_p);
@@ -9618,6 +9620,8 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   UPDDEL_MVCC_COND_REEVAL *mvcc_reev_classes = NULL, *mvcc_reev_class = NULL;
   bool need_locking;
   UPDDEL_CLASS_INSTANCE_LOCK_INFO class_instance_lock_info, *p_class_instance_lock_info = NULL;
+
+  thread_p->no_logging = (bool) delete_->no_logging;
 
   /* get the snapshot, before acquiring locks, since the transaction may be blocked and we need the snapshot when
    * delete starts, not later */
@@ -10898,6 +10902,8 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   int flag;
   TP_DOMAIN *result_domain;
   bool has_user_format;
+
+  thread_p->no_logging = (bool) insert->no_logging;
 
   aptr = xasl->aptr_list;
   val_no = insert->num_vals;
@@ -13646,6 +13652,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   bool instant_lock_mode_started = false;
   bool mvcc_select_lock_needed;
+  bool old_no_logging;
 
   /*
    * Pre_processing
@@ -13739,7 +13746,13 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	{
 	  old_wait_msecs = xlogtb_reset_wait_msecs (thread_p, xasl->proc.insert.wait_msecs);
 	}
+
+      old_no_logging = thread_p->no_logging;
+
       error = qexec_execute_insert (thread_p, xasl, xasl_state, false);
+
+      thread_p->no_logging = old_no_logging;
+
       if (old_wait_msecs != XASL_WAIT_MSECS_NOCHANGE)
 	{
 	  (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);

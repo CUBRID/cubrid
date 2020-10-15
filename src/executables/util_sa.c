@@ -1919,7 +1919,7 @@ alterdbhost (UTIL_FUNCTION_ARG * arg)
 #if 0				/* use Unix-domain socket for localhost */
       if (GETHOSTNAME (host_name_buf, CUB_MAXHOSTNAMELEN) != 0)
 	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 0);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, host_name_buf);
 	  goto error;
 	}
 #else

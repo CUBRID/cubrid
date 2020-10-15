@@ -305,10 +305,11 @@ net_connect_srv (T_CON_HANDLE * con_handle, int host_id, T_CCI_ERROR * err_buf, 
     {
       MUTEX_LOCK (create_ssl_mutex);
 
-      if (ssl_session_init (con_handle, srv_sock_fd) < 0)
+      ret_value = ssl_session_init (con_handle, srv_sock_fd);
+      if (ret_value < 0)
 	{
 	  MUTEX_UNLOCK (create_ssl_mutex);
-	  err_code = CCI_ER_COMMUNICATION;
+	  err_code = ret_value;
 	  goto connect_srv_error;
 	}
       MUTEX_UNLOCK (create_ssl_mutex);

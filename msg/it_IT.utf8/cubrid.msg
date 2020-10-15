@@ -184,7 +184,7 @@ $set 5 MSGCAT_SET_ERROR
 116 Database "%1$s" è sconosciuto, o la "databases.txt" file non è accessibile.
 117 Percorso assoluto per il database è troppo lungo. La lunghezza cumulata del path "%1$s" più il "%2$s" nome è %3$d, la lunghezza combinata deve essere inferiore a %4$d.
 118 Impossibile localizzare directory di lavoro corrente.
-119 Impossibile trovare nome dell'host locale.
+119 Impossibile trovare ("%1$s") in /etc/hosts. Controlla i permessi del file o se c'è il nome host.
 120 Il numero massimo di volumi (%1$d) è stato superato.
 121 Cercando di rimuovere un volume "%1$s" permanente dal database.
 122 Impossibile accedere al catalogo di messaggi di sistema.
@@ -415,7 +415,7 @@ $set 5 MSGCAT_SET_ERROR
 347 Impossibile stabilire una pipe per il server master.
 348 è necessario specificare un servizio o un identificatore di porta.
 349 Servizio sconosciuto per TCP: %1$s.
-350 Errore durante il recupero dell'host locale per nome per host "%1$s". Host non trovato.
+350 Impossibile trovare ("%1$s") in /etc/hosts. Controlla i permessi del file o se c'è il nome host.
 351 Impossibile creare un socket TCP.
 352 tcp_open: non è possibile ottenere una porta TCP riservata.
 353 Impossibile stabilire una connessione al server master sul host "%1$s".
@@ -1312,7 +1312,7 @@ $ LOADDB
 1243 Il caricamento dell'indice è stato interrotto dopo un errore.
 1244 Aggiornamento degli attributi shared dai file oggetto non è supportato in modalità CS.
 1245 Aggiornamento degli attributi di classe dai file oggetto non è supportato in modalità CS.
-1246 Errore durante il recupero delle informazioni sull'indirizzo e sul nome. Codice : %1$d, Messaggio : %2$s.
+1246 Impossibile ottenere l'indirizzo e il nome canonico per ("%1$s") in /etc/hosts. Verifica l'autorizzazione del file o se è presente il nome host.
 1247 Il tempo (%1$s) deve essere specificato dopo il tempo (%2$s) del backup specificato.
 
 1248 Ultimo errore

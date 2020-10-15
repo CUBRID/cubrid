@@ -9491,10 +9491,30 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
       if (p->info.spec.range_var && p->info.spec.range_var->info.name.original
 	  && p->info.spec.range_var->info.name.original[0])
 	{
-	  r1 = pt_print_bytes (parser, p->info.spec.range_var);
+	  bool insert_with_use_sbr = false;
 
-	  if (r1->length != q->length || memcmp (&r1->bytes, &q->bytes, q->length))
+	  if (parser->custom_print & PT_PRINT_ORIGINAL_BEFORE_CONST_FOLDING)
 	    {
+	      PT_NODE *cur_stmt = NULL;
+
+	      for (int i = 0; i < parser->statement_number; i++)
+		{
+		  if (parser->statements[i] != NULL)
+		    {
+		      cur_stmt = parser->statements[i];
+		      break;
+		    }
+		}
+
+	      if (cur_stmt->info.insert.hint & PT_HINT_USE_SBR)
+		{
+		  insert_with_use_sbr = true;
+		}
+	    }
+
+	  if (!insert_with_use_sbr)
+	    {
+	      r1 = pt_print_bytes (parser, p->info.spec.range_var);
 	      q = pt_append_nulstring (parser, q, " ");
 	      q = pt_append_varchar (parser, q, r1);
 	    }
@@ -12910,17 +12930,34 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
   b = pt_append_varchar (parser, b, r1);
   if (r2)
     {
-      char *class_name = NULL;
-
       b = pt_append_nulstring (parser, b, " (");
 
-      while (class_name = strstr ((char *) r2->bytes, (char *) r1->bytes))
+      if ((p->info.insert.hint & PT_HINT_USE_SBR) && (parser->custom_print & PT_PRINT_ORIGINAL_BEFORE_CONST_FOLDING))
 	{
-	  strcpy (class_name, class_name + r1->length + 1);
-	  r2->length = r2->length - r1->length - 1;
+	  PARSER_VARCHAR *column_list = NULL;
+	  PT_NODE *attr = NULL;
+
+	  attr = p->info.insert.attr_list;
+
+	  while (attr)
+	    {
+	      column_list = pt_append_name (parser, column_list, attr->info.name.original);
+
+	      attr = attr->next;
+
+	      if (attr)
+		{
+		  column_list = pt_append_nulstring (parser, column_list, ", ");
+		}
+	    }
+
+	  b = pt_append_varchar (parser, b, column_list);
+	}
+      else
+	{
+	  b = pt_append_varchar (parser, b, r2);
 	}
 
-      b = pt_append_varchar (parser, b, r2);
       b = pt_append_nulstring (parser, b, ") ");
     }
   else
