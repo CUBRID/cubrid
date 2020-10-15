@@ -1209,6 +1209,7 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info, int num_broker, in
       fprintf (fp, "APPL_SERVER_PORT\t=%d\n", br_info[i].appl_server_port);
 #endif
       fprintf (fp, "APPL_SERVER_SHM_ID\t=%x\n", br_info[i].appl_server_shm_id);
+      fprintf (fp, "SSL\t\t\t=%s\n", br_info[i].use_SSL ? "ON" : "OFF");
       fprintf (fp, "APPL_SERVER_MAX_SIZE\t=%d\n", br_info[i].appl_server_max_size / ONE_K);
       fprintf (fp, "SESSION_TIMEOUT\t\t=%d\n", br_info[i].session_timeout);
       fprintf (fp, "LOG_DIR\t\t\t=%s\n", br_info[i].log_dir);
