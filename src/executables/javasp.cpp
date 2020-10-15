@@ -188,17 +188,17 @@ main (int argc, char *argv[])
     // load system parameter
     sysprm_load_and_init (db_name.c_str (), NULL, SYSPRM_IGNORE_INTL_PARAMS);
 
-    // check java stored procedure is not enabled
-    if (prm_get_bool_value (PRM_ID_JAVA_STORED_PROCEDURE) == false)
-      {
-	PRINT_AND_LOG_ERR_MSG ("%s parameter is not enabled\n", prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE));
-	status = ER_GENERIC_ERROR;
-	goto exit;
-      }
-
     /* javasp command main routine */
     if (command.compare ("start") == 0)
       {
+	// check java stored procedure is not enabled
+	if (prm_get_bool_value (PRM_ID_JAVA_STORED_PROCEDURE) == false)
+	  {
+	    PRINT_AND_LOG_ERR_MSG ("%s parameter is not enabled\n", prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE));
+	    status = ER_GENERIC_ERROR;
+	    goto exit;
+	  }
+
 	status = javasp_start_server (jsp_info, db_name, pathname.c_str ());
 	if (status == NO_ERROR)
 	  {
