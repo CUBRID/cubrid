@@ -98,9 +98,15 @@
 			<currency type="KHR" />
 		</currencies>
 	</numbers>
-	<collations validSubLocales="km_KH">
-		<collation type="utf8_km_exp">
-			<settings id="132" strength="quaternary" caseLevel="on" caseFirst="upper" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="use" CUBRIDExpansions="use" />
+	<collations validSubLocales="km_KH_ti">
+		<collation type="utf8_km_exp_ti">
+			<settings id="134" strength="quaternary" caseLevel="on" caseFirst="upper" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="use" CUBRIDExpansions="use" />
+			<cubridrules>
+				<set>
+					<scp>20</scp>
+					<w>[0.0.0.0]</w>
+				</set>
+			</cubridrules>
 			<rules>
 				<reset><last_tertiary_ignorable/></reset>
 				<i>឴</i>
@@ -240,7 +246,7 @@
 				<p>ោះ</p>
 			</rules>
 		</collation>
-		<include file="common_collations.xml" />
+		<include file="common_collations_ti.xml" />
 	</collations>
 	<alphabets>
 		<alphabet CUBRIDAlphabetMode="UNICODEDATAFILE">

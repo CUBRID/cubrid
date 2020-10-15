@@ -98,9 +98,15 @@
 			<currency type="EUR" />
 		</currencies>
 	</numbers>
-	<collations validSubLocales="de_DE">
-		<collation type="utf8_de_exp">
-			<settings id="76" strength="tertiary" caseLevel="on" caseFirst="upper" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="ignore" CUBRIDExpansions="use" />
+	<collations validSubLocales="de_DE_ti">
+		<collation type="utf8_de_exp_ti">
+			<settings id="78" strength="tertiary" caseLevel="on" caseFirst="upper" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="ignore" CUBRIDExpansions="use" />
+			<cubridrules>
+				<set>
+					<scp>20</scp>
+					<w>[0.0.0.0]</w>
+				</set>
+			</cubridrules>		
 			<rules>
 				<reset>AE</reset>
 				<s>ä</s>
@@ -113,8 +119,14 @@
 				<t>Ü</t>
 			</rules>
 		</collation>
-		<collation type="utf8_de_exp_ai_ci">
-			<settings id="72" strength="primary" caseLevel="off" caseFirst="off" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="ignore" CUBRIDExpansions="use" />
+		<collation type="utf8_de_exp_ai_ci_ti">
+			<settings id="74" strength="primary" caseLevel="off" caseFirst="off" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="ignore" CUBRIDExpansions="use" />
+			<cubridrules>
+				<set>
+					<scp>20</scp>
+					<w>[0.0.0.0]</w>
+				</set>
+			</cubridrules>		
 			<rules>
 				<reset>AE</reset>
 				<s>ä</s>
@@ -127,7 +139,7 @@
 				<t>Ü</t>
 			</rules>
 		</collation>
-		<include file="common_collations.xml" />
+		<include file="common_collations_ti.xml" />
 	</collations>
 	<alphabets>
 		<alphabet CUBRIDAlphabetMode="UNICODEDATAFILE">

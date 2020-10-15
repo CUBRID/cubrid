@@ -98,11 +98,11 @@
 			<currency type="EUR" />
 		</currencies>
 	</numbers>
-	<collations validSubLocales="fr_FR">
-		<collation type="utf8_fr_exp_ab">
-			<settings id="94" strength="tertiary" backwards="on" caseLevel="on" caseFirst="upper" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="ignore" CUBRIDExpansions="use" />
+	<collations validSubLocales="fr_FR_ti">
+		<collation type="utf8_fr_exp_ab_ti">
+			<settings id="96" strength="tertiary" backwards="on" caseLevel="on" caseFirst="upper" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="ignore" CUBRIDExpansions="use" />
 		</collation>
-		<include file="common_collations.xml" />
+		<include file="common_collations_ti.xml" />
 	</collations>
 	<alphabets>
 		<alphabet CUBRIDAlphabetMode="UNICODEDATAFILE">

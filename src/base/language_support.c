@@ -337,6 +337,7 @@ static LANG_COLLATION coll_Utf8_en_cs = {
   /* collation data */
   {LANG_COLL_UTF8_EN_CS, "utf8_en_cs",
    LANG_COLL_GENERIC_SORT_OPT,
+   false,
    lang_Weight_EN_cs, lang_Next_alpha_char_EN_cs, LANG_CHAR_COUNT_EN,
    LANG_COLL_NO_EXP,
    LANG_COLL_NO_CONTR,
@@ -355,6 +356,7 @@ static LANG_COLLATION coll_Utf8_en_cs_ti = {
   /* collation data */
   {LANG_COLL_UTF8_EN_CS_TI, "utf8_en_cs_ti",
    LANG_COLL_GENERIC_SORT_OPT,
+   true,
    lang_Weight_EN_cs_ti, lang_Next_alpha_char_EN_cs_ti, LANG_CHAR_COUNT_EN,
    LANG_COLL_NO_EXP,
    LANG_COLL_NO_CONTR,
@@ -387,6 +389,7 @@ static LANG_COLLATION coll_Iso88591_en_cs = {
   /* collation data */
   {LANG_COLL_ISO_EN_CS, "iso88591_en_cs",
    LANG_COLL_GENERIC_SORT_OPT,
+   false,
    lang_Weight_EN_cs, lang_Next_alpha_char_EN_cs, LANG_CHAR_COUNT_EN,
    LANG_COLL_NO_EXP,
    LANG_COLL_NO_CONTR,
@@ -405,6 +408,7 @@ static LANG_COLLATION coll_Iso88591_en_cs_ti = {
   /* collation data */
   {LANG_COLL_ISO_EN_CS_TI, "iso88591_en_cs_ti",
    LANG_COLL_GENERIC_SORT_OPT,
+   true,
    lang_Weight_EN_cs_ti, lang_Next_alpha_char_EN_cs_ti, LANG_CHAR_COUNT_EN,
    LANG_COLL_NO_EXP,
    LANG_COLL_NO_CONTR,
@@ -577,6 +581,7 @@ static LANG_COLLATION coll_Utf8_ko_cs = {
   /* collation data - same as en_US.utf8 */
   {LANG_COLL_UTF8_KO_CS, "utf8_ko_cs",
    LANG_COLL_GENERIC_SORT_OPT,
+   false,
    lang_Weight_EN_cs, lang_Next_alpha_char_EN_cs, LANG_CHAR_COUNT_EN,
    LANG_COLL_NO_EXP,
    LANG_COLL_NO_CONTR,
@@ -595,6 +600,7 @@ static LANG_COLLATION coll_Utf8_ko_cs_ti = {
   /* collation data - same as en_US.utf8 */
   {LANG_COLL_UTF8_KO_CS_TI, "utf8_ko_cs_ti",
    LANG_COLL_GENERIC_SORT_OPT,
+   true,
    lang_Weight_EN_cs_ti, lang_Next_alpha_char_EN_cs_ti, LANG_CHAR_COUNT_EN,
    LANG_COLL_NO_EXP,
    LANG_COLL_NO_CONTR,
@@ -654,6 +660,7 @@ static LANG_COLLATION coll_Euckr_bin = {
   /* collation data */
   {LANG_COLL_EUCKR_BINARY, "euckr_bin",
    LANG_COLL_GENERIC_SORT_OPT,
+   false,
    lang_Weight_EN_cs, lang_Next_alpha_char_EN_cs, LANG_CHAR_COUNT_EN,
    LANG_COLL_NO_EXP,
    LANG_COLL_NO_CONTR,
@@ -672,6 +679,7 @@ static LANG_COLLATION coll_Euckr_bin_ti = {
   /* collation data */
   {LANG_COLL_EUCKR_BINARY_TI, "euckr_bin_ti",
    LANG_COLL_GENERIC_SORT_OPT,
+   true,
    lang_Weight_EN_cs_ti, lang_Next_alpha_char_EN_cs_ti, LANG_CHAR_COUNT_EN,
    LANG_COLL_NO_EXP,
    LANG_COLL_NO_CONTR,
@@ -729,6 +737,7 @@ static LANG_COLLATION coll_Binary = {
   /* collation data */
   {LANG_COLL_BINARY, "binary",
    LANG_COLL_GENERIC_SORT_OPT,
+   false,
    NULL, NULL, 0,
    LANG_COLL_NO_EXP,
    LANG_COLL_NO_CONTR,
@@ -770,6 +779,7 @@ static LANG_COLLATION coll_Iso_binary = {
   /* collation data */
   {LANG_COLL_ISO_BINARY, "iso88591_bin",
    LANG_COLL_GENERIC_SORT_OPT,
+   false,
    lang_Weight_EN_cs, lang_Next_alpha_char_EN_cs, LANG_CHAR_COUNT_EN,
    LANG_COLL_NO_EXP,
    LANG_COLL_NO_CONTR,
@@ -788,6 +798,7 @@ static LANG_COLLATION coll_Iso_binary_ti = {
   /* collation data */
   {LANG_COLL_ISO_BINARY_TI, "iso88591_bin_ti",
    LANG_COLL_GENERIC_SORT_OPT,
+   true,
    lang_Weight_EN_cs_ti, lang_Next_alpha_char_EN_cs_ti, LANG_CHAR_COUNT_EN,
    LANG_COLL_NO_EXP,
    LANG_COLL_NO_CONTR,
@@ -806,6 +817,7 @@ static LANG_COLLATION coll_Utf8_binary = {
   /* collation data */
   {LANG_COLL_UTF8_BINARY, "utf8_bin",
    LANG_COLL_GENERIC_SORT_OPT,
+   false,
    lang_Weight_EN_cs, lang_Next_alpha_char_EN_cs, LANG_CHAR_COUNT_EN,
    LANG_COLL_NO_EXP,
    LANG_COLL_NO_CONTR,
@@ -826,6 +838,7 @@ static LANG_COLLATION coll_Utf8_binary_ti = {
   /* collation data */
   {LANG_COLL_UTF8_BINARY_TI, "utf8_bin_ti",
    LANG_COLL_GENERIC_SORT_OPT,
+   true,
    lang_Weight_EN_cs_ti, lang_Next_alpha_char_EN_cs_ti, LANG_CHAR_COUNT_EN,
    LANG_COLL_NO_EXP,
    LANG_COLL_NO_CONTR,
@@ -846,6 +859,7 @@ static LANG_COLLATION coll_Iso88591_en_ci = {
   /* collation data */
   {LANG_COLL_ISO_EN_CI, "iso88591_en_ci",
    LANG_COLL_GENERIC_SORT_OPT,
+   false,
    lang_Weight_EN_ci, lang_Next_alpha_char_EN_ci, LANG_CHAR_COUNT_EN,
    LANG_COLL_NO_EXP,
    LANG_COLL_NO_CONTR,
@@ -864,6 +878,7 @@ static LANG_COLLATION coll_Iso88591_en_ci_ti = {
   /* collation data */
   {LANG_COLL_ISO_EN_CI_TI, "iso88591_en_ci_ti",
    LANG_COLL_GENERIC_SORT_OPT,
+   true,
    lang_Weight_EN_ci_ti, lang_Next_alpha_char_EN_ci_ti, LANG_CHAR_COUNT_EN,
    LANG_COLL_NO_EXP,
    LANG_COLL_NO_CONTR,
@@ -882,6 +897,7 @@ static LANG_COLLATION coll_Utf8_en_ci = {
   /* collation data */
   {LANG_COLL_UTF8_EN_CI, "utf8_en_ci",
    LANG_COLL_GENERIC_SORT_OPT,
+   false,
    lang_Weight_EN_ci, lang_Next_alpha_char_EN_ci, LANG_CHAR_COUNT_EN,
    LANG_COLL_NO_EXP,
    LANG_COLL_NO_CONTR,
@@ -900,6 +916,7 @@ static LANG_COLLATION coll_Utf8_en_ci_ti = {
   /* collation data */
   {LANG_COLL_UTF8_EN_CI_TI, "utf8_en_ci_ti",
    LANG_COLL_GENERIC_SORT_OPT,
+   true,
    lang_Weight_EN_ci_ti, lang_Next_alpha_char_EN_ci_ti, LANG_CHAR_COUNT_EN,
    LANG_COLL_NO_EXP,
    LANG_COLL_NO_CONTR,
@@ -918,6 +935,7 @@ static LANG_COLLATION coll_Utf8_tr_cs = {
   /* collation data */
   {LANG_COLL_UTF8_TR_CS, "utf8_tr_cs",
    LANG_COLL_GENERIC_SORT_OPT,
+   false,
    lang_Weight_TR, lang_Next_alpha_char_TR, LANG_CHAR_COUNT_TR,
    LANG_COLL_NO_EXP,
    LANG_COLL_NO_CONTR,
@@ -937,6 +955,7 @@ static LANG_COLLATION coll_Utf8_tr_cs_ti = {
   /* collation data */
   {LANG_COLL_UTF8_TR_CS_TI, "utf8_tr_cs_ti",
    LANG_COLL_GENERIC_SORT_OPT,
+   true,
    lang_Weight_TR_ti, lang_Next_alpha_char_TR_ti, LANG_CHAR_COUNT_TR,
    LANG_COLL_NO_EXP,
    LANG_COLL_NO_CONTR,
@@ -5458,15 +5477,15 @@ lang_init_common_en_cs (COLL_DATA * coll_data)
       coll_data->next_cp[i] = i + 1;
     }
 
-  if (coll_data->coll_id >= COLL_TI)
+  if (coll_data->is_ignore_trailing_space)
     {
       coll_data->weights[32] = 0;
       coll_data->next_cp[32] = 1;
-      is_common_en_cs_init = true;
+      is_common_en_cs_ti_init = true;
     }
   else
     {
-      is_common_en_cs_ti_init = true;
+      is_common_en_cs_init = true;
     }
 }
 
@@ -5504,15 +5523,15 @@ lang_init_common_en_ci (COLL_DATA * coll_data)
   coll_data->next_cp['z'] = coll_data->next_cp['Z'];
   coll_data->next_cp['a' - 1] = coll_data->next_cp['A' - 1];
 
-  if (coll_data->coll_id >= COLL_TI)
+  if (coll_data->is_ignore_trailing_space)
     {
       coll_data->weights[32] = 0;
       coll_data->next_cp[32] = 1;
-      is_common_en_ci_init = true;
+      is_common_en_ci_ti_init = true;
     }
   else
     {
-      is_common_en_ci_ti_init = true;
+      is_common_en_ci_init = true;
     }
 }
 
@@ -5974,7 +5993,7 @@ lang_init_coll_Utf8_tr_cs (LANG_COLLATION * lang_coll)
       lang_Next_alpha_char_TR[i] = i + 1;
     }
 
-  if (lang_coll->coll.coll_id >= COLL_TI)
+  if (lang_coll->coll.is_ignore_trailing_space)
     {
       lang_Weight_TR[32] = 0;
       lang_Next_alpha_char_TR[32] = 1;
