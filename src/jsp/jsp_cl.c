@@ -1983,7 +1983,7 @@ jsp_send_destroy_request (const SOCKET sockfd)
   OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
   char *request = OR_ALIGNED_BUF_START (a_request);
 
-  or_pack_int (request, SP_CODE_DESTROY);
+  or_pack_int (request, (int) SP_CODE_DESTROY);
   int nbytes = jsp_writen (sockfd, request, (int) sizeof (int));
   if (nbytes != (int) sizeof (int))
     {
@@ -1997,7 +1997,7 @@ jsp_send_destroy_request (const SOCKET sockfd)
   if (nbytes != (int) sizeof (int))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
-      return ER_SP_NETWORK_ERROR;
+      return er_errid ();
     }
   code = ntohl (code);
 
@@ -2010,7 +2010,7 @@ jsp_send_destroy_request (const SOCKET sockfd)
       tran_end_libcas_function ();
       ssl_client = mode;
     }
-  else				/* SP_CODE_END */
+  else
     {
       /* end */
     }
@@ -2842,8 +2842,9 @@ end:
   if (error != NO_ERROR || is_prepare_call[call_cnt])
     {
       jsp_send_destroy_request (sock_fd);
-      jsp_disconnect_server (sock_fd);
-      sock_fds[call_cnt] = INVALID_SOCKET;
+      <<<<<<<HEAD jsp_disconnect_server (sock_fd);
+      == == == = jsp_close_internal_connection (sock_fd);
+      >>>>>>>upstream / develop sock_fds[call_cnt] = INVALID_SOCKET;
     }
 
   return error;

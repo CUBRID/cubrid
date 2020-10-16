@@ -165,7 +165,6 @@ public class UServerSideConnection extends UConnection {
 		try {
 			setBeginTime();
 			checkReconnect();
-			
 			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 				return;
 

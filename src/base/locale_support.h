@@ -359,6 +359,8 @@ struct coll_data
 
   UCA_OPTIONS uca_opt;
 
+  bool is_ignore_trailing_space;	/* check if the collation is ti-style */
+
   unsigned int *weights;	/* array of weight (one weight per CP) */
   unsigned int *next_cp;	/* next CP (in order defined by collation) */
   int w_count;			/* # of codepoints in this collation */

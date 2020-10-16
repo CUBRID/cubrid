@@ -98,9 +98,15 @@
 			<currency type="VND" />
 		</currencies>
 	</numbers>
-	<collations validSubLocales="vi_VN">
-		<collation type="utf8_vi_cs">
-			<settings id="221" strength="quaternary" caseLevel="on" caseFirst="upper" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="ignore" />
+	<collations validSubLocales="vi_VN_ti">
+		<collation type="utf8_vi_cs_ti">
+			<settings id="223" strength="quaternary" caseLevel="on" caseFirst="upper" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="ignore" />
+			<cubridrules>
+				<set>
+					<scp>20</scp>
+					<w>[0.0.0.0]</w>
+				</set>
+			</cubridrules>
 			<rules>
 				<reset>̀</reset>
 				<sc>̣̉̃́</sc>
@@ -125,7 +131,7 @@
 				<t>Ư</t>
 			</rules>
 		</collation>
-		<include file="common_collations.xml" />
+		<include file="common_collations_ti.xml" />
 	</collations>
 	<alphabets>
 		<alphabet CUBRIDAlphabetMode="UNICODEDATAFILE">

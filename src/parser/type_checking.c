@@ -22950,7 +22950,6 @@ int
 pt_common_collation (PT_COLL_INFER * arg1_coll_infer, PT_COLL_INFER * arg2_coll_infer, PT_COLL_INFER * arg3_coll_infer,
 		     const int args_w_coll, bool op_has_3_args, int *common_coll, INTL_CODESET * common_cs)
 {
-#define IS_SAME_VARIATION(c1,c2) ((c1) == (c2) || (c1) - (c2) == COLL_TS || (c2) - (c1) == COLL_TS)
 #define MORE_COERCIBLE(arg1_coll_infer, arg2_coll_infer)		     \
   ((((arg1_coll_infer)->can_force_cs) && !((arg2_coll_infer)->can_force_cs)) \
    || ((arg1_coll_infer)->coerc_level > (arg2_coll_infer)->coerc_level	     \
@@ -22966,7 +22965,7 @@ pt_common_collation (PT_COLL_INFER * arg1_coll_infer, PT_COLL_INFER * arg2_coll_
       assert (arg3_coll_infer != NULL);
     }
 
-  if (!IS_SAME_VARIATION (arg1_coll_infer->coll_id, arg2_coll_infer->coll_id)
+  if (!COLL_IS_SAME_VARIATION (arg1_coll_infer->coll_id, arg2_coll_infer->coll_id)
       && arg1_coll_infer->coerc_level == arg2_coll_infer->coerc_level
       && arg1_coll_infer->can_force_cs == arg2_coll_infer->can_force_cs)
     {
@@ -22979,11 +22978,19 @@ pt_common_collation (PT_COLL_INFER * arg1_coll_infer, PT_COLL_INFER * arg2_coll_
 	{
 	  goto error;
 	}
-      *common_coll = arg2_coll_infer->coll_id;
-      *common_cs = arg2_coll_infer->codeset;
+      if (lang_coll_is_ti (arg1_coll_infer->coll_id))
+	{
+	  *common_coll = arg1_coll_infer->coll_id;
+	  *common_cs = arg1_coll_infer->codeset;
+	}
+      else
+	{
+	  *common_coll = arg2_coll_infer->coll_id;
+	  *common_cs = arg2_coll_infer->codeset;
+	}
 
       /* check arg3 */
-      if (op_has_3_args && arg3_coll_infer->coll_id != *common_coll)
+      if (op_has_3_args && !COLL_IS_SAME_VARIATION (arg3_coll_infer->coll_id, *common_coll))
 	{
 	  bool set_arg3 = false;
 
@@ -23014,8 +23021,11 @@ pt_common_collation (PT_COLL_INFER * arg1_coll_infer, PT_COLL_INFER * arg2_coll_
 		  goto error;
 		}
 
-	      *common_coll = arg3_coll_infer->coll_id;
-	      *common_cs = arg3_coll_infer->codeset;
+	      if (lang_coll_is_ti (arg3_coll_infer->coll_id))
+		{
+		  *common_coll = arg3_coll_infer->coll_id;
+		  *common_cs = arg3_coll_infer->codeset;
+		}
 	    }
 	  else
 	    {
@@ -23026,15 +23036,15 @@ pt_common_collation (PT_COLL_INFER * arg1_coll_infer, PT_COLL_INFER * arg2_coll_
 		  goto error;
 		}
 
-	      assert (*common_coll == arg2_coll_infer->coll_id);
-	      assert (*common_cs == arg2_coll_infer->codeset);
+	      assert (*common_coll == arg1_coll_infer->coll_id || *common_coll == arg2_coll_infer->coll_id);
+	      assert (*common_cs == arg1_coll_infer->codeset || *common_cs == arg2_coll_infer->codeset);
 	    }
 	}
     }
   else
     {
       assert (MORE_COERCIBLE (arg2_coll_infer, arg1_coll_infer)
-	      || IS_SAME_VARIATION (arg2_coll_infer->coll_id, arg1_coll_infer->coll_id));
+	      || COLL_IS_SAME_VARIATION (arg2_coll_infer->coll_id, arg1_coll_infer->coll_id));
 
       /* coerce arg2 collation */
       if (!INTL_CAN_COERCE_CS (arg2_coll_infer->codeset, arg1_coll_infer->codeset) && !arg2_coll_infer->can_force_cs)
@@ -23042,11 +23052,19 @@ pt_common_collation (PT_COLL_INFER * arg1_coll_infer, PT_COLL_INFER * arg2_coll_
 	  goto error;
 	}
 
-      *common_coll = arg1_coll_infer->coll_id;
-      *common_cs = arg1_coll_infer->codeset;
+      if (lang_coll_is_ti (arg1_coll_infer->coll_id))
+	{
+	  *common_coll = arg1_coll_infer->coll_id;
+	  *common_cs = arg1_coll_infer->codeset;
+	}
+      else
+	{
+	  *common_coll = arg2_coll_infer->coll_id;
+	  *common_cs = arg2_coll_infer->codeset;
+	}
 
       /* check arg3 */
-      if (op_has_3_args && arg3_coll_infer->coll_id != *common_coll)
+      if (op_has_3_args && !COLL_IS_SAME_VARIATION (arg3_coll_infer->coll_id, *common_coll))
 	{
 	  bool set_arg3 = false;
 	  if (MORE_COERCIBLE (arg1_coll_infer, arg3_coll_infer))
@@ -23077,8 +23095,11 @@ pt_common_collation (PT_COLL_INFER * arg1_coll_infer, PT_COLL_INFER * arg2_coll_
 		  goto error;
 		}
 
-	      *common_coll = arg3_coll_infer->coll_id;
-	      *common_cs = arg3_coll_infer->codeset;
+	      if (lang_coll_is_ti (arg3_coll_infer->coll_id))
+		{
+		  *common_coll = arg3_coll_infer->coll_id;
+		  *common_cs = arg3_coll_infer->codeset;
+		}
 	    }
 	  else
 	    {
@@ -23089,8 +23110,8 @@ pt_common_collation (PT_COLL_INFER * arg1_coll_infer, PT_COLL_INFER * arg2_coll_
 		  goto error;
 		}
 
-	      assert (*common_coll == arg1_coll_infer->coll_id);
-	      assert (*common_cs == arg1_coll_infer->codeset);
+	      assert (*common_coll == arg1_coll_infer->coll_id || *common_coll == arg2_coll_infer->coll_id);
+	      assert (*common_cs == arg1_coll_infer->codeset || *common_cs == arg2_coll_infer->codeset);
 	    }
 	}
     }

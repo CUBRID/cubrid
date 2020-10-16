@@ -98,9 +98,15 @@
 			<currency type="TRY" />
 		</currencies>		
 	</numbers>
-	<collations validSubLocales="tr_TR">
-		<collation type="utf8_tr_cs_uca">
-			<settings id="205" strength="quaternary" caseLevel="on" caseFirst="upper" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="ignore" />
+	<collations validSubLocales="tr_TR_ti">
+		<collation type="utf8_tr_cs_uca_ti">
+			<settings id="207" strength="quaternary" caseLevel="on" caseFirst="upper" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="ignore" />
+			<cubridrules>
+				<set>
+					<scp>20</scp>
+					<w>[0.0.0.0]</w>
+				</set>
+			</cubridrules>
 			<rules>
 				<reset>C</reset>
 				<p>ç</p>
@@ -124,7 +130,7 @@
 				<t>Ü</t>
 			</rules>
 		</collation>
-		<include file="common_collations.xml" />
+		<include file="common_collations_ti.xml" />
 	</collations>
 	<alphabets>
 		<alphabet CUBRIDAlphabetMode="UNICODEDATAFILE">

@@ -48,22 +48,21 @@ public class UStatementHandlerCache {
 			List<UStatementHandlerCacheEntry> vec = new ArrayList<UStatementHandlerCacheEntry>();
 			stmtHandlerCache.putIfAbsent(sql, vec);
 		}
-		
+
 		return stmtHandlerCache.get(sql);
 	}
-	
+
 	public void destroy () {
 		for (Entry<String, List<UStatementHandlerCacheEntry>> entry : stmtHandlerCache.entrySet()) {
 			List<UStatementHandlerCacheEntry> cacheEntries = entry.getValue();
 			for (UStatementHandlerCacheEntry e: cacheEntries) {
 				UStatement s = e.getStatement();
-				s.closeCursor();
 				s.close();
 			}
 		}
 		stmtHandlerCache.clear();
 	}
-	
+
 	public void clearStatus () {
 		for (Entry<String, List<UStatementHandlerCacheEntry>> entry : stmtHandlerCache.entrySet()) {
 			List<UStatementHandlerCacheEntry> cacheEntries = entry.getValue();

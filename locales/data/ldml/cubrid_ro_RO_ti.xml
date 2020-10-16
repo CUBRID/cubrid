@@ -98,9 +98,15 @@
 			<currency type="RON" />
 		</currencies>
 	</numbers>
-	<collations validSubLocales="ro_RO">
-		<collation type="utf8_ro_cs">
-			<settings id="77" strength="tertiary" backwards="off" caseLevel="on" caseFirst="upper" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="ignore" CUBRIDExpansions="ignore" />
+	<collations validSubLocales="ro_RO_ti">
+		<collation type="utf8_ro_cs_ti">
+			<settings id="79" strength="tertiary" backwards="off" caseLevel="on" caseFirst="upper" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="ignore" CUBRIDExpansions="ignore" />
+			<cubridrules>
+				<set>
+					<scp>20</scp>
+					<w>[0.0.0.0]</w>
+				</set>
+			</cubridrules>
 			<rules>
 				<reset>A</reset>
 				<p>ă</p>
@@ -122,7 +128,7 @@
 				<i>Ț</i>
 			</rules>
 		</collation>
-		<include file="common_collations.xml" />
+		<include file="common_collations_ti.xml" />
 	</collations>
 	<alphabets>
 		<alphabet CUBRIDAlphabetMode="UNICODEDATAFILE">

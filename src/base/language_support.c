@@ -59,7 +59,6 @@
 #define EUC_SPACE 0xa1		/* for euckr */
 #define ASCII_SPACE 0x20
 
-
 static INTL_LANG lang_Lang_id = INTL_LANG_ENGLISH;
 static INTL_CODESET lang_Loc_charset = INTL_CODESET_ISO88591;
 static char lang_Loc_name[LANG_MAX_LANGNAME] = LANG_NAME_DEFAULT;
@@ -86,17 +85,17 @@ static unsigned int lang_Next_alpha_char_EN_cs[LANG_CHAR_COUNT_EN];
 static unsigned int lang_Weight_EN_ci[LANG_CHAR_COUNT_EN];
 static unsigned int lang_Next_alpha_char_EN_ci[LANG_CHAR_COUNT_EN];
 
-static unsigned int lang_Weight_EN_cs_ts[LANG_CHAR_COUNT_EN];
-static unsigned int lang_Next_alpha_char_EN_cs_ts[LANG_CHAR_COUNT_EN];
+static unsigned int lang_Weight_EN_cs_ti[LANG_CHAR_COUNT_EN];
+static unsigned int lang_Next_alpha_char_EN_cs_ti[LANG_CHAR_COUNT_EN];
 
-static unsigned int lang_Weight_EN_ci_ts[LANG_CHAR_COUNT_EN];
-static unsigned int lang_Next_alpha_char_EN_ci_ts[LANG_CHAR_COUNT_EN];
+static unsigned int lang_Weight_EN_ci_ti[LANG_CHAR_COUNT_EN];
+static unsigned int lang_Next_alpha_char_EN_ci_ti[LANG_CHAR_COUNT_EN];
 
 static unsigned int lang_Weight_TR[LANG_CHAR_COUNT_TR];
 static unsigned int lang_Next_alpha_char_TR[LANG_CHAR_COUNT_TR];
 
-static unsigned int lang_Weight_TR_ts[LANG_CHAR_COUNT_TR];
-static unsigned int lang_Next_alpha_char_TR_ts[LANG_CHAR_COUNT_TR];
+static unsigned int lang_Weight_TR_ti[LANG_CHAR_COUNT_TR];
+static unsigned int lang_Next_alpha_char_TR_ti[LANG_CHAR_COUNT_TR];
 
 #define DEFAULT_COLL_OPTIONS {true, true, true}
 #define CI_COLL_OPTIONS {false, false, true}
@@ -334,9 +333,11 @@ static void lang_init_common_en_cs (COLL_DATA * coll_data);
 
 static LANG_COLLATION coll_Utf8_en_cs = {
   INTL_CODESET_UTF8, 1, 1, DEFAULT_COLL_OPTIONS, NULL,
+  LANG_COLL_UTF8_EN_CS_TI, false,
   /* collation data */
   {LANG_COLL_UTF8_EN_CS, "utf8_en_cs",
    LANG_COLL_GENERIC_SORT_OPT,
+   false,
    lang_Weight_EN_cs, lang_Next_alpha_char_EN_cs, LANG_CHAR_COUNT_EN,
    LANG_COLL_NO_EXP,
    LANG_COLL_NO_CONTR,
@@ -349,12 +350,14 @@ static LANG_COLLATION coll_Utf8_en_cs = {
   lang_init_coll_en_cs
 };
 
-static LANG_COLLATION coll_Utf8_en_cs_ts = {
+static LANG_COLLATION coll_Utf8_en_cs_ti = {
   INTL_CODESET_UTF8, 1, 1, DEFAULT_COLL_OPTIONS, NULL,
+  LANG_COLL_UTF8_EN_CS, false,
   /* collation data */
-  {LANG_COLL_UTF8_EN_CS_TS, "utf8_en_cs_ts",
+  {LANG_COLL_UTF8_EN_CS_TI, "utf8_en_cs_ti",
    LANG_COLL_GENERIC_SORT_OPT,
-   lang_Weight_EN_cs_ts, lang_Next_alpha_char_EN_cs_ts, LANG_CHAR_COUNT_EN,
+   true,
+   lang_Weight_EN_cs_ti, lang_Next_alpha_char_EN_cs_ti, LANG_CHAR_COUNT_EN,
    LANG_COLL_NO_EXP,
    LANG_COLL_NO_CONTR,
    "1bdb1b1f630edc508be37f66dfdce7b0"},
@@ -382,9 +385,11 @@ static void lang_initloc_tr_utf8 (LANG_LOCALE_DATA * ld);
 
 static LANG_COLLATION coll_Iso88591_en_cs = {
   INTL_CODESET_ISO88591, 1, 0, DEFAULT_COLL_OPTIONS, NULL,
+  LANG_COLL_ISO_EN_CS_TI, false,
   /* collation data */
   {LANG_COLL_ISO_EN_CS, "iso88591_en_cs",
    LANG_COLL_GENERIC_SORT_OPT,
+   false,
    lang_Weight_EN_cs, lang_Next_alpha_char_EN_cs, LANG_CHAR_COUNT_EN,
    LANG_COLL_NO_EXP,
    LANG_COLL_NO_CONTR,
@@ -397,12 +402,14 @@ static LANG_COLLATION coll_Iso88591_en_cs = {
   NULL
 };
 
-static LANG_COLLATION coll_Iso88591_en_cs_ts = {
+static LANG_COLLATION coll_Iso88591_en_cs_ti = {
   INTL_CODESET_ISO88591, 1, 0, DEFAULT_COLL_OPTIONS, NULL,
+  LANG_COLL_ISO_EN_CS, false,
   /* collation data */
-  {LANG_COLL_ISO_EN_CS_TS, "iso88591_en_cs_ts",
+  {LANG_COLL_ISO_EN_CS_TI, "iso88591_en_cs_ti",
    LANG_COLL_GENERIC_SORT_OPT,
-   lang_Weight_EN_cs_ts, lang_Next_alpha_char_EN_cs_ts, LANG_CHAR_COUNT_EN,
+   true,
+   lang_Weight_EN_cs_ti, lang_Next_alpha_char_EN_cs_ti, LANG_CHAR_COUNT_EN,
    LANG_COLL_NO_EXP,
    LANG_COLL_NO_CONTR,
    "707cef004e58be204d999d8a2abb4cc3"},
@@ -570,9 +577,11 @@ static LANG_LOCALE_DATA lc_Korean_iso88591 = {
 
 static LANG_COLLATION coll_Utf8_ko_cs = {
   INTL_CODESET_UTF8, 1, 1, DEFAULT_COLL_OPTIONS, NULL,
+  LANG_COLL_UTF8_KO_CS_TI, false,
   /* collation data - same as en_US.utf8 */
   {LANG_COLL_UTF8_KO_CS, "utf8_ko_cs",
    LANG_COLL_GENERIC_SORT_OPT,
+   false,
    lang_Weight_EN_cs, lang_Next_alpha_char_EN_cs, LANG_CHAR_COUNT_EN,
    LANG_COLL_NO_EXP,
    LANG_COLL_NO_CONTR,
@@ -585,12 +594,14 @@ static LANG_COLLATION coll_Utf8_ko_cs = {
   lang_init_coll_en_cs
 };
 
-static LANG_COLLATION coll_Utf8_ko_cs_ts = {
+static LANG_COLLATION coll_Utf8_ko_cs_ti = {
   INTL_CODESET_UTF8, 1, 1, DEFAULT_COLL_OPTIONS, NULL,
+  LANG_COLL_UTF8_KO_CS, false,
   /* collation data - same as en_US.utf8 */
-  {LANG_COLL_UTF8_KO_CS_TS, "utf8_ko_cs_ts",
+  {LANG_COLL_UTF8_KO_CS_TI, "utf8_ko_cs_ti",
    LANG_COLL_GENERIC_SORT_OPT,
-   lang_Weight_EN_cs_ts, lang_Next_alpha_char_EN_cs_ts, LANG_CHAR_COUNT_EN,
+   true,
+   lang_Weight_EN_cs_ti, lang_Next_alpha_char_EN_cs_ti, LANG_CHAR_COUNT_EN,
    LANG_COLL_NO_EXP,
    LANG_COLL_NO_CONTR,
    "422c85ede1e265a761078763d2240c81"},
@@ -645,9 +656,11 @@ static LANG_LOCALE_DATA lc_Korean_utf8 = {
 
 static LANG_COLLATION coll_Euckr_bin = {
   INTL_CODESET_KSC5601_EUC, 1, 0, DEFAULT_COLL_OPTIONS, NULL,
+  LANG_COLL_EUCKR_BINARY_TI, true,
   /* collation data */
   {LANG_COLL_EUCKR_BINARY, "euckr_bin",
    LANG_COLL_GENERIC_SORT_OPT,
+   false,
    lang_Weight_EN_cs, lang_Next_alpha_char_EN_cs, LANG_CHAR_COUNT_EN,
    LANG_COLL_NO_EXP,
    LANG_COLL_NO_CONTR,
@@ -660,12 +673,14 @@ static LANG_COLLATION coll_Euckr_bin = {
   lang_init_coll_en_cs
 };
 
-static LANG_COLLATION coll_Euckr_bin_ts = {
+static LANG_COLLATION coll_Euckr_bin_ti = {
   INTL_CODESET_KSC5601_EUC, 1, 0, DEFAULT_COLL_OPTIONS, NULL,
+  LANG_COLL_EUCKR_BINARY, true,
   /* collation data */
-  {LANG_COLL_EUCKR_BINARY_TS, "euckr_bin_ts",
+  {LANG_COLL_EUCKR_BINARY_TI, "euckr_bin_ti",
    LANG_COLL_GENERIC_SORT_OPT,
-   lang_Weight_EN_cs_ts, lang_Next_alpha_char_EN_cs_ts, LANG_CHAR_COUNT_EN,
+   true,
+   lang_Weight_EN_cs_ti, lang_Next_alpha_char_EN_cs_ti, LANG_CHAR_COUNT_EN,
    LANG_COLL_NO_EXP,
    LANG_COLL_NO_CONTR,
    "18fb633e87f0a3a785ef38cf2a6a7789"},
@@ -718,9 +733,11 @@ static LANG_LOCALE_DATA lc_Korean_euckr = {
 
 static LANG_COLLATION coll_Binary = {
   INTL_CODESET_BINARY, 1, 0, DEFAULT_COLL_OPTIONS, NULL,
+  -1, false,
   /* collation data */
   {LANG_COLL_BINARY, "binary",
    LANG_COLL_GENERIC_SORT_OPT,
+   false,
    NULL, NULL, 0,
    LANG_COLL_NO_EXP,
    LANG_COLL_NO_CONTR,
@@ -758,9 +775,11 @@ static LANG_LOCALE_DATA *lang_Loc_data = &lc_English_iso88591;
 
 static LANG_COLLATION coll_Iso_binary = {
   INTL_CODESET_ISO88591, 1, 0, DEFAULT_COLL_OPTIONS, NULL,
+  LANG_COLL_ISO_BINARY_TI, true,
   /* collation data */
   {LANG_COLL_ISO_BINARY, "iso88591_bin",
    LANG_COLL_GENERIC_SORT_OPT,
+   false,
    lang_Weight_EN_cs, lang_Next_alpha_char_EN_cs, LANG_CHAR_COUNT_EN,
    LANG_COLL_NO_EXP,
    LANG_COLL_NO_CONTR,
@@ -773,12 +792,14 @@ static LANG_COLLATION coll_Iso_binary = {
   NULL
 };
 
-static LANG_COLLATION coll_Iso_binary_ts = {
+static LANG_COLLATION coll_Iso_binary_ti = {
   INTL_CODESET_ISO88591, 1, 0, DEFAULT_COLL_OPTIONS, NULL,
+  LANG_COLL_ISO_BINARY, true,
   /* collation data */
-  {LANG_COLL_ISO_BINARY_TS, "iso88591_bin_ts",
+  {LANG_COLL_ISO_BINARY_TI, "iso88591_bin_ti",
    LANG_COLL_GENERIC_SORT_OPT,
-   lang_Weight_EN_cs_ts, lang_Next_alpha_char_EN_cs_ts, LANG_CHAR_COUNT_EN,
+   true,
+   lang_Weight_EN_cs_ti, lang_Next_alpha_char_EN_cs_ti, LANG_CHAR_COUNT_EN,
    LANG_COLL_NO_EXP,
    LANG_COLL_NO_CONTR,
    "54735f231842c3a673161fc90670989b"},
@@ -792,9 +813,11 @@ static LANG_COLLATION coll_Iso_binary_ts = {
 
 static LANG_COLLATION coll_Utf8_binary = {
   INTL_CODESET_UTF8, 1, 0, DEFAULT_COLL_OPTIONS, NULL,
+  LANG_COLL_UTF8_BINARY_TI, true,
   /* collation data */
   {LANG_COLL_UTF8_BINARY, "utf8_bin",
    LANG_COLL_GENERIC_SORT_OPT,
+   false,
    lang_Weight_EN_cs, lang_Next_alpha_char_EN_cs, LANG_CHAR_COUNT_EN,
    LANG_COLL_NO_EXP,
    LANG_COLL_NO_CONTR,
@@ -809,12 +832,14 @@ static LANG_COLLATION coll_Utf8_binary = {
   NULL
 };
 
-static LANG_COLLATION coll_Utf8_binary_ts = {
+static LANG_COLLATION coll_Utf8_binary_ti = {
   INTL_CODESET_UTF8, 1, 0, DEFAULT_COLL_OPTIONS, NULL,
+  LANG_COLL_UTF8_BINARY, true,
   /* collation data */
-  {LANG_COLL_UTF8_BINARY_TS, "utf8_bin_ts",
+  {LANG_COLL_UTF8_BINARY_TI, "utf8_bin_ti",
    LANG_COLL_GENERIC_SORT_OPT,
-   lang_Weight_EN_cs_ts, lang_Next_alpha_char_EN_cs_ts, LANG_CHAR_COUNT_EN,
+   true,
+   lang_Weight_EN_cs_ti, lang_Next_alpha_char_EN_cs_ti, LANG_CHAR_COUNT_EN,
    LANG_COLL_NO_EXP,
    LANG_COLL_NO_CONTR,
    "d16a9a3825e263f76028c1e8c3cd043d"},
@@ -830,9 +855,11 @@ static LANG_COLLATION coll_Utf8_binary_ts = {
 
 static LANG_COLLATION coll_Iso88591_en_ci = {
   INTL_CODESET_ISO88591, 1, 0, CI_COLL_OPTIONS, NULL,
+  LANG_COLL_ISO_EN_CI_TI, false,
   /* collation data */
   {LANG_COLL_ISO_EN_CI, "iso88591_en_ci",
    LANG_COLL_GENERIC_SORT_OPT,
+   false,
    lang_Weight_EN_ci, lang_Next_alpha_char_EN_ci, LANG_CHAR_COUNT_EN,
    LANG_COLL_NO_EXP,
    LANG_COLL_NO_CONTR,
@@ -845,12 +872,14 @@ static LANG_COLLATION coll_Iso88591_en_ci = {
   lang_init_coll_en_ci
 };
 
-static LANG_COLLATION coll_Iso88591_en_ci_ts = {
+static LANG_COLLATION coll_Iso88591_en_ci_ti = {
   INTL_CODESET_ISO88591, 1, 0, CI_COLL_OPTIONS, NULL,
+  LANG_COLL_ISO_EN_CI, false,
   /* collation data */
-  {LANG_COLL_ISO_EN_CI_TS, "iso88591_en_ci_ts",
+  {LANG_COLL_ISO_EN_CI_TI, "iso88591_en_ci_ti",
    LANG_COLL_GENERIC_SORT_OPT,
-   lang_Weight_EN_ci_ts, lang_Next_alpha_char_EN_ci_ts, LANG_CHAR_COUNT_EN,
+   true,
+   lang_Weight_EN_ci_ti, lang_Next_alpha_char_EN_ci_ti, LANG_CHAR_COUNT_EN,
    LANG_COLL_NO_EXP,
    LANG_COLL_NO_CONTR,
    "b3fb4c073fbc76c5ec302da9128d9542"},
@@ -864,9 +893,11 @@ static LANG_COLLATION coll_Iso88591_en_ci_ts = {
 
 static LANG_COLLATION coll_Utf8_en_ci = {
   INTL_CODESET_UTF8, 1, 1, CI_COLL_OPTIONS, NULL,
+  LANG_COLL_UTF8_EN_CI_TI, false,
   /* collation data */
   {LANG_COLL_UTF8_EN_CI, "utf8_en_ci",
    LANG_COLL_GENERIC_SORT_OPT,
+   false,
    lang_Weight_EN_ci, lang_Next_alpha_char_EN_ci, LANG_CHAR_COUNT_EN,
    LANG_COLL_NO_EXP,
    LANG_COLL_NO_CONTR,
@@ -879,12 +910,14 @@ static LANG_COLLATION coll_Utf8_en_ci = {
   lang_init_coll_en_ci
 };
 
-static LANG_COLLATION coll_Utf8_en_ci_ts = {
+static LANG_COLLATION coll_Utf8_en_ci_ti = {
   INTL_CODESET_UTF8, 1, 1, CI_COLL_OPTIONS, NULL,
+  LANG_COLL_UTF8_EN_CI, false,
   /* collation data */
-  {LANG_COLL_UTF8_EN_CI_TS, "utf8_en_ci_ts",
+  {LANG_COLL_UTF8_EN_CI_TI, "utf8_en_ci_ti",
    LANG_COLL_GENERIC_SORT_OPT,
-   lang_Weight_EN_ci_ts, lang_Next_alpha_char_EN_ci_ts, LANG_CHAR_COUNT_EN,
+   true,
+   lang_Weight_EN_ci_ti, lang_Next_alpha_char_EN_ci_ti, LANG_CHAR_COUNT_EN,
    LANG_COLL_NO_EXP,
    LANG_COLL_NO_CONTR,
    "3050bc8e9814b196f4bbb84759aab77c"},
@@ -898,9 +931,11 @@ static LANG_COLLATION coll_Utf8_en_ci_ts = {
 
 static LANG_COLLATION coll_Utf8_tr_cs = {
   INTL_CODESET_UTF8, 1, 1, DEFAULT_COLL_OPTIONS, NULL,
+  LANG_COLL_UTF8_TR_CS_TI, false,
   /* collation data */
   {LANG_COLL_UTF8_TR_CS, "utf8_tr_cs",
    LANG_COLL_GENERIC_SORT_OPT,
+   false,
    lang_Weight_TR, lang_Next_alpha_char_TR, LANG_CHAR_COUNT_TR,
    LANG_COLL_NO_EXP,
    LANG_COLL_NO_CONTR,
@@ -914,12 +949,14 @@ static LANG_COLLATION coll_Utf8_tr_cs = {
 };
 
 
-static LANG_COLLATION coll_Utf8_tr_cs_ts = {
+static LANG_COLLATION coll_Utf8_tr_cs_ti = {
   INTL_CODESET_UTF8, 1, 1, DEFAULT_COLL_OPTIONS, NULL,
+  LANG_COLL_UTF8_TR_CS, false,
   /* collation data */
-  {LANG_COLL_UTF8_TR_CS_TS, "utf8_tr_cs_ts",
+  {LANG_COLL_UTF8_TR_CS_TI, "utf8_tr_cs_ti",
    LANG_COLL_GENERIC_SORT_OPT,
-   lang_Weight_TR_ts, lang_Next_alpha_char_TR_ts, LANG_CHAR_COUNT_TR,
+   true,
+   lang_Weight_TR_ti, lang_Next_alpha_char_TR_ti, LANG_CHAR_COUNT_TR,
    LANG_COLL_NO_EXP,
    LANG_COLL_NO_CONTR,
    "52f12f045d2fc90c3a818d0b334485d7"},
@@ -979,16 +1016,40 @@ static LANG_COLLATION *built_In_collations[] = {
   &coll_Utf8_ko_cs,
   &coll_Euckr_bin,
   &coll_Binary,
-  &coll_Iso_binary_ts,
-  &coll_Utf8_binary_ts,
-  &coll_Iso88591_en_cs_ts,
-  &coll_Iso88591_en_ci_ts,
-  &coll_Utf8_en_cs_ts,
-  &coll_Utf8_en_ci_ts,
-  &coll_Utf8_tr_cs_ts,
-  &coll_Utf8_ko_cs_ts,
-  &coll_Euckr_bin_ts
+  &coll_Iso_binary_ti,
+  &coll_Utf8_binary_ti,
+  &coll_Iso88591_en_cs_ti,
+  &coll_Iso88591_en_ci_ti,
+  &coll_Utf8_en_cs_ti,
+  &coll_Utf8_en_ci_ti,
+  &coll_Utf8_tr_cs_ti,
+  &coll_Utf8_ko_cs_ti,
+  &coll_Euckr_bin_ti
 };
+
+bool
+lang_coll_coercible (int coll_id)
+{
+  assert (coll_id >= 0 && coll_id < LANG_MAX_COLLATIONS);
+
+  return lang_Collations[coll_id]->coll_coercible;
+}
+
+int
+lang_coll_variation (int coll_id)
+{
+  assert (coll_id >= 0 && coll_id < LANG_MAX_COLLATIONS);
+
+  return lang_Collations[coll_id]->coll_variation;
+}
+
+bool
+lang_coll_is_ti (int coll_id)
+{
+  assert (coll_id >= 0 && coll_id < LANG_MAX_COLLATIONS);
+
+  return lang_Collations[coll_id]->coll.is_ignore_trailing_space;
+}
 
 /*
  * lang_init_builtin - Initializes the built-in available languages and sets
@@ -1012,7 +1073,7 @@ lang_init_builtin (void)
   /* init all collation placeholders with ISO binary collation */
   for (i = 0; i < LANG_MAX_COLLATIONS; i++)
     {
-      lang_Collations[i] = &coll_Iso_binary;
+      lang_Collations[i] = &coll_Binary;
     }
 
   /* built-in collations : order of registration should match colation ID */
@@ -1737,7 +1798,7 @@ register_collation (LANG_COLLATION * coll)
 
   assert (lang_Collations[id] != NULL);
 
-  if (lang_Collations[id]->coll.coll_id != LANG_COLL_ISO_BINARY)
+  if (lang_Collations[id]->coll.coll_id != LANG_COLL_DEFAULT)
     {
       char err_msg[ERR_MSG_SIZE];
       snprintf (err_msg, sizeof (err_msg) - 1,
@@ -5376,11 +5437,11 @@ lang_initloc_en_iso88591 (LANG_LOCALE_DATA * ld)
   assert (ld != NULL);
 
   coll_Iso_binary.default_lang = ld;
-  coll_Iso_binary_ts.default_lang = ld;
+  coll_Iso_binary_ti.default_lang = ld;
   coll_Iso88591_en_cs.default_lang = ld;
-  coll_Iso88591_en_cs_ts.default_lang = ld;
+  coll_Iso88591_en_cs_ti.default_lang = ld;
   coll_Iso88591_en_ci.default_lang = ld;
-  coll_Iso88591_en_ci_ts.default_lang = ld;
+  coll_Iso88591_en_ci_ti.default_lang = ld;
 
   ld->is_initialized = true;
 }
@@ -5411,9 +5472,9 @@ lang_init_common_en_cs (COLL_DATA * coll_data)
 {
   int i;
   static bool is_common_en_cs_init = false;
-  static bool is_common_en_cs_ts_init = false;
+  static bool is_common_en_cs_ti_init = false;
 
-  if (is_common_en_cs_init && is_common_en_cs_ts_init)
+  if (is_common_en_cs_init && is_common_en_cs_ti_init)
     {
       return;
     }
@@ -5424,15 +5485,15 @@ lang_init_common_en_cs (COLL_DATA * coll_data)
       coll_data->next_cp[i] = i + 1;
     }
 
-  if (coll_data->coll_id < COLL_TS)
+  if (coll_data->is_ignore_trailing_space)
     {
       coll_data->weights[32] = 0;
       coll_data->next_cp[32] = 1;
-      is_common_en_cs_init = true;
+      is_common_en_cs_ti_init = true;
     }
   else
     {
-      is_common_en_cs_ts_init = true;
+      is_common_en_cs_init = true;
     }
 }
 
@@ -5448,9 +5509,9 @@ lang_init_common_en_ci (COLL_DATA * coll_data)
 {
   int i;
   static bool is_common_en_ci_init = false;
-  static bool is_common_en_ci_ts_init = false;
+  static bool is_common_en_ci_ti_init = false;
 
-  if (is_common_en_ci_init && is_common_en_ci_ts_init)
+  if (is_common_en_ci_init && is_common_en_ci_ti_init)
     {
       return;
     }
@@ -5470,15 +5531,15 @@ lang_init_common_en_ci (COLL_DATA * coll_data)
   coll_data->next_cp['z'] = coll_data->next_cp['Z'];
   coll_data->next_cp['a' - 1] = coll_data->next_cp['A' - 1];
 
-  if (coll_data->coll_id < COLL_TS)
+  if (coll_data->is_ignore_trailing_space)
     {
       coll_data->weights[32] = 0;
       coll_data->next_cp[32] = 1;
-      is_common_en_ci_init = true;
+      is_common_en_ci_ti_init = true;
     }
   else
     {
-      is_common_en_ci_ts_init = true;
+      is_common_en_ci_init = true;
     }
 }
 
@@ -5554,11 +5615,11 @@ lang_initloc_en_utf8 (LANG_LOCALE_DATA * ld)
 
   /* other initializations to follow here */
   coll_Utf8_binary.default_lang = ld;
-  coll_Utf8_binary_ts.default_lang = ld;
+  coll_Utf8_binary_ti.default_lang = ld;
   coll_Utf8_en_cs.default_lang = ld;
-  coll_Utf8_en_cs_ts.default_lang = ld;
+  coll_Utf8_en_cs_ti.default_lang = ld;
   coll_Utf8_en_ci.default_lang = ld;
-  coll_Utf8_en_ci_ts.default_lang = ld;
+  coll_Utf8_en_ci_ti.default_lang = ld;
 
   ld->is_initialized = true;
 }
@@ -5676,6 +5737,7 @@ lang_strmatch_byte (const LANG_COLLATION * lang_coll, bool is_match, const unsig
   const unsigned char *str1_end;
   const unsigned char *str2_end;
   const unsigned char *str1_begin;
+  const int alpha_cnt = lang_coll->coll.w_count;
   const unsigned int *weight = lang_coll->coll.weights;
 
   str1_begin = str1;
@@ -5708,6 +5770,16 @@ lang_strmatch_byte (const LANG_COLLATION * lang_coll, bool is_match, const unsig
 		  c2 = ZERO;
 		}
 	    }
+	}
+
+      if (c1 < (unsigned int) alpha_cnt)
+	{
+	  c1 = weight[c1];
+	}
+
+      if (c2 < (unsigned int) alpha_cnt)
+	{
+	  c2 = weight[c2];
 	}
 
       if (c1 != c2)
@@ -5929,7 +6001,7 @@ lang_init_coll_Utf8_tr_cs (LANG_COLLATION * lang_coll)
       lang_Next_alpha_char_TR[i] = i + 1;
     }
 
-  if (lang_coll->coll.coll_id < COLL_TS)
+  if (lang_coll->coll.is_ignore_trailing_space)
     {
       lang_Weight_TR[32] = 0;
       lang_Next_alpha_char_TR[32] = 1;
@@ -6128,7 +6200,7 @@ lang_initloc_ko_utf8 (LANG_LOCALE_DATA * ld)
   assert (ld != NULL);
 
   coll_Utf8_ko_cs.default_lang = ld;
-  coll_Utf8_ko_cs_ts.default_lang = ld;
+  coll_Utf8_ko_cs_ti.default_lang = ld;
 
   ld->is_initialized = true;
 }
@@ -6145,7 +6217,7 @@ lang_initloc_ko_euc (LANG_LOCALE_DATA * ld)
   assert (ld != NULL);
 
   coll_Euckr_bin.default_lang = ld;
-  coll_Euckr_bin_ts.default_lang = ld;
+  coll_Euckr_bin_ti.default_lang = ld;
 
   ld->is_initialized = true;
 }
@@ -7305,6 +7377,11 @@ lang_load_coll_from_lib (COLL_DATA * cd, void *lib_handle, const LOCALE_FILE * l
 
   SHLIB_GET_ADDR_W_REF (cd->next_cp, "coll_next_cp", unsigned int *, lib_handle, cd->coll_name);
 
+  /* check if ti-collation */
+  if (cd->weights && cd->next_cp)
+    {
+      cd->is_ignore_trailing_space = (cd->weights[32] == 0 && cd->next_cp[32] == 1);
+    }
 
 exit:
   return err_status;

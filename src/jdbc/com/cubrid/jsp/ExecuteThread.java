@@ -327,13 +327,16 @@ public class ExecuteThread extends Thread {
 
 	private void destroyJDBCResources () throws SQLException, IOException {
 		setStatus(ExecuteThreadStatus.DESTROY);
-		
-		if (getJdbcConnection() != null) {
+
+		if (connection != null)
+		{
 			output.writeInt(REQ_CODE_DESTROY);
 			output.flush();
 			connection.destroy();
 			connection = null;
-		} else {
+		}
+		else
+		{
 			output.writeInt(REQ_CODE_END);
 			output.flush();
 		}
