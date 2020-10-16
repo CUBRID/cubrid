@@ -1043,6 +1043,14 @@ lang_coll_variation (int coll_id)
   return lang_Collations[coll_id]->coll_variation;
 }
 
+bool
+lang_coll_is_ti (int coll_id)
+{
+  assert (coll_id >= 0 && coll_id < LANG_MAX_COLLATIONS);
+
+  return lang_Collations[coll_id]->coll.is_ignore_trailing_space;
+}
+
 /*
  * lang_init_builtin - Initializes the built-in available languages and sets
  *		       message catalog language according to env
@@ -7369,6 +7377,8 @@ lang_load_coll_from_lib (COLL_DATA * cd, void *lib_handle, const LOCALE_FILE * l
 
   SHLIB_GET_ADDR_W_REF (cd->next_cp, "coll_next_cp", unsigned int *, lib_handle, cd->coll_name);
 
+  /* check if ti-collation */
+  cd->is_ignore_trailing_space = (cd->weights[32] == 0 && cd->next_cp[32] == 1);
 
 exit:
   return err_status;

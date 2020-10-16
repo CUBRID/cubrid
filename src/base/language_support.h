@@ -58,6 +58,7 @@
 
 extern bool lang_coll_coercible (int coll_id);
 extern int lang_coll_variation (int coll_id);
+extern bool lang_coll_is_ti (int coll_id);
 
 #define LANG_IS_COERCIBLE_COLL(c) lang_coll_coercible(c)
 
@@ -138,7 +139,6 @@ enum
 
   /* collation and charset do be used by system : */
 #define LANG_SYS_COLLATION  (LANG_GET_BINARY_COLLATION(lang_charset()))
-#define LANG_SYS_VARIATION  (LANG_SYS_COLLATION + LANG_COLL_ISO_BINARY_TI)
 
 #define LANG_SYS_CODESET  lang_charset()
 

@@ -22978,7 +22978,7 @@ pt_common_collation (PT_COLL_INFER * arg1_coll_infer, PT_COLL_INFER * arg2_coll_
 	{
 	  goto error;
 	}
-      if (arg2_coll_infer->coll_id < arg1_coll_infer->coll_id)
+      if (lang_coll_is_ti (arg1_coll_infer->coll_id))
 	{
 	  *common_coll = arg1_coll_infer->coll_id;
 	  *common_cs = arg1_coll_infer->codeset;
@@ -23021,7 +23021,7 @@ pt_common_collation (PT_COLL_INFER * arg1_coll_infer, PT_COLL_INFER * arg2_coll_
 		  goto error;
 		}
 
-	      if (*common_coll < arg3_coll_infer->coll_id)
+	      if (lang_coll_is_ti (arg3_coll_infer->coll_id))
 		{
 		  *common_coll = arg3_coll_infer->coll_id;
 		  *common_cs = arg3_coll_infer->codeset;
@@ -23052,7 +23052,7 @@ pt_common_collation (PT_COLL_INFER * arg1_coll_infer, PT_COLL_INFER * arg2_coll_
 	  goto error;
 	}
 
-      if ((arg2_coll_infer->coll_id < arg1_coll_infer->coll_id))
+      if (lang_coll_is_ti (arg1_coll_infer->coll_id))
 	{
 	  *common_coll = arg1_coll_infer->coll_id;
 	  *common_cs = arg1_coll_infer->codeset;
@@ -23095,7 +23095,7 @@ pt_common_collation (PT_COLL_INFER * arg1_coll_infer, PT_COLL_INFER * arg2_coll_
 		  goto error;
 		}
 
-	      if (*common_coll < arg3_coll_infer->coll_id)
+	      if (lang_coll_is_ti (arg3_coll_infer->coll_id))
 		{
 		  *common_coll = arg3_coll_infer->coll_id;
 		  *common_cs = arg3_coll_infer->codeset;
