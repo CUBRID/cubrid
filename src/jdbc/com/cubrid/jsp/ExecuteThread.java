@@ -80,6 +80,7 @@ public class ExecuteThread extends Thread {
 	private static final int REQ_CODE_ERROR = 0x04;
 	private static final int REQ_CODE_INTERNAL_JDBC = 0x08;
 	private static final int REQ_CODE_DESTROY = 0x10;
+	private static final int REQ_CODE_END = 0x20;
 
 	/* DB Types */
 	public static final int DB_NULL = 0;
@@ -181,23 +182,22 @@ public class ExecuteThread extends Thread {
 		int requestCode = -1;
 		while (!Thread.interrupted()) {
 			try {
-				do {
-					requestCode = listenCommand();
-					switch (requestCode) {
-					case REQ_CODE_INVOKE_SP: {
-						processStoredProcedure();
-						break;
-					}
-					case REQ_CODE_DESTROY: {
-						destroyJDBCResources();
-						break;
-					}
-					default: {
-						/* invalid request */
-						throw new ExecuteException ("invalid request code: " + requestCode);
-					}
-					}
-				} while (requestCode != REQ_CODE_INVOKE_SP && requestCode != REQ_CODE_DESTROY);
+				requestCode = listenCommand();
+				switch (requestCode) {
+				case REQ_CODE_INVOKE_SP: {
+					processStoredProcedure();
+					break;
+				}
+				case REQ_CODE_DESTROY: {
+					destroyJDBCResources();
+					Thread.currentThread().interrupt();
+					break;
+				}
+				default: {
+					/* invalid request */
+					throw new ExecuteException ("invalid request code: " + requestCode);
+				}
+				}
 			} catch (Throwable e) {
 				if (e instanceof IOException) {
 					setStatus(ExecuteThreadStatus.END);
@@ -209,9 +209,7 @@ public class ExecuteThread extends Thread {
 					break;
 				} else {
 					try {
-						if (compareStatus(ExecuteThreadStatus.CALL)) {
-							closeJdbcConnection ();
-						}
+						closeJdbcConnection ();
 					} catch (Exception e2) {
 					}
 					setStatus (ExecuteThreadStatus.ERROR);
@@ -278,9 +276,18 @@ public class ExecuteThread extends Thread {
 
 	private void destroyJDBCResources () throws SQLException, IOException {
 		setStatus(ExecuteThreadStatus.DESTROY);
-		if (connection != null) {
+
+		if (connection != null)
+		{
+			output.writeInt(REQ_CODE_DESTROY);
+			output.flush();
 			connection.destroy();
-			connection.close();
+			connection = null;
+		}
+		else
+		{
+			output.writeInt(REQ_CODE_END);
+			output.flush();
 		}
 	}
 
