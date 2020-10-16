@@ -2191,7 +2191,7 @@ jsp_send_destroy_request (const SOCKET sockfd)
   if (nbytes != (int) sizeof (int))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
-      return ER_SP_NETWORK_ERROR;
+      return er_errid ();
     }
   code = ntohl (code);
 
