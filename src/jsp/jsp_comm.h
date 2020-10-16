@@ -20,13 +20,13 @@
 
 
 /*
- * jsp_common.h - Java Stored Procedure Server Module Header
+ * jsp_comm.h - Functions to communicate with Java Stored Procedure Server
  *
  * Note:
  */
 
-#ifndef _JSP_COMMON_H_
-#define _JSP_COMMON_H_
+#ifndef _JSP_COMM_H_
+#define _JSP_COMM_H_
 
 #ident "$Id$"
 
@@ -85,4 +85,4 @@ extern "C"
 }
 #endif
 
-#endif				/* _JSP_COMMON_H_ */
+#endif				/* _JSP_COMM_H_ */

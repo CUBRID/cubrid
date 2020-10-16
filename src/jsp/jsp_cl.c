@@ -53,7 +53,7 @@
 #include "network_interface_cl.h"
 #include "unicode_support.h"
 #include "dbtype.h"
-#include "jsp_common.h"
+#include "jsp_comm.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))

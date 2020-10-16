@@ -59,7 +59,7 @@
 #include "databases_file.h"
 #include "object_representation.h"
 
-#include "jsp_common.h"
+#include "jsp_comm.h"
 #include "jsp_file.h"
 #include "jsp_sr.h"
 

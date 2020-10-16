@@ -20,7 +20,7 @@
 
 
 /*
- * jsp_common.c - Java Stored Procedure Server Module Header
+ * jsp_comm.c - Functions to communicate with Java Stored Procedure Server
  *
  * Note:
  */
@@ -43,7 +43,7 @@
 #include <windows.h>
 #endif /* not WINDOWS */
 
-#include "jsp_common.h"
+#include "jsp_comm.h"
 
 #include "porting.h"
 #include "error_manager.h"
