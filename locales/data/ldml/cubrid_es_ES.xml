@@ -101,12 +101,6 @@
 	<collations validSubLocales="es_ES">
 		<collation type="utf8_es_cs">
 			<settings id="85" strength="quaternary" caseLevel="on" caseFirst="upper" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="ignore" />
-			<cubridrules>
-				<set>
-					<scp>20</scp>
-					<w>[0.0.0.0]</w>
-				</set>
-			</cubridrules>		
 			<rules>
 				<reset>N</reset>
 				<p>ñ</p>

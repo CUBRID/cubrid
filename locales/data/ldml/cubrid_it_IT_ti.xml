@@ -98,8 +98,8 @@
 			<currency type="EUR" />
 		</currencies>
 	</numbers>
-	<collations validSubLocales="it_IT">
-		<include file="common_collations.xml" />
+	<collations validSubLocales="it_IT_ti">
+		<include file="common_collations_ti.xml" />
 	</collations>
 	<alphabets>
 		<alphabet CUBRIDAlphabetMode="UNICODEDATAFILE">
