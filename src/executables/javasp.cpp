@@ -67,6 +67,11 @@
 
 #define JAVASP_PING_LEN   PATH_MAX
 
+#define JAVASP_PRINT_ERR_MSG(...) \
+  do {\
+      fprintf (stderr, __VA_ARGS__);\
+  }while (0)
+
 #if defined(WINDOWS)
 #define NULL_DEVICE "NUL:"
 #else
@@ -219,7 +224,7 @@ main (int argc, char *argv[])
       }
     else
       {
-	fprintf (stderr, "Invalid command: %s\n", command.c_str ());
+	JAVASP_PRINT_ERR_MSG ("Invalid command: %s\n", command.c_str ());
 	status = ER_GENERIC_ERROR;
       }
 
@@ -407,6 +412,11 @@ exit:
       free_and_init (buffer);
     }
 
+  if (er_has_error ())
+    {
+      JAVASP_PRINT_ERR_MSG ("%s\n", er_msg ());
+    }
+
   return status;
 }
 
@@ -566,7 +576,7 @@ javasp_check_database (const std::string &db_name, std::string &path)
   if (db == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_DATABASE, 1, db_name.c_str ());
-      status = ER_GENERIC_ERROR;
+      status = ER_BO_UNKNOWN_DATABASE;
     }
   else
     {
@@ -595,7 +605,7 @@ javasp_check_argument (int argc, char *argv[], std::string &command, std::string
     }
   else
     {
-      fprintf (stderr, "Invalid number of arguments: %d\n", argc);
+      JAVASP_PRINT_ERR_MSG ("Invalid number of arguments: %d\n", argc);
       status = ER_GENERIC_ERROR;
     }
 
