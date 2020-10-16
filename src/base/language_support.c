@@ -7378,7 +7378,10 @@ lang_load_coll_from_lib (COLL_DATA * cd, void *lib_handle, const LOCALE_FILE * l
   SHLIB_GET_ADDR_W_REF (cd->next_cp, "coll_next_cp", unsigned int *, lib_handle, cd->coll_name);
 
   /* check if ti-collation */
-  cd->is_ignore_trailing_space = (cd->weights[32] == 0 && cd->next_cp[32] == 1);
+  if (cd->weights && cd->next_cp)
+    {
+      cd->is_ignore_trailing_space = (cd->weights[32] == 0 && cd->next_cp[32] == 1);
+    }
 
 exit:
   return err_status;
