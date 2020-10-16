@@ -2194,24 +2194,31 @@ logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int
       ptr = (char *) log_pgptr;
       for (i = 0; i < num_pages; i++)
 	{
+	  TDE_ALGORITHM tde_algo = logpb_get_tde_algorithm ((LOG_PAGE *) ptr);
 	  /* checksum is calculated before tde-encryption */
-	  if (!decrypt_needed)
+	  if (!decrypt_needed && tde_algo != TDE_ALGORITHM_NONE)
 	    {
-	      TDE_ALGORITHM tde_algo = logpb_get_tde_algorithm ((LOG_PAGE *) ptr);
-	      if (tde_algo != TDE_ALGORITHM_NONE)
+	      /* This page is tde-ecnrypted page and has not yet decrypted.
+	       * To check consistency, we need to decrypt it */
+	      if (!tde_Cipher.is_loaded)
 		{
-		  if (tde_decrypt_log_page ((LOG_PAGE *) ptr, (LOG_PAGE *) aligned_log_pgbuf, tde_algo) != NO_ERROR)
-		    {
-		      ASSERT_ERROR ();
-		      return -1;
-		    }
-		  logpb_debug_check_log_page (thread_p, (LOG_PAGE *) aligned_log_pgbuf);
 		  ptr += LOG_PAGESIZE;
-		  continue;
+		  continue;	/* no way to check an encrypted page without tde module */
 		}
+
+	      if (tde_decrypt_log_page ((LOG_PAGE *) ptr, (LOG_PAGE *) aligned_log_pgbuf, tde_algo) != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  assert (false);
+		}
+	      logpb_debug_check_log_page (thread_p, (LOG_PAGE *) aligned_log_pgbuf);
+	      ptr += LOG_PAGESIZE;
 	    }
-	  logpb_debug_check_log_page (thread_p, (LOG_PAGE *) ptr);
-	  ptr += LOG_PAGESIZE;
+	  else
+	    {
+	      logpb_debug_check_log_page (thread_p, (LOG_PAGE *) ptr);
+	      ptr += LOG_PAGESIZE;
+	    }
 	}
     }
 #endif
