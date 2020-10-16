@@ -731,7 +731,7 @@ typedef enum
   RESTORESLAVE,
   VACUUMDB,
   CHECKSUMDB,
-  LOGFILEDUMP,
+ // LOGFILEDUMP,
   LOGDUMP,
 } UTIL_INDEX;
 
@@ -1565,6 +1565,12 @@ typedef struct _ha_config
 #define CHECKSUM_REPORT_ONLY_L			"report-only"
 #define CHECKSUM_SCHEMA_ONLY_S			14002
 #define CHECKSUM_SCHEMA_ONLY_L			"schema-only"
+
+/* logdump option list*/
+#define LOGDUMP_LIST_S    'l'
+#define LOGDUMP_LIST_L    "list"
+#define LOGDUMP_LOG_PATH_S  'p'
+#define LOGDUMP_LOG_PATH_L  "path"
 
 #if defined(WINDOWS)
 #define LIB_UTIL_CS_NAME                "cubridcs.dll"

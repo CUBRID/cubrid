@@ -825,10 +825,14 @@ static GETOPT_LONG ua_Checksum_Option[] = {
 
 static UTIL_ARG_MAP ua_Logdump_Option_Map[] = {
   {OPTION_STRING_TABLE, {0}, {0}},
+  {LOGDUMP_LIST_S, {ARG_STRING}, {0}},
+  {LOGDUMP_LOG_PATH_S, {ARG_STRING}, {0}},
   {0, {0}, {0}}
 };
 
 static GETOPT_LONG ua_Logdump_Option[] = {
+  {LOGDUMP_LIST_L, 1, 0, LOGDUMP_LIST_S},
+  {LOGDUMP_LOG_PATH_L, 1, 0, LOGDUMP_LOG_PATH_S},
   {0, 0, 0, 0}
 };
 

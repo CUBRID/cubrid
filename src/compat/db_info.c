@@ -48,12 +48,40 @@
 #include "system_parameter.h"
 #include "virtual_object.h"
 
+#include "log_storage.hpp"
+#include "log_record.hpp"
+#include "log_lsa.hpp"
+#include "log_storage.hpp"
+#include "recovery.h"
+
 #include <assert.h>
 #include <ctype.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <fcntl.h>
 
+typedef struct act_log
+{
+  char path[PATH_MAX];
+  int log_vdes;
+  LOG_PAGE *hdr_page;
+  LOG_HEADER *log_hdr;
+} ACT_LOG;
+
+typedef struct arv_log
+{
+  char path[PATH_MAX];
+  int log_vdes;
+  LOG_PAGE *hdr_page;
+  LOG_ARV_HEADER *log_hdr;
+  int arv_num;
+} ARV_LOG;
+
+static LOG_PHY_PAGEID get_actlog_phypageid (ACT_LOG act_log, LOG_PAGEID logical_pageid);
+static LOG_PHY_PAGEID get_arvlog_phypageid (ARV_LOG arv_log, LOG_PAGEID logical_pageid);
+static int read_log (char *vname, int vdes, void *io_pgptr, LOG_PHY_PAGEID pageid, int pagesize);
+static const char *log_to_string (LOG_RECTYPE type);
 /*
  *  CLASS LOCATION
  */
@@ -2396,6 +2424,695 @@ db_get_btree_statistics (DB_CONSTRAINT * cons, int *num_leaf_pages, int *num_tot
   *height = stat.height;
 
   return NO_ERROR;
+}
+
+static LOG_PHY_PAGEID
+get_actlog_phypageid (ACT_LOG act_log, LOG_PAGEID logical_pageid)
+{
+  LOG_PHY_PAGEID phy_pageid;
+  if (logical_pageid == LOGPB_HEADER_PAGE_ID)
+    {
+      phy_pageid = 0;
+    }
+  else
+    {
+      LOG_PAGEID tmp_pageid;
+
+      tmp_pageid = logical_pageid - act_log.log_hdr->fpageid;
+      if (tmp_pageid >= act_log.log_hdr->npages)
+	{
+	  tmp_pageid %= act_log.log_hdr->npages;
+	}
+      else if (tmp_pageid < 0)
+	{
+	  tmp_pageid = act_log.log_hdr->npages - ((-tmp_pageid) % act_log.log_hdr->npages);
+	}
+      tmp_pageid++;
+      if (tmp_pageid > act_log.log_hdr->npages)
+	{
+	  tmp_pageid %= act_log.log_hdr->npages;
+	}
+
+      assert (tmp_pageid <= PAGEID_MAX);
+      phy_pageid = (LOG_PHY_PAGEID) tmp_pageid;
+    }
+
+  return phy_pageid;
+}
+
+static LOG_PHY_PAGEID
+get_arvlog_phypageid (ARV_LOG arv_log, LOG_PAGEID logical_pageid)
+{
+  LOG_PHY_PAGEID phy_pageid;
+  if (logical_pageid == LOGPB_HEADER_PAGE_ID)
+    {
+      phy_pageid = 0;
+    }
+  else
+    {
+      LOG_PAGEID tmp_pageid;
+
+      tmp_pageid = logical_pageid - arv_log.log_hdr->fpageid;
+      if (tmp_pageid >= arv_log.log_hdr->npages)
+	{
+	  tmp_pageid %= arv_log.log_hdr->npages;
+	}
+      else if (tmp_pageid < 0)
+	{
+	  tmp_pageid = arv_log.log_hdr->npages - ((-tmp_pageid) % arv_log.log_hdr->npages);
+	}
+      tmp_pageid++;
+      if (tmp_pageid > arv_log.log_hdr->npages)
+	{
+	  tmp_pageid %= arv_log.log_hdr->npages;
+	}
+
+      assert (tmp_pageid <= PAGEID_MAX);
+      phy_pageid = (LOG_PHY_PAGEID) tmp_pageid;
+    }
+
+  return phy_pageid;
+}
+
+static int
+read_log (char *vname, int vdes, void *io_pgptr, LOG_PHY_PAGEID pageid, int pagesize)
+{
+  int nbytes;
+  int remain_bytes = pagesize;
+  off64_t offset = ((off64_t) pagesize) * ((off64_t) pageid);
+  char *current_ptr = (char *) io_pgptr;
+  int retries = -1;
+
+  if (lseek64 (vdes, offset, SEEK_SET) == -1)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_READ, 2, pageid, vname);
+      return ER_FAILED;
+    }
+
+  while (remain_bytes > 0 && retries != 0)
+    {
+      retries = (retries > 0) ? retries - 1 : retries;
+
+      /* Read the desired page */
+      nbytes = read (vdes, current_ptr, remain_bytes);
+
+      if (nbytes == 0)
+	{
+	  /*
+	   * This is an end of file.
+	   * We are trying to read beyond the allocated disk space
+	   */
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2, pageid, vname);
+	  /* TODO: wait until exist? */
+	  usleep (100 * 1000);
+	  continue;
+	}
+      else if (nbytes < 0)
+	{
+	  if (errno == EINTR)
+	    {
+	      continue;
+	    }
+	  else
+	    {
+	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_READ, 2, pageid, vname);
+	      return ER_FAILED;
+	    }
+	}
+
+      remain_bytes -= nbytes;
+      current_ptr += nbytes;
+    }
+
+  if (remain_bytes > 0)
+    {
+      if (retries <= 0 && er_errid () == ER_PB_BAD_PAGEID)
+	{
+	  return ER_PB_BAD_PAGEID;
+	}
+      else
+	{
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_READ, 2, pageid, vname);
+	  return ER_FAILED;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+static const char *
+log_to_string (LOG_RECTYPE type)
+{
+  switch (type)
+    {
+    case LOG_UNDOREDO_DATA:
+      return "LOG_UNDOREDO_DATA";
+
+    case LOG_DIFF_UNDOREDO_DATA:	/* LOG DIFF undo and redo data */
+      return "LOG_DIFF_UNDOREDO_DATA";
+
+    case LOG_UNDO_DATA:
+      return "LOG_UNDO_DATA";
+
+    case LOG_REDO_DATA:
+      return "LOG_REDO_DATA";
+
+    case LOG_MVCC_UNDOREDO_DATA:
+      return "LOG_MVCC_UNDOREDO_DATA";
+
+    case LOG_MVCC_DIFF_UNDOREDO_DATA:
+      return "LOG_MVCC_DIFF_UNDOREDO_DATA";
+
+    case LOG_MVCC_UNDO_DATA:
+      return "LOG_MVCC_UNDO_DATA";
+
+    case LOG_MVCC_REDO_DATA:
+      return "LOG_MVCC_REDO_DATA";
+
+    case LOG_DBEXTERN_REDO_DATA:
+      return "LOG_DBEXTERN_REDO_DATA";
+
+    case LOG_DUMMY_HEAD_POSTPONE:
+      return "LOG_DUMMY_HEAD_POSTPONE";
+
+    case LOG_POSTPONE:
+      return "LOG_POSTPONE";
+
+    case LOG_RUN_POSTPONE:
+      return "LOG_RUN_POSTPONE";
+
+    case LOG_COMPENSATE:
+      return "LOG_COMPENSATE";
+
+    case LOG_WILL_COMMIT:
+      return "LOG_WILL_COMMIT";
+
+    case LOG_COMMIT_WITH_POSTPONE:
+      return "LOG_COMMIT_WITH_POSTPONE";
+
+    case LOG_COMMIT:
+      return "LOG_COMMIT";
+
+    case LOG_SYSOP_START_POSTPONE:
+      return "LOG_SYSOP_START_POSTPONE";
+
+    case LOG_SYSOP_END:
+      return "LOG_SYSOP_END";
+
+    case LOG_ABORT:
+      return "LOG_ABORT";
+
+    case LOG_START_CHKPT:
+      return "LOG_START_CHKPT";
+
+    case LOG_END_CHKPT:
+      return "LOG_END_CHKPT";
+
+    case LOG_SAVEPOINT:
+      return "LOG_SAVEPOINT";
+
+    case LOG_2PC_PREPARE:
+      return "LOG_2PC_PREPARE";
+
+    case LOG_2PC_START:
+      return "LOG_2PC_START";
+
+    case LOG_2PC_COMMIT_DECISION:
+      return "LOG_2PC_COMMIT_DECISION";
+
+    case LOG_2PC_ABORT_DECISION:
+      return "LOG_2PC_ABORT_DECISION";
+
+    case LOG_2PC_COMMIT_INFORM_PARTICPS:
+      return "LOG_2PC_COMMIT_INFORM_PARTICPS";
+
+    case LOG_2PC_ABORT_INFORM_PARTICPS:
+      return "LOG_2PC_ABORT_INFORM_PARTICPS";
+
+    case LOG_2PC_RECV_ACK:
+      return "LOG_2PC_RECV_ACK";
+
+    case LOG_DUMMY_CRASH_RECOVERY:
+      return "LOG_DUMMY_CRASH_RECOVERY";
+
+    case LOG_END_OF_LOG:
+      return "LOG_END_OF_LOG";
+
+    case LOG_REPLICATION_DATA:
+      return "LOG_REPLICATION_DATA";
+    case LOG_REPLICATION_STATEMENT:
+      return "LOG_REPLICATION_STATEMENT";
+
+    case LOG_SYSOP_ATOMIC_START:
+      return "LOG_SYSOP_ATOMIC_START";
+
+    case LOG_DUMMY_HA_SERVER_STATE:
+      return "LOG_DUMMY_HA_SERVER_STATE";
+    case LOG_DUMMY_OVF_RECORD:
+      return "LOG_DUMMY_OVF_RECORD";
+    case LOG_DUMMY_GENERIC:
+      return "LOG_DUMMY_GENERIC";
+
+    case LOG_SMALLER_LOGREC_TYPE:
+    case LOG_LARGER_LOGREC_TYPE:
+      break;
+
+    default:
+     // assert (false);
+      break;
+    }
+
+  return "UNKNOWN_LOG_REC_TYPE";
+
+}
+
+void print_record_type(LOG_RECTYPE type)
+{
+
+}
+/*active log? archive log? can we select? */
+
+void
+db_act_forward (const char *log_path, const char *database_name)
+{
+  int error = NO_ERROR;
+  ACT_LOG act_log;
+  LOG_RECORD_HEADER *lrec = NULL;
+  LOG_LSA cur;
+  LOG_PAGE *pgptr = NULL;
+  int pagesize = 4096;
+
+  LOG_PHY_PAGEID phy_pageid = 0;
+  int nbytes;
+  off64_t offset;
+  int remain_bytes;
+  char *current_ptr;
+  int retries = -1;
+
+  LOG_REC_UNDOREDO *undoredo;
+  LOG_REC_UNDO *undo;
+  LOG_REC_REDO *redo;
+
+  assert (database_name != NULL);
+
+  fileio_make_log_active_name (act_log.path, log_path, database_name);
+
+  act_log.log_vdes = fileio_open (act_log.path, O_RDONLY, 0);	// get vdes of active log file 
+
+  act_log.hdr_page = (LOG_PAGE *) malloc (pagesize);
+
+  error = read_log (act_log.path, act_log.log_vdes, act_log.hdr_page, phy_pageid, pagesize);
+
+  act_log.log_hdr = (LOG_HEADER *) act_log.hdr_page->area;
+
+/*end of getting active log header page*/
+  pgptr = (LOG_PAGE *) malloc (act_log.log_hdr->db_logpagesize);
+  cur.pageid = act_log.log_hdr->fpageid;
+  cur.offset = 0;
+  //LSA_COPY(&cur, &(act_log.log_hdr->));/*not yet*/
+  do
+    {
+      //  log_io_read(log_path, act_log.log_vdes, pgptr, physicla page id  ..) / physical page id is required to get pgptr
+      phy_pageid = get_actlog_phypageid (act_log, cur.pageid);
+      //get log page buffer to get LOG_PAGE (la_get_page_buffer(LOG_PAGEID pageid) 
+      error = read_log (act_log.path, act_log.log_vdes, pgptr, phy_pageid, act_log.log_hdr->db_logpagesize);
+      lrec = LOG_GET_LOG_RECORD_HEADER (pgptr, &cur);	// log page pointer..? 
+      fprintf (stdout,
+	       "\nLSA = %3lld|%3d, Forw log = %3lld|%3d, Backw log = %3lld|%3d,\n"
+	       "     Trid = %3d, Prev tran logrec = %3lld|%3d\n  Type = %s", (long long int) cur.pageid,
+	       (int) cur.offset, (long long int) lrec->forw_lsa.pageid, (int) lrec->forw_lsa.offset,
+	       (long long int) lrec->back_lsa.pageid, (int) lrec->back_lsa.offset, lrec->trid,
+	       (long long int) lrec->prev_tranlsa.pageid, (int) lrec->prev_tranlsa.offset, log_to_string(lrec->type));
+      /*log_to_string (type) is in log_manager.c */
+      /*data header , from log_dump_record_undoredo() */
+      switch (lrec->type)
+	{
+	case 2:
+	  undoredo = (LOG_REC_UNDOREDO *) ((char *) pgptr->area + cur.offset);
+	  fprintf (stdout, "\n UNDO length : %d, REDO length : %d Recv_index = %d, \n",undoredo->ulength, undoredo->rlength, undoredo->data.rcvindex);
+	  break;
+	case 3:
+	  undo = (LOG_REC_UNDO *) ((char *) pgptr->area + cur.offset);
+	  fprintf (stdout, "\n UNDO Length : %d, Recv_index = %d \n",undo->length, undo->data.rcvindex);
+	  break;
+  case 4 :
+    redo = (LOG_REC_REDO *) ((char *) pgptr->area + cur.offset);
+    fprintf (stdout,"\n REDO Length : %d, RCVINDEX : %d \n",redo->length, redo->data.rcvindex);
+    break;
+	default:
+	  printf ("\nNo types ");
+	  break;
+	}
+      /*rv_rcvindex_string(rcvindex) in recovery.c */
+      LSA_COPY (&cur, &(lrec->forw_lsa));
+    }
+  while (!LSA_ISNULL (&cur));
+  fileio_close (act_log.log_vdes);
+
+}
+
+void
+db_act_backward (const char *log_path, const char *database_name)
+{
+  int error = NO_ERROR;
+  ACT_LOG act_log;
+  LOG_RECORD_HEADER *lrec = NULL;
+  LOG_LSA cur;
+  LOG_PAGE *pgptr = NULL;
+  int pagesize = 4096;
+
+  LOG_PHY_PAGEID phy_pageid = 0;
+  int nbytes;
+  off64_t offset;
+  int remain_bytes;
+  char *current_ptr;
+  int retries = -1;
+
+  assert (database_name != NULL);
+
+  fileio_make_log_active_name (act_log.path, log_path, database_name);
+
+  act_log.log_vdes = fileio_open (act_log.path, O_RDONLY, 0);	// get vdes of active log file 
+
+  act_log.hdr_page = (LOG_PAGE *) malloc (pagesize);
+
+  error = read_log (act_log.path, act_log.log_vdes, act_log.hdr_page, phy_pageid, pagesize);
+
+  if (error != NO_ERROR)
+    {
+      fprintf (stdout, "read error occurred \n");
+    }
+  act_log.log_hdr = (LOG_HEADER *) act_log.hdr_page->area;
+
+/*end of getting active log header page*/
+  pgptr = (LOG_PAGE *) malloc (act_log.log_hdr->db_logpagesize);
+  LSA_COPY (&cur, &(act_log.log_hdr->eof_lsa));	/*not yet */
+  do
+    {
+      //  log_io_read(log_path, act_log.log_vdes, pgptr, physicla page id  ..) / physical page id is required to get pgptr
+      phy_pageid = get_actlog_phypageid (act_log, cur.pageid);
+      //get log page buffer to get LOG_PAGE (la_get_page_buffer(LOG_PAGEID pageid) 
+      error = read_log (act_log.path, act_log.log_vdes, pgptr, phy_pageid, act_log.log_hdr->db_logpagesize);
+      lrec = LOG_GET_LOG_RECORD_HEADER (pgptr, &cur);	// log page pointer..? 
+      fprintf (stdout,
+	       "\nLSA = %3lld|%3d, Forw log = %3lld|%3d, Backw log = %3lld|%3d,\n"
+	       "     Trid = %3d, Prev tran logrec = %3lld|%3d\n  Type = %s", (long long int) cur.pageid,
+	       (int) cur.offset, (long long int) lrec->forw_lsa.pageid, (int) lrec->forw_lsa.offset,
+	       (long long int) lrec->back_lsa.pageid, (int) lrec->back_lsa.offset, lrec->trid,
+	       (long long int) lrec->prev_tranlsa.pageid, (int) lrec->prev_tranlsa.offset, log_to_string(lrec->type));
+
+
+      LSA_COPY (&cur, &(lrec->back_lsa));
+    }
+  while (!LSA_ISNULL (&cur));
+
+  fileio_close (act_log.log_vdes);
+}
+
+void
+db_act_range (const char *log_path, const char *database_name, long long int from_pageid, long long int from_offset, long long int to_pageid, long long int to_offset)
+{
+  int error = NO_ERROR;
+  ACT_LOG act_log;
+  LOG_RECORD_HEADER *lrec = NULL;
+  LOG_LSA cur;
+  LOG_PAGE *pgptr = NULL;
+  int pagesize = 4096;
+  LOG_LSA from, to ;
+  LOG_PHY_PAGEID phy_pageid = 0;
+  int nbytes;
+  off64_t offset;
+  int remain_bytes;
+  char *current_ptr;
+  int retries = -1;
+
+  from.pageid = from_pageid;
+  from.offset = from_offset;
+  to.pageid = to_pageid;
+  to.offset = to_offset;
+
+  assert (database_name != NULL);
+
+  fileio_make_log_active_name (act_log.path, log_path, database_name);
+
+  act_log.log_vdes = fileio_open (act_log.path, O_RDONLY, 0);	// get vdes of active log file 
+
+  act_log.hdr_page = (LOG_PAGE *) malloc (pagesize);
+
+  error = read_log (act_log.path, act_log.log_vdes, act_log.hdr_page, phy_pageid, pagesize);
+
+  if (error != NO_ERROR)
+    {
+      fprintf (stdout, "read error occurred \n");
+    }
+  act_log.log_hdr = (LOG_HEADER *) act_log.hdr_page->area;
+
+/*end of getting active log header page*/
+  pgptr = (LOG_PAGE *) malloc (act_log.log_hdr->db_logpagesize);
+  LSA_COPY (&cur, &(from));	/*not yet */
+  do
+    {
+      //  log_io_read(log_path, act_log.log_vdes, pgptr, physicla page id  ..) / physical page id is required to get pgptr
+      phy_pageid = get_actlog_phypageid (act_log, cur.pageid);
+      //get log page buffer to get LOG_PAGE (la_get_page_buffer(LOG_PAGEID pageid) 
+      error = read_log (act_log.path, act_log.log_vdes, pgptr, phy_pageid, act_log.log_hdr->db_logpagesize);
+      lrec = LOG_GET_LOG_RECORD_HEADER (pgptr, &cur);	// log page pointer..? 
+      fprintf (stdout,
+	       "\nLSA = %3lld|%3d, Forw log = %3lld|%3d, Backw log = %3lld|%3d,\n"
+	       "     Trid = %3d, Prev tran logrec = %3lld|%3d\n  Type = %s", (long long int) cur.pageid,
+	       (int) cur.offset, (long long int) lrec->forw_lsa.pageid, (int) lrec->forw_lsa.offset,
+	       (long long int) lrec->back_lsa.pageid, (int) lrec->back_lsa.offset, lrec->trid,
+	       (long long int) lrec->prev_tranlsa.pageid, (int) lrec->prev_tranlsa.offset, log_to_string(lrec->type));
+
+
+      LSA_COPY (&cur, &(lrec->forw_lsa));
+    }
+  while (LSA_LE (&cur, &to));
+  fileio_close (act_log.log_vdes);
+}
+
+void
+db_act_pos (const char *log_path, const char *database_name, long long int pos_pageid, long long int pos_offset)
+{
+  int error = NO_ERROR;
+  ACT_LOG act_log;
+  LOG_RECORD_HEADER *lrec = NULL;
+  LOG_LSA cur;
+  LOG_LSA pos; 
+  LOG_PAGE *pgptr = NULL;
+  int pagesize = 4096;
+
+  LOG_PHY_PAGEID phy_pageid = 0;
+  int nbytes;
+  off64_t offset;
+  int remain_bytes;
+  char *current_ptr;
+  int retries = -1;
+
+  pos.pageid = pos_pageid;
+  pos.offset = pos_offset;
+
+  assert (database_name != NULL);
+
+  fileio_make_log_active_name (act_log.path, log_path, database_name);
+
+  act_log.log_vdes = fileio_open (act_log.path, O_RDONLY, 0);	// get vdes of active log file 
+
+  act_log.hdr_page = (LOG_PAGE *) malloc (pagesize);
+
+  error = read_log (act_log.path, act_log.log_vdes, act_log.hdr_page, phy_pageid, pagesize);
+
+  if (error != NO_ERROR)
+    {
+      fprintf (stdout, "read error occurred \n");
+    }
+  act_log.log_hdr = (LOG_HEADER *) act_log.hdr_page->area;
+
+/*end of getting active log header page*/
+  pgptr = (LOG_PAGE *) malloc (act_log.log_hdr->db_logpagesize);
+  LSA_COPY (&cur, &(pos));	/*not yet */
+  //  log_io_read(log_path, act_log.log_vdes, pgptr, physicla page id  ..) / physical page id is required to get pgptr
+  phy_pageid = get_actlog_phypageid (act_log, cur.pageid);
+  //get log page buffer to get LOG_PAGE (la_get_page_buffer(LOG_PAGEID pageid) 
+  error = read_log (act_log.path, act_log.log_vdes, pgptr, phy_pageid, act_log.log_hdr->db_logpagesize);
+  lrec = LOG_GET_LOG_RECORD_HEADER (pgptr, &cur);	// log page pointer..? 
+  fprintf (stdout,
+	       "\nLSA = %3lld|%3d, Forw log = %3lld|%3d, Backw log = %3lld|%3d,\n"
+	       "     Trid = %3d, Prev tran logrec = %3lld|%3d\n  Type = %s", (long long int) cur.pageid,
+	       (int) cur.offset, (long long int) lrec->forw_lsa.pageid, (int) lrec->forw_lsa.offset,
+	       (long long int) lrec->back_lsa.pageid, (int) lrec->back_lsa.offset, lrec->trid,
+	       (long long int) lrec->prev_tranlsa.pageid, (int) lrec->prev_tranlsa.offset, log_to_string(lrec->type));
+
+  fileio_close (act_log.log_vdes);
+}
+
+void
+db_arv_forward (const char *log_path, const char *database_name)
+{
+  int error = NO_ERROR;
+  ACT_LOG act_log;
+  ARV_LOG arv_log;
+  LOG_RECORD_HEADER *lrec = NULL;
+  LOG_LSA cur;
+  LOG_PAGE *pgptr = NULL;
+  int pagesize = 4096;
+
+  LOG_PHY_PAGEID phy_pageid = 0;
+  int nbytes;
+  off64_t offset;
+  int remain_bytes;
+  char *current_ptr;
+  int retries = -1;
+
+  assert (database_name != NULL);
+
+  fileio_make_log_active_name (act_log.path, log_path, database_name);
+
+  act_log.log_vdes = fileio_open (act_log.path, O_RDONLY, 0);	// get vdes of active log file 
+  /*open or not open exception */
+
+  act_log.hdr_page = (LOG_PAGE *) malloc (pagesize);
+  /*malloc exception */
+  error = read_log (act_log.path, act_log.log_vdes, act_log.hdr_page, phy_pageid, pagesize);
+  /*read error exception */
+
+  act_log.log_hdr = (LOG_HEADER *) act_log.hdr_page->area;
+  pagesize = act_log.log_hdr->db_logpagesize;
+
+  arv_log.hdr_page = (LOG_PAGE *) malloc (pagesize);
+  if (act_log.log_hdr->nxarv_num != 0)
+    {
+      arv_log.arv_num = 0;
+      for (arv_log.arv_num = 0; act_log.log_hdr->nxarv_num > arv_log.arv_num; arv_log.arv_num++)
+	{
+	  fileio_make_log_archive_name (arv_log.path, log_path, database_name, arv_log.arv_num);
+	  printf ("arv_num : %d \n", arv_log.arv_num);
+	  arv_log.log_vdes = fileio_open (arv_log.path, O_RDONLY, 0);
+	  error = read_log (arv_log.path, arv_log.log_vdes, arv_log.hdr_page, phy_pageid, pagesize);
+	  arv_log.log_hdr = (LOG_ARV_HEADER *) arv_log.hdr_page->area;
+	  /*end of getting active log header page */
+	  pgptr = (LOG_PAGE *) malloc (pagesize);
+	  cur.pageid = arv_log.log_hdr->fpageid;
+	  cur.offset = 0;
+	  //LSA_COPY(&cur, &(act_log.log_hdr->));/*not yet*/
+
+	  do
+	    {
+	      //  log_io_read(log_path, act_log.log_vdes, pgptr, physicla page id  ..) / physical page id is required to get pgptr
+	      phy_pageid = get_arvlog_phypageid (arv_log, cur.pageid);
+	      //get log page buffer to get LOG_PAGE (la_get_page_buffer(LOG_PAGEID pageid) 
+	      error = read_log (arv_log.path, arv_log.log_vdes, pgptr, phy_pageid, act_log.log_hdr->db_logpagesize);
+	      lrec = LOG_GET_LOG_RECORD_HEADER (pgptr, &cur);	// log page pointer..? 
+	      fprintf (stdout,
+	       "\nLSA = %3lld|%3d, Forw log = %3lld|%3d, Backw log = %3lld|%3d,\n"
+	       "     Trid = %3d, Prev tran logrec = %3lld|%3d\n  Type = %s", (long long int) cur.pageid,
+	       (int) cur.offset, (long long int) lrec->forw_lsa.pageid, (int) lrec->forw_lsa.offset,
+	       (long long int) lrec->back_lsa.pageid, (int) lrec->back_lsa.offset, lrec->trid,
+	       (long long int) lrec->prev_tranlsa.pageid, (int) lrec->prev_tranlsa.offset, log_to_string(lrec->type));
+
+
+	      LSA_COPY (&cur, &(lrec->forw_lsa));
+	    }
+	  while (!LSA_ISNULL (&cur));
+
+	  fileio_close (act_log.log_vdes);
+	  fileio_close (arv_log.log_vdes);
+	}
+    }
+
+}
+
+void
+db_arv_backward (const char *log_path, const char *database_name)
+{
+  int error = NO_ERROR;
+  ACT_LOG act_log;
+  ARV_LOG arv_log;
+  LOG_RECORD_HEADER *lrec = NULL;
+  LOG_LSA cur;
+  LOG_PAGE *pgptr = NULL;
+  int pagesize = 4096;
+
+  LOG_PHY_PAGEID phy_pageid = 0;
+  int nbytes;
+  off64_t offset;
+  int remain_bytes;
+  char *current_ptr;
+  int retries = -1;
+
+  assert (database_name != NULL);
+
+  fileio_make_log_active_name (act_log.path, log_path, database_name);
+
+  act_log.log_vdes = fileio_open (act_log.path, O_RDONLY, 0);	// get vdes of active log file 
+  /*open or not open exception */
+
+  act_log.hdr_page = (LOG_PAGE *) malloc (pagesize);
+  /*malloc exception */
+  error = read_log (act_log.path, act_log.log_vdes, act_log.hdr_page, phy_pageid, pagesize);
+  /*read error exception */
+
+  act_log.log_hdr = (LOG_HEADER *) act_log.hdr_page->area;
+  pagesize = act_log.log_hdr->db_logpagesize;
+
+  arv_log.hdr_page = (LOG_PAGE *) malloc (pagesize);
+  if (act_log.log_hdr->nxarv_num != 0)
+    {
+      arv_log.arv_num = 0;
+      for (arv_log.arv_num = 0; act_log.log_hdr->nxarv_num > arv_log.arv_num; arv_log.arv_num++)
+	{
+	  fileio_make_log_archive_name (arv_log.path, log_path, database_name, arv_log.arv_num);
+	  printf ("arv_num : %d \n", arv_log.arv_num);
+	  arv_log.log_vdes = fileio_open (arv_log.path, O_RDONLY, 0);
+	  error = read_log (arv_log.path, arv_log.log_vdes, arv_log.hdr_page, phy_pageid, pagesize);
+	  arv_log.log_hdr = (LOG_ARV_HEADER *) arv_log.hdr_page->area;
+	  /*end of getting active log header page */
+	  pgptr = (LOG_PAGE *) malloc (pagesize);
+	  cur.pageid = arv_log.log_hdr->npages -1 ;
+	  cur.offset = 0;
+	  //LSA_COPY(&cur, &(act_log.log_hdr->));/*not yet*/
+
+	  do
+	    {
+	      //  log_io_read(log_path, act_log.log_vdes, pgptr, physicla page id  ..) / physical page id is required to get pgptr
+	      phy_pageid = get_arvlog_phypageid (arv_log, cur.pageid);
+	      //get log page buffer to get LOG_PAGE (la_get_page_buffer(LOG_PAGEID pageid) 
+	      error = read_log (arv_log.path, arv_log.log_vdes, pgptr, phy_pageid, act_log.log_hdr->db_logpagesize);
+	      lrec = LOG_GET_LOG_RECORD_HEADER (pgptr, &cur);	// log page pointer..? 
+	      fprintf (stdout,
+	       "\nLSA = %3lld|%3d, Forw log = %3lld|%3d, Backw log = %3lld|%3d,\n"
+	       "     Trid = %3d, Prev tran logrec = %3lld|%3d\n  Type = %s", (long long int) cur.pageid,
+	       (int) cur.offset, (long long int) lrec->forw_lsa.pageid, (int) lrec->forw_lsa.offset,
+	       (long long int) lrec->back_lsa.pageid, (int) lrec->back_lsa.offset, lrec->trid,
+	       (long long int) lrec->prev_tranlsa.pageid, (int) lrec->prev_tranlsa.offset, log_to_string(lrec->type));
+
+
+	      LSA_COPY (&cur, &(lrec->forw_lsa));
+	    }
+	  while (!LSA_ISNULL (&(lrec->forw_lsa)));
+    fprintf(stdout, "\n================found eof lsa in ARCVHIVE LOG FILE\n");
+    do
+    {
+      phy_pageid = get_arvlog_phypageid (arv_log, cur.pageid);
+	      //get log page buffer to get LOG_PAGE (la_get_page_buffer(LOG_PAGEID pageid) 
+      error = read_log (arv_log.path, arv_log.log_vdes, pgptr, phy_pageid, act_log.log_hdr->db_logpagesize);
+      lrec = LOG_GET_LOG_RECORD_HEADER (pgptr, &cur);	// log page pointer..? 
+      fprintf (stdout,
+	       "\nLSA = %3lld|%3d, Forw log = %3lld|%3d, Backw log = %3lld|%3d,\n"
+	       "     Trid = %3d, Prev tran logrec = %3lld|%3d\n  Type = %s", (long long int) cur.pageid,
+	       (int) cur.offset, (long long int) lrec->forw_lsa.pageid, (int) lrec->forw_lsa.offset,
+	       (long long int) lrec->back_lsa.pageid, (int) lrec->back_lsa.offset, lrec->trid,
+	       (long long int) lrec->prev_tranlsa.pageid, (int) lrec->prev_tranlsa.offset, log_to_string(lrec->type));
+
+
+	      LSA_COPY (&cur, &(lrec->back_lsa));
+    } while (!LSA_ISNULL (&(lrec->back_lsa)));
+    
+	  fileio_close (act_log.log_vdes);
+	  fileio_close (arv_log.log_vdes);
+	}
+    }
+
 }
 
 /*
