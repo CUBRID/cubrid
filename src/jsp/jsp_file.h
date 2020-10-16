@@ -20,7 +20,7 @@
 
 
 /*
- * jsp_file.h - Java Stored Procedure Server Module Header
+ * jsp_file.h - Functions to manage files related to Java Stored Procedure Server
  *
  * Note:
  */
