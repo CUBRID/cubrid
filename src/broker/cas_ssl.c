@@ -118,7 +118,7 @@ cas_init_ssl (int sd)
 
   if (cert_not_found && pk_not_found)
     {
-      cas_log_write_and_end (0, false, "SSL: Both the certificate & Private key could not be found: %s/%s", cert, key);
+      cas_log_write_and_end (0, false, "SSL: Both the certificate & Private key could not be found: %s, %s", cert, key);
       return ER_CERT_COPPUPTED;
     }
 
@@ -130,7 +130,7 @@ cas_init_ssl (int sd)
 
   if (pk_not_found)
     {
-      cas_log_write_and_end (0, true, "SSL: Private key not found: %s", key);
+      cas_log_write_and_end (0, false, "SSL: Private key not found: %s", key);
       return ER_CERT_COPPUPTED;
     }
 
