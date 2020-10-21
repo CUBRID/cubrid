@@ -685,6 +685,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_TB_DEFAULT_REUSE_OID "create_table_reuseoid"
 
 #define PRM_NAME_USE_STAT_ESTIMATION "use_stat_estimation"
+#define PRM_NAME_IGNORE_TRAILING_SPACE "ignore_trailing_space"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -2311,6 +2312,10 @@ static unsigned int prm_create_table_reuseoid = 0;
 bool PRM_USE_STAT_ESTIMATION = false;
 static bool prm_use_stat_estimation_default = false;
 static unsigned int prm_use_stat_estimation_flag = 0;
+
+bool PRM_IGNORE_TRAILING_SPACE = false;
+static bool prm_ignore_trailing_space_default = false;
+static unsigned int prm_ignore_trailing_space_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5943,6 +5948,17 @@ static SYSPRM_PARAM prm_Def[] = {
    &prm_use_stat_estimation_flag,
    (void *) &prm_use_stat_estimation_default,
    (void *) &PRM_USE_STAT_ESTIMATION,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_IGNORE_TRAILING_SPACE,
+   PRM_NAME_IGNORE_TRAILING_SPACE,
+   (PRM_FOR_SERVER),
+   PRM_BOOLEAN,
+   &prm_ignore_trailing_space_flag,
+   (void *) &prm_ignore_trailing_space_default,
+   (void *) &PRM_IGNORE_TRAILING_SPACE,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,

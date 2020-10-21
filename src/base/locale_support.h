@@ -359,10 +359,11 @@ struct coll_data
 
   UCA_OPTIONS uca_opt;
 
-  bool is_ignore_trailing_space;	/* check if the collation is ti-style */
-
   unsigned int *weights;	/* array of weight (one weight per CP) */
   unsigned int *next_cp;	/* next CP (in order defined by collation) */
+  unsigned int *weights_ti;	/* array of weight for ignore trailing space */
+  unsigned int *next_cp_ti;	/* next CP (for ignore trailing space) */
+
   int w_count;			/* # of codepoints in this collation */
 
   /* Size of uca_w = 'w_count' X 'uca_exp_num' X 'sizeof (UCA_W)' */

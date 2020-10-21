@@ -4110,6 +4110,9 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value, int all
 
   best = NULL;
 
+  bool ti = true;
+  bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
+
   /*
    * NULL values are allowed in any domain, a NULL domain means that any value
    * is allowed, return the first thing on the list.
@@ -4328,8 +4331,13 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value, int all
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	      return NULL;
 	    }
+
+	  if (!ignore_trailing_space)
+	    {
+	      ti = (d->type->id == DB_TYPE_CHAR || d->type->id == DB_TYPE_NCHAR);
+	    }
 	  if (QSTR_COMPARE (d->collation_id, (const unsigned char *) dom_str, dom_size,
-			    (const unsigned char *) val_str, val_size) == 0)
+			    (const unsigned char *) val_str, val_size, ti) == 0)
 	    {
 	      if (best == NULL)
 		{
@@ -7083,6 +7091,10 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
   int hour, minute, second, millisecond;
   int year, month, day;
   TZ_ID ses_tz_id;
+
+  bool ti = true;
+  bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
+
   DB_VALUE src_replacement;
 
   db_make_null (&src_replacement);
@@ -9948,9 +9960,14 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		    db_enum = &DOM_GET_ENUM_ELEM (desired_domain, i);
 		    size = DB_GET_ENUM_ELEM_STRING_SIZE (db_enum);
 
+		    if (!ignore_trailing_space)
+		      {
+			ti = (desired_domain->type->id == DB_TYPE_CHAR || desired_domain->type->id == DB_TYPE_NCHAR);
+		      }
+
 		    /* use collation from the PT_TYPE_ENUMERATION */
 		    if (QSTR_COMPARE (desired_domain->collation_id, (const unsigned char *) val_str, val_str_size,
-				      (const unsigned char *) DB_GET_ENUM_ELEM_STRING (db_enum), size) == 0)
+				      (const unsigned char *) DB_GET_ENUM_ELEM_STRING (db_enum), size, ti) == 0)
 		      {
 			break;
 		      }
