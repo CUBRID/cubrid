@@ -3133,7 +3133,7 @@ lang_strmatch_utf8_w_contr (const LANG_COLLATION * lang_coll, bool is_match, con
     }
   else if (size2 > 0)
     {
-      if (is_match)
+      if (is_match || !ignore_trailing_space)
 	{
 	  return -1;
 	}
@@ -3153,6 +3153,10 @@ lang_strmatch_utf8_w_contr (const LANG_COLLATION * lang_coll, bool is_match, con
 	  return 0;
 	}
 
+      if (!ignore_trailing_space)
+	{
+	  return 1;
+	}
       /* same function as for collation without contractions */
       if (lang_str_utf8_trail_zero_weights (lang_coll, str1, CAST_BUFLEN (str1_end - str1)) != 0)
 	{
@@ -3759,7 +3763,7 @@ lang_strmatch_utf8_uca_w_level (const COLL_DATA * coll_data, const int level, bo
 	    }
 
 	  assert (num_ce2 > 0);
-	  if (is_match && *str2 == ASCII_SPACE)
+	  if (is_match && *str2 == 0x20)
 	    {
 	      /* trailing spaces are not matched */
 	      result = -1;
@@ -3817,12 +3821,12 @@ lang_strmatch_utf8_uca_w_level (const COLL_DATA * coll_data, const int level, bo
       w2 = GET_UCA_WEIGHT (level, ce_index2, uca_w_l13_2, uca_w_l4_2);
 
       /* ignore zero weights (unless character is space) */
-      if (w1 == 0 && *str1 != ASCII_SPACE)
+      if (w1 == 0 && *str1 != 0x20)
 	{
 	  ce_index1++;
 	  num_ce1--;
 
-	  if (w2 == 0 && *str2 != ASCII_SPACE)
+	  if (w2 == 0 && *str2 != 0x20)
 	    {
 	      ce_index2++;
 	      num_ce2--;
@@ -3830,7 +3834,7 @@ lang_strmatch_utf8_uca_w_level (const COLL_DATA * coll_data, const int level, bo
 
 	  goto read_weights1;
 	}
-      else if (w2 == 0 && *str2 != ASCII_SPACE)
+      else if (w2 == 0 && *str2 != 0x20)
 	{
 	  ce_index2++;
 	  num_ce2--;
@@ -4066,12 +4070,12 @@ lang_back_strmatch_utf8_uca_w_level (const COLL_DATA * coll_data, bool is_match,
   str1_start = str1;
   str2_start = str2;
 
-  while (*str1_last == ASCII_SPACE)
+  while (*str1_last == 0x20)
     {
       str1_last--;
     }
 
-  while (*str2_last == ASCII_SPACE)
+  while (*str2_last == 0x20)
     {
       str2_last--;
     }
@@ -4223,18 +4227,18 @@ lang_back_strmatch_utf8_uca_w_level (const COLL_DATA * coll_data, bool is_match,
       w2 = UCA_GET_L2_W (uca_w_l13_2[ce_index2]);
 
       /* ignore zero weights (unless character is space) */
-      if (w1 == 0 && *str1 != ASCII_SPACE)
+      if (w1 == 0 && *str1 != 0x20)
 	{
 	  ce_index1--;
 
-	  if (w2 == 0 && *str2 != ASCII_SPACE)
+	  if (w2 == 0 && *str2 != 0x20)
 	    {
 	      ce_index2--;
 	    }
 
 	  goto read_weights1;
 	}
-      else if (w2 == 0 && *str2 != ASCII_SPACE)
+      else if (w2 == 0 && *str2 != 0x20)
 	{
 	  ce_index2--;
 	  goto read_weights1;
@@ -5033,12 +5037,12 @@ lang_split_key_w_exp (const LANG_COLLATION * lang_coll, const bool is_desc, cons
       w2 = UCA_GET_L1_W (uca_w_l13_2[ce_index2]);
 
       /* ignore zero weights (unless character is space) */
-      if (w1 == 0 && *str1 != ASCII_SPACE)
+      if (w1 == 0 && *str1 != 0x20)
 	{
 	  ce_index1++;
 	  num_ce1--;
 
-	  if (w2 == 0 && *str2 != ASCII_SPACE)
+	  if (w2 == 0 && *str2 != 0x20)
 	    {
 	      ce_index2++;
 	      num_ce2--;
@@ -5046,7 +5050,7 @@ lang_split_key_w_exp (const LANG_COLLATION * lang_coll, const bool is_desc, cons
 
 	  goto read_weights1;
 	}
-      else if (w2 == 0 && *str2 != ASCII_SPACE)
+      else if (w2 == 0 && *str2 != 0x20)
 	{
 	  ce_index2++;
 	  num_ce2--;
@@ -5764,8 +5768,6 @@ lang_init_coll_Utf8_tr_cs (LANG_COLLATION * lang_coll)
   int i;
   unsigned int *lang_Weight_TR;
   unsigned int *lang_Next_alpha_char_TR;
-  unsigned int *lang_Weight_TR_ti;
-  unsigned int *lang_Next_alpha_char_TR_ti;
 
   const unsigned int special_upper_cp[] = {
     0xc7,			/* capital C with cedilla */
@@ -5799,15 +5801,10 @@ lang_init_coll_Utf8_tr_cs (LANG_COLLATION * lang_coll)
   lang_Weight_TR = lang_coll->coll.weights;
   lang_Next_alpha_char_TR = lang_coll->coll.next_cp;
 
-  lang_Weight_TR_ti = lang_coll->coll.weights_ti;
-  lang_Next_alpha_char_TR_ti = lang_coll->coll.next_cp_ti;
-
   for (i = 0; i < LANG_CHAR_COUNT_TR; i++)
     {
       lang_Weight_TR[i] = i;
       lang_Next_alpha_char_TR[i] = i + 1;
-      lang_Weight_TR_ti[i] = i;
-      lang_Next_alpha_char_TR_ti[i] = i + 1;
     }
 
   assert (DIM (special_lower_cp) == DIM (special_upper_cp));
@@ -5828,7 +5825,6 @@ lang_init_coll_Utf8_tr_cs (LANG_COLLATION * lang_coll)
 	  if (lang_Weight_TR[j] >= w_repl)
 	    {
 	      (lang_Weight_TR[j])++;
-	      (lang_Weight_TR_ti[j])++;
 	    }
 	}
     }
@@ -5848,7 +5844,6 @@ lang_init_coll_Utf8_tr_cs (LANG_COLLATION * lang_coll)
 	  if (lang_Weight_TR[j] >= w_repl)
 	    {
 	      (lang_Weight_TR[j])++;
-	      (lang_Weight_TR_ti[j])++;
 	    }
 	}
     }
@@ -5862,8 +5857,6 @@ lang_init_coll_Utf8_tr_cs (LANG_COLLATION * lang_coll)
 
       lang_Next_alpha_char_TR[cp_prev] = cp_special;
       lang_Next_alpha_char_TR[cp_special] = cp_next;
-      lang_Next_alpha_char_TR_ti[cp_prev] = cp_special;
-      lang_Next_alpha_char_TR_ti[cp_special] = cp_next;
     }
 
   for (i = 0; i < (int) DIM (special_lower_cp); i++)
@@ -5874,14 +5867,9 @@ lang_init_coll_Utf8_tr_cs (LANG_COLLATION * lang_coll)
 
       lang_Next_alpha_char_TR[cp_prev] = cp_special;
       lang_Next_alpha_char_TR[cp_special] = cp_next;
-      lang_Next_alpha_char_TR_ti[cp_prev] = cp_special;
-      lang_Next_alpha_char_TR_ti[cp_special] = cp_next;
     }
 
   /* other initializations to follow here */
-
-  lang_Weight_TR_ti[32] = 0;
-  lang_Next_alpha_char_TR_ti[32] = 1;
 
   lang_coll->need_init = false;
 }
@@ -7184,9 +7172,31 @@ lang_load_coll_from_lib (COLL_DATA * cd, void *lib_handle, const LOCALE_FILE * l
   else
     {
       SHLIB_GET_ADDR_W_REF (cd->weights, "coll_weights", unsigned int *, lib_handle, cd->coll_name);
+      cd->weights_ti = (unsigned int *) malloc (LANG_CHAR_COUNT_EN * (sizeof (unsigned int)));
+      if (cd->weights_ti == NULL)
+	{
+	  err_status = ER_LOC_INIT;
+	  snprintf (err_msg, sizeof (err_msg) - 1, "Collation %s: not initialized (no memory)", cd->coll_name);
+	  LOG_LOCALE_ERROR (err_msg, err_status, false);
+	  goto exit;
+	}
+
+      memcpy (cd->weights_ti, cd->weights, LANG_CHAR_COUNT_EN);
+      cd->weights_ti[32] = 0;
     }
 
   SHLIB_GET_ADDR_W_REF (cd->next_cp, "coll_next_cp", unsigned int *, lib_handle, cd->coll_name);
+  cd->next_cp_ti = (unsigned int *) malloc (LANG_CHAR_COUNT_EN * (sizeof (unsigned int)));
+  if (cd->next_cp_ti == NULL)
+    {
+      err_status = ER_LOC_INIT;
+      snprintf (err_msg, sizeof (err_msg) - 1, "Collation %s: not initialized (no memory)", cd->coll_name);
+      LOG_LOCALE_ERROR (err_msg, err_status, false);
+      goto exit;
+    }
+
+  memcpy (cd->next_cp_ti, cd->next_cp, LANG_CHAR_COUNT_EN);
+  cd->next_cp_ti[32] = 1;
 
 exit:
   return err_status;
