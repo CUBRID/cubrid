@@ -2407,7 +2407,7 @@ process_javasp_start (const char *db_name, bool process_window_service)
       print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_2S, PRINT_JAVASP_NAME, db_name);
       util_log_write_errid (MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_2S, PRINT_JAVASP_NAME, db_name);
     }
-  else if (javasp_status == JAVASP_SERVER_STOPPED)
+  else
     {
       if (process_window_service)
 	{
