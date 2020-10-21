@@ -74,10 +74,10 @@ FILE *
 javasp_open_info (const char *db_name, const char *mode)
 {
   FILE *fp = NULL;
-  char file_name[PATH_MAX];
-  char file_path[PATH_MAX];
+  char file_name[PATH_MAX] = { 0 };
+  char file_path[PATH_MAX] = { 0 };
 
-  snprintf (file_name, PATH_MAX, "%s/javasp_%s.info", "javasp", db_name);
+  snprintf (file_name, PATH_MAX, "javasp/javasp_%s.info", db_name);
   envvar_vardir_file (file_path, PATH_MAX, file_name);
 
   fp = fopen (file_path, mode);
