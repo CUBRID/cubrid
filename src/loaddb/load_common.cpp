@@ -648,8 +648,8 @@ namespace cubload
 
     for (std::string line; std::getline (object_file, line); ++lineno)
       {
-	bool is_id_line = starts_with (line, "%id");
-	bool is_class_line = starts_with (line, "%class");
+	bool is_id_line = starts_with (line, "%id") || starts_with (line, "%ID");
+	bool is_class_line = starts_with (line, "%class") || starts_with (line, "%CLASS");
 
 	if (is_id_line || is_class_line)
 	  {
