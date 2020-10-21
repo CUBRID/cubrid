@@ -152,7 +152,7 @@ main (int argc, char *argv[])
     /* try to create info dir and get absolute path for info file; $CUBRID/var/javasp_<db_name>.info */
     JAVASP_SERVER_INFO jsp_info = {-1, -1};
     status = javasp_get_server_info (db_name, jsp_info);
-    if (status != NO_ERROR)
+    if (status != NO_ERROR && command.compare ("start") != 0)
       {
 	char info_path[PATH_MAX], err_msg[PATH_MAX];
 	javasp_get_info_file (info_path, PATH_MAX, db_name.c_str ());

@@ -2447,8 +2447,11 @@ process_javasp_start (const char *db_name, bool process_window_service)
 	    }
 	  else
 	    {
-	      /* invalid database name or failed to open info file */
-	      break;
+	      if (waited_secs > 3)
+		{
+		  /* invalid database name or failed to open info file, wait upto 3 seconds */
+		  break;
+		}
 	    }
 	}
     }
