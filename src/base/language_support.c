@@ -3763,7 +3763,7 @@ lang_strmatch_utf8_uca_w_level (const COLL_DATA * coll_data, const int level, bo
 	    }
 
 	  assert (num_ce2 > 0);
-	  if (is_match && *str2 == 0x20)
+	  if (is_match && *str2 == ASCII_SPACE)
 	    {
 	      /* trailing spaces are not matched */
 	      result = -1;
@@ -3821,12 +3821,12 @@ lang_strmatch_utf8_uca_w_level (const COLL_DATA * coll_data, const int level, bo
       w2 = GET_UCA_WEIGHT (level, ce_index2, uca_w_l13_2, uca_w_l4_2);
 
       /* ignore zero weights (unless character is space) */
-      if (w1 == 0 && *str1 != 0x20)
+      if (w1 == 0 && *str1 != ASCII_SPACE)
 	{
 	  ce_index1++;
 	  num_ce1--;
 
-	  if (w2 == 0 && *str2 != 0x20)
+	  if (w2 == 0 && *str2 != ASCII_SPACE)
 	    {
 	      ce_index2++;
 	      num_ce2--;
@@ -3834,7 +3834,7 @@ lang_strmatch_utf8_uca_w_level (const COLL_DATA * coll_data, const int level, bo
 
 	  goto read_weights1;
 	}
-      else if (w2 == 0 && *str2 != 0x20)
+      else if (w2 == 0 && *str2 != ASCII_SPACE)
 	{
 	  ce_index2++;
 	  num_ce2--;
@@ -4070,12 +4070,12 @@ lang_back_strmatch_utf8_uca_w_level (const COLL_DATA * coll_data, bool is_match,
   str1_start = str1;
   str2_start = str2;
 
-  while (*str1_last == 0x20)
+  while (*str1_last == ASCII_SPACE)
     {
       str1_last--;
     }
 
-  while (*str2_last == 0x20)
+  while (*str2_last == ASCII_SPACE)
     {
       str2_last--;
     }
@@ -4227,18 +4227,18 @@ lang_back_strmatch_utf8_uca_w_level (const COLL_DATA * coll_data, bool is_match,
       w2 = UCA_GET_L2_W (uca_w_l13_2[ce_index2]);
 
       /* ignore zero weights (unless character is space) */
-      if (w1 == 0 && *str1 != 0x20)
+      if (w1 == 0 && *str1 != ASCII_SPACE)
 	{
 	  ce_index1--;
 
-	  if (w2 == 0 && *str2 != 0x20)
+	  if (w2 == 0 && *str2 != ASCII_SPACE)
 	    {
 	      ce_index2--;
 	    }
 
 	  goto read_weights1;
 	}
-      else if (w2 == 0 && *str2 != 0x20)
+      else if (w2 == 0 && *str2 != ASCII_SPACE)
 	{
 	  ce_index2--;
 	  goto read_weights1;
@@ -5037,12 +5037,12 @@ lang_split_key_w_exp (const LANG_COLLATION * lang_coll, const bool is_desc, cons
       w2 = UCA_GET_L1_W (uca_w_l13_2[ce_index2]);
 
       /* ignore zero weights (unless character is space) */
-      if (w1 == 0 && *str1 != 0x20)
+      if (w1 == 0 && *str1 != ASCII_SPACE)
 	{
 	  ce_index1++;
 	  num_ce1--;
 
-	  if (w2 == 0 && *str2 != 0x20)
+	  if (w2 == 0 && *str2 != ASCII_SPACE)
 	    {
 	      ce_index2++;
 	      num_ce2--;
@@ -5050,7 +5050,7 @@ lang_split_key_w_exp (const LANG_COLLATION * lang_coll, const bool is_desc, cons
 
 	  goto read_weights1;
 	}
-      else if (w2 == 0 && *str2 != 0x20)
+      else if (w2 == 0 && *str2 != ASCII_SPACE)
 	{
 	  ce_index2++;
 	  num_ce2--;
@@ -5768,6 +5768,8 @@ lang_init_coll_Utf8_tr_cs (LANG_COLLATION * lang_coll)
   int i;
   unsigned int *lang_Weight_TR;
   unsigned int *lang_Next_alpha_char_TR;
+  unsigned int *lang_Weight_TR_ti;
+  unsigned int *lang_Next_alpha_char_TR_ti;
 
   const unsigned int special_upper_cp[] = {
     0xc7,			/* capital C with cedilla */
@@ -5801,10 +5803,15 @@ lang_init_coll_Utf8_tr_cs (LANG_COLLATION * lang_coll)
   lang_Weight_TR = lang_coll->coll.weights;
   lang_Next_alpha_char_TR = lang_coll->coll.next_cp;
 
+  lang_Weight_TR_ti = lang_coll->coll.weights_ti;
+  lang_Next_alpha_char_TR_ti = lang_coll->coll.next_cp_ti;
+
   for (i = 0; i < LANG_CHAR_COUNT_TR; i++)
     {
       lang_Weight_TR[i] = i;
       lang_Next_alpha_char_TR[i] = i + 1;
+      lang_Weight_TR_ti[i] = i;
+      lang_Next_alpha_char_TR_ti[i] = i + 1;
     }
 
   assert (DIM (special_lower_cp) == DIM (special_upper_cp));
@@ -5825,6 +5832,7 @@ lang_init_coll_Utf8_tr_cs (LANG_COLLATION * lang_coll)
 	  if (lang_Weight_TR[j] >= w_repl)
 	    {
 	      (lang_Weight_TR[j])++;
+	      (lang_Weight_TR_ti[j])++;
 	    }
 	}
     }
@@ -5844,6 +5852,7 @@ lang_init_coll_Utf8_tr_cs (LANG_COLLATION * lang_coll)
 	  if (lang_Weight_TR[j] >= w_repl)
 	    {
 	      (lang_Weight_TR[j])++;
+	      (lang_Weight_TR_ti[j])++;
 	    }
 	}
     }
@@ -5857,6 +5866,8 @@ lang_init_coll_Utf8_tr_cs (LANG_COLLATION * lang_coll)
 
       lang_Next_alpha_char_TR[cp_prev] = cp_special;
       lang_Next_alpha_char_TR[cp_special] = cp_next;
+      lang_Next_alpha_char_TR_ti[cp_prev] = cp_special;
+      lang_Next_alpha_char_TR_ti[cp_special] = cp_next;
     }
 
   for (i = 0; i < (int) DIM (special_lower_cp); i++)
@@ -5867,6 +5878,8 @@ lang_init_coll_Utf8_tr_cs (LANG_COLLATION * lang_coll)
 
       lang_Next_alpha_char_TR[cp_prev] = cp_special;
       lang_Next_alpha_char_TR[cp_special] = cp_next;
+      lang_Next_alpha_char_TR_ti[cp_prev] = cp_special;
+      lang_Next_alpha_char_TR_ti[cp_special] = cp_next;
     }
 
   /* other initializations to follow here */
