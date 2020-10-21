@@ -198,6 +198,8 @@ EXPORTS
 	basename
 	au_set_password
 	au_disable_passwords
+    er_has_error
+    er_msg
 	er_set
 	log_get_db_compatibility
 ;
