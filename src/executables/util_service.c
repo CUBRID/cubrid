@@ -2482,12 +2482,13 @@ process_javasp_stop (const char *db_name, bool process_window_service)
 	{
 	  const char *args[] = { UTIL_JAVASP_NAME, COMMAND_TYPE_STOP, db_name, NULL };
 	  status = proc_execute (UTIL_JAVASP_NAME, args, true, false, false, NULL);
-	  while (status == NO_ERROR && waited_secs < wait_timeout)
+	  do
 	    {
 	      sleep (1);	/* wait to stop */
 	      status = (is_javasp_running (db_name) != JAVASP_SERVER_STOPPED) ? ER_GENERIC_ERROR : NO_ERROR;
 	      waited_secs++;
 	    }
+	  while (status != NO_ERROR && waited_secs < wait_timeout);
 	}
     }
   else
