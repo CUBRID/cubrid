@@ -2461,6 +2461,8 @@ static int
 process_javasp_stop (const char *db_name, bool process_window_service)
 {
   int status = NO_ERROR;
+  static const int wait_timeout = 5;
+  int waited_secs = 0;
 
   print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_3S, PRINT_JAVASP_NAME, PRINT_CMD_STOP, db_name);
   if (is_javasp_running (db_name) == JAVASP_SERVER_RUNNING)
@@ -2480,10 +2482,11 @@ process_javasp_stop (const char *db_name, bool process_window_service)
 	{
 	  const char *args[] = { UTIL_JAVASP_NAME, COMMAND_TYPE_STOP, db_name, NULL };
 	  status = proc_execute (UTIL_JAVASP_NAME, args, true, false, false, NULL);
-	  if (status == NO_ERROR)
+	  while (status == NO_ERROR && waited_secs < wait_timeout)
 	    {
 	      sleep (1);	/* wait to stop */
 	      status = (is_javasp_running (db_name) != JAVASP_SERVER_STOPPED) ? ER_GENERIC_ERROR : NO_ERROR;
+	      waited_secs++;
 	    }
 	}
     }
