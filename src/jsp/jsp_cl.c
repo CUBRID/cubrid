@@ -2842,9 +2842,8 @@ end:
   if (error != NO_ERROR || is_prepare_call[call_cnt])
     {
       jsp_send_destroy_request (sock_fd);
-      <<<<<<<HEAD jsp_disconnect_server (sock_fd);
-      == == == = jsp_close_internal_connection (sock_fd);
-      >>>>>>>upstream / develop sock_fds[call_cnt] = INVALID_SOCKET;
+      jsp_disconnect_server (sock_fd);
+      sock_fds[call_cnt] = INVALID_SOCKET;
     }
 
   return error;

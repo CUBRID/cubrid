@@ -43,6 +43,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <netdb.h>
+#include <signal.h>
 #else /* not WINDOWS */
 #include <winsock2.h>
 #include <windows.h>
