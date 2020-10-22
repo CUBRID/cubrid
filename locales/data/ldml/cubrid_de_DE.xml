@@ -101,6 +101,12 @@
 	<collations validSubLocales="de_DE">
 		<collation type="utf8_de_exp">
 			<settings id="76" strength="tertiary" caseLevel="on" caseFirst="upper" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="ignore" CUBRIDExpansions="use" />
+			<cubridrules>
+				<set>
+					<scp>20</scp>
+					<w>[0.0.0.0]</w>
+				</set>
+			</cubridrules>		
 			<rules>
 				<reset>AE</reset>
 				<s>ä</s>
@@ -115,6 +121,12 @@
 		</collation>
 		<collation type="utf8_de_exp_ai_ci">
 			<settings id="72" strength="primary" caseLevel="off" caseFirst="off" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="ignore" CUBRIDExpansions="use" />
+			<cubridrules>
+				<set>
+					<scp>20</scp>
+					<w>[0.0.0.0]</w>
+				</set>
+			</cubridrules>		
 			<rules>
 				<reset>AE</reset>
 				<s>ä</s>

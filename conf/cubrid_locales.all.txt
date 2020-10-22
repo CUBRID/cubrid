@@ -40,24 +40,13 @@
 # Define any new locales below (a single locale entry per line, as described above) 
 ###
 de_DE
-de_DE_ti
 es_ES
-es_ES_ti
 fr_FR
-fr_FR_ti
 it_IT
-it_IT_ti
 ja_JP
-ja_JP_ti
 km_KH
-km_KH_ti
 ko_KR
-ko_KR_ti
 tr_TR
-tr_TR_ti
 vi_VN
-vi_VN_ti
 zh_CN
-zh_CN_ti
 ro_RO
-ro_RO_ti
