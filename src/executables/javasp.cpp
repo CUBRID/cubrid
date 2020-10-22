@@ -65,6 +65,7 @@
 #include "jsp_sr.h"
 
 #include <string>
+#include <algorithm>
 
 #define JAVASP_PING_LEN   PATH_MAX
 
@@ -111,8 +112,7 @@ main (int argc, char *argv[])
 #else
   if (os_set_signal_handler (SIGPIPE, SIG_IGN) == SIG_ERR)
     {
-      status = ER_GENERIC_ERROR;
-      goto exit;
+      return ER_GENERIC_ERROR;
     }
 #endif /* WINDOWS */
   {
@@ -120,25 +120,14 @@ main (int argc, char *argv[])
     * COMMON PART FOR PING AND OTHER COMMANDS
     */
 
+    // supress error message
+    er_init (NULL_DEVICE, ER_NEVER_EXIT);
+
     /* check arguments, get command and database name */
     status = javasp_check_argument (argc, argv, command, db_name);
     if (status != NO_ERROR)
       {
-	goto exit;
-      }
-
-    /* initialize error manager */
-    if (command.compare ("ping") == 0)
-      {
-	// supress error message
-	er_init (NULL_DEVICE, ER_NEVER_EXIT);
-      }
-    else
-      {
-	/* error message log file */
-	char er_msg_file[PATH_MAX];
-	snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_java.err", db_name.c_str ());
-	er_init (er_msg_file, ER_NEVER_EXIT);
+	return ER_GENERIC_ERROR;
       }
 
     /* check database exists and get path name of database */
@@ -147,6 +136,18 @@ main (int argc, char *argv[])
     if (status != NO_ERROR)
       {
 	goto exit;
+      }
+
+    /* initialize error manager for command */
+    if (command.compare ("ping") != 0)
+      {
+	/* finalize supressing error message for ping */
+	er_final (ER_ALL_FINAL);
+
+	/* error message log file */
+	char er_msg_file[PATH_MAX];
+	snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_java.err", db_name.c_str ());
+	er_init (er_msg_file, ER_NEVER_EXIT);
       }
 
     /* try to create info dir and get absolute path for info file; $CUBRID/var/javasp_<db_name>.info */
@@ -243,9 +244,21 @@ exit:
 	{
 	  fprintf (stdout, "ERROR");
 	}
+      else
+	{
+	  fprintf (stdout, "NO_CONNECTION");
+	}
+
       if (redirect)
 	{
 	  fclose (redirect);
+	}
+    }
+  else
+    {
+      if (er_has_error ())
+	{
+	  JAVASP_PRINT_ERR_MSG ("%s\n", er_msg ());
 	}
     }
 
@@ -413,11 +426,6 @@ exit:
       free_and_init (buffer);
     }
 
-  if (er_has_error ())
-    {
-      JAVASP_PRINT_ERR_MSG ("%s\n", er_msg ());
-    }
-
   return status;
 }
 
@@ -576,8 +584,7 @@ javasp_check_database (const std::string &db_name, std::string &path)
   DB_INFO *db = cfg_find_db (db_name.c_str ());
   if (db == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_DATABASE, 1, db_name.c_str ());
-      status = ER_BO_UNKNOWN_DATABASE;
+      status = ER_GENERIC_ERROR;
     }
   else
     {
@@ -606,8 +613,20 @@ javasp_check_argument (int argc, char *argv[], std::string &command, std::string
     }
   else
     {
-      JAVASP_PRINT_ERR_MSG ("Invalid number of arguments: %d\n", argc);
       status = ER_GENERIC_ERROR;
+      JAVASP_PRINT_ERR_MSG ("Invalid number of arguments: %d\n", argc);
+    }
+
+  if (status == NO_ERROR)
+    {
+      /* check command */
+      std::array<std::string, 5> commands = {"start", "stop", "restart", "status", "ping"};
+      auto it = find (commands.begin(), commands.end(), command);
+      if (it == commands.end())
+	{
+	  status = ER_GENERIC_ERROR;
+	  JAVASP_PRINT_ERR_MSG ("Invalid command: %s\n", command.c_str ());
+	}
     }
 
   return status;

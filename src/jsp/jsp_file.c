@@ -91,7 +91,7 @@ javasp_get_info_file (char *buf, size_t len, const char *db_name)
   char javasp_vardir[PATH_MAX];
   envvar_vardir_file (javasp_vardir, PATH_MAX, "javasp");
 
-  if (snprintf (buf, len, "%s/%s_java.err", javasp_vardir, db_name) < 0)
+  if (snprintf (buf, len, "%s/javasp_%s.info", javasp_vardir, db_name) < 0)
     {
       assert (false);
       buf[0] = '\0';

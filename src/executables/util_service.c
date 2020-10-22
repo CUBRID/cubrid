@@ -2376,7 +2376,7 @@ is_javasp_running (const char *server_name)
   if (fgets (buf, PATH_MAX, input) == NULL)
     {
       pclose (input);
-      return JAVASP_SERVER_STOPPED;
+      return JAVASP_SERVER_STATUS_ERROR;
     }
 
   if (strcmp (buf, server_name) == 0)
@@ -2384,7 +2384,12 @@ is_javasp_running (const char *server_name)
       pclose (input);
       return JAVASP_SERVER_RUNNING;
     }
-  else
+  else if (strcmp (buf, "NO_CONNECTION") == 0)
+    {
+      pclose (input);
+      return JAVASP_SERVER_STOPPED;
+    }
+  else if (strcmp (buf, "ERROR") == 0)
     {
       pclose (input);
       return JAVASP_SERVER_STATUS_ERROR;
@@ -2468,7 +2473,8 @@ process_javasp_stop (const char *db_name, bool process_window_service)
   int waited_secs = 0;
 
   print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_3S, PRINT_JAVASP_NAME, PRINT_CMD_STOP, db_name);
-  if (is_javasp_running (db_name) == JAVASP_SERVER_RUNNING)
+  UTIL_JAVASP_SERVER_STATUS_E javasp_status = is_javasp_running (db_name);
+  if (javasp_status == JAVASP_SERVER_RUNNING)
     {
       if (process_window_service)
 	{
@@ -2500,6 +2506,7 @@ process_javasp_stop (const char *db_name, bool process_window_service)
       print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_JAVASP_NAME, db_name);
       util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_JAVASP_NAME, db_name);
     }
+
   print_result (PRINT_JAVASP_NAME, status, STOP);
   return status;
 }
@@ -2516,8 +2523,9 @@ process_javasp_status (const char *db_name)
       const char *args[] = { UTIL_JAVASP_NAME, COMMAND_TYPE_STATUS, db_name, NULL };
       status = proc_execute (UTIL_JAVASP_NAME, args, true, false, false, NULL);
     }
-  else if (javasp_status == JAVASP_SERVER_STOPPED)
+  else
     {
+      status = ER_GENERIC_ERROR;
       print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_JAVASP_NAME, db_name);
       util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_JAVASP_NAME, db_name);
     }
