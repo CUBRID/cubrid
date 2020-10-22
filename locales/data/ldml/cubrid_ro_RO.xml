@@ -101,6 +101,12 @@
 	<collations validSubLocales="ro_RO">
 		<collation type="utf8_ro_cs">
 			<settings id="77" strength="tertiary" backwards="off" caseLevel="on" caseFirst="upper" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="ignore" CUBRIDExpansions="ignore" />
+			<cubridrules>
+				<set>
+					<scp>20</scp>
+					<w>[0.0.0.0]</w>
+				</set>
+			</cubridrules>
 			<rules>
 				<reset>A</reset>
 				<p>ă</p>

@@ -101,6 +101,12 @@
 	<collations validSubLocales="ko_KR">
 		<collation type="utf8_ko_cs_uca">
 			<settings id="133" strength="quaternary" caseLevel="on" caseFirst="upper" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="ignore" />
+			<cubridrules>
+				<set>
+					<scp>20</scp>
+					<w>[0.0.0.0]</w>
+				</set>
+			</cubridrules>
 			<rules>
 				<reset>가</reset>
 				<sc>伽佳假價加可呵哥嘉嫁家暇架枷柯歌珂痂稼苛茄街袈訶賈跏軻迦駕仮傢咖哿坷宊斝榎檟珈笳耞舸葭謌</sc>

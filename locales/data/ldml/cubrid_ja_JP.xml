@@ -101,6 +101,12 @@
 	<collations validSubLocales="ja_JP">
 		<collation type="utf8_ja_exp">
 			<settings id="124" strength="tertiary" caseLevel="off" caseFirst="upper" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="use" CUBRIDExpansions="use"/>
+			<cubridrules>
+				<set>
+					<scp>20</scp>
+					<w>[0.0.0.0]</w>
+				</set>
+			</cubridrules>			
 			<rules>
 				<reset>ヽ</reset> <!-- \u30FD -->
 				<i>ゝ</i> <!-- \u309D -->
@@ -1305,6 +1311,12 @@
 		</collation>
 		<collation type="utf8_ja_exp_cbm">	<!-- same as utf8_ja_exp, except that it allows matching across contraction boundary -->
 			<settings id="125" strength="tertiary" caseLevel="off" caseFirst="upper" CUBRIDMaxWeights="65536" DUCETContractions="ignore" TailoringContractions="use" CUBRIDExpansions="use" MatchContractionBoundary="true"/>
+			<cubridrules>
+				<set>
+					<scp>20</scp>
+					<w>[0.0.0.0]</w>
+				</set>
+			</cubridrules>			
 			<rules>
 				<reset>ヽ</reset> <!-- \u30FD -->
 				<i>ゝ</i> <!-- \u309D -->
