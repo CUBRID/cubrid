@@ -5329,8 +5329,8 @@ lang_init_common_en_ci (COLL_DATA * coll_data)
 
   for (i = 0; i < coll_data->w_count; i++)
     {
-      coll_data->weights[i] = i;
-      coll_data->next_cp[i] = i + 1;
+      coll_data->weights_ti[i] = coll_data->weights[i] = i;
+      coll_data->next_cp_ti[i] = coll_data->next_cp[i] = i + 1;
     }
 
   for (i = 'a'; i <= (int) 'z'; i++)
@@ -7447,6 +7447,14 @@ lang_free_collations (void)
       assert (lang_Collations[i] != NULL);
       if (!(lang_Collations[i]->built_in))
 	{
+	  if (lang_Collations[i]->coll.weights_ti)
+	    {
+	      free (lang_Collations[i]->coll.weights_ti);
+	    }
+	  if (lang_Collations[i]->coll.next_cp_ti)
+	    {
+	      free (lang_Collations[i]->coll.next_cp_ti);
+	    }
 	  free (lang_Collations[i]);
 	}
       lang_Collations[i] = NULL;
