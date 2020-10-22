@@ -1128,7 +1128,6 @@ qo_plan_print_sort_spec_helper (PT_NODE * list, bool is_iscan_asc, FILE * f, int
 
       if (TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (list->info.sort_spec.pos_descr.dom))
 	  && TP_DOMAIN_COLLATION (list->info.sort_spec.pos_descr.dom) != LANG_SYS_COLLATION
-	  && TP_DOMAIN_COLLATION (list->info.sort_spec.pos_descr.dom) != (LANG_SYS_COLLATION + COLL_TS)
 	  && TP_DOMAIN_COLLATION_FLAG (list->info.sort_spec.pos_descr.dom) != TP_DOMAIN_COLL_LEAVE)
 	{
 	  fprintf (f, " collate %s",

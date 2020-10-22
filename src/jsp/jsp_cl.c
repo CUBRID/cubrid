@@ -2174,22 +2174,42 @@ jsp_send_destroy_request_all ()
 extern int
 jsp_send_destroy_request (const SOCKET sockfd)
 {
-  int nbytes;
-  int req_code = 0x10;
-  int res = NO_ERROR;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
+  char *request = OR_ALIGNED_BUF_START (a_request);
 
-  nbytes = jsp_writen (sockfd, (void *) &req_code, (int) sizeof (int));
+  or_pack_int (request, (int) SP_CODE_DESTROY);
+  int nbytes = jsp_writen (sockfd, request, (int) sizeof (int));
   if (nbytes != (int) sizeof (int))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, "destroy");
       return er_errid ();
     }
 
-  tran_begin_libcas_function ();
-  res = libcas_main (sockfd);	/* jdbc call to destroy resources */
-  tran_end_libcas_function ();
+  /* read request code */
+  int code;
+  nbytes = jsp_readn (sockfd, (char *) &code, (int) sizeof (int));
+  if (nbytes != (int) sizeof (int))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
+      return er_errid ();
+    }
+  code = ntohl (code);
 
-  return res;
+  if (code == SP_CODE_DESTROY)
+    {
+      bool mode = ssl_client;
+      ssl_client = false;
+      tran_begin_libcas_function ();
+      libcas_main (sockfd);	/* jdbc call */
+      tran_end_libcas_function ();
+      ssl_client = mode;
+    }
+  else
+    {
+      /* end */ 
+    }
+
+  return NO_ERROR;
 }
 
 /*
@@ -3096,6 +3116,7 @@ end:
   if (error != NO_ERROR || is_prepare_call[call_cnt])
     {
       jsp_send_destroy_request (sock_fd);
+      jsp_close_internal_connection (sock_fd);
       sock_fds[call_cnt] = INVALID_SOCKET;
     }
 

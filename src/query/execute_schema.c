@@ -83,7 +83,7 @@
 #define UNIQUE_SAVEPOINT_REVOKE_USER "rEVOKEuSER"
 
 #define QUERY_MAX_SIZE	1024 * 1024
-#define MAX_FILTER_PREDICATE_STRING_LENGTH 128
+#define MAX_FILTER_PREDICATE_STRING_LENGTH 255
 
 typedef enum
 {
@@ -8653,8 +8653,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
       collation_id = LANG_SYS_COLLATION;
       if (cs_node != NULL || coll_node != NULL)
 	{
-	  error =
-	    pt_check_grammar_charset_collation (parser, cs_node, coll_node, &charset, &collation_id, false);
+	  error = pt_check_grammar_charset_collation (parser, cs_node, coll_node, &charset, &collation_id);
 	  if (error != NO_ERROR)
 	    {
 	      goto error_exit;
