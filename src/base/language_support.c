@@ -2861,7 +2861,12 @@ lang_strmatch_utf8 (const LANG_COLLATION * lang_coll, bool is_match, const unsig
   unsigned char *str1_next, *str2_next;
   unsigned int cp1, cp2, w_cp1, w_cp2;
   const int alpha_cnt = lang_coll->coll.w_count;
-  const unsigned int *weight_ptr = (ignore_trailing_space) ? lang_coll->coll.weights_ti : lang_coll->coll.weights;
+  const unsigned int *weight_ptr = lang_coll->coll.weights;
+
+  if (lang_coll->built_in && ignore_trailing_space)
+    {
+      weight_ptr = lang_coll->coll.weights_ti;
+    }
 
   str1_begin = str1;
   str1_end = str1 + size1;
@@ -2942,7 +2947,7 @@ lang_strmatch_utf8 (const LANG_COLLATION * lang_coll, bool is_match, const unsig
     }
   else if (size2 > 0)
     {
-      if (is_match)
+      if (is_match || !ignore_trailing_space)
 	{
 	  return -1;
 	}
@@ -2959,6 +2964,11 @@ lang_strmatch_utf8 (const LANG_COLLATION * lang_coll, bool is_match, const unsig
       if (is_match)
 	{
 	  return 0;
+	}
+
+      if (!ignore_trailing_space)
+	{
+	  return 1;
 	}
 
       if (lang_str_utf8_trail_zero_weights (lang_coll, str1, CAST_BUFLEN (str1_end - str1)) != 0)
@@ -3157,6 +3167,7 @@ lang_strmatch_utf8_w_contr (const LANG_COLLATION * lang_coll, bool is_match, con
 	{
 	  return 1;
 	}
+
       /* same function as for collation without contractions */
       if (lang_str_utf8_trail_zero_weights (lang_coll, str1, CAST_BUFLEN (str1_end - str1)) != 0)
 	{
@@ -4470,12 +4481,13 @@ lang_str_utf8_trail_zero_weights (const LANG_COLLATION * lang_coll, const unsign
 {
   unsigned char *str_next;
   unsigned int cp;
+  unsigned int *weight = (lang_coll->built_in) ? lang_coll->coll.weights_ti : lang_coll->coll.weights;
 
   while (size > 0)
     {
       cp = intl_utf8_to_cp (str, size, &str_next);
 
-      if (cp >= (unsigned int) lang_coll->coll.w_count || lang_coll->coll.weights[cp] != 0)
+      if (cp >= (unsigned int) lang_coll->coll.w_count || weight[cp] != 0)
 	{
 	  return 1;
 	}
@@ -7185,31 +7197,9 @@ lang_load_coll_from_lib (COLL_DATA * cd, void *lib_handle, const LOCALE_FILE * l
   else
     {
       SHLIB_GET_ADDR_W_REF (cd->weights, "coll_weights", unsigned int *, lib_handle, cd->coll_name);
-      cd->weights_ti = (unsigned int *) malloc (LANG_CHAR_COUNT_EN * (sizeof (unsigned int)));
-      if (cd->weights_ti == NULL)
-	{
-	  err_status = ER_LOC_INIT;
-	  snprintf (err_msg, sizeof (err_msg) - 1, "Collation %s: not initialized (no memory)", cd->coll_name);
-	  LOG_LOCALE_ERROR (err_msg, err_status, false);
-	  goto exit;
-	}
-
-      memcpy (cd->weights_ti, cd->weights, LANG_CHAR_COUNT_EN);
-      cd->weights_ti[32] = 0;
     }
 
   SHLIB_GET_ADDR_W_REF (cd->next_cp, "coll_next_cp", unsigned int *, lib_handle, cd->coll_name);
-  cd->next_cp_ti = (unsigned int *) malloc (LANG_CHAR_COUNT_EN * (sizeof (unsigned int)));
-  if (cd->next_cp_ti == NULL)
-    {
-      err_status = ER_LOC_INIT;
-      snprintf (err_msg, sizeof (err_msg) - 1, "Collation %s: not initialized (no memory)", cd->coll_name);
-      LOG_LOCALE_ERROR (err_msg, err_status, false);
-      goto exit;
-    }
-
-  memcpy (cd->next_cp_ti, cd->next_cp, LANG_CHAR_COUNT_EN);
-  cd->next_cp_ti[32] = 1;
 
 exit:
   return err_status;
@@ -7447,14 +7437,6 @@ lang_free_collations (void)
       assert (lang_Collations[i] != NULL);
       if (!(lang_Collations[i]->built_in))
 	{
-	  if (lang_Collations[i]->coll.weights_ti)
-	    {
-	      free (lang_Collations[i]->coll.weights_ti);
-	    }
-	  if (lang_Collations[i]->coll.next_cp_ti)
-	    {
-	      free (lang_Collations[i]->coll.next_cp_ti);
-	    }
 	  free (lang_Collations[i]);
 	}
       lang_Collations[i] = NULL;
