@@ -149,17 +149,17 @@ main (int argc, char *argv[])
 	er_init (er_msg_file, ER_NEVER_EXIT);
       }
 
-    /* try to create info dir and get absolute path for info file; $CUBRID/var/javasp_<db_name>.info */
-    JAVASP_SERVER_INFO jsp_info = {-1, -1};
-    status = javasp_get_server_info (db_name, jsp_info);
-    if (status != NO_ERROR && command.compare ("start") != 0)
-      {
-	char info_path[PATH_MAX], err_msg[PATH_MAX];
-	javasp_get_info_file (info_path, PATH_MAX, db_name.c_str ());
-	snprintf (err_msg, PATH_MAX, "Error while opening file (%s)", info_path);
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, err_msg);
-	goto exit;
-      }
+                    /* try to create info dir and get absolute path for info file; $CUBRID/var/javasp_<db_name>.info */
+                    JAVASP_SERVER_INFO jsp_info = {-1, -1};
+                    status = javasp_get_server_info (db_name, jsp_info);
+                    if (status != NO_ERROR && command.compare ("start") != 0)
+                      {
+                  char info_path[PATH_MAX], err_msg[PATH_MAX];
+                  javasp_get_info_file (info_path, PATH_MAX, db_name.c_str ());
+                  snprintf (err_msg, PATH_MAX, "Error while opening file (%s)", info_path);
+                  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, err_msg);
+                  goto exit;
+                      }
 
 #if defined(WINDOWS)
     // socket startup for windows
