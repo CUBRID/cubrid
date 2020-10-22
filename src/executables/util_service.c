@@ -2493,8 +2493,8 @@ process_javasp_stop (const char *db_name, bool process_window_service)
 	  status = proc_execute (UTIL_JAVASP_NAME, args, true, false, false, NULL);
 	  do
 	    {
-	      sleep (1);	/* wait to stop */
 	      status = (is_javasp_running (db_name) == JAVASP_SERVER_RUNNING) ? ER_GENERIC_ERROR : NO_ERROR;
+	      sleep (1);	/* wait to stop */
 	      waited_secs++;
 	    }
 	  while (status != NO_ERROR && waited_secs < wait_timeout);
