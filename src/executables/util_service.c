@@ -2494,7 +2494,7 @@ process_javasp_stop (const char *db_name, bool process_window_service)
 	  do
 	    {
 	      sleep (1);	/* wait to stop */
-	      status = (is_javasp_running (db_name) != JAVASP_SERVER_STOPPED) ? ER_GENERIC_ERROR : NO_ERROR;
+	      status = (is_javasp_running (db_name) == JAVASP_SERVER_RUNNING) ? ER_GENERIC_ERROR : NO_ERROR;
 	      waited_secs++;
 	    }
 	  while (status != NO_ERROR && waited_secs < wait_timeout);
