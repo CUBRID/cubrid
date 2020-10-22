@@ -92,7 +92,6 @@ static bool javasp_is_terminated_process (int pid);
 static void javasp_terminate_process (int pid);
 
 static int javasp_get_server_info (const std::string &db_name, JAVASP_SERVER_INFO &info);
-
 static int javasp_check_argument (int argc, char *argv[], std::string &command, std::string &db_name);
 static int javasp_check_database (const std::string &db_name, std::string &db_path);
 
