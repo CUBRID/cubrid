@@ -148,6 +148,7 @@ Utilidades de servicio disponible:\n\
     broker\n\
     manager\n\
     heartbeat\n\
+    javasp\n\
 \n\
 Utilidades de administrador disponible:\n\
     addvoldb\n\
@@ -248,6 +249,14 @@ Comando disponible: \n\
 41 El servidor CUBRID manager no es instalado.\n
 42 Argumento invalido.\n
 43 Error al abrir archivo (%1$s).\n
+44 utilidad de cubrid, version %1$s\n\
+uso: %2$s javasp <command> [args]\n\
+\n\
+Comando disponible:\n\
+    start       [database-name]\n\
+    stop        [database-name]\n\
+    restart     [database-name]\n\
+    status      [database-name]\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 ADVERTENCIA: -t opcion es ignorada en modo de ejecucion independiente.\n

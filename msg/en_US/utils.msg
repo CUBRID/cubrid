@@ -148,6 +148,7 @@ Available service's utilities:\n\
     broker\n\
     manager\n\
     heartbeat\n\
+    javasp\n\
 \n\
 Available administrator's utilities:\n\
     addvoldb\n\
@@ -248,6 +249,14 @@ Available command:\n\
 41 cubrid manager server is not installed.\n
 42 Invalid argument.\n
 43 File(%1$s) open error.\n
+44 cubrid utility, version %1$s\n\
+usage: %2$s javasp <command> [args]\n\
+\n\
+Available command:\n\
+    start       [database-name]\n\
+    stop        [database-name]\n\
+    restart     [database-name]\n\
+    status      [database-name]\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 WARNING: -t option is ignored in stand-alone mode execution.\n

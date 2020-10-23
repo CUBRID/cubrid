@@ -148,6 +148,7 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     broker\n\
     manager\n\
     heartbeat\n\
+    javasp\n\
 \n\
 가용한 관리자 유틸리티 이름:\n\
     addvoldb\n\
@@ -248,6 +249,14 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
 41 CUBRID 메니저가 설치되지 않았습니다.\n
 42 인자가 잘못되었습니다.\n
 43 파일(%1$s)을 열지 못했습니다.\n
+44 cubrid 유틸리티, 버전 %1$s\n\
+사용법: %2$s javasp <명령어> [인자]\n\
+\n\
+가용한 명령어:\n\
+    start       [데이터베이스 이름]\n\
+    stop        [데이터베이스 이름]\n\
+    restart     [데이터베이스 이름]\n\
+    status      [데이터베이스 이름]\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 경고: -t 옵션은 독립 실행 모드에서는 무시 됩니다.\n

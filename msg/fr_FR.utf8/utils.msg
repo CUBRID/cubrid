@@ -148,6 +148,7 @@ Utilitaires de service disponibles\n\
     broker\n\
     manager\n\
     heartbeat\n\
+    javasp\n\
 \n\
 Utilitaires d'administrateur disponibles:\n\
     addvoldb\n\
@@ -248,6 +249,14 @@ Commandes disponibles:\n\
 41 Serveur de gestion CUBRID n'est pas installé.\n
 42 Argument invalide.\n
 43 Erreur d'ouverture du fichier(%1$s).\n
+44 utilitaire CUBRID, version %1$s\n\
+usage: %2$s javasp <command> [args]\n\
+\n\
+Commandes disponibles:\n\
+    start       [database-name]\n\
+    stop        [database-name]\n\
+    restart     [database-name]\n\
+    status      [database-name]\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 AVERTISSEMENT: l'option -t est ignoré dans le mode d'exécution autonome.\n
