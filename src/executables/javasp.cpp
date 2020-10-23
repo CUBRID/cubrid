@@ -478,24 +478,26 @@ exit:
   return status;
 }
 
-static void javasp_dump_status (FILE *fp, JAVASP_STATUS_INFO status_info)
+static void
+javasp_dump_status (FILE *fp, JAVASP_STATUS_INFO status_info)
 {
-  fprintf (stdout, "Java Stored Procedure Server (%s, pid %d, port %d)\n", status_info.db_name, status_info.pid,
+  fprintf (fp, "Java Stored Procedure Server (%s, pid %d, port %d)\n", status_info.db_name, status_info.pid,
 	   status_info.port);
   auto vm_args_len = status_info.vm_args.size();
   if (vm_args_len > 0)
     {
-      fprintf (stdout, "Java VM arguments :\n");
+      fprintf (fp, "Java VM arguments :\n");
       fprintf (fp, " -------------------------------------------------\n");
       for (int i = 0; i < (int) vm_args_len; i++)
 	{
-	  fprintf (stdout, "  %s\n", status_info.vm_args[i].c_str());
+	  fprintf (fp, "  %s\n", status_info.vm_args[i].c_str());
 	}
       fprintf (fp, " -------------------------------------------------\n");
     }
 }
 
-static bool javasp_is_running (const int server_port, const std::string &db_name)
+static bool
+javasp_is_running (const int server_port, const std::string &db_name)
 {
   // check server running
   bool result = false;
