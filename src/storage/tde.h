@@ -17,9 +17,8 @@
  *
  */
 
-
 /*
- * tde.hpp -
+ * tde.hpp - TDE (Transparent Data Encryption) Module
  */
 
 #ifndef _TDE_HPP_
@@ -33,21 +32,11 @@
 #include "boot_sr.h"
 #endif
 
+/* forward declarations */
 struct fileio_page;
 typedef fileio_page FILEIO_PAGE;
 struct log_page;
 typedef log_page LOG_PAGE;
-
-/*
- * Each value is also used to be index of tde_Algorithm_str[].
- * These must be changed togeter
- */
-typedef enum
-{
-  TDE_ALGORITHM_NONE = 0,
-  TDE_ALGORITHM_AES = 1,
-  TDE_ALGORITHM_ARIA = 2,
-} TDE_ALGORITHM;
 
 #define TDE_DK_ALGORITHM TDE_ALGORITHM_AES
 
@@ -66,18 +55,31 @@ typedef enum
 #define TDE_MASTER_KEY_LENGTH 32
 #define TDE_DATA_KEY_LENGTH   32
 
-typedef struct tde_mk_file_item
-{
-  time_t created_time;		/* If it is -1, it is invalid and avaliable for new key */
-  unsigned char master_key[TDE_MASTER_KEY_LENGTH];
-} TDE_MK_FILE_ITEM;
-
+/* TDE Key file item locations */
 #define TDE_MK_FILE_CONTENTS_START  CUBRID_MAGIC_MAX_LENGTH
 #define TDE_MK_FILE_ITEM_SIZE       (sizeof (TDE_MK_FILE_ITEM))
 #define TDE_MK_FILE_ITEM_OFFSET(index) \
   (TDE_MK_FILE_CONTENTS_START + TDE_MK_FILE_ITEM_SIZE * (index))
 #define TDE_MK_FILE_ITEM_INDEX(offset) \
   (((offset) - TDE_MK_FILE_CONTENTS_START) / TDE_MK_FILE_ITEM_SIZE)
+
+/*
+ * Each value is also used to be index of tde_Algorithm_str[].
+ * These must be changed togeter
+ */
+typedef enum
+{
+  TDE_ALGORITHM_NONE = 0,
+  TDE_ALGORITHM_AES = 1,
+  TDE_ALGORITHM_ARIA = 2,
+} TDE_ALGORITHM;
+
+typedef enum tde_data_key_type
+{
+  TDE_DATA_KEY_TYPE_PERM,
+  TDE_DATA_KEY_TYPE_TEMP,
+  TDE_DATA_KEY_TYPE_LOG
+} TDE_DATA_KEY_TYPE;
 
 typedef struct tde_data_key_set
 {
@@ -86,13 +88,11 @@ typedef struct tde_data_key_set
   unsigned char log_key[TDE_DATA_KEY_LENGTH];
 } TDE_DATA_KEY_SET;
 
-enum tde_data_key_type
+typedef struct tde_mk_file_item
 {
-  TDE_DATA_KEY_TYPE_PERM,
-  TDE_DATA_KEY_TYPE_TEMP,
-  TDE_DATA_KEY_TYPE_LOG
-};
-typedef tde_data_key_type TDE_DATA_KEY_TYPE;
+  time_t created_time;		/* If it is -1, it is invalid and avaliable for a new key */
+  unsigned char master_key[TDE_MASTER_KEY_LENGTH];
+} TDE_MK_FILE_ITEM;
 
 #ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
 #if defined(CS_MODE)
@@ -101,34 +101,6 @@ typedef tde_data_key_type TDE_DATA_KEY_TYPE;
 #endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
 
 #if !defined(CS_MODE)
-/*
- * TDE module
- *
- * Note: Now TDE for replication log is disabled,
- * so CS_MODE version tde_cipher is not needed.
- */
-typedef struct tde_cipher
-{
-  bool is_loaded;
-  TDE_DATA_KEY_SET data_keys;
-  int64_t temp_write_counter;	/* used as nonce for temp file page, it has to be dealt atomically */
-} TDE_CIPHER;
-
-extern TDE_CIPHER tde_Cipher;
-
-/*
- * TDE module stores key information with all tha data keys encrypted and master key hashed.
- */
-typedef struct tde_keyinfo
-{
-  int mk_index;
-  time_t created_time;
-  time_t set_time;
-  unsigned char mk_hash[TDE_MASTER_KEY_LENGTH];
-  unsigned char dk_perm[TDE_DATA_KEY_LENGTH];
-  unsigned char dk_temp[TDE_DATA_KEY_LENGTH];
-  unsigned char dk_log[TDE_DATA_KEY_LENGTH];
-} TDE_KEYINFO;
 
 /* Is log record contains User Data */
 #define LOG_MAY_CONTAIN_USER_DATA(rcvindex) \
@@ -164,18 +136,49 @@ typedef struct tde_keyinfo
    || (rcvindex) == RVBT_ONLINE_INDEX_UNDO_TRAN_DELETE)
 
 /*
- * TDE functions for key management
+ * TDE module
+ *
+ * Note: Now TDE for replication log is disabled,
+ * so CS_MODE version tde_cipher is not needed.
  */
+typedef struct tde_cipher
+{
+  bool is_loaded;
+  TDE_DATA_KEY_SET data_keys;
+  int64_t temp_write_counter;	/* used as nonce for temp file page, it has to be dealt atomically */
+} TDE_CIPHER;
+
+extern TDE_CIPHER tde_Cipher;	/* global var for TDE Module */
+
+/*
+ * TDE module stores key information with all the data keys encrypted and master key hashed.
+ */
+typedef struct tde_keyinfo
+{
+  int mk_index;
+  time_t created_time;
+  time_t set_time;
+  unsigned char mk_hash[TDE_MASTER_KEY_LENGTH];
+  unsigned char dk_perm[TDE_DATA_KEY_LENGTH];
+  unsigned char dk_temp[TDE_DATA_KEY_LENGTH];
+  unsigned char dk_log[TDE_DATA_KEY_LENGTH];
+} TDE_KEYINFO;
+
 extern int tde_initialize (THREAD_ENTRY * thread_p, HFID * keyinfo_hfid);
 extern int tde_cipher_initialize (THREAD_ENTRY * thread_p, const HFID * keyinfo_hfid, const char *mk_path_given);
+extern int tde_get_keyinfo (THREAD_ENTRY * thread_p, TDE_KEYINFO * keyinfo);
+
+/*
+ * tde functions for the master key management
+ */
+extern void tde_make_keys_file_fullname (char *keys_vol_fullname, const char *db_full_name, bool ignore_parm);
 extern bool tde_validate_keys_file (int vdes);
-extern int tde_load_mk (int vdes, const TDE_KEYINFO * keyinfo, unsigned char *master_key);
 extern int tde_copy_keys_file (THREAD_ENTRY * thread_p, const char *to_db_fullname, const char *from_db_fullname,
 			       bool keep_to_mount, bool keep_from_mount);
+extern int tde_load_mk (int vdes, const TDE_KEYINFO * keyinfo, unsigned char *master_key);
 extern int tde_change_mk (THREAD_ENTRY * thread_p, const int mk_index, const unsigned char *master_key,
 			  const time_t created_time);
-extern void tde_make_keys_file_fullname (char *keys_vol_fullname, const char *db_full_name, bool ignore_parm);
-extern int tde_get_keyinfo (THREAD_ENTRY * thread_p, TDE_KEYINFO * keyinfo);
+
 /*
  * TDE functions for encrpytion and decryption
  */
@@ -183,20 +186,22 @@ extern int tde_encrypt_data_page (FILEIO_PAGE * iopage_plain, FILEIO_PAGE * iopa
 				  bool is_temp);
 extern int tde_decrypt_data_page (const FILEIO_PAGE * iopage_cipher, FILEIO_PAGE * iopage_plain, TDE_ALGORITHM tde_algo,
 				  bool is_temp);
-
-/* Encryption/Decryption functions for logpage are also needed for applylogdb, copylogdb,
+/* Encryption/Decryption functions for logpage are also needed for applylogdb, copylogdb (CS_MODE),
  * but TDE for replication log is disabled now */
 extern int tde_encrypt_log_page (const LOG_PAGE * logpage_plain, LOG_PAGE * logpage_cipher, TDE_ALGORITHM tde_algo);
 extern int tde_decrypt_log_page (const LOG_PAGE * logpage_cipher, LOG_PAGE * logpage_plain, TDE_ALGORITHM tde_algo);
 
 #endif /* !CS_MODE */
 
+/*
+ * tde functions for the master key management
+ */
 extern int tde_create_mk (unsigned char *master_key);
-extern void tde_print_mk (const unsigned char *master_key);
 extern int tde_add_mk (int vdes, const unsigned char *master_key, int *mk_index, time_t created_time);
 extern int tde_find_mk (int vdes, int mk_index, unsigned char *master_key, time_t * created_time);
 extern int tde_find_first_mk (int vdes, int *mk_index, unsigned char *master_key, time_t * created_time);
 extern int tde_delete_mk (int vdes, const int mk_index);
+extern void tde_print_mk (const unsigned char *master_key);
 extern int tde_dump_mks (int vdes, bool print_value);
 extern const char *tde_get_algorithm_name (TDE_ALGORITHM tde_algo);
 #endif /* _TDE_HPP_ */

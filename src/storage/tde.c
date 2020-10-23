@@ -74,35 +74,37 @@ static const char *tde_Algorithm_str[] = {
   sigdelset (&(new_mask), SIGABRT);   \
   sigprocmask (SIG_SETMASK, &(new_mask), &(old_mask));  \
   } while (0)
-
 #define restore_signals(old_mask) sigprocmask(SIG_SETMASK, &(old_mask), NULL)
 
 #if !defined(CS_MODE)
-TDE_CIPHER tde_Cipher;		// global var for TDE Module
+TDE_CIPHER tde_Cipher;		/* global var for TDE Module */
 
 static OID tde_Keyinfo_oid;	/* Location of keys */
 static HFID tde_Keyinfo_hfid;
 
-static int tde_update_keyinfo (THREAD_ENTRY * thread_p, const TDE_KEYINFO * keyinfo, OID * keyinfo_oid, HFID * hfid);
 static int tde_generate_keyinfo (TDE_KEYINFO * keyinfo, int mk_index, const unsigned char *master_key,
 				 const time_t created_time, const TDE_DATA_KEY_SET * dks);
+static int tde_update_keyinfo (THREAD_ENTRY * thread_p, const TDE_KEYINFO * keyinfo, OID * keyinfo_oid, HFID * hfid);
+
 static int tde_create_keys_file (const char *keyfile_fullname);
 static bool tde_validate_mk (const unsigned char *master_key, const unsigned char *mk_hash);
-static int tde_load_dks (const TDE_KEYINFO * keyinfo, const unsigned char *master_key);
 static void tde_make_mk_hash (const unsigned char *master_key, unsigned char *mk_hash);
+static int tde_load_dks (const TDE_KEYINFO * keyinfo, const unsigned char *master_key);
 static int tde_create_dk (unsigned char *data_key);
 static int tde_encrypt_dk (const unsigned char *dk_plain, TDE_DATA_KEY_TYPE dk_type, const unsigned char *master_key,
 			   unsigned char *dk_cipher);
 static int tde_decrypt_dk (const unsigned char *dk_cipher, TDE_DATA_KEY_TYPE dk_type, const unsigned char *master_key,
 			   unsigned char *dk_plain);
+
 static void tde_dk_nonce (unsigned char *dk_nonce, TDE_DATA_KEY_TYPE dk_type);
+
+/*
+ * TDE internal functions for encrpytion and decryption. All the en/decryption go through it.
+ */
 static int tde_encrypt_internal (const unsigned char *plain_buffer, int length, TDE_ALGORITHM tde_algo,
 				 const unsigned char *key, const unsigned char *nonce, unsigned char *cipher_buffer);
 static int tde_decrypt_internal (const unsigned char *cipher_buffer, int length, TDE_ALGORITHM tde_algo,
 				 const unsigned char *key, const unsigned char *nonce, unsigned char *plain_buffer);
-#endif /* !CS_MODE */
-
-#if !defined(CS_MODE)
 
 /*
  *
