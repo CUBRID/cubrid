@@ -438,7 +438,7 @@ javasp_ping_server (const int server_port, char *buf)
   char *ptr = NULL;
   SOCKET socket = INVALID_SOCKET;
 
-        socket = jsp_connect_server (server_port);
+  socket = jsp_connect_server (server_port);
   if (socket != INVALID_SOCKET)
     {
 
