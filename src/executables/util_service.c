@@ -1213,11 +1213,11 @@ check_all_services_status (unsigned int sleep_time, UTIL_ALL_SERVICES_STATUS exp
 	    {
 	      break;
 	    }
+
 	  /* check whether cub_javasp is running */
-	  UTIL_JAVASP_SERVER_STATUS_E javasp_status;
-	  javasp_status = is_javasp_running (token);
+	  UTIL_JAVASP_SERVER_STATUS_E javasp_status = is_javasp_running (token);
 	  if ((expected_status == ALL_SERVICES_RUNNING && javasp_status != JAVASP_SERVER_RUNNING)
-	      || (expected_status == ALL_SERVICES_STOPPED && javasp_status != JAVASP_SERVER_STOPPED))
+	      || (expected_status == ALL_SERVICES_STOPPED && javasp_status == JAVASP_SERVER_RUNNING))
 	    {
 	      return false;
 	    }
