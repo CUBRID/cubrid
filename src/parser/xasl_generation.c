@@ -2743,7 +2743,7 @@ pt_split_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info, PT_NODE * pred
 	      save_next = node->next;
 	      node->next = NULL;
 
-	      ref_node = mq_get_references (parser, node, table_info->class_spec);
+	      ref_node = mq_get_references_helper (parser, node, table_info->class_spec, false);
 	      pred_nodes = parser_append_node (ref_node, pred_nodes);
 
 	      /* restore node link */
