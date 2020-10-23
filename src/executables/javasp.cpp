@@ -66,6 +66,7 @@
 
 #include <string>
 #include <algorithm>
+#include <array>
 
 #define JAVASP_PING_LEN   PATH_MAX
 
