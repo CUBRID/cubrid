@@ -229,7 +229,7 @@ tde_cipher_initialize (THREAD_ENTRY * thread_p, const HFID * keyinfo_hfid, const
   int err = NO_ERROR;
   int vdes = NULL_VOLDES;
 
-  if (mk_path_given != NULL && mk_path_given[0] != '\0')
+  if (mk_path_given != NULL)
     {
       mk_path = mk_path_given;
       vdes = fileio_mount (thread_p, boot_db_full_name (), mk_path, LOG_DBTDE_KEYS_VOLID, 1, false);
