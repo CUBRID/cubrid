@@ -3268,7 +3268,7 @@ lang_get_w_first_el (const COLL_DATA * coll, const unsigned char *str, const int
 {
   unsigned int cp, w;
   const int alpha_cnt = coll->w_count;
-  const unsigned int *weight_ptr = (ignore_trailing_space) ? coll->weights_ti : coll->weights;
+  const unsigned int *weight_ptr = coll->weights;
 
   assert (coll->uca_exp_num == 0);
   assert (str_size > 0);
@@ -3290,6 +3290,10 @@ lang_get_w_first_el (const COLL_DATA * coll, const unsigned char *str, const int
 	}
       else
 	{
+	  if (cp == ASCII_SPACE && ignore_trailing_space)
+	    {
+	      return 0;
+	    }
 	  w = weight_ptr[cp];
 	}
     }
