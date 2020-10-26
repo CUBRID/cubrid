@@ -18721,7 +18721,16 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain, int
 
       if (are_types_comparable)
 	{
-	  c = key_domain->type->cmpval (key1, key2, do_coercion, total_order, NULL, key_domain->collation_id);
+	  bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
+
+	  if (!ignore_trailing_space && TP_IS_STRING_TYPE (key1_type) && TP_IS_STRING_TYPE (key2_type))
+	    {
+	      c = key_domain->type->cmpval (key1, key2, 2, total_order, NULL, key_domain->collation_id);
+	    }
+	  else
+	    {
+	      c = key_domain->type->cmpval (key1, key2, do_coercion, total_order, NULL, key_domain->collation_id);
+	    }
 	}
       else
 	{
