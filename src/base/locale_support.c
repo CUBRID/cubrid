@@ -6611,7 +6611,7 @@ comp_func_coll_uca_exp (const void *arg1, const void *arg2)
     }
 
   return lang_strmatch_utf8_uca_w_coll_data (coll, false, (const unsigned char *) str1, size1,
-					     (const unsigned char *) str2, size2, NULL, false, NULL);
+					     (const unsigned char *) str2, size2, NULL, false, NULL, false);
 }
 
 /*

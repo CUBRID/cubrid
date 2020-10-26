@@ -56,28 +56,17 @@
 #define LANG_COERCIBLE_COLL LANG_SYS_COLLATION
 #define LANG_COERCIBLE_CODESET LANG_SYS_CODESET
 
-#define LANG_IS_COERCIBLE_COLL(c)	\
-  ((c) == LANG_COLL_ISO_BINARY || (c) == LANG_COLL_UTF8_BINARY	\
-   || (c) == LANG_COLL_EUCKR_BINARY) || \
-  ((c) == LANG_COLL_ISO_BINARY_TS || (c) == LANG_COLL_UTF8_BINARY_TS \
-   || (c) == LANG_COLL_EUCKR_BINARY_TS)
-
-#define COLL_TS	15
-
-#define COLL_IS_SAME_VARIATION(c1,c2)   \
-  (((c1) - (c2)) == COLL_TS || ((c2) - (c1)) == COLL_TS)
+#define LANG_IS_COERCIBLE_COLL(c)       \
+    ((c) == LANG_COLL_ISO_BINARY || (c) == LANG_COLL_UTF8_BINARY  \
+     || (c) == LANG_COLL_EUCKR_BINARY)
 
 /* common collation to be used at runtime */
 #define LANG_RT_COMMON_COLL(c1, c2, coll)     \
   do {                                        \
     coll = -1;                                \
-    if ((c1) == (c2))                         \
+    if ((c1) == (c2))			      \
       {                                       \
-        coll = (c1);                          \
-      }                                       \
-    else if (COLL_IS_SAME_VARIATION(c1,c2))   \
-      {                                       \
-        coll = ((c1) > (c2))?(c1):(c2);       \
+        coll = (c1);			      \
       }                                       \
     else if (LANG_IS_COERCIBLE_COLL (c1))     \
       {					      \
@@ -124,15 +113,8 @@ enum
   LANG_COLL_UTF8_KO_CS = 7,
   LANG_COLL_EUCKR_BINARY = 8,
   LANG_COLL_BINARY = 9,
-  LANG_COLL_ISO_BINARY_TS = LANG_COLL_ISO_BINARY + COLL_TS,
-  LANG_COLL_UTF8_BINARY_TS = LANG_COLL_UTF8_BINARY + COLL_TS,
-  LANG_COLL_ISO_EN_CS_TS = LANG_COLL_ISO_EN_CS + COLL_TS,
-  LANG_COLL_ISO_EN_CI_TS = LANG_COLL_ISO_EN_CI + COLL_TS,
-  LANG_COLL_UTF8_EN_CS_TS = LANG_COLL_UTF8_EN_CS + COLL_TS,
-  LANG_COLL_UTF8_EN_CI_TS = LANG_COLL_UTF8_EN_CI + COLL_TS,
-  LANG_COLL_UTF8_TR_CS_TS = LANG_COLL_UTF8_TR_CS + COLL_TS,
-  LANG_COLL_UTF8_KO_CS_TS = LANG_COLL_UTF8_KO_CS + COLL_TS,
-  LANG_COLL_EUCKR_BINARY_TS = LANG_COLL_EUCKR_BINARY + COLL_TS
+  LANG_COLL_DEFAULT = LANG_COLL_BINARY,
+  LANG_COLL_BUILTIN_MAX = LANG_COLL_BINARY
 };
 
 #define LANG_GET_BINARY_COLLATION(c) (((c) == INTL_CODESET_UTF8) \
@@ -193,16 +175,17 @@ struct lang_collation
   COLL_DATA coll;		/* collation data */
   /* string compare */
   int (*fastcmp) (const LANG_COLLATION * lang_coll, const unsigned char *string1, const int size1,
-		  const unsigned char *string2, const int size2);
+		  const unsigned char *string2, const int size2, bool ignore_trailing_space);
   int (*strmatch) (const LANG_COLLATION * lang_coll, bool is_match, const unsigned char *string1, int size1,
 		   const unsigned char *string2, int size2, const unsigned char *escape, const bool has_last_escape,
-		   int *str1_match_size);
+		   int *str1_match_size, bool ignore_trailing_space);
   /* function to get collatable character sequence (in sort order) */
   int (*next_coll_seq) (const LANG_COLLATION * lang_coll, const unsigned char *seq, const int size,
-			unsigned char *next_seq, int *len_next);
+			unsigned char *next_seq, int *len_next, bool ignore_trailing_space);
   /* find common key where str1 <= key < str2 (BTREE string prefix) */
   int (*split_key) (const LANG_COLLATION * lang_coll, const bool is_desc, const unsigned char *str1, const int size1,
-		    const unsigned char *str2, const int size2, const unsigned char **key, int *byte_size);
+		    const unsigned char *str2, const int size2, const unsigned char **key, int *byte_size,
+		    bool ignore_trailing_space);
   /* compute hash value pseudokey (mht_2str_pseudo_key) */
   unsigned int (*mht2str) (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size);
   /* collation data init function */
@@ -328,7 +311,7 @@ extern "C"
   extern int lang_strmatch_utf8_uca_w_coll_data (const COLL_DATA * coll_data, bool is_match, const unsigned char *str1,
 						 const int size1, const unsigned char *str2, const int size2,
 						 const unsigned char *escape, const bool has_last_escape,
-						 int *str1_match_size);
+						 int *str1_match_size, bool ignore_trailing_space);
   extern int lang_get_charset_env_string (char *buf, int buf_size, const char *lang_name, const INTL_CODESET charset);
 #if !defined (SERVER_MODE)
   extern int lang_charset_name_to_id (const char *name, INTL_CODESET * codeset);

@@ -10928,6 +10928,9 @@ mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
   bool alloced_string1 = false, alloced_string2 = false;
   int strc;
 
+  bool ti = true;
+  bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
+
   assert (domain != NULL);
 
   str1 = (char *) mem1;
@@ -10936,12 +10939,18 @@ mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
   /* generally, data is short enough */
   str_length1 = OR_GET_BYTE (str1);
   str_length2 = OR_GET_BYTE (str2);
+  if (!ignore_trailing_space)
+    {
+      ti = false;
+    }
+
   if (str_length1 < OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION && str_length2 < OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
     {
       str1 += OR_BYTE_SIZE;
       str2 += OR_BYTE_SIZE;
       strc =
-	QSTR_COMPARE (domain->collation_id, (unsigned char *) str1, str_length1, (unsigned char *) str2, str_length2);
+	QSTR_COMPARE (domain->collation_id, (unsigned char *) str1, str_length1, (unsigned char *) str2, str_length2,
+		      ti);
       c = MR_CMP_RETURN_CODE (strc);
       return c;
     }
@@ -11034,9 +11043,9 @@ mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
     }
 
   /* Compare the strings */
-
   strc =
-    QSTR_COMPARE (domain->collation_id, (unsigned char *) string1, str_length1, (unsigned char *) string2, str_length2);
+    QSTR_COMPARE (domain->collation_id, (unsigned char *) string1, str_length1, (unsigned char *) string2, str_length2,
+		  ti);
   c = MR_CMP_RETURN_CODE (strc);
 
   /* Clean up the strings */
@@ -11073,6 +11082,9 @@ mr_cmpval_string (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
   DB_VALUE_COMPARE_RESULT c;
   int size1, size2;
   int strc;
+
+  bool ti = true;
+  bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
 
   const unsigned char *string1 = REINTERPRET_CAST (const unsigned char *, db_get_string (value1));
   const unsigned char *string2 = REINTERPRET_CAST (const unsigned char *, db_get_string (value2));
@@ -11125,7 +11137,12 @@ mr_cmpval_string (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
       return DB_UNK;
     }
 
-  strc = QSTR_COMPARE (collation, string1, size1, string2, size2);
+  if (!ignore_trailing_space)
+    {
+      ti = false;
+    }
+
+  strc = QSTR_COMPARE (collation, string1, size1, string2, size2, ti);
   c = MR_CMP_RETURN_CODE (strc);
 
   return c;
@@ -11883,6 +11900,9 @@ mr_cmpdisk_char_internal (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
   DB_VALUE_COMPARE_RESULT c;
   int mem_length1, mem_length2, strc;
 
+  bool ti = true;
+  bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
+
   if (IS_FLOATING_PRECISION (domain->precision))
     {
       if (align == INT_ALIGNMENT)
@@ -11909,8 +11929,13 @@ mr_cmpdisk_char_internal (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
       mem_length1 = mem_length2 = STR_SIZE (domain->precision, TP_DOMAIN_CODESET (domain));
     }
 
+  if (!ignore_trailing_space)
+    {
+      ti = (domain->type->id == DB_TYPE_CHAR || domain->type->id == DB_TYPE_NCHAR);
+    }
+
   strc = QSTR_CHAR_COMPARE (domain->collation_id, (unsigned char *) mem1, mem_length1, (unsigned char *) mem2,
-			    mem_length2);
+			    mem_length2, ti);
   c = MR_CMP_RETURN_CODE (strc);
 
   return c;
@@ -11921,6 +11946,9 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
 {
   DB_VALUE_COMPARE_RESULT c;
   int strc;
+
+  bool ti = true;
+  bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
 
   const unsigned char *string1 = REINTERPRET_CAST (const unsigned char *, db_get_string (value1));
   const unsigned char *string2 = REINTERPRET_CAST (const unsigned char *, db_get_string (value2));
@@ -11960,8 +11988,12 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
       return DB_UNK;
     }
 
+  if (!ignore_trailing_space)
+    {
+      ti = (value1->domain.char_info.type == DB_TYPE_CHAR && value2->domain.char_info.type == DB_TYPE_CHAR);
+    }
   strc = QSTR_CHAR_COMPARE (collation, string1, (int) db_get_string_size (value1), string2,
-			    (int) db_get_string_size (value2));
+			    (int) db_get_string_size (value2), ti);
   c = MR_CMP_RETURN_CODE (strc);
 
   return c;
@@ -12823,7 +12855,7 @@ mr_cmpdisk_nchar_internal (void *mem1, void *mem2, TP_DOMAIN * domain, int do_co
     }
 
   strc = QSTR_NCHAR_COMPARE (domain->collation_id, (unsigned char *) mem1, mem_length1, (unsigned char *) mem2,
-			     mem_length2, TP_DOMAIN_CODESET (domain));
+			     mem_length2, TP_DOMAIN_CODESET (domain), true);
   c = MR_CMP_RETURN_CODE (strc);
 
   return c;
@@ -12834,6 +12866,9 @@ mr_cmpval_nchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tota
 {
   DB_VALUE_COMPARE_RESULT c;
   int strc;
+
+  bool ti = true;
+  bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
 
   const unsigned char *string1 = REINTERPRET_CAST (const unsigned char *, db_get_string (value1));
   const unsigned char *string2 = REINTERPRET_CAST (const unsigned char *, db_get_string (value2));
@@ -12849,8 +12884,12 @@ mr_cmpval_nchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tota
       return DB_UNK;
     }
 
+  if (!ignore_trailing_space)
+    {
+      ti = (value1->domain.char_info.type == DB_TYPE_NCHAR && value2->domain.char_info.type == DB_TYPE_NCHAR);
+    }
   strc = QSTR_NCHAR_COMPARE (collation, string1, (int) db_get_string_size (value1), string2,
-			     (int) db_get_string_size (value2), db_get_string_codeset (value2));
+			     (int) db_get_string_size (value2), db_get_string_codeset (value2), ti);
   c = MR_CMP_RETURN_CODE (strc);
 
   return c;
@@ -13838,7 +13877,7 @@ mr_data_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
       str1 += OR_BYTE_SIZE;
       str2 += OR_BYTE_SIZE;
       strc = QSTR_NCHAR_COMPARE (domain->collation_id, (unsigned char *) str1, str_length1, (unsigned char *) str2,
-				 str_length2, TP_DOMAIN_CODESET (domain));
+				 str_length2, TP_DOMAIN_CODESET (domain), false);
       c = MR_CMP_RETURN_CODE (strc);
       return c;
     }
@@ -13929,7 +13968,7 @@ mr_data_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
 
   /* Compare the strings */
   strc = QSTR_NCHAR_COMPARE (domain->collation_id, (unsigned char *) string1, str_length1, (unsigned char *) string2,
-			     str_length2, TP_DOMAIN_CODESET (domain));
+			     str_length2, TP_DOMAIN_CODESET (domain), false);
   c = MR_CMP_RETURN_CODE (strc);
   /* Clean up the strings */
   if (string1 != NULL && alloced_string1 == true)
@@ -13965,6 +14004,9 @@ mr_cmpval_varnchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int t
   DB_VALUE_COMPARE_RESULT c;
   int strc;
 
+  bool ti = true;
+  bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
+
   const unsigned char *string1 = REINTERPRET_CAST (const unsigned char *, db_get_string (value1));
   const unsigned char *string2 = REINTERPRET_CAST (const unsigned char *, db_get_string (value2));
 
@@ -13979,8 +14021,12 @@ mr_cmpval_varnchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int t
       return DB_UNK;
     }
 
+  if (!ignore_trailing_space)
+    {
+      ti = false;
+    }
   strc = QSTR_NCHAR_COMPARE (collation, string1, (int) db_get_string_size (value1), string2,
-			     (int) db_get_string_size (value2), db_get_string_codeset (value2));
+			     (int) db_get_string_size (value2), db_get_string_codeset (value2), ti);
   c = MR_CMP_RETURN_CODE (strc);
 
   return c;

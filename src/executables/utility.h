@@ -819,6 +819,7 @@ typedef struct _ha_config
 #define UTIL_CUBRID             "cubrid" UTIL_EXE_EXT
 #define UTIL_COPYLOGDB          "copylogdb" UTIL_EXE_EXT
 #define UTIL_APPLYLOGDB         "applylogdb" UTIL_EXE_EXT
+#define UTIL_JAVASP_NAME        "cub_javasp" UTIL_EXE_EXT
 
 #define PROPERTY_ON             "on"
 #define PROPERTY_OFF            "off"
@@ -830,12 +831,15 @@ typedef struct _ha_config
 #define PRINT_BROKER_NAME       "cubrid broker"
 #define PRINT_MANAGER_NAME      "cubrid manager server"
 #define PRINT_HEARTBEAT_NAME    "cubrid heartbeat"
+#define PRINT_JAVASP_NAME       "cubrid javasp"
 #define PRINT_HA_PROCS_NAME     "HA processes"
 
 #define PRINT_CMD_SERVICE       "service"
 #define PRINT_CMD_BROKER        "broker"
 #define PRINT_CMD_MANAGER       "manager"
 #define PRINT_CMD_SERVER        "server"
+#define PRINT_CMD_JAVASP        "javasp"
+
 #define PRINT_CMD_START         "start"
 #define PRINT_CMD_STOP          "stop"
 #define PRINT_CMD_STATUS        "status"
@@ -887,6 +891,7 @@ typedef struct _ha_config
 #define MASK_MANAGER            0x08
 #define MASK_ADMIN              0x20
 #define MASK_HEARTBEAT          0x40
+#define MASK_JAVASP             0x80
 
 /* utility option list */
 #define UTIL_OPTION_CREATEDB                    "createdb"

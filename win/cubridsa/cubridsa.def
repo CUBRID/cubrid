@@ -10,6 +10,7 @@ EXPORTS
     au_get_public_user
     au_get_dba_user
     cfg_free_directory
+    cfg_find_db
     cfg_find_db_list
     cfg_read_directory
     check_database_name
@@ -89,6 +90,7 @@ EXPORTS
     prm_get_integer_value
     prm_get_bigint_value
     prm_get_string_value
+    prm_get_name
     rel_copy_version_string
     rel_build_number
     rel_build_os
@@ -135,8 +137,22 @@ EXPORTS
     tr_map_trigger
     er_init
     er_final
-    prm_get_name
+    jsp_connect_server
+	jsp_disconnect_server
+	jsp_writen
+	jsp_readn
+	jsp_start_server
+	jsp_server_port
+	javasp_get_info_file
+	javasp_get_error_file
+	javasp_open_info_dir
+    javasp_open_info
+	javasp_read_info
+    javasp_reset_info
+	javasp_write_info
+;
 ; utility functions
+;
 	createdb
 	renamedb
 	copydb
@@ -182,6 +198,8 @@ EXPORTS
 	basename
 	au_set_password
 	au_disable_passwords
+    er_has_error
+    er_msg
 	er_set
 	log_get_db_compatibility
 ;
@@ -802,3 +820,12 @@ EXPORTS
 	str_to_uint32
 	str_to_int64
 	str_to_uint64
+;
+;   other
+;
+    ntohl
+    or_pack_int
+    or_unpack_int
+    or_unpack_string_nocopy
+    windows_socket_startup
+    windows_socket_shutdown 

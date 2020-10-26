@@ -611,7 +611,7 @@ extern "C"
 
   extern DB_OBJECT *pt_resolve_serial (PARSER_CONTEXT * parser, PT_NODE * serial_name_node);
   extern int pt_check_grammar_charset_collation (PARSER_CONTEXT * parser, PT_NODE * charset_node, PT_NODE * coll_node,
-						 int *charset, int *coll_id, bool is_varchar_type);
+						 int *charset, int *coll_id);
   extern bool pt_get_collation_info (const PT_NODE * node, PT_COLL_INFER * coll_infer);
   extern int pt_common_collation (PT_COLL_INFER * arg1_coll_infer, PT_COLL_INFER * arg2_coll_infer,
 				  PT_COLL_INFER * arg3_coll_infer, const int args_w_coll, bool op_has_3_args,

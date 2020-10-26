@@ -46,6 +46,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import com.cubrid.jsp.exception.ExecuteException;
@@ -66,6 +67,7 @@ import com.cubrid.jsp.value.TimeValue;
 import com.cubrid.jsp.value.TimestampValue;
 import com.cubrid.jsp.value.Value;
 
+import cubrid.jdbc.driver.CUBRIDConnection;
 import cubrid.jdbc.driver.CUBRIDConnectionDefault;
 import cubrid.jdbc.driver.CUBRIDResultSet;
 import cubrid.jdbc.jci.UConnection;
@@ -80,6 +82,12 @@ public class ExecuteThread extends Thread {
 	private static final int REQ_CODE_ERROR = 0x04;
 	private static final int REQ_CODE_INTERNAL_JDBC = 0x08;
 	private static final int REQ_CODE_DESTROY = 0x10;
+	private static final int REQ_CODE_END = 0x20;
+
+	private static final int REQ_CODE_UTIL_PING = 0xDE;
+	private static final int REQ_CODE_UTIL_STATUS = 0xEE;
+	private static final int REQ_CODE_UTIL_TERMINATE_THREAD = 0xFE;
+	private static final int REQ_CODE_UTIL_TERMINATE_SERVER = 0xFF; // to shutdown javasp server
 
 	/* DB Types */
 	public static final int DB_NULL = 0;
@@ -104,6 +112,7 @@ public class ExecuteThread extends Thread {
 
 	private Socket client;
 	private CUBRIDConnectionDefault connection = null;
+	private String threadName = null;
 
 	private DataInputStream input;
 	private DataOutputStream output;
@@ -181,23 +190,59 @@ public class ExecuteThread extends Thread {
 		int requestCode = -1;
 		while (!Thread.interrupted()) {
 			try {
-				do {
-					requestCode = listenCommand();
-					switch (requestCode) {
-					case REQ_CODE_INVOKE_SP: {
-						processStoredProcedure();
-						break;
+				requestCode = listenCommand();
+				switch (requestCode) {
+				/* the following two request codes are for processing java stored procedure routine */
+				case REQ_CODE_INVOKE_SP: {
+					processStoredProcedure();
+					break;
+				}
+				case REQ_CODE_DESTROY: {
+					destroyJDBCResources();
+					Thread.currentThread().interrupt();
+					break;
+				}
+
+				/* the following request codes are for javasp utility */
+				case REQ_CODE_UTIL_PING: {
+					String ping = Server.getServerName();
+					output.writeInt (ping.length());
+					output.writeBytes (ping);
+					output.flush();
+					break;
+				}
+				case REQ_CODE_UTIL_STATUS: {
+					String dbName = Server.getServerName();
+					List<String> vm_args = Server.getJVMArguments();
+					int length = getLengthtoSend(dbName) + 12;
+					for (String arg : vm_args) {
+						length += getLengthtoSend(arg) + 4;
 					}
-					case REQ_CODE_DESTROY: {
-						destroyJDBCResources();
-						break;
+					output.writeInt (length);
+					output.writeInt (Server.getServerPort());
+					packAndSendRawString (dbName, output);
+
+					output.writeInt (vm_args.size());
+					for (String arg : vm_args) {
+						packAndSendRawString (arg, output);
 					}
-					default: {
-						/* invalid request */
-						throw new ExecuteException ("invalid request code: " + requestCode);
-					}
-					}
-				} while (requestCode != REQ_CODE_INVOKE_SP && requestCode != REQ_CODE_DESTROY);
+					output.flush();
+					break;
+				}
+				case REQ_CODE_UTIL_TERMINATE_THREAD: {
+					Thread.currentThread().interrupt();
+					break;
+				}
+				case REQ_CODE_UTIL_TERMINATE_SERVER: {
+					Server.stop (0);
+					break;
+				}
+
+				/* invalid request */
+				default: {
+					// throw new ExecuteException ("invalid request code: " + requestCode);
+				}
+				}
 			} catch (Throwable e) {
 				if (e instanceof IOException) {
 					setStatus(ExecuteThreadStatus.END);
@@ -209,9 +254,7 @@ public class ExecuteThread extends Thread {
 					break;
 				} else {
 					try {
-						if (compareStatus(ExecuteThreadStatus.CALL)) {
-							closeJdbcConnection ();
-						}
+						closeJdbcConnection ();
 					} catch (Exception e2) {
 					}
 					setStatus (ExecuteThreadStatus.ERROR);
@@ -241,6 +284,12 @@ public class ExecuteThread extends Thread {
 		setStatus (ExecuteThreadStatus.PARSE);
 		StoredProcedure procedure = makeStoredProcedure();
 		Method m = procedure.getTarget().getMethod();
+
+		if (threadName == null || threadName.equalsIgnoreCase (m.getName())) {
+			threadName = m.getName();
+			Thread.currentThread().setName(threadName);
+		}
+
 		Object[] resolved = procedure.checkArgs(procedure.getArgs());
 
 		setStatus (ExecuteThreadStatus.INVOKE);
@@ -278,9 +327,18 @@ public class ExecuteThread extends Thread {
 
 	private void destroyJDBCResources () throws SQLException, IOException {
 		setStatus(ExecuteThreadStatus.DESTROY);
-		if (connection != null) {
+
+		if (connection != null)
+		{
+			output.writeInt(REQ_CODE_DESTROY);
+			output.flush();
 			connection.destroy();
-			connection.close();
+			connection = null;
+		}
+		else
+		{
+			output.writeInt(REQ_CODE_END);
+			output.flush();
 		}
 	}
 
@@ -706,6 +764,37 @@ public class ExecuteThread extends Thread {
 			}
 		} else
 			;
+	}
+	
+	private int getLengthtoSend(String str)	throws IOException {
+		byte b[] = str.getBytes();
+
+		int len = b.length + 1;
+		
+		int bits = len & 3;
+		int pad = 0;
+
+		if (bits != 0)
+			pad = 4 - bits;
+
+		return len + pad;
+	}
+	
+	private void packAndSendRawString(String str, DataOutputStream dos) throws IOException {
+		byte b[] = str.getBytes();
+
+		int len = b.length + 1;
+		int bits = len & 3;
+		int pad = 0;
+
+		if (bits != 0)
+			pad = 4 - bits;
+
+		dos.writeInt(len + pad);
+		dos.write(b);
+		for (int i = 0; i <= pad; i++) {
+			dos.writeByte(0);
+		}
 	}
 
 	private void packAndSendString(String str, DataOutputStream dos)

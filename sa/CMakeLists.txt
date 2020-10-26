@@ -1,5 +1,6 @@
 #
-# Copyright (C) 2016 Search Solution Corporation. All rights reserved.
+# Copyright (C) 2008 Search Solution Corporation
+# Copyright (C) 2016 CUBRID Corporation
 #
 #   This program is free software; you can redistribute it and/or modify
 #   it under the terms of the GNU General Public License as published by
@@ -308,6 +309,8 @@ set(OBJECT_HEADERS
 
 set(JSP_SOURCES
   ${JSP_DIR}/jsp_cl.c
+  ${JSP_DIR}/jsp_comm.c
+  ${JSP_DIR}/jsp_file.c
   ${JSP_DIR}/jsp_sr.c
   )
 

@@ -319,7 +319,7 @@ css_setup_server_loop (void)
   (void) os_set_signal_handler (SIGPIPE, SIG_IGN);
 #endif /* not WINDOWS */
 
-#if defined(LINUX) || defined(x86_SOLARIS) || defined(HPUX)
+#if defined(SA_MODE) && (defined(LINUX) || defined(x86_SOLARIS) || defined(HPUX))
   if (!jsp_jvm_is_loaded ())
     {
       (void) os_set_signal_handler (SIGFPE, SIG_IGN);
