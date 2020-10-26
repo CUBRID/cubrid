@@ -613,58 +613,29 @@ tde_generate_keyinfo (TDE_KEYINFO * keyinfo, int mk_index, const unsigned char *
 int
 tde_load_mk (int vdes, const TDE_KEYINFO * keyinfo, unsigned char *master_key)
 {
-  int location;
-  TDE_MK_FILE_ITEM item;
   int err = NO_ERROR;
-#if !defined(WINDOWS)
-  sigset_t new_mask, old_mask;
-#endif /* !WINDOWS */
-
-#if !defined(WINDOWS)
-  off_signals (new_mask, old_mask);
-#endif /* !WINDOWS */
+  unsigned char mk[TDE_MASTER_KEY_LENGTH];
+  time_t created_time;
 
   assert (keyinfo->mk_index >= 0);
 
-  location = TDE_MK_FILE_ITEM_OFFSET (keyinfo->mk_index);
-
-  if (lseek (vdes, location, SEEK_SET) != location)
+  err = tde_find_mk (vdes, keyinfo->mk_index, mk, &created_time);
+  if (err != NO_ERROR)
     {
-      err = ER_TDE_MASTER_KEY_NOT_FOUND;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_MASTER_KEY_NOT_FOUND, 1, keyinfo->mk_index);
-      goto exit;
-    }
-
-  if (read (vdes, &item, TDE_MK_FILE_ITEM_SIZE) != TDE_MK_FILE_ITEM_SIZE)
-    {
-      err = ER_TDE_MASTER_KEY_NOT_FOUND;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_MASTER_KEY_NOT_FOUND, 1, keyinfo->mk_index);
-      goto exit;
-    }
-
-  if (item.created_time == -1)
-    {
-      err = ER_TDE_MASTER_KEY_NOT_FOUND;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_MASTER_KEY_NOT_FOUND, 1, keyinfo->mk_index);
-      goto exit;
+      return err;
     }
 
   /* MK has found */
 
-  if (tde_validate_mk (item.master_key, keyinfo->mk_hash) == false)
+  if (!(tde_validate_mk (mk, keyinfo->mk_hash) && created_time == keyinfo->created_time))
     {
       err = ER_TDE_INVALID_MASTER_KEY;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_INVALID_MASTER_KEY, 1, keyinfo->mk_index);
-      goto exit;
+      return err;
     }
   /* MK has validated */
 
-  memcpy (master_key, item.master_key, TDE_MASTER_KEY_LENGTH);
-
-exit:
-#if !defined(WINDOWS)
-  restore_signals (old_mask);
-#endif /* !WINDOWS */
+  memcpy (master_key, mk, TDE_MASTER_KEY_LENGTH);
 
   return err;
 }
