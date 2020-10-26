@@ -92,6 +92,7 @@ cas_init_ssl (int sd)
   int err_code;
   unsigned long err;
   struct stat sbuf;
+  bool cert_not_found, pk_not_found;
 
   if (ssl)
     {
@@ -112,15 +113,24 @@ cas_init_ssl (int sd)
   snprintf (cert, CERT_FILENAME_LEN, "%s/conf/%s", getenv ("CUBRID"), CERTF);
   snprintf (key, CERT_FILENAME_LEN, "%s/conf/%s", getenv ("CUBRID"), KEYF);
 
-  if (stat (cert, &sbuf) < 0)
+  cert_not_found = (stat (cert, &sbuf) < 0) ? true : false;
+  pk_not_found = (stat (key, &sbuf) < 0) ? true : false;
+
+  if (cert_not_found && pk_not_found)
+    {
+      cas_log_write_and_end (0, false, "SSL: Both the certificate & Private key could not be found: %s, %s", cert, key);
+      return ER_CERT_COPPUPTED;
+    }
+
+  if (cert_not_found)
     {
       cas_log_write_and_end (0, false, "SSL: Certificate not found: %s", cert);
       return ER_CERT_COPPUPTED;
     }
 
-  if (stat (key, &sbuf) < 0)
+  if (pk_not_found)
     {
-      cas_log_write_and_end (0, true, "SSL: Private key not found: %s", key);
+      cas_log_write_and_end (0, false, "SSL: Private key not found: %s", key);
       return ER_CERT_COPPUPTED;
     }
 
