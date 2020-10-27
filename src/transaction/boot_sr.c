@@ -126,7 +126,7 @@ struct boot_dbparm
   int vacuum_log_block_npages;	/* Number of pages for vacuum data file */
   VFID vacuum_data_vfid;	/* Vacuum data file identifier */
   VFID dropped_files_vfid;	/* Vacuum dropped files file identifier */
-  HFID tde_keys_hfid;		/* Heap file where tde key info (TDE_KEYINFO) is stored */
+  HFID tde_keyinfo_hfid;	/* Heap file where tde key info (TDE_KEYINFO) is stored */
 };
 
 enum remove_temp_vol_action
@@ -2385,7 +2385,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  error_code = tde_cipher_initialize (thread_p, &boot_Db_parm->tde_keys_hfid,
+  error_code = tde_cipher_initialize (thread_p, &boot_Db_parm->tde_keyinfo_hfid,
 				      r_args == NULL ? NULL : r_args->keys_file_path);
   if (error_code != NO_ERROR)
     {
@@ -5017,7 +5017,7 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
       goto error;
     }
 
-  error_code = xheap_create (thread_p, &boot_Db_parm->tde_keys_hfid, NULL, false);
+  error_code = xheap_create (thread_p, &boot_Db_parm->tde_keyinfo_hfid, NULL, false);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -5147,7 +5147,7 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
       goto error;
     }
 
-  error_code = tde_initialize (thread_p, &boot_Db_parm->tde_keys_hfid);
+  error_code = tde_initialize (thread_p, &boot_Db_parm->tde_keyinfo_hfid);
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -5276,7 +5276,7 @@ boot_remove_all_volumes (THREAD_ENTRY * thread_p, const char *db_fullname, const
 	{
 	  goto error_rem_allvols;
 	}
-      error_code = tde_cipher_initialize (thread_p, &boot_Db_parm->tde_keys_hfid, NULL);
+      error_code = tde_cipher_initialize (thread_p, &boot_Db_parm->tde_keyinfo_hfid, NULL);
       if (error_code != NO_ERROR)
 	{
 	  goto error_rem_allvols;
