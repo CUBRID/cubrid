@@ -1969,7 +1969,7 @@ tde_get_set_mk_info (int *mk_index, time_t * created_time, time_t * set_time)
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  success = xtde_get_set_mk_info (thread_p, mk_index, created_time, set_time);
+  success = xtde_get_mk_info (thread_p, mk_index, created_time, set_time);
 
   exit_server (*thread_p);
 

@@ -18,7 +18,7 @@
  */
 
 /*
- * tde.c -
+ * tde.c - Transparent Data Encryption (TDE) Module
  */
 
 #ident "$Id$"
@@ -79,24 +79,24 @@ static const char *tde_Algorithm_str[] = {
 #if !defined(CS_MODE)
 TDE_CIPHER tde_Cipher;		/* global var for TDE Module */
 
-static OID tde_Keyinfo_oid;	/* Location of keys */
-static HFID tde_Keyinfo_hfid;
+static OID tde_Keyinfo_oid = OID_INITIALIZER;	/* Location of keys */
+static HFID tde_Keyinfo_hfid = HFID_INITIALIZER;
 
 static int tde_generate_keyinfo (TDE_KEYINFO * keyinfo, int mk_index, const unsigned char *master_key,
 				 const time_t created_time, const TDE_DATA_KEY_SET * dks);
-static int tde_update_keyinfo (THREAD_ENTRY * thread_p, const TDE_KEYINFO * keyinfo, OID * keyinfo_oid, HFID * hfid);
+static int tde_update_keyinfo (THREAD_ENTRY * thread_p, const TDE_KEYINFO * keyinfo);
 
 static int tde_create_keys_file (const char *keyfile_fullname);
 static bool tde_validate_mk (const unsigned char *master_key, const unsigned char *mk_hash);
 static void tde_make_mk_hash (const unsigned char *master_key, unsigned char *mk_hash);
-static int tde_load_dks (const TDE_KEYINFO * keyinfo, const unsigned char *master_key);
+static int tde_load_dks (const unsigned char *master_key, const TDE_KEYINFO * keyinfo);
 static int tde_create_dk (unsigned char *data_key);
 static int tde_encrypt_dk (const unsigned char *dk_plain, TDE_DATA_KEY_TYPE dk_type, const unsigned char *master_key,
 			   unsigned char *dk_cipher);
 static int tde_decrypt_dk (const unsigned char *dk_cipher, TDE_DATA_KEY_TYPE dk_type, const unsigned char *master_key,
 			   unsigned char *dk_plain);
 
-static void tde_dk_nonce (unsigned char *dk_nonce, TDE_DATA_KEY_TYPE dk_type);
+static void tde_dk_nonce (TDE_DATA_KEY_TYPE dk_type, unsigned char *dk_nonce);
 
 /*
  * TDE internal functions for encrpytion and decryption. All the en/decryption go through it.
@@ -107,7 +107,11 @@ static int tde_decrypt_internal (const unsigned char *cipher_buffer, int length,
 				 const unsigned char *key, const unsigned char *nonce, unsigned char *plain_buffer);
 
 /*
+ * tde_initialize () - Initialize the tde module, which is called during initializing server.
  *
+ * return             : Error code
+ * thread_p (in)      : Thread entry
+ * keyinfo_hfid (in)  : HFID of the special heap file which stores TDE_KEY_INFO.
  */
 int
 tde_initialize (THREAD_ENTRY * thread_p, HFID * keyinfo_hfid)
@@ -144,7 +148,7 @@ tde_initialize (THREAD_ENTRY * thread_p, HFID * keyinfo_hfid)
 	}
 
       created_time = time (NULL);
-      err = tde_add_mk (vdes, default_mk, &mk_index, created_time);
+      err = tde_add_mk (vdes, default_mk, created_time, &mk_index);
       if (err != NO_ERROR)
 	{
 	  goto exit;
@@ -219,6 +223,15 @@ exit:
   return err;
 }
 
+/*
+ * tde_cipher_initialize () - Load the tde module, which is called during restarting server.
+ *                            It prepares the tde_Cipher to encrpyt and decrypt.
+ *
+ * return             : Error code
+ * thread_p (in)      : Thread entry
+ * keyinfo_hfid (in)  : HFID of the special heap file which stores TDE_KEY_INFO.
+ * mk_path_given (in) : The path of the master key file. It has higher priority than the default path or that from the system parameter.
+ */
 int
 tde_cipher_initialize (THREAD_ENTRY * thread_p, const HFID * keyinfo_hfid, const char *mk_path_given)
 {
@@ -274,7 +287,7 @@ tde_cipher_initialize (THREAD_ENTRY * thread_p, const HFID * keyinfo_hfid, const
       goto exit;
     }
 
-  err = tde_load_dks (&keyinfo, master_key);
+  err = tde_load_dks (master_key, &keyinfo);
   if (err != NO_ERROR)
     {
       goto exit;
@@ -290,6 +303,12 @@ exit:
   return err;
 }
 
+/*
+ * tde_create_keys_file () - Create TDE master key file
+ *
+ * return                 : Error code
+ * keyfile_fullname (in)  : Full name of the key file.
+ */
 static int
 tde_create_keys_file (const char *keyfile_fullname)
 {
@@ -334,6 +353,12 @@ exit:
   return err;
 }
 
+/*
+ * tde_validate_keys_file () - Validate the master key file
+ *
+ * return       : Whether or not it is valid
+ * vdes (in)    : Key file descriptor
+ */
 bool
 tde_validate_keys_file (int vdes)
 {
@@ -366,9 +391,19 @@ tde_validate_keys_file (int vdes)
   return true;
 }
 
+/*
+ * tde_copy_keys_file () - Copy the master key file
+ *
+ * return                 : Error code
+ * thread_p (in)          : Thread entry
+ * dest_fullname (in)     : Copy to
+ * src_fullname (in)      : Copy from
+ * keep_dest_mount (in)   : Whether to keep the destination file mount after this function finishes
+ * keep_src_mount (in)    : Whether to keep the source file mount after this function finishes
+ */
 int
-tde_copy_keys_file (THREAD_ENTRY * thread_p, const char *to_keyfile_fullname, const char *from_keyfile_fullname,
-		    bool keep_to_mount, bool keep_from_mount)
+tde_copy_keys_file (THREAD_ENTRY * thread_p, const char *dest_fullname, const char *src_fullname, bool keep_dest_mount,
+		    bool keep_src_mount)
 {
   char buffer[4096];
   int from_vdes = -1;
@@ -376,7 +411,7 @@ tde_copy_keys_file (THREAD_ENTRY * thread_p, const char *to_keyfile_fullname, co
   int err = NO_ERROR;
   int nread = -1;
 
-  from_vdes = fileio_mount (thread_p, boot_db_full_name (), from_keyfile_fullname, LOG_DBTDE_KEYS_VOLID, 1, false);
+  from_vdes = fileio_mount (thread_p, boot_db_full_name (), src_fullname, LOG_DBTDE_KEYS_VOLID, 1, false);
   if (from_vdes == NULL_VOLDES)
     {
       ASSERT_ERROR ();
@@ -386,13 +421,13 @@ tde_copy_keys_file (THREAD_ENTRY * thread_p, const char *to_keyfile_fullname, co
   if (tde_validate_keys_file (from_vdes) == false)
     {
       fileio_dismount (thread_p, from_vdes);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_INVALID_KEYS_VOLUME, 1, from_keyfile_fullname);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_INVALID_KEYS_VOLUME, 1, src_fullname);
       return ER_TDE_INVALID_KEYS_VOLUME;
     }
 
-  if (!fileio_is_volume_exist (to_keyfile_fullname))
+  if (!fileio_is_volume_exist (dest_fullname))
     {
-      err = tde_create_keys_file (to_keyfile_fullname);
+      err = tde_create_keys_file (dest_fullname);
       if (err != NO_ERROR)
 	{
 	  fileio_dismount (thread_p, from_vdes);
@@ -400,7 +435,7 @@ tde_copy_keys_file (THREAD_ENTRY * thread_p, const char *to_keyfile_fullname, co
 	}
     }
 
-  to_vdes = fileio_mount (thread_p, boot_db_full_name (), to_keyfile_fullname, LOG_DBCOPY_VOLID, 2, false);
+  to_vdes = fileio_mount (thread_p, boot_db_full_name (), dest_fullname, LOG_DBCOPY_VOLID, 2, false);
   if (to_vdes == NULL_VOLDES)
     {
       ASSERT_ERROR ();
@@ -412,7 +447,7 @@ tde_copy_keys_file (THREAD_ENTRY * thread_p, const char *to_keyfile_fullname, co
   if (lseek (from_vdes, 0L, SEEK_SET) != 0L)
     {
       fileio_dismount (thread_p, from_vdes);
-      fileio_unformat_and_rename (thread_p, to_keyfile_fullname, NULL);
+      fileio_unformat_and_rename (thread_p, dest_fullname, NULL);
       return ER_FAILED;
     }
 
@@ -433,7 +468,7 @@ tde_copy_keys_file (THREAD_ENTRY * thread_p, const char *to_keyfile_fullname, co
 	  else if (errno != EINTR)
 	    {
 	      fileio_dismount (thread_p, from_vdes);
-	      fileio_unformat_and_rename (thread_p, to_keyfile_fullname, NULL);
+	      fileio_unformat_and_rename (thread_p, dest_fullname, NULL);
 	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_WRITE, 0);
 	      return ER_IO_WRITE;
 	    }
@@ -441,127 +476,24 @@ tde_copy_keys_file (THREAD_ENTRY * thread_p, const char *to_keyfile_fullname, co
       while (nread > 0);
     }
 
-  if (!keep_from_mount)
+  if (!keep_src_mount)
     {
       fileio_dismount (thread_p, from_vdes);
     }
-  if (!keep_to_mount)
+  if (!keep_dest_mount)
     {
       fileio_dismount (thread_p, to_vdes);
     }
   return err;
 }
 
-int
-tde_change_mk (THREAD_ENTRY * thread_p, const int mk_index, const unsigned char *master_key, const time_t created_time)
-{
-  TDE_KEYINFO keyinfo;
-  TDE_DATA_KEY_SET dks;
-  int err = NO_ERROR;
-
-  if (!tde_Cipher.is_loaded)
-    {
-      err = ER_TDE_CIPHER_IS_NOT_LOADED;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_IS_NOT_LOADED, 0);
-      return err;
-    }
-
-  /* generate keyinfo from tde_Cipher and update heap (on Disk) */
-  err = tde_generate_keyinfo (&keyinfo, mk_index, master_key, created_time, &tde_Cipher.data_keys);
-  if (err != NO_ERROR)
-    {
-      return err;
-    }
-
-  err = tde_update_keyinfo (thread_p, &keyinfo, &tde_Keyinfo_oid, &tde_Keyinfo_hfid);
-  if (err != NO_ERROR)
-    {
-      return err;
-    }
-
-  /* heap_flush() is mandatory. Without this, it cannot be guaranteed
-   * that the master key corresponding key info in heap exists in _keys file.
-   * By calling heap_flush at end of changing key, DBA can remove the previous key after it.
-   */
-  heap_flush (thread_p, &tde_Keyinfo_oid);
-
-  return err;
-}
-
-int
-tde_get_keyinfo (THREAD_ENTRY * thread_p, TDE_KEYINFO * keyinfo)
-{
-  RECDES recdes;
-  HEAP_SCANCACHE scan_cache;
-  SCAN_CODE scan = S_SUCCESS;
-  char recdes_buffer[sizeof (int) + sizeof (TDE_KEYINFO)];
-  int repid_and_flag_bits = 0;
-  int error_code = NO_ERROR;
-
-  /* HACK: to prevent the record from adjuestment in vacuum_rv_check_at_undo() while UNDOing */
-  memcpy (recdes_buffer, &repid_and_flag_bits, sizeof (int));
-  memcpy (recdes_buffer + sizeof (int), &keyinfo, sizeof (TDE_KEYINFO));
-
-  recdes.length = recdes.area_size = sizeof (recdes_buffer);
-  recdes.data = (char *) recdes_buffer;
-
-  heap_scancache_quick_start_with_class_hfid (thread_p, &scan_cache, &tde_Keyinfo_hfid);
-  scan = heap_first (thread_p, &tde_Keyinfo_hfid, NULL, &tde_Keyinfo_oid, &recdes, &scan_cache, COPY);
-  heap_scancache_end (thread_p, &scan_cache);
-
-  if (scan != S_SUCCESS)
-    {
-      assert (false);
-      return ER_FAILED;
-    }
-
-  memcpy (keyinfo, recdes_buffer + sizeof (int), sizeof (TDE_KEYINFO));
-
-  return NO_ERROR;
-}
-
-static int
-tde_update_keyinfo (THREAD_ENTRY * thread_p, const TDE_KEYINFO * keyinfo, OID * keyinfo_oid, HFID * hfid)
-{
-  HEAP_SCANCACHE scan_cache;
-  HEAP_OPERATION_CONTEXT update_context;
-  RECDES recdes;
-  char recdes_buffer[sizeof (int) + sizeof (TDE_KEYINFO)];
-  int repid_and_flag_bits = 0;
-  int error_code = NO_ERROR;
-
-  /* HACK: to prevent the record from adjuestment in vacuum_rv_check_at_undo() while UNDOing */
-  memcpy (recdes_buffer, &repid_and_flag_bits, sizeof (int));
-  memcpy (recdes_buffer + sizeof (int), keyinfo, sizeof (TDE_KEYINFO));
-
-  recdes.length = recdes.area_size = sizeof (recdes_buffer);
-  recdes.data = (char *) recdes_buffer;
-
-  /* note that we start a scan cache with NULL class_oid. That's because ketinfo_oid doesn't really have a class!
-   * we have to start the scan cache this way so it can cache also cache file type for heap_update_logical.
-   * otherwise it will try to read it from cache using root class OID. which actually has its own heap file and its own
-   * heap file type.
-   */
-  error_code = heap_scancache_start_modify (thread_p, &scan_cache, hfid, NULL, SINGLE_ROW_UPDATE, NULL);
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return error_code;
-    }
-
-  /* hack the class to avoid heap_scancache_check_with_hfid. */
-  scan_cache.node.class_oid = *oid_Root_class_oid;
-  heap_create_update_context (&update_context, hfid, keyinfo_oid, oid_Root_class_oid,
-			      &recdes, &scan_cache, UPDATE_INPLACE_CURRENT_MVCCID);
-  error_code = heap_update_logical (thread_p, &update_context);
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-    }
-  heap_scancache_end (thread_p, &scan_cache);
-  return error_code;
-}
-
+/*
+ * tde_make_keys_file_fullname () - Make the full name of TDE master key file. I can be set by a system parameter
+ *
+ * keys_vol_fullname (out)  : Full path of the key file  
+ * db_full_name (in)        : Full paht of the data volume 
+ * ignore_parm (in)         : Wwhether to ignore the system parameter or not
+ */
 void
 tde_make_keys_file_fullname (char *keys_vol_fullname, const char *db_full_name, bool ignore_parm)
 {
@@ -580,6 +512,16 @@ tde_make_keys_file_fullname (char *keys_vol_fullname, const char *db_full_name, 
     }
 }
 
+/*
+ * tde_generate_keyinfo () - Generate a keyinfo with a master key and data keys information
+ *
+ * return             : Error code
+ * keyinfo (out)      : keyinfo 
+ * mk_index (in)      : Index in the master key file
+ * master_key (in)    : Master key
+ * created_time (in)  : Creation time of the master key
+ * dks (in)           : Data key set
+ */
 static int
 tde_generate_keyinfo (TDE_KEYINFO * keyinfo, int mk_index, const unsigned char *master_key,
 		      const time_t created_time, const TDE_DATA_KEY_SET * dks)
@@ -610,6 +552,152 @@ tde_generate_keyinfo (TDE_KEYINFO * keyinfo, int mk_index, const unsigned char *
   return err;
 }
 
+/*
+ * tde_get_keyinfo () - Get keyinfo from key info heap file 
+ *
+ * return             : Error code
+ * thread_p (in)          : Thread entry
+ * keyinfo (out)      : keyinfo from the keyinfo heap
+ */
+int
+tde_get_keyinfo (THREAD_ENTRY * thread_p, TDE_KEYINFO * keyinfo)
+{
+  RECDES recdes;
+  HEAP_SCANCACHE scan_cache;
+  SCAN_CODE scan = S_SUCCESS;
+  char recdes_buffer[sizeof (int) + sizeof (TDE_KEYINFO)];
+  int repid_and_flag_bits = 0;
+  int error_code = NO_ERROR;
+
+  assert (!HFID_IS_NULL (&tde_Keyinfo_hfid));
+
+  /* HACK: to prevent the record from adjuestment in vacuum_rv_check_at_undo() while UNDOing */
+  memcpy (recdes_buffer, &repid_and_flag_bits, sizeof (int));
+  memcpy (recdes_buffer + sizeof (int), &keyinfo, sizeof (TDE_KEYINFO));
+
+  recdes.length = recdes.area_size = sizeof (recdes_buffer);
+  recdes.data = (char *) recdes_buffer;
+
+  heap_scancache_quick_start_with_class_hfid (thread_p, &scan_cache, &tde_Keyinfo_hfid);
+  scan = heap_first (thread_p, &tde_Keyinfo_hfid, NULL, &tde_Keyinfo_oid, &recdes, &scan_cache, COPY);
+  heap_scancache_end (thread_p, &scan_cache);
+
+  if (scan != S_SUCCESS)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  memcpy (keyinfo, recdes_buffer + sizeof (int), sizeof (TDE_KEYINFO));
+
+  return NO_ERROR;
+}
+
+/*
+ * tde_get_keyinfo () - Get keyinfo from key info heap file 
+ *
+ * return           : Error code
+ * thread_p (in)    : Thread entry
+ * keyinfo (in)     : keyinfo to update that in the keyinfo heap
+ */
+static int
+tde_update_keyinfo (THREAD_ENTRY * thread_p, const TDE_KEYINFO * keyinfo)
+{
+  HEAP_SCANCACHE scan_cache;
+  HEAP_OPERATION_CONTEXT update_context;
+  RECDES recdes;
+  char recdes_buffer[sizeof (int) + sizeof (TDE_KEYINFO)];
+  int repid_and_flag_bits = 0;
+  int error_code = NO_ERROR;
+
+  assert (!HFID_IS_NULL (&tde_Keyinfo_hfid));
+  assert (!OID_ISNULL (&tde_Keyinfo_oid));
+
+  /* HACK: to prevent the record from adjuestment in vacuum_rv_check_at_undo() while UNDOing */
+  memcpy (recdes_buffer, &repid_and_flag_bits, sizeof (int));
+  memcpy (recdes_buffer + sizeof (int), keyinfo, sizeof (TDE_KEYINFO));
+
+  recdes.length = recdes.area_size = sizeof (recdes_buffer);
+  recdes.data = (char *) recdes_buffer;
+
+  /* note that we start a scan cache with NULL class_oid. That's because ketinfo_oid doesn't really have a class!
+   * we have to start the scan cache this way so it can cache also cache file type for heap_update_logical.
+   * otherwise it will try to read it from cache using root class OID. which actually has its own heap file and its own
+   * heap file type.
+   */
+  error_code = heap_scancache_start_modify (thread_p, &scan_cache, &tde_Keyinfo_hfid, NULL, SINGLE_ROW_UPDATE, NULL);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  /* hack the class to avoid heap_scancache_check_with_hfid. */
+  scan_cache.node.class_oid = *oid_Root_class_oid;
+  heap_create_update_context (&update_context, &tde_Keyinfo_hfid, &tde_Keyinfo_oid, oid_Root_class_oid, &recdes,
+			      &scan_cache, UPDATE_INPLACE_CURRENT_MVCCID);
+  error_code = heap_update_logical (thread_p, &update_context);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+    }
+  heap_scancache_end (thread_p, &scan_cache);
+  return error_code;
+}
+
+/*
+ * tde_chnage_mk () - Change the master key set on the database
+ *
+ * return             : Error code
+ * thread_p (in)      : Thread entry
+ * mk_index (in)      : The index in the master key file
+ * master_key (in)    : The master key
+ * created_time (in)  : The creation time of the master key
+ */
+int
+tde_change_mk (THREAD_ENTRY * thread_p, const int mk_index, const unsigned char *master_key, const time_t created_time)
+{
+  TDE_KEYINFO keyinfo;
+  TDE_DATA_KEY_SET dks;
+  int err = NO_ERROR;
+
+  if (!tde_Cipher.is_loaded)
+    {
+      err = ER_TDE_CIPHER_IS_NOT_LOADED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_IS_NOT_LOADED, 0);
+      return err;
+    }
+
+  /* generate keyinfo from tde_Cipher and update heap (on Disk) */
+  err = tde_generate_keyinfo (&keyinfo, mk_index, master_key, created_time, &tde_Cipher.data_keys);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  err = tde_update_keyinfo (thread_p, &keyinfo);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  /* heap_flush() is mandatory. Without this, it cannot be guaranteed
+   * that the master key corresponding key info in heap exists in _keys file.
+   * By calling heap_flush at end of changing key, DBA can remove the previous key after it.
+   */
+  heap_flush (thread_p, &tde_Keyinfo_oid);
+
+  return err;
+}
+
+/*
+ * tde_load_mk () - Read a master key specified by keyinfo from the master key file and validate it
+ *
+ * return             : Error code
+ * vdes (in)          : Key file descriptor
+ * keyinfo (in)       : Key info which contains the master key information to load
+ * master_key (out)   : Master key
+ */
 int
 tde_load_mk (int vdes, const TDE_KEYINFO * keyinfo, unsigned char *master_key)
 {
@@ -640,24 +728,15 @@ tde_load_mk (int vdes, const TDE_KEYINFO * keyinfo, unsigned char *master_key)
   return err;
 }
 
-/* Do validation by comparing boot_Db_parm->tde_mk_hash with SHA-256 */
-static bool
-tde_validate_mk (const unsigned char *master_key, const unsigned char *mk_hash)
-{
-  unsigned char hash[SHA256_DIGEST_LENGTH];
-
-  tde_make_mk_hash (master_key, hash);
-
-  if (memcmp (mk_hash, hash, TDE_MASTER_KEY_LENGTH) != 0)
-    {
-      return false;
-    }
-  return true;
-}
-
-/* MK MUST be loaded earlier */
+/*
+ * tde_load_dks () - Load data keys from keyinfo onto tde_Cipher
+ *
+ * return             : Error code
+ * master_key (in)    : Master key
+ * keyinfo (in)       : Keyinfo which contains encrypted data keys
+ */
 static int
-tde_load_dks (const TDE_KEYINFO * keyinfo, const unsigned char *master_key)
+tde_load_dks (const unsigned char *master_key, const TDE_KEYINFO * keyinfo)
 {
   unsigned char dk_nonce[TDE_DK_NONCE_LENGTH] = { 0, };
   int err = NO_ERROR;
@@ -681,6 +760,34 @@ tde_load_dks (const TDE_KEYINFO * keyinfo, const unsigned char *master_key)
   return err;
 }
 
+/*
+ * tde_validate_mk () - Validate a master key by comparing with the hash value, 
+ *                      usually with the hash value stored in tde key info heap
+ *
+ * return             : Valid or not
+ * master_key (in)    : Master key
+ * mk_hash (in)       : Hash to be compared with the master key
+ */
+static bool
+tde_validate_mk (const unsigned char *master_key, const unsigned char *mk_hash)
+{
+  unsigned char hash[SHA256_DIGEST_LENGTH];
+
+  tde_make_mk_hash (master_key, hash);
+
+  if (memcmp (mk_hash, hash, TDE_MASTER_KEY_LENGTH) != 0)
+    {
+      return false;
+    }
+  return true;
+}
+
+/*
+ * tde_make_mk_hash () - Make a hash value to validate master key later
+ *
+ * master_key (in)    : Master key
+ * mk_hash (out)      : Hash value created with the master key
+ */
 static void
 tde_make_mk_hash (const unsigned char *master_key, unsigned char *mk_hash)
 {
@@ -695,6 +802,12 @@ tde_make_mk_hash (const unsigned char *master_key, unsigned char *mk_hash)
   SHA256_Final (mk_hash, &sha_ctx);
 }
 
+/*
+ * tde_create_dk () - Create a data key
+ *
+ * return             : Error code
+ * data_key (in)      : Data key created
+ */
 static int
 tde_create_dk (unsigned char *data_key)
 {
@@ -709,30 +822,55 @@ tde_create_dk (unsigned char *data_key)
   return NO_ERROR;
 }
 
+/*
+ * tde_encrypt_dk () - encrypt a data key to store a data key in stable storage, 
+ *                     it has to be encrypted.
+ *
+ * return             : error code
+ * dk_plain (in)      : data key to encrypt
+ * dk_type (in)       : data key type
+ * master_key (in)    : a master key to encrypt the data key
+ * dk_cipher (out)    : encrypted data key
+ */
 static int
 tde_encrypt_dk (const unsigned char *dk_plain, TDE_DATA_KEY_TYPE dk_type, const unsigned char *master_key,
 		unsigned char *dk_cipher)
 {
   unsigned char dk_nonce[TDE_DK_NONCE_LENGTH] = { 0, };
 
-  tde_dk_nonce (dk_nonce, dk_type);
+  tde_dk_nonce (dk_type, dk_nonce);
 
   return tde_encrypt_internal (dk_plain, TDE_DATA_KEY_LENGTH, TDE_DK_ALGORITHM, master_key, dk_nonce, dk_cipher);
 }
 
+/*
+ * tde_decrypt_dk () - Decrypt a data key
+ *
+ * return             : Error code
+ * dk_cipher (in)     : Data key to decrypt
+ * dk_type (in)       : Data key type
+ * master_key (in)    : A master key to encrypt the data key
+ * dk_plain (out)     : Decrypted data key
+ */
 static int
 tde_decrypt_dk (const unsigned char *dk_cipher, TDE_DATA_KEY_TYPE dk_type, const unsigned char *master_key,
 		unsigned char *dk_plain)
 {
   unsigned char dk_nonce[TDE_DK_NONCE_LENGTH] = { 0, };
 
-  tde_dk_nonce (dk_nonce, dk_type);
+  tde_dk_nonce (dk_type, dk_nonce);
 
   return tde_decrypt_internal (dk_cipher, TDE_DATA_KEY_LENGTH, TDE_DK_ALGORITHM, master_key, dk_nonce, dk_plain);
 }
 
+/*
+ * tde_dk_nonce () - Get a data key nonce according to dk_type
+ *
+ * dk_type (in)       : Data key type
+ * dk_nonce (out)     : A nonce for dk_type
+ */
 static inline void
-tde_dk_nonce (unsigned char *dk_nonce, TDE_DATA_KEY_TYPE dk_type)
+tde_dk_nonce (TDE_DATA_KEY_TYPE dk_type, unsigned char *dk_nonce)
 {
   assert (dk_nonce != NULL);
 
@@ -753,12 +891,25 @@ tde_dk_nonce (unsigned char *dk_nonce, TDE_DATA_KEY_TYPE dk_type)
     }
 }
 
+/*
+ * tde_encrypt_data_page () - Encrypt a data page. 
+ *
+ * return               : Error code
+ * iopage_plain (in)    : Data page to encrypt
+ * tde_algo (in)        : Encryption algorithm
+ * is_temp (in)         : Whether the page is for temp file
+ * iopage_cipher (out)  : Encrpyted data page
+ *
+ * Nonce value for temporary file and permanent file are different.
+ */
 int
-tde_encrypt_data_page (FILEIO_PAGE * iopage_plain, FILEIO_PAGE * iopage_cipher, TDE_ALGORITHM tde_algo, bool is_temp)
+tde_encrypt_data_page (const FILEIO_PAGE * iopage_plain, TDE_ALGORITHM tde_algo, bool is_temp,
+		       FILEIO_PAGE * iopage_cipher)
 {
   int err = NO_ERROR;
-  unsigned char nonce[TDE_DATA_PAGE_NONCE_LENGTH];
+  unsigned char nonce[TDE_DATA_PAGE_NONCE_LENGTH] = { 0, };
   const unsigned char *data_key;
+  int64_t tmp_nonce;
 
   if (tde_Cipher.is_loaded == false)
     {
@@ -766,24 +917,22 @@ tde_encrypt_data_page (FILEIO_PAGE * iopage_plain, FILEIO_PAGE * iopage_cipher, 
       return ER_TDE_CIPHER_IS_NOT_LOADED;
     }
 
-
-  memset (nonce, 0, TDE_DATA_PAGE_NONCE_LENGTH);
-
   if (is_temp)
     {
       // temporary file: atomic counter for nonce
       data_key = tde_Cipher.data_keys.temp_key;
-      iopage_plain->prv.tde_nonce = ATOMIC_INC_64 (&tde_Cipher.temp_write_counter, 1);
+      tmp_nonce = ATOMIC_INC_64 (&tde_Cipher.temp_write_counter, 1);
+      memcpy (nonce, &tmp_nonce, sizeof (tde_Cipher.temp_write_counter));
     }
   else
     {
-      // permanent file: page lsa for nonce
+      // permanent file: page lsa as nonce
       data_key = tde_Cipher.data_keys.perm_key;
-      memcpy (&iopage_plain->prv.tde_nonce, &iopage_plain->prv.lsa, sizeof (iopage_plain->prv.lsa));
+      memcpy (nonce, &iopage_plain->prv.lsa, sizeof (iopage_plain->prv.lsa));
     }
-  memcpy (nonce, &iopage_plain->prv.tde_nonce, sizeof (iopage_plain->prv.tde_nonce));
 
   memcpy (iopage_cipher, iopage_plain, IO_PAGESIZE);
+  memcpy (&iopage_cipher->prv.tde_nonce, nonce, TDE_DATA_PAGE_NONCE_LENGTH);
 
   err = tde_encrypt_internal (((const unsigned char *) iopage_plain) + TDE_DATA_PAGE_ENC_OFFSET,
 			      TDE_DATA_PAGE_ENC_LENGTH, tde_algo, data_key, nonce,
@@ -792,12 +941,21 @@ tde_encrypt_data_page (FILEIO_PAGE * iopage_plain, FILEIO_PAGE * iopage_cipher, 
   return err;
 }
 
+/*
+ * tde_decrypt_data_page () - Decrypt a data page. 
+ *
+ * return               : Error code
+ * iopage_cipher (in)   : Data page to decrypt
+ * tde_algo (in)        : Encryption algorithm
+ * is_temp (in)         : Whether the page is for temp file
+ * iopage_plain (out)   : Decrypted data page
+ */
 int
-tde_decrypt_data_page (const FILEIO_PAGE * iopage_cipher, FILEIO_PAGE * iopage_plain, TDE_ALGORITHM tde_algo,
-		       bool is_temp)
+tde_decrypt_data_page (const FILEIO_PAGE * iopage_cipher, TDE_ALGORITHM tde_algo, bool is_temp,
+		       FILEIO_PAGE * iopage_plain)
 {
   int err = NO_ERROR;
-  unsigned char nonce[TDE_DATA_PAGE_NONCE_LENGTH];
+  unsigned char nonce[TDE_DATA_PAGE_NONCE_LENGTH] = { 0, };
   const unsigned char *data_key;
 
   if (tde_Cipher.is_loaded == false)
@@ -805,8 +963,6 @@ tde_decrypt_data_page (const FILEIO_PAGE * iopage_cipher, FILEIO_PAGE * iopage_p
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_IS_NOT_LOADED, 0);
       return ER_TDE_CIPHER_IS_NOT_LOADED;
     }
-
-  memset (nonce, 0, TDE_DATA_PAGE_NONCE_LENGTH);
 
   if (is_temp)
     {
@@ -818,8 +974,8 @@ tde_decrypt_data_page (const FILEIO_PAGE * iopage_cipher, FILEIO_PAGE * iopage_p
       // permanent file: page lsa for nonce
       data_key = tde_Cipher.data_keys.perm_key;
     }
-  memcpy (nonce, &iopage_cipher->prv.tde_nonce, sizeof (iopage_cipher->prv.tde_nonce));
 
+  memcpy (nonce, &iopage_cipher->prv.tde_nonce, sizeof (iopage_cipher->prv.tde_nonce));
   memcpy (iopage_plain, iopage_cipher, IO_PAGESIZE);
 
   err = tde_decrypt_internal (((const unsigned char *) iopage_cipher) + TDE_DATA_PAGE_ENC_OFFSET,
@@ -829,89 +985,18 @@ tde_decrypt_data_page (const FILEIO_PAGE * iopage_cipher, FILEIO_PAGE * iopage_p
   return err;
 }
 
+/*
+ * tde_encrypt_log_page () - Encrypt a log page. 
+ *
+ * return               : Error code
+ * iopage_plain (in)    : Log page to encrypt
+ * tde_algo (in)        : Encryption algorithm
+ * iopage_cipher (out)  : Encrpyted log page
+ */
 int
-xtde_get_set_mk_info (THREAD_ENTRY * thread_p, int *mk_index, time_t * created_time, time_t * set_time)
+tde_encrypt_log_page (const LOG_PAGE * logpage_plain, TDE_ALGORITHM tde_algo, LOG_PAGE * logpage_cipher)
 {
-  TDE_KEYINFO keyinfo;
-  int err = NO_ERROR;
-
-  if (!tde_Cipher.is_loaded)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_IS_NOT_LOADED, 0);
-      return ER_TDE_CIPHER_IS_NOT_LOADED;
-    }
-
-  err = tde_get_keyinfo (thread_p, &keyinfo);
-  if (err != NO_ERROR)
-    {
-      return err;
-    }
-  *mk_index = keyinfo.mk_index;
-  *created_time = keyinfo.created_time;
-  *set_time = keyinfo.set_time;
-
-  return err;
-}
-
-int
-xtde_change_mk_without_flock (THREAD_ENTRY * thread_p, const int mk_index)
-{
-  char mk_path[PATH_MAX] = { 0, };
-  TDE_KEYINFO keyinfo;
-  unsigned char master_key[TDE_MASTER_KEY_LENGTH] = { 0, };
-  time_t created_time;
-  int vdes;
-  int err = NO_ERROR;
-
-  tde_make_keys_file_fullname (mk_path, boot_db_full_name (), false);
-
-  vdes = fileio_mount (thread_p, boot_db_full_name (), mk_path, LOG_DBTDE_KEYS_VOLID, false, false);
-  if (vdes == NULL_VOLDES)
-    {
-      ASSERT_ERROR ();
-      return er_errid ();
-    }
-
-  err = tde_find_mk (vdes, mk_index, master_key, &created_time);
-  if (err != NO_ERROR)
-    {
-      goto exit;
-    }
-
-  err = tde_get_keyinfo (thread_p, &keyinfo);
-  if (err != NO_ERROR)
-    {
-      goto exit;
-    }
-
-  /* if the same key with the key set on the database */
-  if (mk_index == keyinfo.mk_index && tde_validate_mk (master_key, keyinfo.mk_hash))
-    {
-      goto exit;
-    }
-
-  /* The previous key has to exist */
-  err = tde_find_mk (vdes, keyinfo.mk_index, NULL, NULL);
-  if (err != NO_ERROR)
-    {
-      goto exit;
-    }
-
-  err = tde_change_mk (thread_p, mk_index, master_key, created_time);
-  if (err != NO_ERROR)
-    {
-      goto exit;
-    }
-
-exit:
-  fileio_dismount (thread_p, vdes);
-  return err;
-}
-
-int
-tde_encrypt_log_page (const LOG_PAGE * logpage_plain, LOG_PAGE * logpage_cipher, TDE_ALGORITHM tde_algo)
-{
-  unsigned char nonce[TDE_LOG_PAGE_NONCE_LENGTH];
+  unsigned char nonce[TDE_LOG_PAGE_NONCE_LENGTH] = { 0, };
   const unsigned char *data_key;
 
   if (tde_Cipher.is_loaded == false)
@@ -920,12 +1005,9 @@ tde_encrypt_log_page (const LOG_PAGE * logpage_plain, LOG_PAGE * logpage_cipher,
       return ER_TDE_CIPHER_IS_NOT_LOADED;
     }
 
-  memset (nonce, 0, TDE_LOG_PAGE_NONCE_LENGTH);
-
   data_key = tde_Cipher.data_keys.log_key;
 
-  memcpy (nonce, &logpage_plain->hdr.logical_pageid, sizeof (logpage_plain->hdr.logical_pageid));
-
+  memcpy (nonce, &logpage_plain->hdr.logical_pageid, sizeof (logpage_cipher->hdr.logical_pageid));
   memcpy (logpage_cipher, logpage_plain, LOG_PAGESIZE);
 
   return tde_encrypt_internal (((const unsigned char *) logpage_plain) + TDE_LOG_PAGE_ENC_OFFSET,
@@ -933,10 +1015,18 @@ tde_encrypt_log_page (const LOG_PAGE * logpage_plain, LOG_PAGE * logpage_cipher,
 			       ((unsigned char *) logpage_cipher) + TDE_LOG_PAGE_ENC_OFFSET);
 }
 
+/*
+ * tde_decrypt_log_page () - Decrypt a log page. 
+ *
+ * return               : Error code
+ * iopage_cipher (in)   : Log page to decrypt
+ * tde_algo (in)        : Encryption algorithm
+ * iopage_plain (out)   : Decrpyted log page
+ */
 int
-tde_decrypt_log_page (const LOG_PAGE * logpage_cipher, LOG_PAGE * logpage_plain, TDE_ALGORITHM tde_algo)
+tde_decrypt_log_page (const LOG_PAGE * logpage_cipher, TDE_ALGORITHM tde_algo, LOG_PAGE * logpage_plain)
 {
-  unsigned char nonce[TDE_LOG_PAGE_NONCE_LENGTH];
+  unsigned char nonce[TDE_LOG_PAGE_NONCE_LENGTH] = { 0, };
   const unsigned char *data_key;
 
   if (tde_Cipher.is_loaded == false)
@@ -945,12 +1035,9 @@ tde_decrypt_log_page (const LOG_PAGE * logpage_cipher, LOG_PAGE * logpage_plain,
       return ER_TDE_CIPHER_IS_NOT_LOADED;
     }
 
-  memset (nonce, 0, TDE_LOG_PAGE_NONCE_LENGTH);
-
   data_key = tde_Cipher.data_keys.log_key;
 
   memcpy (nonce, &logpage_cipher->hdr.logical_pageid, sizeof (logpage_cipher->hdr.logical_pageid));
-
   memcpy (logpage_plain, logpage_cipher, LOG_PAGESIZE);
 
   return tde_decrypt_internal (((const unsigned char *) logpage_cipher) + TDE_LOG_PAGE_ENC_OFFSET,
@@ -958,6 +1045,19 @@ tde_decrypt_log_page (const LOG_PAGE * logpage_cipher, LOG_PAGE * logpage_plain,
 			       ((unsigned char *) logpage_plain) + TDE_LOG_PAGE_ENC_OFFSET);
 }
 
+/*
+ * tde_encrypt_internal () - Gerneral encryption function
+ *
+ * return               : Error code
+ * plain_buffer (in)    : Data to encrypt
+ * length (in)          : The length of data
+ * tde_algo (in)        : Encryption algorithm
+ * key (in)             : key
+ * nonce (in)           : nonce, which has to be unique in time and space
+ * cipher_buffer (out)  : Encrypted data
+ *
+ * plain_buffer and cipher_buffer has more space than length
+ */
 static int
 tde_encrypt_internal (const unsigned char *plain_buffer, int length, TDE_ALGORITHM tde_algo, const unsigned char *key,
 		      const unsigned char *nonce, unsigned char *cipher_buffer)
@@ -1028,6 +1128,19 @@ exit:
   return err;
 }
 
+/*
+ * tde_decrypt_internal () - Gerneral decryption function
+ *
+ * return               : Error code
+ * cipher_buffer (in)   : Data to decrypt
+ * length (in)          : The length of data
+ * tde_algo (in)        : Encryption algorithm
+ * key (in)             : key
+ * nonce (in)           : nonce used during encryption
+ * plain_buffer (out)   : Decrypted data
+ *
+ * plain_buffer and cipher_buffer has more space than length
+ */
 static int
 tde_decrypt_internal (const unsigned char *cipher_buffer, int length, TDE_ALGORITHM tde_algo, const unsigned char *key,
 		      const unsigned char *nonce, unsigned char *plain_buffer)
@@ -1096,8 +1209,110 @@ exit:
   return err;
 }
 
+/*
+ * xtde_get_mk_info () - Get some information of the master key set on the database
+ *
+ * return             : Error code
+ * thread_p (in)      : Thread entry
+ * mk_index (out)     : Index of the master key in the master key file
+ * created_time (out) : Creation time of the master key
+ * set_time (out)     : Set time of the master key
+ */
+int
+xtde_get_mk_info (THREAD_ENTRY * thread_p, int *mk_index, time_t * created_time, time_t * set_time)
+{
+  TDE_KEYINFO keyinfo;
+  int err = NO_ERROR;
+
+  if (!tde_Cipher.is_loaded)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_IS_NOT_LOADED, 0);
+      return ER_TDE_CIPHER_IS_NOT_LOADED;
+    }
+
+  err = tde_get_keyinfo (thread_p, &keyinfo);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+  *mk_index = keyinfo.mk_index;
+  *created_time = keyinfo.created_time;
+  *set_time = keyinfo.set_time;
+
+  return err;
+}
+
+/*
+ * xtde_change_mk_without_flock () - Change the master key on the database.
+ *                                   While changing, it mounts the key file wihout file lock.
+ *
+ * return             : Error code
+ * thread_p (in)      : Thread entry
+ * mk_index (in)      : Index of the master key to set
+ */
+int
+xtde_change_mk_without_flock (THREAD_ENTRY * thread_p, const int mk_index)
+{
+  char mk_path[PATH_MAX] = { 0, };
+  TDE_KEYINFO keyinfo;
+  unsigned char master_key[TDE_MASTER_KEY_LENGTH] = { 0, };
+  time_t created_time;
+  int vdes;
+  int err = NO_ERROR;
+
+  tde_make_keys_file_fullname (mk_path, boot_db_full_name (), false);
+
+  vdes = fileio_mount (thread_p, boot_db_full_name (), mk_path, LOG_DBTDE_KEYS_VOLID, false, false);
+  if (vdes == NULL_VOLDES)
+    {
+      ASSERT_ERROR ();
+      return er_errid ();
+    }
+
+  err = tde_find_mk (vdes, mk_index, master_key, &created_time);
+  if (err != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  err = tde_get_keyinfo (thread_p, &keyinfo);
+  if (err != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  /* if the same key with the key set on the database */
+  if (mk_index == keyinfo.mk_index && tde_validate_mk (master_key, keyinfo.mk_hash))
+    {
+      goto exit;
+    }
+
+  /* The previous key has to exist */
+  err = tde_find_mk (vdes, keyinfo.mk_index, NULL, NULL);
+  if (err != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  err = tde_change_mk (thread_p, mk_index, master_key, created_time);
+  if (err != NO_ERROR)
+    {
+      goto exit;
+    }
+
+exit:
+  fileio_dismount (thread_p, vdes);
+  return err;
+}
+
 #endif /* !CS_MODE */
 
+/*
+ * tde_create_mk () - Create a master key
+ *
+ * return             : Error code
+ * master_key (out)   : Created master key
+ */
 int
 tde_create_mk (unsigned char *master_key)
 {
@@ -1112,6 +1327,11 @@ tde_create_mk (unsigned char *master_key)
   return NO_ERROR;
 }
 
+/*
+ * tde_print_mk () - Print a master key value
+ *
+ * master_key (out)   : Master key to print
+ */
 void
 tde_print_mk (const unsigned char *master_key)
 {
@@ -1122,8 +1342,17 @@ tde_print_mk (const unsigned char *master_key)
     }
 }
 
+/*
+ * tde_add_mk () - Add a master key to the master key file
+ *
+ * return             : Error code
+ * vdes (in)          : Key file descriptor
+ * master_key (in)    : A master key to add
+ * created_time (in)  : When the master key was created
+ * mk_index (out)     : The assigend index for the master key to add
+ */
 int
-tde_add_mk (int vdes, const unsigned char *master_key, int *mk_index, time_t created_time)
+tde_add_mk (int vdes, const unsigned char *master_key, time_t created_time, int *mk_index)
 {
   TDE_MK_FILE_ITEM adding_item;
   TDE_MK_FILE_ITEM reading_item;
@@ -1176,6 +1405,15 @@ tde_add_mk (int vdes, const unsigned char *master_key, int *mk_index, time_t cre
   return NO_ERROR;
 }
 
+/*
+ * tde_find_mk () - Find a master key in the master key file
+ *
+ * return               : Error code
+ * vdes (in)            : Key file descriptor
+ * mk_index (in)        : Index of the master key to find
+ * master_key (out)     : The master key to add
+ * created_time (out)   : When the master key was created
+ */
 int
 tde_find_mk (int vdes, int mk_index, unsigned char *master_key, time_t * created_time)
 {
@@ -1236,6 +1474,15 @@ exit:
   return NO_ERROR;
 }
 
+/*
+ * tde_find_first_mk () - Find the first master key in the master key file
+ *
+ * return               : Error code
+ * vdes (in)            : Key file descriptor
+ * mk_index (out)       : Index of the master key first met
+ * master_key (out)     : The master key to be found
+ * created_time (out)   : When the master key was created
+ */
 int
 tde_find_first_mk (int vdes, int *mk_index, unsigned char *master_key, time_t * created_time)
 {
@@ -1281,6 +1528,13 @@ exit:
   return NO_ERROR;
 }
 
+/*
+ * tde_delete_mk () - Delete a master key in the master key file
+ *
+ * return               : Error code
+ * vdes (in)            : Key file descriptor
+ * mk_index (in)        : Index of the master key to delete
+ */
 int
 tde_delete_mk (int vdes, int mk_index)
 {
@@ -1337,6 +1591,13 @@ exit:
   return NO_ERROR;
 }
 
+/*
+ * tde_find_mk () - Dump master keys in a master key file
+ *
+ * return               : Error code
+ * vdes (in)            : Key file descriptor
+ * print_value (in)     : Wheter to print key value
+ */
 int
 tde_dump_mks (int vdes, bool print_value)
 {
@@ -1398,6 +1659,13 @@ exit:
   return NO_ERROR;
 }
 
+/*
+ * tde_get_algorithm_name () - Convert TDE_ALGORITHM to string refering to tde_Algorithm_str
+ *
+ * return               : String version of tde_algo. NULL means it is not valid
+ * tde_algo (in)        : Encryption algorithm
+ *
+ */
 const char *
 tde_get_algorithm_name (TDE_ALGORITHM tde_algo)
 {

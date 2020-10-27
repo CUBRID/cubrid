@@ -450,7 +450,7 @@ net_server_init (void)
   req_p->name = "NET_SERVER_TDE_GET_MK_FILE_PATH";
 
   req_p = &net_Requests[NET_SERVER_TDE_GET_SET_MK_INFO];
-  req_p->processing_function = stde_get_set_mk_info;
+  req_p->processing_function = stde_get_mk_info;
   req_p->name = "NET_SERVER_TDE_GET_SET_MK_INFO";
 
   req_p = &net_Requests[NET_SERVER_TDE_CHANGE_MK_ON_SERVER];

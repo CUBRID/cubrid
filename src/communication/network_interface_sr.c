@@ -2645,7 +2645,7 @@ stde_get_mk_file_path (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
  * NOTE:
  */
 void
-stde_get_set_mk_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+stde_get_mk_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   int error;
   char *ptr;
@@ -2654,7 +2654,7 @@ stde_get_set_mk_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE + OR_BIGINT_SIZE + OR_BIGINT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  error = xtde_get_set_mk_info (thread_p, &mk_index, &created_time, &set_time);
+  error = xtde_get_mk_info (thread_p, &mk_index, &created_time, &set_time);
   if (error != NO_ERROR)
     {
       (void) return_error_to_client (thread_p, rid);

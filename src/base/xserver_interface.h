@@ -135,7 +135,7 @@ extern int xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hf
 
 extern int xfile_apply_tde_to_class_files (THREAD_ENTRY * thread_p, const OID * class_oid);
 
-extern int xtde_get_set_mk_info (THREAD_ENTRY * thread_p, int *mk_index, time_t * created_time, time_t * set_time);
+extern int xtde_get_mk_info (THREAD_ENTRY * thread_p, int *mk_index, time_t * created_time, time_t * set_time);
 extern int xtde_change_mk_without_flock (THREAD_ENTRY * thread_p, const int mk_index);
 
 extern TRAN_STATE xtran_server_commit (THREAD_ENTRY * thrd, bool retain_lock);

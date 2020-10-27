@@ -2082,7 +2082,7 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_AC
 	      TDE_ALGORITHM tde_algo = logpb_get_tde_algorithm ((LOG_PAGE *) log_pgptr);
 	      if (tde_algo != TDE_ALGORITHM_NONE)
 		{
-		  if (tde_decrypt_log_page ((LOG_PAGE *) log_pgptr, (LOG_PAGE *) log_pgptr, tde_algo) != NO_ERROR)
+		  if (tde_decrypt_log_page ((LOG_PAGE *) log_pgptr, tde_algo, (LOG_PAGE *) log_pgptr) != NO_ERROR)
 		    {
 		      ASSERT_ERROR ();
 		      goto error;
@@ -2173,7 +2173,7 @@ logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int
 	  TDE_ALGORITHM tde_algo = logpb_get_tde_algorithm ((LOG_PAGE *) ptr);
 	  if (tde_algo != TDE_ALGORITHM_NONE)
 	    {
-	      if (tde_decrypt_log_page ((LOG_PAGE *) ptr, (LOG_PAGE *) ptr, tde_algo) != NO_ERROR)
+	      if (tde_decrypt_log_page ((LOG_PAGE *) ptr, tde_algo, (LOG_PAGE *) ptr) != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
 		  return -1;
@@ -2206,7 +2206,7 @@ logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int
 		  continue;	/* no way to check an encrypted page without tde module */
 		}
 
-	      if (tde_decrypt_log_page ((LOG_PAGE *) ptr, (LOG_PAGE *) aligned_log_pgbuf, tde_algo) != NO_ERROR)
+	      if (tde_decrypt_log_page ((LOG_PAGE *) ptr, tde_algo, (LOG_PAGE *) aligned_log_pgbuf) != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
 		  assert (false);
@@ -2274,7 +2274,7 @@ logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAG
 
   if (LOG_IS_PAGE_TDE_ENCRYPTED (log_pgptr))
     {
-      error_code = tde_encrypt_log_page (log_pgptr, buf_pgptr, logpb_get_tde_algorithm (log_pgptr));
+      error_code = tde_encrypt_log_page (log_pgptr, logpb_get_tde_algorithm (log_pgptr), buf_pgptr);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -2776,7 +2776,7 @@ logpb_writev_append_pages (THREAD_ENTRY * thread_p, LOG_PAGE ** to_flush, DKNPAG
 		     (long long int) log_pgptr->hdr.logical_pageid, LOG_IS_PAGE_TDE_ENCRYPTED (log_pgptr));
 	  if (LOG_IS_PAGE_TDE_ENCRYPTED (log_pgptr))
 	    {
-	      if (tde_encrypt_log_page (log_pgptr, buf_pgptr, logpb_get_tde_algorithm (log_pgptr)) != NO_ERROR)
+	      if (tde_encrypt_log_page (log_pgptr, logpb_get_tde_algorithm (log_pgptr), buf_pgptr) != NO_ERROR)
 		{
 		  return NULL;
 		}
@@ -2887,12 +2887,12 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
 	  if (buf_pgptr != log_pgptr)
 	    {
 	      /* from flush_info->to_flush[] */
-	      err = tde_encrypt_log_page (log_pgptr, buf_pgptr, logpb_get_tde_algorithm (log_pgptr));
+	      err = tde_encrypt_log_page (log_pgptr, logpb_get_tde_algorithm (log_pgptr), buf_pgptr);
 	      log_pgptr = buf_pgptr;
 	    }
 	  else
 	    {
-	      err = tde_encrypt_log_page (log_pgptr, log_pgptr, logpb_get_tde_algorithm (log_pgptr));
+	      err = tde_encrypt_log_page (log_pgptr, logpb_get_tde_algorithm (log_pgptr), log_pgptr);
 	    }
 	  if (err != NO_ERROR)
 	    {
@@ -5274,7 +5274,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE *
 	  TDE_ALGORITHM tde_algo = logpb_get_tde_algorithm (log_pgptr);
 	  if (tde_algo != TDE_ALGORITHM_NONE)
 	    {
-	      if (tde_decrypt_log_page (log_pgptr, log_pgptr, tde_algo) != NO_ERROR)
+	      if (tde_decrypt_log_page (log_pgptr, tde_algo, log_pgptr) != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
 		  return NULL;
@@ -8473,7 +8473,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 	  fileio_make_backup_name (bkpath_without_units, nopath_name, session->bkup.current_path,
 				   (FILEIO_BACKUP_LEVEL) r_args->level, FILEIO_NO_BACKUP_UNITS);
 	  tde_make_keys_file_fullname (bk_mk_path, bkpath_without_units, true);
-	  if (r_args->keys_file_path[0] == '\0')
+	  if (r_args->keys_file_path[0] == '\0')	/* the path given by user is prioritized */
 	    {
 	      memcpy (r_args->keys_file_path, bk_mk_path, PATH_MAX);
 	    }

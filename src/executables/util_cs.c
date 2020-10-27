@@ -3814,7 +3814,7 @@ tde (UTIL_FUNCTION_ARG * arg)
 	  db_shutdown ();
 	  goto error_exit;
 	}
-      if (tde_add_mk (vdes, master_key, &mk_index, created_time) != NO_ERROR)
+      if (tde_add_mk (vdes, master_key, created_time, &mk_index) != NO_ERROR)
 	{
 	  PRINT_AND_LOG_ERR_MSG ("FAILURE: %s\n", db_error_string (3));
 	  db_shutdown ();

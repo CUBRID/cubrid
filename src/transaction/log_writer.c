@@ -913,7 +913,7 @@ logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
 			}
 		    }
 
-		  if (tde_encrypt_log_page (log_pgptr, buf_pgptr, tde_algo) != NO_ERROR)
+		  if (tde_encrypt_log_page (log_pgptr, tde_algo, buf_pgptr) != NO_ERROR)
 		    {
 		      return NULL;
 		    }
@@ -978,7 +978,7 @@ logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
 		    }
 		}
 
-	      if (tde_encrypt_log_page (log_pgptr, buf_pgptr, tde_algo) != NO_ERROR)
+	      if (tde_encrypt_log_page (log_pgptr, tde_algo, buf_pgptr) != NO_ERROR)
 		{
 		  return NULL;
 		}

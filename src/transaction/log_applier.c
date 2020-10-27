@@ -1047,7 +1047,7 @@ log_reopen:
 #ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
   if (LOG_IS_PAGE_TDE_ENCRYPTED ((LOG_PAGE *) data))
     {
-      error = tde_decrypt_log_page ((LOG_PAGE *) data, (LOG_PAGE *) data, logwr_get_tde_algorithm ((LOG_PAGE *) data));
+      error = tde_decrypt_log_page ((LOG_PAGE *) data, logwr_get_tde_algorithm ((LOG_PAGE *) data), (LOG_PAGE *) data);
       if (error != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -1117,8 +1117,8 @@ la_log_fetch (LOG_PAGEID pageid, LA_CACHE_BUFFER * cache_buffer)
 	  if (LOG_IS_PAGE_TDE_ENCRYPTED (&cache_buffer->logpage))
 	    {
 	      error =
-		tde_decrypt_log_page (&cache_buffer->logpage, &cache_buffer->logpage,
-				      logwr_get_tde_algorithm (&cache_buffer->logpage));
+		tde_decrypt_log_page (&cache_buffer->logpage, logwr_get_tde_algorithm (&cache_buffer->logpage),
+				      &cache_buffer->logpage);
 	      if (error != NO_ERROR)
 		{
 		  return error;
@@ -7217,7 +7217,7 @@ check_applied_info_end:
 #ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
 	  if (error != NO_ERROR && LOG_IS_PAGE_TDE_ENCRYPTED (logpage))
 	    {
-	      error = tde_decrypt_log_page (logpage, logpage, logwr_get_tde_algorithm (logpage));
+	      error = tde_decrypt_log_page (logpage, logwr_get_tde_algorithm (logpage), logpage);
 	      if (error != NO_ERROR)
 		{
 		  goto check_copied_info_end;

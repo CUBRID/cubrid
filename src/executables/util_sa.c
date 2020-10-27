@@ -938,6 +938,7 @@ restoredb (UTIL_FUNCTION_ARG * arg)
     }
   else
     {
+      /* prepare the buffer to contain mk path from the backup volume */
       restart_arg.keys_file_path[0] = '\0';
     }
 

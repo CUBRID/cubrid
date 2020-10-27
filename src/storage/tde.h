@@ -136,7 +136,8 @@ typedef struct tde_mk_file_item
    || (rcvindex) == RVBT_ONLINE_INDEX_UNDO_TRAN_DELETE)
 
 /*
- * TDE module
+ * TDE Cipher, the core object on memory, which is loaded at restart 
+ * and used everywhere encryption or decription is requested.
  *
  * Note: Now TDE for replication log is disabled,
  * so CS_MODE version tde_cipher is not needed.
@@ -144,7 +145,7 @@ typedef struct tde_mk_file_item
 typedef struct tde_cipher
 {
   bool is_loaded;
-  TDE_DATA_KEY_SET data_keys;
+  TDE_DATA_KEY_SET data_keys;	/* data keys decrypted from tde keyinfo heap, which is constant */
   int64_t temp_write_counter;	/* used as nonce for temp file page, it has to be dealt atomically */
 } TDE_CIPHER;
 
@@ -173,8 +174,8 @@ extern int tde_get_keyinfo (THREAD_ENTRY * thread_p, TDE_KEYINFO * keyinfo);
  */
 extern void tde_make_keys_file_fullname (char *keys_vol_fullname, const char *db_full_name, bool ignore_parm);
 extern bool tde_validate_keys_file (int vdes);
-extern int tde_copy_keys_file (THREAD_ENTRY * thread_p, const char *to_db_fullname, const char *from_db_fullname,
-			       bool keep_to_mount, bool keep_from_mount);
+extern int tde_copy_keys_file (THREAD_ENTRY * thread_p, const char *dest_fullname, const char *src_fullname,
+			       bool keep_dest_mount, bool keep_src_mount);
 extern int tde_load_mk (int vdes, const TDE_KEYINFO * keyinfo, unsigned char *master_key);
 extern int tde_change_mk (THREAD_ENTRY * thread_p, const int mk_index, const unsigned char *master_key,
 			  const time_t created_time);
@@ -182,14 +183,16 @@ extern int tde_change_mk (THREAD_ENTRY * thread_p, const int mk_index, const uns
 /*
  * TDE functions for encrpytion and decryption
  */
-extern int tde_encrypt_data_page (FILEIO_PAGE * iopage_plain, FILEIO_PAGE * iopage_cipher, TDE_ALGORITHM tde_algo,
-				  bool is_temp);
-extern int tde_decrypt_data_page (const FILEIO_PAGE * iopage_cipher, FILEIO_PAGE * iopage_plain, TDE_ALGORITHM tde_algo,
-				  bool is_temp);
-/* Encryption/Decryption functions for logpage are also needed for applylogdb, copylogdb (CS_MODE),
- * but TDE for replication log is disabled now */
-extern int tde_encrypt_log_page (const LOG_PAGE * logpage_plain, LOG_PAGE * logpage_cipher, TDE_ALGORITHM tde_algo);
-extern int tde_decrypt_log_page (const LOG_PAGE * logpage_cipher, LOG_PAGE * logpage_plain, TDE_ALGORITHM tde_algo);
+extern int tde_encrypt_data_page (const FILEIO_PAGE * iopage_plain, TDE_ALGORITHM tde_algo, bool is_temp,
+				  FILEIO_PAGE * iopage_cipher);
+extern int tde_decrypt_data_page (const FILEIO_PAGE * iopage_cipher, TDE_ALGORITHM tde_algo, bool is_temp,
+				  FILEIO_PAGE * iopage_plain);
+/* 
+ * Encryption/Decryption functions for logpage are also needed for applylogdb, copylogdb (CS_MODE),
+ * but TDE for replication log is disabled now 
+ */
+extern int tde_encrypt_log_page (const LOG_PAGE * logpage_plain, TDE_ALGORITHM tde_algo, LOG_PAGE * logpage_cipher);
+extern int tde_decrypt_log_page (const LOG_PAGE * logpage_cipher, TDE_ALGORITHM tde_algo, LOG_PAGE * logpage_plain);
 
 #endif /* !CS_MODE */
 
@@ -197,7 +200,7 @@ extern int tde_decrypt_log_page (const LOG_PAGE * logpage_cipher, LOG_PAGE * log
  * tde functions for the master key management
  */
 extern int tde_create_mk (unsigned char *master_key);
-extern int tde_add_mk (int vdes, const unsigned char *master_key, int *mk_index, time_t created_time);
+extern int tde_add_mk (int vdes, const unsigned char *master_key, time_t created_time, int *mk_index);
 extern int tde_find_mk (int vdes, int mk_index, unsigned char *master_key, time_t * created_time);
 extern int tde_find_first_mk (int vdes, int *mk_index, unsigned char *master_key, time_t * created_time);
 extern int tde_delete_mk (int vdes, const int mk_index);
