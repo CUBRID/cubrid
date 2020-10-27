@@ -2911,12 +2911,28 @@ xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart, const cha
 }
 
 /*
+ * boot_reset_mk_after_restart_from_backup () - Reset after restarting from a backup volume
+ *
+ *  return          : Error code
+ *  thread_p (in)   : Thread entry
+ *  r_args(in)      : Restart argument structure contains various options
+ *
+ * There might be no proper master key when restoring database to a specific moment
+ * because we can only have a master key at backuptime and the current key file.
+ *
+ * Timeline: backup - add mk A, B - change mk to A - (*) - change mk to B
+ *            - delete mk A - latest
+ * 
+ * If you restores databse at (*), there is no mk A set on the database anywhere, 
+ * but if we have the backup key file, you can restore database.
+ * Then, we reset the mk set on the database as below:
+ *
  * (1) It finds out the mk file where the master key set on database is stored
  * and set the mk file as the primary mk file. 
  * (2) If there isn't the master key, the first master key on a mk file is set for the database.
  *
  * In the case of (2), assuming the mk file on server, not from backup, has been being managed,
- * it respects the mk file on server first.
+ * it prioritize the mk file on server.
  */
 int
 boot_reset_mk_after_restart_from_backup (THREAD_ENTRY * thread_p, BO_RESTART_ARG * r_args)

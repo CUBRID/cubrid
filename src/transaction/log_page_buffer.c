@@ -11284,6 +11284,12 @@ logpb_get_memsize ()
   return (size_t) log_Pb.num_buffers * (size_t) LOG_PAGESIZE;
 }
 
+/*
+ * logpb_set_tde_algorithm () - set tde encryption algorithm to the log page
+ * 
+ * return         : encryption algorithm  
+ * log_pgptr(in)  : Log page pointer
+ */
 TDE_ALGORITHM
 logpb_get_tde_algorithm (const LOG_PAGE * log_pgptr)
 {
@@ -11305,6 +11311,13 @@ logpb_get_tde_algorithm (const LOG_PAGE * log_pgptr)
     }
 }
 
+/*
+ * logpb_set_tde_algorithm () - set tde encryption algorithm to the log page
+ *   
+ * thread_p (in)  : Thread entry
+ * log_pgptr(in)  : Log page pointer
+ * tde_algo (in)  : Encryption algorithm
+ */
 void
 logpb_set_tde_algorithm (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, const TDE_ALGORITHM tde_algo)
 {
