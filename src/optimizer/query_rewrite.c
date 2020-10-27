@@ -227,16 +227,13 @@ qo_check_nullable_expr_with_spec (PARSER_CONTEXT * parser, PT_NODE * node, void 
 	case PT_IFNULL:
 	case PT_ISNULL:
 	case PT_CONCAT_WS:
-	  if (node->info.expr.arg1)
-	    {
-	      info->appears = false;
-	      parser_walk_tree (parser, node->info.expr.arg1, qo_get_name_by_spec_id, info, NULL, NULL);
-	      if (info->appears)
-		{
-		  info->nullable = true;
-		  *continue_walk = PT_STOP_WALK;
-		}
-	    }
+	    info->appears = false;
+	    parser_walk_tree (parser, node, qo_get_name_by_spec_id, info, NULL, NULL);
+	    if (info->appears)
+	      {
+		info->nullable = true;
+		*continue_walk = PT_STOP_WALK;
+	      }
 	  break;
 	default:
 	  break;
