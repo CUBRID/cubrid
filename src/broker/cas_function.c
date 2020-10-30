@@ -61,6 +61,7 @@
 #include "cas_sql_log2.h"
 #include "dbtype.h"
 #include "object_primitive.h"
+#include "cub_ddl_log.h"
 
 static FN_RETURN fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
 				      int *ret_srv_h_id);
@@ -179,6 +180,7 @@ fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
   cas_log_write (0, false, "end_tran %s", get_tran_type_str (tran_type));
 
   gettimeofday (&end_tran_begin, NULL);
+  cub_ddl_log_start_time (&end_tran_begin);
 
   err_code = ux_end_tran ((char) tran_type, false);
 
@@ -229,6 +231,8 @@ fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
 	  cas_log_end (SQL_LOG_MODE_NONE, elapsed_sec, elapsed_msec);
 	}
     }
+  cub_ddl_log_elapsed_time (elapsed_sec, elapsed_msec);
+
   gettimeofday (&tran_start_time, NULL);
   gettimeofday (&query_start_time, NULL);
   tran_timeout = 0;
@@ -320,6 +324,9 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
     }
 
   net_arg_get_str (&sql_stmt, &sql_size, argv[0]);
+
+  cub_ddl_log_sql_text (sql_stmt);
+
   net_arg_get_char (flag, argv[1]);
   if (argc > 2)
     {
@@ -389,6 +396,7 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 		 (srv_h_id < 0) ? err_info.err_number : srv_h_id, (srv_handle != NULL
 								   && srv_handle->use_plan_cache) ? " (PC)" : "",
 		 get_error_log_eids (err_info.err_number));
+  cub_ddl_log_err_code (err_info.err_number);
 
 #ifndef LIBCAS_FOR_JSP
   if (srv_h_id < 0)
@@ -616,6 +624,7 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   if (srv_handle->sql_stmt != NULL)
     {
       cas_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt));
+      cub_ddl_log_sql_text (srv_handle->sql_stmt);
     }
   cas_log_debug (ARG_FILE_LINE, "%s%s", auto_commit_mode ? "auto_commit_mode " : "",
 		 forward_only_cursor ? "forward_only_cursor " : "");
@@ -650,14 +659,17 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 #endif /* !LIBCAS_FOR_JSP */
 
   gettimeofday (&exec_begin, NULL);
+  cub_ddl_log_start_time (&exec_begin);
 
   ret_code =
     (*ux_exec_func) (srv_handle, flag, max_col_size, max_row, argc - bind_value_index, argv + bind_value_index, net_buf,
 		     req_info, clt_cache_time_ptr, &client_cache_reusable);
   gettimeofday (&exec_end, NULL);
   ut_timeval_diff (&exec_begin, &exec_end, &elapsed_sec, &elapsed_msec);
+  cub_ddl_log_elapsed_time (elapsed_sec, elapsed_msec);
   eid_string = get_error_log_eids (err_info.err_number);
   err_number_execute = err_info.err_number;
+  cub_ddl_log_err_code (err_info.err_number);
 
   if (fetch_flag && ret_code >= 0 && client_cache_reusable == FALSE)
     {
@@ -675,6 +687,8 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 		 (ret_code < 0) ? "error:" : "", err_number_execute, get_tuple_count (srv_handle), elapsed_sec,
 		 elapsed_msec, (client_cache_reusable == TRUE) ? " (CC)" : "",
 		 (srv_handle->use_query_cache == true) ? " (QC)" : "", eid_string);
+  cub_ddl_log_execute_result (srv_handle);
+
 #ifndef LIBCAS_FOR_JSP
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
   plan = db_get_execution_plan ();
@@ -1616,7 +1630,7 @@ fn_execute_batch (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
   cas_log_write (0, true, "execute_batch %d", argc - arg_index);
-
+  cub_ddl_log_msg ("execute_batch %d", argc - arg_index);
   ux_execute_batch (argc - arg_index, argv + arg_index, net_buf, req_info, auto_commit_mode);
 
   cas_log_write (0, true, "execute_batch end");
@@ -1702,6 +1716,7 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
   if (srv_handle->sql_stmt != NULL)
     {
       cas_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt));
+      cub_ddl_log_sql_text (srv_handle->sql_stmt);
     }
 #ifndef LIBCAS_FOR_JSP
   if (as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
@@ -1711,11 +1726,13 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
 #endif /* !LIBCAS_FOR_JSP */
 
   gettimeofday (&exec_begin, NULL);
+  cub_ddl_log_start_time (&exec_begin);
 
   ret_code = ux_execute_array (srv_handle, argc - arg_index, argv + arg_index, net_buf, req_info);
 
   gettimeofday (&exec_end, NULL);
   ut_timeval_diff (&exec_begin, &exec_end, &elapsed_sec, &elapsed_msec);
+  cub_ddl_log_elapsed_time (elapsed_sec, elapsed_msec);
 
   eid_string = get_error_log_eids (err_info.err_number);
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "execute_array %s%d tuple %d time %d.%03d%s%s%s",

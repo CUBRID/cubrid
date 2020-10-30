@@ -82,6 +82,7 @@
 #include "environment_variable.h"
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 #include "error_manager.h"
+#include "cub_ddl_log.h"
 
 static const int DEFAULT_CHECK_INTERVAL = 1;
 
@@ -879,6 +880,8 @@ cas_main (void)
   // init error manager with default arguments; should be reinitialized later
   er_init (NULL, ER_NEVER_EXIT);
 
+  cub_ddl_log_init ();
+
 #if defined(WINDOWS)
   __try
   {
@@ -1277,6 +1280,13 @@ cas_main (void)
 #if !defined(WINDOWS)
 		signal (SIGUSR1, query_cancel);
 #endif /* !WINDOWS */
+		cub_ddl_log_app_name ("cas");
+		cub_ddl_log_br_name (shm_appl->broker_name);
+		cub_ddl_log_br_index (shm_as_index);
+		cub_ddl_log_db_name (db_name);
+		cub_ddl_log_user_name (db_user);
+		cub_ddl_log_ip (client_ip_str);
+		cub_ddl_log_pid (getpid ());
 		fn_ret = process_request (client_sock_fd, &net_buf, &req_info);
 		as_info->fn_status = FN_STATUS_DONE;
 #ifndef LIBCAS_FOR_JSP
@@ -1633,6 +1643,7 @@ cas_free (bool from_sighandler)
   cas_log_write_and_end (0, true, "CAS TERMINATED pid %d", getpid ());
   cas_log_close (true);
   cas_slow_log_close ();
+  cub_ddl_log_destroy ();
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
   cas_error_log_close (true);
 #endif

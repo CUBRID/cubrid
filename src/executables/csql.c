@@ -66,6 +66,9 @@
 #include "tsc_timer.h"
 #include "dbtype.h"
 #include "jsp_cl.h"
+#include "api_compat.h"
+#include "cas_log.h"
+#include "cub_ddl_log.h"
 
 #if defined(WINDOWS)
 #include "file_io.h"		/* needed for _wyield() */
@@ -219,6 +222,7 @@ static int csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg);
 static void csql_set_trace (const char *arg_str);
 static void csql_display_trace (void);
 static bool csql_is_auto_commit_requested (const CSQL_ARGUMENT * csql_arg);
+static int get_host_ip (unsigned char *ip_addr);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 #if !defined(WINDOWS)
@@ -1751,6 +1755,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
   DB_QUERY_TYPE *attr_spec = NULL;	/* result attribute spec. */
   int total;			/* number of statements to execute */
   bool do_abort_transaction = false;	/* flag for transaction abort */
+  PT_NODE *statements;
 
   csql_Num_failures = 0;
   er_clear ();
@@ -1842,8 +1847,39 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
       if (csql_Is_time_on)
 	{
 	  tsc_getticks (&start_tick);
+	  cub_ddl_log_start_time (NULL);
 	}
       stmt_id = db_compile_statement (session);
+
+      if (session->statements != NULL)
+	{
+	  int line = 0;
+	  line = db_get_line_of_statement (session, stmt_id);
+
+	  line = db_get_start_line (session, stmt_id);
+
+	  unsigned char ip_addr[16] = { "0" };
+	  get_host_ip (ip_addr);
+	  cub_ddl_log_app_name ("csql");
+
+	  if (csql_arg->db_name != NULL)
+	    {
+	      cub_ddl_log_db_name (csql_arg->db_name);
+	    }
+	  if (csql_arg->user_name != NULL)
+	    {
+	      cub_ddl_log_user_name (csql_arg->user_name);
+	    }
+	  cub_ddl_log_ip ((char *) ip_addr);
+	  cub_ddl_log_pid (getpid ());
+
+	  statements = session->statements[num_stmts];
+	  if (statements != NULL && strlen (statements->sql_user_text) >= statements->sql_user_text_len)
+	    {
+	      cub_ddl_log_sql_text (statements->sql_user_text, statements->sql_user_text_len + 1);
+	    }
+	  cub_ddl_log_stmt_type (statements->node_type);
+	}
 
       if (stmt_id < 0)
 	{
@@ -1856,6 +1892,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	      do_abort_transaction = true;
 	    }
 
+	  cub_ddl_log_err_code (db_error_code ());
 	  /* compilation error */
 	  csql_Error_code = CSQL_ERR_SQL_ERROR;
 	  /* Do not continue if there are no statments in the buffer */
@@ -1893,6 +1930,8 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	}
       attr_spec = db_get_query_type_list (session, stmt_id);
       stmt_type = (CUBRID_STMT_TYPE) db_get_statement_type (session, stmt_id);
+      cub_ddl_log_stmt_type (stmt_type);
+      cub_ddl_log_file_line (stmt_start_line_no);
 
       if (db_set_statement_auto_commit (session, csql_is_auto_commit_requested (csql_arg)) != NO_ERROR)
 	{
@@ -1903,6 +1942,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
       db_error = db_execute_statement (session, stmt_id, &result);
       if (db_error < 0)
 	{
+	  cub_ddl_log_err_code (db_error_code ());
 	  csql_Error_code = CSQL_ERR_SQL_ERROR;
 	  if (csql_is_auto_commit_requested (csql_arg) && stmt_type != CUBRID_STMT_ROLLBACK_WORK)
 	    {
@@ -2012,6 +2052,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	  tsc_elapsed_time_usec (&elapsed_time, end_tick, start_tick);
 
 	  sprintf (time, " (%ld.%06ld sec) ", elapsed_time.tv_sec, elapsed_time.tv_usec);
+	  cub_ddl_log_elapsed_time (elapsed_time.tv_sec, elapsed_time.tv_usec);
 	  strncat (stmt_msg, time, sizeof (stmt_msg) - strlen (stmt_msg) - 1);
 	}
 
@@ -2021,6 +2062,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	  db_error = db_commit_transaction ();
 	  if (db_error < 0)
 	    {
+	      cub_ddl_log_err_code (db_error_code ());
 	      csql_Error_code = CSQL_ERR_SQL_ERROR;
 	      do_abort_transaction = true;
 
@@ -2049,6 +2091,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	}
 
       db_drop_statement (session, stmt_id);
+      cub_ddl_log_write_end ();
     }
 
   snprintf (csql_Scratch_text, SCRATCH_TEXT_LEN, csql_get_message (CSQL_EXECUTE_END_MSG_FORMAT),
@@ -2067,6 +2110,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 error:
   jsp_send_destroy_request_all ();
   display_error (session, stmt_start_line_no);
+  cub_ddl_log_err_code (db_error_code ());
   if (do_abort_transaction)
     {
       db_abort_transaction ();
@@ -2080,7 +2124,7 @@ error:
   /* Finish... */
   snprintf (csql_Scratch_text, SCRATCH_TEXT_LEN, csql_get_message (CSQL_EXECUTE_END_MSG_FORMAT),
 	    num_stmts - csql_Num_failures);
-  csql_display_msg (csql_Scratch_text);
+  cub_ddl_log_write_end ();
 
   if (session)
     {
@@ -2603,6 +2647,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
     {
       /* perform any dangling cleanup operations */
       csql_exit_cleanup ();
+      cub_ddl_log_destroy ();
       return csql_Exit_status;
     }
 
@@ -2627,6 +2672,8 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
       strncat (csql_Prompt, " ", avail_size);
     }
   strncpy_bufsize (csql_Name, csql_get_message (CSQL_NAME));
+
+  cub_ddl_log_init ();
 
   /* as we must use db_open_file_name() to open the input file, it is necessary to be opening csql_Input_fp at this
    * point */
@@ -2812,6 +2859,7 @@ error:
   nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
   er_final (ER_ALL_FINAL);
   csql_exit (EXIT_FAILURE);
+  cub_ddl_log_destroy ();
   return EXIT_FAILURE;		/* won't get here really */
 }
 
@@ -3137,4 +3185,26 @@ csql_is_auto_commit_requested (const CSQL_ARGUMENT * csql_arg)
   assert (csql_arg != NULL);
 
   return csql_arg->auto_commit && prm_get_bool_value (PRM_ID_CSQL_AUTO_COMMIT);
+}
+
+static int
+get_host_ip (unsigned char *ip_addr)
+{
+  char hostname[CUB_MAXHOSTNAMELEN];
+  struct hostent *hp;
+  char *ip;
+
+  if (gethostname (hostname, sizeof (hostname)) < 0)
+    {
+      return -1;
+    }
+  if ((hp = gethostbyname (hostname)) == NULL)
+    {
+      return -1;
+    }
+
+  ip = inet_ntoa (*(struct in_addr *) *hp->h_addr_list);
+  memcpy (ip_addr, ip, strlen (ip));
+
+  return 0;
 }

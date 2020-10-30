@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -76,7 +77,7 @@
 #include "dbtype.h"
 #include "memory_alloc.h"
 #include "object_primitive.h"
-
+#include "cub_ddl_log.h"
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
@@ -2009,12 +2010,16 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
   net_buf_cp_int (net_buf, 0, NULL);	/* result code */
   net_buf_cp_int (net_buf, argc, &num_query_offset);	/* result msg. num_query */
 
+  cub_ddl_log_type (DDL_LOG_NO_ELAPSED_TIME);
+
   for (query_index = 0; query_index < argc; query_index++)
     {
       use_plan_cache = false;
       use_query_cache = false;
 
       net_arg_get_str (&sql_stmt, &sql_size, argv[query_index]);
+      cub_ddl_log_sql_text (sql_stmt);
+
       cas_log_write_nonl (0, false, "batch %d : ", query_index + 1);
       if (sql_stmt != NULL)
 	{
@@ -2043,6 +2048,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
 	  cas_log_write2 ("");
 	  goto batch_error;
 	}
+      cub_ddl_log_stmt_type (stmt_type);
 
       SQL_LOG2_EXEC_BEGIN (as_info->cur_sql_log2, stmt_id);
       db_get_cacheinfo (session, stmt_id, &use_plan_cache, &use_query_cache);
@@ -2096,6 +2102,11 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
 	{
 	  db_commit_transaction ();
 	}
+
+      if (query_index < argc)
+	{
+	  cub_ddl_log_write ();
+	}
       continue;
 
     batch_error:
@@ -2104,6 +2115,8 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
       err_code = db_error_code ();
       if (err_code < 0)
 	{
+	  cub_ddl_log_err_code (err_code);
+	  cub_ddl_log_write ();
 	  if (auto_commit_mode == FALSE
 	      && (ER_IS_SERVER_DOWN_ERROR (err_code) || ER_IS_ABORTED_DUE_TO_DEADLOCK (err_code)))
 	    {
@@ -2158,7 +2171,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
     {
       net_buf_cp_int (net_buf, shm_shard_id, NULL);
     }
-
+  cub_ddl_log_write_end ();
   return 0;
 
 execute_batch_error:
@@ -9575,12 +9588,14 @@ ux_auto_commit (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
       cas_log_write (0, false, "auto_commit %s", tran_was_latest_query_committed ()? "(local)" : "(server)");
       err_code = ux_end_tran (CCI_TRAN_COMMIT, true);
       cas_log_write (0, false, "auto_commit %d", err_code);
+      cub_ddl_log_msg ("auto_commit %d", err_code);
     }
   else if (req_info->need_auto_commit == TRAN_AUTOROLLBACK)
     {
       cas_log_write (0, false, "auto_commit %s", tran_was_latest_query_aborted ()? "(local)" : "(server)");
       err_code = ux_end_tran (CCI_TRAN_ROLLBACK, true);
       cas_log_write (0, false, "auto_rollback %d", err_code);
+      cub_ddl_log_msg ("auto_rollback %d", err_code);
     }
   else
     {
@@ -9621,6 +9636,8 @@ ux_auto_commit (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 	  cas_log_end (SQL_LOG_MODE_NONE, elapsed_sec, elapsed_msec);
 	}
     }
+  cub_ddl_log_elapsed_time (elapsed_sec, elapsed_msec);
+  cub_ddl_log_write_end ();
   gettimeofday (&tran_start_time, NULL);
   gettimeofday (&query_start_time, NULL);
   tran_timeout = 0;

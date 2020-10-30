@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation.
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -38,6 +39,11 @@
 
 #include <fstream>
 #include <thread>
+
+#include "dbtype_def.h"
+#include "api_compat.h"
+#include "cas_log.h"
+#include "cub_ddl_log.h"
 
 const int LOAD_INDEX_MIN_SORT_BUFFER_PAGES = 8192;
 const char *LOAD_INDEX_MIN_SORT_BUFFER_PAGES_STRING = "8192";
@@ -497,6 +503,13 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 
   get_loaddb_args (arg_map, &args);
 
+  cub_ddl_log_init ();
+  cub_ddl_log_app_name ("loaddb");
+  cub_ddl_log_db_name (args.volume.c_str ());
+  cub_ddl_log_user_name (args.user_name.c_str ());
+  cub_ddl_log_pid (getpid ());
+  cub_ddl_log_file_name (args.schema_file.c_str ());
+
   if (ldr_validate_object_file (arg->argv0, &args) != NO_ERROR)
     {
       status = 1;
@@ -681,6 +694,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
     {
       print_log_msg (1, "\nStart schema loading.\n");
 
+      cub_ddl_log_loaddb_file_type (LOADDB_FILE_TYPE_SCHEMA);
       /*
        * CUBRID 8.2 should be compatible with earlier versions of CUBRID.
        * Therefore, we do not perform user authentication when the loader
@@ -691,7 +705,8 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	  AU_DISABLE (au_save);
 	}
 
-      if (ldr_exec_query_from_file (args.schema_file.c_str (), schema_file, &schema_file_start_line, &args) != 0)
+      error = ldr_exec_query_from_file (args.schema_file.c_str (), schema_file, &schema_file_start_line, &args);
+      if (error != NO_ERROR)
 	{
 	  print_log_msg (1, "\nError occurred during schema loading." "\nAborting current transaction...");
 	  msg_format = "Error occurred during schema loading." "Aborting current transaction...\n";
@@ -701,6 +716,8 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	  db_shutdown ();
 	  print_log_msg (1, " done.\n\nRestart loaddb with '-%c %s:%d' option\n", LOAD_SCHEMA_FILE_S,
 			 args.schema_file.c_str (), schema_file_start_line);
+	  cub_ddl_log_err_code (error);
+	  cub_ddl_log_write_end ();
 	  goto error_return;
 	}
 
@@ -733,6 +750,8 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       db_commit_transaction ();
       fclose (schema_file);
       schema_file = NULL;
+
+      cub_ddl_log_write_end ();
     }
 
   if (!args.object_file.empty ())
@@ -831,6 +850,8 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 
   fclose (loaddb_log_file);
 
+  cub_ddl_log_destroy ();
+
   return status;
 
 error_return:
@@ -851,6 +872,7 @@ error_return:
       fclose (loaddb_log_file);
     }
 
+  cub_ddl_log_destroy ();
   return status;
 }
 
@@ -911,6 +933,7 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
   int executed_cnt = 0;
   int last_statement_line_no = 0;	// tracks line no of the last successfully executed stmt. -1 for failed ones.
   int check_line_no = true;
+  PT_NODE *statement = NULL;
 
   if ((*start_line) > 1)
     {
@@ -947,6 +970,7 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 
   util_arm_signal_handlers (&ldr_exec_query_interrupt_handler, &ldr_exec_query_interrupt_handler);
 
+  cub_ddl_log_start_time (NULL);
   while (true)
     {
       if (interrupt_query)
@@ -986,6 +1010,7 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 		      print_log_msg (1, "ERROR: %s \n", db_error_string (3));
 		      assert (er_errid () != NO_ERROR);
 		      error = er_errid ();
+		      cub_ddl_log_err_code (error);
 		    }
 		}
 	      while (session_error);
@@ -1002,6 +1027,7 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
       if (error < 0)
 	{
 	  print_log_msg (1, "ERROR: %s\n", db_error_string (3));
+	  cub_ddl_log_err_code (error);
 	  db_close_session (session);
 	  break;
 	}
@@ -1010,6 +1036,7 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
       if (error < 0)
 	{
 	  print_log_msg (1, "ERROR: %s\n", db_error_string (3));
+	  cub_ddl_log_err_code (error);
 	  db_close_session (session);
 	  break;
 	}
@@ -1024,6 +1051,8 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 	}
       print_log_msg ((int) args->verbose, "Total %8d statements executed.\r", executed_cnt);
       fflush (stdout);
+
+      cub_ddl_log_msg ("Total %8d statements executed.", executed_cnt);
     }
 
 end:
@@ -1035,6 +1064,7 @@ end:
     {
       *start_line = last_statement_line_no + 1;
       print_log_msg (1, "Total %8d statements executed.\n", executed_cnt);
+      cub_ddl_log_msg ("Total %8d statements executed.", executed_cnt);
       fflush (stdout);
       db_commit_transaction ();
     }
