@@ -1318,7 +1318,7 @@ $ LOADDB
 1249 The master key set on the database and what is given don't match. The key index set on the database: %1$d
 1250 Error while TDE-encrypting.
 1251 Error while TDE-decrypting.
-1252 TDE Moudle is not loaded.
+1252 TDE Module is not loaded.
 1253 Cannot create a key.
 1254 Cannot load TDE module. You can't use TDE feature.\n\
 Check the path of the key file (_keys) and make sure that it includes proper key.
