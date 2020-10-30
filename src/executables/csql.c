@@ -2124,6 +2124,7 @@ error:
   /* Finish... */
   snprintf (csql_Scratch_text, SCRATCH_TEXT_LEN, csql_get_message (CSQL_EXECUTE_END_MSG_FORMAT),
 	    num_stmts - csql_Num_failures);
+  csql_display_msg (csql_Scratch_text);
   cub_ddl_log_write_end ();
 
   if (session)
