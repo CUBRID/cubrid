@@ -688,7 +688,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_IGNORE_TRAILING_SPACE "ignore_trailing_space"
 
 #define PRM_NAME_DDL_AUDIT_LOG "ddl_audit_log"
-#define PRM_NAME_DDL_AUDIT_LOG_DIR "ddl_audit_log_dir"
 #define PRM_NAME_DDL_AUDIT_LOG_SIZE "ddl_audit_log_size"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
