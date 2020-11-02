@@ -665,7 +665,6 @@ cub_create_log_mgs (char *msg)
       if (ddl_audit_handle->err_code < 0)
 	{
 	  snprintf (result, sizeof (result), "ERROR:%d", ddl_audit_handle->err_code);
-	  ddl_audit_handle->elapsed_time[0] = '\0';
 	}
       else
 	{

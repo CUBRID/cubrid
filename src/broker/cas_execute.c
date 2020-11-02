@@ -78,6 +78,8 @@
 #include "memory_alloc.h"
 #include "object_primitive.h"
 #include "cub_ddl_log.h"
+#include "parse_tree.h"
+#include "api_compat.h"
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
@@ -742,6 +744,7 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
   int is_first_out = 0;
   char *tmp;
   int result_cache_lifetime;
+  PT_NODE *statement = NULL;
 
   if ((flag & CCI_PREPARE_UPDATABLE) && (flag & CCI_PREPARE_HOLDABLE))
     {
@@ -828,6 +831,12 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
 	  goto prepare_error;
 	}
 
+      statement = session->statements[0];
+      if (statement != NULL)
+	{
+	  cub_ddl_log_stmt_type (statement->node_type);
+	}
+
       stmt_id = db_compile_statement (session);
       if (stmt_id < 0)
 	{
@@ -855,6 +864,12 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
     {
       err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
       goto prepare_error;
+    }
+
+  statement = session->statements[0];
+  if (statement != NULL)
+    {
+      cub_ddl_log_stmt_type (statement->node_type);
     }
 
   updatable_flag = flag & CCI_PREPARE_UPDATABLE;
