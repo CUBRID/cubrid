@@ -1066,13 +1066,10 @@ tde_encrypt_internal (const unsigned char *plain_buffer, int length, TDE_ALGORIT
   const EVP_CIPHER *cipher_type;
   int len;
   int cipher_len;
-  int err = NO_ERROR;
-
-  assert (tde_algo == TDE_ALGORITHM_AES || tde_algo == TDE_ALGORITHM_ARIA);
+  int err = ER_TDE_ENCRYPTION_ERROR;
 
   if (!(ctx = EVP_CIPHER_CTX_new ()))
     {
-      err = ER_TDE_ENCRYPTION_ERROR;
       goto exit;
     }
 
@@ -1086,19 +1083,17 @@ tde_encrypt_internal (const unsigned char *plain_buffer, int length, TDE_ALGORIT
       break;
     case TDE_ALGORITHM_NONE:
     default:
-      cipher_type = NULL;
       assert (false);
+      goto cleanup;
     }
 
   if (1 != EVP_EncryptInit_ex (ctx, cipher_type, NULL, key, nonce))
     {
-      err = ER_TDE_ENCRYPTION_ERROR;
       goto cleanup;
     }
 
   if (1 != EVP_EncryptUpdate (ctx, cipher_buffer, &len, plain_buffer, length))
     {
-      err = ER_TDE_ENCRYPTION_ERROR;
       goto cleanup;
     }
   cipher_len = len;
@@ -1107,7 +1102,6 @@ tde_encrypt_internal (const unsigned char *plain_buffer, int length, TDE_ALGORIT
 
   if (1 != EVP_EncryptFinal_ex (ctx, cipher_buffer + len, &len))
     {
-      err = ER_TDE_ENCRYPTION_ERROR;
       goto cleanup;
     }
 
@@ -1116,6 +1110,8 @@ tde_encrypt_internal (const unsigned char *plain_buffer, int length, TDE_ALGORIT
   // CTR_MODE is stream mode so that there is no need to check,
   // but check it for safe.
   assert (cipher_len == length);
+
+  err = NO_ERROR;
 
 cleanup:
   EVP_CIPHER_CTX_free (ctx);
@@ -1149,13 +1145,10 @@ tde_decrypt_internal (const unsigned char *cipher_buffer, int length, TDE_ALGORI
   const EVP_CIPHER *cipher_type;
   int len;
   int plain_len;
-  int err = NO_ERROR;
-
-  assert (tde_algo == TDE_ALGORITHM_AES || tde_algo == TDE_ALGORITHM_ARIA);
+  int err = ER_TDE_DECRYPTION_ERROR;
 
   if (!(ctx = EVP_CIPHER_CTX_new ()))
     {
-      err = ER_TDE_DECRYPTION_ERROR;
       goto exit;
     }
 
@@ -1169,19 +1162,17 @@ tde_decrypt_internal (const unsigned char *cipher_buffer, int length, TDE_ALGORI
       break;
     case TDE_ALGORITHM_NONE:
     default:
-      cipher_type = NULL;
       assert (false);
+      goto cleanup;
     }
 
   if (1 != EVP_DecryptInit_ex (ctx, cipher_type, NULL, key, nonce))
     {
-      err = ER_TDE_DECRYPTION_ERROR;
       goto cleanup;
     }
 
   if (1 != EVP_DecryptUpdate (ctx, plain_buffer, &len, cipher_buffer, length))
     {
-      err = ER_TDE_DECRYPTION_ERROR;
       goto cleanup;
     }
   plain_len = len;
@@ -1189,7 +1180,6 @@ tde_decrypt_internal (const unsigned char *cipher_buffer, int length, TDE_ALGORI
   // Further plaintext bytes may be written at finalizing (Partial block).
   if (1 != EVP_DecryptFinal_ex (ctx, plain_buffer + len, &len))
     {
-      err = ER_TDE_DECRYPTION_ERROR;
       goto cleanup;
     }
   plain_len += len;
@@ -1197,6 +1187,8 @@ tde_decrypt_internal (const unsigned char *cipher_buffer, int length, TDE_ALGORI
   // CTR_MODE is stream mode so that there is no need to check,
   // but check it for safe.
   assert (plain_len == length);
+
+  err = NO_ERROR;
 
 cleanup:
   EVP_CIPHER_CTX_free (ctx);
