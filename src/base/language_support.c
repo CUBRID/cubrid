@@ -3874,7 +3874,7 @@ lang_strmatch_utf8_uca_w_level (const COLL_DATA * coll_data, const int level, bo
       assert (str1 == str1_end);
       if (ignore_trailing_space)
 	{
-          if (lang_str_utf8_trail_zero_weights_w_exp (coll_data, level, str2, CAST_BUFLEN (str2_end - str2)) != 0)
+	  if (lang_str_utf8_trail_zero_weights_w_exp (coll_data, level, str2, CAST_BUFLEN (str2_end - str2)) != 0)
 	    {
 	      result = -1;
 	    }
@@ -3889,7 +3889,7 @@ lang_strmatch_utf8_uca_w_level (const COLL_DATA * coll_data, const int level, bo
       assert (str2 == str2_end);
       if (ignore_trailing_space)
 	{
-          if (lang_str_utf8_trail_zero_weights_w_exp (coll_data, level, str1, CAST_BUFLEN (str1_end - str1)) != 0)
+	  if (lang_str_utf8_trail_zero_weights_w_exp (coll_data, level, str1, CAST_BUFLEN (str1_end - str1)) != 0)
 	    {
 	      result = 1;
 	    }
