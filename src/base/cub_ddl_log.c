@@ -411,7 +411,7 @@ cub_ddl_log_execute_result (T_SRV_HANDLE * srv_handle)
       if (cub_is_ddl_type (srv_handle->q_result[i].stmt_type) == TRUE)
 	{
 	  cub_ddl_log_stmt_type (srv_handle->q_result[i].stmt_type);
-	  return;
+	  break;
 	}
       else
 	{
