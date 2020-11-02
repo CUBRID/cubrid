@@ -429,11 +429,20 @@ cub_file_copy (char *src_file, char *dest_file)
 
   if (src_file == NULL || dest_file == NULL)
     {
-      return 0;
+      return -1;
     }
 
   FILE *fsource = fopen (src_file, "r");
+  if (fsource == NULL)
+    {
+      return -1;
+    }
+
   FILE *fdest = fopen (dest_file, "w");
+  if (fdest == NULL)
+    {
+      return -1;
+    }
 
   while (retval == 0)
     {
@@ -481,6 +490,11 @@ cub_make_schema_file_name (const char *file_full_path, char *dest_path, size_t b
   const char *name_tmp = NULL;
   char *tpath = NULL;
   int retval = 0;
+
+  if (ddl_audit_handle == NULL || file_full_path == NULL || dest_path == NULL || buf_size < 0)
+    {
+      return -1;
+    }
 
   env_root = envvar_root ();
   cub_get_current_time (time, TIME_STRING_SIZE);
