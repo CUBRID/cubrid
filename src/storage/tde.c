@@ -183,7 +183,15 @@ tde_initialize (THREAD_ENTRY * thread_p, HFID * keyinfo_hfid)
     }
 
   err = tde_create_dk (dks.perm_key);
+  if (err != NO_ERROR)
+    {
+      goto exit;
+    }
   err = tde_create_dk (dks.temp_key);
+  if (err != NO_ERROR)
+    {
+      goto exit;
+    }
   err = tde_create_dk (dks.log_key);
   if (err != NO_ERROR)
     {
