@@ -48,6 +48,7 @@
 #include "parse_tree.h"
 #include "system_parameter.h"
 #include "environment_variable.h"
+#include "broker_config.h"
 
 #define DDL_LOG_BUFFER_SIZE         (8192)
 #define DDL_LOG_MSG 	            (256)
@@ -66,7 +67,7 @@ struct t_ddl_audit_handle
   char db_name[DB_MAX_IDENTIFIER_LENGTH];
   char user_name[DB_MAX_USER_LENGTH];
   char app_name[DDL_APP_NAME_LEN];
-  char br_name[DDL_APP_NAME_LEN];
+  char br_name[BROKER_NAME_LEN];
   int br_index;
   char ip_addr[16];
   int pid;
@@ -232,7 +233,7 @@ cub_ddl_log_br_name (const char *br_name)
     {
       return;
     }
-  snprintf (ddl_audit_handle->br_name, 64, br_name);
+  snprintf (ddl_audit_handle->br_name, BROKER_NAME_LEN, br_name);
 }
 
 void
