@@ -2033,12 +2033,11 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
       use_query_cache = false;
 
       net_arg_get_str (&sql_stmt, &sql_size, argv[query_index]);
-      cub_ddl_log_sql_text (sql_stmt);
-
       cas_log_write_nonl (0, false, "batch %d : ", query_index + 1);
       if (sql_stmt != NULL)
 	{
 	  cas_log_write_query_string_nonl (sql_stmt, strlen (sql_stmt));
+	  cub_ddl_log_sql_text (sql_stmt);
 	}
 
       session = db_open_buffer (sql_stmt);

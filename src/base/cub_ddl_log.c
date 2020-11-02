@@ -114,6 +114,10 @@ cub_ddl_log_init ()
     }
 
   ddl_audit_handle = (T_DDL_AUDIT_HANDLE *) MALLOC (sizeof (T_DDL_AUDIT_HANDLE));
+  if (ddl_audit_handle == NULL)
+    {
+      return;
+    }
 
   memset (ddl_audit_handle, 0x00, sizeof (T_DDL_AUDIT_HANDLE));
 
@@ -129,6 +133,11 @@ cub_ddl_log_init ()
 void
 cub_ddl_log_free ()
 {
+  if (ddl_audit_handle == NULL)
+    {
+      cub_ddl_log_init ();
+      return;
+    }
 
   FREE_MEM (ddl_audit_handle->sql_text);
   FREE_MEM (ddl_audit_handle->err_msg);
@@ -157,6 +166,11 @@ cub_ddl_log_destroy ()
 void
 cub_ddl_log_app_name (const char *app_name)
 {
+  if (ddl_audit_handle == NULL || app_name == NULL)
+    {
+      return;
+    }
+
   snprintf (ddl_audit_handle->app_name, sizeof (ddl_audit_handle->app_name), app_name);
 }
 
@@ -164,6 +178,11 @@ void
 cub_ddl_log_db_name (const char *db_name)
 {
   char *pstr = NULL;
+  if (ddl_audit_handle == NULL || db_name == NULL)
+    {
+      return;
+    }
+
   snprintf (ddl_audit_handle->db_name, sizeof (ddl_audit_handle->db_name), db_name);
 
   pstr = (char *) strchr (ddl_audit_handle->db_name, '@');
@@ -176,36 +195,64 @@ cub_ddl_log_db_name (const char *db_name)
 void
 cub_ddl_log_user_name (const char *user_name)
 {
+  if (ddl_audit_handle == NULL || user_name == NULL)
+    {
+      return;
+    }
+
   snprintf (ddl_audit_handle->user_name, sizeof (ddl_audit_handle->user_name), user_name);
 }
 
 void
 cub_ddl_log_ip (const char *ip_addr)
 {
+  if (ddl_audit_handle == NULL || ip_addr == NULL)
+    {
+      return;
+    }
+
   snprintf (ddl_audit_handle->ip_addr, sizeof (ddl_audit_handle->ip_addr), ip_addr);
 }
 
 void
 cub_ddl_log_pid (const int pid)
 {
+  if (ddl_audit_handle == NULL)
+    {
+      return;
+    }
+
   ddl_audit_handle->pid = pid;
 }
 
 void
 cub_ddl_log_br_name (const char *br_name)
 {
+  if (ddl_audit_handle == NULL || br_name == NULL)
+    {
+      return;
+    }
   snprintf (ddl_audit_handle->br_name, 64, br_name);
 }
 
 void
 cub_ddl_log_br_index (const int index)
 {
+  if (ddl_audit_handle == NULL)
+    {
+      return;
+    }
   ddl_audit_handle->br_index = index;
 }
 
 void
 cub_ddl_log_sql_text (char *sql_text)
 {
+  if (ddl_audit_handle == NULL || sql_text == NULL)
+    {
+      return;
+    }
+
   if (ddl_audit_handle->sql_text != NULL)
     {
       FREE_MEM (ddl_audit_handle->sql_text);
@@ -218,6 +265,11 @@ cub_ddl_log_sql_text (char *sql_text)
 void
 cub_ddl_log_sql_text (char *sql_text, int len)
 {
+  if (ddl_audit_handle == NULL || sql_text == NULL || len < 0)
+    {
+      return;
+    }
+
   if (ddl_audit_handle->sql_text != NULL)
     {
       FREE_MEM (ddl_audit_handle->sql_text);
@@ -236,30 +288,54 @@ cub_ddl_log_sql_text (char *sql_text, int len)
 void
 cub_ddl_log_stmt_type (int stmt_type)
 {
+  if (ddl_audit_handle == NULL)
+    {
+      return;
+    }
+
   ddl_audit_handle->stmt_type = stmt_type;
 }
 
 void
 cub_ddl_log_loaddb_file_type (char file_type)
 {
+  if (ddl_audit_handle == NULL)
+    {
+      return;
+    }
+
   ddl_audit_handle->loaddb_file_type = file_type;
 }
 
 void
 cub_ddl_log_file_name (const char *file_name)
 {
+  if (ddl_audit_handle == NULL || file_name == NULL)
+    {
+      return;
+    }
+
   strncpy (ddl_audit_handle->file_name, file_name, PATH_MAX);
 }
 
 void
 cub_ddl_log_file_line (int file_line)
 {
+  if (ddl_audit_handle == NULL)
+    {
+      return;
+    }
+
   ddl_audit_handle->file_line_number = file_line;
 }
 
 void
 cub_ddl_log_err_msg (char *msg)
 {
+  if (ddl_audit_handle == NULL || msg == NULL)
+    {
+      return;
+    }
 
   if (ddl_audit_handle->err_msg != NULL)
     {
@@ -273,12 +349,22 @@ cub_ddl_log_err_msg (char *msg)
 void
 cub_ddl_log_err_code (int err_code)
 {
+  if (ddl_audit_handle == NULL)
+    {
+      return;
+    }
+
   ddl_audit_handle->err_code = err_code;
 }
 
 void
 cub_ddl_log_start_time (struct timeval *time_val)
 {
+  if (ddl_audit_handle == NULL)
+    {
+      return;
+    }
+
   ddl_audit_handle->execute_start_time[0] = '\0';
   cub_get_time_string (ddl_audit_handle->execute_start_time, time_val);
 }
@@ -286,6 +372,11 @@ cub_ddl_log_start_time (struct timeval *time_val)
 void
 cub_ddl_log_elapsed_time (long sec, long msec)
 {
+  if (ddl_audit_handle == NULL)
+    {
+      return;
+    }
+
   snprintf (ddl_audit_handle->elapsed_time, 20, "elapsed time %ld.%03ld", sec, msec);
 }
 
@@ -293,6 +384,10 @@ void
 cub_ddl_log_msg (const char *fmt, ...)
 {
   va_list args;
+  if (ddl_audit_handle == NULL)
+    {
+      return;
+    }
 
   va_start (args, fmt);
   vsnprintf (ddl_audit_handle->msg, DDL_LOG_MSG, fmt, args);
@@ -302,12 +397,22 @@ cub_ddl_log_msg (const char *fmt, ...)
 void
 cub_ddl_log_type (char type)
 {
+  if (ddl_audit_handle == NULL)
+    {
+      return;
+    }
+
   ddl_audit_handle->log_type = type;
 }
 
 void
 cub_ddl_log_execute_result (T_SRV_HANDLE * srv_handle)
 {
+  if (srv_handle == NULL)
+    {
+      return;
+    }
+
   for (int i = 0; i < srv_handle->num_q_result; i++)
     {
       if (cub_is_ddl_type (srv_handle->q_result[i].stmt_type) == TRUE)
@@ -328,6 +433,11 @@ cub_file_copy (char *src_file, char *dest_file)
   char buf[FILE_BUFFER_SIZE] = { 0 };
   size_t size;
   int retval = 0;
+
+  if (src_file == NULL || dest_file == NULL)
+    {
+      return 0;
+    }
 
   FILE *fsource = fopen (src_file, "r");
   FILE *fdest = fopen (dest_file, "w");
@@ -518,6 +628,11 @@ file_error:
 void
 cub_ddl_log_write_end ()
 {
+  if (ddl_audit_handle == NULL)
+    {
+      return;
+    }
+
   if (prm_get_bool_value (PRM_ID_DDL_AUDIT_LOG) == FALSE)
     {
       goto ddl_log_free;
@@ -555,6 +670,11 @@ cub_ddl_log_write ()
   char dest_path[DDL_LOG_PATH_MAX] = { 0 };
   int len = 0;
   int ret = 0;
+
+  if (ddl_audit_handle == NULL)
+    {
+      return;
+    }
 
   if (prm_get_bool_value (PRM_ID_DDL_AUDIT_LOG) == FALSE)
     {
