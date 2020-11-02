@@ -1847,8 +1847,9 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
       if (csql_Is_time_on)
 	{
 	  tsc_getticks (&start_tick);
-	  cub_ddl_log_start_time (NULL);
 	}
+      cub_ddl_log_start_time (NULL);
+
       stmt_id = db_compile_statement (session);
 
       if (session->statements != NULL)
