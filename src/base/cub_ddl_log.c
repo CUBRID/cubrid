@@ -121,11 +121,7 @@ cub_ddl_log_init ()
 
   memset (ddl_audit_handle, 0x00, sizeof (T_DDL_AUDIT_HANDLE));
 
-  ddl_audit_handle->pid = 0;
   ddl_audit_handle->stmt_type = -1;
-  ddl_audit_handle->br_index = 0;
-  ddl_audit_handle->file_line_number = 0;
-  ddl_audit_handle->err_code = 0;
   ddl_audit_handle->log_type = DDL_LOG_ELAPSED_TIME;
   ddl_audit_handle->loaddb_file_type = LOADDB_FILE_TYPE_NONE;
 }
@@ -144,10 +140,7 @@ cub_ddl_log_free ()
 
   memset (ddl_audit_handle, 0x00, sizeof (T_DDL_AUDIT_HANDLE));
 
-  ddl_audit_handle->pid = 0;
   ddl_audit_handle->stmt_type = -1;
-  ddl_audit_handle->file_line_number = 0;
-  ddl_audit_handle->err_code = 0;
   ddl_audit_handle->log_type = DDL_LOG_ELAPSED_TIME;
   ddl_audit_handle->loaddb_file_type = LOADDB_FILE_TYPE_NONE;
 }
