@@ -52,7 +52,6 @@
 
 #define DDL_LOG_BUFFER_SIZE         (8192)
 #define DDL_LOG_MSG 	            (256)
-#define DDL_LOG_PATH_MAX	    PATH_MAX
 #define DDL_LOG_PATH    	    "log/ddl_audit"
 #define DDL_LOG_LOADDB_FILE_PATH    "log/ddl_audit/loaddb"
 #define FILE_BUFFER_SIZE            (1024)
@@ -80,11 +79,11 @@ struct t_ddl_audit_handle
   char *err_msg;
   //char result;
   char msg[DDL_LOG_MSG];
-  char file_name[DDL_LOG_PATH_MAX];
-  char schema_file[DDL_LOG_PATH_MAX];
+  char file_name[PATH_MAX];
+  char schema_file[PATH_MAX];
   char log_type;
   char loaddb_file_type;
-  char log_filepath[DDL_LOG_PATH_MAX];
+  char log_filepath[PATH_MAX];
 };
 static T_DDL_AUDIT_HANDLE *ddl_audit_handle = NULL;
 
@@ -593,7 +592,7 @@ cub_ddl_log_open (char *app_name)
 
   if (app_name != NULL)
     {
-      len = cub_make_ddl_log_filename (ddl_audit_handle->log_filepath, DDL_LOG_PATH_MAX, app_name);
+      len = cub_make_ddl_log_filename (ddl_audit_handle->log_filepath, PATH_MAX, app_name);
 
       if (ddl_audit_handle->log_filepath[0] == '\0' || len < 0)
 	{
@@ -668,7 +667,7 @@ cub_ddl_log_write ()
 {
   FILE *fp = NULL;
   char buf[DDL_LOG_BUFFER_SIZE] = { 0 };
-  char dest_path[DDL_LOG_PATH_MAX] = { 0 };
+  char dest_path[PATH_MAX] = { 0 };
   int len = 0;
   int ret = 0;
 
@@ -703,7 +702,7 @@ cub_ddl_log_write ()
     {
       if (strcmp (ddl_audit_handle->app_name, "loaddb") == 0)
 	{
-	  if (cub_make_schema_file_name (ddl_audit_handle->file_name, dest_path, DDL_LOG_PATH_MAX) < 0)
+	  if (cub_make_schema_file_name (ddl_audit_handle->file_name, dest_path, PATH_MAX) < 0)
 	    {
 	      goto write_error;
 	    }
@@ -870,7 +869,7 @@ unix_style_path (char *path)
 static int
 cub_create_dir_log (const char *new_dir)
 {
-  char *p, path[DDL_LOG_PATH_MAX] = { 0 };
+  char *p, path[PATH_MAX] = { 0 };
 
   if (new_dir == NULL)
     return -1;
