@@ -285,7 +285,6 @@
    && spage_get_slot (page, HEADER)->record_length == sizeof (BTREE_NODE_HEADER) \
    && (btree_get_node_header (thread_p, page))->node_level == 1)
 
-extern PR_TYPE *tp_Type_char;
 typedef struct recset_header RECSET_HEADER;
 struct recset_header
 {				/* Recovery set of recdes structure */
