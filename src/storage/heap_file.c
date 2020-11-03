@@ -5227,9 +5227,10 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
 	    }
 	  else
 	    {
-	      /* just skip to apply tde */
+	      /* just skip to apply tde, expect a high-level layer apply tde_algorithm to this later  */
 	      er_clear ();
 	    }
+
 	  error_code = heap_cache_class_info (thread_p, class_oid, hfid, file_type, NULL);
 	  if (error_code != NO_ERROR)
 	    {
@@ -5304,7 +5305,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
     }
   else
     {
-      /* just skip to apply tde */
+      /* just skip to apply tde, expect a high-level layer apply tde_algorithm to this later  */
       er_clear ();
     }
 

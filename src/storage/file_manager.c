@@ -4366,7 +4366,7 @@ file_temp_retire_internal (THREAD_ENTRY * thread_p, const VFID * vfid, bool was_
       error_code = file_apply_tde_algorithm (thread_p, &entry->vfid, TDE_ALGORITHM_NONE);
       if (error_code != NO_ERROR)
 	{
-	  assert (false);	// TODO just ignore if it is release mode?
+	  assert (false);	// just ignore in release mode
 	}
     }
 
@@ -5905,7 +5905,7 @@ file_file_map_set_tde_algorithm (THREAD_ENTRY * thread_p, PAGE_PTR * page, bool 
  * vfid (in)      : File identifier
  * tde_algo (in) : encryption algorithm - NONE, AES, ARIA
  *
- * NOTDE: The iterating pages part is the same as file_map_pages(). To set TDE to all the pages, unconditional latch has to be latched, but file_map_pages() doesn't support unconditional latch in SERVER_MODE. Becuase this function uses PGBUF_UNCONDITIONAL_LATCH, this has to be called before the file(vfid) is accessed by other thread, or it can cause dead lock (see: file_map_pages()).
+ * NOTE: The iterating pages part is the same as file_map_pages(). To set TDE to all the pages, unconditional latch has to be latched, but file_map_pages() doesn't support unconditional latch in SERVER_MODE. Becuase this function uses PGBUF_UNCONDITIONAL_LATCH, this has to be called before the file(vfid) is accessed by other thread, or it can cause dead lock (see: file_map_pages()).
  *
  */
 int
