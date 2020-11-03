@@ -63,6 +63,8 @@ typedef log_page LOG_PAGE;
 #define TDE_MK_FILE_ITEM_INDEX(offset) \
   (((offset) - TDE_MK_FILE_CONTENTS_START) / TDE_MK_FILE_ITEM_SIZE)
 
+#define TDE_MK_FILE_ITEM_COUNT_MAX 128
+
 /*
  * Each value is also used to be index of tde_Algorithm_str[].
  * These must be changed togeter

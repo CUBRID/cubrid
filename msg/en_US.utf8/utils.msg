@@ -1213,6 +1213,6 @@ valid options:\n\
   -p, --dba-password=PASS      password of the DBA user; will prompt if don't specify\n\
 OPERATIONs: one of the operations must be given, and they are exclusive \n\
     -s, --show-keys               print key information set on the database and the key file (_keys)\n\
-    -n, --generate-new-key        generate a new key in the key file (_keys)\n\
+    -n, --generate-new-key        generate a new key in the key file (_keys); max count: 128\n\
     -d, --delete-key=KEY_INDEX    delete a key in the key file (_keys)\n\
     -c, --change-key=KEY_INDEX    change the key set on the database for another key in the key file (_keys)\n

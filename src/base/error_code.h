@@ -1604,7 +1604,7 @@
 
 #define ER_GAI_ERROR                                -1246
 
-#define ER_TDE_INVALID_KEYS_VOLUME                  -1247
+#define ER_TDE_INVALID_KEYS_FILE                    -1247
 #define ER_TDE_MASTER_KEY_NOT_FOUND                 -1248
 #define ER_TDE_INVALID_MASTER_KEY                   -1249
 #define ER_TDE_ENCRYPTION_ERROR                     -1250
@@ -1618,9 +1618,10 @@
 #define ER_TDE_RESTORE_MAKE_KEYS_FILE_OLD           -1258
 #define ER_TDE_RESTORE_COPY_KEYS_FILE               -1259
 #define ER_TDE_RESTORE_CHANGE_MASTER_KEY            -1260
-#define ER_LOG_UPTODATE_ERROR                       -1261
+#define ER_TDE_MAX_KEY_FILE                         -1261
+#define ER_LOG_UPTODATE_ERROR                       -1262
 
-#define ER_LAST_ERROR                               -1262
+#define ER_LAST_ERROR                               -1263
 
 /*
  * CAUTION!

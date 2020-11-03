@@ -1327,10 +1327,11 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1257 Cannot find the key set on the database from %1$s. The key file from backup volume is going to be used.
 1258 Rename the key file from "%1$s" to "%2$s".
 1259 Copy the key file "%1$s" to "%2$s".
-1260 Cannot find the key at the time to restore (key index: %1$d, created time: %2$s). Set the key (key index: %3$d) for the database. 
-1261 The time(%1$s) specified must be after the time(%2$s) of the specified backup.
+1260 Cannot find the key at the time to restore (key index: %1$d, created time: %2$s). Set the key (key index: %3$d) for the database.
+1261 The key file is full.
+1262 The time(%1$s) specified must be after the time(%2$s) of the specified backup.
 
-1262 Last Error
+1263 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

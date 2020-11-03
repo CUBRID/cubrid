@@ -166,8 +166,8 @@ tde_initialize (THREAD_ENTRY * thread_p, HFID * keyinfo_hfid)
 
       if (tde_validate_keys_file (vdes) == false)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_INVALID_KEYS_VOLUME, 1, mk_path);
-	  err = ER_TDE_INVALID_KEYS_VOLUME;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_INVALID_KEYS_FILE, 1, mk_path);
+	  err = ER_TDE_INVALID_KEYS_FILE;
 	  goto exit;
 	}
 
@@ -274,8 +274,8 @@ tde_cipher_initialize (THREAD_ENTRY * thread_p, const HFID * keyinfo_hfid, const
 
   if (tde_validate_keys_file (vdes) == false)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_INVALID_KEYS_VOLUME, 1, mk_path);
-      err = ER_TDE_INVALID_KEYS_VOLUME;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_INVALID_KEYS_FILE, 1, mk_path);
+      err = ER_TDE_INVALID_KEYS_FILE;
       goto exit;
     }
 
@@ -325,9 +325,6 @@ tde_create_keys_file (const char *keyfile_fullname)
   char magic[CUBRID_MAGIC_MAX_LENGTH] = { 0, };
 #if !defined(WINDOWS)
   sigset_t new_mask, old_mask;
-#endif /* !WINDOWS */
-
-#if !defined(WINDOWS)
   off_signals (new_mask, old_mask);
 #endif /* !WINDOWS */
 
@@ -348,6 +345,8 @@ tde_create_keys_file (const char *keyfile_fullname)
 
   memcpy (magic, CUBRID_MAGIC_KEYS, sizeof (CUBRID_MAGIC_KEYS));
   write (vdes, magic, CUBRID_MAGIC_MAX_LENGTH);
+
+  fsync (vdes);
 
 exit:
   if (vdes != NULL_VOLDES)
@@ -373,9 +372,6 @@ tde_validate_keys_file (int vdes)
   char magic[CUBRID_MAGIC_MAX_LENGTH] = { 0, };
 #if !defined(WINDOWS)
   sigset_t new_mask, old_mask;
-#endif /* !WINDOWS */
-
-#if !defined(WINDOWS)
   off_signals (new_mask, old_mask);
 #endif /* !WINDOWS */
 
@@ -429,8 +425,8 @@ tde_copy_keys_file (THREAD_ENTRY * thread_p, const char *dest_fullname, const ch
   if (tde_validate_keys_file (from_vdes) == false)
     {
       fileio_dismount (thread_p, from_vdes);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_INVALID_KEYS_VOLUME, 1, src_fullname);
-      return ER_TDE_INVALID_KEYS_VOLUME;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_INVALID_KEYS_FILE, 1, src_fullname);
+      return ER_TDE_INVALID_KEYS_FILE;
     }
 
   if (!fileio_is_volume_exist (dest_fullname))
@@ -574,14 +570,9 @@ tde_get_keyinfo (THREAD_ENTRY * thread_p, TDE_KEYINFO * keyinfo)
   HEAP_SCANCACHE scan_cache;
   SCAN_CODE scan = S_SUCCESS;
   char recdes_buffer[sizeof (int) + sizeof (TDE_KEYINFO)];
-  int repid_and_flag_bits = 0;
   int error_code = NO_ERROR;
 
   assert (!HFID_IS_NULL (&tde_Keyinfo_hfid));
-
-  /* HACK: to prevent the record from adjuestment in vacuum_rv_check_at_undo() while UNDOing */
-  memcpy (recdes_buffer, &repid_and_flag_bits, sizeof (int));
-  memcpy (recdes_buffer + sizeof (int), &keyinfo, sizeof (TDE_KEYINFO));
 
   recdes.length = recdes.area_size = sizeof (recdes_buffer);
   recdes.data = (char *) recdes_buffer;
@@ -596,6 +587,8 @@ tde_get_keyinfo (THREAD_ENTRY * thread_p, TDE_KEYINFO * keyinfo)
       return ER_FAILED;
     }
 
+  /* HACK: the front of the record if dummy int to prevent the record from adjuestment
+   *  in vacuum_rv_check_at_undo() while UNDOing, refer to tde_insert_keyinfo() */
   memcpy (keyinfo, recdes_buffer + sizeof (int), sizeof (TDE_KEYINFO));
 
   return NO_ERROR;
@@ -746,7 +739,6 @@ tde_load_mk (int vdes, const TDE_KEYINFO * keyinfo, unsigned char *master_key)
 static int
 tde_load_dks (const unsigned char *master_key, const TDE_KEYINFO * keyinfo)
 {
-  unsigned char dk_nonce[TDE_DK_NONCE_LENGTH] = { 0, };
   int err = NO_ERROR;
 
   err = tde_decrypt_dk (keyinfo->dk_perm, TDE_DATA_KEY_TYPE_PERM, master_key, tde_Cipher.data_keys.perm_key);
@@ -939,7 +931,12 @@ tde_encrypt_data_page (const FILEIO_PAGE * iopage_plain, TDE_ALGORITHM tde_algo,
       memcpy (nonce, &iopage_plain->prv.lsa, sizeof (iopage_plain->prv.lsa));
     }
 
-  memcpy (iopage_cipher, iopage_plain, IO_PAGESIZE);
+  /* copy FILEIO_PAGE_RESERVED */
+  memcpy (iopage_cipher, iopage_plain, TDE_DATA_PAGE_ENC_OFFSET);
+  /* copy FILEIO_PAGE_WATERMARK */
+  memcpy ((char *) iopage_cipher + TDE_DATA_PAGE_ENC_OFFSET + TDE_DATA_PAGE_ENC_LENGTH,
+	  (char *) iopage_plain + TDE_DATA_PAGE_ENC_OFFSET + TDE_DATA_PAGE_ENC_LENGTH, sizeof (FILEIO_PAGE_WATERMARK));
+
   memcpy (&iopage_cipher->prv.tde_nonce, nonce, TDE_DATA_PAGE_NONCE_LENGTH);
 
   err = tde_encrypt_internal (((const unsigned char *) iopage_plain) + TDE_DATA_PAGE_ENC_OFFSET,
@@ -983,8 +980,13 @@ tde_decrypt_data_page (const FILEIO_PAGE * iopage_cipher, TDE_ALGORITHM tde_algo
       data_key = tde_Cipher.data_keys.perm_key;
     }
 
+  /* copy FILEIO_PAGE_RESERVED */
+  memcpy (iopage_plain, iopage_cipher, TDE_DATA_PAGE_ENC_OFFSET);
+  /* copy FILEIO_PAGE_WATERMARK */
+  memcpy ((char *) iopage_plain + TDE_DATA_PAGE_ENC_OFFSET + TDE_DATA_PAGE_ENC_LENGTH,
+	  (char *) iopage_cipher + TDE_DATA_PAGE_ENC_OFFSET + TDE_DATA_PAGE_ENC_LENGTH, sizeof (FILEIO_PAGE_WATERMARK));
+
   memcpy (nonce, &iopage_cipher->prv.tde_nonce, sizeof (iopage_cipher->prv.tde_nonce));
-  memcpy (iopage_plain, iopage_cipher, IO_PAGESIZE);
 
   err = tde_decrypt_internal (((const unsigned char *) iopage_cipher) + TDE_DATA_PAGE_ENC_OFFSET,
 			      TDE_DATA_PAGE_ENC_LENGTH, tde_algo, data_key, nonce,
@@ -1016,7 +1018,7 @@ tde_encrypt_log_page (const LOG_PAGE * logpage_plain, TDE_ALGORITHM tde_algo, LO
   data_key = tde_Cipher.data_keys.log_key;
 
   memcpy (nonce, &logpage_plain->hdr.logical_pageid, sizeof (logpage_cipher->hdr.logical_pageid));
-  memcpy (logpage_cipher, logpage_plain, LOG_PAGESIZE);
+  memcpy (logpage_cipher, logpage_plain, TDE_LOG_PAGE_ENC_OFFSET);
 
   return tde_encrypt_internal (((const unsigned char *) logpage_plain) + TDE_LOG_PAGE_ENC_OFFSET,
 			       TDE_LOG_PAGE_ENC_LENGTH, tde_algo, data_key, nonce,
@@ -1046,7 +1048,7 @@ tde_decrypt_log_page (const LOG_PAGE * logpage_cipher, TDE_ALGORITHM tde_algo, L
   data_key = tde_Cipher.data_keys.log_key;
 
   memcpy (nonce, &logpage_cipher->hdr.logical_pageid, sizeof (logpage_cipher->hdr.logical_pageid));
-  memcpy (logpage_plain, logpage_cipher, LOG_PAGESIZE);
+  memcpy (logpage_plain, logpage_cipher, TDE_LOG_PAGE_ENC_OFFSET);
 
   return tde_decrypt_internal (((const unsigned char *) logpage_cipher) + TDE_LOG_PAGE_ENC_OFFSET,
 			       TDE_LOG_PAGE_ENC_LENGTH, tde_algo, data_key, nonce,
@@ -1076,7 +1078,7 @@ tde_encrypt_internal (const unsigned char *plain_buffer, int length, TDE_ALGORIT
   int cipher_len;
   int err = ER_TDE_ENCRYPTION_ERROR;
 
-  if (!(ctx = EVP_CIPHER_CTX_new ()))
+  if ((ctx = EVP_CIPHER_CTX_new ()) == NULL)
     {
       goto exit;
     }
@@ -1095,12 +1097,12 @@ tde_encrypt_internal (const unsigned char *plain_buffer, int length, TDE_ALGORIT
       goto cleanup;
     }
 
-  if (1 != EVP_EncryptInit_ex (ctx, cipher_type, NULL, key, nonce))
+  if (EVP_EncryptInit_ex (ctx, cipher_type, NULL, key, nonce) != 1)
     {
       goto cleanup;
     }
 
-  if (1 != EVP_EncryptUpdate (ctx, cipher_buffer, &len, plain_buffer, length))
+  if (EVP_EncryptUpdate (ctx, cipher_buffer, &len, plain_buffer, length) != 1)
     {
       goto cleanup;
     }
@@ -1108,7 +1110,7 @@ tde_encrypt_internal (const unsigned char *plain_buffer, int length, TDE_ALGORIT
 
   // Further ciphertext bytes may be written at finalizing (Partial block).
 
-  if (1 != EVP_EncryptFinal_ex (ctx, cipher_buffer + len, &len))
+  if (EVP_EncryptFinal_ex (ctx, cipher_buffer + len, &len) != 1)
     {
       goto cleanup;
     }
@@ -1155,7 +1157,7 @@ tde_decrypt_internal (const unsigned char *cipher_buffer, int length, TDE_ALGORI
   int plain_len;
   int err = ER_TDE_DECRYPTION_ERROR;
 
-  if (!(ctx = EVP_CIPHER_CTX_new ()))
+  if ((ctx = EVP_CIPHER_CTX_new ()) == NULL)
     {
       goto exit;
     }
@@ -1174,19 +1176,19 @@ tde_decrypt_internal (const unsigned char *cipher_buffer, int length, TDE_ALGORI
       goto cleanup;
     }
 
-  if (1 != EVP_DecryptInit_ex (ctx, cipher_type, NULL, key, nonce))
+  if (EVP_DecryptInit_ex (ctx, cipher_type, NULL, key, nonce) != 1)
     {
       goto cleanup;
     }
 
-  if (1 != EVP_DecryptUpdate (ctx, plain_buffer, &len, cipher_buffer, length))
+  if (EVP_DecryptUpdate (ctx, plain_buffer, &len, cipher_buffer, length) != 1)
     {
       goto cleanup;
     }
   plain_len = len;
 
   // Further plaintext bytes may be written at finalizing (Partial block).
-  if (1 != EVP_DecryptFinal_ex (ctx, plain_buffer + len, &len))
+  if (EVP_DecryptFinal_ex (ctx, plain_buffer + len, &len) != 1)
     {
       goto cleanup;
     }
@@ -1357,20 +1359,17 @@ tde_add_mk (int vdes, const unsigned char *master_key, time_t created_time, int 
   TDE_MK_FILE_ITEM adding_item;
   TDE_MK_FILE_ITEM reading_item;
   int location = 0;
+  int err = NO_ERROR;
+  int ret;
 #if !defined(WINDOWS)
   sigset_t new_mask, old_mask;
-#endif /* !WINDOWS */
-
-#if !defined(WINDOWS)
   off_signals (new_mask, old_mask);
 #endif /* !WINDOWS */
 
   if (lseek (vdes, TDE_MK_FILE_CONTENTS_START, SEEK_SET) != TDE_MK_FILE_CONTENTS_START)
     {
-#if !defined(WINDOWS)
-      restore_signals (old_mask);
-#endif /* !WINDOWS */
-      return ER_FAILED;
+      err = ER_FAILED;
+      goto exit;
     }
 
   adding_item.created_time = created_time;
@@ -1378,10 +1377,26 @@ tde_add_mk (int vdes, const unsigned char *master_key, time_t created_time, int 
 
   while (true)
     {
-      if (read (vdes, &reading_item, TDE_MK_FILE_ITEM_SIZE) != TDE_MK_FILE_ITEM_SIZE)
+      ret = read (vdes, &reading_item, TDE_MK_FILE_ITEM_SIZE);
+      if (ret < 0)
+	{
+	  err = ER_IO_READ;
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_READ, 2,
+			       fileio_get_volume_label_by_fd (vdes, PEEK), -1);
+	  goto exit;
+	}
+      else if (ret == 0)
 	{
 	  break;		/* EOF */
 	}
+      else if (ret != TDE_MK_FILE_ITEM_SIZE)
+	{
+	  err = ER_TDE_INVALID_KEYS_FILE;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_INVALID_KEYS_FILE, 1,
+		  fileio_get_volume_label_by_fd (vdes, PEEK));
+	  goto exit;
+	}
+
       if (reading_item.created_time == -1)
 	{
 	  /* invalid item, which means available space */
@@ -1391,18 +1406,28 @@ tde_add_mk (int vdes, const unsigned char *master_key, time_t created_time, int 
     }
 
   location = lseek (vdes, 0, SEEK_CUR);
-  *mk_index = TDE_MK_FILE_ITEM_INDEX (location);
+
+  if (TDE_MK_FILE_ITEM_INDEX (location) >= TDE_MK_FILE_ITEM_COUNT_MAX)
+    {
+      err = ER_TDE_MAX_KEY_FILE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_MAX_KEY_FILE, 0);
+      goto exit;
+    }
+  else
+    {
+      *mk_index = TDE_MK_FILE_ITEM_INDEX (location);
+    }
 
   /* add key */
   write (vdes, &adding_item, TDE_MK_FILE_ITEM_SIZE);
 
   fsync (vdes);
-
-#if !defined(WINDOWS)
+exit:
+#if !defined(windows)
   restore_signals (old_mask);
-#endif /* !WINDOWS */
+#endif /* !windows */
 
-  return NO_ERROR;
+  return err;
 }
 
 /*
@@ -1423,9 +1448,6 @@ tde_find_mk (int vdes, int mk_index, unsigned char *master_key, time_t * created
 
 #if !defined(WINDOWS)
   sigset_t new_mask, old_mask;
-#endif /* !WINDOWS */
-
-#if !defined(WINDOWS)
   off_signals (new_mask, old_mask);
 #endif /* !WINDOWS */
 
@@ -1453,6 +1475,7 @@ tde_find_mk (int vdes, int mk_index, unsigned char *master_key, time_t * created
     {
       memcpy (master_key, item.master_key, TDE_MASTER_KEY_LENGTH);
     }
+
   if (created_time != NULL)
     {
       *created_time = item.created_time;
@@ -1487,15 +1510,13 @@ int
 tde_find_first_mk (int vdes, int *mk_index, unsigned char *master_key, time_t * created_time)
 {
   TDE_MK_FILE_ITEM item;
-  bool found = false;
   int location;
   int index = 0;
+  int err = NO_ERROR;
+  int ret;
 
 #if !defined(WINDOWS)
   sigset_t new_mask, old_mask;
-#endif /* !WINDOWS */
-
-#if !defined(WINDOWS)
   off_signals (new_mask, old_mask);
 #endif /* !WINDOWS */
 
@@ -1503,29 +1524,44 @@ tde_find_first_mk (int vdes, int *mk_index, unsigned char *master_key, time_t * 
 
   if (lseek (vdes, location, SEEK_SET) != location)
     {
-      found = false;
+      err = ER_FAILED;
       goto exit;		/* not found */
     }
 
-  while (read (vdes, &item, TDE_MK_FILE_ITEM_SIZE) == TDE_MK_FILE_ITEM_SIZE)
+  while (true)
     {
+      ret = read (vdes, &item, TDE_MK_FILE_ITEM_SIZE);
+      if (ret < 0)
+	{
+	  err = ER_IO_READ;
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_READ, 2,
+			       fileio_get_volume_label_by_fd (vdes, PEEK), -1);
+	  goto exit;
+	}
+      else if (ret != TDE_MK_FILE_ITEM_SIZE)
+	{
+	  /* The file has been crashed, or the key is not found and EOF. */
+	  err = ER_TDE_INVALID_KEYS_FILE;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_INVALID_KEYS_FILE, 1,
+		  fileio_get_volume_label_by_fd (vdes, PEEK));
+	  goto exit;
+	}
+
       if (item.created_time != -1)
 	{
 	  *mk_index = index;
 	  *created_time = item.created_time;
 	  memcpy (master_key, item.master_key, TDE_MASTER_KEY_LENGTH);
-	  found = true;
 	  break;
 	}
       index++;
     }
 
 exit:
-  assert (found);		/* mk file is supposed to have one key to the least */
 #if !defined(WINDOWS)
   restore_signals (old_mask);
 #endif /* !WINDOWS */
-  return NO_ERROR;
+  return err;
 }
 
 /*
@@ -1544,9 +1580,6 @@ tde_delete_mk (int vdes, int mk_index)
 
 #if !defined(WINDOWS)
   sigset_t new_mask, old_mask;
-#endif /* !WINDOWS */
-
-#if !defined(WINDOWS)
   off_signals (new_mask, old_mask);
 #endif /* !WINDOWS */
 
@@ -1609,9 +1642,6 @@ tde_dump_mks (int vdes, bool print_value)
   char ctime_buf[CTIME_MAX] = { 0, };
 #if !defined(WINDOWS)
   sigset_t new_mask, old_mask;
-#endif /* !WINDOWS */
-
-#if !defined(WINDOWS)
   off_signals (new_mask, old_mask);
 #endif /* !WINDOWS */
 
