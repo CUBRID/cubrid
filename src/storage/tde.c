@@ -1423,9 +1423,9 @@ tde_add_mk (int vdes, const unsigned char *master_key, time_t created_time, int 
 
   fsync (vdes);
 exit:
-#if !defined(windows)
+#if !defined(WINDOWS)
   restore_signals (old_mask);
-#endif /* !windows */
+#endif /* !WINDOWS */
 
   return err;
 }
