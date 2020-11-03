@@ -753,6 +753,11 @@ cub_create_log_mgs (char *msg)
   int retval = 0;
   char result[20] = { 0 };
 
+  if (ddl_audit_handle == NULL)
+    {
+      return -1;
+    }
+
   if (strcmp (ddl_audit_handle->app_name, "loaddb") == 0)
     {
       if (ddl_audit_handle->err_code < 0)
