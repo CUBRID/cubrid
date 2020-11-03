@@ -11947,8 +11947,8 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
   DB_VALUE_COMPARE_RESULT c;
   int strc;
 
-  bool ti = true;
-  bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
+  static bool ti = true;
+  static bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
 
   const unsigned char *string1 = REINTERPRET_CAST (const unsigned char *, db_get_string (value1));
   const unsigned char *string2 = REINTERPRET_CAST (const unsigned char *, db_get_string (value2));
@@ -11990,7 +11990,15 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
 
   if (!ignore_trailing_space)
     {
-      ti = (value1->domain.char_info.type == DB_TYPE_CHAR && value2->domain.char_info.type == DB_TYPE_CHAR);
+      switch (do_coercion)
+	{
+	case 2:		/* from btree_get_prefix_separator */
+	  /* we have to process the ti-comparison for this case (CHAR and VARCHAR mixed) */
+	  ti = (value1->domain.char_info.type == DB_TYPE_CHAR || value2->domain.char_info.type == DB_TYPE_CHAR);
+	  break;
+	default:
+	  ti = (value1->domain.char_info.type == DB_TYPE_CHAR && value2->domain.char_info.type == DB_TYPE_CHAR);
+	}
     }
   strc = QSTR_CHAR_COMPARE (collation, string1, (int) db_get_string_size (value1), string2,
 			    (int) db_get_string_size (value2), ti);
@@ -12884,10 +12892,19 @@ mr_cmpval_nchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tota
       return DB_UNK;
     }
 
+
   if (!ignore_trailing_space)
     {
-      ti = (value1->domain.char_info.type == DB_TYPE_NCHAR && value2->domain.char_info.type == DB_TYPE_NCHAR);
+      if (do_coercion == 2)
+	{
+	  ti = (value1->domain.char_info.type == DB_TYPE_NCHAR || value2->domain.char_info.type == DB_TYPE_NCHAR);
+	}
+      else
+	{
+	  ti = (value1->domain.char_info.type == DB_TYPE_NCHAR && value2->domain.char_info.type == DB_TYPE_NCHAR);
+	}
     }
+
   strc = QSTR_NCHAR_COMPARE (collation, string1, (int) db_get_string_size (value1), string2,
 			     (int) db_get_string_size (value2), db_get_string_codeset (value2), ti);
   c = MR_CMP_RETURN_CODE (strc);
