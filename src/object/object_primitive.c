@@ -11947,8 +11947,8 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
   DB_VALUE_COMPARE_RESULT c;
   int strc;
 
-  bool ti = true;
-  bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
+  static bool ti = true;
+  static bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
 
   const unsigned char *string1 = REINTERPRET_CAST (const unsigned char *, db_get_string (value1));
   const unsigned char *string2 = REINTERPRET_CAST (const unsigned char *, db_get_string (value2));
@@ -11990,12 +11990,13 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
 
   if (!ignore_trailing_space)
     {
-      if (do_coercion == 2)
+      switch (do_coercion)
 	{
+	case 2:		/* from btree_get_prefix_separator */
+	  /* we have to process the ti-comparison for this case (CHAR and VARCHAR mixed) */
 	  ti = (value1->domain.char_info.type == DB_TYPE_CHAR || value2->domain.char_info.type == DB_TYPE_CHAR);
-	}
-      else
-	{
+	  break;
+	default:
 	  ti = (value1->domain.char_info.type == DB_TYPE_CHAR && value2->domain.char_info.type == DB_TYPE_CHAR);
 	}
     }

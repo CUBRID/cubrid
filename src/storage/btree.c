@@ -285,6 +285,7 @@
    && spage_get_slot (page, HEADER)->record_length == sizeof (BTREE_NODE_HEADER) \
    && (btree_get_node_header (thread_p, page))->node_level == 1)
 
+extern PR_TYPE *tp_Type_char;
 typedef struct recset_header RECSET_HEADER;
 struct recset_header
 {				/* Recovery set of recdes structure */
@@ -11748,8 +11749,12 @@ btree_get_prefix_separator (const DB_VALUE * key1, const DB_VALUE * key2, DB_VAL
 {
   int c;
   int err = NO_ERROR;
-  bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
-  int coerce = (ignore_trailing_space) ? 1 : 2;
+  static bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
+
+  /* for coerce = 2, we need to process key comparing as char-type
+   * in case that one of two arguments has varchar-type
+   * if the other argument has char-type */
+  static int coerce = (ignore_trailing_space) ? 1 : 2;
 
   assert (DB_IS_NULL (key1) || (DB_VALUE_DOMAIN_TYPE (key1) == DB_VALUE_DOMAIN_TYPE (key2)));
   assert (!DB_IS_NULL (key2));
