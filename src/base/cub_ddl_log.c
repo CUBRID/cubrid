@@ -838,7 +838,6 @@ cub_fopen_and_lock (const char *path, const char *mode)
 #define MAX_RETRY_COUNT 100
   int retry_count = 0;
   FILE *result = NULL;
-  retry_count = 0;
 
 retry:
   result = fopen (path, mode);
