@@ -5839,6 +5839,8 @@ lang_init_coll_Utf8_tr_cs (LANG_COLLATION * lang_coll)
       lang_Next_alpha_char_TR_ti[i] = i + 1;
     }
 
+  assert (DIM (special_lower_cp) == DIM (special_upper_cp));
+
   /* specific turkish letters: weighting for string compare */
   for (i = 0; i < (int) DIM (special_upper_cp); i++)
     {
