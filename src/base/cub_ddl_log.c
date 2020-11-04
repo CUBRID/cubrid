@@ -613,10 +613,6 @@ cub_ddl_log_open (char *app_name)
   /* note: in "a+" mode, output is always appended */
   fp = cub_fopen_and_lock (ddl_audit_handle->log_filepath, "a+");
 
-  if (fp != NULL)
-    {
-      fseek (fp, 0, SEEK_END);
-    }
   return fp;
 
 file_error:
