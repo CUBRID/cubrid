@@ -24374,7 +24374,7 @@ static PT_TYPE_ENUM
 pt_wrap_type_for_collation (const PT_NODE * arg1, const PT_NODE * arg2, const PT_NODE * arg3,
 			    PT_TYPE_ENUM * wrap_type_collection)
 {
-  PT_TYPE_ENUM common_type = PT_TYPE_VARCHAR;
+  PT_TYPE_ENUM common_type = PT_TYPE_CHAR;
   PT_TYPE_ENUM arg1_type = PT_TYPE_NONE, arg2_type = PT_TYPE_NONE, arg3_type = PT_TYPE_NONE;
 
   if (arg1)
