@@ -442,9 +442,9 @@ cub_file_copy (char *src_file, char *dest_file)
   if (fdest == NULL)
     {
       if (fsource != NULL)
-        {
-          fclose (fsource);
-        }
+	{
+	  fclose (fsource);
+	}
       return -1;
     }
 
@@ -545,7 +545,7 @@ cub_make_schema_file_name (const char *file_full_path, char *dest_path, size_t b
 #endif
 
   retval = cub_create_dir_log (dest_path);
-  
+
   return retval;
 }
 
@@ -605,9 +605,9 @@ cub_ddl_log_open (char *app_name)
 	}
 
       if (cub_create_dir_log (ddl_audit_handle->log_filepath) < 0)
-        {
-          goto file_error;
-        }
+	{
+	  goto file_error;
+	}
     }
   else
     {
@@ -848,7 +848,7 @@ retry:
 	      retry_count++;
 	      goto retry;
 	    }
-          ddl_log_fd = NULL;
+	  ddl_log_fd = NULL;
 	}
     }
 
