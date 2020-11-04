@@ -842,26 +842,26 @@ cub_fopen_and_lock (const char *path, const char *mode)
 {
 #define MAX_RETRY_COUNT 100
   int retry_count = 0;
-  FILE *result = NULL;
+  FILE *ddl_log_fd = NULL;
 
 retry:
-  result = fopen (path, mode);
-  if (result != NULL)
+  ddl_log_fd = fopen (path, mode);
+  if (ddl_log_fd != NULL)
     {
-      if (lockf (fileno (result), F_TLOCK, 0) < 0)
+      if (lockf (fileno (ddl_log_fd), F_TLOCK, 0) < 0)
 	{
-	  fclose (result);
+	  fclose (ddl_log_fd);
 	  if (retry_count < MAX_RETRY_COUNT)
 	    {
 	      SLEEP_MILISEC (0, 10);
 	      retry_count++;
 	      goto retry;
 	    }
-	  result = NULL;
+	  ddl_log_fd = NULL;
 	}
     }
 
-  return result;
+  return ddl_log_fd;
 }
 
 #if defined(WINDOWS)
