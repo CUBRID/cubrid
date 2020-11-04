@@ -10928,8 +10928,8 @@ mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
   bool alloced_string1 = false, alloced_string2 = false;
   int strc;
 
-  bool ti = true;
-  bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
+  static bool ti = true;
+  static bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
 
   assert (domain != NULL);
 
@@ -11083,8 +11083,8 @@ mr_cmpval_string (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
   int size1, size2;
   int strc;
 
-  bool ti = true;
-  bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
+  static bool ti = true;
+  static bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
 
   const unsigned char *string1 = REINTERPRET_CAST (const unsigned char *, db_get_string (value1));
   const unsigned char *string2 = REINTERPRET_CAST (const unsigned char *, db_get_string (value2));
@@ -11900,8 +11900,8 @@ mr_cmpdisk_char_internal (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
   DB_VALUE_COMPARE_RESULT c;
   int mem_length1, mem_length2, strc;
 
-  bool ti = true;
-  bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
+  static bool ti = true;
+  static bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
 
   if (IS_FLOATING_PRECISION (domain->precision))
     {
@@ -12886,8 +12886,8 @@ mr_cmpval_nchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tota
   DB_VALUE_COMPARE_RESULT c;
   int strc;
 
-  bool ti = true;
-  bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
+  static bool ti = true;
+  static bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
 
   const unsigned char *string1 = REINTERPRET_CAST (const unsigned char *, db_get_string (value1));
   const unsigned char *string2 = REINTERPRET_CAST (const unsigned char *, db_get_string (value2));
@@ -14032,8 +14032,8 @@ mr_cmpval_varnchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int t
   DB_VALUE_COMPARE_RESULT c;
   int strc;
 
-  bool ti = true;
-  bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
+  static bool ti = true;
+  static bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
 
   const unsigned char *string1 = REINTERPRET_CAST (const unsigned char *, db_get_string (value1));
   const unsigned char *string2 = REINTERPRET_CAST (const unsigned char *, db_get_string (value2));
