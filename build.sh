@@ -122,7 +122,7 @@ function build_initialize ()
   minor_version=$(echo $version | cut -d . -f 2)
   patch_version=$(echo $version | cut -d . -f 3)
   extra_version=$(echo $version | cut -d . -f 4)
-  major_start_date='2019-12-13'
+  major_start_date='2019-12-12'
   if [ "x$extra_version" != "x" ]; then
     serial_number=$(echo $extra_version | cut -d - -f 1)
   elif [ -d $source_dir/.git ]; then
