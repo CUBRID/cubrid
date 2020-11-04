@@ -4635,7 +4635,7 @@ is_argument_wrapped_with_cast_op (const REGU_VARIABLE * regu_var)
 
   if (regu_var->type == TYPE_INARITH || regu_var->type == TYPE_OUTARITH)
     {
-      return (regu_var->value.arithptr->opcode == T_CAST);
+      return (regu_var->value.arithptr->opcode == T_CAST || regu_var->value.arithptr->opcode == T_CAST_WRAP);
     }
 
   return false;
