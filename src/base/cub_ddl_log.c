@@ -540,14 +540,8 @@ cub_make_schema_file_name (const char *file_full_path, char *dest_path, size_t b
   unix_style_path (dest_path);
 #endif
 
-  tpath = strdup (dest_path);
-  if (tpath == NULL)
-    {
-      return -1;
-    }
-  cub_create_dir_log (tpath);
-  FREE (tpath);
-
+  retval = cub_create_dir_log (dest_path);
+  
   return retval;
 }
 
@@ -606,13 +600,10 @@ cub_ddl_log_open (char *app_name)
 	  goto file_error;
 	}
 
-      tpath = strdup (ddl_audit_handle->log_filepath);
-      if (tpath == NULL)
-	{
-	  goto file_error;
-	}
-      cub_create_dir_log (tpath);
-      FREE_MEM (tpath);
+      if (cub_create_dir_log (ddl_audit_handle->log_filepath) < 0)
+        {
+          goto file_error;
+        }
     }
   else
     {
@@ -857,7 +848,7 @@ retry:
 	      retry_count++;
 	      goto retry;
 	    }
-	  ddl_log_fd = NULL;
+          ddl_log_fd = NULL;
 	}
     }
 
