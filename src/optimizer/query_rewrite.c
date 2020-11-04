@@ -5497,13 +5497,13 @@ qo_rewrite_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
       prev_spec = NULL;
       for (spec = node->info.query.q.select.from; spec; prev_spec = spec, spec = spec->next)
 	{
-	  if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER || spec->info.spec.join_type == PT_JOIN_RIGHT_OUTER)
+	  if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER || (spec->info.spec.join_type == PT_JOIN_RIGHT_OUTER && prev_spec))
 	    {
 	      if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER)
 		{
 		  info.id = info_spec.id = spec->info.spec.id;
 		}
-	      else if (prev_spec != NULL)
+	      else
 		{
 		  info.id = info_spec.id = prev_spec->info.spec.id;
 		}
