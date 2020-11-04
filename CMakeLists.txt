@@ -182,7 +182,11 @@ if(VERSION_MATCHES_LENGTH GREATER 3)
 else(VERSION_MATCHES_LENGTH GREATER 3)
   find_package(Git)
   if(EXISTS "${CMAKE_SOURCE_DIR}/.git" AND GIT_FOUND)
-    set(CUBRID_MAJOR_START_DATE "2019-12-13")
+    set(CUBRID_MAJOR_START_DATE "2019-12-12")
+    execute_process(COMMAND ${GIT_EXECUTABLE} --version
+    COMMAND awk "{ printf \"%s\", $3 }"
+    OUTPUT_VARIABLE GIT_VERSION
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
     if(GIT_VERSION VERSION_GREATER 1.7.6)
       execute_process(COMMAND ${GIT_EXECUTABLE} rev-list --count --after ${CUBRID_MAJOR_START_DATE} HEAD
         COMMAND awk "{ printf \"%04d\", $1 }"
