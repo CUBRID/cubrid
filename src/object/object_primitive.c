@@ -11990,11 +11990,22 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
 
   if (!ignore_trailing_space)
     {
+      /* TODO: We might need to make refactoring the code for corcing between CHAR and VARCHAR */
       switch (do_coercion)
 	{
-	case 2:		/* from btree_get_prefix_separator */
-	  /* we have to process the ti-comparison for this case (CHAR and VARCHAR mixed) */
+	case 2:
+	  /* 
+	   * from btree_get_prefix_separator
+	   * we need to process the ti-comparison for this case (CHAR and VARCHAR mixed)
+	   */
 	  ti = (value1->domain.char_info.type == DB_TYPE_CHAR || value2->domain.char_info.type == DB_TYPE_CHAR);
+	  break;
+	case 3:
+	  /* 
+	   * from eliminate_duplicated_keys and scan_key_compre
+	   * we need to process enforcing no-ignore-trailing space.
+	   */
+	  ti = false;
 	  break;
 	default:
 	  ti = (value1->domain.char_info.type == DB_TYPE_CHAR && value2->domain.char_info.type == DB_TYPE_CHAR);
