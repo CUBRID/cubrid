@@ -5954,7 +5954,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_IGNORE_TRAILING_SPACE,
    PRM_NAME_IGNORE_TRAILING_SPACE,
-   (PRM_FOR_SERVER),
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_FORCE_SERVER),
    PRM_BOOLEAN,
    &prm_ignore_trailing_space_flag,
    (void *) &prm_ignore_trailing_space_default,
