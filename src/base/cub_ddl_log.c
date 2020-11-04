@@ -441,6 +441,10 @@ cub_file_copy (char *src_file, char *dest_file)
   FILE *fdest = fopen (dest_file, "w");
   if (fdest == NULL)
     {
+      if (fsource != NULL)
+        {
+          fclose (fsource);
+        }
       return -1;
     }
 
