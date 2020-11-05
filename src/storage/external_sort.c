@@ -4507,7 +4507,15 @@ sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est, bo
   /* todo: we don't have multiple page allocation, but allocation should be fast enough */
   for (; file_pg_cnt_est > 0; file_pg_cnt_est--)
     {
-      ret = file_alloc (thread_p, vfid, NULL, NULL, &new_vpid, NULL);
+      if (tde_encrypted)
+	{
+	  PAGE_TYPE ptype = PAGE_AREA;
+	  ret = file_alloc (thread_p, vfid, file_init_temp_page_type, &ptype, &new_vpid, NULL);
+	}
+      else
+	{
+	  ret = file_alloc (thread_p, vfid, NULL, NULL, &new_vpid, NULL);
+	}
       if (ret != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -4543,7 +4551,14 @@ sort_write_area (THREAD_ENTRY * thread_p, VFID * vfid, int first_page, INT32 num
   INT32 page_no;
   int i;
   int ret = NO_ERROR;
+  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
 
+  ret = file_get_tde_algorithm (thread_p, vfid, &tde_algo);
+  if (ret != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return ret;
+    }
   /* initializations */
   page_no = first_page;
 
@@ -4554,7 +4569,15 @@ sort_write_area (THREAD_ENTRY * thread_p, VFID * vfid, int first_page, INT32 num
   for (i = 0; i < num_pages; i++)
     {
       /* file is automatically expanded if page is not allocated (as long as it is missing only one page) */
-      ret = file_numerable_find_nth (thread_p, vfid, page_no++, true, NULL, NULL, &vpid);
+      if (tde_algo != TDE_ALGORITHM_NONE)
+	{
+	  PAGE_TYPE ptype = PAGE_AREA;
+	  ret = file_numerable_find_nth (thread_p, vfid, page_no++, true, file_init_temp_page_type, &ptype, &vpid);
+	}
+      else
+	{
+	  ret = file_numerable_find_nth (thread_p, vfid, page_no++, true, NULL, NULL, &vpid);
+	}
       if (ret != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -4751,7 +4774,17 @@ sort_checkalloc_numpages_of_outfiles (THREAD_ENTRY * thread_p, SORT_PARAM * sort
 	  alloc_pages = (needed_pages[i] - contains);
 	  if (alloc_pages > 0)
 	    {
-	      error_code = file_alloc_multiple (thread_p, &sort_param->temp[i], NULL, NULL, alloc_pages, NULL);
+	      if (sort_param->tde_encrypted)
+		{
+		  PAGE_TYPE ptype = PAGE_AREA;
+		  error_code =
+		    file_alloc_multiple (thread_p, &sort_param->temp[i], file_init_temp_page_type, &ptype, alloc_pages,
+					 NULL);
+		}
+	      else
+		{
+		  error_code = file_alloc_multiple (thread_p, &sort_param->temp[i], NULL, NULL, alloc_pages, NULL);
+		}
 	      if (error_code != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
