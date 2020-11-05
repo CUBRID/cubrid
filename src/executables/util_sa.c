@@ -3328,7 +3328,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 	    }
 
 	  lc = lang_get_collation (i);
-	  if (lc->coll.coll_id == LANG_COLL_ISO_BINARY)
+	  if (lc->coll.coll_id == LANG_COLL_DEFAULT)
 	    {
 	      assert (i != 0);
 	      continue;

@@ -868,7 +868,7 @@ lang_init_builtin (void)
   /* init all collation placeholders with ISO binary collation */
   for (i = 0; i < LANG_MAX_COLLATIONS; i++)
     {
-      lang_Collations[i] = &coll_Binary;
+      lang_Collations[i] = &coll_Iso_binary;
     }
 
   /* built-in collations : order of registration should match colation ID */
