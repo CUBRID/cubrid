@@ -4509,6 +4509,7 @@ sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est, bo
     {
       if (tde_encrypted)
 	{
+	  /* if ptype is not set, the page can't be fixed. So it is impossible to initizlie tde information when retiring the temp file */
 	  PAGE_TYPE ptype = PAGE_AREA;
 	  ret = file_alloc (thread_p, vfid, file_init_temp_page_type, &ptype, &new_vpid, NULL);
 	}
@@ -4571,6 +4572,7 @@ sort_write_area (THREAD_ENTRY * thread_p, VFID * vfid, int first_page, INT32 num
       /* file is automatically expanded if page is not allocated (as long as it is missing only one page) */
       if (tde_algo != TDE_ALGORITHM_NONE)
 	{
+	  /* if ptype is not set, the page can't be fixed. So it is impossible to initizlie tde information when retiring the temp file */
 	  PAGE_TYPE ptype = PAGE_AREA;
 	  ret = file_numerable_find_nth (thread_p, vfid, page_no++, true, file_init_temp_page_type, &ptype, &vpid);
 	}
