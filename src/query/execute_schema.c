@@ -9017,7 +9017,6 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  goto error_exit;
 	}
-
     }
 
   return error;

@@ -72,8 +72,8 @@ typedef log_page LOG_PAGE;
 typedef enum
 {
   TDE_ALGORITHM_NONE = 0,
-  TDE_ALGORITHM_AES = 1,
-  TDE_ALGORITHM_ARIA = 2,
+  TDE_ALGORITHM_AES = 1,	/* AES 256 */
+  TDE_ALGORITHM_ARIA = 2,	/* ARIA 256 */
 } TDE_ALGORITHM;
 
 typedef enum tde_data_key_type

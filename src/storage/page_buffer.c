@@ -4444,14 +4444,14 @@ pgbuf_set_tde_algorithm (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, TDE_ALGORITHM 
 
   assert (tde_Cipher.is_loaded || tde_algo == TDE_ALGORITHM_NONE);
 
-  CAST_PGPTR_TO_IOPGPTR (iopage, pgptr);
-
   prev_tde_algo = pgbuf_get_tde_algorithm (pgptr);
 
   if (prev_tde_algo == tde_algo)
     {
       return;
     }
+
+  CAST_PGPTR_TO_IOPGPTR (iopage, pgptr);
 
 #if !defined(NDEBUG)
   er_log_debug (ARG_FILE_LINE, "TDE: pgbuf_set_tde_algorithm(): VPID = %d|%d, tde_algorithm = %s\n", iopage->prv.volid,
@@ -4517,6 +4517,10 @@ pgbuf_get_tde_algorithm (PAGE_PTR pgptr)
   FILEIO_PAGE *iopage = NULL;
 
   CAST_PGPTR_TO_IOPGPTR (iopage, pgptr);
+
+  // encryption algorithms are exclusive
+  assert (!((iopage->prv.pflag & FILEIO_PAGE_FLAG_ENCRYPTED_AES) &&
+	    (iopage->prv.pflag & FILEIO_PAGE_FLAG_ENCRYPTED_ARIA)));
 
   if (iopage->prv.pflag & FILEIO_PAGE_FLAG_ENCRYPTED_AES)
     {
@@ -7716,12 +7720,6 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 	      ASSERT_ERROR ();
 	      pgbuf_put_bcb_into_invalid_list (thread_p, bufptr);
 	      (void) pgbuf_unlock_page (thread_p, hash_anchor, vpid, true);
-#if defined(ENABLE_SYSTEMTAP)
-	      if (monitored == true)
-		{
-		  CUBRID_IO_READ_END (query_id, IO_PAGESIZE, 1);
-		}
-#endif /* ENABLE_SYSTEMTAP */
 	      PGBUF_BCB_CHECK_MUTEX_LEAKS ();
 	      return NULL;
 	    }

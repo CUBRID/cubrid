@@ -5203,32 +5203,11 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
 
       if (!HFID_IS_NULL (hfid))
 	{
-	  TDE_ALGORITHM prev_tde_algo = TDE_ALGORITHM_NONE;
 	  /* reuse heap file */
 	  if (heap_reuse (thread_p, hfid, class_oid, reuse_oid) == NULL)
 	    {
 	      ASSERT_ERROR_AND_SET (error_code);
 	      goto error;
-	    }
-
-	  file_get_tde_algorithm (thread_p, &hfid->vfid, &prev_tde_algo);
-	  error_code = heap_get_class_tde_algorithm (thread_p, class_oid, &tde_algo);
-	  if (error_code == NO_ERROR)
-	    {
-	      if (prev_tde_algo != tde_algo)
-		{
-		  error_code = file_apply_tde_algorithm (thread_p, &hfid->vfid, tde_algo);
-		  if (error_code != NO_ERROR)
-		    {
-		      ASSERT_ERROR_AND_SET (error_code);
-		      goto error;
-		    }
-		}
-	    }
-	  else
-	    {
-	      /* just skip to apply tde, expect a high-level layer apply tde_algorithm to this later  */
-	      er_clear ();
 	    }
 
 	  error_code = heap_cache_class_info (thread_p, class_oid, hfid, file_type, NULL);
@@ -5291,22 +5270,6 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
     {
       ASSERT_ERROR ();
       goto error;
-    }
-
-  error_code = heap_get_class_tde_algorithm (thread_p, class_oid, &tde_algo);
-  if (error_code == NO_ERROR)
-    {
-      error_code = file_apply_tde_algorithm (thread_p, &hfid->vfid, tde_algo);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto error;
-	}
-    }
-  else
-    {
-      /* just skip to apply tde, expect a high-level layer apply tde_algorithm to this later  */
-      er_clear ();
     }
 
   error_code = heap_cache_class_info (thread_p, class_oid, hfid, file_type, NULL);
@@ -5399,6 +5362,18 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
     }
 
 end:
+  /* apply TDE to created heap file if needed */
+  if (heap_get_class_tde_algorithm (thread_p, class_oid, &tde_algo) == NO_ERROR)
+    {
+      error_code = file_apply_tde_algorithm (thread_p, &hfid->vfid, tde_algo);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto error;
+	}
+    }
+  /* if heap_get_class_tde_algorithm() fails, just skip to apply with expectation that a higher layer do this later */
+
   assert (error_code == NO_ERROR);
 
   log_sysop_attach_to_outer (thread_p);
@@ -6426,30 +6401,34 @@ heap_ovf_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * ovf_vfid,
 	  memset (&des, 0, sizeof (des));
 	  HFID_COPY (&des.heap_overflow.hfid, hfid);
 	  des.heap_overflow.class_oid = heap_hdr->class_oid;
-	  if (file_create_with_npages (thread_p, FILE_MULTIPAGE_OBJECT_HEAP, 1, &des, ovf_vfid) == NO_ERROR)
-	    {
-	      /* Log undo, then redo */
-	      log_append_undo_data (thread_p, RVHF_STATS, &addr_hdr, sizeof (*heap_hdr), heap_hdr);
-	      VFID_COPY (&heap_hdr->ovf_vfid, ovf_vfid);
-	      log_append_redo_data (thread_p, RVHF_STATS, &addr_hdr, sizeof (*heap_hdr), heap_hdr);
-	      pgbuf_set_dirty (thread_p, addr_hdr.pgptr, DONT_FREE);
-
-	      log_sysop_commit (thread_p);
-	    }
-	  else
+	  if (file_create_with_npages (thread_p, FILE_MULTIPAGE_OBJECT_HEAP, 1, &des, ovf_vfid) != NO_ERROR)
 	    {
 	      log_sysop_abort (thread_p);
 	      ovf_vfid = NULL;
-	    }
-	  if (heap_get_class_tde_algorithm (thread_p, &heap_hdr->class_oid, &tde_algo) != NO_ERROR)
-	    {
-	      assert (false);
-	    }
-	  if (file_apply_tde_algorithm (thread_p, ovf_vfid, tde_algo) != NO_ERROR)
-	    {
-	      assert (false);
+	      goto exit;
 	    }
 
+	  if (heap_get_class_tde_algorithm (thread_p, &heap_hdr->class_oid, &tde_algo) != NO_ERROR)
+	    {
+	      log_sysop_abort (thread_p);
+	      ovf_vfid = NULL;
+	      goto exit;
+	    }
+
+	  if (file_apply_tde_algorithm (thread_p, ovf_vfid, tde_algo) != NO_ERROR)
+	    {
+	      log_sysop_abort (thread_p);
+	      ovf_vfid = NULL;
+	      goto exit;
+	    }
+
+	  /* Log undo, then redo */
+	  log_append_undo_data (thread_p, RVHF_STATS, &addr_hdr, sizeof (*heap_hdr), heap_hdr);
+	  VFID_COPY (&heap_hdr->ovf_vfid, ovf_vfid);
+	  log_append_redo_data (thread_p, RVHF_STATS, &addr_hdr, sizeof (*heap_hdr), heap_hdr);
+	  pgbuf_set_dirty (thread_p, addr_hdr.pgptr, DONT_FREE);
+
+	  log_sysop_commit (thread_p);
 	}
       else
 	{
@@ -6461,6 +6440,7 @@ heap_ovf_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * ovf_vfid,
       VFID_COPY (ovf_vfid, &heap_hdr->ovf_vfid);
     }
 
+exit:
   pgbuf_unfix_and_init (thread_p, addr_hdr.pgptr);
 
   return ovf_vfid;

@@ -164,8 +164,8 @@ struct file_header
 /* File flags. */
 #define FILE_FLAG_NUMERABLE	    0x1	/* Is file numerable */
 #define FILE_FLAG_TEMPORARY	    0x2	/* Is file temporary */
-#define FILE_FLAG_ENCRYPTED_AES 0x4	/* is file encrypted using AES */
-#define FILE_FLAG_ENCRYPTED_ARIA 0x8	/* is file encrypted using ARIA */
+#define FILE_FLAG_ENCRYPTED_AES 0x4	/* Is file encrypted using AES */
+#define FILE_FLAG_ENCRYPTED_ARIA 0x8	/* Is file encrypted using ARIA */
 
 #define FILE_FLAG_ENCRYPTED_MASK 0x0000000c	/* 0x4 + 0x8 */
 
@@ -5871,7 +5871,7 @@ file_get_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, TDE_ALGORITH
 TDE_ALGORITHM
 file_get_tde_algorithm_internal (const FILE_HEADER * fhead)
 {
-  // encrpytion algorithms are exclusive
+  // encryption algorithms are exclusive
   assert (!((fhead->file_flags & FILE_FLAG_ENCRYPTED_AES) && (fhead->file_flags & FILE_FLAG_ENCRYPTED_ARIA)));
 
   if (fhead->file_flags & FILE_FLAG_ENCRYPTED_AES)
@@ -5966,7 +5966,6 @@ file_apply_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, const TDE_
       ASSERT_ERROR ();
       goto exit;
     }
-
 
   /* collect table pages */
   error_code = file_table_collect_ftab_pages (thread_p, page_fhead, true, &context.ftab_collector);
@@ -11605,14 +11604,12 @@ xfile_apply_tde_to_class_files (THREAD_ENTRY * thread_p, const OID * class_oid)
   error_code = heap_get_class_info (thread_p, class_oid, &hfid, NULL, NULL);
   if (error_code != NO_ERROR)
     {
-      ASSERT_ERROR ();
       return error_code;
     }
 
   error_code = file_apply_tde_algorithm (thread_p, &hfid.vfid, tde_algo);
   if (error_code != NO_ERROR)
     {
-      ASSERT_ERROR ();
       return error_code;
     }
 
@@ -11621,7 +11618,6 @@ xfile_apply_tde_to_class_files (THREAD_ENTRY * thread_p, const OID * class_oid)
       error_code = file_apply_tde_algorithm (thread_p, &hovf_vfid, tde_algo);
       if (error_code != NO_ERROR)
 	{
-	  ASSERT_ERROR ();
 	  return error_code;
 	}
     }
@@ -11631,7 +11627,6 @@ xfile_apply_tde_to_class_files (THREAD_ENTRY * thread_p, const OID * class_oid)
     {
       VFID bovf_vfid;
       BTID btid;
-      VFID bvfid;
       PAGE_PTR root_page = NULL;
       VPID root_vpid;
       BTREE_ROOT_HEADER *root_header = NULL;
@@ -11643,7 +11638,7 @@ xfile_apply_tde_to_class_files (THREAD_ENTRY * thread_p, const OID * class_oid)
       root_page = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
       if (root_page == NULL)
 	{
-	  ASSERT_ERROR ();
+	  ASSERT_ERROR_AND_SET (error_code);
 	  return error_code;
 	}
 
@@ -11653,7 +11648,7 @@ xfile_apply_tde_to_class_files (THREAD_ENTRY * thread_p, const OID * class_oid)
       if (root_header == NULL)
 	{
 	  pgbuf_unfix_and_init (thread_p, root_page);
-	  ASSERT_ERROR ();
+	  ASSERT_ERROR_AND_SET (error_code);
 	  return error_code;
 	}
       bovf_vfid = root_header->ovfid;
@@ -11663,7 +11658,6 @@ xfile_apply_tde_to_class_files (THREAD_ENTRY * thread_p, const OID * class_oid)
       error_code = file_apply_tde_algorithm (thread_p, &btid.vfid, tde_algo);
       if (error_code != NO_ERROR)
 	{
-	  ASSERT_ERROR ();
 	  return error_code;
 	}
 
@@ -11672,7 +11666,6 @@ xfile_apply_tde_to_class_files (THREAD_ENTRY * thread_p, const OID * class_oid)
 	  error_code = file_apply_tde_algorithm (thread_p, &bovf_vfid, tde_algo);
 	  if (error_code != NO_ERROR)
 	    {
-	      ASSERT_ERROR ();
 	      return error_code;
 	    }
 	}
