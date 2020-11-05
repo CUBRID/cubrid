@@ -56,32 +56,42 @@
 
 #if defined(sparc)
 #define JVM_LIB_PATH "jre/lib/sparc/client"
+#define JVM_LIB_PATH_JDK11 "lib/server"
 #elif defined(WINDOWS)
 #if __WORDSIZE == 32
 #define JVM_LIB_PATH_JDK "jre\\bin\\client"
 #define JVM_LIB_PATH_JRE "bin\\client"
+#define JVM_LIB_PATH_JDK11 ""	/* JDK 11 does not support for Windows x64 */
 #else
 #define JVM_LIB_PATH_JDK "jre\\bin\\server"
 #define JVM_LIB_PATH_JRE "bin\\server"
+#define JVM_LIB_PATH_JDK11 "bin\\server"
 #endif
 #elif defined(HPUX) && defined(IA64)
 #define JVM_LIB_PATH "jre/lib/IA64N/hotspot"
+#define JVM_LIB_PATH_JDK11 "lib/IA64N/server"
 #elif defined(HPUX) && !defined(IA64)
 #define JVM_LIB_PATH "jre/lib/PA_RISC2.0/hotspot"
+#define JVM_LIB_PATH_JDK11 "lib/PA_RISC2.0/server"
 #elif defined(AIX)
 #if __WORDSIZE == 32
 #define JVM_LIB_PATH "jre/bin/classic"
+#define JVM_LIB_PATH_JDK11 ""	/* JDK 11 does not support for IBM-AIX */
 #elif __WORDSIZE == 64
 #define JVM_LIB_PATH "jre/lib/ppc64/classic"
+#define JVM_LIB_PATH_JDK11 ""	/* JDK 11 does not support for IBM-AIX */
 #endif
 #elif defined(__i386) || defined(__x86_64)
 #if __WORDSIZE == 32
 #define JVM_LIB_PATH "jre/lib/i386/client"
+#define JVM_LIB_PATH_JDK11 "lib/server"
 #else
 #define JVM_LIB_PATH "jre/lib/amd64/server"
+#define JVM_LIB_PATH_JDK11 "lib/server"
 #endif
 #else /* ETC */
 #define JVM_LIB_PATH ""
+#define JVM_LIB_PATH_JDK11 ""
 #endif /* ETC */
 
 #if !defined(WINDOWS)
@@ -270,9 +280,7 @@ delay_load_hook (unsigned dliNotify, PDelayLoadInfo pdli)
     case dliFailLoadLib:
       {
 	char *java_home = NULL, *tmp = NULL, *tail;
-	char jvm_lib_path[BUF_SIZE];
-	void *libVM;
-
+	void *libVM = NULL;
 	java_home = getenv ("JAVA_HOME");
 	tail = JVM_LIB_PATH_JDK;
 	if (java_home == NULL)
@@ -290,11 +298,19 @@ delay_load_hook (unsigned dliNotify, PDelayLoadInfo pdli)
 
 	if (java_home)
 	  {
+	    char jvm_lib_path[BUF_SIZE];
 	    sprintf (jvm_lib_path, "%s\\%s\\jvm.dll", java_home, tail);
 	    libVM = LoadLibrary (jvm_lib_path);
 
 	    if (libVM)
 	      {
+		fp = (FARPROC) (HMODULE) libVM;
+	      }
+	    else
+	      {
+		tail = JVM_LIB_PATH_JDK11;
+		sprintf (jvm_lib_path, "%s\\%s\\jvm.dll", java_home, tail);
+		libVM = LoadLibrary (jvm_lib_path);
 		fp = (FARPROC) (HMODULE) libVM;
 	      }
 	  }
@@ -351,7 +367,6 @@ static void *
 jsp_get_create_java_vm_function_ptr (void)
 {
   char *java_home = NULL;
-  char jvm_library_path[PATH_MAX] = { 0 };
   void *libVM_p;
 
   libVM_p = dlopen (JVM_LIB_FILE, RTLD_NOW | RTLD_LOCAL);
@@ -362,8 +377,17 @@ jsp_get_create_java_vm_function_ptr (void)
       java_home = getenv ("JAVA_HOME");
       if (java_home != NULL)
 	{
+	  // under jdk 11
+	  char jvm_library_path[PATH_MAX] = { 0 };
 	  snprintf (jvm_library_path, PATH_MAX - 1, "%s/%s/%s", java_home, JVM_LIB_PATH, JVM_LIB_FILE);
 	  libVM_p = dlopen (jvm_library_path, RTLD_NOW | RTLD_LOCAL);
+
+	  if (libVM_p == NULL)
+	    {
+	      // from jdk 11
+	      snprintf (jvm_library_path, PATH_MAX - 1, "%s/%s/%s", java_home, JVM_LIB_PATH_JDK11, JVM_LIB_FILE);
+	      libVM_p = dlopen (jvm_library_path, RTLD_NOW | RTLD_LOCAL);
+	    }
 
 	  if (libVM_p == NULL)
 	    {
