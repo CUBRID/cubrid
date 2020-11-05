@@ -860,6 +860,16 @@ struct pgbuf_fix_perf
   UINT64 fix_wait_time;
 };
 
+/* in FILEIO_PAGE_RESERVED */
+typedef struct pgbuf_dealloc_undo_data PGBUF_DEALLOC_UNDO_DATA;
+struct pgbuf_dealloc_undo_data
+{
+  INT32 pageid;			/* Page identifier */
+  INT16 volid;			/* Volume identifier where the page reside */
+  unsigned char ptype;		/* Page type */
+  unsigned char pflag;
+};
+
 /************************************************************************/
 /* Page buffer LRU section                                              */
 /************************************************************************/
@@ -13938,7 +13948,9 @@ pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR page_dealloc)
 {
   PGBUF_BCB *bcb = NULL;
   PAGE_TYPE ptype;
-  FILEIO_PAGE_RESERVED prv;
+  FILEIO_PAGE_RESERVED *prv;
+  PGBUF_DEALLOC_UNDO_DATA udata;
+  char undo_data[8];		// pageid(4) + volid(2) + pyte(1) + pflag(1)
   int holder_status;
 
   /* how it works: page is "deallocated" by resetting its type to PAGE_UNKNOWN. also prepare bcb for victimization.
@@ -13950,10 +13962,15 @@ pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR page_dealloc)
   CAST_PGPTR_TO_BFPTR (bcb, page_dealloc);
   assert (bcb->fcnt == 1);
 
-  prv = bcb->iopage_buffer->iopage.prv;
-  assert (prv.ptype != PAGE_UNKNOWN);
-  log_append_undoredo_data2 (thread_p, RVPGBUF_DEALLOC, NULL, page_dealloc, 0, sizeof (FILEIO_PAGE_RESERVED), 0,
-			     &prv, NULL);
+  prv = &bcb->iopage_buffer->iopage.prv;
+  assert (prv->ptype != PAGE_UNKNOWN);
+
+  udata.pageid = prv->pageid;
+  udata.volid = prv->volid;
+  udata.ptype = prv->ptype;
+  udata.pflag = prv->pflag;
+
+  log_append_undoredo_data2 (thread_p, RVPGBUF_DEALLOC, NULL, page_dealloc, 0, sizeof (udata), 0, &udata, NULL);
 
   PGBUF_BCB_LOCK (bcb);
 
@@ -14013,15 +14030,15 @@ int
 pgbuf_rv_dealloc_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
   PAGE_PTR page_deallocated = NULL;
-  FILEIO_PAGE_RESERVED prv = *(FILEIO_PAGE_RESERVED *) rcv->data;
+  PGBUF_DEALLOC_UNDO_DATA *udata = (PGBUF_DEALLOC_UNDO_DATA *) rcv->data;
   VPID vpid;
   FILEIO_PAGE *iopage;
 
-  vpid.volid = prv.volid;
-  vpid.pageid = prv.pageid;
+  vpid.pageid = udata->pageid;
+  vpid.volid = udata->volid;
 
-  assert (rcv->length == sizeof (FILEIO_PAGE_RESERVED));
-  assert (prv.ptype > PAGE_UNKNOWN && prv.ptype <= PAGE_LAST);
+  assert (rcv->length == sizeof (PGBUF_DEALLOC_UNDO_DATA));
+  assert (udata->ptype > PAGE_UNKNOWN && udata->ptype <= PAGE_LAST);
 
   /* fix deallocated page */
   page_deallocated = pgbuf_fix (thread_p, &vpid, OLD_PAGE_DEALLOCATED, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
@@ -14031,10 +14048,10 @@ pgbuf_rv_dealloc_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       return ER_FAILED;
     }
   assert (pgbuf_get_page_ptype (thread_p, page_deallocated) == PAGE_UNKNOWN);
-  pgbuf_set_page_ptype (thread_p, page_deallocated, (PAGE_TYPE) prv.ptype);
+  pgbuf_set_page_ptype (thread_p, page_deallocated, (PAGE_TYPE) udata->ptype);
 
   CAST_PGPTR_TO_IOPGPTR (iopage, page_deallocated);
-  iopage->prv.pflag = prv.pflag;
+  iopage->prv.pflag = udata->pflag;
 
 #if !defined(NDEBUG)
   if (iopage->prv.pflag & FILEIO_PAGE_FLAG_ENCRYPTED_MASK)
@@ -14046,7 +14063,7 @@ pgbuf_rv_dealloc_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 #endif /* !NDEBUG */
 
   log_append_compensate_with_undo_nxlsa (thread_p, RVPGBUF_COMPENSATE_DEALLOC, false, &vpid, 0, page_deallocated,
-					 sizeof (FILEIO_PAGE_RESERVED), &prv, LOG_FIND_CURRENT_TDES (thread_p),
+					 sizeof (PGBUF_DEALLOC_UNDO_DATA), udata, LOG_FIND_CURRENT_TDES (thread_p),
 					 &rcv->reference_lsa);
   pgbuf_set_dirty_and_free (thread_p, page_deallocated);
   return NO_ERROR;
@@ -14063,18 +14080,18 @@ pgbuf_rv_dealloc_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 int
 pgbuf_rv_dealloc_undo_compensate (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
-  FILEIO_PAGE_RESERVED prv = *(FILEIO_PAGE_RESERVED *) rcv->data;
+  PGBUF_DEALLOC_UNDO_DATA *udata = (PGBUF_DEALLOC_UNDO_DATA *) rcv->data;
   VPID vpid;
   FILEIO_PAGE *iopage;
 
   assert (rcv->pgptr != NULL);
-  assert (rcv->length == sizeof (FILEIO_PAGE_RESERVED));
-  assert (prv.ptype > PAGE_UNKNOWN && prv.ptype <= PAGE_LAST);
+  assert (rcv->length == sizeof (PGBUF_DEALLOC_UNDO_DATA));
+  assert (udata->ptype > PAGE_UNKNOWN && udata->ptype <= PAGE_LAST);
 
   CAST_PGPTR_TO_IOPGPTR (iopage, rcv->pgptr);
 
-  pgbuf_set_page_ptype (thread_p, rcv->pgptr, (PAGE_TYPE) prv.ptype);
-  iopage->prv.pflag = prv.pflag;
+  pgbuf_set_page_ptype (thread_p, rcv->pgptr, (PAGE_TYPE) udata->ptype);
+  iopage->prv.pflag = udata->pflag;
 
 #if !defined(NDEBUG)
   if (iopage->prv.pflag & FILEIO_PAGE_FLAG_ENCRYPTED_MASK)
