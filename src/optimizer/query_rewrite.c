@@ -6618,7 +6618,7 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
        * statement to get targets to update. We should check whether it was already single-table-optimized. Here is an
        * example: CREATE TABLE t(p INT, c INT, x INT); INSERT INTO t VALUES(1, 11, 0), (1, 12, 0), (2, 21, 0); UPDATE t
        * SET x=0 WHERE c IN (SELECT c FROM t START WITH p=1 CONNECT BY PRIOR c=p); */
-      if (node->info.query.q.select.connect_by != NULL && !PT_IS_VALUE_NODE (node->info.query.q.select.where)
+      if (node->info.query.q.select.connect_by != NULL
 	  && !node->info.query.q.select.after_cb_filter && !node->info.query.q.select.single_table_opt)
 	{
 	  PT_NODE *join_part = NULL;
