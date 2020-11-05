@@ -2507,7 +2507,7 @@ pt_split_join_preds (PARSER_CONTEXT * parser, PT_NODE * predicates, PT_NODE ** j
     {
       bool has_filter_pred = false;
 
-      assert (PT_IS_EXPR_NODE (current_conj));
+      assert (PT_IS_EXPR_NODE (current_conj) || PT_IS_VALUE_NODE (current_conj));
       /* It is either fully CNF or not at all. */
       assert (!(current_conj->next != NULL
 		&& (PT_IS_EXPR_NODE_WITH_OPERATOR (current_conj, PT_AND)
@@ -2517,7 +2517,7 @@ pt_split_join_preds (PARSER_CONTEXT * parser, PT_NODE * predicates, PT_NODE ** j
 
       for (current_pred = current_conj; current_pred != NULL; current_pred = current_pred->or_next)
 	{
-	  assert (PT_IS_EXPR_NODE (current_pred));
+	  assert (PT_IS_EXPR_NODE (current_pred) || PT_IS_VALUE_NODE (current_pred));
 	  /* It is either fully CNF or not at all. */
 	  assert (!(current_pred->or_next != NULL
 		    && (PT_IS_EXPR_NODE_WITH_OPERATOR (current_pred, PT_AND)
@@ -9364,8 +9364,8 @@ pt_check_enum_data_type (PARSER_CONTEXT * parser, PT_NODE * dt)
   int char_count = 0;
   unsigned char pad[2];
 
-  bool ti = true;
-  bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
+  static bool ti = true;
+  static bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
 
   if (dt == NULL || dt->node_type != PT_DATA_TYPE || dt->type_enum != PT_TYPE_ENUMERATION)
     {

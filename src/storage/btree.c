@@ -11748,13 +11748,19 @@ btree_get_prefix_separator (const DB_VALUE * key1, const DB_VALUE * key2, DB_VAL
 {
   int c;
   int err = NO_ERROR;
+  static bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
+
+  /* for coerce = 2, we need to process key comparing as char-type
+   * in case that one of two arguments has varchar-type
+   * if the other argument has char-type */
+  static int coerce = (ignore_trailing_space) ? 1 : 2;
 
   assert (DB_IS_NULL (key1) || (DB_VALUE_DOMAIN_TYPE (key1) == DB_VALUE_DOMAIN_TYPE (key2)));
   assert (!DB_IS_NULL (key2));
   assert_release (key_domain != NULL);
 
 #if !defined(NDEBUG)
-  c = btree_compare_key ((DB_VALUE *) key1, (DB_VALUE *) key2, key_domain, 1, 1, NULL);
+  c = btree_compare_key ((DB_VALUE *) key1, (DB_VALUE *) key2, key_domain, coerce, 1, NULL);
   assert (c == DB_LT);
 #endif
 
@@ -11782,7 +11788,7 @@ btree_get_prefix_separator (const DB_VALUE * key1, const DB_VALUE * key2, DB_VAL
       return ER_FAILED;
     }
 
-  c = btree_compare_key ((DB_VALUE *) key1, prefix_key, key_domain, 1, 1, NULL);
+  c = btree_compare_key ((DB_VALUE *) key1, prefix_key, key_domain, coerce, 1, NULL);
 
   if (c != DB_LT)
     {
@@ -11790,7 +11796,7 @@ btree_get_prefix_separator (const DB_VALUE * key1, const DB_VALUE * key2, DB_VAL
       return ER_FAILED;
     }
 
-  c = btree_compare_key (prefix_key, (DB_VALUE *) key2, key_domain, 1, 1, NULL);
+  c = btree_compare_key (prefix_key, (DB_VALUE *) key2, key_domain, coerce, 1, NULL);
 
   if (!(c == DB_LT || c == DB_EQ))
     {

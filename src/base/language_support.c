@@ -868,7 +868,7 @@ lang_init_builtin (void)
   /* init all collation placeholders with ISO binary collation */
   for (i = 0; i < LANG_MAX_COLLATIONS; i++)
     {
-      lang_Collations[i] = &coll_Binary;
+      lang_Collations[i] = &coll_Iso_binary;
     }
 
   /* built-in collations : order of registration should match colation ID */
@@ -3026,7 +3026,7 @@ lang_strmatch_utf8_w_contr (const LANG_COLLATION * lang_coll, bool is_match, con
   unsigned int cp1, cp2, w_cp1, w_cp2;
   const COLL_DATA *coll = &(lang_coll->coll);
   const int alpha_cnt = coll->w_count;
-  const unsigned int *weight_ptr = (ignore_trailing_space) ? lang_coll->coll.weights_ti : lang_coll->coll.weights;
+  const unsigned int *weight_ptr = lang_coll->coll.weights;
 
   bool is_str1_contr = false;
   bool is_str2_contr = false;
@@ -3268,7 +3268,7 @@ lang_get_w_first_el (const COLL_DATA * coll, const unsigned char *str, const int
 {
   unsigned int cp, w;
   const int alpha_cnt = coll->w_count;
-  const unsigned int *weight_ptr = (ignore_trailing_space) ? coll->weights_ti : coll->weights;
+  const unsigned int *weight_ptr = coll->weights;
 
   assert (coll->uca_exp_num == 0);
   assert (str_size > 0);
@@ -3290,6 +3290,10 @@ lang_get_w_first_el (const COLL_DATA * coll, const unsigned char *str, const int
 	}
       else
 	{
+	  if (cp == ASCII_SPACE && ignore_trailing_space)
+	    {
+	      return 0;
+	    }
 	  w = weight_ptr[cp];
 	}
     }
@@ -3764,7 +3768,7 @@ lang_strmatch_utf8_uca_w_level (const COLL_DATA * coll_data, const int level, bo
 		}
 	      else
 		{
-		  if (is_match || !ignore_trailing_space)
+		  if (is_match)
 		    {
 		      result = -1;
 		      goto exit;
@@ -3804,11 +3808,6 @@ lang_strmatch_utf8_uca_w_level (const COLL_DATA * coll_data, const int level, bo
 	  if (is_match)
 	    {
 	      assert (result == 0);
-	      goto exit;
-	    }
-	  if (!ignore_trailing_space)
-	    {
-	      result = 1;
 	      goto exit;
 	    }
 	  /* consume any remaining zero-weight values (skip them) from str1 */
@@ -3873,7 +3872,14 @@ lang_strmatch_utf8_uca_w_level (const COLL_DATA * coll_data, const int level, bo
   if (str2 < str2_end)
     {
       assert (str1 == str1_end);
-      if (lang_str_utf8_trail_zero_weights_w_exp (coll_data, level, str2, CAST_BUFLEN (str2_end - str2)) != 0)
+      if (ignore_trailing_space)
+	{
+	  if (lang_str_utf8_trail_zero_weights_w_exp (coll_data, level, str2, CAST_BUFLEN (str2_end - str2)) != 0)
+	    {
+	      result = -1;
+	    }
+	}
+      else
 	{
 	  result = -1;
 	}
@@ -3881,7 +3887,14 @@ lang_strmatch_utf8_uca_w_level (const COLL_DATA * coll_data, const int level, bo
   else if (str1 < str1_end)
     {
       assert (str2 == str2_end);
-      if (lang_str_utf8_trail_zero_weights_w_exp (coll_data, level, str1, CAST_BUFLEN (str1_end - str1)) != 0)
+      if (ignore_trailing_space)
+	{
+	  if (lang_str_utf8_trail_zero_weights_w_exp (coll_data, level, str1, CAST_BUFLEN (str1_end - str1)) != 0)
+	    {
+	      result = 1;
+	    }
+	}
+      else
 	{
 	  result = 1;
 	}
@@ -5893,6 +5906,9 @@ lang_init_coll_Utf8_tr_cs (LANG_COLLATION * lang_coll)
       lang_Next_alpha_char_TR_ti[cp_prev] = cp_special;
       lang_Next_alpha_char_TR_ti[cp_special] = cp_next;
     }
+
+  lang_Weight_TR_ti[32] = 0;
+  lang_Next_alpha_char_TR_ti[32] = 1;
 
   /* other initializations to follow here */
 

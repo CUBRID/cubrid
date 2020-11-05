@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -500,7 +501,7 @@ db_compile_statement_local (DB_SESSION * session)
   int stmt_ndx;
   PT_NODE *statement = NULL;
   PT_NODE *statement_result = NULL;
-  DB_QUERY_TYPE *qtype;
+  DB_QUERY_TYPE *qtype, *q;
   CUBRID_STMT_TYPE cmd_type;
   int err;
   static long seed = 0;
@@ -629,6 +630,16 @@ db_compile_statement_local (DB_SESSION * session)
 	   * related to the original text. It may guess wrong about attribute/column updatability. Thats what they
 	   * asked for. */
 	  qtype = pt_fillin_type_size (parser, statement, qtype, DB_NO_OIDS, false, false);
+
+	  /* check implicit oid included for excluding result cache */
+	  for (q = qtype; q; q = q->next)
+	    {
+	      if (q->col_type == DB_COL_PATH)
+		{
+		  statement->info.query.do_not_cache = 1;
+		  break;
+		}
+	    }
 	}
     }
 
@@ -831,11 +842,14 @@ db_get_jdbccachehint (DB_SESSION * session, int stmt_ndx, int *life_time)
 
   if (statement->info.query.q.select.hint & PT_HINT_JDBC_CACHE)
     {
-      if (life_time != NULL && statement->info.query.q.select.jdbc_life_time->info.name.original != NULL)
+      if (statement->info.query.q.select.jdbc_life_time)
 	{
-	  *life_time = atoi (statement->info.query.q.select.jdbc_life_time->info.name.original);
+	  if (life_time != NULL && statement->info.query.q.select.jdbc_life_time->info.name.original != NULL)
+	    {
+	      *life_time = atoi (statement->info.query.q.select.jdbc_life_time->info.name.original);
+	    }
+	  return true;
 	}
-      return true;
     }
 
   return false;

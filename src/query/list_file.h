@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -39,6 +40,8 @@
 #include "query_list.h"
 #include "storage_common.h"
 #include "thread_compat.hpp"
+
+#include "xasl_cache.h"
 
 #include <stdio.h>
 
@@ -91,6 +94,7 @@ struct qfile_list_cache_entry
 				 * MAX_NTRANS */
   size_t last_ta_idx;		/* index of the last element in TIDs array */
 #endif				/* SERVER_MODE */
+  XASL_CACHE_ENTRY *xcache_entry;	/* xasl_cache entry */
   const char *query_string;	/* query string; information purpose only */
   struct timeval time_created;	/* when this entry created */
   struct timeval time_last_used;	/* when this entry used lastly */
@@ -151,6 +155,7 @@ extern QFILE_LIST_ID *qfile_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * 
 /* Query result(list file) cache routines */
 extern int qfile_initialize_list_cache (THREAD_ENTRY * thread_p);
 extern int qfile_finalize_list_cache (THREAD_ENTRY * thread_p);
+extern int qfile_clear_cache_list (THREAD_ENTRY * thread_p, int list_ht_no);
 extern int qfile_clear_list_cache (THREAD_ENTRY * thread_p, int list_ht_no, bool release);
 extern int qfile_dump_list_cache_internal (THREAD_ENTRY * thread_p, FILE * fp);
 #if defined (CUBRID_DEBUG)
@@ -162,7 +167,7 @@ QFILE_LIST_CACHE_ENTRY *qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, 
 						       const DB_VALUE_ARRAY * params);
 QFILE_LIST_CACHE_ENTRY *qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr,
 						       const DB_VALUE_ARRAY * params, const QFILE_LIST_ID * list_id,
-						       const char *query_string);
+						       XASL_CACHE_ENTRY * xasl);
 int qfile_end_use_of_list_cache_entry (THREAD_ENTRY * thread_p, QFILE_LIST_CACHE_ENTRY * lent, bool marker);
 
 /* Scan related routines */

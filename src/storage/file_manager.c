@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -8650,7 +8651,6 @@ file_tempcache_final (void)
       if (file_Tempcache->tran_files[tran] != NULL)
 	{
 	  /* should be empty */
-	  assert (false);
 	  file_tempcache_free_entry_list (&file_Tempcache->tran_files[tran]);
 	}
     }

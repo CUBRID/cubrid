@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -114,7 +115,8 @@ typedef enum
 typedef enum
 {
   QUERY_IN_PROGRESS,
-  QUERY_COMPLETED
+  QUERY_COMPLETED,		/* execution completed */
+  QUERY_CLOSED,			/* cursor closed or aborted */
 } QMGR_QUERY_STATUS;
 
 typedef struct qmgr_query_entry QMGR_QUERY_ENTRY;

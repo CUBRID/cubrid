@@ -3669,7 +3669,7 @@ boot_add_collations (MOP class_mop)
 
       assert (lang_coll != NULL);
 
-      if (i != LANG_COLL_DEFAULT && lang_coll->coll.coll_id == LANG_COLL_BINARY)
+      if (i != 0 && lang_coll->coll.coll_id == LANG_COLL_DEFAULT)
 	{
 	  /* iso88591 binary collation added only once */
 	  continue;
