@@ -922,7 +922,7 @@ tde_encrypt_data_page (const FILEIO_PAGE * iopage_plain, TDE_ALGORITHM tde_algo,
       // temporary file: atomic counter for nonce
       data_key = tde_Cipher.data_keys.temp_key;
       tmp_nonce = ATOMIC_INC_64 (&tde_Cipher.temp_write_counter, 1);
-      memcpy (nonce, &tmp_nonce, sizeof (tde_Cipher.temp_write_counter));
+      memcpy (nonce, &tmp_nonce, sizeof (tmp_nonce));
     }
   else
     {
@@ -937,7 +937,7 @@ tde_encrypt_data_page (const FILEIO_PAGE * iopage_plain, TDE_ALGORITHM tde_algo,
   memcpy ((char *) iopage_cipher + TDE_DATA_PAGE_ENC_OFFSET + TDE_DATA_PAGE_ENC_LENGTH,
 	  (char *) iopage_plain + TDE_DATA_PAGE_ENC_OFFSET + TDE_DATA_PAGE_ENC_LENGTH, sizeof (FILEIO_PAGE_WATERMARK));
 
-  memcpy (&iopage_cipher->prv.tde_nonce, nonce, TDE_DATA_PAGE_NONCE_LENGTH);
+  memcpy (&iopage_cipher->prv.tde_nonce, nonce, sizeof (iopage_cipher->prv.tde_nonce));
 
   err = tde_encrypt_internal (((const unsigned char *) iopage_plain) + TDE_DATA_PAGE_ENC_OFFSET,
 			      TDE_DATA_PAGE_ENC_LENGTH, tde_algo, data_key, nonce,
@@ -1017,7 +1017,7 @@ tde_encrypt_log_page (const LOG_PAGE * logpage_plain, TDE_ALGORITHM tde_algo, LO
 
   data_key = tde_Cipher.data_keys.log_key;
 
-  memcpy (nonce, &logpage_plain->hdr.logical_pageid, sizeof (logpage_cipher->hdr.logical_pageid));
+  memcpy (nonce, &logpage_plain->hdr.logical_pageid, sizeof (logpage_plain->hdr.logical_pageid));
   memcpy (logpage_cipher, logpage_plain, TDE_LOG_PAGE_ENC_OFFSET);
 
   return tde_encrypt_internal (((const unsigned char *) logpage_plain) + TDE_LOG_PAGE_ENC_OFFSET,
