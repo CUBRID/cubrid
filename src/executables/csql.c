@@ -2860,7 +2860,6 @@ error:
   nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
   er_final (ER_ALL_FINAL);
   csql_exit (EXIT_FAILURE);
-  cub_ddl_log_destroy ();
   return EXIT_FAILURE;		/* won't get here really */
 }
 
