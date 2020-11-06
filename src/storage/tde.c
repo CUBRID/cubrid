@@ -813,7 +813,7 @@ tde_create_dk (unsigned char *data_key)
 {
   assert (data_key != NULL);
 
-  if (1 != RAND_bytes (data_key, TDE_DATA_KEY_LENGTH))
+  if (RAND_bytes (data_key, TDE_DATA_KEY_LENGTH) != 1)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_KEY_CREATION_FAIL, 0);
       return ER_TDE_KEY_CREATION_FAIL;
@@ -1320,7 +1320,7 @@ tde_create_mk (unsigned char *master_key)
 {
   assert (master_key != NULL);
 
-  if (1 != RAND_bytes (master_key, TDE_MASTER_KEY_LENGTH))
+  if (RAND_bytes (master_key, TDE_MASTER_KEY_LENGTH) != 1)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_KEY_CREATION_FAIL, 0);
       return ER_TDE_KEY_CREATION_FAIL;
