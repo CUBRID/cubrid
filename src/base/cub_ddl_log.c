@@ -101,7 +101,6 @@ static int cub_create_log_mgs (char *msg);
 static int cub_get_current_time (char *buf, size_t size);
 static int cub_file_copy (char *src_file, char *dest_file);
 static void cub_remove_char (char *string, char ch);
-static int cub_is_ddl_type (int node_type);
 static FILE *cub_ddl_log_open (char *app_name);
 static int cub_get_time_string (char *buf, struct timeval *time_val);
 static FILE *cub_fopen_and_lock (const char *path, const char *mode);
@@ -1064,7 +1063,7 @@ cub_remove_char (char *string, char ch)
     }
 }
 
-static int
+int
 cub_is_ddl_type (int node_type)
 {
   switch (node_type)

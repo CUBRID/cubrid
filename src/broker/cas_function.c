@@ -91,6 +91,8 @@ static void update_error_query_count (T_APPL_SERVER_INFO * as_info_p, const T_ER
 
 static const char *tran_type_str[] = { "COMMIT", "ROLLBACK" };
 
+static void ddl_node_type_find_and_set (T_SRV_HANDLE * srv_handle);
+
 static const char *schema_type_str[] = {
   "CLASS",
   "VCLASS",
@@ -683,7 +685,7 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 		 (ret_code < 0) ? "error:" : "", err_number_execute, get_tuple_count (srv_handle), elapsed_sec,
 		 elapsed_msec, (client_cache_reusable == TRUE) ? " (CC)" : "",
 		 (srv_handle->use_query_cache == true) ? " (QC)" : "", eid_string);
-  cub_ddl_log_execute_result (srv_handle);
+  ddl_node_type_find_and_set (srv_handle);
 
 #ifndef LIBCAS_FOR_JSP
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
@@ -2669,5 +2671,20 @@ update_error_query_count (T_APPL_SERVER_INFO * as_info_p, const T_ERROR_INFO * e
 	  as_info_p->num_unique_error_queries %= MAX_DIAG_DATA_VALUE;
 	  as_info_p->num_unique_error_queries++;
 	}
+    }
+}
+
+static void
+ddl_node_type_find_and_set (T_SRV_HANDLE * srv_handle)
+{
+  cub_ddl_log_stmt_type (-1);
+
+  for (int i = 0; i < srv_handle->num_q_result; i++)
+    {
+      if (cub_is_ddl_type (srv_handle->q_result[i].stmt_type) == TRUE)
+        {
+          cub_ddl_log_stmt_type (srv_handle->q_result[i].stmt_type);
+          break;
+        }
     }
 }
