@@ -1667,7 +1667,7 @@ tde_dump_mks (int vdes, bool print_value)
 	{
 	  cnt_valid++;
 	  ctime_r (&item.created_time, ctime_buf);
-	  printf ("Key Index: %ld ", TDE_MK_FILE_ITEM_INDEX (location));
+	  printf ("Key Index: %d ", TDE_MK_FILE_ITEM_INDEX (location));
 	  printf ("created on %s", ctime_buf);
 	  if (print_value)
 	    {
