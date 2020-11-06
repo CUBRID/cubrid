@@ -39,6 +39,7 @@
 #include <unistd.h>
 #include <sys/time.h>
 #include <sys/timeb.h>
+#include <signal.h>
 #endif
 #include <assert.h>
 
@@ -836,11 +837,28 @@ static void
 cub_ddl_log_backup (const char *path)
 {
   char backup_file[PATH_MAX] = { 0 };
+#if !defined(WINDOWS)
+  sigset_t new_mask, old_mask;
+#endif /* !WINDOWS */
 
   snprintf (backup_file, sizeof (backup_file), "%s.bak", path);
 
+#if !defined(WINDOWS)
+  sigfillset (&new_mask);
+  sigdelset (&new_mask, SIGINT);
+  sigdelset (&new_mask, SIGQUIT);
+  sigdelset (&new_mask, SIGTERM);
+  sigdelset (&new_mask, SIGHUP);
+  sigdelset (&new_mask, SIGABRT);
+  sigprocmask (SIG_SETMASK, &new_mask, &old_mask);
+#endif /* !WINDOWS */
+
   unlink (backup_file);
   rename (path, backup_file);
+
+#if !defined(WINDOWS)
+  sigprocmask (SIG_SETMASK, &old_mask, NULL);
+#endif /* !WINDOWS */
 }
 
 static FILE *
