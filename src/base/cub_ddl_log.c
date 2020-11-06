@@ -86,6 +86,7 @@ struct t_ddl_audit_handle
   char loaddb_file_type;
   char log_filepath[PATH_MAX];
   int commit_count;
+  struct timeval exec_begin_time;
 };
 static T_DDL_AUDIT_HANDLE *ddl_audit_handle = NULL;
 
@@ -104,6 +105,8 @@ static int cub_is_ddl_type (int node_type);
 static FILE *cub_ddl_log_open (char *app_name);
 static int cub_get_time_string (char *buf, struct timeval *time_val);
 static FILE *cub_fopen_and_lock (const char *path, const char *mode);
+static void cub_ddl_log_elapsed_time (long sec, long msec);
+static void cub_timeval_diff (struct timeval *start, struct timeval *end, int *res_sec, int *res_msec);
 
 void
 cub_ddl_log_init ()
@@ -360,6 +363,17 @@ cub_ddl_log_start_time (struct timeval *time_val)
       return;
     }
 
+  if (time_val == NULL)
+    {
+      struct timeval time;
+      gettimeofday (&time, NULL);
+      memcpy (&ddl_audit_handle->exec_begin_time, &time, sizeof(struct timeval));
+    }
+  else 
+    {
+      memcpy (&ddl_audit_handle->exec_begin_time, time_val, sizeof(struct timeval));
+    }
+  
   ddl_audit_handle->execute_start_time[0] = '\0';
   cub_get_time_string (ddl_audit_handle->execute_start_time, time_val);
 }
@@ -755,11 +769,18 @@ cub_create_log_mgs (char *msg)
 {
   int retval = 0;
   char result[20] = { 0 };
+  struct timeval exec_end;
+  int elapsed_sec = 0;
+  int elapsed_msec = 0;
 
   if (ddl_audit_handle == NULL)
     {
       return -1;
     }
+
+  gettimeofday (&exec_end, NULL);
+  cub_timeval_diff (&ddl_audit_handle->exec_begin_time, &exec_end, &elapsed_sec, &elapsed_msec);
+  cub_ddl_log_elapsed_time (elapsed_sec, elapsed_msec);
 
   if (strcmp (ddl_audit_handle->app_name, "loaddb") == 0)
     {
@@ -1080,3 +1101,21 @@ cub_is_ddl_type (int node_type)
 
   return false;
 }
+
+static void
+cub_timeval_diff (struct timeval *start, struct timeval *end, int *res_sec, int *res_msec)
+  {
+  int sec, msec;
+
+  assert (start != NULL && end != NULL && res_sec != NULL && res_msec != NULL);
+
+  sec = end->tv_sec - start->tv_sec;
+  msec = (end->tv_usec / 1000) - (start->tv_usec / 1000);
+  if (msec < 0)
+    {
+      msec += 1000;
+      sec--;
+    }
+  *res_sec = sec;
+  *res_msec = msec;
+  }

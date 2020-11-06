@@ -2053,7 +2053,6 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	  tsc_elapsed_time_usec (&elapsed_time, end_tick, start_tick);
 
 	  sprintf (time, " (%ld.%06ld sec) ", elapsed_time.tv_sec, elapsed_time.tv_usec);
-	  cub_ddl_log_elapsed_time (elapsed_time.tv_sec, elapsed_time.tv_usec);
 	  strncat (stmt_msg, time, sizeof (stmt_msg) - strlen (stmt_msg) - 1);
 	}
 

@@ -180,7 +180,6 @@ fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
   cas_log_write (0, false, "end_tran %s", get_tran_type_str (tran_type));
 
   gettimeofday (&end_tran_begin, NULL);
-  cub_ddl_log_start_time (&end_tran_begin);
 
   err_code = ux_end_tran ((char) tran_type, false);
 
@@ -231,7 +230,6 @@ fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
 	  cas_log_end (SQL_LOG_MODE_NONE, elapsed_sec, elapsed_msec);
 	}
     }
-  cub_ddl_log_elapsed_time (elapsed_sec, elapsed_msec);
 
   gettimeofday (&tran_start_time, NULL);
   gettimeofday (&query_start_time, NULL);
@@ -659,14 +657,12 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 #endif /* !LIBCAS_FOR_JSP */
 
   gettimeofday (&exec_begin, NULL);
-  cub_ddl_log_start_time (&exec_begin);
 
   ret_code =
     (*ux_exec_func) (srv_handle, flag, max_col_size, max_row, argc - bind_value_index, argv + bind_value_index, net_buf,
 		     req_info, clt_cache_time_ptr, &client_cache_reusable);
   gettimeofday (&exec_end, NULL);
   ut_timeval_diff (&exec_begin, &exec_end, &elapsed_sec, &elapsed_msec);
-  cub_ddl_log_elapsed_time (elapsed_sec, elapsed_msec);
   eid_string = get_error_log_eids (err_info.err_number);
   err_number_execute = err_info.err_number;
   cub_ddl_log_err_code (err_info.err_number);
@@ -1726,13 +1722,11 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
 #endif /* !LIBCAS_FOR_JSP */
 
   gettimeofday (&exec_begin, NULL);
-  cub_ddl_log_start_time (&exec_begin);
 
   ret_code = ux_execute_array (srv_handle, argc - arg_index, argv + arg_index, net_buf, req_info);
 
   gettimeofday (&exec_end, NULL);
   ut_timeval_diff (&exec_begin, &exec_end, &elapsed_sec, &elapsed_msec);
-  cub_ddl_log_elapsed_time (elapsed_sec, elapsed_msec);
 
   eid_string = get_error_log_eids (err_info.err_number);
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "execute_array %s%d tuple %d time %d.%03d%s%s%s",
