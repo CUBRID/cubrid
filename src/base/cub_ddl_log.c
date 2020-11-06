@@ -84,6 +84,7 @@ struct t_ddl_audit_handle
   char log_type;
   char loaddb_file_type;
   char log_filepath[PATH_MAX];
+  int commit_count;
 };
 static T_DDL_AUDIT_HANDLE *ddl_audit_handle = NULL;
 
@@ -396,6 +397,16 @@ cub_ddl_log_type (char type)
     }
 
   ddl_audit_handle->log_type = type;
+}
+
+void 
+cub_ddl_log_commit_count (int count)
+{
+  if (ddl_audit_handle == NULL)
+    {
+      return;
+    }
+  ddl_audit_handle->commit_count = count;
 }
 
 void
@@ -753,17 +764,21 @@ cub_create_log_mgs (char *msg)
     {
       if (ddl_audit_handle->err_code < 0)
 	{
-	  snprintf (result, sizeof (result), "ERROR:%d", ddl_audit_handle->err_code);
-
+          snprintf (result, sizeof (result), "ERROR:%d", ddl_audit_handle->err_code);
+          snprintf (ddl_audit_handle->msg , DDL_LOG_MSG, "Commited count %8d, Error line %d", 
+                    ddl_audit_handle->commit_count,
+                    ddl_audit_handle->file_line_number);
 	}
       else
 	{
 	  strcpy (result, "OK");
 	}
 
-      retval = snprintf (msg, DDL_LOG_BUFFER_SIZE, "%s %d|%s|%s|%s\n",
+      retval = snprintf (msg, DDL_LOG_BUFFER_SIZE, "%s %d|%s|%s|%s|%s\n",
 			 ddl_audit_handle->execute_start_time,
-			 ddl_audit_handle->pid, ddl_audit_handle->user_name, result, ddl_audit_handle->schema_file);
+			 ddl_audit_handle->pid, ddl_audit_handle->user_name, result, ddl_audit_handle->msg, ddl_audit_handle->schema_file
+			 
+	);
     }
   else if (strcmp (ddl_audit_handle->app_name, "csql") == 0)
     {
