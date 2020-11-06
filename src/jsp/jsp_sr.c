@@ -76,10 +76,10 @@
 #elif defined(AIX)
 #if __WORDSIZE == 32
 #define JVM_LIB_PATH "jre/bin/classic"
-#define JVM_LIB_PATH_JDK11 ""	/* JDK 11 does not support for IBM-AIX */
+#define JVM_LIB_PATH_JDK11 "lib/server"
 #elif __WORDSIZE == 64
 #define JVM_LIB_PATH "jre/lib/ppc64/classic"
-#define JVM_LIB_PATH_JDK11 ""	/* JDK 11 does not support for IBM-AIX */
+#define JVM_LIB_PATH_JDK11 "lib/server"
 #endif
 #elif defined(__i386) || defined(__x86_64)
 #if __WORDSIZE == 32
@@ -279,9 +279,22 @@ delay_load_hook (unsigned dliNotify, PDelayLoadInfo pdli)
     {
     case dliFailLoadLib:
       {
-	char *java_home = NULL, *tmp = NULL, *tail;
+	char *java_home = NULL, *jvm_path = NULL, *tmp = NULL, *tail;
 	void *libVM = NULL;
+
+	jvm_path = getenv ("JVM_PATH");
 	java_home = getenv ("JAVA_HOME");
+
+	if (jvm_path)
+	  {
+	    libVM = LoadLibrary (jvm_path);
+	    if (libVM)
+	      {
+		fp = (FARPROC) (HMODULE) libVM;
+		return fp;
+	      }
+	  }
+
 	tail = JVM_LIB_PATH_JDK;
 	if (java_home == NULL)
 	  {
@@ -366,7 +379,7 @@ delay_load_dll_exception_filter (PEXCEPTION_POINTERS pep)
 static void *
 jsp_get_create_java_vm_function_ptr (void)
 {
-  char *java_home = NULL;
+  char *java_home = NULL, *jvm_path = NULL;
   void *libVM_p;
 
   libVM_p = dlopen (JVM_LIB_FILE, RTLD_NOW | RTLD_LOCAL);
@@ -374,36 +387,54 @@ jsp_get_create_java_vm_function_ptr (void)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SP_JVM_LIB_NOT_FOUND, 1, dlerror ());
 
+      jvm_path = getenv ("JVM_PATH");
       java_home = getenv ("JAVA_HOME");
+
+      if (jvm_path == NULL && java_home == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_JVM_LIB_NOT_FOUND, 1,
+		  "Failed to find both 'JVM_PATH' and 'JAVA_HOME' environment variable");
+	  return NULL;
+	}
+
+      if (jvm_path != NULL)
+	{
+	  libVM_p = dlopen (jvm_path, RTLD_NOW | RTLD_LOCAL);
+	  if (libVM_p != NULL)
+	    {
+	      return dlsym (libVM_p, "JNI_CreateJavaVM");
+	    }
+	}
+
       if (java_home != NULL)
 	{
 	  // under jdk 11
-	  char jvm_library_path[PATH_MAX] = { 0 };
+	  er_clear ();
 	  snprintf (jvm_library_path, PATH_MAX - 1, "%s/%s/%s", java_home, JVM_LIB_PATH, JVM_LIB_FILE);
 	  libVM_p = dlopen (jvm_library_path, RTLD_NOW | RTLD_LOCAL);
-
-	  if (libVM_p == NULL)
+	  if (libVM_p != NULL)
 	    {
-	      // from jdk 11
-	      snprintf (jvm_library_path, PATH_MAX - 1, "%s/%s/%s", java_home, JVM_LIB_PATH_JDK11, JVM_LIB_FILE);
-	      libVM_p = dlopen (jvm_library_path, RTLD_NOW | RTLD_LOCAL);
+	      return dlsym (libVM_p, "JNI_CreateJavaVM");
 	    }
 
-	  if (libVM_p == NULL)
+	  snprintf (jvm_library_path, PATH_MAX - 1, "%s/%s/%s", java_home, JVM_LIB_PATH_JDK11, JVM_LIB_FILE);
+	  libVM_p = dlopen (jvm_library_path, RTLD_NOW | RTLD_LOCAL);
+	  if (libVM_p != NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_JVM_LIB_NOT_FOUND, 1, dlerror ());
-	      return NULL;
+	      return dlsym (libVM_p, "JNI_CreateJavaVM");
 	    }
-	}
-      else
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_JVM_LIB_NOT_FOUND, 1,
-		  "Failed to find 'JAVA_HOME' environment variable");
-	  return NULL;
 	}
     }
 
-  return dlsym (libVM_p, "JNI_CreateJavaVM");
+  if (libVM_p == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_JVM_LIB_NOT_FOUND, 1, dlerror ());
+      return NULL;
+    }
+  else
+    {
+      return dlsym (libVM_p, "JNI_CreateJavaVM");
+    }
 }
 
 #endif /* !WINDOWS */
