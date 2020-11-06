@@ -2119,11 +2119,8 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
 	{
 	  db_commit_transaction ();
 	}
-
-      if (query_index < argc)
-	{
-	  cub_ddl_log_write ();
-	}
+      
+      cub_ddl_log_write ();
       continue;
 
     batch_error:
@@ -9653,7 +9650,6 @@ ux_auto_commit (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 	  cas_log_end (SQL_LOG_MODE_NONE, elapsed_sec, elapsed_msec);
 	}
     }
-  cub_ddl_log_write_end ();
   gettimeofday (&tran_start_time, NULL);
   gettimeofday (&query_start_time, NULL);
   tran_timeout = 0;
