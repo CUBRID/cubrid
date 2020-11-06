@@ -663,7 +663,9 @@ cub_ddl_log_write_end ()
 
   if (strcmp (ddl_audit_handle->app_name, "loaddb") == 0)
     {
-      if (ddl_audit_handle->loaddb_file_type != LOADDB_FILE_TYPE_SCHEMA)
+      if (ddl_audit_handle->loaddb_file_type != LOADDB_FILE_TYPE_SCHEMA
+          && ddl_audit_handle->loaddb_file_type != LOADDB_FILE_TYPE_INDEX
+          && ddl_audit_handle->loaddb_file_type != LOADDB_FILE_TYPE_TRIGGER)
 	{
 	  goto ddl_log_free;
 	}
@@ -706,7 +708,9 @@ cub_ddl_log_write ()
 
   if (strcmp (ddl_audit_handle->app_name, "loaddb") == 0)
     {
-      if (ddl_audit_handle->loaddb_file_type != LOADDB_FILE_TYPE_SCHEMA)
+    if (ddl_audit_handle->loaddb_file_type != LOADDB_FILE_TYPE_SCHEMA
+        && ddl_audit_handle->loaddb_file_type != LOADDB_FILE_TYPE_INDEX
+        && ddl_audit_handle->loaddb_file_type != LOADDB_FILE_TYPE_TRIGGER)
 	{
 	  return;
 	}
