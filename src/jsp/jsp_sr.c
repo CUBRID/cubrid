@@ -382,11 +382,13 @@ jsp_get_create_java_vm_function_ptr (void)
   char *java_home = NULL, *jvm_path = NULL;
   void *libVM_p;
   char jvm_library_path[PATH_MAX];
+  std::string err_msgs;
 
   libVM_p = dlopen (JVM_LIB_FILE, RTLD_NOW | RTLD_LOCAL);
   if (libVM_p == NULL)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SP_JVM_LIB_NOT_FOUND, 1, dlerror ());
+      err_msgs.append (dlerror ());
+      err_msgs.append ("\n");
 
       jvm_path = getenv ("JVM_PATH");
       java_home = getenv ("JAVA_HOME");
@@ -405,17 +407,28 @@ jsp_get_create_java_vm_function_ptr (void)
 	    {
 	      return dlsym (libVM_p, "JNI_CreateJavaVM");
 	    }
+	  else
+	    {
+	      err_msgs.append ("$JVM_PATH/");
+	      err_msgs.append (dlerror ());
+	      err_msgs.append ("\n");
+	    }
 	}
 
       if (java_home != NULL)
 	{
 	  // under jdk 11
-	  er_clear ();
 	  snprintf (jvm_library_path, PATH_MAX - 1, "%s/%s/%s", java_home, JVM_LIB_PATH, JVM_LIB_FILE);
 	  libVM_p = dlopen (jvm_library_path, RTLD_NOW | RTLD_LOCAL);
 	  if (libVM_p != NULL)
 	    {
 	      return dlsym (libVM_p, "JNI_CreateJavaVM");
+	    }
+	  else
+	    {
+	      err_msgs.append ("$JAVA_HOME/");
+	      err_msgs.append (dlerror ());
+	      err_msgs.append ("\n");
 	    }
 
 	  snprintf (jvm_library_path, PATH_MAX - 1, "%s/%s/%s", java_home, JVM_LIB_PATH_JDK11, JVM_LIB_FILE);
@@ -424,18 +437,21 @@ jsp_get_create_java_vm_function_ptr (void)
 	    {
 	      return dlsym (libVM_p, "JNI_CreateJavaVM");
 	    }
+	  else
+	    {
+	      err_msgs.append ("$JAVA_HOME/");
+	      err_msgs.append (dlerror ());
+	      err_msgs.append ("\n");
+	    }
 	}
-    }
-
-  if (libVM_p == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_JVM_LIB_NOT_FOUND, 1, dlerror ());
-      return NULL;
     }
   else
     {
       return dlsym (libVM_p, "JNI_CreateJavaVM");
     }
+
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_JVM_LIB_NOT_FOUND, 1, err_msgs.c_str ());
+  return NULL;
 }
 
 #endif /* !WINDOWS */
