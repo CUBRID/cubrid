@@ -2062,6 +2062,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   char timezone_checksum[32 + 1];
   const TZ_DATA *tzd;
   int jsp_port;
+  bool jsp;
 
   /* language data is loaded in context of server */
   if (lang_init () != NO_ERROR)
@@ -2287,12 +2288,16 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   /* *INDENT-OFF* */
 #if defined (SA_MODE)
   // Initialize java stored procedure server for standalone mode
+  jsp = prm_get_integer_value (PRM_ID_JAVA_STORED_PROCEDURE);
+  if (jsp)
+  {
   jsp_port = prm_get_integer_value (PRM_ID_JAVA_STORED_PROCEDURE_PORT);
   error_code = jsp_start_server (db_name, db->pathname, jsp_port);
   if (error_code != NO_ERROR)
     {
       goto error;
     }
+  }
 
   // thread_manager was not initialized
   assert (thread_p == NULL);
@@ -3942,7 +3947,8 @@ xboot_copy (REFPTR (THREAD_ENTRY, thread_p), const char *from_dbname, const char
 #if 0				/* use Unix-domain socket for localhost */
       if (GETHOSTNAME (new_db_server_host_buf, CUB_MAXHOSTNAMELEN) != 0)
 	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, new_db_server_host_buf);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1,
+			       new_db_server_host_buf);
 	  error_code = ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	  goto error;
 	}
@@ -4300,7 +4306,8 @@ xboot_soft_rename (THREAD_ENTRY * thread_p, const char *old_db_name, const char 
 #if 0				/* use Unix-domain socekt for localhost */
       if (GETHOSTNAME (new_db_server_host_buf, CUB_MAXHOSTNAMELEN) != 0)
 	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, new_db_server_host_buf);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1,
+			       new_db_server_host_buf);
 	  error_code = ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	  goto end;
 	}
