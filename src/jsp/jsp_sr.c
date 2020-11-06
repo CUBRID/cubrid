@@ -381,6 +381,7 @@ jsp_get_create_java_vm_function_ptr (void)
 {
   char *java_home = NULL, *jvm_path = NULL;
   void *libVM_p;
+  char jvm_library_path[PATH_MAX];
 
   libVM_p = dlopen (JVM_LIB_FILE, RTLD_NOW | RTLD_LOCAL);
   if (libVM_p == NULL)
