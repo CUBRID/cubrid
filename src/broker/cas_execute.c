@@ -2040,7 +2040,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
       if (sql_stmt != NULL)
 	{
 	  cas_log_write_query_string_nonl (sql_stmt, strlen (sql_stmt));
-	  cub_ddl_log_sql_text (sql_stmt);
+	  cub_ddl_log_sql_text (sql_stmt, (int) strlen (sql_stmt));
 	}
 
       session = db_open_buffer (sql_stmt);

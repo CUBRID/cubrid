@@ -50,7 +50,6 @@ extern void cub_ddl_log_ip (const char *ip_addr);
 extern void cub_ddl_log_pid (const int pid);
 extern void cub_ddl_log_br_name (const char *br_name);
 extern void cub_ddl_log_br_index (const int index);
-extern void cub_ddl_log_sql_text (char *sql_text);
 extern void cub_ddl_log_sql_text (char *sql_text, int len);
 extern void cub_ddl_log_stmt_type (int stmt_type);
 extern void cub_ddl_log_loaddb_file_type (char file_type);

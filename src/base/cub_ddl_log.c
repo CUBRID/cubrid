@@ -243,23 +243,6 @@ cub_ddl_log_br_index (const int index)
 }
 
 void
-cub_ddl_log_sql_text (char *sql_text)
-{
-  if (ddl_audit_handle == NULL || sql_text == NULL)
-    {
-      return;
-    }
-
-  if (ddl_audit_handle->sql_text != NULL)
-    {
-      FREE_MEM (ddl_audit_handle->sql_text);
-    }
-
-  ALLOC_COPY (ddl_audit_handle->sql_text, sql_text);
-}
-
-
-void
 cub_ddl_log_sql_text (char *sql_text, int len)
 {
   if (ddl_audit_handle == NULL || sql_text == NULL || len < 0)
@@ -272,12 +255,13 @@ cub_ddl_log_sql_text (char *sql_text, int len)
       FREE_MEM (ddl_audit_handle->sql_text);
     }
 
-  ddl_audit_handle->sql_text = (char *) MALLOC (len);
+  ddl_audit_handle->sql_text = (char *) MALLOC (len + 1);
+
+  memset (ddl_audit_handle->sql_text, 0x0, len + 1);
 
   if (ddl_audit_handle->sql_text != NULL)
     {
-      strncpy (ddl_audit_handle->sql_text, sql_text, len);
-      ddl_audit_handle->sql_text[len - 1] = '\0';
+      snprintf (ddl_audit_handle->sql_text, len + 1, sql_text);
     }
 }
 

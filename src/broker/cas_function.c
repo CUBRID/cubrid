@@ -325,7 +325,7 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 
   net_arg_get_str (&sql_stmt, &sql_size, argv[0]);
 
-  cub_ddl_log_sql_text (sql_stmt);
+  cub_ddl_log_sql_text (sql_stmt, (int) strlen (sql_stmt));
 
   net_arg_get_char (flag, argv[1]);
   if (argc > 2)
@@ -624,7 +624,7 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   if (srv_handle->sql_stmt != NULL)
     {
       cas_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt));
-      cub_ddl_log_sql_text (srv_handle->sql_stmt);
+      cub_ddl_log_sql_text (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt));
     }
   cas_log_debug (ARG_FILE_LINE, "%s%s", auto_commit_mode ? "auto_commit_mode " : "",
 		 forward_only_cursor ? "forward_only_cursor " : "");
@@ -1714,7 +1714,7 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
   if (srv_handle->sql_stmt != NULL)
     {
       cas_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt));
-      cub_ddl_log_sql_text (srv_handle->sql_stmt);
+      cub_ddl_log_sql_text (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt));
     }
 #ifndef LIBCAS_FOR_JSP
   if (as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)

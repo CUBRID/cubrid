@@ -1877,7 +1877,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	  statements = session->statements[num_stmts];
 	  if (statements != NULL && strlen (statements->sql_user_text) >= statements->sql_user_text_len)
 	    {
-	      cub_ddl_log_sql_text (statements->sql_user_text, statements->sql_user_text_len + 1);
+	      cub_ddl_log_sql_text (statements->sql_user_text, statements->sql_user_text_len);
 	    }
 	  cub_ddl_log_stmt_type (statements->node_type);
 	}
