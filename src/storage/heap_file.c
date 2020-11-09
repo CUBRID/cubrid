@@ -10739,10 +10739,10 @@ heap_get_class_tde_algorithm (THREAD_ENTRY * thread_p, const OID * class_oid, TD
 {
   HEAP_SCANCACHE scan_cache;
   RECDES recdes;
-  int flags;
   int error = NO_ERROR;
 
   assert (class_oid != NULL);
+  assert (tde_algo != NULL);
 
   /* boot parameter heap file */
   if (OID_ISNULL (class_oid))

@@ -370,6 +370,7 @@ bool
 tde_validate_keys_file (int vdes)
 {
   char magic[CUBRID_MAGIC_MAX_LENGTH] = { 0, };
+  bool valid = true;
 #if !defined(WINDOWS)
   sigset_t new_mask, old_mask;
   off_signals (new_mask, old_mask);
@@ -377,22 +378,22 @@ tde_validate_keys_file (int vdes)
 
   if (lseek (vdes, 0L, SEEK_SET) != 0L)
     {
-#if !defined(WINDOWS)
-      restore_signals (old_mask);
-#endif /* !WINDOWS */
-      return false;
+      valid = false;
+      goto exit;
     }
 
   read (vdes, magic, CUBRID_MAGIC_MAX_LENGTH);
   if (memcmp (magic, CUBRID_MAGIC_KEYS, sizeof (CUBRID_MAGIC_MAX_LENGTH)) != 0)
     {
-      return false;
+      valid = false;
+      goto exit;
     }
 
+exit:
 #if !defined(WINDOWS)
   restore_signals (old_mask);
 #endif /* !WINDOWS */
-  return true;
+  return valid;
 }
 
 /*
