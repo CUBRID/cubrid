@@ -5878,6 +5878,15 @@ file_apply_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, const TDE_
   fhead = (FILE_HEADER *) page_fhead;
   file_header_sanity_check (thread_p, fhead);
 
+  if (FILE_IS_TEMPORARY (fhead))
+    {
+      /* 
+       * It MUST be called before allocating user page in the case of temp file
+       * because allocated pages in temp file aren't initialized when it is destoryed or cached.
+       */
+      assert (fhead->n_page_user == 0);
+    }
+
   /* init map context */
   context.func = file_file_map_set_tde_algorithm;
   context.args = &args;
