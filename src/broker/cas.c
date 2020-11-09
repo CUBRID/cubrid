@@ -1282,7 +1282,7 @@ cas_main (void)
 #if !defined(WINDOWS)
 		signal (SIGUSR1, query_cancel);
 #endif /* !WINDOWS */
-		cub_ddl_log_app_name ("cas");
+		cub_ddl_log_app_name (APP_NAME_CAS);
 		cub_ddl_log_br_name (shm_appl->broker_name);
 		cub_ddl_log_br_index (shm_as_index);
 		cub_ddl_log_db_name (db_name);

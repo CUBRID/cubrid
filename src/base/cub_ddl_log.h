@@ -40,10 +40,17 @@
 #define LOADDB_FILE_TYPE_OBJECT         (4)
 #define LOADDB_FILE_TYPE_SCHEMA         (5)
 
+typedef enum
+{
+  APP_NAME_CAS,
+  APP_NAME_CSQL,
+  APP_NAME_LOADDB
+} T_APP_NAME;
+
 extern void cub_ddl_log_init ();
 extern void cub_ddl_log_free ();
 extern void cub_ddl_log_destroy ();
-extern void cub_ddl_log_app_name (const char *app_name);
+extern void cub_ddl_log_app_name (T_APP_NAME app_name);
 extern void cub_ddl_log_db_name (const char *db_name);
 extern void cub_ddl_log_user_name (const char *user_name);
 extern void cub_ddl_log_ip (const char *ip_addr);

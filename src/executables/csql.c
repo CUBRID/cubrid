@@ -1861,7 +1861,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 
 	  unsigned char ip_addr[16] = { "0" };
 	  get_host_ip (ip_addr);
-	  cub_ddl_log_app_name ("csql");
+	  cub_ddl_log_app_name (APP_NAME_CSQL);
 
 	  if (csql_arg->db_name != NULL)
 	    {

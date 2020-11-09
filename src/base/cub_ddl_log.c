@@ -66,7 +66,7 @@ struct t_ddl_audit_handle
 {
   char db_name[DB_MAX_IDENTIFIER_LENGTH];
   char user_name[DB_MAX_USER_LENGTH];
-  char app_name[DDL_APP_NAME_LEN];
+  T_APP_NAME app_name;
   char br_name[BROKER_NAME_LEN];
   int br_index;
   char ip_addr[16];
@@ -90,7 +90,7 @@ struct t_ddl_audit_handle
 };
 static T_DDL_AUDIT_HANDLE *ddl_audit_handle = NULL;
 
-static int cub_make_ddl_log_filename (char *filename_buf, size_t buf_size, const char *app_name);
+static int cub_make_ddl_log_filename (char *filename_buf, size_t buf_size, T_APP_NAME app_name);
 static int cub_make_schema_file_name (const char *file_full_path, char *dest_path, size_t buf_size);
 static void cub_ddl_log_backup (const char *path);
 #if defined(WINDOWS)
@@ -101,11 +101,12 @@ static int cub_create_log_mgs (char *msg);
 static int cub_get_current_time (char *buf, size_t size);
 static int cub_file_copy (char *src_file, char *dest_file);
 static void cub_remove_char (char *string, char ch);
-static FILE *cub_ddl_log_open (char *app_name);
+static FILE *cub_ddl_log_open (T_APP_NAME app_name);
 static int cub_get_time_string (char *buf, struct timeval *time_val);
 static FILE *cub_fopen_and_lock (const char *path, const char *mode);
 static void cub_ddl_log_elapsed_time (long sec, long msec);
 static void cub_timeval_diff (struct timeval *start, struct timeval *end, int *res_sec, int *res_msec);
+static const char *cub_get_app_name (T_APP_NAME app_name);
 
 void
 cub_ddl_log_init ()
@@ -161,14 +162,13 @@ cub_ddl_log_destroy ()
 }
 
 void
-cub_ddl_log_app_name (const char *app_name)
+cub_ddl_log_app_name (T_APP_NAME app_name)
 {
-  if (ddl_audit_handle == NULL || app_name == NULL)
+  if (ddl_audit_handle == NULL)
     {
       return;
     }
-
-  snprintf (ddl_audit_handle->app_name, sizeof (ddl_audit_handle->app_name), app_name);
+  ddl_audit_handle->app_name = app_name;
 }
 
 void
@@ -547,7 +547,7 @@ cub_make_schema_file_name (const char *file_full_path, char *dest_path, size_t b
 }
 
 static int
-cub_make_ddl_log_filename (char *filename_buf, size_t buf_size, const char *app_name)
+cub_make_ddl_log_filename (char *filename_buf, size_t buf_size, T_APP_NAME app_name)
 {
   const char *env_root = NULL;
   int retval = 0;
@@ -556,16 +556,16 @@ cub_make_ddl_log_filename (char *filename_buf, size_t buf_size, const char *app_
 
   env_root = envvar_root ();
 
-  if (strcmp (app_name, "cas") == 0)
+  if (app_name == APP_NAME_CAS)
     {
       retval =
 	snprintf (filename_buf, buf_size, "%s/%s/%s_%d.ddl.log", env_root, DDL_LOG_PATH, ddl_audit_handle->br_name,
 		  (ddl_audit_handle->br_index + 1));
     }
-  else if (strcmp (app_name, "csql") == 0 || strcmp (app_name, "loaddb") == 0)
+  else if (app_name == APP_NAME_CSQL || app_name == APP_NAME_LOADDB)
     {
       retval =
-	snprintf (filename_buf, buf_size, "%s/%s/%s_%s_ddl.log", env_root, DDL_LOG_PATH, app_name,
+	snprintf (filename_buf, buf_size, "%s/%s/%s_%s_ddl.log", env_root, DDL_LOG_PATH, cub_get_app_name (app_name),
 		  ddl_audit_handle->db_name);
     }
   else
@@ -584,27 +584,22 @@ cub_make_ddl_log_filename (char *filename_buf, size_t buf_size, const char *app_
 }
 
 static FILE *
-cub_ddl_log_open (char *app_name)
+cub_ddl_log_open (T_APP_NAME app_name)
 {
   FILE *fp = NULL;
   char *tpath = NULL;
   int len;
 
-  if (app_name != NULL)
+  fprintf (stderr, "=========== cub_ddl_log_open : %s \n", cub_get_app_name (app_name));
+
+  len = cub_make_ddl_log_filename (ddl_audit_handle->log_filepath, PATH_MAX, app_name);
+
+  if (ddl_audit_handle->log_filepath[0] == '\0' || len < 0)
     {
-      len = cub_make_ddl_log_filename (ddl_audit_handle->log_filepath, PATH_MAX, app_name);
-
-      if (ddl_audit_handle->log_filepath[0] == '\0' || len < 0)
-	{
-	  goto file_error;
-	}
-
-      if (cub_create_dir_log (ddl_audit_handle->log_filepath) < 0)
-	{
-	  goto file_error;
-	}
+      goto file_error;
     }
-  else
+
+  if (cub_create_dir_log (ddl_audit_handle->log_filepath) < 0)
     {
       goto file_error;
     }
@@ -631,11 +626,11 @@ cub_ddl_log_write_end ()
       goto ddl_log_free;
     }
 
-  if (strcmp (ddl_audit_handle->app_name, "loaddb") == 0)
+  if (ddl_audit_handle->app_name == APP_NAME_LOADDB)
     {
       if (ddl_audit_handle->loaddb_file_type != LOADDB_FILE_TYPE_SCHEMA
-          && ddl_audit_handle->loaddb_file_type != LOADDB_FILE_TYPE_INDEX
-          && ddl_audit_handle->loaddb_file_type != LOADDB_FILE_TYPE_TRIGGER)
+	  && ddl_audit_handle->loaddb_file_type != LOADDB_FILE_TYPE_INDEX
+	  && ddl_audit_handle->loaddb_file_type != LOADDB_FILE_TYPE_TRIGGER)
 	{
 	  goto ddl_log_free;
 	}
@@ -676,11 +671,11 @@ cub_ddl_log_write ()
       return;
     }
 
-  if (strcmp (ddl_audit_handle->app_name, "loaddb") == 0)
+  if (ddl_audit_handle->app_name == APP_NAME_LOADDB)
     {
-    if (ddl_audit_handle->loaddb_file_type != LOADDB_FILE_TYPE_SCHEMA
-        && ddl_audit_handle->loaddb_file_type != LOADDB_FILE_TYPE_INDEX
-        && ddl_audit_handle->loaddb_file_type != LOADDB_FILE_TYPE_TRIGGER)
+      if (ddl_audit_handle->loaddb_file_type != LOADDB_FILE_TYPE_SCHEMA
+	  && ddl_audit_handle->loaddb_file_type != LOADDB_FILE_TYPE_INDEX
+	  && ddl_audit_handle->loaddb_file_type != LOADDB_FILE_TYPE_TRIGGER)
 	{
 	  return;
 	}
@@ -697,7 +692,7 @@ cub_ddl_log_write ()
 
   if (fp != NULL)
     {
-      if (strcmp (ddl_audit_handle->app_name, "loaddb") == 0)
+      if (ddl_audit_handle->app_name == APP_NAME_LOADDB)
 	{
 	  if (cub_make_schema_file_name (ddl_audit_handle->file_name, dest_path, PATH_MAX) < 0)
 	    {
@@ -716,7 +711,7 @@ cub_ddl_log_write ()
 	  goto write_error;
 	}
 
-      if (strcmp (ddl_audit_handle->app_name, "loaddb") == 0)
+      if (ddl_audit_handle->app_name == APP_NAME_LOADDB)
 	{
 	  cub_file_copy (ddl_audit_handle->file_name, dest_path);
 	}
@@ -755,7 +750,7 @@ cub_create_log_mgs (char *msg)
   cub_timeval_diff (&ddl_audit_handle->exec_begin_time, &exec_end, &elapsed_sec, &elapsed_msec);
   cub_ddl_log_elapsed_time (elapsed_sec, elapsed_msec);
 
-  if (strcmp (ddl_audit_handle->app_name, "loaddb") == 0)
+  if (ddl_audit_handle->app_name == APP_NAME_LOADDB)
     {
       if (ddl_audit_handle->err_code < 0)
 	{
@@ -775,7 +770,7 @@ cub_create_log_mgs (char *msg)
 			 
 	);
     }
-  else if (strcmp (ddl_audit_handle->app_name, "csql") == 0)
+  else if (ddl_audit_handle->app_name == APP_NAME_CSQL)
     {
       if (ddl_audit_handle->err_code < 0)
 	{
@@ -1077,7 +1072,7 @@ cub_is_ddl_type (int node_type)
 
 static void
 cub_timeval_diff (struct timeval *start, struct timeval *end, int *res_sec, int *res_msec)
-  {
+{
   int sec, msec;
 
   assert (start != NULL && end != NULL && res_sec != NULL && res_msec != NULL);
@@ -1091,4 +1086,20 @@ cub_timeval_diff (struct timeval *start, struct timeval *end, int *res_sec, int 
     }
   *res_sec = sec;
   *res_msec = msec;
-  }
+}
+
+static const char *
+cub_get_app_name (T_APP_NAME app_name)
+{
+  switch (app_name)
+    {
+    case APP_NAME_CAS:
+      return "cas";
+    case APP_NAME_CSQL:
+      return "csql";
+    case APP_NAME_LOADDB:
+      return "loaddb";
+    default:
+      return "";
+    }
+}

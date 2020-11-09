@@ -500,7 +500,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   get_loaddb_args (arg_map, &args);
 
   cub_ddl_log_init ();
-  cub_ddl_log_app_name ("loaddb");
+  cub_ddl_log_app_name (APP_NAME_LOADDB);
   cub_ddl_log_db_name (args.volume.c_str ());
   cub_ddl_log_user_name (args.user_name.c_str ());
   cub_ddl_log_pid (getpid ());
