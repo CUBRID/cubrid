@@ -2495,22 +2495,24 @@ qmgr_get_new_page (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_FILE * tfil
   /* memory buffer is exhausted; create temp file */
   if (VFID_ISNULL (&tfile_vfid_p->temp_vfid))
     {
+      TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
       if (file_create_temp (thread_p, 1, &tfile_vfid_p->temp_vfid) != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  return NULL;
 	}
       tfile_vfid_p->temp_file_type = FILE_TEMP;
+
       if (tfile_vfid_p->tde_encrypted)
 	{
-	  if (file_apply_tde_algorithm (thread_p, &tfile_vfid_p->temp_vfid,
-					(TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_DEFAULT_ALGORITHM)) !=
-	      NO_ERROR)
-	    {
-	      file_temp_retire (thread_p, &tfile_vfid_p->temp_vfid);
-	      ASSERT_ERROR ();
-	      return NULL;
-	    }
+	  tde_algo = (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_DEFAULT_ALGORITHM);
+	}
+
+      if (file_apply_tde_algorithm (thread_p, &tfile_vfid_p->temp_vfid, tde_algo) != NO_ERROR)
+	{
+	  file_temp_retire (thread_p, &tfile_vfid_p->temp_vfid);
+	  ASSERT_ERROR ();
+	  return NULL;
 	}
     }
 
@@ -2715,6 +2717,7 @@ qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
   int tran_index;
   QMGR_TEMP_FILE *tfile_vfid_p, *temp;
   QMGR_TRAN_ENTRY *tran_entry_p;
+  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
 
   /* Allocate a tfile_vfid and create a temporary file for query result */
 
@@ -2769,14 +2772,16 @@ qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
   if (query_p->includes_tde_class)
     {
       tfile_vfid_p->tde_encrypted = true;
-      if (file_apply_tde_algorithm (thread_p, &tfile_vfid_p->temp_vfid,
-				    (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_DEFAULT_ALGORITHM)) != NO_ERROR)
-	{
-	  file_temp_retire (thread_p, &tfile_vfid_p->temp_vfid);
-	  free_and_init (tfile_vfid_p);
-	  return NULL;
-	}
+      tde_algo = (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_DEFAULT_ALGORITHM);
     }
+
+  if (file_apply_tde_algorithm (thread_p, &tfile_vfid_p->temp_vfid, tde_algo) != NO_ERROR)
+    {
+      file_temp_retire (thread_p, &tfile_vfid_p->temp_vfid);
+      free_and_init (tfile_vfid_p);
+      return NULL;
+    }
+
   /* chain the tfile_vfid to the query_entry->temp_vfid */
   temp = query_p->temp_vfid;
   query_p->temp_vfid = tfile_vfid_p;

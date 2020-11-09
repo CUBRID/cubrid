@@ -346,7 +346,7 @@ extern void pgbuf_replace_watcher (THREAD_ENTRY * thread_p, PGBUF_WATCHER * old_
 extern void *pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset, int length, void *area,
 				 bool do_fetch);
 extern void *pgbuf_copy_from_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset, int length, void *area,
-				   bool do_fetch);
+				   bool do_fetch, TDE_ALGORITHM tde_algo);
 
 extern void pgbuf_set_dirty (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, bool free_page);
 #define pgbuf_set_dirty_and_free(thread_p, pgptr) pgbuf_set_dirty (thread_p, pgptr, FREE); pgptr = NULL

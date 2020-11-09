@@ -2435,6 +2435,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
 	      /* If necessary create the multipage_file */
 	      if (sort_param->multipage_file.volid == NULL_VOLID)
 		{
+		  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
 		  /* Create the multipage file */
 		  sort_param->multipage_file.volid = sort_param->temp[0].volid;
 
@@ -2446,14 +2447,13 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
 		    }
 		  if (sort_param->tde_encrypted)
 		    {
-		      if (file_apply_tde_algorithm (thread_p, &sort_param->multipage_file,
-						    (TDE_ALGORITHM)
-						    prm_get_integer_value (PRM_ID_TDE_DEFAULT_ALGORITHM)) != NO_ERROR)
-			{
-			  file_temp_retire (thread_p, &sort_param->multipage_file);
-			  ASSERT_ERROR ();
-			  goto exit_on_error;
-			}
+		      tde_algo = (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_DEFAULT_ALGORITHM);
+		    }
+		  if (file_apply_tde_algorithm (thread_p, &sort_param->multipage_file, tde_algo) != NO_ERROR)
+		    {
+		      file_temp_retire (thread_p, &sort_param->multipage_file);
+		      ASSERT_ERROR ();
+		      goto exit_on_error;
 		    }
 		}
 
@@ -4468,6 +4468,7 @@ static int
 sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est, bool force_alloc, bool tde_encrypted)
 {
   VPID new_vpid;
+  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
   int ret = NO_ERROR;
 
   /* todo: sort file is a case I missed that seems to use file_find_nthpages. I don't know if it can be optimized to
@@ -4486,17 +4487,17 @@ sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est, bo
     }
   if (tde_encrypted)
     {
-      ret =
-	file_apply_tde_algorithm (thread_p, vfid, (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_DEFAULT_ALGORITHM));
-      if (ret != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  file_temp_retire (thread_p, vfid);
-	  VFID_SET_NULL (vfid);
-	  return ret;
-	}
+      tde_algo = (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_DEFAULT_ALGORITHM);
     }
 
+  ret = file_apply_tde_algorithm (thread_p, vfid, tde_algo);
+  if (ret != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      file_temp_retire (thread_p, vfid);
+      VFID_SET_NULL (vfid);
+      return ret;
+    }
 
   if (force_alloc == false)
     {
@@ -4507,16 +4508,7 @@ sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est, bo
   /* todo: we don't have multiple page allocation, but allocation should be fast enough */
   for (; file_pg_cnt_est > 0; file_pg_cnt_est--)
     {
-      if (tde_encrypted)
-	{
-	  /* if ptype is not set, the page can't be fixed. So it is impossible to initizlie tde information when retiring the temp file */
-	  PAGE_TYPE ptype = PAGE_AREA;
-	  ret = file_alloc (thread_p, vfid, file_init_temp_page_type, &ptype, &new_vpid, NULL);
-	}
-      else
-	{
-	  ret = file_alloc (thread_p, vfid, NULL, NULL, &new_vpid, NULL);
-	}
+      ret = file_alloc (thread_p, vfid, NULL, NULL, &new_vpid, NULL);
       if (ret != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -4570,22 +4562,13 @@ sort_write_area (THREAD_ENTRY * thread_p, VFID * vfid, int first_page, INT32 num
   for (i = 0; i < num_pages; i++)
     {
       /* file is automatically expanded if page is not allocated (as long as it is missing only one page) */
-      if (tde_algo != TDE_ALGORITHM_NONE)
-	{
-	  /* if ptype is not set, the page can't be fixed. So it is impossible to initizlie tde information when retiring the temp file */
-	  PAGE_TYPE ptype = PAGE_AREA;
-	  ret = file_numerable_find_nth (thread_p, vfid, page_no++, true, file_init_temp_page_type, &ptype, &vpid);
-	}
-      else
-	{
-	  ret = file_numerable_find_nth (thread_p, vfid, page_no++, true, NULL, NULL, &vpid);
-	}
+      ret = file_numerable_find_nth (thread_p, vfid, page_no++, true, NULL, NULL, &vpid);
       if (ret != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  return ret;
 	}
-      if (pgbuf_copy_from_area (thread_p, &vpid, 0, DB_PAGESIZE, page_ptr, true) == NULL)
+      if (pgbuf_copy_from_area (thread_p, &vpid, 0, DB_PAGESIZE, page_ptr, true, tde_algo) == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (ret);
 	  return ret;
@@ -4776,17 +4759,7 @@ sort_checkalloc_numpages_of_outfiles (THREAD_ENTRY * thread_p, SORT_PARAM * sort
 	  alloc_pages = (needed_pages[i] - contains);
 	  if (alloc_pages > 0)
 	    {
-	      if (sort_param->tde_encrypted)
-		{
-		  PAGE_TYPE ptype = PAGE_AREA;
-		  error_code =
-		    file_alloc_multiple (thread_p, &sort_param->temp[i], file_init_temp_page_type, &ptype, alloc_pages,
-					 NULL);
-		}
-	      else
-		{
-		  error_code = file_alloc_multiple (thread_p, &sort_param->temp[i], NULL, NULL, alloc_pages, NULL);
-		}
+	      error_code = file_alloc_multiple (thread_p, &sort_param->temp[i], NULL, NULL, alloc_pages, NULL);
 	      if (error_code != NO_ERROR)
 		{
 		  ASSERT_ERROR ();

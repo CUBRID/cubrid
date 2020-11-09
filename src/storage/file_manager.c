@@ -4356,20 +4356,6 @@ file_temp_retire_internal (THREAD_ENTRY * thread_p, const VFID * vfid, bool was_
       assert (entry != NULL);
     }
 
-  /* Init tde algorithm in user pages */
-  if (file_get_tde_algorithm (thread_p, vfid, &tde_algo) != NO_ERROR)
-    {
-      assert (false);
-    }
-  if (tde_algo != TDE_ALGORITHM_NONE)
-    {
-      error_code = file_apply_tde_algorithm (thread_p, &entry->vfid, TDE_ALGORITHM_NONE);
-      if (error_code != NO_ERROR)
-	{
-	  assert (false);	// just ignore in release mode
-	}
-    }
-
   if (entry != NULL && file_tempcache_put (thread_p, entry))
     {
       /* cached */
@@ -5275,15 +5261,12 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_in
 #define UNDO_DATA_SIZE (sizeof (VFID) + sizeof (VPID))
   VPID vpid_fhead;
   PAGE_PTR page_fhead = NULL;
-  PAGE_PTR page_alloc = NULL;
   FILE_HEADER *fhead = NULL;
-  FILEIO_PAGE *iopage = NULL;
   TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
   bool is_sysop_started = false;
   char undo_log_data_buf[UNDO_DATA_SIZE + MAX_ALIGNMENT];
   char *undo_log_data = PTR_ALIGN (undo_log_data_buf, MAX_ALIGNMENT);
   int error_code = NO_ERROR;
-  bool is_page_alloc_fixed = false;
 
   assert (vfid != NULL && !VFID_ISNULL (vfid));
   assert (vpid_out != NULL);
@@ -5354,14 +5337,12 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_in
   if (f_init)
     {
       /* initialize page */
-      page_alloc = pgbuf_fix (thread_p, vpid_out, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      PAGE_PTR page_alloc = pgbuf_fix (thread_p, vpid_out, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
       if (page_alloc == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
 	  goto exit;
 	}
-      is_page_alloc_fixed = true;
-
       error_code = f_init (thread_p, page_alloc, f_init_args);
       if (error_code != NO_ERROR)
 	{
@@ -5369,83 +5350,46 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_in
 	  pgbuf_unfix (thread_p, page_alloc);
 	  goto exit;
 	}
+
+      assert (pgbuf_get_page_ptype (thread_p, page_alloc) != PAGE_UNKNOWN);
+
+      tde_algo = file_get_tde_algorithm_internal (fhead);
+
+#if !defined (NDEBUG)
+      {
+	TDE_ALGORITHM prev_tde_algo = pgbuf_get_tde_algorithm (page_alloc);
+	if (tde_algo != prev_tde_algo)
+	  {
+	    er_log_debug (ARG_FILE_LINE,
+			  "TDE: file_alloc(): set tde bit in pflag, VFID = %d|%d, VPID = %d|%d, tde_algorithm of the file = %s, previous tde algorithm of the page = %s\n",
+			  VFID_AS_ARGS (&fhead->self), VPID_AS_ARGS (vpid_out), tde_get_algorithm_name (tde_algo),
+			  tde_get_algorithm_name (prev_tde_algo));
+	  }
+      }
+#endif /* NDEBUG */
+
+      pgbuf_set_tde_algorithm (thread_p, page_alloc, tde_algo, FILE_IS_TEMPORARY (fhead));
+
+      if (page_out != NULL)
+	{
+	  *page_out = page_alloc;
+	}
+      else
+	{
+	  pgbuf_unfix (thread_p, page_alloc);
+	}
     }
   else
     {
       assert (FILE_IS_TEMPORARY (fhead));
-    }
-
-  /*
-   * Set Tde Encryption flags based on the file.
-   * NOTE: It MUST be located after initializing the page (f_init),
-   * because while recovery, logs on a page don't work
-   * before the log classified as RCV_IS_NEW_PAGE_INIT on the page
-   */
-
-  if (FILE_IS_TDE_ENCRYPTED (fhead))
-    {
-      tde_algo = file_get_tde_algorithm_internal (fhead);
-
-#if !defined (NDEBUG)
-      if (tde_algo != TDE_ALGORITHM_NONE)
+      if (page_out != NULL)
 	{
-	  er_log_debug (ARG_FILE_LINE,
-			"TDE: file_alloc(): set tde bit in pflag, VFID = %d|%d, VPID = %d|%d, tde_algorithm of the file = %s\n",
-			VFID_AS_ARGS (&fhead->self), VPID_AS_ARGS (vpid_out), tde_get_algorithm_name (tde_algo));
-	}
-#endif /* NDEBUG */
-
-      if (!is_page_alloc_fixed)
-	{
-	  page_alloc = pgbuf_fix (thread_p, vpid_out, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-	  if (page_alloc == NULL)
-	    {
-	      ASSERT_ERROR_AND_SET (error_code);
-	      goto exit;
-	    }
-	  is_page_alloc_fixed = true;
-	}
-      pgbuf_set_tde_algorithm (thread_p, page_alloc, tde_algo, FILE_IS_TEMPORARY (fhead));
-    }
-
-#if !defined (NDEBUG)
-  {
-    TDE_ALGORITHM file_tde_algo = file_get_tde_algorithm_internal (fhead);
-    if (!is_page_alloc_fixed)
-      {
-	page_alloc = pgbuf_fix (thread_p, vpid_out, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-	if (page_alloc == NULL)
-	  {
-	    ASSERT_ERROR_AND_SET (error_code);
-	    goto exit;
-	  }
-	is_page_alloc_fixed = true;
-      }
-    tde_algo = pgbuf_get_tde_algorithm (page_alloc);
-
-    assert (tde_algo == file_tde_algo);
-  }
-#endif /* NDEBUG */
-
-  if (page_out != NULL)
-    {
-      if (!is_page_alloc_fixed)
-	{
-	  page_alloc = pgbuf_fix (thread_p, vpid_out, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+	  *page_out = pgbuf_fix (thread_p, vpid_out, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
 	  if (*page_out == NULL)
 	    {
 	      ASSERT_ERROR_AND_SET (error_code);
 	      goto exit;
 	    }
-	  is_page_alloc_fixed = true;
-	}
-      *page_out = page_alloc;
-    }
-  else
-    {
-      if (is_page_alloc_fixed)
-	{
-	  pgbuf_unfix (thread_p, page_alloc);
 	}
     }
 
@@ -9468,22 +9412,6 @@ file_tempcache_cache_or_drop_entries (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_EN
     {
       next = temp_file->next;
       temp_file->next = NULL;
-
-      if (!VFID_ISNULL (&temp_file->vfid))
-	{
-	  /* Init tde algorithm in user pages */
-	  if (file_get_tde_algorithm (thread_p, &temp_file->vfid, &tde_algo) != NO_ERROR)
-	    {
-	      assert (false);
-	    }
-	  if (tde_algo != TDE_ALGORITHM_NONE)
-	    {
-	      if (file_apply_tde_algorithm (thread_p, &temp_file->vfid, TDE_ALGORITHM_NONE) != NO_ERROR)
-		{
-		  assert (false);
-		}
-	    }
-	}
 
       if (!file_tempcache_put (thread_p, temp_file))
 	{

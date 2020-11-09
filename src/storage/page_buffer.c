@@ -4168,7 +4168,7 @@ pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset
  */
 void *
 pgbuf_copy_from_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset, int length, void *area,
-		      bool do_fetch)
+		      bool do_fetch, TDE_ALGORITHM tde_algo)
 {
   PGBUF_BUFFER_HASH *hash_anchor;
   PGBUF_BCB *bufptr;
@@ -4230,6 +4230,7 @@ pgbuf_copy_from_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offs
   if (pgptr != NULL)
     {
       (void) pgbuf_set_page_ptype (thread_p, pgptr, PAGE_AREA);
+      pgbuf_set_tde_algorithm (thread_p, pgptr, tde_algo, true);
 
       memcpy ((char *) pgptr + start_offset, area, length);
       /* Inform log manager that there is no need to log this page */
