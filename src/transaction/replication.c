@@ -369,6 +369,7 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
 	    }
 	  return error;
 	}
+
       if (heap_get_class_tde_algorithm (thread_p, class_oid, &tde_algo) != NO_ERROR)
 	{
 	  ASSERT_ERROR_AND_SET (error);

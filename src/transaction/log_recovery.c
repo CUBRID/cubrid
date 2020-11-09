@@ -57,8 +57,7 @@
 
 static void log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 				LOG_RCVINDEX rcvindex, const VPID * rcv_vpid, LOG_RCV * rcv,
-				const LOG_LSA * rcv_lsa_ptr, LOG_TDES * tdes, LOG_ZIP * undo_unzip_ptr,
-				bool tde_encrypted);
+				const LOG_LSA * rcv_lsa_ptr, LOG_TDES * tdes, LOG_ZIP * undo_unzip_ptr);
 static void log_rv_redo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 				int (*redofun) (THREAD_ENTRY * thread_p, LOG_RCV *), LOG_RCV * rcv,
 				LOG_LSA * rcv_lsa_ptr, int undo_length, char *undo_data, LOG_ZIP * redo_unzip_ptr);
@@ -168,7 +167,7 @@ static void log_rv_end_simulation (THREAD_ENTRY * thread_p);
 static void
 log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p, LOG_RCVINDEX rcvindex,
 		    const VPID * rcv_vpid, LOG_RCV * rcv, const LOG_LSA * rcv_undo_lsa, LOG_TDES * tdes,
-		    LOG_ZIP * undo_unzip_ptr, bool tde_encrypted)
+		    LOG_ZIP * undo_unzip_ptr)
 {
   char *area = NULL;
   TRAN_STATE save_state;	/* The current state of the transaction. Must be returned to this state */
@@ -313,8 +312,7 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_p
 	}
       else if (!RCV_IS_LOGICAL_LOG (rcv_vpid, rcvindex))
 	{
-	  log_append_compensate (thread_p, rcvindex, tde_encrypted, rcv_vpid, rcv->offset,
-				 rcv->pgptr, rcv->length, rcv->data, tdes);
+	  log_append_compensate (thread_p, rcvindex, rcv_vpid, rcv->offset, rcv->pgptr, rcv->length, rcv->data, tdes);
 
 	  error_code = (*RV_fun[rcvindex].undofun) (thread_p, rcv);
 
@@ -387,8 +385,7 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_p
     }
   else
     {
-      log_append_compensate (thread_p, rcvindex, tde_encrypted, rcv_vpid, rcv->offset, NULL,
-			     rcv->length, rcv->data, tdes);
+      log_append_compensate (thread_p, rcvindex, rcv_vpid, rcv->offset, NULL, rcv->length, rcv->data, tdes);
       /*
        * Unable to fetch page of volume... May need media recovery on such
        * page
@@ -4732,7 +4729,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 #endif /* !NDEBUG */
 
 		  log_rv_undo_record (thread_p, &log_lsa, log_pgptr, rcvindex, &rcv_vpid, &rcv, &rcv_lsa, tdes,
-				      undo_unzip_ptr, LOG_IS_RECHDR_TDE_ENCRYPTED (log_rec));
+				      undo_unzip_ptr);
 		  break;
 
 		case LOG_MVCC_UNDO_DATA:
@@ -4789,7 +4786,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		    }
 #endif /* !NDEBUG */
 		  log_rv_undo_record (thread_p, &log_lsa, log_pgptr, rcvindex, &rcv_vpid, &rcv, &rcv_lsa, tdes,
-				      undo_unzip_ptr, LOG_IS_RECHDR_TDE_ENCRYPTED (log_rec));
+				      undo_unzip_ptr);
 		  break;
 
 		case LOG_REDO_DATA:
@@ -4846,7 +4843,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 
 		      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_SYSOP_END), &log_lsa, log_pgptr);
 		      log_rv_undo_record (thread_p, &log_lsa, log_pgptr, rcvindex, &rcv_vpid, &rcv, &rcv_lsa, tdes,
-					  undo_unzip_ptr, LOG_IS_RECHDR_TDE_ENCRYPTED (log_rec));
+					  undo_unzip_ptr);
 		    }
 		  else if (sysop_end->type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
 		    {
@@ -4863,7 +4860,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		      LSA_COPY (&tdes->undo_nxlsa, &sysop_end->lastparent_lsa);
 		      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_SYSOP_END), &log_lsa, log_pgptr);
 		      log_rv_undo_record (thread_p, &log_lsa, log_pgptr, rcvindex, &rcv_vpid, &rcv, &rcv_lsa, tdes,
-					  undo_unzip_ptr, LOG_IS_RECHDR_TDE_ENCRYPTED (log_rec));
+					  undo_unzip_ptr);
 		    }
 		  else if (sysop_end->type == LOG_SYSOP_END_LOGICAL_COMPENSATE)
 		    {

@@ -276,7 +276,7 @@ static LOG_PAGE *log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RE
 				  LOG_PAGE * log_page_p, LOG_ZIP * log_zip_p);
 static void log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 				 LOG_RCVINDEX rcvindex, VPID * rcv_vpid, LOG_RCV * rcv, LOG_TDES * tdes,
-				 LOG_ZIP * log_unzip_ptr, bool tde_encrypted);
+				 LOG_ZIP * log_unzip_ptr);
 static int log_undo_rec_restartable (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_RCV * rcv);
 static void log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa_ptr);
 static int log_run_postpone_op (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_pgptr);
@@ -286,9 +286,9 @@ static void log_cleanup_modified_class (const tx_transient_class_entry & t, bool
 static void log_cleanup_modified_class_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * savept_lsa,
 					     bool release, bool decache_classrepr);
 
-static void log_append_compensate_internal (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, bool tde_encrypted,
-					    const VPID * vpid, PGLENGTH offset, PAGE_PTR pgptr, int length,
-					    const void *data, LOG_TDES * tdes, const LOG_LSA * undo_nxlsa);
+static void log_append_compensate_internal (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VPID * vpid,
+					    PGLENGTH offset, PAGE_PTR pgptr, int length, const void *data,
+					    LOG_TDES * tdes, const LOG_LSA * undo_nxlsa);
 
 STATIC_INLINE void log_sysop_end_random_exit (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void log_sysop_end_begin (THREAD_ENTRY * thread_p, int *tran_index_out, LOG_TDES ** tdes_out)
@@ -2955,10 +2955,10 @@ log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DAT
  *              records are redo log records and thus, they are never undone.
  */
 void
-log_append_compensate (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, bool tde_encrypted, const VPID * vpid,
+log_append_compensate (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VPID * vpid,
 		       PGLENGTH offset, PAGE_PTR pgptr, int length, const void *data, LOG_TDES * tdes)
 {
-  log_append_compensate_internal (thread_p, rcvindex, tde_encrypted, vpid, offset, pgptr, length, data, tdes, NULL);
+  log_append_compensate_internal (thread_p, rcvindex, vpid, offset, pgptr, length, data, tdes, NULL);
 }
 
 /*
@@ -2981,14 +2981,13 @@ log_append_compensate (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, bool tde_
  *		     undoing b-tree operation).
  */
 void
-log_append_compensate_with_undo_nxlsa (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, bool tde_encrypted,
-				       const VPID * vpid, PGLENGTH offset, PAGE_PTR pgptr, int length, const void *data,
-				       LOG_TDES * tdes, const LOG_LSA * undo_nxlsa)
+log_append_compensate_with_undo_nxlsa (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VPID * vpid,
+				       PGLENGTH offset, PAGE_PTR pgptr, int length, const void *data, LOG_TDES * tdes,
+				       const LOG_LSA * undo_nxlsa)
 {
   assert (undo_nxlsa != NULL);
 
-  log_append_compensate_internal (thread_p, rcvindex, tde_encrypted, vpid, offset, pgptr, length, data, tdes,
-				  undo_nxlsa);
+  log_append_compensate_internal (thread_p, rcvindex, vpid, offset, pgptr, length, data, tdes, undo_nxlsa);
 }
 
 /*
@@ -3018,8 +3017,8 @@ log_append_compensate_with_undo_nxlsa (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcv
  *              records are redo log records and thus, they are never undone.
  */
 static void
-log_append_compensate_internal (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, bool tde_encrypted, const VPID * vpid,
-				PGLENGTH offset, PAGE_PTR pgptr, int length, const void *data, LOG_TDES * tdes,
+log_append_compensate_internal (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VPID * vpid, PGLENGTH offset,
+				PAGE_PTR pgptr, int length, const void *data, LOG_TDES * tdes,
 				const LOG_LSA * undo_nxlsa)
 {
   LOG_REC_COMPENSATE *compensate;	/* Compensate log record */
@@ -3067,12 +3066,22 @@ log_append_compensate_internal (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, 
     }
   compensate->length = length;
 
-  if (tde_encrypted)
+  if (LOG_MAY_CONTAIN_USER_DATA (rcvindex))
     {
-      if (prior_set_tde_encrypted (node, rcvindex) != NO_ERROR)
+      if (pgptr != NULL)
 	{
-	  assert (false);
-	  return;
+	  if (pgbuf_get_tde_algorithm (pgptr) != TDE_ALGORITHM_NONE)
+	    {
+	      if (prior_set_tde_encrypted (node, rcvindex) != NO_ERROR)
+		{
+		  assert (false);
+		  return;
+		}
+	    }
+	}
+      else
+	{
+	  /* going to assert in a upper level */
 	}
     }
 
@@ -7003,7 +7012,7 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward, LOG_PAGEID sta
  */
 static void
 log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p, LOG_RCVINDEX rcvindex,
-		     VPID * rcv_vpid, LOG_RCV * rcv, LOG_TDES * tdes, LOG_ZIP * log_unzip_ptr, bool tde_encrypted)
+		     VPID * rcv_vpid, LOG_RCV * rcv, LOG_TDES * tdes, LOG_ZIP * log_unzip_ptr)
 {
   char *area = NULL;
   TRAN_STATE save_state;	/* The current state of the transaction. Must be returned to this state */
@@ -7150,8 +7159,7 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
 	}
       else if (!RCV_IS_LOGICAL_LOG (rcv_vpid, rcvindex))
 	{
-	  log_append_compensate (thread_p, rcvindex, tde_encrypted, rcv_vpid, rcv->offset,
-				 rcv->pgptr, rcv->length, rcv->data, tdes);
+	  log_append_compensate (thread_p, rcvindex, rcv_vpid, rcv->offset, rcv->pgptr, rcv->length, rcv->data, tdes);
 	  /* Invoke Undo recovery function */
 	  rv_err = log_undo_rec_restartable (thread_p, rcvindex, rcv);
 	  if (rv_err != NO_ERROR)
@@ -7226,8 +7234,7 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
        * Unable to fetch page of volume... May need media recovery on such
        * page... write a CLR anyhow
        */
-      log_append_compensate (thread_p, rcvindex, tde_encrypted, rcv_vpid, rcv->offset, NULL,
-			     rcv->length, rcv->data, tdes);
+      log_append_compensate (thread_p, rcvindex, rcv_vpid, rcv->offset, NULL, rcv->length, rcv->data, tdes);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MAYNEED_MEDIA_RECOVERY, 1,
 	      fileio_get_volume_label (rcv_vpid->volid, PEEK));
       assert (false);
@@ -7342,7 +7349,6 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
   LOG_ZIP *log_unzip_ptr = NULL;
   int data_header_size = 0;
   bool is_mvcc_op = false;
-  bool is_tde_encrypted = false;
 
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
@@ -7433,8 +7439,6 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 	  LSA_COPY (&prev_tranlsa, &log_rec->prev_tranlsa);
 	  LSA_COPY (&tdes->undo_nxlsa, &prev_tranlsa);
 
-	  is_tde_encrypted = LOG_IS_RECHDR_TDE_ENCRYPTED (log_rec);
-
 	  switch (log_rec->type)
 	    {
 	    case LOG_MVCC_UNDOREDO_DATA:
@@ -7484,8 +7488,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 
 	      LOG_READ_ADD_ALIGN (thread_p, data_header_size, &log_lsa, log_pgptr);
 
-	      log_rollback_record (thread_p, &log_lsa, log_pgptr, rcvindex, &rcv_vpid, &rcv, tdes, log_unzip_ptr,
-				   is_tde_encrypted);
+	      log_rollback_record (thread_p, &log_lsa, log_pgptr, rcvindex, &rcv_vpid, &rcv, tdes, log_unzip_ptr);
 	      break;
 
 	    case LOG_MVCC_UNDO_DATA:
@@ -7523,8 +7526,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 
 	      LOG_READ_ADD_ALIGN (thread_p, data_header_size, &log_lsa, log_pgptr);
 
-	      log_rollback_record (thread_p, &log_lsa, log_pgptr, rcvindex, &rcv_vpid, &rcv, tdes, log_unzip_ptr,
-				   is_tde_encrypted);
+	      log_rollback_record (thread_p, &log_lsa, log_pgptr, rcvindex, &rcv_vpid, &rcv, tdes, log_unzip_ptr);
 	      break;
 
 	    case LOG_COMPENSATE:
@@ -7564,8 +7566,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 		  LSA_COPY (&tdes->undo_nxlsa, &sysop_end->lastparent_lsa);
 
 		  LOG_READ_ADD_ALIGN (thread_p, sizeof (*sysop_end), &log_lsa, log_pgptr);
-		  log_rollback_record (thread_p, &log_lsa, log_pgptr, rcvindex, &rcv_vpid, &rcv, tdes, log_unzip_ptr,
-				       is_tde_encrypted);
+		  log_rollback_record (thread_p, &log_lsa, log_pgptr, rcvindex, &rcv_vpid, &rcv, tdes, log_unzip_ptr);
 		}
 	      else if (sysop_end->type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
 		{
@@ -7581,8 +7582,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 		  LSA_COPY (&tdes->undo_nxlsa, &sysop_end->lastparent_lsa);
 
 		  LOG_READ_ADD_ALIGN (thread_p, sizeof (*sysop_end), &log_lsa, log_pgptr);
-		  log_rollback_record (thread_p, &log_lsa, log_pgptr, rcvindex, &rcv_vpid, &rcv, tdes, log_unzip_ptr,
-				       is_tde_encrypted);
+		  log_rollback_record (thread_p, &log_lsa, log_pgptr, rcvindex, &rcv_vpid, &rcv, tdes, log_unzip_ptr);
 		}
 	      else if (sysop_end->type == LOG_SYSOP_END_LOGICAL_COMPENSATE)
 		{
