@@ -514,15 +514,6 @@ cub_make_schema_file_name (const char *file_full_path, char *dest_path, size_t b
 
   name_tmp = strrchr (file_full_path, PATH_SEPARATOR);
 
-#if defined(WINDOWS)
-  {
-    const char *nn_tmp = strrchr (file_full_path, PATH_SEPARATOR);
-    if (name_tmp < nn_tmp)
-      {
-	name_tmp = nn_tmp;
-      }
-  }
-#endif /* WINDOWS */
   if (name_tmp == NULL)
     {
       name_tmp = file_full_path;
@@ -549,9 +540,6 @@ cub_make_schema_file_name (const char *file_full_path, char *dest_path, size_t b
       dest_path[0] = '\0';
       return retval;
     }
-#if defined(WINDOWS)
-  unix_style_path (dest_path);
-#endif
 
   retval = cub_create_dir_log (dest_path);
 
@@ -591,9 +579,7 @@ cub_make_ddl_log_filename (char *filename_buf, size_t buf_size, const char *app_
       assert (false);
       filename_buf[0] = '\0';
     }
-#if defined(WINDOWS)
-  unix_style_path (filename_buf);
-#endif
+
   return retval;
 }
 
