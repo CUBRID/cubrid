@@ -2682,9 +2682,9 @@ ddl_node_type_find_and_set (T_SRV_HANDLE * srv_handle)
   for (int i = 0; i < srv_handle->num_q_result; i++)
     {
       if (cub_is_ddl_type (srv_handle->q_result[i].stmt_type) == TRUE)
-        {
-          cub_ddl_log_stmt_type (srv_handle->q_result[i].stmt_type);
-          break;
-        }
+	{
+	  cub_ddl_log_stmt_type (srv_handle->q_result[i].stmt_type);
+	  break;
+	}
     }
 }

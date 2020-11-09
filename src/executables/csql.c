@@ -1908,7 +1908,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 		  do_abort_transaction = false;
 		}
 	      csql_Num_failures += 1;
-              cub_ddl_log_write_end ();
+	      cub_ddl_log_write_end ();
 	      continue;
 	    }
 	  else
@@ -1962,7 +1962,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 
 	      free_attr_spec (&attr_spec);
 	      jsp_send_destroy_request_all ();
-              cub_ddl_log_write_end ();
+	      cub_ddl_log_write_end ();
 	      continue;
 	    }
 	  goto error;
@@ -2077,7 +2077,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 		      do_abort_transaction = false;
 		    }
 		  csql_Num_failures += 1;
-                  cub_ddl_log_write_end ();
+		  cub_ddl_log_write_end ();
 		  continue;
 		}
 	      goto error;

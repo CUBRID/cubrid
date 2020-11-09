@@ -870,9 +870,9 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
     {
       statement = session->statements[0];
       if (statement != NULL)
-        {
-          cub_ddl_log_stmt_type (statement->node_type);
-        }
+	{
+	  cub_ddl_log_stmt_type (statement->node_type);
+	}
     }
 
   updatable_flag = flag & CCI_PREPARE_UPDATABLE;
@@ -2028,7 +2028,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
   net_buf_cp_int (net_buf, 0, NULL);	/* result code */
   net_buf_cp_int (net_buf, argc, &num_query_offset);	/* result msg. num_query */
 
-  cub_ddl_log_type (DDL_LOG_NO_ELAPSED_TIME);
+  cub_ddl_log_execute_type (DDL_LOG_RUN_EXECUTE_BATCH_FUNC);
 
   for (query_index = 0; query_index < argc; query_index++)
     {
@@ -2119,7 +2119,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
 	{
 	  db_commit_transaction ();
 	}
-      
+
       cub_ddl_log_write ();
       continue;
 

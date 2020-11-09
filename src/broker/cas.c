@@ -1264,7 +1264,7 @@ cas_main (void)
 	    req_info.need_rollback = TRUE;
 
 	    gettimeofday (&tran_start_time, NULL);
-            cub_ddl_log_start_time (&tran_start_time);
+	    cub_ddl_log_start_time (&tran_start_time);
 	    gettimeofday (&query_start_time, NULL);
 	    tran_timeout = 0;
 	    query_timeout = 0;
@@ -2113,15 +2113,15 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
       CON_STATUS_UNLOCK (as_info, CON_STATUS_LOCK_CAS);
     }
 
-    if (func_code == CAS_FC_PREPARE && err_info.err_number < 0)
-      {
-        cub_ddl_log_write_end ();
-      }
-    else if (func_code == CAS_FC_EXECUTE)
-      {
-        cub_ddl_log_write_end ();
-      }
-      
+  if (func_code == CAS_FC_PREPARE && err_info.err_number < 0)
+    {
+      cub_ddl_log_write_end ();
+    }
+  else if (func_code == CAS_FC_EXECUTE)
+    {
+      cub_ddl_log_write_end ();
+    }
+
   if ((func_code == CAS_FC_EXECUTE) || (func_code == CAS_FC_SCHEMA_INFO))
     {
       as_info->num_requests_received %= MAX_DIAG_DATA_VALUE;

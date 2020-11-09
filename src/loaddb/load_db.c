@@ -790,7 +790,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	  db_shutdown ();
 	  print_log_msg (1, " done.\n\nRestart loaddb with '-%c %s:%d' option\n", LOAD_INDEX_FILE_S,
 			 args.index_file.c_str (), index_file_start_line);
-          cub_ddl_log_write_end ();
+	  cub_ddl_log_write_end ();
 	  goto error_return;
 	}
 
@@ -812,7 +812,8 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       print_log_msg (1, "\nStart trigger loading.\n");
       cub_ddl_log_loaddb_file_type (LOADDB_FILE_TYPE_TRIGGER);
       cub_ddl_log_file_name (args.trigger_file.c_str ());
-      if (ldr_exec_query_from_file (args.trigger_file.c_str (), trigger_file, &trigger_file_start_line, &args) != NO_ERROR)
+      if (ldr_exec_query_from_file (args.trigger_file.c_str (), trigger_file, &trigger_file_start_line, &args) !=
+	  NO_ERROR)
 	{
 	  print_log_msg (1, "\nError occurred during trigger loading." "\nAborting current transaction...");
 	  msg_format = "Error occurred during trigger loading." "Aborting current transaction...\n";
@@ -822,7 +823,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	  db_shutdown ();
 	  print_log_msg (1, " done.\n\nRestart loaddb with '--%s %s:%d' option\n", LOAD_TRIGGER_FILE_L,
 			 args.trigger_file.c_str (), trigger_file_start_line);
-          cub_ddl_log_write_end ();
+	  cub_ddl_log_write_end ();
 	  goto error_return;
 	}
 
@@ -1015,7 +1016,7 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 		      print_log_msg (1, "ERROR: %s \n", db_error_string (3));
 		      assert (er_errid () != NO_ERROR);
 		      error = er_errid ();
-				cub_ddl_log_file_line (line);
+		      cub_ddl_log_file_line (line);
 		    }
 		}
 	      while (session_error);
@@ -1033,7 +1034,7 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 	{
 	  print_log_msg (1, "ERROR: %s\n", db_error_string (3));
 	  db_close_session (session);
-          cub_ddl_log_file_line (last_statement_line_no);
+	  cub_ddl_log_file_line (last_statement_line_no);
 	  break;
 	}
       executed_cnt++;
@@ -1042,7 +1043,7 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 	{
 	  print_log_msg (1, "ERROR: %s\n", db_error_string (3));
 	  db_close_session (session);
-          cub_ddl_log_file_line (last_statement_line_no);
+	  cub_ddl_log_file_line (last_statement_line_no);
 	  break;
 	}
 

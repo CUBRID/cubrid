@@ -82,7 +82,7 @@ struct t_ddl_audit_handle
   char msg[DDL_LOG_MSG];
   char file_name[PATH_MAX];
   char schema_file[PATH_MAX];
-  char log_type;
+  char execute_type;
   char loaddb_file_type;
   char log_filepath[PATH_MAX];
   int commit_count;
@@ -127,7 +127,7 @@ cub_ddl_log_init ()
   memset (ddl_audit_handle, 0x00, sizeof (T_DDL_AUDIT_HANDLE));
 
   ddl_audit_handle->stmt_type = -1;
-  ddl_audit_handle->log_type = DDL_LOG_ELAPSED_TIME;
+  ddl_audit_handle->execute_type = DDL_LOG_RUN_EXECUTE_FUNC;
   ddl_audit_handle->loaddb_file_type = LOADDB_FILE_TYPE_NONE;
 }
 
@@ -146,7 +146,7 @@ cub_ddl_log_free ()
   memset (ddl_audit_handle, 0x00, sizeof (T_DDL_AUDIT_HANDLE));
 
   ddl_audit_handle->stmt_type = -1;
-  ddl_audit_handle->log_type = DDL_LOG_ELAPSED_TIME;
+  ddl_audit_handle->execute_type = DDL_LOG_RUN_EXECUTE_FUNC;
   ddl_audit_handle->loaddb_file_type = LOADDB_FILE_TYPE_NONE;
 }
 
@@ -350,13 +350,13 @@ cub_ddl_log_start_time (struct timeval *time_val)
     {
       struct timeval time;
       gettimeofday (&time, NULL);
-      memcpy (&ddl_audit_handle->exec_begin_time, &time, sizeof(struct timeval));
+      memcpy (&ddl_audit_handle->exec_begin_time, &time, sizeof (struct timeval));
     }
-  else 
+  else
     {
-      memcpy (&ddl_audit_handle->exec_begin_time, time_val, sizeof(struct timeval));
+      memcpy (&ddl_audit_handle->exec_begin_time, time_val, sizeof (struct timeval));
     }
-  
+
   ddl_audit_handle->execute_start_time[0] = '\0';
   cub_get_time_string (ddl_audit_handle->execute_start_time, time_val);
 }
@@ -387,17 +387,17 @@ cub_ddl_log_msg (const char *fmt, ...)
 }
 
 void
-cub_ddl_log_type (char type)
+cub_ddl_log_execute_type (char exe_type)
 {
   if (ddl_audit_handle == NULL)
     {
       return;
     }
 
-  ddl_audit_handle->log_type = type;
+  ddl_audit_handle->execute_type = exe_type;
 }
 
-void 
+void
 cub_ddl_log_commit_count (int count)
 {
   if (ddl_audit_handle == NULL)
@@ -642,8 +642,7 @@ cub_ddl_log_write_end ()
 	  goto ddl_log_free;
 	}
     }
-
-  if (ddl_audit_handle->log_type & DDL_LOG_ELAPSED_TIME)
+  if (ddl_audit_handle->execute_type & DDL_LOG_RUN_EXECUTE_FUNC)
     {
       cub_ddl_log_write ();
     }
@@ -754,10 +753,9 @@ cub_create_log_mgs (char *msg)
     {
       if (ddl_audit_handle->err_code < 0)
 	{
-          snprintf (result, sizeof (result), "ERROR:%d", ddl_audit_handle->err_code);
-          snprintf (ddl_audit_handle->msg , DDL_LOG_MSG, "Commited count %8d, Error line %d", 
-                    ddl_audit_handle->commit_count,
-                    ddl_audit_handle->file_line_number);
+	  snprintf (result, sizeof (result), "ERROR:%d", ddl_audit_handle->err_code);
+	  snprintf (ddl_audit_handle->msg, DDL_LOG_MSG, "Commited count %8d, Error line %d",
+		    ddl_audit_handle->commit_count, ddl_audit_handle->file_line_number);
 	}
       else
 	{
@@ -766,9 +764,8 @@ cub_create_log_mgs (char *msg)
 
       retval = snprintf (msg, DDL_LOG_BUFFER_SIZE, "%s %d|%s|%s|%s|%s\n",
 			 ddl_audit_handle->execute_start_time,
-			 ddl_audit_handle->pid, ddl_audit_handle->user_name, result, ddl_audit_handle->msg, ddl_audit_handle->schema_file
-			 
-	);
+			 ddl_audit_handle->pid, ddl_audit_handle->user_name, result, ddl_audit_handle->msg,
+			 ddl_audit_handle->schema_file);
     }
   else if (ddl_audit_handle->app_name == APP_NAME_CSQL)
     {
@@ -800,7 +797,7 @@ cub_create_log_mgs (char *msg)
 	}
 
 
-      if (ddl_audit_handle->log_type & DDL_LOG_NO_ELAPSED_TIME)
+      if (ddl_audit_handle->execute_type & DDL_LOG_RUN_EXECUTE_BATCH_FUNC)
 	{
 	  snprintf (ddl_audit_handle->elapsed_time, sizeof (ddl_audit_handle->elapsed_time), "elapsed time 0.000");
 	}

@@ -30,8 +30,8 @@
 
 #include "cas_handle.h"
 
-#define DDL_LOG_ELAPSED_TIME            0x01
-#define DDL_LOG_NO_ELAPSED_TIME         0x02
+#define DDL_LOG_RUN_EXECUTE_FUNC              0x01
+#define DDL_LOG_RUN_EXECUTE_BATCH_FUNC        0x02
 
 #define LOADDB_FILE_TYPE_NONE           (0)
 #define LOADDB_FILE_TYPE_INPUT          (1)
@@ -66,7 +66,7 @@ extern void cub_ddl_log_err_msg (char *msg);
 extern void cub_ddl_log_err_code (int err_number);
 extern void cub_ddl_log_start_time (struct timeval *time_val);
 extern void cub_ddl_log_msg (const char *fmt, ...);
-extern void cub_ddl_log_type (char type);
+extern void cub_ddl_log_execute_type (char type);
 extern void cub_ddl_log_commit_count (int count);
 extern void cub_ddl_log_execute_result (T_SRV_HANDLE * srv_handle);
 extern void cub_ddl_log_write ();
