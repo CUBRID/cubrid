@@ -9406,7 +9406,6 @@ file_tempcache_cache_or_drop_entries (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_EN
 {
   FILE_TEMPCACHE_ENTRY *temp_file;
   FILE_TEMPCACHE_ENTRY *next = NULL;
-  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
 
   for (temp_file = *entries; temp_file != NULL; temp_file = next)
     {
