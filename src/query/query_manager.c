@@ -1151,11 +1151,12 @@ qmgr_process_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl_tree, char *xasl_s
 	{
 	  goto exit_on_error;
 	}
-      query_p->includes_tde_class = xasl_p->includes_tde_class;
-#if !defined(NDEBUG)
-      er_log_debug (ARG_FILE_LINE, "TDE: qmgr_process_query(): includes_tde_class = %d\n", query_p->includes_tde_class);
-#endif /* !NDEBUG */
     }
+
+  query_p->includes_tde_class = xasl_p->includes_tde_class;
+#if !defined(NDEBUG)
+  er_log_debug (ARG_FILE_LINE, "TDE: qmgr_process_query(): includes_tde_class = %d\n", query_p->includes_tde_class);
+#endif /* !NDEBUG */
 
   if (flag & RETURN_GENERATED_KEYS)
     {
@@ -1428,7 +1429,6 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
   query_p->list_ent = list_cache_entry_p;	/* for qfile_end_use_of_list_cache_entry() */
   query_p->query_status = QUERY_IN_PROGRESS;
   query_p->query_flag = *flag_p;
-  query_p->includes_tde_class = xclone.xasl->includes_tde_class;
   if (*flag_p & RESULT_HOLDABLE)
     {
       query_p->is_holdable = true;
@@ -1437,10 +1437,6 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
     {
       query_p->is_holdable = false;
     }
-
-#if !defined(NDEBUG)
-  er_log_debug (ARG_FILE_LINE, "TDE: xqmgr_execute_query(): includes_tde_class = %d\n", query_p->includes_tde_class);
-#endif /* !NDEBUG */
 
   /* add the entry to the query table */
   qmgr_add_query_entry (thread_p, query_p, tran_index);
