@@ -1107,7 +1107,6 @@ la_log_fetch (LOG_PAGEID pageid, LA_CACHE_BUFFER * cache_buffer)
 	  error =
 	    la_log_io_read (la_Info.act_log.path, la_Info.act_log.log_vdes, &cache_buffer->logpage, phy_pageid,
 			    la_Info.act_log.db_logpagesize);
-
 	  if (error != NO_ERROR)
 	    {
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LOG_READ, 3, pageid, phy_pageid, la_Info.act_log.path);

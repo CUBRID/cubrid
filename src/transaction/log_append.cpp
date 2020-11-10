@@ -421,7 +421,7 @@ prior_lsa_alloc_and_copy_crumbs (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, L
 
   node->log_header.type = rec_type;
 
-  node->tde_encrypted = 0;
+  node->tde_encrypted = false;
 
   node->data_header_length = 0;
   node->data_header = NULL;
