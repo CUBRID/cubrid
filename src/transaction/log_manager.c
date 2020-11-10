@@ -2955,8 +2955,8 @@ log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DAT
  *              records are redo log records and thus, they are never undone.
  */
 void
-log_append_compensate (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VPID * vpid,
-		       PGLENGTH offset, PAGE_PTR pgptr, int length, const void *data, LOG_TDES * tdes)
+log_append_compensate (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VPID * vpid, PGLENGTH offset,
+		       PAGE_PTR pgptr, int length, const void *data, LOG_TDES * tdes)
 {
   log_append_compensate_internal (thread_p, rcvindex, vpid, offset, pgptr, length, data, tdes, NULL);
 }
@@ -7307,9 +7307,9 @@ log_dump_record_header_to_string (LOG_RECORD_HEADER * log, char *buf, size_t len
 {
   const char *fmt = "TYPE[%d], TRID[%d], PREV[%lld,%d], BACK[%lld,%d], FORW[%lld,%d]";
 
-  snprintf (buf, len, fmt, log->type, log->trid, (long long int) log->prev_tranlsa.pageid,
-	    log->prev_tranlsa.offset, (long long int) log->back_lsa.pageid, log->back_lsa.offset,
-	    (long long int) log->forw_lsa.pageid, log->forw_lsa.offset);
+  snprintf (buf, len, fmt, log->type, log->trid, (long long int) log->prev_tranlsa.pageid, log->prev_tranlsa.offset,
+	    (long long int) log->back_lsa.pageid, log->back_lsa.offset, (long long int) log->forw_lsa.pageid,
+	    log->forw_lsa.offset);
 }
 
 /*
@@ -7343,7 +7343,6 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
   LOG_RCV rcv;			/* Recovery structure */
   VPID rcv_vpid;		/* VPID of data to recover */
   LOG_RCVINDEX rcvindex;	/* Recovery index */
-
   bool isdone;
   int old_wait_msecs = 0;	/* Old transaction lock wait */
   LOG_ZIP *log_unzip_ptr = NULL;

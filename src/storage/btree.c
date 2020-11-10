@@ -32382,7 +32382,6 @@ btree_key_remove_delete_mvccid_non_unique (THREAD_ENTRY * thread_p, BTID_INT * b
   /* Add logging. */
   prev_lsa = *pgbuf_get_lsa (page);
   BTREE_RV_GET_DATA_LENGTH (delete_helper->rv_redo_data_ptr, delete_helper->rv_redo_data, rv_redo_data_length);
-
   log_append_compensate_with_undo_nxlsa (thread_p, RVBT_RECORD_MODIFY_COMPENSATE, pgbuf_get_vpid_ptr (page),
 					 addr.offset, page, rv_redo_data_length, delete_helper->rv_redo_data,
 					 LOG_FIND_CURRENT_TDES (thread_p), &delete_helper->reference_lsa);
@@ -34994,8 +34993,8 @@ btree_rv_log_insert_object (THREAD_ENTRY * thread_p, const BTREE_INSERT_HELPER &
 	case BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE:
 	case BTREE_OP_ONLINE_INDEX_UNDO_TRAN_DELETE:
 	  log_append_compensate_with_undo_nxlsa (thread_p, RVBT_RECORD_MODIFY_COMPENSATE,
-						 pgbuf_get_vpid_ptr (addr.pgptr), addr.offset, addr.pgptr, redo_length,
-						 redo_data, LOG_FIND_CURRENT_TDES (thread_p),
+						 pgbuf_get_vpid_ptr (addr.pgptr), addr.offset, addr.pgptr,
+						 redo_length, redo_data, LOG_FIND_CURRENT_TDES (thread_p),
 						 &insert_helper.compensate_undo_nxlsa);
 	  break;
 	default:
