@@ -295,7 +295,7 @@ typedef enum
 } SM_CLASS_TYPE;
 
 /*
- *    Flags for misc information about a class. These must be defined
+ *    Flags for misc information about a class.  These must be defined
  *    as powers of two because they are stored packed in a single integer.
  */
 typedef enum
