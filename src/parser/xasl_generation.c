@@ -22551,7 +22551,7 @@ parser_generate_do_stmt_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
   xasl->class_oid_list = NULL;
   xasl->class_locks = NULL;
   xasl->tcard_list = NULL;
-  xasl->includes_tde_class = 0;
+  xasl->includes_tde_class = xasl->aptr_list->includes_tde_class;
   xasl->dbval_cnt = parser->dbval_cnt;
   xasl->query_alias = node->alias_print;
   XASL_SET_FLAG (xasl, XASL_TOP_MOST_XASL);
