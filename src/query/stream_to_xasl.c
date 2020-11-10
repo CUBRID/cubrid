@@ -237,7 +237,6 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, xasl_node ** xasl_tree, bool us
 
   /* restore header data of new XASL format */
   p = or_unpack_int (p, &xasl->dbval_cnt);
-  or_unpack_int (p, &xasl->includes_tde_class);
   OID_SET_NULL (&xasl->creator_oid);
   xasl->n_oid_list = 0;
   xasl->class_oid_list = NULL;

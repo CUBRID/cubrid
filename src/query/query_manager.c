@@ -942,7 +942,6 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, xasl_st
   int i;
   OID creator_oid, *class_oid_list_p = NULL;
   int n_oid_list, *tcard_list_p = NULL;
-  int includes_tde_class = 0;
   int *class_locks = NULL;
   int dbval_cnt;
   int error_code = NO_ERROR;
@@ -1013,7 +1012,6 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, xasl_st
   /* get some information from the XASL stream */
   p = or_unpack_int ((char *) stream->buffer, &header_size);
   p = or_unpack_int (p, &dbval_cnt);
-  p = or_unpack_int (p, &includes_tde_class);
   p = or_unpack_oid (p, &creator_oid);
   p = or_unpack_int (p, &n_oid_list);
 
@@ -1153,10 +1151,11 @@ qmgr_process_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl_tree, char *xasl_s
 	}
     }
 
-  query_p->includes_tde_class = xasl_p->includes_tde_class;
+  query_p->includes_tde_class = (XASL_IS_FLAGED (xasl_p, XASL_INCLUDES_TDE_CLASS) ? 1 : 0);
 #if !defined(NDEBUG)
   er_log_debug (ARG_FILE_LINE, "TDE: qmgr_process_query(): includes_tde_class = %d\n", query_p->includes_tde_class);
 #endif /* !NDEBUG */
+
 
   if (flag & RETURN_GENERATED_KEYS)
     {

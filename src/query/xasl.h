@@ -492,6 +492,7 @@ struct cte_proc_node
 #define XASL_RETURN_GENERATED_KEYS    0x2000	/* return generated keys */
 #define XASL_NO_FIXED_SCAN	      0x4000	/* disable fixed scan for this proc */
 #define XASL_NEED_SINGLE_TUPLE_SCAN   0x8000	/* for exists operation */
+#define XASL_INCLUDES_TDE_CLASS              0x10000	/* is any tde class related */
 
 #define XASL_IS_FLAGED(x, f)        (((x)->flag & (int) (f)) != 0)
 #define XASL_SET_FLAG(x, f)         (x)->flag |= (int) (f)
@@ -1034,7 +1035,6 @@ struct xasl_node
   OID *class_oid_list;		/* list of class/serial OIDs referenced in the XASL */
   int *class_locks;		/* list of locks for class_oid_list. */
   int *tcard_list;		/* list of #pages of the class OIDs */
-  int includes_tde_class;	/* whether there is a tde class in class_oid_list */
   const char *query_alias;
   int dbval_cnt;		/* number of host variables in this XASL */
   bool iscan_oid_order;
