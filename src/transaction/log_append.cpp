@@ -1564,6 +1564,12 @@ prior_set_tde_encrypted (log_prior_node *node, LOG_RCVINDEX recvindex)
   return NO_ERROR;
 }
 
+bool
+prior_is_tde_encrypted (const log_prior_node *node)
+{
+  return node->tde_encrypted;
+}
+
 /*
  * prior_lsa_start_append:
  *

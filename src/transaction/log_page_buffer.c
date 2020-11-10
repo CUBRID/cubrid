@@ -2950,7 +2950,7 @@ logpb_append_next_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node)
 	     sizeof (LOG_RECORD_HEADER) + node->data_header_length + node->ulength + node->rlength);
 
   /* to tde-encrypt pages which is being created while appending */
-  log_Gl.append.appending_page_tde_encrypted = node->tde_encrypted;
+  log_Gl.append.appending_page_tde_encrypted = prior_is_tde_encrypted (node);
 
   logpb_start_append (thread_p, &node->log_header);
 

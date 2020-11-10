@@ -158,6 +158,7 @@ LOG_PRIOR_NODE *prior_lsa_alloc_and_copy_crumbs (THREAD_ENTRY *thread_p, LOG_REC
 LOG_LSA prior_lsa_next_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, log_tdes *tdes);
 LOG_LSA prior_lsa_next_record_with_lock (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, log_tdes *tdes);
 int prior_set_tde_encrypted (log_prior_node *node, LOG_RCVINDEX recvindex);
+bool prior_is_tde_encrypted (const log_prior_node *node);
 void log_append_init_zip ();
 void log_append_final_zip ();
 
