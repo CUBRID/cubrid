@@ -2949,6 +2949,9 @@ logpb_append_next_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node)
 	     log_Gl.hdr.append_lsa.offset,
 	     sizeof (LOG_RECORD_HEADER) + node->data_header_length + node->ulength + node->rlength);
 
+  /* to tde-encrypt pages which is being created while appending */
+  log_Gl.append.appending_page_tde_encrypted = node->tde_encrypted;
+
   logpb_start_append (thread_p, &node->log_header);
 
   if (node->data_header != NULL)
@@ -2968,6 +2971,8 @@ logpb_append_next_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node)
     }
 
   logpb_end_append (thread_p, &node->log_header);
+
+  log_Gl.append.appending_page_tde_encrypted = false;
 
   return NO_ERROR;
 }
@@ -3394,7 +3399,6 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
       LSA_COPY (&eof.back_lsa, &log_Gl.append.prev_lsa);
       LSA_SET_NULL (&eof.forw_lsa);
       eof.type = LOG_END_OF_LOG;
-      eof.flags = 0;
 
       logpb_start_append (thread_p, &eof);
     }
@@ -4154,9 +4158,6 @@ logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
   /* Record number of append log record in statistics */
   perfmon_inc_stat (thread_p, PSTAT_LOG_NUM_APPENDRECS);
 
-  /* to tde-encrypt pages which is being creating while appending */
-  log_Gl.append.appending_page_tde_encrypted = LOG_IS_RECHDR_TDE_ENCRYPTED (header);
-
   /* Does the new log record fit in this page ? */
   LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (LOG_RECORD_HEADER));
 
@@ -4167,7 +4168,7 @@ logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
 
   assert (log_Gl.append.log_pgptr != NULL);
 
-  if (LOG_IS_RECHDR_TDE_ENCRYPTED (header))
+  if (log_Gl.append.appending_page_tde_encrypted)
     {
       if (!LOG_IS_PAGE_TDE_ENCRYPTED (log_Gl.append.log_pgptr))
 	{
@@ -4406,8 +4407,6 @@ logpb_end_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
 
   LOG_APPEND_ALIGN (thread_p, LOG_DONT_SET_DIRTY);
   LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (LOG_RECORD_HEADER));
-
-  log_Gl.append.appending_page_tde_encrypted = false;
 
   /*
    * Find the log_rec portion of the append record, it may not be in the

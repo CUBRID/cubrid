@@ -285,7 +285,8 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, LOG
     }
 
   node->log_header.type = rec_type;
-  node->log_header.flags = 0;
+
+  node->tde_encrypted = false;
 
   node->data_header = NULL;
   node->ulength = 0;
@@ -419,7 +420,8 @@ prior_lsa_alloc_and_copy_crumbs (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, L
     }
 
   node->log_header.type = rec_type;
-  node->log_header.flags = 0;
+
+  node->tde_encrypted = 0;
 
   node->data_header_length = 0;
   node->data_header = NULL;
@@ -1557,7 +1559,8 @@ prior_set_tde_encrypted (log_prior_node *node, LOG_RCVINDEX recvindex)
   er_log_debug (ARG_FILE_LINE, "TDE: prior_set_tde_encrypted(): rcvindex = %s\n", rv_rcvindex_string (recvindex));
 #endif /* !NDEBUG */
 
-  node->log_header.flags |= LOG_RECHDR_FLAG_TDE_ENCRYPTED;
+  node->tde_encrypted = true;
+
   return NO_ERROR;
 }
 

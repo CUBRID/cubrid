@@ -93,6 +93,8 @@ struct log_prior_node
   LOG_RECORD_HEADER log_header;
   LOG_LSA start_lsa;		/* for assertion */
 
+  bool tde_encrypted;   /* whether the log page which'll contain this node has to be encrypted */
+
   /* data header info */
   int data_header_length;
   char *data_header;
