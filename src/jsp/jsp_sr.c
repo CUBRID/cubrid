@@ -303,7 +303,7 @@ delay_load_hook (unsigned dliNotify, PDelayLoadInfo pdli)
 	  }
 	else
 	  {
-	    err_msgs.append ("\n\tFailed to get 'JVM_PATH' environment variable.");
+	    err_msgs.append ("\n\tFailed to get 'JVM_PATH' environment variable");
 	  }
 
 	tail = JVM_LIB_PATH_JDK;
@@ -322,7 +322,7 @@ delay_load_hook (unsigned dliNotify, PDelayLoadInfo pdli)
 
 	if (java_home)
 	  {
-	    err_msgs.append ("\n\tFailed to load libjvm from 'JAVA_HOME' envirnment variable: ");
+	    err_msgs.append ("\n\tFailed to load libjvm from 'JAVA_HOME' environment variable: ");
 
 	    char jvm_lib_path[BUF_SIZE];
 	    sprintf (jvm_lib_path, "%s\\%s\\jvm.dll", java_home, tail);
@@ -352,7 +352,7 @@ delay_load_hook (unsigned dliNotify, PDelayLoadInfo pdli)
 	  }
 	else
 	  {
-	    err_msgs.append ("\n\tFailed to get 'JAVA_HOME' environment variable.");
+	    err_msgs.append ("\n\tFailed to get 'JAVA_HOME' environment variable");
 	  }
 
 	if (tmp)
@@ -418,21 +418,21 @@ jsp_get_create_java_vm_function_ptr ()
 	}
       else
 	{
-	  err_msgs.append ("\n\tFailed to load libjvm from 'JVM_PATH' envirnment variable: ");
+	  err_msgs.append ("\n\tFailed to load libjvm from 'JVM_PATH' environment variable: ");
 	  err_msgs.append ("\n\t\t");
 	  err_msgs.append (dlerror ());
 	}
     }
   else
     {
-      err_msgs.append ("\n\tFailed to get 'JVM_PATH' environment variable.");
+      err_msgs.append ("\n\tFailed to get 'JVM_PATH' environment variable");
     }
 
   char *java_home = getenv ("JAVA_HOME");
   if (java_home != NULL)
     {
       char jvm_library_path[PATH_MAX];
-      err_msgs.append ("\n\tFailed to load libjvm from 'JAVA_HOME' envirnment variable: ");
+      err_msgs.append ("\n\tFailed to load libjvm from 'JAVA_HOME' environment variable: ");
 
       // under jdk 11
       snprintf (jvm_library_path, PATH_MAX - 1, "%s/%s/%s", java_home, JVM_LIB_PATH, JVM_LIB_FILE);
@@ -462,7 +462,7 @@ jsp_get_create_java_vm_function_ptr ()
     }
   else
     {
-      err_msgs.append ("\n\tFailed to get 'JAVA_HOME' environment variable.");
+      err_msgs.append ("\n\tFailed to get 'JAVA_HOME' environment variable");
     }
 
   return NULL;
