@@ -4451,6 +4451,7 @@ log_append_sysop_end (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_EN
 
       if (LOG_MAY_CONTAIN_USER_DATA (rcvindex))
 	{
+	  /* Some cases of logical undo */
 	  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
 
 	  assert (sysop_end->vfid != NULL);
