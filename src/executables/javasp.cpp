@@ -184,7 +184,7 @@ main (int argc, char *argv[])
 	  {
 	    fprintf (stdout, "%s", buffer);
 	  }
-        else
+	else
 	  {
 	    fprintf (stdout, "NO_CONNECTION");
 	  }

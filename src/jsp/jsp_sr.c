@@ -177,8 +177,9 @@ typedef jint (*CREATE_VM_FUNC) (JavaVM **, void **, void *);
 
 static JavaVM *jvm = NULL;
 static jint sp_port = -1;
-static std::string database_name;
+// *INDENT-OFF*
 static std::string err_msgs;
+// *INDENT-ON*
 
 #if defined(WINDOWS)
 int get_java_root_path (char *path);
@@ -289,9 +290,9 @@ delay_load_hook (unsigned dliNotify, PDelayLoadInfo pdli)
 
 	if (jvm_path)
 	  {
-      err_msgs.append ("\n\tFailed to load libjvm from 'JVM_PATH' envirnment variable: ");
-      err_msgs.append ("\n\t\t");
-      err_msgs.append (jvm_path);
+	    err_msgs.append ("\n\tFailed to load libjvm from 'JVM_PATH' envirnment variable: ");
+	    err_msgs.append ("\n\t\t");
+	    err_msgs.append (jvm_path);
 
 	    libVM = LoadLibrary (jvm_path);
 	    if (libVM)
@@ -300,10 +301,10 @@ delay_load_hook (unsigned dliNotify, PDelayLoadInfo pdli)
 		return fp;
 	      }
 	  }
-  else
-    {
-      err_msgs.append ("\n\tFailed to get 'JVM_PATH' environment variable.");
-    }
+	else
+	  {
+	    err_msgs.append ("\n\tFailed to get 'JVM_PATH' environment variable.");
+	  }
 
 	tail = JVM_LIB_PATH_JDK;
 	if (java_home == NULL)
@@ -321,13 +322,13 @@ delay_load_hook (unsigned dliNotify, PDelayLoadInfo pdli)
 
 	if (java_home)
 	  {
-      err_msgs.append ("\n\tFailed to load libjvm from 'JAVA_HOME' envirnment variable: ");
+	    err_msgs.append ("\n\tFailed to load libjvm from 'JAVA_HOME' envirnment variable: ");
 
 	    char jvm_lib_path[BUF_SIZE];
 	    sprintf (jvm_lib_path, "%s\\%s\\jvm.dll", java_home, tail);
 
-      err_msgs.append ("\n\t\t");
-      err_msgs.append (jvm_lib_path);
+	    err_msgs.append ("\n\t\t");
+	    err_msgs.append (jvm_lib_path);
 
 	    libVM = LoadLibrary (jvm_lib_path);
 
@@ -339,20 +340,20 @@ delay_load_hook (unsigned dliNotify, PDelayLoadInfo pdli)
 	      {
 		tail = JVM_LIB_PATH_JDK11;
 
-    memset (jvm_lib_path, BUF_SIZE, 0);
+		memset (jvm_lib_path, BUF_SIZE, 0);
 		sprintf (jvm_lib_path, "%s\\%s\\jvm.dll", java_home, tail);
 
-    err_msgs.append ("\n\t\t");
-    err_msgs.append (jvm_lib_path);
+		err_msgs.append ("\n\t\t");
+		err_msgs.append (jvm_lib_path);
 
 		libVM = LoadLibrary (jvm_lib_path);
 		fp = (FARPROC) (HMODULE) libVM;
 	      }
 	  }
-  else
-    {
-      err_msgs.append ("\n\tFailed to get 'JAVA_HOME' environment variable.");
-    }
+	else
+	  {
+	    err_msgs.append ("\n\tFailed to get 'JAVA_HOME' environment variable.");
+	  }
 
 	if (tmp)
 	  {
@@ -417,8 +418,8 @@ jsp_get_create_java_vm_function_ptr ()
 	}
       else
 	{
-    err_msgs.append ("\n\tFailed to load libjvm from 'JVM_PATH' envirnment variable: ");
-    err_msgs.append ("\n\t\t");
+	  err_msgs.append ("\n\tFailed to load libjvm from 'JVM_PATH' envirnment variable: ");
+	  err_msgs.append ("\n\t\t");
 	  err_msgs.append (dlerror ());
 	}
     }
@@ -432,7 +433,7 @@ jsp_get_create_java_vm_function_ptr ()
     {
       char jvm_library_path[PATH_MAX];
       err_msgs.append ("\n\tFailed to load libjvm from 'JAVA_HOME' envirnment variable: ");
-      
+
       // under jdk 11
       snprintf (jvm_library_path, PATH_MAX - 1, "%s/%s/%s", java_home, JVM_LIB_PATH, JVM_LIB_FILE);
       libVM_p = dlopen (jvm_library_path, RTLD_NOW | RTLD_LOCAL);
@@ -442,7 +443,7 @@ jsp_get_create_java_vm_function_ptr ()
 	}
       else
 	{
-    err_msgs.append ("\n\t\t");
+	  err_msgs.append ("\n\t\t");
 	  err_msgs.append (dlerror ());
 	}
 
@@ -455,7 +456,7 @@ jsp_get_create_java_vm_function_ptr ()
 	}
       else
 	{
-    err_msgs.append ("\n\t\t");
+	  err_msgs.append ("\n\t\t");
 	  err_msgs.append (dlerror ());
 	}
     }
@@ -563,7 +564,6 @@ jsp_start_server (const char *db_name, const char *path, int port)
 	return ER_SP_ALREADY_EXIST;	/* already created */
       }
 
-    database_name.assign (db_name);
     envroot = envvar_root ();
 
     snprintf (classpath, sizeof (classpath) - 1, "-Djava.class.path=%s",
@@ -756,7 +756,9 @@ jsp_server_port (void)
   return sp_port;
 #else
   // check $CUBRID/var/javasp_<db_name>.info
-  JAVASP_SERVER_INFO jsp_info = { -1, -1 };
+// *INDENT-OFF*
+  JAVASP_SERVER_INFO jsp_info {-1, -1};
+// *INDENT-ON*
   javasp_read_info (boot_db_name (), jsp_info);
   return jsp_info.port;
 #endif

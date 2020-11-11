@@ -164,6 +164,8 @@ javasp_write_info (const char *db_name, JAVASP_SERVER_INFO info)
 bool
 javasp_reset_info (const char *db_name)
 {
+// *INDENT-OFF*
   JAVASP_SERVER_INFO reset_info {-1, -1};
+// *INDENT-ON*
   return javasp_write_info (db_name, reset_info);
 }
