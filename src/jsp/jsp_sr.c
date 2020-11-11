@@ -379,75 +379,65 @@ delay_load_dll_exception_filter (PEXCEPTION_POINTERS pep)
 static void *
 jsp_get_create_java_vm_function_ptr (void)
 {
-  char *java_home = NULL, *jvm_path = NULL;
-  void *libVM_p;
-  char jvm_library_path[PATH_MAX];
+  void *libVM_p = NULL;
   std::string err_msgs;
 
-  libVM_p = dlopen (JVM_LIB_FILE, RTLD_NOW | RTLD_LOCAL);
-  if (libVM_p == NULL)
+  char *jvm_path = getenv ("JVM_PATH");
+  if (jvm_path != NULL)
     {
-      err_msgs.append (dlerror ());
-      err_msgs.append ("\n");
-
-      jvm_path = getenv ("JVM_PATH");
-      java_home = getenv ("JAVA_HOME");
-
-      if (jvm_path == NULL && java_home == NULL)
+      libVM_p = dlopen (jvm_path, RTLD_NOW | RTLD_LOCAL);
+      if (libVM_p != NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_JVM_LIB_NOT_FOUND, 1,
-		  "Failed to find both 'JVM_PATH' and 'JAVA_HOME' environment variable");
-	  return NULL;
+	  return dlsym (libVM_p, "JNI_CreateJavaVM");
 	}
-
-      if (jvm_path != NULL)
+      else
 	{
-	  libVM_p = dlopen (jvm_path, RTLD_NOW | RTLD_LOCAL);
-	  if (libVM_p != NULL)
-	    {
-	      return dlsym (libVM_p, "JNI_CreateJavaVM");
-	    }
-	  else
-	    {
-	      err_msgs.append ("$JVM_PATH/");
-	      err_msgs.append (dlerror ());
-	      err_msgs.append ("\n");
-	    }
-	}
-
-      if (java_home != NULL)
-	{
-	  // under jdk 11
-	  snprintf (jvm_library_path, PATH_MAX - 1, "%s/%s/%s", java_home, JVM_LIB_PATH, JVM_LIB_FILE);
-	  libVM_p = dlopen (jvm_library_path, RTLD_NOW | RTLD_LOCAL);
-	  if (libVM_p != NULL)
-	    {
-	      return dlsym (libVM_p, "JNI_CreateJavaVM");
-	    }
-	  else
-	    {
-	      err_msgs.append ("$JAVA_HOME/");
-	      err_msgs.append (dlerror ());
-	      err_msgs.append ("\n");
-	    }
-
-	  snprintf (jvm_library_path, PATH_MAX - 1, "%s/%s/%s", java_home, JVM_LIB_PATH_JDK11, JVM_LIB_FILE);
-	  libVM_p = dlopen (jvm_library_path, RTLD_NOW | RTLD_LOCAL);
-	  if (libVM_p != NULL)
-	    {
-	      return dlsym (libVM_p, "JNI_CreateJavaVM");
-	    }
-	  else
-	    {
-	      err_msgs.append ("$JAVA_HOME/");
-	      err_msgs.append (dlerror ());
-	      err_msgs.append ("\n");
-	    }
+	  err_msgs.append ("$JVM_PATH/");
+	  err_msgs.append (dlerror ());
+	  err_msgs.append ("\n");
 	}
     }
   else
     {
-      return dlsym (libVM_p, "JNI_CreateJavaVM");
+      err_msgs.append ("Failed to find 'JVM_PATH' environment variable\n");
+    }
+
+  char *java_home = getenv ("JAVA_HOME");
+  if (java_home != NULL)
+    {
+      char jvm_library_path[PATH_MAX];
+
+      // under jdk 11
+      snprintf (jvm_library_path, PATH_MAX - 1, "%s/%s/%s", java_home, JVM_LIB_PATH, JVM_LIB_FILE);
+      libVM_p = dlopen (jvm_library_path, RTLD_NOW | RTLD_LOCAL);
+      if (libVM_p != NULL)
+	{
+	  return dlsym (libVM_p, "JNI_CreateJavaVM");
+	}
+      else
+	{
+	  err_msgs.append ("$JAVA_HOME/");
+	  err_msgs.append (dlerror ());
+	  err_msgs.append ("\n");
+	}
+
+      // from jdk 11
+      snprintf (jvm_library_path, PATH_MAX - 1, "%s/%s/%s", java_home, JVM_LIB_PATH_JDK11, JVM_LIB_FILE);
+      libVM_p = dlopen (jvm_library_path, RTLD_NOW | RTLD_LOCAL);
+      if (libVM_p != NULL)
+	{
+	  return dlsym (libVM_p, "JNI_CreateJavaVM");
+	}
+      else
+	{
+	  err_msgs.append ("$JAVA_HOME/");
+	  err_msgs.append (dlerror ());
+	  err_msgs.append ("\n");
+	}
+    }
+  else
+    {
+      err_msgs.append ("Failed to find 'JAVA_HOME' environment variable\n");
     }
 
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_JVM_LIB_NOT_FOUND, 1, err_msgs.c_str ());
