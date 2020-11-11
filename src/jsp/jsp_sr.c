@@ -175,8 +175,10 @@ typedef jint (*CREATE_VM_FUNC) (JavaVM **, void **, void *);
 	(*ENV)->GetStringUTFLength(ENV, STRING)
 #endif
 
-JavaVM *jvm = NULL;
-jint sp_port = -1;
+static JavaVM *jvm = NULL;
+static jint sp_port = -1;
+static std::string database_name;
+static std::string err_msgs;
 
 #if defined(WINDOWS)
 int get_java_root_path (char *path);
@@ -287,6 +289,10 @@ delay_load_hook (unsigned dliNotify, PDelayLoadInfo pdli)
 
 	if (jvm_path)
 	  {
+      err_msgs.append ("\n\tFailed to load libjvm from 'JVM_PATH' envirnment variable: ");
+      err_msgs.append ("\n\t\t");
+      err_msgs.append (jvm_path);
+
 	    libVM = LoadLibrary (jvm_path);
 	    if (libVM)
 	      {
@@ -294,6 +300,10 @@ delay_load_hook (unsigned dliNotify, PDelayLoadInfo pdli)
 		return fp;
 	      }
 	  }
+  else
+    {
+      err_msgs.append ("\n\tFailed to get 'JVM_PATH' environment variable.");
+    }
 
 	tail = JVM_LIB_PATH_JDK;
 	if (java_home == NULL)
@@ -311,8 +321,14 @@ delay_load_hook (unsigned dliNotify, PDelayLoadInfo pdli)
 
 	if (java_home)
 	  {
+      err_msgs.append ("\n\tFailed to load libjvm from 'JAVA_HOME' envirnment variable: ");
+
 	    char jvm_lib_path[BUF_SIZE];
 	    sprintf (jvm_lib_path, "%s\\%s\\jvm.dll", java_home, tail);
+
+      err_msgs.append ("\n\t\t");
+      err_msgs.append (jvm_lib_path);
+
 	    libVM = LoadLibrary (jvm_lib_path);
 
 	    if (libVM)
@@ -322,11 +338,21 @@ delay_load_hook (unsigned dliNotify, PDelayLoadInfo pdli)
 	    else
 	      {
 		tail = JVM_LIB_PATH_JDK11;
+
+    memset (jvm_lib_path, BUF_SIZE, 0);
 		sprintf (jvm_lib_path, "%s\\%s\\jvm.dll", java_home, tail);
+
+    err_msgs.append ("\n\t\t");
+    err_msgs.append (jvm_lib_path);
+
 		libVM = LoadLibrary (jvm_lib_path);
 		fp = (FARPROC) (HMODULE) libVM;
 	      }
 	  }
+  else
+    {
+      err_msgs.append ("\n\tFailed to get 'JAVA_HOME' environment variable.");
+    }
 
 	if (tmp)
 	  {
@@ -357,7 +383,7 @@ delay_load_dll_exception_filter (PEXCEPTION_POINTERS pep)
     {
     case VcppException (ERROR_SEVERITY_ERROR, ERROR_MOD_NOT_FOUND):
     case VcppException (ERROR_SEVERITY_ERROR, ERROR_PROC_NOT_FOUND):
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_JVM_LIB_NOT_FOUND, 1, "Failed to load jvm.dll");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_JVM_LIB_NOT_FOUND, 1, err_msgs.c_str ());
       break;
 
     default:
@@ -377,10 +403,9 @@ delay_load_dll_exception_filter (PEXCEPTION_POINTERS pep)
  */
 
 static void *
-jsp_get_create_java_vm_function_ptr (void)
+jsp_get_create_java_vm_function_ptr ()
 {
   void *libVM_p = NULL;
-  std::string err_msgs;
 
   char *jvm_path = getenv ("JVM_PATH");
   if (jvm_path != NULL)
@@ -392,21 +417,22 @@ jsp_get_create_java_vm_function_ptr (void)
 	}
       else
 	{
-	  err_msgs.append ("$JVM_PATH/");
+    err_msgs.append ("\n\tFailed to load libjvm from 'JVM_PATH' envirnment variable: ");
+    err_msgs.append ("\n\t\t");
 	  err_msgs.append (dlerror ());
-	  err_msgs.append ("\n");
 	}
     }
   else
     {
-      err_msgs.append ("Failed to find 'JVM_PATH' environment variable\n");
+      err_msgs.append ("\n\tFailed to get 'JVM_PATH' environment variable.");
     }
 
   char *java_home = getenv ("JAVA_HOME");
   if (java_home != NULL)
     {
       char jvm_library_path[PATH_MAX];
-
+      err_msgs.append ("\n\tFailed to load libjvm from 'JAVA_HOME' envirnment variable: ");
+      
       // under jdk 11
       snprintf (jvm_library_path, PATH_MAX - 1, "%s/%s/%s", java_home, JVM_LIB_PATH, JVM_LIB_FILE);
       libVM_p = dlopen (jvm_library_path, RTLD_NOW | RTLD_LOCAL);
@@ -416,9 +442,8 @@ jsp_get_create_java_vm_function_ptr (void)
 	}
       else
 	{
-	  err_msgs.append ("$JAVA_HOME/");
+    err_msgs.append ("\n\t\t");
 	  err_msgs.append (dlerror ());
-	  err_msgs.append ("\n");
 	}
 
       // from jdk 11
@@ -430,17 +455,15 @@ jsp_get_create_java_vm_function_ptr (void)
 	}
       else
 	{
-	  err_msgs.append ("$JAVA_HOME/");
+    err_msgs.append ("\n\t\t");
 	  err_msgs.append (dlerror ());
-	  err_msgs.append ("\n");
 	}
     }
   else
     {
-      err_msgs.append ("Failed to find 'JAVA_HOME' environment variable\n");
+      err_msgs.append ("\n\tFailed to get 'JAVA_HOME' environment variable.");
     }
 
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_JVM_LIB_NOT_FOUND, 1, err_msgs.c_str ());
   return NULL;
 }
 
@@ -474,9 +497,11 @@ jsp_create_java_vm (JNIEnv ** env_p, JavaVMInitArgs * vm_arguments)
     }
   else
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_JVM_LIB_NOT_FOUND, 1, err_msgs.c_str ());
       res = -1;
     }
 #endif /* WINDOWS */
+  err_msgs.clear ();
   return res;
 }
 
@@ -535,9 +560,10 @@ jsp_start_server (const char *db_name, const char *path, int port)
   {
     if (jvm != NULL)
       {
-	return NO_ERROR;	/* already created */
+	return ER_SP_ALREADY_EXIST;	/* already created */
       }
 
+    database_name.assign (db_name);
     envroot = envvar_root ();
 
     snprintf (classpath, sizeof (classpath) - 1, "-Djava.class.path=%s",
@@ -619,8 +645,6 @@ jsp_start_server (const char *db_name, const char *path, int port)
 
     if (res < 0)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1,
-		"Failed to load or initialize Java VM by JNI_CreateJavaVM()");
 	jvm = NULL;
 	return er_errid ();
       }
