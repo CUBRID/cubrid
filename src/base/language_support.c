@@ -4227,6 +4227,7 @@ lang_back_strmatch_utf8_uca_w_level (const COLL_DATA * coll_data, bool is_match,
 
 	  if (!ignore_trailing_space)
 	    {
+	      result = 1;
 	      goto exit;
 	    }
 	  /* consume any remaining zero-weight values (skip them) from str1 */
@@ -5850,6 +5851,7 @@ lang_init_coll_Utf8_tr_cs (LANG_COLLATION * lang_coll)
       unsigned int w_repl = lang_Weight_TR[cp_repl];
 
       lang_Weight_TR[cp] = w_repl;
+      lang_Weight_TR_ti[cp] = w_repl;
 
       assert (cp_repl < cp);
       for (j = cp_repl; j < cp; j++)
@@ -5870,6 +5872,7 @@ lang_init_coll_Utf8_tr_cs (LANG_COLLATION * lang_coll)
       unsigned int w_repl = lang_Weight_TR[cp_repl];
 
       lang_Weight_TR[cp] = w_repl;
+      lang_Weight_TR_ti[cp] = w_repl;
 
       assert (cp_repl < cp);
       for (j = cp_repl; j < cp; j++)
