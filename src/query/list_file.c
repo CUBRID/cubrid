@@ -5139,7 +5139,7 @@ qfile_clear_cache_list (THREAD_ENTRY * thread_p, int list_ht_no)
 int
 qfile_clear_list_cache (THREAD_ENTRY * thread_p, int list_ht_no, bool release)
 {
-  qfile_clear_list_cache_internal (thread_p, list_ht_no, qfile_end_use_of_list_cache_entry_local, release);
+  return qfile_clear_list_cache_internal (thread_p, list_ht_no, qfile_end_use_of_list_cache_entry_local, release);
 }
 
 /*
@@ -5583,7 +5583,7 @@ qfile_delete_uncommitted_list_cache_entry (int tran_index, QFILE_LIST_CACHE_ENTR
 int
 qfile_delete_list_cache_entry_local (THREAD_ENTRY * thread_p, void *data, void *args)
 {
-  qfile_delete_list_cache_entry (thread_p, data, NULL);
+  return qfile_delete_list_cache_entry (thread_p, data, NULL);
 }
 
 /*
