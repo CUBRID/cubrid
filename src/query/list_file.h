@@ -157,7 +157,12 @@ extern int qfile_initialize_list_cache (THREAD_ENTRY * thread_p);
 extern int qfile_finalize_list_cache (THREAD_ENTRY * thread_p);
 extern int qfile_clear_cache_list (THREAD_ENTRY * thread_p, int list_ht_no);
 extern int qfile_clear_list_cache (THREAD_ENTRY * thread_p, int list_ht_no, bool release);
+extern int qfile_clear_list_cache_internal (THREAD_ENTRY * thread_p, int list_ht_no,
+					    int (*map_func) (THREAD_ENTRY * thread_p, void *data, void *args),
+					    bool release);
 extern int qfile_dump_list_cache_internal (THREAD_ENTRY * thread_p, FILE * fp);
+extern int qfile_delete_list_cache_entry (THREAD_ENTRY * thread_p, void *data, void *args);
+extern int qfile_delete_list_cache_entry_local (THREAD_ENTRY * thread_p, void *data, void *args);
 #if defined (CUBRID_DEBUG)
 extern int qfile_dump_list_cache (THREAD_ENTRY * thread_p, const char *fname);
 #endif

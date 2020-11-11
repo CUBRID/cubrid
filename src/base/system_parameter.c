@@ -1406,10 +1406,14 @@ static unsigned int prm_list_query_cache_mode_flag = 0;
 
 int PRM_LIST_MAX_QUERY_CACHE_ENTRIES = 200;
 static int prm_list_max_query_cache_entries_default = 200;
+static int prm_list_max_query_cache_entries_upper = 2000;
+static int prm_list_max_query_cache_entries_lower = 100;
 static unsigned int prm_list_max_query_cache_entries_flag = 0;
 
 int PRM_LIST_MAX_QUERY_CACHE_PAGES = 1000;
 static int prm_list_max_query_cache_pages_default = 1000;
+static int prm_list_max_query_cache_pages_upper = 20000;
+static int prm_list_max_query_cache_pages_lower = 1000;
 static unsigned int prm_list_max_query_cache_pages_flag = 0;
 
 bool PRM_USE_ORDERBY_SORT_LIMIT = true;
@@ -3599,7 +3603,8 @@ static SYSPRM_PARAM prm_Def[] = {
    &prm_list_max_query_cache_entries_flag,
    (void *) &prm_list_max_query_cache_entries_default,
    (void *) &PRM_LIST_MAX_QUERY_CACHE_ENTRIES,
-   (void *) NULL, (void *) NULL,
+   (void *) &prm_list_max_query_cache_entries_upper,
+   (void *) &prm_list_max_query_cache_entries_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
@@ -3610,7 +3615,8 @@ static SYSPRM_PARAM prm_Def[] = {
    &prm_list_max_query_cache_pages_flag,
    (void *) &prm_list_max_query_cache_pages_default,
    (void *) &PRM_LIST_MAX_QUERY_CACHE_PAGES,
-   (void *) NULL, (void *) NULL,
+   (void *) &prm_list_max_query_cache_pages_upper,
+   (void *) &prm_list_max_query_cache_pages_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},

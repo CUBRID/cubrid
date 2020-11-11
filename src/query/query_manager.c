@@ -1380,35 +1380,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
     {
       goto exit_on_error;
     }
-  /* if needed to invalidate query cache, invalidate the cache */
-  if (qmgr_can_get_from_cache (*flag_p))
-    {
-      int i;
-      bool invalidate = false;
 
-      switch (xclone.xasl->type)
-	{
-	case UPDATE_PROC:
-	case INSERT_PROC:
-	case DELETE_PROC:
-	case MERGE_PROC:
-	  invalidate = true;
-	  break;
-	default:
-	  if (xclone.xasl->upd_del_class_cnt > 0)
-	    {
-	      invalidate = true;
-	    }
-	}
-
-      if (invalidate)
-	{
-	  for (i = 0; i < xasl_cache_entry_p->n_related_objects; i++)
-	    {
-	      xcache_invalidate_qcaches (thread_p, &xasl_cache_entry_p->related_objects[i].oid);
-	    }
-	}
-    }
   if (qmgr_can_get_result_from_cache (*flag_p))
     {
       /* lookup the list cache with the parameter values (DB_VALUE array) */
@@ -1535,29 +1507,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 	{
 	  if (list_id_p == NULL)
 	    {
-	      goto exit_on_error;
-	    }
-
-	  /* the type of the result file should be FILE_QUERY_AREA in order not to deleted at the time of query_end */
-	  if (list_id_p->tfile_vfid != NULL && list_id_p->tfile_vfid->temp_file_type != FILE_QUERY_AREA)
-	    {
-	      /* duplicate the list file */
-	      tmp_list_id_p = qfile_duplicate_list (thread_p, list_id_p, QFILE_FLAG_RESULT_FILE);
-	      if (tmp_list_id_p)
-		{
-		  qfile_destroy_list (thread_p, list_id_p);
-		  QFILE_FREE_AND_INIT_LIST_ID (list_id_p);
-		  list_id_p = tmp_list_id_p;
-		}
-	    }
-	  else
-	    {
-	      tmp_list_id_p = list_id_p;	/* just for next if condition */
-	    }
-
-	  if (tmp_list_id_p == NULL)
-	    {
-	      goto end;		/* return without inserting into the cache */
+	      goto end;
 	    }
 
 	  /* update the cache entry for the result associated with the used parameter values (DB_VALUE array) if there
@@ -1989,10 +1939,9 @@ xqmgr_end_query (THREAD_ENTRY * thread_p, QUERY_ID query_id)
 
   assert (query_p->query_status == QUERY_COMPLETED);
 
-  /* end use of the list file of the cached result */
+  /* query is closed */
   if (query_p->xasl_ent && query_p->list_ent)
     {
-      (void) qfile_end_use_of_list_cache_entry (thread_p, query_p->list_ent, false);
       query_p->query_status = QUERY_CLOSED;
     }
 
@@ -2063,7 +2012,7 @@ qmgr_clear_relative_cache_entries (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tr
     {
       for (i = 0, class_oid_p = oid_block_p->oid_array; i < oid_block_p->last_oid_idx; i++, class_oid_p++)
 	{
-	  if (qexec_clear_list_cache_by_class (thread_p, class_oid_p) != NO_ERROR)
+	  if (xcache_invalidate_qcaches (thread_p, class_oid_p) != NO_ERROR)
 	    {
 	      er_log_debug (ARG_FILE_LINE,
 			    "qm_clear_trans_wakeup: qexec_clear_list_cache_by_class failed for class { %d %d %d }\n",
@@ -2123,11 +2072,7 @@ qmgr_clear_trans_wakeup (THREAD_ENTRY * thread_p, int tran_index, bool is_tran_d
   /* if the transaction is aborting, clear relative cache entries */
   if (tran_entry_p->modified_classes_p)
     {
-      if (is_abort)
-	{
-	  qmgr_clear_relative_cache_entries (thread_p, tran_entry_p);
-	}
-
+      qmgr_clear_relative_cache_entries (thread_p, tran_entry_p);
       qmgr_free_oid_block (thread_p, tran_entry_p->modified_classes_p);
       tran_entry_p->modified_classes_p = NULL;
     }
@@ -2841,7 +2786,7 @@ qmgr_free_temp_file_list (THREAD_ENTRY * thread_p, QMGR_TEMP_FILE * tfile_vfid_p
       fd_ret = NO_ERROR;
       if ((tfile_vfid_p->temp_file_type != FILE_QUERY_AREA || is_error) && !VFID_ISNULL (&tfile_vfid_p->temp_vfid))
 	{
-	  if (was_preserved)
+	  if (was_preserved || tfile_vfid_p->temp_file_type == FILE_QUERY_AREA)
 	    {
 	      fd_ret = file_temp_retire_preserved (thread_p, &tfile_vfid_p->temp_vfid);
 	      if (fd_ret != NO_ERROR)

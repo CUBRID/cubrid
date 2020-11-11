@@ -14977,7 +14977,6 @@ tranid_compare (const void *t1, const void *t2)
 int
 qexec_clear_list_cache_by_class (THREAD_ENTRY * thread_p, const OID * class_oid)
 {
-  xcache_invalidate_qcaches (thread_p, class_oid);
 #if 0
   /* TODO: Update this in xasl_cache.c */
   XASL_CACHE_ENTRY *ent;
