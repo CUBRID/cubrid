@@ -1407,7 +1407,7 @@ static unsigned int prm_list_query_cache_mode_flag = 0;
 int PRM_LIST_MAX_QUERY_CACHE_ENTRIES = 200;
 static int prm_list_max_query_cache_entries_default = 200;
 static int prm_list_max_query_cache_entries_upper = 2000;
-static int prm_list_max_query_cache_entries_lower = 100;
+static int prm_list_max_query_cache_entries_lower = 10;
 static unsigned int prm_list_max_query_cache_entries_flag = 0;
 
 int PRM_LIST_MAX_QUERY_CACHE_PAGES = 1000;

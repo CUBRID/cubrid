@@ -232,21 +232,6 @@ qmgr_is_allowed_result_cache (QUERY_FLAG flag)
 }
 
 static bool
-qmgr_can_get_from_cache (QUERY_FLAG flag)
-{
-  int query_cache_mode;
-
-  query_cache_mode = prm_get_integer_value (PRM_ID_LIST_QUERY_CACHE_MODE);
-
-  if (query_cache_mode == QFILE_LIST_QUERY_CACHE_MODE_OFF)
-    {
-      return false;
-    }
-
-  return true;
-}
-
-static bool
 qmgr_can_get_result_from_cache (QUERY_FLAG flag)
 {
   int query_cache_mode;
@@ -1942,6 +1927,7 @@ xqmgr_end_query (THREAD_ENTRY * thread_p, QUERY_ID query_id)
   /* query is closed */
   if (query_p->xasl_ent && query_p->list_ent)
     {
+      (void) qfile_end_use_of_list_cache_entry (thread_p, query_p->list_ent, false);
       query_p->query_status = QUERY_CLOSED;
     }
 
@@ -2131,26 +2117,16 @@ qmgr_clear_trans_wakeup (THREAD_ENTRY * thread_p, int tran_index, bool is_tran_d
       XASL_ID_SET_NULL (&query_p->xasl_id);
 
       /* end use of the list file of the cached result */
-      if (!query_p->is_holdable || is_abort)
+      if (query_p->xasl_ent != NULL && query_p->list_ent != NULL)
 	{
-	  if (query_p->xasl_ent != NULL && query_p->list_ent != NULL)
-	    {
-	      (void) qfile_end_use_of_list_cache_entry (thread_p, query_p->list_ent, false);
-	    }
-	  query_p->query_status = QUERY_CLOSED;
+	  (void) qfile_end_use_of_list_cache_entry (thread_p, query_p->list_ent, false);
 	}
 
       /* remove query entry */
-      q = query_p;
-      query_p = query_p->next;
-      if (q->query_status == QUERY_CLOSED)
-	{
-	  if (tran_entry_p->query_entry_list_p == q)
-	    {
-	      tran_entry_p->query_entry_list_p = q->next;
-	    }
-	  qmgr_free_query_entry (thread_p, tran_entry_p, q);
-	}
+      tran_entry_p->query_entry_list_p = query_p->next;
+      qmgr_free_query_entry (thread_p, tran_entry_p, query_p);
+
+      query_p = tran_entry_p->query_entry_list_p;
     }
 
   tran_entry_p->trans_stat = QMGR_TRAN_TERMINATED;
