@@ -836,15 +836,16 @@ cub_ddl_log_backup (const char *path)
   sigdelset (&new_mask, SIGTERM);
   sigdelset (&new_mask, SIGHUP);
   sigdelset (&new_mask, SIGABRT);
-  sigprocmask (SIG_SETMASK, &new_mask, &old_mask);
-#endif /* !WINDOWS */
-
+  if (sigprocmask (SIG_SETMASK, &new_mask, &old_mask) == 0)
+    {
+      unlink (backup_file);
+      rename (path, backup_file);
+      sigprocmask (SIG_SETMASK, &old_mask, NULL);
+    }
+#else /* !WINDOWS */
   unlink (backup_file);
   rename (path, backup_file);
-
-#if !defined(WINDOWS)
-  sigprocmask (SIG_SETMASK, &old_mask, NULL);
-#endif /* !WINDOWS */
+#endif
 }
 
 static FILE *
