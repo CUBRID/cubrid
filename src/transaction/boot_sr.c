@@ -2288,7 +2288,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   /* *INDENT-OFF* */
 #if defined (SA_MODE)
   // Initialize java stored procedure server for standalone mode
-  jsp = prm_get_integer_value (PRM_ID_JAVA_STORED_PROCEDURE);
+  jsp = prm_get_bool_value (PRM_ID_JAVA_STORED_PROCEDURE);
   if (jsp)
   {
   jsp_port = prm_get_integer_value (PRM_ID_JAVA_STORED_PROCEDURE_PORT);
