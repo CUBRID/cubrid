@@ -9302,11 +9302,11 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_precision, DB_T
 
       if (QSTR_IS_NATIONAL_CHAR (s1_type))
 	{
-	  *result_type = DB_TYPE_NCHAR;
+	  *result_type = DB_TYPE_VARNCHAR;
 	}
       else
 	{
-	  *result_type = DB_TYPE_CHAR;
+	  *result_type = DB_TYPE_VARCHAR;
 	}
 
       if (*result_size > (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES))
