@@ -37,6 +37,7 @@
 #include "object_primitive.h"
 #include "porting.h"
 #include "transaction_cl.h"
+#include "string_opfunc.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -554,7 +555,7 @@ get_current_result (int **lengths, const CUR_RESULT_INFO * result_info, bool pla
       assert (value_type == DB_TYPE_NULL
 	      /* UNKNOWN, maybe host variable */
 	      || result_info->attr_types[i] == DB_TYPE_NULL || result_info->attr_types[i] == DB_TYPE_VARIABLE
-	      || value_type == result_info->attr_types[i]);
+	      || (QSTR_IS_ANY_CHAR (value_type) && QSTR_IS_ANY_CHAR (result_info->attr_types[i])));
 
       switch (value_type)
 	{
