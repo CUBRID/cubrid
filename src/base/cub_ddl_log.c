@@ -57,7 +57,6 @@
 #define DDL_LOG_LOADDB_FILE_PATH    "log/ddl_audit/loaddb"
 #define FILE_BUFFER_SIZE            (1024)
 #define TIME_STRING_SIZE            (16)
-#define DDL_APP_NAME_LEN            (64)
 #define DDL_TIME_LEN                (32)
 
 
