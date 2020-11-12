@@ -318,8 +318,18 @@ qfile_list_cache_cleanup (THREAD_ENTRY * thread_p)
   int candidate_index, i, n;
 
   struct timeval current_time;
-  int cleanup_count = prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_ENTRIES) * 0.8;
-  int cleanup_pages = prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_PAGES) * 0.8;
+  int cleanup_count = prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_ENTRIES) * 10 / 8;
+  int cleanup_pages = prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_PAGES) * 10 / 8;
+
+  if (cleanup_count < 1)
+    {
+      cleanup_count = 1;
+    }
+
+  if (cleanup_pages < 1)
+    {
+      cleanup_pages = 1;
+    }
 
   bh =
     bh_create (thread_p, cleanup_count, sizeof (QFILE_CACHE_CLEANUP_CANDIDATE), qfile_compare_cleanup_candidates, NULL);
