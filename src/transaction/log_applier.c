@@ -7980,7 +7980,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
   last_eof_time = time (NULL);
   LSA_SET_NULL (&last_eof_lsa);
 #ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
-  error = tde_get_data_keys_from_server ();
+  error = tde_get_data_keys ();
   if (error == NO_ERROR)
     {
       tde_Cipher.is_loaded = true;

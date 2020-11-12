@@ -1852,7 +1852,7 @@ file_apply_tde_to_class_files (const OID * class_oid)
  * NOTE:
  */
 int
-tde_get_data_keys_from_server ()
+tde_get_data_keys ()
 {
 #if defined(CS_MODE)
   int error = ER_NET_CLIENT_DATA_RECEIVE;
@@ -1940,7 +1940,7 @@ tde_get_mk_file_path (char *mk_path)
  * NOTE:
  */
 int
-tde_get_set_mk_info (int *mk_index, time_t * created_time, time_t * set_time)
+tde_get_mk_info (int *mk_index, time_t * created_time, time_t * set_time)
 {
 #if defined(CS_MODE)
   int error = ER_NET_CLIENT_DATA_RECEIVE;
@@ -1953,8 +1953,7 @@ tde_get_set_mk_info (int *mk_index, time_t * created_time, time_t * set_time)
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   req_error =
-    net_client_request (NET_SERVER_TDE_GET_SET_MK_INFO, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL,
-			0);
+    net_client_request (NET_SERVER_TDE_GET_MK_INFO, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       ptr = or_unpack_errcode (reply, &error);

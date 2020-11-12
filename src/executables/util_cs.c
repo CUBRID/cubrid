@@ -3838,7 +3838,7 @@ tde (UTIL_FUNCTION_ARG * arg)
       char ctime_buf2[CTIME_MAX];
 
       printf ("The current key set on %s:\n", database_name);
-      if (tde_get_set_mk_info (&mk_index, &created_time, &set_time) == NO_ERROR)
+      if (tde_get_mk_info (&mk_index, &created_time, &set_time) == NO_ERROR)
 	{
 	  ctime_r (&created_time, ctime_buf1);
 	  ctime_r (&set_time, ctime_buf2);
@@ -3865,7 +3865,7 @@ tde (UTIL_FUNCTION_ARG * arg)
       int prev_mk_idx;
       time_t created_time, set_time;
 
-      if (tde_get_set_mk_info (&prev_mk_idx, &created_time, &set_time) != NO_ERROR)
+      if (tde_get_mk_info (&prev_mk_idx, &created_time, &set_time) != NO_ERROR)
 	{
 	  PRINT_AND_LOG_ERR_MSG ("FAILURE: %s\n", db_error_string (3));
 	  db_shutdown ();
@@ -3896,7 +3896,7 @@ tde (UTIL_FUNCTION_ARG * arg)
       int mk_index;
       time_t created_time, set_time;
 
-      if (tde_get_set_mk_info (&mk_index, &created_time, &set_time) != NO_ERROR)
+      if (tde_get_mk_info (&mk_index, &created_time, &set_time) != NO_ERROR)
 	{
 	  PRINT_AND_LOG_ERR_MSG ("FAILURE: %s\n", db_error_string (3));
 	  db_shutdown ();
