@@ -2113,11 +2113,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
       CON_STATUS_UNLOCK (as_info, CON_STATUS_LOCK_CAS);
     }
 
-  if (func_code == CAS_FC_PREPARE && err_info.err_number < 0)
-    {
-      cub_ddl_log_write_end ();
-    }
-  else if (func_code == CAS_FC_EXECUTE)
+  if (func_code == CAS_FC_EXECUTE || err_info.err_number < 0)
     {
       cub_ddl_log_write_end ();
     }
