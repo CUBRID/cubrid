@@ -731,7 +731,8 @@ typedef enum
   RESTORESLAVE,
   VACUUMDB,
   CHECKSUMDB,
-  LOGFILEDUMP,
+ // LOGFILEDUMP,
+  LOGDUMP,
 } UTIL_INDEX;
 
 typedef enum
@@ -936,6 +937,7 @@ typedef struct _ha_config
 #define UTIL_OPTION_RESTORESLAVE                "restoreslave"
 #define UTIL_OPTION_VACUUMDB			"vacuumdb"
 #define UTIL_OPTION_CHECKSUMDB			"checksumdb"
+#define UTIL_OPTION_LOGDUMP                     "logdump"
 
 /* createdb option list */
 #define CREATE_PAGES_S                          'p'
@@ -1569,6 +1571,12 @@ typedef struct _ha_config
 #define CHECKSUM_SCHEMA_ONLY_S			14002
 #define CHECKSUM_SCHEMA_ONLY_L			"schema-only"
 
+/* logdump option list*/
+#define LOGDUMP_LIST_S    'l'
+#define LOGDUMP_LIST_L    "list"
+#define LOGDUMP_LOG_PATH_S  'p'
+#define LOGDUMP_LOG_PATH_L  "path"
+
 #if defined(WINDOWS)
 #define LIB_UTIL_CS_NAME                "cubridcs.dll"
 #define LIB_UTIL_SA_NAME                "cubridsa.dll"
@@ -1701,7 +1709,7 @@ extern "C"
   extern int restoreslave (UTIL_FUNCTION_ARG * arg_map);
   extern int vacuumdb (UTIL_FUNCTION_ARG * arg_map);
   extern int checksumdb (UTIL_FUNCTION_ARG * arg_map);
-
+  extern int logdump(UTIL_FUNCTION_ARG * arg_map); 
   extern void util_admin_usage (const char *argv0);
   extern void util_admin_version (const char *argv0);
 #ifdef __cplusplus

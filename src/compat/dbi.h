@@ -360,6 +360,13 @@ extern "C"
   extern int db_get_btree_statistics (DB_CONSTRAINT * cons, int *num_leaf_pages, int *num_total_pages, int *num_keys,
 				      int *height);
 
+  extern void db_act_forward (const char *log_path, const char *database_name);
+  extern void db_act_backward (const char *log_path, const char *database_name);
+  extern void db_act_pos (const char *log_path, const char *database_name, long long int pos_pageid, long long int pos_offset);
+  extern void db_act_range (const char *log_path, const char *database_name, long long int from_pageid, long long int from_offset, long long int to_pageid, long long int to_offset);
+  extern void db_arv_forward (const char *log_path, const char *database_name);
+  extern void db_arv_backward (const char *log_path, const char *database_name);
+
 /* Constraint Functions */
   extern DB_CONSTRAINT *db_get_constraints (DB_OBJECT * obj);
   extern DB_CONSTRAINT *db_constraint_next (DB_CONSTRAINT * constraint);

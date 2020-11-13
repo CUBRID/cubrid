@@ -823,6 +823,19 @@ static GETOPT_LONG ua_Checksum_Option[] = {
   {0, 0, 0, 0}
 };
 
+static UTIL_ARG_MAP ua_Logdump_Option_Map[] = {
+  {OPTION_STRING_TABLE, {0}, {0}},
+  {LOGDUMP_LIST_S, {ARG_STRING}, {0}},
+  {LOGDUMP_LOG_PATH_S, {ARG_STRING}, {0}},
+  {0, {0}, {0}}
+};
+
+static GETOPT_LONG ua_Logdump_Option[] = {
+  {LOGDUMP_LIST_L, 1, 0, LOGDUMP_LIST_S},
+  {LOGDUMP_LOG_PATH_L, 1, 0, LOGDUMP_LOG_PATH_S},
+  {0, 0, 0, 0}
+};
+
 static UTIL_MAP ua_Utility_Map[] = {
   {CREATEDB, SA_ONLY, 2, UTIL_OPTION_CREATEDB, "createdb", ua_Create_Option, ua_Create_Option_Map},
   {RENAMEDB, SA_ONLY, 2, UTIL_OPTION_RENAMEDB, "renamedb", ua_Rename_Option, ua_Rename_Option_Map},
@@ -863,6 +876,7 @@ static UTIL_MAP ua_Utility_Map[] = {
    ua_RestoreSlave_Option_Map},
   {VACUUMDB, SA_CS, 1, UTIL_OPTION_VACUUMDB, "vacuumdb", ua_Vacuum_Option, ua_Vacuum_Option_Map},
   {CHECKSUMDB, CS_ONLY, 1, UTIL_OPTION_CHECKSUMDB, "checksumdb", ua_Checksum_Option, ua_Checksum_Option_Map},
+  {LOGDUMP, CS_ONLY, 1, UTIL_OPTION_LOGDUMP, "logdump", ua_Logdump_Option, ua_Logdump_Option_Map},
   {-1, -1, 0, 0, 0, 0, 0}
 };
 

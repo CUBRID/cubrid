@@ -33,6 +33,7 @@
 #include <signal.h>
 #include <errno.h>
 #include <assert.h>
+#include <fcntl.h>
 
 #include "utility.h"
 #include "error_manager.h"
@@ -53,11 +54,17 @@
 #include "log_writer.h"
 #include "log_applier.h"
 #include "log_lsa.hpp"
+#include "log_storage.hpp"
+#include "log_record.hpp"
 #include "schema_manager.h"
 #include "locator_cl.h"
 #include "dynamic_array.h"
 #include "util_func.h"
 #include "xasl.h"
+
+#include "recovery.h"
+#include "dbi.h"
+
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif
@@ -3617,4 +3624,126 @@ print_check_usage:
 error_exit:
 
   return EXIT_FAILURE;
+}
+
+/*
+ * logdump() - logdump main routine
+ *   return: EXIT_SUCCESS/EXIT_FAILURE
+ */
+
+int
+logdump (UTIL_FUNCTION_ARG * arg)
+{
+  UTIL_ARG_MAP *arg_map = arg->arg_map;
+  char er_msg_file[PATH_MAX];
+  const char *database_name;
+  const char *log_path = NULL;
+  char log_path_buf[PATH_MAX];
+  int error;
+  int mode = -1;
+
+  long long int s_p, s_o;
+  long long int e_p, e_o;
+  long long int t_p, t_o;
+
+  if (utility_get_option_string_table_size (arg_map) != 1)
+    {
+      goto print_logdump_usage;
+    }
+
+  database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  if (database_name == NULL)
+    {
+      goto print_logdump_usage;
+    }
+  log_path = utility_get_option_string_value (arg_map, LOGDUMP_LOG_PATH_S, 0);
+
+  if (check_database_name (database_name))
+    {
+      goto error_exit;
+    }
+  if (log_path != NULL)
+    {
+      log_path = realpath (log_path, log_path_buf);
+    }
+  if (log_path == NULL)
+    {
+      goto print_logdump_usage;
+    }
+  /* error message log file */
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
+  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
+
+  AU_DISABLE_PASSWORDS ();
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+  db_login ("DBA", NULL);
+  if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+      goto error_exit;
+    }
+  db_disable_trigger ();
+  db_set_lock_timeout (-1);
+  if (sysprm_load_and_init (database_name, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
+    {
+      (void) db_shutdown ();
+      error = ER_FAILED;
+      goto error_exit;
+    }
+/*
+  if (db_set_isolation (TRAN_READ_COMMITTED) != NO_ERROR || cvacuum () != NO_ERROR)
+	{
+    PRINT_AND_LOG_ERR_MSG  ("%s\n", db_error_string(3));
+    goto error_exit;
+  }
+  */
+
+  printf ("\n");
+  printf ("1. forward \n2. backward \n3. range \n4. position\n5. archive\n");
+  scanf ("%d", &mode);
+  if (mode == 1)
+    {
+      db_act_forward (log_path, database_name);
+      db_arv_forward (log_path, database_name);
+    }
+  else if (mode == 2)
+    {
+      db_act_backward (log_path, database_name);
+    }
+  else if (mode == 3)
+    {
+      printf ("start LSA page id , offset ");
+      scanf ("%lld %lld", &(s_p), &(s_o));
+      printf ("end LSA page id, offset ");
+      scanf ("%lld %lld", &(e_p), &(e_o));
+      db_act_range (log_path, database_name, s_p, s_p, e_p, e_o);
+    }
+  else if (mode == 4)
+    {
+      printf ("Target LSA page id, offset ");
+      scanf ("%lld %lld", &(t_p), &(t_o));
+      db_act_pos (log_path, database_name, t_p, t_o);
+    }
+  else if (mode == 5)
+    {
+      db_arv_forward (log_path, database_name);
+    }
+  else if (mode == 6)
+  {
+    db_arv_backward (log_path, database_name);
+  }
+
+  (void) db_shutdown ();
+
+  return EXIT_SUCCESS;
+
+print_logdump_usage:
+  fprintf (stderr, "LOGDUMP Utility Usage");
+
+error_exit:
+
+  return EXIT_FAILURE;
+
 }
