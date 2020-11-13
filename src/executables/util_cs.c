@@ -3655,8 +3655,8 @@ tde (UTIL_FUNCTION_ARG * arg)
   bool gen_op;
   bool show_op;
   bool print_val;
-  int change_idx;
-  int delete_idx;
+  int change_op_idx;
+  int delete_op_idx;
   int op_cnt = 0;
 
   if (utility_get_option_string_table_size (arg_map) != 1)
@@ -3672,9 +3672,10 @@ tde (UTIL_FUNCTION_ARG * arg)
 
   gen_op = utility_get_option_bool_value (arg_map, TDE_GENERATE_KEY_S);
   show_op = utility_get_option_bool_value (arg_map, TDE_SHOW_KEYS_S);
+  change_op_idx = utility_get_option_int_value (arg_map, TDE_CHANGE_KEY_S);
+  delete_op_idx = utility_get_option_int_value (arg_map, TDE_DELETE_KEY_S);
+
   print_val = utility_get_option_bool_value (arg_map, TDE_PRINT_KEY_VALUE_S);
-  change_idx = utility_get_option_int_value (arg_map, TDE_CHANGE_KEY_S);
-  delete_idx = utility_get_option_int_value (arg_map, TDE_DELETE_KEY_S);
   dba_password = utility_get_option_string_value (arg_map, KILLTRAN_DBA_PASSWORD_S, 0);
 
   if (gen_op)
@@ -3685,11 +3686,11 @@ tde (UTIL_FUNCTION_ARG * arg)
     {
       op_cnt++;
     }
-  if (change_idx != -1)
+  if (change_op_idx != -1)
     {
       op_cnt++;
     }
-  if (delete_idx != -1)
+  if (delete_op_idx != -1)
     {
       op_cnt++;
     }
@@ -3702,11 +3703,11 @@ tde (UTIL_FUNCTION_ARG * arg)
     }
 
   /* Checking input range, -1 means not the operation case */
-  if (change_idx < -1)
+  if (change_op_idx < -1)
     {
       goto print_tde_usage;
     }
-  if (delete_idx < -1)
+  if (delete_op_idx < -1)
     {
       goto print_tde_usage;
     }
@@ -3782,7 +3783,7 @@ tde (UTIL_FUNCTION_ARG * arg)
   printf ("Key File: %s\n", mk_path);
 
   /* For all ops but change (-c), mount mk file */
-  if (change_idx == -1)
+  if (change_op_idx == -1)
     {
       /* There is no need to call fileio_dismount() for 'vdes' 
        * because it is dismounted in db_shutdown() */
@@ -3855,7 +3856,7 @@ tde (UTIL_FUNCTION_ARG * arg)
 	  goto error_exit;
 	}
     }
-  else if (change_idx != -1)
+  else if (change_op_idx != -1)
     {
       int prev_mk_idx;
       time_t created_time, set_time;
@@ -3867,9 +3868,10 @@ tde (UTIL_FUNCTION_ARG * arg)
 	  goto error_exit;
 	}
 
-      printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_MK_CHANGING), prev_mk_idx, change_idx);
+      printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_MK_CHANGING), prev_mk_idx,
+	      change_op_idx);
       /* no need to check if the previous key exists or not. It is going to be checked on changing on server */
-      if (tde_change_mk_on_server (change_idx) != NO_ERROR)
+      if (tde_change_mk_on_server (change_op_idx) != NO_ERROR)
 	{
 	  PRINT_AND_LOG_ERR_MSG ("FAILURE: %s\n", db_error_string (3));
 	  db_shutdown ();
@@ -3884,9 +3886,10 @@ tde (UTIL_FUNCTION_ARG * arg)
 	}
 
       printf ("SUCCESS: ");
-      printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_MK_CHANGED), prev_mk_idx, change_idx);
+      printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_MK_CHANGED), prev_mk_idx,
+	      change_op_idx);
     }
-  else if (delete_idx != -1)
+  else if (delete_op_idx != -1)
     {
       int mk_index;
       time_t created_time, set_time;
@@ -3897,7 +3900,7 @@ tde (UTIL_FUNCTION_ARG * arg)
 	  db_shutdown ();
 	  goto error_exit;
 	}
-      if (mk_index == delete_idx)
+      if (mk_index == delete_op_idx)
 	{
 	  PRINT_AND_LOG_ERR_MSG ("FAILURE: %s",
 				 msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE,
@@ -3905,14 +3908,14 @@ tde (UTIL_FUNCTION_ARG * arg)
 	  db_shutdown ();
 	  goto error_exit;
 	}
-      if (tde_delete_mk (vdes, delete_idx) != NO_ERROR)
+      if (tde_delete_mk (vdes, delete_op_idx) != NO_ERROR)
 	{
 	  PRINT_AND_LOG_ERR_MSG ("FAILURE: %s\n", db_error_string (3));
 	  db_shutdown ();
 	  goto error_exit;
 	}
       printf ("SUCCESS: ");
-      printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_MK_DELETED), delete_idx);
+      printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_MK_DELETED), delete_op_idx);
     }
 
   db_shutdown ();
