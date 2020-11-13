@@ -3657,6 +3657,7 @@ tde (UTIL_FUNCTION_ARG * arg)
   bool print_val;
   int change_idx;
   int delete_idx;
+  int op_cnt = 0;
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -3676,44 +3677,38 @@ tde (UTIL_FUNCTION_ARG * arg)
   delete_idx = utility_get_option_int_value (arg_map, TDE_DELETE_KEY_S);
   dba_password = utility_get_option_string_value (arg_map, KILLTRAN_DBA_PASSWORD_S, 0);
 
-  if (!gen_op && !show_op && change_idx == -1 && delete_idx == -1)
+  if (gen_op)
     {
-      /* One of opertion has to be given */
-      goto print_tde_usage;
+      op_cnt++;
     }
-
-  /* Checking for exlusiveness for operations  */
-  if (gen_op && (show_op || change_idx != -1 || delete_idx != -1))
+  if (show_op)
     {
-      goto print_tde_usage;
-    }
-  if (show_op && (gen_op || change_idx != -1 || delete_idx != -1))
-    {
-      goto print_tde_usage;
+      op_cnt++;
     }
   if (change_idx != -1)
     {
-      if (gen_op || show_op || delete_idx != -1)
-	{
-	  goto print_tde_usage;
-	}
-      /* Checking input range */
-      if (change_idx < 0)
-	{
-	  goto print_tde_usage;
-	}
+      op_cnt++;
     }
   if (delete_idx != -1)
     {
-      if (gen_op || show_op || change_idx != -1)
-	{
-	  goto print_tde_usage;
-	}
-      /* Checking input range */
-      if (delete_idx < 0)
-	{
-	  goto print_tde_usage;
-	}
+      op_cnt++;
+    }
+
+  if (op_cnt != 1)
+    {
+      /* Only one and at least one operation has to be given */
+      /* -c -1 -d -1 -n is now allowed, but it's trivial */
+      goto print_tde_usage;
+    }
+
+  /* Checking input range, -1 means not the operation case */
+  if (change_idx < -1)
+    {
+      goto print_tde_usage;
+    }
+  if (delete_idx < -1)
+    {
+      goto print_tde_usage;
     }
 
   /* extra validation */
