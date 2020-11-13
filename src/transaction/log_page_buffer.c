@@ -2242,10 +2242,10 @@ logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAG
   int nbytes, error_code;
   LOG_PHY_PAGEID phy_pageid;
   FILEIO_WRITE_MODE write_mode;
-  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
-  LOG_PAGE *buf_pgptr = NULL;
+  char enc_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  LOG_PAGE *enc_pgptr = NULL;
 
-  buf_pgptr = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  enc_pgptr = (LOG_PAGE *) PTR_ALIGN (enc_pgbuf, MAX_ALIGNMENT);
 
   assert (log_pgptr != NULL);
   assert (log_pgptr->hdr.logical_pageid == logical_pageid);
@@ -2274,13 +2274,20 @@ logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAG
 
   if (LOG_IS_PAGE_TDE_ENCRYPTED (log_pgptr))
     {
-      error_code = tde_encrypt_log_page (log_pgptr, logpb_get_tde_algorithm (log_pgptr), buf_pgptr);
+      error_code = tde_encrypt_log_page (log_pgptr, logpb_get_tde_algorithm (log_pgptr), enc_pgptr);
       if (error_code != NO_ERROR)
 	{
-	  ASSERT_ERROR ();
-	  return error_code;
+	  /* 
+	   * if encrpytion fails, it just skip it and off the tde flag. The page will never be encrypted in this case.
+	   * It menas once it fails, the page always spill user data un-encrypted from then.
+	   */
+	  logpb_set_tde_algorithm (thread_p, log_pgptr, TDE_ALGORITHM_NONE);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_ENCRYPTION_LOGPAGE_ERORR_AND_OFF_TDE, logical_pageid);
 	}
-      log_pgptr = buf_pgptr;
+      else
+	{
+	  log_pgptr = enc_pgptr;
+	}
     }
 
   if (fileio_write (thread_p, log_Gl.append.vdes, log_pgptr, phy_pageid, LOG_PAGESIZE, write_mode) == NULL)
@@ -2742,11 +2749,11 @@ logpb_writev_append_pages (THREAD_ENTRY * thread_p, LOG_PAGE ** to_flush, DKNPAG
   LOG_PHY_PAGEID phy_pageid;
   int i;
   FILEIO_WRITE_MODE write_mode = FILEIO_WRITE_DEFAULT_WRITE;
-  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char enc_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   LOG_PAGE *log_pgptr = NULL;
-  LOG_PAGE *buf_pgptr = NULL;
+  LOG_PAGE *enc_pgptr = NULL;
 
-  buf_pgptr = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  enc_pgptr = (LOG_PAGE *) PTR_ALIGN (enc_pgbuf, MAX_ALIGNMENT);
 
 #if !defined (CS_MODE)
   write_mode = dwb_is_created () == true ? FILEIO_WRITE_NO_COMPENSATE_WRITE : FILEIO_WRITE_DEFAULT_WRITE;
@@ -2777,11 +2784,20 @@ logpb_writev_append_pages (THREAD_ENTRY * thread_p, LOG_PAGE ** to_flush, DKNPAG
 		     (long long int) log_pgptr->hdr.logical_pageid, LOG_IS_PAGE_TDE_ENCRYPTED (log_pgptr));
 	  if (LOG_IS_PAGE_TDE_ENCRYPTED (log_pgptr))
 	    {
-	      if (tde_encrypt_log_page (log_pgptr, logpb_get_tde_algorithm (log_pgptr), buf_pgptr) != NO_ERROR)
+	      if (tde_encrypt_log_page (log_pgptr, logpb_get_tde_algorithm (log_pgptr), enc_pgptr) != NO_ERROR)
 		{
-		  return NULL;
+		  /* 
+		   * if encrpytion fails, it just skip it and off the tde flag. The page will never be encrypted in this case.
+		   * It menas once it fails, the page always spill user data un-encrypted from then.
+		   */
+		  logpb_set_tde_algorithm (thread_p, log_pgptr, TDE_ALGORITHM_NONE);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_ENCRYPTION_LOGPAGE_ERORR_AND_OFF_TDE,
+			  log_pgptr->hdr.logical_pageid);
 		}
-	      log_pgptr = buf_pgptr;
+	      else
+		{
+		  log_pgptr = enc_pgptr;
+		}
 	    }
 
 	  if (fileio_write (thread_p, log_Gl.append.vdes, log_pgptr, phy_pageid + i, LOG_PAGESIZE, write_mode) == NULL)
@@ -2821,8 +2837,9 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
   LOG_PAGEID pageid, prev_lsa_pageid;
   LOG_PHY_PAGEID phy_pageid;
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char enc_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   LOG_PAGE *log_pgptr = NULL;
-  LOG_PAGE *buf_pgptr = NULL;
+  LOG_PAGE *enc_pgptr = NULL;
   LOG_BUFFER *bufptr;
   LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
   BACKGROUND_ARCHIVING_INFO *bg_arv_info = &log_Gl.bg_archive_info;
@@ -2834,8 +2851,6 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
     {
       return;
     }
-
-  buf_pgptr = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
   pageid = bg_arv_info->current_page_id;
   prev_lsa_pageid = log_Gl.append.prev_lsa.pageid;
@@ -2859,7 +2874,8 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
 	  current_lsa.pageid = pageid;
 	  current_lsa.offset = LOG_PAGESIZE;
 	  /* to flush all omitted pages by the previous archiving */
-	  log_pgptr = buf_pgptr;
+	  log_pgptr = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+
 	  if (logpb_fetch_page (thread_p, &current_lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
 	    {
 	      fileio_dismount (thread_p, bg_arv_info->vdes);
@@ -2884,13 +2900,20 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
 
       if (LOG_IS_PAGE_TDE_ENCRYPTED (log_pgptr))
 	{
-	  if (tde_encrypt_log_page (log_pgptr, logpb_get_tde_algorithm (log_pgptr), buf_pgptr) != NO_ERROR)
+	  enc_pgptr = (LOG_PAGE *) PTR_ALIGN (enc_pgbuf, MAX_ALIGNMENT);
+	  if (tde_encrypt_log_page (log_pgptr, logpb_get_tde_algorithm (log_pgptr), enc_pgptr) != NO_ERROR)
 	    {
-	      fileio_dismount (thread_p, bg_arv_info->vdes);
-	      bg_arv_info->vdes = NULL_VOLDES;
-	      return;
+	      /* 
+	       * if encrpytion fails, it just skip it and off the tde flag. The page will never be encrypted in this case.
+	       * It menas once it fails, the page always spill user data un-encrypted from then.
+	       */
+	      logpb_set_tde_algorithm (thread_p, log_pgptr, TDE_ALGORITHM_NONE);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_ENCRYPTION_LOGPAGE_ERORR_AND_OFF_TDE, pageid);
 	    }
-	  log_pgptr = buf_pgptr;
+	  else
+	    {
+	      log_pgptr = enc_pgptr;
+	    }
 	}
 
       if (fileio_write (thread_p, bg_arv_info->vdes, log_pgptr, phy_pageid, LOG_PAGESIZE, write_mode) == NULL)
