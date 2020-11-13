@@ -3766,13 +3766,6 @@ tde (UTIL_FUNCTION_ARG * arg)
 	}
     }
 
-  if (db_set_isolation (TRAN_READ_COMMITTED) != NO_ERROR)
-    {
-      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-      db_shutdown ();
-      goto error_exit;
-    }
-
   if (tde_get_mk_file_path (mk_path) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
