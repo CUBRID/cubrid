@@ -2883,23 +2883,13 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
 
       if (LOG_IS_PAGE_TDE_ENCRYPTED (log_pgptr))
 	{
-	  int err = NO_ERROR;
-	  if (buf_pgptr != log_pgptr)
+	  if (tde_encrypt_log_page (log_pgptr, logpb_get_tde_algorithm (log_pgptr), buf_pgptr) != NO_ERROR)
 	    {
-	      /* from flush_info->to_flush[] */
-	      err = tde_encrypt_log_page (log_pgptr, logpb_get_tde_algorithm (log_pgptr), buf_pgptr);
-	      log_pgptr = buf_pgptr;
-	    }
-	  else
-	    {
-	      err = tde_encrypt_log_page (log_pgptr, logpb_get_tde_algorithm (log_pgptr), log_pgptr);
-	    }
-	  if (err != NO_ERROR)
-	    {
-	      bg_arv_info->vdes = NULL_VOLDES;
 	      fileio_dismount (thread_p, bg_arv_info->vdes);
+	      bg_arv_info->vdes = NULL_VOLDES;
 	      return;
 	    }
+	  log_pgptr = buf_pgptr;
 	}
 
       if (fileio_write (thread_p, bg_arv_info->vdes, log_pgptr, phy_pageid, LOG_PAGESIZE, write_mode) == NULL)
