@@ -4463,9 +4463,10 @@ log_append_sysop_end (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_EN
 	  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
 
 	  assert (sysop_end->vfid != NULL);
-	  if (file_get_tde_algorithm (thread_p, sysop_end->vfid, &tde_algo) != NO_ERROR)
+	  if (file_get_tde_algorithm (thread_p, sysop_end->vfid, PGBUF_CONDITIONAL_LATCH, &tde_algo) != NO_ERROR)
 	    {
-	      assert (false);
+	      tde_algo = TDE_ALGORITHM_NONE;
+	      /* skip to encrypt in release */
 	    }
 	  if (tde_algo != TDE_ALGORITHM_NONE)
 	    {

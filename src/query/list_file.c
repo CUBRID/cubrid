@@ -433,7 +433,7 @@ qfile_clear_list_id (QFILE_LIST_ID * list_id_p)
 
       if (!VFID_ISNULL (&list_id_p->temp_vfid))
 	{
-	  if (file_get_tde_algorithm (thread_p, &list_id_p->temp_vfid, &tde_algo) != NO_ERROR)
+	  if (file_get_tde_algorithm (thread_p, &list_id_p->temp_vfid, PGBUF_CONDITIONAL_LATCH, &tde_algo) != NO_ERROR)
 	    {
 	      assert (tde_algo != TDE_ALGORITHM_NONE);
 	    }

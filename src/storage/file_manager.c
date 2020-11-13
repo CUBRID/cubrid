@@ -5776,11 +5776,13 @@ file_set_tde_algorithm_internal (FILE_HEADER * fhead, TDE_ALGORITHM tde_algo)
  * return        : NO_ERROR
  * thread_p (in)  : Thread entry
  * vfid (in)      : File identifier
+ * fix_head_cond (in):  file header page latch condition
  * tde_algo (out) : encryption algorithm - NONE, AES, ARIA
  *
  */
 int
-file_get_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, TDE_ALGORITHM * tde_algo)
+file_get_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, PGBUF_LATCH_CONDITION fix_head_cond,
+			TDE_ALGORITHM * tde_algo)
 {
   VPID vpid_fhead;
   PAGE_PTR page_fhead = NULL;
@@ -5789,7 +5791,7 @@ file_get_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, TDE_ALGORITH
 
   /* fix header */
   FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
-  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_READ, fix_head_cond);
   if (page_fhead == NULL)
     {
       ASSERT_ERROR_AND_SET (error_code);
