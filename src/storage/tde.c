@@ -430,14 +430,16 @@ tde_copy_keys_file (THREAD_ENTRY * thread_p, const char *dest_fullname, const ch
       return ER_TDE_INVALID_KEYS_FILE;
     }
 
-  if (!fileio_is_volume_exist (dest_fullname))
+  if (fileio_is_volume_exist (dest_fullname))
     {
-      err = tde_create_keys_file (dest_fullname);
-      if (err != NO_ERROR)
-	{
-	  fileio_dismount (thread_p, from_vdes);
-	  return err;
-	}
+      fileio_unformat_and_rename (thread_p, dest_fullname, NULL);
+    }
+
+  err = tde_create_keys_file (dest_fullname);
+  if (err != NO_ERROR)
+    {
+      fileio_dismount (thread_p, from_vdes);
+      return err;
     }
 
   to_vdes = fileio_mount (thread_p, boot_db_full_name (), dest_fullname, LOG_DBCOPY_VOLID, 2, false);
