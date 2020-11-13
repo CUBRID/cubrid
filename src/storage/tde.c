@@ -809,7 +809,7 @@ tde_make_mk_hash (const unsigned char *master_key, unsigned char *mk_hash)
  * tde_create_dk () - Create a data key
  *
  * return             : Error code
- * data_key (in)      : Data key created
+ * data_key (out)      : Data key created
  */
 static int
 tde_create_dk (unsigned char *data_key)

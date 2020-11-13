@@ -949,7 +949,7 @@ typedef struct _ha_config
 #define UTIL_OPTION_RESTORESLAVE                "restoreslave"
 #define UTIL_OPTION_VACUUMDB			"vacuumdb"
 #define UTIL_OPTION_CHECKSUMDB			"checksumdb"
-#define UTIL_OPTION_TDE			                    "tde"
+#define UTIL_OPTION_TDE			        "tde"
 
 /* createdb option list */
 #define CREATE_PAGES_S                          'p'
