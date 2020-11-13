@@ -2241,7 +2241,11 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
       return;
     }
 
-  if (LOG_MAY_CONTAIN_USER_DATA (rcvindex))
+  /* 
+   * if pgptr is NULL, the user data can be spilled as un-encrypted. 
+   * Now it seems that there is no case, but can be in the future.
+   */
+  if (addr->pgptr != NULL && LOG_MAY_CONTAIN_USER_DATA (rcvindex))
     {
       if (pgbuf_get_tde_algorithm (addr->pgptr) != TDE_ALGORITHM_NONE)
 	{
@@ -2895,7 +2899,12 @@ log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DAT
 	  return;
 	}
 
-      if (LOG_MAY_CONTAIN_USER_DATA (rcvindex))
+      /* 
+       * By the comment above for this function, all the potpone log is page-oriented, 
+       * and have to contain page address. However, code below check if addr->pgptr is NULL.
+       * So, we also check it just in case.
+       */
+      if (addr->pgptr != NULL && LOG_MAY_CONTAIN_USER_DATA (rcvindex))
 	{
 	  if (pgbuf_get_tde_algorithm (addr->pgptr) != TDE_ALGORITHM_NONE)
 	    {
@@ -3066,22 +3075,21 @@ log_append_compensate_internal (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, 
     }
   compensate->length = length;
 
-  if (LOG_MAY_CONTAIN_USER_DATA (rcvindex))
+  /*
+   * Although compensation log is page-oriented, pgptr can be NULL 
+   * when fails to fix the page because of an error.
+   * In this case, we don't encrypt the log and it can contain user data un-encrypted.
+   * After all, it is very rare and exceptional case.
+   */
+  if (pgptr != NULL && LOG_MAY_CONTAIN_USER_DATA (rcvindex))
     {
-      if (pgptr != NULL)
+      if (pgbuf_get_tde_algorithm (pgptr) != TDE_ALGORITHM_NONE)
 	{
-	  if (pgbuf_get_tde_algorithm (pgptr) != TDE_ALGORITHM_NONE)
+	  if (prior_set_tde_encrypted (node, rcvindex) != NO_ERROR)
 	    {
-	      if (prior_set_tde_encrypted (node, rcvindex) != NO_ERROR)
-		{
-		  assert (false);
-		  return;
-		}
+	      assert (false);
+	      return;
 	    }
-	}
-      else
-	{
-	  /* going to assert in a upper level */
 	}
     }
 
