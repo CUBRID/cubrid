@@ -4531,7 +4531,7 @@ log_append_repl_info_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is
 	      if (prior_set_tde_encrypted (node, repl_rec->rcvindex) != NO_ERROR)
 		{
 		  assert (false);
-		  return;
+		  continue;
 		}
 	    }
 
