@@ -7839,12 +7839,38 @@ loop:
       goto error;
     }
 
+  if (separate_keys)
+    {
+      db_nopath_name_p = fileio_get_base_file_name (log_Db_fullname);
+      fileio_make_backup_name (bkpath_without_units, db_nopath_name_p, session.bkup.current_path, backup_level,
+			       FILEIO_NO_BACKUP_UNITS);
+      tde_make_keys_file_fullname (separate_mk_path, bkpath_without_units, true);
+      /* Keep mounting mk file to be exclusive with other tools */
+      error_code = tde_copy_keys_file (thread_p, separate_mk_path, mk_path, false, true);
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+    }
+
   /* Backup every volume */
-  volid = LOG_DBVOLINFO_VOLID;
+  volid = LOG_DBTDE_KEYS_VOLID;
   do
     {
       switch (volid)
 	{
+	case LOG_DBTDE_KEYS_VOLID:
+	  if (separate_keys)
+	    {
+	      /* already backuped up as a separate file */
+	      volid++;
+	      continue;
+	    }
+	  else
+	    {
+	      from_vlabel = mk_path;
+	    }
+	  break;
 	case LOG_DBVOLINFO_VOLID:
 	  fileio_make_volume_info_name (vol_backup, log_Db_fullname);
 	  from_vlabel = vol_backup;
@@ -7885,7 +7911,11 @@ loop:
 	  error_code = fileio_backup_volume (thread_p, &session, from_vlabel, volid, -1, false);
 	  if (error_code != NO_ERROR)
 	    {
-	      goto error;
+	      /* keys file can be omitted */
+	      if (volid != LOG_DBTDE_KEYS_VOLID)
+		{
+		  goto error;
+		}
 	    }
 	  volid++;
 	}
@@ -7893,29 +7923,6 @@ loop:
       bkup_in_progress = true;
     }
   while (volid != NULL_VOLID);
-
-  if (separate_keys == false)
-    {
-      error_code = fileio_backup_volume (thread_p, &session, mk_path, LOG_DBTDE_KEYS_VOLID, -1, false);
-      if (error_code != NO_ERROR)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_BACKUP_KEYS_FILE_FAIL, 0);
-	  /* keep going without master key file (_keys) */
-	}
-    }
-  else
-    {
-      db_nopath_name_p = fileio_get_base_file_name (log_Db_fullname);
-      fileio_make_backup_name (bkpath_without_units, db_nopath_name_p, session.bkup.current_path, backup_level,
-			       FILEIO_NO_BACKUP_UNITS);
-      tde_make_keys_file_fullname (separate_mk_path, bkpath_without_units, true);
-      /* Keep mounting mk file to be exclusive with other tools */
-      error_code = tde_copy_keys_file (thread_p, separate_mk_path, mk_path, false, true);
-      if (error_code != NO_ERROR)
-	{
-	  goto error;
-	}
-    }
 
 #if defined(SERVER_MODE)
   /*

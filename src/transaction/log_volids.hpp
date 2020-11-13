@@ -38,6 +38,8 @@ const VOLID LOG_MAX_DBVOLID = VOLID_MAX - 1;
 const VOLID LOG_DBTXT_VOLID = SHRT_MIN + 1;
 const VOLID LOG_DBFIRST_VOLID = 0;
 
+/* Volid of Transprent Data Encryption Keys (TDE Master keys) */
+const VOLID LOG_DBTDE_KEYS_VOLID = LOG_DBFIRST_VOLID - 6;
 /* Volid of volume information */
 const VOLID LOG_DBVOLINFO_VOLID = LOG_DBFIRST_VOLID - 5;
 /* Volid of info log */
@@ -54,7 +56,5 @@ const VOLID LOG_DBLOG_ARCHIVE_VOLID = LOG_DBFIRST_VOLID - 20;
 const VOLID LOG_DBCOPY_VOLID = LOG_DBFIRST_VOLID - 19;
 /* Volid of double write buffer */
 const VOLID LOG_DBDWB_VOLID = LOG_DBFIRST_VOLID - 22;
-/* Volid of Transprent Data Encryption Keys (TDE Master keys) */
-const VOLID LOG_DBTDE_KEYS_VOLID = LOG_DBFIRST_VOLID - 23;
 
 #endif // !_LOG_VOLIDS_HPP_
