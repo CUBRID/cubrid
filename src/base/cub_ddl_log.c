@@ -558,7 +558,7 @@ cub_make_ddl_log_filename (char *filename_buf, size_t buf_size, T_APP_NAME app_n
   if (app_name == APP_NAME_CAS)
     {
       retval =
-	snprintf (filename_buf, buf_size, "%s/%s/%s_%d.ddl.log", env_root, DDL_LOG_PATH, ddl_audit_handle->br_name,
+	snprintf (filename_buf, buf_size, "%s/%s/%s_%d_ddl.log", env_root, DDL_LOG_PATH, ddl_audit_handle->br_name,
 		  (ddl_audit_handle->br_index + 1));
     }
   else if (app_name == APP_NAME_CSQL || app_name == APP_NAME_LOADDB)
