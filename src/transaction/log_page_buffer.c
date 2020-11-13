@@ -5276,6 +5276,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE *
 	      if (tde_decrypt_log_page (log_pgptr, tde_algo, log_pgptr) != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
+		  LOG_ARCHIVE_CS_EXIT (thread_p);
 		  return NULL;
 		}
 	    }
