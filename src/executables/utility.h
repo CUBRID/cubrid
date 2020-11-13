@@ -1595,11 +1595,11 @@ typedef struct _ha_config
 #define TDE_GENERATE_KEY_L    "generate-new-key"
 #define TDE_SHOW_KEYS_S       's'
 #define TDE_SHOW_KEYS_L       "show-keys"
-#define TDE_PRINT_KEY_VALUE_S 'v'
+#define TDE_PRINT_KEY_VALUE_S 14000
 #define TDE_PRINT_KEY_VALUE_L "print-value"
 #define TDE_SA_MODE_S         'S'
 #define TDE_SA_MODE_L         "SA-mode"
-#define TDE_CS_MODE_S         'C'
+#define TDE_CS_MODE_S         14001
 #define TDE_CS_MODE_L         "CS-mode"
 #define TDE_CHANGE_KEY_S      'c'
 #define TDE_CHANGE_KEY_L      "change-key"
