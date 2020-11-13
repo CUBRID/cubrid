@@ -2659,6 +2659,7 @@ logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY current_setdirty)
     {
       TDE_ALGORITHM tde_algo = (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_DEFAULT_ALGORITHM);
       logpb_set_tde_algorithm (thread_p, log_Gl.append.log_pgptr, tde_algo);
+      logpb_set_dirty (thread_p, log_Gl.append.log_pgptr);
       logpb_log ("logpb_next_append_page: set tde_algorithm to appending page (%lld), "
 		 "tde_algorithm = %s\n", (long long int) log_Gl.append.log_pgptr->hdr.logical_pageid,
 		 tde_get_algorithm_name (tde_algo));
@@ -4164,6 +4165,7 @@ logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
 	{
 	  TDE_ALGORITHM tde_algo = (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_DEFAULT_ALGORITHM);
 	  logpb_set_tde_algorithm (thread_p, log_Gl.append.log_pgptr, tde_algo);
+	  logpb_set_dirty (thread_p, log_Gl.append.log_pgptr);
 	  logpb_log ("logpb_start_append: set tde_algorithm to existing page (%lld), "
 		     "tde_algorithm = %s\n", (long long int) log_Gl.append.log_pgptr->hdr.logical_pageid,
 		     tde_get_algorithm_name (tde_algo));
@@ -11327,5 +11329,4 @@ logpb_set_tde_algorithm (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, const TD
       /* already cleared */
       break;
     }
-  logpb_set_dirty (thread_p, log_pgptr);
 }
