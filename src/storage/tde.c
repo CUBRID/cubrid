@@ -141,13 +141,12 @@ tde_initialize (THREAD_ENTRY * thread_p, HFID * keyinfo_hfid)
 	  goto exit;
 	}
 
-      err = tde_create_mk (default_mk);
+      err = tde_create_mk (default_mk, &created_time);
       if (err != NO_ERROR)
 	{
 	  goto exit;
 	}
 
-      created_time = time (NULL);
       err = tde_add_mk (vdes, default_mk, created_time, &mk_index);
       if (err != NO_ERROR)
 	{
@@ -1315,11 +1314,12 @@ exit:
 /*
  * tde_create_mk () - Create a master key
  *
- * return             : Error code
- * master_key (out)   : Created master key
+ * return               : Error code
+ * master_key (out)     : Created master key
+ * created_time (out)   : The time the key created
  */
 int
-tde_create_mk (unsigned char *master_key)
+tde_create_mk (unsigned char *master_key, time_t * created_time)
 {
   assert (master_key != NULL);
 
@@ -1328,6 +1328,8 @@ tde_create_mk (unsigned char *master_key)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_KEY_CREATION_FAIL, 0);
       return ER_TDE_KEY_CREATION_FAIL;
     }
+
+  *created_time = time (NULL);
 
   return NO_ERROR;
 }

@@ -3794,10 +3794,10 @@ tde (UTIL_FUNCTION_ARG * arg)
     {
       unsigned char master_key[TDE_MASTER_KEY_LENGTH];
       int mk_index = -1;
-      time_t created_time = time (NULL);
+      time_t created_time;
       char ctime_buf[CTIME_MAX];
 
-      if (tde_create_mk (master_key) != NO_ERROR)
+      if (tde_create_mk (master_key, &created_time) != NO_ERROR)
 	{
 	  PRINT_AND_LOG_ERR_MSG ("FAILURE: %s\n", db_error_string (3));
 	  db_shutdown ();

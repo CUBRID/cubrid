@@ -201,7 +201,7 @@ extern int tde_decrypt_log_page (const LOG_PAGE * logpage_cipher, TDE_ALGORITHM 
 /*
  * tde functions for the master key management
  */
-extern int tde_create_mk (unsigned char *master_key);
+extern int tde_create_mk (unsigned char *master_key, time_t * created_time);
 extern int tde_add_mk (int vdes, const unsigned char *master_key, time_t created_time, int *mk_index);
 extern int tde_find_mk (int vdes, int mk_index, unsigned char *master_key, time_t * created_time);
 extern int tde_find_first_mk (int vdes, int *mk_index, unsigned char *master_key, time_t * created_time);
