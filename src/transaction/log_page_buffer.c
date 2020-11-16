@@ -2282,7 +2282,7 @@ logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAG
 	   * It menas once it fails, the page always spill user data un-encrypted from then.
 	   */
 	  logpb_set_tde_algorithm (thread_p, log_pgptr, TDE_ALGORITHM_NONE);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_ENCRYPTION_LOGPAGE_ERORR_AND_OFF_TDE, logical_pageid);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_ENCRYPTION_LOGPAGE_ERORR_AND_OFF_TDE, 1, logical_pageid);
 	}
       else
 	{
@@ -2791,7 +2791,7 @@ logpb_writev_append_pages (THREAD_ENTRY * thread_p, LOG_PAGE ** to_flush, DKNPAG
 		   * It menas once it fails, the page always spill user data un-encrypted from then.
 		   */
 		  logpb_set_tde_algorithm (thread_p, log_pgptr, TDE_ALGORITHM_NONE);
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_ENCRYPTION_LOGPAGE_ERORR_AND_OFF_TDE,
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_ENCRYPTION_LOGPAGE_ERORR_AND_OFF_TDE, 1,
 			  log_pgptr->hdr.logical_pageid);
 		}
 	      else
@@ -2908,7 +2908,7 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
 	       * It menas once it fails, the page always spill user data un-encrypted from then.
 	       */
 	      logpb_set_tde_algorithm (thread_p, log_pgptr, TDE_ALGORITHM_NONE);
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_ENCRYPTION_LOGPAGE_ERORR_AND_OFF_TDE, pageid);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_ENCRYPTION_LOGPAGE_ERORR_AND_OFF_TDE, 1, pageid);
 	    }
 	  else
 	    {
