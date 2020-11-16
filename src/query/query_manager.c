@@ -1151,7 +1151,7 @@ qmgr_process_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl_tree, char *xasl_s
 	}
     }
 
-  query_p->includes_tde_class = (XASL_IS_FLAGED (xasl_p, XASL_INCLUDES_TDE_CLASS) ? 1 : 0);
+  query_p->includes_tde_class = XASL_IS_FLAGED (xasl_p, XASL_INCLUDES_TDE_CLASS);
 #if !defined(NDEBUG)
   er_log_debug (ARG_FILE_LINE, "TDE: qmgr_process_query(): includes_tde_class = %d\n", query_p->includes_tde_class);
 #endif /* !NDEBUG */

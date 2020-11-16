@@ -25469,7 +25469,6 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
   xasl->tcard_list[0] = XASL_CLASS_NO_TCARD;	/* init #pages */
   xasl->dbval_cnt = aptr->dbval_cnt;
 
-
   /* set TDE flag */
   XASL_SET_FLAG (xasl, aptr->flag & XASL_INCLUDES_TDE_CLASS);
 
