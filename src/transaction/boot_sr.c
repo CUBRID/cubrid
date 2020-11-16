@@ -2917,22 +2917,16 @@ xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart, const cha
  *  thread_p (in)   : Thread entry
  *  r_args(in)      : Restart argument structure contains various options
  *
- * There might be no proper master key when restoring database to a specific moment
- * because we can only have a master key at backuptime and the current key file.
- *
- * Timeline: backup - add mk A, B - change mk to A - (*) - change mk to B
- *            - delete mk A - latest
+ * There might be no proper master key after restoring database 
+ * even if we have a server mk file and the backup mk file (in the case of timed restore).
  * 
- * If you restores databse at (*), there is no mk A set on the database anywhere, 
- * but if we have the backup key file, you can restore database.
- * Then, we reset the mk set on the database as below:
+ * There are several cases but we simplify it into two case:
+ * (1) The master key set on the database can be found in the server _keys file
+ * (2) not (1), which means no server mk file or no master key in the server mk file.
  *
- * (1) It finds out the mk file where the master key set on database is stored
- * and set the mk file as the primary mk file. 
- * (2) If there isn't the master key, the first master key on a mk file is set for the database.
- *
- * In the case of (2), assuming the mk file on server, not from backup, has been being managed,
- * it prioritize the mk file on server.
+ * For (1), we do nothing.
+ * For (2), we copy backup mk file as the server mk file and set the first key in the key file
+ * as the master key for database.
  */
 int
 boot_reset_mk_after_restart_from_backup (THREAD_ENTRY * thread_p, BO_RESTART_ARG * r_args)
@@ -2970,18 +2964,18 @@ boot_reset_mk_after_restart_from_backup (THREAD_ENTRY * thread_p, BO_RESTART_ARG
       err = tde_load_mk (server_mk_vdes, &keyinfo, master_key);
       if (err == NO_ERROR)
 	{
-	  /* case (1) There is the master key on server mk file:
+	  /* case (1): There is the master key in the server key file:
 	   * Nothing to do */
 	  goto exit;
 	}
     }
 
   /* 
+   * case (2):
    * There isn't the key set on the database in the server key file,
-   * So we just copy the backup file as a new server key file and set 
+   * So we just copy the backup file as a new server key file 
+   * and set the first key in the file as the master key.
    */
-
-  /* case (2), set the first key on backup mk file as mk */
 
   /* No need to mount. The mk file from backup is not accessed by others */
   backup_mk_vdes = fileio_open (r_args->keys_file_path, O_RDWR, 0600);
