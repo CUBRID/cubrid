@@ -8499,6 +8499,29 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 	    {
 	      memcpy (r_args->keys_file_path, bk_mk_path, PATH_MAX);
 	    }
+	  else
+	    {
+	      /* If the keys file is given, check if it is valid. */
+	      int vdes =
+		fileio_mount (thread_p, boot_db_full_name (), r_args->keys_file_path, LOG_DBTDE_KEYS_VOLID, false,
+			      false);
+	      if (vdes == NULL_VOLDES)
+		{
+		  ASSERT_ERROR_AND_SET (error_code);
+		  LOG_CS_EXIT (thread_p);
+		  error_expected = true;
+		  goto error;
+		}
+
+	      if (tde_validate_keys_file (vdes) == false)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_INVALID_KEYS_FILE, 1, r_args->keys_file_path);
+		  error_code = ER_TDE_INVALID_KEYS_FILE;
+		  LOG_CS_EXIT (thread_p);
+		  error_expected = true;
+		  goto error;
+		}
+	    }
 	}
 
       while (success == NO_ERROR)
