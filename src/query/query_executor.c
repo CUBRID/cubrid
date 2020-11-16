@@ -4393,7 +4393,6 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
   QFILE_LIST_SCAN_ID input_scan_id;
   int ls_flag = 0;
   int estimated_pages;
-  QMGR_QUERY_ENTRY *query_p = NULL;
 
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
@@ -19317,7 +19316,6 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
 			ANALYTIC_EVAL_TYPE * analytic_eval, QFILE_TUPLE_RECORD * tplrec, bool is_last)
 {
   QFILE_LIST_ID *list_id = xasl->list_id;
-  QMGR_QUERY_ENTRY *query_p = NULL;
   BUILDLIST_PROC_NODE *buildlist = &xasl->proc.buildlist;
   ANALYTIC_STATE analytic_state;
   QFILE_LIST_SCAN_ID input_scan_id, interm_scan_id;

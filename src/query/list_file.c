@@ -3808,7 +3808,6 @@ qfile_sort_list_with_func (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, S
   SORT_INFO info;
   int sort_result, estimated_pages;
   SORT_DUP_OPTION dup_option;
-  QMGR_QUERY_ENTRY *query_p = NULL;
 
   srlist_id = qfile_open_list (thread_p, &list_id_p->type_list, sort_list_p, list_id_p->query_id, flag);
   if (srlist_id == NULL)
