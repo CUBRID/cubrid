@@ -441,11 +441,10 @@ tde_copy_keys_file (THREAD_ENTRY * thread_p, const char *dest_fullname, const ch
       return err;
     }
 
-  to_vdes = fileio_mount (thread_p, boot_db_full_name (), dest_fullname, LOG_DBCOPY_VOLID, 2, false);
+  to_vdes = fileio_mount (thread_p, boot_db_full_name (), dest_fullname, LOG_DBCOPY_VOLID, 1, false);
   if (to_vdes == NULL_VOLDES)
     {
-      ASSERT_ERROR ();
-      err = er_errid ();
+      ASSERT_ERROR_AND_SET (err);
       fileio_dismount (thread_p, from_vdes);
       return err;
     }
@@ -1248,7 +1247,7 @@ xtde_get_mk_info (THREAD_ENTRY * thread_p, int *mk_index, time_t * created_time,
 
 /*
  * xtde_change_mk_without_flock () - Change the master key on the database.
- *                                   While changing, it mounts the key file wihout file lock.
+ *                                   While changing, it mounts the key file without file lock. 
  *
  * return             : Error code
  * thread_p (in)      : Thread entry
@@ -1266,6 +1265,7 @@ xtde_change_mk_without_flock (THREAD_ENTRY * thread_p, const int mk_index)
 
   tde_make_keys_file_fullname (mk_path, boot_db_full_name (), false);
 
+  /* Without file lock: It is because it must've already been locked in client-side: tde() */
   vdes = fileio_mount (thread_p, boot_db_full_name (), mk_path, LOG_DBTDE_KEYS_VOLID, false, false);
   if (vdes == NULL_VOLDES)
     {

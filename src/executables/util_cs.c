@@ -3775,19 +3775,20 @@ tde (UTIL_FUNCTION_ARG * arg)
 
   printf ("Key File: %s\n", mk_path);
 
-  /* For all ops but change (-c), mount mk file */
-  if (change_op_idx == -1)
+  /* 
+   * In Window, --change-keys operation is not supported because of this fileio_mount(). In Window, if a process mount a file with file_lock > 0, no other process can mount even with file_lock = 0, but the file lock here is necessary to procide exclusivness with backupdb in current design. 
+   */
+  vdes = fileio_mount (NULL, database_name, mk_path, LOG_DBTDE_KEYS_VOLID, 1, false);
+  if (vdes == NULL_VOLDES)
     {
-      /* There is no need to call fileio_dismount() for 'vdes' 
-       * because it is dismounted in db_shutdown() */
-      vdes = fileio_mount (NULL, database_name, mk_path, LOG_DBTDE_KEYS_VOLID, 1, false);
-      if (vdes == NULL_VOLDES)
-	{
-	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-	  db_shutdown ();
-	  goto error_exit;
-	}
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+      db_shutdown ();
+      goto error_exit;
     }
+  /* 
+   * There is no need to call fileio_dismount() for 'vdes' later in this function
+   * because it is dismounted in db_shutdown() 
+   * */
 
   printf ("\n");
   if (gen_op)
