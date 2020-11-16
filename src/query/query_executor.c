@@ -4577,16 +4577,6 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
       qfile_close_list (thread_p, list_id);
     }
 
-  /* find the query entry */
-  query_p = qmgr_get_query_entry (thread_p, xasl_state->query_id, LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-
-  if (query_p == NULL)
-    {
-      /* query entry is not found */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_UNKNOWN_QUERYID, 1, xasl_state->query_id);
-      GOTO_EXIT_ON_ERROR;
-    }
-
   /* sort partial list and open a scan on it */
   if (gbstate.hash_eligible && gbstate.agg_hash_context->part_list_id->tuple_cnt > 0)
     {
@@ -4616,7 +4606,7 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
       /* sort and aggregate partial results */
       if (sort_listfile (thread_p, NULL_VOLID, estimated_pages, &qexec_hash_gby_get_next, &gbstate,
 			 &qexec_hash_gby_put_next, &gbstate, cmp_fn, &gbstate.agg_hash_context->sort_key, SORT_DUP,
-			 NO_SORT_LIMIT, query_p->includes_tde_class) != NO_ERROR)
+			 NO_SORT_LIMIT, gbstate.output_file->tfile_vfid->tde_encrypted) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
@@ -4697,7 +4687,7 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
 
   if (sort_listfile (thread_p, NULL_VOLID, estimated_pages, &qexec_gby_get_next, &gbstate, &qexec_gby_put_next,
 		     &gbstate, gbstate.cmp_fn, &gbstate.key_info, SORT_DUP, NO_SORT_LIMIT,
-		     query_p->includes_tde_class) != NO_ERROR)
+		     gbstate.output_file->tfile_vfid->tde_encrypted) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
@@ -19457,20 +19447,9 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
   analytic_state.key_info.use_original = 1;
   analytic_state.cmp_fn = &qfile_compare_partial_sort_record;
 
-  /* find the query entry */
-  query_p = qmgr_get_query_entry (thread_p, xasl_state->query_id, LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-
-  if (query_p == NULL)
-    {
-      /* query entry is not found */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_UNKNOWN_QUERYID, 1, xasl_state->query_id);
-      GOTO_EXIT_ON_ERROR;
-    }
-
-
   if (sort_listfile (thread_p, NULL_VOLID, estimated_pages, &qexec_analytic_get_next, &analytic_state,
 		     &qexec_analytic_put_next, &analytic_state, analytic_state.cmp_fn, &analytic_state.key_info,
-		     SORT_DUP, NO_SORT_LIMIT, query_p->includes_tde_class) != NO_ERROR)
+		     SORT_DUP, NO_SORT_LIMIT, analytic_state.output_file->tfile_vfid->tde_encrypted) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }

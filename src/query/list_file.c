@@ -415,32 +415,6 @@ qfile_clone_list_id (const QFILE_LIST_ID * list_id_p, bool is_include_sort_list)
 void
 qfile_clear_list_id (QFILE_LIST_ID * list_id_p)
 {
-#if !defined(NDEBUG)
-  QMGR_QUERY_ENTRY *query_p;
-  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
-  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
-  int tran_index;
-
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-
-  query_p = qmgr_get_query_entry (thread_p, list_id_p->query_id, tran_index);
-  if (query_p != NULL && query_p->includes_tde_class)
-    {
-      if (list_id_p->tfile_vfid)
-	{
-	  assert (list_id_p->tfile_vfid->tde_encrypted);
-	}
-
-      if (!VFID_ISNULL (&list_id_p->temp_vfid))
-	{
-	  if (file_get_tde_algorithm (thread_p, &list_id_p->temp_vfid, PGBUF_CONDITIONAL_LATCH, &tde_algo) != NO_ERROR)
-	    {
-	      assert (tde_algo != TDE_ALGORITHM_NONE);
-	    }
-	}
-    }
-#endif /* !NDEBUG */
-
   qfile_update_qlist_count (thread_get_thread_entry_info (), list_id_p, -1);
 
   if (list_id_p->tpl_descr.f_valp)
@@ -3890,19 +3864,9 @@ qfile_sort_list_with_func (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, S
 
   dup_option = ((option == Q_DISTINCT) ? SORT_ELIM_DUP : SORT_DUP);
 
-  /* find the query entry */
-  query_p = qmgr_get_query_entry (thread_p, list_id_p->query_id, LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-
-  if (query_p == NULL)
-    {
-      /* query entry is not found */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_UNKNOWN_QUERYID, 1, list_id_p->query_id);
-      return NULL;
-    }
-
   sort_result =
     sort_listfile (thread_p, NULL_VOLID, estimated_pages, get_func, &info, put_func, &info, cmp_func, &info.key_info,
-		   dup_option, limit, query_p->includes_tde_class);
+		   dup_option, limit, srlist_id->tfile_vfid->tde_encrypted);
 
   if (sort_result < 0)
     {
