@@ -4323,12 +4323,8 @@ file_temp_retire_internal (THREAD_ENTRY * thread_p, const VFID * vfid, bool was_
     }
   else
     {
+      assert (entry != NULL);
       entry = file_tempcache_pop_tran_file (thread_p, vfid);
-      /* should have found it
-         assert (entry != NULL);
-         * but coulld be already removed by result-cache processing
-         * so, disable assertion
-       */
       return NO_ERROR;
     }
 
@@ -8551,11 +8547,7 @@ file_temp_preserve (THREAD_ENTRY * thread_p, const VFID * vfid)
   entry = file_tempcache_pop_tran_file (thread_p, vfid);
   if (entry == NULL)
     {
-      /* should have found it
-         assert_release (false);
-         * but coulld be already removed by result-cache processing
-         * so, disable assertion
-       */
+      assert_release (false);
     }
   else
     {
@@ -9127,12 +9119,8 @@ file_tempcache_pop_tran_file (THREAD_ENTRY * thread_p, const VFID * vfid)
       prev_entry = entry;
     }
 
-  /* should have found it
-     assert_release (false);
-     * but coulld be already removed by result-cache processing
-     * so, disable assertion
-   */
-
+  /* shoud have found it */
+  assert_release (false);
   return NULL;
 }
 
