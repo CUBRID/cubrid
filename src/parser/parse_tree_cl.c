@@ -6586,6 +6586,10 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
 	    case PT_TYPE_BIT:
 	      /* fixed data type: always show parameter */
 	      show_precision = true;
+	      if (precision == TP_FLOATING_PRECISION_VALUE)
+		{
+		  show_precision = false;
+		}
 	      break;
 	    default:
 	      /* variable data type: only show non-maximum(i.e., default) parameter */
