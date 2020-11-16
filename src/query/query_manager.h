@@ -85,6 +85,7 @@ struct qmgr_temp_file
   PAGE_PTR *membuf;
   int membuf_npages;
   QMGR_TEMP_FILE_MEMBUF_TYPE membuf_type;
+  bool preserved;		/* if temp file is preserved */
 };
 
 /*
@@ -161,7 +162,7 @@ extern QMGR_TEMP_FILE *qmgr_create_new_temp_file (THREAD_ENTRY * thread_p, QUERY
 extern QMGR_TEMP_FILE *qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id);
 extern int qmgr_free_list_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP_FILE * tfile_vfidp);
 extern int qmgr_free_temp_file_list (THREAD_ENTRY * thread_p, QMGR_TEMP_FILE * tfile_vfidp, QUERY_ID query_id,
-				     bool is_error, bool was_preserved);
+				     bool is_error);
 
 #if defined (SERVER_MODE)
 extern bool qmgr_is_query_interrupted (THREAD_ENTRY * thread_p, QUERY_ID query_id);

@@ -1494,6 +1494,27 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 	    {
 	      goto end;
 	    }
+	  /* the type of the result file should be FILE_QUERY_AREA in order not to deleted at the time of query_end */
+	  if (list_id_p->tfile_vfid != NULL && list_id_p->tfile_vfid->temp_file_type != FILE_QUERY_AREA)
+	    {
+	      /* duplicate the list file */
+	      tmp_list_id_p = qfile_duplicate_list (thread_p, list_id_p, QFILE_FLAG_RESULT_FILE);
+	      if (tmp_list_id_p)
+		{
+		  qfile_destroy_list (thread_p, list_id_p);
+		  QFILE_FREE_AND_INIT_LIST_ID (list_id_p);
+		  list_id_p = tmp_list_id_p;
+		}
+	    }
+	  else
+	    {
+	      tmp_list_id_p = list_id_p;	/* just for next if condition */
+	    }
+
+	  if (tmp_list_id_p == NULL)
+	    {
+	      goto end;		/* return without inserting into the cache */
+	    }
 
 	  /* update the cache entry for the result associated with the used parameter values (DB_VALUE array) if there
 	   * is, or make new one */
@@ -1928,10 +1949,11 @@ xqmgr_end_query (THREAD_ENTRY * thread_p, QUERY_ID query_id)
   if (query_p->xasl_ent && query_p->list_ent)
     {
       (void) qfile_end_use_of_list_cache_entry (thread_p, query_p->list_ent, false);
-      query_p->query_status = QUERY_CLOSED;
+      query_p->list_ent = NULL;
+      query_p->xasl_ent = NULL;
     }
 
-  /* destroy query result list file */
+  /* destroy the temp file from list id */
   if (query_p->list_id)
     {
       QFILE_FREE_AND_INIT_LIST_ID (query_p->list_id);
@@ -2050,11 +2072,6 @@ qmgr_clear_trans_wakeup (THREAD_ENTRY * thread_p, int tran_index, bool is_tran_d
 
   tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
 
-  if (!QFILE_IS_LIST_CACHE_DISABLED)
-    {
-      qfile_clear_uncommited_list_cache_entry (thread_p, tran_index);
-    }
-
   /* if the transaction is aborting, clear relative cache entries */
   if (tran_entry_p->modified_classes_p)
     {
@@ -2120,6 +2137,8 @@ qmgr_clear_trans_wakeup (THREAD_ENTRY * thread_p, int tran_index, bool is_tran_d
       if (query_p->xasl_ent != NULL && query_p->list_ent != NULL)
 	{
 	  (void) qfile_end_use_of_list_cache_entry (thread_p, query_p->list_ent, false);
+	  query_p->xasl_ent = NULL;
+	  query_p->list_ent = NULL;
 	}
 
       /* remove query entry */
@@ -2594,7 +2613,7 @@ qmgr_create_new_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP
   tfile_vfid_p->temp_file_type = FILE_TEMP;
   tfile_vfid_p->membuf_npages = num_buffer_pages;
   tfile_vfid_p->membuf_type = membuf_type;
-
+  tfile_vfid_p->preserved = false;
   tfile_vfid_p->membuf_last = -1;
   page_p = (PAGE_PTR) ((PAGE_PTR) tfile_vfid_p->membuf
 		       + DB_ALIGN (sizeof (PAGE_PTR) * tfile_vfid_p->membuf_npages, MAX_ALIGNMENT));
@@ -2687,6 +2706,7 @@ qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
   tfile_vfid_p->membuf = NULL;
   tfile_vfid_p->membuf_npages = 0;
   tfile_vfid_p->membuf_type = TEMP_FILE_MEMBUF_NONE;
+  tfile_vfid_p->preserved = false;
 
   /* Find the query entry and chain the created temp file to the entry */
 
@@ -2712,7 +2732,11 @@ qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
       return NULL;
     }
 
-  file_temp_preserve (thread_p, &tfile_vfid_p->temp_vfid);
+  if (qmgr_is_allowed_result_cache (query_p->query_flag))
+    {
+      file_temp_preserve (thread_p, &tfile_vfid_p->temp_vfid);
+      tfile_vfid_p->preserved = true;
+    }
 
   /* chain the tfile_vfid to the query_entry->temp_vfid */
   temp = query_p->temp_vfid;
@@ -2748,8 +2772,7 @@ qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
  * was_preserved (in) : true if query was preserved
  */
 int
-qmgr_free_temp_file_list (THREAD_ENTRY * thread_p, QMGR_TEMP_FILE * tfile_vfid_p, QUERY_ID query_id, bool is_error,
-			  bool was_preserved)
+qmgr_free_temp_file_list (THREAD_ENTRY * thread_p, QMGR_TEMP_FILE * tfile_vfid_p, QUERY_ID query_id, bool is_error)
 {
   QMGR_TEMP_FILE *temp = NULL;
   int rc = NO_ERROR, fd_ret = NO_ERROR;
@@ -2762,7 +2785,7 @@ qmgr_free_temp_file_list (THREAD_ENTRY * thread_p, QMGR_TEMP_FILE * tfile_vfid_p
       fd_ret = NO_ERROR;
       if ((tfile_vfid_p->temp_file_type != FILE_QUERY_AREA || is_error) && !VFID_ISNULL (&tfile_vfid_p->temp_vfid))
 	{
-	  if (was_preserved || tfile_vfid_p->temp_file_type == FILE_QUERY_AREA)
+	  if (tfile_vfid_p->preserved)
 	    {
 	      fd_ret = file_temp_retire_preserved (thread_p, &tfile_vfid_p->temp_vfid);
 	      if (fd_ret != NO_ERROR)
@@ -2822,7 +2845,7 @@ qmgr_free_query_temp_file_helper (THREAD_ENTRY * thread_p, QMGR_QUERY_ENTRY * qu
       tfile_vfid_p = query_p->temp_vfid;
       tfile_vfid_p->prev->next = NULL;
 
-      rc = qmgr_free_temp_file_list (thread_p, tfile_vfid_p, query_p->query_id, is_error, query_p->is_preserved);
+      rc = qmgr_free_temp_file_list (thread_p, tfile_vfid_p, query_p->query_id, is_error);
 
       query_p->temp_vfid = NULL;
     }
@@ -2903,7 +2926,15 @@ qmgr_free_list_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP_
     {
       if (!VFID_ISNULL (&tfile_vfid_p->temp_vfid))
 	{
-	  if (file_temp_retire (thread_p, &tfile_vfid_p->temp_vfid) != NO_ERROR)
+	  if (tfile_vfid_p->preserved)
+	    {
+	      if (file_temp_retire_preserved (thread_p, &tfile_vfid_p->temp_vfid) != NO_ERROR)
+		{
+		  /* stop; return error */
+		  rc = ER_FAILED;
+		}
+	    }
+	  else if (file_temp_retire (thread_p, &tfile_vfid_p->temp_vfid) != NO_ERROR)
 	    {
 	      /* stop; return error */
 	      rc = ER_FAILED;
