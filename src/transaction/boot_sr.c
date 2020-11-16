@@ -2970,78 +2970,71 @@ boot_reset_mk_after_restart_from_backup (THREAD_ENTRY * thread_p, BO_RESTART_ARG
       err = tde_load_mk (server_mk_vdes, &keyinfo, master_key);
       if (err == NO_ERROR)
 	{
-	  /* case (1)-1. There is the master key on server mk file:
+	  /* case (1) There is the master key on server mk file:
 	   * Nothing to do */
 	  goto exit;
 	}
     }
 
-  if (r_args->keys_file_path[0] != '\0')
+  /* 
+   * There isn't the key set on the database in the server key file,
+   * So we just copy the backup file as a new server key file and set 
+   */
+
+  /* case (2), set the first key on backup mk file as mk */
+
+  /* No need to mount. The mk file from backup is not accessed by others */
+  backup_mk_vdes = fileio_open (r_args->keys_file_path, O_RDWR, 0600);
+  if (backup_mk_vdes == NULL_VOLDES)
     {
-      /* No need to mount. The mk file from backup is not accessed by others */
-      backup_mk_vdes = fileio_open (r_args->keys_file_path, O_RDWR, 0600);
-      if (backup_mk_vdes != NULL_VOLDES && tde_validate_keys_file (backup_mk_vdes))
-	{
-	  err = tde_load_mk (backup_mk_vdes, &keyinfo, master_key);
-	  if (err == NO_ERROR)
-	    {
-	      /* case (1)-2. There is the master key on backup mk file:
-	       * replace the server mk file with backup mk file */
-	      if (server_mk_vdes != NULL_VOLDES)
-		{
-		  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_TDE_RESTORE_KEY_FOUND_ONLY_FROM_BACKUP, 1,
-			  mk_path);
-
-		  strcpy (mk_path_old, mk_path);
-		  strcat (mk_path_old, "_old");
-		  fileio_unformat_and_rename (thread_p, mk_path, mk_path_old);
-		  server_mk_vdes = NULL_VOLDES;
-
-		  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_TDE_RESTORE_MAKE_KEYS_FILE_OLD, 2, mk_path,
-			  mk_path_old);
-		}
-	      err = tde_copy_keys_file (thread_p, mk_path, r_args->keys_file_path, false, false);
-	      if (err != NO_ERROR)
-		{
-		  goto exit;
-		}
-	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_TDE_RESTORE_COPY_KEYS_FILE, 2, r_args->keys_file_path,
-		      mk_path);
-	      goto exit;
-	    }
-	}
+      /* not expected. if it doens't exist, loading tde must have failed and this function shoudn't have been called. */
+      assert (false);
+      ASSERT_ERROR_AND_SET (err);
+      goto exit;
     }
 
+  if (tde_validate_keys_file (backup_mk_vdes) == false)
+    {
+      /* not expected. if it is not valid, loading tde must have failed and this function shoudn't have been called. */
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_INVALID_KEYS_FILE, 1, mk_path);
+      err = ER_TDE_INVALID_KEYS_FILE;
+      goto exit;
+    }
+
+  err = tde_find_first_mk (backup_mk_vdes, &mk_index, master_key, &created_time);
+  if (err != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  /* if a server key file exists, move it */
   if (server_mk_vdes != NULL_VOLDES)
     {
-      /* case (2)-1, set the first key on server mk file as mk */
-      err = tde_find_first_mk (server_mk_vdes, &mk_index, master_key, &created_time);
-      if (err != NO_ERROR)
-	{
-	  goto exit;
-	}
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_TDE_RESTORE_KEY_FOUND_ONLY_FROM_BACKUP, 1, mk_path);
+
+      strcpy (mk_path_old, mk_path);
+      strcat (mk_path_old, "_old");
+      fileio_unformat_and_rename (thread_p, mk_path, mk_path_old);
+      server_mk_vdes = NULL_VOLDES;
+
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_TDE_RESTORE_MAKE_KEYS_FILE_OLD, 2, mk_path, mk_path_old);
     }
-  else
+
+  err = tde_copy_keys_file (thread_p, mk_path, r_args->keys_file_path, false, false);
+  if (err != NO_ERROR)
     {
-      /* case (2)-2, set the first key on backup mk file as mk */
-      err = tde_find_first_mk (backup_mk_vdes, &mk_index, master_key, &created_time);
-      if (err != NO_ERROR)
-	{
-	  goto exit;
-	}
-      err = tde_copy_keys_file (thread_p, mk_path, r_args->keys_file_path, false, false);
-      if (err != NO_ERROR)
-	{
-	  goto exit;
-	}
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_TDE_RESTORE_COPY_KEYS_FILE, 2, r_args->keys_file_path,
-	      mk_path);
+      goto exit;
     }
+
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_TDE_RESTORE_COPY_KEYS_FILE, 2, r_args->keys_file_path, mk_path);
+
   err = tde_change_mk (thread_p, mk_index, master_key, created_time);
   if (err != NO_ERROR)
     {
       goto exit;
     }
+
   ctime_r (&keyinfo.created_time, ctime_buf);
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_TDE_RESTORE_CHANGE_MASTER_KEY, 3, keyinfo.mk_index, ctime_buf,
 	  mk_index);
