@@ -8517,10 +8517,13 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_INVALID_KEYS_FILE, 1, r_args->keys_file_path);
 		  error_code = ER_TDE_INVALID_KEYS_FILE;
+		  fileio_dismount (thread_p, vdes);
 		  LOG_CS_EXIT (thread_p);
 		  error_expected = true;
 		  goto error;
 		}
+
+	      fileio_dismount (thread_p, vdes);
 	    }
 	}
 
