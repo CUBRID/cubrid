@@ -668,15 +668,7 @@ la_log_phypageid (LOG_PAGEID logical_pageid)
 static int
 la_log_io_read (char *vname, int vdes, void *io_pgptr, LOG_PHY_PAGEID pageid, int pagesize)
 {
-  int err = NO_ERROR;
-  LOG_PAGE *log_pgptr = (LOG_PAGE *) io_pgptr;
-
-  err = la_log_io_read_with_max_retries (vname, vdes, io_pgptr, pageid, pagesize, -1);
-  if (err != NO_ERROR)
-    {
-      return err;
-    }
-  return err;
+  return la_log_io_read_with_max_retries (vname, vdes, io_pgptr, pageid, pagesize, -1);
 }
 
 /*
