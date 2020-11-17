@@ -5747,9 +5747,7 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
 	  /* 1. my isolation is not (greater than) read uncommited 2. the entry is cached by an uncommitted other
 	   * transaction */
 	  num_elements = (int) lent->last_ta_idx;
-	  if (lent->uncommitted_marker == true
-	      && lfind (&tran_index, lent->tran_index_array, &num_elements, sizeof (int),
-			qfile_compare_tran_id) != NULL)
+	  if (lent->uncommitted_marker == true)
 	    {
 	      lent->last_ta_idx = num_elements;
 	      /* treat as look-up failed */
