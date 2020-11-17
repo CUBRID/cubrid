@@ -5115,14 +5115,6 @@ qfile_assign_list_cache (void)
     }
 
   /* full!! need to expand list_hts by realloc() */
-#if 1
-  FILE *fp = fopen ("/tmp/result-cache-err.log", "w");
-  if (fp)
-    {
-      fprintf (fp, "qfile_assign_list_cache --- full\n");
-      fclose (fp);
-    }
-#endif
   return -1;
 }
 
