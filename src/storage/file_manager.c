@@ -4329,7 +4329,6 @@ file_temp_retire_internal (THREAD_ENTRY * thread_p, const VFID * vfid, bool was_
 {
   FILE_TEMPCACHE_ENTRY *entry = NULL;
   int error_code = NO_ERROR;
-  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
 
   if (was_preserved)
     {
