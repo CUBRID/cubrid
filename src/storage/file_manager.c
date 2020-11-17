@@ -5793,7 +5793,7 @@ file_get_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, PGBUF_LATCH_
   page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_READ, fix_head_cond);
   if (page_fhead == NULL)
     {
-      ASSERT_ERROR_AND_SET (error_code);
+      error_code = ER_FAILED;
       return error_code;
     }
 

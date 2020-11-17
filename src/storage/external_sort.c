@@ -4549,7 +4549,6 @@ sort_write_area (THREAD_ENTRY * thread_p, VFID * vfid, int first_page, INT32 num
   ret = file_get_tde_algorithm (thread_p, vfid, PGBUF_UNCONDITIONAL_LATCH, &tde_algo);
   if (ret != NO_ERROR)
     {
-      ASSERT_ERROR ();
       return ret;
     }
   /* initializations */
