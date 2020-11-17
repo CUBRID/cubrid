@@ -41,7 +41,6 @@
 #include "misc_string.h"
 #include "intl_support.h"
 #include "log_common_impl.h"
-#include "log_storage.hpp"
 #if defined (SERVER_MODE)
 #include "vacuum.h"
 #endif /* SERVER_MODE */
