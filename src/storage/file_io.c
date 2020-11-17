@@ -5885,10 +5885,10 @@ fileio_make_dwb_name (char *dwb_name_p, const char *dwb_path_p, const char *db_n
 }
 
 /*
- * fileio_make_keys_name () - Build the name of KEYS volume (for TDE Master Key)
+ * fileio_make_keys_name () - Build the name of KEYS file  (for TDE Master Key)
  *   return: void
- *   keys_name_p(out): the name of KEYS volume
- *   dbname(in): database name
+ *   keys_name_p(out): the name of KEYS file
+ *   db_full_name_p(in): database full path
  *
  * Note: The caller must have enough space to store the name of the volume
  *       that is constructed(sprintf). It is recommended to have at least
@@ -5901,10 +5901,11 @@ fileio_make_keys_name (char *keys_name_p, const char *db_full_name_p)
 }
 
 /*
- * fileio_make_keys_name () - Build the name of KEYS volume (for TDE Master Key)
+ * fileio_make_keys_name_given_path () - Build the name of KEYS file (for TDE Master Key)
  *   return: void
- *   keys_name_p(out): the name of KEYS volume
- *   dbname(in): database name
+ *   keys_name_p(out): the bname of KEYS file
+ *   keys_path_p(in): the directory path of KEYS file
+ *   db_name_p(in): database name
  *
  * Note: The caller must have enough space to store the name of the volume
  *       that is constructed(sprintf). It is recommended to have at least
