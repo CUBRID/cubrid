@@ -54,16 +54,6 @@
 #include "log_volids.hpp"
 #include "tde.h"
 
-/*
- * It must correspond to TDE_ALGORITHM enum.
- * Each index of tde_Algorithm_str is the value in TDE_ALGORITHM enum.
- */
-static const char *tde_Algorithm_str[] = {
-  "NONE",			/* TDE_ALGORITHM_NONE */
-  "AES",			/* TDE_ALGORITHM_AES */
-  "ARIA"			/* TDE_ALGORITHM_ARIA */
-};
-
 #define off_signals(new_mask, old_mask) \
   do {  \
   sigfillset (&(new_mask)); \
@@ -1695,7 +1685,7 @@ exit:
 }
 
 /*
- * tde_get_algorithm_name () - Convert TDE_ALGORITHM to string refering to tde_Algorithm_str
+ * tde_get_algorithm_name () - Convert TDE_ALGORITHM to corresponding string
  *
  * return               : String version of tde_algo. NULL means it is not valid
  * tde_algo (in)        : Encryption algorithm
@@ -1704,9 +1694,15 @@ exit:
 const char *
 tde_get_algorithm_name (TDE_ALGORITHM tde_algo)
 {
-  if (!(tde_algo == TDE_ALGORITHM_NONE || tde_algo == TDE_ALGORITHM_AES || tde_algo == TDE_ALGORITHM_ARIA))
+  switch (tde_algo)
     {
+    case TDE_ALGORITHM_NONE:
+      return "NONE";
+    case TDE_ALGORITHM_AES:
+      return "AES";
+    case TDE_ALGORITHM_ARIA:
+      return "ARIA";
+    default:
       return NULL;
     }
-  return tde_Algorithm_str[tde_algo];
 }
