@@ -295,6 +295,7 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
   int tran_index;
   LOG_TDES *tdes;
   LOG_REPL_RECORD *repl_rec;
+  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
   char *class_name = NULL;
   char *ptr;
   int error = NO_ERROR, strlen;
@@ -331,6 +332,7 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
 
   repl_rec = (LOG_REPL_RECORD *) (&tdes->repl_records[tdes->cur_repl_record]);
   repl_rec->repl_type = log_type;
+  repl_rec->tde_encrypted = false;
 
   repl_rec->rcvindex = rcvindex;
   if (rcvindex == RVREPL_DATA_UPDATE)
@@ -367,6 +369,18 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
 	    }
 	  return error;
 	}
+
+      if (heap_get_class_tde_algorithm (thread_p, class_oid, &tde_algo) != NO_ERROR)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  if (error == NO_ERROR)
+	    {
+	      error = ER_REPL_ERROR;
+	    }
+	  return error;
+	}
+
+      repl_rec->tde_encrypted = tde_algo != TDE_ALGORITHM_NONE;
 
       repl_rec->length = OR_INT_SIZE;	/* packed_key_value_size */
       repl_rec->length += or_packed_string_length (class_name, &strlen);

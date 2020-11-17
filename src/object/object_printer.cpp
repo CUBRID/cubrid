@@ -40,6 +40,7 @@
 #include "string_buffer.hpp"
 #include "trigger_manager.h"
 #include "work_space.h"
+#include "tde.h"
 
 #include <assert.h>
 
@@ -951,6 +952,8 @@ void object_printer::describe_class (struct db_object *class_op)
   m_buf.clear ();
 
   class_description class_descr;
+  TDE_ALGORITHM tde_algo;
+  const char *tde_algo_str;
 
   if (class_descr.init (class_op, class_description::SHOW_CREATE_TABLE, m_buf) != NO_ERROR)
     {
@@ -1055,6 +1058,17 @@ void object_printer::describe_class (struct db_object *class_op)
   if (class_descr.collation != NULL)
     {
       m_buf (", COLLATE %s", class_descr.collation);
+    }
+
+  /* tde_algorithm */
+  if (sm_get_class_tde_algorithm (class_op, &tde_algo) == NO_ERROR)
+    {
+      if (tde_algo != TDE_ALGORITHM_NONE)
+	{
+	  tde_algo_str = tde_get_algorithm_name (tde_algo);
+	  assert (tde_algo_str != NULL);
+	  m_buf (" ENCRYPT=%s", tde_algo_str);
+	}
     }
 
   /* methods and class_methods */

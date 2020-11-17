@@ -2928,9 +2928,26 @@ exit_on_error:
 static int
 btree_index_sort (THREAD_ENTRY * thread_p, SORT_ARGS * sort_args, SORT_PUT_FUNC * out_func, void *out_args)
 {
+  int i;
+  bool includes_tde_class = false;
+  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
+
+  for (i = 0; i < sort_args->n_classes; i++)
+    {
+      if (heap_get_class_tde_algorithm (thread_p, &sort_args->class_ids[i], &tde_algo) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+      if (tde_algo != TDE_ALGORITHM_NONE)
+	{
+	  includes_tde_class = true;
+	  break;
+	}
+    }
+
   return sort_listfile (thread_p, sort_args->hfids[0].vfid.volid, 0 /* TODO - support parallelism */ ,
 			&btree_sort_get_next, sort_args, out_func, out_args, compare_driver, sort_args, SORT_DUP,
-			NO_SORT_LIMIT);
+			NO_SORT_LIMIT, includes_tde_class);
 }
 
 /*

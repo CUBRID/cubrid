@@ -915,6 +915,7 @@ restoredb (UTIL_FUNCTION_ARG * arg)
   char *up_to_date;
   char *database_name;
   bool partial_recovery;
+  const char *mk_path;
   BO_RESTART_ARG restart_arg;
 
   database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
@@ -926,9 +927,20 @@ restoredb (UTIL_FUNCTION_ARG * arg)
   restart_arg.level = utility_get_option_int_value (arg_map, RESTORE_LEVEL_S);
   restart_arg.verbose_file = utility_get_option_string_value (arg_map, RESTORE_OUTPUT_FILE_S, 0);
   restart_arg.newvolpath = utility_get_option_bool_value (arg_map, RESTORE_USE_DATABASE_LOCATION_PATH_S);
+  mk_path = utility_get_option_string_value (arg_map, RESTORE_KEYS_FILE_PATH_S, 0);
   restart_arg.restore_upto_bktime = false;
   restart_arg.restore_slave = false;
   restart_arg.is_restore_from_backup = true;
+
+  if (mk_path != NULL)
+    {
+      memcpy (restart_arg.keys_file_path, mk_path, PATH_MAX);
+    }
+  else
+    {
+      /* prepare the buffer to contain mk path from the backup volume */
+      restart_arg.keys_file_path[0] = '\0';
+    }
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -3733,6 +3745,7 @@ restoreslave (UTIL_FUNCTION_ARG * arg)
   char *database_name;
   char *source_state;
   char *master_host_name;
+  const char *mk_path;
   BO_RESTART_ARG restart_arg;
 
   if (sysprm_load_and_init (NULL, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
@@ -3772,9 +3785,19 @@ restoreslave (UTIL_FUNCTION_ARG * arg)
   restart_arg.level = 0;
   restart_arg.verbose_file = utility_get_option_string_value (arg_map, RESTORESLAVE_OUTPUT_FILE_S, 0);
   restart_arg.newvolpath = utility_get_option_bool_value (arg_map, RESTORESLAVE_USE_DATABASE_LOCATION_PATH_S);
+  mk_path = utility_get_option_string_value (arg_map, RESTORE_KEYS_FILE_PATH_S, 0);
   restart_arg.restore_upto_bktime = false;
   restart_arg.stopat = time (NULL);
   restart_arg.is_restore_from_backup = false;
+
+  if (mk_path != NULL)
+    {
+      memcpy (restart_arg.keys_file_path, mk_path, PATH_MAX);
+    }
+  else
+    {
+      restart_arg.keys_file_path[0] = '\0';
+    }
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {

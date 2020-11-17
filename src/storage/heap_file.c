@@ -71,6 +71,7 @@
 #include "db_value_printer.hpp"
 #include "log_append.hpp"
 #include "string_buffer.hpp"
+#include "tde.h"
 
 #include <set>
 
@@ -750,7 +751,6 @@ static int heap_class_get_partition_info (THREAD_ENTRY * thread_p, const OID * c
 static int heap_get_partition_attributes (THREAD_ENTRY * thread_p, const OID * cls_oid, ATTR_ID * type_id,
 					  ATTR_ID * values_id);
 static int heap_get_class_subclasses (THREAD_ENTRY * thread_p, const OID * class_oid, int *count, OID ** subclasses);
-
 static unsigned int heap_hash_vpid (const void *key_vpid, unsigned int htsize);
 static int heap_compare_vpid (const void *key_vpid1, const void *key_vpid2);
 static unsigned int heap_hash_hfid (const void *key_hfid, unsigned int htsize);
@@ -5172,6 +5172,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
   const FILE_TYPE file_type = reuse_oid ? FILE_HEAP_REUSE_SLOTS : FILE_HEAP;
   PAGE_TYPE ptype = PAGE_HEAP;
   OID null_oid = OID_INITIALIZER;
+  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
 
   int error_code = NO_ERROR;
 
@@ -5208,6 +5209,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
 	      ASSERT_ERROR_AND_SET (error_code);
 	      goto error;
 	    }
+
 	  error_code = heap_cache_class_info (thread_p, class_oid, hfid, file_type, NULL);
 	  if (error_code != NO_ERROR)
 	    {
@@ -5235,6 +5237,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
       ASSERT_ERROR ();
       goto error;
     }
+
   error_code = file_alloc_sticky_first_page (thread_p, &hfid->vfid, file_init_page_type, &ptype, &vpid,
 					     &addr_hdr.pgptr);
   if (error_code != NO_ERROR)
@@ -5359,6 +5362,18 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
     }
 
 end:
+  /* apply TDE to created heap file if needed */
+  if (heap_get_class_tde_algorithm (thread_p, class_oid, &tde_algo) == NO_ERROR)
+    {
+      error_code = file_apply_tde_algorithm (thread_p, &hfid->vfid, tde_algo);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto error;
+	}
+    }
+  /* if heap_get_class_tde_algorithm() fails, just skip to apply with expectation that a higher layer do this later */
+
   assert (error_code == NO_ERROR);
 
   log_sysop_attach_to_outer (thread_p);
@@ -6376,6 +6391,7 @@ heap_ovf_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * ovf_vfid,
       if (docreate == true)
 	{
 	  FILE_DESCRIPTORS des;
+	  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
 	  /* Create the overflow file. Try to create the overflow file in the same volume where the heap was defined */
 
 	  /* START A TOP SYSTEM OPERATION */
@@ -6385,21 +6401,34 @@ heap_ovf_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * ovf_vfid,
 	  memset (&des, 0, sizeof (des));
 	  HFID_COPY (&des.heap_overflow.hfid, hfid);
 	  des.heap_overflow.class_oid = heap_hdr->class_oid;
-	  if (file_create_with_npages (thread_p, FILE_MULTIPAGE_OBJECT_HEAP, 1, &des, ovf_vfid) == NO_ERROR)
-	    {
-	      /* Log undo, then redo */
-	      log_append_undo_data (thread_p, RVHF_STATS, &addr_hdr, sizeof (*heap_hdr), heap_hdr);
-	      VFID_COPY (&heap_hdr->ovf_vfid, ovf_vfid);
-	      log_append_redo_data (thread_p, RVHF_STATS, &addr_hdr, sizeof (*heap_hdr), heap_hdr);
-	      pgbuf_set_dirty (thread_p, addr_hdr.pgptr, DONT_FREE);
-
-	      log_sysop_commit (thread_p);
-	    }
-	  else
+	  if (file_create_with_npages (thread_p, FILE_MULTIPAGE_OBJECT_HEAP, 1, &des, ovf_vfid) != NO_ERROR)
 	    {
 	      log_sysop_abort (thread_p);
 	      ovf_vfid = NULL;
+	      goto exit;
 	    }
+
+	  if (heap_get_class_tde_algorithm (thread_p, &heap_hdr->class_oid, &tde_algo) != NO_ERROR)
+	    {
+	      log_sysop_abort (thread_p);
+	      ovf_vfid = NULL;
+	      goto exit;
+	    }
+
+	  if (file_apply_tde_algorithm (thread_p, ovf_vfid, tde_algo) != NO_ERROR)
+	    {
+	      log_sysop_abort (thread_p);
+	      ovf_vfid = NULL;
+	      goto exit;
+	    }
+
+	  /* Log undo, then redo */
+	  log_append_undo_data (thread_p, RVHF_STATS, &addr_hdr, sizeof (*heap_hdr), heap_hdr);
+	  VFID_COPY (&heap_hdr->ovf_vfid, ovf_vfid);
+	  log_append_redo_data (thread_p, RVHF_STATS, &addr_hdr, sizeof (*heap_hdr), heap_hdr);
+	  pgbuf_set_dirty (thread_p, addr_hdr.pgptr, DONT_FREE);
+
+	  log_sysop_commit (thread_p);
 	}
       else
 	{
@@ -6411,6 +6440,7 @@ heap_ovf_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * ovf_vfid,
       VFID_COPY (ovf_vfid, &heap_hdr->ovf_vfid);
     }
 
+exit:
   pgbuf_unfix_and_init (thread_p, addr_hdr.pgptr);
 
   return ovf_vfid;
@@ -10689,6 +10719,51 @@ heap_get_class_subclasses (THREAD_ENTRY * thread_p, const OID * class_oid, int *
     }
 
   error = orc_subclasses_from_record (&recdes, count, subclasses);
+
+  heap_scancache_end (thread_p, &scan_cache);
+
+  return error;
+}
+
+/*
+ * heap_get_class_tde_algorithm () - get TDE_ALGORITHM of a given class based on the class flags
+ * return : error code or NO_ERROR
+ * thread_p (in)  :
+ * class_oid (in) : OID of the class
+ * tde_algo (out)	: TDE_ALGORITHM_NONE, TDE_ALGORITHM_AES,TDE_ALGORITHM_ARIA
+ *
+ * NOTE: this function extracts tde encryption information from class record
+ */
+int
+heap_get_class_tde_algorithm (THREAD_ENTRY * thread_p, const OID * class_oid, TDE_ALGORITHM * tde_algo)
+{
+  HEAP_SCANCACHE scan_cache;
+  RECDES recdes;
+  int error = NO_ERROR;
+
+  assert (class_oid != NULL);
+  assert (tde_algo != NULL);
+
+  /* boot parameter heap file */
+  if (OID_ISNULL (class_oid))
+    {
+      *tde_algo = TDE_ALGORITHM_NONE;
+      return error;
+    }
+
+  error = heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (heap_get_class_record (thread_p, class_oid, &recdes, &scan_cache, PEEK) != S_SUCCESS)
+    {
+      heap_scancache_end (thread_p, &scan_cache);
+      return ER_FAILED;
+    }
+
+  or_class_tde_algorithm (&recdes, tde_algo);
 
   heap_scancache_end (thread_p, &scan_cache);
 
@@ -21475,6 +21550,7 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
   int error_code = NO_ERROR;
   bool is_old_home_updated;
   RECDES new_home_recdes;
+  VFID ovf_vfid;
 
   assert (context != NULL);
   assert (context->type == HEAP_OPERATION_UPDATE);
@@ -21520,8 +21596,14 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 	  goto exit;
 	}
 
+      if (heap_ovf_find_vfid (thread_p, &context->hfid, &ovf_vfid, false, PGBUF_UNCONDITIONAL_LATCH) == NULL)
+	{
+	  error_code = ER_FAILED;
+	  goto exit;
+	}
+
       /* actual logging */
-      log_append_undo_recdes2 (thread_p, RVHF_MVCC_UPDATE_OVERFLOW, NULL, first_pgptr, -1, &ovf_recdes);
+      log_append_undo_recdes2 (thread_p, RVHF_MVCC_UPDATE_OVERFLOW, &ovf_vfid, first_pgptr, -1, &ovf_recdes);
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
       pgbuf_set_dirty (thread_p, first_pgptr, FREE);

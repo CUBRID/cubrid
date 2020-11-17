@@ -797,7 +797,7 @@ struct rvfun RV_fun[] = {
    NULL},
   {RVPGBUF_COMPENSATE_DEALLOC,
    "RVPGBUF_COMPENSATE_DEALLOC",
-   pgbuf_rv_new_page_redo,
+   pgbuf_rv_dealloc_undo_compensate,
    NULL,
    NULL,
    NULL},
@@ -819,7 +819,18 @@ struct rvfun RV_fun[] = {
    heap_rv_postpone_append_pages_to_heap,
    NULL,
    heap_rv_dump_append_pages_to_heap},
-
+  {RVPGBUF_SET_TDE_ALGORITHM,
+   "RVPGBUF_SET_TDE_ALGORITHM",
+   pgbuf_rv_set_tde_algorithm,
+   pgbuf_rv_set_tde_algorithm,
+   NULL,
+   NULL},
+  {RVFL_FHEAD_SET_TDE_ALGORITHM,
+   "RVFL_FHEAD_SET_TDE_ALGORITHM",
+   file_rv_set_tde_algorithm,
+   file_rv_set_tde_algorithm,
+   NULL,
+   NULL},
 };
 
 /*

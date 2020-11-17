@@ -68,7 +68,8 @@ extern int xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIA
 extern int xboot_unregister_client (REFPTR (THREAD_ENTRY, thread_p), int tran_index);
 extern int xboot_backup (THREAD_ENTRY * thread_p, const char *backup_path, FILEIO_BACKUP_LEVEL backup_level,
 			 bool delete_unneeded_logarchives, const char *backup_verbose_file, int num_threads,
-			 FILEIO_ZIP_METHOD zip_method, FILEIO_ZIP_LEVEL zip_level, int skip_activelog, int sleep_msecs);
+			 FILEIO_ZIP_METHOD zip_method, FILEIO_ZIP_LEVEL zip_level, int skip_activelog, int sleep_msecs,
+			 bool separate_keys);
 extern DISK_ISVALID xboot_checkdb_table (THREAD_ENTRY * thread_p, int check_flag, OID * oid, BTID * index_btid);
 extern int xboot_check_db_consistency (THREAD_ENTRY * thread_p, int check_flag, OID * oids, int num_oids,
 				       BTID * index_btid);
@@ -131,6 +132,11 @@ extern int xrepl_set_info (THREAD_ENTRY * thread_p, REPL_INFO * repl_info);
 extern int xheap_create (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oid, bool reuse_oid);
 extern int xheap_destroy (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid);
 extern int xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid);
+
+extern int xfile_apply_tde_to_class_files (THREAD_ENTRY * thread_p, const OID * class_oid);
+
+extern int xtde_get_mk_info (THREAD_ENTRY * thread_p, int *mk_index, time_t * created_time, time_t * set_time);
+extern int xtde_change_mk_without_flock (THREAD_ENTRY * thread_p, const int mk_index);
 
 extern TRAN_STATE xtran_server_commit (THREAD_ENTRY * thrd, bool retain_lock);
 extern TRAN_STATE xtran_server_abort (THREAD_ENTRY * thrd);

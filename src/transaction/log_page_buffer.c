@@ -426,6 +426,7 @@ logpb_initialize_log_buffer (LOG_BUFFER * log_buffer_p, LOG_PAGE * log_pg)
   log_buffer_p->logpage = log_pg;
   log_buffer_p->logpage->hdr.logical_pageid = NULL_PAGEID;
   log_buffer_p->logpage->hdr.offset = NULL_OFFSET;
+  log_buffer_p->logpage->hdr.flags = 0;
 }
 
 /*
@@ -871,13 +872,13 @@ logpb_locate_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE f
 	  memset (log_bufptr->logpage, LOG_PAGE_INIT_VALUE, LOG_PAGESIZE);
 	  log_bufptr->logpage->hdr.logical_pageid = pageid;
 	  log_bufptr->logpage->hdr.offset = NULL_OFFSET;
+	  log_bufptr->logpage->hdr.flags = 0;
 	}
       else
 	{
 	  stat_page_found = PERF_PAGE_MODE_OLD_LOCK_WAIT;
 	  if (logpb_read_page_from_file (thread_p, pageid, LOG_CS_FORCE_USE, log_bufptr->logpage) != NO_ERROR)
 	    {
-	      assert_release (false);
 	      return NULL;
 	    }
 	}
@@ -1691,6 +1692,7 @@ logpb_flush_header (THREAD_ENTRY * thread_p)
 
   log_Gl.loghdr_pgptr->hdr.logical_pageid = LOGPB_HEADER_PAGE_ID;
   log_Gl.loghdr_pgptr->hdr.offset = NULL_OFFSET;
+  log_Gl.loghdr_pgptr->hdr.flags = 0;	/* Now flags in header page has always 0 value */
 
   logpb_write_page_to_disk (thread_p, log_Gl.loghdr_pgptr, LOGPB_HEADER_PAGE_ID);
 
@@ -2070,6 +2072,23 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_AC
 		  goto error;
 		}
 	    }
+	  else
+	    {
+	      /* 
+	       * fetched from active.
+	       * In case of being fetched from archive log, no need to be decrypted 
+	       * because it already decrypted in logpb_fetch_from_archive()
+	       */
+	      TDE_ALGORITHM tde_algo = logpb_get_tde_algorithm ((LOG_PAGE *) log_pgptr);
+	      if (tde_algo != TDE_ALGORITHM_NONE)
+		{
+		  if (tde_decrypt_log_page ((LOG_PAGE *) log_pgptr, tde_algo, (LOG_PAGE *) log_pgptr) != NO_ERROR)
+		    {
+		      ASSERT_ERROR ();
+		      goto error;
+		    }
+		}
+	    }
 	}
     }
 
@@ -2109,7 +2128,8 @@ error:
  *   log_pgptr(in/out):
  */
 int
-logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int num_pages, LOG_PAGE * log_pgptr)
+logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int num_pages, bool decrypt_needed,
+				 LOG_PAGE * log_pgptr)
 {
   LOG_PHY_PAGEID phy_start_pageid;
 
@@ -2128,6 +2148,7 @@ logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int
   num_pages = MIN (num_pages, LOGPB_ACTIVE_NPAGES - phy_start_pageid + 1);
 
   perfmon_inc_stat (thread_p, PSTAT_LOG_NUM_IOREADS);
+
   if (fileio_read_pages (thread_p, log_Gl.append.vdes, (char *) log_pgptr, phy_start_pageid, num_pages, LOG_PAGESIZE) ==
       NULL)
     {
@@ -2143,17 +2164,61 @@ logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int
 	}
     }
 
+  if (decrypt_needed)
+    {
+      char *ptr = (char *) log_pgptr;
+      int i;
+      for (i = 0; i < num_pages; i++)
+	{
+	  TDE_ALGORITHM tde_algo = logpb_get_tde_algorithm ((LOG_PAGE *) ptr);
+	  if (tde_algo != TDE_ALGORITHM_NONE)
+	    {
+	      if (tde_decrypt_log_page ((LOG_PAGE *) ptr, tde_algo, (LOG_PAGE *) ptr) != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  return -1;
+		}
+	    }
+	  ptr += LOG_PAGESIZE;
+	}
+    }
+
 #if !defined(NDEBUG)
   if (log_Gl.rcv_phase == LOG_RESTARTED)
     {
-      char *ptr;
+      char *ptr = NULL;
       int i;
+      char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+      char *aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
       ptr = (char *) log_pgptr;
       for (i = 0; i < num_pages; i++)
 	{
-	  logpb_debug_check_log_page (thread_p, (LOG_PAGE *) ptr);
-	  ptr += LOG_PAGESIZE;
+	  TDE_ALGORITHM tde_algo = logpb_get_tde_algorithm ((LOG_PAGE *) ptr);
+	  /* checksum is calculated before tde-encryption */
+	  if (!decrypt_needed && tde_algo != TDE_ALGORITHM_NONE)
+	    {
+	      /* This page is tde-ecnrypted page and has not yet decrypted.
+	       * To check consistency, we need to decrypt it */
+	      if (!tde_Cipher.is_loaded)
+		{
+		  ptr += LOG_PAGESIZE;
+		  continue;	/* no way to check an encrypted page without tde module */
+		}
+
+	      if (tde_decrypt_log_page ((LOG_PAGE *) ptr, tde_algo, (LOG_PAGE *) aligned_log_pgbuf) != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  assert (false);
+		}
+	      logpb_debug_check_log_page (thread_p, (LOG_PAGE *) aligned_log_pgbuf);
+	      ptr += LOG_PAGESIZE;
+	    }
+	  else
+	    {
+	      logpb_debug_check_log_page (thread_p, (LOG_PAGE *) ptr);
+	      ptr += LOG_PAGESIZE;
+	    }
 	}
     }
 #endif
@@ -2177,6 +2242,10 @@ logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAG
   int nbytes, error_code;
   LOG_PHY_PAGEID phy_pageid;
   FILEIO_WRITE_MODE write_mode;
+  char enc_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  LOG_PAGE *enc_pgptr = NULL;
+
+  enc_pgptr = (LOG_PAGE *) PTR_ALIGN (enc_pgbuf, MAX_ALIGNMENT);
 
   assert (log_pgptr != NULL);
   assert (log_pgptr->hdr.logical_pageid == logical_pageid);
@@ -2199,6 +2268,28 @@ logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAG
   /* log_Gl.append.vdes is only changed while starting or finishing or recovering server. So, log cs is not needed. */
 
   write_mode = dwb_is_created () == true ? FILEIO_WRITE_NO_COMPENSATE_WRITE : FILEIO_WRITE_DEFAULT_WRITE;
+
+  logpb_log ("logpb_write_page_to_disk: The page (%lld) is being tde-encrypted: %d\n", (long long int) logical_pageid,
+	     LOG_IS_PAGE_TDE_ENCRYPTED (log_pgptr));
+
+  if (LOG_IS_PAGE_TDE_ENCRYPTED (log_pgptr))
+    {
+      error_code = tde_encrypt_log_page (log_pgptr, logpb_get_tde_algorithm (log_pgptr), enc_pgptr);
+      if (error_code != NO_ERROR)
+	{
+	  /* 
+	   * if encrpytion fails, it just skip it and off the tde flag. The page will never be encrypted in this case.
+	   * It menas once it fails, the page always spill user data un-encrypted from then.
+	   */
+	  logpb_set_tde_algorithm (thread_p, log_pgptr, TDE_ALGORITHM_NONE);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_ENCRYPTION_LOGPAGE_ERORR_AND_OFF_TDE, 1, logical_pageid);
+	}
+      else
+	{
+	  log_pgptr = enc_pgptr;
+	}
+    }
+
   if (fileio_write (thread_p, log_Gl.append.vdes, log_pgptr, phy_pageid, LOG_PAGESIZE, write_mode) == NULL)
     {
       if (er_errid () == ER_IO_WRITE_OUT_OF_SPACE)
@@ -2571,6 +2662,16 @@ logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY current_setdirty)
       return;
     }
 
+  if (log_Gl.append.appending_page_tde_encrypted)
+    {
+      TDE_ALGORITHM tde_algo = (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_DEFAULT_ALGORITHM);
+      logpb_set_tde_algorithm (thread_p, log_Gl.append.log_pgptr, tde_algo);
+      logpb_set_dirty (thread_p, log_Gl.append.log_pgptr);
+      logpb_log ("logpb_next_append_page: set tde_algorithm to appending page (%lld), "
+		 "tde_algorithm = %s\n", (long long int) log_Gl.append.log_pgptr->hdr.logical_pageid,
+		 tde_get_algorithm_name (tde_algo));
+    }
+
 #if defined(CUBRID_DEBUG)
   {
     log_Stat.last_append_pageid = log_Gl.hdr.append_lsa.pageid;
@@ -2647,6 +2748,16 @@ logpb_writev_append_pages (THREAD_ENTRY * thread_p, LOG_PAGE ** to_flush, DKNPAG
   LOG_BUFFER *bufptr;
   LOG_PHY_PAGEID phy_pageid;
   int i;
+  FILEIO_WRITE_MODE write_mode = FILEIO_WRITE_DEFAULT_WRITE;
+  char enc_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  LOG_PAGE *log_pgptr = NULL;
+  LOG_PAGE *enc_pgptr = NULL;
+
+  enc_pgptr = (LOG_PAGE *) PTR_ALIGN (enc_pgbuf, MAX_ALIGNMENT);
+
+#if !defined (CS_MODE)
+  write_mode = dwb_is_created () == true ? FILEIO_WRITE_NO_COMPENSATE_WRITE : FILEIO_WRITE_DEFAULT_WRITE;
+#endif
 
   /* In this point, flush buffer cannot be replaced by trans. So, bufptr's pageid and phy_pageid are not changed. */
   if (npages > 0)
@@ -2665,20 +2776,45 @@ logpb_writev_append_pages (THREAD_ENTRY * thread_p, LOG_PAGE ** to_flush, DKNPAG
 	      return NULL;
 	    }
 	}
-
-      if (fileio_writev (thread_p, log_Gl.append.vdes, (void **) to_flush, phy_pageid, npages, LOG_PAGESIZE) == NULL)
+      for (i = 0; i < npages; i++)
 	{
-	  if (er_errid () == ER_IO_WRITE_OUT_OF_SPACE)
+	  log_pgptr = to_flush[i];
+
+	  logpb_log ("logpb_writev_append_pages: The page (%lld) is being tde-encrypted: %d\n",
+		     (long long int) log_pgptr->hdr.logical_pageid, LOG_IS_PAGE_TDE_ENCRYPTED (log_pgptr));
+	  if (LOG_IS_PAGE_TDE_ENCRYPTED (log_pgptr))
 	    {
-	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_WRITE_OUT_OF_SPACE, 4, bufptr->pageid,
-		      phy_pageid, log_Name_active, log_Gl.hdr.db_logpagesize);
+	      if (tde_encrypt_log_page (log_pgptr, logpb_get_tde_algorithm (log_pgptr), enc_pgptr) != NO_ERROR)
+		{
+		  /* 
+		   * if encrpytion fails, it just skip it and off the tde flag. The page will never be encrypted in this case.
+		   * It menas once it fails, the page always spill user data un-encrypted from then.
+		   */
+		  logpb_set_tde_algorithm (thread_p, log_pgptr, TDE_ALGORITHM_NONE);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_ENCRYPTION_LOGPAGE_ERORR_AND_OFF_TDE, 1,
+			  log_pgptr->hdr.logical_pageid);
+		}
+	      else
+		{
+		  log_pgptr = enc_pgptr;
+		}
 	    }
-	  else
+
+	  if (fileio_write (thread_p, log_Gl.append.vdes, log_pgptr, phy_pageid + i, LOG_PAGESIZE, write_mode) == NULL)
 	    {
-	      er_set_with_oserror (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_WRITE, 3, bufptr->pageid,
-				   phy_pageid, log_Name_active);
+	      if (er_errid () == ER_IO_WRITE_OUT_OF_SPACE)
+		{
+		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_WRITE_OUT_OF_SPACE, 4, bufptr->pageid,
+			  phy_pageid, log_Name_active, log_Gl.hdr.db_logpagesize);
+		}
+	      else
+		{
+		  er_set_with_oserror (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_WRITE, 3, bufptr->pageid,
+				       phy_pageid, log_Name_active);
+		}
+	      to_flush = NULL;
+	      break;
 	    }
-	  to_flush = NULL;
 	}
     }
 
@@ -2701,7 +2837,9 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
   LOG_PAGEID pageid, prev_lsa_pageid;
   LOG_PHY_PAGEID phy_pageid;
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char enc_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   LOG_PAGE *log_pgptr = NULL;
+  LOG_PAGE *enc_pgptr = NULL;
   LOG_BUFFER *bufptr;
   LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
   BACKGROUND_ARCHIVING_INFO *bg_arv_info = &log_Gl.bg_archive_info;
@@ -2737,6 +2875,7 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
 	  current_lsa.offset = LOG_PAGESIZE;
 	  /* to flush all omitted pages by the previous archiving */
 	  log_pgptr = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+
 	  if (logpb_fetch_page (thread_p, &current_lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
 	    {
 	      fileio_dismount (thread_p, bg_arv_info->vdes);
@@ -2755,6 +2894,28 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
 #endif
       phy_pageid = (LOG_PHY_PAGEID) (pageid - bg_arv_info->start_page_id + 1);
       assert_release (phy_pageid > 0);
+
+      logpb_log ("logpb_write_toflush_pages_to_archive: The page (%lld) is being tde-encrypted: %d\n",
+		 (long long int) pageid, LOG_IS_PAGE_TDE_ENCRYPTED (log_pgptr));
+
+      if (LOG_IS_PAGE_TDE_ENCRYPTED (log_pgptr))
+	{
+	  enc_pgptr = (LOG_PAGE *) PTR_ALIGN (enc_pgbuf, MAX_ALIGNMENT);
+	  if (tde_encrypt_log_page (log_pgptr, logpb_get_tde_algorithm (log_pgptr), enc_pgptr) != NO_ERROR)
+	    {
+	      /* 
+	       * if encrpytion fails, it just skip it and off the tde flag. The page will never be encrypted in this case.
+	       * It menas once it fails, the page always spill user data un-encrypted from then.
+	       */
+	      logpb_set_tde_algorithm (thread_p, log_pgptr, TDE_ALGORITHM_NONE);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_ENCRYPTION_LOGPAGE_ERORR_AND_OFF_TDE, 1, pageid);
+	    }
+	  else
+	    {
+	      log_pgptr = enc_pgptr;
+	    }
+	}
+
       if (fileio_write (thread_p, bg_arv_info->vdes, log_pgptr, phy_pageid, LOG_PAGESIZE, write_mode) == NULL)
 	{
 	  fileio_dismount (thread_p, bg_arv_info->vdes);
@@ -2797,6 +2958,14 @@ logpb_append_next_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node)
       logpb_flush_all_append_pages (thread_p);
     }
 
+  logpb_log ("logpb_append_next_record: append a record\n"
+	     "log_Gl.hdr.append_lsa.offset = %d, total record size = %d\n",
+	     log_Gl.hdr.append_lsa.offset,
+	     sizeof (LOG_RECORD_HEADER) + node->data_header_length + node->ulength + node->rlength);
+
+  /* to tde-encrypt pages which is being created while appending */
+  log_Gl.append.appending_page_tde_encrypted = prior_is_tde_encrypted (node);
+
   logpb_start_append (thread_p, &node->log_header);
 
   if (node->data_header != NULL)
@@ -2816,6 +2985,8 @@ logpb_append_next_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node)
     }
 
   logpb_end_append (thread_p, &node->log_header);
+
+  log_Gl.append.appending_page_tde_encrypted = false;
 
   return NO_ERROR;
 }
@@ -4011,6 +4182,25 @@ logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
 
   assert (log_Gl.append.log_pgptr != NULL);
 
+  if (log_Gl.append.appending_page_tde_encrypted)
+    {
+      if (!LOG_IS_PAGE_TDE_ENCRYPTED (log_Gl.append.log_pgptr))
+	{
+	  TDE_ALGORITHM tde_algo = (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_DEFAULT_ALGORITHM);
+	  logpb_set_tde_algorithm (thread_p, log_Gl.append.log_pgptr, tde_algo);
+	  logpb_set_dirty (thread_p, log_Gl.append.log_pgptr);
+	  logpb_log ("logpb_start_append: set tde_algorithm to existing page (%lld), "
+		     "tde_algorithm = %s\n", (long long int) log_Gl.append.log_pgptr->hdr.logical_pageid,
+		     tde_get_algorithm_name (tde_algo));
+	}
+      else
+	{
+	  logpb_log ("logpb_start_append: tde_algorithm already set to existing page (%lld), "
+		     "tde_algorithm = %s\n", (long long int) log_Gl.append.log_pgptr->hdr.logical_pageid,
+		     tde_get_algorithm_name (logpb_get_tde_algorithm (log_Gl.append.log_pgptr)));
+	}
+    }
+
   log_rec = (LOG_RECORD_HEADER *) LOG_APPEND_PTR ();
   *log_rec = *header;
 
@@ -5095,6 +5285,17 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE *
 	      return NULL;
 	    }
 
+	  TDE_ALGORITHM tde_algo = logpb_get_tde_algorithm (log_pgptr);
+	  if (tde_algo != TDE_ALGORITHM_NONE)
+	    {
+	      if (tde_decrypt_log_page (log_pgptr, tde_algo, log_pgptr) != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  LOG_ARCHIVE_CS_EXIT (thread_p);
+		  return NULL;
+		}
+	    }
+
 	  /* Cast the archive information. May be used again */
 	  if (arv_hdr != &log_Gl.archive.hdr)
 	    {
@@ -5466,6 +5667,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
 
   malloc_arv_hdr_pgptr->hdr.logical_pageid = LOGPB_HEADER_PAGE_ID;
   malloc_arv_hdr_pgptr->hdr.offset = NULL_OFFSET;
+  malloc_arv_hdr_pgptr->hdr.flags = 0;	/* Now flags in header page has always 0 value */
 
   /* Construct the archive log header */
   arvhdr = (LOG_ARV_HEADER *) malloc_arv_hdr_pgptr->area;
@@ -5554,12 +5756,13 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
     {
       logpb_log ("Dump page %lld in logpb_archive_active_log, num_pages = %d\n", (long long int) pageid, num_pages);
       num_pages = (int) MIN (LOGPB_IO_NPAGES, last_pageid - pageid + 1);
-      num_pages = logpb_read_page_from_active_log (thread_p, pageid, num_pages, log_pgptr);
+      num_pages = logpb_read_page_from_active_log (thread_p, pageid, num_pages, false, log_pgptr);
       if (num_pages <= 0)
 	{
 	  goto error;
 	}
 
+      /* no need to encrypt, it is read as not decrypted (TDE) */
       if (fileio_write_pages (thread_p, vdes, (char *) log_pgptr, ar_phy_pageid, num_pages, LOG_PAGESIZE,
 			      FILEIO_WRITE_NO_COMPENSATE_WRITE) == NULL)
 	{
@@ -7206,7 +7409,8 @@ logpb_backup_for_volume (THREAD_ENTRY * thread_p, VOLID volid, LOG_LSA * chkpt_l
 int
 logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_path, FILEIO_BACKUP_LEVEL backup_level,
 	      bool delete_unneeded_logarchives, const char *backup_verbose_file_path, int num_threads,
-	      FILEIO_ZIP_METHOD zip_method, FILEIO_ZIP_LEVEL zip_level, int skip_activelog, int sleep_msecs)
+	      FILEIO_ZIP_METHOD zip_method, FILEIO_ZIP_LEVEL zip_level, int skip_activelog, int sleep_msecs,
+	      bool separate_keys)
 {
   FILEIO_BACKUP_SESSION session;
   const char *from_vlabel;	/* Name of volume to backup (FROM) */
@@ -7231,6 +7435,12 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
   bool beenwarned;
   bool isincremental = false;	/* Assume full backups */
   bool bkup_in_progress = false;
+
+  char mk_path[PATH_MAX] = { 0, };
+  char separate_mk_path[PATH_MAX] = { 0, };
+  char bkpath_without_units[PATH_MAX] = { 0, };
+  const char *db_nopath_name_p;
+  int keys_vdes = NULL_VOLDES;
 #if defined(SERVER_MODE)
   int rv;
   time_t wait_checkpoint_begin_time;
@@ -7278,6 +7488,10 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
       allbackup_path = real_pathbuf;
     }
 #endif
+
+  /* tde key file has to be mounted to access exclusively with TDE Utility if it exists */
+  tde_make_keys_file_fullname (mk_path, log_Db_fullname, false);
+  keys_vdes = fileio_mount (thread_p, log_Db_fullname, mk_path, LOG_DBTDE_KEYS_VOLID, 1, false);
 
   /* Initialization gives us some useful information about the backup location. */
   session.type = FILEIO_BACKUP_WRITE;	/* access backup device for write */
@@ -7625,12 +7839,38 @@ loop:
       goto error;
     }
 
+  if (separate_keys)
+    {
+      db_nopath_name_p = fileio_get_base_file_name (log_Db_fullname);
+      fileio_make_backup_name (bkpath_without_units, db_nopath_name_p, session.bkup.current_path, backup_level,
+			       FILEIO_NO_BACKUP_UNITS);
+      tde_make_keys_file_fullname (separate_mk_path, bkpath_without_units, true);
+      /* Keep mounting mk file to be exclusive with other tools */
+      error_code = tde_copy_keys_file (thread_p, separate_mk_path, mk_path, false, true);
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+    }
+
   /* Backup every volume */
-  volid = LOG_DBVOLINFO_VOLID;
+  volid = LOG_DBTDE_KEYS_VOLID;
   do
     {
       switch (volid)
 	{
+	case LOG_DBTDE_KEYS_VOLID:
+	  if (separate_keys)
+	    {
+	      /* already backuped up as a separate file */
+	      volid++;
+	      continue;
+	    }
+	  else
+	    {
+	      from_vlabel = mk_path;
+	    }
+	  break;
 	case LOG_DBVOLINFO_VOLID:
 	  fileio_make_volume_info_name (vol_backup, log_Db_fullname);
 	  from_vlabel = vol_backup;
@@ -7671,7 +7911,11 @@ loop:
 	  error_code = fileio_backup_volume (thread_p, &session, from_vlabel, volid, -1, false);
 	  if (error_code != NO_ERROR)
 	    {
-	      goto error;
+	      /* keys file can be omitted */
+	      if (volid != LOG_DBTDE_KEYS_VOLID)
+		{
+		  goto error;
+		}
 	    }
 	  volid++;
 	}
@@ -7863,6 +8107,11 @@ loop:
   LOG_CS_EXIT (thread_p);
 #endif /* SERVER_MODE */
 
+  if (keys_vdes != NULL_VOLDES)
+    {
+      fileio_dismount (thread_p, keys_vdes);
+    }
+
   return NO_ERROR;
 
   /* ********* */
@@ -7882,6 +8131,11 @@ error:
   log_Gl.backup_in_progress = false;
   LOG_CS_EXIT (thread_p);
 #endif /* SERVER_MODE */
+
+  if (keys_vdes != NULL_VOLDES)
+    {
+      fileio_dismount (thread_p, keys_vdes);
+    }
 
   return error_code;
 }
@@ -8028,6 +8282,8 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
   char time_val[CTIME_MAX];
   int loop_cnt = 0;
   char tmp_logfiles_from_backup[PATH_MAX];
+  char bk_mk_path[PATH_MAX];
+  char bkpath_without_units[PATH_MAX];
   char *volume_name_p;
   struct stat stat_buf;
   int error_code = NO_ERROR, success = NO_ERROR;
@@ -8070,6 +8326,8 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 	  goto error;
 	}
     }
+
+  nopath_name = fileio_get_base_file_name (db_fullname);
 
   /* The enum type can be negative in Windows. */
   while (success == NO_ERROR && try_level >= FILEIO_BACKUP_FULL_LEVEL && try_level < FILEIO_BACKUP_UNDEFINED_LEVEL)
@@ -8229,6 +8487,44 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
       if (first_time)
 	{
 	  LSA_COPY (&session->bkup.last_chkpt_lsa, &session->bkup.bkuphdr->chkpt_lsa);
+
+	  /* 
+	   * The tde key file (_keys) which is going to be used during restart
+	   * is the thing in the first time (the highest level).
+	   */
+	  fileio_make_backup_name (bkpath_without_units, nopath_name, session->bkup.current_path,
+				   (FILEIO_BACKUP_LEVEL) r_args->level, FILEIO_NO_BACKUP_UNITS);
+	  tde_make_keys_file_fullname (bk_mk_path, bkpath_without_units, true);
+	  if (r_args->keys_file_path[0] == '\0')	/* the path given by user is prioritized */
+	    {
+	      memcpy (r_args->keys_file_path, bk_mk_path, PATH_MAX);
+	    }
+	  else
+	    {
+	      /* If the keys file is given, check if it is valid. */
+	      int vdes =
+		fileio_mount (thread_p, boot_db_full_name (), r_args->keys_file_path, LOG_DBTDE_KEYS_VOLID, false,
+			      false);
+	      if (vdes == NULL_VOLDES)
+		{
+		  ASSERT_ERROR_AND_SET (error_code);
+		  LOG_CS_EXIT (thread_p);
+		  error_expected = true;
+		  goto error;
+		}
+
+	      if (tde_validate_keys_file (vdes) == false)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_INVALID_KEYS_FILE, 1, r_args->keys_file_path);
+		  error_code = ER_TDE_INVALID_KEYS_FILE;
+		  fileio_dismount (thread_p, vdes);
+		  LOG_CS_EXIT (thread_p);
+		  error_expected = true;
+		  goto error;
+		}
+
+	      fileio_dismount (thread_p, vdes);
+	    }
 	}
 
       while (success == NO_ERROR)
@@ -8248,6 +8544,11 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 		  fileio_make_temp_log_files_from_backup (tmp_logfiles_from_backup, to_volid,
 							  (FILEIO_BACKUP_LEVEL) r_args->level, to_volname);
 		  volume_name_p = tmp_logfiles_from_backup;
+		}
+	      else if (to_volid == LOG_DBTDE_KEYS_VOLID && first_time)
+		{
+		  /* Only the first _keys file is being restored. */
+		  volume_name_p = bk_mk_path;
 		}
 	      else
 		{
@@ -8270,6 +8571,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 		case LOG_DBLOG_INFO_VOLID:
 		case LOG_DBVOLINFO_VOLID:
 		case LOG_DBLOG_ARCHIVE_VOLID:
+		case LOG_DBTDE_KEYS_VOLID:
 
 		  /* We can only take the most recent information, and we do not want to overwrite it with out of data
 		   * information from earlier backups.  This is because we are applying the restoration in reverse time
@@ -8412,7 +8714,6 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
     }
 
   /* make bkvinf file */
-  nopath_name = fileio_get_base_file_name (db_fullname);
   fileio_make_backup_volume_info_name (from_volbackup, logpath, nopath_name);
   backup_volinfo_fp = fopen (from_volbackup, "w");
   if (backup_volinfo_fp != NULL)
@@ -8900,6 +9201,8 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
   int error_code;
   char format_string[64];
   FILEIO_WRITE_MODE write_mode;
+  char from_mk_path[PATH_MAX] = { 0, };
+  char to_mk_path[PATH_MAX] = { 0, };
 
   db_creation = time (NULL);
 
@@ -8924,6 +9227,18 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
   if (error_code != NO_ERROR)
     {
       goto error;
+    }
+
+  /*
+   * Create and Copy the TDE master key file (_keys)
+   */
+  tde_make_keys_file_fullname (from_mk_path, boot_db_full_name (), false);
+  tde_make_keys_file_fullname (to_mk_path, to_db_fullname, false);
+  error_code = tde_copy_keys_file (thread_p, to_mk_path, from_mk_path, false, false);
+  if (error_code != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_COPY_KEYS_FILE_FAIL, 0);
+      /* keep going with out master key file */
     }
 
   /*
@@ -8995,6 +9310,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
   phy_pageid = LOGPB_PHYSICAL_HEADER_PAGE_ID + 1;
   to_malloc_log_pgptr->hdr.logical_pageid = 0;
   to_malloc_log_pgptr->hdr.offset = NULL_OFFSET;
+  to_malloc_log_pgptr->hdr.flags = 0;
 
   eof = (LOG_RECORD_HEADER *) to_malloc_log_pgptr->area;
   eof->trid = LOG_SYSTEM_TRANID + 1;
@@ -9030,6 +9346,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
    */
   to_malloc_log_pgptr->hdr.logical_pageid = LOGPB_HEADER_PAGE_ID;
   to_malloc_log_pgptr->hdr.offset = NULL_OFFSET;
+  to_malloc_log_pgptr->hdr.flags = 0;
 
   to_hdr = (LOG_HEADER *) to_malloc_log_pgptr->area;
   error_code = logpb_initialize_header (thread_p, to_hdr, to_prefix_logname, log_Gl.hdr.npages + 1, &db_creation);
@@ -9291,6 +9608,8 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols, co
 {
   char from_volname[PATH_MAX];	/* Name of new volume */
   char to_volname[PATH_MAX];	/* Name of "to" volume */
+  char from_mk_path[PATH_MAX];
+  char to_mk_path[PATH_MAX];
   char *alloc_extpath = NULL;	/* Copy path for specific volume */
   FILE *to_volinfo_fp = NULL;	/* Pointer to new volinfo file */
   const char *ext_name;
@@ -9490,6 +9809,15 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols, co
     {
       goto error;
     }
+
+  tde_make_keys_file_fullname (from_mk_path, boot_db_full_name (), false);
+  tde_make_keys_file_fullname (to_mk_path, to_db_fullname, false);
+
+  if (fileio_rename (LOG_DBTDE_KEYS_VOLID, from_mk_path, to_mk_path) != NULL)
+    {
+      /* Nothing, tde keys file can be unavailable */
+    }
+
 
   fileio_make_log_info_name (to_volname, to_logpath, to_prefix_logname);
   logpb_create_log_info (to_volname, to_db_fullname);
@@ -9834,6 +10162,7 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *db_fulln
 		case LOG_DBLOG_INFO_VOLID:
 		case LOG_DBLOG_BKUPINFO_VOLID:
 		case LOG_DBLOG_ACTIVE_VOLID:
+		case LOG_DBTDE_KEYS_VOLID:
 		  continue;
 		default:
 		  fileio_unformat (thread_p, vol_fullname);
@@ -9867,8 +10196,12 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *db_fulln
 	}
     }
 
-  /* Destroy the database volume information */
+  /* destroy the database volume information */
   fileio_make_volume_info_name (vol_fullname, db_fullname);
+  fileio_unformat (thread_p, vol_fullname);
+
+  /* destroy the TDE keys volume information */
+  tde_make_keys_file_fullname (vol_fullname, db_fullname, true);
   fileio_unformat (thread_p, vol_fullname);
 
   /* Destroy DWB, if still exists. */
@@ -10489,7 +10822,7 @@ logpb_background_archiving (THREAD_ENTRY * thread_p)
     {
       num_pages = MIN (LOGPB_IO_NPAGES, (int) (last_page_id - page_id + 1));
 
-      num_pages = logpb_read_page_from_active_log (thread_p, page_id, num_pages, log_pgptr);
+      num_pages = logpb_read_page_from_active_log (thread_p, page_id, num_pages, false, log_pgptr);
       if (num_pages <= 0)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -10497,6 +10830,7 @@ logpb_background_archiving (THREAD_ENTRY * thread_p)
 	  goto error;
 	}
 
+      /* no need to encrypt, it is read as not decrypted (TDE) */
       if (fileio_write_pages (thread_p, vdes, (char *) log_pgptr, phy_pageid, num_pages, LOG_PAGESIZE,
 			      FILEIO_WRITE_NO_COMPENSATE_WRITE) == NULL)
 	{
@@ -10996,4 +11330,59 @@ size_t
 logpb_get_memsize ()
 {
   return (size_t) log_Pb.num_buffers * (size_t) LOG_PAGESIZE;
+}
+
+/*
+ * logpb_set_tde_algorithm () - set tde encryption algorithm to the log page
+ * 
+ * return         : encryption algorithm  
+ * log_pgptr(in)  : Log page pointer
+ */
+TDE_ALGORITHM
+logpb_get_tde_algorithm (const LOG_PAGE * log_pgptr)
+{
+  /* exclusive */
+  assert (!((log_pgptr->hdr.flags & LOG_HDRPAGE_FLAG_ENCRYPTED_AES)
+	    && (log_pgptr->hdr.flags & LOG_HDRPAGE_FLAG_ENCRYPTED_ARIA)));
+
+  if (log_pgptr->hdr.flags & LOG_HDRPAGE_FLAG_ENCRYPTED_AES)
+    {
+      return TDE_ALGORITHM_AES;
+    }
+  else if (log_pgptr->hdr.flags & LOG_HDRPAGE_FLAG_ENCRYPTED_ARIA)
+    {
+      return TDE_ALGORITHM_ARIA;
+    }
+  else
+    {
+      return TDE_ALGORITHM_NONE;
+    }
+}
+
+/*
+ * logpb_set_tde_algorithm () - set tde encryption algorithm to the log page
+ *   
+ * thread_p (in)  : Thread entry
+ * log_pgptr(in)  : Log page pointer
+ * tde_algo (in)  : Encryption algorithm
+ */
+void
+logpb_set_tde_algorithm (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, const TDE_ALGORITHM tde_algo)
+{
+  assert (tde_Cipher.is_loaded || tde_algo == TDE_ALGORITHM_NONE);
+  /* clear encrypted flag */
+  log_pgptr->hdr.flags &= ~LOG_HDRPAGE_FLAG_ENCRYPTED_MASK;
+
+  switch (tde_algo)
+    {
+    case TDE_ALGORITHM_AES:
+      log_pgptr->hdr.flags |= LOG_HDRPAGE_FLAG_ENCRYPTED_AES;
+      break;
+    case TDE_ALGORITHM_ARIA:
+      log_pgptr->hdr.flags |= LOG_HDRPAGE_FLAG_ENCRYPTED_ARIA;
+      break;
+    case TDE_ALGORITHM_NONE:
+      /* already cleared */
+      break;
+    }
 }

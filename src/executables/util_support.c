@@ -237,6 +237,7 @@ util_is_password_argument (int index, int value)
 #if defined(TRANLIST_PASSWORD_S)
       || (index == TRANLIST && value == TRANLIST_PASSWORD_S)
 #endif
+      || (index == TDE && value == TDE_DBA_PASSWORD_S)
       || (index == LOADDB && value == LOAD_PASSWORD_S) || (index == UNLOADDB && value == UNLOAD_PASSWORD_S))
     {
       return true;

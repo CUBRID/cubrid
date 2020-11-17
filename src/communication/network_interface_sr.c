@@ -2509,6 +2509,197 @@ shf_heap_reclaim_addresses (THREAD_ENTRY * thread_p, unsigned int rid, char *req
 }
 
 /*
+ * sfile_apply_tde_to_class_files -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+sfile_apply_tde_to_class_files (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  int error;
+  char *ptr;
+  OID class_oid;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  ptr = or_unpack_oid (request, &class_oid);
+
+  error = xfile_apply_tde_to_class_files (thread_p, &class_oid);
+  if (error != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  ptr = or_pack_errcode (reply, error);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+void
+stde_get_data_keys (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  int area_size = -1;
+  char *reply, *area, *ptr;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  int err = NO_ERROR;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  if (!tde_Cipher.is_loaded)
+    {
+      (void) return_error_to_client (thread_p, rid);
+      area = NULL;
+      area_size = 0;
+      err = ER_TDE_CIPHER_IS_NOT_LOADED;
+    }
+  else
+    {
+      area_size = 3 * or_packed_stream_length (TDE_DATA_KEY_LENGTH);
+
+      area = (char *) db_private_alloc (thread_p, area_size);
+      if (area == NULL)
+	{
+	  (void) return_error_to_client (thread_p, rid);
+	  area_size = 0;
+	}
+      else
+	{
+	  ptr = or_pack_stream (area, (char *) tde_Cipher.data_keys.perm_key, TDE_DATA_KEY_LENGTH);
+	  ptr = or_pack_stream (ptr, (char *) tde_Cipher.data_keys.temp_key, TDE_DATA_KEY_LENGTH);
+	  ptr = or_pack_stream (ptr, (char *) tde_Cipher.data_keys.log_key, TDE_DATA_KEY_LENGTH);
+	}
+    }
+
+  ptr = or_pack_int (reply, area_size);
+  ptr = or_pack_int (ptr, err);
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area, area_size);
+
+  if (area != NULL)
+    {
+      db_private_free_and_init (thread_p, area);
+    }
+}
+
+/*
+ * stde_get_mk_file_path -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+stde_get_mk_file_path (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  char mk_path[PATH_MAX] = { 0, };
+  int pathlen = 0;
+  int area_size = -1;
+  char *reply, *area, *ptr;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  int err = NO_ERROR;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  tde_make_keys_file_fullname (mk_path, boot_db_full_name (), false);
+
+  area_size = or_packed_string_length (mk_path, &pathlen);
+
+  area = (char *) db_private_alloc (thread_p, area_size);
+  if (area == NULL)
+    {
+      (void) return_error_to_client (thread_p, rid);
+      area_size = 0;
+    }
+  else
+    {
+      ptr = or_pack_string_with_length (area, (char *) mk_path, pathlen);
+    }
+
+  ptr = or_pack_int (reply, area_size);
+  ptr = or_pack_int (ptr, err);
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area, area_size);
+
+  if (area != NULL)
+    {
+      db_private_free_and_init (thread_p, area);
+    }
+}
+
+/*
+ * stde_get_set_mk_info -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+stde_get_mk_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  int error;
+  char *ptr;
+  int mk_index;
+  time_t created_time, set_time;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE + OR_BIGINT_SIZE + OR_BIGINT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  error = xtde_get_mk_info (thread_p, &mk_index, &created_time, &set_time);
+  if (error != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  ptr = or_pack_errcode (reply, error);
+  ptr = or_pack_int (ptr, mk_index);
+  ptr = or_pack_int64 (ptr, created_time);
+  ptr = or_pack_int64 (ptr, set_time);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
+ * stde_change_mk_on_server -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+stde_change_mk_on_server (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  int error;
+  char *ptr;
+  int mk_index;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  ptr = or_unpack_int (request, &mk_index);
+
+  error = xtde_change_mk_without_flock (thread_p, mk_index);
+  if (error != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  ptr = or_pack_errcode (reply, error);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
  * stran_server_commit -
  *
  * return:
@@ -3307,6 +3498,7 @@ sboot_backup (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reql
   FILEIO_ZIP_LEVEL zip_level;
   int skip_activelog;
   int sleep_msecs;
+  int separate_keys;
 
   ptr = or_unpack_string_nocopy (request, &backup_path);
   ptr = or_unpack_int (ptr, (int *) &backup_level);
@@ -3317,10 +3509,11 @@ sboot_backup (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reql
   ptr = or_unpack_int (ptr, (int *) &zip_level);
   ptr = or_unpack_int (ptr, (int *) &skip_activelog);
   ptr = or_unpack_int (ptr, (int *) &sleep_msecs);
+  ptr = or_unpack_int (ptr, (int *) &separate_keys);
 
   success =
     xboot_backup (thread_p, backup_path, backup_level, delete_unneeded_logarchives, backup_verbose_file, num_threads,
-		  zip_method, zip_level, skip_activelog, sleep_msecs);
+		  zip_method, zip_level, skip_activelog, sleep_msecs, separate_keys);
 
   if (success != NO_ERROR)
     {

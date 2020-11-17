@@ -5854,8 +5854,17 @@ void
 fileio_make_backup_name (char *backup_name_p, const char *no_path_vol_name_p, const char *backup_path_p,
 			 FILEIO_BACKUP_LEVEL level, int unit_num)
 {
-  sprintf (backup_name_p, "%s%c%s%s%dv%03d", backup_path_p, PATH_SEPARATOR, no_path_vol_name_p, FILEIO_SUFFIX_BACKUP,
-	   level, unit_num);
+  if (unit_num >= 0)
+    {
+      sprintf (backup_name_p, "%s%c%s%s%dv%03d", backup_path_p, PATH_SEPARATOR, no_path_vol_name_p,
+	       FILEIO_SUFFIX_BACKUP, level, unit_num);
+    }
+  else
+    {
+      /* without unit number, usually with FILEIO_NO_BACKUP_UNITS */
+      sprintf (backup_name_p, "%s%c%s%s%d", backup_path_p, PATH_SEPARATOR, no_path_vol_name_p, FILEIO_SUFFIX_BACKUP,
+	       level);
+    }
 }
 
 /*
@@ -5875,6 +5884,56 @@ fileio_make_dwb_name (char *dwb_name_p, const char *dwb_path_p, const char *db_n
   sprintf (dwb_name_p, "%s%s%s%s", dwb_path_p, FILEIO_PATH_SEPARATOR (dwb_path_p), db_name_p, FILEIO_SUFFIX_DWB);
 }
 
+/*
+ * fileio_make_keys_name () - Build the name of KEYS file  (for TDE Master Key)
+ *   return: void
+ *   keys_name_p(out): the name of KEYS file
+ *   db_full_name_p(in): database full path
+ *
+ * Note: The caller must have enough space to store the name of the volume
+ *       that is constructed(sprintf). It is recommended to have at least
+ *       DB_MAX_PATH_LENGTH length.
+ */
+void
+fileio_make_keys_name (char *keys_name_p, const char *db_full_name_p)
+{
+  sprintf (keys_name_p, "%s%s", db_full_name_p, FILEIO_SUFFIX_KEYS);
+}
+
+/*
+ * fileio_make_keys_name_given_path () - Build the name of KEYS file (for TDE Master Key)
+ *   return: void
+ *   keys_name_p(out): the bname of KEYS file
+ *   keys_path_p(in): the directory path of KEYS file
+ *   db_name_p(in): database name
+ *
+ * Note: The caller must have enough space to store the name of the volume
+ *       that is constructed(sprintf). It is recommended to have at least
+ *       DB_MAX_PATH_LENGTH length.
+ */
+void
+fileio_make_keys_name_given_path (char *keys_name_p, const char *keys_path_p, const char *db_name_p)
+{
+  sprintf (keys_name_p, "%s%s%s%s", keys_path_p, FILEIO_PATH_SEPARATOR (keys_path_p), db_name_p, FILEIO_SUFFIX_KEYS);
+}
+
+#ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
+/*
+ * fileio_make_ha_sock_name () - Build the name of HA socket name (for sharing TDE Data keys)
+ *   return: void
+ *   keys_name_p(out): the name of KEYS volume
+ *   dbname(in): database name
+ *
+ * Note: The caller must have enough space to store the name of the volume
+ *       that is constructed(sprintf). It is recommended to have at least
+ *       DB_MAX_PATH_LENGTH length.
+ */
+void
+fileio_make_ha_sock_name (char *sock_path_p, const char *base_path_p, const char *sock_name_p)
+{
+  sprintf (sock_path_p, "%s%s%s", base_path_p, FILEIO_PATH_SEPARATOR (base_path_p), sock_name_p);
+}
+#endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
 
 /*
  * fileio_cache () - Cache information related to a mounted volume
@@ -11522,10 +11581,10 @@ fileio_initialize_res (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, PGLENGTH 
   io_page->prv.volid = -1;
 
   io_page->prv.ptype = '\0';
-  io_page->prv.pflag_reserve_1 = '\0';
+  io_page->prv.pflag = '\0';
   io_page->prv.p_reserve_1 = 0;
   io_page->prv.p_reserve_2 = 0;
-  io_page->prv.p_reserve_3 = 0;
+  io_page->prv.tde_nonce = 0;
 }
 
 

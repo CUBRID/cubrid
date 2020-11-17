@@ -302,6 +302,7 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/es_common.c
   ${STORAGE_DIR}/es.c
   ${STORAGE_DIR}/es_posix.c
+  ${STORAGE_DIR}/tde.c
   )
 
 set(XASL_SOURCES
