@@ -5873,27 +5873,20 @@ file_apply_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, const TDE_
   page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (page_fhead == NULL)
     {
-      ASSERT_ERROR ();
+      ASSERT_ERROR_AND_SET (error_code);
       return error_code;
     }
 
   fhead = (FILE_HEADER *) page_fhead;
   file_header_sanity_check (thread_p, fhead);
 
-  /* init map context */
-  context.func = file_file_map_set_tde_algorithm;
-  context.args = &args;
-  context.latch_cond = PGBUF_UNCONDITIONAL_LATCH;
-  context.latch_mode = PGBUF_LATCH_WRITE;
-  context.stop = false;
-  context.ftab_collector.partsect_ftab = NULL;
-
   prev_tde_algo = file_get_tde_algorithm_internal (fhead);
 
   if (prev_tde_algo == tde_algo)
     {
       /* it is already applied */
-      goto exit;
+      pgbuf_unfix (thread_p, page_fhead);
+      return NO_ERROR;
     }
 
 #if !defined(NDEBUG)
@@ -5902,22 +5895,27 @@ file_apply_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, const TDE_
 		VFID_AS_ARGS (&fhead->self), fhead->n_page_user, tde_get_algorithm_name (tde_algo));
 #endif /* !NDEBUG */
 
-
-  args.skip_logging = FILE_IS_TEMPORARY (fhead);
-  args.tde_algo = tde_algo;
-
   error_code = file_set_tde_algorithm (thread_p, vfid, tde_algo);
   if (error_code != NO_ERROR)
     {
-      ASSERT_ERROR ();
-      goto exit;
+      pgbuf_unfix (thread_p, page_fhead);
+      return error_code;
     }
+
+  /* init map context */
+  args.skip_logging = FILE_IS_TEMPORARY (fhead);
+  args.tde_algo = tde_algo;
+  context.func = file_file_map_set_tde_algorithm;
+  context.args = &args;
+  context.latch_cond = PGBUF_UNCONDITIONAL_LATCH;
+  context.latch_mode = PGBUF_LATCH_WRITE;
+  context.stop = false;
+  context.ftab_collector.partsect_ftab = NULL;
 
   /* collect table pages */
   error_code = file_table_collect_ftab_pages (thread_p, page_fhead, true, &context.ftab_collector);
   if (error_code != NO_ERROR)
     {
-      ASSERT_ERROR ();
       goto exit;
     }
 
@@ -5928,7 +5926,6 @@ file_apply_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, const TDE_
 					 NULL, NULL);
   if (error_code != NO_ERROR)
     {
-      ASSERT_ERROR ();
       goto exit;
     }
 
@@ -5941,7 +5938,6 @@ file_apply_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, const TDE_
 					     false, NULL, NULL);
       if (error_code != NO_ERROR)
 	{
-	  ASSERT_ERROR ();
 	  goto exit;
 	}
     }
