@@ -4323,8 +4323,8 @@ file_temp_retire_internal (THREAD_ENTRY * thread_p, const VFID * vfid, bool was_
     }
   else
     {
-      assert (entry != NULL);
       entry = file_tempcache_pop_tran_file (thread_p, vfid);
+      assert (entry != NULL);
       return NO_ERROR;
     }
 
@@ -9119,7 +9119,7 @@ file_tempcache_pop_tran_file (THREAD_ENTRY * thread_p, const VFID * vfid)
       prev_entry = entry;
     }
 
-  /* shoud have found it */
+  /* should have found it */
   assert_release (false);
   return NULL;
 }
