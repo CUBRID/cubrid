@@ -280,7 +280,7 @@ valid options:\n\
   -t, --thread-count=COUNT     number of threads; default: 0(auto)\n\
   -z, --compress               compress backup volumes; default: uncompress\n\
       --sleep-msecs=N          sleep N millisecond per 1M read; default: 0\n\
-  -k, --separate_keys          keys file (_keys) for TDE is not included in the backup volume, but is separated into a file instead\n 
+  -k, --separate_keys          keys file (_keys) for TDE is not included in the backup volume, but is separated into a file instead\n
 71 Incompatible arguments, \"%1$s\", and \"%2$s\"\n
 
 
@@ -400,7 +400,7 @@ valid options:\n\
   -p, --partial-recovery            perform partial recovery if any log archive is absent\n\
   -o, --output-file=FILE            redirect output messages to FILE; default: none\n\
   -u, --use-database-location-path  restore the database and log volumes to the path specified in the database location file\n\
-  -k, --keys-file-path              Path of key file (_keys) for TDE to be used during restoring\n 
+  -k, --keys-file-path              Path of key file (_keys) for TDE to be used during restoring\n
 
 
 $set 12 MSGCAT_UTIL_SET_LOADDB
@@ -1143,7 +1143,7 @@ valid options:\n\
   -B, --backup-file-path=PATH       PATH is a directory of backup volumes to be restored\n\
   -o, --output-file=FILE            redirect output messages to FILE; default: none\n\
   -u, --use-database-location-path  restore the database and log volumes to the path specified in the database location file\n\
-  -k, --keys-file-path              Path of key file (_keys) for TDE to be used during restoring\n 
+  -k, --keys-file-path              Path of key file (_keys) for TDE to be used during restoring\n
 
 $set 54 MSGCAT_UTIL_SET_DELVOLDB
 21 Ready to remove the following volumes:\n\n

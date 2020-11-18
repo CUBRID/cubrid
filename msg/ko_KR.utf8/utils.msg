@@ -399,7 +399,7 @@ restoredb: 데이터베이스 복구\n\
   -p, --partial-recovery            archive 로그가 존재하지 않으면 강제로 partial recovery 수행함\n\
   -o, --output-file=FILE            출력 메시지가 저장될 파일; 기본값: 없음\n\
   -u, --use-database-location-path  데이터베이스 위치 파일에 설정된 경로에 데이터베이스 볼륨과 로그 볼륨을 복구\n\
-  -k, --keys-file-path              복구에 사용될 키 파일 (_keys)의 경로 \n 
+  -k, --keys-file-path              복구에 사용될 키 파일 (_keys)의 경로 \n
 
 
 $set 12 MSGCAT_UTIL_SET_LOADDB
@@ -1130,7 +1130,7 @@ valid options:\n\
   -B, --backup-file-path=PATH       복원할 백업 볼륨의 디렉터리 경로\n\
   -o, --output-file=FILE            출력 메시지를 FILE로 변경; 기본값: 없음\n\
   -u, --use-database-location-path  데이터베이스와 로그 볼륨을 데이터베이스 경로 파일에 명시된 경로로 복원\n\
-  -k, --keys-file-path              복구에 사용될 키 파일 (_keys)의 경로 \n 
+  -k, --keys-file-path              복구에 사용될 키 파일 (_keys)의 경로 \n
 
 $set 54 MSGCAT_UTIL_SET_DELVOLDB
 21 Ready to remove the following volumes:\n\n
