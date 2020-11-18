@@ -1314,8 +1314,25 @@ $ LOADDB
 1245 Le chargement de mises à jour d'attributs de classe à partir de fichiers objets n'est pas pris en charge en mode CS.
 1246 Impossible d'obtenir l'adresse et le nom canonique de ("%1$s") dans /etc/hosts. Veuillez vérifier l'autorisation du fichier ou s'il existe le nom d'hôte.
 1247 Le temps (%1$s) spécifié doit être postérieure à l'heure (%2$s) de la sauvegarde spécifiée.
+1248 Fichier de clé non valide: %1$s
+1249 Impossible de trouver la clé (index: %1$d).
+1250 La clé principale définie dans la base de données et ce qui est donné ne correspondent pas. L'index de clé défini sur la base de données: %1$d
+1251 Erreur lors du cryptage TDE.
+1252 Erreur lors du décryptage TDE.
+1253 Le module TDE n'est pas chargé.
+1254 Impossible de créer une clé.
+1255 Impossible de charger le module TDE. Vous ne pouvez pas utiliser la fonction TDE.\n\
+Vérifiez le chemin du fichier de clé (_keys) et assurez-vous qu'il inclut la clé appropriée.
+1256 Impossible de copier le fichier de clé (_keys). Vous ne pouvez pas utiliser la fonction TDE sur la base de données copiée.
+1257 Impossible de sauvegarder le fichier de clé (_keys). Vous ne pouvez pas utiliser la fonction TDE sur la base de données restaurée en fonction de ce volume de sauvegarde.
+1258 Impossible de trouver le jeu de clés sur la base de données à partir de%1$s. Le fichier clé du volume de sauvegarde va être utilisé.
+1259 Renommez le fichier de clé de «%1$s» en «%2$s».
+1260 Copiez le fichier de clé "%1$s" dans "%2$s".
+1261 Impossible de trouver la clé au moment de la restauration (index de clé: %1$d, heure de création: %2$s). Définissez la clé (index de clé: %3$d) pour la base de données.
+1262 Le fichier clé est plein.
+1263 Le chiffrement TDE de la page de journal échoue (pageid: %1$lld). Il ne sera plus essayé de crypter cette page.
 
-1248 Dernière erreur
+1264 Dernière erreur
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Erreur dans le sous-système d'erreur (ligne %1$d):

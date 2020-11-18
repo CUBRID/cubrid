@@ -1314,8 +1314,25 @@ $ LOADDB
 1245 La carga de actualizaciones de atributos de clase desde archivos de objetos no es compatible con el modo CS.
 1246 Ne eblas ricevi adreson kaj kanonikan nomon por ("%1$s") en /etc/hosts. Bonvolu kontroli la permeson de la dosiero aŭ se estas la gastnomo.
 1247 El tiempo (%1$s) especificado tiene que ser despues del tiempo (%2$s) del respaldo especificado.
+1248 Archivo de clave no válido: %1$s
+1249 No se puede encontrar la clave (índice: %1$d).
+1250 La clave maestra establecida en la base de datos y lo que se proporciona no coinciden. El índice de claves establecido en la base de datos: %1$d
+1251 Error durante el cifrado TDE.
+1252 Error al descifrar TDE.
+1253 El módulo TDE no está cargado.
+1254 No se puede crear una clave.
+1255 No se puede cargar el módulo TDE. No puede usar la función TDE.\n\
+Verifique la ruta del archivo de claves (_keys) y asegúrese de que incluya la clave adecuada.
+1256 No se puede copiar el archivo de claves (_keys). No puede usar la función TDE en la base de datos copiada.
+1257 No se puede hacer una copia de seguridad del archivo de claves (_keys). No puede usar la función TDE en la base de datos restaurada basada en este volumen de respaldo.
+1258 No se puede encontrar el conjunto de claves en la base de datos de%1$s. Se utilizará el archivo de claves del volumen de copia de seguridad.
+1259 Cambie el nombre del archivo de claves de "%1$s" a "%2$s".
+1260 Copie el archivo de claves "%1$s" en "%2$s".
+1261 No se puede encontrar la clave en el momento de restaurar (índice de clave: %1$d, hora de creación: %2$s). Establezca la clave (índice de clave: %3$d) para la base de datos.
+1262 El archivo de claves está lleno.
+1263 No se puede cifrar con TDE la página de registro (pageid: %1$lld). Ya no se intentará cifrar esta página.
 
-1248 Ultimo error
+1264 Ultimo error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %1$d):

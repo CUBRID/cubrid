@@ -1314,8 +1314,25 @@ $ LOADDB
 1245 Aggiornamento degli attributi di classe dai file oggetto non è supportato in modalità CS.
 1246 Impossibile ottenere l'indirizzo e il nome canonico per ("%1$s") in /etc/hosts. Verifica l'autorizzazione del file o se è presente il nome host.
 1247 Il tempo (%1$s) deve essere specificato dopo il tempo (%2$s) del backup specificato.
+1248 File chiave non valido: %1$s
+1249 Impossibile trovare la chiave (indice: %1$d).
+1250 La chiave master impostata nel database e ciò che viene fornito non corrispondono. L'indice della chiave impostato nel database: %1$d
+1251 Errore durante la crittografia TDE.
+1252 Errore durante la decrittografia TDE.
+1253 Il modulo TDE non è caricato.
+1254 Impossibile creare una chiave.
+1255 Impossibile caricare il modulo TDE. Non puoi usare la funzione TDE.\n\
+Controllare il percorso del file della chiave (_keys) e assicurarsi che includa la chiave corretta.
+1256 Impossibile copiare il file della chiave (_keys). Non è possibile utilizzare la funzione TDE sul database copiato.
+1257 Impossibile eseguire il backup del file della chiave (_keys). Non è possibile utilizzare la funzionalità TDE sul database ripristinato in base a questo volume di backup.
+1258 Impossibile trovare la serie di chiavi nel database da%1$s. Verrà utilizzato il file chiave del volume di backup.
+1259 Rinomina il file della chiave da "%1$s" a "%2$s".
+1260 Copia il file chiave "%1$s" in "%2$s".
+1261 Impossibile trovare la chiave al momento del ripristino (indice chiave: %1$d, ora di creazione: %2$s). Imposta la chiave (indice chiave: %3$d) per il database.
+1262 Il file della chiave è pieno.
+1263 Impossibile crittografare TDE la pagina di registro (pageid: %1$lld). Non si tenterà più di crittografare questa pagina.
 
-1248 Ultimo errore
+1264 Ultimo errore
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Errore nel sottosistema di errore (linea %1$d):
