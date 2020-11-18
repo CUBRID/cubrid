@@ -2033,6 +2033,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
   net_buf_cp_int (net_buf, argc, &num_query_offset);	/* result msg. num_query */
 
   cub_ddl_log_execute_type (DDL_LOG_RUN_EXECUTE_BATCH_FUNC);
+  cub_ddl_log_commit_mode (auto_commit_mode);
 
   for (query_index = 0; query_index < argc; query_index++)
     {
