@@ -832,10 +832,13 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
 	  goto prepare_error;
 	}
 
-      statement = session->statements[0];
-      if (statement != NULL)
+      if (session->statements != NULL)
 	{
-	  cub_ddl_log_stmt_type (statement->node_type);
+	  statement = session->statements[0];
+	  if (statement != NULL)
+	    {
+	      cub_ddl_log_stmt_type (statement->node_type);
+	    }
 	}
 
       stmt_id = db_compile_statement (session);

@@ -2674,7 +2674,6 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
   strncpy_bufsize (csql_Name, csql_get_message (CSQL_NAME));
 
   cub_ddl_log_init ();
-  get_host_ip (ip_addr);
   cub_ddl_log_app_name (APP_NAME_CSQL);
 
   if (csql_arg->db_name != NULL)
@@ -2685,7 +2684,10 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
     {
       cub_ddl_log_user_name (csql_arg->user_name);
     }
-  cub_ddl_log_ip ((char *) ip_addr);
+  if (get_host_ip (ip_addr) == 0)
+    {
+      cub_ddl_log_ip ((char *) ip_addr);
+    }
   cub_ddl_log_pid (getpid ());
 
   /* as we must use db_open_file_name() to open the input file, it is necessary to be opening csql_Input_fp at this
