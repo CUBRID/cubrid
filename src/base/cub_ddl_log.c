@@ -361,17 +361,6 @@ cub_ddl_log_start_time (struct timeval *time_val)
 }
 
 void
-cub_ddl_log_elapsed_time (long sec, long msec)
-{
-  if (ddl_audit_handle == NULL)
-    {
-      return;
-    }
-
-  snprintf (ddl_audit_handle->elapsed_time, 20, "elapsed time %ld.%03ld", sec, msec);
-}
-
-void
 cub_ddl_log_msg (const char *fmt, ...)
 {
   va_list args;
@@ -404,6 +393,18 @@ cub_ddl_log_commit_count (int count)
       return;
     }
   ddl_audit_handle->commit_count = count;
+}
+
+static void
+cub_ddl_log_elapsed_time (long sec, long msec)
+{
+  if (ddl_audit_handle == NULL)
+    {
+      return;
+    }
+
+  snprintf (ddl_audit_handle->elapsed_time, 20, "elapsed time %ld.%03ld", sec, msec);
+  fprintf (stderr, "=========== ddl_audit_handle->elapsed_time : %s\n", ddl_audit_handle->elapsed_time);
 }
 
 static int
