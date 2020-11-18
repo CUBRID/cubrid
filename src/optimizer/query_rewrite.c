@@ -5497,7 +5497,7 @@ qo_rewrite_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 	      for (expr = node->info.query.q.select.where; expr; expr = expr->next)
 		{
 		  if (expr->node_type == PT_EXPR && expr->info.expr.location == 0 && expr->info.expr.op != PT_IS_NULL
-		      && expr->or_next == NULL)
+		      && expr->or_next == NULL && expr->info.expr.op != PT_AND && expr->info.expr.op != PT_OR)
 		    {
 		      save_next = expr->next;
 		      expr->next = NULL;
