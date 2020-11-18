@@ -406,28 +406,6 @@ cub_ddl_log_commit_count (int count)
   ddl_audit_handle->commit_count = count;
 }
 
-void
-cub_ddl_log_execute_result (T_SRV_HANDLE * srv_handle)
-{
-  if (srv_handle == NULL)
-    {
-      return;
-    }
-
-  for (int i = 0; i < srv_handle->num_q_result; i++)
-    {
-      if (cub_is_ddl_type (srv_handle->q_result[i].stmt_type) == TRUE)
-	{
-	  cub_ddl_log_stmt_type (srv_handle->q_result[i].stmt_type);
-	  break;
-	}
-      else
-	{
-	  cub_ddl_log_stmt_type (srv_handle->q_result[i].stmt_type);
-	}
-    }
-}
-
 static int
 cub_file_copy (char *src_file, char *dest_file)
 {

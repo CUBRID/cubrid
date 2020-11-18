@@ -68,7 +68,6 @@ extern void cub_ddl_log_start_time (struct timeval *time_val);
 extern void cub_ddl_log_msg (const char *fmt, ...);
 extern void cub_ddl_log_execute_type (char type);
 extern void cub_ddl_log_commit_count (int count);
-extern void cub_ddl_log_execute_result (T_SRV_HANDLE * srv_handle);
 extern void cub_ddl_log_write ();
 extern void cub_ddl_log_write_end ();
 extern int cub_is_ddl_type (int node_type);
