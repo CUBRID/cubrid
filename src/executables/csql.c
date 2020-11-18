@@ -484,6 +484,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
   /* check in string block or comment block or identifier block */
   bool is_in_block = false;
 
+  cub_ddl_log_commit_mode (csql_arg->auto_commit);
   if (csql_arg->column_output && csql_arg->line_output)
     {
       csql_Error_code = CSQL_ERR_INVALID_ARG_COMBINATION;
@@ -940,6 +941,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       else
 	{
 	  csql_display_msg (csql_get_message (CSQL_STAT_COMMITTED_TEXT));
+	  cub_ddl_log_write_tran_str ("Commited");
 	}
       break;
 
@@ -952,6 +954,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       else
 	{
 	  csql_display_msg (csql_get_message (CSQL_STAT_ROLLBACKED_TEXT));
+	  cub_ddl_log_write_tran_str ("Rolled back");
 	}
       break;
 
@@ -966,6 +969,8 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	}
 
       fprintf (csql_Output_fp, "AUTOCOMMIT IS %s\n", (csql_is_auto_commit_requested (csql_arg) ? "ON" : "OFF"));
+
+      cub_ddl_log_commit_mode (csql_arg->auto_commit);
       break;
 
     case S_CMD_CHECKPOINT:
@@ -1858,22 +1863,6 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	  line = db_get_line_of_statement (session, stmt_id);
 
 	  line = db_get_start_line (session, stmt_id);
-
-	  unsigned char ip_addr[16] = { "0" };
-	  get_host_ip (ip_addr);
-	  cub_ddl_log_app_name (APP_NAME_CSQL);
-
-	  if (csql_arg->db_name != NULL)
-	    {
-	      cub_ddl_log_db_name (csql_arg->db_name);
-	    }
-	  if (csql_arg->user_name != NULL)
-	    {
-	      cub_ddl_log_user_name (csql_arg->user_name);
-	    }
-	  cub_ddl_log_ip ((char *) ip_addr);
-	  cub_ddl_log_pid (getpid ());
-
 	  statements = session->statements[num_stmts];
 	  if (statements != NULL && strlen (statements->sql_user_text) >= statements->sql_user_text_len)
 	    {
@@ -1906,6 +1895,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 		{
 		  db_abort_transaction ();
 		  do_abort_transaction = false;
+		  cub_ddl_log_msg ("auto_rollback");
 		}
 	      csql_Num_failures += 1;
 	      cub_ddl_log_write_end ();
@@ -1957,6 +1947,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 		{
 		  db_abort_transaction ();
 		  do_abort_transaction = false;
+		  cub_ddl_log_msg ("auto_rollback");
 		}
 	      csql_Num_failures += 1;
 
@@ -2075,6 +2066,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 		    {
 		      db_abort_transaction ();
 		      do_abort_transaction = false;
+		      cub_ddl_log_msg ("auto_rollback");
 		    }
 		  csql_Num_failures += 1;
 		  cub_ddl_log_write_end ();
@@ -2094,6 +2086,10 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	}
 
       db_drop_statement (session, stmt_id);
+      if (csql_arg->auto_commit == TRUE)
+	{
+	  cub_ddl_log_msg ("auto_commit");
+	}
       cub_ddl_log_write_end ();
     }
 
@@ -2118,6 +2114,7 @@ error:
     {
       db_abort_transaction ();
       do_abort_transaction = false;
+      cub_ddl_log_msg ("auto_rollback");
     }
   else
     {
@@ -2490,11 +2487,13 @@ csql_exit_session (int error)
 	  if (line_buf[0] == 'y' || line_buf[0] == 'Y')
 	    {
 	      commit_on_shutdown = true;
+	      cub_ddl_log_write_tran_str ("Commited");
 	      break;
 	    }
 	  if (line_buf[0] == 'n' || line_buf[0] == 'N')
 	    {
 	      commit_on_shutdown = false;
+	      cub_ddl_log_write_tran_str ("Rolled back");
 	      break;
 	    }
 
@@ -2643,7 +2642,8 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
   int client_type;
   int avail_size;
   char *p = NULL;
-
+  unsigned char ip_addr[16] = { "0" };
+  
   /* Establish a globaly accessible longjmp environment so we can terminate on severe errors without calling exit(). */
   csql_exit_init ();
 
@@ -2678,6 +2678,19 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
   strncpy_bufsize (csql_Name, csql_get_message (CSQL_NAME));
 
   cub_ddl_log_init ();
+  get_host_ip (ip_addr);
+  cub_ddl_log_app_name (APP_NAME_CSQL);
+
+  if (csql_arg->db_name != NULL)
+    {
+      cub_ddl_log_db_name (csql_arg->db_name);
+    }
+  if (csql_arg->user_name != NULL)
+    {
+      cub_ddl_log_user_name (csql_arg->user_name);
+    }
+  cub_ddl_log_ip ((char *) ip_addr);
+  cub_ddl_log_pid (getpid ());
 
   /* as we must use db_open_file_name() to open the input file, it is necessary to be opening csql_Input_fp at this
    * point */

@@ -197,6 +197,9 @@ fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
   cas_log_write (0, false, "end_tran %s%d time %d.%03d%s", err_code < 0 ? "error:" : "", err_info.err_number,
 		 elapsed_sec, elapsed_msec, get_error_log_eids (err_info.err_number));
 
+  cub_ddl_log_write_tran_str ("end_tran %s%d %s", err_code < 0 ? "error:" : "", err_info.err_number,
+			      get_tran_type_str (tran_type));
+
   if (err_code < 0)
     {
       NET_BUF_ERR_SET (net_buf);
@@ -589,6 +592,7 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 
   srv_handle->auto_commit_mode = auto_commit_mode;
   srv_handle->forward_only_cursor = forward_only_cursor;
+  cub_ddl_log_commit_mode (auto_commit_mode);
 
   if (srv_handle->prepare_flag & CCI_PREPARE_CALL)
     {

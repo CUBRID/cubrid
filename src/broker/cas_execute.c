@@ -761,6 +761,7 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
     }
   srv_handle->schema_type = -1;
   srv_handle->auto_commit_mode = auto_commit_mode;
+  cub_ddl_log_commit_mode (auto_commit_mode);
 
   ALLOC_COPY (srv_handle->sql_stmt, sql_stmt);
   if (srv_handle->sql_stmt == NULL)

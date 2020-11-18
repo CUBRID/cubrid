@@ -86,6 +86,7 @@ struct t_ddl_audit_handle
   char log_filepath[PATH_MAX];
   int commit_count;
   struct timeval exec_begin_time;
+  char auto_commit_mode;
 };
 static T_DDL_AUDIT_HANDLE *ddl_audit_handle = NULL;
 
@@ -106,6 +107,8 @@ static FILE *cub_fopen_and_lock (const char *path, const char *mode);
 static void cub_ddl_log_elapsed_time (long sec, long msec);
 static void cub_timeval_diff (struct timeval *start, struct timeval *end, int *res_sec, int *res_msec);
 static const char *cub_get_app_name (T_APP_NAME app_name);
+
+static char is_executed_ddl = FALSE;
 
 void
 cub_ddl_log_init ()
@@ -142,11 +145,18 @@ cub_ddl_log_free ()
   FREE_MEM (ddl_audit_handle->sql_text);
   FREE_MEM (ddl_audit_handle->err_msg);
 
-  memset (ddl_audit_handle, 0x00, sizeof (T_DDL_AUDIT_HANDLE));
-
   ddl_audit_handle->stmt_type = -1;
   ddl_audit_handle->execute_type = DDL_LOG_RUN_EXECUTE_FUNC;
   ddl_audit_handle->loaddb_file_type = LOADDB_FILE_TYPE_NONE;
+  ddl_audit_handle->log_filepath[0] = '\0';
+  ddl_audit_handle->execute_start_time[0] = '\0';
+  ddl_audit_handle->elapsed_time[0] = '\0';
+  ddl_audit_handle->file_line_number = 0;
+  ddl_audit_handle->err_code = 0;
+  ddl_audit_handle->msg[0] = '\0';
+  ddl_audit_handle->file_name[0] = '\0';
+  ddl_audit_handle->schema_file[0] = '\0';
+  ddl_audit_handle->commit_count = 0;
 }
 
 void
@@ -274,6 +284,11 @@ cub_ddl_log_stmt_type (int stmt_type)
     }
 
   ddl_audit_handle->stmt_type = stmt_type;
+
+  if (cub_is_ddl_type (stmt_type) == TRUE)
+    {
+      is_executed_ddl = TRUE;
+    }
 }
 
 void
@@ -393,6 +408,16 @@ cub_ddl_log_commit_count (int count)
       return;
     }
   ddl_audit_handle->commit_count = count;
+}
+
+void
+cub_ddl_log_commit_mode (char mode)
+{
+  if (ddl_audit_handle == NULL)
+    {
+      return;
+    }
+  ddl_audit_handle->auto_commit_mode = mode;
 }
 
 static void
@@ -709,6 +734,95 @@ write_error:
     }
 }
 
+void
+cub_ddl_log_write_tran_str (const char *fmt, ...)
+{
+  FILE *fp = NULL;
+  char msg[DDL_LOG_BUFFER_SIZE] = { 0 };
+  int len = 0;
+  struct timeval time_val;
+  va_list args;
+
+  if (ddl_audit_handle == NULL)
+    {
+      return;
+    }
+
+  if (prm_get_bool_value (PRM_ID_DDL_AUDIT_LOG) == FALSE)
+    {
+      return;
+    }
+
+  if (is_executed_ddl == FALSE || ddl_audit_handle->auto_commit_mode == TRUE)
+    {
+      return;
+    }
+
+  fp = cub_ddl_log_open (ddl_audit_handle->app_name);
+
+  if (fp != NULL)
+    {
+      va_start (args, fmt);
+      vsnprintf (ddl_audit_handle->msg, DDL_LOG_MSG, fmt, args);
+      va_end (args);
+
+      gettimeofday (&time_val, NULL);
+      cub_get_time_string (ddl_audit_handle->execute_start_time, &time_val);
+
+      if (ddl_audit_handle->app_name == APP_NAME_CAS)
+	{
+	  len = snprintf (msg, DDL_LOG_BUFFER_SIZE, "%s %s|%s|%s\n",
+			  ddl_audit_handle->execute_start_time,
+			  ddl_audit_handle->ip_addr, ddl_audit_handle->user_name, ddl_audit_handle->msg);
+	}
+      else if (ddl_audit_handle->app_name == APP_NAME_CSQL)
+	{
+	  len = snprintf (msg, DDL_LOG_BUFFER_SIZE, "%s %d|%s|%s\n",
+			  ddl_audit_handle->execute_start_time,
+			  ddl_audit_handle->pid, ddl_audit_handle->user_name, ddl_audit_handle->msg);
+	}
+      else
+	{
+	  goto write_error;
+	}
+
+      if (len >= DDL_LOG_BUFFER_SIZE)
+	{
+	  msg[DDL_LOG_BUFFER_SIZE - 2] = '\n';
+	  msg[DDL_LOG_BUFFER_SIZE - 1] = '\0';
+	  len = DDL_LOG_BUFFER_SIZE;
+	}
+
+      if (len < 0)
+	{
+	  goto write_error;
+	}
+
+      if (fwrite (msg, 1, len, fp) != len)
+	{
+	  goto write_error;
+	}
+
+      if ((UINT64) ftell (fp) > prm_get_bigint_value (PRM_ID_DDL_AUDIT_LOG_SIZE))
+	{
+	  fclose (fp);
+	  cub_ddl_log_backup (ddl_audit_handle->log_filepath);
+	  fp = NULL;
+	}
+    }
+
+write_error:
+  if (fp != NULL)
+    {
+      fclose (fp);
+      fp = NULL;
+    }
+
+  is_executed_ddl = FALSE;
+  cub_ddl_log_free ();
+  fprintf (stderr, "## %s\n", msg);
+}
+
 static int
 cub_create_log_mgs (char *msg)
 {
@@ -757,11 +871,11 @@ cub_create_log_mgs (char *msg)
 	  strcpy (result, "OK");
 	}
 
-      retval = snprintf (msg, DDL_LOG_BUFFER_SIZE, "%s %d|%s|%s|%s|%s\n",
+      retval = snprintf (msg, DDL_LOG_BUFFER_SIZE, "%s %d|%s|%s|%s|%s|%s\n",
 			 ddl_audit_handle->execute_start_time,
 			 ddl_audit_handle->pid,
 			 ddl_audit_handle->user_name,
-			 result, ddl_audit_handle->elapsed_time, ddl_audit_handle->sql_text);
+			 result, ddl_audit_handle->elapsed_time, ddl_audit_handle->msg, ddl_audit_handle->sql_text);
     }
   else
     {
@@ -773,7 +887,6 @@ cub_create_log_mgs (char *msg)
 	{
 	  strcpy (result, "OK");
 	}
-
 
       if (ddl_audit_handle->execute_type & DDL_LOG_RUN_EXECUTE_BATCH_FUNC)
 	{
