@@ -319,8 +319,8 @@ qfile_list_cache_cleanup (THREAD_ENTRY * thread_p)
   int candidate_index, i, n;
 
   struct timeval current_time;
-  int cleanup_count = prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_ENTRIES) * 10 / 8;
-  int cleanup_pages = prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_PAGES) * 10 / 8;
+  int cleanup_count = prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_ENTRIES) * 8 / 10;
+  int cleanup_pages = prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_PAGES) * 8 / 10;
 
   if (cleanup_count < 1)
     {
