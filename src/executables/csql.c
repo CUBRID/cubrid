@@ -1859,10 +1859,6 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 
       if (session->statements != NULL)
 	{
-	  int line = 0;
-	  line = db_get_line_of_statement (session, stmt_id);
-
-	  line = db_get_start_line (session, stmt_id);
 	  statements = session->statements[num_stmts];
 	  if (statements != NULL && strlen (statements->sql_user_text) >= statements->sql_user_text_len)
 	    {
