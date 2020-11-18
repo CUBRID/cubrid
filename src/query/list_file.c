@@ -5986,13 +5986,7 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr, con
    * Then, try to delete the previous one and insert new one.
    * If fail to delete, leave the cache without touch.
    */
-#if 0
-  if (*list_ht_no_ptr < 0)
-    {
-      csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
-      return NULL;
-    }
-#endif
+
   ht = qfile_List_cache.list_hts[*list_ht_no_ptr];
   do
     {
