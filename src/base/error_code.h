@@ -1604,23 +1604,24 @@
 
 #define ER_GAI_ERROR                                -1246
 
-#define ER_TDE_INVALID_KEYS_FILE                    -1247
-#define ER_TDE_MASTER_KEY_NOT_FOUND                 -1248
-#define ER_TDE_INVALID_MASTER_KEY                   -1249
-#define ER_TDE_ENCRYPTION_ERROR                     -1250
-#define ER_TDE_DECRYPTION_ERROR                     -1251
-#define ER_TDE_CIPHER_IS_NOT_LOADED                 -1252
-#define ER_TDE_KEY_CREATION_FAIL                    -1253
-#define ER_TDE_CIPHER_LOAD_FAIL                     -1254
-#define ER_TDE_COPY_KEYS_FILE_FAIL                  -1255
-#define ER_TDE_BACKUP_KEYS_FILE_FAIL                -1256
-#define ER_TDE_RESTORE_KEY_FOUND_ONLY_FROM_BACKUP   -1257
-#define ER_TDE_RESTORE_MAKE_KEYS_FILE_OLD           -1258
-#define ER_TDE_RESTORE_COPY_KEYS_FILE               -1259
-#define ER_TDE_RESTORE_CHANGE_MASTER_KEY            -1260
-#define ER_TDE_MAX_KEY_FILE                         -1261
-#define ER_TDE_ENCRYPTION_LOGPAGE_ERORR_AND_OFF_TDE -1262
-#define ER_LOG_UPTODATE_ERROR                       -1263
+#define ER_LOG_UPTODATE_ERROR                       -1247
+
+#define ER_TDE_INVALID_KEYS_FILE                    -1248
+#define ER_TDE_MASTER_KEY_NOT_FOUND                 -1249
+#define ER_TDE_INVALID_MASTER_KEY                   -1250
+#define ER_TDE_ENCRYPTION_ERROR                     -1251
+#define ER_TDE_DECRYPTION_ERROR                     -1252
+#define ER_TDE_CIPHER_IS_NOT_LOADED                 -1253
+#define ER_TDE_KEY_CREATION_FAIL                    -1254
+#define ER_TDE_CIPHER_LOAD_FAIL                     -1255
+#define ER_TDE_COPY_KEYS_FILE_FAIL                  -1256
+#define ER_TDE_BACKUP_KEYS_FILE_FAIL                -1257
+#define ER_TDE_RESTORE_KEY_FOUND_ONLY_FROM_BACKUP   -1258
+#define ER_TDE_RESTORE_MAKE_KEYS_FILE_OLD           -1259
+#define ER_TDE_RESTORE_COPY_KEYS_FILE               -1260
+#define ER_TDE_RESTORE_CHANGE_MASTER_KEY            -1261
+#define ER_TDE_MAX_KEY_FILE                         -1262
+#define ER_TDE_ENCRYPTION_LOGPAGE_ERORR_AND_OFF_TDE -1263
 
 #define ER_LAST_ERROR                               -1264
 
