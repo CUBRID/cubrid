@@ -1799,7 +1799,6 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 	      errors_in_transaction = 0;
 	    }
 	}
-      cub_ddl_log_start_time (&tran_start_time);
 #else /* !LIBCAS_FOR_JSP */
       net_timeout_set (60);
       err_code = net_read_header (sock_fd, &client_msg_header);
