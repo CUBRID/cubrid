@@ -484,7 +484,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
   /* check in string block or comment block or identifier block */
   bool is_in_block = false;
 
-  cub_ddl_log_commit_mode (csql_arg->auto_commit);
+  cub_ddl_log_commit_mode (csql_is_auto_commit_requested (csql_arg));
   if (csql_arg->column_output && csql_arg->line_output)
     {
       csql_Error_code = CSQL_ERR_INVALID_ARG_COMBINATION;
@@ -970,7 +970,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 
       fprintf (csql_Output_fp, "AUTOCOMMIT IS %s\n", (csql_is_auto_commit_requested (csql_arg) ? "ON" : "OFF"));
 
-      cub_ddl_log_commit_mode (csql_arg->auto_commit);
+      cub_ddl_log_commit_mode (csql_is_auto_commit_requested (csql_arg));
       break;
 
     case S_CMD_CHECKPOINT:
@@ -1863,8 +1863,8 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	  if (statements != NULL && strlen (statements->sql_user_text) >= statements->sql_user_text_len)
 	    {
 	      cub_ddl_log_sql_text (statements->sql_user_text, statements->sql_user_text_len);
+	      cub_ddl_log_stmt_type (statements->node_type);
 	    }
-	  cub_ddl_log_stmt_type (statements->node_type);
 	}
 
       if (stmt_id < 0)
@@ -2082,7 +2082,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	}
 
       db_drop_statement (session, stmt_id);
-      if (csql_arg->auto_commit == TRUE)
+      if (csql_is_auto_commit_requested (csql_arg))
 	{
 	  cub_ddl_log_msg ("auto_commit");
 	}
@@ -2639,7 +2639,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
   int avail_size;
   char *p = NULL;
   unsigned char ip_addr[16] = { "0" };
-  
+
   /* Establish a globaly accessible longjmp environment so we can terminate on severe errors without calling exit(). */
   csql_exit_init ();
 
@@ -3195,7 +3195,6 @@ static bool
 csql_is_auto_commit_requested (const CSQL_ARGUMENT * csql_arg)
 {
   assert (csql_arg != NULL);
-
   return csql_arg->auto_commit && prm_get_bool_value (PRM_ID_CSQL_AUTO_COMMIT);
 }
 
