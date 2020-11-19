@@ -1954,6 +1954,8 @@ int
 btree_create_overflow_key_file (THREAD_ENTRY * thread_p, BTID_INT * btid)
 {
   FILE_DESCRIPTORS des;
+  int error_code = NO_ERROR;
+  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
 
   VFID_SET_NULL (&btid->ovfid);
 
@@ -1963,7 +1965,18 @@ btree_create_overflow_key_file (THREAD_ENTRY * thread_p, BTID_INT * btid)
   des.btree_key_overflow.class_oid = btid->topclass_oid;
   assert (!OID_ISNULL (&des.btree_key_overflow.class_oid));
   /* create file with at least 3 pages */
-  return file_create_with_npages (thread_p, FILE_BTREE_OVERFLOW_KEY, 3, &des, &btid->ovfid);
+  error_code = file_create_with_npages (thread_p, FILE_BTREE_OVERFLOW_KEY, 3, &des, &btid->ovfid);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+  error_code = heap_get_class_tde_algorithm (thread_p, &btid->topclass_oid, &tde_algo);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+  error_code = file_apply_tde_algorithm (thread_p, &btid->ovfid, tde_algo);
+  return error_code;
 }
 
 /*
@@ -32328,6 +32341,7 @@ btree_key_remove_delete_mvccid_non_unique (THREAD_ENTRY * thread_p, BTID_INT * b
 {
   LOG_DATA_ADDR addr;		/* Log address for record. */
   int rv_redo_data_length = 0;	/* Redo recovery data length. */
+  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
 
   LOG_LSA prev_lsa;
 
@@ -32870,6 +32884,7 @@ btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, B
 {
   FILE_DESCRIPTORS des;
   VPID vpid_root;
+  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
 
   int error_code = NO_ERROR;
 
@@ -32882,6 +32897,27 @@ btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, B
     {
       ASSERT_ERROR ();
       return error_code;
+    }
+
+  error_code = heap_get_class_tde_algorithm (thread_p, class_oid, &tde_algo);
+  if (error_code == NO_ERROR)
+    {
+      /* 
+       * It can happen to fail to get the class record.
+       * For example, a class record that is assigned but not updated poperly yet.
+       * In this case, Setting tde flag is just skipped and it is expected to be done later.
+       * see file_apply_tde_to_class_files() 
+       */
+      error_code = file_apply_tde_algorithm (thread_p, &btid->vfid, tde_algo);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+    }
+  else
+    {
+      er_clear ();
     }
 
   /* index page allocations need to be committed. they are not individually deallocated on undo; all pages are
@@ -32926,13 +32962,13 @@ btree_delete_sysop_end (THREAD_ENTRY * thread_p, BTREE_DELETE_HELPER * helper)
   switch (helper->purpose)
     {
     case BTREE_OP_DELETE_OBJECT_PHYSICAL:
-      log_sysop_end_logical_undo (thread_p, RVBT_DELETE_OBJECT_PHYSICAL, NULL, helper->rv_keyval_data_length,
-				  helper->rv_keyval_data);
+      log_sysop_end_logical_undo (thread_p, RVBT_DELETE_OBJECT_PHYSICAL, helper->leaf_addr.vfid,
+				  helper->rv_keyval_data_length, helper->rv_keyval_data);
       break;
 
     case BTREE_OP_ONLINE_INDEX_TRAN_DELETE:
-      log_sysop_end_logical_undo (thread_p, RVBT_ONLINE_INDEX_UNDO_TRAN_DELETE, NULL, helper->rv_keyval_data_length,
-				  helper->rv_keyval_data);
+      log_sysop_end_logical_undo (thread_p, RVBT_ONLINE_INDEX_UNDO_TRAN_DELETE, helper->leaf_addr.vfid,
+				  helper->rv_keyval_data_length, helper->rv_keyval_data);
       break;
 
     case BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED:
@@ -34859,6 +34895,7 @@ static void
 btree_rv_log_delete_object (THREAD_ENTRY * thread_p, const BTREE_DELETE_HELPER & delete_helper, LOG_DATA_ADDR & addr,
 			    int undo_length, int redo_length, const char *undo_data, const char *redo_data)
 {
+  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
   assert (btree_is_delete_object_purpose (delete_helper.purpose));
 
   if (delete_helper.is_system_op_started)
@@ -34919,6 +34956,7 @@ static void
 btree_rv_log_insert_object (THREAD_ENTRY * thread_p, const BTREE_INSERT_HELPER & insert_helper, LOG_DATA_ADDR & addr,
 			    int undo_length, int redo_length, const char *undo_data, const char *redo_data)
 {
+  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
   assert (btree_is_insert_object_purpose (insert_helper.purpose));
 
   if (insert_helper.is_system_op_started)

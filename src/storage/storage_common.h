@@ -444,6 +444,7 @@ typedef enum
 #define CUBRID_MAGIC_LOG_INFO                   "CUBRID/LogInfo"
 #define CUBRID_MAGIC_DATABASE_BACKUP            "CUBRID/Backup_v2"
 #define CUBRID_MAGIC_DATABASE_BACKUP_OLD        "CUBRID/Backup"
+#define CUBRID_MAGIC_KEYS                       "CUBRID/Keys"
 
 /*
  * Typedefs related to the scan data structures

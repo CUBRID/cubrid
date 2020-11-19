@@ -86,6 +86,7 @@ struct log_repl
   char *repl_data;		/* the content of the replication log record */
   int length;
   LOG_REPL_FLUSH must_flush;
+  bool tde_encrypted;		/* if it contains user data of tde-class */
 };
 #endif
 

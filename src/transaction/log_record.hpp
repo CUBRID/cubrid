@@ -296,6 +296,8 @@ struct log_rec_sysop_end
   LOG_LSA lastparent_lsa;	/* last address before the top action */
   LOG_LSA prv_topresult_lsa;	/* previous top action (either, partial abort or partial commit) address */
   LOG_SYSOP_END_TYPE type;	/* end system op type */
+  /* File where the page belong. same as mvcc_undo->vacuum_info if type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO. It is used to get TDE information.*/
+  const VFID *vfid;
   union				/* other info based on type */
   {
     LOG_REC_UNDO undo;		/* undo data for logical undo */

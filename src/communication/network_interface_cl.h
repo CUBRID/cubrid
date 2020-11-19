@@ -122,6 +122,13 @@ extern int heap_destroy (const HFID * hfid);
 #endif
 extern int heap_destroy_newly_created (const HFID * hfid, const OID * class_oid);
 extern int heap_reclaim_addresses (const HFID * hfid);
+extern int file_apply_tde_to_class_files (const OID * class_oid);
+#ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
+extern int tde_get_data_keys ();
+#endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
+extern int tde_get_mk_file_path (char *mk_path);
+extern int tde_get_mk_info (int *mk_index, time_t * created_time, time_t * set_time);
+extern int tde_change_mk_on_server (int mk_index);
 extern DKNPAGES disk_get_total_numpages (VOLID volid);
 extern DKNPAGES disk_get_free_numpages (VOLID volid);
 extern char *disk_get_remarks (VOLID volid);
@@ -190,7 +197,7 @@ int boot_register_client (BOOT_CLIENT_CREDENTIAL * client_credential, int client
 extern int boot_unregister_client (int tran_index);
 extern int boot_backup (const char *backup_path, FILEIO_BACKUP_LEVEL backup_level, bool delete_unneeded_logarchives,
 			const char *backup_verbose_file, int num_threads, FILEIO_ZIP_METHOD zip_method,
-			FILEIO_ZIP_LEVEL zip_level, int skip_activelog, int sleep_msecs);
+			FILEIO_ZIP_LEVEL zip_level, int skip_activelog, int sleep_msecs, bool separate_keys);
 extern VOLID boot_add_volume_extension (DBDEF_VOL_EXT_INFO * ext_info);
 extern int boot_check_db_consistency (int check_flag, OID * oids, int num_oids, BTID * idx_btid);
 extern int boot_find_number_permanent_volumes (void);

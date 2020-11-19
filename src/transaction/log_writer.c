@@ -29,6 +29,10 @@
 #include <errno.h>
 #if !defined(WINDOWS)
 #include <dirent.h>
+#ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
+#include "sys/socket.h"
+#include "sys/un.h"
+#endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
 #endif /* !WINDOWNS */
 #include <signal.h>
 
@@ -44,6 +48,9 @@
 #include "log_storage.hpp"
 #include "log_volids.hpp"
 #include "crypt_opfunc.h"
+#ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
+#include "tde.h"
+#endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
 #if defined(SERVER_MODE)
 #include "log_append.hpp"
 #include "log_manager.h"
@@ -172,6 +179,9 @@ static int logwr_flush_all_append_pages (void);
 static int logwr_archive_active_log (void);
 static int logwr_flush_bgarv_header_page (void);
 static void logwr_reinit_copylog (void);
+#ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
+static int logwr_load_tde (void);
+#endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
 
 /*
  * logwr_to_physical_pageid -
@@ -802,7 +812,7 @@ logwr_copy_necessary_log (LOG_PAGEID to_pageid)
 	      return ER_LOG_PAGE_CORRUPTED;
 	    }
 	}
-
+      /* no need to encrypt, it is read as not decrypted (TDE) if encrypted */
       if (fileio_write_pages (NULL, bg_arv_info->vdes, (char *) log_pgptr, ar_phy_pageid, num_pages, LOG_PAGESIZE,
 			      FILEIO_WRITE_DEFAULT_WRITE) == NULL)
 	{
@@ -826,10 +836,27 @@ logwr_copy_necessary_log (LOG_PAGEID to_pageid)
 static LOG_PAGE **
 logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
 {
+  char log_pgbuf[IO_MAX_PAGE_SIZE * LOGPB_IO_NPAGES + MAX_ALIGNMENT];
   LOG_PAGEID fpageid;
   LOG_PHY_PAGEID phy_pageid;
   BACKGROUND_ARCHIVING_INFO *bg_arv_info = NULL;
+  LOG_PAGE *log_pgptr = NULL;
+#ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
+  LOG_PAGE *buf_pgptr = NULL;
+#endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
+  FILEIO_WRITE_MODE write_mode = FILEIO_WRITE_DEFAULT_WRITE;
+  const TDE_ALGORITHM tde_algo = (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_DEFAULT_ALGORITHM);
   int error = NO_ERROR;
+  int i;
+  int tde_load_retries = 3;
+
+#if !defined (CS_MODE)
+  write_mode = dwb_is_created () == true ? FILEIO_WRITE_NO_COMPENSATE_WRITE : FILEIO_WRITE_DEFAULT_WRITE;
+#endif
+
+#ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
+  buf_pgptr = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+#endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
 
   if (npages > 0)
     {
@@ -861,21 +888,55 @@ logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
 	    }
 
 	  phy_pageid = (LOG_PHY_PAGEID) (fpageid - bg_arv_info->start_page_id + 1);
-	  if (fileio_writev (NULL, bg_arv_info->vdes, (void **) to_flush, phy_pageid, npages, LOG_PAGESIZE) == NULL)
+	  for (i = 0; i < npages; i++)
 	    {
-	      if (er_errid () == ER_IO_WRITE_OUT_OF_SPACE)
+	      log_pgptr = to_flush[i];
+#ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
+	      if (LOG_IS_PAGE_TDE_ENCRYPTED (log_pgptr))
 		{
-		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_WRITE_OUT_OF_SPACE, 4, fpageid, phy_pageid,
-			  logwr_Gl.bg_archive_name, logwr_Gl.hdr.db_logpagesize);
+		  logwr_set_tde_algorithm (NULL, log_pgptr, tde_algo);
+
+		  while (!tde_Cipher.is_loaded)
+		    {
+		      error = logwr_load_tde ();
+		      if (error != NO_ERROR)
+			{
+			  ASSERT_ERROR ();
+			  if (tde_load_retries-- > 0)
+			    {
+			      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_LOAD_FAIL, 0);
+			      sleep (1);
+			      er_clear ();
+			      continue;
+			    }
+			  return NULL;
+			}
+		    }
+
+		  if (tde_encrypt_log_page (log_pgptr, tde_algo, buf_pgptr) != NO_ERROR)
+		    {
+		      return NULL;
+		    }
+		  log_pgptr = buf_pgptr;
 		}
-	      else
+#endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
+	      if (fileio_write (NULL, bg_arv_info->vdes, log_pgptr, phy_pageid + i, LOG_PAGESIZE, write_mode) == NULL)
 		{
-		  er_set_with_oserror (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_WRITE, 3, fpageid, phy_pageid,
-				       logwr_Gl.bg_archive_name);
+		  if (er_errid () == ER_IO_WRITE_OUT_OF_SPACE)
+		    {
+		      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_WRITE_OUT_OF_SPACE, 4, fpageid, phy_pageid,
+			      logwr_Gl.bg_archive_name, logwr_Gl.hdr.db_logpagesize);
+		    }
+		  else
+		    {
+		      er_set_with_oserror (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_WRITE, 3, fpageid, phy_pageid,
+					   logwr_Gl.bg_archive_name);
+		    }
+		  to_flush = NULL;
+		  return to_flush;
 		}
-	      to_flush = NULL;
-	      return to_flush;
 	    }
+
 	  bg_arv_info->current_page_id = fpageid + (npages - 1);
 	  logwr_er_log ("background archiving  current_page_id[%lld], fpageid[%lld], npages[%d]",
 			bg_arv_info->current_page_id, fpageid, npages);
@@ -888,22 +949,57 @@ logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
 	    }
 	}
 
+      tde_load_retries = 3;
+
       /* 2. active write */
       phy_pageid = logwr_to_physical_pageid (fpageid);
-      if (fileio_writev (NULL, logwr_Gl.append_vdes, (void **) to_flush, phy_pageid, npages, LOG_PAGESIZE) == NULL)
+      for (i = 0; i < npages; i++)
 	{
-	  if (er_errid () == ER_IO_WRITE_OUT_OF_SPACE)
+	  log_pgptr = to_flush[i];
+#ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
+	  if (LOG_IS_PAGE_TDE_ENCRYPTED (log_pgptr))
 	    {
-	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_WRITE_OUT_OF_SPACE, 4, fpageid, phy_pageid,
-		      logwr_Gl.active_name, logwr_Gl.hdr.db_logpagesize);
+	      logwr_set_tde_algorithm (NULL, log_pgptr, tde_algo);
+
+	      while (!tde_Cipher.is_loaded)
+		{
+		  error = logwr_load_tde ();
+		  if (error != NO_ERROR)
+		    {
+		      ASSERT_ERROR ();
+		      if (tde_load_retries-- > 0)
+			{
+			  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_LOAD_FAIL, 0);
+			  sleep (1);
+			  er_clear ();
+			  continue;
+			}
+		      return NULL;
+		    }
+		}
+
+	      if (tde_encrypt_log_page (log_pgptr, tde_algo, buf_pgptr) != NO_ERROR)
+		{
+		  return NULL;
+		}
+	      log_pgptr = buf_pgptr;
 	    }
-	  else
+#endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
+	  if (fileio_write (NULL, logwr_Gl.append_vdes, log_pgptr, phy_pageid + i, LOG_PAGESIZE, write_mode) == NULL)
 	    {
-	      er_set_with_oserror (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_WRITE, 3, fpageid, phy_pageid,
-				   logwr_Gl.active_name);
+	      if (er_errid () == ER_IO_WRITE_OUT_OF_SPACE)
+		{
+		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_WRITE_OUT_OF_SPACE, 4, fpageid, phy_pageid,
+			  logwr_Gl.active_name, logwr_Gl.hdr.db_logpagesize);
+		}
+	      else
+		{
+		  er_set_with_oserror (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_WRITE, 3, fpageid, phy_pageid,
+				       logwr_Gl.active_name);
+		}
+	      to_flush = NULL;
+	      return to_flush;
 	    }
-	  to_flush = NULL;
-	  return to_flush;
 	}
     }
   return to_flush;
@@ -1316,7 +1412,7 @@ logwr_archive_active_log (void)
 	      goto error;
 	    }
 	}
-
+      /* no need to encrypt, it is read as not decrypted (TDE) if encrypted */
       if (fileio_write_pages (NULL, vdes, (char *) log_pgptr, ar_phy_pageid, num_pages, LOG_PAGESIZE,
 			      FILEIO_WRITE_DEFAULT_WRITE) == NULL)
 	{
@@ -1734,6 +1830,132 @@ logwr_reinit_copylog (void)
   return;
 }
 
+#ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
+static int
+logwr_load_tde (void)
+{
+  int client_len;
+  int client_sockfd;
+  char sock_path[PATH_MAX];
+  TDE_DATA_KEY_SET dks;
+  char *bufptr;
+  int nbytes, len;
+  int err_msg = NO_ERROR;
+
+  struct sockaddr_un clientaddr;
+
+  fileio_make_ha_sock_name (sock_path, logwr_Gl.log_path, TDE_HA_SOCK_NAME);
+
+  client_sockfd = socket (AF_UNIX, SOCK_STREAM, 0);
+  if (client_sockfd == -1)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_DK_SHARING_SOCK_OPEN, 1, sock_path);
+      return ER_TDE_DK_SHARING_SOCK_OPEN;
+    }
+
+  bzero (&clientaddr, sizeof (clientaddr));
+  clientaddr.sun_family = AF_UNIX;
+  strcpy (clientaddr.sun_path, sock_path);
+  client_len = sizeof (clientaddr);
+
+  if (connect (client_sockfd, (struct sockaddr *) &clientaddr, client_len) < 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_DK_SHARING_SOCK_CONNECT, 0);
+      return ER_TDE_DK_SHARING_SOCK_CONNECT;
+    }
+
+  bufptr = logwr_Gl.log_path;
+  len = PATH_MAX;
+  while (len > 0)
+    {
+      nbytes = write (client_sockfd, bufptr, len);
+      if (nbytes < 0)
+	{
+	  switch (errno)
+	    {
+	    case EINTR:
+	    case EAGAIN:
+	      continue;
+	    default:
+	      {
+		close (client_sockfd);
+		er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_DK_SHARING_SOCK_WRITE, 0);
+		return ER_TDE_DK_SHARING_SOCK_WRITE;
+	      }
+	    }
+	}
+      bufptr += nbytes;
+      len -= nbytes;
+    }
+
+  /* read error message */
+  bufptr = (char *) &err_msg;
+  len = sizeof (err_msg);
+  while (len > 0)
+    {
+      nbytes = read (client_sockfd, bufptr, len);
+      if (nbytes < 0)
+	{
+	  switch (errno)
+	    {
+	    case EINTR:
+	    case EAGAIN:
+	      continue;
+	    default:
+	      {
+		close (client_sockfd);
+		er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_DK_SHARING_SOCK_READ, 0);
+		return ER_TDE_DK_SHARING_SOCK_READ;
+	      }
+	    }
+	}
+      bufptr += nbytes;
+      len -= nbytes;
+    }
+
+  if (err_msg != NO_ERROR)
+    {
+      close (client_sockfd);
+      return err_msg;
+    }
+
+  /* read data keys */
+
+  bufptr = (char *) &dks;
+  len = sizeof (TDE_DATA_KEY_SET);
+  while (len > 0)
+    {
+      nbytes = read (client_sockfd, bufptr, len);
+      if (nbytes < 0)
+	{
+	  switch (errno)
+	    {
+	    case EINTR:
+	    case EAGAIN:
+	      continue;
+	    default:
+	      {
+		close (client_sockfd);
+		er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_DK_SHARING_SOCK_READ, 0);
+		return ER_TDE_DK_SHARING_SOCK_READ;
+	      }
+	    }
+	}
+      bufptr += nbytes;
+      len -= nbytes;
+    }
+
+  memcpy (tde_Cipher.data_keys.perm_key, dks.perm_key, TDE_DATA_KEY_LENGTH);
+  memcpy (tde_Cipher.data_keys.temp_key, dks.temp_key, TDE_DATA_KEY_LENGTH);
+  memcpy (tde_Cipher.data_keys.log_key, dks.log_key, TDE_DATA_KEY_LENGTH);
+
+  tde_Cipher.is_loaded = true;
+
+  close (client_sockfd);
+  return NO_ERROR;
+}
+#endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
+
 #else /* CS_MODE */
 int
 logwr_copy_log_file (const char *db_name, const char *log_path, int mode, INT64 start_page_id)
@@ -1831,6 +2053,49 @@ logwr_log_ha_filestat_to_string (enum LOG_HA_FILESTAT val)
       return "UNKNOWN";
     }
 }
+
+#ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
+TDE_ALGORITHM
+logwr_get_tde_algorithm (const LOG_PAGE * log_pgptr)
+{
+  /* exclusive */
+  assert (!((log_pgptr->hdr.flags & LOG_HDRPAGE_FLAG_ENCRYPTED_AES)
+	    && (log_pgptr->hdr.flags & LOG_HDRPAGE_FLAG_ENCRYPTED_ARIA)));
+
+  if (log_pgptr->hdr.flags & LOG_HDRPAGE_FLAG_ENCRYPTED_AES)
+    {
+      return TDE_ALGORITHM_AES;
+    }
+  else if (log_pgptr->hdr.flags & LOG_HDRPAGE_FLAG_ENCRYPTED_ARIA)
+    {
+      return TDE_ALGORITHM_ARIA;
+    }
+  else
+    {
+      return TDE_ALGORITHM_NONE;
+    }
+}
+
+void
+logwr_set_tde_algorithm (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, const TDE_ALGORITHM tde_algo)
+{
+  /* clear encrypted flag */
+  log_pgptr->hdr.flags &= ~LOG_HDRPAGE_FLAG_ENCRYPTED_MASK;
+
+  switch (tde_algo)
+    {
+    case TDE_ALGORITHM_AES:
+      log_pgptr->hdr.flags |= LOG_HDRPAGE_FLAG_ENCRYPTED_AES;
+      break;
+    case TDE_ALGORITHM_ARIA:
+      log_pgptr->hdr.flags |= LOG_HDRPAGE_FLAG_ENCRYPTED_ARIA;
+      break;
+    case TDE_ALGORITHM_NONE:
+      /* already cleared */
+      break;
+    }
+}
+#endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
 
 #if defined(SERVER_MODE)
 static int logwr_register_writer_entry (LOGWR_ENTRY ** wr_entry_p, THREAD_ENTRY * thread_p, LOG_PAGEID fpageid,

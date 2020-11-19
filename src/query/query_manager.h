@@ -86,6 +86,7 @@ struct qmgr_temp_file
   int membuf_npages;
   QMGR_TEMP_FILE_MEMBUF_TYPE membuf_type;
   bool preserved;		/* if temp file is preserved */
+  bool tde_encrypted;		/* whether the file of temp_vfid has to be encrypted when flushing (TDE) */
 };
 
 /*
@@ -138,6 +139,7 @@ struct qmgr_query_entry
   QUERY_FLAG query_flag;
   bool is_holdable;		/* true if this query should be available */
   bool is_preserved;		/* true if query was preserved in session, false otherwise. */
+  bool includes_tde_class;	/* true if this query include some tde class. It is from xasl node */
 };
 
 extern QMGR_QUERY_ENTRY *qmgr_get_query_entry (THREAD_ENTRY * thread_p, QUERY_ID query_id, int trans_ind);

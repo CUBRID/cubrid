@@ -2879,6 +2879,57 @@ sm_set_class_flag (MOP classop, SM_CLASS_FLAG flag, int on_or_off)
 }
 
 /*
+ * sm_set_class_tde_algorithm() - This sets the tde encryption algorithm.
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   classop (in): class pointer
+ *   tde_algo in): encryption algorithm for the class
+ */
+
+int
+sm_set_class_tde_algorithm (MOP classop, TDE_ALGORITHM tde_algo)
+{
+  SM_CLASS *class_;
+  int error = NO_ERROR;
+
+  assert (tde_algo == TDE_ALGORITHM_NONE || tde_algo == TDE_ALGORITHM_AES || tde_algo == TDE_ALGORITHM_ARIA);
+
+  if (classop != NULL)
+    {
+      error = au_fetch_class_force (classop, &class_, AU_FETCH_UPDATE);
+      if (error == NO_ERROR)
+	{
+	  class_->tde_algorithm = (int) tde_algo;
+	}
+    }
+
+  return error;
+}
+
+/*
+ * sm_get_class_tde_algorithm() - Get the tde algorithm of a class.
+ *   return: NO_ERROR on success, negative for ERROR
+ *   classop (in): class pointer
+ *   tde_algo (out): tde algorithm
+ */
+int
+sm_get_class_tde_algorithm (MOP classop, TDE_ALGORITHM * tde_algo)
+{
+  SM_CLASS *class_;
+  int error = NO_ERROR;
+
+  assert (classop != NULL);
+  *tde_algo = TDE_ALGORITHM_NONE;
+
+  error = au_fetch_class_force (classop, &class_, AU_FETCH_READ);
+  if (error == NO_ERROR)
+    {
+      *tde_algo = (TDE_ALGORITHM) class_->tde_algorithm;
+    }
+
+  return error;
+}
+
+/*
  * sm_set_class_collation() - This sets the table collation.
  *   return: NO_ERROR on success, non-zero for ERROR
  *   classop (in): class pointer

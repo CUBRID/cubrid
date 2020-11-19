@@ -742,6 +742,24 @@ or_class_hfid (RECDES * record, HFID * hfid)
   hfid->hpgid = OR_GET_INT (ptr + ORC_HFID_PAGEID_OFFSET);
 }
 
+/*
+ * or_class_tde_algorithm, () - Extracts the tde algorithm from the disk representation of a class
+ *   return: void
+ *   record(in): packed disk record containing class
+ *   tde_algo (out): pointer to tde_algo to be filled in
+ *
+ */
+void
+or_class_tde_algorithm (RECDES * record, TDE_ALGORITHM * tde_algo)
+{
+  char *ptr;
+
+  assert (OR_GET_OFFSET_SIZE (record->data) == BIG_VAR_OFFSET_SIZE);
+
+  ptr = record->data + OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT);
+  *(int *) tde_algo = OR_GET_INT (ptr + ORC_CLASS_TDE_ALGORITHM);
+}
+
 #if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * or_class_statistics () - extracts the OID of the statistics instance for

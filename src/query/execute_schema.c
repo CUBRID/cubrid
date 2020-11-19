@@ -3675,6 +3675,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
   size_t buf_size;
   SM_CLASS *smclass;
   bool reuse_oid = false;
+  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -3745,6 +3746,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
     }
 
   reuse_oid = (smclass->flags & SM_CLASSFLAG_REUSE_OID) ? true : false;
+  tde_algo = (TDE_ALGORITHM) smclass->tde_algorithm;
 
   parttemp->info.create_entity.entity_type = PT_CLASS;
   parttemp->info.create_entity.entity_name = parser_new_node (parser, PT_NAME);
@@ -3881,8 +3883,17 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
 		  goto end_create;
 		}
 	    }
+	  if (tde_algo != TDE_ALGORITHM_NONE)
+	    {
+	      error = sm_set_class_tde_algorithm (newpci->obj, tde_algo);
+	      if (error != NO_ERROR)
+		{
+		  goto end_create;
+		}
+	    }
 
-	  if (locator_create_heap_if_needed (newpci->obj, reuse_oid) == NULL)
+	  if (locator_create_heap_if_needed (newpci->obj, reuse_oid) == NULL
+	      || locator_flush_class (newpci->obj) != NO_ERROR)
 	    {
 	      error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
 	      goto end_create;
@@ -3906,6 +3917,14 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
 		}
 
 	      hashtail = newparts;
+	    }
+	  if (tde_algo != TDE_ALGORITHM_NONE)
+	    {
+	      error = file_apply_tde_to_class_files (&newpci->obj->oid_info.oid);
+	      if (error != NO_ERROR)
+		{
+		  goto end_create;
+		}
 	    }
 	  error = NO_ERROR;
 	}
@@ -4087,12 +4106,32 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
 		  goto end_create;
 		}
 	    }
+	  if (tde_algo != TDE_ALGORITHM_NONE)
+	    {
+	      error = sm_set_class_tde_algorithm (newpci->obj, tde_algo);
+	      if (error != NO_ERROR)
+		{
+		  assert (er_errid () != NO_ERROR);
+		  error = er_errid ();
+		  goto end_create;
+		}
+	    }
 	  if (locator_create_heap_if_needed (newpci->obj, reuse_oid) == NULL
 	      || locator_flush_class (newpci->obj) != NO_ERROR)
 	    {
 	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	      goto end_create;
+	    }
+	  if (tde_algo != TDE_ALGORITHM_NONE)
+	    {
+	      error = file_apply_tde_to_class_files (&newpci->obj->oid_info.oid);
+	      if (error != NO_ERROR)
+		{
+		  assert (er_errid () != NO_ERROR);
+		  error = er_errid ();
+		  goto end_create;
+		}
 	    }
 
 	  error = NO_ERROR;
@@ -8546,13 +8585,17 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   PARSER_VARCHAR *comment = NULL;
   PT_NODE *tbl_opt_charset, *tbl_opt_coll, *cs_node, *coll_node;
   PT_NODE *tbl_opt_comment, *comment_node, *super_node;
+  PT_NODE *tbl_opt_encrypt, *encrypt_node;
   const char *comment_str = NULL;
   MOP super_class = NULL;
+  int tde_algo_opt = -1;
+  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
 
   CHECK_MODIFICATION_ERROR ();
 
   tbl_opt_charset = tbl_opt_coll = cs_node = coll_node = NULL;
   tbl_opt_comment = comment_node = NULL;
+  tbl_opt_encrypt = encrypt_node = NULL;
 
   class_name = node->info.create_entity.entity_name->info.name.original;
 
@@ -8621,6 +8664,9 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    case PT_TABLE_OPTION_REUSE_OID:
 	      found_reuse_oid_option = true;
 	      reuse_oid = true;
+	      break;
+	    case PT_TABLE_OPTION_ENCRYPT:
+	      tbl_opt_encrypt = tbl_opt;
 	      break;
 	    case PT_TABLE_OPTION_DONT_REUSE_OID:
 	      found_reuse_oid_option = true;
@@ -8798,6 +8844,18 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    {
 	      reuse_oid = true;
 	    }
+
+	  tde_algo = (TDE_ALGORITHM) source_class->tde_algorithm;
+	  if (tde_algo != TDE_ALGORITHM_NONE)
+	    {
+	      error = sm_set_class_tde_algorithm (class_obj, tde_algo);
+	      if (error != NO_ERROR)
+		{
+		  break;
+		}
+	      do_flush_class_mop = true;
+	    }
+
 	  if (source_class->comment)
 	    {
 	      error = sm_set_class_comment (class_obj, source_class->comment);
@@ -8822,6 +8880,31 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	       * catalog information is incorrect under non-autocommit mode. */
 	      do_flush_class_mop = true;
 	    }
+	}
+      if (tbl_opt_encrypt)
+	{
+	  encrypt_node = tbl_opt_encrypt->info.table_option.val;
+	  assert (encrypt_node != NULL && encrypt_node->node_type == PT_VALUE
+		  && encrypt_node->type_enum == PT_TYPE_INTEGER);
+	  tde_algo_opt = encrypt_node->info.value.data_value.i;
+	  /*
+	   *  -1 means using deafult encryption algorithm.
+	   *  Other values but -1, TDE_ALGORITHM_AES, TDE_ALGORITHM_ARIA has been denied by parser.
+	   */
+	  if (tde_algo_opt == -1)
+	    {
+	      tde_algo = (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_DEFAULT_ALGORITHM);
+	    }
+	  else
+	    {
+	      tde_algo = (TDE_ALGORITHM) tde_algo_opt;
+	    }
+	  error = sm_set_class_tde_algorithm (class_obj, tde_algo);
+	  if (error != NO_ERROR)
+	    {
+	      break;
+	    }
+	  do_flush_class_mop = true;
 	}
       error = sm_set_class_collation (class_obj, collation_id);
       if (error != NO_ERROR)
@@ -8926,6 +9009,15 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
       create_index->next = save_next;
 
       error = do_create_index (parser, create_index);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+    }
+
+  if (tde_algo != TDE_ALGORITHM_NONE)
+    {
+      error = file_apply_tde_to_class_files (&class_obj->oid_info.oid);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
