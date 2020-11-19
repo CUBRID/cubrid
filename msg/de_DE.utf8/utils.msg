@@ -72,6 +72,7 @@ $       52      dump_tz
 $       53      restoreslave
 $       54      delvoldb
 $       56      checksumdb
+$       57      tde
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Ungültige Länge oder Zeichen '%1$c' in Datenbank '%2$s'\n
@@ -124,6 +125,7 @@ Vorhandene Admin-Utilitynamen:\n\
     dump_tz\n\
     restoreslave\n\
     vacuumdb\n\
+    tde\n\
 \n\
 %4$s ist ein Werkzeug für DBMS.\n\
 Für zusätzliche Informationen, http://www.cubrid.org besuchen\n
@@ -183,6 +185,7 @@ Vorhandene Administratorutilities:\n\
     dump_tz\n\
     vacuumdb\n\
     checksumdb\n\
+    tde\n\
 \n\
 %4$s ist ein Werkzeug für DBMS.\n\
 Für zusätzliche Informationen, http://www.cubrid.org, besuchen\n
@@ -261,6 +264,12 @@ Vorhandene Befehle:\n\
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 WARNUNG: -t Option wird in Stand-Alone-Ausführung ignoriert.\n
 31 FEHLER: Destination-Pfad existiert nicht oder ist kein Verzeichnis.\n
+32 Mit der Option --separate-keys wird die Schlüsseldatei (_keys) vom Sicherungsdatenträger getrennt.\n\
+Wenn die Schlüsseldatei verloren geht, funktioniert die Wiederherstellung (restoreb) möglicherweise nicht ordnungsgemäß, selbst wenn das Sicherungsvolume vorhanden ist.\n
+33 Das Sicherungsvolume enthält die Schlüsseldatei (_keys).\n\
+Wenn eine Tabelle TDE-verschlüsselt ist, kann dies zu einem Sicherheitsproblem für diese Daten führen.\n\
+Verwenden Sie die Option --separate-keys, um die Schlüsseldatei zu trennen, um dies zu verhindern.\n
+34 FEHLER: FIFIO-Datei kann nicht als Zielpfad mit separatem Schlüssel verwendet werden.\n
 60 \
 backupdb: Datenbank sichern.\n\
 Anwendung: %1$s backupdb [OPTION] Datenbanknamen\n\
@@ -279,7 +288,8 @@ gültige Optionen:\n\
       --no-check               Konsistenz der Datenbank nicht überprüfen; Standard: prüfen\n\
   -t, --thread-count=ANZAHL     Anzahl der Threads; Standard: 0(auto)\n\
   -z, --compress               Backupdatenträger komprimieren; Standard: nicht komprimiert\n\
-      --sleep-msecs=N          N Millisekunden per gelesenen 1M schlafen; Standard: 0\n
+      --sleep-msecs=N          N Millisekunden per gelesenen 1M schlafen; Standard: 0\n\
+  -k, --separate_keys          Schlüsseldatei (_keys) für TDE ist nicht im Sicherungsvolume enthalten, sondern wird stattdessen in eine Datei aufgeteilt\n
 71 Nicht kompatible Argumente, \"%1$s\", und \"%2$s\"\n
 
 
@@ -397,7 +407,8 @@ gültige Optionen:\n\
   -l, --level=LEVEL                 Backup-LEVEL zu wiederherstellen; siehe Backupanwendung; Standard: 0(volles Backup)\n\
   -p, --partial-recovery            partielle Wiederherstellung ausführen, wenn jene Logarchiven fehlen \n\
   -o, --output-file=DATEI            Umleiten der Ausgabemeldungen in DATEI; Standard: keine\n\
-  -u, --use-database-location-path  Datenbank und Logdatenträger in dem Ort wiederherstellen, wie in der Datenbankortdatei spezifiziert ist\n
+  -u, --use-database-location-path  Datenbank und Logdatenträger in dem Ort wiederherstellen, wie in der Datenbankortdatei spezifiziert ist\n\
+  -k, --keys-file-path              Pfad der Schlüsseldatei (_keys) für TDE, die beim Wiederherstellen verwendet werden soll\n
 
 
 $set 12 MSGCAT_UTIL_SET_LOADDB
@@ -1137,7 +1148,8 @@ gültigen Optionen:\n\
       --list                        eine Liste der Sicherungsdatenträger angezeigt werden, ohne die Wiederherstellung\n\
   -B, --backup-file-path=PATH       PATH ein Verzeichnis der Sicherungsdatenträger wiederhergestellt werden\n\
   -o, --output-file=FILE            umleiten Ausgabemeldungen in FILE; Standard: Keine\n\
-  -u, --use-database-location-path  Stellen Sie die Datenbank und Log-Volumes auf die in der Datenbank-Datei Speicherort angegebenen Pfad\n
+  -u, --use-database-location-path  Stellen Sie die Datenbank und Log-Volumes auf die in der Datenbank-Datei Speicherort angegebenen Pfad\n\
+  -k, --keys-file-path              Pfad der Schlüsseldatei (_keys) für TDE, die beim Wiederherstellen verwendet werden soll\n
 
 $set 54 MSGCAT_UTIL_SET_DELVOLDB
 21 Bereit, die folgenden Mengen zu entfernen:\n\n
@@ -1191,3 +1203,23 @@ gültigen Optionen:\n\
       --resume                  Wiederaufnahme der Berechnung Prüfsumme\n\
       --schema-only             überprüfen nur Schemakonsistenz\n\
       --cont-on-error           weiter auf Berechnungsfehler\n
+
+$set 57 MSGCAT_UTIL_SET_TDE
+21 Geben Sie das DBA-Passwort ein:
+25 Die in der Datenbank festgelegten Schlüsselinformationen konnten nicht abgerufen werden\n
+26 Versuch, den Schlüssel vom Schlüssel (Index: %1$d) zum Schlüssel (Index: %2$d) zu ändern.\n
+27 Der Schlüssel wurde vom Schlüssel (Index: %1$d) zum Schlüssel (Index: %2$d) geändert\n
+28 Der in der Datenbank festgelegte Schlüssel kann nicht gelöscht werden\n
+29 Der Schlüssel (Index: %1$d) wurde gelöscht\n
+30 Ein neuer Schlüssel wurde generiert - Schlüsselindex: %1$d erstellt auf%2$s
+60 \
+tde: Verwaltung der transparenten Datenverschlüsselung (TDE)\n\
+Verwendung: %1$s tde OPERATION (-s|-n|-d|-c) [OPTION] Datenbankname\n\
+\n\
+gültige Optionen:\n\
+    -p, --dba-password=PASS-Passwort    des DBA-Benutzers; wird gefragt, wenn nicht angegeben wird\n\
+OPERATIONEN: Eine der Operationen muss angegeben werden und sie sind exklusiv\n\
+    -s, --show-keys                     druckt Schlüsselinformationen, die in der Datenbank und in der Schlüsseldatei (_keys) festgelegt sind\n\
+    -n, --generate-new-key              generiert einen neuen Schlüssel in der Schlüsseldatei (_keys); maximale Anzahl: 128\n\
+    -d, --delete-key=KEY_INDEX          löscht einen Schlüssel in der Schlüsseldatei (_keys)\n\
+    -c, --change-key=KEY_INDEX          Ändern Sie den in der Datenbank festgelegten Schlüssel für einen anderen Schlüssel in der Schlüsseldatei (_keys)\n
