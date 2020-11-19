@@ -2124,7 +2124,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
 	{
 	  db_commit_transaction ();
 	}
-
+      cub_ddl_log_msg ("execute_batch %d%s", query_index + 1, auto_commit_mode == TRUE ? " auto_commit" : "");
       cub_ddl_log_write ();
       continue;
 
@@ -2135,7 +2135,6 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
       if (err_code < 0)
 	{
 	  cub_ddl_log_err_code (err_code);
-	  cub_ddl_log_write ();
 	  if (auto_commit_mode == FALSE
 	      && (ER_IS_SERVER_DOWN_ERROR (err_code) || ER_IS_ABORTED_DUE_TO_DEADLOCK (err_code)))
 	    {
@@ -2178,6 +2177,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
 	{
 	  db_abort_transaction ();
 	}
+      cub_ddl_log_msg ("execute_batch %d%s", query_index + 1, auto_commit_mode == TRUE ? " auto_rollback" : "");
 
       if (err_code == ER_INTERRUPTED)
 	{
@@ -2190,6 +2190,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
     {
       net_buf_cp_int (net_buf, shm_shard_id, NULL);
     }
+  cub_ddl_log_write ();
   cub_ddl_log_write_end ();
   return 0;
 
@@ -2197,6 +2198,9 @@ execute_batch_error:
   NET_BUF_ERR_SET (net_buf);
   errors_in_transaction++;
 
+  cub_ddl_log_msg ("execute_batch %d%s", query_index + 1, auto_commit_mode == TRUE ? " auto_rollback" : "");
+  cub_ddl_log_write ();
+  cub_ddl_log_write_end ();
   return err_code;
 }
 

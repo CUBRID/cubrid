@@ -1632,7 +1632,6 @@ fn_execute_batch (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
   cas_log_write (0, true, "execute_batch %d", argc - arg_index);
-  cub_ddl_log_msg ("execute_batch %d", argc - arg_index);
   ux_execute_batch (argc - arg_index, argv + arg_index, net_buf, req_info, auto_commit_mode);
 
   cas_log_write (0, true, "execute_batch end");
