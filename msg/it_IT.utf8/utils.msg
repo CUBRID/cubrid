@@ -148,6 +148,7 @@ Servizi disponibili:\n\
     broker\n\
     manager\n\
     heartbeat\n\
+    javasp\n\
 \n\
 Utilità amministrazione disponibili:\n\
     addvoldb\n\
@@ -248,6 +249,14 @@ Commandi disponibili:\n\
 41 Cubrid Manager server non è installato.\n
 42 Argomento non valido.\n
 43 Errore di apertura file(%1$s).\n
+44 utilità cubrid, versione %1$s\n\
+uso: %2$s javasp <commando> [args]\n\
+\n\
+Commandi disponibili:\n\
+    start       [database-name]\n\
+    stop        [database-name]\n\
+    restart     [database-name]\n\
+    status      [database-name]\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 ATTENZIONE: opzione -t viene ignorata in modalità di esecuzione stand-alone.\n
@@ -401,7 +410,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 25 \n*** Controllo sintassi ***\n\n
 26 %1$d errori rilevati.\n
 27 \n*** Inserimento di oggetti ***\n\n
-28 Totale %1$8d oggetti inseriti.\n
+28 Totale %1$ld oggetti inseriti.\n
 29 Totale %1$8d riferimento a oggetti inseriti con contenuto predefiniti.\n
 30 \n*** Commit della transazione ***\n
 31 \n*** Chiusura del database ***\n
@@ -421,7 +430,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 45 Instanza %1$d della classe %2$s è già stato definito\n
 46 Instanza %1$d della classe %2$s è già stata riservata\n
 47 UNIQUE violation da attributo '%1$s', convertito a NULL\n
-48 %1$s %2$d istanze\n
+48 %1$s %2$ld istanze\n
 49 Classe %1$s\n
 50 Password:
 51 \n*** Aggiornamento statistiche di classe ***\n
@@ -431,16 +440,16 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 55 mancante
 56 in %1$s
 57 Argomenti incompatibili, \"%1$s\", e \"%2$s\"\n
-58 %1$s %2$d instanzioni committed\n
+58 %1$s %2$ld instanzioni committed\n
 59 \nImpossibile richiamare la versione non ottimizzata di loaddb.\n
 60 Errore durante l'analisi di \"%1$s\", come tipo %2$s.\n
 61 Riferimento oggetto non è supportato in modalità CS.\n
 62 Statistiche aggiornate per la classe %1$s.\n
-112   %1$d instanze\r
+112   %1$ld instanze\r
 113 Ultima linea committed : %1$d\n
 114 error-control-file
 115 file di input per il controllo di errori durante il carico
-116 Totale oggetti %8d inseriti, %d oggetti non riusciti.\n
+116 Totale oggetti %1$ld inseriti, %2$ld oggetti non riusciti.\n
 117 Caricamento fallito.\n
 118 La lunghezza massima del nome della classe è %1$d byte.\n
 119 Totale %1$8d oggetti controllati, %2$d oggetti non riusciti.\n
@@ -474,10 +483,10 @@ opzioni valide:\n\
 $set 13 MSGCAT_UTIL_SET_UNLOADDB
 41 cached-pages valore non è valido.\n
 42 cached-page-size valore non è valido.\n
-43 %1$d oggetti dumped.\n
+43 %1$ld oggetti dumped.\n
 44 Class %1$s
 45 , %1$d instanze.\n
-46 Solo %1$d di %2$d objects dumped ok.\n
+46 Solo %1$ld di %2$ld objects dumped ok.\n
 47 directory di output è troppo lungo.\n
 48 LSA : %1$d %2$d \n
 49 Password:

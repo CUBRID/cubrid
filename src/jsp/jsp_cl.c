@@ -28,18 +28,9 @@
 
 #include <assert.h>
 #if !defined(WINDOWS)
-#include <sys/types.h>
-#include <sys/param.h>
 #include <sys/socket.h>
-#include <netinet/in.h>
-#include <netinet/tcp.h>
-#include <arpa/inet.h>
-#include <errno.h>
-#include <unistd.h>
-#include <netdb.h>
 #else /* not WINDOWS */
 #include <winsock2.h>
-#include <windows.h>
 #endif /* not WINDOWS */
 
 #include "authenticate.h"
@@ -62,6 +53,8 @@
 #include "network_interface_cl.h"
 #include "unicode_support.h"
 #include "dbtype.h"
+#include "jsp_comm.h"
+
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
@@ -115,13 +108,12 @@ typedef struct
 
 static SOCKET sock_fds[MAX_CALL_COUNT] = { INVALID_SOCKET };
 
+static int server_port = -1;
 static int call_cnt = 0;
 static bool is_prepare_call[MAX_CALL_COUNT];
 
 #if defined(WINDOWS)
-FARPROC jsp_old_hook = NULL;
-static int windows_socket_startup (void);
-static void windows_socket_shutdown (void);
+static FARPROC jsp_old_hook = NULL;
 #endif /* WINDOWS */
 
 static SP_TYPE_ENUM jsp_map_pt_misc_to_sp_type (PT_MISC_TYPE pt_enum);
@@ -133,8 +125,6 @@ static char *jsp_check_stored_procedure_name (const char *str);
 static int jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TYPE_ENUM ret_type,
 				     PT_NODE * param_list, const char *java_method, const char *comment);
 static int drop_stored_procedure (const char *name, PT_MISC_TYPE expected_type);
-static int jsp_writen (SOCKET fd, const void *vptr, int n);
-static int jsp_readn (SOCKET fd, void *vptr, int n);
 static int jsp_get_value_size (DB_VALUE * value);
 static int jsp_get_argument_size (DB_ARG_LIST * args);
 
@@ -181,9 +171,6 @@ static int jsp_receive_response (const SOCKET sockfd, const SP_ARGS * sp_args);
 static int jsp_receive_result (char *&buffer, char *&ptr, const SP_ARGS * sp_args);
 static int jsp_receive_error (char *&buffer, char *&ptr, const SP_ARGS * sp_args);
 
-
-static SOCKET jsp_connect_server (void);
-static void jsp_close_internal_connection (const SOCKET sockfd);
 static int jsp_execute_stored_procedure (const SP_ARGS * args);
 static int jsp_do_call_stored_procedure (DB_VALUE * returnval, DB_ARG_LIST * args, const char *name);
 
@@ -209,7 +196,7 @@ jsp_init (void)
     }
 
 #if defined(WINDOWS)
-  windows_socket_startup ();
+  windows_socket_startup (jsp_old_hook);
 #endif /* WINDOWS */
 }
 
@@ -225,7 +212,7 @@ jsp_close_connection (void)
 {
   if (!IS_INVALID_SOCKET (sock_fds[0]))
     {
-      jsp_close_internal_connection (sock_fds[0]);
+      jsp_disconnect_server (sock_fds[0]);
       sock_fds[0] = INVALID_SOCKET;
     }
 }
@@ -1255,187 +1242,6 @@ error:
   return err;
 }
 
-#if defined(WINDOWS)
-
-/*
- * windows_blocking_hook() -
- *   return: false
- *
- * Note: WINDOWS Code
- */
-
-BOOL
-windows_blocking_hook ()
-{
-  return false;
-}
-
-/*
- * windows_socket_startup() -
- *   return: return -1 on error otherwise return 1
- *
- * Note:
- */
-
-static int
-windows_socket_startup ()
-{
-  WORD wVersionRequested;
-  WSADATA wsaData;
-  int err;
-
-  jsp_old_hook = NULL;
-  wVersionRequested = 0x101;
-  err = WSAStartup (wVersionRequested, &wsaData);
-  if (err != 0)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_WINSOCK_STARTUP, 1, err);
-      return (-1);
-    }
-
-  /* Establish a blocking "hook" function to prevent Windows messages from being dispatched when we block on reads. */
-  jsp_old_hook = WSASetBlockingHook ((FARPROC) windows_blocking_hook);
-  if (jsp_old_hook == NULL)
-    {
-      /* couldn't set up our hook */
-      err = WSAGetLastError ();
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_WINSOCK_STARTUP, 1, err);
-      (void) WSACleanup ();
-      return -1;
-    }
-
-  return 1;
-}
-
-/*
- * windows_socket_shutdown() -
- *   return:
- *
- * Note:
- */
-
-static void
-windows_socket_shutdown ()
-{
-  int err;
-
-  if (jsp_old_hook != NULL)
-    {
-      (void) WSASetBlockingHook (jsp_old_hook);
-    }
-
-  err = WSACleanup ();
-}
-#endif /* WINDOWS */
-
-/*
- * jsp_writen
- *   return: fail return -1,
- *   fd(in): Specifies the socket file descriptor.
- *   vptr(in): Points to the buffer containing the message to send.
- *   n(in): Specifies the length of the message in bytes
- *
- * Note:
- */
-
-static int
-jsp_writen (SOCKET fd, const void *vptr, int n)
-{
-  int nleft;
-  int nwritten;
-  const char *ptr;
-
-  ptr = (const char *) vptr;
-  nleft = n;
-
-  while (nleft > 0)
-    {
-#if defined(WINDOWS)
-      nwritten = send (fd, ptr, nleft, 0);
-#else
-      nwritten = send (fd, ptr, (size_t) nleft, 0);
-#endif
-
-      if (nwritten <= 0)
-	{
-#if defined(WINDOWS)
-	  if (nwritten < 0 && errno == WSAEINTR)
-#else /* not WINDOWS */
-	  if (nwritten < 0 && errno == EINTR)
-#endif /* not WINDOWS */
-	    {
-	      nwritten = 0;	/* and call write() again */
-	    }
-	  else
-	    {
-	      return (-1);	/* error */
-	    }
-	}
-
-      nleft -= nwritten;
-      ptr += nwritten;
-    }
-
-  return (n - nleft);
-}
-
-/*
- * jsp_readn
- *   return: read size
- *   fd(in): Specifies the socket file descriptor.
- *   vptr(in/out): Points to a buffer where the message should be stored.
- *   n(in): Specifies  the  length in bytes of the buffer pointed
- *          to by the buffer argument.
- *
- * Note:
- */
-
-static int
-jsp_readn (SOCKET fd, void *vptr, int n)
-{
-  int nleft;
-  int nread;
-  char *ptr;
-
-  ptr = (char *) vptr;
-  nleft = n;
-
-  while (nleft > 0)
-    {
-#if defined(WINDOWS)
-      nread = recv (fd, ptr, nleft, 0);
-#else
-      nread = recv (fd, ptr, (size_t) nleft, 0);
-#endif
-
-      if (nread < 0)
-	{
-
-#if defined(WINDOWS)
-	  if (errno == WSAEINTR)
-#else /* not WINDOWS */
-	  if (errno == EINTR)
-#endif /* not WINDOWS */
-	    {
-	      nread = 0;	/* and call read() again */
-	    }
-	  else
-	    {
-	      return (-1);
-	    }
-	}
-      else if (nread == 0)
-	{
-	  break;		/* EOF */
-	}
-
-      nleft -= nread;
-      ptr += nread;
-    }
-
-  return (n - nleft);		/* return >= 0 */
-}
-
 /*
  * jsp_get_value_size -
  *   return: return value size
@@ -2164,7 +1970,7 @@ jsp_send_destroy_request_all ()
       if (!IS_INVALID_SOCKET (sock_fds[idx]))
 	{
 	  jsp_send_destroy_request (sock_fds[idx]);
-	  jsp_close_internal_connection (sock_fds[idx]);
+	  jsp_disconnect_server (sock_fds[idx]);
 	  sock_fds[idx] = INVALID_SOCKET;
 	}
     }
@@ -2174,22 +1980,42 @@ jsp_send_destroy_request_all ()
 extern int
 jsp_send_destroy_request (const SOCKET sockfd)
 {
-  int nbytes;
-  int req_code = 0x10;
-  int res = NO_ERROR;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
+  char *request = OR_ALIGNED_BUF_START (a_request);
 
-  nbytes = jsp_writen (sockfd, (void *) &req_code, (int) sizeof (int));
+  or_pack_int (request, (int) SP_CODE_DESTROY);
+  int nbytes = jsp_writen (sockfd, request, (int) sizeof (int));
   if (nbytes != (int) sizeof (int))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, "destroy");
       return er_errid ();
     }
 
-  tran_begin_libcas_function ();
-  res = libcas_main (sockfd);	/* jdbc call to destroy resources */
-  tran_end_libcas_function ();
+  /* read request code */
+  int code;
+  nbytes = jsp_readn (sockfd, (char *) &code, (int) sizeof (int));
+  if (nbytes != (int) sizeof (int))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
+      return er_errid ();
+    }
+  code = ntohl (code);
 
-  return res;
+  if (code == SP_CODE_DESTROY)
+    {
+      bool mode = ssl_client;
+      ssl_client = false;
+      tran_begin_libcas_function ();
+      libcas_main (sockfd);	/* jdbc call */
+      tran_end_libcas_function ();
+      ssl_client = mode;
+    }
+  else
+    {
+      /* end */
+    }
+
+  return NO_ERROR;
 }
 
 /*
@@ -2927,113 +2753,6 @@ jsp_receive_error (char *&buffer, char *&ptr, const SP_ARGS * sp_args)
 }
 
 /*
- * jsp_connect_server
- *   return: connect fail - return Error Code
- *           connection success - return socket fd
- *
- * Note:
- */
-
-static SOCKET
-jsp_connect_server (void)
-{
-  struct sockaddr_in tcp_srv_addr;
-  SOCKET sockfd = INVALID_SOCKET;
-  int success = -1;
-  int server_port = -1;
-  unsigned int inaddr;
-  int b;
-  char *server_host = (char *) "127.0.0.1";	/* assume as local host */
-
-  union
-  {
-    struct sockaddr_in in;
-  } saddr_buf;
-  struct sockaddr *saddr = (struct sockaddr *) &saddr_buf;
-  socklen_t slen;
-
-  server_port = jsp_get_server_port ();
-  if (server_port < 0)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NOT_RUNNING_JVM, 0);
-      return INVALID_SOCKET;
-    }
-
-#if defined(CS_MODE)
-  /* check for remote host */
-  server_host = net_client_get_server_host ();
-#endif
-
-  inaddr = inet_addr (server_host);
-  memset ((void *) &tcp_srv_addr, 0, sizeof (tcp_srv_addr));
-  tcp_srv_addr.sin_family = AF_INET;
-  tcp_srv_addr.sin_port = htons (server_port);
-
-  if (inaddr != INADDR_NONE)
-    {
-      memcpy ((void *) &tcp_srv_addr.sin_addr, (void *) &inaddr, sizeof (inaddr));
-    }
-  else
-    {
-      struct hostent *hp;
-      hp = gethostbyname (server_host);
-
-      if (hp == NULL)
-	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, server_host);
-	  return INVALID_SOCKET;
-	}
-      memcpy ((void *) &tcp_srv_addr.sin_addr, (void *) hp->h_addr, hp->h_length);
-    }
-  slen = sizeof (tcp_srv_addr);
-  memcpy ((void *) saddr, (void *) &tcp_srv_addr, slen);
-
-  sockfd = socket (saddr->sa_family, SOCK_STREAM, 0);
-  if (IS_INVALID_SOCKET (sockfd))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_CONNECT_JVM, 1, "socket()");
-      return INVALID_SOCKET;
-    }
-  else
-    {
-      b = 1;
-      setsockopt (sockfd, IPPROTO_TCP, TCP_NODELAY, (char *) &b, sizeof (b));
-    }
-
-  success = connect (sockfd, saddr, slen);
-  if (success < 0)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_CONNECT_JVM, 1, "connect()");
-      return INVALID_SOCKET;
-    }
-
-  return sockfd;
-}
-
-/*
- * jsp_close_internal_connection -
- *   return: none
- *   sockfd(in) : close connection
- *
- * Note:
- */
-
-static void
-jsp_close_internal_connection (const SOCKET sockfd)
-{
-  struct linger linger_buffer;
-
-  linger_buffer.l_onoff = 1;
-  linger_buffer.l_linger = 0;
-  setsockopt (sockfd, SOL_SOCKET, SO_LINGER, (char *) &linger_buffer, sizeof (linger_buffer));
-#if defined(WINDOWS)
-  closesocket (sockfd);
-#else /* not WINDOWS */
-  close (sockfd);
-#endif /* not WINDOWS */
-}
-
-/*
  * jsp_execute_stored_procedure - Execute Java Stored Procedure
  *   return: Error code
  *   args(in):
@@ -3052,10 +2771,37 @@ jsp_execute_stored_procedure (const SP_ARGS * args)
 retry:
   if (IS_INVALID_SOCKET (sock_fds[call_cnt]))
     {
-      sock_fds[call_cnt] = jsp_connect_server ();
-      if (IS_INVALID_SOCKET (sock_fds[call_cnt]))
+      if (server_port == -1)	/* try to connect at the first time */
 	{
-	  assert (er_errid () != NO_ERROR);
+	  server_port = jsp_get_server_port ();
+	}
+
+      if (server_port != -1)
+	{
+	  sock_fds[call_cnt] = jsp_connect_server (server_port);
+
+	  /* ask port number of javasp server from cub_server and try connection again  */
+	  if (IS_INVALID_SOCKET (sock_fds[call_cnt]))
+	    {
+	      server_port = jsp_get_server_port ();
+	      sock_fds[call_cnt] = jsp_connect_server (server_port);
+	    }
+
+	  /* Java SP Server may have a problem */
+	  if (IS_INVALID_SOCKET (sock_fds[call_cnt]))
+	    {
+	      if (server_port == -1)
+		{
+		  er_clear ();	/* ER_SP_CANNOT_CONNECT_JVM in jsp_connect_server() */
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NOT_RUNNING_JVM, 0);
+		}
+	      return er_errid ();
+	    }
+	}
+      else
+	{
+	  /* Java SP Server is not running */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NOT_RUNNING_JVM, 0);
 	  return er_errid ();
 	}
     }
@@ -3096,6 +2842,7 @@ end:
   if (error != NO_ERROR || is_prepare_call[call_cnt])
     {
       jsp_send_destroy_request (sock_fd);
+      jsp_disconnect_server (sock_fd);
       sock_fds[call_cnt] = INVALID_SOCKET;
     }
 

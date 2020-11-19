@@ -1,18 +1,19 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; version 2 of the License. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; version 2 of the License.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  *
  */
 
@@ -38,6 +39,7 @@
 #define		CUBRID_UTIL_SHARD			"shard"
 #define		CUBRID_UTIL_MANAGER			"manager"
 #define		CUBRID_UTIL_SERVER			"server"
+#define		CUBRID_UTIL_JAVASP			"javasp"
 
 #define		CUBRID_COMMAND_START			"start"
 #define		CUBRID_COMMAND_STOP			"stop"
@@ -56,6 +58,8 @@
 #define		SERVICE_CONTROL_SERVER_STOP	181
 #define		SERVICE_CONTROL_SERVICE_START	190
 #define		SERVICE_CONTROL_SERVICE_STOP	191
+#define		SERVICE_CONTROL_JAVASP_START	210
+#define		SERVICE_CONTROL_JAVASP_STOP		211
 
 void WriteLog (char *p_logfile, char *p_format, ...);
 void GetCurDateTime (char *p_buf, char *p_form);
@@ -97,14 +101,18 @@ _tmain (int argc, char *argv[])
 	  vPrintServiceStatus ();
 	}
       else
-	WriteLog (sLogFile, "Invalid Argument.\n");
+	{
+	  WriteLog (sLogFile, "Invalid Argument.\n");
+	}
     }
   else if (argc == 3)
     {
       if (_stricmp (argv[1], "-i") == 0)
 	{
 	  if (strlen (argv[2]) > 0)
-	    strcpy_s (sExecPath, argv[2]);
+	    {
+	      strcpy_s (sExecPath, argv[2]);
+	    }
 
 	  vctrlService ();
 	}
@@ -114,7 +122,7 @@ _tmain (int argc, char *argv[])
 	  int service_control_code;
 
 	  SC_HANDLE scmHandle =
-	    OpenSCManager (NULL, NULL, SC_MANAGER_ALL_ACCESS);
+		  OpenSCManager (NULL, NULL, SC_MANAGER_ALL_ACCESS);
 
 	  if (scmHandle == NULL)	// Perform error handling.
 	    {
@@ -125,7 +133,7 @@ _tmain (int argc, char *argv[])
 	    }
 
 	  SC_HANDLE scHandle =
-	    OpenServiceA (scmHandle, "CUBRIDService", SERVICE_ALL_ACCESS);
+		  OpenServiceA (scmHandle, "CUBRIDService", SERVICE_ALL_ACCESS);
 
 	  if (_stricmp (argv[1], CUBRID_UTIL_SERVICE) == 0)
 	    {
@@ -211,7 +219,7 @@ _tmain (int argc, char *argv[])
 	  if (ss.dwCurrentState == SERVICE_STOPPED)
 	    {
 	      LPCTSTR argv[2] =
-		{ "CUBRIDService", "--dont-start-cubrid-process" };
+	      { "CUBRIDService", "--dont-start-cubrid-process" };
 
 	      if (service_control_code == SERVICE_CONTROL_SERVICE_STOP)
 		{
@@ -250,13 +258,14 @@ _tmain (int argc, char *argv[])
   else if (argc == 4)
     {
       if (_stricmp (argv[1], CUBRID_UTIL_SERVER) == 0 ||
-	  _stricmp (argv[1], CUBRID_UTIL_BROKER) == 0)
+	  _stricmp (argv[1], CUBRID_UTIL_BROKER) == 0 ||
+	  _stricmp (argv[1], CUBRID_UTIL_JAVASP) == 0)
 	{
 	  SERVICE_STATUS ss;
 	  int service_control_code;
 
 	  SC_HANDLE scmHandle =
-	    OpenSCManager (NULL, NULL, SC_MANAGER_ALL_ACCESS);
+		  OpenSCManager (NULL, NULL, SC_MANAGER_ALL_ACCESS);
 
 	  if (scmHandle == NULL)	// Perform error handling.
 	    {
@@ -267,7 +276,7 @@ _tmain (int argc, char *argv[])
 	    }
 
 	  SC_HANDLE scHandle =
-	    OpenServiceA (scmHandle, "CUBRIDService", SERVICE_ALL_ACCESS);
+		  OpenServiceA (scmHandle, "CUBRIDService", SERVICE_ALL_ACCESS);
 	  if (_stricmp (argv[1], CUBRID_UTIL_SERVER) == 0 &&
 	      _stricmp (argv[2], CUBRID_COMMAND_START) == 0)
 	    {
@@ -288,6 +297,16 @@ _tmain (int argc, char *argv[])
 	    {
 	      service_control_code = SERVICE_CONTROL_BROKER_OFF;
 	    }
+	  else if (_stricmp (argv[1], CUBRID_UTIL_JAVASP) == 0 &&
+		   _stricmp (argv[2], CUBRID_COMMAND_START) == 0)
+	    {
+	      service_control_code = SERVICE_CONTROL_JAVASP_START;
+	    }
+	  else if (_stricmp (argv[1], CUBRID_UTIL_JAVASP) == 0 &&
+		   _stricmp (argv[2], CUBRID_COMMAND_STOP) == 0)
+	    {
+	      service_control_code = SERVICE_CONTROL_JAVASP_STOP;
+	    }
 	  else
 	    {
 	      WriteLog (sLogFile, "Invalid Argument.\n");
@@ -300,7 +319,7 @@ _tmain (int argc, char *argv[])
 	  if (ss.dwCurrentState == SERVICE_STOPPED)
 	    {
 	      LPCTSTR argv[2] =
-		{ "CUBRIDService", "--dont-start-cubrid-process" };
+	      { "CUBRIDService", "--dont-start-cubrid-process" };
 	      StartService (scHandle, 2, argv);
 	      Sleep (2000);
 
@@ -343,7 +362,9 @@ _tmain (int argc, char *argv[])
 	}
     }
   else
-    WriteLog (sLogFile, "Invalid Argument.\n");
+    {
+      WriteLog (sLogFile, "Invalid Argument.\n");
+    }
 
   return 0;
 }
@@ -391,9 +412,9 @@ vctrlService (void)
     }
 
   service_description.lpDescription =
-    "Service to execute master,broker,database server and manager server processes for CUBRID.\r\n"
-    "Service start/stop menu is equal to the command of \"cubrid service start/stop\".\r\n"
-    "If you setup \"startup type\" of this service to \"Disabled\", you can't use \"cubrid service\" command.";
+	  "Service to execute master,broker,database server, manager server and javasp server processes for CUBRID.\r\n"
+	  "Service start/stop menu is equal to the command of \"cubrid service start/stop\".\r\n"
+	  "If you setup \"startup type\" of this service to \"Disabled\", you can't use \"cubrid service\" command.";
 
 
   if (ChangeServiceConfig2 (scHandle,
@@ -429,7 +450,7 @@ vDelService (void)
     }
 
   SC_HANDLE scHandle =
-    OpenServiceA (scmHandle, "CUBRIDService", SERVICE_ALL_ACCESS);
+	  OpenServiceA (scmHandle, "CUBRIDService", SERVICE_ALL_ACCESS);
 
   SERVICE_STATUS ss;
 
@@ -463,7 +484,7 @@ vStopService (void)
     }
 
   SC_HANDLE scHandle =
-    OpenServiceA (scmHandle, "CUBRIDService", SERVICE_ALL_ACCESS);
+	  OpenServiceA (scmHandle, "CUBRIDService", SERVICE_ALL_ACCESS);
 
   SERVICE_STATUS ss;
 

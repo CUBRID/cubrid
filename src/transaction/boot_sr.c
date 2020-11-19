@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -2067,6 +2068,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   char timezone_checksum[32 + 1];
   const TZ_DATA *tzd;
   char *mk_path;
+  int jsp_port;
+  bool jsp;
 
   /* language data is loaded in context of server */
   if (lang_init () != NO_ERROR)
@@ -2289,15 +2292,21 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   tsc_init ();
 #endif /* !SERVER_MODE */
 
-  // Initialize java stored procedure server
-  error_code = jsp_start_server (db_name, db->pathname);
-  if (error_code != NO_ERROR)
+
+#if defined (SA_MODE)
+  // Initialize java stored procedure server for standalone mode
+  jsp = prm_get_bool_value (PRM_ID_JAVA_STORED_PROCEDURE);
+  if (jsp)
     {
-      goto error;
+      jsp_port = prm_get_integer_value (PRM_ID_JAVA_STORED_PROCEDURE_PORT);
+      error_code = jsp_start_server (db_name, db->pathname, jsp_port);
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
     }
 
   /* *INDENT-OFF* */
-#if defined (SA_MODE)
   // thread_manager was not initialized
   assert (thread_p == NULL);
   cubthread::initialize (thread_p);
@@ -4103,12 +4112,14 @@ xboot_copy (REFPTR (THREAD_ENTRY, thread_p), const char *from_dbname, const char
   if (new_db_server_host == NULL)
     {
 #if 0				/* use Unix-domain socket for localhost */
+/* *INDENT-OFF* */
       if (GETHOSTNAME (new_db_server_host_buf, CUB_MAXHOSTNAMELEN) != 0)
 	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 0);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, new_db_server_host_buf);
 	  error_code = ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	  goto error;
 	}
+/* *INDENT-ON* */
 #else
       strcpy (new_db_server_host_buf, "localhost");
 #endif
@@ -4461,12 +4472,14 @@ xboot_soft_rename (THREAD_ENTRY * thread_p, const char *old_db_name, const char 
   if (new_db_server_host == NULL)
     {
 #if 0				/* use Unix-domain socekt for localhost */
+/* *INDENT-OFF* */
       if (GETHOSTNAME (new_db_server_host_buf, CUB_MAXHOSTNAMELEN) != 0)
 	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 0);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, new_db_server_host_buf);
 	  error_code = ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	  goto end;
 	}
+/* *INDENT-ON* */
 #else
       strcpy (new_db_server_host_buf, "localhost");
 #endif

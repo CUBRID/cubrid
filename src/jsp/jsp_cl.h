@@ -73,15 +73,6 @@ typedef enum
   SP_LANG_JAVA = 1
 } SP_LANG_ENUM;
 
-typedef enum
-{
-  SP_CODE_INVOKE = 0x01,
-  SP_CODE_RESULT = 0x02,
-  SP_CODE_ERROR = 0x04,
-  SP_CODE_INTERNAL_JDBC = 0x08,
-  SP_CODE_DESTROY = 0x10
-} SP_CODE;
-
 extern int jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int jsp_alter_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int jsp_drop_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement);

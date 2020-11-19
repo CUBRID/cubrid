@@ -148,6 +148,7 @@ Utilitare de serviciu disponibile:\n\
     broker\n\
     manager\n\
     heartbeat\n\
+    javasp\n\
 \n\
 Utilitare de administrare disponibile:\n\
     addvoldb\n\
@@ -248,6 +249,14 @@ Comenzi disponibile:\n\
 41 cubrid manager server nu este instalat.\n
 42 Argument invalid.\n
 43 Eroare la deschiderea fişierului(%1$s).\n
+44 utilitar CUBRID, versiunea %1$s\n\
+utilizare: %2$s javasp <command> [args]\n\
+\n\
+Comenzi disponibile:\n\
+    start       [database-name]\n\
+    stop        [database-name]\n\
+    restart     [database-name]\n\
+    status      [database-name]\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 AVERTIESMENT: opţiunea -t este ignorată în modul de execuţie independent.\n
@@ -413,7 +422,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 25 \n*** Verificarea sintaxei ***\n\n
 26 %1$d erori detectate.\n
 27 \n*** Inserarea de obiecte ***\n\n
-28 Un total de %1$8d obiecte inserate.\n
+28 Un total de %1$ld obiecte inserate.\n
 29 Un total de %1$8d obiecte referenţiate au fost inserate cu conţinut implicit.\n
 30 \n*** Se finalizează tranzactia ***\n
 31 \n*** Se închide baza de date ***\n
@@ -433,7 +442,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 45 Instanţa %1$d a clasei %2$s a fost deja definită\n
 46 Instanţa %1$d a clasei %2$s a fost deja rezervată\n
 47 Încălcare a constrângerii UNIQUE pentru atributul '%1$s', conversie la NULL\n
-48 %1$s %2$d instanţe\n
+48 %1$s %2$ld instanţe\n
 49 Clasa %1$s\n
 50 Parola:
 51 \n*** Se actualizează statisticile claselor ***\n
@@ -443,16 +452,16 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 55 absent
 56 în %1$s
 57 Argumente incompatibile, \"%1$s\", şi \"%2$s\"\n
-58 %1$s %2$d instanţe commise (salvate)\n
+58 %1$s %2$ld instanţe commise (salvate)\n
 59 \nNu se poate invoca versiunea neoptimizată a lui loaddb.\n
 60 Eroare la parsarea lui \"%1$s\", ca fiind de tip %2$s.\n
 61 Referinţa de obiecte nu este acceptată în modul de execuţie independent.\n
 62 Statisticile pentru clasa %1$s au fost updatate.\n
-112   %1$d instanţe\r
+112   %1$ld instanţe\r
 113 Ultima linie salvata (prin commit) : %1$d\n
 114 error-control-file
 115 una sau mai multe erori la încărcarea fişierului de intrare de control
-116 Total %8d obiect(e) inserate, %d obiect(e) fără success.\n
+116 Total %ld obiect(e) inserate, %2$ld obiect(e) fără success.\n
 117 Încărcarea a eşuat.\n
 118 Lungimea maximă permisă pentru numele clasei este de %1$d octeţi.\n
 119 Total %1$8d obiect(e) verificate, %2$d obiect(e) fără success.\n
@@ -488,10 +497,10 @@ opţiuni valide:\n\
 $set 13 MSGCAT_UTIL_SET_UNLOADDB
 41 Valoarea pentru cached-pages este invalidă.\n
 42 Valoarea pentru cached-page-size este invalidă.\n
-43 %1$d obiecte vărsate.\n
+43 %1$ld obiecte vărsate.\n
 44 Clasa %1$s
 45 , %1$d instanţe.\n
-46 Doar %1$d din %2$d obiecte vărsate cu succes.\n
+46 Doar %1$ld din %2$ld obiecte vărsate cu succes.\n
 47 directorul de ieşire este prea lung.\n
 48 LSA : %1$d %2$d \n
 49 Parola:

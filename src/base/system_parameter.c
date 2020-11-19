@@ -688,6 +688,9 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_TB_DEFAULT_REUSE_OID "create_table_reuseoid"
 
+#define PRM_NAME_USE_STAT_ESTIMATION "use_stat_estimation"
+#define PRM_NAME_IGNORE_TRAILING_SPACE "ignore_trailing_space"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
@@ -1399,18 +1402,18 @@ int PRM_FILTER_PRED_MAX_CACHE_CLONES = 10;
 static int prm_filter_pred_max_cache_clones_default = 10;
 static unsigned int prm_filter_pred_max_cache_clones_flag = 0;
 
-int PRM_LIST_QUERY_CACHE_MODE = 0;
-static int prm_list_query_cache_mode_default = 0;	/* disabled */
+int PRM_LIST_QUERY_CACHE_MODE = 1;
+static int prm_list_query_cache_mode_default = 1;
 static int prm_list_query_cache_mode_upper = 2;
 static int prm_list_query_cache_mode_lower = 0;
 static unsigned int prm_list_query_cache_mode_flag = 0;
 
-int PRM_LIST_MAX_QUERY_CACHE_ENTRIES = -1;
-static int prm_list_max_query_cache_entries_default = -1;	/* disabled */
+int PRM_LIST_MAX_QUERY_CACHE_ENTRIES = 200;
+static int prm_list_max_query_cache_entries_default = 200;
 static unsigned int prm_list_max_query_cache_entries_flag = 0;
 
-int PRM_LIST_MAX_QUERY_CACHE_PAGES = -1;
-static int prm_list_max_query_cache_pages_default = -1;	/* infinity */
+int PRM_LIST_MAX_QUERY_CACHE_PAGES = 1000;
+static int prm_list_max_query_cache_pages_default = 1000;
 static unsigned int prm_list_max_query_cache_pages_flag = 0;
 
 bool PRM_USE_ORDERBY_SORT_LIMIT = true;
@@ -2317,6 +2320,14 @@ static unsigned int prm_allow_truncated_string_flag = 0;
 bool PRM_TB_REUSE_OID = true;
 static bool prm_create_table_reuseoid_default = true;
 static unsigned int prm_create_table_reuseoid = 0;
+
+bool PRM_USE_STAT_ESTIMATION = false;
+static bool prm_use_stat_estimation_default = false;
+static unsigned int prm_use_stat_estimation_flag = 0;
+
+bool PRM_IGNORE_TRAILING_SPACE = false;
+static bool prm_ignore_trailing_space_default = false;
+static unsigned int prm_ignore_trailing_space_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5960,6 +5971,28 @@ static SYSPRM_PARAM prm_Def[] = {
    &prm_create_table_reuseoid,
    (void *) &prm_create_table_reuseoid_default,
    (void *) &PRM_TB_REUSE_OID,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_USE_STAT_ESTIMATION,
+   PRM_NAME_USE_STAT_ESTIMATION,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
+   PRM_BOOLEAN,
+   &prm_use_stat_estimation_flag,
+   (void *) &prm_use_stat_estimation_default,
+   (void *) &PRM_USE_STAT_ESTIMATION,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_IGNORE_TRAILING_SPACE,
+   PRM_NAME_IGNORE_TRAILING_SPACE,
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_FORCE_SERVER),
+   PRM_BOOLEAN,
+   &prm_ignore_trailing_space_flag,
+   (void *) &prm_ignore_trailing_space_default,
+   (void *) &PRM_IGNORE_TRAILING_SPACE,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
@@ -10336,12 +10369,7 @@ prm_tune_parameters (void)
       prm_set (pb_aout_ratio_prm, "0", false);
     }
 
-  /* temporarily modifies the query result cache feature to be disabled in RB-8.2.2. because it is not verified on 64
-   * bit environment. */
-  if (query_cache_mode_prm != NULL)
-    {
-      prm_set (query_cache_mode_prm, "0", false);
-    }
+
 
   ha_mode_prm = prm_find (PRM_NAME_HA_MODE, NULL);
   ha_server_state_prm = prm_find (PRM_NAME_HA_SERVER_STATE, NULL);

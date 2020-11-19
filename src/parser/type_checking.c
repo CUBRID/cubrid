@@ -1372,7 +1372,7 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_CHAR;
       /* return type */
       sig.return_type.type = pt_arg_type::GENERIC;
-      sig.return_type.val.generic_type = PT_GENERIC_TYPE_CHAR;
+      sig.return_type.val.generic_type = PT_GENERIC_TYPE_STRING_VARYING;
       def->overloads[num++] = sig;
 
       /* arg1 */
@@ -1383,7 +1383,7 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_NCHAR;
       /* return type */
       sig.return_type.type = pt_arg_type::GENERIC;
-      sig.return_type.val.generic_type = PT_GENERIC_TYPE_NCHAR;
+      sig.return_type.val.generic_type = PT_GENERIC_TYPE_STRING_VARYING;
       def->overloads[num++] = sig;
 
       def->overloads_count = num;
@@ -1405,7 +1405,7 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       sig.arg3_type.val.generic_type = PT_GENERIC_TYPE_CHAR;
       /* return type */
       sig.return_type.type = pt_arg_type::GENERIC;
-      sig.return_type.val.generic_type = PT_GENERIC_TYPE_CHAR;
+      sig.return_type.val.generic_type = PT_GENERIC_TYPE_STRING_VARYING;
       def->overloads[num++] = sig;
 
       /* arg1 */
@@ -1419,7 +1419,7 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       sig.arg3_type.val.generic_type = PT_GENERIC_TYPE_NCHAR;
       /* return type */
       sig.return_type.type = pt_arg_type::GENERIC;
-      sig.return_type.val.generic_type = PT_GENERIC_TYPE_NCHAR;
+      sig.return_type.val.generic_type = PT_GENERIC_TYPE_STRING_VARYING;
       def->overloads[num++] = sig;
 
       def->overloads_count = num;
@@ -1622,7 +1622,7 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 	  sig.arg2_type.type = pt_arg_type::GENERIC;
 	  sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_CHAR;
 	  sig.return_type.type = pt_arg_type::GENERIC;
-	  sig.return_type.val.generic_type = PT_GENERIC_TYPE_CHAR;
+	  sig.return_type.val.generic_type = PT_GENERIC_TYPE_STRING_VARYING;
 	  def->overloads[num++] = sig;
 
 	  /* nchar + nchar */
@@ -1631,7 +1631,7 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 	  sig.arg2_type.type = pt_arg_type::GENERIC;
 	  sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_NCHAR;
 	  sig.return_type.type = pt_arg_type::GENERIC;
-	  sig.return_type.val.generic_type = PT_GENERIC_TYPE_NCHAR;
+	  sig.return_type.val.generic_type = PT_GENERIC_TYPE_STRING_VARYING;
 	  def->overloads[num++] = sig;
 
 	  /* bit + bit */
@@ -2244,7 +2244,7 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 
       /* return type */
       sig.return_type.type = pt_arg_type::GENERIC;
-      sig.return_type.val.generic_type = PT_GENERIC_TYPE_CHAR;
+      sig.return_type.val.generic_type = PT_GENERIC_TYPE_STRING_VARYING;
       def->overloads[num++] = sig;
 
       /* arg1 */
@@ -2257,7 +2257,7 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 
       /* return type */
       sig.return_type.type = pt_arg_type::GENERIC;
-      sig.return_type.val.generic_type = PT_GENERIC_TYPE_NCHAR;
+      sig.return_type.val.generic_type = PT_GENERIC_TYPE_STRING_VARYING;
       def->overloads[num++] = sig;
 
       def->overloads_count = num;
@@ -8446,6 +8446,7 @@ pt_wrap_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * arg, PT_TYPE_ENUM new_t
 
   new_att->type_enum = new_type;
   new_att->info.expr.op = PT_CAST;
+  PT_EXPR_INFO_SET_FLAG (new_att, PT_EXPR_INFO_CAST_WRAP);
   new_att->info.expr.cast_type = new_dt;
   new_att->info.expr.arg1 = arg;
   new_att->next = next_att;
@@ -24373,7 +24374,7 @@ static PT_TYPE_ENUM
 pt_wrap_type_for_collation (const PT_NODE * arg1, const PT_NODE * arg2, const PT_NODE * arg3,
 			    PT_TYPE_ENUM * wrap_type_collection)
 {
-  PT_TYPE_ENUM common_type = PT_TYPE_VARCHAR;
+  PT_TYPE_ENUM common_type = PT_TYPE_CHAR;
   PT_TYPE_ENUM arg1_type = PT_TYPE_NONE, arg2_type = PT_TYPE_NONE, arg3_type = PT_TYPE_NONE;
 
   if (arg1)

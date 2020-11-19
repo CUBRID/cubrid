@@ -352,6 +352,9 @@ db_string_compare (const DB_VALUE * string1, const DB_VALUE * string2, DB_VALUE 
   int cmp_result = 0;
   DB_TYPE str1_type, str2_type;
 
+  static bool ti = true;
+  static bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
+
   /* Assert that DB_VALUE structures have been allocated. */
   assert (string1 != (DB_VALUE *) NULL);
   assert (string2 != (DB_VALUE *) NULL);
@@ -418,8 +421,12 @@ db_string_compare (const DB_VALUE * string1, const DB_VALUE * string2, DB_VALUE 
 	  coll_id = db_get_string_collation (string1);
 	  assert (db_get_string_collation (string1) == db_get_string_collation (string2));
 
+	  if (!ignore_trailing_space)
+	    {
+	      ti = (QSTR_IS_FIXED_LENGTH (str1_type) && QSTR_IS_FIXED_LENGTH (str2_type));
+	    }
 	  cmp_result = QSTR_COMPARE (coll_id, DB_GET_UCHAR (string1), (int) db_get_string_size (string1),
-				     DB_GET_UCHAR (string2), (int) db_get_string_size (string2));
+				     DB_GET_UCHAR (string2), (int) db_get_string_size (string2), ti);
 	  break;
 	case QSTR_BIT:
 	  cmp_result = varbit_compare (DB_GET_UCHAR (string1), (int) db_get_string_size (string1),
@@ -485,6 +492,9 @@ db_string_unique_prefix (const DB_VALUE * db_string1, const DB_VALUE * db_string
   int precision;
   DB_VALUE tmp_result;
   int c;
+
+  static bool ti = true;
+  static bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
 
   /* Assertions */
   assert (db_string1 != (DB_VALUE *) NULL);
@@ -584,6 +594,7 @@ db_string_unique_prefix (const DB_VALUE * db_string1, const DB_VALUE * db_string
     trim_again:
       /* We need to implicitly trim both strings since we don't want padding for the result (its of varying type) and
        * since padding can mask the logical end of both of the strings.  Trimming depends on codeset. */
+
       if (pad_size == 1)
 	{
 	  for (t = string1 + (size1 - 1); t >= string1 && *t == pad[0]; t--, size1--)
@@ -678,8 +689,13 @@ db_string_unique_prefix (const DB_VALUE * db_string1, const DB_VALUE * db_string
 	}
       else
 	{
+	  if (!ignore_trailing_space)
+	    {
+	      ti = (db_string1->domain.char_info.type == DB_TYPE_CHAR
+		    || db_string1->domain.char_info.type == DB_TYPE_NCHAR);
+	    }
 	  error_status = QSTR_SPLIT_KEY (collation_id, key_domain->is_desc, string1, size1, string2, size2, &key,
-					 &result_size);
+					 &result_size, ti);
 	}
       assert (error_status == NO_ERROR);
 
@@ -4504,11 +4520,11 @@ cleanup:
  *
  * Errors:
  *      ER_QSTR_INVALID_DATA_TYPE:
- *          <src>, <pattern> (if it’s not NULL)
+ *          <src>, <pattern> (if it's not NULL)
  *          is not a character string.
  *
  *      ER_QSTR_INCOMPATIBLE_CODE_SETS:
- *          <src_string>, <pattern> (if it’s not NULL)
+ *          <src_string>, <pattern> (if it's not NULL)
  *          have different character code sets.
  *
  *      ER_QSTR_INCOMPATIBLE_COLLATIONS:
@@ -4719,11 +4735,11 @@ exit:
  *
  * Errors:
  *      ER_QSTR_INVALID_DATA_TYPE:
- *          <src>, <pattern>, <replace> (if it’s not NULL)
+ *          <src>, <pattern>, <replace> (if it's not NULL)
  *          is not a character string.
  *
  *      ER_QSTR_INCOMPATIBLE_CODE_SETS:
- *          <src>, <pattern> (if it’s not NULL)
+ *          <src>, <pattern> (if it's not NULL)
  *          have different character code sets.
  *
  *      ER_QSTR_INCOMPATIBLE_COLLATIONS:
@@ -4969,11 +4985,11 @@ exit:
  *
  * Errors:
  *      ER_QSTR_INVALID_DATA_TYPE:
- *          <src>, <pattern>, <replace> (if it’s not NULL)
+ *          <src>, <pattern>, <replace> (if it's not NULL)
  *          is not a character string.
  *
  *      ER_QSTR_INCOMPATIBLE_CODE_SETS:
- *          <src>, <pattern> (if it’s not NULL)
+ *          <src>, <pattern> (if it's not NULL)
  *          have different character code sets.
  *
  *      ER_QSTR_INCOMPATIBLE_COLLATIONS:
@@ -5167,11 +5183,11 @@ exit:
  *
  * Errors:
  *      ER_QSTR_INVALID_DATA_TYPE:
- *          <src>, <pattern>, <replace> (if it’s not NULL)
+ *          <src>, <pattern>, <replace> (if it's not NULL)
  *          is not a character string.
  *
  *      ER_QSTR_INCOMPATIBLE_CODE_SETS:
- *          <src>, <pattern> (if it’s not NULL)
+ *          <src>, <pattern> (if it's not NULL)
  *          have different character code sets.
  *
  *      ER_QSTR_INCOMPATIBLE_COLLATIONS:
@@ -5463,11 +5479,11 @@ exit:
  *
  * Errors:
  *      ER_QSTR_INVALID_DATA_TYPE:
- *          <src>, <pattern> (if it’s not NULL)
+ *          <src>, <pattern> (if it's not NULL)
  *          is not a character string.
  *
  *      ER_QSTR_INCOMPATIBLE_CODE_SETS:
- *          <src_string>, <pattern> (if it’s not NULL)
+ *          <src_string>, <pattern> (if it's not NULL)
  *          have different character code sets.
  *
  *      ER_QSTR_INCOMPATIBLE_COLLATIONS:
@@ -6026,7 +6042,7 @@ qstr_eval_like (const char *tar, int tar_length, const char *expr, int expr_leng
 		  cmp =
 		    current_collation->strmatch (current_collation, true, tar_ptr, CAST_BUFLEN (end_tar - tar_ptr),
 						 expr_ptr, CAST_BUFLEN (expr_seq_end - expr_ptr), match_escape,
-						 has_last_escape, &tar_matched_size);
+						 has_last_escape, &tar_matched_size, false);
 
 		  if (cmp == 0)
 		    {
@@ -6142,7 +6158,7 @@ qstr_eval_like (const char *tar, int tar_length, const char *expr, int expr_leng
 		  cmp =
 		    current_collation->strmatch (current_collation, true, tar_ptr, CAST_BUFLEN (end_tar - tar_ptr),
 						 next_expr_ptr, CAST_BUFLEN (expr_seq_end - next_expr_ptr),
-						 match_escape, has_last_escape, &tar_matched_size);
+						 match_escape, has_last_escape, &tar_matched_size, false);
 		  if (cmp == 0)
 		    {
 		      if (stackp >= STACK_SIZE - 1)
@@ -9286,11 +9302,11 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_precision, DB_T
 
       if (QSTR_IS_NATIONAL_CHAR (s1_type))
 	{
-	  *result_type = DB_TYPE_NCHAR;
+	  *result_type = DB_TYPE_VARNCHAR;
 	}
       else
 	{
-	  *result_type = DB_TYPE_CHAR;
+	  *result_type = DB_TYPE_VARCHAR;
 	}
 
       if (*result_size > (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES))

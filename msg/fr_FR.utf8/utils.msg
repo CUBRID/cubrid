@@ -148,6 +148,7 @@ Utilitaires de service disponibles\n\
     broker\n\
     manager\n\
     heartbeat\n\
+    javasp\n\
 \n\
 Utilitaires d'administrateur disponibles:\n\
     addvoldb\n\
@@ -248,6 +249,14 @@ Commandes disponibles:\n\
 41 Serveur de gestion CUBRID n'est pas installé.\n
 42 Argument invalide.\n
 43 Erreur d'ouverture du fichier(%1$s).\n
+44 utilitaire CUBRID, version %1$s\n\
+usage: %2$s javasp <command> [args]\n\
+\n\
+Commandes disponibles:\n\
+    start       [database-name]\n\
+    stop        [database-name]\n\
+    restart     [database-name]\n\
+    status      [database-name]\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 AVERTISSEMENT: l'option -t est ignoré dans le mode d'exécution autonome.\n
@@ -403,7 +412,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 25 \n*** Vérification de la syntaxe ***\n\n
 26 %1$d erreurs détectées.\n
 27 \n***  Insertion d'objets ***\n\n
-28 Un total de %1$8d objets insérés.\n
+28 Un total de %1$ld objets insérés.\n
 29 Un total de %1$8d objets référencés inséré avec le contenu par défaut.\n
 30 \n*** Validation de la transaction ***\n
 31 \n*** Fermeture de la de base de données ***\n
@@ -423,7 +432,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 45 Instance %1$d de la classe %2$s a été déjà  définie\n
 46 Instance %1$d de la classe %2$s a été déjà réservée\n
 47 Violation d'UNIQUE sur l'attribut '%1$s', converti en NULL\n
-48 %1$s %2$d instances\n
+48 %1$s %2$ld instances\n
 49 Classe %1$s\n
 50 Mot de passe:
 51 \n*** Mise à jour des statistiques de classe ***\n
@@ -433,16 +442,16 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 55 manquant
 56 dans %1$s
 57 arguments incompatible, \"%1$s\", et \"%2$s\"\n
-58 %1$s %2$d instances validées\n
+58 %1$s %2$ld instances validées\n
 59 \nImpossible d'invoquer la non-optimisé version de loaddb.\n
 60 Erreur d'analyse du \"%1$s\", comme type %2$s.\n
 61 La référence d'objet n'est pas prise en charge en mode CS.\n
 62 Statistiques mises à jour pour la classe %1$s.\n
-112   %1$d instances\r
+112   %1$ld instances\r
 113 Dernière ligne validée: %1$d\n
 114 error-control-file
 115 fichier d'entrée pour le contrôle d'erreur(s) pendant le chargement
-116 Total %8d objets inséré, %d objets a échoué.\n
+116 Total %1$ld objets inséré, %2$ld objets a échoué.\n
 117 Chargement échoué.\n
 118 La longueur maximale du nom de classe est %1$d bytes.\n
 119 Total des objets %1$8d vérifiés, %2$d objets d échoué.\n
@@ -477,10 +486,10 @@ options valids:\n\
 $set 13 MSGCAT_UTIL_SET_UNLOADDB
 41 Valeur de cached-pages n'est pas valide.\n
 42 Valeur de cached-page-size n'est pas valide.\n
-43 %1$d objects sauvegardées.\n
+43 %1$ld objects sauvegardées.\n
 44 Classe %1$s
 45 , %1$d instances.\n
-46 Seulement %1$d de  %2$d objets sauvegardées avec succès.\n
+46 Seulement %1$ld de  %2$ld objets sauvegardées avec succès.\n
 47 répertoire de sortie est trop long.\n
 48 LSA : %1$d %2$d \n
 49 Mot de passe:

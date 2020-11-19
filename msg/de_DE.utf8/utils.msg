@@ -148,6 +148,7 @@ Vorhandene Serviceutilities:\n\
     broker\n\
     manager\n\
     heartbeat\n\
+    javasp\n\
 \n\
 Vorhandene Administratorutilities:\n\
     addvoldb\n\
@@ -248,6 +249,14 @@ Vorhandene Befehle:\n\
 41 cubrid manager server nicht installiert ist.\n
 42 Parameter ist Ungültig.\n
 43 Datei(%1$s) offene Fehler.\n
+44 Cubrid Utility, Version %1$s\n\
+Anwendung: %2$s javasp <Befehl> [args]\n\
+\n\
+Vorhandene Befehle:\n\
+    start       [database-name]\n\
+    stop        [database-name]\n\
+    restart     [database-name]\n\
+    status      [database-name]\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 WARNUNG: -t Option wird in Stand-Alone-Ausführung ignoriert.\n
@@ -401,7 +410,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 25 \n*** Syntaxprüfung ***\n\n
 26 %1$d Fehler erkannt.\n
 27 \n*** Einfügen von Objekten ***\n\n
-28 %1$8d Objekte eingefügt ins gesamt.\n
+28 %1$ld Objekte eingefügt ins gesamt.\n
 29 %1$8d referenzierte Objekte mit Standardinhalt ins gesamt eingefügt.\n
 30 \n*** Transaktion wird festgeschrieben ***\n
 31 \n*** Datenbank wird geschlossen ***\n
@@ -421,7 +430,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 45 Instanz %1$d der Klasse %2$s wurde schon definiert\n
 46 Instanz %1$d der Klasse %2$s wurde schon reserviert\n
 47 UNIQUE Verletzung auf Attribut '%1$s', konvertiert zu NULL\n
-48 %1$s %2$d Instanzen\n
+48 %1$s %2$ld Instanzen\n
 49 Klasse %1$s\n
 50 Passwort:
 51 \n*** Klassenstatistiken werden aktualisiert ***\n
@@ -431,16 +440,16 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 55 fehlt
 56 in %1$s
 57 Inkompatible Argumente, \"%1$s\", und \"%2$s\"\n
-58 %1$s %2$d Instanzen festgeschrieben\n
+58 %1$s %2$ld Instanzen festgeschrieben\n
 59 \nNicht optimierte Version von loaddb kann nicht aufgerufen werden.\n
 60 Parse-Fehler \"%1$s\", wie %2$s Typ.\n
 61 Objektreferenz wird im CS-Modus nicht unterstützt.\n
 62 Aktualisierte Statistiken für die Klasse %1$s.\n
-112   %1$d Instanzen\r
+112   %1$ld Instanzen\r
 113 Letzte festgeschriebene Zeile: %1$d\n
 114 Fehler-Kontroll-Datei
 115 Eingangsdatei für Fehlerkontrolle während Ladung
-116 Insgesamt %8d Objekt(e) eingefügt, %d Objekt(e) fehlgeschlagen.\n
+116 Insgesamt %ld Objekt(e) eingefügt, %2$ld Objekt(e) fehlgeschlagen.\n
 117 Laden fehlgeschlagen.\n
 118 Maximale Länge des Klassennamens ist %1$d Bytes.\n
 119 Insgesamt %1$8d Objekt(e) überprüft, %2$d Objekt(e) fehlgeschlagen.\n
@@ -473,10 +482,10 @@ gültige Optionen:\n\
 $set 13 MSGCAT_UTIL_SET_UNLOADDB
 41 Cached-Seiten-Anzahl ungültig.\n
 42 Cached-Seitengröße ungültig.\n
-43 %1$d Objekte exportiert.\n
+43 %1$ld Objekte exportiert.\n
 44 Klasse %1$s
 45 , %1$d Instanzen.\n
-46 Nur %1$d von %2$d Objekten erfolgreich exportiert.\n
+46 Nur %1$ld von %2$ld Objekten erfolgreich exportiert.\n
 47 Ausgabeverzeichnis zu lang.\n
 48 LSA : %1$d %2$d \n
 49 Passwort:

@@ -37,7 +37,7 @@ namespace cubload
    * A wrapper function for calling batch handler. Used by split function and does some extra checks
    */
   int handle_batch (batch_handler &handler, class_id clsid, std::string &batch_content, batch_id &batch_id,
-		    int line_offset, int &rows);
+		    int64_t line_offset, int64_t &rows);
 
   /*
    * Check if a given string starts with a given prefix
@@ -69,7 +69,7 @@ namespace cubload
     //
   }
 
-  batch::batch (batch_id id, class_id clsid, std::string &content, int line_offset, int rows)
+  batch::batch (batch_id id, class_id clsid, std::string &content, int64_t line_offset, int64_t rows)
     : m_id (id)
     , m_clsid (clsid)
     , m_content (std::move (content))
@@ -113,7 +113,7 @@ namespace cubload
     return m_clsid;
   }
 
-  int
+  int64_t
   batch::get_line_offset () const
   {
     return m_line_offset;
@@ -125,7 +125,7 @@ namespace cubload
     return m_content;
   }
 
-  int
+  int64_t
   batch::get_rows_number () const
   {
     return m_rows;
@@ -134,31 +134,31 @@ namespace cubload
   void
   batch::pack (cubpacking::packer &serializator) const
   {
-    serializator.pack_int (m_id);
+    serializator.pack_bigint (m_id);
     serializator.pack_int (m_clsid);
     serializator.pack_string (m_content);
-    serializator.pack_int (m_line_offset);
-    serializator.pack_int (m_rows);
+    serializator.pack_bigint (m_line_offset);
+    serializator.pack_bigint (m_rows);
   }
 
   void
   batch::unpack (cubpacking::unpacker &deserializator)
   {
-    deserializator.unpack_int (m_id);
+    deserializator.unpack_bigint (m_id);
     deserializator.unpack_int (m_clsid);
     deserializator.unpack_string (m_content);
-    deserializator.unpack_int (m_line_offset);
-    deserializator.unpack_int (m_rows);
+    deserializator.unpack_bigint (m_line_offset);
+    deserializator.unpack_bigint (m_rows);
   }
 
   size_t
   batch::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
-    size_t size = serializator.get_packed_int_size (start_offset); // m_id
+    size_t size = serializator.get_packed_bigint_size (start_offset); // m_id
     size += serializator.get_packed_int_size (size); // m_clsid
     size += serializator.get_packed_string_size (m_content, size);
-    size += serializator.get_packed_int_size (size); // m_line_offset
-    size += serializator.get_packed_int_size (size); // m_rows
+    size += serializator.get_packed_bigint_size (size); // m_line_offset
+    size += serializator.get_packed_bigint_size (size); // m_rows
 
     return size;
   }
@@ -491,9 +491,9 @@ namespace cubload
   void
   stats::pack (cubpacking::packer &serializator) const
   {
-    serializator.pack_int (rows_committed);
-    serializator.pack_int (current_line.load ());
-    serializator.pack_int (last_committed_line);
+    serializator.pack_bigint (rows_committed);
+    serializator.pack_bigint (current_line.load ());
+    serializator.pack_bigint (last_committed_line);
     serializator.pack_int (rows_failed);
     serializator.pack_string (error_message);
     serializator.pack_string (log_message);
@@ -502,13 +502,13 @@ namespace cubload
   void
   stats::unpack (cubpacking::unpacker &deserializator)
   {
-    deserializator.unpack_int (rows_committed);
+    deserializator.unpack_bigint (rows_committed);
 
-    int current_line_;
-    deserializator.unpack_int (current_line_);
+    int64_t current_line_;
+    deserializator.unpack_bigint (current_line_);
     current_line.store (current_line_);
 
-    deserializator.unpack_int (last_committed_line);
+    deserializator.unpack_bigint (last_committed_line);
     deserializator.unpack_int (rows_failed);
     deserializator.unpack_string (error_message);
     deserializator.unpack_string (log_message);
@@ -517,9 +517,9 @@ namespace cubload
   size_t
   stats::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
-    size_t size = serializator.get_packed_int_size (start_offset); // rows_committed
-    size += serializator.get_packed_int_size (size); // current_line
-    size += serializator.get_packed_int_size (size); // last_committed_line
+    size_t size = serializator.get_packed_bigint_size (start_offset); // rows_committed
+    size += serializator.get_packed_bigint_size (size); // current_line
+    size += serializator.get_packed_bigint_size (size); // last_committed_line
     size += serializator.get_packed_int_size (size); // rows_failed
     size += serializator.get_packed_string_size (error_message, size);
     size += serializator.get_packed_string_size (log_message, size);
@@ -623,7 +623,7 @@ namespace cubload
   split (int batch_size, const std::string &object_file_name, class_handler &c_handler, batch_handler &b_handler)
   {
     int error_code;
-    int batch_rows = 0;
+    int64_t batch_rows = 0;
     int lineno = 0;
     int batch_start_offset = 0;
     class_id clsid = FIRST_CLASS_ID;
@@ -648,8 +648,8 @@ namespace cubload
 
     for (std::string line; std::getline (object_file, line); ++lineno)
       {
-	bool is_id_line = starts_with (line, "%id");
-	bool is_class_line = starts_with (line, "%class");
+	bool is_id_line = starts_with (line, "%id") || starts_with (line, "%ID");
+	bool is_class_line = starts_with (line, "%class") || starts_with (line, "%CLASS");
 
 	if (is_id_line || is_class_line)
 	  {
@@ -752,8 +752,8 @@ namespace cubload
   }
 
   int
-  handle_batch (batch_handler &handler, class_id clsid, std::string &batch_content, batch_id &batch_id, int line_offset,
-		int &rows)
+  handle_batch (batch_handler &handler, class_id clsid, std::string &batch_content, batch_id &batch_id, int64_t line_offset,
+		int64_t &rows)
   {
     if (batch_content.empty ())
       {

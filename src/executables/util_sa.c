@@ -1931,7 +1931,7 @@ alterdbhost (UTIL_FUNCTION_ARG * arg)
 #if 0				/* use Unix-domain socket for localhost */
       if (GETHOSTNAME (host_name_buf, CUB_MAXHOSTNAMELEN) != 0)
 	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 0);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, host_name_buf);
 	  goto error;
 	}
 #else
@@ -3340,7 +3340,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 	    }
 
 	  lc = lang_get_collation (i);
-	  if (lc->coll.coll_id == LANG_COLL_ISO_BINARY)
+	  if (lc->coll.coll_id == LANG_COLL_DEFAULT)
 	    {
 	      assert (i != 0);
 	      continue;

@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation 
  *
  *   This program is free software; you can redistribute it and/or modify 
  *   it under the terms of the GNU General Public License as published by 
@@ -46,10 +47,10 @@ void vSetStatus (DWORD dwState, DWORD dwAccept =
 		 SERVICE_ACCEPT_STOP | SERVICE_ACCEPT_PAUSE_CONTINUE);
 void SetCUBRIDEnvVar ();
 char *read_string_value_in_registry (HKEY key, char *sub_key, char *name);
-SERVICE_STATUS_HANDLE g_hXSS;	//서비스 환경 글로벌 핸들
-DWORD g_XSS;			//서비스의 현재 상태를 저장하는 변수
-BOOL g_bPause;			//서비스가 중지인가 아닌가
-HANDLE g_hExitEvent;		//서비스를 중지 시킬때 이벤트를 사용하여 쓰레드를 중지한다
+SERVICE_STATUS_HANDLE g_hXSS;	// Global handle for service environments
+DWORD g_XSS;			// Variable that saves the current state of the service
+BOOL g_bPause;			// Store whether the service is stopped or not
+HANDLE g_hExitEvent;		// When stopping a service, use an event to stop a thread
 BOOL g_isRunning = false;
 #define		WM_SERVICE_STOP		WM_USER+1
 #define		WM_SERVICE_START	WM_USER+2
@@ -66,6 +67,8 @@ BOOL g_isRunning = false;
 #define		SERVICE_CONTROL_SERVER_STOP	181
 #define		SERVICE_CONTROL_SERVICE_START	190
 #define		SERVICE_CONTROL_SERVICE_STOP	191
+#define		SERVICE_CONTROL_JAVASP_START	210
+#define		SERVICE_CONTROL_JAVASP_STOP		211
 
 #define		CUBRID_UTIL_CUBRID		"cubrid.exe"
 #define		CUBRID_UTIL_SERVICE		"service"
@@ -73,6 +76,7 @@ BOOL g_isRunning = false;
 #define		CUBRID_UTIL_SHARD		"shard"
 #define		CUBRID_UTIL_MANAGER		"manager"
 #define		CUBRID_UTIL_SERVER		"server"
+#define 	CUBRID_UTIL_JAVASP 		"javasp"
 
 #define		CUBRID_COMMAND_START		"start"
 #define		CUBRID_COMMAND_STOP		"stop"
@@ -169,7 +173,7 @@ vSetStatus (DWORD dwState, DWORD dwAccept)
   ss.dwCheckPoint = 0;
   ss.dwWaitHint = 0;
 
-  //현재 상태 보관
+  // Saves Current state
   g_XSS = dwState;
   SetServiceStatus (g_hXSS, &ss);
 }
@@ -192,6 +196,8 @@ vHandler (DWORD opcode)
 
   if (opcode == SERVICE_CONTROL_SERVER_START ||
       opcode == SERVICE_CONTROL_SERVER_STOP ||
+      opcode == SERVICE_CONTROL_JAVASP_START ||
+      opcode == SERVICE_CONTROL_JAVASP_STOP ||
       opcode == SERVICE_CONTROL_BROKER_ON ||
       opcode == SERVICE_CONTROL_BROKER_OFF)
     {
@@ -320,6 +326,21 @@ vHandler (DWORD opcode)
 	args[4] = "--for-windows-service";
 	args[5] = NULL;
       }
+    case SERVICE_CONTROL_JAVASP_START:
+      {
+	args[1] = CUBRID_UTIL_JAVASP;
+	args[2] = CUBRID_COMMAND_START;
+	args[4] = "--for-windows-service";
+	args[5] = NULL;
+      }
+      break;
+    case SERVICE_CONTROL_JAVASP_STOP:
+      {
+	args[1] = CUBRID_UTIL_JAVASP;
+	args[2] = CUBRID_COMMAND_STOP;
+	args[4] = "--for-windows-service";
+	args[5] = NULL;
+      }
       break;
     default:
       vSetStatus (g_XSS);
@@ -330,6 +351,8 @@ vHandler (DWORD opcode)
 
   if (opcode == SERVICE_CONTROL_SERVER_START ||
       opcode == SERVICE_CONTROL_SERVER_STOP ||
+      opcode == SERVICE_CONTROL_JAVASP_START ||
+      opcode == SERVICE_CONTROL_JAVASP_STOP ||
       opcode == SERVICE_CONTROL_BROKER_ON ||
       opcode == SERVICE_CONTROL_BROKER_OFF)
     {
@@ -341,7 +364,7 @@ vHandler (DWORD opcode)
     {
       g_isRunning = false;
 
-      //쓰레드를 실행중이면 멈춘다
+      // Stop if thread is running
       SetEvent (g_hExitEvent);
       vSetStatus (SERVICE_STOPPED);
     }

@@ -148,6 +148,7 @@ cubrid 管理者ユーティリティー、バージョン　%1$s\n\
     broker\n\
     manager\n\
     heartbeat\n\
+    javasp\n\
 \n\
 正しい管理者ユーティリティー名:\n\
     addvoldb\n\
@@ -248,6 +249,14 @@ cubrid 管理者ユーティリティー、バージョン　%1$s\n\
 41 CUBRID Managerサーバがインストールされていません。\n
 42 無効なパラメーターです。\n
 43 ファイル「%1$s」のオープンに失敗しました。\n
+44 cubridユーティリティー、バージョン %1$s\n\
+使い方: %2$s javasp <コマンド> [パラメーター]\n\
+\n\
+正しいコマンド:\n\
+    start       [データベース名]\n\
+    stop        [データベース名]\n\
+    restart     [データベース名]\n\
+    status      [データベース名]\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 警告: -tオプションは独立実行モードでは無視されます。\n
@@ -401,7 +410,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 25 \n*** 文法チェック ***\n\n
 26 %1$d個のエラーが検出されました。\n
 27 \n*** オブジェクト挿入中 ***\n\n
-28 総%1$8d個のオブジェクトが挿入されました。\n
+28 総%1$ld個のオブジェクトが挿入されました。\n
 29 総%1$8d個のれレファレンスされたオブジェクトがデフォルトバリューで入力されました。\n
 30 \n*** トランザクションコミット中 ***\n
 31 \n*** データベースを閉まっています ***\n
@@ -421,7 +430,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 45 クラス「%2$s」のインスタンス「%1$d」はすでに正義されました。\n
 46 クラス「%2$s」のインスタンス「%1$d」はもう使用されました。\n
 47 アトリビュート「%1$s」のUNIQUE違反。NULLに変換しました。\n
-48 %1$s %2$d インスタンス\n
+48 %1$s %2$ld インスタンス\n
 49 クラス %1$s\n
 50 パスワード:
 51 \n*** クラススタティスティックス情報を更新中 ***\n
@@ -431,16 +440,16 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 55 missing
 56 in %1$s
 57 一緒に使えないパラメーター「%1$s」と「%2$s」\n
-58 %1$s %2$dインスタンスをコミットしました。\n
+58 %1$s %2$ldインスタンスをコミットしました。\n
 59 \n以前バージョンのloaddbが実行できません。\n
 60 「%1$s」を「%2$s」タイプにパーシングエラー \n
 61 Object Reference is not supported in CS mode.\n
 62 Updated statistics for class %1$s.\n
-112   %1$d個のインスタンス\r
+112   %1$ld個のインスタンス\r
 113 最後にコミットされたライン : %1$d\n
 114 エラーコントロールファイル
 115 ロードする時にエラー制御のための入力ファイル
-116 Total %1$8d object(s) inserted, %2$d object(s) failed.\n
+116 Total %1$ld object(s) inserted, %2$ld object(s) failed.\n
 117 Load failed.\n
 118 Maximum length of class name is %1$d bytes.\n
 119 Total %1$8d object(s) checked, %2$d object(s) failed.\n
@@ -473,10 +482,10 @@ loaddb: データベースにオブジェクトやスキーマロード\n\
 $set 13 MSGCAT_UTIL_SET_UNLOADDB
 41 cached-pagesが正しくありません。\n
 42 cached-page-sizeが正しくありません。\n
-43 %1$dこのオブジェクトがダンプされました。\n
+43 %1$ldこのオブジェクトがダンプされました。\n
 44 クラス %1$s
 45 , %1$dこのインスタンス。\n
-46 %1$dこのオブジェクトが(全体%2$d個)問題なくダンプされました。\n
+46 %1$ldこのオブジェクトが(全体%2$ld個)問題なくダンプされました。\n
 47 出力ディレクトリー名が長過ぎます。\n
 48 LSA : %1$d %2$d \n
 49 パスワード:

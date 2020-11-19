@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
++* Copyright (C) 2016 CUBRID Corporation
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -2519,7 +2520,6 @@ log_append_undoredo_recdes2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, con
   log_append_undoredo_crumbs (thread_p, rcvindex, &addr, num_undo_crumbs, num_redo_crumbs, undo_crumbs, redo_crumbs);
 }
 
-#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * log_append_undo_recdes - LOG UNDO (BEFORE) RECORD DESCRIPTOR
  *
@@ -2535,7 +2535,6 @@ log_append_undo_recdes (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
 {
   log_append_undo_recdes2 (thread_p, rcvindex, addr->vfid, addr->pgptr, addr->offset, recdes);
 }
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 void
 log_append_undo_recdes2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VFID * vfid, PAGE_PTR pgptr,

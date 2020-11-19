@@ -1151,6 +1151,8 @@ scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_term)
   DB_TYPE key_type;
   int dummy_size1, dummy_size2, dummy_diff_column;
   bool dummy_dom_is_desc, dummy_next_dom_is_desc;
+  static bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
+  static int coerce = (ignore_trailing_space) ? 1 : 3;
 
   if (val1 == NULL || val2 == NULL)
     {
@@ -1184,7 +1186,11 @@ scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_term)
 	}
       else
 	{
-	  rc = tp_value_compare (val1, val2, 1, 1);
+	  /*
+	   * we need to compare without ignoring trailing space
+	   * corece = 3 enforce"no-ignore trailing space
+	   */
+	  rc = tp_value_compare (val1, val2, coerce, 1);
 	}
     }
 
@@ -1304,13 +1310,19 @@ eliminate_duplicated_keys (KEY_VAL_RANGE * key_vals, int key_cnt)
 {
   int n;
   KEY_VAL_RANGE *curp, *nextp;
+  static bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
+  static int coerce = (ignore_trailing_space) ? 1 : 3;
 
   curp = key_vals;
   nextp = key_vals + 1;
   n = 0;
   while (key_cnt > 1 && n < key_cnt - 1)
     {
-      if (tp_value_compare (&curp->key1, &nextp->key1, 1, 1) == DB_EQ)
+      /*
+       * we need to compare without ignoring trailing space
+       * corece = 3 enforce"no-ignore trailing space
+       */
+      if (tp_value_compare (&curp->key1, &nextp->key1, coerce, 1) == DB_EQ)
 	{
 	  pr_clear_value (&nextp->key1);
 	  pr_clear_value (&nextp->key2);
@@ -4811,7 +4823,7 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       /* free temp keys and values */
       if (llsidp->hlsid.temp_key != NULL)
 	{
-	  qdata_free_hscan_key (thread_p, llsidp->hlsid.temp_key, NULL);
+	  qdata_free_hscan_key (thread_p, llsidp->hlsid.temp_key, llsidp->hlsid.temp_key->val_count);
 	  llsidp->hlsid.temp_key = NULL;
 	}
       break;
