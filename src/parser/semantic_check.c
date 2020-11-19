@@ -8197,6 +8197,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   bool found_reuse_oid_option = false, reuse_oid = false;
   bool found_auto_increment = false;
   bool found_tbl_comment = false;
+  bool found_tbl_encrypt = false;
   int error = NO_ERROR;
 
   entity_type = node->info.create_entity.entity_type;
@@ -8307,6 +8308,20 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    else
 	      {
 		found_tbl_comment = true;
+	      }
+	  }
+	  break;
+	case PT_TABLE_OPTION_ENCRYPT:
+	  {
+	    if (found_tbl_encrypt)
+	      {
+		PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DUPLICATE_TABLE_OPTION,
+			    parser_print_tree (parser, tbl_opt));
+		return;
+	      }
+	    else
+	      {
+		found_tbl_encrypt = true;
 	      }
 	  }
 	  break;

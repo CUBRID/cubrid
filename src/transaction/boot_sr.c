@@ -31,6 +31,7 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <fcntl.h>
 
 #if defined(SOLARIS)
 #include <netdb.h>
@@ -81,6 +82,8 @@
 #include "xasl_cache.h"
 #include "log_volids.hpp"
 #include "vacuum.h"
+#include "tde.h"
+#include "porting.h"
 
 #if defined(SERVER_MODE)
 #include "connection_sr.h"
@@ -124,6 +127,7 @@ struct boot_dbparm
   int vacuum_log_block_npages;	/* Number of pages for vacuum data file */
   VFID vacuum_data_vfid;	/* Vacuum data file identifier */
   VFID dropped_files_vfid;	/* Vacuum dropped files file identifier */
+  HFID tde_keyinfo_hfid;	/* Heap file where tde key info (TDE_KEYINFO) is stored */
 };
 
 enum remove_temp_vol_action
@@ -213,6 +217,8 @@ static INTL_CODESET boot_get_db_charset_from_header (THREAD_ENTRY * thread_p, co
 STATIC_INLINE int boot_db_parm_update_heap (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 
 static int boot_after_copydb (THREAD_ENTRY * thread_p);
+
+static int boot_generate_tde_keys (THREAD_ENTRY * thread_p);
 
 /*
  * bo_server) -set server's status, UP or DOWN
@@ -2061,6 +2067,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   char db_lang[LANG_MAX_LANGNAME + 1];
   char timezone_checksum[32 + 1];
   const TZ_DATA *tzd;
+  char *mk_path;
   int jsp_port;
   bool jsp;
 
@@ -2386,6 +2393,15 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     {
       goto error;
     }
+
+  error_code = tde_cipher_initialize (thread_p, &boot_Db_parm->tde_keyinfo_hfid,
+				      r_args == NULL ? NULL : r_args->keys_file_path);
+  if (error_code != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_LOAD_FAIL, 0);
+      error_code = NO_ERROR;
+    }
+
   /* we need to manually add root class HFID to cache */
   error_code =
     heap_cache_class_info (thread_p, &boot_Db_parm->rootclass_oid, &boot_Db_parm->rootclass_hfid, FILE_HEAP,
@@ -2892,8 +2908,157 @@ xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart, const cha
     }
   else
     {
+      if (tde_Cipher.is_loaded)
+	{
+	  if (boot_reset_mk_after_restart_from_backup (thread_p, r_args) != NO_ERROR)
+	    {
+	      return NULL_TRAN_INDEX;
+	    }
+	}
       return LOG_FIND_THREAD_TRAN_INDEX (thread_p);
     }
+}
+
+/*
+ * boot_reset_mk_after_restart_from_backup () - Reset after restarting from a backup volume
+ *
+ *  return          : Error code
+ *  thread_p (in)   : Thread entry
+ *  r_args(in)      : Restart argument structure contains various options
+ *
+ * There might be no proper master key after restoring database 
+ * even if we have a server mk file and the backup mk file (in the case of timed restore).
+ * 
+ * There are several cases but we simplify it into two case:
+ * (1) The master key set on the database can be found in the server _keys file
+ * (2) not (1), which means no server mk file or no master key in the server mk file.
+ *
+ * For (1), we do nothing.
+ * For (2), we copy backup mk file as the server mk file and set the first key in the key file
+ * as the master key for database.
+ */
+int
+boot_reset_mk_after_restart_from_backup (THREAD_ENTRY * thread_p, BO_RESTART_ARG * r_args)
+{
+  TDE_KEYINFO keyinfo;
+  char mk_path[PATH_MAX] = { 0, };
+  char mk_path_old[PATH_MAX] = { 0, };
+  char ctime_buf[CTIME_MAX];
+  unsigned char master_key[TDE_MASTER_KEY_LENGTH];
+  time_t created_time;
+  int mk_index;
+  int server_mk_vdes = NULL_VOLDES;
+  int backup_mk_vdes = NULL_VOLDES;
+  int err = NO_ERROR;
+
+  assert (tde_Cipher.is_loaded);
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  err = tde_get_keyinfo (thread_p, &keyinfo);
+  if (err != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  /* Check the mk file on the server */
+  tde_make_keys_file_fullname (mk_path, boot_db_full_name (), false);
+
+  server_mk_vdes = fileio_mount (thread_p, boot_db_full_name (), mk_path, LOG_DBTDE_KEYS_VOLID, 2, false);
+  if (server_mk_vdes != NULL_VOLDES && tde_validate_keys_file (server_mk_vdes))
+    {
+      err = tde_load_mk (server_mk_vdes, &keyinfo, master_key);
+      if (err == NO_ERROR)
+	{
+	  /* case (1): There is the master key in the server key file:
+	   * Nothing to do */
+	  goto exit;
+	}
+    }
+
+  /* 
+   * case (2):
+   * There isn't the key set on the database in the server key file,
+   * So we just copy the backup file as a new server key file 
+   * and set the first key in the file as the master key.
+   */
+
+  /* No need to mount. The mk file from backup is not accessed by others */
+  backup_mk_vdes = fileio_open (r_args->keys_file_path, O_RDWR, 0600);
+  if (backup_mk_vdes == NULL_VOLDES)
+    {
+      /* not expected. if it doens't exist, loading tde must have failed and this function shoudn't have been called. */
+      assert (false);
+      ASSERT_ERROR_AND_SET (err);
+      goto exit;
+    }
+
+  if (tde_validate_keys_file (backup_mk_vdes) == false)
+    {
+      /* not expected. if it is not valid, loading tde must have failed and this function shoudn't have been called. */
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_INVALID_KEYS_FILE, 1, mk_path);
+      err = ER_TDE_INVALID_KEYS_FILE;
+      goto exit;
+    }
+
+  err = tde_find_first_mk (backup_mk_vdes, &mk_index, master_key, &created_time);
+  if (err != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  /* if a server key file exists, move it */
+  if (server_mk_vdes != NULL_VOLDES)
+    {
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_TDE_RESTORE_KEY_FOUND_ONLY_FROM_BACKUP, 1, mk_path);
+
+      strcpy (mk_path_old, mk_path);
+      strcat (mk_path_old, "_old");
+      fileio_unformat_and_rename (thread_p, mk_path, mk_path_old);
+      server_mk_vdes = NULL_VOLDES;
+
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_TDE_RESTORE_MAKE_KEYS_FILE_OLD, 2, mk_path, mk_path_old);
+    }
+
+  err = tde_copy_keys_file (thread_p, mk_path, r_args->keys_file_path, false, false);
+  if (err != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_TDE_RESTORE_COPY_KEYS_FILE, 2, r_args->keys_file_path, mk_path);
+
+  err = tde_change_mk (thread_p, mk_index, master_key, created_time);
+  if (err != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  ctime_r (&keyinfo.created_time, ctime_buf);
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_TDE_RESTORE_CHANGE_MASTER_KEY, 3, keyinfo.mk_index, ctime_buf,
+	  mk_index);
+
+  if (xtran_server_commit (thread_p, false) != TRAN_UNACTIVE_COMMITTED)
+    {
+      ASSERT_ERROR ();
+      err = er_errid ();
+      goto exit;
+    }
+
+exit:
+  if (server_mk_vdes != NULL_VOLDES)
+    {
+      fileio_dismount (thread_p, server_mk_vdes);
+    }
+  if (backup_mk_vdes != NULL_VOLDES)
+    {
+      fileio_close (backup_mk_vdes);
+    }
+  return err;
 }
 
 /*
@@ -3770,13 +3935,14 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
 int
 xboot_backup (THREAD_ENTRY * thread_p, const char *backup_path, FILEIO_BACKUP_LEVEL backup_level,
 	      bool delete_unneeded_logarchives, const char *backup_verbose_file, int num_threads,
-	      FILEIO_ZIP_METHOD zip_method, FILEIO_ZIP_LEVEL zip_level, int skip_activelog, int sleep_msecs)
+	      FILEIO_ZIP_METHOD zip_method, FILEIO_ZIP_LEVEL zip_level, int skip_activelog, int sleep_msecs,
+	      bool separate_keys)
 {
   int error_code;
 
   error_code =
     logpb_backup (thread_p, boot_Db_parm->nvols, backup_path, backup_level, delete_unneeded_logarchives,
-		  backup_verbose_file, num_threads, zip_method, zip_level, skip_activelog, sleep_msecs);
+		  backup_verbose_file, num_threads, zip_method, zip_level, skip_activelog, sleep_msecs, separate_keys);
   return error_code;
 }
 
@@ -4850,6 +5016,14 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
       ASSERT_ERROR ();
       goto error;
     }
+
+  error_code = xheap_create (thread_p, &boot_Db_parm->tde_keyinfo_hfid, NULL, false);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
+
   error_code = heap_assign_address (thread_p, &boot_Db_parm->rootclass_hfid, NULL, &boot_Db_parm->rootclass_oid, 0);
   if (error_code != NO_ERROR)
     {
@@ -4968,6 +5142,12 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
     }
 
   error_code = tf_install_meta_classes ();
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  error_code = tde_initialize (thread_p, &boot_Db_parm->tde_keyinfo_hfid);
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -5092,6 +5272,11 @@ boot_remove_all_volumes (THREAD_ENTRY * thread_p, const char *db_fullname, const
 	  goto error_rem_allvols;
 	}
       error_code = boot_get_db_parm (thread_p, boot_Db_parm, boot_Db_parm_oid);
+      if (error_code != NO_ERROR)
+	{
+	  goto error_rem_allvols;
+	}
+      error_code = tde_cipher_initialize (thread_p, &boot_Db_parm->tde_keyinfo_hfid, NULL);
       if (error_code != NO_ERROR)
 	{
 	  goto error_rem_allvols;

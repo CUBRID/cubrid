@@ -1795,6 +1795,235 @@ heap_reclaim_addresses (const HFID * hfid)
 }
 
 /*
+ * file_apply_tde_to_class_files -
+ *
+ * return:
+ *
+ *   class_oid(in):
+ *
+ * NOTE:
+ */
+int
+file_apply_tde_to_class_files (const OID * class_oid)
+{
+#if defined(CS_MODE)
+  int error = ER_NET_CLIENT_DATA_RECEIVE;
+  int req_error;
+  char *ptr;
+  OR_ALIGNED_BUF (OR_OID_SIZE) a_request;
+  char *request;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+
+  request = OR_ALIGNED_BUF_START (a_request);
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  ptr = or_pack_oid (request, class_oid);
+  req_error =
+    net_client_request (NET_SERVER_FILE_APPLY_TDE_TO_CLASS_FILES, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      ptr = or_unpack_errcode (reply, &error);
+    }
+
+  return error;
+#else /* CS_MODE */
+  int success;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  success = xfile_apply_tde_to_class_files (thread_p, class_oid);
+
+  exit_server (*thread_p);
+
+  return success;
+#endif /* !CS_MODE */
+}
+
+#ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
+/*
+ * tde_get_data_keys -
+ *
+ * return:
+ *
+ *   dks(out):
+ *
+ * NOTE:
+ */
+int
+tde_get_data_keys ()
+{
+#if defined(CS_MODE)
+  int error = ER_NET_CLIENT_DATA_RECEIVE;
+  int req_error, area_size;
+  char *ptr;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply, *area;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  req_error =
+    net_client_request2 (NET_SERVER_TDE_GET_DATA_KEYS, NULL, 0, reply,
+			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
+  if (!req_error)
+    {
+      ptr = or_unpack_int (reply, &area_size);
+      ptr = or_unpack_int (ptr, &error);
+      if (area_size > 0)
+	{
+	  ptr = or_unpack_stream (area, (char *) tde_Cipher.data_keys.perm_key, TDE_DATA_KEY_LENGTH);
+	  ptr = or_unpack_stream (ptr, (char *) tde_Cipher.data_keys.temp_key, TDE_DATA_KEY_LENGTH);
+	  ptr = or_unpack_stream (ptr, (char *) tde_Cipher.data_keys.log_key, TDE_DATA_KEY_LENGTH);
+	}
+      free_and_init (area);
+    }
+
+  return error;
+#else /* CS_MODE */
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}
+#endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
+
+/*
+ * tde_get_mk_file_path -
+ *
+ * return:
+ *
+ *   dks(out):
+ *
+ * NOTE:
+ */
+int
+tde_get_mk_file_path (char *mk_path)
+{
+#if defined(CS_MODE)
+  int error = ER_NET_CLIENT_DATA_RECEIVE;
+  int req_error, area_size;
+  char *ptr;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply, *area;
+  char *path = NULL;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  req_error =
+    net_client_request2 (NET_SERVER_TDE_GET_MK_FILE_PATH, NULL, 0, reply,
+			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
+  if (!req_error)
+    {
+      ptr = or_unpack_int (reply, &area_size);
+      ptr = or_unpack_int (ptr, &error);
+      if (area_size > 0)
+	{
+	  ptr = or_unpack_string_nocopy (area, &path);
+	  strncpy (mk_path, path, DB_MAX_PATH_LENGTH);
+	}
+      free_and_init (area);
+    }
+
+  return error;
+#else /* CS_MODE */
+  tde_make_keys_file_fullname (mk_path, boot_db_full_name (), false);
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}
+
+/*
+ * tde_get_set_mk_info -
+ *
+ * return:
+ *
+ *   dks(out):
+ *
+ * NOTE:
+ */
+int
+tde_get_mk_info (int *mk_index, time_t * created_time, time_t * set_time)
+{
+#if defined(CS_MODE)
+  int error = ER_NET_CLIENT_DATA_RECEIVE;
+  int req_error, area_size;
+  char *ptr;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE + OR_BIGINT_SIZE + OR_BIGINT_SIZE) a_reply;
+  char *reply, *area;
+  char *path = NULL;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  req_error =
+    net_client_request (NET_SERVER_TDE_GET_MK_INFO, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      ptr = or_unpack_errcode (reply, &error);
+      ptr = or_unpack_int (ptr, mk_index);
+      ptr = or_unpack_int64 (ptr, created_time);
+      ptr = or_unpack_int64 (ptr, set_time);
+    }
+
+  return error;
+#else /* CS_MODE */
+  int success;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  success = xtde_get_mk_info (thread_p, mk_index, created_time, set_time);
+
+  exit_server (*thread_p);
+
+  return success;
+#endif /* !CS_MODE */
+}
+
+/*
+ * tde_change_mk_server -
+ *
+ * return:
+ *
+ *   dks(out):
+ *
+ * NOTE:
+ */
+int
+tde_change_mk_on_server (int mk_index)
+{
+#if defined(CS_MODE)
+  int error = ER_NET_CLIENT_DATA_RECEIVE;
+  int req_error;
+  char *ptr;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
+  char *request;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+
+  request = OR_ALIGNED_BUF_START (a_request);
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  ptr = or_pack_int (request, mk_index);
+  req_error =
+    net_client_request (NET_SERVER_TDE_CHANGE_MK_ON_SERVER, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      ptr = or_unpack_errcode (reply, &error);
+    }
+
+  return error;
+#else /* CS_MODE */
+  int success;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  success = xtde_change_mk_without_flock (thread_p, mk_index);
+
+  exit_server (*thread_p);
+
+  return success;
+#endif /* !CS_MODE */
+}
+
+/*
  * disk_get_total_numpages -
  *
  * return:
@@ -3597,7 +3826,7 @@ boot_unregister_client (int tran_index)
 int
 boot_backup (const char *backup_path, FILEIO_BACKUP_LEVEL backup_level, bool delete_unneeded_logarchives,
 	     const char *backup_verbose_file, int num_threads, FILEIO_ZIP_METHOD zip_method, FILEIO_ZIP_LEVEL zip_level,
-	     int skip_activelog, int sleep_msecs)
+	     int skip_activelog, int sleep_msecs, bool separate_keys)
 {
 #if defined(CS_MODE)
   int success = ER_FAILED;
@@ -3614,7 +3843,7 @@ boot_backup (const char *backup_path, FILEIO_BACKUP_LEVEL backup_level, bool del
 
   request_size = (length_const_string (backup_path, &strlen1) + OR_INT_SIZE + OR_INT_SIZE
 		  + length_const_string (backup_verbose_file, &strlen2) + OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE
-		  + OR_INT_SIZE + OR_INT_SIZE);
+		  + OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE);
 
   request = (char *) malloc (request_size);
   if (request == NULL)
@@ -3632,6 +3861,7 @@ boot_backup (const char *backup_path, FILEIO_BACKUP_LEVEL backup_level, bool del
   ptr = or_pack_int (ptr, zip_level);
   ptr = or_pack_int (ptr, skip_activelog);
   ptr = or_pack_int (ptr, sleep_msecs);
+  ptr = or_pack_int (ptr, separate_keys);
   req_error =
     net_client_request_with_callback (NET_SERVER_BO_BACKUP, request, request_size, reply,
 				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0, &rd1, &d1, &rd2, &d2, NULL,
@@ -3651,7 +3881,7 @@ boot_backup (const char *backup_path, FILEIO_BACKUP_LEVEL backup_level, bool del
   THREAD_ENTRY *thread_p = enter_server ();
 
   success = xboot_backup (thread_p, backup_path, backup_level, delete_unneeded_logarchives, backup_verbose_file,
-			  num_threads, zip_method, zip_level, skip_activelog, sleep_msecs);
+			  num_threads, zip_method, zip_level, skip_activelog, sleep_msecs, separate_keys);
 
   exit_server (*thread_p);
 

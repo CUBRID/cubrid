@@ -34,6 +34,7 @@
 #include "log_manager.h"
 #include "oid.h"
 #include "page_buffer.h"
+#include "tde.h"
 
 typedef enum
 {
@@ -181,6 +182,10 @@ extern int file_alloc_multiple (THREAD_ENTRY * thread_p, const VFID * vfid, FILE
 extern int file_alloc_sticky_first_page (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_init,
 					 void *f_init_args, VPID * vpid_out, PAGE_PTR * page_out);
 extern int file_get_sticky_first_page (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * vpid_out);
+extern int file_rv_set_tde_algorithm (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_get_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, PGBUF_LATCH_CONDITION fix_head_cond,
+				   TDE_ALGORITHM * tde_algo);
+extern int file_apply_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, const TDE_ALGORITHM tde_algo);
 extern int file_dealloc (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid, FILE_TYPE file_type_hint);
 
 extern int file_get_num_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid, int *n_user_pages_out);

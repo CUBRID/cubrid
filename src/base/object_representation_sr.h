@@ -231,6 +231,7 @@ struct or_class
 
 extern void or_class_rep_dir (RECDES * record, OID * rep_dir_p);
 extern void or_class_hfid (RECDES * record, HFID * hfid);
+extern void or_class_tde_algorithm (RECDES * record, TDE_ALGORITHM * tde_algo);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern void or_class_statistics (RECDES * record, OID * oid);
 extern int or_class_subclasses (RECDES * record, int *array_size, OID ** array_ptr);

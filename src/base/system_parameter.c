@@ -86,6 +86,7 @@
 #include "tz_support.h"
 #include "perf_monitor.h"
 #include "fault_injection.h"
+#include "tde.h"
 #if defined (SERVER_MODE)
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #endif // SERVER_MODE
@@ -476,6 +477,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_IO_TEMP_VOLUME_PATH "temp_volume_path"
 
+#define PRM_NAME_TDE_KEYS_FILE_PATH "tde_keys_file_path"
+
 #define PRM_NAME_IO_VOLUME_EXT_PATH "volume_extension_path"
 
 #define PRM_NAME_UNIQUE_ERROR_KEY_VALUE "print_key_value_on_unique_error"
@@ -679,6 +682,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_REPR_CACHE_LOG "er_log_repr_cache"
 #define PRM_NAME_ENABLE_NEW_LFHASH "new_lfhash"
 #define PRM_NAME_HEAP_INFO_CACHE_LOGGING "heap_info_cache_logging"
+#define PRM_NAME_TDE_DEFAULT_ALGORITHM "tde_default_algorithm"
 
 #define PRM_NAME_GENERAL_RESERVE_01 "general_reserve_01"
 
@@ -1714,6 +1718,10 @@ const char *PRM_IO_TEMP_VOLUME_PATH = "";
 static char *prm_io_temp_volume_path_default = NULL;
 static unsigned int prm_io_temp_volume_path_flag = 0;
 
+const char *PRM_TDE_KEYS_FILE_PATH = "";
+static char *prm_tde_keys_file_path_default = NULL;
+static unsigned int prm_tde_keys_file_path_flag = 0;
+
 const char *PRM_IO_VOLUME_EXT_PATH = "";
 static char *prm_io_volume_ext_path_default = NULL;
 static unsigned int prm_io_volume_ext_path_flag = 0;
@@ -2276,6 +2284,10 @@ static unsigned int prm_new_lfhash_flag = 0;
 bool PRM_HEAP_INFO_CACHE_LOGGING = false;
 static bool prm_heap_info_cache_logging_default = false;
 static unsigned int prm_heap_info_cache_logging_flag = 0;
+
+int PRM_TDE_DEFAULT_ALGORITHM = TDE_ALGORITHM_AES;
+static int prm_tde_default_algorithm = TDE_ALGORITHM_AES;
+static unsigned int prm_tde_default_algorithm_flag = 0;
 
 bool PRM_JAVA_STORED_PROCEDURE = false;
 static bool prm_java_stored_procedure_default = false;
@@ -5864,6 +5876,28 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  {PRM_ID_TDE_KEYS_FILE_PATH,
+   PRM_NAME_TDE_KEYS_FILE_PATH,
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT),
+   PRM_STRING,
+   &prm_tde_keys_file_path_flag,
+   (void *) &prm_tde_keys_file_path_default,
+   (void *) &PRM_TDE_KEYS_FILE_PATH,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_TDE_DEFAULT_ALGORITHM,
+   PRM_NAME_TDE_DEFAULT_ALGORITHM,
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER),
+   PRM_KEYWORD,
+   &prm_tde_default_algorithm_flag,
+   (void *) &prm_tde_default_algorithm,
+   (void *) &PRM_TDE_DEFAULT_ALGORITHM,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
   {PRM_ID_JAVA_STORED_PROCEDURE,
    PRM_NAME_JAVA_STORED_PROCEDURE,
    (PRM_FOR_SERVER),
@@ -6128,6 +6162,12 @@ static KEYVAL ha_repl_filter_type_words[] = {
   {"none", REPL_FILTER_NONE},
   {"include_table", REPL_FILTER_INCLUDE_TBL},
   {"exclude_table", REPL_FILTER_EXCLUDE_TBL}
+};
+
+static KEYVAL tde_algorithm_words[] = {
+  /* {"none", TDE_ALGORITHM_NONE}, */
+  {"aes", TDE_ALGORITHM_AES},
+  {"aria", TDE_ALGORITHM_ARIA}
 };
 
 static const char *compat_mode_values_PRM_ANSI_QUOTES[COMPAT_ORACLE + 2] = {
@@ -8072,6 +8112,10 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len, PRM_PRINT_MODE print
 	  keyvalp =
 	    prm_keyword (PRM_GET_INT (prm->value), NULL, ha_repl_filter_type_words, DIM (ha_repl_filter_type_words));
 	}
+      else if (intl_mbs_casecmp (prm->name, PRM_NAME_TDE_DEFAULT_ALGORITHM) == 0)
+	{
+	  keyvalp = prm_keyword (PRM_GET_INT (prm->value), NULL, tde_algorithm_words, DIM (tde_algorithm_words));
+	}
       else
 	{
 	  assert (false);
@@ -8367,6 +8411,10 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf, size_
       else if (intl_mbs_casecmp (prm->name, PRM_NAME_HA_REPL_FILTER_TYPE) == 0)
 	{
 	  keyvalp = prm_keyword (value.i, NULL, ha_repl_filter_type_words, DIM (ha_repl_filter_type_words));
+	}
+      else if (intl_mbs_casecmp (prm->name, PRM_NAME_TDE_DEFAULT_ALGORITHM) == 0)
+	{
+	  keyvalp = prm_keyword (value.i, NULL, tde_algorithm_words, DIM (tde_algorithm_words));
 	}
       else
 	{
@@ -9570,6 +9618,10 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, SY
 	else if (intl_mbs_casecmp (prm->name, PRM_NAME_HA_REPL_FILTER_TYPE) == 0)
 	  {
 	    keyvalp = prm_keyword (-1, value, ha_repl_filter_type_words, DIM (ha_repl_filter_type_words));
+	  }
+	else if (intl_mbs_casecmp (prm->name, PRM_NAME_TDE_DEFAULT_ALGORITHM) == 0)
+	  {
+	    keyvalp = prm_keyword (-1, value, tde_algorithm_words, DIM (tde_algorithm_words));
 	  }
 	else
 	  {

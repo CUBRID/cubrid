@@ -1872,6 +1872,12 @@ boot_define_class (MOP class_mop)
       return error_code;
     }
 
+  error_code = smt_add_attribute (def, "tde_algorithm", "integer", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
   sprintf (domain_string, "sequence of %s", CT_CLASS_NAME);
 
   error_code = smt_add_attribute (def, "sub_classes", domain_string, NULL);
@@ -4098,6 +4104,7 @@ boot_define_view_class (void)
     {"owner_name", "varchar(255)"},
     {"class_type", "varchar(6)"},
     {"is_system_class", "varchar(3)"},
+    {"tde_algorithm", "varchar(32)"},
     {"partitioned", "varchar(3)"},
     {"is_reuse_oid_class", "varchar(3)"},
     {"collation", "varchar(32)"},
@@ -4129,6 +4136,7 @@ boot_define_view_class (void)
 	   "SELECT [c].[class_name], CAST([c].[owner].[name] AS VARCHAR(255)),"
 	   " CASE [c].[class_type] WHEN 0 THEN 'CLASS' WHEN 1 THEN 'VCLASS' ELSE 'UNKNOW' END,"
 	   " CASE WHEN MOD([c].[is_system_class], 2) = 1 THEN 'YES' ELSE 'NO' END,"
+	   " CASE [c].[tde_algorithm] WHEN 0 THEN 'NONE' WHEN 1 THEN 'AES' WHEN 2 THEN 'ARIA' END,"
 	   " CASE WHEN [c].[sub_classes] IS NULL THEN 'NO' ELSE NVL((SELECT 'YES'"
 	   " FROM [%s] [p] WHERE [p].[class_of] = [c] and [p].[pname] IS NULL), 'NO') END,"
 	   " CASE WHEN MOD([c].[is_system_class] / 8, 2) = 1 THEN 'YES' ELSE 'NO' END,"

@@ -78,6 +78,8 @@ struct log_append_info
   LOG_LSA prev_lsa;		/* Address of last append log record */
   LOG_PAGE *log_pgptr;		/* The log page which is fixed */
 
+  bool appending_page_tde_encrypted;  /* true if a newly appended page has to be tde-encrypted */
+
   log_append_info ();
   log_append_info (const log_append_info &other);
 
@@ -90,6 +92,8 @@ struct log_prior_node
 {
   LOG_RECORD_HEADER log_header;
   LOG_LSA start_lsa;		/* for assertion */
+
+  bool tde_encrypted;   /* whether the log page which'll contain this node has to be encrypted */
 
   /* data header info */
   int data_header_length;
@@ -153,6 +157,8 @@ LOG_PRIOR_NODE *prior_lsa_alloc_and_copy_crumbs (THREAD_ENTRY *thread_p, LOG_REC
     const LOG_CRUMB *rcrumbs);
 LOG_LSA prior_lsa_next_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, log_tdes *tdes);
 LOG_LSA prior_lsa_next_record_with_lock (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, log_tdes *tdes);
+int prior_set_tde_encrypted (log_prior_node *node, LOG_RCVINDEX recvindex);
+bool prior_is_tde_encrypted (const log_prior_node *node);
 void log_append_init_zip ();
 void log_append_final_zip ();
 

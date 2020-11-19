@@ -1314,8 +1314,25 @@ $ LOADDB
 1245 Loading class attributes updates from object files is not supported in CS mode.
 1246 Cannot get address and canonical name for ("%1$s") in /etc/hosts. Please check permission of the file or if there is the hostname.
 1247 The time(%1$s) specified must be after the time(%2$s) of the specified backup.
+1248 Invalid Key file : %1$s
+1249 Cannot find the key (index: %1$d).
+1250 The master key set on the database and what is given don't match. The key index set on the database: %1$d
+1251 Error while TDE-encrypting.
+1252 Error while TDE-decrypting.
+1253 TDE Module is not loaded.
+1254 Cannot create a key.
+1255 Cannot load TDE module. You can't use TDE feature.\n\
+Check the path of the key file (_keys) and make sure that it includes proper key.
+1256 Cannot copy key file (_keys). You can't use TDE feature on the copied database.
+1257 Cannot backup key file (_keys). You can't use TDE feature on the restored database based on this backup volume.
+1258 Cannot find the key set on the database from %1$s. The key file from backup volume is going to be used.
+1259 Rename the key file from "%1$s" to "%2$s".
+1260 Copy the key file "%1$s" to "%2$s".
+1261 Cannot find the key at the time to restore (key index: %1$d, created time: %2$s). Set the key (key index: %3$d) for the database.
+1262 The key file is full.
+1263 It fails to TDE-encrypt the log page (pageid: %1$lld). It won't be tried to encrypt this page any longer.
 
-1248 Last Error
+1264 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

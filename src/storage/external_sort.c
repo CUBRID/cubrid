@@ -149,6 +149,8 @@ struct sort_param
   VFID multipage_file;		/* Temporary file for multi page sorting records */
   FILE_CONTENTS file_contents[2 * SORT_MAX_HALF_FILES];	/* Contents of each temporary file */
 
+  bool tde_encrypted;		/* whether related temp files are encrypted (TDE) or not */
+
   VOL_LIST vol_list;		/* Temporary volume information list */
   char *internal_memory;	/* Internal_memory used for internal sorting phase and as input/output buffers for temp
 				 * files during merging phase */
@@ -256,7 +258,8 @@ static int sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * so
 static int sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param);
 static int sort_get_avg_numpages_of_nonempty_tmpfile (SORT_PARAM * sort_param);
 static void sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param);
-static int sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est, bool force_alloc);
+static int sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est, bool force_alloc,
+			      bool tde_encrypted);
 
 static int sort_write_area (THREAD_ENTRY * thread_p, VFID * vfid, int first_page, INT32 num_pages, char *area_start);
 static int sort_read_area (THREAD_ENTRY * thread_p, VFID * vfid, int first_page, INT32 num_pages, char *area_start);
@@ -1335,11 +1338,14 @@ sort_run_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, char **base, lo
  *               returning the first K elements.
  *               Parameter: -1 if not to be used, > 0 if it should be taken
  *               into account. Zero is a reserved value.
+ *   includes_tde_class(in): whether tde-configured class data is included or not,
+ *                           it determines whehter internal temp files are 
+ *                           encrypted or not.
  */
 int
 sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GET_FUNC * get_fn, void *get_arg,
 	       SORT_PUT_FUNC * put_fn, void *put_arg, SORT_CMP_FUNC * cmp_fn, void *cmp_arg, SORT_DUP_OPTION option,
-	       int limit)
+	       int limit, bool includes_tde_class)
 {
   int error = NO_ERROR;
   SORT_PARAM *sort_param = NULL;
@@ -1468,12 +1474,18 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
   sort_param->tmp_file_pgs = CEIL_PTVDIV (input_pages, sort_param->half_files);
   sort_param->tmp_file_pgs = MAX (1, sort_param->tmp_file_pgs);
 
+  sort_param->tde_encrypted = includes_tde_class;
+
   sort_param->px_height_max = 0;	/* init */
   sort_param->px_array_size = 1;	/* init */
 
 #if 1				/* TODO - currently, disable parallelism */
   prm_enable_sort_parallel = false;
 #endif
+
+#if !defined(NDEBUG)
+  er_log_debug (ARG_FILE_LINE, "TDE: sort_listfile(): tde_encrypted = %d\n", sort_param->tde_encrypted);
+#endif /* !NDEBUG */
 
 #if defined(SERVER_MODE)
   if (prm_enable_sort_parallel == true)
@@ -1519,7 +1531,8 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
 
       for (i = sort_param->half_files; i < sort_param->tot_tempfiles; i++)
 	{
-	  error = sort_add_new_file (thread_p, &(sort_param->temp[i]), file_pg_cnt_est, true);
+	  error =
+	    sort_add_new_file (thread_p, &(sort_param->temp[i]), file_pg_cnt_est, true, sort_param->tde_encrypted);
 	  if (error != NO_ERROR)
 	    {
 	      goto cleanup;
@@ -2422,12 +2435,23 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
 	      /* If necessary create the multipage_file */
 	      if (sort_param->multipage_file.volid == NULL_VOLID)
 		{
+		  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
 		  /* Create the multipage file */
 		  sort_param->multipage_file.volid = sort_param->temp[0].volid;
 
 		  error = file_create_temp (thread_p, 1, &sort_param->multipage_file);
 		  if (error != NO_ERROR)
 		    {
+		      ASSERT_ERROR ();
+		      goto exit_on_error;
+		    }
+		  if (sort_param->tde_encrypted)
+		    {
+		      tde_algo = (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_DEFAULT_ALGORITHM);
+		    }
+		  if (file_apply_tde_algorithm (thread_p, &sort_param->multipage_file, tde_algo) != NO_ERROR)
+		    {
+		      file_temp_retire (thread_p, &sort_param->multipage_file);
 		      ASSERT_ERROR ();
 		      goto exit_on_error;
 		    }
@@ -2675,7 +2699,9 @@ sort_run_flush (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, int out_file, 
   /* Make sure the the temp file indexed by out_file has been created; if not, create it now. */
   if (sort_param->temp[out_file].volid == NULL_VOLID)
     {
-      error = sort_add_new_file (thread_p, &sort_param->temp[out_file], sort_param->tmp_file_pgs, false);
+      error =
+	sort_add_new_file (thread_p, &sort_param->temp[out_file], sort_param->tmp_file_pgs, false,
+			   sort_param->tde_encrypted);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -4436,11 +4462,13 @@ sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
  *   vfid(in): Set to the created file identifier
  *   file_pg_cnt_est(in): Estimated file page count
  *   force_alloc(in): Allocate file pages now ?
+ *   tde_encrypted(in): whether the file has to be encrypted or not for TDE
  */
 static int
-sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est, bool force_alloc)
+sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est, bool force_alloc, bool tde_encrypted)
 {
   VPID new_vpid;
+  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
   int ret = NO_ERROR;
 
   /* todo: sort file is a case I missed that seems to use file_find_nthpages. I don't know if it can be optimized to
@@ -4456,6 +4484,19 @@ sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est, bo
     {
       assert_release (false);
       return ER_FAILED;
+    }
+  if (tde_encrypted)
+    {
+      tde_algo = (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_DEFAULT_ALGORITHM);
+    }
+
+  ret = file_apply_tde_algorithm (thread_p, vfid, tde_algo);
+  if (ret != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      file_temp_retire (thread_p, vfid);
+      VFID_SET_NULL (vfid);
+      return ret;
     }
 
   if (force_alloc == false)
@@ -4503,7 +4544,13 @@ sort_write_area (THREAD_ENTRY * thread_p, VFID * vfid, int first_page, INT32 num
   INT32 page_no;
   int i;
   int ret = NO_ERROR;
+  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
 
+  ret = file_get_tde_algorithm (thread_p, vfid, PGBUF_UNCONDITIONAL_LATCH, &tde_algo);
+  if (ret != NO_ERROR)
+    {
+      return ret;
+    }
   /* initializations */
   page_no = first_page;
 
@@ -4520,7 +4567,7 @@ sort_write_area (THREAD_ENTRY * thread_p, VFID * vfid, int first_page, INT32 num
 	  ASSERT_ERROR ();
 	  return ret;
 	}
-      if (pgbuf_copy_from_area (thread_p, &vpid, 0, DB_PAGESIZE, page_ptr, true) == NULL)
+      if (pgbuf_copy_from_area (thread_p, &vpid, 0, DB_PAGESIZE, page_ptr, true, tde_algo) == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (ret);
 	  return ret;

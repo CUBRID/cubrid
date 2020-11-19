@@ -88,7 +88,8 @@ typedef enum
   MSGCAT_UTIL_SET_RESTORESLAVE = 53,
   MSGCAT_UTIL_SET_DELVOLDB = 54,
   MSGCAT_UTIL_SET_VACUUMDB = 55,
-  MSGCAT_UTIL_SET_CHECKSUMDB = 56
+  MSGCAT_UTIL_SET_CHECKSUMDB = 56,
+  MSGCAT_UTIL_SET_TDE = 57,
 } MSGCAT_UTIL_SET;
 
 /* Message id in the set MSGCAT_UTIL_SET_GENERIC */
@@ -137,6 +138,9 @@ typedef enum
 {
   BACKUPDB_INVALID_THREAD_NUM_OPT = 30,
   BACKUPDB_INVALID_PATH = 31,
+  BACKUPDB_USING_SEPARATE_KEYS = 32,
+  BACKUPDB_NOT_USING_SEPARATE_KEYS = 33,
+  BACKUPDB_FIFO_KEYS_NOT_SUPPORTED = 34,
   BACKUPDB_MSG_USAGE = 60
 } MSGCAT_BACKUPDB_MSG;
 
@@ -686,6 +690,19 @@ typedef enum
   CHECKSUMDB_MSG_USAGE = 60
 } MSGCAT_CHECKSUMDB_MSG;
 
+/* Message id in the set MSGCAT_UTIL_SET_TDE */
+typedef enum
+{
+  TDE_MSG_DBA_PASSWORD = 21,
+  TDE_MSG_NO_SET_MK_INFO = 25,
+  TDE_MSG_MK_CHANGING = 26,
+  TDE_MSG_MK_CHANGED = 27,
+  TDE_MSG_MK_SET_ON_DATABASE_DELETE = 28,
+  TDE_MSG_MK_DELETED = 29,
+  TDE_MSG_MK_GENERATED = 30,
+  TDE_MSG_USAGE = 60
+} MSGCAT_TDE_MSG;
+
 typedef void *DSO_HANDLE;
 
 typedef enum
@@ -731,6 +748,7 @@ typedef enum
   RESTORESLAVE,
   VACUUMDB,
   CHECKSUMDB,
+  TDE,
   LOGFILEDUMP,
 } UTIL_INDEX;
 
@@ -936,6 +954,7 @@ typedef struct _ha_config
 #define UTIL_OPTION_RESTORESLAVE                "restoreslave"
 #define UTIL_OPTION_VACUUMDB			"vacuumdb"
 #define UTIL_OPTION_CHECKSUMDB			"checksumdb"
+#define UTIL_OPTION_TDE			        "tde"
 
 /* createdb option list */
 #define CREATE_PAGES_S                          'p'
@@ -1034,6 +1053,9 @@ typedef struct _ha_config
 #define BACKUP_EXCEPT_ACTIVE_LOG_L              "except-active-log"
 #define BACKUP_SLEEP_MSECS_S                    10600
 #define BACKUP_SLEEP_MSECS_L                    "sleep-msecs"
+#define BACKUP_SEPARATE_KEYS_S                  'k'
+#define BACKUP_SEPARATE_KEYS_L                  "separate-keys"
+
 
 /* restoredb option list */
 #define RESTORE_UP_TO_DATE_S                    'd'
@@ -1050,6 +1072,8 @@ typedef struct _ha_config
 #define RESTORE_OUTPUT_FILE_L                   "output-file"
 #define RESTORE_USE_DATABASE_LOCATION_PATH_S    'u'
 #define RESTORE_USE_DATABASE_LOCATION_PATH_L    "use-database-location-path"
+#define RESTORE_KEYS_FILE_PATH_S                'k'
+#define RESTORE_KEYS_FILE_PATH_L                "keys-file-path"
 
 /* addvoldb option list */
 #define ADDVOL_VOLUME_NAME_S                    'n'
@@ -1540,6 +1564,8 @@ typedef struct _ha_config
 #define RESTORESLAVE_OUTPUT_FILE_L                   "output-file"
 #define RESTORESLAVE_USE_DATABASE_LOCATION_PATH_S    'u'
 #define RESTORESLAVE_USE_DATABASE_LOCATION_PATH_L    "use-database-location-path"
+#define RESTORESLAVE_KEYS_FILE_PATH_S                'k'
+#define RESTORESLAVE_KEYS_FILE_PATH_L                "keys-file-path"
 
 /* vacuumdb option list */
 #define VACUUM_SA_MODE_S                         'S'
@@ -1568,6 +1594,24 @@ typedef struct _ha_config
 #define CHECKSUM_REPORT_ONLY_L			"report-only"
 #define CHECKSUM_SCHEMA_ONLY_S			14002
 #define CHECKSUM_SCHEMA_ONLY_L			"schema-only"
+
+/* tde option list */
+#define TDE_GENERATE_KEY_S    'n'
+#define TDE_GENERATE_KEY_L    "generate-new-key"
+#define TDE_SHOW_KEYS_S       's'
+#define TDE_SHOW_KEYS_L       "show-keys"
+#define TDE_PRINT_KEY_VALUE_S 14000
+#define TDE_PRINT_KEY_VALUE_L "print-value"
+#define TDE_SA_MODE_S         'S'
+#define TDE_SA_MODE_L         "SA-mode"
+#define TDE_CS_MODE_S         14001
+#define TDE_CS_MODE_L         "CS-mode"
+#define TDE_CHANGE_KEY_S      'c'
+#define TDE_CHANGE_KEY_L      "change-key"
+#define TDE_DELETE_KEY_S      'd'
+#define TDE_DELETE_KEY_L      "delete-key"
+#define TDE_DBA_PASSWORD_S    'p'
+#define TDE_DBA_PASSWORD_L    "dba-password"
 
 #if defined(WINDOWS)
 #define LIB_UTIL_CS_NAME                "cubridcs.dll"
@@ -1701,6 +1745,7 @@ extern "C"
   extern int restoreslave (UTIL_FUNCTION_ARG * arg_map);
   extern int vacuumdb (UTIL_FUNCTION_ARG * arg_map);
   extern int checksumdb (UTIL_FUNCTION_ARG * arg_map);
+  extern int tde (UTIL_FUNCTION_ARG * arg_map);
 
   extern void util_admin_usage (const char *argv0);
   extern void util_admin_version (const char *argv0);
