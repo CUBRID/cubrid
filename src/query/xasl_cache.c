@@ -1721,7 +1721,7 @@ xcache_invalidate_qcaches (THREAD_ENTRY * thread_p, const OID * oid)
 		  finished = true;
 		  break;
 		}
-	      if (qfile_get_list_cache_number_of_entries (thread_p, xcache_entry->list_ht_no) == 0)
+	      if (qfile_get_list_cache_number_of_entries (xcache_entry->list_ht_no) == 0)
 		{
 		  xcache_entry->list_ht_no = -1;
 		}

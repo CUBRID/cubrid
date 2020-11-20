@@ -355,7 +355,6 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
   query_p->er_msg = NULL;
   query_p->query_flag = 0;
   query_p->is_holdable = false;
-  query_p->is_preserved = false;
   query_p->includes_tde_class = false;
 
 #if defined (NDEBUG)

@@ -5199,7 +5199,7 @@ qfile_clear_list_cache (THREAD_ENTRY * thread_p, int list_ht_no, bool release)
       er_log_debug (ARG_FILE_LINE, "ls_clear_list_cache: failed to delete all entries\n");
     }
 
-  if (qfile_List_cache.list_hts[list_ht_no]->nentries == 0)
+  if (qfile_get_list_cache_number_of_entries(list_ht_no) == 0)
     {
       (void) mht_clear (qfile_List_cache.list_hts[list_ht_no], NULL, NULL);
       /* release assigned memory hash table */
@@ -6772,7 +6772,7 @@ qfile_update_qlist_count (THREAD_ENTRY * thread_p, const QFILE_LIST_ID * list_p,
 }
 
 int
-qfile_get_list_cache_number_of_entries (THREAD_ENTRY * thread_p, int ht_no)
+qfile_get_list_cache_number_of_entries (int ht_no)
 {
   assert_release (ht_no >= 0);
 

@@ -138,7 +138,6 @@ struct qmgr_query_entry
   QMGR_QUERY_STATUS query_status;
   QUERY_FLAG query_flag;
   bool is_holdable;		/* true if this query should be available */
-  bool is_preserved;		/* true if query was preserved in session, false otherwise. */
   bool includes_tde_class;	/* true if this query include some tde class. It is from xasl node */
 };
 
