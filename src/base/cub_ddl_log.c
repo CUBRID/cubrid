@@ -828,7 +828,7 @@ cub_create_log_mgs (char *msg)
 {
   int retval = 0;
   char result[20] = { 0 };
-  struct timeval exec_end;
+  struct timeval exec_end, log_time;
   int elapsed_sec = 0;
   int elapsed_msec = 0;
 
@@ -879,6 +879,12 @@ cub_create_log_mgs (char *msg)
     }
   else
     {
+      if (ddl_audit_handle->auto_commit_mode == FALSE)
+	{
+	  gettimeofday (&log_time, NULL);
+	  cub_get_time_string (ddl_audit_handle->execute_start_time, &log_time);
+	}
+
       if (ddl_audit_handle->err_code < 0)
 	{
 	  snprintf (result, sizeof (result), "ERROR:%d", ddl_audit_handle->err_code);
