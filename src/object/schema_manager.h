@@ -38,6 +38,7 @@
 #include "class_object.h"	/* for SM_CLASS */
 #include "schema_template.h"	/* template interface */
 #include "trigger_manager.h"	/* for TR_EVENT_TYPE */
+#include "tde.h"
 
 /*
  * This is NOT the "object" class but rather functions more like
@@ -137,6 +138,8 @@ extern int sm_check_reuse_oid_class (MOP op);
 extern int sm_is_partitioned_class (MOP op);
 extern int sm_partitioned_class_type (DB_OBJECT * classop, int *partition_type, char *keyattr, MOP ** partitions);
 extern int sm_set_class_flag (MOP classop, SM_CLASS_FLAG flag, int onoff);
+extern int sm_set_class_tde_algorithm (MOP classop, TDE_ALGORITHM tde_algo);
+extern int sm_get_class_tde_algorithm (MOP classop, TDE_ALGORITHM * tde_algo);
 extern int sm_get_class_flag (MOP op, SM_CLASS_FLAG flag);
 extern int sm_set_class_collation (MOP classop, int collation_id);
 extern int sm_get_class_collation (MOP classop, int *collation_id);

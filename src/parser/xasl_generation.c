@@ -310,6 +310,7 @@ typedef struct xasl_supp_info
   int *tcard_list;		/* list of #pages of the class OIDs */
   int n_oid_list;		/* number OIDs in the list */
   int oid_list_size;		/* size of the list */
+  int includes_tde_class;	/* whether there are some tde class in class_oid_list: 0 or 1 */
 } XASL_SUPP_INFO;
 
 typedef struct uncorr_info
@@ -327,7 +328,7 @@ typedef struct corr_info
 FILE *query_Plan_dump_fp = NULL;
 char *query_Plan_dump_filename = NULL;
 
-static XASL_SUPP_INFO xasl_Supp_info = { NULL, NULL, NULL, NULL, 0, 0 };
+static XASL_SUPP_INFO xasl_Supp_info = { NULL, NULL, NULL, NULL, 0, 0, 0 };
 
 static const int OID_LIST_GROWTH = 10;
 
@@ -405,7 +406,8 @@ static XASL_NODE *pt_plan_schema (PARSER_CONTEXT * parser, PT_NODE * select_node
 static XASL_NODE *parser_generate_xasl_proc (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * query_list);
 static PT_NODE *parser_generate_xasl_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static int pt_spec_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * spec, OID ** oid_listp,
-					   int **lock_listp, int **tcard_listp, int *nump, int *sizep);
+					   int **lock_listp, int **tcard_listp, int *nump, int *sizep,
+					   int includes_tde_class);
 static int pt_serial_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * serial, OID ** oid_listp,
 					     int **lock_listp, int **tcard_listp, int *nump, int *sizep);
 static PT_NODE *parser_generate_xasl_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
@@ -598,6 +600,7 @@ pt_init_xasl_supp_info ()
     }
 
   xasl_Supp_info.n_oid_list = xasl_Supp_info.oid_list_size = 0;
+  xasl_Supp_info.includes_tde_class = 0;
 }
 
 
@@ -17251,10 +17254,11 @@ parser_generate_xasl_proc (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * qu
  *   tcard_listp(out):
  *   nump(out):
  *   sizep(out):
+ *   includes_tde_class(out):
  */
 static int
 pt_spec_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * spec, OID ** oid_listp, int **lock_listp,
-				int **tcard_listp, int *nump, int *sizep)
+				int **tcard_listp, int *nump, int *sizep, int *includes_tde_class)
 {
   PT_NODE *flat = NULL;
   OID *oid = NULL, *v_oid = NULL, *o_list = NULL;
@@ -17339,10 +17343,17 @@ pt_spec_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * spec, O
 		    {
 		      if (au_fetch_class (class_obj, &smclass, AU_FETCH_READ, AU_SELECT) == NO_ERROR)
 			{
-			  if (smclass && smclass->stats)
+			  if (smclass)
 			    {
-			      assert (smclass->stats->heap_num_pages >= 0);
-			      *(t_list + o_num - 1) = smclass->stats->heap_num_pages;
+			      if (smclass->tde_algorithm != TDE_ALGORITHM_NONE)
+				{
+				  *includes_tde_class = 1;
+				}
+			      if (smclass->stats)
+				{
+				  assert (smclass->stats->heap_num_pages >= 0);
+				  *(t_list + o_num - 1) = smclass->stats->heap_num_pages;
+				}
 			    }
 			}
 		      else
@@ -17909,6 +17920,7 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
   MOBJ class_;
   OID *class_oid = NULL;
   DB_OBJECT *class_obj = NULL;
+  SM_CLASS *smclass = NULL;
   HFID *hfid = NULL;
   int num_vals, num_default_expr;
   int a, i, has_uniques;
@@ -18026,6 +18038,10 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  (void) memcpy (xasl->class_oid_list, xasl_Supp_info.class_oid_list, sizeof (OID) * n);
 	  (void) memcpy (xasl->class_locks, xasl_Supp_info.class_locks, sizeof (int) * n);
 	  (void) memcpy (xasl->tcard_list, xasl_Supp_info.tcard_list, sizeof (int) * n);
+	  if (xasl_Supp_info.includes_tde_class == 1)
+	    {
+	      XASL_SET_FLAG (xasl, XASL_INCLUDES_TDE_CLASS);
+	    }
 	}
 
       pt_init_xasl_supp_info ();
@@ -18220,6 +18236,7 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  (void) memcpy (xasl->class_oid_list + 1, aptr->class_oid_list, sizeof (OID) * aptr->n_oid_list);
 	  (void) memcpy (xasl->class_locks + 1, aptr->class_locks, sizeof (int) * aptr->n_oid_list);
 	  (void) memcpy (xasl->tcard_list + 1, aptr->tcard_list, sizeof (int) * aptr->n_oid_list);
+	  XASL_SET_FLAG (xasl, aptr->flag & XASL_INCLUDES_TDE_CLASS);
 
 	  /* set spec oid */
 	  xasl->class_oid_list[0] = insert->class_oid;
@@ -18254,6 +18271,17 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  xasl->class_oid_list[0] = insert->class_oid;
 	  xasl->class_locks[0] = (int) IX_LOCK;
 	  xasl->tcard_list[0] = XASL_CLASS_NO_TCARD;	/* init #pages */
+	}
+
+      assert (locator_is_class (class_obj, DB_FETCH_QUERY_READ) > 0);
+      (void) au_fetch_class (class_obj, &smclass, AU_FETCH_READ, AU_SELECT);
+
+      if (smclass)
+	{
+	  if (smclass->tde_algorithm != TDE_ALGORITHM_NONE)
+	    {
+	      XASL_SET_FLAG (xasl, XASL_INCLUDES_TDE_CLASS);
+	    }
 	}
     }
 
@@ -20043,6 +20071,9 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  xasl->aptr_list->tcard_list = NULL;
 
 	  xasl->dbval_cnt = xasl->aptr_list->dbval_cnt;
+
+	  XASL_SET_FLAG (xasl, xasl->aptr_list->flag & XASL_INCLUDES_TDE_CLASS);
+	  XASL_CLEAR_FLAG (xasl->aptr_list, XASL_INCLUDES_TDE_CLASS);
 	}
     }
   if (xasl)
@@ -20872,6 +20903,9 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
       xasl->aptr_list->tcard_list = NULL;
 
       xasl->dbval_cnt = xasl->aptr_list->dbval_cnt;
+
+      XASL_SET_FLAG (xasl, xasl->aptr_list->flag & XASL_INCLUDES_TDE_CLASS);
+      XASL_CLEAR_FLAG (xasl->aptr_list, XASL_INCLUDES_TDE_CLASS);
     }
 
   xasl->query_alias = statement->alias_print;
@@ -21225,7 +21259,7 @@ parser_generate_xasl_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
 	  if (xasl
 	      && pt_spec_to_xasl_class_oid_list (parser, node->info.query.q.select.from, &info->class_oid_list,
 						 &info->class_locks, &info->tcard_list, &info->n_oid_list,
-						 &info->oid_list_size) < 0)
+						 &info->oid_list_size, &info->includes_tde_class) < 0)
 	    {
 	      /* might be memory allocation error */
 	      PT_INTERNAL_ERROR (parser, "generate xasl");
@@ -21364,6 +21398,7 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
       xasl->class_oid_list = NULL;
       xasl->class_locks = NULL;
       xasl->tcard_list = NULL;
+      XASL_CLEAR_FLAG (xasl, XASL_INCLUDES_TDE_CLASS);
 
       if ((n = xasl_Supp_info.n_oid_list) > 0 && (xasl->class_oid_list = regu_oid_array_alloc (n))
 	  && (xasl->class_locks = regu_int_array_alloc (n)) && (xasl->tcard_list = regu_int_array_alloc (n)))
@@ -21372,6 +21407,10 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
 	  (void) memcpy (xasl->class_oid_list, xasl_Supp_info.class_oid_list, sizeof (OID) * n);
 	  (void) memcpy (xasl->class_locks, xasl_Supp_info.class_locks, sizeof (int) * n);
 	  (void) memcpy (xasl->tcard_list, xasl_Supp_info.tcard_list, sizeof (int) * n);
+	  if (xasl_Supp_info.includes_tde_class == 1)
+	    {
+	      XASL_SET_FLAG (xasl, XASL_INCLUDES_TDE_CLASS);
+	    }
 	}
 
       xasl->dbval_cnt = parser->dbval_cnt;
@@ -22499,6 +22538,11 @@ parser_generate_do_stmt_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
   if (er_errid () != NO_ERROR)
     {
       return NULL;
+    }
+
+  if (xasl->aptr_list != NULL)
+    {
+      XASL_SET_FLAG (xasl, xasl->aptr_list->flag & XASL_INCLUDES_TDE_CLASS);
     }
 
   xasl->outptr_list = pt_to_outlist (parser, node->info.do_.expr, NULL, UNBOX_AS_VALUE);
@@ -24698,6 +24742,9 @@ pt_to_merge_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_n
   /* set host variable count */
   xasl->dbval_cnt = parser->dbval_cnt;
 
+  /* set TDE flag */
+  XASL_SET_FLAG (xasl, xptr->flag & XASL_INCLUDES_TDE_CLASS);
+
   return xasl;
 }
 
@@ -25170,6 +25217,10 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
   aptr->tcard_list = NULL;
   xasl->dbval_cnt = aptr->dbval_cnt;
 
+  /* set TDE flag */
+  XASL_SET_FLAG (xasl, aptr->flag & XASL_INCLUDES_TDE_CLASS);
+  XASL_CLEAR_FLAG (aptr, XASL_INCLUDES_TDE_CLASS);
+
   /* fill in XASL cache related information */
   /* OID of the user who is creating this XASL */
   if ((oid = ws_identifier (db_get_user ())) != NULL)
@@ -25218,6 +25269,7 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
   MOBJ class_;
   OID *class_oid, *oid;
   DB_OBJECT *class_obj;
+  SM_CLASS *smclass = NULL;
   HFID *hfid;
   int num_vals, num_default_expr, a;
   int error = NO_ERROR;
@@ -25412,6 +25464,9 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
       OID_SET_NULL (&xasl->creator_oid);
     }
 
+  assert (locator_is_class (class_obj, DB_FETCH_QUERY_READ) > 0);
+  (void) au_fetch_class (class_obj, &smclass, AU_FETCH_READ, AU_SELECT);
+
   /* list of class OIDs used in this XASL */
   /* reserve spec oid space by 1+ */
   xasl->class_oid_list = regu_oid_array_alloc (1 + aptr->n_oid_list);
@@ -25441,6 +25496,17 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
   xasl->class_locks[0] = (int) IX_LOCK;
   xasl->tcard_list[0] = XASL_CLASS_NO_TCARD;	/* init #pages */
   xasl->dbval_cnt = aptr->dbval_cnt;
+
+  /* set TDE flag */
+  XASL_SET_FLAG (xasl, aptr->flag & XASL_INCLUDES_TDE_CLASS);
+
+  if (smclass)
+    {
+      if (smclass->tde_algorithm != TDE_ALGORITHM_NONE)
+	{
+	  XASL_SET_FLAG (xasl, XASL_INCLUDES_TDE_CLASS);
+	}
+    }
 
 cleanup:
   if (aptr_statement != NULL)

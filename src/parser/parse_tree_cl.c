@@ -55,6 +55,7 @@
 #include "string_buffer.hpp"
 #include "dbtype.h"
 #include "parser_allocator.hpp"
+#include "tde.h"
 
 #include <malloc.h>
 
@@ -7740,6 +7741,7 @@ static PARSER_VARCHAR *
 pt_print_table_option (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = NULL, *r1 = NULL;
+  const char *tde_algo_name;
 
   switch (p->info.table_option.option)
     {
@@ -7761,6 +7763,9 @@ pt_print_table_option (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TABLE_OPTION_COMMENT:
       q = pt_append_nulstring (parser, q, "comment = ");
       break;
+    case PT_TABLE_OPTION_ENCRYPT:
+      q = pt_append_nulstring (parser, q, "encrypt = ");
+      break;
     default:
       break;
     }
@@ -7776,6 +7781,17 @@ pt_print_table_option (PARSER_CONTEXT * parser, PT_NODE * p)
 	  assert (PT_IS_SIMPLE_CHAR_STRING_TYPE (p->info.table_option.val->type_enum));
 	  r1 = p->info.table_option.val->info.value.data_value.str;
 	  assert (r1 != NULL);
+	}
+      else if (p->info.table_option.option == PT_TABLE_OPTION_ENCRYPT)
+	{
+	  assert (p->info.table_option.val != NULL);
+	  assert (p->info.table_option.val->node_type == PT_VALUE);
+	  assert (p->info.table_option.val->type_enum == PT_TYPE_INTEGER);
+	  tde_algo_name = tde_get_algorithm_name ((TDE_ALGORITHM) p->info.table_option.val->info.value.data_value.i);
+	  if (tde_algo_name != NULL)
+	    {
+	      r1 = pt_append_bytes (parser, r1, tde_algo_name, strlen (tde_algo_name));
+	    }
 	}
       else
 	{

@@ -30,8 +30,24 @@
 #include "storage_common.h"
 #include "system.h"
 #include "transaction_global.hpp"
+#include "tde.h"
 
 #include <cstdint>
+
+/* Definitions for flags in LOG_HDRPAGE */
+
+/*
+ * TDE_ALGORITHM to be applied to the log page
+ * Set if any record in the page has to be tde-encrypted
+ */
+#define LOG_HDRPAGE_FLAG_ENCRYPTED_AES 0x1
+#define LOG_HDRPAGE_FLAG_ENCRYPTED_ARIA 0x2
+
+#define LOG_HDRPAGE_FLAG_ENCRYPTED_MASK 0x3
+
+#define LOG_IS_PAGE_TDE_ENCRYPTED(log_page_p) \
+  ((log_page_p)->hdr.flags & LOG_HDRPAGE_FLAG_ENCRYPTED_AES \
+   || (log_page_p)->hdr.flags & LOG_HDRPAGE_FLAG_ENCRYPTED_ARIA)
 
 const LOG_PAGEID LOGPB_HEADER_PAGE_ID = -9;     /* The first log page in the infinite log sequence. It is always kept
 						 * on the active portion of the log. Log records are not stored on this
@@ -52,7 +68,7 @@ struct log_hdrpage
 				 * is corrupted and an archive of that page does not exist. Instead of losing the whole
 				 * log because of such bad page, we could salvage the log starting at the offset
 				 * address, that is, at the next log record */
-  short dummy1;			/* Dummy field for 8byte align */
+  short flags;			/* flags */
   int checksum;			/* checksum - currently CRC32 is used to check log page consistency. */
 };
 
@@ -236,5 +252,4 @@ struct log_arv_header
   {
   }
 };
-
 #endif // !_LOG_STORAGE_HPP_

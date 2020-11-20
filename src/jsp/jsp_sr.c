@@ -56,32 +56,42 @@
 
 #if defined(sparc)
 #define JVM_LIB_PATH "jre/lib/sparc/client"
+#define JVM_LIB_PATH_JDK11 "lib/server"
 #elif defined(WINDOWS)
 #if __WORDSIZE == 32
 #define JVM_LIB_PATH_JDK "jre\\bin\\client"
 #define JVM_LIB_PATH_JRE "bin\\client"
+#define JVM_LIB_PATH_JDK11 ""	/* JDK 11 does not support for Windows x64 */
 #else
 #define JVM_LIB_PATH_JDK "jre\\bin\\server"
 #define JVM_LIB_PATH_JRE "bin\\server"
+#define JVM_LIB_PATH_JDK11 "bin\\server"
 #endif
 #elif defined(HPUX) && defined(IA64)
 #define JVM_LIB_PATH "jre/lib/IA64N/hotspot"
+#define JVM_LIB_PATH_JDK11 "lib/IA64N/server"
 #elif defined(HPUX) && !defined(IA64)
 #define JVM_LIB_PATH "jre/lib/PA_RISC2.0/hotspot"
+#define JVM_LIB_PATH_JDK11 "lib/PA_RISC2.0/server"
 #elif defined(AIX)
 #if __WORDSIZE == 32
 #define JVM_LIB_PATH "jre/bin/classic"
+#define JVM_LIB_PATH_JDK11 "lib/server"
 #elif __WORDSIZE == 64
 #define JVM_LIB_PATH "jre/lib/ppc64/classic"
+#define JVM_LIB_PATH_JDK11 "lib/server"
 #endif
 #elif defined(__i386) || defined(__x86_64)
 #if __WORDSIZE == 32
 #define JVM_LIB_PATH "jre/lib/i386/client"
+#define JVM_LIB_PATH_JDK11 "lib/server"
 #else
 #define JVM_LIB_PATH "jre/lib/amd64/server"
+#define JVM_LIB_PATH_JDK11 "lib/server"
 #endif
 #else /* ETC */
 #define JVM_LIB_PATH ""
+#define JVM_LIB_PATH_JDK11 ""
 #endif /* ETC */
 
 #if !defined(WINDOWS)
@@ -165,8 +175,11 @@ typedef jint (*CREATE_VM_FUNC) (JavaVM **, void **, void *);
 	(*ENV)->GetStringUTFLength(ENV, STRING)
 #endif
 
-JavaVM *jvm = NULL;
-jint sp_port = -1;
+static JavaVM *jvm = NULL;
+static jint sp_port = -1;
+// *INDENT-OFF*
+static std::string err_msgs;
+// *INDENT-ON*
 
 #if defined(WINDOWS)
 int get_java_root_path (char *path);
@@ -269,11 +282,30 @@ delay_load_hook (unsigned dliNotify, PDelayLoadInfo pdli)
     {
     case dliFailLoadLib:
       {
-	char *java_home = NULL, *tmp = NULL, *tail;
-	char jvm_lib_path[BUF_SIZE];
-	void *libVM;
+	char *java_home = NULL, *jvm_path = NULL, *tmp = NULL, *tail;
+	void *libVM = NULL;
 
+	jvm_path = getenv ("JVM_PATH");
 	java_home = getenv ("JAVA_HOME");
+
+	if (jvm_path)
+	  {
+	    err_msgs.append ("\n\tFailed to load libjvm from 'JVM_PATH' envirnment variable: ");
+	    err_msgs.append ("\n\t\t");
+	    err_msgs.append (jvm_path);
+
+	    libVM = LoadLibrary (jvm_path);
+	    if (libVM)
+	      {
+		fp = (FARPROC) (HMODULE) libVM;
+		return fp;
+	      }
+	  }
+	else
+	  {
+	    err_msgs.append ("\n\tFailed to get 'JVM_PATH' environment variable");
+	  }
+
 	tail = JVM_LIB_PATH_JDK;
 	if (java_home == NULL)
 	  {
@@ -290,13 +322,37 @@ delay_load_hook (unsigned dliNotify, PDelayLoadInfo pdli)
 
 	if (java_home)
 	  {
+	    err_msgs.append ("\n\tFailed to load libjvm from 'JAVA_HOME' environment variable: ");
+
+	    char jvm_lib_path[BUF_SIZE];
 	    sprintf (jvm_lib_path, "%s\\%s\\jvm.dll", java_home, tail);
+
+	    err_msgs.append ("\n\t\t");
+	    err_msgs.append (jvm_lib_path);
+
 	    libVM = LoadLibrary (jvm_lib_path);
 
 	    if (libVM)
 	      {
 		fp = (FARPROC) (HMODULE) libVM;
 	      }
+	    else
+	      {
+		tail = JVM_LIB_PATH_JDK11;
+
+		memset (jvm_lib_path, BUF_SIZE, 0);
+		sprintf (jvm_lib_path, "%s\\%s\\jvm.dll", java_home, tail);
+
+		err_msgs.append ("\n\t\t");
+		err_msgs.append (jvm_lib_path);
+
+		libVM = LoadLibrary (jvm_lib_path);
+		fp = (FARPROC) (HMODULE) libVM;
+	      }
+	  }
+	else
+	  {
+	    err_msgs.append ("\n\tFailed to get 'JAVA_HOME' environment variable");
 	  }
 
 	if (tmp)
@@ -328,7 +384,7 @@ delay_load_dll_exception_filter (PEXCEPTION_POINTERS pep)
     {
     case VcppException (ERROR_SEVERITY_ERROR, ERROR_MOD_NOT_FOUND):
     case VcppException (ERROR_SEVERITY_ERROR, ERROR_PROC_NOT_FOUND):
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_JVM_LIB_NOT_FOUND, 1, "Failed to load jvm.dll");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_JVM_LIB_NOT_FOUND, 1, err_msgs.c_str ());
       break;
 
     default:
@@ -348,38 +404,68 @@ delay_load_dll_exception_filter (PEXCEPTION_POINTERS pep)
  */
 
 static void *
-jsp_get_create_java_vm_function_ptr (void)
+jsp_get_create_java_vm_function_ptr ()
 {
-  char *java_home = NULL;
-  char jvm_library_path[PATH_MAX] = { 0 };
-  void *libVM_p;
+  void *libVM_p = NULL;
 
-  libVM_p = dlopen (JVM_LIB_FILE, RTLD_NOW | RTLD_LOCAL);
-  if (libVM_p == NULL)
+  char *jvm_path = getenv ("JVM_PATH");
+  if (jvm_path != NULL)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SP_JVM_LIB_NOT_FOUND, 1, dlerror ());
-
-      java_home = getenv ("JAVA_HOME");
-      if (java_home != NULL)
+      libVM_p = dlopen (jvm_path, RTLD_NOW | RTLD_LOCAL);
+      if (libVM_p != NULL)
 	{
-	  snprintf (jvm_library_path, PATH_MAX - 1, "%s/%s/%s", java_home, JVM_LIB_PATH, JVM_LIB_FILE);
-	  libVM_p = dlopen (jvm_library_path, RTLD_NOW | RTLD_LOCAL);
-
-	  if (libVM_p == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_JVM_LIB_NOT_FOUND, 1, dlerror ());
-	      return NULL;
-	    }
+	  return dlsym (libVM_p, "JNI_CreateJavaVM");
 	}
       else
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_JVM_LIB_NOT_FOUND, 1,
-		  "Failed to find 'JAVA_HOME' environment variable");
-	  return NULL;
+	  err_msgs.append ("\n\tFailed to load libjvm from 'JVM_PATH' environment variable: ");
+	  err_msgs.append ("\n\t\t");
+	  err_msgs.append (dlerror ());
 	}
     }
+  else
+    {
+      err_msgs.append ("\n\tFailed to get 'JVM_PATH' environment variable");
+    }
 
-  return dlsym (libVM_p, "JNI_CreateJavaVM");
+  char *java_home = getenv ("JAVA_HOME");
+  if (java_home != NULL)
+    {
+      char jvm_library_path[PATH_MAX];
+      err_msgs.append ("\n\tFailed to load libjvm from 'JAVA_HOME' environment variable: ");
+
+      // under jdk 11
+      snprintf (jvm_library_path, PATH_MAX - 1, "%s/%s/%s", java_home, JVM_LIB_PATH, JVM_LIB_FILE);
+      libVM_p = dlopen (jvm_library_path, RTLD_NOW | RTLD_LOCAL);
+      if (libVM_p != NULL)
+	{
+	  return dlsym (libVM_p, "JNI_CreateJavaVM");
+	}
+      else
+	{
+	  err_msgs.append ("\n\t\t");
+	  err_msgs.append (dlerror ());
+	}
+
+      // from jdk 11
+      snprintf (jvm_library_path, PATH_MAX - 1, "%s/%s/%s", java_home, JVM_LIB_PATH_JDK11, JVM_LIB_FILE);
+      libVM_p = dlopen (jvm_library_path, RTLD_NOW | RTLD_LOCAL);
+      if (libVM_p != NULL)
+	{
+	  return dlsym (libVM_p, "JNI_CreateJavaVM");
+	}
+      else
+	{
+	  err_msgs.append ("\n\t\t");
+	  err_msgs.append (dlerror ());
+	}
+    }
+  else
+    {
+      err_msgs.append ("\n\tFailed to get 'JAVA_HOME' environment variable");
+    }
+
+  return NULL;
 }
 
 #endif /* !WINDOWS */
@@ -412,9 +498,11 @@ jsp_create_java_vm (JNIEnv ** env_p, JavaVMInitArgs * vm_arguments)
     }
   else
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_JVM_LIB_NOT_FOUND, 1, err_msgs.c_str ());
       res = -1;
     }
 #endif /* WINDOWS */
+  err_msgs.clear ();
   return res;
 }
 
@@ -473,7 +561,7 @@ jsp_start_server (const char *db_name, const char *path, int port)
   {
     if (jvm != NULL)
       {
-	return NO_ERROR;	/* already created */
+	return ER_SP_ALREADY_EXIST;	/* already created */
       }
 
     envroot = envvar_root ();
@@ -557,8 +645,6 @@ jsp_start_server (const char *db_name, const char *path, int port)
 
     if (res < 0)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1,
-		"Failed to load or initialize Java VM by JNI_CreateJavaVM()");
 	jvm = NULL;
 	return er_errid ();
       }
@@ -670,7 +756,9 @@ jsp_server_port (void)
   return sp_port;
 #else
   // check $CUBRID/var/javasp_<db_name>.info
-  JAVASP_SERVER_INFO jsp_info = { -1, -1 };
+// *INDENT-OFF*
+  JAVASP_SERVER_INFO jsp_info {-1, -1};
+// *INDENT-ON*
   javasp_read_info (boot_db_name (), jsp_info);
   return jsp_info.port;
 #endif

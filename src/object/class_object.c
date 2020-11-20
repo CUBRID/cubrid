@@ -6642,6 +6642,8 @@ classobj_make_class (const char *name)
   class_->constraints = NULL;
   class_->comment = NULL;
 
+  class_->tde_algorithm = (int) TDE_ALGORITHM_NONE;
+
   if (name != NULL)
     {
       class_->header.ch_name = ws_copy_string (name);

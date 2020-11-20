@@ -58,6 +58,7 @@
 #include "storage_common.h"
 #include "thread_entry.hpp"
 #include "transaction_transient.hpp"
+#include "tde.h"
 
 #include <assert.h>
 #if defined(SOLARIS)
@@ -819,7 +820,7 @@ extern int logpb_copy_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid
 extern int logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE access_mode,
 				      LOG_PAGE * log_pgptr);
 extern int logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int num_pages,
-					    LOG_PAGE * log_pgptr);
+					    bool decrypt_needed, LOG_PAGE * log_pgptr);
 extern int logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAGEID logical_pageid);
 extern PGLENGTH logpb_find_header_parameters (THREAD_ENTRY * thread_p, const bool force_read_log_header,
 					      const char *db_fullname, const char *logpath,
@@ -868,7 +869,7 @@ extern void logpb_dump_checkpoint_trans (FILE * out_fp, int length, void *data);
 extern int logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_path,
 			 FILEIO_BACKUP_LEVEL backup_level, bool delete_unneeded_logarchives,
 			 const char *backup_verbose_file_path, int num_threads, FILEIO_ZIP_METHOD zip_method,
-			 FILEIO_ZIP_LEVEL zip_level, int skip_activelog, int sleep_msecs);
+			 FILEIO_ZIP_LEVEL zip_level, int skip_activelog, int sleep_msecs, bool separate_keys);
 extern int logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 			  const char *prefix_logname, bo_restart_arg * r_args);
 extern int logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *to_db_fullname,
@@ -896,6 +897,10 @@ extern void logpb_dump (THREAD_ENTRY * thread_p, FILE * out_fp);
 
 extern int logpb_remove_all_in_log_path (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 					 const char *prefix_logname);
+extern TDE_ALGORITHM logpb_get_tde_algorithm (const LOG_PAGE * log_pgptr);
+extern void logpb_set_tde_algorithm (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, const TDE_ALGORITHM tde_algo);
+
+
 
 extern void log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat);
 extern LOG_LSA *log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr);

@@ -180,11 +180,15 @@ main (int argc, char *argv[])
 	  }
 
 	char buffer[JAVASP_PING_LEN] = {0};
-	if (javasp_ping_server (jsp_info.port, buffer) == NO_ERROR)
+	if ((status = javasp_ping_server (jsp_info.port, buffer)) == NO_ERROR)
 	  {
 	    fprintf (stdout, "%s", buffer);
 	  }
-	return NO_ERROR;
+	else
+	  {
+	    fprintf (stdout, "NO_CONNECTION");
+	  }
+	return status;
       }
 
     /*

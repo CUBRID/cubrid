@@ -699,6 +699,7 @@ int g_original_buffer_len;
 %type <number> procedure_or_function
 %type <boolean> opt_analytic_from_last
 %type <boolean> opt_analytic_ignore_nulls
+%type <number> opt_encrypt_algorithm
 /*}}}*/
 
 /* define rule type (node) */
@@ -1006,6 +1007,7 @@ int g_original_buffer_len;
 %type <node> collation_spec
 %type <node> charset_spec
 %type <node> class_comment_spec
+%type <node> class_encrypt_spec
 %type <node> opt_vclass_comment_spec
 %type <node> comment_value
 %type <node> opt_comment_spec
@@ -1095,6 +1097,7 @@ int g_original_buffer_len;
 %token ACTION
 %token ADD
 %token ADD_MONTHS
+%token AES
 %token AFTER
 %token ALL
 %token ALLOCATE
@@ -1102,6 +1105,7 @@ int g_original_buffer_len;
 %token AND
 %token ANY
 %token ARE
+%token ARIA
 %token AS
 %token ASC
 %token ASSERTION
@@ -1201,6 +1205,7 @@ int g_original_buffer_len;
 %token ELSE
 %token ELSEIF
 %token EMPTY
+%token ENCRYPT
 %token END
 %token ENUM
 %token EQUALS
@@ -8841,6 +8846,13 @@ table_option
 			}
 
 			$$ = pt_table_option (this_parser, PT_TABLE_OPTION_AUTO_INCREMENT, val);
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		  DBG_PRINT}}
+  | class_encrypt_spec
+    {{
+	
+      $$ = pt_table_option (this_parser, PT_TABLE_OPTION_ENCRYPT, $1);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		  DBG_PRINT}}
@@ -20799,6 +20811,24 @@ collation_spec
 		DBG_PRINT}}
 	;
 
+class_encrypt_spec
+  : ENCRYPT opt_equalsign opt_encrypt_algorithm
+		{{
+			PT_NODE *node = NULL;
+
+      node = parser_new_node (this_parser, PT_VALUE);
+
+			if (node)
+			  {
+			    node->type_enum = PT_TYPE_INTEGER;
+          node->info.value.data_value.i = $3;
+			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, node);
+			  }
+
+			$$ = node;
+		DBG_PRINT}}
+	;
+
 class_comment_spec
 	: COMMENT opt_equalsign char_string_literal
 		{{
@@ -20861,6 +20891,15 @@ opt_equalsign
 	: /* empty */
 	| '='
 	;
+
+opt_encrypt_algorithm
+  : /* empty */
+    { $$ = -1; }  /* default algorithm from the system parameter */
+  | AES
+    { $$ = 1; }   /* TDE_ALGORITHM_AES */ 
+  | ARIA
+    { $$ = 2; }   /* TDE_ALGORITHM_ARIA */
+  ;
 
 opt_comment_spec
 	: /* empty */

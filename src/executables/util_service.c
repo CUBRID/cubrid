@@ -193,6 +193,7 @@ static UTIL_SERVICE_OPTION_MAP_T us_Service_map[] = {
   {ADMIN, UTIL_OPTION_RESTORESLAVE, MASK_ADMIN},
   {ADMIN, UTIL_OPTION_VACUUMDB, MASK_ADMIN},
   {ADMIN, UTIL_OPTION_CHECKSUMDB, MASK_ADMIN},
+  {ADMIN, UTIL_OPTION_TDE, MASK_ADMIN},
   {-1, "", MASK_ADMIN}
 };
 
@@ -2443,19 +2444,23 @@ process_javasp_start (const char *db_name, bool process_window_service)
 	      status = NO_ERROR;
 	      break;
 	    }
-	  else if (javasp_status == JAVASP_SERVER_STOPPED)
+	  else
 	    {
 	      sleep (1);	/* wait to start */
 	      waited_secs++;
 
-	      util_log_write_errstr ("Waiting for javasp server to start... (%d / %d)\n", waited_secs, wait_timeout);
-	    }
-	  else
-	    {
-	      if (waited_secs > 3)
+	      if (javasp_status == JAVASP_SERVER_STOPPED)
 		{
-		  /* invalid database name or failed to open info file, wait upto 3 seconds */
-		  break;
+		  util_log_write_errstr ("Waiting for javasp server to start... (%d / %d)\n", waited_secs,
+					 wait_timeout);
+		}
+	      else
+		{
+		  if (waited_secs > 3)
+		    {
+		      /* invalid database name or failed to open info file, wait upto 3 seconds */
+		      break;
+		    }
 		}
 	    }
 	}

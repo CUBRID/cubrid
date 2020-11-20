@@ -83,6 +83,11 @@ extern void shf_create (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 extern void shf_destroy (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void shf_destroy_when_new (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void shf_heap_reclaim_addresses (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sfile_apply_tde_to_class_files (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void stde_get_data_keys (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void stde_get_mk_file_path (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void stde_get_mk_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void stde_change_mk_on_server (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void stran_server_commit (THREAD_ENTRY * thrd, unsigned int rid, char *request, int reqlen);
 extern void stran_server_abort (THREAD_ENTRY * thrd, unsigned int rid, char *request, int reqlen);
 extern void stran_server_has_updated (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);

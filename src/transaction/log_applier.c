@@ -33,6 +33,12 @@
 #include <sys/time.h>
 #endif
 #include <signal.h>
+#include <pthread.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+
 
 #include "log_applier.h"
 
@@ -60,6 +66,9 @@
 #include "log_applier_sql_log.h"
 #include "util_func.h"
 #include "dbtype.h"
+#ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
+#include "tde.h"
+#endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif
@@ -338,6 +347,9 @@ struct la_info
   LA_REPL_FILTER repl_filter;
 
   bool reinit_copylog;
+#ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
+  int tde_sock_for_dks;		/* unix socket for sharing TDE Data keys with copylogd */
+#endif				/* UNSTABLE_TDE_FOR_REPLICATION_LOG */
 };
 
 typedef struct la_ovf_first_part LA_OVF_FIRST_PART;
@@ -551,6 +563,10 @@ static void la_destroy_repl_filter (void);
 static void la_print_repl_filter_info (void);
 
 static int check_reinit_copylog (void);
+
+#ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
+static THREAD_RET_T THREAD_CALLING_CONVENTION la_process_dk_request (void *arg);
+#endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
 
 /*
  * la_shutdown_by_signal() - When the process catches the SIGTERM signal,
@@ -1020,6 +1036,18 @@ log_reopen:
 	}
     }
 
+#ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
+  if (LOG_IS_PAGE_TDE_ENCRYPTED ((LOG_PAGE *) data))
+    {
+      error = tde_decrypt_log_page ((LOG_PAGE *) data, logwr_get_tde_algorithm ((LOG_PAGE *) data), (LOG_PAGE *) data);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error;
+	}
+    }
+#endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
+
   return error;
 }
 
@@ -1076,6 +1104,18 @@ la_log_fetch (LOG_PAGEID pageid, LA_CACHE_BUFFER * cache_buffer)
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LOG_READ, 3, pageid, phy_pageid, la_Info.act_log.path);
 	      return ER_LOG_READ;
 	    }
+#ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
+	  if (LOG_IS_PAGE_TDE_ENCRYPTED (&cache_buffer->logpage))
+	    {
+	      error =
+		tde_decrypt_log_page (&cache_buffer->logpage, logwr_get_tde_algorithm (&cache_buffer->logpage),
+				      &cache_buffer->logpage);
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
+	    }
+#endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
 	  cache_buffer->in_archive = false;
 	}
 
@@ -6103,6 +6143,11 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
 		{
 		  return error;
 		}
+	      else if (error == ER_TDE_CIPHER_IS_NOT_LOADED)
+		{
+		  la_applier_need_shutdown = true;
+		  return error;
+		}
 
 	      if (!LSA_ISNULL (&lsa_apply))
 		{
@@ -6790,6 +6835,10 @@ la_init (const char *log_path, const int max_mem_size)
 
   la_Info.reinit_copylog = false;
 
+#ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
+  la_Info.tde_sock_for_dks = -1;
+#endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
+
   return;
 }
 
@@ -7155,6 +7204,17 @@ check_applied_info_end:
 	  error =
 	    la_log_io_read (la_Info.act_log.path, la_Info.act_log.log_vdes, logpage, la_log_phypageid (page_num),
 			    la_Info.act_log.db_logpagesize);
+
+#ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
+	  if (error != NO_ERROR && LOG_IS_PAGE_TDE_ENCRYPTED (logpage))
+	    {
+	      error = tde_decrypt_log_page (logpage, logwr_get_tde_algorithm (logpage), logpage);
+	      if (error != NO_ERROR)
+		{
+		  goto check_copied_info_end;
+		}
+	    }
+#endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
 	}
 
       if (error != NO_ERROR)
@@ -7911,6 +7971,18 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
   gettimeofday (&time_commit, NULL);
   last_eof_time = time (NULL);
   LSA_SET_NULL (&last_eof_lsa);
+#ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
+  error = tde_get_data_keys ();
+  if (error == NO_ERROR)
+    {
+      tde_Cipher.is_loaded = true;
+      error = la_start_dk_sharing ();
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+#endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
 
   /* start the main loop */
   do
@@ -8421,3 +8493,177 @@ la_delay_replica (time_t eot_time)
 
   return NO_ERROR;
 }
+
+#ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
+int
+la_start_dk_sharing (void)
+{
+  int server_sockfd;
+  char sock_path[PATH_MAX] = { 0, };
+  pid_t pid;
+  size_t ts_size;
+  pthread_t processing_th;
+
+  struct sockaddr_un serveraddr;
+
+  fileio_make_ha_sock_name (sock_path, la_Info.log_path, TDE_HA_SOCK_NAME);
+
+  if (access (sock_path, F_OK) == 0)
+    {
+      if (unlink (sock_path) < 0)
+	{
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_DK_SHARING_SOCK_UNLINK, 1, sock_path);
+	  return ER_TDE_DK_SHARING_SOCK_UNLINK;
+	}
+    }
+
+  if ((server_sockfd = socket (AF_UNIX, SOCK_STREAM, 0)) < 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_DK_SHARING_SOCK_OPEN, 1, sock_path);
+      return ER_TDE_DK_SHARING_SOCK_OPEN;
+    }
+
+  bzero (&serveraddr, sizeof (serveraddr));
+  serveraddr.sun_family = AF_UNIX;
+  strcpy (serveraddr.sun_path, sock_path);
+
+  if (bind (server_sockfd, (struct sockaddr *) &serveraddr, sizeof (serveraddr)) < 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_DK_SHARING_SOCK_BIND, 1, sock_path);
+      return ER_TDE_DK_SHARING_SOCK_BIND;
+    }
+
+  if (listen (server_sockfd, 1) < 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_DK_SHARING_SOCK_LISTEN, 1, sock_path);
+      return ER_TDE_DK_SHARING_SOCK_LISTEN;
+    }
+
+  la_Info.tde_sock_for_dks = server_sockfd;
+  if (pthread_create (&processing_th, NULL, la_process_dk_request, NULL) < 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_DK_SHARING_PTHREAD_CREATE, 0);
+      return ER_TDE_DK_SHARING_PTHREAD_CREATE;
+    }
+  return NO_ERROR;
+}
+
+static THREAD_RET_T THREAD_CALLING_CONVENTION
+la_process_dk_request (void *arg)
+{
+  int client_sockfd, server_sockfd;
+  unsigned int client_len;
+  struct sockaddr_un clientaddr;
+  char buf[PATH_MAX];
+  char *bufptr;
+  int nbytes, len;
+  int error = NO_ERROR;
+
+  server_sockfd = la_Info.tde_sock_for_dks;
+
+  client_len = sizeof (clientaddr);
+
+  while (1)
+    {
+      client_sockfd = accept (server_sockfd, (struct sockaddr *) &clientaddr, &client_len);
+      if (client_sockfd < 0)
+	{
+	  continue;
+	}
+      bufptr = buf;
+      len = PATH_MAX;
+      while (len > 0)
+	{
+	  nbytes = read (client_sockfd, bufptr, len);
+	  if (nbytes < 0)
+	    {
+	      switch (errno)	// errno is thread-local on linux
+		{
+		case EINTR:
+		case EAGAIN:
+		  continue;
+		default:
+		  {
+		    error = ER_TDE_DK_SHARING_SOCK_READ;
+		    break;
+		  }
+		}
+	    }
+	  bufptr += nbytes;
+	  len -= nbytes;
+	}
+
+      if (error == NO_ERROR)
+	{
+	  if (!tde_Cipher.is_loaded)
+	    {
+	      error = ER_TDE_CIPHER_IS_NOT_LOADED;
+	    }
+	  else
+	    {
+	      /* validate the msg from copylogdb */
+	      if (memcmp (buf, la_Info.log_path, PATH_MAX) != 0)
+		{
+		  /* wrong request */
+		  error = ER_TDE_WRONG_DK_REQUEST;
+		}
+	    }
+	}
+
+      /* send error message */
+      bufptr = (char *) &error;
+      len = sizeof (error);
+      while (len > 0)
+	{
+	  nbytes = write (client_sockfd, bufptr, len);
+	  if (nbytes < 0)
+	    {
+	      switch (errno)
+		{
+		case EINTR:
+		case EAGAIN:
+		  continue;
+		default:
+		  {
+		    error = ER_TDE_DK_SHARING_SOCK_WRITE;
+		    break;
+		  }
+		}
+	    }
+	  bufptr += nbytes;
+	  len -= nbytes;
+	}
+
+      /* send data keys */
+      if (error == NO_ERROR)
+	{
+	  bufptr = (char *) &tde_Cipher.data_keys;
+	  len = sizeof (TDE_DATA_KEY_SET);
+	  while (len > 0)
+	    {
+	      nbytes = write (client_sockfd, bufptr, len);
+	      if (nbytes < 0)
+		{
+		  switch (errno)
+		    {
+		    case EINTR:
+		    case EAGAIN:
+		      continue;
+		    default:
+		      {
+			error = ER_TDE_DK_SHARING_SOCK_WRITE;
+			break;
+		      }
+		    }
+		}
+	      bufptr += nbytes;
+	      len -= nbytes;
+	    }
+	}
+      close (client_sockfd);
+    }
+
+  assert (false);
+  return (THREAD_RET_T) - 1;
+}
+#endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */

@@ -138,18 +138,18 @@ EXPORTS
     er_init
     er_final
     jsp_connect_server
-	jsp_disconnect_server
-	jsp_writen
-	jsp_readn
-	jsp_start_server
-	jsp_server_port
-	javasp_get_info_file
-	javasp_get_error_file
-	javasp_open_info_dir
+    jsp_disconnect_server
+    jsp_writen
+    jsp_readn
+    jsp_start_server
+    jsp_server_port
+    javasp_get_info_file
+    javasp_get_error_file
+    javasp_open_info_dir
     javasp_open_info
-	javasp_read_info
+    javasp_read_info
     javasp_reset_info
-	javasp_write_info
+    javasp_write_info
 ;
 ; utility functions
 ;
@@ -181,6 +181,7 @@ EXPORTS
 	synccoll_force
 	restoreslave
 	vacuumdb
+  tde
 
 ;
 ;	enable below two functions when
@@ -198,8 +199,8 @@ EXPORTS
 	basename
 	au_set_password
 	au_disable_passwords
-    er_has_error
-    er_msg
+	er_has_error
+	er_msg
 	er_set
 	log_get_db_compatibility
 ;
@@ -828,4 +829,4 @@ EXPORTS
     or_unpack_int
     or_unpack_string_nocopy
     windows_socket_startup
-    windows_socket_shutdown 
+    windows_socket_shutdown

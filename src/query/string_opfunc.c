@@ -423,7 +423,7 @@ db_string_compare (const DB_VALUE * string1, const DB_VALUE * string2, DB_VALUE 
 
 	  if (!ignore_trailing_space)
 	    {
-	      ti = (string2_category == QSTR_CHAR || string2_category == QSTR_NATIONAL_CHAR);
+	      ti = (QSTR_IS_FIXED_LENGTH (str1_type) && QSTR_IS_FIXED_LENGTH (str2_type));
 	    }
 	  cmp_result = QSTR_COMPARE (coll_id, DB_GET_UCHAR (string1), (int) db_get_string_size (string1),
 				     DB_GET_UCHAR (string2), (int) db_get_string_size (string2), ti);
@@ -9302,11 +9302,11 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_precision, DB_T
 
       if (QSTR_IS_NATIONAL_CHAR (s1_type))
 	{
-	  *result_type = DB_TYPE_NCHAR;
+	  *result_type = DB_TYPE_VARNCHAR;
 	}
       else
 	{
-	  *result_type = DB_TYPE_CHAR;
+	  *result_type = DB_TYPE_VARCHAR;
 	}
 
       if (*result_size > (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES))

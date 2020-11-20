@@ -737,7 +737,6 @@ OR_PUT_DOUBLE (char *ptr, double val)
 
 #define OR_GET_VARIABLE_TYPE(ptr) (OR_GET_INT ((int *) (ptr)))
 
-
 /* class */
 enum
 {
@@ -752,7 +751,8 @@ enum
   ORC_SHARED_COUNT_OFFSET = 48,
   ORC_CLASS_ATTR_COUNT_OFFSET = 60,
   ORC_CLASS_FLAGS = 64,
-  ORC_CLASS_TYPE = 68
+  ORC_CLASS_TYPE = 68,
+  ORC_CLASS_TDE_ALGORITHM = 84
 };
 
 enum

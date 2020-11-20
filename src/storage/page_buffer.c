@@ -59,6 +59,7 @@
 #include "boot_sr.h"
 #include "double_write_buffer.h"
 #include "resource_tracker.hpp"
+#include "tde.h"
 #include "show_scan.h"
 #include "numeric_opfunc.h"
 #include "dbtype.h"
@@ -145,6 +146,11 @@ static int rv;
 #define CAST_PGPTR_TO_IOPGPTR(io_pgptr, pgptr) \
   do { \
     (io_pgptr) = (FILEIO_PAGE *) ((char *) pgptr - offsetof (FILEIO_PAGE, page)); \
+  } while (0)
+
+#define CAST_IOPGPTR_TO_PGPTR(pgptr, io_pgptr) \
+  do { \
+    (pgptr) = (PAGE_PTR) ((char *) (io_pgptr)->page); \
   } while (0)
 
 #define CAST_BFPTR_TO_PGPTR(pgptr, bufptr) \
@@ -852,6 +858,16 @@ struct pgbuf_fix_perf
   UINT64 lock_wait_time;
   UINT64 holder_wait_time;
   UINT64 fix_wait_time;
+};
+
+/* in FILEIO_PAGE_RESERVED */
+typedef struct pgbuf_dealloc_undo_data PGBUF_DEALLOC_UNDO_DATA;
+struct pgbuf_dealloc_undo_data
+{
+  INT32 pageid;			/* Page identifier */
+  INT16 volid;			/* Volume identifier where the page reside */
+  unsigned char ptype;		/* Page type */
+  unsigned char pflag;
 };
 
 /************************************************************************/
@@ -4152,7 +4168,7 @@ pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset
  */
 void *
 pgbuf_copy_from_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset, int length, void *area,
-		      bool do_fetch)
+		      bool do_fetch, TDE_ALGORITHM tde_algo)
 {
   PGBUF_BUFFER_HASH *hash_anchor;
   PGBUF_BCB *bufptr;
@@ -4214,6 +4230,7 @@ pgbuf_copy_from_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offs
   if (pgptr != NULL)
     {
       (void) pgbuf_set_page_ptype (thread_p, pgptr, PAGE_AREA);
+      pgbuf_set_tde_algorithm (thread_p, pgptr, tde_algo, true);
 
       memcpy ((char *) pgptr + start_offset, area, length);
       /* Inform log manager that there is no need to log this page */
@@ -4421,6 +4438,113 @@ pgbuf_reset_temp_lsa (PAGE_PTR pgptr)
 
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
   pgbuf_init_temp_page_lsa (&bufptr->iopage_buffer->iopage, IO_PAGESIZE);
+}
+
+/*
+ * pgbuf_set_tde_algorithm () - set tde encryption algorithm to the page
+ *   return: void
+ *   thread_p (in)  : Thread entry
+ *   pgptr(in): Page pointer
+ *   tde_algo (in) : encryption algorithm - NONE, AES, ARIA
+ */
+void
+pgbuf_set_tde_algorithm (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, TDE_ALGORITHM tde_algo, bool skip_logging)
+{
+  FILEIO_PAGE *iopage = NULL;
+  TDE_ALGORITHM prev_tde_algo = TDE_ALGORITHM_NONE;
+
+  assert (tde_Cipher.is_loaded || tde_algo == TDE_ALGORITHM_NONE);
+
+  prev_tde_algo = pgbuf_get_tde_algorithm (pgptr);
+
+  if (prev_tde_algo == tde_algo)
+    {
+      return;
+    }
+
+  CAST_PGPTR_TO_IOPGPTR (iopage, pgptr);
+
+#if !defined(NDEBUG)
+  er_log_debug (ARG_FILE_LINE, "TDE: pgbuf_set_tde_algorithm(): VPID = %d|%d, tde_algorithm = %s\n", iopage->prv.volid,
+		iopage->prv.pageid, tde_get_algorithm_name (tde_algo));
+#endif /* !NDEBUG */
+
+  if (!skip_logging)
+    {
+      log_append_undoredo_data2 (thread_p, RVPGBUF_SET_TDE_ALGORITHM, NULL, pgptr, 0, sizeof (TDE_ALGORITHM),
+				 sizeof (TDE_ALGORITHM), &prev_tde_algo, &tde_algo);
+    }
+
+  /* clear tde encryption bits */
+  iopage->prv.pflag &= ~FILEIO_PAGE_FLAG_ENCRYPTED_MASK;
+
+  switch (tde_algo)
+    {
+    case TDE_ALGORITHM_AES:
+      iopage->prv.pflag |= FILEIO_PAGE_FLAG_ENCRYPTED_AES;
+      break;
+    case TDE_ALGORITHM_ARIA:
+      iopage->prv.pflag |= FILEIO_PAGE_FLAG_ENCRYPTED_ARIA;
+      break;
+    case TDE_ALGORITHM_NONE:
+      break;			// do nothing, already cleared
+    default:
+      assert (false);
+    }
+
+  pgbuf_set_dirty (thread_p, pgptr, DONT_FREE);
+}
+
+/*
+ * pgbuf_rv_set_tde_algorithm () - recovery setting tde encryption algorithm to the page
+ *   return        : NO_ERROR, or ER_code
+ *   thread_p (in)  : Thread entry
+ *   pgptr(in): Page pointer
+ *   tde_algo (in) : encryption algorithm - NONE, AES, ARIA
+ */
+int
+pgbuf_rv_set_tde_algorithm (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  FILEIO_PAGE *iopage = NULL;
+  PAGE_PTR pgptr = rcv->pgptr;
+  TDE_ALGORITHM tde_algo = *((TDE_ALGORITHM *) rcv->data);
+
+  assert (rcv->length == sizeof (TDE_ALGORITHM));
+
+  pgbuf_set_tde_algorithm (thread_p, pgptr, tde_algo, true);
+
+  return NO_ERROR;
+}
+
+/*
+ * pgbuf_get_tde_algorithm () - get tde encryption algorithm of the page
+ *   return: TDE_ALGORITHM
+ *   pgptr(in): Page pointer
+ *   tde_algo (out) : encryption algorithm - NONE, AES, ARIA
+ */
+TDE_ALGORITHM
+pgbuf_get_tde_algorithm (PAGE_PTR pgptr)
+{
+  FILEIO_PAGE *iopage = NULL;
+
+  CAST_PGPTR_TO_IOPGPTR (iopage, pgptr);
+
+  // encryption algorithms are exclusive
+  assert (!((iopage->prv.pflag & FILEIO_PAGE_FLAG_ENCRYPTED_AES) &&
+	    (iopage->prv.pflag & FILEIO_PAGE_FLAG_ENCRYPTED_ARIA)));
+
+  if (iopage->prv.pflag & FILEIO_PAGE_FLAG_ENCRYPTED_AES)
+    {
+      return TDE_ALGORITHM_AES;
+    }
+  else if (iopage->prv.pflag & FILEIO_PAGE_FLAG_ENCRYPTED_ARIA)
+    {
+      return TDE_ALGORITHM_ARIA;
+    }
+  else
+    {
+      return TDE_ALGORITHM_NONE;
+    }
 }
 
 /*
@@ -4682,10 +4806,9 @@ pgbuf_set_bcb_page_vpid (PGBUF_BCB * bufptr, bool force_set_vpid)
 	  bufptr->iopage_buffer->iopage.prv.volid = bufptr->vpid.volid;
 
 	  bufptr->iopage_buffer->iopage.prv.ptype = '\0';
-	  bufptr->iopage_buffer->iopage.prv.pflag_reserve_1 = '\0';
 	  bufptr->iopage_buffer->iopage.prv.p_reserve_1 = 0;
 	  bufptr->iopage_buffer->iopage.prv.p_reserve_2 = 0;
-	  bufptr->iopage_buffer->iopage.prv.p_reserve_3 = 0;
+	  bufptr->iopage_buffer->iopage.prv.tde_nonce = 0;
 	}
     }
 }
@@ -4865,10 +4988,10 @@ pgbuf_initialize_bcb_table (void)
       ioptr->iopage.prv.volid = -1;
 
       ioptr->iopage.prv.ptype = '\0';
-      ioptr->iopage.prv.pflag_reserve_1 = '\0';
+      ioptr->iopage.prv.pflag = '\0';
       ioptr->iopage.prv.p_reserve_1 = 0;
       ioptr->iopage.prv.p_reserve_2 = 0;
-      ioptr->iopage.prv.p_reserve_3 = 0;
+      ioptr->iopage.prv.tde_nonce = 0;
 
       bufptr->iopage_buffer = ioptr;
       ioptr->bcb = bufptr;
@@ -7471,6 +7594,8 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 			 PGBUF_BUFFER_HASH * hash_anchor, PGBUF_FIX_PERF * perf, bool * try_again)
 {
   PGBUF_BCB *bufptr = NULL;
+  PAGE_PTR pgptr = NULL;
+  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
   bool success;
 
 #if defined (ENABLE_SYSTEMTAP)
@@ -7593,6 +7718,22 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 
 	  PGBUF_BCB_CHECK_MUTEX_LEAKS ();
 	  return NULL;
+	}
+
+      CAST_IOPGPTR_TO_PGPTR (pgptr, &bufptr->iopage_buffer->iopage);
+      tde_algo = pgbuf_get_tde_algorithm (pgptr);
+      if (tde_algo != TDE_ALGORITHM_NONE)
+	{
+	  if (tde_decrypt_data_page
+	      (&bufptr->iopage_buffer->iopage, tde_algo, pgbuf_is_temporary_volume (vpid->volid),
+	       &bufptr->iopage_buffer->iopage) != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      pgbuf_put_bcb_into_invalid_list (thread_p, bufptr);
+	      (void) pgbuf_unlock_page (thread_p, hash_anchor, vpid, true);
+	      PGBUF_BCB_CHECK_MUTEX_LEAKS ();
+	      return NULL;
+	    }
 	}
 
 #if defined(ENABLE_SYSTEMTAP)
@@ -9730,7 +9871,8 @@ STATIC_INLINE int
 pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_page_flush_thread, bool * is_bcb_locked)
 {
   char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
-  FILEIO_PAGE *iopage;
+  FILEIO_PAGE *iopage = NULL;
+  PAGE_PTR pgptr = NULL;
   LOG_LSA oldest_unflush_lsa;
   int error = NO_ERROR;
 #if defined(ENABLE_SYSTEMTAP)
@@ -9741,6 +9883,9 @@ pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_p
   DWB_SLOT *dwb_slot = NULL;
   LOG_LSA lsa;
   FILEIO_WRITE_MODE write_mode;
+  bool is_temp = pgbuf_is_temporary_volume (bufptr->vpid.volid);
+  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
+
 
   PGBUF_BCB_CHECK_OWN (bufptr);
 
@@ -9792,12 +9937,28 @@ pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_p
 
   was_dirty = pgbuf_bcb_mark_is_flushing (thread_p, bufptr);
 
-  uses_dwb = dwb_is_created () && !pgbuf_is_temporary_volume (bufptr->vpid.volid);
+  uses_dwb = dwb_is_created () && !is_temp;
 
 start_copy_page:
+  iopage = (FILEIO_PAGE *) PTR_ALIGN (page_buf, MAX_ALIGNMENT);
+  CAST_BFPTR_TO_PGPTR (pgptr, bufptr);
+  tde_algo = pgbuf_get_tde_algorithm (pgptr);
+  if (tde_algo != TDE_ALGORITHM_NONE)
+    {
+      error = tde_encrypt_data_page (&bufptr->iopage_buffer->iopage, tde_algo, is_temp, iopage);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error;
+	}
+    }
+  else
+    {
+      memcpy ((void *) iopage, (void *) (&bufptr->iopage_buffer->iopage), IO_PAGESIZE);
+    }
   if (uses_dwb)
     {
-      error = dwb_set_data_on_next_slot (thread_p, &bufptr->iopage_buffer->iopage, false, &dwb_slot);
+      error = dwb_set_data_on_next_slot (thread_p, iopage, false, &dwb_slot);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -9808,9 +9969,6 @@ start_copy_page:
 	  goto copy_unflushed_lsa;
 	}
     }
-
-  iopage = (FILEIO_PAGE *) PTR_ALIGN (page_buf, MAX_ALIGNMENT);
-  memcpy ((void *) iopage, (void *) (&bufptr->iopage_buffer->iopage), IO_PAGESIZE);
 
 copy_unflushed_lsa:
   LSA_COPY (&lsa, &(bufptr->iopage_buffer->iopage.prv.lsa));
@@ -10243,10 +10401,8 @@ pgbuf_check_bcb_page_vpid (PGBUF_BCB * bufptr, bool maybe_deallocated)
 	      || (bufptr->vpid.pageid == bufptr->iopage_buffer->iopage.prv.pageid
 		  && bufptr->vpid.volid == bufptr->iopage_buffer->iopage.prv.volid));
 
-      assert (bufptr->iopage_buffer->iopage.prv.pflag_reserve_1 == '\0');
       assert (bufptr->iopage_buffer->iopage.prv.p_reserve_1 == 0);
       assert (bufptr->iopage_buffer->iopage.prv.p_reserve_2 == 0);
-      assert (bufptr->iopage_buffer->iopage.prv.p_reserve_3 == 0);
 
       return (bufptr->vpid.pageid == bufptr->iopage_buffer->iopage.prv.pageid
 	      && bufptr->vpid.volid == bufptr->iopage_buffer->iopage.prv.volid);
@@ -10279,10 +10435,10 @@ pgbuf_scramble (FILEIO_PAGE * iopage)
   iopage->prv.volid = -1;
 
   iopage->prv.ptype = '\0';
-  iopage->prv.pflag_reserve_1 = '\0';
+  iopage->prv.pflag = '\0';
   iopage->prv.p_reserve_1 = 0;
   iopage->prv.p_reserve_2 = 0;
-  iopage->prv.p_reserve_3 = 0;
+  iopage->prv.tde_nonce = 0;
 }
 
 /*
@@ -13793,6 +13949,9 @@ pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR page_dealloc)
 {
   PGBUF_BCB *bcb = NULL;
   PAGE_TYPE ptype;
+  FILEIO_PAGE_RESERVED *prv;
+  PGBUF_DEALLOC_UNDO_DATA udata;
+  char undo_data[8];		// pageid(4) + volid(2) + pyte(1) + pflag(1)
   int holder_status;
 
   /* how it works: page is "deallocated" by resetting its type to PAGE_UNKNOWN. also prepare bcb for victimization.
@@ -13804,14 +13963,31 @@ pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR page_dealloc)
   CAST_PGPTR_TO_BFPTR (bcb, page_dealloc);
   assert (bcb->fcnt == 1);
 
-  ptype = (PAGE_TYPE) (bcb->iopage_buffer->iopage.prv.ptype);
-  assert (ptype != PAGE_UNKNOWN);
-  log_append_undoredo_data2 (thread_p, RVPGBUF_DEALLOC, NULL, page_dealloc, (PGLENGTH) ptype, sizeof (VPID), 0,
-			     pgbuf_get_vpid_ptr (page_dealloc), NULL);
+  prv = &bcb->iopage_buffer->iopage.prv;
+  assert (prv->ptype != PAGE_UNKNOWN);
+
+  udata.pageid = prv->pageid;
+  udata.volid = prv->volid;
+  udata.ptype = prv->ptype;
+  udata.pflag = prv->pflag;
+
+  log_append_undoredo_data2 (thread_p, RVPGBUF_DEALLOC, NULL, page_dealloc, 0, sizeof (udata), 0, &udata, NULL);
 
   PGBUF_BCB_LOCK (bcb);
+
+#if !defined(NDEBUG)
+  if (bcb->iopage_buffer->iopage.prv.pflag & FILEIO_PAGE_FLAG_ENCRYPTED_MASK)
+    {
+      er_log_debug (ARG_FILE_LINE,
+		    "TDE: pgbuf_dealloc_page(): clear tde bit in pflag, VPID = %d|%d, tde_algorithm = %s\n",
+		    VPID_AS_ARGS (&bcb->vpid), tde_get_algorithm_name (pgbuf_get_tde_algorithm (page_dealloc)));
+    }
+#endif /* !NDEBUG */
+
   /* set unknown type */
   bcb->iopage_buffer->iopage.prv.ptype = (char) PAGE_UNKNOWN;
+  /* clear page flags (now only tde algorithm) */
+  bcb->iopage_buffer->iopage.prv.pflag = (unsigned char) 0;
 
   /* set dirty and mark to move to the bottom of lru */
   pgbuf_bcb_update_flags (thread_p, bcb, PGBUF_BCB_DIRTY_FLAG | PGBUF_BCB_MOVE_TO_LRU_BOTTOM_FLAG, 0);
@@ -13836,6 +14012,7 @@ int
 pgbuf_rv_dealloc_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
   pgbuf_set_page_ptype (thread_p, rcv->pgptr, PAGE_UNKNOWN);
+  pgbuf_set_tde_algorithm (thread_p, rcv->pgptr, TDE_ALGORITHM_NONE, true);
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
   return NO_ERROR;
 }
@@ -13853,26 +14030,79 @@ pgbuf_rv_dealloc_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 int
 pgbuf_rv_dealloc_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
-  VPID *vpid = (VPID *) rcv->data;
   PAGE_PTR page_deallocated = NULL;
-  PAGE_TYPE ptype = (PAGE_TYPE) rcv->offset;
+  PGBUF_DEALLOC_UNDO_DATA *udata = (PGBUF_DEALLOC_UNDO_DATA *) rcv->data;
+  VPID vpid;
+  FILEIO_PAGE *iopage;
 
-  assert (rcv->length == sizeof (VPID));
-  assert (!VPID_ISNULL (vpid));
-  assert (ptype > PAGE_UNKNOWN && ptype <= PAGE_LAST);
+  vpid.pageid = udata->pageid;
+  vpid.volid = udata->volid;
+
+  assert (rcv->length == sizeof (PGBUF_DEALLOC_UNDO_DATA));
+  assert (udata->ptype > PAGE_UNKNOWN && udata->ptype <= PAGE_LAST);
 
   /* fix deallocated page */
-  page_deallocated = pgbuf_fix (thread_p, vpid, OLD_PAGE_DEALLOCATED, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  page_deallocated = pgbuf_fix (thread_p, &vpid, OLD_PAGE_DEALLOCATED, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (page_deallocated == NULL)
     {
       assert_release (false);
       return ER_FAILED;
     }
   assert (pgbuf_get_page_ptype (thread_p, page_deallocated) == PAGE_UNKNOWN);
-  pgbuf_set_page_ptype (thread_p, page_deallocated, ptype);
-  log_append_compensate_with_undo_nxlsa (thread_p, RVPGBUF_COMPENSATE_DEALLOC, vpid, rcv->offset, page_deallocated, 0,
-					 NULL, LOG_FIND_CURRENT_TDES (thread_p), &rcv->reference_lsa);
+  pgbuf_set_page_ptype (thread_p, page_deallocated, (PAGE_TYPE) udata->ptype);
+
+  CAST_PGPTR_TO_IOPGPTR (iopage, page_deallocated);
+  iopage->prv.pflag = udata->pflag;
+
+#if !defined(NDEBUG)
+  if (iopage->prv.pflag & FILEIO_PAGE_FLAG_ENCRYPTED_MASK)
+    {
+      er_log_debug (ARG_FILE_LINE,
+		    "TDE: pgbuf_rv_dealloc_page(): reset tde bit in pflag, VPID = %d|%d, tde_algorithm = %s\n",
+		    VPID_AS_ARGS (&vpid), tde_get_algorithm_name (pgbuf_get_tde_algorithm (page_deallocated)));
+    }
+#endif /* !NDEBUG */
+
+  log_append_compensate_with_undo_nxlsa (thread_p, RVPGBUF_COMPENSATE_DEALLOC, &vpid, 0, page_deallocated,
+					 sizeof (PGBUF_DEALLOC_UNDO_DATA), udata, LOG_FIND_CURRENT_TDES (thread_p),
+					 &rcv->reference_lsa);
   pgbuf_set_dirty_and_free (thread_p, page_deallocated);
+  return NO_ERROR;
+}
+
+/*
+ * pgbuf_rv_dealloc_undo_compensate () - compensation for undo page deallocation. the page is validated by setting its page type back.
+ *
+ * return        : error code
+ * thread_p (in) : thread entry
+ * rcv (in)      : recovery data
+ *
+ */
+int
+pgbuf_rv_dealloc_undo_compensate (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  PGBUF_DEALLOC_UNDO_DATA *udata = (PGBUF_DEALLOC_UNDO_DATA *) rcv->data;
+  VPID vpid;
+  FILEIO_PAGE *iopage;
+
+  assert (rcv->pgptr != NULL);
+  assert (rcv->length == sizeof (PGBUF_DEALLOC_UNDO_DATA));
+  assert (udata->ptype > PAGE_UNKNOWN && udata->ptype <= PAGE_LAST);
+
+  CAST_PGPTR_TO_IOPGPTR (iopage, rcv->pgptr);
+
+  pgbuf_set_page_ptype (thread_p, rcv->pgptr, (PAGE_TYPE) udata->ptype);
+  iopage->prv.pflag = udata->pflag;
+
+#if !defined(NDEBUG)
+  if (iopage->prv.pflag & FILEIO_PAGE_FLAG_ENCRYPTED_MASK)
+    {
+      er_log_debug (ARG_FILE_LINE,
+		    "TDE: pgbuf_rv_dealloc_page(): reset tde bit in pflag, VPID = %d|%d, tde_algorithm = %s\n",
+		    VPID_AS_ARGS (&vpid), tde_get_algorithm_name (pgbuf_get_tde_algorithm (rcv->pgptr)));
+    }
+#endif /* !NDEBUG */
+
   return NO_ERROR;
 }
 
