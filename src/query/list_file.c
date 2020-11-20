@@ -5197,13 +5197,16 @@ qfile_clear_list_cache (THREAD_ENTRY * thread_p, int list_ht_no, bool release)
       /* unhappy condition; if this happens, memory leak will occurrs */
       er_log_debug (ARG_FILE_LINE, "ls_clear_list_cache: failed to delete all entries\n");
     }
-  (void) mht_clear (qfile_List_cache.list_hts[list_ht_no], NULL, NULL);
 
-  /* release assigned memory hash table */
-  if (release)
+  if (qfile_List_cache.list_hts[list_ht_no]->nentries == 0)
     {
-      qfile_List_cache.ht_assigned[list_ht_no] = false;
-      qfile_List_cache.next_ht_no = list_ht_no;
+      (void) mht_clear (qfile_List_cache.list_hts[list_ht_no], NULL, NULL);
+      /* release assigned memory hash table */
+      if (release)
+	{
+	  qfile_List_cache.ht_assigned[list_ht_no] = false;
+	  qfile_List_cache.next_ht_no = list_ht_no;
+	}
     }
 
   csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
@@ -6765,4 +6768,12 @@ qfile_update_qlist_count (THREAD_ENTRY * thread_p, const QFILE_LIST_ID * list_p,
 	}
     }
 #endif // SERVER_MODE
+}
+
+int
+qfile_get_list_cache_number_of_entries (THREAD_ENTRY * thread_p, int ht_no)
+{
+  assert_release (ht_no >= 0);
+
+  return (qfile_List_cache.list_hts[ht_no]->nentries);
 }
