@@ -941,7 +941,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       else
 	{
 	  csql_display_msg (csql_get_message (CSQL_STAT_COMMITTED_TEXT));
-	  cub_ddl_log_write_tran_str ("Commited");
+	  cub_ddl_log_write_tran_str ("COMMIT");
 	}
       break;
 
@@ -954,7 +954,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       else
 	{
 	  csql_display_msg (csql_get_message (CSQL_STAT_ROLLBACKED_TEXT));
-	  cub_ddl_log_write_tran_str ("Rolled back");
+	  cub_ddl_log_write_tran_str ("ROLLBACK");
 	}
       break;
 
@@ -2483,13 +2483,13 @@ csql_exit_session (int error)
 	  if (line_buf[0] == 'y' || line_buf[0] == 'Y')
 	    {
 	      commit_on_shutdown = true;
-	      cub_ddl_log_write_tran_str ("Commited");
+	      cub_ddl_log_write_tran_str ("COMMIT");
 	      break;
 	    }
 	  if (line_buf[0] == 'n' || line_buf[0] == 'N')
 	    {
 	      commit_on_shutdown = false;
-	      cub_ddl_log_write_tran_str ("Rolled back");
+	      cub_ddl_log_write_tran_str ("ROLLBACK");
 	      break;
 	    }
 
