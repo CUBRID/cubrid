@@ -2178,6 +2178,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
 	  db_abort_transaction ();
 	}
       cub_ddl_log_msg ("execute_batch %d%s", query_index + 1, auto_commit_mode == TRUE ? " auto_rollback" : "");
+      cub_ddl_log_write ();
 
       if (err_code == ER_INTERRUPTED)
 	{
@@ -2190,7 +2191,6 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
     {
       net_buf_cp_int (net_buf, shm_shard_id, NULL);
     }
-  cub_ddl_log_write ();
   cub_ddl_log_write_end ();
   return 0;
 
