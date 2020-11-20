@@ -134,7 +134,7 @@ cub_ddl_log_init ()
 }
 
 void
-cub_ddl_log_free ()
+cub_ddl_log_free (char all_free)
 {
   if (ddl_audit_handle == NULL)
     {
@@ -157,6 +157,12 @@ cub_ddl_log_free ()
   ddl_audit_handle->file_name[0] = '\0';
   ddl_audit_handle->schema_file[0] = '\0';
   ddl_audit_handle->commit_count = 0;
+
+  if (all_free)
+    {
+      ddl_audit_handle->auto_commit_mode = FALSE;
+      is_executed_ddl = FALSE;
+    }
 }
 
 void
@@ -285,7 +291,7 @@ cub_ddl_log_stmt_type (int stmt_type)
 
   ddl_audit_handle->stmt_type = stmt_type;
 
-  if (cub_is_ddl_type (stmt_type) == TRUE)
+  if (cub_is_ddl_type (stmt_type) == TRUE && ddl_audit_handle->auto_commit_mode == FALSE)
     {
       is_executed_ddl = TRUE;
     }
@@ -651,7 +657,7 @@ cub_ddl_log_write_end ()
     }
 
 ddl_log_free:
-  cub_ddl_log_free ();
+  cub_ddl_log_free (FALSE);
 }
 
 void
@@ -819,7 +825,7 @@ write_error:
     }
 
   is_executed_ddl = FALSE;
-  cub_ddl_log_free ();
+  cub_ddl_log_free (FALSE);
   fprintf (stderr, "## %s\n", msg);
 }
 

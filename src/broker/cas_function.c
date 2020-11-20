@@ -2023,6 +2023,7 @@ fn_con_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_
 {
   cas_log_write (0, true, "con_close");
   net_buf_cp_int (net_buf, 0, NULL);
+  cub_ddl_log_free (TRUE);
   return FN_CLOSE_CONN;
 }
 

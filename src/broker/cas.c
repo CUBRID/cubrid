@@ -2506,8 +2506,8 @@ net_read_int_keep_con_auto (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header, 
     {
       as_info->num_request++;
       gettimeofday (&tran_start_time, NULL);
-      cub_ddl_log_start_time (&tran_start_time);
     }
+  cub_ddl_log_start_time (&tran_start_time);
 
   if (as_info->con_status == CON_STATUS_CLOSE || as_info->con_status == CON_STATUS_CLOSE_AND_CONNECT)
     {
