@@ -2393,7 +2393,11 @@ session_preserve_temporary_files (THREAD_ENTRY * thread_p, SESSION_QUERY_ENTRY *
 	{
 	  if (!VFID_ISNULL (&tfile_vfid_p->temp_vfid))
 	    {
-	      file_temp_preserve (thread_p, &tfile_vfid_p->temp_vfid);
+	      if (!tfile_vfid_p->preserved)
+		{
+	          file_temp_preserve (thread_p, &tfile_vfid_p->temp_vfid);
+		  tfile_vfid_p->preserved = true;
+		}
 	    }
 	  temp = tfile_vfid_p;
 	  tfile_vfid_p = tfile_vfid_p->next;
@@ -2425,7 +2429,6 @@ sentry_to_qentry (const SESSION_QUERY_ENTRY * sentry_p, QMGR_QUERY_ENTRY * qentr
   qentry_p->xasl_ent = NULL;
   qentry_p->er_msg = NULL;
   qentry_p->is_holdable = true;
-  qentry_p->is_preserved = true;
 }
 
 /*
@@ -2468,6 +2471,7 @@ session_store_query_entry_info (THREAD_ENTRY * thread_p, QMGR_QUERY_ENTRY * qent
     {
       return;
     }
+
   session_preserve_temporary_files (thread_p, sqentry_p);
 
   if (state_p->queries == NULL)
@@ -2506,7 +2510,7 @@ session_free_sentry_data (THREAD_ENTRY * thread_p, SESSION_QUERY_ENTRY * sentry_
 
   if (sentry_p->temp_file != NULL)
     {
-      qmgr_free_temp_file_list (thread_p, sentry_p->temp_file, sentry_p->query_id, false, true);
+      qmgr_free_temp_file_list (thread_p, sentry_p->temp_file, sentry_p->query_id, false);
     }
 
   sessions.num_holdable_cursors--;

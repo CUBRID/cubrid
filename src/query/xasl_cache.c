@@ -1715,13 +1715,16 @@ xcache_invalidate_qcaches (THREAD_ENTRY * thread_p, const OID * oid)
 	    }
 	  if (xcache_entry_is_related_to_oid (xcache_entry, oid))
 	    {
-	      res = qfile_clear_list_cache (thread_p, xcache_entry->list_ht_no, false);
+	      res = qfile_clear_list_cache (thread_p, xcache_entry->list_ht_no, true);
 	      if (res != NO_ERROR)
 		{
 		  finished = true;
 		  break;
 		}
-	      xcache_entry->list_ht_no = -1;
+	      if (qfile_get_list_cache_number_of_entries (xcache_entry->list_ht_no) == 0)
+		{
+		  xcache_entry->list_ht_no = -1;
+		}
 	    }
 	}
     }

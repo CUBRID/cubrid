@@ -223,4 +223,6 @@ extern int qfile_set_tuple_column_value (THREAD_ENTRY * thread_p, QFILE_LIST_ID 
 extern int qfile_overwrite_tuple (THREAD_ENTRY * thread_p, PAGE_PTR first_page, QFILE_TUPLE tuplep,
 				  QFILE_TUPLE_RECORD * tplrec, QFILE_LIST_ID * list_idp);
 extern void qfile_update_qlist_count (THREAD_ENTRY * thread_p, const QFILE_LIST_ID * list_p, int inc);
+extern int qfile_get_list_cache_number_of_entries (int ht_no);
+
 #endif /* _LIST_FILE_H_ */

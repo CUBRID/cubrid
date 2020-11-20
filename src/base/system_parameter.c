@@ -1402,18 +1402,22 @@ int PRM_FILTER_PRED_MAX_CACHE_CLONES = 10;
 static int prm_filter_pred_max_cache_clones_default = 10;
 static unsigned int prm_filter_pred_max_cache_clones_flag = 0;
 
-int PRM_LIST_QUERY_CACHE_MODE = 1;
-static int prm_list_query_cache_mode_default = 1;
+int PRM_LIST_QUERY_CACHE_MODE = 2;
+static int prm_list_query_cache_mode_default = 2;
 static int prm_list_query_cache_mode_upper = 2;
-static int prm_list_query_cache_mode_lower = 0;
+static int prm_list_query_cache_mode_lower = 2;
 static unsigned int prm_list_query_cache_mode_flag = 0;
 
 int PRM_LIST_MAX_QUERY_CACHE_ENTRIES = 200;
 static int prm_list_max_query_cache_entries_default = 200;
+static int prm_list_max_query_cache_entries_upper = INT_MAX;
+static int prm_list_max_query_cache_entries_lower = 1;
 static unsigned int prm_list_max_query_cache_entries_flag = 0;
 
 int PRM_LIST_MAX_QUERY_CACHE_PAGES = 1000;
 static int prm_list_max_query_cache_pages_default = 1000;
+static int prm_list_max_query_cache_pages_upper = INT_MAX;
+static int prm_list_max_query_cache_pages_lower = 1;
 static unsigned int prm_list_max_query_cache_pages_flag = 0;
 
 bool PRM_USE_ORDERBY_SORT_LIMIT = true;
@@ -3594,7 +3598,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_LIST_QUERY_CACHE_MODE,
    PRM_NAME_LIST_QUERY_CACHE_MODE,
-   (PRM_FOR_SERVER),
+   (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_INTEGER,
    &prm_list_query_cache_mode_flag,
    (void *) &prm_list_query_cache_mode_default,
@@ -3611,7 +3615,8 @@ static SYSPRM_PARAM prm_Def[] = {
    &prm_list_max_query_cache_entries_flag,
    (void *) &prm_list_max_query_cache_entries_default,
    (void *) &PRM_LIST_MAX_QUERY_CACHE_ENTRIES,
-   (void *) NULL, (void *) NULL,
+   (void *) &prm_list_max_query_cache_entries_upper,
+   (void *) &prm_list_max_query_cache_entries_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
@@ -3622,7 +3627,8 @@ static SYSPRM_PARAM prm_Def[] = {
    &prm_list_max_query_cache_pages_flag,
    (void *) &prm_list_max_query_cache_pages_default,
    (void *) &PRM_LIST_MAX_QUERY_CACHE_PAGES,
-   (void *) NULL, (void *) NULL,
+   (void *) &prm_list_max_query_cache_pages_upper,
+   (void *) &prm_list_max_query_cache_pages_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},

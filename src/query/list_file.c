@@ -276,7 +276,7 @@ static int qfile_free_list_cache_entry (THREAD_ENTRY * thread_p, void *data, voi
 static int qfile_print_list_cache_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *key, void *data, void *args);
 static void qfile_add_uncommitted_list_cache_entry (int tran_index, QFILE_LIST_CACHE_ENTRY * lent);
 static void qfile_delete_uncommitted_list_cache_entry (int tran_index, QFILE_LIST_CACHE_ENTRY * lent);
-static int qfile_delete_list_cache_entry (THREAD_ENTRY * thread_p, void *data, void *args);
+static int qfile_delete_list_cache_entry (THREAD_ENTRY * thread_p, void *data);
 static int qfile_end_use_of_list_cache_entry_local (THREAD_ENTRY * thread_p, void *data, void *args);
 static bool qfile_is_early_time (struct timeval *a, struct timeval *b);
 
@@ -320,8 +320,18 @@ qfile_list_cache_cleanup (THREAD_ENTRY * thread_p)
   int candidate_index, i, n;
 
   struct timeval current_time;
-  int cleanup_count = prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_ENTRIES) * 0.8;
-  int cleanup_pages = prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_PAGES) * 0.8;
+  int cleanup_count = prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_ENTRIES) * 8 / 10;
+  int cleanup_pages = prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_PAGES) * 8 / 10;
+
+  if (cleanup_count < 1)
+    {
+      cleanup_count = 1;
+    }
+
+  if (cleanup_pages < 1)
+    {
+      cleanup_pages = 1;
+    }
 
   bh =
     bh_create (thread_p, cleanup_count, sizeof (QFILE_CACHE_CLEANUP_CANDIDATE), qfile_compare_cleanup_candidates, NULL);
@@ -372,7 +382,7 @@ qfile_list_cache_cleanup (THREAD_ENTRY * thread_p)
   for (candidate_index = 0; candidate_index < bh->element_count; candidate_index++)
     {
       bh_element_at (bh, candidate_index, &candidate);
-      qfile_end_use_of_list_cache_entry (thread_p, candidate.qcache, true);
+      qfile_delete_list_cache_entry (thread_p, candidate.qcache);
       if (qfile_List_cache.n_entries <= cleanup_count)
 	{
 	  if (qfile_List_cache.n_pages <= cleanup_pages)
@@ -5188,13 +5198,16 @@ qfile_clear_list_cache (THREAD_ENTRY * thread_p, int list_ht_no, bool release)
       /* unhappy condition; if this happens, memory leak will occurrs */
       er_log_debug (ARG_FILE_LINE, "ls_clear_list_cache: failed to delete all entries\n");
     }
-  (void) mht_clear (qfile_List_cache.list_hts[list_ht_no], NULL, NULL);
 
-  /* release assigned memory hash table */
-  if (release)
+  if (qfile_get_list_cache_number_of_entries(list_ht_no) == 0)
     {
-      qfile_List_cache.ht_assigned[list_ht_no] = false;
-      qfile_List_cache.next_ht_no = list_ht_no;
+      (void) mht_clear (qfile_List_cache.list_hts[list_ht_no], NULL, NULL);
+      /* release assigned memory hash table */
+      if (release)
+	{
+	  qfile_List_cache.ht_assigned[list_ht_no] = false;
+	  qfile_List_cache.next_ht_no = list_ht_no;
+	}
     }
 
   csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
@@ -5528,7 +5541,6 @@ qfile_clear_uncommited_list_cache_entry (THREAD_ENTRY * thread_p, int tran_index
   lent = qfile_List_cache.tran_list[tran_index];
   while (lent)
     {
-      lent->uncommitted_marker = false;
       tran_next = lent->tran_next;
       lent->tran_next = NULL;
       lent = tran_next;
@@ -5584,21 +5596,17 @@ qfile_delete_uncommitted_list_cache_entry (int tran_index, QFILE_LIST_CACHE_ENTR
  *   args(in)   :
  */
 static int
-qfile_delete_list_cache_entry (THREAD_ENTRY * thread_p, void *data, void *args)
+qfile_delete_list_cache_entry (THREAD_ENTRY * thread_p, void *data)
 {
   /* this function should be called within CSECT_QPROC_LIST_CACHE */
   QFILE_LIST_CACHE_ENTRY *lent = (QFILE_LIST_CACHE_ENTRY *) data;
-  int tran_index;
   int error_code = ER_FAILED;
 
-  if (data == NULL || args == NULL)
+  if (data == NULL || lent->list_ht_no < 0)
     {
       return ER_FAILED;
     }
 
-  tran_index = *((int *) args);
-
-  /* mark it to be deleted */
   lent->deletion_marker = true;
 #if defined(SERVER_MODE)
   if (lent->deletion_marker && lent->last_ta_idx == 0)
@@ -5641,13 +5649,9 @@ qfile_delete_list_cache_entry (THREAD_ENTRY * thread_p, void *data, void *args)
 	}
 
       /* clear list_id */
+      qfile_update_qlist_count (thread_p, &lent->list_id, 1);
       qfile_clear_list_id (&lent->list_id);
 
-      /* remove from the list of uncommitted entries in the transaction */
-      if (qfile_List_cache.tran_list[tran_index])
-	{
-	  qfile_delete_uncommitted_list_cache_entry (tran_index, lent);
-	}
       error_code = qfile_free_list_cache_entry (thread_p, lent, NULL);
     }
 
@@ -5714,6 +5718,12 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
   qfile_List_cache.lookup_counter++;	/* counter */
   if (lent)
     {
+      /* check if it is marked to be deleted */
+      if (lent->deletion_marker)
+	{
+	  (void) qfile_delete_list_cache_entry (thread_p, lent);
+	  lent = NULL;
+	}
 #if defined(SERVER_MODE)
 #if 0
       /* check if the recorded transaction isolation level is higher than the current one */
@@ -5733,9 +5743,7 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
 	  /* 1. my isolation is not (greater than) read uncommited 2. the entry is cached by an uncommitted other
 	   * transaction */
 	  num_elements = (int) lent->last_ta_idx;
-	  if (lent->uncommitted_marker == true
-	      && lfind (&tran_index, lent->tran_index_array, &num_elements, sizeof (int),
-			qfile_compare_tran_id) != NULL)
+	  if (lent->uncommitted_marker == true)
 	    {
 	      lent->last_ta_idx = num_elements;
 	      /* treat as look-up failed */
@@ -6073,7 +6081,7 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr, con
   /* copy the QFILE_LIST_ID */
   if (qfile_copy_list_id (&lent->list_id, list_id, false) != NO_ERROR)
     {
-      (void) qfile_delete_list_cache_entry (thread_p, lent, &tran_index);
+      (void) qfile_delete_list_cache_entry (thread_p, lent);
       lent = NULL;
       goto end;
     }
@@ -6120,13 +6128,10 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr, con
 	{
 	  db_private_free (thread_p, s);
 	}
-      (void) qfile_delete_list_cache_entry (thread_p, lent, &tran_index);
+      (void) qfile_delete_list_cache_entry (thread_p, lent);
       lent = NULL;
       goto end;
     }
-
-  /* append to the list of uncommitted entries in the transaction */
-  qfile_add_uncommitted_list_cache_entry (tran_index, lent);
 
   /* update counter */
   qfile_List_cache.n_entries++;
@@ -6198,6 +6203,11 @@ qfile_end_use_of_list_cache_entry (THREAD_ENTRY * thread_p, QFILE_LIST_CACHE_ENT
     }
   while (p && p < r);
 
+  if (lent->last_ta_idx == 0)
+    {
+      lent->uncommitted_marker = false;
+    }
+
 #if !defined (NDEBUG)
   for (i_idx = 0, num_active_users = 0; i_idx < lent->last_ta_idx; i_idx++)
     {
@@ -6216,7 +6226,7 @@ qfile_end_use_of_list_cache_entry (THREAD_ENTRY * thread_p, QFILE_LIST_CACHE_ENT
 #if defined(SERVER_MODE)
   if (marker && lent->last_ta_idx == 0)
     {
-      (void) qfile_delete_list_cache_entry (thread_p, lent, &tran_index);
+      (void) qfile_delete_list_cache_entry (thread_p, lent);
     }
 #endif
 
@@ -6759,4 +6769,12 @@ qfile_update_qlist_count (THREAD_ENTRY * thread_p, const QFILE_LIST_ID * list_p,
 	}
     }
 #endif // SERVER_MODE
+}
+
+int
+qfile_get_list_cache_number_of_entries (int ht_no)
+{
+  assert_release (ht_no >= 0);
+
+  return (qfile_List_cache.list_hts[ht_no]->nentries);
 }
