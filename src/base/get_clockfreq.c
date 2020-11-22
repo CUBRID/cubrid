@@ -17,7 +17,7 @@
    <http://www.gnu.org/licenses/>.  */
 
 /*
- * get_clockfreq.c - get_clockfreq() function implementation
+ * get_clock_freq.c - get_clock_freq() function implementation
  */
 
 #ident "$Id$"
@@ -25,14 +25,15 @@
 #include "config.h"
 
 #include <fcntl.h>
+#include <stdlib.h>
 #include "tsc_timer.h"
 
 /*
- * get_clockfreq() - get the CPU clock rate
+ * get_clock_freq() - get the CPU clock rate
  *   return: the CPU or Mainboard clock rate (KHz)
  */
 TSC_UINT64
-get_clockfreq (void)
+get_clock_freq (void)
 {
 #if defined (WINDOWS)
   /*
@@ -43,62 +44,84 @@ get_clockfreq (void)
   return (TSC_UINT64) fr.QuadPart;
 
 #elif defined (LINUX)
-  /*
-   * Note: The implementation is derived from glibc-2.18.
-   */
-
-  /* We read the information from the /proc filesystem.  It contains at least one line like cpu MHz : 497.840237 or
+  /* We read the information from the /proc filesystem. It contains at least one line like cpu MHz : 497.840237 or
    * also cpu MHz : 497.841 We search for this line and convert the number in an integer.  */
-  TSC_UINT64 result = 0;
+  TSC_UINT64 clock_freq = 0;
   int fd;
+  char buf[4096], hz[32];
+  char *src, *dest, *ovf, *dp = NULL;
+  ssize_t n;
 
   fd = open ("/proc/cpuinfo", O_RDONLY);
-  if (fd != -1)
+  if (fd == -1)
     {
-      /* XXX AFAIK the /proc filesystem can generate "files" only up to a size of 4096 bytes.  */
-      char buf[4096];
-      ssize_t n;
+      goto exit;
+    }
 
-      n = read (fd, buf, sizeof buf);
-      if (n > 0)
+  n = read (fd, buf, sizeof (buf));
+  if (n <= 0)
+    {
+      goto exit;
+    }
+
+  ovf = buf + n;
+
+  src = strstr (buf, "cpu MHz");
+  if (src == NULL)
+    {
+      goto exit;
+    }
+
+  dest = hz;
+
+  while (*src != '\n')
+    {
+      if (*src < '0' || *src > '9')
 	{
-	  char *mhz = strstr (buf, "cpu MHz");
-
-	  if (mhz != NULL)
+	  if (*src == '.')
 	    {
-	      char *endp = buf + n;
-	      int seen_decpoint = 0;
-	      int ndigits = 0;
-
-	      /* Search for the beginning of the string.  */
-	      while (mhz < endp && (*mhz < '0' || *mhz > '9') && *mhz != '\n')
-		++mhz;
-
-	      while (mhz < endp && *mhz != '\n')
-		{
-		  if (*mhz >= '0' && *mhz <= '9')
-		    {
-		      result *= 10;
-		      result += *mhz - '0';
-		      if (seen_decpoint)
-			++ndigits;
-		    }
-		  else if (*mhz == '.')
-		    seen_decpoint = 1;
-
-		  ++mhz;
-		}
-
-	      /* Compensate for missing digits at the end.  */
-	      while (ndigits++ < 6)
-		result *= 10;
+	      dp = dest;
 	    }
+
+	  src++;
+	}
+      else
+	{
+	  *dest++ = *src++;
 	}
 
+      if (src >= ovf)
+	{
+	  goto exit;
+	}
+    }
+
+  if (dp == NULL)
+    {
+      dp = dest;
+    }
+
+  while ((dest - dp) < 6)
+    {
+      *dest++ = '0';
+    }
+
+  *dest = '\0';
+
+  clock_freq = strtoull (hz, NULL, 10);
+  if (clock_freq == 0)
+    {
+      goto exit;
+    }
+
+exit:
+
+  if (fd != -1)
+    {
       close (fd);
     }
 
-  return result;
+  return clock_freq;
 
 #else
   /*
