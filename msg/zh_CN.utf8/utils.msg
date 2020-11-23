@@ -72,6 +72,7 @@ $       52      dump_tz
 $       53      restoreslave
 $       54      delvoldb
 $       56      checksumdb
+$       57      tde
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 在数据库名 '%2$s' 中有无效的长度或字符 '%1$c' \n
@@ -124,6 +125,7 @@ cubrid 管理工具，版本 %1$s\n\
     dump_tz\n\
     restoreslave\n\
     vacuumdb\n\
+    tde\n\
 \n\
 %4$s 是一个 DBMS 工具.\n\
 要寻找额外的信息, 可浏览 http://www.cubrid.org\n
@@ -183,6 +185,7 @@ cubrid 管理工具，版本 %1$s\n\
     dump_tz\n\
     vacuumdb\n\
     checksumdb\n\
+    tde\n\
 \n\
 %4$s 是一个 DBMS 工具.\n\
 要寻找额外的信息, 可浏览 http://www.cubrid.org\n
@@ -261,6 +264,12 @@ cubrid 管理工具，版本 %1$s\n\
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 警告: 在单机模式下 -t 选项将被忽略.\n
 31 错误: 目标路径不存在或不是目录.\n
+32 通过使用--separate-keys选项，它将密钥文件（_keys）与备份卷分开。\n\
+如果密钥文件丢失，即使有备份卷，还原（restoredb）也可能无法正常进行。\n
+33 备份卷包括密钥文件（_keys）。\n\
+如果表经过TDE加密，则可能导致该数据的安全性问题。\n\
+要分离密钥文件以防止该文件，请使用--separate-keys选项。\n
+34 错误:无法将FIFIO文件用作带有分隔键的目标路径。\n
 60 \
 backupdb: 备份一个数据库.\n\
 用法: %1$s backupdb [选项] 数据库名\n\
@@ -279,7 +288,8 @@ backupdb: 备份一个数据库.\n\
       --no-check               不检测数据库的一致性; 默认: 检测\n\
   -t, --thread-count=COUNT     线程数; 默认: 0(auto)\n\
   -z, --compress               压缩备份卷; 默认: 不压缩\n\
-      --sleep-msecs=N          每读 1M 休眠 N  毫秒; 默认: 0\n
+      --sleep-msecs=N          每读 1M 休眠 N  毫秒; 默认: 0\n\
+  -k, --separate_keys          TDE的密钥文件（_keys）不包含在备份卷中，而是被分成一个文件\n
 71 不兼容的参数, \"%1$s\", 和 \"%2$s\"\n
 
 
@@ -397,7 +407,8 @@ restoredb: 恢复一个数据库.\n\
   -l, --level=LEVEL                 指定将要被恢复的备份的等级为 LEVEL ; 查看 backup 的使用说明; 默认: 0(full backup)\n\
   -p, --partial-recovery            执行部分恢复，如果有任何日志档案存在\n\
   -o, --output-file=FILE            将输出信息重定向到FILE; 默认: 空\n\
-  -u, --use-database-location-path  将数据库和日志文件恢复到数据库位置文件中指定的路径中去\n
+  -u, --use-database-location-path  将数据库和日志文件恢复到数据库位置文件中指定的路径中去\n\
+  -k, --keys-file-path              还原期间要使用的TDE的密钥文件（_keys）路径\n
 
 
 $set 12 MSGCAT_UTIL_SET_LOADDB
@@ -1129,7 +1140,8 @@ restoreslave: 恢复一个从数据库.\n\
       --list                        显示一个未恢复的备份卷的列表\n\
   -B, --backup-file-path=PATH       指定一个将被恢复的备份卷的路径\n\
   -o, --output-file=FILE            重定向输出信息到FILE; 默认: 无\n\
-  -u, --use-database-location-path  恢复数据库和日志卷到数据库位置文件指定的路径\n
+  -u, --use-database-location-path  恢复数据库和日志卷到数据库位置文件指定的路径\n\
+  -k, --keys-file-path              还原期间要使用的TDE的密钥文件（_keys）路径\n
 
 $set 54 MSGCAT_UTIL_SET_DELVOLDB
 21 准备删除下面的卷:\n\n
@@ -1182,3 +1194,23 @@ checksumdb: 检查复制完整性.\n\
       --resume                  重新开始计算校验和\n\
       --schema-only             只检查结构(schema)的一致性\n\
       --cont-on-error           计算过程中遇到错误时仍然继续\n
+
+$set 57 MSGCAT_UTIL_SET_TDE
+21 输入DBA密码:
+25 无法获取在数据库上设置的密钥信息\n
+26 试图将键从键（索引: %1$d）更改为键（索引: %2$d）.. \n
+27 密钥已从密钥（索引: %1$d）更改为密钥（索引: %2$d）\n
+28 无法删除数据库上设置的密钥\n
+29 键（索引: %1$d）已被删除\n
+30 生成了一个新密钥-密钥索引:在%2$s上创建了%1$d
+60
+tde: 透明数据加密（TDE）管理\n\
+用法: %1$s tde OPERATION（-s|-n|-d|-c）[OPTION]数据库名称\n\
+\n\
+有效选项:\n\
+    -p, --dba-password=PASS    DBA用户的密码；如果未指定，则会提示\n\
+操作:必须给出一种操作，并且它们是唯一的\n\
+    -s, --show-keys            打印在数据库和密钥文件（_keys）上设置的密钥信息\n\
+    -n, --generate-new-key     在密钥文件（_keys）中生成一个新密钥；最大计数:128\n\
+    -d, --delete-key=KEY_INDEX 删除密钥文件（_keys）中的密钥\n\
+    -c, --change-key=KEY_INDEX 将数据库中设置的密钥更改为密钥文件（_keys）中的另一个密钥\n
