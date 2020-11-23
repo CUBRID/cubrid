@@ -8587,6 +8587,21 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
       show_collation = true;
       break;
 
+    case PT_TYPE_SET:
+    case PT_TYPE_MULTISET:
+    case PT_TYPE_SEQUENCE:
+      q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
+
+      /* not to print data_type node for SET data types with empty domain */
+      if (p->data_type && p->data_type->info.data_type.precision != TP_FLOATING_PRECISION_VALUE)
+	{
+	  r1 = pt_print_bytes_l (parser, p->data_type);
+	  q = pt_append_nulstring (parser, q, "(");
+	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_nulstring (parser, q, ")");
+	}
+      break;
+
     default:
       q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
       if (p->data_type)
