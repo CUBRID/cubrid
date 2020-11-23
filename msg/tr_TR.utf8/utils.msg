@@ -72,6 +72,7 @@ $       52      dump_tz
 $       53      restoreslave
 $       54      delvoldb
 $       56      checksumdb
+$       57      tde
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Geçersiz uzunluk veya karakter '%1$c' veritabanı adı '%2$s' \n
@@ -124,6 +125,7 @@ Mevcut yönetici yardımcı programı-adı:\n\
     dump_tz\n\
     restoreslave\n\
     vacuumdb\n\
+    tde\n\
 \n\
 %4$s DBMS için bir araçtır.\n\
 Daha fazla bilgi için bkz:http://www.cubrid.org\n
@@ -183,6 +185,7 @@ Mevcut yönetici programları:\n\
     dump_tz\n\
     vacuumdb\n\
     checksumdb\n\
+    tde\n\
 \n\
 %4$s DBMS için bir araçtır.\n\
 Daha fazla bilgi için bkz: http://www.cubrid.org\n
@@ -261,6 +264,12 @@ Mevcut komut:\n\
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 UYARI: -t seçeneği stand-alone modu yürütülmesine göz ardı edilir.\n
 31 HATA: Hedef-yolu yok veya bir dizin değil.\n
+32 --separate-keys seçeneğini kullanarak, anahtar dosyasını (_keys) yedekleme biriminden ayırır.\n\
+Anahtar dosyası kaybolursa, yedekleme birimi olsa bile geri yükleme (geri yüklendib) düzgün çalışmayabilir.\n
+33 Yedekleme birimi anahtar dosyasını (_keys) içerir.\n\
+Bir tablo TDE şifreli ise, bu veriler için güvenlik sorununa neden olabilir.\n\
+Önlemek üzere anahtar dosyasını ayırmak için --separate-keys seçeneğini kullanın.\n
+34 HATA: FIFIO dosyası ayrı anahtarla hedef yol olarak kullanılamaz.\n
 60 \
 backupdb: Bir veritabanı yedeklemesi.\n\
 kullanım: %1$s backupdb [SEÇENEK] veritabanı-adı\n\
@@ -279,7 +288,8 @@ geçerli opsiyonlar:\n\
       --no-check               veritabanının tutarlılığını kontrol etmez; varsayılan: kontrol edin\n\
   -t, --thread-count=COUNT     Konu sayısı; Varsayılan olarak: 0 (otomatik)\n\
   -z, --compress               yedekleme birimleri sıkıştırmak; varsayılan: sıkıştırmayı açma\n\
-      --sleep-msecs=N          sleep N millisecond per 1M read; default: 0\n
+      --sleep-msecs=N          sleep N millisecond per 1M read; default: 0\n\
+  -k, --separate_keys          TDE için anahtarlar dosyası (_keys) yedekleme birimine dahil değildir, bunun yerine bir dosyaya ayrılmıştır\n
 71 Uyumsuz bağımsız değişkenleri, \"%1$s\", ve \"%2$s\"\n
 
 
@@ -397,7 +407,8 @@ geçerli seçenekler:\n\
   -l, --level=LEVEL                 Yedekleme SEVİYE geri yüklenecek; yedekleme kullanımını görmek; varsayılan: 0 (tam yedekleme)\n\
   -p, --partial-recovery            herhangi bir log arşiv bulunmayışı halinde kısmi kurtarma işlemi\n\
   -o, --output-file=FILE            DOSYA çıktı mesajları yönlendirme; varsayılan: hiçbir\n\
-  -u, --use-database-location-path  veritabanı konumu dosyasında belirtilen yoluna veritabanı ve günlük yoğunlukları geri yükleme.\n
+  -u, --use-database-location-path  veritabanı konumu dosyasında belirtilen yoluna veritabanı ve günlük yoğunlukları geri yükleme.\n\
+  -k, --keys-file-path              TDE için geri yükleme sırasında kullanılacak anahtar dosyasının yolu (_keys)\n
 
 
 $set 12 MSGCAT_UTIL_SET_LOADDB
@@ -1133,7 +1144,8 @@ geçerli seçenekler:\n\
       --list                        zorunlu görüntüleme geri yüklemeden yedek hacimlerinin listesi\n\
   -B, --backup-file-path=PATH       PATH yedekleme ciltlik bir dizin restore edilecek olan\n\
   -o, --output-file=FILE            FILE çıktı iletileri yönlendirmek; varsayılan: yok\n\
-  -u, --use-database-location-path  veritabanı konumu dosyasında belirtilen yolu veritabanı ve log birimlar geri\n
+  -u, --use-database-location-path  veritabanı konumu dosyasında belirtilen yolu veritabanı ve log birimlar geri\n\
+  -k, --keys-file-path              TDE için geri yükleme sırasında kullanılacak anahtar dosyasının yolu (_keys)\n
 
 $set 54 MSGCAT_UTIL_SET_DELVOLDB
 21 Aşağıdaki birimlerini kaldırmak için hazır:\n\n
@@ -1186,3 +1198,23 @@ geçerli seçenekler:\n\
       --resume                  checksum hesaplanması devam\n\
       --schema-only             sadece şema tutarlılığını denetlemek\n\
       --cont-on-error           hesaplama hatası devam\n
+
+$set 57 MSGCAT_UTIL_SET_TDE
+21 DBA şifresini girin:
+25 Veritabanındaki anahtar bilgi kümesini alamadı\n
+26 Anahtarı anahtardan (dizin: %1$d) anahtara (dizin: %2$d) değiştirmeye çalışılıyor ..\n
+27 Anahtar, anahtardan (dizin: %1$d) anahtara (dizin: %2$d) değiştirildi\n
+28 Veritabanındaki anahtar seti silinemez\n
+29 Anahtar (dizin: %1$d) silindi\n
+30 Yeni bir anahtar oluşturuldu - anahtar dizini: %1$d%2$s üzerinde oluşturuldu
+60 \
+tde: Şeffaf Veri Şifreleme (TDE) yönetimi\n\
+kullanım: %1$s tde İŞLEM (-s|-n|-d|-c) [SEÇENEK] veritabanı-adı\n\
+\n\
+geçerli seçenekler:\n\
+    -p, --dba-password=PASS      DBA kullanıcısının şifresi; belirtmezseniz sorulacak\n\
+İŞLEMLER: işlemlerden biri verilmelidir ve bunlar özeldir\n\
+    -s, --show-keys              veritabanında ve anahtar dosyasında (_keys) ayarlanan anahtar bilgileri yazdırır\n\
+    -n, --generate-new-key       anahtar dosyasında (_keys) yeni bir anahtar oluşturur; maksimum sayı: 128\n\
+    -d, --delete-key=KEY_INDEX   anahtar dosyasındaki (_keys) bir anahtarı sil\n\
+    -c, --change-key=KEY_INDEX   anahtar dosyasındaki (_keys) başka bir anahtar için veritabanındaki anahtarı değiştir\n
