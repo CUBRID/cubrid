@@ -35,7 +35,7 @@
 do { \
   if ((v) == 0) \
     { \
-      (v) = get_clockfreq (); \
+      (v) = get_clock_freq (); \
     } \
 } while (0)
 
@@ -68,7 +68,7 @@ void
 tsc_init (void)
 {
   check_power_savings ();
-  cpu_Clock_rate = get_clockfreq ();
+  cpu_Clock_rate = get_clock_freq ();
   return;
 }
 
