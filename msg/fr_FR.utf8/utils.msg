@@ -72,6 +72,7 @@ $       52      dump_tz
 $       53      restoreslave
 $       54      delvoldb
 $       56      checksumdb
+$       57      tde
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Longueur ou caractère non valide '%1$c' dans le nom de la base de données '%2$s'\n
@@ -124,6 +125,7 @@ Nom d'utilitaires d'administration disponible:\n\
     dump_tz\n\
     restoreslave\n\
     vacuumdb\n\
+    tde\n\
 \n\
 %4$s est un outil de SGBD.\n\
 Pour plus d'informations, reportez-vous à http://www.cubrid.org\n
@@ -183,6 +185,7 @@ Utilitaires d'administrateur disponibles:\n\
     dump_tz\n\
     vacuumdb\n\
     checksumdb\n\
+    tde\n\
 \n\
 %4$s is a tool for DBMS.\n\
 Pour plus d'informations, reportez-vous à http://www.cubrid.org\n
@@ -261,6 +264,12 @@ Commandes disponibles:\n\
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 AVERTISSEMENT: l'option -t est ignoré dans le mode d'exécution autonome.\n
 31 ERREUR: Le chemin de destination n'existe pas ou n'est pas un répertoire.\n
+32 En utilisant l'option --separate-keys, il sépare le fichier de clé (_keys) du volume de sauvegarde.\n\
+Si le fichier de clé est perdu, la restauration (restauréeb) peut ne pas fonctionner correctement même s'il existe un volume de sauvegarde.\n
+33 Le volume de sauvegarde comprend le fichier de clé (_keys).\n\
+Si une table est chiffrée par TDE, cela peut entraîner un problème de sécurité pour ces données.\n\
+Pour séparer le fichier de clé afin de l'empêcher, utilisez l'option --separate-keys.\n
+34 ERREUR: impossible d'utiliser le fichier FIFIO comme chemin de destination avec une clé séparée.\n
 60 \
 backupdb: Sauvegarde une base de données.\n\
 usage: %1$s backupdb [OPTION] database-name\n\
@@ -279,7 +288,8 @@ options valides:\n\
       --no-check               ne vérifie pas la cohérence de la base de données; par défaut: vérifier\n\
   -t, --thread-count=NOMBRE    NOMBRE de fils d'exécution; par défaut: 0 (auto)\n\
   -z, --compress               comprimer les volumes de sauvegarde; par défaut: décompresser\n\
-      --sleep-msecs=N          veille N millisecondes par 1M lit; par défaut: 0\n
+      --sleep-msecs=N          veille N millisecondes par 1M lit; par défaut: 0\n\
+  -k, --separate_keys          fichier de clés (_keys) pour TDE n'est pas inclus dans le volume de sauvegarde, mais est séparé dans un fichier à la place\n
 71 Arguments incompatibles, \"%1$s\", et \"%2$s\"\n
 
 
@@ -399,7 +409,8 @@ options valids:\n\
   -l, --level=NIVEAU                NIVEAU de sauvegarde à restaurer, consultez l'usage de sauvegarde; par défaut: 0 (sauvegarde complète)\n\
   -p, --partial-recovery            effectue une récupération partielle si une archive de journal est manquante\n\
   -o, --output-file=FICHIER         redirige les messages de sortie à FICHIER; par défaut: aucun\n\
-  -u, --use-database-location-path  restaure les volumes de base de données et du journal dans le chemin spécifié dans le fichier d'emplacement de base de données\n
+  -u, --use-database-location-path  restaure les volumes de base de données et du journal dans le chemin spécifié dans le fichier d'emplacement de base de données\n\
+  -k, --keys-file-path              Chemin du fichier de clé (_keys) pour TDE à utiliser lors de la restauration\n
 
 
 $set 12 MSGCAT_UTIL_SET_LOADDB
@@ -1149,7 +1160,8 @@ options valides:\n\
       --list                       afiche la liste des volumes de sauvegarde sans restauration\n\
   -B, --backup-file-path=VOIE      VOIE est un répertoire de volumes de sauvegarde a restaurer\n\
   -o, --output-file=FICHIER        rediriger les messages de sortie vers le FICHIER; par défaut: aucun\n\
-  -u, --use-database-location-path restaurer la base de données et loguer les volumes au chemin spécifié dans le ficher d'emplacement de la base de données\n
+  -u, --use-database-location-path restaurer la base de données et loguer les volumes au chemin spécifié dans le ficher d'emplacement de la base de données\n\
+  -k, --keys-file-path             Chemin du fichier de clé (_keys) pour TDE à utiliser lors de la restauration\n
 
 $set 54 MSGCAT_UTIL_SET_DELVOLDB
 21 Prêt à éliminer les volumes suivantes:\n\n
@@ -1202,3 +1214,23 @@ options valides:\n\
       --resume                     reprendre la calculation des sommes de contrôle\n\
       --schema-only                vérifier seulement la cohérence du schéma\n\
       --cont-on-error              continuer en cas d'erreur de calcul\n
+
+$set 57 MSGCAT_UTIL_SET_TDE
+21 Entrez le mot de passe DBA:
+25 Impossible d'obtenir les informations clés définies dans la base de données\n
+26 Tentative de modification de la clé de la clé (index: %1$d) à la clé (index: %2$d) ..\n
+27 La clé est passée de la clé (index: %1$d) à la clé (index: %2$d)\n
+28 La clé définie sur la base de données ne peut pas être supprimée\n
+29 La clé (index: %1$d) a été supprimée\n
+30 Une nouvelle clé a été générée - index de clé: %1$d créé sur%2$s
+60 \
+tde: gestion du chiffrement transparent des données (TDE)\n\
+utilisation: %1$s tde OPERATION (-s|-n|-d|-c) [OPTION] nom-base de données\n\
+\n\
+options valides:\n\
+    -p, --dba-password=PASS 	mot de passe de l'utilisateur DBA; demandera si ne spécifiez pas\n\
+OPÉRATIONS: l'une des opérations doit être donnée, et elles sont exclusives\n\
+    -s, --show-keys             imprime les informations de clé définies sur la base de données et le fichier de clé (_keys)\n\
+    -n, --generate-new-key      génère une nouvelle clé dans le fichier de clé (_keys); nombre maximum: 128\n\
+    -d, --delete-key=KEY_INDEX  supprime une clé dans le fichier de clés (_keys)\n\
+    -c, --change-key=KEY_INDEX  modifier le jeu de clés de la base de données pour une autre clé dans le fichier de clés (_keys)\n
