@@ -72,6 +72,7 @@ $       52      dump_tz
 $       53      restoreslave
 $       54      delvoldb
 $       56      checksumdb
+$       57      tde
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Lungime sau caracter invalid '%1$c' în numele bazei de date '%2$s'\n
@@ -124,6 +125,7 @@ Nume de utilitare de administrare disponibile:\n\
     dump_tz\n\
     restoreslave\n\
     vacuumdb\n\
+    tde\n\
 \n\
 %4$s este un utilitar pentru SGDB.\n\
 Pentru informaţii suplimentare, accesaţi http://www.cubrid.org\n
@@ -183,6 +185,7 @@ Utilitare de administrare disponibile:\n\
     dump_tz\n\
     vacuumdb\n\
     checksumdb\n\
+    tde\n\
 \n\
 %4$s este un utilitar pentru SGBD.\n\
 Pentru informaţii suplimentare, accesaţi http://www.cubrid.org\n
@@ -261,6 +264,12 @@ Comenzi disponibile:\n\
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 AVERTIESMENT: opţiunea -t este ignorată în modul de execuţie independent.\n
 31 EROARE: Calea destinaţie nu există sau nu este un director.\n
+32 Utilizând opțiunea --separate-keys, separă fișierul cheie (_keys) de volumul de rezervă.\n\
+Dacă fișierul cheie este pierdut, este posibil ca restaurarea (restaurat) să nu funcționeze corect, chiar dacă există volumul de rezervă.\n
+33 Volumul de rezervă include fișierul cheie (_keys).\n\
+Dacă un tabel este criptat TDE, acesta poate cauza o problemă de securitate pentru datele respective.\n\
+Pentru a separa fișierul cheie pentru al preveni, utilizați opțiunea --separate-keys.\n
+34 EROARE: Nu se poate utiliza fișierul FIFIO ca cale de destinație cu cheie separată.\n
 60 \
 backupdb: Creează o copie de rezervă a bazei de date.\n\
 utilizare: %1$s backupdb [optiune] nume-bază-de-date\n\
@@ -280,7 +289,8 @@ opţiuni valide:\n\
       --no-check               nu se efectuează o verificare de consistenţă a bazei de date; implicit: verificare\n\
   -t, --thread-count=NUMAR     număr de fire de excuţie; implicit: 0(auto)\n\
   -z, --compress               compresia volumelor de backup; implicit: decompresie\n\
-      --sleep-msecs=N          asteapta N milisecunde la fiecare 1MB citit; implicit: 0\n
+      --sleep-msecs=N          asteapta N milisecunde la fiecare 1MB citit; implicit: 0\n\
+  -k, --separate_keys          cheie file (_keys) for TDE is not included in the backup volume, but is separate into a file\n
 71 Argumente incompatibile, \"%1$s\", şi \"%2$s\"\n
 
 
@@ -409,7 +419,8 @@ opţiuni valide:\n\
   -p, --partial-recovery            efectueaza restaurare parţială dacă există arhive de log lipsă\n\
   -o, --output-file=FIŞIER          redirecţionează mesajele de ieşire către FISIER; implicit: nul\n\
   -u, --use-database-location-path  restaurează baza de date şi volumele de log în calea specificată\n\
-                                    în fişierul de locaţie al bazei de date\n
+                                    în fişierul de locaţie al bazei de date\n\
+  -k, --keys-file-path              Calea fișierului cheie (_keys) pentru ca TDE să fie utilizat în timpul restaurării\n
 
 
 $set 12 MSGCAT_UTIL_SET_LOADDB
@@ -1162,6 +1173,7 @@ opțiuni valide:\n\
   -u, --use-database-location-path  restaurează baza de date și volumele de log\n\
                                     în calea specificată în fișierul cu locațiile\n\
                                     bazelor de date\n\
+  -k, --keys-file-path              Calea fișierului cheie (_keys) pentru ca TDE să fie utilizat în timpul restaurării\n
 
 $set 54 MSGCAT_UTIL_SET_DELVOLDB
 21 Urmează să fie șterse următoarele volume:\n\n
@@ -1219,3 +1231,23 @@ opțiuni valide:\n\
       --resume                  reluare checksum\n\
       --schema-only             verificare doar consistență schemă\n\
       --cont-on-error           ignorare erori de calcul\n
+
+$set 57 MSGCAT_UTIL_SET_TDE
+21 Introduceți parola DBA:
+25 Nu a reușit să obțină informațiile cheie setate în baza de date\n
+26 Încercarea de a schimba cheia de la cheie (index: %1$d) la cheie (index: %2$d) ..\n
+27 Cheia a fost schimbată de la cheie (index: %1$d) la cheie (index: %2$d)\n
+28 Cheia setată în baza de date nu poate fi ștearsă\n
+29 Cheia (index: %1$d) a fost ștearsă\n
+30 A fost generată o nouă cheie - index cheie: %1$d creat pe%2$s
+60 \
+tde: gestionarea criptării transparente a datelor (TDE)\n\
+utilizare: %1$s tde OPERARE (-s|-n|-d|-c) [OPȚIUNE] nume bază de date\n\
+\n\
+opțiuni valide:\n\
+    -p, --dba-password=PASS    parola utilizatorului DBA; va solicita dacă nu specificați\n\
+OPERAȚII: trebuie dată una dintre operațiuni și sunt exclusive\n\
+    -s, --show-keys              imprimă informațiile cheie setate în baza de date și fișierul cheie (_keys)\n\
+    -n, --generate-new-key       generează o nouă cheie în fișierul cheie (_keys); număr maxim: 128\n\
+    -d, --delete-key=KEY_INDEX   șterge o cheie din fișierul cheie (_keys)\n\
+    -c, --change-key=KEY_INDEX   schimba setul de chei din baza de date pentru o altă cheie din fișierul de chei (_keys)\n
