@@ -464,7 +464,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 117 Carga fallida.\n
 118 La longitud máxima del nombre de la clase es %1$d bytes.\n
 119 Total de %1$8d objeto(s) verificado, %2$d objeto(s) falló. \n
-120 del archivo de datos no contiene '%% class' especificador o '--table' falta la opción \n
+120 del archivo de datos no contiene '%%class' especificador o '--table' falta la opción \n
 121 La clase %1$s es ignorada. \n
 122 \
 loaddb: Importar objetos y esquemas en la base de datos.\n\

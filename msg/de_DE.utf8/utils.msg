@@ -1207,7 +1207,7 @@ gültigen Optionen:\n\
 $set 57 MSGCAT_UTIL_SET_TDE
 21 Geben Sie das DBA-Passwort ein:
 25 Die in der Datenbank festgelegten Schlüsselinformationen konnten nicht abgerufen werden\n
-26 Versuch, den Schlüssel vom Schlüssel (Index: %1$d) zum Schlüssel (Index: %2$d) zu ändern.\n
+26 Versuch, den Schlüssel vom Schlüssel (Index: %1$d) zum Schlüssel (Index: %2$d) zu ändern ..\n
 27 Der Schlüssel wurde vom Schlüssel (Index: %1$d) zum Schlüssel (Index: %2$d) geändert\n
 28 Der in der Datenbank festgelegte Schlüssel kann nicht gelöscht werden\n
 29 Der Schlüssel (Index: %1$d) wurde gelöscht\n
