@@ -240,7 +240,6 @@ Available command:\n\
     replication    <start|stop> node-name\n\
     status         [-v] [-h <host-name>]\n\
     reload\n
-29 cubrid utility, version %1$s\n\
 31 '%1$s' argument is not needed.\n
 32 A database-name is missing.\n
 33 %1$s: Such option is deprecated.\n
@@ -261,7 +260,7 @@ Available command:\n\
     stop        [database-name]\n\
     restart     [database-name]\n\
     status      [database-name]\n
-    
+
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 WARNING: -t option is ignored in stand-alone mode execution.\n
 31 ERROR: Destination-path does not exist or is not a directory.\n
