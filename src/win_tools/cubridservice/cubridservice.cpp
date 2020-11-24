@@ -326,6 +326,7 @@ vHandler (DWORD opcode)
 	args[4] = "--for-windows-service";
 	args[5] = NULL;
       }
+      break;
     case SERVICE_CONTROL_JAVASP_START:
       {
 	args[1] = CUBRID_UTIL_JAVASP;
