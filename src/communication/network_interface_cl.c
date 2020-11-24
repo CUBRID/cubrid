@@ -4757,7 +4757,7 @@ cleanup:
       if (result != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  return result;
+	  goto error;
 	}
     }
 
