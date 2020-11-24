@@ -3926,6 +3926,7 @@ gen_tz (UTIL_FUNCTION_ARG * arg)
 {
   UTIL_ARG_MAP *arg_map = NULL;
   char *input_path = NULL;
+  char inputpath_local[PATH_MAX] = { 0 };
   char *tz_gen_mode = NULL;
   TZ_GEN_TYPE tz_gen_type = TZ_GEN_TYPE_NEW;
   int exit_status = EXIT_SUCCESS;
@@ -3993,8 +3994,6 @@ gen_tz (UTIL_FUNCTION_ARG * arg)
 
   if (input_path == NULL || strlen (input_path) == 0)
     {
-      char inputpath_local[PATH_MAX] = { 0 };
-
       envvar_tzdata_dir_file (inputpath_local, sizeof (inputpath_local), "");
       input_path = inputpath_local;
     }
