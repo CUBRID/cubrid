@@ -566,7 +566,7 @@ cub_ddl_log_make_filename (char *filename_buf, size_t buf_size, T_APP_NAME app_n
 static FILE *
 cub_ddl_log_open (T_APP_NAME app_name)
 {
-  FILE *fp = NULL;
+  FILE *fp;
   char *tpath = NULL;
   int len;
 
@@ -632,7 +632,7 @@ ddl_log_free:
 void
 cub_ddl_log_write ()
 {
-  FILE *fp = NULL;
+  FILE *fp;
   char buf[DDL_LOG_BUFFER_SIZE] = { 0 };
   char dest_path[PATH_MAX] = { 0 };
   int len = 0;
@@ -707,7 +707,7 @@ write_error:
 void
 cub_ddl_log_write_tran_str (const char *fmt, ...)
 {
-  FILE *fp = NULL;
+  FILE *fp;
   char msg[DDL_LOG_BUFFER_SIZE] = { 0 };
   int len = 0;
   struct timeval time_val;
@@ -918,7 +918,7 @@ cub_ddl_log_fopen_and_lock (const char *path, const char *mode)
 {
 #define MAX_RETRY_COUNT 100
   int retry_count = 0;
-  FILE *ddl_log_fd = NULL;
+  FILE *ddl_log_fd;
 
 retry:
   ddl_log_fd = fopen (path, mode);
