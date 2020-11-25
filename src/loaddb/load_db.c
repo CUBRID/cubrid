@@ -500,10 +500,10 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   get_loaddb_args (arg_map, &args);
 
   cub_ddl_log_init ();
-  cub_ddl_log_app_name (APP_NAME_LOADDB);
-  cub_ddl_log_db_name (args.volume.c_str ());
-  cub_ddl_log_user_name (args.user_name.c_str ());
-  cub_ddl_log_pid (getpid ());
+  cub_ddl_log_set_app_name (APP_NAME_LOADDB);
+  cub_ddl_log_set_db_name (args.volume.c_str ());
+  cub_ddl_log_set_user_name (args.user_name.c_str ());
+  cub_ddl_log_set_pid (getpid ());
 
   if (ldr_validate_object_file (arg->argv0, &args) != NO_ERROR)
     {
@@ -689,8 +689,8 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
     {
       print_log_msg (1, "\nStart schema loading.\n");
 
-      cub_ddl_log_loaddb_file_type (LOADDB_FILE_TYPE_SCHEMA);
-      cub_ddl_log_file_name (args.schema_file.c_str ());
+      cub_ddl_log_set_loaddb_file_type (LOADDB_FILE_TYPE_SCHEMA);
+      cub_ddl_log_set_file_name (args.schema_file.c_str ());
       /*
        * CUBRID 8.2 should be compatible with earlier versions of CUBRID.
        * Therefore, we do not perform user authentication when the loader
@@ -778,8 +778,8 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   if (index_file != NULL)
     {
       print_log_msg (1, "\nStart index loading.\n");
-      cub_ddl_log_loaddb_file_type (LOADDB_FILE_TYPE_INDEX);
-      cub_ddl_log_file_name (args.index_file.c_str ());
+      cub_ddl_log_set_loaddb_file_type (LOADDB_FILE_TYPE_INDEX);
+      cub_ddl_log_set_file_name (args.index_file.c_str ());
       if (ldr_exec_query_from_file (args.index_file.c_str (), index_file, &index_file_start_line, &args) != NO_ERROR)
 	{
 	  print_log_msg (1, "\nError occurred during index loading." "\nAborting current transaction...");
@@ -803,15 +803,15 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       print_log_msg (1, "Index loading from %s finished.\n", args.index_file.c_str ());
       db_commit_transaction ();
 
-      cub_ddl_log_err_code (error);
+      cub_ddl_log_set_err_code (error);
       cub_ddl_log_write_end ();
     }
 
   if (trigger_file != NULL)
     {
       print_log_msg (1, "\nStart trigger loading.\n");
-      cub_ddl_log_loaddb_file_type (LOADDB_FILE_TYPE_TRIGGER);
-      cub_ddl_log_file_name (args.trigger_file.c_str ());
+      cub_ddl_log_set_loaddb_file_type (LOADDB_FILE_TYPE_TRIGGER);
+      cub_ddl_log_set_file_name (args.trigger_file.c_str ());
       if (ldr_exec_query_from_file (args.trigger_file.c_str (), trigger_file, &trigger_file_start_line, &args) !=
 	  NO_ERROR)
 	{
@@ -835,7 +835,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       print_log_msg (1, "Trigger loading from %s finished.\n", args.trigger_file.c_str ());
       db_commit_transaction ();
 
-      cub_ddl_log_err_code (error);
+      cub_ddl_log_set_err_code (error);
       cub_ddl_log_write_end ();
     }
 
@@ -976,7 +976,8 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 
   util_arm_signal_handlers (&ldr_exec_query_interrupt_handler, &ldr_exec_query_interrupt_handler);
 
-  cub_ddl_log_start_time (NULL);
+  cub_ddl_log_set_start_time (NULL);
+
   while (true)
     {
       if (interrupt_query)
@@ -1016,7 +1017,7 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 		      print_log_msg (1, "ERROR: %s \n", db_error_string (3));
 		      assert (er_errid () != NO_ERROR);
 		      error = er_errid ();
-		      cub_ddl_log_file_line (line);
+		      cub_ddl_log_set_file_line (line);
 		    }
 		}
 	      while (session_error);
@@ -1034,7 +1035,7 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 	{
 	  print_log_msg (1, "ERROR: %s\n", db_error_string (3));
 	  db_close_session (session);
-	  cub_ddl_log_file_line (last_statement_line_no);
+	  cub_ddl_log_set_file_line (last_statement_line_no);
 	  break;
 	}
       executed_cnt++;
@@ -1043,7 +1044,7 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 	{
 	  print_log_msg (1, "ERROR: %s\n", db_error_string (3));
 	  db_close_session (session);
-	  cub_ddl_log_file_line (last_statement_line_no);
+	  cub_ddl_log_set_file_line (last_statement_line_no);
 	  break;
 	}
 
@@ -1063,14 +1064,14 @@ end:
   if (error < 0)
     {
       db_abort_transaction ();
-      cub_ddl_log_err_code (error);
-      cub_ddl_log_commit_count ((executed_cnt / args->periodic_commit) * args->periodic_commit);
+      cub_ddl_log_set_err_code (error);
+      cub_ddl_log_set_commit_count ((executed_cnt / args->periodic_commit) * args->periodic_commit);
     }
   else
     {
       *start_line = last_statement_line_no + 1;
       print_log_msg (1, "Total %8d statements executed.\n", executed_cnt);
-      cub_ddl_log_msg ("Total %8d statements executed.", executed_cnt);
+      cub_ddl_log_set_msg ("Total %8d statements executed.", executed_cnt);
       fflush (stdout);
       db_commit_transaction ();
     }

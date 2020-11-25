@@ -674,7 +674,6 @@ conn_retry:
     req_info.need_rollback = TRUE;
 
     gettimeofday (&tran_start_time, NULL);
-    cub_ddl_log_start_time (&tran_start_time);
     gettimeofday (&query_start_time, NULL);
     tran_timeout = 0;
     query_timeout = 0;
@@ -1264,7 +1263,7 @@ cas_main (void)
 	    req_info.need_rollback = TRUE;
 
 	    gettimeofday (&tran_start_time, NULL);
-	    cub_ddl_log_start_time (&tran_start_time);
+	    cub_ddl_log_set_start_time (&tran_start_time);
 	    gettimeofday (&query_start_time, NULL);
 	    tran_timeout = 0;
 	    query_timeout = 0;
@@ -1282,13 +1281,14 @@ cas_main (void)
 #if !defined(WINDOWS)
 		signal (SIGUSR1, query_cancel);
 #endif /* !WINDOWS */
-		cub_ddl_log_app_name (APP_NAME_CAS);
-		cub_ddl_log_br_name (shm_appl->broker_name);
-		cub_ddl_log_br_index (shm_as_index);
-		cub_ddl_log_db_name (db_name);
-		cub_ddl_log_user_name (db_user);
-		cub_ddl_log_ip (client_ip_str);
-		cub_ddl_log_pid (getpid ());
+		cub_ddl_log_set_app_name (APP_NAME_CAS);
+		cub_ddl_log_set_br_name (shm_appl->broker_name);
+		cub_ddl_log_set_br_index (shm_as_index);
+		cub_ddl_log_set_db_name (db_name);
+		cub_ddl_log_set_user_name (db_user);
+		cub_ddl_log_set_ip (client_ip_str);
+		cub_ddl_log_set_pid (getpid ());
+
 		fn_ret = process_request (client_sock_fd, &net_buf, &req_info);
 		as_info->fn_status = FN_STATUS_DONE;
 #ifndef LIBCAS_FOR_JSP
@@ -2368,7 +2368,7 @@ net_read_process (SOCKET proxy_sock_fd, MSG_HEADER * client_msg_header, T_REQ_IN
     {
       as_info->num_request++;
       gettimeofday (&tran_start_time, NULL);
-      cub_ddl_log_start_time (&tran_start_time);
+      cub_ddl_log_set_start_time (&tran_start_time);
     }
 
   if (as_info->con_status == CON_STATUS_CLOSE)
@@ -2507,7 +2507,7 @@ net_read_int_keep_con_auto (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header, 
       as_info->num_request++;
       gettimeofday (&tran_start_time, NULL);
     }
-  cub_ddl_log_start_time (&tran_start_time);
+  cub_ddl_log_set_start_time (&tran_start_time);
 
   if (as_info->con_status == CON_STATUS_CLOSE || as_info->con_status == CON_STATUS_CLOSE_AND_CONNECT)
     {

@@ -72,41 +72,40 @@ struct t_ddl_audit_handle
   int pid;
   char *sql_text;
   char stmt_type;
-  char execute_start_time[DDL_TIME_LEN];
+  char str_qry_exec_begin_time[DDL_TIME_LEN];
+  struct timeval qry_exec_begin_time;
   char elapsed_time[DDL_TIME_LEN];
   int file_line_number;
   int err_code;
   char *err_msg;
-  //char result;
   char msg[DDL_LOG_MSG];
   char file_name[PATH_MAX];
   char schema_file[PATH_MAX];
   char execute_type;
-  char loaddb_file_type;
+  T_LOADDB_FILE_TYPE loaddb_file_type;
   char log_filepath[PATH_MAX];
   int commit_count;
-  struct timeval exec_begin_time;
   char auto_commit_mode;
 };
 static T_DDL_AUDIT_HANDLE *ddl_audit_handle = NULL;
 
-static int cub_make_ddl_log_filename (char *filename_buf, size_t buf_size, T_APP_NAME app_name);
-static int cub_make_schema_file_name (const char *file_full_path, char *dest_path, size_t buf_size);
+static int cub_ddl_log_make_filename (char *filename_buf, size_t buf_size, T_APP_NAME app_name);
+static int cub_ddl_log_make_schema_file_name (const char *file_full_path, char *dest_path, size_t buf_size);
 static void cub_ddl_log_backup (const char *path);
 #if defined(WINDOWS)
 static void unix_style_path (char *path);
 #endif /* WINDOWS */
-static int cub_create_dir_log (const char *new_dir);
-static int cub_create_log_mgs (char *msg);
-static int cub_get_current_time (char *buf, size_t size);
-static int cub_file_copy (char *src_file, char *dest_file);
-static void cub_remove_char (char *string, char ch);
+static int cub_ddl_log_create_dir (const char *new_dir);
+static int cub_ddl_log_create_lgo_mgs (char *msg);
+static int cub_ddl_log_get_current_time (char *buf, size_t size);
+static int cub_ddl_log_file_copy (char *src_file, char *dest_file);
+static void cub_ddl_log_remove_char (char *string, char ch);
 static FILE *cub_ddl_log_open (T_APP_NAME app_name);
-static int cub_get_time_string (char *buf, struct timeval *time_val);
-static FILE *cub_fopen_and_lock (const char *path, const char *mode);
-static void cub_ddl_log_elapsed_time (long sec, long msec);
-static void cub_timeval_diff (struct timeval *start, struct timeval *end, int *res_sec, int *res_msec);
-static const char *cub_get_app_name (T_APP_NAME app_name);
+static int cub_ddl_log_get_time_string (char *buf, struct timeval *time_val);
+static FILE *cub_ddl_log_fopen_and_lock (const char *path, const char *mode);
+static void cub_ddl_log_set_elapsed_time (long sec, long msec);
+static void cub_ddl_log_timeval_diff (struct timeval *start, struct timeval *end, long *res_sec, long *res_msec);
+static const char *cub_ddl_log_get_app_name (T_APP_NAME app_name);
 
 static char is_executed_ddl = FALSE;
 
@@ -134,7 +133,7 @@ cub_ddl_log_init ()
 }
 
 void
-cub_ddl_log_free (char all_free)
+cub_ddl_log_free (bool all_free)
 {
   if (ddl_audit_handle == NULL)
     {
@@ -149,7 +148,7 @@ cub_ddl_log_free (char all_free)
   ddl_audit_handle->execute_type = DDL_LOG_RUN_EXECUTE_FUNC;
   ddl_audit_handle->loaddb_file_type = LOADDB_FILE_TYPE_NONE;
   ddl_audit_handle->log_filepath[0] = '\0';
-  ddl_audit_handle->execute_start_time[0] = '\0';
+  ddl_audit_handle->str_qry_exec_begin_time[0] = '\0';
   ddl_audit_handle->elapsed_time[0] = '\0';
   ddl_audit_handle->file_line_number = 0;
   ddl_audit_handle->err_code = 0;
@@ -177,17 +176,16 @@ cub_ddl_log_destroy ()
 }
 
 void
-cub_ddl_log_app_name (T_APP_NAME app_name)
+cub_ddl_log_set_app_name (T_APP_NAME app_name)
 {
-  if (ddl_audit_handle == NULL)
+  if (ddl_audit_handle)
     {
-      return;
+      ddl_audit_handle->app_name = app_name;
     }
-  ddl_audit_handle->app_name = app_name;
 }
 
 void
-cub_ddl_log_db_name (const char *db_name)
+cub_ddl_log_set_db_name (const char *db_name)
 {
   char *pstr = NULL;
   if (ddl_audit_handle == NULL || db_name == NULL)
@@ -205,60 +203,52 @@ cub_ddl_log_db_name (const char *db_name)
 }
 
 void
-cub_ddl_log_user_name (const char *user_name)
+cub_ddl_log_set_user_name (const char *user_name)
 {
-  if (ddl_audit_handle == NULL || user_name == NULL)
+  if (ddl_audit_handle != NULL && user_name != NULL)
     {
-      return;
+      snprintf (ddl_audit_handle->user_name, sizeof (ddl_audit_handle->user_name), user_name);
     }
-
-  snprintf (ddl_audit_handle->user_name, sizeof (ddl_audit_handle->user_name), user_name);
 }
 
 void
-cub_ddl_log_ip (const char *ip_addr)
+cub_ddl_log_set_ip (const char *ip_addr)
 {
-  if (ddl_audit_handle == NULL || ip_addr == NULL)
+  if (ddl_audit_handle != NULL && ip_addr != NULL)
     {
-      return;
+      snprintf (ddl_audit_handle->ip_addr, sizeof (ddl_audit_handle->ip_addr), ip_addr);
     }
-
-  snprintf (ddl_audit_handle->ip_addr, sizeof (ddl_audit_handle->ip_addr), ip_addr);
 }
 
 void
-cub_ddl_log_pid (const int pid)
+cub_ddl_log_set_pid (const int pid)
 {
-  if (ddl_audit_handle == NULL)
+  if (ddl_audit_handle)
     {
-      return;
+      ddl_audit_handle->pid = pid;
     }
-
-  ddl_audit_handle->pid = pid;
 }
 
 void
-cub_ddl_log_br_name (const char *br_name)
+cub_ddl_log_set_br_name (const char *br_name)
 {
-  if (ddl_audit_handle == NULL || br_name == NULL)
+  if (ddl_audit_handle != NULL && br_name != NULL)
     {
-      return;
+      snprintf (ddl_audit_handle->br_name, BROKER_NAME_LEN, br_name);
     }
-  snprintf (ddl_audit_handle->br_name, BROKER_NAME_LEN, br_name);
 }
 
 void
-cub_ddl_log_br_index (const int index)
+cub_ddl_log_set_br_index (const int index)
 {
-  if (ddl_audit_handle == NULL)
+  if (ddl_audit_handle)
     {
-      return;
+      ddl_audit_handle->br_index = index;
     }
-  ddl_audit_handle->br_index = index;
 }
 
 void
-cub_ddl_log_sql_text (char *sql_text, int len)
+cub_ddl_log_set_sql_text (char *sql_text, int len)
 {
   if (ddl_audit_handle == NULL || sql_text == NULL || len < 0)
     {
@@ -272,17 +262,16 @@ cub_ddl_log_sql_text (char *sql_text, int len)
 
   ddl_audit_handle->sql_text = (char *) MALLOC (len + 1);
 
-  memset (ddl_audit_handle->sql_text, 0x0, len + 1);
-
   if (ddl_audit_handle->sql_text != NULL)
     {
-      snprintf (ddl_audit_handle->sql_text, len + 1, sql_text);
+      strncpy (ddl_audit_handle->sql_text, sql_text, len);
+      ddl_audit_handle->sql_text[len] = '\0';
     }
 }
 
 
 void
-cub_ddl_log_stmt_type (int stmt_type)
+cub_ddl_log_set_stmt_type (int stmt_type)
 {
   if (ddl_audit_handle == NULL)
     {
@@ -291,47 +280,41 @@ cub_ddl_log_stmt_type (int stmt_type)
 
   ddl_audit_handle->stmt_type = stmt_type;
 
-  if (cub_is_ddl_type (stmt_type) == TRUE && ddl_audit_handle->auto_commit_mode == FALSE)
+  if (cub_ddl_log_is_ddl_type (stmt_type) == TRUE && ddl_audit_handle->auto_commit_mode == FALSE)
     {
       is_executed_ddl = TRUE;
     }
 }
 
 void
-cub_ddl_log_loaddb_file_type (char file_type)
+cub_ddl_log_set_loaddb_file_type (T_LOADDB_FILE_TYPE file_type)
 {
-  if (ddl_audit_handle == NULL)
+  if (ddl_audit_handle)
     {
-      return;
+      ddl_audit_handle->loaddb_file_type = file_type;
     }
-
-  ddl_audit_handle->loaddb_file_type = file_type;
 }
 
 void
-cub_ddl_log_file_name (const char *file_name)
+cub_ddl_log_set_file_name (const char *file_name)
 {
-  if (ddl_audit_handle == NULL || file_name == NULL)
+  if (ddl_audit_handle != NULL && file_name != NULL)
     {
-      return;
+      strncpy (ddl_audit_handle->file_name, file_name, PATH_MAX);
     }
-
-  strncpy (ddl_audit_handle->file_name, file_name, PATH_MAX);
 }
 
 void
-cub_ddl_log_file_line (int file_line)
+cub_ddl_log_set_file_line (int file_line)
 {
-  if (ddl_audit_handle == NULL)
+  if (ddl_audit_handle)
     {
-      return;
+      ddl_audit_handle->file_line_number = file_line;
     }
-
-  ddl_audit_handle->file_line_number = file_line;
 }
 
 void
-cub_ddl_log_err_msg (char *msg)
+cub_ddl_log_set_err_msg (char *msg)
 {
   if (ddl_audit_handle == NULL || msg == NULL)
     {
@@ -344,22 +327,20 @@ cub_ddl_log_err_msg (char *msg)
     }
 
   ALLOC_COPY (ddl_audit_handle->err_msg, msg);
-  cub_remove_char (ddl_audit_handle->err_msg, '\n');
+  cub_ddl_log_remove_char (ddl_audit_handle->err_msg, '\n');
 }
 
 void
-cub_ddl_log_err_code (int err_code)
+cub_ddl_log_set_err_code (int err_code)
 {
-  if (ddl_audit_handle == NULL)
+  if (ddl_audit_handle)
     {
-      return;
+      ddl_audit_handle->err_code = err_code;
     }
-
-  ddl_audit_handle->err_code = err_code;
 }
 
 void
-cub_ddl_log_start_time (struct timeval *time_val)
+cub_ddl_log_set_start_time (struct timeval *time_val)
 {
   if (ddl_audit_handle == NULL)
     {
@@ -370,76 +351,67 @@ cub_ddl_log_start_time (struct timeval *time_val)
     {
       struct timeval time;
       gettimeofday (&time, NULL);
-      memcpy (&ddl_audit_handle->exec_begin_time, &time, sizeof (struct timeval));
+      memcpy (&ddl_audit_handle->qry_exec_begin_time, &time, sizeof (struct timeval));
     }
   else
     {
-      memcpy (&ddl_audit_handle->exec_begin_time, time_val, sizeof (struct timeval));
+      memcpy (&ddl_audit_handle->qry_exec_begin_time, time_val, sizeof (struct timeval));
     }
 
-  ddl_audit_handle->execute_start_time[0] = '\0';
-  cub_get_time_string (ddl_audit_handle->execute_start_time, time_val);
+  ddl_audit_handle->str_qry_exec_begin_time[0] = '\0';
+  cub_ddl_log_get_time_string (ddl_audit_handle->str_qry_exec_begin_time, time_val);
 }
 
 void
-cub_ddl_log_msg (const char *fmt, ...)
+cub_ddl_log_set_msg (const char *fmt, ...)
 {
   va_list args;
-  if (ddl_audit_handle == NULL)
+  if (ddl_audit_handle)
     {
-      return;
+      va_start (args, fmt);
+      vsnprintf (ddl_audit_handle->msg, DDL_LOG_MSG, fmt, args);
+      va_end (args);
     }
-
-  va_start (args, fmt);
-  vsnprintf (ddl_audit_handle->msg, DDL_LOG_MSG, fmt, args);
-  va_end (args);
 }
 
 void
-cub_ddl_log_execute_type (char exe_type)
+cub_ddl_log_set_execute_type (char exe_type)
 {
-  if (ddl_audit_handle == NULL)
+  if (ddl_audit_handle)
     {
-      return;
+      ddl_audit_handle->execute_type = exe_type;
     }
-
-  ddl_audit_handle->execute_type = exe_type;
 }
 
 void
-cub_ddl_log_commit_count (int count)
+cub_ddl_log_set_commit_count (int count)
 {
-  if (ddl_audit_handle == NULL)
+  if (ddl_audit_handle)
     {
-      return;
+      ddl_audit_handle->commit_count = count;
     }
-  ddl_audit_handle->commit_count = count;
 }
 
 void
-cub_ddl_log_commit_mode (char mode)
+cub_ddl_log_set_commit_mode (char mode)
 {
-  if (ddl_audit_handle == NULL)
+  if (ddl_audit_handle)
     {
-      return;
+      ddl_audit_handle->auto_commit_mode = mode;
     }
-  ddl_audit_handle->auto_commit_mode = mode;
 }
 
 static void
-cub_ddl_log_elapsed_time (long sec, long msec)
+cub_ddl_log_set_elapsed_time (long sec, long msec)
 {
-  if (ddl_audit_handle == NULL)
+  if (ddl_audit_handle)
     {
-      return;
+      snprintf (ddl_audit_handle->elapsed_time, 20, "elapsed time %ld.%03ld", sec, msec);
     }
-
-  snprintf (ddl_audit_handle->elapsed_time, 20, "elapsed time %ld.%03ld", sec, msec);
-  fprintf (stderr, "=========== ddl_audit_handle->elapsed_time : %s\n", ddl_audit_handle->elapsed_time);
 }
 
 static int
-cub_file_copy (char *src_file, char *dest_file)
+cub_ddl_log_file_copy (char *src_file, char *dest_file)
 {
   char buf[FILE_BUFFER_SIZE] = { 0 };
   size_t size;
@@ -483,7 +455,7 @@ cub_file_copy (char *src_file, char *dest_file)
 	}
       else
 	{
-	  if (fwrite (buf, 1, size, fdest) != size)
+	  if (fwrite (buf, sizeof (char), size, fdest) != size)
 	    {
 	      retval = ferror (fdest);
 	      break;
@@ -505,7 +477,7 @@ cub_file_copy (char *src_file, char *dest_file)
 }
 
 static int
-cub_make_schema_file_name (const char *file_full_path, char *dest_path, size_t buf_size)
+cub_ddl_log_make_schema_file_name (const char *file_full_path, char *dest_path, size_t buf_size)
 {
   const char *env_root = NULL;
   char time[TIME_STRING_SIZE] = { 0 };
@@ -519,7 +491,7 @@ cub_make_schema_file_name (const char *file_full_path, char *dest_path, size_t b
     }
 
   env_root = envvar_root ();
-  cub_get_current_time (time, TIME_STRING_SIZE);
+  cub_ddl_log_get_current_time (time, TIME_STRING_SIZE);
 
   name_tmp = strrchr (file_full_path, PATH_SEPARATOR);
 
@@ -550,13 +522,13 @@ cub_make_schema_file_name (const char *file_full_path, char *dest_path, size_t b
       return retval;
     }
 
-  retval = cub_create_dir_log (dest_path);
+  retval = cub_ddl_log_create_dir (dest_path);
 
   return retval;
 }
 
 static int
-cub_make_ddl_log_filename (char *filename_buf, size_t buf_size, T_APP_NAME app_name)
+cub_ddl_log_make_filename (char *filename_buf, size_t buf_size, T_APP_NAME app_name)
 {
   const char *env_root = NULL;
   int retval = 0;
@@ -574,8 +546,8 @@ cub_make_ddl_log_filename (char *filename_buf, size_t buf_size, T_APP_NAME app_n
   else if (app_name == APP_NAME_CSQL || app_name == APP_NAME_LOADDB)
     {
       retval =
-	snprintf (filename_buf, buf_size, "%s/%s/%s_%s_ddl.log", env_root, DDL_LOG_PATH, cub_get_app_name (app_name),
-		  ddl_audit_handle->db_name);
+	snprintf (filename_buf, buf_size, "%s/%s/%s_%s_ddl.log", env_root, DDL_LOG_PATH,
+		  cub_ddl_log_get_app_name (app_name), ddl_audit_handle->db_name);
     }
   else
     {
@@ -588,7 +560,6 @@ cub_make_ddl_log_filename (char *filename_buf, size_t buf_size, T_APP_NAME app_n
       assert (false);
       filename_buf[0] = '\0';
     }
-
   return retval;
 }
 
@@ -599,22 +570,20 @@ cub_ddl_log_open (T_APP_NAME app_name)
   char *tpath = NULL;
   int len;
 
-  fprintf (stderr, "=========== cub_ddl_log_open : %s \n", cub_get_app_name (app_name));
-
-  len = cub_make_ddl_log_filename (ddl_audit_handle->log_filepath, PATH_MAX, app_name);
+  len = cub_ddl_log_make_filename (ddl_audit_handle->log_filepath, PATH_MAX, app_name);
 
   if (ddl_audit_handle->log_filepath[0] == '\0' || len < 0)
     {
       goto file_error;
     }
 
-  if (cub_create_dir_log (ddl_audit_handle->log_filepath) < 0)
+  if (cub_ddl_log_create_dir (ddl_audit_handle->log_filepath) < 0)
     {
       goto file_error;
     }
 
   /* note: in "a+" mode, output is always appended */
-  fp = cub_fopen_and_lock (ddl_audit_handle->log_filepath, "a+");
+  fp = cub_ddl_log_fopen_and_lock (ddl_audit_handle->log_filepath, "a+");
 
   return fp;
 
@@ -646,18 +615,18 @@ cub_ddl_log_write_end ()
     }
   else
     {
-      if (cub_is_ddl_type (ddl_audit_handle->stmt_type) == FALSE)
+      if (cub_ddl_log_is_ddl_type (ddl_audit_handle->stmt_type) == FALSE)
 	{
 	  goto ddl_log_free;
 	}
     }
-  if (ddl_audit_handle->execute_type & DDL_LOG_RUN_EXECUTE_FUNC)
+  if (ddl_audit_handle->execute_type == DDL_LOG_RUN_EXECUTE_FUNC)
     {
       cub_ddl_log_write ();
     }
 
 ddl_log_free:
-  cub_ddl_log_free (FALSE);
+  cub_ddl_log_free (false);
 }
 
 void
@@ -669,12 +638,7 @@ cub_ddl_log_write ()
   int len = 0;
   int ret = 0;
 
-  if (ddl_audit_handle == NULL)
-    {
-      return;
-    }
-
-  if (prm_get_bool_value (PRM_ID_DDL_AUDIT_LOG) == FALSE)
+  if (ddl_audit_handle == NULL || prm_get_bool_value (PRM_ID_DDL_AUDIT_LOG) == FALSE)
     {
       return;
     }
@@ -690,7 +654,7 @@ cub_ddl_log_write ()
     }
   else
     {
-      if (cub_is_ddl_type (ddl_audit_handle->stmt_type) == FALSE)
+      if (cub_ddl_log_is_ddl_type (ddl_audit_handle->stmt_type) == FALSE)
 	{
 	  return;
 	}
@@ -702,26 +666,26 @@ cub_ddl_log_write ()
     {
       if (ddl_audit_handle->app_name == APP_NAME_LOADDB)
 	{
-	  if (cub_make_schema_file_name (ddl_audit_handle->file_name, dest_path, PATH_MAX) < 0)
+	  if (cub_ddl_log_make_schema_file_name (ddl_audit_handle->file_name, dest_path, PATH_MAX) < 0)
 	    {
 	      goto write_error;
 	    }
 	}
 
-      len = cub_create_log_mgs (buf);
+      len = cub_ddl_log_create_lgo_mgs (buf);
       if (len < 0)
 	{
 	  goto write_error;
 	}
 
-      if (fwrite (buf, 1, len, fp) != len)
+      if (fwrite (buf, sizeof (char), len, fp) != len)
 	{
 	  goto write_error;
 	}
 
       if (ddl_audit_handle->app_name == APP_NAME_LOADDB)
 	{
-	  cub_file_copy (ddl_audit_handle->file_name, dest_path);
+	  cub_ddl_log_file_copy (ddl_audit_handle->file_name, dest_path);
 	}
 
       if ((UINT64) ftell (fp) > prm_get_bigint_value (PRM_ID_DDL_AUDIT_LOG_SIZE))
@@ -773,18 +737,18 @@ cub_ddl_log_write_tran_str (const char *fmt, ...)
       va_end (args);
 
       gettimeofday (&time_val, NULL);
-      cub_get_time_string (ddl_audit_handle->execute_start_time, &time_val);
+      cub_ddl_log_get_time_string (ddl_audit_handle->str_qry_exec_begin_time, &time_val);
 
       if (ddl_audit_handle->app_name == APP_NAME_CAS)
 	{
 	  len = snprintf (msg, DDL_LOG_BUFFER_SIZE, "%s %s|%s|%s\n",
-			  ddl_audit_handle->execute_start_time,
+			  ddl_audit_handle->str_qry_exec_begin_time,
 			  ddl_audit_handle->ip_addr, ddl_audit_handle->user_name, ddl_audit_handle->msg);
 	}
       else if (ddl_audit_handle->app_name == APP_NAME_CSQL)
 	{
 	  len = snprintf (msg, DDL_LOG_BUFFER_SIZE, "%s %d|%s|%s\n",
-			  ddl_audit_handle->execute_start_time,
+			  ddl_audit_handle->str_qry_exec_begin_time,
 			  ddl_audit_handle->pid, ddl_audit_handle->user_name, ddl_audit_handle->msg);
 	}
       else
@@ -804,7 +768,7 @@ cub_ddl_log_write_tran_str (const char *fmt, ...)
 	  goto write_error;
 	}
 
-      if (fwrite (msg, 1, len, fp) != len)
+      if (fwrite (msg, sizeof (char), len, fp) != len)
 	{
 	  goto write_error;
 	}
@@ -825,18 +789,17 @@ write_error:
     }
 
   is_executed_ddl = FALSE;
-  cub_ddl_log_free (FALSE);
-  fprintf (stderr, "## %s\n", msg);
+  cub_ddl_log_free (false);
 }
 
 static int
-cub_create_log_mgs (char *msg)
+cub_ddl_log_create_lgo_mgs (char *msg)
 {
   int retval = 0;
   char result[20] = { 0 };
   struct timeval exec_end, log_time;
-  int elapsed_sec = 0;
-  int elapsed_msec = 0;
+  long elapsed_sec = 0;
+  long elapsed_msec = 0;
 
   if (ddl_audit_handle == NULL)
     {
@@ -844,8 +807,8 @@ cub_create_log_mgs (char *msg)
     }
 
   gettimeofday (&exec_end, NULL);
-  cub_timeval_diff (&ddl_audit_handle->exec_begin_time, &exec_end, &elapsed_sec, &elapsed_msec);
-  cub_ddl_log_elapsed_time (elapsed_sec, elapsed_msec);
+  cub_ddl_log_timeval_diff (&ddl_audit_handle->qry_exec_begin_time, &exec_end, &elapsed_sec, &elapsed_msec);
+  cub_ddl_log_set_elapsed_time (elapsed_sec, elapsed_msec);
 
   if (ddl_audit_handle->app_name == APP_NAME_LOADDB)
     {
@@ -861,7 +824,7 @@ cub_create_log_mgs (char *msg)
 	}
 
       retval = snprintf (msg, DDL_LOG_BUFFER_SIZE, "%s %d|%s|%s|%s|%s\n",
-			 ddl_audit_handle->execute_start_time,
+			 ddl_audit_handle->str_qry_exec_begin_time,
 			 ddl_audit_handle->pid, ddl_audit_handle->user_name, result, ddl_audit_handle->msg,
 			 ddl_audit_handle->schema_file);
     }
@@ -878,7 +841,7 @@ cub_create_log_mgs (char *msg)
 	}
 
       retval = snprintf (msg, DDL_LOG_BUFFER_SIZE, "%s %d|%s|%s|%s|%s|%s\n",
-			 ddl_audit_handle->execute_start_time,
+			 ddl_audit_handle->str_qry_exec_begin_time,
 			 ddl_audit_handle->pid,
 			 ddl_audit_handle->user_name,
 			 result, ddl_audit_handle->elapsed_time, ddl_audit_handle->msg, ddl_audit_handle->sql_text);
@@ -888,7 +851,7 @@ cub_create_log_mgs (char *msg)
       if (ddl_audit_handle->auto_commit_mode == FALSE)
 	{
 	  gettimeofday (&log_time, NULL);
-	  cub_get_time_string (ddl_audit_handle->execute_start_time, &log_time);
+	  cub_ddl_log_get_time_string (ddl_audit_handle->str_qry_exec_begin_time, &log_time);
 	}
 
       if (ddl_audit_handle->err_code < 0)
@@ -906,7 +869,7 @@ cub_create_log_mgs (char *msg)
 	}
 
       retval = snprintf (msg, DDL_LOG_BUFFER_SIZE, "%s %s|%s|%s|%s|%s|%s\n",
-			 ddl_audit_handle->execute_start_time,
+			 ddl_audit_handle->str_qry_exec_begin_time,
 			 ddl_audit_handle->ip_addr,
 			 ddl_audit_handle->user_name,
 			 result, ddl_audit_handle->elapsed_time, ddl_audit_handle->msg, ddl_audit_handle->sql_text);
@@ -916,7 +879,6 @@ cub_create_log_mgs (char *msg)
   if (retval >= DDL_LOG_BUFFER_SIZE)
     {
       msg[DDL_LOG_BUFFER_SIZE - 2] = '\n';
-      msg[DDL_LOG_BUFFER_SIZE - 1] = '\0';
       retval = DDL_LOG_BUFFER_SIZE;
     }
   return retval;
@@ -952,7 +914,7 @@ cub_ddl_log_backup (const char *path)
 }
 
 static FILE *
-cub_fopen_and_lock (const char *path, const char *mode)
+cub_ddl_log_fopen_and_lock (const char *path, const char *mode)
 {
 #define MAX_RETRY_COUNT 100
   int retry_count = 0;
@@ -992,7 +954,7 @@ unix_style_path (char *path)
 #endif /* WINDOWS */
 
 static int
-cub_create_dir_log (const char *new_dir)
+cub_ddl_log_create_dir (const char *new_dir)
 {
   char *p, path[PATH_MAX] = { 0 };
 
@@ -1046,7 +1008,7 @@ cub_create_dir_log (const char *new_dir)
 }
 
 static int
-cub_get_current_time (char *buf, size_t size)
+cub_ddl_log_get_current_time (char *buf, size_t size)
 {
   struct tm at_tm;
   int len = 0;
@@ -1063,7 +1025,7 @@ cub_get_current_time (char *buf, size_t size)
 }
 
 static int
-cub_get_time_string (char *buf, struct timeval *time_val)
+cub_ddl_log_get_time_string (char *buf, struct timeval *time_val)
 {
   struct tm tm, *tm_p;
   time_t sec;
@@ -1121,7 +1083,7 @@ cub_get_time_string (char *buf, struct timeval *time_val)
 }
 
 static void
-cub_remove_char (char *string, char ch)
+cub_ddl_log_remove_char (char *string, char ch)
 {
   for (; *string != '\0'; string++)
     {
@@ -1133,8 +1095,8 @@ cub_remove_char (char *string, char ch)
     }
 }
 
-int
-cub_is_ddl_type (int node_type)
+bool
+cub_ddl_log_is_ddl_type (int node_type)
 {
   switch (node_type)
     {
@@ -1172,9 +1134,9 @@ cub_is_ddl_type (int node_type)
 }
 
 static void
-cub_timeval_diff (struct timeval *start, struct timeval *end, int *res_sec, int *res_msec)
+cub_ddl_log_timeval_diff (struct timeval *start, struct timeval *end, long *res_sec, long *res_msec)
 {
-  int sec, msec;
+  long sec, msec;
 
   assert (start != NULL && end != NULL && res_sec != NULL && res_msec != NULL);
 
@@ -1190,7 +1152,7 @@ cub_timeval_diff (struct timeval *start, struct timeval *end, int *res_sec, int 
 }
 
 static const char *
-cub_get_app_name (T_APP_NAME app_name)
+cub_ddl_log_get_app_name (T_APP_NAME app_name)
 {
   switch (app_name)
     {

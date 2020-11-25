@@ -30,15 +30,21 @@
 
 #include "cas_handle.h"
 
-#define DDL_LOG_RUN_EXECUTE_FUNC              0x01
-#define DDL_LOG_RUN_EXECUTE_BATCH_FUNC        0x02
+#define DDL_LOG_RUN_EXECUTE_FUNC              (1)
+#define DDL_LOG_RUN_EXECUTE_BATCH_FUNC        (2)
 
-#define LOADDB_FILE_TYPE_NONE           (0)
-#define LOADDB_FILE_TYPE_INPUT          (1)
-#define LOADDB_FILE_TYPE_INDEX          (2)
-#define LOADDB_FILE_TYPE_TRIGGER        (3)
-#define LOADDB_FILE_TYPE_OBJECT         (4)
-#define LOADDB_FILE_TYPE_SCHEMA         (5)
+#define CUB_DDL_LOG_MSG_AUTO_COMMIT       "auto_commit"
+#define CUB_DDL_LOG_MSG_AUTO_ROLLBACK     "auto_rollback"
+
+typedef enum
+{
+  LOADDB_FILE_TYPE_NONE,
+  LOADDB_FILE_TYPE_INPUT,
+  LOADDB_FILE_TYPE_INDEX,
+  LOADDB_FILE_TYPE_TRIGGER,
+  LOADDB_FILE_TYPE_OBJECT,
+  LOADDB_FILE_TYPE_SCHEMA
+} T_LOADDB_FILE_TYPE;
 
 typedef enum
 {
@@ -48,30 +54,30 @@ typedef enum
 } T_APP_NAME;
 
 extern void cub_ddl_log_init ();
-extern void cub_ddl_log_free (char all_free);
+extern void cub_ddl_log_free (bool all_free);
 extern void cub_ddl_log_destroy ();
-extern void cub_ddl_log_app_name (T_APP_NAME app_name);
-extern void cub_ddl_log_db_name (const char *db_name);
-extern void cub_ddl_log_user_name (const char *user_name);
-extern void cub_ddl_log_ip (const char *ip_addr);
-extern void cub_ddl_log_pid (const int pid);
-extern void cub_ddl_log_br_name (const char *br_name);
-extern void cub_ddl_log_br_index (const int index);
-extern void cub_ddl_log_sql_text (char *sql_text, int len);
-extern void cub_ddl_log_stmt_type (int stmt_type);
-extern void cub_ddl_log_loaddb_file_type (char file_type);
-extern void cub_ddl_log_file_name (const char *file_name);
-extern void cub_ddl_log_file_line (int file_line);
-extern void cub_ddl_log_err_msg (char *msg);
-extern void cub_ddl_log_err_code (int err_number);
-extern void cub_ddl_log_start_time (struct timeval *time_val);
-extern void cub_ddl_log_msg (const char *fmt, ...);
-extern void cub_ddl_log_execute_type (char type);
-extern void cub_ddl_log_commit_count (int count);
+extern void cub_ddl_log_set_app_name (T_APP_NAME app_name);
+extern void cub_ddl_log_set_db_name (const char *db_name);
+extern void cub_ddl_log_set_user_name (const char *user_name);
+extern void cub_ddl_log_set_ip (const char *ip_addr);
+extern void cub_ddl_log_set_pid (const int pid);
+extern void cub_ddl_log_set_br_name (const char *br_name);
+extern void cub_ddl_log_set_br_index (const int index);
+extern void cub_ddl_log_set_sql_text (char *sql_text, int len);
+extern void cub_ddl_log_set_stmt_type (int stmt_type);
+extern void cub_ddl_log_set_loaddb_file_type (T_LOADDB_FILE_TYPE file_type);
+extern void cub_ddl_log_set_file_name (const char *file_name);
+extern void cub_ddl_log_set_file_line (int file_line);
+extern void cub_ddl_log_set_err_msg (char *msg);
+extern void cub_ddl_log_set_err_code (int err_number);
+extern void cub_ddl_log_set_start_time (struct timeval *time_val);
+extern void cub_ddl_log_set_msg (const char *fmt, ...);
+extern void cub_ddl_log_set_execute_type (char type);
+extern void cub_ddl_log_set_commit_count (int count);
 extern void cub_ddl_log_write ();
 extern void cub_ddl_log_write_end ();
-extern int cub_is_ddl_type (int node_type);
-extern void cub_ddl_log_commit_mode (char mode);
+extern bool cub_ddl_log_is_ddl_type (int node_type);
+extern void cub_ddl_log_set_commit_mode (char mode);
 extern void cub_ddl_log_write_tran_str (const char *fmt, ...);
 
 #endif /* _CUB_DDL_LOG_H_ */
