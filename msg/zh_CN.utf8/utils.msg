@@ -1203,7 +1203,7 @@ $set 57 MSGCAT_UTIL_SET_TDE
 28 无法删除数据库上设置的密钥\n
 29 键（索引: %1$d）已被删除\n
 30 生成了一个新密钥-密钥索引:在%2$s上创建了%1$d
-60
+60 \
 tde: 透明数据加密（TDE）管理\n\
 用法: %1$s tde OPERATION（-s|-n|-d|-c）[OPTION]数据库名称\n\
 \n\
