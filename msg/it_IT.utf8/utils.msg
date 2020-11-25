@@ -72,6 +72,7 @@ $       52      dump_tz
 $       53      restoreslave
 $       54      delvoldb
 $       56      checksumdb
+$       57      tde
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Lunghezza non valida o un carattere '%1$c' non valido nel nome del database '%2$s'\n
@@ -124,6 +125,7 @@ Utilità admin disponibile:\n\
     dump_tz\n\
     restoreslave\n\
     vacuumdb\n\
+    tde\n\
 \n\
 %4$s è un tool per DBMS.\n\
 Per ulteriori informazioni, vedere http://www.cubrid.org\n
@@ -183,6 +185,7 @@ Utilità amministrazione disponibili:\n\
     dump_tz\n\
     vacuumdb\n\
     checksumdb\n\
+    tde\n\
 \n\
 %4$s è un tool per DBMS.\n\
 Per ulteriori informazioni, vedere http://www.cubrid.org\n
@@ -261,6 +264,12 @@ Commandi disponibili:\n\
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 ATTENZIONE: opzione -t viene ignorata in modalità di esecuzione stand-alone.\n
 31 ERRORE: Destinazione non esiste o non è un folder.\n
+32 Utilizzando l'opzione --separate-keys, separa il file della chiave (_keys) dal volume di backup.\n\
+Se il file della chiave viene perso, il ripristino (restoreb) potrebbe non funzionare correttamente anche se è presente il volume di backup.\n
+33 Il volume di backup include il file della chiave (_keys).\n\
+Se una tabella è crittografata con TDE, può causare un problema di sicurezza per quei dati.\n\
+Per separare il file della chiave per impedirlo, utilizzare l'opzione --separate-keys.\n
+34 ERRORE: impossibile utilizzare il file FIFIO come percorso di destinazione con chiave separata.\n
 60 \
 backupdb: Backup di un database.\n\
 uso: %1$s backupdb [OPZIONE] nome-database\n\
@@ -279,7 +288,8 @@ opzioni valide:\n\
       --no-check               non controllare la consistenza del database; predefinito: controlla\n\
   -t, --thread-count=COUNT     COUNT numero threads; predefinito: 0(auto)\n\
   -z, --compress               compress volumi backup; predefinito: uncompress\n\
-      --sleep-msecs=N          aspetta N millisecondi per 1M read; predefinito: 0\n
+      --sleep-msecs=N          aspetta N millisecondi per 1M read; predefinito: 0\n\
+  -k, --separate-keys          keys file (_keys) per TDE non è incluso nel volume di backup, ma è invece separato in un file\n
 71 Argomenti incompatibili, \"%1$s\", e \"%2$s\"\n
 
 
@@ -397,7 +407,8 @@ opzioni valide:\n\
   -l, --level=LIVELLO               LIVELLO di backup da ripristinare, vedere l'utilizzo di backup; predefinito: 0(backup completo)\n\
   -p, --partial-recovery            eseguire un ripristino parziale se qualsiasi archivio log è assente\n\
   -o, --output-file=FILE            reindirizzare i messaggi di output a FILE; predefinito: nessuno\n\
-  -u, --use-database-location-path  ripristinare i volumi di database e di log nel percorso specificato nel file percorso del database\n
+  -u, --use-database-location-path  ripristinare i volumi di database e di log nel percorso specificato nel file percorso del database\n\
+  -k, --keys-file-path              Percorso del file chiave (_keys) per TDE da utilizzare durante il ripristino\n
 
 
 $set 12 MSGCAT_UTIL_SET_LOADDB
@@ -1138,7 +1149,8 @@ opzioni valide:\n\
       --list                        visualizzare un elenco di volumi di backup senza ripristinare\n\
   -B, --backup-file-path=PATH       PATH è un elenco di volumi di backup da ripristinare\n\
   -o, --output-file=FILE            messaggi di output redirect a FILE; predefinito: nessuno\n\
-  -u, --use-database-location-path  ripristinare i volumi di database e di registro per il percorso specificato nel file di posizione del database\n
+  -u, --use-database-location-path  ripristinare i volumi di database e di registro per il percorso specificato nel file di posizione del database\n\
+  -k, --keys-file-path              Percorso del file chiave (_keys) per TDE da utilizzare durante il ripristino\n
 
 $set 54 MSGCAT_UTIL_SET_DELVOLDB
 21 Pronti a rimuovere i seguenti volumi:\n\n
@@ -1191,3 +1203,23 @@ opzioni valide:\n\
       --resume                  riprendere il calcolo del checksum\n\
       --schema-only             solo controllare la coerenza dello schema\n\
       --cont-on-error           continuare in caso di errore di calcolo\n
+
+$set 57 MSGCAT_UTIL_SET_TDE
+21 Immettere la password DBA:
+25 Impossibile ottenere le informazioni sulla chiave impostate nel database\n
+26 Tentativo di cambiare la chiave dalla chiave (indice: %1$d) alla chiave (indice: %2$d) ..\n
+27 La chiave è stata cambiata dalla chiave (indice: %1$d) alla chiave (indice: %2$d)\n
+28 La chiave impostata sul database non può essere eliminata\n
+29 La chiave (indice: %1$d) è stata eliminata\n
+30 È stata generata una nuova chiave - indice chiave: %1$d creato su%2$s
+60 \
+tde: gestione TDE (Transparent Data Encryption)\n\
+utilizzo: %1$s tde OPERAZIONE (-s|-n|-d|-c) [OPZIONE] nome-database\n\
+\n\
+opzioni valide:\n\
+    -p, --dba-password=PASS    password dell'utente DBA; chiederà se non si specifica\n\
+OPERAZIONI: una delle operazioni deve essere assegnata e sono esclusive\n\
+    -s, --show-keys            stampa le informazioni sulla chiave impostate nel database e il file della chiave (_keys)\n\
+    -n, --generate-new-key     genera una nuova chiave nel file chiave (_keys); conteggio massimo: 128\n\
+    -d, --delete-key=KEY_INDEX elimina una chiave nel file della chiave (_keys)\n\
+    -c, --change-key=KEY_INDEX cambia il set di chiavi sul database per un'altra chiave nel file di chiavi (_keys)\n

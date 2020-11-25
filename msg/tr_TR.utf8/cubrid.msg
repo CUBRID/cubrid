@@ -1314,8 +1314,25 @@ $ LOADDB
 1245 CLASS niteliklerinin güncellemelerini nesne dosyalarından güncelleme CS modunda desteklenmiyor.
 1246 /etc/hosts içindeki ("%1$s") adresi ve kurallı adı alınamıyor. Lütfen dosyanın iznini veya ana bilgisayar adı olup olmadığını kontrol edin.
 1247 Belirtilen zaman (%1$s) Belirtilen yedekleme süresi (%2$s) dan sonra olmalıdır.
+1248 Geçersiz Anahtar dosyası: %1$s
+1249 Anahtar bulunamıyor (dizin: %1$d).
+1250 Veritabanında ayarlanan ana anahtar ve verilenler eşleşmiyor. Veritabanında ayarlanan anahtar dizini: %1$d
+1251 TDE şifreleme sırasında hata.
+1252 TDE şifresini çözerken hata oluştu.
+1253 TDE Modülü yüklenmemiş.
+1254 Anahtar oluşturulamıyor.
+1255 TDE modülü yüklenemiyor. TDE özelliğini kullanamazsınız.\n\
+Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğinden emin olun.
+1256 Anahtar dosyası (_keys) kopyalanamıyor. Kopyalanan veri tabanında TDE özelliğini kullanamazsınız.
+1257 Anahtar dosyası (_keys) yedeklenemiyor. Bu yedekleme birimine bağlı olarak geri yüklenen veritabanında TDE özelliğini kullanamazsınız.
+1258 %1$s veritabanında anahtar kümesi bulunamıyor. Yedekleme birimindeki anahtar dosya kullanılacaktır.
+1259 "%1$s" anahtar dosyasını "%2$s" olarak yeniden adlandırın.
+1260 "%1$s" anahtar dosyasını "%2$s" klasörüne kopyalayın.
+1261 Geri yükleme sırasında anahtar bulunamıyor (anahtar dizini: %1$d, oluşturma zamanı: %2$s). Veritabanı için anahtarı (anahtar dizini: %3$d) ayarlayın.
+1262 Anahtar dosyası dolu.
+1263 Günlük sayfasını TDE şifreleyemiyor (pageid: %1$lld). Artık bu sayfayı şifrelemeye çalışılmayacak.
 
-1248 Son Hata
+1264 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):

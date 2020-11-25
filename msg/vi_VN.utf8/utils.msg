@@ -72,6 +72,7 @@ $       52      dump_tz
 $       53      restoreslave
 $       54      delvoldb
 $       56      checksumdb
+$       57      tde
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Invalid length or character '%1$c' in database name '%2$s'\n
@@ -124,6 +125,7 @@ Available admin utility-name:\n\
     dump_tz\n\
     restoreslave\n\
     vacuumdb\n\
+    tde\n\
 \n\
 %4$s is a tool for DBMS.\n\
 For additional information, see http://www.cubrid.org\n
@@ -183,6 +185,7 @@ Available administrator's utilities:\n\
     dump_tz\n\
     vacuumdb\n\
     checksumdb\n\
+    tde\n\
 \n\
 %4$s is a tool for DBMS.\n\
 For additional information, see http://www.cubrid.org\n
@@ -261,6 +264,12 @@ Available command:\n\
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 WARNING: -t option is ignored in stand-alone mode execution.\n
 31 ERROR: Destination-path does not exist or is not a directory.\n
+32 By using --separate-keys option, it separates the key file (_keys) from the backup volume.\n\
+If the key file is lost, restoring (restoredb) may not work properly even if there is the backup volume.\n
+33 The backup volume includes the key file (_keys).\n\
+If a table is TDE-encrypted, it can cause a security problem for that data.\n\
+To separate the key file to prevent it, use --separate-keys option.\n
+34 ERROR: Cannot use FIFIO file as the destination-path with separate-key.\n
 60 \
 backupdb: Backup a database.\n\
 usage: %1$s backupdb [OPTION] database-name\n\
@@ -279,7 +288,8 @@ valid options:\n\
       --no-check               don't check a consistency of the database; default: check\n\
   -t, --thread-count=COUNT     number of threads; default: 0(auto)\n\
   -z, --compress               compress backup volumes; default: uncompress\n\
-      --sleep-msecs=N          sleep N millisecond per 1M read; default: 0\n
+      --sleep-msecs=N          sleep N millisecond per 1M read; default: 0\n\
+  -k, --separate-keys          keys file (_keys) for TDE is not included in the backup volume, but is separated into a file instead\n
 71 Incompatible arguments, \"%1$s\", and \"%2$s\"\n
 
 
@@ -398,7 +408,8 @@ valid options:\n\
   -l, --level=LEVEL                 LEVEL of backup to be restored; see backup usage; default: 0(full backup)\n\
   -p, --partial-recovery            perform partial recovery if any log archive is absent\n\
   -o, --output-file=FILE            redirect output messages to FILE; default: none\n\
-  -u, --use-database-location-path  restore the database and log volumes to the path specified in the database location file\n
+  -u, --use-database-location-path  restore the database and log volumes to the path specified in the database location file\n\
+  -k, --keys-file-path              Path of key file (_keys) for TDE to be used during restoring\n
 
 
 $set 12 MSGCAT_UTIL_SET_LOADDB
@@ -1140,7 +1151,8 @@ valid options:\n\
       --list                        display a list of backup volumes without restoring\n\
   -B, --backup-file-path=PATH       PATH is a directory of backup volumes to be restored\n\
   -o, --output-file=FILE            redirect output messages to FILE; default: none\n\
-  -u, --use-database-location-path  restore the database and log volumes to the path specified in the database location file\n
+  -u, --use-database-location-path  restore the database and log volumes to the path specified in the database location file\n\
+  -k, --keys-file-path              Path of key file (_keys) for TDE to be used during restoring\n
 
 $set 54 MSGCAT_UTIL_SET_DELVOLDB
 21 Ready to remove the following volumes:\n\n
@@ -1193,3 +1205,23 @@ valid options:\n\
       --resume                  resume calculating checksum\n\
       --schema-only             check only schema consistency\n\
       --cont-on-error           continue on calculation error\n
+
+$set 57 MSGCAT_UTIL_SET_TDE
+21 Enter DBA password:
+25 It has failed to get the key information set on the database\n
+26 Trying to change the key from the key (index: %1$d) to the key (index: %2$d)..\n
+27 The key has been changed from the key (index: %1$d) to the key (index: %2$d)\n
+28 The key set on the database cannot be deleted\n
+29 The key (index: %1$d) has been deleted\n
+30 A new key has been generated - key index: %1$d created on %2$s
+60 \
+tde: Transparent Data Encryption (TDE) management\n\
+usage: %1$s tde OPERATION(-s|-n|-d|-c) [OPTION] database-name\n\
+\n\
+valid options:\n\
+    -p, --dba-password=PASS       password of the DBA user; will prompt if don't specify\n\
+OPERATIONs: one of the operations must be given, and they are exclusive \n\
+    -s, --show-keys               print key information set on the database and the key file (_keys)\n\
+    -n, --generate-new-key        generate a new key in the key file (_keys); max count: 128\n\
+    -d, --delete-key=KEY_INDEX    delete a key in the key file (_keys)\n\
+    -c, --change-key=KEY_INDEX    change the key set on the database for another key in the key file (_keys)\n

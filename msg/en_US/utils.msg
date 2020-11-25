@@ -289,7 +289,7 @@ valid options:\n\
   -t, --thread-count=COUNT     number of threads; default: 0(auto)\n\
   -z, --compress               compress backup volumes; default: uncompress\n\
       --sleep-msecs=N          sleep N millisecond per 1M read; default: 0\n\
-  -k, --separate_keys          keys file (_keys) for TDE is not included in the backup volume, but is separated into a file instead\n
+  -k, --separate-keys          keys file (_keys) for TDE is not included in the backup volume, but is separated into a file instead\n
 71 Incompatible arguments, \"%1$s\", and \"%2$s\"\n
 
 
@@ -1219,7 +1219,7 @@ tde: Transparent Data Encryption (TDE) management\n\
 usage: %1$s tde OPERATION(-s|-n|-d|-c) [OPTION] database-name\n\
 \n\
 valid options:\n\
-    -p, --dba-password=PASS      password of the DBA user; will prompt if don't specify\n\
+    -p, --dba-password=PASS       password of the DBA user; will prompt if don't specify\n\
 OPERATIONs: one of the operations must be given, and they are exclusive \n\
     -s, --show-keys               print key information set on the database and the key file (_keys)\n\
     -n, --generate-new-key        generate a new key in the key file (_keys); max count: 128\n\

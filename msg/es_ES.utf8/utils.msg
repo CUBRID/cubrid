@@ -72,6 +72,7 @@ $       52      dump_tz
 $       53      restoreslave
 $       54      delvoldb
 $       56      checksumdb
+$       57      tde
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Longitud o caracter '%1$c' en el nombre de la base de datos '%2$s'\n no valida.
@@ -124,6 +125,7 @@ Nombre de utilidad admin disponible:\n\
     dump_tz\n\
     restoreslave\n\
     vacuumdb\n\
+    tde\n\
 \n\
 %4$s es una hieramenta para DBMS.\n\
 Para informacion adicional, vea http://www.cubrid.org\n
@@ -183,6 +185,7 @@ Utilidades de administrador disponible:\n\
     dump_tz\n\
     vacuumdb\n\
     checksumdb\n\
+    tde\n\
 \n\
 %4$s es una hieramenta para DBMS.\n\
 Para informacion adicional, vea http://www.cubrid.org\n
@@ -261,6 +264,12 @@ Comando disponible:\n\
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 ADVERTENCIA: -t opcion es ignorada en modo de ejecucion independiente.\n
 31 ERROR: Calle de destino no existe o no es un directorio.\n
+32 Al usar la opción --separate-keys, separa el archivo de claves (_keys) del volumen de respaldo.\n\
+Si se pierde el archivo de claves, es posible que la restauración (restoredb) no funcione correctamente incluso si existe el volumen de copia de seguridad.\n
+33 El volumen de respaldo incluye el archivo de claves (_keys).\n\
+Si una tabla está encriptada con TDE, puede causar un problema de seguridad para esos datos.\n\
+Para separar el archivo de claves para evitarlo, use la opción --separate-keys.\n
+34 ERROR: No se puede usar el archivo FIFIO como ruta de destino con una clave separada.\n
 60 \
 backupdb: Respaldar una base de datos.\n\
 uso: %1$s backupdb [OPTION] database-name\n\
@@ -279,7 +288,8 @@ opciones validas:\n\
       --no-check               no verificar una consistencia de la base de datos; estandar: verificar\n\
   -t, --thread-count=COUNT     numero de hilos; estandar: 0(auto)\n\
   -z, --compress               comprimir volumenes de respaldo; estandar: descomprimir\n\
-      --sleep-msecs=N          dormir N milisecondas para cada 1M leido estandar: 0\n
+      --sleep-msecs=N          dormir N milisecondas para cada 1M leido estandar: 0\n\
+  -k, --separate-keys          el archivo de claves (_keys) para TDE no se incluye en el volumen de respaldo, sino que se divide en un archivo\n
 71 Argumentos incompatibles, \"%1$s\", y \"%2$s\"\n
 
 
@@ -397,7 +407,8 @@ opciones validas:\n\
   -l, --level=LEVEL                 NIVEL de respaldo a restablecer; vea uso de respaldo; estandar: 0(respaldo completo)\n\
   -p, --partial-recovery            realizar recuperacion parcial si alguna carpeta de registro falta\n\
   -o, --output-file=FILE            redireccionar mensajes de salida al ARCHIVO; estandar: ninguno\n\
-  -u, --use-database-location-path  restablecer la base de datos y volumenes de registro a la ruta especificada en el archivo de ubicacion de la base de datos\n
+  -u, --use-database-location-path  restablecer la base de datos y volumenes de registro a la ruta especificada en el archivo de ubicacion de la base de datos\n\
+  -k, --keys-file-path              Ruta del archivo de claves (_keys) para que TDE se utilice durante la restauración\n
 
 
 $set 12 MSGCAT_UTIL_SET_LOADDB
@@ -1139,7 +1150,8 @@ opciones validas:\n\
       --list                        mostrar una lista de volumenes de backup sin restaurar\n\
   -B, --backup-file-path=PATH       PATH es una carpeta de volumenes de backup a ser restaurados\n\
   -o, --output-file=FILE            redirigir los mensajes de salida hacia FILE; default: none\n\
-  -u, --use-database-location-path  restaurar la base de datos y los volumenes de registro (log) en el camino especificado dentro del archivo de localizacion de la base de datos\n
+  -u, --use-database-location-path  restaurar la base de datos y los volumenes de registro (log) en el camino especificado dentro del archivo de localizacion de la base de datos\n\
+  -k, --keys-file-path              Ruta del archivo de claves (_keys) para que TDE se utilice durante la restauración\n
 
 $set 54 MSGCAT_UTIL_SET_DELVOLDB
 21 Listo para eliminar los siguentes volumenes:\n\n
@@ -1192,3 +1204,23 @@ opciones validas:\n\
       --resume                  reanudar calculo de checksum\n\
       --schema-only             verificar solo la consistencia de la esquema\n\
       --cont-on-error           continuar en error de calculo\n
+
+$set 57 MSGCAT_UTIL_SET_TDE
+21 Ingrese la contraseña de DBA:
+25 No se pudo obtener la información clave establecida en la base de datos\n
+26 Intentando cambiar la clave de la clave (índice: %1$d) a la clave (índice: %2$d) ..\n
+27 La clave se ha cambiado de la clave (índice: %1$d) a la clave (índice: %2$d)\n
+28 El conjunto de claves en la base de datos no se puede eliminar\n
+29 La clave (índice: %1$d) ha sido eliminada\n
+30 Se ha generado una nueva clave: índice de clave: %1$d creado en%2$s
+60 \
+tde: Gestión de cifrado transparente de datos (TDE)\n\
+uso: %1$s tde OPERACIÓN (-s|-n|-d|-c) [OPCIÓN] database-name\n\
+\n\
+opciones válidas:\n\
+    -p, --dba-password=PASS     contraseña del usuario DBA; le preguntará si no especifica\n\
+OPERACIONES: se debe dar una de las operaciones, y son exclusivas\n\
+    -s, --show-keys             imprime la información de la clave establecida en la base de datos y el archivo de clave (_keys)\n\
+    -n, --generate-new-key      genera una nueva clave en el archivo de claves (_keys); recuento máximo: 128\n\
+    -d, --delete-key=KEY_INDEX  eliminar una clave en el archivo de claves (_keys)\n\
+    -c, --change-key=KEY_INDEX  cambia el conjunto de claves en la base de datos por otra clave en el archivo de claves (_keys)\n

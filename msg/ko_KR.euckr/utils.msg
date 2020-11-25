@@ -72,6 +72,7 @@ $       52      dump_tz
 $       53      restoreslave
 $       54      delvoldb
 $       56      checksumdb
+$       56      tde
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 크기가 잘못되었거나, 잘못된 문자 '%1$c'이(가) 데이터베이스 이름 '%2$s'에 포함되어 있습니다\n
@@ -124,6 +125,7 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     dump_tz\n\
     restoreslave\n\
     vacuumdb\n\
+    tde\n\
 \n\
 %4$s (은)는 DBMS 관리 도구입니다.\n\
 추가적인 정보는 다음 사이트를 참조하세요. http://www.cubrid.org\n
@@ -183,6 +185,7 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     dump_tz\n\
     vacuumdb\n\
     checksumdb\n\
+    tde\n\
 \n\
 %4$s (은)는 DBMS  도구입니다.\n\
 추가적인 정보는 다음 사이트를 참조하세요. http://www.cubrid.org\n
@@ -261,6 +264,12 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 경고: -t 옵션은 독립 실행 모드에서는 무시 됩니다.\n
 31 에러: 대상 경로가 존재하지 않거나 디렉토리가 아닙니다.\n
+32 --separate-keys 옵션으로 키 파일 (_keys)을 백업볼륨과 분리합니다.\n\
+해당 키 파일을 분실할 경우백업파일이 있더라도 복구 (restoredb)가 올바르게 진행되지 않을 수 있습니다.\n
+33 키 파일 (_keys)를 백업 볼륨에 포함합니다.\n\
+만약 TDE 기능으로 암호화된 테이블이 볼륨내에 존재할 경우, 보안상의 문제가 생길 수 있습니다.\n\
+키 파일이 분리를 위해선 --serperate-keys 옵션을 사용하세요.\n
+34 에러: --separate-key 옵션 사용시 FIFO 파일을 대상 경로로 설정할 수 없습니다.\n
 60 \
 backupdb: 데이터베이스를 백업합니다.\n\
 사용법: %1$s backupdb [옵션] <데이터베이스 이름>\n\
@@ -279,7 +288,8 @@ backupdb: 데이터베이스를 백업합니다.\n\
       --no-check               데이터베이스의 정합성 확인 작업을 수행하지 않습니다; 기본값: 수행\n\
   -t, --thread-count=COUNT     백업을 수행하는 스레드 개수; 기본값: 자동\n\
   -z, --compress               백업 볼륨을 압축합니다; 기본값: 압축하지 않음\n\
-      --sleep-msecs=N          매 1M 읽기 마다 N 밀리초를 쉽니다; 기본값: 0\n
+      --sleep-msecs=N          매 1M 읽기 마다 N 밀리초를 쉽니다; 기본값: 0\n\
+  -k, --separate-keys          TDE에 사용되는 Key File (_keys)을 백업볼륨에 포함하지 않고 별개의 파일로 분리합니다.\n
 71 \"%1$s\" 와 \"%2$s\" (은)는 함께 사용할 수 없습니다.\n
 
 
@@ -397,7 +407,8 @@ restoredb: 데이터베이스 복구\n\
   -l, --level=LEVEL                 복구에 사용될 백업의 레벨; 기본값: 0(Full backup)\n\
   -p, --partial-recovery            archive 로그가 존재하지 않으면 강제로 partial recovery 수행함\n\
   -o, --output-file=FILE            출력 메시지가 저장될 파일; 기본값: 없음\n\
-  -u, --use-database-location-path  데이터베이스 위치 파일에 설정된 경로에 데이터베이스 볼륨과 로그 볼륨을 복구\n
+  -u, --use-database-location-path  데이터베이스 위치 파일에 설정된 경로에 데이터베이스 볼륨과 로그 볼륨을 복구\n\
+  -k, --keys-file-path              복구에 사용될 키 파일 (_keys)의 경로 \n
 
 
 $set 12 MSGCAT_UTIL_SET_LOADDB
@@ -1127,7 +1138,8 @@ valid options:\n\
       --list                        실제 복원하지 않고 백업 볼륨의 리스트만 출력\n\
   -B, --backup-file-path=PATH       복원할 백업 볼륨의 디렉터리 경로\n\
   -o, --output-file=FILE            출력 메시지를 FILE로 변경; 기본값: 없음\n\
-  -u, --use-database-location-path  데이터베이스와 로그 볼륨을 데이터베이스 경로 파일에 명시된 경로로 복원\n
+  -u, --use-database-location-path  데이터베이스와 로그 볼륨을 데이터베이스 경로 파일에 명시된 경로로 복원\n\
+  -k, --keys-file-path              복구에 사용될 키 파일 (_keys)의 경로 \n
 
 $set 54 MSGCAT_UTIL_SET_DELVOLDB
 21 Ready to remove the following volumes:\n\n
@@ -1180,3 +1192,23 @@ valid options:\n\
       --resume                  체크섬 계산 복귀\n\
       --schema-only             스키마 일관성만 검사\n\
       --cont-on-error           계산 오류 발생해도 계속 진행\n
+
+$set 57 MSGCAT_UTIL_SET_TDE
+21 DBA 비밀 번호:
+25 데이터베이스에 등록된 키 정보를 가져올 수 없습니다.\n
+26 키 (인덱스: %1$d)에서 키 (인덱스: %2$d)로 변경을 시도합니다..\n
+27 키 (인덱스: %1$d)에서 키 (인덱스: %2$d)로 변경되었습니다.\n
+28 데이터베이스에 등록된 키는 제거할 수 없습니다.\n
+29 인덱스: %1$d 키를 제거하였습니다.\n
+30 새로운 키가 생성되었습니다. 키 인덱스: %1$d, 생성 시간: %2$s
+60 \
+tde: Transparent Data Encryption (TDE) 관리\n\
+usage: %1$s tde <operation> [옵션] <데이터베이스-이름>\n\
+\n\
+valid options:\n\
+    -p, --dba-password=PASS       DBA 패스워드; 지정되지 않은 경우 프롬프트\n\
+operations:\n\
+    -s, --show-keys               데이터베이스에 등록된 키, 키 파일 (_keys)내의 키들에 대한 정보를 출력 \n\
+    -n, --generate-new-key        키 파일 (_keys)에 새로운 키를 추가; 최대 갯수: 128\n\
+    -d, --delete-key=KEY_INDEX    키 파일 (_keys)의 한 키를 제거\n\
+    -c, --change-key=KEY_INDEX    데이터베이스에 등록된 키를 키 파일 (_keys)에 존재하는 다른 키로 변경\n

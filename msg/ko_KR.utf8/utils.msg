@@ -289,7 +289,7 @@ backupdb: 데이터베이스를 백업합니다.\n\
   -t, --thread-count=COUNT     백업을 수행하는 스레드 개수; 기본값: 자동\n\
   -z, --compress               백업 볼륨을 압축합니다; 기본값: 압축하지 않음\n\
       --sleep-msecs=N          매 1M 읽기 마다 N 밀리초를 쉽니다; 기본값: 0\n\
-  -k, --separate_keys          TDE에 사용되는 Key File (_keys)을 백업볼륨에 포함하지 않고 별개의 파일로 분리합니다. \n
+  -k, --separate-keys          TDE에 사용되는 Key File (_keys)을 백업볼륨에 포함하지 않고 별개의 파일로 분리합니다. \n
 71 \"%1$s\" 와 \"%2$s\" (은)는 함께 사용할 수 없습니다.\n
 
 
@@ -1196,7 +1196,7 @@ valid options:\n\
 $set 57 MSGCAT_UTIL_SET_TDE
 21 DBA 비밀 번호:
 25 데이터베이스에 등록된 키 정보를 가져올 수 없습니다.\n
-26 키 (인덱스: %1$d)에서 키 (인덱스: %2$d)로 변경을 시도합니다.\n
+26 키 (인덱스: %1$d)에서 키 (인덱스: %2$d)로 변경을 시도합니다..\n
 27 키 (인덱스: %1$d)에서 키 (인덱스: %2$d)로 변경되었습니다.\n
 28 데이터베이스에 등록된 키는 제거할 수 없습니다.\n
 29 인덱스: %1$d 키를 제거하였습니다.\n
@@ -1206,7 +1206,7 @@ tde: Transparent Data Encryption (TDE) 관리\n\
 usage: %1$s tde <operation> [옵션] <데이터베이스-이름>\n\
 \n\
 valid options:\n\
-    -p, --dba-password=PASS         DBA 패스워드; 지정되지 않은 경우 프롬프트\n\
+    -p, --dba-password=PASS       DBA 패스워드; 지정되지 않은 경우 프롬프트\n\
 operations:\n\
     -s, --show-keys               데이터베이스에 등록된 키, 키 파일 (_keys)내의 키들에 대한 정보를 출력 \n\
     -n, --generate-new-key        키 파일 (_keys)에 새로운 키를 추가; 최대 갯수: 128\n\
