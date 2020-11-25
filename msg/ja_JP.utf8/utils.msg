@@ -408,7 +408,7 @@ restoredb: データベース復旧\n\
   -p, --partial-recovery            アーカイブログがなければ強制にパーシャルリカバリーを実行する。\n\
   -o, --output-file=FILE            出力メッセージがセーブされるファイル; デフォルト: なし\n\
   -u, --use-database-location-path  データベース位置ファイルに設定されたパスにデータベースボリュームとログボリュームを復旧\n\
-  -k、--keys-file-path               復元中に使用されるTDEのキーファイル（_keys）のパス\n
+  -k、--keys-file-path              復元中に使用されるTDEのキーファイル（_keys）のパス\n
 
 
 $set 12 MSGCAT_UTIL_SET_LOADDB
