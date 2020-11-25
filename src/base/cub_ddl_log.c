@@ -358,7 +358,6 @@ cub_ddl_log_set_start_time (struct timeval *time_val)
       memcpy (&ddl_audit_handle->qry_exec_begin_time, time_val, sizeof (struct timeval));
     }
 
-  ddl_audit_handle->str_qry_exec_begin_time[0] = '\0';
   cub_ddl_log_get_time_string (ddl_audit_handle->str_qry_exec_begin_time, time_val);
 }
 
