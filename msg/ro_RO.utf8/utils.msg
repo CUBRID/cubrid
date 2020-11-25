@@ -290,7 +290,7 @@ opţiuni valide:\n\
   -t, --thread-count=NUMAR     număr de fire de excuţie; implicit: 0(auto)\n\
   -z, --compress               compresia volumelor de backup; implicit: decompresie\n\
       --sleep-msecs=N          asteapta N milisecunde la fiecare 1MB citit; implicit: 0\n\
-  -k, --separate_keys          cheie file (_keys) for TDE is not included in the backup volume, but is separate into a file\n
+  -k, --separate-keys          cheie file (_keys) for TDE is not included in the backup volume, but is separate into a file\n
 71 Argumente incompatibile, \"%1$s\", şi \"%2$s\"\n
 
 

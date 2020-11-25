@@ -289,7 +289,7 @@ opciones validas:\n\
   -t, --thread-count=COUNT     numero de hilos; estandar: 0(auto)\n\
   -z, --compress               comprimir volumenes de respaldo; estandar: descomprimir\n\
       --sleep-msecs=N          dormir N milisecondas para cada 1M leido estandar: 0\n\
-  -k, --separate_keys          el archivo de claves (_keys) para TDE no se incluye en el volumen de respaldo, sino que se divide en un archivo\n
+  -k, --separate-keys          el archivo de claves (_keys) para TDE no se incluye en el volumen de respaldo, sino que se divide en un archivo\n
 71 Argumentos incompatibles, \"%1$s\", y \"%2$s\"\n
 
 

@@ -289,7 +289,7 @@ options valides:\n\
   -t, --thread-count=NOMBRE    NOMBRE de fils d'exécution; par défaut: 0 (auto)\n\
   -z, --compress               comprimer les volumes de sauvegarde; par défaut: décompresser\n\
       --sleep-msecs=N          veille N millisecondes par 1M lit; par défaut: 0\n\
-  -k, --separate_keys          fichier de clés (_keys) pour TDE n'est pas inclus dans le volume de sauvegarde, mais est séparé dans un fichier à la place\n
+  -k, --separate-keys          fichier de clés (_keys) pour TDE n'est pas inclus dans le volume de sauvegarde, mais est séparé dans un fichier à la place\n
 71 Arguments incompatibles, \"%1$s\", et \"%2$s\"\n
 
 

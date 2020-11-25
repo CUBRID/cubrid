@@ -289,7 +289,7 @@ gültige Optionen:\n\
   -t, --thread-count=ANZAHL     Anzahl der Threads; Standard: 0(auto)\n\
   -z, --compress               Backupdatenträger komprimieren; Standard: nicht komprimiert\n\
       --sleep-msecs=N          N Millisekunden per gelesenen 1M schlafen; Standard: 0\n\
-  -k, --separate_keys          Schlüsseldatei (_keys) für TDE ist nicht im Sicherungsvolume enthalten, sondern wird stattdessen in eine Datei aufgeteilt\n
+  -k, --separate-keys          Schlüsseldatei (_keys) für TDE ist nicht im Sicherungsvolume enthalten, sondern wird stattdessen in eine Datei aufgeteilt\n
 71 Nicht kompatible Argumente, \"%1$s\", und \"%2$s\"\n
 
 

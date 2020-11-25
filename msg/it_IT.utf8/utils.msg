@@ -289,7 +289,7 @@ opzioni valide:\n\
   -t, --thread-count=COUNT     COUNT numero threads; predefinito: 0(auto)\n\
   -z, --compress               compress volumi backup; predefinito: uncompress\n\
       --sleep-msecs=N          aspetta N millisecondi per 1M read; predefinito: 0\n\
-  -k, --separate_keys          keys file (_keys) per TDE non è incluso nel volume di backup, ma è invece separato in un file\n
+  -k, --separate-keys          keys file (_keys) per TDE non è incluso nel volume di backup, ma è invece separato in un file\n
 71 Argomenti incompatibili, \"%1$s\", e \"%2$s\"\n
 
 
