@@ -97,7 +97,7 @@ static void unix_style_path (char *path);
 #endif /* WINDOWS */
 static int cub_ddl_log_create_dir (const char *new_dir);
 static int cub_ddl_log_create_lgo_mgs (char *msg);
-static int cub_ddl_log_get_current_time (char *buf, size_t size);
+static int cub_ddl_log_get_current_date_time_string (char *buf, size_t size);
 static int cub_ddl_log_file_copy (char *src_file, char *dest_file);
 static void cub_ddl_log_remove_char (char *string, char ch);
 static FILE *cub_ddl_log_open (T_APP_NAME app_name);
@@ -491,7 +491,7 @@ cub_ddl_log_make_schema_file_name (const char *file_full_path, char *dest_path, 
     }
 
   env_root = envvar_root ();
-  cub_ddl_log_get_current_time (time, TIME_STRING_SIZE);
+  cub_ddl_log_get_current_date_time_string (time, TIME_STRING_SIZE);
 
   name_tmp = strrchr (file_full_path, PATH_SEPARATOR);
 
@@ -1008,7 +1008,7 @@ cub_ddl_log_create_dir (const char *new_dir)
 }
 
 static int
-cub_ddl_log_get_current_time (char *buf, size_t size)
+cub_ddl_log_get_current_date_time_string (char *buf, size_t size)
 {
   struct tm at_tm;
   int len = 0;
