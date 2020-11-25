@@ -265,7 +265,7 @@ $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 ADVERTENCIA: -t opcion es ignorada en modo de ejecucion independiente.\n
 31 ERROR: Calle de destino no existe o no es un directorio.\n
 32 Al usar la opción --separate-keys, separa el archivo de claves (_keys) del volumen de respaldo.\n\
-Si se pierde el archivo de claves, es posible que la restauración (restauradab) no funcione correctamente incluso si existe el volumen de copia de seguridad.\n
+Si se pierde el archivo de claves, es posible que la restauración (restoredb) no funcione correctamente incluso si existe el volumen de copia de seguridad.\n
 33 El volumen de respaldo incluye el archivo de claves (_keys).\n\
 Si una tabla está encriptada con TDE, puede causar un problema de seguridad para esos datos.\n\
 Para separar el archivo de claves para evitarlo, use la opción --separate-keys.\n

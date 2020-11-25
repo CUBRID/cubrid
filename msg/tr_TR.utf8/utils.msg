@@ -1206,7 +1206,7 @@ $set 57 MSGCAT_UTIL_SET_TDE
 27 Anahtar, anahtardan (dizin: %1$d) anahtara (dizin: %2$d) değiştirildi\n
 28 Veritabanındaki anahtar seti silinemez\n
 29 Anahtar (dizin: %1$d) silindi\n
-30 Yeni bir anahtar oluşturuldu - anahtar dizini: %1$d%2$s üzerinde oluşturuldu
+30 Yeni bir anahtar oluşturuldu - anahtar dizini: %1$d %2$s üzerinde oluşturuldu
 60 \
 tde: Şeffaf Veri Şifreleme (TDE) yönetimi\n\
 kullanım: %1$s tde İŞLEM (-s|-n|-d|-c) [SEÇENEK] veritabanı-adı\n\

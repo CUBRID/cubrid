@@ -265,7 +265,7 @@ $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 WARNUNG: -t Option wird in Stand-Alone-Ausführung ignoriert.\n
 31 FEHLER: Destination-Pfad existiert nicht oder ist kein Verzeichnis.\n
 32 Mit der Option --separate-keys wird die Schlüsseldatei (_keys) vom Sicherungsdatenträger getrennt.\n\
-Wenn die Schlüsseldatei verloren geht, funktioniert die Wiederherstellung (restoreb) möglicherweise nicht ordnungsgemäß, selbst wenn das Sicherungsvolume vorhanden ist.\n
+Wenn die Schlüsseldatei verloren geht, funktioniert die Wiederherstellung (restoredb) möglicherweise nicht ordnungsgemäß, selbst wenn das Sicherungsvolume vorhanden ist.\n
 33 Das Sicherungsvolume enthält die Schlüsseldatei (_keys).\n\
 Wenn eine Tabelle TDE-verschlüsselt ist, kann dies zu einem Sicherheitsproblem für diese Daten führen.\n\
 Verwenden Sie die Option --separate-keys, um die Schlüsseldatei zu trennen, um dies zu verhindern.\n
@@ -1208,9 +1208,9 @@ $set 57 MSGCAT_UTIL_SET_TDE
 21 Geben Sie das DBA-Passwort ein:
 25 Die in der Datenbank festgelegten Schlüsselinformationen konnten nicht abgerufen werden\n
 26 Versuch, den Schlüssel vom Schlüssel (Index: %1$d) zum Schlüssel (Index: %2$d) zu ändern ..\n
-27 Der Schlüssel wurde vom Schlüssel (Index: %1$d) zum Schlüssel (Index: %2$d) geändert\n
+27 Der Schlüssel wurde vom Schlüssel (index: %1$d) zum Schlüssel (index: %2$d) geändert\n
 28 Der in der Datenbank festgelegte Schlüssel kann nicht gelöscht werden\n
-29 Der Schlüssel (Index: %1$d) wurde gelöscht\n
+29 Der Schlüssel (index: %1$d) wurde gelöscht\n
 30 Ein neuer Schlüssel wurde generiert - Schlüsselindex: %1$d erstellt auf%2$s
 60 \
 tde: Verwaltung der transparenten Datenverschlüsselung (TDE)\n\

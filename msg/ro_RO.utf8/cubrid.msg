@@ -1319,7 +1319,7 @@ $ LOADDB
 1250 Cheia master setată în baza de date și ceea ce este dat nu se potrivesc. Indicele cheie setat în baza de date: %1$d
 1251 Eroare la criptarea TDE.
 1252 Eroare la decriptarea TDE.
-Modulul TDE 1253 nu este încărcat.
+1253 Modulul TDE nu este încărcat.
 1254 Nu se poate crea o cheie.
 1255 Nu se poate încărca modulul TDE. Nu puteți utiliza funcția TDE.\n\
 Verificați calea fișierului cheie (_keys) și asigurați-vă că acesta include cheia corectă.

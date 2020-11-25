@@ -1325,7 +1325,7 @@ $ LOADDB
 Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğinden emin olun.
 1256 Anahtar dosyası (_keys) kopyalanamıyor. Kopyalanan veri tabanında TDE özelliğini kullanamazsınız.
 1257 Anahtar dosyası (_keys) yedeklenemiyor. Bu yedekleme birimine bağlı olarak geri yüklenen veritabanında TDE özelliğini kullanamazsınız.
-1258%1$s veritabanında anahtar kümesi bulunamıyor. Yedekleme birimindeki anahtar dosya kullanılacaktır.
+1258 %1$s veritabanında anahtar kümesi bulunamıyor. Yedekleme birimindeki anahtar dosya kullanılacaktır.
 1259 "%1$s" anahtar dosyasını "%2$s" olarak yeniden adlandırın.
 1260 "%1$s" anahtar dosyasını "%2$s" klasörüne kopyalayın.
 1261 Geri yükleme sırasında anahtar bulunamıyor (anahtar dizini: %1$d, oluşturma zamanı: %2$s). Veritabanı için anahtarı (anahtar dizini: %3$d) ayarlayın.

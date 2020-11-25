@@ -1315,7 +1315,7 @@ $ LOADDB
 1246 Adresse und kanonischer Name für ("%1$s") in /etc/hosts können nicht abgerufen werden. Bitte überprüfen Sie die Berechtigung der Datei oder ob der Hostname vorhanden ist.
 1247 Die angegebene Zeit (%1$s) muss später als (%2$s), die Zeit der angegebenen Sicherung.
 1248 Ungültige Schlüsseldatei : %1$s
-1249 Der Schlüssel kann nicht gefunden werden (Index: %1$d).
+1249 Der Schlüssel kann nicht gefunden werden (index: %1$d).
 1250 Der in der Datenbank festgelegte Hauptschlüssel und die angegebenen Schlüssel stimmen nicht überein. Der in der Datenbank festgelegte Schlüsselindex: %1$d
 1251 Fehler beim TDE-Verschlüsselung.
 1252 Fehler beim TDE-Entschlüsseln.
