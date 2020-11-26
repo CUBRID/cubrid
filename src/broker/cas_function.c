@@ -91,7 +91,7 @@ static void update_error_query_count (T_APPL_SERVER_INFO * as_info_p, const T_ER
 
 static const char *tran_type_str[] = { "COMMIT", "ROLLBACK" };
 
-static char cub_ddl_log_is_exist_ddl_stmt_type (T_SRV_HANDLE * srv_handle);
+static char logddl_is_exist_ddl_stmt (T_SRV_HANDLE * srv_handle);
 
 static const char *schema_type_str[] = {
   "CLASS",
@@ -197,7 +197,7 @@ fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
   cas_log_write (0, false, "end_tran %s%d time %d.%03d%s", err_code < 0 ? "error:" : "", err_info.err_number,
 		 elapsed_sec, elapsed_msec, get_error_log_eids (err_info.err_number));
 
-  cub_ddl_log_write_tran_str ("end_tran %s%d %s", err_code < 0 ? "error:" : "", err_info.err_number,
+  logddl_write_tran_str ("end_tran %s%d %s", err_code < 0 ? "error:" : "", err_info.err_number,
 			      get_tran_type_str (tran_type));
 
   if (err_code < 0)
@@ -328,7 +328,7 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 
   net_arg_get_str (&sql_stmt, &sql_size, argv[0]);
 
-  cub_ddl_log_set_sql_text (sql_stmt, (int) strlen (sql_stmt));
+  logddl_set_sql_text (sql_stmt, (int) strlen (sql_stmt));
 
   net_arg_get_char (flag, argv[1]);
   if (argc > 2)
@@ -399,7 +399,7 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 		 (srv_h_id < 0) ? err_info.err_number : srv_h_id, (srv_handle != NULL
 								   && srv_handle->use_plan_cache) ? " (PC)" : "",
 		 get_error_log_eids (err_info.err_number));
-  cub_ddl_log_set_err_code (err_info.err_number);
+  logddl_set_err_code (err_info.err_number);
 
 #ifndef LIBCAS_FOR_JSP
   if (srv_h_id < 0)
@@ -593,7 +593,7 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 
   srv_handle->auto_commit_mode = auto_commit_mode;
   srv_handle->forward_only_cursor = forward_only_cursor;
-  cub_ddl_log_set_commit_mode (auto_commit_mode);
+  logddl_set_commit_mode (auto_commit_mode);
 
   if (srv_handle->prepare_flag & CCI_PREPARE_CALL)
     {
@@ -629,7 +629,7 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   if (srv_handle->sql_stmt != NULL)
     {
       cas_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt));
-      cub_ddl_log_set_sql_text (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt));
+      logddl_set_sql_text (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt));
     }
   cas_log_debug (ARG_FILE_LINE, "%s%s", auto_commit_mode ? "auto_commit_mode " : "",
 		 forward_only_cursor ? "forward_only_cursor " : "");
@@ -672,7 +672,7 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   ut_timeval_diff (&exec_begin, &exec_end, &elapsed_sec, &elapsed_msec);
   eid_string = get_error_log_eids (err_info.err_number);
   err_number_execute = err_info.err_number;
-  cub_ddl_log_set_err_code (err_info.err_number);
+  logddl_set_err_code (err_info.err_number);
 
   if (fetch_flag && ret_code >= 0 && client_cache_reusable == FALSE)
     {
@@ -691,8 +691,8 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 		 elapsed_msec, (client_cache_reusable == TRUE) ? " (CC)" : "",
 		 (srv_handle->use_query_cache == true) ? " (QC)" : "", eid_string);
 
-  stmt_type = cub_ddl_log_is_exist_ddl_stmt_type (srv_handle);
-  cub_ddl_log_set_stmt_type (stmt_type);
+  stmt_type = logddl_is_exist_ddl_stmt (srv_handle);
+  logddl_set_stmt_type (stmt_type);
 
 #ifndef LIBCAS_FOR_JSP
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
@@ -1720,7 +1720,7 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
   if (srv_handle->sql_stmt != NULL)
     {
       cas_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt));
-      cub_ddl_log_set_sql_text (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt));
+      logddl_set_sql_text (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt));
     }
 #ifndef LIBCAS_FOR_JSP
   if (as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
@@ -2026,7 +2026,7 @@ fn_con_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_
 {
   cas_log_write (0, true, "con_close");
   net_buf_cp_int (net_buf, 0, NULL);
-  cub_ddl_log_free (true);
+  logddl_free (true);
   return FN_CLOSE_CONN;
 }
 
@@ -2682,12 +2682,12 @@ update_error_query_count (T_APPL_SERVER_INFO * as_info_p, const T_ERROR_INFO * e
 }
 
 static char
-cub_ddl_log_is_exist_ddl_stmt_type (T_SRV_HANDLE * srv_handle)
+logddl_is_exist_ddl_stmt (T_SRV_HANDLE * srv_handle)
 {
   char stmt_type = -1;
   for (int i = 0; i < srv_handle->num_q_result; i++)
     {
-      if (cub_ddl_log_is_ddl_type (srv_handle->q_result[i].stmt_type) == true)
+      if (logddl_is_ddl_type (srv_handle->q_result[i].stmt_type) == true)
 	{
 	  stmt_type = srv_handle->q_result[i].stmt_type;
 	  break;

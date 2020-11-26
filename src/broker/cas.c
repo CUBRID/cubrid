@@ -880,7 +880,7 @@ cas_main (void)
   // init error manager with default arguments; should be reinitialized later
   er_init (NULL, ER_NEVER_EXIT);
 
-  cub_ddl_log_init ();
+  logddl_init ();
 
 #if defined(WINDOWS)
   __try
@@ -1263,7 +1263,7 @@ cas_main (void)
 	    req_info.need_rollback = TRUE;
 
 	    gettimeofday (&tran_start_time, NULL);
-	    cub_ddl_log_set_start_time (&tran_start_time);
+	    logddl_set_start_time (&tran_start_time);
 	    gettimeofday (&query_start_time, NULL);
 	    tran_timeout = 0;
 	    query_timeout = 0;
@@ -1281,13 +1281,13 @@ cas_main (void)
 #if !defined(WINDOWS)
 		signal (SIGUSR1, query_cancel);
 #endif /* !WINDOWS */
-		cub_ddl_log_set_app_name (APP_NAME_CAS);
-		cub_ddl_log_set_br_name (shm_appl->broker_name);
-		cub_ddl_log_set_br_index (shm_as_index);
-		cub_ddl_log_set_db_name (db_name);
-		cub_ddl_log_set_user_name (db_user);
-		cub_ddl_log_set_ip (client_ip_str);
-		cub_ddl_log_set_pid (getpid ());
+		logddl_set_app_name (APP_NAME_CAS);
+		logddl_set_br_name (shm_appl->broker_name);
+		logddl_set_br_index (shm_as_index);
+		logddl_set_db_name (db_name);
+		logddl_set_user_name (db_user);
+		logddl_set_ip (client_ip_str);
+		logddl_set_pid (getpid ());
 
 		fn_ret = process_request (client_sock_fd, &net_buf, &req_info);
 		as_info->fn_status = FN_STATUS_DONE;
@@ -1645,7 +1645,7 @@ cas_free (bool from_sighandler)
   cas_log_write_and_end (0, true, "CAS TERMINATED pid %d", getpid ());
   cas_log_close (true);
   cas_slow_log_close ();
-  cub_ddl_log_destroy ();
+  logddl_destroy ();
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
   cas_error_log_close (true);
 #endif
@@ -2114,7 +2114,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 
   if (func_code == CAS_FC_EXECUTE || err_info.err_number < 0)
     {
-      cub_ddl_log_write_end ();
+      logddl_write_end ();
     }
 
   if ((func_code == CAS_FC_EXECUTE) || (func_code == CAS_FC_SCHEMA_INFO))
@@ -2368,7 +2368,7 @@ net_read_process (SOCKET proxy_sock_fd, MSG_HEADER * client_msg_header, T_REQ_IN
     {
       as_info->num_request++;
       gettimeofday (&tran_start_time, NULL);
-      cub_ddl_log_set_start_time (&tran_start_time);
+      logddl_set_start_time (&tran_start_time);
     }
 
   if (as_info->con_status == CON_STATUS_CLOSE)
@@ -2507,7 +2507,7 @@ net_read_int_keep_con_auto (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header, 
       as_info->num_request++;
       gettimeofday (&tran_start_time, NULL);
     }
-  cub_ddl_log_set_start_time (&tran_start_time);
+  logddl_set_start_time (&tran_start_time);
 
   if (as_info->con_status == CON_STATUS_CLOSE || as_info->con_status == CON_STATUS_CLOSE_AND_CONNECT)
     {

@@ -908,7 +908,7 @@ nonscr_display_error (char *buffer, int buf_length)
 
   buffer[buf_length - 1] = '\0';
   csql_fputs (buffer, csql_Error_fp);
-  cub_ddl_log_set_err_msg (buffer);
+  logddl_set_err_msg (buffer);
 }
 
 /*
