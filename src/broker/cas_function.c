@@ -2687,7 +2687,7 @@ cub_ddl_log_is_exist_ddl_stmt_type (T_SRV_HANDLE * srv_handle)
   char stmt_type = -1;
   for (int i = 0; i < srv_handle->num_q_result; i++)
     {
-      if (cub_ddl_log_is_ddl_type (srv_handle->q_result[i].stmt_type) == TRUE)
+      if (cub_ddl_log_is_ddl_type (srv_handle->q_result[i].stmt_type) == true)
 	{
 	  stmt_type = srv_handle->q_result[i].stmt_type;
 	  break;

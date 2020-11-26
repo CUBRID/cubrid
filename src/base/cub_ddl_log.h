@@ -77,7 +77,7 @@ extern void cub_ddl_log_set_commit_count (int count);
 extern void cub_ddl_log_write ();
 extern void cub_ddl_log_write_end ();
 extern bool cub_ddl_log_is_ddl_type (int node_type);
-extern void cub_ddl_log_set_commit_mode (char mode);
+extern void cub_ddl_log_set_commit_mode (bool mode);
 extern void cub_ddl_log_write_tran_str (const char *fmt, ...);
 
 #endif /* _CUB_DDL_LOG_H_ */
