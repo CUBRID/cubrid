@@ -4490,20 +4490,19 @@ process_heartbeat_util (HA_CONF * ha_conf, int command_type, int argc, const cha
   node_name_p = (node_name[0] == '\0') ? NULL : node_name;
   host_name_p = (host_name[0] == '\0') ? NULL : host_name;
 
-  if (db_name != NULL)
-    {
-      status = sysprm_load_and_init (db_name, NULL, SYSPRM_IGNORE_INTL_PARAMS);
-      if (status != NO_ERROR)
-	{
-	  goto ret;
-	}
+  assert (db_name_p != NULL);
 
-      if (util_get_ha_mode_for_sa_utils () == HA_MODE_OFF)
-	{
-	  status = ER_GENERIC_ERROR;
-	  print_message (stderr, MSGCAT_UTIL_GENERIC_NOT_HA_MODE);
-	  goto ret;
-	}
+  status = sysprm_load_and_init (db_name_p, NULL, SYSPRM_IGNORE_INTL_PARAMS);
+  if (status != NO_ERROR)
+    {
+      goto ret;
+    }
+
+  if (util_get_ha_mode_for_sa_utils () == HA_MODE_OFF)
+    {
+      status = ER_GENERIC_ERROR;
+      print_message (stderr, MSGCAT_UTIL_GENERIC_NOT_HA_MODE);
+      goto ret;
     }
 
   switch (command_type)
