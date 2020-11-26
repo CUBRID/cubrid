@@ -326,24 +326,25 @@ static int parse_tzd (const char *str, const int max_expect_len);
  *  Public Functions for Strings - Bit and Character
  */
 
-
 /*
  * db_string_compare () -
  *
  * Arguments:
  *                string1: Left side of compare.
  *                string2: Right side of compare
- *                 result: Integer result of comparison.
- *            data_status: Status of errors.
+ *                result: Integer result of comparison.
  *
  * Returns: int
  *
  * Errors:
- *      ER_QSTR_INVALID_DATA_TYPE   :
+ *    ER_QSTR_INVALID_DATA_TYPE   :
  *        <string1> or <string2> are not character strings.
  *
  *    ER_QSTR_INCOMPATIBLE_CODE_SETS:
  *        <string1> and <string2> have differing character code sets.
+ *
+ *    ER_QSTR_INCOMPATIBLE_COLLATIONS
+ *        <string1> and <string2> have incompatible collations.
  *
  */
 
@@ -435,7 +436,7 @@ db_string_compare (const DB_VALUE * string1, const DB_VALUE * string2, DB_VALUE 
 				       DB_GET_UCHAR (string2), (int) db_get_string_size (string2));
 	  break;
 	default:		/* QSTR_UNKNOWN */
-	  break;
+	  assert (false);
 	}
     }
 
@@ -3682,22 +3683,24 @@ db_string_trim (const MISC_OPERAND tr_operand, const DB_VALUE * trim_charset, co
 
 /*
  * db_string_prefix_compare () - this function is similar with db_string_compare.
- * 				 but if one of 2 string arguments char-type
+ * 				 but if one of 2 string arguments is char-type
  * 				 they are compared by the ignore-trailing-space rule.
  * Arguments:
  *                string1: Left side of compare.
  *                string2: Right side of compare
- *                 result: Integer result of comparison.
- *            data_status: Status of errors.
+ *                result: Integer result of comparison.
  *
  * Returns: int
  *
  * Errors:
- *      ER_QSTR_INVALID_DATA_TYPE   :
+ *    ER_QSTR_INVALID_DATA_TYPE   :
  *        <string1> or <string2> are not character strings.
  *
  *    ER_QSTR_INCOMPATIBLE_CODE_SETS:
  *        <string1> and <string2> have differing character code sets.
+ *
+ *    ER_QSTR_INCOMPATIBLE_COLLATIONS
+ *        <string1> and <string2> have incompatible collations.
  */
 static int
 db_string_prefix_compare (const DB_VALUE * string1, const DB_VALUE * string2, DB_VALUE * result)
@@ -3787,7 +3790,7 @@ db_string_prefix_compare (const DB_VALUE * string1, const DB_VALUE * string2, DB
 				       DB_GET_UCHAR (string2), (int) db_get_string_size (string2));
 	  break;
 	default:		/* QSTR_UNKNOWN */
-	  break;
+	  assert (false);
 	}
     }
 
