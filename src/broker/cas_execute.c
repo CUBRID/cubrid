@@ -728,19 +728,20 @@ int
 ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
 	    unsigned int query_seq_num)
 {
-  int stmt_id;
+  int stmt_id, first_stmt_id = -1;
   T_SRV_HANDLE *srv_handle = NULL;
   DB_SESSION *session = NULL;
   int srv_h_id = -1;
   int err_code;
   int num_markers;
-  char stmt_type;
+  char stmt_type, first_stmt_type = 0;
   char updatable_flag;
   T_QUERY_RESULT *q_result = NULL;
   T_BROKER_VERSION client_version = req_info->client_version;
   int is_first_out = 0;
   char *tmp;
   int result_cache_lifetime;
+  bool is_first_statement = true;
 
   if ((flag & CCI_PREPARE_UPDATABLE) && (flag & CCI_PREPARE_HOLDABLE))
     {
@@ -872,28 +873,46 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
       db_session_set_xasl_cache_pinned (session, true, false);
     }
 
-  stmt_id = db_compile_statement (session);
-  if (stmt_id < 0)
+  while (1)
     {
-      stmt_type = get_stmt_type (sql_stmt);
-      if (stmt_id == ER_PT_SEMANTIC && stmt_type != CUBRID_MAX_STMT_TYPE)
+      stmt_id = db_compile_statement (session);
+      if (stmt_id < 0)
 	{
-	  db_close_session (session);
-	  session = NULL;
-	  num_markers = get_num_markers (sql_stmt);
+	  stmt_type = get_stmt_type (sql_stmt);
+	  if (stmt_id == ER_PT_SEMANTIC && stmt_type != CUBRID_MAX_STMT_TYPE)
+	    {
+	      db_close_session (session);
+	      session = NULL;
+	      num_markers = get_num_markers (sql_stmt);
+	    }
+	  else
+	    {
+	      err_code = ERROR_INFO_SET (stmt_id, DBMS_ERROR_INDICATOR);
+	      goto prepare_error;
+	    }
+	  srv_handle->is_prepared = FALSE;
+	  break;
 	}
       else
 	{
-	  err_code = ERROR_INFO_SET (stmt_id, DBMS_ERROR_INDICATOR);
-	  goto prepare_error;
+	  if (is_first_statement)
+	    {
+	      num_markers = get_num_markers (sql_stmt);
+	      stmt_type = db_get_statement_type (session, stmt_id);
+	      srv_handle->is_prepared = TRUE;
+	      is_first_statement = false;
+	      first_stmt_id = stmt_id;
+	      first_stmt_type = stmt_type;
+	    }
+
+	  if (db_session_is_last_statement (session))
+	    {
+	      stmt_id = first_stmt_id;
+	      stmt_type = first_stmt_type;
+	      break;
+	    }
+	  /* compile next statement */
 	}
-      srv_handle->is_prepared = FALSE;
-    }
-  else
-    {
-      num_markers = get_num_markers (sql_stmt);
-      stmt_type = db_get_statement_type (session, stmt_id);
-      srv_handle->is_prepared = TRUE;
     }
 
 prepare_result_set:
