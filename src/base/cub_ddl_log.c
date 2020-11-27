@@ -88,6 +88,7 @@ struct t_ddl_audit_handle
   bool auto_commit_mode;
 };
 static T_DDL_AUDIT_HANDLE *ddl_audit_handle = NULL;
+static bool ddl_logging_enabled = false;
 
 static int logddl_make_filename (char *filename_buf, size_t buf_size, T_APP_NAME app_name);
 static int logddl_make_schema_file_name (const char *file_full_path, char *dest_path, size_t buf_size);
@@ -141,6 +142,11 @@ logddl_free (bool all_free)
       return;
     }
 
+  if (ddl_logging_enabled == false)
+    {
+      return;
+    }
+
   FREE_MEM (ddl_audit_handle->sql_text);
   FREE_MEM (ddl_audit_handle->err_msg);
 
@@ -161,6 +167,7 @@ logddl_free (bool all_free)
     {
       ddl_audit_handle->auto_commit_mode = false;
       is_executed_ddl = false;
+      ddl_logging_enabled = false;
     }
 }
 
@@ -178,7 +185,7 @@ logddl_destroy ()
 void
 logddl_set_app_name (T_APP_NAME app_name)
 {
-  if (ddl_audit_handle)
+  if (ddl_audit_handle && ddl_logging_enabled)
     {
       ddl_audit_handle->app_name = app_name;
     }
@@ -188,7 +195,7 @@ void
 logddl_set_db_name (const char *db_name)
 {
   char *pstr = NULL;
-  if (ddl_audit_handle == NULL || db_name == NULL)
+  if (ddl_audit_handle == NULL || db_name == NULL || ddl_logging_enabled == false)
     {
       return;
     }
@@ -205,7 +212,7 @@ logddl_set_db_name (const char *db_name)
 void
 logddl_set_user_name (const char *user_name)
 {
-  if (ddl_audit_handle != NULL && user_name != NULL)
+  if (ddl_audit_handle != NULL && user_name != NULL && ddl_logging_enabled)
     {
       snprintf (ddl_audit_handle->user_name, sizeof (ddl_audit_handle->user_name), user_name);
     }
@@ -214,7 +221,7 @@ logddl_set_user_name (const char *user_name)
 void
 logddl_set_ip (const char *ip_addr)
 {
-  if (ddl_audit_handle != NULL && ip_addr != NULL)
+  if (ddl_audit_handle != NULL && ip_addr != NULL && ddl_logging_enabled)
     {
       snprintf (ddl_audit_handle->ip_addr, sizeof (ddl_audit_handle->ip_addr), ip_addr);
     }
@@ -223,7 +230,7 @@ logddl_set_ip (const char *ip_addr)
 void
 logddl_set_pid (const int pid)
 {
-  if (ddl_audit_handle)
+  if (ddl_audit_handle && ddl_logging_enabled)
     {
       ddl_audit_handle->pid = pid;
     }
@@ -232,7 +239,7 @@ logddl_set_pid (const int pid)
 void
 logddl_set_br_name (const char *br_name)
 {
-  if (ddl_audit_handle != NULL && br_name != NULL)
+  if (ddl_audit_handle != NULL && br_name != NULL && ddl_logging_enabled)
     {
       snprintf (ddl_audit_handle->br_name, BROKER_NAME_LEN, br_name);
     }
@@ -241,7 +248,7 @@ logddl_set_br_name (const char *br_name)
 void
 logddl_set_br_index (const int index)
 {
-  if (ddl_audit_handle)
+  if (ddl_audit_handle && ddl_logging_enabled)
     {
       ddl_audit_handle->br_index = index;
     }
@@ -250,7 +257,7 @@ logddl_set_br_index (const int index)
 void
 logddl_set_sql_text (char *sql_text, int len)
 {
-  if (ddl_audit_handle == NULL || sql_text == NULL || len < 0)
+  if (ddl_audit_handle == NULL || sql_text == NULL || len < 0 || ddl_logging_enabled == false)
     {
       return;
     }
@@ -273,7 +280,7 @@ logddl_set_sql_text (char *sql_text, int len)
 void
 logddl_set_stmt_type (int stmt_type)
 {
-  if (ddl_audit_handle == NULL)
+  if (ddl_audit_handle == NULL || ddl_logging_enabled == false)
     {
       return;
     }
@@ -289,7 +296,7 @@ logddl_set_stmt_type (int stmt_type)
 void
 logddl_set_loaddb_file_type (T_LOADDB_FILE_TYPE file_type)
 {
-  if (ddl_audit_handle)
+  if (ddl_audit_handle && ddl_logging_enabled)
     {
       ddl_audit_handle->loaddb_file_type = file_type;
     }
@@ -298,7 +305,7 @@ logddl_set_loaddb_file_type (T_LOADDB_FILE_TYPE file_type)
 void
 logddl_set_file_name (const char *file_name)
 {
-  if (ddl_audit_handle != NULL && file_name != NULL)
+  if (ddl_audit_handle != NULL && file_name != NULL && ddl_logging_enabled)
     {
       strncpy (ddl_audit_handle->file_name, file_name, PATH_MAX);
     }
@@ -307,7 +314,7 @@ logddl_set_file_name (const char *file_name)
 void
 logddl_set_file_line (int file_line)
 {
-  if (ddl_audit_handle)
+  if (ddl_audit_handle && ddl_logging_enabled)
     {
       ddl_audit_handle->file_line_number = file_line;
     }
@@ -316,7 +323,7 @@ logddl_set_file_line (int file_line)
 void
 logddl_set_err_msg (char *msg)
 {
-  if (ddl_audit_handle == NULL || msg == NULL)
+  if (ddl_audit_handle == NULL || msg == NULL || ddl_logging_enabled == false)
     {
       return;
     }
@@ -333,7 +340,7 @@ logddl_set_err_msg (char *msg)
 void
 logddl_set_err_code (int err_code)
 {
-  if (ddl_audit_handle)
+  if (ddl_audit_handle && ddl_logging_enabled)
     {
       ddl_audit_handle->err_code = err_code;
     }
@@ -342,7 +349,7 @@ logddl_set_err_code (int err_code)
 void
 logddl_set_start_time (struct timeval *time_val)
 {
-  if (ddl_audit_handle == NULL)
+  if (ddl_audit_handle == NULL || ddl_logging_enabled == false)
     {
       return;
     }
@@ -365,7 +372,7 @@ void
 logddl_set_msg (const char *fmt, ...)
 {
   va_list args;
-  if (ddl_audit_handle)
+  if (ddl_audit_handle && ddl_logging_enabled)
     {
       va_start (args, fmt);
       vsnprintf (ddl_audit_handle->msg, DDL_LOG_MSG, fmt, args);
@@ -376,7 +383,7 @@ logddl_set_msg (const char *fmt, ...)
 void
 logddl_set_execute_type (char exe_type)
 {
-  if (ddl_audit_handle)
+  if (ddl_audit_handle && ddl_logging_enabled)
     {
       ddl_audit_handle->execute_type = exe_type;
     }
@@ -385,7 +392,7 @@ logddl_set_execute_type (char exe_type)
 void
 logddl_set_commit_count (int count)
 {
-  if (ddl_audit_handle)
+  if (ddl_audit_handle && ddl_logging_enabled)
     {
       ddl_audit_handle->commit_count = count;
     }
@@ -394,7 +401,7 @@ logddl_set_commit_count (int count)
 void
 logddl_set_commit_mode (bool mode)
 {
-  if (ddl_audit_handle)
+  if (ddl_audit_handle && ddl_logging_enabled)
     {
       ddl_audit_handle->auto_commit_mode = mode;
     }
@@ -403,7 +410,7 @@ logddl_set_commit_mode (bool mode)
 static void
 logddl_set_elapsed_time (long sec, long msec)
 {
-  if (ddl_audit_handle)
+  if (ddl_audit_handle && ddl_logging_enabled)
     {
       snprintf (ddl_audit_handle->elapsed_time, 20, "elapsed time %ld.%03ld", sec, msec);
     }
@@ -593,7 +600,7 @@ file_error:
 void
 logddl_write_end ()
 {
-  if (ddl_audit_handle == NULL)
+  if (ddl_audit_handle == NULL || ddl_logging_enabled == false)
     {
       return;
     }
@@ -637,7 +644,7 @@ logddl_write ()
   int len = 0;
   int ret = 0;
 
-  if (ddl_audit_handle == NULL || prm_get_bool_value (PRM_ID_DDL_AUDIT_LOG) == false)
+  if (ddl_audit_handle == NULL || ddl_logging_enabled == false)
     {
       return;
     }
@@ -669,7 +676,7 @@ logddl_write ()
 	    {
 	      goto write_error;
 	    }
-          logddl_file_copy (ddl_audit_handle->file_name, dest_path);
+	  logddl_file_copy (ddl_audit_handle->file_name, dest_path);
 	}
 
       len = logddl_create_log_msg (buf);
@@ -703,14 +710,9 @@ logddl_write_tran_str (const char *fmt, ...)
   struct timeval time_val;
   va_list args;
 
-  if (ddl_audit_handle == NULL)
+  if (ddl_audit_handle == NULL || ddl_logging_enabled == false)
     {
       return;
-    }
-
-  if (prm_get_bool_value (PRM_ID_DDL_AUDIT_LOG) == false)
-    {
-      goto write_error;
     }
 
   if (is_executed_ddl == false || ddl_audit_handle->auto_commit_mode == true)
@@ -776,6 +778,12 @@ write_error:
   logddl_free (false);
 }
 
+extern void
+logddl_set_logging_enabled (bool enable)
+{
+  ddl_logging_enabled = enable;
+}
+
 static int
 logddl_create_log_msg (char *msg)
 {
@@ -785,7 +793,7 @@ logddl_create_log_msg (char *msg)
   long elapsed_sec = 0;
   long elapsed_msec = 0;
 
-  if (ddl_audit_handle == NULL)
+  if (ddl_audit_handle == NULL || ddl_logging_enabled == false)
     {
       return -1;
     }
@@ -917,7 +925,7 @@ retry:
 	      retry_count++;
 	      goto retry;
 	    }
-          ddl_log_fp = NULL;
+	  ddl_log_fp = NULL;
 	}
     }
 

@@ -499,12 +499,6 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 
   get_loaddb_args (arg_map, &args);
 
-  logddl_init ();
-  logddl_set_app_name (APP_NAME_LOADDB);
-  logddl_set_db_name (args.volume.c_str ());
-  logddl_set_user_name (args.user_name.c_str ());
-  logddl_set_pid (getpid ());
-
   if (ldr_validate_object_file (arg->argv0, &args) != NO_ERROR)
     {
       status = 1;
@@ -577,6 +571,13 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       status = 3;
       goto error_return;
     }
+
+  logddl_init ();
+  logddl_set_logging_enabled (prm_get_bool_value (PRM_ID_DDL_AUDIT_LOG));
+  logddl_set_app_name (APP_NAME_LOADDB);
+  logddl_set_db_name (args.volume.c_str ());
+  logddl_set_user_name (args.user_name.c_str ());
+  logddl_set_pid (getpid ());
 
   /* disable trigger actions to be fired */
   db_disable_trigger ();

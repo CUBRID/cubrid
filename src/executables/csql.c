@@ -1834,7 +1834,6 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
     }
 
   /* execute the statements one-by-one */
-
   for (num_stmts = 0; num_stmts < total; num_stmts++)
     {
       TSC_TICKS start_tick, end_tick;
@@ -2674,23 +2673,6 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
     }
   strncpy_bufsize (csql_Name, csql_get_message (CSQL_NAME));
 
-  logddl_init ();
-  logddl_set_app_name (APP_NAME_CSQL);
-
-  if (csql_arg->db_name != NULL)
-    {
-      logddl_set_db_name (csql_arg->db_name);
-    }
-  if (csql_arg->user_name != NULL)
-    {
-      logddl_set_user_name (csql_arg->user_name);
-    }
-  if (get_host_ip (ip_addr) == 0)
-    {
-      logddl_set_ip ((char *) ip_addr);
-    }
-  logddl_set_pid (getpid ());
-
   /* as we must use db_open_file_name() to open the input file, it is necessary to be opening csql_Input_fp at this
    * point */
   if (csql_arg->in_file_name != NULL)
@@ -2791,6 +2773,23 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
 	  goto error;
 	}
     }
+
+  logddl_init ();
+  logddl_set_logging_enabled (prm_get_bool_value (PRM_ID_DDL_AUDIT_LOG));
+  logddl_set_app_name (APP_NAME_CSQL);
+  if (csql_arg->db_name != NULL)
+    {
+      logddl_set_db_name (csql_arg->db_name);
+    }
+  if (csql_arg->user_name != NULL)
+    {
+      logddl_set_user_name (csql_arg->user_name);
+    }
+  if (get_host_ip (ip_addr) == 0)
+    {
+      logddl_set_ip ((char *) ip_addr);
+    }
+  logddl_set_pid (getpid ());
 
   if (csql_arg->trigger_action_flag == false)
     {

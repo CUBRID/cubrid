@@ -1216,6 +1216,15 @@ cas_main (void)
 
 	    FREE_MEM (db_err_msg);
 
+	    logddl_set_logging_enabled (prm_get_bool_value (PRM_ID_DDL_AUDIT_LOG));
+	    logddl_set_app_name (APP_NAME_CAS);
+	    logddl_set_br_name (shm_appl->broker_name);
+	    logddl_set_br_index (shm_as_index);
+	    logddl_set_db_name (db_name);
+	    logddl_set_user_name (db_user);
+	    logddl_set_ip (client_ip_str);
+	    logddl_set_pid (getpid ());
+
 	    set_hang_check_time ();
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
@@ -1281,13 +1290,6 @@ cas_main (void)
 #if !defined(WINDOWS)
 		signal (SIGUSR1, query_cancel);
 #endif /* !WINDOWS */
-		logddl_set_app_name (APP_NAME_CAS);
-		logddl_set_br_name (shm_appl->broker_name);
-		logddl_set_br_index (shm_as_index);
-		logddl_set_db_name (db_name);
-		logddl_set_user_name (db_user);
-		logddl_set_ip (client_ip_str);
-		logddl_set_pid (getpid ());
 
 		fn_ret = process_request (client_sock_fd, &net_buf, &req_info);
 		as_info->fn_status = FN_STATUS_DONE;

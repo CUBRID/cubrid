@@ -79,5 +79,6 @@ extern void logddl_write_end ();
 extern bool logddl_is_ddl_type (int node_type);
 extern void logddl_set_commit_mode (bool mode);
 extern void logddl_write_tran_str (const char *fmt, ...);
+extern void logddl_set_logging_enabled (bool enable);
 
 #endif /* _CUB_DDL_LOG_H_ */
