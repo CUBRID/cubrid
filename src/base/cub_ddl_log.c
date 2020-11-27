@@ -565,7 +565,7 @@ logddl_make_filename (char *filename_buf, size_t buf_size, T_APP_NAME app_name)
 static FILE *
 logddl_open (T_APP_NAME app_name)
 {
-  FILE *fp;
+  FILE *fp = NULL;
   char *tpath = NULL;
   int len;
 
@@ -631,7 +631,7 @@ ddl_log_free:
 void
 logddl_write ()
 {
-  FILE *fp;
+  FILE *fp = NULL;
   char buf[DDL_LOG_BUFFER_SIZE] = { 0 };
   char dest_path[PATH_MAX] = { 0 };
   int len = 0;
@@ -697,7 +697,7 @@ write_error:
 void
 logddl_write_tran_str (const char *fmt, ...)
 {
-  FILE *fp;
+  FILE *fp = NULL;
   char msg[DDL_LOG_BUFFER_SIZE] = { 0 };
   int len = 0;
   struct timeval time_val;
@@ -902,7 +902,7 @@ logddl_fopen_and_lock (const char *path, const char *mode)
 {
 #define MAX_RETRY_COUNT 100
   int retry_count = 0;
-  FILE *ddl_log_fp;
+  FILE *ddl_log_fp = NULL;
 
 retry:
   ddl_log_fp = fopen (path, mode);
