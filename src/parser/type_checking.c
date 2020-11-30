@@ -24077,6 +24077,10 @@ pt_fix_enumeration_comparison (PARSER_CONTEXT * parser, PT_NODE * expr)
   op = expr->info.expr.op;
   arg1 = expr->info.expr.arg1;
   arg2 = expr->info.expr.arg2;
+  if (arg1->type_enum == PT_TYPE_NULL || arg2->type_enum == PT_TYPE_NULL)
+    {
+      return expr;
+    }
 
   switch (op)
     {
