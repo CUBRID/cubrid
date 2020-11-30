@@ -1309,12 +1309,6 @@ process_service (int command_type, bool process_window_service)
 		{
 		  (void) process_server (command_type, 0, NULL, false, true, false);
 		}
-	      if (strcmp (get_property (SERVICE_START_JAVASP), PROPERTY_ON) == 0
-		  && us_Property_map[SERVER_START_LIST].property_value != NULL
-		  && us_Property_map[SERVER_START_LIST].property_value[0] != '\0')
-		{
-		  (void) process_javasp (command_type, 0, NULL, false);
-		}
 	      if (strcmp (get_property (SERVICE_START_BROKER), PROPERTY_ON) == 0)
 		{
 		  (void) process_broker (command_type, 0, NULL, false);
@@ -1327,7 +1321,12 @@ process_service (int command_type, bool process_window_service)
 		{
 		  (void) process_heartbeat (command_type, 0, NULL);
 		}
-
+	      if (strcmp (get_property (SERVICE_START_JAVASP), PROPERTY_ON) == 0
+		  && us_Property_map[SERVER_START_LIST].property_value != NULL
+		  && us_Property_map[SERVER_START_LIST].property_value[0] != '\0')
+		{
+		  (void) process_javasp (command_type, 0, NULL, false);
+		}
 	      status = are_all_services_running (0, process_window_service) ? NO_ERROR : ER_GENERIC_ERROR;
 	    }
 	  else
