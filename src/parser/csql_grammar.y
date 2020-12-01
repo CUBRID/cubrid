@@ -152,6 +152,8 @@ extern int yybuffer_pos;
 
 #define STACK_SIZE	128
 
+#define PT_IS_SERIAL(op)	((op) == PT_NEXT_VALUE || (op) == PT_CURRENT_VALUE)
+
 typedef struct function_map FUNCTION_MAP;
 struct function_map
 {
@@ -24826,6 +24828,11 @@ parser_make_expression (PARSER_CONTEXT * parser, PT_OP_TYPE OP, PT_NODE * arg1, 
 	  PT_ERRORmf2 (parser, expr, MSGCAT_SET_PARSER_SEMANTIC,
 		       MSGCAT_SEMANTIC_INSTNUM_COMPATIBILITY_ERR,
 		       "ORDERBY_NUM()", "ORDERBY_NUM()");
+	}
+
+      if (PT_IS_SERIAL(OP))
+	{
+	  parser_cannot_cache = true;
 	}
 
       if (OP == PT_SYS_TIME || OP == PT_CURRENT_TIME || OP == PT_SYS_DATE
