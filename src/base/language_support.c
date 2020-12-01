@@ -3785,11 +3785,17 @@ lang_strmatch_utf8_uca_w_level (const COLL_DATA * coll_data, const int level, bo
 	      goto exit;
 	    }
 
+	  if (!ignore_trailing_space)
+	    {
+	      result = -1;
+	      goto exit;
+	    }
+
 	  /* consume any remaining zero-weight values (skip them) from str2 */
 	  do
 	    {
 	      w2 = GET_UCA_WEIGHT (level, ce_index2, uca_w_l13_2, uca_w_l4_2);
-	      if (w2 != 0 || !ignore_trailing_space)
+	      if (w2 != 0)
 		{
 		  /* non-zero weight : strings are not equal */
 		  result = -1;
