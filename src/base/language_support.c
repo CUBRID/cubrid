@@ -3768,7 +3768,7 @@ lang_strmatch_utf8_uca_w_level (const COLL_DATA * coll_data, const int level, bo
 		}
 	      else
 		{
-		  if (is_match)
+		  if (is_match || !ignore_trailing_space)
 		    {
 		      result = -1;
 		      goto exit;
@@ -3781,6 +3781,12 @@ lang_strmatch_utf8_uca_w_level (const COLL_DATA * coll_data, const int level, bo
 	  if (is_match && *str2 == ASCII_SPACE)
 	    {
 	      /* trailing spaces are not matched */
+	      result = -1;
+	      goto exit;
+	    }
+
+	  if (!ignore_trailing_space)
+	    {
 	      result = -1;
 	      goto exit;
 	    }
@@ -3810,6 +3816,13 @@ lang_strmatch_utf8_uca_w_level (const COLL_DATA * coll_data, const int level, bo
 	      assert (result == 0);
 	      goto exit;
 	    }
+
+	  if (!ignore_trailing_space)
+	    {
+	      result = 1;
+	      goto exit;
+	    }
+
 	  /* consume any remaining zero-weight values (skip them) from str1 */
 	  while (num_ce1 > 0)
 	    {
@@ -5520,6 +5533,11 @@ lang_fastcmp_byte (const LANG_COLLATION * lang_coll, const unsigned char *string
   if (cmp || size1 == size2)
     {
       return cmp;
+    }
+
+  if (!ignore_trailing_space && size1 != size2)
+    {
+      return size1 - size2;
     }
 
   c1 = c2 = ZERO;
