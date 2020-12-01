@@ -1309,12 +1309,6 @@ process_service (int command_type, bool process_window_service)
 		{
 		  (void) process_server (command_type, 0, NULL, false, true, false);
 		}
-	      if (strcmp (get_property (SERVICE_START_JAVASP), PROPERTY_ON) == 0
-		  && us_Property_map[SERVER_START_LIST].property_value != NULL
-		  && us_Property_map[SERVER_START_LIST].property_value[0] != '\0')
-		{
-		  (void) process_javasp (command_type, 0, NULL, false);
-		}
 	      if (strcmp (get_property (SERVICE_START_BROKER), PROPERTY_ON) == 0)
 		{
 		  (void) process_broker (command_type, 0, NULL, false);
@@ -1327,7 +1321,12 @@ process_service (int command_type, bool process_window_service)
 		{
 		  (void) process_heartbeat (command_type, 0, NULL);
 		}
-
+	      if (strcmp (get_property (SERVICE_START_JAVASP), PROPERTY_ON) == 0
+		  && us_Property_map[SERVER_START_LIST].property_value != NULL
+		  && us_Property_map[SERVER_START_LIST].property_value[0] != '\0')
+		{
+		  (void) process_javasp (command_type, 0, NULL, false);
+		}
 	      status = are_all_services_running (0, process_window_service) ? NO_ERROR : ER_GENERIC_ERROR;
 	    }
 	  else
@@ -2390,7 +2389,7 @@ is_javasp_running (const char *server_name)
       pclose (input);
       return JAVASP_SERVER_STOPPED;
     }
-  else if (strcmp (buf, "ERROR") == 0)
+  else
     {
       pclose (input);
       return JAVASP_SERVER_STATUS_ERROR;
@@ -2489,7 +2488,6 @@ process_javasp_stop (const char *db_name, bool process_window_service)
 	  };
 
 	  status = proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true, false, false, NULL);
-	  status = (is_javasp_running (db_name) != JAVASP_SERVER_STOPPED) ? ER_GENERIC_ERROR : NO_ERROR;
 #endif
 	}
       else
@@ -2559,7 +2557,7 @@ process_javasp (int command_type, int argc, const char **argv, bool process_wind
       strncpy (buf, argv[0], sizeof (buf) - 1);
     }
 
-  if (command_type != STATUS && strlen (buf) == 0)
+  if (strlen (buf) == 0)
     {
       util_service_usage (JAVASP_UTIL);
       util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_CMD);
