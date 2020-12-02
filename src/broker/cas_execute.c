@@ -762,8 +762,6 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
   srv_handle->schema_type = -1;
   srv_handle->auto_commit_mode = auto_commit_mode;
 
-  logddl_set_commit_mode (auto_commit_mode);
-
   ALLOC_COPY (srv_handle->sql_stmt, sql_stmt);
   if (srv_handle->sql_stmt == NULL)
     {
@@ -2030,7 +2028,6 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
   net_buf_cp_int (net_buf, argc, &num_query_offset);	/* result msg. num_query */
 
   logddl_set_execute_type (LOGDDL_RUN_EXECUTE_BATCH_FUNC);
-  logddl_set_commit_mode (auto_commit_mode);
 
   for (query_index = 0; query_index < argc; query_index++)
     {

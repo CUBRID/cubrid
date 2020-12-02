@@ -33,8 +33,11 @@
 #define LOGDDL_RUN_EXECUTE_FUNC              (1)
 #define LOGDDL_RUN_EXECUTE_BATCH_FUNC        (2)
 
-#define LOGDDL_MSG_AUTO_COMMIT       "auto_commit"
-#define LOGDDL_MSG_AUTO_ROLLBACK     "auto_rollback"
+#define LOGDDL_MSG_AUTO_COMMIT              "auto_commit"
+#define LOGDDL_MSG_AUTO_ROLLBACK            "auto_rollback"
+
+#define LOGDDL_TRAN_TYPE_COMMIT             "COMMIT"
+#define LOGDDL_TRAN_TYPE_ROLLBACK           "ROLLBACK"
 
 typedef enum
 {
@@ -48,6 +51,7 @@ typedef enum
 
 typedef enum
 {
+  APP_NAME_NONE,
   APP_NAME_CAS,
   APP_NAME_CSQL,
   APP_NAME_LOADDB
@@ -80,5 +84,7 @@ extern bool logddl_is_ddl_type (int node_type);
 extern void logddl_set_commit_mode (bool mode);
 extern void logddl_write_tran_str (const char *fmt, ...);
 extern void logddl_set_logging_enabled (bool enable);
+extern void logddl_set_jsp_mode (bool mode);
+extern bool logddl_get_jsp_mode ();
 
 #endif /* _CUB_DDL_LOG_H_ */

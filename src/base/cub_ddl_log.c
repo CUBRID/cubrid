@@ -86,6 +86,7 @@ struct t_ddl_audit_handle
   char log_filepath[PATH_MAX];
   int commit_count;
   bool auto_commit_mode;
+  bool jsp_mode;
 };
 static T_DDL_AUDIT_HANDLE *ddl_audit_handle = NULL;
 static bool ddl_logging_enabled = false;
@@ -168,6 +169,7 @@ logddl_free (bool all_free)
       ddl_audit_handle->auto_commit_mode = false;
       is_executed_ddl = false;
       ddl_logging_enabled = false;
+      ddl_audit_handle->jsp_mode = false;
     }
 }
 
@@ -405,6 +407,26 @@ logddl_set_commit_mode (bool mode)
     {
       ddl_audit_handle->auto_commit_mode = mode;
     }
+}
+
+void
+logddl_set_jsp_mode (bool mode)
+{
+  if (ddl_audit_handle && ddl_logging_enabled)
+    {
+      ddl_audit_handle->jsp_mode = mode;
+    }
+}
+
+bool
+logddl_get_jsp_mode ()
+{
+  bool jsp_mode = false;
+  if (ddl_audit_handle)
+    {
+      jsp_mode = ddl_audit_handle->jsp_mode;
+    }
+  return jsp_mode;
 }
 
 static void
@@ -822,6 +844,12 @@ logddl_create_log_msg (char *msg)
     }
   else if (ddl_audit_handle->app_name == APP_NAME_CSQL)
     {
+      if (ddl_audit_handle->jsp_mode)
+	{
+	  gettimeofday (&log_time, NULL);
+	  logddl_get_time_string (ddl_audit_handle->str_qry_exec_begin_time, &log_time);
+	}
+
       if (ddl_audit_handle->err_code < 0)
 	{
 	  snprintf (result, sizeof (result), "ERROR:%d", ddl_audit_handle->err_code);

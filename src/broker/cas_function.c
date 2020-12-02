@@ -198,7 +198,7 @@ fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
 		 elapsed_sec, elapsed_msec, get_error_log_eids (err_info.err_number));
 
   logddl_write_tran_str ("end_tran %s%d %s", err_code < 0 ? "error:" : "", err_info.err_number,
-			      get_tran_type_str (tran_type));
+			 get_tran_type_str (tran_type));
 
   if (err_code < 0)
     {
@@ -349,6 +349,8 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
     {
       auto_commit_mode = FALSE;
     }
+
+  logddl_set_commit_mode (auto_commit_mode);
 
 #if 0
   ut_trim (sql_stmt);
@@ -691,8 +693,11 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 		 elapsed_msec, (client_cache_reusable == TRUE) ? " (CC)" : "",
 		 (srv_handle->use_query_cache == true) ? " (QC)" : "", eid_string);
 
-  stmt_type = logddl_is_exist_ddl_stmt (srv_handle);
-  logddl_set_stmt_type (stmt_type);
+  if (strcmp (exec_func_name, "execute_call") != 0)
+    {
+      stmt_type = logddl_is_exist_ddl_stmt (srv_handle);
+      logddl_set_stmt_type (stmt_type);
+    }
 
 #ifndef LIBCAS_FOR_JSP
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
@@ -1618,6 +1623,9 @@ fn_execute_batch (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
   int query_timeout;
 
   net_arg_get_char (auto_commit_mode, argv[arg_index]);
+
+  logddl_set_commit_mode (auto_commit_mode);
+
   arg_index++;
 
   if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (req_info->client_version, PROTOCOL_V4))
@@ -2026,7 +2034,12 @@ fn_con_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_
 {
   cas_log_write (0, true, "con_close");
   net_buf_cp_int (net_buf, 0, NULL);
-  logddl_free (true);
+
+  if (req_info->driver_info[DRIVER_INFO_CLIENT_TYPE] != CAS_CLIENT_SERVER_SIDE_JDBC)
+    {
+      logddl_free (true);
+    }
+
   return FN_CLOSE_CONN;
 }
 

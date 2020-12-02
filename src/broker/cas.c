@@ -1430,6 +1430,8 @@ libcas_main (SOCKET jsp_sock_fd)
     }
   net_buf.alloc_size = NET_BUF_ALLOC_SIZE;
 
+  logddl_set_jsp_mode (true);
+
   while (status == FN_KEEP_CONN)
     {
       status = process_request (client_sock_fd, &net_buf, &req_info);
@@ -2114,11 +2116,6 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
       CON_STATUS_UNLOCK (as_info, CON_STATUS_LOCK_CAS);
     }
 
-  if (func_code == CAS_FC_EXECUTE || err_info.err_number < 0)
-    {
-      logddl_write_end ();
-    }
-
   if ((func_code == CAS_FC_EXECUTE) || (func_code == CAS_FC_SCHEMA_INFO))
     {
       as_info->num_requests_received %= MAX_DIAG_DATA_VALUE;
@@ -2140,6 +2137,18 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
       cas_msg_header.info_ptr[CAS_INFO_STATUS] = CAS_INFO_STATUS_INACTIVE;
     }
 #endif /* !LIBCAS_FOR_JSP */
+
+  if (func_code == CAS_FC_EXECUTE || err_info.err_number < 0)
+    {
+#ifndef LIBCAS_FOR_JSP
+      if (logddl_get_jsp_mode () == false)
+	{
+	  logddl_write_end ();
+	}
+#else
+      logddl_write_end ();
+#endif
+    }
 
   if (net_buf->err_code)
     {
