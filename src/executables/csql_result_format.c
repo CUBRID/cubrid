@@ -1342,7 +1342,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string, CSQL_
   int len = 0;
   char string_delimiter =
     (output_type != CSQL_UNKNOWN_OUTPUT) ? column_enclosure : default_string_profile.string_delimiter;
-  bool change_single_quote = (output_type == CSQL_QUERY_OUTPUT && column_enclosure == '\'');
+  bool change_single_quote = (output_type != CSQL_UNKNOWN_OUTPUT && column_enclosure == '\'');
 
   if (value == NULL)
     {
