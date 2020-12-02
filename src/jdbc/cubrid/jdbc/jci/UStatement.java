@@ -103,7 +103,6 @@ public class UStatement {
 	private int fetchedTupleNumber;
 	private boolean isFetchCompleted;
 	private int totalTupleNumber;
-	private int readTupleNumber;
 	private int currentFirstCursor;
 	private int cursorPosition;
 	private int executeResult;
@@ -818,7 +817,6 @@ public class UStatement {
 			executeResult = Math.min(maxFetchSize, executeResult);
 		}
 		totalTupleNumber = executeResult;
-		readTupleNumber = 0;
 		batchParameter = null;
 
 		if (commandTypeIs == CUBRIDCommandType.CUBRID_STMT_SELECT
@@ -1196,7 +1194,7 @@ public class UStatement {
 		/* need not to fetch really */
 		if (currentFirstCursor >= 0
 		        && currentFirstCursor <= cursorPosition
-		        && cursorPosition <= currentFirstCursor + readTupleNumber
+		        && cursorPosition <= currentFirstCursor + fetchedTupleNumber
 		                - 1) {
 			return;
 		}
@@ -2016,8 +2014,10 @@ public class UStatement {
 			errorHandler.setErrorCode(UErrorCode.ER_COLUMN_INDEX);
 			return null;
 		}
+
 		if (checkReFetch() != true)
 			return null;
+
 		if (fetchedTupleNumber <= 0) {
 			errorHandler.setErrorCode(UErrorCode.ER_NO_MORE_DATA);
 			return null;
@@ -2030,8 +2030,8 @@ public class UStatement {
 		 */
 		Object obj;
 		if ((tuples == null)
-		        || (tuples[cursorPosition - currentFirstCursor] == null)
-		        || ((obj = tuples[cursorPosition - currentFirstCursor]
+		        || (tuples[cursorPosition] == null)
+		        || ((obj = tuples[cursorPosition]
 		                .getAttribute(index)) == null)) {
 			errorHandler.setErrorCode(UErrorCode.ER_WAS_NULL);
 			return null;
@@ -2044,9 +2044,11 @@ public class UStatement {
 		if ((currentFirstCursor < 0)
 		        || (cursorPosition >= 0 && ((cursorPosition < currentFirstCursor) || (cursorPosition > currentFirstCursor
 		                + fetchedTupleNumber - 1)))) {
-			fetch();
-			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
-				return false;
+			if (tuples[cursorPosition] == null) {
+				fetch();
+				if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
+					return false;
+			}
 		}
 		return true;
 	}
@@ -2121,7 +2123,6 @@ public class UStatement {
 				}
 			}
 			tuples = null;
-			readTupleNumber = 0;
 			getResCache().setExpire();
 		}
 	}
@@ -2290,13 +2291,12 @@ public class UStatement {
 		}
 
 		for (int i = 0; i < fetchedTupleNumber; i++) {
-			readATuple(i + readTupleNumber, inBuffer);
+			readATuple(i, inBuffer);
 		}
-		readTupleNumber += fetchedTupleNumber;
 
-			if (functionCode == UFunctionCode.GET_GENERATED_KEYS) {
-				isFetchCompleted = true;
-			}
+		if (functionCode == UFunctionCode.GET_GENERATED_KEYS) {
+			isFetchCompleted = true;
+		}
 
 		if (functionCode == UFunctionCode.FETCH
 		        && relatedConnection
@@ -2317,16 +2317,20 @@ public class UStatement {
 
 	private void readATuple(int index, UInputBuffer inBuffer)
 	        throws UJciException {
-		tuples[index] = new UResultTuple(inBuffer.readInt(), columnNumber);
-		tuples[index].setOid(inBuffer.readOID(relatedConnection.getCUBRIDConnection()));
+
+		UResultTuple tuple = new UResultTuple(inBuffer.readInt(), columnNumber);
+		int n = tuple.tupleNumber() - 1;
+		tuples[n] = tuple;
+		tuples[n].setOid(inBuffer.readOID(relatedConnection.getCUBRIDConnection()));
 		for (int i = 0; i < columnNumber; i++) {
-			tuples[index].setAttribute(i, readAAttribute(i, inBuffer));
+			tuples[n].setAttribute(i, readAAttribute(i, inBuffer));
 		}
 
-		confirmSchemaTypeInfo(index);
+		confirmSchemaTypeInfo(n);
 
-		if (index == 0)
-			currentFirstCursor = tuples[index].tupleNumber() - 1;
+		if (index == 0) {
+			currentFirstCursor = n;
+		}
 	}
 
 	private void readColumnInfo(UInputBuffer inBuffer) throws UJciException {
@@ -2451,7 +2455,6 @@ public class UStatement {
 		cursorPosition = currentFirstCursor = 0;
 		fetchedTupleNumber = totalTupleNumber;
 		executeResult = totalTupleNumber;
-		readTupleNumber = totalTupleNumber;
 		realFetched = true;
 	}
 
@@ -2496,10 +2499,4 @@ public class UStatement {
 		return relatedConnection.isConnectedToOracle() && isFetchCompleted
 		        && current_row >= currentFirstCursor + fetchedTupleNumber;
 	}
-
-	synchronized public void reFresh() {
-		readTupleNumber = 0;
-		reFetch();
-	}
-
 }
