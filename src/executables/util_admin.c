@@ -1074,6 +1074,10 @@ util_get_library_name (int utility_index)
 	      {
 		return LIB_UTIL_CS_NAME;
 	      }
+	    if (key == HIDDEN_CS_MODE_S && arg_map[i].arg_value.p != NULL)
+	      {
+		return LIB_UTIL_CS_NAME;
+	      }
 	    if (key == 'S' && arg_map[i].arg_value.p != NULL)
 	      {
 		return LIB_UTIL_SA_NAME;
