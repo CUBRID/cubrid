@@ -114,7 +114,6 @@ static bool is_executed_ddl = false;
 void
 logddl_init ()
 {
-  fprintf (stderr, "=========== logddl_init ddl_audit_handle : %p ===========\n", ddl_audit_handle);
   if (ddl_audit_handle != NULL)
     {
       FREE_MEM (ddl_audit_handle->sql_text);
@@ -138,7 +137,6 @@ logddl_init ()
 void
 logddl_free (bool all_free)
 {
-  fprintf (stderr, "=========== logddl_free (%d)===========\n", all_free);
   if (ddl_audit_handle == NULL)
     {
       logddl_init ();
@@ -178,7 +176,6 @@ logddl_free (bool all_free)
 void
 logddl_destroy ()
 {
-  fprintf (stderr, "=========== logddl_destroy ===========\n");
   if (ddl_audit_handle != NULL)
     {
       FREE_MEM (ddl_audit_handle->sql_text);
@@ -212,8 +209,6 @@ logddl_set_db_name (const char *db_name)
     {
       *pstr = '\0';
     }
-
-  fprintf (stderr, "=========== ddl_audit_handle->db_name : %s\n", ddl_audit_handle->db_name);
 }
 
 void
@@ -222,7 +217,6 @@ logddl_set_user_name (const char *user_name)
   if (ddl_audit_handle != NULL && user_name != NULL && ddl_logging_enabled)
     {
       snprintf (ddl_audit_handle->user_name, sizeof (ddl_audit_handle->user_name), user_name);
-      fprintf (stderr, "=========== ddl_audit_handle->user_name : %s\n", ddl_audit_handle->user_name);
     }
 }
 
@@ -232,7 +226,6 @@ logddl_set_ip (const char *ip_addr)
   if (ddl_audit_handle != NULL && ip_addr != NULL && ddl_logging_enabled)
     {
       snprintf (ddl_audit_handle->ip_addr, sizeof (ddl_audit_handle->ip_addr), ip_addr);
-      fprintf (stderr, "=========== ddl_audit_handle->ip_addr : %s\n", ddl_audit_handle->ip_addr);
     }
 }
 
@@ -242,7 +235,6 @@ logddl_set_pid (const int pid)
   if (ddl_audit_handle && ddl_logging_enabled)
     {
       ddl_audit_handle->pid = pid;
-      fprintf (stderr, "=========== ddl_audit_handle->pid : %d\n", ddl_audit_handle->pid);
     }
 }
 
@@ -252,7 +244,6 @@ logddl_set_br_name (const char *br_name)
   if (ddl_audit_handle != NULL && br_name != NULL && ddl_logging_enabled)
     {
       snprintf (ddl_audit_handle->br_name, BROKER_NAME_LEN, br_name);
-      fprintf (stderr, "=========== ddl_audit_handle->br_name : %s\n", ddl_audit_handle->br_name);
     }
 }
 
@@ -262,7 +253,6 @@ logddl_set_br_index (const int index)
   if (ddl_audit_handle && ddl_logging_enabled)
     {
       ddl_audit_handle->br_index = index;
-      fprintf (stderr, "=========== ddl_audit_handle->br_index : %d\n", ddl_audit_handle->br_index);
     }
 }
 
@@ -286,8 +276,6 @@ logddl_set_sql_text (char *sql_text, int len)
       strncpy (ddl_audit_handle->sql_text, sql_text, len);
       ddl_audit_handle->sql_text[len] = '\0';
     }
-
-  fprintf (stderr, "=========== ddl_audit_handle->sql_text : %s (%d), pid (%d)\n", ddl_audit_handle->sql_text, len, getpid());
 }
 
 
@@ -305,8 +293,6 @@ logddl_set_stmt_type (int stmt_type)
     {
       is_executed_ddl = true;
     }
-
-  fprintf (stderr, "=========== ddl_audit_handle->stmt_type : %d\n", ddl_audit_handle->stmt_type);
 }
 
 void
@@ -315,7 +301,6 @@ logddl_set_loaddb_file_type (T_LOADDB_FILE_TYPE file_type)
   if (ddl_audit_handle && ddl_logging_enabled)
     {
       ddl_audit_handle->loaddb_file_type = file_type;
-      fprintf (stderr, "=========== ddl_audit_handle->loaddb_file_type : 0x%d\n", ddl_audit_handle->loaddb_file_type);
     }
 }
 
@@ -325,7 +310,6 @@ logddl_set_file_name (const char *file_name)
   if (ddl_audit_handle != NULL && file_name != NULL && ddl_logging_enabled)
     {
       strncpy (ddl_audit_handle->file_name, file_name, PATH_MAX);
-      fprintf (stderr, "=========== ddl_audit_handle->file_name : %s\n", ddl_audit_handle->file_name);
     }
 }
 
@@ -335,7 +319,6 @@ logddl_set_file_line (int file_line)
   if (ddl_audit_handle && ddl_logging_enabled)
     {
       ddl_audit_handle->file_line_number = file_line;
-      fprintf (stderr, "=========== ddl_audit_handle->file_line_number : %d\n", ddl_audit_handle->file_line_number);
     }
 }
 
@@ -354,7 +337,6 @@ logddl_set_err_msg (char *msg)
 
   ALLOC_COPY (ddl_audit_handle->err_msg, msg);
   logddl_remove_char (ddl_audit_handle->err_msg, '\n');
-  fprintf (stderr, "=========== ddl_audit_handle->err_msg : %s\n", ddl_audit_handle->err_msg);
 }
 
 void
@@ -363,7 +345,6 @@ logddl_set_err_code (int err_code)
   if (ddl_audit_handle && ddl_logging_enabled)
     {
       ddl_audit_handle->err_code = err_code;
-      fprintf (stderr, "=========== ddl_audit_handle->err_code : %d\n", ddl_audit_handle->err_code);
     }
 }
 
@@ -387,7 +368,6 @@ logddl_set_start_time (struct timeval *time_val)
     }
 
   logddl_get_time_string (ddl_audit_handle->str_qry_exec_begin_time, time_val);
-  fprintf (stderr, "=========== ddl_audit_handle->execute_start_time : %s\n", ddl_audit_handle->str_qry_exec_begin_time);
 }
 
 void
@@ -399,7 +379,6 @@ logddl_set_msg (const char *fmt, ...)
       va_start (args, fmt);
       vsnprintf (ddl_audit_handle->msg, DDL_LOG_MSG, fmt, args);
       va_end (args);
-      fprintf (stderr, "=========== ddl_audit_handle->msg : %s\n", ddl_audit_handle->msg);
     }
 }
 
@@ -409,7 +388,6 @@ logddl_set_execute_type (char exe_type)
   if (ddl_audit_handle && ddl_logging_enabled)
     {
       ddl_audit_handle->execute_type = exe_type;
-      fprintf (stderr, "=========== ddl_audit_handle->execute_type : 0x%d\n", ddl_audit_handle->execute_type);
     }
 }
 
@@ -419,8 +397,6 @@ logddl_set_commit_count (int count)
   if (ddl_audit_handle && ddl_logging_enabled)
     {
       ddl_audit_handle->commit_count = count;
-      fprintf (stderr, "=========== ddl_audit_handle->logddl_commit_count : %ld\n",
-	       ddl_audit_handle->commit_count);
     }
 }
 
@@ -430,7 +406,6 @@ logddl_set_commit_mode (bool mode)
   if (ddl_audit_handle && ddl_logging_enabled)
     {
       ddl_audit_handle->auto_commit_mode = mode;
-      fprintf (stderr, "=========== ddl_audit_handle->auto_commit_mode : %d\n", ddl_audit_handle->auto_commit_mode);
     }
 }
 
@@ -439,8 +414,7 @@ logddl_set_jsp_mode (bool mode)
 {
   if (ddl_audit_handle && ddl_logging_enabled)
     {
-    ddl_audit_handle->jsp_mode = mode;
-    fprintf (stderr, "=========== ddl_audit_handle->jsp_mode : %d\n", ddl_audit_handle->jsp_mode);
+      ddl_audit_handle->jsp_mode = mode;
     }
 }
 
@@ -450,7 +424,6 @@ logddl_get_jsp_mode ()
   bool jsp_mode = false;
   if (ddl_audit_handle)
     {
-    fprintf (stderr, "=========== ddl_audit_handle->jsp_mode : %d\n", ddl_audit_handle->jsp_mode);
       jsp_mode = ddl_audit_handle->jsp_mode;
     }
   return jsp_mode;
@@ -462,7 +435,6 @@ logddl_set_elapsed_time (long sec, long msec)
   if (ddl_audit_handle && ddl_logging_enabled)
     {
       snprintf (ddl_audit_handle->elapsed_time, 20, "elapsed time %ld.%03ld", sec, msec);
-      fprintf (stderr, "=========== ddl_audit_handle->elapsed_time : %s\n", ddl_audit_handle->elapsed_time);
     }
 }
 
@@ -616,7 +588,6 @@ logddl_make_filename (char *filename_buf, size_t buf_size, T_APP_NAME app_name)
       assert (false);
       filename_buf[0] = '\0';
     }
-  fprintf (stderr, "=========== make_ddl_log_filename : %s (%zd)\n", filename_buf, strlen (filename_buf));
   return retval;
 }
 
@@ -626,8 +597,6 @@ logddl_open (T_APP_NAME app_name)
   FILE *fp = NULL;
   char *tpath = NULL;
   int len;
-
-  fprintf (stderr, "=========== logddl_open : %s \n", logddl_get_app_name (app_name));
 
   len = logddl_make_filename (ddl_audit_handle->log_filepath, PATH_MAX, app_name);
 
@@ -653,7 +622,6 @@ file_error:
 void
 logddl_write_end ()
 {
-  fprintf (stderr, "=========== logddl_write_end ===========\n");
   if (ddl_audit_handle == NULL || ddl_logging_enabled == false)
     {
       return;
@@ -763,7 +731,7 @@ logddl_write_tran_str (const char *fmt, ...)
   int len = 0;
   struct timeval time_val;
   va_list args;
-  fprintf (stderr, "=========== logddl_write_tran_str ===========\n");
+
   if (ddl_audit_handle == NULL || ddl_logging_enabled == false)
     {
       return;
@@ -830,8 +798,6 @@ write_error:
 
   is_executed_ddl = false;
   logddl_free (false);
-  fprintf (stderr, "## %s\n", msg);
-
 }
 
 extern void
@@ -935,7 +901,6 @@ logddl_create_log_msg (char *msg)
       msg[DDL_LOG_BUFFER_SIZE - 2] = '\n';
       retval = DDL_LOG_BUFFER_SIZE;
     }
-  fprintf (stderr, "## %s\n", msg);
   return retval;
 }
 
