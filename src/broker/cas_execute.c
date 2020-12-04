@@ -77,7 +77,7 @@
 #include "dbtype.h"
 #include "memory_alloc.h"
 #include "object_primitive.h"
-#include "cub_ddl_log.h"
+#include "ddl_log.h"
 #include "parse_tree.h"
 #include "api_compat.h"
 #if defined (SUPPRESS_STRLEN_WARNING)

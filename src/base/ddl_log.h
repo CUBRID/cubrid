@@ -20,15 +20,13 @@
 
 
 /*
- * cub_ddl_log.h -
+ * ddl_log.h -
  */
 
-#ifndef	_CUB_DDL_LOG_H_
-#define	_CUB_DDL_LOG_H_
+#ifndef	_DDL_LOG_H_
+#define	_DDL_LOG_H_
 
 #ident "$Id$"
-
-#include "cas_handle.h"
 
 #define LOGDDL_RUN_EXECUTE_FUNC              (1)
 #define LOGDDL_RUN_EXECUTE_BATCH_FUNC        (2)
@@ -87,4 +85,4 @@ extern void logddl_set_logging_enabled (bool enable);
 extern void logddl_set_jsp_mode (bool mode);
 extern bool logddl_get_jsp_mode ();
 
-#endif /* _CUB_DDL_LOG_H_ */
+#endif /* _DDL_LOG_H_ */

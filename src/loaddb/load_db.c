@@ -36,7 +36,7 @@
 #include "transform.h"
 #include "utility.h"
 #include "authenticate.h"
-#include "cub_ddl_log.h"
+#include "ddl_log.h"
 
 #include <fstream>
 #include <thread>

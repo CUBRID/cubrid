@@ -40,7 +40,7 @@
 #include "csql.h"
 #include "memory_alloc.h"
 #include "system_parameter.h"
-#include "cub_ddl_log.h"
+#include "ddl_log.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))

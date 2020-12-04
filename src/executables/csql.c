@@ -68,7 +68,7 @@
 #include "jsp_cl.h"
 #include "api_compat.h"
 #include "cas_log.h"
-#include "cub_ddl_log.h"
+#include "ddl_log.h"
 
 #if defined(WINDOWS)
 #include "file_io.h"		/* needed for _wyield() */

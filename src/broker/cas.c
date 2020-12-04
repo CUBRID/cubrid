@@ -82,7 +82,7 @@
 #include "environment_variable.h"
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 #include "error_manager.h"
-#include "cub_ddl_log.h"
+#include "ddl_log.h"
 
 static const int DEFAULT_CHECK_INTERVAL = 1;
 

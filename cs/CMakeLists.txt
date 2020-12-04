@@ -130,7 +130,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/util_func.c
   ${BASE_DIR}/variable_string.c
   ${BASE_DIR}/xml_parser.c
-  ${BASE_DIR}/cub_ddl_log.c
+  ${BASE_DIR}/ddl_log.c
   )
 
 set(BASE_HEADERS
@@ -156,7 +156,7 @@ set(BASE_HEADERS
   ${BASE_DIR}/string_buffer.hpp
   ${BASE_DIR}/resource_tracker.hpp
   ${BASE_DIR}/semaphore.hpp
-  ${BASE_DIR}/cub_ddl_log.h
+  ${BASE_DIR}/ddl_log.h
   )
 
 set(HEAPLAYER_SOURCES
