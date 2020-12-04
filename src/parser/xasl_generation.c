@@ -809,6 +809,19 @@ pt_make_connect_by_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NO
       goto exit_on_error;
     }
 
+  /* to_do : make hash predicate and split into build and probe reguvar */
+  /* add spec of list scan for join query */
+  if (!connect_by->single_table_opt)
+    {
+      xasl->spec_list = pt_make_list_access_spec (xasl, ACCESS_METHOD_SEQUENTIAL, NULL, xasl->if_pred, connect_by->regu_list_pred,
+			      connect_by->regu_list_rest, NULL /* regu_attributes_build */, NULL/* regu_attributes_probe */);
+      if (xasl->spec_list == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "generate hq(join) xasl");
+	  return NULL;
+	}
+    }
+
   /* sepparate after CONNECT BY predicate regu list */
   if (pt_split_pred_regu_list (parser, xasl->val_list, connect_by->after_connect_by_pred,
 			       &connect_by->after_cb_regu_list_rest, &connect_by->after_cb_regu_list_pred, NULL, NULL,
