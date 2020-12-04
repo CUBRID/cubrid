@@ -219,9 +219,13 @@ qmgr_get_page_type (PAGE_PTR page_p, QMGR_TEMP_FILE * temp_file_p)
 static bool
 qmgr_is_allowed_result_cache (QUERY_FLAG flag)
 {
-  int query_cache_mode;
+  static int query_cache_mode = prm_get_integer_value (PRM_ID_LIST_QUERY_CACHE_MODE);
 
-  query_cache_mode = prm_get_integer_value (PRM_ID_LIST_QUERY_CACHE_MODE);
+  if (QFILE_IS_LIST_CACHE_DISABLED)
+    {
+      return false;
+    }
+
   if (query_cache_mode == QFILE_LIST_QUERY_CACHE_MODE_OFF
       || (query_cache_mode == QFILE_LIST_QUERY_CACHE_MODE_SELECTIVELY_OFF && (flag & RESULT_CACHE_INHIBITED))
       || (query_cache_mode == QFILE_LIST_QUERY_CACHE_MODE_SELECTIVELY_ON && !(flag & RESULT_CACHE_REQUIRED)))
@@ -235,9 +239,12 @@ qmgr_is_allowed_result_cache (QUERY_FLAG flag)
 static bool
 qmgr_can_get_result_from_cache (QUERY_FLAG flag)
 {
-  int query_cache_mode;
+  static int query_cache_mode = prm_get_integer_value (PRM_ID_LIST_QUERY_CACHE_MODE);
 
-  query_cache_mode = prm_get_integer_value (PRM_ID_LIST_QUERY_CACHE_MODE);
+  if (QFILE_IS_LIST_CACHE_DISABLED)
+    {
+      return false;
+    }
 
   if (query_cache_mode == QFILE_LIST_QUERY_CACHE_MODE_OFF
       || (query_cache_mode != QFILE_LIST_QUERY_CACHE_MODE_OFF && (flag & NOT_FROM_RESULT_CACHE)))
@@ -2637,7 +2644,7 @@ qmgr_create_new_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP
   tfile_vfid_p->preserved = false;
   tfile_vfid_p->tde_encrypted = false;
   tfile_vfid_p->membuf_last = -1;
-  
+
   page_p = (PAGE_PTR) ((PAGE_PTR) tfile_vfid_p->membuf
 		       + DB_ALIGN (sizeof (PAGE_PTR) * tfile_vfid_p->membuf_npages, MAX_ALIGNMENT));
 

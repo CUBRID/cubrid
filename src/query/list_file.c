@@ -1102,7 +1102,8 @@ qfile_initialize (void)
 {
   qfile_Is_list_cache_disabled =
     ((prm_get_integer_value (PRM_ID_LIST_QUERY_CACHE_MODE) == QFILE_LIST_QUERY_CACHE_MODE_OFF)
-     || (prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_ENTRIES) <= 0));
+     || (prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_ENTRIES) <= 0)
+     || (prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_PAGES) <= 0));
 
   qfile_Max_tuple_page_size = QFILE_MAX_TUPLE_SIZE_IN_PAGE;
 
@@ -5199,7 +5200,7 @@ qfile_clear_list_cache (THREAD_ENTRY * thread_p, int list_ht_no, bool release)
       er_log_debug (ARG_FILE_LINE, "ls_clear_list_cache: failed to delete all entries\n");
     }
 
-  if (qfile_get_list_cache_number_of_entries(list_ht_no) == 0)
+  if (qfile_get_list_cache_number_of_entries (list_ht_no) == 0)
     {
       (void) mht_clear (qfile_List_cache.list_hts[list_ht_no], NULL, NULL);
       /* release assigned memory hash table */
