@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -39,6 +40,7 @@
 #include "csql.h"
 #include "memory_alloc.h"
 #include "system_parameter.h"
+#include "ddl_log.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -906,6 +908,7 @@ nonscr_display_error (char *buffer, int buf_length)
 
   buffer[buf_length - 1] = '\0';
   csql_fputs (buffer, csql_Error_fp);
+  logddl_set_err_msg (buffer);
 }
 
 /*

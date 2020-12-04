@@ -66,6 +66,9 @@
 #include "tsc_timer.h"
 #include "dbtype.h"
 #include "jsp_cl.h"
+#include "api_compat.h"
+#include "cas_log.h"
+#include "ddl_log.h"
 
 #if defined(WINDOWS)
 #include "file_io.h"		/* needed for _wyield() */
@@ -219,6 +222,7 @@ static int csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg);
 static void csql_set_trace (const char *arg_str);
 static void csql_display_trace (void);
 static bool csql_is_auto_commit_requested (const CSQL_ARGUMENT * csql_arg);
+static int get_host_ip (unsigned char *ip_addr);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 #if !defined(WINDOWS)
@@ -480,6 +484,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
   /* check in string block or comment block or identifier block */
   bool is_in_block = false;
 
+  logddl_set_commit_mode (csql_is_auto_commit_requested (csql_arg));
   if (csql_arg->column_output && csql_arg->line_output)
     {
       csql_Error_code = CSQL_ERR_INVALID_ARG_COMBINATION;
@@ -936,6 +941,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       else
 	{
 	  csql_display_msg (csql_get_message (CSQL_STAT_COMMITTED_TEXT));
+	  logddl_write_tran_str (LOGDDL_TRAN_TYPE_COMMIT);
 	}
       break;
 
@@ -948,6 +954,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       else
 	{
 	  csql_display_msg (csql_get_message (CSQL_STAT_ROLLBACKED_TEXT));
+	  logddl_write_tran_str (LOGDDL_TRAN_TYPE_ROLLBACK);
 	}
       break;
 
@@ -962,6 +969,8 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	}
 
       fprintf (csql_Output_fp, "AUTOCOMMIT IS %s\n", (csql_is_auto_commit_requested (csql_arg) ? "ON" : "OFF"));
+
+      logddl_set_commit_mode (csql_is_auto_commit_requested (csql_arg));
       break;
 
     case S_CMD_CHECKPOINT:
@@ -1751,6 +1760,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
   DB_QUERY_TYPE *attr_spec = NULL;	/* result attribute spec. */
   int total;			/* number of statements to execute */
   bool do_abort_transaction = false;	/* flag for transaction abort */
+  PT_NODE *statement;
 
   csql_Num_failures = 0;
   er_clear ();
@@ -1823,8 +1833,10 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
       total = MAX (total, 1);
     }
 
-  /* execute the statements one-by-one */
+  logddl_set_logging_enabled (prm_get_bool_value (PRM_ID_DDL_AUDIT_LOG));
+  logddl_set_commit_mode (csql_is_auto_commit_requested (csql_arg));
 
+  /* execute the statements one-by-one */
   for (num_stmts = 0; num_stmts < total; num_stmts++)
     {
       TSC_TICKS start_tick, end_tick;
@@ -1843,7 +1855,19 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	{
 	  tsc_getticks (&start_tick);
 	}
+      logddl_set_start_time (NULL);
+
       stmt_id = db_compile_statement (session);
+
+      if (session->statements != NULL)
+	{
+	  statement = session->statements[num_stmts];
+	  if (statement != NULL && strlen (statement->sql_user_text) >= statement->sql_user_text_len)
+	    {
+	      logddl_set_sql_text (statement->sql_user_text, statement->sql_user_text_len);
+	      logddl_set_stmt_type (statement->node_type);
+	    }
+	}
 
       if (stmt_id < 0)
 	{
@@ -1856,6 +1880,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	      do_abort_transaction = true;
 	    }
 
+	  logddl_set_err_code (db_error_code ());
 	  /* compilation error */
 	  csql_Error_code = CSQL_ERR_SQL_ERROR;
 	  /* Do not continue if there are no statments in the buffer */
@@ -1868,8 +1893,17 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 		{
 		  db_abort_transaction ();
 		  do_abort_transaction = false;
+		  logddl_set_msg (LOGDDL_MSG_AUTO_ROLLBACK);
+		  if (logddl_get_jsp_mode ())
+		    {
+		      logddl_write_tran_str (LOGDDL_TRAN_TYPE_ROLLBACK);
+		    }
 		}
 	      csql_Num_failures += 1;
+	      if (logddl_get_jsp_mode () == false)
+		{
+		  logddl_write_end ();
+		}
 	      continue;
 	    }
 	  else
@@ -1893,6 +1927,8 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	}
       attr_spec = db_get_query_type_list (session, stmt_id);
       stmt_type = (CUBRID_STMT_TYPE) db_get_statement_type (session, stmt_id);
+      logddl_set_stmt_type (stmt_type);
+      logddl_set_file_line (stmt_start_line_no);
 
       if (db_set_statement_auto_commit (session, csql_is_auto_commit_requested (csql_arg)) != NO_ERROR)
 	{
@@ -1903,6 +1939,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
       db_error = db_execute_statement (session, stmt_id, &result);
       if (db_error < 0)
 	{
+	  logddl_set_err_code (db_error_code ());
 	  csql_Error_code = CSQL_ERR_SQL_ERROR;
 	  if (csql_is_auto_commit_requested (csql_arg) && stmt_type != CUBRID_STMT_ROLLBACK_WORK)
 	    {
@@ -1915,11 +1952,20 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 		{
 		  db_abort_transaction ();
 		  do_abort_transaction = false;
+		  logddl_set_msg (LOGDDL_MSG_AUTO_ROLLBACK);
+		  if (logddl_get_jsp_mode ())
+		    {
+		      logddl_write_tran_str (LOGDDL_TRAN_TYPE_ROLLBACK);
+		    }
 		}
 	      csql_Num_failures += 1;
 
 	      free_attr_spec (&attr_spec);
 	      jsp_send_destroy_request_all ();
+	      if (logddl_get_jsp_mode () == false)
+		{
+		  logddl_write_end ();
+		}
 	      continue;
 	    }
 	  goto error;
@@ -2021,6 +2067,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	  db_error = db_commit_transaction ();
 	  if (db_error < 0)
 	    {
+	      logddl_set_err_code (db_error_code ());
 	      csql_Error_code = CSQL_ERR_SQL_ERROR;
 	      do_abort_transaction = true;
 
@@ -2031,8 +2078,17 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 		    {
 		      db_abort_transaction ();
 		      do_abort_transaction = false;
+		      logddl_set_msg (LOGDDL_MSG_AUTO_ROLLBACK);
+		      if (logddl_get_jsp_mode ())
+			{
+			  logddl_write_tran_str (LOGDDL_TRAN_TYPE_ROLLBACK);
+			}
 		    }
 		  csql_Num_failures += 1;
+		  if (logddl_get_jsp_mode () == false)
+		    {
+		      logddl_write_end ();
+		    }
 		  continue;
 		}
 	      goto error;
@@ -2049,6 +2105,24 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	}
 
       db_drop_statement (session, stmt_id);
+
+      if (logddl_get_jsp_mode ())
+	{
+	  if (csql_is_auto_commit_requested (csql_arg))
+	    {
+	      do_abort_transaction ==
+		true ? logddl_write_tran_str (LOGDDL_TRAN_TYPE_ROLLBACK) :
+		logddl_write_tran_str (LOGDDL_TRAN_TYPE_COMMIT);
+	    }
+	}
+      else
+	{
+	  if (csql_is_auto_commit_requested (csql_arg))
+	    {
+	      logddl_set_msg (LOGDDL_MSG_AUTO_COMMIT);
+	    }
+	  logddl_write_end ();
+	}
     }
 
   snprintf (csql_Scratch_text, SCRATCH_TEXT_LEN, csql_get_message (CSQL_EXECUTE_END_MSG_FORMAT),
@@ -2061,16 +2135,18 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
     {
       csql_display_trace ();
     }
-
+  logddl_free (true);
   return csql_Num_failures;
 
 error:
   jsp_send_destroy_request_all ();
   display_error (session, stmt_start_line_no);
+  logddl_set_err_code (db_error_code ());
   if (do_abort_transaction)
     {
       db_abort_transaction ();
       do_abort_transaction = false;
+      logddl_set_msg (LOGDDL_MSG_AUTO_ROLLBACK);
     }
   else
     {
@@ -2081,6 +2157,14 @@ error:
   snprintf (csql_Scratch_text, SCRATCH_TEXT_LEN, csql_get_message (CSQL_EXECUTE_END_MSG_FORMAT),
 	    num_stmts - csql_Num_failures);
   csql_display_msg (csql_Scratch_text);
+  if (logddl_get_jsp_mode ())
+    {
+      logddl_write_tran_str (LOGDDL_TRAN_TYPE_ROLLBACK);
+    }
+  else
+    {
+      logddl_write_end ();
+    }
 
   if (session)
     {
@@ -2088,7 +2172,7 @@ error:
     }
 
   free_attr_spec (&attr_spec);
-
+  logddl_free (true);
   return 1;
 }
 
@@ -2442,11 +2526,13 @@ csql_exit_session (int error)
 	  if (line_buf[0] == 'y' || line_buf[0] == 'Y')
 	    {
 	      commit_on_shutdown = true;
+	      logddl_write_tran_str (LOGDDL_TRAN_TYPE_COMMIT);
 	      break;
 	    }
 	  if (line_buf[0] == 'n' || line_buf[0] == 'N')
 	    {
 	      commit_on_shutdown = false;
+	      logddl_write_tran_str (LOGDDL_TRAN_TYPE_ROLLBACK);
 	      break;
 	    }
 
@@ -2595,6 +2681,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
   int client_type;
   int avail_size;
   char *p = NULL;
+  unsigned char ip_addr[16] = { "0" };
 
   /* Establish a globaly accessible longjmp environment so we can terminate on severe errors without calling exit(). */
   csql_exit_init ();
@@ -2603,6 +2690,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
     {
       /* perform any dangling cleanup operations */
       csql_exit_cleanup ();
+      logddl_destroy ();
       return csql_Exit_status;
     }
 
@@ -2728,6 +2816,23 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
 	  goto error;
 	}
     }
+
+  logddl_init ();
+  logddl_set_logging_enabled (prm_get_bool_value (PRM_ID_DDL_AUDIT_LOG));
+  logddl_set_app_name (APP_NAME_CSQL);
+  if (csql_arg->db_name != NULL)
+    {
+      logddl_set_db_name (csql_arg->db_name);
+    }
+  if (csql_arg->user_name != NULL)
+    {
+      logddl_set_user_name (csql_arg->user_name);
+    }
+  if (get_host_ip (ip_addr) == 0)
+    {
+      logddl_set_ip ((char *) ip_addr);
+    }
+  logddl_set_pid (getpid ());
 
   if (csql_arg->trigger_action_flag == false)
     {
@@ -3135,6 +3240,27 @@ static bool
 csql_is_auto_commit_requested (const CSQL_ARGUMENT * csql_arg)
 {
   assert (csql_arg != NULL);
-
   return csql_arg->auto_commit && prm_get_bool_value (PRM_ID_CSQL_AUTO_COMMIT);
+}
+
+static int
+get_host_ip (unsigned char *ip_addr)
+{
+  char hostname[CUB_MAXHOSTNAMELEN];
+  struct hostent *hp;
+  char *ip;
+
+  if (gethostname (hostname, sizeof (hostname)) < 0)
+    {
+      return -1;
+    }
+  if ((hp = gethostbyname (hostname)) == NULL)
+    {
+      return -1;
+    }
+
+  ip = inet_ntoa (*(struct in_addr *) *hp->h_addr_list);
+  memcpy (ip_addr, ip, strlen (ip));
+
+  return 0;
 }

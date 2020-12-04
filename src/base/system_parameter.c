@@ -691,6 +691,9 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_USE_STAT_ESTIMATION "use_stat_estimation"
 #define PRM_NAME_IGNORE_TRAILING_SPACE "ignore_trailing_space"
 
+#define PRM_NAME_DDL_AUDIT_LOG "ddl_audit_log"
+#define PRM_NAME_DDL_AUDIT_LOG_SIZE "ddl_audit_log_size"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
@@ -2332,6 +2335,16 @@ static unsigned int prm_use_stat_estimation_flag = 0;
 bool PRM_IGNORE_TRAILING_SPACE = false;
 static bool prm_ignore_trailing_space_default = false;
 static unsigned int prm_ignore_trailing_space_flag = 0;
+
+bool PRM_DDL_AUDIT_LOG = false;
+static bool prm_ddl_audit_log_default = false;
+static unsigned int prm_ddl_audit_log_flag = 0;
+
+UINT64 PRM_DDL_AUDIT_LOG_SIZE = 10485760ULL;
+static UINT64 prm_ddl_audit_log_size_default = 10485760ULL;	/* 10M */
+static UINT64 prm_ddl_audit_log_size_lower = 10485760ULL;	/* 10M */
+static UINT64 prm_ddl_audit_log_size_upper = 2147483648ULL;	/* 2G */
+static unsigned int prm_ddl_audit_log_size_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -6000,6 +6013,29 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_ignore_trailing_space_default,
    (void *) &PRM_IGNORE_TRAILING_SPACE,
    (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_DDL_AUDIT_LOG,
+   PRM_NAME_DDL_AUDIT_LOG,
+   (PRM_FOR_CLIENT),
+   PRM_BOOLEAN,
+   &prm_ddl_audit_log_flag,
+   (void *) &prm_ddl_audit_log_default,
+   (void *) &PRM_DDL_AUDIT_LOG,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_DDL_AUDIT_LOG_SIZE,
+   PRM_NAME_DDL_AUDIT_LOG_SIZE,
+   (PRM_SIZE_UNIT),
+   PRM_BIGINT,
+   &prm_ddl_audit_log_size_flag,
+   (void *) &prm_ddl_audit_log_size_default,
+   (void *) &PRM_DDL_AUDIT_LOG_SIZE,
+   (void *) &prm_ddl_audit_log_size_upper,
+   (void *) &prm_ddl_audit_log_size_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}
