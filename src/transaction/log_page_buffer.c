@@ -8287,7 +8287,6 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
   char backup_dir_path[PATH_MAX];
   char *volume_name_p;
   struct stat stat_buf;
-
   int error_code = NO_ERROR, success = NO_ERROR;
   bool printtoc;
   INT64 backup_time;
