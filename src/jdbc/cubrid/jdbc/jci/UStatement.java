@@ -913,7 +913,7 @@ public class UStatement {
 			executeInternal(maxRow, maxField, isScrollable, queryTimeout, cacheData);
 			//jdbc cache feature
 			if (cacheData != null && resultInfo.length == 1) {
-				cacheData.setCacheData(totalTupleNumber, tuples, resultInfo);
+				cacheData.setCacheData(totalTupleNumber, tuples, resultInfo, currentFirstCursor, fetchedTupleNumber);
 			}
 			else if (resultInfo.length > 1) {
 				result_cacheable = false;
@@ -2030,8 +2030,8 @@ public class UStatement {
 		 */
 		Object obj;
 		if ((tuples == null)
-		        || (tuples[cursorPosition] == null)
-		        || ((obj = tuples[cursorPosition]
+		        || (tuples[cursorPosition - currentFirstCursor] == null)
+		        || ((obj = tuples[cursorPosition - currentFirstCursor]
 		                .getAttribute(index)) == null)) {
 			errorHandler.setErrorCode(UErrorCode.ER_WAS_NULL);
 			return null;
@@ -2044,11 +2044,9 @@ public class UStatement {
 		if ((currentFirstCursor < 0)
 		        || (cursorPosition >= 0 && ((cursorPosition < currentFirstCursor) || (cursorPosition > currentFirstCursor
 		                + fetchedTupleNumber - 1)))) {
-			if (tuples[cursorPosition] == null) {
-				fetch();
-				if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
-					return false;
-			}
+			fetch();
+			if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
+				return false;
 		}
 		return true;
 	}
@@ -2279,16 +2277,7 @@ public class UStatement {
 			fetchedTupleNumber = 0;
 		}
 
-		if (tuples == null) {
-			if (totalTupleNumber > 0) {
-				if (totalTupleNumber > fetchedTupleNumber) {
-					tuples = new UResultTuple[totalTupleNumber];
-				}
-				else {
-					tuples = new UResultTuple[fetchedTupleNumber]; /* for maxRow */
-				}
-			}
-		}
+		tuples = new UResultTuple[fetchedTupleNumber];
 
 		for (int i = 0; i < fetchedTupleNumber; i++) {
 			readATuple(i, inBuffer);
@@ -2319,18 +2308,16 @@ public class UStatement {
 	        throws UJciException {
 
 		UResultTuple tuple = new UResultTuple(inBuffer.readInt(), columnNumber);
-		int n = tuple.tupleNumber() - 1;
-		tuples[n] = tuple;
-		tuples[n].setOid(inBuffer.readOID(relatedConnection.getCUBRIDConnection()));
+		tuples[index] = tuple;
+		tuples[index].setOid(inBuffer.readOID(relatedConnection.getCUBRIDConnection()));
 		for (int i = 0; i < columnNumber; i++) {
-			tuples[n].setAttribute(i, readAAttribute(i, inBuffer));
+			tuples[index].setAttribute(i, readAAttribute(i, inBuffer));
 		}
 
-		confirmSchemaTypeInfo(n);
-
-		if (index == 0) {
-			currentFirstCursor = n;
-		}
+		confirmSchemaTypeInfo(index);
+		
+		if (index == 0)
+			currentFirstCursor = tuple.tupleNumber() - 1;
 	}
 
 	private void readColumnInfo(UInputBuffer inBuffer) throws UJciException {
@@ -2451,9 +2438,9 @@ public class UStatement {
 		totalTupleNumber = cache_data.tuple_count;
 		tuples = cache_data.tuples;
 		resultInfo = cache_data.resultInfo;
-
-		cursorPosition = currentFirstCursor = 0;
-		fetchedTupleNumber = totalTupleNumber;
+		currentFirstCursor = cache_data.first;
+		cursorPosition = 0;
+		fetchedTupleNumber = cache_data.fetched;
 		executeResult = totalTupleNumber;
 		realFetched = true;
 	}

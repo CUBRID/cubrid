@@ -34,6 +34,8 @@ public class UStatementCacheData {
 	int tuple_count;
 	UResultTuple[] tuples;
 	UResultInfo[] resultInfo;
+	int first;
+	int fetched;
 	long srvCacheTime;
 
 	UStatementCacheData(UStatementCacheData cache_data) {
@@ -47,14 +49,32 @@ public class UStatementCacheData {
 			this.tuples = cache_data.tuples;
 			this.resultInfo = cache_data.resultInfo;
 			this.srvCacheTime = cache_data.srvCacheTime;
+			this.first = cache_data.first;
+			this.fetched = cache_data.fetched;
 		}
 	}
 
+	void setCacheData(int tuple_count, UResultTuple[] tuples,
+			UResultInfo[] resultInfo, int firstCursor, int fetchedTuples) {
+		this.tuple_count = tuple_count;
+		this.tuples = tuples;
+		this.resultInfo = resultInfo;
+		this.first = firstCursor;
+		this.fetched = fetchedTuples;
+		if (resultInfo.length == 1)
+			this.srvCacheTime = resultInfo[0].getSrvCacheTime();
+		else
+			this.srvCacheTime = 0L;
+	}
+	
+	/* for QA test case */
 	void setCacheData(int tuple_count, UResultTuple[] tuples,
 			UResultInfo[] resultInfo) {
 		this.tuple_count = tuple_count;
 		this.tuples = tuples;
 		this.resultInfo = resultInfo;
+		this.first = 0;
+		this.fetched = 0;
 		if (resultInfo.length == 1)
 			this.srvCacheTime = resultInfo[0].getSrvCacheTime();
 		else
