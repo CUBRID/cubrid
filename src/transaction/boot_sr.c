@@ -3011,6 +3011,9 @@ boot_reset_mk_after_restart_from_backup (THREAD_ENTRY * thread_p, BO_RESTART_ARG
       goto exit;
     }
 
+  fileio_close (backup_mk_vdes);
+  backup_mk_vdes = NULL_VOLDES;
+
   /* if a server key file exists, move it */
   if (server_mk_vdes != NULL_VOLDES)
     {
