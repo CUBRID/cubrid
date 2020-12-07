@@ -269,7 +269,7 @@ Si le fichier de clé est perdu, la restauration (restauréeb) peut ne pas fonct
 33 Le volume de sauvegarde comprend le fichier de clé (_keys).\n\
 Si une table est chiffrée par TDE, cela peut entraîner un problème de sécurité pour ces données.\n\
 Pour séparer le fichier de clé afin de l'empêcher, utilisez l'option --separate-keys.\n
-34 ERREUR: impossible d'utiliser le fichier FIFIO comme chemin de destination avec une clé séparée.\n
+34 ERREUR: impossible d'utiliser le fichier FIFO comme chemin de destination avec une clé séparée.\n
 60 \
 backupdb: Sauvegarde une base de données.\n\
 usage: %1$s backupdb [OPTION] database-name\n\

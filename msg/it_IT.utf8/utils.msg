@@ -269,7 +269,7 @@ Se il file della chiave viene perso, il ripristino (restoreb) potrebbe non funzi
 33 Il volume di backup include il file della chiave (_keys).\n\
 Se una tabella è crittografata con TDE, può causare un problema di sicurezza per quei dati.\n\
 Per separare il file della chiave per impedirlo, utilizzare l'opzione --separate-keys.\n
-34 ERRORE: impossibile utilizzare il file FIFIO come percorso di destinazione con chiave separata.\n
+34 ERRORE: impossibile utilizzare il file FIFO come percorso di destinazione con chiave separata.\n
 60 \
 backupdb: Backup di un database.\n\
 uso: %1$s backupdb [OPZIONE] nome-database\n\

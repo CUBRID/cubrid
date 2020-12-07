@@ -269,7 +269,7 @@ Anahtar dosyası kaybolursa, yedekleme birimi olsa bile geri yükleme (geri yük
 33 Yedekleme birimi anahtar dosyasını (_keys) içerir.\n\
 Bir tablo TDE şifreli ise, bu veriler için güvenlik sorununa neden olabilir.\n\
 Önlemek üzere anahtar dosyasını ayırmak için --separate-keys seçeneğini kullanın.\n
-34 HATA: FIFIO dosyası ayrı anahtarla hedef yol olarak kullanılamaz.\n
+34 HATA: FIFO dosyası ayrı anahtarla hedef yol olarak kullanılamaz.\n
 60 \
 backupdb: Bir veritabanı yedeklemesi.\n\
 kullanım: %1$s backupdb [SEÇENEK] veritabanı-adı\n\
