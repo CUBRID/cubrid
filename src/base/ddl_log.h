@@ -37,6 +37,8 @@
 #define LOGDDL_TRAN_TYPE_COMMIT             "COMMIT"
 #define LOGDDL_TRAN_TYPE_ROLLBACK           "ROLLBACK"
 
+#define DDL_LOG_BUFFER_SIZE                 (8192)
+
 typedef enum
 {
   LOADDB_FILE_TYPE_NONE,
@@ -84,5 +86,5 @@ extern void logddl_write_tran_str (const char *fmt, ...);
 extern void logddl_set_logging_enabled (bool enable);
 extern void logddl_set_jsp_mode (bool mode);
 extern bool logddl_get_jsp_mode ();
-
+extern bool logddl_get_sql_text (const char *file, int start_line, int end_line, char *sql_text);
 #endif /* _DDL_LOG_H_ */

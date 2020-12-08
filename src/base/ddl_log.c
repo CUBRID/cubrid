@@ -51,7 +51,6 @@
 #include "environment_variable.h"
 #include "broker_config.h"
 
-#define DDL_LOG_BUFFER_SIZE         (8192)
 #define DDL_LOG_MSG 	            (256)
 #define DDL_LOG_PATH    	    "log/ddl_audit"
 #define DDL_LOG_LOADDB_FILE_PATH    "log/ddl_audit/loaddb"
@@ -427,6 +426,56 @@ logddl_get_jsp_mode ()
       jsp_mode = ddl_audit_handle->jsp_mode;
     }
   return jsp_mode;
+}
+
+bool
+logddl_get_sql_text (const char *file, int start_line, int end_line, char *sql_text)
+{
+  char buf[DDL_LOG_BUFFER_SIZE] = { 0 };
+  int line = 0;
+  int total_read_len = 0;
+  int copy_len = 0;
+  int str_len = 0;
+  FILE *fp = NULL;
+
+  fp = fopen (file, "r");
+  if (fp == NULL)
+    {
+      return false;
+    }
+
+  while (!feof (fp))
+    {
+      line++;
+      if (line > end_line)
+	break;
+
+      if (fgets (buf, sizeof (buf), fp) != NULL && line >= start_line && line <= end_line)
+	{
+	  str_len = (int) strlen (buf);
+	  copy_len =
+	    ((DDL_LOG_BUFFER_SIZE - total_read_len) > str_len) ? str_len : (DDL_LOG_BUFFER_SIZE - total_read_len);
+
+	  if ((end_line - start_line) > 0)
+	    {
+	      strncpy (sql_text + total_read_len, buf, copy_len);
+	      total_read_len += copy_len;
+	    }
+	  else
+	    {
+	      strncpy (sql_text, buf, copy_len);
+	    }
+	}
+    }
+
+  fclose (fp);
+
+  if (total_read_len >= DDL_LOG_BUFFER_SIZE)
+    {
+      sql_text[DDL_LOG_BUFFER_SIZE - 1] = '\0';
+    }
+
+  return strlen (sql_text) > 0 ? true : false;
 }
 
 static void
