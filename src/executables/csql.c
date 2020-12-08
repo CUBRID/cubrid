@@ -1862,7 +1862,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
       if (session->statements != NULL)
 	{
 	  statement = session->statements[num_stmts];
-	  if (statement != NULL && statement->sql_user_text != NULL
+	  if (statement && statement->sql_user_text
 	      && strlen (statement->sql_user_text) >= statement->sql_user_text_len)
 	    {
 	      logddl_set_sql_text (statement->sql_user_text, statement->sql_user_text_len);
