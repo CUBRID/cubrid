@@ -269,7 +269,7 @@ Si se pierde el archivo de claves, es posible que la restauración (restoredb) n
 33 El volumen de respaldo incluye el archivo de claves (_keys).\n\
 Si una tabla está encriptada con TDE, puede causar un problema de seguridad para esos datos.\n\
 Para separar el archivo de claves para evitarlo, use la opción --separate-keys.\n
-34 ERROR: No se puede usar el archivo FIFIO como ruta de destino con una clave separada.\n
+34 ERROR: No se puede usar el archivo FIFO como ruta de destino con una clave separada.\n
 60 \
 backupdb: Respaldar una base de datos.\n\
 uso: %1$s backupdb [OPTION] database-name\n\
