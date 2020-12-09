@@ -1973,9 +1973,15 @@ btree_create_overflow_key_file (THREAD_ENTRY * thread_p, BTID_INT * btid)
   error_code = heap_get_class_tde_algorithm (thread_p, &btid->topclass_oid, &tde_algo);
   if (error_code != NO_ERROR)
     {
+      VFID_SET_NULL (&btid->ovfid);
       return error_code;
     }
   error_code = file_apply_tde_algorithm (thread_p, &btid->ovfid, tde_algo);
+  if (error_code != NO_ERROR)
+    {
+      VFID_SET_NULL (&btid->ovfid);
+      return error_code;
+    }
   return error_code;
 }
 
