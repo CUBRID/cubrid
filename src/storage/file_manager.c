@@ -4354,7 +4354,6 @@ file_temp_retire_internal (THREAD_ENTRY * thread_p, const VFID * vfid, bool was_
     {
       entry = file_tempcache_pop_tran_file (thread_p, vfid);
       assert (entry != NULL);
-      return NO_ERROR;
     }
 
   if (entry != NULL && file_tempcache_put (thread_p, entry))
