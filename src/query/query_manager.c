@@ -1534,7 +1534,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 	   * is, or make new one
 	   * in case list_ht_no is less than 0,
 	   *     the cache is not found and should be newly added (surely list_cache_entry_p is null)
-	   * in case list_ht_no is not less than 0 and list_cache_entry_p is not null
+	   * in case list_ht_no is not less than 0 and list_cache_entry_p is null
 	   *     the cache entry is found but the entry is used by other transaction
 	   */
 	  if (list_cache_entry_p || xasl_cache_entry_p->list_ht_no < 0)
