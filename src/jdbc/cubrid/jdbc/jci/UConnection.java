@@ -1517,6 +1517,10 @@ public abstract class UConnection {
 	public boolean getOracleStyleEmpltyString() {
 		return connectionProperties.getOracleStyleEmptyString();
 	}
+	
+	public int getClientCacheSize() {
+		return connectionProperties.getClientCacheSize() * 16*1024;
+	}
 
 	public void setCasIp (String casIp) {
 		this.casIp = casIp;

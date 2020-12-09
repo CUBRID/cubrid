@@ -30,37 +30,52 @@
 
 package cubrid.jdbc.jci;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class UStatementCacheData {
 	int tuple_count;
-	UResultTuple[] tuples;
 	UResultInfo[] resultInfo;
-	int first;
-	int fetched;
 	long srvCacheTime;
+	
+	List<UResultTuple[]> tuples;
+	List<Integer> fetched;
+	List<Integer> first;
 
 	UStatementCacheData(UStatementCacheData cache_data) {
 		if (cache_data == null) {
 			this.tuple_count = 0;
 			this.tuples = null;
+			this.fetched = null;
 			this.resultInfo = null;
 			this.srvCacheTime = 0L;
 		} else {
 			this.tuple_count = cache_data.tuple_count;
 			this.tuples = cache_data.tuples;
-			this.resultInfo = cache_data.resultInfo;
-			this.srvCacheTime = cache_data.srvCacheTime;
-			this.first = cache_data.first;
 			this.fetched = cache_data.fetched;
+			this.first = cache_data.first;
+			this.resultInfo = cache_data.resultInfo;
+			if (resultInfo.length == 1)
+				this.srvCacheTime = resultInfo[0].getSrvCacheTime();
+			else
+				this.srvCacheTime = 0L;
 		}
 	}
 
-	void setCacheData(int tuple_count, UResultTuple[] tuples,
-			UResultInfo[] resultInfo, int firstCursor, int fetchedTuples) {
+	void setCacheData(UResultTuple[] tuples, int firstCursor, int fetchedTuples) {
+		this.tuples.add(tuples);
+		this.fetched.add(fetchedTuples);
+		this.first.add(firstCursor);
+	}
+	
+	void setCacheData(int tuple_count, UResultInfo[] resultInfo) {
+		if (this.tuples == null) {
+			this.tuples = new ArrayList<UResultTuple[]>();
+			this.fetched = new ArrayList<Integer>();
+			this.first = new ArrayList<Integer>();
+		}
 		this.tuple_count = tuple_count;
-		this.tuples = tuples;
 		this.resultInfo = resultInfo;
-		this.first = firstCursor;
-		this.fetched = fetchedTuples;
 		if (resultInfo.length == 1)
 			this.srvCacheTime = resultInfo[0].getSrvCacheTime();
 		else
@@ -71,10 +86,10 @@ public class UStatementCacheData {
 	void setCacheData(int tuple_count, UResultTuple[] tuples,
 			UResultInfo[] resultInfo) {
 		this.tuple_count = tuple_count;
-		this.tuples = tuples;
 		this.resultInfo = resultInfo;
-		this.first = 0;
-		this.fetched = 0;
+		this.tuples = null;
+		this.fetched = null;
+		this.first = null;
 		if (resultInfo.length == 1)
 			this.srvCacheTime = resultInfo[0].getSrvCacheTime();
 		else

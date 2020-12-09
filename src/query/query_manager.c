@@ -1384,10 +1384,6 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 	  cached_result = true;
 
 	  CACHE_TIME_MAKE (server_cache_time_p, &list_cache_entry_p->time_created);
-	  if (CACHE_TIME_EQ (client_cache_time_p, server_cache_time_p))
-	    {
-	      goto end;
-	    }
 	}
     }
 
@@ -1467,7 +1463,9 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 	  goto exit_on_error;	/* maybe, memory allocation error */
 	}
       list_id_p->last_pgptr = NULL;
-
+#if defined (SERVER_MODE)
+      list_cache_entry_p->uncommitted_marker = true;	/* for transaction */
+#endif
       /* mark that the query is completed */
       qmgr_mark_query_as_completed (query_p);
 
@@ -2637,7 +2635,7 @@ qmgr_create_new_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP
   tfile_vfid_p->preserved = false;
   tfile_vfid_p->tde_encrypted = false;
   tfile_vfid_p->membuf_last = -1;
-  
+
   page_p = (PAGE_PTR) ((PAGE_PTR) tfile_vfid_p->membuf
 		       + DB_ALIGN (sizeof (PAGE_PTR) * tfile_vfid_p->membuf_npages, MAX_ALIGNMENT));
 

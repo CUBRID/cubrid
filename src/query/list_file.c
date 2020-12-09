@@ -5199,7 +5199,7 @@ qfile_clear_list_cache (THREAD_ENTRY * thread_p, int list_ht_no, bool release)
       er_log_debug (ARG_FILE_LINE, "ls_clear_list_cache: failed to delete all entries\n");
     }
 
-  if (qfile_get_list_cache_number_of_entries(list_ht_no) == 0)
+  if (qfile_get_list_cache_number_of_entries (list_ht_no) == 0)
     {
       (void) mht_clear (qfile_List_cache.list_hts[list_ht_no], NULL, NULL);
       /* release assigned memory hash table */
@@ -5745,9 +5745,12 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
 	  num_elements = (int) lent->last_ta_idx;
 	  if (lent->uncommitted_marker == true)
 	    {
-	      lent->last_ta_idx = num_elements;
-	      /* treat as look-up failed */
-	      lent = NULL;
+	      if (lent->tran_index_array[tran_index] == 0)
+		{
+		  lent->last_ta_idx = num_elements;
+		  /* treat as look-up failed */
+		  lent = NULL;
+		}
 	    }
 	  else
 	    {

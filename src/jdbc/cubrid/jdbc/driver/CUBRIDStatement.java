@@ -302,7 +302,9 @@ public class CUBRIDStatement implements Statement {
 					checkIsOpen();
 
 					if (current_result_set != null) {
-						current_result_set.close();
+						if (!u_stmt.is_result_cacheable()) {
+							current_result_set.close();
+						}
 						current_result_set = null;
 					}
 
@@ -936,7 +938,8 @@ public class CUBRIDStatement implements Statement {
 		completed = true;
 
 		if (current_result_set != null) {
-			current_result_set.close();
+			if (!u_stmt.is_result_cacheable())
+				current_result_set.close();
 			current_result_set = null;
 		}
 

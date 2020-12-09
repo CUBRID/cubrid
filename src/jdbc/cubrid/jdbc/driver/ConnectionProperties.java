@@ -353,6 +353,9 @@ public class ConnectionProperties {
 
     BooleanConnectionProperty useSSL = new BooleanConnectionProperty("useSSL", false);
 
+    IntegerConnectionProperty clientCacheSize = new IntegerConnectionProperty(
+    		"clientCacheSize", 16, 16, 256);
+    
     public boolean getLogOnException() {
 	return logOnException.getValueAsBoolean();
     }
@@ -414,5 +417,9 @@ public class ConnectionProperties {
 
     public boolean getUseSSL() {
         return useSSL.getValueAsBoolean();
+    }
+    
+    public int getClientCacheSize() {
+    	return clientCacheSize.getValueAsInteger();
     }
 }

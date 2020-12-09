@@ -48,6 +48,7 @@ import java.sql.Time;
 import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 
 import cubrid.jdbc.driver.CUBRIDBlob;
 import cubrid.jdbc.driver.CUBRIDClob;
@@ -101,6 +102,7 @@ public class UStatement {
 	private int fetchSize;
 	private int maxFetchSize;
 	private int fetchedTupleNumber;
+	private int totalFetchSize;
 	private boolean isFetchCompleted;
 	private int totalTupleNumber;
 	private int currentFirstCursor;
@@ -129,7 +131,12 @@ public class UStatement {
 	public int result_cache_lifetime;
 	private boolean result_cacheable = false;
 	private UStmtCache stmt_cache;
+	private UStatementCacheData stmt_cache_data = null;
 
+	private List<UResultTuple[]> tuple_list = null;
+	private List<Integer> fetched_number = null;
+	private List<Integer> first_cursor = null;
+	
 	UStatement(UConnection relatedC, UInputBuffer inBuffer,
 	        boolean assign_only, String sql, byte _prepare_flag)
 	        throws UJciException {
@@ -841,9 +848,12 @@ public class UStatement {
 		// cache reusable
 		byte cache_reusable = inBuffer.readByte();
 		if (cacheData != null && cache_reusable == (byte) 1) {
-                	setCacheData(cacheData);
-                	return;
-        	}
+			/* get data from cache */
+			getCacheData(cacheData);
+			stmt_cache_data = cacheData;
+			tuples = cacheData.tuples.get(0);
+			return;
+        }
 		// --
 		
 		readResultInfo(inBuffer);
@@ -852,6 +862,16 @@ public class UStatement {
 		if (relatedConnection.protoVersionIsAbove(UConnection.PROTOCOL_V5)) {
 			relatedConnection.setShardId(inBuffer.readInt());
 		}
+
+		//jdbc cache feature
+		if (cacheData != null && resultInfo.length == 1) {
+			stmt_cache_data = cacheData;
+			stmt_cache_data.setCacheData(resultInfo[0].getResultCount(), resultInfo);
+		}
+		else if (resultInfo.length > 1) {
+			result_cacheable = false;
+		}
+		//--
 
 		fetchResultData(inBuffer);
 
@@ -901,6 +921,7 @@ public class UStatement {
 		        isOnlyPlan, isHoldable, isSensitive);
 		currentFirstCursor = -1;
 		fetchedTupleNumber = 0;
+		totalFetchSize = 0;
 		if (firstStmtType == CUBRIDCommandType.CUBRID_STMT_CALL_SP) {
 			cursorPosition = 0;
 		} else {
@@ -911,14 +932,6 @@ public class UStatement {
 
 		try {
 			executeInternal(maxRow, maxField, isScrollable, queryTimeout, cacheData);
-			//jdbc cache feature
-			if (cacheData != null && resultInfo.length == 1) {
-				cacheData.setCacheData(totalTupleNumber, tuples, resultInfo, currentFirstCursor, fetchedTupleNumber);
-			}
-			else if (resultInfo.length > 1) {
-				result_cacheable = false;
-			}
-			//--
 			return;
 		} catch (UJciException e) {
 			relatedConnection.logException(e);
@@ -1781,8 +1794,33 @@ public class UStatement {
 		return realFetched;
 	}
 
+	public boolean tryTofetchFromCache() {
+		int fetch;
+		int first;
+
+		for( int i = 0; i < tuple_list.size(); i++ ) {
+			fetch = fetched_number.get(i);
+			first = first_cursor.get(i);
+			if (cursorPosition >= first && cursorPosition <= first + fetch - 1) {
+				tuples = tuple_list.get(i);
+				currentFirstCursor = first;
+				fetchedTupleNumber = fetch;
+				
+				return true;
+			}
+		}
+		
+		return false;
+	}
+	
 	synchronized public void reFetch() {
 		UInputBuffer inBuffer;
+
+		if (tuple_list != null) {
+			if (tryTofetchFromCache()) {
+				return;
+			}
+		}
 
 		errorHandler = new UError(relatedConnection);
 		if (isClosed == true) {
@@ -2110,7 +2148,7 @@ public class UStatement {
 		closeResult();
 	}
 
-	public void closeResult() {
+	public void closeTuples(UResultTuple[] tuples) {
 		if (tuples != null) {
 			synchronized (tuples) {
 				for (int i = 0; i < tuples.length; i++) {
@@ -2121,7 +2159,22 @@ public class UStatement {
 				}
 			}
 			tuples = null;
+
 			getResCache().setExpire();
+		}
+	}
+	
+	public void closeResult() {
+		if (tuple_list != null) {
+			for (int n = 0; n < tuple_list.size(); n++) {
+				closeTuples(tuple_list.get(n));
+			}
+			tuple_list = null;
+			fetched_number = null;
+			first_cursor = null;
+		}
+		else {
+			closeTuples(tuples);
 		}
 	}
 
@@ -2187,7 +2240,8 @@ public class UStatement {
 		}
 
 		size = size - typeInfo[2];
-
+		totalFetchSize += size;
+		
 		return (readData(inBuffer, localType, size, charsetName));
 	}
 
@@ -2291,6 +2345,10 @@ public class UStatement {
 		        && relatedConnection
 		                .protoVersionIsAbove(UConnection.PROTOCOL_V5)) {
 			isFetchCompleted = inBuffer.readByte() == 1 ? true : false;
+		}
+		
+		if (stmt_cache_data != null && totalFetchSize < relatedConnection.getClientCacheSize()) {
+			stmt_cache_data.setCacheData(tuples, currentFirstCursor, fetchedTupleNumber);
 		}
 	}
 
@@ -2434,13 +2492,15 @@ public class UStatement {
 	 * return (new UStatementCacheData(totalTupleNumber, tuples, resultInfo)); }
 	 */
 
-	public void setCacheData(UStatementCacheData cache_data) {
+	public void getCacheData(UStatementCacheData cache_data) {
 		totalTupleNumber = cache_data.tuple_count;
-		tuples = cache_data.tuples;
+		tuple_list = cache_data.tuples;
+		fetched_number = cache_data.fetched;
+		first_cursor = cache_data.first;
 		resultInfo = cache_data.resultInfo;
-		currentFirstCursor = cache_data.first;
+		currentFirstCursor = cache_data.first.get(0);
 		cursorPosition = 0;
-		fetchedTupleNumber = cache_data.fetched;
+		fetchedTupleNumber = cache_data.fetched.get(0);
 		executeResult = totalTupleNumber;
 		realFetched = true;
 	}
