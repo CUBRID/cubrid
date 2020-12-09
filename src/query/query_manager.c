@@ -1531,10 +1531,19 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 	    }
 
 	  /* update the cache entry for the result associated with the used parameter values (DB_VALUE array) if there
-	   * is, or make new one */
-	  list_cache_entry_p =
-	    qfile_update_list_cache_entry (thread_p, &xasl_cache_entry_p->list_ht_no, &params, list_id_p,
-					   xasl_cache_entry_p);
+	   * is, or make new one
+	   * in case list_ht_no is less than 0,
+	   *     the cache is not found and should be newly added (surely list_cache_entry_p is null)
+	   * in case list_ht_no is not less than 0 and list_cache_entry_p is not null
+	   *     the cache entry is found but the entry is used by other transaction
+	   */
+	  if (list_cache_entry_p || xasl_cache_entry_p->list_ht_no < 0)
+	    {
+	      list_cache_entry_p =
+		qfile_update_list_cache_entry (thread_p, &xasl_cache_entry_p->list_ht_no, &params, list_id_p,
+					       xasl_cache_entry_p);
+	    }
+
 	  if (list_cache_entry_p == NULL)
 	    {
 	      char *s;
@@ -2040,7 +2049,6 @@ qmgr_clear_relative_cache_entries (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tr
 			    "qm_clear_trans_wakeup: qexec_clear_list_cache_by_class failed for class { %d %d %d }\n",
 			    class_oid_p->pageid, class_oid_p->slotid, class_oid_p->volid);
 	    }
-	  qmgr_add_modified_class (thread_p, class_oid_p);
 	}
     }
 }
@@ -2087,9 +2095,12 @@ qmgr_clear_trans_wakeup (THREAD_ENTRY * thread_p, int tran_index, bool is_tran_d
   tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
 
   /* if the transaction is aborting, clear relative cache entries */
-  if (tran_entry_p->modified_classes_p)
+  if (tran_entry_p->modified_classes_p && !QFILE_IS_LIST_CACHE_DISABLED)
     {
-      qmgr_clear_relative_cache_entries (thread_p, tran_entry_p);
+      if (!qfile_has_no_cache_entries ())
+	{
+	  qmgr_clear_relative_cache_entries (thread_p, tran_entry_p);
+	}
       qmgr_free_oid_block (thread_p, tran_entry_p->modified_classes_p);
       tran_entry_p->modified_classes_p = NULL;
     }
