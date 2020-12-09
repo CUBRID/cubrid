@@ -2586,8 +2586,8 @@ process_javasp (int command_type, int argc, const char **argv, bool process_wind
 	  status = process_javasp_stop (db_name, process_window_service);
 	  break;
 	case RESTART:
-	  status = process_javasp (STOP, argc, argv, process_window_service);
-	  status = process_javasp (START, argc, argv, process_window_service);
+	  status = process_javasp_stop (db_name, process_window_service);
+	  status = process_javasp_start (db_name, process_window_service);
 	  break;
 	case STATUS:
 	  status = process_javasp_status (db_name);
