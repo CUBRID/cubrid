@@ -1761,6 +1761,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
   int total;			/* number of statements to execute */
   bool do_abort_transaction = false;	/* flag for transaction abort */
   PT_NODE *statement;
+  int read_line_no = 1;
 
   csql_Num_failures = 0;
   er_clear ();
@@ -1930,6 +1931,15 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
       stmt_type = (CUBRID_STMT_TYPE) db_get_statement_type (session, stmt_id);
       logddl_set_stmt_type (stmt_type);
       logddl_set_file_line (stmt_start_line_no);
+      if (type == FILE_INPUT)
+	{
+	  char sql_text[DDL_LOG_BUFFER_SIZE] = { 0 };
+	  if (logddl_get_sql_text (csql_arg->in_file_name, read_line_no, stmt_start_line_no, sql_text))
+	    {
+	      logddl_set_sql_text (sql_text, strlen (sql_text));
+	    }
+	  read_line_no = stmt_start_line_no + 1;
+	}
 
       if (db_set_statement_auto_commit (session, csql_is_auto_commit_requested (csql_arg)) != NO_ERROR)
 	{
@@ -2100,6 +2110,19 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	    }
 	}
 
+      if (csql_is_auto_commit_requested (csql_arg) == false && (stmt_type == CUBRID_STMT_COMMIT_WORK
+								|| stmt_type == CUBRID_STMT_ROLLBACK_WORK))
+	{
+	  if (stmt_type == CUBRID_STMT_COMMIT_WORK)
+	    {
+	      logddl_write_tran_str (LOGDDL_TRAN_TYPE_COMMIT);
+	    }
+	  else if (stmt_type == CUBRID_STMT_ROLLBACK_WORK)
+	    {
+	      logddl_write_tran_str (LOGDDL_TRAN_TYPE_ROLLBACK);
+	    }
+	}
+
       if (csql_arg->plain_output == false && csql_arg->query_output == false && csql_arg->loaddb_output == false)
 	{
 	  fprintf (csql_Output_fp, "%s\n", stmt_msg);
@@ -2136,7 +2159,11 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
     {
       csql_display_trace ();
     }
-  logddl_free (true);
+
+  if (csql_is_auto_commit_requested (csql_arg))
+    {
+      logddl_free (true);
+    }
   return csql_Num_failures;
 
 error:
@@ -2173,7 +2200,10 @@ error:
     }
 
   free_attr_spec (&attr_spec);
-  logddl_free (true);
+  if (csql_is_auto_commit_requested (csql_arg))
+    {
+      logddl_free (true);
+    }
   return 1;
 }
 
