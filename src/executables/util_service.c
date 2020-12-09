@@ -1425,7 +1425,12 @@ process_service (int command_type, bool process_window_service)
 	(void) process_server (command_type, 0, NULL, false, true, false);
 	(void) process_broker (command_type, 1, args, false);
 	(void) process_manager (command_type, false);
-	(void) process_javasp (command_type, 0, NULL, false);
+	if (strcmp (get_property (SERVICE_START_JAVASP), PROPERTY_ON) == 0
+	    && us_Property_map[SERVER_START_LIST].property_value != NULL
+	    && us_Property_map[SERVER_START_LIST].property_value[0] != '\0')
+	  {
+	    (void) process_javasp (command_type, 0, NULL, false);
+	  }
 	if (strcmp (get_property (SERVICE_START_HEARTBEAT), PROPERTY_ON) == 0)
 	  {
 	    (void) process_heartbeat (command_type, 0, NULL);
