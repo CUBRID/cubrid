@@ -11510,17 +11510,18 @@ xfile_apply_tde_to_class_files (THREAD_ENTRY * thread_p, const OID * class_oid)
   TDE_ALGORITHM prev_tde_algo = TDE_ALGORITHM_NONE;
   HFID hfid = HFID_INITIALIZER;
   VFID hovf_vfid;
-  int last_cacheindex = -1;
+  int idx_in_cache = -1;
   int error_code = NO_ERROR;
   int i = 0;
 
   assert (class_oid != NULL);
   assert (!OID_ISNULL (class_oid));
 
-  or_repr = heap_classrepr_get (thread_p, class_oid, NULL, NULL_REPRID, &last_cacheindex);
-  assert (or_repr != NULL);
-
-  heap_get_class_tde_algorithm (thread_p, class_oid, &tde_algo);
+  error_code = heap_get_class_tde_algorithm (thread_p, class_oid, &tde_algo);
+  if (error_code != NO_ERROR)
+    {
+      goto exit;
+    }
 
   /* It is expected for flags in the class record to be set in advance */
   assert (tde_algo != TDE_ALGORITHM_NONE);
@@ -11529,22 +11530,30 @@ xfile_apply_tde_to_class_files (THREAD_ENTRY * thread_p, const OID * class_oid)
   error_code = heap_get_class_info (thread_p, class_oid, &hfid, NULL, NULL);
   if (error_code != NO_ERROR)
     {
-      return error_code;
+      goto exit;
     }
 
   error_code = file_apply_tde_algorithm (thread_p, &hfid.vfid, tde_algo);
   if (error_code != NO_ERROR)
     {
-      return error_code;
+      goto exit;
     }
 
   if (heap_ovf_find_vfid (thread_p, &hfid, &hovf_vfid, false, PGBUF_UNCONDITIONAL_LATCH) != NULL)
     {
+      /* not exist */
       error_code = file_apply_tde_algorithm (thread_p, &hovf_vfid, tde_algo);
       if (error_code != NO_ERROR)
 	{
-	  return error_code;
+	  goto exit;
 	}
+    }
+
+  or_repr = heap_classrepr_get (thread_p, class_oid, NULL, NULL_REPRID, &idx_in_cache);
+  if (or_repr == NULL)
+    {
+      error_code = ER_FAILED;
+      goto exit;
     }
 
   /* apply to btree files and btree overflow files */
@@ -11564,7 +11573,7 @@ xfile_apply_tde_to_class_files (THREAD_ENTRY * thread_p, const OID * class_oid)
       if (root_page == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
-	  return error_code;
+	  goto exit;
 	}
 
       (void) pgbuf_check_page_ptype (thread_p, root_page, PAGE_BTREE);
@@ -11574,7 +11583,7 @@ xfile_apply_tde_to_class_files (THREAD_ENTRY * thread_p, const OID * class_oid)
 	{
 	  pgbuf_unfix_and_init (thread_p, root_page);
 	  ASSERT_ERROR_AND_SET (error_code);
-	  return error_code;
+	  goto exit;
 	}
       bovf_vfid = root_header->ovfid;
 
@@ -11583,7 +11592,7 @@ xfile_apply_tde_to_class_files (THREAD_ENTRY * thread_p, const OID * class_oid)
       error_code = file_apply_tde_algorithm (thread_p, &btid.vfid, tde_algo);
       if (error_code != NO_ERROR)
 	{
-	  return error_code;
+	  goto exit;
 	}
 
       if (!VFID_ISNULL (&bovf_vfid))
@@ -11591,11 +11600,18 @@ xfile_apply_tde_to_class_files (THREAD_ENTRY * thread_p, const OID * class_oid)
 	  error_code = file_apply_tde_algorithm (thread_p, &bovf_vfid, tde_algo);
 	  if (error_code != NO_ERROR)
 	    {
-	      return error_code;
+	      goto exit;
 	    }
 	}
     }
-  return NO_ERROR;
+
+exit:
+  if (or_repr != NULL)
+    {
+      heap_classrepr_free_and_init (or_repr, &idx_in_cache);
+    }
+
+  return error_code;
 }
 
 /************************************************************************/
