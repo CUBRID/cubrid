@@ -40,6 +40,7 @@
 #include "thread_lockfree_hash_map.hpp"
 #include "thread_manager.hpp"
 #include "xasl_unpack_info.hpp"
+#include "list_file.h"
 
 #include <algorithm>
 #include <assert.h>
@@ -1780,10 +1781,10 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
 	  /* Check invalidation conditions. */
 	  if (invalidate_check == NULL || invalidate_check (xcache_entry, arg))
 	    {
-	      if (xcache_entry->list_ht_no >= 0)
+	      if (xcache_entry->list_ht_no >= 0 && !QFILE_IS_LIST_CACHE_DISABLED && !qfile_has_no_cache_entries ())
 		{
-	          qfile_clear_list_cache (thread_p, xcache_entry->list_ht_no, true);
-	          if (qfile_get_list_cache_number_of_entries (xcache_entry->list_ht_no) == 0)
+		  qfile_clear_list_cache (thread_p, xcache_entry->list_ht_no, true);
+		  if (qfile_get_list_cache_number_of_entries (xcache_entry->list_ht_no) == 0)
 		    {
 		      xcache_entry->list_ht_no = -1;
 		    }

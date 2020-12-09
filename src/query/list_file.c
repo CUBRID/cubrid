@@ -6779,3 +6779,9 @@ qfile_get_list_cache_number_of_entries (int ht_no)
 
   return (qfile_List_cache.list_hts[ht_no]->nentries);
 }
+
+bool
+qfile_has_no_cache_entries ()
+{
+  return (qfile_List_cache.n_entries == 0);
+}
