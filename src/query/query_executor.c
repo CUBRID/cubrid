@@ -15245,6 +15245,13 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	  GOTO_EXIT_ON_ERROR;
 	}
 
+      /* start the scanner on "input" */
+      if (qexec_open_scan (thread_p, xasl->spec_list, xasl->val_list, &xasl_state->vd, false, true, false,
+			   false, &xasl->spec_list->s_id, xasl_state->query_id, S_SELECT, false, NULL) != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+
       while (1)
 	{
 	  isleaf_value = 1;
@@ -15300,13 +15307,6 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
-	    }
-
-	  /* start the scanner on "input" */
-	  if (qexec_open_scan (thread_p, xasl->spec_list, xasl->val_list, &xasl_state->vd, false, true, false,
-			       false, &xasl->spec_list->s_id, xasl_state->query_id, S_SELECT, false, NULL) != NO_ERROR)
-	    {
-	      GOTO_EXIT_ON_ERROR;
 	    }
 
 	  xasl->next_scan_block_on = false;

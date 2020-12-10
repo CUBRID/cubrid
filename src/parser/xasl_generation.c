@@ -2996,8 +2996,8 @@ exit_on_error:
 }
 
 /*
- * pt_split_hash_attrs_for_HQ () - Split the attr_list into two lists without destroying for HQ
- *      the original list
+ * pt_split_hash_attrs_for_HQ () - Split the attr_list into two lists without destroying
+ *      the original list for HQ
  *   return:
  *   parser(in):
  *   pred(in):
@@ -3076,7 +3076,6 @@ pt_split_hash_attrs_for_HQ (PARSER_CONTEXT * parser, PT_NODE * pred, PT_NODE ** 
 	      else
 		{
 		  /* unhashable predicate */
-		  continue;
 		}
 
 	      /* restore node link */
