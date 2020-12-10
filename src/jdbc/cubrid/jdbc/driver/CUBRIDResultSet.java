@@ -1433,7 +1433,7 @@ public class CUBRIDResultSet implements ResultSet {
 
 		clearCurrentRow();
 
-		u_stmt.reFetch();
+		u_stmt.reFresh();
 		error = u_stmt.getRecentError();
 
 		switch (error.getErrorCode()) {

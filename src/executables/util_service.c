@@ -1309,12 +1309,6 @@ process_service (int command_type, bool process_window_service)
 		{
 		  (void) process_server (command_type, 0, NULL, false, true, false);
 		}
-	      if (strcmp (get_property (SERVICE_START_JAVASP), PROPERTY_ON) == 0
-		  && us_Property_map[SERVER_START_LIST].property_value != NULL
-		  && us_Property_map[SERVER_START_LIST].property_value[0] != '\0')
-		{
-		  (void) process_javasp (command_type, 0, NULL, false);
-		}
 	      if (strcmp (get_property (SERVICE_START_BROKER), PROPERTY_ON) == 0)
 		{
 		  (void) process_broker (command_type, 0, NULL, false);
@@ -1327,7 +1321,12 @@ process_service (int command_type, bool process_window_service)
 		{
 		  (void) process_heartbeat (command_type, 0, NULL);
 		}
-
+	      if (strcmp (get_property (SERVICE_START_JAVASP), PROPERTY_ON) == 0
+		  && us_Property_map[SERVER_START_LIST].property_value != NULL
+		  && us_Property_map[SERVER_START_LIST].property_value[0] != '\0')
+		{
+		  (void) process_javasp (command_type, 0, NULL, false);
+		}
 	      status = are_all_services_running (0, process_window_service) ? NO_ERROR : ER_GENERIC_ERROR;
 	    }
 	  else
@@ -1426,7 +1425,12 @@ process_service (int command_type, bool process_window_service)
 	(void) process_server (command_type, 0, NULL, false, true, false);
 	(void) process_broker (command_type, 1, args, false);
 	(void) process_manager (command_type, false);
-	(void) process_javasp (command_type, 0, NULL, false);
+	if (strcmp (get_property (SERVICE_START_JAVASP), PROPERTY_ON) == 0
+	    && us_Property_map[SERVER_START_LIST].property_value != NULL
+	    && us_Property_map[SERVER_START_LIST].property_value[0] != '\0')
+	  {
+	    (void) process_javasp (command_type, 0, NULL, false);
+	  }
 	if (strcmp (get_property (SERVICE_START_HEARTBEAT), PROPERTY_ON) == 0)
 	  {
 	    (void) process_heartbeat (command_type, 0, NULL);
@@ -2390,7 +2394,7 @@ is_javasp_running (const char *server_name)
       pclose (input);
       return JAVASP_SERVER_STOPPED;
     }
-  else if (strcmp (buf, "ERROR") == 0)
+  else
     {
       pclose (input);
       return JAVASP_SERVER_STATUS_ERROR;
@@ -2489,7 +2493,6 @@ process_javasp_stop (const char *db_name, bool process_window_service)
 	  };
 
 	  status = proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true, false, false, NULL);
-	  status = (is_javasp_running (db_name) != JAVASP_SERVER_STOPPED) ? ER_GENERIC_ERROR : NO_ERROR;
 #endif
 	}
       else
@@ -2559,7 +2562,7 @@ process_javasp (int command_type, int argc, const char **argv, bool process_wind
       strncpy (buf, argv[0], sizeof (buf) - 1);
     }
 
-  if (command_type != STATUS && strlen (buf) == 0)
+  if (strlen (buf) == 0)
     {
       util_service_usage (JAVASP_UTIL);
       util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_CMD);
@@ -2583,8 +2586,8 @@ process_javasp (int command_type, int argc, const char **argv, bool process_wind
 	  status = process_javasp_stop (db_name, process_window_service);
 	  break;
 	case RESTART:
-	  status = process_javasp (STOP, argc, argv, process_window_service);
-	  status = process_javasp (START, argc, argv, process_window_service);
+	  status = process_javasp_stop (db_name, process_window_service);
+	  status = process_javasp_start (db_name, process_window_service);
 	  break;
 	case STATUS:
 	  status = process_javasp_status (db_name);
@@ -4490,20 +4493,19 @@ process_heartbeat_util (HA_CONF * ha_conf, int command_type, int argc, const cha
   node_name_p = (node_name[0] == '\0') ? NULL : node_name;
   host_name_p = (host_name[0] == '\0') ? NULL : host_name;
 
-  if (db_name != NULL)
-    {
-      status = sysprm_load_and_init (db_name, NULL, SYSPRM_IGNORE_INTL_PARAMS);
-      if (status != NO_ERROR)
-	{
-	  goto ret;
-	}
+  assert (db_name_p != NULL);
 
-      if (util_get_ha_mode_for_sa_utils () == HA_MODE_OFF)
-	{
-	  status = ER_GENERIC_ERROR;
-	  print_message (stderr, MSGCAT_UTIL_GENERIC_NOT_HA_MODE);
-	  goto ret;
-	}
+  status = sysprm_load_and_init (db_name_p, NULL, SYSPRM_IGNORE_INTL_PARAMS);
+  if (status != NO_ERROR)
+    {
+      goto ret;
+    }
+
+  if (util_get_ha_mode_for_sa_utils () == HA_MODE_OFF)
+    {
+      status = ER_GENERIC_ERROR;
+      print_message (stderr, MSGCAT_UTIL_GENERIC_NOT_HA_MODE);
+      goto ret;
     }
 
   switch (command_type)

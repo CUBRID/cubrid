@@ -82,6 +82,7 @@
 #include "environment_variable.h"
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 #include "error_manager.h"
+#include "ddl_log.h"
 
 static const int DEFAULT_CHECK_INTERVAL = 1;
 
@@ -879,6 +880,8 @@ cas_main (void)
   // init error manager with default arguments; should be reinitialized later
   er_init (NULL, ER_NEVER_EXIT);
 
+  logddl_init ();
+
 #if defined(WINDOWS)
   __try
   {
@@ -1213,6 +1216,15 @@ cas_main (void)
 
 	    FREE_MEM (db_err_msg);
 
+	    logddl_set_logging_enabled (prm_get_bool_value (PRM_ID_DDL_AUDIT_LOG));
+	    logddl_set_app_name (APP_NAME_CAS);
+	    logddl_set_br_name (shm_appl->broker_name);
+	    logddl_set_br_index (shm_as_index);
+	    logddl_set_db_name (db_name);
+	    logddl_set_user_name (db_user);
+	    logddl_set_ip (client_ip_str);
+	    logddl_set_pid (getpid ());
+
 	    set_hang_check_time ();
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
@@ -1260,6 +1272,7 @@ cas_main (void)
 	    req_info.need_rollback = TRUE;
 
 	    gettimeofday (&tran_start_time, NULL);
+	    logddl_set_start_time (&tran_start_time);
 	    gettimeofday (&query_start_time, NULL);
 	    tran_timeout = 0;
 	    query_timeout = 0;
@@ -1277,6 +1290,7 @@ cas_main (void)
 #if !defined(WINDOWS)
 		signal (SIGUSR1, query_cancel);
 #endif /* !WINDOWS */
+
 		fn_ret = process_request (client_sock_fd, &net_buf, &req_info);
 		as_info->fn_status = FN_STATUS_DONE;
 #ifndef LIBCAS_FOR_JSP
@@ -1415,6 +1429,8 @@ libcas_main (SOCKET jsp_sock_fd)
       return -1;
     }
   net_buf.alloc_size = NET_BUF_ALLOC_SIZE;
+
+  logddl_set_jsp_mode (true);
 
   while (status == FN_KEEP_CONN)
     {
@@ -1633,6 +1649,7 @@ cas_free (bool from_sighandler)
   cas_log_write_and_end (0, true, "CAS TERMINATED pid %d", getpid ());
   cas_log_close (true);
   cas_slow_log_close ();
+  logddl_destroy ();
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
   cas_error_log_close (true);
 #endif
@@ -1786,7 +1803,6 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 	      errors_in_transaction = 0;
 	    }
 	}
-
 #else /* !LIBCAS_FOR_JSP */
       net_timeout_set (60);
       err_code = net_read_header (sock_fd, &client_msg_header);
@@ -2122,6 +2138,18 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
     }
 #endif /* !LIBCAS_FOR_JSP */
 
+  if (func_code == CAS_FC_EXECUTE || err_info.err_number < 0)
+    {
+#ifndef LIBCAS_FOR_JSP
+      if (logddl_get_jsp_mode () == false)
+	{
+	  logddl_write_end ();
+	}
+#else
+      logddl_write_end ();
+#endif
+    }
+
   if (net_buf->err_code)
     {
       net_write_error (sock_fd, req_info->client_version, req_info->driver_info, cas_msg_header.info_ptr, cas_info_size,
@@ -2351,6 +2379,7 @@ net_read_process (SOCKET proxy_sock_fd, MSG_HEADER * client_msg_header, T_REQ_IN
     {
       as_info->num_request++;
       gettimeofday (&tran_start_time, NULL);
+      logddl_set_start_time (&tran_start_time);
     }
 
   if (as_info->con_status == CON_STATUS_CLOSE)
@@ -2489,6 +2518,7 @@ net_read_int_keep_con_auto (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header, 
       as_info->num_request++;
       gettimeofday (&tran_start_time, NULL);
     }
+  logddl_set_start_time (&tran_start_time);
 
   if (as_info->con_status == CON_STATUS_CLOSE || as_info->con_status == CON_STATUS_CLOSE_AND_CONNECT)
     {

@@ -157,6 +157,7 @@ typedef enum
 
 #define GUID_STANDARD_BYTES_LENGTH 16
 
+static int db_string_prefix_compare (const DB_VALUE * string1, const DB_VALUE * string2, DB_VALUE * result);
 static char db_string_escape_char (char c);
 static int qstr_trim (MISC_OPERAND tr_operand, const unsigned char *trim, int trim_length, int trim_size,
 		      const unsigned char *src_ptr, DB_TYPE src_type, int src_length, int src_size,
@@ -331,17 +332,19 @@ static int parse_tzd (const char *str, const int max_expect_len);
  * Arguments:
  *                string1: Left side of compare.
  *                string2: Right side of compare
- *                 result: Integer result of comparison.
- *            data_status: Status of errors.
+ *                result: Integer result of comparison.
  *
  * Returns: int
  *
  * Errors:
- *      ER_QSTR_INVALID_DATA_TYPE   :
+ *    ER_QSTR_INVALID_DATA_TYPE   :
  *        <string1> or <string2> are not character strings.
  *
  *    ER_QSTR_INCOMPATIBLE_CODE_SETS:
  *        <string1> and <string2> have differing character code sets.
+ *
+ *    ER_QSTR_INCOMPATIBLE_COLLATIONS
+ *        <string1> and <string2> have incompatible collations.
  *
  */
 
@@ -433,7 +436,7 @@ db_string_compare (const DB_VALUE * string1, const DB_VALUE * string2, DB_VALUE 
 				       DB_GET_UCHAR (string2), (int) db_get_string_size (string2));
 	  break;
 	default:		/* QSTR_UNKNOWN */
-	  break;
+	  assert (false);
 	}
     }
 
@@ -728,12 +731,12 @@ db_string_unique_prefix (const DB_VALUE * db_string1, const DB_VALUE * db_string
       int err_status2 = NO_ERROR;
       int c1 = 1, c2 = -1;
 
-      err_status2 = db_string_compare (db_string1, db_result, &tmp_result);
+      err_status2 = db_string_prefix_compare (db_string1, db_result, &tmp_result);
       if (err_status2 == NO_ERROR)
 	{
 	  c1 = db_get_int (&tmp_result);
 	}
-      err_status2 = db_string_compare (db_result, db_string2, &tmp_result);
+      err_status2 = db_string_prefix_compare (db_result, db_string2, &tmp_result);
       if (err_status2 == NO_ERROR)
 	{
 	  c2 = db_get_int (&tmp_result);
@@ -3676,6 +3679,132 @@ db_string_trim (const MISC_OPERAND tr_operand, const DB_VALUE * trim_charset, co
     }
 
   return error_status;
+}
+
+/*
+ * db_string_prefix_compare () - this function is similar with db_string_compare.
+ * 				 but if one of 2 string arguments is char-type
+ * 				 they are compared by the ignore-trailing-space rule.
+ * Arguments:
+ *                string1: Left side of compare.
+ *                string2: Right side of compare
+ *                result: Integer result of comparison.
+ *
+ * Returns: int
+ *
+ * Errors:
+ *    ER_QSTR_INVALID_DATA_TYPE   :
+ *        <string1> or <string2> are not character strings.
+ *
+ *    ER_QSTR_INCOMPATIBLE_CODE_SETS:
+ *        <string1> and <string2> have differing character code sets.
+ *
+ *    ER_QSTR_INCOMPATIBLE_COLLATIONS
+ *        <string1> and <string2> have incompatible collations.
+ */
+static int
+db_string_prefix_compare (const DB_VALUE * string1, const DB_VALUE * string2, DB_VALUE * result)
+{
+  QSTR_CATEGORY string1_category, string2_category;
+  int cmp_result = 0;
+  DB_TYPE str1_type, str2_type;
+
+  static bool ti = true;
+  static bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
+
+  /* Assert that DB_VALUE structures have been allocated. */
+  assert (string1 != (DB_VALUE *) NULL);
+  assert (string2 != (DB_VALUE *) NULL);
+  assert (result != (DB_VALUE *) NULL);
+
+  /* Categorize the two input parameters and check for errors. Verify that the parameters are both character strings.
+   * Verify that the input strings belong to compatible categories. */
+  string1_category = qstr_get_category (string1);
+  string2_category = qstr_get_category (string2);
+
+  str1_type = DB_VALUE_DOMAIN_TYPE (string1);
+  str2_type = DB_VALUE_DOMAIN_TYPE (string2);
+
+  if (!QSTR_IS_ANY_CHAR_OR_BIT (str1_type) || !QSTR_IS_ANY_CHAR_OR_BIT (str2_type))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
+      return ER_QSTR_INVALID_DATA_TYPE;
+    }
+  if (string1_category != string2_category)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INCOMPATIBLE_CODE_SETS, 0);
+      return ER_QSTR_INCOMPATIBLE_CODE_SETS;
+    }
+
+  /* A string which is NULL (not the same as a NULL string) is ordered less than a string which is not NULL.  Two
+   * strings which are NULL are ordered equivalently. If both strings are not NULL, then the strings themselves are
+   * compared. */
+  if (DB_IS_NULL (string1) && !DB_IS_NULL (string2))
+    {
+      cmp_result = -1;
+    }
+  else if (!DB_IS_NULL (string1) && DB_IS_NULL (string2))
+    {
+      cmp_result = 1;
+    }
+  else if (DB_IS_NULL (string1) && DB_IS_NULL (string2))
+    {
+      cmp_result = 0;
+    }
+  else if (db_get_string_codeset (string1) != db_get_string_codeset (string2))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INCOMPATIBLE_CODE_SETS, 0);
+      return ER_QSTR_INCOMPATIBLE_CODE_SETS;
+    }
+  else
+    {
+      int coll_id;
+
+      switch (string1_category)
+	{
+	case QSTR_CHAR:
+	case QSTR_NATIONAL_CHAR:
+
+	  assert (db_get_string_codeset (string1) == db_get_string_codeset (string2));
+
+	  LANG_RT_COMMON_COLL (db_get_string_collation (string1), db_get_string_collation (string2), coll_id);
+
+	  if (coll_id == -1)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INCOMPATIBLE_COLLATIONS, 0);
+	      return ER_QSTR_INCOMPATIBLE_COLLATIONS;
+	    }
+
+	  coll_id = db_get_string_collation (string1);
+	  assert (db_get_string_collation (string1) == db_get_string_collation (string2));
+
+	  if (!ignore_trailing_space)
+	    {
+	      ti = (QSTR_IS_FIXED_LENGTH (str1_type) || QSTR_IS_FIXED_LENGTH (str2_type));
+	    }
+	  cmp_result = QSTR_COMPARE (coll_id, DB_GET_UCHAR (string1), (int) db_get_string_size (string1),
+				     DB_GET_UCHAR (string2), (int) db_get_string_size (string2), ti);
+	  break;
+	case QSTR_BIT:
+	  cmp_result = varbit_compare (DB_GET_UCHAR (string1), (int) db_get_string_size (string1),
+				       DB_GET_UCHAR (string2), (int) db_get_string_size (string2));
+	  break;
+	default:		/* QSTR_UNKNOWN */
+	  assert (false);
+	}
+    }
+
+  if (cmp_result < 0)
+    {
+      cmp_result = -1;
+    }
+  else if (cmp_result > 0)
+    {
+      cmp_result = 1;
+    }
+  db_make_int (result, cmp_result);
+
+  return NO_ERROR;
 }
 
 /* qstr_trim () -

@@ -126,6 +126,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/resource_tracker.cpp
   ${BASE_DIR}/tz_compile.c
   ${BASE_DIR}/tz_support.c
+  ${BASE_DIR}/ddl_log.c
   )
 set(BASE_HEADERS
   ${BASE_DIR}/error_code.h
@@ -156,6 +157,7 @@ set(BASE_HEADERS
   ${BASE_DIR}/printer.hpp
   ${BASE_DIR}/resource_tracker.hpp
   ${BASE_DIR}/semaphore.hpp
+  ${BASE_DIR}/ddl_log.h
 )
 
 set(HEAPLAYER_SOURCES

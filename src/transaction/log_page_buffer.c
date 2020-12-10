@@ -8284,6 +8284,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
   char tmp_logfiles_from_backup[PATH_MAX];
   char bk_mk_path[PATH_MAX];
   char bkpath_without_units[PATH_MAX];
+  char backup_dir_path[PATH_MAX];
   char *volume_name_p;
   struct stat stat_buf;
   int error_code = NO_ERROR, success = NO_ERROR;
@@ -8492,7 +8493,27 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 	   * The tde key file (_keys) which is going to be used during restart
 	   * is the thing in the first time (the highest level).
 	   */
-	  fileio_make_backup_name (bkpath_without_units, nopath_name, session->bkup.current_path,
+
+	  /* If backup path is not a directory, extract backup key file on the directory that contains the backup path */
+	  if (stat (session->bkup.current_path, &stat_buf) != 0)
+	    {
+	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_CANNOT_ACCESS_BACKUP, 1,
+		      session->bkup.current_path);
+	      error_code = ER_LOG_CANNOT_ACCESS_BACKUP;
+	      LOG_CS_EXIT (thread_p);
+	      goto error;
+	    }
+	  else if (S_ISDIR (stat_buf.st_mode))
+	    {
+	      memcpy (backup_dir_path, session->bkup.current_path, PATH_MAX);
+	    }
+	  else
+	    {
+	      /* it might be pipe, and others like raw device is not tested */
+	      fileio_get_directory_path (backup_dir_path, session->bkup.current_path);
+	    }
+
+	  fileio_make_backup_name (bkpath_without_units, nopath_name, backup_dir_path,
 				   (FILEIO_BACKUP_LEVEL) r_args->level, FILEIO_NO_BACKUP_UNITS);
 	  tde_make_keys_file_fullname (bk_mk_path, bkpath_without_units, true);
 	  if (r_args->keys_file_path[0] == '\0')	/* the path given by user is prioritized */
@@ -8545,9 +8566,9 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 							  (FILEIO_BACKUP_LEVEL) r_args->level, to_volname);
 		  volume_name_p = tmp_logfiles_from_backup;
 		}
-	      else if (to_volid == LOG_DBTDE_KEYS_VOLID && first_time)
+	      else if (to_volid == LOG_DBTDE_KEYS_VOLID)
 		{
-		  /* Only the first _keys file is being restored. */
+		  /* backup mk file is extracted on the backup volume path */
 		  volume_name_p = bk_mk_path;
 		}
 	      else

@@ -269,7 +269,7 @@ Wenn die Schlüsseldatei verloren geht, funktioniert die Wiederherstellung (rest
 33 Das Sicherungsvolume enthält die Schlüsseldatei (_keys).\n\
 Wenn eine Tabelle TDE-verschlüsselt ist, kann dies zu einem Sicherheitsproblem für diese Daten führen.\n\
 Verwenden Sie die Option --separate-keys, um die Schlüsseldatei zu trennen, um dies zu verhindern.\n
-34 FEHLER: FIFIO-Datei kann nicht als Zielpfad mit separatem Schlüssel verwendet werden.\n
+34 FEHLER: FIFO-Datei kann nicht als Zielpfad mit separatem Schlüssel verwendet werden.\n
 60 \
 backupdb: Datenbank sichern.\n\
 Anwendung: %1$s backupdb [OPTION] Datenbanknamen\n\

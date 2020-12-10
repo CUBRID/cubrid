@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation
+ * Copyright (C) 2016 CUBRID Corporation
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -76,7 +77,9 @@
 #include "dbtype.h"
 #include "memory_alloc.h"
 #include "object_primitive.h"
-
+#include "ddl_log.h"
+#include "parse_tree.h"
+#include "api_compat.h"
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
@@ -741,6 +744,7 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
   int is_first_out = 0;
   char *tmp;
   int result_cache_lifetime;
+  PT_NODE *statement = NULL;
 
   if ((flag & CCI_PREPARE_UPDATABLE) && (flag & CCI_PREPARE_HOLDABLE))
     {
@@ -827,6 +831,15 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
 	  goto prepare_error;
 	}
 
+      if (session->statements != NULL)
+	{
+	  statement = session->statements[0];
+	  if (statement != NULL)
+	    {
+	      logddl_set_stmt_type (statement->node_type);
+	    }
+	}
+
       stmt_id = db_compile_statement (session);
       if (stmt_id < 0)
 	{
@@ -854,6 +867,11 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
     {
       err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
       goto prepare_error;
+    }
+
+  if (session->statements && (statement = session->statements[0]))
+    {
+      logddl_set_stmt_type (statement->node_type);
     }
 
   updatable_flag = flag & CCI_PREPARE_UPDATABLE;
@@ -2009,6 +2027,8 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
   net_buf_cp_int (net_buf, 0, NULL);	/* result code */
   net_buf_cp_int (net_buf, argc, &num_query_offset);	/* result msg. num_query */
 
+  logddl_set_execute_type (LOGDDL_RUN_EXECUTE_BATCH_FUNC);
+
   for (query_index = 0; query_index < argc; query_index++)
     {
       use_plan_cache = false;
@@ -2019,6 +2039,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
       if (sql_stmt != NULL)
 	{
 	  cas_log_write_query_string_nonl (sql_stmt, strlen (sql_stmt));
+	  logddl_set_sql_text (sql_stmt, (int) strlen (sql_stmt));
 	}
 
       session = db_open_buffer (sql_stmt);
@@ -2043,6 +2064,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
 	  cas_log_write2 ("");
 	  goto batch_error;
 	}
+      logddl_set_stmt_type (stmt_type);
 
       SQL_LOG2_EXEC_BEGIN (as_info->cur_sql_log2, stmt_id);
       db_get_cacheinfo (session, stmt_id, &use_plan_cache, &use_query_cache);
@@ -2096,6 +2118,8 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
 	{
 	  db_commit_transaction ();
 	}
+      logddl_set_msg ("execute_batch %d%s", query_index + 1, auto_commit_mode == TRUE ? " auto_commit" : "");
+      logddl_write ();
       continue;
 
     batch_error:
@@ -2104,6 +2128,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
       err_code = db_error_code ();
       if (err_code < 0)
 	{
+	  logddl_set_err_code (err_code);
 	  if (auto_commit_mode == FALSE
 	      && (ER_IS_SERVER_DOWN_ERROR (err_code) || ER_IS_ABORTED_DUE_TO_DEADLOCK (err_code)))
 	    {
@@ -2146,6 +2171,8 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
 	{
 	  db_abort_transaction ();
 	}
+      logddl_set_msg ("execute_batch %d%s", query_index + 1, auto_commit_mode == TRUE ? " auto_rollback" : "");
+      logddl_write ();
 
       if (err_code == ER_INTERRUPTED)
 	{
@@ -2158,13 +2185,16 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
     {
       net_buf_cp_int (net_buf, shm_shard_id, NULL);
     }
-
+  logddl_write_end ();
   return 0;
 
 execute_batch_error:
   NET_BUF_ERR_SET (net_buf);
   errors_in_transaction++;
 
+  logddl_set_msg ("execute_batch %d%s", query_index + 1, auto_commit_mode == TRUE ? " auto_rollback" : "");
+  logddl_write ();
+  logddl_write_end ();
   return err_code;
 }
 
@@ -9575,12 +9605,14 @@ ux_auto_commit (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
       cas_log_write (0, false, "auto_commit %s", tran_was_latest_query_committed ()? "(local)" : "(server)");
       err_code = ux_end_tran (CCI_TRAN_COMMIT, true);
       cas_log_write (0, false, "auto_commit %d", err_code);
+      logddl_set_msg ("auto_commit %d", err_code);
     }
   else if (req_info->need_auto_commit == TRAN_AUTOROLLBACK)
     {
       cas_log_write (0, false, "auto_commit %s", tran_was_latest_query_aborted ()? "(local)" : "(server)");
       err_code = ux_end_tran (CCI_TRAN_ROLLBACK, true);
       cas_log_write (0, false, "auto_rollback %d", err_code);
+      logddl_set_msg ("auto_rollback %d", err_code);
     }
   else
     {

@@ -269,7 +269,7 @@ Dacă fișierul cheie este pierdut, este posibil ca restaurarea (restaurat) să 
 33 Volumul de rezervă include fișierul cheie (_keys).\n\
 Dacă un tabel este criptat TDE, acesta poate cauza o problemă de securitate pentru datele respective.\n\
 Pentru a separa fișierul cheie pentru al preveni, utilizați opțiunea --separate-keys.\n
-34 EROARE: Nu se poate utiliza fișierul FIFIO ca cale de destinație cu cheie separată.\n
+34 EROARE: Nu se poate utiliza fișierul FIFO ca cale de destinație cu cheie separată.\n
 60 \
 backupdb: Creează o copie de rezervă a bazei de date.\n\
 utilizare: %1$s backupdb [optiune] nume-bază-de-date\n\

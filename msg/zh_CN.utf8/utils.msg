@@ -269,7 +269,7 @@ $set 2 MSGCAT_UTIL_SET_BACKUPDB
 33 备份卷包括密钥文件（_keys）。\n\
 如果表经过TDE加密，则可能导致该数据的安全性问题。\n\
 要分离密钥文件以防止该文件，请使用--separate-keys选项。\n
-34 错误:无法将FIFIO文件用作带有分隔键的目标路径。\n
+34 错误:无法将FIFO文件用作带有分隔键的目标路径。\n
 60 \
 backupdb: 备份一个数据库.\n\
 用法: %1$s backupdb [选项] 数据库名\n\

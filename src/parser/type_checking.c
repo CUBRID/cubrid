@@ -24077,6 +24077,10 @@ pt_fix_enumeration_comparison (PARSER_CONTEXT * parser, PT_NODE * expr)
   op = expr->info.expr.op;
   arg1 = expr->info.expr.arg1;
   arg2 = expr->info.expr.arg2;
+  if (arg1->type_enum == PT_TYPE_NULL || arg2->type_enum == PT_TYPE_NULL)
+    {
+      return expr;
+    }
 
   switch (op)
     {
@@ -24374,7 +24378,7 @@ static PT_TYPE_ENUM
 pt_wrap_type_for_collation (const PT_NODE * arg1, const PT_NODE * arg2, const PT_NODE * arg3,
 			    PT_TYPE_ENUM * wrap_type_collection)
 {
-  PT_TYPE_ENUM common_type = PT_TYPE_CHAR;
+  PT_TYPE_ENUM common_type = (PT_IS_COLLECTION_TYPE (arg1->type_enum)) ? PT_TYPE_CHAR : PT_TYPE_VARCHAR;
   PT_TYPE_ENUM arg1_type = PT_TYPE_NONE, arg2_type = PT_TYPE_NONE, arg3_type = PT_TYPE_NONE;
 
   if (arg1)

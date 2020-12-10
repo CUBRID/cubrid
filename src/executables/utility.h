@@ -956,6 +956,8 @@ typedef struct _ha_config
 #define UTIL_OPTION_CHECKSUMDB			"checksumdb"
 #define UTIL_OPTION_TDE			        "tde"
 
+#define HIDDEN_CS_MODE_S                        15000
+
 /* createdb option list */
 #define CREATE_PAGES_S                          'p'
 #define CREATE_PAGES_L                          "pages"
@@ -1604,7 +1606,7 @@ typedef struct _ha_config
 #define TDE_PRINT_KEY_VALUE_L "print-value"
 #define TDE_SA_MODE_S         'S'
 #define TDE_SA_MODE_L         "SA-mode"
-#define TDE_CS_MODE_S         14001
+#define TDE_CS_MODE_S         HIDDEN_CS_MODE_S
 #define TDE_CS_MODE_L         "CS-mode"
 #define TDE_CHANGE_KEY_S      'c'
 #define TDE_CHANGE_KEY_L      "change-key"
