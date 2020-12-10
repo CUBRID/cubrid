@@ -211,7 +211,7 @@ main (int argc, char *argv[])
 	    goto exit;
 	  }
 
-	status = javasp_start_server (jsp_info, db_name, pathname.c_str ());
+	status = javasp_start_server (jsp_info, db_name, pathname);
 	if (status == NO_ERROR)
 	  {
 	    while (true)
@@ -298,7 +298,7 @@ javasp_start_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_na
       /* create a new session */
       setsid ();
 #endif
-
+      er_clear (); // clear error before string JVM
       status = jsp_start_server (db_name.c_str (), path.c_str (), prm_port);
 
       if (status == NO_ERROR)
@@ -436,7 +436,6 @@ exit:
 static int
 javasp_ping_server (const int server_port, char *buf)
 {
-  int status = NO_ERROR;
   OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_request;
   char *request = OR_ALIGNED_BUF_START (a_request);
   char *ptr = NULL;
@@ -445,7 +444,6 @@ javasp_ping_server (const int server_port, char *buf)
   socket = jsp_connect_server (server_port);
   if (socket != INVALID_SOCKET)
     {
-
       ptr = or_pack_int (request, SP_CODE_UTIL_PING);
       ptr = or_pack_int (ptr, SP_CODE_UTIL_TERMINATE_THREAD);
 
@@ -453,7 +451,6 @@ javasp_ping_server (const int server_port, char *buf)
       if (nbytes != (int) sizeof (int) * 2)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
-	  status = er_errid ();
 	  goto exit;
 	}
 
@@ -462,7 +459,6 @@ javasp_ping_server (const int server_port, char *buf)
       if (nbytes != (int) sizeof (int))
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
-	  status = er_errid ();
 	  goto exit;
 	}
       res_size = ntohl (res_size);
@@ -471,15 +467,16 @@ javasp_ping_server (const int server_port, char *buf)
       if (nbytes != res_size)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
-	  status = er_errid ();
 	  goto exit;
 	}
     }
 
 exit:
-  jsp_disconnect_server (socket);
-
-  return status;
+  if (socket != INVALID_SOCKET)
+    {
+      jsp_disconnect_server (socket);
+    }
+  return er_errid ();
 }
 
 static void
