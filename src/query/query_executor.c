@@ -15100,6 +15100,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 
   DB_VALUE *level_valp = NULL, *isleaf_valp = NULL, *iscycle_valp = NULL;
   DB_VALUE *parent_pos_valp = NULL, *index_valp = NULL;
+  REGU_VARIABLE_LIST regu_list;
 
   int level_value = 0, isleaf_value = 0, iscycle_value = 0;
   char *son_index = NULL, *father_index = NULL;	/* current index and father */
@@ -15152,6 +15153,17 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
   assert (xasl->spec_list->s_id.status == S_CLOSED);
   qexec_replace_prior_regu_vars_pred (thread_p, xasl->spec_list->where_pred, xasl);
   qexec_replace_prior_regu_vars_pred (thread_p, xasl->spec_list->where_key, xasl);
+
+  if (xasl->spec_list->type == TARGET_LIST && xasl->spec_list->s.list_node.list_regu_list_probe)
+    {
+      regu_list = xasl->spec_list->s.list_node.list_regu_list_probe;
+      while (regu_list)
+	{
+	  qexec_replace_prior_regu_vars (thread_p, &regu_list->value, xasl);
+	  regu_list = regu_list->next;
+	}
+    }
+
   if (xasl->spec_list->access == ACCESS_METHOD_INDEX && xasl->spec_list->indexptr)
     {
       key_info_p = &xasl->spec_list->indexptr->key_info;
