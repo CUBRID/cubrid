@@ -2159,8 +2159,6 @@ public class UStatement {
 				}
 			}
 			tuples = null;
-
-			getResCache().setExpire();
 		}
 	}
 	
@@ -2172,6 +2170,8 @@ public class UStatement {
 			tuple_list = null;
 			fetched_number = null;
 			first_cursor = null;
+			
+			getResCache().setExpire();
 		}
 		else {
 			closeTuples(tuples);

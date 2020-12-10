@@ -55,10 +55,13 @@ public class UStatementCacheData {
 			this.fetched = cache_data.fetched;
 			this.first = cache_data.first;
 			this.resultInfo = cache_data.resultInfo;
-			if (resultInfo.length == 1)
-				this.srvCacheTime = resultInfo[0].getSrvCacheTime();
-			else
-				this.srvCacheTime = 0L;
+			if (resultInfo != null) {
+				if (resultInfo.length == 1)
+					this.srvCacheTime = resultInfo[0].getSrvCacheTime();
+				else
+					this.srvCacheTime = 0L;
+			}
+			else this.srvCacheTime = 0L;
 		}
 	}
 
