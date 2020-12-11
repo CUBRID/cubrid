@@ -15223,6 +15223,13 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	}
     }
 
+  /* start the scanner on "input" */
+  if (qexec_open_scan (thread_p, xasl->spec_list, xasl->val_list, &xasl_state->vd, false, true, false,
+		       false, &xasl->spec_list->s_id, xasl_state->query_id, S_SELECT, false, NULL) != NO_ERROR)
+    {
+      GOTO_EXIT_ON_ERROR;
+    }
+
   /* we have all list files, let's begin */
 
   while (listfile1->tuple_cnt > 0)
@@ -15241,13 +15248,6 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 
       /* start parents list scanner */
       if (qfile_open_list_scan (listfile1, &lfscan_id) != NO_ERROR)
-	{
-	  GOTO_EXIT_ON_ERROR;
-	}
-
-      /* start the scanner on "input" */
-      if (qexec_open_scan (thread_p, xasl->spec_list, xasl->val_list, &xasl_state->vd, false, true, false,
-			   false, &xasl->spec_list->s_id, xasl_state->query_id, S_SELECT, false, NULL) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
@@ -15435,14 +15435,12 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	    {
 	      GOTO_EXIT_ON_ERROR;
 	    }
+	  qexec_end_scan (thread_p, xasl->spec_list);
 
 	  if (has_order_siblings_by)
 	    {
 	      qfile_close_list (thread_p, listfile2_tmp);
 	    }
-
-	  qexec_end_scan (thread_p, xasl->spec_list);
-	  qexec_close_scan (thread_p, xasl->spec_list);
 
 	  if (!parent_tuple_added)
 	    {
@@ -15602,6 +15600,9 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 
       listfile2 = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0);
     }
+
+  qexec_end_scan (thread_p, xasl->spec_list);
+  qexec_close_scan (thread_p, xasl->spec_list);
 
   if (listfile1 != connect_by->start_with_list_id)
     {
