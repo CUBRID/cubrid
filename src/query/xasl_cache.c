@@ -91,7 +91,7 @@ typedef struct xcache_cleanup_candidate XCACHE_CLEANUP_CANDIDATE;
 struct xcache_cleanup_candidate
 {
   XASL_ID xid;
-  XASL_CACHE_ENTRY *xcache;
+  struct timeval time_last_used;
 };
 
 // *INDENT-OFF*
@@ -1764,8 +1764,7 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
       /* make sure to start from beginning */
       iter.restart ();
 
-      /*
-       * Iterate through hash, check entry OID's and if one matches the argument, mark the entry for delete and save
+      /* Iterate through hash, check entry OID's and if one matches the argument, mark the entry for delete and save
        * it in delete_xids buffer. We cannot delete them from hash while iterating, because the one lock-free
        * transaction can be used for one hash entry only.
        */
@@ -2201,11 +2200,11 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
       while ((xcache_entry = iter.iterate ()) != NULL)
 	{
 	  candidate.xid = xcache_entry->xasl_id;
-	  candidate.xcache = xcache_entry;
-	  if (candidate.xid.cache_flag > 0 || (candidate.xid.cache_flag & XCACHE_ENTRY_FLAGS_MASK))
+	  candidate.time_last_used = xcache_entry->time_last_used;
+
+	  if (candidate.xid.cache_flag & XCACHE_ENTRY_FLAGS_MASK)
 	    {
-	      /* Either marked for delete or recompile, fixed (prepared)
-	         or already recompiled. Not a valid candidate. */
+	      /* Either marked for delete or recompile, or already recompiled. Not a valid candidate. */
 	      continue;
 	    }
 
@@ -2223,9 +2222,10 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
       while ((xcache_entry = iter.iterate ()) != NULL && count < xcache_Soft_capacity)
 	{
 	  candidate.xid = xcache_entry->xasl_id;
-	  candidate.xcache = xcache_entry;
-	  if (candidate.xid.cache_flag > 0 || (candidate.xid.cache_flag & XCACHE_ENTRY_FLAGS_MASK)
-	      || TIME_DIFF_SEC (current_time, candidate.xcache->time_last_used) <= xcache_Time_threshold)
+	  candidate.time_last_used = xcache_entry->time_last_used;
+
+	  if (candidate.xid.cache_flag & XCACHE_ENTRY_FLAGS_MASK
+	      || TIME_DIFF_SEC (current_time, candidate.time_last_used) <= xcache_Time_threshold)
 	    {
 	      continue;
 	    }
@@ -2315,8 +2315,8 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
 static BH_CMP_RESULT
 xcache_compare_cleanup_candidates (const void *left, const void *right, BH_CMP_ARG ignore_arg)
 {
-  struct timeval left_timeval = ((XCACHE_CLEANUP_CANDIDATE *) left)->xcache->time_last_used;
-  struct timeval right_timeval = ((XCACHE_CLEANUP_CANDIDATE *) right)->xcache->time_last_used;
+  struct timeval left_timeval = ((XCACHE_CLEANUP_CANDIDATE *) left)->time_last_used;
+  struct timeval right_timeval = ((XCACHE_CLEANUP_CANDIDATE *) right)->time_last_used;
 
   /* Lesser means placed in binary heap. So return BH_LT for older timeval. */
   if (left_timeval.tv_sec < right_timeval.tv_sec)
