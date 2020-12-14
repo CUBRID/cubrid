@@ -868,7 +868,7 @@ public class UStatement {
 			stmt_cache_data = cacheData;
 			tuples = cacheData.tuples.get(0);
 			return;
-        }
+		}
 		// --
 		
 		readResultInfo(inBuffer);
@@ -926,7 +926,6 @@ public class UStatement {
 		        isOnlyPlan, isHoldable, isSensitive);
 		currentFirstCursor = -1;
 		fetchedTupleNumber = 0;
-		fetchedSize = 0;
 		if (firstStmtType == CUBRIDCommandType.CUBRID_STMT_CALL_SP) {
 			cursorPosition = 0;
 		} else {
