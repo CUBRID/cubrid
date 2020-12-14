@@ -15339,10 +15339,10 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 		    {
 		      GOTO_EXIT_ON_ERROR;
 		    }
-		}
-	      if (ev_res != V_TRUE)
-		{
-		  continue;
+		  else if (ev_res != V_TRUE)
+		    {
+		      continue;
+		    }
 		}
 
 	      cycle = 0;
