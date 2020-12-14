@@ -872,6 +872,11 @@ pt_make_connect_by_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NO
 	  PT_INTERNAL_ERROR (parser, "generate hq(join) xasl");
 	  return NULL;
 	}
+      /* if the user asked for NO_HASH_LIST_SCAN, force it on all list scan */
+      if (select_node->info.query.q.select.hint & PT_HINT_NO_HASH_LIST_SCAN)
+	{
+	  xasl->spec_list->s.list_node.hash_list_scan_yn = 0;
+	}
     }
 
   /* sepparate after CONNECT BY predicate regu list */
@@ -3036,8 +3041,13 @@ pt_split_hash_attrs_for_HQ (PARSER_CONTEXT * parser, PT_NODE * pred, PT_NODE ** 
 
 	  CAST_POINTER_TO_NODE (node);
 
-	  if (!PT_IS_EXPR_NODE_WITH_OPERATOR(node, PT_EQ))
+	  if (!PT_IS_EXPR_NODE_WITH_OPERATOR(node, PT_EQ) || node->or_next)
 	    {
+	      /* HASH LIST SCAN for HQ is possible under the following conditions */
+	      /* 1. CNF predicate (node is NOT PT_AND, PT_OR) */
+	      /* 2. only equal operation */
+	      /* 3. predicate without OR (or_next is null) */
+	      /* 4. symmetric predicate (having PRIOR, probe. having NAME, build. Having these two makes it unhashable) */
 	      continue;
 	    }
 	  else
