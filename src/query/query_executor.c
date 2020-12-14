@@ -15325,6 +15325,26 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 		{
 		  break;
 		}
+
+	      /* evaluate CONNECT BY predicate */
+	      if (xasl->if_pred != NULL)
+		{
+		  if (xasl->level_val)
+		    {
+		      /* set level_val to children's level */
+		      db_make_int (xasl->level_val, level_value + 1);
+		    }
+		  ev_res = eval_pred (thread_p, xasl->if_pred, &xasl_state->vd, NULL);
+		  if (ev_res == V_ERROR)
+		    {
+		      GOTO_EXIT_ON_ERROR;
+		    }
+		}
+	      if (ev_res != V_TRUE)
+		{
+		  continue;
+		}
+
 	      cycle = 0;
 	      /* we found a qualified tuple; now check for cycle */
 	      if (qexec_check_for_cycle (thread_p, xasl->outptr_list, tuple_rec.tpl, &type_list, listfile0, &cycle)
