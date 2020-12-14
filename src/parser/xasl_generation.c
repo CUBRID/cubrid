@@ -864,8 +864,8 @@ pt_make_connect_by_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NO
       regu_attributes_build = pt_to_regu_variable_list (parser, build_attrs, UNBOX_AS_VALUE, xasl->val_list, NULL);
       regu_attributes_probe = pt_to_regu_variable_list (parser, probe_attrs, UNBOX_AS_VALUE, xasl->val_list, NULL);
 
-      /* make list scan spec */
-      xasl->spec_list = pt_make_list_access_spec (xasl, ACCESS_METHOD_SEQUENTIAL, NULL, xasl->if_pred, connect_by->regu_list_pred,
+      /* make list scan spec. data filter will be evaluated at if_pred in qexec_execute_connect_by() */
+      xasl->spec_list = pt_make_list_access_spec (xasl, ACCESS_METHOD_SEQUENTIAL, NULL, NULL, connect_by->regu_list_pred,
 			      connect_by->regu_list_rest, regu_attributes_build, regu_attributes_probe);
       if (xasl->spec_list == NULL)
 	{
