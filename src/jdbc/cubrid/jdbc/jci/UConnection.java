@@ -1519,7 +1519,7 @@ public abstract class UConnection {
 	}
 	
 	public int getClientCacheSize() { /* unit = MByte */
-		return connectionProperties.getClientCacheSize()*1024*1024;
+		return connectionProperties.getClientCacheSize() * 1024 * 1024;
 	}
 
 	public void setCasIp (String casIp) {

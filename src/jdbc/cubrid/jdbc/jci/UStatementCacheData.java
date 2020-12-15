@@ -91,7 +91,7 @@ public class UStatementCacheData {
 		return size;
 	}
 	
-	public void setCacheData(UResultTuple[] tuples, int firstCursor, int fetchedTuples, int size) {
+	public void addCacheData(UResultTuple[] tuples, int firstCursor, int fetchedTuples, int size) {
 		this.tuples.add(tuples);
 		this.fetched.add(fetchedTuples);
 		this.first.add(firstCursor);

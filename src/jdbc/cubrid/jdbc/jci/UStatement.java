@@ -841,7 +841,7 @@ public class UStatement {
 		if (stmt_cache_data != null) {
 			int total_size = fetchedSize + relatedConnection.getUrlCache().getCacheSize();
 			if (total_size < relatedConnection.getUrlCache().getLimit()) {
-				stmt_cache_data.setCacheData(tuples, currentFirstCursor, fetchedTupleNumber, fetchedSize);
+				stmt_cache_data.addCacheData(tuples, currentFirstCursor, fetchedTupleNumber, fetchedSize);
 				relatedConnection.getUrlCache().addCacheSize(fetchedSize);
 			}
 		}
@@ -866,7 +866,7 @@ public class UStatement {
 			/* get data from cache */
 			getCacheData(cacheData);
 			stmt_cache_data = cacheData;
-			tuples = cacheData.tuples.get(0);
+			tuples = cacheData.getTuples(0);
 			return;
 		}
 		// --
@@ -2169,8 +2169,8 @@ public class UStatement {
 	public void closeResult() {
 		if (stmt_cache_data != null) {
 			getResCache().setExpire();
-			for (int n = 0; n < stmt_cache_data.tuples.size(); n++) {
-				if (tuples == stmt_cache_data.tuples.get(n)) {
+			for (int n = stmt_cache_data.tuples.size(); n > 0; n--) {
+				if (tuples == stmt_cache_data.tuples.get(n - 1)) {
 					/* do not remove tuples is cached
 					   the tuples will be removed on a condition
 					   in daemon thread of driver
@@ -2496,9 +2496,9 @@ public class UStatement {
 	public void getCacheData(UStatementCacheData cache_data) {
 		totalTupleNumber = cache_data.tuple_count;
 		resultInfo = cache_data.resultInfo;
-		currentFirstCursor = cache_data.first.get(0);
+		currentFirstCursor = cache_data.getFirstCursor(0);
 		cursorPosition = 0;
-		fetchedTupleNumber = cache_data.fetched.get(0);
+		fetchedTupleNumber = cache_data.getFetchNumber(0);
 		executeResult = totalTupleNumber;
 		realFetched = true;
 	}
