@@ -137,6 +137,7 @@ EXPORTS
     tr_map_trigger
     er_init
     er_final
+    er_clear
     jsp_connect_server
     jsp_disconnect_server
     jsp_writen
