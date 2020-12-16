@@ -81,6 +81,11 @@ public class UStmtCache {
 		}
 	}
 
+	/* for QA test case */
+	int remove_expired_res(long checkTime) {
+		return 0;
+	}
+	
 	int remove_expired_res(long checkTime, UUrlCache uc) {
 		UResCache rc;
 		UResCache victim = null;
