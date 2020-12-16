@@ -3048,6 +3048,7 @@ pt_split_hash_attrs_for_HQ (PARSER_CONTEXT * parser, PT_NODE * pred, PT_NODE ** 
 	      /* 2. only equal operation */
 	      /* 3. predicate without OR (or_next is null) */
 	      /* 4. symmetric predicate (having PRIOR, probe. having NAME, build. Having these two makes it unhashable) */
+	      /* 5. subqyery is not allowed in syntax check */
 	      continue;
 	    }
 	  else
