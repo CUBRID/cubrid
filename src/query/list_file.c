@@ -5121,35 +5121,6 @@ qfile_assign_list_cache (void)
 }
 
 /*
- * qfile_clear_cache_list () - Clear out list cache hash table
- *   return:
- *   list_ht_no(in)     :
- *   release(in)        :
- */
-int
-qfile_clear_cache_list (THREAD_ENTRY * thread_p, int list_ht_no)
-{
-  if (QFILE_IS_LIST_CACHE_DISABLED)
-    {
-      return ER_FAILED;
-    }
-
-  if (qfile_List_cache.n_hts == 0 || qfile_List_cache.ht_assigned[list_ht_no] == false)
-    {
-      return ER_FAILED;
-    }
-
-  if (csect_enter (thread_p, CSECT_QPROC_LIST_CACHE, INF_WAIT) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  (void) mht_clear (qfile_List_cache.list_hts[list_ht_no], NULL, NULL);
-
-  csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
-}
-
-/*
  * qfile_clear_list_cache () - Clear out list cache hash table
  *   return:
  *   list_ht_no(in)     :
