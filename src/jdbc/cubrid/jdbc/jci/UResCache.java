@@ -34,22 +34,30 @@ package cubrid.jdbc.jci;
 public class UResCache {
 	UBindKey key;
 
-	private boolean used;
+	private boolean inUse;
 	private UStatementCacheData cache_data;
 
 	public UResCache(UBindKey key) {
 		this.key = key;
 
 		cache_data = null;
-		used = true;
+		inUse = true;
 	}
 
 	public UStatementCacheData getCacheData() {
-		used = true;
+		inUse = true;
 
 		return (new UStatementCacheData(cache_data));
 	}
 
+	public long getCacheTime() {
+		return cache_data.srvCacheTime;
+	}
+
+	public int getCacheSize() {
+		return cache_data.size;
+	}
+	
 	public void saveCacheData(UStatementCacheData cd) {
 		if (cd.srvCacheTime <= 0)
 			return;
@@ -62,12 +70,17 @@ public class UResCache {
 	}
 
 	public void setExpire() {
-		cache_data.srvCacheTime = 0;
+		inUse = false;
 	}
 	
 	boolean isExpired(long checkTime) {
-		if (cache_data != null && used == false) {
-			return true;
+		if (cache_data != null && !inUse) {
+			if (checkTime > cache_data.srvCacheTime) {
+				return true;
+			}
+			else {
+				return false;
+			}
 		} else {
 			return false;
 		}

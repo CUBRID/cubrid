@@ -1517,6 +1517,10 @@ public abstract class UConnection {
 	public boolean getOracleStyleEmpltyString() {
 		return connectionProperties.getOracleStyleEmptyString();
 	}
+	
+	public int getClientCacheSize() { /* unit = MByte */
+		return connectionProperties.getClientCacheSize() * 1024 * 1024;
+	}
 
 	public void setCasIp (String casIp) {
 		this.casIp = casIp;
@@ -1881,6 +1885,7 @@ public abstract class UConnection {
 		if (url_cache == null) {
 			UUrlHostKey key = new UUrlHostKey(casIp, casPort, dbname, user);
 			url_cache = UJCIManager.getUrlCache(key);
+			url_cache.setLimit(getClientCacheSize());
 		}
 		return url_cache;
 	}

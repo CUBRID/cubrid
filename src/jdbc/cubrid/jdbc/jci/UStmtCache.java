@@ -81,24 +81,37 @@ public class UStmtCache {
 		}
 	}
 
+	/* for QA test case */
 	int remove_expired_res(long checkTime) {
+		return 0;
+	}
+	
+	int remove_expired_res(long checkTime, UUrlCache uc) {
 		UResCache rc;
+		UResCache victim = null;
+		int v_idx = -1;
 
 		for (int i = 0; i < res_cache_remove_list.size(); i++) {
 			rc = res_cache_remove_list.get(i);
 			if (rc.isExpired(checkTime)) {
-				res_cache_table.remove(rc.key);
-
-				synchronized (res_cache_remove_list) {
-				    	UResCache lastObj = res_cache_remove_list
-							.remove(res_cache_remove_list.size() - 1);
-					if (i < res_cache_remove_list.size()) {
-						res_cache_remove_list.set(i, lastObj);
-						i--;
-					}
+				if (victim == null || rc.getCacheTime() < victim.getCacheTime()) {
+					victim = rc;
+					v_idx = i;
 				}
 			}
 		}
+
+		if (victim != null) {
+			uc.addCacheSize(-victim.getCacheSize());
+			synchronized (res_cache_remove_list) {
+				res_cache_table.remove(victim.key);
+				UResCache lastObj = res_cache_remove_list.remove(res_cache_remove_list.size() - 1);
+				if (v_idx < res_cache_remove_list.size()) {
+					res_cache_remove_list.set(v_idx, lastObj);
+				}
+			}
+		}
+
 		return res_cache_remove_list.size();
 	}
 }

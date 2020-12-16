@@ -274,7 +274,6 @@ public class CUBRIDResultSet implements ResultSet {
 						}
 						is_closed = true;
 
-						u_stmt.moveCursor(0, 0);
 						clearCurrentRow();
 						if (stmt.getResultSetHoldability() == ResultSet.HOLD_CURSORS_OVER_COMMIT) {
 							u_stmt.closeCursor();
@@ -1433,7 +1432,7 @@ public class CUBRIDResultSet implements ResultSet {
 
 		clearCurrentRow();
 
-		u_stmt.reFresh();
+		u_stmt.reFetch();
 		error = u_stmt.getRecentError();
 
 		switch (error.getErrorCode()) {
