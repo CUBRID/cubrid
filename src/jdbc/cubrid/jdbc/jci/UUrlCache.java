@@ -44,7 +44,7 @@ public class UUrlCache {
 		stmt_cache_table = new Hashtable<String, UStmtCache>(100, 5);
 		stmt_cache_remove_list = new ArrayList<UStmtCache>(100);
 		max_size = 1;
-		cache_size.set(0);
+		cache_size = new AtomicInteger();
 	}
 
 	void setLimit(int limit) {
