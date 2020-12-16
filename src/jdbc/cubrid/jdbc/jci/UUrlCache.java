@@ -32,17 +32,19 @@ package cubrid.jdbc.jci;
 
 import java.util.ArrayList;
 import java.util.Hashtable;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class UUrlCache {
 	private Hashtable<String, UStmtCache> stmt_cache_table;
 	private ArrayList<UStmtCache> stmt_cache_remove_list;
 	private int max_size;
-	private int cache_size;
+	private AtomicInteger cache_size;
 
 	UUrlCache() {
 		stmt_cache_table = new Hashtable<String, UStmtCache>(100, 5);
 		stmt_cache_remove_list = new ArrayList<UStmtCache>(100);
 		max_size = 1;
+		cache_size.set(0);
 	}
 
 	void setLimit(int limit) {
@@ -50,7 +52,7 @@ public class UUrlCache {
 	}
 
 	void addCacheSize(int value) {
-		cache_size += value;
+		cache_size.addAndGet(value);
 	}
 
 	int getLimit() {
@@ -58,7 +60,7 @@ public class UUrlCache {
 	}
 	
 	int getCacheSize() {
-		return cache_size;
+		return cache_size.get();
 	}
 
 	UStmtCache getStmtCache(String sql) {
@@ -99,7 +101,7 @@ public class UUrlCache {
 					}
 				}
 				
-				if (cache_size < max_size * 0.8) {
+				if (cache_size.get() < max_size * 0.8) {
 					break;
 				}
 			}
