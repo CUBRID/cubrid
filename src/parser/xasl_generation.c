@@ -85,7 +85,7 @@ typedef struct hashable HASHABLE;
 struct hashable
 {
   bool is_PRIOR;
-  bool NAME_without_prior;
+  bool is_NAME_without_prior;
 };
 
 typedef enum
@@ -99,15 +99,15 @@ typedef enum
 #define CHECK_HASH_ATTR(hashable_arg, hash_attr) \
   do \
     { \
-      if (hashable_arg.is_PRIOR && hashable_arg.NAME_without_prior) \
+      if (hashable_arg.is_PRIOR && hashable_arg.is_NAME_without_prior) \
         { \
           hash_attr = UNHASHABLE; \
         } \
-      else if (hashable_arg.is_PRIOR && !hashable_arg.NAME_without_prior) \
+      else if (hashable_arg.is_PRIOR && !hashable_arg.is_NAME_without_prior) \
         { \
           hash_attr = PROBE; \
         } \
-      else if (!hashable_arg.is_PRIOR && hashable_arg.NAME_without_prior) \
+      else if (!hashable_arg.is_PRIOR && hashable_arg.is_NAME_without_prior) \
         { \
           hash_attr = BUILD; \
         } \
@@ -3446,7 +3446,7 @@ pt_check_hashable (PARSER_CONTEXT * parser, PT_NODE * tree, void *void_arg, int 
     }
   else if (pt_is_name_node (tree))
     {
-      ((HASHABLE *) void_arg)->NAME_without_prior = true;
+      ((HASHABLE *) void_arg)->is_NAME_without_prior = true;
     }
 
   return tree;
