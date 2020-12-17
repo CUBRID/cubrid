@@ -51,6 +51,14 @@ typedef enum
 
 typedef enum
 {
+  CSQL_INPUT_TYPE_NONE = -1,
+  CSQL_INPUT_TYPE_FILE,
+  CSQL_INPUT_TYPE_STRING,
+  CSQL_INPUT_TYPE_EDITOR
+} T_CSQL_INPUT_TYPE;
+
+typedef enum
+{
   APP_NAME_NONE,
   APP_NAME_CAS,
   APP_NAME_CSQL,
@@ -70,7 +78,8 @@ extern void logddl_set_br_index (const int index);
 extern void logddl_set_sql_text (char *sql_text, int len);
 extern void logddl_set_stmt_type (int stmt_type);
 extern void logddl_set_loaddb_file_type (T_LOADDB_FILE_TYPE file_type);
-extern void logddl_set_file_name (const char *file_name);
+extern void logddl_set_csql_input_type (T_CSQL_INPUT_TYPE input_type);
+extern void logddl_set_load_filename (const char *load_filename);
 extern void logddl_set_file_line (int file_line);
 extern void logddl_set_err_msg (char *msg);
 extern void logddl_set_err_code (int err_number);
@@ -83,6 +92,7 @@ extern void logddl_write_end ();
 extern bool logddl_is_ddl_type (int node_type);
 extern void logddl_set_commit_mode (bool mode);
 extern void logddl_write_tran_str (const char *fmt, ...);
+extern void logddl_write_end_for_csql_fileinput (const char *fmt, ...);
 extern void logddl_set_logging_enabled (bool enable);
 extern void logddl_set_jsp_mode (bool mode);
 extern bool logddl_get_jsp_mode ();

@@ -1761,7 +1761,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
   int total;			/* number of statements to execute */
   bool do_abort_transaction = false;	/* flag for transaction abort */
   PT_NODE *statement;
-  int read_line_no = 1;
+  char sql_text[DDL_LOG_BUFFER_SIZE] = { 0 };
 
   csql_Num_failures = 0;
   er_clear ();
@@ -1774,6 +1774,8 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	  csql_Error_code = CSQL_ERR_SQL_ERROR;
 	  goto error;
 	}
+      logddl_set_csql_input_type (CSQL_INPUT_TYPE_FILE);
+      logddl_set_load_filename (csql_arg->in_file_name);
     }
   else if (type == STRING_INPUT)
     {				/* string pointer input */
@@ -1787,6 +1789,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	{
 	  fprintf (csql_Output_fp, "%s\n", (char *) stream);
 	}
+      logddl_set_csql_input_type (CSQL_INPUT_TYPE_STRING);
     }
   else
     {				/* command buffer input */
@@ -1801,6 +1804,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	{
 	  fprintf (csql_Output_fp, "%s\n", stmts);
 	}
+      logddl_set_csql_input_type (CSQL_INPUT_TYPE_EDITOR);
     }
 
   /*
@@ -1860,14 +1864,18 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 
       stmt_id = db_compile_statement (session);
 
-      if (session->statements != NULL)
+      if (session->statements)
 	{
 	  statement = session->statements[num_stmts];
-	  if (statement && statement->sql_user_text
-	      && strlen (statement->sql_user_text) >= statement->sql_user_text_len)
+	  if (statement)
 	    {
-	      logddl_set_sql_text (statement->sql_user_text, statement->sql_user_text_len);
 	      logddl_set_stmt_type (statement->node_type);
+	      logddl_set_file_line (statement->line_number);
+
+	      if (statement->sql_user_text && strlen (statement->sql_user_text) >= statement->sql_user_text_len)
+		{
+		  logddl_set_sql_text (statement->sql_user_text, statement->sql_user_text_len);
+		}
 	    }
 	}
 
@@ -1883,6 +1891,11 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	    }
 
 	  logddl_set_err_code (db_error_code ());
+	  if (statement)
+	    {
+	      logddl_set_file_line (statement->line_number);
+	    }
+
 	  /* compilation error */
 	  csql_Error_code = CSQL_ERR_SQL_ERROR;
 	  /* Do not continue if there are no statments in the buffer */
@@ -1931,15 +1944,6 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
       stmt_type = (CUBRID_STMT_TYPE) db_get_statement_type (session, stmt_id);
       logddl_set_stmt_type (stmt_type);
       logddl_set_file_line (stmt_start_line_no);
-      if (type == FILE_INPUT)
-	{
-	  char sql_text[DDL_LOG_BUFFER_SIZE] = { 0 };
-	  if (logddl_get_sql_text (csql_arg->in_file_name, read_line_no, stmt_start_line_no, sql_text))
-	    {
-	      logddl_set_sql_text (sql_text, strlen (sql_text));
-	    }
-	  read_line_no = stmt_start_line_no + 1;
-	}
 
       if (db_set_statement_auto_commit (session, csql_is_auto_commit_requested (csql_arg)) != NO_ERROR)
 	{
@@ -2115,11 +2119,15 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	{
 	  if (stmt_type == CUBRID_STMT_COMMIT_WORK)
 	    {
-	      logddl_write_tran_str (LOGDDL_TRAN_TYPE_COMMIT);
+	      (type !=
+	       FILE_INPUT) ? logddl_write_tran_str (LOGDDL_TRAN_TYPE_COMMIT) :
+	logddl_write_tran_str ("Commit transaction at line %d", stmt_start_line_no);
 	    }
 	  else if (stmt_type == CUBRID_STMT_ROLLBACK_WORK)
 	    {
-	      logddl_write_tran_str (LOGDDL_TRAN_TYPE_ROLLBACK);
+	      (type !=
+	       FILE_INPUT) ? logddl_write_tran_str (LOGDDL_TRAN_TYPE_ROLLBACK) :
+	logddl_write_tran_str ("Rollback transaction at line %d", stmt_start_line_no);
 	    }
 	}
 
@@ -2130,28 +2138,37 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 
       db_drop_statement (session, stmt_id);
 
-      if (logddl_get_jsp_mode ())
+      if (type != FILE_INPUT)
 	{
-	  if (csql_is_auto_commit_requested (csql_arg))
+	  if (logddl_get_jsp_mode ())
 	    {
-	      do_abort_transaction ==
-		true ? logddl_write_tran_str (LOGDDL_TRAN_TYPE_ROLLBACK) :
-		logddl_write_tran_str (LOGDDL_TRAN_TYPE_COMMIT);
+	      if (csql_is_auto_commit_requested (csql_arg))
+		{
+		  do_abort_transaction ==
+		    true ? logddl_write_tran_str (LOGDDL_TRAN_TYPE_ROLLBACK) :
+		    logddl_write_tran_str (LOGDDL_TRAN_TYPE_COMMIT);
+		}
 	    }
-	}
-      else
-	{
-	  if (csql_is_auto_commit_requested (csql_arg))
+	  else
 	    {
-	      logddl_set_msg (LOGDDL_MSG_AUTO_COMMIT);
+	      if (csql_is_auto_commit_requested (csql_arg))
+		{
+		  logddl_set_msg (LOGDDL_MSG_AUTO_COMMIT);
+		}
+	      logddl_write_end ();
 	    }
-	  logddl_write_end ();
 	}
     }
 
   snprintf (csql_Scratch_text, SCRATCH_TEXT_LEN, csql_get_message (CSQL_EXECUTE_END_MSG_FORMAT),
 	    num_stmts - csql_Num_failures);
   csql_display_msg (csql_Scratch_text);
+
+  if (type == FILE_INPUT)
+    {
+      logddl_write_end_for_csql_fileinput ("Total %8d statements executed. %8d statements failed.", total,
+					   csql_Num_failures);
+    }
 
   db_close_session (session);
 
@@ -2191,7 +2208,7 @@ error:
     }
   else
     {
-      logddl_write_end ();
+      (type == FILE_INPUT) ? logddl_write_end_for_csql_fileinput ("") : logddl_write_end ();
     }
 
   if (session)

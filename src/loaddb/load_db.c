@@ -691,7 +691,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       print_log_msg (1, "\nStart schema loading.\n");
 
       logddl_set_loaddb_file_type (LOADDB_FILE_TYPE_SCHEMA);
-      logddl_set_file_name (args.schema_file.c_str ());
+      logddl_set_load_filename (args.schema_file.c_str ());
       /*
        * CUBRID 8.2 should be compatible with earlier versions of CUBRID.
        * Therefore, we do not perform user authentication when the loader
@@ -780,7 +780,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
     {
       print_log_msg (1, "\nStart index loading.\n");
       logddl_set_loaddb_file_type (LOADDB_FILE_TYPE_INDEX);
-      logddl_set_file_name (args.index_file.c_str ());
+      logddl_set_load_filename (args.index_file.c_str ());
       if (ldr_exec_query_from_file (args.index_file.c_str (), index_file, &index_file_start_line, &args) != NO_ERROR)
 	{
 	  print_log_msg (1, "\nError occurred during index loading." "\nAborting current transaction...");
@@ -812,7 +812,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
     {
       print_log_msg (1, "\nStart trigger loading.\n");
       logddl_set_loaddb_file_type (LOADDB_FILE_TYPE_TRIGGER);
-      logddl_set_file_name (args.trigger_file.c_str ());
+      logddl_set_load_filename (args.trigger_file.c_str ());
       if (ldr_exec_query_from_file (args.trigger_file.c_str (), trigger_file, &trigger_file_start_line, &args) !=
 	  NO_ERROR)
 	{
