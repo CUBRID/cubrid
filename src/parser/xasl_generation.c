@@ -2919,13 +2919,8 @@ static int
 pt_split_hash_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info, PT_NODE * pred, PT_NODE ** build_attrs,
 		     PT_NODE ** probe_attrs)
 {
-  PT_NODE *tmp = NULL, *pointer = NULL;
-  PT_NODE *build_nodes = NULL;
-  PT_NODE *probe_nodes = NULL;
-  int cur_build, num_attrs, i;
-  PT_NODE *attr_list = NULL;
   PT_NODE *node = NULL, *save_node = NULL, *save_next = NULL;
-  PT_NODE *arg1, *arg2;
+  PT_NODE *arg1 = NULL, *arg2 = NULL;
 
   assert (build_attrs != NULL && *build_attrs == NULL);
   assert (probe_attrs != NULL && *probe_attrs == NULL);
@@ -2958,6 +2953,8 @@ pt_split_hash_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info, PT_NODE *
 
 	      arg1 = node->info.expr.arg1;
 	      arg2 = node->info.expr.arg2;
+	      assert(arg1 != NULL && arg2 != NULL);
+
 	      UINTPTR spec_id[2], spec_id2[2];
 	      spec_id[0] = spec_id2[0] = table_info->spec_id;
 	      spec_id[1] = spec_id2[1] = 0;
@@ -3019,13 +3016,8 @@ exit_on_error:
 static int
 pt_split_hash_attrs_for_HQ (PARSER_CONTEXT * parser, PT_NODE * pred, PT_NODE ** build_attrs, PT_NODE ** probe_attrs)
 {
-  PT_NODE *tmp = NULL, *pointer = NULL;
-  PT_NODE *build_nodes = NULL;
-  PT_NODE *probe_nodes = NULL;
-  int cur_build, num_attrs, i;
-  PT_NODE *attr_list = NULL;
   PT_NODE *node = NULL, *save_node = NULL, *save_next = NULL;
-  PT_NODE *arg1, *arg2;
+  PT_NODE *arg1 = NULL, *arg2 = NULL;
 
   assert (build_attrs != NULL && *build_attrs == NULL);
   assert (probe_attrs != NULL && *probe_attrs == NULL);
@@ -3059,6 +3051,7 @@ pt_split_hash_attrs_for_HQ (PARSER_CONTEXT * parser, PT_NODE * pred, PT_NODE ** 
 
 	      arg1 = node->info.expr.arg1;
 	      arg2 = node->info.expr.arg2;
+	      assert(arg1 != NULL && arg2 != NULL);
 
 	      HASHABLE hashable_arg1, hashable_arg2;
 	      hashable_arg1 = hashable_arg2 = {false, false};
