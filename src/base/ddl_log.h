@@ -96,5 +96,4 @@ extern void logddl_write_end_for_csql_fileinput (const char *fmt, ...);
 extern void logddl_set_logging_enabled (bool enable);
 extern void logddl_set_jsp_mode (bool mode);
 extern bool logddl_get_jsp_mode ();
-extern bool logddl_get_sql_text (const char *file, int start_line, int end_line, char *sql_text);
 #endif /* _DDL_LOG_H_ */
