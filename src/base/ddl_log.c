@@ -51,10 +51,10 @@
 #include "environment_variable.h"
 #include "broker_config.h"
 
-#define DDL_LOG_BUFFER_SIZE         (8192)
 #define DDL_LOG_MSG 	            (256)
 #define DDL_LOG_PATH    	    "log/ddl_audit"
 #define DDL_LOG_LOADDB_FILE_PATH    "log/ddl_audit/loaddb"
+#define DDL_LOG_CSQL_FILE_PATH      "log/ddl_audit/csql"
 #define FILE_BUFFER_SIZE            (1024)
 #define TIME_STRING_SIZE            (16)
 #define DDL_TIME_LEN                (32)
@@ -79,10 +79,12 @@ struct t_ddl_audit_handle
   int err_code;
   char *err_msg;
   char msg[DDL_LOG_MSG];
-  char file_name[PATH_MAX];
-  char schema_file[PATH_MAX];
+  char load_filename[PATH_MAX];
+  char copy_filename[PATH_MAX];
+  char copy_fullpath[PATH_MAX];
   char execute_type;
   T_LOADDB_FILE_TYPE loaddb_file_type;
+  T_CSQL_INPUT_TYPE csql_input_type;
   char log_filepath[PATH_MAX];
   int commit_count;
   bool auto_commit_mode;
@@ -92,7 +94,9 @@ static T_DDL_AUDIT_HANDLE *ddl_audit_handle = NULL;
 static bool ddl_logging_enabled = false;
 
 static int logddl_make_filename (char *filename_buf, size_t buf_size, T_APP_NAME app_name);
-static int logddl_make_schema_file_name (const char *file_full_path, char *dest_path, size_t buf_size);
+static int logddl_make_copy_filename (T_APP_NAME app_name, const char *file_full_path, char *copy_filename,
+				      size_t buf_size);
+static int logddl_make_copy_dir (T_APP_NAME app_name, char *copy_filename, char *copy_fullpath, size_t buf_size);
 static void logddl_backup (const char *path);
 #if defined(WINDOWS)
 static void unix_style_path (char *path);
@@ -109,7 +113,8 @@ static void logddl_set_elapsed_time (long sec, long msec);
 static void logddl_timeval_diff (struct timeval *start, struct timeval *end, long *res_sec, long *res_msec);
 static const char *logddl_get_app_name (T_APP_NAME app_name);
 
-static bool is_executed_ddl = false;
+static bool is_executed_ddl_for_trans = false;
+static bool is_executed_ddl_for_csql = false;
 
 void
 logddl_init ()
@@ -132,6 +137,7 @@ logddl_init ()
   ddl_audit_handle->stmt_type = -1;
   ddl_audit_handle->execute_type = LOGDDL_RUN_EXECUTE_FUNC;
   ddl_audit_handle->loaddb_file_type = LOADDB_FILE_TYPE_NONE;
+  ddl_audit_handle->csql_input_type = CSQL_INPUT_TYPE_NONE;
 }
 
 void
@@ -160,16 +166,19 @@ logddl_free (bool all_free)
   ddl_audit_handle->file_line_number = 0;
   ddl_audit_handle->err_code = 0;
   ddl_audit_handle->msg[0] = '\0';
-  ddl_audit_handle->file_name[0] = '\0';
-  ddl_audit_handle->schema_file[0] = '\0';
-  ddl_audit_handle->commit_count = 0;
 
   if (all_free)
     {
-      ddl_audit_handle->auto_commit_mode = false;
-      is_executed_ddl = false;
+      is_executed_ddl_for_trans = false;
+      is_executed_ddl_for_csql = false;
       ddl_logging_enabled = false;
+      ddl_audit_handle->auto_commit_mode = false;
       ddl_audit_handle->jsp_mode = false;
+      ddl_audit_handle->csql_input_type = CSQL_INPUT_TYPE_NONE;
+      ddl_audit_handle->load_filename[0] = '\0';
+      ddl_audit_handle->copy_filename[0] = '\0';
+      ddl_audit_handle->copy_fullpath[0] = '\0';
+      ddl_audit_handle->commit_count = 0;
     }
 }
 
@@ -289,9 +298,10 @@ logddl_set_stmt_type (int stmt_type)
 
   ddl_audit_handle->stmt_type = stmt_type;
 
-  if (logddl_is_ddl_type (stmt_type) == true && ddl_audit_handle->auto_commit_mode == false)
+  if (logddl_is_ddl_type (stmt_type) == true)
     {
-      is_executed_ddl = true;
+      is_executed_ddl_for_trans = true;
+      is_executed_ddl_for_csql = true;
     }
 }
 
@@ -305,11 +315,20 @@ logddl_set_loaddb_file_type (T_LOADDB_FILE_TYPE file_type)
 }
 
 void
-logddl_set_file_name (const char *file_name)
+logddl_set_csql_input_type (T_CSQL_INPUT_TYPE input_type)
 {
-  if (ddl_audit_handle != NULL && file_name != NULL && ddl_logging_enabled)
+  if (ddl_audit_handle && ddl_logging_enabled)
     {
-      strncpy (ddl_audit_handle->file_name, file_name, PATH_MAX);
+      ddl_audit_handle->csql_input_type = input_type;
+    }
+}
+
+void
+logddl_set_load_filename (const char *load_filename)
+{
+  if (ddl_audit_handle && load_filename && ddl_logging_enabled)
+    {
+      strncpy (ddl_audit_handle->load_filename, load_filename, PATH_MAX);
     }
 }
 
@@ -450,6 +469,11 @@ logddl_file_copy (char *src_file, char *dest_file)
       return -1;
     }
 
+  if (access (dest_file, F_OK) == 0)
+    {
+      return -1;
+    }
+
   FILE *fsource = fopen (src_file, "r");
   if (fsource == NULL)
     {
@@ -505,15 +529,14 @@ logddl_file_copy (char *src_file, char *dest_file)
 }
 
 static int
-logddl_make_schema_file_name (const char *file_full_path, char *dest_path, size_t buf_size)
+logddl_make_copy_filename (T_APP_NAME app_name, const char *file_full_path, char *copy_filename, size_t buf_size)
 {
   const char *env_root = NULL;
   char time[TIME_STRING_SIZE] = { 0 };
   const char *name_tmp = NULL;
-  char *tpath = NULL;
   int retval = 0;
 
-  if (ddl_audit_handle == NULL || file_full_path == NULL || dest_path == NULL || buf_size < 0)
+  if (ddl_audit_handle == NULL || file_full_path == NULL || copy_filename == NULL || buf_size < 0)
     {
       return -1;
     }
@@ -532,26 +555,50 @@ logddl_make_schema_file_name (const char *file_full_path, char *dest_path, size_
       name_tmp++;
     }
 
-  retval = snprintf (ddl_audit_handle->schema_file, buf_size, "%s_%s_%d", name_tmp, time, getpid ());
+  retval = snprintf (copy_filename, buf_size, "%s_%s_%d", name_tmp, time, getpid ());
   if (retval < 0)
     {
       assert (false);
-      ddl_audit_handle->schema_file[0] = '\0';
+      copy_filename[0] = '\0';
       return retval;
     }
 
-  retval =
-    snprintf (dest_path, buf_size, "%s/%s/%s_%s_%d", env_root, DDL_LOG_LOADDB_FILE_PATH, name_tmp, time, getpid ());
+  return retval;
+}
+
+static int
+logddl_make_copy_dir (T_APP_NAME app_name, char *copy_filename, char *copy_fullpath, size_t buf_size)
+{
+  const char *env_root = NULL;
+  int retval = 0;
+
+  if (ddl_audit_handle == NULL || copy_filename == NULL || copy_fullpath == NULL || buf_size < 0)
+    {
+      return -1;
+    }
+
+  env_root = envvar_root ();
+
+  if (app_name == APP_NAME_CSQL)
+    {
+      retval = snprintf (copy_fullpath, buf_size, "%s/%s/%s", env_root, DDL_LOG_CSQL_FILE_PATH, copy_filename);
+    }
+  else if (app_name == APP_NAME_LOADDB)
+    {
+      retval = snprintf (copy_fullpath, buf_size, "%s/%s/%s", env_root, DDL_LOG_LOADDB_FILE_PATH, copy_filename);
+    }
+  else
+    {
+      retval = -1;
+    }
 
   if (retval < 0)
     {
       assert (false);
-      dest_path[0] = '\0';
+      copy_fullpath[0] = '\0';
       return retval;
     }
-
-  retval = logddl_create_dir (dest_path);
-
+  retval = logddl_create_dir (copy_fullpath);
   return retval;
 }
 
@@ -595,7 +642,6 @@ static FILE *
 logddl_open (T_APP_NAME app_name)
 {
   FILE *fp = NULL;
-  char *tpath = NULL;
   int len;
 
   len = logddl_make_filename (ddl_audit_handle->log_filepath, PATH_MAX, app_name);
@@ -662,9 +708,7 @@ logddl_write ()
 {
   FILE *fp = NULL;
   char buf[DDL_LOG_BUFFER_SIZE] = { 0 };
-  char dest_path[PATH_MAX] = { 0 };
   int len = 0;
-  int ret = 0;
 
   if (ddl_audit_handle == NULL || ddl_logging_enabled == false)
     {
@@ -694,11 +738,48 @@ logddl_write ()
     {
       if (ddl_audit_handle->app_name == APP_NAME_LOADDB)
 	{
-	  if (logddl_make_schema_file_name (ddl_audit_handle->file_name, dest_path, PATH_MAX) < 0)
+	  if (strlen (ddl_audit_handle->copy_filename) == 0)
 	    {
-	      goto write_error;
+	      if (logddl_make_copy_filename
+		  (ddl_audit_handle->app_name, ddl_audit_handle->load_filename, ddl_audit_handle->copy_filename,
+		   PATH_MAX) < 0)
+		{
+		  goto write_error;
+		}
 	    }
-	  logddl_file_copy (ddl_audit_handle->file_name, dest_path);
+
+	  if (strlen (ddl_audit_handle->copy_fullpath) == 0)
+	    {
+	      if (logddl_make_copy_dir
+		  (APP_NAME_LOADDB, ddl_audit_handle->copy_filename, ddl_audit_handle->copy_fullpath, PATH_MAX) < 0)
+		{
+		  goto write_error;
+		}
+	    }
+	  logddl_file_copy (ddl_audit_handle->load_filename, ddl_audit_handle->copy_fullpath);
+	}
+
+      if (ddl_audit_handle->app_name == APP_NAME_CSQL && ddl_audit_handle->csql_input_type == CSQL_INPUT_TYPE_FILE)
+	{
+	  if (strlen (ddl_audit_handle->copy_filename) == 0)
+	    {
+	      if (logddl_make_copy_filename
+		  (ddl_audit_handle->app_name, ddl_audit_handle->load_filename, ddl_audit_handle->copy_filename,
+		   PATH_MAX) < 0)
+		{
+		  goto write_error;
+		}
+	    }
+
+	  if (strlen (ddl_audit_handle->copy_fullpath) == 0)
+	    {
+	      if (logddl_make_copy_dir
+		  (APP_NAME_CSQL, ddl_audit_handle->copy_filename, ddl_audit_handle->copy_fullpath, PATH_MAX) < 0)
+		{
+		  goto write_error;
+		}
+	    }
+	  logddl_file_copy (ddl_audit_handle->load_filename, ddl_audit_handle->copy_fullpath);
 	}
 
       len = logddl_create_log_msg (buf);
@@ -737,7 +818,7 @@ logddl_write_tran_str (const char *fmt, ...)
       return;
     }
 
-  if (is_executed_ddl == false || ddl_audit_handle->auto_commit_mode == true)
+  if (is_executed_ddl_for_trans == false || ddl_audit_handle->auto_commit_mode == true)
     {
       goto write_error;
     }
@@ -753,6 +834,29 @@ logddl_write_tran_str (const char *fmt, ...)
       gettimeofday (&time_val, NULL);
       logddl_get_time_string (ddl_audit_handle->str_qry_exec_begin_time, &time_val);
 
+      if (ddl_audit_handle->app_name == APP_NAME_CSQL && ddl_audit_handle->csql_input_type == CSQL_INPUT_TYPE_FILE)
+	{
+	  if (strlen (ddl_audit_handle->copy_filename) == 0)
+	    {
+	      if (logddl_make_copy_filename
+		  (ddl_audit_handle->app_name, ddl_audit_handle->load_filename, ddl_audit_handle->copy_filename,
+		   PATH_MAX) < 0)
+		{
+		  goto write_error;
+		}
+	    }
+
+	  if (strlen (ddl_audit_handle->copy_fullpath) == 0)
+	    {
+	      if (logddl_make_copy_dir
+		  (APP_NAME_CSQL, ddl_audit_handle->copy_filename, ddl_audit_handle->copy_fullpath, PATH_MAX) < 0)
+		{
+		  goto write_error;
+		}
+	    }
+	  logddl_file_copy (ddl_audit_handle->load_filename, ddl_audit_handle->copy_fullpath);
+	}
+
       if (ddl_audit_handle->app_name == APP_NAME_CAS)
 	{
 	  len = snprintf (msg, DDL_LOG_BUFFER_SIZE, "%s %s|%s|%s\n",
@@ -761,9 +865,19 @@ logddl_write_tran_str (const char *fmt, ...)
 	}
       else if (ddl_audit_handle->app_name == APP_NAME_CSQL)
 	{
-	  len = snprintf (msg, DDL_LOG_BUFFER_SIZE, "%s %d|%s|%s\n",
-			  ddl_audit_handle->str_qry_exec_begin_time,
-			  ddl_audit_handle->pid, ddl_audit_handle->user_name, ddl_audit_handle->msg);
+	  if (ddl_audit_handle->csql_input_type == CSQL_INPUT_TYPE_FILE)
+	    {
+	      len = snprintf (msg, DDL_LOG_BUFFER_SIZE, "%s %d|%s|%s|%s\n",
+			      ddl_audit_handle->str_qry_exec_begin_time,
+			      ddl_audit_handle->pid, ddl_audit_handle->user_name, ddl_audit_handle->msg,
+			      ddl_audit_handle->copy_filename);
+	    }
+	  else
+	    {
+	      len = snprintf (msg, DDL_LOG_BUFFER_SIZE, "%s %d|%s|%s\n",
+			      ddl_audit_handle->str_qry_exec_begin_time,
+			      ddl_audit_handle->pid, ddl_audit_handle->user_name, ddl_audit_handle->msg);
+	    }
 	}
       else
 	{
@@ -796,8 +910,86 @@ write_error:
       fp = NULL;
     }
 
-  is_executed_ddl = false;
+  is_executed_ddl_for_trans = false;
   logddl_free (false);
+}
+
+void
+logddl_write_end_for_csql_fileinput (const char *fmt, ...)
+{
+  FILE *fp = NULL;
+  char buf[DDL_LOG_BUFFER_SIZE] = { 0 };
+  int len = 0;
+  struct timeval time_val;
+  va_list args;
+  if (ddl_audit_handle == NULL || ddl_logging_enabled == false)
+    {
+      return;
+    }
+
+  if (ddl_audit_handle->app_name != APP_NAME_CSQL && ddl_audit_handle->csql_input_type != CSQL_INPUT_TYPE_FILE)
+    {
+      return;
+    }
+
+  if (is_executed_ddl_for_csql == false)
+    {
+      return;
+    }
+
+  fp = logddl_open (ddl_audit_handle->app_name);
+
+  if (fp != NULL)
+    {
+      va_start (args, fmt);
+      vsnprintf (ddl_audit_handle->msg, DDL_LOG_MSG, fmt, args);
+      va_end (args);
+
+      gettimeofday (&time_val, NULL);
+      logddl_get_time_string (ddl_audit_handle->str_qry_exec_begin_time, &time_val);
+
+      if (strlen (ddl_audit_handle->copy_filename) == 0)
+	{
+	  if (logddl_make_copy_filename
+	      (ddl_audit_handle->app_name, ddl_audit_handle->load_filename, ddl_audit_handle->copy_filename,
+	       PATH_MAX) < 0)
+	    {
+	      goto write_error;
+	    }
+	}
+
+      if (strlen (ddl_audit_handle->copy_fullpath) == 0)
+	{
+	  if (logddl_make_copy_dir
+	      (APP_NAME_CSQL, ddl_audit_handle->copy_filename, ddl_audit_handle->copy_fullpath, PATH_MAX) < 0)
+	    {
+	      goto write_error;
+	    }
+	}
+      logddl_file_copy (ddl_audit_handle->load_filename, ddl_audit_handle->copy_fullpath);
+
+      len = logddl_create_log_msg (buf);
+      if (len < 0 || fwrite (buf, sizeof (char), len, fp) != len)
+	{
+	  goto write_error;
+	}
+
+      if ((UINT64) ftell (fp) > prm_get_bigint_value (PRM_ID_DDL_AUDIT_LOG_SIZE))
+	{
+	  fclose (fp);
+	  logddl_backup (ddl_audit_handle->log_filepath);
+	  fp = NULL;
+	}
+    }
+
+write_error:
+  if (fp != NULL)
+    {
+      fclose (fp);
+      fp = NULL;
+    }
+
+  logddl_free (true);
 }
 
 extern void
@@ -824,6 +1016,12 @@ logddl_create_log_msg (char *msg)
   logddl_timeval_diff (&ddl_audit_handle->qry_exec_begin_time, &exec_end, &elapsed_sec, &elapsed_msec);
   logddl_set_elapsed_time (elapsed_sec, elapsed_msec);
 
+  if (strlen (ddl_audit_handle->str_qry_exec_begin_time) == 0)
+    {
+      gettimeofday (&log_time, NULL);
+      logddl_get_time_string (ddl_audit_handle->str_qry_exec_begin_time, &log_time);
+    }
+
   if (ddl_audit_handle->app_name == APP_NAME_LOADDB)
     {
       if (ddl_audit_handle->err_code < 0)
@@ -840,40 +1038,58 @@ logddl_create_log_msg (char *msg)
       retval = snprintf (msg, DDL_LOG_BUFFER_SIZE, "%s %d|%s|%s|%s|%s\n",
 			 ddl_audit_handle->str_qry_exec_begin_time,
 			 ddl_audit_handle->pid, ddl_audit_handle->user_name, result, ddl_audit_handle->msg,
-			 ddl_audit_handle->schema_file);
+			 ddl_audit_handle->copy_filename);
     }
   else if (ddl_audit_handle->app_name == APP_NAME_CSQL)
     {
-      if (ddl_audit_handle->jsp_mode)
+      if (ddl_audit_handle->csql_input_type == CSQL_INPUT_TYPE_FILE)
 	{
-	  gettimeofday (&log_time, NULL);
-	  logddl_get_time_string (ddl_audit_handle->str_qry_exec_begin_time, &log_time);
-	}
+	  if (ddl_audit_handle->err_code < 0)
+	    {
+	      snprintf (result, sizeof (result), "ERROR:%d", ddl_audit_handle->err_code);
+	      snprintf (ddl_audit_handle->msg, DDL_LOG_MSG, "Error line %d", ddl_audit_handle->file_line_number);
+	      ddl_audit_handle->elapsed_time[0] = '\0';
 
-      if (ddl_audit_handle->err_code < 0)
-	{
-	  snprintf (result, sizeof (result), "ERROR:%d", ddl_audit_handle->err_code);
-	  ddl_audit_handle->elapsed_time[0] = '\0';
+	      retval = snprintf (msg, DDL_LOG_BUFFER_SIZE, "%s %d|%s|%s|%s|%s|%s\n",
+				 ddl_audit_handle->str_qry_exec_begin_time,
+				 ddl_audit_handle->pid,
+				 ddl_audit_handle->user_name,
+				 (ddl_audit_handle->auto_commit_mode) ? "autocommit mode on" : "autocommit mode off",
+				 result, ddl_audit_handle->msg, ddl_audit_handle->copy_filename);
+	    }
+	  else
+	    {
+	      strcpy (result, "OK");
+	      retval = snprintf (msg, DDL_LOG_BUFFER_SIZE, "%s %d|%s|%s|%s|%s|%s\n",
+				 ddl_audit_handle->str_qry_exec_begin_time,
+				 ddl_audit_handle->pid,
+				 ddl_audit_handle->user_name,
+				 (ddl_audit_handle->auto_commit_mode) ? "autocommit mode on" : "autocommit mode off",
+				 result, ddl_audit_handle->msg, ddl_audit_handle->copy_filename);
+	    }
 	}
       else
 	{
-	  strcpy (result, "OK");
-	}
+	  if (ddl_audit_handle->err_code < 0)
+	    {
+	      snprintf (result, sizeof (result), "ERROR:%d", ddl_audit_handle->err_code);
+	      ddl_audit_handle->elapsed_time[0] = '\0';
+	    }
+	  else
+	    {
+	      strcpy (result, "OK");
+	    }
 
-      retval = snprintf (msg, DDL_LOG_BUFFER_SIZE, "%s %d|%s|%s|%s|%s|%s\n",
-			 ddl_audit_handle->str_qry_exec_begin_time,
-			 ddl_audit_handle->pid,
-			 ddl_audit_handle->user_name,
-			 result, ddl_audit_handle->elapsed_time, ddl_audit_handle->msg, ddl_audit_handle->sql_text);
+	  retval = snprintf (msg, DDL_LOG_BUFFER_SIZE, "%s %d|%s|%s|%s|%s|%s\n",
+			     ddl_audit_handle->str_qry_exec_begin_time,
+			     ddl_audit_handle->pid,
+			     ddl_audit_handle->user_name,
+			     result, ddl_audit_handle->elapsed_time, ddl_audit_handle->msg, ddl_audit_handle->sql_text);
+
+	}
     }
   else
     {
-      if (ddl_audit_handle->auto_commit_mode == false)
-	{
-	  gettimeofday (&log_time, NULL);
-	  logddl_get_time_string (ddl_audit_handle->str_qry_exec_begin_time, &log_time);
-	}
-
       if (ddl_audit_handle->err_code < 0)
 	{
 	  snprintf (result, sizeof (result), "ERROR:%d", ddl_audit_handle->err_code);
