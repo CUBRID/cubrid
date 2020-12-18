@@ -3007,7 +3007,7 @@ exit_on_error:
  *   probe_attrs(out):
  *
  * Note :
- * is_PRIOR | NAME_without prior | characteristic
+ * is_PRIOR | NAME_without_prior | characteristic
  *    O     |        O           | unhashable
  *    O     |        X           | probe attr
  *    X     |        O           | build attr
@@ -3431,15 +3431,16 @@ static PT_NODE *
 pt_check_hashable (PARSER_CONTEXT * parser, PT_NODE * tree, void *void_arg, int *continue_walk)
 {
   *continue_walk = PT_CONTINUE_WALK;
+  HASHABLE *hashable = (HASHABLE *) void_arg;
 
   if (PT_IS_EXPR_NODE_WITH_OPERATOR(tree, PT_PRIOR))
     {
-      ((HASHABLE *) void_arg)->is_PRIOR = true;
+      hashable->is_PRIOR = true;
       *continue_walk = PT_LIST_WALK;
     }
   else if (pt_is_name_node (tree))
     {
-      ((HASHABLE *) void_arg)->is_NAME_without_prior = true;
+      hashable->is_NAME_without_prior = true;
     }
 
   return tree;
