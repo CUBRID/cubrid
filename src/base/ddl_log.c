@@ -1060,20 +1060,22 @@ logddl_create_log_msg (char *msg)
 	      snprintf (ddl_audit_handle->msg, DDL_LOG_MSG, "Error line %d", ddl_audit_handle->file_line_number);
 	      ddl_audit_handle->elapsed_time[0] = '\0';
 
-	      retval = snprintf (msg, DDL_LOG_BUFFER_SIZE, "%s %d|%s|%s|%s|%s\n",
-				 ddl_audit_handle->str_qry_exec_begin_time,
-				 ddl_audit_handle->pid,
-				 ddl_audit_handle->user_name, result, ddl_audit_handle->msg,
-				 ddl_audit_handle->copy_filename);
-	    }
-	  else
-	    {
-	      retval = snprintf (msg, DDL_LOG_BUFFER_SIZE, "%s %d|%s|OK|auto commit mode %d|%s|%s\n",
+	      retval = snprintf (msg, DDL_LOG_BUFFER_SIZE, "%s %d|%s|%s|%s|%s|%s\n",
 				 ddl_audit_handle->str_qry_exec_begin_time,
 				 ddl_audit_handle->pid,
 				 ddl_audit_handle->user_name,
-				 ddl_audit_handle->auto_commit_mode, ddl_audit_handle->msg,
-				 ddl_audit_handle->copy_filename);
+				 (ddl_audit_handle->auto_commit_mode) ? "autocommit mode on" : "autocommit mode off",
+				 result, ddl_audit_handle->msg, ddl_audit_handle->copy_filename);
+	    }
+	  else
+	    {
+	      strcpy (result, "OK");
+	      retval = snprintf (msg, DDL_LOG_BUFFER_SIZE, "%s %d|%s|%s|%s|%s|%s\n",
+				 ddl_audit_handle->str_qry_exec_begin_time,
+				 ddl_audit_handle->pid,
+				 ddl_audit_handle->user_name,
+				 (ddl_audit_handle->auto_commit_mode) ? "autocommit mode on" : "autocommit mode off",
+				 ddl_audit_handle->msg, ddl_audit_handle->copy_filename);
 	    }
 	}
       else
