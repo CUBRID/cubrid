@@ -1075,7 +1075,7 @@ logddl_create_log_msg (char *msg)
 				 ddl_audit_handle->pid,
 				 ddl_audit_handle->user_name,
 				 (ddl_audit_handle->auto_commit_mode) ? "autocommit mode on" : "autocommit mode off",
-				 ddl_audit_handle->msg, ddl_audit_handle->copy_filename);
+				 result, ddl_audit_handle->msg, ddl_audit_handle->copy_filename);
 	    }
 	}
       else
