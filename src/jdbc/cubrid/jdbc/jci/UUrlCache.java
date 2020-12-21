@@ -32,14 +32,35 @@ package cubrid.jdbc.jci;
 
 import java.util.ArrayList;
 import java.util.Hashtable;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class UUrlCache {
 	private Hashtable<String, UStmtCache> stmt_cache_table;
 	private ArrayList<UStmtCache> stmt_cache_remove_list;
+	private int max_size;
+	private AtomicInteger cache_size;
 
 	UUrlCache() {
 		stmt_cache_table = new Hashtable<String, UStmtCache>(100, 5);
 		stmt_cache_remove_list = new ArrayList<UStmtCache>(100);
+		max_size = 1;
+		cache_size = new AtomicInteger();
+	}
+
+	void setLimit(int limit) {
+		max_size = limit;
+	}
+
+	void addCacheSize(int value) {
+		cache_size.addAndGet(value);
+	}
+
+	int getLimit() {
+		return max_size;
+	}
+	
+	int getCacheSize() {
+		return cache_size.get();
 	}
 
 	UStmtCache getStmtCache(String sql) {
@@ -64,7 +85,8 @@ public class UUrlCache {
 
 		for (int i = 0; i < stmt_cache_remove_list.size(); i++) {
 			sc = stmt_cache_remove_list.get(i);
-			int res_count = sc.remove_expired_res(checkTime);
+
+			int res_count = sc.remove_expired_res(checkTime, this);
 			synchronized (stmt_cache_table) {
 				if (res_count <= 0 && sc.ref_count <= 0) {
 					stmt_cache_table.remove(sc.key);
@@ -77,6 +99,10 @@ public class UUrlCache {
 							i--;
 						}
 					}
+				}
+				
+				if (cache_size.get() < max_size * 0.8) {
+					break;
 				}
 			}
 		}
