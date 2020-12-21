@@ -2343,6 +2343,8 @@ qmgr_add_modified_class (THREAD_ENTRY * thread_p, const OID * class_oid_p)
       else if ((oid_block_p->next = (OID_BLOCK_LIST *) malloc (sizeof (OID_BLOCK_LIST))))
 	{
 	  oid_block_p = oid_block_p->next;
+          oid_block_p->last_oid_idx = 0;
+          oid_block_p->next = NULL;
 	  oid_block_p->oid_array[oid_block_p->last_oid_idx++] = *class_oid_p;
 	}
       else
