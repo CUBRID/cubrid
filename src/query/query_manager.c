@@ -2268,22 +2268,23 @@ static void
 qmgr_free_oid_block (THREAD_ENTRY * thread_p, OID_BLOCK_LIST * oid_block_p)
 {
   OID_BLOCK_LIST *p;
-
+#if 0
   if (csect_enter (thread_p, CSECT_QPROC_QUERY_TABLE, INF_WAIT) != NO_ERROR)
     {
       return;
     }
-
-  for (p = oid_block_p; p->next; p = p->next)
+#endif
+  for (p = oid_block_p; p; p = p->next)
     {
       p->last_oid_idx = 0;
     }
-
+#if 0
   p->last_oid_idx = 0;
   p->next = qmgr_Query_table.free_oid_block_list_p;
   qmgr_Query_table.free_oid_block_list_p = oid_block_p;
 
   csect_exit (thread_p, CSECT_QPROC_QUERY_TABLE);
+#endif
 }
 
 /*
@@ -2303,11 +2304,17 @@ qmgr_add_modified_class (THREAD_ENTRY * thread_p, const OID * class_oid_p)
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
-
+#if 0
   if (tran_entry_p->modified_classes_p == NULL
       && (tran_entry_p->modified_classes_p = qmgr_allocate_oid_block (thread_p)) == NULL)
     {
       return;
+    }
+#endif
+  if (tran_entry_p->modified_classes_p == NULL)
+    {
+      tran_entry_p->modified_classes_p = (OID_BLOCK_LIST *) malloc (sizeof (OID_BLOCK_LIST));
+      assert (tran_entry_p->modified_classes_p != NULL);
     }
 
   found = false;
@@ -2333,10 +2340,14 @@ qmgr_add_modified_class (THREAD_ENTRY * thread_p, const OID * class_oid_p)
 	{
 	  oid_block_p->oid_array[oid_block_p->last_oid_idx++] = *class_oid_p;
 	}
-      else if ((oid_block_p->next = qmgr_allocate_oid_block (thread_p)) != NULL)
+      else if ((oid_block_p->next = (OID_BLOCK_LIST *) malloc (sizeof (OID_BLOCK_LIST))))
 	{
 	  oid_block_p = oid_block_p->next;
 	  oid_block_p->oid_array[oid_block_p->last_oid_idx++] = *class_oid_p;
+	}
+      else
+	{
+	  assert (false);
 	}
     }
 }
