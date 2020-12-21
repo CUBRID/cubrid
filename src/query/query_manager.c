@@ -2110,7 +2110,6 @@ qmgr_clear_trans_wakeup (THREAD_ENTRY * thread_p, int tran_index, bool is_tran_d
 	  qmgr_clear_relative_cache_entries (thread_p, tran_entry_p);
 	}
       qmgr_free_oid_block (thread_p, tran_entry_p->modified_classes_p);
-      tran_entry_p->modified_classes_p = NULL;
     }
 
   if (tran_entry_p->query_entry_list_p == NULL)
@@ -2315,6 +2314,7 @@ qmgr_add_modified_class (THREAD_ENTRY * thread_p, const OID * class_oid_p)
     {
       tran_entry_p->modified_classes_p = (OID_BLOCK_LIST *) malloc (sizeof (OID_BLOCK_LIST));
       assert (tran_entry_p->modified_classes_p != NULL);
+      tran_entry_p->modified_classes_p->last_oid_idx = 0;
     }
 
   found = false;
