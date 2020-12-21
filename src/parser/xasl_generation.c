@@ -3063,17 +3063,19 @@ pt_split_hash_attrs_for_HQ (PARSER_CONTEXT * parser, PT_NODE * pred, PT_NODE ** 
 	      CHECK_HASH_ATTR (hashable_arg1, hash_arg1);
 	      CHECK_HASH_ATTR (hashable_arg2, hash_arg2);
 
-	      if ((hash_arg1 == PROBE && (hash_arg2 == BUILD || hash_arg2 == CONSTANT)) ||
+	      if ((hash_arg1 == PROBE && hash_arg2 == BUILD) ||
+		  (hash_arg1 == PROBE && hash_arg2 == CONSTANT) ||
 		  (hash_arg1 == CONSTANT && hash_arg2 == BUILD))
 		{
-		  /* arg1 is probe attr */
+		  /* arg1 is probe attr and arg2 is build attr */
 		  *build_attrs = parser_append_node (parser_copy_tree (parser, arg2), *build_attrs);
 		  *probe_attrs = parser_append_node (parser_copy_tree (parser, arg1), *probe_attrs);
 		}
-	      else if ((hash_arg1 == BUILD && (hash_arg2 == PROBE || hash_arg2 == CONSTANT)) ||
+	      else if ((hash_arg1 == BUILD && hash_arg2 == PROBE) ||
+		       (hash_arg1 == BUILD && hash_arg2 == CONSTANT) ||
 		       (hash_arg1 == CONSTANT && hash_arg2 == PROBE))
 		{
-		  /* arg1 is build attr */
+		  /* arg1 is build attr and arg2 is probe attr */
 		  *build_attrs = parser_append_node (parser_copy_tree (parser, arg1), *build_attrs);
 		  *probe_attrs = parser_append_node (parser_copy_tree (parser, arg2), *probe_attrs);
 		}
