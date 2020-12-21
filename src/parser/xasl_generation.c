@@ -81,6 +81,43 @@ extern void qo_plan_lite_print (QO_PLAN * plan, FILE * f, int howfar);
 /* maximum number of functions that can be optimized */
 #define ANALYTIC_OPT_MAX_FUNCTIONS              32
 
+typedef struct hashable HASHABLE;
+struct hashable
+{
+  bool is_PRIOR;
+  bool is_NAME_without_prior;
+};
+
+typedef enum
+{
+  UNHASHABLE = 1,
+  PROBE,
+  BUILD,
+  CONSTANT
+} HASH_ATTR;
+
+#define CHECK_HASH_ATTR(hashable_arg, hash_attr) \
+  do \
+    { \
+      if (hashable_arg.is_PRIOR && hashable_arg.is_NAME_without_prior) \
+        { \
+          hash_attr = UNHASHABLE; \
+        } \
+      else if (hashable_arg.is_PRIOR && !hashable_arg.is_NAME_without_prior) \
+        { \
+          hash_attr = PROBE; \
+        } \
+      else if (!hashable_arg.is_PRIOR && hashable_arg.is_NAME_without_prior) \
+        { \
+          hash_attr = BUILD; \
+        } \
+      else \
+        { \
+          hash_attr = CONSTANT; \
+        } \
+    } \
+  while (0)
+
 typedef struct analytic_key_metadomain ANALYTIC_KEY_METADOMAIN;
 struct analytic_key_metadomain
 {
@@ -453,6 +490,9 @@ static int pt_split_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info, PT_
 static int pt_split_hash_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info, PT_NODE * pred,
 				PT_NODE ** build_attrs, PT_NODE ** probe_attrs);
 
+static int pt_split_hash_attrs_for_HQ (PARSER_CONTEXT * parser, PT_NODE * pred,	PT_NODE ** build_attrs,
+				       PT_NODE ** probe_attrs);
+
 static int pt_to_index_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info, QO_XASL_INDEX_INFO * index_pred,
 			      PT_NODE * pred, PT_NODE ** pred_attrs, int **pred_offsets);
 static int pt_get_pred_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info, PT_NODE * pred, PT_NODE ** pred_attrs);
@@ -463,6 +503,8 @@ static PT_NODE *pt_flush_class_and_null_xasl (PARSER_CONTEXT * parser, PT_NODE *
 static PT_NODE *pt_null_xasl (PARSER_CONTEXT * parser, PT_NODE * tree, void *void_arg, int *continue_walk);
 
 static PT_NODE *pt_is_spec_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *void_arg, int *continue_walk);
+
+static PT_NODE *pt_check_hashable (PARSER_CONTEXT * parser, PT_NODE * tree, void *void_arg, int *continue_walk);
 
 static VAL_LIST *pt_clone_val_list (PARSER_CONTEXT * parser, PT_NODE * attribute_list);
 
@@ -614,10 +656,11 @@ static XASL_NODE *
 pt_make_connect_by_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NODE * select_xasl)
 {
   XASL_NODE *xasl, *xptr;
-  PT_NODE *from, *where, *if_part, *instnum_part;
+  PT_NODE *from, *where, *if_part, *instnum_part, *build_attrs = NULL, *probe_attrs = NULL;
   QPROC_DB_VALUE_LIST dblist1, dblist2;
   CONNECTBY_PROC_NODE *connect_by;
   int level, flag;
+  REGU_VARIABLE_LIST regu_attributes_build, regu_attributes_probe;
 
   if (!parser->symbols)
     {
@@ -807,6 +850,33 @@ pt_make_connect_by_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NO
 			       &connect_by->prior_regu_list_pred, true) != NO_ERROR)
     {
       goto exit_on_error;
+    }
+
+  /* add spec of list scan for join query */
+  if (!connect_by->single_table_opt)
+    {
+      /* check hashable predicate and split into build and probe attrs */
+      where = select_node->info.query.q.select.connect_by;
+      if (pt_split_hash_attrs_for_HQ (parser, where, &build_attrs, &probe_attrs) != NO_ERROR)
+	{
+	  goto exit_on_error;;
+	}
+      regu_attributes_build = pt_to_regu_variable_list (parser, build_attrs, UNBOX_AS_VALUE, xasl->val_list, NULL);
+      regu_attributes_probe = pt_to_regu_variable_list (parser, probe_attrs, UNBOX_AS_VALUE, xasl->val_list, NULL);
+
+      /* make list scan spec. data filter will be evaluated at if_pred in qexec_execute_connect_by() */
+      xasl->spec_list = pt_make_list_access_spec (xasl, ACCESS_METHOD_SEQUENTIAL, NULL, NULL, connect_by->regu_list_pred,
+			      connect_by->regu_list_rest, regu_attributes_build, regu_attributes_probe);
+      if (xasl->spec_list == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "generate hq(join) xasl");
+	  return NULL;
+	}
+      /* if the user asked for NO_HASH_LIST_SCAN, force it on all list scan */
+      if (select_node->info.query.q.select.hint & PT_HINT_NO_HASH_LIST_SCAN)
+	{
+	  xasl->spec_list->s.list_node.hash_list_scan_yn = 0;
+	}
     }
 
   /* sepparate after CONNECT BY predicate regu list */
@@ -2849,14 +2919,8 @@ static int
 pt_split_hash_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info, PT_NODE * pred, PT_NODE ** build_attrs,
 		     PT_NODE ** probe_attrs)
 {
-  PT_NODE *tmp = NULL, *pointer = NULL;
-  PT_NODE *build_nodes = NULL;
-  PT_NODE *probe_nodes = NULL;
-  int cur_build, num_attrs, i;
-  PT_NODE *attr_list = NULL;
   PT_NODE *node = NULL, *save_node = NULL, *save_next = NULL;
-  PT_NODE *arg1, *arg2;
-  bool has_reserved = false;
+  PT_NODE *arg1 = NULL, *arg2 = NULL;
 
   assert (build_attrs != NULL && *build_attrs == NULL);
   assert (probe_attrs != NULL && *probe_attrs == NULL);
@@ -2889,6 +2953,8 @@ pt_split_hash_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info, PT_NODE *
 
 	      arg1 = node->info.expr.arg1;
 	      arg2 = node->info.expr.arg2;
+	      assert(arg1 != NULL && arg2 != NULL);
+
 	      UINTPTR spec_id[2], spec_id2[2];
 	      spec_id[0] = spec_id2[0] = table_info->spec_id;
 	      spec_id[1] = spec_id2[1] = 0;
@@ -2911,6 +2977,111 @@ pt_split_hash_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info, PT_NODE *
 		  /* arg2 is current spec */
 		  *build_attrs = parser_append_node (parser_copy_tree (parser, arg2), *build_attrs);
 		  *probe_attrs = parser_append_node (parser_copy_tree (parser, arg1), *probe_attrs);
+		}
+
+	      /* restore node link */
+	      node->next = save_next;
+	    }
+
+	  node = save_node;	/* restore */
+	}			/* for (node = ...) */
+    }
+
+  return NO_ERROR;
+
+exit_on_error:
+
+  parser_free_tree (parser, *probe_attrs);
+  parser_free_tree (parser, *build_attrs);
+
+  return ER_FAILED;
+}
+
+/*
+ * pt_split_hash_attrs_for_HQ () - Split the attr_list into two lists without destroying
+ *      the original list for HQ
+ *   return:
+ *   parser(in):
+ *   pred(in):
+ *   build_attrs(out):
+ *   probe_attrs(out):
+ *
+ * Note :
+ * is_PRIOR | NAME_without_prior | characteristic
+ *    O     |        O           | unhashable
+ *    O     |        X           | probe attr
+ *    X     |        O           | build attr
+ *    X     |        X           | constant (can be probe or build attr)
+ */
+static int
+pt_split_hash_attrs_for_HQ (PARSER_CONTEXT * parser, PT_NODE * pred, PT_NODE ** build_attrs, PT_NODE ** probe_attrs)
+{
+  PT_NODE *node = NULL, *save_node = NULL, *save_next = NULL;
+  PT_NODE *arg1 = NULL, *arg2 = NULL;
+
+  assert (build_attrs != NULL && *build_attrs == NULL);
+  assert (probe_attrs != NULL && *probe_attrs == NULL);
+  *build_attrs = NULL;
+  *probe_attrs = NULL;
+
+  if (pred)
+    {
+      /* Traverse pred */
+      for (node = pred; node; node = node->next)
+	{
+	  save_node = node;	/* save */
+
+	  CAST_POINTER_TO_NODE (node);
+
+	  if (!PT_IS_EXPR_NODE_WITH_OPERATOR(node, PT_EQ) || node->or_next)
+	    {
+	      /* HASH LIST SCAN for HQ is possible under the following conditions */
+	      /* 1. CNF predicate (node is NOT PT_AND, PT_OR) */
+	      /* 2. only equal operation */
+	      /* 3. predicate without OR (or_next is null) */
+	      /* 4. symmetric predicate (having PRIOR, probe. having NAME, build. Having these two makes it unhashable) */
+	      /* 5. subquery is not allowed in syntax check */
+	      continue;
+	    }
+	  else
+	    {
+	      /* save and cut-off node link */
+	      save_next = node->next;
+	      node->next = NULL;
+
+	      arg1 = node->info.expr.arg1;
+	      arg2 = node->info.expr.arg2;
+	      assert(arg1 != NULL && arg2 != NULL);
+
+	      HASHABLE hashable_arg1, hashable_arg2;
+	      hashable_arg1 = hashable_arg2 = {false, false};
+	      HASH_ATTR hash_arg1, hash_arg2;
+
+	      parser_walk_tree (parser, arg1, pt_check_hashable, &hashable_arg1, NULL, NULL);
+	      parser_walk_tree (parser, arg2, pt_check_hashable, &hashable_arg2, NULL, NULL);
+
+	      CHECK_HASH_ATTR (hashable_arg1, hash_arg1);
+	      CHECK_HASH_ATTR (hashable_arg2, hash_arg2);
+
+	      if ((hash_arg1 == PROBE && hash_arg2 == BUILD) ||
+		  (hash_arg1 == PROBE && hash_arg2 == CONSTANT) ||
+		  (hash_arg1 == CONSTANT && hash_arg2 == BUILD))
+		{
+		  /* arg1 is probe attr and arg2 is build attr */
+		  *build_attrs = parser_append_node (parser_copy_tree (parser, arg2), *build_attrs);
+		  *probe_attrs = parser_append_node (parser_copy_tree (parser, arg1), *probe_attrs);
+		}
+	      else if ((hash_arg1 == BUILD && hash_arg2 == PROBE) ||
+		       (hash_arg1 == BUILD && hash_arg2 == CONSTANT) ||
+		       (hash_arg1 == CONSTANT && hash_arg2 == PROBE))
+		{
+		  /* arg1 is build attr and arg2 is probe attr */
+		  *build_attrs = parser_append_node (parser_copy_tree (parser, arg1), *build_attrs);
+		  *probe_attrs = parser_append_node (parser_copy_tree (parser, arg2), *probe_attrs);
+		}
+	      else
+		{
+		  /* unhashable predicate */
 		}
 
 	      /* restore node link */
@@ -3247,6 +3418,33 @@ pt_is_spec_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *void_arg, int *c
 	  spec_id[1] = 1;
 	}
     }
+  return tree;
+}
+
+/*
+ * pt_check_hashable () - check whether hashable or not
+ *   return:
+ *   parser(in):
+ *   tree(in):
+ *   void_arg(in):
+ *   continue_walk(in):
+ */
+static PT_NODE *
+pt_check_hashable (PARSER_CONTEXT * parser, PT_NODE * tree, void *void_arg, int *continue_walk)
+{
+  *continue_walk = PT_CONTINUE_WALK;
+  HASHABLE *hashable = (HASHABLE *) void_arg;
+
+  if (PT_IS_EXPR_NODE_WITH_OPERATOR(tree, PT_PRIOR))
+    {
+      hashable->is_PRIOR = true;
+      *continue_walk = PT_LIST_WALK;
+    }
+  else if (pt_is_name_node (tree))
+    {
+      hashable->is_NAME_without_prior = true;
+    }
+
   return tree;
 }
 
