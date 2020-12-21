@@ -199,7 +199,7 @@ get_estimated_objs (HFID * hfid, int64_t *est_objects)
 
   *est_objects += nobjs;
 
-  return nobjs;
+  return 0;
 }
 
 /*
