@@ -492,7 +492,7 @@ struct cte_proc_node
 #define XASL_RETURN_GENERATED_KEYS    0x2000	/* return generated keys */
 #define XASL_NO_FIXED_SCAN	      0x4000	/* disable fixed scan for this proc */
 #define XASL_NEED_SINGLE_TUPLE_SCAN   0x8000	/* for exists operation */
-#define XASL_INCLUDES_TDE_CLASS              0x10000	/* is any tde class related */
+#define XASL_INCLUDES_TDE_CLASS	      0x10000	/* is any tde class related */
 
 #define XASL_IS_FLAGED(x, f)        (((x)->flag & (int) (f)) != 0)
 #define XASL_SET_FLAG(x, f)         (x)->flag |= (int) (f)
@@ -825,6 +825,9 @@ union hybrid_node
 
 #define ACCESS_SPEC_LIST_ID(ptr) \
         (ACCESS_SPEC_XASL_NODE(ptr)->list_id)
+
+#define ACCESS_SPEC_CONNECT_BY_LIST_ID(ptr) \
+        (ACCESS_SPEC_XASL_NODE(ptr)->proc.connect_by.input_list_id)
 
 #define ACCESS_SPEC_RLIST_VALPTR_LIST(ptr) \
         ((ptr)->s.reguval_list_node.valptr_list)
