@@ -152,11 +152,12 @@ static void qmgr_put_page_header (PAGE_PTR page_p, QFILE_PAGE_HEADER * header_p)
 
 static QMGR_QUERY_ENTRY *qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry_p);
 static void qmgr_free_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry_p, QMGR_QUERY_ENTRY * q_ptr);
-static void qmgr_deallocate_query_entries (THREAD_ENTRY * thread_p, QMGR_QUERY_ENTRY * q_ptr);
+static void qmgr_deallocate_query_entries (QMGR_QUERY_ENTRY * q_ptr);
+static void qmgr_deallocate_oid_blocks (OID_BLOCK_LIST * oid_block);
 static void qmgr_add_query_entry (THREAD_ENTRY * thread_p, QMGR_QUERY_ENTRY * q_ptr, int trans_ind);
 static QMGR_QUERY_ENTRY *qmgr_find_query_entry (QMGR_QUERY_ENTRY * query_list_p, QUERY_ID query_id);
 static void qmgr_delete_query_entry (THREAD_ENTRY * thread_p, QUERY_ID query_id, int trans_ind);
-static void qmgr_free_tran_entries (THREAD_ENTRY * thread_p);
+static void qmgr_free_tran_entries (void);
 
 static void qmgr_clear_relative_cache_entries (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry_p);
 static OID_BLOCK_LIST *qmgr_allocate_oid_block (THREAD_ENTRY * thread_p);
@@ -407,6 +408,27 @@ qmgr_free_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry_p, 
 }
 
 /*
+ * qmgr_deallocate_oid_blocks () -
+ *   return:
+ *   oid_blocks(in)  : oid_block pointer
+ *
+ * Note: Free the area allocated for the oid_blocks
+ */
+static void
+qmgr_deallocate_oid_blocks (OID_BLOCK_LIST * oid_block)
+{
+  OID_BLOCK_LIST *oid;
+
+  while (oid_block)
+    {
+      oid = oid_block;
+      oid_block = oid_block->next;
+
+      free (oid);
+    }
+}
+
+/*
  * qmgr_deallocate_query_entries () -
  *   return:
  *   q_ptr(in)  : Query Entry Pointer
@@ -414,7 +436,7 @@ qmgr_free_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry_p, 
  * Note: Free the area allocated for the query entry list
  */
 static void
-qmgr_deallocate_query_entries (THREAD_ENTRY * thread_p, QMGR_QUERY_ENTRY * query_p)
+qmgr_deallocate_query_entries (QMGR_QUERY_ENTRY * query_p)
 {
   QMGR_QUERY_ENTRY *p;
 
@@ -690,7 +712,7 @@ qmgr_allocate_tran_entries (THREAD_ENTRY * thread_p, int num_new_entries)
  * Note: frees the area pointed by the query manager transaction index pointer.
  */
 static void
-qmgr_free_tran_entries (THREAD_ENTRY * thread_p)
+qmgr_free_tran_entries (void)
 {
   QMGR_TRAN_ENTRY *tran_entry_p;
   int i;
@@ -703,8 +725,9 @@ qmgr_free_tran_entries (THREAD_ENTRY * thread_p)
   tran_entry_p = qmgr_Query_table.tran_entries_p;
   for (i = 0; i < qmgr_Query_table.num_trans; i++)
     {
-      qmgr_deallocate_query_entries (thread_p, tran_entry_p->query_entry_list_p);
-      qmgr_deallocate_query_entries (thread_p, tran_entry_p->free_query_entry_list_p);
+      qmgr_deallocate_query_entries (tran_entry_p->query_entry_list_p);
+      qmgr_deallocate_query_entries (tran_entry_p->free_query_entry_list_p);
+      qmgr_deallocate_oid_blocks (tran_entry_p->modified_classes_p);
 
       tran_entry_p++;
     }
@@ -919,7 +942,7 @@ qmgr_finalize (THREAD_ENTRY * thread_p)
       return;
     }
 
-  qmgr_free_tran_entries (thread_p);
+  qmgr_free_tran_entries ();
 
   assert (qmgr_Query_table.tran_entries_p == NULL && qmgr_Query_table.num_trans == 0);
 
@@ -2220,45 +2243,6 @@ qmgr_set_tran_status (THREAD_ENTRY * thread_p, int tran_index, QMGR_TRAN_STATUS 
 #endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
- * qmgr_allocate_oid_block () -
- *   return:
- */
-static OID_BLOCK_LIST *
-qmgr_allocate_oid_block (THREAD_ENTRY * thread_p)
-{
-  OID_BLOCK_LIST *oid_block_p;
-
-  if (csect_enter (thread_p, CSECT_QPROC_QUERY_TABLE, INF_WAIT) != NO_ERROR)
-    {
-      return NULL;
-    }
-
-  oid_block_p = qmgr_Query_table.free_oid_block_list_p;
-
-  if (oid_block_p)
-    {
-      qmgr_Query_table.free_oid_block_list_p = oid_block_p->next;
-    }
-  else
-    {
-      oid_block_p = (OID_BLOCK_LIST *) malloc (sizeof (OID_BLOCK_LIST));
-      if (oid_block_p == NULL)
-	{
-	  csect_exit (thread_p, CSECT_QPROC_QUERY_TABLE);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (OID_BLOCK_LIST));
-	  return NULL;
-	}
-    }
-
-  oid_block_p->next = NULL;
-  oid_block_p->last_oid_idx = 0;
-
-  csect_exit (thread_p, CSECT_QPROC_QUERY_TABLE);
-
-  return oid_block_p;
-}
-
-/*
  * qmgr_free_oid_block () -
  *   return:
  *   oid_block(in)      :
@@ -2267,23 +2251,11 @@ static void
 qmgr_free_oid_block (THREAD_ENTRY * thread_p, OID_BLOCK_LIST * oid_block_p)
 {
   OID_BLOCK_LIST *p;
-#if 0
-  if (csect_enter (thread_p, CSECT_QPROC_QUERY_TABLE, INF_WAIT) != NO_ERROR)
-    {
-      return;
-    }
-#endif
+
   for (p = oid_block_p; p; p = p->next)
     {
       p->last_oid_idx = 0;
     }
-#if 0
-  p->last_oid_idx = 0;
-  p->next = qmgr_Query_table.free_oid_block_list_p;
-  qmgr_Query_table.free_oid_block_list_p = oid_block_p;
-
-  csect_exit (thread_p, CSECT_QPROC_QUERY_TABLE);
-#endif
 }
 
 /*
@@ -2303,13 +2275,6 @@ qmgr_add_modified_class (THREAD_ENTRY * thread_p, const OID * class_oid_p)
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
-#if 0
-  if (tran_entry_p->modified_classes_p == NULL
-      && (tran_entry_p->modified_classes_p = qmgr_allocate_oid_block (thread_p)) == NULL)
-    {
-      return;
-    }
-#endif
   if (tran_entry_p->modified_classes_p == NULL)
     {
       tran_entry_p->modified_classes_p = (OID_BLOCK_LIST *) malloc (sizeof (OID_BLOCK_LIST));
@@ -2344,8 +2309,8 @@ qmgr_add_modified_class (THREAD_ENTRY * thread_p, const OID * class_oid_p)
       else if ((oid_block_p->next = (OID_BLOCK_LIST *) malloc (sizeof (OID_BLOCK_LIST))))
 	{
 	  oid_block_p = oid_block_p->next;
-          oid_block_p->last_oid_idx = 0;
-          oid_block_p->next = NULL;
+	  oid_block_p->last_oid_idx = 0;
+	  oid_block_p->next = NULL;
 	  oid_block_p->oid_array[oid_block_p->last_oid_idx++] = *class_oid_p;
 	}
       else
