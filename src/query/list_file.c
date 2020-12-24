@@ -5121,35 +5121,6 @@ qfile_assign_list_cache (void)
 }
 
 /*
- * qfile_clear_cache_list () - Clear out list cache hash table
- *   return:
- *   list_ht_no(in)     :
- *   release(in)        :
- */
-int
-qfile_clear_cache_list (THREAD_ENTRY * thread_p, int list_ht_no)
-{
-  if (QFILE_IS_LIST_CACHE_DISABLED)
-    {
-      return ER_FAILED;
-    }
-
-  if (qfile_List_cache.n_hts == 0 || qfile_List_cache.ht_assigned[list_ht_no] == false)
-    {
-      return ER_FAILED;
-    }
-
-  if (csect_enter (thread_p, CSECT_QPROC_LIST_CACHE, INF_WAIT) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  (void) mht_clear (qfile_List_cache.list_hts[list_ht_no], NULL, NULL);
-
-  csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
-}
-
-/*
  * qfile_clear_list_cache () - Clear out list cache hash table
  *   return:
  *   list_ht_no(in)     :
@@ -5746,9 +5717,14 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
 	  num_elements = (int) lent->last_ta_idx;
 	  if (lent->uncommitted_marker == true)
 	    {
-	      lent->last_ta_idx = num_elements;
-	      /* treat as look-up failed */
-	      lent = NULL;
+	      /* treat as look-up failed,
+	       * because the cache is assigned already by other transaction */
+	      assert (lent->last_ta_idx > 0);
+	      if (lent->tran_index_array[lent->last_ta_idx - 1] != tran_index)
+		{
+		  lent->last_ta_idx = num_elements;
+		  lent = NULL;
+		}
 	    }
 	  else
 	    {
@@ -6002,6 +5978,14 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr, con
 	  break;
 	}
 
+#if defined(SERVER_MODE)
+      /* check in-use by other transaction */
+      if ((int) lent->last_ta_idx > 0);
+      {
+        csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
+        return lent;
+      }
+#endif
       /* the entry that is in the cache is same with mine; do not duplicate the cache entry */
       /* record my transaction id into the entry and adjust timestamp and reference counter */
 #if defined(SERVER_MODE)

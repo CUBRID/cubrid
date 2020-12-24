@@ -3623,7 +3623,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_LIST_MAX_QUERY_CACHE_ENTRIES,
    PRM_NAME_LIST_MAX_QUERY_CACHE_ENTRIES,
-   (PRM_FOR_SERVER),
+   (PRM_FOR_SERVER | PRM_FORCE_SERVER),
    PRM_INTEGER,
    &prm_list_max_query_cache_entries_flag,
    (void *) &prm_list_max_query_cache_entries_default,
@@ -3635,7 +3635,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_LIST_MAX_QUERY_CACHE_PAGES,
    PRM_NAME_LIST_MAX_QUERY_CACHE_PAGES,
-   (PRM_FOR_SERVER),
+   (PRM_FOR_SERVER | PRM_FORCE_SERVER),
    PRM_INTEGER,
    &prm_list_max_query_cache_pages_flag,
    (void *) &prm_list_max_query_cache_pages_default,
@@ -10469,26 +10469,9 @@ prm_tune_parameters (void)
 
   if (PRM_GET_INT (max_plan_cache_entries_prm->value) <= 0)
     {
-      /* disable all by default */
-      (void) prm_set_default (query_cache_mode_prm);
-      (void) prm_set_default (max_query_cache_entries_prm);
-      (void) prm_set_default (query_cache_size_in_pages_prm);
-    }
-  else
-    {
-      if (PRM_GET_INT (query_cache_mode_prm->value) == 0)
-	{
-	  (void) prm_set_default (max_query_cache_entries_prm);
-	  (void) prm_set_default (query_cache_size_in_pages_prm);
-	}
-      else
-	{
-	  if (PRM_GET_INT (max_query_cache_entries_prm->value) <= 0)
-	    {
-	      sprintf (newval, "%d", PRM_GET_INT (max_plan_cache_entries_prm->value));
-	      (void) prm_set (max_query_cache_entries_prm, newval, false);
-	    }
-	}
+      /* disable query cache mode by default */
+      (void) prm_set (max_query_cache_entries_prm, 0, false);
+      (void) prm_set (query_cache_size_in_pages_prm, 0, false);
     }
 
   /* check HA related parameters */

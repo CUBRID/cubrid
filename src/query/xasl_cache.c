@@ -1764,8 +1764,7 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
       /* make sure to start from beginning */
       iter.restart ();
 
-      /*
-       * Iterate through hash, check entry OID's and if one matches the argument, mark the entry for delete and save
+      /* Iterate through hash, check entry OID's and if one matches the argument, mark the entry for delete and save
        * it in delete_xids buffer. We cannot delete them from hash while iterating, because the one lock-free
        * transaction can be used for one hash entry only.
        */
@@ -1781,6 +1780,7 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
 	  /* Check invalidation conditions. */
 	  if (invalidate_check == NULL || invalidate_check (xcache_entry, arg))
 	    {
+	      /* delete query cache from xcache entry */
 	      if (xcache_entry->list_ht_no >= 0 && !QFILE_IS_LIST_CACHE_DISABLED && !qfile_has_no_cache_entries ())
 		{
 		  qfile_clear_list_cache (thread_p, xcache_entry->list_ht_no, true);
@@ -2202,10 +2202,10 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
 	{
 	  candidate.xid = xcache_entry->xasl_id;
 	  candidate.xcache = xcache_entry;
-	  if (candidate.xid.cache_flag > 0 || (candidate.xid.cache_flag & XCACHE_ENTRY_FLAGS_MASK))
+	  if (candidate.xid.cache_flag > 0
+	      || (candidate.xid.cache_flag & XCACHE_ENTRY_FLAGS_MASK) || xcache_entry->list_ht_no >= 0)
 	    {
-	      /* Either marked for delete or recompile, fixed (prepared)
-	         or already recompiled. Not a valid candidate. */
+	      /* Either marked for delete or recompile, or already recompiled. Not a valid candidate. */
 	      continue;
 	    }
 
@@ -2224,7 +2224,9 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
 	{
 	  candidate.xid = xcache_entry->xasl_id;
 	  candidate.xcache = xcache_entry;
-	  if (candidate.xid.cache_flag > 0 || (candidate.xid.cache_flag & XCACHE_ENTRY_FLAGS_MASK)
+	  if (candidate.xid.cache_flag > 0
+	      || (candidate.xid.cache_flag & XCACHE_ENTRY_FLAGS_MASK)
+	      || xcache_entry->list_ht_no >= 0
 	      || TIME_DIFF_SEC (current_time, candidate.xcache->time_last_used) <= xcache_Time_threshold)
 	    {
 	      continue;
