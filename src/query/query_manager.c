@@ -2278,7 +2278,11 @@ qmgr_add_modified_class (THREAD_ENTRY * thread_p, const OID * class_oid_p)
   if (tran_entry_p->modified_classes_p == NULL)
     {
       tran_entry_p->modified_classes_p = (OID_BLOCK_LIST *) malloc (sizeof (OID_BLOCK_LIST));
-      assert (tran_entry_p->modified_classes_p != NULL);
+      if (tran_entry_p->modified_classes_p == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (OID_BLOCK_LIST));
+	  return;
+	}
       tran_entry_p->modified_classes_p->last_oid_idx = 0;
       tran_entry_p->modified_classes_p->next = NULL;
     }

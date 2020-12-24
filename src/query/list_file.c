@@ -5982,8 +5982,8 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr, con
       /* check in-use by other transaction */
       if ((int) lent->last_ta_idx > 0);
       {
-	csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
-	return lent;
+        csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
+        return lent;
       }
 #endif
       /* the entry that is in the cache is same with mine; do not duplicate the cache entry */
