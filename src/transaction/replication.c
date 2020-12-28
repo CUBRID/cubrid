@@ -544,6 +544,8 @@ repl_log_insert_statement (THREAD_ENTRY * thread_p, REPL_INFO_SBR * repl_info)
 
   repl_rec = (LOG_REPL_RECORD *) (&tdes->repl_records[tdes->cur_repl_record]);
   repl_rec->repl_type = LOG_REPLICATION_STATEMENT;
+  repl_rec->tde_encrypted = false;
+
   repl_rec->rcvindex = RVREPL_STATEMENT;
   repl_rec->must_flush = LOG_REPL_COMMIT_NEED_FLUSH;
   OID_SET_NULL (&repl_rec->inst_oid);
