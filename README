@@ -3,8 +3,8 @@ CUBRID Database Management System
 CUBRID is a DBMS being supported by an active community of open source developers 
 and provides better performance and features necessary for Web services. 
 
-CUBRID is distributed under three licenses according to its component, 
-Database engine is under GPL v2 or later and 
+CUBRID is distributed under two licenses according to its component, 
+Database engine is under Apache v2 license and
 APIs and Connectors are under BSD license.
 
 Copyright and license information can be found in the file COPYING.
@@ -14,27 +14,27 @@ Below you will see the brief list of sections to guide you to easily get started
 
 MAJOR REFERENCES
 ================
-- CUBRID Official Site: http://www.cubrid.org and http://www.cubrid.com
+- CUBRID Official Site: https://www.cubrid.org and https://www.cubrid.com
 - CUBRID Issue Tracker: http://jira.cubrid.org/browse/CBRD
-- CUBRID Manuals: http://cubrid.org/documentation/manuals
+- CUBRID Manuals: https://cubrid.org/manuals
 
 DOWNLOADS and FILE REPOSITORIES
 ===============================
-- http://www.cubrid.org/downloads
-- http://ftp.cubrid.org
+- https://www.cubrid.org/downloads
+- https://ftp.cubrid.org
 
 HOW TO INSTALL CUBRID
 ===========================
 - CUBRID Installation:
-  http://cubrid.org/downloads
+  https://cubrid.org/downloads
 - CUBRID Install from package
-  Linux: http://cubrid.org/getting_started
-  Windows: http://cubrid.org/getting_started
+  Linux: https://cubrid.org/getting_started
+  Windows: https://cubrid.org/getting_started
 
 GETTING STARTED
 ===============
 - Follow the tutorials at:
-  http://cubrid.org/getting_started
+  https://cubrid.org/getting_started
 
 GETTING HELP
 ============
