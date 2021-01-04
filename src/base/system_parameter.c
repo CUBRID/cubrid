@@ -1411,14 +1411,14 @@ static int prm_list_query_cache_mode_upper = 2;
 static int prm_list_query_cache_mode_lower = 2;
 static unsigned int prm_list_query_cache_mode_flag = 0;
 
-int PRM_LIST_MAX_QUERY_CACHE_ENTRIES = 200;
-static int prm_list_max_query_cache_entries_default = 200;
+int PRM_LIST_MAX_QUERY_CACHE_ENTRIES = 0;
+static int prm_list_max_query_cache_entries_default = 0;
 static int prm_list_max_query_cache_entries_upper = INT_MAX;
 static int prm_list_max_query_cache_entries_lower = 0;
 static unsigned int prm_list_max_query_cache_entries_flag = 0;
 
-int PRM_LIST_MAX_QUERY_CACHE_PAGES = 1000;
-static int prm_list_max_query_cache_pages_default = 1000;
+int PRM_LIST_MAX_QUERY_CACHE_PAGES = 0;
+static int prm_list_max_query_cache_pages_default = 0;
 static int prm_list_max_query_cache_pages_upper = INT_MAX;
 static int prm_list_max_query_cache_pages_lower = 0;
 static unsigned int prm_list_max_query_cache_pages_flag = 0;
