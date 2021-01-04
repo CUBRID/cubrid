@@ -7911,14 +7911,14 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
 	      c = dom1->type->index_cmpdisk (mem1, mem2, dom1, do_coercion, total_order, NULL);
 	    }
 	  else
-	    {			/* coercion and comparison
-				 * val1 and val2 have different domain
-				 * and it can be char-type and varchar-type mixed
-				 *
-				 * for do_coercion = 2, we need to process key comparing as char-type
-				 * in case that one of two arguments has varchar-type
-				 * if the other argument has char-type
-				 */
+	    { /* coercion and comparison
+	       * val1 and val2 have different domain
+	       * and it can be char-type and varchar-type mixed
+	       *
+	       * for do_coercion = 2, we need to process key comparing as char-type
+	       * in case that one of two arguments has varchar-type
+	       * if the other argument has char-type
+	       */
 	      do_coercion = 2;
 	      c = pr_midxkey_compare_element (mem1, mem2, dom1, dom2, do_coercion, total_order);
 	    }
