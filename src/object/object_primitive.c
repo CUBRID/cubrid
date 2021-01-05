@@ -12018,31 +12018,33 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
     {
       int i;
 
-      ti = false;
-
       /* TODO: We might need to make refactoring the code for corcing between CHAR and VARCHAR */
       /* 
        * from btree_get_prefix_separator
        * we need to process the ti-comparison for this case (CHAR and VARCHAR mixed)
        */
-      if (value1->domain.char_info.type == DB_TYPE_CHAR)
+      if (value1->domain.char_info.type != DB_TYPE_CHAR || value2->domain.char_info.type != DB_TYPE_CHAR)
 	{
-	  for (i = size1; i > 0; i--)
+	  ti = false;
+	  if (value1->domain.char_info.type == DB_TYPE_CHAR)
 	    {
-	      if (string1[i - 1] != 0x20)
-		break;
+	      for (i = size1; i > 0; i--)
+		{
+		  if (string1[i - 1] != 0x20)
+		    break;
+		}
+	      size1 = i;
 	    }
-	  size1 = i;
-	}
 
-      if (value2->domain.char_info.type == DB_TYPE_CHAR)
-	{
-	  for (i = size2; i > 0; i--)
+	  if (value2->domain.char_info.type == DB_TYPE_CHAR)
 	    {
-	      if (string2[i - 1] != 0x20)
-		break;
+	      for (i = size2; i > 0; i--)
+		{
+		  if (string2[i - 1] != 0x20)
+		    break;
+		}
+	      size2 = i;
 	    }
-	  size2 = i;
 	}
     }
 
@@ -12944,25 +12946,27 @@ mr_cmpval_nchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tota
     {
       int i;
 
-      ti = false;
-
-      if (value1->domain.char_info.type == DB_TYPE_CHAR)
+      if (value1->domain.char_info.type != DB_TYPE_NCHAR || value2->domain.char_info.type != DB_TYPE_NCHAR)
 	{
-	  for (i = size1; i > 0; i--)
+	  ti = false;
+	  if (value1->domain.char_info.type == DB_TYPE_NCHAR)
 	    {
-	      if (string1[i - 1] != 0x20)
-		break;
+	      for (i = size1; i > 0; i--)
+		{
+		  if (string1[i - 1] != 0x20)
+		    break;
+		}
+	      size1 = i;
 	    }
-	  size1 = i;
-	}
-      if (value2->domain.char_info.type == DB_TYPE_CHAR)
-	{
-	  for (i = size2; i > 0; i--)
+	  if (value2->domain.char_info.type == DB_TYPE_NCHAR)
 	    {
-	      if (string2[i - 1] != 0x20)
-		break;
+	      for (i = size2; i > 0; i--)
+		{
+		  if (string2[i - 1] != 0x20)
+		    break;
+		}
+	      size2 = i;
 	    }
-	  size2 = i;
 	}
     }
 
