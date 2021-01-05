@@ -147,10 +147,6 @@ extern unsigned int db_on_server;
 #define IS_FLOATING_PRECISION(prec) \
   ((prec) == TP_FLOATING_PRECISION_VALUE)
 
-#define TP_IS_CHAR_STRING(db_val_type)					\
-    (db_val_type == DB_TYPE_CHAR || db_val_type == DB_TYPE_VARCHAR ||	\
-     db_val_type == DB_TYPE_NCHAR || db_val_type == DB_TYPE_VARNCHAR)
-
 // *INDENT-OFF*
 pr_type::pr_type (const char * name_arg, DB_TYPE id_arg, int varp_arg, int size_arg, int disksize_arg, int align_arg,
                   initmem_function_type initmem_f_arg, initval_function_type initval_f_arg,
@@ -7760,8 +7756,6 @@ pr_midxkey_compare_element (char *mem1, char *mem2, TP_DOMAIN * dom1, TP_DOMAIN 
     }
 
   c = tp_value_compare_with_error (&val1, &val2, do_coercion, total_order, &comparable);
-  //if (c == DB_GT) c = DB_LT;
-  //if (c == DB_LT) c = DB_GT;
 
 clean_up:
   if (DB_NEED_CLEAR (&val1))
@@ -11958,7 +11952,7 @@ mr_cmpdisk_char_internal (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
       mem_length1 = mem_length2 = STR_SIZE (domain->precision, TP_DOMAIN_CODESET (domain));
     }
 
-  if (!ignore_trailing_space && do_coercion < 2)
+  if (!ignore_trailing_space)
     {
       ti = (domain->type->id == DB_TYPE_CHAR || domain->type->id == DB_TYPE_NCHAR);
     }
