@@ -147,6 +147,10 @@ extern unsigned int db_on_server;
 #define IS_FLOATING_PRECISION(prec) \
   ((prec) == TP_FLOATING_PRECISION_VALUE)
 
+#define TP_IS_CHAR_STRING(db_val_type)					\
+    (db_val_type == DB_TYPE_CHAR || db_val_type == DB_TYPE_VARCHAR ||	\
+     db_val_type == DB_TYPE_NCHAR || db_val_type == DB_TYPE_VARNCHAR)
+
 // *INDENT-OFF*
 pr_type::pr_type (const char * name_arg, DB_TYPE id_arg, int varp_arg, int size_arg, int disksize_arg, int align_arg,
                   initmem_function_type initmem_f_arg, initval_function_type initval_f_arg,
@@ -7756,6 +7760,8 @@ pr_midxkey_compare_element (char *mem1, char *mem2, TP_DOMAIN * dom1, TP_DOMAIN 
     }
 
   c = tp_value_compare_with_error (&val1, &val2, do_coercion, total_order, &comparable);
+  //if (c == DB_GT) c = DB_LT;
+  //if (c == DB_LT) c = DB_GT;
 
 clean_up:
   if (DB_NEED_CLEAR (&val1))
@@ -7911,15 +7917,10 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
 	      c = dom1->type->index_cmpdisk (mem1, mem2, dom1, do_coercion, total_order, NULL);
 	    }
 	  else
-	    { /* coercion and comparison
-	       * val1 and val2 have different domain
-	       * and it can be char-type and varchar-type mixed
-	       *
-	       * for do_coercion = 2, we need to process key comparing as char-type
-	       * in case that one of two arguments has varchar-type
-	       * if the other argument has char-type
-	       */
-	      do_coercion = 2;
+	    {			/* coercion and comparison
+				 * val1 and val2 have different domain
+				 * and it can be char-type and varchar-type mixed
+				 */
 	      c = pr_midxkey_compare_element (mem1, mem2, dom1, dom2, do_coercion, total_order);
 	    }
 	}
@@ -11146,7 +11147,28 @@ mr_cmpval_string (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
 
   if (!ignore_trailing_space)
     {
+      int i;
+
       ti = false;
+
+      if (value1->domain.char_info.type == DB_TYPE_CHAR)
+	{
+	  for (i = size1; i > 0; i--)
+	    {
+	      if (string1[i - 1] != 0x20)
+		break;
+	    }
+	  size1 = i;
+	}
+      if (value2->domain.char_info.type == DB_TYPE_CHAR)
+	{
+	  for (i = size2; i > 0; i--)
+	    {
+	      if (string2[i - 1] != 0x20)
+		break;
+	    }
+	  size2 = i;
+	}
     }
 
   strc = QSTR_COMPARE (collation, string1, size1, string2, size2, ti);
@@ -11936,7 +11958,7 @@ mr_cmpdisk_char_internal (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
       mem_length1 = mem_length2 = STR_SIZE (domain->precision, TP_DOMAIN_CODESET (domain));
     }
 
-  if (!ignore_trailing_space)
+  if (!ignore_trailing_space && do_coercion < 2)
     {
       ti = (domain->type->id == DB_TYPE_CHAR || domain->type->id == DB_TYPE_NCHAR);
     }
@@ -11952,7 +11974,7 @@ static DB_VALUE_COMPARE_RESULT
 mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
   DB_VALUE_COMPARE_RESULT c;
-  int strc;
+  int strc, size1, size2;
 
   static bool ti = true;
   static bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
@@ -11995,31 +12017,42 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
       return DB_UNK;
     }
 
+  size1 = db_get_string_size (value1);
+  size2 = db_get_string_size (value2);
+
   if (!ignore_trailing_space)
     {
+      int i;
+
+      ti = false;
+
       /* TODO: We might need to make refactoring the code for corcing between CHAR and VARCHAR */
-      switch (do_coercion)
+      /* 
+       * from btree_get_prefix_separator
+       * we need to process the ti-comparison for this case (CHAR and VARCHAR mixed)
+       */
+      if (value1->domain.char_info.type == DB_TYPE_CHAR)
 	{
-	case 2:
-	  /* 
-	   * from btree_get_prefix_separator
-	   * we need to process the ti-comparison for this case (CHAR and VARCHAR mixed)
-	   */
-	  ti = (value1->domain.char_info.type == DB_TYPE_CHAR || value2->domain.char_info.type == DB_TYPE_CHAR);
-	  break;
-	case 3:
-	  /* 
-	   * from eliminate_duplicated_keys and scan_key_compre
-	   * we need to process enforcing no-ignore-trailing space.
-	   */
-	  ti = false;
-	  break;
-	default:
-	  ti = (value1->domain.char_info.type == DB_TYPE_CHAR && value2->domain.char_info.type == DB_TYPE_CHAR);
+	  for (i = size1; i > 0; i--)
+	    {
+	      if (string1[i - 1] != 0x20)
+		break;
+	    }
+	  size1 = i;
+	}
+
+      if (value2->domain.char_info.type == DB_TYPE_CHAR)
+	{
+	  for (i = size2; i > 0; i--)
+	    {
+	      if (string2[i - 1] != 0x20)
+		break;
+	    }
+	  size2 = i;
 	}
     }
-  strc = QSTR_CHAR_COMPARE (collation, string1, (int) db_get_string_size (value1), string2,
-			    (int) db_get_string_size (value2), ti);
+
+  strc = QSTR_CHAR_COMPARE (collation, string1, size1, string2, size2, ti);
   c = MR_CMP_RETURN_CODE (strc);
 
   return c;
@@ -12891,7 +12924,7 @@ static DB_VALUE_COMPARE_RESULT
 mr_cmpval_nchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
   DB_VALUE_COMPARE_RESULT c;
-  int strc;
+  int strc, size1, size2;
 
   static bool ti = true;
   static bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
@@ -12910,21 +12943,36 @@ mr_cmpval_nchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tota
       return DB_UNK;
     }
 
+  size1 = db_get_string_size (value1);
+  size2 = db_get_string_size (value2);
 
   if (!ignore_trailing_space)
     {
-      if (do_coercion == 2)
+      int i;
+
+      ti = false;
+
+      if (value1->domain.char_info.type == DB_TYPE_CHAR)
 	{
-	  ti = (value1->domain.char_info.type == DB_TYPE_NCHAR || value2->domain.char_info.type == DB_TYPE_NCHAR);
+	  for (i = size1; i > 0; i--)
+	    {
+	      if (string1[i - 1] != 0x20)
+		break;
+	    }
+	  size1 = i;
 	}
-      else
+      if (value2->domain.char_info.type == DB_TYPE_CHAR)
 	{
-	  ti = (value1->domain.char_info.type == DB_TYPE_NCHAR && value2->domain.char_info.type == DB_TYPE_NCHAR);
+	  for (i = size2; i > 0; i--)
+	    {
+	      if (string2[i - 1] != 0x20)
+		break;
+	    }
+	  size2 = i;
 	}
     }
 
-  strc = QSTR_NCHAR_COMPARE (collation, string1, (int) db_get_string_size (value1), string2,
-			     (int) db_get_string_size (value2), db_get_string_codeset (value2), ti);
+  strc = QSTR_NCHAR_COMPARE (collation, string1, size1, string2, size2, db_get_string_codeset (value2), ti);
   c = MR_CMP_RETURN_CODE (strc);
 
   return c;
