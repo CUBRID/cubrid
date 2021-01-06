@@ -23419,7 +23419,7 @@ char_string
 			  }
 
 			node = pt_create_char_string_literal (this_parser,
-							      PT_TYPE_VARNCHAR,
+							      PT_TYPE_NCHAR,
 							      $1, charset);
 
 			if (node && lang_get_parser_use_client_charset ())
