@@ -261,8 +261,9 @@ qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *key
     }
 
   fprintf (fp, "LIST_CACHE_ENTRY (%p) {\n", data);
-  fprintf (fp, "data_size = [%d]  data = [%.*s]\n", QFILE_GET_TUPLE_LENGTH (data2->tuple),
-	   QFILE_GET_TUPLE_LENGTH (data2->tuple), data2->tuple);
+  /* temporarily disable */
+  /*fprintf (fp, "data_size = [%d]  data = [%.*s]\n", QFILE_GET_TUPLE_LENGTH (data2->tuple),
+	   QFILE_GET_TUPLE_LENGTH (data2->tuple), data2->tuple);*/
 
   fprintf (fp, "key : ");
   for (int i = 0; i < key2->val_count; i++)
@@ -361,15 +362,15 @@ qdata_alloc_hscan_value (cubthread::entry * thread_p, QFILE_TUPLE tpl)
       return NULL;
     }
 
-  value->tuple = (QFILE_TUPLE) db_private_alloc (thread_p, tuple_size);
-  if (value->tuple == NULL)
+  value->data = (QFILE_TUPLE) db_private_alloc (thread_p, tuple_size);
+  if (value->data == NULL)
     {
       qdata_free_hscan_value (thread_p, value);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, tuple_size);
       return NULL;
     }
   /* save tuple */
-  if (!safe_memcpy (value->tuple, tpl, tuple_size))
+  if (!safe_memcpy (value->data, tpl, tuple_size))
     {
       qdata_free_hscan_value (thread_p, value);
       return NULL;
@@ -395,10 +396,17 @@ qdata_alloc_hscan_value_OID (cubthread::entry * thread_p, QFILE_LIST_SCAN_ID * s
       return NULL;
     }
 
+  value->data = (QFILE_TUPLE) db_private_alloc (thread_p, sizeof (QFILE_TUPLE_SIMPLE_POS));
+  if (value->data == NULL)
+    {
+      qdata_free_hscan_value (thread_p, value);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (QFILE_TUPLE_SIMPLE_POS));
+      return NULL;
+    }
+
   /* save position */
-  value->simple_pos.offset = scan_id_p->curr_offset;
-  value->simple_pos.vpid = scan_id_p->curr_vpid;
-  value->tuple = NULL;
+  ((QFILE_TUPLE_SIMPLE_POS *)value->data)->offset = scan_id_p->curr_offset;
+  ((QFILE_TUPLE_SIMPLE_POS *)value->data)->vpid = scan_id_p->curr_vpid;
 
   return value;
 }
@@ -428,9 +436,9 @@ qdata_free_hscan_value (cubthread::entry * thread_p, HASH_SCAN_VALUE * value)
     }
 
   /* free values */
-  if (value->tuple != NULL)
+  if (value->data != NULL)
     {
-      db_private_free_and_init (thread_p, value->tuple);
+      db_private_free_and_init (thread_p, value->data);
     }
   /* free structure */
   db_private_free_and_init (thread_p, value);

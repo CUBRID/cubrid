@@ -35,8 +35,8 @@
     { \
       tuple_pos.status = scan_id_p->status; \
       tuple_pos.position = S_ON; \
-      tuple_pos.vpid = simple_pos.vpid; \
-      tuple_pos.offset = simple_pos.offset; \
+      tuple_pos.vpid = simple_pos->vpid; \
+      tuple_pos.offset = simple_pos->offset; \
       tuple_pos.tpl = NULL; \
       tuple_pos.tplno = 0; /* If tplno is needed, add it from scan_build_hash_list_scan() */ \
     } \
@@ -54,8 +54,9 @@ struct qfile_tuple_simple_pos
 typedef struct hash_scan_value HASH_SCAN_VALUE;
 struct hash_scan_value
 {
-  QFILE_TUPLE tuple;		/* tuple */
-  QFILE_TUPLE_SIMPLE_POS simple_pos; /* tuple simple position */
+  /*QFILE_TUPLE tuple;		/* tuple */
+  /*QFILE_TUPLE_SIMPLE_POS simple_pos; /* tuple simple position */
+  void *data;
 };
 
 /* hash scan key */
