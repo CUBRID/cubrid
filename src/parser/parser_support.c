@@ -9364,7 +9364,7 @@ pt_check_enum_data_type (PARSER_CONTEXT * parser, PT_NODE * dt)
   int char_count = 0;
   unsigned char pad[2];
 
-  static bool ti = true;
+  bool ti = true;
   static bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
 
   if (dt == NULL || dt->node_type != PT_DATA_TYPE || dt->type_enum != PT_TYPE_ENUMERATION)
