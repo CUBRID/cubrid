@@ -12041,7 +12041,9 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
 	      for (i = size1; i > 0; i--)
 		{
 		  if (string1[i - 1] != 0x20)
-		    break;
+		    {
+		      break;
+		    }
 		}
 	      size1 = i;
 	    }
@@ -12051,7 +12053,9 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
 	      for (i = size2; i > 0; i--)
 		{
 		  if (string2[i - 1] != 0x20)
-		    break;
+		    {
+		      break;
+		    }
 		}
 	      size2 = i;
 	    }
@@ -12967,7 +12971,9 @@ mr_cmpval_nchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tota
 	      for (i = size1; i > 0; i--)
 		{
 		  if (string1[i - 1] != 0x20)
-		    break;
+		    {
+		      break;
+		    }
 		}
 	      size1 = i;
 	    }
@@ -12977,7 +12983,9 @@ mr_cmpval_nchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tota
 	      for (i = size2; i > 0; i--)
 		{
 		  if (string2[i - 1] != 0x20)
-		    break;
+		    {
+		      break;
+		    }
 		}
 	      size2 = i;
 	    }
