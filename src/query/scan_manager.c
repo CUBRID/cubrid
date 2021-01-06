@@ -7936,6 +7936,7 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
   HASH_SCAN_VALUE *hvalue;
   QFILE_LIST_SCAN_ID *scan_id_p;
   QFILE_TUPLE_POSITION tuple_pos;
+  QFILE_TUPLE_SIMPLE_POS simple_pos;
   QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
 
   llsidp = &scan_id->s.llsid;
@@ -7967,13 +7968,8 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 	    }
 	  else
 	    {
-	      tuple_pos.status = scan_id_p->status;
-	      tuple_pos.position = S_ON;
-	      tuple_pos.vpid = hvalue->simple_pos.vpid;
-	      tuple_pos.offset = hvalue->simple_pos.offset;
-	      tuple_pos.tpl = NULL;
-	      /* If tplno is needed, add it from scan_build_hash_list_scan() */
-	      tuple_pos.tplno = 0;
+	      simple_pos = hvalue->simple_pos;
+	      MAKE_TUPLE_POSTION(tuple_pos, simple_pos, scan_id_p);
 
 	      if (qfile_jump_scan_tuple_position (thread_p, scan_id_p, &tuple_pos, &tplrec, PEEK) != S_SUCCESS)
 		{
@@ -8000,12 +7996,8 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 	    }
 	  else
 	    {
-	      tuple_pos.status = scan_id_p->status;
-	      tuple_pos.position = S_ON;
-	      tuple_pos.vpid = ((HASH_SCAN_VALUE *) llsidp->hlsid.curr_hash_entry->data)->simple_pos.vpid;
-	      tuple_pos.offset = ((HASH_SCAN_VALUE *) llsidp->hlsid.curr_hash_entry->data)->simple_pos.offset;
-	      tuple_pos.tpl = NULL;
-	      tuple_pos.tplno = 0;
+	      simple_pos = ((HASH_SCAN_VALUE *) llsidp->hlsid.curr_hash_entry->data)->simple_pos;
+	      MAKE_TUPLE_POSTION(tuple_pos, simple_pos, scan_id_p);
 
 	      if (qfile_jump_scan_tuple_position (thread_p, scan_id_p, &tuple_pos, &tplrec, PEEK) != S_SUCCESS)
 		{

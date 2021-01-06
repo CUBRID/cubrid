@@ -30,6 +30,18 @@
 
 #include "regu_var.hpp"
 
+#define MAKE_TUPLE_POSTION(tuple_pos, simple_pos, scan_id_p) \
+  do \
+    { \
+      tuple_pos.status = scan_id_p->status; \
+      tuple_pos.position = S_ON; \
+      tuple_pos.vpid = simple_pos.vpid; \
+      tuple_pos.offset = simple_pos.offset; \
+      tuple_pos.tpl = NULL; \
+      tuple_pos.tplno = 0; /* If tplno is needed, add it from scan_build_hash_list_scan() */ \
+    } \
+  while (0)
+
 /* Tuple position structure for hash value */
 typedef struct qfile_tuple_simple_pos QFILE_TUPLE_SIMPLE_POS;
 struct qfile_tuple_simple_pos
