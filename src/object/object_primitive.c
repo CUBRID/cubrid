@@ -11141,7 +11141,16 @@ mr_cmpval_string (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
 
   if (!ignore_trailing_space)
     {
-      ti = false;
+      if (value1->domain.general_info.type == DB_TYPE_CHAR ||
+	  value1->domain.general_info.type == DB_TYPE_NCHAR ||
+	  value2->domain.general_info.type == DB_TYPE_CHAR || value2->domain.general_info.type == DB_TYPE_NCHAR)
+	{
+	  ti = true;
+	}
+      else
+	{
+	  ti = false;
+	}
     }
 
   strc = QSTR_COMPARE (collation, string1, size1, string2, size2, ti);
