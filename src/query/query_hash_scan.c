@@ -343,7 +343,7 @@ qdata_copy_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key, REGU_VAR
 }
 
 /*
- * qdata_alloc_agg_hkey () - allocate new hash aggregate key
+ * qdata_alloc_hscan_value () - allocate new hash value
  *   returns: pointer to new structure or NULL on error
  *   thread_p(in): thread
  */
@@ -374,6 +374,32 @@ qdata_alloc_hscan_value (cubthread::entry * thread_p, QFILE_TUPLE tpl)
       qdata_free_hscan_value (thread_p, value);
       return NULL;
     }
+  return value;
+}
+
+/*
+ * qdata_alloc_hscan_value_OID () - allocate new hash OID value
+ *   returns: pointer to new structure or NULL on error
+ *   thread_p(in): thread
+ */
+HASH_SCAN_VALUE *
+qdata_alloc_hscan_value_OID (cubthread::entry * thread_p, QFILE_LIST_SCAN_ID * scan_id_p)
+{
+  HASH_SCAN_VALUE *value;
+
+  /* alloc structure */
+  value = (HASH_SCAN_VALUE *) db_private_alloc (thread_p, sizeof (HASH_SCAN_VALUE));
+  if (value == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (HASH_SCAN_VALUE));
+      return NULL;
+    }
+
+  /* save position */
+  value->simple_pos.offset = scan_id_p->curr_offset;
+  value->simple_pos.vpid = scan_id_p->curr_vpid;
+  value->tuple = NULL;
+
   return value;
 }
 

@@ -7797,7 +7797,15 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  return S_ERROR;
 	}
       /* create new value */
-      new_value = qdata_alloc_hscan_value (thread_p, tplrec.tpl);
+      if (0)
+	{
+	  new_value = qdata_alloc_hscan_value (thread_p, tplrec.tpl);
+	}
+      else
+	{
+	  new_value = qdata_alloc_hscan_value_OID (thread_p, &llsidp->lsid);
+	}
+
       if (new_value == NULL)
 	{
 	  return S_ERROR;
@@ -7927,6 +7935,8 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
   HASH_SCAN_KEY *key;
   HASH_SCAN_VALUE *hvalue;
   QFILE_LIST_SCAN_ID *scan_id_p;
+  QFILE_TUPLE_POSITION tuple_pos;
+  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
 
   llsidp = &scan_id->s.llsid;
   key = llsidp->hlsid.temp_key;
@@ -7951,7 +7961,26 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 	    {
 	      return S_END;
 	    }
-	  *tuple = hvalue->tuple;
+	  if (0)
+	    {
+	      *tuple = hvalue->tuple;
+	    }
+	  else
+	    {
+	      tuple_pos.status = scan_id_p->status;
+	      tuple_pos.position = S_ON;
+	      tuple_pos.vpid = hvalue->simple_pos.vpid;
+	      tuple_pos.offset = hvalue->simple_pos.offset;
+	      tuple_pos.tpl = NULL;
+	      /* If tplno is needed, add it from scan_build_hash_list_scan() */
+	      tuple_pos.tplno = 0;
+
+	      if (qfile_jump_scan_tuple_position (thread_p, scan_id_p, &tuple_pos, &tplrec, PEEK) != S_SUCCESS)
+		{
+		  return S_ERROR;
+		}
+	      *tuple = tplrec.tpl;
+	    }
 	  scan_id_p->position = S_ON;
 	  return S_SUCCESS;
 	}
@@ -7965,11 +7994,37 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
       if (llsidp->hlsid.curr_hash_entry->next)
 	{
 	  llsidp->hlsid.curr_hash_entry = llsidp->hlsid.curr_hash_entry->next;
-	  *tuple = ((HASH_SCAN_VALUE *) llsidp->hlsid.curr_hash_entry->data)->tuple;
+	  if (0)
+	    {
+	      *tuple = ((HASH_SCAN_VALUE *) llsidp->hlsid.curr_hash_entry->data)->tuple;
+	    }
+	  else
+	    {
+	      tuple_pos.status = scan_id_p->status;
+	      tuple_pos.position = S_ON;
+	      tuple_pos.vpid = ((HASH_SCAN_VALUE *) llsidp->hlsid.curr_hash_entry->data)->simple_pos.vpid;
+	      tuple_pos.offset = ((HASH_SCAN_VALUE *) llsidp->hlsid.curr_hash_entry->data)->simple_pos.offset;
+	      tuple_pos.tpl = NULL;
+	      tuple_pos.tplno = 0;
+
+	      if (qfile_jump_scan_tuple_position (thread_p, scan_id_p, &tuple_pos, &tplrec, PEEK) != S_SUCCESS)
+		{
+		  return S_ERROR;
+		}
+	      *tuple = tplrec.tpl;
+	    }
 	  return S_SUCCESS;
 	}
       else
 	{
+	  if (0)
+	    {
+	      /* none */
+	    }
+	  else
+	    {
+	      qmgr_free_old_page_and_init (thread_p, scan_id_p->curr_pgptr, scan_id_p->list_id.tfile_vfid);
+	    }
 	  scan_id_p->position = S_AFTER;
 	  return S_END;
 	}
@@ -8023,6 +8078,7 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
     {
       return false;
     }
+
   /* regu_list_build, regu_list_probe is not null */
   if (llsidp->hlsid.build_regu_list == NULL || llsidp->hlsid.probe_regu_list == NULL)
     {

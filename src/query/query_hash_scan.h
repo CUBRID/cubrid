@@ -30,11 +30,20 @@
 
 #include "regu_var.hpp"
 
+/* Tuple position structure for hash value */
+typedef struct qfile_tuple_simple_pos QFILE_TUPLE_SIMPLE_POS;
+struct qfile_tuple_simple_pos
+{
+  VPID vpid;			/* Real tuple page identifier */
+  int offset;			/* Tuple offset inside the page */
+};
+
 /* hash scan value */
 typedef struct hash_scan_value HASH_SCAN_VALUE;
 struct hash_scan_value
 {
   QFILE_TUPLE tuple;		/* tuple */
+  QFILE_TUPLE_SIMPLE_POS simple_pos; /* tuple simple position */
 };
 
 /* hash scan key */
@@ -60,6 +69,7 @@ struct hash_list_scan
 
 HASH_SCAN_KEY *qdata_alloc_hscan_key (THREAD_ENTRY * thread_p, int val_cnt, bool alloc_vals);
 HASH_SCAN_VALUE *qdata_alloc_hscan_value (THREAD_ENTRY * thread_p, QFILE_TUPLE tpl);
+HASH_SCAN_VALUE *qdata_alloc_hscan_value_OID (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id_p);
 
 void qdata_free_hscan_key (THREAD_ENTRY * thread_p, HASH_SCAN_KEY * key, int val_count);
 void qdata_free_hscan_value (THREAD_ENTRY * thread_p, HASH_SCAN_VALUE * value);
