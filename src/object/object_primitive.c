@@ -10930,7 +10930,7 @@ mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
   bool alloced_string1 = false, alloced_string2 = false;
   int strc;
 
-  static bool ti = true;
+  bool ti = true;
   static bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
 
   assert (domain != NULL);
@@ -11085,7 +11085,7 @@ mr_cmpval_string (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
   int size1, size2;
   int strc;
 
-  static bool ti = true;
+  bool ti = true;
   static bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
 
   const unsigned char *string1 = REINTERPRET_CAST (const unsigned char *, db_get_string (value1));
@@ -11145,21 +11145,26 @@ mr_cmpval_string (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
 
       ti = false;
 
-      if (value1->domain.char_info.type == DB_TYPE_CHAR)
+      if (value1->domain.char_info.type == DB_TYPE_CHAR || value1->domain.char_info.type == DB_TYPE_NCHAR)
 	{
 	  for (i = size1; i > 0; i--)
 	    {
 	      if (string1[i - 1] != 0x20)
-		break;
+		{
+		  break;
+		}
 	    }
 	  size1 = i;
 	}
-      if (value2->domain.char_info.type == DB_TYPE_CHAR)
+
+      if (value2->domain.char_info.type == DB_TYPE_NCHAR || value2->domain.char_info.type == DB_TYPE_NCHAR)
 	{
 	  for (i = size2; i > 0; i--)
 	    {
 	      if (string2[i - 1] != 0x20)
-		break;
+		{
+		  break;
+		}
 	    }
 	  size2 = i;
 	}
@@ -11923,7 +11928,7 @@ mr_cmpdisk_char_internal (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
   DB_VALUE_COMPARE_RESULT c;
   int mem_length1, mem_length2, strc;
 
-  static bool ti = true;
+  bool ti = true;
   static bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
 
   if (IS_FLOATING_PRECISION (domain->precision))
@@ -11970,7 +11975,7 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
   DB_VALUE_COMPARE_RESULT c;
   int strc, size1, size2;
 
-  static bool ti = true;
+  bool ti = true;
   static bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
 
   const unsigned char *string1 = REINTERPRET_CAST (const unsigned char *, db_get_string (value1));
@@ -12018,14 +12023,19 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
     {
       int i;
 
+
       /* TODO: We might need to make refactoring the code for corcing between CHAR and VARCHAR */
       /* 
        * from btree_get_prefix_separator
        * we need to process the ti-comparison for this case (CHAR and VARCHAR mixed)
        */
-      if (value1->domain.char_info.type != DB_TYPE_CHAR || value2->domain.char_info.type != DB_TYPE_CHAR)
+
+      if (value1->domain.char_info.type == DB_TYPE_STRING
+	  || value2->domain.char_info.type == DB_TYPE_STRING
+	  || value1->domain.char_info.type == DB_TYPE_VARNCHAR || value2->domain.char_info.type == DB_TYPE_VARNCHAR)
 	{
 	  ti = false;
+
 	  if (value1->domain.char_info.type == DB_TYPE_CHAR)
 	    {
 	      for (i = size1; i > 0; i--)
@@ -12922,7 +12932,7 @@ mr_cmpval_nchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tota
   DB_VALUE_COMPARE_RESULT c;
   int strc, size1, size2;
 
-  static bool ti = true;
+  bool ti = true;
   static bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
 
   const unsigned char *string1 = REINTERPRET_CAST (const unsigned char *, db_get_string (value1));
@@ -12946,9 +12956,12 @@ mr_cmpval_nchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tota
     {
       int i;
 
-      if (value1->domain.char_info.type != DB_TYPE_NCHAR || value2->domain.char_info.type != DB_TYPE_NCHAR)
+      if (value1->domain.char_info.type == DB_TYPE_STRING
+	  || value2->domain.char_info.type == DB_TYPE_STRING
+	  || value1->domain.char_info.type == DB_TYPE_VARNCHAR || value2->domain.char_info.type == DB_TYPE_VARNCHAR)
 	{
 	  ti = false;
+
 	  if (value1->domain.char_info.type == DB_TYPE_NCHAR)
 	    {
 	      for (i = size1; i > 0; i--)
@@ -12958,6 +12971,7 @@ mr_cmpval_nchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tota
 		}
 	      size1 = i;
 	    }
+
 	  if (value2->domain.char_info.type == DB_TYPE_NCHAR)
 	    {
 	      for (i = size2; i > 0; i--)
@@ -14083,9 +14097,9 @@ mr_cmpval_varnchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int t
 		    int collation)
 {
   DB_VALUE_COMPARE_RESULT c;
-  int strc;
+  int strc, size1, size2;
 
-  static bool ti = true;
+  bool ti = true;
   static bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
 
   const unsigned char *string1 = REINTERPRET_CAST (const unsigned char *, db_get_string (value1));
@@ -14102,12 +14116,51 @@ mr_cmpval_varnchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int t
       return DB_UNK;
     }
 
+  size1 = (int) db_get_string_size (value1);
+  size2 = (int) db_get_string_size (value2);
+
+  if (size1 < 0)
+    {
+      size1 = strlen ((char *) string1);
+    }
+
+  if (size2 < 0)
+    {
+      size2 = strlen ((char *) string2);
+    }
+
   if (!ignore_trailing_space)
     {
+      int i;
+
       ti = false;
+
+      if (value1->domain.char_info.type == DB_TYPE_CHAR || value1->domain.char_info.type == DB_TYPE_NCHAR)
+	{
+	  for (i = size1; i > 0; i--)
+	    {
+	      if (string1[i - 1] != 0x20)
+		{
+		  break;
+		}
+	    }
+	  size1 = i;
+	}
+
+      if (value2->domain.char_info.type == DB_TYPE_NCHAR || value2->domain.char_info.type == DB_TYPE_NCHAR)
+	{
+	  for (i = size2; i > 0; i--)
+	    {
+	      if (string2[i - 1] != 0x20)
+		{
+		  break;
+		}
+	    }
+	  size2 = i;
+	}
     }
-  strc = QSTR_NCHAR_COMPARE (collation, string1, (int) db_get_string_size (value1), string2,
-			     (int) db_get_string_size (value2), db_get_string_codeset (value2), ti);
+
+  strc = QSTR_NCHAR_COMPARE (collation, string1, size1, string2, size2, db_get_string_codeset (value2), ti);
   c = MR_CMP_RETURN_CODE (strc);
 
   return c;
