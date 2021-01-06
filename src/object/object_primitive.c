@@ -7911,10 +7911,10 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
 	      c = dom1->type->index_cmpdisk (mem1, mem2, dom1, do_coercion, total_order, NULL);
 	    }
 	  else
-	    {			/* coercion and comparison
-				 * val1 and val2 have different domain
-				 * and it can be char-type and varchar-type mixed
-				 */
+	    {
+	      /* coercion and comparison
+	       * val1 and val2 have different domain
+	       */
 	      c = pr_midxkey_compare_element (mem1, mem2, dom1, dom2, do_coercion, total_order);
 	    }
 	}
@@ -11157,7 +11157,7 @@ mr_cmpval_string (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
 	  size1 = i;
 	}
 
-      if (value2->domain.char_info.type == DB_TYPE_NCHAR || value2->domain.char_info.type == DB_TYPE_NCHAR)
+      if (value2->domain.char_info.type == DB_TYPE_CHAR || value2->domain.char_info.type == DB_TYPE_NCHAR)
 	{
 	  for (i = size2; i > 0; i--)
 	    {
@@ -14147,7 +14147,7 @@ mr_cmpval_varnchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int t
 	  size1 = i;
 	}
 
-      if (value2->domain.char_info.type == DB_TYPE_NCHAR || value2->domain.char_info.type == DB_TYPE_NCHAR)
+      if (value2->domain.char_info.type == DB_TYPE_CHAR || value2->domain.char_info.type == DB_TYPE_NCHAR)
 	{
 	  for (i = size2; i > 0; i--)
 	    {
