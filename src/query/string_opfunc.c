@@ -7029,9 +7029,27 @@ db_char_string_coerce (const DB_VALUE * src_string, DB_VALUE * dest_string, DB_D
 
       if (error_status == NO_ERROR && dest != NULL)
 	{
+	  DB_TYPE src_type = DB_VALUE_DOMAIN_TYPE (src_string);
+	  DB_TYPE dest_type = DB_VALUE_DOMAIN_TYPE (dest_string);
+
 	  qstr_make_typed_string (DB_VALUE_DOMAIN_TYPE (dest_string), dest_string, DB_VALUE_PRECISION (dest_string),
 				  (char *) dest, dest_size, db_get_string_codeset (dest_string),
 				  db_get_string_collation (dest_string));
+
+	  if ((src_type == DB_TYPE_CHAR || src_type == DB_TYPE_NCHAR) &&
+	      (dest_type == DB_TYPE_VARCHAR || dest_type == DB_TYPE_VARNCHAR))
+	    {
+	      int i;
+
+	      for (i = db_get_string_length (src_string) - 1; i > 0; i--)
+		{
+		  if (dest_string->data.ch.medium.buf[i] != 0x20)
+		    {
+		      break;
+		    }
+		  dest_string->data.ch.medium.size--;
+		}
+	    }
 	  dest[dest_size] = 0;
 	  dest_string->need_clear = true;
 	}
