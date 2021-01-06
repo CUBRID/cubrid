@@ -23382,7 +23382,7 @@ char_string
 			  }
 
 			node = pt_create_char_string_literal (this_parser,
-							      PT_TYPE_CHAR,
+							      PT_TYPE_VARCHAR,
 							      $1, charset);
 
 			if (node)
@@ -23419,7 +23419,7 @@ char_string
 			  }
 
 			node = pt_create_char_string_literal (this_parser,
-							      PT_TYPE_NCHAR,
+							      PT_TYPE_VARNCHAR,
 							      $1, charset);
 
 			if (node && lang_get_parser_use_client_charset ())
@@ -23439,7 +23439,7 @@ char_string
 
 			PT_NODE *node = NULL;
 
-			node = pt_create_char_string_literal (this_parser, PT_TYPE_CHAR,
+			node = pt_create_char_string_literal (this_parser, PT_TYPE_VARCHAR,
 							      $1, INTL_CODESET_RAW_BYTES);
 
 			if (node)
@@ -23460,7 +23460,7 @@ char_string
 
 			PT_NODE *node = NULL;
 
-			node = pt_create_char_string_literal (this_parser, PT_TYPE_CHAR,
+			node = pt_create_char_string_literal (this_parser, PT_TYPE_VARCHAR,
 							      $1, INTL_CODESET_KSC5601_EUC);
 
 			if (node)
@@ -23481,7 +23481,7 @@ char_string
 
 			PT_NODE *node = NULL;
 
-			node = pt_create_char_string_literal (this_parser, PT_TYPE_CHAR,
+			node = pt_create_char_string_literal (this_parser, PT_TYPE_VARCHAR,
 							      $1, INTL_CODESET_ISO88591);
 
 			if (node)
@@ -23502,7 +23502,7 @@ char_string
 
 			PT_NODE *node = NULL;
 
-			node = pt_create_char_string_literal (this_parser, PT_TYPE_CHAR,
+			node = pt_create_char_string_literal (this_parser, PT_TYPE_VARCHAR,
 							      $1, INTL_CODESET_UTF8);
 
 			if (node)
@@ -25792,7 +25792,9 @@ parser_make_date_lang (int arg_cnt, PT_NODE * arg3)
 	{
 	  date_lang->type_enum = PT_TYPE_INTEGER;
 	  if (arg3->type_enum != PT_TYPE_CHAR
-	      && arg3->type_enum != PT_TYPE_NCHAR)
+	      && arg3->type_enum != PT_TYPE_NCHAR
+	      && arg3->type_enum != PT_TYPE_VARCHAR
+	      && arg3->type_enum != PT_TYPE_VARNCHAR)
 	    {
 	      PT_ERROR (this_parser, arg3,
 			"argument 3 must be character string");
@@ -26586,7 +26588,9 @@ parser_keyword_func (const char *name, PT_NODE * args)
 	  PT_NODE *node = args->next;
 	  if (node->node_type != PT_VALUE ||
 	      (node->type_enum != PT_TYPE_CHAR &&
-	       node->type_enum != PT_TYPE_NCHAR))
+	       node->type_enum != PT_TYPE_NCHAR &&
+	       node->type_enum != PT_TYPE_VARCHAR &&
+	       node->type_enum != PT_TYPE_VARNCHAR))
 	    {
 	      push_msg (MSGCAT_SYNTAX_INVALID_TO_NUMBER);
 	      csql_yyerror_explicit (10, 10);
@@ -26818,7 +26822,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
 	  parser_cannot_prepare = true;
 	  node = parser_make_expression (this_parser, key->op, a1, a2, NULL);
 
-	  if (a1->node_type != PT_VALUE || a1->type_enum != PT_TYPE_CHAR)
+	  if (a1->node_type != PT_VALUE || (a1->type_enum != PT_TYPE_CHAR && a1->type_enum != PT_TYPE_VARCHAR))
 	    {
 	      PT_ERRORf (this_parser, node,
 			 "%s argument must be a string liternal",
