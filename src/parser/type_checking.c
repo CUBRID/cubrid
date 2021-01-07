@@ -13328,7 +13328,8 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 	    arg = arg_list->next;
 	    while (arg)
 	      {
-		if (arg->type_enum != arg_type || arg->data_type->info.data_type.precision != max_precision)
+		if ((arg->type_enum != arg_type) ||
+		    (arg->data_type && arg->data_type->info.data_type.precision != max_precision))
 		  {
 		    PT_NODE *new_attr = pt_wrap_with_cast_op (parser, arg, arg_type,
 							      max_precision, 0, NULL);
