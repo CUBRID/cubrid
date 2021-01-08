@@ -14812,7 +14812,7 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       PT_PRINT_VALUE_FUNC saved_func = parser->print_db_value;
       int saved_custom_print = parser->custom_print;
 
-      parser->custom_print |= PT_PRINT_ORIGINAL_BEFORE_CONST_FOLDING;
+      parser->custom_print |= (PT_PRINT_ORIGINAL_BEFORE_CONST_FOLDING | PT_PRINT_QUOTES);
       parser->print_db_value = pt_print_node_value;
       repl_stmt.stmt_text = parser_print_tree (parser, statement);
       parser->print_db_value = saved_func;
