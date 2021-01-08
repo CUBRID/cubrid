@@ -18708,7 +18708,7 @@ predicate_expr_sub
 			PT_NODE *v, *lhs, *rhs, *subq;
 			bool found_match = false;
 			bool found_paren_set_expr = false;
-
+	
 			PARSER_SAVE_ERR_CONTEXT (node, @$.buffer_pos)
 			if (node)
 			  {
@@ -23364,6 +23364,7 @@ char_string
 		{{
 
 			PT_NODE *node = NULL;
+			PT_TYPE_ENUM typ = PT_TYPE_CHAR;
 			INTL_CODESET charset;
 			int collation_id;
 			bool force;
@@ -23381,10 +23382,15 @@ char_string
 			    force = true;
 			  }
 
-			node = pt_create_char_string_literal (this_parser,
-							      PT_TYPE_VARCHAR,
-							      $1, charset);
+			if (strlen($1) > 0 && $1[strlen($1) - 1] == 0x20)
+			  {
+			    typ = PT_TYPE_VARCHAR;
+			  }
 
+		   	node = pt_create_char_string_literal (this_parser,
+							      typ,
+							      $1, charset);
+			
 			if (node)
 			  {
 			    pt_value_set_charset_coll (this_parser, node,
@@ -23401,6 +23407,7 @@ char_string
 		{{
 
 			PT_NODE *node = NULL;
+			PT_TYPE_ENUM typ = PT_TYPE_NCHAR;
 			INTL_CODESET charset;
 			int collation_id;
 			bool force;
@@ -23418,8 +23425,13 @@ char_string
 			    force = true;
 			  }
 
+			if (strlen($1) > 0 && $1[strlen($1) - 1] == 0x20)
+			  {
+			    typ = PT_TYPE_VARNCHAR;
+			  }
+
 			node = pt_create_char_string_literal (this_parser,
-							      PT_TYPE_VARNCHAR,
+							      typ,
 							      $1, charset);
 
 			if (node && lang_get_parser_use_client_charset ())
@@ -23438,8 +23450,14 @@ char_string
 		{{
 
 			PT_NODE *node = NULL;
+			PT_TYPE_ENUM typ = PT_TYPE_CHAR;
 
-			node = pt_create_char_string_literal (this_parser, PT_TYPE_VARCHAR,
+			if (strlen($1) > 0 && $1[strlen($1) - 1] == 0x20)
+			  {
+			    typ = PT_TYPE_VARCHAR;
+			  }
+
+			node = pt_create_char_string_literal (this_parser, typ,
 							      $1, INTL_CODESET_RAW_BYTES);
 
 			if (node)
@@ -23459,8 +23477,14 @@ char_string
 		{{
 
 			PT_NODE *node = NULL;
+			PT_TYPE_ENUM typ = PT_TYPE_CHAR;
 
-			node = pt_create_char_string_literal (this_parser, PT_TYPE_VARCHAR,
+			if (strlen($1) > 0 && $1[strlen($1) - 1] == 0x20)
+			  {
+			    typ = PT_TYPE_VARCHAR;
+			  }
+
+			node = pt_create_char_string_literal (this_parser, typ,
 							      $1, INTL_CODESET_KSC5601_EUC);
 
 			if (node)
@@ -23480,8 +23504,14 @@ char_string
 		{{
 
 			PT_NODE *node = NULL;
+			PT_TYPE_ENUM typ = PT_TYPE_CHAR;
 
-			node = pt_create_char_string_literal (this_parser, PT_TYPE_VARCHAR,
+			if (strlen($1) > 0 && $1[strlen($1) - 1] == 0x20)
+			  {
+			    typ = PT_TYPE_VARCHAR;
+			  }
+
+			node = pt_create_char_string_literal (this_parser, typ,
 							      $1, INTL_CODESET_ISO88591);
 
 			if (node)
@@ -23501,8 +23531,14 @@ char_string
 		{{
 
 			PT_NODE *node = NULL;
+			PT_TYPE_ENUM typ = PT_TYPE_CHAR;
 
-			node = pt_create_char_string_literal (this_parser, PT_TYPE_VARCHAR,
+			if (strlen($1) > 0 && $1[strlen($1) - 1] == 0x20)
+			  {
+			    typ = PT_TYPE_VARCHAR;
+			  }
+
+			node = pt_create_char_string_literal (this_parser, typ,
 							      $1, INTL_CODESET_UTF8);
 
 			if (node)
