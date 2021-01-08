@@ -11154,8 +11154,8 @@ mr_cmpval_string (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
 		{
 		  break;
 		}
-	      size1 = i;
 	    }
+	  size1 = i;
 	}
 
       if (type2 == DB_TYPE_CHAR || type2 == DB_TYPE_NCHAR)
@@ -11166,8 +11166,8 @@ mr_cmpval_string (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
 		{
 		  break;
 		}
-	      size2 = i;
 	    }
+	  size2 = i;
 	}
 
       ti = false;
@@ -12038,8 +12038,8 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
 		{
 		  break;
 		}
-	      size1 = i;
 	    }
+	  size1 = i;
 	}
 
       if (type2 == DB_TYPE_CHAR || type2 == DB_TYPE_NCHAR)
@@ -12050,8 +12050,8 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
 		{
 		  break;
 		}
-	      size2 = i;
 	    }
+	  size2 = i;
 	}
 
       ti = false;
@@ -12967,8 +12967,8 @@ mr_cmpval_nchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tota
 		{
 		  break;
 		}
-	      size1 = i;
 	    }
+	  size1 = i;
 	}
 
       if (type2 == DB_TYPE_CHAR || type2 == DB_TYPE_NCHAR)
@@ -12979,8 +12979,8 @@ mr_cmpval_nchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tota
 		{
 		  break;
 		}
-	      size2 = i;
 	    }
+	  size2 = i;
 	}
 
       ti = false;
@@ -14146,8 +14146,8 @@ mr_cmpval_varnchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int t
 		{
 		  break;
 		}
-	      size1 = i;
 	    }
+	  size1 = i;
 	}
 
       if (type2 == DB_TYPE_CHAR || type2 == DB_TYPE_NCHAR)
@@ -14158,8 +14158,8 @@ mr_cmpval_varnchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int t
 		{
 		  break;
 		}
-	      size2 = i;
 	    }
+	  size2 = i;
 	}
 
       ti = false;
