@@ -2484,7 +2484,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	    goto error;
 	  }
 
-	if (!DB_IS_NULL (peek_left))
+	if ((arithptr->opcode == T_NVL || arithptr->opcode == T_IFNULL) && !DB_IS_NULL (peek_left))
 	  {
 	    /* follow first argument's domain at not null */
 	    target_domain = arithptr->leftptr->domain;
