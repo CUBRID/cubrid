@@ -187,6 +187,12 @@ export LD_LIBRARY_PATH
 export SHLIB_PATH
 export LIBPATH
 export PATH
+centos=$(cat /etc/redhat-release | awk '{print $4}' | cut -c 1)
+if [ "$centos"x = "8x" ] && [ "CUBRID"x != "x" ] && [ ! -f $CUBRID/lib/libncurses.so.5 ];then
+        ln -s /lib64/libncurses.so.6 $CUBRID/lib/libncurses.so.5
+        ln -s /lib64/libtinfo.so.6 $CUBRID/lib/libtinfo.so.5
+        ln -s /lib64/libform.so.6 $CUBRID/lib/libform.so.5
+fi
 ____cubrid__here_doc____
 
 for e in "$cubrid_csh_envfile" "$cubrid_sh_envfile"; do
