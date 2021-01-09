@@ -11148,7 +11148,7 @@ mr_cmpval_string (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
 
       if (type1 == DB_TYPE_CHAR || type1 == DB_TYPE_NCHAR)
 	{
-	  for (i = size1; i > 0; i--)
+	  for (i = size1; i > 1; i--)
 	    {
 	      if (string1[i - 1] != 0x20)
 		{
@@ -11160,7 +11160,7 @@ mr_cmpval_string (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
 
       if (type2 == DB_TYPE_CHAR || type2 == DB_TYPE_NCHAR)
 	{
-	  for (i = size2; i > 0; i--)
+	  for (i = size2; i > 1; i--)
 	    {
 	      if (string2[i - 1] != 0x20)
 		{
@@ -12032,7 +12032,7 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
 
       if (type1 == DB_TYPE_CHAR || type1 == DB_TYPE_NCHAR)
 	{
-	  for (i = size1; i > 0; i--)
+	  for (i = size1; i > 1; i--)
 	    {
 	      if (string1[i - 1] != 0x20)
 		{
@@ -12044,7 +12044,7 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
 
       if (type2 == DB_TYPE_CHAR || type2 == DB_TYPE_NCHAR)
 	{
-	  for (i = size2; i > 0; i--)
+	  for (i = size2; i > 1; i--)
 	    {
 	      if (string2[i - 1] != 0x20)
 		{
@@ -12961,7 +12961,7 @@ mr_cmpval_nchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tota
 
       if (type1 == DB_TYPE_CHAR || type1 == DB_TYPE_NCHAR)
 	{
-	  for (i = size1; i > 0; i--)
+	  for (i = size1; i > 1; i--)
 	    {
 	      if (string1[i - 1] != 0x20)
 		{
@@ -12973,7 +12973,7 @@ mr_cmpval_nchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tota
 
       if (type2 == DB_TYPE_CHAR || type2 == DB_TYPE_NCHAR)
 	{
-	  for (i = size2; i > 0; i--)
+	  for (i = size2; i > 1; i--)
 	    {
 	      if (string2[i - 1] != 0x20)
 		{
@@ -14140,7 +14140,7 @@ mr_cmpval_varnchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int t
 
       if (type1 == DB_TYPE_CHAR || type1 == DB_TYPE_NCHAR)
 	{
-	  for (i = size1; i > 0; i--)
+	  for (i = size1; i > 1; i--)
 	    {
 	      if (string1[i - 1] != 0x20)
 		{
@@ -14152,7 +14152,7 @@ mr_cmpval_varnchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int t
 
       if (type2 == DB_TYPE_CHAR || type2 == DB_TYPE_NCHAR)
 	{
-	  for (i = size2; i > 0; i--)
+	  for (i = size2; i > 1; i--)
 	    {
 	      if (string2[i - 1] != 0x20)
 		{
