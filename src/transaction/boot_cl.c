@@ -3954,7 +3954,7 @@ boot_define_dual (MOP class_mop)
   int error_code = NO_ERROR;
   DB_OBJECT *obj;
   DB_VALUE val;
-  char *dummy = "X";
+  const char *dummy = "X";
 
   def = smt_edit_class_mop (class_mop, AU_ALTER);
   if (def == NULL)
