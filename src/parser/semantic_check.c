@@ -5673,12 +5673,11 @@ pt_check_partition_values (PARSER_CONTEXT * parser, PT_TYPE_ENUM desired_type, P
 	  break;
 	}
 
-      if (val->type_enum != PT_TYPE_NULL && has_different_collation == true)
+      if (val->type_enum != PT_TYPE_NULL && (val->type_enum != desired_type || has_different_collation == true))
 	{
 	  /* Coerce this value to the desired type. We have to preserve the original text of the value for replication
 	   * reasons. The coercion below will either be successful or fail, but it should not alter the way in which
-	   * the original statement is printed.
-	   * We should check the coercion even though the domain is same because the precison can be overflown */
+	   * the original statement is printed */
 	  value_text = val->info.value.text;
 	  val->info.value.text = NULL;
 	  error = pt_coerce_value (parser, val, val, desired_type, data_type);
