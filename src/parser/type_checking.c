@@ -5362,7 +5362,11 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
 	      common_type = pt_common_type_op (arg1_eq_type, op, common_type);
 	      if (common_type != PT_TYPE_NONE)
 		{
-		  arg1_eq_type = common_type;
+		  /* collection's common type is STRING type, casting may not be needed */
+		  if (!PT_IS_CHAR_STRING_TYPE (common_type) || !PT_IS_CHAR_STRING_TYPE (arg1_eq_type))
+		    {
+		      arg1_eq_type = common_type;
+		    }
 		}
 	    }
 	}
@@ -5455,8 +5459,7 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
 		case PT_TYPE_CHAR:
 		case PT_TYPE_NCHAR:
 		case PT_TYPE_BIT:
-		  /* CHAR, NCHAR and BIT are common types only if all arguments are of type NCHAR or CHAR */
-		  assert (temp->type_enum == PT_TYPE_CHAR || temp->type_enum == PT_TYPE_NCHAR);
+		  /* CHAR, NCHAR types can be common type for one of all arguments is string type */
 		  if (precision > temp->info.data_type.precision)
 		    {
 		      precision = temp->info.data_type.precision;
