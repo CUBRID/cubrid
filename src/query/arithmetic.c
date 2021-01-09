@@ -3397,7 +3397,7 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     }
 
   /* translate default fmt */
-  if ((type2 == DB_TYPE_CHAR || type2 == DB_TYPE_CHAR) && strcasecmp (db_get_string (value2), "default") == 0)
+  if (type2 == DB_TYPE_CHAR && strcasecmp (db_get_string (value2), "default") == 0)
     {
       if (TP_IS_DATE_TYPE (type1))
 	{

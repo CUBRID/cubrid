@@ -2479,19 +2479,11 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	DB_VALUE *src;
 	TP_DOMAIN *target_domain;
 
+	target_domain = regu_var->domain;
+
 	if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
 	  {
 	    goto error;
-	  }
-
-	if ((arithptr->opcode == T_NVL || arithptr->opcode == T_IFNULL) && !DB_IS_NULL (peek_left))
-	  {
-	    /* follow first argument's domain at not null */
-	    target_domain = arithptr->leftptr->domain;
-	  }
-	else
-	  {
-	    target_domain = regu_var->domain;
 	  }
 
 	if (DB_IS_NULL (peek_left) || target_domain == NULL)
@@ -2619,11 +2611,10 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	}
       else
 	{
-	  /* follow first argument's domain when argument is only one */
-	  dom_status = tp_value_auto_cast (peek_left, arithptr->value, arithptr->leftptr->domain);
+	  dom_status = tp_value_auto_cast (peek_left, arithptr->value, regu_var->domain);
 	  if (dom_status != DOMAIN_COMPATIBLE)
 	    {
-	      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, arithptr->leftptr->domain);
+	      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, regu_var->domain);
 	      goto error;
 	    }
 	}
@@ -2684,11 +2675,10 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	    }
 	  else
 	    {
-	      /* follow first argument's domain when argument is only one */
-	      dom_status = tp_value_auto_cast (peek_left, arithptr->value, arithptr->leftptr->domain);
+	      dom_status = tp_value_auto_cast (peek_left, arithptr->value, regu_var->domain);
 	      if (dom_status != DOMAIN_COMPATIBLE)
 		{
-		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, arithptr->leftptr->domain);
+		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, regu_var->domain);
 		  goto error;
 		}
 	    }
