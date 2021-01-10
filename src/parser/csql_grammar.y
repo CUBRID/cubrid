@@ -27369,7 +27369,6 @@ pt_create_char_string_literal (PARSER_CONTEXT *parser, const PT_TYPE_ENUM char_t
   PT_NODE *node = NULL;
   char *invalid_pos = NULL;
   int composed_size;
-  PT_TYPE_ENUM typ = char_type;
 
   if (intl_check_string (str, str_size, &invalid_pos, codeset) != INTL_UTF8_VALID)
     {
@@ -27396,18 +27395,6 @@ pt_create_char_string_literal (PARSER_CONTEXT *parser, const PT_TYPE_ENUM char_t
 
 	  assert (composed_size <= str_size);
 
-          if (composed[composed_size - 1] == 0x20)
-            {
-              if (char_type == PT_TYPE_CHAR)
-	        {
-	          typ = PT_TYPE_VARCHAR;
-	        }
-	      else if (char_type == PT_TYPE_NCHAR)
-	        {
-	          typ = PT_TYPE_VARNCHAR;
-	        }
-            }
-
 	  if (is_composed)
 	    {
 	      str = composed;
@@ -27422,10 +27409,31 @@ pt_create_char_string_literal (PARSER_CONTEXT *parser, const PT_TYPE_ENUM char_t
     }
 
     node = parser_new_node (parser, PT_VALUE);
-
     if (node)
       {
-	node->type_enum = typ;
+        unsigned char *string;
+	int length;
+
+	node->info.value.data_value.str = pt_append_bytes (parser, NULL, str, str_size);
+	string = node->info.value.data_value.str->bytes;
+        length = node->info.value.data_value.str->length;
+
+        node->type_enum = char_type;
+	if (string)
+	  {
+            if (string[length - 1] == 0x20)
+              {
+                if (char_type == PT_TYPE_CHAR)
+	          {
+		    node->type_enum = PT_TYPE_VARCHAR;
+	          }
+	        else if (char_type == PT_TYPE_NCHAR)
+	          {
+		    node->type_enum = PT_TYPE_VARNCHAR;
+	          }
+              }
+	  }
+
 	if (char_type == PT_TYPE_NCHAR)
 	  {
 	    node->info.value.string_type = 'N';
@@ -27434,7 +27442,7 @@ pt_create_char_string_literal (PARSER_CONTEXT *parser, const PT_TYPE_ENUM char_t
 	  {
 	    node->info.value.string_type = ' ';
 	  }
-	node->info.value.data_value.str = pt_append_bytes (parser, NULL, str, str_size);
+
 	PT_NODE_PRINT_VALUE_TO_TEXT (parser, node);
       }
 
