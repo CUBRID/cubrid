@@ -12053,6 +12053,8 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
 	    }
 	  size2 = i;
 	}
+
+      ti = false;
     }
 
   strc = QSTR_CHAR_COMPARE (collation, string1, size1, string2, size2, ti);
