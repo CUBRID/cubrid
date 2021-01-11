@@ -2541,7 +2541,12 @@ do_cast_host_variables_to_expected_domain (DB_SESSION * session)
 
   for (i = 0; i < hv_count; i++)
     {
+      int prec;
+      DB_TYPE typ;
+
       hv = &host_vars[i];
+      typ = db_value_type (hv);
+      prec = db_value_precision (hv);
       hv_dom = expected_domains[i];
       if (TP_DOMAIN_TYPE (hv_dom) == DB_TYPE_UNKNOWN || hv_dom->type->id == DB_TYPE_ENUMERATION)
 	{
@@ -2557,6 +2562,14 @@ do_cast_host_variables_to_expected_domain (DB_SESSION * session)
 	  pt_report_to_ersys (session->parser, PT_EXECUTION);
 	  pt_reset_error (session->parser);
 	  return ER_PT_EXECUTE;
+	}
+
+      if (TP_IS_CHAR_TYPE (hv_dom->type->id))
+	{
+	  if (typ == DB_TYPE_VARCHAR || typ == DB_TYPE_VARNCHAR)
+	    {
+	      db_value_domain_init (hv, typ, prec, 0);
+	    }
 	}
     }
 
