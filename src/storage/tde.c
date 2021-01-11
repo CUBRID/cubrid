@@ -1256,7 +1256,7 @@ xtde_change_mk_without_flock (THREAD_ENTRY * thread_p, const int mk_index)
   tde_make_keys_file_fullname (mk_path, boot_db_full_name (), false);
 
   /* Without file lock: It is because it must've already been locked in client-side: tde() */
-  vdes = fileio_mount (thread_p, boot_db_full_name (), mk_path, LOG_DBTDE_KEYS_VOLID, false, false);
+  vdes = fileio_open (mk_path, O_RDWR, 0600);
   if (vdes == NULL_VOLDES)
     {
       ASSERT_ERROR ();
@@ -1295,7 +1295,7 @@ xtde_change_mk_without_flock (THREAD_ENTRY * thread_p, const int mk_index)
     }
 
 exit:
-  fileio_dismount (thread_p, vdes);
+  fileio_close (vdes);
   return err;
 }
 
