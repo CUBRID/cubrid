@@ -12025,7 +12025,7 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
   size1 = db_get_string_size (value1);
   size2 = db_get_string_size (value2);
 
-  if (!ignore_trailing_space &&
+  if (!ignore_trailing_space && do_coercion < 2 &&
       (type1 == DB_TYPE_STRING || type1 == DB_TYPE_VARNCHAR || type2 == DB_TYPE_STRING || type2 == DB_TYPE_VARNCHAR))
     {
       int i;
@@ -12053,8 +12053,6 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
 	    }
 	  size2 = i;
 	}
-
-      ti = false;
     }
 
   strc = QSTR_CHAR_COMPARE (collation, string1, size1, string2, size2, ti);
