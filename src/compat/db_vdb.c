@@ -2565,12 +2565,12 @@ do_cast_host_variables_to_expected_domain (DB_SESSION * session)
 	}
 
       if (TP_IS_CHAR_TYPE (hv_dom->type->id))
-	{
-	  if (typ == DB_TYPE_VARCHAR || typ == DB_TYPE_VARNCHAR)
-	    {
-	      db_value_domain_init (hv, typ, prec, 0);
-	    }
-	}
+        {
+          if (typ == DB_TYPE_VARCHAR || typ == DB_TYPE_VARNCHAR)
+            {
+              db_value_domain_init (hv, typ, prec, 0);
+            }
+        }
     }
 
   session->parser->set_host_var = 1;

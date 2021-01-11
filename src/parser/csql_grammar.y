@@ -18708,7 +18708,7 @@ predicate_expr_sub
 			PT_NODE *v, *lhs, *rhs, *subq;
 			bool found_match = false;
 			bool found_paren_set_expr = false;
-	
+
 			PARSER_SAVE_ERR_CONTEXT (node, @$.buffer_pos)
 			if (node)
 			  {
@@ -23382,10 +23382,10 @@ char_string
 			    force = true;
 			  }
 
-		   	node = pt_create_char_string_literal (this_parser,
+                        node = pt_create_char_string_literal (this_parser,
 							      PT_TYPE_CHAR,
-							      $1, charset);
-			
+                                                              $1, charset);
+
 			if (node)
 			  {
 			    pt_value_set_charset_coll (this_parser, node,
@@ -27414,38 +27414,38 @@ pt_create_char_string_literal (PARSER_CONTEXT *parser, const PT_TYPE_ENUM char_t
     if (node)
       {
         unsigned char *string;
-	int length;
+        int length;
 
-	node->info.value.data_value.str = pt_append_bytes (parser, NULL, str, str_size);
-	string = node->info.value.data_value.str->bytes;
+        node->info.value.data_value.str = pt_append_bytes (parser, NULL, str, str_size);
+        string = node->info.value.data_value.str->bytes;
         length = node->info.value.data_value.str->length;
 
         node->type_enum = char_type;
-	if (string)
-	  {
+        if (string)
+          {
             if (string[length - 1] == 0x20)
               {
                 if (char_type == PT_TYPE_CHAR)
-	          {
-		    node->type_enum = PT_TYPE_VARCHAR;
-	          }
-	        else if (char_type == PT_TYPE_NCHAR)
-	          {
-		    node->type_enum = PT_TYPE_VARNCHAR;
-	          }
+                  {
+                    node->type_enum = PT_TYPE_VARCHAR;
+                  }
+                else if (char_type == PT_TYPE_NCHAR)
+                  {
+                    node->type_enum = PT_TYPE_VARNCHAR;
+                  }
               }
-	  }
+          }
 
-	if (char_type == PT_TYPE_NCHAR)
-	  {
-	    node->info.value.string_type = 'N';
-	  }
-	else
-	  {
-	    node->info.value.string_type = ' ';
-	  }
+        if (char_type == PT_TYPE_NCHAR)
+          {
+            node->info.value.string_type = 'N';
+          }
+        else
+          {
+            node->info.value.string_type = ' ';
+          }
 
-	PT_NODE_PRINT_VALUE_TO_TEXT (parser, node);
+        PT_NODE_PRINT_VALUE_TO_TEXT (parser, node);
       }
 
   return node;
