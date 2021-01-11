@@ -245,13 +245,12 @@ qdata_build_hscan_key (THREAD_ENTRY * thread_p, val_descr * vd, REGU_VARIABLE_LI
  *   args(in)   :
  */
 int
-qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *key, void *data, void *args)
+qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *data, void *args)
 {
   HASH_SCAN_VALUE *data2 = (HASH_SCAN_VALUE *) data;
-  HASH_SCAN_KEY *key2 = (HASH_SCAN_KEY *) key;
   QFILE_TUPLE_VALUE_TYPE_LIST *list = (QFILE_TUPLE_VALUE_TYPE_LIST *) args;
 
-  if (!data2 || !key2)
+  if (!data2)
     {
       return false;
     }
@@ -261,16 +260,10 @@ qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *key
     }
 
   fprintf (fp, "LIST_CACHE_ENTRY (%p) {\n", data);
-  /* temporarily disable */
+  /* temporarily disable. I will fix after fixing hash_list_scan_yn */
   /*fprintf (fp, "data_size = [%d]  data = [%.*s]\n", QFILE_GET_TUPLE_LENGTH (data2->tuple),
 	   QFILE_GET_TUPLE_LENGTH (data2->tuple), data2->tuple);*/
 
-  fprintf (fp, "key : ");
-  for (int i = 0; i < key2->val_count; i++)
-    {
-      db_fprint_value (fp, key2->values[i]);
-      fprintf (fp, " ");
-    }
   fprintf (fp, "\n}");
 
   return true;

@@ -105,7 +105,6 @@ extern void *mht_get2 (const MHT_TABLE * ht, const void *key, void **last);
 extern const void *mht_put (MHT_TABLE * ht, const void *key, void *data);
 extern const void *mht_put_data (MHT_TABLE * ht, const void *key, void *data);
 extern const void *mht_put_new (MHT_TABLE * ht, const void *key, void *data);
-extern const void *mht_put_orderly (MHT_TABLE * ht, const void *key, void *data);
 extern const void *mht_put_if_not_exists (MHT_TABLE * ht, const void *key, void *data);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern const void *mht_put2 (MHT_TABLE * ht, const void *key, void *data);
@@ -124,5 +123,54 @@ extern unsigned int mht_count (const MHT_TABLE * ht);
 extern int mht_dump (THREAD_ENTRY * thread_p, FILE * out_fp, const MHT_TABLE * ht, const int print_id_opt,
 		     int (*print_func) (THREAD_ENTRY * thread_p, FILE * fp, const void *key, void *data, void *args),
 		     void *func_args);
+
+/*
+ * Hash table for HASH LIST SCAN
+ * In order to minimize the size of the hash entry, a hash table for HASH LIST SCAN is created separately.
+ * It has the following features.
+ * 1. lru, act is not used. (remove variable related to lru, act)
+ * 2. key comparison is performed in executor. (remove key of hash entry)
+ * 3. put data orderly. (add tail pointer for it)
+ * 4. Since hash size is fixed, rehashing the hash table is not necessary.
+ */
+
+/* Hash Table Entry for HASH LIST SCAN - linked list, keyless hash entry */
+typedef struct hentry_hls HENTRY_HLS;
+typedef struct hentry_hls *HENTRY_HLS_PTR;
+struct hentry_hls
+{
+  HENTRY_HLS_PTR tail;		/* tail node on hash table entry */
+  HENTRY_HLS_PTR next;		/* Next hash table entry for colisions */
+  void *data;			/* Data associated with key entry */
+};
+
+/* Memory Hash Table for HASH LIST SCAN*/
+typedef struct mht_hls_table MHT_HLS_TABLE;
+struct mht_hls_table
+{
+  unsigned int (*hash_func) (const void *key, unsigned int htsize);
+  int (*cmp_func) (const void *key1, const void *key2);
+  const char *name;
+  HENTRY_HLS_PTR *table;		/* The hash table (entries) */
+  HENTRY_HLS_PTR prealloc_entries;	/* Free entries allocated for locality reasons */
+  unsigned int size;		/* Better if prime number */
+  unsigned int nentries;	/* Actual number of entries */
+  unsigned int nprealloc_entries;	/* Number of preallocated entries for future insertions */
+  unsigned int ncollisions;	/* Number of collisions in HT */
+  HL_HEAPID heap_id;		/* Id of heap allocator */
+  bool build_lru_list;		/* true if LRU list must be built */
+};
+
+extern const void *mht_put_hls (MHT_HLS_TABLE * ht, const void *key, void *data);
+extern void *mht_get_hls (const MHT_HLS_TABLE * ht, const void *key, void **last);
+extern MHT_HLS_TABLE *mht_create_hls (const char *name, int est_size,
+				      unsigned int (*hash_func) (const void *key, unsigned int ht_size),
+				      int (*cmp_func) (const void *key1, const void *key2));
+extern int mht_clear_hls (MHT_HLS_TABLE * ht, int (*rem_func) (const void *key, void *data, void *args), void *func_args);
+extern void mht_destroy_hls (MHT_HLS_TABLE * ht);
+extern int mht_dump_hls (THREAD_ENTRY * thread_p, FILE * out_fp, const MHT_HLS_TABLE * ht, const int print_id_opt,
+			 int (*print_func) (THREAD_ENTRY * thread_p, FILE * fp, const void *data, void *args),
+			 void *func_args);
+/* for HASH LIST SCAN (end) */
 
 #endif /* _MEMORY_HASH_H_ */

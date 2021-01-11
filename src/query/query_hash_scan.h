@@ -54,8 +54,6 @@ struct qfile_tuple_simple_pos
 typedef struct hash_scan_value HASH_SCAN_VALUE;
 struct hash_scan_value
 {
-  /*QFILE_TUPLE tuple;		/* tuple */
-  /*QFILE_TUPLE_SIMPLE_POS simple_pos; /* tuple simple position */
   void *data;
 };
 
@@ -75,9 +73,9 @@ struct hash_list_scan
   bool hash_list_scan_yn;	/* Is hash list scan possible? */
   regu_variable_list_node *build_regu_list;	/* regulator variable list */
   regu_variable_list_node *probe_regu_list;	/* regulator variable list */
-  mht_table *hash_table;	/* memory hash table for hash list scan */
+  mht_hls_table *hash_table;	/* memory hash table for hash list scan */
   hash_scan_key *temp_key;	/* temp probe key */
-  HENTRY_PTR curr_hash_entry;	/* current hash entry */
+  HENTRY_HLS_PTR curr_hash_entry;	/* current hash entry */
 };
 
 HASH_SCAN_KEY *qdata_alloc_hscan_key (THREAD_ENTRY * thread_p, int val_cnt, bool alloc_vals);
@@ -95,6 +93,6 @@ unsigned int qdata_hash_scan_key (const void *key, unsigned int ht_size);
 HASH_SCAN_KEY *qdata_copy_hscan_key (THREAD_ENTRY * thread_p, HASH_SCAN_KEY * key,
 				     REGU_VARIABLE_LIST probe_regu_list, val_descr * vd);
 
-int qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *key, void *data, void *args);
+int qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *data, void *args);
 
 #endif /* _QUERY_HASH_SCAN_H_ */

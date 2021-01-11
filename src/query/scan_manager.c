@@ -3686,7 +3686,7 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
       /* create hash table */
       llsidp->hlsid.hash_table =
-	mht_create ("Hash List Scan", llsidp->list_id->tuple_cnt, qdata_hash_scan_key, qdata_hscan_key_eq);
+	mht_create_hls ("Hash List Scan", llsidp->list_id->tuple_cnt, qdata_hash_scan_key, qdata_hscan_key_eq);
       if (llsidp->hlsid.hash_table == NULL)
 	{
 	  return S_ERROR;
@@ -4813,12 +4813,12 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       if (llsidp->hlsid.hash_table != NULL)
 	{
 #if 0
-	  (void) mht_dump (thread_p, stdout, llsidp->hlsid.hash_table, -1, qdata_print_hash_scan_entry, NULL);
+	  (void) mht_dump_hls (thread_p, stdout, llsidp->hlsid.hash_table, 1, qdata_print_hash_scan_entry, NULL);
 	  printf ("temp file : tuple count = %d, file_size = %dK\n", llsidp->list_id->tuple_cnt,
 		  llsidp->list_id->page_cnt * 16);
 #endif
-	  mht_clear (llsidp->hlsid.hash_table, qdata_free_hscan_entry, (void *) thread_p);
-	  mht_destroy (llsidp->hlsid.hash_table);
+	  mht_clear_hls (llsidp->hlsid.hash_table, qdata_free_hscan_entry, (void *) thread_p);
+	  mht_destroy_hls (llsidp->hlsid.hash_table);
 	}
       /* free temp keys and values */
       if (llsidp->hlsid.temp_key != NULL)
@@ -7811,7 +7811,7 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  return S_ERROR;
 	}
       /* add to hash table */
-      if (mht_put_orderly (llsidp->hlsid.hash_table, (void *) new_key, (void *) new_value) == NULL)
+      if (mht_put_hls (llsidp->hlsid.hash_table, (void *) new_key, (void *) new_value) == NULL)
 	{
 	  return S_ERROR;
 	}
@@ -7957,7 +7957,7 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 
 	  /* get value from hash table */
 	  hvalue =
-	    (HASH_SCAN_VALUE *) mht_get2 (llsidp->hlsid.hash_table, key, (void **) &llsidp->hlsid.curr_hash_entry);
+	    (HASH_SCAN_VALUE *) mht_get_hls (llsidp->hlsid.hash_table, key, (void **) &llsidp->hlsid.curr_hash_entry);
 	  if (hvalue == NULL)
 	    {
 	      return S_END;
