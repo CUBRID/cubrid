@@ -3776,7 +3776,7 @@ tde (UTIL_FUNCTION_ARG * arg)
   printf ("Key File: %s\n", mk_path);
 
   /* 
-   * In Window, --change-keys operation is not supported because of this fileio_mount(). In Window, if a process mount a file with file_lock > 0, no other process can mount even with file_lock = 0, but the file lock here is necessary to procide exclusivness with backupdb in current design. 
+   * The file lock here is necessary to provide exclusiveness with backupdb in the current design.
    */
   vdes = fileio_mount (NULL, database_name, mk_path, LOG_DBTDE_KEYS_VOLID, 1, false);
   if (vdes == NULL_VOLDES)
