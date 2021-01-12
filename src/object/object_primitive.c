@@ -12025,7 +12025,25 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
   size1 = db_get_string_size (value1);
   size2 = db_get_string_size (value2);
 
-  if (!ignore_trailing_space && do_coercion != 2 &&
+  /*
+   * do_coercion = 2:
+   * from btree compare key
+   * we need to process the ignore trailing space
+   */
+  if (do_coercion == 2)
+    {
+       ti = true;
+    }
+  /*
+   * do_coercion = 3:
+   * from eliminate_duplicated_keys and scan_key_compre
+   * we need to process enforcing no-ignore-trailing space.
+   */
+  else if (do_coercion == 3)
+    {
+      ti = false;
+    }
+  else if (!ignore_trailing_space &&
       (type1 == DB_TYPE_STRING || type1 == DB_TYPE_VARNCHAR || type2 == DB_TYPE_STRING || type2 == DB_TYPE_VARNCHAR))
     {
       int i;
@@ -12954,7 +12972,25 @@ mr_cmpval_nchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tota
   size1 = db_get_string_size (value1);
   size2 = db_get_string_size (value2);
 
-  if (!ignore_trailing_space && do_coercion != 2 &&
+  /*
+   * do_coercion = 2:
+   * from btree compare key
+   * we need to process the ignore trailing space
+   */
+  if (do_coercion == 2)
+    {
+       ti = true;
+    }
+  /*
+   * do_coercion = 3:
+   * from eliminate_duplicated_keys and scan_key_compre
+   * we need to process enforcing no-ignore-trailing space.
+   */
+  else if (do_coercion == 3)
+    {
+      ti = false;
+    }
+  else if (!ignore_trailing_space &&
       (type1 == DB_TYPE_STRING || type1 == DB_TYPE_VARNCHAR || type2 == DB_TYPE_STRING || type2 == DB_TYPE_VARNCHAR))
     {
       int i;
