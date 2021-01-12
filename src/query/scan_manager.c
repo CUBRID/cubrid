@@ -205,7 +205,7 @@ static int scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_ter
 static SCAN_CODE scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * tuple);
-static bool check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_yn);
+static int check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_yn);
 
 /*
  * scan_init_iss () - initialize index skip scan structure
@@ -3671,8 +3671,8 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   llsidp->hlsid.probe_regu_list = regu_list_probe;
 
   /* check if hash list scan is possible? */
-  llsidp->hlsid.hash_list_scan_yn = false;
-  if (check_hash_list_scan (llsidp, &val_cnt, hash_list_scan_yn))
+  llsidp->hlsid.hash_list_scan_yn = check_hash_list_scan (llsidp, &val_cnt, hash_list_scan_yn);
+  if (llsidp->hlsid.hash_list_scan_yn > 0)
     {
       bool on_trace;
       TSC_TICKS start_tick, end_tick;
@@ -3703,8 +3703,6 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 	  return S_ERROR;
 	}
       scan_end_scan (thread_p, scan_id);
-
-      llsidp->hlsid.hash_list_scan_yn = true;
 
       if (on_trace)
 	{
@@ -7667,9 +7665,13 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
       break;
 
     case S_LIST_SCAN:
-      if (scan_id->s.llsid.hlsid.hash_list_scan_yn)
+      if (scan_id->s.llsid.hlsid.hash_list_scan_yn == 1)
 	{
-	  fprintf (fp, "(hash temp buildtime : %d,", TO_MSEC (scan_id->scan_stats.elapsed_hash_build));
+	  fprintf (fp, "(hash temp, buildtime : %d,", TO_MSEC (scan_id->scan_stats.elapsed_hash_build));
+	}
+      else if (scan_id->s.llsid.hlsid.hash_list_scan_yn == 2)
+	{
+	  fprintf (fp, "(hash temp(h), buildtime : %d,", TO_MSEC (scan_id->scan_stats.elapsed_hash_build));
 	}
       else
 	{
@@ -7790,20 +7792,18 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	{
 	  return S_ERROR;
 	}
-      /* create new key */
-      new_key = qdata_copy_hscan_key (thread_p, key, llsidp->hlsid.probe_regu_list, scan_id->vd);
-      if (new_key == NULL)
-	{
-	  return S_ERROR;
-	}
       /* create new value */
-      if (0)
+      if (llsidp->hlsid.hash_list_scan_yn == 1)
 	{
 	  new_value = qdata_alloc_hscan_value (thread_p, tplrec.tpl);
 	}
-      else
+      else if (llsidp->hlsid.hash_list_scan_yn == 2)
 	{
 	  new_value = qdata_alloc_hscan_value_OID (thread_p, &llsidp->lsid);
+	}
+      else
+	{
+	  return S_ERROR;
 	}
 
       if (new_value == NULL)
@@ -7811,7 +7811,7 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  return S_ERROR;
 	}
       /* add to hash table */
-      if (mht_put_hls (llsidp->hlsid.hash_table, (void *) new_key, (void *) new_value) == NULL)
+      if (mht_put_hls (llsidp->hlsid.hash_table, (void *) key, (void *) new_value) == NULL)
 	{
 	  return S_ERROR;
 	}
@@ -7962,12 +7962,14 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 	    {
 	      return S_END;
 	    }
-	  if (0)
+	  if (llsidp->hlsid.hash_list_scan_yn == 1)
 	    {
+	      /* in-memory hash scan */
 	      *tuple = (QFILE_TUPLE) hvalue->data;
 	    }
-	  else
+	  else if (llsidp->hlsid.hash_list_scan_yn == 2)
 	    {
+	      /* hybrid in-memory hash scan */
 	      simple_pos = (QFILE_TUPLE_SIMPLE_POS *) hvalue->data;
 	      MAKE_TUPLE_POSTION(tuple_pos, simple_pos, scan_id_p);
 
@@ -7976,6 +7978,10 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 		  return S_ERROR;
 		}
 	      *tuple = tplrec.tpl;
+	    }
+	  else
+	    {
+	      return S_ERROR;
 	    }
 	  scan_id_p->position = S_ON;
 	  return S_SUCCESS;
@@ -7990,11 +7996,11 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
       if (llsidp->hlsid.curr_hash_entry->next)
 	{
 	  llsidp->hlsid.curr_hash_entry = llsidp->hlsid.curr_hash_entry->next;
-	  if (0)
+	  if (llsidp->hlsid.hash_list_scan_yn == 1)
 	    {
 	      *tuple = (QFILE_TUPLE) ((HASH_SCAN_VALUE *) llsidp->hlsid.curr_hash_entry->data)->data;
 	    }
-	  else
+	  else if (llsidp->hlsid.hash_list_scan_yn == 2)
 	    {
 	      simple_pos = (QFILE_TUPLE_SIMPLE_POS *) ((HASH_SCAN_VALUE *) llsidp->hlsid.curr_hash_entry->data)->data;
 	      MAKE_TUPLE_POSTION(tuple_pos, simple_pos, scan_id_p);
@@ -8005,15 +8011,15 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 		}
 	      *tuple = tplrec.tpl;
 	    }
+	  else
+	    {
+	      return S_ERROR;
+	    }
 	  return S_SUCCESS;
 	}
       else
 	{
-	  if (0)
-	    {
-	      /* none */
-	    }
-	  else
+	  if (llsidp->hlsid.hash_list_scan_yn == 2)
 	    {
 	      qmgr_free_old_page_and_init (thread_p, scan_id_p->curr_pgptr, scan_id_p->list_id.tfile_vfid);
 	    }
@@ -8036,7 +8042,7 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 
 /*
  * check_hash_list_scan () - Check if hash list scan is possible
- *   return: bool
+ *   return: int  1: in-memory 2: hybrid in-memory
  *   llsidp (in): list scan id pointer
  *   node :
  *      1. count of tuple of list file > 0
@@ -8046,7 +8052,7 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
  *      5. type of regu var is not oid && vobj
  *      6. list file from dptr is not allowed
 */
-static bool
+static int
 check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_yn)
 {
   int build_cnt;
@@ -8057,24 +8063,18 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
   /* no_hash_list_scan sql hint check */
   if (hash_list_scan_yn == 0)
     {
-      return false;
+      return 0;
     }
 
   /* count of tuple of list file > 0 */
   if (llsidp->list_id->tuple_cnt <= 0)
     {
-      return false;
+      return 0;
     }
-  /* list file size check */
-  if ((UINT64) llsidp->list_id->page_cnt * DB_PAGESIZE > mem_limit)
-    {
-      return false;
-    }
-
   /* regu_list_build, regu_list_probe is not null */
   if (llsidp->hlsid.build_regu_list == NULL || llsidp->hlsid.probe_regu_list == NULL)
     {
-      return false;
+      return 0;
     }
 
   build = llsidp->hlsid.build_regu_list;
@@ -8091,7 +8091,7 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
       if (((vtype1 == DB_TYPE_OBJECT || vtype1 == DB_TYPE_VOBJ) && vtype2 == DB_TYPE_OID) ||
 	  ((vtype2 == DB_TYPE_OBJECT || vtype2 == DB_TYPE_VOBJ) && vtype1 == DB_TYPE_OID))
 	{
-	  return false;
+	  return 0;
 	}
       build = build->next;
       probe = probe->next;
@@ -8099,12 +8099,29 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
   /* The number of probe regu_var and build regu match */
   if (build != NULL || probe != NULL)
     {
-      return false;
+      return 0;
     }
   *val_cnt = build_cnt;
 
   /* 6. list file from dptr is not allowed */
   /* Since dptr is searched after scan_open_scan, it is checked when llsidp->list_id->tuple_cnt <= 0 */
 
-  return true;
+  /* list file size check */
+  if ((UINT64) llsidp->list_id->page_cnt * DB_PAGESIZE <= mem_limit)
+    {
+      /* in-memory hash scan */
+      return 1;
+    }
+  else if ((UINT64) llsidp->list_id->tuple_cnt * 22 <= mem_limit)
+    {
+      /* hybrid in-memory hash scan */
+      /* bytes of 1 row = hash entry 12bytes + simple pos(VPID+offset) 10bytes = 22 bytes */
+      return 2;
+    }
+  else
+    {
+      return 0;
+    }
+
+  return 0;
 }

@@ -70,7 +70,7 @@ struct hash_scan_key
 typedef struct hash_list_scan HASH_LIST_SCAN;
 struct hash_list_scan
 {
-  bool hash_list_scan_yn;	/* Is hash list scan possible? */
+  int hash_list_scan_yn;	/* Is hash list scan possible? */
   regu_variable_list_node *build_regu_list;	/* regulator variable list */
   regu_variable_list_node *probe_regu_list;	/* regulator variable list */
   mht_hls_table *hash_table;	/* memory hash table for hash list scan */
