@@ -7667,11 +7667,11 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
     case S_LIST_SCAN:
       if (scan_id->s.llsid.hlsid.hash_list_scan_yn == 1)
 	{
-	  fprintf (fp, "(hash temp, buildtime : %d,", TO_MSEC (scan_id->scan_stats.elapsed_hash_build));
+	  fprintf (fp, "(hash temp buildtime : %d,", TO_MSEC (scan_id->scan_stats.elapsed_hash_build));
 	}
       else if (scan_id->s.llsid.hlsid.hash_list_scan_yn == 2)
 	{
-	  fprintf (fp, "(hash temp(h), buildtime : %d,", TO_MSEC (scan_id->scan_stats.elapsed_hash_build));
+	  fprintf (fp, "(hash temp(h) buildtime : %d,", TO_MSEC (scan_id->scan_stats.elapsed_hash_build));
 	}
       else
 	{
