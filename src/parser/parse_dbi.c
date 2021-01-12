@@ -3130,6 +3130,8 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
 	}
       else
 	{
+	  DB_TYPE val_type = db_value_type (val);
+
 	  if (tp_value_cast_preserve_domain (val, hv, hv_dom, false, true) != DOMAIN_COMPATIBLE)
 	    {
 	      typ = TP_DOMAIN_TYPE (hv_dom);
