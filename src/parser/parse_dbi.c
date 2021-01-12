@@ -3132,7 +3132,7 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
         {
           DB_TYPE val_type = db_value_type (val);
 
-          if ((TP_IS_CHAR_TYPE(hv_dom->type->id) && (val_type != DB_TYPE_VARCHAR || val_type != DB_TYPE_VARCHAR)))
+          if ((TP_IS_CHAR_TYPE(hv_dom->type->id) && (val_type != DB_TYPE_VARCHAR || val_type != DB_TYPE_VARNCHAR)))
             {
               if (tp_value_cast_preserve_domain (val, hv, hv_dom, false, true) != DOMAIN_COMPATIBLE)
                 {
