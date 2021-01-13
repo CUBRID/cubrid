@@ -3128,12 +3128,24 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
 	{
 	  pr_clone_value (val, hv);
 	}
-      else if (tp_value_cast_preserve_domain (val, hv, hv_dom, false, true) != DOMAIN_COMPATIBLE)
+      else
 	{
-	  typ = TP_DOMAIN_TYPE (hv_dom);
-	  PT_ERRORmf2 (parser, NULL, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO, "host var",
-		       pt_type_enum_to_db_domain_name (pt_db_to_type_enum (typ)));
-	  return;
+	  DB_TYPE val_type = db_value_type (val);
+
+	  if (tp_value_cast_preserve_domain (val, hv, hv_dom, false, true) != DOMAIN_COMPATIBLE)
+	    {
+	      typ = TP_DOMAIN_TYPE (hv_dom);
+	      PT_ERRORmf2 (parser, NULL, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO, "host var",
+			   pt_type_enum_to_db_domain_name (pt_db_to_type_enum (typ)));
+	      return;
+	    }
+	  if (TP_IS_CHAR_TYPE (hv_dom->type->id))
+	    {
+	      if (hv_dom->type->id != val_type && (val_type == DB_TYPE_VARCHAR || val_type == DB_TYPE_VARNCHAR))
+		{
+		  pr_clone_value (val, hv);
+		}
+	    }
 	}
     }
 

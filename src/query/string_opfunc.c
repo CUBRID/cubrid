@@ -355,7 +355,7 @@ db_string_compare (const DB_VALUE * string1, const DB_VALUE * string2, DB_VALUE 
   int cmp_result = 0;
   DB_TYPE str1_type, str2_type;
 
-  static bool ti = true;
+  bool ti = true;
   static bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
 
   /* Assert that DB_VALUE structures have been allocated. */
@@ -496,7 +496,7 @@ db_string_unique_prefix (const DB_VALUE * db_string1, const DB_VALUE * db_string
   DB_VALUE tmp_result;
   int c;
 
-  static bool ti = true;
+  bool ti = true;
   static bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
 
   /* Assertions */
@@ -3709,7 +3709,7 @@ db_string_prefix_compare (const DB_VALUE * string1, const DB_VALUE * string2, DB
   int cmp_result = 0;
   DB_TYPE str1_type, str2_type;
 
-  static bool ti = true;
+  bool ti = true;
   static bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
 
   /* Assert that DB_VALUE structures have been allocated. */

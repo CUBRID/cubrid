@@ -4110,7 +4110,7 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value, int all
 
   best = NULL;
 
-  static bool ti = true;
+  bool ti = true;
   static bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
 
   /*
@@ -7092,7 +7092,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
   int year, month, day;
   TZ_ID ses_tz_id;
 
-  static bool ti = true;
+  bool ti = true;
   static bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
 
   DB_VALUE src_replacement;
