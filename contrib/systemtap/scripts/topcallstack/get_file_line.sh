@@ -15,6 +15,10 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 # 
+# DESCRIPTION:
+#
+# This script retrieves the function name of the given memory address.
+# The shared object must be inspected with gdb.
 #
 
 pid=$(ps x | grep "cub_server $1" | grep -v grep | cut -f 2 -d ' ')
