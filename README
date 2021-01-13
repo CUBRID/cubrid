@@ -4,7 +4,7 @@ CUBRID is a DBMS being supported by an active community of open source developer
 and provides better performance and features necessary for Web services. 
 
 CUBRID is distributed under two licenses according to its component, 
-Database engine is under Apache v2 license and
+Database engine is under Apache license 2.0 and
 APIs and Connectors are under BSD license.
 
 Copyright and license information can be found in the file COPYING.
