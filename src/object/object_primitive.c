@@ -11147,28 +11147,28 @@ mr_cmpval_string (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
       int i;
 
       if (type1 == DB_TYPE_CHAR || type1 == DB_TYPE_NCHAR)
-        {
-          for (i = size1; i > 1; i--)
-            {
-              if (string1[i - 1] != 0x20)
-                {
-                  break;
-                }
-            }
-          size1 = i;
-        }
+	{
+	  for (i = size1; i > 1; i--)
+	    {
+	      if (string1[i - 1] != 0x20)
+		{
+		  break;
+		}
+	    }
+	  size1 = i;
+	}
 
       if (type2 == DB_TYPE_CHAR || type2 == DB_TYPE_NCHAR)
-        {
-          for (i = size2; i > 1; i--)
-            {
-              if (string2[i - 1] != 0x20)
-                {
-                  break;
-                }
-            }
-          size2 = i;
-        }
+	{
+	  for (i = size2; i > 1; i--)
+	    {
+	      if (string2[i - 1] != 0x20)
+		{
+		  break;
+		}
+	    }
+	  size2 = i;
+	}
 
       ti = false;
     }
@@ -12032,7 +12032,7 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
    */
   if (do_coercion == 2)
     {
-       ti = true;
+      ti = true;
     }
   /*
    * do_coercion = 3:
@@ -12044,33 +12044,34 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
       ti = false;
     }
   else if (!ignore_trailing_space &&
-      (type1 == DB_TYPE_STRING || type1 == DB_TYPE_VARNCHAR || type2 == DB_TYPE_STRING || type2 == DB_TYPE_VARNCHAR))
+	   (type1 == DB_TYPE_STRING || type1 == DB_TYPE_VARNCHAR || type2 == DB_TYPE_STRING
+	    || type2 == DB_TYPE_VARNCHAR))
     {
       int i;
 
       if (type1 == DB_TYPE_CHAR || type1 == DB_TYPE_NCHAR)
-        {
-          for (i = size1; i > 1; i--)
-            {
-              if (string1[i - 1] != 0x20)
-                {
-                  break;
-                }
-            }
-          size1 = i;
-        }
+	{
+	  for (i = size1; i > 1; i--)
+	    {
+	      if (string1[i - 1] != 0x20)
+		{
+		  break;
+		}
+	    }
+	  size1 = i;
+	}
 
       if (type2 == DB_TYPE_CHAR || type2 == DB_TYPE_NCHAR)
-        {
-          for (i = size2; i > 1; i--)
-            {
-              if (string2[i - 1] != 0x20)
-                {
-                  break;
-                }
-            }
-          size2 = i;
-        }
+	{
+	  for (i = size2; i > 1; i--)
+	    {
+	      if (string2[i - 1] != 0x20)
+		{
+		  break;
+		}
+	    }
+	  size2 = i;
+	}
 
       ti = false;
     }
@@ -12979,7 +12980,7 @@ mr_cmpval_nchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tota
    */
   if (do_coercion == 2)
     {
-       ti = true;
+      ti = true;
     }
   /*
    * do_coercion = 3:
@@ -12991,33 +12992,34 @@ mr_cmpval_nchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tota
       ti = false;
     }
   else if (!ignore_trailing_space &&
-      (type1 == DB_TYPE_STRING || type1 == DB_TYPE_VARNCHAR || type2 == DB_TYPE_STRING || type2 == DB_TYPE_VARNCHAR))
+	   (type1 == DB_TYPE_STRING || type1 == DB_TYPE_VARNCHAR || type2 == DB_TYPE_STRING
+	    || type2 == DB_TYPE_VARNCHAR))
     {
       int i;
 
       if (type1 == DB_TYPE_CHAR || type1 == DB_TYPE_NCHAR)
-        {
-          for (i = size1; i > 1; i--)
-            {
-              if (string1[i - 1] != 0x20)
-                {
-                  break;
-                }
-            }
-          size1 = i;
-        }
+	{
+	  for (i = size1; i > 1; i--)
+	    {
+	      if (string1[i - 1] != 0x20)
+		{
+		  break;
+		}
+	    }
+	  size1 = i;
+	}
 
       if (type2 == DB_TYPE_CHAR || type2 == DB_TYPE_NCHAR)
-        {
-          for (i = size2; i > 1; i--)
-            {
-              if (string2[i - 1] != 0x20)
-                {
-                  break;
-                }
-            }
-          size2 = i;
-        }
+	{
+	  for (i = size2; i > 1; i--)
+	    {
+	      if (string2[i - 1] != 0x20)
+		{
+		  break;
+		}
+	    }
+	  size2 = i;
+	}
 
       ti = false;
     }
@@ -14175,28 +14177,28 @@ mr_cmpval_varnchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int t
       int i;
 
       if (type1 == DB_TYPE_CHAR || type1 == DB_TYPE_NCHAR)
-        {
-          for (i = size1; i > 1; i--)
-            {
-              if (string1[i - 1] != 0x20)
-                {
-                  break;
-                }
-            }
-          size1 = i;
-        }
+	{
+	  for (i = size1; i > 1; i--)
+	    {
+	      if (string1[i - 1] != 0x20)
+		{
+		  break;
+		}
+	    }
+	  size1 = i;
+	}
 
       if (type2 == DB_TYPE_CHAR || type2 == DB_TYPE_NCHAR)
-        {
-          for (i = size2; i > 1; i--)
-            {
-              if (string2[i - 1] != 0x20)
-                {
-                  break;
-                }
-            }
-          size2 = i;
-        }
+	{
+	  for (i = size2; i > 1; i--)
+	    {
+	      if (string2[i - 1] != 0x20)
+		{
+		  break;
+		}
+	    }
+	  size2 = i;
+	}
 
       ti = false;
     }
