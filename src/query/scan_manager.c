@@ -3694,6 +3694,7 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
       /* alloc temp key */
       llsidp->hlsid.temp_key = qdata_alloc_hscan_key (thread_p, val_cnt, false);
+      llsidp->hlsid.temp_new_key = qdata_alloc_hscan_key (thread_p, val_cnt, true);
       if (scan_start_scan (thread_p, scan_id) != NO_ERROR)
 	{
 	  return S_ERROR;
@@ -3715,6 +3716,7 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
     {
       llsidp->hlsid.hash_table = NULL;
       llsidp->hlsid.temp_key = NULL;
+      llsidp->hlsid.temp_new_key = NULL;
       llsidp->hlsid.curr_hash_entry = NULL;
     }
 
@@ -4823,6 +4825,12 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	{
 	  qdata_free_hscan_key (thread_p, llsidp->hlsid.temp_key, llsidp->hlsid.temp_key->val_count);
 	  llsidp->hlsid.temp_key = NULL;
+	}
+      /* free temp new keys and values */
+      if (llsidp->hlsid.temp_new_key != NULL)
+	{
+	  qdata_free_hscan_key (thread_p, llsidp->hlsid.temp_new_key, llsidp->hlsid.temp_new_key->val_count);
+	  llsidp->hlsid.temp_new_key = NULL;
 	}
       break;
 
@@ -7767,6 +7775,7 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
   llsidp = &scan_id->s.llsid;
   key = llsidp->hlsid.temp_key;
+  new_key = llsidp->hlsid.temp_new_key;
 
   tplrec.size = 0;
   tplrec.tpl = (QFILE_TUPLE) NULL;
@@ -7792,6 +7801,12 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	{
 	  return S_ERROR;
 	}
+      /* create new key */
+      new_key = qdata_copy_hscan_key_without_alloc (thread_p, key, llsidp->hlsid.probe_regu_list, new_key);
+      if (new_key == NULL)
+	{
+	  return S_ERROR;
+	}
       /* create new value */
       if (llsidp->hlsid.hash_list_scan_yn == 1)
 	{
@@ -7811,7 +7826,7 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  return S_ERROR;
 	}
       /* add to hash table */
-      if (mht_put_hls (llsidp->hlsid.hash_table, (void *) key, (void *) new_value) == NULL)
+      if (mht_put_hls (llsidp->hlsid.hash_table, (void *) new_key, (void *) new_value) == NULL)
 	{
 	  return S_ERROR;
 	}

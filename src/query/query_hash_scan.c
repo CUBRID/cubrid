@@ -270,8 +270,8 @@ qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *dat
 }
 
 /*
- * qdata_copy_hscan_key () - deep copy aggregate key
- *   returns: pointer to new aggregate hash key
+ * qdata_copy_hscan_key () - deep copy hash key
+ *   returns: pointer to new hash key
  *   thread_p(in): thread
  *   key(in): source key
  */
@@ -325,6 +325,55 @@ qdata_copy_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key, REGU_VAR
 	      if (new_key->values[i] == NULL)
 		{
 		  qdata_free_hscan_key (thread_p, new_key, i);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE *));
+		  return NULL;
+		}
+	    }
+	  probe_regu_list = probe_regu_list->next;
+	}
+    }
+
+  return new_key;
+}
+
+/*
+ * qdata_copy_hscan_key_without_alloc () - deep copy hash key
+ *   returns: pointer to new hash key
+ *   thread_p(in): thread
+ *   key(in): source key
+ */
+HASH_SCAN_KEY *
+qdata_copy_hscan_key_without_alloc (cubthread::entry * thread_p, HASH_SCAN_KEY * key, REGU_VARIABLE_LIST probe_regu_list,
+				    HASH_SCAN_KEY * new_key)
+{
+  DB_TYPE vtype1, vtype2;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+
+  if (new_key)
+    {
+      /* copy values */
+      new_key->val_count = key->val_count;
+      for (int i = 0; i < key->val_count; i++)
+	{
+	  vtype1 = REGU_VARIABLE_GET_TYPE (&probe_regu_list->value);
+	  vtype2 = DB_VALUE_DOMAIN_TYPE (key->values[i]);
+
+	  if (vtype1 != vtype2)
+	    {
+	      pr_clear_value (new_key->values[i]);
+	      status = tp_value_coerce (key->values[i], new_key->values[i], probe_regu_list->value.domain);
+	      if (status != DOMAIN_COMPATIBLE)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (vtype2),
+			  pr_type_name (vtype1));
+		  return NULL;
+		}
+	    }
+	  else
+	    {
+	      pr_clear_value (new_key->values[i]);
+	      if (pr_clone_value (key->values[i], new_key->values[i]) != NO_ERROR)
+		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE *));
 		  return NULL;
 		}

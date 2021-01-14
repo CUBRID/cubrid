@@ -75,6 +75,7 @@ struct hash_list_scan
   regu_variable_list_node *probe_regu_list;	/* regulator variable list */
   mht_hls_table *hash_table;	/* memory hash table for hash list scan */
   hash_scan_key *temp_key;	/* temp probe key */
+  hash_scan_key *temp_new_key;	/* temp probe key with db_value */
   HENTRY_HLS_PTR curr_hash_entry;	/* current hash entry */
 };
 
@@ -92,6 +93,8 @@ int qdata_build_hscan_key (THREAD_ENTRY * thread_p, val_descr * vd, REGU_VARIABL
 unsigned int qdata_hash_scan_key (const void *key, unsigned int ht_size);
 HASH_SCAN_KEY *qdata_copy_hscan_key (THREAD_ENTRY * thread_p, HASH_SCAN_KEY * key,
 				     REGU_VARIABLE_LIST probe_regu_list, val_descr * vd);
+HASH_SCAN_KEY *qdata_copy_hscan_key_without_alloc (THREAD_ENTRY * thread_p, HASH_SCAN_KEY * key,
+						   REGU_VARIABLE_LIST probe_regu_list, HASH_SCAN_KEY * new_key);
 
 int qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *data, void *args);
 
