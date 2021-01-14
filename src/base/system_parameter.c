@@ -1,20 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation
- * Copyright (C) 2016 CUBRID Corporation
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -1411,14 +1409,14 @@ static int prm_list_query_cache_mode_upper = 2;
 static int prm_list_query_cache_mode_lower = 2;
 static unsigned int prm_list_query_cache_mode_flag = 0;
 
-int PRM_LIST_MAX_QUERY_CACHE_ENTRIES = 200;
-static int prm_list_max_query_cache_entries_default = 200;
+int PRM_LIST_MAX_QUERY_CACHE_ENTRIES = 0;
+static int prm_list_max_query_cache_entries_default = 0;
 static int prm_list_max_query_cache_entries_upper = INT_MAX;
 static int prm_list_max_query_cache_entries_lower = 0;
 static unsigned int prm_list_max_query_cache_entries_flag = 0;
 
-int PRM_LIST_MAX_QUERY_CACHE_PAGES = 1000;
-static int prm_list_max_query_cache_pages_default = 1000;
+int PRM_LIST_MAX_QUERY_CACHE_PAGES = 0;
+static int prm_list_max_query_cache_pages_default = 0;
 static int prm_list_max_query_cache_pages_upper = INT_MAX;
 static int prm_list_max_query_cache_pages_lower = 0;
 static unsigned int prm_list_max_query_cache_pages_flag = 0;

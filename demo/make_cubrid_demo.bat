@@ -14,7 +14,7 @@ if exist %DBNAME% goto done
 if NOT exist %CUBRID_DATABASES%\demodb md %CUBRID_DATABASES%\demodb
 cd %CUBRID_DATABASES%\demodb
 echo ********** Creating database %DBNAME% ...
-%CUBRID%\bin\cub_admin createdb --db-volume-size=100M --log-volume-size=100M --replace %DBNAME% en_US
+%CUBRID%\bin\cub_admin createdb --db-volume-size=100M --log-volume-size=100M --replace %DBNAME% en_US.utf8
 echo ********** Loading objects ...
 %CUBRID%\bin\cub_admin loaddb %DBNAME% --schema-file=%CUBRID%\demo\demodb_schema --data-file=%CUBRID%\demo\demodb_objects -u dba
 echo ********** Makedemo complete.

@@ -1,20 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation
- * Copyright (C) 2016 CUBRID Corporation
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -5362,7 +5360,11 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
 	      common_type = pt_common_type_op (arg1_eq_type, op, common_type);
 	      if (common_type != PT_TYPE_NONE)
 		{
-		  arg1_eq_type = common_type;
+		  /* collection's common type is STRING type, casting may not be needed */
+		  if (!PT_IS_CHAR_STRING_TYPE (common_type) || !PT_IS_CHAR_STRING_TYPE (arg1_eq_type))
+		    {
+		      arg1_eq_type = common_type;
+		    }
 		}
 	    }
 	}
@@ -5455,8 +5457,7 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
 		case PT_TYPE_CHAR:
 		case PT_TYPE_NCHAR:
 		case PT_TYPE_BIT:
-		  /* CHAR, NCHAR and BIT are common types only if all arguments are of type NCHAR or CHAR */
-		  assert (temp->type_enum == PT_TYPE_CHAR || temp->type_enum == PT_TYPE_NCHAR);
+		  /* CHAR, NCHAR types can be common type for one of all arguments is string type */
 		  if (precision > temp->info.data_type.precision)
 		    {
 		      precision = temp->info.data_type.precision;
@@ -13328,7 +13329,8 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 	    arg = arg_list->next;
 	    while (arg)
 	      {
-		if (arg->type_enum != arg_type || arg->data_type->info.data_type.precision != max_precision)
+		if ((arg->type_enum != arg_type) ||
+		    (arg->data_type && arg->data_type->info.data_type.precision != max_precision))
 		  {
 		    PT_NODE *new_attr = pt_wrap_with_cast_op (parser, arg, arg_type,
 							      max_precision, 0, NULL);
@@ -24378,7 +24380,7 @@ static PT_TYPE_ENUM
 pt_wrap_type_for_collation (const PT_NODE * arg1, const PT_NODE * arg2, const PT_NODE * arg3,
 			    PT_TYPE_ENUM * wrap_type_collection)
 {
-  PT_TYPE_ENUM common_type = (PT_IS_COLLECTION_TYPE (arg1->type_enum)) ? PT_TYPE_CHAR : PT_TYPE_VARCHAR;
+  PT_TYPE_ENUM common_type = PT_TYPE_VARCHAR;
   PT_TYPE_ENUM arg1_type = PT_TYPE_NONE, arg2_type = PT_TYPE_NONE, arg3_type = PT_TYPE_NONE;
 
   if (arg1)

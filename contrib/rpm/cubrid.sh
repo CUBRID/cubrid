@@ -15,3 +15,42 @@ then
 fi
 
 export CUBRID CUBRID_DATABASES LD_LIBRARY_PATH PATH
+
+LIB=$CUBRID/lib
+
+if [ -f /etc/redhat-release ];then
+	OS=$(cat /etc/system-release-cpe | cut -d':' -f'3-3')
+elif [ -f /etc/os-release ];then
+	OS=$(cat /etc/os-release | egrep "^ID=" | cut -d'=' -f2-2)
+fi
+
+case $OS in
+	fedora)
+		if [ ! -f /lib64/libncurses.so.5 ] && [ ! -f $LIB/libncurses.so.5 ];then
+			ln -s /lib64/libncurses.so.6 $LIB/libncurses.so.5
+			ln -s /lib64/libform.so.6 $LIB/libform.so.5
+			ln -s /lib64/libtinfo.so.6 $LIB/libtinfo.so.5
+		fi
+		;;
+	centos)
+		if [ ! -f /lib64/libncurses.so.5 ] && [ ! -f $LIB/libncurses.so.5 ];then
+			ln -s /lib64/libncurses.so.6 $LIB/libncurses.so.5
+			ln -s /lib64/libform.so.6 $LIB/libform.so.5
+			ln -s /lib64/libtinfo.so.6 $LIB/libtinfo.so.5
+		fi
+		;;
+	ubuntu)
+		if [ ! -f /lib/x86_64-linux-gnu/libncurses.so.5 ] && [ ! -f $LIB/libncurses.so.5 ];then
+			ln -s /lib/x86_64-linux-gnu/libncurses.so.6 $LIB/libncurses.so.5
+			ln -s /lib/x86_64-linux-gnu/libform.so.6 $LIB/libform.so.5
+			ln -s /lib/x86_64-linux-gnu/libtinfo.so.6 $LIB/libtinfo.so.5
+		fi
+		;;
+	debian)
+		if [ ! -f /lib/x86_64-linux-gnu/libncurses.so.5 ] && [ ! -f $LIB/libncurses.so.5 ];then
+			ln -s /lib/x86_64-linux-gnu/libncurses.so.6 $LIB/libncurses.so.5
+			ln -s /lib/x86_64-linux-gnu/libtinfo.so.6 $LIB/libtinfo.so.5
+			ln -s /usr/lib/x86_64-linux-gnu/libform.so.6 $LIB/libform.so.5
+		fi
+		;;
+esac
