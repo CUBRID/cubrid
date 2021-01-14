@@ -248,7 +248,7 @@ int
 qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *data, void *args)
 {
   HASH_SCAN_VALUE *data2 = (HASH_SCAN_VALUE *) data;
-  QFILE_TUPLE_VALUE_TYPE_LIST *list = (QFILE_TUPLE_VALUE_TYPE_LIST *) args;
+  int hash_list_scan_yn = *((int *) args);
 
   if (!data2)
     {
@@ -260,9 +260,17 @@ qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *dat
     }
 
   fprintf (fp, "LIST_CACHE_ENTRY (%p) {\n", data);
-  /* temporarily disable. I will fix after fixing hash_list_scan_yn */
-  /*fprintf (fp, "data_size = [%d]  data = [%.*s]\n", QFILE_GET_TUPLE_LENGTH (data2->tuple),
-	   QFILE_GET_TUPLE_LENGTH (data2->tuple), data2->tuple);*/
+  if (hash_list_scan_yn == 1)
+    {
+      fprintf (fp, "data_size = [%d]  data = [%.*s]\n", QFILE_GET_TUPLE_LENGTH (data2->data),
+	       QFILE_GET_TUPLE_LENGTH (data2->data), data2->data);
+    }
+  else if (hash_list_scan_yn == 2)
+    {
+      QFILE_TUPLE_SIMPLE_POS *simple_pos = (QFILE_TUPLE_SIMPLE_POS *) data2->data;
+      fprintf (fp, "pageid = [%d]  volid = [%d]  offset = [%d]\n", simple_pos->vpid.pageid,
+	       simple_pos->vpid.volid, simple_pos->offset);
+    }
 
   fprintf (fp, "\n}");
 

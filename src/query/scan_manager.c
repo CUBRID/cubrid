@@ -4813,7 +4813,8 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       if (llsidp->hlsid.hash_table != NULL)
 	{
 #if 0
-	  (void) mht_dump_hls (thread_p, stdout, llsidp->hlsid.hash_table, 1, qdata_print_hash_scan_entry, NULL);
+	  (void) mht_dump_hls (thread_p, stdout, llsidp->hlsid.hash_table, 1, qdata_print_hash_scan_entry,
+			       (void *) &llsidp->hlsid.hash_list_scan_yn);
 	  printf ("temp file : tuple count = %d, file_size = %dK\n", llsidp->list_id->tuple_cnt,
 		  llsidp->list_id->page_cnt * 16);
 #endif
