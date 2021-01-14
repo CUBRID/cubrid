@@ -5446,8 +5446,8 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
 	{
 	  PT_NODE *temp = NULL;
 	  int precision = 0, scale = 0;
-	  int units = data_type->info.data_type.units; /* code set */
-	  int collation_id = data_type->info.data_type.collation_id; /* collation_id */
+	  int units = LANG_SYS_CODESET; /* code set */
+	  int collation_id = LANG_SYS_COLLATION; /* collation_id */
 	  bool keep_searching = true;
 	  for (temp = arg2->data_type; temp != NULL && keep_searching; temp = temp->next)
 	    {
