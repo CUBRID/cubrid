@@ -5444,6 +5444,8 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
 	{
 	  PT_NODE *temp = NULL;
 	  int precision = 0, scale = 0;
+	  int units = LANG_SYS_CODESET; /* code set */
+	  int collation_id = LANG_SYS_COLLATION; /* collation_id */
 	  bool keep_searching = true;
 	  for (temp = arg2->data_type; temp != NULL && keep_searching; temp = temp->next)
 	    {
@@ -5458,7 +5460,7 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
 		case PT_TYPE_NCHAR:
 		case PT_TYPE_BIT:
 		  /* CHAR, NCHAR types can be common type for one of all arguments is string type */
-		  if (precision > temp->info.data_type.precision)
+		  if (precision < temp->info.data_type.precision)
 		    {
 		      precision = temp->info.data_type.precision;
 		    }
@@ -5474,7 +5476,7 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
 		      keep_searching = false;
 		      break;
 		    }
-		  if (precision > temp->info.data_type.precision)
+		  if (precision < temp->info.data_type.precision)
 		    {
 		      precision = temp->info.data_type.precision;
 		    }
@@ -5489,7 +5491,7 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
 		      keep_searching = false;
 		      break;
 		    }
-		  if (precision > temp->info.data_type.precision)
+		  if (precision < temp->info.data_type.precision)
 		    {
 		      precision = temp->info.data_type.precision;
 		    }
@@ -5524,9 +5526,21 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
 		  assert (false);
 		  break;
 		}
+
+	      if (PT_IS_STRING_TYPE (common_type) && PT_IS_STRING_TYPE (temp->type_enum))
+		{
+		  /* A bigger codesets's number can represent more characters. */
+		  if (units < temp->info.data_type.units)
+		    {
+		      units = temp->info.data_type.units;
+		      collation_id = temp->info.data_type.collation_id;
+		    }
+		}
 	    }
 	  data_type->info.data_type.precision = precision;
 	  data_type->info.data_type.dec_precision = scale;
+	  data_type->info.data_type.units = units;
+	  data_type->info.data_type.collation_id = collation_id;
 	}
 
       arg2 = pt_wrap_collection_with_cast_op (parser, arg2, sig.arg2_type.val.type, data_type, false);
