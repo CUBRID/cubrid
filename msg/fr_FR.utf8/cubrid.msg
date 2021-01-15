@@ -26,7 +26,7 @@ $
 
 $set 1 MSGCAT_SET_GENERAL
 1 \n%1$s\n\n
-2 Copyright (C) 2008 Search Solution Corporation.\n Copyright (C) 2016 CUBRID Corporation.\n
+2 Copyright (C) 2008 Search Solution Corporation.\nCopyright (C) 2016 CUBRID Corporation.\n
 3 Informations sur le copyright\n
 5 Valeur `%1$s' non entière pour argument 
 6 Valeur `%1$s' pas de type float pour argument

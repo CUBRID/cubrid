@@ -26,7 +26,7 @@ $
 
 $set 1 MSGCAT_SET_GENERAL
 1 \n%1$s\n\n
-2 Copyright (C) 2008 Search Solution Corporation.\n Copyright (C) 2016 CUBRID Corporation.\n
+2 Copyright (C) 2008 Search Solution Corporation.\nCopyright (C) 2016 CUBRID Corporation.\n
 3 著作権情報\n
 5 「%1$s」はインテェジャーパラメーターではありません。
 6 「%1$s」はフローティングパラメーターではありません。

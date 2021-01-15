@@ -26,7 +26,7 @@ $
 
 $set 1 MSGCAT_SET_GENERAL
 1 \n%1$s\n\n
-2 Copyright (C) 2008 Search Solution Corporation.\n Copyright (C) 2016 CUBRID Corporation.\n
+2 Copyright (C) 2008 Search Solution Corporation.\nCopyright (C) 2016 CUBRID Corporation.\n
 3 저작권 정보\n
 5 '%1$s'은(는) integer 인자 값이 아닙니다.
 6 '%1$s'은(는) floating 인자 값이 아닙니다.

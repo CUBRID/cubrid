@@ -26,7 +26,7 @@ $
 
 $set 1 MSGCAT_SET_GENERAL
 1 \n%1$s\n\n
-2 Copyright (C) 2008 Search Solution Corporation.\n Copyright (C) 2016 CUBRID Corporation.\n
+2 Copyright (C) 2008 Search Solution Corporation.\nCopyright (C) 2016 CUBRID Corporation.\n
 3 Informaţii despre Copyright\n
 5 Valoarea `%1$s' a argumentului nu este întreagă
 6 Valoarea `%1$s' a argumentului nu este float
