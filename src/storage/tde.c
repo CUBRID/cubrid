@@ -1255,11 +1255,11 @@ xtde_change_mk_without_flock (THREAD_ENTRY * thread_p, const int mk_index)
   tde_make_keys_file_fullname (mk_path, boot_db_full_name (), false);
 
   /* Without file lock: It is because it must've already been locked in client-side: tde() */
-  vdes = fileio_open (mk_path, O_RDWR, 0600);
+  vdes = fileio_open (mk_path, O_RDONLY, 0);
   if (vdes == NULL_VOLDES)
     {
-      ASSERT_ERROR ();
-      return er_errid ();
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1, mk_path);
+      return ER_IO_MOUNT_FAIL;
     }
 
   err = tde_find_mk (vdes, mk_index, master_key, &created_time);
