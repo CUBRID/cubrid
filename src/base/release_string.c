@@ -69,7 +69,7 @@ typedef enum
  * Copyright Information
  */
 static const char *copyright_header = "\
-Copyright (C) 2008 Search Solution Corporation.\n Copyright (C) 2016 CUBRID Corporation.\n\
+Copyright (C) 2008 Search Solution Corporation.\nCopyright (C) 2016 CUBRID Corporation.\n\
 ";
 
 static const char *copyright_body = "\
