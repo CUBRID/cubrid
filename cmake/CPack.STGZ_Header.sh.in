@@ -239,7 +239,20 @@ done
 # append script for executing .cubrid.sh to .bash_profile
 PRODUCT_NAME="CUBRID"
 CUBRID_SH_INSTALLED=1
-if [ $SHELL = "/bin/bash" ];then
+if [ -z "$SHELL" ];then
+   if [ ! -r /etc/passwd ];then
+      user_sh="bash"
+   else
+      user_name=$(id -nu)
+      user_sh=$(egrep "^$user_name" /etc/passwd | cut -d':' -f7-7)
+      user_sh=${user_sh:-none}
+      user_sh=$(basename $user_sh)
+   fi
+else
+        user_sh=$(basename $SHELL)
+fi
+
+if [ $user_sh = "bash" ];then
 	sh_profile=$HOME/.bash_profile
 	append_profile=$(grep "${PRODUCT_NAME} environment" $sh_profile)
 
