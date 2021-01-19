@@ -236,6 +236,30 @@ for e in "$cubrid_csh_envfile" "$cubrid_sh_envfile"; do
   mv "${e}-@CPACK_PACKAGE_VERSION@" "${e}"
 done
 
+# append script for executing .cubrid.sh to .bash_profile
+PRODUCT_NAME="CUBRID"
+CUBRID_SH_INSTALLED=1
+if [ $SHELL = "/bin/bash" ];then
+	sh_profile=$HOME/.bash_profile
+	append_profile=$(grep "${PRODUCT_NAME} environment" $sh_profile)
+
+	if [ -z "$append_profile" ];then
+	  echo '#-------------------------------------------------------------------------------' >> $sh_profile
+	  if [ $? -ne 0 ];then
+	    CUBRID_SH_INSTALLED=0
+	    echo "Please check your permission for file $sh_profile"
+	  else
+	    echo '# set '${PRODUCT_NAME}' environment variables'                                    >> $sh_profile
+	    echo '#-------------------------------------------------------------------------------' >> $sh_profile
+	    echo 'if [ -f $HOME/.cubrid.sh ];then'                                                  >> $sh_profile
+	    echo '. $HOME/.cubrid.sh'                                                               >> $sh_profile
+	    echo 'fi'                                                                               >> $sh_profile
+	  fi
+	fi
+else
+  CUBRID_SH_INSTALLED=0
+fi
+
 # create a demo db
 if [ -x "${toplevel}/demo/make_cubrid_demo.sh" ]; then
   . ${cubrid_sh_envfile}
@@ -249,7 +273,9 @@ fi
 
 echo ""
 echo "If you want to use CUBRID, run the following command to set required environment variables."
-echo "(or you can add the command into your current shell profile file to set permanently)"
+if [ $CUBRID_SH_INSTALLED -eq 0 ];then
+	echo "(or you can add the command into your current shell profile file to set permanently)"
+fi
 case "$SHELL" in
   */csh | */tcsh )
     echo "  $ source $cubrid_csh_envfile"
