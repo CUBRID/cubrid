@@ -26,28 +26,28 @@ fi
 
 case $OS in
 	fedoraproject)
-		if [ ! -f /lib64/libncurses.so.5 ] && [ ! -f $LIB/libncurses.so.5 ];then
+		if [ ! -h /lib64/libncurses.so.5 ] && [ ! -h $LIB/libncurses.so.5 ];then
 			ln -s /lib64/libncurses.so.6 $LIB/libncurses.so.5
 			ln -s /lib64/libform.so.6 $LIB/libform.so.5
 			ln -s /lib64/libtinfo.so.6 $LIB/libtinfo.so.5
 		fi
 		;;
 	centos)
-		if [ ! -f /lib64/libncurses.so.5 ] && [ ! -f $LIB/libncurses.so.5 ];then
+		if [ ! -h /lib64/libncurses.so.5 ] && [ ! -h $LIB/libncurses.so.5 ];then
 			ln -s /lib64/libncurses.so.6 $LIB/libncurses.so.5
 			ln -s /lib64/libform.so.6 $LIB/libform.so.5
 			ln -s /lib64/libtinfo.so.6 $LIB/libtinfo.so.5
 		fi
 		;;
 	ubuntu)
-		if [ ! -f /lib/x86_64-linux-gnu/libncurses.so.5 ] && [ ! -f $LIB/libncurses.so.5 ];then
+		if [ ! -h /lib/x86_64-linux-gnu/libncurses.so.5 ] && [ ! -h $LIB/libncurses.so.5 ];then
 			ln -s /lib/x86_64-linux-gnu/libncurses.so.6 $LIB/libncurses.so.5
 			ln -s /lib/x86_64-linux-gnu/libform.so.6 $LIB/libform.so.5
 			ln -s /lib/x86_64-linux-gnu/libtinfo.so.6 $LIB/libtinfo.so.5
 		fi
 		;;
 	debian)
-		if [ ! -f /lib/x86_64-linux-gnu/libncurses.so.5 ] && [ ! -f $LIB/libncurses.so.5 ];then
+		if [ ! -h /lib/x86_64-linux-gnu/libncurses.so.5 ] && [ ! -h $LIB/libncurses.so.5 ];then
 			ln -s /lib/x86_64-linux-gnu/libncurses.so.6 $LIB/libncurses.so.5
 			ln -s /lib/x86_64-linux-gnu/libtinfo.so.6 $LIB/libtinfo.so.5
 			ln -s /usr/lib/x86_64-linux-gnu/libform.so.6 $LIB/libform.so.5
