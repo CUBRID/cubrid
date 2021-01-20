@@ -8123,7 +8123,9 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
     }
   else if ((UINT64) llsidp->list_id->tuple_cnt * (sizeof(HENTRY_HLS) + sizeof(QFILE_TUPLE_SIMPLE_POS)) <= mem_limit)
     {
-      /* bytes of 1 row = hash entry 12bytes + simple pos(VPID+offset) 10bytes = 22 bytes */
+      /* bytes of 1 row = sizeof(HENTRY_HLS) + sizeof(QFILE_TUPLE_SIMPLE_POS) = 36 bytes (64bit) */
+      /* HENTRY_HLS = pointer(8bytes) * 3 = 24 bytes*/
+      /* SIMPLE_POS = pageid(4bytes) + voldid(2bytes) + padding(2bytes) + offset(4bytes) = 12 bytes*/
       return HYBRID_IN_MEMORY;
     }
   else
