@@ -1,5 +1,4 @@
 /*
- * 
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,7 +16,7 @@
  */
 
 //
-// query_aggregate - implementation of aggregate functions execution during queries
+// query_hash_scan - implementation of hash list scan during queries
 //
 
 #include "fetch.h"
@@ -259,16 +258,15 @@ qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *dat
     }
 
   fprintf (fp, "LIST_CACHE_ENTRY (%p) {\n", data);
-  if (hash_list_scan_yn == 1)
+  if (hash_list_scan_yn == IN_MEMORY)
     {
-      fprintf (fp, "data_size = [%d]  data = [%.*s]\n", QFILE_GET_TUPLE_LENGTH (data2->data),
-	       QFILE_GET_TUPLE_LENGTH (data2->data), data2->data);
+      fprintf (fp, "data_size = [%d]  data = [%.*s]\n", QFILE_GET_TUPLE_LENGTH (data2->tuple),
+	       QFILE_GET_TUPLE_LENGTH (data2->tuple), data2->tuple);
     }
-  else if (hash_list_scan_yn == 2)
+  else if (hash_list_scan_yn == HYBRID_IN_MEMORY)
     {
-      QFILE_TUPLE_SIMPLE_POS *simple_pos = (QFILE_TUPLE_SIMPLE_POS *) data2->data;
-      fprintf (fp, "pageid = [%d]  volid = [%d]  offset = [%d]\n", simple_pos->vpid.pageid,
-	       simple_pos->vpid.volid, simple_pos->offset);
+      fprintf (fp, "pageid = [%d]  volid = [%d]  offset = [%d]\n", data2->pos->vpid.pageid,
+	       data2->pos->vpid.volid, data2->pos->offset);
     }
 
   fprintf (fp, "\n}");
@@ -411,15 +409,15 @@ qdata_alloc_hscan_value (cubthread::entry * thread_p, QFILE_TUPLE tpl)
       return NULL;
     }
 
-  value->data = (QFILE_TUPLE) db_private_alloc (thread_p, tuple_size);
-  if (value->data == NULL)
+  value->tuple = (QFILE_TUPLE) db_private_alloc (thread_p, tuple_size);
+  if (value->tuple == NULL)
     {
       qdata_free_hscan_value (thread_p, value);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, tuple_size);
       return NULL;
     }
   /* save tuple */
-  if (!safe_memcpy (value->data, tpl, tuple_size))
+  if (!safe_memcpy (value->tuple, tpl, tuple_size))
     {
       qdata_free_hscan_value (thread_p, value);
       return NULL;
@@ -445,8 +443,8 @@ qdata_alloc_hscan_value_OID (cubthread::entry * thread_p, QFILE_LIST_SCAN_ID * s
       return NULL;
     }
 
-  value->data = (QFILE_TUPLE) db_private_alloc (thread_p, sizeof (QFILE_TUPLE_SIMPLE_POS));
-  if (value->data == NULL)
+  value->pos = (QFILE_TUPLE_SIMPLE_POS *) db_private_alloc (thread_p, sizeof (QFILE_TUPLE_SIMPLE_POS));
+  if (value->pos == NULL)
     {
       qdata_free_hscan_value (thread_p, value);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (QFILE_TUPLE_SIMPLE_POS));
@@ -454,8 +452,8 @@ qdata_alloc_hscan_value_OID (cubthread::entry * thread_p, QFILE_LIST_SCAN_ID * s
     }
 
   /* save position */
-  ((QFILE_TUPLE_SIMPLE_POS *)value->data)->offset = scan_id_p->curr_offset;
-  ((QFILE_TUPLE_SIMPLE_POS *)value->data)->vpid = scan_id_p->curr_vpid;
+  value->pos->offset = scan_id_p->curr_offset;
+  value->pos->vpid = scan_id_p->curr_vpid;
 
   return value;
 }

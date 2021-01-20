@@ -1,5 +1,5 @@
 /*
- * 
+ *
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -41,6 +41,16 @@
     } \
   while (0)
 
+/* kind of hash list scan method */
+enum hash_method
+{
+  NOT_USE = 0,
+  IN_MEMORY = 1,
+  HYBRID_IN_MEMORY = 2,
+  HASH_TEMP_FILE = 3 /* not used */
+};
+typedef enum hash_method HASH_METHOD;
+
 /* Tuple position structure for hash value */
 typedef struct qfile_tuple_simple_pos QFILE_TUPLE_SIMPLE_POS;
 struct qfile_tuple_simple_pos
@@ -50,10 +60,12 @@ struct qfile_tuple_simple_pos
 };
 
 /* hash scan value */
-typedef struct hash_scan_value HASH_SCAN_VALUE;
-struct hash_scan_value
+typedef union hash_scan_value HASH_SCAN_VALUE;
+union hash_scan_value
 {
-  void *data;
+  void *data;			/* for free() */
+  QFILE_TUPLE_SIMPLE_POS *pos;	/* tuple position of temp file */
+  QFILE_TUPLE tuple;		/* tuple data */
 };
 
 /* hash scan key */
