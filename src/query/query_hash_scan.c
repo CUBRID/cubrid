@@ -258,12 +258,12 @@ qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *dat
     }
 
   fprintf (fp, "LIST_CACHE_ENTRY (%p) {\n", data);
-  if (hash_list_scan_yn == IN_MEMORY)
+  if (hash_list_scan_yn == HASH_METH_IN_MEM)
     {
       fprintf (fp, "data_size = [%d]  data = [%.*s]\n", QFILE_GET_TUPLE_LENGTH (data2->tuple),
 	       QFILE_GET_TUPLE_LENGTH (data2->tuple), data2->tuple);
     }
-  else if (hash_list_scan_yn == HYBRID_IN_MEMORY)
+  else if (hash_list_scan_yn == HASH_METH_HYBRID)
     {
       fprintf (fp, "pageid = [%d]  volid = [%d]  offset = [%d]\n", data2->pos->vpid.pageid,
 	       data2->pos->vpid.volid, data2->pos->offset);

@@ -3671,7 +3671,7 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
   /* check if hash list scan is possible? */
   llsidp->hlsid.hash_list_scan_yn = check_hash_list_scan (llsidp, &val_cnt, hash_list_scan_yn);
-  if (llsidp->hlsid.hash_list_scan_yn != NOT_USE)
+  if (llsidp->hlsid.hash_list_scan_yn != HASH_METH_NOT_USE)
     {
       bool on_trace;
       TSC_TICKS start_tick, end_tick;
@@ -5012,7 +5012,7 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       break;
 
     case S_LIST_SCAN:
-      if (scan_id->s.llsid.hlsid.hash_list_scan_yn != NOT_USE)
+      if (scan_id->s.llsid.hlsid.hash_list_scan_yn != HASH_METH_NOT_USE)
 	{
 	  status = scan_next_hash_list_scan (thread_p, scan_id);
 	}
@@ -7673,11 +7673,11 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
       break;
 
     case S_LIST_SCAN:
-      if (scan_id->s.llsid.hlsid.hash_list_scan_yn == IN_MEMORY)
+      if (scan_id->s.llsid.hlsid.hash_list_scan_yn == HASH_METH_IN_MEM)
 	{
 	  fprintf (fp, "(hash temp buildtime : %d,", TO_MSEC (scan_id->scan_stats.elapsed_hash_build));
 	}
-      else if (scan_id->s.llsid.hlsid.hash_list_scan_yn == HYBRID_IN_MEMORY)
+      else if (scan_id->s.llsid.hlsid.hash_list_scan_yn == HASH_METH_HYBRID)
 	{
 	  fprintf (fp, "(hash temp(h) buildtime : %d,", TO_MSEC (scan_id->scan_stats.elapsed_hash_build));
 	}
@@ -7816,11 +7816,11 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	}
 
       /* create new value */
-      if (llsidp->hlsid.hash_list_scan_yn == IN_MEMORY)
+      if (llsidp->hlsid.hash_list_scan_yn == HASH_METH_IN_MEM)
 	{
 	  new_value = qdata_alloc_hscan_value (thread_p, tplrec.tpl);
 	}
-      else if (llsidp->hlsid.hash_list_scan_yn == HYBRID_IN_MEMORY)
+      else if (llsidp->hlsid.hash_list_scan_yn == HASH_METH_HYBRID)
 	{
 	  new_value = qdata_alloc_hscan_value_OID (thread_p, &llsidp->lsid);
 	}
@@ -7985,11 +7985,11 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 	    {
 	      return S_END;
 	    }
-	  if (llsidp->hlsid.hash_list_scan_yn == IN_MEMORY)
+	  if (llsidp->hlsid.hash_list_scan_yn == HASH_METH_IN_MEM)
 	    {
 	      *tuple = hvalue->tuple;
 	    }
-	  else if (llsidp->hlsid.hash_list_scan_yn == HYBRID_IN_MEMORY)
+	  else if (llsidp->hlsid.hash_list_scan_yn == HASH_METH_HYBRID)
 	    {
 	      MAKE_TUPLE_POSTION(tuple_pos, hvalue->pos, scan_id_p);
 	      if (qfile_jump_scan_tuple_position (thread_p, scan_id_p, &tuple_pos, &tplrec, PEEK) != S_SUCCESS)
@@ -8015,11 +8015,11 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
       if (llsidp->hlsid.curr_hash_entry->next)
 	{
 	  llsidp->hlsid.curr_hash_entry = llsidp->hlsid.curr_hash_entry->next;
-	  if (llsidp->hlsid.hash_list_scan_yn == IN_MEMORY)
+	  if (llsidp->hlsid.hash_list_scan_yn == HASH_METH_IN_MEM)
 	    {
 	      *tuple = ((HASH_SCAN_VALUE *) llsidp->hlsid.curr_hash_entry->data)->tuple;
 	    }
-	  else if (llsidp->hlsid.hash_list_scan_yn == HYBRID_IN_MEMORY)
+	  else if (llsidp->hlsid.hash_list_scan_yn == HASH_METH_HYBRID)
 	    {
 	      simple_pos = ((HASH_SCAN_VALUE *) llsidp->hlsid.curr_hash_entry->data)->pos;
 	      MAKE_TUPLE_POSTION(tuple_pos, simple_pos, scan_id_p);
@@ -8038,7 +8038,7 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 	}
       else
 	{
-	  if (llsidp->hlsid.hash_list_scan_yn == HYBRID_IN_MEMORY)
+	  if (llsidp->hlsid.hash_list_scan_yn == HASH_METH_HYBRID)
 	    {
 	      qmgr_free_old_page_and_init (thread_p, scan_id_p->curr_pgptr, scan_id_p->list_id.tfile_vfid);
 	    }
@@ -8082,18 +8082,18 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
   /* no_hash_list_scan sql hint check */
   if (hash_list_scan_yn == 0)
     {
-      return NOT_USE;
+      return HASH_METH_NOT_USE;
     }
 
   /* count of tuple of list file > 0 */
   if (llsidp->list_id->tuple_cnt <= 0)
     {
-      return NOT_USE;
+      return HASH_METH_NOT_USE;
     }
   /* regu_list_build, regu_list_probe is not null */
   if (llsidp->hlsid.build_regu_list == NULL || llsidp->hlsid.probe_regu_list == NULL)
     {
-      return NOT_USE;
+      return HASH_METH_NOT_USE;
     }
 
   build = llsidp->hlsid.build_regu_list;
@@ -8110,7 +8110,7 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
       if (((vtype1 == DB_TYPE_OBJECT || vtype1 == DB_TYPE_VOBJ) && vtype2 == DB_TYPE_OID) ||
 	  ((vtype2 == DB_TYPE_OBJECT || vtype2 == DB_TYPE_VOBJ) && vtype1 == DB_TYPE_OID))
 	{
-	  return NOT_USE;
+	  return HASH_METH_NOT_USE;
 	}
       if (vtype1 != vtype2)
 	{
@@ -8122,7 +8122,7 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
   /* The number of probe regu_var and build regu match */
   if (build != NULL || probe != NULL)
     {
-      return NOT_USE;
+      return HASH_METH_NOT_USE;
     }
   *val_cnt = build_cnt;
 
@@ -8132,19 +8132,19 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
   /* list file size check */
   if ((UINT64) llsidp->list_id->page_cnt * DB_PAGESIZE <= mem_limit)
     {
-      return IN_MEMORY;
+      return HASH_METH_IN_MEM;
     }
   else if ((UINT64) llsidp->list_id->tuple_cnt * (sizeof(HENTRY_HLS) + sizeof(QFILE_TUPLE_SIMPLE_POS)) <= mem_limit)
     {
       /* bytes of 1 row = sizeof(HENTRY_HLS) + sizeof(QFILE_TUPLE_SIMPLE_POS) = 36 bytes (64bit) */
       /* HENTRY_HLS = pointer(8bytes) * 3 = 24 bytes*/
       /* SIMPLE_POS = pageid(4bytes) + voldid(2bytes) + padding(2bytes) + offset(4bytes) = 12 bytes*/
-      return HYBRID_IN_MEMORY;
+      return HASH_METH_HYBRID;
     }
   else
     {
-      return NOT_USE;
+      return HASH_METH_NOT_USE;
     }
 
-  return NOT_USE;
+  return HASH_METH_NOT_USE;
 }

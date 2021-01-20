@@ -44,10 +44,10 @@
 /* kind of hash list scan method */
 enum hash_method
 {
-  NOT_USE = 0,
-  IN_MEMORY = 1,
-  HYBRID_IN_MEMORY = 2,
-  HASH_TEMP_FILE = 3 /* not used */
+  HASH_METH_NOT_USE = 0,
+  HASH_METH_IN_MEM = 1,
+  HASH_METH_HYBRID = 2,
+  HASH_METH_HASH_FILE = 3 /* not used */
 };
 typedef enum hash_method HASH_METHOD;
 
