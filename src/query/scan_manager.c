@@ -3667,6 +3667,7 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   /* regulator variable list for build, probe */
   llsidp->hlsid.build_regu_list = regu_list_build;
   llsidp->hlsid.probe_regu_list = regu_list_probe;
+  llsidp->hlsid.need_coerce_type = false;
 
   /* check if hash list scan is possible? */
   llsidp->hlsid.hash_list_scan_yn = check_hash_list_scan (llsidp, &val_cnt, hash_list_scan_yn);
@@ -7801,11 +7802,19 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  return S_ERROR;
 	}
       /* create new key */
-      new_key = qdata_copy_hscan_key_without_alloc (thread_p, key, llsidp->hlsid.probe_regu_list, new_key);
-      if (new_key == NULL)
+      if (llsidp->hlsid.need_coerce_type)
 	{
-	  return S_ERROR;
+	  new_key = qdata_copy_hscan_key_without_alloc (thread_p, key, llsidp->hlsid.probe_regu_list, new_key);
+	  if (new_key == NULL)
+	    {
+	      return S_ERROR;
+	    }
 	}
+      else
+	{
+	  new_key = key;
+	}
+
       /* create new value */
       if (llsidp->hlsid.hash_list_scan_yn == IN_MEMORY)
 	{
@@ -8102,6 +8111,10 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
 	  ((vtype2 == DB_TYPE_OBJECT || vtype2 == DB_TYPE_VOBJ) && vtype1 == DB_TYPE_OID))
 	{
 	  return NOT_USE;
+	}
+      if (vtype1 != vtype2)
+	{
+	  llsidp->hlsid.need_coerce_type = true;
 	}
       build = build->next;
       probe = probe->next;

@@ -81,13 +81,14 @@ struct hash_scan_key
 typedef struct hash_list_scan HASH_LIST_SCAN;
 struct hash_list_scan
 {
-  int hash_list_scan_yn;	/* Is hash list scan possible? */
   regu_variable_list_node *build_regu_list;	/* regulator variable list */
   regu_variable_list_node *probe_regu_list;	/* regulator variable list */
   mht_hls_table *hash_table;	/* memory hash table for hash list scan */
   hash_scan_key *temp_key;	/* temp probe key */
   hash_scan_key *temp_new_key;	/* temp probe key with db_value */
   HENTRY_HLS_PTR curr_hash_entry;	/* current hash entry */
+  int hash_list_scan_yn;	/* Is hash list scan possible? */
+  bool need_coerce_type;	/* Are the types of probe and build different? */
 };
 
 HASH_SCAN_KEY *qdata_alloc_hscan_key (THREAD_ENTRY * thread_p, int val_cnt, bool alloc_vals);
