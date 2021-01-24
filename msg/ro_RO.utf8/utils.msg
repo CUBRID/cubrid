@@ -86,7 +86,7 @@ $set 1 MSGCAT_UTIL_SET_GENERIC
 9 \
 %1$s (Utilitare CUBRID)\n\
 %2$s\n\
-Copyright (C) 2008 Search Solution Corporation.\n Copyright (C) 2016 CUBRID Corporation.\n
+Copyright (C) 2008 Search Solution Corporation.\nCopyright (C) 2016 CUBRID Corporation.\n
 10 \
 utilitar de administrare CUBRID, versiunea %1$s\n\
 utilizare: %2$s <nume-utilitar> [argumente]\n\

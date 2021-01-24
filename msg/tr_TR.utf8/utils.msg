@@ -86,7 +86,7 @@ $set 1 MSGCAT_UTIL_SET_GENERIC
 9 \
 %1$s (CUBRID yardımcı programları)\n\
 %2$s\n\
-Copyright (C) 2008 Search Solution Corporation.\n Copyright (C) 2016 CUBRID Corporation.\n
+Copyright (C) 2008 Search Solution Corporation.\nCopyright (C) 2016 CUBRID Corporation.\n
 10 \
 cubrid yönetici yardımcı programı, sürüm %1$s\n\
 kullanım: %2$s <yardımcı programı-adı> [args]\n\

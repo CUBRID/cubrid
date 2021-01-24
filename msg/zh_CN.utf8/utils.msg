@@ -86,7 +86,7 @@ $set 1 MSGCAT_UTIL_SET_GENERIC
 9 \
 %1$s (CUBRID 应用工具)\n\
 %2$s\n\
-Copyright (C) 2008 Search Solution Corporation.\n Copyright (C) 2016 CUBRID Corporation.\n
+Copyright (C) 2008 Search Solution Corporation.\nCopyright (C) 2016 CUBRID Corporation.\n
 10 \
 cubrid 管理工具，版本 %1$s\n\
 用法: %2$s <工具名> [参数]\n\

@@ -197,29 +197,29 @@ elif [ -f /etc/os-release ];then
 fi
 
 case $OS in
-	fedora)
-		if [ ! -f /lib64/libncurses.so.5 ] && [ ! -f $LIB/libncurses.so.5 ];then
+	fedoraproject)
+		if [ ! -h /lib64/libncurses.so.5 ] && [ ! -h $LIB/libncurses.so.5 ];then
 			ln -s /lib64/libncurses.so.6 $LIB/libncurses.so.5
 			ln -s /lib64/libform.so.6 $LIB/libform.so.5
 			ln -s /lib64/libtinfo.so.6 $LIB/libtinfo.so.5
 		fi
 		;;
 	centos)
-		if [ ! -f /lib64/libncurses.so.5 ] && [ ! -f $LIB/libncurses.so.5 ];then
+		if [ ! -h /lib64/libncurses.so.5 ] && [ ! -h $LIB/libncurses.so.5 ];then
 			ln -s /lib64/libncurses.so.6 $LIB/libncurses.so.5
 			ln -s /lib64/libform.so.6 $LIB/libform.so.5
 			ln -s /lib64/libtinfo.so.6 $LIB/libtinfo.so.5
 		fi
 		;;
 	ubuntu)
-		if [ ! -f /lib/x86_64-linux-gnu/libncurses.so.5 ] && [ ! -f $LIB/libncurses.so.5 ];then
+		if [ ! -h /lib/x86_64-linux-gnu/libncurses.so.5 ] && [ ! -h $LIB/libncurses.so.5 ];then
 			ln -s /lib/x86_64-linux-gnu/libncurses.so.6 $LIB/libncurses.so.5
 			ln -s /lib/x86_64-linux-gnu/libform.so.6 $LIB/libform.so.5
 			ln -s /lib/x86_64-linux-gnu/libtinfo.so.6 $LIB/libtinfo.so.5
 		fi
 		;;
 	debian)
-		if [ ! -f /lib/x86_64-linux-gnu/libncurses.so.5 ] && [ ! -f $LIB/libncurses.so.5 ];then
+		if [ ! -h /lib/x86_64-linux-gnu/libncurses.so.5 ] && [ ! -h $LIB/libncurses.so.5 ];then
 			ln -s /lib/x86_64-linux-gnu/libncurses.so.6 $LIB/libncurses.so.5
 			ln -s /lib/x86_64-linux-gnu/libtinfo.so.6 $LIB/libtinfo.so.5
 			ln -s /usr/lib/x86_64-linux-gnu/libform.so.6 $LIB/libform.so.5
@@ -236,6 +236,43 @@ for e in "$cubrid_csh_envfile" "$cubrid_sh_envfile"; do
   mv "${e}-@CPACK_PACKAGE_VERSION@" "${e}"
 done
 
+# append script for executing .cubrid.sh to .bash_profile
+PRODUCT_NAME="CUBRID"
+CUBRID_SH_INSTALLED=1
+if [ -z "$SHELL" ];then
+   if [ ! -r /etc/passwd ];then
+      user_sh="bash"
+   else
+      user_name=$(id -nu)
+      user_sh=$(egrep "^$user_name" /etc/passwd | cut -d':' -f7-7)
+      user_sh=${user_sh:-none}
+      user_sh=$(basename $user_sh)
+   fi
+else
+        user_sh=$(basename $SHELL)
+fi
+
+if [ $user_sh = "bash" ];then
+	sh_profile=$HOME/.bash_profile
+	append_profile=$(grep "${PRODUCT_NAME} environment" $sh_profile)
+
+	if [ -z "$append_profile" ];then
+	  echo '#-------------------------------------------------------------------------------' >> $sh_profile
+	  if [ $? -ne 0 ];then
+	    CUBRID_SH_INSTALLED=0
+	    echo "Please check your permission for file $sh_profile"
+	  else
+	    echo '# set '${PRODUCT_NAME}' environment variables'                                    >> $sh_profile
+	    echo '#-------------------------------------------------------------------------------' >> $sh_profile
+	    echo 'if [ -f $HOME/.cubrid.sh ];then'                                                  >> $sh_profile
+	    echo '. $HOME/.cubrid.sh'                                                               >> $sh_profile
+	    echo 'fi'                                                                               >> $sh_profile
+	  fi
+	fi
+else
+  CUBRID_SH_INSTALLED=0
+fi
+
 # create a demo db
 if [ -x "${toplevel}/demo/make_cubrid_demo.sh" ]; then
   . ${cubrid_sh_envfile}
@@ -249,7 +286,9 @@ fi
 
 echo ""
 echo "If you want to use CUBRID, run the following command to set required environment variables."
-echo "(or you can add the command into your current shell profile file to set permanently)"
+if [ $CUBRID_SH_INSTALLED -eq 0 ];then
+	echo "(or you can add the command into your current shell profile file to set permanently)"
+fi
 case "$SHELL" in
   */csh | */tcsh )
     echo "  $ source $cubrid_csh_envfile"
