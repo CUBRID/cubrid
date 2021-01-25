@@ -1568,7 +1568,10 @@ mht_get_hls (const MHT_HLS_TABLE * ht, const void *key, void **last)
 
   if (hentry != NULL)
     {
-      *((HENTRY_HLS_PTR *) last) = hentry;
+      if (last != NULL)
+	{
+	  *((HENTRY_HLS_PTR *) last) = hentry;
+	}
       return hentry->data;
     }
   return NULL;

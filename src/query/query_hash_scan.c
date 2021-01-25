@@ -248,7 +248,7 @@ qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *dat
   HASH_SCAN_VALUE *data2 = (HASH_SCAN_VALUE *) data;
   int hash_list_scan_yn = *((int *) args);
 
-  if (!data2)
+  if (data2 == NULL || args == NULL)
     {
       return false;
     }
@@ -354,6 +354,10 @@ qdata_copy_hscan_key_without_alloc (cubthread::entry * thread_p, HASH_SCAN_KEY *
   DB_TYPE vtype1, vtype2;
   TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
 
+  if (key == NULL)
+    {
+      return NULL;
+    }
   if (new_key)
     {
       /* copy values */
