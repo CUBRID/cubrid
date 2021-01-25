@@ -246,7 +246,7 @@ int
 qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *data, void *args)
 {
   HASH_SCAN_VALUE *data2 = (HASH_SCAN_VALUE *) data;
-  int hash_list_scan_yn = *((int *) args);
+  int hash_list_scan_yn = args ? *((int *) args) : 0;
 
   if (data2 == NULL || args == NULL)
     {
