@@ -121,6 +121,7 @@ struct xasl_cache_ent
   int n_cache_clones;
   int cache_clones_capacity;
   pthread_mutex_t cache_clones_mutex;
+  pthread_mutex_t query_cache_mutex;
 
   /* RT check */
   INT64 time_last_rt_check;

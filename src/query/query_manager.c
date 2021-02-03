@@ -1404,13 +1404,11 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
   if (qmgr_can_get_result_from_cache (*flag_p))
     {
       /* lookup the list cache with the parameter values (DB_VALUE array) */
-      list_cache_entry_p = qfile_lookup_list_cache_entry (thread_p, xasl_cache_entry_p->list_ht_no, &params);
+      list_cache_entry_p = qfile_lookup_list_cache_entry (thread_p, xasl_cache_entry_p->list_ht_no, &params, &cached_result);
       /* If we've got the cached result, return it. */
-      if (list_cache_entry_p)
+      if (cached_result)
 	{
 	  /* found the cached result */
-	  cached_result = true;
-
 	  CACHE_TIME_MAKE (server_cache_time_p, &list_cache_entry_p->time_created);
 	}
     }
@@ -1453,7 +1451,10 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
   /* initialize query entry */
   XASL_ID_COPY (&query_p->xasl_id, xasl_id_p);
   query_p->xasl_ent = xasl_cache_entry_p;
-  query_p->list_ent = list_cache_entry_p;	/* for qfile_end_use_of_list_cache_entry() */
+  if (cached_result)
+    {
+      query_p->list_ent = list_cache_entry_p;	/* for qfile_end_use_of_list_cache_entry() */
+    }
   query_p->query_status = QUERY_IN_PROGRESS;
   query_p->query_flag = *flag_p;
   if (*flag_p & RESULT_HOLDABLE)
@@ -1495,9 +1496,6 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
       /* mark that the query is completed */
       qmgr_mark_query_as_completed (query_p);
 
-#if defined (SERVER_MODE)
-      list_cache_entry_p->uncommitted_marker = true;
-#endif
       goto end;			/* OK */
     }
 
@@ -1528,6 +1526,12 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 	    {
 	      goto end;
 	    }
+
+	  if (list_cache_entry_p && !cached_result)
+ 	    {
+	      goto end;
+	    }
+
 	  /* the type of the result file should be FILE_QUERY_AREA in order not to deleted at the time of query_end */
 	  if (list_id_p->tfile_vfid != NULL && list_id_p->tfile_vfid->temp_file_type != FILE_QUERY_AREA)
 	    {
@@ -1562,9 +1566,11 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 	      assert (false);
 	    }
 
+	  pthread_mutex_lock(&xasl_cache_entry_p->query_cache_mutex);
 	  list_cache_entry_p =
 	    qfile_update_list_cache_entry (thread_p, &xasl_cache_entry_p->list_ht_no, &params, list_id_p,
 					   xasl_cache_entry_p);
+	  pthread_mutex_unlock(&xasl_cache_entry_p->query_cache_mutex);
 
 	  if (list_cache_entry_p == NULL)
 	    {
@@ -1584,15 +1590,6 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 
 	      goto end;
 	    }
-
-#if defined (SERVER_MODE)
-	  assert (list_cache_entry_p->last_ta_idx > 0);
-	  if (list_cache_entry_p->tran_index_array[list_cache_entry_p->last_ta_idx - 1] != tran_index)
-	    {
-	      /* the entry is in-use by other transaction */
-	      goto end;
-	    }
-#endif
 
 	  /* record list cache entry into the query entry for qfile_end_use_of_list_cache_entry() */
 	  query_p->list_ent = list_cache_entry_p;

@@ -98,6 +98,7 @@ struct qfile_list_cache_entry
   struct timeval time_last_used;	/* when this entry used lastly */
   int ref_count;		/* how many times this query used */
   bool deletion_marker;		/* this entry will be deleted if marker set */
+  pthread_mutex_t list_cache_mutex;
 };
 
 enum
@@ -161,7 +162,7 @@ extern int qfile_dump_list_cache (THREAD_ENTRY * thread_p, const char *fname);
 /* query result(list file) cache entry manipulation functions */
 void qfile_clear_uncommited_list_cache_entry (THREAD_ENTRY * thread_p, int tran_index);
 QFILE_LIST_CACHE_ENTRY *qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no,
-						       const DB_VALUE_ARRAY * params);
+						       const DB_VALUE_ARRAY * params, bool *result_cached);
 QFILE_LIST_CACHE_ENTRY *qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr,
 						       const DB_VALUE_ARRAY * params, const QFILE_LIST_ID * list_id,
 						       XASL_CACHE_ENTRY * xasl);
