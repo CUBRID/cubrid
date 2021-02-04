@@ -24,7 +24,6 @@ static SERVER_TYPE server_type;
 
 void init_server_type ()
 {
-
   server_type = (SERVER_TYPE) prm_get_integer_value (PRM_ID_SERVER_TYPE);
 }
 
