@@ -1332,8 +1332,12 @@ $ LOADDB
 1261 復元時にキーが見つかりません（キーインデックス：%1$d、作成時間：%2$s）。データベースのキー（キーインデックス：%3$d）を設定します。
 1262 キーファイルがいっぱいです。
 1263 ログページのTDE暗号化に失敗しました（ページID：%1$lld）。このページの暗号化はこれ以上試行されません。
+1264 Missing ':' separator between host and port.
+1265 Empty hostname.
+1266 Missing port number.
+1267 Invalid port number.
 
-1264 ラストエラー
+1268 ラストエラー
 
 $set 6 MSGCAT_SET_INTERNAL
 1 エラーサブシステムにエラー発生(ライン %1$d):

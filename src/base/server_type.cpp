@@ -32,3 +32,45 @@ SERVER_TYPE get_server_type ()
   return server_type;
 }
 
+void init_page_server_hosts (std::string hosts)
+{
+  assert (server_type == SERVER_TYPE_TRANSACTION);
+
+  auto col_pos = hosts.find (":");
+  if (col_pos == std::string::npos)
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_PSH_MISSING_SEPARATOR, 0);
+      return;
+    }
+
+  if (col_pos < 1)
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_PSH_EMPTY_HOSTNAME, 0);
+      return;
+    }
+
+  if (col_pos == hosts.length () - 1)
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_PSH_MISSING_PORT, 0);
+      return;
+    }
+
+  long port = -1;
+  try
+    {
+      port = std::stol (hosts.substr (col_pos+1));
+    }
+  catch (...)
+    {
+    }
+
+  if (port < 1 || port > 65535)
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_PSH_INVALID_PORT, 0);
+      return;
+    }
+
+  // host and port seem to be OK
+  std::string host = hosts.substr (0, col_pos);
+  er_log_debug (ARG_FILE_LINE, "Page server hosts: %s port: %d\n", host.c_str (), port);
+}

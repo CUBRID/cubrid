@@ -1622,7 +1622,12 @@
 #define ER_TDE_MAX_KEY_FILE                         -1262
 #define ER_TDE_ENCRYPTION_LOGPAGE_ERORR_AND_OFF_TDE -1263
 
-#define ER_LAST_ERROR                               -1264
+#define ER_PSH_MISSING_SEPARATOR                    -1264
+#define ER_PSH_EMPTY_HOSTNAME                       -1265
+#define ER_PSH_MISSING_PORT                         -1266
+#define ER_PSH_INVALID_PORT                         -1267
+
+#define ER_LAST_ERROR                               -1268
 
 /*
  * CAUTION!

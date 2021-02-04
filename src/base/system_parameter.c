@@ -693,6 +693,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_DDL_AUDIT_LOG "ddl_audit_log"
 #define PRM_NAME_DDL_AUDIT_LOG_SIZE "ddl_audit_log_size"
 
+#define PRM_NAME_PAGE_SERVER_HOSTS "page_server_hosts"
 #define PRM_NAME_SERVER_TYPE "server_type"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
@@ -2347,6 +2348,9 @@ static UINT64 prm_ddl_audit_log_size_lower = 10485760ULL;	/* 10M */
 static UINT64 prm_ddl_audit_log_size_upper = 2147483648ULL;	/* 2G */
 static unsigned int prm_ddl_audit_log_size_flag = 0;
 
+char *PRM_PAGE_SERVER_HOST = NULL;
+static char *prm_page_server_host_default = "";
+static unsigned int prm_page_server_host_flag = 0;
 
 int PRM_SERVER_TYPE = SERVER_TYPE_TRANSACTION;
 static int prm_server_type_default = SERVER_TYPE_TRANSACTION;
@@ -6044,6 +6048,17 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_DDL_AUDIT_LOG_SIZE,
    (void *) &prm_ddl_audit_log_size_upper,
    (void *) &prm_ddl_audit_log_size_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_PAGE_SERVER_HOSTS,
+   PRM_NAME_PAGE_SERVER_HOSTS,
+   (PRM_FOR_SERVER),
+   PRM_STRING,
+   &prm_page_server_host_flag,
+   (void *) &prm_page_server_host_default,
+   (void *) &PRM_PAGE_SERVER_HOST,
+   (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
