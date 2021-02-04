@@ -84,6 +84,7 @@
 #include "tz_support.h"
 #include "perf_monitor.h"
 #include "fault_injection.h"
+#include "server_type.hpp"
 #include "tde.h"
 #if defined (SERVER_MODE)
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
@@ -691,6 +692,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_DDL_AUDIT_LOG "ddl_audit_log"
 #define PRM_NAME_DDL_AUDIT_LOG_SIZE "ddl_audit_log_size"
+
+#define PRM_NAME_SERVER_TYPE "server_type"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -2343,6 +2346,13 @@ static UINT64 prm_ddl_audit_log_size_default = 10485760ULL;	/* 10M */
 static UINT64 prm_ddl_audit_log_size_lower = 10485760ULL;	/* 10M */
 static UINT64 prm_ddl_audit_log_size_upper = 2147483648ULL;	/* 2G */
 static unsigned int prm_ddl_audit_log_size_flag = 0;
+
+
+int PRM_SERVER_TYPE = SERVER_TYPE_TRANSACTION;
+static int prm_server_type_default = SERVER_TYPE_TRANSACTION;
+static int prm_server_type_lower = SERVER_TYPE_TRANSACTION;
+static int prm_server_type_upper = SERVER_TYPE_PAGE;
+static unsigned int prm_server_type_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -6036,7 +6046,19 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_ddl_audit_log_size_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL}
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_SERVER_TYPE,
+   PRM_NAME_SERVER_TYPE,
+   (PRM_FOR_SERVER),
+   PRM_KEYWORD,
+   &prm_server_type_flag,
+   (void *) &prm_server_type_default,
+   (void *) &PRM_SERVER_TYPE,
+   (void *) &prm_server_type_upper,
+   (void *) &prm_server_type_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
 };
 
 #define NUM_PRM ((int)(sizeof(prm_Def)/sizeof(prm_Def[0])))
@@ -6208,6 +6230,11 @@ static KEYVAL tde_algorithm_words[] = {
   /* {"none", TDE_ALGORITHM_NONE}, */
   {"aes", TDE_ALGORITHM_AES},
   {"aria", TDE_ALGORITHM_ARIA}
+};
+
+static KEYVAL server_type_words[] = {
+  {"transaction", SERVER_TYPE_TRANSACTION},
+  {"page", SERVER_TYPE_PAGE}
 };
 
 static const char *compat_mode_values_PRM_ANSI_QUOTES[COMPAT_ORACLE + 2] = {
@@ -8156,6 +8183,11 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len, PRM_PRINT_MODE print
 	{
 	  keyvalp = prm_keyword (PRM_GET_INT (prm->value), NULL, tde_algorithm_words, DIM (tde_algorithm_words));
 	}
+      else if (intl_mbs_casecmp (prm->name, PRM_NAME_SERVER_TYPE) == 0)
+	{
+	  keyvalp =
+	    prm_keyword (PRM_GET_INT (prm->value), NULL, server_type_words, DIM (server_type_words));
+	}
       else
 	{
 	  assert (false);
@@ -9662,6 +9694,10 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, SY
 	else if (intl_mbs_casecmp (prm->name, PRM_NAME_TDE_DEFAULT_ALGORITHM) == 0)
 	  {
 	    keyvalp = prm_keyword (-1, value, tde_algorithm_words, DIM (tde_algorithm_words));
+	  }
+	else if (intl_mbs_casecmp (prm->name, PRM_NAME_SERVER_TYPE) == 0)
+	  {
+	    keyvalp = prm_keyword (-1, value, server_type_words, DIM (server_type_words));
 	  }
 	else
 	  {
