@@ -1332,12 +1332,9 @@ Verifique la ruta del archivo de claves (_keys) y asegúrese de que incluya la c
 1261 No se puede encontrar la clave en el momento de restaurar (índice de clave: %1$d, hora de creación: %2$s). Establezca la clave (índice de clave: %3$d) para la base de datos.
 1262 El archivo de claves está lleno.
 1263 No se puede cifrar con TDE la página de registro (pageid: %1$lld). Ya no se intentará cifrar esta página.
-1264 Missing ':' separator between host and port.
-1265 Empty hostname.
-1266 Missing port number.
-1267 Invalid port number.
+1264 Invalid format for configuration parameter %1s. Expected a 'hostname:port', found %2s
 
-1268 Ultimo error
+1265 Ultimo error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %1$d):

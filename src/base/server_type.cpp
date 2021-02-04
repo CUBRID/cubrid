@@ -22,9 +22,15 @@
 
 static SERVER_TYPE server_type;
 
+void init_page_server_hosts ();
+
 void init_server_type ()
 {
   server_type = (SERVER_TYPE) prm_get_integer_value (PRM_ID_SERVER_TYPE);
+  if (server_type == SERVER_TYPE_TRANSACTION)
+    {
+      init_page_server_hosts ();
+    }
 }
 
 SERVER_TYPE get_server_type ()
@@ -32,26 +38,22 @@ SERVER_TYPE get_server_type ()
   return server_type;
 }
 
-void init_page_server_hosts (std::string hosts)
+void init_page_server_hosts ()
 {
   assert (server_type == SERVER_TYPE_TRANSACTION);
+  std::string hosts = prm_get_string_value (PRM_ID_PAGE_SERVER_HOSTS);
+
+  if (!hosts.length ())
+    {
+      return;
+    }
 
   auto col_pos = hosts.find (":");
-  if (col_pos == std::string::npos)
-    {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_PSH_MISSING_SEPARATOR, 0);
-      return;
-    }
 
-  if (col_pos < 1)
+  if (col_pos < 1 || col_pos >= hosts.length () - 1)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_PSH_EMPTY_HOSTNAME, 0);
-      return;
-    }
-
-  if (col_pos == hosts.length () - 1)
-    {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_PSH_MISSING_PORT, 0);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_HOST_PORT_PARAMETER, 2, prm_get_name (PRM_ID_PAGE_SERVER_HOSTS),
+	      hosts.c_str ());
       return;
     }
 
@@ -66,7 +68,8 @@ void init_page_server_hosts (std::string hosts)
 
   if (port < 1 || port > 65535)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_PSH_INVALID_PORT, 0);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_HOST_PORT_PARAMETER, 2, prm_get_name (PRM_ID_PAGE_SERVER_HOSTS),
+	      hosts.c_str ());
       return;
     }
 

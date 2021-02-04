@@ -1332,12 +1332,9 @@ Vérifiez le chemin du fichier de clé (_keys) et assurez-vous qu'il inclut la c
 1261 Impossible de trouver la clé au moment de la restauration (index de clé: %1$d, heure de création: %2$s). Définissez la clé (index de clé: %3$d) pour la base de données.
 1262 Le fichier clé est plein.
 1263 Le chiffrement TDE de la page de journal échoue (pageid: %1$lld). Il ne sera plus essayé de crypter cette page.
-1264 Missing ':' separator between host and port.
-1265 Empty hostname.
-1266 Missing port number.
-1267 Invalid port number.
+1264 Invalid format for configuration parameter %1s. Expected a 'hostname:port', found %2s
 
-1268 Dernière erreur
+1265 Dernière erreur
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Erreur dans le sous-système d'erreur (ligne %1$d):

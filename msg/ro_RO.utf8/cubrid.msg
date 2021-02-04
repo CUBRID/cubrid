@@ -1332,12 +1332,9 @@ Verificați calea fișierului cheie (_keys) și asigurați-vă că acesta includ
 1261 Nu se poate găsi cheia în momentul restaurării (index cheie: %1$d, timp creat: %2$s). Setați cheia (index cheie: %3$d) pentru baza de date.
 1262 Fișierul cheie este plin.
 1263 Nu criptează TDE pagina jurnalului (pageid: %1$lld). Nu va mai fi încercat să criptați această pagină.
-1264 Missing ':' separator between host and port.
-1265 Empty hostname.
-1266 Missing port number.
-1267 Invalid port number.
+1264 Invalid format for configuration parameter %1s. Expected a 'hostname:port', found %2s
 
-1268 Ultima eroare
+1265 Ultima eroare
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):

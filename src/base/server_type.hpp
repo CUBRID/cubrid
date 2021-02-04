@@ -30,6 +30,4 @@ typedef enum
 void init_server_type ();
 SERVER_TYPE get_server_type ();
 
-void init_page_server_hosts (std::string hosts);
-
 #endif

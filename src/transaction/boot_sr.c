@@ -2114,15 +2114,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   er_log_debug (ARG_FILE_LINE, "Starting server type: %s\n",
 		get_server_type () == SERVER_TYPE_PAGE ? "page" : "transaction");
 
-  if (get_server_type () == SERVER_TYPE_TRANSACTION)
-    {
-      std::string hosts = prm_get_string_value (PRM_ID_PAGE_SERVER_HOSTS);
-      if (hosts.length ())
-	{
-	  init_page_server_hosts (hosts);
-	}
-    }
-
 
 #endif /* SERVER_MODE */
 
