@@ -19,8 +19,6 @@
 #ifndef _SERVER_TYPE_H_
 #define _SERVER_TYPE_H_
 
-#include <string>
-
 typedef enum
 {
   SERVER_TYPE_TRANSACTION,
