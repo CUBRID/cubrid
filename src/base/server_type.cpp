@@ -20,15 +20,15 @@
 
 #include "system_parameter.h"
 
-static SERVER_TYPE server_type;
+static SERVER_TYPE g_server_type;
 
 void init_server_type ()
 {
-  server_type = (SERVER_TYPE) prm_get_integer_value (PRM_ID_SERVER_TYPE);
+  g_server_type = (SERVER_TYPE) prm_get_integer_value (PRM_ID_SERVER_TYPE);
 }
 
 SERVER_TYPE get_server_type ()
 {
-  return server_type;
+  return g_server_type;
 }
 
