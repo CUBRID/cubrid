@@ -22,6 +22,7 @@
 
 #include "load_error_handler.hpp"
 
+#include <algorithm>
 #include "load_driver.hpp"
 #include "load_sa_loader.hpp"
 #if defined (SERVER_MODE)
