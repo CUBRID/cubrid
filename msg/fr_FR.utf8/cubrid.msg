@@ -1332,8 +1332,28 @@ Vérifiez le chemin du fichier de clé (_keys) et assurez-vous qu'il inclut la c
 1261 Impossible de trouver la clé au moment de la restauration (index de clé: %1$d, heure de création: %2$s). Définissez la clé (index de clé: %3$d) pour la base de données.
 1262 Le fichier clé est plein.
 1263 Le chiffrement TDE de la page de journal échoue (pageid: %1$lld). Il ne sera plus essayé de crypter cette page.
+1264 Error reserved for scalability development.
+1265 Error reserved for scalability development.
+1266 Error reserved for scalability development.
+1267 Error reserved for scalability development.
+1268 Error reserved for scalability development.
+1269 Error reserved for scalability development.
+1270 Error reserved for scalability development.
+1271 Error reserved for scalability development.
+1272 Error reserved for scalability development.
+1273 Error reserved for scalability development.
+1274 Error reserved for scalability development.
+1275 Error reserved for scalability development.
+1276 Error reserved for scalability development.
+1277 Error reserved for scalability development.
+1278 Error reserved for scalability development.
+1279 Error reserved for scalability development.
+1280 Error reserved for scalability development.
+1281 Error reserved for scalability development.
+1282 Error reserved for scalability development.
+1283 Error reserved for scalability development.
 
-1264 Dernière erreur
+1284 Dernière erreur
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Erreur dans le sous-système d'erreur (ligne %1$d):
