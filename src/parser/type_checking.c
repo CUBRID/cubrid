@@ -5530,6 +5530,7 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
 	      if (PT_IS_STRING_TYPE (common_type) && PT_IS_STRING_TYPE (temp->type_enum))
 		{
 		  /* A bigger codesets's number can represent more characters. */
+		  /* to_do : check to use functions pt_common_collation() or pt_make_cast_with_compatble_info(). */
 		  if (units < temp->info.data_type.units)
 		    {
 		      units = temp->info.data_type.units;

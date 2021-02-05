@@ -103,7 +103,7 @@ static int mht_rehash (MHT_TABLE * ht);
 
 static const void *mht_put_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt);
 static const void *mht_put2_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt);
-static const void *mht_put_orderly_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt);
+static const void *mht_put_hls_internal (MHT_HLS_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt);
 
 static unsigned int mht_get_shiftmult32 (unsigned int key, const unsigned int ht_size);
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -966,6 +966,89 @@ mht_create (const char *name, int est_size, unsigned int (*hash_func) (const voi
 }
 
 /*
+ * mht_create_hls - create a hash table
+ *   return: hash table
+ *   name(in): name of hash table
+ *   est_size(in): estimated number of entries
+ *   hash_func(in): hash function
+ *   cmp_func(in): key compare function
+ *
+ * Note: Create a new hash table for HASH LIST SCAN.
+ *       The estimated number of entries for the hash table is fixed in HASH LIST SCAN.
+ *       rehashing hash table is not needed becaues of that.
+ *       key comparison is performed in executor.
+ */
+MHT_HLS_TABLE *
+mht_create_hls (const char *name, int est_size, unsigned int (*hash_func) (const void *key, unsigned int ht_size),
+	    int (*cmp_func) (const void *key1, const void *key2))
+{
+  MHT_HLS_TABLE *ht;
+  HENTRY_HLS_PTR *hvector;		/* Entries of hash table */
+  unsigned int ht_estsize;
+  size_t size;
+
+  assert (hash_func != NULL && cmp_func != NULL);
+
+  /* Get a good number of entries for hash table */
+  if (est_size <= 0)
+    {
+      est_size = 2;
+    }
+
+  ht_estsize = mht_calculate_htsize ((unsigned int) est_size);
+
+  /* Allocate the header information for hash table */
+  ht = (MHT_HLS_TABLE *) malloc (DB_SIZEOF (MHT_HLS_TABLE));
+  if (ht == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, DB_SIZEOF (MHT_HLS_TABLE));
+
+      return NULL;
+    }
+
+  /* Initialize the chunky memory manager */
+  ht->heap_id = db_create_fixed_heap (DB_SIZEOF (HENTRY_HLS), MAX (2, ht_estsize / 2 + 1));
+  if (ht->heap_id == 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, DB_SIZEOF (HENTRY_HLS));
+
+      free_and_init (ht);
+      return NULL;
+    }
+
+  /* Allocate the hash table entry pointers */
+  size = ht_estsize * DB_SIZEOF (*hvector);
+  hvector = (HENTRY_HLS_PTR *) malloc (size);
+  if (hvector == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+
+      db_destroy_fixed_heap (ht->heap_id);
+      free_and_init (ht);
+      return NULL;
+    }
+
+  ht->hash_func = hash_func;
+  ht->cmp_func = cmp_func;
+  ht->name = name;
+  ht->table = hvector;
+  ht->prealloc_entries = NULL;
+  ht->size = ht_estsize;
+  ht->nentries = 0;
+  ht->nprealloc_entries = 0;
+  ht->ncollisions = 0;
+  ht->build_lru_list = false;
+
+  /* Initialize each of the hash entries */
+  for (; ht_estsize > 0; ht_estsize--)
+    {
+      *hvector++ = NULL;
+    }
+
+  return ht;
+}
+
+/*
  * mht_rehash - rehash all entires of a hash table
  *   return: error code
  *   ht(in/out): hash table to rehash
@@ -1067,6 +1150,26 @@ mht_destroy (MHT_TABLE * ht)
 }
 
 /*
+ * mht_destroy_hls - destroy a hash table
+ *   return: void
+ *   ht(in/out): hash table
+ *
+ * Note: ht is set as a side effect
+ */
+void
+mht_destroy_hls (MHT_HLS_TABLE * ht)
+{
+  assert (ht != NULL);
+
+  free_and_init (ht->table);
+
+  /* release hash table entry storage */
+  db_destroy_fixed_heap (ht->heap_id);
+
+  free_and_init (ht);
+}
+
+/*
  * mht_clear - remove and free all entries of hash table
  *   return: error code
  *   ht(in/out): hash table
@@ -1118,6 +1221,59 @@ mht_clear (MHT_TABLE * ht, int (*rem_func) (const void *key, void *data, void *a
   ht->act_tail = NULL;
   ht->lru_head = NULL;
   ht->lru_tail = NULL;
+  ht->ncollisions = 0;
+  ht->nentries = 0;
+
+  return NO_ERROR;
+}
+
+/*
+ * mht_hls_clear - remove and free all entries of hash table
+ *   return: error code
+ *   ht(in/out): hash table
+ *   rem_func(in): removal function
+ *   func_args(in): removal function arguments
+ */
+int
+mht_clear_hls (MHT_HLS_TABLE * ht, int (*rem_func) (const void *key, void *data, void *args), void *func_args)
+{
+  HENTRY_HLS_PTR *hvector;		/* Entries of hash table */
+  HENTRY_HLS_PTR hentry;		/* A hash table entry. linked list */
+  HENTRY_HLS_PTR next_hentry = NULL;	/* Next element in linked list */
+  unsigned int i, error_code;
+
+  assert (ht != NULL);
+
+  /*
+   * Go over the hash table, removing all entries and setting the vector
+   * entries to NULL.
+   */
+  for (hvector = ht->table, i = 0; i < ht->size; hvector++, i++)
+    {
+      /* Go over the linked list for this hash table entry */
+      for (hentry = *hvector; hentry != NULL; hentry = next_hentry)
+	{
+	  /* free */
+	  if (rem_func)
+	    {
+	      error_code = (*rem_func) (NULL, hentry->data, func_args);
+	      if (error_code != NO_ERROR)
+		{
+		  return error_code;
+		}
+
+	      hentry->data = NULL;
+	    }
+
+	  next_hentry = hentry->next;
+	  /* Save the entries for future insertions */
+	  ht->nprealloc_entries++;
+	  hentry->next = ht->prealloc_entries;
+	  ht->prealloc_entries = hentry;
+	}
+      *hvector = NULL;
+    }
+
   ht->ncollisions = 0;
   ht->nentries = 0;
 
@@ -1189,6 +1345,63 @@ mht_dump (THREAD_ENTRY * thread_p, FILE * out_fp, const MHT_TABLE * ht, const in
 	}
     }
 
+  fprintf (out_fp, "\n");
+
+  return (cont);
+}
+
+/*
+ * mht_dump_hls - display all entries of hash table for HASH LIST SCAN
+ *   return: TRUE/FALSE
+ *   out_fp(in): FILE stream where to dump; if NULL, stdout
+ *   ht(in): hash table to print
+ *   print_id_opt(in): option for printing hash index vector id
+ *   print_func(in): supplied printing function
+ *   func_args(in): arguments to be passed to print_func
+ *
+ * Note: Dump the header of hash table, and for each entry in hash table,
+ *       call function "print_func" on three arguments: the key of the entry,
+ *       the data associated with the key, and args, in order to print the entry
+ *       print_id_opt - Print hash index ? Will run faster if we do not need to
+ *       print this information
+ */
+int
+mht_dump_hls (THREAD_ENTRY * thread_p, FILE * out_fp, const MHT_HLS_TABLE * ht, const int print_id_opt,
+	      int (*print_func) (THREAD_ENTRY * thread_p, FILE * fp, const void *data, void *args),
+	      void *func_args)
+{
+  HENTRY_HLS_PTR *hvector;		/* Entries of hash table */
+  HENTRY_HLS_PTR hentry;		/* A hash table entry. linked list */
+  unsigned int i;
+  int cont = TRUE;
+
+  assert (ht != NULL);
+
+  if (out_fp == NULL)
+    {
+      out_fp = stdout;
+    }
+
+  fprintf (out_fp,
+	   "HTABLE NAME = %s, SIZE = %d,\n" "NENTRIES = %d, NPREALLOC = %d, NCOLLISIONS = %d\n\n",
+	   ht->name, ht->size, ht->nentries, ht->nprealloc_entries, ht->ncollisions);
+
+  if (print_id_opt)
+    {
+      /* Need to print the index vector id. Therefore, scan the whole table */
+      for (hvector = ht->table, i = 0; i < ht->size; hvector++, i++)
+	{
+	  if (*hvector != NULL)
+	    {
+	      fprintf (out_fp, "HASH AT %d\n", i);
+	      /* Go over the linked list */
+	      for (hentry = *hvector; cont == TRUE && hentry != NULL; hentry = hentry->next)
+		{
+		  cont = (*print_func) (thread_p, out_fp, hentry->data, func_args);
+		}
+	    }
+	}
+    }
   fprintf (out_fp, "\n");
 
   return (cont);
@@ -1320,6 +1533,47 @@ mht_get2 (const MHT_TABLE * ht, const void *key, void **last)
 	}
     }
 
+  return NULL;
+}
+
+/*
+ * mht_get_hls - Find the next data associated with the key; Search the entry next
+ *            to the last result
+ *   return: the data associated with the key, or NULL if not found
+ *   ht(in):
+ *   key(in):
+ *   last(in/out):
+ *
+ * NOTE: This call does not affect the LRU list.
+ */
+void *
+mht_get_hls (const MHT_HLS_TABLE * ht, const void *key, void **last)
+{
+  unsigned int hash;
+  HENTRY_HLS_PTR hentry;
+
+  assert (ht != NULL && key != NULL);
+
+  /*
+   * Hash the key and make sure that the return value is between 0 and size of hash table
+   */
+  hash = (*ht->hash_func) (key, ht->size);
+  if (hash >= ht->size)
+    {
+      hash %= ht->size;
+    }
+
+  /* In HASH LIST SCAN, key comparison is performed in executor. */
+  hentry = ht->table[hash];
+
+  if (hentry != NULL)
+    {
+      if (last != NULL)
+	{
+	  *((HENTRY_HLS_PTR *) last) = hentry;
+	}
+      return hentry->data;
+    }
   return NULL;
 }
 
@@ -1473,10 +1727,10 @@ mht_put_new (MHT_TABLE * ht, const void *key, void *data)
 }
 
 const void *
-mht_put_orderly (MHT_TABLE * ht, const void *key, void *data)
+mht_put_hls (MHT_HLS_TABLE * ht, const void *key, void *data)
 {
   assert (ht != NULL && key != NULL);
-  return mht_put_orderly_internal (ht, key, data, MHT_OPT_INSERT_ONLY);
+  return mht_put_hls_internal (ht, key, data, MHT_OPT_INSERT_ONLY);
 }
 
 /*
@@ -2298,8 +2552,8 @@ mht_get_linear_hash32 (const unsigned int key, const unsigned int ht_size)
 #endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
- * mht_put_orderly_internal
- *   internal function for mht_put_orderly()
+ * mht_put_hls_internal
+ *   internal function for mht_put_hls()
  *   put data in the order.
  *   eliminates unnecessary logic to improve performance for hash list scan.
  *
@@ -2310,10 +2564,10 @@ mht_get_linear_hash32 (const unsigned int key, const unsigned int ht_size)
  *   opt(in): options;
  */
 static const void *
-mht_put_orderly_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt)
+mht_put_hls_internal (MHT_HLS_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt)
 {
   unsigned int hash;
-  HENTRY_PTR hentry;
+  HENTRY_HLS_PTR hentry;
 
   assert (ht != NULL && key != NULL);
 
@@ -2336,29 +2590,27 @@ mht_put_orderly_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_O
     }
   else
     {
-      hentry = (HENTRY_PTR) db_fixed_alloc (ht->heap_id, DB_SIZEOF (HENTRY));
+      hentry = (HENTRY_HLS_PTR) db_fixed_alloc (ht->heap_id, DB_SIZEOF (HENTRY_HLS));
       if (hentry == NULL)
 	{
 	  return NULL;
 	}
     }
 
-  hentry->key = key;
   hentry->data = data;
 
-  /* To input in order, use the act_next variable as tail. */
-  /* lru and act-related logics are not used for hash list scan, so delete them. */
+  /* To input in order, use the tail node. */
   if (ht->table[hash] == NULL)
     {
       ht->table[hash] = hentry;
     }
   else
     {
-      ht->table[hash]->act_next->next = hentry;
+      ht->table[hash]->tail->next = hentry;
       ht->ncollisions++;
     }
   hentry->next = NULL;
-  ht->table[hash]->act_next = hentry;
+  ht->table[hash]->tail = hentry;
   ht->nentries++;
 
   return key;
