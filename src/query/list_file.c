@@ -5234,7 +5234,7 @@ qfile_allocate_list_cache_entry (int req_size)
       return NULL;
     }
 
-  pthread_mutex_init(&pent->s.entry.list_cache_mutex, NULL);
+  pthread_mutex_init (&pent->s.entry.list_cache_mutex, NULL);
   return &pent->s.entry;
 }
 
@@ -5582,7 +5582,7 @@ qfile_delete_list_cache_entry (THREAD_ENTRY * thread_p, void *data)
       return ER_FAILED;
     }
 
-  pthread_mutex_lock(&lent->list_cache_mutex);
+  pthread_mutex_lock (&lent->list_cache_mutex);
 
   lent->deletion_marker = true;
 #if defined(SERVER_MODE)
@@ -5632,7 +5632,7 @@ qfile_delete_list_cache_entry (THREAD_ENTRY * thread_p, void *data)
       error_code = qfile_free_list_cache_entry (thread_p, lent, NULL);
     }
 
-  pthread_mutex_unlock(&lent->list_cache_mutex);
+  pthread_mutex_unlock (&lent->list_cache_mutex);
 
   return error_code;
 }
@@ -5660,7 +5660,8 @@ qfile_end_use_of_list_cache_entry_local (THREAD_ENTRY * thread_p, void *data, vo
  *       values as the key.
  */
 QFILE_LIST_CACHE_ENTRY *
-qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB_VALUE_ARRAY * params, bool *result_cached)
+qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB_VALUE_ARRAY * params,
+			       bool * result_cached)
 {
   QFILE_LIST_CACHE_ENTRY *lent;
   int tran_index;
@@ -5708,9 +5709,9 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
 
       /* check if it may have uncommitted data */
       if (lent)
-        {
+	{
 #if defined(SERVER_MODE)
-          pthread_mutex_lock(&lent->list_cache_mutex);
+	  pthread_mutex_lock (&lent->list_cache_mutex);
 
 	  tran_isolation = logtb_find_isolation (tran_index);
 	  /* 1. my isolation is not (greater than) read uncommited 2. the entry is cached by an uncommitted other
@@ -5733,31 +5734,32 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
 	      *result_cached = true;
 	    }
 
-          /* finally, we found an useful cache entry to reuse */
-          if (*result_cached)
+	  /* finally, we found an useful cache entry to reuse */
+	  if (*result_cached)
 	    {
 	      /* record my transaction id into the entry and adjust timestamp and reference counter */
 	      if (lent->last_ta_idx < (size_t) MAX_NTRANS)
-	        {
-	          num_elements = (int) lent->last_ta_idx;
-	          (void) lsearch (&tran_index, lent->tran_index_array, &num_elements, sizeof (int), qfile_compare_tran_id);
-	          lent->last_ta_idx = num_elements;
-	        }
+		{
+		  num_elements = (int) lent->last_ta_idx;
+		  (void) lsearch (&tran_index, lent->tran_index_array, &num_elements, sizeof (int),
+				  qfile_compare_tran_id);
+		  lent->last_ta_idx = num_elements;
+		}
 #if !defined (NDEBUG)
 	      for (i_idx = 0, num_active_users = 0; i_idx < lent->last_ta_idx; i_idx++)
-	        {
-	          if (lent->tran_index_array[i_idx] > 0)
+		{
+		  if (lent->tran_index_array[i_idx] > 0)
 		    {
 		      num_active_users++;
 		    }
-	        }
+		}
 	      assert (lent->last_ta_idx == num_active_users);
 #endif
 	    }
 
-          (void) gettimeofday (&lent->time_last_used, NULL);
+	  (void) gettimeofday (&lent->time_last_used, NULL);
 	  lent->ref_count++;
-          pthread_mutex_unlock(&lent->list_cache_mutex);
+	  pthread_mutex_unlock (&lent->list_cache_mutex);
 #endif /* SERVER_MODE */
 	}
     }
@@ -5978,14 +5980,14 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr, con
 	}
 
 #if defined(SERVER_MODE)
-      pthread_mutex_lock(&lent->list_cache_mutex);
-			
+      pthread_mutex_lock (&lent->list_cache_mutex);
+
       /* check in-use by other transaction */
       if ((int) lent->last_ta_idx > 0);
       {
-        pthread_mutex_unlock(&lent->list_cache_mutex);
-        csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
-        return lent;
+	pthread_mutex_unlock (&lent->list_cache_mutex);
+	csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
+	return lent;
       }
 
       /* the entry that is in the cache is same with mine; do not duplicate the cache entry */
@@ -6012,7 +6014,7 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr, con
       (void) gettimeofday (&lent->time_last_used, NULL);
       lent->ref_count++;
 
-      pthread_mutex_unlock(&lent->list_cache_mutex);
+      pthread_mutex_unlock (&lent->list_cache_mutex);
 
 #endif /* SERVER_MODE */
     }
@@ -6169,7 +6171,7 @@ qfile_end_use_of_list_cache_entry (THREAD_ENTRY * thread_p, QFILE_LIST_CACHE_ENT
     }
 
 #if defined(SERVER_MODE)
-  pthread_mutex_lock(&lent->list_cache_mutex);
+  pthread_mutex_lock (&lent->list_cache_mutex);
   /* remove my transaction id from the entry and do compaction */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   r = &lent->tran_index_array[lent->last_ta_idx];
@@ -6210,7 +6212,7 @@ qfile_end_use_of_list_cache_entry (THREAD_ENTRY * thread_p, QFILE_LIST_CACHE_ENT
   assert (lent->last_ta_idx == num_active_users);
 #endif
 
-  pthread_mutex_unlock(&lent->list_cache_mutex);
+  pthread_mutex_unlock (&lent->list_cache_mutex);
 #endif /* SERVER_MODE */
 
   /* if this entry will be deleted */

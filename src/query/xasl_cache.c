@@ -1724,7 +1724,7 @@ xcache_invalidate_qcaches (THREAD_ENTRY * thread_p, const OID * oid)
 	      if (res != NO_ERROR)
 		{
 		  finished = true;
-	          pthread_mutex_unlock (&xcache_entry->query_cache_mutex);
+		  pthread_mutex_unlock (&xcache_entry->query_cache_mutex);
 		  break;
 		}
 	      if (qfile_get_list_cache_number_of_entries (xcache_entry->list_ht_no) == 0)

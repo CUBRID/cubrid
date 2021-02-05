@@ -1404,7 +1404,8 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
   if (qmgr_can_get_result_from_cache (*flag_p))
     {
       /* lookup the list cache with the parameter values (DB_VALUE array) */
-      list_cache_entry_p = qfile_lookup_list_cache_entry (thread_p, xasl_cache_entry_p->list_ht_no, &params, &cached_result);
+      list_cache_entry_p =
+	qfile_lookup_list_cache_entry (thread_p, xasl_cache_entry_p->list_ht_no, &params, &cached_result);
       /* If we've got the cached result, return it. */
       if (cached_result)
 	{
@@ -1528,7 +1529,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 	    }
 
 	  if (list_cache_entry_p && !cached_result)
- 	    {
+	    {
 	      goto end;
 	    }
 
@@ -1566,11 +1567,11 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 	      assert (false);
 	    }
 
-	  pthread_mutex_lock(&xasl_cache_entry_p->query_cache_mutex);
+	  pthread_mutex_lock (&xasl_cache_entry_p->query_cache_mutex);
 	  list_cache_entry_p =
 	    qfile_update_list_cache_entry (thread_p, &xasl_cache_entry_p->list_ht_no, &params, list_id_p,
 					   xasl_cache_entry_p);
-	  pthread_mutex_unlock(&xasl_cache_entry_p->query_cache_mutex);
+	  pthread_mutex_unlock (&xasl_cache_entry_p->query_cache_mutex);
 
 	  if (list_cache_entry_p == NULL)
 	    {
