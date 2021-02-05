@@ -18,6 +18,7 @@
 
 #include "server_type.hpp"
 
+#include <string>
 #include "system_parameter.h"
 
 static SERVER_TYPE g_server_type;
@@ -40,7 +41,7 @@ SERVER_TYPE get_server_type ()
 
 void init_page_server_hosts ()
 {
-  assert (server_type == SERVER_TYPE_TRANSACTION);
+  assert (g_server_type == SERVER_TYPE_TRANSACTION);
   std::string hosts = prm_get_string_value (PRM_ID_PAGE_SERVER_HOSTS);
 
   if (!hosts.length ())
@@ -66,7 +67,7 @@ void init_page_server_hosts ()
     {
     }
 
-  if (port < 1 || port > 65535)
+  if (port < 1 || port > USHRT_MAX)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_HOST_PORT_PARAMETER, 2, prm_get_name (PRM_ID_PAGE_SERVER_HOSTS),
 	      hosts.c_str ());
