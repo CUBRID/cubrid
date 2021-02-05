@@ -82,6 +82,7 @@
 #include "vacuum.h"
 #include "tde.h"
 #include "porting.h"
+#include "server_type.hpp"
 
 #if defined(SERVER_MODE)
 #include "connection_sr.h"
@@ -2065,9 +2066,10 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   char db_lang[LANG_MAX_LANGNAME + 1];
   char timezone_checksum[32 + 1];
   const TZ_DATA *tzd;
-  char *mk_path;
+#if defined (SA_MODE)
   int jsp_port;
   bool jsp;
+#endif
 
   /* language data is loaded in context of server */
   if (lang_init () != NO_ERROR)
@@ -2107,6 +2109,11 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 
   common_ha_mode = HA_GET_MODE ();
+
+  init_server_type ();
+  er_log_debug (ARG_FILE_LINE, "Starting server type: %s\n",
+		get_server_type () == SERVER_TYPE_PAGE ? "page" : "transaction");
+
 #endif /* SERVER_MODE */
 
   if (db_name == NULL)
