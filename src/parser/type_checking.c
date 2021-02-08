@@ -19939,7 +19939,7 @@ pt_fold_const_function (PARSER_CONTEXT * parser, PT_NODE * func)
 	  func_arg = func->info.function.arg_list;
 	  memset (&(func->info), 0, sizeof (func->info));
 	  func->info.value.data_value.set = func_arg;
-	  func->type_enum == PT_TYPE_SEQUENCE;
+	  func->type_enum = PT_TYPE_SEQUENCE;
 	}
     }
 
