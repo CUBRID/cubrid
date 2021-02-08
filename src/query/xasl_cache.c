@@ -1784,10 +1784,10 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
 	    }
 
 	  /* Check invalidation conditions. */
+	  pthread_mutex_lock (&xcache_entry->query_cache_mutex);
 	  if (invalidate_check == NULL || invalidate_check (xcache_entry, arg))
 	    {
 	      /* delete query cache from xcache entry */
-	      pthread_mutex_lock (&xcache_entry->cache_clones_mutex);
 	      if (xcache_entry->list_ht_no >= 0 && !QFILE_IS_LIST_CACHE_DISABLED && !qfile_has_no_cache_entries ())
 		{
 		  qfile_clear_list_cache (thread_p, xcache_entry->list_ht_no, true);
@@ -1796,7 +1796,6 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
 		      xcache_entry->list_ht_no = -1;
 		    }
 		}
-	      pthread_mutex_unlock (&xcache_entry->cache_clones_mutex);
 
 	      /* Mark entry as deleted. */
 	      if (xcache_entry_mark_deleted (thread_p, xcache_entry))
@@ -1812,6 +1811,7 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
 		  delete_xids[n_delete_xids++] = xcache_entry->xasl_id;
 		}
 	    }
+	  pthread_mutex_unlock (&xcache_entry->query_cache_mutex);
 
 	  if (n_delete_xids == XCACHE_DELETE_XIDS_SIZE)
 	    {
