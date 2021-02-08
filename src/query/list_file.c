@@ -5725,8 +5725,6 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
 	      if (lent->tran_index_array[lent->last_ta_idx - 1] == tran_index)
 		{
 		  *result_cached = true;
-		  //lent->last_ta_idx = num_elements;
-		  //lent = NULL;
 		}
 	    }
 	  else
