@@ -1,5 +1,4 @@
 /*
- * 
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,7 +16,7 @@
  */
 
 //
-// query_aggregate - implementation of aggregate functions execution during queries
+// query_hash_scan - implementation of hash list scan during queries
 //
 
 #include "fetch.h"
@@ -244,13 +243,12 @@ qdata_build_hscan_key (THREAD_ENTRY * thread_p, val_descr * vd, REGU_VARIABLE_LI
  *   args(in)   :
  */
 int
-qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *key, void *data, void *args)
+qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *data, void *args)
 {
   HASH_SCAN_VALUE *data2 = (HASH_SCAN_VALUE *) data;
-  HASH_SCAN_KEY *key2 = (HASH_SCAN_KEY *) key;
-  QFILE_TUPLE_VALUE_TYPE_LIST *list = (QFILE_TUPLE_VALUE_TYPE_LIST *) args;
+  int hash_list_scan_yn = args ? *((int *) args) : 0;
 
-  if (!data2 || !key2)
+  if (data2 == NULL || args == NULL)
     {
       return false;
     }
@@ -260,23 +258,25 @@ qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *key
     }
 
   fprintf (fp, "LIST_CACHE_ENTRY (%p) {\n", data);
-  fprintf (fp, "data_size = [%d]  data = [%.*s]\n", QFILE_GET_TUPLE_LENGTH (data2->tuple),
-	   QFILE_GET_TUPLE_LENGTH (data2->tuple), data2->tuple);
-
-  fprintf (fp, "key : ");
-  for (int i = 0; i < key2->val_count; i++)
+  if (hash_list_scan_yn == HASH_METH_IN_MEM)
     {
-      db_fprint_value (fp, key2->values[i]);
-      fprintf (fp, " ");
+      fprintf (fp, "data_size = [%d]  data = [%.*s]\n", QFILE_GET_TUPLE_LENGTH (data2->tuple),
+	       QFILE_GET_TUPLE_LENGTH (data2->tuple), data2->tuple);
     }
+  else if (hash_list_scan_yn == HASH_METH_HYBRID)
+    {
+      fprintf (fp, "pageid = [%d]  volid = [%d]  offset = [%d]\n", data2->pos->vpid.pageid,
+	       data2->pos->vpid.volid, data2->pos->offset);
+    }
+
   fprintf (fp, "\n}");
 
   return true;
 }
 
 /*
- * qdata_copy_hscan_key () - deep copy aggregate key
- *   returns: pointer to new aggregate hash key
+ * qdata_copy_hscan_key () - deep copy hash key
+ *   returns: pointer to new hash key
  *   thread_p(in): thread
  *   key(in): source key
  */
@@ -342,7 +342,60 @@ qdata_copy_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key, REGU_VAR
 }
 
 /*
- * qdata_alloc_agg_hkey () - allocate new hash aggregate key
+ * qdata_copy_hscan_key_without_alloc () - deep copy hash key
+ *   returns: pointer to new hash key
+ *   thread_p(in): thread
+ *   key(in): source key
+ */
+HASH_SCAN_KEY *
+qdata_copy_hscan_key_without_alloc (cubthread::entry * thread_p, HASH_SCAN_KEY * key,
+				    REGU_VARIABLE_LIST probe_regu_list, HASH_SCAN_KEY * new_key)
+{
+  DB_TYPE vtype1, vtype2;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+
+  if (key == NULL)
+    {
+      return NULL;
+    }
+  if (new_key)
+    {
+      /* copy values */
+      new_key->val_count = key->val_count;
+      for (int i = 0; i < key->val_count; i++)
+	{
+	  vtype1 = REGU_VARIABLE_GET_TYPE (&probe_regu_list->value);
+	  vtype2 = DB_VALUE_DOMAIN_TYPE (key->values[i]);
+
+	  if (vtype1 != vtype2)
+	    {
+	      pr_clear_value (new_key->values[i]);
+	      status = tp_value_coerce (key->values[i], new_key->values[i], probe_regu_list->value.domain);
+	      if (status != DOMAIN_COMPATIBLE)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (vtype2),
+			  pr_type_name (vtype1));
+		  return NULL;
+		}
+	    }
+	  else
+	    {
+	      pr_clear_value (new_key->values[i]);
+	      if (pr_clone_value (key->values[i], new_key->values[i]) != NO_ERROR)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE *));
+		  return NULL;
+		}
+	    }
+	  probe_regu_list = probe_regu_list->next;
+	}
+    }
+
+  return new_key;
+}
+
+/*
+ * qdata_alloc_hscan_value () - allocate new hash value
  *   returns: pointer to new structure or NULL on error
  *   thread_p(in): thread
  */
@@ -376,6 +429,39 @@ qdata_alloc_hscan_value (cubthread::entry * thread_p, QFILE_TUPLE tpl)
   return value;
 }
 
+/*
+ * qdata_alloc_hscan_value_OID () - allocate new hash OID value
+ *   returns: pointer to new structure or NULL on error
+ *   thread_p(in): thread
+ */
+HASH_SCAN_VALUE *
+qdata_alloc_hscan_value_OID (cubthread::entry * thread_p, QFILE_LIST_SCAN_ID * scan_id_p)
+{
+  HASH_SCAN_VALUE *value;
+
+  /* alloc structure */
+  value = (HASH_SCAN_VALUE *) db_private_alloc (thread_p, sizeof (HASH_SCAN_VALUE));
+  if (value == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (HASH_SCAN_VALUE));
+      return NULL;
+    }
+
+  value->pos = (QFILE_TUPLE_SIMPLE_POS *) db_private_alloc (thread_p, sizeof (QFILE_TUPLE_SIMPLE_POS));
+  if (value->pos == NULL)
+    {
+      qdata_free_hscan_value (thread_p, value);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (QFILE_TUPLE_SIMPLE_POS));
+      return NULL;
+    }
+
+  /* save position */
+  value->pos->offset = scan_id_p->curr_offset;
+  value->pos->vpid = scan_id_p->curr_vpid;
+
+  return value;
+}
+
 static bool
 safe_memcpy (void *data, void *source, int size)
 {
@@ -401,9 +487,9 @@ qdata_free_hscan_value (cubthread::entry * thread_p, HASH_SCAN_VALUE * value)
     }
 
   /* free values */
-  if (value->tuple != NULL)
+  if (value->data != NULL)
     {
-      db_private_free_and_init (thread_p, value->tuple);
+      db_private_free_and_init (thread_p, value->data);
     }
   /* free structure */
   db_private_free_and_init (thread_p, value);
@@ -420,8 +506,7 @@ int
 qdata_free_hscan_entry (const void *key, void *data, void *args)
 {
   /* free key */
-  qdata_free_hscan_key ((cubthread::entry *) args, (HASH_SCAN_KEY *) key,
-			key ? ((HASH_SCAN_KEY *) key)->val_count : 0);
+  qdata_free_hscan_key ((cubthread::entry *) args, (HASH_SCAN_KEY *) key, key ? ((HASH_SCAN_KEY *) key)->val_count : 0);
 
   /* free tuple */
   qdata_free_hscan_value ((cubthread::entry *) args, (HASH_SCAN_VALUE *) data);

@@ -1333,8 +1333,27 @@ $ LOADDB
 1262 키 파일 (_keys)이 가득 찼습니다.
 1263 로그 페이지 (pageid: %1$lld) 암호화에 실패했습니다. 해당 페이지는 더 이상 암호화되지 않습니다.
 1264 Invalid format for configuration parameter %1s. Expected a 'hostname:port', found %2s
+1265 Error reserved for scalability development.
+1266 Error reserved for scalability development.
+1267 Error reserved for scalability development.
+1268 Error reserved for scalability development.
+1269 Error reserved for scalability development.
+1270 Error reserved for scalability development.
+1271 Error reserved for scalability development.
+1272 Error reserved for scalability development.
+1273 Error reserved for scalability development.
+1274 Error reserved for scalability development.
+1275 Error reserved for scalability development.
+1276 Error reserved for scalability development.
+1277 Error reserved for scalability development.
+1278 Error reserved for scalability development.
+1279 Error reserved for scalability development.
+1280 Error reserved for scalability development.
+1281 Error reserved for scalability development.
+1282 Error reserved for scalability development.
+1283 Error reserved for scalability development.
 
-1265 마지막 에러
+1264 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
