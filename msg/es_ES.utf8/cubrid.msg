@@ -1353,7 +1353,7 @@ Verifique la ruta del archivo de claves (_keys) y asegúrese de que incluya la c
 1282 Error reserved for scalability development.
 1283 Error reserved for scalability development.
 
-1264 Ultimo error
+1284 Ultimo error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %1$d):

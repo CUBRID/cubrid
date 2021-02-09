@@ -1353,7 +1353,7 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 1282 Error reserved for scalability development.
 1283 Error reserved for scalability development.
 
-1264 Son Hata
+1284 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):

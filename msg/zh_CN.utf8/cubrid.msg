@@ -1354,7 +1354,7 @@ $ LOADDB
 1282 Error reserved for scalability development.
 1283 Error reserved for scalability development.
 
-1264 最后一个错误.
+1284 最后一个错误.
 
 $set 6 MSGCAT_SET_INTERNAL
 1 在错误子系统中错误 (line %1$d):

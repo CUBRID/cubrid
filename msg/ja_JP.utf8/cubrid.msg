@@ -1353,7 +1353,7 @@ $ LOADDB
 1282 Error reserved for scalability development.
 1283 Error reserved for scalability development.
 
-1264 ラストエラー
+1284 ラストエラー
 
 $set 6 MSGCAT_SET_INTERNAL
 1 エラーサブシステムにエラー発生(ライン %1$d):

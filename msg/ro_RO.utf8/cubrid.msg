@@ -1353,7 +1353,7 @@ Verificați calea fișierului cheie (_keys) și asigurați-vă că acesta includ
 1282 Error reserved for scalability development.
 1283 Error reserved for scalability development.
 
-1264 Ultima eroare
+1284 Ultima eroare
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):
