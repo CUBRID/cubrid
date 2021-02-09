@@ -1622,7 +1622,9 @@
 #define ER_TDE_MAX_KEY_FILE                         -1262
 #define ER_TDE_ENCRYPTION_LOGPAGE_ERORR_AND_OFF_TDE -1263
 
-#define ER_LAST_ERROR                               -1264
+#define ER_HOST_PORT_PARAMETER                      -1264
+
+#define ER_LAST_ERROR                               -1265
 
 /*
  * CAUTION!
