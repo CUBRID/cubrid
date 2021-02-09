@@ -1333,8 +1333,27 @@ $ LOADDB
 1262 キーファイルがいっぱいです。
 1263 ログページのTDE暗号化に失敗しました（ページID：%1$lld）。このページの暗号化はこれ以上試行されません。
 1264 Invalid format for configuration parameter %1s. Expected a 'hostname:port', found %2s
+1265 Error reserved for scalability development.
+1266 Error reserved for scalability development.
+1267 Error reserved for scalability development.
+1268 Error reserved for scalability development.
+1269 Error reserved for scalability development.
+1270 Error reserved for scalability development.
+1271 Error reserved for scalability development.
+1272 Error reserved for scalability development.
+1273 Error reserved for scalability development.
+1274 Error reserved for scalability development.
+1275 Error reserved for scalability development.
+1276 Error reserved for scalability development.
+1277 Error reserved for scalability development.
+1278 Error reserved for scalability development.
+1279 Error reserved for scalability development.
+1280 Error reserved for scalability development.
+1281 Error reserved for scalability development.
+1282 Error reserved for scalability development.
+1283 Error reserved for scalability development.
 
-1265 ラストエラー
+1284 ラストエラー
 
 $set 6 MSGCAT_SET_INTERNAL
 1 エラーサブシステムにエラー発生(ライン %1$d):

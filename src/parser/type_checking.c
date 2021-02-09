@@ -209,7 +209,7 @@ static PT_TYPE_ENUM pt_get_equivalent_type_with_op (const PT_ARG_TYPE def_type, 
 						    PT_OP_TYPE op);
 static PT_NODE *pt_evaluate_new_data_type (const PT_TYPE_ENUM old_type, const PT_TYPE_ENUM new_type,
 					   PT_NODE * data_type);
-static PT_TYPE_ENUM pt_get_common_collection_type (const PT_NODE * set, bool * is_multitype);
+static PT_TYPE_ENUM pt_get_common_collection_type (const PT_NODE * set, bool *is_multitype);
 static bool pt_is_collection_of_type (const PT_NODE * collection, const PT_TYPE_ENUM collection_type,
 				      const PT_TYPE_ENUM element_type);
 static bool pt_is_symmetric_type (const PT_TYPE_ENUM type_enum);
@@ -273,7 +273,7 @@ static COLLATION_RESULT pt_get_collation_info_for_collection_type (PARSER_CONTEX
 								   PT_COLL_INFER * coll_infer);
 static COLLATION_RESULT pt_get_collation_of_collection (PARSER_CONTEXT * parser, const PT_NODE * node,
 							PT_COLL_INFER * coll_infer, const bool is_inner_collection,
-							bool * is_first_element);
+							bool *is_first_element);
 static PT_NODE *pt_coerce_node_collection_of_collection (PARSER_CONTEXT * parser, PT_NODE * node, const int coll_id,
 							 const INTL_CODESET codeset, bool force_mode,
 							 bool use_collate_modifier, PT_TYPE_ENUM wrap_type_for_maybe,
@@ -5135,7 +5135,7 @@ pt_infer_common_type (const PT_OP_TYPE op, PT_TYPE_ENUM * arg1, PT_TYPE_ENUM * a
  *  are counted as one.
  */
 static PT_TYPE_ENUM
-pt_get_common_collection_type (const PT_NODE * set, bool * is_multitype)
+pt_get_common_collection_type (const PT_NODE * set, bool *is_multitype)
 {
   PT_TYPE_ENUM common_type = PT_TYPE_NONE, temp_type = PT_TYPE_NONE;
   bool is_multitype_temp = false;
@@ -5444,8 +5444,8 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
 	{
 	  PT_NODE *temp = NULL;
 	  int precision = 0, scale = 0;
-	  int units = LANG_SYS_CODESET; /* code set */
-	  int collation_id = LANG_SYS_COLLATION; /* collation_id */
+	  int units = LANG_SYS_CODESET;	/* code set */
+	  int collation_id = LANG_SYS_COLLATION;	/* collation_id */
 	  bool keep_searching = true;
 	  for (temp = arg2->data_type; temp != NULL && keep_searching; temp = temp->next)
 	    {
@@ -5530,6 +5530,7 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
 	      if (PT_IS_STRING_TYPE (common_type) && PT_IS_STRING_TYPE (temp->type_enum))
 		{
 		  /* A bigger codesets's number can represent more characters. */
+		  /* to_do : check to use functions pt_common_collation() or pt_make_cast_with_compatble_info(). */
 		  if (units < temp->info.data_type.units)
 		    {
 		      units = temp->info.data_type.units;
@@ -19939,7 +19940,7 @@ pt_fold_const_function (PARSER_CONTEXT * parser, PT_NODE * func)
 	  func_arg = func->info.function.arg_list;
 	  memset (&(func->info), 0, sizeof (func->info));
 	  func->info.value.data_value.set = func_arg;
-	  func->type_enum == PT_TYPE_SEQUENCE;
+	  func->type_enum = PT_TYPE_SEQUENCE;
 	}
     }
 
@@ -22073,7 +22074,7 @@ error:
  */
 static COLLATION_RESULT
 pt_get_collation_of_collection (PARSER_CONTEXT * parser, const PT_NODE * node, PT_COLL_INFER * coll_infer,
-				const bool is_inner_collection, bool * is_first_element)
+				const bool is_inner_collection, bool *is_first_element)
 {
   const PT_NODE *current_node;
   bool has_collation = false;
