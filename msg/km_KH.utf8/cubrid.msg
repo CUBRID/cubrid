@@ -1353,7 +1353,7 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1282 Error reserved for scalability development.
 1283 Error reserved for scalability development.
 
-1264 Last Error
+1284 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
