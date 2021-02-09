@@ -53,6 +53,7 @@
 #include "log_compress.h"
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
+#include "server_type.hpp"
 
 static void log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 				LOG_RCVINDEX rcvindex, const VPID * rcv_vpid, LOG_RCV * rcv,
@@ -754,7 +755,8 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   LSA_COPY (&log_Gl.final_restored_lsa, &log_Gl.hdr.append_lsa);
 #endif /* SERVER_MODE */
 
-  log_append_empty_record (thread_p, LOG_DUMMY_CRASH_RECOVERY, NULL);
+  if ((SERVER_TYPE)prm_get_integer_value(PRM_ID_SERVER_TYPE) != SERVER_TYPE_PAGE)
+    log_append_empty_record (thread_p, LOG_DUMMY_CRASH_RECOVERY, NULL);
 
   /*
    * Save the crash point lsa for use during the remaining recovery
