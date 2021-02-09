@@ -1643,7 +1643,7 @@
 #define ER_SCALABILITY_DEV_RESERVED_ERROR19         -1282
 #define ER_SCALABILITY_DEV_RESERVED_ERROR20         -1283
 
-#define ER_LAST_ERROR                               -1264
+#define ER_LAST_ERROR                               -1284
 
 /*
  * CAUTION!
