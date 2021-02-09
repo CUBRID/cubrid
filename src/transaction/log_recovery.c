@@ -53,16 +53,22 @@
 #include "log_compress.h"
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
+#include "log_recovery_util.hpp"
 
 static void log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 				LOG_RCVINDEX rcvindex, const VPID * rcv_vpid, LOG_RCV * rcv,
 				const LOG_LSA * rcv_lsa_ptr, LOG_TDES * tdes, LOG_ZIP * undo_unzip_ptr);
 static void log_rv_redo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 				int (*redofun) (THREAD_ENTRY * thread_p, LOG_RCV *), LOG_RCV * rcv,
-				LOG_LSA * rcv_lsa_ptr, int undo_length, char *undo_data, LOG_ZIP * redo_unzip_ptr);
+				LOG_LSA * rcv_lsa_ptr, int undo_length, const char *undo_data,
+				LOG_ZIP * redo_unzip_ptr);
 static bool log_rv_find_checkpoint (THREAD_ENTRY * thread_p, VOLID volid, LOG_LSA * rcv_lsa);
-static bool log_rv_get_unzip_log_data (THREAD_ENTRY * thread_p, int length, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
-				       LOG_ZIP * undo_unzip_ptr);
+static bool log_rv_get_unzip_undo_log_data (THREAD_ENTRY * thread_p, int length, LOG_LSA * log_lsa,
+					    LOG_PAGE * log_page_p, LOG_ZIP * undo_unzip_ptr);
+static bool log_rv_get_unzip_redo_log_data (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
+					    LOG_RCV * rcv, raii_blob < char >&area, LOG_ZIP * redo_unzip_ptr,
+					    int undo_length, const char *undo_data);
+
 static int log_rv_analysis_undo_redo (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
 static int log_rv_analysis_dummy_head_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
 static int log_rv_analysis_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
@@ -77,12 +83,12 @@ static int log_rv_analysis_sysop_start_postpone (THREAD_ENTRY * thread_p, int tr
 static int log_rv_analysis_atomic_sysop_start (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
 static int log_rv_analysis_complete (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 				     LOG_LSA * prev_lsa, bool is_media_crash, time_t * stop_at,
-				     bool * did_incom_recovery);
+				     bool *did_incom_recovery);
 static int log_rv_analysis_sysop_end (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p);
-static int log_rv_analysis_start_checkpoint (LOG_LSA * log_lsa, LOG_LSA * start_lsa, bool * may_use_checkpoint);
+static int log_rv_analysis_start_checkpoint (LOG_LSA * log_lsa, LOG_LSA * start_lsa, bool *may_use_checkpoint);
 static int log_rv_analysis_end_checkpoint (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
-					   LOG_LSA * check_point, LOG_LSA * start_redo_lsa, bool * may_use_checkpoint,
-					   bool * may_need_synch_checkpoint_2pc);
+					   LOG_LSA * check_point, LOG_LSA * start_redo_lsa, bool *may_use_checkpoint,
+					   bool *may_need_synch_checkpoint_2pc);
 static int log_rv_analysis_save_point (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
 static int log_rv_analysis_2pc_prepare (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
 static int log_rv_analysis_2pc_start (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
@@ -95,13 +101,13 @@ static int log_rv_analysis_log_end (int tran_id, LOG_LSA * log_lsa);
 static void log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type, int tran_id, LOG_LSA * log_lsa,
 				    LOG_PAGE * log_page_p, LOG_LSA * check_point, LOG_LSA * prev_lsa,
 				    LOG_LSA * start_lsa, LOG_LSA * start_redo_lsa, bool is_media_crash,
-				    time_t * stop_at, bool * did_incom_recovery, bool * may_use_checkpoint,
-				    bool * may_need_synch_checkpoint_2pc);
+				    time_t * stop_at, bool *did_incom_recovery, bool *may_use_checkpoint,
+				    bool *may_need_synch_checkpoint_2pc);
 static bool log_is_page_of_record_broken (THREAD_ENTRY * thread_p, const LOG_LSA * log_lsa,
 					  const LOG_RECORD_HEADER * log_rec_header);
 static void log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * start_redolsa,
 				   LOG_LSA * end_redo_lsa, bool ismedia_crash, time_t * stopat,
-				   bool * did_incom_recovery, INT64 * num_redo_log_records);
+				   bool *did_incom_recovery, INT64 * num_redo_log_records);
 static bool log_recovery_needs_skip_logical_redo (THREAD_ENTRY * thread_p, TRANID tran_id, LOG_RECTYPE log_rtype,
 						  LOG_RCVINDEX rcv_index, const LOG_LSA * lsa);
 static void log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const LOG_LSA * end_redo_lsa,
@@ -127,7 +133,7 @@ static int log_rv_undoredo_partial_changes_recursive (THREAD_ENTRY * thread_p, O
 						      bool is_undo);
 
 STATIC_INLINE PAGE_PTR log_rv_redo_fix_page (THREAD_ENTRY * thread_p, const VPID * vpid_rcv, LOG_RCVINDEX rcvindex)
-  __attribute__ ((ALWAYS_INLINE));
+  __attribute__((ALWAYS_INLINE));
 
 static void log_rv_simulate_runtime_worker (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void log_rv_end_simulation (THREAD_ENTRY * thread_p);
@@ -408,6 +414,7 @@ end:
   log_rv_end_simulation (thread_p);
 }
 
+
 /*
  * log_rv_redo_record - EXECUTE A REDO RECORD
  *
@@ -430,64 +437,18 @@ end:
 static void
 log_rv_redo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 		    int (*redofun) (THREAD_ENTRY * thread_p, LOG_RCV *), LOG_RCV * rcv, LOG_LSA * rcv_lsa_ptr,
-		    int undo_length, char *undo_data, LOG_ZIP * redo_unzip_ptr)
+		    int undo_length, const char *undo_data, LOG_ZIP * redo_unzip_ptr)
 {
-  char *area = NULL;
-  bool is_zip = false;
+  raii_blob < char >area;
   int error_code;
 
   /* Note the the data page rcv->pgptr has been fetched by the caller */
 
-  /*
-   * If data is contained in only one buffer, pass pointer directly.
-   * Otherwise, allocate a contiguous area, copy the data and pass this area.
-   * At the end deallocate the area.
-   */
-
-  if (ZIP_CHECK (rcv->length))
+  if (!log_rv_get_unzip_redo_log_data
+      (thread_p, log_lsa, log_page_p, rcv, area, redo_unzip_ptr, undo_length, undo_data))
     {
-      rcv->length = (int) GET_ZIP_LEN (rcv->length);
-      is_zip = true;
-    }
-
-  if (log_lsa->offset + rcv->length < (int) LOGAREA_SIZE)
-    {
-      rcv->data = (char *) log_page_p->area + log_lsa->offset;
-      log_lsa->offset += rcv->length;
-    }
-  else
-    {
-      area = (char *) malloc (rcv->length);
-      if (area == NULL)
-	{
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rvredo_rec");
-	  return;
-	}
-      /* Copy the data */
-      logpb_copy_from_log (thread_p, area, rcv->length, log_lsa, log_page_p);
-      rcv->data = area;
-    }
-
-  if (is_zip)
-    {
-      if (log_unzip (redo_unzip_ptr, rcv->length, (char *) rcv->data))
-	{
-	  if ((undo_length > 0) && (undo_data != NULL))
-	    {
-	      (void) log_diff (undo_length, undo_data, redo_unzip_ptr->data_length, redo_unzip_ptr->log_data);
-	      rcv->length = (int) redo_unzip_ptr->data_length;
-	      rcv->data = (char *) redo_unzip_ptr->log_data;
-	    }
-	  else
-	    {
-	      rcv->length = (int) redo_unzip_ptr->data_length;
-	      rcv->data = (char *) redo_unzip_ptr->log_data;
-	    }
-	}
-      else
-	{
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rvredo_rec");
-	}
+      /* some error has already been logged */
+      return;
     }
 
   if (redofun != NULL)
@@ -506,7 +467,7 @@ log_rv_redo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_p
 	    }
 
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			     "log_rvredo_rec: Error applying redo record at log_lsa=(%lld, %d), "
+			     "log_rv_redo_record: Error applying redo record at log_lsa=(%lld, %d), "
 			     "rcv = {mvccid=%llu, vpid=(%d, %d), offset = %d, data_length = %d}",
 			     (long long int) rcv_lsa_ptr->pageid, (int) rcv_lsa_ptr->offset,
 			     (long long int) rcv->mvcc_id, (int) vpid.pageid, (int) vpid.volid, (int) rcv->offset,
@@ -516,18 +477,13 @@ log_rv_redo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_p
   else
     {
       er_log_debug (ARG_FILE_LINE,
-		    "log_rvredo_rec: WARNING.. There is not a"
+		    "log_rv_redo_record: WARNING.. There is not a"
 		    " REDO function to execute. May produce recovery problems.");
     }
 
   if (rcv->pgptr != NULL)
     {
       (void) pgbuf_set_lsa (thread_p, rcv->pgptr, rcv_lsa_ptr);
-    }
-
-  if (area != NULL)
-    {
-      free_and_init (area);
     }
 }
 
@@ -558,7 +514,7 @@ log_rv_find_checkpoint (THREAD_ENTRY * thread_p, VOLID volid, LOG_LSA * rcv_lsa)
 }
 
 /*
- * get_log_data - GET UNZIP LOG DATA FROM LOG
+ * get_log_data - GET UNZIP UNDO LOG DATA FROM LOG
  *
  * return:
  *
@@ -571,8 +527,8 @@ log_rv_find_checkpoint (THREAD_ENTRY * thread_p, VOLID volid, LOG_LSA * rcv_lsa)
  *               else log_data is zip data return unzip log data
  */
 static bool
-log_rv_get_unzip_log_data (THREAD_ENTRY * thread_p, int length, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
-			   LOG_ZIP * undo_unzip_ptr)
+log_rv_get_unzip_undo_log_data (THREAD_ENTRY * thread_p, int length, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
+				LOG_ZIP * undo_unzip_ptr)
 {
   char *ptr;			/* Pointer to data to be printed */
   char *area = NULL;
@@ -634,6 +590,80 @@ log_rv_get_unzip_log_data (THREAD_ENTRY * thread_p, int length, LOG_LSA * log_ls
 
   return true;
 }
+
+/*
+ * log_rv_get_unzip_redo_log_data - GET UNZIP REDO LOG DATA FROM LOG
+ *
+ * return:
+ *
+ *   length(in): log data size
+ *   log_lsa(in/out): Log address identifier containing the log record
+ *   log_page_p(in): Log page pointer where LSA is located
+ *   undo_length(in): undo data length
+ *   undo_data(in): undo data
+ *   redo_unzip_ptr(out): extracted redo data
+ *
+ * NOTE:if log_data is unzip data return LOG_ZIP data
+ *               else log_data is zip data return unzip log data
+ */
+static bool
+log_rv_get_unzip_redo_log_data (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
+				LOG_RCV * rcv, raii_blob < char >&area, LOG_ZIP * redo_unzip_ptr,
+				int undo_length, const char *undo_data)
+{
+  bool is_zip = false;
+
+  /*
+   * If data is contained in only one buffer, pass pointer directly.
+   * Otherwise, allocate a contiguous area, copy the data and pass this area.
+   * At the end the area will de-allocate itself so make sure the assigned rcv->data
+   * pointer below does not remain dangling.
+   */
+  if (ZIP_CHECK (rcv->length))
+    {
+      rcv->length = (int) GET_ZIP_LEN (rcv->length);
+      is_zip = true;
+    }
+
+  if (log_lsa->offset + rcv->length < (int) LOGAREA_SIZE)
+    {
+      rcv->data = (char *) log_page_p->area + log_lsa->offset;
+      log_lsa->offset += rcv->length;
+    }
+  else
+    {
+      area.malloc (rcv->length);
+      if (static_cast < const char *>(area) == NULL)
+	{
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_get_unzip_redo_log_data");
+	  return false;
+	}
+      /* Copy the data */
+      logpb_copy_from_log (thread_p, area, rcv->length, log_lsa, log_page_p);
+      rcv->data = area;
+    }
+
+  if (is_zip)
+    {
+      if (log_unzip (redo_unzip_ptr, rcv->length, (char *) rcv->data))
+	{
+	  if ((undo_length > 0) && (undo_data != NULL))
+	    {
+	      (void) log_diff (undo_length, undo_data, redo_unzip_ptr->data_length, redo_unzip_ptr->log_data);
+	    }
+	  rcv->length = (int) redo_unzip_ptr->data_length;
+	  rcv->data = (char *) redo_unzip_ptr->log_data;
+	}
+      else
+	{
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_get_unzip_redo_log_data");
+	  return false;
+	}
+    }
+
+  return true;
+}
+
 
 /*
  * log_recovery - Recover information
@@ -1350,7 +1380,7 @@ log_rv_analysis_atomic_sysop_start (THREAD_ENTRY * thread_p, int tran_id, LOG_LS
  */
 static int
 log_rv_analysis_complete (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
-			  LOG_LSA * prev_lsa, bool is_media_crash, time_t * stop_at, bool * did_incom_recovery)
+			  LOG_LSA * prev_lsa, bool is_media_crash, time_t * stop_at, bool *did_incom_recovery)
 {
   LOG_REC_DONETIME *donetime;
   int tran_index;
@@ -1635,7 +1665,7 @@ log_rv_analysis_sysop_end (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_l
  * Note:
  */
 static int
-log_rv_analysis_start_checkpoint (LOG_LSA * log_lsa, LOG_LSA * start_lsa, bool * may_use_checkpoint)
+log_rv_analysis_start_checkpoint (LOG_LSA * log_lsa, LOG_LSA * start_lsa, bool *may_use_checkpoint)
 {
   /*
    * Use the checkpoint record only if it is the first record in the
@@ -1669,8 +1699,8 @@ log_rv_analysis_start_checkpoint (LOG_LSA * log_lsa, LOG_LSA * start_lsa, bool *
  */
 static int
 log_rv_analysis_end_checkpoint (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
-				LOG_LSA * check_point, LOG_LSA * start_redo_lsa, bool * may_use_checkpoint,
-				bool * may_need_synch_checkpoint_2pc)
+				LOG_LSA * check_point, LOG_LSA * start_redo_lsa, bool *may_use_checkpoint,
+				bool *may_need_synch_checkpoint_2pc)
 {
   LOG_TDES *tdes;
   LOG_REC_CHKPT *tmp_chkpt;
@@ -2213,8 +2243,8 @@ log_rv_analysis_log_end (int tran_id, LOG_LSA * log_lsa)
 static void
 log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type, int tran_id, LOG_LSA * log_lsa,
 			LOG_PAGE * log_page_p, LOG_LSA * checkpoint_lsa, LOG_LSA * prev_lsa, LOG_LSA * start_lsa,
-			LOG_LSA * start_redo_lsa, bool is_media_crash, time_t * stop_at, bool * did_incom_recovery,
-			bool * may_use_checkpoint, bool * may_need_synch_checkpoint_2pc)
+			LOG_LSA * start_redo_lsa, bool is_media_crash, time_t * stop_at, bool *did_incom_recovery,
+			bool *may_use_checkpoint, bool *may_need_synch_checkpoint_2pc)
 {
   switch (log_type)
     {
@@ -2411,7 +2441,7 @@ log_is_page_of_record_broken (THREAD_ENTRY * thread_p, const LOG_LSA * log_lsa,
 
 static void
 log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * start_redo_lsa, LOG_LSA * end_redo_lsa,
-		       bool is_media_crash, time_t * stop_at, bool * did_incom_recovery, INT64 * num_redo_log_records)
+		       bool is_media_crash, time_t * stop_at, bool *did_incom_recovery, INT64 * num_redo_log_records)
 {
   LOG_LSA checkpoint_lsa = { -1, -1 };
   LOG_LSA lsa;			/* LSA of log record to analyse */
@@ -3337,7 +3367,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	      if (is_diff_rec)
 		{
 		  /* Get Undo data */
-		  if (!log_rv_get_unzip_log_data (thread_p, temp_length, &log_lsa, log_pgptr, undo_unzip_ptr))
+		  if (!log_rv_get_unzip_undo_log_data (thread_p, temp_length, &log_lsa, log_pgptr, undo_unzip_ptr))
 		    {
 		      LSA_SET_NULL (&log_Gl.unique_stats_table.curr_rcv_rec_lsa);
 		      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_redo");
