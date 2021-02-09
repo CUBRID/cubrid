@@ -653,78 +653,53 @@ retry_poll:
 }
 #endif /* !WINDOWS */
 
-/*
- * css_tcp_master_open () -
- *   return:
- *   port(in):
- *   sockfd(in):
- */
 int
-css_tcp_master_open (int port, SOCKET * sockfd)
+css_tcp_socket_bind_listen (int port, SOCKET & sockfd)
 {
   struct sockaddr_in tcp_srv_addr;	/* server's internet socket addr */
-  struct sockaddr_un unix_srv_addr;
-  int retry_count = 0;
   int reuseaddr_flag = 1;
-  struct stat unix_socket_stat;
-
-  /*
-   * We have to create a socket ourselves and bind our well-known address to it.
-   */
+  int retry_count = 0;
 
   memset ((void *) &tcp_srv_addr, 0, sizeof (tcp_srv_addr));
   tcp_srv_addr.sin_family = AF_INET;
   tcp_srv_addr.sin_addr.s_addr = htonl (INADDR_ANY);
 
-  if (port > 0)
-    {
-      tcp_srv_addr.sin_port = htons (port);
-    }
-  else
+  if (port <= 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_PORT_ERROR, 0);
       return ERR_CSS_TCP_PORT_ERROR;
     }
+  tcp_srv_addr.sin_port = htons (port);
 
-  unix_srv_addr.sun_family = AF_UNIX;
-  strncpy (unix_srv_addr.sun_path, css_get_master_domain_path (), sizeof (unix_srv_addr.sun_path) - 1);
-
-  /*
-   * Create the socket and Bind our local address so that any
-   * client may send to us.
-   */
 
 retry:
   /*
    * Allow the new master to rebind the CUBRID port even if there are
    * clients with open connections from previous masters.
    */
-
-  sockfd[0] = socket (AF_INET, SOCK_STREAM, 0);
-  if (IS_INVALID_SOCKET (sockfd[0]))
+  sockfd = socket (AF_INET, SOCK_STREAM, 0);
+  if (IS_INVALID_SOCKET (sockfd))
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_CANNOT_CREATE_STREAM, 0);
       return ERR_CSS_TCP_CANNOT_CREATE_STREAM;
     }
 
-  if (setsockopt (sockfd[0], SOL_SOCKET, SO_REUSEADDR, (char *) &reuseaddr_flag, sizeof (reuseaddr_flag)) < 0)
+  if (setsockopt (sockfd, SOL_SOCKET, SO_REUSEADDR, (char *) &reuseaddr_flag, sizeof (reuseaddr_flag)) < 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_BIND_ABORT, 0);
-      css_shutdown_socket (sockfd[0]);
+      css_shutdown_socket (sockfd);
       return ERR_CSS_TCP_BIND_ABORT;
     }
 
-  if (bind (sockfd[0], (struct sockaddr *) &tcp_srv_addr, sizeof (tcp_srv_addr)) < 0)
+  if (bind (sockfd, (struct sockaddr *) &tcp_srv_addr, sizeof (tcp_srv_addr)) < 0)
     {
       if (errno == EADDRINUSE && retry_count <= 5)
 	{
 	  retry_count++;
-	  css_shutdown_socket (sockfd[0]);
+	  css_shutdown_socket (sockfd);
 	  (void) sleep (1);
 	  goto retry;
 	}
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_BIND_ABORT, 0);
-      css_shutdown_socket (sockfd[0]);
       return ERR_CSS_TCP_BIND_ABORT;
     }
 
@@ -732,10 +707,10 @@ retry:
    * And set the listen parameter, telling the system that we're
    * ready to accept incoming connection requests.
    */
-  if (listen (sockfd[0], css_Maximum_server_count) != 0)
+  if (listen (sockfd, css_Maximum_server_count) != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_ACCEPT_ERROR, 0);
-      css_shutdown_socket (sockfd[0]);
+      css_shutdown_socket (sockfd);
       return ERR_CSS_TCP_ACCEPT_ERROR;
     }
 
@@ -744,10 +719,35 @@ retry:
    * on exec on the socket.
    */
 #if defined(HPUX)
-  fcntl (sockfd[0], F_SETFD, 1);
+  fcntl (sockfd, F_SETFD, 1);
 #else /* HPUX */
-  ioctl (sockfd[0], FIOCLEX, 0);
+  ioctl (sockfd, FIOCLEX, 0);
 #endif /* HPUX */
+
+  return NO_ERROR;
+}
+
+/*
+ * css_master_open_sockets () -
+ *   return:
+ *   port(in):
+ *   sockfd(in):
+ */
+int
+css_master_open_sockets (int port, SOCKET * sockfd)
+{
+  struct sockaddr_un unix_srv_addr;
+  int retry_count = 0;
+  int reuseaddr_flag = 1;
+  struct stat unix_socket_stat;
+
+  // create tcp socket
+  int rc = css_tcp_socket_bind_listen (port, sockfd[0]);
+
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
 
   if (access (css_get_master_domain_path (), F_OK) == 0)
     {
@@ -776,6 +776,9 @@ retry:
 	  return ERR_CSS_UNIX_DOMAIN_SOCKET_FILE_EXIST;
 	}
     }
+
+  unix_srv_addr.sun_family = AF_UNIX;
+  strncpy (unix_srv_addr.sun_path, css_get_master_domain_path (), sizeof (unix_srv_addr.sun_path) - 1);
 
 retry2:
 
