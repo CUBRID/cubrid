@@ -18,19 +18,27 @@
 
 #include "server_type.hpp"
 
-#include <string>
+#include "communication_server_channel.hpp"
+#include "connection_defs.h"
+#include "error_manager.h"
+#include "server_support.h"
 #include "system_parameter.h"
 
+#include <string>
+
 static SERVER_TYPE g_server_type;
+static std::string g_pageserver_hostname;
+static int g_pageserver_port;
 
-void init_page_server_hosts ();
+void init_page_server_hosts (const char* db_name);
+void connect_to_pageserver (std::string host, int port, const char* db_name);
 
-void init_server_type ()
+void init_server_type (const char* db_name)
 {
   g_server_type = (SERVER_TYPE) prm_get_integer_value (PRM_ID_SERVER_TYPE);
   if (g_server_type == SERVER_TYPE_TRANSACTION)
     {
-      init_page_server_hosts ();
+      init_page_server_hosts (db_name);
     }
 }
 
@@ -39,7 +47,7 @@ SERVER_TYPE get_server_type ()
   return g_server_type;
 }
 
-void init_page_server_hosts ()
+void init_page_server_hosts (const char* db_name)
 {
   assert (g_server_type == SERVER_TYPE_TRANSACTION);
   std::string hosts = prm_get_string_value (PRM_ID_PAGE_SERVER_HOSTS);
@@ -73,8 +81,37 @@ void init_page_server_hosts ()
 	      hosts.c_str ());
       return;
     }
+  g_pageserver_port = port;
 
   // host and port seem to be OK
-  std::string host = hosts.substr (0, col_pos);
-  er_log_debug (ARG_FILE_LINE, "Page server hosts: %s port: %d\n", host.c_str (), port);
+  g_pageserver_hostname = hosts.substr (0, col_pos);
+  er_log_debug (ARG_FILE_LINE, "Page server hosts: %s port: %d\n", g_pageserver_hostname.c_str (), g_pageserver_port);
+
+  connect_to_pageserver (g_pageserver_hostname, g_pageserver_port, db_name);
+}
+
+void connect_to_pageserver (std::string host, int port, const char* db_name)
+{
+  assert (get_server_type () == SERVER_TYPE_TRANSACTION);
+
+  // connect to page server
+  cubcomm::server_channel srv_chn (db_name);
+
+  srv_chn.set_channel_name ("TODO");
+  srv_chn.set_debug_dump_data (true); // TODO: is_debug_communication_data_dump_enabled ());
+
+  css_error_code comm_error_code = srv_chn.connect (host.c_str (), port, CMD_SERVER_SERVER_CONNECT);
+  if (comm_error_code != css_error_code::NO_ERRORS)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_RESERVED_2, 3, srv_chn.get_channel_id ().c_str (),
+	      comm_error_code, "");
+      return;
+    }
+
+  if (!srv_chn.send_int (static_cast <int> (cubcomm::server_server::CONNECT_TRANSACTION_SERVER)))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_RESERVED_2, 3, srv_chn.get_channel_id ().c_str (),
+	      comm_error_code, "");
+      return;
+    }
 }

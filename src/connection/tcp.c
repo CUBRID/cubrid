@@ -1,18 +1,19 @@
 /*
- * Copyright 2008 Search Solution Corporation
- * Copyright 2016 CUBRID Corporation
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -133,7 +134,7 @@ css_gethostname (char *name, size_t namelen)
   int gai_error = getaddrinfo (hostname, NULL, &hints, &result);
   if (gai_error != 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GAI_ERROR, 1, hostname);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GAI_ERROR, 2, gai_error, gai_strerror (gai_error));
       return ER_GAI_ERROR;
     }
 
@@ -248,7 +249,7 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
 
       if (gethostbyname_r (host, &hent, buf, sizeof (buf), &hp, &herr) != 0 || hp == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, host);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 0);
 	  return ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	}
       memcpy ((void *) ip_addr, (void *) hent.h_addr, hent.h_length);
@@ -259,7 +260,7 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
 
       if (gethostbyname_r (host, &hent, buf, sizeof (buf), &herr) == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, host);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 0);
 	  return ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	}
       memcpy ((void *) ip_addr, (void *) hent.h_addr, hent.h_length);
@@ -269,7 +270,7 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
 
       if (gethostbyname_r (host, &hent, &ht_data) == -1)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, host);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 0);
 	  return ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	}
       memcpy ((void *) ip_addr, (void *) hent.h_addr, hent.h_length);
@@ -284,7 +285,7 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
       if (hp == NULL)
 	{
 	  pthread_mutex_unlock (&gethostbyname_lock);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, host);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 0);
 	  return ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	}
       memcpy ((void *) ip_addr, (void *) hp->h_addr, hp->h_length);
@@ -293,6 +294,24 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
     }
 
   return NO_ERROR;
+}
+
+/*
+ * css_get_localhost_unix_socket_path()
+ *   return: unix socket path if it exists for <port>, nullptr otherwise
+ *   port(in): TCP port
+ */
+char *
+css_get_localhost_unix_socket_path (int port)
+{
+  if (port == prm_get_master_port_id ())
+    {
+      return css_get_master_domain_path ();
+    }
+  else
+    {
+      return nullptr;
+    }
 }
 
 /*
@@ -386,11 +405,22 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t * sl
    * If it is, use Unix domain socket rather than TCP for the performance
    */
   memcpy ((void *) &in_addr, (void *) &tcp_saddr.sin_addr, sizeof (in_addr));
-  if (in_addr == inet_addr ("127.0.0.1"))
+
+  bool use_unix_socket = (in_addr == inet_addr ("127.0.0.1"));
+  char *unix_socket_path = nullptr;
+
+  if (use_unix_socket)
+    {
+      // check unix socket path for portid exists
+      unix_socket_path = css_get_localhost_unix_socket_path (port);
+      use_unix_socket = (unix_socket_path != nullptr);
+    }
+
+  if (use_unix_socket)
     {
       memset ((void *) &unix_saddr, 0, sizeof (unix_saddr));
       unix_saddr.sun_family = AF_UNIX;
-      strncpy (unix_saddr.sun_path, css_get_master_domain_path (), sizeof (unix_saddr.sun_path) - 1);
+      strncpy (unix_saddr.sun_path, unix_socket_path, sizeof (unix_saddr.sun_path) - 1);
       *slen = sizeof (unix_saddr);
       memcpy ((void *) saddr, (void *) &unix_saddr, *slen);
     }
@@ -653,78 +683,53 @@ retry_poll:
 }
 #endif /* !WINDOWS */
 
-/*
- * css_tcp_master_open () -
- *   return:
- *   port(in):
- *   sockfd(in):
- */
 int
-css_tcp_master_open (int port, SOCKET * sockfd)
+css_tcp_socket_bind_listen (int port, SOCKET & sockfd)
 {
   struct sockaddr_in tcp_srv_addr;	/* server's internet socket addr */
-  struct sockaddr_un unix_srv_addr;
-  int retry_count = 0;
   int reuseaddr_flag = 1;
-  struct stat unix_socket_stat;
-
-  /*
-   * We have to create a socket ourselves and bind our well-known address to it.
-   */
+  int retry_count = 0;
 
   memset ((void *) &tcp_srv_addr, 0, sizeof (tcp_srv_addr));
   tcp_srv_addr.sin_family = AF_INET;
   tcp_srv_addr.sin_addr.s_addr = htonl (INADDR_ANY);
 
-  if (port > 0)
-    {
-      tcp_srv_addr.sin_port = htons (port);
-    }
-  else
+  if (port <= 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_PORT_ERROR, 0);
       return ERR_CSS_TCP_PORT_ERROR;
     }
+  tcp_srv_addr.sin_port = htons (port);
 
-  unix_srv_addr.sun_family = AF_UNIX;
-  strncpy (unix_srv_addr.sun_path, css_get_master_domain_path (), sizeof (unix_srv_addr.sun_path) - 1);
-
-  /*
-   * Create the socket and Bind our local address so that any
-   * client may send to us.
-   */
 
 retry:
   /*
    * Allow the new master to rebind the CUBRID port even if there are
    * clients with open connections from previous masters.
    */
-
-  sockfd[0] = socket (AF_INET, SOCK_STREAM, 0);
-  if (IS_INVALID_SOCKET (sockfd[0]))
+  sockfd = socket (AF_INET, SOCK_STREAM, 0);
+  if (IS_INVALID_SOCKET (sockfd))
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_CANNOT_CREATE_STREAM, 0);
       return ERR_CSS_TCP_CANNOT_CREATE_STREAM;
     }
 
-  if (setsockopt (sockfd[0], SOL_SOCKET, SO_REUSEADDR, (char *) &reuseaddr_flag, sizeof (reuseaddr_flag)) < 0)
+  if (setsockopt (sockfd, SOL_SOCKET, SO_REUSEADDR, (char *) &reuseaddr_flag, sizeof (reuseaddr_flag)) < 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_BIND_ABORT, 0);
-      css_shutdown_socket (sockfd[0]);
+      css_shutdown_socket (sockfd);
       return ERR_CSS_TCP_BIND_ABORT;
     }
 
-  if (bind (sockfd[0], (struct sockaddr *) &tcp_srv_addr, sizeof (tcp_srv_addr)) < 0)
+  if (bind (sockfd, (struct sockaddr *) &tcp_srv_addr, sizeof (tcp_srv_addr)) < 0)
     {
       if (errno == EADDRINUSE && retry_count <= 5)
 	{
 	  retry_count++;
-	  css_shutdown_socket (sockfd[0]);
+	  css_shutdown_socket (sockfd);
 	  (void) sleep (1);
 	  goto retry;
 	}
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_BIND_ABORT, 0);
-      css_shutdown_socket (sockfd[0]);
       return ERR_CSS_TCP_BIND_ABORT;
     }
 
@@ -732,10 +737,10 @@ retry:
    * And set the listen parameter, telling the system that we're
    * ready to accept incoming connection requests.
    */
-  if (listen (sockfd[0], css_Maximum_server_count) != 0)
+  if (listen (sockfd, css_Maximum_server_count) != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_ACCEPT_ERROR, 0);
-      css_shutdown_socket (sockfd[0]);
+      css_shutdown_socket (sockfd);
       return ERR_CSS_TCP_ACCEPT_ERROR;
     }
 
@@ -744,10 +749,35 @@ retry:
    * on exec on the socket.
    */
 #if defined(HPUX)
-  fcntl (sockfd[0], F_SETFD, 1);
+  fcntl (sockfd, F_SETFD, 1);
 #else /* HPUX */
-  ioctl (sockfd[0], FIOCLEX, 0);
+  ioctl (sockfd, FIOCLEX, 0);
 #endif /* HPUX */
+
+  return NO_ERROR;
+}
+
+/*
+ * css_master_open_sockets () -
+ *   return:
+ *   port(in):
+ *   sockfd(in):
+ */
+int
+css_master_open_sockets (int port, SOCKET * sockfd)
+{
+  struct sockaddr_un unix_srv_addr;
+  int retry_count = 0;
+  int reuseaddr_flag = 1;
+  struct stat unix_socket_stat;
+
+  // create tcp socket
+  int rc = css_tcp_socket_bind_listen (port, sockfd[0]);
+
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
 
   if (access (css_get_master_domain_path (), F_OK) == 0)
     {
@@ -776,6 +806,9 @@ retry:
 	  return ERR_CSS_UNIX_DOMAIN_SOCKET_FILE_EXIST;
 	}
     }
+
+  unix_srv_addr.sun_family = AF_UNIX;
+  strncpy (unix_srv_addr.sun_path, css_get_master_domain_path (), sizeof (unix_srv_addr.sun_path) - 1);
 
 retry2:
 

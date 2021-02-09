@@ -2110,7 +2110,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
   common_ha_mode = HA_GET_MODE ();
 
-  init_server_type ();
   er_log_debug (ARG_FILE_LINE, "Starting server type: %s\n",
 		get_server_type () == SERVER_TYPE_PAGE ? "page" : "transaction");
 
@@ -2227,6 +2226,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       error_code = ER_BO_CANT_LOAD_SYSPRM;
       goto error;
     }
+
+  init_server_type (db_name);
 
   if (common_ha_mode != prm_get_integer_value (PRM_ID_HA_MODE) && !HA_DISABLED ())
     {
