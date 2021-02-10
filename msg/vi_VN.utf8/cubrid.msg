@@ -1284,7 +1284,7 @@ $ LOADDB
 1214 Reserved error for JSON.
 1215 No more data to read from stream %1$s at position %2$lld, amount %3$zu.
 1216 Invalid object id %1$d when trying to unpack.
-1217 Error in connection with page server.
+1217 Reserved error for stream/replication.
 1218 Reserved error for stream/replication.
 1219 Reserved error for stream/replication.
 1220 Reserved error for stream/replication.
@@ -1333,7 +1333,7 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1262 The key file is full.
 1263 It fails to TDE-encrypt the log page (pageid: %1$lld). It won't be tried to encrypt this page any longer.
 1264 Invalid format for configuration parameter %1s. Expected a 'hostname:port', found %2s
-1265 Error reserved for scalability development.
+1265 Error connecting with the page server at %s.
 1266 Error reserved for scalability development.
 1267 Error reserved for scalability development.
 1268 Error reserved for scalability development.

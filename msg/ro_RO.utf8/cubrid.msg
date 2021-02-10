@@ -1284,7 +1284,7 @@ $ LOADDB
 1214 Reserved error for JSON.
 1215 Nu mai există suficiente date de citit din stream-ul %1$s de la poziţia %2$lld, dimensiunea %3$zu.
 1216 Id-ul despachetat: %1$d, nu este valid.
-1217 Error in connection with page server.
+1217 Reserved error for stream/replication.
 1218 Reserved error for stream/replication.
 1219 Reserved error for stream/replication.
 1220 Reserved error for stream/replication.
@@ -1333,7 +1333,7 @@ Verificați calea fișierului cheie (_keys) și asigurați-vă că acesta includ
 1262 Fișierul cheie este plin.
 1263 Nu criptează TDE pagina jurnalului (pageid: %1$lld). Nu va mai fi încercat să criptați această pagină.
 1264 Invalid format for configuration parameter %1s. Expected a 'hostname:port', found %2s
-1265 Error reserved for scalability development.
+1265 Error connecting with the page server at %s.
 1266 Error reserved for scalability development.
 1267 Error reserved for scalability development.
 1268 Error reserved for scalability development.

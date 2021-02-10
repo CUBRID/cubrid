@@ -1284,7 +1284,7 @@ $ LOADDB
 1214 Reserved error for JSON.
 1215 %2$lld pozisyonunda stream %1$s'dan okunacak veri yok, %3$zu değeri.
 1216 Paketi açmaya çalışırken geçersiz nesne kimliği %1$d.
-1217 Error in connection with page server.
+1217 Reserved error for stream/replication.
 1218 Reserved error for stream/replication.
 1219 Reserved error for stream/replication.
 1220 Reserved error for stream/replication.
@@ -1333,7 +1333,7 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 1262 Anahtar dosyası dolu.
 1263 Günlük sayfasını TDE şifreleyemiyor (pageid: %1$lld). Artık bu sayfayı şifrelemeye çalışılmayacak.
 1264 Invalid format for configuration parameter %1s. Expected a 'hostname:port', found %2s
-1265 Error reserved for scalability development.
+1265 Error connecting with the page server at %s.
 1266 Error reserved for scalability development.
 1267 Error reserved for scalability development.
 1268 Error reserved for scalability development.
