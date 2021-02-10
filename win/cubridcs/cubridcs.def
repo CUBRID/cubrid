@@ -28,7 +28,7 @@ EXPORTS
     css_send_request
     css_shutdown_socket
     css_tcp_master_datagram
-    css_tcp_master_open
+    css_master_open_sockets
     css_transfer_fd
     css_windows_shutdown
     css_windows_startup
