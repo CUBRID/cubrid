@@ -1284,7 +1284,7 @@ $ LOADDB
 1214 Reserved error for JSON.
 1215 Non ci sono più dati da leggere dal flusso %1$s in posizione %2$lld, quantità %3$zu.
 1216 ID oggetto non valido %1$d quando si tenta di decomprimere.
-1217 Error in connection with page server.
+1217 Reserved error for stream/replication.
 1218 Reserved error for stream/replication.
 1219 Reserved error for stream/replication.
 1220 Reserved error for stream/replication.
@@ -1333,7 +1333,7 @@ Controllare il percorso del file della chiave (_keys) e assicurarsi che includa 
 1262 Il file della chiave è pieno.
 1263 Impossibile crittografare TDE la pagina di registro (pageid: %1$lld). Non si tenterà più di crittografare questa pagina.
 1264 Invalid format for configuration parameter %1s. Expected a 'hostname:port', found %2s
-1265 Error reserved for scalability development.
+1265 Error connecting with the page server at %s.
 1266 Error reserved for scalability development.
 1267 Error reserved for scalability development.
 1268 Error reserved for scalability development.
