@@ -637,12 +637,10 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERV
   SOCKET_QUEUE_ENTRY *temp;
   char *server_name = NULL;
   int name_length, buffer;
-printf("^^ existing server, receiving data...\n");
   name_length = 1024;
   if (css_receive_data (conn, rid, &server_name, &name_length, -1) == NO_ERRORS && server_name != NULL)
     {
       server_name[name_length] = 0;
-printf("^^ data received\n");
       temp = css_return_entry_of_server (server_name, css_Master_socket_anchor);
       if (temp != NULL
 #if !defined(WINDOWS)
@@ -650,13 +648,11 @@ printf("^^ data received\n");
 #endif /* !WINDOWS */
 	)
 	{
-printf("^^ temp != null...\n");
 	  if (temp->port_id == -1)
 	    {
 	      /* use old style connection */
 	      if (IS_INVALID_SOCKET (temp->fd))
 		{
-printf("^^ invalid!!\n");
 		  css_reject_client_request (conn, rid, SERVER_STARTED);
 		  free_and_init (server_name);
 		  css_free_conn (conn);
@@ -672,7 +668,6 @@ printf("^^ invalid!!\n");
 		      css_free_conn (conn);
 		      return;
 		    }
-printf("^^^ send to existing...\n");
 #endif
 		  if (css_send_new_request_to_server (temp->fd, conn->fd, rid, request))
 		    {
@@ -711,7 +706,6 @@ printf("^^^ send to existing...\n");
 	}
       css_reject_client_request (conn, rid, SERVER_NOT_FOUND);
     }
-printf("^^ css free conn...\n");
   css_free_conn (conn);
   if (server_name != NULL)
     {
@@ -769,7 +763,6 @@ css_process_new_connection (SOCKET fd)
 	  css_register_new_server2 (conn, rid);
 	  break;
 	case CMD_SERVER_SERVER_CONNECT:
-	printf("____master.c server_server___\n");
 	  css_send_to_existing_server (conn, rid, SERVER_SERVER_CONNECT);
 	  break;
 	default:

@@ -2630,7 +2630,7 @@ xacl_reload (THREAD_ENTRY * thread_p)
 static void
 css_process_new_transaction_server (cubcomm::channel && chn)
 {
-  printf ("new_slave...\n");
+  er_log_debug (ARG_FILE_LINE, "transaction server connected\n");
 }
 
 void
