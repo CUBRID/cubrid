@@ -263,7 +263,7 @@ css_master_init (int cport, SOCKET * clientfd)
   pthread_mutex_init (&css_Master_socket_anchor_lock, NULL);
 #endif
 
-  return (css_tcp_master_open (cport, clientfd));
+  return (css_master_open_sockets (cport, clientfd));
 }
 
 /*
