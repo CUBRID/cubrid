@@ -3972,11 +3972,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		  MVCCID_FORWARD (log_Gl.hdr.mvcc_next_id);
 		}
 
-	      if (is_mvcc_op)
-		{
-		  /* Save last MVCC operation LOG_LSA. */
-		  LSA_COPY (&log_Gl.hdr.mvcc_op_log_lsa, &rcv_lsa);
-		}
+	      /* Save last MVCC operation LOG_LSA. */
+	      LSA_COPY (&log_Gl.hdr.mvcc_op_log_lsa, &rcv_lsa);
 	      break;
 
 	    case LOG_UNDO_DATA:
