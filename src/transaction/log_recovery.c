@@ -414,7 +414,6 @@ end:
   log_rv_end_simulation (thread_p);
 }
 
-
 /*
  * log_rv_redo_record - EXECUTE A REDO RECORD
  *
@@ -440,7 +439,7 @@ log_rv_redo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_p
 		    int undo_length, const char *undo_data, LOG_ZIP * redo_unzip_ptr)
 {
   // *INDENT-OFF*
-  raii_blob<char> area;
+  raii_blob<char> area { nullptr, ::free };
   // *INDENT-ON*
   int error_code;
 
@@ -634,15 +633,15 @@ log_rv_get_unzip_redo_log_data (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_
     }
   else
     {
-      area.malloc (rcv->length);
-      if (static_cast < const char *>(area) == NULL)
+      area.reset (reinterpret_cast < char *>(::malloc (rcv->length)));
+      if (area == nullptr)
 	{
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_get_unzip_redo_log_data");
 	  return false;
 	}
       /* Copy the data */
-      logpb_copy_from_log (thread_p, area, rcv->length, log_lsa, log_page_p);
-      rcv->data = area;
+      logpb_copy_from_log (thread_p, area.get (), rcv->length, log_lsa, log_page_p);
+      rcv->data = area.get ();
     }
 
   if (is_zip)
