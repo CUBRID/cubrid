@@ -103,15 +103,15 @@ void connect_to_pageserver (std::string host, int port, const char* db_name)
   css_error_code comm_error_code = srv_chn.connect (host.c_str (), port, CMD_SERVER_SERVER_CONNECT);
   if (comm_error_code != css_error_code::NO_ERRORS)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_RESERVED_2, 3, srv_chn.get_channel_id ().c_str (),
-	      comm_error_code, "");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_PAGESERVER_CONNECTION, 3, srv_chn.get_channel_id ().c_str (),
+	      comm_error_code, "Couldn't connect to page server.");
       return;
     }
 
   if (!srv_chn.send_int (static_cast <int> (cubcomm::server_server::CONNECT_TRANSACTION_SERVER)))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_RESERVED_2, 3, srv_chn.get_channel_id ().c_str (),
-	      comm_error_code, "");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_PAGESERVER_CONNECTION, 3, srv_chn.get_channel_id ().c_str (),
+	      comm_error_code, "Couldn't send to page server");
       return;
     }
 }

@@ -1284,7 +1284,7 @@ $ LOADDB
 1214 Reserved error for JSON.
 1215 %2$lld pozisyonunda stream %1$s'dan okunacak veri yok, %3$zu değeri.
 1216 Paketi açmaya çalışırken geçersiz nesne kimliği %1$d.
-1217 Reserved error for stream/replication.
+1217 Error in connection with page server.
 1218 Reserved error for stream/replication.
 1219 Reserved error for stream/replication.
 1220 Reserved error for stream/replication.

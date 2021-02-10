@@ -1284,7 +1284,7 @@ $ LOADDB
 1214 Reserved error for JSON.
 1215 Nu mai există suficiente date de citit din stream-ul %1$s de la poziţia %2$lld, dimensiunea %3$zu.
 1216 Id-ul despachetat: %1$d, nu este valid.
-1217 Reserved error for stream/replication.
+1217 Error in connection with page server.
 1218 Reserved error for stream/replication.
 1219 Reserved error for stream/replication.
 1220 Reserved error for stream/replication.

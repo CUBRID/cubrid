@@ -1284,7 +1284,7 @@ $ LOADDB
 1214 Reserved error for JSON.
 1215 Non ci sono più dati da leggere dal flusso %1$s in posizione %2$lld, quantità %3$zu.
 1216 ID oggetto non valido %1$d quando si tenta di decomprimere.
-1217 Reserved error for stream/replication.
+1217 Error in connection with page server.
 1218 Reserved error for stream/replication.
 1219 Reserved error for stream/replication.
 1220 Reserved error for stream/replication.
