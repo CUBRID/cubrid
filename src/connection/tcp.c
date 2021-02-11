@@ -133,7 +133,7 @@ css_gethostname (char *name, size_t namelen)
   int gai_error = getaddrinfo (hostname, NULL, &hints, &result);
   if (gai_error != 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GAI_ERROR, 1, hostname);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GAI_ERROR, 2, gai_error, gai_strerror (gai_error));
       return ER_GAI_ERROR;
     }
 
@@ -248,7 +248,7 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
 
       if (gethostbyname_r (host, &hent, buf, sizeof (buf), &hp, &herr) != 0 || hp == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, host);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 0);
 	  return ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	}
       memcpy ((void *) ip_addr, (void *) hent.h_addr, hent.h_length);
@@ -259,7 +259,7 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
 
       if (gethostbyname_r (host, &hent, buf, sizeof (buf), &herr) == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, host);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 0);
 	  return ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	}
       memcpy ((void *) ip_addr, (void *) hent.h_addr, hent.h_length);
@@ -269,7 +269,7 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
 
       if (gethostbyname_r (host, &hent, &ht_data) == -1)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, host);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 0);
 	  return ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	}
       memcpy ((void *) ip_addr, (void *) hent.h_addr, hent.h_length);
@@ -284,7 +284,7 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
       if (hp == NULL)
 	{
 	  pthread_mutex_unlock (&gethostbyname_lock);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, host);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 0);
 	  return ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	}
       memcpy ((void *) ip_addr, (void *) hp->h_addr, hp->h_length);
@@ -293,6 +293,24 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
     }
 
   return NO_ERROR;
+}
+
+/*
+ * css_get_localhost_unix_socket_path()
+ *   return: unix socket path if it exists for <port>, nullptr otherwise
+ *   port(in): TCP port
+ */
+char *
+css_get_localhost_unix_socket_path (int port)
+{
+  if (port == prm_get_master_port_id ())
+    {
+      return css_get_master_domain_path ();
+    }
+  else
+    {
+      return nullptr;
+    }
 }
 
 /*
@@ -386,11 +404,22 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t * sl
    * If it is, use Unix domain socket rather than TCP for the performance
    */
   memcpy ((void *) &in_addr, (void *) &tcp_saddr.sin_addr, sizeof (in_addr));
-  if (in_addr == inet_addr ("127.0.0.1"))
+
+  bool use_unix_socket = (in_addr == inet_addr ("127.0.0.1"));
+  char *unix_socket_path = nullptr;
+
+  if (use_unix_socket)
+    {
+      // check unix socket path for portid exists
+      unix_socket_path = css_get_localhost_unix_socket_path (port);
+      use_unix_socket = (unix_socket_path != nullptr);
+    }
+
+  if (use_unix_socket)
     {
       memset ((void *) &unix_saddr, 0, sizeof (unix_saddr));
       unix_saddr.sun_family = AF_UNIX;
-      strncpy (unix_saddr.sun_path, css_get_master_domain_path (), sizeof (unix_saddr.sun_path) - 1);
+      strncpy (unix_saddr.sun_path, unix_socket_path, sizeof (unix_saddr.sun_path) - 1);
       *slen = sizeof (unix_saddr);
       memcpy ((void *) saddr, (void *) &unix_saddr, *slen);
     }
