@@ -637,10 +637,10 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERV
   SOCKET_QUEUE_ENTRY *temp;
   char *server_name = NULL;
   int name_length, buffer;
-
   name_length = 1024;
   if (css_receive_data (conn, rid, &server_name, &name_length, -1) == NO_ERRORS && server_name != NULL)
     {
+      server_name[name_length] = 0;
       temp = css_return_entry_of_server (server_name, css_Master_socket_anchor);
       if (temp != NULL
 #if !defined(WINDOWS)
@@ -761,6 +761,9 @@ css_process_new_connection (SOCKET fd)
 	case SERVER_REQUEST_NEW:	/* request from a new server */
 	  /* here the server wants to manage its own connection port */
 	  css_register_new_server2 (conn, rid);
+	  break;
+	case CMD_SERVER_SERVER_CONNECT:
+	  css_send_to_existing_server (conn, rid, SERVER_SERVER_CONNECT);
 	  break;
 	default:
 	  css_free_conn (conn);

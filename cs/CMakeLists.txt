@@ -172,7 +172,12 @@ set(CONNECTION_SOURCES
   ${CONNECTION_DIR}/connection_support.c
   )
 
+set(COMMUNICATION_HEADERS
+  ${COMMUNICATION_DIR}/communication_channel.hpp
+  )
+
 set(COMMUNICATION_SOURCES
+  ${COMMUNICATION_DIR}/communication_channel.cpp
   ${COMMUNICATION_DIR}/network_interface_cl.c
   ${COMMUNICATION_DIR}/network_cl.c
   )

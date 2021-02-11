@@ -31,6 +31,7 @@
 
 #if !defined (WINDOWS)
 #include <sys/socket.h>
+#include <netinet/in.h>		// sockaddr_in
 #endif /* !WINDOWS */
 
 extern int css_gethostname (char *name, size_t namelen);
