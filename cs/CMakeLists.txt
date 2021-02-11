@@ -181,7 +181,6 @@ set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/communication_channel.cpp
   ${COMMUNICATION_DIR}/network_interface_cl.c
   ${COMMUNICATION_DIR}/network_cl.c
-  ${COMMUNICATION_DIR}/server_server.c
   )
 
 set(PARSER_SOURCES

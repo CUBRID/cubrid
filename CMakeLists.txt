@@ -1,19 +1,19 @@
 #
 #  Copyright 2008 Search Solution Corporation
 #  Copyright 2016 CUBRID Corporation
-# 
+#
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
 #   You may obtain a copy of the License at
-# 
+#
 #       http://www.apache.org/licenses/LICENSE-2.0
-# 
+#
 #   Unless required by applicable law or agreed to in writing, software
 #   distributed under the License is distributed on an "AS IS" BASIS,
 #   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
-# 
+#
 #
 message(STATUS "======== CMakeLists.txt")
 
@@ -113,11 +113,11 @@ endfunction(target_external_dependencies)
 # FIXME: linux 32bit build mode not working now
 option(ENABLE_32BIT "Build for 32-bit banaries (on 64-bit platform)" OFF)
 option(ENABLE_SYSTEMTAP "Enable dynamic tracing support using systemtap" ${ENABLE_SYSTEMTAP_DEFAULT})
+option(UNIT_TESTS "Unit tests" ON)
 option(USE_DUMA "Use Detect Unintended Memory Access library" OFF)
 option(USE_CUBRID_ENV "Use CUBRID environment variables" ON)
 option(WITH_JDBC "Build JDBC driver" ON)
 option(WITH_CMSERVER "Build with Manager server" ON)
-option(UNIT_TESTS "Unit tests" OFF)
 
 # options for external libraries (BUNDLED, EXTERAL or SYSTEM)
 # expat library sources URL
@@ -1036,7 +1036,7 @@ list(APPEND EP_INCLUDES ${LIBEDIT_INCLUDES})
 # LZ4
 #
 set(LZ4_TARGET lz4)
-if(WIN32) # msvc-built lz4 v1.9.2 libraries 
+if(WIN32) # msvc-built lz4 v1.9.2 libraries
   set(LZ4_INCLUDES ${WINDOWS_EXTERNAL_DIR}/lz4/include)
   set(LZ4_LIBS ${WINDOWS_EXTERNAL_DIR}/lz4/bin/liblz4.lib)
   set(LZ4_DLL ${WINDOWS_EXTERNAL_DIR}/lz4/bin/liblz4.dll)
