@@ -54,6 +54,7 @@
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
 #include "log_recovery_util.hpp"
+#include "log_reader.hpp"
 
 static void log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 				LOG_RCVINDEX rcvindex, const VPID * rcv_vpid, LOG_RCV * rcv,
@@ -3060,10 +3061,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		   time_t * stopat)
 {
   LOG_LSA lsa;			/* LSA of log record to redo */
-  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
-  LOG_PAGE *log_pgptr = NULL;	/* Log page pointer where LSA is located */
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf; // TODO: delete
+  LOG_PAGE *log_pgptr = NULL;	/* Log page pointer where LSA is located */ // TODO delete
   LOG_LSA log_lsa;
-  LOG_RECORD_HEADER *log_rec = NULL;	/* Pointer to log record */
 
   volatile TRANID tran_id;
   volatile LOG_RECTYPE log_rtype;
@@ -3071,7 +3071,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   LOG_ZIP *redo_unzip_ptr = NULL;
   bool is_mvcc_op = false;
 
-  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  log_reader log_pgptr_reader;
+
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT); // TODO: delete
 
   /*
    * GO FORWARD, redoing records of all transactions including aborted ones.
@@ -3092,7 +3094,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
       lsa.offset = NULL_OFFSET;
     }
 
-  log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
+  log_pgptr = (LOG_PAGE *) aligned_log_pgbuf; // TODO: delete
 
   undo_unzip_ptr = log_zip_alloc (LOGAREA_SIZE);
   redo_unzip_ptr = log_zip_alloc (LOGAREA_SIZE);
@@ -3115,7 +3117,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
     {
       /* Fetch the page where the LSA record to undo is located */
       LSA_COPY (&log_lsa, &lsa);
-      if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
+      if (log_pgptr_reader.set_lsa(log_lsa) != NO_ERROR)
+      //if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
 	{
 	  if (end_redo_lsa != NULL && (LSA_ISNULL (end_redo_lsa) || LSA_GT (&lsa, end_redo_lsa)))
 	    {
@@ -3146,7 +3149,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	   * log record. This log_record was completed later. Thus, we have to
 	   * find the offset by searching for the next log_record in the page
 	   */
-	  if (lsa.offset == NULL_OFFSET && (lsa.offset = log_pgptr->hdr.offset) == NULL_OFFSET)
+	  if (lsa.offset == NULL_OFFSET && (lsa.offset = log_pgptr_reader.get_page_header().offset /*log_pgptr->hdr.offset*/) == NULL_OFFSET) // TODO
 	    {
 	      /* Continue with next pageid */
 	      if (logpb_is_page_in_archive (log_lsa.pageid))
@@ -3164,7 +3167,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 	  /* Find the log record */
 	  log_lsa.offset = lsa.offset;
-	  log_rec = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &log_lsa);
+	  const LOG_RECORD_HEADER *log_rec = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &log_lsa); /* Pointer to log record */
 
 	  tran_id = log_rec->trid;
 	  log_rtype = log_rec->type;
