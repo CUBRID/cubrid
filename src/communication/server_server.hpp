@@ -87,21 +87,21 @@ namespace cubcomm
     return -33;
   }
 
-//  template <typename ClientMsgId, typename ServerMsgId>
-//  template <typename ... PackableArgs>
-//  int request_client_server<ClientMsgId, ServerMsgId>::send (ClientMsgId msgid, const PackableArgs &... args)
-//  {
-//    printf("send...\n");
-//    return -44;
-//  }
-
   template <typename ClientMsgId, typename ServerMsgId>
-  template <ClientMsgId, const char*, size_t>
-  int request_client_server<ClientMsgId, ServerMsgId>::send (ClientMsgId id, const char* msg, size_t len)
+  template <typename ... PackableArgs>
+  int request_client_server<ClientMsgId, ServerMsgId>::send (ClientMsgId msgid, const PackableArgs &... args)
   {
     printf("send...\n");
     return -44;
   }
+
+//  template <typename ClientMsgId, typename ServerMsgId>
+//  template <ClientMsgId, const char*, size_t>
+//  int request_client_server<ClientMsgId, ServerMsgId>::send (ClientMsgId id, const char* msg, size_t len)
+//  {
+//    printf("send...\n");
+//    return -44;
+//  }
 
   template <typename ClientMsgId, typename ServerMsgId>
   request_client_server<ClientMsgId, ServerMsgId>::request_client_server (channel &&chn)
