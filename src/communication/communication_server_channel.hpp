@@ -33,7 +33,6 @@ namespace cubcomm
   enum class server_server //server to server commands
   {
     CONNECT_TRANSACTION_SERVER, // transaction to page server
-    CONNECT_SLAVE_CONTROL, //slave server to a control channel
   };
 
   class server_channel : public channel

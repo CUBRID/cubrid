@@ -2649,7 +2649,7 @@ css_process_server_server_connect (SOCKET master_fd)
   switch (STATIC_CAST (cubcomm::server_server, request))
     {
     case cubcomm::server_server::CONNECT_TRANSACTION_SERVER:
-      chn.set_channel_name ("TODO");	//cubreplication::REPL_ONLINE_CHANNEL_NAME);
+      chn.set_channel_name ("ATS_PS_comm");
       css_process_new_transaction_server (std::move (chn));
       break;
     default:

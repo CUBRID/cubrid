@@ -27,8 +27,6 @@
 #include "connection_support.h"
 #include "connection_globals.h"
 
-#include "string_buffer.hpp"
-#include "system_parameter.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #else /* WINDOWS */

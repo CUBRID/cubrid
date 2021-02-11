@@ -23,6 +23,8 @@
  */
 
 #include "communication_server_channel.hpp"
+
+#include "error_manager.h"
 #include "system_parameter.h"  /* er_log_debug param */
 
 namespace cubcomm
