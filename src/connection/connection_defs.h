@@ -69,7 +69,7 @@ enum css_command_type
   SERVER_REQUEST = 3,		/* let new server attach */
   UNUSED_REQUEST = 4,		/* unused request - leave it for compatibility */
   SERVER_REQUEST_NEW = 5,	/* new-style server request */
-  CMD_SERVER_SERVER_CONNECT,
+  CMD_SERVER_SERVER_CONNECT = 6,
   MAX_REQUEST
 };
 
@@ -152,7 +152,7 @@ enum css_server_request
   SERVER_CHANGE_HA_MODE = 11,
   SERVER_DEREGISTER_HA_PROCESS = 12,
   SERVER_GET_EOF = 13,
-  SERVER_SERVER_CONNECT = 15,
+  SERVER_SERVER_CONNECT = 14,
 };
 typedef enum css_server_request CSS_SERVER_REQUEST;
 
