@@ -98,7 +98,6 @@ void connect_to_pageserver (std::string host, int port, const char* db_name)
   cubcomm::server_channel srv_chn (db_name);
 
   srv_chn.set_channel_name ("TODO");
-  srv_chn.set_debug_dump_data (true); // TODO: is_debug_communication_data_dump_enabled ());
 
   css_error_code comm_error_code = srv_chn.connect (host.c_str (), port, CMD_SERVER_SERVER_CONNECT);
   if (comm_error_code != css_error_code::NO_ERRORS)

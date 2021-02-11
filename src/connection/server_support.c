@@ -2644,7 +2644,6 @@ css_process_server_server_connect (SOCKET master_fd)
       return;
     }
   cubcomm::channel chn;
-  chn.set_debug_dump_data (true);	// TODO: cubreplication::is_debug_communication_data_dump_enabled ());
   chn.accept (slave_fd);
   int request = css_get_master_request (slave_fd);	//read an integer to determine connection type
   switch (STATIC_CAST (cubcomm::server_server, request))
