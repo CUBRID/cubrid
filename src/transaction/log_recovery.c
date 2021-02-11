@@ -61,13 +61,13 @@ static void log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_
 static void log_rv_redo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 				int (*redofun) (THREAD_ENTRY * thread_p, LOG_RCV *), LOG_RCV * rcv,
 				const LOG_LSA * rcv_lsa_ptr, int undo_length, const char *undo_data,
-				LOG_ZIP * redo_unzip_ptr);
+				LOG_ZIP & redo_unzip);
 static bool log_rv_find_checkpoint (THREAD_ENTRY * thread_p, VOLID volid, LOG_LSA * rcv_lsa);
 static int log_rv_get_unzip_log_data (THREAD_ENTRY * thread_p, int length, LOG_LSA * log_lsa,
 				      LOG_PAGE * log_page_p, LOG_ZIP * unzip_ptr, bool &is_zip);
 static int log_rv_get_unzip_and_diff_redo_log_data (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
-						    LOG_RCV * rcv, raii_blob < char >&area, LOG_ZIP * redo_unzip_ptr,
-						    int undo_length, const char *undo_data);
+						    LOG_RCV * rcv, int undo_length, const char *undo_data,
+						    LOG_ZIP & redo_unzip);
 
 static int log_rv_analysis_undo_redo (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
 static int log_rv_analysis_dummy_head_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
@@ -429,24 +429,24 @@ end:
  *   ignore_redofunc(in):
  *   undo_length(in):
  *   undo_data(in):
- *   redo_unzip_ptr(in):
+ *   redo_unzip(in): functions as an outside managed (longer lived) buffer space for the underlying
+ *        to peform its work; the pointer to the buffer is then passed - non-owningly - to the rcv
+ *        structure for further processing; it is therefore mandatory that the acontents of the
+ *        buffer does not change until after the
  *
  * NOTE: Execute a redo log record.
  */
 static void
 log_rv_redo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 		    int (*redofun) (THREAD_ENTRY * thread_p, LOG_RCV *), LOG_RCV * rcv, const LOG_LSA * rcv_lsa_ptr,
-		    int undo_length, const char *undo_data, LOG_ZIP * redo_unzip_ptr)
+		    int undo_length, const char *undo_data, LOG_ZIP & redo_unzip)
 {
-  // *INDENT-OFF*
-  raii_blob<char> area { nullptr, ::free };
-  // *INDENT-ON*
   int error_code;
 
   /* Note the the data page rcv->pgptr has been fetched by the caller */
 
   if (log_rv_get_unzip_and_diff_redo_log_data
-      (thread_p, log_lsa, log_page_p, rcv, area, redo_unzip_ptr, undo_length, undo_data) != NO_ERROR)
+      (thread_p, log_lsa, log_page_p, rcv, undo_length, undo_data, redo_unzip) != NO_ERROR)
     {
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_redo_record");
       return;
@@ -600,22 +600,19 @@ log_rv_get_unzip_log_data (THREAD_ENTRY * thread_p, int length, LOG_LSA * log_ls
  *   rcv(in/out): Recovery structure for recovery function
  *   undo_length(in): undo data length
  *   undo_data(in): undo data
- *   redo_unzip_ptr(out): extracted redo data
+ *   redo_unzip_ptr(out): extracted redo data; also functions as an internal working buffer
  *
  * NOTE:if log_data is unzip data return LOG_ZIP data
  *               else log_data is zip data return unzip log data
  */
 static int
 log_rv_get_unzip_and_diff_redo_log_data (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
-					 LOG_RCV * rcv, raii_blob < char >&area, LOG_ZIP * redo_unzip_ptr,
-					 int undo_length, const char *undo_data)
+					 LOG_RCV * rcv, int undo_length, const char *undo_data, LOG_ZIP & redo_unzip)
 {
   bool is_zip = false;
   LOG_ZIP *local_unzip_ptr = nullptr;
 
-  local_unzip_ptr = log_zip_alloc (LOGAREA_SIZE);
-
-  if (log_rv_get_unzip_log_data (thread_p, rcv->length, log_lsa, log_page_p, local_unzip_ptr, is_zip) != NO_ERROR)
+  if (log_rv_get_unzip_log_data (thread_p, rcv->length, log_lsa, log_page_p, &redo_unzip, is_zip) != NO_ERROR)
     {
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_get_unzip_and_diff_redo_log_data");
       return ER_FAILED;
@@ -623,29 +620,13 @@ log_rv_get_unzip_and_diff_redo_log_data (THREAD_ENTRY * thread_p, LOG_LSA * log_
 
   if (is_zip)
     {
-      /* data was unzipped in local_unzip_ptr; must be copied over to the redo_unzip_ptr which
-       * is supplied from afar and, thus, is supposed to survive the actual usage of the rcv - which
-       * will finally be assigned the resulting data's pointer - such that no dangling pointers occur */
-      redo_unzip_ptr->data_length = local_unzip_ptr->data_length;
-      memcpy (redo_unzip_ptr->log_data, local_unzip_ptr->log_data, local_unzip_ptr->data_length);
       if (undo_length > 0 && undo_data != nullptr)
 	{
-	  (void) log_diff (undo_length, undo_data, redo_unzip_ptr->data_length, redo_unzip_ptr->log_data);
+	  (void) log_diff (undo_length, undo_data, redo_unzip.data_length, redo_unzip.log_data);
 	}
-      rcv->length = static_cast < int >(redo_unzip_ptr->data_length);
-      rcv->data = static_cast < char *>(redo_unzip_ptr->log_data);
     }
-  else
-    {
-      /* allocate in the buffer supplied from afar and move data there;
-       * that buffer is supposed to outlive the data's usage */
-      rcv->length = static_cast < int >(local_unzip_ptr->data_length);
-      area.reset (static_cast < char *>(::malloc (local_unzip_ptr->data_length)));
-      memcpy (area.get (), local_unzip_ptr->log_data, local_unzip_ptr->data_length);
-      rcv->data = area.get ();
-    }
-
-  log_zip_free (local_unzip_ptr);
+  rcv->length = static_cast < int >(redo_unzip.data_length);
+  rcv->data = static_cast < char *>(redo_unzip.log_data);
 
   return NO_ERROR;
 }
@@ -3391,12 +3372,12 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		    /* XOR Process */
 		    log_rv_redo_record (thread_p, &log_lsa, log_pgptr, RV_fun[rcvindex].redofun, &rcv, &rcv_lsa,
 					(int) undo_unzip_ptr->data_length, (char *) undo_unzip_ptr->log_data,
-					redo_unzip_ptr);
+					*redo_unzip_ptr);
 		  }
 		else
 		  {
 		    log_rv_redo_record (thread_p, &log_lsa, log_pgptr, RV_fun[rcvindex].redofun, &rcv, &rcv_lsa, 0,
-					NULL, redo_unzip_ptr);
+					NULL, *redo_unzip_ptr);
 		  }
 		if (rcv.pgptr != NULL)
 		  {
@@ -3529,7 +3510,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 #endif /* !NDEBUG */
 
 		log_rv_redo_record (thread_p, &log_lsa, log_pgptr, RV_fun[rcvindex].redofun, &rcv, &rcv_lsa, 0, NULL,
-				    redo_unzip_ptr);
+				    *redo_unzip_ptr);
 
 		if (rcv.pgptr != NULL)
 		  {
@@ -3571,7 +3552,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		if (!log_recovery_needs_skip_logical_redo (thread_p, tran_id, log_rtype, rcvindex, &rcv_lsa))
 		  {
 		    log_rv_redo_record (thread_p, &log_lsa, log_pgptr, RV_fun[rcvindex].redofun, &rcv, &rcv_lsa, 0,
-					NULL, NULL);
+					NULL, *redo_unzip_ptr);
+		    /* unzip_ptr used here only as a buffer for the underlying logic */
 		  }
 	      }
 	      break;
@@ -3659,7 +3641,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 #endif /* !NDEBUG */
 
 		log_rv_redo_record (thread_p, &log_lsa, log_pgptr, RV_fun[rcvindex].redofun, &rcv, &rcv_lsa, 0, NULL,
-				    NULL);
+				    *redo_unzip_ptr);
+		/* unzip_ptr used here only as a buffer for the underlying logic */
 
 		if (rcv.pgptr != NULL)
 		  {
@@ -3750,7 +3733,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 #endif /* !NDEBUG */
 
 		log_rv_redo_record (thread_p, &log_lsa, log_pgptr, RV_fun[rcvindex].undofun, &rcv, &rcv_lsa, 0, NULL,
-				    NULL);
+				    *redo_unzip_ptr);
+		/* unzip_ptr used here only as a buffer for the underlying logic */
 		if (rcv.pgptr != NULL)
 		  {
 		    pgbuf_unfix (thread_p, rcv.pgptr);
