@@ -2506,11 +2506,19 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   // after recovery we can boot vacuum
   if (get_server_type () != SERVER_TYPE_PAGE)
     {
-      printf ("not page server\n");
       error_code = vacuum_boot (thread_p);
+      if (error_code != NO_ERROR)
+	{
+	  log_append_empty_record (thread_p, LOG_VACUUM_BOOT_START, NULL);
+	}
+      else
+	{
+	  log_append_empty_record (thread_p, LOG_NO_VACUUM_BOOT_START, NULL);
+	}
     }
   else
     {
+      log_append_empty_record (thread_p, LOG_NO_VACUUM_BOOT_START, NULL);
       error_code = NO_ERROR;
     }
   if (error_code != NO_ERROR)

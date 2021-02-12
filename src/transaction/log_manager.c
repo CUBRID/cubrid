@@ -281,7 +281,7 @@ static void log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LS
 static int log_run_postpone_op (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_pgptr);
 static void log_find_end_log (THREAD_ENTRY * thread_p, LOG_LSA * end_lsa);
 
-static void log_cleanup_modified_class (const tx_transient_class_entry & t, bool & stop);
+static void log_cleanup_modified_class (const tx_transient_class_entry & t, bool &stop);
 static void log_cleanup_modified_class_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * savept_lsa,
 					     bool release, bool decache_classrepr);
 
@@ -289,16 +289,16 @@ static void log_append_compensate_internal (THREAD_ENTRY * thread_p, LOG_RCVINDE
 					    PGLENGTH offset, PAGE_PTR pgptr, int length, const void *data,
 					    LOG_TDES * tdes, const LOG_LSA * undo_nxlsa);
 
-STATIC_INLINE void log_sysop_end_random_exit (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void log_sysop_end_random_exit (THREAD_ENTRY * thread_p) __attribute__((ALWAYS_INLINE));
 STATIC_INLINE void log_sysop_end_begin (THREAD_ENTRY * thread_p, int *tran_index_out, LOG_TDES ** tdes_out)
-  __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void log_sysop_end_unstack (THREAD_ENTRY * thread_p, LOG_TDES * tdes) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void log_sysop_end_final (THREAD_ENTRY * thread_p, LOG_TDES * tdes) __attribute__ ((ALWAYS_INLINE));
+  __attribute__((ALWAYS_INLINE));
+STATIC_INLINE void log_sysop_end_unstack (THREAD_ENTRY * thread_p, LOG_TDES * tdes) __attribute__((ALWAYS_INLINE));
+STATIC_INLINE void log_sysop_end_final (THREAD_ENTRY * thread_p, LOG_TDES * tdes) __attribute__((ALWAYS_INLINE));
 static void log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_record, int data_size,
 				       const char *data, bool is_rv_finish_postpone);
 STATIC_INLINE void log_sysop_get_tran_index_and_tdes (THREAD_ENTRY * thread_p, int *tran_index_out,
-						      LOG_TDES ** tdes_out) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int log_sysop_get_level (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
+						      LOG_TDES ** tdes_out) __attribute__((ALWAYS_INLINE));
+STATIC_INLINE int log_sysop_get_level (THREAD_ENTRY * thread_p) __attribute__((ALWAYS_INLINE));
 
 static void log_tran_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_END * sysop_end,
@@ -451,6 +451,10 @@ log_to_string (LOG_RECTYPE type)
       return "LOG_DUMMY_OVF_RECORD";
     case LOG_DUMMY_GENERIC:
       return "LOG_DUMMY_GENERIC";
+    case LOG_VACUUM_BOOT_START:
+      return "LOG_VACUUM_BOOT_START";
+    case LOG_NO_VACUUM_BOOT_START:
+      return "LOG_NO_VACUUM_BOOT_START";
 
     case LOG_SMALLER_LOGREC_TYPE:
     case LOG_LARGER_LOGREC_TYPE:
@@ -4816,7 +4820,7 @@ log_is_class_being_modified (THREAD_ENTRY * thread_p, const OID * class_oid)
  *       This will be used to decache the class representations and XASLs when a transaction is finished.
  */
 static void
-log_cleanup_modified_class (const tx_transient_class_entry & t, bool & stop)
+log_cleanup_modified_class (const tx_transient_class_entry & t, bool &stop)
 {
   THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
 
@@ -9630,7 +9634,7 @@ log_read_sysop_start_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_P
  * log_get_log_group_commit_interval () - setup flush daemon period based on system parameter
  */
 void
-log_get_log_group_commit_interval (bool & is_timed_wait, cubthread::delta_time & period)
+log_get_log_group_commit_interval (bool &is_timed_wait, cubthread::delta_time & period)
 {
   is_timed_wait = true;
 
@@ -9661,7 +9665,7 @@ log_get_log_group_commit_interval (bool & is_timed_wait, cubthread::delta_time &
  * log_get_checkpoint_interval () - setup log checkpoint daemon period based on system parameter
  */
 void
-log_get_checkpoint_interval (bool & is_timed_wait, cubthread::delta_time & period)
+log_get_checkpoint_interval (bool &is_timed_wait, cubthread::delta_time & period)
 {
   int log_checkpoint_interval_sec = prm_get_integer_value (PRM_ID_LOG_CHECKPOINT_INTERVAL_SECS);
 
