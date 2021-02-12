@@ -34,7 +34,8 @@
 struct log_lsa
 {
   std::int64_t pageid:48;		/* Log page identifier : 6 bytes length */
-  std::int64_t offset:16;		/* Offset in page : 2 bytes length */
+  std::int64_t offset:16;		/* Offset in page : 2 bytes length.
+                                          offset == 'area offset' */
   /* The offset field is defined as 16bit-INT64 type (not short), because of alignment */
 
   inline log_lsa () = default;
