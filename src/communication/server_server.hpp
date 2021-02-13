@@ -1,6 +1,8 @@
 #include "communication_channel.hpp"
+#include "mem_block.hpp"
 #include "packer.hpp"
 
+#include <functional>
 #include <map>
 #include <thread>
 
@@ -38,13 +40,15 @@ namespace cubcomm
 
       void register_request_handler (MsgId msgid, server_request_handler &handler);
 
+    protected:
+      channel m_channel;
+
     private:
       using request_handlers_container = std::map<MsgId, server_request_handler>;
 
       void loop_poll_and_receive ();
       void handle (MsgId msgid, cubpacking::unpacker &upkr);
 
-      channel m_channel;
       std::thread m_thread;  // thread that loops poll & receive request
       request_handlers_container m_request_handlers;
   };
@@ -91,24 +95,24 @@ namespace cubcomm
   template <typename ... PackableArgs>
   int request_client_server<ClientMsgId, ServerMsgId>::send (ClientMsgId msgid, const PackableArgs &... args)
   {
-    printf("send...\n");
+    packing_packer packer;
+    cubmem::extensible_block eb;
+
+    packer.set_buffer_and_pack_all (eb, (int) msgid, args...);
+
+    char *data = eb.get_ptr ();
+    int data_size = (int) packer.get_current_size ();
+
+//    m_channel.send (data, data_size);
+
     return -44;
   }
 
-//  template <typename ClientMsgId, typename ServerMsgId>
-//  template <ClientMsgId, const char*, size_t>
-//  int request_client_server<ClientMsgId, ServerMsgId>::send (ClientMsgId id, const char* msg, size_t len)
-//  {
-//    printf("send...\n");
-//    return -44;
-//  }
 
   template <typename ClientMsgId, typename ServerMsgId>
   request_client_server<ClientMsgId, ServerMsgId>::request_client_server (channel &&chn)
     : request_server<ServerMsgId>::request_server (std::move (chn))
   {
-//	chn.send
-    printf("request_server...\n");
   }
 
   template <typename MsgId>

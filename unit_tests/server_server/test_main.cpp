@@ -50,11 +50,9 @@ void ats_foo ()
   using ats_to_ps_server_type = cubcomm::request_client_server<msgid_ats_to_ps, msgid_ps_to_ats>;
   ats_to_ps_server_type ats_server_with_ps (std::move (chn));
 
-  std::function<void (const char *, size_t)> f = net_pgbuf_read_page;
   ats_server_with_ps.register_request_handler (msgid_ps_to_ats::SEND_DATA_PAGE, net_pgbuf_read_page);
   // ...
 
-//#undef strlen
   ats_server_with_ps.send (msgid_ats_to_ps::REQUEST_DATA_PAGE, "a vpid", std::strlen ("a vpid"));
 }
 
