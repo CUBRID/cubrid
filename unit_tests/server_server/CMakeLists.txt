@@ -45,5 +45,7 @@ target_include_directories(test_server_server PRIVATE
   )
 
 target_link_libraries(test_server_server PRIVATE
+  cubrid_wo_cc
+#  cubrid
   test_common
   )

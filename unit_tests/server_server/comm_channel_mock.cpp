@@ -1,29 +1,57 @@
+/*
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ */
+
 #include "connection_defs.h"
 #include "communication_channel.hpp"
 
 #include <condition_variable>
+#include <cstring>
 #include <queue>
+
+//struct channel_message
+//{
+//  std::size_t length;
+//  std::string message;
+//};
 
 namespace cubcomm
 {
-  struct ChMsg
-  {
-    std::size_t length;
-    std::string message;
-  };
-//    std::shared_ptr<ChMsg>
 
-  std::mutex m_mutex;
-  std::condition_variable m_cv;
-  std::queue<std::shared_ptr<ChMsg>> m_queue;
-
-
+  std::queue<std::string> cs_q;
+  std::queue<std::string> sc_q;
+  std::condition_variable cs_cv;
+  std::condition_variable sc_cv;
+  std::mutex cs_mutex;
+  std::mutex sc_mutex;
 
   channel::channel (int max_timeout_in_ms)
     : m_max_timeout_in_ms (max_timeout_in_ms),
       m_type (CHANNEL_TYPE::NO_TYPE),
       m_socket (INVALID_SOCKET)
   {
+  }
+
+  channel &channel::operator= (channel &&comm)
+  {
+    assert (!is_connection_alive ());
+    this->~channel ();
+    new (this) channel (std::move (comm));
+    return *this;
   }
 
   channel::channel (channel &&comm)
@@ -34,15 +62,6 @@ namespace cubcomm
 
     m_socket = comm.m_socket;
     comm.m_socket = INVALID_SOCKET;
-  }
-
-  channel &channel::operator= (channel &&comm)
-  {
-    assert (!is_connection_alive ());
-    this->~channel ();
-
-    new (this) channel (std::move (comm));
-    return *this;
   }
 
   channel::~channel ()
@@ -57,94 +76,74 @@ namespace cubcomm
 
   css_error_code channel::recv (char *buffer, std::size_t &maxlen_in_recvlen_out)
   {
-    // Wait for a message to be added to the queue
-    std::unique_lock<std::mutex> lk (m_mutex);
-    while (m_queue.empty ())
-      {
-	m_cv.wait (lk);
-      }
+    std::queue<std::string> *q = m_max_timeout_in_ms % 2 == 0 ? &cs_q : &sc_q;
+    std::condition_variable *cv = m_max_timeout_in_ms % 2 == 0 ? &cs_cv : &sc_cv;
+    std::mutex *mutex = m_max_timeout_in_ms % 2 == 0 ? &cs_mutex : &sc_mutex;
 
-    if (m_queue.empty ())
+    // Wait for a message to be added to the queue
+    std::unique_lock<std::mutex> lk (*mutex);
+    if (m_max_timeout_in_ms < 0)
+      {
+	cv->wait (lk);
+      }
+    else
+      {
+	cv->wait_for (lk, std::chrono::milliseconds (m_max_timeout_in_ms));
+      }
+    if (q->empty ())
       {
 	return NO_DATA_AVAILABLE;
       }
 
-    std::shared_ptr<ChMsg> msg = m_queue.front ();
-    m_queue.pop ();
+    std::string msg = q->front ();
+    size_t maxlen = maxlen_in_recvlen_out > msg.length () ? msg.length () : maxlen_in_recvlen_out;
+    memcpy (buffer, msg.c_str (), maxlen);
+    maxlen_in_recvlen_out = maxlen;
+    q->pop ();
     return NO_ERRORS;
   }
 
   css_error_code channel::send (const char *buffer, std::size_t length)
   {
-    std::shared_ptr<ChMsg> msg (new ChMsg {length, buffer});
-    std::unique_lock<std::mutex> lk (m_mutex);
-    m_queue.push (msg);
-    m_cv.notify_one ();
+    std::queue<std::string> *q = m_max_timeout_in_ms % 2 != 0 ? &cs_q : &sc_q;
+    std::condition_variable *cv = m_max_timeout_in_ms % 2 != 0 ? &cs_cv : &sc_cv;
+    std::mutex *mutex = m_max_timeout_in_ms % 2 != 0 ? &cs_mutex : &sc_mutex;
+
+    std::string msg (buffer, length);
+    std::unique_lock<std::mutex> lk (*mutex);
+    q->push (std::move (msg));
+    cv->notify_one ();
     return NO_ERRORS;
   }
 
-  bool channel::send_int (int val)
+  bool channel::send_int (int )
   {
-    std::string s = std::to_string(val);
-    return send(s.c_str(), s.length());
-  }
-
-  css_error_code channel::recv_int (int &received)
-  {
-    size_t len = sizeof (received);
-    auto rc = recv ((char *) &received, len);
-    if (rc != NO_ERRORS)
-      {
-	return rc;
-      }
-
-    if (len != sizeof (received))
-      {
-	return css_error_code::ERROR_ON_COMMAND_READ;
-      }
-
-//    received = ntohl (received);
+    assert (0);
     return NO_ERRORS;
   }
 
-  css_error_code channel::connect (const char *hostname, int port)
+  css_error_code channel::recv_int (int &)
   {
-    if (is_connection_alive ())
-      {
-	assert (false);
-	return INTERNAL_CSS_ERROR;
-      }
-
-    m_type = CHANNEL_TYPE::INITIATOR;
-
-
+    assert (0);
     return NO_ERRORS;
   }
 
-  css_error_code channel::accept (SOCKET socket)
+  css_error_code channel::connect (const char *, int )
   {
-    if (is_connection_alive () || IS_INVALID_SOCKET (socket))
-      {
-	return INTERNAL_CSS_ERROR;
-      }
+    assert (0);
+    return NO_ERRORS;
+  }
 
-    m_type = CHANNEL_TYPE::LISTENER;
-    m_socket = socket;
-
+  css_error_code channel::accept (SOCKET)
+  {
+    assert (0);
     return NO_ERRORS;
   }
 
   void channel::close_connection ()
   {
-//    if (!IS_INVALID_SOCKET (m_socket))
-//      {
-//	css_shutdown_socket (m_socket);
-//	m_socket = INVALID_SOCKET;
-//	m_type = NO_TYPE;
-//      }
-
-    m_hostname = "";
-    m_port = -1;
+    std::condition_variable *cv = m_max_timeout_in_ms % 2 != 0 ? &cs_cv : &sc_cv;
+    cv->notify_one ();
   }
 
   int channel::get_max_timeout_in_ms ()
@@ -152,37 +151,15 @@ namespace cubcomm
     return m_max_timeout_in_ms;
   }
 
-  int channel::wait_for (unsigned short int events, unsigned short int &revents)
+  int channel::wait_for (unsigned short int, unsigned short int &)
   {
-//    POLL_FD poll_fd = {0, 0, 0};
-    int rc = 0;
-    revents = 0;
-
-    if (!is_connection_alive ())
-      {
-	return -1;
-      }
-
-    assert (m_type != NO_TYPE);
-
-//    poll_fd.fd = m_socket;
-//    poll_fd.events = events;
-//    poll_fd.revents = 0;
-
-//    rc = css_platform_independent_poll (&poll_fd, 1, m_max_timeout_in_ms);
-//    revents = poll_fd.revents;
-
-    return rc;
+    assert (0);
+    return 0;
   }
 
   bool channel::is_connection_alive () const
   {
     return !IS_INVALID_SOCKET (m_socket);
   }
-
-//  SOCKET channel::get_socket ()
-//  {
-//    return m_socket;
-//  }
 
 } /* namespace cubcomm */
