@@ -25,7 +25,7 @@ typedef enum
   SERVER_TYPE_PAGE,
 } SERVER_TYPE;
 
-void init_server_type ();
+void init_server_type (const char* db_name);
 SERVER_TYPE get_server_type ();
 
 #endif

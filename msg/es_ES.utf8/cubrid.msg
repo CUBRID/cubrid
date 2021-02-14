@@ -1333,7 +1333,7 @@ Verifique la ruta del archivo de claves (_keys) y asegúrese de que incluya la c
 1262 El archivo de claves está lleno.
 1263 No se puede cifrar con TDE la página de registro (pageid: %1$lld). Ya no se intentará cifrar esta página.
 1264 Invalid format for configuration parameter %1s. Expected a 'hostname:port', found %2s
-1265 Error reserved for scalability development.
+1265 Error connecting with the page server at %s.
 1266 Error reserved for scalability development.
 1267 Error reserved for scalability development.
 1268 Error reserved for scalability development.
@@ -1353,7 +1353,7 @@ Verifique la ruta del archivo de claves (_keys) y asegúrese de que incluya la c
 1282 Error reserved for scalability development.
 1283 Error reserved for scalability development.
 
-1264 Ultimo error
+1284 Ultimo error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %1$d):

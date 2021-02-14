@@ -1333,7 +1333,7 @@ Verificați calea fișierului cheie (_keys) și asigurați-vă că acesta includ
 1262 Fișierul cheie este plin.
 1263 Nu criptează TDE pagina jurnalului (pageid: %1$lld). Nu va mai fi încercat să criptați această pagină.
 1264 Invalid format for configuration parameter %1s. Expected a 'hostname:port', found %2s
-1265 Error reserved for scalability development.
+1265 Error connecting with the page server at %s.
 1266 Error reserved for scalability development.
 1267 Error reserved for scalability development.
 1268 Error reserved for scalability development.
@@ -1353,7 +1353,7 @@ Verificați calea fișierului cheie (_keys) și asigurați-vă că acesta includ
 1282 Error reserved for scalability development.
 1283 Error reserved for scalability development.
 
-1264 Ultima eroare
+1284 Ultima eroare
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):
