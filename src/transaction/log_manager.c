@@ -6717,6 +6717,9 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type
     case LOG_DUMMY_CRASH_RECOVERY:
     case LOG_DUMMY_OVF_RECORD:
     case LOG_DUMMY_GENERIC:
+
+    case LOG_VACUUM_BOOT_START:
+    case LOG_NO_VACUUM_BOOT_START:
       fprintf (out_fp, "\n");
       /* That is all for this kind of log record */
       break;
