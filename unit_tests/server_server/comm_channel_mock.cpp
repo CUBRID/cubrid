@@ -23,12 +23,6 @@
 #include <cstring>
 #include <queue>
 
-//struct channel_message
-//{
-//  std::size_t length;
-//  std::string message;
-//};
-
 namespace cubcomm
 {
 

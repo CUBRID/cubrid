@@ -18,21 +18,21 @@
 
 project (server_server)
 
+# copied from library cubrid, without communication_channel.cpp, which is mocked here
 add_subdirectory(cubrid_wo_cc)
 
-set (S_S_SRC
+set (TEST_SERVER_SERVER_SOURCES
   comm_channel_mock.cpp
   test_main.cpp
   )
 
-
 SET_SOURCE_FILES_PROPERTIES(
-  ${S_S_SRC}
+  ${TEST_SERVER_SERVER_SOURCES}
   PROPERTIES LANGUAGE CXX
   )
 
 add_executable(test_server_server
-  ${S_S_SRC}
+  ${TEST_SERVER_SERVER_SOURCES}
   )
 
 target_compile_options(test_server_server PRIVATE ${compile_warning_flags})
