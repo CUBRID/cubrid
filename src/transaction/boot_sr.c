@@ -2504,7 +2504,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 #endif /* SERVER_MODE */
 
   // after recovery we can boot vacuum
-  if (get_server_type () != SERVER_TYPE_PAGE)
+  if (get_server_type () == SERVER_TYPE_TRANSACTION)
     {
       error_code = vacuum_boot (thread_p);
       if (error_code != NO_ERROR)

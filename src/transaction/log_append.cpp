@@ -340,6 +340,9 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, LOG
     case LOG_DUMMY_OVF_RECORD:
     case LOG_DUMMY_GENERIC:
 
+    case LOG_VACUUM_BOOT_START:
+    case LOG_NO_VACUUM_BOOT_START:
+
     case LOG_2PC_COMMIT_DECISION:
     case LOG_2PC_ABORT_DECISION:
     case LOG_COMMIT_WITH_POSTPONE:
@@ -1219,6 +1222,10 @@ prior_lsa_gen_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_RECTYPE 
   node->data_header_length = 0;
   switch (rec_type)
     {
+
+    case LOG_VACUUM_BOOT_START:
+    case LOG_NO_VACUUM_BOOT_START:
+
     case LOG_DUMMY_HEAD_POSTPONE:
     case LOG_DUMMY_CRASH_RECOVERY:
     case LOG_DUMMY_OVF_RECORD:
