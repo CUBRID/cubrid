@@ -5755,11 +5755,11 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
 	      assert (lent->last_ta_idx == num_active_users);
 #endif
 	    }
+	  pthread_mutex_unlock (&lent->list_cache_mutex);
 #endif /* SERVER_MODE */
 
 	  (void) gettimeofday (&lent->time_last_used, NULL);
 	  lent->ref_count++;
-	  pthread_mutex_unlock (&lent->list_cache_mutex);
 	}
     }
 
