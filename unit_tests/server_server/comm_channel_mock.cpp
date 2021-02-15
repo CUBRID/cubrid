@@ -23,9 +23,14 @@
 #include <cstring>
 #include <queue>
 
+/*
+ * mock channel implementation using 2 local queues, one for each communication direction ATS <--> PS
+ */
+
 namespace cubcomm
 {
 
+  // queues and synchronization variables
   std::queue<std::string> cs_q;
   std::queue<std::string> sc_q;
   std::condition_variable cs_cv;
@@ -70,11 +75,12 @@ namespace cubcomm
 
   css_error_code channel::recv (char *buffer, std::size_t &maxlen_in_recvlen_out)
   {
+    // --- hack ---
+    // choose queue direction according to even/odd timeout
     std::queue<std::string> *q = m_max_timeout_in_ms % 2 == 0 ? &cs_q : &sc_q;
     std::condition_variable *cv = m_max_timeout_in_ms % 2 == 0 ? &cs_cv : &sc_cv;
     std::mutex *mutex = m_max_timeout_in_ms % 2 == 0 ? &cs_mutex : &sc_mutex;
 
-    // Wait for a message to be added to the queue
     std::unique_lock<std::mutex> lk (*mutex);
     if (m_max_timeout_in_ms < 0)
       {
@@ -110,7 +116,7 @@ namespace cubcomm
     return NO_ERRORS;
   }
 
-  bool channel::send_int (int )
+  bool channel::send_int (int)
   {
     assert (0);
     return NO_ERRORS;
@@ -122,7 +128,7 @@ namespace cubcomm
     return NO_ERRORS;
   }
 
-  css_error_code channel::connect (const char *, int )
+  css_error_code channel::connect (const char *, int)
   {
     assert (0);
     return NO_ERRORS;

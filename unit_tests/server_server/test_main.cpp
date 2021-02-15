@@ -20,13 +20,18 @@
 
 #include <cstring>
 #include <functional>
-#include "stdio.h"
+#include <iostream>
 
 std::string pages[] = {"page0 aaaa", "page1 qwer", "page2 fdsa", "page333", "blaaaaasdfjlksfj"};
 
 using ats_to_ps_server_type = cubcomm::request_client_server<msgid_ats_to_ps, msgid_ps_to_ats>;
 using ps_to_ats_server_type = cubcomm::request_client_server<msgid_ps_to_ats, msgid_ats_to_ps>;
 
+int global_error = 0;
+
+// active transaction server
+// - sends a REQUEST_DATA_PAGE message (command) to page server
+// - receives a SEND_DATA_PAGE message containing the data page
 class at_server
 {
   public:
@@ -61,7 +66,10 @@ class at_server
     {
       std::string s;
       upk.unpack_string (s);
-      printf ("read_page %s\n", s.c_str ());
+      if (s != pages[3])
+	{
+	  global_error |= -2;
+	}
     }
 
     static void worker (at_server *arg)
@@ -74,6 +82,9 @@ class at_server
     }
 };
 
+// page server
+// - receives a REQUEST_DATA_PAGE message with page number from ATS
+// - sends a SEND_DATA_PAGE message to PS containing the page
 class p_server
 {
   public:
@@ -109,7 +120,10 @@ class p_server
     {
       int pg_no;
       upk.unpack_int (pg_no);
-      printf ("get_page no. %d\n", pg_no);
+      if (pg_no != 3)
+	{
+	  global_error |= -1;
+	}
 
       ps_server_with_ats.send (msgid_ps_to_ats::SEND_DATA_PAGE, pages[pg_no]);
 
@@ -126,13 +140,22 @@ class p_server
 
 int main (int, char **)
 {
-//  std::thread ps_th = std::thread (ps_worker);
+  // init transaction (at) and page (p) servers with even/odd timeouts
+  // so that we can differentiate them and chose the proper queue for each direction
   at_server ats (100);
   p_server ps (101);
   ps.do_stuff ();
   ats.do_stuff ();
   ats.stop ();
   ps.stop ();
-  printf ("__main ps_th joined, finish.\n");
+  if (global_error)
+    {
+      std::cout << "  test failed" << std::endl;
+    }
+  else
+    {
+      std::cout << "  test completed successfully" << std::endl;
+    }
+  return global_error;
 }
 
