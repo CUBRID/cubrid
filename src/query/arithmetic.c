@@ -1990,27 +1990,26 @@ round_double (double num, double integer)
    * Under high optimization level, some optimizers (e.g, gcc -O3 on linux)
    * generates a wrong result without "volatile".
    */
-  volatile double scale_down, num_scale_up, result;
+  volatile double scale_up, result;
 
   if (num == 0)
     {
       return num;
     }
 
-  scale_down = pow (10, -integer);
-  num_scale_up = num / scale_down;
-  if (!FINITE (num_scale_up))
+  scale_up = pow (10, integer);
+
+  if (!FINITE (num * scale_up))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, tp_Double_domain.type->name);
     }
-
-  if (num_scale_up > 0)
+  if (num > 0)
     {
-      result = floor (num_scale_up + 0.5) * scale_down;
+      result = floor (num * scale_up + 0.5) / scale_up;
     }
   else
     {
-      result = ceil (num_scale_up - 0.5) * scale_down;
+      result = ceil (num * scale_up - 0.5) / scale_up;
     }
 
   return result;
