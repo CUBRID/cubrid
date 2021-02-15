@@ -24,7 +24,6 @@ class log_reader final
     const log_lsa &get_lsa() const;
     int set_lsa_and_fetch_page (const log_lsa &lsa);
     const log_hdrpage &get_page_header() const;
-    //const log_lsa &position_on_first_record();
 
     template <typename T>
     const typename std::remove_const< typename std::remove_reference<T>::type >::type *reinterpret_cptr () const;
@@ -61,7 +60,7 @@ class log_reader final
     // have the same core functionality and could be combined
     int skip (size_t size);
 
-    void assert_equals (const log_lsa &other_log_lsa, const log_page &other_log_page) const;
+    bool equals (const log_lsa &other_log_lsa, const log_page &other_log_page) const;
 
   private:
     const char *get_cptr () const;

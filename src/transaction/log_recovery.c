@@ -59,19 +59,35 @@
 static void log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 				LOG_RCVINDEX rcvindex, const VPID * rcv_vpid, LOG_RCV * rcv,
 				const LOG_LSA * rcv_lsa_ptr, LOG_TDES * tdes, LOG_ZIP * undo_unzip_ptr);
+
+// TODO: replace this..
 static void log_rv_redo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 				int (*redofun) (THREAD_ENTRY * thread_p, LOG_RCV *), LOG_RCV * rcv,
 				const LOG_LSA * rcv_lsa_ptr, int undo_length, const char *undo_data,
 				LOG_ZIP & redo_unzip);
+// TODO: ..with this
+static void log_rv_redo_record_TODO_log_reader (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader,
+						int (*redofun) (THREAD_ENTRY * thread_p, LOG_RCV *), LOG_RCV * rcv,
+						const LOG_LSA * rcv_lsa_ptr, int undo_length, const char *undo_data,
+						LOG_ZIP & redo_unzip);
+
 static bool log_rv_find_checkpoint (THREAD_ENTRY * thread_p, VOLID volid, LOG_LSA * rcv_lsa);
+
+// TODO: replace this..
 static int log_rv_get_unzip_log_data (THREAD_ENTRY * thread_p, int length, LOG_LSA * log_lsa,
 				      LOG_PAGE * log_page_p, LOG_ZIP * unzip_ptr, bool &is_zip);
+// TODO: ..with this
 static int log_rv_get_unzip_log_data_TODO_reader (THREAD_ENTRY * thread_p, int length, log_reader & log_pgptr_reader,
 						  LOG_ZIP * unzip_ptr, bool &is_zip);
 
+// TODO: replace this..
 static int log_rv_get_unzip_and_diff_redo_log_data (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 						    LOG_RCV * rcv, int undo_length, const char *undo_data,
 						    LOG_ZIP & redo_unzip);
+// TODO: ..with this
+static int log_rv_get_unzip_and_diff_redo_log_data_TODO_reader (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader,
+								LOG_RCV * rcv, int undo_length, const char *undo_data,
+								LOG_ZIP & redo_unzip);
 
 static int log_rv_analysis_undo_redo (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
 static int log_rv_analysis_dummy_head_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
@@ -492,6 +508,61 @@ log_rv_redo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_p
     }
 }
 
+static void
+log_rv_redo_record_TODO_log_reader (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader,
+				    int (*redofun) (THREAD_ENTRY * thread_p, LOG_RCV *), LOG_RCV * rcv,
+				    const LOG_LSA * rcv_lsa_ptr, int undo_length, const char *undo_data,
+				    LOG_ZIP & redo_unzip)
+{
+  int error_code;
+
+  /* Note the the data page rcv->pgptr has been fetched by the caller */
+
+  if (log_rv_get_unzip_and_diff_redo_log_data_TODO_reader
+      (thread_p, log_pgptr_reader, rcv, undo_length, undo_data, redo_unzip) != NO_ERROR)
+    {
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_redo_record_TODO_log_reader");
+      return;
+    }
+
+  // TODO: temp, do not actually execute the function as it has already been done in the non log_reader redo_record function
+  // and executing it does produce side-effects
+  /*if (redofun != NULL)
+     {
+     error_code = (*redofun) (thread_p, rcv);
+     if (error_code != NO_ERROR)
+     {
+     VPID vpid;
+     if (rcv->pgptr != NULL)
+     {
+     pgbuf_get_vpid (rcv->pgptr, &vpid);
+     }
+     else
+     {
+     VPID_SET_NULL (&vpid);
+     }
+
+     logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+     "log_rv_redo_record_TODO_log_reader: Error applying redo record at log_lsa=(%lld, %d), "
+     "rcv = {mvccid=%llu, vpid=(%d, %d), offset = %d, data_length = %d}",
+     (long long int) rcv_lsa_ptr->pageid, (int) rcv_lsa_ptr->offset,
+     (long long int) rcv->mvcc_id, (int) vpid.pageid, (int) vpid.volid, (int) rcv->offset,
+     (int) rcv->length);
+     }
+     }
+     else
+     {
+     er_log_debug (ARG_FILE_LINE,
+     "log_rv_redo_record_TODO_log_reader: WARNING.. There is not a"
+     " REDO function to execute. May produce recovery problems.");
+     } */
+
+  if (rcv->pgptr != NULL)
+    {
+      (void) pgbuf_set_lsa (thread_p, rcv->pgptr, rcv_lsa_ptr);
+    }
+}
+
 /*
  * log_rv_find_checkpoint - FIND RECOVERY CHECKPOINT
  *
@@ -597,7 +668,7 @@ static int
 log_rv_get_unzip_log_data_TODO_reader (THREAD_ENTRY * thread_p, int length, log_reader & log_pgptr_reader,
 				       LOG_ZIP * unzip_ptr, bool &is_zip)
 {
-  const char *area_ptr = nullptr;	/* Temporary working pointer */
+  char *area_ptr = nullptr;	/* Temporary working pointer */
   // *INDENT-OFF*
   raii_blob<char> area { nullptr, ::free };
   // *INDENT-ON*
@@ -617,7 +688,8 @@ log_rv_get_unzip_log_data_TODO_reader (THREAD_ENTRY * thread_p, int length, log_
 
   if (log_pgptr_reader.is_within_current_page (length))
     {
-      area_ptr = log_pgptr_reader.reinterpret_cptr < char >();
+      /* Data is contained in one buffer */
+      area_ptr = const_cast < char *>(log_pgptr_reader.reinterpret_cptr < char >());
       log_pgptr_reader.add (length);
     }
   else
@@ -629,7 +701,9 @@ log_rv_get_unzip_log_data_TODO_reader (THREAD_ENTRY * thread_p, int length, log_
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_get_unzip_log_data_TODO_reader");
 	  return ER_FAILED;
 	}
-      log_pgptr_reader.copy_from_log (area.get (), length);
+      /* Copy the data */
+      area_ptr = area.get ();
+      log_pgptr_reader.copy_from_log (area_ptr, length);
     }
 
   if (is_zip)
@@ -678,6 +752,34 @@ log_rv_get_unzip_and_diff_redo_log_data (THREAD_ENTRY * thread_p, LOG_LSA * log_
   if (log_rv_get_unzip_log_data (thread_p, rcv->length, log_lsa, log_page_p, &redo_unzip, is_zip) != NO_ERROR)
     {
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_get_unzip_and_diff_redo_log_data");
+      return ER_FAILED;
+    }
+
+  if (is_zip)
+    {
+      if (undo_length > 0 && undo_data != nullptr)
+	{
+	  (void) log_diff (undo_length, undo_data, redo_unzip.data_length, redo_unzip.log_data);
+	}
+    }
+  rcv->length = static_cast < int >(redo_unzip.data_length);
+  rcv->data = static_cast < char *>(redo_unzip.log_data);
+
+  return NO_ERROR;
+}
+
+static int
+log_rv_get_unzip_and_diff_redo_log_data_TODO_reader (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader,
+						     LOG_RCV * rcv, int undo_length, const char *undo_data,
+						     LOG_ZIP & redo_unzip)
+{
+  bool is_zip = false;
+  LOG_ZIP *local_unzip_ptr = nullptr;
+
+  if (log_rv_get_unzip_log_data_TODO_reader
+      (thread_p, rcv->length, log_pgptr_reader, /*log_lsa, log_page_p, */ &redo_unzip, is_zip) != NO_ERROR)
+    {
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_get_unzip_and_diff_redo_log_data_TODO_reader");
       return ER_FAILED;
     }
 
@@ -3233,10 +3335,11 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 	  /* Find the log record */
 	  // TODO: replace this..
-	  log_lsa.offset = lsa.offset;	// TODO: log_reader.set_lsa
+	  log_lsa.offset = lsa.offset;
 	  const LOG_RECORD_HEADER *log_rec = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &log_lsa);	/* Pointer to log record */
 	  // TODO: ..with this
-	  assert (log_lsa == log_pgptr_reader.get_lsa ());
+	  assert (log_pgptr_reader.set_lsa_and_fetch_page (log_lsa) == NO_ERROR);
+	  assert (log_pgptr_reader.equals (log_lsa, *log_pgptr));
 	  const LOG_RECORD_HEADER *todo_log_rec = log_pgptr_reader.reinterpret_cptr < LOG_RECORD_HEADER > ();
 	  assert (*log_rec == *todo_log_rec);
 
@@ -3293,7 +3396,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		is_mvcc_op = (log_rtype == LOG_MVCC_UNDOREDO_DATA || log_rtype == LOG_MVCC_DIFF_UNDOREDO_DATA);
 
 		/* REDO the record if needed */
-		// TODO: use log-lsa from reader
+		// TODO: use from reader
 		const LOG_LSA rcv_lsa = log_lsa;	/* Address of redo log record */
 
 		/* Get the DATA HEADER */
@@ -3315,13 +3418,13 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		    LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, data_header_size, &log_lsa, log_pgptr);
 		    // TODO: ..with this
 		    log_pgptr_reader.advance_when_does_not_fit (data_header_size);
+		    assert (log_pgptr_reader.equals (log_lsa, *log_pgptr));
 
 		    // TODO: replace this..
 		    mvcc_undoredo = (LOG_REC_MVCC_UNDOREDO *) ((char *) log_pgptr->area + log_lsa.offset);
 		    // TODO: ..with this
 		    const LOG_REC_MVCC_UNDOREDO *todo_mvcc_undoredo
 		      = log_pgptr_reader.reinterpret_cptr < LOG_REC_MVCC_UNDOREDO > ();
-		    assert (mvcc_undoredo == todo_mvcc_undoredo);
 		    assert (*mvcc_undoredo == *todo_mvcc_undoredo);
 
 		    /* Get undoredo structure */
@@ -3350,7 +3453,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		    undoredo = (LOG_REC_UNDOREDO *) ((char *) log_pgptr->area + log_lsa.offset);
 		    // TODO: ..with this
 		    const LOG_REC_UNDOREDO *todo_undoredo = log_pgptr_reader.reinterpret_cptr < LOG_REC_UNDOREDO > ();
-		    assert (undoredo == todo_undoredo);
 		    assert (*undoredo == *todo_undoredo);
 
 		    mvccid = MVCCID_NULL;
@@ -3374,11 +3476,15 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		rcv_vpid.pageid = undoredo->data.pageid;
 
 		LOG_RCV rcv = LOG_RCV_INITIALIZER;	/* Recovery structure */
+		// TODO: remove
+		LOG_RCV todo_rcv = LOG_RCV_INITIALIZER;	/* Recovery structure */
 		const LOG_RCVINDEX rcvindex = undoredo->data.rcvindex;	/* Recovery index function */
 		/* If the page does not exit, there is nothing to redo */
 		if (rcv_vpid.pageid != NULL_PAGEID && rcv_vpid.volid != NULL_VOLID)
 		  {
 		    rcv.pgptr = log_rv_redo_fix_page (thread_p, &rcv_vpid, rcvindex);
+		    // TODO: remove
+		    todo_rcv.pgptr = rcv.pgptr;
 		    if (rcv.pgptr == NULL)
 		      {
 			/* deallocated */
@@ -3410,11 +3516,16 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		rcv.length = undoredo->rlength;
 		rcv.offset = undoredo->data.offset;
 		rcv.mvcc_id = mvccid;
+		// TODO: remove
+		todo_rcv.length = undoredo->rlength;
+		todo_rcv.offset = undoredo->data.offset;
+		todo_rcv.mvcc_id = mvccid;
 
 		// TODO: replace..
 		LOG_READ_ADD_ALIGN (thread_p, data_header_size, &log_lsa, log_pgptr);
 		// TODO: ..with this
 		log_pgptr_reader.add_align (data_header_size);
+		assert (log_pgptr_reader.equals (log_lsa, *log_pgptr));
 
 		if (is_diff_rec)
 		  {
@@ -3430,12 +3541,14 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		    // TODO: ..with a call to this
 		    const int todo_res = log_rv_get_unzip_log_data_TODO_reader (thread_p, undo_length, log_pgptr_reader,
 										todo_undo_unzip_ptr, dummy_is_zip);
-		    assert (todo_res != NO_ERROR);
+		    assert (todo_res == NO_ERROR);
 		    assert (*undo_unzip_ptr == *todo_undo_unzip_ptr);
 		  }
 		else
 		  {
 		    int temp_length = (int) GET_ZIP_LEN (undo_length);
+		    // TODO: remove
+		    int todo_temp_length = temp_length;
 		    /* Undo Data Pass */
 		    // TODO: replace this whole if..
 		    if (log_lsa.offset + temp_length < (int) LOGAREA_SIZE)
@@ -3473,11 +3586,12 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 			  }
 		      }
 		    // TODO: ..with this
-		    if (log_pgptr_reader.skip (temp_length) != NO_ERROR)
+		    if (log_pgptr_reader.skip (todo_temp_length) != NO_ERROR)
 		      {
 			LSA_SET_NULL (&log_Gl.unique_stats_table.curr_rcv_rec_lsa);
 			return;
 		      }
+		    assert (log_pgptr_reader.equals (log_lsa, *log_pgptr));
 		  }
 
 		/* GET AFTER DATA */
@@ -3485,7 +3599,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		LOG_READ_ALIGN (thread_p, &log_lsa, log_pgptr);
 		// TODO: ..with
 		log_pgptr_reader.align ();
-		log_pgptr_reader.assert_equals (log_lsa, *log_pgptr);
+		assert (log_pgptr_reader.equals (log_lsa, *log_pgptr));
 #if !defined(NDEBUG)
 		if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
 		  {
@@ -3508,14 +3622,29 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		if (is_diff_rec)
 		  {
 		    /* XOR Process */
+		    // TODO: replace this..
 		    log_rv_redo_record (thread_p, &log_lsa, log_pgptr, RV_fun[rcvindex].redofun, &rcv, &rcv_lsa,
 					(int) undo_unzip_ptr->data_length, (char *) undo_unzip_ptr->log_data,
 					*redo_unzip_ptr);
+		    // TODO: ..with this
+		    log_rv_redo_record_TODO_log_reader (thread_p, log_pgptr_reader, RV_fun[rcvindex].redofun, &todo_rcv,
+							&rcv_lsa, (int) todo_undo_unzip_ptr->data_length,
+							(char *) todo_undo_unzip_ptr->log_data, *todo_redo_unzip_ptr);
+		    assert (log_pgptr_reader.equals (log_lsa, *log_pgptr));
+		    assert (*undo_unzip_ptr == *todo_undo_unzip_ptr);
+		    //asse
 		  }
 		else
 		  {
+		    // TODO: replace this..
 		    log_rv_redo_record (thread_p, &log_lsa, log_pgptr, RV_fun[rcvindex].redofun, &rcv, &rcv_lsa, 0,
 					NULL, *redo_unzip_ptr);
+		    // TODO: ..with this
+		    log_rv_redo_record_TODO_log_reader (thread_p, log_pgptr_reader, RV_fun[rcvindex].redofun, &todo_rcv,
+							&rcv_lsa, 0, NULL, *todo_redo_unzip_ptr);
+		    assert (log_pgptr_reader.equals (log_lsa, *log_pgptr));
+		    assert (*redo_unzip_ptr == *todo_redo_unzip_ptr);
+		    assert (rcv == todo_rcv);
 		  }
 		if (rcv.pgptr != NULL)
 		  {
@@ -3530,10 +3659,15 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		/* Does log record belong to a MVCC op? */
 		is_mvcc_op = (log_rtype == LOG_MVCC_REDO_DATA);
 
+		// TODO: use from reader
 		const LOG_LSA rcv_lsa = log_lsa;	/* Address of redo log record */
 
 		/* Get the DATA HEADER */
+		// TODO: replace..
 		LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
+		// TODO: ..with this
+		log_pgptr_reader.add_align (sizeof (LOG_RECORD_HEADER));
+		assert (log_pgptr_reader.equals (log_lsa, *log_pgptr));
 
 		LOG_REC_REDO *redo = NULL;	/* Redo log record */
 		int data_header_size = 0;
@@ -3544,8 +3678,15 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 		    /* Data header is MVCC redo */
 		    data_header_size = sizeof (LOG_REC_MVCC_REDO);
+		    // TODO: replace..
 		    LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, data_header_size, &log_lsa, log_pgptr);
 		    mvcc_redo = (LOG_REC_MVCC_REDO *) ((char *) log_pgptr->area + log_lsa.offset);
+		    // TODO: ..with this
+		    log_pgptr_reader.advance_when_does_not_fit (data_header_size);
+		    const LOG_REC_MVCC_REDO *todo_mvcc_redo =
+		      log_pgptr_reader.reinterpret_cptr < LOG_REC_MVCC_REDO > ();
+		    assert (*mvcc_redo == *todo_mvcc_redo);
+
 		    /* Get redo info */
 		    redo = &mvcc_redo->redo;
 
@@ -3563,9 +3704,15 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		  {
 		    /* Data header is regular redo */
 		    data_header_size = sizeof (LOG_REC_REDO);
+		    // TODO: replace..
 		    LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, data_header_size, &log_lsa, log_pgptr);
 
 		    redo = (LOG_REC_REDO *) ((char *) log_pgptr->area + log_lsa.offset);
+
+		    // TODO: ..with this
+		    log_pgptr_reader.advance_when_does_not_fit (data_header_size);
+		    const LOG_REC_REDO *todo_redo = log_pgptr_reader.reinterpret_cptr < LOG_REC_REDO > ();
+		    assert (*redo == *todo_redo);
 
 		    mvccid = MVCCID_NULL;
 		  }
@@ -3588,11 +3735,15 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		rcv_vpid.pageid = redo->data.pageid;
 
 		LOG_RCV rcv = LOG_RCV_INITIALIZER;	/* Recovery structure */
+		// TODO: remove
+		LOG_RCV todo_rcv = LOG_RCV_INITIALIZER;	/* Recovery structure */
 		const LOG_RCVINDEX rcvindex = redo->data.rcvindex;	/* Recovery index function */
 		/* If the page does not exit, there is nothing to redo */
 		if (rcv_vpid.pageid != NULL_PAGEID && rcv_vpid.volid != NULL_VOLID)
 		  {
 		    rcv.pgptr = log_rv_redo_fix_page (thread_p, &rcv_vpid, rcvindex);
+		    // TODO: remove
+		    todo_rcv.pgptr = rcv.pgptr;
 		    if (rcv.pgptr == NULL)
 		      {
 			/* deallocated */
@@ -3617,16 +3768,20 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 			break;
 		      }
 		  }
-		else
-		  {
-		    rcv.pgptr = NULL;
-		  }
 
 		rcv.length = redo->length;
 		rcv.offset = redo->data.offset;
 		rcv.mvcc_id = mvccid;
+		// TODO: remove
+		todo_rcv.length = redo->length;
+		todo_rcv.offset = redo->data.offset;
+		todo_rcv.mvcc_id = mvccid;
 
+		// TODO: replace..
 		LOG_READ_ADD_ALIGN (thread_p, data_header_size, &log_lsa, log_pgptr);
+		// TODO: ..with this
+		log_pgptr_reader.add_align (data_header_size);
+		assert (log_pgptr_reader.equals (log_lsa, *log_pgptr));
 
 #if !defined(NDEBUG)
 		if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
@@ -3647,8 +3802,15 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		  }
 #endif /* !NDEBUG */
 
+		// TODO: replace..
 		log_rv_redo_record (thread_p, &log_lsa, log_pgptr, RV_fun[rcvindex].redofun, &rcv, &rcv_lsa, 0, NULL,
 				    *redo_unzip_ptr);
+		// TODO: ..with this
+		log_rv_redo_record_TODO_log_reader (thread_p, log_pgptr_reader, RV_fun[rcvindex].redofun, &todo_rcv,
+						    &rcv_lsa, 0, nullptr, *todo_redo_unzip_ptr);
+		assert (log_pgptr_reader.equals (log_lsa, *log_pgptr));
+		//assert(*redo_unzip_ptr == *todo_redo_unzip_ptr);
+		assert (rcv == todo_rcv);
 
 		if (rcv.pgptr != NULL)
 		  {
@@ -3661,22 +3823,41 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	      {
 		LOG_REC_DBOUT_REDO *dbout_redo = NULL;	/* A external redo log record */
 		LOG_RCV rcv = LOG_RCV_INITIALIZER;	/* Recovery structure */
+		// TODO: remove
+		LOG_RCV todo_rcv = LOG_RCV_INITIALIZER;	/* Recovery structure */
+		// TODO: take from log reader
 		const LOG_LSA rcv_lsa = log_lsa;	/* Address of redo log record */
 
 		/* Get the DATA HEADER */
+		// TOD: replace..
 		LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
 		LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_DBOUT_REDO), &log_lsa, log_pgptr);
 
 		dbout_redo = ((LOG_REC_DBOUT_REDO *) ((char *) log_pgptr->area + log_lsa.offset));
+
+		// TODO: ..with this
+		log_pgptr_reader.add_align (sizeof (LOG_RECORD_HEADER));
+		log_pgptr_reader.advance_when_does_not_fit (sizeof (LOG_REC_DBOUT_REDO));
+		assert (log_pgptr_reader.equals (log_lsa, *log_pgptr));
+		const LOG_REC_DBOUT_REDO *todo_dbout_redo = log_pgptr_reader.reinterpret_cptr < LOG_REC_DBOUT_REDO > ();
+		assert (*dbout_redo == *todo_dbout_redo);
 
 		const LOG_RCVINDEX rcvindex = dbout_redo->rcvindex;	/* Recovery index function */
 
 		rcv.offset = -1;
 		rcv.pgptr = NULL;
 		rcv.length = dbout_redo->length;
+		// TODO: remove
+		todo_rcv.offset = -1;
+		todo_rcv.pgptr = NULL;
+		todo_rcv.length = dbout_redo->length;
 
 		/* GET AFTER DATA */
+		// TODO: replace..
 		LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_DBOUT_REDO), &log_lsa, log_pgptr);
+		// TODO: ..with this
+		log_pgptr_reader.add_align (sizeof (LOG_REC_DBOUT_REDO));
+		assert (log_pgptr_reader.equals (log_lsa, *log_pgptr));
 
 #if !defined(NDEBUG)
 		if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
@@ -3689,9 +3870,17 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 		if (!log_recovery_needs_skip_logical_redo (thread_p, tran_id, log_rtype, rcvindex, &rcv_lsa))
 		  {
+		    // TODO: replace..
 		    log_rv_redo_record (thread_p, &log_lsa, log_pgptr, RV_fun[rcvindex].redofun, &rcv, &rcv_lsa, 0,
 					NULL, *redo_unzip_ptr);
 		    /* unzip_ptr used here only as a buffer for the underlying logic */
+
+		    // TODO: ..with this
+		    log_rv_redo_record_TODO_log_reader (thread_p, log_pgptr_reader, RV_fun[rcvindex].redofun, &todo_rcv,
+							&rcv_lsa, 0, nullptr, *todo_redo_unzip_ptr);
+		    assert (log_pgptr_reader.equals (log_lsa, *log_pgptr));
+		    assert (*redo_unzip_ptr == *todo_redo_unzip_ptr);
+		    assert (rcv == todo_rcv);
 		  }
 	      }
 	      break;
@@ -3699,12 +3888,21 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	    case LOG_RUN_POSTPONE:
 	      {
 		LOG_REC_RUN_POSTPONE *run_posp = NULL;	/* A run postpone action */
+		// TODO: used from log reader
 		const LOG_LSA rcv_lsa = log_lsa;	/* Address of redo log record */
 
 		/* Get the DATA HEADER */
+		// TODO: replace..
 		LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
 		LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_RUN_POSTPONE), &log_lsa, log_pgptr);
 		run_posp = (LOG_REC_RUN_POSTPONE *) ((char *) log_pgptr->area + log_lsa.offset);
+
+		// TODO: ..with this
+		log_pgptr_reader.add_align (sizeof (LOG_RECORD_HEADER));
+		log_pgptr_reader.advance_when_does_not_fit (sizeof (LOG_REC_RUN_POSTPONE));
+		const LOG_REC_RUN_POSTPONE *todo_run_posp =
+		  log_pgptr_reader.reinterpret_cptr < LOG_REC_RUN_POSTPONE > ();
+		assert (*run_posp == *todo_run_posp);
 
 		/* Do we need to redo anything ? */
 
@@ -3718,11 +3916,14 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		rcv_vpid.pageid = run_posp->data.pageid;
 
 		LOG_RCV rcv = LOG_RCV_INITIALIZER;	/* Recovery structure */
+		// TODO: remove
+		LOG_RCV todo_rcv = LOG_RCV_INITIALIZER;	/* Recovery structure */
 		const LOG_RCVINDEX rcvindex = run_posp->data.rcvindex;	/* Recovery index function */
 		/* If the page does not exit, there is nothing to redo */
 		if (rcv_vpid.pageid != NULL_PAGEID && rcv_vpid.volid != NULL_VOLID)
 		  {
 		    rcv.pgptr = log_rv_redo_fix_page (thread_p, &rcv_vpid, rcvindex);
+		    todo_rcv.pgptr = rcv.pgptr;
 		    if (rcv.pgptr == NULL)
 		      {
 			/* deallocated */
@@ -3747,17 +3948,21 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 			break;
 		      }
 		  }
-		else
-		  {
-		    rcv.pgptr = NULL;
-		  }
 
 		rcv.length = run_posp->length;
 		rcv.offset = run_posp->data.offset;
+		// TODO: remove
+		todo_rcv.length = run_posp->length;
+		todo_rcv.offset = run_posp->data.offset;
 
+		// TODO: replace..
 		LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_RUN_POSTPONE), &log_lsa, log_pgptr);
 		/* GET AFTER DATA */
 		LOG_READ_ALIGN (thread_p, &log_lsa, log_pgptr);
+		// TODO: ..with this
+		log_pgptr_reader.add_align (sizeof (LOG_REC_RUN_POSTPONE));
+		log_pgptr_reader.align ();
+		assert (log_pgptr_reader.equals (log_lsa, *log_pgptr));
 
 #if !defined(NDEBUG)
 		if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
@@ -3778,9 +3983,17 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		  }
 #endif /* !NDEBUG */
 
+		// TODO: replace..
 		log_rv_redo_record (thread_p, &log_lsa, log_pgptr, RV_fun[rcvindex].redofun, &rcv, &rcv_lsa, 0, NULL,
 				    *redo_unzip_ptr);
 		/* unzip_ptr used here only as a buffer for the underlying logic */
+
+		// TODO: ..with this
+		log_rv_redo_record_TODO_log_reader (thread_p, log_pgptr_reader, RV_fun[rcvindex].redofun, &todo_rcv,
+						    &rcv_lsa, 0, NULL, *todo_redo_unzip_ptr);
+		assert (log_pgptr_reader.equals (log_lsa, *log_pgptr));
+		assert (*redo_unzip_ptr == *todo_redo_unzip_ptr);
+		assert (rcv == todo_rcv);
 
 		if (rcv.pgptr != NULL)
 		  {
@@ -3792,12 +4005,19 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	    case LOG_COMPENSATE:
 	      {
 		LOG_REC_COMPENSATE *compensate = NULL;	/* Compensating log record */
+		// TODO: use from log reader
 		const LOG_LSA rcv_lsa = log_lsa;	/* Address of redo log record */
 
 		/* Get the DATA HEADER */
+		// TODO: replace..
 		LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
 		LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_COMPENSATE), &log_lsa, log_pgptr);
 		compensate = (LOG_REC_COMPENSATE *) ((char *) log_pgptr->area + log_lsa.offset);
+		// TODO: ..with this
+		log_pgptr_reader.add_align (sizeof (LOG_RECORD_HEADER));
+		log_pgptr_reader.advance_when_does_not_fit (sizeof (LOG_REC_COMPENSATE));
+		const LOG_REC_COMPENSATE *todo_compensate = log_pgptr_reader.reinterpret_cptr < LOG_REC_COMPENSATE > ();
+		assert (*compensate == *todo_compensate);
 
 		/* Do we need to redo anything ? */
 
@@ -3811,11 +4031,14 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		rcv_vpid.pageid = compensate->data.pageid;
 
 		LOG_RCV rcv = LOG_RCV_INITIALIZER;	/* Recovery structure */
+		// TODO: remove
+		LOG_RCV todo_rcv = LOG_RCV_INITIALIZER;	/* Recovery structure */
 		const LOG_RCVINDEX rcvindex = compensate->data.rcvindex;	/* Recovery index function */
 		/* If the page does not exit, there is nothing to redo */
 		if (rcv_vpid.pageid != NULL_PAGEID && rcv_vpid.volid != NULL_VOLID)
 		  {
 		    rcv.pgptr = log_rv_redo_fix_page (thread_p, &rcv_vpid, rcvindex);
+		    todo_rcv.pgptr = rcv.pgptr;
 		    if (rcv.pgptr == NULL)
 		      {
 			/* deallocated */
@@ -3840,17 +4063,21 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 			break;
 		      }
 		  }
-		else
-		  {
-		    rcv.pgptr = NULL;
-		  }
 
 		rcv.length = compensate->length;
 		rcv.offset = compensate->data.offset;
+		// TODO: remove
+		todo_rcv.length = compensate->length;
+		todo_rcv.offset = compensate->data.offset;
 
+		// TODO: replace..
 		LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_COMPENSATE), &log_lsa, log_pgptr);
 		/* GET COMPENSATING DATA */
 		LOG_READ_ALIGN (thread_p, &log_lsa, log_pgptr);
+		// TODO: ..with this
+		log_pgptr_reader.add_align (sizeof (LOG_REC_COMPENSATE));
+		log_pgptr_reader.align ();
+		assert (log_pgptr_reader.equals (log_lsa, *log_pgptr));
 #if !defined(NDEBUG)
 		if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
 		  {
@@ -3870,9 +4097,17 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		  }
 #endif /* !NDEBUG */
 
+		// TODO: replace..
 		log_rv_redo_record (thread_p, &log_lsa, log_pgptr, RV_fun[rcvindex].undofun, &rcv, &rcv_lsa, 0, NULL,
 				    *redo_unzip_ptr);
 		/* unzip_ptr used here only as a buffer for the underlying logic */
+		// TODO: ..with this
+		log_rv_redo_record_TODO_log_reader (thread_p, log_pgptr_reader, RV_fun[rcvindex].undofun, &todo_rcv,
+						    &rcv_lsa, 0, NULL, *todo_redo_unzip_ptr);
+		assert (log_pgptr_reader.equals (log_lsa, *log_pgptr));
+		assert (*redo_unzip_ptr == *todo_redo_unzip_ptr);
+		assert (rcv == todo_rcv);
+
 		if (rcv.pgptr != NULL)
 		  {
 		    pgbuf_unfix (thread_p, rcv.pgptr);
@@ -3889,6 +4124,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 	    case LOG_2PC_PREPARE:
 	      {
+		assert (false);
 		const int tran_index = logtb_find_tran_index (thread_p, tran_id);
 		if (tran_index == NULL_TRAN_INDEX)
 		  {
@@ -3927,6 +4163,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 	    case LOG_2PC_START:
 	      {
+		assert (false);
 		const int tran_index = logtb_find_tran_index (thread_p, tran_id);
 		if (tran_index != NULL_TRAN_INDEX)
 		  {
@@ -4000,6 +4237,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 	    case LOG_2PC_RECV_ACK:
 	      {
+		assert (false);
 		const int tran_index = logtb_find_tran_index (thread_p, tran_id);
 		if (tran_index != NULL_TRAN_INDEX)
 		  {
@@ -4063,9 +4301,13 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		     * Need to read the donetime record to find out if we need to stop
 		     * the recovery at this point.
 		     */
+		    // TODO: replace..
 		    LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
 		    LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_DONETIME), &log_lsa, log_pgptr);
 		    donetime = (LOG_REC_DONETIME *) ((char *) log_pgptr->area + log_lsa.offset);
+		    // TODO: ..with this
+		    log_pgptr_reader.add_align (sizeof (LOG_RECORD_HEADER));
+		    log_pgptr_reader.advance_when_does_not_fit (sizeof (LOG_REC_DONETIME));
 
 		    if (difftime (*stopat, (time_t) donetime->at_time) < 0)
 		      {
@@ -4100,12 +4342,19 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		 * redone/undone, but it has information that can be used for vacuum. */
 
 		LOG_REC_MVCC_UNDO *mvcc_undo = NULL;	/* MVCC op undo log record */
+		// TODO: use from log reader
 		const LOG_LSA rcv_lsa = log_lsa;	/* Address of redo log record */
 
+		// TODO: replace..
 		LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
 		LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_MVCC_UNDO), &log_lsa, log_pgptr);
 		mvcc_undo = (LOG_REC_MVCC_UNDO *) ((char *) log_pgptr->area + log_lsa.offset);
 		const MVCCID mvccid = mvcc_undo->mvccid;
+		// TODO: ..with this
+		log_pgptr_reader.add_align (sizeof (LOG_RECORD_HEADER));
+		log_pgptr_reader.advance_when_does_not_fit (sizeof (LOG_REC_MVCC_UNDO));
+		const LOG_REC_MVCC_UNDO *todo_mvcc_undo = log_pgptr_reader.reinterpret_cptr < LOG_REC_MVCC_UNDO > ();
+		assert (*mvcc_undo == *todo_mvcc_undo);
 
 		/* Check if MVCC next ID must be updated */
 		if (!MVCC_ID_PRECEDES (mvccid, log_Gl.hdr.mvcc_next_id))
@@ -4148,11 +4397,19 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	    case LOG_SYSOP_END:
 	      {
 		LOG_REC_SYSOP_END *sysop_end;	/* Result of top system op */
+		// TODO: take from log reader
 		const LOG_LSA rcv_lsa = log_lsa;	/* Address of redo log record */
 
+		// TODO: replace..
 		LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
 		LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_SYSOP_END), &log_lsa, log_pgptr);
 		sysop_end = ((LOG_REC_SYSOP_END *) ((char *) log_pgptr->area + log_lsa.offset));
+		// TODO: ..with this
+		log_pgptr_reader.add_align (sizeof (LOG_RECORD_HEADER));
+		log_pgptr_reader.advance_when_does_not_fit (sizeof (LOG_REC_SYSOP_END));
+		const LOG_REC_SYSOP_END *todo_sysop_end = log_pgptr_reader.reinterpret_cptr < LOG_REC_SYSOP_END > ();
+		assert (*sysop_end == *todo_sysop_end);
+
 		if (sysop_end->type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
 		  {
 		    LSA_COPY (&log_Gl.hdr.mvcc_op_log_lsa, &rcv_lsa);

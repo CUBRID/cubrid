@@ -47,6 +47,7 @@ struct log_lsa
   inline void set_null ();
 
   inline bool operator== (const log_lsa &olsa) const;
+  inline bool operator!= (const log_lsa &olsa) const;
   inline bool operator< (const log_lsa &olsa) const;
   inline bool operator<= (const log_lsa &olsa) const;
   inline bool operator> (const log_lsa &olsa) const;
@@ -107,6 +108,12 @@ bool
 log_lsa::operator== (const log_lsa &olsa) const
 {
   return pageid == olsa.pageid && offset == olsa.offset;
+}
+
+bool
+log_lsa::operator!= (const log_lsa &olsa) const
+{
+  return ! (*this == olsa);
 }
 
 bool

@@ -15,20 +15,17 @@ const log_lsa &log_reader::get_lsa() const
 
 int log_reader::set_lsa_and_fetch_page (const log_lsa &lsa)
 {
-  m_lsa = lsa;
-  return fetch_page();
+  if (m_lsa != lsa)
+    {
+      m_lsa = lsa;
+      return fetch_page();
+    }
 }
 
 const log_hdrpage &log_reader::get_page_header() const
 {
   return m_page->hdr;
 }
-
-//const log_lsa &log_reader::position_on_first_record()
-//{
-//  m_lsa.offset = get_page_header().offset;
-//  return m_lsa;
-//}
 
 void log_reader::add (size_t size)
 {
@@ -118,13 +115,12 @@ int log_reader::skip (size_t size)
   return NO_ERROR;
 }
 
-void log_reader::assert_equals (const log_lsa &other_log_lsa, const log_page &other_log_page) const
+bool log_reader::equals (const log_lsa &other_log_lsa, const log_page &other_log_page) const
 {
-  assert (this->m_lsa == other_log_lsa);
-  assert (this->m_page->hdr == other_log_page.hdr);
-  const auto res = strncmp (static_cast<const char *> (m_page->area), static_cast<const char *> (other_log_page.area),
-			    LOGAREA_SIZE - 1);
-  assert (res == 0);
+  return this->m_lsa == other_log_lsa
+	 && this->m_page->hdr == other_log_page.hdr
+	 && 0 == strncmp (static_cast<const char *> (m_page->area), static_cast<const char *> (other_log_page.area),
+			  LOGAREA_SIZE);
 }
 
 int log_reader::fetch_page ()
