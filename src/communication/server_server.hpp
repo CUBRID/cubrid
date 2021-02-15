@@ -70,7 +70,7 @@ namespace cubcomm
     private:
       using request_handlers_container = std::map<MsgId, server_request_handler>;
 
-      static void loop_poll_and_receive (request_server *arg);
+      void loop_poll_and_receive ();
       void handle (MsgId msgid, cubpacking::unpacker &upkr);
 
       std::thread m_thread;  // thread that loops poll & receive request
@@ -127,7 +127,7 @@ namespace cubcomm
   void request_server<MsgId>::start_thread ()
   {
     m_shutdown = false;
-    m_thread = std::thread (request_server::loop_poll_and_receive, this);
+    m_thread = std::thread (&request_server::loop_poll_and_receive, std::ref(*this));
   }
 
   template <typename MsgId>
@@ -138,15 +138,15 @@ namespace cubcomm
   }
 
   template <typename MsgId>
-  void request_server<MsgId>::loop_poll_and_receive (request_server *arg)
+  void request_server<MsgId>::loop_poll_and_receive ()
   {
     MsgId msgid;
-    while (!arg->m_shutdown)
+    while (!m_shutdown)
       {
 	int ilen;
 	size_t ulen;
 
-	css_error_code err = arg->m_channel.recv_int (ilen);
+	css_error_code err = m_channel.recv_int (ilen);
 	if (err != NO_ERRORS)
 	  {
 	    er_log_debug(ARG_FILE_LINE, "error receiving length");
@@ -154,7 +154,7 @@ namespace cubcomm
 	  }
 	std::unique_ptr<char[]> rec_buffer(new char(ilen));
 
-	err = arg->m_channel.recv (rec_buffer.get (), ulen);
+	err = m_channel.recv (rec_buffer.get (), ulen);
 	if (err == NO_DATA_AVAILABLE)
 	  {
 	    continue;
@@ -168,8 +168,8 @@ namespace cubcomm
 	cubpacking::unpacker upk;
 	upk.set_buffer (rec_buffer.get (), ulen);
 	upk.unpack_int ((int &)msgid);
-	assert (arg->m_request_handlers.count (msgid));
-	arg->m_request_handlers[msgid] (upk);
+	assert (m_request_handlers.count (msgid));
+	m_request_handlers[msgid] (upk);
       }
   }
 
