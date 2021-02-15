@@ -21,7 +21,20 @@
 #include <cstring>
 #include <functional>
 #include <iostream>
+enum class msgid_ats_to_ps
+{
+  SEND_LOG_RECORD,
+  REQUEST_DATA_PAGE,
+  REQUEST_LOG_PAGE
+};
 
+enum class msgid_ps_to_ats
+{
+  SEND_DATA_PAGE,
+  SEND_LOG_PAGE,
+  SEND_START_LSA,
+  SEND_SAVED_LSA
+};
 std::string pages[] = {"page0 aaaa", "page1 qwer", "page2 fdsa", "page333", "blaaaaasdfjlksfj"};
 
 using ats_to_ps_server_type = cubcomm::request_client_server<msgid_ats_to_ps, msgid_ps_to_ats>;

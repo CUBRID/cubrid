@@ -116,15 +116,33 @@ namespace cubcomm
     return NO_ERRORS;
   }
 
-  bool channel::send_int (int)
+  bool channel::send_int (int val)
   {
-    assert (0);
-    return NO_ERRORS;
+    std::string s = std::to_string (val);
+    return send (s.c_str (), s.length ());
   }
 
-  css_error_code channel::recv_int (int &)
+  css_error_code channel::recv_int (int &received)
   {
-    assert (0);
+    char buff[16];
+    size_t len = 16;
+    auto rc = recv (buff, len);
+    if (rc != NO_ERRORS)
+      {
+	return rc;
+      }
+    if (buff[len-1] < '0' || buff[len-1] > '9')
+      {
+	return WRONG_PACKET_TYPE;
+      }
+    try
+      {
+	received = std::stoi (buff);
+      }
+    catch (...)
+      {
+	return WRONG_PACKET_TYPE;
+      }
     return NO_ERRORS;
   }
 

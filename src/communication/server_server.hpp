@@ -25,6 +25,7 @@
 
 #include <functional>
 #include <map>
+#include <memory>
 #include <thread>
 
 namespace cubcomm
@@ -87,22 +88,6 @@ namespace cubcomm
   };
 }
 
-enum class msgid_ats_to_ps
-{
-  SEND_LOG_RECORD,
-  REQUEST_DATA_PAGE,
-  REQUEST_LOG_PAGE
-};
-
-enum class msgid_ps_to_ats
-{
-  SEND_DATA_PAGE,
-  SEND_LOG_PAGE,
-  SEND_START_LSA,
-  SEND_SAVED_LSA
-};
-
-
 namespace cubcomm
 {
   // --- request_client ---
@@ -112,9 +97,15 @@ namespace cubcomm
   {
     packing_packer packer;
     cubmem::extensible_block eb;
-    packer.set_buffer_and_pack_all(eb, msgid, args...);
+    packer.set_buffer_and_pack_all (eb, msgid, args...);
 
-    return m_channel.send(eb.get_ptr (), packer.get_current_size());
+    int rc = m_channel.send_int (packer.get_current_size ());
+    if (rc != NO_ERRORS)
+      {
+	return rc;
+      }
+
+    return m_channel.send (eb.get_ptr (), packer.get_current_size ());
   }
 
   // --- request_server ---
@@ -147,21 +138,36 @@ namespace cubcomm
   template <typename MsgId>
   void request_server<MsgId>::loop_poll_and_receive (request_server *arg)
   {
-    char rec_buffer[1024];
     MsgId msgid;
     while (!arg->m_shutdown)
       {
-	size_t rec_len = 1024;
-	css_error_code err = arg->m_channel.recv (rec_buffer, rec_len);
+	int ilen;
+	size_t ulen;
+
+	css_error_code err = arg->m_channel.recv_int (ilen);
+	if (err != NO_ERRORS)
+	  {
+	    // todo
+	    continue;
+	  }
+	std::unique_ptr<char[]> rec_buffer(new char(ilen));
+
+	err = arg->m_channel.recv (rec_buffer.get (), ulen);
 	if (err == NO_DATA_AVAILABLE)
 	  {
 	    continue;
 	  }
+	if (err != NO_ERRORS)
+	  {
+	    // todo
+	    continue;
+	  }
+
 	cubpacking::unpacker upk;
-	upk.set_buffer (rec_buffer, rec_len);
+	upk.set_buffer (rec_buffer.get (), ulen);
 	upk.unpack_int ((int &)msgid);
-	assert(arg->m_request_handlers.count(msgid));
-	arg->m_request_handlers[msgid](upk);
+	assert (arg->m_request_handlers.count (msgid));
+	arg->m_request_handlers[msgid] (upk);
       }
   }
 
@@ -193,7 +199,7 @@ namespace cubcomm
 
     packer.set_buffer_and_pack_all (eb, (int) msgid, args...);
 
-    const char *data = packer.get_buffer_start();
+    const char *data = packer.get_buffer_start ();
     int data_size = (int) packer.get_current_size ();
 
     return this->m_channel.send (data, data_size);
