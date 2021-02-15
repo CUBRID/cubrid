@@ -15,11 +15,13 @@ const log_lsa &log_reader::get_lsa() const
 
 int log_reader::set_lsa_and_fetch_page (const log_lsa &lsa)
 {
-  if (m_lsa != lsa)
+  const bool do_fetch_page { m_lsa.pageid != lsa.pageid };
+  m_lsa = lsa;
+  if (do_fetch_page)
     {
-      m_lsa = lsa;
       return fetch_page();
     }
+  return NO_ERROR;
 }
 
 const log_hdrpage &log_reader::get_page_header() const
