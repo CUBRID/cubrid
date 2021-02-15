@@ -20,8 +20,10 @@
 #define _SERVER_SERVER_HPP_
 
 #include "communication_channel.hpp"
+#include "error_manager.h"
 #include "mem_block.hpp"
 #include "packer.hpp"
+#include "system_parameter.h"
 
 #include <functional>
 #include <map>
@@ -147,7 +149,7 @@ namespace cubcomm
 	css_error_code err = arg->m_channel.recv_int (ilen);
 	if (err != NO_ERRORS)
 	  {
-	    // todo
+	    er_log_debug(ARG_FILE_LINE, "error receiving length");
 	    continue;
 	  }
 	std::unique_ptr<char[]> rec_buffer(new char(ilen));
@@ -159,7 +161,7 @@ namespace cubcomm
 	  }
 	if (err != NO_ERRORS)
 	  {
-	    // todo
+	    er_log_debug(ARG_FILE_LINE, "error receiving message");
 	    continue;
 	  }
 
