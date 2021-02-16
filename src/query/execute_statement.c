@@ -14627,7 +14627,6 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
  *
  * Note:
  */
-
 int
 do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
@@ -14795,7 +14794,7 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       repl_stmt.name = (char *) pt_get_varchar_bytes (name);
     }
 
-  if (parser->host_var_count == 0)
+  if (parser->host_var_count == 0 && parser->auto_param_count == 0)
     {
       /* it may contain multiple statements */
       if (strlen (statement->sql_user_text) > statement->sql_user_text_len)
@@ -14810,67 +14809,12 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       PT_PRINT_VALUE_FUNC saved_func = parser->print_db_value;
       int saved_custom_print = parser->custom_print;
-      PARSER_VARCHAR **host_val;
-      char *sbr_text, *sql_text;
-      int i, n, nth;
-      int sql_len = strlen (parser->context.sql_user_text);
-      int var_len = 0;
-      bool begin_quote = false;
-
-      host_val = (PARSER_VARCHAR **) malloc (sizeof (PARSER_VARCHAR *) * parser->host_var_count);
-      if (host_val == NULL)
-	{
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-
-      for (i = 0; i < parser->host_var_count; i++)
-	{
-	  host_val[i] = pt_print_db_value (parser, &parser->host_variables[i]);
-	  var_len += host_val[i]->length;
-	}
-
-      sbr_text = (char *) malloc (sql_len + var_len);
-      if (sbr_text == NULL)
-	{
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
 
       parser->custom_print |= (PT_PRINT_ORIGINAL_BEFORE_CONST_FOLDING | PT_PRINT_QUOTES);
       parser->print_db_value = pt_print_node_value;
-
-      n = nth = 0;
-
-      sql_text = parser->context.sql_user_text;
-      for (i = 0; i < sql_len; i++)
-	{
-	  if (sql_text[i] == '\'')
-	    {
-	      if (!begin_quote)
-		{
-		  begin_quote = true;
-		}
-	      else
-		{
-		  begin_quote = false;
-		}
-	    }
-	  if (sql_text[i] == '?' && !begin_quote)
-	    {
-	      strncpy (&sbr_text[n], (char *) host_val[nth]->bytes, host_val[nth]->length);
-	      n += host_val[nth++]->length;
-	    }
-	  else
-	    {
-	      sbr_text[n++] = sql_text[i];
-	    }
-	}
-
-      sbr_text[n] = 0;
-      repl_stmt.stmt_text = sbr_text;
+      repl_stmt.stmt_text = parser_print_tree (parser, statement);
       parser->print_db_value = saved_func;
       parser->custom_print = saved_custom_print;
-
-      free (host_val);
     }
 
   repl_stmt.db_user = db_get_user_name ();
