@@ -14627,6 +14627,7 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
  *
  * Note:
  */
+
 int
 do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
