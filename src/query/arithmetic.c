@@ -2003,14 +2003,8 @@ round_double (double num, double integer)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, tp_Double_domain.type->name);
     }
-  if (num > 0)
-    {
-      result = floor (num * scale_up + 0.5) / scale_up;
-    }
-  else
-    {
-      result = ceil (num * scale_up - 0.5) / scale_up;
-    }
+
+  result = round (num * scale_up) / scale_up;
 
   return result;
 }
