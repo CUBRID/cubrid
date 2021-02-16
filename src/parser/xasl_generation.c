@@ -489,7 +489,7 @@ static int pt_split_hash_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info
 				PT_NODE ** build_attrs, PT_NODE ** probe_attrs);
 
 static int pt_split_hash_attrs_for_HQ (PARSER_CONTEXT * parser, PT_NODE * pred,	PT_NODE ** build_attrs,
-				       PT_NODE ** probe_attrs);
+				       PT_NODE ** probe_attrs, PT_NODE ** pred_without_HQ);
 
 static int pt_to_index_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info, QO_XASL_INDEX_INFO * index_pred,
 			      PT_NODE * pred, PT_NODE ** pred_attrs, int **pred_offsets);
@@ -503,6 +503,8 @@ static PT_NODE *pt_null_xasl (PARSER_CONTEXT * parser, PT_NODE * tree, void *voi
 static PT_NODE *pt_is_spec_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *void_arg, int *continue_walk);
 
 static PT_NODE *pt_check_hashable (PARSER_CONTEXT * parser, PT_NODE * tree, void *void_arg, int *continue_walk);
+
+static PT_NODE *pt_find_hq_op_except_prior (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 
 static VAL_LIST *pt_clone_val_list (PARSER_CONTEXT * parser, PT_NODE * attribute_list);
 
@@ -654,11 +656,12 @@ static XASL_NODE *
 pt_make_connect_by_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NODE * select_xasl)
 {
   XASL_NODE *xasl, *xptr;
-  PT_NODE *from, *where, *if_part, *instnum_part, *build_attrs = NULL, *probe_attrs = NULL;
+  PT_NODE *from, *where, *if_part, *instnum_part, *build_attrs = NULL, *probe_attrs = NULL, *pred_without_HQ = NULL;
   QPROC_DB_VALUE_LIST dblist1, dblist2;
   CONNECTBY_PROC_NODE *connect_by;
   int level, flag;
   REGU_VARIABLE_LIST regu_attributes_build, regu_attributes_probe;
+  PRED_EXPR *where_without_HQ = NULL;
 
   if (!parser->symbols)
     {
@@ -855,15 +858,22 @@ pt_make_connect_by_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NO
     {
       /* check hashable predicate and split into build and probe attrs */
       where = select_node->info.query.q.select.connect_by;
-      if (pt_split_hash_attrs_for_HQ (parser, where, &build_attrs, &probe_attrs) != NO_ERROR)
+      if (pt_split_hash_attrs_for_HQ (parser, where, &build_attrs, &probe_attrs, &pred_without_HQ) != NO_ERROR)
 	{
 	  goto exit_on_error;;
 	}
       regu_attributes_build = pt_to_regu_variable_list (parser, build_attrs, UNBOX_AS_VALUE, xasl->val_list, NULL);
       regu_attributes_probe = pt_to_regu_variable_list (parser, probe_attrs, UNBOX_AS_VALUE, xasl->val_list, NULL);
 
-      /* make list scan spec. data filter will be evaluated at if_pred in qexec_execute_connect_by() */
-      xasl->spec_list = pt_make_list_access_spec (xasl, ACCESS_METHOD_SEQUENTIAL, NULL, NULL, connect_by->regu_list_pred,
+      /* make predicate without HQ */
+      where_without_HQ = pt_to_pred_expr (parser, pred_without_HQ);
+
+      parser_free_tree (parser, probe_attrs);
+      parser_free_tree (parser, build_attrs);
+      parser_free_tree (parser, pred_without_HQ);
+
+      /* make list scan spec. */
+      xasl->spec_list = pt_make_list_access_spec (xasl, ACCESS_METHOD_SEQUENTIAL, NULL, where_without_HQ, connect_by->regu_list_pred,
 			      connect_by->regu_list_rest, regu_attributes_build, regu_attributes_probe);
       if (xasl->spec_list == NULL)
 	{
@@ -3012,7 +3022,8 @@ exit_on_error:
  *    X     |        X           | constant (can be probe or build attr)
  */
 static int
-pt_split_hash_attrs_for_HQ (PARSER_CONTEXT * parser, PT_NODE * pred, PT_NODE ** build_attrs, PT_NODE ** probe_attrs)
+pt_split_hash_attrs_for_HQ (PARSER_CONTEXT * parser, PT_NODE * pred, PT_NODE ** build_attrs, PT_NODE ** probe_attrs,
+			    PT_NODE ** pred_without_HQ)
 {
   PT_NODE *node = NULL, *save_node = NULL, *save_next = NULL;
   PT_NODE *arg1 = NULL, *arg2 = NULL;
@@ -3021,11 +3032,37 @@ pt_split_hash_attrs_for_HQ (PARSER_CONTEXT * parser, PT_NODE * pred, PT_NODE ** 
   assert (probe_attrs != NULL && *probe_attrs == NULL);
   *build_attrs = NULL;
   *probe_attrs = NULL;
+  bool is_hierarchical_op;
 
   if (pred)
     {
       /* Traverse pred */
       for (node = pred; node; node = node->next)
+	{
+	  /* save and cut-off node link */
+	  save_next = node->next;
+	  node->next = NULL;
+
+	  /* find Reserved words for HQ */
+	  is_hierarchical_op = false;
+	  parser_walk_tree (parser, node, pt_find_hq_op_except_prior, &is_hierarchical_op, NULL, NULL);;
+
+	  /* Predicates containing HQ are not hashable because they have to be evaluated in the HQ proc. */
+	  /* Reserved words for HQ is not allowed (LEVEL, CONNECT_BY_ISLEAF....) */
+	  if (!is_hierarchical_op)
+	    {
+	      *pred_without_HQ = parser_append_node (parser_copy_tree (parser, node), *pred_without_HQ);
+	    }
+
+	  /* restore node link */
+	  node->next = save_next;
+	}
+    }
+
+  if (*pred_without_HQ)
+    {
+      /* Traverse pred */
+      for (node = *pred_without_HQ; node; node = node->next)
 	{
 	  save_node = node;	/* save */
 
@@ -3039,6 +3076,7 @@ pt_split_hash_attrs_for_HQ (PARSER_CONTEXT * parser, PT_NODE * pred, PT_NODE ** 
 	      /* 3. predicate without OR (or_next is null) */
 	      /* 4. symmetric predicate (having PRIOR, probe. having NAME, build. Having these two makes it unhashable) */
 	      /* 5. subquery is not allowed in syntax check */
+	      /* 6. Reserved words for HQ is not allowed (LEVEL, CONNECT_BY_ISLEAF....) */
 	      continue;
 	    }
 	  else
@@ -3096,6 +3134,7 @@ exit_on_error:
 
   parser_free_tree (parser, *probe_attrs);
   parser_free_tree (parser, *build_attrs);
+  parser_free_tree (parser, *pred_without_HQ);
 
   return ER_FAILED;
 }
@@ -3444,6 +3483,35 @@ pt_check_hashable (PARSER_CONTEXT * parser, PT_NODE * tree, void *void_arg, int 
     }
 
   return tree;
+}
+
+/*
+ * pt_find_hq_op_except_prior() - Check expression tree for hierarchical op except PRIOR
+ *   return:
+ *   parser(in):
+ *   node(in):
+ *   arg(in/out):
+ *   continue_walk(in):
+ */
+static PT_NODE *
+pt_find_hq_op_except_prior (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *is_hierarchical_op = (bool *) arg;
+
+  if (node->node_type != PT_EXPR)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+  else
+    {
+      if (PT_CHECK_HQ_OP_EXCEPT_PRIOR (node->info.expr.op))
+	{
+	  *is_hierarchical_op = true;
+	  *continue_walk = PT_STOP_WALK;
+	}
+    }
+
+  return node;
 }
 
 /*
