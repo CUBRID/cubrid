@@ -4124,7 +4124,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 	    case LOG_2PC_PREPARE:
 	      {
-		assert (false);
 		const int tran_index = logtb_find_tran_index (thread_p, tran_id);
 		if (tran_index == NULL_TRAN_INDEX)
 		  {
@@ -4142,28 +4141,36 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		 */
 
 		/* Get the DATA HEADER */
+		// TODO: replace..
 		LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
+		// TODO: ..with this
+		log_pgptr_reader.add_align (sizeof (LOG_RECORD_HEADER));
 
 		if (tdes->state == TRAN_UNACTIVE_2PC_PREPARE)
 		  {
 		    /* The transaction was still prepared_to_commit state at the time of crash. So, read the global
 		     * transaction identifier and list of locks from the log record, and acquire all of the locks. */
 
+		    // TODO: replace..
 		    log_2pc_read_prepare (thread_p, LOG_2PC_OBTAIN_LOCKS, tdes, &log_lsa, log_pgptr);
+		    // TODO: ..with this
+		    log_2pc_read_prepare_TODO_reader (thread_p, LOG_2PC_OBTAIN_LOCKS, tdes, log_pgptr_reader);
 		  }
 		else
 		  {
 		    /* The transaction was not in prepared_to_commit state anymore at the time of crash. So, there is no
 		     * need to read the list of locks from the log record. Read only the global transaction from the log
 		     * record. */
+		    // TODO: replace..
 		    log_2pc_read_prepare (thread_p, LOG_2PC_DONT_OBTAIN_LOCKS, tdes, &log_lsa, log_pgptr);
+		    // TODO: ..with this
+		    log_2pc_read_prepare_TODO_reader (thread_p, LOG_2PC_DONT_OBTAIN_LOCKS, tdes, log_pgptr_reader);
 		  }
 	      }
 	      break;
 
 	    case LOG_2PC_START:
 	      {
-		assert (false);
 		const int tran_index = logtb_find_tran_index (thread_p, tran_id);
 		if (tran_index != NULL_TRAN_INDEX)
 		  {
@@ -4177,10 +4184,18 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 			 * from the log record to the transaction descriptor. */
 
 			/* Get the DATA HEADER */
+			// TODO: replace..
 			LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
+			// TODO: ..with this
+			log_pgptr_reader.add_align (sizeof (LOG_RECORD_HEADER));
 
+			// TODO: replace..
 			LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_2PC_START), &log_lsa, log_pgptr);
 			start_2pc = ((LOG_REC_2PC_START *) ((char *) log_pgptr->area + log_lsa.offset));
+			// TODO: ..with this
+			log_pgptr_reader.advance_when_does_not_fit (sizeof (LOG_REC_2PC_START));
+			const LOG_REC_2PC_START *todo_start_2pc =
+			  log_pgptr_reader.reinterpret_cptr < LOG_REC_2PC_START > ();
 
 			/*
 			 * Obtain the participant information
@@ -4199,12 +4214,19 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 			    break;
 			  }
 
+			// TODO: replace..
 			LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_2PC_START), &log_lsa, log_pgptr);
 			LOG_READ_ALIGN (thread_p, &log_lsa, log_pgptr);
+			// TODO: ..with this
+			log_pgptr_reader.add_align (sizeof (LOG_REC_2PC_START));
+			log_pgptr_reader.align ();
 
 			/* Read in the participants info. block from the log */
+			// TODO: replace..
 			logpb_copy_from_log (thread_p, (char *) block_particps_ids, particp_id_length * num_particps,
 					     &log_lsa, log_pgptr);
+			// TODO: ..with this
+			log_pgptr_reader.copy_from_log ((char *) block_particps_ids, particp_id_length * num_particps);
 
 			/* Initialize the coordinator information */
 			if (log_2pc_alloc_coord_info (tdes, num_particps, particp_id_length, block_particps_ids) ==
@@ -4237,7 +4259,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 	    case LOG_2PC_RECV_ACK:
 	      {
-		assert (false);
 		const int tran_index = logtb_find_tran_index (thread_p, tran_id);
 		if (tran_index != NULL_TRAN_INDEX)
 		  {
@@ -4269,11 +4290,20 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 			 * log record and set the acknowledgement flag of that participant. */
 
 			/* Get the DATA HEADER */
+			// TODO: replace..
 			LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
+			// TODO: ..with this
+			log_pgptr_reader.add_align (sizeof (LOG_RECORD_HEADER));
 
+			// TODO: replace..
 			LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_2PC_PARTICP_ACK), &log_lsa,
 							  log_pgptr);
 			received_ack = ((LOG_REC_2PC_PARTICP_ACK *) ((char *) log_pgptr->area + log_lsa.offset));
+			// TODO: ..with this
+			log_pgptr_reader.advance_when_does_not_fit (sizeof (LOG_REC_2PC_PARTICP_ACK));
+			const LOG_REC_2PC_PARTICP_ACK *todo_received_ack =
+			  log_pgptr_reader.reinterpret_cptr < LOG_REC_2PC_PARTICP_ACK > ();
+
 			tdes->coord->ack_received[received_ack->particp_index] = true;
 		      }
 		  }

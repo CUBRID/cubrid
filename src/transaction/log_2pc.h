@@ -36,6 +36,7 @@
 
 // forward declarations
 struct log_tdes;
+class log_reader;
 
 const int LOG_2PC_NULL_GTRID = -1;
 const bool LOG_2PC_OBTAIN_LOCKS = true;
@@ -75,7 +76,7 @@ bool log_2pc_send_prepare (int gtrid, int num_particps, void *block_particps_ids
 bool log_2pc_send_commit_decision (int gtrid, int num_particps, int *particps_indices, void *block_particps_ids);
 bool log_2pc_send_abort_decision (int gtrid, int num_particps, int *particps_indices, void *block_particps_ids,
 				  bool collect);
-TRAN_STATE log_2pc_commit (THREAD_ENTRY * thread_p, log_tdes * tdes, LOG_2PC_EXECUTE execute_2pc_type, bool * decision);
+TRAN_STATE log_2pc_commit (THREAD_ENTRY * thread_p, log_tdes * tdes, LOG_2PC_EXECUTE execute_2pc_type, bool *decision);
 int log_2pc_set_global_tran_info (THREAD_ENTRY * thread_p, int gtrid, void *info, int size);
 int log_2pc_get_global_tran_info (THREAD_ENTRY * thread_p, int gtrid, void *buffer, int size);
 int log_2pc_start (THREAD_ENTRY * thread_p);
@@ -86,6 +87,8 @@ int log_2pc_attach_global_tran (THREAD_ENTRY * thread_p, int gtrid);
 TRAN_STATE log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid);
 void log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, log_tdes * tdes, LOG_LSA * lsa,
 			   LOG_PAGE * log_pgptr);
+void log_2pc_read_prepare_TODO_reader (THREAD_ENTRY * thread_p, int acquire_locks, log_tdes * tdes,
+				       log_reader & log_pgptr_reader);
 void log_2pc_dump_gtrinfo (FILE * fp, int length, void *data);
 void log_2pc_dump_acqobj_locks (FILE * fp, int length, void *data);
 log_tdes *log_2pc_alloc_coord_info (log_tdes * tdes, int num_particps, int particp_id_length, void *block_particps_ids);

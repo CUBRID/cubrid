@@ -34,6 +34,7 @@
 #include "log_comm.h"
 #include "log_impl.h"
 #include "log_lsa.hpp"
+#include "log_reader.hpp"
 #include "log_manager.h"
 #include "memory_alloc.h"
 #include "page_buffer.h"
@@ -67,8 +68,8 @@ struct log_2pc_global_data
   char *(*sprintf_participant) (void *particp_id);
   void (*dump_participants) (FILE * fp, int block_length, void *block_particps_id);
   int (*send_prepare) (int gtrid, int num_particps, void *block_particps_ids);
-    bool (*send_commit) (int gtrid, int num_particps, int *particp_indices, void *block_particps_ids);
-    bool (*send_abort) (int gtrid, int num_particps, int *particp_indices, void *block_particps_ids, int collect);
+  bool (*send_commit) (int gtrid, int num_particps, int *particp_indices, void *block_particps_ids);
+  bool (*send_abort) (int gtrid, int num_particps, int *particp_indices, void *block_particps_ids, int collect);
 };
 struct log_2pc_global_data log_2pc_Userfun = { NULL, NULL, NULL, NULL, NULL, NULL, NULL };
 
@@ -76,8 +77,8 @@ static int log_2pc_get_num_participants (int *partid_len, void **block_particps_
 static int log_2pc_make_global_tran_id (TRANID tranid);
 static bool log_2pc_check_duplicate_global_tran_id (int gtrid);
 static int log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EXECUTE execute_2pc_type,
-				       bool * decision);
-static TRAN_STATE log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool * decision);
+				       bool *decision);
+static TRAN_STATE log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool *decision);
 static void log_2pc_append_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void log_2pc_append_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE decsion);
 static LOG_TDES *log_2pc_find_tran_descriptor (int gtrid);
@@ -91,7 +92,7 @@ static void log_2pc_recovery_recv_ack (THREAD_ENTRY * thread_p, LOG_LSA * log_ls
 				       int *ack_count);
 static int log_2pc_recovery_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE record_type, LOG_TDES * tdes,
 					     LOG_LSA * log_lsa, LOG_PAGE * log_page_p, int **ack_list, int *ack_count,
-					     int *size_ack_list, bool * search_2pc_prepare, bool * search_2pc_start);
+					     int *size_ack_list, bool *search_2pc_prepare, bool *search_2pc_start);
 static void log_2pc_recovery_collecting_participant_votes (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void log_2pc_recovery_abort_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void log_2pc_recovery_commit_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
@@ -473,7 +474,7 @@ log_2pc_check_duplicate_global_tran_id (int gtrid)
  * Note:
  */
 static int
-log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EXECUTE execute_2pc_type, bool * decision)
+log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EXECUTE execute_2pc_type, bool *decision)
 {
   int i;
 
@@ -546,7 +547,7 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
  * Note:
  */
 static TRAN_STATE
-log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool * decision)
+log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool *decision)
 {
   TRAN_STATE state;
 
@@ -673,7 +674,7 @@ log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool * de
  *
  */
 TRAN_STATE
-log_2pc_commit (THREAD_ENTRY * thread_p, log_tdes * tdes, LOG_2PC_EXECUTE execute_2pc_type, bool * decision)
+log_2pc_commit (THREAD_ENTRY * thread_p, log_tdes * tdes, LOG_2PC_EXECUTE execute_2pc_type, bool *decision)
 {
   TRAN_STATE state;
 
@@ -1369,7 +1370,7 @@ log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, log_tdes * tde
       tdes->gtrinfo.info_data = malloc (tdes->gtrinfo.info_length);
       if (tdes->gtrinfo.info_data == NULL)
 	{
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_read_prepare");
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_read_prepare_TODO_reader");
 
 	  return;
 	}
@@ -1399,12 +1400,89 @@ log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, log_tdes * tde
 	  acq_locks.obj = (LK_ACQOBJ_LOCK *) malloc (size);
 	  if (acq_locks.obj == NULL)
 	    {
-	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_read_prepare");
+	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_read_prepare_TODO_reader");
 	      return;
 	    }
 
 	  logpb_copy_from_log (thread_p, (char *) acq_locks.obj, size, log_lsa, log_page_p);
 	  LOG_READ_ALIGN (thread_p, log_lsa, log_page_p);
+	}
+
+      if (acq_locks.nobj_locks > 0)
+	{
+	  /* Acquire the locks */
+	  if (lock_reacquire_crash_locks (thread_p, &acq_locks, tdes->tran_index) != LK_GRANTED)
+	    {
+	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_read_prepare_TODO_reader");
+	      return;
+	    }
+
+	  free_and_init (acq_locks.obj);
+	}
+    }
+}
+
+void
+log_2pc_read_prepare_TODO_reader (THREAD_ENTRY * thread_p, int acquire_locks, log_tdes * tdes,
+				  log_reader & log_pgptr_reader
+				  /*LOG_LSA * log_lsa, LOG_PAGE * log_page_p */ )
+{
+  LOG_REC_2PC_PREPCOMMIT *prepared;	/* A 2PC prepare to commit log record */
+  LK_ACQUIRED_LOCKS acq_locks;	/* List of acquired locks before the system crash */
+  int size;
+
+  log_pgptr_reader.advance_when_does_not_fit (sizeof (*prepared));
+
+  prepared = const_cast<LOG_REC_2PC_PREPCOMMIT*>(log_pgptr_reader.reinterpret_cptr < LOG_REC_2PC_PREPCOMMIT > ());
+
+  tdes->client.set_system_internal_with_user (prepared->user_name);
+
+  tdes->gtrid = prepared->gtrid;
+  tdes->gtrinfo.info_length = prepared->gtrinfo_length;
+
+  log_pgptr_reader.add_align (sizeof (*prepared));
+
+  if (tdes->gtrinfo.info_length > 0)
+    {
+      tdes->gtrinfo.info_data = malloc (tdes->gtrinfo.info_length);
+      if (tdes->gtrinfo.info_data == NULL)
+	{
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_read_prepare");
+
+	  return;
+	}
+
+      /* Read the global transaction user information data */
+      log_pgptr_reader.align ();
+
+      log_pgptr_reader.copy_from_log ((char *) tdes->gtrinfo.info_data, tdes->gtrinfo.info_length);
+    }
+
+  /* If the update-type locks that the transaction had obtained before the crash needs to be aqcuired, read them from
+   * the log record and obtain the locks at this time. */
+
+  if (acquire_locks != false)
+    {
+      /* Read in the list of locks to acquire */
+
+      log_pgptr_reader.align ();
+
+      acq_locks.nobj_locks = prepared->num_object_locks;
+      acq_locks.obj = NULL;
+
+      if (acq_locks.nobj_locks > 0)
+	{
+	  /* obtain the list of locks to acquire on objects */
+	  size = acq_locks.nobj_locks * sizeof (LK_ACQOBJ_LOCK);
+	  acq_locks.obj = (LK_ACQOBJ_LOCK *) malloc (size);
+	  if (acq_locks.obj == NULL)
+	    {
+	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_read_prepare");
+	      return;
+	    }
+
+	  log_pgptr_reader.copy_from_log ((char *) acq_locks.obj, size);
+	  log_pgptr_reader.align ();
 	}
 
       if (acq_locks.nobj_locks > 0)
@@ -1862,7 +1940,7 @@ log_2pc_recovery_recv_ack (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE 
 static int
 log_2pc_recovery_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE record_type, LOG_TDES * tdes, LOG_LSA * log_lsa,
 				  LOG_PAGE * log_page_p, int **ack_list, int *ack_count, int *size_ack_list,
-				  bool * search_2pc_prepare, bool * search_2pc_start)
+				  bool *search_2pc_prepare, bool *search_2pc_start)
 {
   switch (record_type)
     {
