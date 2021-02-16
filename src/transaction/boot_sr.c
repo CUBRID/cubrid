@@ -2510,18 +2510,19 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       error_code = vacuum_boot (thread_p);
       if (error_code != NO_ERROR)
 	{
-	  log_append_empty_record (thread_p, LOG_VACUUM_BOOT_START, NULL);
+	  er_log_debug (ARG_FILE_LINE, "Vacuum was started on the transaction server.");
 	}
       else
 	{
-	  log_append_empty_record (thread_p, LOG_NO_VACUUM_BOOT_START, NULL);
+	  er_log_debug (ARG_FILE_LINE, "Vacuum was not started on the transaction server.");
 	}
     }
   else
     {
-      log_append_empty_record (thread_p, LOG_NO_VACUUM_BOOT_START, NULL);
+      er_log_debug (ARG_FILE_LINE, "Vacuum was not started on the page server.");
       error_code = NO_ERROR;
     }
+
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
