@@ -130,8 +130,6 @@ enum log_rectype
   LOG_SYSOP_ATOMIC_START = 50,	/* Log marker to start atomic operations that need to be rollbacked immediately after
                  * redo phase of recovery and before finishing postpones */
 
-  LOG_VACUUM_BOOT_START = 51, /* vacuum was booted on a transaction server */
-  LOG_NO_VACUUM_BOOT_START = 52, /* vacuum was not booted on a page server */
   LOG_DUMMY_GENERIC,		/* used for flush for now. it is ridiculous to create dummy log records for every single
 				 * case. we should find a different approach */
 
