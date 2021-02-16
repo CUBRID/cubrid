@@ -15,6 +15,10 @@
  *  limitations under the License.
  *
  */
+
+#define CATCH_CONFIG_MAIN
+#include "catch2/catch.hpp"
+
 #include "communication_channel.hpp"
 #include "request_client_server.hpp"
 
@@ -151,7 +155,7 @@ class p_server
     }
 };
 
-int main (int, char **)
+TEST_CASE ("A client and a server", "[default]")
 {
   // init transaction (at) and page (p) servers with even/odd timeouts
   // so that we can differentiate them and chose the proper queue for each direction
@@ -161,15 +165,7 @@ int main (int, char **)
   ats.do_stuff ();
   ats.stop ();
   ps.stop ();
-  if (global_error)
-    {
-      std::cout << "  test failed" << std::endl;
-    }
-  else
-    {
-      std::cout << "  test completed successfully" << std::endl;
-    }
-  return global_error;
+  REQUIRE (global_error == 0);
 }
 
 //
