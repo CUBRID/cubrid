@@ -174,7 +174,7 @@ set(CONNECTION_SOURCES
 
 set(COMMUNICATION_HEADERS
   ${COMMUNICATION_DIR}/communication_channel.hpp
-  ${COMMUNICATION_DIR}/server_server.hpp
+  ${COMMUNICATION_DIR}/request_client_server.hpp
   )
 
 set(COMMUNICATION_SOURCES

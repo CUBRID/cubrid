@@ -16,7 +16,7 @@
  *
  */
 #include "communication_channel.hpp"
-#include "server_server.hpp"
+#include "request_client_server.hpp"
 
 #include <cstring>
 #include <functional>
@@ -172,3 +172,35 @@ int main (int, char **)
   return global_error;
 }
 
+//
+// Mock CUBRID stuff
+//
+void
+_er_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
+{
+  // do nothing
+}
+
+bool
+prm_get_bool_value (PARAM_ID prmid)
+{
+  return false;
+}
+
+int
+or_packed_value_size (const DB_VALUE *value, int collapse_null, int include_domain, int include_domain_classoids)
+{
+  return 0;
+}
+
+char *
+or_pack_value (char *buf, DB_VALUE *value)
+{
+  return nullptr;
+}
+
+char *
+or_unpack_value (const char *buf, DB_VALUE *value)
+{
+  return nullptr;
+}

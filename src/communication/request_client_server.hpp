@@ -127,7 +127,7 @@ namespace cubcomm
   void request_server<MsgId>::start_thread ()
   {
     m_shutdown = false;
-    m_thread = std::thread (&request_server::loop_poll_and_receive, std::ref(*this));
+    m_thread = std::thread (&request_server::loop_poll_and_receive, std::ref (*this));
   }
 
   template <typename MsgId>
@@ -149,10 +149,10 @@ namespace cubcomm
 	css_error_code err = m_channel.recv_int (ilen);
 	if (err != NO_ERRORS)
 	  {
-	    er_log_debug(ARG_FILE_LINE, "error receiving length");
+	    er_log_debug (ARG_FILE_LINE, "error receiving length");
 	    continue;
 	  }
-	std::unique_ptr<char[]> rec_buffer(new char(ilen));
+	std::unique_ptr<char[]> rec_buffer (new char (ilen));
 
 	err = m_channel.recv (rec_buffer.get (), ulen);
 	if (err == NO_DATA_AVAILABLE)
@@ -161,7 +161,7 @@ namespace cubcomm
 	  }
 	if (err != NO_ERRORS)
 	  {
-	    er_log_debug(ARG_FILE_LINE, "error receiving message");
+	    er_log_debug (ARG_FILE_LINE, "error receiving message");
 	    continue;
 	  }
 

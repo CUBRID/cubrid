@@ -35,7 +35,7 @@ option (UNIT_TEST_PACKING "Unit testing: packing")
 option (UNIT_TEST_RESOURCE_TRACKER "Unit testing: resource tracker")
 option (UNIT_TEST_MONITOR "Unit testing: monitor")
 option (UNIT_TEST_LOADDB "Unit testing: loaddb module")
-option (UNIT_TEST_SERVER_SERVER "Unit testing: server_server module")
+option (UNIT_TEST_REQUEST_CS "Unit testing: request_client_server module")
 
 message("  unit_tests/...")
 
@@ -85,7 +85,7 @@ if (UNIT_TESTS OR UNIT_TEST_MONITOR)
 endif(UNIT_TESTS OR UNIT_TEST_MONITOR)
 
 if (UNIT_TESTS OR UNIT_TEST_SERVER_SERVER)
-  message("    server_server")
-  add_subdirectory(server_server)
+  message("    request_client_server")
+  add_subdirectory(request_client_server)
 endif(UNIT_TESTS OR UNIT_TEST_SERVER_SERVER)
 

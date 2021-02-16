@@ -191,7 +191,7 @@ set(COMMUNICATION_SOURCES
 set(COMMUNICATION_HEADERS
   ${COMMUNICATION_DIR}/communication_channel.hpp
   ${COMMUNICATION_DIR}/communication_server_channel.hpp
-  ${COMMUNICATION_DIR}/server_server.hpp
+  ${COMMUNICATION_DIR}/request_client_server.hpp
   )
 
 set(MONITOR_SOURCES

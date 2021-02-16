@@ -16,36 +16,33 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 #
 
-project (server_server)
+project (request_client_server)
 
-# copied from library cubrid, without communication_channel.cpp, which is mocked here
-add_subdirectory(cubrid_wo_cc)
-
-set (TEST_SERVER_SERVER_SOURCES
+set (TEST_REQUEST_CS_SOURCES
+  ${BASE_DIR}/mem_block.cpp
+  ${BASE_DIR}/packer.cpp
   comm_channel_mock.cpp
   test_main.cpp
   )
 
 SET_SOURCE_FILES_PROPERTIES(
-  ${TEST_SERVER_SERVER_SOURCES}
+  ${TEST_REQUEST_CS_SOURCES}
   PROPERTIES LANGUAGE CXX
   )
 
-add_executable(test_server_server
-  ${TEST_SERVER_SERVER_SOURCES}
+add_executable(test_request_cs
+  ${TEST_REQUEST_CS_SOURCES}
   )
 
-target_compile_options(test_server_server PRIVATE ${compile_warning_flags})
-target_compile_definitions(test_server_server PRIVATE
+target_compile_options(test_request_cs PRIVATE ${compile_warning_flags})
+target_compile_definitions(test_request_cs PRIVATE
   ${COMMON_DEFS}
   )
 
-target_include_directories(test_server_server PRIVATE
+target_include_directories(test_request_cs PRIVATE
   ${TEST_INCLUDES}
   )
 
-target_link_libraries(test_server_server PRIVATE
-  cubrid_wo_cc
-#  cubrid
-  test_common
+target_link_libraries(test_request_cs PRIVATE
+  test_common ws2_32
   )
