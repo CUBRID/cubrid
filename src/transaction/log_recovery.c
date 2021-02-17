@@ -3810,7 +3810,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 						    &rcv_lsa, 0, nullptr, *todo_redo_unzip_ptr);
 		assert (log_pgptr_reader.equals (log_lsa, *log_pgptr));
 		//assert(*redo_unzip_ptr == *todo_redo_unzip_ptr);
-		assert (rcv == todo_rcv);
+		assert (log_rcv_equal (rcv, todo_rcv, rcvindex));
 
 		if (rcv.pgptr != NULL)
 		  {

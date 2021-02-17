@@ -32,5 +32,6 @@ extern bool operator== (const log_rec_undo &left, const log_rec_undo &rite);
 extern bool operator== (const log_rec_mvcc_undo &left, const log_rec_mvcc_undo &rite);
 extern bool operator== (const log_rec_sysop_end &left, const log_rec_sysop_end &rite);
 extern bool operator== (const log_rcv &left, const log_rcv &rite);
+extern bool log_rcv_equal (const log_rcv &left, const log_rcv &rite, const LOG_RCVINDEX rcvindex);
 
 #endif // LOG_RECOVERY_UTIL_HPP

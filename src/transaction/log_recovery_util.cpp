@@ -155,3 +155,21 @@ bool operator== (const log_rcv &left, const log_rcv &rite)
 	 && left.reference_lsa == rite.reference_lsa;
 }
 
+bool log_rcv_equal (const log_rcv &left, const log_rcv &rite, const LOG_RCVINDEX rcvindex)
+{
+  const bool mvcc_id_equal = left.mvcc_id == rite.mvcc_id;
+  const bool pgptr_equal = left.pgptr == rite.pgptr;
+  const bool offset_equal = left.offset == rite.offset;
+  const bool length_equal = left.length == rite.length;
+  const bool reference_lsa_equal = left.reference_lsa == rite.reference_lsa;
+
+  if (rcvindex != RVDK_FORMAT)
+    {
+      return mvcc_id_equal && pgptr_equal && length_equal && offset_equal && reference_lsa_equal;
+    }
+  else
+    {
+      return mvcc_id_equal && pgptr_equal && length_equal && reference_lsa_equal;
+    }
+}
+
