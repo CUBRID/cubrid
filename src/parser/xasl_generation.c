@@ -3076,7 +3076,7 @@ pt_split_hash_attrs_for_HQ (PARSER_CONTEXT * parser, PT_NODE * pred, PT_NODE ** 
 	      /* 3. predicate without OR (or_next is null) */
 	      /* 4. symmetric predicate (having PRIOR, probe. having NAME, build. Having these two makes it unhashable) */
 	      /* 5. subquery is not allowed in syntax check */
-	      /* 6. Reserved words for HQ is not allowed (LEVEL, CONNECT_BY_ISLEAF....) */
+	      /* 6. Reserved words for HQ is not allowed (LEVEL, CONNECT_BY_ISLEAF....)  */
 	      continue;
 	    }
 	  else
