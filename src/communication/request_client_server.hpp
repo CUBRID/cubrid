@@ -96,12 +96,18 @@ namespace cubcomm
 {
   // --- request_client ---
   template <typename MsgId>
+  request_client<MsgId>::request_client (channel &&chn)
+    : m_channel (std::move (chn))
+  {
+  }
+
+  template <typename MsgId>
   template <typename ... PackableArgs>
   int request_client<MsgId>::send (MsgId msgid, const PackableArgs &... args)
   {
     packing_packer packer;
     cubmem::extensible_block eb;
-    packer.set_buffer_and_pack_all (eb, msgid, std::forward<PackableArgs> (args)...);
+    packer.set_buffer_and_pack_all (eb, static_cast<int> (msgid), args...);
 
     int rc = m_channel.send_int (static_cast<int> (packer.get_current_size ()));
     if (rc != NO_ERRORS)

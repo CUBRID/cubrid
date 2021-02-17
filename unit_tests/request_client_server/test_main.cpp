@@ -22,150 +22,57 @@
 #include "communication_channel.hpp"
 #include "request_client_server.hpp"
 
-#include <cstring>
+#include "comm_channel_mock.hpp"
+
 #include <functional>
-#include <iostream>
-enum class msgid_ats_to_ps
+
+template <typename T, T Val>
+void
+mock_server_request_handle (cubpacking::unpacker &upk)
 {
-  SEND_LOG_RECORD,
-  REQUEST_DATA_PAGE,
-  REQUEST_LOG_PAGE
-};
-
-enum class msgid_ps_to_ats
-{
-  SEND_DATA_PAGE,
-  SEND_LOG_PAGE,
-  SEND_START_LSA,
-  SEND_SAVED_LSA
-};
-std::string pages[] = {"page0 aaaa", "page1 qwer", "page2 fdsa", "page333", "blaaaaasdfjlksfj"};
-
-using ats_to_ps_server_type = cubcomm::request_client_server<msgid_ats_to_ps, msgid_ps_to_ats>;
-using ps_to_ats_server_type = cubcomm::request_client_server<msgid_ps_to_ats, msgid_ats_to_ps>;
-
-int global_error = 0;
-
-// active transaction server
-// - sends a REQUEST_DATA_PAGE message (command) to page server
-// - receives a SEND_DATA_PAGE message containing the data page
-class at_server
-{
-  public:
-    at_server (int timeout) :
-      chn (timeout),
-      ats_server_with_ps (std::move (chn)),
-      shutdown (false)
-    {}
-
-    void do_stuff ()
-    {
-      cubcomm::request_server<msgid_ats_to_ps>::server_request_handler send_page =
-	      std::bind (&at_server::net_pgbuf_read_page, std::ref (*this), std::placeholders::_1);
-
-      ats_server_with_ps.register_request_handler (msgid_ps_to_ats::SEND_DATA_PAGE, send_page);
-      ats_server_with_ps.start_thread ();
-      th = std::thread (at_server::worker, this);
-    }
-    void stop ()
-    {
-      shutdown = true;
-      th.join ();
-    }
-
-  private:
-    cubcomm::channel chn;
-    ats_to_ps_server_type ats_server_with_ps;
-    std::thread th;
-    bool shutdown;
-
-    void net_pgbuf_read_page (cubpacking::unpacker &upk)
-    {
-      std::string s;
-      upk.unpack_string (s);
-      if (s != pages[3])
-	{
-	  global_error |= -2;
-	}
-    }
-
-    static void worker (at_server *arg)
-    {
-      arg->ats_server_with_ps.send (msgid_ats_to_ps::REQUEST_DATA_PAGE, 3);
-      while (!arg->shutdown)
-	{
-	  std::this_thread::sleep_for (std::chrono::seconds (1));
-	}
-    }
-};
-
-// page server
-// - receives a REQUEST_DATA_PAGE message with page number from ATS
-// - sends a SEND_DATA_PAGE message to PS containing the page
-class p_server
-{
-  public:
-    p_server (int timeout) :
-      chn (timeout),
-      ps_server_with_ats (std::move (chn)),
-      shutdown (false)
-    {}
-
-    void do_stuff ()
-    {
-      cubcomm::request_server<msgid_ats_to_ps>::server_request_handler request_page =
-	      std::bind (&p_server::net_ps_get_page, std::ref (*this), std::placeholders::_1);
-
-      ps_server_with_ats.register_request_handler (msgid_ats_to_ps::REQUEST_DATA_PAGE, request_page);
-      ps_server_with_ats.start_thread ();
-
-      th = std::thread (p_server::worker, this);
-    }
-    void stop ()
-    {
-      shutdown = true;
-      th.join ();
-    }
-
-  private:
-    cubcomm::channel chn;
-    ps_to_ats_server_type ps_server_with_ats;
-    std::thread th;
-    bool shutdown;
-
-    void net_ps_get_page (cubpacking::unpacker &upk)
-    {
-      int pg_no;
-      upk.unpack_int (pg_no);
-      if (pg_no != 3)
-	{
-	  global_error |= -1;
-	}
-
-      ps_server_with_ats.send (msgid_ps_to_ats::SEND_DATA_PAGE, pages[pg_no]);
-
-    };
-
-    static void worker (p_server *arg)
-    {
-      while (!arg->shutdown)
-	{
-	  std::this_thread::sleep_for (std::chrono::seconds (1));
-	}
-    }
-};
+  T readval;
+  upk.unpack_from_int (readval);
+  REQUIRE (readval == Val);
+}
 
 TEST_CASE ("A client and a server", "[default]")
 {
-  // init transaction (at) and page (p) servers with even/odd timeouts
-  // so that we can differentiate them and chose the proper queue for each direction
-  at_server ats (100);
-  p_server ps (101);
-  ps.do_stuff ();
-  ats.do_stuff ();
-  ats.stop ();
-  ps.stop ();
-  REQUIRE (global_error == 0);
+  enum class reqids
+  {
+    _0,
+    _1
+  };
+
+  cubcomm::channel chncl;
+  chncl.set_channel_name ("client");
+
+  cubcomm::channel chnsr;
+  chnsr.set_channel_name ("server");
+
+  mock_socket_direction sockdir;
+
+  add_socket_direction (chncl.get_channel_id (), chnsr.get_channel_id (), sockdir);
+
+  cubcomm::request_client<reqids> reqcl (std::move (chncl));
+  cubcomm::request_server<reqids> reqsr (std::move (chnsr));
+
+  cubcomm::request_server<reqids>::server_request_handler reqh0 = [] (cubpacking::unpacker &upk)
+  {
+    mock_server_request_handle<reqids, reqids::_0> (upk);
+  };
+  cubcomm::request_server<reqids>::server_request_handler reqh1 = [] (cubpacking::unpacker &upk)
+  {
+    mock_server_request_handle<reqids, reqids::_1> (upk);
+  };
+
+  reqsr.register_request_handler (reqids::_0, reqh0);
+  reqsr.register_request_handler (reqids::_1, reqh1);
+  reqsr.start_thread ();
+
+  reqcl.send (reqids::_0, (int) reqids::_0);
+  reqcl.send (reqids::_1, (int) reqids::_1);
+
+  sockdir.wait_for_all_messages ();
 }
 
 //

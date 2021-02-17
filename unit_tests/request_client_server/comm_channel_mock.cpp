@@ -16,27 +16,98 @@
  *
  */
 
+#include "catch2/catch.hpp"
+
+#include "comm_channel_mock.hpp"
+
 #include "connection_defs.h"
 #include "communication_channel.hpp"
 
-#include <condition_variable>
 #include <cstring>
-#include <queue>
+#include <map>
 
 /*
- * mock channel implementation using 2 local queues, one for each communication direction ATS <--> PS
+ * mock channel implementation message_exchanges setup by channel ids.
  */
+
+std::mutex global_mutex;
+
+std::map<std::string, mock_socket_direction *> global_sender_sockdirs;
+std::map<std::string, mock_socket_direction *> global_receiver_sockdirs;
+
+//
+// message_exchange helper class
+//
+
+bool
+mock_socket_direction::push_message (std::string &&str)
+{
+  std::unique_lock<std::mutex> ulock (m_mutex);
+  if (m_disconnect)
+    {
+      return false;
+    }
+  m_messages.push (str);
+  ulock.unlock ();
+  m_condvar.notify_all ();
+  return true;
+}
+
+bool
+mock_socket_direction::pull_message (std::string &str)
+{
+  std::unique_lock<std::mutex> ulock (m_mutex);
+  m_condvar.wait (ulock, [this]
+  {
+    return !m_messages.empty () || m_disconnect;
+  });
+
+  if (m_disconnect)
+    {
+      return false;
+    }
+
+  str = std::move (m_messages.front ());
+  m_messages.pop ();
+
+  ulock.unlock ();
+  m_condvar.notify_all ();
+
+  return true;
+}
+
+void
+mock_socket_direction::disconnect ()
+{
+  std::unique_lock<std::mutex> ulock (m_mutex);
+  m_disconnect = true;
+  ulock.unlock ();
+  m_condvar.notify_all ();
+}
+
+void
+mock_socket_direction::wait_for_all_messages ()
+{
+  std::unique_lock<std::mutex> ulock (m_mutex);
+  m_condvar.wait (ulock, [this]
+  {
+    return m_messages.empty () || m_disconnect;
+  });
+}
+
+void
+add_socket_direction (const std::string &sender_id, const std::string &receiver_id,
+		      mock_socket_direction &sockdir)
+{
+  global_sender_sockdirs.emplace (sender_id, &sockdir);
+  global_receiver_sockdirs.emplace (receiver_id, &sockdir);
+}
 
 namespace cubcomm
 {
-
-  // queues and synchronization variables
-  std::queue<std::string> cs_q;
-  std::queue<std::string> sc_q;
-  std::condition_variable cs_cv;
-  std::condition_variable sc_cv;
-  std::mutex cs_mutex;
-  std::mutex sc_mutex;
+  //
+  // channel mockup
+  //
 
   channel::channel (int max_timeout_in_ms)
     : m_max_timeout_in_ms (max_timeout_in_ms),
@@ -61,6 +132,9 @@ namespace cubcomm
 
     m_socket = comm.m_socket;
     comm.m_socket = INVALID_SOCKET;
+
+    m_channel_name = std::move (comm.m_channel_name);
+    m_hostname = std::move (comm.m_hostname);
   }
 
   channel::~channel ()
@@ -75,75 +149,40 @@ namespace cubcomm
 
   css_error_code channel::recv (char *buffer, std::size_t &maxlen_in_recvlen_out)
   {
-    // --- hack ---
-    // choose queue direction according to even/odd timeout
-    std::queue<std::string> *q = m_max_timeout_in_ms % 2 == 0 ? &cs_q : &sc_q;
-    std::condition_variable *cv = m_max_timeout_in_ms % 2 == 0 ? &cs_cv : &sc_cv;
-    std::mutex *mutex = m_max_timeout_in_ms % 2 == 0 ? &cs_mutex : &sc_mutex;
+    const std::string channel_id = get_channel_id ();
+    assert (global_receiver_sockdirs.find (channel_id) != global_receiver_sockdirs.end ());
 
-    std::unique_lock<std::mutex> lk (*mutex);
-    if (m_max_timeout_in_ms < 0)
+    std::string message;
+
+    if (!global_receiver_sockdirs[channel_id]->pull_message (message))
       {
-	cv->wait (lk);
-      }
-    else
-      {
-	cv->wait_for (lk, std::chrono::milliseconds (m_max_timeout_in_ms));
-      }
-    if (q->empty ())
-      {
-	return NO_DATA_AVAILABLE;
+	return CONNECTION_CLOSED;
       }
 
-    std::string msg = q->front ();
-    size_t maxlen = maxlen_in_recvlen_out > msg.length () ? msg.length () : maxlen_in_recvlen_out;
-    memcpy (buffer, msg.c_str (), maxlen);
-    maxlen_in_recvlen_out = maxlen;
-    q->pop ();
+    REQUIRE (maxlen_in_recvlen_out == message.size ());
+    std::memcpy (buffer, message.c_str (), maxlen_in_recvlen_out);
     return NO_ERRORS;
   }
 
   css_error_code channel::send (const char *buffer, std::size_t length)
   {
-    std::queue<std::string> *q = m_max_timeout_in_ms % 2 != 0 ? &cs_q : &sc_q;
-    std::condition_variable *cv = m_max_timeout_in_ms % 2 != 0 ? &cs_cv : &sc_cv;
-    std::mutex *mutex = m_max_timeout_in_ms % 2 != 0 ? &cs_mutex : &sc_mutex;
+    const std::string channel_id = get_channel_id ();
+    assert (global_sender_sockdirs.find (channel_id) != global_sender_sockdirs.end ());
 
-    std::string msg (buffer, length);
-    std::unique_lock<std::mutex> lk (*mutex);
-    q->push (std::move (msg));
-    cv->notify_one ();
+    global_sender_sockdirs[channel_id]->push_message (std::string (buffer, length));
     return NO_ERRORS;
   }
 
   bool channel::send_int (int val)
   {
-    std::string s = std::to_string (val);
-    return send (s.c_str (), s.length ());
+    return send (reinterpret_cast<const char *> (&val), sizeof (int));
   }
 
   css_error_code channel::recv_int (int &received)
   {
-    char buff[16];
-    size_t len = 16;
-    auto rc = recv (buff, len);
-    if (rc != NO_ERRORS)
-      {
-	return rc;
-      }
-    if (buff[len-1] < '0' || buff[len-1] > '9')
-      {
-	return WRONG_PACKET_TYPE;
-      }
-    try
-      {
-	received = std::stoi (buff);
-      }
-    catch (...)
-      {
-	return WRONG_PACKET_TYPE;
-      }
-    return NO_ERRORS;
+    size_t size = sizeof (received);
+
+    return recv (reinterpret_cast<char *> (&received), size);
   }
 
   css_error_code channel::connect (const char *, int)
@@ -160,8 +199,20 @@ namespace cubcomm
 
   void channel::close_connection ()
   {
-    std::condition_variable *cv = m_max_timeout_in_ms % 2 != 0 ? &cs_cv : &sc_cv;
-    cv->notify_one ();
+    for (auto &it : global_sender_sockdirs)
+      {
+	if (it.first == get_channel_id ())
+	  {
+	    it.second->disconnect ();
+	  }
+      }
+    for (auto &it : global_receiver_sockdirs)
+      {
+	if (it.first == get_channel_id ())
+	  {
+	    it.second->disconnect ();
+	  }
+      }
   }
 
   int channel::get_max_timeout_in_ms ()

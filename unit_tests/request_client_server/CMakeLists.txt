@@ -24,6 +24,9 @@ set (TEST_REQUEST_CS_SOURCES
   comm_channel_mock.cpp
   test_main.cpp
   )
+set (TEST_REQUEST_CS_HEADERS
+  comm_channel_mock.hpp
+  )
 
 SET_SOURCE_FILES_PROPERTIES(
   ${TEST_REQUEST_CS_SOURCES}
@@ -32,6 +35,7 @@ SET_SOURCE_FILES_PROPERTIES(
 
 add_executable(test_request_cs
   ${TEST_REQUEST_CS_SOURCES}
+  ${TEST_REQUEST_CS_HEADERS}
   )
 
 target_compile_options(test_request_cs PRIVATE ${compile_warning_flags})
