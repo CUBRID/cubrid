@@ -86,7 +86,9 @@ static int
 css_get_normal_client_max_conn (void)
 {
   if (get_server_type () == SERVER_TYPE_PAGE)
-    return 0;
+    {
+      return 0;
+    }
   return prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS);
 }
 
@@ -239,4 +241,14 @@ css_get_max_conn (void)
     }
 
   return total;
+}
+
+/*
+ * css_get_max_normal_conn() -
+ *    return: max number of client connections
+ */
+int
+css_get_max_normal_conn (void)
+{
+  return css_get_normal_client_max_conn ();
 }
