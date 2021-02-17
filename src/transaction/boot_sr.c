@@ -2510,17 +2510,17 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       error_code = vacuum_boot (thread_p);
       if (error_code != NO_ERROR)
 	{
-	  er_log_debug (ARG_FILE_LINE, "Vacuum was started on the transaction server.");
+	  ASSERT_ERROR ();
+	  goto error;
 	}
       else
 	{
-	  er_log_debug (ARG_FILE_LINE, "Vacuum was not started on the transaction server.");
+	  er_log_debug (ARG_FILE_LINE, "Vacuum was started on the transaction server.");
 	}
     }
   else
     {
       er_log_debug (ARG_FILE_LINE, "Vacuum was not started on the page server.");
-      error_code = NO_ERROR;
     }
 
   if (error_code != NO_ERROR)
