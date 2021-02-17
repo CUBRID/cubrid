@@ -35,11 +35,16 @@ void connect_to_pageserver (std::string host, int port, const char* db_name);
 
 void init_server_type (const char* db_name)
 {
+  #if defined (SERVER_MODE)
   g_server_type = (SERVER_TYPE) prm_get_integer_value (PRM_ID_SERVER_TYPE);
+
   if (g_server_type == SERVER_TYPE_TRANSACTION)
     {
       init_page_server_hosts (db_name);
     }
+  #else
+g_server_type = SERVER_TYPE_TRANSACTION
+  #endif
 }
 
 SERVER_TYPE get_server_type ()

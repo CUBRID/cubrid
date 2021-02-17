@@ -123,6 +123,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/lockfree_transaction_system.cpp
   ${BASE_DIR}/fileline_location.cpp
   ${BASE_DIR}/resource_tracker.cpp
+  ${BASE_DIR}/server_type.cpp
   ${BASE_DIR}/tz_compile.c
   ${BASE_DIR}/tz_support.c
   ${BASE_DIR}/ddl_log.c
@@ -156,6 +157,7 @@ set(BASE_HEADERS
   ${BASE_DIR}/printer.hpp
   ${BASE_DIR}/resource_tracker.hpp
   ${BASE_DIR}/semaphore.hpp
+  ${BASE_DIR}/server_type.hpp
   ${BASE_DIR}/ddl_log.h
 )
 
@@ -174,7 +176,12 @@ set(CONNECTION_SOURCES
   )
 
 set(COMMUNICATION_SOURCES
+  ${COMMUNICATION_DIR}/communication_channel.cpp
   ${COMMUNICATION_DIR}/network_interface_cl.c
+  )
+
+set(COMMUNICATION_HEADERS
+  ${COMMUNICATION_DIR}/communication_channel.hpp
   )
 
 set(MONITOR_SOURCES
