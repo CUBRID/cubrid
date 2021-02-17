@@ -174,7 +174,7 @@ set(CONNECTION_SOURCES
   )
 
 set(COMMUNICATION_SOURCES
-  ${COMMUNICATION_SOURCES}/communication_channel.cpp
+  ${COMMUNICATION_DIR}/communication_channel.cpp
   ${COMMUNICATION_DIR}/network_interface_cl.c
   )
 
