@@ -14809,9 +14809,15 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
   else
     {
-      char *sql_text;
+      /*
+       * if the query string includes the host variables, while processing the variable holder '?'
+       * the values of the host variables can be replaced into the user's original query string
+       * the pt_print_db_value(...) returns the value string and its length.
+       * the length includes quotes in case of the char string.
+       */
+      char *sql_text = statement->sql_user_text;
+      int sql_len = statement->sql_user_text_len;
       int i, n, nth;
-      int sql_len = strlen (parser->context.sql_user_text);
       int var_len = 0;
       bool begin_quote = false;
 
@@ -14836,7 +14842,6 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       n = nth = 0;
 
-      sql_text = parser->context.sql_user_text;
       for (i = 0; i < sql_len; i++)
 	{
 	  if (sql_text[i] == '\'')
