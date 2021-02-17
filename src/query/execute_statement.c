@@ -14807,8 +14807,6 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
   else
     {
-      PT_PRINT_VALUE_FUNC saved_func = parser->print_db_value;
-      int saved_custom_print = parser->custom_print;
       PARSER_VARCHAR **host_val;
       char *sbr_text, *sql_text;
       int i, n, nth;
@@ -14831,11 +14829,9 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       sbr_text = (char *) malloc (sql_len + var_len);
       if (sbr_text == NULL)
 	{
+	  free (host_val);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
-
-      parser->custom_print |= (PT_PRINT_ORIGINAL_BEFORE_CONST_FOLDING | PT_PRINT_QUOTES);
-      parser->print_db_value = pt_print_node_value;
 
       n = nth = 0;
 
@@ -14853,10 +14849,20 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 		  begin_quote = false;
 		}
 	    }
+
 	  if (sql_text[i] == '?' && !begin_quote)
 	    {
-	      strncpy (&sbr_text[n], (char *) host_val[nth]->bytes, host_val[nth]->length);
-	      n += host_val[nth++]->length;
+	      if (nth < parser->host_var_count)
+		{
+		  strncpy (&sbr_text[n], (char *) host_val[nth]->bytes, host_val[nth]->length);
+		  n += host_val[nth++]->length;
+		}
+	      else
+		{
+		  free (host_val);
+		  free (sbr_text);
+		  return ER_IT_UNKNOWN_VARIABLE;
+		}
 	    }
 	  else
 	    {
@@ -14866,8 +14872,6 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       sbr_text[n] = 0;
       repl_stmt.stmt_text = sbr_text;
-      parser->print_db_value = saved_func;
-      parser->custom_print = saved_custom_print;
 
       free (host_val);
     }
