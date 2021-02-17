@@ -31,7 +31,7 @@
 #include <stdlib.h>
 #include <assert.h>
 
-#include "server_type.cpp"
+#include "server_type.hpp"
 #include "porting.h"
 #include "memory_alloc.h"
 #include "boot.h"
