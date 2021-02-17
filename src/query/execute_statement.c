@@ -14634,9 +14634,11 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   REPL_INFO repl_info;
   REPL_INFO_SBR repl_stmt;
   PARSER_VARCHAR *name = NULL;
+  PARSER_VARCHAR **host_val = NULL;
   static const char *unknown_name = "-";
   char stmt_separator;
   char *stmt_end = NULL;
+  char *sbr_text = NULL;
 
   if (log_does_allow_replication () == false)
     {
@@ -14807,8 +14809,7 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
   else
     {
-      PARSER_VARCHAR **host_val;
-      char *sbr_text, *sql_text;
+      char *sql_text;
       int i, n, nth;
       int sql_len = strlen (parser->context.sql_user_text);
       int var_len = 0;
@@ -14829,8 +14830,8 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       sbr_text = (char *) malloc (sql_len + var_len);
       if (sbr_text == NULL)
 	{
-	  free (host_val);
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto end;
 	}
 
       n = nth = 0;
@@ -14859,9 +14860,8 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 		}
 	      else
 		{
-		  free (host_val);
-		  free (sbr_text);
-		  return ER_IT_UNKNOWN_VARIABLE;
+		  error = ER_IT_UNKNOWN_VARIABLE;
+		  goto end;
 		}
 	    }
 	  else
@@ -14872,8 +14872,6 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       sbr_text[n] = 0;
       repl_stmt.stmt_text = sbr_text;
-
-      free (host_val);
     }
 
   repl_stmt.db_user = db_get_user_name ();
@@ -14899,6 +14897,18 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   db_string_free (repl_stmt.db_user);
+
+end:
+  if (sbr_text)
+    {
+      free (sbr_text);
+    }
+
+  if (host_val)
+    {
+      free (host_val);
+    }
+
   if (repl_stmt.sys_prm_context)
     {
       free (repl_stmt.sys_prm_context);
