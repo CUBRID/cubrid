@@ -609,7 +609,7 @@ log_rv_get_unzip_log_data (THREAD_ENTRY * thread_p, int length, LOG_LSA * log_ls
 {
   char *area_ptr = nullptr;	/* Temporary working pointer */
   // *INDENT-OFF*
-  raii_blob<char> area { nullptr, ::free };
+  std::unique_ptr<char[]> area;
   // *INDENT-ON*
 
   /*
@@ -634,7 +634,7 @@ log_rv_get_unzip_log_data (THREAD_ENTRY * thread_p, int length, LOG_LSA * log_ls
   else
     {
       /* Need to copy the data into a contiguous area */
-      area.reset (static_cast < char *>(::malloc (length)));
+      area.reset (new char[length]);
       if (area == nullptr)
 	{
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_get_unzip_log_data");
@@ -670,7 +670,7 @@ log_rv_get_unzip_log_data_TODO_reader (THREAD_ENTRY * thread_p, int length, log_
 {
   char *area_ptr = nullptr;	/* Temporary working pointer */
   // *INDENT-OFF*
-  raii_blob<char> area { nullptr, ::free };
+  std::unique_ptr<char[]> area;
   // *INDENT-ON*
 
   /*
@@ -695,7 +695,7 @@ log_rv_get_unzip_log_data_TODO_reader (THREAD_ENTRY * thread_p, int length, log_
   else
     {
       /* Need to copy the data into a contiguous area */
-      area.reset (static_cast < char *>(::malloc (length)));
+      area.reset (new char[length]);
       if (area == nullptr)
 	{
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_get_unzip_log_data_TODO_reader");

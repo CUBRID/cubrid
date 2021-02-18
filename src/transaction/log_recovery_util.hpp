@@ -1,16 +1,9 @@
 #ifndef LOG_RECOVERY_UTIL_HPP
 #define LOG_RECOVERY_UTIL_HPP
 
-#include <memory>
 #include "log_record.hpp"
 #include "log_storage.hpp"
 #include "log_compress.h"
-
-/* helper alias to RAII a malloc'ed sequence of bytes
- *
- */
-template <typename T>
-using raii_blob = std::unique_ptr<T, decltype (::free) *>;
 
 /* TODO: temporary ops needed for debug
  */
