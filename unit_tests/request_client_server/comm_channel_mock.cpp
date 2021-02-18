@@ -47,7 +47,7 @@ mock_socket_direction::push_message (std::string &&str)
     {
       return false;
     }
-  m_messages.push (str);
+  m_messages.push (std::move (str));
   ulock.unlock ();
   m_condvar.notify_all ();
   return true;
@@ -76,6 +76,13 @@ mock_socket_direction::pull_message (std::string &str)
   return true;
 }
 
+bool
+mock_socket_direction::has_message ()
+{
+  std::unique_lock<std::mutex> ulock (m_mutex);
+  return !m_messages.empty ();
+}
+
 void
 mock_socket_direction::disconnect ()
 {
@@ -101,6 +108,13 @@ add_socket_direction (const std::string &sender_id, const std::string &receiver_
 {
   global_sender_sockdirs.emplace (sender_id, &sockdir);
   global_receiver_sockdirs.emplace (receiver_id, &sockdir);
+}
+
+void
+clear_socket_directions ()
+{
+  global_sender_sockdirs.clear ();
+  global_receiver_sockdirs.clear ();
 }
 
 namespace cubcomm
@@ -220,9 +234,18 @@ namespace cubcomm
     return m_max_timeout_in_ms;
   }
 
-  int channel::wait_for (unsigned short int, unsigned short int &)
+  int channel::wait_for (unsigned short int, unsigned short int &revents)
   {
-    assert (0);
+    std::string chnid = get_channel_id ();
+    assert (global_receiver_sockdirs.find (chnid) != global_receiver_sockdirs.end ());
+    if (global_receiver_sockdirs[chnid]->has_message ())
+      {
+	revents = POLLIN;
+      }
+    else
+      {
+	revents = 0;
+      }
     return 0;
   }
 

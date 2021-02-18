@@ -41,9 +41,13 @@ namespace cubcomm
     public:
       request_client () = delete;
       request_client (channel &&chn);
+      request_client (const request_client &) = delete;
+      request_client (request_client &&other) = default;
 
       template <typename ... PackableArgs>
       int send (MsgId msgid, const PackableArgs &... args);
+
+      const channel &get_channel () const;
 
     private:
       channel m_channel;
@@ -58,12 +62,16 @@ namespace cubcomm
 
       request_server () = delete;
       request_server (channel &&chn);
+      request_server (const request_server &) = delete;
+      request_server (request_server &&other) = default;
       ~request_server ();
 
       void start_thread ();
       void stop_thread ();
 
       void register_request_handler (MsgId msgid, server_request_handler &handler);
+
+      const channel &get_channel () const;
 
     protected:
       channel m_channel;
@@ -72,6 +80,7 @@ namespace cubcomm
       using request_handlers_container = std::map<MsgId, server_request_handler>;
 
       void loop_receive_requests ();
+      bool has_message ();
       css_error_code receive_message_buffer (std::unique_ptr<char[]> &message_buffer, size_t &message_size);
       void handle (std::unique_ptr<char[]> &message_buffer, size_t message_size);
 
@@ -86,10 +95,15 @@ namespace cubcomm
   {
     public:
       request_client_server (channel &&chn);
+      request_client_server (const request_client_server &) = delete;
+      request_client_server (request_client_server &&other) = default;
 
       template <typename ... PackableArgs>
       int send (ClientMsgId msgid, const PackableArgs &... args);
   };
+
+  template <typename MsgId, typename ... PackableArgs>
+  int send_client_request (channel &chn, MsgId msgid, const PackableArgs &... args);
 }
 
 namespace cubcomm
@@ -105,16 +119,13 @@ namespace cubcomm
   template <typename ... PackableArgs>
   int request_client<MsgId>::send (MsgId msgid, const PackableArgs &... args)
   {
-    packing_packer packer;
-    cubmem::extensible_block eb;
-    packer.set_buffer_and_pack_all (eb, static_cast<int> (msgid), args...);
+    return send_client_request (m_channel, msgid, args...);
+  }
 
-    int rc = m_channel.send_int (static_cast<int> (packer.get_current_size ()));
-    if (rc != NO_ERRORS)
-      {
-	return rc;
-      }
-    return m_channel.send (eb.get_ptr (), packer.get_current_size ());
+  template <typename MsgId>
+  const channel &request_client<MsgId>::get_channel () const
+  {
+    return m_channel;
   }
 
   // --- request_server ---
@@ -128,6 +139,12 @@ namespace cubcomm
   void request_server<MsgId>::register_request_handler (MsgId msgid, server_request_handler &handler)
   {
     m_request_handlers[msgid] = handler;
+  }
+
+  template <typename MsgId>
+  const channel &request_server<MsgId>::get_channel () const
+  {
+    return m_channel;
   }
 
   template <typename MsgId>
@@ -151,12 +168,26 @@ namespace cubcomm
     size_t message_size;
     while (!m_shutdown)
       {
+	if (!has_message ())
+	  {
+	    continue;
+	  }
 	if (receive_message_buffer (message_buffer, message_size) != NO_ERRORS)
 	  {
 	    break;
 	  }
 	handle (message_buffer, message_size);
       }
+  }
+
+  template <typename MsgId>
+  bool request_server<MsgId>::has_message ()
+  {
+    unsigned short events = POLLIN;
+    unsigned short revents = 0;
+    m_channel.wait_for (events, revents);
+    bool received_message = (revents & POLLIN) != 0;
+    return received_message;
   }
 
   template <typename MsgId>
@@ -226,18 +257,23 @@ namespace cubcomm
   template <typename ... PackableArgs>
   int request_client_server<ClientMsgId, ServerMsgId>::send (ClientMsgId msgid, const PackableArgs &... args)
   {
-
-    packing_packer packer;
-    cubmem::extensible_block eb;
-
-    packer.set_buffer_and_pack_all (eb, (int) msgid, args...);
-
-    const char *data = packer.get_buffer_start ();
-    int data_size = (int) packer.get_current_size ();
-
-    return this->m_channel.send (data, data_size);
+    return send_client_request (m_channel, msgid, args...);
   }
 
+  template <typename MsgId, typename ... PackableArgs>
+  int send_client_request (channel &chn, MsgId msgid, const PackableArgs &... args)
+  {
+    packing_packer packer;
+    cubmem::extensible_block eb;
+    packer.set_buffer_and_pack_all (eb, static_cast<int> (msgid), args...);
+
+    int rc = chn.send_int (static_cast<int> (packer.get_current_size ()));
+    if (rc != NO_ERRORS)
+      {
+	return rc;
+      }
+    return chn.send (eb.get_ptr (), packer.get_current_size ());
+  }
 }
 
 #endif // _SERVER_SERVER_HPP_
