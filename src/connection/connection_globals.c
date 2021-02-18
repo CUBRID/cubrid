@@ -30,8 +30,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
-
+#if defined (SERVER_MODE)
 #include "server_type.hpp"
+#endif
 #include "porting.h"
 #include "memory_alloc.h"
 #include "boot.h"
@@ -85,10 +86,12 @@ const int css_Conn_rules_size = DIM (css_Conn_rules);
 static int
 css_get_normal_client_max_conn (void)
 {
+#if defined (SERVER_MODE)
   if (get_server_type () == SERVER_TYPE_PAGE)
     {
       return 0;
     }
+#endif
   return prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS);
 }
 
