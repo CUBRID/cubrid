@@ -6130,6 +6130,8 @@ logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason)
   LOG_LSA newflush_upto_lsa;	/* Next to be flush */
   int first_deleted_arv_num;
   int last_deleted_arv_num;
+  int min_arv_required_for_vacuum;
+  LOG_PAGEID vacuum_first_pageid;
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
@@ -6177,6 +6179,14 @@ logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason)
 
   last_deleted_arv_num--;
 
+  vacuum_first_pageid = vacuum_min_log_pageid_to_keep (thread_p);
+  if (logpb_is_page_in_archive (vacuum_first_pageid))
+    {
+      min_arv_required_for_vacuum = logpb_get_archive_number (thread_p, vacuum_first_pageid);
+      min_arv_required_for_vacuum--;
+      last_deleted_arv_num = MIN (last_deleted_arv_num, min_arv_required_for_vacuum);
+    }
+
   if (log_Gl.hdr.last_deleted_arv_num + 1 > last_deleted_arv_num)
     {
       /* Nothing to remove */
@@ -6190,6 +6200,9 @@ logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason)
 
       log_Gl.hdr.last_deleted_arv_num = last_deleted_arv_num;
       logpb_flush_header (thread_p);	/* to get rid of archives */
+
+      _er_log_debug (ARG_FILE_LINE, "first_deleted_arv_num = %d, last_deleted_arv_num = %d", first_deleted_arv_num,
+		     last_deleted_arv_num);
     }
 }
 
