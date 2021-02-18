@@ -19,7 +19,6 @@
 #ifndef _COMM_CHANNEL_MOCK_HPP_
 #define _COMM_CHANNEL_MOCK_HPP_
 
-
 #include <mutex>
 #include <queue>
 #include <string>
