@@ -6700,7 +6700,7 @@ fileio_initialize_backup_thread (FILEIO_BACKUP_SESSION * session_p, int num_thre
   thread_info_p->num_threads = 1;
 #endif /* SERVER_MODE */
 #if defined(CUBRID_DEBUG)
-  fprintf (stdout, "PRM_CSS_MAX_CLIENTS = %d, tp->num_threads = %d\n", css_get_normal_client_max_conn (),
+  fprintf (stdout, "PRM_CSS_MAX_CLIENTS = %d, tp->num_threads = %d\n", css_get_max_normal_conn (),
 	   thread_info_p->num_threads);
 #endif /* CUBRID_DEBUG */
   queue_p->size = 0;

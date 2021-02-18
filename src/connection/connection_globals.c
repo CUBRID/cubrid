@@ -61,7 +61,6 @@ char css_Net_magic[CSS_NET_MAGIC_SIZE] = { 0x00, 0x00, 0x00, 0x01, 0x20, 0x08, 0
 
 static bool css_Is_conn_rules_initialized = false;
 
-static int css_get_normal_client_max_conn (void);
 static int css_get_admin_client_max_conn (void);
 static int css_get_ha_client_max_conn (void);
 
@@ -72,28 +71,12 @@ static bool css_is_ha_client (BOOT_CLIENT_TYPE client_type);
 static int css_get_required_conn_num_for_ha (void);
 
 CSS_CONN_RULE_INFO css_Conn_rules[] = {
-  {css_is_normal_client, css_get_normal_client_max_conn, CR_NORMAL_ONLY, 0, 0},
+  {css_is_normal_client, css_get_max_normal_conn, CR_NORMAL_ONLY, 0, 0},
   {css_is_admin_client, css_get_admin_client_max_conn, CR_NORMAL_FIRST, 0, 0},
   {css_is_ha_client, css_get_ha_client_max_conn, CR_RESERVED_FIRST, 0, 0}
 };
 
 const int css_Conn_rules_size = DIM (css_Conn_rules);
-
-/*
- * css_get_normal_client_max_conn() -
- *   return: max_clients set by user
- */
-static int
-css_get_normal_client_max_conn (void)
-{
-#if defined (SERVER_MODE)
-  if (get_server_type () == SERVER_TYPE_PAGE)
-    {
-      return 0;
-    }
-#endif
-  return prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS);
-}
 
 /*
  * css_get_admin_client_max_conn() -
@@ -253,5 +236,11 @@ css_get_max_conn (void)
 int
 css_get_max_normal_conn (void)
 {
-  return css_get_normal_client_max_conn ();
+#if defined (SERVER_MODE)
+  if (get_server_type () == SERVER_TYPE_PAGE)
+    {
+      return 0;
+    }
+#endif
+  return prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS);
 }
