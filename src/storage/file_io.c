@@ -6700,7 +6700,7 @@ fileio_initialize_backup_thread (FILEIO_BACKUP_SESSION * session_p, int num_thre
   thread_info_p->num_threads = 1;
 #endif /* SERVER_MODE */
 #if defined(CUBRID_DEBUG)
-  fprintf (stdout, "PRM_CSS_MAX_CLIENTS = %d, tp->num_threads = %d\n", prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS),
+  fprintf (stdout, "PRM_CSS_MAX_CLIENTS = %d, tp->num_threads = %d\n", css_get_max_normal_conn (),
 	   thread_info_p->num_threads);
 #endif /* CUBRID_DEBUG */
   queue_p->size = 0;
@@ -11827,7 +11827,7 @@ fileio_page_bitmap_dump (FILE * out_fp, const FILEIO_RESTORE_PAGE_BITMAP * page_
  *   is_page_corrupted (out): true, if the page is corrupted.
  */
 int
-fileio_page_check_corruption (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, bool * is_page_corrupted)
+fileio_page_check_corruption (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, bool *is_page_corrupted)
 {
   assert (io_page != NULL && is_page_corrupted != NULL);
 

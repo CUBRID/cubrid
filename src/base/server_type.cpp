@@ -18,28 +18,47 @@
 
 #include "server_type.hpp"
 
-#include <string>
+#include "communication_server_channel.hpp"
+#include "connection_defs.h"
+#include "error_manager.h"
+#include "server_support.h"
 #include "system_parameter.h"
 
+#include <string>
+
 static SERVER_TYPE g_server_type;
-
-void init_page_server_hosts ();
-
-void init_server_type ()
-{
-  g_server_type = (SERVER_TYPE) prm_get_integer_value (PRM_ID_SERVER_TYPE);
-  if (g_server_type == SERVER_TYPE_TRANSACTION)
-    {
-      init_page_server_hosts ();
-    }
-}
 
 SERVER_TYPE get_server_type ()
 {
   return g_server_type;
 }
 
-void init_page_server_hosts ()
+// SERVER_MODE & SA_MODE have completely different behaviors.
+//
+// SERVER_MODE allows both transaction & page server types. SERVER_MODE transaction server communicates with the
+// SERVER_MODE page server.
+//
+// SA_MODE is considered a transaction server, but it is different from SERVER_MODE transaction type. It does not
+// communicate with the page server. The behavior needs further consideration and may be changed.
+//
+
+#if defined (SERVER_MODE)
+static std::string g_pageserver_hostname;
+static int g_pageserver_port;
+
+void init_page_server_hosts (const char *db_name);
+void connect_to_pageserver (std::string host, int port, const char *db_name);
+
+void init_server_type (const char *db_name)
+{
+  g_server_type = (SERVER_TYPE) prm_get_integer_value (PRM_ID_SERVER_TYPE);
+  if (g_server_type == SERVER_TYPE_TRANSACTION)
+    {
+      init_page_server_hosts (db_name);
+    }
+}
+
+void init_page_server_hosts (const char *db_name)
 {
   assert (g_server_type == SERVER_TYPE_TRANSACTION);
   std::string hosts = prm_get_string_value (PRM_ID_PAGE_SERVER_HOSTS);
@@ -73,8 +92,43 @@ void init_page_server_hosts ()
 	      hosts.c_str ());
       return;
     }
+  g_pageserver_port = port;
 
   // host and port seem to be OK
-  std::string host = hosts.substr (0, col_pos);
-  er_log_debug (ARG_FILE_LINE, "Page server hosts: %s port: %d\n", host.c_str (), port);
+  g_pageserver_hostname = hosts.substr (0, col_pos);
+  er_log_debug (ARG_FILE_LINE, "Page server hosts: %s port: %d\n", g_pageserver_hostname.c_str (), g_pageserver_port);
+
+  connect_to_pageserver (g_pageserver_hostname, g_pageserver_port, db_name);
 }
+
+void connect_to_pageserver (std::string host, int port, const char *db_name)
+{
+  assert (get_server_type () == SERVER_TYPE_TRANSACTION);
+
+  // connect to page server
+  cubcomm::server_channel srv_chn (db_name);
+
+  srv_chn.set_channel_name ("ATS_PS_comm");
+
+  css_error_code comm_error_code = srv_chn.connect (host.c_str (), port, CMD_SERVER_SERVER_CONNECT);
+  if (comm_error_code != css_error_code::NO_ERRORS)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_PAGESERVER_CONNECTION, 1, host.c_str());
+      return;
+    }
+
+  if (!srv_chn.send_int (static_cast <int> (cubcomm::server_server::CONNECT_TRANSACTION_SERVER)))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_PAGESERVER_CONNECTION, 1, host.c_str());
+      return;
+    }
+}
+
+#else // !SERVER_MODE = SA_MODE
+
+void init_server_type (const char *)
+{
+  g_server_type = SERVER_TYPE_TRANSACTION;
+}
+
+#endif // !SERVER_MODE = SA_MODE

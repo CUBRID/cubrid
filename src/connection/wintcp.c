@@ -513,14 +513,14 @@ css_transfer_fd (SOCKET server_fd, SOCKET client_fd, unsigned short rid, CSS_SER
 /* These functions support the new-style connection protocol used by Windows. */
 
 /*
- * css_tcp_master_open() - initialize for the master server internet
+ * css_master_open_sockets() - initialize for the master server internet
  *                         communication
  *   return:
  *   port(in):
  *   sockfd(in):
  */
 int
-css_tcp_master_open (int port, SOCKET * sockfd)
+css_master_open_sockets (int port, SOCKET * sockfd)
 {
   struct sockaddr_in tcp_srv_addr;	/* server's internet socket addr */
   SOCKET sock;

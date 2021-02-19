@@ -53,6 +53,7 @@
 #include "log_compress.h"
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
+#include "server_type.hpp"
 #include "log_reader.hpp"
 
 static void log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
@@ -754,7 +755,10 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   LSA_COPY (&log_Gl.final_restored_lsa, &log_Gl.hdr.append_lsa);
 #endif /* SERVER_MODE */
 
-  log_append_empty_record (thread_p, LOG_DUMMY_CRASH_RECOVERY, NULL);
+  if (get_server_type () == SERVER_TYPE_TRANSACTION)
+    {
+      log_append_empty_record (thread_p, LOG_DUMMY_CRASH_RECOVERY, NULL);
+    }
 
   /*
    * Save the crash point lsa for use during the remaining recovery
@@ -3940,11 +3944,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		    MVCCID_FORWARD (log_Gl.hdr.mvcc_next_id);
 		  }
 
-		if (is_mvcc_op)
-		  {
-		    /* Save last MVCC operation LOG_LSA. */
-		    LSA_COPY (&log_Gl.hdr.mvcc_op_log_lsa, &rcv_lsa);
-		  }
+	      /* Save last MVCC operation LOG_LSA. */
+	      LSA_COPY (&log_Gl.hdr.mvcc_op_log_lsa, &rcv_lsa);
 	      }
 	      break;
 

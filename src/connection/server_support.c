@@ -25,6 +25,7 @@
 #include "server_support.h"
 
 #include "config.h"
+#include "communication_server_channel.hpp"
 #include "load_worker_manager.hpp"
 #include "log_append.hpp"
 #include "session.h"
@@ -231,6 +232,7 @@ static int css_process_new_connection_request (void);
 
 static bool css_check_ha_log_applier_done (void);
 static bool css_check_ha_log_applier_working (void);
+static void css_process_server_server_connect (SOCKET master_fd);
 
 static void css_push_server_task (CSS_CONN_ENTRY & conn_ref);
 static void css_stop_non_log_writer (THREAD_ENTRY & thread_ref, bool &, THREAD_ENTRY & stopper_thread_ref);
@@ -565,6 +567,9 @@ css_process_master_request (SOCKET master_fd)
       break;
     case SERVER_GET_EOF:
       css_process_get_eof_request (master_fd);
+      break;
+    case SERVER_SERVER_CONNECT:
+      css_process_server_server_connect (master_fd);
       break;
 #endif
     default:
@@ -2620,7 +2625,37 @@ xacl_reload (THREAD_ENTRY * thread_p)
 {
   return css_set_accessible_ip_info ();
 }
-#endif
+#endif // SERVER_MODE
+
+static void
+css_process_new_transaction_server (cubcomm::channel && chn)
+{
+  er_log_debug (ARG_FILE_LINE, "transaction server connected\n");
+}
+
+void
+css_process_server_server_connect (SOCKET master_fd)
+{
+  unsigned short rid;
+  auto slave_fd = css_open_new_socket_from_master (master_fd, &rid);
+  if (IS_INVALID_SOCKET (slave_fd))
+    {
+      assert (false);
+      return;
+    }
+  cubcomm::channel chn;
+  chn.accept (slave_fd);
+  int request = css_get_master_request (slave_fd);	//read an integer to determine connection type
+  switch (STATIC_CAST (cubcomm::server_server, request))
+    {
+    case cubcomm::server_server::CONNECT_TRANSACTION_SERVER:
+      chn.set_channel_name ("ATS_PS_comm");
+      css_process_new_transaction_server (std::move (chn));
+      break;
+    default:
+      assert (false);
+    }
+}
 
 /*
  * css_get_client_id() - returns the unique client identifier

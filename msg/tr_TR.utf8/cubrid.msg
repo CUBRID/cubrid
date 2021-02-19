@@ -1333,7 +1333,7 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 1262 Anahtar dosyası dolu.
 1263 Günlük sayfasını TDE şifreleyemiyor (pageid: %1$lld). Artık bu sayfayı şifrelemeye çalışılmayacak.
 1264 Invalid format for configuration parameter %1s. Expected a 'hostname:port', found %2s
-1265 Error reserved for scalability development.
+1265 Error connecting with the page server at %s.
 1266 Error reserved for scalability development.
 1267 Error reserved for scalability development.
 1268 Error reserved for scalability development.
@@ -1353,7 +1353,7 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 1282 Error reserved for scalability development.
 1283 Error reserved for scalability development.
 
-1264 Son Hata
+1284 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):
