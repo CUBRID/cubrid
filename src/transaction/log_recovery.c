@@ -53,7 +53,6 @@
 #include "log_compress.h"
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
-#include "log_recovery_util.hpp"
 #include "log_reader.hpp"
 
 static void log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,

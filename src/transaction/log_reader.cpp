@@ -1,5 +1,4 @@
 
-#include "log_recovery_util.hpp"
 #include "log_reader.hpp"
 #include "thread_manager.hpp"
 
