@@ -45,7 +45,7 @@
  */
 #define LOG_PAGE_INIT_VALUE 0xff
 
-#define NUM_NORMAL_TRANS (prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS))
+#define NUM_NORMAL_TRANS (css_get_max_normal_conn ())
 #define NUM_SYSTEM_TRANS 1
 #define NUM_NON_SYSTEM_TRANS (css_get_max_conn ())
 #define MAX_NTRANS \

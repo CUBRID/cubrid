@@ -72,5 +72,6 @@ extern SOCKET css_Pipe_to_master;
 extern char css_Net_magic[CSS_NET_MAGIC_SIZE];
 extern void css_init_conn_rules (void);
 extern int css_get_max_conn (void);
+extern int css_get_max_normal_conn (void);
 
 #endif /* _CONNECTION_GLOBALS_H_ */
