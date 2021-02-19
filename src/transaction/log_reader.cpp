@@ -138,3 +138,41 @@ int log_reader::fetch_page_force_use (THREAD_ENTRY *const thread_p)
 
   return NO_ERROR;
 }
+
+
+void LOG_READ_ALIGN (THREAD_ENTRY * thread_p, LOG_LSA * lsa, LOG_PAGE * log_pgptr)
+{
+  lsa->offset = DB_ALIGN (lsa->offset, DOUBLE_ALIGNMENT);
+  while (lsa->offset >= (int) LOGAREA_SIZE)
+    {
+      assert (log_pgptr != NULL);
+      lsa->pageid++;
+      if (logpb_fetch_page (thread_p, lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
+        {
+          logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "LOG_READ_ALIGN");
+        }
+      lsa->offset -= LOGAREA_SIZE;
+      lsa->offset = DB_ALIGN (lsa->offset, DOUBLE_ALIGNMENT);
+    }
+}
+
+void LOG_READ_ADD_ALIGN (THREAD_ENTRY * thread_p, size_t add, LOG_LSA * lsa, LOG_PAGE * log_pgptr)
+{
+  lsa->offset += add;
+  LOG_READ_ALIGN (thread_p, lsa, log_pgptr);
+}
+
+void LOG_READ_ADVANCE_WHEN_DOESNT_FIT (THREAD_ENTRY * thread_p, size_t length, LOG_LSA * lsa, LOG_PAGE * log_pgptr)
+{
+  if (lsa->offset + static_cast < int >(length) >= static_cast < int >(LOGAREA_SIZE))
+    {
+      assert (log_pgptr != NULL);
+      lsa->pageid++;
+      if (logpb_fetch_page (thread_p, lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
+        {
+          logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "LOG_READ_ADVANCE_WHEN_DOESNT_FIT");
+        }
+      lsa->offset = 0;
+    }
+}
+
