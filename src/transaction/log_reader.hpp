@@ -4,10 +4,9 @@
 #include <type_traits>
 
 #include "log_lsa.hpp"
-#include "log_storage.hpp"
 #include "log_impl.h"
 
-/* encapsulates reading of the log in different flavors
+/* encapsulates reading of the log
  *
  * NOTE: not thread safe
  */
@@ -21,7 +20,21 @@ class log_reader final
     log_reader &operator = (log_reader const & ) = delete;
     log_reader &operator = (log_reader && ) = delete;
 
-    const log_lsa &get_lsa() const;
+    inline const log_lsa &get_lsa() const
+    {
+      return m_lsa;
+    }
+
+    inline std::int64_t get_pageid() const
+    {
+      return m_lsa.pageid;
+    }
+
+    inline std::int16_t get_offset() const
+    {
+      return m_lsa.offset;
+    }
+
     int set_lsa_and_fetch_page (const log_lsa &lsa);
     const log_hdrpage &get_page_header() const;
 
@@ -42,31 +55,24 @@ class log_reader final
      */
     void advance_when_does_not_fit (size_t size);
 
-    /* returns whether the supplied lengths is contained in the currently
-     * loaded log page
+    /* returns whether the supplied lengths is contained in the currently loaded log page
      */
     bool is_within_current_page (size_t size) const;
     // function to copy directly
     // function to copy in external supplied buffer
 
+    /* copy from log into also advancing the internally kept page pointer if needed
+     */
     void copy_from_log (char *dest, size_t length);
-    //int assign_ptr_or_alloc_and_copy_into_area_and_then_assign_ptr(char*& dest_ptr, raii_blob<char>& alloc_area, int length);
 
-    //// and other read functions
-    //template <typename T>
-    //void read (const T& t);
-
-    // TODO: somehow this function, add_align and advance_when_doesnt_fit
+    // TODO: somehow this function, add_align and advance_when_does_not_fit
     // have the same core functionality and could be combined
     int skip (size_t size);
-
-    bool equals (const log_lsa &other_log_lsa, const log_page &other_log_page) const;
 
   private:
     const char *get_cptr () const;
 
-    int fetch_page ();
-    //void lsa_offset_align ();
+    int fetch_page_force_use (THREAD_ENTRY *const thread_p);
 
   private:
     log_lsa m_lsa = NULL_LSA;

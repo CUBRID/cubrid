@@ -1370,7 +1370,7 @@ log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, log_tdes * tde
       tdes->gtrinfo.info_data = malloc (tdes->gtrinfo.info_length);
       if (tdes->gtrinfo.info_data == NULL)
 	{
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_read_prepare_TODO_reader");
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_read_prepare");
 
 	  return;
 	}
@@ -1400,7 +1400,7 @@ log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, log_tdes * tde
 	  acq_locks.obj = (LK_ACQOBJ_LOCK *) malloc (size);
 	  if (acq_locks.obj == NULL)
 	    {
-	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_read_prepare_TODO_reader");
+	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_read_prepare");
 	      return;
 	    }
 
@@ -1413,7 +1413,7 @@ log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, log_tdes * tde
 	  /* Acquire the locks */
 	  if (lock_reacquire_crash_locks (thread_p, &acq_locks, tdes->tran_index) != LK_GRANTED)
 	    {
-	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_read_prepare_TODO_reader");
+	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_read_prepare");
 	      return;
 	    }
 
@@ -1423,9 +1423,7 @@ log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, log_tdes * tde
 }
 
 void
-log_2pc_read_prepare_TODO_reader (THREAD_ENTRY * thread_p, int acquire_locks, log_tdes * tdes,
-				  log_reader & log_pgptr_reader
-				  /*LOG_LSA * log_lsa, LOG_PAGE * log_page_p */ )
+log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, log_tdes * tdes, log_reader & log_pgptr_reader)
 {
   LOG_REC_2PC_PREPCOMMIT *prepared;	/* A 2PC prepare to commit log record */
   LK_ACQUIRED_LOCKS acq_locks;	/* List of acquired locks before the system crash */
@@ -1433,7 +1431,7 @@ log_2pc_read_prepare_TODO_reader (THREAD_ENTRY * thread_p, int acquire_locks, lo
 
   log_pgptr_reader.advance_when_does_not_fit (sizeof (*prepared));
 
-  prepared = const_cast<LOG_REC_2PC_PREPCOMMIT*>(log_pgptr_reader.reinterpret_cptr < LOG_REC_2PC_PREPCOMMIT > ());
+  prepared = const_cast < LOG_REC_2PC_PREPCOMMIT * >(log_pgptr_reader.reinterpret_cptr < LOG_REC_2PC_PREPCOMMIT > ());
 
   tdes->client.set_system_internal_with_user (prepared->user_name);
 
