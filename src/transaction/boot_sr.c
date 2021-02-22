@@ -2229,6 +2229,15 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
   init_server_type (db_name);
 
+  if (get_server_type () == SERVER_TYPE_PAGE && !HA_DISABLED ())
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_CONFLICT_EXISTS_ON_MULTIPLE_SECTIONS, 6, "cubrid.conf", "common",
+	      prm_get_name (PRM_ID_HA_MODE), css_ha_mode_string (common_ha_mode), db_name,
+	      css_ha_mode_string (HA_GET_MODE ()));
+      error_code = ER_PRM_CONFLICT_EXISTS_ON_MULTIPLE_SECTIONS;
+      goto error;
+    }
+
   if (common_ha_mode != prm_get_integer_value (PRM_ID_HA_MODE) && !HA_DISABLED ())
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_CONFLICT_EXISTS_ON_MULTIPLE_SECTIONS, 6, "cubrid.conf", "common",
