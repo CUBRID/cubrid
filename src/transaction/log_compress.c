@@ -117,10 +117,10 @@ log_zip (LOG_ZIP * log_zip, LOG_ZIP_SIZE_T length, const void *data)
  *   return: true on success, false on failure
  *   log_unzip(out): LOG_ZIP structure allocated by log_zip_alloc
  *   length(in): length of given data
- *   data(out): compressed log data
+ *   data(in): compressed log data
  */
 bool
-log_unzip (LOG_ZIP * log_unzip, LOG_ZIP_SIZE_T length, void *data)
+log_unzip (LOG_ZIP * log_unzip, LOG_ZIP_SIZE_T length, const void *data)
 {
   int unzip_len;
   LOG_ZIP_SIZE_T buf_size;

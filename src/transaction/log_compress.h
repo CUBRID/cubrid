@@ -61,7 +61,7 @@ extern LOG_ZIP *log_zip_alloc (LOG_ZIP_SIZE_T size);
 extern void log_zip_free (LOG_ZIP * log_zip);
 
 extern bool log_zip (LOG_ZIP * log_zip, LOG_ZIP_SIZE_T length, const void *data);
-extern bool log_unzip (LOG_ZIP * log_unzip, LOG_ZIP_SIZE_T length, void *data);
+extern bool log_unzip (LOG_ZIP * log_unzip, LOG_ZIP_SIZE_T length, const void *data);
 extern bool log_diff (LOG_ZIP_SIZE_T undo_length, const void *undo_data, LOG_ZIP_SIZE_T redo_length, void *redo_data);
 
 #endif /* _LOG_COMPRESS_H_ */

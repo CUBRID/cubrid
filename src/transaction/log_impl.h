@@ -48,6 +48,7 @@
 #include "log_common_impl.h"
 #include "log_lsa.hpp"
 #include "log_postpone_cache.hpp"
+#include "log_reader.hpp"
 #include "log_storage.hpp"
 #include "mvcc.h"
 #include "mvcc_table.hpp"
@@ -55,9 +56,9 @@
 #include "recovery.h"
 #include "release_string.h"
 #include "storage_common.h"
+#include "tde.h"
 #include "thread_entry.hpp"
 #include "transaction_transient.hpp"
-#include "tde.h"
 
 #include <assert.h>
 #if defined(SOLARIS)
@@ -118,50 +119,6 @@ struct logwr_info;
 /* check if group commit is active */
 #define LOG_IS_GROUP_COMMIT_ACTIVE() \
   (prm_get_integer_value (PRM_ID_LOG_GROUP_COMMIT_INTERVAL_MSECS) > 0)
-
-#define LOG_READ_ALIGN(thread_p, lsa, log_pgptr) \
-  do \
-    { \
-      (lsa)->offset = DB_ALIGN ((lsa)->offset, DOUBLE_ALIGNMENT); \
-      while ((lsa)->offset >= (int) LOGAREA_SIZE) \
-        { \
-          assert (log_pgptr != NULL); \
-          (lsa)->pageid++; \
-          if (logpb_fetch_page ((thread_p), (lsa), LOG_CS_FORCE_USE, (log_pgptr)) != NO_ERROR) \
-	    { \
-              logpb_fatal_error ((thread_p), true, ARG_FILE_LINE, \
-                                 "LOG_READ_ALIGN"); \
-	    } \
-          (lsa)->offset -= LOGAREA_SIZE; \
-          (lsa)->offset = DB_ALIGN ((lsa)->offset, DOUBLE_ALIGNMENT); \
-        } \
-    } \
-  while (0)
-
-#define LOG_READ_ADD_ALIGN(thread_p, add, lsa, log_pgptr) \
-  do \
-    { \
-      (lsa)->offset += (add); \
-      LOG_READ_ALIGN ((thread_p), (lsa), (log_pgptr)); \
-    } \
-  while (0)
-
-#define LOG_READ_ADVANCE_WHEN_DOESNT_FIT(thread_p, length, lsa, log_pgptr) \
-  do \
-    { \
-      if ((lsa)->offset + (int) (length) >= (int) LOGAREA_SIZE) \
-        { \
-          assert (log_pgptr != NULL); \
-          (lsa)->pageid++; \
-          if ((logpb_fetch_page ((thread_p), (lsa), LOG_CS_FORCE_USE, log_pgptr))!= NO_ERROR) \
-            { \
-              logpb_fatal_error ((thread_p), true, ARG_FILE_LINE, \
-                                 "LOG_READ_ADVANCE_WHEN_DOESNT_FIT"); \
-            } \
-          (lsa)->offset = 0; \
-        } \
-    } \
-  while (0)
 
 #if defined(SERVER_MODE)
 // todo - separate the client & server/sa_mode transaction index
