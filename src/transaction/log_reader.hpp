@@ -27,6 +27,9 @@
 /* encapsulates reading of the log
  *
  * NOTE: not thread safe
+ * NOTE: further functionality:
+ *  - introduce an internal buffer to be used for copying and serving
+ *    data from the log of arbitrary size; currently this is done manually outside this class
  */
 class log_reader final
 {
@@ -65,8 +68,6 @@ class log_reader final
      */
     template <typename T>
     const typename std::remove_reference<T>::type *reinterpret_cptr () const;
-
-    void add (size_t size);
 
     /* equivalent to LOG_READ_ALIGN
      */
@@ -107,9 +108,10 @@ class log_reader final
     char m_area_buffer[IO_MAX_PAGE_SIZE + DOUBLE_ALIGNMENT];
 };
 
-inline extern void LOG_READ_ALIGN (THREAD_ENTRY * thread_p, LOG_LSA * lsa, LOG_PAGE * log_pgptr);
-inline extern void LOG_READ_ADD_ALIGN (THREAD_ENTRY * thread_p, size_t add, LOG_LSA * lsa, LOG_PAGE * log_pgptr);
-inline extern void LOG_READ_ADVANCE_WHEN_DOESNT_FIT (THREAD_ENTRY * thread_p, size_t length, LOG_LSA * lsa, LOG_PAGE * log_pgptr);
+inline extern void LOG_READ_ALIGN (THREAD_ENTRY *thread_p, LOG_LSA *lsa, LOG_PAGE *log_pgptr);
+inline extern void LOG_READ_ADD_ALIGN (THREAD_ENTRY *thread_p, size_t add, LOG_LSA *lsa, LOG_PAGE *log_pgptr);
+inline extern void LOG_READ_ADVANCE_WHEN_DOESNT_FIT (THREAD_ENTRY *thread_p, size_t length, LOG_LSA *lsa,
+    LOG_PAGE *log_pgptr);
 
 
 /* implementation

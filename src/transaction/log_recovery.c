@@ -536,9 +536,7 @@ log_rv_get_unzip_log_data (THREAD_ENTRY * thread_p, int length, log_reader & log
 			   LOG_ZIP * unzip_ptr, bool &is_zip)
 {
   char *area_ptr = nullptr;	/* Temporary working pointer */
-  // *INDENT-OFF*
-  std::unique_ptr<char[]> area;
-  // *INDENT-ON*
+  char *area = nullptr;
 
   /*
    * If data is contained in only one buffer, pass pointer directly.
@@ -546,44 +544,62 @@ log_rv_get_unzip_log_data (THREAD_ENTRY * thread_p, int length, log_reader & log
    * At the end the area will de-allocate itself so make sure that wherever
    * a pointer to this data ends, data is copied before the end of the scope.
    */
-  is_zip = false;
-  if (ZIP_CHECK (length))
-    {
-      length = (int) GET_ZIP_LEN (length);
-      is_zip = true;
-    }
+  is_zip = ZIP_CHECK (length);
+  const int unzip_length = (is_zip) ? (int) GET_ZIP_LEN (length) : length;
 
-  if (log_pgptr_reader.does_fit_in_current_page (length))
+  const bool fits_in_current_page = log_pgptr_reader.does_fit_in_current_page (unzip_length);
+  if (fits_in_current_page)
     {
       /* Data is contained in one buffer */
       // *INDENT-OFF*
       area_ptr = const_cast<char*> (log_pgptr_reader.reinterpret_cptr<char> ());
       // *INDENT-ON*
-      log_pgptr_reader.add (length);
     }
   else
     {
       /* Need to copy the data into a contiguous area */
-      area.reset (new char[length]);
-      area_ptr = area.get ();
-      log_pgptr_reader.copy_from_log (area_ptr, length);
+      area = (char *)malloc (unzip_length);
+      if (area == nullptr)
+        {
+          logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_get_unzip_log_data");
+          return ER_FAILED;
+        }
+      area_ptr = area;
+      log_pgptr_reader.copy_from_log (area_ptr, unzip_length);
     }
 
   if (is_zip)
     {
-      if (!log_unzip (unzip_ptr, length, area_ptr))
+      if (!log_unzip (unzip_ptr, unzip_length, area_ptr))
 	{
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_get_unzip_log_data");
+	  if (area != nullptr)
+	    {
+	      free_and_init(area);
+	    }
 	  return ER_FAILED;
 	}
     }
   else
     {
-      unzip_ptr->data_length = length;
-      memcpy (unzip_ptr->log_data, area_ptr, length);
+      unzip_ptr->data_length = unzip_length;
+      memcpy (unzip_ptr->log_data, area_ptr, unzip_length);
     }
 
-  log_pgptr_reader.align ();
+  if (fits_in_current_page)
+    {
+      log_pgptr_reader.add_align (unzip_length);
+    }
+  else
+    {
+      /* only align; advance was peformed while copying from log into the supplied buffer */
+      log_pgptr_reader.align ();
+    }
+
+  if (area != nullptr)
+    {
+      free_and_init(area);
+    }
 
   return NO_ERROR;
 }
