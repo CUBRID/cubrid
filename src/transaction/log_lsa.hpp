@@ -34,7 +34,8 @@
 struct log_lsa
 {
   std::int64_t pageid:48;		/* Log page identifier : 6 bytes length */
-  std::int64_t offset:16;		/* Offset in page : 2 bytes length */
+  std::int64_t offset:16;		/* Offset in page : 2 bytes length.
+                                          offset == 'area offset' */
   /* The offset field is defined as 16bit-INT64 type (not short), because of alignment */
 
   inline log_lsa () = default;
@@ -46,6 +47,7 @@ struct log_lsa
   inline void set_null ();
 
   inline bool operator== (const log_lsa &olsa) const;
+  inline bool operator!= (const log_lsa &olsa) const;
   inline bool operator< (const log_lsa &olsa) const;
   inline bool operator<= (const log_lsa &olsa) const;
   inline bool operator> (const log_lsa &olsa) const;
@@ -106,6 +108,12 @@ bool
 log_lsa::operator== (const log_lsa &olsa) const
 {
   return pageid == olsa.pageid && offset == olsa.offset;
+}
+
+bool
+log_lsa::operator!= (const log_lsa &olsa) const
+{
+  return ! (*this == olsa);
 }
 
 bool
