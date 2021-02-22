@@ -202,6 +202,19 @@ struct log_rcv
   int length;			/* Length of data */
   const char *data;		/* Replacement data. Pointer becomes invalid once the recovery of the data is finished */
   LOG_LSA reference_lsa;	/* Next LSA used by compensate/postpone. */
+
+  // *INDENT-OFF*
+  inline log_rcv ()
+    :mvcc_id (MVCCID_NULL), pgptr (nullptr), offset (0), length (0), data (nullptr)
+  {
+  }
+
+  log_rcv (const log_rcv &) = delete;
+  log_rcv (log_rcv &&) = delete;
+
+  log_lsa & operator= (const log_rcv &) = delete;
+  log_lsa & operator= (log_rcv &&) = delete;
+  // *INDENT-ON*
 };
 
 static constexpr LOG_RCV LOG_RCV_INITIALIZER = {

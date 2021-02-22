@@ -1431,7 +1431,9 @@ log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, log_tdes * tde
 
   log_pgptr_reader.advance_when_does_not_fit (sizeof (*prepared));
 
-  prepared = const_cast < LOG_REC_2PC_PREPCOMMIT * >(log_pgptr_reader.reinterpret_cptr < LOG_REC_2PC_PREPCOMMIT > ());
+  // *INDENT-OFF*
+  prepared = const_cast<LOG_REC_2PC_PREPCOMMIT*> (log_pgptr_reader.reinterpret_cptr<LOG_REC_2PC_PREPCOMMIT> ());
+  // *INDENT-ON*
 
   tdes->client.set_system_internal_with_user (prepared->user_name);
 

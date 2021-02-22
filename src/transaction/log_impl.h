@@ -48,6 +48,7 @@
 #include "log_common_impl.h"
 #include "log_lsa.hpp"
 #include "log_postpone_cache.hpp"
+#include "log_reader.hpp"
 #include "log_storage.hpp"
 #include "mvcc.h"
 #include "mvcc_table.hpp"
@@ -55,9 +56,9 @@
 #include "recovery.h"
 #include "release_string.h"
 #include "storage_common.h"
+#include "tde.h"
 #include "thread_entry.hpp"
 #include "transaction_transient.hpp"
-#include "tde.h"
 
 #include <assert.h>
 #if defined(SOLARIS)

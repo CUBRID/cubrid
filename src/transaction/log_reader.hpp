@@ -1,14 +1,36 @@
+/*
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ */
+
 #ifndef LOG_READER_HPP
 #define LOG_READER_HPP
 
-#include <type_traits>
+#include "log_storage.hpp"
 
 #include "log_lsa.hpp"
-#include "log_impl.h"
+
+#include <type_traits>
 
 /* encapsulates reading of the log
  *
  * NOTE: not thread safe
+ * NOTE: further functionality:
+ *  - introduce an internal buffer to be used for copying and serving
+ *    data from the log of arbitrary size; currently this is done manually outside this class
  */
 class log_reader final
 {
@@ -38,10 +60,15 @@ class log_reader final
     int set_lsa_and_fetch_page (const log_lsa &lsa);
     const log_hdrpage &get_page_header() const;
 
+    /*
+     * Note: `remove_reference` helps if function is called with a typedef
+     * that is actually a reference
+     * eg:
+     *    ..reinterpret_cptr<DUMMY_TYPE>()
+     * where `DUMMY_TYPE` happens to be a reference
+     */
     template <typename T>
-    const typename std::remove_const< typename std::remove_reference<T>::type >::type *reinterpret_cptr () const;
-
-    void add (size_t size);
+    const typename std::remove_reference<T>::type *reinterpret_cptr () const;
 
     /* equivalent to LOG_READ_ALIGN
      */
@@ -55,18 +82,20 @@ class log_reader final
      */
     void advance_when_does_not_fit (size_t size);
 
-    /* returns whether the supplied lengths is contained in the currently loaded log page
+    /* returns whether the supplied lengths is contained in the currently
+     * loaded log page (also considering the current offset)
      */
-    bool is_within_current_page (size_t size) const;
-    // function to copy directly
-    // function to copy in external supplied buffer
+    bool does_fit_in_current_page (size_t size) const;
 
-    /* copy from log into also advancing the internally kept page pointer if needed
+    /* copy from log into externally supplied buffer
+     * also advancing the - internally kept - page pointer if needed
      */
     void copy_from_log (char *dest, size_t length);
 
-    // TODO: somehow this function, add_align and advance_when_does_not_fit
-    // have the same core functionality and could be combined
+    /*
+     * TODO: somehow this function, add_align and advance_when_does_not_fit
+     * have the same core functionality and could be combined
+     */
     int skip (size_t size);
 
   private:
@@ -80,15 +109,20 @@ class log_reader final
     char m_area_buffer[IO_MAX_PAGE_SIZE + DOUBLE_ALIGNMENT];
 };
 
+void LOG_READ_ALIGN (THREAD_ENTRY *thread_p, LOG_LSA *lsa, LOG_PAGE *log_pgptr);
+void LOG_READ_ADD_ALIGN (THREAD_ENTRY *thread_p, size_t add, LOG_LSA *lsa, LOG_PAGE *log_pgptr);
+void LOG_READ_ADVANCE_WHEN_DOESNT_FIT (THREAD_ENTRY *thread_p, size_t length, LOG_LSA *lsa,
+    LOG_PAGE *log_pgptr);
+
+
 /* implementation
  */
 
 template <typename T>
-const typename std::remove_const< typename std::remove_reference<T>::type >::type *log_reader::reinterpret_cptr () const
+const typename std::remove_reference<T>::type *log_reader::reinterpret_cptr () const
 {
   using rem_ref_t = typename std::remove_reference<T>::type;
-  using rem_const_t = typename std::remove_const< rem_ref_t >::type;
-  const rem_const_t *p = reinterpret_cast<const rem_const_t *> (get_cptr());
+  const rem_ref_t *p = reinterpret_cast<const rem_ref_t *> (get_cptr());
   return p;
 }
 
