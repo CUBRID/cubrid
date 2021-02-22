@@ -19,10 +19,11 @@
 #ifndef LOG_READER_HPP
 #define LOG_READER_HPP
 
-#include <type_traits>
+#include "log_storage.hpp"
 
 #include "log_lsa.hpp"
-#include "log_storage.hpp"
+
+#include <type_traits>
 
 /* encapsulates reading of the log
  *
@@ -108,9 +109,9 @@ class log_reader final
     char m_area_buffer[IO_MAX_PAGE_SIZE + DOUBLE_ALIGNMENT];
 };
 
-inline extern void LOG_READ_ALIGN (THREAD_ENTRY *thread_p, LOG_LSA *lsa, LOG_PAGE *log_pgptr);
-inline extern void LOG_READ_ADD_ALIGN (THREAD_ENTRY *thread_p, size_t add, LOG_LSA *lsa, LOG_PAGE *log_pgptr);
-inline extern void LOG_READ_ADVANCE_WHEN_DOESNT_FIT (THREAD_ENTRY *thread_p, size_t length, LOG_LSA *lsa,
+inline void LOG_READ_ALIGN (THREAD_ENTRY *thread_p, LOG_LSA *lsa, LOG_PAGE *log_pgptr);
+inline void LOG_READ_ADD_ALIGN (THREAD_ENTRY *thread_p, size_t add, LOG_LSA *lsa, LOG_PAGE *log_pgptr);
+inline void LOG_READ_ADVANCE_WHEN_DOESNT_FIT (THREAD_ENTRY *thread_p, size_t length, LOG_LSA *lsa,
     LOG_PAGE *log_pgptr);
 
 

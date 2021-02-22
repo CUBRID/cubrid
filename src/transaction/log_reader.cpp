@@ -16,10 +16,10 @@
  *
  */
 
-#include "thread_manager.hpp"
-#include "log_impl.h"
-
 #include "log_reader.hpp"
+
+#include "log_impl.h"
+#include "thread_manager.hpp"
 
 log_reader::log_reader ()
 {
