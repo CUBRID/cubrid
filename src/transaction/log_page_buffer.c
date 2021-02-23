@@ -6114,12 +6114,10 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
  *
  *   info_reason(in):
  *
- * NOTE: Archive that are not needed for system crashes are removed.
+ * NOTE: Archive that are not needed for system crashes and vacuum are removed.
  *       That these archives may be needed for media crash recovery.
  *       Therefore, it is important that the user copy these archives
  *       to tape. Check the log information file.
- *
- * TODO: Make sure the removed logs have been processed by vacuum.
  */
 void
 logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason)
@@ -6132,6 +6130,13 @@ logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason)
   int last_deleted_arv_num;
   int min_arv_required_for_vacuum;
   LOG_PAGEID vacuum_first_pageid;
+
+  if (!vacuum_is_safe_to_remove_archives ())
+    {
+      /* we don't know yet what is the first log page required by vacuum if vacuum_disable is set to true.
+       * this will block any log archive removal until it is set to false. */
+      return;
+    }
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
@@ -6180,7 +6185,7 @@ logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason)
   last_deleted_arv_num--;
 
   vacuum_first_pageid = vacuum_min_log_pageid_to_keep (thread_p);
-  if (logpb_is_page_in_archive (vacuum_first_pageid))
+  if (vacuum_first_pageid != NULL_PAGEID && logpb_is_page_in_archive (vacuum_first_pageid))
     {
       min_arv_required_for_vacuum = logpb_get_archive_number (thread_p, vacuum_first_pageid);
       min_arv_required_for_vacuum--;
