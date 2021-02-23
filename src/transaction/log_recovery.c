@@ -536,7 +536,9 @@ log_rv_get_unzip_log_data (THREAD_ENTRY * thread_p, int length, log_reader & log
 			   LOG_ZIP * unzip_ptr, bool &is_zip)
 {
   char *area_ptr = nullptr;	/* Temporary working pointer */
-  char *area = nullptr;
+  // *INDENT-OFF*
+  std::unique_ptr<char[]> area;
+  // *INDENT-ON*
 
   /*
    * If data is contained in only one buffer, pass pointer directly.
@@ -558,13 +560,8 @@ log_rv_get_unzip_log_data (THREAD_ENTRY * thread_p, int length, log_reader & log
   else
     {
       /* Need to copy the data into a contiguous area */
-      area = (char *) malloc (unzip_length);
-      if (area == nullptr)
-	{
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_get_unzip_log_data");
-	  return ER_FAILED;
-	}
-      area_ptr = area;
+      area.reset (new char[unzip_length]);
+      area_ptr = area.get ();
       log_pgptr_reader.copy_from_log (area_ptr, unzip_length);
     }
 
@@ -574,10 +571,6 @@ log_rv_get_unzip_log_data (THREAD_ENTRY * thread_p, int length, log_reader & log
       if (!log_unzip (unzip_ptr, unzip_length, area_ptr))
 	{
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_get_unzip_log_data");
-	  if (area != nullptr)
-	    {
-	      free_and_init (area);
-	    }
 	  return ER_FAILED;
 	}
     }
@@ -601,11 +594,6 @@ log_rv_get_unzip_log_data (THREAD_ENTRY * thread_p, int length, log_reader & log
     {
       /* only align; advance was peformed while copying from log into the supplied buffer */
       log_pgptr_reader.align ();
-    }
-
-  if (area != nullptr)
-    {
-      free_and_init (area);
     }
 
   return NO_ERROR;
