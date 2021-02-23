@@ -2234,7 +2234,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_CONFLICT_EXISTS_ON_MULTIPLE_SECTIONS, 6, "cubrid.conf", "common",
 	      prm_get_name (PRM_ID_HA_MODE), css_ha_mode_string (common_ha_mode), db_name,
 	      css_ha_mode_string (HA_GET_MODE ()));
-      error_code = ER_PRM_CONFLICT_EXISTS_ON_MULTIPLE_SECTIONS;
+      error_code = ER_FAILED;
       goto error;
     }
 
