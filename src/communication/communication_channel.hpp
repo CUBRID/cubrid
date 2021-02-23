@@ -97,12 +97,12 @@ namespace cubcomm
       }
 
     protected:
-      const int m_max_timeout_in_ms;
-      CHANNEL_TYPE m_type;
-      SOCKET m_socket;
+      const int m_max_timeout_in_ms = -1;
+      CHANNEL_TYPE m_type = NO_TYPE;
+      SOCKET m_socket = INVALID_SOCKET;
       std::string m_channel_name;
       std::string m_hostname;
-      int m_port;
+      int m_port = -1;
   };
 
 

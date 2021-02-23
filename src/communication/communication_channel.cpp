@@ -54,6 +54,9 @@ namespace cubcomm
 
     m_socket = comm.m_socket;
     comm.m_socket = INVALID_SOCKET;
+
+    m_channel_name = std::move (comm.m_channel_name);
+    m_hostname = std::move (comm.m_hostname);
   }
 
   channel &channel::operator= (channel &&comm)
