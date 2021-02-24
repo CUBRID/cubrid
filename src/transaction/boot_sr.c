@@ -2231,9 +2231,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
   if (get_server_type () == SERVER_TYPE_PAGE && !HA_DISABLED ())
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_CONFLICT_EXISTS_ON_MULTIPLE_SECTIONS, 6, "cubrid.conf", "common",
-	      prm_get_name (PRM_ID_HA_MODE), css_ha_mode_string (common_ha_mode), db_name,
-	      css_ha_mode_string (HA_GET_MODE ()));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INCOMPATIBLE_SERVER_TYPE_HA_CONFIG, 0);
       error_code = ER_FAILED;
       goto error;
     }
