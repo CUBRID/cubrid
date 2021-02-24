@@ -150,7 +150,7 @@ class test_two_client_server_env
 };
 
 //
-// Stuff for request_queue_sender test case.
+// Stuff for request_queue_autosend test case.
 // Also tests the request order. The request payload is extended to include the operation count.
 //
 
@@ -369,10 +369,10 @@ TEST_CASE ("Verify request_sync_send_queue with request_client", "")
   require_all_sent_requests_are_handled ();
 }
 
-TEST_CASE ("Test request_queue_sender", "")
+TEST_CASE ("Test request_queue_autosend", "")
 {
-  // Test the way requests are handled using a request_queue_sender. All pushed requests are automatically send by the
-  // request_queue_sender. The requests are sent in the same order that they are pushed.
+  // Test the way requests are handled using a request_queue_autosend. All pushed requests are automatically send by
+  // the request_queue_autosend. The requests are sent in the same order that they are pushed.
   //
   // Verify that:
   //	- all requests are handled by the expected type of handled
