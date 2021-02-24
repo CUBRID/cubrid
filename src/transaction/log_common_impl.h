@@ -31,6 +31,7 @@
 #include "release_string.h"
 #include "storage_common.h"
 #include "system.h"
+#include "connection_server_rules.hpp"
 
 /************************************************************************/
 /* Section shared with client... TODO: remove any code accessing log    */
