@@ -1334,7 +1334,7 @@ Verifique la ruta del archivo de claves (_keys) y asegúrese de que incluya la c
 1263 No se puede cifrar con TDE la página de registro (pageid: %1$lld). Ya no se intentará cifrar esta página.
 1264 Invalid format for configuration parameter %1s. Expected a 'hostname:port', found %2s
 1265 Error connecting with the page server at %s.
-1266 Error reserved for scalability development.
+1266 The high availability system is not compatible with the page server type.
 1267 Error reserved for scalability development.
 1268 Error reserved for scalability development.
 1269 Error reserved for scalability development.
