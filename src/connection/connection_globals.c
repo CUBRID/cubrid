@@ -35,8 +35,6 @@
 #include "boot.h"
 #include "connection_globals.h"
 #include "utility.h"
-#include "system_parameter.h"
-#include "connection_server_rules.hpp"
 
 const char *css_Service_name = "cubrid";
 int css_Service_id = 1523;
@@ -56,30 +54,6 @@ int css_Server_use_new_connection_protocol = 0;
 
 /* do not change first 4 bytes of css_Net_magic */
 char css_Net_magic[CSS_NET_MAGIC_SIZE] = { 0x00, 0x00, 0x00, 0x01, 0x20, 0x08, 0x11, 0x22 };
-
-/*
- * css_is_normal_client() -
- *   return: whether a client is a normal client or not
- */
-static bool
-css_is_normal_client (BOOT_CLIENT_TYPE client_type)
-{
-  int i;
-
-  for (i = 0; i < css_Conn_rules_size; i++)
-    {
-      if (i == CSS_CR_NORMAL_ONLY_IDX)
-	{
-	  continue;
-	}
-
-      if (css_Conn_rules[i].check_client_type_fn (client_type))
-	{
-	  return false;
-	}
-    }
-  return true;
-}
 
 /*
  * css_is_admin_client() -

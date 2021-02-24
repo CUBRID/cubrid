@@ -5,6 +5,8 @@
 #ident "$Id$"
 #include "connection_defs.h"
 
+#define CSS_CR_NORMAL_ONLY_IDX  0
+
 typedef bool (*CSS_CHECK_CLIENT_TYPE) (BOOT_CLIENT_TYPE client_type);
 typedef int (*CSS_GET_MAX_CONN_NUM) (void);
 

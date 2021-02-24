@@ -28,8 +28,6 @@
 
 #include "connection_defs.h"
 
-#define CSS_CR_NORMAL_ONLY_IDX  0
-
 #define CSS_MAX_CLIENT_COUNT   4000
 
 extern int css_Service_id;
