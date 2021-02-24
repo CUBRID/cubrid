@@ -2232,7 +2232,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   if (get_server_type () == SERVER_TYPE_PAGE && !HA_DISABLED ())
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INCOMPATIBLE_SERVER_TYPE_HA_CONFIG, 0);
-      error_code = ER_FAILED;
+      error_code = ER_INCOMPATIBLE_SERVER_TYPE_HA_CONFIG;
       goto error;
     }
 
