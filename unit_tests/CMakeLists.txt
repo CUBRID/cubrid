@@ -1,19 +1,19 @@
 #
 #  Copyright 2008 Search Solution Corporation
 #  Copyright 2016 CUBRID Corporation
-# 
+#
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
 #   You may obtain a copy of the License at
-# 
+#
 #       http://www.apache.org/licenses/LICENSE-2.0
-# 
+#
 #   Unless required by applicable law or agreed to in writing, software
 #   distributed under the License is distributed on an "AS IS" BASIS,
 #   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
-# 
+#
 #
 
 # unit tests logic:
@@ -35,8 +35,28 @@ option (UNIT_TEST_PACKING "Unit testing: packing")
 option (UNIT_TEST_RESOURCE_TRACKER "Unit testing: resource tracker")
 option (UNIT_TEST_MONITOR "Unit testing: monitor")
 option (UNIT_TEST_LOADDB "Unit testing: loaddb module")
+option (UNIT_TEST_REQUEST_CS "Unit testing: request_client_server module")
 
 message("  unit_tests/...")
+
+# Catch2
+set(CATCH2_TARGET catch2)
+externalproject_add(${CATCH2_TARGET}
+  GIT_REPOSITORY       https://github.com/catchorg/Catch2
+  GIT_TAG              255aa5f    # https://github.com/catchorg/Catch2/releases/tag/v2.11.3
+  # don't install
+  INSTALL_COMMAND      ""
+  # don't build test, doc and examples
+  CMAKE_CACHE_ARGS     -DCATCH_BUILD_TESTING:STRING=off
+		       -DCATCH_INSTALL_DOCS:STRING=off
+		       -DCATCH_INSTALL_HELPERS:STRING=off
+		       -DBUILD_TESTING:STRING=off
+)
+# add to include directories
+set (CATCH2_DIR ${CMAKE_BINARY_DIR}/external/Source/catch2)
+include_directories(${CATCH2_DIR}/single_include)
+# add to tests external project targets
+list(APPEND TESTS_EXTERNAL_TARGETS ${CATCH2_TARGET})
 
 if (AT_LEAST_ONE_UNIT_TEST)
   message("    common")
@@ -82,3 +102,9 @@ if (UNIT_TESTS OR UNIT_TEST_MONITOR)
   message("    monitor")
   add_subdirectory(monitor)
 endif(UNIT_TESTS OR UNIT_TEST_MONITOR)
+
+if (UNIT_TESTS OR UNIT_TEST_SERVER_SERVER)
+  message("    request_client_server")
+  add_subdirectory(request_client_server)
+endif(UNIT_TESTS OR UNIT_TEST_SERVER_SERVER)
+
