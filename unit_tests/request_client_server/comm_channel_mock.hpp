@@ -63,12 +63,14 @@ class mock_socket_direction
     bool has_message ();
     void disconnect ();                         // abort all waits when channels are disconnected
     void wait_for_all_messages ();              // wait until all messages are pulled and the message queue is empty
+    void wait_until_message_count (size_t count);
 
   private:
     std::queue<std::string> m_messages;
     std::mutex m_mutex;
     std::condition_variable m_condvar;
     bool m_disconnect = false;
+    size_t m_message_count = 0;
 };
 
 void add_socket_direction (const std::string &sender_id, const std::string &receiver_id,

@@ -26,10 +26,11 @@
 #include "comm_channel_mock.hpp"
 
 #include <array>
+#include <atomic>
 #include <functional>
 
-static size_t global_sent_request_count;
-static size_t global_handled_request_count;
+static std::atomic<size_t> global_sent_request_count;
+static std::atomic<size_t> global_handled_request_count;
 
 static void init_globals ();                              // init global values for new test case
 
@@ -642,6 +643,7 @@ test_client_and_server_env::move_client ()
 void
 test_client_and_server_env::wait_for_all_messages ()
 {
+  m_sockdir.wait_until_message_count (global_sent_request_count);
   m_sockdir.wait_for_all_messages ();
 }
 
