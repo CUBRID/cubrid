@@ -579,7 +579,11 @@ log_rv_get_unzip_log_data (THREAD_ENTRY * thread_p, int length, log_reader & log
       /* explicitly re-alloc the buffer if needed */
       if (unzip_ptr->buf_size < unzip_length)
 	{
-	  log_zip_realloc_if_needed (*unzip_ptr, unzip_length);
+	  if (!log_zip_realloc_if_needed (*unzip_ptr, unzip_length))
+	    {
+	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_get_unzip_log_data");
+	      return ER_FAILED;
+	    }
 	}
       assert (unzip_length <= unzip_ptr->buf_size);
       unzip_ptr->data_length = unzip_length;

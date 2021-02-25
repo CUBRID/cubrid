@@ -62,7 +62,10 @@ log_zip (LOG_ZIP * log_zip, LOG_ZIP_SIZE_T length, const void *data)
 
   buf_size = LOG_ZIP_BUF_SIZE (length);
 
-  log_zip_realloc_if_needed (*log_zip, buf_size);
+  if (!log_zip_realloc_if_needed (*log_zip, buf_size))
+    {
+      return false;
+    }
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
   PERF_UTIME_TRACKER_START (NULL, &time_track);
@@ -123,7 +126,10 @@ log_unzip (LOG_ZIP * log_unzip, LOG_ZIP_SIZE_T length, const void *data)
 
   length -= sizeof (LOG_ZIP_SIZE_T);
 
-  log_zip_realloc_if_needed (*log_unzip, buf_size);
+  if (!log_zip_realloc_if_needed (*log_unzip, buf_size))
+    {
+      return false;
+    }
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
   PERF_UTIME_TRACKER_START (NULL, &time_track);
