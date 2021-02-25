@@ -57,6 +57,7 @@
 
 #include "porting.h"
 #include "error_manager.h"
+#include "connection_globals.h"
 #include "connection_server_rules.hpp"
 #include "memory_alloc.h"
 #include "environment_variable.h"

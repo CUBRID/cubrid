@@ -1,11 +1,30 @@
+/*
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ */
+
+#include "connection_server_rules.hpp"
+
+#include "server_type.hpp"
+#include "utility.h"
+#include "system_parameter.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
-#include "connection_server_rules.hpp"
-#include "server_type.hpp"
-#include "utility.h"
-#include "system_parameter.h"
 
 static int css_get_admin_client_max_conn (void);
 static int css_get_ha_client_max_conn (void);
@@ -169,4 +188,24 @@ css_is_normal_client (BOOT_CLIENT_TYPE client_type)
     }
     }
   return true;
+}
+
+/*
+ * css_is_admin_client() -
+ *   return: whether a client is a admin client or not
+ */
+static bool
+css_is_admin_client (BOOT_CLIENT_TYPE client_type)
+{
+  return BOOT_ADMIN_CLIENT_TYPE (client_type);
+}
+
+/*
+ * css_is_ha_client() -
+ *   return: whether a client is a HA client or not
+ */
+static bool
+css_is_ha_client (BOOT_CLIENT_TYPE client_type)
+{
+  return BOOT_LOG_REPLICATOR_TYPE (client_type);
 }

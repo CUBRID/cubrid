@@ -53,23 +53,3 @@ int css_Server_use_new_connection_protocol = 0;
 
 /* do not change first 4 bytes of css_Net_magic */
 char css_Net_magic[CSS_NET_MAGIC_SIZE] = { 0x00, 0x00, 0x00, 0x01, 0x20, 0x08, 0x11, 0x22 };
-
-/*
- * css_is_admin_client() -
- *   return: whether a client is a admin client or not
- */
-static bool
-css_is_admin_client (BOOT_CLIENT_TYPE client_type)
-{
-  return BOOT_ADMIN_CLIENT_TYPE (client_type);
-}
-
-/*
- * css_is_ha_client() -
- *   return: whether a client is a HA client or not
- */
-static bool
-css_is_ha_client (BOOT_CLIENT_TYPE client_type)
-{
-  return BOOT_LOG_REPLICATOR_TYPE (client_type);
-}
