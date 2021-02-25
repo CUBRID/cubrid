@@ -142,7 +142,7 @@ namespace cubcomm
       request_client () = delete;
       request_client (channel &&chn);
       request_client (const request_client &) = delete;
-      request_client (request_client &&other) noexcept = default;
+      request_client (request_client &&other) = default;
 
       template <typename ... PackableArgs>
       int send (MsgId msgid, const PackableArgs &... args);	//  pack args and send request of type msgid
@@ -364,7 +364,7 @@ namespace cubcomm
   template <typename ... PackableArgs>
   int request_client_server<ClientMsgId, ServerMsgId>::send (ClientMsgId msgid, const PackableArgs &... args)
   {
-    return send_client_request (m_channel, msgid, args...);
+    return send_client_request (this->request_server<ServerMsgId>::m_channel, msgid, args...);
   }
 
   template <typename MsgId, typename ... PackableArgs>

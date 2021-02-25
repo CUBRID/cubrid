@@ -239,7 +239,7 @@ namespace cubcomm
   void
   request_queue_autosend<ReqQueue>::loop_send_requests ()
   {
-    ReqQueue::queue_type requests;
+    typename ReqQueue::queue_type requests;
     while (!m_shutdown)
       {
 	// Check shutdown flag every 10 milliseconds
