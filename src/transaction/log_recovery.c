@@ -537,7 +537,9 @@ log_rv_get_unzip_log_data (THREAD_ENTRY * thread_p, int length, log_reader & log
 			   LOG_ZIP * unzip_ptr, bool &is_zip)
 {
   char *area_ptr = nullptr;	/* Temporary working pointer */
-  char *area = nullptr;
+  // *INDENT-OFF*
+  std::unique_ptr<char[]> area;
+  // *INDENT-ON*
 
   /*
    * If data is contained in only one buffer, pass pointer directly.
@@ -559,30 +561,32 @@ log_rv_get_unzip_log_data (THREAD_ENTRY * thread_p, int length, log_reader & log
   else
     {
       /* Need to copy the data into a contiguous area */
-      area = (char *) malloc (unzip_length);
-      if (area == nullptr)
-	{
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_get_unzip_log_data");
-	  return ER_FAILED;
-	}
-      area_ptr = area;
+      area.reset (new char[unzip_length]);
+      area_ptr = area.get ();
       log_pgptr_reader.copy_from_log (area_ptr, unzip_length);
     }
 
   if (is_zip)
     {
+      /* will re-alloc the buffer internally if current buffer is not enough */
       if (!log_unzip (unzip_ptr, unzip_length, area_ptr))
 	{
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_get_unzip_log_data");
-	  if (area != nullptr)
-	    {
-	      free_and_init (area);
-	    }
 	  return ER_FAILED;
 	}
     }
   else
     {
+      /* explicitly re-alloc the buffer if needed */
+      if (unzip_ptr->buf_size < unzip_length)
+	{
+	  if (!log_zip_realloc_if_needed (*unzip_ptr, unzip_length))
+	    {
+	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_get_unzip_log_data");
+	      return ER_FAILED;
+	    }
+	}
+      assert (unzip_length <= unzip_ptr->buf_size);
       unzip_ptr->data_length = unzip_length;
       memcpy (unzip_ptr->log_data, area_ptr, unzip_length);
     }
@@ -595,11 +599,6 @@ log_rv_get_unzip_log_data (THREAD_ENTRY * thread_p, int length, log_reader & log
     {
       /* only align; advance was peformed while copying from log into the supplied buffer */
       log_pgptr_reader.align ();
-    }
-
-  if (area != nullptr)
-    {
-      free_and_init (area);
     }
 
   return NO_ERROR;
@@ -3494,6 +3493,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		  {
 		    log_rv_redo_record (thread_p, log_pgptr_reader, RV_fun[rcvindex].redofun, &rcv,
 					&rcv_lsa, 0, NULL, *redo_unzip_ptr);
+		    /* unzip_ptr used here only as a buffer for the underlying logic, the structure's buffer
+		     * will be reallocated downstream if needed */
 		  }
 		if (rcv.pgptr != NULL)
 		  {
@@ -3710,6 +3711,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 		log_rv_redo_record (thread_p, log_pgptr_reader, RV_fun[rcvindex].redofun, &rcv,
 				    &rcv_lsa, 0, nullptr, *redo_unzip_ptr);
+		/* unzip_ptr used here only as a buffer for the underlying logic, the structure's buffer
+		 * will be reallocated downstream if needed */
 
 		if (rcv.pgptr != NULL)
 		  {
@@ -3753,7 +3756,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		  {
 		    log_rv_redo_record (thread_p, log_pgptr_reader, RV_fun[rcvindex].redofun, &rcv,
 					&rcv_lsa, 0, nullptr, *redo_unzip_ptr);
-		    /* unzip_ptr used here only as a buffer for the underlying logic */
+		    /* unzip_ptr used here only as a buffer for the underlying logic, the structure's buffer
+		     * will be reallocated downstream if needed */
 		  }
 	      }
 	      break;
@@ -3840,7 +3844,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 		log_rv_redo_record (thread_p, log_pgptr_reader, RV_fun[rcvindex].redofun, &rcv,
 				    &rcv_lsa, 0, NULL, *redo_unzip_ptr);
-		/* unzip_ptr used here only as a buffer for the underlying logic */
+		/* unzip_ptr used here only as a buffer for the underlying logic, the structure's buffer
+		 * will be reallocated downstream if needed */
 
 		if (rcv.pgptr != NULL)
 		  {
@@ -3930,7 +3935,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 		log_rv_redo_record (thread_p, log_pgptr_reader, RV_fun[rcvindex].undofun, &rcv,
 				    &rcv_lsa, 0, NULL, *redo_unzip_ptr);
-		/* unzip_ptr used here only as a buffer for the underlying logic */
+		/* unzip_ptr used here only as a buffer for the underlying logic, the structure's buffer
+		 * will be reallocated downstream if needed */
 
 		if (rcv.pgptr != NULL)
 		  {

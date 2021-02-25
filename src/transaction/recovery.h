@@ -217,6 +217,15 @@ struct log_rcv
   // *INDENT-ON*
 };
 
+static constexpr LOG_RCV LOG_RCV_INITIALIZER = {
+  .mvcc_id = MVCCID_NULL,
+  .pgptr = static_cast < char *>(nullptr),
+  .offset = 0,
+  .length = 0,
+  .data = static_cast < char *>(nullptr),
+  .reference_lsa = LOG_LSA ()
+};
+
 /*
  * STRUCTURE ENTRY OF RECOVERY FUNCTIONS
  */
