@@ -68,7 +68,7 @@
 #include "porting.h"
 
 #include "chartype.h"
-#include "connection_globals.h"
+#include "connection_server_rules.hpp"
 #include "file_io.h"
 #include "storage_common.h"
 #include "memory_alloc.h"

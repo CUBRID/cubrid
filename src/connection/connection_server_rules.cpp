@@ -3,10 +3,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include "connection_server_rules.hpp"
-#include "porting.h"
-#include "memory_alloc.h"
 #include "server_type.hpp"
-#include "boot.h"
 #include "utility.h"
 #include "system_parameter.h"
 

@@ -31,7 +31,6 @@
 #include <stdlib.h>
 #include <assert.h>
 #include "porting.h"
-#include "memory_alloc.h"
 #include "boot.h"
 #include "connection_globals.h"
 #include "utility.h"
