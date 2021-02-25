@@ -170,9 +170,14 @@ set(CONNECTION_SOURCES
   ${CONNECTION_DIR}/connection_less.c
   ${CONNECTION_DIR}/connection_cl.c
   ${CONNECTION_DIR}/connection_globals.c
+  ${CONNECTION_DIR}/connection_server_rules.cpp
   ${CONNECTION_DIR}/connection_list_cl.c
   ${CONNECTION_DIR}/client_support.c
   ${CONNECTION_DIR}/connection_support.c
+  )
+
+set(COMMUNICATION_HEADERS
+  ${CONNECTION_DIR}/connection_server_rules.hpp
   )
 
 set(COMMUNICATION_SOURCES
