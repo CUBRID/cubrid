@@ -643,7 +643,7 @@ test_client_and_server_env::move_client ()
 void
 test_client_and_server_env::wait_for_all_messages ()
 {
-  m_sockdir.wait_until_message_count (global_sent_request_count);
+  m_sockdir.wait_until_message_count (global_sent_request_count * 2);  // each request sends two messages
   m_sockdir.wait_for_all_messages ();
 }
 
