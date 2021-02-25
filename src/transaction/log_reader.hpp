@@ -78,6 +78,9 @@ class log_reader final
      */
     void add_align (size_t size);
 
+    template <typename T>
+    void add_align ();
+
     /* equivalent to LOG_READ_ADVANCE_WHEN_DOESNT_FIT
      */
     void advance_when_does_not_fit (size_t size);
@@ -112,7 +115,7 @@ class log_reader final
 void LOG_READ_ALIGN (THREAD_ENTRY *thread_p, LOG_LSA *lsa, LOG_PAGE *log_pgptr);
 void LOG_READ_ADD_ALIGN (THREAD_ENTRY *thread_p, size_t add, LOG_LSA *lsa, LOG_PAGE *log_pgptr);
 void LOG_READ_ADVANCE_WHEN_DOESNT_FIT (THREAD_ENTRY *thread_p, size_t length, LOG_LSA *lsa,
-    LOG_PAGE *log_pgptr);
+				       LOG_PAGE *log_pgptr);
 
 
 /* implementation
@@ -124,6 +127,13 @@ const typename std::remove_reference<T>::type *log_reader::reinterpret_cptr () c
   using rem_ref_t = typename std::remove_reference<T>::type;
   const rem_ref_t *p = reinterpret_cast<const rem_ref_t *> (get_cptr());
   return p;
+}
+
+template <typename T>
+void log_reader::add_align ()
+{
+  const int type_size = sizeof (T);
+  add_align (type_size);
 }
 
 #endif // LOG_READER_HPP
