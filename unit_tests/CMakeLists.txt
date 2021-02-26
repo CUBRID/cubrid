@@ -36,6 +36,7 @@ option (UNIT_TEST_RESOURCE_TRACKER "Unit testing: resource tracker")
 option (UNIT_TEST_MONITOR "Unit testing: monitor")
 option (UNIT_TEST_LOADDB "Unit testing: loaddb module")
 option (UNIT_TEST_REQUEST_CS "Unit testing: request_client_server module")
+option (UNIT_TEST_LOG_TRANSFER "Unit testing: log transfer")
 
 message("  unit_tests/...")
 
@@ -103,8 +104,13 @@ if (UNIT_TESTS OR UNIT_TEST_MONITOR)
   add_subdirectory(monitor)
 endif(UNIT_TESTS OR UNIT_TEST_MONITOR)
 
-if (UNIT_TESTS OR UNIT_TEST_SERVER_SERVER)
+if (UNIT_TESTS OR UNIT_TEST_REQUEST_CS)
   message("    request_client_server")
   add_subdirectory(request_client_server)
-endif(UNIT_TESTS OR UNIT_TEST_SERVER_SERVER)
+endif(UNIT_TESTS OR UNIT_TEST_REQUEST_CS)
+
+if (UNIT_TESTS OR UNIT_TEST_LOG_TRANSFER)
+  message("    log transfer")
+  add_subdirectory(log_transfer)
+endif(UNIT_TESTS OR UNIT_TEST_LOG_TRANSFER)
 

@@ -37,6 +37,7 @@
 
 #include <atomic>
 #include <mutex>
+#include <string>
 
 // forward declarations
 struct log_tdes;
@@ -160,6 +161,9 @@ int prior_set_tde_encrypted (log_prior_node *node, LOG_RCVINDEX recvindex);
 bool prior_is_tde_encrypted (const log_prior_node *node);
 void log_append_init_zip ();
 void log_append_final_zip ();
+
+std::string prior_list_serialize (const log_prior_node *head);
+log_prior_node *prior_list_deserialize (const std::string &str);
 
 // todo - move to header of log page buffer
 size_t logpb_get_memsize ();
