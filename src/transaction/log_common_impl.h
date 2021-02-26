@@ -23,7 +23,9 @@
 #ifndef _LOG_COMMON_IMPL_H_
 #define _LOG_COMMON_IMPL_H_
 
+#ifndef CS_MODE
 #include "connection_server_rules.hpp"
+#endif
 #include "file_io.h"
 #include "log_comm.h"
 #include "log_lsa.hpp"

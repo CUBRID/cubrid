@@ -118,7 +118,6 @@ set(BASE_SOURCES
   ${BASE_DIR}/printer.cpp
   ${BASE_DIR}/release_string.c
   ${BASE_DIR}/resource_tracker.cpp
-  ${BASE_DIR}/server_type.cpp
   ${BASE_DIR}/sha1.c
   ${BASE_DIR}/stack_dump.c
   ${BASE_DIR}/string_buffer.cpp
