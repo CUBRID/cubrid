@@ -19,12 +19,12 @@
 #include "connection_server_rules.hpp"
 
 #include "server_type.hpp"
-#include "utility.h"
 #include "system_parameter.h"
+#include "utility.h"
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <assert.h>
 
 static int css_get_admin_client_max_conn (void);
 static int css_get_ha_client_max_conn (void);

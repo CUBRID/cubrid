@@ -156,7 +156,6 @@ set(BASE_HEADERS
   ${BASE_DIR}/string_buffer.hpp
   ${BASE_DIR}/resource_tracker.hpp
   ${BASE_DIR}/semaphore.hpp
-  ${BASE_DIR}/server_type.hpp
   ${BASE_DIR}/ddl_log.h
   )
 
@@ -169,7 +168,6 @@ set(CONNECTION_SOURCES
   ${CONNECTION_DIR}/connection_less.c
   ${CONNECTION_DIR}/connection_cl.c
   ${CONNECTION_DIR}/connection_globals.c
-  ${CONNECTION_DIR}/connection_server_rules.cpp
   ${CONNECTION_DIR}/connection_list_cl.c
   ${CONNECTION_DIR}/client_support.c
   ${CONNECTION_DIR}/connection_support.c
@@ -177,7 +175,6 @@ set(CONNECTION_SOURCES
 
 set(COMMUNICATION_HEADERS
   ${COMMUNICATION_DIR}/communication_channel.hpp
-  ${CONNECTION_DIR}/connection_server_rules.hpp
   ${COMMUNICATION_DIR}/request_client_server.hpp
   )
 

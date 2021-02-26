@@ -16,8 +16,8 @@
  *
  */
 
-#ifndef _CONNECTION_SERVER_H_
-#define _CONNECTION_SERVER_H_
+#ifndef _CONNECTION_SERVER_RULES_H_
+#define _CONNECTION_SERVER_RULES_H_
 
 #ident "$Id$"
 #include "connection_defs.h"
@@ -49,13 +49,11 @@ typedef struct css_conn_rule_info
   int num_curr_conn;
 } CSS_CONN_RULE_INFO;
 
-
 extern void css_init_conn_rules (void);
 extern int css_get_max_conn (void);
 extern int css_get_max_normal_conn (void);
 
-
 extern CSS_CONN_RULE_INFO css_Conn_rules[];
 extern const int css_Conn_rules_size;
 
-#endif /* _CONNECTION_SERVER_H_ */
+#endif /* _CONNECTION_SERVER_RULES_H_ */

@@ -23,6 +23,7 @@
 #ifndef _LOG_COMMON_IMPL_H_
 #define _LOG_COMMON_IMPL_H_
 
+#include "connection_server_rules.hpp"
 #include "file_io.h"
 #include "log_comm.h"
 #include "log_lsa.hpp"
@@ -31,7 +32,6 @@
 #include "release_string.h"
 #include "storage_common.h"
 #include "system.h"
-#include "connection_server_rules.hpp"
 
 /************************************************************************/
 /* Section shared with client... TODO: remove any code accessing log    */
@@ -46,11 +46,13 @@
  */
 #define LOG_PAGE_INIT_VALUE 0xff
 
+#ifndef CS_MODE
 #define NUM_NORMAL_TRANS (css_get_max_normal_conn ())
 #define NUM_SYSTEM_TRANS 1
 #define NUM_NON_SYSTEM_TRANS (css_get_max_conn ())
 #define MAX_NTRANS \
   (NUM_NON_SYSTEM_TRANS + NUM_SYSTEM_TRANS)
+#endif
 
 #define VACUUM_NULL_LOG_BLOCKID -1
 
