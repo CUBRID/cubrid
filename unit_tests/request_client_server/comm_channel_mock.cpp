@@ -48,6 +48,7 @@ mock_socket_direction::push_message (std::string &&str)
       return false;
     }
   m_messages.push (std::move (str));
+  ++m_message_count;
   ulock.unlock ();
   m_condvar.notify_all ();
   return true;
@@ -99,6 +100,16 @@ mock_socket_direction::wait_for_all_messages ()
   m_condvar.wait (ulock, [this]
   {
     return m_messages.empty () || m_disconnect;
+  });
+}
+
+void
+mock_socket_direction::wait_until_message_count (size_t count)
+{
+  std::unique_lock<std::mutex> ulock (m_mutex);
+  m_condvar.wait (ulock, [this, &count]
+  {
+    return m_message_count >= count || m_disconnect;
   });
 }
 

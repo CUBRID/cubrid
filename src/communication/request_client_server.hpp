@@ -137,6 +137,8 @@ namespace cubcomm
   class request_client
   {
     public:
+      using client_request_id = MsgId;
+
       request_client () = delete;
       request_client (channel &&chn);
       request_client (const request_client &) = delete;
@@ -157,6 +159,7 @@ namespace cubcomm
   {
     public:
       using server_request_handler = std::function<void (cubpacking::unpacker &upk)>;
+      using server_request_id = MsgId;
 
       request_server () = delete;
       request_server (channel &&chn);
@@ -167,7 +170,7 @@ namespace cubcomm
       void start_thread ();	  // start thread that receives and handles requests
       void stop_thread ();	  // stop the thread
 
-      void register_request_handler (MsgId msgid, server_request_handler &handler);	  // register a handler
+      void register_request_handler (MsgId msgid, const server_request_handler &handler);	  // register a handler
 
       const channel &get_channel () const;						  // get underlying channel
 
@@ -195,6 +198,8 @@ namespace cubcomm
   class request_client_server : public request_server<ServerMsgId>
   {
     public:
+      using client_request_id = ClientMsgId;
+
       request_client_server (channel &&chn);
       request_client_server (const request_client_server &) = delete;
       request_client_server (request_client_server &&other) = default;
@@ -238,7 +243,7 @@ namespace cubcomm
   }
 
   template <typename MsgId>
-  void request_server<MsgId>::register_request_handler (MsgId msgid, server_request_handler &handler)
+  void request_server<MsgId>::register_request_handler (MsgId msgid, const server_request_handler &handler)
   {
     m_request_handlers[msgid] = handler;
   }
@@ -359,7 +364,7 @@ namespace cubcomm
   template <typename ... PackableArgs>
   int request_client_server<ClientMsgId, ServerMsgId>::send (ClientMsgId msgid, const PackableArgs &... args)
   {
-    return send_client_request (m_channel, msgid, args...);
+    return send_client_request (this->request_server<ServerMsgId>::m_channel, msgid, args...);
   }
 
   template <typename MsgId, typename ... PackableArgs>

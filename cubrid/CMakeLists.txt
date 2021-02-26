@@ -192,6 +192,7 @@ set(COMMUNICATION_HEADERS
   ${COMMUNICATION_DIR}/communication_channel.hpp
   ${COMMUNICATION_DIR}/communication_server_channel.hpp
   ${COMMUNICATION_DIR}/request_client_server.hpp
+  ${COMMUNICATION_DIR}/request_sync_send_queue.hpp
   )
 
 set(MONITOR_SOURCES
