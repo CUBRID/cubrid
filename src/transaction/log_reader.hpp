@@ -70,6 +70,12 @@ class log_reader final
     template <typename T>
     const typename std::remove_reference<T>::type *reinterpret_cptr () const;
 
+    /* will copy the contents of the structure out of the log page and
+     * advance and align afterwards
+     */
+    template <typename T>
+    typename std::remove_reference<T>::type reinterpret_copy_and_add_align ();
+
     /* equivalent to LOG_READ_ALIGN
      */
     void align ();
@@ -127,6 +133,18 @@ const typename std::remove_reference<T>::type *log_reader::reinterpret_cptr () c
   using rem_ref_t = typename std::remove_reference<T>::type;
   const rem_ref_t *p = reinterpret_cast<const rem_ref_t *> (get_cptr());
   return p;
+}
+
+template <typename T>
+typename std::remove_reference<T>::type log_reader::reinterpret_copy_and_add_align ()
+{
+  using rem_ref_t = typename std::remove_reference<T>::type;
+  rem_ref_t data;
+  constexpr auto size_of_t = sizeof (rem_ref_t);
+  memcpy (&data, get_cptr(), size_of_t);
+  add_align (size_of_t);
+  // compiler's NRVO will hopefully kick in here and optimize this away
+  return data;
 }
 
 template <typename T>
