@@ -212,8 +212,8 @@ struct log_rcv
   log_rcv (const log_rcv &) = delete;
   log_rcv (log_rcv &&) = delete;
 
-  log_lsa & operator= (const log_rcv &) = delete;
-  log_lsa & operator= (log_rcv &&) = delete;
+  log_rcv & operator= (const log_rcv &) = delete;
+  log_rcv & operator= (log_rcv &&) = delete;
   // *INDENT-ON*
 };
 
