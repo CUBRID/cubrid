@@ -560,7 +560,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
       tran_lock_wait_msecs = tran_lock_wait_msecs * 1000;
     }
 
-  error_code = perfmon_initialize (MAX_NTRANS);
+  error_code = perfmon_initialize (0);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();

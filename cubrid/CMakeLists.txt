@@ -177,6 +177,7 @@ set(CONNECTION_SOURCES
   ${CONNECTION_DIR}/connection_sr.c
   ${CONNECTION_DIR}/connection_list_sr.c
   ${CONNECTION_DIR}/connection_globals.c
+  ${CONNECTION_DIR}/connection_server_rules.cpp
   ${CONNECTION_DIR}/server_support.c
   ${CONNECTION_DIR}/connection_support.c
   )
@@ -191,6 +192,7 @@ set(COMMUNICATION_SOURCES
 set(COMMUNICATION_HEADERS
   ${COMMUNICATION_DIR}/communication_channel.hpp
   ${COMMUNICATION_DIR}/communication_server_channel.hpp
+  ${CONNECTION_DIR}/connection_server_rules.hpp
   ${COMMUNICATION_DIR}/request_client_server.hpp
   ${COMMUNICATION_DIR}/request_sync_send_queue.hpp
   )

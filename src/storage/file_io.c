@@ -68,7 +68,7 @@
 #include "porting.h"
 
 #include "chartype.h"
-#include "connection_globals.h"
+#include "connection_server_rules.hpp"
 #include "file_io.h"
 #include "storage_common.h"
 #include "memory_alloc.h"
@@ -1972,7 +1972,7 @@ fileio_open (const char *vol_label_p, int flags, int mode)
   if (vol_fd > NULL_VOLDES)
     {
       int high_vol_fd;
-      int range = MAX_NTRANS + 10;
+      int range = prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS) + 10;
 
       /* move fd to the over max_clients range */
       high_vol_fd = fcntl (vol_fd, F_DUPFD, range);
