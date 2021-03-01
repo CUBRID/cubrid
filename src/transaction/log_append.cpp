@@ -126,6 +126,41 @@ log_prior_lsa_info::log_prior_lsa_info ()
 }
 
 void
+log_prior_lsa_info::push_list (log_prior_node *&list_head)
+{
+  log_prior_node *list_tail = list_head;
+  while (list_tail->next != nullptr)
+    {
+      assert (list_tail->next->start_lsa == list_tail->log_header.forw_lsa);
+      assert (list_tail->next->log_header.back_lsa == list_tail->start_lsa);
+      list_tail = list_tail->next;
+    }
+  assert (list_tail != nullptr);
+
+  std::unique_lock<std::mutex> ulock (log_Gl.prior_info.prior_lsa_mutex);
+
+  assert (list_head->start_lsa == prior_lsa);
+  assert (list_head->log_header.back_lsa == prev_lsa);
+
+  if (prior_list_header == nullptr)
+    {
+      prior_list_header = list_head;
+      prior_list_tail = list_tail;
+    }
+  else
+    {
+      assert (prior_list_tail != nullptr);
+      prior_list_tail->next = list_head;
+      prior_list_tail = list_tail;
+    }
+
+  prior_lsa = list_tail->log_header.forw_lsa;
+  prev_lsa = list_tail->start_lsa;
+
+  list_head = nullptr;
+}
+
+void
 LOG_RESET_APPEND_LSA (const LOG_LSA *lsa)
 {
   // todo - concurrency safe-guard

@@ -115,17 +115,19 @@ struct log_prior_lsa_info
   LOG_LSA prev_lsa;
 
   /* list */
-  LOG_PRIOR_NODE *prior_list_header;
-  LOG_PRIOR_NODE *prior_list_tail;
+  LOG_PRIOR_NODE *prior_list_header = nullptr;
+  LOG_PRIOR_NODE *prior_list_tail = nullptr;
 
-  INT64 list_size;		/* bytes */
+  INT64 list_size = 0;		/* bytes */
 
   /* flush list */
-  LOG_PRIOR_NODE *prior_flush_list_header;
+  LOG_PRIOR_NODE *prior_flush_list_header = nullptr;
 
   std::mutex prior_lsa_mutex;
 
   log_prior_lsa_info ();
+
+  void push_list (log_prior_node *&list_head);
 };
 
 //
