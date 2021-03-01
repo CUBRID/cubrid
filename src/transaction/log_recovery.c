@@ -71,11 +71,6 @@ template < typename T >
   int log_rv_get_log_rec_redo_data (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader, const T & log_rec,
 				    log_rcv & rcv, log_rectype log_rtype, struct log_zip &undo_unzip_support,
 				    struct log_zip &redo_unzip_support);
-template <> int
-  log_rv_get_log_rec_redo_data < LOG_REC_MVCC_UNDOREDO > (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader,
-							  const log_rec_mvcc_undoredo & log_rec, log_rcv & rcv,
-							  log_rectype log_rtype, struct log_zip & undo_unzip_support,
-							  struct log_zip & redo_unzip_support);
 template < typename T > static void
 log_rv_redo_record_sync_or_dispatch_parallel (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader, const T & log_rec,
 					      const log_lsa & rcv_lsa,
@@ -567,9 +562,7 @@ log_rv_get_log_rec_redo_data (THREAD_ENTRY * thread_p, log_reader & log_pgptr_re
  */
 template <> int
   log_rv_get_log_rec_redo_data < LOG_REC_UNDOREDO > (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader,
-						     //const log_rec_mvcc_undoredo & log_rec,
-						     const log_rec_undoredo & log_rec,
-						     log_rcv & rcv,
+						     const log_rec_undoredo & log_rec, log_rcv & rcv,
 						     log_rectype log_rtype, struct log_zip & undo_unzip_support,
 						     struct log_zip & redo_unzip_support)
 {
@@ -641,9 +634,20 @@ template <> int
  */
 template <> int
   log_rv_get_log_rec_redo_data < LOG_REC_REDO > (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader,
-                                                      const log_rec_redo & log_rec, log_rcv & rcv,
-                                                      log_rectype log_rtype, struct log_zip & undo_unzip_support,
-                                                      struct log_zip & redo_unzip_support)
+						 const log_rec_redo & log_rec, log_rcv & rcv,
+						 log_rectype log_rtype, struct log_zip & undo_unzip_support,
+						 struct log_zip & redo_unzip_support)
+{
+  return log_rv_get_unzip_and_diff_redo_log_data (thread_p, log_pgptr_reader, &rcv, 0, nullptr, redo_unzip_support);
+}
+
+/* TODO:
+ */
+template <> int
+  log_rv_get_log_rec_redo_data < LOG_REC_RUN_POSTPONE > (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader,
+							 const log_rec_run_postpone & log_rec, log_rcv & rcv,
+							 log_rectype log_rtype, struct log_zip & undo_unzip_support,
+							 struct log_zip & redo_unzip_support)
 {
   return log_rv_get_unzip_and_diff_redo_log_data (thread_p, log_pgptr_reader, &rcv, 0, nullptr, redo_unzip_support);
 }
@@ -4049,10 +4053,10 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		  }
 #else
 		log_rv_redo_record_sync_or_dispatch_parallel < LOG_REC_REDO > (thread_p, log_pgptr_reader,
-										    log_rec_redo,
-										    rcv_lsa, end_redo_lsa,
-										    log_rtype, *undo_unzip_ptr,
-										    *redo_unzip_ptr);
+									       log_rec_redo,
+									       rcv_lsa, end_redo_lsa,
+									       log_rtype, *undo_unzip_ptr,
+									       *redo_unzip_ptr);
 #endif
 #undef OLD_IMPL_REDO
 	      }
@@ -4101,6 +4105,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 	    case LOG_RUN_POSTPONE:
 	      {
+#define OLD_IMPL_RUN_POSTPONE 0
 		const LOG_LSA rcv_lsa = log_pgptr_reader.get_lsa ();	/* Address of redo log record */
 
 		/* Get the DATA HEADER */
@@ -4108,9 +4113,15 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		log_pgptr_reader.advance_when_does_not_fit (sizeof (LOG_REC_RUN_POSTPONE));
 		/* A run postpone action */
 		// *INDENT-OFF*
+#if (OLD_IMPL_RUN_POSTPONE)
 		const LOG_REC_RUN_POSTPONE *run_posp = log_pgptr_reader.reinterpret_cptr<LOG_REC_RUN_POSTPONE> ();
+#else
+		const LOG_REC_RUN_POSTPONE log_rec_run_posp
+		    = log_pgptr_reader.reinterpret_copy_and_add_align<LOG_REC_RUN_POSTPONE>();
+#endif
 		// *INDENT-ON*
 
+#if (OLD_IMPL_RUN_POSTPONE)
 		/* Do we need to redo anything ? */
 
 		/*
@@ -4188,6 +4199,14 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		  {
 		    pgbuf_unfix (thread_p, rcv.pgptr);
 		  }
+#else
+		log_rv_redo_record_sync_or_dispatch_parallel < LOG_REC_RUN_POSTPONE > (thread_p, log_pgptr_reader,
+										       log_rec_run_posp,
+										       rcv_lsa, end_redo_lsa,
+										       log_rtype, *undo_unzip_ptr,
+										       *redo_unzip_ptr);
+#endif
+#undef OLD_IMPL_RUN_POSTPONE
 	      }
 	      break;
 
