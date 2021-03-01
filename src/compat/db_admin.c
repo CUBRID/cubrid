@@ -44,6 +44,7 @@
 #include "server_interface.h"
 #include "boot_cl.h"
 #include "locator_cl.h"
+#include "server_type.hpp"
 #include "schema_manager.h"
 #include "schema_template.h"
 #include "object_accessor.h"
@@ -1015,7 +1016,10 @@ int
 db_enable_modification (void)
 {
   /* CHECK_CONNECT_ERROR (); */
-  db_Disable_modifications--;
+  if (get_server_type () != SERVER_TYPE_PAGE)
+    {
+      db_Disable_modifications--;
+    }
   return NO_ERROR;
 }
 
