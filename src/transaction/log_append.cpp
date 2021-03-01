@@ -29,6 +29,8 @@
 #include "thread_manager.hpp"
 #include "vacuum.h"
 
+#include <cstring>
+
 static bool log_Zip_support = false;
 static int log_Zip_min_size_to_compress = 255;
 #if !defined(SERVER_MODE)
