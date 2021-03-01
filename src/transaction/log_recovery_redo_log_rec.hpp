@@ -32,6 +32,7 @@ template <typename T>
 int log_rv_get_log_rec_redo_length (const T &log_rec);
 
 /*
+ * TODO: maybe this function is not needed as offset is always part of the log_rec - data
  */
 template <typename T>
 int log_rv_get_log_rec_offset (const T &log_rec);
@@ -58,9 +59,12 @@ const LOG_DATA &log_rv_get_log_rec_data<LOG_REC_MVCC_UNDOREDO> (const LOG_REC_MV
 {
   return log_rec.undoredo.data;
 }
-//template <>
-//void log_rv_get_log_rec_data<LOG_REC_UNDOREDO> (log_reader &reader, LOG_REC_UNDOREDO& log_rec)
-// TODO: other..
+
+template <>
+const LOG_DATA &log_rv_get_log_rec_data<LOG_REC_UNDOREDO> (const LOG_REC_UNDOREDO &log_rec)
+{
+  return log_rec.data;
+}
 
 template <typename T>
 MVCCID log_rv_get_log_rec_mvccid (const T &)
@@ -91,7 +95,16 @@ VPID log_rv_get_log_rec_vpid<LOG_REC_MVCC_UNDOREDO> (const LOG_REC_MVCC_UNDOREDO
     log_rec.undoredo.data.volid
   };
 }
-// TODO: other..
+
+template <>
+VPID log_rv_get_log_rec_vpid<LOG_REC_UNDOREDO> (const LOG_REC_UNDOREDO &log_rec)
+{
+  return
+  {
+    log_rec.data.pageid,
+    log_rec.data.volid
+  };
+}
 
 //template <typename T>
 //int log_rv_get_log_rec_undo_length (const T &log_rec)
@@ -118,7 +131,12 @@ int log_rv_get_log_rec_redo_length<LOG_REC_MVCC_UNDOREDO> (const LOG_REC_MVCC_UN
 {
   return log_rec.undoredo.rlength;
 }
-// TODO: other..
+
+template <>
+int log_rv_get_log_rec_redo_length<LOG_REC_UNDOREDO> (const LOG_REC_UNDOREDO &log_rec)
+{
+  return log_rec.rlength;
+}
 
 template <typename T>
 int log_rv_get_log_rec_offset (const T &log_rec)
@@ -132,7 +150,12 @@ int log_rv_get_log_rec_offset<LOG_REC_MVCC_UNDOREDO> (const LOG_REC_MVCC_UNDORED
 {
   return log_rec.undoredo.data.offset;
 }
-// TODO: other..
+
+template <>
+int log_rv_get_log_rec_offset<LOG_REC_UNDOREDO> (const LOG_REC_UNDOREDO &log_rec)
+{
+  return log_rec.data.offset;
+}
 
 template <typename T>
 rvfun::fun_t log_rv_get_fun (const T &, LOG_RCVINDEX rcvindex)
@@ -143,6 +166,12 @@ rvfun::fun_t log_rv_get_fun (const T &, LOG_RCVINDEX rcvindex)
 
 template <>
 rvfun::fun_t log_rv_get_fun<LOG_REC_MVCC_UNDOREDO> (const LOG_REC_MVCC_UNDOREDO &, LOG_RCVINDEX rcvindex)
+{
+  return RV_fun[rcvindex].redofun;
+}
+
+template <>
+rvfun::fun_t log_rv_get_fun<LOG_REC_UNDOREDO> (const LOG_REC_UNDOREDO &, LOG_RCVINDEX rcvindex)
 {
   return RV_fun[rcvindex].redofun;
 }
