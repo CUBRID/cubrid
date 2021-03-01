@@ -637,6 +637,18 @@ template <> int
   return log_rv_get_unzip_and_diff_redo_log_data (thread_p, log_pgptr_reader, &rcv, 0, nullptr, redo_unzip_support);
 }
 
+/* TODO:
+ */
+template <> int
+  log_rv_get_log_rec_redo_data < LOG_REC_REDO > (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader,
+                                                      const log_rec_redo & log_rec, log_rcv & rcv,
+                                                      log_rectype log_rtype, struct log_zip & undo_unzip_support,
+                                                      struct log_zip & redo_unzip_support)
+{
+  return log_rv_get_unzip_and_diff_redo_log_data (thread_p, log_pgptr_reader, &rcv, 0, nullptr, redo_unzip_support);
+}
+
+
 /*
  * TODO: desc; will superseed the log_rv_redo_record
  *
@@ -3919,30 +3931,47 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 	    case LOG_REDO_DATA:
 	      {
+#define OLD_IMPL_REDO 0
 		const LOG_LSA rcv_lsa = log_pgptr_reader.get_lsa ();	/* Address of redo log record */
 
 		/* Get the DATA HEADER */
 		log_pgptr_reader.add_align (sizeof (LOG_RECORD_HEADER));
 
+#if (OLD_IMPL_REDO)
 		const LOG_REC_REDO *redo = NULL;	/* Redo log record */
 		int data_header_size = 0;
 		MVCCID mvccid = MVCCID_NULL;
 		/* Data header is regular redo */
 		data_header_size = sizeof (LOG_REC_REDO);
 		log_pgptr_reader.advance_when_does_not_fit (data_header_size);
+#else
+		log_pgptr_reader.advance_when_does_not_fit (sizeof (LOG_REC_REDO));
+#endif
 		// *INDENT-OFF*
+#if (OLD_IMPL_REDO)
 		redo = log_pgptr_reader.reinterpret_cptr<LOG_REC_REDO> ();
+#else
+		const LOG_REC_REDO log_rec_redo
+		    = log_pgptr_reader.reinterpret_copy_and_add_align<LOG_REC_REDO>();
+#endif
 		// *INDENT-ON*
 
+#if (OLD_IMPL_REDO)
 		mvccid = MVCCID_NULL;
+#endif
 
-		/* Do we need to redo anything ? */
-
+#if (OLD_IMPL_REDO)
 		if (redo->data.rcvindex == RVVAC_COMPLETE)
+#else
+		if (log_rec_redo.data.rcvindex == RVVAC_COMPLETE)
+#endif
 		  {
 		    /* Reset log header MVCC info */
 		    logpb_vacuum_reset_log_header_cache (thread_p, &log_Gl.hdr);
 		  }
+
+#if (OLD_IMPL_REDO)
+		/* Do we need to redo anything ? */
 
 		/*
 		 * Fetch the page for physical log records and check if redo
@@ -4018,6 +4047,14 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		  {
 		    pgbuf_unfix (thread_p, rcv.pgptr);
 		  }
+#else
+		log_rv_redo_record_sync_or_dispatch_parallel < LOG_REC_REDO > (thread_p, log_pgptr_reader,
+										    log_rec_redo,
+										    rcv_lsa, end_redo_lsa,
+										    log_rtype, *undo_unzip_ptr,
+										    *redo_unzip_ptr);
+#endif
+#undef OLD_IMPL_REDO
 	      }
 	      break;
 
