@@ -22,7 +22,22 @@
 #include "log_prior_recv.hpp"
 #include "log_prior_send.hpp"
 
+#include <condition_variable>
+#include <mutex>
 #include <vector>
+
+class test_flush_track
+{
+  public:
+    void increment_flush_count ();
+    void wait_until_flush_count_and_reset (size_t wait_count);
+
+  private:
+    size_t m_flush_count = 0;
+    std::mutex m_sync;
+    std::condition_variable m_cv;
+};
+test_flush_track test_Flush_track;
 
 class test_env
 {
@@ -135,21 +150,27 @@ test_env::flush_log ()
 {
   m_sender.send_list (m_source_prior_info.prior_list_header);
 
-  // pull list
-  if (m_source_nodes_tail == nullptr)
+  if (m_source_prior_info.prior_list_header != nullptr)
     {
-      m_source_nodes_head = m_source_prior_info.prior_list_header;
-      m_source_nodes_tail = m_source_prior_info.prior_list_tail;
-    }
-  else
-    {
-      m_source_nodes_tail->next = m_source_prior_info.prior_list_header;
-      m_source_nodes_tail = m_source_prior_info.prior_list_tail;
-    }
+      // pull list
+      if (m_source_nodes_tail == nullptr)
+	{
+	  m_source_nodes_head = m_source_prior_info.prior_list_header;
+	  m_source_nodes_tail = m_source_prior_info.prior_list_tail;
+	}
+      else
+	{
+	  m_source_nodes_tail->next = m_source_prior_info.prior_list_header;
+	  m_source_nodes_tail = m_source_prior_info.prior_list_tail;
+	}
 
-  m_source_prior_info.prior_list_header = nullptr;
-  m_source_prior_info.prior_list_tail = nullptr;
+      m_source_prior_info.prior_list_header = nullptr;
+      m_source_prior_info.prior_list_tail = nullptr;
 
+      // now make sure that all messages have been processed
+      // note: if m_source_prior_info.prior_list_header == nullptr, no message is sent.
+      test_Flush_track.wait_until_flush_count_and_reset (m_dest_prior_infos.size ());
+    }
   require_prior_list_match ();
 }
 
@@ -259,7 +280,28 @@ prior_list_deserialize (const std::string &str)
 }
 
 void
+test_flush_track::increment_flush_count ()
+{
+  std::unique_lock<std::mutex> ulock (m_sync);
+  ++m_flush_count;
+  ulock.unlock ();
+  m_cv.notify_all ();
+}
+
+void
+test_flush_track::wait_until_flush_count_and_reset (size_t wait_count)
+{
+  std::unique_lock<std::mutex> ulock (m_sync);
+  m_cv.wait (ulock, [&wait_count, this]
+  {
+    return m_flush_count >= wait_count;
+  });
+  REQUIRE (m_flush_count == wait_count);
+  m_flush_count = 0;
+}
+
+void
 log_wakeup_log_flush_daemon ()
 {
-  // do nothing
+  test_Flush_track.increment_flush_count ();
 }
