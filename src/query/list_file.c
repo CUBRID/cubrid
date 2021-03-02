@@ -196,6 +196,7 @@ static LF_ENTRY_DESCRIPTOR qfile_sort_list_entry_desc = {
 int qfile_Is_list_cache_disabled;
 
 static int qfile_Max_tuple_page_size;
+static int qfile_list_cache_Cleanup_flag;
 
 static int qfile_get_sort_list_size (SORT_LIST * sort_list);
 static int qfile_compare_tuple_values (QFILE_TUPLE tplp1, QFILE_TUPLE tplp2, TP_DOMAIN * domain, int *cmp);
@@ -316,11 +317,19 @@ qfile_list_cache_cleanup (THREAD_ENTRY * thread_p)
   BINARY_HEAP *bh = NULL;
   QFILE_CACHE_CLEANUP_CANDIDATE candidate;
   int candidate_index;
+  int err = NO_ERROR;
   unsigned int i, n;
 
   struct timeval current_time;
   int cleanup_count = prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_ENTRIES) * 8 / 10;
   int cleanup_pages = prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_PAGES) * 8 / 10;
+
+  /* We can allow only one cleanup process at a time. There is no point in duplicating this work. Therefore, anyone
+   * trying to do the cleanup should first try to set qfile_list_cache_Cleanup_flag. */
+  if (!ATOMIC_CAS_32 (&qfile_list_cache_Cleanup_flag, 0, 1))
+    {
+      return NO_ERROR;
+    }
 
   if (cleanup_count < 1)
     {
@@ -337,7 +346,8 @@ qfile_list_cache_cleanup (THREAD_ENTRY * thread_p)
 
   if (bh == NULL)
     {
-      return ER_FAILED;
+      err = ER_FAILED;
+      goto end;
     }
 
   gettimeofday (&current_time, NULL);
@@ -381,7 +391,9 @@ qfile_list_cache_cleanup (THREAD_ENTRY * thread_p)
   for (candidate_index = 0; candidate_index < bh->element_count; candidate_index++)
     {
       bh_element_at (bh, candidate_index, &candidate);
+      pthread_mutex_lock (&candidate.qcache->list_cache_mutex);
       qfile_delete_list_cache_entry (thread_p, candidate.qcache);
+      pthread_mutex_unlock (&candidate.qcache->list_cache_mutex);
       if (qfile_List_cache.n_entries <= cleanup_count)
 	{
 	  if (qfile_List_cache.n_pages <= cleanup_pages)
@@ -393,7 +405,13 @@ qfile_list_cache_cleanup (THREAD_ENTRY * thread_p)
 
   bh_destroy (thread_p, bh);
 
-  return NO_ERROR;
+end:
+  if (!ATOMIC_CAS_32 (&qfile_list_cache_Cleanup_flag, 1, 0))
+    {
+      assert_release (false);
+    }
+
+  return err;
 }
 #endif
 
@@ -1111,6 +1129,8 @@ qfile_initialize (void)
     {
       return ER_FAILED;
     }
+
+  qfile_list_cache_Cleanup_flag = 0;
 
   return true;
 }
@@ -5583,8 +5603,6 @@ qfile_delete_list_cache_entry (THREAD_ENTRY * thread_p, void *data)
       return ER_FAILED;
     }
 
-  pthread_mutex_lock (&lent->list_cache_mutex);
-
   lent->deletion_marker = true;
 #if defined(SERVER_MODE)
   if (lent->deletion_marker && lent->last_ta_idx == 0)
@@ -5633,8 +5651,6 @@ qfile_delete_list_cache_entry (THREAD_ENTRY * thread_p, void *data)
       error_code = qfile_free_list_cache_entry (thread_p, lent, NULL);
     }
 
-  pthread_mutex_unlock (&lent->list_cache_mutex);
-
   return error_code;
 }
 
@@ -5678,6 +5694,8 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
   size_t i_idx, num_active_users;
 #endif
 
+  bool new_tran = true;
+
   *result_cached = false;
 
   if (QFILE_IS_LIST_CACHE_DISABLED)
@@ -5699,71 +5717,84 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
   /* look up the hash table with the key */
   lent = (QFILE_LIST_CACHE_ENTRY *) mht_get (qfile_List_cache.list_hts[list_ht_no], params);
   qfile_List_cache.lookup_counter++;	/* counter */
+
   if (lent)
     {
+      unsigned int i;
+
       /* check if it is marked to be deleted */
+      /* check if no transactions in reference */
+      pthread_mutex_lock (&lent->list_cache_mutex);
+#if defined(SERVER_MODE)
       if (lent->deletion_marker)
 	{
-	  (void) qfile_delete_list_cache_entry (thread_p, lent);
-	  lent = NULL;
+	  if (lent->last_ta_idx == 0)
+	    {
+	      qfile_delete_list_cache_entry (thread_p, lent);
+	      goto end;
+	    }
 	}
 
-      /* check if it may have uncommitted data */
-      if (lent)
+      /* check if the cache is owned by me */
+      for (i = 0; i < lent->last_ta_idx; i++)
 	{
-#if defined(SERVER_MODE)
-	  pthread_mutex_lock (&lent->list_cache_mutex);
-
-	  tran_isolation = logtb_find_isolation (tran_index);
-	  /* 1. my isolation is not (greater than) read uncommited 2. the entry is cached by an uncommitted other
-	   * transaction */
-	  if (lent->uncommitted_marker == true)
+	  if (lent->tran_index_array[i] == tran_index)
 	    {
-	      /* treat as look-up failed,
-	       * because the cache is assigned already by other transaction */
-	      assert (lent->last_ta_idx > 0);
-	      if (lent->tran_index_array[lent->last_ta_idx - 1] == tran_index)
-		{
-		  *result_cached = true;
-		}
-	    }
-	  else
-	    {
-	      lent->uncommitted_marker = true;
 	      *result_cached = true;
+	      new_tran = false;
+	      break;
 	    }
-
-	  /* finally, we found an useful cache entry to reuse */
-	  if (*result_cached)
-	    {
-	      /* record my transaction id into the entry and adjust timestamp and reference counter */
-	      if (lent->last_ta_idx < (size_t) MAX_NTRANS)
-		{
-		  num_elements = (int) lent->last_ta_idx;
-		  (void) lsearch (&tran_index, lent->tran_index_array, &num_elements, sizeof (int),
-				  qfile_compare_tran_id);
-		  lent->last_ta_idx = num_elements;
-		}
-#if !defined (NDEBUG)
-	      for (i_idx = 0, num_active_users = 0; i_idx < lent->last_ta_idx; i_idx++)
-		{
-		  if (lent->tran_index_array[i_idx] > 0)
-		    {
-		      num_active_users++;
-		    }
-		}
-	      assert (lent->last_ta_idx == num_active_users);
-#endif
-	    }
-	  pthread_mutex_unlock (&lent->list_cache_mutex);
-#endif /* SERVER_MODE */
-
-	  (void) gettimeofday (&lent->time_last_used, NULL);
-	  lent->ref_count++;
 	}
+
+      if (*result_cached == false && lent->deletion_marker == true)
+	{
+	  goto end;
+	}
+      else
+	{
+	  *result_cached = true;
+	}
+#endif
     }
 
-  if (lent && *result_cached)
+  if (*result_cached)
+    {
+#if defined(SERVER_MODE)
+      /* finally, we found an useful cache entry to reuse */
+      if (new_tran)
+	{
+	  /* record my transaction id into the entry and adjust timestamp and reference counter */
+	  lent->uncommitted_marker = true;
+	  if (lent->last_ta_idx < (size_t) MAX_NTRANS)
+	    {
+	      num_elements = (int) lent->last_ta_idx;
+	      (void) lsearch (&tran_index, lent->tran_index_array, &num_elements, sizeof (int), qfile_compare_tran_id);
+	      lent->last_ta_idx = num_elements;
+	    }
+#if !defined (NDEBUG)
+	  for (i_idx = 0, num_active_users = 0; i_idx < lent->last_ta_idx; i_idx++)
+	    {
+	      if (lent->tran_index_array[i_idx] > 0)
+		{
+		  num_active_users++;
+		}
+	    }
+	  assert (lent->last_ta_idx == num_active_users);
+#endif
+	}
+#endif /* SERVER_MODE */
+
+      (void) gettimeofday (&lent->time_last_used, NULL);
+      lent->ref_count++;
+    }
+
+end:
+  if (lent)
+    {
+      pthread_mutex_unlock (&lent->list_cache_mutex);
+    }
+
+  if (*result_cached)
     {
       qfile_List_cache.hit_counter++;	/* counter */
     }
@@ -5774,7 +5805,12 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
 
   csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
 
-  return lent;
+  if (*result_cached)
+    {
+      return lent;
+    }
+
+  return NULL;
 }
 
 static bool
@@ -5978,9 +6014,8 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr, con
 	  break;
 	}
 
-#if defined(SERVER_MODE)
       pthread_mutex_lock (&lent->list_cache_mutex);
-
+#if defined(SERVER_MODE)
       /* check in-use by other transaction */
       if (lent->last_ta_idx > 0)
 	{
@@ -6013,9 +6048,8 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr, con
       (void) gettimeofday (&lent->time_last_used, NULL);
       lent->ref_count++;
 
-      pthread_mutex_unlock (&lent->list_cache_mutex);
-
 #endif /* SERVER_MODE */
+      pthread_mutex_unlock (&lent->list_cache_mutex);
     }
   while (0);
 
@@ -6030,7 +6064,10 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr, con
   if (qfile_List_cache.n_entries >= prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_ENTRIES)
       || qfile_List_cache.n_pages >= prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_PAGES))
     {
-      qfile_list_cache_cleanup (thread_p);
+      if (qfile_list_cache_cleanup (thread_p) != NO_ERROR)
+	{
+	  goto end;
+	}
     }
 #endif
 
@@ -6043,6 +6080,8 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr, con
     {
       goto end;
     }
+
+  pthread_mutex_lock (&lent->list_cache_mutex);
   lent->list_ht_no = *list_ht_no_ptr;
 #if defined(SERVER_MODE)
   lent->uncommitted_marker = true;
@@ -6071,7 +6110,8 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr, con
   /* copy the QFILE_LIST_ID */
   if (qfile_copy_list_id (&lent->list_id, list_id, false) != NO_ERROR)
     {
-      (void) qfile_delete_list_cache_entry (thread_p, lent);
+      qfile_delete_list_cache_entry (thread_p, lent);
+      pthread_mutex_unlock (&lent->list_cache_mutex);
       lent = NULL;
       goto end;
     }
@@ -6118,7 +6158,8 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr, con
 	{
 	  db_private_free (thread_p, s);
 	}
-      (void) qfile_delete_list_cache_entry (thread_p, lent);
+      qfile_delete_list_cache_entry (thread_p, lent);
+      pthread_mutex_unlock (&lent->list_cache_mutex);
       lent = NULL;
       goto end;
     }
@@ -6126,6 +6167,11 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr, con
   /* update counter */
   qfile_List_cache.n_entries++;
   qfile_List_cache.n_pages += lent->list_id.page_cnt;
+
+  if (lent)
+    {
+      pthread_mutex_unlock (&lent->list_cache_mutex);
+    }
 
 end:
   csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
@@ -6169,8 +6215,8 @@ qfile_end_use_of_list_cache_entry (THREAD_ENTRY * thread_p, QFILE_LIST_CACHE_ENT
       return ER_FAILED;
     }
 
-#if defined(SERVER_MODE)
   pthread_mutex_lock (&lent->list_cache_mutex);
+#if defined(SERVER_MODE)
   /* remove my transaction id from the entry and do compaction */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   r = &lent->tran_index_array[lent->last_ta_idx];
@@ -6211,16 +6257,24 @@ qfile_end_use_of_list_cache_entry (THREAD_ENTRY * thread_p, QFILE_LIST_CACHE_ENT
   assert (lent->last_ta_idx == num_active_users);
 #endif
 
-  pthread_mutex_unlock (&lent->list_cache_mutex);
 #endif /* SERVER_MODE */
 
   /* if this entry will be deleted */
 #if defined(SERVER_MODE)
   if (marker && lent->last_ta_idx == 0)
     {
-      (void) qfile_delete_list_cache_entry (thread_p, lent);
+      qfile_delete_list_cache_entry (thread_p, lent);
+    }
+  else
+    {
+      if (lent->deletion_marker == false)
+	{
+	  lent->deletion_marker = marker;
+	}
     }
 #endif
+
+  pthread_mutex_unlock (&lent->list_cache_mutex);
 
   csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
 
