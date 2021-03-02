@@ -71,6 +71,7 @@ template < typename T >
   int log_rv_get_log_rec_redo_data (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader, const T & log_rec,
 				    log_rcv & rcv, log_rectype log_rtype, struct log_zip &undo_unzip_support,
 				    struct log_zip &redo_unzip_support);
+template < typename T > void log_rv_log_post_func (const log_lsa & rcv_lsa, const T & log_rec);
 template < typename T > static void
 log_rv_redo_record_sync_or_dispatch_parallel (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader, const T & log_rec,
 					      const log_lsa & rcv_lsa,
@@ -652,6 +653,36 @@ template <> int
   return log_rv_get_unzip_and_diff_redo_log_data (thread_p, log_pgptr_reader, &rcv, 0, nullptr, redo_unzip_support);
 }
 
+/* TODO:
+ */
+template <> int
+  log_rv_get_log_rec_redo_data < LOG_REC_COMPENSATE > (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader,
+						       const log_rec_compensate & log_rec, log_rcv & rcv,
+						       log_rectype log_rtype, struct log_zip & undo_unzip_support,
+						       struct log_zip & redo_unzip_support)
+{
+  return log_rv_get_unzip_and_diff_redo_log_data (thread_p, log_pgptr_reader, &rcv, 0, nullptr, redo_unzip_support);
+}
+
+
+template < typename T > void
+log_rv_log_post_func (const log_lsa & rcv_lsa, const T & log_rec)
+{
+  // nop
+}
+
+template <>
+  void log_rv_log_post_func < LOG_REC_COMPENSATE > (const log_lsa & rcv_lsa, const log_rec_compensate & log_rec)
+{
+  const LOG_RCVINDEX rcvindex = log_rec.data.rcvindex;
+  if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS) && rcvindex == RVBT_RECORD_MODIFY_COMPENSATE)
+    {
+      _er_log_debug (ARG_FILE_LINE,
+		     "BTREE_REDO: Successfully applied compensate lsa=%lld|%d, undo_nxlsa=%lld|%d.\n",
+		     (long long int) rcv_lsa.pageid, (int) rcv_lsa.offset,
+		     (long long int) log_rec.undo_nxlsa.pageid, (int) log_rec.undo_nxlsa.offset);
+    }
+}
 
 /*
  * TODO: desc; will superseed the log_rv_redo_record
@@ -690,6 +721,8 @@ log_rv_redo_record_sync_or_dispatch_parallel (THREAD_ENTRY * thread_p, log_reade
   rcv.mvcc_id = log_rv_get_log_rec_mvccid < T > (log_rec);
   rcv.offset = log_rv_get_log_rec_offset < T > (log_rec);
 
+  // TODO: call pre data retrieval logging function
+
   const auto err_redo_data = log_rv_get_log_rec_redo_data < T > (thread_p, log_pgptr_reader, log_rec, rcv, log_rtype,
 								 undo_unzip_support, redo_unzip_support);
   if (err_redo_data != NO_ERROR)
@@ -725,6 +758,8 @@ log_rv_redo_record_sync_or_dispatch_parallel (THREAD_ENTRY * thread_p, log_reade
       pgbuf_set_lsa (thread_p, rcv.pgptr, &rcv_lsa);
       // rcv pgptr will be automatically unfixed
     }
+
+  log_rv_log_post_func < T > (rcv_lsa, log_rec);
 }
 
 /*
@@ -4212,6 +4247,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 	    case LOG_COMPENSATE:
 	      {
+#define OLD_IMPL_COMPENSATE 0
 		const LOG_LSA rcv_lsa = log_pgptr_reader.get_lsa ();	/* Address of redo log record */
 
 		/* Get the DATA HEADER */
@@ -4219,9 +4255,15 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		log_pgptr_reader.advance_when_does_not_fit (sizeof (LOG_REC_COMPENSATE));
 		/* Compensating log record */
 		// *INDENT-OFF*
+#if (OLD_IMPL_COMPENSATE)
 		const LOG_REC_COMPENSATE *compensate = log_pgptr_reader.reinterpret_cptr<LOG_REC_COMPENSATE> ();
+#else
+		const LOG_REC_COMPENSATE log_rec_compensate
+		    = log_pgptr_reader.reinterpret_copy_and_add_align<LOG_REC_COMPENSATE>();
+#endif
 		// *INDENT-ON*
 
+#if (OLD_IMPL_COMPENSATE)
 		/* Do we need to redo anything ? */
 
 		/*
@@ -4298,6 +4340,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		  {
 		    pgbuf_unfix (thread_p, rcv.pgptr);
 		  }
+		// TODO: 'post' templated function
 		if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS) && rcvindex == RVBT_RECORD_MODIFY_COMPENSATE)
 		  {
 		    _er_log_debug (ARG_FILE_LINE,
@@ -4305,6 +4348,14 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 				   (long long int) rcv_lsa.pageid, (int) rcv_lsa.offset,
 				   (long long int) compensate->undo_nxlsa.pageid, (int) compensate->undo_nxlsa.offset);
 		  }
+#else
+		log_rv_redo_record_sync_or_dispatch_parallel < LOG_REC_COMPENSATE > (thread_p, log_pgptr_reader,
+										     log_rec_compensate,
+										     rcv_lsa, end_redo_lsa,
+										     log_rtype, *undo_unzip_ptr,
+										     *redo_unzip_ptr);
+#endif
+#undef OLD_IMPL_COMPENSATE
 	      }
 	      break;
 
