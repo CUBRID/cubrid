@@ -49,6 +49,7 @@
 #include "system_parameter.h"
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
+#include "type_helper.hpp"
 
 #include <stdio.h>
 #include <stddef.h>
@@ -71,12 +72,20 @@ template < typename T >
   int log_rv_get_log_rec_redo_data (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader, const T & log_rec,
 				    log_rcv & rcv, log_rectype log_rtype, struct log_zip &undo_unzip_support,
 				    struct log_zip &redo_unzip_support);
-template < typename T > void log_rv_log_post_func (const log_lsa & rcv_lsa, const T & log_rec);
-template < typename T > static void
-log_rv_redo_record_sync_or_dispatch_parallel (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader, const T & log_rec,
-					      const log_lsa & rcv_lsa,
-					      const LOG_LSA * end_redo_lsa, LOG_RECTYPE log_rtype,
-					      LOG_ZIP & undo_unzip_support, LOG_ZIP & redo_unzip_support);
+template < typename T > void
+log_rv_redo_record_debug_logging_pre_data_retrieve (const log_lsa & rcv_lsa, LOG_RCVINDEX rcvindex,
+						    const vpid & rcv_vpid, const log_rcv & rcv);
+
+template < typename T > void log_rv_redo_record_debug_logging_post_function_call (const log_lsa & rcv_lsa,
+										  const T & log_rec);
+template < typename T > static void log_rv_redo_record_sync_or_dispatch_parallel (THREAD_ENTRY * thread_p,
+										  log_reader & log_pgptr_reader,
+										  const T & log_rec,
+										  const log_lsa & rcv_lsa,
+										  const LOG_LSA * end_redo_lsa,
+										  LOG_RECTYPE log_rtype,
+										  LOG_ZIP & undo_unzip_support,
+										  LOG_ZIP & redo_unzip_support);
 
 static bool log_rv_find_checkpoint (THREAD_ENTRY * thread_p, VOLID volid, LOG_LSA * rcv_lsa);
 
@@ -664,15 +673,51 @@ template <> int
   return log_rv_get_unzip_and_diff_redo_log_data (thread_p, log_pgptr_reader, &rcv, 0, nullptr, redo_unzip_support);
 }
 
+#if !defined(NDEBUG)
+DBG_REGISTER_PARSE_TYPE_NAME (LOG_REC_MVCC_UNDOREDO);
+DBG_REGISTER_PARSE_TYPE_NAME (LOG_REC_UNDOREDO);
+DBG_REGISTER_PARSE_TYPE_NAME (LOG_REC_MVCC_REDO);
+DBG_REGISTER_PARSE_TYPE_NAME (LOG_REC_REDO);
+DBG_REGISTER_PARSE_TYPE_NAME (LOG_REC_RUN_POSTPONE);
+DBG_REGISTER_PARSE_TYPE_NAME (LOG_REC_COMPENSATE);
+#endif
 
 template < typename T > void
-log_rv_log_post_func (const log_lsa & rcv_lsa, const T & log_rec)
+log_rv_redo_record_debug_logging_pre_data_retrieve (const log_lsa & rcv_lsa, LOG_RCVINDEX rcvindex,
+						    const vpid & rcv_vpid, const log_rcv & rcv)
+{
+#if !defined(NDEBUG)
+  if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
+    {
+      constexpr const char *const log_rec_name = dbg_parse_type_name < T > ();
+      fprintf (stdout,
+	       "TRACE REDOING[%s]: LSA = %lld|%d, Rv_index = %s,\n"
+	       "      volid = %d, pageid = %d, offset = %d,\n", log_rec_name, LSA_AS_ARGS (&rcv_lsa),
+	       rv_rcvindex_string (rcvindex), rcv_vpid.volid, rcv_vpid.pageid, rcv.offset);
+      if (rcv.pgptr != nullptr)
+	{
+	  const log_lsa *const rcv_page_lsaptr = pgbuf_get_lsa (rcv.pgptr);
+	  assert (rcv_page_lsaptr != nullptr);
+	  fprintf (stdout, "      page_lsa = %lld|%d\n", LSA_AS_ARGS (rcv_page_lsaptr));
+	}
+      else
+	{
+	  fprintf (stdout, "      page_lsa = %lld|%d\n", -1LL, -1);
+	}
+      fflush (stdout);
+    }
+#endif /* !NDEBUG */
+}
+
+template < typename T > void
+log_rv_redo_record_debug_logging_post_function_call (const log_lsa & rcv_lsa, const T & log_rec)
 {
   // nop
 }
 
 template <>
-  void log_rv_log_post_func < LOG_REC_COMPENSATE > (const log_lsa & rcv_lsa, const log_rec_compensate & log_rec)
+  void log_rv_redo_record_debug_logging_post_function_call < LOG_REC_COMPENSATE > (const log_lsa & rcv_lsa,
+										   const log_rec_compensate & log_rec)
 {
   const LOG_RCVINDEX rcvindex = log_rec.data.rcvindex;
   if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS) && rcvindex == RVBT_RECORD_MODIFY_COMPENSATE)
@@ -691,12 +736,12 @@ template <>
  *
  */
 template < typename T > static void
-log_rv_redo_record_sync_or_dispatch_parallel (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader, const T & log_rec,
-					      const log_lsa & rcv_lsa,
+log_rv_redo_record_sync_or_dispatch_parallel (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader,
+					      const T & log_rec, const log_lsa & rcv_lsa,
 					      const LOG_LSA * end_redo_lsa, LOG_RECTYPE log_rtype,
 					      LOG_ZIP & undo_unzip_support, LOG_ZIP & redo_unzip_support)
 {
-  const VPID page_vpid = log_rv_get_log_rec_vpid < T > (log_rec);
+  const VPID rcv_vpid = log_rv_get_log_rec_vpid < T > (log_rec);
   // at this point, vpid can either be valid or not
 
   // TODO: once valid vpid is extracted, it can be decided whether to execute sync or dispatch asynchronously
@@ -705,7 +750,7 @@ log_rv_redo_record_sync_or_dispatch_parallel (THREAD_ENTRY * thread_p, log_reade
   const LOG_DATA & log_data = log_rv_get_log_rec_data < T > (log_rec);
 
   LOG_RCV rcv;
-  if (!log_rv_fix_page_and_check_redo_is_needed (thread_p, page_vpid, rcv, log_data.rcvindex, rcv_lsa, end_redo_lsa))
+  if (!log_rv_fix_page_and_check_redo_is_needed (thread_p, rcv_vpid, rcv, log_data.rcvindex, rcv_lsa, end_redo_lsa))
     {
       /* nothing else needs to be done, see explanation in function */
       assert (rcv.pgptr == nullptr);
@@ -721,7 +766,7 @@ log_rv_redo_record_sync_or_dispatch_parallel (THREAD_ENTRY * thread_p, log_reade
   rcv.mvcc_id = log_rv_get_log_rec_mvccid < T > (log_rec);
   rcv.offset = log_rv_get_log_rec_offset < T > (log_rec);
 
-  // TODO: call pre data retrieval logging function
+  log_rv_redo_record_debug_logging_pre_data_retrieve < T > (rcv_lsa, log_data.rcvindex, rcv_vpid, rcv);
 
   const auto err_redo_data = log_rv_get_log_rec_redo_data < T > (thread_p, log_pgptr_reader, log_rec, rcv, log_rtype,
 								 undo_unzip_support, redo_unzip_support);
@@ -742,7 +787,7 @@ log_rv_redo_record_sync_or_dispatch_parallel (THREAD_ENTRY * thread_p, log_reade
 			     "log_rv_redo_record_sync_or_dispatch_parallel: Error applying redo record at log_lsa=(%lld, %d), "
 			     "rcv = {mvccid=%llu, vpid=(%d, %d), offset = %d, data_length = %d}",
 			     (long long int) rcv_lsa.pageid, (int) rcv_lsa.offset,
-			     (long long int) rcv.mvcc_id, (int) page_vpid.pageid, (int) page_vpid.volid,
+			     (long long int) rcv.mvcc_id, (int) rcv_vpid.pageid, (int) rcv_vpid.volid,
 			     (int) rcv.offset, (int) rcv.length);
 	}
     }
@@ -759,7 +804,7 @@ log_rv_redo_record_sync_or_dispatch_parallel (THREAD_ENTRY * thread_p, log_reade
       // rcv pgptr will be automatically unfixed
     }
 
-  log_rv_log_post_func < T > (rcv_lsa, log_rec);
+  log_rv_redo_record_debug_logging_post_function_call < T > (rcv_lsa, log_rec);
 }
 
 /*
