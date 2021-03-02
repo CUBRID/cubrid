@@ -44,7 +44,9 @@
 #include "server_interface.h"
 #include "boot_cl.h"
 #include "locator_cl.h"
+#ifndef CS_MODE
 #include "server_type.hpp"
+#endif
 #include "schema_manager.h"
 #include "schema_template.h"
 #include "object_accessor.h"
@@ -1016,10 +1018,14 @@ int
 db_enable_modification (void)
 {
   /* CHECK_CONNECT_ERROR (); */
+#ifndef CS_MODE
   if (get_server_type () != SERVER_TYPE_PAGE)
     {
       db_Disable_modifications--;
     }
+#else
+  db_Disable_modifications--;
+#endif
   return NO_ERROR;
 }
 
