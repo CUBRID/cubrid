@@ -27,6 +27,7 @@
 #include "perf_monitor.h"
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
+#include "server_type.hpp"
 #include "vacuum.h"
 
 static bool log_Zip_support = false;
@@ -37,6 +38,8 @@ static LOG_ZIP *log_zip_redo = NULL;
 static char *log_data_ptr = NULL;
 static int log_data_length = 0;
 #endif
+
+#define assertm(exp, msg) assert(((void)msg, exp))
 
 size_t
 LOG_PRIOR_LSA_LAST_APPEND_OFFSET ()
@@ -1536,6 +1539,7 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
 LOG_LSA
 prior_lsa_next_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, log_tdes *tdes)
 {
+  assertm(get_server_type() == SERVER_TYPE_TRANSACTION, "Log append can be executed only on transaction server");
   return prior_lsa_next_record_internal (thread_p, node, tdes, LOG_PRIOR_LSA_WITHOUT_LOCK);
 }
 
