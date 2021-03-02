@@ -194,6 +194,10 @@ set(COMMUNICATION_HEADERS
   ${COMMUNICATION_DIR}/request_client_server.hpp
   )
 
+set(DEBUGGING_HEADERS
+  ${DEBUGGING_DIR}/type_helper.hpp
+  )
+
 set(MONITOR_SOURCES
   ${MONITOR_DIR}/monitor_collect.cpp
   ${MONITOR_DIR}/monitor_registration.cpp
@@ -473,6 +477,7 @@ set (CUBRID_LIB_HEADERS
   ${BASE_HEADERS}
   ${COMMUNICATION_HEADERS}
   ${COMPAT_HEADERS}
+  ${DEBUGGING_HEADERS}
   ${MONITOR_HEADERS}
   ${OBJECT_HEADERS}
   ${QUERY_HEADERS}

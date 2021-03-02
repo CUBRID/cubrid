@@ -183,6 +183,10 @@ set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_cl.c
   )
 
+set(DEBUGGING_HEADERS
+  ${DEBUGGING_DIR}/type_helper.hpp
+  )
+
 set(PARSER_SOURCES
   ${BISON_csql_grammar_OUTPUTS}
   ${FLEX_csql_lexer_OUTPUTS}
@@ -442,6 +446,7 @@ add_library(cubridcs SHARED
   ${COMPAT_SOURCES_C}
   ${BASE_HEADERS}
   ${BASE_SOURCES}
+  ${DEBUGGING_HEADERS}
   ${ES_SOURCES}
   ${COMMUNICATION_SOURCES}
   ${CONNECTION_SOURCES}

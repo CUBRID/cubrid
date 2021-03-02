@@ -184,6 +184,10 @@ set(COMMUNICATION_HEADERS
   ${COMMUNICATION_DIR}/communication_channel.hpp
   )
 
+set(DEBUGGING_HEADERS
+  ${DEBUGGING_DIR}/type_helper.hpp
+  )
+
 set(MONITOR_SOURCES
   ${MONITOR_DIR}/monitor_collect.cpp
   ${MONITOR_DIR}/monitor_registration.cpp
@@ -568,6 +572,7 @@ add_library(cubridsa SHARED
   ${COMPAT_SOURCES_C}
   ${CONNECTION_SOURCES}
   ${CONNECTION_TCP_SOURCE}
+  ${DEBUGGING_HEADERS}
   ${ES_SOURCES}
   ${EXECUTABLE_SOURCES}
   ${HEAPLAYER_SOURCES}
