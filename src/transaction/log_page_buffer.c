@@ -6729,7 +6729,10 @@ LOG_PAGEID
 logpb_checkpoint (THREAD_ENTRY * thread_p)
 {
   if (get_server_type () == SERVER_TYPE_PAGE)
-    return NULL_LOG_PAGEID;
+    {
+      // TODO: reactivate once checkpoint is changed without log records
+      return NULL_LOG_PAGEID;
+    }
 
 #define detailed_er_log(...) if (detailed_logging) _er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
 

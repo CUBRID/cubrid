@@ -27,9 +27,7 @@
 #include "perf_monitor.h"
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
-#ifndef CS_MODE
 #include "server_type.hpp"
-#endif
 #include "vacuum.h"
 
 static bool log_Zip_support = false;
@@ -1583,9 +1581,7 @@ prior_is_tde_encrypted (const log_prior_node *node)
 static void
 prior_lsa_start_append (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_TDES *tdes)
 {
-#ifndef CS_MODE
-  assertm(get_server_type() == SERVER_TYPE_TRANSACTION, "Log append can be executed only on transaction server");
-#endif
+  assertm (get_server_type() == SERVER_TYPE_TRANSACTION, "Log append can be executed only on transaction server");
   /* Does the new log record fit in this page ? */
   log_prior_lsa_append_advance_when_doesnot_fit (sizeof (LOG_RECORD_HEADER));
 
