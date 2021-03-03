@@ -642,7 +642,9 @@ struct log_global
   mvcctable mvcc_table;		/* MVCC table */
   GLOBAL_UNIQUE_STATS_TABLE unique_stats_table;	/* global unique statistics */
 
-    cublog::prior_sender m_prior_sender;
+  // *INDENT-OFF*
+  cublog::prior_sender m_prior_sender;
+  // *INDENT-ON*
 
   // *INDENT-OFF*
   log_global ();

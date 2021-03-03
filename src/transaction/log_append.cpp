@@ -1656,7 +1656,6 @@ prior_node_serialize (const log_prior_node &node, std::string &serialized)
   copy_mem (node.udata, node.ulength);
   copy_mem (node.rdata, node.rlength);
 
-#undef copy_mem
 #undef copy
 #undef copy_mem
 }

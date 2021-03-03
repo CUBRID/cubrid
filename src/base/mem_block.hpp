@@ -201,6 +201,8 @@ namespace cubmem
       inline const char *get_read_ptr () const;
 
     private:
+      void copy_stack_to_extensible_block ();
+
       stack_block<S> m_stack;
       extensible_block m_ext_block;
       bool m_use_stack;
@@ -411,12 +413,14 @@ namespace cubmem
     if (m_use_stack)
       {
 	m_ext_block.extend_to (m_stack.SIZE + additional_bytes);
+
+	copy_stack_to_extensible_block ();
+	m_use_stack = false;
       }
     else
       {
 	m_ext_block.extend_by (additional_bytes);
       }
-    m_use_stack = false;
   }
 
   template <size_t S>
@@ -428,7 +432,19 @@ namespace cubmem
 	return;
       }
     m_ext_block.extend_to (total_bytes);
-    m_use_stack = false;
+
+    if (m_use_stack)
+      {
+	copy_stack_to_extensible_block ();
+	m_use_stack = false;
+      }
+  }
+
+  template <size_t S>
+  void
+  extensible_stack_block<S>::copy_stack_to_extensible_block ()
+  {
+    std::memcpy_s (m_ext_block.get_ptr (), m_ext_block.get_size (), m_stack.get_read_ptr (), m_stack.SIZE);
   }
 
   template <size_t S>

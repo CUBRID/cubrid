@@ -26,76 +26,90 @@
 #include <mutex>
 #include <vector>
 
-class test_flush_track
+// test_wakeup_flush_tracker: track the calls of log_wakeup_log_flush_daemon by log receivers
+//
+// used to synchronize prior nodes on sender/receiver.
+//
+class test_wakeup_flush_tracker
 {
   public:
-    void increment_flush_count ();
-    void wait_until_flush_count_and_reset (size_t wait_count);
+    void increment_count ();				  // increment count on log_wakeup_log_flush_daemon calls
+    void wait_until_count_and_reset (size_t wait_count);  // wait until the wait_count is reached and reset the counter
 
   private:
-    size_t m_flush_count = 0;
-    std::mutex m_sync;
-    std::condition_variable m_cv;
+    size_t m_flush_count = 0;				  // current count
+    std::mutex m_sync;					  // protect access on count
+    std::condition_variable m_cv;			  // notify caller of wait_until_count_and_reset
 };
-test_flush_track test_Flush_track;
+test_wakeup_flush_tracker test_Flush_track;    // global tracker
 
+// test_env: simulate a sender and one or more receivers and log generation, flush/transfer
+//
 class test_env
 {
   public:
-    test_env (size_t receivers_count);
+    // ctor/dtor
+    test_env (size_t receivers_count);	  // construct one sender and receivers_count receivers
     ~test_env ();
 
-    void log_append ();
-    void flush_log ();
+    void append_log ();			  // simulate log append
+    void flush_and_transfer_log ();	  // simulate log flush. log is transferred to the receivers in the process
+    // and at the end prior lists are compared
 
   private:
     static void free_list (log_prior_node *headp);
     void require_prior_list_match () const;
 
-    cublog::prior_sender m_sender;
-    std::vector<log_prior_lsa_info *> m_dest_prior_infos;
-    std::vector<cublog::prior_recver *> m_recvers;
+    // Sender & source data
+    cublog::prior_sender m_sender;			  // the log sender
+    log_prior_lsa_info m_source_prior_info;		  // the prior info where append_log() appends nodes and the
+    // source of log transfer during log_flush()
+    log_prior_node *m_source_nodes_head = nullptr;	  // head of list with all nodes that have been transferred
+    log_prior_node *m_source_nodes_tail = nullptr;	  // tail of list with all nodes that have been transferred
 
-    log_prior_lsa_info m_source_prior_info;
-
-    log_prior_node *m_source_nodes_head = nullptr;
-    log_prior_node *m_source_nodes_tail = nullptr;
+    std::vector<log_prior_lsa_info *> m_dest_prior_infos; // destination prior info, one for each receiver
+    std::vector<cublog::prior_recver *> m_recvers;	  // log receivers
 };
+
+void
+do_test (test_env &env)
+{
+  // test:
+  // - append one log record and flush/transfer
+  // - append no log record and flush/transfer
+  // - append multiple log records and flush/transfer
+
+  env.append_log ();
+  env.flush_and_transfer_log ();
+
+  env.flush_and_transfer_log ();
+
+  for (size_t i = 0; i < 3; ++i)
+    {
+      env.append_log ();
+    }
+  env.flush_and_transfer_log ();
+}
 
 TEST_CASE ("Test prior list transfers with a single receiver", "")
 {
   test_env env (1);
-
-  env.log_append ();
-  env.flush_log ();
-
-  env.flush_log ();
-
-  for (size_t i = 0; i < 3; ++i)
-    {
-      env.log_append ();
-    }
-  env.flush_log ();
+  do_test (env);
 }
 
 TEST_CASE ("Test prior list transfers with two receivers", "")
 {
   test_env env (2);
-
-  env.log_append ();
-  env.flush_log ();
-
-  env.flush_log ();
-
-  for (size_t i = 0; i < 3; ++i)
-    {
-      env.log_append ();
-    }
-  env.flush_log ();
+  do_test (env);
 }
 
 test_env::test_env (size_t receivers_count)
 {
+  // For each receiver, three steps must be done:
+  //	1. creating a prior info, where log is transferred
+  //	2. creating the log receiver
+  //	3. hooking a sink on the sender that transfers the log to the receiver
+
   for (size_t i = 0; i < receivers_count; ++i)
     {
       // add new destination prior info
@@ -123,8 +137,10 @@ test_env::~test_env ()
 }
 
 void
-test_env::log_append ()
+test_env::append_log ()
 {
+  // simulate appending log. add new node to prior info
+
   log_prior_node *nodep = new log_prior_node ();
   nodep->start_lsa = m_source_prior_info.prior_lsa;
 
@@ -146,13 +162,15 @@ test_env::log_append ()
 }
 
 void
-test_env::flush_log ()
+test_env::flush_and_transfer_log ()
 {
+  // simulate "flush", when log is transferred to receivers
+
   m_sender.send_list (m_source_prior_info.prior_list_header);
 
   if (m_source_prior_info.prior_list_header != nullptr)
     {
-      // pull list
+      // pull list from prior info and append to m_source_nodes_head/m_source_nodes_tail
       if (m_source_nodes_tail == nullptr)
 	{
 	  m_source_nodes_head = m_source_prior_info.prior_list_header;
@@ -169,8 +187,10 @@ test_env::flush_log ()
 
       // now make sure that all messages have been processed
       // note: if m_source_prior_info.prior_list_header == nullptr, no message is sent.
-      test_Flush_track.wait_until_flush_count_and_reset (m_dest_prior_infos.size ());
+      test_Flush_track.wait_until_count_and_reset (m_dest_prior_infos.size ());
     }
+
+  // check prior list in source matches the lists
   require_prior_list_match ();
 }
 
@@ -188,6 +208,10 @@ test_env::free_list (log_prior_node *headp)
 void
 test_env::require_prior_list_match () const
 {
+  // source and destination prior lists have to match
+  // the source list is in m_source_nodes_head/m_source_nodes_tail
+  // the destination lists are in the destination prior info's
+
   if (m_source_nodes_head == nullptr)
     {
       return;
@@ -210,7 +234,10 @@ test_env::require_prior_list_match () const
     }
 }
 
+//
 // Add mock definitions for used CUBRID stuff
+//
+
 log_prior_lsa_info::log_prior_lsa_info () = default;
 
 void
@@ -240,6 +267,8 @@ log_prior_lsa_info::push_list (log_prior_node *&list_head)
 std::string
 prior_list_serialize (const log_prior_node *head)
 {
+  // only start_lsa is used
+
   std::string serialized;
   for (const log_prior_node *nodep = head; nodep != nullptr; nodep = nodep->next)
     {
@@ -251,6 +280,8 @@ prior_list_serialize (const log_prior_node *head)
 log_prior_node *
 prior_list_deserialize (const std::string &str)
 {
+  // only start_lsa is used
+
   const char *ptr = str.c_str ();
   const char *end_ptr = str.c_str () + str.size ();
 
@@ -280,7 +311,7 @@ prior_list_deserialize (const std::string &str)
 }
 
 void
-test_flush_track::increment_flush_count ()
+test_wakeup_flush_tracker::increment_count ()
 {
   std::unique_lock<std::mutex> ulock (m_sync);
   ++m_flush_count;
@@ -289,7 +320,7 @@ test_flush_track::increment_flush_count ()
 }
 
 void
-test_flush_track::wait_until_flush_count_and_reset (size_t wait_count)
+test_wakeup_flush_tracker::wait_until_count_and_reset (size_t wait_count)
 {
   std::unique_lock<std::mutex> ulock (m_sync);
   m_cv.wait (ulock, [&wait_count, this]
@@ -303,5 +334,5 @@ test_flush_track::wait_until_flush_count_and_reset (size_t wait_count)
 void
 log_wakeup_log_flush_daemon ()
 {
-  test_Flush_track.increment_flush_count ();
+  test_Flush_track.increment_count ();
 }
