@@ -61,9 +61,7 @@
 #include "partition_sr.h"
 #include "btree_load.h"
 #include "serial.h"
-#ifndef CS_MODE
 #include "server_type.hpp"
-#endif
 #include "show_scan.h"
 #include "boot_sr.h"
 #include "tz_support.h"
@@ -3144,13 +3142,8 @@ logtb_disable_update (THREAD_ENTRY * thread_p)
 void
 logtb_enable_update (THREAD_ENTRY * thread_p)
 {
-#ifndef CS_MODE
-  bool correct_server_type = get_server_type () != SERVER_TYPE_PAGE;
-#else
-  bool correct_server_type = true;
-#endif
-
-  if (prm_get_bool_value (PRM_ID_READ_ONLY_MODE) == false && correct_server_type)
+  assert (get_server_type () == SERVER_TYPE_TRANSACTION);
+  if (prm_get_bool_value (PRM_ID_READ_ONLY_MODE) == false)
     {
       db_Disable_modifications = 0;
       er_log_debug (ARG_FILE_LINE, "logtb_enable_update: db_Disable_modifications = %d\n", db_Disable_modifications);

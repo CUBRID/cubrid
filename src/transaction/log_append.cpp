@@ -1541,9 +1541,6 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
 LOG_LSA
 prior_lsa_next_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, log_tdes *tdes)
 {
-#ifndef CS_MODE
-  assertm(get_server_type() == SERVER_TYPE_TRANSACTION, "Log append can be executed only on transaction server");
-#endif
   return prior_lsa_next_record_internal (thread_p, node, tdes, LOG_PRIOR_LSA_WITHOUT_LOCK);
 }
 
@@ -1586,6 +1583,9 @@ prior_is_tde_encrypted (const log_prior_node *node)
 static void
 prior_lsa_start_append (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_TDES *tdes)
 {
+#ifndef CS_MODE
+  assertm(get_server_type() == SERVER_TYPE_TRANSACTION, "Log append can be executed only on transaction server");
+#endif
   /* Does the new log record fit in this page ? */
   log_prior_lsa_append_advance_when_doesnot_fit (sizeof (LOG_RECORD_HEADER));
 
