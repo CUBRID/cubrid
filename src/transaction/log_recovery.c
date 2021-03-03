@@ -759,7 +759,8 @@ void log_rv_redo_record_debug_logging_post_function_call<LOG_REC_COMPENSATE> (co
 }
 
 /*
- * log_rv_redo_record - execute a redo record synchronously or (in future) asynchronously
+ * log_rv_redo_record_sync_or_dispatch_parallel - execute a redo record synchronously or
+ *                    (in future) asynchronously
  *
  * return: nothing
  *
