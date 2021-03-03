@@ -1577,12 +1577,12 @@ prior_node_serialized_size (const log_prior_node &node)
   size_t total_size = 0;
 
   // fixed data
-  total_size += sizeof (node.log_header)
-		+ sizeof (node.start_lsa)
-		+ sizeof (node.tde_encrypted)
-		+ sizeof (node.data_header_length)
-		+ sizeof (node.ulength)
-		+ sizeof (node.rlength);
+  constexpr size_t total_size = sizeof (node.log_header)
+				+ sizeof (node.start_lsa)
+				+ sizeof (node.tde_encrypted)
+				+ sizeof (node.data_header_length)
+				+ sizeof (node.ulength)
+				+ sizeof (node.rlength);
 
   // variable data
   total_size += static_cast<size_t> (node.data_header_length);
@@ -1620,8 +1620,8 @@ prior_node_serialize (const log_prior_node &node, std::string &serialized)
   copy_mem (node.udata, node.ulength);
   copy_mem (node.rdata, node.rlength);
 
-#undef copy_mem
 #undef copy
+#undef copy_mem
 }
 
 static const char *
@@ -1654,9 +1654,9 @@ prior_node_deserialize (const char *ptr, log_prior_node &node)
 
   node.next = nullptr;
 
-#undef copy_mem
-#undef copy
 #undef alloc_and_copy_mem
+#undef copy
+#undef copy_mem
 
   return ptr;
 }
@@ -1682,7 +1682,7 @@ prior_list_serialize (const log_prior_node *head)
 
   assert (serialized.size () == size);
 
-  return std::move (serialized);
+  return serialized;
 }
 
 log_prior_node *
