@@ -1333,8 +1333,28 @@ $ LOADDB
 1261 在还原时找不到密钥（密钥索引：%1$d，创建时间：%2$s）。设置数据库的键（键索引：%3$d）。
 1262 密钥文件已满。
 1263 无法对日志页面进行TDE加密（页面ID：%1$lld）。不再尝试加密此页面。
+1264 Error reserved for scalability development.
+1265 Error reserved for scalability development.
+1266 Error reserved for scalability development.
+1267 Error reserved for scalability development.
+1268 Error reserved for scalability development.
+1269 Error reserved for scalability development.
+1270 Error reserved for scalability development.
+1271 Error reserved for scalability development.
+1272 Error reserved for scalability development.
+1273 Error reserved for scalability development.
+1274 Error reserved for scalability development.
+1275 Error reserved for scalability development.
+1276 Error reserved for scalability development.
+1277 Error reserved for scalability development.
+1278 Error reserved for scalability development.
+1279 Error reserved for scalability development.
+1280 Error reserved for scalability development.
+1281 Error reserved for scalability development.
+1282 Error reserved for scalability development.
+1283 Error reserved for scalability development.
 
-1264 最后一个错误.
+1284 最后一个错误.
 
 $set 6 MSGCAT_SET_INTERNAL
 1 在错误子系统中错误 (line %1$d):

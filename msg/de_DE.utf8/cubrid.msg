@@ -1332,8 +1332,28 @@ $ LOADDB
 1261 Der Schlüssel kann zum Zeitpunkt der Wiederherstellung nicht gefunden werden (Schlüsselindex: %1$d, Erstellungszeit: %2$s). Legen Sie den Schlüssel (Schlüsselindex: %3$d) für die Datenbank fest.
 1262 Die Schlüsseldatei ist voll.
 1263 Die Protokollseite kann nicht mit TDE verschlüsselt werden (Seiten-ID: %1$lld). Es wird nicht mehr versucht, diese Seite zu verschlüsseln.
+1264 Error reserved for scalability development.
+1265 Error reserved for scalability development.
+1266 Error reserved for scalability development.
+1267 Error reserved for scalability development.
+1268 Error reserved for scalability development.
+1269 Error reserved for scalability development.
+1270 Error reserved for scalability development.
+1271 Error reserved for scalability development.
+1272 Error reserved for scalability development.
+1273 Error reserved for scalability development.
+1274 Error reserved for scalability development.
+1275 Error reserved for scalability development.
+1276 Error reserved for scalability development.
+1277 Error reserved for scalability development.
+1278 Error reserved for scalability development.
+1279 Error reserved for scalability development.
+1280 Error reserved for scalability development.
+1281 Error reserved for scalability development.
+1282 Error reserved for scalability development.
+1283 Error reserved for scalability development.
 
-1264 Letzter Fehler
+1284 Letzter Fehler
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Fehler in Fehler-Subsystem (Zeile %1$d):
