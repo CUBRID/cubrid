@@ -21,7 +21,6 @@
 #include "communication_server_channel.hpp"
 #include "connection_defs.h"
 #include "error_manager.h"
-#include "server_support.h"
 #include "system_parameter.h"
 
 #include <string>

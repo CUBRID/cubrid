@@ -54,7 +54,7 @@
 #include "memory_alloc.h"
 #include "boot_sr.h"
 #include "connection_defs.h"
-#include "connection_globals.h"
+#include "connection_server_rules.hpp"
 #include "release_string.h"
 #include "system_parameter.h"
 #include "environment_variable.h"

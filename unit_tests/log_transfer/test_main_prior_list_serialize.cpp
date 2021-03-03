@@ -289,7 +289,7 @@ test_env::require_mem_equal (const char *memleft, const char *memrite, size_t me
 }
 
 //
-// Definitions of CUBRID stuff that is not used, but is needed for compile
+// Definitions of CUBRID stuff that is not used, but is needed by the linker
 //
 
 #include "error_manager.h"
