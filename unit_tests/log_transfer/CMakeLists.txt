@@ -16,46 +16,30 @@
 #
 #
 
-project (request_client_server)
+project(test_log_transfer)
 
-set (TEST_REQUEST_CS_SOURCES
-  ${BASE_DIR}/mem_block.cpp
-  ${BASE_DIR}/packer.cpp
-  comm_channel_mock.cpp
-  test_main.cpp
-  )
-set (TEST_REQUEST_CS_HEADERS
-  comm_channel_mock.hpp
+set(TEST_PRIOR_LIST_SERIALIZE_SOURCES
+  ${TRANSACTION_DIR}/log_append.cpp
+  test_main_prior_list_serialize.cpp
   )
 
 SET_SOURCE_FILES_PROPERTIES(
-  ${TEST_REQUEST_CS_SOURCES}
+  ${TEST_PRIOR_LIST_SERIALIZE_SOURCES}
   PROPERTIES LANGUAGE CXX
   )
-
-add_executable(test_request_cs
-  ${TEST_REQUEST_CS_SOURCES}
-  ${TEST_REQUEST_CS_HEADERS}
+  
+add_executable(test_prior_list_serialize
+  ${TEST_PRIOR_LIST_SERIALIZE_SOURCES}
   )
 
-target_compile_options(test_request_cs PRIVATE ${compile_warning_flags})
-target_compile_definitions(test_request_cs PRIVATE
-  ${COMMON_DEFS}
+target_compile_options(test_prior_list_serialize PRIVATE ${compile_warning_flags})
+target_compile_definitions(test_prior_list_serialize PRIVATE
+  ${COMMON_DEFS} SERVER_MODE
   )
-
-target_include_directories(test_request_cs PRIVATE
+target_include_directories(test_prior_list_serialize PRIVATE
   ${TEST_INCLUDES}
   )
-
-target_link_libraries(test_request_cs PRIVATE
-  test_common
-  )
-if(WIN32)
-  target_link_libraries(test_request_cs PRIVATE
-  ws2_32
-  )
-endif(WIN32)
-
-add_dependencies(test_request_cs
+add_dependencies(test_prior_list_serialize
   ${CATCH2_TARGET}
   )
+  
