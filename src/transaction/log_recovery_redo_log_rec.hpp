@@ -10,15 +10,15 @@
  */
 
 /*
- * declarations
+ * template declarations
  */
 
-/* function will copy data into the provided structure
+/* recovery data out of a log record
  */
 template <typename T>
 const LOG_DATA &log_rv_get_log_rec_data (const T &log_rec);
 
-/* implementation assumes the reader is already correctly positioned
+/*
  */
 template <typename T>
 MVCCID log_rv_get_log_rec_mvccid (const T &log_rec);
@@ -28,18 +28,12 @@ MVCCID log_rv_get_log_rec_mvccid (const T &log_rec);
 template <typename T>
 VPID log_rv_get_log_rec_vpid (const T &log_rec);
 
-/* if needed
- */
-//template <typename T>
-//int log_rv_get_log_rec_undo_length (const T &log_rec);
-
 /*
  */
 template <typename T>
 int log_rv_get_log_rec_redo_length (const T &log_rec);
 
 /*
- * TODO: maybe this function is not needed as offset is always part of the log_rec - data
  */
 template <typename T>
 int log_rv_get_log_rec_offset (const T &log_rec);
