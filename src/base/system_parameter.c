@@ -8589,6 +8589,11 @@ sysprm_obtain_parameters (char *data, SYSPRM_ASSIGN_VALUE ** prm_values_ptr)
 	  error = PRM_ERR_UNKNOWN_PARAM;
 	  break;
 	}
+      else if (prm->value == NULL)
+        {
+	  error = PRM_ERR_NO_VALUE;
+          break;
+        }
 
 #if defined (CS_MODE)
       if (!PRM_IS_FOR_CLIENT (prm->static_flag) && !PRM_IS_FOR_SERVER (prm->static_flag))
