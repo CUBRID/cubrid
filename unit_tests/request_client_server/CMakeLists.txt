@@ -48,8 +48,13 @@ target_include_directories(test_request_cs PRIVATE
   )
 
 target_link_libraries(test_request_cs PRIVATE
-  test_common ws2_32
+  test_common
   )
+if(WIN32)
+  target_link_libraries(test_request_cs PRIVATE
+  ws2_32
+  )
+endif(WIN32)
 
 add_dependencies(test_request_cs
   ${CATCH2_TARGET}
