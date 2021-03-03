@@ -1577,12 +1577,13 @@ prior_node_serialized_size (const log_prior_node &node)
   size_t total_size = 0;
 
   // fixed data
-  constexpr size_t total_size = sizeof (node.log_header)
+  constexpr size_t fixed_size = sizeof (node.log_header)
 				+ sizeof (node.start_lsa)
 				+ sizeof (node.tde_encrypted)
 				+ sizeof (node.data_header_length)
 				+ sizeof (node.ulength)
 				+ sizeof (node.rlength);
+  total_size += fixed_size;
 
   // variable data
   total_size += static_cast<size_t> (node.data_header_length);
