@@ -27,7 +27,10 @@
 #include "perf_monitor.h"
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
+#include "server_type.hpp"
 #include "vacuum.h"
+
+#include <cstring>
 
 static bool log_Zip_support = false;
 static int log_Zip_min_size_to_compress = 255;
@@ -37,6 +40,8 @@ static LOG_ZIP *log_zip_redo = NULL;
 static char *log_data_ptr = NULL;
 static int log_data_length = 0;
 #endif
+
+#define assertm(exp, msg) assert(((void)msg, exp))
 
 size_t
 LOG_PRIOR_LSA_LAST_APPEND_OFFSET ()
@@ -1569,6 +1574,158 @@ prior_is_tde_encrypted (const log_prior_node *node)
   return node->tde_encrypted;
 }
 
+static size_t
+prior_node_serialized_size (const log_prior_node &node)
+{
+  size_t total_size = 0;
+
+  // fixed data
+  constexpr size_t fixed_size = sizeof (node.log_header)
+				+ sizeof (node.start_lsa)
+				+ sizeof (node.tde_encrypted)
+				+ sizeof (node.data_header_length)
+				+ sizeof (node.ulength)
+				+ sizeof (node.rlength);
+  total_size += fixed_size;
+
+  // variable data
+  total_size += static_cast<size_t> (node.data_header_length);
+  total_size += static_cast<size_t> (node.ulength);
+  total_size += static_cast<size_t> (node.rlength);
+
+  return total_size;
+}
+
+static size_t
+prior_list_serialized_size (const log_prior_node *head)
+{
+  size_t total_size = 0;
+  for (const log_prior_node *nodep = head; nodep != nullptr; nodep = nodep->next)
+    {
+      total_size += prior_node_serialized_size (*nodep);
+    }
+  return total_size;
+}
+
+static void
+prior_node_serialize (const log_prior_node &node, std::string &serialized)
+{
+#define copy_mem(mem, memsz) if ((memsz) > 0) serialized.append (mem, memsz)
+#define copy(val) copy_mem (reinterpret_cast<const char *> (&(val)), sizeof (val))
+
+  copy (node.log_header);
+  copy (node.start_lsa);
+  copy (node.tde_encrypted);
+  copy (node.data_header_length);
+  copy (node.ulength);
+  copy (node.rlength);
+
+  copy_mem (node.data_header, node.data_header_length);
+  copy_mem (node.udata, node.ulength);
+  copy_mem (node.rdata, node.rlength);
+
+#undef copy
+#undef copy_mem
+}
+
+static const char *
+prior_node_deserialize (const char *ptr, log_prior_node &node)
+{
+#define copy_mem(mem, memsz) std::memcpy (mem, ptr, memsz); ptr += (memsz)
+#define copy(val) copy_mem (reinterpret_cast<char *> (&(val)), sizeof (val))
+#define alloc_and_copy_mem(mem, memsz)	\
+  if ((memsz) > 0)			\
+    {					\
+      (mem) = (char *) malloc (memsz);	\
+      assert ((mem) != nullptr);	\
+      copy_mem (mem, memsz);		\
+    }					\
+  else					\
+    {					\
+      mem = nullptr;			\
+    }
+
+  copy (node.log_header);
+  copy (node.start_lsa);
+  copy (node.tde_encrypted);
+  copy (node.data_header_length);
+  copy (node.ulength);
+  copy (node.rlength);
+
+  alloc_and_copy_mem (node.data_header, node.data_header_length);
+  alloc_and_copy_mem (node.udata, node.ulength);
+  alloc_and_copy_mem (node.rdata, node.rlength);
+
+  node.next = nullptr;
+
+#undef alloc_and_copy_mem
+#undef copy
+#undef copy_mem
+
+  return ptr;
+}
+
+std::string
+prior_list_serialize (const log_prior_node *head)
+{
+  if (head == nullptr)
+    {
+      return std::string ();
+    }
+
+  // calculate size
+  size_t size = prior_list_serialized_size (head);
+
+  std::string serialized;
+  serialized.reserve (size);
+
+  for (const log_prior_node *nodep = head; nodep != nullptr; nodep = nodep->next)
+    {
+      prior_node_serialize (*nodep, serialized);
+    }
+
+  assert (serialized.size () == size);
+
+  return serialized;
+}
+
+log_prior_node *
+prior_list_deserialize (const std::string &str)
+{
+  // reversed prior_node_serialize
+  if (str.empty ())
+    {
+      return nullptr;
+    }
+
+  // iterate through str using ptr
+  const char *ptr = str.c_str ();
+  log_prior_node *headp = nullptr;
+  log_prior_node *tailp = nullptr;
+
+  while (ptr < str.c_str () + str.size ())
+    {
+      log_prior_node *nodep = (log_prior_node *) malloc (sizeof (log_prior_node));
+      assert (nodep != nullptr);
+      ptr = prior_node_deserialize (ptr, *nodep);
+
+      if (headp == nullptr)
+	{
+	  headp = nodep;
+	  tailp = nodep;
+	}
+      else
+	{
+	  assert (tailp != nullptr);
+	  tailp->next = nodep;
+	  tailp = nodep;
+	}
+    }
+  assert (ptr == str.c_str () + str.size ());
+
+  return headp;
+}
+
 /*
  * prior_lsa_start_append:
  *
@@ -1578,6 +1735,7 @@ prior_is_tde_encrypted (const log_prior_node *node)
 static void
 prior_lsa_start_append (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_TDES *tdes)
 {
+  assertm (get_server_type () == SERVER_TYPE_TRANSACTION, "Log append can be executed only on transaction server");
   /* Does the new log record fit in this page ? */
   log_prior_lsa_append_advance_when_doesnot_fit (sizeof (LOG_RECORD_HEADER));
 

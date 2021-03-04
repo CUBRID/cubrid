@@ -2736,7 +2736,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 #endif
 
   /* read only mode ? */
-  if (prm_get_bool_value (PRM_ID_READ_ONLY_MODE))
+  if (prm_get_bool_value (PRM_ID_READ_ONLY_MODE) || get_server_type () == SERVER_TYPE_PAGE)
     {
       logtb_disable_update (NULL);
     }
@@ -2761,11 +2761,14 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 #endif
 
 #if defined (SERVER_MODE)
-  /* set number of hosts */
-  css_set_ha_num_of_hosts (db->num_hosts);
-  /* set server's starting mode for HA according to the 'ha_mode' parameter */
-  css_change_ha_server_state (thread_p, (HA_SERVER_STATE) prm_get_integer_value (PRM_ID_HA_SERVER_STATE), false,
-			      HA_CHANGE_MODE_IMMEDIATELY, true);
+  if (get_server_type () == SERVER_TYPE_TRANSACTION)
+    {
+      /* set number of hosts */
+      css_set_ha_num_of_hosts (db->num_hosts);
+      /* set server's starting mode for HA according to the 'ha_mode' parameter */
+      css_change_ha_server_state (thread_p, (HA_SERVER_STATE) prm_get_integer_value (PRM_ID_HA_SERVER_STATE), false,
+				  HA_CHANGE_MODE_IMMEDIATELY, true);
+    }
 #endif
 
   /* initialize partitions cache */
