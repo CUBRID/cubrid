@@ -295,6 +295,7 @@ test_env::require_mem_equal (const char *memleft, const char *memrite, size_t me
 #include "error_manager.h"
 #include "log_compress.h"
 #include "perf_monitor.h"
+#include "server_type.hpp"
 #include "tde.h"
 #include "vacuum.h"
 
@@ -320,6 +321,13 @@ db_io_page_size ()
 {
   assert (false);
   return 0;
+}
+
+SERVER_TYPE
+get_server_type ()
+{
+  assert (false);
+  return SERVER_TYPE_TRANSACTION;
 }
 
 PGLENGTH
