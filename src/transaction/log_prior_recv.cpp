@@ -84,8 +84,10 @@ namespace cublog
 
 	while (!backbuffer.empty ())
 	  {
-	    log_prior_node *list_head = prior_list_deserialize (backbuffer.front ());
-	    m_prior_lsa_info.push_list (list_head);
+	    log_prior_node *list_head = nullptr;
+	    log_prior_node *list_tail = nullptr;
+	    prior_list_deserialize (backbuffer.front (), list_head, list_tail);
+	    m_prior_lsa_info.push_list (list_head, list_tail);
 	    log_wakeup_log_flush_daemon ();
 	    backbuffer.pop ();
 	  }

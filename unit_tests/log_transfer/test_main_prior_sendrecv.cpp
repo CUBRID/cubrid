@@ -241,15 +241,8 @@ test_env::require_prior_list_match () const
 log_prior_lsa_info::log_prior_lsa_info () = default;
 
 void
-log_prior_lsa_info::push_list (log_prior_node *&list_head)
+log_prior_lsa_info::push_list (log_prior_node *&list_head, log_prior_node *&list_tail)
 {
-  log_prior_node *list_tail = list_head;
-
-  while (list_tail->next != nullptr)
-    {
-      list_tail = list_tail->next;
-    }
-
   if (prior_list_header == nullptr)
     {
       prior_list_header = list_head;
@@ -274,19 +267,19 @@ prior_list_serialize (const log_prior_node *head)
     {
       serialized.append (reinterpret_cast<const char *> (&nodep->start_lsa), sizeof (log_lsa));
     }
-  return std::move (serialized);
+  return serialized;
 }
 
-log_prior_node *
-prior_list_deserialize (const std::string &str)
+void
+prior_list_deserialize (const std::string &str, log_prior_node *&headp, log_prior_node *&tailp)
 {
   // only start_lsa is used
 
   const char *ptr = str.c_str ();
   const char *end_ptr = str.c_str () + str.size ();
 
-  log_prior_node *headp = nullptr;
-  log_prior_node *tailp = nullptr;
+  headp = nullptr;
+  tailp = nullptr;
 
   while (ptr < end_ptr)
     {
@@ -306,8 +299,6 @@ prior_list_deserialize (const std::string &str)
       nodep->next = nullptr;
     }
   assert (ptr == end_ptr);
-
-  return headp;
 }
 
 void

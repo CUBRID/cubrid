@@ -127,7 +127,7 @@ struct log_prior_lsa_info
 
   log_prior_lsa_info ();
 
-  void push_list (log_prior_node *&list_head);
+  void push_list (log_prior_node *&list_head, log_prior_node *&list_tail);
 };
 
 //
@@ -165,7 +165,7 @@ void log_append_init_zip ();
 void log_append_final_zip ();
 
 std::string prior_list_serialize (const log_prior_node *head);
-log_prior_node *prior_list_deserialize (const std::string &str);
+void prior_list_deserialize (const std::string &str, log_prior_node *&head, log_prior_node *&tail);
 
 // todo - move to header of log page buffer
 size_t logpb_get_memsize ();
