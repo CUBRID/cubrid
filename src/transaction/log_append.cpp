@@ -27,6 +27,7 @@
 #include "perf_monitor.h"
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
+#include "server_type.hpp"
 #include "vacuum.h"
 
 #include <cstring>
@@ -39,6 +40,8 @@ static LOG_ZIP *log_zip_redo = NULL;
 static char *log_data_ptr = NULL;
 static int log_data_length = 0;
 #endif
+
+#define assertm(exp, msg) assert(((void)msg, exp))
 
 size_t
 LOG_PRIOR_LSA_LAST_APPEND_OFFSET ()
@@ -1732,6 +1735,7 @@ prior_list_deserialize (const std::string &str)
 static void
 prior_lsa_start_append (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_TDES *tdes)
 {
+  assertm (get_server_type() == SERVER_TYPE_TRANSACTION, "Log append can be executed only on transaction server");
   /* Does the new log record fit in this page ? */
   log_prior_lsa_append_advance_when_doesnot_fit (sizeof (LOG_RECORD_HEADER));
 
