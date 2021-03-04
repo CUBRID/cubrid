@@ -223,13 +223,14 @@ test_env::serialize_deserialize_list ()
     {
       REQUIRE (deserialized_nodep != nullptr);
       require_equal (list_nodep, deserialized_nodep);
+
+      if (deserialized_nodep->next == nullptr)
+	{
+	  REQUIRE (deserialized_nodep == deserialized_tailp);
+	}
+
       list_nodep = list_nodep->next;
       deserialized_nodep = deserialized_nodep->next;
-
-      if (list_nodep->next == nullptr)
-	{
-	  REQUIRE (list_nodep == deserialized_tailp);
-	}
     }
 
   free_list (list_headp);
