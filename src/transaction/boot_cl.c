@@ -560,7 +560,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
       tran_lock_wait_msecs = tran_lock_wait_msecs * 1000;
     }
 
-  error_code = perfmon_initialize (0);
+  error_code = perfmon_initialize (1);	/* 1 transaction for SA_MODE */
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();

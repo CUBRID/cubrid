@@ -183,8 +183,8 @@ static void perfmon_stat_dump_in_buffer_thread_daemon_stats (const UINT64 * stat
 static void perfmon_print_timer_to_file (FILE * stream, int stat_index, UINT64 * stats_ptr);
 static void perfmon_print_timer_to_buffer (char **s, int stat_index, UINT64 * stats_ptr, int *remained_size);
 
-STATIC_INLINE size_t thread_stats_count (void) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE size_t perfmon_thread_daemon_stats_count (void) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE size_t thread_stats_count (void) __attribute__((ALWAYS_INLINE));
+STATIC_INLINE size_t perfmon_thread_daemon_stats_count (void) __attribute__((ALWAYS_INLINE));
 #if defined (SERVER_MODE)
 static void perfmon_peek_thread_daemon_stats (UINT64 * stats);
 #endif // SERVER_MODE
@@ -608,25 +608,25 @@ PSTAT_METADATA pstat_Metadata[] = {
 };
 
 STATIC_INLINE void perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, const int offset,
-					       UINT64 amount) __attribute__ ((ALWAYS_INLINE));
+					       UINT64 amount) __attribute__((ALWAYS_INLINE));
 
 static void perfmon_server_calc_stats (UINT64 * stats);
 
-STATIC_INLINE const char *perfmon_stat_module_name (const int module) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE const char *perfmon_stat_module_name (const int module) __attribute__((ALWAYS_INLINE));
 #if defined (SERVER_MODE) || defined (SA_MODE)
-STATIC_INLINE int perfmon_get_module_type (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int perfmon_get_module_type (THREAD_ENTRY * thread_p) __attribute__((ALWAYS_INLINE));
 #endif
-STATIC_INLINE const char *perfmon_stat_page_type_name (const int page_type) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE const char *perfmon_stat_page_mode_name (const int page_mode) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE const char *perfmon_stat_holder_latch_name (const int holder_latch) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE const char *perfmon_stat_cond_type_name (const int cond_type) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE const char *perfmon_stat_promote_cond_name (const int cond_type) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE const char *perfmon_stat_snapshot_name (const int snapshot) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE const char *perfmon_stat_snapshot_record_type (const int rec_type) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE const char *perfmon_stat_lock_mode_name (const int lock_mode) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE const char *perfmon_stat_page_type_name (const int page_type) __attribute__((ALWAYS_INLINE));
+STATIC_INLINE const char *perfmon_stat_page_mode_name (const int page_mode) __attribute__((ALWAYS_INLINE));
+STATIC_INLINE const char *perfmon_stat_holder_latch_name (const int holder_latch) __attribute__((ALWAYS_INLINE));
+STATIC_INLINE const char *perfmon_stat_cond_type_name (const int cond_type) __attribute__((ALWAYS_INLINE));
+STATIC_INLINE const char *perfmon_stat_promote_cond_name (const int cond_type) __attribute__((ALWAYS_INLINE));
+STATIC_INLINE const char *perfmon_stat_snapshot_name (const int snapshot) __attribute__((ALWAYS_INLINE));
+STATIC_INLINE const char *perfmon_stat_snapshot_record_type (const int rec_type) __attribute__((ALWAYS_INLINE));
+STATIC_INLINE const char *perfmon_stat_lock_mode_name (const int lock_mode) __attribute__((ALWAYS_INLINE));
 static const char *perfmon_stat_thread_stat_name (size_t index);
 
-STATIC_INLINE void perfmon_get_peek_stats (UINT64 * stats) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void perfmon_get_peek_stats (UINT64 * stats) __attribute__((ALWAYS_INLINE));
 
 #if defined(CS_MODE) || defined(SA_MODE)
 bool perfmon_Iscollecting_stats = false;
