@@ -217,25 +217,6 @@ struct log_rcv
   // *INDENT-ON*
 };
 
-// TODO: temporary poor man's solution; proper solution is to import 'scope_exit' class
-struct log_rcv_raii_pgptr final
-{
-  log_rcv_raii_pgptr (THREAD_ENTRY * a_thread_p, log_rcv & a_rcv):thread_p (a_thread_p), rcv (a_rcv)
-  {
-  }
-   ~log_rcv_raii_pgptr ();
-
-  log_rcv_raii_pgptr (const log_rcv_raii_pgptr &) = delete;
-  log_rcv_raii_pgptr (log_rcv &&) = delete;
-
-  log_rcv_raii_pgptr & operator= (const log_rcv_raii_pgptr &) = delete;
-  log_rcv_raii_pgptr & operator= (log_rcv_raii_pgptr &&) = delete;
-
-private:
-  THREAD_ENTRY * thread_p;
-  log_rcv & rcv;
-};
-
 /*
  * STRUCTURE ENTRY OF RECOVERY FUNCTIONS
  */

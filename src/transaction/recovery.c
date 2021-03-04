@@ -879,12 +879,3 @@ rv_check_rvfuns (void)
 
 }
 #endif /* !NDEBUG */
-
-log_rcv_raii_pgptr::~log_rcv_raii_pgptr ()
-{
-  if (rcv.pgptr != nullptr)
-    {
-      pgbuf_unfix (thread_p, rcv.pgptr);
-      rcv.pgptr = nullptr;
-    }
-}
