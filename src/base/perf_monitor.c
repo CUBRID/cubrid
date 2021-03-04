@@ -3067,9 +3067,7 @@ perfmon_initialize (int num_trans)
     }
   memset (pstat_Global.global_stats, 0, PERFMON_VALUES_MEMSIZE);
 
-#if defined (SERVER_MODE)
   assert (num_trans > 0);
-#endif // SERVER_MODE
 
   pstat_Global.n_trans = num_trans + 1;	/* 1 more for easier indexing with tran_index */
   memsize = pstat_Global.n_trans * sizeof (UINT64 *);
