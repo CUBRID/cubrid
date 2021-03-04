@@ -29,15 +29,15 @@
  *    ...
  *    constexpr const char *type_name = dbg_parse_type_name < type > ();
  */
-#if ! defined(NDEBUG)
+#if !defined(NDEBUG)
 
-#if ! defined(MAKE_STRING)
+#if !defined(MAKE_STRING)
 #define MAKE_STRING_IMPL(x) #x
 #define MAKE_STRING(x) MAKE_STRING_IMPL(x)
 #endif
 
-#if ! defined(DBG_REGISTER_PARSE_TYPE_NAME)
-template < typename T > constexpr const char *dbg_parse_type_name ();
+#if !defined(DBG_REGISTER_PARSE_TYPE_NAME)
+template <typename T> constexpr const char *dbg_parse_type_name ();
 #define DBG_REGISTER_PARSE_TYPE_NAME(_TYPE_) \
   template <> \
   constexpr const char* dbg_parse_type_name<_TYPE_>() \

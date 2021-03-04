@@ -78,8 +78,6 @@ template <typename T>
 static void log_rv_redo_record_debug_logging_pre_data_retrieve (const log_lsa &rcv_lsa, LOG_RCVINDEX rcvindex,
     const vpid &rcv_vpid, const log_rcv &rcv);
 template <typename T>
-static void log_rv_redo_record_debug_logging_post_function_call (const log_lsa &rcv_lsa, const T &log_rec);
-template <typename T>
 static void log_rv_redo_record_sync_or_dispatch_parallel (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
     const T &log_rec, const log_lsa &rcv_lsa, const LOG_LSA *end_redo_lsa, LOG_RECTYPE log_rtype,
     LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support);
@@ -739,35 +737,6 @@ void log_rv_redo_record_debug_logging_pre_data_retrieve (const log_lsa & rcv_lsa
 #endif /* !NDEBUG */
 }
 
-/* log_rv_redo_record_debug_logging_post_function_call - utility function which prints debug information;
- *                        templated because it is only used in one context
- */
-// *INDENT-OFF*
-template <typename T>
-void log_rv_redo_record_debug_logging_post_function_call (const log_lsa & rcv_lsa, const T & log_rec)
-// *INDENT-ON*
-
-{
-  // nop
-}
-
-// *INDENT-OFF*
-template <>
-void log_rv_redo_record_debug_logging_post_function_call<LOG_REC_COMPENSATE> (const log_lsa & rcv_lsa,
-                                                                              const log_rec_compensate & log_rec)
-// *INDENT-ON*
-
-{
-  const LOG_RCVINDEX rcvindex = log_rec.data.rcvindex;
-  if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS) && rcvindex == RVBT_RECORD_MODIFY_COMPENSATE)
-    {
-      _er_log_debug (ARG_FILE_LINE,
-                     "BTREE_REDO: Successfully applied compensate lsa=%lld|%d, undo_nxlsa=%lld|%d.\n",
-                     (long long int) rcv_lsa.pageid, (int) rcv_lsa.offset,
-                     (long long int) log_rec.undo_nxlsa.pageid, (int) log_rec.undo_nxlsa.offset);
-    }
-}
-
 /*
  * log_rv_redo_record_sync_or_dispatch_parallel - execute a redo record synchronously or
  *                    (in future) asynchronously
@@ -874,10 +843,6 @@ void log_rv_redo_record_sync_or_dispatch_parallel (THREAD_ENTRY * thread_p, log_
       pgbuf_set_lsa (thread_p, rcv.pgptr, &rcv_lsa);
       // rcv pgptr will be automatically unfixed
     }
-
-  // *INDENT-OFF*
-  log_rv_redo_record_debug_logging_post_function_call<T> (rcv_lsa, log_rec);
-  // *INDENT-ON*
 }
 
 /*
