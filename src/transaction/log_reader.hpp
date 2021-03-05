@@ -70,6 +70,12 @@ class log_reader final
     template <typename T>
     const typename std::remove_reference<T>::type *reinterpret_cptr () const;
 
+    /* will copy the contents of the structure out of the log page and
+     * advance and align afterwards
+     */
+    template <typename T>
+    T reinterpret_copy_and_add_align ();
+
     /* equivalent to LOG_READ_ALIGN
      */
     void align ();
@@ -77,6 +83,9 @@ class log_reader final
     /* equivalent to LOG_READ_ADD_ALIGN
      */
     void add_align (size_t size);
+
+    template <typename T>
+    void add_align ();
 
     /* equivalent to LOG_READ_ADVANCE_WHEN_DOESNT_FIT
      */
@@ -112,7 +121,7 @@ class log_reader final
 void LOG_READ_ALIGN (THREAD_ENTRY *thread_p, LOG_LSA *lsa, LOG_PAGE *log_pgptr);
 void LOG_READ_ADD_ALIGN (THREAD_ENTRY *thread_p, size_t add, LOG_LSA *lsa, LOG_PAGE *log_pgptr);
 void LOG_READ_ADVANCE_WHEN_DOESNT_FIT (THREAD_ENTRY *thread_p, size_t length, LOG_LSA *lsa,
-    LOG_PAGE *log_pgptr);
+                                       LOG_PAGE *log_pgptr);
 
 
 /* implementation
@@ -124,6 +133,24 @@ const typename std::remove_reference<T>::type *log_reader::reinterpret_cptr () c
   using rem_ref_t = typename std::remove_reference<T>::type;
   const rem_ref_t *p = reinterpret_cast<const rem_ref_t *> (get_cptr());
   return p;
+}
+
+template <typename T>
+T log_reader::reinterpret_copy_and_add_align ()
+{
+  T data;
+  constexpr auto size_of_t = sizeof (T);
+  memcpy (&data, get_cptr(), size_of_t);
+  add_align (size_of_t);
+  // compiler's NRVO will hopefully kick in here and optimize this away
+  return data;
+}
+
+template <typename T>
+void log_reader::add_align ()
+{
+  const int type_size = sizeof (T);
+  add_align (type_size);
 }
 
 #endif // LOG_READER_HPP
