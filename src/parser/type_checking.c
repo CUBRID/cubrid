@@ -3273,7 +3273,7 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 
       def->overloads_count = num;
       break;
-#if 0
+
     case PT_NVL:
     case PT_IFNULL:
     case PT_COALESCE:
@@ -3611,8 +3611,6 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       def->overloads_count = num;
 
       break;
-
-#endif
 
     case PT_CONNECT_BY_ROOT:
     case PT_PRIOR:
