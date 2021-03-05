@@ -3009,6 +3009,8 @@ logpb_append_prior_lsa_list (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * list)
   assert (log_Gl.prior_info.prior_flush_list_header == NULL);
   log_Gl.prior_info.prior_flush_list_header = list;
 
+  log_Gl.m_prior_sender.send_list (list);
+
   /* append log buffer */
   while (log_Gl.prior_info.prior_flush_list_header != NULL)
     {
