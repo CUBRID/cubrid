@@ -73,14 +73,16 @@ log_rv_fix_page_and_check_redo_is_needed (THREAD_ENTRY * thread_p, const VPID & 
 // *INDENT-OFF*
 template <typename T>
 static int log_rv_get_log_rec_redo_data (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader, const T &log_rec,
-    log_rcv &rcv, log_rectype log_rtype, struct log_zip &undo_unzip_support, struct log_zip &redo_unzip_support);
+                                         log_rcv &rcv, log_rectype log_rtype, struct log_zip &undo_unzip_support,
+                                         struct log_zip &redo_unzip_support);
 template <typename T>
-static void log_rv_redo_record_debug_logging_pre_data_retrieve (const log_lsa &rcv_lsa, LOG_RCVINDEX rcvindex,
-    const vpid &rcv_vpid, const log_rcv &rcv);
+static void log_rv_redo_record_debug_logging (const log_lsa &rcv_lsa, LOG_RCVINDEX rcvindex, const vpid &rcv_vpid,
+                                              const log_rcv &rcv);
 template <typename T>
 static void log_rv_redo_record_sync_or_dispatch_parallel (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
-    const T &log_rec, const log_lsa &rcv_lsa, const LOG_LSA *end_redo_lsa, LOG_RECTYPE log_rtype,
-    LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support);
+                                                          const T &log_rec, const log_lsa &rcv_lsa,
+                                                          const LOG_LSA *end_redo_lsa, LOG_RECTYPE log_rtype,
+                                                          LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support);
 // *INDENT-ON*
 
 static bool log_rv_find_checkpoint (THREAD_ENTRY * thread_p, VOLID volid, LOG_LSA * rcv_lsa);
@@ -669,12 +671,12 @@ DBG_REGISTER_PARSE_TYPE_NAME (LOG_REC_COMPENSATE);
 #endif
 
 // *INDENT-OFF*
-/* log_rv_redo_record_debug_logging_pre_data_retrieve - utility function which prints debug information
+/* log_rv_redo_record_debug_logging - utility function which prints debug information
  *                        templated in order to be able to specifically print out user readable name
  *                        of the log record structure
  */
 template <typename T>
-void log_rv_redo_record_debug_logging_pre_data_retrieve (const log_lsa & rcv_lsa, LOG_RCVINDEX rcvindex,
+void log_rv_redo_record_debug_logging (const log_lsa & rcv_lsa, LOG_RCVINDEX rcvindex,
                                                          const vpid & rcv_vpid, const log_rcv & rcv)
 {
 #if !defined(NDEBUG)
@@ -746,7 +748,7 @@ void log_rv_redo_record_sync_or_dispatch_parallel (THREAD_ENTRY * thread_p, log_
 
   /* will take care of unfixing the page, will be correctly de-allocated as it is the same
    * storage class as 'rcv' and allocated on the stack after 'rcv' */
-  scope_exit < std::function < void (void) >> unfix_rcv_pgptr (
+  scope_exit <std::function<void (void)>> unfix_rcv_pgptr (
     // could have used pgbuf_unfix_and_init if it were a function
     [&thread_p, &rcv] ()
     {
@@ -762,7 +764,7 @@ void log_rv_redo_record_sync_or_dispatch_parallel (THREAD_ENTRY * thread_p, log_
   rcv.mvcc_id = log_rv_get_log_rec_mvccid<T> (log_rec);
   rcv.offset = log_rv_get_log_rec_offset<T> (log_rec);
 
-  log_rv_redo_record_debug_logging_pre_data_retrieve<T> (rcv_lsa, log_data.rcvindex, rcv_vpid, rcv);
+  log_rv_redo_record_debug_logging<T> (rcv_lsa, log_data.rcvindex, rcv_vpid, rcv);
 
   const auto err_redo_data = log_rv_get_log_rec_redo_data<T> (thread_p, log_pgptr_reader, log_rec, rcv, log_rtype,
                                                               undo_unzip_support, redo_unzip_support);
@@ -3639,15 +3641,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		// *INDENT-OFF*
 		const LOG_REC_REDO log_rec_redo
 		    = log_pgptr_reader.reinterpret_copy_and_add_align<LOG_REC_REDO>();
-		// *INDENT-ON*
 
-		if (log_rec_redo.data.rcvindex == RVVAC_COMPLETE)
-		  {
-		    /* Reset log header MVCC info */
-		    logpb_vacuum_reset_log_header_cache (thread_p, &log_Gl.hdr);
-		  }
-
-                // *INDENT-OFF*
                 log_rv_redo_record_sync_or_dispatch_parallel<LOG_REC_REDO> (thread_p, log_pgptr_reader,
                                                                             log_rec_redo,
                                                                             rcv_lsa, end_redo_lsa,
