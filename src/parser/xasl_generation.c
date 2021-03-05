@@ -7602,7 +7602,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    {
 		      if (node->type_enum == PT_TYPE_MAYBE)
 			{
-			  if (pt_is_op_hv_late_bind (node->info.expr.op))
+			  if (pt_is_op_hv_late_bind (node->info.expr.op) || node->expected_domain == NULL)
 			    {
 			      domain = pt_xasl_node_to_domain (parser, node);
 			    }
