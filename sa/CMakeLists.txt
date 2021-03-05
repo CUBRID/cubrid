@@ -156,6 +156,7 @@ set(BASE_HEADERS
   ${BASE_DIR}/porting_inline.hpp
   ${BASE_DIR}/printer.hpp
   ${BASE_DIR}/resource_tracker.hpp
+  ${BASE_DIR}/scope_exit.hpp
   ${BASE_DIR}/semaphore.hpp
   ${BASE_DIR}/ddl_log.h
 )
@@ -186,6 +187,10 @@ set(COMMUNICATION_SOURCES
 
 set(COMMUNICATION_HEADERS
   ${COMMUNICATION_DIR}/communication_channel.hpp
+  )
+
+set(DEBUGGING_HEADERS
+  ${DEBUGGING_DIR}/type_helper.hpp
   )
 
 set(MONITOR_SOURCES
@@ -383,6 +388,7 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/log_lsa.hpp
   ${TRANSACTION_DIR}/log_postpone_cache.hpp
   ${TRANSACTION_DIR}/log_reader.hpp
+  ${TRANSACTION_DIR}/log_recovery_redo_log_rec.hpp
   ${TRANSACTION_DIR}/log_record.hpp
   ${TRANSACTION_DIR}/log_storage.hpp
   ${TRANSACTION_DIR}/log_system_tran.hpp
@@ -571,6 +577,7 @@ add_library(cubridsa SHARED
   ${COMPAT_SOURCES_C}
   ${CONNECTION_SOURCES}
   ${CONNECTION_TCP_SOURCE}
+  ${DEBUGGING_HEADERS}
   ${ES_SOURCES}
   ${EXECUTABLE_SOURCES}
   ${HEAPLAYER_SOURCES}

@@ -159,6 +159,7 @@ set (BASE_HEADERS
   ${BASE_DIR}/porting_inline.hpp
   ${BASE_DIR}/process_util.h
   ${BASE_DIR}/resource_tracker.hpp
+  ${BASE_DIR}/scope_exit.hpp
   ${BASE_DIR}/server_type.hpp
   ${BASE_DIR}/string_buffer.hpp
   ${BASE_DIR}/semaphore.hpp
@@ -195,6 +196,10 @@ set(COMMUNICATION_HEADERS
   ${CONNECTION_DIR}/connection_server_rules.hpp
   ${COMMUNICATION_DIR}/request_client_server.hpp
   ${COMMUNICATION_DIR}/request_sync_send_queue.hpp
+  )
+
+set(DEBUGGING_HEADERS
+  ${DEBUGGING_DIR}/type_helper.hpp
   )
 
 set(MONITOR_SOURCES
@@ -310,6 +315,7 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/log_lsa.hpp
   ${TRANSACTION_DIR}/log_postpone_cache.hpp
   ${TRANSACTION_DIR}/log_reader.hpp
+  ${TRANSACTION_DIR}/log_recovery_redo_log_rec.hpp
   ${TRANSACTION_DIR}/log_record.hpp
   ${TRANSACTION_DIR}/log_storage.hpp
   ${TRANSACTION_DIR}/log_system_tran.hpp
@@ -475,6 +481,7 @@ set (CUBRID_LIB_HEADERS
   ${BASE_HEADERS}
   ${COMMUNICATION_HEADERS}
   ${COMPAT_HEADERS}
+  ${DEBUGGING_HEADERS}
   ${MONITOR_HEADERS}
   ${OBJECT_HEADERS}
   ${QUERY_HEADERS}
