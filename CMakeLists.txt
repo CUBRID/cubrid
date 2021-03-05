@@ -489,6 +489,7 @@ set(CM_COMMON_DIR            ${CMAKE_SOURCE_DIR}/src/cm_common)
 set(COMMUNICATION_DIR        ${CMAKE_SOURCE_DIR}/src/communication)
 set(COMPAT_DIR               ${CMAKE_SOURCE_DIR}/src/compat)
 set(CONNECTION_DIR           ${CMAKE_SOURCE_DIR}/src/connection)
+set(DEBUGGING_DIR            ${CMAKE_SOURCE_DIR}/src/debugging)
 set(EXECUTABLES_DIR          ${CMAKE_SOURCE_DIR}/src/executables)
 set(HEAPLAYERS_DIR           ${CMAKE_SOURCE_DIR}/src/heaplayers)
 set(JDBC_DIR                 ${CMAKE_SOURCE_DIR}/src/jdbc)
@@ -520,6 +521,7 @@ include_directories(
   src/communication
   src/compat
   src/connection
+  src/debugging
   src/executables
   src/heaplayers
   src/jsp
