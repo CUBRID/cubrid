@@ -5444,8 +5444,8 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
 	{
 	  PT_NODE *temp = NULL;
 	  int precision = 0, scale = 0;
-	  int units = LANG_SYS_CODESET; /* code set */
-	  int collation_id = LANG_SYS_COLLATION; /* collation_id */
+	  int units = LANG_SYS_CODESET;	/* code set */
+	  int collation_id = LANG_SYS_COLLATION;	/* collation_id */
 	  bool keep_searching = true;
 	  for (temp = arg2->data_type; temp != NULL && keep_searching; temp = temp->next)
 	    {
@@ -21350,13 +21350,6 @@ pt_is_op_hv_late_bind (PT_OP_TYPE op)
     case PT_HEX:
     case PT_CONV:
     case PT_ASCII:
-    case PT_IFNULL:
-    case PT_NVL:
-    case PT_NVL2:
-    case PT_COALESCE:
-    case PT_NULLIF:
-    case PT_LEAST:
-    case PT_GREATEST:
     case PT_FROM_TZ:
     case PT_NEW_TIME:
     case PT_STR_TO_DATE:
