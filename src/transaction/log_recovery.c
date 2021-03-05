@@ -676,8 +676,8 @@ DBG_REGISTER_PARSE_TYPE_NAME (LOG_REC_COMPENSATE);
  *                        of the log record structure
  */
 template <typename T>
-void log_rv_redo_record_debug_logging (const log_lsa & rcv_lsa, LOG_RCVINDEX rcvindex,
-                                                         const vpid & rcv_vpid, const log_rcv & rcv)
+void log_rv_redo_record_debug_logging (const log_lsa & rcv_lsa, LOG_RCVINDEX rcvindex, const vpid & rcv_vpid,
+                                       const log_rcv & rcv)
 {
 #if !defined(NDEBUG)
   if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
