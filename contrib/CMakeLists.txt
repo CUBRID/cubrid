@@ -88,3 +88,9 @@ if(ENABLE_SYSTEMTAP)
     ${CMAKE_SOURCE_DIR}/contrib/systemtap/scripts/topcallstack/topcallstack
     DESTINATION ${CUBRID_DATADIR}/systemtap/tapset/scripts)
 endif(ENABLE_SYSTEMTAP)
+
+if(WIN32)
+  install(FILES
+    ${CMAKE_SOURCE_DIR}/contrib/windows_scripts/cubrid_env.bat
+    DESTINATION ${CUBRID_DATADIR}/windows_scripts/)
+endif(Win32)
