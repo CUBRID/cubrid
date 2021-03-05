@@ -210,7 +210,11 @@ test_env::serialize_deserialize_list ()
 
   // serialize/deserialize
   std::string serialized = prior_list_serialize (list_headp);
-  log_prior_node *deserialized_headp = prior_list_deserialize (serialized);
+
+  log_prior_node *deserialized_headp = nullptr;
+  log_prior_node *deserialized_tailp = nullptr;
+
+  prior_list_deserialize (serialized, deserialized_headp, deserialized_tailp);
 
   // compare lists
   log_prior_node *list_nodep = list_headp;
@@ -219,6 +223,12 @@ test_env::serialize_deserialize_list ()
     {
       REQUIRE (deserialized_nodep != nullptr);
       require_equal (list_nodep, deserialized_nodep);
+
+      if (deserialized_nodep->next == nullptr)
+	{
+	  REQUIRE (deserialized_nodep == deserialized_tailp);
+	}
+
       list_nodep = list_nodep->next;
       deserialized_nodep = deserialized_nodep->next;
     }

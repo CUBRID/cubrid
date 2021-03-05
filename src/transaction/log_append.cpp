@@ -131,6 +131,49 @@ log_prior_lsa_info::log_prior_lsa_info ()
 }
 
 void
+log_prior_lsa_info::push_list (log_prior_node *&list_head, log_prior_node *&list_tail)
+{
+  if (list_head == nullptr)
+    {
+      return;
+    }
+  assert (list_tail != nullptr);
+
+#if !defined (NDEBUG)
+  // check list input is valid
+  log_prior_node *nodep;
+  for (nodep = list_head; nodep->next != nullptr; nodep = nodep->next)
+    {
+      assert (nodep->next->start_lsa == nodep->log_header.forw_lsa);
+      assert (nodep->next->log_header.back_lsa == nodep->start_lsa);
+    }
+  assert (nodep == list_tail);
+#endif
+
+  std::unique_lock<std::mutex> ulock (log_Gl.prior_info.prior_lsa_mutex);
+
+  assert (list_head->start_lsa == prior_lsa);
+  assert (list_head->log_header.back_lsa == prev_lsa);
+
+  if (prior_list_header == nullptr)
+    {
+      prior_list_header = list_head;
+      prior_list_tail = list_tail;
+    }
+  else
+    {
+      assert (prior_list_tail != nullptr);
+      prior_list_tail->next = list_head;
+      prior_list_tail = list_tail;
+    }
+
+  prior_lsa = list_tail->log_header.forw_lsa;
+  prev_lsa = list_tail->start_lsa;
+
+  list_head = nullptr;
+}
+
+void
 LOG_RESET_APPEND_LSA (const LOG_LSA *lsa)
 {
   // todo - concurrency safe-guard
@@ -1689,19 +1732,20 @@ prior_list_serialize (const log_prior_node *head)
   return serialized;
 }
 
-log_prior_node *
-prior_list_deserialize (const std::string &str)
+void
+prior_list_deserialize (const std::string &str, log_prior_node *&head, log_prior_node *&tail)
 {
   // reversed prior_node_serialize
+
+  head = nullptr;
+  tail = nullptr;
   if (str.empty ())
     {
-      return nullptr;
+      return;
     }
 
   // iterate through str using ptr
   const char *ptr = str.c_str ();
-  log_prior_node *headp = nullptr;
-  log_prior_node *tailp = nullptr;
 
   while (ptr < str.c_str () + str.size ())
     {
@@ -1709,21 +1753,19 @@ prior_list_deserialize (const std::string &str)
       assert (nodep != nullptr);
       ptr = prior_node_deserialize (ptr, *nodep);
 
-      if (headp == nullptr)
+      if (head == nullptr)
 	{
-	  headp = nodep;
-	  tailp = nodep;
+	  head = nodep;
+	  tail = nodep;
 	}
       else
 	{
-	  assert (tailp != nullptr);
-	  tailp->next = nodep;
-	  tailp = nodep;
+	  assert (tail != nullptr);
+	  tail->next = nodep;
+	  tail = nodep;
 	}
     }
   assert (ptr == str.c_str () + str.size ());
-
-  return headp;
 }
 
 /*

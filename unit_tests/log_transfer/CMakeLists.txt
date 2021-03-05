@@ -18,6 +18,9 @@
 
 project(test_log_transfer)
 
+#
+# test_prior_list_serialize
+# 
 set(TEST_PRIOR_LIST_SERIALIZE_SOURCES
   ${TRANSACTION_DIR}/log_append.cpp
   test_main_prior_list_serialize.cpp
@@ -43,3 +46,33 @@ add_dependencies(test_prior_list_serialize
   ${CATCH2_TARGET}
   )
   
+#
+# test_prior_sendrecv
+#
+set(TEST_PRIOR_SENDRECV_SOURCES
+  ${TRANSACTION_DIR}/log_prior_send.cpp
+  ${TRANSACTION_DIR}/log_prior_recv.cpp
+  test_main_prior_sendrecv.cpp
+  )
+
+set_source_files_properties(
+  ${TEST_PRIOR_SENDRECV_SOURCES}
+  PROPERTIES LANGUAGE CXX
+  )
+
+add_executable(test_prior_sendrecv
+  ${TEST_PRIOR_SENDRECV_SOURCES}
+)
+
+target_compile_options(test_prior_sendrecv PRIVATE
+  ${compile_warning_flags}
+)
+target_compile_definitions(test_prior_sendrecv PRIVATE
+  ${COMMON_DEFS} SERVER_MODE
+  )
+target_include_directories(test_prior_sendrecv PRIVATE
+  ${TEST_INCLUDES}
+  )
+add_dependencies(test_prior_sendrecv
+  ${CATCH2_TARGET}
+  )
