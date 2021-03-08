@@ -51,6 +51,8 @@
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
 #include "type_helper.hpp"
+#include "log_recovery_redo.hpp"
+#include "log_recovery_redo_task.hpp"
 
 #include <stdio.h>
 #include <stddef.h>
@@ -79,7 +81,7 @@ template <typename T>
 static void log_rv_redo_record_debug_logging (const log_lsa &rcv_lsa, LOG_RCVINDEX rcvindex, const vpid &rcv_vpid,
                                               const log_rcv &rcv);
 template <typename T>
-static void log_rv_redo_record_sync_or_dispatch_parallel (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
+static void log_rv_redo_record_sync_or_dispatch_async (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
                                                           const T &log_rec, const log_lsa &rcv_lsa,
                                                           const LOG_LSA *end_redo_lsa, LOG_RECTYPE log_rtype,
                                                           LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support);
@@ -724,7 +726,7 @@ void log_rv_redo_record_debug_logging (const log_lsa & rcv_lsa, LOG_RCVINDEX rcv
  *
  */
 template <typename T>
-void log_rv_redo_record_sync_or_dispatch_parallel (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader,
+void log_rv_redo_record_sync_or_dispatch_async (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader,
                                                    const T & log_rec, const log_lsa & rcv_lsa,
                                                    const LOG_LSA * end_redo_lsa, LOG_RECTYPE log_rtype,
                                                    LOG_ZIP & undo_unzip_support, LOG_ZIP & redo_unzip_support)
@@ -734,6 +736,15 @@ void log_rv_redo_record_sync_or_dispatch_parallel (THREAD_ENTRY * thread_p, log_
 
   // TODO: once valid vpid is extracted, it can be decided whether to execute sync or dispatch asynchronously
   // as such, from here on, everything should be moved into another function
+  // pass:
+  //  - vpid
+  //  - a copy of log_pgptr_reader
+  //  - log_rec
+  //  - rcv_lsa
+  //  - end_redo_lsa
+  //  - log_rtype
+  // supply internally:
+  //  - undo/redo unzip support
 
   const LOG_DATA & log_data = log_rv_get_log_rec_data<T> (log_rec);
 
@@ -3557,7 +3568,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		LSA_COPY (&log_Gl.hdr.mvcc_op_log_lsa, &rcv_lsa);
 
                 // *INDENT-OFF*
-                log_rv_redo_record_sync_or_dispatch_parallel<LOG_REC_MVCC_UNDOREDO> (thread_p, log_pgptr_reader,
+                log_rv_redo_record_sync_or_dispatch_async<LOG_REC_MVCC_UNDOREDO> (thread_p, log_pgptr_reader,
                                                                                      log_rec_mvcc_undoredo,
                                                                                      rcv_lsa, end_redo_lsa,
                                                                                      log_rtype, *undo_unzip_ptr,
@@ -3580,7 +3591,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		const LOG_REC_UNDOREDO log_rec_undoredo
 		    = log_pgptr_reader.reinterpret_copy_and_add_align<LOG_REC_UNDOREDO>();
 
-                log_rv_redo_record_sync_or_dispatch_parallel<LOG_REC_UNDOREDO> (thread_p, log_pgptr_reader,
+                log_rv_redo_record_sync_or_dispatch_async<LOG_REC_UNDOREDO> (thread_p, log_pgptr_reader,
                                                                                 log_rec_undoredo, rcv_lsa,
                                                                                 end_redo_lsa, log_rtype,
                                                                                 *undo_unzip_ptr, *redo_unzip_ptr);
@@ -3621,7 +3632,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		 * relevant for vacuum as vacuum only processes undo data */
 
                 // *INDENT-OFF*
-                log_rv_redo_record_sync_or_dispatch_parallel<LOG_REC_MVCC_REDO> (thread_p, log_pgptr_reader,
+                log_rv_redo_record_sync_or_dispatch_async<LOG_REC_MVCC_REDO> (thread_p, log_pgptr_reader,
                                                                                  log_rec_mvcc_redo,
                                                                                  rcv_lsa, end_redo_lsa,
                                                                                  log_rtype, *undo_unzip_ptr,
@@ -3642,7 +3653,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		const LOG_REC_REDO log_rec_redo
 		    = log_pgptr_reader.reinterpret_copy_and_add_align<LOG_REC_REDO>();
 
-                log_rv_redo_record_sync_or_dispatch_parallel<LOG_REC_REDO> (thread_p, log_pgptr_reader,
+                log_rv_redo_record_sync_or_dispatch_async<LOG_REC_REDO> (thread_p, log_pgptr_reader,
                                                                             log_rec_redo,
                                                                             rcv_lsa, end_redo_lsa,
                                                                             log_rtype, *undo_unzip_ptr,
@@ -3705,7 +3716,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		const LOG_REC_RUN_POSTPONE log_rec_run_posp
 		    = log_pgptr_reader.reinterpret_copy_and_add_align<LOG_REC_RUN_POSTPONE>();
 
-                log_rv_redo_record_sync_or_dispatch_parallel<LOG_REC_RUN_POSTPONE> (thread_p, log_pgptr_reader,
+                log_rv_redo_record_sync_or_dispatch_async<LOG_REC_RUN_POSTPONE> (thread_p, log_pgptr_reader,
                                                                                     log_rec_run_posp,
                                                                                     rcv_lsa, end_redo_lsa,
                                                                                     log_rtype, *undo_unzip_ptr,
@@ -3726,7 +3737,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		const LOG_REC_COMPENSATE log_rec_compensate
 		    = log_pgptr_reader.reinterpret_copy_and_add_align<LOG_REC_COMPENSATE>();
 
-                log_rv_redo_record_sync_or_dispatch_parallel<LOG_REC_COMPENSATE> (thread_p, log_pgptr_reader,
+                log_rv_redo_record_sync_or_dispatch_async<LOG_REC_COMPENSATE> (thread_p, log_pgptr_reader,
                                                                                   log_rec_compensate,
                                                                                   rcv_lsa, end_redo_lsa,
                                                                                   log_rtype, *undo_unzip_ptr,
