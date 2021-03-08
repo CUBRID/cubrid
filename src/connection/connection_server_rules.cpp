@@ -33,7 +33,8 @@ static bool css_is_normal_client (BOOT_CLIENT_TYPE client_type);
 static bool css_is_admin_client (BOOT_CLIENT_TYPE client_type);
 static bool css_is_ha_client (BOOT_CLIENT_TYPE client_type);
 
-CSS_CONN_RULE_INFO css_Conn_rules[] = {
+CSS_CONN_RULE_INFO css_Conn_rules[] =
+{
   {css_is_normal_client, css_get_max_normal_conn, CR_NORMAL_ONLY, 0, 0},
   {css_is_admin_client, css_get_admin_client_max_conn, CR_NORMAL_FIRST, 0, 0},
   {css_is_ha_client, css_get_ha_client_max_conn, CR_RESERVED_FIRST, 0, 0}
@@ -178,14 +179,14 @@ css_is_normal_client (BOOT_CLIENT_TYPE client_type)
   for (i = 0; i < css_Conn_rules_size; i++)
     {
       if (i == CSS_CR_NORMAL_ONLY_IDX)
-    {
-      continue;
-    }
+	{
+	  continue;
+	}
 
       if (css_Conn_rules[i].check_client_type_fn (client_type))
-    {
-      return false;
-    }
+	{
+	  return false;
+	}
     }
   return true;
 }
