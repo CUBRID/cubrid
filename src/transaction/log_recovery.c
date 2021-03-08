@@ -3611,12 +3611,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		    MVCCID_FORWARD (log_Gl.hdr.mvcc_next_id);
 		  }
 
-		if (log_rec_mvcc_redo.redo.data.rcvindex == RVVAC_COMPLETE)
-		  {
-		    /* Reset log header MVCC info */
-		    logpb_vacuum_reset_log_header_cache (thread_p, &log_Gl.hdr);
-		  }
-
 		/* NOTE: do not update rcv_lsa on the global bookkeeping that is
 		 * relevant for vacuum as vacuum only processes undo data */
 
@@ -3641,6 +3635,12 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		// *INDENT-OFF*
 		const LOG_REC_REDO log_rec_redo
 		    = log_pgptr_reader.reinterpret_copy_and_add_align<LOG_REC_REDO>();
+
+		if (log_rec_redo.data.rcvindex == RVVAC_COMPLETE)
+		  {
+		    /* Reset log header MVCC info */
+		    logpb_vacuum_reset_log_header_cache (thread_p, &log_Gl.hdr);
+		  }
 
                 log_rv_redo_record_sync_or_dispatch_parallel<LOG_REC_REDO> (thread_p, log_pgptr_reader,
                                                                             log_rec_redo,
