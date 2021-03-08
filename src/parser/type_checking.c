@@ -3412,8 +3412,8 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       sig.arg2_type.type = pt_arg_type::GENERIC;
       sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_ANY;
 
-      sig.return_type.type = pt_arg_type::NORMAL;
-      sig.return_type.val.type = PT_TYPE_VARCHAR;
+      sig.return_type.type = pt_arg_type::GENERIC;
+      sig.return_type.val.generic_type = PT_GENERIC_TYPE_ANY;
       def->overloads[num++] = sig;
 
       def->overloads_count = num;
@@ -10444,7 +10444,7 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
   else if ((PT_IS_NUMERIC_TYPE (arg1_type) && arg2_type == PT_TYPE_MAYBE)
 	   || (PT_IS_NUMERIC_TYPE (arg2_type) && arg1_type == PT_TYPE_MAYBE))
     {
-      common_type = PT_TYPE_DOUBLE;
+      common_type = PT_TYPE_VARCHAR;
     }
   else
     {
