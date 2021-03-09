@@ -1,9 +1,16 @@
 #ifndef LOG_RECOVERY_REDO_HPP
 #define LOG_RECOVERY_REDO_HPP
 
+#include "log_compress.h"
+#include "log_reader.hpp"
+#include "log_record.hpp"
+#include "log_recovery_redo_log_rec.hpp"
 #include "storage_common.h"
+#include "thread_entry.hpp"
+#include "thread_task.hpp"
 
 #include <atomic>
+#include <bitset>
 #include <condition_variable>
 #include <deque>
 #include <memory>
@@ -28,17 +35,16 @@ namespace log_recovery_ns
       redo_log_rec_entry &operator = ( redo_log_rec_entry const &) = delete;
       redo_log_rec_entry &operator = ( redo_log_rec_entry &&) = delete;
 
-      redo_log_rec_entry (INT64 _entry_id, VPID _vpid, size_t _millis)
-        : entry_id (_entry_id), vpid (_vpid), millis (_millis)
+      redo_log_rec_entry (VPID a_vpid)
+	: vpid (a_vpid)
       {
+	// the logic implemented below, in the queue an task, does allow for null-vpid type of
+	// entries to be executed - they are called "to be waited for" or "synched" operations;
+	// but, for now, do not allow them to be dispatched to be executed asynchronously
+	assert (!VPID_ISNULL (&vpid));
       }
 
-      /* uniquely identifies a log entry
-       */
-      INT64 get_entry_id() const
-      {
-        return entry_id;
-      }
+      virtual ~redo_log_rec_entry() = default;
 
       /* log entries come in more than one flavor:
        *  - pertain to a certain vpid - aka: page update
@@ -47,70 +53,109 @@ namespace log_recovery_ns
        */
       const VPID &get_vpid() const
       {
-        return vpid;
+	return vpid;
       }
 
       inline VOLID get_vol_id() const
       {
-        return vpid.volid;
+	return vpid.volid;
       }
 
       inline PAGEID get_page_id() const
       {
-        return vpid.pageid;
+	return vpid.pageid;
       }
 
-      /* NOTE: functions are needed only for testing purposes and might not have
+      virtual int do_work (THREAD_ENTRY *thread_p, log_reader& log_pgptr_reader,
+                           LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support) = 0;
+
+      /* TODO: functions are needed only for testing purposes and might not have
        * any usefulness/meaning upon integration in production code
        */
       bool get_is_to_be_waited_for_op() const
       {
-        return vpid.volid == NULL_VOLID || vpid.pageid == NULL_PAGEID;
+	return vpid.volid == NULL_VOLID || vpid.pageid == NULL_PAGEID;
       }
 
       bool is_volume_creation() const
       {
-        return vpid.volid == NULL_VOLID && vpid.pageid == NULL_PAGEID;
+	return vpid.volid == NULL_VOLID && vpid.pageid == NULL_PAGEID;
       }
       bool is_volume_extension() const
       {
-        return vpid.volid != NULL_VOLID && vpid.pageid == NULL_PAGEID;
+	return vpid.volid != NULL_VOLID && vpid.pageid == NULL_PAGEID;
       }
       bool is_page_modification() const
       {
-        return vpid.volid != NULL_VOLID && vpid.pageid != NULL_PAGEID;
+	return vpid.volid != NULL_VOLID && vpid.pageid != NULL_PAGEID;
       }
 
-      bool operator == (const redo_log_rec_entry &_that) const
+      bool operator == (const redo_log_rec_entry &that) const
       {
-        const bool res = entry_id == _that.entry_id
-                         && get_vol_id() == _that.get_vol_id()
-                         && get_page_id() == _that.get_page_id()
-                         && get_millis() == _that.get_millis();
-        if (!res)
-          {
-            const auto dummy = res;
-          }
-        return res;
+	const bool res = get_vol_id() == that.get_vol_id()
+			 && get_page_id() == that.get_page_id();
+	if (!res)
+	  {
+	    const auto dummy = res;
+	  }
+	return res;
       }
 
       /* NOTE: actual payload goes below
        */
 
-      size_t get_millis() const
-      {
-        return millis;
-      }
-
     private:
-      INT64 entry_id;
       VPID vpid;
 
       /* NOTE: actual payload goes below
        */
-      size_t millis;
   };
   using ux_redo_lsa_log_entry = std::unique_ptr<redo_log_rec_entry>;
+
+
+  /*
+   */
+  template <typename TYPE_LOG_REC>
+  class redo_log_rec_entry_templ : public redo_log_rec_entry
+  {
+      using log_rec_t = TYPE_LOG_REC;
+
+    public:
+      redo_log_rec_entry_templ () = delete;
+      redo_log_rec_entry_templ (VPID a_vpid, const log_rec_t &a_log_rec, const log_lsa &a_rcv_lsa,
+				const LOG_LSA *a_end_redo_lsa,
+				LOG_RECTYPE a_log_rtype)
+	: redo_log_rec_entry (a_vpid)
+	, log_rec (a_log_rec)
+	, rcv_lsa (a_rcv_lsa)
+	, end_redo_lsa (a_end_redo_lsa)
+	, log_rtype (a_log_rtype)
+      {
+      }
+
+      redo_log_rec_entry_templ ( redo_log_rec_entry_templ const &) = delete;
+      redo_log_rec_entry_templ ( redo_log_rec_entry_templ &&) = delete;
+
+      ~redo_log_rec_entry_templ() override = default;
+
+      redo_log_rec_entry_templ &operator = ( redo_log_rec_entry_templ const &) = delete;
+      redo_log_rec_entry_templ &operator = ( redo_log_rec_entry_templ &&) = delete;
+
+      int do_work (THREAD_ENTRY *thread_p, log_reader& log_pgptr_reader,
+                   LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support) override
+      {
+        const auto& rcv_vpid = get_vpid ();
+        log_rv_redo_record_sync<log_rec_t> (thread_p, log_pgptr_reader, log_rec, rcv_vpid, rcv_lsa, end_redo_lsa,
+                                               log_rtype, undo_unzip_support, redo_unzip_support);
+        return NO_ERROR;
+      }
+
+    private:
+      const log_rec_t log_rec;
+      const log_lsa rcv_lsa;
+      const LOG_LSA *end_redo_lsa;  // by design pointer is guaranteed to outlive this instance
+      const LOG_RECTYPE log_rtype;
+  };
 
 
   /* rynchronizes prod/cons of log entries in n-prod - m-cons fashion
@@ -144,16 +189,16 @@ namespace log_recovery_ns
       ux_redo_lsa_log_entry locked_pop (bool &adding_finished);
 
       void notify_to_be_waited_for_op_finished();
-      void notify_in_progress_vpid_finished (VPID _vpid);
+      void notify_in_progress_vpid_finished (VPID a_vpid);
 
       size_t get_dbg_stats_cons_queue_skip_count() const
       {
-        return dbg_stats_cons_queue_skip_count;
+	return dbg_stats_cons_queue_skip_count;
       }
 
       size_t get_stats_spin_wait_count() const
       {
-        return sbg_stats_spin_wait_count;
+	return sbg_stats_spin_wait_count;
       }
 
     private:
@@ -185,6 +230,79 @@ namespace log_recovery_ns
 
       size_t dbg_stats_cons_queue_skip_count;
       size_t sbg_stats_spin_wait_count;
+  };
+
+
+  /*
+   */
+  class redo_task_active_state_bookkeeping
+  {
+    public:
+      static constexpr std::size_t BOOKKEEPING_MAX_COUNT = 1024;
+
+    public:
+      redo_task_active_state_bookkeeping()
+      {
+	active_set.reset();
+      }
+
+      void set_active (std::size_t _id)
+      {
+	std::lock_guard<std::mutex> lck (active_set_mutex);
+
+	assert (_id < BOOKKEEPING_MAX_COUNT);
+	active_set.set (_id);
+      }
+
+      void set_inactive (std::size_t _id)
+      {
+	std::lock_guard<std::mutex> lck (active_set_mutex);
+
+	assert (_id < BOOKKEEPING_MAX_COUNT);
+	active_set.reset (_id);
+      }
+
+      bool any_active() const
+      {
+	std::lock_guard<std::mutex> lck (active_set_mutex);
+
+	return active_set.any();
+      }
+
+    private:
+      std::bitset<BOOKKEEPING_MAX_COUNT> active_set;
+      mutable std::mutex active_set_mutex;
+  };
+
+
+  /*
+   */
+  class redo_task : public cubthread::task<cubthread::entry>
+  {
+    public:
+      static constexpr unsigned short WAIT_AND_CHECK_MILLIS = 5;
+
+    public:
+      redo_task (std::size_t _task_id, redo_task_active_state_bookkeeping &_task_active_state_bookkeeping,
+		 redo_log_rec_entry_queue &_bucket_queue);
+      ~redo_task() override = default;
+
+      void execute (context_type &context);
+
+    private:
+      static void dummy_busy_wait (size_t _millis);
+
+    private:
+      // debug variable
+      std::size_t task_id;
+
+      redo_task_active_state_bookkeeping &task_active_state_bookkeeping;
+
+      redo_log_rec_entry_queue &bucket_queue;
+
+      log_reader log_pgptr_reader;
+      LOG_ZIP undo_unzip_support;
+      LOG_ZIP redo_unzip_support;
   };
 
 }

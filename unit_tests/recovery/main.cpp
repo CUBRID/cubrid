@@ -1,7 +1,6 @@
 
 #include "log_recovery_redo.hpp"
-#include "log_recovery_redo_debug_helpers.hpp"
-#include "log_recovery_redo_task.hpp"
+//#include "log_recovery_redo_debug_helpers.hpp"
 #include "storage_common.h"
 #include "thread_compat.hpp"
 #include "thread_entry.hpp"
@@ -34,15 +33,16 @@ struct log_recovery_test_config
 
 int execute_test (cubthread::manager *_cub_thread_manager, const log_recovery_test_config &_test_config)
 {
+#if (0)
   //
   // thread pool
   //
   const auto core_count = static_cast<std::size_t> (std::thread::hardware_concurrency());
   cubthread::entry_manager dispatching_thread_pool_manager;
   cubthread::entry_workpool *dispatching_worker_pool =
-          _cub_thread_manager->create_worker_pool (
-                  _test_config.task_count, _test_config.task_count, nullptr, &dispatching_thread_pool_manager,
-                  core_count, false /*debug_logging*/);
+	  _cub_thread_manager->create_worker_pool (
+		  _test_config.task_count, _test_config.task_count, nullptr, &dispatching_thread_pool_manager,
+		  core_count, false /*debug_logging*/);
 
   log_recovery_ns::redo_log_rec_entry_queue bucket_queue;
 
@@ -63,7 +63,7 @@ int execute_test (cubthread::manager *_cub_thread_manager, const log_recovery_te
     {
       // NOTE: task ownership goes to the worker pool
       auto task = new log_recovery_ns::redo_task (task_idx, task_active_state_bookkeeping, bucket_queue, dbg_accumulator,
-          db_recovery);
+	  db_recovery);
       dispatching_worker_pool->execute (task);
     }
 
@@ -77,14 +77,14 @@ int execute_test (cubthread::manager *_cub_thread_manager, const log_recovery_te
       auto log_entry = db_online->generate_changes (global_values);
 
       if (_test_config.dump_prod_cons_data)
-        {
-          std::cout << "P: "
-                    << "syn_" << ((log_entry->get_is_to_be_waited_for_op ()) ? '1' : '0')
-                    << std::setw (4) << log_entry->get_vpid().volid << std::setfill ('_')
-                    << std::setw (5) << log_entry->get_vpid().pageid << std::setfill (' ')
-                    << "  eids: " << std::setw (7) << log_entry->get_entry_id()
-                    << std::endl;
-        }
+	{
+	  std::cout << "P: "
+		    << "syn_" << ((log_entry->get_is_to_be_waited_for_op ()) ? '1' : '0')
+		    << std::setw (4) << log_entry->get_vpid().volid << std::setfill ('_')
+		    << std::setw (5) << log_entry->get_vpid().pageid << std::setfill (' ')
+		    << "  eids: " << std::setw (7) << log_entry->get_entry_id()
+		    << std::endl;
+	}
 
 //      log_recovery_ns::ux_redo_entry_bucket bucket
 //      {
@@ -121,14 +121,14 @@ int execute_test (cubthread::manager *_cub_thread_manager, const log_recovery_te
     {
       std::cout << std::endl;
       for (const auto &acc: dbg_accumulator.get_data())
-        {
-          std::cout << acc;
-        }
+	{
+	  std::cout << acc;
+	}
     }
 
   std::cout << "BucketSkips = " << bucket_queue.get_dbg_stats_cons_queue_skip_count()
-            << "  SpinWaits = " << bucket_queue.get_stats_spin_wait_count()
-            << std::endl;
+	    << "  SpinWaits = " << bucket_queue.get_stats_spin_wait_count()
+	    << std::endl;
   if (*db_online == *db_recovery)
     {
       std::cout << "Databases are equal" << std::endl;
@@ -139,6 +139,10 @@ int execute_test (cubthread::manager *_cub_thread_manager, const log_recovery_te
       std::cout << "Databases are NOT equal" << std::endl;
       return -1;
     }
+#else
+  std::cout << "ERROR: test is skipped" << std::endl;
+  return -1;
+#endif
 }
 
 int main ()
@@ -160,15 +164,15 @@ int main ()
   for (const size_t volumes_per_database : volumes_per_database_arr)
     for (const size_t pages_per_volume : pages_per_volume_arr)
       for (const size_t log_entry_count : log_entry_count_arr)
-        {
-          const log_recovery_test_config test_config =
-          {
-            volumes_per_database, // max_volume_count_per_database
-            pages_per_volume, // max_page_count_per_volume
-            std::thread::hardware_concurrency(), // task_count
-            log_entry_count, // log_entry_count
-            false // dump_prod_cons_data
-          };
+	{
+	  const log_recovery_test_config test_config =
+	  {
+	    volumes_per_database, // max_volume_count_per_database
+	    pages_per_volume, // max_page_count_per_volume
+	    std::thread::hardware_concurrency(), // task_count
+	    log_entry_count, // log_entry_count
+	    false // dump_prod_cons_data
+	  };
 
 	  std::cout << "TEST:"
 		    << "\t volumes=" << test_config.max_volume_count_per_database

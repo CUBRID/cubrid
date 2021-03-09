@@ -35,7 +35,6 @@
 #include "log_manager.h"
 #include "log_reader.hpp"
 #include "log_record.hpp"
-#include "log_recovery_redo_log_rec.hpp"
 #include "log_system_tran.hpp"
 #include "log_volids.hpp"
 #include "message_catalog.h"
@@ -44,7 +43,6 @@
 #include "page_buffer.h"
 #include "porting_inline.hpp"
 #include "recovery.h"
-#include "scope_exit.hpp"
 #include "server_type.hpp"
 #include "slotted_page.h"
 #include "system_parameter.h"
@@ -52,7 +50,6 @@
 #include "thread_manager.hpp"
 #include "type_helper.hpp"
 #include "log_recovery_redo.hpp"
-#include "log_recovery_redo_task.hpp"
 
 #include <stdio.h>
 #include <stddef.h>
@@ -68,32 +65,16 @@ static void log_rv_redo_record (THREAD_ENTRY * thread_p, log_reader & log_pgptr_
 				int (*redofun) (THREAD_ENTRY * thread_p, LOG_RCV *), LOG_RCV * rcv,
 				const LOG_LSA * rcv_lsa_ptr, int undo_length, const char *undo_data,
 				LOG_ZIP & redo_unzip);
-static bool
-log_rv_fix_page_and_check_redo_is_needed (THREAD_ENTRY * thread_p, const VPID & page_vpid, log_rcv & rcv,
-					  LOG_RCVINDEX rcvindex, const log_lsa & rcv_lsa, const LOG_LSA * end_redo_lsa);
 
 // *INDENT-OFF*
 template <typename T>
-static int log_rv_get_log_rec_redo_data (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader, const T &log_rec,
-                                         log_rcv &rcv, log_rectype log_rtype, struct log_zip &undo_unzip_support,
-                                         struct log_zip &redo_unzip_support);
-template <typename T>
-static void log_rv_redo_record_debug_logging (const log_lsa &rcv_lsa, LOG_RCVINDEX rcvindex, const vpid &rcv_vpid,
-                                              const log_rcv &rcv);
-template <typename T>
 static void log_rv_redo_record_sync_or_dispatch_async (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
-                                                          const T &log_rec, const log_lsa &rcv_lsa,
-                                                          const LOG_LSA *end_redo_lsa, LOG_RECTYPE log_rtype,
-                                                          LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support);
+						       const T &log_rec, const log_lsa &rcv_lsa,
+						       const LOG_LSA *end_redo_lsa, LOG_RECTYPE log_rtype,
+						       LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support);
 // *INDENT-ON*
 
 static bool log_rv_find_checkpoint (THREAD_ENTRY * thread_p, VOLID volid, LOG_LSA * rcv_lsa);
-
-static int log_rv_get_unzip_log_data (THREAD_ENTRY * thread_p, int length, log_reader & log_pgptr_reader,
-				      LOG_ZIP * unzip_ptr, bool &is_zip);
-static int log_rv_get_unzip_and_diff_redo_log_data (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader,
-						    LOG_RCV * rcv, int undo_length, const char *undo_data,
-						    LOG_ZIP & redo_unzip);
 
 static int log_rv_analysis_undo_redo (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
 static int log_rv_analysis_dummy_head_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
@@ -556,158 +537,7 @@ log_rv_fix_page_and_check_redo_is_needed (THREAD_ENTRY * thread_p, const VPID & 
 
 // *INDENT-OFF*
 /*
- * log_rv_get_log_rec_redo_data - GET UNZIPPED [and DIFFED, if needed] REDO LOG DATA FROM LOG
- *
- * return: error code
- *
- *   thread_p(in):
- *   log_pgptr_reader(in/out): log reader
- *   log_rec(in): log record structure with info about the location and size of the data in the log page
- *   rcv(in/out): Recovery structure for recovery function
- *   log_rtype(in): log record type needed to check if diff information is needed or should be skipped
- *   undo_unzip_support(out): extracted undo data support structure (set as a side effect)
- *   redo_unzip_support(out): extracted redo data support structure (set as a side effect); required to
- *                    be passed by address because it also functions as an internal working buffer
- */
-template <typename T>
-int log_rv_get_log_rec_redo_data (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader, const T &log_rec,
-    log_rcv &rcv, log_rectype log_rtype, struct log_zip &undo_unzip_support, struct log_zip &redo_unzip_support)
-{
-  static_assert (sizeof (T) == 0, "should not be called");
-  return -1;
-}
-
-template <>
-int log_rv_get_log_rec_redo_data<LOG_REC_UNDOREDO> (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
-    const LOG_REC_UNDOREDO &log_rec, log_rcv &rcv, log_rectype log_rtype, struct log_zip &undo_unzip_support,
-    struct log_zip &redo_unzip_support)
-{
-  /* current log reader position is aligned at the undo data, redo data follows (aligned) the undo data
-   */
-  const bool need_diff_with_undo = (log_rtype == LOG_DIFF_UNDOREDO_DATA || log_rtype == LOG_MVCC_DIFF_UNDOREDO_DATA);
-  if (need_diff_with_undo)
-    {
-      /* for the diff log records, undo and redo data must be read, the diff be applied between the undo and the redo
-       * to reconstruct the actual redo data
-       */
-      bool dummy_is_zip = false;
-      const int err_undo_unzip =
-	log_rv_get_unzip_log_data (thread_p, log_rec.ulength, log_pgptr_reader, &undo_unzip_support,
-				   dummy_is_zip);
-      if (err_undo_unzip != NO_ERROR)
-	{
-	  log_Gl.unique_stats_table.curr_rcv_rec_lsa.set_null ();
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_get_log_rec_redo_data");
-	  return err_undo_unzip;
-	}
-      log_pgptr_reader.align ();
-      return log_rv_get_unzip_and_diff_redo_log_data (thread_p, log_pgptr_reader, &rcv, undo_unzip_support.data_length,
-						      undo_unzip_support.log_data, redo_unzip_support);
-    }
-  else
-    {
-      /* for the non-diff log records, it is enough to skip undo data and read the redo data
-       */
-      const int temp_length = GET_ZIP_LEN (log_rec.ulength);
-      const int err_skip = log_pgptr_reader.skip (temp_length);
-      if (err_skip != NO_ERROR)
-	{
-	  log_Gl.unique_stats_table.curr_rcv_rec_lsa.set_null ();
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_get_log_rec_redo_data");
-	  return ER_FAILED;
-	}
-      log_pgptr_reader.align ();
-      return log_rv_get_unzip_and_diff_redo_log_data (thread_p, log_pgptr_reader, &rcv, 0, nullptr, redo_unzip_support);
-    }
-}
-
-template <>
-int log_rv_get_log_rec_redo_data<LOG_REC_MVCC_UNDOREDO> (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
-    const LOG_REC_MVCC_UNDOREDO &log_rec, log_rcv &rcv, log_rectype log_rtype, struct log_zip &undo_unzip_support,
-    struct log_zip &redo_unzip_support)
-{
-  return log_rv_get_log_rec_redo_data<LOG_REC_UNDOREDO> (thread_p, log_pgptr_reader, log_rec.undoredo,
-                                                         rcv, log_rtype, undo_unzip_support, redo_unzip_support);
-}
-
-template <>
-int log_rv_get_log_rec_redo_data<LOG_REC_MVCC_REDO> (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
-    const LOG_REC_MVCC_REDO &log_rec, log_rcv &rcv, log_rectype log_rtype, struct log_zip &undo_unzip_support,
-    struct log_zip &redo_unzip_support)
-{
-  return log_rv_get_unzip_and_diff_redo_log_data (thread_p, log_pgptr_reader, &rcv, 0, nullptr, redo_unzip_support);
-}
-
-template <>
-int log_rv_get_log_rec_redo_data<LOG_REC_REDO> (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
-    const LOG_REC_REDO &log_rec, log_rcv &rcv, log_rectype log_rtype, struct log_zip &undo_unzip_support,
-    struct log_zip &redo_unzip_support)
-{
-  return log_rv_get_unzip_and_diff_redo_log_data (thread_p, log_pgptr_reader, &rcv, 0, nullptr, redo_unzip_support);
-}
-
-template <>
-int log_rv_get_log_rec_redo_data<LOG_REC_RUN_POSTPONE> (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
-    const LOG_REC_RUN_POSTPONE &log_rec, log_rcv &rcv, log_rectype log_rtype, struct log_zip &undo_unzip_support,
-    struct log_zip &redo_unzip_support)
-{
-  return log_rv_get_unzip_and_diff_redo_log_data (thread_p, log_pgptr_reader, &rcv, 0, nullptr, redo_unzip_support);
-}
-
-template <>
-int log_rv_get_log_rec_redo_data<LOG_REC_COMPENSATE> (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
-    const LOG_REC_COMPENSATE &log_rec, log_rcv &rcv, log_rectype log_rtype, struct log_zip &undo_unzip_support,
-    struct log_zip &redo_unzip_support)
-{
-  return log_rv_get_unzip_and_diff_redo_log_data (thread_p, log_pgptr_reader, &rcv, 0, nullptr, redo_unzip_support);
-}
-// *INDENT-ON*
-
-#if !defined(NDEBUG)
-DBG_REGISTER_PARSE_TYPE_NAME (LOG_REC_MVCC_UNDOREDO);
-DBG_REGISTER_PARSE_TYPE_NAME (LOG_REC_UNDOREDO);
-DBG_REGISTER_PARSE_TYPE_NAME (LOG_REC_MVCC_REDO);
-DBG_REGISTER_PARSE_TYPE_NAME (LOG_REC_REDO);
-DBG_REGISTER_PARSE_TYPE_NAME (LOG_REC_RUN_POSTPONE);
-DBG_REGISTER_PARSE_TYPE_NAME (LOG_REC_COMPENSATE);
-#endif
-
-// *INDENT-OFF*
-/* log_rv_redo_record_debug_logging - utility function which prints debug information
- *                        templated in order to be able to specifically print out user readable name
- *                        of the log record structure
- */
-template <typename T>
-void log_rv_redo_record_debug_logging (const log_lsa & rcv_lsa, LOG_RCVINDEX rcvindex, const vpid & rcv_vpid,
-                                       const log_rcv & rcv)
-{
-#if !defined(NDEBUG)
-  if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
-    {
-      constexpr const char *const log_rec_name = dbg_parse_type_name<T> ();
-      fprintf (stdout,
-	       "TRACE REDOING[%s]: LSA = %lld|%d, Rv_index = %s,\n"
-	       "      volid = %d, pageid = %d, offset = %d,\n", log_rec_name, LSA_AS_ARGS (&rcv_lsa),
-	       rv_rcvindex_string (rcvindex), rcv_vpid.volid, rcv_vpid.pageid, rcv.offset);
-      if (rcv.pgptr != nullptr)
-	{
-	  const log_lsa *const rcv_page_lsaptr = pgbuf_get_lsa (rcv.pgptr);
-	  assert (rcv_page_lsaptr != nullptr);
-	  fprintf (stdout, "      page_lsa = %lld|%d\n", LSA_AS_ARGS (rcv_page_lsaptr));
-	}
-      else
-	{
-	  fprintf (stdout, "      page_lsa = %lld|%d\n", -1LL, -1);
-	}
-      fflush (stdout);
-    }
-#endif /* !NDEBUG */
-}
-// *INDENT-ON*
-
-// *INDENT-OFF*
-/*
- * log_rv_redo_record_sync_or_dispatch_parallel - execute a redo record synchronously or
+ * log_rv_redo_record_sync_or_dispatch_async - execute a redo record synchronously or
  *                    (in future) asynchronously
  *
  * return: nothing
@@ -738,79 +568,26 @@ void log_rv_redo_record_sync_or_dispatch_async (THREAD_ENTRY * thread_p, log_rea
   // as such, from here on, everything should be moved into another function
   // pass:
   //  - vpid
-  //  - a copy of log_pgptr_reader
   //  - log_rec
   //  - rcv_lsa
   //  - end_redo_lsa
   //  - log_rtype
-  // supply internally:
+  // supply internally via the long-running task instance:
   //  - undo/redo unzip support
+  //  - log_pgptr_reader - via set_lsa_and_fetch_page
 
-  const LOG_DATA & log_data = log_rv_get_log_rec_data<T> (log_rec);
-
-  LOG_RCV rcv;
-  if (!log_rv_fix_page_and_check_redo_is_needed (thread_p, rcv_vpid, rcv, log_data.rcvindex, rcv_lsa, end_redo_lsa))
+  if (!VPID_ISNULL (&rcv_vpid))
     {
-      /* nothing else needs to be done, see explanation in function */
-      assert (rcv.pgptr == nullptr);
-      return;
-    }
-  // at this point, pgptr can be null or not
-
-  /* will take care of unfixing the page, will be correctly de-allocated as it is the same
-   * storage class as 'rcv' and allocated on the stack after 'rcv' */
-  scope_exit <std::function<void (void)>> unfix_rcv_pgptr (
-    // could have used pgbuf_unfix_and_init if it were a function
-    [&thread_p, &rcv] ()
-    {
-      if (rcv.pgptr != nullptr)
-        {
-          pgbuf_unfix (thread_p, rcv.pgptr);
-          rcv.pgptr = nullptr;
-        }
-    }
-  );
-
-  rcv.length = log_rv_get_log_rec_redo_length<T> (log_rec);
-  rcv.mvcc_id = log_rv_get_log_rec_mvccid<T> (log_rec);
-  rcv.offset = log_rv_get_log_rec_offset<T> (log_rec);
-
-  log_rv_redo_record_debug_logging<T> (rcv_lsa, log_data.rcvindex, rcv_vpid, rcv);
-
-  const auto err_redo_data = log_rv_get_log_rec_redo_data<T> (thread_p, log_pgptr_reader, log_rec, rcv, log_rtype,
-                                                              undo_unzip_support, redo_unzip_support);
-  if (err_redo_data != NO_ERROR)
-    {
-      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_get_log_rec_redo_data");
-      // rcv pgptr will be automatically unfixed
-      return;
-    }
-
-  rvfun::fun_t redofunc = log_rv_get_fun<T> (log_rec, log_data.rcvindex);
-  if (redofunc != nullptr)
-    {
-      const int err_func = redofunc (thread_p, &rcv);
-      if (err_func != NO_ERROR)
-	{
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			     "log_rv_redo_record_sync_or_dispatch_parallel: Error applying redo record at log_lsa=(%lld, %d), "
-			     "rcv = {mvccid=%llu, vpid=(%d, %d), offset = %d, data_length = %d}",
-			     (long long int) rcv_lsa.pageid, (int) rcv_lsa.offset,
-			     (long long int) rcv.mvcc_id, (int) rcv_vpid.pageid, (int) rcv_vpid.volid,
-			     (int) rcv.offset, (int) rcv.length);
-	}
+      // dispatch async and return
+      const log_recovery_ns::ux_redo_lsa_log_entry log_rec_entry(
+            new log_recovery_ns::redo_log_rec_entry_templ<T>(rcv_vpid, log_rec, rcv_lsa, end_redo_lsa, log_rtype));
+      log_rec_entry->do_work (thread_p, log_pgptr_reader, undo_unzip_support, redo_unzip_support);
     }
   else
     {
-      er_log_debug (ARG_FILE_LINE,
-		    "log_rv_redo_record_sync_or_dispatch_parallel: WARNING.. There is not a"
-		    " REDO (or, possibly, UNDO) function to execute. May produce recovery problems.");
-    }
-
-  if (rcv.pgptr != nullptr)
-    {
-      pgbuf_set_lsa (thread_p, rcv.pgptr, &rcv_lsa);
-      // rcv pgptr will be automatically unfixed
+      // invoke sync
+      log_rv_redo_record_sync<T>(thread_p, log_pgptr_reader, log_rec, rcv_vpid, rcv_lsa, end_redo_lsa, log_rtype,
+                                 undo_unzip_support, redo_unzip_support);
     }
 }
 // *INDENT-ON*
@@ -856,7 +633,7 @@ log_rv_find_checkpoint (THREAD_ENTRY * thread_p, VOLID volid, LOG_LSA * rcv_lsa)
  * NOTE:if log_data is unzip data return LOG_ZIP data
  *               else log_data is zip data return unzip log data
  */
-static int
+int
 log_rv_get_unzip_log_data (THREAD_ENTRY * thread_p, int length, log_reader & log_pgptr_reader,
 			   LOG_ZIP * unzip_ptr, bool &is_zip)
 {
@@ -946,7 +723,7 @@ log_rv_get_unzip_log_data (THREAD_ENTRY * thread_p, int length, log_reader & log
  * TODO: after refactoring, it's easier to supply (or not) a pointer to the undo unzip
  * TODO: separate in 2 based on diffing or not and fork outside
  */
-static int
+int
 log_rv_get_unzip_and_diff_redo_log_data (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader,
 					 LOG_RCV * rcv, int undo_length, const char *undo_data, LOG_ZIP & redo_unzip)
 {
@@ -3489,20 +3266,20 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 	  LSA_COPY (&log_Gl.unique_stats_table.curr_rcv_rec_lsa, &lsa);
 
-	  /* Find the log record */
+	  /* both the page id and the offsset might have changed; page id is changed at the end of the loop */
 	  log_pgptr_reader.set_lsa_and_fetch_page (lsa);
 
 	  {
 	    /* Pointer to log record */
 	    // *INDENT-OFF*
-	    const LOG_RECORD_HEADER *log_rec = log_pgptr_reader.reinterpret_cptr<LOG_RECORD_HEADER> ();
+	    const LOG_RECORD_HEADER *log_rec_header = log_pgptr_reader.reinterpret_cptr<LOG_RECORD_HEADER> ();
 	    // *INDENT-ON*
 
-	    tran_id = log_rec->trid;
-	    log_rtype = log_rec->type;
+	    tran_id = log_rec_header->trid;
+	    log_rtype = log_rec_header->type;
 
 	    /* Get the address of next log record to scan */
-	    LSA_COPY (&lsa, &log_rec->forw_lsa);
+	    LSA_COPY (&lsa, &log_rec_header->forw_lsa);
 	  }
 
 	  /*
