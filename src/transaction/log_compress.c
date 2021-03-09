@@ -244,7 +244,7 @@ log_zip_alloc (LOG_ZIP_SIZE_T size)
   log_zip->buf_size = 0;
   log_zip->log_data = nullptr;
 
-  if (log_zip_realloc_if_needed (*log_zip, size) != NO_ERROR)
+  if (!log_zip_realloc_if_needed (*log_zip, size))
     {
       free_and_init (log_zip);
       return nullptr;
