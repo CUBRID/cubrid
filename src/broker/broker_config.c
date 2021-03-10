@@ -170,6 +170,69 @@ static const char *tbl_conf_err_msg[] = {
 #define MAX_NUM_OF_CONF_FILE_LOADED     5
 static char *conf_file_loaded[MAX_NUM_OF_CONF_FILE_LOADED];
 
+/* The order of keywords is based on the manual. */
+const char *broker_keywords[] = {
+  "ACCESS_CONTROL",
+  "ACCESS_CONTROL_FILE",
+  "ADMIN_LOG_FILE",
+  "MASTER_SHM_ID",
+  "ACCESS_LIST",
+  "ACCESS_MODE",
+  "BROKER_PORT",
+  "CONNECT_ORDER",
+  "ENABLE_MONITOR_HANG",
+  "KEEP_CONNECTION",
+  "MAX_NUM_DELAYED_HOSTS_LOOKUP",
+  "PREFERRED_HOSTS",
+  "RECONNECT_TIME",
+  "REPLICA_ONLY",
+  "APPL_SERVER_MAX_SIZE",
+  "APPL_SERVER_MAX_SIZE_HARD_LIMIT",
+  "APPL_SERVER_PORT",
+  "APPL_SERVER_SHM_ID",
+  "AUTO_ADD_APPL_SERVER",
+  "MAX_NUM_APPL_SERVER",
+  "MIN_NUM_APPL_SERVER",
+  "TIME_TO_KILL",
+  "CCI_DEFAULT_AUTOCOMMIT",
+  "LONG_QUERY_TIME",
+  "LONG_TRANSACTION_TIME",
+  "MAX_PREPARED_STMT_COUNT",
+  "MAX_QUERY_TIMEOUT",
+  "SESSION_TIMEOUT",
+  "STATEMENT_POOLING",
+  "JDBC_CACHE",
+  "JDBC_CACHE_HINT_ONLY",
+  "JDBC_CACHE_LIFE_TIME",
+  "TRIGGER_ACTION",
+  "ACCESS_LOG",
+  "ACCESS_LOG_DIR",
+  "ACCESS_LOG_MAX_SIZE",
+  "ERROR_LOG_DIR",
+  "LOG_DIR",
+  "SLOW_LOG",
+  "SLOW_LOG_DIR",
+  "SQL_LOG",
+  "SQL_LOG_MAX_SIZE",
+  "SERVICE",
+  "SSL",
+  "SOURCE_ENV",
+  /* Below is a keyword referenced from the source code, although it is not in the manual. */
+  "APPL_SERVER",
+  "CACHE_USER_INFO",
+  "CCI_PCONNECT",
+  "DATABASES_CONNECTION_FILE",
+  "ENABLE_MONITOR_SERVER",
+  "JDBC_CACHE_ONLY_HINT",
+  "JOB_QUEUE_SIZE",
+  "LOG_BACKUP",
+  "MAX_STRING_LENGTH",
+  "READ_ONLY_BROKER",
+  "STRIPPED_COLUMN_NAME"
+};
+
+int broker_keywords_size = sizeof (broker_keywords) / sizeof (char *);
+
 /*
  * conf_file_has_been_loaded - record the file path that has been loaded
  *   return: none
@@ -1154,6 +1217,11 @@ broker_config_read (const char *conf_file, T_BROKER_INFO * br_info, int *num_bro
       err = -1;
       PRINT_AND_LOG_ERR_MSG ("Error: can't find %s\n", (conf_file == NULL) ? default_conf_file_path : conf_file);
     }
+
+    if (err == 0)
+      {
+        err = ini_broker_keyword_check (file_being_dealt_with, broker_keywords, broker_keywords_size);
+      }
 
   return err;
 }

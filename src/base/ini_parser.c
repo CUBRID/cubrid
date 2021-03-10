@@ -1028,3 +1028,104 @@ ini_getfloat (INI_TABLE * ini, const char *sec, const char *key, float def, int 
     }
   return (float) strtod (str, NULL);
 }
+
+int
+ini_broker_keyword_check (const char *ininame, const char **broker_keywords, int broker_keywords_size)
+{
+  FILE *in;
+
+  char line[INI_BUFSIZ + 1];
+  char section[INI_BUFSIZ + 1];
+  char key[INI_BUFSIZ + 1];
+  char tmp[(INI_BUFSIZ + 1) * 2];
+  char val[INI_BUFSIZ + 1];
+
+  int last = 0;
+  int len;
+  int lineno = 0;
+  int errs = 0;
+  int i;
+  bool found;
+
+  if (broker_keywords == NULL || broker_keywords_size <= 0 || (in = fopen (ininame, "r")) == NULL)
+    {
+      fprintf (stderr, "ini_parser: invalid keyword list or cannot open file %s\n", ininame);
+      return -1;
+    }
+
+  memset (line, 0, INI_BUFSIZ);
+  memset (section, 0, INI_BUFSIZ);
+  memset (key, 0, INI_BUFSIZ);
+  memset (val, 0, INI_BUFSIZ);
+  last = 0;
+
+  while (fgets (line + last, INI_BUFSIZ - last, in) != NULL)
+    {
+      lineno++;
+      len = (int) strlen (line) - 1;
+      /* Safety check against buffer overflows */
+      if (line[len] != '\n' && len >= INI_BUFSIZ - 2)
+	{
+	  fprintf (stderr, "ini_parser: input line too long in %s (%d)\n", ininame, lineno);
+	  fclose (in);
+	  return -1;
+	}
+      /* Get rid of \n and spaces at end of line */
+      while ((len > 0) && ((line[len] == '\n') || (char_isspace (line[len]))))
+	{
+	  line[len] = 0;
+	  len--;
+	}
+      /* Detect multi-line */
+      if (line[len] == '\\')
+	{
+	  /* Multi-line value */
+	  last = len;
+	  continue;
+	}
+      else
+	{
+	  last = 0;
+	}
+      switch (ini_parse_line (line, section, key, val))
+	{
+	case LINE_EMPTY:
+	case LINE_COMMENT:
+	case LINE_SECTION:
+	  break;
+
+	case LINE_VALUE:
+	  found = false;
+	  for (i = 0; i < broker_keywords_size; i++)
+	    {
+	      if (strcasecmp (key, broker_keywords[i]) == 0)
+	        {
+	          found = true;
+	          break;
+	        }
+	    }
+
+	  if (!found)
+	    {
+	      fprintf (stderr, "ini_parser: invalid keyword '%s' in %s (%d):\n", key, ininame, lineno);
+	      fprintf (stderr, "-> %s\n", line);
+	      errs = -1;
+	    }
+	  break;
+
+	case LINE_ERROR:
+	  fprintf (stderr, "ini_parser: syntax error in %s (%d):\n", ininame, lineno);
+	  fprintf (stderr, "-> %s\n", line);
+	  errs = -1;
+	  break;
+
+	default:
+	  break;
+	}
+      memset (line, 0, INI_BUFSIZ);
+      last = 0;
+    }
+
+  fclose (in);
+  return errs;
+}

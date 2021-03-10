@@ -45,6 +45,7 @@ struct ini_table
 
 extern INI_TABLE *ini_parser_load (const char *ininame);
 extern void ini_parser_free (INI_TABLE * ini);
+extern int ini_broker_keyword_check (const char *conf_file, const char **broker_keywords, int broker_keywords_size);
 
 extern int ini_findsec (INI_TABLE * ini, const char *sec);
 extern char *ini_getsecname (INI_TABLE * ini, int n, int *lineno);
