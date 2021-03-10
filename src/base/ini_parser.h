@@ -43,7 +43,7 @@ struct ini_table
   unsigned int *hash;		/* list of hash values for keys */
 };
 
-extern INI_TABLE *ini_parser_load (const char *ininame, bool keyword_validate, const char **broker_keywords, int keyword_size);
+extern INI_TABLE *ini_parser_load (const char *ininame);
 extern void ini_parser_free (INI_TABLE * ini);
 
 extern int ini_findsec (INI_TABLE * ini, const char *sec);

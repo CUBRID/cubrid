@@ -388,7 +388,7 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
   char size_str[LINE_MAX];
   char time_str[LINE_MAX];
 
-  ini = ini_parser_load (conf_file, true, broker_keywords, broker_keywords_size);
+  ini = ini_parser_load (conf_file);
   if (ini == NULL)
     {
       PRINTERROR ("invalid keyword or cannot open conf file %s\n", conf_file);
@@ -411,6 +411,40 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
       PRINTERROR ("cannot find [%s] section in conf file %s\n", SECTION_NAME, conf_file);
       ini_parser_free (ini);
       return -1;
+    }
+
+  /* Validate broker keywords, if keyword is not in list terminate */
+  for (i = 0; i < ini->size; i++)
+    {
+      char *key;
+      bool found = false;
+
+      if (ini->key[i] == NULL)
+        {
+          continue;
+        }
+
+        key = strchr (ini->key[i], ':');
+        if (key == NULL)
+          {
+            continue;
+          }
+
+        key++;
+        for (j = 0; j < broker_keywords_size; j++)
+          {
+            if (strcasecmp (key, broker_keywords[j]) == 0)
+              {
+                found = true;
+              }
+          }
+
+        if (!found)
+          {
+          	PRINTERROR ("cubrid_broker.conf: invalid keyword '%s' (%d)\n", key, ini->lineno[i]);
+            ini_parser_free (ini);
+            return -1;
+          }
     }
 
   master_shm_id = ini_gethex (ini, SECTION_NAME, "MASTER_SHM_ID", 0, &lineno);

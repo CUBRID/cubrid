@@ -296,7 +296,7 @@ get_master_shm_id (void)
 
   if (stat (conf_file_path, &stat_buf) == 0)
     {
-      ini = ini_parser_load (conf_file_path, false, NULL, 0);
+      ini = ini_parser_load (conf_file_path);
       if (ini == NULL)
 	{
 	  fprintf (stderr, "cannot open conf file %s\n", conf_file_path);

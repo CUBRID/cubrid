@@ -566,7 +566,7 @@ ini_parse_line (char *input_line, char *section, char *key, char *value)
  * Note: The returned INI_TABLE must be freed using ini_parser_free()
  */
 INI_TABLE *
-ini_parser_load (const char *ininame, bool validate_broker_keyword, const char **broker_keywords, int broker_keywords_size)
+ini_parser_load (const char *ininame)
 {
   FILE *in;
 
@@ -580,14 +580,10 @@ ini_parser_load (const char *ininame, bool validate_broker_keyword, const char *
   int len;
   int lineno = 0;
   int errs = 0;
-  int keyword_error = 0;
-
-  int i;
-  bool found;
 
   INI_TABLE *ini;
 
-  if ((validate_broker_keyword == true && broker_keywords == NULL) || (in = fopen (ininame, "r")) == NULL)
+  if ((in = fopen (ininame, "r")) == NULL)
     {
       fprintf (stderr, "ini_parser: cannot open %s\n", ininame);
       return NULL;
@@ -646,27 +642,6 @@ ini_parser_load (const char *ininame, bool validate_broker_keyword, const char *
 	  break;
 
 	case LINE_VALUE:
-	  if (validate_broker_keyword)
-          {
-            /* We will validate whether key is a valid keyword of the broker */
-            found = false;
-            for (i = 0; i < broker_keywords_size; i++)
-              {
-                if (strcasecmp (key, broker_keywords[i]) == 0)
-                  {
-                    found = true;
-                    break;
-                  }
-              }
-
-          if (!found)
-            {
-              fprintf (stderr, "ini_parser: invalid keyword '%s' in %s (%d):\n", key, ininame, lineno);
-              fprintf (stderr, "-> %s\n", line);
-              keyword_error++;
-              break;
-            }
-	    }
 	  sprintf (tmp, "%s:%s", section, key);
 	  errs = ini_table_set (ini, tmp, val, lineno);
 	  break;
@@ -688,7 +663,7 @@ ini_parser_load (const char *ininame, bool validate_broker_keyword, const char *
 	  break;
 	}
     }
-  if (errs || keyword_error)
+  if (errs)
     {
       ini_table_free (ini);
       ini = NULL;
