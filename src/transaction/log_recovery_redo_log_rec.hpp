@@ -29,7 +29,7 @@
 #include "type_helper.hpp"
 
 /*
- * exposed internal functions that are only consumed by templated infrastructure involved with recovery redo
+ * exposed internal functions that are used by templated infrastructure involved with recovery redo
  */
 
 extern int log_rv_get_unzip_log_data (THREAD_ENTRY *thread_p, int length, log_reader &log_pgptr_reader,

@@ -49,7 +49,7 @@
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
 #include "type_helper.hpp"
-#include "log_recovery_redo.hpp"
+#include "log_recovery_redo_parallel.hpp"
 
 #include <stdio.h>
 #include <stddef.h>

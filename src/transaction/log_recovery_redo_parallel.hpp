@@ -1,3 +1,21 @@
+/*
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ */
+
 #ifndef LOG_RECOVERY_REDO_HPP
 #define LOG_RECOVERY_REDO_HPP
 
@@ -66,8 +84,8 @@ namespace log_recovery_ns
 	return vpid.pageid;
       }
 
-      virtual int do_work (THREAD_ENTRY *thread_p, log_reader& log_pgptr_reader,
-                           LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support) = 0;
+      virtual int do_work (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
+			   LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support) = 0;
 
       /* TODO: functions are needed only for testing purposes and might not have
        * any usefulness/meaning upon integration in production code
@@ -141,13 +159,13 @@ namespace log_recovery_ns
       redo_log_rec_entry_templ &operator = ( redo_log_rec_entry_templ const &) = delete;
       redo_log_rec_entry_templ &operator = ( redo_log_rec_entry_templ &&) = delete;
 
-      int do_work (THREAD_ENTRY *thread_p, log_reader& log_pgptr_reader,
-                   LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support) override
+      int do_work (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
+		   LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support) override
       {
-        const auto& rcv_vpid = get_vpid ();
-        log_rv_redo_record_sync<log_rec_t> (thread_p, log_pgptr_reader, log_rec, rcv_vpid, rcv_lsa, end_redo_lsa,
-                                               log_rtype, undo_unzip_support, redo_unzip_support);
-        return NO_ERROR;
+	const auto &rcv_vpid = get_vpid ();
+	log_rv_redo_record_sync<log_rec_t> (thread_p, log_pgptr_reader, log_rec, rcv_vpid, rcv_lsa, end_redo_lsa,
+					    log_rtype, undo_unzip_support, redo_unzip_support);
+	return NO_ERROR;
       }
 
     private:
