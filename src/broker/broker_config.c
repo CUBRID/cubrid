@@ -388,10 +388,10 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
   char size_str[LINE_MAX];
   char time_str[LINE_MAX];
 
-  ini = ini_parser_load (conf_file);
+  ini = ini_parser_load (conf_file, true, broker_keywords, broker_keywords_size);
   if (ini == NULL)
     {
-      PRINTERROR ("cannot open conf file %s\n", conf_file);
+      PRINTERROR ("invalid keyword or cannot open conf file %s\n", conf_file);
       return -1;
     }
 
@@ -1217,11 +1217,6 @@ broker_config_read (const char *conf_file, T_BROKER_INFO * br_info, int *num_bro
       err = -1;
       PRINT_AND_LOG_ERR_MSG ("Error: can't find %s\n", (conf_file == NULL) ? default_conf_file_path : conf_file);
     }
-
-    if (err == 0)
-      {
-        err = ini_broker_keyword_check (file_being_dealt_with, broker_keywords, broker_keywords_size);
-      }
 
   return err;
 }

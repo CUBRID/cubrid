@@ -7051,7 +7051,7 @@ prm_read_and_parse_ini_file (const char *prm_file_name, const char *db_name, con
   char user_name[CUB_MAXHOSTNAMELEN];
   int error;
 
-  ini = ini_parser_load (prm_file_name);
+  ini = ini_parser_load (prm_file_name, false, NULL, 0);
   if (ini == NULL)
     {
       fprintf (stderr, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARAMETERS, PRM_ERR_CANT_OPEN_INIT),
