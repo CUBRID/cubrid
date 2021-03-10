@@ -22,7 +22,7 @@
 #include "log_compress.h"
 #include "log_reader.hpp"
 #include "log_record.hpp"
-#include "log_recovery_redo_log_rec.hpp"
+#include "log_recovery_redo_sequential.hpp"
 #include "storage_common.h"
 #include "thread_entry.hpp"
 #include "thread_task.hpp"
