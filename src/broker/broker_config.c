@@ -391,7 +391,7 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
   ini = ini_parser_load (conf_file);
   if (ini == NULL)
     {
-      PRINTERROR ("invalid keyword or cannot open conf file %s\n", conf_file);
+      PRINTERROR ("cannot open conf file %s\n", conf_file);
       return -1;
     }
 
