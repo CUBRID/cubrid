@@ -1153,7 +1153,7 @@ add_subdirectory(locales)
 add_subdirectory(timezones)
 if(AT_LEAST_ONE_UNIT_TEST)
   add_subdirectory(unit_tests)
-  file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/run_unit_tests.sh
+  file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/run_scalability_unit_tests.sh
        DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/bin)
 endif()
 
