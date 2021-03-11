@@ -374,12 +374,12 @@ inline rvfun::fun_t log_rv_get_fun<LOG_REC_COMPENSATE> (const LOG_REC_COMPENSATE
 }
 
 #if !defined(NDEBUG)
-DBG_REGISTER_PARSE_TYPE_NAME (LOG_REC_MVCC_UNDOREDO);
-DBG_REGISTER_PARSE_TYPE_NAME (LOG_REC_UNDOREDO);
-DBG_REGISTER_PARSE_TYPE_NAME (LOG_REC_MVCC_REDO);
-DBG_REGISTER_PARSE_TYPE_NAME (LOG_REC_REDO);
-DBG_REGISTER_PARSE_TYPE_NAME (LOG_REC_RUN_POSTPONE);
-DBG_REGISTER_PARSE_TYPE_NAME (LOG_REC_COMPENSATE);
+DBG_REGISTER_PARSE_TYPE_NAME (LOG_REC_MVCC_UNDOREDO)
+DBG_REGISTER_PARSE_TYPE_NAME (LOG_REC_UNDOREDO)
+DBG_REGISTER_PARSE_TYPE_NAME (LOG_REC_MVCC_REDO)
+DBG_REGISTER_PARSE_TYPE_NAME (LOG_REC_REDO)
+DBG_REGISTER_PARSE_TYPE_NAME (LOG_REC_RUN_POSTPONE)
+DBG_REGISTER_PARSE_TYPE_NAME (LOG_REC_COMPENSATE)
 #endif
 
 /* log_rv_redo_record_debug_logging - utility function which prints debug information
@@ -572,7 +572,7 @@ void log_rv_redo_record_sync (THREAD_ENTRY *thread_p, log_reader &log_pgptr_read
       if (err_func != NO_ERROR)
 	{
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			     "log_rv_redo_record_sync_or_dispatch_parallel: Error applying redo record at log_lsa=(%lld, %d), "
+			     "log_rv_redo_record_sync: Error applying redo record at log_lsa=(%lld, %d), "
 			     "rcv = {mvccid=%llu, vpid=(%d, %d), offset = %d, data_length = %d}",
 			     (long long int) rcv_lsa.pageid, (int) rcv_lsa.offset,
 			     (long long int) rcv.mvcc_id, (int) rcv_vpid.pageid, (int) rcv_vpid.volid,
@@ -582,7 +582,7 @@ void log_rv_redo_record_sync (THREAD_ENTRY *thread_p, log_reader &log_pgptr_read
   else
     {
       er_log_debug (ARG_FILE_LINE,
-		    "log_rv_redo_record_sync_or_dispatch_parallel: WARNING.. There is not a"
+                    "log_rv_redo_record_sync: WARNING.. There is not a"
 		    " REDO (or, possibly, UNDO) function to execute. May produce recovery problems.");
     }
 

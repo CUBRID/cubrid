@@ -22,20 +22,18 @@
 namespace cublog
 {
   /**********************
-   * redo_job_queue
+   * redo_parallel::redo_job_queue
    **********************/
 
-  redo_job_queue::redo_job_queue()
+  redo_parallel::redo_job_queue::redo_job_queue()
     : produce_queue ( new ux_redo_job_deque() )
     , consume_queue ( new ux_redo_job_deque() )
     , adding_finished { false }
     , to_be_waited_for_op_in_progress (false)
-    , dbg_stats_cons_queue_skip_count (0u)
-    , sbg_stats_spin_wait_count (0u)
   {
   }
 
-  redo_job_queue::~redo_job_queue()
+  redo_parallel::redo_job_queue::~redo_job_queue()
   {
     assert (produce_queue->size() == 0);
     assert (consume_queue->size() == 0);
@@ -48,23 +46,23 @@ namespace cublog
     consume_queue = nullptr;
   }
 
-  void redo_job_queue::locked_push (ux_redo_job_base &&job)
+  void redo_parallel::redo_job_queue::locked_push (ux_redo_job_base &&job)
   {
     std::lock_guard<std::mutex> lck (produce_queue_mutex);
     produce_queue->push_back (std::move (job));
   }
 
-  void redo_job_queue::set_adding_finished()
+  void redo_parallel::redo_job_queue::set_adding_finished()
   {
     adding_finished.store (true);
   }
 
-  bool redo_job_queue::get_adding_finished() const
+  bool redo_parallel::redo_job_queue::get_adding_finished() const
   {
     return adding_finished.load ();
   }
 
-  ux_redo_job_base redo_job_queue::locked_pop (bool &out_adding_finished)
+  ux_redo_job_base redo_parallel::redo_job_queue::locked_pop (bool &out_adding_finished)
   {
     std::unique_lock<std::mutex> consume_queue_lock (consume_queue_mutex);
     // stop at the barrier if an operation which needs to be waited for is in progress
@@ -117,7 +115,6 @@ namespace cublog
 		{
 		  break;
 		}
-	      ++dbg_stats_cons_queue_skip_count;
 	    }
 
 	  if (consume_queue_it != consume_queue->end())
@@ -128,7 +125,6 @@ namespace cublog
 	  else
 	    {
 	      // consumer will have to spin-wait
-	      ++sbg_stats_spin_wait_count;
 	      return nullptr;
 	    }
 
@@ -174,7 +170,7 @@ namespace cublog
       }
   }
 
-  void redo_job_queue::notify_to_be_waited_for_op_finished()
+  void redo_parallel::redo_job_queue::notify_to_be_waited_for_op_finished()
   {
     assert (to_be_waited_for_op_in_progress == true);
     to_be_waited_for_op_in_progress = false;
@@ -182,7 +178,7 @@ namespace cublog
     to_be_waited_for_op_in_progress_cv.notify_all();
   }
 
-  void redo_job_queue::notify_in_progress_vpid_finished (VPID _vpid)
+  void redo_parallel::redo_job_queue::notify_in_progress_vpid_finished (VPID _vpid)
   {
     std::lock_guard<std::mutex> lock_in_progress_vpids (in_progress_vpids_mutex);
     assert (in_progress_vpids.find (_vpid) != in_progress_vpids.cend());
@@ -190,13 +186,14 @@ namespace cublog
   }
 
   /**********************
-   * redo_task
+   * redo_parallel::redo_task
    **********************/
 
-  constexpr unsigned short redo_task::WAIT_AND_CHECK_MILLIS;
+  constexpr unsigned short redo_parallel::redo_task::WAIT_AND_CHECK_MILLIS;
 
-  redo_task::redo_task (std::size_t a_task_id, redo_task_active_state_bookkeeping &a_task_active_state_bookkeeping,
-			redo_job_queue &a_queue)
+  redo_parallel::redo_task::redo_task (std::size_t a_task_id,
+				       redo_parallel::redo_task_active_state_bookkeeping &a_task_active_state_bookkeeping,
+				       redo_job_queue &a_queue)
     : task_id (a_task_id), task_active_state_bookkeeping (a_task_active_state_bookkeeping), queue (a_queue)
   {
     // important to set this at this moment and not when execution begins
@@ -208,13 +205,13 @@ namespace cublog
     log_zip_realloc_if_needed (redo_unzip_support, LOGAREA_SIZE);
   }
 
-  redo_task::~redo_task()
+  redo_parallel::redo_task::~redo_task()
   {
     log_zip_free_data (undo_unzip_support);
     log_zip_free_data (redo_unzip_support);
   }
 
-  void redo_task::execute (context_type &context)
+  void redo_parallel::redo_task::execute (context_type &context)
   {
     bool finished = false;
 
@@ -242,7 +239,7 @@ namespace cublog
 	    else
 	      {
 		THREAD_ENTRY *const thread_entry = &context;
-		job->do_work (thread_entry, log_pgptr_reader, undo_unzip_support, redo_unzip_support);
+		job->execute (thread_entry, log_pgptr_reader, undo_unzip_support, redo_unzip_support);
 
 		queue.notify_in_progress_vpid_finished (job->get_vpid ());
 

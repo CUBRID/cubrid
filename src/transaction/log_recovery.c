@@ -566,24 +566,13 @@ void log_rv_redo_record_sync_or_dispatch_async (THREAD_ENTRY * thread_p, log_rea
   const VPID rcv_vpid = log_rv_get_log_rec_vpid<T> (log_rec);
   // at this point, vpid can either be valid or not
 
-  // TODO: once valid vpid is extracted, it can be decided whether to execute sync or dispatch asynchronously
-  // as such, from here on, everything should be moved into another function
-  // pass:
-  //  - vpid
-  //  - log_rec
-  //  - rcv_lsa
-  //  - end_redo_lsa
-  //  - log_rtype
-  // supply internally via the long-running task instance:
-  //  - undo/redo unzip support
-  //  - log_pgptr_reader - via set_lsa_and_fetch_page
-
+  // once vpid is extracted (or not), and depending on parameters, either dispatch the applying of
+  // log redo asynchronously, or invoke synchronously
   if (parallel_recovery_redo != nullptr && !VPID_ISNULL (&rcv_vpid))
     {
       // dispatch async
       cublog::ux_redo_job_base job(
             new cublog::redo_job_impl<T>(rcv_vpid, rcv_lsa, end_redo_lsa, log_rtype));
-      //job->do_work (thread_p, log_pgptr_reader, undo_unzip_support, redo_unzip_support);
       parallel_recovery_redo->add (std::move(job));
     }
   else
