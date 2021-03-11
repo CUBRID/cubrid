@@ -461,9 +461,9 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 
         if (!found)
           {
-          	PRINTERROR ("cubrid_broker.conf: invalid keyword '%s' (%d)\n", key, ini->lineno[i]);
-            ini_parser_free (ini);
-            return -1;
+             PRINTERROR ("cubrid_broker.conf: invalid keyword '%s' (%d)\n", key, ini->lineno[i]);
+             ini_parser_free (ini);
+             return -1;
           }
     }
 
