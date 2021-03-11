@@ -696,6 +696,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_PAGE_SERVER_HOSTS "page_server_hosts"
 #define PRM_NAME_SERVER_TYPE "server_type"
 
+#define PRM_NAME_ER_LOG_COMM_CHANNEL "er_log_comm_channel"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
@@ -2357,6 +2359,10 @@ static int prm_server_type_default = SERVER_TYPE_TRANSACTION;
 static int prm_server_type_lower = SERVER_TYPE_TRANSACTION;
 static int prm_server_type_upper = SERVER_TYPE_PAGE;
 static unsigned int prm_server_type_flag = 0;
+
+bool PRM_ER_LOG_COMM_CHANNEL = false;
+static bool prm_er_log_comm_channel_default = false;
+static unsigned int prm_er_log_comm_channel_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -6074,6 +6080,18 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  {PRM_ID_ER_LOG_COMM_CHANNEL,
+   PRM_NAME_ER_LOG_COMM_CHANNEL,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_er_log_comm_channel_flag,
+   (void *) &prm_er_log_comm_channel_default,
+   (void *) &PRM_ER_LOG_COMM_CHANNEL,
+   (void *) NULL,
+   (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
 };
 
 #define NUM_PRM ((int)(sizeof(prm_Def)/sizeof(prm_Def[0])))
@@ -8200,8 +8218,7 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len, PRM_PRINT_MODE print
 	}
       else if (intl_mbs_casecmp (prm->name, PRM_NAME_SERVER_TYPE) == 0)
 	{
-	  keyvalp =
-	    prm_keyword (PRM_GET_INT (prm->value), NULL, server_type_words, DIM (server_type_words));
+	  keyvalp = prm_keyword (PRM_GET_INT (prm->value), NULL, server_type_words, DIM (server_type_words));
 	}
       else
 	{
