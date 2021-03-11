@@ -237,6 +237,10 @@ test_env::require_prior_list_match () const
 //
 // Add mock definitions for used CUBRID stuff
 //
+#include "error_manager.h"
+#include "log_append.hpp"
+#include "log_manager.h"
+#include "system_parameter.h"
 
 log_prior_lsa_info::log_prior_lsa_info () = default;
 
@@ -326,4 +330,15 @@ void
 log_wakeup_log_flush_daemon ()
 {
   test_Flush_track.increment_count ();
+}
+
+void
+_er_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
+{
+}
+
+bool
+prm_get_bool_value (PARAM_ID id)
+{
+  return false;
 }
