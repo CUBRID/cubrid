@@ -44,7 +44,12 @@ jobs:
           path: cubrid
       - run:
           name: Build
-          command: scl enable devtoolset-8 -- /entrypoint.sh build
+          command: scl enable devtoolset-8 -- /entrypoint.sh build -b ${BUILD_DIR_NAME} -c -DUNIT_TESTS=ON
+      - run:
+          name: Unit tests
+          command: |
+            cd /home/qa/cubrid/${BUILD_DIR_NAME}/bin
+            sh ./run_scalability_unit_tests.sh
       - persist_to_workspace:
           root: .
           paths:
