@@ -25,7 +25,9 @@
 #include "log_recovery_redo_sequential.hpp"
 #include "storage_common.h"
 #include "thread_entry.hpp"
+#include "thread_manager.hpp"
 #include "thread_task.hpp"
+#include "thread_worker_pool.hpp"
 
 #include <atomic>
 #include <bitset>
@@ -36,7 +38,7 @@
 #include <set>
 #include <vector>
 
-namespace log_recovery_ns
+namespace cublogrecovery
 {
   /* contains a single vpid-backed log record entry to be applied on a page
    *
@@ -134,7 +136,7 @@ namespace log_recovery_ns
   /*
    */
   template <typename TYPE_LOG_REC>
-  class redo_log_rec_entry_templ : public redo_log_rec_entry
+  class redo_log_rec_entry_templ final : public redo_log_rec_entry
   {
       using log_rec_t = TYPE_LOG_REC;
 
@@ -178,7 +180,7 @@ namespace log_recovery_ns
 
   /* rynchronizes prod/cons of log entries in n-prod - m-cons fashion
    */
-  class redo_log_rec_entry_queue
+  class redo_log_rec_entry_queue final
   {
       using ux_entry_deque = std::deque<ux_redo_lsa_log_entry>;
       using vpid_set = std::set<VPID>;
@@ -189,6 +191,7 @@ namespace log_recovery_ns
 
       redo_log_rec_entry_queue ( redo_log_rec_entry_queue const & ) = delete;
       redo_log_rec_entry_queue ( redo_log_rec_entry_queue && ) = delete;
+
       redo_log_rec_entry_queue &operator= ( redo_log_rec_entry_queue const & ) = delete;
       redo_log_rec_entry_queue &operator= ( redo_log_rec_entry_queue && ) = delete;
 
@@ -199,6 +202,8 @@ namespace log_recovery_ns
        * whether there is still data to process, that they can bail out
        */
       void set_adding_finished();
+
+      bool get_adding_finished() const;
 
       /* the combination of a null return value with a finished
        * flag set to true signals to the callers that no more data is expected
@@ -251,9 +256,13 @@ namespace log_recovery_ns
   };
 
 
-  /*
+  /* maintain a bookkeeping of tasks that are still performing work;
+   * internal, implementation detail
+   *
+   * TODO: this class is supposed to be polled to see whether any tasks are still active; it might
+   * be better to implement this via either a callback or a condition variable
    */
-  class redo_task_active_state_bookkeeping
+  class redo_task_active_state_bookkeeping final
   {
     public:
       static constexpr std::size_t BOOKKEEPING_MAX_COUNT = 1024;
@@ -263,6 +272,12 @@ namespace log_recovery_ns
       {
 	active_set.reset();
       }
+
+      redo_task_active_state_bookkeeping (const redo_task_active_state_bookkeeping & ) = delete;
+      redo_task_active_state_bookkeeping (redo_task_active_state_bookkeeping && ) = delete;
+
+      redo_task_active_state_bookkeeping &operator = (const redo_task_active_state_bookkeeping & ) = delete;
+      redo_task_active_state_bookkeeping &operator = (redo_task_active_state_bookkeeping && ) = delete;
 
       void set_active (std::size_t _id)
       {
@@ -295,15 +310,21 @@ namespace log_recovery_ns
 
   /*
    */
-  class redo_task : public cubthread::task<cubthread::entry>
+  class redo_task final : public cubthread::task<cubthread::entry>
   {
     public:
       static constexpr unsigned short WAIT_AND_CHECK_MILLIS = 5;
 
     public:
-      redo_task (std::size_t _task_id, redo_task_active_state_bookkeeping &_task_active_state_bookkeeping,
-		 redo_log_rec_entry_queue &_bucket_queue);
-      ~redo_task() override = default;
+      redo_task (std::size_t a_task_id, redo_task_active_state_bookkeeping &a_task_active_state_bookkeeping,
+		 redo_log_rec_entry_queue &a_queue);
+      redo_task (const redo_task & ) = delete;
+      redo_task (redo_task && ) = delete;
+
+      redo_task &operator = (const redo_task & ) = delete;
+      redo_task &operator = (redo_task && ) = delete;
+
+      ~redo_task() override;
 
       void execute (context_type &context);
 
@@ -311,18 +332,56 @@ namespace log_recovery_ns
       static void dummy_busy_wait (size_t _millis);
 
     private:
-      // debug variable
+      // internal bookkeeping variable, must be unique among all task id's within the same pool
       std::size_t task_id;
 
       redo_task_active_state_bookkeeping &task_active_state_bookkeeping;
 
-      redo_log_rec_entry_queue &bucket_queue;
+      redo_log_rec_entry_queue &queue;
 
       log_reader log_pgptr_reader;
       LOG_ZIP undo_unzip_support;
       LOG_ZIP redo_unzip_support;
   };
 
+
+  /* a class to handle infrastructure for parallel log recovery RAII-style
+   */
+  class redo_parallel final
+  {
+    public:
+      redo_parallel();
+
+      redo_parallel (const redo_parallel & ) = delete;
+      redo_parallel (redo_parallel && ) = delete;
+
+      ~redo_parallel();
+
+      redo_parallel &operator = (const redo_parallel & ) = delete;
+      redo_parallel &operator = (redo_parallel && ) = delete;
+
+      // TODO: add work
+
+      void set_adding_finished();
+      void wait_for_termination_and_stop_execution();
+
+    private:
+      void do_init_thread_manager();
+      void do_init_worker_pool();
+      void do_init_tasks();
+
+    private:
+      unsigned task_count;
+
+      cubthread::manager *thread_manager;
+      cubthread::entry_manager worker_pool_context_manager;
+      cubthread::entry_workpool *worker_pool;
+
+      redo_log_rec_entry_queue queue;
+      redo_task_active_state_bookkeeping task_active_state_bookkeeping;
+
+      bool waited_for_termination;
+  };
 }
 
 #endif // LOG_RECOVERY_REDO_HPP

@@ -579,8 +579,8 @@ void log_rv_redo_record_sync_or_dispatch_async (THREAD_ENTRY * thread_p, log_rea
   if (!VPID_ISNULL (&rcv_vpid))
     {
       // dispatch async and return
-      const log_recovery_ns::ux_redo_lsa_log_entry log_rec_entry(
-            new log_recovery_ns::redo_log_rec_entry_templ<T>(rcv_vpid, log_rec, rcv_lsa, end_redo_lsa, log_rtype));
+      const cublogrecovery::ux_redo_lsa_log_entry log_rec_entry(
+            new cublogrecovery::redo_log_rec_entry_templ<T>(rcv_vpid, log_rec, rcv_lsa, end_redo_lsa, log_rtype));
       log_rec_entry->do_work (thread_p, log_pgptr_reader, undo_unzip_support, redo_unzip_support);
     }
   else
@@ -3175,6 +3175,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   LOG_ZIP *redo_unzip_ptr = NULL;
   bool is_mvcc_op = false;
 
+  cublogrecovery::redo_parallel parallel_recovery_redo;
+
   /*
    * GO FORWARD, redoing records of all transactions including aborted ones.
    *
@@ -3826,6 +3828,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
   log_zip_free (undo_unzip_ptr);
   log_zip_free (redo_unzip_ptr);
+
+  parallel_recovery_redo.set_adding_finished ();
+  parallel_recovery_redo.wait_for_termination_and_stop_execution ();
 
   log_Gl.mvcc_table.reset_start_mvccid ();
 

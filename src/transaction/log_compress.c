@@ -209,7 +209,7 @@ log_zip_realloc_if_needed (LOG_ZIP & log_zip, LOG_ZIP_SIZE_T new_size)
       log_zip.buf_size = buf_size;
     }
 
-  if (log_zip.log_data == nullptr)
+  if (new_size > 0 && log_zip.log_data == nullptr)
     {
       log_zip.data_length = 0;
       log_zip.buf_size = 0;
@@ -253,6 +253,15 @@ log_zip_alloc (LOG_ZIP_SIZE_T size)
   return log_zip;
 }
 
+void
+log_zip_free_data (LOG_ZIP & log_zip)
+{
+  if (log_zip.log_data != nullptr)
+    {
+      free_and_init (log_zip.log_data);
+    }
+}
+
 /*
  * log_zip_free - free LOG_ZIP structure
  *   return: none
@@ -262,10 +271,6 @@ void
 log_zip_free (LOG_ZIP * log_zip)
 {
   assert (log_zip != NULL);
-  if (log_zip->log_data)
-    {
-      free_and_init (log_zip->log_data);
-    }
-
+  log_zip_free_data (*log_zip);
   free_and_init (log_zip);
 }

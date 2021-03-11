@@ -22,7 +22,7 @@
 #include <iomanip>
 #include <sstream>
 
-namespace log_recovery_ns
+namespace cublogrecovery
 {
   /**********************
    * redo_log_rec_entry_queue
@@ -60,6 +60,11 @@ namespace log_recovery_ns
   void redo_log_rec_entry_queue::set_adding_finished()
   {
     adding_finished.store (true);
+  }
+
+  bool redo_log_rec_entry_queue::get_adding_finished() const
+  {
+    return adding_finished.load ();
   }
 
   ux_redo_lsa_log_entry redo_log_rec_entry_queue::locked_pop (bool &out_adding_finished)
@@ -188,10 +193,9 @@ namespace log_recovery_ns
 
   constexpr unsigned short redo_task::WAIT_AND_CHECK_MILLIS;
 
-  redo_task::redo_task (std::size_t _task_id
-                        , redo_task_active_state_bookkeeping &_task_active_state_bookkeeping
-                        , redo_log_rec_entry_queue &_bucket_queue)
-    : task_id (_task_id), task_active_state_bookkeeping (_task_active_state_bookkeeping), bucket_queue (_bucket_queue)
+  redo_task::redo_task (std::size_t a_task_id, redo_task_active_state_bookkeeping &a_task_active_state_bookkeeping,
+			redo_log_rec_entry_queue &a_queue)
+    : task_id (a_task_id), task_active_state_bookkeeping (a_task_active_state_bookkeeping), queue (a_queue)
   {
     // important to set this at this moment and not when execution begins
     // to circumvent race conditions where all tasks haven't yet started work
@@ -202,14 +206,20 @@ namespace log_recovery_ns
     log_zip_realloc_if_needed (redo_unzip_support, LOGAREA_SIZE);
   }
 
+  redo_task::~redo_task()
+  {
+    log_zip_free_data (undo_unzip_support);
+    log_zip_free_data (redo_unzip_support);
+  }
+
   void redo_task::execute (context_type &context)
   {
     bool finished = false;
 
     for (; !finished ;)
       {
-        bool buckets_adding_finished = false;
-        auto bucket = bucket_queue.locked_pop (buckets_adding_finished);
+	bool buckets_adding_finished = false;
+	auto bucket = queue.locked_pop (buckets_adding_finished);
 
 	if (bucket == nullptr && buckets_adding_finished)
 	  {
@@ -255,11 +265,11 @@ namespace log_recovery_ns
 
 		dbg_ss_consume << std::endl;
 
-		bucket_queue.notify_in_progress_vpid_finished (bucket_vpid);
+		queue.notify_in_progress_vpid_finished (bucket_vpid);
 
 		if (bucket_is_to_be_waited_for)
 		  {
-		    bucket_queue.notify_to_be_waited_for_op_finished();
+		    queue.notify_to_be_waited_for_op_finished();
 		  }
 	      }
 	  }
@@ -275,15 +285,104 @@ namespace log_recovery_ns
     double sum = 0;
     while (true)
       {
-        for (double sum_idx = 0.; sum_idx < 10000.; sum_idx += 1.0)
-          {
-            sum *= sum_idx;
-          }
-        const std::chrono::duration<double, std::milli> diff_millis = std::chrono::system_clock::now() - start;
-        if (_millis < diff_millis.count())
-          {
-            break;
-          }
+	for (double sum_idx = 0.; sum_idx < 10000.; sum_idx += 1.0)
+	  {
+	    sum *= sum_idx;
+	  }
+	const std::chrono::duration<double, std::milli> diff_millis = std::chrono::system_clock::now() - start;
+	if (_millis < diff_millis.count())
+	  {
+	    break;
+	  }
+      }
+  }
+
+  /**********************
+   * redo_parallel
+   **********************/
+
+  redo_parallel::redo_parallel()
+    : thread_manager (nullptr), worker_pool (nullptr), waited_for_termination (false)
+  {
+    // NOTE: already called globally (prob. during boot)
+    // TODO: how can this be ensured?
+
+    //cubthread::entry *thread_pool = nullptr;
+    //cubthread::initialize (thread_pool);
+
+    task_count = std::thread::hardware_concurrency();
+
+    do_init_thread_manager ();
+    do_init_worker_pool ();
+    do_init_tasks ();
+  }
+
+  redo_parallel::~redo_parallel()
+  {
+    assert (queue.get_adding_finished ());
+    assert (worker_pool == nullptr);
+    assert (waited_for_termination);
+  }
+
+  void redo_parallel::set_adding_finished()
+  {
+    assert(false == waited_for_termination);
+    assert(thread_manager != nullptr);
+    assert(false == queue.get_adding_finished ());
+
+    queue.set_adding_finished ();
+  }
+
+  void redo_parallel::wait_for_termination_and_stop_execution()
+  {
+    assert (false == waited_for_termination);
+    assert (thread_manager != nullptr);
+
+    // busy wait
+    while (task_active_state_bookkeeping.any_active ())
+      {
+	std::this_thread::sleep_for (std::chrono::milliseconds (20));
+      }
+
+    worker_pool->stop_execution ();
+    thread_manager->destroy_worker_pool (worker_pool);
+    assert(worker_pool == nullptr);
+
+    waited_for_termination = true;
+  }
+
+  void redo_parallel::do_init_thread_manager()
+  {
+    assert (thread_manager == nullptr);
+
+    thread_manager = cubthread::get_manager ();
+    // NOTE: already called globally (prob. during boot)
+    // TODO: how can this be ensured?
+    //thread_manager->set_max_thread_count (..);
+    //thread_manager->alloc_entries ();
+    //thread_manager->init_entries (..);
+  }
+
+  void redo_parallel::do_init_worker_pool()
+  {
+    assert (task_count > 0);
+    assert (thread_manager != nullptr);
+    assert (worker_pool == nullptr);
+
+    worker_pool = thread_manager->create_worker_pool ( task_count, task_count, "log_recovery_redo_thread_pool",
+		  &worker_pool_context_manager, task_count, false /*debug_logging*/);
+  }
+
+  void redo_parallel::do_init_tasks()
+  {
+    assert (task_count > 0);
+    assert (worker_pool != nullptr);
+
+    for (unsigned task_idx = 0; task_idx < task_count; ++task_idx)
+      {
+	// NOTE: task ownership goes to the worker pool
+	auto task = new cublogrecovery::redo_task (task_idx, task_active_state_bookkeeping, queue);
+	worker_pool->execute (task);
       }
   }
 

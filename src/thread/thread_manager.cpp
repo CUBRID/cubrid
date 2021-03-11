@@ -85,6 +85,9 @@ namespace cubthread
     return;
 #else // not SA_MODE = SERVER_MODE
 
+    assert(m_all_entries == nullptr);
+    assert(m_entry_dispatcher == nullptr);
+
     m_available_entries_count = m_max_threads;
 
     m_all_entries = new entry[m_max_threads];
