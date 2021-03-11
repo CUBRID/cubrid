@@ -227,7 +227,7 @@ const char *broker_keywords[] = {
   "LOG_BACKUP",
   "MAX_STRING_LENGTH",
   "READ_ONLY_BROKER",
-  "STRIPPED_COLUMN_NAME"
+  "STRIPPED_COLUMN_NAME",
   /* Below is a list of reserved keywords for shard extension in the future */
   "DEFAULT_SHARD_NUM_PROXY",
   "DEFAULT_SHARD_PROXY_LOG_DIR",
