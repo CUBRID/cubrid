@@ -38,6 +38,7 @@ jobs:
     <<: *defaults
     environment:
       MAKEFLAGS: -j2
+      BUILD_DIR_NAME: build_x86_64_release
     
     steps:
       - checkout:
@@ -48,7 +49,7 @@ jobs:
       - run:
           name: Unit tests
           command: |
-            cd /home/qa/cubrid/${BUILD_DIR_NAME}/bin
+            cd /home/cubrid/${BUILD_DIR_NAME}/bin
             sh ./run_scalability_unit_tests.sh
       - persist_to_workspace:
           root: .
