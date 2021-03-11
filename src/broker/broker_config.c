@@ -223,12 +223,31 @@ const char *broker_keywords[] = {
   "CCI_PCONNECT",
   "DATABASES_CONNECTION_FILE",
   "ENABLE_MONITOR_SERVER",
-  "JDBC_CACHE_ONLY_HINT",
   "JOB_QUEUE_SIZE",
   "LOG_BACKUP",
   "MAX_STRING_LENGTH",
   "READ_ONLY_BROKER",
   "STRIPPED_COLUMN_NAME"
+  /* Below is a list of reserved keywords for shard extension in the future */
+  "DEFAULT_SHARD_NUM_PROXY",
+  "DEFAULT_SHARD_PROXY_LOG_DIR",
+  "DEFAULT_SHARD_PROXY_LOG_MAX_SIZE",
+  "DEFAULT_SHARD_PROXY_LOG_MODE",
+  "SHARD_CONNECTION_FILE",
+  "SHARD_DB_NAME",
+  "SHARD_DB_PASSWORD",
+  "SHARD_DB_USER",
+  "SHARD_IGNORE_HINT",
+  "SHARD_KEY_FILE",
+  "SHARD_KEY_FUNCTION_NAME",
+  "SHARD_KEY_LIBRARY_NAME",
+  "SHARD_KEY_MODULAR",
+  "SHARD_MAX_CLIENTS",
+  "SHARD_MAX_PREPARED_STMT_COUNT",
+  "SHARD_PROXY_CONN_WAIT_TIMEOUT",
+  "SHARD_PROXY_LOG_MAX_SIZE",
+  "SHARD_PROXY_SHM_ID",
+  "SHARD_PROXY_TIMEOUT"
 };
 
 int broker_keywords_size = sizeof (broker_keywords) / sizeof (char *);
@@ -763,7 +782,7 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	}
 
       br_info[num_brs].jdbc_cache_only_hint =
-	conf_get_value_table_on_off (ini_getstr (ini, sec_name, "JDBC_CACHE_ONLY_HINT", "OFF", &lineno));
+	conf_get_value_table_on_off (ini_getstr (ini, sec_name, "JDBC_CACHE_HINT_ONLY", "OFF", &lineno));
       if (br_info[num_brs].jdbc_cache_only_hint < 0)
 	{
 	  errcode = PARAM_BAD_VALUE;
