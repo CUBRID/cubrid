@@ -455,6 +455,7 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
             if (strcasecmp (key, broker_keywords[j]) == 0)
               {
                 found = true;
+                break;
               }
           }
 
