@@ -38,33 +38,32 @@
 #include <set>
 #include <vector>
 
-namespace cublogrecovery
+namespace cublog
 {
   /* contains a single vpid-backed log record entry to be applied on a page
    *
    * NOTE: an optimization would be to allow this to be a container of more than
    *  one same-vpid log record entry to be applied in one go by the same thread
    */
-  class redo_log_rec_entry
+  class redo_job_base
   {
     public:
-      redo_log_rec_entry () = delete;
-      redo_log_rec_entry ( redo_log_rec_entry const &) = delete;
-      redo_log_rec_entry ( redo_log_rec_entry &&) = delete;
-
-      redo_log_rec_entry &operator = ( redo_log_rec_entry const &) = delete;
-      redo_log_rec_entry &operator = ( redo_log_rec_entry &&) = delete;
-
-      redo_log_rec_entry (VPID a_vpid)
+      redo_job_base (VPID a_vpid)
 	: vpid (a_vpid)
       {
-	// the logic implemented below, in the queue an task, does allow for null-vpid type of
+	// the logic implemented below, in the queue and task, does allow for null-vpid type of
 	// entries to be executed - they are called "to be waited for" or "synched" operations;
 	// but, for now, do not allow them to be dispatched to be executed asynchronously
 	assert (!VPID_ISNULL (&vpid));
       }
+      redo_job_base () = delete;
+      redo_job_base ( redo_job_base const &) = delete;
+      redo_job_base ( redo_job_base &&) = delete;
 
-      virtual ~redo_log_rec_entry() = default;
+      virtual ~redo_job_base() = default;
+
+      redo_job_base &operator = ( redo_job_base const &) = delete;
+      redo_job_base &operator = ( redo_job_base &&) = delete;
 
       /* log entries come in more than one flavor:
        *  - pertain to a certain vpid - aka: page update
@@ -76,94 +75,58 @@ namespace cublogrecovery
 	return vpid;
       }
 
-      inline VOLID get_vol_id() const
-      {
-	return vpid.volid;
-      }
-
-      inline PAGEID get_page_id() const
-      {
-	return vpid.pageid;
-      }
-
       virtual int do_work (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
 			   LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support) = 0;
 
-      /* TODO: functions are needed only for testing purposes and might not have
-       * any usefulness/meaning upon integration in production code
-       */
-      bool get_is_to_be_waited_for_op() const
+      bool get_is_to_be_waited_for() const
       {
 	return vpid.volid == NULL_VOLID || vpid.pageid == NULL_PAGEID;
       }
 
-      bool is_volume_creation() const
-      {
-	return vpid.volid == NULL_VOLID && vpid.pageid == NULL_PAGEID;
-      }
-      bool is_volume_extension() const
-      {
-	return vpid.volid != NULL_VOLID && vpid.pageid == NULL_PAGEID;
-      }
-      bool is_page_modification() const
-      {
-	return vpid.volid != NULL_VOLID && vpid.pageid != NULL_PAGEID;
-      }
-
-      bool operator == (const redo_log_rec_entry &that) const
-      {
-	const bool res = get_vol_id() == that.get_vol_id()
-			 && get_page_id() == that.get_page_id();
-	if (!res)
-	  {
-	    const auto dummy = res;
-	  }
-	return res;
-      }
-
-      /* NOTE: actual payload goes below
-       */
-
     private:
-      VPID vpid;
-
-      /* NOTE: actual payload goes below
-       */
+      const VPID vpid;
   };
-  using ux_redo_lsa_log_entry = std::unique_ptr<redo_log_rec_entry>;
+  using ux_redo_job_base = std::unique_ptr<redo_job_base>;
 
 
   /*
    */
   template <typename TYPE_LOG_REC>
-  class redo_log_rec_entry_templ final : public redo_log_rec_entry
+  class redo_job_impl final : public redo_job_base
   {
       using log_rec_t = TYPE_LOG_REC;
 
     public:
-      redo_log_rec_entry_templ () = delete;
-      redo_log_rec_entry_templ (VPID a_vpid, const log_rec_t &a_log_rec, const log_lsa &a_rcv_lsa,
-				const LOG_LSA *a_end_redo_lsa,
-				LOG_RECTYPE a_log_rtype)
-	: redo_log_rec_entry (a_vpid)
-	, log_rec (a_log_rec)
+      redo_job_impl () = delete;
+      redo_job_impl (VPID a_vpid, const log_lsa &a_rcv_lsa, const LOG_LSA *a_end_redo_lsa, LOG_RECTYPE a_log_rtype)
+	: redo_job_base (a_vpid)
 	, rcv_lsa (a_rcv_lsa)
 	, end_redo_lsa (a_end_redo_lsa)
 	, log_rtype (a_log_rtype)
       {
       }
 
-      redo_log_rec_entry_templ ( redo_log_rec_entry_templ const &) = delete;
-      redo_log_rec_entry_templ ( redo_log_rec_entry_templ &&) = delete;
+      redo_job_impl ( redo_job_impl const &) = delete;
+      redo_job_impl ( redo_job_impl &&) = delete;
 
-      ~redo_log_rec_entry_templ() override = default;
+      ~redo_job_impl() override = default;
 
-      redo_log_rec_entry_templ &operator = ( redo_log_rec_entry_templ const &) = delete;
-      redo_log_rec_entry_templ &operator = ( redo_log_rec_entry_templ &&) = delete;
+      redo_job_impl &operator = ( redo_job_impl const &) = delete;
+      redo_job_impl &operator = ( redo_job_impl &&) = delete;
 
       int do_work (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
 		   LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support) override
       {
+	const int err_set_lsa_and_fetch_page =  log_pgptr_reader.set_lsa_and_fetch_page (rcv_lsa);
+	if (err_set_lsa_and_fetch_page != NO_ERROR)
+	  {
+	    return err_set_lsa_and_fetch_page;
+	  }
+	log_pgptr_reader.add_align (sizeof (LOG_RECORD_HEADER));
+	log_pgptr_reader.advance_when_does_not_fit (sizeof (TYPE_LOG_REC));
+	const TYPE_LOG_REC log_rec
+	  = log_pgptr_reader.reinterpret_copy_and_add_align<TYPE_LOG_REC> ();
+
 	const auto &rcv_vpid = get_vpid ();
 	log_rv_redo_record_sync<log_rec_t> (thread_p, log_pgptr_reader, log_rec, rcv_vpid, rcv_lsa, end_redo_lsa,
 					    log_rtype, undo_unzip_support, redo_unzip_support);
@@ -171,7 +134,6 @@ namespace cublogrecovery
       }
 
     private:
-      const log_rec_t log_rec;
       const log_lsa rcv_lsa;
       const LOG_LSA *end_redo_lsa;  // by design pointer is guaranteed to outlive this instance
       const LOG_RECTYPE log_rtype;
@@ -180,22 +142,22 @@ namespace cublogrecovery
 
   /* rynchronizes prod/cons of log entries in n-prod - m-cons fashion
    */
-  class redo_log_rec_entry_queue final
+  class redo_job_queue final
   {
-      using ux_entry_deque = std::deque<ux_redo_lsa_log_entry>;
+      using ux_redo_job_deque = std::deque<ux_redo_job_base>;
       using vpid_set = std::set<VPID>;
 
     public:
-      redo_log_rec_entry_queue();
-      ~redo_log_rec_entry_queue();
+      redo_job_queue();
+      ~redo_job_queue();
 
-      redo_log_rec_entry_queue ( redo_log_rec_entry_queue const & ) = delete;
-      redo_log_rec_entry_queue ( redo_log_rec_entry_queue && ) = delete;
+      redo_job_queue ( redo_job_queue const & ) = delete;
+      redo_job_queue ( redo_job_queue && ) = delete;
 
-      redo_log_rec_entry_queue &operator= ( redo_log_rec_entry_queue const & ) = delete;
-      redo_log_rec_entry_queue &operator= ( redo_log_rec_entry_queue && ) = delete;
+      redo_job_queue &operator= ( redo_job_queue const & ) = delete;
+      redo_job_queue &operator= ( redo_job_queue && ) = delete;
 
-      void locked_push (ux_redo_lsa_log_entry &&entry);
+      void locked_push (ux_redo_job_base &&job);
 
       /* to be called after all known entries have been added
        * part of a mechanism to signal to the consumers, together with
@@ -209,7 +171,7 @@ namespace cublogrecovery
        * flag set to true signals to the callers that no more data is expected
        * and, therefore, they can also terminate
        */
-      ux_redo_lsa_log_entry locked_pop (bool &adding_finished);
+      ux_redo_job_base locked_pop (bool &adding_finished);
 
       void notify_to_be_waited_for_op_finished();
       void notify_in_progress_vpid_finished (VPID a_vpid);
@@ -227,9 +189,9 @@ namespace cublogrecovery
     private:
       /* two queues are internally managed
        */
-      ux_entry_deque *produce_queue;
+      ux_redo_job_deque *produce_queue;
       std::mutex produce_queue_mutex;
-      ux_entry_deque *consume_queue;
+      ux_redo_job_deque *consume_queue;
       std::mutex consume_queue_mutex;
 
       std::atomic_bool adding_finished;
@@ -279,20 +241,22 @@ namespace cublogrecovery
       redo_task_active_state_bookkeeping &operator = (const redo_task_active_state_bookkeeping & ) = delete;
       redo_task_active_state_bookkeeping &operator = (redo_task_active_state_bookkeeping && ) = delete;
 
-      void set_active (std::size_t _id)
+      void set_active (std::size_t a_id)
       {
 	std::lock_guard<std::mutex> lck (active_set_mutex);
 
-	assert (_id < BOOKKEEPING_MAX_COUNT);
-	active_set.set (_id);
+	assert (a_id < BOOKKEEPING_MAX_COUNT);
+	assert (false == active_set.test (a_id)); // supplied id must be unique among all used ids
+	active_set.set (a_id);
       }
 
-      void set_inactive (std::size_t _id)
+      void set_inactive (std::size_t a_id)
       {
 	std::lock_guard<std::mutex> lck (active_set_mutex);
 
-	assert (_id < BOOKKEEPING_MAX_COUNT);
-	active_set.reset (_id);
+	assert (a_id < BOOKKEEPING_MAX_COUNT);
+	assert (true == active_set.test (a_id)); // supplied id must be unique among all used ids
+	active_set.reset (a_id);
       }
 
       bool any_active() const
@@ -308,7 +272,8 @@ namespace cublogrecovery
   };
 
 
-  /*
+  /* a long running task looping and processing redo log jobs;
+   * offers some 'support' instances to the
    */
   class redo_task final : public cubthread::task<cubthread::entry>
   {
@@ -317,7 +282,7 @@ namespace cublogrecovery
 
     public:
       redo_task (std::size_t a_task_id, redo_task_active_state_bookkeeping &a_task_active_state_bookkeeping,
-		 redo_log_rec_entry_queue &a_queue);
+		 redo_job_queue &a_queue);
       redo_task (const redo_task & ) = delete;
       redo_task (redo_task && ) = delete;
 
@@ -329,15 +294,11 @@ namespace cublogrecovery
       void execute (context_type &context);
 
     private:
-      static void dummy_busy_wait (size_t _millis);
-
-    private:
       // internal bookkeeping variable, must be unique among all task id's within the same pool
       std::size_t task_id;
 
       redo_task_active_state_bookkeeping &task_active_state_bookkeeping;
-
-      redo_log_rec_entry_queue &queue;
+      redo_job_queue &queue;
 
       log_reader log_pgptr_reader;
       LOG_ZIP undo_unzip_support;
@@ -360,9 +321,16 @@ namespace cublogrecovery
       redo_parallel &operator = (const redo_parallel & ) = delete;
       redo_parallel &operator = (redo_parallel && ) = delete;
 
-      // TODO: add work
+      /* add new work job
+       */
+      void add (ux_redo_job_base &&job);
 
+      /* mandatory to explicitly call this after all data have been added
+       */
       void set_adding_finished();
+
+      /* mandatory to explicitly call this before dtor
+       */
       void wait_for_termination_and_stop_execution();
 
     private:
@@ -377,11 +345,12 @@ namespace cublogrecovery
       cubthread::entry_manager worker_pool_context_manager;
       cubthread::entry_workpool *worker_pool;
 
-      redo_log_rec_entry_queue queue;
+      redo_job_queue queue;
       redo_task_active_state_bookkeeping task_active_state_bookkeeping;
 
       bool waited_for_termination;
   };
+  using ux_redo_parallel = std::unique_ptr<redo_parallel>;
 }
 
 #endif // LOG_RECOVERY_REDO_HPP

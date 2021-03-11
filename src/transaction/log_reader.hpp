@@ -31,6 +31,8 @@
  * NOTE: further functionality:
  *  - introduce an internal buffer to be used for copying and serving
  *    data from the log of arbitrary size; currently this is done manually outside this class
+ *
+ * TODO: introduce THREAD_ENTRY as argument to all functions or as ctor argument
  */
 class log_reader final
 {
@@ -121,7 +123,7 @@ class log_reader final
 void LOG_READ_ALIGN (THREAD_ENTRY *thread_p, LOG_LSA *lsa, LOG_PAGE *log_pgptr);
 void LOG_READ_ADD_ALIGN (THREAD_ENTRY *thread_p, size_t add, LOG_LSA *lsa, LOG_PAGE *log_pgptr);
 void LOG_READ_ADVANCE_WHEN_DOESNT_FIT (THREAD_ENTRY *thread_p, size_t length, LOG_LSA *lsa,
-                                       LOG_PAGE *log_pgptr);
+				       LOG_PAGE *log_pgptr);
 
 
 /* implementation

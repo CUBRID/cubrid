@@ -19,18 +19,15 @@
 #include "dbtype_def.hpp"
 #include "log_recovery_redo_parallel.hpp"
 
-#include <iomanip>
-#include <sstream>
-
-namespace cublogrecovery
+namespace cublog
 {
   /**********************
-   * redo_log_rec_entry_queue
+   * redo_job_queue
    **********************/
 
-  redo_log_rec_entry_queue::redo_log_rec_entry_queue()
-    : produce_queue ( new ux_entry_deque() )
-    , consume_queue ( new ux_entry_deque() )
+  redo_job_queue::redo_job_queue()
+    : produce_queue ( new ux_redo_job_deque() )
+    , consume_queue ( new ux_redo_job_deque() )
     , adding_finished { false }
     , to_be_waited_for_op_in_progress (false)
     , dbg_stats_cons_queue_skip_count (0u)
@@ -38,7 +35,7 @@ namespace cublogrecovery
   {
   }
 
-  redo_log_rec_entry_queue::~redo_log_rec_entry_queue()
+  redo_job_queue::~redo_job_queue()
   {
     assert (produce_queue->size() == 0);
     assert (consume_queue->size() == 0);
@@ -51,23 +48,23 @@ namespace cublogrecovery
     consume_queue = nullptr;
   }
 
-  void redo_log_rec_entry_queue::locked_push (ux_redo_lsa_log_entry &&entry)
+  void redo_job_queue::locked_push (ux_redo_job_base &&job)
   {
     std::lock_guard<std::mutex> lck (produce_queue_mutex);
-    produce_queue->push_back (std::move (entry));
+    produce_queue->push_back (std::move (job));
   }
 
-  void redo_log_rec_entry_queue::set_adding_finished()
+  void redo_job_queue::set_adding_finished()
   {
     adding_finished.store (true);
   }
 
-  bool redo_log_rec_entry_queue::get_adding_finished() const
+  bool redo_job_queue::get_adding_finished() const
   {
     return adding_finished.load ();
   }
 
-  ux_redo_lsa_log_entry redo_log_rec_entry_queue::locked_pop (bool &out_adding_finished)
+  ux_redo_job_base redo_job_queue::locked_pop (bool &out_adding_finished)
   {
     std::unique_lock<std::mutex> consume_queue_lock (consume_queue_mutex);
     // stop at the barrier if an operation which needs to be waited for is in progress
@@ -85,11 +82,16 @@ namespace cublogrecovery
 	//consume_queue = ATOMIC_TAS_ADDR (&produce_queue, consume_queue);
 	std::lock_guard<std::mutex> lck (produce_queue_mutex);
 	std::swap (produce_queue, consume_queue);
+
+	// TODO: a second barrier such that, consumption threads do not 'busy wait' by
+	// constantly swapping two empty containers; works in combination with a notification
+	// dispatched after new work items are added to the produce queue; this, in effect means that
+	// this function will semantically become 'blocking_pop'
       }
 
     if (consume_queue->size() > 0)
       {
-	ux_redo_lsa_log_entry first_in_consume_queue;
+	ux_redo_job_base first_in_consume_queue;
 
 	{
 	  // TODO: instead of every task sifting through entries locked in execution by other tasks,
@@ -145,7 +147,7 @@ namespace cublogrecovery
 	 */
 	//consume_queue_lock.unlock();
 
-	if (first_in_consume_queue->get_is_to_be_waited_for_op())
+	if (first_in_consume_queue->get_is_to_be_waited_for())
 	  {
 	    assert (to_be_waited_for_op_in_progress == false);
 	    to_be_waited_for_op_in_progress = true;
@@ -172,7 +174,7 @@ namespace cublogrecovery
       }
   }
 
-  void redo_log_rec_entry_queue::notify_to_be_waited_for_op_finished()
+  void redo_job_queue::notify_to_be_waited_for_op_finished()
   {
     assert (to_be_waited_for_op_in_progress == true);
     to_be_waited_for_op_in_progress = false;
@@ -180,7 +182,7 @@ namespace cublogrecovery
     to_be_waited_for_op_in_progress_cv.notify_all();
   }
 
-  void redo_log_rec_entry_queue::notify_in_progress_vpid_finished (VPID _vpid)
+  void redo_job_queue::notify_in_progress_vpid_finished (VPID _vpid)
   {
     std::lock_guard<std::mutex> lock_in_progress_vpids (in_progress_vpids_mutex);
     assert (in_progress_vpids.find (_vpid) != in_progress_vpids.cend());
@@ -194,7 +196,7 @@ namespace cublogrecovery
   constexpr unsigned short redo_task::WAIT_AND_CHECK_MILLIS;
 
   redo_task::redo_task (std::size_t a_task_id, redo_task_active_state_bookkeeping &a_task_active_state_bookkeeping,
-			redo_log_rec_entry_queue &a_queue)
+			redo_job_queue &a_queue)
     : task_id (a_task_id), task_active_state_bookkeeping (a_task_active_state_bookkeeping), queue (a_queue)
   {
     // important to set this at this moment and not when execution begins
@@ -216,58 +218,35 @@ namespace cublogrecovery
   {
     bool finished = false;
 
+    //
+    context.tran_index = LOG_SYSTEM_TRAN_INDEX;
+
     for (; !finished ;)
       {
-	bool buckets_adding_finished = false;
-	auto bucket = queue.locked_pop (buckets_adding_finished);
+	bool adding_finished = false;
+	ux_redo_job_base job = queue.locked_pop (adding_finished);
 
-	if (bucket == nullptr && buckets_adding_finished)
+	if (job == nullptr && adding_finished)
 	  {
 	    finished = true;
 	  }
 	else
 	  {
-	    if (bucket == nullptr)
+	    if (job == nullptr)
 	      {
-		// TODO: check if requested to finish ourselves
+		// TODO: if needed, check if requested to finish ourselves
 
 		// expecting more data, sleep and check again
 		std::this_thread::sleep_for (std::chrono::milliseconds (WAIT_AND_CHECK_MILLIS));
 	      }
 	    else
 	      {
-//		    redo_entry_bucket::ux_redo_lsa_log_entry_vector &bucket_entries = bucket->get_redo_lsa_log_entry_vec();
+		THREAD_ENTRY *const thread_entry = &context;
+		job->do_work (thread_entry, log_pgptr_reader, undo_unzip_support, redo_unzip_support);
 
-		std::stringstream dbg_ss_consume;
-		dbg_ss_consume << "C: "
-			       << "syn_" << bucket->get_is_to_be_waited_for_op()
-			       << std::setw (4) << bucket->get_vol_id() << std::setfill ('_')
-			       << std::setw (5) << bucket->get_page_id() << std::setfill (' ')
-			       << " tid" << std::setw (3) << std::setfill ('_') << task_id << std::setfill (' ')
-			       // << " (" << std::setw (3) << remaining_per_transaction.initial_remaining_log_entry_count << ")"
-			       << "  eids:";
+		queue.notify_in_progress_vpid_finished (job->get_vpid ());
 
-//		    for (ux_redo_lsa_log_entry &entry : bucket_entries)
-//		      {
-//			// NOTE: actual useful bit of work here
-//			//std::this_thread::sleep_for (std::chrono::milliseconds (entry->get_millis()));
-//			dummy_busy_wait (entry->get_millis());
-
-//			dbg_ss_consume << std::setw (7) << entry->get_entry_id();
-
-//			dbg_db_database->apply_changes (std::move (entry));
-//		      }
-		//dummy_busy_wait (bucket->get_millis ());
-
-		// save needed data before move
-		const VPID bucket_vpid = bucket->get_vpid ();
-		const bool bucket_is_to_be_waited_for = bucket->get_is_to_be_waited_for_op();
-
-		dbg_ss_consume << std::endl;
-
-		queue.notify_in_progress_vpid_finished (bucket_vpid);
-
-		if (bucket_is_to_be_waited_for)
+		if (job->get_is_to_be_waited_for ())
 		  {
 		    queue.notify_to_be_waited_for_op_finished();
 		  }
@@ -276,25 +255,6 @@ namespace cublogrecovery
       }
 
     task_active_state_bookkeeping.set_inactive (task_id);
-  }
-
-  void redo_task::dummy_busy_wait (size_t _millis)
-  {
-    const auto start = std::chrono::system_clock::now();
-    // declare sum outside the loop to simulate a side effect
-    double sum = 0;
-    while (true)
-      {
-	for (double sum_idx = 0.; sum_idx < 10000.; sum_idx += 1.0)
-	  {
-	    sum *= sum_idx;
-	  }
-	const std::chrono::duration<double, std::milli> diff_millis = std::chrono::system_clock::now() - start;
-	if (_millis < diff_millis.count())
-	  {
-	    break;
-	  }
-      }
   }
 
   /**********************
@@ -310,7 +270,7 @@ namespace cublogrecovery
     //cubthread::entry *thread_pool = nullptr;
     //cubthread::initialize (thread_pool);
 
-    task_count = std::thread::hardware_concurrency();
+    task_count = 2; // std::thread::hardware_concurrency();
 
     do_init_thread_manager ();
     do_init_worker_pool ();
@@ -324,11 +284,20 @@ namespace cublogrecovery
     assert (waited_for_termination);
   }
 
+  void redo_parallel::add (ux_redo_job_base &&job)
+  {
+    assert (false == waited_for_termination);
+    assert (thread_manager != nullptr);
+    assert (false == queue.get_adding_finished ());
+
+    queue.locked_push (std::move (job));
+  }
+
   void redo_parallel::set_adding_finished()
   {
-    assert(false == waited_for_termination);
-    assert(thread_manager != nullptr);
-    assert(false == queue.get_adding_finished ());
+    assert (false == waited_for_termination);
+    assert (thread_manager != nullptr);
+    assert (false == queue.get_adding_finished ());
 
     queue.set_adding_finished ();
   }
@@ -346,7 +315,7 @@ namespace cublogrecovery
 
     worker_pool->stop_execution ();
     thread_manager->destroy_worker_pool (worker_pool);
-    assert(worker_pool == nullptr);
+    assert (worker_pool == nullptr);
 
     waited_for_termination = true;
   }
@@ -381,7 +350,7 @@ namespace cublogrecovery
     for (unsigned task_idx = 0; task_idx < task_count; ++task_idx)
       {
 	// NOTE: task ownership goes to the worker pool
-	auto task = new cublogrecovery::redo_task (task_idx, task_active_state_bookkeeping, queue);
+	auto task = new redo_task (task_idx, task_active_state_bookkeeping, queue);
 	worker_pool->execute (task);
       }
   }
