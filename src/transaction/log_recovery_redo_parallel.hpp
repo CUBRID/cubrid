@@ -20,23 +20,15 @@
 #define LOG_RECOVERY_REDO_HPP
 
 #include "log_compress.h"
-#include "log_reader.hpp"
-#include "log_record.hpp"
 #include "log_recovery_redo_sequential.hpp"
-#include "storage_common.h"
-#include "thread_entry.hpp"
 #include "thread_manager.hpp"
-#include "thread_task.hpp"
 #include "thread_worker_pool.hpp"
 
-#include <atomic>
 #include <bitset>
 #include <condition_variable>
 #include <deque>
-#include <memory>
 #include <mutex>
 #include <set>
-#include <vector>
 
 namespace cublog
 {
