@@ -1,7 +1,7 @@
 name: Check # 빼먹을 경우 그냥 이 파일 경로가 출력됨. 없앨 수 없나..
 on: 
   pull_request:
-    branches: [ github-action ]
+    branches: [ develop ]
 jobs:
   pr-style:
     name: pr-style
