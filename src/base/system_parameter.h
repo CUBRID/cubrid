@@ -455,9 +455,10 @@ enum param_id
 
   PRM_ID_PAGE_SERVER_HOSTS,
   PRM_ID_SERVER_TYPE,
+  PRM_ID_LOG_RECOVERY_REDO_PARALLEL,
 
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_SERVER_TYPE
+  PRM_LAST_ID = PRM_ID_LOG_RECOVERY_REDO_PARALLEL
 };
 typedef enum param_id PARAM_ID;
 

@@ -3167,12 +3167,20 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   LOG_ZIP *redo_unzip_ptr = NULL;
   bool is_mvcc_op = false;
 
+  /* depending on compilation mode and on system parameter, initialize the
+   * infrastructure for parallel log recovery;
+   * if infrastructure is not initialized dependent code below works sequentially */
   LOG_CS_EXIT (thread_p);
-  cublog::ux_redo_parallel parallel_recovery_redo
+  cublog::ux_redo_parallel parallel_recovery_redo;
 #if defined(SERVER_MODE)
-    (new cublog::redo_parallel ())
+  {
+    const bool perform_log_recovery_redo_parallel = prm_get_bool_value (PRM_ID_LOG_RECOVERY_REDO_PARALLEL);
+    if (perform_log_recovery_redo_parallel)
+      {
+	parallel_recovery_redo.reset (new cublog::redo_parallel ());
+      }
+  }
 #endif
-    ;
 
   /*
    * GO FORWARD, redoing records of all transactions including aborted ones.

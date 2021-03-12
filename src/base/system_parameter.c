@@ -695,6 +695,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_PAGE_SERVER_HOSTS "page_server_hosts"
 #define PRM_NAME_SERVER_TYPE "server_type"
+#define PRM_NAME_LOG_RECOVERY_REDO_PARALLEL "log_recovery_redo_parallel"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -2341,6 +2342,10 @@ static unsigned int prm_ignore_trailing_space_flag = 0;
 bool PRM_DDL_AUDIT_LOG = false;
 static bool prm_ddl_audit_log_default = false;
 static unsigned int prm_ddl_audit_log_flag = 0;
+
+bool PRM_DDL_LOG_RECOVERY_REDO_PARALLEL = true;
+static bool prm_ddl_log_recovery_redo_parallel_default = true;
+static unsigned int prm_ddl_log_recovery_redo_parallel_flag = 0;
 
 UINT64 PRM_DDL_AUDIT_LOG_SIZE = 10485760ULL;
 static UINT64 prm_ddl_audit_log_size_default = 10485760ULL;	/* 10M */
@@ -6074,6 +6079,17 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  {PRM_ID_LOG_RECOVERY_REDO_PARALLEL,
+   PRM_NAME_LOG_RECOVERY_REDO_PARALLEL,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_ddl_log_recovery_redo_parallel_flag,
+   (void *) &prm_ddl_log_recovery_redo_parallel_default,
+   (void *) &PRM_DDL_LOG_RECOVERY_REDO_PARALLEL,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL}
 };
 
 #define NUM_PRM ((int)(sizeof(prm_Def)/sizeof(prm_Def[0])))
@@ -8200,8 +8216,7 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len, PRM_PRINT_MODE print
 	}
       else if (intl_mbs_casecmp (prm->name, PRM_NAME_SERVER_TYPE) == 0)
 	{
-	  keyvalp =
-	    prm_keyword (PRM_GET_INT (prm->value), NULL, server_type_words, DIM (server_type_words));
+	  keyvalp = prm_keyword (PRM_GET_INT (prm->value), NULL, server_type_words, DIM (server_type_words));
 	}
       else
 	{
