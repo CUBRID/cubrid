@@ -66,8 +66,10 @@ jobs:
           cppcheck --force -j4 --suppressions-list=.github/workflows/cppcheck-spr-list --enable=warning -iheaplayers src 2>cppcheck.result 
           echo "errors: `cat cppcheck.result | grep " error: " | wc -l`" > cppcheck.summary
           echo "warnings: `cat cppcheck.result | grep " warning: " | wc -l`" >> cppcheck.summary
-          echo "-----------------------------Result-------------------------------------"
+
+          echo "-----------------------------Summary-------------------------------------"
           cat cppcheck.summary
+
           ! cat cppcheck.result | grep " error: " 1>/dev/null # if has errors, fail
       - name: Get cppcheck.summary
         id: get-comment-body
