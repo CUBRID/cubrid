@@ -14185,7 +14185,8 @@ pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thread_p, const VPID * 
 #endif /* !NDEBUG */
   if (*page == NULL) // && !log_is_in_crash_recovery_and_not_yet_completes_redo ())
     {
-      ASSERT_ERROR_AND_SET (error_code);
+      error_code = er_errid ();
+      //ASSERT_ERROR_AND_SET (error_code);
       if (error_code == ER_PB_BAD_PAGEID)
 	{
 	  /* deallocated */
