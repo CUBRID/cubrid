@@ -75,6 +75,10 @@ log_global::log_global ()
   , bg_archive_info ()
   , mvcc_table ()
   , unique_stats_table GLOBAL_UNIQUE_STATS_TABLE_INITIALIZER
+  , m_prior_sender ()
+#if defined (SERVER_MODE)
+  , m_prior_recver (prior_info)
+#endif // SERVER_MODE = !SA_MODE
 {
 }
 // *INDENT-ON*

@@ -67,6 +67,7 @@
 #include "log_manager.h"
 #include "network.h"
 #include "object_representation.h"
+#include "page_server.hpp"
 #include "jsp_sr.h"
 #include "show_scan.h"
 #if defined(WINDOWS)
@@ -2627,12 +2628,6 @@ xacl_reload (THREAD_ENTRY * thread_p)
 }
 #endif // SERVER_MODE
 
-static void
-css_process_new_transaction_server (cubcomm::channel && chn)
-{
-  er_log_debug (ARG_FILE_LINE, "transaction server connected\n");
-}
-
 void
 css_process_server_server_connect (SOCKET master_fd)
 {
@@ -2648,9 +2643,8 @@ css_process_server_server_connect (SOCKET master_fd)
   int request = css_get_master_request (slave_fd);	//read an integer to determine connection type
   switch (STATIC_CAST (cubcomm::server_server, request))
     {
-    case cubcomm::server_server::CONNECT_TRANSACTION_SERVER:
-      chn.set_channel_name ("ATS_PS_comm");
-      css_process_new_transaction_server (std::move (chn));
+    case cubcomm::server_server::CONNECT_ACTIVE_TRAN_TO_PAGE_SERVER:
+      ps_Gl.set_active_tran_server_connection (std::move (chn));
       break;
     default:
       assert (false);
