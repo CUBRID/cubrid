@@ -24,6 +24,7 @@
 
 #include <algorithm>  // for std::min
 #include <memory.h>
+#include <string>
 
 void string_buffer::add_bytes (size_t len, const char *bytes)
 {

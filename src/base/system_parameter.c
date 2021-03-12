@@ -697,6 +697,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_SERVER_TYPE "server_type"
 
 #define PRM_NAME_ER_LOG_COMM_REQUEST "er_log_comm_request"
+#define PRM_NAME_ER_LOG_COMM_CHANNEL "er_log_comm_channel"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -2363,6 +2364,10 @@ static unsigned int prm_server_type_flag = 0;
 bool PRM_ER_LOG_COMM_REQUEST = false;
 static bool prm_er_log_comm_request_default = false;
 static unsigned int prm_er_log_comm_request_flag = 0;
+
+bool PRM_ER_LOG_COMM_CHANNEL = false;
+static bool prm_er_log_comm_channel_default = false;
+static unsigned int prm_er_log_comm_channel_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -6087,6 +6092,18 @@ static SYSPRM_PARAM prm_Def[] = {
    &prm_er_log_comm_request_flag,
    (void *) &prm_er_log_comm_request_default,
    (void *) &PRM_ER_LOG_COMM_REQUEST,
+   (void *) NULL,
+   (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_ER_LOG_COMM_CHANNEL,
+   PRM_NAME_ER_LOG_COMM_CHANNEL,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_er_log_comm_channel_flag,
+   (void *) &prm_er_log_comm_channel_default,
+   (void *) &PRM_ER_LOG_COMM_CHANNEL,
    (void *) NULL,
    (void *) NULL,
    (char *) NULL,
