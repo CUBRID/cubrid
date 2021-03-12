@@ -188,6 +188,7 @@ set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_sr.c
   ${COMMUNICATION_DIR}/communication_channel.cpp
   ${COMMUNICATION_DIR}/communication_server_channel.cpp
+  ${COMMUNICATION_DIR}/request_client_server.cpp
   )
 
 set(COMMUNICATION_HEADERS
@@ -331,6 +332,16 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/transaction_transient.hpp
   )
 
+set(SERVER_SOURCES
+  ${SERVER_DIR}/active_tran_server.cpp
+  ${SERVER_DIR}/page_server.cpp
+  )
+set(SERVER_HEADERS
+  ${SERVER_DIR}/active_tran_server.hpp
+  ${SERVER_DIR}/ats_ps_request.hpp
+  ${SERVER_DIR}/page_server.hpp
+  )
+
 set(STORAGE_SOURCES
   ${STORAGE_DIR}/btree.c
   ${STORAGE_DIR}/btree_load.c
@@ -451,6 +462,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${PARSER_SOURCES}
   ${PROBES_OBJECT}
   ${QUERY_SOURCES}
+  ${SERVER_SOURCES}
   ${SESSION_SOURCES}
   ${STORAGE_SOURCES}
   ${THREAD_SOURCES}
@@ -474,6 +486,7 @@ set (CUBRID_LIB_SOURCES
   ${OBJECT_SOURCES}
   ${PROBES_OBJECT}
   ${QUERY_SOURCES}
+  ${SERVER_SOURCES}
   ${SESSION_SOURCES}
   ${STORAGE_SOURCES}
   ${THREAD_SOURCES}
@@ -489,6 +502,7 @@ set (CUBRID_LIB_HEADERS
   ${MONITOR_HEADERS}
   ${OBJECT_HEADERS}
   ${QUERY_HEADERS}
+  ${SERVER_HEADERS}
   ${STORAGE_HEADERS}
   ${THREAD_HEADERS}
   ${TRANSACTION_HEADERS}
