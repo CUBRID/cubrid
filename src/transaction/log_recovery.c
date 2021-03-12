@@ -66,6 +66,7 @@ static void log_rv_redo_record (THREAD_ENTRY * thread_p, log_reader & log_pgptr_
 				const LOG_LSA * rcv_lsa_ptr, int undo_length, const char *undo_data,
 				LOG_ZIP & redo_unzip);
 
+static bool log_rv_need_sync_redo (LOG_RCVINDEX rcvindex);
 // *INDENT-OFF*
 template <typename T>
 static void log_rv_redo_record_sync_or_dispatch_async (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
@@ -536,6 +537,24 @@ log_rv_fix_page_and_check_redo_is_needed (THREAD_ENTRY * thread_p, const VPID & 
   return true;
 }
 
+/* log_rv_need_sync_redo - force some of the redo records to be applied synchronously
+ */
+bool
+log_rv_need_sync_redo (LOG_RCVINDEX rcvindex)
+{
+  switch (rcvindex)
+    {
+    case RVDK_NEWVOL:
+    case RVDK_FORMAT:
+    case RVDK_INITMAP:
+    case RVDK_RESERVE_SECTORS:
+    case RVDK_UNRESERVE_SECTORS:
+      return true;
+    default:
+      return false;
+    }
+}
+
 // *INDENT-OFF*
 /*
  * log_rv_redo_record_sync_or_dispatch_async - execute a redo record synchronously or
@@ -566,20 +585,27 @@ void log_rv_redo_record_sync_or_dispatch_async (THREAD_ENTRY * thread_p, log_rea
   const VPID rcv_vpid = log_rv_get_log_rec_vpid<T> (log_rec);
   // at this point, vpid can either be valid or not
 
+  const LOG_DATA &log_data = log_rv_get_log_rec_data<T> (log_rec);
+  const bool need_sync_redo = log_rv_need_sync_redo (log_data.rcvindex);
+
   // once vpid is extracted (or not), and depending on parameters, either dispatch the applying of
   // log redo asynchronously, or invoke synchronously
-  if (parallel_recovery_redo != nullptr && !VPID_ISNULL (&rcv_vpid))
+  if (parallel_recovery_redo == nullptr || VPID_ISNULL (&rcv_vpid) || need_sync_redo)
+    {
+      if (need_sync_redo)
+        {
+          const auto ss = need_sync_redo;
+        }
+      // invoke sync
+      log_rv_redo_record_sync<T>(thread_p, log_pgptr_reader, log_rec, rcv_vpid, rcv_lsa, end_redo_lsa, log_rtype,
+                                 undo_unzip_support, redo_unzip_support);
+    }
+  else
     {
       // dispatch async
       cublog::ux_redo_job_base job(
             new cublog::redo_job_impl<T>(rcv_vpid, rcv_lsa, end_redo_lsa, log_rtype));
       parallel_recovery_redo->add (std::move(job));
-    }
-  else
-    {
-      // invoke sync
-      log_rv_redo_record_sync<T>(thread_p, log_pgptr_reader, log_rec, rcv_vpid, rcv_lsa, end_redo_lsa, log_rtype,
-                                 undo_unzip_support, redo_unzip_support);
     }
 }
 // *INDENT-ON*
