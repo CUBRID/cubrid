@@ -25,6 +25,8 @@
 
 #include "connection_support.h"
 #include "connection_globals.h"
+#include "error_manager.h"
+#include "system_parameter.h"
 
 #if defined(WINDOWS)
 #include "wintcp.h"
@@ -38,6 +40,8 @@
 
 namespace cubcomm
 {
+#define er_log_chn_debug(...) \
+  if (prm_get_bool_value (PRM_ID_ER_LOG_COMM_CHANNEL)) _er_log_debug (ARG_FILE_LINE, "[COMM_CHN]" __VA_ARGS__)
 
   channel::channel (int max_timeout_in_ms)
     : m_max_timeout_in_ms (max_timeout_in_ms),
@@ -86,6 +90,8 @@ namespace cubcomm
     assert (m_type != NO_TYPE);
 
     rc = css_net_recv (m_socket, buffer, &copy_of_maxlen_in_recvlen_out, m_max_timeout_in_ms);
+    er_log_chn_debug ("[%s] Receive buffer of size = %d, max_size = %zu, result = %d", get_channel_id ().c_str (),
+		      copy_of_maxlen_in_recvlen_out, maxlen_in_recvlen_out, rc);
     maxlen_in_recvlen_out = copy_of_maxlen_in_recvlen_out;
     return (css_error_code) rc;
   }
@@ -102,31 +108,40 @@ namespace cubcomm
     total_len = (int) (sizeof (int) + length);
 
     rc = css_send_io_vector_with_socket (m_socket, iov, total_len, vector_length, m_max_timeout_in_ms);
+    er_log_chn_debug ("[%s] Send buffer of size = %zu, result = %d.\n", get_channel_id ().c_str (), length);
     return (css_error_code) rc;
   }
 
   bool channel::send_int (int val)
   {
     int v = htonl (val);
-    return (::send (m_socket, reinterpret_cast<const char *> (&v), sizeof (v), 0) == sizeof (v));
+    bool ret = (::send (m_socket, reinterpret_cast<const char *> (&v), sizeof (v), 0) == sizeof (v));
+    er_log_chn_debug ("[%s] Send int value = %d %s.\n", get_channel_id ().c_str (), val,
+		      ret ? "successfully" : "failed");
+    return ret;
   }
 
   css_error_code channel::recv_int (int &received)
   {
     size_t len = sizeof (received);
-    auto rc = recv ((char *) &received, len);
-    if (rc != NO_ERRORS)
-      {
-	return rc;
-      }
 
-    if (len != sizeof (received))
+    size_t readlen = (size_t) css_readn (m_socket, reinterpret_cast<char *> (&received), (int) len,
+					 m_max_timeout_in_ms);
+    css_error_code error = NO_ERRORS;
+    if (readlen < 0)
       {
-	return css_error_code::ERROR_ON_COMMAND_READ;
+	error = css_error_code::ERROR_ON_COMMAND_READ;
       }
-
-    received = ntohl (received);
-    return NO_ERRORS;
+    else if (readlen != len)
+      {
+	error = css_error_code::READ_LENGTH_MISMATCH;
+      }
+    else
+      {
+	received = ntohl (received);
+      }
+    er_log_chn_debug ("[%s] Receive int value = %d, error = %d.\n", get_channel_id ().c_str (), received, error);
+    return error;
   }
 
   css_error_code channel::connect (const char *hostname, int port)
@@ -139,6 +154,8 @@ namespace cubcomm
 
     m_type = CHANNEL_TYPE::INITIATOR;
     m_socket = css_tcp_client_open (hostname, port);
+
+    er_log_chn_debug ("[%s] Connect to %s:%d socket = %d.\n", get_channel_id ().c_str (), hostname, port, m_socket);
 
     if (IS_INVALID_SOCKET (m_socket))
       {
@@ -153,6 +170,8 @@ namespace cubcomm
 
   css_error_code channel::accept (SOCKET socket)
   {
+    er_log_chn_debug ("[%s] Accept connection to socket = %d.\n", get_channel_id ().c_str (), socket);
+
     if (is_connection_alive () || IS_INVALID_SOCKET (socket))
       {
 	return INTERNAL_CSS_ERROR;
@@ -168,6 +187,7 @@ namespace cubcomm
   {
     if (!IS_INVALID_SOCKET (m_socket))
       {
+	er_log_chn_debug ("[%s] Shutdown socket %d.\n", get_channel_id ().c_str (), m_socket);
 	css_shutdown_socket (m_socket);
 	m_socket = INVALID_SOCKET;
 	m_type = NO_TYPE;
@@ -201,6 +221,7 @@ namespace cubcomm
 
     rc = css_platform_independent_poll (&poll_fd, 1, m_max_timeout_in_ms);
     revents = poll_fd.revents;
+    er_log_chn_debug ("[%s] Poll events=%d revents=%d result = %d.\n", get_channel_id ().c_str (), events, revents, rc);
 
     return rc;
   }
