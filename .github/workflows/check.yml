@@ -16,19 +16,19 @@ jobs:
     steps:
       - name: Install packages
         run: |
-          sudo apt-get -y install build-essential texi2html
+          # dependencies to build GNU indent
+          sudo apt-get -yq install build-essential texi2html wget
+          
+          # install astyle
+          sudo apt-get -yq install astyle
           
           # indent 2.2.11, the lastest version (2.2.12) make a different result
-          sudo apt-get -y install wget
           wget https://ftp.gnu.org/gnu/indent/indent-2.2.11.tar.gz
           tar xf indent-2.2.11.tar.gz
           cd indent-2.2.11
           ./configure
           sudo make -j install
           cd ..
-
-          # astyle
-          sudo apt-get -y install astyle
       - uses: actions/checkout@v2
       - id: files
         uses: jitterbit/get-changed-files@v1
