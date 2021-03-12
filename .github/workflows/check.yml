@@ -1,0 +1,90 @@
+name: Check # 빼먹을 경우 그냥 이 파일 경로가 출력됨. 없앨 수 없나..
+on: 
+  pull_request:
+    branches: [ github-action ]
+jobs:
+  pr-style:
+    name: pr-style
+    runs-on: ubuntu-latest
+    steps:
+      - uses: deepakputhraya/action-pr-title@master
+        with:
+          regex: '^\[[A-Z]+-\d+\]\s.+' # Regex the title should match.
+  code-style:
+    name: code-style
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install packages
+        run: |
+          sudo apt-get -y install build-essential texi2html
+          
+          # indent 2.2.11, the lastest version (2.2.12) make a different result
+          sudo apt-get -y install wget
+          wget https://ftp.gnu.org/gnu/indent/indent-2.2.11.tar.gz
+          tar xf indent-2.2.11.tar.gz
+          cd indent-2.2.11
+          ./configure
+          sudo make -j install
+          cd ..
+
+          # astyle
+          sudo apt-get -y install astyle
+      - uses: actions/checkout@v2
+      - id: files
+        uses: jitterbit/get-changed-files@v1
+      - name: Check code style
+        id: stylecheck
+        run: |
+          for f in ${{ steps.files.outputs.added_modified }}; do
+            ext=$(expr $f : ".*\(\..*\)")
+            case $ext in
+            .c|.h|.i)
+              indent -l120 -lc120 ${f}
+            ;;
+            .cpp|.hpp|.ipp)
+              astyle --style=gnu --mode=c --indent-namespaces --indent=spaces=2 -xT8 -xt4 --add-brackets --max-code-length=120 --align-pointer=name --indent-classes --pad-header --pad-first-paren-out ${f}
+            ;;
+            esac
+            git diff | tee gitdiff
+            test ! -s gitdiff # is empty? yes: 0 no: 1
+          done 
+      - name: Suggest code changes
+        if: ${{ failure() }}
+        uses: reviewdog/action-suggester@v1
+        with:
+          tool_name: code-style (indent, astyle)
+  cppcheck:
+    name: cppcheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install packages
+        run: sudo apt-get install -y cppcheck 
+      - uses: actions/checkout@v2
+      - name: cppcheck
+        run: |
+          # to suppress other error, add it to .github/workflows/cppcheck-spr-list
+          cppcheck --force -j4 --suppressions-list=.github/workflows/cppcheck-spr-list --enable=warning -iheaplayers src 2>cppcheck.result 
+          echo "errors: `cat cppcheck.result | grep " error: " | wc -l`" > cppcheck.summary
+          echo "warnings: `cat cppcheck.result | grep " warning: " | wc -l`" >> cppcheck.summary
+          echo "-----------------------------Result-------------------------------------"
+          cat cppcheck.summary
+          ! cat cppcheck.result | grep " error: " 1>/dev/null # if has errors, fail
+      - name: Get cppcheck.summary
+        id: get-comment-body
+        if: ${{ failure() }}
+        run: |
+          body=$(cat cppcheck.summary)
+          body="${body//'%'/'%25'}"
+          body="${body//$'\n'/'%0A'}"
+          body="${body//$'\r'/'%0D'}" 
+          echo ::set-output name=body::$body
+      - name: Report cppcheck.summary
+        if: ${{ failure() }}
+        uses: unsplash/comment-on-pr@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          check_for_duplicate_msg: true  # OPTIONAL 
+          msg: |
+            **cppcheck**
+            ${{ steps.get-comment-body.outputs.body }}
