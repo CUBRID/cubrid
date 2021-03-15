@@ -36,15 +36,7 @@ jobs:
         id: stylecheck
         run: |
           for f in ${{ steps.files.outputs.added_modified }}; do
-            ext=$(expr $f : ".*\(\..*\)")
-            case $ext in
-            .c|.h|.i)
-              indent -l120 -lc120 ${f}
-            ;;
-            .cpp|.hpp|.ipp)
-              astyle --style=gnu --mode=c --indent-namespaces --indent=spaces=2 -xT8 -xt4 --add-brackets --max-code-length=120 --align-pointer=name --indent-classes --pad-header --pad-first-paren-out ${f}
-            ;;
-            esac
+            .github/workflows/codestyle.sh ${f}
           done 
           git diff | tee gitdiff
           test ! -s gitdiff # is empty? yes: 0 no: 1
