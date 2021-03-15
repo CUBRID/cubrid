@@ -50,7 +50,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Install packages
-        run: sudo apt-get install -y cppcheck 
+        run: sudo apt-get install -yq cppcheck 
       - uses: actions/checkout@v2
       - name: cppcheck
         run: |
