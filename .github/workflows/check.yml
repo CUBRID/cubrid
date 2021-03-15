@@ -45,9 +45,9 @@ jobs:
               astyle --style=gnu --mode=c --indent-namespaces --indent=spaces=2 -xT8 -xt4 --add-brackets --max-code-length=120 --align-pointer=name --indent-classes --pad-header --pad-first-paren-out ${f}
             ;;
             esac
-            git diff | tee gitdiff
-            test ! -s gitdiff # is empty? yes: 0 no: 1
           done 
+          git diff | tee gitdiff
+          test ! -s gitdiff # is empty? yes: 0 no: 1
       - name: Suggest code changes
         if: ${{ failure() }}
         uses: reviewdog/action-suggester@v1
