@@ -3916,7 +3916,7 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
   thread_return_lock_free_transaction_entries ();
   lf_destroy_transaction_systems ();
 
-  final_server_type ();
+  finalize_server_type ();
 
 #if defined(SERVER_MODE)
   /* server mode shuts down all modules */
