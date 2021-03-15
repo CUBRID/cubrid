@@ -18,9 +18,11 @@
 
 #include "server_type.hpp"
 
+#include "active_tran_server.hpp"
 #include "communication_server_channel.hpp"
 #include "connection_defs.h"
 #include "error_manager.h"
+#include "page_server.hpp"
 #include "system_parameter.h"
 
 #include <string>
@@ -42,84 +44,26 @@ SERVER_TYPE get_server_type ()
 //
 
 #if defined (SERVER_MODE)
-static std::string g_pageserver_hostname;
-static int g_pageserver_port;
-
-void init_page_server_hosts (const char *db_name);
-void connect_to_pageserver (std::string host, int port, const char *db_name);
 
 void init_server_type (const char *db_name)
 {
   g_server_type = (SERVER_TYPE) prm_get_integer_value (PRM_ID_SERVER_TYPE);
   if (g_server_type == SERVER_TYPE_TRANSACTION)
     {
-      init_page_server_hosts (db_name);
+      ats_Gl.init_page_server_hosts (db_name);
     }
 }
 
-void init_page_server_hosts (const char *db_name)
+void final_server_type ()
 {
-  assert (g_server_type == SERVER_TYPE_TRANSACTION);
-  std::string hosts = prm_get_string_value (PRM_ID_PAGE_SERVER_HOSTS);
-
-  if (!hosts.length ())
+  if (get_server_type () == SERVER_TYPE_TRANSACTION)
     {
-      return;
+      ats_Gl.disconnect_page_server ();
     }
-
-  auto col_pos = hosts.find (":");
-
-  if (col_pos < 1 || col_pos >= hosts.length () - 1)
+  else
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_HOST_PORT_PARAMETER, 2, prm_get_name (PRM_ID_PAGE_SERVER_HOSTS),
-	      hosts.c_str ());
-      return;
-    }
-
-  long port = -1;
-  try
-    {
-      port = std::stol (hosts.substr (col_pos+1));
-    }
-  catch (...)
-    {
-    }
-
-  if (port < 1 || port > USHRT_MAX)
-    {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_HOST_PORT_PARAMETER, 2, prm_get_name (PRM_ID_PAGE_SERVER_HOSTS),
-	      hosts.c_str ());
-      return;
-    }
-  g_pageserver_port = port;
-
-  // host and port seem to be OK
-  g_pageserver_hostname = hosts.substr (0, col_pos);
-  er_log_debug (ARG_FILE_LINE, "Page server hosts: %s port: %d\n", g_pageserver_hostname.c_str (), g_pageserver_port);
-
-  connect_to_pageserver (g_pageserver_hostname, g_pageserver_port, db_name);
-}
-
-void connect_to_pageserver (std::string host, int port, const char *db_name)
-{
-  assert (get_server_type () == SERVER_TYPE_TRANSACTION);
-
-  // connect to page server
-  cubcomm::server_channel srv_chn (db_name);
-
-  srv_chn.set_channel_name ("ATS_PS_comm");
-
-  css_error_code comm_error_code = srv_chn.connect (host.c_str (), port, CMD_SERVER_SERVER_CONNECT);
-  if (comm_error_code != css_error_code::NO_ERRORS)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_PAGESERVER_CONNECTION, 1, host.c_str());
-      return;
-    }
-
-  if (!srv_chn.send_int (static_cast <int> (cubcomm::server_server::CONNECT_TRANSACTION_SERVER)))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_PAGESERVER_CONNECTION, 1, host.c_str());
-      return;
+      assert (get_server_type () == SERVER_TYPE_PAGE);
+      ps_Gl.disconnect_active_tran_server ();
     }
 }
 
@@ -128,6 +72,10 @@ void connect_to_pageserver (std::string host, int port, const char *db_name)
 void init_server_type (const char *)
 {
   g_server_type = SERVER_TYPE_TRANSACTION;
+}
+
+void final_server_type ()
+{
 }
 
 #endif // !SERVER_MODE = SA_MODE
