@@ -525,6 +525,21 @@ void log_rv_redo_record_sync (THREAD_ENTRY *thread_p, log_reader &log_pgptr_read
 			      const VPID &rcv_vpid, const log_lsa &rcv_lsa, const LOG_LSA *end_redo_lsa, LOG_RECTYPE log_rtype,
 			      LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support)
 {
+  // bit of debug code to ensure that, should this code be executed asynchronously, within the same page,
+  // the lsa is everincreasing, thus, not altering the order in which it has been added to the log in the first place
+//#if !defined(NDEBUG)
+//  static std::mutex mtx;
+//  static std::map<std::pair<short, int32_t>, log_lsa> map_proper_vpid_lsa;
+//  std::lock_guard<std::mutex> lck (mtx);
+//  std::pair<short, int32_t> key {rcv_vpid.volid, rcv_vpid.pageid};
+//  const auto key_it =  map_proper_vpid_lsa.find (key);
+//  if (key_it != map_proper_vpid_lsa.end())
+//    {
+//      assert ((*key_it).second < rcv_lsa);
+//    }
+//  map_proper_vpid_lsa.emplace(key, rcv_lsa);
+//#endif
+
   const LOG_DATA &log_data = log_rv_get_log_rec_data<T> (log_rec);
 
   LOG_RCV rcv;
@@ -547,8 +562,7 @@ void log_rv_redo_record_sync (THREAD_ENTRY *thread_p, log_reader &log_pgptr_read
 	pgbuf_unfix (thread_p, rcv.pgptr);
 	rcv.pgptr = nullptr;
       }
-  }
-				       );
+  });
 
   rcv.length = log_rv_get_log_rec_redo_length<T> (log_rec);
   rcv.mvcc_id = log_rv_get_log_rec_mvccid<T> (log_rec);
@@ -582,7 +596,7 @@ void log_rv_redo_record_sync (THREAD_ENTRY *thread_p, log_reader &log_pgptr_read
   else
     {
       er_log_debug (ARG_FILE_LINE,
-                    "log_rv_redo_record_sync: WARNING.. There is not a"
+		    "log_rv_redo_record_sync: WARNING.. There is not a"
 		    " REDO (or, possibly, UNDO) function to execute. May produce recovery problems.");
     }
 

@@ -28,6 +28,7 @@ namespace cublog
   redo_parallel::redo_job_queue::redo_job_queue()
     : produce_queue ( new ux_redo_job_deque() )
     , consume_queue ( new ux_redo_job_deque() )
+    , queues_empty (false)
     , adding_finished { false }
     , to_be_waited_for_op_in_progress (false)
   {
@@ -50,6 +51,7 @@ namespace cublog
   {
     std::lock_guard<std::mutex> lck (produce_queue_mutex);
     produce_queue->push_back (std::move (job));
+    queues_empty = false;
   }
 
   void redo_parallel::redo_job_queue::set_adding_finished()
@@ -77,9 +79,18 @@ namespace cublog
     if (consume_queue->size() == 0)
       {
 	// consumer queue is locked anyway, interested in not locking the producer queue
-	//consume_queue = ATOMIC_TAS_ADDR (&produce_queue, consume_queue);
-	std::lock_guard<std::mutex> lck (produce_queue_mutex);
-	std::swap (produce_queue, consume_queue);
+	bool notify_queues_empty = false;
+	{
+	  std::lock_guard<std::mutex> lck (produce_queue_mutex);
+	  //consume_queue = ATOMIC_TAS_ADDR (&produce_queue, consume_queue);
+	  std::swap (produce_queue, consume_queue);
+	  queues_empty = produce_queue->empty () && consume_queue->empty ();
+	  notify_queues_empty = queues_empty;
+	}
+	if (notify_queues_empty)
+	  {
+	    queues_empty_cv.notify_one();
+	  }
 
 	// TODO: a second barrier such that, consumption threads do not 'busy wait' by
 	// constantly swapping two empty containers; works in combination with a notification
@@ -180,9 +191,36 @@ namespace cublog
 
   void redo_parallel::redo_job_queue::notify_in_progress_vpid_finished (VPID _vpid)
   {
-    std::lock_guard<std::mutex> lock_in_progress_vpids (in_progress_vpids_mutex);
-    assert (in_progress_vpids.find (_vpid) != in_progress_vpids.cend());
-    in_progress_vpids.erase (_vpid);
+    bool set_empty = false;
+    {
+      std::lock_guard<std::mutex> lock_in_progress_vpids (in_progress_vpids_mutex);
+      assert (in_progress_vpids.find (_vpid) != in_progress_vpids.cend());
+      in_progress_vpids.erase (_vpid);
+      set_empty = in_progress_vpids.empty ();
+    }
+    if (set_empty)
+      {
+	in_progress_vpids_empty_cv.notify_one();
+      }
+  }
+
+  void redo_parallel::redo_job_queue::wait_for_idle()
+  {
+    {
+      std::unique_lock<std::mutex> empty_queues_lock (produce_queue_mutex);
+      queues_empty_cv.wait (empty_queues_lock, [this]()
+      {
+	return queues_empty;
+      });
+    }
+
+    {
+      std::unique_lock<std::mutex> empty_in_progress_vpids_lock (in_progress_vpids_mutex);
+      in_progress_vpids_empty_cv.wait (empty_in_progress_vpids_lock, [this]()
+      {
+	return in_progress_vpids.empty ();
+      });
+    }
   }
 
   /**********************
@@ -315,6 +353,15 @@ namespace cublog
     assert (worker_pool == nullptr);
 
     waited_for_termination = true;
+  }
+
+  void redo_parallel::wait_for_idle ()
+  {
+    assert (false == waited_for_termination);
+    assert (thread_manager != nullptr);
+    assert (false == queue.get_adding_finished ());
+
+    queue.wait_for_idle ();
   }
 
   void redo_parallel::do_init_thread_manager()

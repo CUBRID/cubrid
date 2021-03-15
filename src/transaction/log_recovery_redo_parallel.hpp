@@ -176,6 +176,10 @@ namespace cublog
 	  void notify_to_be_waited_for_op_finished();
 	  void notify_in_progress_vpid_finished (VPID a_vpid);
 
+	  /* wait until all data has been consumed internally; blocking call
+	   */
+	  void wait_for_idle();
+
 	private:
 	  /* two queues are internally managed
 	   */
@@ -183,6 +187,9 @@ namespace cublog
 	  std::mutex produce_queue_mutex;
 	  ux_redo_job_deque *consume_queue;
 	  std::mutex consume_queue_mutex;
+
+	  bool queues_empty;
+	  std::condition_variable queues_empty_cv;
 
 	  std::atomic_bool adding_finished;
 
@@ -202,6 +209,7 @@ namespace cublog
 	   */
 	  vpid_set in_progress_vpids;
 	  std::mutex in_progress_vpids_mutex;
+	  std::condition_variable in_progress_vpids_empty_cv;
       };
 
 
@@ -312,6 +320,10 @@ namespace cublog
       /* mandatory to explicitly call this after all data have been added
        */
       void set_adding_finished();
+
+      /* wait until all data has been consumed internally; blocking call
+       */
+      void wait_for_idle();
 
       /* mandatory to explicitly call this before dtor
        */

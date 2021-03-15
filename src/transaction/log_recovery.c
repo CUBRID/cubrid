@@ -587,15 +587,19 @@ void log_rv_redo_record_sync_or_dispatch_async (THREAD_ENTRY * thread_p, log_rea
 
   const LOG_DATA &log_data = log_rv_get_log_rec_data<T> (log_rec);
   const bool need_sync_redo = log_rv_need_sync_redo (log_data.rcvindex);
+  assert(log_data.rcvindex != RVDK_UNRESERVE_SECTORS || need_sync_redo);
 
   // once vpid is extracted (or not), and depending on parameters, either dispatch the applying of
   // log redo asynchronously, or invoke synchronously
   if (parallel_recovery_redo == nullptr || VPID_ISNULL (&rcv_vpid) || need_sync_redo)
     {
-      if (need_sync_redo)
+      // TODO: workaround, for some functions, make sure all dispatched actions have finished to prevent
+      // data race conditions
+      if (log_data.rcvindex == RVDK_UNRESERVE_SECTORS)
         {
-          const auto ss = need_sync_redo;
+          parallel_recovery_redo->wait_for_idle ();
         }
+
       // invoke sync
       log_rv_redo_record_sync<T>(thread_p, log_pgptr_reader, log_rec, rcv_vpid, rcv_lsa, end_redo_lsa, log_rtype,
                                  undo_unzip_support, redo_unzip_support);
