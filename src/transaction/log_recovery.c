@@ -593,9 +593,9 @@ void log_rv_redo_record_sync_or_dispatch_async (THREAD_ENTRY * thread_p, log_rea
   // log redo asynchronously, or invoke synchronously
   if (parallel_recovery_redo == nullptr || VPID_ISNULL (&rcv_vpid) || need_sync_redo)
     {
-      // TODO: workaround, for some functions, make sure all dispatched actions have finished to prevent
+      // TODO: workaround, for few functions, make sure all dispatched actions have finished to prevent
       // data race conditions
-      if (log_data.rcvindex == RVDK_UNRESERVE_SECTORS)
+      if (parallel_recovery_redo != nullptr && log_data.rcvindex == RVDK_UNRESERVE_SECTORS)
         {
           parallel_recovery_redo->wait_for_idle ();
         }
