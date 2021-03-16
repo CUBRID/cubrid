@@ -871,17 +871,17 @@ extern void logpb_set_tde_algorithm (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgp
 
 
 extern void log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat);
-extern void log_rv_redo_record (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader,
 // *INDENT-OFF*
+extern void log_rv_redo_record (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
+                                int (*redofun) (THREAD_ENTRY *thread_p, LOG_RCV *), LOG_RCV *rcv,
+                                const LOG_LSA *rcv_lsa_ptr, int undo_length, const char *undo_data,
+                                LOG_ZIP &redo_unzip);
 template <typename T>
 extern void log_rv_redo_record_sync_or_dispatch_parallel (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
                                                           const T &log_rec, const log_lsa &rcv_lsa,
                                                           const LOG_LSA *end_redo_lsa, LOG_RECTYPE log_rtype,
                                                           LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support);
 // *INDENT-ON*
-				int (*redofun) (THREAD_ENTRY * thread_p, LOG_RCV *), LOG_RCV * rcv,
-				const LOG_LSA * rcv_lsa_ptr, int undo_length, const char *undo_data,
-				LOG_ZIP & redo_unzip);
 
 extern LOG_LSA *log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr);
 
