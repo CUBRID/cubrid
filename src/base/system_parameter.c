@@ -6135,7 +6135,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_LOG_RECOVERY_REDO_WORKER_COUNT,
    PRM_NAME_LOG_RECOVERY_REDO_WORKER_COUNT,
-   (PRM_FOR_SERVER | PRM_HIDDEN),
+   (PRM_FOR_SERVER),
    PRM_INTEGER,
    &prm_log_recovery_redo_worker_count_flag,
    (void *) &prm_log_recovery_redo_worker_count_default,
