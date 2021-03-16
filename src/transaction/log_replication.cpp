@@ -141,7 +141,7 @@ namespace cublog
   replicator::wait_replication_finish () const
   {
     std::unique_lock<std::mutex> ulock (m_redo_mutex);
-    m_redo_condvar.wait (ulock, [this] ()
+    m_redo_condvar.wait (ulock, [this]
     {
       return m_redo_lsa >= log_Gl.append.get_nxio_lsa ();
     });

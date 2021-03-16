@@ -25,6 +25,9 @@
 #include "log_reader.hpp"
 #include "log_record.hpp"
 
+#include <condition_variable>
+#include <mutex>
+
 namespace cubthread
 {
   class daemon;
@@ -54,7 +57,7 @@ namespace cublog
 
       log_lsa m_redo_lsa = NULL_LSA;
       mutable std::mutex m_redo_mutex;
-      std::condition_variable m_redo_condvar;
+      mutable std::condition_variable m_redo_condvar;
 
       log_reader m_reader;
       LOG_ZIP m_undo_unzip;
