@@ -36,7 +36,7 @@
 #include "log_manager.h"
 #include "log_reader.hpp"
 #include "log_record.hpp"
-#include "log_recovery_redo_sequential.hpp"
+#include "log_recovery_redo.hpp"
 #include "log_system_tran.hpp"
 #include "log_volids.hpp"
 #include "message_catalog.h"
