@@ -2531,10 +2531,12 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       er_log_debug (ARG_FILE_LINE, "Vacuum was not started on the page server.");
     }
 
+#if defined (SERVER_MODE)
   if (get_server_type () == SERVER_TYPE_PAGE)
     {
       ps_Gl.start_log_replicator (log_Gl.append.get_nxio_lsa ());
     }
+#endif // SERVER_MODE
 
   /*
    * Initialize the catalog manager, the query evaluator, and install meta
