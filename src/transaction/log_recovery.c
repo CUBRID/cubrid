@@ -3204,7 +3204,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   cublog::ux_redo_parallel parallel_recovery_redo;
 #if defined(SERVER_MODE)
   {
-    const int log_recovery_redo_worker_count = prm_get_integer_value (PRM_ID_LOG_RECOVERY_REDO_WORKER_COUNT);
+    const int log_recovery_redo_worker_count = prm_get_integer_value (PRM_ID_RECOVERY_PARALLEL_COUNT);
     assert(log_recovery_redo_worker_count >= 0);
     if (log_recovery_redo_worker_count > 0)
       {
