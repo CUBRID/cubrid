@@ -71,6 +71,8 @@
 #include "connection_defs.h"
 #include "connection_sr.h"
 #endif
+#include "active_tran_server.hpp"
+#include "ats_ps_request.hpp"
 #include "critical_section.h"
 #include "page_buffer.h"
 #include "double_write_buffer.h"
@@ -1927,6 +1929,20 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
     }
 
   /* Could not get from log page buffer cache */
+
+#if defined (SERVER_MODE)
+  /* Send a request to Page Server for the log. */
+  if (get_server_type () == SERVER_TYPE_TRANSACTION)
+    {
+      ats_Gl.push_request (ats_to_ps_request::SEND_LOG_PAGE_FETCH, "Payload");	//Is there a cmake for this one?
+      // Log it here.
+      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
+	{
+	  er_log_debug (ARG_FILE_LINE, "Sent request for log to Page Server.\n");
+	}
+    }
+#endif // SERVER_MODE
+
   rv = logpb_read_page_from_file (thread_p, pageid, access_mode, log_pgptr);
   if (rv != NO_ERROR)
     {

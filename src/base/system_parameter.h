@@ -345,6 +345,7 @@ enum param_id
   PRM_ID_VACUUM_LOG_BLOCK_PAGES,
   PRM_ID_VACUUM_WORKER_COUNT,
   PRM_ID_ER_LOG_VACUUM,
+  PRM_ID_ER_LOG_READ_LOG_PAGE,
   PRM_ID_DISABLE_VACUUM,
 
   /* Debugging system parameter */
