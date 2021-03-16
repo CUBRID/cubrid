@@ -128,6 +128,7 @@ namespace cublog
   void
   replicator::read_and_redo_record (cubthread::entry &thread_entry, LOG_RECTYPE rectype, const log_lsa &rec_lsa)
   {
+    m_reader.advance_when_does_not_fit (sizeof (T));
     T log_rec = m_reader.reinterpret_copy_and_add_align<T> ();
     log_rv_redo_record_sync_or_dispatch_parallel<T> (&thread_entry, m_reader, log_rec, rec_lsa, nullptr, rectype,
 	m_undo_unzip, m_redo_unzip);
