@@ -296,16 +296,15 @@ namespace cublog
    * redo_parallel
    **********************/
 
-  redo_parallel::redo_parallel()
+  redo_parallel::redo_parallel(int a_worker_count)
     : thread_manager (nullptr), worker_pool (nullptr), waited_for_termination (false)
   {
-    // NOTE: already called globally (prob. during boot)
-    // TODO: how can this be ensured?
-
-    //cubthread::entry *thread_pool = nullptr;
-    //cubthread::initialize (thread_pool);
-
-    task_count = 2; // std::thread::hardware_concurrency();
+    assert(a_worker_count > 0);
+    if (a_worker_count <= 0)
+      {
+        a_worker_count = std::thread::hardware_concurrency ();
+      }
+    task_count = static_cast<unsigned>(a_worker_count);
 
     do_init_thread_manager ();
     do_init_worker_pool ();
@@ -368,12 +367,8 @@ namespace cublog
   {
     assert (thread_manager == nullptr);
 
+    // NOTE: already initialized globally (probably during boot)
     thread_manager = cubthread::get_manager ();
-    // NOTE: already called globally (prob. during boot)
-    // TODO: how can this be ensured?
-    //thread_manager->set_max_thread_count (..);
-    //thread_manager->alloc_entries ();
-    //thread_manager->init_entries (..);
   }
 
   void redo_parallel::do_init_worker_pool()

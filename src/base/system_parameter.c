@@ -695,7 +695,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_PAGE_SERVER_HOSTS "page_server_hosts"
 #define PRM_NAME_SERVER_TYPE "server_type"
-#define PRM_NAME_LOG_RECOVERY_REDO_PARALLEL "log_recovery_redo_parallel"
+#define PRM_NAME_LOG_RECOVERY_REDO_WORKER_COUNT "log_recovery_redo_worker_count"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -2343,9 +2343,11 @@ bool PRM_DDL_AUDIT_LOG = false;
 static bool prm_ddl_audit_log_default = false;
 static unsigned int prm_ddl_audit_log_flag = 0;
 
-bool PRM_DDL_LOG_RECOVERY_REDO_PARALLEL = true;
-static bool prm_ddl_log_recovery_redo_parallel_default = true;
-static unsigned int prm_ddl_log_recovery_redo_parallel_flag = 0;
+static unsigned int prm_log_recovery_redo_worker_count_flag = 0;
+static int prm_log_recovery_redo_worker_count_default = 8;
+int PRM_LOG_RECOVERY_REDO_WORKER_COUNT_CURRENT_VALUE = 8;
+static int prm_log_recovery_redo_worker_count_upper_value = 32;
+static int prm_log_recovery_redo_worker_count_lower_value = 0;
 
 UINT64 PRM_DDL_AUDIT_LOG_SIZE = 10485760ULL;
 static UINT64 prm_ddl_audit_log_size_default = 10485760ULL;	/* 10M */
@@ -6079,14 +6081,15 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_LOG_RECOVERY_REDO_PARALLEL,
-   PRM_NAME_LOG_RECOVERY_REDO_PARALLEL,
+  {PRM_ID_LOG_RECOVERY_REDO_WORKER_COUNT,
+   PRM_NAME_LOG_RECOVERY_REDO_WORKER_COUNT,
    (PRM_FOR_SERVER | PRM_HIDDEN),
-   PRM_BOOLEAN,
-   &prm_ddl_log_recovery_redo_parallel_flag,
-   (void *) &prm_ddl_log_recovery_redo_parallel_default,
-   (void *) &PRM_DDL_LOG_RECOVERY_REDO_PARALLEL,
-   (void *) NULL, (void *) NULL,
+   PRM_INTEGER,
+   &prm_log_recovery_redo_worker_count_flag,
+   (void *) &prm_log_recovery_redo_worker_count_default,
+   (void *) &PRM_LOG_RECOVERY_REDO_WORKER_COUNT_CURRENT_VALUE,
+   (void *) &prm_log_recovery_redo_worker_count_upper_value,
+   (void *) &prm_log_recovery_redo_worker_count_lower_value,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}
