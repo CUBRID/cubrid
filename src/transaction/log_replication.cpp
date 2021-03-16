@@ -120,7 +120,10 @@ namespace cublog
 	    break;
 	  }
 
+	m_redo_mutex.lock ();
 	m_redo_lsa = header.forw_lsa;
+	m_redo_mutex.unlock ();
+	m_redo_condvar.notify_all ();
       }
   }
 
@@ -132,5 +135,15 @@ namespace cublog
     T log_rec = m_reader.reinterpret_copy_and_add_align<T> ();
     log_rv_redo_record_sync_or_dispatch_parallel<T> (&thread_entry, m_reader, log_rec, rec_lsa, nullptr, rectype,
 	m_undo_unzip, m_redo_unzip);
+  }
+
+  void
+  replicator::wait_replication_finish () const
+  {
+    std::unique_lock<std::mutex> ulock (m_redo_mutex);
+    m_redo_condvar.wait (ulock, [this] ()
+    {
+      return m_redo_lsa >= log_Gl.append.get_nxio_lsa ();
+    });
   }
 } // namespace cublog

@@ -98,6 +98,18 @@ page_server::start_log_replicator (const log_lsa &start_lsa)
 }
 
 void
+page_server::finish_replication (cubthread::entry &thread_entry)
+{
+  if (m_replicator)
+    {
+      logpb_flush_pages_direct (&thread_entry);
+      m_replicator->wait_replication_finish ();
+      delete m_replicator;
+      m_replicator = nullptr;
+    }
+}
+
+void
 assert_page_server_type ()
 {
   assert (get_server_type () == SERVER_TYPE::SERVER_TYPE_PAGE);

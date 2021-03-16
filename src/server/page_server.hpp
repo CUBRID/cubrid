@@ -24,13 +24,17 @@
 #include "request_client_server.hpp"
 
 // forward declaration
+namespace cublog
+{
+  class replicator;
+}
 namespace cubpacking
 {
   class unpacker;
 }
-namespace cublog
+namespace cubthread
 {
-  class replicator;
+  class entry;
 }
 
 class page_server
@@ -46,6 +50,7 @@ class page_server
     bool is_active_tran_server_connected () const;
 
     void start_log_replicator (const log_lsa &start_lsa);
+    void finish_replication (cubthread::entry &thread_entry);
 
     void finalize ();
 

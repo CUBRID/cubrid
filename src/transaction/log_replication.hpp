@@ -42,6 +42,8 @@ namespace cublog
       replicator (const log_lsa &start_redo_lsa);
       ~replicator ();
 
+      void wait_replication_finish () const;
+
     private:
       void redo_upto_nxiolsa (cubthread::entry &thread_entry);
       void redo_upto (cubthread::entry &thread_entry, const log_lsa &end_redo_lsa);
@@ -49,7 +51,10 @@ namespace cublog
       void read_and_redo_record (cubthread::entry &thread_entry, LOG_RECTYPE rectype, const log_lsa &rec_lsa);
 
       cubthread::daemon *m_daemon = nullptr;
+
       log_lsa m_redo_lsa = NULL_LSA;
+      mutable std::mutex m_redo_mutex;
+      std::condition_variable m_redo_condvar;
 
       log_reader m_reader;
       LOG_ZIP m_undo_unzip;
