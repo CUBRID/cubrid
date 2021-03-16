@@ -443,28 +443,28 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
           continue;
         }
 
-        key = strchr (ini->key[i], ':');
-        if (key == NULL)
-          {
-            continue;
-          }
+      key = strchr (ini->key[i], ':');
+      if (key == NULL)
+        {
+          continue;
+        }
 
-        key++;
-        for (j = 0; j < broker_keywords_size; j++)
-          {
-            if (strcasecmp (key, broker_keywords[j]) == 0)
-              {
-                found = true;
-                break;
-              }
-          }
+      key++;
+      for (j = 0; j < broker_keywords_size; j++)
+        {
+          if (strcasecmp (key, broker_keywords[j]) == 0)
+            {
+              found = true;
+              break;
+            }
+        }
 
-        if (!found)
-          {
-             PRINTERROR ("cubrid_broker.conf: invalid keyword '%s' (%d)\n", key, ini->lineno[i]);
-             ini_parser_free (ini);
-             return -1;
-          }
+      if (!found)
+        {
+           PRINTERROR ("cubrid_broker.conf: invalid keyword '%s' (%d)\n", key, ini->lineno[i]);
+           ini_parser_free (ini);
+           return -1;
+        }
     }
 
   master_shm_id = ini_gethex (ini, SECTION_NAME, "MASTER_SHM_ID", 0, &lineno);
