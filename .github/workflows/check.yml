@@ -3,6 +3,22 @@ on:
   pull_request:
     branches: [ develop ]
 jobs:
+  license:
+    name: license
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: jitterbit/get-changed-files@v1
+        id: files
+      - name: Check license
+        run: |
+          license_header=.github/workflows/license_header.txt
+          license_lines=`wc -l < $license_header`
+
+          for f in ${{ steps.files.outputs.added_modified }}; do
+            echo "Checking $f"
+            head -n $license_lines $f | cmp -s $license_header
+          done
   pr-style:
     name: pr-style
     runs-on: ubuntu-latest
