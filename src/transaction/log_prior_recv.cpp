@@ -18,8 +18,10 @@
 
 #include "log_prior_recv.hpp"
 
+#include "error_manager.h"
 #include "log_append.hpp"
 #include "log_manager.h"
+#include "system_parameter.h"
 
 namespace cublog
 {
@@ -87,6 +89,14 @@ namespace cublog
 	    log_prior_node *list_head = nullptr;
 	    log_prior_node *list_tail = nullptr;
 	    prior_list_deserialize (backbuffer.front (), list_head, list_tail);
+
+	    if (prm_get_bool_value (PRM_ID_ER_LOG_PRIOR_TRANSFER))
+	      {
+		_er_log_debug (ARG_FILE_LINE,
+			       "[LOG_PRIOR_TRANSFER] Received list starting with lsa %lld|%d. Message size = %d.\n",
+			       LSA_AS_ARGS (&list_head->start_lsa), backbuffer.front ().size ());
+	      }
+
 	    m_prior_lsa_info.push_list (list_head, list_tail);
 	    log_wakeup_log_flush_daemon ();
 	    backbuffer.pop ();

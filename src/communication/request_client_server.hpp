@@ -20,11 +20,9 @@
 #define _REQUEST_CLIENT_SERVER_HPP_
 
 #include "communication_channel.hpp"
-#include "error_manager.h"
 #include "mem_block.hpp"
 #include "object_representation_constants.h"
 #include "packer.hpp"
-#include "system_parameter.h"
 
 #include <functional>
 #include <map>
@@ -211,6 +209,12 @@ namespace cubcomm
   // Helper function that packs MsgId & PackableArgs and sends them on chn
   template <typename MsgId, typename ... PackableArgs>
   int send_client_request (channel &chn, MsgId msgid, const PackableArgs &... args);
+
+  // Err logging functions
+  void er_log_send_request (const channel &chn, int msgid, size_t size);
+  void er_log_recv_request (const channel &chn, int msgid, size_t size);
+  void er_log_send_fail (const channel &chn, css_error_code err);
+  void er_log_recv_fail (const channel &chn, css_error_code err);
 }
 
 namespace cubcomm
@@ -305,6 +309,7 @@ namespace cubcomm
     css_error_code err = m_channel.recv_int (ilen);
     if (err != NO_ERRORS)
       {
+	er_log_recv_fail (m_channel, err);
 	return err;
       }
 
@@ -315,6 +320,7 @@ namespace cubcomm
     err = m_channel.recv (message_buffer.get (), receive_size);
     if (err != NO_ERRORS)
       {
+	er_log_recv_fail (m_channel, err);
 	return err;
       }
     assert (receive_size == expected_size);
@@ -339,6 +345,7 @@ namespace cubcomm
 	assert (false);
 	return;
       }
+    er_log_recv_request (m_channel, static_cast<int> (msgid), message_size);
     req_handle_it->second (upk);
   }
 
@@ -374,12 +381,20 @@ namespace cubcomm
     cubmem::extensible_block eb;
     packer.set_buffer_and_pack_all (eb, static_cast<int> (msgid), args...);
 
+    er_log_send_request (chn, static_cast<int> (msgid), packer.get_current_size ());
+
     int rc = chn.send_int (static_cast<int> (packer.get_current_size ()));
     if (rc != NO_ERRORS)
       {
 	return rc;
       }
-    return chn.send (eb.get_ptr (), packer.get_current_size ());
+
+    css_error_code csserr = chn.send (eb.get_ptr (), packer.get_current_size ());
+    if (csserr != NO_ERRORS)
+      {
+	er_log_send_fail (chn, csserr);
+      }
+    return csserr;
   }
 }
 

@@ -503,6 +503,7 @@ set(OPTIMIZER_DIR            ${CMAKE_SOURCE_DIR}/src/optimizer)
 set(PARSER_DIR               ${CMAKE_SOURCE_DIR}/src/parser)
 set(QUERY_DIR                ${CMAKE_SOURCE_DIR}/src/query)
 set(REPLICATION_DIR          ${CMAKE_SOURCE_DIR}/src/replication)
+set(SERVER_DIR               ${CMAKE_SOURCE_DIR}/src/server)
 set(SESSION_DIR              ${CMAKE_SOURCE_DIR}/src/session)
 set(STORAGE_DIR              ${CMAKE_SOURCE_DIR}/src/storage)
 set(THREAD_DIR               ${CMAKE_SOURCE_DIR}/src/thread)
@@ -532,6 +533,7 @@ include_directories(
   src/parser
   src/replication
   src/query
+  src/server
   src/session
   src/storage
   src/thread
@@ -1153,6 +1155,8 @@ add_subdirectory(locales)
 add_subdirectory(timezones)
 if(AT_LEAST_ONE_UNIT_TEST)
   add_subdirectory(unit_tests)
+  file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/run_scalability_unit_tests.sh
+       DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/bin)
 endif()
 
 if(WITH_JDBC)
