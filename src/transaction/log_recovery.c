@@ -62,10 +62,6 @@
 static void log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 				LOG_RCVINDEX rcvindex, const VPID * rcv_vpid, LOG_RCV * rcv,
 				const LOG_LSA * rcv_lsa_ptr, LOG_TDES * tdes, LOG_ZIP * undo_unzip_ptr);
-static void log_rv_redo_record (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader,
-				int (*redofun) (THREAD_ENTRY * thread_p, LOG_RCV *), LOG_RCV * rcv,
-				const LOG_LSA * rcv_lsa_ptr, int undo_length, const char *undo_data,
-				LOG_ZIP & redo_unzip);
 static bool
 log_rv_fix_page_and_check_redo_is_needed (THREAD_ENTRY * thread_p, const VPID & page_vpid, log_rcv & rcv,
 					  LOG_RCVINDEX rcvindex, const log_lsa & rcv_lsa, const LOG_LSA * end_redo_lsa);
@@ -78,17 +74,12 @@ static int log_rv_get_log_rec_redo_data (THREAD_ENTRY *thread_p, log_reader &log
 template <typename T>
 static void log_rv_redo_record_debug_logging (const log_lsa &rcv_lsa, LOG_RCVINDEX rcvindex, const vpid &rcv_vpid,
                                               const log_rcv &rcv);
-template <typename T>
-static void log_rv_redo_record_sync_or_dispatch_parallel (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
-                                                          const T &log_rec, const log_lsa &rcv_lsa,
-                                                          const LOG_LSA *end_redo_lsa, LOG_RECTYPE log_rtype,
-                                                          LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support);
 // *INDENT-ON*
 
 static bool log_rv_find_checkpoint (THREAD_ENTRY * thread_p, VOLID volid, LOG_LSA * rcv_lsa);
 
 static int log_rv_get_unzip_log_data (THREAD_ENTRY * thread_p, int length, log_reader & log_pgptr_reader,
-				      LOG_ZIP * unzip_ptr, bool &is_zip);
+				      LOG_ZIP * unzip_ptr, bool & is_zip);
 static int log_rv_get_unzip_and_diff_redo_log_data (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader,
 						    LOG_RCV * rcv, int undo_length, const char *undo_data,
 						    LOG_ZIP & redo_unzip);
@@ -107,12 +98,12 @@ static int log_rv_analysis_sysop_start_postpone (THREAD_ENTRY * thread_p, int tr
 static int log_rv_analysis_atomic_sysop_start (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
 static int log_rv_analysis_complete (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 				     LOG_LSA * prev_lsa, bool is_media_crash, time_t * stop_at,
-				     bool *did_incom_recovery);
+				     bool * did_incom_recovery);
 static int log_rv_analysis_sysop_end (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p);
-static int log_rv_analysis_start_checkpoint (LOG_LSA * log_lsa, LOG_LSA * start_lsa, bool *may_use_checkpoint);
+static int log_rv_analysis_start_checkpoint (LOG_LSA * log_lsa, LOG_LSA * start_lsa, bool * may_use_checkpoint);
 static int log_rv_analysis_end_checkpoint (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
-					   LOG_LSA * check_point, LOG_LSA * start_redo_lsa, bool *may_use_checkpoint,
-					   bool *may_need_synch_checkpoint_2pc);
+					   LOG_LSA * check_point, LOG_LSA * start_redo_lsa, bool * may_use_checkpoint,
+					   bool * may_need_synch_checkpoint_2pc);
 static int log_rv_analysis_save_point (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
 static int log_rv_analysis_2pc_prepare (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
 static int log_rv_analysis_2pc_start (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
@@ -125,13 +116,13 @@ static int log_rv_analysis_log_end (int tran_id, LOG_LSA * log_lsa);
 static void log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type, int tran_id, LOG_LSA * log_lsa,
 				    LOG_PAGE * log_page_p, LOG_LSA * check_point, LOG_LSA * prev_lsa,
 				    LOG_LSA * start_lsa, LOG_LSA * start_redo_lsa, bool is_media_crash,
-				    time_t * stop_at, bool *did_incom_recovery, bool *may_use_checkpoint,
-				    bool *may_need_synch_checkpoint_2pc);
+				    time_t * stop_at, bool * did_incom_recovery, bool * may_use_checkpoint,
+				    bool * may_need_synch_checkpoint_2pc);
 static bool log_is_page_of_record_broken (THREAD_ENTRY * thread_p, const LOG_LSA * log_lsa,
 					  const LOG_RECORD_HEADER * log_rec_header);
 static void log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * start_redolsa,
 				   LOG_LSA * end_redo_lsa, bool ismedia_crash, time_t * stopat,
-				   bool *did_incom_recovery, INT64 * num_redo_log_records);
+				   bool * did_incom_recovery, INT64 * num_redo_log_records);
 static bool log_recovery_needs_skip_logical_redo (THREAD_ENTRY * thread_p, TRANID tran_id, LOG_RECTYPE log_rtype,
 						  LOG_RCVINDEX rcv_index, const LOG_LSA * lsa);
 static void log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const LOG_LSA * end_redo_lsa,
@@ -157,7 +148,7 @@ static int log_rv_undoredo_partial_changes_recursive (THREAD_ENTRY * thread_p, O
 						      bool is_undo);
 
 STATIC_INLINE PAGE_PTR log_rv_redo_fix_page (THREAD_ENTRY * thread_p, const VPID * vpid_rcv, LOG_RCVINDEX rcvindex)
-  __attribute__((ALWAYS_INLINE));
+  __attribute__ ((ALWAYS_INLINE));
 
 static void log_rv_simulate_runtime_worker (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void log_rv_end_simulation (THREAD_ENTRY * thread_p);
@@ -460,7 +451,7 @@ end:
  *
  * NOTE: Execute a redo log record.
  */
-static void
+void
 log_rv_redo_record (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader,
 		    int (*redofun) (THREAD_ENTRY * thread_p, LOG_RCV *), LOG_RCV * rcv,
 		    const LOG_LSA * rcv_lsa_ptr, int undo_length, const char *undo_data, LOG_ZIP & redo_unzip)
@@ -847,7 +838,7 @@ log_rv_find_checkpoint (THREAD_ENTRY * thread_p, VOLID volid, LOG_LSA * rcv_lsa)
  */
 static int
 log_rv_get_unzip_log_data (THREAD_ENTRY * thread_p, int length, log_reader & log_pgptr_reader,
-			   LOG_ZIP * unzip_ptr, bool &is_zip)
+			   LOG_ZIP * unzip_ptr, bool & is_zip)
 {
   char *area_ptr = nullptr;	/* Temporary working pointer */
   // *INDENT-OFF*
@@ -1681,7 +1672,7 @@ log_rv_analysis_atomic_sysop_start (THREAD_ENTRY * thread_p, int tran_id, LOG_LS
  */
 static int
 log_rv_analysis_complete (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
-			  LOG_LSA * prev_lsa, bool is_media_crash, time_t * stop_at, bool *did_incom_recovery)
+			  LOG_LSA * prev_lsa, bool is_media_crash, time_t * stop_at, bool * did_incom_recovery)
 {
   LOG_REC_DONETIME *donetime;
   int tran_index;
@@ -1967,7 +1958,7 @@ log_rv_analysis_sysop_end (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_l
  * Note:
  */
 static int
-log_rv_analysis_start_checkpoint (LOG_LSA * log_lsa, LOG_LSA * start_lsa, bool *may_use_checkpoint)
+log_rv_analysis_start_checkpoint (LOG_LSA * log_lsa, LOG_LSA * start_lsa, bool * may_use_checkpoint)
 {
   /*
    * Use the checkpoint record only if it is the first record in the
@@ -2001,8 +1992,8 @@ log_rv_analysis_start_checkpoint (LOG_LSA * log_lsa, LOG_LSA * start_lsa, bool *
  */
 static int
 log_rv_analysis_end_checkpoint (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
-				LOG_LSA * check_point, LOG_LSA * start_redo_lsa, bool *may_use_checkpoint,
-				bool *may_need_synch_checkpoint_2pc)
+				LOG_LSA * check_point, LOG_LSA * start_redo_lsa, bool * may_use_checkpoint,
+				bool * may_need_synch_checkpoint_2pc)
 {
   LOG_TDES *tdes;
   LOG_REC_CHKPT *tmp_chkpt;
@@ -2545,8 +2536,8 @@ log_rv_analysis_log_end (int tran_id, LOG_LSA * log_lsa)
 static void
 log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type, int tran_id, LOG_LSA * log_lsa,
 			LOG_PAGE * log_page_p, LOG_LSA * checkpoint_lsa, LOG_LSA * prev_lsa, LOG_LSA * start_lsa,
-			LOG_LSA * start_redo_lsa, bool is_media_crash, time_t * stop_at, bool *did_incom_recovery,
-			bool *may_use_checkpoint, bool *may_need_synch_checkpoint_2pc)
+			LOG_LSA * start_redo_lsa, bool is_media_crash, time_t * stop_at, bool * did_incom_recovery,
+			bool * may_use_checkpoint, bool * may_need_synch_checkpoint_2pc)
 {
   switch (log_type)
     {
@@ -2743,7 +2734,7 @@ log_is_page_of_record_broken (THREAD_ENTRY * thread_p, const LOG_LSA * log_lsa,
 
 static void
 log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * start_redo_lsa,
-		       LOG_LSA * end_redo_lsa, bool is_media_crash, time_t * stop_at, bool *did_incom_recovery,
+		       LOG_LSA * end_redo_lsa, bool is_media_crash, time_t * stop_at, bool * did_incom_recovery,
 		       INT64 * num_redo_log_records)
 {
   LOG_LSA checkpoint_lsa = { -1, -1 };

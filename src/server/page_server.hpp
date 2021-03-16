@@ -20,12 +20,17 @@
 #define _PAGE_SERVER_HPP_
 
 #include "ats_ps_request.hpp"
+#include "log_lsa.hpp"
 #include "request_client_server.hpp"
 
 // forward declaration
 namespace cubpacking
 {
   class unpacker;
+}
+namespace cublog
+{
+  class replicator;
 }
 
 class page_server
@@ -40,10 +45,15 @@ class page_server
     void disconnect_active_tran_server ();
     bool is_active_tran_server_connected () const;
 
+    void start_log_replicator (const log_lsa &start_lsa);
+
+    void finalize ();
+
   private:
     void receive_log_prior_list (cubpacking::unpacker &upk);
 
     active_tran_server_conn *m_ats_conn = nullptr;
+    cublog::replicator *m_replicator = nullptr;
 };
 
 extern page_server ps_Gl;

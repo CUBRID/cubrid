@@ -297,6 +297,7 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/log_prior_recv.cpp
   ${TRANSACTION_DIR}/log_reader.cpp
   ${TRANSACTION_DIR}/log_recovery.c
+  ${TRANSACTION_DIR}/log_replication.cpp
   ${TRANSACTION_DIR}/log_system_tran.cpp
   ${TRANSACTION_DIR}/log_tran_table.c
   ${TRANSACTION_DIR}/log_writer.c
@@ -322,6 +323,7 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/log_reader.hpp
   ${TRANSACTION_DIR}/log_recovery_redo_log_rec.hpp
   ${TRANSACTION_DIR}/log_record.hpp
+  ${TRANSACTION_DIR}/log_replication.hpp
   ${TRANSACTION_DIR}/log_storage.hpp
   ${TRANSACTION_DIR}/log_system_tran.hpp
   ${TRANSACTION_DIR}/log_volids.hpp

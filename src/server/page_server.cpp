@@ -21,6 +21,7 @@
 #include "error_manager.h"
 #include "log_impl.h"
 #include "log_prior_recv.hpp"
+#include "log_replication.hpp"
 #include "packer.hpp"
 #include "server_type.hpp"
 #include "system_parameter.h"
@@ -34,7 +35,17 @@ static void assert_page_server_type ();
 
 page_server::~page_server ()
 {
+  assert (m_ats_conn == nullptr);
+  assert (m_replicator == nullptr);
+}
+
+void
+page_server::finalize ()
+{
   disconnect_active_tran_server ();
+
+  delete m_replicator;
+  m_replicator = nullptr;
 }
 
 void
@@ -76,6 +87,14 @@ page_server::receive_log_prior_list (cubpacking::unpacker &upk)
   std::string message;
   upk.unpack_string (message);
   log_Gl.m_prior_recver.push_message (std::move (message));
+}
+
+void
+page_server::start_log_replicator (const log_lsa &start_lsa)
+{
+  assert_page_server_type ();
+
+  m_replicator = new cublog::replicator (start_lsa);
 }
 
 void

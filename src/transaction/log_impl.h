@@ -46,6 +46,7 @@
 #include "log_archives.hpp"
 #include "log_comm.h"
 #include "log_common_impl.h"
+#include "log_compress.h"
 #include "log_lsa.hpp"
 #include "log_postpone_cache.hpp"
 #include "log_prior_send.hpp"
@@ -849,7 +850,7 @@ extern int logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_pe
 extern int logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *db_fullname, const char *logpath,
 			 const char *prefix_logname, bool force_delete);
 extern int logpb_check_exist_any_volumes (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
-					  const char *prefix_logname, char *first_vol, bool *is_exist);
+					  const char *prefix_logname, char *first_vol, bool * is_exist);
 extern void logpb_fatal_error (THREAD_ENTRY * thread_p, bool logexit, const char *file_name, const int lineno,
 			       const char *fmt, ...);
 extern void logpb_fatal_error_exit_immediately_wo_flush (THREAD_ENTRY * thread_p, const char *file_name,
@@ -870,6 +871,17 @@ extern void logpb_set_tde_algorithm (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgp
 
 
 extern void log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat);
+extern void log_rv_redo_record (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader,
+// *INDENT-OFF*
+template <typename T>
+extern void log_rv_redo_record_sync_or_dispatch_parallel (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
+                                                          const T &log_rec, const log_lsa &rcv_lsa,
+                                                          const LOG_LSA *end_redo_lsa, LOG_RECTYPE log_rtype,
+                                                          LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support);
+// *INDENT-ON*
+				int (*redofun) (THREAD_ENTRY * thread_p, LOG_RCV *), LOG_RCV * rcv,
+				const LOG_LSA * rcv_lsa_ptr, int undo_length, const char *undo_data,
+				LOG_ZIP & redo_unzip);
 extern LOG_LSA *log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr);
 
 extern void *logtb_realloc_topops_stack (LOG_TDES * tdes, int num_elms);
@@ -932,13 +944,13 @@ extern LOG_LSA *logtb_find_current_tran_lsa (THREAD_ENTRY * thread_p);
 extern TRAN_STATE logtb_find_state (int tran_index);
 extern int logtb_find_wait_msecs (int tran_index);
 
-extern int logtb_find_interrupt (int tran_index, bool *interrupt);
+extern int logtb_find_interrupt (int tran_index, bool * interrupt);
 extern TRAN_ISOLATION logtb_find_isolation (int tran_index);
 extern TRAN_ISOLATION logtb_find_current_isolation (THREAD_ENTRY * thread_p);
 extern bool logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, bool set);
 extern bool logtb_set_suppress_repl_on_transaction (THREAD_ENTRY * thread_p, int tran_index, int set);
-extern bool logtb_is_interrupted (THREAD_ENTRY * thread_p, bool clear, bool *continue_checking);
-extern bool logtb_is_interrupted_tran (THREAD_ENTRY * thread_p, bool clear, bool *continue_checking, int tran_index);
+extern bool logtb_is_interrupted (THREAD_ENTRY * thread_p, bool clear, bool * continue_checking);
+extern bool logtb_is_interrupted_tran (THREAD_ENTRY * thread_p, bool clear, bool * continue_checking, int tran_index);
 extern bool logtb_is_active (THREAD_ENTRY * thread_p, TRANID trid);
 extern bool logtb_is_current_active (THREAD_ENTRY * thread_p);
 extern bool logtb_istran_finished (THREAD_ENTRY * thread_p, TRANID trid);
@@ -1031,7 +1043,7 @@ extern bool logtb_check_class_for_rr_isolation_err (const OID * class_oid);
 extern void logpb_vacuum_reset_log_header_cache (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr);
 
 extern VACUUM_LOG_BLOCKID logpb_last_complete_blockid (void);
-extern int logpb_page_check_corruption (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, bool *is_page_corrupted);
+extern int logpb_page_check_corruption (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, bool * is_page_corrupted);
 extern void logpb_dump_log_page_area (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int offset, int length);
 extern void logpb_page_get_first_null_block_lsa (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr,
 						 LOG_LSA * first_null_block_lsa);
