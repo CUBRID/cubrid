@@ -390,7 +390,7 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/log_postpone_cache.hpp
   ${TRANSACTION_DIR}/log_prior_send.hpp
   ${TRANSACTION_DIR}/log_reader.hpp
-  ${TRANSACTION_DIR}/log_recovery_redo_log_rec.hpp
+  ${TRANSACTION_DIR}/log_recovery_redo_sequential.hpp
   ${TRANSACTION_DIR}/log_record.hpp
   ${TRANSACTION_DIR}/log_storage.hpp
   ${TRANSACTION_DIR}/log_system_tran.hpp
