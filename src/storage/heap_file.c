@@ -712,7 +712,7 @@ static DISK_ISVALID heap_check_all_pages_by_heapchain (THREAD_ENTRY * thread_p, 
 #if defined (SA_MODE)
 static DISK_ISVALID heap_check_all_pages_by_file_table (THREAD_ENTRY * thread_p, HFID * hfid,
 							HEAP_CHKALL_RELOCOIDS * chk_objs);
-static int heap_file_map_chkreloc (THREAD_ENTRY * thread_p, PAGE_PTR * page, bool * stop, void *args);
+static int heap_file_map_chkreloc (THREAD_ENTRY * thread_p, PAGE_PTR * page, bool *stop, void *args);
 #endif /* SA_MODE */
 
 static DISK_ISVALID heap_chkreloc_start (HEAP_CHKALL_RELOCOIDS * chk);
@@ -783,19 +783,19 @@ static void heap_mvcc_log_redistribute (THREAD_ENTRY * thread_p, RECDES * p_recd
 static INLINE int heap_try_fetch_header_page (THREAD_ENTRY * thread_p, PAGE_PTR * home_pgptr_p,
 					      const VPID * home_vpid_p, const OID * oid_p, PAGE_PTR * hdr_pgptr_p,
 					      const VPID * hdr_vpid_p, HEAP_SCANCACHE * scan_cache, int *again_count,
-					      int again_max) __attribute__ ((ALWAYS_INLINE));
+					      int again_max) __attribute__((ALWAYS_INLINE));
 static INLINE int heap_try_fetch_forward_page (THREAD_ENTRY * thread_p, PAGE_PTR * home_pgptr_p,
 					       const VPID * home_vpid_p, const OID * oid_p, PAGE_PTR * fwd_pgptr_p,
 					       const VPID * fwd_vpid_p, const OID * fwd_oid_p,
 					       HEAP_SCANCACHE * scan_cache, int *again_count, int again_max)
-  __attribute__ ((ALWAYS_INLINE));
+  __attribute__((ALWAYS_INLINE));
 static INLINE int heap_try_fetch_header_with_forward_page (THREAD_ENTRY * thread_p, PAGE_PTR * home_pgptr_p,
 							   const VPID * home_vpid_p, const OID * oid_p,
 							   PAGE_PTR * hdr_pgptr_p, const VPID * hdr_vpid_p,
 							   PAGE_PTR * fwd_pgptr_p, const VPID * fwd_vpid_p,
 							   const OID * fwd_oid_p, HEAP_SCANCACHE * scan_cache,
 							   int *again_count, int again_max)
-  __attribute__ ((ALWAYS_INLINE));
+  __attribute__((ALWAYS_INLINE));
 #endif /* ENABLE_UNUSED_FUNCTION */
 
 /* common */
@@ -871,15 +871,15 @@ static int heap_scan_cache_allocate_recdes_data (THREAD_ENTRY * thread_p, HEAP_S
 static int heap_get_header_page (THREAD_ENTRY * thread_p, const HFID * hfid, VPID * header_vpid);
 
 STATIC_INLINE HEAP_HDR_STATS *heap_get_header_stats_ptr (THREAD_ENTRY * thread_p, PAGE_PTR page_header)
-  __attribute__ ((ALWAYS_INLINE));
+  __attribute__((ALWAYS_INLINE));
 STATIC_INLINE int heap_copy_header_stats (THREAD_ENTRY * thread_p, PAGE_PTR page_header, HEAP_HDR_STATS * header_stats)
-  __attribute__ ((ALWAYS_INLINE));
+  __attribute__((ALWAYS_INLINE));
 STATIC_INLINE HEAP_CHAIN *heap_get_chain_ptr (THREAD_ENTRY * thread_p, PAGE_PTR page_heap)
-  __attribute__ ((ALWAYS_INLINE));
+  __attribute__((ALWAYS_INLINE));
 STATIC_INLINE int heap_copy_chain (THREAD_ENTRY * thread_p, PAGE_PTR page_heap, HEAP_CHAIN * chain)
-  __attribute__ ((ALWAYS_INLINE));
+  __attribute__((ALWAYS_INLINE));
 STATIC_INLINE int heap_get_last_vpid (THREAD_ENTRY * thread_p, const HFID * hfid, VPID * last_vpid)
-  __attribute__ ((ALWAYS_INLINE));
+  __attribute__((ALWAYS_INLINE));
 
 // *INDENT-OFF*
 static void heap_scancache_block_allocate (cubmem::block &b, size_t size);
@@ -5187,7 +5187,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
 
   memset (&des, 0, sizeof (des));
 
-  if (prm_get_bool_value (PRM_ID_DONT_REUSE_HEAP_FILE) == false)
+  if (prm_get_bool_value (PRM_ID_DONT_REUSE_HEAP_FILE) == false && file_type == FILE_HEAP)
     {
       /*
        * Try to reuse an already mark deleted heap file
@@ -13712,7 +13712,7 @@ heap_check_all_pages_by_heapchain (THREAD_ENTRY * thread_p, HFID * hfid, HEAP_CH
  * args (in)     : HEAP_CHKALL_RELOCOIDS *
  */
 static int
-heap_file_map_chkreloc (THREAD_ENTRY * thread_p, PAGE_PTR * page, bool * stop, void *args)
+heap_file_map_chkreloc (THREAD_ENTRY * thread_p, PAGE_PTR * page, bool *stop, void *args)
 {
   HEAP_CHKALL_RELOCOIDS *chk_objs = (HEAP_CHKALL_RELOCOIDS *) args;
 
