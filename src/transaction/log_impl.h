@@ -882,6 +882,7 @@ extern void log_rv_redo_record_sync_or_dispatch_parallel (THREAD_ENTRY *thread_p
 				int (*redofun) (THREAD_ENTRY * thread_p, LOG_RCV *), LOG_RCV * rcv,
 				const LOG_LSA * rcv_lsa_ptr, int undo_length, const char *undo_data,
 				LOG_ZIP & redo_unzip);
+
 extern LOG_LSA *log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr);
 
 extern void *logtb_realloc_topops_stack (LOG_TDES * tdes, int num_elms);

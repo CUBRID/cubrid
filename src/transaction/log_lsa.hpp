@@ -44,8 +44,8 @@ struct log_lsa
     , offset (log_offset)
   {
   }
-  inline constexpr log_lsa (const log_lsa &olsa) = default;
-  inline constexpr log_lsa &operator= (const log_lsa &olsa) = default;
+  inline log_lsa (const log_lsa &olsa) = default;
+  inline log_lsa &operator= (const log_lsa &olsa) = default;
 
   inline bool is_null () const;
   inline void set_null ();
