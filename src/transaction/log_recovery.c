@@ -22,9 +22,10 @@
 
 #ident "$Id$"
 
-#include "config.h"
+#include "log_recovery.h"
 
 #include "boot_sr.h"
+#include "config.h"
 #include "error_manager.h"
 #include "locator_sr.h"
 #include "log_2pc.h"
@@ -5961,7 +5962,7 @@ log_rv_undo_record_modify (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 }
 
 /*
- * log_rv_redo_record_modify () - Modify one record of database slotted page.
+ * log_rv_record_modify_internal () - Modify one record of database slotted page.
  *				  The change can be one of:
  *				  1. New record is inserted.
  *				  2. Existing record is removed.
