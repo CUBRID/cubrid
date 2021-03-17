@@ -46,20 +46,26 @@ page_server::set_active_tran_server_connection (cubcomm::channel &&chn)
   er_log_debug (ARG_FILE_LINE, "Active transaction server connected to this page server. Channel id: %s.\n",
 		chn.get_channel_id ().c_str ());
 
-  m_ats_conn = new active_tran_server_conn (std::move (chn));
+  active_tran_server_conn conn (std::move (chn));
+  \
+  conn.register_request_handler (ats_to_ps_request::SEND_LOG_PRIOR_LIST,
+				 std::bind (&page_server::receive_log_prior_list, std::ref (*this),
+				     std::placeholders::_1));
+  conn.start_thread ();
 
-  m_ats_conn->register_request_handler (ats_to_ps_request::SEND_LOG_PRIOR_LIST,
-					std::bind (&page_server::receive_log_prior_list, std::ref (*this),
-					    std::placeholders::_1));
-
-  m_ats_conn->start_thread ();
+  m_ats_request_queue = new active_tran_server_request_queue (std::move (conn));
+  m_ats_request_autosend = new active_tran_server_request_autosend (*m_ats_request_queue);
+  m_ats_request_autosend->start_thread ();
 }
 
 void
 page_server::disconnect_active_tran_server ()
 {
-  delete m_ats_conn;
-  m_ats_conn = nullptr;
+  delete m_ats_request_autosend;
+  m_ats_request_autosend = nullptr;
+
+  delete m_ats_request_queue;
+  m_ats_request_queue = nullptr;
 }
 
 bool
@@ -76,6 +82,15 @@ page_server::receive_log_prior_list (cubpacking::unpacker &upk)
   std::string message;
   upk.unpack_string (message);
   log_Gl.m_prior_recver.push_message (std::move (message));
+}
+
+void
+page_server::push_active_tran_server_request (ps_to_ats_request reqid, std::string &&payload)
+{
+  assert_page_server_type ();
+  assert (is_active_tran_server_connected ());
+
+  m_ats_request_queue->push (reqid, std::move (payload));
 }
 
 void

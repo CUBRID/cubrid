@@ -24,6 +24,12 @@
 
 #include <string>
 
+// forward declaration
+namespace cubpacking
+{
+  class unpacker;
+}
+
 class active_tran_server
 {
   public:
@@ -42,6 +48,8 @@ class active_tran_server
 
   private:
     using page_server_request_autosend = cubcomm::request_queue_autosend<page_server_request_queue>;
+
+    void receive_saved_lsa (cubpacking::unpacker &upk);
 
     // communication with page server
     std::string m_ps_hostname;

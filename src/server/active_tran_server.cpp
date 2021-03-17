@@ -21,6 +21,7 @@
 #include "communication_server_channel.hpp"
 #include "error_manager.h"
 #include "log_impl.h"
+#include "log_lsa.hpp"
 #include "log_prior_send.hpp"
 #include "server_type.hpp"
 #include "system_parameter.h"
@@ -119,6 +120,11 @@ active_tran_server::connect_to_page_server (const std::string &host, int port, c
 		srv_chn.get_channel_id ().c_str ());
 
   page_server_conn ps_conn (std::move (srv_chn));
+  ps_conn.register_request_handler (ps_to_ats_request::SEND_SAVED_LSA,
+				    std::bind (&active_tran_server::receive_saved_lsa, std::ref (*this),
+					std::placeholders::_1));
+  ps_conn.start_thread ();
+
   m_ps_request_queue = new page_server_request_queue (std::move (ps_conn));
   m_ps_request_autosend = new page_server_request_autosend (*m_ps_request_queue);
   m_ps_request_autosend->start_thread ();
@@ -154,6 +160,21 @@ active_tran_server::push_request (ats_to_ps_request reqid, std::string &&payload
   assert (is_page_server_connected ());
 
   m_ps_request_queue->push (reqid, std::move (payload));
+}
+
+void
+active_tran_server::receive_saved_lsa (cubpacking::unpacker &upk)
+{
+  std::string message;
+  log_lsa saved_lsa;
+
+  upk.unpack_string (message);
+  assert (sizeof (log_lsa) == message.size ());
+  std::memcpy (&saved_lsa, message.c_str (), sizeof (log_lsa));
+  if (prm_get_bool_value (PRM_ID_ER_LOG_COMMIT_CONFIRM))
+    {
+      _er_log_debug (ARG_FILE_LINE, "[COMMIT CONFIRM] Received LSA = %lld|%d.\n", LSA_AS_ARGS (&saved_lsa));
+    }
 }
 
 void
