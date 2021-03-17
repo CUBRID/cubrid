@@ -1934,11 +1934,12 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
   /* Send a request to Page Server for the log. */
   if (get_server_type () == SERVER_TYPE_TRANSACTION)
     {
-      ats_Gl.push_request (ats_to_ps_request::SEND_LOG_PAGE_FETCH, "Payload");	//Is there a cmake for this one?
-      // Log it here.
+      std::string buffer = std::bitset < 64 > (pageid).to_string ();
+
+      ats_Gl.push_request (ats_to_ps_request::SEND_LOG_PAGE_FETCH, buffer.c_str ());
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
 	{
-	  er_log_debug (ARG_FILE_LINE, "Sent request for log to Page Server.\n");
+	  _er_log_debug (ARG_FILE_LINE, "Sent request for log to Page Server. Page ID: %lld \n", pageid);
 	}
     }
 #endif // SERVER_MODE

@@ -345,7 +345,6 @@ enum param_id
   PRM_ID_VACUUM_LOG_BLOCK_PAGES,
   PRM_ID_VACUUM_WORKER_COUNT,
   PRM_ID_ER_LOG_VACUUM,
-  PRM_ID_ER_LOG_READ_LOG_PAGE,
   PRM_ID_DISABLE_VACUUM,
 
   /* Debugging system parameter */
@@ -460,9 +459,10 @@ enum param_id
   PRM_ID_ER_LOG_PRIOR_TRANSFER,
   PRM_ID_ER_LOG_COMM_REQUEST,
   PRM_ID_ER_LOG_COMM_CHANNEL,
+  PRM_ID_ER_LOG_READ_LOG_PAGE,
 
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_ER_LOG_COMM_CHANNEL
+  PRM_LAST_ID = PRM_ID_ER_LOG_READ_LOG_PAGE
 };
 typedef enum param_id PARAM_ID;
 

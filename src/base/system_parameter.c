@@ -6132,10 +6132,9 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  // Use prm_get_bool_value with parameter PRM_ID_ER_LOG_READ_LOG_PAGE.
   {PRM_ID_ER_LOG_READ_LOG_PAGE,
    PRM_NAME_ER_LOG_READ_LOG_PAGE,
-   (PRM_HIDDEN),
+   (PRM_HIDDEN | PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_BOOLEAN,
    &prm_er_log_read_log_page_flag,
    (void *) &prm_er_log_read_log_page_default,
