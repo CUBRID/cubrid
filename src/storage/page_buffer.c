@@ -970,7 +970,6 @@ static int pgbuf_Abort_release_line = 0;
 static INLINE unsigned int pgbuf_hash_func_mirror (const VPID * vpid) __attribute__ ((ALWAYS_INLINE));
 
 static INLINE bool pgbuf_is_temporary_volume (VOLID volid) __attribute__ ((ALWAYS_INLINE));
-
 static int pgbuf_initialize_bcb_table (void);
 static int pgbuf_initialize_hash_table (void);
 static int pgbuf_initialize_lock_table (void);
