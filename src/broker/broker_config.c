@@ -1457,7 +1457,7 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info, int num_broker, in
       tmp_str = get_conf_string (br_info[i].jdbc_cache_only_hint, tbl_on_off);
       if (tmp_str)
 	{
-	  fprintf (fp, "JDBC_CACHE_ONLY_HINT\t=%s\n", tmp_str);
+	  fprintf (fp, "JDBC_CACHE_HINT_ONLY\t=%s\n", tmp_str);
 	}
 
       fprintf (fp, "JDBC_CACHE_LIFE_TIME\t=%d\n", br_info[i].jdbc_cache_life_time);
