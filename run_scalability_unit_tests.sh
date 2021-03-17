@@ -17,6 +17,7 @@
 #
 
 # A-Z
+./test_checkpoint_info
 ./test_prior_list_serialize
 ./test_prior_sendrecv
 ./test_request_cs
