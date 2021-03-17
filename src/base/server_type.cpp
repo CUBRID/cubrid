@@ -63,7 +63,7 @@ void finalize_server_type ()
   else
     {
       assert (get_server_type () == SERVER_TYPE_PAGE);
-      ps_Gl.finalize ();
+      ps_Gl.disconnect_active_tran_server ();
     }
 }
 

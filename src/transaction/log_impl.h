@@ -46,7 +46,6 @@
 #include "log_archives.hpp"
 #include "log_comm.h"
 #include "log_common_impl.h"
-#include "log_compress.h"
 #include "log_lsa.hpp"
 #include "log_postpone_cache.hpp"
 #include "log_prior_send.hpp"

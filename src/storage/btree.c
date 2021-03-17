@@ -50,7 +50,6 @@
 #include "regu_var.hpp"
 #include "fault_injection.h"
 #include "dbtype.h"
-#include "server_type.hpp"
 #include "thread_manager.hpp"
 
 #include <assert.h>
@@ -21927,8 +21926,7 @@ btree_check_valid_record (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * rec
 	      assert (false);
 	      return ER_FAILED;
 	    }
-	  if (!MVCC_ID_PRECEDES (mvccid, log_Gl.hdr.mvcc_next_id) && !log_is_in_crash_recovery ()
-	      && get_server_type () == SERVER_TYPE_TRANSACTION)
+	  if (!MVCC_ID_PRECEDES (mvccid, log_Gl.hdr.mvcc_next_id) && !log_is_in_crash_recovery ())
 	    {
 	      assert (false);
 	      return ER_FAILED;

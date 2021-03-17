@@ -3161,7 +3161,6 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
 #if defined (SA_MODE)
   vacuum_sa_reflect_last_blockid (thread_p);
 #endif // SA_MODE
-
   log_final (thread_p);
 
   /* Since all pages were flushed, now it's safe to destroy DWB. */

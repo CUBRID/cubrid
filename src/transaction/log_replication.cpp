@@ -19,7 +19,8 @@
 #include "log_replication.hpp"
 
 #include "log_impl.h"
-#include "log_recovery_redo_log_rec.hpp"
+#include "log_recovery.h"
+#include "log_recovery_redo.hpp"
 #include "recovery.h"
 #include "thread_looper.hpp"
 #include "thread_manager.hpp"
@@ -35,6 +36,9 @@ namespace cublog
   replicator::replicator (const log_lsa &start_redo_lsa)
     : m_redo_lsa { start_redo_lsa }
   {
+    log_zip_realloc_if_needed (m_undo_unzip, LOGAREA_SIZE);
+    log_zip_realloc_if_needed (m_redo_unzip, LOGAREA_SIZE);
+
     // Create the daemon
     cubthread::looper loop (std::chrono::milliseconds (1));   // loop every 1 millisecond
     auto task_func = std::bind (&replicator::redo_upto_nxiolsa, std::ref (*this), std::placeholders::_1);
@@ -144,8 +148,8 @@ namespace cublog
 	MVCCID_FORWARD (log_Gl.hdr.mvcc_next_id);
       }
 
-    log_rv_redo_record_sync_or_dispatch_parallel<T> (&thread_entry, m_reader, log_rec, rec_lsa, nullptr, rectype,
-	m_undo_unzip, m_redo_unzip);
+    log_rv_redo_record_sync<T> (&thread_entry, m_reader, log_rec, log_rv_get_log_rec_vpid<T> (log_rec), rec_lsa,
+				nullptr, rectype, m_undo_unzip, m_redo_unzip);
   }
 
   void

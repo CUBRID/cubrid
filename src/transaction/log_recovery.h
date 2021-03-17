@@ -43,6 +43,11 @@ extern int log_rv_undo_record_modify (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern char *log_rv_pack_redo_record_changes (char *ptr, int offset_to_data, int old_data_size, int new_data_size,
 					      char *new_data);
 extern char *log_rv_pack_undo_record_changes (char *ptr, int offset_to_data, int old_data_size, int new_data_size,
+// *INDENT-OFF*
+void log_rv_redo_record (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
+			 int (*redofun) (THREAD_ENTRY *thread_p, LOG_RCV *), LOG_RCV *rcv, const LOG_LSA *rcv_lsa_ptr,
+			 int undo_length, const char *undo_data, LOG_ZIP &redo_unzip);
+// *INDENT-ON*
 					      char *old_data);
 
 #endif // LOG_RECOVERY_H
