@@ -21,7 +21,10 @@
 
 #include "log_reader.hpp"
 #include "log_record.hpp"
+#include "log_recovery.h"
+#include "page_buffer.h"
 #include "scope_exit.hpp"
+#include "system_parameter.h"
 #include "type_helper.hpp"
 
 /*
@@ -504,25 +507,45 @@ inline int log_rv_get_log_rec_redo_data<LOG_REC_COMPENSATE> (THREAD_ENTRY *threa
   return log_rv_get_unzip_and_diff_redo_log_data (thread_p, log_pgptr_reader, &rcv, 0, nullptr, redo_unzip_support);
 }
 
+class vpid_lsa_consistency_check
+{
+  public:
+    vpid_lsa_consistency_check() = default;
+    ~vpid_lsa_consistency_check() = default;
+
+    vpid_lsa_consistency_check(const vpid_lsa_consistency_check&) = delete;
+    vpid_lsa_consistency_check(vpid_lsa_consistency_check&&) = delete;
+
+    vpid_lsa_consistency_check& operator=(const vpid_lsa_consistency_check&) = delete;
+    vpid_lsa_consistency_check& operator=(vpid_lsa_consistency_check&&) = delete;
+
+    void check(const struct vpid &a_vpid, const struct log_lsa &a_log_lsa);
+    void cleanup();
+
+  private:
+    using vpid_key_t = std::pair<short, int32_t>;
+    using vpid_log_lsa_map_t = std::map<vpid_key_t, struct log_lsa>;
+
+#if !defined(NDEBUG)
+    std::mutex mtx;
+    vpid_log_lsa_map_t consistency_check_map;
+#endif
+};
+
+#if !defined(NDEBUG)
+extern vpid_lsa_consistency_check log_Gl_recovery_redo_consistency_check;
+#endif
+
 template <typename T>
 void log_rv_redo_record_sync (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader, const T &log_rec,
 			      const VPID &rcv_vpid, const log_lsa &rcv_lsa, const LOG_LSA *end_redo_lsa, LOG_RECTYPE log_rtype,
 			      LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support)
 {
+#if !defined(NDEBUG)
   // bit of debug code to ensure that, should this code be executed asynchronously, within the same page,
-  // the lsa is everincreasing, thus, not altering the order in which it has been added to the log in the first place
-//#if !defined(NDEBUG)
-//  static std::mutex mtx;
-//  static std::map<std::pair<short, int32_t>, log_lsa> map_proper_vpid_lsa;
-//  std::lock_guard<std::mutex> lck (mtx);
-//  std::pair<short, int32_t> key {rcv_vpid.volid, rcv_vpid.pageid};
-//  const auto key_it =  map_proper_vpid_lsa.find (key);
-//  if (key_it != map_proper_vpid_lsa.end())
-//    {
-//      assert ((*key_it).second < rcv_lsa);
-//    }
-//  map_proper_vpid_lsa.emplace(key, rcv_lsa);
-//#endif
+  // the lsa is ever-increasing, thus, not altering the order in which it has been added to the log in the first place
+  log_Gl_recovery_redo_consistency_check.check (rcv_vpid, rcv_lsa);
+#endif
 
   const LOG_DATA &log_data = log_rv_get_log_rec_data<T> (log_rec);
 

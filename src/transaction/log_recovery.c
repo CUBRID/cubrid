@@ -3835,6 +3835,12 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 exit:
   LSA_SET_NULL (&log_Gl.unique_stats_table.curr_rcv_rec_lsa);
 
+#if !defined(NDEBUG)
+  // bit of debug code to ensure that, should this code be executed asynchronously, within the same page,
+  // the lsa is ever-increasing, thus, not altering the order in which it has been added to the log in the first place
+  log_Gl_recovery_redo_consistency_check.cleanup ();
+#endif
+
   return;
 }
 

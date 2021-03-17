@@ -297,6 +297,7 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/log_prior_recv.cpp
   ${TRANSACTION_DIR}/log_reader.cpp
   ${TRANSACTION_DIR}/log_recovery.c
+  ${TRANSACTION_DIR}/log_recovery_redo.cpp
   ${TRANSACTION_DIR}/log_system_tran.cpp
   ${TRANSACTION_DIR}/log_tran_table.c
   ${TRANSACTION_DIR}/log_writer.c
