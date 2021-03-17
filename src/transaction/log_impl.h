@@ -771,7 +771,6 @@ extern void logpb_finalize_pool (THREAD_ENTRY * thread_p);
 extern bool logpb_is_pool_initialized (void);
 extern void logpb_invalidate_pool (THREAD_ENTRY * thread_p);
 extern LOG_PAGE *logpb_create_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid);
-extern LOG_PAGE *log_pbfetch (LOG_PAGEID pageid);
 extern void logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr);
 extern int logpb_flush_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr);
 extern LOG_PAGEID logpb_get_page_id (LOG_PAGE * log_pgptr);
@@ -868,23 +867,6 @@ extern int logpb_remove_all_in_log_path (THREAD_ENTRY * thread_p, const char *db
 extern TDE_ALGORITHM logpb_get_tde_algorithm (const LOG_PAGE * log_pgptr);
 extern void logpb_set_tde_algorithm (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, const TDE_ALGORITHM tde_algo);
 
-
-
-extern void log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat);
-// *INDENT-OFF*
-extern void log_rv_redo_record (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
-                                int (*redofun) (THREAD_ENTRY *thread_p, LOG_RCV *), LOG_RCV *rcv,
-                                const LOG_LSA *rcv_lsa_ptr, int undo_length, const char *undo_data,
-                                LOG_ZIP &redo_unzip);
-template <typename T>
-extern void log_rv_redo_record_sync_or_dispatch_parallel (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
-                                                          const T &log_rec, const log_lsa &rcv_lsa,
-                                                          const LOG_LSA *end_redo_lsa, LOG_RECTYPE log_rtype,
-                                                          LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support);
-// *INDENT-ON*
-
-extern LOG_LSA *log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr);
-
 extern void *logtb_realloc_topops_stack (LOG_TDES * tdes, int num_elms);
 extern void logtb_define_trantable (THREAD_ENTRY * thread_p, int num_expected_tran_indices, int num_expected_locks);
 extern int logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p, int num_expected_tran_indices);
@@ -963,7 +945,6 @@ extern void logtb_set_to_system_tran_index (THREAD_ENTRY * thread_p);
 extern LOG_LSA *logtb_find_largest_lsa (THREAD_ENTRY * thread_p);
 #endif
 extern int logtb_set_num_loose_end_trans (THREAD_ENTRY * thread_p);
-extern void log_find_unilaterally_largest_undo_lsa (THREAD_ENTRY * thread_p, LOG_LSA & max_undo_lsa);
 extern void logtb_find_smallest_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa);
 extern void logtb_find_smallest_and_largest_active_pages (THREAD_ENTRY * thread_p, LOG_PAGEID * smallest,
 							  LOG_PAGEID * largest);
@@ -1024,15 +1005,6 @@ extern int logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p, B
 extern int logtb_delete_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid);
 extern int logtb_reflect_global_unique_stats_to_btree (THREAD_ENTRY * thread_p);
 extern int logtb_tran_update_all_global_unique_stats (THREAD_ENTRY * thread_p);
-
-extern int log_rv_undoredo_record_partial_changes (THREAD_ENTRY * thread_p, char *rcv_data, int rcv_data_length,
-						   RECDES * record, bool is_undo);
-extern int log_rv_redo_record_modify (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int log_rv_undo_record_modify (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern char *log_rv_pack_redo_record_changes (char *ptr, int offset_to_data, int old_data_size, int new_data_size,
-					      char *new_data);
-extern char *log_rv_pack_undo_record_changes (char *ptr, int offset_to_data, int old_data_size, int new_data_size,
-					      char *old_data);
 
 extern void log_set_ha_promotion_time (THREAD_ENTRY * thread_p, INT64 ha_promotion_time);
 extern void log_set_db_restore_time (THREAD_ENTRY * thread_p, INT64 db_restore_time);

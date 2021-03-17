@@ -31,6 +31,7 @@
 #include "slotted_page.h"
 #include "log_append.hpp"
 #include "log_manager.h"
+#include "log_recovery.h"
 #include "overflow_file.h"
 #include "xserver_interface.h"
 #include "scan_manager.h"

@@ -52,13 +52,23 @@ typedef struct log_zip LOG_ZIP;
 
 struct log_zip
 {
-  LOG_ZIP_SIZE_T data_length;	/* length of stored (compressed/uncompressed)log_zip data */
-  LOG_ZIP_SIZE_T buf_size;	/* size of log_zip data buffer */
-  char *log_data;		/* compressed/uncompressed log_zip data (used as data buffer) */
+  LOG_ZIP_SIZE_T data_length = 0;	/* length of stored (compressed/uncompressed)log_zip data */
+  LOG_ZIP_SIZE_T buf_size = 0;	/* size of log_zip data buffer */
+  char *log_data = nullptr;	/* compressed/uncompressed log_zip data (used as data buffer) */
+
+  // *INDENT-OFF*
+  log_zip () = default;
+  log_zip (const log_zip &) = delete;
+  log_zip (log_zip &&) = delete;
+
+  log_zip & operator= (const log_zip &) = delete;
+  log_zip & operator= (log_zip &&) = delete;
+  // *INDENT-ON*
 };
 
 extern LOG_ZIP *log_zip_alloc (LOG_ZIP_SIZE_T size);
 extern bool log_zip_realloc_if_needed (LOG_ZIP & log_zip, LOG_ZIP_SIZE_T new_size);
+extern void log_zip_free_data (LOG_ZIP & log_zip);
 extern void log_zip_free (LOG_ZIP * log_zip);
 extern bool log_zip_init (LOG_ZIP & zip, LOG_ZIP_SIZE_T size);
 extern void log_zip_clear (LOG_ZIP & zip);
