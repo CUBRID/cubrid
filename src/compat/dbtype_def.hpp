@@ -6,22 +6,22 @@
 /* C++ extensions for strict-C structures defined in corresponding '.h' header
  */
 
-inline constexpr bool operator== (const VPID &_left, const VPID &_rite)
+inline constexpr bool operator== (const VPID &left, const VPID &rite)
 {
-  return (_left.volid == _rite.volid && _left.pageid == _rite.pageid);
+  return (left.volid == rite.volid && left.pageid == rite.pageid);
 }
 
-inline constexpr bool operator!= (const VPID &_left, const VPID &_rite)
+inline constexpr bool operator!= (const VPID &left, const VPID &rite)
 {
-  return ! (_left == _rite);
+  return ! (left == rite);
 }
 
-inline constexpr bool operator< (const VPID &_left, const VPID &_rite)
+inline constexpr bool operator< (const VPID &left, const VPID &rite)
 {
-  return (_left != _rite)
+  return (left != rite)
 	 && (
-		 (_left.volid < _rite.volid)
-		 || (_left.volid == _rite.volid && _left.pageid < _rite.pageid)
+		 (left.volid < rite.volid)
+		 || (left.volid == rite.volid && left.pageid < rite.pageid)
 	 );
 }
 
