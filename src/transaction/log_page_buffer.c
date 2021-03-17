@@ -185,6 +185,8 @@ static int rv;
 
 /* LOG BUFFER STRUCTURE */
 
+constexpr size_t BIG_INT_SIZE = 8;
+
 typedef struct log_buffer LOG_BUFFER;
 struct log_buffer
 {
@@ -1934,9 +1936,11 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
   /* Send a request to Page Server for the log. */
   if (get_server_type () == SERVER_TYPE_TRANSACTION)
     {
-      std::string buffer = std::bitset < 64 > (pageid).to_string ();
+      char buffer[BIG_INT_SIZE];
+      memcpy (buffer, &pageid, sizeof (pageid));
+      std::string message (buffer, BIG_INT_SIZE);
 
-      ats_Gl.push_request (ats_to_ps_request::SEND_LOG_PAGE_FETCH, buffer.c_str ());
+      ats_Gl.push_request (ats_to_ps_request::SEND_LOG_PAGE_FETCH, std::move (message));
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
 	{
 	  _er_log_debug (ARG_FILE_LINE, "Sent request for log to Page Server. Page ID: %lld \n", pageid);

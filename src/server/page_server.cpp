@@ -88,10 +88,13 @@ page_server::receive_log_page_fetch (cubpacking::unpacker &upk)
 {
         if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
         {
+                LOG_PAGEID pageid;
                 std::string message;
-                upk.unpack_string (message);
 
-                LOG_PAGEID pageid = std::bitset<64>(message).to_ullong();
+                upk.unpack_string(message);
+                memcpy(&pageid, message.c_str(), sizeof(pageid));
+                assert(message.size() == sizeof(pageid));
+
                 _er_log_debug (ARG_FILE_LINE, "Received request for log from Transaction Server. Page ID: %lld \n", pageid);
         }
 }
