@@ -34,32 +34,32 @@
 /* recovery data out of a log record
  */
 template <typename T>
-const LOG_DATA &log_rv_get_log_rec_data (const T &log_rec);
+inline const LOG_DATA &log_rv_get_log_rec_data (const T &log_rec);
 
 /*
  */
 template <typename T>
-MVCCID log_rv_get_log_rec_mvccid (const T &log_rec);
+inline MVCCID log_rv_get_log_rec_mvccid (const T &log_rec);
 
 /*
  */
 template <typename T>
-VPID log_rv_get_log_rec_vpid (const T &log_rec);
+inline VPID log_rv_get_log_rec_vpid (const T &log_rec);
 
 /*
  */
 template <typename T>
-int log_rv_get_log_rec_redo_length (const T &log_rec);
+inline int log_rv_get_log_rec_redo_length (const T &log_rec);
 
 /*
  */
 template <typename T>
-int log_rv_get_log_rec_offset (const T &log_rec);
+inline int log_rv_get_log_rec_offset (const T &log_rec);
 
 /*
  */
 template <typename T>
-rvfun::fun_t log_rv_get_fun (const T &, LOG_RCVINDEX rcvindex);
+inline rvfun::fun_t log_rv_get_fun (const T &, LOG_RCVINDEX rcvindex);
 
 /*
  * template implementations
