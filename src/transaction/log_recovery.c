@@ -22,9 +22,10 @@
 
 #ident "$Id$"
 
-#include "config.h"
+#include "log_recovery.h"
 
 #include "boot_sr.h"
+#include "config.h"
 #include "error_manager.h"
 #include "locator_sr.h"
 #include "log_2pc.h"
@@ -35,6 +36,7 @@
 #include "log_manager.h"
 #include "log_reader.hpp"
 #include "log_record.hpp"
+#include "log_recovery_redo.hpp"
 #include "log_system_tran.hpp"
 #include "log_volids.hpp"
 #include "message_catalog.h"
@@ -146,6 +148,7 @@ STATIC_INLINE PAGE_PTR log_rv_redo_fix_page (THREAD_ENTRY * thread_p, const VPID
 
 static void log_rv_simulate_runtime_worker (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void log_rv_end_simulation (THREAD_ENTRY * thread_p);
+static void log_find_unilaterally_largest_undo_lsa (THREAD_ENTRY * thread_p, LOG_LSA & max_undo_lsa);
 
 /*
  * CRASH RECOVERY PROCESS
@@ -497,7 +500,17 @@ log_rv_redo_record (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader,
     }
 }
 
-/* TODO: desc
+/* log_rv_fix_page_and_check_redo_is_needed - check if page still exists and, if yes, whether the lsa has not
+ *                    already been applied
+ *
+ * return: boolean
+ *
+ *  thread_p(in):
+ *  page_vpid(in): page identifier
+ *  rcv(in/out):
+ *  rcvindex(in): recovery index of log record to redo
+ *  rcv_lsa(in): Reset data page (rcv->pgptr) to this LSA
+ *  end_redo_lsa(in):
  */
 bool
 log_rv_fix_page_and_check_redo_is_needed (THREAD_ENTRY * thread_p, const VPID & page_vpid, log_rcv & rcv,
@@ -3889,6 +3902,10 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 exit:
   LSA_SET_NULL (&log_Gl.unique_stats_table.curr_rcv_rec_lsa);
 
+#if !defined(NDEBUG)
+  log_Gl_recovery_redo_consistency_check.cleanup ();
+#endif
+
   return;
 }
 
@@ -6027,7 +6044,7 @@ log_rv_undo_record_modify (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 }
 
 /*
- * log_rv_redo_record_modify () - Modify one record of database slotted page.
+ * log_rv_record_modify_internal () - Modify one record of database slotted page.
  *				  The change can be one of:
  *				  1. New record is inserted.
  *				  2. Existing record is removed.
@@ -6171,7 +6188,7 @@ log_rv_pack_redo_record_changes (char *ptr, int offset_to_data, int old_data_siz
 }
 
 /*
- * log_rv_pack_redo_record_changes () - Pack recovery data for undo record
+ * log_rv_pack_undo_record_changes () - Pack recovery data for undo record
  *					change.
  *
  * return	       : Error code.
@@ -6331,3 +6348,51 @@ log_rv_end_simulation (THREAD_ENTRY * thread_p)
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, LOG_SYSTEM_TRAN_INDEX);
 #endif // SA_MODE
 }
+
+/*
+ * log_find_unilaterally_largest_undo_lsa - find maximum lsa address to undo
+ *
+ * return:
+ *
+ * Note: Find the maximum log sequence address to undo during the undo
+ *              crash recovery phase.
+ */
+void
+log_find_unilaterally_largest_undo_lsa (THREAD_ENTRY * thread_p, LOG_LSA & max_undo_lsa)
+{
+  // *INDENT-OFF*
+  int i;
+  LOG_TDES *tdes;		/* Transaction descriptor */
+
+  TR_TABLE_CS_ENTER_READ_MODE (thread_p);
+
+  LSA_SET_NULL (&max_undo_lsa);
+
+  auto max_undo_lsa_func = [&] (log_tdes & tdes)
+    {
+      if (LSA_LT (&max_undo_lsa, &tdes.undo_nxlsa))
+        {
+          max_undo_lsa = tdes.undo_nxlsa;
+        }
+    };
+
+  /* Check active transactions. */
+  for (i = 0; i < log_Gl.trantable.num_total_indices; i++)
+    {
+      if (i != LOG_SYSTEM_TRAN_INDEX)
+        {
+          tdes = log_Gl.trantable.all_tdes[i];
+          if (tdes != NULL && tdes->trid != NULL_TRANID
+              && (tdes->state == TRAN_UNACTIVE_UNILATERALLY_ABORTED || tdes->state == TRAN_UNACTIVE_ABORTED))
+            {
+              max_undo_lsa_func (*tdes);
+            }
+        }
+    }
+  /* Check system worker transactions. */
+  log_system_tdes::map_all_tdes (max_undo_lsa_func);
+
+  TR_TABLE_CS_EXIT (thread_p);
+  // *INDENT-ON*
+}
+
