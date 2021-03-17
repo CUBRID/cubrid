@@ -102,7 +102,7 @@ page_server::finish_replication (cubthread::entry &thread_entry)
 {
   if (m_replicator)
     {
-      logpb_flush_pages_direct (&thread_entry);
+      logpb_force_flush_pages (&thread_entry);
       m_replicator->wait_replication_finish ();
       delete m_replicator;
       m_replicator = nullptr;
