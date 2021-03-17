@@ -497,7 +497,17 @@ log_rv_redo_record (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader,
     }
 }
 
-/* TODO: desc
+/* log_rv_fix_page_and_check_redo_is_needed - check if page still exists and, if yes, whether the lsa has not
+ *                    already been applied
+ *
+ * return: boolean
+ *
+ *  thread_p(in):
+ *  page_vpid(in): page identifier
+ *  rcv(in/out):
+ *  rcvindex(in): recovery index of log record to redo
+ *  rcv_lsa(in): Reset data page (rcv->pgptr) to this LSA
+ *  end_redo_lsa(in):
  */
 bool
 log_rv_fix_page_and_check_redo_is_needed (THREAD_ENTRY * thread_p, const VPID & page_vpid, log_rcv & rcv,
