@@ -146,6 +146,7 @@ STATIC_INLINE PAGE_PTR log_rv_redo_fix_page (THREAD_ENTRY * thread_p, const VPID
 
 static void log_rv_simulate_runtime_worker (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void log_rv_end_simulation (THREAD_ENTRY * thread_p);
+static void log_find_unilaterally_largest_undo_lsa (THREAD_ENTRY * thread_p, LOG_LSA & max_undo_lsa);
 
 /*
  * CRASH RECOVERY PROCESS
@@ -6116,7 +6117,7 @@ log_rv_pack_redo_record_changes (char *ptr, int offset_to_data, int old_data_siz
 }
 
 /*
- * log_rv_pack_redo_record_changes () - Pack recovery data for undo record
+ * log_rv_pack_undo_record_changes () - Pack recovery data for undo record
  *					change.
  *
  * return	       : Error code.
@@ -6276,3 +6277,51 @@ log_rv_end_simulation (THREAD_ENTRY * thread_p)
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, LOG_SYSTEM_TRAN_INDEX);
 #endif // SA_MODE
 }
+
+/*
+ * log_find_unilaterally_largest_undo_lsa - find maximum lsa address to undo
+ *
+ * return:
+ *
+ * Note: Find the maximum log sequence address to undo during the undo
+ *              crash recovery phase.
+ */
+void
+log_find_unilaterally_largest_undo_lsa (THREAD_ENTRY * thread_p, LOG_LSA & max_undo_lsa)
+{
+  // *INDENT-OFF*
+  int i;
+  LOG_TDES *tdes;		/* Transaction descriptor */
+
+  TR_TABLE_CS_ENTER_READ_MODE (thread_p);
+
+  LSA_SET_NULL (&max_undo_lsa);
+
+  auto max_undo_lsa_func = [&] (log_tdes & tdes)
+    {
+      if (LSA_LT (&max_undo_lsa, &tdes.undo_nxlsa))
+        {
+          max_undo_lsa = tdes.undo_nxlsa;
+        }
+    };
+
+  /* Check active transactions. */
+  for (i = 0; i < log_Gl.trantable.num_total_indices; i++)
+    {
+      if (i != LOG_SYSTEM_TRAN_INDEX)
+        {
+          tdes = log_Gl.trantable.all_tdes[i];
+          if (tdes != NULL && tdes->trid != NULL_TRANID
+              && (tdes->state == TRAN_UNACTIVE_UNILATERALLY_ABORTED || tdes->state == TRAN_UNACTIVE_ABORTED))
+            {
+              max_undo_lsa_func (*tdes);
+            }
+        }
+    }
+  /* Check system worker transactions. */
+  log_system_tdes::map_all_tdes (max_undo_lsa_func);
+
+  TR_TABLE_CS_EXIT (thread_p);
+  // *INDENT-ON*
+}
+

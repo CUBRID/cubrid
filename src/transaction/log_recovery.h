@@ -1,3 +1,21 @@
+/*
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ */
+
 #ifndef LOG_RECOVERY_H
 #define LOG_RECOVERY_H
 
@@ -20,6 +38,8 @@ extern void log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * s
 extern LOG_LSA *log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr);
 extern int log_rv_undoredo_record_partial_changes (THREAD_ENTRY * thread_p, char *rcv_data, int rcv_data_length,
 						   RECDES * record, bool is_undo);
+extern int log_rv_redo_record_modify (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int log_rv_undo_record_modify (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern char *log_rv_pack_redo_record_changes (char *ptr, int offset_to_data, int old_data_size, int new_data_size,
 					      char *new_data);
 extern char *log_rv_pack_undo_record_changes (char *ptr, int offset_to_data, int old_data_size, int new_data_size,

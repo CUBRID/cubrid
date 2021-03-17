@@ -944,7 +944,6 @@ extern void logtb_set_to_system_tran_index (THREAD_ENTRY * thread_p);
 extern LOG_LSA *logtb_find_largest_lsa (THREAD_ENTRY * thread_p);
 #endif
 extern int logtb_set_num_loose_end_trans (THREAD_ENTRY * thread_p);
-extern void log_find_unilaterally_largest_undo_lsa (THREAD_ENTRY * thread_p, LOG_LSA & max_undo_lsa); // TODO: move header and impl to log_recovery
 extern void logtb_find_smallest_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa);
 extern void logtb_find_smallest_and_largest_active_pages (THREAD_ENTRY * thread_p, LOG_PAGEID * smallest,
 							  LOG_PAGEID * largest);
@@ -1005,9 +1004,6 @@ extern int logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p, B
 extern int logtb_delete_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid);
 extern int logtb_reflect_global_unique_stats_to_btree (THREAD_ENTRY * thread_p);
 extern int logtb_tran_update_all_global_unique_stats (THREAD_ENTRY * thread_p);
-
-extern int log_rv_redo_record_modify (THREAD_ENTRY * thread_p, LOG_RCV * rcv); // TODO: this and dependent function not used at all
-extern int log_rv_undo_record_modify (THREAD_ENTRY * thread_p, LOG_RCV * rcv); // TODO: this and dependent function not used at all
 
 extern void log_set_ha_promotion_time (THREAD_ENTRY * thread_p, INT64 ha_promotion_time);
 extern void log_set_db_restore_time (THREAD_ENTRY * thread_p, INT64 db_restore_time);
