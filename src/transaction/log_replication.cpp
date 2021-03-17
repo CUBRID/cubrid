@@ -19,6 +19,7 @@
 #include "log_replication.hpp"
 
 #include "log_impl.h"
+#include "log_recovery_redo_log_rec.hpp"
 #include "recovery.h"
 #include "thread_looper.hpp"
 #include "thread_manager.hpp"
@@ -133,6 +134,16 @@ namespace cublog
   {
     m_reader.advance_when_does_not_fit (sizeof (T));
     T log_rec = m_reader.reinterpret_copy_and_add_align<T> ();
+
+    // To allow reads on the page server, make sure that all changes are visible.
+    // Having log_Gl.hdr.mvcc_next_id higher than all MVCCID's in the database is a requirement.
+    MVCCID mvccid = log_rv_get_log_rec_mvccid (log_rec);
+    if (mvccid != MVCCID_NULL && !MVCC_ID_PRECEDES (mvccid, log_Gl.hdr.mvcc_next_id))
+      {
+	log_Gl.hdr.mvcc_next_id = mvccid;
+	MVCCID_FORWARD (log_Gl.hdr.mvcc_next_id);
+      }
+
     log_rv_redo_record_sync_or_dispatch_parallel<T> (&thread_entry, m_reader, log_rec, rec_lsa, nullptr, rectype,
 	m_undo_unzip, m_redo_unzip);
   }

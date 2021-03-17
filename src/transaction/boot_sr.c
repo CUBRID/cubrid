@@ -3147,6 +3147,13 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
   // hopefully, nothing else follows
   vacuum_stop_master (thread_p);
 
+#if defined (SERVER_MODE)
+  if (get_server_type () == SERVER_TYPE_PAGE)
+    {
+      ps_Gl.finish_replication (*thread_p);
+    }
+#endif
+
 #if defined(SERVER_MODE)
   pgbuf_daemons_destroy ();
 #endif
@@ -3154,13 +3161,6 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
 #if defined (SA_MODE)
   vacuum_sa_reflect_last_blockid (thread_p);
 #endif // SA_MODE
-
-#if defined (SERVER_MODE)
-  if (get_server_type () == SERVER_TYPE_PAGE)
-    {
-      ps_Gl.finish_replication (*thread_p);
-    }
-#endif
 
   log_final (thread_p);
 
