@@ -517,6 +517,8 @@ log_rv_fix_page_and_check_redo_is_needed (THREAD_ENTRY * thread_p, const VPID & 
       if (rcv.pgptr == nullptr)
 	{
 	  /* the page was changed and also deallocated in the meantime, no need to apply redo */
+	  // only acceptable during recovery, not acceptable for replication
+	  assert (log_is_in_crash_recovery ());
 	  return false;
 	}
     }
