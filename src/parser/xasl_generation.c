@@ -6409,16 +6409,6 @@ pt_make_regu_arith (const REGU_VARIABLE * arg1, const REGU_VARIABLE * arg2, cons
 
   regu_dbval_type_init (dbval, TP_DOMAIN_TYPE (domain));
   arith->domain = (TP_DOMAIN *) domain;
-  if (domain->type->id == DB_TYPE_STRING)
-    {
-      /* if the domain is STRING, it should be checked
-       * its precision is negative, commonly default is -1
-       */
-      if (arith->domain->precision < 0)
-        {
-          arith->domain->precision = DB_MAX_VARCHAR_PRECISION;
-        }
-    }
   arith->value = dbval;
   arith->opcode = op;
   arith->leftptr = (REGU_VARIABLE *) arg1;

@@ -8606,11 +8606,32 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   create_select = node->info.create_entity.create_select;
   if (create_select != NULL)
     {
+      DB_QUERY_TYPE *column;
+
       error = pt_get_select_query_columns (parser, create_select, &query_columns);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
 	}
+
+      /* check for mis-creating string type with -1 precision */
+      for (column = query_columns; column != NULL; column = db_query_format_next (column))
+        {
+          if (TP_IS_VAR_LEN_CHAR_TYPE(column->domain->type->id))
+            {
+              if (column->domain->precision == DB_DEFAULT_PRECISION)
+                {
+                  column->domain->precision = DB_MAX_VARCHAR_PRECISION;
+                }
+            }
+          else if (TP_IS_FIXED_LEN_CHAR_TYPE(column->domain->type->id))
+            {
+             if (column->domain->precision == DB_DEFAULT_PRECISION)
+               {
+                 column->domain->precision = DB_MAX_CHAR_PRECISION;
+               }
+            }
+        }
     }
   assert (!(create_like != NULL && create_select != NULL));
 
