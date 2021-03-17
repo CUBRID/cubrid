@@ -79,6 +79,9 @@
 #include "error_manager.h"
 #include "xserver_interface.h"
 #include "perf_monitor.h"
+#if defined (SERVER_MODE)
+#include "page_server.hpp"
+#endif
 #include "server_type.hpp"
 #include "storage_common.h"
 #include "system_parameter.h"
@@ -3780,8 +3783,12 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
   if (get_server_type () == SERVER_TYPE_PAGE)
     {
       log_lsa saved_lsa = log_Gl.append.get_nxio_lsa ();
-      std::string message (&saved_lsa, sizeof (saved_lsa));
-      ps_Gl.send_active_tran_server_request (ps_to_ats_request::SEND_SAVED_LSA, std::move (message));
+      if (prm_get_bool_value (PRM_ID_ER_LOG_COMMIT_CONFIRM))
+	{
+	  _er_log_debug (ARG_FILE_LINE, "[COMMIT CONFIRM] Send saved LSA=%lld|%d.\n", LSA_AS_ARGS (&saved_lsa));
+	}
+      std::string message (reinterpret_cast < const char *>(&saved_lsa), sizeof (saved_lsa));
+      ps_Gl.push_active_tran_server_request (ps_to_ats_request::SEND_SAVED_LSA, std::move (message));
     }
 #endif
 

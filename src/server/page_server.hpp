@@ -40,7 +40,7 @@ class page_server
     void set_active_tran_server_connection (cubcomm::channel &&chn);
     void disconnect_active_tran_server ();
     bool is_active_tran_server_connected () const;
-    void send_active_tran_server_request (ps_to_ats_request reqid, std::string &&payload);
+    void push_active_tran_server_request (ps_to_ats_request reqid, std::string &&payload);
 
   private:
     using active_tran_server_request_queue = cubcomm::request_sync_send_queue<active_tran_server_conn, std::string>;
