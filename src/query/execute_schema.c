@@ -8617,19 +8617,25 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
       /* check for mis-creating string type with -1 precision */
       for (column = query_columns; column != NULL; column = db_query_format_next (column))
         {
-          if (TP_IS_VAR_LEN_CHAR_TYPE(column->domain->type->id))
+          if (column->domain->precision == DB_DEFAULT_PRECISION)
             {
-              if (column->domain->precision == DB_DEFAULT_PRECISION)
+              switch (column->domain->type->id)
                 {
+                case DB_TYPE_CHAR:
+                  column->domain->precision = DB_MAX_CHAR_PRECISION;
+                  break;
+                case DB_TYPE_NCHAR:
+                  column->domain->precision = DB_MAX_NCHAR_PRECISION;
+                  break;
+                case DB_TYPE_VARCHAR:
                   column->domain->precision = DB_MAX_VARCHAR_PRECISION;
+                  break;
+                case DB_TYPE_VARNCHAR:
+                  column->domain->precision = DB_MAX_VARNCHAR_PRECISION;
+                  break;
+                default:
+                  break;
                 }
-            }
-          else if (TP_IS_FIXED_LEN_CHAR_TYPE(column->domain->type->id))
-            {
-             if (column->domain->precision == DB_DEFAULT_PRECISION)
-               {
-                 column->domain->precision = DB_MAX_CHAR_PRECISION;
-               }
             }
         }
     }
