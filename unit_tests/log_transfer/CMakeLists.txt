@@ -19,6 +19,33 @@
 project(test_log_transfer)
 
 #
+# test_checkpoint_info
+#
+
+set(TEST_CHKPT_INFO_SOURCES
+  ${TRANSACTION_DIR}/log_checkpoint_info.cpp
+  test_main_chkpt_info.cpp
+  )
+SET_SOURCE_FILES_PROPERTIES(
+  ${TEST_CHKPT_INFO_SOURCES}
+  PROPERTIES LANGUAGE CXX
+  )
+
+add_executable(test_checkpoint_info
+  ${TEST_CHKPT_INFO_SOURCES}
+  )
+
+target_compile_options(test_checkpoint_info PRIVATE ${compile_warning_flags})
+target_compile_definitions(test_checkpoint_info PRIVATE
+  ${COMMON_DEFS} SERVER_MODE
+  )
+target_include_directories(test_checkpoint_info PRIVATE
+  ${TEST_INCLUDES}
+  )
+add_dependencies(test_checkpoint_info
+  ${CATCH2_TARGET}
+  )
+#
 # test_prior_list_serialize
 # 
 set(TEST_PRIOR_LIST_SERIALIZE_SOURCES

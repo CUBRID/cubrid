@@ -6802,7 +6802,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 
   /*
    * Critical section is entered several times to allow other transaction to
-   * use the log manger
+   * use the log manager
    */
 #endif /* SERVER_MODE */
 
