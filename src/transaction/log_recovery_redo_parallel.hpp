@@ -20,7 +20,7 @@
 #define LOG_RECOVERY_REDO_HPP
 
 #include "log_compress.h"
-#include "log_recovery_redo_sequential.hpp"
+#include "log_recovery_redo.hpp"
 #include "thread_manager.hpp"
 #include "thread_worker_pool.hpp"
 
