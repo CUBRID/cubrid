@@ -16,7 +16,7 @@
  *
  */
 
-#ifndef LOG_RECOVERY_REDO_HPP
+#ifndef _LOG_RECOVERY_REDO_HPP
 #define LOG_RECOVERY_REDO_HPP
 
 #include "log_compress.h"
@@ -51,20 +51,20 @@ namespace cublog
 	assert (!VPID_ISNULL (&vpid));
       }
       redo_job_base () = delete;
-      redo_job_base ( redo_job_base const &) = delete;
-      redo_job_base ( redo_job_base &&) = delete;
+      redo_job_base (redo_job_base const &) = delete;
+      redo_job_base (redo_job_base &&) = delete;
 
-      virtual ~redo_job_base() = default;
+      virtual ~redo_job_base () = default;
 
-      redo_job_base &operator = ( redo_job_base const &) = delete;
-      redo_job_base &operator = ( redo_job_base &&) = delete;
+      redo_job_base &operator = (redo_job_base const &) = delete;
+      redo_job_base &operator = (redo_job_base &&) = delete;
 
       /* log entries come in more than one flavor:
        *  - pertain to a certain vpid - aka: page update
        *  - pertain to a certain VOLID - aka: volume extend, new page
        *  - pertain to no VOLID - aka: database extend, new volume
        */
-      const VPID &get_vpid() const
+      const VPID &get_vpid () const
       {
 	return vpid;
       }
@@ -72,7 +72,7 @@ namespace cublog
       virtual int execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
 			   LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support) = 0;
 
-      bool get_is_to_be_waited_for() const
+      bool get_is_to_be_waited_for () const
       {
 	return vpid.volid == NULL_VOLID || vpid.pageid == NULL_PAGEID;
       }
@@ -100,13 +100,13 @@ namespace cublog
       {
       }
 
-      redo_job_impl ( redo_job_impl const &) = delete;
-      redo_job_impl ( redo_job_impl &&) = delete;
+      redo_job_impl (redo_job_impl const &) = delete;
+      redo_job_impl (redo_job_impl &&) = delete;
 
-      ~redo_job_impl() override = default;
+      ~redo_job_impl () override = default;
 
-      redo_job_impl &operator = ( redo_job_impl const &) = delete;
-      redo_job_impl &operator = ( redo_job_impl &&) = delete;
+      redo_job_impl &operator = (redo_job_impl const &) = delete;
+      redo_job_impl &operator = (redo_job_impl &&) = delete;
 
       int execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
 		   LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support) override
@@ -148,14 +148,14 @@ namespace cublog
 	  using vpid_set = std::set<VPID>;
 
 	public:
-	  redo_job_queue();
-	  ~redo_job_queue();
+	  redo_job_queue ();
+	  ~redo_job_queue ();
 
-	  redo_job_queue ( redo_job_queue const & ) = delete;
-	  redo_job_queue ( redo_job_queue && ) = delete;
+	  redo_job_queue (redo_job_queue const &) = delete;
+	  redo_job_queue (redo_job_queue &&) = delete;
 
-	  redo_job_queue &operator= ( redo_job_queue const & ) = delete;
-	  redo_job_queue &operator= ( redo_job_queue && ) = delete;
+	  redo_job_queue &operator= (redo_job_queue const &) = delete;
+	  redo_job_queue &operator= (redo_job_queue &&) = delete;
 
 	  void locked_push (ux_redo_job_base &&job);
 
@@ -163,9 +163,9 @@ namespace cublog
 	   * part of a mechanism to signal to the consumers, together with
 	   * whether there is still data to process, that they can bail out
 	   */
-	  void set_adding_finished();
+	  void set_adding_finished ();
 
-	  bool get_adding_finished() const;
+	  bool get_adding_finished () const;
 
 	  /* the combination of a null return value with a finished
 	   * flag set to true signals to the callers that no more data is expected
@@ -173,12 +173,12 @@ namespace cublog
 	   */
 	  ux_redo_job_base locked_pop (bool &adding_finished);
 
-	  void notify_to_be_waited_for_op_finished();
+	  void notify_to_be_waited_for_op_finished ();
 	  void notify_in_progress_vpid_finished (VPID a_vpid);
 
 	  /* wait until all data has been consumed internally; blocking call
 	   */
-	  void wait_for_idle();
+	  void wait_for_idle ();
 
 	private:
 	  /* two queues are internally managed
@@ -212,7 +212,6 @@ namespace cublog
 	  std::condition_variable in_progress_vpids_empty_cv;
       };
 
-
       /* maintain a bookkeeping of tasks that are still performing work;
        * internal implementation detail
        *
@@ -225,16 +224,16 @@ namespace cublog
 	  static constexpr std::size_t BOOKKEEPING_MAX_COUNT = 1024;
 
 	public:
-	  redo_task_active_state_bookkeeping()
+	  redo_task_active_state_bookkeeping ()
 	  {
-	    active_set.reset();
+	    active_set.reset ();
 	  }
 
-	  redo_task_active_state_bookkeeping (const redo_task_active_state_bookkeeping & ) = delete;
-	  redo_task_active_state_bookkeeping (redo_task_active_state_bookkeeping && ) = delete;
+	  redo_task_active_state_bookkeeping (const redo_task_active_state_bookkeeping &) = delete;
+	  redo_task_active_state_bookkeeping (redo_task_active_state_bookkeeping &&) = delete;
 
-	  redo_task_active_state_bookkeeping &operator = (const redo_task_active_state_bookkeeping & ) = delete;
-	  redo_task_active_state_bookkeeping &operator = (redo_task_active_state_bookkeeping && ) = delete;
+	  redo_task_active_state_bookkeeping &operator = (const redo_task_active_state_bookkeeping &) = delete;
+	  redo_task_active_state_bookkeeping &operator = (redo_task_active_state_bookkeeping &&) = delete;
 
 	  void set_active (std::size_t a_id)
 	  {
@@ -254,11 +253,11 @@ namespace cublog
 	    active_set.reset (a_id);
 	  }
 
-	  bool any_active() const
+	  bool any_active () const
 	  {
 	    std::lock_guard<std::mutex> lck (active_set_mutex);
 
-	    return active_set.any();
+	    return active_set.any ();
 	  }
 
 	private:
@@ -280,13 +279,13 @@ namespace cublog
 	public:
 	  redo_task (std::size_t a_task_id, redo_task_active_state_bookkeeping &a_task_active_state_bookkeeping,
 		     redo_job_queue &a_queue);
-	  redo_task (const redo_task & ) = delete;
-	  redo_task (redo_task && ) = delete;
+	  redo_task (const redo_task &) = delete;
+	  redo_task (redo_task &&) = delete;
 
-	  redo_task &operator = (const redo_task & ) = delete;
-	  redo_task &operator = (redo_task && ) = delete;
+	  redo_task &operator = (const redo_task &) = delete;
+	  redo_task &operator = (redo_task &&) = delete;
 
-	  ~redo_task() override;
+	  ~redo_task () override;
 
 	  void execute (context_type &context);
 
@@ -305,13 +304,13 @@ namespace cublog
     public:
       redo_parallel (int a_worker_count);
 
-      redo_parallel (const redo_parallel & ) = delete;
-      redo_parallel (redo_parallel && ) = delete;
+      redo_parallel (const redo_parallel &) = delete;
+      redo_parallel (redo_parallel &&) = delete;
 
-      ~redo_parallel();
+      ~redo_parallel ();
 
-      redo_parallel &operator = (const redo_parallel & ) = delete;
-      redo_parallel &operator = (redo_parallel && ) = delete;
+      redo_parallel &operator = (const redo_parallel &) = delete;
+      redo_parallel &operator = (redo_parallel &&) = delete;
 
       /* add new work job
        */
@@ -319,20 +318,20 @@ namespace cublog
 
       /* mandatory to explicitly call this after all data have been added
        */
-      void set_adding_finished();
+      void set_adding_finished ();
 
       /* wait until all data has been consumed internally; blocking call
        */
-      void wait_for_idle();
+      void wait_for_idle ();
 
       /* mandatory to explicitly call this before dtor
        */
-      void wait_for_termination_and_stop_execution();
+      void wait_for_termination_and_stop_execution ();
 
     private:
-      void do_init_thread_manager();
-      void do_init_worker_pool();
-      void do_init_tasks();
+      void do_init_thread_manager ();
+      void do_init_worker_pool ();
+      void do_init_tasks ();
 
     private:
       unsigned task_count;
