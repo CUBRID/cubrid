@@ -27,6 +27,7 @@
 #include "system_parameter.h"
 
 #include <cassert>
+#include <cstring>
 #include <functional>
 #include <string>
 
