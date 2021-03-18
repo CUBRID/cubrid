@@ -162,7 +162,7 @@ namespace cubcomm
       request_server () = delete;
       request_server (channel &&chn);
       request_server (const request_server &) = delete;
-      request_server (request_server &&other) = default;
+      request_server (request_server &&other) = delete;
       ~request_server ();
 
       void start_thread ();	  // start thread that receives and handles requests
@@ -200,7 +200,7 @@ namespace cubcomm
 
       request_client_server (channel &&chn);
       request_client_server (const request_client_server &) = delete;
-      request_client_server (request_client_server &&other) = default;
+      request_client_server (request_client_server &&other) = delete;
 
       template <typename ... PackableArgs>
       int send (ClientMsgId msgid, const PackableArgs &... args);
