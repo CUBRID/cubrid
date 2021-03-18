@@ -8512,19 +8512,14 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  for (crt_attr = qspec_attr; crt_attr != NULL; crt_attr = crt_attr->next)
 	    {
-	      PT_NODE *s_attr = NULL;
-
-	      if (crt_attr->node_type == PT_NAME || crt_attr->alias_print)
+	      if (crt_attr->alias_print || crt_attr->node_type == PT_NAME || crt_attr->node_type == PT_DOT_)
 		{
-		  s_attr = crt_attr;
+                  continue;
 		}
 
-	      if (s_attr == NULL)
-		{
-		  PT_ERRORmf (parser, qry_specs, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_MISSING_ATTR_NAME,
-			      pt_short_print (parser, crt_attr));
-		  return;
-		}
+	      PT_ERRORmf (parser, qry_specs, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_MISSING_ATTR_NAME,
+		      pt_short_print (parser, crt_attr));
+	      return;
 	    }
 
 	  if (select->info.query.with != NULL)
