@@ -25,8 +25,8 @@
 #include "server_type.hpp"
 #include "system_parameter.h"
 
-#include <bitset>
 #include <cassert>
+#include <cstring>
 #include <functional>
 
 page_server ps_Gl;
@@ -86,17 +86,17 @@ page_server::receive_log_prior_list (cubpacking::unpacker &upk)
 void
 page_server::receive_log_page_fetch (cubpacking::unpacker &upk)
 {
-        if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
-        {
-                LOG_PAGEID pageid;
-                std::string message;
+  if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
+    {
+      LOG_PAGEID pageid;
+      std::string message;
 
-                upk.unpack_string (message);
-                memcpy (&pageid, message.c_str (), sizeof (pageid));
-                assert (message.size () == sizeof (pageid));
+      upk.unpack_string (message);
+      std::memcpy (&pageid, message.c_str (), sizeof (pageid));
+      assert (message.size () == sizeof (pageid));
 
-                _er_log_debug (ARG_FILE_LINE, "Received request for log from Transaction Server. Page ID: %lld \n", pageid);
-        }
+      _er_log_debug (ARG_FILE_LINE, "Received request for log from Transaction Server. Page ID: %lld \n", pageid);
+    }
 }
 
 void

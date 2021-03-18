@@ -24,6 +24,7 @@
 
 #include "config.h"
 
+#include <cstring>
 #include <stdio.h>
 #include <stddef.h>
 #include <stdlib.h>
@@ -184,8 +185,6 @@ static int rv;
   } while (0)
 
 /* LOG BUFFER STRUCTURE */
-
-constexpr size_t BIG_INT_SIZE = 8;
 
 typedef struct log_buffer LOG_BUFFER;
 struct log_buffer
@@ -1938,7 +1937,7 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
     {
       constexpr size_t BIG_INT_SIZE = 8;
       char buffer[BIG_INT_SIZE];
-      memcpy (buffer, &pageid, sizeof (pageid));
+      std::memcpy (buffer, &pageid, sizeof (pageid));
       std::string message (buffer, BIG_INT_SIZE);
 
       ats_Gl.push_request (ats_to_ps_request::SEND_LOG_PAGE_FETCH, std::move (message));
