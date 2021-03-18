@@ -25,6 +25,7 @@
 #include "server_type.hpp"
 #include "system_parameter.h"
 
+#include <bitset>
 #include <cassert>
 #include <functional>
 

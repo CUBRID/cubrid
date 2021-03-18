@@ -185,6 +185,8 @@ static int rv;
 
 /* LOG BUFFER STRUCTURE */
 
+constexpr size_t BIG_INT_SIZE = 8;
+
 typedef struct log_buffer LOG_BUFFER;
 struct log_buffer
 {
