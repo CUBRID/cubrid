@@ -128,7 +128,11 @@ namespace cublog
 	m_redo_mutex.lock ();
 	m_redo_lsa = header.forw_lsa;
 	m_redo_mutex.unlock ();
-	m_redo_condvar.notify_all ();
+	if (m_redo_lsa == end_redo_lsa)
+	  {
+	    // notify who waits for end of replication
+	    m_redo_condvar.notify_all ();
+	  }
       }
   }
 
