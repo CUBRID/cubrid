@@ -75,7 +75,7 @@ static void log_rv_redo_record_sync_or_dispatch_async (THREAD_ENTRY *thread_p, l
 						       const T &log_rec, const log_lsa &rcv_lsa,
 						       const LOG_LSA *end_redo_lsa, LOG_RECTYPE log_rtype,
 						       LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support,
-						       cublog::ux_redo_parallel& parallel_recovery_redo);
+						       cublog::ux_redo_parallel &parallel_recovery_redo);
 // *INDENT-ON*
 
 static bool log_rv_find_checkpoint (THREAD_ENTRY * thread_p, VOLID volid, LOG_LSA * rcv_lsa);
@@ -589,18 +589,19 @@ log_rv_need_sync_redo (LOG_RCVINDEX rcvindex)
  *
  */
 template <typename T>
-void log_rv_redo_record_sync_or_dispatch_async (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader,
-                                                const T & log_rec, const log_lsa & rcv_lsa,
-                                                const LOG_LSA * end_redo_lsa, LOG_RECTYPE log_rtype,
-                                                LOG_ZIP & undo_unzip_support, LOG_ZIP & redo_unzip_support,
-                                                cublog::ux_redo_parallel& parallel_recovery_redo)
+void log_rv_redo_record_sync_or_dispatch_async (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
+                                                const T &log_rec, const log_lsa &rcv_lsa,
+                                                const LOG_LSA *end_redo_lsa, LOG_RECTYPE log_rtype,
+                                                LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support,
+                                                cublog::ux_redo_parallel &parallel_recovery_redo)
 {
   const VPID rcv_vpid = log_rv_get_log_rec_vpid<T> (log_rec);
   // at this point, vpid can either be valid or not
 
+
   const LOG_DATA &log_data = log_rv_get_log_rec_data<T> (log_rec);
   const bool need_sync_redo = log_rv_need_sync_redo (log_data.rcvindex);
-  assert(log_data.rcvindex != RVDK_UNRESERVE_SECTORS || need_sync_redo);
+  assert (log_data.rcvindex != RVDK_UNRESERVE_SECTORS || need_sync_redo);
 
   // once vpid is extracted (or not), and depending on parameters, either dispatch the applying of
   // log redo asynchronously, or invoke synchronously
@@ -617,15 +618,16 @@ void log_rv_redo_record_sync_or_dispatch_async (THREAD_ENTRY * thread_p, log_rea
         }
 
       // invoke sync
-      log_rv_redo_record_sync<T>(thread_p, log_pgptr_reader, log_rec, rcv_vpid, rcv_lsa, end_redo_lsa, log_rtype,
-                                 undo_unzip_support, redo_unzip_support);
+      log_rv_redo_record_sync<T> (thread_p, log_pgptr_reader, log_rec, rcv_vpid, rcv_lsa, end_redo_lsa, log_rtype,
+                                  undo_unzip_support, redo_unzip_support);
     }
   else
     {
       // dispatch async
-      cublog::ux_redo_job_base job(
-            new cublog::redo_job_impl<T>(rcv_vpid, rcv_lsa, end_redo_lsa, log_rtype));
-      parallel_recovery_redo->add (std::move(job));
+      cublog::ux_redo_job_base job {
+        new cublog::redo_job_impl<T> (rcv_vpid, rcv_lsa, end_redo_lsa, log_rtype)
+      };
+      parallel_recovery_redo->add (std::move (job));
     }
 }
 // *INDENT-ON*
@@ -3421,7 +3423,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		/* Get undoredo structure */
 		// *INDENT-OFF*
 		const LOG_REC_UNDOREDO log_rec_undoredo
-		    = log_pgptr_reader.reinterpret_copy_and_add_align<LOG_REC_UNDOREDO>();
+		    = log_pgptr_reader.reinterpret_copy_and_add_align<LOG_REC_UNDOREDO> ();
 
                 log_rv_redo_record_sync_or_dispatch_async<LOG_REC_UNDOREDO> (thread_p, log_pgptr_reader,
                                                                              log_rec_undoredo, rcv_lsa,
@@ -3443,7 +3445,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		/* MVCC op redo log record */
 		// *INDENT-OFF*
 		const LOG_REC_MVCC_REDO log_rec_mvcc_redo
-		    = log_pgptr_reader.reinterpret_copy_and_add_align<LOG_REC_MVCC_REDO>();
+		    = log_pgptr_reader.reinterpret_copy_and_add_align<LOG_REC_MVCC_REDO> ();
 
 		const MVCCID mvccid = log_rv_get_log_rec_mvccid<LOG_REC_MVCC_REDO> (log_rec_mvcc_redo);
 		// *INDENT-ON*
@@ -3477,7 +3479,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 		// *INDENT-OFF*
 		const LOG_REC_REDO log_rec_redo
-		    = log_pgptr_reader.reinterpret_copy_and_add_align<LOG_REC_REDO>();
+		    = log_pgptr_reader.reinterpret_copy_and_add_align<LOG_REC_REDO> ();
 
 		if (log_rec_redo.data.rcvindex == RVVAC_COMPLETE)
 		  {
@@ -3545,7 +3547,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 		// *INDENT-OFF*
 		const LOG_REC_RUN_POSTPONE log_rec_run_posp
-		    = log_pgptr_reader.reinterpret_copy_and_add_align<LOG_REC_RUN_POSTPONE>();
+		    = log_pgptr_reader.reinterpret_copy_and_add_align<LOG_REC_RUN_POSTPONE> ();
 
                 log_rv_redo_record_sync_or_dispatch_async<LOG_REC_RUN_POSTPONE> (thread_p, log_pgptr_reader,
                                                                                  log_rec_run_posp, rcv_lsa,
@@ -3566,7 +3568,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 		// *INDENT-OFF*
 		const LOG_REC_COMPENSATE log_rec_compensate
-		    = log_pgptr_reader.reinterpret_copy_and_add_align<LOG_REC_COMPENSATE>();
+		    = log_pgptr_reader.reinterpret_copy_and_add_align<LOG_REC_COMPENSATE> ();
 
                 log_rv_redo_record_sync_or_dispatch_async<LOG_REC_COMPENSATE> (thread_p, log_pgptr_reader,
                                                                                log_rec_compensate, rcv_lsa,
