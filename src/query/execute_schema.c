@@ -8621,17 +8621,8 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
             {
               switch (column->domain->type->id)
                 {
-                case DB_TYPE_CHAR:
-                  column->domain->precision = DB_MAX_CHAR_PRECISION;
-                  break;
-                case DB_TYPE_NCHAR:
-                  column->domain->precision = DB_MAX_NCHAR_PRECISION;
-                  break;
                 case DB_TYPE_VARCHAR:
                   column->domain->precision = DB_MAX_VARCHAR_PRECISION;
-                  break;
-                case DB_TYPE_VARNCHAR:
-                  column->domain->precision = DB_MAX_VARNCHAR_PRECISION;
                   break;
                 default:
                   break;
