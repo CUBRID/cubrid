@@ -231,18 +231,6 @@ echo Package created. [%DIST_DIR%\%CUBRID_CCI_PACKAGE_NAME%.zip]
 set DIST_PKGS=%DIST_PKGS% %CUBRID_CCI_PACKAGE_NAME%.zip
 GOTO :EOF
 
-:BUILD_JDBC_PACKAGE
-echo Buiding JDBC package in %BUILD_DIR%...
-if NOT EXIST %BUILD_PREFIX%\jdbc\cubrid_jdbc.jar echo Cannot found built jar. & GOTO :EOF
-
-echo drop JDBC-%BUILD_NUMBER%-cubrid.jar into %DIST_DIR%
-copy %BUILD_PREFIX%\jdbc\cubrid_jdbc.jar %DIST_DIR%\JDBC-%BUILD_NUMBER%-cubrid.jar
-if ERRORLEVEL 1 echo FAILD. & GOTO :EOF
-echo Package created. [%DIST_DIR%\JDBC-%BUILD_NUMBER%-cubrid.jar]
-set DIST_PKGS=%DIST_PKGS% JDBC-%BUILD_NUMBER%-cubrid.jar
-GOTO :EOF
-
-
 :ABSPATH
 set %2=%~f1
 GOTO :EOF
