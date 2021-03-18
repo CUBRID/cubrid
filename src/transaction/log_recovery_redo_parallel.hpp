@@ -154,59 +154,6 @@ namespace cublog
 	  std::condition_variable in_progress_vpids_empty_cv;
       };
 
-      /* maintain a bookkeeping of tasks that are still performing work;
-       * internal implementation detail; not to be used externally
-       *
-       * TODO: this class is supposed to be polled to see whether any tasks are still active; it might
-       * be better to implement this via either a callback or a condition variable
-       */
-      class redo_task_active_state_bookkeeping final
-      {
-	public:
-	  static constexpr std::size_t BOOKKEEPING_MAX_COUNT = 1024;
-
-	public:
-	  redo_task_active_state_bookkeeping ()
-	  {
-	    active_set.reset ();
-	  }
-
-	  redo_task_active_state_bookkeeping (const redo_task_active_state_bookkeeping &) = delete;
-	  redo_task_active_state_bookkeeping (redo_task_active_state_bookkeeping &&) = delete;
-
-	  redo_task_active_state_bookkeeping &operator = (const redo_task_active_state_bookkeeping &) = delete;
-	  redo_task_active_state_bookkeeping &operator = (redo_task_active_state_bookkeeping &&) = delete;
-
-	  void set_active (std::size_t a_id)
-	  {
-	    std::lock_guard<std::mutex> lck (active_set_mutex);
-
-	    assert (a_id < BOOKKEEPING_MAX_COUNT);
-	    assert (false == active_set.test (a_id)); // supplied id must be unique among all used ids
-	    active_set.set (a_id);
-	  }
-
-	  void set_inactive (std::size_t a_id)
-	  {
-	    std::lock_guard<std::mutex> lck (active_set_mutex);
-
-	    assert (a_id < BOOKKEEPING_MAX_COUNT);
-	    assert (true == active_set.test (a_id)); // supplied id must be unique among all used ids
-	    active_set.reset (a_id);
-	  }
-
-	  bool any_active () const
-	  {
-	    std::lock_guard<std::mutex> lck (active_set_mutex);
-
-	    return active_set.any ();
-	  }
-
-	private:
-	  std::bitset<BOOKKEEPING_MAX_COUNT> active_set;
-	  mutable std::mutex active_set_mutex;
-      };
-
     private:
       unsigned task_count;
 
@@ -215,7 +162,6 @@ namespace cublog
       cubthread::entry_workpool *worker_pool;
 
       redo_job_queue queue;
-      redo_task_active_state_bookkeeping task_active_state_bookkeeping;
 
       bool waited_for_termination;
   };

@@ -238,8 +238,7 @@ namespace cublog
       static constexpr unsigned short WAIT_AND_CHECK_MILLIS = 5;
 
     public:
-      redo_task (std::size_t a_task_id, redo_parallel::redo_task_active_state_bookkeeping &a_task_active_state_bookkeeping,
-		 redo_parallel::redo_job_queue &a_queue);
+      redo_task (redo_parallel::redo_job_queue &a_queue);
       redo_task (const redo_task &) = delete;
       redo_task (redo_task &&) = delete;
 
@@ -251,10 +250,6 @@ namespace cublog
       void execute (context_type &context);
 
     private:
-      // internal bookkeeping variable, must be unique among all task id's within the same pool
-      std::size_t task_id;
-
-      redo_parallel::redo_task_active_state_bookkeeping &task_active_state_bookkeeping;
       redo_parallel::redo_job_queue &queue;
 
       log_reader log_pgptr_reader;
@@ -264,16 +259,9 @@ namespace cublog
 
   constexpr unsigned short redo_parallel::redo_task::WAIT_AND_CHECK_MILLIS;
 
-  redo_parallel::redo_task::redo_task (std::size_t a_task_id,
-				       redo_parallel::redo_task_active_state_bookkeeping &a_task_active_state_bookkeeping,
-				       redo_job_queue &a_queue)
-    : task_id (a_task_id), task_active_state_bookkeeping (a_task_active_state_bookkeeping), queue (a_queue)
+  redo_parallel::redo_task::redo_task (redo_job_queue &a_queue)
+    : queue (a_queue)
   {
-    // important to set this at this moment and not when execution begins
-    // to circumvent race conditions where all tasks haven't yet started work
-    // while already bookkeeping is being checked
-    task_active_state_bookkeeping.set_active (task_id);
-
     log_zip_realloc_if_needed (undo_unzip_support, LOGAREA_SIZE);
     log_zip_realloc_if_needed (redo_unzip_support, LOGAREA_SIZE);
   }
@@ -323,8 +311,6 @@ namespace cublog
 	      }
 	  }
       }
-
-    task_active_state_bookkeeping.set_inactive (task_id);
   }
 
   /**********************
@@ -376,12 +362,6 @@ namespace cublog
     assert (false == waited_for_termination);
     assert (thread_manager != nullptr);
 
-    // busy wait
-    while (task_active_state_bookkeeping.any_active ())
-      {
-	std::this_thread::sleep_for (std::chrono::milliseconds (20));
-      }
-
     worker_pool->stop_execution ();
     thread_manager->destroy_worker_pool (worker_pool);
     assert (worker_pool == nullptr);
@@ -424,7 +404,7 @@ namespace cublog
     for (unsigned task_idx = 0; task_idx < task_count; ++task_idx)
       {
 	// NOTE: task ownership goes to the worker pool
-	auto task = new redo_task (task_idx, task_active_state_bookkeeping, queue);
+	auto task = new redo_task (queue);
 	worker_pool->execute (task);
       }
   }
