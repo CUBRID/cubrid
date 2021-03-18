@@ -590,6 +590,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_ER_LOG_VACUUM "er_log_vacuum"
 
+#define PRM_NAME_ER_LOG_READ_LOG_PAGE "er_log_read_log_page"
+
 #define PRM_NAME_LOG_BTREE_OPS "log_btree_operations"
 
 #define PRM_NAME_OBJECT_PRINT_FORMAT_OID "print_object_as_oid"
@@ -695,6 +697,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_PAGE_SERVER_HOSTS "page_server_hosts"
 #define PRM_NAME_SERVER_TYPE "server_type"
+#define PRM_NAME_RECOVERY_PARALLEL_COUNT "recovery_parallel_count"
 
 #define PRM_NAME_ER_LOG_PRIOR_TRANSFER "er_log_prior_transfer"
 #define PRM_NAME_ER_LOG_COMM_REQUEST "er_log_comm_request"
@@ -2025,6 +2028,10 @@ int PRM_ER_LOG_VACUUM = 1;
 static int prm_er_log_vacuum_default = 1;
 static unsigned int prm_er_log_vacuum_flag = 0;
 
+bool PRM_ER_LOG_READ_LOG_PAGE = true;
+static bool prm_er_log_read_log_page_default = true;
+static unsigned int prm_er_log_read_log_page_flag = 0;
+
 bool PRM_DISABLE_VACUUM = false;
 static bool prm_disable_vacuum_default = false;
 static unsigned int prm_disable_vacuum_flag = 0;
@@ -2345,6 +2352,12 @@ static unsigned int prm_ignore_trailing_space_flag = 0;
 bool PRM_DDL_AUDIT_LOG = false;
 static bool prm_ddl_audit_log_default = false;
 static unsigned int prm_ddl_audit_log_flag = 0;
+
+static unsigned int prm_recovery_parallel_count_flag = 0;
+static int prm_recovery_parallel_count_default = 8;
+int PRM_RECOVERY_PARALLEL_COUNT_CURRENT_VALUE = 8;
+static int prm_recovery_parallel_count_upper_value = 32;
+static int prm_recovery_parallel_count_lower_value = 0;
 
 UINT64 PRM_DDL_AUDIT_LOG_SIZE = 10485760ULL;
 static UINT64 prm_ddl_audit_log_size_default = 10485760ULL;	/* 10M */
@@ -6126,6 +6139,30 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  {PRM_ID_ER_LOG_READ_LOG_PAGE,
+   PRM_NAME_ER_LOG_READ_LOG_PAGE,
+   (PRM_HIDDEN | PRM_FOR_SERVER | PRM_USER_CHANGE),
+   PRM_BOOLEAN,
+   &prm_er_log_read_log_page_flag,
+   (void *) &prm_er_log_read_log_page_default,
+   (void *) &PRM_ER_LOG_READ_LOG_PAGE,
+   (void *) NULL,
+   (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_RECOVERY_PARALLEL_COUNT,
+   PRM_NAME_RECOVERY_PARALLEL_COUNT,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   &prm_recovery_parallel_count_flag,
+   (void *) &prm_recovery_parallel_count_default,
+   (void *) &PRM_RECOVERY_PARALLEL_COUNT_CURRENT_VALUE,
+   (void *) &prm_recovery_parallel_count_upper_value,
+   (void *) &prm_recovery_parallel_count_lower_value,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL}
 };
 
 #define NUM_PRM ((int)(sizeof(prm_Def)/sizeof(prm_Def[0])))

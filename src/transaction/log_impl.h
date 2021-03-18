@@ -770,7 +770,6 @@ extern void logpb_finalize_pool (THREAD_ENTRY * thread_p);
 extern bool logpb_is_pool_initialized (void);
 extern void logpb_invalidate_pool (THREAD_ENTRY * thread_p);
 extern LOG_PAGE *logpb_create_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid);
-extern LOG_PAGE *log_pbfetch (LOG_PAGEID pageid);
 extern void logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr);
 extern int logpb_flush_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr);
 extern LOG_PAGEID logpb_get_page_id (LOG_PAGE * log_pgptr);
@@ -849,7 +848,7 @@ extern int logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_pe
 extern int logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *db_fullname, const char *logpath,
 			 const char *prefix_logname, bool force_delete);
 extern int logpb_check_exist_any_volumes (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
-					  const char *prefix_logname, char *first_vol, bool *is_exist);
+					  const char *prefix_logname, char *first_vol, bool * is_exist);
 extern void logpb_fatal_error (THREAD_ENTRY * thread_p, bool logexit, const char *file_name, const int lineno,
 			       const char *fmt, ...);
 extern void logpb_fatal_error_exit_immediately_wo_flush (THREAD_ENTRY * thread_p, const char *file_name,
@@ -866,11 +865,6 @@ extern int logpb_remove_all_in_log_path (THREAD_ENTRY * thread_p, const char *db
 					 const char *prefix_logname);
 extern TDE_ALGORITHM logpb_get_tde_algorithm (const LOG_PAGE * log_pgptr);
 extern void logpb_set_tde_algorithm (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, const TDE_ALGORITHM tde_algo);
-
-
-
-extern void log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat);
-extern LOG_LSA *log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr);
 
 extern void *logtb_realloc_topops_stack (LOG_TDES * tdes, int num_elms);
 extern void logtb_define_trantable (THREAD_ENTRY * thread_p, int num_expected_tran_indices, int num_expected_locks);
@@ -932,13 +926,13 @@ extern LOG_LSA *logtb_find_current_tran_lsa (THREAD_ENTRY * thread_p);
 extern TRAN_STATE logtb_find_state (int tran_index);
 extern int logtb_find_wait_msecs (int tran_index);
 
-extern int logtb_find_interrupt (int tran_index, bool *interrupt);
+extern int logtb_find_interrupt (int tran_index, bool * interrupt);
 extern TRAN_ISOLATION logtb_find_isolation (int tran_index);
 extern TRAN_ISOLATION logtb_find_current_isolation (THREAD_ENTRY * thread_p);
 extern bool logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, bool set);
 extern bool logtb_set_suppress_repl_on_transaction (THREAD_ENTRY * thread_p, int tran_index, int set);
-extern bool logtb_is_interrupted (THREAD_ENTRY * thread_p, bool clear, bool *continue_checking);
-extern bool logtb_is_interrupted_tran (THREAD_ENTRY * thread_p, bool clear, bool *continue_checking, int tran_index);
+extern bool logtb_is_interrupted (THREAD_ENTRY * thread_p, bool clear, bool * continue_checking);
+extern bool logtb_is_interrupted_tran (THREAD_ENTRY * thread_p, bool clear, bool * continue_checking, int tran_index);
 extern bool logtb_is_active (THREAD_ENTRY * thread_p, TRANID trid);
 extern bool logtb_is_current_active (THREAD_ENTRY * thread_p);
 extern bool logtb_istran_finished (THREAD_ENTRY * thread_p, TRANID trid);
@@ -950,7 +944,6 @@ extern void logtb_set_to_system_tran_index (THREAD_ENTRY * thread_p);
 extern LOG_LSA *logtb_find_largest_lsa (THREAD_ENTRY * thread_p);
 #endif
 extern int logtb_set_num_loose_end_trans (THREAD_ENTRY * thread_p);
-extern void log_find_unilaterally_largest_undo_lsa (THREAD_ENTRY * thread_p, LOG_LSA & max_undo_lsa);
 extern void logtb_find_smallest_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa);
 extern void logtb_find_smallest_and_largest_active_pages (THREAD_ENTRY * thread_p, LOG_PAGEID * smallest,
 							  LOG_PAGEID * largest);
@@ -1012,15 +1005,6 @@ extern int logtb_delete_global_unique_stats (THREAD_ENTRY * thread_p, BTID * bti
 extern int logtb_reflect_global_unique_stats_to_btree (THREAD_ENTRY * thread_p);
 extern int logtb_tran_update_all_global_unique_stats (THREAD_ENTRY * thread_p);
 
-extern int log_rv_undoredo_record_partial_changes (THREAD_ENTRY * thread_p, char *rcv_data, int rcv_data_length,
-						   RECDES * record, bool is_undo);
-extern int log_rv_redo_record_modify (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int log_rv_undo_record_modify (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern char *log_rv_pack_redo_record_changes (char *ptr, int offset_to_data, int old_data_size, int new_data_size,
-					      char *new_data);
-extern char *log_rv_pack_undo_record_changes (char *ptr, int offset_to_data, int old_data_size, int new_data_size,
-					      char *old_data);
-
 extern void log_set_ha_promotion_time (THREAD_ENTRY * thread_p, INT64 ha_promotion_time);
 extern void log_set_db_restore_time (THREAD_ENTRY * thread_p, INT64 db_restore_time);
 
@@ -1031,7 +1015,7 @@ extern bool logtb_check_class_for_rr_isolation_err (const OID * class_oid);
 extern void logpb_vacuum_reset_log_header_cache (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr);
 
 extern VACUUM_LOG_BLOCKID logpb_last_complete_blockid (void);
-extern int logpb_page_check_corruption (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, bool *is_page_corrupted);
+extern int logpb_page_check_corruption (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, bool * is_page_corrupted);
 extern void logpb_dump_log_page_area (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int offset, int length);
 extern void logpb_page_get_first_null_block_lsa (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr,
 						 LOG_LSA * first_null_block_lsa);

@@ -111,7 +111,7 @@ static void logtb_increment_number_of_assigned_tran_indices ();
 static void logtb_decrement_number_of_assigned_tran_indices ();
 static void logtb_set_number_of_total_tran_indices (int num_total_trans);
 static void logtb_set_loose_end_tdes (LOG_TDES * tdes);
-static bool logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool clear, bool *continue_checking);
+static bool logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool clear, bool * continue_checking);
 static void logtb_dump_tdes_distribute_transaction (FILE * out_fp, int global_tran_id, LOG_2PC_COORDINATOR * coord);
 static void logtb_dump_top_operations (FILE * out_fp, LOG_TOPOPS_STACK * topops_p);
 static void logtb_dump_tdes (FILE * out_fp, LOG_TDES * tdes);
@@ -139,8 +139,8 @@ static void logtb_free_tran_mvcc_info (LOG_TDES * tdes);
 
 static void logtb_assign_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info, MVCCID mvcc_subid);
 
-static int logtb_check_kill_tran_auth (THREAD_ENTRY * thread_p, int tran_id, bool *has_authorization);
-static void logtb_find_thread_entry_mapfunc (THREAD_ENTRY & thread_ref, bool &stop_mapper, int tran_index,
+static int logtb_check_kill_tran_auth (THREAD_ENTRY * thread_p, int tran_id, bool * has_authorization);
+static void logtb_find_thread_entry_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, int tran_index,
 					     bool except_me, REFPTR (THREAD_ENTRY, found_ptr));
 
 /*
@@ -2550,7 +2550,7 @@ logtb_find_wait_msecs (int tran_index)
  *
  */
 int
-logtb_find_interrupt (int tran_index, bool *interrupt)
+logtb_find_interrupt (int tran_index, bool * interrupt)
 {
   LOG_TDES *tdes;
 
@@ -2776,7 +2776,7 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, bool se
  * Note:
  */
 static bool
-logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool clear, bool *continue_checking)
+logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool clear, bool * continue_checking)
 {
   bool interrupt;
   INT64 now;
@@ -2866,7 +2866,7 @@ logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool clear,
  *       action... in this case the transaction will be partially aborted.
  */
 bool
-logtb_is_interrupted (THREAD_ENTRY * thread_p, bool clear, bool *continue_checking)
+logtb_is_interrupted (THREAD_ENTRY * thread_p, bool clear, bool * continue_checking)
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
   int tran_index;
@@ -2904,7 +2904,7 @@ logtb_is_interrupted (THREAD_ENTRY * thread_p, bool clear, bool *continue_checki
  *       be interrupted.
  */
 bool
-logtb_is_interrupted_tran (THREAD_ENTRY * thread_p, bool clear, bool *continue_checking, int tran_index)
+logtb_is_interrupted_tran (THREAD_ENTRY * thread_p, bool clear, bool * continue_checking, int tran_index)
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
 
@@ -4158,53 +4158,6 @@ logtb_set_num_loose_end_trans (THREAD_ENTRY * thread_p)
   TR_TABLE_CS_EXIT (thread_p);
 
   return r;
-}
-
-/*
- * log_find_unilaterally_largest_undo_lsa - find maximum lsa address to undo
- *
- * return:
- *
- * Note: Find the maximum log sequence address to undo during the undo
- *              crash recovery phase.
- */
-void
-log_find_unilaterally_largest_undo_lsa (THREAD_ENTRY * thread_p, LOG_LSA & max_undo_lsa)
-{
-  // *INDENT-OFF*
-  int i;
-  LOG_TDES *tdes;		/* Transaction descriptor */
-
-  TR_TABLE_CS_ENTER_READ_MODE (thread_p);
-
-  LSA_SET_NULL (&max_undo_lsa);
-
-  auto max_undo_lsa_func = [&] (log_tdes & tdes)
-    {
-      if (LSA_LT (&max_undo_lsa, &tdes.undo_nxlsa))
-        {
-          max_undo_lsa = tdes.undo_nxlsa;
-        }
-    };
-
-  /* Check active transactions. */
-  for (i = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
-    {
-      if (i != LOG_SYSTEM_TRAN_INDEX)
-	{
-	  tdes = log_Gl.trantable.all_tdes[i];
-	  if (tdes != NULL && tdes->trid != NULL_TRANID
-	      && (tdes->state == TRAN_UNACTIVE_UNILATERALLY_ABORTED || tdes->state == TRAN_UNACTIVE_ABORTED))
-	    {
-	      max_undo_lsa_func (*tdes);
-	    }
-	}
-    }
-  /* Check system worker transactions. */
-  log_system_tdes::map_all_tdes (max_undo_lsa_func);
-
-  TR_TABLE_CS_EXIT (thread_p);
-  // *INDENT-ON*
 }
 
 /*
@@ -5676,7 +5629,7 @@ logtb_slam_transaction (THREAD_ENTRY * thread_p, int tran_index)
  *   has_authorization(out):
  */
 static int
-logtb_check_kill_tran_auth (THREAD_ENTRY * thread_p, int tran_id, bool *has_authorization)
+logtb_check_kill_tran_auth (THREAD_ENTRY * thread_p, int tran_id, bool * has_authorization)
 {
   const char *tran_client_name;
   const char *current_client_name;
@@ -5888,7 +5841,7 @@ xlogtb_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_index, bool is_
 // found_ptr (out)   : saves pointer to found thread entry
 //
 static void
-logtb_find_thread_entry_mapfunc (THREAD_ENTRY & thread_ref, bool &stop_mapper, int tran_index, bool except_me,
+logtb_find_thread_entry_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, int tran_index, bool except_me,
 				 REFPTR (THREAD_ENTRY, found_ptr))
 {
   if (thread_ref.tran_index != tran_index)
