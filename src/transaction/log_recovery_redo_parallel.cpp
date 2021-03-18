@@ -25,20 +25,20 @@ namespace cublog
    * redo_parallel::redo_job_queue
    **********************/
 
-  redo_parallel::redo_job_queue::redo_job_queue()
-    : produce_queue ( new ux_redo_job_deque() )
-    , consume_queue ( new ux_redo_job_deque() )
+  redo_parallel::redo_job_queue::redo_job_queue ()
+    : produce_queue ( new ux_redo_job_deque () )
+    , consume_queue ( new ux_redo_job_deque () )
     , queues_empty (false)
     , adding_finished { false }
     , to_be_waited_for_op_in_progress (false)
   {
   }
 
-  redo_parallel::redo_job_queue::~redo_job_queue()
+  redo_parallel::redo_job_queue::~redo_job_queue ()
   {
-    assert (produce_queue->size() == 0);
-    assert (consume_queue->size() == 0);
-    assert (in_progress_vpids.size() == 0);
+    assert (produce_queue->size () == 0);
+    assert (consume_queue->size () == 0);
+    assert (in_progress_vpids.size () == 0);
 
     delete produce_queue;
     produce_queue = nullptr;
@@ -54,21 +54,21 @@ namespace cublog
     queues_empty = false;
   }
 
-  void redo_parallel::redo_job_queue::set_adding_finished()
+  void redo_parallel::redo_job_queue::set_adding_finished ()
   {
     adding_finished.store (true);
   }
 
-  bool redo_parallel::redo_job_queue::get_adding_finished() const
+  bool redo_parallel::redo_job_queue::get_adding_finished () const
   {
     return adding_finished.load ();
   }
 
-  ux_redo_job_base redo_parallel::redo_job_queue::locked_pop (bool &out_adding_finished)
+  redo_parallel::redo_job_queue::ux_redo_job_base redo_parallel::redo_job_queue::locked_pop (bool &out_adding_finished)
   {
     std::unique_lock<std::mutex> consume_queue_lock (consume_queue_mutex);
     // stop at the barrier if an operation which needs to be waited for is in progress
-    to_be_waited_for_op_in_progress_cv.wait (consume_queue_lock, [this]()
+    to_be_waited_for_op_in_progress_cv.wait (consume_queue_lock, [this] ()
     {
       return !to_be_waited_for_op_in_progress;
     });
@@ -76,7 +76,7 @@ namespace cublog
     out_adding_finished = false;
 
     // if consumption of everything in consume queue finished; see whether there's some more
-    if (consume_queue->size() == 0)
+    if (consume_queue->size () == 0)
       {
 	// consumer queue is locked anyway, interested in not locking the producer queue
 	bool notify_queues_empty = false;
@@ -89,7 +89,7 @@ namespace cublog
 	}
 	if (notify_queues_empty)
 	  {
-	    queues_empty_cv.notify_one();
+	    queues_empty_cv.notify_one ();
 	  }
 
 	// TODO: a second barrier such that, consumption threads do not 'busy wait' by
@@ -98,7 +98,7 @@ namespace cublog
 	// this function will semantically become 'blocking_pop'
       }
 
-    if (consume_queue->size() > 0)
+    if (consume_queue->size () > 0)
       {
 	ux_redo_job_base first_in_consume_queue;
 
@@ -118,17 +118,17 @@ namespace cublog
 	  // access the in_progress_vpids guarded; another option to reduce contention would
 	  // be to copy the contents (while guarded) and then check against the contents outside of lock
 	  std::lock_guard<std::mutex> lock_in_progress_vpids (in_progress_vpids_mutex);
-	  auto consume_queue_it = consume_queue->begin();
-	  for (; consume_queue_it != consume_queue->end(); ++consume_queue_it)
+	  auto consume_queue_it = consume_queue->begin ();
+	  for (; consume_queue_it != consume_queue->end (); ++consume_queue_it)
 	    {
-	      const VPID it_vpid = (*consume_queue_it)->get_vpid();
-	      if (in_progress_vpids.find ((it_vpid)) == in_progress_vpids.cend())
+	      const VPID it_vpid = (*consume_queue_it)->get_vpid ();
+	      if (in_progress_vpids.find ((it_vpid)) == in_progress_vpids.cend ())
 		{
 		  break;
 		}
 	    }
 
-	  if (consume_queue_it != consume_queue->end())
+	  if (consume_queue_it != consume_queue->end ())
 	    {
 	      first_in_consume_queue = std::move (*consume_queue_it);
 	      consume_queue->erase (consume_queue_it);
@@ -145,8 +145,8 @@ namespace cublog
 	  // when all entries in the consume queue have been added or when a synched (to-be-waited-for)
 	  // entry is found
 
-	  const VPID vpid_to_be_processed = first_in_consume_queue->get_vpid();
-	  assert (in_progress_vpids.find (vpid_to_be_processed) == in_progress_vpids.cend());
+	  const VPID vpid_to_be_processed = first_in_consume_queue->get_vpid ();
+	  assert (in_progress_vpids.find (vpid_to_be_processed) == in_progress_vpids.cend ());
 	  in_progress_vpids.insert (vpid_to_be_processed);
 	} // unlock in_progress_vpids
 
@@ -154,7 +154,7 @@ namespace cublog
 	 */
 	//consume_queue_lock.unlock();
 
-	if (first_in_consume_queue->get_is_to_be_waited_for())
+	if (first_in_consume_queue->get_is_to_be_waited_for ())
 	  {
 	    assert (to_be_waited_for_op_in_progress == false);
 	    to_be_waited_for_op_in_progress = true;
@@ -172,7 +172,7 @@ namespace cublog
 	// by other tasks - via the in_progress_vpids), there are a few times when false negatives are returned
 	// to the consumption tasks (see the 'return nullptr' in the 'then' branch); but, if control reaches here
 	// it is ensured that indeed no more data exists and that no more data will be produced
-	out_adding_finished = adding_finished.load();
+	out_adding_finished = adding_finished.load ();
 
 	// if no more data will be produced (signalled by the flag), the
 	// consumer will just need to terminate; otherwise, consumer is expected to
@@ -181,12 +181,12 @@ namespace cublog
       }
   }
 
-  void redo_parallel::redo_job_queue::notify_to_be_waited_for_op_finished()
+  void redo_parallel::redo_job_queue::notify_to_be_waited_for_op_finished ()
   {
     assert (to_be_waited_for_op_in_progress == true);
     to_be_waited_for_op_in_progress = false;
     // notify all waiting threads, as there can be many which can pick-up work
-    to_be_waited_for_op_in_progress_cv.notify_all();
+    to_be_waited_for_op_in_progress_cv.notify_all ();
   }
 
   void redo_parallel::redo_job_queue::notify_in_progress_vpid_finished (VPID _vpid)
@@ -194,21 +194,21 @@ namespace cublog
     bool set_empty = false;
     {
       std::lock_guard<std::mutex> lock_in_progress_vpids (in_progress_vpids_mutex);
-      assert (in_progress_vpids.find (_vpid) != in_progress_vpids.cend());
+      assert (in_progress_vpids.find (_vpid) != in_progress_vpids.cend ());
       in_progress_vpids.erase (_vpid);
       set_empty = in_progress_vpids.empty ();
     }
     if (set_empty)
       {
-	in_progress_vpids_empty_cv.notify_one();
+	in_progress_vpids_empty_cv.notify_one ();
       }
   }
 
-  void redo_parallel::redo_job_queue::wait_for_idle()
+  void redo_parallel::redo_job_queue::wait_for_idle ()
   {
     {
       std::unique_lock<std::mutex> empty_queues_lock (produce_queue_mutex);
-      queues_empty_cv.wait (empty_queues_lock, [this]()
+      queues_empty_cv.wait (empty_queues_lock, [this] ()
       {
 	return queues_empty;
       });
@@ -216,7 +216,7 @@ namespace cublog
 
     {
       std::unique_lock<std::mutex> empty_in_progress_vpids_lock (in_progress_vpids_mutex);
-      in_progress_vpids_empty_cv.wait (empty_in_progress_vpids_lock, [this]()
+      in_progress_vpids_empty_cv.wait (empty_in_progress_vpids_lock, [this] ()
       {
 	return in_progress_vpids.empty ();
       });
@@ -243,7 +243,7 @@ namespace cublog
     log_zip_realloc_if_needed (redo_unzip_support, LOGAREA_SIZE);
   }
 
-  redo_parallel::redo_task::~redo_task()
+  redo_parallel::redo_task::~redo_task ()
   {
     log_zip_free_data (undo_unzip_support);
     log_zip_free_data (redo_unzip_support);
@@ -259,7 +259,7 @@ namespace cublog
     for (; !finished ;)
       {
 	bool adding_finished = false;
-	ux_redo_job_base job = queue.locked_pop (adding_finished);
+	std::unique_ptr<redo_job_base> job = queue.locked_pop (adding_finished);
 
 	if (job == nullptr && adding_finished)
 	  {
@@ -283,7 +283,7 @@ namespace cublog
 
 		if (job->get_is_to_be_waited_for ())
 		  {
-		    queue.notify_to_be_waited_for_op_finished();
+		    queue.notify_to_be_waited_for_op_finished ();
 		  }
 	      }
 	  }
@@ -296,29 +296,29 @@ namespace cublog
    * redo_parallel
    **********************/
 
-  redo_parallel::redo_parallel(int a_worker_count)
+  redo_parallel::redo_parallel (int a_worker_count)
     : thread_manager (nullptr), worker_pool (nullptr), waited_for_termination (false)
   {
-    assert(a_worker_count > 0);
+    assert (a_worker_count > 0);
     if (a_worker_count <= 0)
       {
-        a_worker_count = std::thread::hardware_concurrency ();
+	a_worker_count = std::thread::hardware_concurrency ();
       }
-    task_count = static_cast<unsigned>(a_worker_count);
+    task_count = static_cast<unsigned> (a_worker_count);
 
     do_init_thread_manager ();
     do_init_worker_pool ();
     do_init_tasks ();
   }
 
-  redo_parallel::~redo_parallel()
+  redo_parallel::~redo_parallel ()
   {
     assert (queue.get_adding_finished ());
     assert (worker_pool == nullptr);
     assert (waited_for_termination);
   }
 
-  void redo_parallel::add (ux_redo_job_base &&job)
+  void redo_parallel::add (std::unique_ptr<redo_job_base> &&job)
   {
     assert (false == waited_for_termination);
     assert (thread_manager != nullptr);
@@ -327,7 +327,7 @@ namespace cublog
     queue.locked_push (std::move (job));
   }
 
-  void redo_parallel::set_adding_finished()
+  void redo_parallel::set_adding_finished ()
   {
     assert (false == waited_for_termination);
     assert (thread_manager != nullptr);
@@ -336,7 +336,7 @@ namespace cublog
     queue.set_adding_finished ();
   }
 
-  void redo_parallel::wait_for_termination_and_stop_execution()
+  void redo_parallel::wait_for_termination_and_stop_execution ()
   {
     assert (false == waited_for_termination);
     assert (thread_manager != nullptr);
@@ -363,7 +363,7 @@ namespace cublog
     queue.wait_for_idle ();
   }
 
-  void redo_parallel::do_init_thread_manager()
+  void redo_parallel::do_init_thread_manager ()
   {
     assert (thread_manager == nullptr);
 
@@ -371,7 +371,7 @@ namespace cublog
     thread_manager = cubthread::get_manager ();
   }
 
-  void redo_parallel::do_init_worker_pool()
+  void redo_parallel::do_init_worker_pool ()
   {
     assert (task_count > 0);
     assert (thread_manager != nullptr);
@@ -381,7 +381,7 @@ namespace cublog
 		  &worker_pool_context_manager, task_count, false /*debug_logging*/);
   }
 
-  void redo_parallel::do_init_tasks()
+  void redo_parallel::do_init_tasks ()
   {
     assert (task_count > 0);
     assert (worker_pool != nullptr);

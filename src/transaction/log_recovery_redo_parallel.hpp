@@ -80,7 +80,6 @@ namespace cublog
     private:
       const VPID vpid;
   };
-  using ux_redo_job_base = std::unique_ptr<redo_job_base>;
 
 
   /* actual job implementation that performs log redo
@@ -133,7 +132,6 @@ namespace cublog
       const LOG_RECTYPE log_rtype;
   };
 
-
   /* a class to handle infrastructure for parallel log recovery RAII-style
    */
   class redo_parallel final
@@ -144,6 +142,7 @@ namespace cublog
        */
       class redo_job_queue final
       {
+	  using ux_redo_job_base = std::unique_ptr<redo_job_base>;
 	  using ux_redo_job_deque = std::deque<ux_redo_job_base>;
 	  using vpid_set = std::set<VPID>;
 
@@ -314,7 +313,7 @@ namespace cublog
 
       /* add new work job
        */
-      void add (ux_redo_job_base &&job);
+      void add (std::unique_ptr<redo_job_base> &&job);
 
       /* mandatory to explicitly call this after all data have been added
        */
@@ -345,7 +344,6 @@ namespace cublog
 
       bool waited_for_termination;
   };
-  using ux_redo_parallel = std::unique_ptr<redo_parallel>;
 }
 
 #endif // LOG_RECOVERY_REDO_HPP

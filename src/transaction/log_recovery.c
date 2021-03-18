@@ -75,7 +75,7 @@ static void log_rv_redo_record_sync_or_dispatch_async (THREAD_ENTRY *thread_p, l
 						       const T &log_rec, const log_lsa &rcv_lsa,
 						       const LOG_LSA *end_redo_lsa, LOG_RECTYPE log_rtype,
 						       LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support,
-						       cublog::ux_redo_parallel &parallel_recovery_redo);
+						       std::unique_ptr<cublog::redo_parallel> &parallel_recovery_redo);
 // *INDENT-ON*
 
 static bool log_rv_find_checkpoint (THREAD_ENTRY * thread_p, VOLID volid, LOG_LSA * rcv_lsa);
@@ -593,7 +593,7 @@ void log_rv_redo_record_sync_or_dispatch_async (THREAD_ENTRY *thread_p, log_read
                                                 const T &log_rec, const log_lsa &rcv_lsa,
                                                 const LOG_LSA *end_redo_lsa, LOG_RECTYPE log_rtype,
                                                 LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support,
-                                                cublog::ux_redo_parallel &parallel_recovery_redo)
+                                                std::unique_ptr<cublog::redo_parallel> &parallel_recovery_redo)
 {
   const VPID rcv_vpid = log_rv_get_log_rec_vpid<T> (log_rec);
   // at this point, vpid can either be valid or not
@@ -624,7 +624,7 @@ void log_rv_redo_record_sync_or_dispatch_async (THREAD_ENTRY *thread_p, log_read
   else
     {
       // dispatch async
-      cublog::ux_redo_job_base job {
+      std::unique_ptr<cublog::redo_job_base> job {
         new cublog::redo_job_impl<T> (rcv_vpid, rcv_lsa, end_redo_lsa, log_rtype)
       };
       parallel_recovery_redo->add (std::move (job));
@@ -3219,7 +3219,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
    * infrastructure for parallel log recovery;
    * if infrastructure is not initialized dependent code below works sequentially */
   LOG_CS_EXIT (thread_p);
-  cublog::ux_redo_parallel parallel_recovery_redo;
+  std::unique_ptr < cublog::redo_parallel > parallel_recovery_redo;
 #if defined(SERVER_MODE)
   {
     const int log_recovery_redo_worker_count = prm_get_integer_value (PRM_ID_RECOVERY_PARALLEL_COUNT);
