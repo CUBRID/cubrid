@@ -49,8 +49,5 @@ src/$(VERSION_FILE):
 	mkdir -p src
 	touch $@
 
-$(JDBC_DRIVER):
-	ant -buildfile ../../jdbc/build.xml -Dbasedir=. -Dsrc=$(JDBC_SRC_DIR) -Dversion=$(JDBC_BUILD_NUMBER) dist-cubrid
-
 $(JSP_DRIVER):
 	ant -buildfile ../../java/build.xml -Dbasedir=. -Dsrc=$(JDBC_SRC_DIR) -Dversion=$(JDBC_BUILD_NUMBER) dist 
