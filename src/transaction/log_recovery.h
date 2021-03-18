@@ -51,5 +51,4 @@ void log_rv_redo_record (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
 			 int undo_length, const char *undo_data, LOG_ZIP &redo_unzip);
 // *INDENT-ON*
 
-
 #endif // LOG_RECOVERY_H
