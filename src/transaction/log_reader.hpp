@@ -28,11 +28,9 @@
 /* encapsulates reading of the log
  *
  * NOTE: not thread safe
- * NOTE: further functionality:
- *  - introduce an internal buffer to be used for copying and serving
+ * NOTE: improvement: introduce an internal buffer to be used for copying and serving
  *    data from the log of arbitrary size; currently this is done manually outside this class
- *
- * TODO: introduce THREAD_ENTRY as argument to all functions or as ctor argument
+ *    using a support buffer structure of
  */
 class log_reader final
 {
