@@ -303,7 +303,7 @@ namespace cublog
       };
 
     public:
-      redo_parallel(int a_worker_count);
+      redo_parallel (int a_worker_count);
 
       redo_parallel (const redo_parallel & ) = delete;
       redo_parallel (redo_parallel && ) = delete;

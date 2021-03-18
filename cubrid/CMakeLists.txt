@@ -375,6 +375,7 @@ set(STORAGE_SOURCES
 set(STORAGE_HEADERS
   ${STORAGE_DIR}/btree_unique.hpp
   ${STORAGE_DIR}/record_descriptor.hpp
+  ${STORAGE_DIR}/vpid.hpp
 )
 
 set(SESSION_SOURCES

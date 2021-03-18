@@ -16,7 +16,7 @@
  *
  */
 
-#include "dbtype_def.hpp"
+#include "vpid.hpp"
 #include "log_recovery_redo_parallel.hpp"
 
 namespace cublog
