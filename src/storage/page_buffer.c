@@ -1834,8 +1834,7 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
     {
       /* Make sure that the page has been allocated (i.e., is a valid page) */
       /* Suppress errors if fetch mode is OLD_PAGE_IF_IN_BUFFER. */
-      const bool no_error_when {fetch_mode == OLD_PAGE_IF_IN_BUFFER || fetch_mode == OLD_PAGE_IF_IN_BUFFER};
-      if (pgbuf_is_valid_page (thread_p, vpid, no_error_when, NULL, NULL) != DISK_VALID)
+      if (pgbuf_is_valid_page (thread_p, vpid, fetch_mode == OLD_PAGE_IF_IN_BUFFER, NULL, NULL) != DISK_VALID)
 	{
 	  return NULL;
 	}
@@ -14185,10 +14184,9 @@ pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thread_p, const VPID * 
   *page =
     pgbuf_fix_debug (thread_p, vpid, OLD_PAGE_MAYBE_DEALLOCATED, latch_mode, latch_condition, caller_file, caller_line);
 #endif /* !NDEBUG */
-  if (*page == NULL) // && !log_is_in_crash_recovery_and_not_yet_completes_redo ())
+  if (*page == NULL && !log_is_in_crash_recovery_and_not_yet_completes_redo ())
     {
-      //ASSERT_ERROR_AND_SET (error_code);
-      error_code = er_errid ();
+      ASSERT_ERROR_AND_SET (error_code);
       if (error_code == ER_PB_BAD_PAGEID)
 	{
 	  /* deallocated */
