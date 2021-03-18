@@ -16,7 +16,7 @@
  *
  */
 
-#ifndef _REQUEST_SYNC_SENDQUEUE_
+#ifndef _REQUEST_SYNC_SEND_QUEUE_
 #define _REQUEST_SYNC_SEND_QUEUE_
 
 #include "request_client_server.hpp"
