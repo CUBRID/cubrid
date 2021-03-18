@@ -32,113 +32,56 @@
 
 namespace cublog
 {
-  /* contains a single vpid-backed log record entry to be applied on a page;
-   * this is a base class designed to allow handling in a container;
-   * internal implementation detail
-   *
-   * NOTE: an optimization would be to allow this to be a container of more than
-   *  one same-vpid log record entry to be applied in one go by the same thread
-   */
-  class redo_job_base
-  {
-    public:
-      redo_job_base (VPID a_vpid)
-	: vpid (a_vpid)
-      {
-	// the logic implemented below, in the queue and task, does allow for null-vpid type of
-	// entries to be executed - they are called "to be waited for" or "synched" operations;
-	// but, for now, do not allow them to be dispatched to be executed asynchronously
-	assert (!VPID_ISNULL (&vpid));
-      }
-      redo_job_base () = delete;
-      redo_job_base (redo_job_base const &) = delete;
-      redo_job_base (redo_job_base &&) = delete;
-
-      virtual ~redo_job_base () = default;
-
-      redo_job_base &operator = (redo_job_base const &) = delete;
-      redo_job_base &operator = (redo_job_base &&) = delete;
-
-      /* log entries come in more than one flavor:
-       *  - pertain to a certain vpid - aka: page update
-       *  - pertain to a certain VOLID - aka: volume extend, new page
-       *  - pertain to no VOLID - aka: database extend, new volume
-       */
-      const VPID &get_vpid () const
-      {
-	return vpid;
-      }
-
-      virtual int execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
-			   LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support) = 0;
-
-      bool get_is_to_be_waited_for () const
-      {
-	return vpid.volid == NULL_VOLID || vpid.pageid == NULL_PAGEID;
-      }
-
-    private:
-      const VPID vpid;
-  };
-
-
-  /* actual job implementation that performs log redo
-   */
-  template <typename TYPE_LOG_REC>
-  class redo_job_impl final : public redo_job_base
-  {
-      using log_rec_t = TYPE_LOG_REC;
-
-    public:
-      redo_job_impl () = delete;
-      redo_job_impl (VPID a_vpid, const log_lsa &a_rcv_lsa, const LOG_LSA *a_end_redo_lsa, LOG_RECTYPE a_log_rtype)
-	: redo_job_base (a_vpid)
-	, rcv_lsa (a_rcv_lsa)
-	, end_redo_lsa (a_end_redo_lsa)
-	, log_rtype (a_log_rtype)
-      {
-      }
-
-      redo_job_impl (redo_job_impl const &) = delete;
-      redo_job_impl (redo_job_impl &&) = delete;
-
-      ~redo_job_impl () override = default;
-
-      redo_job_impl &operator = (redo_job_impl const &) = delete;
-      redo_job_impl &operator = (redo_job_impl &&) = delete;
-
-      int execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
-		   LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support) override
-      {
-	const int err_set_lsa_and_fetch_page =  log_pgptr_reader.set_lsa_and_fetch_page (rcv_lsa);
-	if (err_set_lsa_and_fetch_page != NO_ERROR)
-	  {
-	    return err_set_lsa_and_fetch_page;
-	  }
-	log_pgptr_reader.add_align (sizeof (LOG_RECORD_HEADER));
-	log_pgptr_reader.advance_when_does_not_fit (sizeof (log_rec_t));
-	const log_rec_t log_rec
-	  = log_pgptr_reader.reinterpret_copy_and_add_align<log_rec_t> ();
-
-	const auto &rcv_vpid = get_vpid ();
-	log_rv_redo_record_sync<log_rec_t> (thread_p, log_pgptr_reader, log_rec, rcv_vpid, rcv_lsa, end_redo_lsa,
-					    log_rtype, undo_unzip_support, redo_unzip_support);
-	return NO_ERROR;
-      }
-
-    private:
-      const log_lsa rcv_lsa;
-      const LOG_LSA *end_redo_lsa;  // by design pointer is guaranteed to outlive this instance
-      const LOG_RECTYPE log_rtype;
-  };
-
-  /* a class to handle infrastructure for parallel log recovery RAII-style
+  /* a class to handle infrastructure for parallel log recovery RAII-style;
+   * usage:
+   *  - instantiate an object of this class with the desired number of background workers
+   *  - create and add jobs - see 'redo_job_impl'
+   *  - after all jobs have been added, explicitly call 'set_adding_finished'
+   *  - and, as a final step, call 'wait_for_termination_and_stop_execution'; implementation
+   *    explicitly needs these last two steps to be executed in this order to be able to clean-up
    */
   class redo_parallel final
   {
+    public:
+      /* forward declarations for implementation details */
+      class redo_job_base;
+      class redo_task;
+
+    public:
+      redo_parallel (int a_worker_count);
+
+      redo_parallel (const redo_parallel &) = delete;
+      redo_parallel (redo_parallel &&) = delete;
+
+      ~redo_parallel ();
+
+      redo_parallel &operator = (const redo_parallel &) = delete;
+      redo_parallel &operator = (redo_parallel &&) = delete;
+
+      /* add new work job
+       */
+      void add (std::unique_ptr<redo_job_base> &&job);
+
+      /* mandatory to explicitly call this after all data have been added
+       */
+      void set_adding_finished ();
+
+      /* wait until all data has been consumed internally; blocking call
+       */
+      void wait_for_idle ();
+
+      /* mandatory to explicitly call this before dtor
+       */
+      void wait_for_termination_and_stop_execution ();
+
+    private:
+      void do_init_thread_manager ();
+      void do_init_worker_pool ();
+      void do_init_tasks ();
+
     private:
       /* rynchronizes prod/cons of log entries in n-prod - m-cons fashion
-       * internal implementation detail
+       * internal implementation detail; not to be used externally
        */
       class redo_job_queue final
       {
@@ -212,7 +155,7 @@ namespace cublog
       };
 
       /* maintain a bookkeeping of tasks that are still performing work;
-       * internal implementation detail
+       * internal implementation detail; not to be used externally
        *
        * TODO: this class is supposed to be polled to see whether any tasks are still active; it might
        * be better to implement this via either a callback or a condition variable
@@ -264,74 +207,6 @@ namespace cublog
 	  mutable std::mutex active_set_mutex;
       };
 
-
-      /* a long running task looping and processing redo log jobs;
-       * offers some 'support' instances to the passing guest log jobs: a log reader,
-       * unzip support memory for undo data, unzip support memory for redo data;
-       * internal implementation detail
-       */
-      class redo_task final : public cubthread::task<cubthread::entry>
-      {
-	public:
-	  static constexpr unsigned short WAIT_AND_CHECK_MILLIS = 5;
-
-	public:
-	  redo_task (std::size_t a_task_id, redo_task_active_state_bookkeeping &a_task_active_state_bookkeeping,
-		     redo_job_queue &a_queue);
-	  redo_task (const redo_task &) = delete;
-	  redo_task (redo_task &&) = delete;
-
-	  redo_task &operator = (const redo_task &) = delete;
-	  redo_task &operator = (redo_task &&) = delete;
-
-	  ~redo_task () override;
-
-	  void execute (context_type &context);
-
-	private:
-	  // internal bookkeeping variable, must be unique among all task id's within the same pool
-	  std::size_t task_id;
-
-	  redo_task_active_state_bookkeeping &task_active_state_bookkeeping;
-	  redo_job_queue &queue;
-
-	  log_reader log_pgptr_reader;
-	  LOG_ZIP undo_unzip_support;
-	  LOG_ZIP redo_unzip_support;
-      };
-
-    public:
-      redo_parallel (int a_worker_count);
-
-      redo_parallel (const redo_parallel &) = delete;
-      redo_parallel (redo_parallel &&) = delete;
-
-      ~redo_parallel ();
-
-      redo_parallel &operator = (const redo_parallel &) = delete;
-      redo_parallel &operator = (redo_parallel &&) = delete;
-
-      /* add new work job
-       */
-      void add (std::unique_ptr<redo_job_base> &&job);
-
-      /* mandatory to explicitly call this after all data have been added
-       */
-      void set_adding_finished ();
-
-      /* wait until all data has been consumed internally; blocking call
-       */
-      void wait_for_idle ();
-
-      /* mandatory to explicitly call this before dtor
-       */
-      void wait_for_termination_and_stop_execution ();
-
-    private:
-      void do_init_thread_manager ();
-      void do_init_worker_pool ();
-      void do_init_tasks ();
-
     private:
       unsigned task_count;
 
@@ -343,6 +218,107 @@ namespace cublog
       redo_task_active_state_bookkeeping task_active_state_bookkeeping;
 
       bool waited_for_termination;
+  };
+
+
+  /* contains a single vpid-backed log record entry to be applied on a page;
+  * this is a base class designed to allow handling in a container;
+  * internal implementation detail; not to be used externally
+  *
+  * NOTE: an optimization would be to allow this to be a container of more than
+  *  one same-vpid log record entry to be applied in one go by the same thread
+  */
+  class redo_parallel::redo_job_base
+  {
+    public:
+      redo_job_base (VPID a_vpid)
+	: vpid (a_vpid)
+      {
+	// the logic implemented below, in the queue and task, does allow for null-vpid type of
+	// entries to be executed - they are called "to be waited for" or "synched" operations;
+	// but, for now, do not allow them to be dispatched to be executed asynchronously
+	assert (!VPID_ISNULL (&vpid));
+      }
+      redo_job_base () = delete;
+      redo_job_base (redo_job_base const &) = delete;
+      redo_job_base (redo_job_base &&) = delete;
+
+      virtual ~redo_job_base () = default;
+
+      redo_job_base &operator = (redo_job_base const &) = delete;
+      redo_job_base &operator = (redo_job_base &&) = delete;
+
+      /* log entries come in more than one flavor:
+      *  - pertain to a certain vpid - aka: page update
+      *  - pertain to a certain VOLID - aka: volume extend, new page
+      *  - pertain to no VOLID - aka: database extend, new volume
+      */
+      const VPID &get_vpid () const
+      {
+	return vpid;
+      }
+
+      virtual int execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
+			   LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support) = 0;
+
+      bool get_is_to_be_waited_for () const
+      {
+	return vpid.volid == NULL_VOLID || vpid.pageid == NULL_PAGEID;
+      }
+
+    private:
+      const VPID vpid;
+  };
+
+
+  /* actual job implementation that performs log recovery redo
+   */
+  template <typename TYPE_LOG_REC>
+  class redo_job_impl final : public redo_parallel::redo_job_base
+  {
+      using log_rec_t = TYPE_LOG_REC;
+
+    public:
+      redo_job_impl () = delete;
+      redo_job_impl (VPID a_vpid, const log_lsa &a_rcv_lsa, const LOG_LSA *a_end_redo_lsa, LOG_RECTYPE a_log_rtype)
+	: redo_parallel::redo_job_base (a_vpid)
+	, rcv_lsa (a_rcv_lsa)
+	, end_redo_lsa (a_end_redo_lsa)
+	, log_rtype (a_log_rtype)
+      {
+      }
+
+      redo_job_impl (redo_job_impl const &) = delete;
+      redo_job_impl (redo_job_impl &&) = delete;
+
+      ~redo_job_impl () override = default;
+
+      redo_job_impl &operator = (redo_job_impl const &) = delete;
+      redo_job_impl &operator = (redo_job_impl &&) = delete;
+
+      int execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
+		   LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support) override
+      {
+	const int err_set_lsa_and_fetch_page =  log_pgptr_reader.set_lsa_and_fetch_page (rcv_lsa);
+	if (err_set_lsa_and_fetch_page != NO_ERROR)
+	  {
+	    return err_set_lsa_and_fetch_page;
+	  }
+	log_pgptr_reader.add_align (sizeof (LOG_RECORD_HEADER));
+	log_pgptr_reader.advance_when_does_not_fit (sizeof (log_rec_t));
+	const log_rec_t log_rec
+	  = log_pgptr_reader.reinterpret_copy_and_add_align<log_rec_t> ();
+
+	const auto &rcv_vpid = get_vpid ();
+	log_rv_redo_record_sync<log_rec_t> (thread_p, log_pgptr_reader, log_rec, rcv_vpid, rcv_lsa, end_redo_lsa,
+					    log_rtype, undo_unzip_support, redo_unzip_support);
+	return NO_ERROR;
+      }
+
+    private:
+      const log_lsa rcv_lsa;
+      const LOG_LSA *end_redo_lsa;  // by design pointer is guaranteed to outlive this instance
+      const LOG_RECTYPE log_rtype;
   };
 }
 

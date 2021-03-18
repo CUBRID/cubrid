@@ -227,6 +227,41 @@ namespace cublog
    * redo_parallel::redo_task
    **********************/
 
+  /* a long running task looping and processing redo log jobs;
+   * offers some 'support' instances to the passing guest log jobs: a log reader,
+   * unzip support memory for undo data, unzip support memory for redo data;
+   * internal implementation detail; not to be used externally
+   */
+  class redo_parallel::redo_task final : public cubthread::task<cubthread::entry>
+  {
+    public:
+      static constexpr unsigned short WAIT_AND_CHECK_MILLIS = 5;
+
+    public:
+      redo_task (std::size_t a_task_id, redo_parallel::redo_task_active_state_bookkeeping &a_task_active_state_bookkeeping,
+		 redo_parallel::redo_job_queue &a_queue);
+      redo_task (const redo_task &) = delete;
+      redo_task (redo_task &&) = delete;
+
+      redo_task &operator = (const redo_task &) = delete;
+      redo_task &operator = (redo_task &&) = delete;
+
+      ~redo_task () override;
+
+      void execute (context_type &context);
+
+    private:
+      // internal bookkeeping variable, must be unique among all task id's within the same pool
+      std::size_t task_id;
+
+      redo_parallel::redo_task_active_state_bookkeeping &task_active_state_bookkeeping;
+      redo_parallel::redo_job_queue &queue;
+
+      log_reader log_pgptr_reader;
+      LOG_ZIP undo_unzip_support;
+      LOG_ZIP redo_unzip_support;
+  };
+
   constexpr unsigned short redo_parallel::redo_task::WAIT_AND_CHECK_MILLIS;
 
   redo_parallel::redo_task::redo_task (std::size_t a_task_id,
