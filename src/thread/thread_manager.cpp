@@ -59,7 +59,7 @@ namespace cubthread
     , m_lf_tran_sys (NULL)
   {
     m_entry_manager = new entry_manager ();
-    m_daemon_entry_manager = new daemon_entry_manager();
+    m_daemon_entry_manager = new daemon_entry_manager ();
   }
 
   manager::~manager ()
@@ -85,8 +85,8 @@ namespace cubthread
     return;
 #else // not SA_MODE = SERVER_MODE
 
-    assert(m_all_entries == nullptr);
-    assert(m_entry_dispatcher == nullptr);
+    assert (m_all_entries == nullptr);
+    assert (m_entry_dispatcher == nullptr);
 
     m_available_entries_count = m_max_threads;
 
@@ -593,7 +593,7 @@ namespace cubthread
   get_max_thread_count (void)
   {
     // system thread + managed threads
-    return 1 + (Manager != NULL ? Manager->get_max_thread_count() : 0);
+    return 1 + (Manager != NULL ? Manager->get_max_thread_count () : 0);
   }
 
   entry &
