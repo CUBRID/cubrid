@@ -50,6 +50,9 @@ namespace cublog
   replicator::~replicator ()
   {
     cubthread::get_manager ()->destroy_daemon (m_daemon);
+
+    log_zip_free_data (m_undo_unzip);
+    log_zip_free_data (m_redo_unzip);
   }
 
   void
