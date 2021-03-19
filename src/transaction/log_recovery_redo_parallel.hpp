@@ -121,6 +121,18 @@ namespace cublog
 	  void wait_for_idle ();
 
 	private:
+	  /* swap internal queues and notify if both are empty
+	   * assumes the consume queue is locked
+	   */
+	  void do_swap_queues_if_needed ();
+
+	  /* find first job that can be consumed (ie: is not already marked
+	   * in the 'in progress vpids' set)
+	   * assumes the the in progress vpids set is locked
+	   */
+	  ux_redo_job_base do_find_job_to_consume();
+
+	private:
 	  /* two queues are internally managed
 	   */
 	  ux_redo_job_deque *m_produce_queue;

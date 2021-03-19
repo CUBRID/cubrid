@@ -69,13 +69,72 @@ namespace cublog
 
     out_adding_finished = false;
 
-    // if consumption of everything in consume queue finished; see whether there's some more
+    do_swap_queues_if_needed ();
+
+    if (m_consume_queue->size () > 0)
+      {
+        ux_redo_job_base job_to_consume;
+	{
+	  // TODO: instead of every task sifting through entries locked in execution by other tasks,
+	  // promote those entries as they are found to separate queues on a per-VPID basis; thus,
+	  // when that specific task enters the critical section, it will first investigate these
+	  // promoted queues to see if there's smth to consume from there; this has the added benefit that
+	  // it will also, possibly, bundle together consecutive entries that pertain to that task, thus,
+	  // further, possibly reducing contention on the happy path (ie: many consecutive same-VPID entries)
+	  // and also cache localization/affinity given that the same task (presumabily scheduled on the same
+	  // core) might end up consuming consecutive same-VPID entries which are applied to same location in
+	  // memory
+
+	  // access the m_in_progress_vpids guarded; another option to reduce contention would
+	  // be to copy the contents (while guarded) and then check against the contents outside of lock
+	  std::lock_guard<std::mutex> lock_in_progress_vpids (m_in_progress_vpids_mutex);
+	  job_to_consume = do_find_job_to_consume ();
+	  if (job_to_consume == nullptr)
+	    {
+	      // consumer will have to spin-wait
+	      return nullptr;
+	    }
+
+	  // IDEA: if this is a  non-synched op, search all other entries from the current queue
+	  // pertaining to the same vpid and consolidate them all in a single 'execution'; stop
+	  // when all entries in the consume queue have been added or when a synched (to-be-waited-for)
+	  // entry is found
+
+	  const VPID vpid_to_be_processed = job_to_consume->get_vpid ();
+	  assert (m_in_progress_vpids.find (vpid_to_be_processed) == m_in_progress_vpids.cend ());
+	  m_in_progress_vpids.insert (vpid_to_be_processed);
+	} // unlock m_in_progress_vpids
+
+	// unlocking consume queue before this will not guarantee total ordering amongst entries' execution
+
+        return job_to_consume;
+      }
+    else
+      {
+	// because two alternating queues are used internally, and because, when the consumption queue
+	// is being almost exhausted (i.e.: there are still entries to be consumed but all of them are locked
+	// by other tasks - via the m_in_progress_vpids), there are a few times when false negatives are returned
+	// to the consumption tasks (see the 'return nullptr' in the 'then' branch); but, if control reaches here
+	// it is ensured that indeed no more data exists and that no more data will be produced
+	out_adding_finished = m_adding_finished.load ();
+
+	// if no more data will be produced (signalled by the flag), the
+	// consumer will just need to terminate; otherwise, consumer is expected to
+	// spin-wait and try again
+	return nullptr;
+      }
+  }
+
+  void redo_parallel::redo_job_queue::do_swap_queues_if_needed ()
+  {
+    //
+    // if consumption of everything in consume queue finished; see whether there's some more in the other one
     if (m_consume_queue->size () == 0)
       {
-        // TODO: a second barrier such that, consumption threads do not 'busy wait' by
-        // constantly swapping two empty containers; works in combination with a notification
-        // dispatched after new work items are added to the produce queue; this, in effect means that
-        // this function will semantically become 'blocking_pop'
+	// TODO: a second barrier such that, consumption threads do not 'busy wait' by
+	// constantly swapping two empty containers; works in combination with a notification
+	// dispatched after new work items are added to the produce queue; this, in effect means that
+	// this function will semantically become 'blocking_pop'
 
 	// consumer queue is locked anyway, interested in not locking the producer queue
 	bool notify_queues_empty = false;
@@ -92,73 +151,32 @@ namespace cublog
 	    m_queues_empty_cv.notify_one ();
 	  }
       }
+  }
 
-    if (m_consume_queue->size () > 0)
+  redo_parallel::redo_job_queue::ux_redo_job_base redo_parallel::redo_job_queue::do_find_job_to_consume()
+  {
+    ux_redo_job_base job;
+    auto consume_queue_it = m_consume_queue->begin ();
+    for (; consume_queue_it != m_consume_queue->end (); ++consume_queue_it)
       {
-        ux_redo_job_base first_job;
-	{
-	  // TODO: instead of every task sifting through entries locked in execution by other tasks,
-	  // promote those entries as they are found to separate queues on a per-VPID basis; thus,
-	  // when that specific task enters the critical section, it will first investigate these
-	  // promoted queues to see if there's smth to consume from there; this has the added benefit that
-	  // it will also, possibly, bundle together consecutive entries that pertain to that task, thus,
-	  // further, possibly reducing contention on the happy path (ie: many consecutive same-VPID entries)
-	  // and also cache localization/affinity given that the same task (presumabily scheduled on the same
-	  // core) might end up consuming consecutive same-VPID entries which are applied to same location in
-	  // memory
+        const VPID it_vpid = (*consume_queue_it)->get_vpid ();
+        if (m_in_progress_vpids.find ((it_vpid)) == m_in_progress_vpids.cend ())
+          {
+            break;
+          }
+      }
 
-	  // access the m_in_progress_vpids guarded; another option to reduce contention would
-	  // be to copy the contents (while guarded) and then check against the contents outside of lock
-	  std::lock_guard<std::mutex> lock_in_progress_vpids (m_in_progress_vpids_mutex);
-	  auto consume_queue_it = m_consume_queue->begin ();
-	  for (; consume_queue_it != m_consume_queue->end (); ++consume_queue_it)
-	    {
-	      const VPID it_vpid = (*consume_queue_it)->get_vpid ();
-	      if (m_in_progress_vpids.find ((it_vpid)) == m_in_progress_vpids.cend ())
-		{
-		  break;
-		}
-	    }
-
-	  if (consume_queue_it != m_consume_queue->end ())
-	    {
-	      first_job = std::move (*consume_queue_it);
-	      m_consume_queue->erase (consume_queue_it);
-	    }
-	  else
-	    {
-	      // consumer will have to spin-wait
-	      return nullptr;
-	    }
-
-	  // IDEA: if this is a  non-synched op, search all other entries from the current queue
-	  // pertaining to the same vpid and consolidate them all in a single 'execution'; stop
-	  // when all entries in the consume queue have been added or when a synched (to-be-waited-for)
-	  // entry is found
-
-	  const VPID vpid_to_be_processed = first_job->get_vpid ();
-	  assert (m_in_progress_vpids.find (vpid_to_be_processed) == m_in_progress_vpids.cend ());
-	  m_in_progress_vpids.insert (vpid_to_be_processed);
-	} // unlock m_in_progress_vpids
-
-	// unlocking consume queue before this will not guarantee total ordering amongst entries' execution
-
-        return first_job;
+    if (consume_queue_it != m_consume_queue->end ())
+      {
+        job = std::move (*consume_queue_it);
+        m_consume_queue->erase (consume_queue_it);
       }
     else
       {
-	// because two alternating queues are used internally, and because, when the consumption queue
-	// is being almost exhausted (i.e.: there are still entries to be consumed but all of them are locked
-	// by other tasks - via the m_in_progress_vpids), there are a few times when false negatives are returned
-	// to the consumption tasks (see the 'return nullptr' in the 'then' branch); but, if control reaches here
-	// it is ensured that indeed no more data exists and that no more data will be produced
-	out_adding_finished = m_adding_finished.load ();
-
-	// if no more data will be produced (signalled by the flag), the
-	// consumer will just need to terminate; otherwise, consumer is expected to
-	// spin-wait and try again
-	return nullptr;
+        // consumer will have to spin-wait
       }
+
+    return job;
   }
 
   void redo_parallel::redo_job_queue::notify_in_progress_vpid_finished (VPID _vpid)
