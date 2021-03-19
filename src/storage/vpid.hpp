@@ -21,8 +21,8 @@
 
 #include "dbtype_def.h"
 
-/* C++ extensions for strict-C VPID struct; not defined in 'compat' - where
- * VPID is declared because of strict
+/* C++ extensions for VPID struct; not defined in 'compat' - where VPID is also
+ * declared - because of strict requirements for c-style to be kept in there
  */
 
 inline constexpr bool operator== (const VPID &left, const VPID &rite)
