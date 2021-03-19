@@ -37,6 +37,7 @@
 #include "log_reader.hpp"
 #include "log_record.hpp"
 #include "log_recovery_redo.hpp"
+#include "log_recovery_redo_parallel.hpp"
 #include "log_system_tran.hpp"
 #include "log_volids.hpp"
 #include "message_catalog.h"
@@ -51,14 +52,13 @@
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
 #include "type_helper.hpp"
-#include "log_recovery_redo_parallel.hpp"
 
-#include <stdio.h>
+#include <assert.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include <assert.h>
 
 static void log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 				LOG_RCVINDEX rcvindex, const VPID * rcv_vpid, LOG_RCV * rcv,

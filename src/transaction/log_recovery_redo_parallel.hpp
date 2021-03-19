@@ -75,7 +75,6 @@ namespace cublog
       void wait_for_termination_and_stop_execution ();
 
     private:
-      void do_init_thread_manager ();
       void do_init_worker_pool ();
       void do_init_tasks ();
 
@@ -125,15 +124,15 @@ namespace cublog
 	private:
 	  /* two queues are internally managed
 	   */
-	  ux_redo_job_deque *produce_queue;
-	  std::mutex produce_queue_mutex;
-	  ux_redo_job_deque *consume_queue;
-	  std::mutex consume_queue_mutex;
+	  ux_redo_job_deque *m_produce_queue;
+	  std::mutex m_produce_queue_mutex;
+	  ux_redo_job_deque *m_consume_queue;
+	  std::mutex m_consume_queue_mutex;
 
-	  bool queues_empty;
-	  std::condition_variable queues_empty_cv;
+	  bool m_queues_empty;
+	  std::condition_variable m_queues_empty_cv;
 
-	  std::atomic_bool adding_finished;
+	  std::atomic_bool m_adding_finished;
 
 	  /* barrier mechanism for log entries which are to be executed before all
 	   * log entries that come after them in the log
@@ -143,27 +142,26 @@ namespace cublog
 	   * a single barrier for all VPID's, one barrier for each combinations of max(VOLID), max(PAGEID)
 	   * on a per volume basis can be used
 	   */
-	  bool to_be_waited_for_op_in_progress;
-	  std::condition_variable to_be_waited_for_op_in_progress_cv;
+	  bool m_to_be_waited_for_op_in_progress;
+	  std::condition_variable m_to_be_waited_for_op_in_progress_cv;
 
 	  /* bookkeeping for log entries currently in process of being applied, this
 	   * mechanism guarantees ordering among entries with the same VPID;
 	   */
-	  vpid_set in_progress_vpids;
-	  std::mutex in_progress_vpids_mutex;
-	  std::condition_variable in_progress_vpids_empty_cv;
+	  vpid_set m_in_progress_vpids;
+	  std::mutex m_in_progress_vpids_mutex;
+	  std::condition_variable m_in_progress_vpids_empty_cv;
       };
 
     private:
-      unsigned task_count;
+      unsigned m_task_count;
 
-      cubthread::manager *thread_manager;
-      cubthread::entry_manager worker_pool_context_manager;
-      cubthread::entry_workpool *worker_pool;
+      cubthread::manager *m_thread_manager;
+      cubthread::entry_workpool *m_worker_pool;
 
-      redo_job_queue queue;
+      redo_job_queue m_job_queue;
 
-      bool waited_for_termination;
+      bool m_waited_for_termination;
   };
 
 
@@ -178,12 +176,12 @@ namespace cublog
   {
     public:
       redo_job_base (VPID a_vpid)
-	: vpid (a_vpid)
+	: m_vpid (a_vpid)
       {
 	// the logic implemented below, in the queue and task, does allow for null-vpid type of
 	// entries to be executed - they are called "to be waited for" or "synched" operations;
 	// but, for now, do not allow them to be dispatched to be executed asynchronously
-	assert (!VPID_ISNULL (&vpid));
+	assert (!VPID_ISNULL (&m_vpid));
       }
       redo_job_base () = delete;
       redo_job_base (redo_job_base const &) = delete;
@@ -201,7 +199,7 @@ namespace cublog
       */
       const VPID &get_vpid () const
       {
-	return vpid;
+	return m_vpid;
       }
 
       virtual int execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
@@ -209,11 +207,11 @@ namespace cublog
 
       bool get_is_to_be_waited_for () const
       {
-	return vpid.volid == NULL_VOLID || vpid.pageid == NULL_PAGEID;
+	return m_vpid.volid == NULL_VOLID || m_vpid.pageid == NULL_PAGEID;
       }
 
     private:
-      const VPID vpid;
+      const VPID m_vpid;
   };
 
 
@@ -228,9 +226,9 @@ namespace cublog
       redo_job_impl () = delete;
       redo_job_impl (VPID a_vpid, const log_lsa &a_rcv_lsa, const LOG_LSA *a_end_redo_lsa, LOG_RECTYPE a_log_rtype)
 	: redo_parallel::redo_job_base (a_vpid)
-	, rcv_lsa (a_rcv_lsa)
-	, end_redo_lsa (a_end_redo_lsa)
-	, log_rtype (a_log_rtype)
+	, m_rcv_lsa (a_rcv_lsa)
+	, m_end_redo_lsa (a_end_redo_lsa)
+	, m_log_rtype (a_log_rtype)
       {
       }
 
@@ -245,7 +243,7 @@ namespace cublog
       int execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
 		   LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support) override
       {
-	const int err_set_lsa_and_fetch_page =  log_pgptr_reader.set_lsa_and_fetch_page (rcv_lsa);
+	const int err_set_lsa_and_fetch_page =  log_pgptr_reader.set_lsa_and_fetch_page (m_rcv_lsa);
 	if (err_set_lsa_and_fetch_page != NO_ERROR)
 	  {
 	    return err_set_lsa_and_fetch_page;
@@ -256,15 +254,15 @@ namespace cublog
 	  = log_pgptr_reader.reinterpret_copy_and_add_align<log_rec_t> ();
 
 	const auto &rcv_vpid = get_vpid ();
-	log_rv_redo_record_sync<log_rec_t> (thread_p, log_pgptr_reader, log_rec, rcv_vpid, rcv_lsa, end_redo_lsa,
-					    log_rtype, undo_unzip_support, redo_unzip_support);
+	log_rv_redo_record_sync<log_rec_t> (thread_p, log_pgptr_reader, log_rec, rcv_vpid, m_rcv_lsa, m_end_redo_lsa,
+					    m_log_rtype, undo_unzip_support, redo_unzip_support);
 	return NO_ERROR;
       }
 
     private:
-      const log_lsa rcv_lsa;
-      const LOG_LSA *end_redo_lsa;  // by design pointer is guaranteed to outlive this instance
-      const LOG_RECTYPE log_rtype;
+      const log_lsa m_rcv_lsa;
+      const LOG_LSA *m_end_redo_lsa;  // by design pointer is guaranteed to outlive this instance
+      const LOG_RECTYPE m_log_rtype;
   };
 }
 
