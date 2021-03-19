@@ -133,7 +133,7 @@ namespace cublog
 	   * in the 'in progress vpids' set)
 	   * assumes the the in progress vpids set is locked
 	   */
-	  ux_redo_job_base do_find_job_to_consume();
+	  ux_redo_job_base do_find_job_to_consume ();
 
 	private:
 	  /* two queues are internally managed

@@ -73,7 +73,7 @@ namespace cublog
 
     if (m_consume_queue->size () > 0)
       {
-        ux_redo_job_base job_to_consume;
+	ux_redo_job_base job_to_consume;
 	{
 	  // TODO: instead of every task sifting through entries locked in execution by other tasks,
 	  // promote those entries as they are found to separate queues on a per-VPID basis; thus,
@@ -107,7 +107,7 @@ namespace cublog
 
 	// unlocking consume queue before this will not guarantee total ordering amongst entries' execution
 
-        return job_to_consume;
+	return job_to_consume;
       }
     else
       {
@@ -153,27 +153,27 @@ namespace cublog
       }
   }
 
-  redo_parallel::redo_job_queue::ux_redo_job_base redo_parallel::redo_job_queue::do_find_job_to_consume()
+  redo_parallel::redo_job_queue::ux_redo_job_base redo_parallel::redo_job_queue::do_find_job_to_consume ()
   {
     ux_redo_job_base job;
     auto consume_queue_it = m_consume_queue->begin ();
     for (; consume_queue_it != m_consume_queue->end (); ++consume_queue_it)
       {
-        const VPID it_vpid = (*consume_queue_it)->get_vpid ();
-        if (m_in_progress_vpids.find ((it_vpid)) == m_in_progress_vpids.cend ())
-          {
-            break;
-          }
+	const VPID it_vpid = (*consume_queue_it)->get_vpid ();
+	if (m_in_progress_vpids.find ((it_vpid)) == m_in_progress_vpids.cend ())
+	  {
+	    break;
+	  }
       }
 
     if (consume_queue_it != m_consume_queue->end ())
       {
-        job = std::move (*consume_queue_it);
-        m_consume_queue->erase (consume_queue_it);
+	job = std::move (*consume_queue_it);
+	m_consume_queue->erase (consume_queue_it);
       }
     else
       {
-        // consumer will have to spin-wait
+	// consumer will have to spin-wait
       }
 
     return job;
