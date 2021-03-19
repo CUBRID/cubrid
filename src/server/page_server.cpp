@@ -26,6 +26,7 @@
 #include "system_parameter.h"
 
 #include <cassert>
+#include <cstring>
 #include <functional>
 
 page_server ps_Gl;
@@ -52,6 +53,10 @@ page_server::set_active_tran_server_connection (cubcomm::channel &&chn)
 					std::bind (&page_server::receive_log_prior_list, std::ref (*this),
 					    std::placeholders::_1));
 
+  m_ats_conn->register_request_handler (ats_to_ps_request::SEND_LOG_PAGE_FETCH,
+        std::bind (&page_server::receive_log_page_fetch, std::ref (*this),
+                std::placeholders::_1));
+
   m_ats_conn->start_thread ();
 }
 
@@ -76,6 +81,22 @@ page_server::receive_log_prior_list (cubpacking::unpacker &upk)
   std::string message;
   upk.unpack_string (message);
   log_Gl.m_prior_recver.push_message (std::move (message));
+}
+
+void
+page_server::receive_log_page_fetch (cubpacking::unpacker &upk)
+{
+  if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
+    {
+      LOG_PAGEID pageid;
+      std::string message;
+
+      upk.unpack_string (message);
+      std::memcpy (&pageid, message.c_str (), sizeof (pageid));
+      assert (message.size () == sizeof (pageid));
+
+      _er_log_debug (ARG_FILE_LINE, "Received request for log from Transaction Server. Page ID: %lld \n", pageid);
+    }
 }
 
 void
