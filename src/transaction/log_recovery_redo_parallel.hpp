@@ -16,8 +16,8 @@
  *
  */
 
-#ifndef _LOG_RECOVERY_REDO_HPP
-#define LOG_RECOVERY_REDO_HPP
+#ifndef _LOG_RECOVERY_REDO_PARALLEL_HPP_
+#define _LOG_RECOVERY_REDO_PARALLEL_HPP_
 
 #include "log_compress.h"
 #include "log_recovery_redo.hpp"
@@ -261,4 +261,4 @@ namespace cublog
   };
 }
 
-#endif // LOG_RECOVERY_REDO_HPP
+#endif // _LOG_RECOVERY_REDO_PARALLEL_HPP_

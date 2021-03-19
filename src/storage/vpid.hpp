@@ -16,8 +16,8 @@
  *
  */
 
-#ifndef VPID_HPP
-#define VPID_HPP
+#ifndef _VPID_HPP_
+#define _VPID_HPP_
 
 #include "dbtype_def.h"
 
@@ -44,4 +44,4 @@ inline constexpr bool operator< (const VPID &left, const VPID &rite)
 	 );
 }
 
-#endif // VPID_HPP
+#endif // _VPID_HPP_
