@@ -3221,11 +3221,11 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   std::unique_ptr < cublog::redo_parallel > parallel_recovery_redo;
 #if defined(SERVER_MODE)
   {
-    const int log_recovery_redo_worker_count = prm_get_integer_value (PRM_ID_RECOVERY_PARALLEL_COUNT);
-    assert (log_recovery_redo_worker_count >= 0);
-    if (log_recovery_redo_worker_count > 0)
+    const int log_recovery_redo_parallel_count = prm_get_integer_value (PRM_ID_RECOVERY_PARALLEL_COUNT);
+    assert (log_recovery_redo_parallel_count >= 0);
+    if (log_recovery_redo_parallel_count > 0)
       {
-	parallel_recovery_redo.reset (new cublog::redo_parallel (log_recovery_redo_worker_count));
+        parallel_recovery_redo.reset (new cublog::redo_parallel (log_recovery_redo_parallel_count));
       }
   }
 #endif

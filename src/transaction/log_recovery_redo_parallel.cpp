@@ -306,15 +306,11 @@ namespace cublog
    * redo_parallel
    *********************************************************************/
 
-  redo_parallel::redo_parallel (int a_worker_count)
+  redo_parallel::redo_parallel (unsigned a_worker_count)
     : m_thread_manager (nullptr), m_worker_pool (nullptr), m_waited_for_termination (false)
   {
     assert (a_worker_count > 0);
-    if (a_worker_count <= 0)
-      {
-	a_worker_count = std::thread::hardware_concurrency ();
-      }
-    m_task_count = static_cast<unsigned> (a_worker_count);
+    m_task_count = a_worker_count;
 
     do_init_worker_pool ();
     do_init_tasks ();
