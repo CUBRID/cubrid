@@ -598,7 +598,7 @@ void log_rv_redo_record_sync_or_dispatch_async (THREAD_ENTRY *thread_p, log_read
   const VPID rcv_vpid = log_rv_get_log_rec_vpid<T> (log_rec);
   // at this point, vpid can either be valid or not
 
-
+#if defined(SERVER_MODE)
   const LOG_DATA &log_data = log_rv_get_log_rec_data<T> (log_rec);
   const bool need_sync_redo = log_rv_need_sync_redo (log_data.rcvindex);
   assert (log_data.rcvindex != RVDK_UNRESERVE_SECTORS || need_sync_redo);
@@ -616,10 +616,12 @@ void log_rv_redo_record_sync_or_dispatch_async (THREAD_ENTRY *thread_p, log_read
         {
           parallel_recovery_redo->wait_for_idle ();
         }
+#endif
 
       // invoke sync
       log_rv_redo_record_sync<T> (thread_p, log_pgptr_reader, log_rec, rcv_vpid, rcv_lsa, end_redo_lsa, log_rtype,
                                   undo_unzip_support, redo_unzip_support);
+#if defined(SERVER_MODE)
     }
   else
     {
@@ -628,6 +630,7 @@ void log_rv_redo_record_sync_or_dispatch_async (THREAD_ENTRY *thread_p, log_read
       std::unique_ptr<redo_job_impl_t> job{ new redo_job_impl_t (rcv_vpid, rcv_lsa, end_redo_lsa, log_rtype) };
       parallel_recovery_redo->add (std::move (job));
     }
+#endif
 }
 // *INDENT-ON*
 
@@ -3214,9 +3217,10 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   LOG_ZIP *redo_unzip_ptr = NULL;
   bool is_mvcc_op = false;
 
-  /* depending on compilation mode and on system parameter, initialize the
+  /* depending on compilation mode and on a system parameter, initialize the
    * infrastructure for parallel log recovery;
-   * if infrastructure is not initialized dependent code below works sequentially */
+   * if infrastructure is not initialized dependent code below works sequentially
+   */
   LOG_CS_EXIT (thread_p);
   std::unique_ptr < cublog::redo_parallel > parallel_recovery_redo;
 #if defined(SERVER_MODE)
@@ -3882,11 +3886,13 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   log_zip_free (undo_unzip_ptr);
   log_zip_free (redo_unzip_ptr);
 
+#if defined(SERVER_MODE)
   if (parallel_recovery_redo != nullptr)
     {
       parallel_recovery_redo->set_adding_finished ();
       parallel_recovery_redo->wait_for_termination_and_stop_execution ();
     }
+#endif
   LOG_CS_ENTER (thread_p);
 
   log_Gl.mvcc_table.reset_start_mvccid ();

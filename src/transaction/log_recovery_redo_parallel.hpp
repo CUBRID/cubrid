@@ -21,8 +21,10 @@
 
 #include "log_compress.h"
 #include "log_recovery_redo.hpp"
+#if defined(SERVER_MODE)
 #include "thread_manager.hpp"
 #include "thread_worker_pool.hpp"
+#endif
 
 #include <bitset>
 #include <condition_variable>
@@ -32,6 +34,7 @@
 
 namespace cublog
 {
+#if defined(SERVER_MODE)
   /* a class to handle infrastructure for parallel log recovery RAII-style;
    * usage:
    *  - instantiate an object of this class with the desired number of background workers
@@ -259,6 +262,13 @@ namespace cublog
       const LOG_LSA *m_end_redo_lsa;  // by design pointer is guaranteed to outlive this instance
       const LOG_RECTYPE m_log_rtype;
   };
+#else
+  /* dummy implementation for SA mode
+   */
+  class redo_parallel final
+  {
+  };
+#endif
 }
 
 #endif // _LOG_RECOVERY_REDO_PARALLEL_HPP_
