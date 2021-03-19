@@ -30,7 +30,6 @@ namespace cublog
     , m_consume_queue ( new ux_redo_job_deque () )
     , m_queues_empty (false)
     , m_adding_finished { false }
-    , m_to_be_waited_for_op_in_progress (false)
   {
   }
 
@@ -67,11 +66,6 @@ namespace cublog
   redo_parallel::redo_job_queue::ux_redo_job_base redo_parallel::redo_job_queue::locked_pop (bool &out_adding_finished)
   {
     std::unique_lock<std::mutex> consume_queue_lock (m_consume_queue_mutex);
-    // stop at the barrier if an operation which needs to be waited for is in progress
-    m_to_be_waited_for_op_in_progress_cv.wait (consume_queue_lock, [this] ()
-    {
-      return !m_to_be_waited_for_op_in_progress;
-    });
 
     out_adding_finished = false;
 
@@ -149,12 +143,6 @@ namespace cublog
 
 	// unlocking consume queue before this will not guarantee total ordering amongst entries' execution
 
-	if (first_job->get_is_to_be_waited_for ())
-	  {
-	    assert (m_to_be_waited_for_op_in_progress == false);
-	    m_to_be_waited_for_op_in_progress = true;
-	  }
-
         return first_job;
       }
     else
@@ -171,14 +159,6 @@ namespace cublog
 	// spin-wait and try again
 	return nullptr;
       }
-  }
-
-  void redo_parallel::redo_job_queue::notify_to_be_waited_for_op_finished ()
-  {
-    assert (m_to_be_waited_for_op_in_progress == true);
-    m_to_be_waited_for_op_in_progress = false;
-    // notify all waiting threads, as there can be many which can pick-up work
-    m_to_be_waited_for_op_in_progress_cv.notify_all ();
   }
 
   void redo_parallel::redo_job_queue::notify_in_progress_vpid_finished (VPID _vpid)
@@ -299,11 +279,6 @@ namespace cublog
 		job->execute (thread_entry, log_pgptr_reader, undo_unzip_support, redo_unzip_support);
 
 		queue.notify_in_progress_vpid_finished (job->get_vpid ());
-
-		if (job->get_is_to_be_waited_for ())
-		  {
-		    queue.notify_to_be_waited_for_op_finished ();
-		  }
 	      }
 	  }
       }

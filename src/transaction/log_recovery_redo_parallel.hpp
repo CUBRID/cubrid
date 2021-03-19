@@ -114,7 +114,6 @@ namespace cublog
 	   */
 	  ux_redo_job_base locked_pop (bool &adding_finished);
 
-	  void notify_to_be_waited_for_op_finished ();
 	  void notify_in_progress_vpid_finished (VPID a_vpid);
 
 	  /* wait until all data has been consumed internally; blocking call
@@ -133,17 +132,6 @@ namespace cublog
 	  std::condition_variable m_queues_empty_cv;
 
 	  std::atomic_bool m_adding_finished;
-
-	  /* barrier mechanism for log entries which are to be executed before all
-	   * log entries that come after them in the log
-	   *
-	   * TODO: given that such 'to_be_waited_for' log entries come in a certain order which
-	   * results in ever increasing VPID's, a better mechanism can be put in place where instead of
-	   * a single barrier for all VPID's, one barrier for each combinations of max(VOLID), max(PAGEID)
-	   * on a per volume basis can be used
-	   */
-	  bool m_to_be_waited_for_op_in_progress;
-	  std::condition_variable m_to_be_waited_for_op_in_progress_cv;
 
 	  /* bookkeeping for log entries currently in process of being applied, this
 	   * mechanism guarantees ordering among entries with the same VPID;
@@ -204,11 +192,6 @@ namespace cublog
 
       virtual int execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
 			   LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support) = 0;
-
-      bool get_is_to_be_waited_for () const
-      {
-	return m_vpid.volid == NULL_VOLID || m_vpid.pageid == NULL_PAGEID;
-      }
 
     private:
       const VPID m_vpid;
