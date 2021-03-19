@@ -22,6 +22,7 @@
 enum class ats_to_ps_request
 {
   SEND_LOG_PRIOR_LIST,
+  SEND_LOG_PAGE_FETCH
 };
 
 enum class ps_to_ats_request

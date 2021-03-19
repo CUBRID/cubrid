@@ -24,6 +24,7 @@
 
 #include "config.h"
 
+#include <cstring>
 #include <stdio.h>
 #include <stddef.h>
 #include <stdlib.h>
@@ -71,6 +72,8 @@
 #include "connection_defs.h"
 #include "connection_sr.h"
 #endif
+#include "active_tran_server.hpp"
+#include "ats_ps_request.hpp"
 #include "critical_section.h"
 #include "page_buffer.h"
 #include "double_write_buffer.h"
@@ -1930,6 +1933,24 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
     }
 
   /* Could not get from log page buffer cache */
+
+#if defined (SERVER_MODE)
+  /* Send a request to Page Server for the log. */
+  if (get_server_type () == SERVER_TYPE_TRANSACTION)
+    {
+      constexpr size_t BIG_INT_SIZE = 8;
+      char buffer[BIG_INT_SIZE];
+      std::memcpy (buffer, &pageid, sizeof (pageid));
+      std::string message (buffer, BIG_INT_SIZE);
+
+      ats_Gl.push_request (ats_to_ps_request::SEND_LOG_PAGE_FETCH, std::move (message));
+      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
+	{
+	  _er_log_debug (ARG_FILE_LINE, "Sent request for log to Page Server. Page ID: %lld \n", pageid);
+	}
+    }
+#endif // SERVER_MODE
+
   rv = logpb_read_page_from_file (thread_p, pageid, access_mode, log_pgptr);
   if (rv != NO_ERROR)
     {
