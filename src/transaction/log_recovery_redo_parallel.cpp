@@ -16,8 +16,9 @@
  *
  */
 
-#include "vpid.hpp"
 #include "log_recovery_redo_parallel.hpp"
+
+#include "vpid.hpp"
 
 namespace cublog
 {
@@ -26,8 +27,8 @@ namespace cublog
    *********************************************************************/
 
   redo_parallel::redo_job_queue::redo_job_queue ()
-    : m_produce_queue ( new ux_redo_job_deque () )
-    , m_consume_queue ( new ux_redo_job_deque () )
+    : m_produce_queue (new ux_redo_job_deque ())
+    , m_consume_queue (new ux_redo_job_deque ())
     , m_queues_empty (false)
     , m_adding_finished { false }
   {
@@ -91,6 +92,12 @@ namespace cublog
 	  job_to_consume = do_find_job_to_consume ();
 	  if (job_to_consume == nullptr)
 	    {
+	      // specifically leave the 'out_adding_finished' on false:
+	      //  - even if adding has been finished, the produce queue might still have jobs to be consumed
+	      //  - if so, setting the out param to true here, will cause consuming tasks to finish
+	      //  - thus allowing for a corner case where the jobs are not fully processed and all
+	      //    tasks have finished executing
+
 	      // consumer will have to spin-wait
 	      return nullptr;
 	    }
@@ -162,20 +169,13 @@ namespace cublog
 	const VPID it_vpid = (*consume_queue_it)->get_vpid ();
 	if (m_in_progress_vpids.find ((it_vpid)) == m_in_progress_vpids.cend ())
 	  {
+	    job = std::move(*consume_queue_it);
+	    m_consume_queue->erase (consume_queue_it);
 	    break;
 	  }
       }
 
-    if (consume_queue_it != m_consume_queue->end ())
-      {
-	job = std::move (*consume_queue_it);
-	m_consume_queue->erase (consume_queue_it);
-      }
-    else
-      {
-	// consumer will have to spin-wait
-      }
-
+    // if null here, consumer task will have to spin-wait
     return job;
   }
 
@@ -307,7 +307,7 @@ namespace cublog
    *********************************************************************/
 
   redo_parallel::redo_parallel (unsigned a_worker_count)
-    : m_thread_manager (nullptr), m_worker_pool (nullptr), m_waited_for_termination (false)
+    : m_worker_pool (nullptr), m_waited_for_termination (false)
   {
     assert (a_worker_count > 0);
     m_task_count = a_worker_count;
@@ -344,7 +344,8 @@ namespace cublog
     assert (false == m_waited_for_termination);
 
     m_worker_pool->stop_execution ();
-    m_thread_manager->destroy_worker_pool (m_worker_pool);
+    cubthread::manager *thread_manager = cubthread::get_manager ();
+    thread_manager->destroy_worker_pool (m_worker_pool);
     assert (m_worker_pool == nullptr);
 
     m_waited_for_termination = true;
@@ -361,13 +362,12 @@ namespace cublog
   void redo_parallel::do_init_worker_pool ()
   {
     assert (m_task_count > 0);
-    assert (m_thread_manager == nullptr);
     assert (m_worker_pool == nullptr);
 
     // NOTE: already initialized globally (probably during boot)
-    m_thread_manager = cubthread::get_manager ();
+    cubthread::manager *thread_manager = cubthread::get_manager ();
 
-    m_worker_pool = m_thread_manager->create_worker_pool ( m_task_count, m_task_count, "log_recovery_redo_thread_pool",
+    m_worker_pool = thread_manager->create_worker_pool (m_task_count, m_task_count, "log_recovery_redo_thread_pool",
 		    nullptr, m_task_count, false /*debug_logging*/);
   }
 

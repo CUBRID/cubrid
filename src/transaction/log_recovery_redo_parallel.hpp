@@ -19,18 +19,19 @@
 #ifndef _LOG_RECOVERY_REDO_PARALLEL_HPP_
 #define _LOG_RECOVERY_REDO_PARALLEL_HPP_
 
-#include "log_compress.h"
-#include "log_recovery_redo.hpp"
 #if defined(SERVER_MODE)
+#include "log_recovery_redo.hpp"
+
+#include "log_compress.h"
 #include "thread_manager.hpp"
 #include "thread_worker_pool.hpp"
-#endif
 
 #include <bitset>
 #include <condition_variable>
 #include <deque>
 #include <mutex>
 #include <set>
+#endif /* SERVER_MODE */
 
 namespace cublog
 {
@@ -159,7 +160,6 @@ namespace cublog
     private:
       unsigned m_task_count;
 
-      cubthread::manager *m_thread_manager;
       cubthread::entry_workpool *m_worker_pool;
 
       redo_job_queue m_job_queue;
@@ -241,7 +241,7 @@ namespace cublog
       int execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
 		   LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support) override
       {
-	const int err_set_lsa_and_fetch_page =  log_pgptr_reader.set_lsa_and_fetch_page (m_rcv_lsa);
+        const int err_set_lsa_and_fetch_page = log_pgptr_reader.set_lsa_and_fetch_page (m_rcv_lsa);
 	if (err_set_lsa_and_fetch_page != NO_ERROR)
 	  {
 	    return err_set_lsa_and_fetch_page;
@@ -262,13 +262,13 @@ namespace cublog
       const LOG_LSA *m_end_redo_lsa;  // by design pointer is guaranteed to outlive this instance
       const LOG_RECTYPE m_log_rtype;
   };
-#else
+#else /* SERVER_MODE */
   /* dummy implementation for SA mode
    */
   class redo_parallel final
   {
   };
-#endif
+#endif /* SERVER_MODE */
 }
 
 #endif // _LOG_RECOVERY_REDO_PARALLEL_HPP_
