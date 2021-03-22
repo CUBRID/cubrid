@@ -52,6 +52,9 @@ void init_server_type (const char *db_name)
     {
       ats_Gl.init_page_server_hosts (db_name);
     }
+
+  er_log_debug (ARG_FILE_LINE, "Starting server type: %s\n",
+		get_server_type () == SERVER_TYPE_PAGE ? "page" : "transaction");
 }
 
 void finalize_server_type ()
