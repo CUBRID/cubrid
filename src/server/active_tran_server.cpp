@@ -152,9 +152,9 @@ void
 active_tran_server::push_request (ats_to_ps_request reqid, std::string &&payload)
 {
   if (!is_page_server_connected ())
-  {
-          return;
-  }
+    {
+      return;
+    }
 
   m_ps_request_queue->push (reqid, std::move (payload));
 }

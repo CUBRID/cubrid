@@ -108,13 +108,12 @@ page_server::receive_data_page_fetch (cubpacking::unpacker &upk)
 {
   if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
     {
-        VPID vpID;
+        VPID vpid;
         std::string message;
 
         upk.unpack_string (message);
-        std::memcpy (&vpID.pageid, message.c_str (), sizeof (vpID.pageid));
-        std::memcpy (&vpID.volid, message.c_str () + sizeof (vpID.pageid), sizeof (vpID.volid));
-        _er_log_debug (ARG_FILE_LINE, "Received request for Data Page from Transaction Server. pageid: %ld volid: %d\n", vpID.pageid, vpID.volid);
+        std::memcpy (&vpid, message.c_str (), sizeof (vpid));
+        _er_log_debug (ARG_FILE_LINE, "Received request for Data Page from Transaction Server. pageid: %ld volid: %d\n", vpid.pageid, vpid.volid);
     }}
 
 void
