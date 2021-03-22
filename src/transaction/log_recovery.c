@@ -3222,7 +3222,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
    * if infrastructure is not initialized dependent code below works sequentially
    */
   LOG_CS_EXIT (thread_p);
+  // *INDENT-OFF*
   std::unique_ptr <cublog::redo_parallel> parallel_recovery_redo;
+  // *INDENT-ON*
 #if defined(SERVER_MODE)
   {
     const int log_recovery_redo_parallel_count = prm_get_integer_value (PRM_ID_RECOVERY_PARALLEL_COUNT);
