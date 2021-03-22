@@ -151,7 +151,10 @@ active_tran_server::is_page_server_connected () const
 void
 active_tran_server::push_request (ats_to_ps_request reqid, std::string &&payload)
 {
-  assert (is_page_server_connected ());
+  if (!is_page_server_connected ())
+  {
+          return;
+  }
 
   m_ps_request_queue->push (reqid, std::move (payload));
 }
