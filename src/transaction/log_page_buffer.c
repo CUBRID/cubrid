@@ -368,7 +368,9 @@ static bool logpb_is_log_active_from_backup_useful (THREAD_ENTRY * thread_p, con
 						    const char *db_full_name);
 static int logpb_peek_header_of_active_log_from_backup (THREAD_ENTRY * thread_p, const char *active_log_path,
 							LOG_HEADER * hdr);
+#if defined (SERVER_MODE)
 static void logpb_send_flushed_lsa_to_ats ();
+#endif // SERVER_MODE
 
 /*
  * FUNCTIONS RELATED TO LOG BUFFERING
@@ -3935,6 +3937,7 @@ error:
   return error_code;
 }
 
+#if defined (SERVER_MODE)
 void
 logpb_send_flushed_lsa_to_ats ()
 {
@@ -3948,6 +3951,7 @@ logpb_send_flushed_lsa_to_ats ()
   ps_Gl.push_request_to_active_tran_server (ps_to_ats_request::SEND_SAVED_LSA, std::move (message));
   // *INDENT-ON*
 }
+#endif // SERVER_MODE
 
 /*
  * logpb_flush_pages_direct - flush all pages by itself.
