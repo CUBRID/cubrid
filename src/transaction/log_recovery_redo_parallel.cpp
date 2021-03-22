@@ -23,7 +23,7 @@
 namespace cublog
 {
   /*********************************************************************
-   * redo_parallel::redo_job_queue
+   * redo_parallel::redo_job_queue - definition
    *********************************************************************/
 
   redo_parallel::redo_job_queue::redo_job_queue ()
@@ -169,7 +169,7 @@ namespace cublog
 	const VPID it_vpid = (*consume_queue_it)->get_vpid ();
 	if (m_in_progress_vpids.find ((it_vpid)) == m_in_progress_vpids.cend ())
 	  {
-	    job = std::move(*consume_queue_it);
+	    job = std::move (*consume_queue_it);
 	    m_consume_queue->erase (consume_queue_it);
 	    break;
 	  }
@@ -214,6 +214,43 @@ namespace cublog
   }
 
   /*********************************************************************
+   * redo_parallel::task_active_state_bookkeeping - definition
+   *********************************************************************/
+
+  void redo_parallel::task_active_state_bookkeeping::set_active ()
+  {
+    std::lock_guard<std::mutex> lck { m_active_count_mtx };
+    ++m_active_count;
+    assert (m_active_count > 0);
+  }
+
+  void redo_parallel::task_active_state_bookkeeping::set_inactive ()
+  {
+    bool do_notify { false };
+    {
+      std::lock_guard<std::mutex> lck { m_active_count_mtx };
+      assert (m_active_count > 0);
+      --m_active_count;
+      do_notify = m_active_count == 0;
+    }
+
+    if (do_notify)
+      {
+	m_active_count_cv.notify_one ();
+      }
+  }
+
+  void redo_parallel::task_active_state_bookkeeping::wait_for_termination ()
+  {
+    std::unique_lock<std::mutex> lck (m_active_count_mtx);
+    m_active_count_cv.wait (lck, [this] ()
+    {
+      const auto res = m_active_count == 0;
+      return res;
+    });
+  }
+
+  /*********************************************************************
    * redo_parallel::redo_task - declaration
    *********************************************************************/
 
@@ -228,7 +265,8 @@ namespace cublog
       static constexpr unsigned short WAIT_AND_CHECK_MILLIS = 5;
 
     public:
-      redo_task (redo_parallel::redo_job_queue &a_queue);
+      redo_task (redo_parallel::task_active_state_bookkeeping &task_state_bookkeeping
+		 , redo_parallel::redo_job_queue &a_queue);
       redo_task (const redo_task &) = delete;
       redo_task (redo_task &&) = delete;
 
@@ -240,11 +278,12 @@ namespace cublog
       void execute (context_type &context);
 
     private:
-      redo_parallel::redo_job_queue &queue;
+      redo_parallel::task_active_state_bookkeeping &m_task_state_bookkeeping;
+      redo_parallel::redo_job_queue &m_queue;
 
-      log_reader log_pgptr_reader;
-      LOG_ZIP undo_unzip_support;
-      LOG_ZIP redo_unzip_support;
+      log_reader m_log_pgptr_reader;
+      LOG_ZIP m_undo_unzip_support;
+      LOG_ZIP m_redo_unzip_support;
   };
 
   /*********************************************************************
@@ -253,17 +292,23 @@ namespace cublog
 
   constexpr unsigned short redo_parallel::redo_task::WAIT_AND_CHECK_MILLIS;
 
-  redo_parallel::redo_task::redo_task (redo_job_queue &a_queue)
-    : queue (a_queue)
+  redo_parallel::redo_task::redo_task (redo_parallel::task_active_state_bookkeeping &task_state_bookkeeping
+				       , redo_parallel::redo_job_queue &a_queue)
+    : m_task_state_bookkeeping (task_state_bookkeeping), m_queue (a_queue)
   {
-    log_zip_realloc_if_needed (undo_unzip_support, LOGAREA_SIZE);
-    log_zip_realloc_if_needed (redo_unzip_support, LOGAREA_SIZE);
+    // important to set this at this moment and not when execution begins
+    // to circumvent race conditions where all tasks haven't yet started work
+    // while already bookkeeping is being checked
+    m_task_state_bookkeeping.set_active ();
+
+    log_zip_realloc_if_needed (m_undo_unzip_support, LOGAREA_SIZE);
+    log_zip_realloc_if_needed (m_redo_unzip_support, LOGAREA_SIZE);
   }
 
   redo_parallel::redo_task::~redo_task ()
   {
-    log_zip_free_data (undo_unzip_support);
-    log_zip_free_data (redo_unzip_support);
+    log_zip_free_data (m_undo_unzip_support);
+    log_zip_free_data (m_redo_unzip_support);
   }
 
   void redo_parallel::redo_task::execute (context_type &context)
@@ -276,7 +321,7 @@ namespace cublog
     for (; !finished ;)
       {
 	bool adding_finished = false;
-	std::unique_ptr<redo_job_base> job = queue.locked_pop (adding_finished);
+	std::unique_ptr<redo_job_base> job = m_queue.locked_pop (adding_finished);
 
 	if (job == nullptr && adding_finished)
 	  {
@@ -294,16 +339,18 @@ namespace cublog
 	    else
 	      {
 		THREAD_ENTRY *const thread_entry = &context;
-		job->execute (thread_entry, log_pgptr_reader, undo_unzip_support, redo_unzip_support);
+		job->execute (thread_entry, m_log_pgptr_reader, m_undo_unzip_support, m_redo_unzip_support);
 
-		queue.notify_in_progress_vpid_finished (job->get_vpid ());
+		m_queue.notify_in_progress_vpid_finished (job->get_vpid ());
 	      }
 	  }
       }
+
+    m_task_state_bookkeeping.set_inactive ();
   }
 
   /*********************************************************************
-   * redo_parallel
+   * redo_parallel - definition
    *********************************************************************/
 
   redo_parallel::redo_parallel (unsigned a_worker_count)
@@ -343,6 +390,9 @@ namespace cublog
   {
     assert (false == m_waited_for_termination);
 
+    // blocking call
+    m_task_state_bookkeeping.wait_for_termination ();
+
     m_worker_pool->stop_execution ();
     cubthread::manager *thread_manager = cubthread::get_manager ();
     thread_manager->destroy_worker_pool (m_worker_pool);
@@ -379,7 +429,7 @@ namespace cublog
     for (unsigned task_idx = 0; task_idx < m_task_count; ++task_idx)
       {
 	// NOTE: task ownership goes to the worker pool
-	auto task = new redo_task (m_job_queue);
+	auto task = new redo_task (m_task_state_bookkeeping, m_job_queue);
 	m_worker_pool->execute (task);
       }
   }

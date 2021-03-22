@@ -26,7 +26,7 @@
 #include "thread_manager.hpp"
 #include "thread_worker_pool.hpp"
 
-#include <bitset>
+#include <atomic>
 #include <condition_variable>
 #include <deque>
 #include <mutex>
@@ -157,8 +157,47 @@ namespace cublog
 	  std::condition_variable m_in_progress_vpids_empty_cv;
       };
 
+      /* maintain a bookkeeping of tasks that are still performing work;
+       * internal implementation detail; not to be used externally
+       */
+      class task_active_state_bookkeeping final
+      {
+	public:
+	  task_active_state_bookkeeping () = default;
+
+	  task_active_state_bookkeeping (const task_active_state_bookkeeping &) = delete;
+	  task_active_state_bookkeeping (task_active_state_bookkeeping &&) = delete;
+
+	  task_active_state_bookkeeping &operator = (const task_active_state_bookkeeping &) = delete;
+	  task_active_state_bookkeeping &operator = (task_active_state_bookkeeping &&) = delete;
+
+	  /* increment the internal number of active tasks
+	   */
+	  inline void set_active ();
+
+	  /* decrement the internal number of active tasks
+	   */
+	  inline void set_inactive ();
+
+	  /* blocking call until all active tasks terminate
+	   */
+	  inline void wait_for_termination ();
+
+	private:
+	  int m_active_count { 0 };
+	  std::mutex m_active_count_mtx;
+	  std::condition_variable m_active_count_cv;
+      };
+
     private:
       unsigned m_task_count;
+
+      /* the workpool already has and internal bookkeeping and can also wait for the tasks to terminate;
+       * however, it also has a hardcoded maximum wait time (60 seconds) after which it will assert;
+       * adding this internal additional bookeeping - which does not assume a maximum wait time - allows
+       * to circumvent that hardcoded parameter
+       */
+      task_active_state_bookkeeping m_task_state_bookkeeping;
 
       cubthread::entry_workpool *m_worker_pool;
 
@@ -221,14 +260,7 @@ namespace cublog
       using log_rec_t = TYPE_LOG_REC;
 
     public:
-      redo_job_impl () = delete;
-      redo_job_impl (VPID a_vpid, const log_lsa &a_rcv_lsa, const LOG_LSA *a_end_redo_lsa, LOG_RECTYPE a_log_rtype)
-	: redo_parallel::redo_job_base (a_vpid)
-	, m_rcv_lsa (a_rcv_lsa)
-	, m_end_redo_lsa (a_end_redo_lsa)
-	, m_log_rtype (a_log_rtype)
-      {
-      }
+      redo_job_impl (VPID a_vpid, const log_lsa &a_rcv_lsa, const LOG_LSA *a_end_redo_lsa, LOG_RECTYPE a_log_rtype);
 
       redo_job_impl (redo_job_impl const &) = delete;
       redo_job_impl (redo_job_impl &&) = delete;
@@ -239,29 +271,48 @@ namespace cublog
       redo_job_impl &operator = (redo_job_impl &&) = delete;
 
       int execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
-		   LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support) override
-      {
-        const int err_set_lsa_and_fetch_page = log_pgptr_reader.set_lsa_and_fetch_page (m_rcv_lsa);
-	if (err_set_lsa_and_fetch_page != NO_ERROR)
-	  {
-	    return err_set_lsa_and_fetch_page;
-	  }
-	log_pgptr_reader.add_align (sizeof (LOG_RECORD_HEADER));
-	log_pgptr_reader.advance_when_does_not_fit (sizeof (log_rec_t));
-	const log_rec_t log_rec
-	  = log_pgptr_reader.reinterpret_copy_and_add_align<log_rec_t> ();
-
-	const auto &rcv_vpid = get_vpid ();
-	log_rv_redo_record_sync<log_rec_t> (thread_p, log_pgptr_reader, log_rec, rcv_vpid, m_rcv_lsa, m_end_redo_lsa,
-					    m_log_rtype, undo_unzip_support, redo_unzip_support);
-	return NO_ERROR;
-      }
+		   LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support) override;
 
     private:
       const log_lsa m_rcv_lsa;
       const LOG_LSA *m_end_redo_lsa;  // by design pointer is guaranteed to outlive this instance
       const LOG_RECTYPE m_log_rtype;
   };
+
+  /*********************************************************************
+   * template/inline implementations
+   *********************************************************************/
+
+  template <typename TYPE_LOG_REC>
+  redo_job_impl<TYPE_LOG_REC>::redo_job_impl (VPID a_vpid, const log_lsa &a_rcv_lsa, const LOG_LSA *a_end_redo_lsa,
+      LOG_RECTYPE a_log_rtype)
+    : redo_parallel::redo_job_base (a_vpid)
+    , m_rcv_lsa (a_rcv_lsa)
+    , m_end_redo_lsa (a_end_redo_lsa)
+    , m_log_rtype (a_log_rtype)
+  {
+  }
+
+  template <typename TYPE_LOG_REC>
+  int  redo_job_impl<TYPE_LOG_REC>::execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
+      LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support)
+  {
+    const int err_set_lsa_and_fetch_page = log_pgptr_reader.set_lsa_and_fetch_page (m_rcv_lsa);
+    if (err_set_lsa_and_fetch_page != NO_ERROR)
+      {
+	return err_set_lsa_and_fetch_page;
+      }
+    log_pgptr_reader.add_align (sizeof (LOG_RECORD_HEADER));
+    log_pgptr_reader.advance_when_does_not_fit (sizeof (log_rec_t));
+    const log_rec_t log_rec
+      = log_pgptr_reader.reinterpret_copy_and_add_align<log_rec_t> ();
+
+    const auto &rcv_vpid = get_vpid ();
+    log_rv_redo_record_sync<log_rec_t> (thread_p, log_pgptr_reader, log_rec, rcv_vpid, m_rcv_lsa, m_end_redo_lsa,
+					m_log_rtype, undo_unzip_support, redo_unzip_support);
+    return NO_ERROR;
+  }
+
 #else /* SERVER_MODE */
   /* dummy implementation for SA mode
    */
