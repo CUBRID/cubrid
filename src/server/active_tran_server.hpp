@@ -55,9 +55,9 @@ class active_tran_server
     // communication with page server
     std::string m_ps_hostname;
     int m_ps_port = -1;
-    std::unique_ptr<page_server_conn> m_ps_conn = nullptr;
-    std::unique_ptr<page_server_request_queue> m_ps_request_queue = nullptr;
-    std::unique_ptr<page_server_request_autosend> m_ps_request_autosend = nullptr;
+    std::unique_ptr<page_server_conn> m_ps_conn;
+    std::unique_ptr<page_server_request_queue> m_ps_request_queue;
+    std::unique_ptr<page_server_request_autosend> m_ps_request_autosend;
 };
 
 extern active_tran_server ats_Gl;

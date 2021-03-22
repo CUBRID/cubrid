@@ -51,9 +51,9 @@ class page_server
     void receive_log_prior_list (cubpacking::unpacker &upk);
     void receive_log_page_fetch (cubpacking::unpacker &upk);
 
-    std::unique_ptr<active_tran_server_conn> m_ats_conn = nullptr;
-    std::unique_ptr<active_tran_server_request_queue> m_ats_request_queue = nullptr;
-    std::unique_ptr<active_tran_server_request_autosend> m_ats_request_autosend = nullptr;
+    std::unique_ptr<active_tran_server_conn> m_ats_conn;
+    std::unique_ptr<active_tran_server_request_queue> m_ats_request_queue;
+    std::unique_ptr<active_tran_server_request_autosend> m_ats_request_autosend;
 };
 
 extern page_server ps_Gl;
