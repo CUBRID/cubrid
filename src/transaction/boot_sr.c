@@ -1010,7 +1010,7 @@ boot_remove_unknown_temp_volumes (THREAD_ENTRY * thread_p)
 
   assert (!BO_IS_SERVER_RESTARTED ());
   /* logic below needs this invariant */
-  static_assert (LOG_MAX_DBVOLID < VOLID_MAX, "logic needs this invariant");
+  static_assert (LOG_MAX_DBVOLID < VOLID_MAX, "LOG_MAX_DBVOLID is expected to be less than VOLID_MAX");
 
   /* inspect volumes in descending order */
   for (; temp_volid > LOG_DBFIRST_VOLID; temp_volid--)
@@ -1027,8 +1027,8 @@ boot_remove_unknown_temp_volumes (THREAD_ENTRY * thread_p)
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_VOLUME, 1, temp_vol_fullname);
     }
 
-  /* delete in incrementing order to avoid gaps in case of inadvertent stops during this action because
-   * temporary volumes are themselves created in descending id order */
+  /* temporary volumes are created in descending id order; delete in incrementing order
+   * to avoid creating gaps while deleting in case of crash during precisely this operation */
   for (; temp_volid <= LOG_MAX_DBVOLID; ++temp_volid)
     {
       boot_make_temp_volume_fullname (temp_vol_fullname, temp_volid);
