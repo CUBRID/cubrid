@@ -368,6 +368,7 @@ static bool logpb_is_log_active_from_backup_useful (THREAD_ENTRY * thread_p, con
 						    const char *db_full_name);
 static int logpb_peek_header_of_active_log_from_backup (THREAD_ENTRY * thread_p, const char *active_log_path,
 							LOG_HEADER * hdr);
+static void logpb_send_flushed_lsa_to_ats ();
 
 /*
  * FUNCTIONS RELATED TO LOG BUFFERING
@@ -3803,13 +3804,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 #if defined (SERVER_MODE)
   if (get_server_type () == SERVER_TYPE_PAGE)
     {
-      log_lsa saved_lsa = log_Gl.append.get_nxio_lsa ();
-      if (prm_get_bool_value (PRM_ID_ER_LOG_COMMIT_CONFIRM))
-	{
-	  _er_log_debug (ARG_FILE_LINE, "[COMMIT CONFIRM] Send saved LSA=%lld|%d.\n", LSA_AS_ARGS (&saved_lsa));
-	}
-      std::string message (reinterpret_cast < const char *>(&saved_lsa), sizeof (saved_lsa));
-      ps_Gl.push_active_tran_server_request (ps_to_ats_request::SEND_SAVED_LSA, std::move (message));
+      logpb_send_flushed_lsa_to_ats ();
     }
 #endif
 
@@ -3938,6 +3933,20 @@ error:
 #endif /* SERVER_MODE */
 
   return error_code;
+}
+
+void
+logpb_send_flushed_lsa_to_ats ()
+{
+  const log_lsa saved_lsa = log_Gl.append.get_nxio_lsa ();
+  if (prm_get_bool_value (PRM_ID_ER_LOG_COMMIT_CONFIRM))
+    {
+      _er_log_debug (ARG_FILE_LINE, "[COMMIT CONFIRM] Send saved LSA=%lld|%d.\n", LSA_AS_ARGS (&saved_lsa));
+    }
+  // *INDENT-OFF*
+  std::string message (reinterpret_cast<const char *> (&saved_lsa), sizeof (saved_lsa));
+  ps_Gl.push_request_to_active_tran_server (ps_to_ats_request::SEND_SAVED_LSA, std::move (message));
+  // *INDENT-ON*
 }
 
 /*

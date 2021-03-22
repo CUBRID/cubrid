@@ -107,7 +107,7 @@ page_server::receive_log_page_fetch (cubpacking::unpacker &upk)
 }
 
 void
-page_server::push_active_tran_server_request (ps_to_ats_request reqid, std::string &&payload)
+page_server::push_request_to_active_tran_server (ps_to_ats_request reqid, std::string &&payload)
 {
   assert_page_server_type ();
   assert (is_active_tran_server_connected ());
