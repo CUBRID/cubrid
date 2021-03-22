@@ -1896,7 +1896,7 @@ qo_add_dummy_join_term (QO_ENV * env, QO_NODE * p_node, QO_NODE * on_node)
   env->nterms++;
 
   /* record outer join dependecy */
-  if (QO_ON_COND_TERM (term))
+  if (QO_OUTER_JOIN_TERM (term))
     {
       QO_ASSERT (env, QO_TERM_LOCATION (term) == QO_NODE_LOCATION (on_node));
 
@@ -2616,8 +2616,11 @@ qo_analyze_term (QO_TERM * term, int term_type)
 		}
 
 	      /* record explicit join dependecy */
-	      bitset_union (&(QO_NODE_OUTER_DEP_SET (on_node)), &(QO_NODE_OUTER_DEP_SET (head_node)));
-	      bitset_add (&(QO_NODE_OUTER_DEP_SET (on_node)), QO_NODE_IDX (head_node));
+	      if (QO_NODE_IS_OUTER_JOIN (on_node))
+		{
+		  bitset_union (&(QO_NODE_OUTER_DEP_SET (on_node)), &(QO_NODE_OUTER_DEP_SET (head_node)));
+		  bitset_add (&(QO_NODE_OUTER_DEP_SET (on_node)), QO_NODE_IDX (head_node));
+		}
 	    }
 	  else
 	    {
