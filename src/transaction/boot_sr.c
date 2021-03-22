@@ -6161,8 +6161,8 @@ boot_dbparm_save_volume (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, VOLID voli
   /* todo: is flush needed? */
   VPID_GET_FROM_OID (&vpid_boot_bp_parm, boot_Db_parm_oid);
   /* temporary volumes creation does not have to be persisted, therefore should not be logged;
-   * temporary volumes will be cleaned-up by routines executing either upon clean-close
-   * of the engine or upon boot (in case the engine was not clean-closed */
+   * these will be cleaned-up by routines executing either upon clean-close
+   * of the engine or upon boot (in case of abnormal engine close) */
   if (voltype != DB_TEMPORARY_VOLTYPE)
     {
       log_append_undo_data2 (thread_p, RVPGBUF_FLUSH_PAGE, NULL, NULL, 0, sizeof (vpid_boot_bp_parm),
