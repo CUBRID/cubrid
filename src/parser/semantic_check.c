@@ -8514,9 +8514,9 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    {
 	      if (crt_attr->alias_print == NULL && crt_attr->node_type != PT_NAME && crt_attr->node_type != PT_DOT_)
 		{
-	          PT_ERRORmf (parser, qry_specs, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_MISSING_ATTR_NAME,
-		          pt_short_print (parser, crt_attr));
-	          return;
+		  PT_ERRORmf (parser, qry_specs, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_MISSING_ATTR_NAME,
+			      pt_short_print (parser, crt_attr));
+		  return;
 		}
 	    }
 
