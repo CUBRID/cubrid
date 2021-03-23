@@ -590,6 +590,9 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_ER_LOG_VACUUM "er_log_vacuum"
 
+#define PRM_NAME_ER_LOG_READ_LOG_PAGE "er_log_read_log_page"
+#define PRM_NAME_ER_LOG_READ_DATA_PAGE "er_log_read_data_page"
+
 #define PRM_NAME_LOG_BTREE_OPS "log_btree_operations"
 
 #define PRM_NAME_OBJECT_PRINT_FORMAT_OID "print_object_as_oid"
@@ -2025,6 +2028,14 @@ static unsigned int prm_vacuum_worker_count_flag = 0;
 int PRM_ER_LOG_VACUUM = 1;
 static int prm_er_log_vacuum_default = 1;
 static unsigned int prm_er_log_vacuum_flag = 0;
+
+bool PRM_ER_LOG_READ_LOG_PAGE = true;
+static bool prm_er_log_read_log_page_default = true;
+static unsigned int prm_er_log_read_log_page_flag = 0;
+
+bool PRM_ER_LOG_READ_DATA_PAGE = true;
+static bool prm_er_log_read_data_page_default = true;
+static unsigned int prm_er_log_read_data_page_flag = 0;
 
 bool PRM_DISABLE_VACUUM = false;
 static bool prm_disable_vacuum_default = false;
@@ -6128,6 +6139,30 @@ static SYSPRM_PARAM prm_Def[] = {
    &prm_er_log_comm_channel_flag,
    (void *) &prm_er_log_comm_channel_default,
    (void *) &PRM_ER_LOG_COMM_CHANNEL,
+   (void *) NULL,
+   (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_ER_LOG_READ_LOG_PAGE,
+   PRM_NAME_ER_LOG_READ_LOG_PAGE,
+   (PRM_HIDDEN | PRM_FOR_SERVER | PRM_USER_CHANGE),
+   PRM_BOOLEAN,
+   &prm_er_log_read_log_page_flag,
+   (void *) &prm_er_log_read_log_page_default,
+   (void *) &PRM_ER_LOG_READ_LOG_PAGE,
+   (void *) NULL,
+   (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_ER_LOG_READ_DATA_PAGE,
+   PRM_NAME_ER_LOG_READ_DATA_PAGE,
+   (PRM_HIDDEN | PRM_FOR_SERVER | PRM_USER_CHANGE),
+   PRM_BOOLEAN,
+   &prm_er_log_read_data_page_flag,
+   (void *) &prm_er_log_read_data_page_default,
+   (void *) &PRM_ER_LOG_READ_DATA_PAGE,
    (void *) NULL,
    (void *) NULL,
    (char *) NULL,

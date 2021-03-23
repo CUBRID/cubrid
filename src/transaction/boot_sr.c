@@ -213,7 +213,7 @@ static void boot_shutdown_server_at_exit (void);
 
 static INTL_CODESET boot_get_db_charset_from_header (THREAD_ENTRY * thread_p, const char *log_path,
 						     const char *log_prefix);
-STATIC_INLINE int boot_db_parm_update_heap (THREAD_ENTRY * thread_p) __attribute__((ALWAYS_INLINE));
+STATIC_INLINE int boot_db_parm_update_heap (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 
 static int boot_after_copydb (THREAD_ENTRY * thread_p);
 
@@ -2109,9 +2109,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 
   common_ha_mode = HA_GET_MODE ();
-
-  er_log_debug (ARG_FILE_LINE, "Starting server type: %s\n",
-		get_server_type () == SERVER_TYPE_PAGE ? "page" : "transaction");
 
 #endif /* SERVER_MODE */
 
