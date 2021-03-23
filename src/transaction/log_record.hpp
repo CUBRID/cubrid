@@ -32,6 +32,8 @@
 #include "storage_common.h"
 #include "system.h"
 
+#include <string.h>
+
 enum log_rectype
 {
   /* In order of likely of appearance in the log */
