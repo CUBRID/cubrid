@@ -42,6 +42,8 @@ class page_server
 
   private:
     void receive_log_prior_list (cubpacking::unpacker &upk);
+    void receive_log_page_fetch (cubpacking::unpacker &upk);
+    void receive_data_page_fetch (cubpacking::unpacker &upk);
 
     active_tran_server_conn *m_ats_conn = nullptr;
 };
