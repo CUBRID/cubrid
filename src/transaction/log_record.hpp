@@ -417,7 +417,7 @@ log_info_chkpt_trans::operator== (const log_info_chkpt_trans &ochkpt) const
       return false;
     }
 
-  if (std::strcmp (user_name, ochkpt.user_name) != 0)
+  if (strcmp (user_name, ochkpt.user_name) != 0)
     {
       return false;
     }
