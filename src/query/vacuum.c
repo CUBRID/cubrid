@@ -1093,6 +1093,63 @@ xvacuum (THREAD_ENTRY * thread_p)
 }
 
 /*
+ * xvacuum_dump - Dump the contents of vacuum
+ *
+ * return: nothing
+ *
+ *   outfp(in): FILE stream where to dump the vacuum. If NULL is given,
+ *            it is dumped to stdout.
+ */
+void
+xvacuum_dump (THREAD_ENTRY * thread_p, FILE * outfp)
+{
+  LOG_PAGEID min_log_pageid = NULL_PAGEID;
+  int archive_number;
+
+  if (outfp == NULL)
+    {
+      outfp = stdout;
+    }
+
+  /* vacuum_boot () != NO_ERROR || prm_get_bool_value (PRM_ID_DISABLE_VACUUM) == true */
+  if (!vacuum_is_safe_to_remove_archives ())
+    {
+      return;
+    }
+
+  min_log_pageid = vacuum_min_log_pageid_to_keep (thread_p);
+  if (min_log_pageid == NULL_PAGEID)
+    {
+      /* this is an assertion case but ignore. */
+      return;
+    }
+
+  fprintf (outfp, "\n");
+  fprintf (outfp, "*** Vacuum Dump ***\n");
+  fprintf (outfp, "First log page ID referenced = %lld ", min_log_pageid);
+
+  if (logpb_is_page_in_archive (min_log_pageid))
+    {
+      LOG_CS_ENTER (thread_p);
+      archive_number = logpb_get_archive_number (thread_p, min_log_pageid);
+      if (archive_number < 0)
+	{
+	  /* this is an assertion case but ignore. */
+	  fprintf (outfp, "\n");
+	}
+      else
+	{
+	  fprintf (outfp, "(in %s%s%03d)\n", log_Prefix, FILEIO_SUFFIX_LOGARCHIVE, archive_number);
+	}
+      LOG_CS_EXIT (thread_p);
+    }
+  else
+    {
+      fprintf (outfp, "(in %s)\n", fileio_get_base_file_name (log_Name_active));
+    }
+}
+
+/*
  * vacuum_initialize () - Initialize necessary structures for vacuum.
  *
  * return			: Void.
