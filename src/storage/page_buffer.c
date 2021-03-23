@@ -7864,7 +7864,7 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid)
 			 vpid->volid);
 	}
     }
-  // INDENT-ON
+  // INDENT-ON 
 #endif // SERVER_MODE
 }
 
