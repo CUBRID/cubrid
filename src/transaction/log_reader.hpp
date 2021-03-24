@@ -28,9 +28,9 @@
 /* encapsulates reading of the log
  *
  * NOTE: not thread safe
- * NOTE: further functionality:
- *  - introduce an internal buffer to be used for copying and serving
+ * NOTE: improvement: introduce an internal buffer to be used for copying and serving
  *    data from the log of arbitrary size; currently this is done manually outside this class
+ *    using a support buffer structure of
  */
 class log_reader final
 {
@@ -121,7 +121,7 @@ class log_reader final
 void LOG_READ_ALIGN (THREAD_ENTRY *thread_p, LOG_LSA *lsa, LOG_PAGE *log_pgptr);
 void LOG_READ_ADD_ALIGN (THREAD_ENTRY *thread_p, size_t add, LOG_LSA *lsa, LOG_PAGE *log_pgptr);
 void LOG_READ_ADVANCE_WHEN_DOESNT_FIT (THREAD_ENTRY *thread_p, size_t length, LOG_LSA *lsa,
-                                       LOG_PAGE *log_pgptr);
+				       LOG_PAGE *log_pgptr);
 
 
 /* implementation

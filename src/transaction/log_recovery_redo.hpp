@@ -16,8 +16,8 @@
  *
  */
 
-#ifndef LOC_RECOVERY_REDO_LOG_REC_HPP
-#define LOC_RECOVERY_REDO_LOG_REC_HPP
+#ifndef _LOC_RECOVERY_REDO_HPP_
+#define _LOC_RECOVERY_REDO_HPP_
 
 #include "log_reader.hpp"
 #include "log_record.hpp"
@@ -614,4 +614,4 @@ void log_rv_redo_record_sync (THREAD_ENTRY *thread_p, log_reader &log_pgptr_read
     }
 }
 
-#endif // LOC_RECOVERY_REDO_LOG_REC_HPP
+#endif // _LOC_RECOVERY_REDO_HPP_
