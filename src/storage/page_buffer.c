@@ -969,9 +969,9 @@ static int pgbuf_Abort_release_line = 0;
 #define PGBUF_ABORT_RELEASE() assert (false)
 #endif /* DEBUG */
 
-static INLINE unsigned int pgbuf_hash_func_mirror (const VPID * vpid) __attribute__((ALWAYS_INLINE));
+static INLINE unsigned int pgbuf_hash_func_mirror (const VPID * vpid) __attribute__ ((ALWAYS_INLINE));
 
-static INLINE bool pgbuf_is_temporary_volume (VOLID volid) __attribute__((ALWAYS_INLINE));
+static INLINE bool pgbuf_is_temporary_volume (VOLID volid) __attribute__ ((ALWAYS_INLINE));
 static int pgbuf_initialize_bcb_table (void);
 static int pgbuf_initialize_hash_table (void);
 static int pgbuf_initialize_lock_table (void);
@@ -982,107 +982,107 @@ static int pgbuf_initialize_page_quota_parameters (void);
 static int pgbuf_initialize_page_quota (void);
 static int pgbuf_initialize_page_monitor (void);
 static int pgbuf_initialize_thrd_holder (void);
-STATIC_INLINE PGBUF_HOLDER *pgbuf_allocate_thrd_holder_entry (THREAD_ENTRY * thread_p) __attribute__((ALWAYS_INLINE));
+STATIC_INLINE PGBUF_HOLDER *pgbuf_allocate_thrd_holder_entry (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE PGBUF_HOLDER *pgbuf_find_thrd_holder (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
-  __attribute__((ALWAYS_INLINE));
+  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int pgbuf_remove_thrd_holder (THREAD_ENTRY * thread_p, PGBUF_HOLDER * holder)
-  __attribute__((ALWAYS_INLINE));
+  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int pgbuf_unlatch_thrd_holder (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr,
-					     PGBUF_HOLDER_STAT * holder_perf_stat_p) __attribute__((ALWAYS_INLINE));
+					     PGBUF_HOLDER_STAT * holder_perf_stat_p) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int holder_status)
-  __attribute__((ALWAYS_INLINE));
+  __attribute__ ((ALWAYS_INLINE));
 static void pgbuf_unlatch_void_zone_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int thread_private_lru_index);
 STATIC_INLINE bool pgbuf_should_move_private_to_shared (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb,
-							int thread_private_lru_index) __attribute__((ALWAYS_INLINE));
+							int thread_private_lru_index) __attribute__ ((ALWAYS_INLINE));
 static int pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE request_mode,
 			    int request_fcnt, bool as_promote);
 STATIC_INLINE int pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE request_mode,
 					    int buf_lock_acquired, PGBUF_LATCH_CONDITION condition,
-					    bool *is_latch_wait) __attribute__((ALWAYS_INLINE));
+					    bool * is_latch_wait) __attribute__ ((ALWAYS_INLINE));
 static int pgbuf_latch_idle_page (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE request_mode);
 
 STATIC_INLINE PGBUF_BCB *pgbuf_search_hash_chain (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor,
-						  const VPID * vpid) __attribute__((ALWAYS_INLINE));
+						  const VPID * vpid) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int pgbuf_insert_into_hash_chain (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor,
-						PGBUF_BCB * bufptr) __attribute__((ALWAYS_INLINE));
+						PGBUF_BCB * bufptr) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int pgbuf_delete_from_hash_chain (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
-  __attribute__((ALWAYS_INLINE));
+  __attribute__ ((ALWAYS_INLINE));
 static int pgbuf_lock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, const VPID * vpid);
 static int pgbuf_unlock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, const VPID * vpid,
 			      int need_hash_mutex);
 static PGBUF_BCB *pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid);
 static PGBUF_BCB *pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode,
-					   PGBUF_BUFFER_HASH * hash_anchor, PGBUF_FIX_PERF * perf, bool *try_again);
+					   PGBUF_BUFFER_HASH * hash_anchor, PGBUF_FIX_PERF * perf, bool * try_again);
 static void pgbuf_request_data_page_from_page_server (const VPID * vpid);
 static int pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
-static int pgbuf_bcb_safe_flush_internal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool synchronous, bool *locked);
+static int pgbuf_bcb_safe_flush_internal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool synchronous, bool * locked);
 static int pgbuf_invalidate_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
 static int pgbuf_bcb_safe_flush_force_lock (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool synchronous);
 static int pgbuf_bcb_safe_flush_force_unlock (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool synchronous);
 static PGBUF_BCB *pgbuf_get_bcb_from_invalid_list (THREAD_ENTRY * thread_p);
 static int pgbuf_put_bcb_into_invalid_list (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
 
-STATIC_INLINE int pgbuf_get_shared_lru_index_for_add (void) __attribute__((ALWAYS_INLINE));
+STATIC_INLINE int pgbuf_get_shared_lru_index_for_add (void) __attribute__ ((ALWAYS_INLINE));
 static int pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count,
-						 float lru_sum_flush_priority, bool *assigned_directly);
+						 float lru_sum_flush_priority, bool * assigned_directly);
 static PGBUF_BCB *pgbuf_get_victim (THREAD_ENTRY * thread_p);
 static PGBUF_BCB *pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx);
 #if defined (SERVER_MODE)
 static int pgbuf_panic_assign_direct_victims_from_lru (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list,
 						       PGBUF_BCB * bcb_start);
 STATIC_INLINE void pgbuf_lfcq_assign_direct_victims (THREAD_ENTRY * thread_p, int lru_idx, int *nassign_inout)
-  __attribute__((ALWAYS_INLINE));
+  __attribute__ ((ALWAYS_INLINE));
 #endif /* SERVER_MODE */
 STATIC_INLINE void pgbuf_add_vpid_to_aout_list (THREAD_ENTRY * thread_p, const VPID * vpid, const int lru_idx)
-  __attribute__((ALWAYS_INLINE));
+  __attribute__ ((ALWAYS_INLINE));
 static int pgbuf_remove_vpid_from_aout_list (THREAD_ENTRY * thread_p, const VPID * vpid);
 static int pgbuf_remove_private_from_aout_list (const int lru_idx);
 STATIC_INLINE void pgbuf_remove_from_lru_list (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LRU_LIST * lru_list)
-  __attribute__((ALWAYS_INLINE));
+  __attribute__ ((ALWAYS_INLINE));
 
 STATIC_INLINE void pgbuf_lru_add_bcb_to_top (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, PGBUF_LRU_LIST * lru_list)
-  __attribute__((ALWAYS_INLINE));
+  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_lru_add_bcb_to_middle (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, PGBUF_LRU_LIST * lru_list)
-  __attribute__((ALWAYS_INLINE));
+  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_lru_add_bcb_to_bottom (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, PGBUF_LRU_LIST * lru_list)
-  __attribute__((ALWAYS_INLINE));
+  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_lru_adjust_zone1 (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list, bool min_one)
-  __attribute__((ALWAYS_INLINE));
+  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_lru_adjust_zone2 (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list, bool min_one)
-  __attribute__((ALWAYS_INLINE));
+  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_lru_adjust_zones (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list, bool min_one)
-  __attribute__((ALWAYS_INLINE));
+  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_lru_fall_bcb_to_zone_3 (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, PGBUF_LRU_LIST * lru_list)
-  __attribute__((ALWAYS_INLINE));
+  __attribute__ ((ALWAYS_INLINE));
 static void pgbuf_lru_boost_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb);
 STATIC_INLINE void pgbuf_lru_add_new_bcb_to_top (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int lru_idx)
-  __attribute__((ALWAYS_INLINE));
+  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_lru_add_new_bcb_to_middle (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int lru_idx)
-  __attribute__((ALWAYS_INLINE));
+  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_lru_add_new_bcb_to_bottom (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int lru_idx)
-  __attribute__((ALWAYS_INLINE));
-STATIC_INLINE void pgbuf_lru_remove_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb) __attribute__((ALWAYS_INLINE));
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void pgbuf_lru_remove_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 static void pgbuf_lru_move_from_private_to_shared (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb);
 static void pgbuf_move_bcb_to_bottom_lru (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb);
 
 STATIC_INLINE int pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_page_flush_thread,
-					    bool *is_bcb_locked) __attribute__((ALWAYS_INLINE));
+					    bool * is_bcb_locked) __attribute__ ((ALWAYS_INLINE));
 static void pgbuf_wake_flush_waiters (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb);
-STATIC_INLINE bool pgbuf_is_exist_blocked_reader_writer (PGBUF_BCB * bufptr) __attribute__((ALWAYS_INLINE));
+STATIC_INLINE bool pgbuf_is_exist_blocked_reader_writer (PGBUF_BCB * bufptr) __attribute__ ((ALWAYS_INLINE));
 static int pgbuf_flush_all_helper (THREAD_ENTRY * thread_p, VOLID volid, bool is_only_fixed, bool is_set_lsa_as_null);
 
 #if defined(SERVER_MODE)
 static int pgbuf_timed_sleep_error_handling (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, THREAD_ENTRY * thrd_entry);
 static int pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, THREAD_ENTRY * thrd_entry);
 STATIC_INLINE void pgbuf_wakeup_reader_writer (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
-  __attribute__((ALWAYS_INLINE));
+  __attribute__ ((ALWAYS_INLINE));
 #endif /* SERVER_MODE */
 
-STATIC_INLINE bool pgbuf_get_check_page_validation_level (int page_validation_level) __attribute__((ALWAYS_INLINE));
+STATIC_INLINE bool pgbuf_get_check_page_validation_level (int page_validation_level) __attribute__ ((ALWAYS_INLINE));
 static bool pgbuf_is_valid_page_ptr (const PAGE_PTR pgptr);
-STATIC_INLINE void pgbuf_set_bcb_page_vpid (PGBUF_BCB * bufptr, bool force_set_vpid) __attribute__((ALWAYS_INLINE));
+STATIC_INLINE void pgbuf_set_bcb_page_vpid (PGBUF_BCB * bufptr, bool force_set_vpid) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool pgbuf_check_bcb_page_vpid (PGBUF_BCB * bufptr, bool maybe_deallocated)
-  __attribute__((ALWAYS_INLINE));
+  __attribute__ ((ALWAYS_INLINE));
 
 #if defined(CUBRID_DEBUG)
 static void pgbuf_scramble (FILEIO_PAGE * iopage);
@@ -1096,22 +1096,22 @@ static void pgbuf_add_fixed_at (PGBUF_HOLDER * holder, const char *caller_file, 
 
 #if defined(SERVER_MODE)
 static void pgbuf_sleep (THREAD_ENTRY * thread_p, pthread_mutex_t * mutex_p);
-STATIC_INLINE int pgbuf_wakeup (THREAD_ENTRY * thread_p) __attribute__((ALWAYS_INLINE));
-STATIC_INLINE int pgbuf_wakeup_uncond (THREAD_ENTRY * thread_p) __attribute__((ALWAYS_INLINE));
+STATIC_INLINE int pgbuf_wakeup (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int pgbuf_wakeup_uncond (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 #endif /* SERVER_MODE */
 STATIC_INLINE void pgbuf_set_dirty_buffer_ptr (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
-  __attribute__((ALWAYS_INLINE));
+  __attribute__ ((ALWAYS_INLINE));
 static int pgbuf_compare_victim_list (const void *p1, const void *p2);
 static void pgbuf_wakeup_page_flush_daemon (THREAD_ENTRY * thread_p);
 STATIC_INLINE bool pgbuf_check_page_ptype_internal (PAGE_PTR pgptr, PAGE_TYPE ptype, bool no_error)
-  __attribute__((ALWAYS_INLINE));
+  __attribute__ ((ALWAYS_INLINE));
 #if defined (SERVER_MODE)
 static bool pgbuf_is_thread_high_priority (THREAD_ENTRY * thread_p);
 #endif /* SERVER_MODE */
 static int pgbuf_flush_page_and_neighbors_fb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int *flushed_pages);
-STATIC_INLINE void pgbuf_add_bufptr_to_batch (PGBUF_BCB * bufptr, int idx) __attribute__((ALWAYS_INLINE));
+STATIC_INLINE void pgbuf_add_bufptr_to_batch (PGBUF_BCB * bufptr, int idx) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int pgbuf_flush_neighbor_safe (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, VPID * expected_vpid,
-					     bool *flushed) __attribute__((ALWAYS_INLINE));
+					     bool * flushed) __attribute__ ((ALWAYS_INLINE));
 
 static int pgbuf_get_groupid_and_unfix (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_PTR * pgptr,
 					VPID * groupid, bool do_unfix);
@@ -1119,11 +1119,11 @@ static int pgbuf_get_groupid_and_unfix (THREAD_ENTRY * thread_p, const VPID * re
 STATIC_INLINE void pgbuf_add_watch_instance_internal (PGBUF_HOLDER * holder, PAGE_PTR pgptr, PGBUF_WATCHER * watcher,
 						      const PGBUF_LATCH_MODE latch_mode, const bool clear_unfix_flag,
 						      const char *caller_file, const int caller_line)
-  __attribute__((ALWAYS_INLINE));
+  __attribute__ ((ALWAYS_INLINE));
 #else
 STATIC_INLINE void pgbuf_add_watch_instance_internal (PGBUF_HOLDER * holder, PAGE_PTR pgptr, PGBUF_WATCHER * watcher,
 						      const PGBUF_LATCH_MODE latch_mode, const bool clear_unfix_flag)
-  __attribute__((ALWAYS_INLINE));
+  __attribute__ ((ALWAYS_INLINE));
 #endif
 static PGBUF_HOLDER *pgbuf_get_holder (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 static void pgbuf_remove_watcher (PGBUF_HOLDER * holder, PGBUF_WATCHER * watcher_object);
@@ -1139,55 +1139,58 @@ static const char *pgbuf_consistent_str (int consistent);
 
 static void pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority);
 
-STATIC_INLINE bool pgbuf_is_bcb_victimizable (PGBUF_BCB * bcb, bool has_mutex_lock) __attribute__((ALWAYS_INLINE));
-STATIC_INLINE bool pgbuf_is_bcb_fixed_by_any (PGBUF_BCB * bcb, bool has_mutex_lock) __attribute__((ALWAYS_INLINE));
+STATIC_INLINE bool pgbuf_is_bcb_victimizable (PGBUF_BCB * bcb, bool has_mutex_lock) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool pgbuf_is_bcb_fixed_by_any (PGBUF_BCB * bcb, bool has_mutex_lock) __attribute__ ((ALWAYS_INLINE));
 
-STATIC_INLINE bool pgbuf_assign_direct_victim (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb) __attribute__((ALWAYS_INLINE));
+STATIC_INLINE bool pgbuf_assign_direct_victim (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
+  __attribute__ ((ALWAYS_INLINE));
 #if defined (SERVER_MODE)
 STATIC_INLINE bool pgbuf_get_thread_waiting_for_direct_victim (REFPTR (THREAD_ENTRY, waiting_thread_out))
-  __attribute__((ALWAYS_INLINE));
-STATIC_INLINE PGBUF_BCB *pgbuf_get_direct_victim (THREAD_ENTRY * thread_p) __attribute__((ALWAYS_INLINE));
-STATIC_INLINE bool pgbuf_is_any_thread_waiting_for_direct_victim (void) __attribute__((ALWAYS_INLINE));
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE PGBUF_BCB *pgbuf_get_direct_victim (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool pgbuf_is_any_thread_waiting_for_direct_victim (void) __attribute__ ((ALWAYS_INLINE));
 #endif /* SERVER_MODE */
 
 STATIC_INLINE void pgbuf_lru_add_victim_candidate (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list, PGBUF_BCB * bcb)
-  __attribute__((ALWAYS_INLINE));
+  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_lru_remove_victim_candidate (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list,
-						      PGBUF_BCB * bcb) __attribute__((ALWAYS_INLINE));
+						      PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_lru_advance_victim_hint (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list,
 						  PGBUF_BCB * bcb_prev_hint, PGBUF_BCB * bcb_new_hint,
-						  bool was_vict_count_updated) __attribute__((ALWAYS_INLINE));
-STATIC_INLINE PGBUF_LRU_LIST *pgbuf_lru_list_from_bcb (const PGBUF_BCB * bcb) __attribute__((ALWAYS_INLINE));
-STATIC_INLINE void pgbuf_bcb_register_hit_for_lru (PGBUF_BCB * bcb) __attribute__((ALWAYS_INLINE));
+						  bool was_vict_count_updated) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE PGBUF_LRU_LIST *pgbuf_lru_list_from_bcb (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void pgbuf_bcb_register_hit_for_lru (PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 
 STATIC_INLINE void pgbuf_bcb_update_flags (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int set_flags, int clear_flags)
-  __attribute__((ALWAYS_INLINE));
+  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_bcb_change_zone (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int lru_idx, PGBUF_ZONE zone)
-  __attribute__((ALWAYS_INLINE));
-STATIC_INLINE PGBUF_ZONE pgbuf_bcb_get_zone (const PGBUF_BCB * bcb) __attribute__((ALWAYS_INLINE));
-STATIC_INLINE int pgbuf_bcb_get_lru_index (const PGBUF_BCB * bcb) __attribute__((ALWAYS_INLINE));
-STATIC_INLINE int pgbuf_bcb_get_pool_index (const PGBUF_BCB * bcb) __attribute__((ALWAYS_INLINE));
-STATIC_INLINE bool pgbuf_bcb_is_dirty (const PGBUF_BCB * bcb) __attribute__((ALWAYS_INLINE));
-STATIC_INLINE bool pgbuf_bcb_mark_is_flushing (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb) __attribute__((ALWAYS_INLINE));
-STATIC_INLINE bool pgbuf_bcb_is_flushing (const PGBUF_BCB * bcb) __attribute__((ALWAYS_INLINE));
-STATIC_INLINE bool pgbuf_bcb_is_direct_victim (const PGBUF_BCB * bcb) __attribute__((ALWAYS_INLINE));
-STATIC_INLINE bool pgbuf_bcb_is_invalid_direct_victim (const PGBUF_BCB * bcb) __attribute__((ALWAYS_INLINE));
-STATIC_INLINE bool pgbuf_bcb_is_async_flush_request (const PGBUF_BCB * bcb) __attribute__((ALWAYS_INLINE));
-STATIC_INLINE bool pgbuf_bcb_is_to_vacuum (const PGBUF_BCB * bcb) __attribute__((ALWAYS_INLINE));
-STATIC_INLINE bool pgbuf_bcb_should_be_moved_to_bottom_lru (const PGBUF_BCB * bcb) __attribute__((ALWAYS_INLINE));
-STATIC_INLINE bool pgbuf_bcb_avoid_victim (const PGBUF_BCB * bcb) __attribute__((ALWAYS_INLINE));
-STATIC_INLINE void pgbuf_bcb_set_dirty (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb) __attribute__((ALWAYS_INLINE));
-STATIC_INLINE void pgbuf_bcb_clear_dirty (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb) __attribute__((ALWAYS_INLINE));
-STATIC_INLINE void pgbuf_bcb_mark_was_flushed (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb) __attribute__((ALWAYS_INLINE));
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE PGBUF_ZONE pgbuf_bcb_get_zone (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int pgbuf_bcb_get_lru_index (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int pgbuf_bcb_get_pool_index (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool pgbuf_bcb_is_dirty (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool pgbuf_bcb_mark_is_flushing (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool pgbuf_bcb_is_flushing (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool pgbuf_bcb_is_direct_victim (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool pgbuf_bcb_is_invalid_direct_victim (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool pgbuf_bcb_is_async_flush_request (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool pgbuf_bcb_is_to_vacuum (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool pgbuf_bcb_should_be_moved_to_bottom_lru (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool pgbuf_bcb_avoid_victim (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void pgbuf_bcb_set_dirty (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void pgbuf_bcb_clear_dirty (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void pgbuf_bcb_mark_was_flushed (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
+  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_bcb_mark_was_not_flushed (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, bool mark_dirty)
-  __attribute__((ALWAYS_INLINE));
-STATIC_INLINE void pgbuf_bcb_register_avoid_deallocation (PGBUF_BCB * bcb) __attribute__((ALWAYS_INLINE));
-STATIC_INLINE void pgbuf_bcb_unregister_avoid_deallocation (PGBUF_BCB * bcb) __attribute__((ALWAYS_INLINE));
-STATIC_INLINE bool pgbuf_bcb_should_avoid_deallocation (const PGBUF_BCB * bcb) __attribute__((ALWAYS_INLINE));
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void pgbuf_bcb_register_avoid_deallocation (PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void pgbuf_bcb_unregister_avoid_deallocation (PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool pgbuf_bcb_should_avoid_deallocation (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_bcb_check_and_reset_fix_and_avoid_dealloc (PGBUF_BCB * bcb, const char *file, int line)
-  __attribute__((ALWAYS_INLINE));
-STATIC_INLINE void pgbuf_bcb_register_fix (PGBUF_BCB * bcb) __attribute__((ALWAYS_INLINE));
-STATIC_INLINE bool pgbuf_bcb_is_hot (const PGBUF_BCB * bcb) __attribute__((ALWAYS_INLINE));
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void pgbuf_bcb_register_fix (PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool pgbuf_bcb_is_hot (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 
 #if defined (SERVER_MODE)
 static void pgbuf_bcbmon_lock (PGBUF_BCB * bcb, int caller_line);
@@ -1197,7 +1200,7 @@ static void pgbuf_bcbmon_check_own (PGBUF_BCB * bcb);
 static void pgbuf_bcbmon_check_mutex_leaks (void);
 #endif /* SERVER_MODE */
 
-STATIC_INLINE bool pgbuf_lfcq_add_lru_with_victims (PGBUF_LRU_LIST * lru_list) __attribute__((ALWAYS_INLINE));
+STATIC_INLINE bool pgbuf_lfcq_add_lru_with_victims (PGBUF_LRU_LIST * lru_list) __attribute__ ((ALWAYS_INLINE));
 static PGBUF_BCB *pgbuf_lfcq_get_victim_from_private_lru (THREAD_ENTRY * thread_p, bool restricted);
 static PGBUF_BCB *pgbuf_lfcq_get_victim_from_shared_lru (THREAD_ENTRY * thread_p, bool multi_threaded);
 
@@ -1207,7 +1210,7 @@ static void pgbuf_flags_mask_sanity_check (void);
 static void pgbuf_lru_sanity_check (const PGBUF_LRU_LIST * lru);
 
 // TODO: find a better place for this, but not log_impl.h
-STATIC_INLINE int pgbuf_find_current_wait_msecs (THREAD_ENTRY * thread_p) __attribute__((ALWAYS_INLINE));
+STATIC_INLINE int pgbuf_find_current_wait_msecs (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 
 static bool pgbuf_is_temp_lsa (const log_lsa & lsa);
 static void pgbuf_init_temp_page_lsa (FILEIO_PAGE * io_page, PGLENGTH page_size);
@@ -3154,7 +3157,7 @@ pgbuf_compare_victim_list (const void *p1, const void *p2)
  */
 static int
 pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, float lru_sum_flush_priority,
-				      bool *assigned_directly)
+				      bool * assigned_directly)
 {
   int lru_idx, victim_cand_count, i;
   PGBUF_BCB *bufptr;
@@ -3235,7 +3238,7 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
  */
 int
 pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_UTIME_TRACKER * perf_tracker,
-			       bool *stop)
+			       bool * stop)
 {
   PGBUF_BCB *bufptr;
   PGBUF_VICTIM_CANDIDATE_LIST *victim_cand_list;
@@ -5680,7 +5683,7 @@ pgbuf_latch_idle_page (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_
  */
 STATIC_INLINE int
 pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE request_mode,
-			  int buf_lock_acquired, PGBUF_LATCH_CONDITION condition, bool *is_latch_wait)
+			  int buf_lock_acquired, PGBUF_LATCH_CONDITION condition, bool * is_latch_wait)
 {
   PGBUF_HOLDER *holder = NULL;
   int request_fcnt = 1;
@@ -7615,7 +7618,7 @@ end:
  */
 static PGBUF_BCB *
 pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode,
-			 PGBUF_BUFFER_HASH * hash_anchor, PGBUF_FIX_PERF * perf, bool *try_again)
+			 PGBUF_BUFFER_HASH * hash_anchor, PGBUF_FIX_PERF * perf, bool * try_again)
 {
   PGBUF_BCB *bufptr = NULL;
   PAGE_PTR pgptr = NULL;
@@ -8047,7 +8050,7 @@ pgbuf_bcb_safe_flush_force_lock (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bo
  * locked (out)     : output if bcb is locked.
  */
 static int
-pgbuf_bcb_safe_flush_internal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool synchronous, bool *locked)
+pgbuf_bcb_safe_flush_internal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool synchronous, bool * locked)
 {
   int error_code = NO_ERROR;
 
@@ -9926,7 +9929,7 @@ pgbuf_remove_private_from_aout_list (const int lru_idx)
  * is_bcb_locked (out)       : output whether bcb remains locked or not.
  */
 STATIC_INLINE int
-pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_page_flush_thread, bool *is_bcb_locked)
+pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_page_flush_thread, bool * is_bcb_locked)
 {
   char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   FILEIO_PAGE *iopage = NULL;
@@ -11336,7 +11339,7 @@ pgbuf_add_bufptr_to_batch (PGBUF_BCB * bufptr, int idx)
  * flushed (out)      : Output true if page was flushed.
  */
 STATIC_INLINE int
-pgbuf_flush_neighbor_safe (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, VPID * expected_vpid, bool *flushed)
+pgbuf_flush_neighbor_safe (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, VPID * expected_vpid, bool * flushed)
 {
   int error = NO_ERROR;
   bool is_bcb_locked = true;
@@ -15794,7 +15797,7 @@ pgbuf_find_current_wait_msecs (THREAD_ENTRY * thread_p)
  * pgbuf_get_page_flush_interval () - setup page flush daemon period based on system parameter
  */
 void
-pgbuf_get_page_flush_interval (bool &is_timed_wait, cubthread::delta_time & period)
+pgbuf_get_page_flush_interval (bool & is_timed_wait, cubthread::delta_time & period)
 {
   int page_flush_interval_msecs = prm_get_integer_value (PRM_ID_PAGE_BG_FLUSH_INTERVAL_MSECS);
 
