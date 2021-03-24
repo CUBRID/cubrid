@@ -53,6 +53,9 @@ class page_server
     bool is_active_tran_server_connected () const;
     void push_request_to_active_tran_server (ps_to_ats_request reqid, std::string &&payload);
 
+    void start_log_replicator (const log_lsa &start_lsa);
+    void finish_replication (cubthread::entry &thread_entry);
+
   private:
     using active_tran_server_request_queue = cubcomm::request_sync_send_queue<active_tran_server_conn, std::string>;
     using active_tran_server_request_autosend = cubcomm::request_queue_autosend<active_tran_server_request_queue>;

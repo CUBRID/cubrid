@@ -41,15 +41,6 @@ page_server::~page_server ()
 }
 
 void
-page_server::finalize ()
-{
-  disconnect_active_tran_server ();
-
-  delete m_replicator;
-  m_replicator = nullptr;
-}
-
-void
 page_server::set_active_tran_server_connection (cubcomm::channel &&chn)
 {
   assert_page_server_type ();
