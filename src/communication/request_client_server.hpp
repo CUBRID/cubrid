@@ -162,7 +162,7 @@ namespace cubcomm
       request_server () = delete;
       request_server (channel &&chn);
       request_server (const request_server &) = delete;
-      request_server (request_server &&other) = default;
+      request_server (request_server &&other);
       ~request_server ();
 
       void start_thread ();	  // start thread that receives and handles requests
@@ -186,7 +186,7 @@ namespace cubcomm
       void handle_request (std::unique_ptr<char[]> &message_buffer, size_t message_size);
 
       std::thread m_thread;				// thread that loops and handles requests
-      bool m_shutdown;					// set to true when thread must stop
+      bool m_shutdown = true;					// set to true when thread must stop
       request_handlers_container m_request_handlers;	// request handler map
   };
 
@@ -244,6 +244,14 @@ namespace cubcomm
   request_server<MsgId>::request_server (channel &&chn)
     : m_channel (std::move (chn))
   {
+  }
+
+  template <typename MsgId>
+  request_server<MsgId>::request_server (request_server &&other)
+  {
+    assert (!other.m_thread.joinable ());   // cannot move if thread is started
+    m_channel = std::move (other.m_channel);
+    m_request_handlers = std::move (other.m_request_handlers);
   }
 
   template <typename MsgId>

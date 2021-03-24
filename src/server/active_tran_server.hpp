@@ -22,7 +22,14 @@
 #include "ats_ps_request.hpp"
 #include "request_sync_send_queue.hpp"
 
+#include <memory>
 #include <string>
+
+// forward declaration
+namespace cubpacking
+{
+  class unpacker;
+}
 
 class active_tran_server
 {
@@ -43,11 +50,14 @@ class active_tran_server
   private:
     using page_server_request_autosend = cubcomm::request_queue_autosend<page_server_request_queue>;
 
+    void receive_saved_lsa (cubpacking::unpacker &upk);
+
     // communication with page server
     std::string m_ps_hostname;
-    int m_ps_port;
-    page_server_request_queue *m_ps_request_queue = nullptr;
-    page_server_request_autosend *m_ps_request_autosend = nullptr;
+    int m_ps_port = -1;
+    std::unique_ptr<page_server_conn> m_ps_conn;
+    std::unique_ptr<page_server_request_queue> m_ps_request_queue;
+    std::unique_ptr<page_server_request_autosend> m_ps_request_autosend;
 };
 
 extern active_tran_server ats_Gl;
