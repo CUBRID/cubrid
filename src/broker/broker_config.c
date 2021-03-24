@@ -170,6 +170,88 @@ static const char *tbl_conf_err_msg[] = {
 #define MAX_NUM_OF_CONF_FILE_LOADED     5
 static char *conf_file_loaded[MAX_NUM_OF_CONF_FILE_LOADED];
 
+/* The order of keywords is based on the manual. */
+const char *broker_keywords[] = {
+  "ACCESS_CONTROL",
+  "ACCESS_CONTROL_FILE",
+  "ADMIN_LOG_FILE",
+  "MASTER_SHM_ID",
+  "ACCESS_LIST",
+  "ACCESS_MODE",
+  "BROKER_PORT",
+  "CONNECT_ORDER",
+  "ENABLE_MONITOR_HANG",
+  "KEEP_CONNECTION",
+  "MAX_NUM_DELAYED_HOSTS_LOOKUP",
+  "PREFERRED_HOSTS",
+  "RECONNECT_TIME",
+  "REPLICA_ONLY",
+  "APPL_SERVER_MAX_SIZE",
+  "APPL_SERVER_MAX_SIZE_HARD_LIMIT",
+  "APPL_SERVER_PORT",
+  "APPL_SERVER_SHM_ID",
+  "AUTO_ADD_APPL_SERVER",
+  "MAX_NUM_APPL_SERVER",
+  "MIN_NUM_APPL_SERVER",
+  "TIME_TO_KILL",
+  "CCI_DEFAULT_AUTOCOMMIT",
+  "LONG_QUERY_TIME",
+  "LONG_TRANSACTION_TIME",
+  "MAX_PREPARED_STMT_COUNT",
+  "MAX_QUERY_TIMEOUT",
+  "SESSION_TIMEOUT",
+  "STATEMENT_POOLING",
+  "JDBC_CACHE",
+  "JDBC_CACHE_HINT_ONLY",
+  "JDBC_CACHE_LIFE_TIME",
+  "TRIGGER_ACTION",
+  "ACCESS_LOG",
+  "ACCESS_LOG_DIR",
+  "ACCESS_LOG_MAX_SIZE",
+  "ERROR_LOG_DIR",
+  "LOG_DIR",
+  "SLOW_LOG",
+  "SLOW_LOG_DIR",
+  "SQL_LOG",
+  "SQL_LOG_MAX_SIZE",
+  "SERVICE",
+  "SSL",
+  "SOURCE_ENV",
+  /* Below is a keyword referenced from the source code, although it is not in the manual. */
+  "APPL_SERVER",
+  "CACHE_USER_INFO",
+  "CCI_PCONNECT",
+  "DATABASES_CONNECTION_FILE",
+  "ENABLE_MONITOR_SERVER",
+  "JOB_QUEUE_SIZE",
+  "LOG_BACKUP",
+  "MAX_STRING_LENGTH",
+  "READ_ONLY_BROKER",
+  "STRIPPED_COLUMN_NAME",
+  /* Below is a list of reserved keywords for shard extension in the future */
+  "DEFAULT_SHARD_NUM_PROXY",
+  "DEFAULT_SHARD_PROXY_LOG_DIR",
+  "DEFAULT_SHARD_PROXY_LOG_MAX_SIZE",
+  "DEFAULT_SHARD_PROXY_LOG_MODE",
+  "SHARD_CONNECTION_FILE",
+  "SHARD_DB_NAME",
+  "SHARD_DB_PASSWORD",
+  "SHARD_DB_USER",
+  "SHARD_IGNORE_HINT",
+  "SHARD_KEY_FILE",
+  "SHARD_KEY_FUNCTION_NAME",
+  "SHARD_KEY_LIBRARY_NAME",
+  "SHARD_KEY_MODULAR",
+  "SHARD_MAX_CLIENTS",
+  "SHARD_MAX_PREPARED_STMT_COUNT",
+  "SHARD_PROXY_CONN_WAIT_TIMEOUT",
+  "SHARD_PROXY_LOG_MAX_SIZE",
+  "SHARD_PROXY_SHM_ID",
+  "SHARD_PROXY_TIMEOUT"
+};
+
+int broker_keywords_size = sizeof (broker_keywords) / sizeof (char *);
+
 /*
  * conf_file_has_been_loaded - record the file path that has been loaded
  *   return: none
@@ -348,6 +430,41 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
       PRINTERROR ("cannot find [%s] section in conf file %s\n", SECTION_NAME, conf_file);
       ini_parser_free (ini);
       return -1;
+    }
+
+  /* Validate broker keywords, if keyword is not in list terminate */
+  for (i = 0; i < ini->size; i++)
+    {
+      char *key;
+      bool found = false;
+
+      if (ini->key[i] == NULL)
+	{
+	  continue;
+	}
+
+      key = strchr (ini->key[i], ':');
+      if (key == NULL)
+	{
+	  continue;
+	}
+
+      key++;
+      for (j = 0; j < broker_keywords_size; j++)
+	{
+	  if (strcasecmp (key, broker_keywords[j]) == 0)
+	    {
+	      found = true;
+	      break;
+	    }
+	}
+
+      if (!found)
+	{
+	  PRINTERROR ("cubrid_broker.conf: invalid keyword '%s' (%d)\n", key, ini->lineno[i]);
+	  ini_parser_free (ini);
+	  return -1;
+	}
     }
 
   master_shm_id = ini_gethex (ini, SECTION_NAME, "MASTER_SHM_ID", 0, &lineno);
@@ -666,7 +783,7 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	}
 
       br_info[num_brs].jdbc_cache_only_hint =
-	conf_get_value_table_on_off (ini_getstr (ini, sec_name, "JDBC_CACHE_ONLY_HINT", "OFF", &lineno));
+	conf_get_value_table_on_off (ini_getstr (ini, sec_name, "JDBC_CACHE_HINT_ONLY", "OFF", &lineno));
       if (br_info[num_brs].jdbc_cache_only_hint < 0)
 	{
 	  errcode = PARAM_BAD_VALUE;
@@ -1340,7 +1457,7 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info, int num_broker, in
       tmp_str = get_conf_string (br_info[i].jdbc_cache_only_hint, tbl_on_off);
       if (tmp_str)
 	{
-	  fprintf (fp, "JDBC_CACHE_ONLY_HINT\t=%s\n", tmp_str);
+	  fprintf (fp, "JDBC_CACHE_HINT_ONLY\t=%s\n", tmp_str);
 	}
 
       fprintf (fp, "JDBC_CACHE_LIFE_TIME\t=%d\n", br_info[i].jdbc_cache_life_time);

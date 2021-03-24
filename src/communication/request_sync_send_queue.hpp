@@ -16,7 +16,7 @@
  *
  */
 
-#ifndef _REQUEST_SYNC_SENDQUEUE_
+#ifndef _REQUEST_SYNC_SEND_QUEUE_
 #define _REQUEST_SYNC_SEND_QUEUE_
 
 #include "request_client_server.hpp"
@@ -59,7 +59,7 @@ namespace cubcomm
 
       // ctor/dtor:
       request_sync_send_queue () = delete;
-      request_sync_send_queue (client_type &&client);
+      request_sync_send_queue (client_type &client);
 
       // functions:
 
@@ -83,7 +83,7 @@ namespace cubcomm
       void send_queue (queue_type &q); // Send queued requests to the server
 
       // Members used for sending requests:
-      client_type m_client;                       // The request client, sends requests over network
+      client_type &m_client;                       // The request client, sends requests over network
       std::mutex m_send_mutex;                    // Synchronize request sending
 
       queue_type m_request_queue;                 // Queue for pushed requests
@@ -136,8 +136,8 @@ namespace cubcomm
   //
 
   template <typename ReqClient, typename ReqPayload>
-  request_sync_send_queue<ReqClient, ReqPayload>::request_sync_send_queue (client_type &&client)
-    : m_client (std::move (client))
+  request_sync_send_queue<ReqClient, ReqPayload>::request_sync_send_queue (client_type &client)
+    : m_client (client)
   {
   }
 
