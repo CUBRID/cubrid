@@ -2132,9 +2132,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
   common_ha_mode = HA_GET_MODE ();
 
-  er_log_debug (ARG_FILE_LINE, "Starting server type: %s\n",
-		get_server_type () == SERVER_TYPE_PAGE ? "page" : "transaction");
-
 #endif /* SERVER_MODE */
 
   if (db_name == NULL)
