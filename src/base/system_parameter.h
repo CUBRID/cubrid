@@ -461,7 +461,7 @@ enum param_id
   PRM_ID_ER_LOG_COMM_CHANNEL,
   PRM_ID_ER_LOG_COMMIT_CONFIRM,
   PRM_ID_ER_LOG_READ_LOG_PAGE,
-
+  PRM_ID_ER_LOG_READ_DATA_PAGE,
   PRM_ID_RECOVERY_PARALLEL_COUNT,
 
   /* change PRM_LAST_ID when adding new system parameters */
