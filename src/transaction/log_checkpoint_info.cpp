@@ -286,5 +286,164 @@ namespace cublog
     log_system_tdes::map_all_tdes (mapper);
   }
 
+  void
+  checkpoint_info::recovery_analysis (THREAD_ENTRY *thread_p, log_lsa &start_redo_lsa) const
+  {
+    int i, size, error_code;
+    void *area;
+    LOG_TDES *tdes;
+    LOG_INFO_CHKPT_TRANS *chkpt_trans;
+    LOG_INFO_CHKPT_TRANS *chkpt_one;
+    LOG_INFO_CHKPT_SYSOP *chkpt_topops;
+    LOG_INFO_CHKPT_SYSOP *chkpt_topone;
+    LOG_PAGE *log_page_local = NULL;
+    LOG_LSA log_lsa_local;
+    char log_page_buffer[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+    LOG_REC_SYSOP_START_POSTPONE sysop_start_postpone;
+
+    /* Add the transactions to the transaction table */
+    for (auto chkpt : m_trans)
+      {
+	/*
+	 * If this is the first time, the transaction is seen. Assign a
+	 * new index to describe it and assume that the transaction was
+	 * active at the time of the crash, and thus it will be
+	 * unilaterally aborted. The truth of this statement will be find
+	 * reading the rest of the log
+	 */
+	tdes = logtb_rv_find_allocate_tran_index (thread_p, chkpt.trid, chkpt);
+	if (tdes == NULL)
+	  {
+	    if (area != NULL)
+	      {
+		free_and_init (area);
+	      }
+
+	    logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_analysis");
+	    return;
+	  }
+	chkpt_one = &chkpt;
+
+	/*
+	 * Clear the transaction since it may have old stuff in it.
+	 * Use the one that is find in the checkpoint record
+	 */
+	logtb_clear_tdes (thread_p, tdes);
+
+	tdes->isloose_end = chkpt_one->isloose_end;
+	if (chkpt_one->state == TRAN_ACTIVE || chkpt_one->state == TRAN_UNACTIVE_ABORTED)
+	  {
+	    tdes->state = TRAN_UNACTIVE_UNILATERALLY_ABORTED;
+	  }
+	else
+	  {
+	    tdes->state = chkpt_one->state;
+	  }
+	LSA_COPY (&tdes->head_lsa, &chkpt_one->head_lsa);
+	LSA_COPY (&tdes->tail_lsa, &chkpt_one->tail_lsa);
+	LSA_COPY (&tdes->undo_nxlsa, &chkpt_one->undo_nxlsa);
+	LSA_COPY (&tdes->posp_nxlsa, &chkpt_one->posp_nxlsa);
+	LSA_COPY (&tdes->savept_lsa, &chkpt_one->savept_lsa);
+	LSA_COPY (&tdes->tail_topresult_lsa, &chkpt_one->tail_topresult_lsa);
+	LSA_COPY (&tdes->rcv.tran_start_postpone_lsa, &chkpt_one->start_postpone_lsa);
+	tdes->client.set_system_internal_with_user (chkpt_one->user_name);
+	if (LOG_ISTRAN_2PC (tdes))
+	  {
+	    m_has_2pc = true;
+	  }
+      }
+
+
+    if (area != NULL)
+      {
+	free_and_init (area);
+      }
+
+    /*
+     * Now add top system operations that were in the process of
+     * commit to this transactions
+     */
+
+    log_page_local = (LOG_PAGE *) PTR_ALIGN (log_page_buffer, MAX_ALIGNMENT);
+    log_page_local->hdr.logical_pageid = NULL_PAGEID;
+    log_page_local->hdr.offset = NULL_OFFSET;
+
+    if (m_sysops.size() > 0)
+      {
+	size = sizeof (LOG_INFO_CHKPT_SYSOP) * m_sysops.size();
+	if (log_lsa->offset + size < (int) LOGAREA_SIZE)
+	  {
+	    chkpt_topops = ((LOG_INFO_CHKPT_SYSOP *) ((char *) log_page_p->area + log_lsa->offset));
+	    log_lsa->offset += size;
+	  }
+	else
+	  {
+	    /* Need to copy the data into a contiguous area */
+	    area = malloc (size);
+	    if (area == NULL)
+	      {
+		logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_analysis");
+		return;
+	      }
+	    /* Copy the data */
+	    logpb_copy_from_log (thread_p, (char *) area, size, log_lsa, log_page_p);
+	    chkpt_topops = (LOG_INFO_CHKPT_SYSOP *) area;
+	  }
+
+	/* Add the top system operations to the transactions */
+
+	for (auto sysop : m_sysops)
+	  {
+	    chkpt_topone = &sysop;
+	    tdes = logtb_rv_find_allocate_tran_index (thread_p, chkpt_topone->trid, log_lsa);
+	    if (tdes == NULL)
+	      {
+		if (area != NULL)
+		  {
+		    free_and_init (area);
+		  }
+
+		logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_analysis");
+		return;
+	      }
+
+	    if (tdes->topops.max == 0 || (tdes->topops.last + 1) >= tdes->topops.max)
+	      {
+		if (logtb_realloc_topops_stack (tdes, chkpt.ntops) == NULL)
+		  {
+		    if (area != NULL)
+		      {
+			free_and_init (area);
+		      }
+
+		    logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_analysis");
+		    return;
+		  }
+	      }
+
+	    if (tdes->topops.last == -1)
+	      {
+		tdes->topops.last++;
+	      }
+	    else
+	      {
+		assert (tdes->topops.last == 0);
+	      }
+	    tdes->rcv.sysop_start_postpone_lsa = chkpt_topone->sysop_start_postpone_lsa;
+	    tdes->rcv.atomic_sysop_start_lsa = chkpt_topone->atomic_sysop_start_lsa;
+	    log_lsa_local = chkpt_topone->sysop_start_postpone_lsa;
+	    error_code =
+		    log_read_sysop_start_postpone (thread_p, &log_lsa_local, log_page_local, false, &sysop_start_postpone,
+						   NULL, NULL, NULL, NULL);
+	    if (error_code != NO_ERROR)
+	      {
+		assert (false);
+		return;
+	      }
+	    tdes->topops.stack[tdes->topops.last].lastparent_lsa = sysop_start_postpone.sysop_end.lastparent_lsa;
+	    tdes->topops.stack[tdes->topops.last].posp_lsa = sysop_start_postpone.posp_lsa;
+	  }
+      }
+  }
 }
 
