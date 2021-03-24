@@ -16,8 +16,8 @@
  *
  */
 
-#ifndef LOG_RECOVERY_H
-#define LOG_RECOVERY_H
+#ifndef _LOG_RECOVERY_H_
+#define _LOG_RECOVERY_H_
 
 #include "log_compress.h"
 #include "log_lsa.hpp"
@@ -45,4 +45,4 @@ extern char *log_rv_pack_redo_record_changes (char *ptr, int offset_to_data, int
 extern char *log_rv_pack_undo_record_changes (char *ptr, int offset_to_data, int old_data_size, int new_data_size,
 					      char *old_data);
 
-#endif // LOG_RECOVERY_H
+#endif // _LOG_RECOVERY_H_
