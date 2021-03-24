@@ -37,6 +37,7 @@
 #include "log_reader.hpp"
 #include "log_record.hpp"
 #include "log_recovery_redo.hpp"
+#include "log_recovery_redo_parallel.hpp"
 #include "log_system_tran.hpp"
 #include "log_volids.hpp"
 #include "message_catalog.h"
@@ -52,12 +53,12 @@
 #include "thread_manager.hpp"
 #include "type_helper.hpp"
 
-#include <stdio.h>
+#include <assert.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include <assert.h>
 
 static void log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 				LOG_RCVINDEX rcvindex, const VPID * rcv_vpid, LOG_RCV * rcv,
@@ -69,7 +70,8 @@ template <typename T>
 static void log_rv_redo_record_sync_or_dispatch_async (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
 						       const T &log_rec, const log_lsa &rcv_lsa,
 						       const LOG_LSA *end_redo_lsa, LOG_RECTYPE log_rtype,
-						       LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support);
+						       LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support,
+						       std::unique_ptr<cublog::redo_parallel> &parallel_recovery_redo);
 // *INDENT-ON*
 
 static bool log_rv_find_checkpoint (THREAD_ENTRY * thread_p, VOLID volid, LOG_LSA * rcv_lsa);
@@ -548,6 +550,24 @@ log_rv_fix_page_and_check_redo_is_needed (THREAD_ENTRY * thread_p, const VPID & 
   return true;
 }
 
+/* log_rv_need_sync_redo - force some of the redo records to be applied synchronously
+ */
+bool
+log_rv_need_sync_redo (LOG_RCVINDEX rcvindex)
+{
+  switch (rcvindex)
+    {
+    case RVDK_NEWVOL:
+    case RVDK_FORMAT:
+    case RVDK_INITMAP:
+    case RVDK_RESERVE_SECTORS:
+    case RVDK_UNRESERVE_SECTORS:
+      return true;
+    default:
+      return false;
+    }
+}
+
 // *INDENT-OFF*
 /*
  * log_rv_redo_record_sync_or_dispatch_async - execute a redo record synchronously or
@@ -569,21 +589,48 @@ log_rv_fix_page_and_check_redo_is_needed (THREAD_ENTRY * thread_p, const VPID & 
  *
  */
 template <typename T>
-void log_rv_redo_record_sync_or_dispatch_async (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader,
-                                                const T & log_rec, const log_lsa & rcv_lsa,
-                                                const LOG_LSA * end_redo_lsa, LOG_RECTYPE log_rtype,
-                                                LOG_ZIP & undo_unzip_support, LOG_ZIP & redo_unzip_support)
+void log_rv_redo_record_sync_or_dispatch_async (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
+                                                const T &log_rec, const log_lsa &rcv_lsa,
+                                                const LOG_LSA *end_redo_lsa, LOG_RECTYPE log_rtype,
+                                                LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support,
+                                                std::unique_ptr<cublog::redo_parallel> &parallel_recovery_redo)
 {
   const VPID rcv_vpid = log_rv_get_log_rec_vpid<T> (log_rec);
   // at this point, vpid can either be valid or not
 
+#if defined(SERVER_MODE)
   const LOG_DATA &log_data = log_rv_get_log_rec_data<T> (log_rec);
+  const bool need_sync_redo = log_rv_need_sync_redo (log_data.rcvindex);
+  assert (log_data.rcvindex != RVDK_UNRESERVE_SECTORS || need_sync_redo);
 
   // once vpid is extracted (or not), and depending on parameters, either dispatch the applying of
   // log redo asynchronously, or invoke synchronously
+  if (parallel_recovery_redo == nullptr || VPID_ISNULL (&rcv_vpid) || need_sync_redo)
+    {
+      // To apply RVDK_UNRESERVE_SECTORS, one must first wait for all changes in this sector to be redone.
+      // Otherwise, asynchronous jobs skip redoing changes in this sector's pages because they are seen as
+      // deallocated. When the same sector is reserved again, redo is resumed in the sector's pages, but
+      // the pages are not in a consistent state. The current workaround is to wait for all changes to be
+      // finished, including changes in the unreserved sector.
+      if (parallel_recovery_redo != nullptr && log_data.rcvindex == RVDK_UNRESERVE_SECTORS)
+        {
+          parallel_recovery_redo->wait_for_idle ();
+        }
+#endif
 
-  log_rv_redo_record_sync<T>(thread_p, log_pgptr_reader, log_rec, rcv_vpid, rcv_lsa, end_redo_lsa, log_rtype,
-                             undo_unzip_support, redo_unzip_support);
+      // invoke sync
+      log_rv_redo_record_sync<T> (thread_p, log_pgptr_reader, log_rec, rcv_vpid, rcv_lsa, end_redo_lsa, log_rtype,
+                                  undo_unzip_support, redo_unzip_support);
+#if defined(SERVER_MODE)
+    }
+  else
+    {
+      // dispatch async
+      using redo_job_impl_t = cublog::redo_job_impl<T>;
+      std::unique_ptr<redo_job_impl_t> job{ new redo_job_impl_t (rcv_vpid, rcv_lsa, end_redo_lsa, log_rtype) };
+      parallel_recovery_redo->add (std::move (job));
+    }
+#endif
 }
 // *INDENT-ON*
 
@@ -3170,6 +3217,25 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   LOG_ZIP *redo_unzip_ptr = NULL;
   bool is_mvcc_op = false;
 
+  /* depending on compilation mode and on a system parameter, initialize the
+   * infrastructure for parallel log recovery;
+   * if infrastructure is not initialized dependent code below works sequentially
+   */
+  LOG_CS_EXIT (thread_p);
+  // *INDENT-OFF*
+  std::unique_ptr <cublog::redo_parallel> parallel_recovery_redo;
+  // *INDENT-ON*
+#if defined(SERVER_MODE)
+  {
+    const int log_recovery_redo_parallel_count = prm_get_integer_value (PRM_ID_RECOVERY_PARALLEL_COUNT);
+    assert (log_recovery_redo_parallel_count >= 0);
+    if (log_recovery_redo_parallel_count > 0)
+      {
+	parallel_recovery_redo.reset (new cublog::redo_parallel (log_recovery_redo_parallel_count));
+      }
+  }
+#endif
+
   /*
    * GO FORWARD, redoing records of all transactions including aborted ones.
    *
@@ -3344,7 +3410,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
                                                                                   log_rec_mvcc_undoredo,
                                                                                   rcv_lsa, end_redo_lsa,
                                                                                   log_rtype, *undo_unzip_ptr,
-                                                                                  *redo_unzip_ptr);
+                                                                                  *redo_unzip_ptr,
+                                                                                  parallel_recovery_redo);
                 // *INDENT-ON*
 	      }
 	      break;
@@ -3361,12 +3428,13 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		/* Get undoredo structure */
 		// *INDENT-OFF*
 		const LOG_REC_UNDOREDO log_rec_undoredo
-		    = log_pgptr_reader.reinterpret_copy_and_add_align<LOG_REC_UNDOREDO>();
+		    = log_pgptr_reader.reinterpret_copy_and_add_align<LOG_REC_UNDOREDO> ();
 
                 log_rv_redo_record_sync_or_dispatch_async<LOG_REC_UNDOREDO> (thread_p, log_pgptr_reader,
                                                                              log_rec_undoredo, rcv_lsa,
                                                                              end_redo_lsa, log_rtype,
-                                                                             *undo_unzip_ptr, *redo_unzip_ptr);
+                                                                             *undo_unzip_ptr, *redo_unzip_ptr,
+                                                                             parallel_recovery_redo);
                 // *INDENT-ON*
 	      }
 	      break;
@@ -3382,7 +3450,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		/* MVCC op redo log record */
 		// *INDENT-OFF*
 		const LOG_REC_MVCC_REDO log_rec_mvcc_redo
-		    = log_pgptr_reader.reinterpret_copy_and_add_align<LOG_REC_MVCC_REDO>();
+		    = log_pgptr_reader.reinterpret_copy_and_add_align<LOG_REC_MVCC_REDO> ();
 
 		const MVCCID mvccid = log_rv_get_log_rec_mvccid<LOG_REC_MVCC_REDO> (log_rec_mvcc_redo);
 		// *INDENT-ON*
@@ -3401,7 +3469,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
                 log_rv_redo_record_sync_or_dispatch_async<LOG_REC_MVCC_REDO> (thread_p, log_pgptr_reader,
                                                                               log_rec_mvcc_redo, rcv_lsa, end_redo_lsa,
                                                                               log_rtype, *undo_unzip_ptr,
-                                                                              *redo_unzip_ptr);
+                                                                              *redo_unzip_ptr, parallel_recovery_redo);
                 // *INDENT-ON*
 	      }
 	      break;
@@ -3416,7 +3484,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 		// *INDENT-OFF*
 		const LOG_REC_REDO log_rec_redo
-		    = log_pgptr_reader.reinterpret_copy_and_add_align<LOG_REC_REDO>();
+		    = log_pgptr_reader.reinterpret_copy_and_add_align<LOG_REC_REDO> ();
 
 		if (log_rec_redo.data.rcvindex == RVVAC_COMPLETE)
 		  {
@@ -3427,7 +3495,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
                 log_rv_redo_record_sync_or_dispatch_async<LOG_REC_REDO> (thread_p, log_pgptr_reader,
                                                                          log_rec_redo, rcv_lsa, end_redo_lsa,
                                                                          log_rtype, *undo_unzip_ptr,
-                                                                         *redo_unzip_ptr);
+                                                                         *redo_unzip_ptr, parallel_recovery_redo);
                 // *INDENT-ON*
 	      }
 	      break;
@@ -3484,12 +3552,13 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 		// *INDENT-OFF*
 		const LOG_REC_RUN_POSTPONE log_rec_run_posp
-		    = log_pgptr_reader.reinterpret_copy_and_add_align<LOG_REC_RUN_POSTPONE>();
+		    = log_pgptr_reader.reinterpret_copy_and_add_align<LOG_REC_RUN_POSTPONE> ();
 
                 log_rv_redo_record_sync_or_dispatch_async<LOG_REC_RUN_POSTPONE> (thread_p, log_pgptr_reader,
                                                                                  log_rec_run_posp, rcv_lsa,
                                                                                  end_redo_lsa, log_rtype,
-                                                                                 *undo_unzip_ptr, *redo_unzip_ptr);
+                                                                                 *undo_unzip_ptr, *redo_unzip_ptr,
+                                                                                 parallel_recovery_redo);
                 // *INDENT-ON*
 	      }
 	      break;
@@ -3504,12 +3573,13 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 		// *INDENT-OFF*
 		const LOG_REC_COMPENSATE log_rec_compensate
-		    = log_pgptr_reader.reinterpret_copy_and_add_align<LOG_REC_COMPENSATE>();
+		    = log_pgptr_reader.reinterpret_copy_and_add_align<LOG_REC_COMPENSATE> ();
 
                 log_rv_redo_record_sync_or_dispatch_async<LOG_REC_COMPENSATE> (thread_p, log_pgptr_reader,
                                                                                log_rec_compensate, rcv_lsa,
                                                                                end_redo_lsa, log_rtype,
-                                                                               *undo_unzip_ptr, *redo_unzip_ptr);
+                                                                               *undo_unzip_ptr, *redo_unzip_ptr,
+                                                                               parallel_recovery_redo);
                 // *INDENT-ON*
 	      }
 	      break;
@@ -3818,6 +3888,15 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   log_zip_free (undo_unzip_ptr);
   log_zip_free (redo_unzip_ptr);
 
+#if defined(SERVER_MODE)
+  if (parallel_recovery_redo != nullptr)
+    {
+      parallel_recovery_redo->set_adding_finished ();
+      parallel_recovery_redo->wait_for_termination_and_stop_execution ();
+    }
+#endif
+  LOG_CS_ENTER (thread_p);
+
   log_Gl.mvcc_table.reset_start_mvccid ();
 
   /* Abort all atomic system operations that were open when server crashed */
@@ -3836,8 +3915,6 @@ exit:
   LSA_SET_NULL (&log_Gl.unique_stats_table.curr_rcv_rec_lsa);
 
 #if !defined(NDEBUG)
-  // bit of debug code to ensure that, should this code be executed asynchronously, within the same page,
-  // the lsa is ever-increasing, thus, not altering the order in which it has been added to the log in the first place
   log_Gl_recovery_redo_consistency_check.cleanup ();
 #endif
 

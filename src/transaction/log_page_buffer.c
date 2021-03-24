@@ -24,6 +24,7 @@
 
 #include "config.h"
 
+#include <cstring>
 #include <stdio.h>
 #include <stddef.h>
 #include <stdlib.h>
@@ -71,6 +72,8 @@
 #include "connection_defs.h"
 #include "connection_sr.h"
 #endif
+#include "active_tran_server.hpp"
+#include "ats_ps_request.hpp"
 #include "critical_section.h"
 #include "page_buffer.h"
 #include "double_write_buffer.h"
@@ -79,6 +82,9 @@
 #include "error_manager.h"
 #include "xserver_interface.h"
 #include "perf_monitor.h"
+#if defined (SERVER_MODE)
+#include "page_server.hpp"
+#endif
 #include "server_type.hpp"
 #include "storage_common.h"
 #include "system_parameter.h"
@@ -350,18 +356,21 @@ static void logpb_fatal_error_internal (THREAD_ENTRY * thread_p, bool log_exit, 
 					const int lineno, const char *fmt, va_list ap);
 
 static int logpb_copy_log_header (THREAD_ENTRY * thread_p, LOG_HEADER * to_hdr, const LOG_HEADER * from_hdr);
-STATIC_INLINE LOG_BUFFER *logpb_get_log_buffer (LOG_PAGE * log_pg) __attribute__((ALWAYS_INLINE));
-STATIC_INLINE int logpb_get_log_buffer_index (LOG_PAGEID log_pageid) __attribute__((ALWAYS_INLINE));
+STATIC_INLINE LOG_BUFFER *logpb_get_log_buffer (LOG_PAGE * log_pg) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int logpb_get_log_buffer_index (LOG_PAGEID log_pageid) __attribute__ ((ALWAYS_INLINE));
 static int logpb_fetch_header_from_active_log (THREAD_ENTRY * thread_p, const char *db_fullname,
 					       const char *logpath, const char *prefix_logname, LOG_HEADER * hdr,
 					       LOG_PAGE * log_pgptr);
 static int logpb_compute_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int *checksum_crc32);
-static int logpb_page_has_valid_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, bool *has_valid_checksum);
+static int logpb_page_has_valid_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, bool * has_valid_checksum);
 
 static bool logpb_is_log_active_from_backup_useful (THREAD_ENTRY * thread_p, const char *active_log_path,
 						    const char *db_full_name);
 static int logpb_peek_header_of_active_log_from_backup (THREAD_ENTRY * thread_p, const char *active_log_path,
 							LOG_HEADER * hdr);
+#if defined (SERVER_MODE)
+static void logpb_send_flushed_lsa_to_ats ();
+#endif // SERVER_MODE
 
 /*
  * FUNCTIONS RELATED TO LOG BUFFERING
@@ -516,7 +525,7 @@ logpb_set_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
  *   has_valid_checksum(out): true, if has valid checksum.
  */
 static int
-logpb_page_has_valid_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, bool *has_valid_checksum)
+logpb_page_has_valid_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, bool * has_valid_checksum)
 {
   int checksum_crc32, error_code = NO_ERROR;
 
@@ -1927,6 +1936,24 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
     }
 
   /* Could not get from log page buffer cache */
+
+#if defined (SERVER_MODE)
+  /* Send a request to Page Server for the log. */
+  if (get_server_type () == SERVER_TYPE_TRANSACTION)
+    {
+      constexpr size_t BIG_INT_SIZE = 8;
+      char buffer[BIG_INT_SIZE];
+      std::memcpy (buffer, &pageid, sizeof (pageid));
+      std::string message (buffer, BIG_INT_SIZE);
+
+      ats_Gl.push_request (ats_to_ps_request::SEND_LOG_PAGE_FETCH, std::move (message));
+      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
+	{
+	  _er_log_debug (ARG_FILE_LINE, "Sent request for log to Page Server. Page ID: %lld \n", pageid);
+	}
+    }
+#endif // SERVER_MODE
+
   rv = logpb_read_page_from_file (thread_p, pageid, access_mode, log_pgptr);
   if (rv != NO_ERROR)
     {
@@ -3776,6 +3803,13 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
     }
   flush_info->num_toflush = 0;
 
+#if defined (SERVER_MODE)
+  if (get_server_type () == SERVER_TYPE_PAGE)
+    {
+      logpb_send_flushed_lsa_to_ats ();
+    }
+#endif
+
   if (log_Gl.append.log_pgptr != NULL)
     {
       /* Add the append page */
@@ -3902,6 +3936,22 @@ error:
 
   return error_code;
 }
+
+#if defined (SERVER_MODE)
+void
+logpb_send_flushed_lsa_to_ats ()
+{
+  const log_lsa saved_lsa = log_Gl.append.get_nxio_lsa ();
+  if (prm_get_bool_value (PRM_ID_ER_LOG_COMMIT_CONFIRM))
+    {
+      _er_log_debug (ARG_FILE_LINE, "[COMMIT CONFIRM] Send saved LSA=%lld|%d.\n", LSA_AS_ARGS (&saved_lsa));
+    }
+  // *INDENT-OFF*
+  std::string message (reinterpret_cast<const char *> (&saved_lsa), sizeof (saved_lsa));
+  ps_Gl.push_request_to_active_tran_server (ps_to_ats_request::SEND_SAVED_LSA, std::move (message));
+  // *INDENT-ON*
+}
+#endif // SERVER_MODE
 
 /*
  * logpb_flush_pages_direct - flush all pages by itself.
@@ -6704,7 +6754,7 @@ logpb_checkpoint_trans (LOG_INFO_CHKPT_TRANS * chkpt_entries, log_tdes * tdes, i
 int
 logpb_checkpoint_topops (THREAD_ENTRY * thread_p, LOG_INFO_CHKPT_SYSOP * &chkpt_topops,
 			 LOG_INFO_CHKPT_TRANS * chkpt_trans, LOG_REC_CHKPT & tmp_chkpt, log_tdes * tdes, int &ntops,
-			 size_t &length_all_tops)
+			 size_t & length_all_tops)
 {
   if (tdes != NULL && tdes->trid != NULL_TRANID
       && (!LSA_ISNULL (&tdes->rcv.sysop_start_postpone_lsa) || !LSA_ISNULL (&tdes->rcv.atomic_sysop_start_lsa)))
@@ -10380,7 +10430,7 @@ logpb_check_if_exists (const char *fname, char *first_vol)
  */
 int
 logpb_check_exist_any_volumes (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
-			       const char *prefix_logname, char *first_vol, bool *is_exist)
+			       const char *prefix_logname, char *first_vol, bool * is_exist)
 {
   int exist_cnt;
   int error_code = NO_ERROR;
@@ -11335,7 +11385,7 @@ logpb_last_complete_blockid (void)
  *   is_page_corrupted(out): true, if the log page is corrupted.
  */
 int
-logpb_page_check_corruption (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, bool *is_page_corrupted)
+logpb_page_check_corruption (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, bool * is_page_corrupted)
 {
   int error_code;
   bool has_valid_checksum;

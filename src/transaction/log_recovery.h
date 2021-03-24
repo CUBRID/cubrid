@@ -16,8 +16,8 @@
  *
  */
 
-#ifndef LOG_RECOVERY_H
-#define LOG_RECOVERY_H
+#ifndef _LOG_RECOVERY_H_
+#define _LOG_RECOVERY_H_
 
 #include "log_compress.h"
 #include "log_lsa.hpp"
@@ -51,4 +51,4 @@ void log_rv_redo_record (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
 			 int undo_length, const char *undo_data, LOG_ZIP &redo_unzip);
 // *INDENT-ON*
 
-#endif // LOG_RECOVERY_H
+#endif // _LOG_RECOVERY_H_

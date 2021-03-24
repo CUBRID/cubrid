@@ -22,11 +22,13 @@
 enum class ats_to_ps_request
 {
   SEND_LOG_PRIOR_LIST,
+  SEND_LOG_PAGE_FETCH,
+  SEND_DATA_PAGE_FETCH
 };
 
 enum class ps_to_ats_request
 {
-  TODO,  // replace with first request type
+  SEND_SAVED_LSA,
 };
 
 #endif // !_ATS_PS_REQUEST_IDS_HPP_
