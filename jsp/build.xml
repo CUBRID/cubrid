@@ -1,83 +1,79 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE project>
 
-<project xmlns:ivy="antlib:org.apache.ivy.ant" default="dist" name="Java Stored Procedure Server">
-    <property name="basedir" value=""/>
-    <property name="src" value="src/jsp"/>
-    <property name="build" value="bin"/>
-    <property name="version" value=""/>
-    <property name="main.class" value="com.cubrid.jsp.Server"/>
-    <property name="jar.file" value="jspserver.jar"/>
+<project name="Java Stored Procedure Server" default="dist" xmlns:ivy="antlib:org.apache.ivy.ant" >
+    
+    <!--
+    ================
+    Build properties
+    ================
+    -->
+    <property name="src.dir" value="src/jsp"/>
+    <property name="build.dir" value="bin"/>
+    <property name="classes.dir" location="${build.dir}/classes"/>
+    <property name="test.classes.dir" location="${build.dir}/test-classes"/>
+    <property name="ivy.reports.dir"  location="${build.dir}/ivy-reports"/>
 
+    <property name="dist.main.class" value="com.cubrid.jsp.Server"/>
+    <property name="dist.jar" value="jspserver.jar"/>
+    <property name="dist.lib" value="lib"/>
+
+    <!--
+    ===========
+    Build setup
+    ===========
+    -->
     <target name="init">
-        <mkdir dir="${build}"/>
+        <ivy:resolve/>
+
+        <ivy:report todir="${ivy.reports.dir}" graph='false' xml='false'/>
+
+        <ivy:cachepath pathid="compile.path" conf="compile"/>
+        <ivy:cachepath pathid="runtime.path" conf="runtime"/>
+        <ivy:cachepath pathid="test.path"    conf="test"/>
+
+        <mkdir dir="${build.dir}"/>
+        <mkdir dir="${classes.dir}"/>
+        <mkdir dir="${test.classes.dir}"/>
+        <mkdir dir="${ivy.reports.dir}"/>
         <mkdir dir="src-jsp"/>
 
-        <available property="jdk1.3+" classname="java.lang.StrictMath"/>
-        <available property="jdk1.4+" classname="java.lang.CharSequence"/>
-        <available property="jdk1.5+" classname="java.lang.Readable"/>
-        <available property="jdk1.6+" classname="java.sql.NClob"/>
-
-        <condition property="isUnderJDK6">
-            <not>
-                <equals arg1="${jdk1.6+}" arg2="true" />
-            </not>
-        </condition>
-
-        <condition property="isJDK6">
-            <equals arg1="${ant.java.version}" arg2="1.6" />
-        </condition>
-
         <copy todir="src-jsp">
-            <fileset dir="${src}">
-                <include name="com/**/*.java"/>
+            <fileset dir="${src.dir}">
+                <include name="**/*.java"/>
             </fileset>
-            <filterset>
-                <filter token="JDBC_DRIVER_VERSION_STRING" value="${version}"/>
-            </filterset>
         </copy>
+    </target>
+
+    <target name="compile" depends="init">
+        <javac srcdir="src-jsp" destdir="${classes.dir}" source="1.6" target="1.6" includeantruntime="no" encoding="UTF-8" debug="true" classpathref="runtime.path">
+            <include name="**/*.java"/>
+        </javac>
     </target>
 
     <target name="clean">
         <delete failonerror="false" includeEmptyDirs="true">
             <fileset dir="src-jsp"/>
-            <fileset dir="${build}"/>
+            <fileset dir="${ivy.reports.dir}"/>
+            <fileset dir="${test.classes.dir}"/>
+            <fileset dir="${classes.dir}"/>
+            <fileset dir="${build.dir}"/>
             <fileset file="*.jar"/>
         </delete>
     </target>
 
-    <target name="resolve" depends="init" description="Download dependencies and setup classpaths">
-        <ivy:resolve/>
-        <ivy:cachepath pathid="build.path" conf="build"/>
-    </target>
-
-    <target name="compile" depends="resolve">
-        <ivy:retrieve />
-        <!--
-        <manifestclasspath property="jar.classpath" jarfile="${jar.file}">
+    <target name="dist" depends="compile">
+        <ivy:retrieve pattern="${dist.lib}/[artifact].[ext]" conf="runtime"/>
+        
+        <manifestclasspath property="jar.classpath" jarfile="${dist.jar}">
             <classpath>
                 <fileset dir="${dist.lib}" includes="*.jar"/>
             </classpath>
         </manifestclasspath>
-        -->
-        <!-- 
-        pattern="${dist.lib}/[artifact]-[revision](-[classifier]).[ext]"/> 
-        -->
-        
-        <javac destdir="${build}" source="1.6" target="1.6" encoding="UTF-8" debug="true" debuglevel="lines,source" deprecation="off" includeantruntime="no">
-            <src path="src-jsp"/>
-            <include name="**/*.java"/>
-            <classpath refId="build.path"/>
-        </javac>
-    </target>
 
-    <target name="build" depends="compile">
-    </target>
-
-    <target name="dist" depends="build">
-        <jar jarfile="${jar.file}" basedir="${build}">
+        <jar jarfile="${dist.jar}" basedir="${classes.dir}">
             <manifest>
-                    <attribute name="Main-Class" value="${main.class}"/>
+                    <attribute name="Main-Class" value="${dist.main.class}"/>
                     <attribute name="Class-Path" value="${jar.classpath}"/>
             </manifest>
         </jar>

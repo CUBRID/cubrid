@@ -115,6 +115,7 @@ option(ENABLE_32BIT "Build for 32-bit banaries (on 64-bit platform)" OFF)
 option(ENABLE_SYSTEMTAP "Enable dynamic tracing support using systemtap" ${ENABLE_SYSTEMTAP_DEFAULT})
 option(USE_DUMA "Use Detect Unintended Memory Access library" OFF)
 option(USE_CUBRID_ENV "Use CUBRID environment variables" ON)
+option(WITH_JDBC "Build with JDBC driver" ON)
 option(WITH_CMSERVER "Build with Manager server" ON)
 option(UNIT_TESTS "Unit tests" OFF)
 
@@ -440,6 +441,13 @@ flex_target(esql_lexer ${ESQL_LEXER_INPUT} ${ESQL_LEXER_OUTPUT}
 add_flex_bison_dependency(esql_lexer esql_grammar)
 add_custom_target(gen_esql_grammar DEPENDS ${BISON_esql_grammar_OUTPUTS})
 add_custom_target(gen_esql_lexer DEPENDS ${FLEX_esql_lexer_OUTPUTS})
+
+# For java stored procedure server
+include(FindJNI)
+find_package(JNI 1.5)
+if(JNI_FOUND)
+  set(JAVA_INC ${JAVA_INCLUDE_PATH} ${JAVA_INCLUDE_PATH2})
+endif(JNI_FOUND)
 
 # Build types
 if(CMAKE_BUILD_TYPE MATCHES "Coverage")
@@ -1142,6 +1150,41 @@ endif()
 if(WIN32)
   add_subdirectory(win)
 endif(WIN32)
+
+if(WITH_JDBC AND EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
+  set(JDBC_DIR ${CMAKE_SOURCE_DIR}/cubrid-jdbc)
+  set(JDBC_VERSION_FILE ${JDBC_DIR}/VERSION)
+  set(JDBC_SOURCE ${JDBC_DIR}/src)
+
+  # build JDBC
+  file(STRINGS ${JDBC_VERSION_FILE} JDBC_VERSION_STR)
+  
+  add_custom_target(jdbc_build ALL
+    COMMAND ${CMAKE_COMMAND} -E copy ${JDBC_VERSION_FILE} ${JDBC_SOURCE}/output/CUBRID-JDBC-${JDBC_VERSION_STR}
+    COMMAND ${ANT} dist-cubrid -buildfile ${JDBC_DIR}/build.xml -Dbasedir=${JDBC_DIR} -Dversion=${JDBC_VERSION_STR} -Dsrc=${JDBC_SOURCE}
+    COMMENT "Build JDBC driver with Ant ..."
+  )
+
+  if(UNIX)
+    add_custom_command(TARGET jdbc_build POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E create_symlink ${JDBC_DIR}/JDBC-${JDBC_VERSION_STR}-cubrid.jar ${JDBC_DIR}/cubrid_jdbc.jar
+      )
+  else(UNIX)
+    add_custom_command(TARGET jdbc_build POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy ${JDBC_DIR}/JDBC-${JDBC_VERSION_STR}-cubrid.jar ${JDBC_DIR}/cubrid_jdbc.jar
+      )
+  endif(UNIX)
+
+  # dist JDBC
+  set(CUBRID_JDBCDIR jdbc)
+  install(DIRECTORY DESTINATION ${CUBRID_JDBCDIR})
+
+  install(FILES
+  ${JDBC_DIR}/JDBC-${JDBC_VERSION_STR}-cubrid.jar
+  ${JDBC_DIR}/cubrid_jdbc.jar
+  ${JDBC_DIR}/JDBC-${JDBC_VERSION_STR}-cubrid-src.jar
+  DESTINATION ${CUBRID_JDBCDIR} COMPONENT JDBC)
+endif()
 
 if(WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager/server)
   get_target_property(CCI_PUBLIC_HEADERS cascci PUBLIC_HEADER)

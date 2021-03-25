@@ -15,14 +15,33 @@
 #   limitations under the License.
 # 
 #
+include(FindJava)
+find_package(Java 1.5 COMPONENTS Development)
+
+find_program(ANT ant PATHS $ENV{ANT_HOME} ENV PATH)
+if(NOT ANT)
+  message(FATAL_ERROR "The ANT was not found. check PATH or install ant to build JDBC")
+endif(NOT ANT)
 
 add_custom_target(jsp_build ALL
-  COMMAND ${ANT} dist -buildfile ${CMAKE_SOURCE_DIR}/java/build.xml -Dbasedir=. -Dversion=${BUILD_NUMBER} -Dsrc=${JDBC_DIR}
+  COMMAND ${CMAKE_COMMAND} -E echo "copying ivy.xml to ${CMAKE_BINARY_DIR}/jsp/ivy.xml"
+  COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/jsp/ivy.xml ${CMAKE_BINARY_DIR}/jsp/ivy.xml
+  COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/jsp/ivysettings.xml ${CMAKE_BINARY_DIR}/jsp/ivysettings.xml
+  COMMAND ${ANT} dist -buildfile ${CMAKE_SOURCE_DIR}/jsp/build.xml -Dbasedir=. -Dversion=${BUILD_NUMBER} -Dsrc.dir=${JSP_DIR}
   COMMENT "Build JSP driver with Ant ..."
-  )
+)
 
+#COMMAND ${CMAKE_COMMAND} -E echo "copying ivy.xml to ${CMAKE_BINARY_DIR}/jsp/ivy.xml"
+#COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/jsp/ivy.xml ${CMAKE_BINARY_DIR}/jsp/ivy.xml
+#COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/jsp/ivysettings.xml ${CMAKE_BINARY_DIR}/jsp/ivysettings.xml
 
 install(FILES
   ${CMAKE_CURRENT_BINARY_DIR}/jspserver.jar
-  ${JDBC_DIR}/logging.properties
-  DESTINATION ${CUBRID_JAVADIR})
+  ${JSP_DIR}/logging.properties
+  DESTINATION ${CUBRID_JAVADIR}
+)
+
+install(DIRECTORY
+  ${CMAKE_CURRENT_BINARY_DIR}/lib/
+  DESTINATION ${CUBRID_JAVADIR}/lib
+)

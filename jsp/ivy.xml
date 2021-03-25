@@ -1,9 +1,11 @@
 <ivy-module version="2.0">
     <info organisation="org.apache" module="cubrid-jsp"/>
     <configurations>
-        <conf name="build" description="Libraries needed to for compilation"/>
+        <conf name="compile"/>
+        <conf name="runtime" extends="compile"/>
+        <conf name="test" extends="runtime"/>
     </configurations>
     <dependencies>
-        <dependency org="cubrid" name="cubrid-jdbc" rev="11.0.0.0248"/>
+        <dependency org="cubrid" name="cubrid-jdbc" rev="11.0.0.0248" conf="runtime->default"/>
     </dependencies>
 </ivy-module>
