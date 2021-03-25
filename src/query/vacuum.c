@@ -1111,8 +1111,7 @@ xvacuum_dump (THREAD_ENTRY * thread_p, FILE * outfp)
       outfp = stdout;
     }
 
-  /* vacuum_boot () != NO_ERROR || prm_get_bool_value (PRM_ID_DISABLE_VACUUM) == true */
-  if (!vacuum_is_safe_to_remove_archives ())
+  if (!vacuum_Is_booted)
     {
       fprintf (outfp, "vacuum did not boot properly.\n");
       return;
