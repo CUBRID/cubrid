@@ -40,10 +40,11 @@ namespace cublog
     log_zip_realloc_if_needed (m_redo_unzip, LOGAREA_SIZE);
 
     // Create the daemon
-    cubthread::looper loop (std::chrono::milliseconds (1));   // loop every 1 millisecond
-    auto task_func = std::bind (&replicator::redo_upto_nxiolsa, std::ref (*this), std::placeholders::_1);
+    cubthread::looper loop (std::chrono::milliseconds (1));   // don't spin when there is no new log, wait a bit
+    auto task_func = std::bind (&replicator::redo_upto_nxio_lsa, std::ref (*this), std::placeholders::_1);
     auto task = new cubthread::entry_callable_task (task_func);
 
+    // NOTE: task ownership goes to the thread manager
     m_daemon = cubthread::get_manager ()->create_daemon (loop, task, "cublog::replicator");
   }
 
@@ -56,13 +57,13 @@ namespace cublog
   }
 
   void
-  replicator::redo_upto_nxiolsa (cubthread::entry &thread_entry)
+  replicator::redo_upto_nxio_lsa (cubthread::entry &thread_entry)
   {
     thread_entry.tran_index = LOG_SYSTEM_TRAN_INDEX;
 
     while (true)
       {
-	log_lsa nxio_lsa = log_Gl.append.get_nxio_lsa ();
+	const log_lsa nxio_lsa = log_Gl.append.get_nxio_lsa ();
 	if (m_redo_lsa < nxio_lsa)
 	  {
 	    redo_upto (thread_entry, nxio_lsa);
@@ -90,7 +91,7 @@ namespace cublog
 	// read and redo a record
 	m_reader.set_lsa_and_fetch_page (m_redo_lsa);
 
-	log_rec_header header = m_reader.reinterpret_copy_and_add_align<log_rec_header> ();
+	const log_rec_header header = m_reader.reinterpret_copy_and_add_align<log_rec_header> ();
 
 	switch (header.type)
 	  {
@@ -128,9 +129,10 @@ namespace cublog
 	    break;
 	  }
 
-	m_redo_mutex.lock ();
-	m_redo_lsa = header.forw_lsa;
-	m_redo_mutex.unlock ();
+	{
+	  std::unique_lock<std::mutex> lock (m_redo_mutex);
+	  m_redo_lsa = header.forw_lsa;
+	}
 	if (m_redo_lsa == end_redo_lsa)
 	  {
 	    // notify who waits for end of replication

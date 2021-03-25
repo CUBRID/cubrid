@@ -135,20 +135,19 @@ void
 page_server::start_log_replicator (const log_lsa &start_lsa)
 {
   assert_page_server_type ();
+  assert (m_replicator == nullptr);
 
-  m_replicator = new cublog::replicator (start_lsa);
+  m_replicator.reset (new cublog::replicator (start_lsa));
 }
 
 void
 page_server::finish_replication (cubthread::entry &thread_entry)
 {
-  if (m_replicator)
-    {
-      logpb_force_flush_pages (&thread_entry);
-      m_replicator->wait_replication_finish ();
-      delete m_replicator;
-      m_replicator = nullptr;
-    }
+  assert (m_replicator != nullptr);
+
+  logpb_force_flush_pages (&thread_entry);
+  m_replicator->wait_replication_finish ();
+  m_replicator.reset (nullptr);
 }
 
 void

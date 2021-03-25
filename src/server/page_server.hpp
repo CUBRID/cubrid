@@ -68,7 +68,7 @@ class page_server
     std::unique_ptr<active_tran_server_request_queue> m_ats_request_queue;
     std::unique_ptr<active_tran_server_request_autosend> m_ats_request_autosend;
 
-    cublog::replicator *m_replicator = nullptr;
+    std::unique_ptr<cublog::replicator> m_replicator;
 };
 
 extern page_server ps_Gl;
