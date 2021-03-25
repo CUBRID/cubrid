@@ -48,7 +48,7 @@ namespace cublog
       // get trans/sysops info from transaction table
       void recovery_analysis (THREAD_ENTRY *thread_p,
 			      log_lsa &start_redo_lsa);	   // restore transaction table based on checkpoint info
-      void recovery_2pc_analysis () const;	      // if m_has_2pc, also do 2pc analysis
+      void recovery_2pc_analysis (THREAD_ENTRY *thread_p) const;	      // if m_has_2pc, also do 2pc analysis
 
       const log_lsa &get_snapshot_lsa () const;	      // the LSA of loaded snapshot
       const log_lsa &get_start_redo_lsa () const;     // the LSA of starting redo (min LSA of checkpoint and oldest unflushed)

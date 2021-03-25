@@ -679,3 +679,15 @@ log_read_sysop_start_postpone (THREAD_ENTRY *thread_p, LOG_LSA *log_lsa, LOG_PAG
 {
   assert (false);
 }
+
+int
+logtb_find_tran_index (THREAD_ENTRY *thread_p, TRANID trid)
+{
+  assert (false);
+}
+
+void
+log_2pc_recovery_analysis_info (THREAD_ENTRY *thread_p, log_tdes *tdes, LOG_LSA *upto_chain_lsa)
+{
+  assert (false);
+}
