@@ -1132,7 +1132,7 @@ xvacuum_dump (THREAD_ENTRY * thread_p, FILE * outfp)
 
   if (logpb_is_page_in_archive (min_log_pageid))
     {
-      LOG_CS_ENTER (thread_p);
+      LOG_CS_ENTER_READ_MODE (thread_p);
       archive_number = logpb_get_archive_number (thread_p, min_log_pageid);
       if (archive_number < 0)
 	{
