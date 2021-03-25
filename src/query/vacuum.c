@@ -1106,10 +1106,7 @@ xvacuum_dump (THREAD_ENTRY * thread_p, FILE * outfp)
   LOG_PAGEID min_log_pageid = NULL_PAGEID;
   int archive_number;
 
-  if (outfp == NULL)
-    {
-      outfp = stdout;
-    }
+  assert (outfp != NULL);
 
   if (!vacuum_Is_booted)
     {
