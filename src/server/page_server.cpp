@@ -21,6 +21,7 @@
 #include "error_manager.h"
 #include "log_impl.h"
 #include "log_prior_recv.hpp"
+#include "log_replication.hpp"
 #include "packer.hpp"
 #include "server_type.hpp"
 #include "system_parameter.h"
@@ -35,7 +36,8 @@ static void assert_page_server_type ();
 
 page_server::~page_server ()
 {
-  disconnect_active_tran_server ();
+  assert (m_ats_conn == nullptr);
+  assert (m_replicator == nullptr);
 }
 
 void
@@ -127,6 +129,25 @@ page_server::push_request_to_active_tran_server (ps_to_ats_request reqid, std::s
   assert (is_active_tran_server_connected ());
 
   m_ats_request_queue->push (reqid, std::move (payload));
+}
+
+void
+page_server::start_log_replicator (const log_lsa &start_lsa)
+{
+  assert_page_server_type ();
+  assert (m_replicator == nullptr);
+
+  m_replicator.reset (new cublog::replicator (start_lsa));
+}
+
+void
+page_server::finish_replication (cubthread::entry &thread_entry)
+{
+  assert (m_replicator != nullptr);
+
+  logpb_force_flush_pages (&thread_entry);
+  m_replicator->wait_replication_finish ();
+  m_replicator.reset (nullptr);
 }
 
 void

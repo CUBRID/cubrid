@@ -63,10 +63,6 @@
 static void log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 				LOG_RCVINDEX rcvindex, const VPID * rcv_vpid, LOG_RCV * rcv,
 				const LOG_LSA * rcv_lsa_ptr, LOG_TDES * tdes, LOG_ZIP * undo_unzip_ptr);
-static void log_rv_redo_record (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader,
-				int (*redofun) (THREAD_ENTRY * thread_p, LOG_RCV *), LOG_RCV * rcv,
-				const LOG_LSA * rcv_lsa_ptr, int undo_length, const char *undo_data,
-				LOG_ZIP & redo_unzip);
 
 static bool log_rv_need_sync_redo (LOG_RCVINDEX rcvindex);
 // *INDENT-OFF*
@@ -448,7 +444,7 @@ end:
  *
  * NOTE: Execute a redo log record.
  */
-static void
+void
 log_rv_redo_record (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader,
 		    int (*redofun) (THREAD_ENTRY * thread_p, LOG_RCV *), LOG_RCV * rcv,
 		    const LOG_LSA * rcv_lsa_ptr, int undo_length, const char *undo_data, LOG_ZIP & redo_unzip)
@@ -524,6 +520,8 @@ log_rv_fix_page_and_check_redo_is_needed (THREAD_ENTRY * thread_p, const VPID & 
       if (rcv.pgptr == nullptr)
 	{
 	  /* the page was changed and also deallocated in the meantime, no need to apply redo */
+	  // only acceptable during recovery, not acceptable for replication
+	  assert (log_is_in_crash_recovery ());
 	  return false;
 	}
     }
@@ -542,6 +540,8 @@ log_rv_fix_page_and_check_redo_is_needed (THREAD_ENTRY * thread_p, const VPID & 
       if (rcv_lsa <= *rcv_page_ptr)
 	{
 	  /* already applied, make sure to unfix the page */
+	  // only acceptable during recovery, not acceptable for replication
+	  assert (log_is_in_crash_recovery ());
 	  pgbuf_unfix_and_init (thread_p, rcv.pgptr);
 	  return false;
 	}

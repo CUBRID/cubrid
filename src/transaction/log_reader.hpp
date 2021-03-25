@@ -42,6 +42,12 @@ class log_reader final
     log_reader &operator = (log_reader const & ) = delete;
     log_reader &operator = (log_reader && ) = delete;
 
+    enum class fetch_mode
+    {
+      NORMAL,
+      FORCE
+    };
+
     inline const log_lsa &get_lsa() const
     {
       return m_lsa;
@@ -57,7 +63,7 @@ class log_reader final
       return m_lsa.offset;
     }
 
-    int set_lsa_and_fetch_page (const log_lsa &lsa);
+    int set_lsa_and_fetch_page (const log_lsa &lsa, fetch_mode fetch_page_mode = fetch_mode::NORMAL);
     const log_hdrpage &get_page_header() const;
 
     /*

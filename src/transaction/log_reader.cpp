@@ -26,9 +26,9 @@ log_reader::log_reader ()
   m_page = reinterpret_cast<log_page *> (PTR_ALIGN (m_area_buffer, MAX_ALIGNMENT));
 }
 
-int log_reader::set_lsa_and_fetch_page (const log_lsa &lsa)
+int log_reader::set_lsa_and_fetch_page (const log_lsa &lsa, fetch_mode fetch_page_mode)
 {
-  const bool do_fetch_page { m_lsa.pageid != lsa.pageid };
+  const bool do_fetch_page { fetch_page_mode == fetch_mode::FORCE || m_lsa.pageid != lsa.pageid };
   m_lsa = lsa;
   if (do_fetch_page)
     {
