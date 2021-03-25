@@ -47,7 +47,7 @@ namespace cublog
       void load_trantable_snapshot (THREAD_ENTRY *thread_p, LOG_LSA &smallest_lsa);
       // get trans/sysops info from transaction table
       void recovery_analysis (THREAD_ENTRY *thread_p,
-			      log_lsa &start_redo_lsa) const;	   // restore transaction table based on checkpoint info
+			      log_lsa &start_redo_lsa);	   // restore transaction table based on checkpoint info
       void recovery_2pc_analysis () const;	      // if m_has_2pc, also do 2pc analysis
 
       const log_lsa &get_snapshot_lsa () const;	      // the LSA of loaded snapshot
@@ -57,6 +57,7 @@ namespace cublog
     private:
       void load_checkpoint_trans (log_tdes &tdes, LOG_LSA &smallest_lsa);
       void load_checkpoint_topop (log_tdes &tdes);
+
 
       log_lsa m_start_redo_lsa;
       log_lsa m_snapshot_lsa;

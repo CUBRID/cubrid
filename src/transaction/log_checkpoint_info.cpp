@@ -18,9 +18,10 @@
 
 #include "log_checkpoint_info.hpp"
 
-#include "log_impl.h"
 #include "client_credentials.hpp"
 #include "critical_section.h"
+#include "log_impl.h"
+#include "log_manager.h"
 #include "memory_alloc.h"
 #include "page_buffer.h"
 #include "transaction_global.hpp"
@@ -287,7 +288,7 @@ namespace cublog
   }
 
   void
-  checkpoint_info::recovery_analysis (THREAD_ENTRY *thread_p, log_lsa &start_redo_lsa) const
+  checkpoint_info::recovery_analysis (THREAD_ENTRY *thread_p, log_lsa &start_redo_lsa)
   {
     int i, size, error_code;
     void *area;
@@ -311,7 +312,7 @@ namespace cublog
 	 * unilaterally aborted. The truth of this statement will be find
 	 * reading the rest of the log
 	 */
-	tdes = logtb_rv_find_allocate_tran_index (thread_p, chkpt.trid, chkpt);
+	tdes = logtb_rv_find_allocate_tran_index (thread_p, chkpt.trid, &NULL_LSA);
 	if (tdes == NULL)
 	  {
 	    if (area != NULL)
@@ -368,35 +369,24 @@ namespace cublog
     log_page_local->hdr.logical_pageid = NULL_PAGEID;
     log_page_local->hdr.offset = NULL_OFFSET;
 
-    if (m_sysops.size() > 0)
+    for (auto sysop : m_sysops)
       {
-	size = sizeof (LOG_INFO_CHKPT_SYSOP) * m_sysops.size();
-	if (log_lsa->offset + size < (int) LOGAREA_SIZE)
+	chkpt_topone = &sysop;
+	tdes = logtb_rv_find_allocate_tran_index (thread_p, chkpt_topone->trid, &NULL_LSA);
+	if (tdes == NULL)
 	  {
-	    chkpt_topops = ((LOG_INFO_CHKPT_SYSOP *) ((char *) log_page_p->area + log_lsa->offset));
-	    log_lsa->offset += size;
-	  }
-	else
-	  {
-	    /* Need to copy the data into a contiguous area */
-	    area = malloc (size);
-	    if (area == NULL)
+	    if (area != NULL)
 	      {
-		logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_analysis");
-		return;
+		free_and_init (area);
 	      }
-	    /* Copy the data */
-	    logpb_copy_from_log (thread_p, (char *) area, size, log_lsa, log_page_p);
-	    chkpt_topops = (LOG_INFO_CHKPT_SYSOP *) area;
+
+	    logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_analysis");
+	    return;
 	  }
 
-	/* Add the top system operations to the transactions */
-
-	for (auto sysop : m_sysops)
+	if (tdes->topops.max == 0 || (tdes->topops.last + 1) >= tdes->topops.max)
 	  {
-	    chkpt_topone = &sysop;
-	    tdes = logtb_rv_find_allocate_tran_index (thread_p, chkpt_topone->trid, log_lsa);
-	    if (tdes == NULL)
+	    if (logtb_realloc_topops_stack (tdes, m_sysops.size()) == NULL)
 	      {
 		if (area != NULL)
 		  {
@@ -406,44 +396,140 @@ namespace cublog
 		logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_analysis");
 		return;
 	      }
-
-	    if (tdes->topops.max == 0 || (tdes->topops.last + 1) >= tdes->topops.max)
-	      {
-		if (logtb_realloc_topops_stack (tdes, chkpt.ntops) == NULL)
-		  {
-		    if (area != NULL)
-		      {
-			free_and_init (area);
-		      }
-
-		    logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_analysis");
-		    return;
-		  }
-	      }
-
-	    if (tdes->topops.last == -1)
-	      {
-		tdes->topops.last++;
-	      }
-	    else
-	      {
-		assert (tdes->topops.last == 0);
-	      }
-	    tdes->rcv.sysop_start_postpone_lsa = chkpt_topone->sysop_start_postpone_lsa;
-	    tdes->rcv.atomic_sysop_start_lsa = chkpt_topone->atomic_sysop_start_lsa;
-	    log_lsa_local = chkpt_topone->sysop_start_postpone_lsa;
-	    error_code =
-		    log_read_sysop_start_postpone (thread_p, &log_lsa_local, log_page_local, false, &sysop_start_postpone,
-						   NULL, NULL, NULL, NULL);
-	    if (error_code != NO_ERROR)
-	      {
-		assert (false);
-		return;
-	      }
-	    tdes->topops.stack[tdes->topops.last].lastparent_lsa = sysop_start_postpone.sysop_end.lastparent_lsa;
-	    tdes->topops.stack[tdes->topops.last].posp_lsa = sysop_start_postpone.posp_lsa;
 	  }
+
+	if (tdes->topops.last == -1)
+	  {
+	    tdes->topops.last++;
+	  }
+	else
+	  {
+	    assert (tdes->topops.last == 0);
+	  }
+	tdes->rcv.sysop_start_postpone_lsa = chkpt_topone->sysop_start_postpone_lsa;
+	tdes->rcv.atomic_sysop_start_lsa = chkpt_topone->atomic_sysop_start_lsa;
+	log_lsa_local = chkpt_topone->sysop_start_postpone_lsa;
+	error_code =
+		log_read_sysop_start_postpone (thread_p, &log_lsa_local, log_page_local, false, &sysop_start_postpone,
+					       NULL, NULL, NULL, NULL);
+	if (error_code != NO_ERROR)
+	  {
+	    assert (false);
+	    return;
+	  }
+	tdes->topops.stack[tdes->topops.last].lastparent_lsa = sysop_start_postpone.sysop_end.lastparent_lsa;
+	tdes->topops.stack[tdes->topops.last].posp_lsa = sysop_start_postpone.posp_lsa;
       }
   }
+  void
+  checkpoint_info::recovery_2pc_analysis() const
+  {
+
+  }
+
+//  void
+//  log_2pc_recovery_analysis_info (THREAD_ENTRY * thread_p, log_tdes * tdes, LOG_LSA * upto_chain_lsa)
+//  {
+//    LOG_RECORD_HEADER *log_rec;	/* Pointer to log record */
+//    char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
+//    LOG_PAGE *log_page_p = NULL;	/* Log page pointer where LSA is located */
+//    LOG_LSA lsa;
+//    LOG_LSA prev_tranlsa;		/* prev LSA of transaction */
+//    bool search_2pc_prepare = false;
+//    bool search_2pc_start = false;
+//    int ack_count = 0;
+//    int *ack_list = NULL;
+//    int size_ack_list = 0;
+
+//    aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+
+//    if (!LOG_ISTRAN_2PC (tdes))
+//      {
+//        return;
+//      }
+
+//    /* For a transaction that was prepared to commit at the time of the crash, make sure that its global transaction
+//     * identifier is obtained from the log and that the update_type locks that were acquired before the time of the crash
+//     * are reacquired. */
+
+//    if (tdes->gtrid == LOG_2PC_NULL_GTRID)
+//      {
+//        search_2pc_prepare = true;
+//      }
+
+//    /* If this is a coordinator transaction performing 2PC and voting record has not been read from the log in the
+//     * recovery redo phase, read the voting record and any acknowledgement records logged for this transaction */
+
+//    if (tdes->coord == NULL)
+//      {
+//        search_2pc_start = true;
+//      }
+
+//    /*
+//     * Follow the undo tail chain starting at upto_chain_tail finding all
+//     * 2PC related information
+//     */
+//    log_page_p = (LOG_PAGE *) aligned_log_pgbuf;
+
+//    LSA_COPY (&prev_tranlsa, upto_chain_lsa);
+//    while (!LSA_ISNULL (&prev_tranlsa) && (search_2pc_prepare || search_2pc_start))
+//      {
+//        LSA_COPY (&lsa, &prev_tranlsa);
+//        if ((logpb_fetch_page (thread_p, &lsa, LOG_CS_FORCE_USE, log_page_p)) != NO_ERROR)
+//          {
+//            logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_recovery_analysis_info");
+//            break;
+//          }
+
+//        while (prev_tranlsa.pageid == lsa.pageid && (search_2pc_prepare || search_2pc_start))
+//          {
+//            lsa.offset = prev_tranlsa.offset;
+
+//            log_rec = LOG_GET_LOG_RECORD_HEADER (log_page_p, &lsa);
+//            LSA_COPY (&prev_tranlsa, &log_rec->prev_tranlsa);
+
+//            if (log_2pc_recovery_analysis_record
+//                (thread_p, log_rec->type, tdes, &lsa, log_page_p, &ack_list, &ack_count, &size_ack_list,
+//                 &search_2pc_prepare, &search_2pc_start) != NO_ERROR)
+//              {
+//                LSA_SET_NULL (&prev_tranlsa);
+//              }
+//            free_and_init (ack_list);
+//          }			/* while */
+//      }				/* while */
+
+//    /* Check for error conditions */
+//    if (tdes->state == TRAN_UNACTIVE_2PC_PREPARE && tdes->gtrid == LOG_2PC_NULL_GTRID)
+//      {
+//  #if defined(CUBRID_DEBUG)
+//        er_log_debug (ARG_FILE_LINE,
+//                      "log_2pc_recovery_analysis_info:" " SYSTEM ERROR... Either the LOG_2PC_PREPARE/LOG_2PC_START\n"
+//                      " log record was not found for participant of distributed" " trid = %d with state = %s", tdes->trid,
+//                      log_state_string (tdes->state));
+//  #endif /* CUBRID_DEBUG */
+//      }
+
+//    /*
+//     * Now the client should attach to this prepared transaction and
+//     * provide the decision (commit/abort). Until then this thread
+//     * is suspended.
+//     */
+
+//    if (search_2pc_start)
+//      {
+//        /*
+//         * A 2PC start log record was not found for the coordinator
+//         */
+//        if (tdes->state != TRAN_UNACTIVE_2PC_PREPARE)
+//          {
+//  #if defined(CUBRID_DEBUG)
+//            er_log_debug (ARG_FILE_LINE,
+//                          "log_2pc_recovery_analysis_info:" " SYSTEM ERROR... The LOG_2PC_START log record was"
+//                          " not found for coordinator of distributed trid = %d" " with state = %s", tdes->trid,
+//                          log_state_string (tdes->state));
+//  #endif /* CUBRID_DEBUG */
+//          }
+//      }
+//  }
 }
 
