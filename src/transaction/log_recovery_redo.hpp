@@ -513,13 +513,13 @@ class vpid_lsa_consistency_check
     vpid_lsa_consistency_check() = default;
     ~vpid_lsa_consistency_check() = default;
 
-    vpid_lsa_consistency_check(const vpid_lsa_consistency_check&) = delete;
-    vpid_lsa_consistency_check(vpid_lsa_consistency_check&&) = delete;
+    vpid_lsa_consistency_check (const vpid_lsa_consistency_check &) = delete;
+    vpid_lsa_consistency_check (vpid_lsa_consistency_check &&) = delete;
 
-    vpid_lsa_consistency_check& operator=(const vpid_lsa_consistency_check&) = delete;
-    vpid_lsa_consistency_check& operator=(vpid_lsa_consistency_check&&) = delete;
+    vpid_lsa_consistency_check &operator= (const vpid_lsa_consistency_check &) = delete;
+    vpid_lsa_consistency_check &operator= (vpid_lsa_consistency_check &&) = delete;
 
-    void check(const struct vpid &a_vpid, const struct log_lsa &a_log_lsa);
+    void check (const struct vpid &a_vpid, const struct log_lsa &a_log_lsa);
     void cleanup();
 
   private:
