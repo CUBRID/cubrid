@@ -19,7 +19,7 @@
 #define CATCH_CONFIG_MAIN
 #include "catch2/catch.hpp"
 
-#include "log_recovery_redo_debug_helpers.hpp"
+#include "ut_database.hpp"
 
 //#include "log_recovery_redo.hpp"
 //#include "log_recovery_redo_parallel.hpp"
@@ -41,20 +41,12 @@ struct log_recovery_test_config // TODO better name
   /* the number of redo jobs to generate */
   const size_t redo_job_count;
 
-  /* one of the concurrent transactions is supposed to generate log entries in the same VPID
-   */
-  //size_t max_concurrent_transaction_count;
-
-  /* one transaction will generate log entries in one VPID; this is the
-   * max number of entries that a transaction will produce
-   */
-  //size_t max_log_entry_count_per_transaction;
-  //bool dump_prod_cons_data;
+  bool verbose;
 };
 
 static bool thread_infrastructure_initialized = bool ();
 
-cubthread::manager *initialize_thread_infrastructure ()
+void initialize_thread_infrastructure ()
 {
   if (!thread_infrastructure_initialized)
     {
@@ -71,13 +63,10 @@ cubthread::manager *initialize_thread_infrastructure ()
 
       thread_infrastructure_initialized = true;
     }
-
-  cubthread::manager *cub_thread_manager = cubthread::get_manager ();
-  return cub_thread_manager;
-
 }
 
-void execute_test (cubthread::manager *_cub_thread_manager, const db_database_config &a_database_config, const log_recovery_test_config &a_test_config)
+bool execute_test (cubthread::manager *_cub_thread_manager, const ut_database_config &a_database_config,
+		   const log_recovery_test_config &a_test_config)
 {
   cublog::redo_parallel log_redo_parallel (a_test_config.parallel_count);
 
@@ -95,13 +84,13 @@ void execute_test (cubthread::manager *_cub_thread_manager, const db_database_co
   log_recovery_ns::redo_log_rec_entry_queue bucket_queue;
 #endif
 
-  ux_db_database db_online { new db_database (a_database_config) };
+  ux_ut_database db_online { new ut_database (a_database_config) };
   db_online->initialize ();
 
-#if (0)
-  ux_db_database db_recovery { new db_database (_test_config.max_volume_count_per_database, _test_config.max_page_count_per_volume) };
+  ux_ut_database db_recovery { new ut_database (a_database_config) };
   db_recovery->initialize ();
 
+#if (0)
   //
   // launch log processing tasks
   //
@@ -121,11 +110,21 @@ void execute_test (cubthread::manager *_cub_thread_manager, const db_database_co
   //
   // produce data in the main thread
   //
-  db_global_values global_values{ a_database_config };
+  ut_database_values_generator global_values{ a_database_config };
 
   for (size_t idx = 0u; idx < a_test_config.redo_job_count; ++idx)
     {
-      ux_redo_job_unit_test_impl job = db_online->generate_changes (global_values);
+      ux_ut_redo_job_impl job = db_online->generate_changes (*db_recovery, global_values);
+
+      if (job->is_volume_creation () || job->is_page_creation ())
+	{
+	  // jobs not tied to a non-null vpid, are to be executed sync
+	  db_recovery->apply_changes (std::move (job));
+	}
+      else
+	{
+	  log_redo_parallel.add (std::move (job));
+	}
 
 //      if (_test_config.dump_prod_cons_data)
 //	{
@@ -156,98 +155,21 @@ void execute_test (cubthread::manager *_cub_thread_manager, const db_database_co
   log_redo_parallel.set_adding_finished ();
   log_redo_parallel.wait_for_termination_and_stop_execution ();
 
-#if (0)
-  //
-  // wait consumption to end
-  //
-  while (task_active_state_bookkeeping.any_active ())
-    {
-      std::this_thread::sleep_for (std::chrono::milliseconds (20));
-    }
-
-  dispatching_worker_pool->stop_execution ();
-  _cub_thread_manager->destroy_worker_pool (dispatching_worker_pool);
-
-  //
-  // output consumption details
-  //
-  if (_test_config.dump_prod_cons_data)
-    {
-      std::cout << std::endl;
-      for (const auto &acc: dbg_accumulator.get_data ())
-	{
-	  std::cout << acc;
-	}
-    }
-
-  std::cout << "BucketSkips = " << bucket_queue.get_dbg_stats_cons_queue_skip_count ()
-	    << "  SpinWaits = " << bucket_queue.get_stats_spin_wait_count ()
-	    << std::endl;
-  if (*db_online == *db_recovery)
-    {
-      std::cout << "Databases are equal" << std::endl;
-      return 0;
-    }
-  else
-    {
-      std::cout << "Databases are NOT equal" << std::endl;
-      return -1;
-    }
-#endif
+  return *db_online == *db_recovery;
 }
-
-#if (0)
-int main ()
-{
-  srand (time (nullptr));
-
-  cubthread::manager *cub_thread_manager = initialize_thread_infrastructure ();
-  assert (cub_thread_manager != nullptr);
-
-  std::array<size_t, 2> volumes_per_database_arr { 2u, 10u };
-  std::array<size_t, 3> pages_per_volume_arr { 10u, 1000u, 1024u * 16u };
-  std::array<size_t, 2> log_entry_count_arr { 32u * 1024u, 4u * 32u * 1024u };
-  for (const size_t volumes_per_database : volumes_per_database_arr)
-    for (const size_t pages_per_volume : pages_per_volume_arr)
-      for (const size_t log_entry_count : log_entry_count_arr)
-	{
-	  const log_recovery_test_config test_config =
-	  {
-	    volumes_per_database, // max_volume_count_per_database
-	    pages_per_volume, // max_page_count_per_volume
-	    std::thread::hardware_concurrency (), // task_count
-	    log_entry_count, // log_entry_count
-	    false // dump_prod_cons_data
-	  };
-
-	  std::cout << "TEST:"
-		    << "\t volumes=" << test_config.max_volume_count_per_database
-		    << "\t pages=" << test_config.max_page_count_per_volume
-		    << "\t tasks=" << test_config.task_count
-		    << "\t entries=" << test_config.log_entry_count
-		    << std::endl;
-
-	  for (int i = 0; i < 3; ++i)
-	    {
-	      std::cout << "\t#" << (i + 1) << std::endl;
-	      execute_test (cub_thread_manager, test_config);
-	    }
-	}
-
-  return 0;
-}
-#endif
 
 /* '[ci]' tests are supposed to be executed by the Continuous Integration infrastructure
  */
-TEST_CASE ("log recovery parallel test 0", "[ci]")
+TEST_CASE ("log recovery parallel test 1: just instantiation, no jobs", "[ci]")
 {
+  srand (time (nullptr));
   initialize_thread_infrastructure ();
 
   log_recovery_test_config test_config =
   {
     std::thread::hardware_concurrency (), // parallel_count
-    0, // redo_job_count;
+    0, // redo_job_count
+    false, // verbose
   };
 
   cublog::redo_parallel log_redo_parallel (test_config.parallel_count);
@@ -258,31 +180,74 @@ TEST_CASE ("log recovery parallel test 0", "[ci]")
   REQUIRE (true);
 }
 
-TEST_CASE ("log recovery parallel test 1", "[ci][cristiarg]")
+TEST_CASE ("log recovery parallel test 2: few jobs, few tasks", "[ci][crs]")
 {
+  srand (time (nullptr));
   initialize_thread_infrastructure ();
 
-  db_database_config database_config =
+  const ut_database_config database_config =
   {
     3, // max_volume_count_per_database
-    1000, // max_page_count_per_volume
+    10, // max_page_count_per_volume
     3, // max_duration_in_millis
   };
-  log_recovery_test_config test_config =
+
+  const log_recovery_test_config test_config =
   {
     2, // std::thread::hardware_concurrency () // parallel_count
     100, // redo_job_count;
+    false, // verbose
   };
-  execute_test (nullptr, database_config, test_config);
-  REQUIRE (true);
+
+  const bool test_result = execute_test (nullptr, database_config, test_config);
+  REQUIRE (test_result);
 }
 
+TEST_CASE ("log recovery parallel test N: stress test", "")
+{
+  srand (time (nullptr));
+  initialize_thread_infrastructure ();
 
-//TEST_CASE ("log recovery parallel test 2", "")
-//{
-//  initialize_thread_infrastructure ();
+  constexpr auto _1k = 1024u;
+  constexpr auto _16k = 16 * _1k;
+  constexpr auto _32k = 32 * _1k;
+  constexpr auto _64k = 64 * _1k;
+  constexpr auto _128k = 128 * _1k;
+  constexpr auto _1M = _1k * _1k;
+  constexpr auto _32M = 32 * _1k * _1k;
 
-//  log_recovery_test_config test_config;
-//  execute_test (nullptr, test_config);
-//  REQUIRE (true);
-//}
+  std::array<size_t, 3> volumes_per_database_arr { 1u, 2u, 10u };
+  std::array<size_t, 3> pages_per_volume_arr { 10u, _1k, _16k };
+  std::array<size_t, 4> log_entry_count_arr { _32k, _128k, _1M, _32M };
+  for (const size_t volume_count_per_database : volumes_per_database_arr)
+    for (const size_t page_count_per_volume : pages_per_volume_arr)
+      for (const size_t job_count : log_entry_count_arr)
+	{
+	  const ut_database_config database_config =
+	  {
+	    volume_count_per_database, // max_volume_count_per_database
+	    page_count_per_volume, // max_page_count_per_volume
+	    3, // max_duration_in_millis
+	  };
+
+	  const log_recovery_test_config test_config =
+	  {
+	    std::thread::hardware_concurrency (), // parallel_count
+	    job_count, // redo_job_count
+	    true, // verbose
+	  };
+
+	  if (test_config.verbose)
+	    {
+	      std::cout << "TEST:"
+			<< "\t volumes=" << database_config.max_volume_count_per_database
+			<< "\t pages=" << database_config.max_page_count_per_volume
+			<< "\t parallel=" << test_config.parallel_count
+			<< "\t jobs=" << test_config.redo_job_count
+			<< std::endl;
+	    }
+
+	  const bool test_result = execute_test (nullptr, database_config, test_config);
+	  REQUIRE (test_result);
+	}
+}

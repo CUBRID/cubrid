@@ -220,9 +220,7 @@ namespace cublog
       redo_job_base (VPID a_vpid)
 	: m_vpid (a_vpid)
       {
-	// the logic implemented below, in the queue and task, does allow for null-vpid type of
-	// entries to be executed - they are called "to be waited for" or "synched" operations;
-	// but, for now, do not allow them to be dispatched to be executed asynchronously
+	// deactivate this assert for unit tests
 #if !defined(LOG_RECOVERY_REDO_PARALLEL_UNIT_TEST)
 	assert (!VPID_ISNULL (&m_vpid));
 #endif
