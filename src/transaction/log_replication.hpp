@@ -48,7 +48,7 @@ namespace cublog
       void wait_replication_finish () const;
 
     private:
-      void redo_upto_nxiolsa (cubthread::entry &thread_entry);
+      void redo_upto_nxio_lsa (cubthread::entry &thread_entry);
       void redo_upto (cubthread::entry &thread_entry, const log_lsa &end_redo_lsa);
       template <typename T>
       void read_and_redo_record (cubthread::entry &thread_entry, LOG_RECTYPE rectype, const log_lsa &rec_lsa);
