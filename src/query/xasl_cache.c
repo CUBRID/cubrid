@@ -371,7 +371,6 @@ xcache_finalize (THREAD_ENTRY * thread_p)
 xasl_cache_ent::xasl_cache_ent ()
 {
   pthread_mutex_init (&cache_clones_mutex, NULL);
-  pthread_mutex_init (&query_cache_mutex, NULL);
   init_clone_cache ();
 }
 
@@ -379,7 +378,6 @@ xasl_cache_ent::~xasl_cache_ent ()
 {
   assert (cache_clones == NULL || cache_clones == &one_clone);
   pthread_mutex_destroy (&cache_clones_mutex);
-  pthread_mutex_destroy (&query_cache_mutex);
 }
 
 void
@@ -401,6 +399,8 @@ xasl_cache_ent::init_clone_cache ()
 static void *
 xcache_entry_alloc (void)
 {
+  static int xcache_nentries = 0;
+
   XASL_CACHE_ENTRY *xcache_entry = (XASL_CACHE_ENTRY *) malloc (sizeof (XASL_CACHE_ENTRY));
   if (xcache_entry == NULL)
     {
@@ -408,7 +408,9 @@ xcache_entry_alloc (void)
     }
   xcache_entry->init_clone_cache ();
   pthread_mutex_init (&xcache_entry->cache_clones_mutex, NULL);
-  pthread_mutex_init (&xcache_entry->query_cache_mutex, NULL);
+
+  xcache_entry->list_ht_no = xcache_nentries++;
+
   return xcache_entry;
 }
 
@@ -430,7 +432,6 @@ xcache_entry_free (void *entry)
       free (xcache_entry->cache_clones);
     }
   pthread_mutex_destroy (&xcache_entry->cache_clones_mutex);
-  pthread_mutex_destroy (&xcache_entry->query_cache_mutex);
   free (entry);
   return NO_ERROR;
 }
@@ -449,7 +450,6 @@ xcache_entry_init (void *entry)
   xcache_entry->related_objects = NULL;
   xcache_entry->ref_count = 0;
   xcache_entry->clr_count = 0;
-  xcache_entry->list_ht_no = -1;
 
   xcache_entry->sql_info.sql_hash_text = NULL;
   xcache_entry->sql_info.sql_user_text = NULL;
@@ -1706,33 +1706,25 @@ xcache_invalidate_qcaches (THREAD_ENTRY * thread_p, const OID * oid)
        */
       while (true)
 	{
+	  int num_entries;
+
 	  xcache_entry = iter.iterate ();
 	  if (xcache_entry == NULL)
 	    {
 	      finished = true;
 	      break;
 	    }
-	  pthread_mutex_lock (&xcache_entry->query_cache_mutex);
-	  if (xcache_entry->list_ht_no < 0)
+
+	  num_entries = qfile_get_list_cache_number_of_entries (xcache_entry->list_ht_no);
+	  if (num_entries > 0 && xcache_entry_is_related_to_oid (xcache_entry, oid))
 	    {
-	      pthread_mutex_unlock (&xcache_entry->query_cache_mutex);
-	      continue;
-	    }
-	  if (xcache_entry_is_related_to_oid (xcache_entry, oid))
-	    {
-	      res = qfile_clear_list_cache (thread_p, xcache_entry->list_ht_no, true);
+	      res = qfile_clear_list_cache (thread_p, xcache_entry->list_ht_no);
 	      if (res != NO_ERROR)
 		{
 		  finished = true;
-		  pthread_mutex_unlock (&xcache_entry->query_cache_mutex);
 		  break;
 		}
-	      if (qfile_get_list_cache_number_of_entries (xcache_entry->list_ht_no) == 0)
-		{
-		  xcache_entry->list_ht_no = -1;
-		}
 	    }
-	  pthread_mutex_unlock (&xcache_entry->query_cache_mutex);
 	}
     }
 
@@ -1776,6 +1768,8 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
        */
       while (true)
 	{
+	  int num_entries;
+
 	  xcache_entry = iter.iterate ();
 	  if (xcache_entry == NULL)
 	    {
@@ -1784,17 +1778,14 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
 	    }
 
 	  /* Check invalidation conditions. */
-	  pthread_mutex_lock (&xcache_entry->query_cache_mutex);
 	  if (invalidate_check == NULL || invalidate_check (xcache_entry, arg))
 	    {
+	      num_entries = qfile_get_list_cache_number_of_entries (xcache_entry->list_ht_no);
+
 	      /* delete query cache from xcache entry */
-	      if (xcache_entry->list_ht_no >= 0 && !QFILE_IS_LIST_CACHE_DISABLED && !qfile_has_no_cache_entries ())
+	      if (num_entries > 0 && !QFILE_IS_LIST_CACHE_DISABLED && !qfile_has_no_cache_entries ())
 		{
-		  qfile_clear_list_cache (thread_p, xcache_entry->list_ht_no, true);
-		  if (qfile_get_list_cache_number_of_entries (xcache_entry->list_ht_no) == 0)
-		    {
-		      xcache_entry->list_ht_no = -1;
-		    }
+		  qfile_clear_list_cache (thread_p, xcache_entry->list_ht_no);
 		}
 
 	      /* Mark entry as deleted. */
@@ -1811,7 +1802,6 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
 		  delete_xids[n_delete_xids++] = xcache_entry->xasl_id;
 		}
 	    }
-	  pthread_mutex_unlock (&xcache_entry->query_cache_mutex);
 
 	  if (n_delete_xids == XCACHE_DELETE_XIDS_SIZE)
 	    {
@@ -2210,8 +2200,7 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
 	{
 	  candidate.xid = xcache_entry->xasl_id;
 	  candidate.xcache = xcache_entry;
-	  if (candidate.xid.cache_flag > 0
-	      || (candidate.xid.cache_flag & XCACHE_ENTRY_FLAGS_MASK) || xcache_entry->list_ht_no >= 0)
+	  if (candidate.xid.cache_flag > 0 || (candidate.xid.cache_flag & XCACHE_ENTRY_FLAGS_MASK))
 	    {
 	      /* Either marked for delete or recompile, or already recompiled. Not a valid candidate. */
 	      continue;
@@ -2234,7 +2223,6 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
 	  candidate.xcache = xcache_entry;
 	  if (candidate.xid.cache_flag > 0
 	      || (candidate.xid.cache_flag & XCACHE_ENTRY_FLAGS_MASK)
-	      || xcache_entry->list_ht_no >= 0
 	      || TIME_DIFF_SEC (current_time, candidate.xcache->time_last_used) <= xcache_Time_threshold)
 	    {
 	      continue;
@@ -2260,6 +2248,9 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
 	}
       /* Set intention to cleanup the entry. */
       candidate.xid.cache_flag = XCACHE_ENTRY_CLEANUP;
+
+      /* clear list cache entries first */
+      (void) qfile_clear_list_cache (thread_p, candidate.xcache->list_ht_no);
 
       /* Try delete. Would be better to decache the clones here. For simplicity, since is not an usual case,
        * clone decache is postponed - is decached when retired list will be cleared.

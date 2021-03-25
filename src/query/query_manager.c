@@ -1575,11 +1575,9 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 	      assert (false);
 	    }
 
-	  pthread_mutex_lock (&xasl_cache_entry_p->query_cache_mutex);
 	  list_cache_entry_p =
-	    qfile_update_list_cache_entry (thread_p, &xasl_cache_entry_p->list_ht_no, &params, list_id_p,
+	    qfile_update_list_cache_entry (thread_p, xasl_cache_entry_p->list_ht_no, &params, list_id_p,
 					   xasl_cache_entry_p);
-	  pthread_mutex_unlock (&xasl_cache_entry_p->query_cache_mutex);
 
 	  if (list_cache_entry_p == NULL)
 	    {
