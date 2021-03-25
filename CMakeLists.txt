@@ -441,16 +441,6 @@ add_flex_bison_dependency(esql_lexer esql_grammar)
 add_custom_target(gen_esql_grammar DEPENDS ${BISON_esql_grammar_OUTPUTS})
 add_custom_target(gen_esql_lexer DEPENDS ${FLEX_esql_lexer_OUTPUTS})
 
-# java check
-include(FindJNI)
-find_package(JNI 1.5)
-if(JNI_FOUND)
-  set(JAVA_INC ${JAVA_INCLUDE_PATH} ${JAVA_INCLUDE_PATH2})
-endif(JNI_FOUND)
-
-include(FindJava)
-find_package(Java 1.5 COMPONENTS Development)
-
 # Build types
 if(CMAKE_BUILD_TYPE MATCHES "Coverage")
   set(CMAKE_CXX_FLAGS_COVERAGE "-g -O0 --coverage -fprofile-arcs -ftest-coverage -std=c++0x"
@@ -1144,6 +1134,7 @@ add_subdirectory(contrib)
 add_subdirectory(tools)
 add_subdirectory(locales)
 add_subdirectory(timezones)
+add_subdirectory(jsp)
 if(AT_LEAST_ONE_UNIT_TEST)
   add_subdirectory(unit_tests)
 endif()

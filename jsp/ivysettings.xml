@@ -1,0 +1,18 @@
+<ivysettings>
+    <properties file="build.properties" />
+    <settings defaultResolver="local-chain"/>
+    <resolvers>
+        <ibiblio name="cubrid_artifactory" m2compatible="true" root="http://maven.cubrid.org/"/>
+        <chain name="local-chain">
+            <resolver ref="cubrid_artifactory"/>
+        </chain>
+        <!--
+        <ibiblio name="ibiblio-maven2" m2compatible="true"/>
+        <ibiblio name="default" root="https://repo1.maven.org/maven2/" m2compatible="true" />
+        <chain name="local-chain">
+            <resolver ref="ibiblio-maven2"/>
+            <resolver ref="default"/>
+        </chain>
+        -->
+    </resolvers>
+</ivysettings>

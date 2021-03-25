@@ -1,11 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE project>
 
-<project default="dist" name="Java Stored Procedure">
+<project xmlns:ivy="antlib:org.apache.ivy.ant" default="dist" name="Java Stored Procedure Server">
     <property name="basedir" value=""/>
-    <property name="src" value="src/jdbc"/>
+    <property name="src" value="src/jsp"/>
     <property name="build" value="bin"/>
     <property name="version" value=""/>
+    <property name="main.class" value="com.cubrid.jsp.Server"/>
     <property name="jar.file" value="jspserver.jar"/>
 
     <target name="init">
@@ -27,48 +28,46 @@
             <equals arg1="${ant.java.version}" arg2="1.6" />
         </condition>
 
-        <mkdir dir="src"/>
-        <copy todir="src">
-            <fileset dir="${src}" excludes="**/.svn">
-                <include name="cubrid/**/*.java"/>
-            </fileset>
-            <fileset dir="${src}" excludes="**/.svn">
+        <copy todir="src-jsp">
+            <fileset dir="${src}">
                 <include name="com/**/*.java"/>
             </fileset>
-        </copy>
-    </target>
-
-    <target name="init-jdk6" depends="init" if="isUnderJDK6">
-        <copy todir="src">
-            <fileset dir="${src}" excludes="**/.svn">
-                <include name="java/**/*.java"/>
-                <include name="javax/**/*.java"/>
-            </fileset>
-        </copy>
-    </target>
-
-    <target name="clean">
-        <delete failonerror="false" includeEmptyDirs="true">
-            <fileset dir="src"/>
-            <fileset dir="src-jsp"/>
-            <fileset dir="${build}"/>
-            <fileset file="*.jar"/>
-        </delete>
-    </target>
-
-    <target name="src-copy" depends="init-jdk6">
-        <copy todir="src-jsp" filtering="true">
-            <fileset dir="src"/>
             <filterset>
                 <filter token="JDBC_DRIVER_VERSION_STRING" value="${version}"/>
             </filterset>
         </copy>
     </target>
 
-    <target name="compile" depends="src-copy">
-        <javac destdir="${build}" source="1.5" target="1.5" encoding="EUC-KR" debug="true" debuglevel="lines,source" deprecation="off" includeantruntime="no">
+    <target name="clean">
+        <delete failonerror="false" includeEmptyDirs="true">
+            <fileset dir="src-jsp"/>
+            <fileset dir="${build}"/>
+            <fileset file="*.jar"/>
+        </delete>
+    </target>
+
+    <target name="resolve" depends="init" description="Download dependencies and setup classpaths">
+        <ivy:resolve/>
+        <ivy:cachepath pathid="build.path" conf="build"/>
+    </target>
+
+    <target name="compile" depends="resolve">
+        <ivy:retrieve />
+        <!--
+        <manifestclasspath property="jar.classpath" jarfile="${jar.file}">
+            <classpath>
+                <fileset dir="${dist.lib}" includes="*.jar"/>
+            </classpath>
+        </manifestclasspath>
+        -->
+        <!-- 
+        pattern="${dist.lib}/[artifact]-[revision](-[classifier]).[ext]"/> 
+        -->
+        
+        <javac destdir="${build}" source="1.6" target="1.6" encoding="UTF-8" debug="true" debuglevel="lines,source" deprecation="off" includeantruntime="no">
             <src path="src-jsp"/>
             <include name="**/*.java"/>
+            <classpath refId="build.path"/>
         </javac>
     </target>
 
@@ -76,7 +75,11 @@
     </target>
 
     <target name="dist" depends="build">
-        <jar jarfile="${jar.file}" basedir="${build}"/>
+        <jar jarfile="${jar.file}" basedir="${build}">
+            <manifest>
+                    <attribute name="Main-Class" value="${main.class}"/>
+                    <attribute name="Class-Path" value="${jar.classpath}"/>
+            </manifest>
+        </jar>
     </target>
 </project>
-
