@@ -1780,12 +1780,12 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
 	  /* Check invalidation conditions. */
 	  if (invalidate_check == NULL || invalidate_check (xcache_entry, arg))
 	    {
-	      num_entries = qfile_get_list_cache_number_of_entries (xcache_entry->list_ht_no);
-
-	      /* delete query cache from xcache entry */
-	      if (num_entries > 0 && !QFILE_IS_LIST_CACHE_DISABLED && !qfile_has_no_cache_entries ())
+	      if (!QFILE_IS_LIST_CACHE_DISABLED && !qfile_has_no_cache_entries ())
 		{
-		  qfile_clear_list_cache (thread_p, xcache_entry->list_ht_no);
+		  /* delete query cache from xcache entry */
+		  {
+		    qfile_clear_list_cache (thread_p, xcache_entry->list_ht_no);
+		  }
 		}
 
 	      /* Mark entry as deleted. */
