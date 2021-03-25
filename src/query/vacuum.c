@@ -1114,6 +1114,7 @@ xvacuum_dump (THREAD_ENTRY * thread_p, FILE * outfp)
   /* vacuum_boot () != NO_ERROR || prm_get_bool_value (PRM_ID_DISABLE_VACUUM) == true */
   if (!vacuum_is_safe_to_remove_archives ())
     {
+      fprintf (outfp, "VACUUM did not boot properly.\n");
       return;
     }
 
@@ -1121,6 +1122,7 @@ xvacuum_dump (THREAD_ENTRY * thread_p, FILE * outfp)
   if (min_log_pageid == NULL_PAGEID)
     {
       /* this is an assertion case but ignore. */
+      fprintf (outfp, "VACUUM did not boot properly.\n");
       return;
     }
 

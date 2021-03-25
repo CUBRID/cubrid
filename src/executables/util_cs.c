@@ -3609,7 +3609,6 @@ vacuumdb (UTIL_FUNCTION_ARG * arg)
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
-  sysprm_set_force (prm_get_name (PRM_ID_DISABLE_VACUUM), "no");
 
   AU_DISABLE_PASSWORDS ();
   if (dump_flag)
@@ -3618,6 +3617,7 @@ vacuumdb (UTIL_FUNCTION_ARG * arg)
     }
   else
     {
+      sysprm_set_force (prm_get_name (PRM_ID_DISABLE_VACUUM), "no");
       db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
     }
   db_login ("DBA", NULL);
