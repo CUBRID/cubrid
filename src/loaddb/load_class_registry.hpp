@@ -103,7 +103,7 @@ namespace cubload
       void register_ignored_class (class_entry *cls_entry, class_id cls_id);
 
     private:
-      using class_map = std::unordered_map<class_id, const class_entry *>;
+      using class_map = std::map<class_id, const class_entry *, std::greater<class_id>>;
 
       std::mutex m_mutex;
       class_map m_class_by_id;
