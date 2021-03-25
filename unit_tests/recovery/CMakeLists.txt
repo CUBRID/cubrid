@@ -25,7 +25,7 @@ set (RECOVERY_SRC
 set (RECOVERY_H
   ${TRANSACTION_DIR}/log_recovery_redo.hpp
   ${TRANSACTION_DIR}/log_recovery_redo_parallel.hpp
-  log_recovery_redo_debug_helpers.hpp
+  ut_database.hpp
   )
 
 SET_SOURCE_FILES_PROPERTIES(
