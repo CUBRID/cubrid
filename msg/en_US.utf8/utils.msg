@@ -1177,13 +1177,16 @@ valid options:\n\
 $set 55 MSGCAT_UTIL_SET_VACUUMDB
 20 Vacuumdb is temporary not available for client-server mode\n
 21 The vacuum operation failed\n
+22 Couldn't open output file '%1$s'\n
 60 \
 vacuumdb: Vacuums dead records from database.\n\
 usage: %1$s vacuumdb [OPTION] database-name\n\
 \n\
 valid options:\n\
   -S, --SA-mode                stand-alone mode execution\n\
-  -C, --CS-mode                client-server mode execution\n
+  -C, --CS-mode                client-server mode execution\n\
+      --dump                   dump current state of vacuum\n\
+  -o, --output-file=FILE       redirect output messages to FILE; default: none\n
 
 $set 56 MSGCAT_UTIL_SET_CHECKSUMDB
 1 Failed to load table names in %1$s.\n
