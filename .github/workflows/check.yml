@@ -1,4 +1,4 @@
-name: Check
+name: github-checks
 on: 
   pull_request:
     branches: [ develop ]
