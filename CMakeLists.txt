@@ -1126,31 +1126,6 @@ include_directories(${CMAKE_BINARY_DIR}/external/Source/rapidjson/include)
 # add to external project targets
 list(APPEND EP_TARGETS ${RAPIDJSON_TARGET})
 
-# include subdirectories
-add_subdirectory(cas)
-add_subdirectory(sa)
-add_subdirectory(cs)
-add_subdirectory(cubrid)
-add_subdirectory(util)
-add_subdirectory(cci)
-add_subdirectory(broker)
-add_subdirectory(cm_common)
-add_subdirectory(conf)
-add_subdirectory(msg)
-add_subdirectory(demo)
-add_subdirectory(contrib)
-add_subdirectory(tools)
-add_subdirectory(locales)
-add_subdirectory(timezones)
-add_subdirectory(jsp)
-if(AT_LEAST_ONE_UNIT_TEST)
-  add_subdirectory(unit_tests)
-endif()
-
-if(WIN32)
-  add_subdirectory(win)
-endif(WIN32)
-
 if(WITH_JDBC AND EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
   set(JDBC_DIR ${CMAKE_SOURCE_DIR}/cubrid-jdbc)
   set(JDBC_VERSION_FILE ${JDBC_DIR}/VERSION)
@@ -1158,9 +1133,10 @@ if(WITH_JDBC AND EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
 
   # build JDBC
   file(STRINGS ${JDBC_VERSION_FILE} JDBC_VERSION_STR)
-  
+
+  # TODO: get exact extra version from git. It should be resolved at the cubrid-jdbc repository
   add_custom_target(jdbc_build ALL
-    COMMAND ${CMAKE_COMMAND} -E copy ${JDBC_VERSION_FILE} ${JDBC_SOURCE}/output/CUBRID-JDBC-${JDBC_VERSION_STR}
+    COMMAND ${CMAKE_COMMAND} -E copy ${JDBC_VERSION_FILE} ${JDBC_DIR}/output/CUBRID-JDBC-${JDBC_VERSION_STR}
     COMMAND ${ANT} dist-cubrid -buildfile ${JDBC_DIR}/build.xml -Dbasedir=${JDBC_DIR} -Dversion=${JDBC_VERSION_STR} -Dsrc=${JDBC_SOURCE}
     COMMENT "Build JDBC driver with Ant ..."
   )
@@ -1185,6 +1161,31 @@ if(WITH_JDBC AND EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
   ${JDBC_DIR}/JDBC-${JDBC_VERSION_STR}-cubrid-src.jar
   DESTINATION ${CUBRID_JDBCDIR} COMPONENT JDBC)
 endif()
+
+# include subdirectories
+add_subdirectory(cas)
+add_subdirectory(sa)
+add_subdirectory(cs)
+add_subdirectory(cubrid)
+add_subdirectory(util)
+add_subdirectory(cci)
+add_subdirectory(broker)
+add_subdirectory(cm_common)
+add_subdirectory(conf)
+add_subdirectory(msg)
+add_subdirectory(demo)
+add_subdirectory(contrib)
+add_subdirectory(tools)
+add_subdirectory(locales)
+add_subdirectory(timezones)
+add_subdirectory(jsp)
+if(AT_LEAST_ONE_UNIT_TEST)
+  add_subdirectory(unit_tests)
+endif()
+
+if(WIN32)
+  add_subdirectory(win)
+endif(WIN32)
 
 if(WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager/server)
   get_target_property(CCI_PUBLIC_HEADERS cascci PUBLIC_HEADER)
