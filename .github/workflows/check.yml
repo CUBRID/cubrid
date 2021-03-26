@@ -10,6 +10,7 @@ jobs:
       - uses: actions/checkout@v2
       - uses: jitterbit/get-changed-files@v1
         id: files
+        continue-on-error: true
       - name: Check license
         run: |
           set +e # make this step proceed even if a command returns non-zero
@@ -62,6 +63,7 @@ jobs:
       - uses: actions/checkout@v2
       - id: files
         uses: jitterbit/get-changed-files@v1
+        continue-on-error: true
       - name: Check code style
         id: stylecheck
         run: |
@@ -84,6 +86,7 @@ jobs:
       - uses: actions/checkout@v2
       - uses: jitterbit/get-changed-files@v1
         id: files
+        continue-on-error: true
       - name: cppcheck
         run: |
           result_file="cppcheck.result"
