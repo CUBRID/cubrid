@@ -12,13 +12,27 @@ jobs:
         id: files
       - name: Check license
         run: |
-          license_header=.github/workflows/license_header.txt
-          license_lines=`wc -l < $license_header`
+          set +e # make this step proceed even if a command returns non-zero
+          license_headers=.github/workflows/license_headers
+          result="PASS"
 
           for f in ${{ steps.files.outputs.added_modified }}; do
-            echo "Checking $f"
-            head -n $license_lines $f | cmp -s $license_header
+            result_for_f="FAIL"
+            for header in `find $license_headers -type f`; do
+              line_cnt=`wc -l < $header`
+              head -n $line_cnt $f | diff -w - $header 2>&1 1>/dev/null
+              if [ $? -eq 0 ]; then
+                result_for_f="PASS"
+                break
+              fi
+            done
+            echo "$f: $result_for_f"
+            if [ "$result_for_f" = "FAIL" ]; then
+              result="FAIL"
+            fi
           done
+
+          test $result = "PASS" # if non-zero, fail
   pr-style:
     name: pr-style
     runs-on: ubuntu-latest
