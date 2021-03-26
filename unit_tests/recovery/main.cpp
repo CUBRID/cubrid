@@ -141,14 +141,14 @@ TEST_CASE ("log recovery parallel test 1: just instantiation, no jobs", "[ci]")
   REQUIRE (true);
 }
 
-TEST_CASE ("log recovery parallel test 2: some jobs, some tasks", "[ci][crs]")
+TEST_CASE ("log recovery parallel test 2: some jobs, some tasks", "[ci][dbg]")
 {
   srand (time (nullptr));
   initialize_thread_infrastructure ();
 
   std::array<size_t, 3> volume_count_per_database_arr { 1u, 2u, 10u };
   std::array<size_t, 2> page_count_per_volume_arr { 10u, _1k };
-  std::array<size_t, 2> job_count_arr { _32k, _128k, };
+  std::array<size_t, 2> job_count_arr { _32k, _128k };
   std::array<size_t, 2> parallel_count_arr { 1u, std::thread::hardware_concurrency ()};
   for (const size_t volume_count_per_database : volume_count_per_database_arr)
     for (const size_t page_count_per_volume : page_count_per_volume_arr)
