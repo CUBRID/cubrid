@@ -2040,7 +2040,7 @@ boot_make_session_server_key (void)
  */
 int
 boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db_name, bool from_backup,
-		     CHECK_ARGS * check_coll_and_timezone, BO_RESTART_ARG * r_args)
+		     CHECK_ARGS * check_coll_and_timezone, BO_RESTART_ARG * r_args, bool skip_vacuum)
 {
   char log_path[PATH_MAX];
   const char *log_prefix;
@@ -2675,7 +2675,10 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   if (r_args == NULL || r_args->is_restore_from_backup == false)
     {
       er_clear ();		/* forget any warning or error to start vacuumming */
-      xvacuum (thread_p);
+      if (!skip_vacuum)
+	{
+	  xvacuum (thread_p);
+	}
     }
 #endif
 
@@ -2876,7 +2879,7 @@ xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart, const cha
       return NULL_TRAN_INDEX;
     }
 
-  if (boot_restart_server (thread_p, print_restart, db_name, true, &check_coll_and_timezone, r_args) != NO_ERROR)
+  if (boot_restart_server (thread_p, print_restart, db_name, true, &check_coll_and_timezone, r_args, false) != NO_ERROR)
     {
       return NULL_TRAN_INDEX;
     }
@@ -3009,6 +3012,7 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
 #if defined(SA_MODE)
   std::string adm_prg_file_name;
   CHECK_ARGS check_coll_and_timezone = { true, true };
+  bool skip_vacuum = false;
 #endif /* SA_MODE */
   // *INDENT-ON*
 
@@ -3039,10 +3043,15 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
 	}
     }
 
+  if (client_credential->client_type == DB_CLIENT_TYPE_SKIP_VACUUM_ADMIN_CSQL)
+    {
+      skip_vacuum = true;
+    }
+
   /* If the server is not restarted, restart the server at this moment */
   if (!BO_IS_SERVER_RESTARTED ()
       && boot_restart_server (thread_p, false, client_credential->get_db_name (), false, &check_coll_and_timezone,
-			      NULL) != NO_ERROR)
+			      NULL, skip_vacuum) != NO_ERROR)
     {
       *tran_state = TRAN_UNACTIVE_UNKNOWN;
       return NULL_TRAN_INDEX;
@@ -4022,7 +4031,7 @@ xboot_copy (REFPTR (THREAD_ENTRY, thread_p), const char *from_dbname, const char
 	      goto error;
 	    }
 	  check_col_and_timezone.check_db_coll = false;
-	  error_code = boot_restart_server (thread_p, false, from_dbname, false, &check_col_and_timezone, NULL);
+	  error_code = boot_restart_server (thread_p, false, from_dbname, false, &check_col_and_timezone, NULL, false);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error;
@@ -5772,6 +5781,8 @@ boot_client_type_to_string (BOOT_CLIENT_TYPE type)
       return "SO_BROKER_REPLICA_ONLY";
     case DB_CLIENT_TYPE_ADMIN_CSQL_WOS:
       return "ADMIN_CSQL_WOS";
+    case DB_CLIENT_TYPE_SKIP_VACUUM_ADMIN_CSQL:
+      return "SKIP_VACUUM_ADMIN_CSQL";
     case DB_CLIENT_TYPE_UNKNOWN:
     default:
       return "UNKNOWN";
