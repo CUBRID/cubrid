@@ -21,6 +21,7 @@
 #include "error_manager.h"
 #include "log_impl.h"
 #include "log_prior_recv.hpp"
+#include "log_replication.hpp"
 #include "packer.hpp"
 #include "server_type.hpp"
 #include "system_parameter.h"
@@ -31,11 +32,12 @@
 
 page_server ps_Gl;
 
-static void assert_page_server_type();
+static void assert_page_server_type ();
 
-page_server::~page_server()
+page_server::~page_server ()
 {
-        disconnect_active_tran_server();
+  assert (m_ats_conn == nullptr);
+  assert (m_replicator == nullptr);
 }
 
 void page_server::set_active_tran_server_connection(cubcomm::channel &&chn)
@@ -152,8 +154,28 @@ void page_server::on_log_page_read_result(const LOG_PAGE *log_page, int error_co
                 _er_log_debug(ARG_FILE_LINE, "Sending log page to Active Tran Server. Page ID: %ld \n", log_page->hdr.logical_pageid);
         }
 }
-
-void assert_page_server_type()
+void
+page_server::start_log_replicator (const log_lsa &start_lsa)
 {
-        assert(get_server_type() == SERVER_TYPE::SERVER_TYPE_PAGE);
+  assert_page_server_type ();
+  assert (m_replicator == nullptr);
+
+  m_replicator.reset (new cublog::replicator (start_lsa));
 }
+
+void
+page_server::finish_replication (cubthread::entry &thread_entry)
+{
+  assert (m_replicator != nullptr);
+
+  logpb_force_flush_pages (&thread_entry);
+  m_replicator->wait_replication_finish ();
+  m_replicator.reset (nullptr);
+}
+
+void
+assert_page_server_type ()
+{
+  assert (get_server_type () == SERVER_TYPE::SERVER_TYPE_PAGE);
+}
+
