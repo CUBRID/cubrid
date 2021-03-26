@@ -220,10 +220,7 @@ namespace cublog
       redo_job_base (VPID a_vpid)
 	: m_vpid (a_vpid)
       {
-	// deactivate this assert for unit tests
-#if !defined(LOG_RECOVERY_REDO_PARALLEL_UNIT_TEST)
 	assert (!VPID_ISNULL (&m_vpid));
-#endif
       }
       redo_job_base () = delete;
       redo_job_base (redo_job_base const &) = delete;

@@ -1,0 +1,91 @@
+/*
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ */
+
+#include "ut_database.hpp"
+#include "ut_redo_job_impl.hpp"
+
+#include "vpid.hpp"
+
+ut_redo_job_impl::ut_redo_job_impl (ut_database &a_database_recovery, job_type a_job_type,
+				    INT64 a_id, VPID a_vpid, int a_millis)
+  : cublog::redo_parallel::redo_job_base (a_vpid)
+  , m_database_recovery (a_database_recovery), m_job_type (a_job_type)
+  , m_id (a_id), m_millis (a_millis)
+{
+}
+
+int ut_redo_job_impl::execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
+			       LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support)
+{
+  auto my_clone = clone ();
+  m_database_recovery.apply_changes (std::move (my_clone));
+  if (m_millis > 0)
+    {
+      busy_loop (m_millis);
+    }
+  return 0;
+}
+
+bool ut_redo_job_impl::operator == (const ut_redo_job_impl &that) const
+{
+  return m_id == that.m_id
+	 && get_vpid () == that.get_vpid ()
+	 && m_millis == that.m_millis;
+}
+
+
+bool ut_redo_job_impl::is_volume_creation () const
+{
+  return m_job_type == job_type::NEW_VOLUME;
+}
+
+bool ut_redo_job_impl::is_page_creation () const
+{
+  return m_job_type == job_type::NEW_PAGE;
+}
+
+bool ut_redo_job_impl::is_page_modification () const
+{
+  return m_job_type == job_type::ALTER_PAGE;
+}
+
+ux_ut_redo_job_impl ut_redo_job_impl::clone ()
+{
+  const auto &vpid = get_vpid ();
+  ux_ut_redo_job_impl res { new ut_redo_job_impl (m_database_recovery, m_job_type, m_id, vpid, m_millis) };
+  return res;
+}
+
+void ut_redo_job_impl::busy_loop (size_t a_millis)
+{
+  const auto start = std::chrono::system_clock::now ();
+  // declare sum outside the loop to simulate a side effect
+  double sum = 0;
+  while (true)
+    {
+      for (double sum_idx = 0.; sum_idx < 10000.; sum_idx += 1.0)
+	{
+	  sum *= sum_idx;
+	}
+      const std::chrono::duration<double, std::milli> diff_millis = std::chrono::system_clock::now () - start;
+      if (a_millis <= diff_millis.count ())
+	{
+	  break;
+	}
+    }
+}

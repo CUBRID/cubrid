@@ -19,12 +19,15 @@ project (test_recovery)
 
 set (RECOVERY_SRC
   ${TRANSACTION_DIR}/log_recovery_redo_parallel.cpp
+  ut_redo_job_impl.cpp
+  ut_database.cpp
   main.cpp
   )
 
 set (RECOVERY_H
   ${TRANSACTION_DIR}/log_recovery_redo.hpp
   ${TRANSACTION_DIR}/log_recovery_redo_parallel.hpp
+  ut_redo_job_impl.hpp
   ut_database.hpp
   )
 
