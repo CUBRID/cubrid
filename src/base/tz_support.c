@@ -5469,3 +5469,16 @@ exit:
 
   return err_status;
 }
+
+/*
+ * tz_get_offset_in_mins () - time zone offset in minutes from GMT
+ - gmtime(0) returns the GMT time of the second ZERO of the epoch
+ - mktime() simply translate the above moment into equivalent local time
+ - the diff between these 2 values gives the timezone offset in seconds (but keep in mind that one of them is ZERO)
+ */
+int
+tz_get_offset_in_mins ()
+{
+  time_t tt0 = 0;
+  return (int) (mktime (gmtime (&tt0)) / -60);
+}

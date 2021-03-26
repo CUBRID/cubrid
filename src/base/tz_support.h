@@ -228,6 +228,7 @@ extern "C"
   extern int tz_create_datetimetz_from_parts (const int m, const int d, const int y, const int h, const int mi,
 					      const int s, const int ms, const TZ_ID * tz_id, DB_DATETIMETZ * dt_tz);
   extern int conv_tz (void *, const void *, DB_TYPE);
+  int tz_get_offset_in_mins ();	//time zone offset in minutes from GMT
 #ifdef __cplusplus
 }
 #endif
