@@ -1025,7 +1025,6 @@ boot_remove_unknown_temp_volumes (THREAD_ENTRY * thread_p)
 	  ++temp_volid;
 	  break;
 	}
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_VOLUME, 1, temp_vol_fullname);
     }
 
   /* temporary volumes are created in descending id order; delete in incrementing order
@@ -6131,24 +6130,43 @@ boot_get_new_volume_name_and_id (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, co
 int
 boot_dbparm_save_volume (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, VOLID volid)
 {
-  VPID vpid_boot_bp_parm;
-  BOOT_DB_PARM save_boot_db_parm = *boot_Db_parm;
-
-  int error_code = NO_ERROR;
-
   assert (log_check_system_op_is_started (thread_p));
 
   if (voltype == DB_PERMANENT_VOLTYPE)
     {
+      BOOT_DB_PARM saved_boot_db_parm = *boot_Db_parm;
+
       assert (boot_Db_parm->nvols >= 0);
       if (volid != boot_Db_parm->last_volid + 1)
 	{
 	  assert_release (false);
-	  error_code = ER_FAILED;
-	  goto exit;
+	  return ER_FAILED;
 	}
       boot_Db_parm->last_volid = volid;
       boot_Db_parm->nvols++;
+
+      /* todo: is flush needed? */
+      VPID vpid_boot_bp_parm;
+      VPID_GET_FROM_OID (&vpid_boot_bp_parm, boot_Db_parm_oid);
+      /* temporary volumes creation does not have to be persisted, therefore should not be logged;
+       * these will be cleaned-up by routines executing either upon clean-close
+       * of the engine or upon boot (in case of abnormal engine close) */
+
+      log_append_undo_data2 (thread_p, RVPGBUF_FLUSH_PAGE, NULL, NULL, 0, sizeof (vpid_boot_bp_parm),
+			     &vpid_boot_bp_parm);
+
+      const int error_code = boot_db_parm_update_heap (thread_p);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  *boot_Db_parm = saved_boot_db_parm;
+	  return error_code;
+	}
+
+      /* flush the boot_Db_parm object. this is not necessary but it is recommended in order to
+       * mount every known volume during restart; that may not be possible during media crash though. */
+      heap_flush (thread_p, boot_Db_parm_oid);
+      fileio_synchronize (thread_p, fileio_get_volume_descriptor (boot_Db_parm_oid->volid), NULL, FILEIO_SYNC_ALSO_FLUSH_DWB);	/* label? */
     }
   else
     {
@@ -6157,39 +6175,11 @@ boot_dbparm_save_volume (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, VOLID voli
 	{
 	  /* invalid volid */
 	  assert_release (false);
-	  error_code = ER_FAILED;
-	  goto exit;
+	  return ER_FAILED;
 	}
       boot_Temp_info.temp_nvols++;
       boot_Temp_info.temp_last_volid = volid;
     }
-
-  /* todo: is flush needed? */
-  VPID_GET_FROM_OID (&vpid_boot_bp_parm, boot_Db_parm_oid);
-  /* temporary volumes creation does not have to be persisted, therefore should not be logged;
-   * these will be cleaned-up by routines executing either upon clean-close
-   * of the engine or upon boot (in case of abnormal engine close) */
-  if (voltype != DB_TEMPORARY_VOLTYPE)
-    {
-      log_append_undo_data2 (thread_p, RVPGBUF_FLUSH_PAGE, NULL, NULL, 0, sizeof (vpid_boot_bp_parm),
-			     &vpid_boot_bp_parm);
-
-      error_code = boot_db_parm_update_heap (thread_p);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  *boot_Db_parm = save_boot_db_parm;
-	  goto exit;
-	}
-    }
-
-  /* flush the boot_Db_parm object. this is not necessary but it is recommended in order to mount every known volume
-   * during restart. that may not be possible during media crash though. */
-  heap_flush (thread_p, boot_Db_parm_oid);
-  fileio_synchronize (thread_p, fileio_get_volume_descriptor (boot_Db_parm_oid->volid), NULL, FILEIO_SYNC_ALSO_FLUSH_DWB);	/* label? */
-
-exit:
-  return error_code;
 }
 
 /*
