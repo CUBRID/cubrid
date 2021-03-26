@@ -33,7 +33,7 @@ vpid_lsa_consistency_check::check (const vpid &a_vpid, const log_lsa &a_log_lsa)
     {
       assert ((*map_it).second < a_log_lsa);
     }
-  consistency_check_map.emplace(key, a_log_lsa);
+  consistency_check_map.emplace (key, a_log_lsa);
 #endif
 }
 

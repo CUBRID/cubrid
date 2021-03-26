@@ -20,12 +20,24 @@
 #define _PAGE_SERVER_HPP_
 
 #include "ats_ps_request.hpp"
+#include "log_lsa.hpp"
 #include "request_client_server.hpp"
+#include "request_sync_send_queue.hpp"
+
+#include <memory>
 
 // forward declaration
+namespace cublog
+{
+  class replicator;
+}
 namespace cubpacking
 {
   class unpacker;
+}
+namespace cubthread
+{
+  class entry;
 }
 
 class page_server
@@ -39,13 +51,24 @@ class page_server
     void set_active_tran_server_connection (cubcomm::channel &&chn);
     void disconnect_active_tran_server ();
     bool is_active_tran_server_connected () const;
+    void push_request_to_active_tran_server (ps_to_ats_request reqid, std::string &&payload);
+
+    void start_log_replicator (const log_lsa &start_lsa);
+    void finish_replication (cubthread::entry &thread_entry);
 
   private:
+    using active_tran_server_request_queue = cubcomm::request_sync_send_queue<active_tran_server_conn, std::string>;
+    using active_tran_server_request_autosend = cubcomm::request_queue_autosend<active_tran_server_request_queue>;
+
     void receive_log_prior_list (cubpacking::unpacker &upk);
     void receive_log_page_fetch (cubpacking::unpacker &upk);
     void receive_data_page_fetch (cubpacking::unpacker &upk);
 
-    active_tran_server_conn *m_ats_conn = nullptr;
+    std::unique_ptr<active_tran_server_conn> m_ats_conn;
+    std::unique_ptr<active_tran_server_request_queue> m_ats_request_queue;
+    std::unique_ptr<active_tran_server_request_autosend> m_ats_request_autosend;
+
+    std::unique_ptr<cublog::replicator> m_replicator;
 };
 
 extern page_server ps_Gl;

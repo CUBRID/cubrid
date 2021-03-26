@@ -82,6 +82,7 @@
 #include "vacuum.h"
 #include "tde.h"
 #include "porting.h"
+#include "page_server.hpp"
 #include "server_type.hpp"
 
 #if defined(SERVER_MODE)
@@ -2549,11 +2550,12 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       er_log_debug (ARG_FILE_LINE, "Vacuum was not started on the page server.");
     }
 
-  if (error_code != NO_ERROR)
+#if defined (SERVER_MODE)
+  if (get_server_type () == SERVER_TYPE_PAGE)
     {
-      ASSERT_ERROR ();
-      goto error;
+      ps_Gl.start_log_replicator (log_Gl.append.get_nxio_lsa ());
     }
+#endif // SERVER_MODE
 
   /*
    * Initialize the catalog manager, the query evaluator, and install meta
@@ -3163,6 +3165,13 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
   // log entry
   // hopefully, nothing else follows
   vacuum_stop_master (thread_p);
+
+#if defined (SERVER_MODE)
+  if (get_server_type () == SERVER_TYPE_PAGE)
+    {
+      ps_Gl.finish_replication (*thread_p);
+    }
+#endif
 
 #if defined(SERVER_MODE)
   pgbuf_daemons_destroy ();

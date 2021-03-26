@@ -39,7 +39,11 @@ struct log_lsa
   /* The offset field is defined as 16bit-INT64 type (not short), because of alignment */
 
   inline log_lsa () = default;
-  inline log_lsa (std::int64_t log_pageid, std::int16_t log_offset);
+  inline constexpr log_lsa (std::int64_t log_pageid, std::int16_t log_offset)
+    : pageid (log_pageid)
+    , offset (log_offset)
+  {
+  }
   inline log_lsa (const log_lsa &olsa) = default;
   inline log_lsa &operator= (const log_lsa &olsa) = default;
 
@@ -56,9 +60,9 @@ struct log_lsa
 
 using LOG_LSA = log_lsa;	/* Log address identifier */
 
-static const std::int64_t NULL_LOG_PAGEID = -1;
-static const std::int16_t NULL_LOG_OFFSET = -1;
-const log_lsa NULL_LSA = { NULL_LOG_PAGEID, NULL_LOG_OFFSET };
+constexpr std::int64_t NULL_LOG_PAGEID = -1;
+constexpr std::int16_t NULL_LOG_OFFSET = -1;
+constexpr log_lsa NULL_LSA { NULL_LOG_PAGEID, NULL_LOG_OFFSET };
 
 // functions
 void lsa_to_string (char *buf, int buf_size, const log_lsa *lsa);
@@ -82,13 +86,6 @@ inline bool LSA_GT (const log_lsa *plsa1, const log_lsa *plsa2);
 //////////////////////////////////////////////////////////////////////////
 // inline/template implementation
 //////////////////////////////////////////////////////////////////////////
-
-log_lsa::log_lsa (std::int64_t log_pageid, std::int16_t log_offset)
-  : pageid (log_pageid)
-  , offset (log_offset)
-{
-  //
-}
 
 bool
 log_lsa::is_null () const
