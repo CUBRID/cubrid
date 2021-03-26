@@ -29,6 +29,7 @@ enum class ats_to_ps_request
 enum class ps_to_ats_request
 {
   SEND_SAVED_LSA,
+  SEND_LOG_PAGE
 };
 
 #endif // !_ATS_PS_REQUEST_IDS_HPP_

@@ -19,6 +19,7 @@
 #ifndef _PAGE_SERVER_HPP_
 #define _PAGE_SERVER_HPP_
 
+#include "../storage/log_page_async_fetcher.hpp"
 #include "ats_ps_request.hpp"
 #include "request_client_server.hpp"
 #include "request_sync_send_queue.hpp"
@@ -52,9 +53,12 @@ class page_server
     void receive_log_page_fetch (cubpacking::unpacker &upk);
     void receive_data_page_fetch (cubpacking::unpacker &upk);
 
+    void on_log_page_read_result (const LOG_PAGE * log_page, int error_code);
+
     std::unique_ptr<active_tran_server_conn> m_ats_conn;
     std::unique_ptr<active_tran_server_request_queue> m_ats_request_queue;
     std::unique_ptr<active_tran_server_request_autosend> m_ats_request_autosend;
+    std::unique_ptr<cublog::async_page_fetcher> m_log_page_fetcher;
 };
 
 extern page_server ps_Gl;
