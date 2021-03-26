@@ -13001,6 +13001,8 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	case PT_COUNT:
 	case PT_COUNT_STAR:
+    node->type_enum = PT_TYPE_BIGINT;
+    break;
 	case PT_ROW_NUMBER:
 	case PT_RANK:
 	case PT_DENSE_RANK:
