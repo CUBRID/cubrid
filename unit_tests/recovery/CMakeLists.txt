@@ -17,14 +17,14 @@
 
 project (test_recovery)
 
-set (RECOVERY_SRC
+set (TEST_RECOVERY_SRC
   ${TRANSACTION_DIR}/log_recovery_redo_parallel.cpp
   ut_redo_job_impl.cpp
   ut_database.cpp
   main.cpp
   )
 
-set (RECOVERY_H
+set (TEST_RECOVERY_H
   ${TRANSACTION_DIR}/log_recovery_redo.hpp
   ${TRANSACTION_DIR}/log_recovery_redo_parallel.hpp
   ut_redo_job_impl.hpp
@@ -32,13 +32,13 @@ set (RECOVERY_H
   )
 
 SET_SOURCE_FILES_PROPERTIES(
-  ${RECOVERY_SRC}
+  ${TEST_RECOVERY_SRC}
   PROPERTIES LANGUAGE CXX
   )
 
 add_executable(test_recovery
-  ${RECOVERY_SRC}
-  ${RECOVERY_H}
+  ${TEST_RECOVERY_SRC}
+  ${TEST_RECOVERY_H}
   )
 
 target_compile_options(test_recovery PRIVATE ${compile_warning_flags})

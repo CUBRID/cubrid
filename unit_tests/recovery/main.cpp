@@ -66,22 +66,12 @@ bool execute_test (const log_recovery_test_config &a_test_config,
 		<< std::endl;
     }
 
-
   cublog::redo_parallel log_redo_parallel (a_test_config.parallel_count);
 
   ux_ut_database db_online { new ut_database (a_database_config) };
-
   ux_ut_database db_recovery { new ut_database (a_database_config) };
 
-#if (0)
-  consumption_accumulator dbg_accumulator;
-#endif
-
-  //
-  // produce data in the main thread
-  //
   ut_database_values_generator global_values{ a_database_config };
-
   for (size_t idx = 0u; idx < a_test_config.redo_job_count; ++idx)
     {
       ux_ut_redo_job_impl job = db_online->generate_changes (*db_recovery, global_values);
@@ -95,16 +85,6 @@ bool execute_test (const log_recovery_test_config &a_test_config,
 	{
 	  log_redo_parallel.add (std::move (job));
 	}
-
-//      if (a_test_config.verbose)
-//        {
-//          std::cout << "P: "
-//                    << "syn_" << ((log_entry->get_is_to_be_waited_for_op ()) ? '1' : '0')
-//                    << std::setw (4) << log_entry->get_vpid ().volid << std::setfill ('_')
-//                    << std::setw (5) << log_entry->get_vpid ().pageid << std::setfill (' ')
-//                    << "  eids: " << std::setw (7) << log_entry->get_entry_id ()
-//                    << std::endl;
-//        }
     }
 
   log_redo_parallel.set_adding_finished ();
@@ -192,7 +172,7 @@ TEST_CASE ("log recovery parallel test N: stress test", "[long]")
 	    {
 	      parallel_count, // std::thread::hardware_concurrency (), // parallel_count
 	      job_count, // redo_job_count
-	      true, // verbose
+	      false, // verbose
 	    };
 
 	    const ut_database_config database_config =
