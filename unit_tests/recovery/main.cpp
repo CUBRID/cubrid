@@ -99,36 +99,32 @@ constexpr auto _32k = 32 * _1k;
 constexpr auto _64k = 64 * _1k;
 constexpr auto _128k = 128 * _1k;
 
+/* small helper class to count the seconds between ctor and dtor invocations
+ */
+class measure_time
+{
+  public:
+    measure_time () = default;
+    ~measure_time ()
+    {
+      const auto end_time = std::chrono::high_resolution_clock::now ();
+      std::cout << "  duration - " << std::chrono::duration<double> (end_time - m_start_time).count () << std::endl;
+    }
+  private:
+    const std::chrono::high_resolution_clock::time_point m_start_time
+      = std::chrono::high_resolution_clock::now ();
+};
+
 /* '[ci]' tests are supposed to be executed by the Continuous Integration infrastructure
  */
-TEST_CASE ("log recovery parallel test 1: just instantiation, no jobs", "[ci]")
+TEST_CASE ("log recovery parallel test: some jobs, some tasks", "[ci][dbg]")
 {
   srand (time (nullptr));
   initialize_thread_infrastructure ();
 
-  log_recovery_test_config test_config =
-  {
-    std::thread::hardware_concurrency (), // parallel_count
-    0, // redo_job_count
-    false, // verbose
-  };
-
-  cublog::redo_parallel log_redo_parallel (test_config.parallel_count);
-
-  log_redo_parallel.set_adding_finished ();
-  log_redo_parallel.wait_for_termination_and_stop_execution ();
-
-  REQUIRE (true);
-}
-
-TEST_CASE ("log recovery parallel test 2: some jobs, some tasks", "[ci][dbg]")
-{
-  srand (time (nullptr));
-  initialize_thread_infrastructure ();
-
-  std::array<size_t, 3> volume_count_per_database_arr { 1u, 2u, 10u };
+  std::array<size_t, 2> volume_count_per_database_arr { 1u, 10u };
   std::array<size_t, 2> page_count_per_volume_arr { 10u, _1k };
-  std::array<size_t, 2> job_count_arr { _32k, _128k };
+  std::array<size_t, 3> job_count_arr { 0u, _1k, _128k };
   std::array<size_t, 2> parallel_count_arr { 1u, std::thread::hardware_concurrency ()};
   for (const size_t volume_count_per_database : volume_count_per_database_arr)
     for (const size_t page_count_per_volume : page_count_per_volume_arr)
@@ -153,16 +149,19 @@ TEST_CASE ("log recovery parallel test 2: some jobs, some tasks", "[ci][dbg]")
 	  }
 }
 
-TEST_CASE ("log recovery parallel test N: stress test", "[long]")
+/* the main difference versus the [ci] tests is that these perform a busy-loop
+ * in addition to the bookkeeping actions
+ */
+TEST_CASE ("log recovery parallel test: stress test", "[long]")
 {
   srand (time (nullptr));
   initialize_thread_infrastructure ();
 
-  //const auto start_time = std::chrono::high_resolution_clock::now ();
+  measure_time do_measure_time;
 
-  constexpr std::array<size_t, 3> volume_count_per_database_arr { 1u, 2u, 10u };
-  constexpr std::array<size_t, 3> page_count_per_volume_arr { 10u, _1k, _16k };
-  constexpr std::array<size_t, 2> job_count_arr { _32k, _128k };
+  constexpr std::array<size_t, 2> volume_count_per_database_arr { 1u, 10u };
+  constexpr std::array<size_t, 2> page_count_per_volume_arr { _1k, _128k };
+  constexpr std::array<size_t, 3> job_count_arr { 0u, _1k, _128k };
   const std::array<size_t, 2> parallel_count_arr { 1u, std::thread::hardware_concurrency ()};
   for (const size_t volume_count_per_database : volume_count_per_database_arr)
     {
@@ -191,7 +190,4 @@ TEST_CASE ("log recovery parallel test N: stress test", "[long]")
 	    }
 	}
     }
-
-  //const auto end_time = std::chrono::high_resolution_clock::now ();
-  //std::cout << "  duration - " << std::chrono::duration<double> (end_time - start_time).count () << std::endl;
 }

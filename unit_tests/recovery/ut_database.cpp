@@ -173,10 +173,13 @@ short ut_volume::get_volid () const
 ux_ut_redo_job_impl ut_volume::generate_changes (ut_database &a_database_recovery,
     ut_database_values_generator &a_db_global_values)
 {
-  const ut_database_values_generator::add_or_update add_or_update_page
-    = a_db_global_values.rand_add_or_update_page (m_pages.size ());
-  if (add_or_update_page == ut_database_values_generator::add_or_update::UPDATE
-      && m_pages.size () > 0)
+  auto add_or_update_page = ut_database_values_generator::add_or_update::ADD;
+  if (m_pages.size () > 0)
+    {
+      add_or_update_page = a_db_global_values.rand_add_or_update_page (m_pages.size ());
+    }
+
+  if (add_or_update_page == ut_database_values_generator::add_or_update::UPDATE)
     {
       // invoke existing pages to generate changes
       const int page_index = a_db_global_values.rand_index_of_entity_to_update (m_pages.size ());
@@ -185,8 +188,7 @@ ux_ut_redo_job_impl ut_volume::generate_changes (ut_database &a_database_recover
     }
   else
     {
-      if (add_or_update_page == ut_database_values_generator::add_or_update::ADD
-	  || m_pages.size () == 0)
+      if (add_or_update_page == ut_database_values_generator::add_or_update::ADD)
 	{
 	  // add new page and generate log entry
 	  // akin to 'extend volume' operation
@@ -195,7 +197,7 @@ ux_ut_redo_job_impl ut_volume::generate_changes (ut_database &a_database_recover
 	  ux_ut_redo_job_impl job
 	  {
 	    new ut_redo_job_impl (a_database_recovery, ut_redo_job_impl::job_type::NEW_PAGE,
-	    lsa_log_id, {static_cast<short> (m_pages.size ()), m_volid}, millis)
+	    lsa_log_id, {static_cast<int32_t> (m_pages.size ()), m_volid}, millis)
 	  };
 	  add_new_page (m_pages);
 	  return job;
@@ -270,9 +272,13 @@ ux_ut_redo_job_impl ut_database::generate_changes (ut_database &a_database_recov
     ut_database_values_generator &a_db_global_values)
 {
   //const int update_or_add_volume = rand_update_or_add_volume();
-  const auto add_or_update_volume = a_db_global_values.rand_add_or_update_volume (m_volumes.size ());
-  if (add_or_update_volume == ut_database_values_generator::add_or_update::UPDATE
-      && m_volumes.size () > 0)
+  auto add_or_update_volume = ut_database_values_generator::add_or_update::ADD;
+  if (m_volumes.size () > 0)
+    {
+      add_or_update_volume = a_db_global_values.rand_add_or_update_volume (m_volumes.size ());
+    }
+
+  if (add_or_update_volume == ut_database_values_generator::add_or_update::UPDATE)
     {
       // invoke existing volume to generate changes
       const int vol_index = a_db_global_values.rand_index_of_entity_to_update (m_volumes.size ());
@@ -281,8 +287,7 @@ ux_ut_redo_job_impl ut_database::generate_changes (ut_database &a_database_recov
     }
   else
     {
-      if (add_or_update_volume == ut_database_values_generator::add_or_update::ADD
-	  || m_volumes.size () == 0)
+      if (add_or_update_volume == ut_database_values_generator::add_or_update::ADD)
 	{
 	  // add new volume and generate log entry
 	  const auto lsa_log_id = a_db_global_values.increment_and_get_lsa_log_id ();
