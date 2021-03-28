@@ -53,7 +53,7 @@ void initialize_thread_infrastructure ()
     }
 }
 
-bool execute_test (const log_recovery_test_config &a_test_config,
+void execute_test (const log_recovery_test_config &a_test_config,
 		   const ut_database_config &a_database_config)
 {
   if (a_test_config.verbose)
@@ -90,7 +90,7 @@ bool execute_test (const log_recovery_test_config &a_test_config,
   log_redo_parallel.set_adding_finished ();
   log_redo_parallel.wait_for_termination_and_stop_execution ();
 
-  return *db_online == *db_recovery;
+  db_online->require_equal (*db_recovery);
 }
 
 constexpr auto _1k = 1024u;
@@ -149,8 +149,7 @@ TEST_CASE ("log recovery parallel test 2: some jobs, some tasks", "[ci][dbg]")
 	      0, // max_duration_in_millis
 	    };
 
-	    const bool test_result = execute_test (test_config, database_config);
-	    REQUIRE (test_result);
+	    execute_test (test_config, database_config);
 	  }
 }
 
@@ -159,30 +158,35 @@ TEST_CASE ("log recovery parallel test N: stress test", "[long]")
   srand (time (nullptr));
   initialize_thread_infrastructure ();
 
-  std::array<size_t, 3> volume_count_per_database_arr { 1u, 2u, 10u };
-  std::array<size_t, 3> page_count_per_volume_arr { 10u, _1k, _16k };
-  std::array<size_t, 2> job_count_arr { _32k, _128k };
-  std::array<size_t, 2> parallel_count_arr { 1u, std::thread::hardware_concurrency ()};
+  constexpr std::array<size_t, 3> volume_count_per_database_arr { 1u, 2u, 10u };
+  constexpr std::array<size_t, 3> page_count_per_volume_arr { 10u, _1k, _16k };
+  constexpr std::array<size_t, 2> job_count_arr { _32k, _128k };
+  const std::array<size_t, 2> parallel_count_arr { 1u, std::thread::hardware_concurrency ()};
   for (const size_t volume_count_per_database : volume_count_per_database_arr)
-    for (const size_t page_count_per_volume : page_count_per_volume_arr)
-      for (const size_t job_count : job_count_arr)
-	for (const size_t parallel_count : parallel_count_arr)
-	  {
-	    const log_recovery_test_config test_config =
+    {
+      for (const size_t page_count_per_volume : page_count_per_volume_arr)
+	{
+	  for (const size_t job_count : job_count_arr)
 	    {
-	      parallel_count, // std::thread::hardware_concurrency (), // parallel_count
-	      job_count, // redo_job_count
-	      false, // verbose
-	    };
+	      for (const size_t parallel_count : parallel_count_arr)
+		{
+		  const log_recovery_test_config test_config =
+		  {
+		    parallel_count, // std::thread::hardware_concurrency (), // parallel_count
+		    job_count, // redo_job_count
+		    true, // verbose
+		  };
 
-	    const ut_database_config database_config =
-	    {
-	      volume_count_per_database, // max_volume_count_per_database
-	      page_count_per_volume, // max_page_count_per_volume
-	      3, // max_duration_in_millis
-	    };
+		  const ut_database_config database_config =
+		  {
+		    volume_count_per_database, // max_volume_count_per_database
+		    page_count_per_volume, // max_page_count_per_volume
+		    3, // max_duration_in_millis
+		  };
 
-	    const bool test_result = execute_test (test_config, database_config);
-	    REQUIRE (test_result);
-	  }
+		  execute_test (test_config, database_config);
+		}
+	    }
+	}
+    }
 }

@@ -23,6 +23,7 @@
 #include "ut_redo_job_impl.hpp"
 
 // other module includes
+#include "catch2/catch.hpp"
 #include "storage_common.h"
 
 // standard includes
@@ -121,7 +122,7 @@ class ut_page
 					  ut_database_values_generator &a_db_global_values);
     void apply_changes (ux_ut_redo_job_impl &&a_job);
 
-    bool operator== (const ut_page &that) const;
+    void require_equal (const ut_page &that) const;
 
   private:
     const VPID m_vpid;
@@ -153,7 +154,7 @@ class ut_volume
 					  ut_database_values_generator &a_db_global_values);
     void apply_changes (ux_ut_redo_job_impl &&a_job);
 
-    bool operator== (const ut_volume &that) const;
+    void require_equal (const ut_volume &that) const;
 
   private:
     const ux_ut_page &add_new_page (std::vector<ux_ut_page> &a_pages);
@@ -189,7 +190,7 @@ class ut_database
 					  ut_database_values_generator &a_db_global_values);
     void apply_changes (ux_ut_redo_job_impl &&a_job);
 
-    bool operator== (const ut_database &that) const;
+    void require_equal (const ut_database &that) const;
 
   private:
     const ux_ut_volume &add_new_volume (std::vector<ux_ut_volume> &a_volumes);

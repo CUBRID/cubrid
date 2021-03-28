@@ -61,7 +61,7 @@ class ut_redo_job_impl final : public cublog::redo_parallel::redo_job_base
     int execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
 		 LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support) override;
 
-    bool operator == (const ut_redo_job_impl &that) const;
+    void require_equal (const ut_redo_job_impl &that) const;
 
     bool is_volume_creation () const;
     bool is_page_creation () const;

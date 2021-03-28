@@ -41,13 +41,12 @@ int ut_redo_job_impl::execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_rea
   return 0;
 }
 
-bool ut_redo_job_impl::operator == (const ut_redo_job_impl &that) const
+void ut_redo_job_impl::require_equal (const ut_redo_job_impl &that) const
 {
-  return m_id == that.m_id
-	 && get_vpid () == that.get_vpid ()
-	 && m_millis == that.m_millis;
+  REQUIRE (m_id == that.m_id);
+  REQUIRE (get_vpid () == that.get_vpid ());
+  REQUIRE (m_millis == that.m_millis);
 }
-
 
 bool ut_redo_job_impl::is_volume_creation () const
 {

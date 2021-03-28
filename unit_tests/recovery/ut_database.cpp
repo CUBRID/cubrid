@@ -139,24 +139,18 @@ void ut_page::apply_changes (ux_ut_redo_job_impl &&a_job)
   m_entries.push_front (std::move (a_job));
 }
 
-bool ut_page::operator== (const ut_page &that) const
+void ut_page::require_equal (const ut_page &that) const
 {
   auto this_entries_it = m_entries.cbegin ();
   auto that_entries_it = that.m_entries.cbegin ();
   while (this_entries_it != m_entries.cend () && that_entries_it != that.m_entries.cend ())
     {
-      if (! (**this_entries_it == **that_entries_it))
-	{
-	  return false;
-	}
+      (*this_entries_it)->require_equal (**that_entries_it);
       ++this_entries_it;
       ++that_entries_it;
     }
-  if (this_entries_it != m_entries.cend () || that_entries_it != that.m_entries.cend ())
-    {
-      return false;
-    }
-  return true;
+  REQUIRE (this_entries_it == m_entries.cend ());
+  REQUIRE (that_entries_it == that.m_entries.cend ());
 }
 
 /*******************************************************
@@ -239,24 +233,19 @@ void ut_volume::apply_changes (ux_ut_redo_job_impl &&a_job)
     }
 }
 
-bool ut_volume::operator== (const ut_volume &that) const
+void ut_volume::require_equal (const ut_volume &that) const
 {
-  if (m_volid != that.m_volid || m_pages.size () != that.m_pages.size ())
-    {
-      return false;
-    }
+  REQUIRE (m_volid == that.m_volid);
+  REQUIRE (m_pages.size () == that.m_pages.size ());
+
   auto this_pages_it = m_pages.cbegin ();
   auto that_pages_it = that.m_pages.cbegin ();
   while (this_pages_it != m_pages.cend () && that_pages_it != that.m_pages.cend ())
     {
-      if (! (**this_pages_it == **that_pages_it))
-	{
-	  return false;
-	}
+      (*this_pages_it)->require_equal (**that_pages_it);
       ++this_pages_it;
       ++that_pages_it;
     }
-  return true;
 }
 
 const ux_ut_page &ut_volume::add_new_page (std::vector<ux_ut_page> &a_pages)
@@ -335,24 +324,18 @@ void ut_database::apply_changes (ux_ut_redo_job_impl &&a_job)
     }
 }
 
-bool ut_database::operator== (const ut_database &that) const
+void ut_database::require_equal (const ut_database &that) const
 {
-  if (m_volumes.size () != that.m_volumes.size ())
-    {
-      return false;
-    }
+  REQUIRE (m_volumes.size () == that.m_volumes.size ());
+
   auto this_volumes_it = m_volumes.cbegin ();
   auto that_volumes_it = that.m_volumes.cbegin ();
   while (this_volumes_it != m_volumes.cend () && that_volumes_it != that.m_volumes.cend ())
     {
-      if (! (**this_volumes_it == **that_volumes_it))
-	{
-	  return false;
-	}
+      (*this_volumes_it)->require_equal (**that_volumes_it);
       ++this_volumes_it;
       ++that_volumes_it;
     }
-  return true;
 }
 
 const ux_ut_volume &ut_database::add_new_volume (std::vector<ux_ut_volume> &a_volumes)
