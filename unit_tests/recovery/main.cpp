@@ -175,7 +175,7 @@ TEST_CASE ("log recovery parallel test: stress test", "[long]")
 		  {
 		    parallel_count, // std::thread::hardware_concurrency (), // parallel_count
 		    job_count, // redo_job_count
-		    true, // verbose
+		    false, // verbose
 		  };
 
 		  const ut_database_config database_config =
