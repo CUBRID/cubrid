@@ -146,7 +146,7 @@ TEST_CASE ("log recovery parallel test 2: some jobs, some tasks", "[ci][dbg]")
 	    {
 	      volume_count_per_database, // max_volume_count_per_database
 	      page_count_per_volume, // max_page_count_per_volume
-	      0, // max_duration_in_millis
+	      0., // max_duration_in_millis
 	    };
 
 	    execute_test (test_config, database_config);
@@ -157,6 +157,8 @@ TEST_CASE ("log recovery parallel test N: stress test", "[long]")
 {
   srand (time (nullptr));
   initialize_thread_infrastructure ();
+
+  //const auto start_time = std::chrono::high_resolution_clock::now ();
 
   constexpr std::array<size_t, 3> volume_count_per_database_arr { 1u, 2u, 10u };
   constexpr std::array<size_t, 3> page_count_per_volume_arr { 10u, _1k, _16k };
@@ -181,7 +183,7 @@ TEST_CASE ("log recovery parallel test N: stress test", "[long]")
 		  {
 		    volume_count_per_database, // max_volume_count_per_database
 		    page_count_per_volume, // max_page_count_per_volume
-		    3, // max_duration_in_millis
+		    1.5, // max_duration_in_millis
 		  };
 
 		  execute_test (test_config, database_config);
@@ -189,4 +191,7 @@ TEST_CASE ("log recovery parallel test N: stress test", "[long]")
 	    }
 	}
     }
+
+  //const auto end_time = std::chrono::high_resolution_clock::now ();
+  //std::cout << "  duration - " << std::chrono::duration<double> (end_time - start_time).count () << std::endl;
 }

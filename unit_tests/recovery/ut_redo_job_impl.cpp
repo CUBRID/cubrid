@@ -21,8 +21,10 @@
 
 #include "vpid.hpp"
 
+#include <limits>
+
 ut_redo_job_impl::ut_redo_job_impl (ut_database &a_database_recovery, job_type a_job_type,
-				    INT64 a_id, VPID a_vpid, int a_millis)
+				    INT64 a_id, VPID a_vpid, double a_millis)
   : cublog::redo_parallel::redo_job_base (a_vpid)
   , m_database_recovery (a_database_recovery), m_job_type (a_job_type)
   , m_id (a_id), m_millis (a_millis)
@@ -32,20 +34,40 @@ ut_redo_job_impl::ut_redo_job_impl (ut_database &a_database_recovery, job_type a
 int ut_redo_job_impl::execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
 			       LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support)
 {
-  auto my_clone = clone ();
-  m_database_recovery.apply_changes (std::move (my_clone));
-  if (m_millis > 0)
+  // busy wait before actually applying the changes as to simulate the real conditions
+  if (m_millis > 0.)
     {
       busy_loop (m_millis);
     }
-  return 0;
+
+  auto my_clone = clone ();
+  m_database_recovery.apply_changes (std::move (my_clone));
+
+  return NO_ERROR;
+}
+
+template <typename T_FLOATING>
+static bool close_equal (T_FLOATING left, T_FLOATING rite
+			 , T_FLOATING eps = std::numeric_limits<T_FLOATING>::epsilon ())
+{
+  static_assert (std::is_floating_point<T_FLOATING>::value, "T_FLOATING must be floating point");
+
+  const auto diff = std::fabs (left - rite);
+  left = std::fabs (left);
+  rite = std::fabs (rite);
+  const auto largest_abs = (left > rite) ? left : rite;
+  if (diff <= largest_abs * eps)
+    {
+      return true;
+    }
+  return false;
 }
 
 void ut_redo_job_impl::require_equal (const ut_redo_job_impl &that) const
 {
   REQUIRE (m_id == that.m_id);
   REQUIRE (get_vpid () == that.get_vpid ());
-  REQUIRE (m_millis == that.m_millis);
+  REQUIRE (close_equal (m_millis, that.m_millis));
 }
 
 bool ut_redo_job_impl::is_volume_creation () const
@@ -70,21 +92,24 @@ ux_ut_redo_job_impl ut_redo_job_impl::clone ()
   return res;
 }
 
-void ut_redo_job_impl::busy_loop (size_t a_millis)
+void ut_redo_job_impl::busy_loop (double a_millis)
 {
   const auto start = std::chrono::system_clock::now ();
-  // declare sum outside the loop to simulate a side effect
-  double sum = 0;
+  int loop_count = 0;
   while (true)
     {
-      for (double sum_idx = 0.; sum_idx < 10000.; sum_idx += 1.0)
+      // https://stackoverflow.com/a/58758133
+      for (unsigned i = 0; i < 1000; i++)
 	{
-	  sum *= sum_idx;
+	  __asm__ __volatile__ ("" : "+g" (i) : :);
 	}
       const std::chrono::duration<double, std::milli> diff_millis = std::chrono::system_clock::now () - start;
-      if (a_millis <= diff_millis.count ())
+      const double diff_millis_count = diff_millis.count ();
+      if (a_millis <= diff_millis_count )
 	{
+	  auto dbg = loop_count;
 	  break;
 	}
+      ++loop_count;
     }
 }

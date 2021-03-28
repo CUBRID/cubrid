@@ -26,7 +26,7 @@ ut_database_values_generator::ut_database_values_generator (const ut_database_co
   : m_database_config (a_database_config)
   , m_lsa_log_id (10100) // just starts from an arbitrary value
   , m_gen (m_rd ())
-  , m_duration_in_millis_dist (1, a_database_config.max_duration_in_millis)
+  , m_duration_in_millis_dist (0., a_database_config.max_duration_in_millis)
   // *INDENT-OFF*
   , m_add_or_update_volume_dist ({ut_database_config::ADD_VOLUME_DISCRETE_RATIO,
                                  ut_database_config::UPDATE_VOLUME_DISCRETE_RATIO })
@@ -41,11 +41,12 @@ INT64 ut_database_values_generator::increment_and_get_lsa_log_id ()
   return ++m_lsa_log_id;
 }
 
-int ut_database_values_generator::rand_duration_in_millis ()
+double ut_database_values_generator::rand_duration_in_millis ()
 {
   if (m_database_config.max_duration_in_millis > 0)
     {
-      return m_duration_in_millis_dist (m_gen);
+      const auto res = m_duration_in_millis_dist (m_gen);
+      return res;
     }
   return 0;
 }
@@ -112,7 +113,7 @@ ux_ut_redo_job_impl ut_page::generate_changes (ut_database &a_database_recovery,
     ut_database_values_generator &a_db_global_values)
 {
   const INT64 lsa_log_id = a_db_global_values.increment_and_get_lsa_log_id ();
-  const int millis = a_db_global_values.rand_duration_in_millis ();
+  const double millis = a_db_global_values.rand_duration_in_millis ();
 
   ux_ut_redo_job_impl job_to_append
   {
@@ -190,7 +191,7 @@ ux_ut_redo_job_impl ut_volume::generate_changes (ut_database &a_database_recover
 	  // add new page and generate log entry
 	  // akin to 'extend volume' operation
 	  const auto lsa_log_id = a_db_global_values.increment_and_get_lsa_log_id ();
-	  const int millis = a_db_global_values.rand_duration_in_millis ();
+	  const double millis = a_db_global_values.rand_duration_in_millis ();
 	  ux_ut_redo_job_impl job
 	  {
 	    new ut_redo_job_impl (a_database_recovery, ut_redo_job_impl::job_type::NEW_PAGE,
@@ -251,7 +252,6 @@ void ut_volume::require_equal (const ut_volume &that) const
 const ux_ut_page &ut_volume::add_new_page (std::vector<ux_ut_page> &a_pages)
 {
   ux_ut_page page { new ut_page (m_volid, a_pages.size ()) };
-  //page->initialize (m_volid, a_pages.size ());
   a_pages.push_back (std::move (page));
   return *a_pages.rbegin ();
 }
@@ -286,7 +286,7 @@ ux_ut_redo_job_impl ut_database::generate_changes (ut_database &a_database_recov
 	{
 	  // add new volume and generate log entry
 	  const auto lsa_log_id = a_db_global_values.increment_and_get_lsa_log_id ();
-	  const int millis = a_db_global_values.rand_duration_in_millis ();
+	  const double millis = a_db_global_values.rand_duration_in_millis ();
 	  ux_ut_redo_job_impl job
 	  {
 	    // the value for page id is dummy and will not be used by this instance

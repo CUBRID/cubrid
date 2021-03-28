@@ -50,7 +50,7 @@ struct ut_database_config
   /* the maximum duration in millis for a job to busy-loop
    * if 0, no busy-loop at all
    */
-  const size_t max_duration_in_millis;
+  const double max_duration_in_millis;
 };
 
 /*
@@ -72,7 +72,7 @@ class ut_database_values_generator
 
     INT64 increment_and_get_lsa_log_id ();
 
-    int rand_duration_in_millis ();
+    double rand_duration_in_millis ();
 
     add_or_update rand_add_or_update_volume (const size_t a_current_volume_count);
 
@@ -92,7 +92,7 @@ class ut_database_values_generator
     std::mt19937 m_gen;
 
     // number of millis for a task to busy wait
-    std::uniform_int_distribution<int> m_duration_in_millis_dist;
+    std::uniform_real_distribution<double> m_duration_in_millis_dist;
 
     // discrete distribution for adding new volumes or updating existing volumes
     std::discrete_distribution<int8_t> m_add_or_update_volume_dist;
