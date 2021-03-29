@@ -247,7 +247,11 @@ const char *broker_keywords[] = {
   "SHARD_PROXY_CONN_WAIT_TIMEOUT",
   "SHARD_PROXY_LOG_MAX_SIZE",
   "SHARD_PROXY_SHM_ID",
-  "SHARD_PROXY_TIMEOUT"
+  "SHARD_PROXY_TIMEOUT",
+  "SHARD_NUM_PROXY",
+  /* For backword compatibility */
+  "SQL_LOG2",
+  "SHARD"
 };
 
 int broker_keywords_size = sizeof (broker_keywords) / sizeof (char *);
