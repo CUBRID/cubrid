@@ -29,10 +29,11 @@ struct log_recovery_test_config
   /* the number of redo jobs to generate */
   const size_t redo_job_count;
 
+  /* useful in debugging to print helper messages/progress */
   bool verbose;
 };
 
-static bool thread_infrastructure_initialized = bool ();
+static bool thread_infrastructure_initialized = false;
 
 void initialize_thread_infrastructure ()
 {
