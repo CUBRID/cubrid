@@ -180,7 +180,7 @@ void active_tran_server::receive_log_page(cubpacking::unpacker &upk)
 
         if (prm_get_bool_value(PRM_ID_ER_LOG_READ_LOG_PAGE))
         {
-                _er_log_debug(ARG_FILE_LINE, "Received log page from Page Server. Page ID: %ld\n", pageid);
+          _er_log_debug(ARG_FILE_LINE, "Received log page from Page Server. Page ID: %ld\n", pageid);
         }
 }
 
