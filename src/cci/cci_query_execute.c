@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. 
+ * Copyright (C) 2008 Search Solution Corporation.
  * Copyright (c) 2016 CUBRID Corporation.
  *
  * Redistribution and use in source and binary forms, with or without modification,
@@ -3298,7 +3298,7 @@ qe_get_data_str (T_VALUE_BUF * conv_val_buf, T_CCI_U_TYPE u_type, char *col_valu
       break;
     case CCI_U_TYPE_BIGINT:
       {
-	INT64 data;
+	INT64 data = INT64 ();
 
 	qe_get_data_bigint (u_type, col_value_p, &data);
 
@@ -3311,7 +3311,7 @@ qe_get_data_str (T_VALUE_BUF * conv_val_buf, T_CCI_U_TYPE u_type, char *col_valu
       break;
     case CCI_U_TYPE_UBIGINT:
       {
-	UINT64 data;
+	UINT64 data = UINT64 ();
 
 	qe_get_data_ubigint (u_type, col_value_p, &data);
 
@@ -3325,7 +3325,7 @@ qe_get_data_str (T_VALUE_BUF * conv_val_buf, T_CCI_U_TYPE u_type, char *col_valu
     case CCI_U_TYPE_INT:
     case CCI_U_TYPE_SHORT:
       {
-	int data;
+	int data = int ();
 
 	qe_get_data_int (u_type, col_value_p, &data);
 
@@ -3339,7 +3339,7 @@ qe_get_data_str (T_VALUE_BUF * conv_val_buf, T_CCI_U_TYPE u_type, char *col_valu
     case CCI_U_TYPE_UINT:
     case CCI_U_TYPE_USHORT:
       {
-	unsigned int data;
+	unsigned int data = 0u;
 
 	qe_get_data_uint (u_type, col_value_p, &data);
 
@@ -3353,7 +3353,7 @@ qe_get_data_str (T_VALUE_BUF * conv_val_buf, T_CCI_U_TYPE u_type, char *col_valu
     case CCI_U_TYPE_MONETARY:
     case CCI_U_TYPE_DOUBLE:
       {
-	double data;
+	double data = double ();
 
 	qe_get_data_double (u_type, col_value_p, &data);
 
@@ -3366,7 +3366,7 @@ qe_get_data_str (T_VALUE_BUF * conv_val_buf, T_CCI_U_TYPE u_type, char *col_valu
       break;
     case CCI_U_TYPE_FLOAT:
       {
-	float data;
+	float data = float ();
 
 	qe_get_data_float (u_type, col_value_p, &data);
 
@@ -3382,7 +3382,7 @@ qe_get_data_str (T_VALUE_BUF * conv_val_buf, T_CCI_U_TYPE u_type, char *col_valu
     case CCI_U_TYPE_TIMESTAMP:
     case CCI_U_TYPE_DATETIME:
       {
-	T_CCI_DATE data;
+	T_CCI_DATE data = T_CCI_DATE ();
 
 	qe_get_data_date (u_type, col_value_p, &data);
 
@@ -3398,7 +3398,7 @@ qe_get_data_str (T_VALUE_BUF * conv_val_buf, T_CCI_U_TYPE u_type, char *col_valu
     case CCI_U_TYPE_DATETIMETZ:
     case CCI_U_TYPE_DATETIMELTZ:
       {
-	T_CCI_DATE_TZ data_tz;
+	T_CCI_DATE_TZ data_tz = T_CCI_DATE_TZ ();
 
 	qe_get_data_date_tz (u_type, col_value_p, &data_tz, col_val_size);
 
@@ -3474,7 +3474,7 @@ qe_get_data_str (T_VALUE_BUF * conv_val_buf, T_CCI_U_TYPE u_type, char *col_valu
 int
 qe_get_data_bigint (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
 {
-  INT64 data;
+  INT64 data = INT64 ();
 
   assert (u_type >= CCI_U_TYPE_FIRST && u_type <= CCI_U_TYPE_LAST);
 
@@ -3549,7 +3549,7 @@ qe_get_data_bigint (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
 int
 qe_get_data_ubigint (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
 {
-  UINT64 data;
+  UINT64 data = UINT64 ();
 
   assert (u_type >= CCI_U_TYPE_FIRST && u_type <= CCI_U_TYPE_LAST);
 
@@ -3624,7 +3624,7 @@ qe_get_data_ubigint (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
 int
 qe_get_data_int (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
 {
-  int data;
+  int data = int ();
 
   assert (u_type >= CCI_U_TYPE_FIRST && u_type <= CCI_U_TYPE_LAST);
 
@@ -3691,14 +3691,13 @@ qe_get_data_int (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
     }
 
   *((int *) value) = data;
-
   return 0;
 }
 
 int
 qe_get_data_uint (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
 {
-  unsigned int data;
+  unsigned int data = 0u;
 
   assert (u_type >= CCI_U_TYPE_FIRST && u_type <= CCI_U_TYPE_LAST);
 
@@ -3765,14 +3764,13 @@ qe_get_data_uint (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
     }
 
   *((unsigned int *) value) = data;
-
   return 0;
 }
 
 int
 qe_get_data_float (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
 {
-  float data;
+  float data = float ();
 
   assert (u_type >= CCI_U_TYPE_FIRST && u_type <= CCI_U_TYPE_LAST);
 
@@ -3854,7 +3852,7 @@ qe_get_data_float (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
 int
 qe_get_data_double (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
 {
-  double data;
+  double data = double ();
 
   assert (u_type >= CCI_U_TYPE_FIRST && u_type <= CCI_U_TYPE_LAST);
 
@@ -3935,7 +3933,7 @@ qe_get_data_double (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
 int
 qe_get_data_date (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
 {
-  T_CCI_DATE data;
+  T_CCI_DATE data = T_CCI_DATE ();
 
   assert (u_type >= CCI_U_TYPE_FIRST && u_type <= CCI_U_TYPE_LAST);
 
@@ -3966,7 +3964,7 @@ qe_get_data_date (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
 int
 qe_get_data_date_tz (T_CCI_U_TYPE u_type, char *col_value_p, void *value, int total_size)
 {
-  T_CCI_DATE_TZ data;
+  T_CCI_DATE_TZ data = T_CCI_DATE_TZ ();
 
   assert (u_type >= CCI_U_TYPE_FIRST && u_type <= CCI_U_TYPE_LAST);
 
