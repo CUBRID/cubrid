@@ -126,26 +126,32 @@ TEST_CASE ("log recovery parallel test: some jobs, some tasks", "[ci][dbg]")
   std::array<size_t, 2> job_count_arr { 0u, _64k };
   std::array<size_t, 2> parallel_count_arr { 1u, std::thread::hardware_concurrency ()};
   for (const size_t volume_count_per_database : volume_count_per_database_arr)
-    for (const size_t page_count_per_volume : page_count_per_volume_arr)
-      for (const size_t job_count : job_count_arr)
-	for (const size_t parallel_count : parallel_count_arr)
-	  {
-	    const log_recovery_test_config test_config =
+    {
+      for (const size_t page_count_per_volume : page_count_per_volume_arr)
+	{
+	  for (const size_t job_count : job_count_arr)
 	    {
-	      parallel_count, // std::thread::hardware_concurrency (), // parallel_count
-	      job_count, // redo_job_count
-	      false, // verbose
-	    };
+	      for (const size_t parallel_count : parallel_count_arr)
+		{
+		  const log_recovery_test_config test_config =
+		  {
+		    parallel_count, // std::thread::hardware_concurrency (), // parallel_count
+		    job_count, // redo_job_count
+		    false, // verbose
+		  };
 
-	    const ut_database_config database_config =
-	    {
-	      volume_count_per_database, // max_volume_count_per_database
-	      page_count_per_volume, // max_page_count_per_volume
-	      0., // max_duration_in_millis
-	    };
+		  const ut_database_config database_config =
+		  {
+		    volume_count_per_database, // max_volume_count_per_database
+		    page_count_per_volume, // max_page_count_per_volume
+		    0., // max_duration_in_millis
+		  };
 
-	    execute_test (test_config, database_config);
-	  }
+		  execute_test (test_config, database_config);
+		}
+	    }
+	}
+    }
 }
 
 /* the main difference versus the [ci] tests is that these perform a busy-loop
