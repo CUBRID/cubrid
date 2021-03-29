@@ -42,11 +42,11 @@ page_server::~page_server ()
 
 void page_server::set_active_tran_server_connection (cubcomm::channel &&chn)
 {
-  assert_page_server_type();
+  assert_page_server_type ();
 
   chn.set_channel_name ("ATS_PS_comm");
   er_log_debug (ARG_FILE_LINE, "Active transaction server connected to this page server. Channel id: %s.\n",
-		chn.get_channel_id().c_str());
+		chn.get_channel_id ().c_str ());
 
   m_ats_conn.reset (new active_tran_server_conn (std::move (chn)));
   m_ats_conn->register_request_handler (ats_to_ps_request::SEND_LOG_PRIOR_LIST,
@@ -63,23 +63,23 @@ void page_server::set_active_tran_server_connection (cubcomm::channel &&chn)
 					std::bind (&page_server::receive_data_page_fetch, std::ref (*this),
 					    std::placeholders::_1));
 
-  m_ats_conn->start_thread();
+  m_ats_conn->start_thread ();
 
   m_ats_request_queue.reset (new active_tran_server_request_queue (*m_ats_conn));
   m_ats_request_autosend.reset (new active_tran_server_request_autosend (*m_ats_request_queue));
-  m_ats_request_autosend->start_thread();
+  m_ats_request_autosend->start_thread ();
 }
 
-void page_server::disconnect_active_tran_server()
+void page_server::disconnect_active_tran_server ()
 {
   m_ats_request_autosend.reset (nullptr);
   m_ats_request_queue.reset (nullptr);
   m_ats_conn.reset (nullptr);
 }
 
-bool page_server::is_active_tran_server_connected() const
+bool page_server::is_active_tran_server_connected () const
 {
-  assert_page_server_type();
+  assert_page_server_type ();
 
   return m_ats_conn != nullptr;
 }
@@ -97,8 +97,8 @@ void page_server::receive_log_page_fetch (cubpacking::unpacker &upk)
   std::string message;
 
   upk.unpack_string (message);
-  std::memcpy (&pageid, message.c_str(), sizeof (pageid));
-  assert (message.size() == sizeof (pageid));
+  std::memcpy (&pageid, message.c_str (), sizeof (pageid));
+  assert (message.size () == sizeof (pageid));
 
   if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
     {
@@ -107,7 +107,7 @@ void page_server::receive_log_page_fetch (cubpacking::unpacker &upk)
 
   if (!m_log_page_fetcher)
     {
-      m_log_page_fetcher.reset (new cublog::async_page_fetcher());
+      m_log_page_fetcher.reset (new cublog::async_page_fetcher ());
     }
   m_log_page_fetcher->fetch_page (pageid, std::bind (&page_server::on_log_page_read_result, this, std::placeholders::_1,
 				  std::placeholders::_2));
@@ -121,7 +121,7 @@ void page_server::receive_data_page_fetch (cubpacking::unpacker &upk)
       std::string message;
 
       upk.unpack_string (message);
-      std::memcpy (&vpid, message.c_str(), sizeof (vpid));
+      std::memcpy (&vpid, message.c_str (), sizeof (vpid));
       _er_log_debug (ARG_FILE_LINE, "Received request for Data Page from Transaction Server. pageid: %ld volid: %d\n",
 		     vpid.pageid, vpid.volid);
     }
@@ -129,8 +129,8 @@ void page_server::receive_data_page_fetch (cubpacking::unpacker &upk)
 
 void page_server::push_request_to_active_tran_server (ps_to_ats_request reqid, std::string &&payload)
 {
-  assert_page_server_type();
-  assert (is_active_tran_server_connected());
+  assert_page_server_type ();
+  assert (is_active_tran_server_connected ());
 
   m_ats_request_queue->push (reqid, std::move (payload));
 }

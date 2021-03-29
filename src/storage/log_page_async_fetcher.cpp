@@ -36,16 +36,16 @@ namespace cublog
       async_page_fetcher::callback_func_type m_callback;
   };
 
-  async_page_fetcher::async_page_fetcher()
+  async_page_fetcher::async_page_fetcher ()
   {
-    cubthread::manager *thread_manager = cubthread::get_manager();
+    cubthread::manager *thread_manager = cubthread::get_manager ();
 
-    const auto thread_count = std::thread::hardware_concurrency();
+    const auto thread_count = std::thread::hardware_concurrency ();
     m_threads = thread_manager->create_worker_pool (thread_count, thread_count, "async_page_fetcher_worker_pool",
 		nullptr, thread_count, false /*debug_logging*/);
   }
 
-  async_page_fetcher::~async_page_fetcher()
+  async_page_fetcher::~async_page_fetcher ()
   {
   }
 
