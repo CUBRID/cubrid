@@ -105,10 +105,7 @@ void page_server::receive_log_page_fetch (cubpacking::unpacker &upk)
       _er_log_debug (ARG_FILE_LINE, "Received request for log from Transaction Server. Page ID: %lld \n", pageid);
     }
 
-  if (!m_log_page_fetcher)
-    {
-      m_log_page_fetcher.reset (new cublog::async_page_fetcher ());
-    }
+  assert (m_log_page_fetcher);
   m_log_page_fetcher->fetch_page (pageid, std::bind (&page_server::on_log_page_read_result, this, std::placeholders::_1,
 				  std::placeholders::_2));
 }
@@ -173,6 +170,19 @@ page_server::finish_replication (cubthread::entry &thread_entry)
   m_replicator->wait_replication_finish ();
   m_replicator.reset (nullptr);
 }
+
+void
+page_server::init_log_page_fetcher ()
+{
+  m_log_page_fetcher.reset (new cublog::async_page_fetcher ());
+}
+
+void
+page_server::finalize_log_page_fetcher ()
+{
+  m_log_page_fetcher.reset ();
+}
+
 
 void
 assert_page_server_type ()

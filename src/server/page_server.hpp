@@ -56,6 +56,9 @@ class page_server
     void start_log_replicator (const log_lsa &start_lsa);
     void finish_replication (cubthread::entry &thread_entry);
 
+    void init_log_page_fetcher ();
+    void finalize_log_page_fetcher ();
+
   private:
     using active_tran_server_request_queue = cubcomm::request_sync_send_queue<active_tran_server_conn, std::string>;
     using active_tran_server_request_autosend = cubcomm::request_queue_autosend<active_tran_server_request_queue>;

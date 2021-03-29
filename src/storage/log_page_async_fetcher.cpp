@@ -8,33 +8,27 @@ namespace cublog
   class log_page_fetch_task : public cubthread::entry_task
   {
     public:
-      explicit log_page_fetch_task (
-	      LOG_PAGEID pageid,
-	      async_page_fetcher::callback_func_type &&callback)
-	:
-	cubthread::entry_task (),
-	m_logpageid (pageid),
-	m_callback (std::move (callback))
+      explicit log_page_fetch_task (LOG_PAGEID pageid, async_page_fetcher::callback_func_type &&callback)
+	: m_logpageid (pageid)
+	, m_callback (std::move (callback))
       {
       }
 
-      void execute (context_type &) override
-      {
-	log_lsa loglsa;
-	loglsa.pageid = m_logpageid;
-
-	log_reader logreader;
-	int err = logreader.set_lsa_and_fetch_page (loglsa);
-
-	auto page = logreader.get_page ();
-
-	m_callback (page, err);
-      }
+      void execute (context_type &) override;
 
     private:
       LOG_PAGEID m_logpageid;
       async_page_fetcher::callback_func_type m_callback;
   };
+
+  void log_page_fetch_task::execute (context_type &context)
+  {
+    log_lsa loglsa { m_logpageid, 0 };
+    log_reader logreader;
+
+    int err = logreader.set_lsa_and_fetch_page (loglsa);
+    m_callback (logreader.get_page (), err);
+  }
 
   async_page_fetcher::async_page_fetcher ()
   {
@@ -47,6 +41,7 @@ namespace cublog
 
   async_page_fetcher::~async_page_fetcher ()
   {
+    cubthread::get_manager ()->destroy_worker_pool (m_threads);
   }
 
   void async_page_fetcher::fetch_page (LOG_PAGEID pageid, callback_func_type &&func)

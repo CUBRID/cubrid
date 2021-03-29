@@ -52,6 +52,10 @@ void init_server_type (const char *db_name)
     {
       ats_Gl.init_page_server_hosts (db_name);
     }
+  else
+    {
+      ps_Gl.init_log_page_fetcher ();
+    }
 
   er_log_debug (ARG_FILE_LINE, "Starting server type: %s\n",
 		get_server_type () == SERVER_TYPE_PAGE ? "page" : "transaction");
@@ -66,6 +70,7 @@ void finalize_server_type ()
   else
     {
       assert (get_server_type () == SERVER_TYPE_PAGE);
+      ps_Gl.finalize_log_page_fetcher ();
       ps_Gl.disconnect_active_tran_server ();
     }
 }
