@@ -165,3 +165,4 @@ void log_reader::add_align ()
 }
 
 #endif // LOG_READER_HPP
+

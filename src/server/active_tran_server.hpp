@@ -64,3 +64,4 @@ class active_tran_server
 extern active_tran_server ats_Gl;
 
 #endif // !_ACTIVE_TRAN_SERVER_HPP_
+
