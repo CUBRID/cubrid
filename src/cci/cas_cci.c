@@ -2792,6 +2792,7 @@ int
 cci_get_db_version (int mapped_conn_id, char *out_buf, int buf_size)
 {
   T_CON_HANDLE *con_handle = NULL;
+  const T_REQ_HANDLE *const null_req_handle = nullptr;	// dummy null added to please static check analyzer
   int error = 0;
 
 #ifdef CCI_DEBUG
@@ -2811,7 +2812,7 @@ cci_get_db_version (int mapped_conn_id, char *out_buf, int buf_size)
   reset_error_buffer (&(con_handle->err_buf));
 
   API_SLOG (con_handle);
-  SET_START_TIME_FOR_QUERY (con_handle, NULL);
+  SET_START_TIME_FOR_QUERY (con_handle, null_req_handle);
 
   error = qe_get_db_version (con_handle, out_buf, buf_size);
   while (IS_OUT_TRAN (con_handle) && IS_ER_TO_RECONNECT (error, con_handle->err_buf.err_code))
@@ -3188,6 +3189,7 @@ int
 cci_execute_batch (int mapped_conn_id, int num_query, char **sql_stmt, T_CCI_QUERY_RESULT ** qr, T_CCI_ERROR * err_buf)
 {
   T_CON_HANDLE *con_handle = NULL;
+  const T_REQ_HANDLE *const null_req_handle = nullptr;	// dummy null added to please static check analyzer
   int error = CCI_ER_NO_ERROR;
 
 #ifdef CCI_DEBUG
@@ -3220,7 +3222,7 @@ cci_execute_batch (int mapped_conn_id, int num_query, char **sql_stmt, T_CCI_QUE
     {
       hm_force_close_connection (con_handle);
     }
-  SET_START_TIME_FOR_QUERY (con_handle, NULL);
+  SET_START_TIME_FOR_QUERY (con_handle, null_req_handle);
 
   error = qe_execute_batch (con_handle, num_query, sql_stmt, qr, &(con_handle->err_buf));
   while (IS_OUT_TRAN (con_handle) && IS_ER_TO_RECONNECT (error, con_handle->err_buf.err_code))

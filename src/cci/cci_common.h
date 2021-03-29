@@ -185,9 +185,9 @@
 
 #define SET_START_TIME_FOR_QUERY(CON_HANDLE, REQ_HANDLE)            \
   do {                                                              \
-    if (CON_HANDLE) {                                               \
+    if (CON_HANDLE != nullptr) {                                    \
       int time_to_check = 0;                                        \
-      if (REQ_HANDLE) {                                             \
+      if (REQ_HANDLE != nullptr) {                                  \
         time_to_check = ((T_REQ_HANDLE *)(REQ_HANDLE))->query_timeout;\
       }                                                             \
       else {                                                        \
