@@ -252,6 +252,7 @@ csql_invoke_system_editor (void)
   char *cmd = NULL;
   char *fname = (char *) NULL;	/* pointer to temp file name */
   FILE *fp = (FILE *) NULL;	/* pointer to stream */
+  int file_des;
 
   if (!iq_output_device_is_a_tty ())
     {
@@ -260,15 +261,15 @@ csql_invoke_system_editor (void)
     }
 
   /* create a temp file and open it */
-  fname = tempnam (NULL, NULL);
+  file_des = mkstemp (fname);
 
-  if (fname == NULL)
+  if (file_des == -1)
     {
       csql_Error_code = CSQL_ERR_OS_ERROR;
       goto error;
     }
 
-  fp = fopen (fname, "w");
+  fp = fdopen (file_des, "w");
   if (fp == NULL)
     {
       csql_Error_code = CSQL_ERR_OS_ERROR;

@@ -434,7 +434,8 @@ main (int argc, char *argv[])
          }
          else if (explicit_single_line && csql_arg.single_line_execution == false)
          {
-         /* Don't allow both at once. */
+       */
+      /* Don't allow both at once. */
       goto print_usage;
     }
   else if (csql_arg.sa_mode)

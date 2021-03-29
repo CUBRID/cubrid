@@ -1612,17 +1612,17 @@ csql_print_buffer (void)
   char *cmd = NULL;
   char *fname = (char *) NULL;	/* pointer to temp file name */
   FILE *fp = (FILE *) NULL;	/* pointer to stream */
-
+  int file_des;
   /* create a temp file and open it */
 
-  fname = tmpnam ((char *) NULL);
-  if (fname == NULL)
+  file_des = mkstemp (fname);
+  if (file_des == -1)
     {
       csql_Error_code = CSQL_ERR_OS_ERROR;
       goto error;
     }
 
-  fp = fopen (fname, "w");
+  fp = fdopen (file_des, "w");
   if (fp == NULL)
     {
       csql_Error_code = CSQL_ERR_OS_ERROR;
