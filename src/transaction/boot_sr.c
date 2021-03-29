@@ -6180,6 +6180,8 @@ boot_dbparm_save_volume (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, VOLID voli
       boot_Temp_info.temp_nvols++;
       boot_Temp_info.temp_last_volid = volid;
     }
+
+  return NO_ERROR;
 }
 
 /*
