@@ -1380,7 +1380,7 @@ extract_db_stat (FILE * fp, const char *tdbname, T_CM_ERROR * err_buf)
       if (linebuf[0] == '@')
 	continue;
 
-      tok_num = sscanf (linebuf, "%511s %511s %*s %*s %*s %20s", cmd_name, db_name, pid_t);
+      tok_num = sscanf (linebuf, "%511s %511s %*s %*s %*s %19s", cmd_name, db_name, pid_t);
 
       if (tok_num != 3 || (strcmp (cmd_name, "Server") != 0 && strcmp (cmd_name, "HA-Server") != 0))
 	continue;

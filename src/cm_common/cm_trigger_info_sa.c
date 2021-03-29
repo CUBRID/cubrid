@@ -84,6 +84,10 @@ main (int argc, char *argv[])
     {
       write_err_msg (errfile, (char *) db_error_string (1));
       db_shutdown ();
+      if (fp != nullptr)
+	{
+	  fclose (fp);
+	}
       return 0;
     }
 

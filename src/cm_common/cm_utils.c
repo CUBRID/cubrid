@@ -512,11 +512,16 @@ read_server_status_output (T_SERVER_STATUS_RESULT * res, char *out_file)
       if (num_info > num_alloc)
 	{
 	  num_alloc += 5;
-	  info = (T_SERVER_STATUS_INFO *) realloc (info, sizeof (T_SERVER_STATUS_INFO) * num_alloc);
-	  if (info == NULL)
+	  T_SERVER_STATUS_INFO *const new_info
+	    = (T_SERVER_STATUS_INFO *) realloc (info, sizeof (T_SERVER_STATUS_INFO) * num_alloc);
+	  if (new_info == NULL)
 	    {
 	      fclose (fp);
 	      return;
+	    }
+	  else
+	    {
+	      info = new_info;
 	    }
 	}
       strcpy (info[num_info - 1].db_name, db_name);
