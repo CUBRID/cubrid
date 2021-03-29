@@ -676,6 +676,7 @@ typedef enum
 {
   VACUUMDB_MSG_CLIENT_SERVER_NOT_AVAILABLE = 20,
   VACUUMDB_MSG_FAILED = 21,
+  VACUUMDB_MSG_BAD_OUTPUT = 22,
   VACUUMDB_MSG_USAGE = 60
 } MSGCAT_VACUUMDB_MSG;
 
@@ -1538,6 +1539,10 @@ typedef struct _ha_config
 #define VACUUM_SA_MODE_L                         "SA-mode"
 #define VACUUM_CS_MODE_S                         'C'
 #define VACUUM_CS_MODE_L                         "CS-mode"
+#define VACUUM_DUMP_S                            10700
+#define VACUUM_DUMP_L                            "dump"
+#define VACUUM_OUTPUT_FILE_S                     'o'
+#define VACUUM_OUTPUT_FILE_L                     "output-file"
 
 /* checksumdb option list */
 #define CHECKSUM_CHUNK_SIZE_S			'c'

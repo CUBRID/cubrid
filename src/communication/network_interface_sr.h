@@ -206,6 +206,7 @@ extern void slocator_prefetch_repl_insert (THREAD_ENTRY * thread_p, unsigned int
 extern void slocator_prefetch_repl_update_or_delete (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 						     int reqlen);
 extern void svacuum (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void svacuum_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slogtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void stran_lock_rep_read (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sboot_get_timezone_checksum (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);

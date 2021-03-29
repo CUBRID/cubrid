@@ -3696,10 +3696,10 @@ int
 vacuumdb (UTIL_FUNCTION_ARG * arg)
 {
   UTIL_ARG_MAP *arg_map = arg->arg_map;
-#if defined (SA_MODE)
   char er_msg_file[PATH_MAX];
-#endif /* SA_MODE */
-  const char *database_name;
+  const char *database_name, *output_file = NULL;
+  bool dump_flag;
+  FILE *outfp = NULL;
 
   if (utility_get_option_string_table_size (arg_map) < 1)
     {
@@ -3717,33 +3717,76 @@ vacuumdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
+  dump_flag = utility_get_option_bool_value (arg_map, VACUUM_DUMP_S);
+
+  if (dump_flag)
+    {
+      output_file = utility_get_option_string_value (arg_map, VACUUM_OUTPUT_FILE_S, 0);
+      if (output_file == NULL)
+	{
+	  outfp = stdout;
+	}
+      else
+	{
+	  outfp = fopen (output_file, "w");
+	  if (outfp == NULL)
+	    {
+	      PRINT_AND_LOG_ERR_MSG (msgcat_message
+				     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_VACUUMDB, VACUUMDB_MSG_BAD_OUTPUT),
+				     output_file);
+	      goto error_exit;
+	    }
+	}
+    }
+
 #if defined(SA_MODE)
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
-  sysprm_set_force (prm_get_name (PRM_ID_DISABLE_VACUUM), "no");
 
   AU_DISABLE_PASSWORDS ();
-  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+  if (dump_flag)
+    {
+      db_set_client_type (DB_CLIENT_TYPE_SKIP_VACUUM_ADMIN_CSQL);
+    }
+  else
+    {
+      sysprm_set_force (prm_get_name (PRM_ID_DISABLE_VACUUM), "no");
+      db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+    }
   db_login ("DBA", NULL);
   if (db_restart (arg->command_name, TRUE, database_name) == NO_ERROR)
     {
-      if (db_set_isolation (TRAN_READ_COMMITTED) != NO_ERROR || cvacuum () != NO_ERROR)
+      (void) db_set_isolation (TRAN_READ_COMMITTED);
+
+      if (dump_flag)
 	{
-	  const char *tmpname;
+	  vacuum_dump (outfp);
 
-	  if ((tmpname = er_get_msglog_filename ()) == NULL)
+	  if (outfp != stdout)
 	    {
-	      tmpname = "/dev/null";
+	      fclose (outfp);
 	    }
-	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_VACUUMDB, VACUUMDB_MSG_FAILED),
-				 tmpname);
+	}
+      else
+	{
+	  if (cvacuum () != NO_ERROR)
+	    {
+	      const char *tmpname;
 
-	  util_log_write_errstr ("%s\n", db_error_string (3));
-	  db_shutdown ();
-	  goto error_exit;
+	      if ((tmpname = er_get_msglog_filename ()) == NULL)
+		{
+		  tmpname = "/dev/null";
+		}
+	      PRINT_AND_LOG_ERR_MSG (msgcat_message
+				     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_VACUUMDB, VACUUMDB_MSG_FAILED), tmpname);
+
+	      util_log_write_errstr ("%s\n", db_error_string (3));
+	      db_shutdown ();
+	      goto error_exit;
+	    }
 	}
       db_shutdown ();
     }
@@ -3755,10 +3798,39 @@ vacuumdb (UTIL_FUNCTION_ARG * arg)
 
   return EXIT_SUCCESS;
 #else
-  fprintf (stderr,
-	   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_VACUUMDB, VACUUMDB_MSG_CLIENT_SERVER_NOT_AVAILABLE),
-	   basename (arg->argv0));
-  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+  if (dump_flag)
+    {
+      /* error message log file */
+      snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
+      er_init (er_msg_file, ER_NEVER_EXIT);
+
+      AU_DISABLE_PASSWORDS ();
+      db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+      db_login ("DBA", NULL);
+
+      if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
+	{
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	  goto error_exit;
+	}
+
+      (void) db_set_isolation (TRAN_READ_COMMITTED);
+
+      vacuum_dump (outfp);
+      db_shutdown ();
+
+      if (outfp != stdout)
+	{
+	  fclose (outfp);
+	}
+    }
+  else
+    {
+      fprintf (stderr,
+	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_VACUUMDB,
+			       VACUUMDB_MSG_CLIENT_SERVER_NOT_AVAILABLE), basename (arg->argv0));
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+    }
 
   return EXIT_SUCCESS;
 #endif

@@ -275,6 +275,7 @@ extern int vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npag
 			      VFID * dropped_files_vfid, bool is_restore);
 extern void vacuum_finalize (THREAD_ENTRY * thread_p);
 extern int xvacuum (THREAD_ENTRY * thread_p);
+extern void xvacuum_dump (THREAD_ENTRY * thread_p, FILE * outfp);
 extern MVCCID vacuum_get_global_oldest_active_mvccid (void);
 #if defined (SERVER_MODE)
 extern void vacuum_master_start (THREAD_ENTRY * thread_p);

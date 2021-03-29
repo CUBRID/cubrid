@@ -1148,13 +1148,16 @@ delvoldb: 删除一个空的数据库卷文件.\n\
 $set 55 MSGCAT_UTIL_SET_VACUUMDB
 20 Vacuumdb 对于客户端-服务器模式临时不可用\n
 21 清空(vacuum)操作失败\n
+22 无法打开输出文件 '%1$s'\n
 60 \
 vacuumdb: 清空(vacuum)数据库中的死记录.\n\
 用法: %1$s vacuumdb [选项] 数据库名\n\
 \n\
 可用选项:\n\
   -S, --SA-mode                单机模式执行\n\
-  -C, --CS-mode                客户端-服务器模式执行\n
+  -C, --CS-mode                客户端-服务器模式执行\n\
+      --dump                   转储当前真空状态\n\
+  -o, --output-file=FILE       重定向输出信息到文件 FILE ; 默认: 空\n
 
 $set 56 MSGCAT_UTIL_SET_CHECKSUMDB
 1 在 %1$s 中装载表名字失败.\n
