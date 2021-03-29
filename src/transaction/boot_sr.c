@@ -116,18 +116,28 @@ struct boot_dbparm
   EHID classname_table;		/* The hash file of class names */
 #endif
   CTID ctid;			/* The catalog file */
-  /* TODO: Remove me */
-  VFID query_vfid;		/* Query file */
+  /* NOTE: deleted; not used anymore; kept here only for backwards compatibility (alignment); can be recycled */
+  INT32 dummy1;
+  INT32 dummy1_1;
   char rootclass_name[10];	/* Name of the root class */
   OID rootclass_oid;		/* OID of the root class */
   VOLID nvols;			/* Number of volumes that have been created */
-  VOLID temp_nvols;		/* Number of temporary volumes that have been created */
+  /* NOTE: deleted; not used anymore; kept here only for backwards compatibility (alignment); can be recycled */
+  INT16 dummy2;
   VOLID last_volid;		/* Next volume identifier */
-  VOLID temp_last_volid;	/* Next temporary volume identifier. This goes from a higher number to a lower number */
+  /* NOTE: deleted; not used anymore; kept here only for backwards compatibility (alignment); can be recycled */
+  INT16 dummy3;
   int vacuum_log_block_npages;	/* Number of pages for vacuum data file */
   VFID vacuum_data_vfid;	/* Vacuum data file identifier */
   VFID dropped_files_vfid;	/* Vacuum dropped files file identifier */
   HFID tde_keyinfo_hfid;	/* Heap file where tde key info (TDE_KEYINFO) is stored */
+};
+
+typedef struct boot_temp_info BOOT_TEMP_INFO;
+struct boot_temp_info
+{
+  DKNVOLS temp_nvols;		/* Number of temporary volumes that have been created */
+  VOLID temp_last_volid;	/* Next temporary volume identifier. This goes from a higher number to a lower number */
 };
 
 enum remove_temp_vol_action
@@ -165,6 +175,10 @@ static OID *boot_Db_parm_oid = &boot_Header_oid;
 static char boot_Lob_path[PATH_MAX + LOB_PATH_PREFIX_MAX] = "";
 static bool skip_to_check_ct_classes_for_rebuild = false;
 static char boot_Server_session_key[SERVER_SESSION_KEY_SIZE];
+static BOOT_TEMP_INFO boot_Temp_info = {
+  0,
+  NULL_VOLID
+};
 
 #if defined(SERVER_MODE)
 static bool boot_Set_server_at_exit = false;
@@ -364,7 +378,7 @@ xboot_find_number_temp_volumes (THREAD_ENTRY * thread_p)
 
   /* wait for disk extensions to finish. */
   disk_lock_extend ();
-  nvols = boot_Db_parm->temp_nvols;
+  nvols = boot_Temp_info.temp_nvols;
   disk_unlock_extend ();
 
   return nvols;
@@ -412,7 +426,7 @@ xboot_find_last_temp (THREAD_ENTRY * thread_p)
 
   /* wait for disk extensions to finish. */
   disk_lock_extend ();
-  volid = boot_Db_parm->temp_last_volid;
+  volid = boot_Temp_info.temp_last_volid;
   disk_unlock_extend ();
 
   return volid;
@@ -502,7 +516,7 @@ static int
 boot_remove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid, const char *vlabel)
 {
   /* Make sure that this is a temporary volume */
-  if (volid < boot_Db_parm->temp_last_volid)
+  if (volid < boot_Temp_info.temp_last_volid)
     {
       if (volid >= LOG_DBFIRST_VOLID && volid <= boot_Db_parm->last_volid)
 	{
@@ -518,14 +532,14 @@ boot_remove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid, const char *vlabe
     }
 
   /* Do the following for temporary volumes */
-  boot_Db_parm->temp_nvols--;
-  if (boot_Db_parm->temp_nvols <= 0)
+  boot_Temp_info.temp_nvols--;
+  if (boot_Temp_info.temp_nvols <= 0)
     {
-      boot_Db_parm->temp_last_volid = NULL_VOLID;
+      boot_Temp_info.temp_last_volid = NULL_VOLID;
     }
-  else if (boot_Db_parm->temp_last_volid == volid)
+  else if (boot_Temp_info.temp_last_volid == volid)
     {
-      boot_Db_parm->temp_last_volid = volid + 1;
+      boot_Temp_info.temp_last_volid = volid + 1;
     }
 
   /* The volume is not known by the system any longer. */
@@ -902,21 +916,20 @@ boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p, REMOVE_TEMP_VOL_ACTION de
 {
   int error_code = NO_ERROR;
 
-  /* if volumes exist beyond bo_Dbparm.temp_last_volid, we remove the volumes.
-   * there is no logging to add or remove a temporary temp volume, but logging to update bo_Dbparm.
-   * so, unknown volumes can be possible to exist.
+  /* if temp volumes are found at restart (this might happen due to abnormal shutdown), they
+   * are removed; since temporary volumes bookkeeping is volatile (not persistent), there is no
+   * persisted bookkeeping to check or update;
    */
   if (!BO_IS_SERVER_RESTARTED ())
     {
       boot_remove_unknown_temp_volumes (thread_p);
+
+      /* since this is execute upon restart, there is nothing else to do or set */
+      assert (boot_Temp_info.temp_nvols == 0 && boot_Temp_info.temp_last_volid == NULL_VOLID);
+      return error_code;
     }
 
-  if (boot_Db_parm->temp_nvols == 0)
-    {
-      assert (boot_Db_parm->temp_last_volid == NULL_VOLID);
-      return NO_ERROR;
-    }
-
+  /* delete temp volumes according to bookkeeping; happens at normal server shutdown */
   boot_find_rest_temp_volumes (thread_p, NULL_VOLID, boot_xremove_temp_volume, true, true);
 
   if (delete_action == ONLY_PHYSICAL_REMOVE_TEMP_VOL_ACTION)
@@ -924,18 +937,11 @@ boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p, REMOVE_TEMP_VOL_ACTION de
       return NO_ERROR;
     }
 
-  if (boot_Db_parm->temp_nvols != 0 || boot_Db_parm->temp_last_volid != NULL_VOLID)
+  if (boot_Temp_info.temp_nvols != 0 || boot_Temp_info.temp_last_volid != NULL_VOLID)
     {
       /* something bad happened. Reset it anyway. */
-      boot_Db_parm->temp_nvols = 0;
-      boot_Db_parm->temp_last_volid = NULL_VOLID;
-    }
-
-  error_code = boot_db_parm_update_heap (thread_p);
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return error_code;
+      boot_Temp_info.temp_nvols = 0;
+      boot_Temp_info.temp_last_volid = NULL_VOLID;
     }
 
   return error_code;
@@ -989,34 +995,49 @@ boot_make_temp_volume_fullname (char *temp_vol_fullname, VOLID temp_volid)
 }
 
 /*
- * boot_remove_unknown_temp_volumes () -
+ * boot_remove_unknown_temp_volumes () - to be called only upon server restart; unknown volumes means
+ *    volumes which are found existing (and should not be) vs the state that the server is at the
+ *    moment (ie: restart); performs the deletion in reverse order (aka LIFO) versus creation order
+ *    in order to keep the data consistent in case of abnormal server shutdown even when the boot
+ *    procedure is underway
  *
  * return: none
  */
 static void
 boot_remove_unknown_temp_volumes (THREAD_ENTRY * thread_p)
 {
-  VOLID temp_volid;
+  VOLID temp_volid = LOG_MAX_DBVOLID;
   char temp_vol_fullname[PATH_MAX];
 
-  if (boot_Db_parm->temp_last_volid == NULL_VOLID)
-    {
-      temp_volid = LOG_MAX_DBVOLID;
-    }
-  else
-    {
-      temp_volid = boot_Db_parm->temp_last_volid - 1;
-    }
+  assert (!BO_IS_SERVER_RESTARTED ());
+  /* logic below needs this invariant */
+  static_assert (LOG_MAX_DBVOLID < VOLID_MAX, "LOG_MAX_DBVOLID is expected to be less than VOLID_MAX");
 
-  for (; temp_volid > boot_Db_parm->last_volid; temp_volid--)
+  /* inspect volumes in descending order */
+  for (; temp_volid > LOG_DBFIRST_VOLID; temp_volid--)
     {
       boot_make_temp_volume_fullname (temp_vol_fullname, temp_volid);
       if (!fileio_is_volume_exist (temp_vol_fullname))
 	{
+	  /* the last found volume id */
+	  /* if no temporary volumes are found, and this is LOG_MAX_DBVOLID, incrementing here
+	   * will not overflow and will invalidate the loop below as well */
+	  ++temp_volid;
 	  break;
 	}
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_VOLUME, 1, temp_vol_fullname);
-      fileio_unformat (thread_p, temp_vol_fullname);
+    }
+
+  /* temporary volumes are created in descending id order; delete in incrementing order
+   * to avoid creating gaps while deleting in case of crash during precisely this operation */
+  for (; temp_volid <= LOG_MAX_DBVOLID; ++temp_volid)
+    {
+      boot_make_temp_volume_fullname (temp_vol_fullname, temp_volid);
+      /* check again, operation is not guarded */
+      if (fileio_is_volume_exist (temp_vol_fullname))
+	{
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_VOLUME, 1, temp_vol_fullname);
+	  fileio_unformat (thread_p, temp_vol_fullname);
+	}
     }
 }
 
@@ -1193,12 +1214,12 @@ boot_find_rest_temp_volumes (THREAD_ENTRY * thread_p, VOLID volid,
     }
   temp_name = fileio_get_base_file_name (boot_Db_full_name);
 
-  if (boot_Db_parm->temp_nvols > 0)
+  if (boot_Temp_info.temp_nvols > 0)
     {
       /* Cycle over all temporarily volumes, skip the given one */
       if (forward_dir)
 	{
-	  for (num_vols = boot_Db_parm->temp_last_volid; num_vols <= LOG_MAX_DBVOLID; num_vols++)
+	  for (num_vols = boot_Temp_info.temp_last_volid; num_vols <= LOG_MAX_DBVOLID; num_vols++)
 	    {
 	      temp_volid = (VOLID) num_vols;
 	      if (temp_volid != volid)
@@ -1226,7 +1247,7 @@ boot_find_rest_temp_volumes (THREAD_ENTRY * thread_p, VOLID volid,
 	}
       else
 	{
-	  for (num_vols = LOG_MAX_DBVOLID; num_vols >= boot_Db_parm->temp_last_volid; num_vols--)
+	  for (num_vols = LOG_MAX_DBVOLID; num_vols >= boot_Temp_info.temp_last_volid; num_vols--)
 	    {
 	      temp_volid = (VOLID) num_vols;
 	      if (temp_volid != volid)
@@ -5025,12 +5046,12 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
   (void) strncpy (boot_Db_parm->rootclass_name, ROOTCLASS_NAME, DB_SIZEOF (boot_Db_parm->rootclass_name));
   boot_Db_parm->nvols = 1;
   boot_Db_parm->last_volid = LOG_DBFIRST_VOLID;
-  boot_Db_parm->temp_nvols = 0;
-  boot_Db_parm->temp_last_volid = NULL_VOLID;
 
-  /* The query area has been removed */
-  boot_Db_parm->query_vfid.volid = NULL_VOLID;
-  boot_Db_parm->query_vfid.fileid = NULL_FILEID;
+  /* NOTE: deleted; not used anymore; kept here only for backwards compatibility; can be recycled */
+  boot_Db_parm->dummy1 = 0;
+  boot_Db_parm->dummy1_1 = 0;
+  boot_Db_parm->dummy2 = 0;
+  boot_Db_parm->dummy3 = 0;
 
   OID_SET_NULL (&boot_Db_parm->rootclass_oid);
   oid_set_root (&boot_Db_parm->rootclass_oid);
@@ -6044,7 +6065,7 @@ boot_get_new_volume_name_and_id (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, co
     {
       *volid_newvol_out = boot_Db_parm->last_volid + 1;
       if (*volid_newvol_out > LOG_MAX_DBVOLID
-	  || (boot_Db_parm->temp_nvols > 0 && *volid_newvol_out >= boot_Db_parm->temp_last_volid))
+	  || (boot_Temp_info.temp_nvols > 0 && *volid_newvol_out >= boot_Temp_info.temp_last_volid))
 	{
 	  /* should be caught early */
 	  assert (false);
@@ -6084,7 +6105,7 @@ boot_get_new_volume_name_and_id (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, co
     }
   else
     {
-      *volid_newvol_out = boot_Db_parm->temp_nvols > 0 ? boot_Db_parm->temp_last_volid - 1 : LOG_MAX_DBVOLID;
+      *volid_newvol_out = boot_Temp_info.temp_nvols > 0 ? boot_Temp_info.temp_last_volid - 1 : LOG_MAX_DBVOLID;
       if (*volid_newvol_out <= boot_Db_parm->last_volid)
 	{
 	  /* should be caught early */
@@ -6109,58 +6130,58 @@ boot_get_new_volume_name_and_id (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, co
 int
 boot_dbparm_save_volume (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, VOLID volid)
 {
-  VPID vpid_boot_bp_parm;
-  BOOT_DB_PARM save_boot_db_parm = *boot_Db_parm;
-
-  int error_code = NO_ERROR;
-
   assert (log_check_system_op_is_started (thread_p));
 
   if (voltype == DB_PERMANENT_VOLTYPE)
     {
+      BOOT_DB_PARM saved_boot_db_parm = *boot_Db_parm;
+
       assert (boot_Db_parm->nvols >= 0);
       if (volid != boot_Db_parm->last_volid + 1)
 	{
 	  assert_release (false);
-	  error_code = ER_FAILED;
-	  goto exit;
+	  return ER_FAILED;
 	}
       boot_Db_parm->last_volid = volid;
       boot_Db_parm->nvols++;
+
+      /* todo: is flush needed? */
+      VPID vpid_boot_bp_parm;
+      VPID_GET_FROM_OID (&vpid_boot_bp_parm, boot_Db_parm_oid);
+      /* temporary volumes creation does not have to be persisted, therefore should not be logged;
+       * these will be cleaned-up by routines executing either upon clean-close
+       * of the engine or upon boot (in case of abnormal engine close) */
+
+      log_append_undo_data2 (thread_p, RVPGBUF_FLUSH_PAGE, NULL, NULL, 0, sizeof (vpid_boot_bp_parm),
+			     &vpid_boot_bp_parm);
+
+      const int error_code = boot_db_parm_update_heap (thread_p);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  *boot_Db_parm = saved_boot_db_parm;
+	  return error_code;
+	}
+
+      /* flush the boot_Db_parm object. this is not necessary but it is recommended in order to
+       * mount every known volume during restart; that may not be possible during media crash though. */
+      heap_flush (thread_p, boot_Db_parm_oid);
+      fileio_synchronize (thread_p, fileio_get_volume_descriptor (boot_Db_parm_oid->volid), NULL, FILEIO_SYNC_ALSO_FLUSH_DWB);	/* label? */
     }
   else
     {
-      if (boot_Db_parm->temp_nvols < 0 || (boot_Db_parm->temp_nvols == 0 && volid != LOG_MAX_DBVOLID)
-	  || (boot_Db_parm->temp_nvols > 0 && boot_Db_parm->temp_last_volid - 1 != volid))
+      if (boot_Temp_info.temp_nvols < 0 || (boot_Temp_info.temp_nvols == 0 && volid != LOG_MAX_DBVOLID)
+	  || (boot_Temp_info.temp_nvols > 0 && boot_Temp_info.temp_last_volid - 1 != volid))
 	{
 	  /* invalid volid */
 	  assert_release (false);
-	  error_code = ER_FAILED;
-	  goto exit;
+	  return ER_FAILED;
 	}
-      boot_Db_parm->temp_nvols++;
-      boot_Db_parm->temp_last_volid = volid;
+      boot_Temp_info.temp_nvols++;
+      boot_Temp_info.temp_last_volid = volid;
     }
 
-  /* todo: is flush needed? */
-  VPID_GET_FROM_OID (&vpid_boot_bp_parm, boot_Db_parm_oid);
-  log_append_undo_data2 (thread_p, RVPGBUF_FLUSH_PAGE, NULL, NULL, 0, sizeof (vpid_boot_bp_parm), &vpid_boot_bp_parm);
-
-  error_code = boot_db_parm_update_heap (thread_p);
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      *boot_Db_parm = save_boot_db_parm;
-      goto exit;
-    }
-
-  /* flush the boot_Db_parm object. this is not necessary but it is recommended in order to mount every known volume
-   * during restart. that may not be possible during media crash though. */
-  heap_flush (thread_p, boot_Db_parm_oid);
-  fileio_synchronize (thread_p, fileio_get_volume_descriptor (boot_Db_parm_oid->volid), NULL, FILEIO_SYNC_ALSO_FLUSH_DWB);	/* label? */
-
-exit:
-  return error_code;
+  return NO_ERROR;
 }
 
 /*
