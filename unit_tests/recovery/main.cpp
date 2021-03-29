@@ -95,6 +95,7 @@ void execute_test (const log_recovery_test_config &a_test_config,
 }
 
 constexpr auto _1k = 1024u;
+constexpr auto _64k = 64 * _1k;
 constexpr auto _128k = 128 * _1k;
 
 /* small helper class to count the seconds between ctor and dtor invocations
@@ -122,7 +123,7 @@ TEST_CASE ("log recovery parallel test: some jobs, some tasks", "[ci][dbg]")
 
   std::array<size_t, 1> volume_count_per_database_arr { 10u };
   std::array<size_t, 1> page_count_per_volume_arr { _1k };
-  std::array<size_t, 2> job_count_arr { 0u, _128k };
+  std::array<size_t, 2> job_count_arr { 0u, _64k };
   std::array<size_t, 2> parallel_count_arr { 1u, std::thread::hardware_concurrency ()};
   for (const size_t volume_count_per_database : volume_count_per_database_arr)
     for (const size_t page_count_per_volume : page_count_per_volume_arr)
