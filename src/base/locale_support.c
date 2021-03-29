@@ -6821,14 +6821,19 @@ locale_check_and_set_shared_data (const LOC_SHARED_DATA_TYPE lsd_type, const cha
   /* set new shared data */
   if (alloced_shared_data <= count_shared_data)
     {
-      shared_data =
-	(LOC_SHARED_DATA *) realloc (shared_data,
-				     sizeof (LOC_SHARED_DATA) * (alloced_shared_data + SHARED_DATA_INCR_SIZE));
-      if (shared_data == NULL)
+      LOC_SHARED_DATA *const new_shared_data = (LOC_SHARED_DATA *) realloc (shared_data,
+									    sizeof (LOC_SHARED_DATA) *
+									    (alloced_shared_data +
+									     SHARED_DATA_INCR_SIZE));
+      if (new_shared_data == NULL)
 	{
 	  LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_GEN, true);
 	  status = ER_LOC_GEN;
 	  goto exit;
+	}
+      else
+	{
+	  shared_data = new_shared_data;
 	}
       alloced_shared_data += SHARED_DATA_INCR_SIZE;
     }

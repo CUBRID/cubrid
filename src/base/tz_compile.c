@@ -5057,6 +5057,10 @@ xml_start_mapZone (void *data, const char **attr)
       if (len_windows_zone > TZ_WINDOWS_ZONE_NAME_SIZE || len_territory > TZ_COUNTRY_CODE_SIZE)
 	{
 	  TZC_LOG_ERROR_1ARG (NULL, TZC_ERR_INVALID_VALUE, "TZ_WINDOWS_IANA_MAP");
+	  if (temp != nullptr)
+	  {
+	    free(temp);
+	  }
 	  return -1;
 	}
 
