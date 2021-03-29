@@ -444,7 +444,7 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 
       if (ini->key[i] == NULL)
 	{
-          continue;
+	  continue;
 	}
 
       key = strchr (ini->key[i], ':');
