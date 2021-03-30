@@ -14,6 +14,7 @@ REM  GNU General Public License for more details.
 REM
 REM  You should have received a copy of the GNU General Public License
 REM  along with this program; if not, write to the Free Software
+REM  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
 rem batch script for CUBRID Environments, (window services, registry)
 
