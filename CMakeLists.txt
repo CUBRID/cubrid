@@ -1127,39 +1127,35 @@ include_directories(${CMAKE_BINARY_DIR}/external/Source/rapidjson/include)
 list(APPEND EP_TARGETS ${RAPIDJSON_TARGET})
 
 if(WITH_JDBC AND EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
+  message("Build JDBC Driver from cubird-jdbc submodule")
+
   set(JDBC_DIR ${CMAKE_SOURCE_DIR}/cubrid-jdbc)
-  set(JDBC_VERSION_FILE ${JDBC_DIR}/VERSION)
   set(JDBC_SOURCE ${JDBC_DIR}/src)
 
   # build JDBC
-  file(STRINGS ${JDBC_VERSION_FILE} JDBC_VERSION_STR)
-
-  # TODO: get exact extra version from git. It should be resolved at the cubrid-jdbc repository
-  add_custom_target(jdbc_build ALL
-    COMMAND ${CMAKE_COMMAND} -E copy ${JDBC_VERSION_FILE} ${JDBC_DIR}/output/CUBRID-JDBC-${JDBC_VERSION_STR}
-    COMMAND ${ANT} dist-cubrid -buildfile ${JDBC_DIR}/build.xml -Dbasedir=${JDBC_DIR} -Dversion=${JDBC_VERSION_STR} -Dsrc=${JDBC_SOURCE}
-    COMMENT "Build JDBC driver with Ant ..."
-  )
-
   if(UNIX)
-    add_custom_command(TARGET jdbc_build POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E create_symlink ${JDBC_DIR}/JDBC-${JDBC_VERSION_STR}-cubrid.jar ${JDBC_DIR}/cubrid_jdbc.jar
-      )
+    execute_process(
+      COMMAND sh build.sh
+      WORKING_DIRECTORY ${JDBC_DIR}
+    )
   else(UNIX)
-    add_custom_command(TARGET jdbc_build POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy ${JDBC_DIR}/JDBC-${JDBC_VERSION_STR}-cubrid.jar ${JDBC_DIR}/cubrid_jdbc.jar
-      )
+    execute_process(
+      COMMAND cmd /c build.bat
+      WORKING_DIRECTORY ${JDBC_DIR}
+    )
   endif(UNIX)
 
   # dist JDBC
-  set(CUBRID_JDBCDIR jdbc)
-  install(DIRECTORY DESTINATION ${CUBRID_JDBCDIR})
+  if(USE_CUBRID_ENV)
+    set(CUBRID_JDBCDIR jdbc)
+  else(USE_CUBRID_ENV)
+    set(CUBRID_JDBCDIR jdbc CACHE STRING "The directory for JDBC driver file")
+  endif(USE_CUBRID_ENV)
 
-  install(FILES
-  ${JDBC_DIR}/JDBC-${JDBC_VERSION_STR}-cubrid.jar
-  ${JDBC_DIR}/cubrid_jdbc.jar
-  ${JDBC_DIR}/JDBC-${JDBC_VERSION_STR}-cubrid-src.jar
-  DESTINATION ${CUBRID_JDBCDIR} COMPONENT JDBC)
+  install(DIRECTORY ${JDBC_DIR}/
+    DESTINATION ${CUBRID_JDBCDIR} COMPONENT JDBC
+    FILES_MATCHING PATTERN "*.jar"
+  )
 endif()
 
 # include subdirectories

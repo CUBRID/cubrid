@@ -23,6 +23,16 @@ if(NOT ANT)
   message(FATAL_ERROR "The ANT was not found. check PATH or install ant to build JDBC")
 endif(NOT ANT)
 
+if(EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
+  set(JDBC_VERSION_FILE ${JDBC_DIR}/output/VERSION-DIST)
+  file(STRINGS ${JDBC_VERSION_FILE} JDBC_VERSION_STR)
+
+  set(JDBC_DIST ${JDBC_DIR}/JDBC-${JDBC_VERSION_STR}-cubrid.jar)
+  execute_process(
+    COMMAND ${CMAKE_COMMAND} -E copy ${JDBC_DIST} ${CMAKE_BINARY_DIR}/jsp/lib/cubrid-jdbc-${JDBC_VERSION_STR}.jar
+  )
+endif(EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
+
 add_custom_target(jsp_build ALL
   COMMAND ${CMAKE_COMMAND} -E echo "copying ivy.xml to ${CMAKE_BINARY_DIR}/jsp/ivy.xml"
   COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/jsp/ivy.xml ${CMAKE_BINARY_DIR}/jsp/ivy.xml
@@ -40,4 +50,5 @@ install(FILES
 install(DIRECTORY
   ${CMAKE_CURRENT_BINARY_DIR}/lib/
   DESTINATION ${CUBRID_JAVADIR}/lib
+  FILES_MATCHING PATTERN "*.jar"
 )

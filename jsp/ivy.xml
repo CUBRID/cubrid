@@ -1,5 +1,5 @@
 <ivy-module version="2.0">
-    <info organisation="org.apache" module="cubrid-jsp"/>
+    <info organisation="org.cubrid" module="cubrid-jsp"/>
     <configurations>
         <conf name="compile"/>
         <conf name="runtime" extends="compile"/>
