@@ -1884,9 +1884,10 @@ qo_add_dummy_join_term (QO_ENV * env, QO_NODE * p_node, QO_NODE * on_node)
       break;
     case PT_JOIN_RIGHT_OUTER:
       QO_TERM_JOIN_TYPE (term) = JOIN_RIGHT;
+      bitset_union (&(QO_NODE_RIGHT_DEP_SET (on_node)), &(QO_NODE_RIGHT_DEP_SET (p_node)));
+      bitset_add (&(QO_NODE_RIGHT_DEP_SET (on_node)), QO_NODE_IDX (p_node));
       bitset_union (&(QO_NODE_OUTER_DEP_SET (on_node)), &(QO_NODE_OUTER_DEP_SET (p_node)));
       bitset_union (&(QO_NODE_OUTER_DEP_SET (on_node)), &(QO_NODE_RIGHT_DEP_SET (p_node)));
-      bitset_add (&(QO_NODE_OUTER_DEP_SET (on_node)), QO_NODE_IDX (p_node));
       break;
     case PT_JOIN_FULL_OUTER:	/* not used */
       QO_TERM_JOIN_TYPE (term) = JOIN_OUTER;
@@ -1902,7 +1903,6 @@ qo_add_dummy_join_term (QO_ENV * env, QO_NODE * p_node, QO_NODE * on_node)
 
   env->nterms++;
 
-  QO_ASSERT (env, QO_TERM_LOCATION (term) == QO_NODE_LOCATION (on_node));
   QO_ASSERT (env, QO_TERM_CAN_USE_INDEX (term) == 0);
 
   return term;
