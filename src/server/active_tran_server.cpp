@@ -170,26 +170,23 @@ void active_tran_server::receive_log_page (cubpacking::unpacker &upk)
   int error_code;
   std::memcpy (&error_code, message.c_str (), sizeof (error_code));
 
-  LOG_PAGEID pageid = NULL_PAGEID;
-  std::string log_message = "Received log page message from Page Server. ";
   if (error_code == NO_ERROR)
     {
       char log_page_buffer[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
       LOG_PAGE *log_page = reinterpret_cast<LOG_PAGE *> (PTR_ALIGN (log_page_buffer, MAX_ALIGNMENT));
-
       std::memcpy (log_page, message.c_str () + sizeof (error_code), db_log_page_size ());
-
-      pageid = log_page->hdr.logical_pageid;
-      log_message += ("Page ID: " + std::to_string (pageid) + '\n');
+      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
+	{
+	  _er_log_debug (ARG_FILE_LINE, "Received log page message from Page Server. Page ID: %lld\n",
+			 log_page->hdr.logical_pageid);
+	}
     }
   else
     {
-      log_message += ("Error code: " + std::to_string (error_code) + '\n');
-    }
-
-  if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
-    {
-      _er_log_debug (ARG_FILE_LINE, log_message.c_str ());
+      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
+	{
+	  _er_log_debug (ARG_FILE_LINE, "Received log page message from Page Server. Error code: %d\n", error_code);
+	}
     }
 }
 
