@@ -534,7 +534,7 @@ double_to_string (double double_value, int field_width, int precision, const boo
     {
       char *return_string;
       int actual_fieldwidth = strlen (numeric_conversion_string);
-      int leading_size = (leading_str != NULL) ? strlen (leading_str) : 0;
+      const int leading_size = (leading_str != nullptr) ? strlen (leading_str) : 0;
       int trailing_size = (trailing_str != NULL) ? strlen (trailing_str) : 0;
 
       if ((size_t) (leading_size + actual_fieldwidth + 1) > sizeof (numeric_conversion_string))
@@ -1382,7 +1382,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string, CSQL_
     case DB_TYPE_FLOAT:
       result =
 	double_to_string ((double) db_get_float (value), default_float_profile.fieldwidth,
-			  default_float_profile.precision, default_float_profile.leadingsign, NULL, NULL,
+			  default_float_profile.precision, default_float_profile.leadingsign, nullptr, nullptr,
 			  default_float_profile.leadingzeros, default_float_profile.trailingzeros,
 			  default_float_profile.commas, default_float_profile.format);
       if (result)
@@ -1393,7 +1393,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string, CSQL_
     case DB_TYPE_DOUBLE:
       result =
 	double_to_string (db_get_double (value), default_double_profile.fieldwidth, default_double_profile.precision,
-			  default_double_profile.leadingsign, NULL, NULL, default_double_profile.leadingzeros,
+			  default_double_profile.leadingsign, nullptr, nullptr, default_double_profile.leadingzeros,
 			  default_double_profile.trailingzeros, default_double_profile.commas,
 			  default_double_profile.format);
       if (result)
