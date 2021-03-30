@@ -1,4 +1,5 @@
 @echo off
+
 REM
 REM
 REM Copyright 2016 CUBRID Corporation
