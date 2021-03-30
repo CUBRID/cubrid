@@ -534,7 +534,7 @@ logddl_make_copy_filename (T_APP_NAME app_name, const char *file_full_path, char
   const char *name_tmp = NULL;
   int retval = 0;
 
-  if (ddl_audit_handle == NULL || file_full_path == NULL || copy_filename == NULL)
+  if (ddl_audit_handle == NULL || file_full_path == NULL || copy_filename == NULL || buf_size < 0)
     {
       return -1;
     }
@@ -570,7 +570,7 @@ logddl_make_copy_dir (T_APP_NAME app_name, char *copy_filename, char *copy_fullp
   const char *env_root = NULL;
   int retval = 0;
 
-  if (ddl_audit_handle == NULL || copy_filename == NULL || copy_fullpath == NULL)
+  if (ddl_audit_handle == NULL || copy_filename == NULL || copy_fullpath == NULL || buf_size < 0)
     {
       return -1;
     }
@@ -706,7 +706,7 @@ logddl_write ()
 {
   FILE *fp = NULL;
   char buf[DDL_LOG_BUFFER_SIZE] = { 0 };
-  unsigned int len = 0;
+  int len = 0;
 
   if (ddl_audit_handle == NULL || ddl_logging_enabled == false)
     {
@@ -807,7 +807,7 @@ logddl_write_tran_str (const char *fmt, ...)
 {
   FILE *fp = NULL;
   char msg[DDL_LOG_BUFFER_SIZE] = { 0 };
-  unsigned int len = 0;
+  int len = 0;
   struct timeval time_val;
   va_list args;
 
@@ -917,7 +917,7 @@ logddl_write_end_for_csql_fileinput (const char *fmt, ...)
 {
   FILE *fp = NULL;
   char buf[DDL_LOG_BUFFER_SIZE] = { 0 };
-  unsigned int len = 0;
+  int len = 0;
   struct timeval time_val;
   va_list args;
   if (ddl_audit_handle == NULL || ddl_logging_enabled == false)
