@@ -853,6 +853,7 @@ else(USE_CUBRID_ENV)
     list(APPEND DIR_DEFS CUBRID_TMPDIR="${CUBRID_PREFIXDIR}/${CUBRID_TMPDIR}")
   endif()
   # directories for install
+  set(CUBRID_INCLUDEDIR include CACHE STRING "The directory for header files")
   set(CUBRID_SHLOCALESDIR locales CACHE STRING "The directory for locale files")
   set(CUBRID_TZDIR timezones CACHE STRING "The directory for timezone files")
   set(CUBRID_DEMODIR demo CACHE STRING "The directory for demo data files")
