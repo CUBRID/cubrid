@@ -1205,7 +1205,7 @@ hm_create_health_check_th (char useSSL)
   rv = pthread_attr_setdetachstate (&thread_attr, PTHREAD_CREATE_DETACHED);
   rv = pthread_attr_setscope (&thread_attr, PTHREAD_SCOPE_SYSTEM);
 #endif /* WINDOWS */
-  rv = pthread_create (&health_check_th, &thread_attr, hm_thread_health_checker, (void *) (size_t) useSSL);
+  rv = pthread_create (&health_check_th, &thread_attr, hm_thread_health_checker, (void *) useSSL);
 }
 
 /************************************************************************
