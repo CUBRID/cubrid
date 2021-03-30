@@ -29,7 +29,6 @@
 #include <string.h>
 #include <signal.h>
 #include <assert.h>
-#include <chrono>
 #include <time.h>
 #include <stdarg.h>
 #include <sys/timeb.h>
@@ -626,7 +625,7 @@ util_log_header (char *buf, size_t buf_len)
 {
   struct tm tm, *tm_p;
   time_t sec;
-  int len;
+  int millisec, len;
   struct timeb tb;
   char *p;
   const char *pid;
@@ -637,12 +636,9 @@ util_log_header (char *buf, size_t buf_len)
     }
 
   /* current time */
-  timespec ts = { };
-  timespec_get (&ts, TIME_UTC);
-  sec = ts.tv_sec;
-  // *INDENT-OFF*
-  auto millisec = std::chrono::duration_cast<std::chrono::milliseconds> (std::chrono::nanoseconds (ts.tv_nsec));
-  // *INDENT-ON*
+  (void) ftime (&tb);
+  sec = tb.time;
+  millisec = tb.millitm;
 
   tm_p = localtime_r (&sec, &tm);
 
@@ -651,7 +647,7 @@ util_log_header (char *buf, size_t buf_len)
   buf_len -= len;
 
   pid = envvar_get (UTIL_PID_ENVVAR_NAME);
-  len += snprintf (p, buf_len, ".%03ld (%s) ", millisec.count (), ((pid == NULL) ? "    " : pid));
+  len += snprintf (p, buf_len, ".%03d (%s) ", millisec, ((pid == NULL) ? "    " : pid));
 
   assert (len <= UTIL_LOG_MAX_HEADER_LEN);
 
