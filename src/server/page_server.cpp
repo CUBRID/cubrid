@@ -155,7 +155,7 @@ void page_server::on_log_page_read_result (const LOG_PAGE *log_page, int error_c
 	  page_id = log_page->hdr.logical_pageid;
 	}
 
-      _er_log_debug (ARG_FILE_LINE, "Sending log page to Active Tran Server. Page ID: %ld Error code: %lld\n", page_id,
+      _er_log_debug (ARG_FILE_LINE, "Sending log page to Active Tran Server. Page ID: %lld Error code: %ld\n", page_id,
 		     error_code);
     }
 }
