@@ -40,7 +40,6 @@
 #include <signal.h>
 #endif
 #include <assert.h>
-#include <chrono>
 
 #include "porting.h"
 #include "cas_common.h"
@@ -1276,12 +1275,9 @@ logddl_get_time_string (char *buf, struct timeval *time_val)
       struct timeb tb;
 
       /* current time */
-      timespec ts = { };
-      timespec_get (&ts, TIME_UTC);
-      sec = ts.tv_sec;
-      // *INDENT-OFF*
-      millisec = std::chrono::duration_cast<std::chrono::milliseconds> (std::chrono::nanoseconds (ts.tv_nsec)).count();
-      // *INDENT-ON*
+      (void) ftime (&tb);
+      sec = tb.time;
+      millisec = tb.millitm;
     }
   else
     {
