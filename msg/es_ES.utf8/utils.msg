@@ -1153,13 +1153,16 @@ opciones validas:\n\
 $set 55 MSGCAT_UTIL_SET_VACUUMDB
 20 Vacuumdb no disponible temporalmente para modo cliente-servidor\n
 21 La operacion de aspirar ha fallado\n
+22 No se puede abrir archivo de salida '%1$s'\n
 60 \
 vacuumdb: Aspira registros muertos de la base de datos.\n\
 uso: %1$s vacuumdb [OPTION] database-name\n\
 \n\
 opciones validas:\n\
   -S, --SA-mode                modo de ejecucion stand-alone\n\
-  -C, --CS-mode                modo de ejecucion cliente-servidor\n
+  -C, --CS-mode                modo de ejecucion cliente-servidor\n\
+      --dump                   volcar el estado actual de vacío\n\
+  -o, --output-file=FILE       redireccionar mensajes de salida al ARCHIVO; estandar: ninguno\n
 
 $set 56 MSGCAT_UTIL_SET_CHECKSUMDB
 1 Fallo al cargar los nombres de tablas en %1$s.\n

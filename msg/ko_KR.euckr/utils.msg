@@ -1141,13 +1141,16 @@ valid options:\n\
 $set 55 MSGCAT_UTIL_SET_VACUUMDB
 20 Vacuumdb는 현재 클라이언트 서버 모드에서 지원되지 않습니다.\n
 21 vacuum 작업 실패\n
+22 출력 파일 '%1$s'을 열 수 없습니다.\n
 60 \
 vacuumdb: 사용되지 않는 레코드를 데이터베이스에서 정리\n\
 usage: %1$s vacuumdb [옵션] database-name\n\
 \n\
 valid options:\n\
   -S, --SA-mode                독립 모드 실행\n\
-  -C, --CS-mode                클라이언트 서버 모드 실행\n
+  -C, --CS-mode                클라이언트 서버 모드 실행\n\
+      --dump                   현재 vacuum 상태 덤프\n\
+  -o, --output-file=FILE       출력 메시지를 재지정할 파일; 기본값: 없음\n
 
 $set 56 MSGCAT_UTIL_SET_CHECKSUMDB
 1 %1$s으로부터 테이블 이름 로딩 실패.\n

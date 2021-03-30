@@ -1147,13 +1147,16 @@ geçerli seçenekler:\n\
 $set 55 MSGCAT_UTIL_SET_VACUUMDB
 20 Vacuumdb istemci-sunucu modunda geçici olarak kullanılamaz\n
 21 Vakum işlemi başarısız oldu\n
+22 Çıktı dosyası '%1$s' açılmaadı \n
 60 \
 vacuumdb: Veritabanından ölü kayıtları temizler.\n\
 kullanım: %1$s vacuumdb [OPTION] database-name\n\
 \n\
 geçerli seçenekler:\n\
   -S, --SA-mode                stand-alone mod yürütme\n\
-  -C, --CS-mode                client-server mod yürütme\n
+  -C, --CS-mode                client-server mod yürütme\n\
+      --dump                   mevcut vakum durumunu boşalt\n\
+  -o, --output-file=FILE       FILE çıktı mesajları yönlendirme; varsayılan: hiçbir\n
 
 $set 56 MSGCAT_UTIL_SET_CHECKSUMDB
 1 %1$s içinde tablo adlarını yüklenemedi.\n
