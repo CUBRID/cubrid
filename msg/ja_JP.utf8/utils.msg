@@ -1159,13 +1159,16 @@ delvoldb: データベースの空のボリューム・ファイルを削除し�
 $set 55 MSGCAT_UTIL_SET_VACUUMDB
 20 Vacuumdbはclient-serverモードで一時的に利用することができません\n
 21 vacuum操作に失敗しました\n
+22 出力ファイル「%1$s」が開けません。\n
 60 \
 vacuumdb: データベースから死亡レコードを掃除。\n\
 使い方: %1$s vacuumdb [OPTION] database-name\n\
 \n\
 オプション:\n\
   -S, --SA-mode                stand-aloneモードの実行\n\
-  -C, --CS-mode                client-serverモードの実行\n
+  -C, --CS-mode                client-serverモードの実行\n\
+      --dump                   真空の現在の状態をダンプします\n\
+  -o, --output-file=FILE       出力メッセージをセーブするファイル; デフォルト: なし\n
 
 $set 56 MSGCAT_UTIL_SET_CHECKSUMDB
 1 %1$sからテーブル名の読み込みに失敗しました。\n

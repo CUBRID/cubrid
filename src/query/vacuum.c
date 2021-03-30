@@ -594,6 +594,8 @@ struct vacuum_dropped_files_rcv_data
   OID class_oid;
 };
 
+bool vacuum_Is_booted = false;
+
 /* Logging */
 #define VACUUM_LOG_DATA_ENTRY_MSG(name) \
   "name = {blockid = %lld, flags = %lld, start_lsa = %lld|%d, oldest_mvccid=%llu, newest_mvccid=%llu }"
@@ -718,6 +720,67 @@ xvacuum (THREAD_ENTRY * thread_p)
 
   return NO_ERROR;
 #endif /* SA_MODE */
+}
+
+/*
+ * xvacuum_dump - Dump the contents of vacuum
+ *
+ * return: nothing
+ *
+ *   outfp(in): FILE stream where to dump the vacuum. If NULL is given,
+ *            it is dumped to stdout.
+ */
+void
+xvacuum_dump (THREAD_ENTRY * thread_p, FILE * outfp)
+{
+  LOG_PAGEID min_log_pageid = NULL_PAGEID;
+  int archive_number;
+
+  assert (outfp != NULL);
+
+  if (!vacuum_Is_booted)
+    {
+      fprintf (outfp, "vacuum did not boot properly.\n");
+      return;
+    }
+
+#if defined (SA_MODE)
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+#endif
+
+  min_log_pageid = vacuum_min_log_pageid_to_keep (thread_p);
+  if (min_log_pageid == NULL_PAGEID)
+    {
+      fprintf (outfp, "There are no log pages referenced by vacuum.\n");
+      return;
+    }
+
+  fprintf (outfp, "\n");
+  fprintf (outfp, "*** Vacuum Dump ***\n");
+  fprintf (outfp, "First log page ID referenced = %lld ", min_log_pageid);
+
+  if (logpb_is_page_in_archive (min_log_pageid))
+    {
+      LOG_CS_ENTER_READ_MODE (thread_p);
+      archive_number = logpb_get_archive_number (thread_p, min_log_pageid);
+      if (archive_number < 0)
+	{
+	  /* this is an assertion case but ignore. */
+	  fprintf (outfp, "\n");
+	}
+      else
+	{
+	  fprintf (outfp, "(in %s%s%03d)\n", log_Prefix, FILEIO_SUFFIX_LOGARCHIVE, archive_number);
+	}
+      LOG_CS_EXIT (thread_p);
+    }
+  else
+    {
+      fprintf (outfp, "(in %s)\n", fileio_get_base_file_name (log_Name_active));
+    }
 }
 
 /*
@@ -889,6 +952,8 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * 
     }
 
   vacuum_Global_oldest_active_blockers_counter = 0;
+
+  vacuum_Is_booted = true;
 
   return NO_ERROR;
 

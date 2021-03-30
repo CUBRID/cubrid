@@ -9344,6 +9344,35 @@ cvacuum (void)
 }
 
 /*
+ * vacuum_dump -
+ *
+ * return:
+ *
+ *   outfp(in):
+ */
+void
+vacuum_dump (FILE * outfp)
+{
+#if defined(CS_MODE)
+  int req_error;
+
+  if (outfp == NULL)
+    {
+      outfp = stdout;
+    }
+
+  req_error = net_client_request_recv_stream (NET_SERVER_VACUUM_DUMP, NULL, 0, NULL, 0, NULL, 0, outfp);
+#else /* CS_MODE */
+
+  ENTER_SERVER ();
+
+  xvacuum_dump (NULL, outfp);
+
+  EXIT_SERVER ();
+#endif /* !CS_MODE */
+}
+
+/*
  * log_get_mvcc_snapshot () - Get MVCC snapshot on server.
  *
  * return : Error code.

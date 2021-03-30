@@ -779,7 +779,7 @@ lockdb: Affiche l'état du verrouillage de la base de données.\n\
 usage: %1$s lockdb [OPTION] database-name\n\
 \n\
 options valids:\n\
-  -o, --output-file=FICHIER   redirige les messages de sortie à FICHIER; par défaut: aucun\n\
+  -o, --output-file=FICHIER   redirige les messages de sortie à FICHIER; par défaut: aucun\n
 
 
 $set 26 MSGCAT_UTIL_SET_KILLTRAN
@@ -1168,13 +1168,16 @@ options valides:\n\
 $set 55 MSGCAT_UTIL_SET_VACUUMDB
 20 Vacuumdb est temporairement pas disponible pour le mode client-serveur\n
 21 L'operation de vidage à échoué\n
+22 Impossible d'ouvrir le fichier de sortie '%1$s'\n
 60 \
 vacuumdb: Supprime les entrées expirés depuis la base de données.\n\
 usage: %1$s vacuumdb [OPTION] database-name\n\
 \n\
 options valides:\n\
   -S, --SA-mode                mode d'exécution autonome\n\
-  -C, --CS-mode                mode d'exécution client-serveur\n
+  -C, --CS-mode                mode d'exécution client-serveur\n\
+      --dump                   vidage de l'état actuel du vide\n\
+  -o, --output-file=FICHIER    redirige les messages de sortie à FICHIER; par défaut: aucun\n
 
 $set 56 MSGCAT_UTIL_SET_CHECKSUMDB
 1 Impossible de charger les noms de table dans %1$s.\n

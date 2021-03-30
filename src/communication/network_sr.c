@@ -843,6 +843,10 @@ net_server_init (void)
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = slocator_redistribute_partition_data;
   req_p->name = "NET_SERVER_LC_REDISTRIBUTE_PARTITION_DATA";
+
+  req_p = &net_Requests[NET_SERVER_VACUUM_DUMP];
+  req_p->processing_function = svacuum_dump;
+  req_p->name = "NET_SERVER_VACUUM_DUMP";
 }
 
 #if defined(CUBRID_DEBUG)
@@ -1310,7 +1314,7 @@ net_server_start (const char *server_name)
   css_initialize_server_interfaces (net_server_request, net_server_conn_down);
 
   if (boot_restart_server (thread_get_thread_entry_info (), true, server_name, false, &check_coll_and_timezone,
-			   NULL) != NO_ERROR)
+			   NULL, false) != NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();

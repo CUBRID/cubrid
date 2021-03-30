@@ -143,6 +143,7 @@ extern int tran_server_savepoint (const char *savept_name, LOG_LSA * savept_lsa)
 extern TRAN_STATE tran_server_partial_abort (const char *savept_name, LOG_LSA * savept_lsa);
 extern const char *tran_get_tranlist_state_name (TRAN_STATE state);
 extern void lock_dump (FILE * outfp);
+extern void vacuum_dump (FILE * outfp);
 extern int acl_reload (void);
 extern void acl_dump (FILE * outfp);
 
