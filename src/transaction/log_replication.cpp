@@ -21,6 +21,7 @@
 #include "log_impl.h"
 #include "log_recovery.h"
 #include "log_recovery_redo.hpp"
+#include "log_recovery_redo_parallel.hpp"
 #include "recovery.h"
 #include "thread_looper.hpp"
 #include "thread_manager.hpp"
@@ -46,6 +47,15 @@ namespace cublog
 
     // NOTE: task ownership goes to the thread manager
     m_daemon = cubthread::get_manager ()->create_daemon (loop, task, "cublog::replicator");
+
+    // depending on parameter, instantiate the mechanism to execute replication in parallel
+    const int replication_parallel
+        = prm_get_integer_value (PRM_ID_PAGE_SERVER_REPLICATION_PARALLEL_COUNT);
+    assert(replication_parallel >= 0);
+    if (replication_parallel > 0)
+      {
+        m_parallel_replication_redo.reset (new cublog::redo_parallel(replication_parallel));
+      }
   }
 
   replicator::~replicator ()
@@ -130,7 +140,7 @@ namespace cublog
 	  }
 
 	{
-	  std::unique_lock<std::mutex> lock (m_redo_mutex);
+	  std::unique_lock<std::mutex> lock (m_redo_lsa_mutex);
 	  m_redo_lsa = header.forw_lsa;
 	}
 	if (m_redo_lsa == end_redo_lsa)
@@ -164,10 +174,17 @@ namespace cublog
   void
   replicator::wait_replication_finish () const
   {
-    std::unique_lock<std::mutex> ulock (m_redo_mutex);
+    std::unique_lock<std::mutex> ulock (m_redo_lsa_mutex);
     m_redo_condvar.wait (ulock, [this]
     {
       return m_redo_lsa >= log_Gl.append.get_nxio_lsa ();
     });
+
+    if (m_parallel_replication_redo != nullptr)
+      {
+        // this is the earliest it is ensured that no records are to be added anymore
+        m_parallel_replication_redo->set_adding_finished ();
+        m_parallel_replication_redo->wait_for_termination_and_stop_execution ();
+      }
   }
 } // namespace cublog

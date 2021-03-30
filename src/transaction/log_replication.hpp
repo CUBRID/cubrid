@@ -28,10 +28,16 @@
 #include <condition_variable>
 #include <mutex>
 
+// forward declarations
 namespace cubthread
 {
   class daemon;
   class entry;
+}
+namespace cublog
+{
+  // addind this here allows to include the corresponding header only in the source
+  class redo_parallel;
 }
 
 namespace cublog
@@ -56,12 +62,14 @@ namespace cublog
       cubthread::daemon *m_daemon = nullptr;
 
       log_lsa m_redo_lsa = NULL_LSA;
-      mutable std::mutex m_redo_mutex;
+      mutable std::mutex m_redo_lsa_mutex;
       mutable std::condition_variable m_redo_condvar;
 
       log_reader m_reader;
       LOG_ZIP m_undo_unzip;
       LOG_ZIP m_redo_unzip;
+
+      std::unique_ptr <cublog::redo_parallel> m_parallel_replication_redo;
   };
 }
 
