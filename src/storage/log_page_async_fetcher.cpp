@@ -37,6 +37,8 @@ namespace cublog
     const auto thread_count = std::thread::hardware_concurrency ();
     m_threads = thread_manager->create_worker_pool (thread_count, thread_count, "async_page_fetcher_worker_pool",
 		nullptr, thread_count, false /*debug_logging*/);
+
+    assert (m_threads);
   }
 
   async_page_fetcher::~async_page_fetcher ()

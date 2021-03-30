@@ -23,6 +23,7 @@
 #include "log_impl.h"
 #include "log_lsa.hpp"
 #include "log_prior_send.hpp"
+#include "memory_alloc.h"
 #include "server_type.hpp"
 #include "system_parameter.h"
 
@@ -167,20 +168,28 @@ void active_tran_server::receive_log_page (cubpacking::unpacker &upk)
   upk.unpack_string (message);
 
   int error_code;
-  memcpy (&error_code, message.c_str (), sizeof (error_code));
+  std::memcpy (&error_code, message.c_str (), sizeof (error_code));
 
-  LOG_PAGEID pageid = 0;
+  LOG_PAGEID pageid = NULL_PAGEID;
+  std::string log_message = "Received log page message from Page Server. ";
   if (error_code == NO_ERROR)
     {
-      LOG_PAGE *logpage = new LOG_PAGE ();
-      memcpy (& (logpage->hdr), message.c_str () + sizeof (error_code), sizeof (logpage->hdr));
+      char log_page_buffer[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+      LOG_PAGE *log_page = reinterpret_cast<LOG_PAGE *> (PTR_ALIGN (log_page_buffer, MAX_ALIGNMENT));
 
-      pageid = logpage->hdr.logical_pageid;
+      std::memcpy (log_page, message.c_str () + sizeof (error_code), db_log_page_size ());
+
+      pageid = log_page->hdr.logical_pageid;
+      log_message += ("Page ID: " + std::to_string (pageid) + '\n');
+    }
+  else
+    {
+      log_message += ("Error code: " + std::to_string (error_code) + '\n');
     }
 
   if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
     {
-      _er_log_debug (ARG_FILE_LINE, "Received log page from Page Server. Page ID: %ld\n", pageid);
+      _er_log_debug (ARG_FILE_LINE, log_message.c_str ());
     }
 }
 

@@ -136,20 +136,27 @@ void page_server::on_log_page_read_result (const LOG_PAGE *log_page, int error_c
 {
   char buffer[sizeof (int) + IO_MAX_PAGE_SIZE];
   std::memcpy (buffer, &error_code, sizeof (error_code));
-  std::size_t bufferSize = sizeof (error_code);
+  std::size_t buffer_size = sizeof (error_code);
 
   if (error_code == NO_ERROR)
     {
-      std::memcpy (buffer + sizeof (error_code), & (log_page->hdr), sizeof (log_page->hdr));
-      bufferSize += sizeof (log_page->hdr);
+      std::memcpy (buffer + sizeof (error_code), log_page, db_log_page_size ());
+      buffer_size += db_log_page_size ();
     }
 
-  std::string message (buffer, bufferSize);
+  std::string message (buffer, buffer_size);
   m_ats_request_queue->push (ps_to_ats_request::SEND_LOG_PAGE, std::move (message));
 
   if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
     {
-      _er_log_debug (ARG_FILE_LINE, "Sending log page to Active Tran Server. Page ID: %ld \n", log_page->hdr.logical_pageid);
+      LOG_PAGEID page_id = NULL_PAGEID;
+      if (error_code == NO_ERROR)
+	{
+	  page_id = log_page->hdr.logical_pageid;
+	}
+
+      _er_log_debug (ARG_FILE_LINE, "Sending log page to Active Tran Server. Page ID: %ld Error code: %ld\n", page_id,
+		     error_code);
     }
 }
 void
