@@ -1175,13 +1175,16 @@ opzioni valide:\n\
 $set 55 MSGCAT_UTIL_SET_VACUUMDB
 20 Vacuumdb non è temporaneamente disponibile per la modalità client-server\n
 21 L'operazione vacuum non è riuscita\n
+22 Impossibile aprire il file di output '%1$s'\n
 60 \
 vacuumdb: Pulisce record morti di database.\n\
 uso: %1$s vacuumdb [OPTION] database-name\n\
 \n\
 opzioni valide:\n\
   -S, --SA-mode                esecuzione in modalità stand-alone\n\
-  -C, --CS-mode                esecuzione in modalità client-server\n
+  -C, --CS-mode                esecuzione in modalità client-server\n\
+      --dump                   scaricare lo stato attuale del vuoto\n\
+  -o, --output-file=FILE       reindirizzare i messaggi di output a FILE; predefinito: nessuno\n
 
 $set 56 MSGCAT_UTIL_SET_CHECKSUMDB
 1 Impossibile caricare nomi di tabella in %1$s.\n
