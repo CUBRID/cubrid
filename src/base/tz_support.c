@@ -5470,6 +5470,7 @@ exit:
   return err_status;
 }
 
+//TODO: make tz_get_offset_in_mins get into account DST
 /*
  * tz_get_offset_in_mins () - time zone offset in minutes from GMT
  */
@@ -5487,12 +5488,6 @@ tz_get_offset_in_mins ()
 
   // Get offset in minutes from UTC
   double offsetFromUTC = difftime (utc, local) / 60;
-
-  // Adjust for DST
-  if (timeinfo->tm_isdst)
-    {
-      offsetFromUTC -= 60;
-    }
 
   return offsetFromUTC;
 }
