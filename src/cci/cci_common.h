@@ -200,6 +200,19 @@
     }                                                               \
   } while (0)
 
+#define SET_START_TIME_FOR_QUERY_ONLY_CON(CON_HANDLE)               \
+  do {                                                              \
+    if (CON_HANDLE) {                                               \
+      int time_to_check = 0;                                        \
+      time_to_check = (CON_HANDLE)->query_timeout;                  \
+      gettimeofday(&((CON_HANDLE)->start_time), NULL);              \
+      if (time_to_check > 0) {                                      \
+        (CON_HANDLE)->current_timeout = (time_to_check);            \
+      }                                                             \
+    }                                                               \
+  } while (0)
+
+
 #define SET_START_TIME_FOR_LOGIN(CON_HANDLE)                        \
   do {                                                              \
     if (CON_HANDLE) {                                               \

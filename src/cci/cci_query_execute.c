@@ -3690,7 +3690,7 @@ qe_get_data_int (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
       return CCI_ER_TYPE_CONVERSION;
     }
 
-  *((int *) value) = data;
+  *(int *)value = data;
 
   return 0;
 }
@@ -3764,7 +3764,7 @@ qe_get_data_uint (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
       return CCI_ER_TYPE_CONVERSION;
     }
 
-  *((unsigned int *) value) = data;
+  *(unsigned int *)value = data;
 
   return 0;
 }
@@ -3847,7 +3847,7 @@ qe_get_data_float (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
       return CCI_ER_TYPE_CONVERSION;
     }
 
-  *((float *) value) = data;
+  *(float *)value = data;
   return 0;
 }
 
@@ -3928,7 +3928,7 @@ qe_get_data_double (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
       return CCI_ER_TYPE_CONVERSION;
     }
 
-  *((double *) value) = data;
+  *(double *)value = data;
   return 0;
 }
 
@@ -3959,7 +3959,7 @@ qe_get_data_date (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
       return CCI_ER_TYPE_CONVERSION;
     }
 
-  *((T_CCI_DATE *) value) = data;
+  *(T_CCI_DATE *)value = data;
   return 0;
 }
 
@@ -3986,7 +3986,7 @@ qe_get_data_date_tz (T_CCI_U_TYPE u_type, char *col_value_p, void *value, int to
       return CCI_ER_TYPE_CONVERSION;
     }
 
-  *((T_CCI_DATE_TZ *) value) = data;
+  *(T_CCI_DATE_TZ *)value = data;
   return 0;
 }
 

@@ -186,7 +186,7 @@ bool CUniCASManage::bStatusUniCAS()
 	char* sResult = cComMeth->sCatchResult( sFullName );
 
 	delete cComMeth;
-	delete sFullName;
+	delete[] sFullName;
 	delete sPath;
 
 	if( !sResult || strlen( sResult ) <= 0 )
