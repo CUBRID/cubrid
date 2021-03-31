@@ -31,6 +31,8 @@
 #include <chrono>
 #include <functional>
 
+//#define REPLICATOR_PARALLEL_DEBUG
+
 namespace cublog
 {
 
@@ -40,27 +42,53 @@ namespace cublog
     log_zip_realloc_if_needed (m_undo_unzip, LOGAREA_SIZE);
     log_zip_realloc_if_needed (m_redo_unzip, LOGAREA_SIZE);
 
+    // depending on parameter, instantiate the mechanism to execute replication in parallel
+    // initialize before daemon such that, when daemon comes online, it already can dispatch async
+    const int replication_parallel
+      = prm_get_integer_value (PRM_ID_PAGE_SERVER_REPLICATION_PARALLEL_COUNT);
+    assert (replication_parallel >= 0);
+    if (replication_parallel > 0)
+      {
+	m_parallel_replication_redo.reset (new cublog::redo_parallel (replication_parallel));
+#ifdef REPLICATOR_PARALLEL_DEBUG
+	_er_log_debug (ARG_FILE_LINE,
+		       "PAGE_SERVER_REPLICATOR: instantiated redo_parallel with %d tasks",
+		       replication_parallel);
+#endif
+      }
+
     // Create the daemon
     cubthread::looper loop (std::chrono::milliseconds (1));   // don't spin when there is no new log, wait a bit
-    auto task_func = std::bind (&replicator::redo_upto_nxio_lsa, std::ref (*this), std::placeholders::_1);
-    auto task = new cubthread::entry_callable_task (task_func);
+    auto func_exec = std::bind (&replicator::redo_upto_nxio_lsa, std::ref (*this), std::placeholders::_1);
+    auto func_retire = std::bind (&replicator::wait_parallel_replication_idle, std::ref (*this));
+    auto task = new cubthread::entry_callable_task (std::move(func_exec), std::move(func_retire));
 
     // NOTE: task ownership goes to the thread manager
     m_daemon = cubthread::get_manager ()->create_daemon (loop, task, "cublog::replicator");
-
-    // depending on parameter, instantiate the mechanism to execute replication in parallel
-    const int replication_parallel
-        = prm_get_integer_value (PRM_ID_PAGE_SERVER_REPLICATION_PARALLEL_COUNT);
-    assert(replication_parallel >= 0);
-    if (replication_parallel > 0)
-      {
-        m_parallel_replication_redo.reset (new cublog::redo_parallel(replication_parallel));
-      }
   }
 
   replicator::~replicator ()
   {
+#ifdef REPLICATOR_PARALLEL_DEBUG
+	_er_log_debug (ARG_FILE_LINE,
+		       "PAGE_SERVER_REPLICATOR: destroy_daemon");
+#endif
     cubthread::get_manager ()->destroy_daemon (m_daemon);
+
+    if (m_parallel_replication_redo != nullptr)
+      {
+#ifdef REPLICATOR_PARALLEL_DEBUG
+	_er_log_debug (ARG_FILE_LINE,
+		       "PAGE_SERVER_REPLICATOR: m_parallel_replication_redo termination start");
+#endif
+	// this is the earliest it is ensured that no records are to be added anymore
+	m_parallel_replication_redo->set_adding_finished ();
+	m_parallel_replication_redo->wait_for_termination_and_stop_execution ();
+#ifdef REPLICATOR_PARALLEL_DEBUG
+	_er_log_debug (ARG_FILE_LINE,
+		       "PAGE_SERVER_REPLICATOR: m_parallel_replication_redo termination done");
+#endif
+      }
 
     log_zip_free_data (m_undo_unzip);
     log_zip_free_data (m_redo_unzip);
@@ -87,8 +115,35 @@ namespace cublog
   }
 
   void
+  replicator::wait_parallel_replication_idle ()
+  {
+    if (m_parallel_replication_redo != nullptr)
+      {
+#ifdef REPLICATOR_PARALLEL_DEBUG
+	_er_log_debug (ARG_FILE_LINE,
+		       "PAGE_SERVER_REPLICATOR: wait_parallel_replication_idle - start");
+#endif
+
+	// this is the earliest it is ensured that no records are to be added anymore
+	//m_parallel_replication_redo->set_adding_finished ();
+	m_parallel_replication_redo->wait_for_idle ();
+	//m_parallel_replication_redo->wait_for_termination_and_stop_execution ();
+
+#ifdef REPLICATOR_PARALLEL_DEBUG
+	_er_log_debug (ARG_FILE_LINE,
+		       "PAGE_SERVER_REPLICATOR: wait_parallel_replication_idle - done");
+#endif
+      }
+  }
+
+  void
   replicator::redo_upto (cubthread::entry &thread_entry, const log_lsa &end_redo_lsa)
   {
+#ifdef REPLICATOR_PARALLEL_DEBUG
+    _er_log_debug (ARG_FILE_LINE,
+		   "PAGE_SERVER_REPLICATOR: redo_upto log_lsa (%lld|%d) ",
+		   LSA_AS_ARGS (&end_redo_lsa));
+#endif
     assert (m_redo_lsa < end_redo_lsa);
 
     // redo all records from current position (m_redo_lsa) until end_redo_lsa
@@ -145,6 +200,7 @@ namespace cublog
 	}
 	if (m_redo_lsa == end_redo_lsa)
 	  {
+	    // TODO: why is this here, where this function is called, can we be sure that 'm_redo_lsa == nxio_lsa' ?
 	    // notify who waits for end of replication
 	    m_redo_condvar.notify_all ();
 	  }
@@ -174,17 +230,16 @@ namespace cublog
   void
   replicator::wait_replication_finish () const
   {
+#ifdef REPLICATOR_PARALLEL_DEBUG
+	_er_log_debug (ARG_FILE_LINE,
+		       "PAGE_SERVER_REPLICATOR: wait_replication_finish - done");
+#endif
     std::unique_lock<std::mutex> ulock (m_redo_lsa_mutex);
     m_redo_condvar.wait (ulock, [this]
     {
       return m_redo_lsa >= log_Gl.append.get_nxio_lsa ();
     });
 
-    if (m_parallel_replication_redo != nullptr)
-      {
-        // this is the earliest it is ensured that no records are to be added anymore
-        m_parallel_replication_redo->set_adding_finished ();
-        m_parallel_replication_redo->wait_for_termination_and_stop_execution ();
-      }
+    // TODO: must wait for parallel termination as well?
   }
 } // namespace cublog

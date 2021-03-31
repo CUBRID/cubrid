@@ -58,6 +58,7 @@ namespace cublog
       void redo_upto (cubthread::entry &thread_entry, const log_lsa &end_redo_lsa);
       template <typename T>
       void read_and_redo_record (cubthread::entry &thread_entry, LOG_RECTYPE rectype, const log_lsa &rec_lsa);
+      void wait_parallel_replication_idle ();
 
       cubthread::daemon *m_daemon = nullptr;
 
