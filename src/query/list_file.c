@@ -315,7 +315,8 @@ qfile_list_cache_cleanup (THREAD_ENTRY * thread_p)
 {
   BINARY_HEAP *bh = NULL;
   QFILE_CACHE_CLEANUP_CANDIDATE candidate;
-  int candidate_index, i, n;
+  int candidate_index;
+  unsigned int i, n;
 
   struct timeval current_time;
   int cleanup_count = prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_ENTRIES) * 8 / 10;
@@ -5980,8 +5981,8 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr, con
       /* check in-use by other transaction */
       if ((int) lent->last_ta_idx > 0);
       {
-        csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
-        return lent;
+	csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
+	return lent;
       }
 #endif
       /* the entry that is in the cache is same with mine; do not duplicate the cache entry */
