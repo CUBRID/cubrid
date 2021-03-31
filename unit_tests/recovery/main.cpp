@@ -116,7 +116,7 @@ class measure_time
 
 /* '[ci]' tests are supposed to be executed by the Continuous Integration infrastructure
  */
-TEST_CASE ("log recovery parallel test: some jobs, some tasks", "[ci][dbg]")
+TEST_CASE ("log recovery parallel test: some jobs, some tasks", "[ci]")
 {
   srand (time (nullptr));
   initialize_thread_infrastructure ();
@@ -135,7 +135,7 @@ TEST_CASE ("log recovery parallel test: some jobs, some tasks", "[ci][dbg]")
 		{
 		  const log_recovery_test_config test_config =
 		  {
-		    parallel_count, // std::thread::hardware_concurrency (), // parallel_count
+		    parallel_count, // parallel_count
 		    job_count, // redo_job_count
 		    false, // verbose
 		  };
@@ -193,4 +193,51 @@ TEST_CASE ("log recovery parallel test: stress test", "[long]")
 	    }
 	}
     }
+}
+
+TEST_CASE ("log recovery parallel test: idle status", "[ci][dbg]")
+{
+  srand (time (nullptr));
+  initialize_thread_infrastructure ();
+
+  cublog::redo_parallel log_redo_parallel (std::thread::hardware_concurrency ());
+
+  REQUIRE (log_redo_parallel.is_idle ());
+
+  const ut_database_config database_config =
+  {
+    42, // max_volume_count_per_database
+    42, // max_page_count_per_volume
+    50., // max_duration_in_millis
+  };
+  ux_ut_database db_online { new ut_database (database_config) };
+  ux_ut_database db_recovery { new ut_database (database_config) };
+
+  ut_database_values_generator global_values{ database_config };
+
+  for (bool at_least_one_page_update = false; !at_least_one_page_update; )
+    {
+      ux_ut_redo_job_impl job = db_online->generate_changes (*db_recovery, global_values);
+
+      if (job->is_volume_creation () || job->is_page_creation ())
+	{
+	  // jobs not tied to a non-null vpid, are executed in-synch
+	  db_recovery->apply_changes (std::move (job));
+	}
+      else
+	{
+	  log_redo_parallel.add (std::move (job));
+	  at_least_one_page_update = true;
+	}
+    }
+
+  // sleep here more than 'max_duration_in_millis' to invalidate test
+  REQUIRE_FALSE (log_redo_parallel.is_idle ());
+  log_redo_parallel.wait_for_idle ();
+  REQUIRE (log_redo_parallel.is_idle ());
+
+  log_redo_parallel.set_adding_finished ();
+  log_redo_parallel.wait_for_termination_and_stop_execution ();
+
+  db_online->require_equal (*db_recovery);
 }

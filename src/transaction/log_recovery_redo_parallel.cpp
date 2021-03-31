@@ -29,7 +29,7 @@ namespace cublog
   redo_parallel::redo_job_queue::redo_job_queue ()
     : m_produce_queue (new ux_redo_job_deque ())
     , m_consume_queue (new ux_redo_job_deque ())
-    , m_queues_empty (false)
+    , m_queues_empty (true)
     , m_adding_finished { false }
   {
   }
@@ -134,7 +134,6 @@ namespace cublog
 
   void redo_parallel::redo_job_queue::do_swap_queues_if_needed ()
   {
-    //
     // if consumption of everything in consume queue finished; see whether there's some more in the other one
     if (m_consume_queue->size () == 0)
       {
@@ -194,7 +193,7 @@ namespace cublog
       }
   }
 
-  void redo_parallel::redo_job_queue::wait_for_idle ()
+  void redo_parallel::redo_job_queue::wait_for_idle () const
   {
     {
       std::unique_lock<std::mutex> empty_queues_lock (m_produce_queue_mutex);
@@ -211,6 +210,21 @@ namespace cublog
 	return m_in_progress_vpids.empty ();
       });
     }
+  }
+
+  bool redo_parallel::redo_job_queue::is_idle () const
+  {
+    bool queues_empty = false;
+    bool in_progress_vpids_empty = false;
+    {
+      std::lock_guard<std::mutex> empty_queues_lock (m_produce_queue_mutex);
+      queues_empty = m_queues_empty;
+    }
+    {
+      std::lock_guard<std::mutex> empty_in_progress_vpids_lock (m_in_progress_vpids_mutex);
+      in_progress_vpids_empty = m_in_progress_vpids.empty ();
+    }
+    return queues_empty && in_progress_vpids_empty;
   }
 
   /*********************************************************************
@@ -407,6 +421,14 @@ namespace cublog
     assert (false == m_job_queue.get_adding_finished ());
 
     m_job_queue.wait_for_idle ();
+  }
+
+  bool redo_parallel::is_idle () const
+  {
+    assert (false == m_waited_for_termination);
+    assert (false == m_job_queue.get_adding_finished ());
+
+    return m_job_queue.is_idle ();
   }
 
   void redo_parallel::do_init_worker_pool ()

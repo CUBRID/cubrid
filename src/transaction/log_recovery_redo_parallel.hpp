@@ -74,6 +74,13 @@ namespace cublog
        */
       void wait_for_idle ();
 
+      /* check if all fed data has ben consumed internally; non-blocking call
+       * NOTE: the nature of this function is 'volatile' - ie: what might be
+       * true at the moment the function is called is not necessarily true a moment
+       * later; it can be useful only if the caller is aware of the execution context
+       */
+      bool is_idle () const;
+
       /* mandatory to explicitly call this before dtor
        */
       void wait_for_termination_and_stop_execution ();
@@ -122,7 +129,16 @@ namespace cublog
 
 	  /* wait until all data has been consumed internally; blocking call
 	   */
-	  void wait_for_idle ();
+	  void wait_for_idle () const;
+
+	  /* check if all data has been consumed; that is:
+	   *  - no pending jobs are present in any of the queus
+	   *  - no jobs are currently executing
+	   * NOTE: the nature of this function is 'volatile' - ie: what might be
+	   * true at the moment the function is called is not necessarily true a moment
+	   * later; it can be useful only if the caller is aware of the execution context
+	   */
+	  bool is_idle () const;
 
 	private:
 	  /* swap internal queues and notify if both are empty
@@ -140,12 +156,12 @@ namespace cublog
 	  /* two queues are internally managed
 	   */
 	  ux_redo_job_deque *m_produce_queue;
-	  std::mutex m_produce_queue_mutex;
+	  mutable std::mutex m_produce_queue_mutex;
 	  ux_redo_job_deque *m_consume_queue;
 	  std::mutex m_consume_queue_mutex;
 
 	  bool m_queues_empty;
-	  std::condition_variable m_queues_empty_cv;
+	  mutable std::condition_variable m_queues_empty_cv;
 
 	  std::atomic_bool m_adding_finished;
 
@@ -153,8 +169,8 @@ namespace cublog
 	   * mechanism guarantees ordering among entries with the same VPID;
 	   */
 	  vpid_set m_in_progress_vpids;
-	  std::mutex m_in_progress_vpids_mutex;
-	  std::condition_variable m_in_progress_vpids_empty_cv;
+	  mutable std::mutex m_in_progress_vpids_mutex;
+	  mutable std::condition_variable m_in_progress_vpids_empty_cv;
       };
 
       /* maintain a bookkeeping of tasks that are still performing work;
