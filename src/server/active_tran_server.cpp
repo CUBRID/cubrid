@@ -23,6 +23,7 @@
 #include "log_impl.h"
 #include "log_lsa.hpp"
 #include "log_prior_send.hpp"
+#include "memory_alloc.h"
 #include "server_type.hpp"
 #include "system_parameter.h"
 
@@ -47,8 +48,7 @@ active_tran_server::~active_tran_server ()
     }
 }
 
-int
-active_tran_server::init_page_server_hosts (const char *db_name)
+int active_tran_server::init_page_server_hosts (const char *db_name)
 {
   assert_is_active_tran_server ();
 
@@ -72,7 +72,7 @@ active_tran_server::init_page_server_hosts (const char *db_name)
   long port = -1;
   try
     {
-      port = std::stol (hosts.substr (col_pos+1));
+      port = std::stol (hosts.substr (col_pos + 1));
     }
   catch (...)
     {
@@ -93,8 +93,7 @@ active_tran_server::init_page_server_hosts (const char *db_name)
   return connect_to_page_server (m_ps_hostname, m_ps_port, db_name);
 }
 
-int
-active_tran_server::connect_to_page_server (const std::string &host, int port, const char *db_name)
+int active_tran_server::connect_to_page_server (const std::string &host, int port, const char *db_name)
 {
   assert_is_active_tran_server ();
   assert (!is_page_server_connected ());
@@ -111,7 +110,7 @@ active_tran_server::connect_to_page_server (const std::string &host, int port, c
       return ER_NET_PAGESERVER_CONNECTION;
     }
 
-  if (!srv_chn.send_int (static_cast <int> (cubcomm::server_server::CONNECT_ACTIVE_TRAN_TO_PAGE_SERVER)))
+  if (!srv_chn.send_int (static_cast<int> (cubcomm::server_server::CONNECT_ACTIVE_TRAN_TO_PAGE_SERVER)))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_PAGESERVER_CONNECTION, 1, host.c_str ());
       return ER_NET_PAGESERVER_CONNECTION;
@@ -124,6 +123,8 @@ active_tran_server::connect_to_page_server (const std::string &host, int port, c
   m_ps_conn->register_request_handler (ps_to_ats_request::SEND_SAVED_LSA,
 				       std::bind (&active_tran_server::receive_saved_lsa, std::ref (*this),
 					   std::placeholders::_1));
+  m_ps_conn->register_request_handler (ps_to_ats_request::SEND_LOG_PAGE,
+				       std::bind (&active_tran_server::receive_log_page, std::ref (*this), std::placeholders::_1));
   m_ps_conn->start_thread ();
 
   m_ps_request_queue.reset (new page_server_request_queue (*m_ps_conn));
@@ -136,8 +137,7 @@ active_tran_server::connect_to_page_server (const std::string &host, int port, c
   return NO_ERROR;
 }
 
-void
-active_tran_server::disconnect_page_server ()
+void active_tran_server::disconnect_page_server ()
 {
   assert_is_active_tran_server ();
 
@@ -146,15 +146,13 @@ active_tran_server::disconnect_page_server ()
   m_ps_conn.reset (nullptr);
 }
 
-bool
-active_tran_server::is_page_server_connected () const
+bool active_tran_server::is_page_server_connected () const
 {
   assert_is_active_tran_server ();
   return m_ps_request_queue != nullptr;
 }
 
-void
-active_tran_server::push_request (ats_to_ps_request reqid, std::string &&payload)
+void active_tran_server::push_request (ats_to_ps_request reqid, std::string &&payload)
 {
   if (!is_page_server_connected ())
     {
@@ -164,8 +162,35 @@ active_tran_server::push_request (ats_to_ps_request reqid, std::string &&payload
   m_ps_request_queue->push (reqid, std::move (payload));
 }
 
-void
-active_tran_server::receive_saved_lsa (cubpacking::unpacker &upk)
+void active_tran_server::receive_log_page (cubpacking::unpacker &upk)
+{
+  std::string message;
+  upk.unpack_string (message);
+
+  int error_code;
+  std::memcpy (&error_code, message.c_str (), sizeof (error_code));
+
+  if (error_code == NO_ERROR)
+    {
+      char log_page_buffer[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+      LOG_PAGE *log_page = reinterpret_cast<LOG_PAGE *> (PTR_ALIGN (log_page_buffer, MAX_ALIGNMENT));
+      std::memcpy (log_page, message.c_str () + sizeof (error_code), db_log_page_size ());
+      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
+	{
+	  _er_log_debug (ARG_FILE_LINE, "Received log page message from Page Server. Page ID: %lld\n",
+			 log_page->hdr.logical_pageid);
+	}
+    }
+  else
+    {
+      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
+	{
+	  _er_log_debug (ARG_FILE_LINE, "Received log page message from Page Server. Error code: %d\n", error_code);
+	}
+    }
+}
+
+void active_tran_server::receive_saved_lsa (cubpacking::unpacker &upk)
 {
   std::string message;
   log_lsa saved_lsa;
@@ -179,8 +204,7 @@ active_tran_server::receive_saved_lsa (cubpacking::unpacker &upk)
     }
 }
 
-void
-assert_is_active_tran_server ()
+void assert_is_active_tran_server ()
 {
   assert (get_server_type () == SERVER_TYPE::SERVER_TYPE_TRANSACTION);
 }
