@@ -1217,11 +1217,11 @@ process_class (int cl_no)
 	{
 	  total = (int) (100 * ((float) total_objects / (float) total_approximate_class_objects));
 	}
-      fprintf (unloadlog_file, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), 0, 100, total);
+      fprintf (unloadlog_file, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), (long) 0, 100, total);
       fflush (unloadlog_file);
       if (verbose_flag)
 	{
-	  fprintf (stdout, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), 0, 100, total);
+	  fprintf (stdout, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), (long) 0, 100, total);
 	  fflush (stdout);
 	}
       goto exit_on_end;
