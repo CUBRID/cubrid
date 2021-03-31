@@ -43,7 +43,10 @@ namespace cublog
     log_zip_realloc_if_needed (m_redo_unzip, LOGAREA_SIZE);
 
     // depending on parameter, instantiate the mechanism to execute replication in parallel
-    // initialize before daemon such that, when daemon comes online, it already can dispatch async
+    // mandatory to initialize before daemon such that:
+    //  - race conditions, when daemon comes online, are avoided
+    //  - even making abstraction of the race conditions, no log records are needlessly
+    //    processed synchronously
     const int replication_parallel
       = prm_get_integer_value (PRM_ID_PAGE_SERVER_REPLICATION_PARALLEL_COUNT);
     assert (replication_parallel >= 0);
@@ -71,7 +74,7 @@ namespace cublog
   {
 #ifdef REPLICATOR_PARALLEL_DEBUG
 	_er_log_debug (ARG_FILE_LINE,
-		       "PAGE_SERVER_REPLICATOR: destroy_daemon");
+		       "PAGE_SERVER_REPLICATOR: ~replicator - destroy_daemon");
 #endif
     cubthread::get_manager ()->destroy_daemon (m_daemon);
 
@@ -79,14 +82,14 @@ namespace cublog
       {
 #ifdef REPLICATOR_PARALLEL_DEBUG
 	_er_log_debug (ARG_FILE_LINE,
-		       "PAGE_SERVER_REPLICATOR: m_parallel_replication_redo termination start");
+		       "PAGE_SERVER_REPLICATOR: m_parallel_replication_redo termination >>>>");
 #endif
 	// this is the earliest it is ensured that no records are to be added anymore
 	m_parallel_replication_redo->set_adding_finished ();
 	m_parallel_replication_redo->wait_for_termination_and_stop_execution ();
 #ifdef REPLICATOR_PARALLEL_DEBUG
 	_er_log_debug (ARG_FILE_LINE,
-		       "PAGE_SERVER_REPLICATOR: m_parallel_replication_redo termination done");
+		       "PAGE_SERVER_REPLICATOR: m_parallel_replication_redo termination <<<<");
 #endif
       }
 
@@ -121,17 +124,13 @@ namespace cublog
       {
 #ifdef REPLICATOR_PARALLEL_DEBUG
 	_er_log_debug (ARG_FILE_LINE,
-		       "PAGE_SERVER_REPLICATOR: wait_parallel_replication_idle - start");
+		       "PAGE_SERVER_REPLICATOR: wait_parallel_replication_idle - >>>>");
 #endif
-
 	// this is the earliest it is ensured that no records are to be added anymore
-	//m_parallel_replication_redo->set_adding_finished ();
 	m_parallel_replication_redo->wait_for_idle ();
-	//m_parallel_replication_redo->wait_for_termination_and_stop_execution ();
-
 #ifdef REPLICATOR_PARALLEL_DEBUG
 	_er_log_debug (ARG_FILE_LINE,
-		       "PAGE_SERVER_REPLICATOR: wait_parallel_replication_idle - done");
+		       "PAGE_SERVER_REPLICATOR: wait_parallel_replication_idle - <<<<");
 #endif
       }
   }
@@ -139,11 +138,6 @@ namespace cublog
   void
   replicator::redo_upto (cubthread::entry &thread_entry, const log_lsa &end_redo_lsa)
   {
-#ifdef REPLICATOR_PARALLEL_DEBUG
-    _er_log_debug (ARG_FILE_LINE,
-		   "PAGE_SERVER_REPLICATOR: redo_upto log_lsa (%lld|%d) ",
-		   LSA_AS_ARGS (&end_redo_lsa));
-#endif
     assert (m_redo_lsa < end_redo_lsa);
 
     // redo all records from current position (m_redo_lsa) until end_redo_lsa
@@ -232,7 +226,7 @@ namespace cublog
   {
 #ifdef REPLICATOR_PARALLEL_DEBUG
 	_er_log_debug (ARG_FILE_LINE,
-		       "PAGE_SERVER_REPLICATOR: wait_replication_finish - done");
+		       "PAGE_SERVER_REPLICATOR: wait_replication_finish - >>>>");
 #endif
     std::unique_lock<std::mutex> ulock (m_redo_lsa_mutex);
     m_redo_condvar.wait (ulock, [this]
@@ -241,5 +235,10 @@ namespace cublog
     });
 
     // TODO: must wait for parallel termination as well?
+
+#ifdef REPLICATOR_PARALLEL_DEBUG
+	_er_log_debug (ARG_FILE_LINE,
+		       "PAGE_SERVER_REPLICATOR: wait_replication_finish - <<<<");
+#endif
   }
 } // namespace cublog
