@@ -1874,20 +1874,17 @@ qo_add_dummy_join_term (QO_ENV * env, QO_NODE * p_node, QO_NODE * on_node)
     {
     case PT_JOIN_INNER:
       QO_TERM_JOIN_TYPE (term) = JOIN_INNER;
-      bitset_union (&(QO_NODE_RIGHT_DEP_SET (on_node)), &(QO_NODE_RIGHT_DEP_SET (p_node)));
-      bitset_add (&(QO_NODE_RIGHT_DEP_SET (on_node)), QO_NODE_IDX (p_node));
+      QO_ADD_RIGHT_DEP_SET (on_node, p_node);
       break;
     case PT_JOIN_LEFT_OUTER:
       QO_TERM_JOIN_TYPE (term) = JOIN_LEFT;
-      bitset_union (&(QO_NODE_RIGHT_DEP_SET (on_node)), &(QO_NODE_RIGHT_DEP_SET (p_node)));
-      bitset_add (&(QO_NODE_RIGHT_DEP_SET (on_node)), QO_NODE_IDX (p_node));
+      QO_ADD_RIGHT_DEP_SET (on_node, p_node);
       break;
     case PT_JOIN_RIGHT_OUTER:
       QO_TERM_JOIN_TYPE (term) = JOIN_RIGHT;
-      bitset_union (&(QO_NODE_RIGHT_DEP_SET (on_node)), &(QO_NODE_RIGHT_DEP_SET (p_node)));
-      bitset_add (&(QO_NODE_RIGHT_DEP_SET (on_node)), QO_NODE_IDX (p_node));
-      bitset_union (&(QO_NODE_OUTER_DEP_SET (on_node)), &(QO_NODE_OUTER_DEP_SET (p_node)));
-      bitset_union (&(QO_NODE_OUTER_DEP_SET (on_node)), &(QO_NODE_RIGHT_DEP_SET (on_node)));
+      QO_ADD_RIGHT_DEP_SET (on_node, p_node);
+      QO_ADD_OUTER_DEP_SET (on_node, p_node);
+      QO_ADD_RIGHT_TO_OUTER (on_node, p_node);
       break;
     case PT_JOIN_FULL_OUTER:	/* not used */
       QO_TERM_JOIN_TYPE (term) = JOIN_OUTER;
@@ -2604,15 +2601,15 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	      if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_LEFT_OUTER)
 		{
 		  QO_TERM_JOIN_TYPE (term) = JOIN_LEFT;
-		  bitset_union (&(QO_NODE_OUTER_DEP_SET (on_node)), &(QO_NODE_OUTER_DEP_SET (head_node)));
-		  bitset_add (&(QO_NODE_OUTER_DEP_SET (on_node)), QO_NODE_IDX (head_node));
+		  QO_ADD_RIGHT_DEP_SET (on_node, head_node);
+		  QO_ADD_OUTER_DEP_SET (on_node, head_node);
 		}
 	      else if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_RIGHT_OUTER)
 		{
 		  QO_TERM_JOIN_TYPE (term) = JOIN_RIGHT;
-		  bitset_union (&(QO_NODE_OUTER_DEP_SET (on_node)), &(QO_NODE_RIGHT_DEP_SET (head_node)));
-		  bitset_union (&(QO_NODE_OUTER_DEP_SET (on_node)), &(QO_NODE_OUTER_DEP_SET (head_node)));
-		  bitset_add (&(QO_NODE_OUTER_DEP_SET (on_node)), QO_NODE_IDX (head_node));
+		  QO_ADD_RIGHT_DEP_SET (on_node, head_node);
+		  QO_ADD_OUTER_DEP_SET (on_node, head_node);
+		  QO_ADD_RIGHT_TO_OUTER (on_node, head_node);
 		}
 	      else if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_FULL_OUTER)
 		{		/* not used */
@@ -2621,8 +2618,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	      else if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_INNER)
 		{
 		  QO_TERM_JOIN_TYPE (term) = JOIN_INNER;
-		  bitset_union (&(QO_NODE_RIGHT_DEP_SET (on_node)), &(QO_NODE_RIGHT_DEP_SET (head_node)));
-		  bitset_add (&(QO_NODE_RIGHT_DEP_SET (on_node)), QO_NODE_IDX (head_node));
+		  QO_ADD_RIGHT_DEP_SET (on_node, head_node);
 		}
 	    }
 	  else

@@ -6745,7 +6745,8 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 
 	    /* set join type */
 	    if (join_type == NO_JOIN || is_dummy_term)
-	      {			/* the first time */
+	      {
+		/* the first time except dummy term */
 		join_type = QO_TERM_JOIN_TYPE (term);
 		is_dummy_term = QO_TERM_CLASS (term) == QO_TC_DUMMY_JOIN ? true : false;
 	      }
