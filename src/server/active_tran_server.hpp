@@ -51,6 +51,7 @@ class active_tran_server
     using page_server_request_autosend = cubcomm::request_queue_autosend<page_server_request_queue>;
 
     void receive_saved_lsa (cubpacking::unpacker &upk);
+    void receive_log_page (cubpacking::unpacker &upk);
 
     // communication with page server
     std::string m_ps_hostname;
@@ -63,3 +64,4 @@ class active_tran_server
 extern active_tran_server ats_Gl;
 
 #endif // !_ACTIVE_TRAN_SERVER_HPP_
+
