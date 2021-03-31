@@ -28,9 +28,9 @@
 /* encapsulates reading of the log
  *
  * NOTE: not thread safe
- * NOTE: further functionality:
- *  - introduce an internal buffer to be used for copying and serving
+ * NOTE: improvement: introduce an internal buffer to be used for copying and serving
  *    data from the log of arbitrary size; currently this is done manually outside this class
+ *    using a support buffer structure of
  */
 class log_reader final
 {
@@ -42,23 +42,34 @@ class log_reader final
     log_reader &operator = (log_reader const & ) = delete;
     log_reader &operator = (log_reader && ) = delete;
 
-    inline const log_lsa &get_lsa() const
+    enum class fetch_mode
+    {
+      NORMAL,
+      FORCE
+    };
+
+    inline const log_lsa &get_lsa () const
     {
       return m_lsa;
     }
 
-    inline std::int64_t get_pageid() const
+    inline std::int64_t get_pageid () const
     {
       return m_lsa.pageid;
     }
 
-    inline std::int16_t get_offset() const
+    inline std::int16_t get_offset () const
     {
       return m_lsa.offset;
     }
 
-    int set_lsa_and_fetch_page (const log_lsa &lsa);
-    const log_hdrpage &get_page_header() const;
+    int set_lsa_and_fetch_page (const log_lsa &lsa, fetch_mode fetch_page_mode = fetch_mode::NORMAL);
+    const log_hdrpage &get_page_header () const;
+
+    const log_page *get_page () const
+    {
+      return m_page;
+    }
 
     /*
      * Note: `remove_reference` helps if function is called with a typedef
@@ -121,7 +132,7 @@ class log_reader final
 void LOG_READ_ALIGN (THREAD_ENTRY *thread_p, LOG_LSA *lsa, LOG_PAGE *log_pgptr);
 void LOG_READ_ADD_ALIGN (THREAD_ENTRY *thread_p, size_t add, LOG_LSA *lsa, LOG_PAGE *log_pgptr);
 void LOG_READ_ADVANCE_WHEN_DOESNT_FIT (THREAD_ENTRY *thread_p, size_t length, LOG_LSA *lsa,
-                                       LOG_PAGE *log_pgptr);
+				       LOG_PAGE *log_pgptr);
 
 
 /* implementation
@@ -131,7 +142,7 @@ template <typename T>
 const typename std::remove_reference<T>::type *log_reader::reinterpret_cptr () const
 {
   using rem_ref_t = typename std::remove_reference<T>::type;
-  const rem_ref_t *p = reinterpret_cast<const rem_ref_t *> (get_cptr());
+  const rem_ref_t *p = reinterpret_cast<const rem_ref_t *> (get_cptr ());
   return p;
 }
 
@@ -140,7 +151,7 @@ T log_reader::reinterpret_copy_and_add_align ()
 {
   T data;
   constexpr auto size_of_t = sizeof (T);
-  memcpy (&data, get_cptr(), size_of_t);
+  memcpy (&data, get_cptr (), size_of_t);
   add_align (size_of_t);
   // compiler's NRVO will hopefully kick in here and optimize this away
   return data;

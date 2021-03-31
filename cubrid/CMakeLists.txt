@@ -188,6 +188,7 @@ set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_sr.c
   ${COMMUNICATION_DIR}/communication_channel.cpp
   ${COMMUNICATION_DIR}/communication_server_channel.cpp
+  ${COMMUNICATION_DIR}/request_client_server.cpp
   )
 
 set(COMMUNICATION_HEADERS
@@ -296,6 +297,9 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/log_prior_recv.cpp
   ${TRANSACTION_DIR}/log_reader.cpp
   ${TRANSACTION_DIR}/log_recovery.c
+  ${TRANSACTION_DIR}/log_recovery_redo.cpp
+  ${TRANSACTION_DIR}/log_recovery_redo_parallel.cpp
+  ${TRANSACTION_DIR}/log_replication.cpp
   ${TRANSACTION_DIR}/log_system_tran.cpp
   ${TRANSACTION_DIR}/log_tran_table.c
   ${TRANSACTION_DIR}/log_writer.c
@@ -319,8 +323,11 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/log_prior_send.hpp
   ${TRANSACTION_DIR}/log_prior_recv.hpp
   ${TRANSACTION_DIR}/log_reader.hpp
-  ${TRANSACTION_DIR}/log_recovery_redo_log_rec.hpp
   ${TRANSACTION_DIR}/log_record.hpp
+  ${TRANSACTION_DIR}/log_recovery.h
+  ${TRANSACTION_DIR}/log_recovery_redo.hpp
+  ${TRANSACTION_DIR}/log_recovery_redo_parallel.hpp
+  ${TRANSACTION_DIR}/log_replication.hpp
   ${TRANSACTION_DIR}/log_storage.hpp
   ${TRANSACTION_DIR}/log_system_tran.hpp
   ${TRANSACTION_DIR}/log_volids.hpp
@@ -331,7 +338,18 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/transaction_transient.hpp
   )
 
+set(SERVER_SOURCES
+  ${SERVER_DIR}/active_tran_server.cpp
+  ${SERVER_DIR}/page_server.cpp
+  )
+set(SERVER_HEADERS
+  ${SERVER_DIR}/active_tran_server.hpp
+  ${SERVER_DIR}/ats_ps_request.hpp
+  ${SERVER_DIR}/page_server.hpp
+  )
+
 set(STORAGE_SOURCES
+  ${STORAGE_DIR}/log_page_async_fetcher.cpp
   ${STORAGE_DIR}/btree.c
   ${STORAGE_DIR}/btree_load.c
   ${STORAGE_DIR}/btree_unique.cpp
@@ -358,8 +376,10 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/tde.c
   )
 set(STORAGE_HEADERS
+  ${STORAGE_DIR}/log_page_async_fetcher.hpp
   ${STORAGE_DIR}/btree_unique.hpp
   ${STORAGE_DIR}/record_descriptor.hpp
+  ${STORAGE_DIR}/vpid.hpp
 )
 
 set(SESSION_SOURCES
@@ -451,6 +471,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${PARSER_SOURCES}
   ${PROBES_OBJECT}
   ${QUERY_SOURCES}
+  ${SERVER_SOURCES}
   ${SESSION_SOURCES}
   ${STORAGE_SOURCES}
   ${THREAD_SOURCES}
@@ -474,6 +495,7 @@ set (CUBRID_LIB_SOURCES
   ${OBJECT_SOURCES}
   ${PROBES_OBJECT}
   ${QUERY_SOURCES}
+  ${SERVER_SOURCES}
   ${SESSION_SOURCES}
   ${STORAGE_SOURCES}
   ${THREAD_SOURCES}
@@ -489,6 +511,7 @@ set (CUBRID_LIB_HEADERS
   ${MONITOR_HEADERS}
   ${OBJECT_HEADERS}
   ${QUERY_HEADERS}
+  ${SERVER_HEADERS}
   ${STORAGE_HEADERS}
   ${THREAD_HEADERS}
   ${TRANSACTION_HEADERS}

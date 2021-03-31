@@ -85,9 +85,6 @@ class test_client_and_server_env
     test_request_client &get_client ();
     test_request_server &get_server ();
 
-    // move client
-    test_request_client move_client ();
-
     // wait for all sent messages to be processed by server
     void wait_for_all_messages ();
 
@@ -262,7 +259,7 @@ TEST_CASE ("Verify request_sync_send_queue with request_client", "")
 
   using test_rssq = cubcomm::request_sync_send_queue<test_request_client, int>;
 
-  test_rssq rssq (env.move_client ());
+  test_rssq rssq (env.get_client ());
   test_rssq::queue_type backbuffer;
 
   env.get_server ().start_thread ();
@@ -386,7 +383,7 @@ TEST_CASE ("Test request_queue_autosend", "")
 
   using test_rssq = cubcomm::request_sync_send_queue<test_request_client, payload_with_op_count>;
 
-  test_rssq rssq (env.move_client ());
+  test_rssq rssq (env.get_client ());
   test_rssq::queue_type backbuffer;
 
   env.get_server ().start_thread ();
@@ -634,12 +631,6 @@ test_client_and_server_env::get_server ()
   return m_server;
 }
 
-test_request_client
-test_client_and_server_env::move_client ()
-{
-  return std::move (m_client);
-}
-
 void
 test_client_and_server_env::wait_for_all_messages ()
 {
@@ -707,6 +698,10 @@ payload_with_op_count::get_packed_size (cubpacking::packer &serializator, std::s
 //
 // Mock CUBRID stuff
 //
+#include "error_manager.h"
+#include "system_parameter.h"
+#include "object_representation.h"
+
 void
 _er_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
 {
@@ -735,4 +730,31 @@ char *
 or_unpack_value (const char *buf, DB_VALUE *value)
 {
   return nullptr;
+}
+
+namespace cubcomm
+{
+  void
+  er_log_send_request (const channel &chn, int msgid, size_t size)
+  {
+
+  }
+
+  void
+  er_log_recv_request (const channel &chn, int msgid, size_t size)
+  {
+
+  }
+
+  void
+  er_log_send_fail (const channel &chn, css_error_code err)
+  {
+
+  }
+
+  void
+  er_log_recv_fail (const channel &chn, css_error_code err)
+  {
+
+  }
 }
