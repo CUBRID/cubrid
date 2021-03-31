@@ -84,7 +84,7 @@ typedef enum ds_search_direction DS_SEARCH_DIRECTION;
 
 
 #define FULL_DATE(jul_date, time_sec) ((full_date_t) jul_date * 86400ll \
-				       + (full_date_t) time_sec)
+                                       + (full_date_t) time_sec)
 #define TIME_OFFSET(is_utc, offset) \
   ((is_utc) ? (-offset) : (offset))
 #define ABS(i) ((i) >= 0 ? (i) : -(i))
@@ -188,9 +188,9 @@ static int tz_get_iana_zone_id_by_windows_zone (const char *windows_zone_name);
     v = (SYM_TYPE) TZ_GET_SYM_ADDR (lh, SYM_NAME);			    \
     if (v == NULL)							    \
       {									    \
-	strncpy (sym_name, (SYM_NAME), sizeof (sym_name) - 1);		    \
-	sym_name[sizeof (sym_name) - 1] = '\0';				    \
-	goto error_loading_symbol;					    \
+        strncpy (sym_name, (SYM_NAME), sizeof (sym_name) - 1);		    \
+        sym_name[sizeof (sym_name) - 1] = '\0';				    \
+        goto error_loading_symbol;					    \
       }									    \
   } while (0)
 
@@ -5472,13 +5472,27 @@ exit:
 
 /*
  * tz_get_offset_in_mins () - time zone offset in minutes from GMT
- - gmtime(0) returns the GMT time of the second ZERO of the epoch
- - mktime() simply translate the above moment into equivalent local time
- - the diff between these 2 values gives the timezone offset in seconds (but keep in mind that one of them is ZERO)
  */
 int
 tz_get_offset_in_mins ()
 {
-  time_t tt0 = 0;
-  return (int) (mktime (gmtime (&tt0)) / -60);
+  time_t currtime;
+  struct tm *timeinfo;
+
+  time (&currtime);
+  timeinfo = gmtime (&currtime);
+  time_t utc = mktime (timeinfo);
+  timeinfo = localtime (&currtime);
+  time_t local = mktime (timeinfo);
+
+  // Get offset in minutes from UTC
+  double offsetFromUTC = difftime (utc, local) / 60;
+
+  // Adjust for DST
+  if (timeinfo->tm_isdst)
+    {
+      offsetFromUTC -= 60;
+    }
+
+  return offsetFromUTC;
 }
