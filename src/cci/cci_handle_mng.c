@@ -1473,7 +1473,7 @@ hm_thread_health_checker (void *arg)
   int i;
   unsigned char *ip_addr;
   int port;
-  char useSSL = *((char *) (&arg));
+  char useSSL = ((size_t) arg) != 0 ? USESSL : NON_USESSL;
   time_t start_time;
   time_t elapsed_time;
   while (1)
