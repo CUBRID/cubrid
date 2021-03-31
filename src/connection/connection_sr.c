@@ -59,6 +59,8 @@
 #include "error_manager.h"
 #include "connection_globals.h"
 #include "connection_server_rules.hpp"
+#include "filesys.hpp"
+#include "filesys_temp.hpp"
 #include "memory_alloc.h"
 #include "environment_variable.h"
 #include "system_parameter.h"
@@ -1161,8 +1163,11 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
 
       //on newer systems (e.g. fedora 25) the following line of code
       //produces this warning: the use of `tempnam' is dangerous, better use `mkstemp'
+      auto[filename, fileptr] = filesys::open_temp_file ("cubrid");
+      pname = new char[filename.size () + 1];
+      std::copy (filename.begin (), filename.end (), pname);
+      pname[filename.size ()] = '\0';
 
-      pname = tempnam (NULL, "cubrid");
       if (pname)
 	{
 	  if (css_tcp_setup_server_datagram (pname, &socket_fd)

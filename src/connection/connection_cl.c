@@ -57,6 +57,8 @@
 #include "porting.h"
 #include "error_manager.h"
 #include "connection_globals.h"
+#include "filesys.hpp"
+#include "filesys_temp.hpp"
 #include "memory_alloc.h"
 #include "system_parameter.h"
 #include "environment_variable.h"
@@ -953,7 +955,11 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
 #else /* WINDOWS */
       /* send the "pathname" for the datagram */
       /* be sure to open the datagram first.  */
-      pname = tempnam (NULL, "csql");
+      auto[filename, fileptr] = filesys::open_temp_file ("csql");
+      pname = new char[filename.size () + 1];
+      std::copy (filename.begin (), filename.end (), pname);
+      pname[filename.size ()] = '\0';
+
       if (pname)
 	{
 	  if (css_tcp_setup_server_datagram (pname, &socket_fd)
