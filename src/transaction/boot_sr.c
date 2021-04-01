@@ -2553,6 +2553,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   if (get_server_type () == SERVER_TYPE_PAGE)
     {
       ps_Gl.start_log_replicator (log_Gl.append.get_nxio_lsa ());
+      ps_Gl.init_log_page_fetcher();
     }
 #endif // SERVER_MODE
 
@@ -3169,6 +3170,7 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
   if (get_server_type () == SERVER_TYPE_PAGE)
     {
       ps_Gl.finish_replication (*thread_p);
+      ps_Gl.finalize_log_page_fetcher ();
     }
 #endif
 
