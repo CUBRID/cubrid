@@ -347,8 +347,8 @@ alloc_counter_value ()
   PDH_FMT_COUNTERVALUE_ITEM *tmp_workset = NULL;
   PDH_FMT_COUNTERVALUE_ITEM *tmp_num_thr = NULL;
 
-  int _mem_size = sizeof(PDH_FMT_COUNTERVALUE_ITEM) * num_counter_value;
-  tmp_pid = (PDH_FMT_COUNTERVALUE_ITEM*) realloc(cntvalue_pid, _mem_size);
+  int _mem_size = sizeof (PDH_FMT_COUNTERVALUE_ITEM) * num_counter_value;
+  tmp_pid = (PDH_FMT_COUNTERVALUE_ITEM *) realloc (cntvalue_pid, _mem_size);
   if (tmp_pid == NULL)
     {
       cntvalue_pid = NULL;
@@ -358,7 +358,7 @@ alloc_counter_value ()
       cntvalue_pid = tmp_pid;
     }
 
-  tmp_workset = (PDH_FMT_COUNTERVALUE_ITEM*) realloc(cntvalue_workset, _mem_size);
+  tmp_workset = (PDH_FMT_COUNTERVALUE_ITEM *) realloc (cntvalue_workset, _mem_size);
   if (tmp_workset == NULL)
     {
       cntvalue_workset = NULL;
@@ -368,7 +368,7 @@ alloc_counter_value ()
       cntvalue_workset = tmp_workset;
     }
 
-  tmp_cpu = (PDH_FMT_COUNTERVALUE_ITEM*) realloc(cntvalue_pct_cpu, _mem_size);
+  tmp_cpu = (PDH_FMT_COUNTERVALUE_ITEM *) realloc (cntvalue_pct_cpu, _mem_size);
   if (tmp_cpu == NULL)
     {
       cntvalue_pct_cpu = NULL;
@@ -378,7 +378,7 @@ alloc_counter_value ()
       cntvalue_pct_cpu = tmp_cpu;
     }
 
-  tmp_num_thr = (PDH_FMT_COUNTERVALUE_ITEM*) realloc(cntvalue_num_thr, _mem_size);
+  tmp_num_thr = (PDH_FMT_COUNTERVALUE_ITEM *) realloc (cntvalue_num_thr, _mem_size);
   if (tmp_num_thr == NULL)
     {
       cntvalue_num_thr = NULL;
