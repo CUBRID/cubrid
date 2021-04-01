@@ -3906,7 +3906,7 @@ xcol_to_cci_set (CI_COLLECTION col, T_CCI_SET * rtset)
   API_VAL_CCI_BIND *binds;	/* bind array */
 
   assert (col != NULL);
-  assert (tset != NULL);
+  assert (rtset != NULL);
 
   co = (CCI_COLLECTION *) col;
   res = co->indexer->ifs->length (co->indexer, &size);
