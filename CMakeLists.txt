@@ -1135,9 +1135,9 @@ if(WITH_JDBC AND EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
 
   # clean and build JDBC
   if(UNIX)
-    execute_process(COMMAND sh build.sh clean 
+    execute_process(COMMAND bash build.sh clean
       WORKING_DIRECTORY ${JDBC_DIR})
-    execute_process(COMMAND sh build.sh 
+    execute_process(COMMAND bash build.sh
       WORKING_DIRECTORY ${JDBC_DIR})
   else(UNIX)
     execute_process(COMMAND cmd /c build.bat clean
