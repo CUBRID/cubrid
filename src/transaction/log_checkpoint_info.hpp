@@ -46,8 +46,7 @@ namespace cublog
       // with tran table and prior lock, save snapshot LSA and
       void load_trantable_snapshot (THREAD_ENTRY *thread_p, LOG_LSA &smallest_lsa);
       // get trans/sysops info from transaction table
-      void recovery_analysis (THREAD_ENTRY *thread_p,
-			      log_lsa &start_redo_lsa);	   // restore transaction table based on checkpoint info
+      void recovery_analysis (THREAD_ENTRY *thread_p);  // restore transaction table based on checkpoint info
       void recovery_2pc_analysis (THREAD_ENTRY *thread_p) const;	      // if m_has_2pc, also do 2pc analysis
 
       const log_lsa &get_snapshot_lsa () const;	      // the LSA of loaded snapshot

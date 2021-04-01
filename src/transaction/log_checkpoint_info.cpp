@@ -288,7 +288,7 @@ namespace cublog
   }
 
   void
-  checkpoint_info::recovery_analysis (THREAD_ENTRY *thread_p, log_lsa &start_redo_lsa)
+  checkpoint_info::recovery_analysis (THREAD_ENTRY *thread_p)
   {
     int error_code;
     LOG_TDES *tdes = nullptr;

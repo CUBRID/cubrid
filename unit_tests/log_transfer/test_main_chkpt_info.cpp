@@ -112,6 +112,15 @@ TEST_CASE ("Test pack/unpack checkpoint_info class 3", "")
 
 }
 
+TEST_CASE ("Test load and recovery", "")
+{
+  test_env_chkpt env;
+  LOG_LSA smallest_lsa;
+  THREAD_ENTRY thd;
+  env.after.load_trantabel (thd, smallest_lsa);
+
+}
+
 test_env_chkpt::test_env_chkpt () : test_env_chkpt (100, 100)
 {
 }
