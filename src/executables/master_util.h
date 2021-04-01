@@ -92,6 +92,9 @@ struct socket_queue_entry
 
 extern bool master_util_config_startup (const char *db_name, int *port_id);
 extern void master_util_wait_proc_terminate (int pid);
+#if defined (LINUX)
+extern bool master_util_is_proc_zombie (int pid);
+#endif // LINUX
 
 extern pthread_mutex_t css_Master_er_log_lock;
 extern pthread_mutex_t css_Master_er_log_enable_lock;

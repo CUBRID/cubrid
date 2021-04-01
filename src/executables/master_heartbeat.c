@@ -6667,7 +6667,7 @@ hb_get_deactivating_server_count (void)
 	    {
 	      if ((kill (hb_Deactivate_info.server_pid_list[i], 0) && errno == ESRCH)
 #if defined (LINUX)
-		  || is_proc_zombie (hb_Deactivate_info.server_pid_list[i])
+		  || master_util_is_proc_zombie (hb_Deactivate_info.server_pid_list[i])
 #endif // LINUX
 		)
 		{

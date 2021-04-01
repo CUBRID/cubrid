@@ -82,9 +82,54 @@ master_util_wait_proc_terminate (int pid)
 #else /* ! WINDOWS */
   while (1)
     {
-      if (kill (pid, 0) < 0 || is_proc_zombie (pid))
+      if (kill (pid, 0) < 0 || master_util_is_proc_zombie (pid))
 	break;
       sleep (1);
     }
 #endif /* ! WINDOWS */
 }
+
+#if defined (LINUX)
+bool
+master_util_is_proc_zombie (int pid)
+{
+  // read status from /proc/[pid]/stat and check if process is zombie
+  // see https://man7.org/linux/man-pages/man5/proc.5.html
+  char procstat_filename[PATH_MAX];
+  char procname[PATH_MAX];
+  char status;
+  int procpid;
+
+  sprintf (procstat_filename, "/proc/%d/stat", pid);
+  FILE *f = fopen (procstat_filename, "r");
+  if (f == nullptr)
+    {
+      return false;
+    }
+  if (fscanf (f, "%d %s %c", &procpid, procname, &status) == EOF)
+    {
+      if (access (procstat_filename, F_OK) < 0)
+	{
+	  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "%s : access pidfile %s erno %d", __func__, procstat_filename, errno);
+	}
+      else
+	{
+	  if (!fgets (procname, PATH_MAX, f))	// reuse `procname` for file content
+	    {
+	      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "%s : error reading pidfile %s", __func__, procstat_filename);
+	    }
+	  else
+	    {
+	      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "%s : error in pidfile %s; content: [%s]",
+				   __func__, procstat_filename, procname);
+	    }
+
+	}
+      fclose (f);
+      return false;
+    }
+  assert (pid == procpid);
+  fclose (f);
+  return status == 'Z';
+}
+#endif // LINUX
