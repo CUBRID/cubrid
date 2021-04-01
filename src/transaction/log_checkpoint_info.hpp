@@ -58,7 +58,6 @@ namespace cublog
       void load_checkpoint_trans (log_tdes &tdes, LOG_LSA &smallest_lsa);
       void load_checkpoint_topop (log_tdes &tdes);
 
-
       log_lsa m_start_redo_lsa;
       log_lsa m_snapshot_lsa;
       std::vector<checkpoint_tran_info> m_trans;
