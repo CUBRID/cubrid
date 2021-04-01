@@ -1160,13 +1160,8 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
 #else /* WINDOWS */
       /* send the "pathname" for the datagram */
       /* be sure to open the datagram first.  */
-
-      //on newer systems (e.g. fedora 25) the following line of code
-      //produces this warning: the use of `tempnam' is dangerous, better use `mkstemp'
       auto[filename, fileptr] = filesys::open_temp_file ("cubrid");
-      pname = new char[filename.size () + 1];
-      std::copy (filename.begin (), filename.end (), pname);
-      pname[filename.size ()] = '\0';
+      pname = strdup (filename.c_str ());
 
       if (pname)
 	{
@@ -1175,14 +1170,12 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
 	      && (css_tcp_listen_server_datagram (socket_fd, &datagram_fd)))
 	    {
 	      (void) unlink (pname);
-	      /* don't use free_and_init on pname since it came from tempnam() */
 	      free (pname);
 	      css_free_conn (conn);
 	      return (css_make_conn (datagram_fd));
 	    }
 	  else
 	    {
-	      /* don't use free_and_init on pname since it came from tempnam() */
 	      free (pname);
 	      er_set_with_oserror (ER_ERROR_SEVERITY,
 				   ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
