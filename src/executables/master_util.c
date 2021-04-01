@@ -82,7 +82,7 @@ master_util_wait_proc_terminate (int pid)
 #else /* ! WINDOWS */
   while (1)
     {
-      if (kill (pid, 0) < 0)
+      if (kill (pid, 0) < 0 || is_proc_zombie (pid))
 	break;
       sleep (1);
     }

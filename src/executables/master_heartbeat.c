@@ -57,6 +57,7 @@
 #include "message_catalog.h"
 #include "object_representation.h"
 #include "porting.h"
+#include "process_util.h"
 #include "tcp.h"
 #include "utility.h"
 
@@ -236,10 +237,6 @@ static int hb_help_sprint_processes_info (char *buffer, int max_length);
 static int hb_help_sprint_nodes_info (char *buffer, int max_length);
 static int hb_help_sprint_jobs_info (HB_JOB * jobs, char *buffer, int max_length);
 static int hb_help_sprint_ping_host_info (char *buffer, int max_length);
-
-#if defined (LINUX)
-static bool is_proc_zombie (int pid);
-#endif // LINUX
 
 HB_CLUSTER *hb_Cluster = NULL;
 HB_RESOURCE *hb_Resource = NULL;
@@ -6780,48 +6777,3 @@ hb_is_hang_process (int sfd)
 
   return false;
 }
-
-#if defined (LINUX)
-static bool
-is_proc_zombie (int pid)
-{
-  // read status from /proc/[pid]/stat and check if process is zombie
-  // see https://man7.org/linux/man-pages/man5/proc.5.html
-  char procstat_filename[PATH_MAX];
-  char procname[PATH_MAX];
-  char status;
-  int procpid;
-
-  sprintf (procstat_filename, "/proc/%d/stat", pid);
-  FILE *f = fopen (procstat_filename, "r");
-  if (f == nullptr)
-    {
-      return false;
-    }
-  if (fscanf (f, "%d %s %c", &procpid, procname, &status) == EOF)
-    {
-      if (access (procstat_filename, F_OK) < 0)
-	{
-	  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "%s : access pidfile %s erno %d", __func__, procstat_filename, errno);
-	}
-      else
-	{
-	  if (!fgets (procname, PATH_MAX, f))	// reuse `procname` for file content
-	    {
-	      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "%s : error reading pidfile %s", __func__, procstat_filename);
-	    }
-	  else
-	    {
-	      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "%s : error in pidfile %s; content: [%s]",
-				   __func__, procstat_filename, procname);
-	    }
-
-	}
-      fclose (f);
-      return false;
-    }
-  assert (pid == procpid);
-  fclose (f);
-  return status == 'Z';
-}
-#endif // LINUX

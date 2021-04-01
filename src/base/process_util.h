@@ -28,4 +28,8 @@ int
 create_child_process (const char *const argv[], int wait_flag, const char *stdin_file, char *stdout_file,
 		      char *stderr_file, int *exit_status);
 
+#if defined (LINUX)
+bool is_proc_zombie (int pid);
+#endif // LINUX
+
 #endif /* _PROCESS_UTIL_H_ */
