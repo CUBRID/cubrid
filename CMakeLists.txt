@@ -442,6 +442,13 @@ add_flex_bison_dependency(esql_lexer esql_grammar)
 add_custom_target(gen_esql_grammar DEPENDS ${BISON_esql_grammar_OUTPUTS})
 add_custom_target(gen_esql_lexer DEPENDS ${FLEX_esql_lexer_OUTPUTS})
 
+# For java stored procedure server
+include(FindJNI)
+find_package(JNI 1.5)
+if(JNI_FOUND)
+  set(JAVA_INC ${JAVA_INCLUDE_PATH} ${JAVA_INCLUDE_PATH2})
+endif(JNI_FOUND)
+
 # Build types
 if(CMAKE_BUILD_TYPE MATCHES "Coverage")
   set(CMAKE_CXX_FLAGS_COVERAGE "-g -O0 --coverage -fprofile-arcs -ftest-coverage -std=c++0x"

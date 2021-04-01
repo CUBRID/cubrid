@@ -15,12 +15,6 @@
 #   limitations under the License.
 # 
 #
-include(FindJNI)
-find_package(JNI 1.5)
-if(JNI_FOUND)
-  set(JAVA_INC ${JAVA_INCLUDE_PATH} ${JAVA_INCLUDE_PATH2})
-endif(JNI_FOUND)
-
 include(FindJava)
 find_package(Java 1.5 COMPONENTS Development)
 
