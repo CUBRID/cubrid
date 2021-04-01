@@ -64,7 +64,7 @@ namespace cubxasl
   {
     db_value *value;		/* value of the aggregate */
     db_value *value2;		/* for GROUP_CONCAT, STTDEV and VARIANCE */
-    int curr_cnt;			/* current number of items */
+    INT64 curr_cnt;			/* current number of items */
     bool clear_value_at_clone_decache;	/* true, if need to clear value at clone decache */
     bool clear_value2_at_clone_decache;	/* true, if need to clear value2 at clone decache */
   };
