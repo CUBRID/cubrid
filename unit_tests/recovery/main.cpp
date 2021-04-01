@@ -203,6 +203,8 @@ TEST_CASE ("log recovery parallel test: idle status", "[ci][dbg]")
   cublog::redo_parallel log_redo_parallel (std::thread::hardware_concurrency ());
 
   REQUIRE (log_redo_parallel.is_idle ());
+  log_lsa minimum_log_lsa = log_redo_parallel.get_minimum_unprocessed_log_lsa ();
+  REQUIRE (LSA_ISNULL (&minimum_log_lsa));
 
   const ut_database_config database_config =
   {
@@ -233,8 +235,13 @@ TEST_CASE ("log recovery parallel test: idle status", "[ci][dbg]")
 
   // sleep here more than 'max_duration_in_millis' to invalidate test
   REQUIRE_FALSE (log_redo_parallel.is_idle ());
+  minimum_log_lsa = log_redo_parallel.get_minimum_unprocessed_log_lsa ();
+  REQUIRE_FALSE (LSA_ISNULL (&minimum_log_lsa));
+
   log_redo_parallel.wait_for_idle ();
   REQUIRE (log_redo_parallel.is_idle ());
+  minimum_log_lsa = log_redo_parallel.get_minimum_unprocessed_log_lsa ();
+  REQUIRE (LSA_ISNULL (&minimum_log_lsa));
 
   log_redo_parallel.set_adding_finished ();
   log_redo_parallel.wait_for_termination_and_stop_execution ();

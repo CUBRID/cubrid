@@ -64,7 +64,7 @@ namespace cublog
     cubthread::looper loop (std::chrono::milliseconds (1));   // don't spin when there is no new log, wait a bit
     auto func_exec = std::bind (&replicator::redo_upto_nxio_lsa, std::ref (*this), std::placeholders::_1);
     auto func_retire = std::bind (&replicator::wait_parallel_replication_idle, std::ref (*this));
-    auto task = new cubthread::entry_callable_task (std::move(func_exec), std::move(func_retire));
+    auto task = new cubthread::entry_callable_task (std::move (func_exec), std::move (func_retire));
 
     // NOTE: task ownership goes to the thread manager
     m_daemon = cubthread::get_manager ()->create_daemon (loop, task, "cublog::replicator");
@@ -73,8 +73,8 @@ namespace cublog
   replicator::~replicator ()
   {
 #ifdef REPLICATOR_PARALLEL_DEBUG
-	_er_log_debug (ARG_FILE_LINE,
-		       "PAGE_SERVER_REPLICATOR: ~replicator - destroy_daemon");
+    _er_log_debug (ARG_FILE_LINE,
+		   "PAGE_SERVER_REPLICATOR: ~replicator - destroy_daemon");
 #endif
     cubthread::get_manager ()->destroy_daemon (m_daemon);
 
@@ -225,8 +225,8 @@ namespace cublog
   replicator::wait_replication_finish () const
   {
 #ifdef REPLICATOR_PARALLEL_DEBUG
-	_er_log_debug (ARG_FILE_LINE,
-		       "PAGE_SERVER_REPLICATOR: wait_replication_finish - >>>>");
+    _er_log_debug (ARG_FILE_LINE,
+		   "PAGE_SERVER_REPLICATOR: wait_replication_finish - >>>>");
 #endif
     std::unique_lock<std::mutex> ulock (m_redo_lsa_mutex);
     m_redo_condvar.wait (ulock, [this]
@@ -237,8 +237,8 @@ namespace cublog
     // TODO: must wait for parallel termination as well?
 
 #ifdef REPLICATOR_PARALLEL_DEBUG
-	_er_log_debug (ARG_FILE_LINE,
-		       "PAGE_SERVER_REPLICATOR: wait_replication_finish - <<<<");
+    _er_log_debug (ARG_FILE_LINE,
+		   "PAGE_SERVER_REPLICATOR: wait_replication_finish - <<<<");
 #endif
   }
 } // namespace cublog

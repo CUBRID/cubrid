@@ -85,6 +85,8 @@ namespace cublog
        */
       void wait_for_termination_and_stop_execution ();
 
+      log_lsa get_minimum_unprocessed_log_lsa ();
+
     private:
       void do_init_worker_pool ();
       void do_init_tasks ();
@@ -98,6 +100,7 @@ namespace cublog
 	  using ux_redo_job_base = std::unique_ptr<redo_job_base>;
 	  using ux_redo_job_deque = std::deque<ux_redo_job_base>;
 	  using vpid_set = std::set<VPID>;
+	  using log_lsa_set = std::set<log_lsa>;
 
 	public:
 	  redo_job_queue ();
@@ -109,7 +112,7 @@ namespace cublog
 	  redo_job_queue &operator= (redo_job_queue const &) = delete;
 	  redo_job_queue &operator= (redo_job_queue &&) = delete;
 
-	  void locked_push (ux_redo_job_base &&job);
+	  void push_job (ux_redo_job_base &&job);
 
 	  /* to be called after all known entries have been added
 	   * part of a mechanism to signal to the consumers, together with
@@ -117,15 +120,17 @@ namespace cublog
 	   */
 	  void set_adding_finished ();
 
+	  /* mostly for debugging
+	   */
 	  bool get_adding_finished () const;
 
 	  /* the combination of a null return value with a finished
 	   * flag set to true signals to the callers that no more data is expected
 	   * and, therefore, they can also terminate
 	   */
-	  ux_redo_job_base locked_pop (bool &adding_finished);
+	  ux_redo_job_base pop_job (bool &adding_finished);
 
-	  void notify_in_progress_vpid_finished (VPID a_vpid);
+	  void notify_job_finished (const ux_redo_job_base &a_job);
 
 	  /* wait until all data has been consumed internally; blocking call
 	   */
@@ -140,7 +145,11 @@ namespace cublog
 	   */
 	  bool is_idle () const;
 
+	  log_lsa get_minimum_unprocessed_log_lsa ();
+
 	private:
+	  void assert_idle () const;
+
 	  /* swap internal queues and notify if both are empty
 	   * assumes the consume queue is locked
 	   */
@@ -148,12 +157,20 @@ namespace cublog
 
 	  /* find first job that can be consumed (ie: is not already marked
 	   * in the 'in progress vpids' set)
-	   * assumes the the in progress vpids set is locked
+	   *
+	   * NOTE: '*_locked_*' functions are supposed to be called from within locked
+	   * areas with respect to the resources they make use of
 	   */
-	  ux_redo_job_base do_find_job_to_consume ();
+	  ux_redo_job_base do_locked_find_job_to_consume ();
+
+	  /* NOTE: '*_locked_*' functions are supposed to be called from within locked
+	   * areas with respect to the resources they make use of
+	   */
+	  void do_locked_mark_job_started (const ux_redo_job_base &a_job);
 
 	private:
-	  /* two queues are internally managed
+	  /* two queues are internally managed and take turns at being either
+	   * on the producing or on the consumption side
 	   */
 	  ux_redo_job_deque *m_produce_queue;
 	  mutable std::mutex m_produce_queue_mutex;
@@ -169,7 +186,8 @@ namespace cublog
 	   * mechanism guarantees ordering among entries with the same VPID;
 	   */
 	  vpid_set m_in_progress_vpids;
-	  mutable std::mutex m_in_progress_vpids_mutex;
+	  log_lsa_set m_in_progress_log_lsas;
+	  mutable std::mutex m_in_progress_mutex;
 	  mutable std::condition_variable m_in_progress_vpids_empty_cv;
       };
 
@@ -279,7 +297,7 @@ namespace cublog
       using log_rec_t = TYPE_LOG_REC;
 
     public:
-      redo_job_impl (VPID a_vpid, const log_lsa &a_rcv_lsa, const LOG_LSA *a_end_redo_lsa, LOG_RECTYPE a_log_rtype);
+      redo_job_impl (VPID a_vpid, const log_lsa &a_rcv_lsa, const log_lsa *a_end_redo_lsa, LOG_RECTYPE a_log_rtype);
 
       redo_job_impl (redo_job_impl const &) = delete;
       redo_job_impl (redo_job_impl &&) = delete;
@@ -293,7 +311,7 @@ namespace cublog
 		   LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support) override;
 
     private:
-      const LOG_LSA *m_end_redo_lsa;  // by design pointer is guaranteed to outlive this instance
+      const log_lsa *m_end_redo_lsa;  // by design pointer is guaranteed to outlive this instance
       const LOG_RECTYPE m_log_rtype;
   };
 
@@ -302,7 +320,7 @@ namespace cublog
    *********************************************************************/
 
   template <typename TYPE_LOG_REC>
-  redo_job_impl<TYPE_LOG_REC>::redo_job_impl (VPID a_vpid, const log_lsa &a_rcv_lsa, const LOG_LSA *a_end_redo_lsa,
+  redo_job_impl<TYPE_LOG_REC>::redo_job_impl (VPID a_vpid, const log_lsa &a_rcv_lsa, const log_lsa *a_end_redo_lsa,
       LOG_RECTYPE a_log_rtype)
     : redo_parallel::redo_job_base (a_vpid, a_rcv_lsa)
     , m_end_redo_lsa (a_end_redo_lsa)
