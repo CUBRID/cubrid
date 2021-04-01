@@ -351,10 +351,6 @@ alloc_counter_value ()
   tmp_pid = (PDH_FMT_COUNTERVALUE_ITEM*) realloc(cntvalue_pid, _mem_size);
   if (tmp_pid == NULL)
     {
-      if (cntvalue_pid != NULL)
-        {
-          free (cntvalue_pid);
-        }
       cntvalue_pid = NULL;
     }
   else
@@ -365,10 +361,6 @@ alloc_counter_value ()
   tmp_workset = (PDH_FMT_COUNTERVALUE_ITEM*) realloc(cntvalue_workset, _mem_size);
   if (tmp_workset == NULL)
     {
-      if (cntvalue_workset != NULL)
-        {
-          free (cntvalue_workset);
-	}
       cntvalue_workset = NULL;
     }
   else
@@ -379,10 +371,6 @@ alloc_counter_value ()
   tmp_cpu = (PDH_FMT_COUNTERVALUE_ITEM*) realloc(cntvalue_pct_cpu, _mem_size);
   if (tmp_cpu == NULL)
     {
-      if (cntvalue_pct_cpu != NULL)
-        {
-          free (cntvalue_pct_cpu);
-        }
       cntvalue_pct_cpu = NULL;
     }
   else
@@ -393,10 +381,6 @@ alloc_counter_value ()
   tmp_num_thr = (PDH_FMT_COUNTERVALUE_ITEM*) realloc(cntvalue_num_thr, _mem_size);
   if (tmp_num_thr == NULL)
     {
-      if (cntvalue_num_thr != NULL)
-        {
-          free (cntvalue_num_thr);
-        }
       cntvalue_num_thr = NULL;
     }
   else
