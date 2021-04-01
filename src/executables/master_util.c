@@ -108,23 +108,6 @@ master_util_is_proc_zombie (int pid)
     }
   if (fscanf (f, "%d %s %c", &procpid, procname, &status) == EOF)
     {
-      if (access (procstat_filename, F_OK) < 0)
-	{
-	  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "%s : access pidfile %s erno %d", __func__, procstat_filename, errno);
-	}
-      else
-	{
-	  if (!fgets (procname, PATH_MAX, f))	// reuse `procname` for file content
-	    {
-	      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "%s : error reading pidfile %s", __func__, procstat_filename);
-	    }
-	  else
-	    {
-	      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "%s : error in pidfile %s; content: [%s]",
-				   __func__, procstat_filename, procname);
-	    }
-
-	}
       fclose (f);
       return false;
     }
