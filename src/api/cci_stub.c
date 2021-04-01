@@ -2594,7 +2594,7 @@ stmt_execute_batch_array (STATEMENT_IMPL * pstmt)
 static int
 stmt_complete_batch (STATEMENT_IMPL * pstmt)
 {
-  int res;
+  int res = NO_ERROR;
   int num_batch, i;
   dlisth h;
 
