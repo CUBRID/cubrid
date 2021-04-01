@@ -1046,8 +1046,7 @@ int
 qdata_evaluate_aggregate_hierarchy (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_p, HFID *root_hfid,
 				    BTID *root_btid, hierarchy_aggregate_helper *helper)
 {
-  int error = NO_ERROR, i, cmp = DB_EQ;
-  int64_t cur_cnt = 0;
+  int error = NO_ERROR, i, cmp = DB_EQ, cur_cnt = 0;
   DB_VALUE result;
   if (!agg_p->flag_agg_optimize)
     {
@@ -1220,7 +1219,8 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
       /* set count-star aggregate values */
       if (agg_p->function == PT_COUNT_STAR)
 	{
-	  db_make_bigint (agg_p->accumulator.value, agg_p->accumulator.curr_cnt + INT_MAX);
+	  db_make_bigint (agg_p->accumulator.value,
+			  agg_p->accumulator.curr_cnt + INT_MAX + INT_MAX + INT_MAX + INT_MAX + INT_MAX + INT_MAX);
 	}
 
       /* the value of groupby_num() remains unchanged; it will be changed while evaluating groupby_num predicates
