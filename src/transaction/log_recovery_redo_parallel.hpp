@@ -233,8 +233,8 @@ namespace cublog
   class redo_parallel::redo_job_base
   {
     public:
-      redo_job_base (VPID a_vpid)
-	: m_vpid (a_vpid)
+      redo_job_base (VPID a_vpid, const log_lsa &a_log_lsa)
+	: m_vpid (a_vpid), m_log_lsa (a_log_lsa)
       {
 	assert (!VPID_ISNULL (&m_vpid));
       }
@@ -252,9 +252,14 @@ namespace cublog
       *  - pertain to a certain VOLID - aka: volume extend, new page
       *  - pertain to no VOLID - aka: database extend, new volume
       */
-      const VPID &get_vpid () const
+      inline const VPID &get_vpid () const
       {
 	return m_vpid;
+      }
+
+      inline const log_lsa &get_log_lsa () const
+      {
+	return m_log_lsa;
       }
 
       virtual int execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
@@ -262,6 +267,7 @@ namespace cublog
 
     private:
       const VPID m_vpid;
+      const log_lsa m_log_lsa;
   };
 
 
@@ -287,7 +293,6 @@ namespace cublog
 		   LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support) override;
 
     private:
-      const log_lsa m_rcv_lsa;
       const LOG_LSA *m_end_redo_lsa;  // by design pointer is guaranteed to outlive this instance
       const LOG_RECTYPE m_log_rtype;
   };
@@ -299,8 +304,7 @@ namespace cublog
   template <typename TYPE_LOG_REC>
   redo_job_impl<TYPE_LOG_REC>::redo_job_impl (VPID a_vpid, const log_lsa &a_rcv_lsa, const LOG_LSA *a_end_redo_lsa,
       LOG_RECTYPE a_log_rtype)
-    : redo_parallel::redo_job_base (a_vpid)
-    , m_rcv_lsa (a_rcv_lsa)
+    : redo_parallel::redo_job_base (a_vpid, a_rcv_lsa)
     , m_end_redo_lsa (a_end_redo_lsa)
     , m_log_rtype (a_log_rtype)
   {
@@ -310,7 +314,8 @@ namespace cublog
   int  redo_job_impl<TYPE_LOG_REC>::execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
       LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support)
   {
-    const int err_set_lsa_and_fetch_page = log_pgptr_reader.set_lsa_and_fetch_page (m_rcv_lsa);
+    const auto &rcv_lsa = get_log_lsa ();
+    const int err_set_lsa_and_fetch_page = log_pgptr_reader.set_lsa_and_fetch_page (rcv_lsa);
     if (err_set_lsa_and_fetch_page != NO_ERROR)
       {
 	return err_set_lsa_and_fetch_page;
@@ -321,7 +326,7 @@ namespace cublog
       = log_pgptr_reader.reinterpret_copy_and_add_align<log_rec_t> ();
 
     const auto &rcv_vpid = get_vpid ();
-    log_rv_redo_record_sync<log_rec_t> (thread_p, log_pgptr_reader, log_rec, rcv_vpid, m_rcv_lsa, m_end_redo_lsa,
+    log_rv_redo_record_sync<log_rec_t> (thread_p, log_pgptr_reader, log_rec, rcv_vpid, rcv_lsa, m_end_redo_lsa,
 					m_log_rtype, undo_unzip_support, redo_unzip_support);
     return NO_ERROR;
   }

@@ -208,7 +208,7 @@ TEST_CASE ("log recovery parallel test: idle status", "[ci][dbg]")
   {
     42, // max_volume_count_per_database
     42, // max_page_count_per_volume
-    50., // max_duration_in_millis
+    5., // max_duration_in_millis
   };
   ux_ut_database db_online { new ut_database (database_config) };
   ux_ut_database db_recovery { new ut_database (database_config) };
