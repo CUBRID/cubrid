@@ -83,6 +83,9 @@ inline bool LSA_LT (const log_lsa *plsa1, const log_lsa *plsa2);
 inline bool LSA_GE (const log_lsa *plsa1, const log_lsa *plsa2);
 inline bool LSA_GT (const log_lsa *plsa1, const log_lsa *plsa2);
 
+// function makes abstraction of whether either of the arguments is logically 'NULL'
+inline const log_lsa &LSA_MIN (const log_lsa &left, const log_lsa &rite);
+
 #define LSA_INITIALIZER	{NULL_LOG_PAGEID, NULL_LOG_OFFSET}
 
 #define LSA_AS_ARGS(lsa_ptr) (long long int) (lsa_ptr)->pageid, (int) (lsa_ptr)->offset
@@ -198,6 +201,12 @@ LSA_GT (const log_lsa *plsa1, const log_lsa *plsa2)
 {
   assert (plsa1 != NULL && plsa2 != NULL);
   return *plsa1 > *plsa2;
+}
+
+const log_lsa &
+LSA_MIN (const log_lsa &left, const log_lsa &rite)
+{
+  return (left < rite) ? left : rite;
 }
 
 #endif  // _LOG_LSA_HPP_
