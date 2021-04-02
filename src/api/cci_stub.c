@@ -2594,7 +2594,7 @@ stmt_execute_batch_array (STATEMENT_IMPL * pstmt)
 static int
 stmt_complete_batch (STATEMENT_IMPL * pstmt)
 {
-  int res;
+  int res = NO_ERROR;
   int num_batch, i;
   dlisth h;
 
@@ -3906,7 +3906,7 @@ xcol_to_cci_set (CI_COLLECTION col, T_CCI_SET * rtset)
   API_VAL_CCI_BIND *binds;	/* bind array */
 
   assert (col != NULL);
-  assert (tset != NULL);
+  assert (rtset != NULL);
 
   co = (CCI_COLLECTION *) col;
   res = co->indexer->ifs->length (co->indexer, &size);
