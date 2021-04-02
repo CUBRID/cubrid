@@ -3613,6 +3613,7 @@ int
 qe_get_data_int (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
 {
   int data;
+  int *temp_value = (int *) value;
 
   assert (u_type >= CCI_U_TYPE_FIRST && u_type <= CCI_U_TYPE_LAST);
 
@@ -3678,7 +3679,7 @@ qe_get_data_int (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
       return CCI_ER_TYPE_CONVERSION;
     }
 
-  *(int *) value = data;
+  *((int *) temp_value) = data;
 
   return 0;
 }
@@ -3687,6 +3688,7 @@ int
 qe_get_data_uint (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
 {
   unsigned int data;
+  unsigned int *temp_value = (unsigned int *) value;
 
   assert (u_type >= CCI_U_TYPE_FIRST && u_type <= CCI_U_TYPE_LAST);
 
@@ -3752,7 +3754,7 @@ qe_get_data_uint (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
       return CCI_ER_TYPE_CONVERSION;
     }
 
-  *(unsigned int *) value = data;
+  *((unsigned int *) temp_value) = data;
 
   return 0;
 }
@@ -3761,6 +3763,7 @@ int
 qe_get_data_float (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
 {
   float data;
+  float *temp_value = (float *) value;
 
   assert (u_type >= CCI_U_TYPE_FIRST && u_type <= CCI_U_TYPE_LAST);
 
@@ -3835,7 +3838,7 @@ qe_get_data_float (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
       return CCI_ER_TYPE_CONVERSION;
     }
 
-  *(float *) value = data;
+  *((float *) temp_value) = data;
   return 0;
 }
 
@@ -3843,6 +3846,7 @@ int
 qe_get_data_double (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
 {
   double data;
+  double *temp_value = (double *) value;
 
   assert (u_type >= CCI_U_TYPE_FIRST && u_type <= CCI_U_TYPE_LAST);
 
@@ -3916,7 +3920,7 @@ qe_get_data_double (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
       return CCI_ER_TYPE_CONVERSION;
     }
 
-  *(double *) value = data;
+  *((double *) temp_value) = data;
   return 0;
 }
 
@@ -3924,6 +3928,7 @@ int
 qe_get_data_date (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
 {
   T_CCI_DATE data;
+  T_CCI_DATE *temp_value = (T_CCI_DATE *) value;
 
   assert (u_type >= CCI_U_TYPE_FIRST && u_type <= CCI_U_TYPE_LAST);
 
@@ -3947,7 +3952,7 @@ qe_get_data_date (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
       return CCI_ER_TYPE_CONVERSION;
     }
 
-  *(T_CCI_DATE *) value = data;
+  *((T_CCI_DATE *) temp_value) = data;
   return 0;
 }
 
@@ -3955,6 +3960,7 @@ int
 qe_get_data_date_tz (T_CCI_U_TYPE u_type, char *col_value_p, void *value, int total_size)
 {
   T_CCI_DATE_TZ data;
+  T_CCI_DATE_TZ *temp_value = (T_CCI_DATE_TZ *)value;
 
   assert (u_type >= CCI_U_TYPE_FIRST && u_type <= CCI_U_TYPE_LAST);
 
@@ -3974,7 +3980,7 @@ qe_get_data_date_tz (T_CCI_U_TYPE u_type, char *col_value_p, void *value, int to
       return CCI_ER_TYPE_CONVERSION;
     }
 
-  *(T_CCI_DATE_TZ *) value = data;
+  *((T_CCI_DATE_TZ *) temp_value) = data;
   return 0;
 }
 

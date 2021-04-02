@@ -259,6 +259,29 @@ DllMain (HANDLE hModule, DWORD ul_reason_for_call, LPVOID lpReserved)
 }
 #endif
 
+static void
+set_start_time_for_query (T_CON_HANDLE * con_handle, T_REQ_HANDLE * req_handle)
+{
+  if (con_handle)
+    {
+    int time_to_check = 0;
+    if (req_handle)
+      {
+        time_to_check = ((T_REQ_HANDLE *)(req_handle))->query_timeout;
+      }
+    else
+      {
+        time_to_check = con_handle->query_timeout;
+      }
+    gettimeofday(&(con_handle->start_time), NULL);
+
+    if (time_to_check > 0)
+      {
+        con_handle->current_timeout = time_to_check;
+      }
+    }
+}
+
 int
 get_elapsed_time (struct timeval *start_time)
 {
@@ -885,7 +908,7 @@ cci_prepare (int mapped_conn_id, const char *sql_stmt, char flag, T_CCI_ERROR * 
     {
       hm_force_close_connection (con_handle);
     }
-  SET_START_TIME_FOR_QUERY (con_handle, req_handle);
+  set_start_time_for_query (con_handle, req_handle);
 
   is_first_prepare_in_tran = IS_OUT_TRAN (con_handle);
 
@@ -1318,7 +1341,7 @@ cci_execute (int mapped_stmt_id, char flag, int max_col_size, T_CCI_ERROR * err_
     {
       hm_force_close_connection (con_handle);
     }
-  SET_START_TIME_FOR_QUERY (con_handle, req_handle);
+  set_start_time_for_query (con_handle, req_handle);
 
   if (IS_BROKER_STMT_POOL (con_handle) && req_handle->valid == false)
     {
@@ -1489,7 +1512,7 @@ cci_prepare_and_execute (int mapped_conn_id, char *sql_stmt, int max_col_size, i
       hm_force_close_connection (con_handle);
     }
 
-  SET_START_TIME_FOR_QUERY (con_handle, req_handle);
+  set_start_time_for_query (con_handle, req_handle);
   is_first_prepare_in_tran = IS_OUT_TRAN (con_handle);
 
   error = qe_prepare_and_execute (req_handle, con_handle, sql_stmt, max_col_size, &(con_handle->err_buf));
@@ -1666,7 +1689,7 @@ cci_execute_array (int mapped_stmt_id, T_CCI_QUERY_RESULT ** qr, T_CCI_ERROR * e
     {
       hm_force_close_connection (con_handle);
     }
-  SET_START_TIME_FOR_QUERY (con_handle, req_handle);
+  set_start_time_for_query (con_handle, req_handle);
 
   if (IS_BROKER_STMT_POOL (con_handle) && req_handle->valid == false)
     {
@@ -2799,7 +2822,7 @@ cci_get_db_version (int mapped_conn_id, char *out_buf, int buf_size)
   reset_error_buffer (&(con_handle->err_buf));
 
   API_SLOG (con_handle);
-  SET_START_TIME_FOR_QUERY_ONLY_CON (con_handle);
+  set_start_time_for_query (con_handle, NULL);
 
   error = qe_get_db_version (con_handle, out_buf, buf_size);
   while (IS_OUT_TRAN (con_handle) && IS_ER_TO_RECONNECT (error, con_handle->err_buf.err_code))
@@ -3208,7 +3231,7 @@ cci_execute_batch (int mapped_conn_id, int num_query, char **sql_stmt, T_CCI_QUE
     {
       hm_force_close_connection (con_handle);
     }
-  SET_START_TIME_FOR_QUERY_ONLY_CON (con_handle);
+  set_start_time_for_query (con_handle, NULL);
 
   error = qe_execute_batch (con_handle, num_query, sql_stmt, qr, &(con_handle->err_buf));
   while (IS_OUT_TRAN (con_handle) && IS_ER_TO_RECONNECT (error, con_handle->err_buf.err_code))

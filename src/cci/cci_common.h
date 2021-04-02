@@ -171,36 +171,6 @@
         } while(0)
 #endif
 
-#define SET_START_TIME_FOR_QUERY(CON_HANDLE, REQ_HANDLE)            \
-  do {                                                              \
-    if (CON_HANDLE) {                                               \
-      int time_to_check = 0;                                        \
-      if (REQ_HANDLE) {                                             \
-        time_to_check = ((T_REQ_HANDLE *)(REQ_HANDLE))->query_timeout;\
-      }                                                             \
-      else {                                                        \
-        time_to_check = (CON_HANDLE)->query_timeout;                \
-      }                                                             \
-      gettimeofday(&((CON_HANDLE)->start_time), NULL);              \
-      if (time_to_check > 0) {                                      \
-        (CON_HANDLE)->current_timeout = (time_to_check);            \
-      }                                                             \
-    }                                                               \
-  } while (0)
-
-#define SET_START_TIME_FOR_QUERY_ONLY_CON(CON_HANDLE)               \
-  do {                                                              \
-    if (CON_HANDLE) {                                               \
-      int time_to_check = 0;                                        \
-      time_to_check = (CON_HANDLE)->query_timeout;                  \
-      gettimeofday(&((CON_HANDLE)->start_time), NULL);              \
-      if (time_to_check > 0) {                                      \
-        (CON_HANDLE)->current_timeout = (time_to_check);            \
-      }                                                             \
-    }                                                               \
-  } while (0)
-
-
 #define SET_START_TIME_FOR_LOGIN(CON_HANDLE)                        \
   do {                                                              \
     if (CON_HANDLE) {                                               \
