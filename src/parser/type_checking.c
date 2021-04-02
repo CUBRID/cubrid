@@ -19966,7 +19966,6 @@ pt_fold_const_function (PARSER_CONTEXT * parser, PT_NODE * func)
 	      func->info.function.arg_list = NULL;
 	    }
 	}
-      func->type_enum = PT_TYPE_INTEGER;
     }
 
   /* only functions wrapped with expressions are supported */
