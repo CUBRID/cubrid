@@ -150,7 +150,7 @@ is_bind_with_size (char *buf, int *tot_val_size, int *info_size)
 {
   char *msg;
   char *p, *q;
-  char size[256];
+  char size[256] = { 0, };
   char *value_p;
   char *size_begin;
   char *size_end;
