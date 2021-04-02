@@ -151,7 +151,6 @@ struct qfile_list_cache_entry_pool
   QFILE_POOLED_LIST_CACHE_ENTRY *pool;	/* pre-allocated array */
   int n_entries;		/* number of entries in the pool */
   int free_list;		/* the head(first entry) of the free list */
-  pthread_mutex_t pool_mutex;	/* for thread safe */
 };
 
 /*
@@ -165,7 +164,7 @@ static QFILE_LIST_CACHE qfile_List_cache = { NULL, 0, 0, 0, 0, 0, 0, 0 };
 static QFILE_LIST_CACHE_CANDIDATE qfile_List_cache_candidate = { 0, 0, 0, 0, NULL, NULL, NULL, 0, 0, false };
 
 /* list cache entry pool */
-static QFILE_LIST_CACHE_ENTRY_POOL qfile_List_cache_entry_pool;
+static QFILE_LIST_CACHE_ENTRY_POOL qfile_List_cache_entry_pool = { NULL, 0, 0 };
 
 /* sort list freelist */
 static LF_FREELIST qfile_sort_list_Freelist;
@@ -389,10 +388,8 @@ qfile_list_cache_cleanup (THREAD_ENTRY * thread_p)
   for (candidate_index = 0; candidate_index < bh->element_count; candidate_index++)
     {
       bh_element_at (bh, candidate_index, &candidate);
-      pthread_mutex_lock (&candidate.qcache->list_cache_mutex);
       candidate.qcache->deletion_marker = true;
       qfile_delete_list_cache_entry (thread_p, candidate.qcache);
-      pthread_mutex_unlock (&candidate.qcache->list_cache_mutex);
       if (qfile_List_cache.n_entries <= cleanup_count)
 	{
 	  if (qfile_List_cache.n_pages <= cleanup_pages)
@@ -4999,8 +4996,6 @@ qfile_initialize_list_cache (THREAD_ENTRY * thread_p)
       pent->s.next = -1;
     }
 
-  pthread_mutex_init (&qfile_List_cache_entry_pool.pool_mutex, NULL);
-
   csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
 
   return NO_ERROR;
@@ -5141,7 +5136,6 @@ qfile_allocate_list_cache_entry (int req_size)
   /* this function should be called within CSECT_QPROC_LIST_CACHE */
   QFILE_POOLED_LIST_CACHE_ENTRY *pent = NULL;
 
-  pthread_mutex_lock (&qfile_List_cache_entry_pool.pool_mutex);
   if (req_size > RESERVED_SIZE_FOR_LIST_CACHE_ENTRY || qfile_List_cache_entry_pool.free_list == -1)
     {
       /* malloc from the heap if required memory size is bigger than reserved, or the pool is exhausted */
@@ -5167,7 +5161,6 @@ qfile_allocate_list_cache_entry (int req_size)
       qfile_List_cache_entry_pool.free_list = pent->s.next;
       pent->s.next = -1;
     }
-  pthread_mutex_unlock (&qfile_List_cache_entry_pool.pool_mutex);
 
   /* initialize */
   if (pent)
@@ -5181,7 +5174,6 @@ qfile_allocate_list_cache_entry (int req_size)
       return NULL;
     }
 
-  pthread_mutex_init (&pent->s.entry.list_cache_mutex, NULL);
   return &pent->s.entry;
 }
 
@@ -5220,8 +5212,6 @@ qfile_free_list_cache_entry (THREAD_ENTRY * thread_p, void *data, void *args)
     }
   (void) db_change_private_heap (thread_p, old_pri_heap_id);
 
-  pthread_mutex_lock (&qfile_List_cache_entry_pool.pool_mutex);
-
   /* if this entry is from the pool return it, else free it */
   pent = POOLED_LIST_CACHE_ENTRY_FROM_LIST_CACHE_ENTRY (lent);
   if (pent->s.next == -2)
@@ -5241,8 +5231,6 @@ qfile_free_list_cache_entry (THREAD_ENTRY * thread_p, void *data, void *args)
 
       qfile_List_cache_entry_pool.free_list = CAST_BUFLEN (pent - qfile_List_cache_entry_pool.pool);
     }
-
-  pthread_mutex_unlock (&qfile_List_cache_entry_pool.pool_mutex);
 
   return NO_ERROR;
 }
@@ -5559,10 +5547,8 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
     {
       unsigned int i;
 
-      /* check if it is marked to be deleted */
-      /* check if no transactions in reference */
-      pthread_mutex_lock (&lent->list_cache_mutex);
 #if defined(SERVER_MODE)
+      /* check if it is marked to be deleted */
       if (lent->deletion_marker)
 	{
 	  qfile_delete_list_cache_entry (thread_p, lent);
@@ -5612,10 +5598,6 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
     }
 
 end:
-  if (lent)
-    {
-      pthread_mutex_unlock (&lent->list_cache_mutex);
-    }
 
   if (*result_cached)
     {
@@ -5826,12 +5808,10 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
 	  break;
 	}
 
-      pthread_mutex_lock (&lent->list_cache_mutex);
 #if defined(SERVER_MODE)
       /* check in-use by other transaction */
       if (lent->last_ta_idx > 0)
 	{
-	  pthread_mutex_unlock (&lent->list_cache_mutex);
 	  csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
 	  return lent;
 	}
@@ -5861,7 +5841,6 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
       lent->ref_count++;
 
 #endif /* SERVER_MODE */
-      pthread_mutex_unlock (&lent->list_cache_mutex);
     }
   while (0);
 
@@ -5893,7 +5872,6 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
       goto end;
     }
 
-  pthread_mutex_lock (&lent->list_cache_mutex);
   lent->list_ht_no = list_ht_no;
 #if defined(SERVER_MODE)
   lent->uncommitted_marker = true;
@@ -5923,7 +5901,6 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
   if (qfile_copy_list_id (&lent->list_id, list_id, false) != NO_ERROR)
     {
       qfile_delete_list_cache_entry (thread_p, lent);
-      pthread_mutex_unlock (&lent->list_cache_mutex);
       lent = NULL;
       goto end;
     }
@@ -5971,7 +5948,6 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
 	  db_private_free (thread_p, s);
 	}
       qfile_delete_list_cache_entry (thread_p, lent);
-      pthread_mutex_unlock (&lent->list_cache_mutex);
       lent = NULL;
       goto end;
     }
@@ -5979,11 +5955,6 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
   /* update counter */
   qfile_List_cache.n_entries++;
   qfile_List_cache.n_pages += lent->list_id.page_cnt;
-
-  if (lent)
-    {
-      pthread_mutex_unlock (&lent->list_cache_mutex);
-    }
 
 end:
   csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
@@ -6027,7 +5998,6 @@ qfile_end_use_of_list_cache_entry (THREAD_ENTRY * thread_p, QFILE_LIST_CACHE_ENT
       return ER_FAILED;
     }
 
-  pthread_mutex_lock (&lent->list_cache_mutex);
 #if defined(SERVER_MODE)
   /* remove my transaction id from the entry and do compaction */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -6085,8 +6055,6 @@ qfile_end_use_of_list_cache_entry (THREAD_ENTRY * thread_p, QFILE_LIST_CACHE_ENT
 	}
     }
 #endif
-
-  pthread_mutex_unlock (&lent->list_cache_mutex);
 
   csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
 
