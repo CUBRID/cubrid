@@ -3960,7 +3960,7 @@ int
 qe_get_data_date_tz (T_CCI_U_TYPE u_type, char *col_value_p, void *value, int total_size)
 {
   T_CCI_DATE_TZ data;
-  T_CCI_DATE_TZ *temp_value = (T_CCI_DATE_TZ *)value;
+  T_CCI_DATE_TZ *temp_value = (T_CCI_DATE_TZ *) value;
 
   assert (u_type >= CCI_U_TYPE_FIRST && u_type <= CCI_U_TYPE_LAST);
 

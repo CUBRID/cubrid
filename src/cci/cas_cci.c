@@ -263,23 +263,23 @@ static void
 set_start_time_for_query (T_CON_HANDLE * con_handle, T_REQ_HANDLE * req_handle)
 {
   if (con_handle)
-    {
-    int time_to_check = 0;
-    if (req_handle)
+   {
+     int time_to_check = 0;
+     if (req_handle)
       {
         time_to_check = ((T_REQ_HANDLE *)(req_handle))->query_timeout;
       }
-    else
+     else
       {
         time_to_check = con_handle->query_timeout;
       }
-    gettimeofday(&(con_handle->start_time), NULL);
+     gettimeofday(&(con_handle->start_time), NULL);
 
-    if (time_to_check > 0)
+     if (time_to_check > 0)
       {
         con_handle->current_timeout = time_to_check;
       }
-    }
+   }
 }
 
 int
