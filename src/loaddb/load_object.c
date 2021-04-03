@@ -486,7 +486,7 @@ start:
       va_end (ap);
     }
 
-  if (nbytes > 0)
+  if (nbytes > 0 && buf != NULL)
     {
       if (nbytes < size)
 	{			/* OK */
