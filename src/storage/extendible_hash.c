@@ -3412,7 +3412,7 @@ ehash_delete (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p)
   EHASH_DIR_HEADER *dir_header_p;
   PAGE_PTR dir_root_page_p;
   PAGE_PTR bucket_page_p;
-  VPID ovf_vpid;
+  VPID ovf_vpid VPID_INITIALIZER;
   VPID bucket_vpid;
   VPID sibling_vpid;
 

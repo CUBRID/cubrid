@@ -3030,6 +3030,11 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 			    }
 			}
 
+		      if (act == -1)
+			{
+			  goto bailout;
+			}
+
 		      first_run = sort_param->file_contents[act].first_run;
 		      cp_pages = sort_param->file_contents[act].num_pages[first_run];
 
@@ -3808,6 +3813,11 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 			      act = i;
 			      break;
 			    }
+			}
+
+		      if (act == -1)
+			{
+			  goto bailout;
 			}
 
 		      first_run = sort_param->file_contents[act].first_run;
