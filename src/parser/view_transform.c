@@ -3352,7 +3352,7 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement,
       is_value_query = true;
     }
 
-  if (is_value_query)
+  if (is_value_query && query_spec != NULL)	/* second condition is to silence static code analyzer */
     {
       new_query->is_value_query = 1;
 
