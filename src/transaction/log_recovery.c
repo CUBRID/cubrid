@@ -64,7 +64,6 @@ static void log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_
 				LOG_RCVINDEX rcvindex, const VPID * rcv_vpid, LOG_RCV * rcv,
 				const LOG_LSA * rcv_lsa_ptr, LOG_TDES * tdes, LOG_ZIP * undo_unzip_ptr);
 
-static bool log_rv_need_sync_redo (LOG_RCVINDEX rcvindex);
 // *INDENT-OFF*
 template <typename T>
 static void log_rv_redo_record_sync_or_dispatch_async (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
@@ -551,6 +550,7 @@ log_rv_fix_page_and_check_redo_is_needed (THREAD_ENTRY * thread_p, const VPID & 
 }
 
 /* log_rv_need_sync_redo - force some of the redo records to be applied synchronously
+ *          depending on the function to be applied
  */
 bool
 log_rv_need_sync_redo (LOG_RCVINDEX rcvindex)
@@ -627,7 +627,7 @@ void log_rv_redo_record_sync_or_dispatch_async (THREAD_ENTRY *thread_p, log_read
     {
       // dispatch async
       using redo_job_impl_t = cublog::redo_job_impl<T>;
-      std::unique_ptr<redo_job_impl_t> job{ new redo_job_impl_t (rcv_vpid, rcv_lsa, end_redo_lsa, log_rtype) };
+      std::unique_ptr<redo_job_impl_t> job { new redo_job_impl_t (rcv_vpid, rcv_lsa, end_redo_lsa, log_rtype) };
       parallel_recovery_redo->add (std::move (job));
     }
 #endif
