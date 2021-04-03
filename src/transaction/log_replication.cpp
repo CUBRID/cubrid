@@ -45,7 +45,7 @@ namespace cublog
     // depending on parameter, instantiate the mechanism to execute replication in parallel
     // mandatory to initialize before daemon such that:
     //  - race conditions, when daemon comes online, are avoided
-    //  - even making abstraction of the race conditions, no log records are needlessly
+    //  - (even making abstraction of the race conditions) no log records are needlessly
     //    processed synchronously
     const int replication_parallel
       = prm_get_integer_value (PRM_ID_PAGE_SERVER_REPLICATION_PARALLEL_COUNT);
@@ -206,7 +206,7 @@ namespace cublog
   replicator::read_and_redo_record (cubthread::entry &thread_entry, LOG_RECTYPE rectype, const log_lsa &rec_lsa)
   {
     m_reader.advance_when_does_not_fit (sizeof (T));
-    T log_rec = m_reader.reinterpret_copy_and_add_align<T> ();
+    const T log_rec = m_reader.reinterpret_copy_and_add_align<T> ();
 
     // To allow reads on the page server, make sure that all changes are visible.
     // Having log_Gl.hdr.mvcc_next_id higher than all MVCCID's in the database is a requirement.
@@ -217,8 +217,42 @@ namespace cublog
 	MVCCID_FORWARD (log_Gl.hdr.mvcc_next_id);
       }
 
-    log_rv_redo_record_sync<T> (&thread_entry, m_reader, log_rec, log_rv_get_log_rec_vpid<T> (log_rec), rec_lsa,
-				nullptr, rectype, m_undo_unzip, m_redo_unzip);
+    const VPID rec_vpid = log_rv_get_log_rec_vpid<T> (log_rec);
+    // at this point, vpid can either be valid or not
+    const LOG_DATA &rec_log_data = log_rv_get_log_rec_data<T> (log_rec);
+
+    const bool need_sync_redo = log_rv_need_sync_redo (rec_log_data.rcvindex);
+    assert (rec_log_data.rcvindex != RVDK_UNRESERVE_SECTORS || need_sync_redo);
+
+    if (m_parallel_replication_redo == nullptr || VPID_ISNULL(&rec_vpid) || need_sync_redo)
+      {
+        // invoke sync
+
+        // To apply RVDK_UNRESERVE_SECTORS, one must first wait for all changes in this sector to be redone.
+        // Otherwise, asynchronous jobs skip redoing changes in this sector's pages because they are seen as
+        // deallocated. When the same sector is reserved again, redo is resumed in the sector's pages, but
+        // the pages are not in a consistent state. The current workaround is to wait for all changes to be
+        // finished, including changes in the unreserved sector.
+        if (m_parallel_replication_redo != nullptr && rec_log_data.rcvindex == RVDK_UNRESERVE_SECTORS)
+          {
+            m_parallel_replication_redo->wait_for_idle ();
+          }
+
+        log_rv_redo_record_sync<T> (&thread_entry, m_reader, log_rec, rec_vpid, rec_lsa,
+                                    nullptr, rectype, m_undo_unzip, m_redo_unzip);
+      }
+    else
+      {
+        // dispatch async
+//        using redo_job_impl_t = cublog::redo_job_impl<T>;
+//        std::unique_ptr<redo_job_impl_t> job {
+//          new redo_job_impl_t(rec_vpid, rec_lsa, nullptr /*end_redo_lsa*/, rectype)
+//        };
+//        m_parallel_replication_redo->add (std::move (job));
+
+        log_rv_redo_record_sync<T> (&thread_entry, m_reader, log_rec, rec_vpid, rec_lsa,
+                                    nullptr, rectype, m_undo_unzip, m_redo_unzip);
+      }
   }
 
   void
