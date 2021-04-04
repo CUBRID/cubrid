@@ -138,15 +138,16 @@ sl_write_catalog (void)
 static int
 sl_read_catalog (void)
 {
-  FILE *catalog_fp;
+  FILE *read_catalog_fp;
   char info[LINE_MAX];
 
-  catalog_fp = fopen (sql_catalog_path, "r");
-
-  if (catalog_fp == NULL)
+  read_catalog_fp = fopen (sql_catalog_path, "r");
+  if (read_catalog_fp == NULL)
     {
       return sl_write_catalog ();
     }
+
+  catalog_fp = read_catalog_fp;
 
   if (fgets (info, LINE_MAX, catalog_fp) == NULL)
     {
