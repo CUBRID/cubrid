@@ -142,23 +142,28 @@ sl_read_catalog (void)
   char info[LINE_MAX];
 
   read_catalog_fp = fopen (sql_catalog_path, "r");
+
   if (read_catalog_fp == NULL)
     {
       return sl_write_catalog ();
     }
 
-  catalog_fp = read_catalog_fp;
-
-  if (fgets (info, LINE_MAX, catalog_fp) == NULL)
+  if (fgets (info, LINE_MAX, read_catalog_fp) == NULL)
     {
+      if (read_catalog_fp != NULL)
+	{
+	  fclose (read_catalog_fp);
+	}
       return ER_FAILED;
     }
 
   if (sscanf (info, CATALOG_FORMAT, &sl_Info.curr_file_id, &sl_Info.last_inserted_sql_id) != 2)
     {
+      fclose (read_catalog_fp);
       return ER_FAILED;
     }
 
+  fclose (read_catalog_fp);
   return NO_ERROR;
 }
 
