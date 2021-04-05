@@ -16,7 +16,6 @@ REM   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 REM   See the License for the specific language governing permissions and
 REM   limitations under the License.
 REM 
-REM Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
 SETLOCAL
 
