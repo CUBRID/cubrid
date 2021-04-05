@@ -40,7 +40,7 @@ jobs:
 
             ext=$(expr $f : ".*\(\..*\)")
             case $ext in
-            .c|.h|.cpp|.hpp|.ipp|.sh|.bat|.y|.l) true;; # only these formats are checked.
+            .c|.h|.cpp|.hpp|.ipp|.sh|.bat|.y|.l|.msg) true;; # only these formats are checked.
             *) continue ;; # skip others
             esac
 
