@@ -37,11 +37,11 @@ jobs:
             if [ -d "$f" ]; then
               continue
             fi
-  
+
             ext=$(expr $f : ".*\(\..*\)")
             case $ext in
             .c|.h|.cpp|.hpp|.ipp|.sh|.bat|.y|.l) true;; # only these formats are checked.
-            *) continue ;; # skip others 
+            *) continue ;; # skip others
             esac
 
             result_for_f="FAIL"
