@@ -12436,13 +12436,13 @@ pt_is_function_no_arg (FUNC_TYPE fcode)
     case PT_DENSE_RANK:
     case PT_CUME_DIST:
     case PT_PERCENT_RANK:
-    case PT_GROUPBY_NUM:
     case F_JSON_ARRAY:
     case F_JSON_OBJECT:
       return true;
-    }
 
-  return false;
+    default:
+      return false;
+    }
 }
 
 static bool
@@ -12451,7 +12451,6 @@ pt_is_function_new_type_checking (PT_NODE * node)
   switch (node->info.function.function_type)
     {
     case F_BENCHMARK:
-
       // JSON functions are migrated to new checking function
     case F_JSON_ARRAY:
     case F_JSON_ARRAY_APPEND:
@@ -12478,21 +12477,20 @@ pt_is_function_new_type_checking (PT_NODE * node)
     case F_JSON_TYPE:
     case F_JSON_UNQUOTE:
     case F_JSON_VALID:
-
       // REGEXP functions are migrated to new checking function
     case F_REGEXP_COUNT:
     case F_REGEXP_INSTR:
     case F_REGEXP_LIKE:
     case F_REGEXP_REPLACE:
     case F_REGEXP_SUBSTR:
-
       // COUNT functions
     case PT_COUNT:
     case PT_COUNT_STAR:
       return true;
-    }
 
-  return false;
+    default:
+      return false;
+    }
 }
 
 static PT_NODE *
