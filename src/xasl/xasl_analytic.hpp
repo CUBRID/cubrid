@@ -91,7 +91,7 @@ namespace cubxasl
     db_value *value2;		/* for STTDEV and VARIANCE */
     db_value *out_value;		/* DB_VALUE used for output */
     db_value part_value;		/* partition temporary accumulator */
-    int curr_cnt;			/* current number of items */
+    INT64 curr_cnt;			/* current number of items */
     bool is_first_exec_time;	/* the fist time to be executed */
 
     void init ();
