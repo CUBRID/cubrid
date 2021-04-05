@@ -3457,7 +3457,7 @@ au_drop_user (MOP user)
 	  goto error;
 	}
 
-      db_make_int (&value, 0);
+      db_make_bigint (&value, 0);
       error = db_query_get_tuple_value (result, 0, &value);
       if (error != NO_ERROR)
 	{
@@ -3466,7 +3466,7 @@ au_drop_user (MOP user)
 	  goto error;
 	}
 
-      if (db_get_int (&value) > 0)
+      if (db_get_bigint (&value) > 0)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_USER_HAS_DATABASE_OBJECTS, 0);
 	  db_query_end (result);
