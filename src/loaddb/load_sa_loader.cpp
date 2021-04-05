@@ -6462,8 +6462,6 @@ ldr_update_statistics (void)
 
   for (CLASS_TABLE *table = Classes; table != NULL && !err; table = table->next)
     {
-      if (table->total_inserts)
-	{
 	  if (ldr_Current_context->args->verbose)
 	    {
 	      class_name = sm_get_ch_name (table->class_);
@@ -6479,7 +6477,6 @@ ldr_update_statistics (void)
 	      fflush (stdout);
 	    }
 	  err = sm_update_statistics (table->class_, STATS_WITH_SAMPLING);
-	}
     }
   return err;
 }
