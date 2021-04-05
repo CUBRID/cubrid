@@ -6466,7 +6466,7 @@ ldr_update_statistics (void)
 	{
 	  class_name = sm_get_ch_name (table->class_);
 	  if (class_name == NULL)
- 	    {
+	    {
 	      err = er_errid ();
 	      assert (err != NO_ERROR);
 	      break;
