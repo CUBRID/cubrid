@@ -97,7 +97,7 @@ DBNAME_Ptr CParseStatus::pGetDBList( )
 
 	if( !sResult )
 	{
-		delete sFullName;
+		delete[] sFullName;
 		delete sPath;
 		delete cReg;
 		return NULL;
@@ -114,7 +114,7 @@ DBNAME_Ptr CParseStatus::pGetDBList( )
 	if( !sTmp )
 	{
 		delete sResult;
-		delete sFullName;
+		delete[] sFullName;
 		delete sPath;
 		delete cReg;
 		return NULL;
@@ -125,7 +125,7 @@ DBNAME_Ptr CParseStatus::pGetDBList( )
 	{
 		delete sTmp;
 		delete sResult;
-		delete sFullName;
+		delete[] sFullName;
 		delete sPath;
 		delete cReg;
 		return NULL;
@@ -137,7 +137,7 @@ DBNAME_Ptr CParseStatus::pGetDBList( )
 		delete sStrRes;
 		delete sTmp;
 		delete sResult;
-		delete sFullName;
+		delete[] sFullName;
 		delete sPath;
 		delete cReg;
 		return NULL;
@@ -165,7 +165,7 @@ DBNAME_Ptr CParseStatus::pGetDBList( )
 
 	delete sTmp;
 	delete sResult;
-	delete sFullName;
+	delete[] sFullName;
 	delete sPath;
 	delete cReg;
 
@@ -267,7 +267,7 @@ bool CParseStatus::bStatusUniCAS()
 
 	if( !sResult )
 	{
-		delete sFullName;
+		delete[] sFullName;
 		delete sPath;
 		delete cReg;
 		return NULL;
@@ -280,14 +280,14 @@ bool CParseStatus::bStatusUniCAS()
 	if( !sTmp )
 	{
 		delete sResult;
-		delete sFullName;
+		delete[] sFullName;
 		delete sPath;
 		delete cReg;
 		return false;
 	}
 
 	delete sResult;
-	delete sFullName;
+	delete[] sFullName;
 	delete sPath;
 	delete cReg;
 	return true;
@@ -330,7 +330,7 @@ bool CParseStatus::bStatusMaster()
 
 	if( !sResult )
 	{
-		delete sFullName;
+		delete[] sFullName;
 		delete sPath;
 		delete cReg;
 		return NULL;
@@ -343,14 +343,14 @@ bool CParseStatus::bStatusMaster()
 	if( !sTmp )
 	{
 		delete sResult;
-		delete sFullName;
+		delete[] sFullName;
 		delete sPath;
 		delete cReg;
 		return false;
 	}
 
 	delete sResult;
-	delete sFullName;
+	delete[] sFullName;
 	delete sPath;
 	delete cReg;
 	return true;
@@ -378,7 +378,7 @@ bool CParseStatus::bStatusServer()
 
 	if( !sResult )
 	{
-		delete sFullName;
+		delete[] sFullName;
 		delete sPath;
 		delete cReg;
 		return NULL;
@@ -391,14 +391,14 @@ bool CParseStatus::bStatusServer()
 	if( !sTmp )
 	{
 		delete sResult;
-		delete sFullName;
+		delete[] sFullName;
 		delete sPath;
 		delete cReg;
 		return false;
 	}
 
 	delete sResult;
-	delete sFullName;
+	delete[] sFullName;
 	delete sPath;
 	delete cReg;
 	return true;
