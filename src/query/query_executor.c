@@ -18547,7 +18547,7 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
       if (agg_p->function == PT_COUNT || agg_p->function == PT_COUNT_STAR)
 	{
 	  /* COUNT and COUNT(*) always have the same signature */
-	  agg_p->accumulator_domain.value_dom = &tp_Integer_domain;
+	  agg_p->accumulator_domain.value_dom = &tp_Bigint_domain;
 	  agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
 
 	  continue;

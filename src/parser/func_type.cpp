@@ -106,12 +106,12 @@ func_all_signatures sig_ret_double_arg_number =
 
 func_all_signatures sig_of_count_star =
 {
-  {PT_TYPE_INTEGER, {}, {}},
+  {PT_TYPE_BIGINT, {}, {}},
 };
 
 func_all_signatures sig_of_count =
 {
-  {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_ANY}, {}},
+  {PT_TYPE_BIGINT, {PT_GENERIC_TYPE_ANY}, {}},
 };
 
 func_all_signatures sig_of_sum =

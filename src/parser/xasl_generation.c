@@ -4231,9 +4231,9 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	   * needs for a "select count(distinct foo)" query, which adds a lot of unnecessary overhead. */
 	  aggregate_list->option = Q_ALL;
 
-	  aggregate_list->domain = &tp_Integer_domain;
-	  regu_dbval_type_init (aggregate_list->accumulator.value, DB_TYPE_INTEGER);
-	  regu_dbval_type_init (aggregate_list->accumulator.value2, DB_TYPE_INTEGER);
+	  aggregate_list->domain = &tp_Bigint_domain;
+	  regu_dbval_type_init (aggregate_list->accumulator.value, DB_TYPE_BIGINT);
+	  regu_dbval_type_init (aggregate_list->accumulator.value2, DB_TYPE_BIGINT);
 	  aggregate_list->opr_dbtype = DB_TYPE_INTEGER;
 
 	  regu_alloc (aggregate_list->operands);

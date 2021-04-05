@@ -238,6 +238,9 @@ static int pt_check_and_coerce_to_date (PARSER_CONTEXT * parser, PT_NODE * src);
 static int pt_coerce_str_to_time_date_utime_datetime (PARSER_CONTEXT * parser, PT_NODE * src,
 						      PT_TYPE_ENUM * result_type);
 static int pt_coerce_3args (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_NODE * arg3);
+
+static bool pt_is_function_no_arg (FUNC_TYPE code);
+static bool pt_is_function_new_type_checking (PT_NODE * node);
 static PT_NODE *pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_eval_function_type_new (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node);
@@ -12421,12 +12424,34 @@ pt_character_length_for_node (PT_NODE * node, const PT_TYPE_ENUM coerce_type)
   return precision;
 }
 
-static PT_NODE *
-pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
+static bool
+pt_is_function_no_arg (FUNC_TYPE fcode)
+{
+  switch (fcode)
+    {
+    case PT_COUNT_STAR:
+    case PT_GROUPBY_NUM:
+    case PT_ROW_NUMBER:
+    case PT_RANK:
+    case PT_DENSE_RANK:
+    case PT_CUME_DIST:
+    case PT_PERCENT_RANK:
+    case PT_GROUPBY_NUM:
+    case F_JSON_ARRAY:
+    case F_JSON_OBJECT:
+      return true;
+    }
+
+  return false;
+}
+
+static bool
+pt_is_function_new_type_checking (PT_NODE * node)
 {
   switch (node->info.function.function_type)
     {
     case F_BENCHMARK:
+
       // JSON functions are migrated to new checking function
     case F_JSON_ARRAY:
     case F_JSON_ARRAY_APPEND:
@@ -12453,15 +12478,32 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
     case F_JSON_TYPE:
     case F_JSON_UNQUOTE:
     case F_JSON_VALID:
+
+      // REGEXP functions are migrated to new checking function
     case F_REGEXP_COUNT:
     case F_REGEXP_INSTR:
     case F_REGEXP_LIKE:
     case F_REGEXP_REPLACE:
     case F_REGEXP_SUBSTR:
-      return pt_eval_function_type_new (parser, node);
 
-      // legacy functions are still managed by old checking function; all should be migrated though
-    default:
+      // COUNT functions
+    case PT_COUNT:
+    case PT_COUNT_STAR:
+      return true;
+    }
+
+  return false;
+}
+
+static PT_NODE *
+pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  if (pt_is_function_new_type_checking (node))
+    {
+      return pt_eval_function_type_new (parser, node);
+    }
+  else
+    {
       return pt_eval_function_type_old (parser, node);
     }
 }
@@ -12490,9 +12532,7 @@ pt_eval_function_type_new (PARSER_CONTEXT * parser, PT_NODE * node)
     }
 
   PT_NODE *arg_list = node->info.function.arg_list;
-  if (!arg_list && fcode != PT_COUNT_STAR && fcode != PT_GROUPBY_NUM && fcode != PT_ROW_NUMBER && fcode != PT_RANK &&
-      fcode != PT_DENSE_RANK && fcode != PT_CUME_DIST && fcode != PT_PERCENT_RANK && fcode != F_JSON_ARRAY &&
-      fcode != F_JSON_OBJECT)
+  if (!arg_list && !pt_is_function_no_arg (fcode))
     {
       pt_cat_error (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTION_NO_ARGS,
 		    pt_short_print (parser, node));
@@ -12561,8 +12601,7 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
   arg_list = node->info.function.arg_list;
   fcode = node->info.function.function_type;
 
-  if (!arg_list && fcode != PT_COUNT_STAR && fcode != PT_GROUPBY_NUM && fcode != PT_ROW_NUMBER && fcode != PT_RANK
-      && fcode != PT_DENSE_RANK && fcode != PT_CUME_DIST && fcode != PT_PERCENT_RANK)
+  if (!arg_list && !pt_is_function_no_arg (fcode))
     {
       PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTION_NO_ARGS,
 		  pt_short_print (parser, node));
@@ -12683,7 +12722,10 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 
     case PT_LEAD:
     case PT_LAG:
+      break;
+
     case PT_COUNT:
+      assert (false);
       break;
 
     case PT_GROUP_CONCAT:
@@ -13001,7 +13043,7 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	case PT_COUNT:
 	case PT_COUNT_STAR:
-	  node->type_enum = PT_TYPE_BIGINT;
+	  assert (false);
 	  break;
 	case PT_ROW_NUMBER:
 	case PT_RANK:
