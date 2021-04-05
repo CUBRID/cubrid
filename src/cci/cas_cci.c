@@ -1,33 +1,21 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. 
- * Copyright (c) 2016 CUBRID Corporation.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- * Redistribution and use in source and binary forms, with or without modification,
- * are permitted provided that the following conditions are met:
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- * - Redistributions of source code must retain the above copyright notice,
- *   this list of conditions and the following disclaimer.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- * - Redistributions in binary form must reproduce the above copyright notice,
- *   this list of conditions and the following disclaimer in the documentation
- *   and/or other materials provided with the distribution.
- *
- * - Neither the name of the <ORGANIZATION> nor the names of its contributors
- *   may be used to endorse or promote products derived from this software without
- *   specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
- * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
- * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
- * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
- * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA,
- * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
- * OF SUCH DAMAGE.
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
+
 
 
 /*
@@ -270,6 +258,29 @@ DllMain (HANDLE hModule, DWORD ul_reason_for_call, LPVOID lpReserved)
   return TRUE;
 }
 #endif
+
+static void
+set_start_time_for_query (T_CON_HANDLE * con_handle, T_REQ_HANDLE * req_handle)
+{
+  if (con_handle)
+    {
+      int time_to_check = 0;
+      if (req_handle)
+	{
+	  time_to_check = ((T_REQ_HANDLE *) (req_handle))->query_timeout;
+	}
+      else
+	{
+	  time_to_check = con_handle->query_timeout;
+	}
+      gettimeofday (&(con_handle->start_time), NULL);
+
+      if (time_to_check > 0)
+	{
+	  con_handle->current_timeout = time_to_check;
+	}
+    }
+}
 
 int
 get_elapsed_time (struct timeval *start_time)
@@ -897,7 +908,7 @@ cci_prepare (int mapped_conn_id, const char *sql_stmt, char flag, T_CCI_ERROR * 
     {
       hm_force_close_connection (con_handle);
     }
-  SET_START_TIME_FOR_QUERY (con_handle, req_handle);
+  set_start_time_for_query (con_handle, req_handle);
 
   is_first_prepare_in_tran = IS_OUT_TRAN (con_handle);
 
@@ -1330,7 +1341,7 @@ cci_execute (int mapped_stmt_id, char flag, int max_col_size, T_CCI_ERROR * err_
     {
       hm_force_close_connection (con_handle);
     }
-  SET_START_TIME_FOR_QUERY (con_handle, req_handle);
+  set_start_time_for_query (con_handle, req_handle);
 
   if (IS_BROKER_STMT_POOL (con_handle) && req_handle->valid == false)
     {
@@ -1501,7 +1512,7 @@ cci_prepare_and_execute (int mapped_conn_id, char *sql_stmt, int max_col_size, i
       hm_force_close_connection (con_handle);
     }
 
-  SET_START_TIME_FOR_QUERY (con_handle, req_handle);
+  set_start_time_for_query (con_handle, req_handle);
   is_first_prepare_in_tran = IS_OUT_TRAN (con_handle);
 
   error = qe_prepare_and_execute (req_handle, con_handle, sql_stmt, max_col_size, &(con_handle->err_buf));
@@ -1678,7 +1689,7 @@ cci_execute_array (int mapped_stmt_id, T_CCI_QUERY_RESULT ** qr, T_CCI_ERROR * e
     {
       hm_force_close_connection (con_handle);
     }
-  SET_START_TIME_FOR_QUERY (con_handle, req_handle);
+  set_start_time_for_query (con_handle, req_handle);
 
   if (IS_BROKER_STMT_POOL (con_handle) && req_handle->valid == false)
     {
@@ -2811,7 +2822,7 @@ cci_get_db_version (int mapped_conn_id, char *out_buf, int buf_size)
   reset_error_buffer (&(con_handle->err_buf));
 
   API_SLOG (con_handle);
-  SET_START_TIME_FOR_QUERY (con_handle, NULL);
+  set_start_time_for_query (con_handle, NULL);
 
   error = qe_get_db_version (con_handle, out_buf, buf_size);
   while (IS_OUT_TRAN (con_handle) && IS_ER_TO_RECONNECT (error, con_handle->err_buf.err_code))
@@ -3220,7 +3231,7 @@ cci_execute_batch (int mapped_conn_id, int num_query, char **sql_stmt, T_CCI_QUE
     {
       hm_force_close_connection (con_handle);
     }
-  SET_START_TIME_FOR_QUERY (con_handle, NULL);
+  set_start_time_for_query (con_handle, NULL);
 
   error = qe_execute_batch (con_handle, num_query, sql_stmt, qr, &(con_handle->err_buf));
   while (IS_OUT_TRAN (con_handle) && IS_ER_TO_RECONNECT (error, con_handle->err_buf.err_code))
