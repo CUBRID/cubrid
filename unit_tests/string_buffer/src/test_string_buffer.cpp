@@ -103,7 +103,11 @@ class test_string_buffer
 	      m_dim *= 2;
 	    }
 	  while (m_dim < m_len + len);
-	  m_ref = (char *) realloc (m_ref, m_dim);
+	  char *const realloc_m_ref = (char *) realloc (m_ref, m_dim);
+	  if (realloc_m_ref != nullptr)
+	    {
+	      m_ref = realloc_m_ref;
+	    }
 	}
     }
 
