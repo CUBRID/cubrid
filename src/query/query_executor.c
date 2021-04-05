@@ -13986,11 +13986,6 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 
 	      if (xptr2->status == XASL_CLEARED || xptr2->status == XASL_INITIALIZED)
 		{
-		  if (XASL_IS_FLAGED (xasl, XASL_IS_MERGE_QUERY))
-		    {
-		      XASL_SET_FLAG (xptr2, XASL_IS_MERGE_QUERY);
-		    }
-
 		  if (qexec_execute_mainblock (thread_p, xptr2, xasl_state, NULL) != NO_ERROR)
 		    {
 		      if (tplrec.tpl)

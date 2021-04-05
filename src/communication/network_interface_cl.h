@@ -179,6 +179,7 @@ extern "C"
 {
 #endif
   extern void lock_dump (FILE * outfp);
+  extern void vacuum_dump (FILE * outfp);
 #ifdef __cplusplus
 }
 #endif
