@@ -365,12 +365,12 @@ qdata_aggregate_value_to_accumulator (cubthread::entry *thread_p, cubxasl::aggre
 	  if (acc->curr_cnt < 1)
 	    {
 	      /* first value */
-	      db_make_bigint (acc->value, (int64_t) 1 + INT_MAX);
+	      db_make_bigint (acc->value, (int64_t) 1 );
 	    }
 	  else
 	    {
 	      /* increment */
-	      db_make_bigint (acc->value, db_get_bigint (acc->value) + 1 + INT_MAX);
+	      db_make_bigint (acc->value, db_get_bigint (acc->value) + (int64_t) 1);
 	    }
 	}
       break;
@@ -1220,7 +1220,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
       if (agg_p->function == PT_COUNT_STAR)
 	{
 	  db_make_bigint (agg_p->accumulator.value,
-			  agg_p->accumulator.curr_cnt + INT_MAX + INT_MAX + INT_MAX + INT_MAX + INT_MAX + INT_MAX);
+			  agg_p->accumulator.curr_cnt);
 	}
 
       /* the value of groupby_num() remains unchanged; it will be changed while evaluating groupby_num predicates
