@@ -50,6 +50,7 @@
 #include "thread_entry.hpp"
 #include "thread_lockfree_hash_map.hpp"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
+#include "server_type.hpp"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -233,6 +234,7 @@ static int spage_put_helper (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID s
 			     const RECDES * recdes, bool is_append);
 static void spage_add_contiguous_free_space (PAGE_PTR pgptr, int space);
 static void spage_reduce_contiguous_free_space (PAGE_PTR pgptr, int space);
+static bool spage_skip_save_space_altogether ();
 static INLINE void spage_verify_header (PAGE_PTR page_p) __attribute__ ((ALWAYS_INLINE));
 
 // *INDENT-OFF*
@@ -486,7 +488,7 @@ spage_save_space (THREAD_ENTRY * thread_p, SPAGE_HEADER * page_header_p, PAGE_PT
   assert (page_p != NULL);
   SPAGE_VERIFY_HEADER (page_header_p);
 
-  if (space == 0 || log_is_in_crash_recovery ())
+  if (space == 0 || spage_skip_save_space_altogether ())
     {
       return NO_ERROR;
     }
@@ -701,8 +703,9 @@ spage_get_saved_spaces (THREAD_ENTRY * thread_p, SPAGE_HEADER * page_header_p, P
 
   /*
    * If we are recovering, no other transaction should exist.
+   * If in page server (when running in scalability mode), saved space is not used
    */
-  if (log_is_in_crash_recovery ())
+  if (spage_skip_save_space_altogether ())
     {
       if (saved_by_other_trans != NULL)
 	{
@@ -1710,7 +1713,8 @@ spage_find_empty_slot_at (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slo
 
   if (slot_id == page_header_p->num_slots)
     {
-      assert (log_is_in_crash_recovery () || !(page_header_p->is_saving && !logtb_is_current_active (thread_p)));
+      assert (spage_skip_save_space_altogether ()
+	      || !(page_header_p->is_saving && !logtb_is_current_active (thread_p)));
 
       status = spage_add_new_slot (thread_p, page_p, page_header_p, &space);
     }
@@ -5262,4 +5266,15 @@ spage_need_compact (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
     }
 
   return false;
+}
+
+/* spage_skip_save_space_altogether - in certain conditions, skip saved space utilization
+ *
+ */
+bool
+spage_skip_save_space_altogether ()
+{
+  const bool during_crash_recovery = log_is_in_crash_recovery ();
+  const bool in_page_server (get_server_type () == SERVER_TYPE_PAGE);
+  return during_crash_recovery || in_page_server;
 }

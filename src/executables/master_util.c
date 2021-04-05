@@ -82,9 +82,37 @@ master_util_wait_proc_terminate (int pid)
 #else /* ! WINDOWS */
   while (1)
     {
-      if (kill (pid, 0) < 0)
+      if (kill (pid, 0) < 0 || master_util_is_proc_zombie (pid))
 	break;
       sleep (1);
     }
 #endif /* ! WINDOWS */
 }
+
+#if defined (LINUX)
+bool
+master_util_is_proc_zombie (int pid)
+{
+  // read status from /proc/[pid]/stat and check if process is zombie
+  // see https://man7.org/linux/man-pages/man5/proc.5.html
+  char procstat_filename[PATH_MAX];
+  char procname[PATH_MAX];
+  char status;
+  int procpid;
+
+  sprintf (procstat_filename, "/proc/%d/stat", pid);
+  FILE *f = fopen (procstat_filename, "r");
+  if (f == nullptr)
+    {
+      return false;
+    }
+  if (fscanf (f, "%d %s %c", &procpid, procname, &status) == EOF)
+    {
+      fclose (f);
+      return false;
+    }
+  assert (pid == procpid);
+  fclose (f);
+  return status == 'Z';
+}
+#endif // LINUX

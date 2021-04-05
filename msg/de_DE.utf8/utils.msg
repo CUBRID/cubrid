@@ -1174,13 +1174,16 @@ gültigen Optionen:\n\
 $set 55 MSGCAT_UTIL_SET_VACUUMDB
 20 vacuumdb vorübergehend nicht verfügbar ist für Client-Server-Modus\n
 21 Der Vakuumbetrieb gescheitert\n
+22 Ausgangsdatei '%1$s' konnte nicht geöffnet werden \n
 60 \
 vacuumdb: Vakuum Toten Datensätze aus der Datenbank.\n\
 Anwendung: %1$s vacuumdb [OPTION] Datenbank-Name\n\
 \n\
 gültigen Optionen:\n\
   -S, --SA-mode                    Stand-alone-Modus Ausführung\n\
-  -C, --CS-mode                    Client-Server-Modus Ausführung\n
+  -C, --CS-mode                    Client-Server-Modus Ausführung\n\
+      --dump                       aktuellen Vakuumzustand entleeren\n\
+  -o, --output-file=DATEI          Umleiten der Ausgabemeldungen in DATEI; Standard: keine\n
 
 $set 56 MSGCAT_UTIL_SET_CHECKSUMDB
 1 Fehler beim Tabellennamen in %1$s zu laden.\n
