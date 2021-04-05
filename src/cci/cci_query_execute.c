@@ -1,33 +1,21 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. 
- * Copyright (c) 2016 CUBRID Corporation.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- * Redistribution and use in source and binary forms, with or without modification,
- * are permitted provided that the following conditions are met:
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- * - Redistributions of source code must retain the above copyright notice,
- *   this list of conditions and the following disclaimer.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- * - Redistributions in binary form must reproduce the above copyright notice,
- *   this list of conditions and the following disclaimer in the documentation
- *   and/or other materials provided with the distribution.
- *
- * - Neither the name of the <ORGANIZATION> nor the names of its contributors
- *   may be used to endorse or promote products derived from this software without
- *   specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
- * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
- * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
- * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
- * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA,
- * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
- * OF SUCH DAMAGE.
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
+
 
 
 /*
@@ -3625,6 +3613,7 @@ int
 qe_get_data_int (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
 {
   int data;
+  int *temp_value = (int *) value;
 
   assert (u_type >= CCI_U_TYPE_FIRST && u_type <= CCI_U_TYPE_LAST);
 
@@ -3690,7 +3679,7 @@ qe_get_data_int (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
       return CCI_ER_TYPE_CONVERSION;
     }
 
-  *((int *) value) = data;
+  *((int *) temp_value) = data;
 
   return 0;
 }
@@ -3699,6 +3688,7 @@ int
 qe_get_data_uint (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
 {
   unsigned int data;
+  unsigned int *temp_value = (unsigned int *) value;
 
   assert (u_type >= CCI_U_TYPE_FIRST && u_type <= CCI_U_TYPE_LAST);
 
@@ -3764,7 +3754,7 @@ qe_get_data_uint (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
       return CCI_ER_TYPE_CONVERSION;
     }
 
-  *((unsigned int *) value) = data;
+  *((unsigned int *) temp_value) = data;
 
   return 0;
 }
@@ -3773,6 +3763,7 @@ int
 qe_get_data_float (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
 {
   float data;
+  float *temp_value = (float *) value;
 
   assert (u_type >= CCI_U_TYPE_FIRST && u_type <= CCI_U_TYPE_LAST);
 
@@ -3847,7 +3838,7 @@ qe_get_data_float (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
       return CCI_ER_TYPE_CONVERSION;
     }
 
-  *((float *) value) = data;
+  *((float *) temp_value) = data;
   return 0;
 }
 
@@ -3855,6 +3846,7 @@ int
 qe_get_data_double (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
 {
   double data;
+  double *temp_value = (double *) value;
 
   assert (u_type >= CCI_U_TYPE_FIRST && u_type <= CCI_U_TYPE_LAST);
 
@@ -3928,7 +3920,7 @@ qe_get_data_double (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
       return CCI_ER_TYPE_CONVERSION;
     }
 
-  *((double *) value) = data;
+  *((double *) temp_value) = data;
   return 0;
 }
 
@@ -3936,6 +3928,7 @@ int
 qe_get_data_date (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
 {
   T_CCI_DATE data;
+  T_CCI_DATE *temp_value = (T_CCI_DATE *) value;
 
   assert (u_type >= CCI_U_TYPE_FIRST && u_type <= CCI_U_TYPE_LAST);
 
@@ -3959,7 +3952,7 @@ qe_get_data_date (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
       return CCI_ER_TYPE_CONVERSION;
     }
 
-  *((T_CCI_DATE *) value) = data;
+  *((T_CCI_DATE *) temp_value) = data;
   return 0;
 }
 
@@ -3967,6 +3960,7 @@ int
 qe_get_data_date_tz (T_CCI_U_TYPE u_type, char *col_value_p, void *value, int total_size)
 {
   T_CCI_DATE_TZ data;
+  T_CCI_DATE_TZ *temp_value = (T_CCI_DATE_TZ *) value;
 
   assert (u_type >= CCI_U_TYPE_FIRST && u_type <= CCI_U_TYPE_LAST);
 
@@ -3986,7 +3980,7 @@ qe_get_data_date_tz (T_CCI_U_TYPE u_type, char *col_value_p, void *value, int to
       return CCI_ER_TYPE_CONVERSION;
     }
 
-  *((T_CCI_DATE_TZ *) value) = data;
+  *((T_CCI_DATE_TZ *) temp_value) = data;
   return 0;
 }
 
