@@ -234,7 +234,7 @@ static int spage_put_helper (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID s
 			     const RECDES * recdes, bool is_append);
 static void spage_add_contiguous_free_space (PAGE_PTR pgptr, int space);
 static void spage_reduce_contiguous_free_space (PAGE_PTR pgptr, int space);
-static bool spage_skip_save_space_altogether();
+static bool spage_skip_save_space_altogether ();
 static INLINE void spage_verify_header (PAGE_PTR page_p) __attribute__ ((ALWAYS_INLINE));
 
 // *INDENT-OFF*
@@ -1713,7 +1713,8 @@ spage_find_empty_slot_at (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slo
 
   if (slot_id == page_header_p->num_slots)
     {
-      assert (spage_skip_save_space_altogether () || !(page_header_p->is_saving && !logtb_is_current_active (thread_p)));
+      assert (spage_skip_save_space_altogether ()
+	      || !(page_header_p->is_saving && !logtb_is_current_active (thread_p)));
 
       status = spage_add_new_slot (thread_p, page_p, page_header_p, &space);
     }
@@ -5271,9 +5272,9 @@ spage_need_compact (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
  *
  */
 bool
-spage_skip_save_space_altogether()
+spage_skip_save_space_altogether ()
 {
   const bool during_crash_recovery = log_is_in_crash_recovery ();
-  const bool in_page_server { get_server_type () == SERVER_TYPE_PAGE };
+  const bool in_page_server (get_server_type () == SERVER_TYPE_PAGE);
   return during_crash_recovery || in_page_server;
 }
