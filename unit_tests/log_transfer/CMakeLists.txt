@@ -76,3 +76,46 @@ target_include_directories(test_prior_sendrecv PRIVATE
 add_dependencies(test_prior_sendrecv
   ${CATCH2_TARGET}
   )
+
+#
+# test_main_async_log_page_fetcher
+# 
+
+set(TEST_ASYNC_LOG_PAGE_FETCHER_SOURCES
+  ${BASE_DIR}/lockfree_transaction_system.cpp
+  ${BASE_DIR}/error_context.cpp
+  ${BASE_DIR}/perf.cpp
+  ${TRANSACTION_DIR}/log_page_async_fetcher.cpp
+  ${THREAD_DIR}/thread_manager.cpp
+  ${THREAD_DIR}/thread_daemon.cpp
+  ${THREAD_DIR}/thread_entry_task.cpp
+  ${THREAD_DIR}/thread_looper.cpp
+  ${THREAD_DIR}/thread_waiter.cpp
+  ${THREAD_DIR}/thread_worker_pool.cpp
+  
+  thread_utils.cpp
+  test_main_async_log_page_fetcher.cpp)
+
+SET_SOURCE_FILES_PROPERTIES(
+  ${TEST_ASYNC_LOG_PAGE_FETCHER_SOURCES}
+  PROPERTIES LANGUAGE CXX)
+
+add_executable(test_async_log_page_fetcher
+  ${TEST_ASYNC_LOG_PAGE_FETCHER_SOURCES}
+)
+
+target_compile_options(test_async_log_page_fetcher PRIVATE
+  ${compile_warning_flags}
+)
+
+target_compile_definitions(test_async_log_page_fetcher PRIVATE
+  ${COMMON_DEFS} SERVER_MODE
+)
+
+target_include_directories(test_async_log_page_fetcher PRIVATE
+  ${TEST_INCLUDES}
+)
+
+add_dependencies(test_async_log_page_fetcher
+  ${CATCH2_TARGET}
+)
