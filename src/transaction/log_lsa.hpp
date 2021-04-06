@@ -56,7 +56,6 @@ struct log_lsa
   inline bool operator<= (const log_lsa &olsa) const;
   inline bool operator> (const log_lsa &olsa) const;
   inline bool operator>= (const log_lsa &olsa) const;
-
 };
 
 using LOG_LSA = log_lsa;	/* Log address identifier */

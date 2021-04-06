@@ -5682,8 +5682,6 @@ log_recovery_find_first_postpone (THREAD_ENTRY * thread_p, LOG_LSA * ret_lsa, LO
 
   LSA_SET_NULL (ret_lsa);
 
-  // TODO: add condition that server is in replication mode
-  // TODO: this condition was not hit during
   if (log_is_in_crash_recovery () == false
       || (tdes->state != TRAN_UNACTIVE_WILL_COMMIT && tdes->state != TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE
 	  && tdes->state != TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE))
