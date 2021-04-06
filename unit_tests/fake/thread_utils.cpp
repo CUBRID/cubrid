@@ -25,6 +25,7 @@
 #include "lockfree_bitmap.hpp"
 #include "lockfree_transaction_system.hpp"
 #include "log_compress.h"
+#include "log_reader.hpp"
 #include "log_system_tran.hpp"
 #include "message_catalog.h"
 #include "thread_daemon.hpp"
