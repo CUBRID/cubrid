@@ -57,21 +57,21 @@ namespace cublog
     cubthread::looper loop (std::chrono::milliseconds (1));   // don't spin when there is no new log, wait a bit
     auto func_exec = std::bind (&replicator::redo_upto_nxio_lsa, std::ref (*this), std::placeholders::_1);
 
-    cubthread::entry_task *task = nullptr;
     if (replication_parallel > 0)
       {
         auto func_retire = std::bind (&replicator::wait_parallel_replication_idle, std::ref (*this));
-        task = new cubthread::entry_callable_task (std::move (func_exec), std::move (func_retire));
+        m_daemon_task.reset (
+          new cubthread::entry_callable_task (std::move (func_exec), std::move (func_retire)));
       }
     else
       {
-        task = new cubthread::entry_callable_task (std::move (func_exec));
+        // do not move task ownershit to itself - aka, do not let the task delete itself;
+        // it can be done, but prefer to do this locally for uniformity with the 'if' case
+        m_daemon_task.reset (
+          new cubthread::entry_callable_task (std::move (func_exec), false));
       }
-    // TODO: implicitly, the callable task deletes itself upon retire; if we supply a custom retire function
-    // here, who is gonna delete the task?
 
-    // NOTE: task ownership goes to the thread manager
-    m_daemon = cubthread::get_manager ()->create_daemon (loop, task, "cublog::replicator");
+    m_daemon = cubthread::get_manager ()->create_daemon (loop, m_daemon_task.get (), "cublog::replicator");
   }
 
   replicator::~replicator ()
@@ -176,10 +176,13 @@ namespace cublog
 	  std::unique_lock<std::mutex> lock (m_redo_lsa_mutex);
 	  m_redo_lsa = header.forw_lsa;
 	}
+
+        // TODO: why is this notification inside this loop? where this function is
+        // called, can we be sure that 'm_redo_lsa == nxio_lsa' ?
+
+	// notify who waits for end of replication
 	if (m_redo_lsa == end_redo_lsa)
 	  {
-	    // TODO: why is this here, where this function is called, can we be sure that 'm_redo_lsa == nxio_lsa' ?
-	    // notify who waits for end of replication
 	    m_redo_condvar.notify_all ();
 	  }
       }
@@ -246,6 +249,13 @@ namespace cublog
       return m_redo_lsa >= log_Gl.append.get_nxio_lsa ();
     });
 
+    // at this moment, if using parallel replication, probably, MOST data has
+    // been dispatched for async replication;
+    // cannot decide if NO OTHER DATA will ever be fed because the daemon is still executing;
+    // will be able to tell that no data will ever be fed again for async replication
+    // only when the daemon is not running anymore;
+    // however, at this point introduce a fuzzy syncronization point by waiting all
+    // fed data to be effectively consumed/applied
     if (m_parallel_replication_redo != nullptr)
       {
         m_parallel_replication_redo->wait_for_idle ();

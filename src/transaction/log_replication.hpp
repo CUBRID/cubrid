@@ -24,6 +24,7 @@
 #include "log_lsa.hpp"
 #include "log_reader.hpp"
 #include "log_record.hpp"
+#include "thread_entry_task.hpp"
 
 #include <condition_variable>
 #include <mutex>
@@ -60,6 +61,7 @@ namespace cublog
       void read_and_redo_record (cubthread::entry &thread_entry, LOG_RECTYPE rectype, const log_lsa &rec_lsa);
       void wait_parallel_replication_idle ();
 
+      std::unique_ptr <cubthread::entry_task> m_daemon_task;
       cubthread::daemon *m_daemon = nullptr;
 
       log_lsa m_redo_lsa = NULL_LSA;
