@@ -520,8 +520,7 @@ log_rv_fix_page_and_check_redo_is_needed (THREAD_ENTRY * thread_p, const VPID & 
 	{
 	  /* the page was changed and also deallocated in the meantime, no need to apply redo */
 	  // only acceptable during recovery, not acceptable for replication
-	  // TODO: add condition that server is in replication mode
-	  //assert (log_is_in_crash_recovery ());
+	  assert (log_is_in_crash_recovery ());
 	  return false;
 	}
     }
@@ -541,8 +540,7 @@ log_rv_fix_page_and_check_redo_is_needed (THREAD_ENTRY * thread_p, const VPID & 
 	{
 	  /* already applied, make sure to unfix the page */
 	  // only acceptable during recovery, not acceptable for replication
-	  // TODO: add condition that server is in replication mode
-	  //assert (log_is_in_crash_recovery ());
+	  assert (log_is_in_crash_recovery ());
 	  pgbuf_unfix_and_init (thread_p, rcv.pgptr);
 	  return false;
 	}
