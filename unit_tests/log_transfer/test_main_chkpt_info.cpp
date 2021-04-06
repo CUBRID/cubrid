@@ -19,11 +19,15 @@
 #define CATCH_CONFIG_MAIN
 #include "catch2/catch.hpp"
 
+#include "client_credentials.hpp"
 #define private public
 #include "log_checkpoint_info.hpp"
 #undef private
+#include "log_impl.h"
 #include "log_lsa.hpp"
 #include "log_record.hpp"
+#include "mem_block.hpp"
+#include "thread_entry.hpp"
 #include "system_parameter.h"
 
 #include <algorithm>
@@ -41,9 +45,14 @@ class test_env_chkpt
     ~test_env_chkpt ();
 
     LOG_LSA generate_log_lsa();
+    LOG_TDES *generate_tdes (int index);
+    LOG_2PC_GTRINFO generate_2pc_gtrinfo();
+    LOG_2PC_COORDINATOR *generate_2pc_coordinator();
+    CLIENTIDS generate_client (int index);
     LOG_INFO_CHKPT_TRANS generate_log_info_chkpt_trans();
     LOG_INFO_CHKPT_SYSOP generate_log_info_chkpt_sysop();
     std::vector<LOG_LSA> used_logs;
+    void generate_tran_table();
 
     static constexpr int MAX_RAND = 32700;
     static void require_equal (checkpoint_info before, checkpoint_info after);
@@ -116,8 +125,12 @@ TEST_CASE ("Test load and recovery", "")
 {
   test_env_chkpt env;
   LOG_LSA smallest_lsa;
+  LOG_LSA star_lsa;
   THREAD_ENTRY thd;
-  env.after.load_trantabel (thd, smallest_lsa);
+
+  env.after.load_trantable_snapshot (&thd, smallest_lsa);
+  env.after.recovery_analysis (&thd, star_lsa);
+  env.after.recovery_2pc_analysis (&thd);
 
 }
 
@@ -211,6 +224,98 @@ test_env_chkpt::require_equal (checkpoint_info before, checkpoint_info after)
   REQUIRE (before.m_sysops == after.m_sysops);
 
   REQUIRE (before.m_has_2pc == after.m_has_2pc);
+}
+
+LOG_2PC_GTRINFO
+test_env_chkpt::generate_2pc_gtrinfo()
+{
+  log_2pc_gtrinfo pc;
+  pc.info_length = rand() % MAX_RAND;
+  pc.info_data = malloc (pc.info_length);
+
+  return pc;
+}
+
+LOG_2PC_COORDINATOR *
+test_env_chkpt::generate_2pc_coordinator()
+{
+  log_2pc_coordinator *pc = new log_2pc_coordinator();
+  pc->num_particps = rand() % MAX_RAND;
+  pc->particp_id_length = rand() % MAX_RAND;
+
+  return pc;
+}
+
+CLIENTIDS
+test_env_chkpt::generate_client (int index)
+{
+  clientids clnt;
+  char number[25];
+
+  clnt.client_type = static_cast<db_client_type> (1);
+  sprintf (number, "client_%d", index);
+  clnt.client_info = (number);
+  sprintf (number, "db_user_%d", index);
+  clnt.db_user = (number);
+  sprintf (number, "database_%d", index);
+  clnt.program_name = (number);
+  sprintf (number, "login_%d", index);
+  clnt.login_name = (number);
+  sprintf (number, "host_%d", index);
+  clnt.host_name = (number);
+  clnt.process_id = rand() % MAX_RAND;
+
+  return clnt;
+}
+
+LOG_TDES *
+test_env_chkpt::generate_tdes (int index)
+{
+  LOG_TDES *tdes = new log_tdes();
+  tdes->trid = index;
+  tdes->tran_index = index;
+
+  tdes->tail_lsa = generate_log_lsa();
+  tdes->isloose_end = std::rand() % 2;
+  tdes->head_lsa = generate_log_lsa();
+
+  tdes->undo_nxlsa = generate_log_lsa();
+  tdes->posp_nxlsa = generate_log_lsa();
+  tdes->savept_lsa = generate_log_lsa();
+  tdes->tail_topresult_lsa = generate_log_lsa();
+  tdes->rcv.tran_start_postpone_lsa = generate_log_lsa();
+  tdes->wait_msecs = rand() % MAX_RAND;
+  tdes->client_id  = rand() % MAX_RAND;
+  tdes->gtrid      = rand() % MAX_RAND;
+
+  tdes->num_transient_classnames = rand() % MAX_RAND;
+  tdes->num_repl_records         = rand() % MAX_RAND;
+  tdes->cur_repl_record          = rand() % MAX_RAND;
+  tdes->append_repl_recidx       = rand() % MAX_RAND;
+  tdes->fl_mark_repl_recidx      = rand() % MAX_RAND;
+  tdes->repl_insert_lsa          = generate_log_lsa();
+  tdes->repl_update_lsa          = generate_log_lsa();
+
+  tdes->client  = generate_client (index);
+  tdes->gtrinfo = generate_2pc_gtrinfo();
+  tdes->coord   = generate_2pc_coordinator();
+
+  return tdes;
+}
+
+
+void
+test_env_chkpt::generate_tran_table()
+{
+  log_Gl.trantable.num_total_indices = 100;
+
+  int size = log_Gl.trantable.num_total_indices * sizeof (*log_Gl.trantable.all_tdes);
+  log_Gl.trantable.all_tdes = (LOG_TDES **) malloc (size);
+
+  for (int i = 0; i < log_Gl.trantable.num_total_indices; i++)
+    {
+      log_Gl.trantable.all_tdes[i] = generate_tdes (i);
+    }
 }
 
 //
@@ -641,7 +746,7 @@ log_prior_lsa_info::log_prior_lsa_info () = default;
 int
 csect_enter (THREAD_ENTRY *thread_p, int cs_index, int wait_secs)
 {
-  assert (false);
+  assert (true);
 }
 
 void
@@ -699,4 +804,19 @@ void
 log_2pc_recovery_analysis_info (THREAD_ENTRY *thread_p, log_tdes *tdes, LOG_LSA *upto_chain_lsa)
 {
   assert (false);
+}
+
+clientids::clientids ()
+  : client_type (DB_CLIENT_TYPE_UNKNOWN)
+  , client_info {}
+  , db_user {}
+  , program_name {}
+  , login_name {}
+  , host_name {}
+  , process_id (0)
+{
+}
+
+clientids::~clientids ()
+{
 }
