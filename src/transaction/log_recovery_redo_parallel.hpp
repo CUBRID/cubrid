@@ -85,8 +85,6 @@ namespace cublog
        */
       void wait_for_termination_and_stop_execution ();
 
-      log_lsa get_minimum_unprocessed_log_lsa ();
-
     private:
       void do_init_worker_pool ();
       void do_init_tasks ();
@@ -100,7 +98,6 @@ namespace cublog
 	  using ux_redo_job_base = std::unique_ptr<redo_job_base>;
 	  using ux_redo_job_deque = std::deque<ux_redo_job_base>;
 	  using vpid_set = std::set<VPID>;
-	  using log_lsa_set = std::set<log_lsa>;
 
 	public:
 	  redo_job_queue ();
@@ -145,8 +142,6 @@ namespace cublog
 	   */
 	  bool is_idle () const;
 
-	  log_lsa get_minimum_unprocessed_log_lsa ();
-
 	private:
 	  void assert_idle () const;
 
@@ -186,7 +181,6 @@ namespace cublog
 	   * mechanism guarantees ordering among entries with the same VPID;
 	   */
 	  vpid_set m_in_progress_vpids;
-	  log_lsa_set m_in_progress_log_lsas;
 	  mutable std::mutex m_in_progress_mutex;
 	  mutable std::condition_variable m_in_progress_vpids_empty_cv;
       };

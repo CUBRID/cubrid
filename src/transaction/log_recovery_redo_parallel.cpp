@@ -186,10 +186,6 @@ namespace cublog
     const vpid &job_vpid = a_job->get_vpid ();
     assert (m_in_progress_vpids.find (job_vpid) == m_in_progress_vpids.cend ());
     m_in_progress_vpids.insert (job_vpid);
-
-    const log_lsa &job_log_lsa = a_job->get_log_lsa ();
-    assert (m_in_progress_log_lsas.find (job_log_lsa) == m_in_progress_log_lsas.cend ());
-    m_in_progress_log_lsas.insert (job_log_lsa);
   }
 
   void
@@ -204,11 +200,6 @@ namespace cublog
       assert (vpid_it != m_in_progress_vpids.cend ());
       m_in_progress_vpids.erase (vpid_it);
       set_empty = m_in_progress_vpids.empty ();
-
-      const auto &job_log_lsa = a_job->get_log_lsa ();
-      const auto log_lsa_it = m_in_progress_log_lsas.find (job_log_lsa);
-      assert (log_lsa_it != m_in_progress_log_lsas.cend ());
-      m_in_progress_log_lsas.erase (log_lsa_it);
     }
     if (set_empty)
       {
@@ -260,61 +251,6 @@ namespace cublog
     assert (m_produce_queue->size () == 0);
     assert (m_consume_queue->size () == 0);
     assert (m_in_progress_vpids.size () == 0);
-    assert (m_in_progress_log_lsas.size () == 0);
-  }
-
-  log_lsa
-  redo_parallel::redo_job_queue::get_minimum_unprocessed_log_lsa ()
-  {
-    log_lsa min_queue_log_lsa { NULL_LSA }; // aka: first - because lsa's are ever increasing
-    log_lsa min_in_progress_log_lsa { NULL_LSA };
-
-    // careful with the locking order
-    std::lock_guard<std::mutex> consume_queue_lock (m_consume_queue_mutex);
-    {
-      std::lock_guard<std::mutex> produce_queue_lock  (m_produce_queue_mutex);
-      {
-	std::lock_guard<std::mutex> empty_in_progress_vpids_lock (m_in_progress_mutex);
-
-	// works like this:
-	//  - find the minimum log_lsa between the 'in progress' and 'consume queue' minimum
-	//    log_lsa's
-	//  - this, because of the following scenario (corner case):
-	//    - there exists a task that processes a time consuming log record job
-	//    - this log record job was not the first (aka: minimum) in the consume queue
-	//      when popped because other jobs were blocked by having their VPID in processing with
-	//      other tasks
-	//    - all other tasks have terminated their jobs but have not, yet, picked new jobs
-	//  - in this situation, the minimum log_lsa will sit in the 'consume queue'
-
-	log_lsa min_queue_log_lsa { NULL_LSA };
-	log_lsa min_in_progress_log_lsa { NULL_LSA };
-	if (!m_consume_queue->empty ())
-	  {
-	    // first - because log_lsa's are ever increasing as they are inserted into the queues
-	    min_queue_log_lsa = (*m_consume_queue->cbegin ())->get_log_lsa (); // make a copy
-	  }
-	if (!m_in_progress_log_lsas.empty ())
-	  {
-	    min_in_progress_log_lsa = *m_in_progress_log_lsas.cbegin ();
-	  }
-	const log_lsa &min_unprocessed_log_lsa_from_consume_side = LSA_MIN (min_queue_log_lsa, min_in_progress_log_lsa);
-	if (LSA_ISNULL (&min_unprocessed_log_lsa_from_consume_side))
-	  {
-	    // seems that 'in progress' and consume queues are empty
-	    if (!m_produce_queue->empty ())
-	      {
-		return (*m_produce_queue->cbegin ())->get_log_lsa ();
-	      }
-	  }
-	else
-	  {
-	    return min_unprocessed_log_lsa_from_consume_side;
-	  }
-      }
-    }
-
-    return NULL_LSA;
   }
 
   /*********************************************************************
@@ -528,14 +464,6 @@ namespace cublog
     assert (false == m_job_queue.get_adding_finished ());
 
     return m_job_queue.is_idle ();
-  }
-
-  log_lsa
-  redo_parallel::get_minimum_unprocessed_log_lsa ()
-  {
-    assert (false == m_waited_for_termination);
-
-    return m_job_queue.get_minimum_unprocessed_log_lsa ();
   }
 
   void
