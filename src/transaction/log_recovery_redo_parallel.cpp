@@ -229,22 +229,6 @@ namespace cublog
     assert_idle ();
   }
 
-  bool
-  redo_parallel::redo_job_queue::is_idle () const
-  {
-    bool queues_empty = false;
-    bool in_progress_vpids_empty = false;
-    {
-      std::lock_guard<std::mutex> empty_queues_lock (m_produce_queue_mutex);
-      queues_empty = m_queues_empty;
-    }
-    {
-      std::lock_guard<std::mutex> empty_in_progress_vpids_lock (m_in_progress_mutex);
-      in_progress_vpids_empty = m_in_progress_vpids.empty ();
-    }
-    return queues_empty && in_progress_vpids_empty;
-  }
-
   void
   redo_parallel::redo_job_queue::assert_idle () const
   {
@@ -455,15 +439,6 @@ namespace cublog
     assert (false == m_job_queue.get_adding_finished ());
 
     m_job_queue.wait_for_idle ();
-  }
-
-  bool
-  redo_parallel::is_idle () const
-  {
-    assert (false == m_waited_for_termination);
-    assert (false == m_job_queue.get_adding_finished ());
-
-    return m_job_queue.is_idle ();
   }
 
   void

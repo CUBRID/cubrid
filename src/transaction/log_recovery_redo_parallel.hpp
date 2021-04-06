@@ -74,13 +74,6 @@ namespace cublog
        */
       void wait_for_idle ();
 
-      /* check if all fed data has ben consumed internally; non-blocking call
-       * NOTE: the nature of this function is 'volatile' - ie: what might be
-       * true at the moment the function is called is not necessarily true a moment
-       * later; it can be useful only if the caller is aware of the execution context
-       */
-      bool is_idle () const;
-
       /* mandatory to explicitly call this before dtor
        */
       void wait_for_termination_and_stop_execution ();
@@ -132,15 +125,6 @@ namespace cublog
 	  /* wait until all data has been consumed internally; blocking call
 	   */
 	  void wait_for_idle () const;
-
-	  /* check if all data has been consumed; that is:
-	   *  - no pending jobs are present in any of the queus
-	   *  - no jobs are currently executing
-	   * NOTE: the nature of this function is 'volatile' - ie: what might be
-	   * true at the moment the function is called is not necessarily true a moment
-	   * later; it can be useful only if the caller is aware of the execution context
-	   */
-	  bool is_idle () const;
 
 	private:
 	  void assert_idle () const;
