@@ -297,7 +297,8 @@ namespace cublog
       using log_rec_t = TYPE_LOG_REC;
 
     public:
-      redo_job_impl (VPID a_vpid, const log_lsa &a_rcv_lsa, const log_lsa *a_end_redo_lsa, LOG_RECTYPE a_log_rtype);
+      redo_job_impl (VPID a_vpid, const log_lsa &a_rcv_lsa, const log_lsa *a_end_redo_lsa,
+		     LOG_RECTYPE a_log_rtype, bool force_each_page_fetch);
 
       redo_job_impl (redo_job_impl const &) = delete;
       redo_job_impl (redo_job_impl &&) = delete;
@@ -313,6 +314,7 @@ namespace cublog
     private:
       const log_lsa *m_end_redo_lsa;  // by design pointer is guaranteed to outlive this instance
       const LOG_RECTYPE m_log_rtype;
+      const log_reader::fetch_mode m_log_reader_page_fetch_mode;
   };
 
   /*********************************************************************
@@ -321,10 +323,13 @@ namespace cublog
 
   template <typename TYPE_LOG_REC>
   redo_job_impl<TYPE_LOG_REC>::redo_job_impl (VPID a_vpid, const log_lsa &a_rcv_lsa, const log_lsa *a_end_redo_lsa,
-      LOG_RECTYPE a_log_rtype)
+      LOG_RECTYPE a_log_rtype, bool force_each_page_fetch)
     : redo_parallel::redo_job_base (a_vpid, a_rcv_lsa)
     , m_end_redo_lsa (a_end_redo_lsa)
     , m_log_rtype (a_log_rtype)
+    , m_log_reader_page_fetch_mode (force_each_page_fetch
+				    ? log_reader::fetch_mode::FORCE
+				    : log_reader::fetch_mode::NORMAL)
   {
   }
 
@@ -333,9 +338,8 @@ namespace cublog
       LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support)
   {
     const auto &rcv_lsa = get_log_lsa ();
-    // TODO: temporary 'FORCE'
     const int err_set_lsa_and_fetch_page
-      = log_pgptr_reader.set_lsa_and_fetch_page (rcv_lsa, log_reader::fetch_mode::FORCE);
+      = log_pgptr_reader.set_lsa_and_fetch_page (rcv_lsa, m_log_reader_page_fetch_mode);
     if (err_set_lsa_and_fetch_page != NO_ERROR)
       {
 	return err_set_lsa_and_fetch_page;

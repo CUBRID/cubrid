@@ -251,12 +251,9 @@ namespace cublog
 	using redo_job_impl_t = cublog::redo_job_impl<T>;
 	std::unique_ptr<redo_job_impl_t> job
 	{
-	  new redo_job_impl_t (rec_vpid, rec_lsa, nullptr, rectype)
+	  new redo_job_impl_t (rec_vpid, rec_lsa, nullptr, rectype, true)
 	};
 	m_parallel_replication_redo->add (std::move (job));
-
-//        log_rv_redo_record_sync<T> (&thread_entry, m_reader, log_rec, rec_vpid, rec_lsa,
-//                                    nullptr, rectype, m_undo_unzip, m_redo_unzip);
       }
   }
 
