@@ -520,7 +520,8 @@ log_rv_fix_page_and_check_redo_is_needed (THREAD_ENTRY * thread_p, const VPID & 
 	{
 	  /* the page was changed and also deallocated in the meantime, no need to apply redo */
 	  // only acceptable during recovery, not acceptable for replication
-	  assert (log_is_in_crash_recovery ());
+	  // TODO: add condition that server is in replication mode
+	  //assert (log_is_in_crash_recovery ());
 	  return false;
 	}
     }
@@ -540,7 +541,8 @@ log_rv_fix_page_and_check_redo_is_needed (THREAD_ENTRY * thread_p, const VPID & 
 	{
 	  /* already applied, make sure to unfix the page */
 	  // only acceptable during recovery, not acceptable for replication
-	  assert (log_is_in_crash_recovery ());
+	  // TODO: add condition that server is in replication mode
+	  //assert (log_is_in_crash_recovery ());
 	  pgbuf_unfix_and_init (thread_p, rcv.pgptr);
 	  return false;
 	}
@@ -5681,6 +5683,8 @@ log_recovery_find_first_postpone (THREAD_ENTRY * thread_p, LOG_LSA * ret_lsa, LO
 
   LSA_SET_NULL (ret_lsa);
 
+  // TODO: add condition that server is in replication mode
+  // TODO: this condition was not hit during
   if (log_is_in_crash_recovery () == false
       || (tdes->state != TRAN_UNACTIVE_WILL_COMMIT && tdes->state != TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE
 	  && tdes->state != TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE))

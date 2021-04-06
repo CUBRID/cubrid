@@ -111,6 +111,10 @@ namespace cublog
 	  }
 	else
 	  {
+	    if (m_parallel_replication_redo != nullptr)
+	      {
+		m_parallel_replication_redo->wait_for_idle ();
+	      }
 	    assert (m_redo_lsa == nxio_lsa);
 	    break;
 	  }
@@ -224,34 +228,35 @@ namespace cublog
     const bool need_sync_redo = log_rv_need_sync_redo (rec_log_data.rcvindex);
     assert (rec_log_data.rcvindex != RVDK_UNRESERVE_SECTORS || need_sync_redo);
 
-    if (m_parallel_replication_redo == nullptr || VPID_ISNULL(&rec_vpid) || need_sync_redo)
+    if (m_parallel_replication_redo == nullptr || VPID_ISNULL (&rec_vpid) || need_sync_redo)
       {
-        // invoke sync
+	// invoke sync
 
-        // To apply RVDK_UNRESERVE_SECTORS, one must first wait for all changes in this sector to be redone.
-        // Otherwise, asynchronous jobs skip redoing changes in this sector's pages because they are seen as
-        // deallocated. When the same sector is reserved again, redo is resumed in the sector's pages, but
-        // the pages are not in a consistent state. The current workaround is to wait for all changes to be
-        // finished, including changes in the unreserved sector.
-        if (m_parallel_replication_redo != nullptr && rec_log_data.rcvindex == RVDK_UNRESERVE_SECTORS)
-          {
-            m_parallel_replication_redo->wait_for_idle ();
-          }
+	// To apply RVDK_UNRESERVE_SECTORS, one must first wait for all changes in this sector to be redone.
+	// Otherwise, asynchronous jobs skip redoing changes in this sector's pages because they are seen as
+	// deallocated. When the same sector is reserved again, redo is resumed in the sector's pages, but
+	// the pages are not in a consistent state. The current workaround is to wait for all changes to be
+	// finished, including changes in the unreserved sector.
+	if (m_parallel_replication_redo != nullptr && rec_log_data.rcvindex == RVDK_UNRESERVE_SECTORS)
+	  {
+	    m_parallel_replication_redo->wait_for_idle ();
+	  }
 
-        log_rv_redo_record_sync<T> (&thread_entry, m_reader, log_rec, rec_vpid, rec_lsa,
-                                    nullptr, rectype, m_undo_unzip, m_redo_unzip);
+	log_rv_redo_record_sync<T> (&thread_entry, m_reader, log_rec, rec_vpid, rec_lsa,
+				    nullptr, rectype, m_undo_unzip, m_redo_unzip);
       }
     else
       {
-        // dispatch async
-//        using redo_job_impl_t = cublog::redo_job_impl<T>;
-//        std::unique_ptr<redo_job_impl_t> job {
-//          new redo_job_impl_t(rec_vpid, rec_lsa, nullptr /*end_redo_lsa*/, rectype)
-//        };
-//        m_parallel_replication_redo->add (std::move (job));
+	// dispatch async
+	using redo_job_impl_t = cublog::redo_job_impl<T>;
+	std::unique_ptr<redo_job_impl_t> job
+	{
+	  new redo_job_impl_t (rec_vpid, rec_lsa, nullptr, rectype)
+	};
+	m_parallel_replication_redo->add (std::move (job));
 
-        log_rv_redo_record_sync<T> (&thread_entry, m_reader, log_rec, rec_vpid, rec_lsa,
-                                    nullptr, rectype, m_undo_unzip, m_redo_unzip);
+//        log_rv_redo_record_sync<T> (&thread_entry, m_reader, log_rec, rec_vpid, rec_lsa,
+//                                    nullptr, rectype, m_undo_unzip, m_redo_unzip);
       }
   }
 

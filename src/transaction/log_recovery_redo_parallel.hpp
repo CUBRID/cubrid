@@ -333,7 +333,9 @@ namespace cublog
       LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support)
   {
     const auto &rcv_lsa = get_log_lsa ();
-    const int err_set_lsa_and_fetch_page = log_pgptr_reader.set_lsa_and_fetch_page (rcv_lsa);
+    // TODO: temporary 'FORCE'
+    const int err_set_lsa_and_fetch_page
+      = log_pgptr_reader.set_lsa_and_fetch_page (rcv_lsa, log_reader::fetch_mode::FORCE);
     if (err_set_lsa_and_fetch_page != NO_ERROR)
       {
 	return err_set_lsa_and_fetch_page;
