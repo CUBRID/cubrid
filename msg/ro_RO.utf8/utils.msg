@@ -1198,13 +1198,16 @@ opțiuni valide:\n\
 $set 55 MSGCAT_UTIL_SET_VACUUMDB
 20 Momentan, vacuumdb nu este disponibil în modul client-server \n
 21 Operația de vacuum nu a reușit\n
+22 Fişierul de ieşire '%1$s' nu a putut fi deschis\n
 60 \
 vacuumdb: Șterge înregistrări nenecesare din baza de date\n\
 utilizare: %1$s vacuumdb [OPTION] database-name\n\
 \n\
 opțiuni valide:\n\
   -S, --SA-mode                execuție în modul stand-alone\n\
-  -C, --CS-mode                execuție în modul client-server\n
+  -C, --CS-mode                execuție în modul client-server\n\
+      --dump                   descărcați starea curentă de vid\n\
+  -o, --output-file=FIŞIER     redirecţionează mesajele de ieşire către un FIŞIER; implicit: nul\n
 
 $set 56 MSGCAT_UTIL_SET_CHECKSUMDB
 1 Încărcarea numelor tabelelor nu a reușit în %1$s.\n
