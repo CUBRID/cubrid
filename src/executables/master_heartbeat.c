@@ -57,6 +57,7 @@
 #include "message_catalog.h"
 #include "object_representation.h"
 #include "porting.h"
+#include "process_util.h"
 #include "tcp.h"
 #include "utility.h"
 
@@ -6664,7 +6665,11 @@ hb_get_deactivating_server_count (void)
 	{
 	  if (hb_Deactivate_info.server_pid_list[i] > 0)
 	    {
-	      if (kill (hb_Deactivate_info.server_pid_list[i], 0) && errno == ESRCH)
+	      if ((kill (hb_Deactivate_info.server_pid_list[i], 0) && errno == ESRCH)
+#if defined (LINUX)
+		  || master_util_is_proc_zombie (hb_Deactivate_info.server_pid_list[i])
+#endif // LINUX
+		)
 		{
 		  /* server was terminated */
 		  hb_Deactivate_info.server_pid_list[i] = 0;
