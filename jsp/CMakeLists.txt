@@ -16,7 +16,7 @@
 # 
 #
 include(FindJava)
-find_package(Java 1.5 COMPONENTS Development)
+find_package(Java 1.6 COMPONENTS Development)
 
 find_program(ANT ant PATHS $ENV{ANT_HOME} ENV PATH)
 if(NOT ANT)
@@ -33,11 +33,19 @@ if(EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
   )
 endif(EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
 
+# download ivy
+message("Download ivy ...")
+set(IVY_VERSION "2.4.0")
+set(IVY_URL "https://archive.apache.org/dist/ant/ivy/${IVY_VERSION}/maven2/${IVY_VERSION}/ivy-${IVY_VERSION}.jar")
+set(IVY_DIR "${CMAKE_BINARY_DIR}/jsp/external")
+set(IVY_FILENAME "${IVY_DIR}/ivy.jar")
+file(DOWNLOAD ${IVY_URL} ${IVY_FILENAME})
+
 add_custom_target(jsp_build ALL
   COMMAND ${CMAKE_COMMAND} -E echo "copying ivy.xml to ${CMAKE_BINARY_DIR}/jsp/ivy.xml"
   COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/jsp/ivy.xml ${CMAKE_BINARY_DIR}/jsp/ivy.xml
   COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/jsp/ivysettings.xml ${CMAKE_BINARY_DIR}/jsp/ivysettings.xml
-  COMMAND ${ANT} dist -buildfile ${CMAKE_SOURCE_DIR}/jsp/build.xml -Dbasedir=. -Dversion=${BUILD_NUMBER} -Dsrc.dir=${JSP_DIR}
+  COMMAND ${ANT} dist -buildfile ${CMAKE_SOURCE_DIR}/jsp/build.xml -Dbasedir=. -Dversion=${BUILD_NUMBER} -Dsrc.dir=${JSP_DIR} -Divy.install.dir="${IVY_DIR}"
   COMMENT "Build Java SP Server with Ant ..."
 )
 

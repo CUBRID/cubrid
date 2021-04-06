@@ -13,9 +13,9 @@
     <property name="test.classes.dir" location="${build.dir}/test-classes"/>
     <property name="ivy.reports.dir"  location="${build.dir}/ivy-reports"/>
 
-    <property name="ivy.install.version" value="2.4.0" />
     <property name="external.dir" value="external"/>
-    <property name="ivy.jar.file" value="${external.dir}/ivy.jar" />
+    <property name="ivy.install.version" value="2.4.0" />
+    <property name="ivy.install.dir" value="${external.dir}"/>
 
     <property name="dist.main.class" value="com.cubrid.jsp.Server"/>
     <property name="dist.jar" value="jspserver.jar"/>
@@ -26,18 +26,13 @@
     Ivy setup
     ===========
     -->
-    <target name="download-ivy" unless="offline">
-        <mkdir dir="${external.dir}"/>
-        <get src="https://repo1.maven.org/maven2/org/apache/ivy/ivy/${ivy.install.version}/ivy-${ivy.install.version}.jar" 
-             dest="${ivy.jar.file}" usetimestamp="true"/>
-    </target>
-
-    <target name="init-ivy" depends="download-ivy">
+    <target name="init-ivy">
         <path id="ivy.lib.path">
-            <fileset dir="${external.dir}" includes="*.jar"/>
+            <fileset dir="${ivy.install.dir}" includes="*.jar"/>
         </path>
+
         <taskdef resource="org/apache/ivy/ant/antlib.xml"
-                 uri="antlib:org.apache.ivy.ant" classpathref="ivy.lib.path"/>
+                uri="antlib:org.apache.ivy.ant" classpathref="ivy.lib.path"/>
     </target>
 
     <!--
@@ -74,7 +69,6 @@
             <fileset dir="${classes.dir}"/>
             <fileset dir="${build.dir}"/>
             <fileset file="${dist.jar}"/>
-            <fileset file="${ivy.jar.file}"/>
         </delete>
     </target>
 
