@@ -297,6 +297,11 @@ namespace cublog
       using log_rec_t = TYPE_LOG_REC;
 
     public:
+      /*
+       *  force_each_page_fetch: force fetch log pages each time regardless of other internal
+       *                        conditions; needed to be enabled when job is dispatched in
+       *                        page server recovery context
+       */
       redo_job_impl (VPID a_vpid, const log_lsa &a_rcv_lsa, const log_lsa *a_end_redo_lsa,
 		     LOG_RECTYPE a_log_rtype, bool force_each_page_fetch);
 

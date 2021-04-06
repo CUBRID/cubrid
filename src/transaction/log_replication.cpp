@@ -31,8 +31,6 @@
 #include <chrono>
 #include <functional>
 
-//#define REPLICATOR_PARALLEL_DEBUG
-
 namespace cublog
 {
 
@@ -53,18 +51,24 @@ namespace cublog
     if (replication_parallel > 0)
       {
 	m_parallel_replication_redo.reset (new cublog::redo_parallel (replication_parallel));
-#ifdef REPLICATOR_PARALLEL_DEBUG
-	_er_log_debug (ARG_FILE_LINE,
-		       "PAGE_SERVER_REPLICATOR: instantiated redo_parallel with %d tasks",
-		       replication_parallel);
-#endif
       }
 
     // Create the daemon
     cubthread::looper loop (std::chrono::milliseconds (1));   // don't spin when there is no new log, wait a bit
     auto func_exec = std::bind (&replicator::redo_upto_nxio_lsa, std::ref (*this), std::placeholders::_1);
-    auto func_retire = std::bind (&replicator::wait_parallel_replication_idle, std::ref (*this));
-    auto task = new cubthread::entry_callable_task (std::move (func_exec), std::move (func_retire));
+
+    cubthread::entry_task *task = nullptr;
+    if (replication_parallel > 0)
+      {
+        auto func_retire = std::bind (&replicator::wait_parallel_replication_idle, std::ref (*this));
+        task = new cubthread::entry_callable_task (std::move (func_exec), std::move (func_retire));
+      }
+    else
+      {
+        task = new cubthread::entry_callable_task (std::move (func_exec));
+      }
+    // TODO: implicitly, the callable task deletes itself upon retire; if we supply a custom retire function
+    // here, who is gonna delete the task?
 
     // NOTE: task ownership goes to the thread manager
     m_daemon = cubthread::get_manager ()->create_daemon (loop, task, "cublog::replicator");
@@ -72,25 +76,13 @@ namespace cublog
 
   replicator::~replicator ()
   {
-#ifdef REPLICATOR_PARALLEL_DEBUG
-    _er_log_debug (ARG_FILE_LINE,
-		   "PAGE_SERVER_REPLICATOR: ~replicator - destroy_daemon");
-#endif
     cubthread::get_manager ()->destroy_daemon (m_daemon);
 
     if (m_parallel_replication_redo != nullptr)
       {
-#ifdef REPLICATOR_PARALLEL_DEBUG
-	_er_log_debug (ARG_FILE_LINE,
-		       "PAGE_SERVER_REPLICATOR: m_parallel_replication_redo termination >>>>");
-#endif
 	// this is the earliest it is ensured that no records are to be added anymore
 	m_parallel_replication_redo->set_adding_finished ();
 	m_parallel_replication_redo->wait_for_termination_and_stop_execution ();
-#ifdef REPLICATOR_PARALLEL_DEBUG
-	_er_log_debug (ARG_FILE_LINE,
-		       "PAGE_SERVER_REPLICATOR: m_parallel_replication_redo termination <<<<");
-#endif
       }
 
     log_zip_free_data (m_undo_unzip);
@@ -111,10 +103,6 @@ namespace cublog
 	  }
 	else
 	  {
-	    if (m_parallel_replication_redo != nullptr)
-	      {
-		m_parallel_replication_redo->wait_for_idle ();
-	      }
 	    assert (m_redo_lsa == nxio_lsa);
 	    break;
 	  }
@@ -126,16 +114,8 @@ namespace cublog
   {
     if (m_parallel_replication_redo != nullptr)
       {
-#ifdef REPLICATOR_PARALLEL_DEBUG
-	_er_log_debug (ARG_FILE_LINE,
-		       "PAGE_SERVER_REPLICATOR: wait_parallel_replication_idle - >>>>");
-#endif
 	// this is the earliest it is ensured that no records are to be added anymore
 	m_parallel_replication_redo->wait_for_idle ();
-#ifdef REPLICATOR_PARALLEL_DEBUG
-	_er_log_debug (ARG_FILE_LINE,
-		       "PAGE_SERVER_REPLICATOR: wait_parallel_replication_idle - <<<<");
-#endif
       }
   }
 
@@ -260,21 +240,15 @@ namespace cublog
   void
   replicator::wait_replication_finish () const
   {
-#ifdef REPLICATOR_PARALLEL_DEBUG
-    _er_log_debug (ARG_FILE_LINE,
-		   "PAGE_SERVER_REPLICATOR: wait_replication_finish - >>>>");
-#endif
     std::unique_lock<std::mutex> ulock (m_redo_lsa_mutex);
     m_redo_condvar.wait (ulock, [this]
     {
       return m_redo_lsa >= log_Gl.append.get_nxio_lsa ();
     });
 
-    // TODO: must wait for parallel termination as well?
-
-#ifdef REPLICATOR_PARALLEL_DEBUG
-    _er_log_debug (ARG_FILE_LINE,
-		   "PAGE_SERVER_REPLICATOR: wait_replication_finish - <<<<");
-#endif
+    if (m_parallel_replication_redo != nullptr)
+      {
+        m_parallel_replication_redo->wait_for_idle ();
+      }
   }
 } // namespace cublog
