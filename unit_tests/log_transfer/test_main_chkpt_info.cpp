@@ -121,7 +121,7 @@ TEST_CASE ("Test pack/unpack checkpoint_info class 3", "")
 
 }
 
-TEST_CASE ("Test load and recovery", "")
+TEST_CASE ("Test load and recovery on empty tran table", "")
 {
   test_env_chkpt env;
   LOG_LSA smallest_lsa;
@@ -134,7 +134,21 @@ TEST_CASE ("Test load and recovery", "")
 
 }
 
-test_env_chkpt::test_env_chkpt () : test_env_chkpt (100, 100)
+TEST_CASE ("Test load and recovery on 100 tran table entries", "")
+{
+  test_env_chkpt env;
+  LOG_LSA smallest_lsa;
+  LOG_LSA star_lsa;
+  THREAD_ENTRY thd;
+
+  env.generate_tran_table();
+  env.after.load_trantable_snapshot (&thd, smallest_lsa);
+  env.after.recovery_analysis (&thd, star_lsa);
+  env.after.recovery_2pc_analysis (&thd);
+
+}
+
+test_env_chkpt::test_env_chkpt ()
 {
 }
 
@@ -331,6 +345,8 @@ test_env_chkpt::generate_tran_table()
 #define MAX_SMALL_STRING_SIZE 255
 #define LARGE_STRING_CODE 0xff
 
+std::mutex systb_Mutex;
+std::map<TRANID, log_tdes *> systb_System_tdes;
 namespace cubpacking
 {
   void
@@ -656,7 +672,7 @@ prm_get_bool_value (PARAM_ID prmid)
 const char *
 clientids::get_db_user () const
 {
-  return nullptr;
+  return db_user.c_str ();
 }
 
 LOG_PRIOR_NODE *
@@ -700,7 +716,7 @@ fileio_synchronize_all (THREAD_ENTRY *thread_p, bool include_log)
 int
 csect_exit (THREAD_ENTRY *thread_p, int cs_index)
 {
-  assert (false);
+  assert (true);
 }
 
 void
@@ -752,24 +768,208 @@ csect_enter (THREAD_ENTRY *thread_p, int cs_index, int wait_secs)
 void
 log_system_tdes::map_all_tdes (const map_func &func)
 {
-  assert (false);
+  std::lock_guard<std::mutex> lg (systb_Mutex);
+  for (auto &el : systb_System_tdes)
+    {
+      log_tdes *tdes = el.second;
+      assert (tdes != NULL);
+      func (*tdes);
+    }
+}
+#define NUM_TOTAL_TRAN_INDICES log_Gl.trantable.num_total_indices
+
+void
+logtb_clear_tdes (THREAD_ENTRY *thread_p, LOG_TDES *tdes)
+{
+  int i, j;
+  DB_VALUE *dbval;
+  HL_HEAPID save_heap_id;
+
+  tdes->isloose_end = false;
+  tdes->state = TRAN_ACTIVE;
+  LSA_SET_NULL (&tdes->head_lsa);
+  LSA_SET_NULL (&tdes->tail_lsa);
+  LSA_SET_NULL (&tdes->undo_nxlsa);
+  LSA_SET_NULL (&tdes->posp_nxlsa);
+  LSA_SET_NULL (&tdes->savept_lsa);
+  LSA_SET_NULL (&tdes->topop_lsa);
+  LSA_SET_NULL (&tdes->tail_topresult_lsa);
+  tdes->topops.last = -1;
+  tdes->gtrid = LOG_2PC_NULL_GTRID;
+  tdes->gtrinfo.info_length = 0;
+  tdes->m_multiupd_stats.clear ();
+  tdes->m_modified_classes.clear ();
+  tdes->cur_repl_record = 0;
+  tdes->append_repl_recidx = -1;
+  tdes->fl_mark_repl_recidx = -1;
+  LSA_SET_NULL (&tdes->repl_insert_lsa);
+  LSA_SET_NULL (&tdes->repl_update_lsa);
+  tdes->first_save_entry = NULL;
+  tdes->query_timeout = 0;
+  tdes->query_start_time = 0;
+  tdes->tran_start_time = 0;
+  tdes->waiting_for_res = NULL;
+  tdes->tran_abort_reason = TRAN_NORMAL;
+  tdes->num_exec_queries = 0;
+  tdes->suppress_replication = 0;
+  tdes->m_log_postpone_cache.reset ();
+  tdes->has_deadlock_priority = false;
+
+  tdes->num_log_records_written = 0;
+
+  LSA_SET_NULL (&tdes->rcv.tran_start_postpone_lsa);
+  LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
+  LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
+  LSA_SET_NULL (&tdes->rcv.analysis_last_aborted_sysop_lsa);
+  LSA_SET_NULL (&tdes->rcv.analysis_last_aborted_sysop_start_lsa);
+}
+
+static void
+logtb_set_tdes (THREAD_ENTRY *thread_p, LOG_TDES *tdes, const BOOT_CLIENT_CREDENTIAL *client_credential,
+		int wait_msecs, TRAN_ISOLATION isolation)
+{
+#if defined(SERVER_MODE)
+  CSS_CONN_ENTRY *conn;
+#endif /* SERVER_MODE */
+  tdes->client.set_ids (*client_credential);
+  tdes->is_user_active = false;
+#if defined(SERVER_MODE)
+
+  conn = thread_p->conn_entry;
+  if (conn != NULL)
+    {
+      tdes->client_id = conn->client_id;
+    }
+  else
+    {
+      tdes->client_id = -1;
+    }
+#else /* SERVER_MODE */
+  tdes->client_id = -1;
+#endif /* SERVER_MODE */
+  tdes->wait_msecs = wait_msecs;
+  tdes->isolation = isolation;
+  tdes->isloose_end = false;
+  tdes->interrupt = false;
+  tdes->topops.stack = NULL;
+  tdes->topops.max = 0;
+  tdes->topops.last = -1;
+  tdes->m_modified_classes.clear ();
+  tdes->num_transient_classnames = 0;
+  tdes->first_save_entry = NULL;
+  tdes->lob_locator_root.init ();
+  tdes->m_log_postpone_cache.reset ();
+}
+
+static int
+logtb_allocate_tran_index_local (THREAD_ENTRY *thread_p, TRANID trid, TRAN_STATE state, int wait_msecs,
+				 TRAN_ISOLATION isolation)
+{
+  int i;
+  int visited_loop_start_pos;
+  LOG_TDES *tdes;		/* Transaction descriptor */
+  int tran_index;		/* The assigned index */
+  int save_tran_index;		/* Save as a good index to assign */
+  /*
+   * Note that we could have found the entry already and it may be stored in
+   * tran_index.
+   */
+  for (i = log_Gl.trantable.hint_free_index, visited_loop_start_pos = 0;
+       tran_index == NULL_TRAN_INDEX && visited_loop_start_pos < 2; i = (i + 1) % NUM_TOTAL_TRAN_INDICES)
+    {
+      if (log_Gl.trantable.all_tdes[i]->trid == NULL_TRANID)
+	{
+	  tran_index = i;
+	}
+      if (i == log_Gl.trantable.hint_free_index)
+	{
+	  visited_loop_start_pos++;
+	}
+    }
+
+  if (tran_index != NULL_TRAN_INDEX)
+    {
+      log_Gl.trantable.hint_free_index = (tran_index + 1) % NUM_TOTAL_TRAN_INDICES;
+
+      log_Gl.trantable.num_assigned_indices++;
+      tdes = LOG_FIND_TDES (tran_index);
+      tdes->tran_index = tran_index;
+      logtb_clear_tdes (thread_p, tdes);
+      logtb_set_tdes (thread_p, tdes, NULL, wait_msecs, isolation);
+
+      if (trid == NULL_TRANID)
+	{
+	  /* Assign a new transaction identifier for the new index */
+	  logtb_get_new_tran_id (thread_p, tdes);
+	  state = TRAN_ACTIVE;
+	}
+      else
+	{
+	  tdes->trid = trid;
+	  tdes->state = state;
+	}
+
+      LOG_SET_CURRENT_TRAN_INDEX (thread_p, tran_index);
+
+      tdes->tran_abort_reason = TRAN_NORMAL;
+    }
+
+  return tran_index;
 }
 
 LOG_TDES *
 logtb_rv_find_allocate_tran_index (THREAD_ENTRY *thread_p, TRANID trid, const LOG_LSA *log_lsa)
 {
-  assert (false);
+  LOG_TDES *tdes;		/* Transaction descriptor */
+  int tran_index;
+
+  assert (trid != NULL_TRANID);
+
+  if (logtb_is_system_worker_tranid (trid))
+    {
+      // *INDENT-OFF*
+      return log_system_tdes::rv_get_or_alloc_tdes (trid);
+      // *INDENT-ON*
+    }
+
+  /*
+   * If this is the first time, the transaction is seen. Assign a new
+   * index to describe it and assume that the transaction was active
+   * at the time of the crash, and thus it will be unilaterally aborted
+   */
+  tran_index = logtb_find_tran_index (thread_p, trid);
+  if (tran_index == NULL_TRAN_INDEX)
+    {
+      /* Define the index */
+      tran_index =
+	      logtb_allocate_tran_index_local (thread_p, trid, TRAN_UNACTIVE_UNILATERALLY_ABORTED, TRAN_LOCK_INFINITE_WAIT,
+		  TRAN_SERIALIZABLE);
+      tdes = LOG_FIND_TDES (tran_index);
+      if (tran_index == NULL_TRAN_INDEX || tdes == NULL)
+	{
+	  /*
+	   * Unable to assign a transaction index. The recovery process
+	   * cannot continue
+	   */
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_find_or_alloc");
+	  return NULL;
+	}
+      else
+	{
+	  LSA_COPY (&tdes->head_lsa, log_lsa);
+	}
+    }
+  else
+    {
+      tdes = LOG_FIND_TDES (tran_index);
+    }
+
+  return tdes;
 }
 
 void
 logpb_fatal_error (THREAD_ENTRY *thread_p, bool log_exit, const char *file_name, const int lineno, const char *fmt,
 		   ...)
-{
-  assert (false);
-}
-
-void
-logtb_clear_tdes (THREAD_ENTRY *thread_p, LOG_TDES *tdes)
 {
   assert (false);
 }

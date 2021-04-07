@@ -257,7 +257,7 @@ namespace cublog
 
     scope_exit <std::function<void (void)>> unlock_on_exit ([thread_p] ()
     {
-      log_Gl.prior_info.prior_lsa_mutex.lock ();
+      log_Gl.prior_info.prior_lsa_mutex.unlock ();
       TR_TABLE_CS_EXIT (thread_p);
     });
 
