@@ -549,23 +549,33 @@ log_rv_fix_page_and_check_redo_is_needed (THREAD_ENTRY * thread_p, const VPID & 
   return true;
 }
 
-/* log_rv_need_sync_redo - force some of the redo records to be applied synchronously
- *          depending on the function to be applied
+/* log_rv_need_sync_redo - some of the redo log records need to be applied synchronously:
+ *        - if the log record does modify a certain page (ie: the vpid is null)
+ *        or
+ *        - if the log record, even if it has a valid vpid, is ... TODO
+ *
+ *  a_rcv_vpid: log record vpid, can be a null vpid
+ *  a_rcvindex: recovery index of log record to redo
  */
 bool
-log_rv_need_sync_redo (LOG_RCVINDEX rcvindex)
+log_rv_need_sync_redo (const vpid & a_rcv_vpid, LOG_RCVINDEX a_rcvindex)
 {
-  switch (rcvindex)
-    {
-    case RVDK_NEWVOL:
-    case RVDK_FORMAT:
-    case RVDK_INITMAP:
-    case RVDK_RESERVE_SECTORS:
-    case RVDK_UNRESERVE_SECTORS:
-      return true;
-    default:
-      return false;
-    }
+// *INDENT-OFF*
+  return VPID_ISNULL (&a_rcv_vpid)
+      || [a_rcvindex] () {
+        switch (a_rcvindex)
+          {
+          case RVDK_NEWVOL:
+          case RVDK_FORMAT:
+          case RVDK_INITMAP:
+          case RVDK_RESERVE_SECTORS:
+          case RVDK_UNRESERVE_SECTORS:
+            return true;
+          default:
+            return false;
+          }
+      } ();
+// *INDENT-ON*
 }
 
 // *INDENT-OFF*
@@ -600,12 +610,12 @@ void log_rv_redo_record_sync_or_dispatch_async (THREAD_ENTRY *thread_p, log_read
 
 #if defined(SERVER_MODE)
   const LOG_DATA &log_data = log_rv_get_log_rec_data<T> (log_rec);
-  const bool need_sync_redo = log_rv_need_sync_redo (log_data.rcvindex);
+  const bool need_sync_redo = log_rv_need_sync_redo (rcv_vpid, log_data.rcvindex);
   assert (log_data.rcvindex != RVDK_UNRESERVE_SECTORS || need_sync_redo);
 
   // once vpid is extracted (or not), and depending on parameters, either dispatch the applying of
   // log redo asynchronously, or invoke synchronously
-  if (parallel_recovery_redo == nullptr || VPID_ISNULL (&rcv_vpid) || need_sync_redo)
+  if (parallel_recovery_redo == nullptr || need_sync_redo)
     {
       // To apply RVDK_UNRESERVE_SECTORS, one must first wait for all changes in this sector to be redone.
       // Otherwise, asynchronous jobs skip redoing changes in this sector's pages because they are seen as

@@ -59,16 +59,16 @@ namespace cublog
 
     if (replication_parallel > 0)
       {
-        auto func_retire = std::bind (&replicator::wait_parallel_replication_idle, std::ref (*this));
-        m_daemon_task.reset (
-          new cubthread::entry_callable_task (std::move (func_exec), std::move (func_retire)));
+	auto func_retire = std::bind (&replicator::wait_parallel_replication_idle, std::ref (*this));
+	m_daemon_task.reset (
+		new cubthread::entry_callable_task (std::move (func_exec), std::move (func_retire)));
       }
     else
       {
-        // do not move task ownershit to itself - aka, do not let the task delete itself;
-        // it can be done, but prefer to do this locally for uniformity with the 'if' case
-        m_daemon_task.reset (
-          new cubthread::entry_callable_task (std::move (func_exec), false));
+	// do not move task ownershit to itself - aka, do not let the task delete itself;
+	// it can be done, but prefer to do this locally for uniformity with the 'if' case
+	m_daemon_task.reset (
+		new cubthread::entry_callable_task (std::move (func_exec), false));
       }
 
     m_daemon = cubthread::get_manager ()->create_daemon (loop, m_daemon_task.get (), "cublog::replicator");
@@ -177,8 +177,8 @@ namespace cublog
 	  m_redo_lsa = header.forw_lsa;
 	}
 
-        // TODO: why is this notification inside this loop? where this function is
-        // called, can we be sure that 'm_redo_lsa == nxio_lsa' ?
+	// TODO: why is this notification inside this loop? where this function is
+	// called, can we be sure that 'm_redo_lsa == nxio_lsa' ?
 
 	// notify who waits for end of replication
 	if (m_redo_lsa == end_redo_lsa)
@@ -208,10 +208,10 @@ namespace cublog
     // at this point, vpid can either be valid or not
     const LOG_DATA &rec_log_data = log_rv_get_log_rec_data<T> (log_rec);
 
-    const bool need_sync_redo = log_rv_need_sync_redo (rec_log_data.rcvindex);
+    const bool need_sync_redo = log_rv_need_sync_redo (rec_vpid, rec_log_data.rcvindex);
     assert (rec_log_data.rcvindex != RVDK_UNRESERVE_SECTORS || need_sync_redo);
 
-    if (m_parallel_replication_redo == nullptr || VPID_ISNULL (&rec_vpid) || need_sync_redo)
+    if (m_parallel_replication_redo == nullptr || need_sync_redo)
       {
 	// invoke sync
 
@@ -258,7 +258,7 @@ namespace cublog
     // fed data to be effectively consumed/applied
     if (m_parallel_replication_redo != nullptr)
       {
-        m_parallel_replication_redo->wait_for_idle ();
+	m_parallel_replication_redo->wait_for_idle ();
       }
   }
 } // namespace cublog
