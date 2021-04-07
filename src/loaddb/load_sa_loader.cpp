@@ -6462,24 +6462,21 @@ ldr_update_statistics (void)
 
   for (CLASS_TABLE *table = Classes; table != NULL && !err; table = table->next)
     {
-      if (table->total_inserts)
+      if (ldr_Current_context->args->verbose)
 	{
-	  if (ldr_Current_context->args->verbose)
+	  class_name = sm_get_ch_name (table->class_);
+	  if (class_name == NULL)
 	    {
-	      class_name = sm_get_ch_name (table->class_);
-	      if (class_name == NULL)
-		{
-		  err = er_errid ();
-		  assert (err != NO_ERROR);
-		  break;
-		}
-
-	      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_CLASS_TITLE),
-		       class_name);
-	      fflush (stdout);
+	      err = er_errid ();
+	      assert (err != NO_ERROR);
+	      break;
 	    }
-	  err = sm_update_statistics (table->class_, STATS_WITH_SAMPLING);
+
+	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_CLASS_TITLE),
+		   class_name);
+	  fflush (stdout);
 	}
+      err = sm_update_statistics (table->class_, STATS_WITH_SAMPLING);
     }
   return err;
 }

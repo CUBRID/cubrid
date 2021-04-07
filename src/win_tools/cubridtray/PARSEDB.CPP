@@ -74,7 +74,7 @@ DBNAMEPtr_t CParseDB::pGetDBList()
 
 	if( !sResult || strlen( sResult ) <= 0 )
 	{
-		delete sFullName;
+		delete[] sFullName;
 		delete sPath;
 		delete cReg;
 		return NULL;
@@ -92,7 +92,7 @@ DBNAMEPtr_t CParseDB::pGetDBList()
 	if( !sTmp )
 	{
 		delete sResult;
-		delete sFullName;
+		delete[] sFullName;
 		delete sPath;
 		delete cReg;
 		return NULL;
@@ -103,7 +103,7 @@ DBNAMEPtr_t CParseDB::pGetDBList()
 	{
 		delete sTmp;
 		delete sResult;
-		delete sFullName;
+		delete[] sFullName;
 		delete sPath;
 		delete cReg;
 		return NULL;
@@ -115,7 +115,7 @@ DBNAMEPtr_t CParseDB::pGetDBList()
 		delete sStrRes;
 		delete sTmp;
 		delete sResult;
-		delete sFullName;
+		delete[] sFullName;
 		delete sPath;
 		delete cReg;
 		return NULL;

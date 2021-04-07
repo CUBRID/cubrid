@@ -249,6 +249,8 @@ const char *broker_keywords[] = {
   "SHARD_PROXY_SHM_ID",
   "SHARD_PROXY_TIMEOUT",
   "SHARD_NUM_PROXY",
+  "SHARD_PROXY_LOG",
+  "SHARD_PROXY_LOG_DIR",
   /* For backword compatibility */
   "SQL_LOG2",
   "SHARD"

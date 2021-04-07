@@ -17,7 +17,10 @@
 name: github-checks
 on: 
   pull_request:
-    branches: [ develop ]
+    branches:
+      - develop
+      - 'release/11.**'
+      - 'feature/**'
 jobs:
   license:
     name: license
@@ -34,6 +37,16 @@ jobs:
           result="PASS"
 
           for f in ${{ steps.files.outputs.added_modified }}; do
+            if [ -d "$f" ]; then
+              continue
+            fi
+
+            ext=$(expr $f : ".*\(\..*\)")
+            case $ext in
+            .c|.h|.cpp|.hpp|.C|.H|.CPP|.HPP|.ipp|.sh|.bat|.y|.l|.msg) true;; # only these formats are checked.
+            *) continue ;; # skip others
+            esac
+
             result_for_f="FAIL"
             for header in `find $license_headers -type f`; do
               line_cnt=`wc -l < $header`
@@ -43,6 +56,7 @@ jobs:
                 break
               fi
             done
+
             echo "$f: $result_for_f"
             if [ "$result_for_f" = "FAIL" ]; then
               result="FAIL"
@@ -108,8 +122,21 @@ jobs:
           result_file="cppcheck.result"
           summary_file="cppcheck.summary"
 
+          touch $result_file
+          touch $summary_file
+
           # to suppress other error, add it to .github/workflows/cppcheck-spr-list
           for f in ${{ steps.files.outputs.added_modified }}; do
+            if [ -d "$f" ]; then
+              continue
+            fi
+
+            ext=$(expr $f : ".*\(\..*\)")
+            case $ext in
+            .c|.h|.cpp|.hpp|.C|.H|.CPP|.HPP) true;; # only these formats are checked.
+            *) continue ;; # skip others
+            esac
+
             cppcheck --force -j4 --suppressions-list=.github/workflows/cppcheck-spr-list --quiet --enable=warning -iheaplayers $f 2>>$result_file
           done
 

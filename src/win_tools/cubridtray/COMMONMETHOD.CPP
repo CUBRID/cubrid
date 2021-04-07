@@ -99,7 +99,7 @@ bool CCommonMethod::bStatusProcess( DREGNAME_t dProdNum )
 
 	if( !sResult )
 	{
-		delete sFullName;
+		delete[] sFullName;
 		delete sPath;
 		delete cReg;
 		return false;
@@ -112,14 +112,14 @@ bool CCommonMethod::bStatusProcess( DREGNAME_t dProdNum )
 	if( !sTmp )
 	{
 		delete sResult;
-		delete sFullName;
+		delete[] sFullName;
 		delete sPath;
 		delete cReg;
 		return false;
 	}
 
 	delete sResult;
-	delete sFullName;
+	delete[] sFullName;
 	delete sPath;
 	delete cReg;
 	return true;
