@@ -5059,7 +5059,7 @@ xml_start_mapZone (void *data, const char **attr)
 	  TZC_LOG_ERROR_1ARG (NULL, TZC_ERR_INVALID_VALUE, "TZ_WINDOWS_IANA_MAP");
 	  if (temp != nullptr)
 	  {
-	    free(temp);
+	    free (temp);
 	  }
 	  return -1;
 	}

@@ -695,43 +695,43 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks, PT_NODE * spe
       size_t new_size = lcks->allocated_count + 1;
 
       /* expand classes */
-      char **const ptr_classes = (char **) realloc (lcks->classes, new_size * sizeof (char *));
-      if (ptr_classes == NULL)
+      char **const realloc_ptr_classes = (char **) realloc (lcks->classes, new_size * sizeof (char *));
+      if (realloc_ptr_classes == NULL)
 	{
 	  PT_ERRORmf (parser, spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY,
 		      new_size * sizeof (char *));
 	  return ER_FAILED;
 	}
-      lcks->classes = ptr_classes;
+      lcks->classes = realloc_ptr_classes;
 
       /* expand only_all */
-      int *const ptr_only_all = (int *) realloc (lcks->only_all, new_size * sizeof (int));
-      if (ptr_only_all == NULL)
+      int *const realloc_ptr_only_all = (int *) realloc (lcks->only_all, new_size * sizeof (int));
+      if (realloc_ptr_only_all == NULL)
 	{
 	  PT_ERRORmf (parser, spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY, new_size * sizeof (int));
 	  return ER_FAILED;
 	}
-      lcks->only_all = ptr_only_all;
+      lcks->only_all = realloc_ptr_only_all;
 
       /* expand locks */
-      LOCK *const ptr_locks = (LOCK *) realloc (lcks->locks, new_size * sizeof (LOCK));
-      if (ptr_locks == NULL)
+      LOCK *const realloc_ptr_locks = (LOCK *) realloc (lcks->locks, new_size * sizeof (LOCK));
+      if (realloc_ptr_locks == NULL)
 	{
 	  PT_ERRORmf (parser, spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY, new_size * sizeof (LOCK));
 	  return ER_FAILED;
 	}
-      lcks->locks = ptr_locks;
+      lcks->locks = realloc_ptr_locks;
 
       /* flags */
-      LC_PREFETCH_FLAGS *const ptr_flags
+      LC_PREFETCH_FLAGS *const realloc_ptr_flags
 	= (LC_PREFETCH_FLAGS *) realloc (lcks->flags, new_size * sizeof (LC_PREFETCH_FLAGS));
-      if (ptr_flags == NULL)
+      if (realloc_ptr_flags == NULL)
 	{
 	  PT_ERRORmf (parser, spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY,
 		      new_size * sizeof (LC_PREFETCH_FLAGS));
 	  return ER_FAILED;
 	}
-      lcks->flags = ptr_flags;
+      lcks->flags = realloc_ptr_flags;
 
       lcks->allocated_count++;
     }

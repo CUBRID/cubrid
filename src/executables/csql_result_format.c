@@ -534,7 +534,7 @@ double_to_string (double double_value, int field_width, int precision, const boo
     {
       char *return_string;
       int actual_fieldwidth = strlen (numeric_conversion_string);
-      const int leading_size = (leading_str != nullptr) ? strlen (leading_str) : 0;
+      int leading_size = (leading_str != NULL) ? strlen (leading_str) : 0;
       int trailing_size = (trailing_str != NULL) ? strlen (trailing_str) : 0;
 
       if ((size_t) (leading_size + actual_fieldwidth + 1) > sizeof (numeric_conversion_string))

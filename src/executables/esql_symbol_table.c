@@ -517,11 +517,11 @@ pp_clone_symbol (SYMBOL * sym)
 LINK *
 pp_clone_type (LINK * tchain, LINK ** endp)
 {
-  LINK *last = NULL, *head = NULL;
+  LINK *last = nullptr, *head = nullptr;
 
   for (; tchain; tchain = tchain->next)
     {
-      if (head == NULL && last == NULL)	/* 1st node in the chain */
+      if (head == nullptr && last == nullptr)	/* 1st node in the chain */
 	{
 	  head = last = pp_new_link ();
 	}
