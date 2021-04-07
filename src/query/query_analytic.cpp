@@ -57,7 +57,7 @@ qdata_initialize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_
   const FUNC_TYPE fcode = func_p->function;
   if (fcode == PT_COUNT_STAR || fcode == PT_COUNT)
     {
-      db_make_bigint (func_p->value, 0);
+      db_make_bigint (func_p->value, 0 + (int64_t) prm_get_bigint_value (PRM_ID_COUNT_DEBUG));
     }
   else if (fcode == PT_ROW_NUMBER || fcode == PT_RANK || fcode == PT_DENSE_RANK)
     {

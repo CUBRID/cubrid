@@ -692,6 +692,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_DDL_AUDIT_LOG "ddl_audit_log"
 #define PRM_NAME_DDL_AUDIT_LOG_SIZE "ddl_audit_log_size"
 
+#define PRM_NAME_COUNT_DEBUG "count_debug"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
@@ -2343,6 +2345,12 @@ static UINT64 prm_ddl_audit_log_size_default = 10485760ULL;	/* 10M */
 static UINT64 prm_ddl_audit_log_size_lower = 10485760ULL;	/* 10M */
 static UINT64 prm_ddl_audit_log_size_upper = 2147483648ULL;	/* 2G */
 static unsigned int prm_ddl_audit_log_size_flag = 0;
+
+UINT64 PRM_COUNT_DEBUG = false;
+static UINT64 prm_count_debug_default = 0;	/* 10M */
+static UINT64 prm_count_debug_lower = 0;	/* 10M */
+static UINT64 prm_count_debug_upper = UINT64_MAX;	/* 2G */
+static unsigned int prm_count_debug_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -6034,6 +6042,18 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_DDL_AUDIT_LOG_SIZE,
    (void *) &prm_ddl_audit_log_size_upper,
    (void *) &prm_ddl_audit_log_size_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL}
+  {PRM_ID_COUNT_DEBUG,
+   PRM_NAME_COUNT_DEBUG,
+   (PRM_USER_CHANGE | PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_SESSION),
+   PRM_BIGINT,
+   &prm_count_debug_flag,
+   (void *) &prm_count_debug_default,
+   (void *) &PRM_COUNT_DEBUG,
+   (void *) &prm_count_debug_upper,
+   (void *) &prm_count_debug_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}
