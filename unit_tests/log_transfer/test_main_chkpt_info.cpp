@@ -820,3 +820,85 @@ clientids::clientids ()
 clientids::~clientids ()
 {
 }
+
+namespace cubmem
+{
+
+  void
+  standard_alloc (block &b, size_t size)
+  {
+    if (b.ptr == NULL || b.dim == 0)
+      {
+	b.ptr = new char[size];
+	b.dim = size;
+      }
+    else if (size <= b.dim)
+      {
+	// do not reduce
+      }
+    else
+      {
+	char *new_ptr = new char[size];
+	std::memcpy (new_ptr, b.ptr, b.dim);
+
+	delete[] b.ptr;
+
+	b.ptr = new_ptr;
+	b.dim = size;
+      }
+  }
+
+  void
+  standard_dealloc (block &b)
+  {
+    delete [] b.ptr;
+    b.ptr = NULL;
+    b.dim = 0;
+  }
+
+
+  const struct block_allocator STANDARD_BLOCK_ALLOCATOR
+  {
+    standard_alloc, standard_dealloc
+  };
+  block_allocator::block_allocator (const alloc_func &alloc_f, const dealloc_func &dealloc_f)
+    : m_alloc_f (alloc_f)
+    , m_dealloc_f (dealloc_f)
+  {
+  }
+}
+
+mvcc_info::mvcc_info ()
+  : snapshot ()
+  , id (MVCCID_NULL)
+  , recent_snapshot_lowest_active_mvccid (MVCCID_NULL)
+  , sub_ids ()
+{
+}
+
+mvcc_snapshot::mvcc_snapshot ()
+  : lowest_active_mvccid (MVCCID_NULL)
+  , highest_completed_mvccid (MVCCID_NULL)
+  , m_active_mvccs ()
+  , snapshot_fnc (NULL)
+  , valid (false)
+{
+}
+
+size_t
+clientids::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+{
+  assert (false);
+}
+
+void
+clientids::pack (cubpacking::packer &serializator) const
+{
+  assert (false);
+}
+
+void
+clientids::unpack (cubpacking::unpacker &deserializator)
+{
+  assert (false);
+}
