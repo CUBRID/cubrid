@@ -57,19 +57,11 @@ namespace cublog
     cubthread::looper loop (std::chrono::milliseconds (1));   // don't spin when there is no new log, wait a bit
     auto func_exec = std::bind (&replicator::redo_upto_nxio_lsa, std::ref (*this), std::placeholders::_1);
 
-    if (replication_parallel > 0)
-      {
-	auto func_retire = std::bind (&replicator::wait_parallel_replication_idle, std::ref (*this));
-	m_daemon_task.reset (
-		new cubthread::entry_callable_task (std::move (func_exec), std::move (func_retire)));
-      }
-    else
-      {
-	// do not move task ownershit to itself - aka, do not let the task delete itself;
-	// it can be done, but prefer to do this locally for uniformity with the 'if' case
-	m_daemon_task.reset (
-		new cubthread::entry_callable_task (std::move (func_exec), false));
-      }
+    auto func_retire = std::bind (&replicator::conclude_task_execution, std::ref (*this));
+    // initialized with explicit 'exec' and 'retire' functors, the ownership of the daemon task
+    // done not reside with the task itself (aka, the task does not get to delete itself anymore);
+    // therefore store it in in pointer such that we can be sure it is disposed of sometime towards the end
+    m_daemon_task.reset (new cubthread::entry_callable_task (std::move (func_exec), std::move (func_retire)));
 
     m_daemon = cubthread::get_manager ()->create_daemon (loop, m_daemon_task.get (), "cublog::replicator");
   }
@@ -110,12 +102,19 @@ namespace cublog
   }
 
   void
-  replicator::wait_parallel_replication_idle ()
+  replicator::conclude_task_execution ()
   {
     if (m_parallel_replication_redo != nullptr)
       {
-	// this is the earliest it is ensured that no records are to be added anymore
+	// without being aware of external context/factors, this is the earliest it is ensured that
+	// no records are to be added anymore
 	m_parallel_replication_redo->wait_for_idle ();
+      }
+    else
+      {
+	// nothing needs to be done in the synchronous execution scenarion
+	// the default/internal implementation of the retire functor used to delete the task
+	// itself; this is now handled by the instantiating entity
       }
   }
 
