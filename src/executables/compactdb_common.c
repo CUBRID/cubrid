@@ -196,9 +196,9 @@ get_class_mops_from_file (const char *input_filename, MOP ** class_list, int *nu
   if (class_names == NULL)
     {
       if (input_file != nullptr)
-        {
-          fclose (input_file);
-        }
+	{
+	  fclose (input_file);
+	}
       return ER_FAILED;
     }
   for (i = 0; i < num_class; i++)

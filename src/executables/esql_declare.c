@@ -425,7 +425,7 @@ pp_push_name_scope (void)
     {
       int nframes = (int) (pp_name_scope_limit - pp_name_scope_base);
       SCOPE *const realloc_pp_name_scope_base
-          = (SCOPE *) realloc (pp_name_scope_base, sizeof (SCOPE) * (nframes + NFRAMES));
+	= (SCOPE *) realloc (pp_name_scope_base, sizeof (SCOPE) * (nframes + NFRAMES));
       if (realloc_pp_name_scope_base == NULL)
 	{
 	  esql_yyverror (pp_get_msg (EX_MISC_SET, MSG_OUT_OF_MEMORY));
@@ -433,9 +433,9 @@ pp_push_name_scope (void)
 	  return;
 	}
       else
-        {
-          pp_name_scope_base = realloc_pp_name_scope_base;
-        }
+	{
+	  pp_name_scope_base = realloc_pp_name_scope_base;
+	}
 
       pp_name_scope_limit = pp_name_scope_base + nframes + NFRAMES;
       if (pp_current_name_scope)
@@ -584,7 +584,7 @@ pp_push_spec_scope (void)
     {
       int nframes = (int) (pp_spec_scope_limit - pp_spec_scope_base);
       SPEC_STATE *const realloc_pp_spec_scope_base
-          = (SPEC_STATE *) realloc (pp_spec_scope_base, sizeof (SPEC_STATE) * (nframes + NFRAMES));
+	= (SPEC_STATE *) realloc (pp_spec_scope_base, sizeof (SPEC_STATE) * (nframes + NFRAMES));
       if (realloc_pp_spec_scope_base == NULL)
 	{
 	  esql_yyverror (pp_get_msg (EX_MISC_SET, MSG_OUT_OF_MEMORY));
@@ -592,9 +592,9 @@ pp_push_spec_scope (void)
 	  return;
 	}
       else
-        {
-          pp_spec_scope_base = realloc_pp_spec_scope_base;
-        }
+	{
+	  pp_spec_scope_base = realloc_pp_spec_scope_base;
+	}
 
       pp_spec_scope_limit = pp_spec_scope_base + nframes + NFRAMES;
       if (pp_current_spec_scope)

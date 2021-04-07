@@ -6995,9 +6995,9 @@ db_value_to_string (const DB_VALUE * value, const char *format)
 	  return NULL;
 	}
       else
-        {
-          buffer = realloc_buffer;
-        }
+	{
+	  buffer = realloc_buffer;
+	}
     }
 
   return error ? NULL : (const char *) buffer;
