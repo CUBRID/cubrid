@@ -1569,7 +1569,7 @@ ER_CUBRID_PRIMARY_KEY:
 SV *
 _cubrid_foreign_key( SV *dbh, char *pk_table, char *fk_table)
 {
-    int res, req_handle, col_count;
+    int res = CCI_ER_NO_ERROR, req_handle, col_count;
     T_CCI_COL_INFO *col_info;
     T_CCI_CUBRID_STMT sql_type;
     T_CCI_ERROR error;

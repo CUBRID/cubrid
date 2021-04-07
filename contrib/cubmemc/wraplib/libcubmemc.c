@@ -507,6 +507,10 @@ get_cache_entry (const char *name, int flag, const char *server_list,
 	    {
 	      free (b);
 	    }
+	  if (entry != NULL)
+	    {
+	      free (entry);
+	    }
 	  return CUBMEMC_ERROR_OUT_OF_MEMORY;
 	}
 
