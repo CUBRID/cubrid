@@ -27,7 +27,7 @@
 ut_database_values_generator::ut_database_values_generator (const ut_database_config &a_database_config)
   : m_database_config (a_database_config)
   , m_gen (m_rd ())
-  //, m_log_lsa ()
+  //, m_log_lsa () // the log_lsa ctor actually does not set any value
   , m_rand_log_lsa_dist (0.9)
   , m_duration_in_millis_dist (0., a_database_config.max_duration_in_millis)
   // *INDENT-OFF*
@@ -37,7 +37,8 @@ ut_database_values_generator::ut_database_values_generator (const ut_database_co
                                ut_database_config::UPDATE_PAGE_DISCRETE_RATIO})
   // *INDENT-ON*
 {
-  // the log_lsa ctor actually does not set any value; must be explicitely set
+  // the log_lsa ctor actually does not set any value - and better not touch it
+  // values must be explicitely set
   m_log_lsa.pageid = 10101; // arbitrary
   m_log_lsa.offset = 0;
 }
