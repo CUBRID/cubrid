@@ -46,7 +46,7 @@ namespace cublog
     //  - (even making abstraction of the race conditions) no log records are needlessly
     //    processed synchronously
     const int replication_parallel
-      = prm_get_integer_value (PRM_ID_PAGE_SERVER_REPLICATION_PARALLEL_COUNT);
+      = prm_get_integer_value (PRM_ID_REPLICATION_PARALLEL_COUNT);
     assert (replication_parallel >= 0);
     if (replication_parallel > 0)
       {

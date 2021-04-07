@@ -698,7 +698,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_PAGE_SERVER_HOSTS "page_server_hosts"
 #define PRM_NAME_SERVER_TYPE "server_type"
-#define PRM_NAME_PAGE_SERVER_REPLICATION_PARALLEL_COUNT "page_server_replication_parallel_count"
+#define PRM_NAME_REPLICATION_PARALLEL_COUNT "replication_parallel_count"
 
 #define PRM_NAME_ER_LOG_PRIOR_TRANSFER "er_log_prior_transfer"
 #define PRM_NAME_ER_LOG_COMM_REQUEST "er_log_comm_request"
@@ -2383,11 +2383,11 @@ static int prm_server_type_lower = SERVER_TYPE_TRANSACTION;
 static int prm_server_type_upper = SERVER_TYPE_PAGE;
 static unsigned int prm_server_type_flag = 0;
 
-static unsigned int prm_page_server_replication_parallel_count_flag = 0;
-static int prm_page_server_replication_parallel_count_default = 8;
-int PRM_PAGE_SERVER_REPLICATION_PARALLEL_COUNT_CURRENT_VALUE = 8;
-static int prm_page_server_replication_parallel_count_upper_value = 32;
-static int prm_page_server_replication_parallel_count_lower_value = 0;
+static unsigned int prm_replication_parallel_count_flag = 0;
+static int prm_replication_parallel_count_default = 8;
+int PRM_REPLICATION_PARALLEL_COUNT_CURRENT_VALUE = 8;
+static int prm_replication_parallel_count_upper_value = 32;
+static int prm_replication_parallel_count_lower_value = 0;
 
 bool PRM_ER_LOG_PRIOR_TRANSFER = false;
 static bool prm_er_log_prior_transfer_default = false;
@@ -6121,18 +6121,6 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_PAGE_SERVER_REPLICATION_PARALLEL_COUNT,
-   PRM_NAME_PAGE_SERVER_REPLICATION_PARALLEL_COUNT,
-   (PRM_FOR_SERVER),
-   PRM_INTEGER,
-   &prm_page_server_replication_parallel_count_flag,
-   (void *) &prm_page_server_replication_parallel_count_default,
-   (void *) &PRM_PAGE_SERVER_REPLICATION_PARALLEL_COUNT_CURRENT_VALUE,
-   (void *) &prm_page_server_replication_parallel_count_upper_value,
-   (void *) &prm_page_server_replication_parallel_count_lower_value,
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
   {PRM_ID_ER_LOG_PRIOR_TRANSFER,
    PRM_NAME_ER_LOG_PRIOR_TRANSFER,
    (PRM_FOR_SERVER | PRM_HIDDEN),
@@ -6216,7 +6204,19 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_recovery_parallel_count_lower_value,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL}
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_REPLICATION_PARALLEL_COUNT,
+   PRM_NAME_REPLICATION_PARALLEL_COUNT,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   &prm_replication_parallel_count_flag,
+   (void *) &prm_replication_parallel_count_default,
+   (void *) &PRM_REPLICATION_PARALLEL_COUNT_CURRENT_VALUE,
+   (void *) &prm_replication_parallel_count_upper_value,
+   (void *) &prm_replication_parallel_count_lower_value,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
 };
 
 #define NUM_PRM ((int)(sizeof(prm_Def)/sizeof(prm_Def[0])))
