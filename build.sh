@@ -52,6 +52,7 @@ version=""
 last_checking_msg=""
 output_packages=""
 without_cmserver=""
+without_jdbc=""
 
 function print_check ()
 {
@@ -194,6 +195,12 @@ function build_configure ()
     print_error "Manager server source path is not exist. It will not be built"
   fi
 
+  print_check "Checking JDBC directory"
+  if [ ! -d "$source_dir/cubrid-jdbc" -o ! -d "$source_dir/cubrid-jdbc/src" ]; then
+    without_jdbc="true"
+    print_error "JDBC source path is not exist. It will not be built"
+  fi
+
   print_check "Setting environment variables"
   if [ "x$java_dir" != "x" ]; then
     export JAVA_HOME="$java_dir"
@@ -280,6 +287,12 @@ function build_package ()
     print_error "Manager server source path is not exist. It will not be packaged"
   fi
 
+  print_check "Checking JDBC directory"
+  if [ ! -d "$source_dir/cubrid-jdbc" -o ! -d "$source_dir/cubrid-jdbc/src" ]; then
+    without_jdbc="true"
+    print_error "JDBC source path is not exist. It will not be packaged"
+  fi
+
   if [ ! -d $output_dir ]; then
     mkdir -p $output_dir
   fi
@@ -343,12 +356,6 @@ function build_package ()
 	else
 	  false
 	fi
-      ;;
-      jdbc)
-	package_name="JDBC-$build_number-$product_name_lower"
-	jar_files=$(cd $build_dir/jdbc && ls $package_name*.jar)
-	cp $build_dir/jdbc/$package_name*.jar $output_dir
-	[ $? -eq 0 ] && output_packages="$output_packages $jar_files"
       ;;
     esac
     [ $? -eq 0 ] && print_result "OK [$package_name]" || print_fatal "Packaging for $package failed"
@@ -482,7 +489,7 @@ function get_options ()
   if [ "$packages" = "all" -o "$packages" = "ALL" ]; then
     case $build_mode in
       release)
-	packages="src zip_src tarball shell cci jdbc rpm"
+	packages="src zip_src tarball shell cci rpm"
 	;;
       *)
 	packages="tarball shell cci"

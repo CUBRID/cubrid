@@ -16,7 +16,6 @@ REM   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 REM   See the License for the specific language governing permissions and
 REM   limitations under the License.
 REM 
-REM  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
 SETLOCAL
 
@@ -230,18 +229,6 @@ rmdir /s /q "%DIST_DIR%"\_CPack_Packages
 echo Package created. [%DIST_DIR%\%CUBRID_CCI_PACKAGE_NAME%.zip]
 set DIST_PKGS=%DIST_PKGS% %CUBRID_CCI_PACKAGE_NAME%.zip
 GOTO :EOF
-
-:BUILD_JDBC_PACKAGE
-echo Buiding JDBC package in %BUILD_DIR%...
-if NOT EXIST %BUILD_PREFIX%\jdbc\cubrid_jdbc.jar echo Cannot found built jar. & GOTO :EOF
-
-echo drop JDBC-%BUILD_NUMBER%-cubrid.jar into %DIST_DIR%
-copy %BUILD_PREFIX%\jdbc\cubrid_jdbc.jar %DIST_DIR%\JDBC-%BUILD_NUMBER%-cubrid.jar
-if ERRORLEVEL 1 echo FAILD. & GOTO :EOF
-echo Package created. [%DIST_DIR%\JDBC-%BUILD_NUMBER%-cubrid.jar]
-set DIST_PKGS=%DIST_PKGS% JDBC-%BUILD_NUMBER%-cubrid.jar
-GOTO :EOF
-
 
 :ABSPATH
 set %2=%~f1
