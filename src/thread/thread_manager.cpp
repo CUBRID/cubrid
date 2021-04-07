@@ -126,8 +126,8 @@ namespace cubthread
 #if defined (SERVER_MODE)
     for (; !tracker.empty ();)
       {
-        const auto iter = tracker.begin ();
-        (*iter)->stop_execution ();
+	const auto iter = tracker.begin ();
+	(*iter)->stop_execution ();
 	delete *iter;
 	tracker.erase (iter);
       }
