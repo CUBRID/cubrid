@@ -6044,7 +6044,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_ddl_audit_log_size_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL}
+   (DUP_PRM_FUNC) NULL},
   {PRM_ID_COUNT_DEBUG,
    PRM_NAME_COUNT_DEBUG,
    (PRM_USER_CHANGE | PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_SESSION),

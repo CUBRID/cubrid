@@ -57,7 +57,7 @@ qdata_initialize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_
   const FUNC_TYPE fcode = func_p->function;
   if (fcode == PT_COUNT_STAR || fcode == PT_COUNT)
     {
-      db_make_bigint (func_p->value, 0 + (int64_t) prm_get_bigint_value (PRM_ID_COUNT_DEBUG));
+      db_make_bigint (func_p->value, 0);
     }
   else if (fcode == PT_ROW_NUMBER || fcode == PT_RANK || fcode == PT_DENSE_RANK)
     {
@@ -786,7 +786,7 @@ qdata_finalize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
   /* set count-star aggregate values */
   if (func_p->function == PT_COUNT_STAR)
     {
-      db_make_bigint (func_p->value, func_p->curr_cnt);
+      db_make_bigint (func_p->value, func_p->curr_cnt + (int64_t) prm_get_bigint_value (PRM_ID_COUNT_DEBUG));
     }
 
   /* process list file for distinct */
@@ -812,7 +812,7 @@ qdata_finalize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 
       if (func_p->function == PT_COUNT)
 	{
-	  db_make_bigint (func_p->value, list_id_p->tuple_cnt);
+	  db_make_bigint (func_p->value, list_id_p->tuple_cnt + (int64_t) prm_get_bigint_value (PRM_ID_COUNT_DEBUG));
 	}
       else
 	{
