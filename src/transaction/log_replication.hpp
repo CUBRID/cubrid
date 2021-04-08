@@ -52,7 +52,10 @@ namespace cublog
       replicator (const log_lsa &start_redo_lsa);
       ~replicator ();
 
-      void wait_replication_finish () const;
+      /* function can only be called when it is ensured that 'nxio_lsa' will
+       * no longer be modified (ie: increase)
+       */
+      void wait_replication_finish_during_shutdown () const;
 
     private:
       void redo_upto_nxio_lsa (cubthread::entry &thread_entry);

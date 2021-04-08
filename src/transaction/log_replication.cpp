@@ -240,7 +240,7 @@ namespace cublog
   }
 
   void
-  replicator::wait_replication_finish () const
+  replicator::wait_replication_finish_during_shutdown () const
   {
     std::unique_lock<std::mutex> ulock (m_redo_lsa_mutex);
     m_redo_lsa_condvar.wait (ulock, [this]
@@ -248,13 +248,13 @@ namespace cublog
       return m_redo_lsa >= log_Gl.append.get_nxio_lsa ();
     });
 
-    // at this moment, if using parallel replication, probably, MOST data has
-    // been dispatched for async replication;
-    // cannot decide if NO OTHER DATA will ever be fed because the daemon is still executing;
-    // will be able to tell that no data will ever be fed again for async replication
-    // only when the daemon is not running anymore;
-    // however, at this point introduce a fuzzy syncronization point by waiting all
-    // fed data to be effectively consumed/applied
+    // at this moment, ALL data has been dispatched for, either, async replication
+    // or has been applied synchronously
+    // introduce a fuzzy syncronization point by waiting all fed data to be effectively
+    // consumed/applied
+    // however, since the daemon is still running, also leave the parallel replication
+    // logic (if instantiated) alive; will be destroyed only after the daemon (to maintain
+    // symmetry with instantiation)
     if (m_parallel_replication_redo != nullptr)
       {
 	m_parallel_replication_redo->wait_for_idle ();
