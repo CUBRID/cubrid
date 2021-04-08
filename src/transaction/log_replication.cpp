@@ -96,6 +96,11 @@ namespace cublog
 	else
 	  {
 	    assert (m_redo_lsa == nxio_lsa);
+	    // notify who waits for end of replication
+	    if (m_redo_lsa == nxio_lsa)
+	      {
+		m_redo_lsa_condvar.notify_all ();
+	      }
 	    break;
 	  }
       }
@@ -175,15 +180,6 @@ namespace cublog
 	  std::unique_lock<std::mutex> lock (m_redo_lsa_mutex);
 	  m_redo_lsa = header.forw_lsa;
 	}
-
-	// TODO: why is this notification inside this loop? where this function is
-	// called, can we be sure that 'm_redo_lsa == nxio_lsa' ?
-
-	// notify who waits for end of replication
-	if (m_redo_lsa == end_redo_lsa)
-	  {
-	    m_redo_lsa_condvar.notify_all ();
-	  }
       }
   }
 
