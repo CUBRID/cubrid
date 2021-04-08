@@ -17,6 +17,7 @@
  */
 
 #include "thread_entry.hpp"
+#include "lockfree_transaction_system.hpp"
 
 namespace cubbase
 {
@@ -30,7 +31,7 @@ namespace cubbase
 namespace cuberr
 {
   bool g_logging = false;
-  er_message::er_message (const bool &) : m_logging { g_logging } {};
+  er_message::er_message (const bool &) : m_logging{g_logging} {};
   er_message::~er_message () {};
   context::context (bool, bool) : m_base_level (g_logging) {};
   context::~context () {};
@@ -46,12 +47,38 @@ namespace cubthread
 {
   // todo: move this to common test utils
   entry::entry ()
-    : m_alloc_tracker { cubbase::g_at }
-    , m_pgbuf_tracker { cubbase::g_pt }
-    , m_csect_tracker { cubsync::g_cst }
+    : m_alloc_tracker{cubbase::g_at}, m_pgbuf_tracker{cubbase::g_pt}, m_csect_tracker{cubsync::g_cst}
   {
   }
   entry::~entry ()
   {
   }
-}
+
+  void entry::request_lock_free_transactions (void) {}
+  void entry::assign_lf_tran_index (lockfree::tran::index idx) {}
+  void entry::return_lock_free_transaction_entries (void) {}
+  void entry::register_id () {}
+  void entry::unregister_id () {}
+  lockfree::tran::index entry::pull_lf_tran_index ()
+  {
+    return lockfree::tran::INVALID_INDEX;
+  }
+  thread_id_t entry::get_id ()
+  {
+    return m_id;
+  }
+  void entry::end_resource_tracks (void) {}
+
+} // namespace cubthread
+
+// needed by:
+// cubthread::initialize
+// cubthread::finalize
+// cubthread::entry_manager::create_context
+// cubthread::entry_manager::retire_context
+namespace cuberr
+{
+  void context::register_thread_local () {}
+  void context::deregister_thread_local () {}
+
+} // namespace cuberr

@@ -23,33 +23,39 @@
 #include "log_reader.hpp"
 
 #include <iostream>
+#include <mutex>
+#include <unordered_map>
+#include <vector>
 
-struct log_page_fetcher_test_data
+struct page_id_requirement
 {
   bool require_log_page_valid;
-  LOG_PAGEID log_pageid;
+  bool is_page_received;
+};
+struct log_page_fetcher_test_data
+{
+  std::unordered_map<LOG_PAGEID, page_id_requirement> page_ids_requested;
+  std::mutex map_mutex;
 } g_log_page_fetcher_test_data;
 
 class test_env
 {
   public:
-    test_env (bool require_log_page_valid, LOG_PAGEID log_pageid = 1);
+    test_env (bool require_log_page_valid, std::vector<LOG_PAGEID> log_pageids);
     ~test_env ();
 
     void run_test ();
 
   private:
-    void on_receive_log_page (const LOG_PAGE *, int error_code);
+    void on_receive_log_page (LOG_PAGEID page_id, const LOG_PAGE *, int error_code);
 
   private:
-    bool m_require_log_page_valid;
-    LOG_PAGEID m_log_pageid;
+    std::vector<LOG_PAGEID> m_log_pageids;
     cublog::async_page_fetcher m_async_page_fetcher;
 };
 
 void do_test (test_env &env)
 {
-  std::cout << "do_test\n";
   env.run_test ();
 }
 
@@ -59,51 +65,75 @@ TEST_CASE ("Test with a valid log page returned", "")
   cubthread::initialize (thread_p);
   cubthread::initialize_thread_entries ();
 
-  test_env env (true);
+  std::vector<LOG_PAGEID> page_ids { 1, 2, 3 };
+  test_env env (true, page_ids);
   do_test (env);
 }
 
 TEST_CASE ("Test with an invalid log page returned", "")
 {
-  test_env env (false);
+  std::vector<LOG_PAGEID> page_ids { 4, 5, 6 };
+  test_env env (false, page_ids);
   do_test (env);
 }
 
-test_env::test_env (bool require_log_page_valid, LOG_PAGEID log_pageid)
-  : m_require_log_page_valid (require_log_page_valid)
-  , m_log_pageid (log_pageid)
+test_env::test_env (bool require_log_page_valid, std::vector<LOG_PAGEID> log_pageids)
+  : m_log_pageids (log_pageids)
 {
-  g_log_page_fetcher_test_data.log_pageid = log_pageid;
-  g_log_page_fetcher_test_data.require_log_page_valid = require_log_page_valid;
+  for (auto log_page_id : log_pageids)
+    {
+      page_id_requirement req;
+      req.is_page_received = false;
+      req.require_log_page_valid = require_log_page_valid;
+
+      std::unique_lock<std::mutex> lock (g_log_page_fetcher_test_data.map_mutex);
+      g_log_page_fetcher_test_data.page_ids_requested.insert (std::make_pair (log_page_id, req));
+    }
 }
 
 test_env::~test_env () {}
 
 void test_env::run_test ()
 {
-  m_async_page_fetcher.fetch_page (m_log_pageid, std::bind (&test_env::on_receive_log_page, std::ref (*this),
-				   std::placeholders::_1, std::placeholders::_2));
+  for (auto log_page_id : m_log_pageids)
+    {
+      m_async_page_fetcher.fetch_page (
+	      log_page_id,
+	      std::bind (
+		      &test_env::on_receive_log_page,
+		      std::ref (*this),
+		      log_page_id,
+		      std::placeholders::_1,
+		      std::placeholders::_2
+	      )
+      );
+    }
 }
 
-void test_env::on_receive_log_page (const LOG_PAGE *log_page, int error_code)
+void test_env::on_receive_log_page (LOG_PAGEID page_id, const LOG_PAGE *log_page, int error_code)
 {
-  if (m_require_log_page_valid)
+  std::unique_lock<std::mutex> lock (g_log_page_fetcher_test_data.map_mutex);
+
+  if (g_log_page_fetcher_test_data.page_ids_requested[page_id].require_log_page_valid)
     {
       REQUIRE (error_code == NO_ERROR);
       REQUIRE (log_page != nullptr);
       REQUIRE (log_page->hdr.logical_pageid != NULL_PAGEID);
-      REQUIRE (log_page->hdr.logical_pageid == m_log_pageid);
+      REQUIRE (log_page->hdr.logical_pageid == page_id);
     }
   else
     {
       REQUIRE (error_code != NO_ERROR);
       REQUIRE (log_page == nullptr);
     }
+  REQUIRE (g_log_page_fetcher_test_data.page_ids_requested[page_id].is_page_received == false);
+  g_log_page_fetcher_test_data.page_ids_requested[page_id].is_page_received = true;
 }
 
 int log_reader::set_lsa_and_fetch_page (const log_lsa &lsa, fetch_mode fetch_page_mode)
 {
-  if (g_log_page_fetcher_test_data.require_log_page_valid)
+  std::unique_lock<std::mutex> lock (g_log_page_fetcher_test_data.map_mutex);
+  if (g_log_page_fetcher_test_data.page_ids_requested[lsa.pageid].require_log_page_valid)
     {
       m_lsa = lsa;
       return NO_ERROR;
@@ -116,7 +146,8 @@ int log_reader::set_lsa_and_fetch_page (const log_lsa &lsa, fetch_mode fetch_pag
 
 const log_page *log_reader::get_page () const
 {
-  if (g_log_page_fetcher_test_data.require_log_page_valid)
+  std::unique_lock<std::mutex> lock (g_log_page_fetcher_test_data.map_mutex);
+  if (g_log_page_fetcher_test_data.page_ids_requested[m_lsa.pageid].require_log_page_valid)
     {
       auto logpage = new log_page ();
       logpage->hdr.logical_pageid = m_lsa.pageid;
@@ -127,3 +158,6 @@ const log_page *log_reader::get_page () const
       return nullptr;
     }
 }
+
+// Mock some of the functionality
+log_reader::log_reader () = default; // needed by log_page_fetch_task::execute
