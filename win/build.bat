@@ -232,7 +232,7 @@ echo Package created. [%DIST_DIR%\%CUBRID_CCI_PACKAGE_NAME%.zip]
 set DIST_PKGS=%DIST_PKGS% %CUBRID_CCI_PACKAGE_NAME%.zip
 GOTO :EOF
 
-rem JDBC_PACKAGE is not perfomred now. To enable it, please refer to the comment above BUILD_LIST
+rem JDBC_PACKAGE is disabled. To enable it, please refer to the comment above BUILD_LIST
 :BUILD_JDBC_PACKAGE
 if NOT EXIST "%SOURCE_DIR%\cubrid-jdbc\src" echo Cannot found cubrid-jdbc submodule. & GOTO :EOF
 
