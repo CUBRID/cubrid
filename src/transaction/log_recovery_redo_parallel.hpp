@@ -19,10 +19,9 @@
 #ifndef _LOG_RECOVERY_REDO_PARALLEL_HPP_
 #define _LOG_RECOVERY_REDO_PARALLEL_HPP_
 
-#if defined(SERVER_MODE)
 #include "log_recovery_redo.hpp"
 
-#include "log_compress.h"
+#if defined(SERVER_MODE)
 #include "thread_manager.hpp"
 #include "thread_worker_pool.hpp"
 
@@ -345,6 +344,79 @@ namespace cublog
   {
   };
 #endif /* SERVER_MODE */
+}
+
+
+/*
+ * log_rv_redo_record_sync_or_dispatch_async - execute a redo record synchronously or
+ *                    (in future) asynchronously
+ *
+ * return: nothing
+ *
+ *   thread_p(in):
+ *   log_pgptr_reader(in/out): log reader
+ *   log_rec(in): log record structure with info about the location and size of the data in the log page
+ *   rcv_lsa(in): Reset data page (rcv->pgptr) to this LSA
+ *   log_rtype(in): log record type needed to check if diff information is needed or should be skipped
+ *   undo_unzip_support(out): extracted undo data support structure (set as a side effect)
+ *   redo_unzip_support(out): extracted redo data support structure (set as a side effect); required to
+ *                    be passed by address because it also functions as an internal working buffer;
+ *                    functions as an outside managed (ie: longer lived) buffer space for the underlying
+ *                    logic to perform its work; the pointer to the buffer is then passed - non-owningly
+ *                    - to the rcv structure which, in turn, is passed to the actual apply function
+ *   force_each_log_page_fetch(in): the log page will be fetched anew each time a fetch is requested
+ *                    regardless of other considerations
+ *
+ */
+template <typename T>
+void
+log_rv_redo_record_sync_or_dispatch_async (
+	THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
+	const T &log_rec, const log_lsa &rcv_lsa,
+	const LOG_LSA *end_redo_lsa, LOG_RECTYPE log_rtype,
+	LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support,
+	std::unique_ptr<cublog::redo_parallel> &parallel_recovery_redo,
+	bool force_each_log_page_fetch)
+{
+  const VPID rcv_vpid = log_rv_get_log_rec_vpid<T> (log_rec);
+  // at this point, vpid can either be valid or not
+
+#if defined(SERVER_MODE)
+  const LOG_DATA &log_data = log_rv_get_log_rec_data<T> (log_rec);
+  const bool need_sync_redo = log_rv_need_sync_redo (rcv_vpid, log_data.rcvindex);
+  assert (log_data.rcvindex != RVDK_UNRESERVE_SECTORS || need_sync_redo);
+
+  // once vpid is extracted (or not), and depending on parameters, either dispatch the applying of
+  // log redo asynchronously, or invoke synchronously
+  if (parallel_recovery_redo == nullptr || need_sync_redo)
+    {
+      // To apply RVDK_UNRESERVE_SECTORS, one must first wait for all changes in this sector to be redone.
+      // Otherwise, asynchronous jobs skip redoing changes in this sector's pages because they are seen as
+      // deallocated. When the same sector is reserved again, redo is resumed in the sector's pages, but
+      // the pages are not in a consistent state. The current workaround is to wait for all changes to be
+      // finished, including changes in the unreserved sector.
+      if (parallel_recovery_redo != nullptr && log_data.rcvindex == RVDK_UNRESERVE_SECTORS)
+	{
+	  parallel_recovery_redo->wait_for_idle ();
+	}
+#endif
+
+      // invoke sync
+      log_rv_redo_record_sync<T> (thread_p, log_pgptr_reader, log_rec, rcv_vpid, rcv_lsa, end_redo_lsa, log_rtype,
+				  undo_unzip_support, redo_unzip_support);
+#if defined(SERVER_MODE)
+    }
+  else
+    {
+      // dispatch async
+      using redo_job_impl_t = cublog::redo_job_impl<T>;
+      std::unique_ptr<redo_job_impl_t> job
+      {
+	new redo_job_impl_t (rcv_vpid, rcv_lsa, end_redo_lsa, log_rtype, force_each_log_page_fetch /*false*/)
+      };
+      parallel_recovery_redo->add (std::move (job));
+    }
+#endif
 }
 
 #endif // _LOG_RECOVERY_REDO_PARALLEL_HPP_
