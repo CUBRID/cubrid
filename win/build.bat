@@ -230,6 +230,18 @@ echo Package created. [%DIST_DIR%\%CUBRID_CCI_PACKAGE_NAME%.zip]
 set DIST_PKGS=%DIST_PKGS% %CUBRID_CCI_PACKAGE_NAME%.zip
 GOTO :EOF
 
+:BUILD_JDBC_PACKAGE
+if EXIST %SOURCE_DIR%\cubrid-jdbc\src (
+  set JDBC_VERSION=0
+  for /f %%i IN (%SOURCE_DIR%\cubrid-jdbc\output\VERSION-DIST) DO set JDBC_VERSION=%%i
+  echo drop cubrid_jdbc.jar into %DIST_DIR%
+  copy %SOURCE_DIR%\cubrid-jdbc\cubrid_jdbc.jar %DIST_DIR%\JDBC-%JDBC_VERSION%-cubrid.jar
+  if ERRORLEVEL 1 echo FAILD. & GOTO :EOF
+  echo Package created. [%DIST_DIR%\JDBC-%JDBC_VERSION%-cubrid.jar]
+  set DIST_PKGS=%DIST_PKGS% JDBC-%JDBC_VERSION%-cubrid.jar
+  GOTO :EOF
+)
+
 :ABSPATH
 set %2=%~f1
 GOTO :EOF
