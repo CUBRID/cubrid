@@ -61,18 +61,18 @@ namespace cublog
       template <typename T>
       void read_and_redo_record (cubthread::entry &thread_entry, LOG_RECTYPE rectype, const log_lsa &rec_lsa);
 
-      std::unique_ptr <cubthread::entry_task> m_daemon_task;
+      std::unique_ptr<cubthread::entry_task> m_daemon_task;
       cubthread::daemon *m_daemon = nullptr;
 
       log_lsa m_redo_lsa = NULL_LSA;
       mutable std::mutex m_redo_lsa_mutex;
-      mutable std::condition_variable m_redo_condvar;
+      mutable std::condition_variable m_redo_lsa_condvar;
 
       log_reader m_reader;
       LOG_ZIP m_undo_unzip;
       LOG_ZIP m_redo_unzip;
 
-      std::unique_ptr <cublog::redo_parallel> m_parallel_replication_redo;
+      std::unique_ptr<cublog::redo_parallel> m_parallel_replication_redo;
   };
 }
 

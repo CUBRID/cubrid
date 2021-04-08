@@ -182,7 +182,7 @@ namespace cublog
 	// notify who waits for end of replication
 	if (m_redo_lsa == end_redo_lsa)
 	  {
-	    m_redo_condvar.notify_all ();
+	    m_redo_lsa_condvar.notify_all ();
 	  }
       }
   }
@@ -243,7 +243,7 @@ namespace cublog
   replicator::wait_replication_finish () const
   {
     std::unique_lock<std::mutex> ulock (m_redo_lsa_mutex);
-    m_redo_condvar.wait (ulock, [this]
+    m_redo_lsa_condvar.wait (ulock, [this]
     {
       return m_redo_lsa >= log_Gl.append.get_nxio_lsa ();
     });
