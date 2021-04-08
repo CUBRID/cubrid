@@ -61,8 +61,9 @@ include_directories(${CATCH2_DIR}/single_include)
 list(APPEND TESTS_EXTERNAL_TARGETS ${CATCH2_TARGET})
 
 if (AT_LEAST_ONE_UNIT_TEST)
-  message("    common")
+  message("    common and fake")
   add_subdirectory(common)
+  add_subdirectory(fake)
 endif()
 
 if (UNIT_TESTS OR UNIT_TEST_MEMORY_ALLOC)
@@ -120,7 +121,4 @@ if (UNIT_TESTS OR UNIT_TEST_LOG_RECOVERY_PARALLEL_POC)
   add_subdirectory(recovery)
 endif(UNIT_TESTS OR UNIT_TEST_LOG_RECOVERY_PARALLEL_POC)
 
-if (UNIT_TESTS OR UNIT_TEST_FAKE)
-  message("    fake")
-  add_subdirectory(fake)
-endif(UNIT_TESTS OR UNIT_TEST_LOG_RECOVERY_PARALLEL_POC)
+

@@ -82,6 +82,7 @@ add_dependencies(test_prior_sendrecv
 # 
 
 set(TEST_ASYNC_LOG_PAGE_FETCHER_SOURCES
+  ${TRANSACTION_DIR}/log_page_async_fetcher.cpp
   test_main_async_log_page_fetcher.cpp)
 
 SET_SOURCE_FILES_PROPERTIES(
@@ -104,7 +105,7 @@ target_include_directories(test_async_log_page_fetcher PRIVATE
   ${TEST_INCLUDES}
 )
 
-target_link_libraries(test_async_log_page_fetcher fake_worker_tdes)
+target_link_libraries(test_async_log_page_fetcher fake_thread_utils)
 
 add_dependencies(test_async_log_page_fetcher
   ${CATCH2_TARGET}

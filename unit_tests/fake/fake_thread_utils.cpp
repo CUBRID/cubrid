@@ -19,56 +19,21 @@
 #include "adjustable_array.h"
 #include "critical_section_tracker.hpp"
 #include "error_context.hpp"
-#include "error_manager.h"
-#include "fault_injection.h"
-#include "lock_free.h"
-#include "lockfree_bitmap.hpp"
 #include "lockfree_transaction_system.hpp"
 #include "log_compress.h"
-#include "log_reader.hpp"
 #include "log_system_tran.hpp"
-#include "message_catalog.h"
-#include "thread_daemon.hpp"
-#include "thread_entry.hpp"
-#include "thread_looper.hpp"
-#include "thread_manager.hpp"
-#include "thread_waiter.hpp"
 #include "page_buffer.h"
-#include "perf.hpp"
-#include "perf_def.hpp"
 #include "resource_tracker.hpp"
 #include "system_parameter.h"
-#include "thread_entry_task.hpp"
-#include "thread_worker_pool.hpp"
 
 #include <cstring>
 #include <iostream>
-
-//
-// Add mock definitions for used CUBRID stuff
-//
-
-/*
- * Global lock free transaction systems systems
- */
-LF_TRAN_SYSTEM spage_saving_Ts = LF_TRAN_SYSTEM_INITIALIZER;
-LF_TRAN_SYSTEM obj_lock_res_Ts = LF_TRAN_SYSTEM_INITIALIZER;
-LF_TRAN_SYSTEM obj_lock_ent_Ts = LF_TRAN_SYSTEM_INITIALIZER;
-LF_TRAN_SYSTEM catalog_Ts = LF_TRAN_SYSTEM_INITIALIZER;
-LF_TRAN_SYSTEM sessions_Ts = LF_TRAN_SYSTEM_INITIALIZER;
-LF_TRAN_SYSTEM free_sort_list_Ts = LF_TRAN_SYSTEM_INITIALIZER;
-LF_TRAN_SYSTEM global_unique_stats_Ts = LF_TRAN_SYSTEM_INITIALIZER;
-LF_TRAN_SYSTEM hfid_table_Ts = LF_TRAN_SYSTEM_INITIALIZER;
-LF_TRAN_SYSTEM xcache_Ts = LF_TRAN_SYSTEM_INITIALIZER;
-LF_TRAN_SYSTEM fpcache_Ts = LF_TRAN_SYSTEM_INITIALIZER;
-LF_TRAN_SYSTEM dwb_slots_Ts = LF_TRAN_SYSTEM_INITIALIZER;
 
 LF_TRAN_ENTRY *lf_tran_request_entry (LF_TRAN_SYSTEM *sys)
 {
   LF_TRAN_ENTRY *entry = nullptr;
   return entry;
 }
-
 void _er_log_debug (const char *file_name, const int line_no, const char *fmt, ...) {}
 int prm_get_integer_value (PARAM_ID prm_id)
 {
@@ -127,6 +92,17 @@ namespace lockfree
   }
   void bitmap::free_entry (int entry_idx) {}
 
+  namespace tran
+  {
+    index system::assign_index ()
+    {
+      return INVALID_INDEX;
+    }
+    system::system (size_t max_tran_count) : m_max_tran_per_table (max_tran_count) {}
+    void system::free_index (index idx) {}
+
+  } // namespace tran
+
 } // namespace lockfree
 
 namespace cubsync
@@ -155,34 +131,6 @@ namespace cubbase
 
 namespace cubthread
 {
-  // tracker constants
-  // alloc
-  const char *ALLOC_TRACK_NAME = "Virtual Memory";
-  const char *ALLOC_TRACK_RES_NAME = "res_ptr";
-  const std::size_t ALLOC_TRACK_MAX_ITEMS = 32767;
-  // page buffer
-  const char *PGBUF_TRACK_NAME = "Page Buffer";
-  const char *PGBUF_TRACK_RES_NAME = "pgptr";
-  const std::size_t PGBUF_TRACK_MAX_ITEMS = 1024;
-  const unsigned PGBUF_TRACK_MAX_AMOUNT = 16; // re-fix is possible... how many to accept is debatable
-
-  // enable trackers in SERVER_MODE && debug
-  static const bool ENABLE_TRACKERS =
-#if !defined(NDEBUG) && defined(SERVER_MODE)
-	  true;
-#else  // RELEASE or !SERVER_MODE
-	  false;
-#endif // RELEASE or !SERVER_MODE
-
-  entry::entry ()
-    : m_alloc_tracker (*new cubbase::alloc_tracker (ALLOC_TRACK_NAME, ENABLE_TRACKERS, ALLOC_TRACK_MAX_ITEMS,
-		       ALLOC_TRACK_RES_NAME)),
-      m_pgbuf_tracker (*new cubbase::pgbuf_tracker (PGBUF_TRACK_NAME, ENABLE_TRACKERS, PGBUF_TRACK_MAX_ITEMS,
-		       PGBUF_TRACK_RES_NAME, PGBUF_TRACK_MAX_AMOUNT)),
-      m_csect_tracker (*new cubsync::critical_section_tracker (ENABLE_TRACKERS))
-  {}
-
-  entry::~entry () {}
   void entry::request_lock_free_transactions (void) {}
   void entry::assign_lf_tran_index (lockfree::tran::index idx) {}
   void entry::return_lock_free_transaction_entries (void) {}
@@ -199,3 +147,10 @@ namespace cubthread
   void entry::end_resource_tracks (void) {}
 
 } // namespace cubthread
+
+namespace cuberr
+{
+  void context::register_thread_local () {}
+  void context::deregister_thread_local () {}
+
+} // namespace cuberr

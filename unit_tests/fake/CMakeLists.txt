@@ -1,19 +1,19 @@
 #
-# Copyright (C) 2016 Search Solution Corporation. All rights reserved.
+#  Copyright 2008 Search Solution Corporation
+#  Copyright 2016 CUBRID Corporation
 #
-#   This program is free software; you can redistribute it and/or modify
-#   it under the terms of the GNU General Public License as published by
-#   the Free Software Foundation; either version 2 of the License, or
-#   (at your option) any later version.
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
 #
-#  This program is distributed in the hope that it will be useful,
-#  but WITHOUT ANY WARRANTY; without even the implied warranty of
-#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-#  GNU General Public License for more details.
+#       http://www.apache.org/licenses/LICENSE-2.0
 #
-#  You should have received a copy of the GNU General Public License
-#  along with this program; if not, write to the Free Software
-#  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
+#
 #
 
 #
@@ -22,18 +22,17 @@
 project(fake)
 
 #
-# fake_worker_tdes
+# fake_thread_utils
 #
-set(FAKE_WORKER_TDES_SRC
-  thread_utils.cpp
-  ${BASE_DIR}/mem_block.cpp
-  ${BASE_DIR}/packer.cpp
-  ${BASE_DIR}/porting.c
-  ${BASE_DIR}/lockfree_transaction_system.cpp
-  ${BASE_DIR}/error_context.cpp
+set(FAKE_THREAD_UTILS
+  fake_thread_entry.cpp
+  fake_thread_utils.cpp
+  fake_error_manager.cpp
+  fake_log_impl.cpp
+  fake_perfmon.cpp
+  fake_system_parameter.cpp
+  fake_worker_tdes.cpp
   ${BASE_DIR}/perf.cpp
-  ${TRANSACTION_DIR}/log_page_async_fetcher.cpp
-  ${TRANSACTION_DIR}/client_credentials.cpp
   ${THREAD_DIR}/thread_manager.cpp
   ${THREAD_DIR}/thread_daemon.cpp
   ${THREAD_DIR}/thread_entry_task.cpp
@@ -42,25 +41,25 @@ set(FAKE_WORKER_TDES_SRC
   ${THREAD_DIR}/thread_worker_pool.cpp
 )
 SET_SOURCE_FILES_PROPERTIES(
-  ${FAKE_WORKER_TDES_SRC}
+  ${FAKE_THREAD_UTILS}
   PROPERTIES LANGUAGE CXX
 )
-add_library(fake_worker_tdes
-  ${FAKE_WORKER_TDES_SRC}
+add_library(fake_thread_utils
+  ${FAKE_THREAD_UTILS}
 )
-target_compile_options(fake_worker_tdes PRIVATE
+target_compile_options(fake_thread_utils PRIVATE
   ${compile_warning_flags}
 )
-target_compile_definitions(fake_worker_tdes PRIVATE
+target_compile_definitions(fake_thread_utils PRIVATE
   SERVER_MODE
   ${COMMON_DEFS}
 )
-target_include_directories(fake_worker_tdes PRIVATE
+target_include_directories(fake_thread_utils PRIVATE
   ${EP_INCLUDES}
 )
-add_dependencies(fake_worker_tdes
+add_dependencies(fake_thread_utils
   ${EP_TARGETS}
 )
 if(WIN32)
-  target_link_libraries(fake_worker_tdes PUBLIC ws2_32)
+  target_link_libraries(fake_thread_utils PUBLIC ws2_32)
 endif(WIN32)

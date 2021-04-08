@@ -1,62 +1,26 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
 #include "log_impl.h"
+#include "log_prior_recv.hpp"
 
-namespace cubtx
-{
-  namespace group_complete
-  {
-    registry::registry () = default;
-    registry::~registry () = default;
-
-    log_tran_complete_manager_type registry::get_manager_type () const
-    {
-      return LOG_TRAN_COMPLETE_NO_MANAGER;
-    }
-    complete_interface::id_type registry::register_transaction (int tran_index, MVCCID mvccid, TRAN_STATE state)
-    {
-      return 0;
-    }
-    void registry::complete_mvcc (id_type group_id)
-    {
-    }
-    void registry::complete_logging (id_type group_id)
-    {
-    }
-    void registry::complete (id_type group_id)
-    {
-    }
-    void registry::complete_latest_id ()
-    {
-    }
-    void registry::on_register_transaction ()
-    {
-    }
-    bool registry::can_close_current_group ()
-    {
-      return false;
-    }
-  } // namespace group_complete
-} // namespace cubtx
-
-log_global::log_global () = default;
+log_prior_lsa_info g_log_prior_lsa_info;
+log_global::log_global () : m_prior_recver (g_log_prior_lsa_info) {};
 log_global::~log_global () = default;
 LOG_GLOBAL log_Gl;
 
@@ -73,8 +37,10 @@ mvcc_active_tran::mvcc_active_tran () = default;
 
 mvcc_snapshot::mvcc_snapshot () = default;
 
-bool
-log_does_allow_replication (void)
+bool log_does_allow_replication (void)
 {
   return false;
 }
+
+cublog::prior_recver::prior_recver (log_prior_lsa_info &prior_lsa_info) : m_prior_lsa_info (prior_lsa_info) {}
+
