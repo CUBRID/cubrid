@@ -27,7 +27,7 @@
 ut_database_values_generator::ut_database_values_generator (const ut_database_config &a_database_config)
   : m_database_config (a_database_config)
   , m_gen (m_rd ())
-  //, m_log_lsa () // the log_lsa ctor actually does not set any value
+    //, m_log_lsa () // the log_lsa ctor actually does not set any value
   , m_rand_log_lsa_dist (0.9)
   , m_duration_in_millis_dist (0., a_database_config.max_duration_in_millis)
   // *INDENT-OFF*
@@ -51,7 +51,7 @@ const log_lsa &ut_database_values_generator::increment_and_get_lsa_log ()
       // increment page id
       assert (m_log_lsa.pageid < MAX_LOG_LSA_PAGEID);
       ++m_log_lsa.pageid;
-      // just for fun, don't restart with 0-offset
+      m_log_lsa.offset = 0;
     }
   else
     {
