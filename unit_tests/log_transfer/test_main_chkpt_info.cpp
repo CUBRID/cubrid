@@ -797,8 +797,6 @@ logtb_clear_tdes (THREAD_ENTRY *thread_p, LOG_TDES *tdes)
   tdes->topops.last = -1;
   tdes->gtrid = LOG_2PC_NULL_GTRID;
   tdes->gtrinfo.info_length = 0;
-  tdes->m_multiupd_stats.clear ();
-  tdes->m_modified_classes.clear ();
   tdes->cur_repl_record = 0;
   tdes->append_repl_recidx = -1;
   tdes->fl_mark_repl_recidx = -1;
@@ -812,7 +810,6 @@ logtb_clear_tdes (THREAD_ENTRY *thread_p, LOG_TDES *tdes)
   tdes->tran_abort_reason = TRAN_NORMAL;
   tdes->num_exec_queries = 0;
   tdes->suppress_replication = 0;
-  tdes->m_log_postpone_cache.reset ();
   tdes->has_deadlock_priority = false;
 
   tdes->num_log_records_written = 0;
@@ -900,7 +897,7 @@ logtb_allocate_tran_index_local (THREAD_ENTRY *thread_p, TRANID trid, TRAN_STATE
       if (trid == NULL_TRANID)
 	{
 	  /* Assign a new transaction identifier for the new index */
-	  logtb_get_new_tran_id (thread_p, tdes);
+	  tdes->trid = log_Gl.trantable.num_assigned_indices;
 	  state = TRAN_ACTIVE;
 	}
       else
@@ -917,6 +914,46 @@ logtb_allocate_tran_index_local (THREAD_ENTRY *thread_p, TRANID trid, TRAN_STATE
   return tran_index;
 }
 
+log_tdes *
+systdes_create_tdes ()
+{
+  log_tdes *tdes = new log_tdes ();
+  return tdes;
+}
+
+log_tdes *
+log_system_tdes::rv_get_tdes (TRANID trid)
+{
+  auto it = systb_System_tdes.find (trid);
+  if (it != systb_System_tdes.end ())
+    {
+      return it->second;
+    }
+  else
+    {
+      return NULL;
+    }
+}
+
+log_tdes *
+log_system_tdes::rv_get_or_alloc_tdes (TRANID trid)
+{
+  log_tdes *tdes = rv_get_tdes (trid);
+  if (tdes == NULL)
+    {
+      log_tdes *tdes = systdes_create_tdes ();
+      tdes->state = TRAN_UNACTIVE_UNILATERALLY_ABORTED;
+      tdes->trid = trid;
+      systb_System_tdes[trid] = tdes;
+      return tdes;
+    }
+  else
+    {
+      assert (tdes->trid == trid);
+      return tdes;
+    }
+}
+
 LOG_TDES *
 logtb_rv_find_allocate_tran_index (THREAD_ENTRY *thread_p, TRANID trid, const LOG_LSA *log_lsa)
 {
@@ -925,7 +962,7 @@ logtb_rv_find_allocate_tran_index (THREAD_ENTRY *thread_p, TRANID trid, const LO
 
   assert (trid != NULL_TRANID);
 
-  if (logtb_is_system_worker_tranid (trid))
+  if (trid < NULL_TRANID;)
     {
       // *INDENT-OFF*
       return log_system_tdes::rv_get_or_alloc_tdes (trid);
@@ -997,7 +1034,34 @@ log_read_sysop_start_postpone (THREAD_ENTRY *thread_p, LOG_LSA *log_lsa, LOG_PAG
 int
 logtb_find_tran_index (THREAD_ENTRY *thread_p, TRANID trid)
 {
-  assert (false);
+  int i;
+  int tran_index = NULL_TRAN_INDEX;	/* The transaction index */
+  LOG_TDES *tdes;		/* Transaction descriptor */
+
+  assert (trid != NULL_TRANID);
+
+  /* Avoid searching as much as possible */
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tdes = LOG_FIND_TDES (tran_index);
+  if (tdes == NULL || tdes->trid != trid)
+    {
+      tran_index = NULL_TRAN_INDEX;
+
+      TR_TABLE_CS_ENTER_READ_MODE (thread_p);
+      /* Search the transaction table for such transaction */
+      for (i = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
+	{
+	  tdes = log_Gl.trantable.all_tdes[i];
+	  if (tdes != NULL && tdes->trid != NULL_TRANID && tdes->trid == trid)
+	    {
+	      tran_index = i;
+	      break;
+	    }
+	}
+      TR_TABLE_CS_EXIT (thread_p);
+    }
+
+  return tran_index;
 }
 
 void
