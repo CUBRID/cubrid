@@ -52,7 +52,7 @@ version=""
 last_checking_msg=""
 output_packages=""
 without_cmserver=""
-without_jdbc=""
+without_jdbc="false"
 
 function print_check ()
 {
@@ -323,7 +323,7 @@ function build_package ()
 	  false
 	fi
       ;;
-      tarball|shell|cci|jdbc|rpm)
+      tarball|shell|cci|rpm)
 	if [ ! -d "$prefix_dir" ]; then
 	  print_fatal "Prefix directory not found"
 	fi
@@ -345,10 +345,6 @@ function build_package ()
 	elif [ "$package" = "cci" ]; then
 	  package_name="$package_basename.tar.gz"
 	  (cd $build_dir && cpack -G TGZ -D CPACK_COMPONENTS_ALL="CCI" -B $output_dir)
-	elif [ "$package" = "jdbc"]; then
-	  if [ "$without_jdbc" = "false" ]; then
-	    cp $source_dir/cubrid-jdbc/*.jar $output_dir
-	  fi
 	elif [ "$package" = "rpm" ]; then
 	  package_name="$package_basename.rpm"
 	  (cd $build_dir && cpack -G RPM -B $output_dir)
@@ -360,6 +356,15 @@ function build_package ()
 	else
 	  false
 	fi
+      ;;
+      jdbc)
+        if [ "$without_jdbc" = "false" ]; then
+          jar_files=$(ls $source_dir/cubrid-jdbc/JDBC-*.jar)
+          jdbc_version=$(cat $source_dir/cubrid-jdbc/output/VERSION-DIST)
+          package_name="JDBC-$jdbc_version-$product_name_lower"
+          cp $source_dir/cubrid-jdbc/JDBC-*.jar $output_dir
+          [ $? -eq 0 ] && output_packages="$output_packages $jar_files"
+        fi
       ;;
     esac
     [ $? -eq 0 ] && print_result "OK [$package_name]" || print_fatal "Packaging for $package failed"
@@ -496,7 +501,7 @@ function get_options ()
 	packages="src zip_src tarball shell cci jdbc rpm"
 	;;
       *)
-	packages="tarball shell cci"
+	packages="tarball shell jdbc cci"
 	;;
     esac
   fi

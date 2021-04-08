@@ -1155,14 +1155,10 @@ if(WITH_JDBC AND EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
     set(CUBRID_JDBCDIR jdbc CACHE STRING "The directory for JDBC driver file")
   endif(USE_CUBRID_ENV)
 
-  install(FILE ${JDBC_DIR}/cubrid_jdbc.jar
+  install(DIRECTORY ${JDBC_DIR}/
     DESTINATION ${CUBRID_JDBCDIR} COMPONENT JDBC
+    FILES_MATCHING PATTERN "*.jar"
   )
-
-  # install(DIRECTORY ${JDBC_DIR}/
-  #  DESTINATION ${CUBRID_JDBCDIR} COMPONENT JDBC
-  #  FILES_MATCHING PATTERN "*.jar"
-  #)
 endif()
 
 # include subdirectories
