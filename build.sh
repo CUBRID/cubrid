@@ -323,7 +323,7 @@ function build_package ()
 	  false
 	fi
       ;;
-      tarball|shell|cci|rpm)
+      tarball|shell|cci|jdbc|rpm)
 	if [ ! -d "$prefix_dir" ]; then
 	  print_fatal "Prefix directory not found"
 	fi
@@ -345,6 +345,10 @@ function build_package ()
 	elif [ "$package" = "cci" ]; then
 	  package_name="$package_basename.tar.gz"
 	  (cd $build_dir && cpack -G TGZ -D CPACK_COMPONENTS_ALL="CCI" -B $output_dir)
+	elif [ "$package" = "jdbc"]; then
+	  if [ "$without_jdbc" = "false" ]; then
+	    cp $source_dir/cubrid-jdbc/*.jar $output_dir
+	  fi
 	elif [ "$package" = "rpm" ]; then
 	  package_name="$package_basename.rpm"
 	  (cd $build_dir && cpack -G RPM -B $output_dir)
@@ -489,7 +493,7 @@ function get_options ()
   if [ "$packages" = "all" -o "$packages" = "ALL" ]; then
     case $build_mode in
       release)
-	packages="src zip_src tarball shell cci rpm"
+	packages="src zip_src tarball shell cci jdbc rpm"
 	;;
       *)
 	packages="tarball shell cci"
