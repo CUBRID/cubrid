@@ -169,7 +169,7 @@ page_server::start_log_replicator (const log_lsa &start_lsa)
 }
 
 void
-page_server::finish_replication (cubthread::entry &thread_entry)
+page_server::finish_replication_during_shutdown (cubthread::entry &thread_entry)
 {
   assert (m_replicator != nullptr);
 
