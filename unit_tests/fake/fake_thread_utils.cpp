@@ -16,28 +16,18 @@
  *
  */
 
-#include "adjustable_array.h"
-#include "critical_section_tracker.hpp"
-#include "error_context.hpp"
+#include "error_code.h"
+#include "lock_free.h"
 #include "lockfree_transaction_system.hpp"
-#include "log_compress.h"
-#include "log_system_tran.hpp"
-#include "page_buffer.h"
-#include "resource_tracker.hpp"
-#include "system_parameter.h"
 
-#include <cstring>
-#include <iostream>
-
-int lf_initialize_transaction_systems (int max_threads)
+int
+lf_initialize_transaction_systems (int max_threads)
 {
   return NO_ERROR;
 }
-int er_errid (void)
-{
-  return 0;
-}
-int css_get_max_conn (void)
+
+int
+css_get_max_conn (void)
 {
   return 1;
 }
@@ -47,22 +37,33 @@ namespace lockfree // needed by cubthread::manager
   const float bitmap::FULL_USAGE_RATIO = 1.0f;
   const float bitmap::NINTETYFIVE_PERCENTILE_USAGE_RATIO = 0.95f;
   bitmap::bitmap () = default;
-  void bitmap::init (chunking_style style_arg, int entries_count_arg, float usage_ratio_arg) {}
+
+  void
+  bitmap::init (chunking_style style_arg, int entries_count_arg, float usage_ratio_arg) {}
+
   bitmap::~bitmap () {}
-  int bitmap::get_entry ()
+
+  int
+  bitmap::get_entry ()
   {
     return 0;
   }
-  void bitmap::free_entry (int entry_idx) {}
+
+  void
+  bitmap::free_entry (int entry_idx) {}
 
   namespace tran
   {
-    index system::assign_index ()
+    index
+    system::assign_index ()
     {
       return INVALID_INDEX;
     }
+
     system::system (size_t max_tran_count) : m_max_tran_per_table (max_tran_count) {}
-    void system::free_index (index idx) {}
+
+    void
+    system::free_index (index idx) {}
 
   } // namespace tran
 

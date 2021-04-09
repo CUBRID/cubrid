@@ -37,7 +37,8 @@ mvcc_active_tran::mvcc_active_tran () = default;
 
 mvcc_snapshot::mvcc_snapshot () = default;
 
-bool log_does_allow_replication (void)
+bool
+log_does_allow_replication (void)
 {
   return false;
 }

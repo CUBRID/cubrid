@@ -47,27 +47,45 @@ namespace cubthread
 {
   // todo: move this to common test utils
   entry::entry ()
-    : m_alloc_tracker{cubbase::g_at}, m_pgbuf_tracker{cubbase::g_pt}, m_csect_tracker{cubsync::g_cst}
+    : m_alloc_tracker{cubbase::g_at}
+    , m_pgbuf_tracker{cubbase::g_pt}
+    , m_csect_tracker{cubsync::g_cst}
   {
   }
+
   entry::~entry ()
   {
   }
 
-  void entry::request_lock_free_transactions (void) {}
-  void entry::assign_lf_tran_index (lockfree::tran::index idx) {}
-  void entry::return_lock_free_transaction_entries (void) {}
-  void entry::register_id () {}
-  void entry::unregister_id () {}
-  lockfree::tran::index entry::pull_lf_tran_index ()
+  void
+  entry::request_lock_free_transactions (void) {}
+
+  void
+  entry::assign_lf_tran_index (lockfree::tran::index idx) {}
+
+  void
+  entry::return_lock_free_transaction_entries (void) {}
+
+  void
+  entry::register_id () {}
+
+  void
+  entry::unregister_id () {}
+
+  lockfree::tran::index
+  entry::pull_lf_tran_index ()
   {
     return lockfree::tran::INVALID_INDEX;
   }
-  thread_id_t entry::get_id ()
+
+  thread_id_t
+  entry::get_id ()
   {
     return m_id;
   }
-  void entry::end_resource_tracks (void) {}
+
+  void
+  entry::end_resource_tracks (void) {}
 
 } // namespace cubthread
 

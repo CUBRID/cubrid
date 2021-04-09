@@ -16,13 +16,12 @@
  *
  */
 
-#define CATCH_CONFIG_MAIN //
+#define CATCH_CONFIG_MAIN
 
 #include "catch2/catch.hpp"
 #include "log_page_async_fetcher.hpp"
 #include "log_reader.hpp"
 
-#include <iostream>
 #include <mutex>
 #include <unordered_map>
 #include <vector>
@@ -77,6 +76,17 @@ TEST_CASE ("Test with an invalid log page returned", "")
   do_test (env);
 }
 
+TEST_CASE ("Test with a very big number of pages", "")
+{
+  std::vector<LOG_PAGEID> page_ids;
+  for (auto i = 1; i < 10001; ++i)
+    {
+      page_ids.push_back (i);
+    }
+  test_env env (true, page_ids);
+  do_test (env);
+}
+
 test_env::test_env (bool require_log_page_valid, std::vector<LOG_PAGEID> log_pageids)
   : m_log_pageids (log_pageids)
 {
@@ -93,7 +103,8 @@ test_env::test_env (bool require_log_page_valid, std::vector<LOG_PAGEID> log_pag
 
 test_env::~test_env () {}
 
-void test_env::run_test ()
+void
+test_env::run_test ()
 {
   for (auto log_page_id : m_log_pageids)
     {
@@ -126,8 +137,8 @@ void test_env::on_receive_log_page (LOG_PAGEID page_id, const LOG_PAGE *log_page
       REQUIRE (error_code != NO_ERROR);
       REQUIRE (log_page == nullptr);
     }
-  REQUIRE (g_log_page_fetcher_test_data.page_ids_requested[page_id].is_page_received == false);
   g_log_page_fetcher_test_data.page_ids_requested[page_id].is_page_received = true;
+  delete log_page;
 }
 
 int log_reader::set_lsa_and_fetch_page (const log_lsa &lsa, fetch_mode fetch_page_mode)

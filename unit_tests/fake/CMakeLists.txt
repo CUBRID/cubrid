@@ -17,21 +17,18 @@
 #
 
 #
-# Fake libs
+# Fake libs for testing
 #
 project(fake)
 
 #
-# fake_thread_utils
+# fake_thread_utils - use it to add thread_manager, thread_worker_pool and thread_daemon to your tests.
 #
-set(FAKE_THREAD_UTILS
+set(FAKE_THREAD_UTILS_SRC
+  fake_error_manager.cpp
   fake_thread_entry.cpp
   fake_thread_utils.cpp
-  fake_error_manager.cpp
-  fake_log_impl.cpp
-  fake_perfmon.cpp
   fake_system_parameter.cpp
-  fake_worker_tdes.cpp
   ${BASE_DIR}/perf.cpp
   ${THREAD_DIR}/thread_manager.cpp
   ${THREAD_DIR}/thread_daemon.cpp
@@ -41,11 +38,11 @@ set(FAKE_THREAD_UTILS
   ${THREAD_DIR}/thread_worker_pool.cpp
 )
 SET_SOURCE_FILES_PROPERTIES(
-  ${FAKE_THREAD_UTILS}
+  ${FAKE_THREAD_UTILS_SRC}
   PROPERTIES LANGUAGE CXX
 )
 add_library(fake_thread_utils
-  ${FAKE_THREAD_UTILS}
+  ${FAKE_THREAD_UTILS_SRC}
 )
 target_compile_options(fake_thread_utils PRIVATE
   ${compile_warning_flags}

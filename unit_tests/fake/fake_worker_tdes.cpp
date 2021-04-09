@@ -17,40 +17,38 @@
  */
 
 // fake all objects that worker tdes depends on
-// replication is "disabled"
 
 #include "log_impl.h"
 
-bool log_tdes::is_active_worker_transaction () const
+bool
+log_tdes::is_active_worker_transaction () const
 {
   return true;
 }
 
-bool log_tdes::is_system_transaction () const
+bool
+log_tdes::is_system_transaction () const
 {
   return false;
 }
 
-bool log_tdes::is_allowed_sysop () const
+bool
+log_tdes::is_allowed_sysop () const
 {
   return true;
 }
 
-void log_tdes::lock_topop ()
-{
-}
+void
+log_tdes::lock_topop () {}
 
-void log_tdes::unlock_topop ()
-{
-}
+void
+log_tdes::unlock_topop () {}
 
-void log_tdes::on_sysop_start ()
-{
-}
+void
+log_tdes::on_sysop_start () {}
 
-void log_tdes::on_sysop_end ()
-{
-}
+void
+log_tdes::on_sysop_end () {}
 
 // fix dependencies locally:
 
