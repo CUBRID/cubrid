@@ -19,10 +19,9 @@
 #ifndef _LOG_RECOVERY_REDO_PARALLEL_HPP_
 #define _LOG_RECOVERY_REDO_PARALLEL_HPP_
 
-#if defined(SERVER_MODE)
 #include "log_recovery_redo.hpp"
 
-#include "log_compress.h"
+#if defined(SERVER_MODE)
 #include "thread_manager.hpp"
 #include "thread_worker_pool.hpp"
 
@@ -102,7 +101,7 @@ namespace cublog
 	  redo_job_queue &operator= (redo_job_queue const &) = delete;
 	  redo_job_queue &operator= (redo_job_queue &&) = delete;
 
-	  void locked_push (ux_redo_job_base &&job);
+	  void push_job (ux_redo_job_base &&job);
 
 	  /* to be called after all known entries have been added
 	   * part of a mechanism to signal to the consumers, together with
@@ -110,21 +109,25 @@ namespace cublog
 	   */
 	  void set_adding_finished ();
 
+	  /* mostly for debugging
+	   */
 	  bool get_adding_finished () const;
 
 	  /* the combination of a null return value with a finished
 	   * flag set to true signals to the callers that no more data is expected
 	   * and, therefore, they can also terminate
 	   */
-	  ux_redo_job_base locked_pop (bool &adding_finished);
+	  ux_redo_job_base pop_job (bool &adding_finished);
 
-	  void notify_in_progress_vpid_finished (VPID a_vpid);
+	  void notify_job_finished (const ux_redo_job_base &a_job);
 
 	  /* wait until all data has been consumed internally; blocking call
 	   */
-	  void wait_for_idle ();
+	  void wait_for_idle () const;
 
 	private:
+	  void assert_idle () const;
+
 	  /* swap internal queues and notify if both are empty
 	   * assumes the consume queue is locked
 	   */
@@ -132,20 +135,28 @@ namespace cublog
 
 	  /* find first job that can be consumed (ie: is not already marked
 	   * in the 'in progress vpids' set)
-	   * assumes the the in progress vpids set is locked
+	   *
+	   * NOTE: '*_locked_*' functions are supposed to be called from within locked
+	   * areas with respect to the resources they make use of
 	   */
-	  ux_redo_job_base do_find_job_to_consume ();
+	  ux_redo_job_base do_locked_find_job_to_consume ();
+
+	  /* NOTE: '*_locked_*' functions are supposed to be called from within locked
+	   * areas with respect to the resources they make use of
+	   */
+	  void do_locked_mark_job_started (const ux_redo_job_base &a_job);
 
 	private:
-	  /* two queues are internally managed
+	  /* two queues are internally managed and take turns at being either
+	   * on the producing or on the consumption side
 	   */
 	  ux_redo_job_deque *m_produce_queue;
-	  std::mutex m_produce_queue_mutex;
+	  mutable std::mutex m_produce_queue_mutex;
 	  ux_redo_job_deque *m_consume_queue;
 	  std::mutex m_consume_queue_mutex;
 
 	  bool m_queues_empty;
-	  std::condition_variable m_queues_empty_cv;
+	  mutable std::condition_variable m_queues_empty_cv;
 
 	  std::atomic_bool m_adding_finished;
 
@@ -153,8 +164,8 @@ namespace cublog
 	   * mechanism guarantees ordering among entries with the same VPID;
 	   */
 	  vpid_set m_in_progress_vpids;
-	  std::mutex m_in_progress_vpids_mutex;
-	  std::condition_variable m_in_progress_vpids_empty_cv;
+	  mutable std::mutex m_in_progress_mutex;
+	  mutable std::condition_variable m_in_progress_vpids_empty_cv;
       };
 
       /* maintain a bookkeeping of tasks that are still performing work;
@@ -217,8 +228,8 @@ namespace cublog
   class redo_parallel::redo_job_base
   {
     public:
-      redo_job_base (VPID a_vpid)
-	: m_vpid (a_vpid)
+      redo_job_base (VPID a_vpid, const log_lsa &a_log_lsa)
+	: m_vpid (a_vpid), m_log_lsa (a_log_lsa)
       {
 	assert (!VPID_ISNULL (&m_vpid));
       }
@@ -236,9 +247,14 @@ namespace cublog
       *  - pertain to a certain VOLID - aka: volume extend, new page
       *  - pertain to no VOLID - aka: database extend, new volume
       */
-      const VPID &get_vpid () const
+      inline const VPID &get_vpid () const
       {
 	return m_vpid;
+      }
+
+      inline const log_lsa &get_log_lsa () const
+      {
+	return m_log_lsa;
       }
 
       virtual int execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
@@ -246,6 +262,7 @@ namespace cublog
 
     private:
       const VPID m_vpid;
+      const log_lsa m_log_lsa;
   };
 
 
@@ -257,7 +274,13 @@ namespace cublog
       using log_rec_t = TYPE_LOG_REC;
 
     public:
-      redo_job_impl (VPID a_vpid, const log_lsa &a_rcv_lsa, const LOG_LSA *a_end_redo_lsa, LOG_RECTYPE a_log_rtype);
+      /*
+       *  force_each_page_fetch: force fetch log pages each time regardless of other internal
+       *                        conditions; needed to be enabled when job is dispatched in
+       *                        page server recovery context
+       */
+      redo_job_impl (VPID a_vpid, const log_lsa &a_rcv_lsa, const log_lsa *a_end_redo_lsa,
+		     LOG_RECTYPE a_log_rtype, bool force_each_page_fetch);
 
       redo_job_impl (redo_job_impl const &) = delete;
       redo_job_impl (redo_job_impl &&) = delete;
@@ -271,9 +294,9 @@ namespace cublog
 		   LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support) override;
 
     private:
-      const log_lsa m_rcv_lsa;
-      const LOG_LSA *m_end_redo_lsa;  // by design pointer is guaranteed to outlive this instance
+      const log_lsa *m_end_redo_lsa;  // by design pointer is guaranteed to outlive this instance
       const LOG_RECTYPE m_log_rtype;
+      const log_reader::fetch_mode m_log_reader_page_fetch_mode;
   };
 
   /*********************************************************************
@@ -281,12 +304,14 @@ namespace cublog
    *********************************************************************/
 
   template <typename TYPE_LOG_REC>
-  redo_job_impl<TYPE_LOG_REC>::redo_job_impl (VPID a_vpid, const log_lsa &a_rcv_lsa, const LOG_LSA *a_end_redo_lsa,
-      LOG_RECTYPE a_log_rtype)
-    : redo_parallel::redo_job_base (a_vpid)
-    , m_rcv_lsa (a_rcv_lsa)
+  redo_job_impl<TYPE_LOG_REC>::redo_job_impl (VPID a_vpid, const log_lsa &a_rcv_lsa, const log_lsa *a_end_redo_lsa,
+      LOG_RECTYPE a_log_rtype, bool force_each_page_fetch)
+    : redo_parallel::redo_job_base (a_vpid, a_rcv_lsa)
     , m_end_redo_lsa (a_end_redo_lsa)
     , m_log_rtype (a_log_rtype)
+    , m_log_reader_page_fetch_mode (force_each_page_fetch
+				    ? log_reader::fetch_mode::FORCE
+				    : log_reader::fetch_mode::NORMAL)
   {
   }
 
@@ -294,7 +319,9 @@ namespace cublog
   int  redo_job_impl<TYPE_LOG_REC>::execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
       LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support)
   {
-    const int err_set_lsa_and_fetch_page = log_pgptr_reader.set_lsa_and_fetch_page (m_rcv_lsa);
+    const auto &rcv_lsa = get_log_lsa ();
+    const int err_set_lsa_and_fetch_page
+      = log_pgptr_reader.set_lsa_and_fetch_page (rcv_lsa, m_log_reader_page_fetch_mode);
     if (err_set_lsa_and_fetch_page != NO_ERROR)
       {
 	return err_set_lsa_and_fetch_page;
@@ -305,7 +332,7 @@ namespace cublog
       = log_pgptr_reader.reinterpret_copy_and_add_align<log_rec_t> ();
 
     const auto &rcv_vpid = get_vpid ();
-    log_rv_redo_record_sync<log_rec_t> (thread_p, log_pgptr_reader, log_rec, rcv_vpid, m_rcv_lsa, m_end_redo_lsa,
+    log_rv_redo_record_sync<log_rec_t> (thread_p, log_pgptr_reader, log_rec, rcv_vpid, rcv_lsa, m_end_redo_lsa,
 					m_log_rtype, undo_unzip_support, redo_unzip_support);
     return NO_ERROR;
   }
@@ -317,6 +344,79 @@ namespace cublog
   {
   };
 #endif /* SERVER_MODE */
+}
+
+
+/*
+ * log_rv_redo_record_sync_or_dispatch_async - execute a redo record synchronously or
+ *                    (in future) asynchronously
+ *
+ * return: nothing
+ *
+ *   thread_p(in):
+ *   log_pgptr_reader(in/out): log reader
+ *   log_rec(in): log record structure with info about the location and size of the data in the log page
+ *   rcv_lsa(in): Reset data page (rcv->pgptr) to this LSA
+ *   log_rtype(in): log record type needed to check if diff information is needed or should be skipped
+ *   undo_unzip_support(out): extracted undo data support structure (set as a side effect)
+ *   redo_unzip_support(out): extracted redo data support structure (set as a side effect); required to
+ *                    be passed by address because it also functions as an internal working buffer;
+ *                    functions as an outside managed (ie: longer lived) buffer space for the underlying
+ *                    logic to perform its work; the pointer to the buffer is then passed - non-owningly
+ *                    - to the rcv structure which, in turn, is passed to the actual apply function
+ *   force_each_log_page_fetch(in): the log page will be fetched anew each time a fetch is requested
+ *                    regardless of other considerations
+ *
+ */
+template <typename T>
+void
+log_rv_redo_record_sync_or_dispatch_async (
+	THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
+	const T &log_rec, const log_lsa &rcv_lsa,
+	const LOG_LSA *end_redo_lsa, LOG_RECTYPE log_rtype,
+	LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support,
+	std::unique_ptr<cublog::redo_parallel> &parallel_recovery_redo,
+	bool force_each_log_page_fetch)
+{
+  const VPID rcv_vpid = log_rv_get_log_rec_vpid<T> (log_rec);
+  // at this point, vpid can either be valid or not
+
+#if defined(SERVER_MODE)
+  const LOG_DATA &log_data = log_rv_get_log_rec_data<T> (log_rec);
+  const bool need_sync_redo = log_rv_need_sync_redo (rcv_vpid, log_data.rcvindex);
+  assert (log_data.rcvindex != RVDK_UNRESERVE_SECTORS || need_sync_redo);
+
+  // once vpid is extracted (or not), and depending on parameters, either dispatch the applying of
+  // log redo asynchronously, or invoke synchronously
+  if (parallel_recovery_redo == nullptr || need_sync_redo)
+    {
+      // To apply RVDK_UNRESERVE_SECTORS, one must first wait for all changes in this sector to be redone.
+      // Otherwise, asynchronous jobs skip redoing changes in this sector's pages because they are seen as
+      // deallocated. When the same sector is reserved again, redo is resumed in the sector's pages, but
+      // the pages are not in a consistent state. The current workaround is to wait for all changes to be
+      // finished, including changes in the unreserved sector.
+      if (parallel_recovery_redo != nullptr && log_data.rcvindex == RVDK_UNRESERVE_SECTORS)
+	{
+	  parallel_recovery_redo->wait_for_idle ();
+	}
+#endif
+
+      // invoke sync
+      log_rv_redo_record_sync<T> (thread_p, log_pgptr_reader, log_rec, rcv_vpid, rcv_lsa, end_redo_lsa, log_rtype,
+				  undo_unzip_support, redo_unzip_support);
+#if defined(SERVER_MODE)
+    }
+  else
+    {
+      // dispatch async
+      using redo_job_impl_t = cublog::redo_job_impl<T>;
+      std::unique_ptr<redo_job_impl_t> job
+      {
+        new redo_job_impl_t (rcv_vpid, rcv_lsa, end_redo_lsa, log_rtype, force_each_log_page_fetch)
+      };
+      parallel_recovery_redo->add (std::move (job));
+    }
+#endif
 }
 
 #endif // _LOG_RECOVERY_REDO_PARALLEL_HPP_

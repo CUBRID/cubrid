@@ -29,16 +29,14 @@ namespace cublog
   redo_parallel::redo_job_queue::redo_job_queue ()
     : m_produce_queue (new ux_redo_job_deque ())
     , m_consume_queue (new ux_redo_job_deque ())
-    , m_queues_empty (false)
+    , m_queues_empty (true)
     , m_adding_finished { false }
   {
   }
 
   redo_parallel::redo_job_queue::~redo_job_queue ()
   {
-    assert (m_produce_queue->size () == 0);
-    assert (m_consume_queue->size () == 0);
-    assert (m_in_progress_vpids.size () == 0);
+    assert_idle ();
 
     delete m_produce_queue;
     m_produce_queue = nullptr;
@@ -47,24 +45,28 @@ namespace cublog
     m_consume_queue = nullptr;
   }
 
-  void redo_parallel::redo_job_queue::locked_push (ux_redo_job_base &&job)
+  void
+  redo_parallel::redo_job_queue::push_job (ux_redo_job_base &&job)
   {
     std::lock_guard<std::mutex> lck (m_produce_queue_mutex);
     m_produce_queue->push_back (std::move (job));
     m_queues_empty = false;
   }
 
-  void redo_parallel::redo_job_queue::set_adding_finished ()
+  void
+  redo_parallel::redo_job_queue::set_adding_finished ()
   {
     m_adding_finished.store (true);
   }
 
-  bool redo_parallel::redo_job_queue::get_adding_finished () const
+  bool
+  redo_parallel::redo_job_queue::get_adding_finished () const
   {
     return m_adding_finished.load ();
   }
 
-  redo_parallel::redo_job_queue::ux_redo_job_base redo_parallel::redo_job_queue::locked_pop (bool &out_adding_finished)
+  redo_parallel::redo_job_queue::ux_redo_job_base
+  redo_parallel::redo_job_queue::pop_job (bool &out_adding_finished)
   {
     std::unique_lock<std::mutex> consume_queue_lock (m_consume_queue_mutex);
 
@@ -88,8 +90,8 @@ namespace cublog
 
 	  // access the m_in_progress_vpids guarded; another option to reduce contention would
 	  // be to copy the contents (while guarded) and then check against the contents outside of lock
-	  std::lock_guard<std::mutex> lock_in_progress_vpids (m_in_progress_vpids_mutex);
-	  job_to_consume = do_find_job_to_consume ();
+	  std::lock_guard<std::mutex> lock_in_progress_vpids (m_in_progress_mutex);
+	  job_to_consume = do_locked_find_job_to_consume ();
 	  if (job_to_consume == nullptr)
 	    {
 	      // specifically leave the 'out_adding_finished' on false:
@@ -107,9 +109,7 @@ namespace cublog
 	  // when all entries in the consume queue have been added or when a synched (to-be-waited-for)
 	  // entry is found
 
-	  const VPID vpid_to_be_processed = job_to_consume->get_vpid ();
-	  assert (m_in_progress_vpids.find (vpid_to_be_processed) == m_in_progress_vpids.cend ());
-	  m_in_progress_vpids.insert (vpid_to_be_processed);
+	  do_locked_mark_job_started (job_to_consume);
 	} // unlock m_in_progress_vpids
 
 	// unlocking consume queue before this will not guarantee total ordering amongst entries' execution
@@ -132,9 +132,9 @@ namespace cublog
       }
   }
 
-  void redo_parallel::redo_job_queue::do_swap_queues_if_needed ()
+  void
+  redo_parallel::redo_job_queue::do_swap_queues_if_needed ()
   {
-    //
     // if consumption of everything in consume queue finished; see whether there's some more in the other one
     if (m_consume_queue->size () == 0)
       {
@@ -160,13 +160,14 @@ namespace cublog
       }
   }
 
-  redo_parallel::redo_job_queue::ux_redo_job_base redo_parallel::redo_job_queue::do_find_job_to_consume ()
+  redo_parallel::redo_job_queue::ux_redo_job_base
+  redo_parallel::redo_job_queue::do_locked_find_job_to_consume ()
   {
     ux_redo_job_base job;
     auto consume_queue_it = m_consume_queue->begin ();
     for (; consume_queue_it != m_consume_queue->end (); ++consume_queue_it)
       {
-	const VPID it_vpid = (*consume_queue_it)->get_vpid ();
+	const vpid it_vpid = (*consume_queue_it)->get_vpid ();
 	if (m_in_progress_vpids.find ((it_vpid)) == m_in_progress_vpids.cend ())
 	  {
 	    job = std::move (*consume_queue_it);
@@ -179,13 +180,25 @@ namespace cublog
     return job;
   }
 
-  void redo_parallel::redo_job_queue::notify_in_progress_vpid_finished (VPID _vpid)
+  void
+  redo_parallel::redo_job_queue::do_locked_mark_job_started (const ux_redo_job_base &a_job)
+  {
+    const vpid &job_vpid = a_job->get_vpid ();
+    assert (m_in_progress_vpids.find (job_vpid) == m_in_progress_vpids.cend ());
+    m_in_progress_vpids.insert (job_vpid);
+  }
+
+  void
+  redo_parallel::redo_job_queue::notify_job_finished (const ux_redo_job_base &a_job)
   {
     bool set_empty = false;
     {
-      std::lock_guard<std::mutex> lock_in_progress_vpids (m_in_progress_vpids_mutex);
-      assert (m_in_progress_vpids.find (_vpid) != m_in_progress_vpids.cend ());
-      m_in_progress_vpids.erase (_vpid);
+      std::lock_guard<std::mutex> lock_in_progress_vpids (m_in_progress_mutex);
+
+      const auto &job_vpid = a_job->get_vpid ();
+      const auto vpid_it = m_in_progress_vpids.find (job_vpid);
+      assert (vpid_it != m_in_progress_vpids.cend ());
+      m_in_progress_vpids.erase (vpid_it);
       set_empty = m_in_progress_vpids.empty ();
     }
     if (set_empty)
@@ -194,7 +207,8 @@ namespace cublog
       }
   }
 
-  void redo_parallel::redo_job_queue::wait_for_idle ()
+  void
+  redo_parallel::redo_job_queue::wait_for_idle () const
   {
     {
       std::unique_lock<std::mutex> empty_queues_lock (m_produce_queue_mutex);
@@ -205,26 +219,38 @@ namespace cublog
     }
 
     {
-      std::unique_lock<std::mutex> empty_in_progress_vpids_lock (m_in_progress_vpids_mutex);
+      std::unique_lock<std::mutex> empty_in_progress_vpids_lock (m_in_progress_mutex);
       m_in_progress_vpids_empty_cv.wait (empty_in_progress_vpids_lock, [this] ()
       {
 	return m_in_progress_vpids.empty ();
       });
     }
+
+    assert_idle ();
+  }
+
+  void
+  redo_parallel::redo_job_queue::assert_idle () const
+  {
+    assert (m_produce_queue->size () == 0);
+    assert (m_consume_queue->size () == 0);
+    assert (m_in_progress_vpids.size () == 0);
   }
 
   /*********************************************************************
    * redo_parallel::task_active_state_bookkeeping - definition
    *********************************************************************/
 
-  void redo_parallel::task_active_state_bookkeeping::set_active ()
+  void
+  redo_parallel::task_active_state_bookkeeping::set_active ()
   {
     std::lock_guard<std::mutex> lck { m_active_count_mtx };
     ++m_active_count;
     assert (m_active_count > 0);
   }
 
-  void redo_parallel::task_active_state_bookkeeping::set_inactive ()
+  void
+  redo_parallel::task_active_state_bookkeeping::set_inactive ()
   {
     bool do_notify { false };
     {
@@ -240,7 +266,8 @@ namespace cublog
       }
   }
 
-  void redo_parallel::task_active_state_bookkeeping::wait_for_termination ()
+  void
+  redo_parallel::task_active_state_bookkeeping::wait_for_termination ()
   {
     std::unique_lock<std::mutex> lck (m_active_count_mtx);
     m_active_count_cv.wait (lck, [this] ()
@@ -311,7 +338,8 @@ namespace cublog
     log_zip_free_data (m_redo_unzip_support);
   }
 
-  void redo_parallel::redo_task::execute (context_type &context)
+  void
+  redo_parallel::redo_task::execute (context_type &context)
   {
     bool finished = false;
 
@@ -321,7 +349,7 @@ namespace cublog
     for (; !finished ;)
       {
 	bool adding_finished = false;
-	std::unique_ptr<redo_job_base> job = m_queue.locked_pop (adding_finished);
+	std::unique_ptr<redo_job_base> job = m_queue.pop_job (adding_finished);
 
 	if (job == nullptr && adding_finished)
 	  {
@@ -341,7 +369,7 @@ namespace cublog
 		THREAD_ENTRY *const thread_entry = &context;
 		job->execute (thread_entry, m_log_pgptr_reader, m_undo_unzip_support, m_redo_unzip_support);
 
-		m_queue.notify_in_progress_vpid_finished (job->get_vpid ());
+		m_queue.notify_job_finished (job);
 	      }
 	  }
       }
@@ -370,15 +398,17 @@ namespace cublog
     assert (m_waited_for_termination);
   }
 
-  void redo_parallel::add (std::unique_ptr<redo_job_base> &&job)
+  void
+  redo_parallel::add (std::unique_ptr<redo_job_base> &&job)
   {
     assert (false == m_waited_for_termination);
     assert (false == m_job_queue.get_adding_finished ());
 
-    m_job_queue.locked_push (std::move (job));
+    m_job_queue.push_job (std::move (job));
   }
 
-  void redo_parallel::set_adding_finished ()
+  void
+  redo_parallel::set_adding_finished ()
   {
     assert (false == m_waited_for_termination);
     assert (false == m_job_queue.get_adding_finished ());
@@ -386,7 +416,8 @@ namespace cublog
     m_job_queue.set_adding_finished ();
   }
 
-  void redo_parallel::wait_for_termination_and_stop_execution ()
+  void
+  redo_parallel::wait_for_termination_and_stop_execution ()
   {
     assert (false == m_waited_for_termination);
 
@@ -401,7 +432,8 @@ namespace cublog
     m_waited_for_termination = true;
   }
 
-  void redo_parallel::wait_for_idle ()
+  void
+  redo_parallel::wait_for_idle ()
   {
     assert (false == m_waited_for_termination);
     assert (false == m_job_queue.get_adding_finished ());
@@ -409,7 +441,8 @@ namespace cublog
     m_job_queue.wait_for_idle ();
   }
 
-  void redo_parallel::do_init_worker_pool ()
+  void
+  redo_parallel::do_init_worker_pool ()
   {
     assert (m_task_count > 0);
     assert (m_worker_pool == nullptr);
@@ -421,7 +454,8 @@ namespace cublog
 		    nullptr, m_task_count, false /*debug_logging*/);
   }
 
-  void redo_parallel::do_init_tasks ()
+  void
+  redo_parallel::do_init_tasks ()
   {
     assert (m_task_count > 0);
     assert (m_worker_pool != nullptr);

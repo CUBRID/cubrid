@@ -3169,7 +3169,7 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
 #if defined (SERVER_MODE)
   if (get_server_type () == SERVER_TYPE_PAGE)
     {
-      ps_Gl.finish_replication (*thread_p);
+      ps_Gl.finish_replication_during_shutdown (*thread_p);
       ps_Gl.finalize_log_page_fetcher ();
     }
 #endif
