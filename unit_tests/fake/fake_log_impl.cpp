@@ -20,7 +20,10 @@
 #include "log_prior_recv.hpp"
 
 log_prior_lsa_info g_log_prior_lsa_info;
-log_global::log_global () : m_prior_recver (g_log_prior_lsa_info) {};
+log_global::log_global ()
+  : m_prior_recver (g_log_prior_lsa_info)
+{
+};
 log_global::~log_global () = default;
 LOG_GLOBAL log_Gl;
 
@@ -43,5 +46,8 @@ log_does_allow_replication (void)
   return false;
 }
 
-cublog::prior_recver::prior_recver (log_prior_lsa_info &prior_lsa_info) : m_prior_lsa_info (prior_lsa_info) {}
+cublog::prior_recver::prior_recver (log_prior_lsa_info &prior_lsa_info)
+  : m_prior_lsa_info (prior_lsa_info)
+{
+}
 

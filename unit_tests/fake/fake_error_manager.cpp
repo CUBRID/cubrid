@@ -35,10 +35,16 @@ er_errid (void)
 }
 
 void
-er_set_with_oserror (int severity, const char *file_name, const int line_no, int err_id, int num_args, ...) {}
+er_set_with_oserror (int severity, const char *file_name, const int line_no, int err_id, int num_args, ...)
+{
+}
 
 void
-er_clear (void) {}
+er_clear (void)
+{
+}
 
 void
-er_print_callstack (const char *file_name, const int line_no, const char *fmt, ...) {}
+er_print_callstack (const char *file_name, const int line_no, const char *fmt, ...)
+{
+}

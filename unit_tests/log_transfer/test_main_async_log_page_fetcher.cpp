@@ -79,7 +79,7 @@ TEST_CASE ("Test with an invalid log page returned", "")
 TEST_CASE ("Test with a very big number of pages", "")
 {
   std::vector<LOG_PAGEID> page_ids;
-  for (auto i = 1; i < 10001; ++i)
+  for (auto i = 0; i < 10000; ++i)
     {
       page_ids.push_back (i);
     }
@@ -101,7 +101,9 @@ test_env::test_env (bool require_log_page_valid, std::vector<LOG_PAGEID> log_pag
     }
 }
 
-test_env::~test_env () {}
+test_env::~test_env ()
+{
+}
 
 void
 test_env::run_test ()

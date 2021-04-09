@@ -58,19 +58,29 @@ namespace cubthread
   }
 
   void
-  entry::request_lock_free_transactions (void) {}
+  entry::request_lock_free_transactions (void)
+  {
+  }
 
   void
-  entry::assign_lf_tran_index (lockfree::tran::index idx) {}
+  entry::assign_lf_tran_index (lockfree::tran::index idx)
+  {
+  }
 
   void
-  entry::return_lock_free_transaction_entries (void) {}
+  entry::return_lock_free_transaction_entries (void)
+  {
+  }
 
   void
-  entry::register_id () {}
+  entry::register_id ()
+  {
+  }
 
   void
-  entry::unregister_id () {}
+  entry::unregister_id ()
+  {
+  }
 
   lockfree::tran::index
   entry::pull_lf_tran_index ()
@@ -85,7 +95,9 @@ namespace cubthread
   }
 
   void
-  entry::end_resource_tracks (void) {}
+  entry::end_resource_tracks (void)
+  {
+  }
 
 } // namespace cubthread
 
@@ -96,7 +108,12 @@ namespace cubthread
 // cubthread::entry_manager::retire_context
 namespace cuberr
 {
-  void context::register_thread_local () {}
-  void context::deregister_thread_local () {}
+  void context::register_thread_local ()
+  {
+  }
+
+  void context::deregister_thread_local ()
+  {
+  }
 
 } // namespace cuberr
