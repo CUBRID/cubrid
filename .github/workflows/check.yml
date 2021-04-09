@@ -151,7 +151,7 @@ jobs:
             *) continue ;; # skip others
             esac
 
-            ${{ env.CPPCHECK_PATH }}/cppcheck --force -j4 --suppressions-list=.github/workflows/cppcheck-spr-list --quiet --enable=warning -iheaplayers $f 2>>$result_file
+            ${{ env.CPPCHECK_PATH }}/cppcheck --force -j4 --inline-suppr --suppressions-list=.github/workflows/cppcheck-spr-list --quiet --enable=warning -iheaplayers $f 2>>$result_file
           done
 
           echo "errors: `cat $result_file | grep " error: " | wc -l`" > $summary_file
