@@ -8045,22 +8045,30 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
 	}
     }
 
-  adv_size1 = adv_size2 = 0;
-  if (c != DB_EQ)
+  if (result_size1 != NULL)
     {
-      if (dom1 != NULL && OR_MULTI_ATT_IS_BOUND (bitptr1, i))
+      adv_size1 = 0;
+      if (c != DB_EQ)
 	{
-	  adv_size1 = pr_midxkey_element_disk_size (mem1, dom1);
+	  if (dom1 != NULL && OR_MULTI_ATT_IS_BOUND (bitptr1, i))
+	    {
+	      adv_size1 = pr_midxkey_element_disk_size (mem1, dom1);
+	    }
 	}
-
-      if (dom2 != NULL && OR_MULTI_ATT_IS_BOUND (bitptr2, i))
-	{
-	  adv_size2 = pr_midxkey_element_disk_size (mem2, dom2);
-	}
+      *result_size1 = size1 + adv_size1;
     }
-
-  *result_size1 = size1 + adv_size1;
-  *result_size2 = size2 + adv_size2;
+  if (result_size2 != NULL)
+    {
+      adv_size2 = 0;
+      if (c != DB_EQ)
+	{
+	  if (dom2 != NULL && OR_MULTI_ATT_IS_BOUND (bitptr2, i))
+	    {
+	      adv_size2 = pr_midxkey_element_disk_size (mem2, dom2);
+	    }
+	}
+      *result_size2 = size2 + adv_size2;
+  }
 
   *diff_column = i;
 
