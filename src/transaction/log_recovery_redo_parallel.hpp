@@ -73,6 +73,13 @@ namespace cublog
        */
       void wait_for_idle ();
 
+      /* check if all fed data has ben consumed internally; non-blocking call
+       * NOTE: the nature of this function is 'volatile' - ie: what might be
+       * true at the moment the function is called is not necessarily true a moment
+       * later; it can be useful only if the caller is aware of the execution context
+       */
+      bool is_idle () const;
+
       /* mandatory to explicitly call this before dtor
        */
       void wait_for_termination_and_stop_execution ();
@@ -124,6 +131,13 @@ namespace cublog
 	  /* wait until all data has been consumed internally; blocking call
 	   */
 	  void wait_for_idle () const;
+
+	  /* check if all fed data has ben consumed internally; non-blocking call
+	   * NOTE: the nature of this function is 'volatile' - ie: what might be
+	   * true at the moment the function is called is not necessarily true a moment
+	   * later; it can be useful only if the caller is aware of the execution context
+	   */
+	  bool is_idle () const;
 
 	private:
 	  void assert_idle () const;
@@ -412,7 +426,7 @@ log_rv_redo_record_sync_or_dispatch_async (
       using redo_job_impl_t = cublog::redo_job_impl<T>;
       std::unique_ptr<redo_job_impl_t> job
       {
-        new redo_job_impl_t (rcv_vpid, rcv_lsa, end_redo_lsa, log_rtype, force_each_log_page_fetch)
+	new redo_job_impl_t (rcv_vpid, rcv_lsa, end_redo_lsa, log_rtype, force_each_log_page_fetch)
       };
       parallel_recovery_redo->add (std::move (job));
     }
