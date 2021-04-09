@@ -8068,7 +8068,7 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
 	    }
 	}
       *result_size2 = size2 + adv_size2;
-  }
+    }
 
   *diff_column = i;
 
