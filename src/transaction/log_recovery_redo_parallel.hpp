@@ -412,7 +412,7 @@ log_rv_redo_record_sync_or_dispatch_async (
       using redo_job_impl_t = cublog::redo_job_impl<T>;
       std::unique_ptr<redo_job_impl_t> job
       {
-	new redo_job_impl_t (rcv_vpid, rcv_lsa, end_redo_lsa, log_rtype, force_each_log_page_fetch /*false*/)
+        new redo_job_impl_t (rcv_vpid, rcv_lsa, end_redo_lsa, log_rtype, force_each_log_page_fetch)
       };
       parallel_recovery_redo->add (std::move (job));
     }
