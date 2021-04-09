@@ -24,6 +24,7 @@
 
 // other module includes
 #include "catch2/catch.hpp"
+#include "log_lsa.hpp"
 #include "storage_common.h"
 
 // standard includes
@@ -70,7 +71,7 @@ class ut_database_values_generator
   public:
     ut_database_values_generator (const ut_database_config &a_database_config);
 
-    INT64 increment_and_get_lsa_log_id ();
+    const log_lsa &increment_and_get_lsa_log ();
 
     double rand_duration_in_millis ();
 
@@ -85,11 +86,12 @@ class ut_database_values_generator
   private:
     const ut_database_config &m_database_config;
 
-    // just a global ever increasing id
-    INT64 m_lsa_log_id;
-
     std::random_device m_rd;
     std::mt19937 m_gen;
+
+    // just a global ever increasing id
+    log_lsa m_log_lsa;
+    std::bernoulli_distribution m_rand_log_lsa_dist;
 
     // number of millis for a task to busy wait
     std::uniform_real_distribution<double> m_duration_in_millis_dist;

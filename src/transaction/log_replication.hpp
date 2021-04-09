@@ -24,14 +24,21 @@
 #include "log_lsa.hpp"
 #include "log_reader.hpp"
 #include "log_record.hpp"
+#include "thread_entry_task.hpp"
 
 #include <condition_variable>
 #include <mutex>
 
+// forward declarations
 namespace cubthread
 {
   class daemon;
   class entry;
+}
+namespace cublog
+{
+  // addind this here allows to include the corresponding header only in the source
+  class redo_parallel;
 }
 
 namespace cublog
@@ -45,23 +52,30 @@ namespace cublog
       replicator (const log_lsa &start_redo_lsa);
       ~replicator ();
 
-      void wait_replication_finish () const;
+      /* function can only be called when it is ensured that 'nxio_lsa' will
+       * no longer be modified (ie: increase)
+       */
+      void wait_replication_finish_during_shutdown () const;
 
     private:
       void redo_upto_nxio_lsa (cubthread::entry &thread_entry);
+      void conclude_task_execution ();
       void redo_upto (cubthread::entry &thread_entry, const log_lsa &end_redo_lsa);
       template <typename T>
       void read_and_redo_record (cubthread::entry &thread_entry, LOG_RECTYPE rectype, const log_lsa &rec_lsa);
 
+      std::unique_ptr<cubthread::entry_task> m_daemon_task;
       cubthread::daemon *m_daemon = nullptr;
 
       log_lsa m_redo_lsa = NULL_LSA;
-      mutable std::mutex m_redo_mutex;
-      mutable std::condition_variable m_redo_condvar;
+      mutable std::mutex m_redo_lsa_mutex;
+      mutable std::condition_variable m_redo_lsa_condvar;
 
       log_reader m_reader;
       LOG_ZIP m_undo_unzip;
       LOG_ZIP m_redo_unzip;
+
+      std::unique_ptr<cublog::redo_parallel> m_parallel_replication_redo;
   };
 }
 

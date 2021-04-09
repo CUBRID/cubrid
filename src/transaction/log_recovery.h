@@ -44,11 +44,9 @@ extern char *log_rv_pack_redo_record_changes (char *ptr, int offset_to_data, int
 					      char *new_data);
 extern char *log_rv_pack_undo_record_changes (char *ptr, int offset_to_data, int old_data_size, int new_data_size,
 					      char *old_data);
-
-// *INDENT-OFF*
-void log_rv_redo_record (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
-			 int (*redofun) (THREAD_ENTRY *thread_p, LOG_RCV *), LOG_RCV *rcv, const LOG_LSA *rcv_lsa_ptr,
-			 int undo_length, const char *undo_data, LOG_ZIP &redo_unzip);
-// *INDENT-ON*
+extern bool log_rv_need_sync_redo (const vpid & a_rcv_vpid, LOG_RCVINDEX a_rcvindex);
+void log_rv_redo_record (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader,
+			 int (*redofun) (THREAD_ENTRY * thread_p, LOG_RCV *), LOG_RCV * rcv,
+			 const LOG_LSA * rcv_lsa_ptr, int undo_length, const char *undo_data, LOG_ZIP & redo_unzip);
 
 #endif // _LOG_RECOVERY_H_
