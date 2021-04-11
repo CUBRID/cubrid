@@ -347,332 +347,32 @@ test_env_chkpt::generate_tran_table()
 
 std::mutex systb_Mutex;
 std::map<TRANID, log_tdes *> systb_System_tdes;
-namespace cubpacking
-{
-  void
-  packer::align (const size_t req_alignment)
-  {
-    m_ptr = PTR_ALIGN (m_ptr, req_alignment);
-  }
-
-  void
-  unpacker::align (const size_t req_alignment)
-  {
-    m_ptr = PTR_ALIGN (m_ptr, req_alignment);
-  }
-
-  static void
-  check_range (const char *ptr, const char *endptr, const size_t amount)
-  {
-    assert (ptr + amount <= endptr);
-    if (ptr + amount > endptr)
-      {
-	abort ();
-      }
-  }
-
-  size_t
-  packer::get_packed_bigint_size (size_t curr_offset)
-  {
-    return DB_ALIGN (curr_offset, MAX_ALIGNMENT) - curr_offset + OR_BIGINT_SIZE;
-  }
-
-  void
-  packer::pack_bigint (const std::int64_t &value)
-  {
-    align (MAX_ALIGNMENT);
-    check_range (m_ptr, m_end_ptr, OR_BIGINT_SIZE);
-
-    OR_PUT_INT64 (m_ptr, &value);
-    m_ptr += OR_BIGINT_SIZE;
-  }
-
-  void
-  unpacker::unpack_bigint (std::int64_t &value)
-  {
-    align (MAX_ALIGNMENT);
-    check_range (m_ptr, m_end_ptr, OR_BIGINT_SIZE);
-
-    OR_GET_INT64 (m_ptr, &value);
-    m_ptr += OR_BIGINT_SIZE;
-  }
-
-  size_t
-  packer::get_packed_short_size (size_t curr_offset)
-  {
-    return DB_ALIGN (curr_offset, SHORT_ALIGNMENT) - curr_offset + OR_SHORT_SIZE;
-  }
-
-  void
-  packer::pack_short (const short value)
-  {
-    align (SHORT_ALIGNMENT);
-    check_range (m_ptr, m_end_ptr, OR_SHORT_SIZE);
-
-    OR_PUT_SHORT (m_ptr, value);
-    m_ptr += OR_SHORT_SIZE;
-  }
-
-  void
-  unpacker::unpack_short (short &value)
-  {
-    align (SHORT_ALIGNMENT);
-    check_range (m_ptr, m_end_ptr, OR_SHORT_SIZE);
-
-    value = OR_GET_SHORT (m_ptr);
-    m_ptr += OR_SHORT_SIZE;
-  }
-
-  size_t
-  packer::get_packed_int_size (size_t curr_offset)
-  {
-    return DB_ALIGN (curr_offset, INT_ALIGNMENT) - curr_offset + OR_INT_SIZE;
-  }
-
-  void
-  packer::pack_int (const int value)
-  {
-    align (INT_ALIGNMENT);
-    check_range (m_ptr, m_end_ptr, OR_INT_SIZE);
-
-    OR_PUT_INT (m_ptr, value);
-    m_ptr += OR_INT_SIZE;
-  }
-
-  void
-  unpacker::unpack_int (int &value)
-  {
-    align (INT_ALIGNMENT);
-    check_range (m_ptr, m_end_ptr, OR_INT_SIZE);
-
-    value = OR_GET_INT (m_ptr);
-    m_ptr += OR_INT_SIZE;
-  }
-
-  size_t
-  packer::get_packed_c_string_size (const char *str, const size_t str_size, const size_t curr_offset)
-  {
-    size_t entry_size;
-
-    if (str_size < MAX_SMALL_STRING_SIZE)
-      {
-	entry_size = OR_BYTE_SIZE + str_size;
-      }
-    else
-      {
-	entry_size = DB_ALIGN (OR_BYTE_SIZE, INT_ALIGNMENT) + OR_INT_SIZE + str_size;
-      }
-
-    return DB_ALIGN (curr_offset + entry_size, INT_ALIGNMENT) - curr_offset;
-  }
-
-  void
-  packer::pack_c_string (const char *str, const size_t str_size)
-  {
-    if (str_size < MAX_SMALL_STRING_SIZE)
-      {
-	pack_small_string (str, str_size);
-      }
-    else
-      {
-	check_range (m_ptr, m_end_ptr, str_size + 1 + OR_INT_SIZE);
-
-	OR_PUT_BYTE (m_ptr, LARGE_STRING_CODE);
-	m_ptr++;
-
-	pack_large_c_string (str, str_size);
-      }
-  }
-
-  void
-  unpacker::unpack_c_string (char *str, const size_t max_str_size)
-  {
-    size_t len = 0;
-
-    unpack_string_size (len);
-
-    if (len >= max_str_size)
-      {
-	assert (false);
-	return;
-      }
-    if (len > 0)
-      {
-	std::memcpy (str, m_ptr, len);
-	m_ptr += len;
-      }
-
-    str[len] = '\0';
-
-    align (INT_ALIGNMENT);
-  }
-
-  void
-  packer::pack_small_string (const char *string, const size_t str_size)
-  {
-    size_t len;
-
-    if (str_size == 0)
-      {
-	len = strlen (string);
-      }
-    else
-      {
-	len = str_size;
-      }
-
-    if (len > MAX_SMALL_STRING_SIZE)
-      {
-	assert (false);
-	pack_c_string (string, len);
-	return;
-      }
-
-    check_range (m_ptr, m_end_ptr, len + 1);
-
-    OR_PUT_BYTE (m_ptr, len);
-    m_ptr += OR_BYTE_SIZE;
-    if (len > 0)
-      {
-	std::memcpy (m_ptr, string, len);
-	m_ptr += len;
-      }
-
-    align (INT_ALIGNMENT);
-  }
-
-  void
-  packer::pack_large_c_string (const char *string, const size_t str_size)
-  {
-    size_t len;
-
-    if (str_size == 0)
-      {
-	len = strlen (string);
-      }
-    else
-      {
-	len = str_size;
-      }
-
-    align (INT_ALIGNMENT);
-    check_range (m_ptr, m_end_ptr, len + OR_INT_SIZE);
-
-    OR_PUT_INT (m_ptr, len);
-    m_ptr += OR_INT_SIZE;
-
-    std::memcpy (m_ptr, string, len);
-    m_ptr += len;
-
-    align (INT_ALIGNMENT);
-  }
-
-  size_t
-  packer::get_packed_string_size (const std::string &str, const size_t curr_offset)
-  {
-    return get_packed_c_string_size (str.c_str (), str.size (), curr_offset);
-  }
-
-  void
-  unpacker::unpack_string_size (size_t &len)
-  {
-    check_range (m_ptr, m_end_ptr, 1);
-    len = OR_GET_BYTE (m_ptr);
-    if (len == LARGE_STRING_CODE)
-      {
-	m_ptr++;
-
-	align (OR_INT_SIZE);
-
-	len = OR_GET_INT (m_ptr);
-	m_ptr += OR_INT_SIZE;
-      }
-    else
-      {
-	m_ptr++;
-      }
-    if (len > 0)
-      {
-	check_range (m_ptr, m_end_ptr, len);
-      }
-  }
-
-  size_t
-  packer::get_packed_bool_size (size_t curr_offset)
-  {
-    return get_packed_int_size (curr_offset);
-  }
-
-  void
-  unpacker::unpack_bigint (std::uint64_t &value)
-  {
-    align (MAX_ALIGNMENT);
-    check_range (m_ptr, m_end_ptr, OR_BIGINT_SIZE);
-
-    OR_GET_INT64 (m_ptr, &value);
-    m_ptr += OR_BIGINT_SIZE;
-  }
-
-  void
-  unpacker::unpack_bool (bool &value)
-  {
-    int int_val;
-    unpack_int (int_val);
-    assert (int_val == 1 || int_val == 0);
-    value = int_val != 0;
-  }
-
-  void
-  packer::pack_bigint (const std::uint64_t &value)
-  {
-    align (MAX_ALIGNMENT);
-    check_range (m_ptr, m_end_ptr, OR_BIGINT_SIZE);
-
-    OR_PUT_INT64 (m_ptr, &value);
-    m_ptr += OR_BIGINT_SIZE;
-  }
-
-  void
-  packer::pack_bool (bool value)
-  {
-    pack_int (value ? 1 : 0);
-  }
-
-  void
-  packer::set_buffer (char *storage, const size_t amount)
-  {
-    m_start_ptr = storage;
-    m_ptr = storage;
-    m_end_ptr = m_start_ptr + amount;
-  }
-
-  void
-  unpacker::set_buffer (const char *storage, const size_t amount)
-  {
-    m_start_ptr = storage;
-    m_ptr = storage;
-    m_end_ptr = m_start_ptr + amount;
-  }
-
-  packer::packer (void)
-  {
-    // all pointers are initialized to NULL
-  }
-}
 
 //unused stuff needed by the linker
 log_global log_Gl;
+
+int
+or_packed_value_size (const DB_VALUE *value, int collapse_null, int include_domain, int include_domain_classoids)
+{
+  return 0;
+}
+
+char *
+or_pack_value (char *buf, DB_VALUE *value)
+{
+  return nullptr;
+}
+
+char *
+or_unpack_value (const char *buf, DB_VALUE *value)
+{
+  return nullptr;
+}
 
 bool
 prm_get_bool_value (PARAM_ID prmid)
 {
   return false;
-}
-
-const char *
-clientids::get_db_user () const
-{
-  return db_user.c_str ();
 }
 
 LOG_PRIOR_NODE *
@@ -851,11 +551,8 @@ logtb_set_tdes (THREAD_ENTRY *thread_p, LOG_TDES *tdes, const BOOT_CLIENT_CREDEN
   tdes->topops.stack = NULL;
   tdes->topops.max = 0;
   tdes->topops.last = -1;
-  tdes->m_modified_classes.clear ();
   tdes->num_transient_classnames = 0;
   tdes->first_save_entry = NULL;
-  tdes->lob_locator_root.init ();
-  tdes->m_log_postpone_cache.reset ();
 }
 
 static int
@@ -905,8 +602,6 @@ logtb_allocate_tran_index_local (THREAD_ENTRY *thread_p, TRANID trid, TRAN_STATE
 	  tdes->trid = trid;
 	  tdes->state = state;
 	}
-
-      LOG_SET_CURRENT_TRAN_INDEX (thread_p, tran_index);
 
       tdes->tran_abort_reason = TRAN_NORMAL;
     }
@@ -962,7 +657,7 @@ logtb_rv_find_allocate_tran_index (THREAD_ENTRY *thread_p, TRANID trid, const LO
 
   assert (trid != NULL_TRANID);
 
-  if (trid < NULL_TRANID;)
+  if (trid < NULL_TRANID)
     {
       // *INDENT-OFF*
       return log_system_tdes::rv_get_or_alloc_tdes (trid);
@@ -1011,12 +706,6 @@ logpb_fatal_error (THREAD_ENTRY *thread_p, bool log_exit, const char *file_name,
   assert (false);
 }
 
-void
-clientids::set_system_internal_with_user (const char *db_user_arg)
-{
-  assert (false);
-}
-
 void *
 logtb_realloc_topops_stack (LOG_TDES *tdes, int num_elms)
 {
@@ -1029,6 +718,12 @@ log_read_sysop_start_postpone (THREAD_ENTRY *thread_p, LOG_LSA *log_lsa, LOG_PAG
 			       char **undo_buffer, int *undo_size, char **undo_data)
 {
   assert (false);
+}
+
+int
+logtb_get_current_tran_index (void)
+{
+  return 1;
 }
 
 int
@@ -1046,8 +741,6 @@ logtb_find_tran_index (THREAD_ENTRY *thread_p, TRANID trid)
   if (tdes == NULL || tdes->trid != trid)
     {
       tran_index = NULL_TRAN_INDEX;
-
-      TR_TABLE_CS_ENTER_READ_MODE (thread_p);
       /* Search the transaction table for such transaction */
       for (i = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
 	{
@@ -1058,7 +751,6 @@ logtb_find_tran_index (THREAD_ENTRY *thread_p, TRANID trid)
 	      break;
 	    }
 	}
-      TR_TABLE_CS_EXIT (thread_p);
     }
 
   return tran_index;
@@ -1068,21 +760,6 @@ void
 log_2pc_recovery_analysis_info (THREAD_ENTRY *thread_p, log_tdes *tdes, LOG_LSA *upto_chain_lsa)
 {
   assert (false);
-}
-
-clientids::clientids ()
-  : client_type (DB_CLIENT_TYPE_UNKNOWN)
-  , client_info {}
-  , db_user {}
-  , program_name {}
-  , login_name {}
-  , host_name {}
-  , process_id (0)
-{
-}
-
-clientids::~clientids ()
-{
 }
 
 namespace cubmem
@@ -1147,22 +824,4 @@ mvcc_snapshot::mvcc_snapshot ()
   , snapshot_fnc (NULL)
   , valid (false)
 {
-}
-
-size_t
-clientids::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
-{
-  assert (false);
-}
-
-void
-clientids::pack (cubpacking::packer &serializator) const
-{
-  assert (false);
-}
-
-void
-clientids::unpack (cubpacking::unpacker &deserializator)
-{
-  assert (false);
 }

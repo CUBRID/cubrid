@@ -26,6 +26,8 @@ set(TEST_CHKPT_INFO_SOURCES
   ${TRANSACTION_DIR}/log_checkpoint_info.cpp
   test_main_chkpt_info.cpp
   fake_thread_entry.cpp
+  ${TRANSACTION_DIR}/client_credentials.cpp
+  ${BASE_DIR}/packer.cpp
   )
 SET_SOURCE_FILES_PROPERTIES(
   ${TEST_CHKPT_INFO_SOURCES}
