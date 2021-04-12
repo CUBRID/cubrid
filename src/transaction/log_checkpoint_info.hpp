@@ -16,6 +16,9 @@
  *
  */
 
+#ifndef _LOG_CHECKPOINT_INFO_HPP_
+#define _LOG_CHECKPOINT_INFO_HPP_
+
 #include "log_lsa.hpp"
 #include "log_record.hpp"
 #include "log_system_tran.hpp"
@@ -64,3 +67,4 @@ namespace cublog
       bool m_has_2pc;				      // true if any LOG_ISTRAN_2PC (tdes) is true
   };
 }
+#endif

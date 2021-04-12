@@ -18,15 +18,15 @@
 
 #include "log_checkpoint_info.hpp"
 
-#include "log_impl.h"
 #include "client_credentials.hpp"
 #include "critical_section.h"
+#include "log_impl.h"
 #include "memory_alloc.h"
 #include "page_buffer.h"
-#include "transaction_global.hpp"
-#include "thread_entry.hpp"
 #include "scope_exit.hpp"
 #include "system_parameter.h"
+#include "thread_entry.hpp"
+#include "transaction_global.hpp"
 
 #include <cstring>
 
@@ -104,7 +104,7 @@ namespace cublog
 
     std::uint64_t trans_size = 0;
     deserializator.unpack_bigint (trans_size);
-    for (uint i = 0; i < trans_size; i++)
+    for (unsigned i = 0; i < trans_size; i++)
       {
 	LOG_INFO_CHKPT_TRANS chkpt_trans;
 
@@ -128,7 +128,7 @@ namespace cublog
 
     std::uint64_t sysop_size = 0;
     deserializator.unpack_bigint (sysop_size);
-    for (uint i = 0; i < sysop_size; i++)
+    for (unsigned i = 0; i < sysop_size; i++)
       {
 	LOG_INFO_CHKPT_SYSOP chkpt_sysop;
 	deserializator.unpack_int (chkpt_sysop.trid);
