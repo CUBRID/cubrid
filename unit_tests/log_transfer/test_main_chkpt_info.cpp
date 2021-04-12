@@ -706,10 +706,36 @@ logpb_fatal_error (THREAD_ENTRY *thread_p, bool log_exit, const char *file_name,
   assert (false);
 }
 
+static const int LOG_TOPOPS_STACK_INCREMENT = 3;	/* No more than 3 nested top system operations */
 void *
 logtb_realloc_topops_stack (LOG_TDES *tdes, int num_elms)
 {
-  assert (false);
+  size_t size;
+  void *newptr;
+
+  if (num_elms < LOG_TOPOPS_STACK_INCREMENT)
+    {
+      num_elms = LOG_TOPOPS_STACK_INCREMENT;
+    }
+
+  size = tdes->topops.max + num_elms;
+  size = size * sizeof (*tdes->topops.stack);
+
+  newptr = (LOG_TOPOPS_ADDRESSES *) realloc (tdes->topops.stack, size);
+  if (newptr != NULL)
+    {
+      tdes->topops.stack = (LOG_TOPOPS_ADDRESSES *) newptr;
+      if (tdes->topops.max == 0)
+	{
+	  tdes->topops.last = -1;
+	}
+      tdes->topops.max += num_elms;
+    }
+  else
+    {
+      return NULL;
+    }
+  return tdes->topops.stack;
 }
 
 int
