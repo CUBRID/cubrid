@@ -808,7 +808,7 @@ logddl_write_tran_str (const char *fmt, ...)
 {
   FILE *fp = NULL;
   char msg[DDL_LOG_BUFFER_SIZE] = { 0 };
-  int len = 0;
+  size_t len = 0;
   struct timeval time_val;
   va_list args;
 
@@ -889,7 +889,7 @@ logddl_write_tran_str (const char *fmt, ...)
 	  len = DDL_LOG_BUFFER_SIZE;
 	}
 
-      if (len < 0 || fwrite (msg, sizeof (char), len, fp) != len)
+      if (fwrite (msg, sizeof (char), len, fp) != len)
 	{
 	  goto write_error;
 	}
