@@ -656,7 +656,7 @@ struct log_global
 
   // *INDENT-OFF*
   log_global ();
-   ~log_global ();
+  ~log_global ();
   // *INDENT-ON*
 };
 
