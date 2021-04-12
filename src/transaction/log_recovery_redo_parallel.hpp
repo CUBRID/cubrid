@@ -329,7 +329,7 @@ namespace cublog
       static constexpr struct vpid SENTINEL_VPID = { SENTINEL_PAGEID, SENTINEL_VOLID };
 
     public:
-      redo_job_replication_delay_impl (const log_lsa &a_rcv_lsa, time_t a_start_time);
+      redo_job_replication_delay_impl (const log_lsa &a_rcv_lsa, time_t a_start_time_msec);
 
       redo_job_replication_delay_impl (redo_job_replication_delay_impl const &) = delete;
       redo_job_replication_delay_impl (redo_job_replication_delay_impl &&) = delete;
@@ -343,7 +343,7 @@ namespace cublog
 		   LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support) override;
 
     private:
-      const time_t m_start_time;
+      const time_t m_start_time_msec;
   };
 
 
@@ -394,9 +394,9 @@ namespace cublog
 
   template <typename TYPE_LOG_REC>
   redo_job_replication_delay_impl<TYPE_LOG_REC>::redo_job_replication_delay_impl (
-	  const log_lsa &a_rcv_lsa, time_t a_start_time)
+	  const log_lsa &a_rcv_lsa, time_t a_start_time_msec)
     : redo_parallel::redo_job_base (SENTINEL_VPID, a_rcv_lsa)
-    , m_start_time (a_start_time)
+    , m_start_time_msec (a_start_time_msec)
   {
   }
 
@@ -404,7 +404,7 @@ namespace cublog
   int  redo_job_replication_delay_impl<TYPE_LOG_REC>::execute (THREAD_ENTRY *thread_p, log_reader &,
       LOG_ZIP &, LOG_ZIP &)
   {
-    const int res = log_rpl_calculate_replication_delay (thread_p, m_start_time);
+    const int res = log_rpl_calculate_replication_delay (thread_p, m_start_time_msec);
     return res;
   }
 

@@ -79,6 +79,6 @@ namespace cublog
   };
 }
 
-extern int log_rpl_calculate_replication_delay (THREAD_ENTRY *thread_p, time_t a_start_time);
+extern int log_rpl_calculate_replication_delay (THREAD_ENTRY *thread_p, time_t a_start_time_msec);
 
 #endif // !_LOG_REPLICATION_HPP_

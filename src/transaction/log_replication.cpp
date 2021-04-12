@@ -26,6 +26,7 @@
 #include "thread_looper.hpp"
 #include "thread_manager.hpp"
 #include "transaction_global.hpp"
+#include "util_func.h"
 
 #include <cassert>
 #include <chrono>
@@ -175,11 +176,13 @@ namespace cublog
 	  case LOG_ABORT:
 	  {
 	    const log_rec_donetime donetime = m_reader.reinterpret_copy_and_add_align<log_rec_donetime> ();
-	    const time_t start_time = static_cast<time_t> (donetime.at_time);
+	    // at_time, expressed in milliseconds rather than seconds
+	    const time_t start_time_msec = static_cast<time_t> (donetime.at_time);
 	    if (m_parallel_replication_redo != nullptr)
 	      {
 		// dispatch a job; the time difference will be calculated when the job is actually
-		// picked up for completion by a task
+		// picked up for completion by a task; this will give an accurate estimate of the actual
+		// delay between log genearation on the page server and log recovery on the page server
 		using redo_job_replication_delay_impl_t = cublog::redo_job_replication_delay_impl<log_rec_donetime>;
 		std::unique_ptr<redo_job_replication_delay_impl_t> replication_delay_job
 		{
@@ -190,7 +193,7 @@ namespace cublog
 	    else
 	      {
 		// calculate the time difference synchronously
-		log_rpl_calculate_replication_delay (&thread_entry, start_time);
+		log_rpl_calculate_replication_delay (&thread_entry, start_time_msec);
 	      }
 	    break;
 	  }
@@ -251,20 +254,24 @@ namespace cublog
 } // namespace cublog
 
 int
-log_rpl_calculate_replication_delay (THREAD_ENTRY *thread_p, time_t a_start_time)
+log_rpl_calculate_replication_delay (THREAD_ENTRY *thread_p, time_t a_start_time_msec)
 {
   // skip calculation if bogus input (sometimes, it is -1);
   // TODO: fix bogus input at the source if at all possible
-  if (a_start_time > 0)
+  if (a_start_time_msec > 0)
     {
-      const time_t end_time = time (nullptr);
-      const double time_diff = std::difftime (end_time, a_start_time);
-      assert (time_diff > .0);
-      er_log_debug (ARG_FILE_LINE, "repl_delay_impl: %g sec", time_diff);
+      const int64_t end_time_msec = util_gettime_msec ();
+      //const time_t end_time = time (nullptr);
+      const double time_diff_msec = std::difftime (end_time_msec, a_start_time_msec);
+      const double time_diff_sec = time_diff_msec / 1000.0;
+      assert (time_diff_sec > .0);
+      er_log_debug (ARG_FILE_LINE, "repl_delay_impl: %g sec", time_diff_sec);
       return NO_ERROR;
     }
   else
     {
+      er_log_debug (ARG_FILE_LINE, "log_rpl_calculate_replication_delay: encountered negative start"
+		    " time value (most likely, uninitialized)");
       return ER_FAILED;
     }
 }
