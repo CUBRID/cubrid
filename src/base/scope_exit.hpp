@@ -25,6 +25,7 @@
 #define _SCOPE_EXIT_HPP_
 
 // Scope Guard: execute something when it goes out of scope (no extra cost when optimization is enabled)
+#include <functional>
 #include <type_traits>
 #include <utility>
 
