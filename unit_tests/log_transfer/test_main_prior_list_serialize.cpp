@@ -442,12 +442,16 @@ namespace cublog
   {
     return 0;
   }
+
   void meta::pack (cubpacking::packer &serializator) const
   {
   }
+
   void meta::unpack (cubpacking::unpacker &deserializator)
   {
   }
+
+  checkpoint_info::~checkpoint_info () = default;
 
   prior_recver::prior_recver (log_prior_lsa_info &prior_lsa_info)
     : m_prior_lsa_info (prior_lsa_info)
