@@ -27,8 +27,7 @@ namespace cublog
   {
     public:
       explicit log_page_fetch_task (LOG_PAGEID pageid, async_page_fetcher::callback_func_type &&callback)
-	: m_logpageid (pageid)
-	, m_callback (std::move (callback))
+	: m_logpageid (pageid), m_callback (std::move (callback))
       {
       }
 
@@ -41,7 +40,7 @@ namespace cublog
 
   void log_page_fetch_task::execute (context_type &context)
   {
-    log_lsa loglsa { m_logpageid, 0 };
+    log_lsa loglsa {m_logpageid, 0};
     log_reader logreader;
 
     int err = logreader.set_lsa_and_fetch_page (loglsa);

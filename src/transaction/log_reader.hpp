@@ -66,10 +66,7 @@ class log_reader final
     int set_lsa_and_fetch_page (const log_lsa &lsa, fetch_mode fetch_page_mode = fetch_mode::NORMAL);
     const log_hdrpage &get_page_header () const;
 
-    const log_page *get_page () const
-    {
-      return m_page;
-    }
+    const log_page *get_page () const;
 
     /*
      * Note: `remove_reference` helps if function is called with a typedef
