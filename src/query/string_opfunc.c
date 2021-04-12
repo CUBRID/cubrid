@@ -13215,7 +13215,7 @@ db_sys_datetime (DB_VALUE * result_datetime)
   /* now return null */
   db_value_domain_init (result_datetime, DB_TYPE_DATETIME, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 
-  if (timespec_get (&tloc, TIME_UTC) != TIME_UTC)
+  if (timespec_get (&tloc, TIME_UTC) != 0)
     {
       error_status = ER_SYSTEM_DATE;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
@@ -13261,7 +13261,7 @@ db_sys_date_and_epoch_time (DB_VALUE * dt_dbval, DB_VALUE * ts_dbval)
   assert (dt_dbval != NULL);
   assert (ts_dbval != NULL);
 
-  if (timespec_get (&tloc, TIME_UTC) != TIME_UTC)
+  if (timespec_get (&tloc, TIME_UTC) != 0)
     {
       error_status = ER_SYSTEM_DATE;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);

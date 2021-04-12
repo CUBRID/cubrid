@@ -422,7 +422,7 @@ ut_time_string (char *buf, struct timeval *time_val)
 {
   struct tm tm, *tm_p;
   time_t sec;
-  int millisec;
+  long millisec;
 
   if (buf == NULL)
     {

@@ -5487,7 +5487,7 @@ tz_get_offset_in_mins ()
   time_t local = mktime (timeinfo);
 
   // Get offset in minutes from UTC
-  double offsetFromUTC = difftime (utc, local) / 60;
+  int offsetFromUTC = difftime (utc, local) / 60;
 
   return offsetFromUTC;
 }
