@@ -451,6 +451,10 @@ namespace cublog
   {
   }
 
+  checkpoint_info::~checkpoint_info ()
+  {
+  }
+
   prior_recver::prior_recver (log_prior_lsa_info &prior_lsa_info)
     : m_prior_lsa_info (prior_lsa_info)
   {
