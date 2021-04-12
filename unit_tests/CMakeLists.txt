@@ -64,6 +64,7 @@ if (AT_LEAST_ONE_UNIT_TEST)
   message("    common and fake")
   add_subdirectory(common)
   add_subdirectory(fake)
+  set(FAKE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/fake)
 endif()
 
 if (UNIT_TESTS OR UNIT_TEST_MEMORY_ALLOC)

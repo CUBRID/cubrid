@@ -45,7 +45,14 @@ add_dependencies(test_meta_log ${CATCH2_TARGET})
 # test_prior_list_serialize
 # 
 set(TEST_PRIOR_LIST_SERIALIZE_SOURCES
+  # Fake objects
+  ${FAKE_DIR}/fake_error_manager.cpp
+  ${FAKE_DIR}/fake_system_parameter.cpp
+
+  # What is tested
   ${TRANSACTION_DIR}/log_append.cpp
+
+  # Test
   test_main_prior_list_serialize.cpp
   )
 

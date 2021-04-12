@@ -1,0 +1,193 @@
+/*
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ */
+
+#define CATCH_CONFIG_MAIN
+#include "catch2/catch.hpp"
+
+// add checks on private members of log_meta
+#define private public
+#include "log_meta.hpp"
+#undef private
+
+// LSA higher than any other LSA's used in this test
+constexpr log_lsa MAX_LSA = { 1024, 1024 };
+
+class meta_file
+{
+  public:
+    meta_file ();
+    ~meta_file ();
+
+    std::FILE *get_file ();
+    void reload ();
+
+  private:
+    static constexpr char *FILENAME = "meta_log";
+
+    std::FILE *m_file;
+};
+static void match_meta_log (const cublog::meta &left, const cublog::meta &right);
+static void match_meta_log_after_flush_and_load (const cublog::meta &meta_log, meta_file &mf);
+
+TEST_CASE ("Load meta from empty file", "")
+{
+  meta_file mf;
+  cublog::meta meta_log;
+
+  meta_log.load_from_file (mf.get_file ());
+  REQUIRE (meta_log.m_checkpoints.empty ());
+}
+
+TEST_CASE ("Test meta load_from_file and flush_to_file", "")
+{
+  meta_file mf;
+  cublog::meta meta_log;
+
+  // match empty meta log
+  match_meta_log_after_flush_and_load (meta_log, mf);
+
+  // match meta log with one checkpoint info
+  std::pair<log_lsa, cublog::checkpoint_info> keyval1 = { {1, 1}, 1 };
+  meta_log.add_checkpoint_info (keyval1.first, keyval1.second);
+  match_meta_log_after_flush_and_load (meta_log, mf);
+
+  // match meta log with two checkpoint info
+  std::pair<log_lsa, cublog::checkpoint_info> keyval2 = { {2, 2}, 2 };
+  meta_log.add_checkpoint_info (keyval2.first, keyval2.second);
+  match_meta_log_after_flush_and_load (meta_log, mf);
+
+  // match meta log with three checkpoint info
+  std::pair<log_lsa, cublog::checkpoint_info> keyval3 = { {3, 3}, 3 };
+  meta_log.add_checkpoint_info (keyval3.first, keyval3.second);
+  match_meta_log_after_flush_and_load (meta_log, mf);
+}
+
+TEST_CASE ("Test checkpoint_info functions", "")
+{
+  cublog::meta meta_log;
+
+  std::pair<log_lsa, cublog::checkpoint_info> keyval1 = { {1, 1}, 1 };
+  std::pair<log_lsa, cublog::checkpoint_info> keyval2 = { {2, 2}, 2 };
+  std::pair<log_lsa, cublog::checkpoint_info> keyval3 = { {3, 3}, 3 };
+
+  // Add keyval1
+  meta_log.add_checkpoint_info (keyval1.first, keyval1.second);
+  // key of keyval1 exists and its value matches
+  REQUIRE (meta_log.get_checkpoint_info (keyval1.first) != nullptr);
+  REQUIRE (*meta_log.get_checkpoint_info (keyval1.first) == keyval1.second);
+  // key of keyval2 does not exist
+  REQUIRE (meta_log.get_checkpoint_info (keyval2.first) == nullptr);
+
+  // Add keyval2
+  meta_log.add_checkpoint_info (keyval2.first, keyval2.second);
+  REQUIRE (meta_log.m_checkpoints.size () == 2);
+  // Both keyval1 and keyval2 exist and values are matching
+  REQUIRE (meta_log.get_checkpoint_info (keyval1.first) != nullptr);
+  REQUIRE (*meta_log.get_checkpoint_info (keyval1.first) == keyval1.second);
+  REQUIRE (meta_log.get_checkpoint_info (keyval2.first) != nullptr);
+  REQUIRE (*meta_log.get_checkpoint_info (keyval2.first) == keyval2.second);
+
+  // Erase all before keyval2's key. That's keyval1.
+  REQUIRE (meta_log.remove_checkpoint_info_before_lsa (keyval2.first) == 1);
+  // Keyval2 exists, keyval1 no longer
+  REQUIRE (meta_log.get_checkpoint_info (keyval1.first) == nullptr);
+  REQUIRE (meta_log.get_checkpoint_info (keyval2.first) != nullptr);
+  REQUIRE (*meta_log.get_checkpoint_info (keyval2.first) == keyval2.second);
+
+  // Add keyval3
+  meta_log.add_checkpoint_info (keyval3.first, keyval3.second);
+  // Keyval2 and keyval3 exist
+  REQUIRE (meta_log.get_checkpoint_info (keyval2.first) != nullptr);
+  REQUIRE (*meta_log.get_checkpoint_info (keyval2.first) == keyval2.second);
+  REQUIRE (meta_log.get_checkpoint_info (keyval3.first) != nullptr);
+  REQUIRE (*meta_log.get_checkpoint_info (keyval3.first) == keyval3.second);
+
+  // Remove all
+  REQUIRE (meta_log.remove_checkpoint_info_before_lsa (MAX_LSA) == 2);
+  // No keys exist
+  REQUIRE (meta_log.get_checkpoint_info (keyval2.first) == nullptr);
+  REQUIRE (meta_log.get_checkpoint_info (keyval3.first) == nullptr);
+}
+
+meta_file::meta_file ()
+{
+  m_file = std::fopen (FILENAME, "w+");
+  assert (m_file);
+}
+
+meta_file::~meta_file ()
+{
+  std::fclose (m_file);
+  std::remove (FILENAME);
+}
+
+std::FILE *
+meta_file::get_file ()
+{
+  return m_file;
+}
+
+void
+meta_file::reload ()
+{
+  std::fclose (m_file);
+  m_file = std::fopen (FILENAME, "r+");
+  assert (m_file);
+}
+
+void
+match_meta_log (const cublog::meta &left, const cublog::meta &right)
+{
+  REQUIRE (left.m_checkpoints == right.m_checkpoints);
+}
+
+void
+match_meta_log_after_flush_and_load (const cublog::meta &meta_log, meta_file &mf)
+{
+  std::rewind (mf.get_file ());
+  meta_log.flush_to_file (mf.get_file());
+
+  mf.reload ();
+  cublog::meta meta_log_from_file;
+  meta_log_from_file.load_from_file (mf.get_file ());
+
+  match_meta_log (meta_log, meta_log_from_file);
+}
+
+// Declarations for CUBRID stuff required by linker
+#include "object_representation.h"
+
+int or_packed_value_size (const DB_VALUE *value, int collapse_null, int include_domain, int include_domain_classoids)
+{
+  assert (false);
+  return 0;
+}
+
+char *
+or_pack_value (char *buf, DB_VALUE *value)
+{
+  assert (false);
+  return nullptr;
+}
+
+char *
+or_unpack_value (const char *buf, DB_VALUE *value)
+{
+  assert (false);
+  return nullptr;
+}
