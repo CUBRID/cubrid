@@ -315,7 +315,8 @@ qfile_list_cache_cleanup (THREAD_ENTRY * thread_p)
 {
   BINARY_HEAP *bh = NULL;
   QFILE_CACHE_CLEANUP_CANDIDATE candidate;
-  int candidate_index, i, n;
+  int candidate_index;
+  unsigned int i, n;
 
   struct timeval current_time;
   int cleanup_count = prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_ENTRIES) * 8 / 10;
