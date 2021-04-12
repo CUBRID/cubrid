@@ -19,6 +19,7 @@
 #ifndef _LOG_META_HPP_
 #define _LOG_META_HPP_
 
+#include "log_checkpoint_info.hpp"
 #include "log_lsa.hpp"
 #include "packable_object.hpp"
 
@@ -28,7 +29,6 @@
 namespace cublog
 {
   // todo: replace with real checkpoint info
-  using checkpoint_info = int;
 
   class meta : cubpacking::packable_object
   {
@@ -47,6 +47,7 @@ namespace cublog
       void add_checkpoint_info (const log_lsa &chkt_lsa, checkpoint_info &&chkpt_info);
       void add_checkpoint_info (const log_lsa &chkpt_lsa, const checkpoint_info &chkpt_info);
       size_t remove_checkpoint_info_before_lsa (const log_lsa &target_lsa);
+      size_t get_checkpoint_info_size () const;
 
     private:
       using checkpoint_container_t = std::map<log_lsa, checkpoint_info>;   // todo: replace unsigned with checkpoint_info

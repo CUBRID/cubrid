@@ -32,6 +32,8 @@ namespace cublog
     size += serializator.get_packed_int_size (start_offset + size); // m_checkpoints.size ()
     for (const auto chkinfo : m_checkpoints)
       {
+	size += serializator.get_packed_bigint_size (start_offset + size);
+	size += serializator.get_packed_int_size (start_offset + size);
 	size += serializator.get_packed_size_overloaded (chkinfo.second, start_offset + size);
       }
     return size;
@@ -43,6 +45,8 @@ namespace cublog
     serializator.pack_to_int (m_checkpoints.size ());
     for (const auto chkinfo : m_checkpoints)
       {
+	serializator.pack_bigint (chkinfo.first.pageid);
+	serializator.pack_int (chkinfo.first.offset);
 	serializator.pack_overloaded (chkinfo.second);
       }
   }
@@ -54,9 +58,18 @@ namespace cublog
     deserializator.unpack_from_int (size);
     for (size_t i = 0; i < size; ++i)
       {
+	log_lsa chkpt_lsa;
+	std::int64_t upk_bigint;
+	int upk_int;
+	deserializator.unpack_bigint (upk_bigint);
+	deserializator.unpack_int (upk_int);
+	assert (upk_int <= INT16_MAX);
+	chkpt_lsa = { upk_bigint, static_cast<std::int16_t> (upk_int) };
+
 	checkpoint_info chkinfo;
 	deserializator.unpack_overloaded (chkinfo);
-	m_checkpoints.insert ({ { chkinfo, (std::int16_t) chkinfo }, std::move (chkinfo) });
+
+	m_checkpoints.insert ({ chkpt_lsa, std::move (chkinfo) });
       }
   }
 
@@ -154,5 +167,11 @@ namespace cublog
 	  }
       }
     return removed_count;
+  }
+
+  size_t
+  meta::get_checkpoint_info_size () const
+  {
+    return m_checkpoints.size ();
   }
 }
