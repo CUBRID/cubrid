@@ -232,7 +232,10 @@ struct log_rec_replication
 typedef struct log_rec_donetime LOG_REC_DONETIME;
 struct log_rec_donetime
 {
-  INT64 at_time;		/* Database creation time. For safety reasons */
+  INT64 at_time;		/* Database creation time. For safety reasons .. LE: what? */
+  /* NOTE: stored as milliseconds with the value as
+   * accurate as possible as provided via system structs
+   * such as 'timeval' or 'timespec' */
 };
 
 /* Log the change of the server's HA state */

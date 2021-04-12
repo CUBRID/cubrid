@@ -60,6 +60,10 @@
 #if defined(SERVER_MODE)
 #include "server_support.h"
 #endif /* SERVER_MODE */
+#include "db_date.h"
+#include "fault_injection.h"
+#include "filter_pred_cache.h"
+#include "heap_file.h"
 #include "log_append.hpp"
 #include "log_archives.hpp"
 #include "log_compress.h"
@@ -68,27 +72,24 @@
 #include "log_system_tran.hpp"
 #include "log_volids.hpp"
 #include "log_writer.h"
-#include "partition_sr.h"
-#include "filter_pred_cache.h"
-#include "heap_file.h"
-#include "slotted_page.h"
 #include "object_primitive.h"
 #include "object_representation.h"
+#include "partition_sr.h"
+#include "slotted_page.h"
 #include "tz_support.h"
-#include "db_date.h"
-#include "fault_injection.h"
 #if defined (SA_MODE)
 #include "connection_support.h"
 #endif /* defined (SA_MODE) */
+#include "boot_sr.h"
 #include "db_value_printer.hpp"
 #include "mem_block.hpp"
 #include "string_buffer.hpp"
-#include "boot_sr.h"
 #include "thread_daemon.hpp"
 #include "thread_entry.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
 #include "transaction_transient.hpp"
+#include "util_func.h"
 #include "vacuum.h"
 #include "xasl_cache.h"
 
@@ -4627,7 +4628,7 @@ log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA 
     }
 
   donetime = (LOG_REC_DONETIME *) node->data_header;
-  donetime->at_time = time (NULL);
+  donetime->at_time = util_gettime_msec ();
 
   if (with_lock == LOG_PRIOR_LSA_WITH_LOCK)
     {
@@ -6262,13 +6263,12 @@ static LOG_PAGE *
 log_dump_record_transaction_finish (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
   LOG_REC_DONETIME *donetime;
-  time_t tmp_time;
   char time_val[CTIME_MAX];
 
   /* Read the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*donetime), log_lsa, log_page_p);
   donetime = (LOG_REC_DONETIME *) ((char *) log_page_p->area + log_lsa->offset);
-  tmp_time = (time_t) donetime->at_time;
+  const time_t tmp_time = util_msec_to_sec (donetime->at_time);
   (void) ctime_r (&tmp_time, time_val);
   fprintf (out_fp, ",\n     Transaction finish time at = %s\n", time_val);
 

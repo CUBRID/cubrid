@@ -3544,7 +3544,7 @@ la_retrieve_eot_time (LOG_PAGE * pgptr, LOG_LSA * lsa)
     }
   donetime = (LOG_REC_DONETIME *) ((char *) pg->area + offset);
 
-  return donetime->at_time;
+  return util_msec_to_sec (donetime->at_time);
 }
 
 /*

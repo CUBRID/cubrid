@@ -41,6 +41,7 @@
 #include "slotted_page.h"
 #include "system_parameter.h"
 #include "thread_manager.hpp"
+#include "util_func.h"
 
 static void log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 				LOG_RCVINDEX rcvindex, const VPID * rcv_vpid, LOG_RCV * rcv,
@@ -1460,7 +1461,7 @@ log_rv_analysis_complete (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_ls
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_DONETIME), log_lsa, log_page_p);
 
   donetime = (LOG_REC_DONETIME *) ((char *) log_page_p->area + log_lsa->offset);
-  last_at_time = (time_t) donetime->at_time;
+  last_at_time = util_msec_to_sec (donetime->at_time);
   if (stop_at != NULL && *stop_at != (time_t) (-1) && difftime (*stop_at, last_at_time) < 0)
     {
 #if !defined(NDEBUG)
@@ -3690,7 +3691,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		    const LOG_REC_DONETIME *donetime = log_pgptr_reader.reinterpret_cptr<LOG_REC_DONETIME> ();
 		    // *INDENT-ON*
 
-		    if (difftime (*stopat, (time_t) donetime->at_time) < 0)
+		    // stopat is provided in seconds
+		    const time_t log_at_time = util_msec_to_sec (donetime->at_time);
+		    if (difftime (*stopat, log_at_time) < 0)
 		      {
 			/*
 			 * Stop the recovery process at this point
