@@ -248,9 +248,9 @@ _DEFUN (s2b, (ptr, s, nd0, nd, y9), struct _reent * ptr _AND _CONST char *s _AND
 
 #endif /* ENABLE_UNUSED_FUNCTION */
 int
-_DEFUN (hi0bits, (x), register __ULong x)
+_DEFUN (hi0bits, (x), __ULong x)
 {
-  register int k = 0;
+  int k = 0;
 
   if (!(x & 0xffff0000))
     {
@@ -284,8 +284,8 @@ _DEFUN (hi0bits, (x), register __ULong x)
 int
 _DEFUN (lo0bits, (y), __ULong * y)
 {
-  register int k;
-  register __ULong x = *y;
+  int k;
+  __ULong x = *y;
 
   if (x & 7)
     {

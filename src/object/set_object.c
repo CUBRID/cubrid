@@ -4337,7 +4337,7 @@ setobj_clear (COL * col)
 void
 setobj_free (COL * col)
 {
-  register DB_COLLECTION *start, *r;
+  DB_COLLECTION *start, *r;
 
   if (col == NULL)
     {
