@@ -21,6 +21,8 @@
 
 #include "log_append.hpp"
 
+#include "fake_packable_object.hpp"
+
 #include <algorithm>
 #include <array>
 #include <random>
@@ -438,22 +440,13 @@ LOG_CS_EXIT (THREAD_ENTRY *thread_p)
 
 namespace cublog
 {
-  size_t meta::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
-  {
-    return 0;
-  }
+  EXPAND_PACKABLE_OBJECT_DEF (meta);
 
-  void meta::pack (cubpacking::packer &serializator) const
-  {
-  }
-
-  void meta::unpack (cubpacking::unpacker &deserializator)
-  {
-  }
 
   checkpoint_info::~checkpoint_info ()
   {
   }
+  EXPAND_PACKABLE_OBJECT_DEF (checkpoint_info);
 
   prior_recver::prior_recver (log_prior_lsa_info &prior_lsa_info)
     : m_prior_lsa_info (prior_lsa_info)
