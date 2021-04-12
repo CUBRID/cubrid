@@ -6811,7 +6811,8 @@ fileio_initialize_backup (const char *db_full_name_p, const char *backup_destina
   fileio_determine_backup_buffer_size (session_p, buf_size);
 #endif
   if (prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE) > 0
-      && (session_p->bkup.iosize >= MIN (prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE), DB_INT32_MAX)))
+      && ((UINT64) session_p->bkup.iosize >=
+	  MIN (prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE), DB_INT32_MAX)))
     {
       er_log_debug (ARG_FILE_LINE,
 		    "Backup block buffer size %ld must be less "
@@ -8582,7 +8583,7 @@ fileio_flush_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p)
   bool is_force_new_bkvol = false;
 
   if (prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE) > 0
-      && session_p->bkup.count > prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE))
+      && (UINT64) session_p->bkup.count > prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE))
     {
       er_log_debug (ARG_FILE_LINE, "Backup_flush: Backup aborted because count %d larger than max volume size %ld\n",
 		    session_p->bkup.count, prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE));
@@ -8676,7 +8677,7 @@ fileio_flush_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p)
 
 	  if (is_interactive_need_new || is_force_new_bkvol
 	      || (prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE) > 0
-		  && (session_p->bkup.voltotalio >= prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE))))
+		  && ((UINT64) session_p->bkup.voltotalio >= prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE))))
 	    {
 #if defined(CUBRID_DEBUG)
 	      fprintf (stdout, "open a new backup volume\n");
