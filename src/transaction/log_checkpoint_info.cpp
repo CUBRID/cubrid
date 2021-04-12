@@ -61,10 +61,6 @@ namespace cublog
     return log_lsa (pageid, offset);
   }
 
-  checkpoint_info::~checkpoint_info ()
-  {
-  }
-
   void
   checkpoint_info::pack (cubpacking::packer &serializator) const
   {

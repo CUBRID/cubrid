@@ -442,10 +442,6 @@ namespace cublog
 {
   EXPAND_PACKABLE_OBJECT_DEF (meta);
 
-
-  checkpoint_info::~checkpoint_info ()
-  {
-  }
   EXPAND_PACKABLE_OBJECT_DEF (checkpoint_info);
 
   prior_recver::prior_recver (log_prior_lsa_info &prior_lsa_info)
