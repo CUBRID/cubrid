@@ -522,7 +522,7 @@ function get_options ()
 function build_dist ()
 {
   if [ "$build_mode" = "coverage" ]; then
-    print_error "Pakcages with coverage mode is not supported. Skip"
+    print_error "Packages with coverage mode is not supported. Skip"
     return 0
   fi
 
