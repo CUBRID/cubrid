@@ -221,6 +221,11 @@ struct log_header
   {
     //
   }
+
+  void init ()
+  {
+    new (this) log_header ();
+  }
 };
 
 
