@@ -655,7 +655,7 @@ util_log_header (char *buf, size_t buf_len)
   buf_len -= len;
 
   pid = envvar_get (UTIL_PID_ENVVAR_NAME);
-  len += snprintf (p, buf_len, ".%03d (%s) ", millisec, ((pid == NULL) ? "    " : pid));
+  len += snprintf (p, buf_len, ".%03ld (%s) ", millisec.count (), ((pid == NULL) ? "    " : pid));
 
   assert (len <= UTIL_LOG_MAX_HEADER_LEN);
 

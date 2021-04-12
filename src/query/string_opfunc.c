@@ -58,6 +58,7 @@
 #include "util_func.h"
 
 #include <algorithm>
+#include <chrono>
 #include <string>
 #include <locale>
 
@@ -13265,11 +13266,14 @@ db_sys_date_and_epoch_time (DB_VALUE * dt_dbval, DB_VALUE * ts_dbval)
       return error_status;
     }
 
+  // *INDENT-OFF*
+  auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::nanoseconds(tloc.tv_nsec));
+  // *INDENT-ON*
   db_datetime_encode (&datetime, c_time_struct->tm_mon + 1, c_time_struct->tm_mday, c_time_struct->tm_year + 1900,
-		      c_time_struct->tm_hour, c_time_struct->tm_min, c_time_struct->tm_sec, millisec);
+		      c_time_struct->tm_hour, c_time_struct->tm_min, c_time_struct->tm_sec, tloc.millitm);
 
   db_make_datetime (dt_dbval, &datetime);
-  db_make_timestamp (ts_dbval, (DB_TIMESTAMP) sec);
+  db_make_timestamp (ts_dbval, (DB_TIMESTAMP) tloc.time);
 
   return error_status;
 }
