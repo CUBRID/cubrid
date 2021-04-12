@@ -169,12 +169,12 @@ page_server::start_log_replicator (const log_lsa &start_lsa)
 }
 
 void
-page_server::finish_replication (cubthread::entry &thread_entry)
+page_server::finish_replication_during_shutdown (cubthread::entry &thread_entry)
 {
   assert (m_replicator != nullptr);
 
   logpb_force_flush_pages (&thread_entry);
-  m_replicator->wait_replication_finish ();
+  m_replicator->wait_replication_finish_during_shutdown ();
   m_replicator.reset (nullptr);
 }
 

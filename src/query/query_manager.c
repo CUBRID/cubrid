@@ -136,8 +136,6 @@ QMGR_QUERY_TABLE qmgr_Query_table = { NULL, 0, NULL,
   {{PTHREAD_MUTEX_INITIALIZER, NULL, 0}, {PTHREAD_MUTEX_INITIALIZER, NULL, 0}}
 };
 
-int xcache_invalidate_qcaches (THREAD_ENTRY * thread_p, const OID * arg);
-
 #if !defined(SERVER_MODE)
 static struct drand48_data qmgr_rand_buf;
 #endif

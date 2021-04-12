@@ -48,7 +48,7 @@ class ut_redo_job_impl final : public cublog::redo_parallel::redo_job_base
 
   public:
     ut_redo_job_impl (ut_database &a_database_recovery, job_type a_job_type,
-		      INT64 a_id, VPID a_vpid, double a_millis);
+		      const log_lsa &a_log_lsa_id, VPID a_vpid, double a_millis);
 
     ut_redo_job_impl (ut_redo_job_impl const &) = delete;
     ut_redo_job_impl (ut_redo_job_impl &&) = delete;
@@ -79,7 +79,6 @@ class ut_redo_job_impl final : public cublog::redo_parallel::redo_job_base
 
     const job_type m_job_type;
 
-    const INT64 m_id;
     const double m_millis;
 };
 

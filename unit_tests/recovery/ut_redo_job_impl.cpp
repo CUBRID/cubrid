@@ -24,10 +24,10 @@
 #include <limits>
 
 ut_redo_job_impl::ut_redo_job_impl (ut_database &a_database_recovery, job_type a_job_type,
-				    INT64 a_id, VPID a_vpid, double a_millis)
-  : cublog::redo_parallel::redo_job_base (a_vpid)
+				    const log_lsa &a_log_lsa_id, VPID a_vpid, double a_millis)
+  : cublog::redo_parallel::redo_job_base (a_vpid, a_log_lsa_id)
   , m_database_recovery (a_database_recovery), m_job_type (a_job_type)
-  , m_id (a_id), m_millis (a_millis)
+  , m_millis (a_millis)
 {
 }
 
@@ -65,7 +65,7 @@ static bool close_equal (T_FLOATING left, T_FLOATING rite
 
 void ut_redo_job_impl::require_equal (const ut_redo_job_impl &that) const
 {
-  REQUIRE (m_id == that.m_id);
+  REQUIRE (get_log_lsa () == that.get_log_lsa ());
   REQUIRE (get_vpid () == that.get_vpid ());
   REQUIRE (close_equal (m_millis, that.m_millis));
 }
@@ -88,7 +88,8 @@ bool ut_redo_job_impl::is_page_modification () const
 ux_ut_redo_job_impl ut_redo_job_impl::clone ()
 {
   const auto &vpid = get_vpid ();
-  ux_ut_redo_job_impl res { new ut_redo_job_impl (m_database_recovery, m_job_type, m_id, vpid, m_millis) };
+  const log_lsa &log_lsa = get_log_lsa ();
+  ux_ut_redo_job_impl res { new ut_redo_job_impl (m_database_recovery, m_job_type, log_lsa, vpid, m_millis) };
   return res;
 }
 

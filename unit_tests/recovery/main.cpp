@@ -116,7 +116,7 @@ class measure_time
 
 /* '[ci]' tests are supposed to be executed by the Continuous Integration infrastructure
  */
-TEST_CASE ("log recovery parallel test: some jobs, some tasks", "[ci][dbg]")
+TEST_CASE ("log recovery parallel test: some jobs, some tasks", "[ci]")
 {
   srand (time (nullptr));
   initialize_thread_infrastructure ();
@@ -135,7 +135,7 @@ TEST_CASE ("log recovery parallel test: some jobs, some tasks", "[ci][dbg]")
 		{
 		  const log_recovery_test_config test_config =
 		  {
-		    parallel_count, // std::thread::hardware_concurrency (), // parallel_count
+		    parallel_count, // parallel_count
 		    job_count, // redo_job_count
 		    false, // verbose
 		  };
