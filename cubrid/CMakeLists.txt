@@ -291,6 +291,7 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/log_global.c
   ${TRANSACTION_DIR}/log_lsa.cpp
   ${TRANSACTION_DIR}/log_manager.c
+  ${TRANSACTION_DIR}/log_meta.cpp
   ${TRANSACTION_DIR}/log_page_buffer.c
   ${TRANSACTION_DIR}/log_page_async_fetcher.cpp
   ${TRANSACTION_DIR}/log_postpone_cache.cpp
@@ -320,6 +321,7 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/log_archives.hpp
   ${TRANSACTION_DIR}/log_common_impl.h
   ${TRANSACTION_DIR}/log_lsa.hpp
+  ${TRANSACTION_DIR}/log_meta.hpp
   ${TRANSACTION_DIR}/log_page_async_fetcher.hpp
   ${TRANSACTION_DIR}/log_postpone_cache.hpp
   ${TRANSACTION_DIR}/log_prior_send.hpp

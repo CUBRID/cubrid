@@ -47,6 +47,7 @@
 #include "log_comm.h"
 #include "log_common_impl.h"
 #include "log_lsa.hpp"
+#include "log_meta.hpp"
 #include "log_postpone_cache.hpp"
 #include "log_prior_send.hpp"
 #if defined (SERVER_MODE)
@@ -646,6 +647,7 @@ struct log_global
   GLOBAL_UNIQUE_STATS_TABLE unique_stats_table;	/* global unique statistics */
 
   // *INDENT-OFF*
+  cublog::meta m_metainfo;
   cublog::prior_sender m_prior_sender;
 #if defined (SERVER_MODE)
   cublog::prior_recver m_prior_recver;
