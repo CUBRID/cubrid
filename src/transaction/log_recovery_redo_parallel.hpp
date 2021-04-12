@@ -20,6 +20,7 @@
 #define _LOG_RECOVERY_REDO_PARALLEL_HPP_
 
 #include "log_recovery_redo.hpp"
+#include "log_replication.hpp"
 
 #if defined(SERVER_MODE)
 #include "thread_manager.hpp"
@@ -280,7 +281,8 @@ namespace cublog
   };
 
 
-  /* actual job implementation that performs log recovery redo
+  /* actual job implementation that performs log recovery redo,
+   * also used for log replication
    */
   template <typename TYPE_LOG_REC>
   class redo_job_impl final : public redo_parallel::redo_job_base
@@ -312,6 +314,38 @@ namespace cublog
       const LOG_RECTYPE m_log_rtype;
       const log_reader::fetch_mode m_log_reader_page_fetch_mode;
   };
+
+
+  /* job implementation that performs log replication delay calculation
+   * using log records that register creation time
+   */
+  template <typename TYPE_LOG_REC> // TODO: does not need to be a template
+  class redo_job_replication_delay_impl final : public redo_parallel::redo_job_base
+  {
+      using log_rec_t = TYPE_LOG_REC;
+
+      static constexpr short SENTINEL_VOLID = -2;
+      static constexpr int32_t SENTINEL_PAGEID = -2;
+      static constexpr struct vpid SENTINEL_VPID = { SENTINEL_PAGEID, SENTINEL_VOLID };
+
+    public:
+      redo_job_replication_delay_impl (const log_lsa &a_rcv_lsa, time_t a_start_time);
+
+      redo_job_replication_delay_impl (redo_job_replication_delay_impl const &) = delete;
+      redo_job_replication_delay_impl (redo_job_replication_delay_impl &&) = delete;
+
+      ~redo_job_replication_delay_impl () override = default;
+
+      redo_job_replication_delay_impl &operator = (redo_job_replication_delay_impl const &) = delete;
+      redo_job_replication_delay_impl &operator = (redo_job_replication_delay_impl &&) = delete;
+
+      int execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
+		   LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support) override;
+
+    private:
+      const time_t m_start_time;
+  };
+
 
   /*********************************************************************
    * template/inline implementations
@@ -349,6 +383,29 @@ namespace cublog
     log_rv_redo_record_sync<log_rec_t> (thread_p, log_pgptr_reader, log_rec, rcv_vpid, rcv_lsa, m_end_redo_lsa,
 					m_log_rtype, undo_unzip_support, redo_unzip_support);
     return NO_ERROR;
+  }
+
+  template <typename TYPE_LOG_REC>
+  constexpr short redo_job_replication_delay_impl<TYPE_LOG_REC>::SENTINEL_VOLID;
+  template <typename TYPE_LOG_REC>
+  constexpr int32_t redo_job_replication_delay_impl<TYPE_LOG_REC>::SENTINEL_PAGEID;
+  template <typename TYPE_LOG_REC>
+  constexpr struct vpid redo_job_replication_delay_impl<TYPE_LOG_REC>::SENTINEL_VPID;
+
+  template <typename TYPE_LOG_REC>
+  redo_job_replication_delay_impl<TYPE_LOG_REC>::redo_job_replication_delay_impl (
+	  const log_lsa &a_rcv_lsa, time_t a_start_time)
+    : redo_parallel::redo_job_base (SENTINEL_VPID, a_rcv_lsa)
+    , m_start_time (a_start_time)
+  {
+  }
+
+  template <typename TYPE_LOG_REC>
+  int  redo_job_replication_delay_impl<TYPE_LOG_REC>::execute (THREAD_ENTRY *thread_p, log_reader &,
+      LOG_ZIP &, LOG_ZIP &)
+  {
+    const int res = log_rpl_calculate_replication_delay (thread_p, m_start_time);
+    return res;
   }
 
 #else /* SERVER_MODE */

@@ -164,13 +164,36 @@ namespace cublog
 	    break;
 	  case LOG_DBEXTERN_REDO_DATA:
 	  {
-	    log_rec_dbout_redo dbout_redo = m_reader.reinterpret_copy_and_add_align<log_rec_dbout_redo> ();
+	    const log_rec_dbout_redo dbout_redo = m_reader.reinterpret_copy_and_add_align<log_rec_dbout_redo> ();
 	    log_rcv rcv;
 	    rcv.length = dbout_redo.length;
 	    log_rv_redo_record (&thread_entry, m_reader, RV_fun[dbout_redo.rcvindex].redofun, &rcv, &m_redo_lsa, 0,
 				nullptr, m_redo_unzip);
+	    break;
 	  }
-	  break;
+	  case LOG_COMMIT:
+	  case LOG_ABORT:
+	  {
+	    const log_rec_donetime donetime = m_reader.reinterpret_copy_and_add_align<log_rec_donetime> ();
+	    const time_t start_time = static_cast<time_t> (donetime.at_time);
+	    if (m_parallel_replication_redo != nullptr)
+	      {
+		// dispatch a job; the time difference will be calculated when the job is actually
+		// picked up for completion by a task
+		using redo_job_replication_delay_impl_t = cublog::redo_job_replication_delay_impl<log_rec_donetime>;
+		std::unique_ptr<redo_job_replication_delay_impl_t> replication_delay_job
+		{
+		  new redo_job_replication_delay_impl_t (m_redo_lsa, donetime.at_time)
+		};
+		m_parallel_replication_redo->add (std::move (replication_delay_job));
+	      }
+	    else
+	      {
+		// calculate the time difference synchronously
+		log_rpl_calculate_replication_delay (&thread_entry, start_time);
+	      }
+	    break;
+	  }
 	  default:
 	    // do nothing
 	    break;
@@ -226,3 +249,23 @@ namespace cublog
       }
   }
 } // namespace cublog
+
+int
+log_rpl_calculate_replication_delay (THREAD_ENTRY *thread_p, time_t a_start_time)
+{
+  // skip calculation if bogus input (sometimes, it is -1);
+  // TODO: fix bogus input at the source if at all possible
+  if (a_start_time > 0)
+    {
+      const time_t end_time = time (nullptr);
+      const double time_diff = std::difftime (end_time, a_start_time);
+      assert (time_diff > .0);
+      er_log_debug (ARG_FILE_LINE, "repl_delay_impl: %g sec", time_diff);
+      return NO_ERROR;
+    }
+  else
+    {
+      return ER_FAILED;
+    }
+}
+
