@@ -19,18 +19,18 @@
 #ifndef _FAKE_PACKABLE_OBJECT_HPP_
 #define _FAKE_PACKABLE_OBJECT_HPP_
 
-#define EXPAND_PACKABLE_OBJECT_DEF(obj)                                                           \
-  size_t obj::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const  \
-  {                                                                                               \
-    return 0;                                                                                     \
-  }                                                                                               \
-                                                                                                  \
-  void obj::pack (cubpacking::packer &serializator) const                                         \
-  {                                                                                               \
-  }                                                                                               \
-                                                                                                  \
-  void obj::unpack (cubpacking::unpacker &deserializator)                                         \
-  {                                                                                               \
-  }
+#define EXPAND_PACKABLE_OBJECT_EMPTY_DEF(obj)                                                   \
+size_t obj::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const  \
+{                                                                                               \
+  return 0;                                                                                     \
+}                                                                                               \
+                                                                                                \
+void obj::pack (cubpacking::packer &serializator) const                                         \
+{                                                                                               \
+}                                                                                               \
+                                                                                                \
+void obj::unpack (cubpacking::unpacker &deserializator)                                         \
+{                                                                                               \
+}
 
 #endif // !_FAKE_PACKABLE_OBJECT_HPP_

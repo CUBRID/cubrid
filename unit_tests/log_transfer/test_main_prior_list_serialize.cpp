@@ -440,9 +440,9 @@ LOG_CS_EXIT (THREAD_ENTRY *thread_p)
 
 namespace cublog
 {
-  EXPAND_PACKABLE_OBJECT_DEF (meta);
+  EXPAND_PACKABLE_OBJECT_EMPTY_DEF (meta);
 
-  EXPAND_PACKABLE_OBJECT_DEF (checkpoint_info);
+  EXPAND_PACKABLE_OBJECT_EMPTY_DEF (checkpoint_info);
 
   prior_recver::prior_recver (log_prior_lsa_info &prior_lsa_info)
     : m_prior_lsa_info (prior_lsa_info)
