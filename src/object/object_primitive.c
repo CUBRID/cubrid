@@ -7659,17 +7659,12 @@ mr_index_readval_midxkey (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
   midxkey.domain = domain;
   midxkey.min_max_val.position = -1;
   midxkey.min_max_val.type = MIN_COLUMN;
-
-  for (dom = domain->setdomain; dom; dom = dom->next)
-    {
-      midxkey.ncolumns += 1;
-    }
+  midxkey.ncolumns = domain->precision;
 
   if (!copy)
     {
       midxkey.buf = buf->ptr;
       db_make_midxkey (value, &midxkey);
-      value->need_clear = false;
       rc = or_advance (buf, size);
     }
   else
@@ -10152,9 +10147,7 @@ mr_data_lengthmem_string (void *memptr, TP_DOMAIN * domain, int disk)
 static int
 mr_index_lengthmem_string (void *memptr, TP_DOMAIN * domain)
 {
-  OR_BUF buf;
   int charlen;
-  int rc = NO_ERROR, compressed_length = 0, decompressed_length = 0, length = 0;
 
   /* generally, index key-value is short enough */
   charlen = OR_GET_BYTE (memptr);
@@ -10165,6 +10158,8 @@ mr_index_lengthmem_string (void *memptr, TP_DOMAIN * domain)
 
   assert (charlen == OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION);
 
+  OR_BUF buf;
+  int rc = NO_ERROR, compressed_length = 0, decompressed_length = 0, length = 0;
   or_init (&buf, (char *) memptr, -1);
 
   rc = or_get_varchar_compression_lengths (&buf, &compressed_length, &decompressed_length);
