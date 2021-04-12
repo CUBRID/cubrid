@@ -73,4 +73,7 @@ extern int util_log_write_command (int argc, char *argv[]);
 extern int util_bsearch (const void *key, const void *base, int n_elems, unsigned int sizeof_elem,
 			 int (*func_compare) (const void *, const void *), bool * out_found);
 
+extern int64_t util_gettime_msec ();
+extern time_t util_msec_to_sec (int64_t msec);
+
 #endif /* _UTIL_FUNC_H_ */

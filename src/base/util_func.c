@@ -803,3 +803,27 @@ util_bsearch (const void *key, const void *base, int n_elems, unsigned int sizeo
   /* mid is the right position for key */
   return mid;
 }
+
+/* util_gettime_msec - returns current time in milliseconds
+ *
+ * NOTE: currently using gettimeofday; for portability, must be implemented using
+ * clock_gettime (which, as of now, does not have an implementation on Win32)
+ */
+int64_t
+util_gettime_msec ()
+{
+  struct timeval now;
+  gettimeofday (&now, NULL);
+
+  const int64_t msec_from_sec = now.tv_sec * 1000LL;
+  const int64_t msec_from_usec = now.tv_usec / 1000LL;
+  const int64_t msec = msec_from_sec + msec_from_usec;
+  assert (msec >= msec_from_sec);	// overflow check
+  return msec;
+}
+
+time_t
+util_msec_to_sec (int64_t msec)
+{
+  return msec / 1000LL;
+}
