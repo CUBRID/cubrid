@@ -6042,7 +6042,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_ddl_audit_log_size_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL}/*,
+   (DUP_PRM_FUNC) NULL},
    {PRM_ID_SUPPLEMENTAL_LOG,
    PRM_NAME_SUPPLEMENTAL_LOG,
    (PRM_FOR_SERVER, PRM_FOR_HIDDEN),
@@ -6055,7 +6055,6 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL} 
-                          */
 };
 
 #define NUM_PRM ((int)(sizeof(prm_Def)/sizeof(prm_Def[0])))
