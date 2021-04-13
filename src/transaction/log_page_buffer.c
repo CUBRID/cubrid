@@ -4101,15 +4101,18 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
 	}
 
     if (ats_Gl.is_page_server_connected ())
-        {
-            std::unique_lock<std::mutex> lock (log_Gl.ps_lsa_mutex);
-            log_Gl.ps_lsa_cv.wait (lock, [flush_lsa] { return log_Gl.max_ps_flushed_lsa >= *flush_lsa; });
+      {
+	std::unique_lock<std::mutex> lock (log_Gl.ps_lsa_mutex);
+	log_Gl.ps_lsa_cv.wait (lock, [flush_lsa]
+	  {
+	    return log_Gl.max_ps_flushed_lsa >= *flush_lsa; 
+	  });
 
-            if (prm_get_bool_value (PRM_ID_ER_LOG_COMMIT_CONFIRM))
-            {
-                _er_log_debug (ARG_FILE_LINE, "Page server committed LSA = %lld|%d.\n", LSA_AS_ARGS (&log_Gl.max_ps_flushed_lsa));
-            }
-        }
+	if (prm_get_bool_value (PRM_ID_ER_LOG_COMMIT_CONFIRM))
+	{
+		_er_log_debug (ARG_FILE_LINE, "Page server committed LSA = %lld|%d.\n", LSA_AS_ARGS (&log_Gl.max_ps_flushed_lsa));
+	}
+      }
     }
 #endif /* SERVER_MODE */
 }
