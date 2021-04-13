@@ -65,6 +65,8 @@
 #include "transaction_transient.hpp"
 
 #include <assert.h>
+#include <condition_variable>
+#include <mutex>
 #if defined(SOLARIS)
 #include <netdb.h>		/* for MAXHOSTNAMELEN */
 #endif /* SOLARIS */
@@ -652,10 +654,16 @@ struct log_global
 #endif // SERVER_MODE = !SA_MODE
   // *INDENT-ON*
 
+  std::mutex ps_lsa_mutex;
+  std::condition_variable ps_lsa_cv;
+  LOG_LSA max_ps_flushed_lsa;
+
   // *INDENT-OFF*
   log_global ();
   ~log_global ();
   // *INDENT-ON*
+
+  void update_max_ps_flushed_lsa (const LOG_LSA &lsa);
 };
 
 /* logging statistics */

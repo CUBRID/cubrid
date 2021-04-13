@@ -103,4 +103,12 @@ log_global::~log_global ()
 {
   delete writer_info;
 }
+
+void
+log_global::update_max_ps_flushed_lsa (const LOG_LSA &lsa)
+{
+  max_ps_flushed_lsa = lsa;
+  std::unique_lock<std::mutex> lock(ps_lsa_mutex);
+  ps_lsa_cv.notify_all();
+}
 // *INDENT-ON*

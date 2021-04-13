@@ -199,6 +199,12 @@ void active_tran_server::receive_saved_lsa (cubpacking::unpacker &upk)
   upk.unpack_string (message);
   assert (sizeof (log_lsa) == message.size ());
   std::memcpy (&saved_lsa, message.c_str (), sizeof (log_lsa));
+
+  if (log_Gl.max_ps_flushed_lsa < saved_lsa)
+    {
+      log_Gl.update_max_ps_flushed_lsa (saved_lsa);
+    }
+
   if (prm_get_bool_value (PRM_ID_ER_LOG_COMMIT_CONFIRM))
     {
       _er_log_debug (ARG_FILE_LINE, "[COMMIT CONFIRM] Received LSA = %lld|%d.\n", LSA_AS_ARGS (&saved_lsa));
