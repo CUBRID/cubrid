@@ -45,7 +45,7 @@ extern SOCKET css_tcp_client_open (const char *host, int port);
 extern SOCKET css_tcp_client_open_with_retry (const char *host, int port, bool will_retry);
 extern int css_tcp_socket_bind_listen (int port, SOCKET & sockfd);
 extern int css_master_open_sockets (int port, SOCKET * sockfd);
-extern bool css_tcp_setup_server_datagram (char *pathname, SOCKET * sockfd);
+extern bool css_tcp_setup_server_datagram (const char *pathname, SOCKET * sockfd);
 extern bool css_tcp_listen_server_datagram (SOCKET sockfd, SOCKET * newfd);
 extern bool css_tcp_master_datagram (char *pathname, SOCKET * sockfd);
 extern SOCKET css_master_accept (SOCKET sockfd);

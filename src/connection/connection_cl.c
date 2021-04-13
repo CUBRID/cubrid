@@ -863,7 +863,7 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
   int server_port_id;
   int connection_protocol;
 #if !defined(WINDOWS)
-  char *pname;
+  std::string pname;
   int datagram_fd, socket_fd;
 #endif
 
@@ -955,24 +955,23 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
 #else /* WINDOWS */
       /* send the "pathname" for the datagram */
       /* be sure to open the datagram first.  */
-      auto[filename, fileptr] = filesys::open_temp_file ("csql");
-      pname = strdup (filename.c_str ());
+      pname = "csql_tcp_setup_server" + std::to_string (getpid ());
+      auto[filename, fileptr] = filesys::open_temp_file (pname.c_str ());
+      pname = filename;
 
-      if (pname)
+      if (!pname.empty ())
 	{
-	  if (css_tcp_setup_server_datagram (pname, &socket_fd)
-	      && css_send_data (conn, rid, pname, strlen (pname) + 1) == NO_ERRORS
+	  if (css_tcp_setup_server_datagram (pname.c_str (), &socket_fd)
+	      && css_send_data (conn, rid, pname.c_str (), pname.length () + 1) == NO_ERRORS
 	      && css_tcp_listen_server_datagram (socket_fd, &datagram_fd))
 	    {
-	      (void) unlink (pname);
-	      free (pname);
+	      (void) unlink (pname.c_str ());
 	      css_free_conn (conn);
 	      close (socket_fd);
 	      return (css_make_conn (datagram_fd));
 	    }
 	  else
 	    {
-	      free (pname);
 	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1,
 				   server_name);
 	      goto fail_end;
