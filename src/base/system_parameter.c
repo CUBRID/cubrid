@@ -2346,9 +2346,9 @@ static UINT64 prm_ddl_audit_log_size_lower = 10485760ULL;	/* 10M */
 static UINT64 prm_ddl_audit_log_size_upper = 2147483648ULL;	/* 2G */
 static unsigned int prm_ddl_audit_log_size_flag = 0;
 
-bool PRM_SUPPLEMENTAL_LOG = false; 
+bool PRM_SUPPLEMENTAL_LOG = false;
 static bool prm_supplemental_log_default = false;
-static unsigned int prm_supplemental_log_flag = 0; 
+static unsigned int prm_supplemental_log_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -6043,7 +6043,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-   {PRM_ID_SUPPLEMENTAL_LOG,
+  {PRM_ID_SUPPLEMENTAL_LOG,
    PRM_NAME_SUPPLEMENTAL_LOG,
    (PRM_FOR_SERVER, PRM_FOR_HIDDEN),
    PRM_BOOLEAN,
@@ -6054,7 +6054,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL} 
+   (DUP_PRM_FUNC) NULL}
 };
 
 #define NUM_PRM ((int)(sizeof(prm_Def)/sizeof(prm_Def[0])))
