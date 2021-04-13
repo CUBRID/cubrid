@@ -1163,45 +1163,32 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
       /* be sure to open the datagram first.  */
       pname = std::filesystem::temp_directory_path ();
       pname += "cubrid_tcp_setup_server" + std::to_string (getpid ());
-      (void) unlink (pname.c_str ());
-      if (css_tcp_setup_server_datagram (pname.c_str (), &socket_fd))
-	{
-	  if (css_send_data (conn, rid, pname.c_str (), pname.length () + 1) == NO_ERRORS)
-	    {
+      (void) unlink (pname.c_str ());	// make sure file is deleted
 
-	      if (css_tcp_listen_server_datagram (socket_fd, &datagram_fd))
-		{
-		  (void) unlink (pname.c_str ());
-		  css_free_conn (conn);
-		  close (socket_fd);
-		  return (css_make_conn (datagram_fd));
-		}
-	      else
-		{
-		  (void) unlink (pname.c_str ());
-		  css_free_conn (conn);
-		  close (socket_fd);
-		  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1,
-				       server_name);
-		  goto fail_end;
-		}
-	    }
-	  else
-	    {
-	      (void) unlink (pname.c_str ());
-	      css_free_conn (conn);
-	      close (socket_fd);
-	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1,
-				   server_name);
-	      goto fail_end;
-	    }
+      if (!css_tcp_setup_server_datagram (pname.c_str (), &socket_fd))
+	{
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
+	  goto fail_end;
 	}
-      else
+      if (css_send_data (conn, rid, pname.c_str (), pname.length () + 1) != NO_ERRORS)
 	{
 	  (void) unlink (pname.c_str ());
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
 	  goto fail_end;
 	}
+      if (!css_tcp_listen_server_datagram (socket_fd, &datagram_fd))
+	{
+	  (void) unlink (pname.c_str ());
+	  css_free_conn (conn);
+	  close (socket_fd);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
+	  goto fail_end;
+	}
+      // success
+      (void) unlink (pname.c_str ());
+      css_free_conn (conn);
+      close (socket_fd);
+      return (css_make_conn (datagram_fd));
 #endif /* WINDOWS */
     }
 
