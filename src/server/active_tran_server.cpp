@@ -200,7 +200,7 @@ void active_tran_server::receive_saved_lsa (cubpacking::unpacker &upk)
   assert (sizeof (log_lsa) == message.size ());
   std::memcpy (&saved_lsa, message.c_str (), sizeof (log_lsa));
 
-  if (log_Gl.max_ps_flushed_lsa < saved_lsa)
+  if (log_Gl.m_max_ps_flushed_lsa < saved_lsa)
     {
       log_Gl.update_max_ps_flushed_lsa (saved_lsa);
     }

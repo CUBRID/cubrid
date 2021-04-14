@@ -107,8 +107,14 @@ log_global::~log_global ()
 void
 log_global::update_max_ps_flushed_lsa (const LOG_LSA &lsa)
 {
-  max_ps_flushed_lsa = lsa;
-  std::unique_lock<std::mutex> lock(ps_lsa_mutex);
-  ps_lsa_cv.notify_all();
+  m_max_ps_flushed_lsa = lsa;
+  m_ps_lsa_cv.notify_all ();
+}
+
+void
+log_global::wait_flushed_lsa (const log_lsa &flush_lsa)
+{
+  std::unique_lock<std::mutex> lock (m_ps_lsa_mutex);
+  m_ps_lsa_cv.wait (lock, [flush_lsa, this] { return m_max_ps_flushed_lsa >= flush_lsa; });
 }
 // *INDENT-ON*
