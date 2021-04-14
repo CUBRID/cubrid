@@ -634,6 +634,9 @@ typedef enum
   PSTAT_PB_AVOID_DEALLOC_CNT,
   PSTAT_PB_AVOID_VICTIM_CNT,
 
+  /* Scalability statistics */
+  PSTAT_SC_REPL_DELAY,
+
   /* Complex statistics */
   PSTAT_PBX_FIX_COUNTERS,
   PSTAT_PBX_PROMOTE_COUNTERS,
@@ -649,7 +652,9 @@ typedef enum
   PSTAT_DWB_FLUSHED_BLOCK_NUM_VOLUMES,
   PSTAT_LOAD_THREAD_STATS,
 
-  PSTAT_SC_REPL_DELAY,
+  /* IMPORTANT: only add complex statistics here; non-complex statistics
+   * should be added before the complex entries; dump to file/buffer internal
+   * functions depend on this invariant */
 
   PSTAT_COUNT
 } PERF_STAT_ID;
