@@ -25,6 +25,7 @@
 
 #include "config.h"
 
+#include <limits>
 #include <stdio.h>
 #include <string.h>
 #include <signal.h>
@@ -817,13 +818,18 @@ util_gettime_msec ()
 
   const int64_t msec_from_sec = now.tv_sec * 1000LL;
   const int64_t msec_from_usec = now.tv_usec / 1000LL;
+  // *INDENT-OFF*
+  // overflow check
+  assert (std::numeric_limits<int64_t>::max () - msec_from_usec >= msec_from_sec);
+  // *INDENT-ON*
   const int64_t msec = msec_from_sec + msec_from_usec;
-  assert (msec >= msec_from_sec);	// overflow check
   return msec;
 }
 
+/* util_msec_to_sec - truncate milliseconds to seconds
+ */
 time_t
 util_msec_to_sec (int64_t msec)
 {
-  return msec / 1000LL;
+  return static_cast < time_t > (msec / 1000LL);
 }
