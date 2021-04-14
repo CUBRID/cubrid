@@ -6211,7 +6211,10 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
 	}
       else if (la_is_repl_lists_empty ())
 	{
-	  (void) la_update_ha_apply_info_log_record_time (ha_server_state->at_time);
+	  // at_time is recorded in milliseconds (for better accuracy) while the function - obiously -
+	  // expects a 'proper' time_t value expressed in seconds
+	  const time_t at_time_sec = util_msec_to_sec (ha_server_state->at_time);
+	  (void) la_update_ha_apply_info_log_record_time (at_time_sec);
 	  error = la_log_commit (true);
 	  if (error != NO_ERROR)
 	    {
