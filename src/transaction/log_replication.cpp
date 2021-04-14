@@ -185,30 +185,17 @@ namespace cublog
 	    break;
 	  }
 	  case LOG_COMMIT:
-	  case LOG_ABORT:
-	  {
-	    const log_rec_donetime donetime = m_reader.reinterpret_copy_and_add_align<log_rec_donetime> ();
-	    // at_time, expressed in milliseconds rather than seconds
-	    const time_t start_time_msec = static_cast<time_t> (donetime.at_time);
-	    if (m_parallel_replication_redo != nullptr)
-	      {
-		// dispatch a job; the time difference will be calculated when the job is actually
-		// picked up for completion by a task; this will give an accurate estimate of the actual
-		// delay between log genearation on the page server and log recovery on the page server
-		using redo_job_replication_delay_impl_t = cublog::redo_job_replication_delay_impl<log_rec_donetime>;
-		std::unique_ptr<redo_job_replication_delay_impl_t> replication_delay_job
-		{
-		  new redo_job_replication_delay_impl_t (m_redo_lsa, start_time_msec)
-		};
-		m_parallel_replication_redo->add (std::move (replication_delay_job));
-	      }
-	    else
-	      {
-		// calculate the time difference synchronously
-		log_rpl_calculate_replication_delay (&thread_entry, start_time_msec);
-	      }
+	    calculate_replication_delay_or_dispatch_async<struct log_rec_donetime> (
+		    thread_entry, m_redo_lsa, "LOG_COMMIT");
 	    break;
-	  }
+	  case LOG_ABORT:
+	    calculate_replication_delay_or_dispatch_async<struct log_rec_donetime> (
+		    thread_entry, m_redo_lsa, "LOG_ABORT");
+	    break;
+	  case LOG_DUMMY_HA_SERVER_STATE:
+	    calculate_replication_delay_or_dispatch_async<struct log_rec_ha_server_state> (
+		    thread_entry, m_redo_lsa, "LOG_DUMMY_HA_SERVER_STATE");
+	    break;
 	  default:
 	    // do nothing
 	    break;
@@ -242,6 +229,32 @@ namespace cublog
 	    m_undo_unzip, m_redo_unzip, m_parallel_replication_redo, true);
   }
 
+  template <typename T>
+  void replicator::calculate_replication_delay_or_dispatch_async (cubthread::entry &thread_entry,
+      const log_lsa &rec_lsa, const char *a_source)
+  {
+    const T log_rec = m_reader.reinterpret_copy_and_add_align<T> ();
+    // at_time, expressed in milliseconds rather than seconds
+    const time_msec_t start_time_msec = log_rec.at_time;
+    if (m_parallel_replication_redo != nullptr)
+      {
+	// dispatch a job; the time difference will be calculated when the job is actually
+	// picked up for completion by a task; this will give an accurate estimate of the actual
+	// delay between log genearation on the page server and log recovery on the page server
+	using redo_job_replication_delay_impl_t = cublog::redo_job_replication_delay_impl<T>;
+	std::unique_ptr<redo_job_replication_delay_impl_t> replication_delay_job
+	{
+	  new redo_job_replication_delay_impl_t (m_redo_lsa, start_time_msec, a_source)
+	};
+	m_parallel_replication_redo->add (std::move (replication_delay_job));
+      }
+    else
+      {
+	// calculate the time difference synchronously
+	log_rpl_calculate_replication_delay (&thread_entry, start_time_msec, a_source);
+      }
+  }
+
   void
   replicator::wait_replication_finish_during_shutdown () const
   {
@@ -267,9 +280,12 @@ namespace cublog
   /* log_rpl_calculate_replication_delay - calculate delay based on a given start time value
    *        and the current time and log to the perfmon infrastructure; all calculations are
    *        done in milliseconds as that is the relevant scale needed
+   *
+   *  a_start_time_source: the name of the source where this
    */
   int
-  log_rpl_calculate_replication_delay (THREAD_ENTRY *thread_p, time_t a_start_time_msec)
+  log_rpl_calculate_replication_delay (THREAD_ENTRY *thread_p, time_t a_start_time_msec,
+				       const char *a_start_time_source)
   {
     // skip calculation if bogus input (sometimes, it is -1);
     // TODO: fix bogus input at the source if at all possible
@@ -282,7 +298,8 @@ namespace cublog
 
 #if !defined(NDEBUG)
 	const double time_diff_sec = time_diff_msec / 1000.0;
-	er_log_debug (ARG_FILE_LINE, "repl_delay: %4g sec, %4.3f msec", time_diff_sec, time_diff_msec);
+	er_log_debug (ARG_FILE_LINE, "repl_delay(%s): %9g sec, %9.2f msec",
+		      a_start_time_source, time_diff_sec, time_diff_msec);
 #endif
 
 	return NO_ERROR;
@@ -290,7 +307,8 @@ namespace cublog
     else
       {
 	er_log_debug (ARG_FILE_LINE, "log_rpl_calculate_replication_delay: encountered negative start"
-		      " time value: %lld milliseconds", a_start_time_msec);
+		      " source: '%s' time value: %lld milliseconds",
+		      a_start_time_source, a_start_time_msec);
 	return ER_FAILED;
       }
   }

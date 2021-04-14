@@ -63,7 +63,11 @@ namespace cublog
       void redo_upto (cubthread::entry &thread_entry, const log_lsa &end_redo_lsa);
       template <typename T>
       void read_and_redo_record (cubthread::entry &thread_entry, LOG_RECTYPE rectype, const log_lsa &rec_lsa);
+      template <typename T>
+      void calculate_replication_delay_or_dispatch_async (cubthread::entry &thread_entry,
+	  const log_lsa &rec_lsa, const char *a_source);
 
+    private:
       std::unique_ptr<cubthread::entry_task> m_daemon_task;
       cubthread::daemon *m_daemon = nullptr;
 
@@ -78,7 +82,8 @@ namespace cublog
       std::unique_ptr<cublog::redo_parallel> m_parallel_replication_redo;
   };
 
-  extern int log_rpl_calculate_replication_delay (THREAD_ENTRY *thread_p, time_t a_start_time_msec);
+  extern int log_rpl_calculate_replication_delay (THREAD_ENTRY *thread_p, time_t a_start_time_msec,
+      const char *a_start_time_source);
 }
 
 #endif // !_LOG_REPLICATION_HPP_

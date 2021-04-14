@@ -36,7 +36,7 @@
 namespace cublog
 {
 #if defined(SERVER_MODE)
-  /* a class to handle infrastructure for parallel log recovery RAII-style;
+  /* a class to handle infrastructure for parallel log recovery/replication RAII-style;
    * usage:
    *  - instantiate an object of this class with the desired number of background workers
    *  - create and add jobs - see 'redo_job_impl'
@@ -281,7 +281,7 @@ namespace cublog
   };
 
 
-  /* actual job implementation that performs log recovery redo,
+  /* actual job implementation that performs log recovery/replication redo,
    * also used for log replication
    */
   template <typename TYPE_LOG_REC>
@@ -324,12 +324,16 @@ namespace cublog
   {
       using log_rec_t = TYPE_LOG_REC;
 
+      /* sentinel VPID value needed for the internal mechanics of the parallel log recovery/replication
+       * internally, such a VPID is needed to maintain absolute order of the processing
+       * of the log records with respect to their order in the global log record
+       */
       static constexpr short SENTINEL_VOLID = -2;
       static constexpr int32_t SENTINEL_PAGEID = -2;
       static constexpr struct vpid SENTINEL_VPID = { SENTINEL_PAGEID, SENTINEL_VOLID };
 
     public:
-      redo_job_replication_delay_impl (const log_lsa &a_rcv_lsa, time_t a_start_time_msec);
+      redo_job_replication_delay_impl (const log_lsa &a_rcv_lsa, time_t a_start_time_msec, const char *a_source);
 
       redo_job_replication_delay_impl (redo_job_replication_delay_impl const &) = delete;
       redo_job_replication_delay_impl (redo_job_replication_delay_impl &&) = delete;
@@ -344,6 +348,7 @@ namespace cublog
 
     private:
       const time_t m_start_time_msec;
+      const char *const m_source;
   };
 
 
@@ -394,9 +399,10 @@ namespace cublog
 
   template <typename TYPE_LOG_REC>
   redo_job_replication_delay_impl<TYPE_LOG_REC>::redo_job_replication_delay_impl (
-	  const log_lsa &a_rcv_lsa, time_t a_start_time_msec)
+	  const log_lsa &a_rcv_lsa, time_t a_start_time_msec, const char *a_source)
     : redo_parallel::redo_job_base (SENTINEL_VPID, a_rcv_lsa)
     , m_start_time_msec (a_start_time_msec)
+    , m_source (a_source)
   {
   }
 
@@ -404,7 +410,7 @@ namespace cublog
   int  redo_job_replication_delay_impl<TYPE_LOG_REC>::execute (THREAD_ENTRY *thread_p, log_reader &,
       LOG_ZIP &, LOG_ZIP &)
   {
-    const int res = log_rpl_calculate_replication_delay (thread_p, m_start_time_msec);
+    const int res = log_rpl_calculate_replication_delay (thread_p, m_start_time_msec, m_source);
     return res;
   }
 
