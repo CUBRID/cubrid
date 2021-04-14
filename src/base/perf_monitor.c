@@ -1446,8 +1446,12 @@ perfmon_server_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf
 	}
     }
 
+  /* only complex statistics here; or, in other words, statistics that
+   * define their own functions */
   for (; i < PSTAT_COUNT && remained_size > 0; i++)
     {
+      assert (pstat_Metadata[i].f_dump_in_buffer != nullptr);
+
       if (substr != NULL)
 	{
 	  s = strstr (pstat_Metadata[i].stat_name, substr);
@@ -1535,8 +1539,12 @@ perfmon_server_dump_stats (const UINT64 * stats, FILE * stream, const char *subs
 	}
     }
 
+  /* only complex statistics here; or, in other words, statistics that
+   * define their own functions */
   for (; i < PSTAT_COUNT; i++)
     {
+      assert (pstat_Metadata[i].f_dump_in_file != nullptr);
+
       if (substr != NULL)
 	{
 	  s = strstr (pstat_Metadata[i].stat_name, substr);
@@ -3013,6 +3021,22 @@ perfmon_initialize (int num_trans)
       pstat_Global.n_watchers++;
     }
 #endif
+
+  /* check proper ordering of statistics definitions:
+   *  - non-complex definitions come before the complex ones
+   *  - complex definitions all come at the end, just before PSTAT_COUNT
+   * needed because dump to file/buffer functions depend on this
+   * NOTE: this should actually be a unit test */
+  for (idx = 0; idx < PSTAT_COUNT && pstat_Metadata[idx].valtype != PSTAT_COMPLEX_VALUE; ++idx);
+  for (; idx < PSTAT_COUNT; ++idx)
+    {
+      assert (pstat_Metadata[idx].valtype == PSTAT_COMPLEX_VALUE);
+    }
+  // no other definitions after the complex ones
+  for (; idx < PSTAT_COUNT; ++idx)
+    {
+      assert (false);
+    }
 
   for (idx = 0; idx < PSTAT_COUNT; idx++)
     {
