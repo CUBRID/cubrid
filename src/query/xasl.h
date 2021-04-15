@@ -131,6 +131,7 @@ typedef struct list_spec_node LIST_SPEC_TYPE;
 typedef struct showstmt_spec_node SHOWSTMT_SPEC_TYPE;
 typedef struct set_spec_node SET_SPEC_TYPE;
 typedef struct method_spec_node METHOD_SPEC_TYPE;
+typedef struct dblink_spec_node DBLINK_SPEC_TYPE;
 typedef struct reguval_list_spec_node REGUVAL_LIST_SPEC_TYPE;
 typedef union hybrid_node HYBRID_NODE;
 
@@ -681,7 +682,8 @@ typedef enum
   TARGET_JSON_TABLE,
   TARGET_METHOD,
   TARGET_REGUVAL_LIST,
-  TARGET_SHOWSTMT
+  TARGET_SHOWSTMT,
+  TARGET_DBLINK
 } TARGET_TYPE;
 
 typedef enum
@@ -774,6 +776,15 @@ struct method_spec_node
   METHOD_SIG_LIST *method_sig_list;	/* method signature list */
 };
 
+struct dblink_spec_node
+{
+  REGU_VARIABLE_LIST regu_list_p;	/* regulator variable list */
+  char *conn_url;		/* connection URL for remote DB server */
+  char *conn_user;		/* user name for remote DB server */
+  char *conn_password;		/* password for remote user */
+  char *conn_sql;		/* SQL command text for remote database */
+};
+
 struct reguval_list_spec_node
 {
   VALPTR_LIST *valptr_list;	/* point to xasl.outptr_list */
@@ -786,6 +797,7 @@ union hybrid_node
   SHOWSTMT_SPEC_TYPE showstmt_node;	/* show stmt specification */
   SET_SPEC_TYPE set_node;	/* set specification */
   METHOD_SPEC_TYPE method_node;	/* method specification */
+  DBLINK_SPEC_TYPE dblink_node; /* dblink specification */
   REGUVAL_LIST_SPEC_TYPE reguval_list_node;	/* reguval_list specification */
   json_table_spec_node json_table_node;	/* json_table specification */
 };				/* class/list access specification */
@@ -865,6 +877,15 @@ union hybrid_node
 
 #define ACCESS_SPEC_JSON_TABLE_M_NODE_COUNT(ptr) \
         ((ptr)->s.json_table_node.m_node_count)
+
+#define ACCESS_SPEC_DBLINK_SPEC(ptr) \
+	((ptr)->s.dblink_node)
+	
+#define ACCESS_SPEC_DBLINK_XASL_NODE(ptr) \
+	((ptr)->s.dblink_node.xasl_node)
+
+#define ACCESS_SPEC_DBLINK_LIST_ID(ptr) \
+	(ACCESS_SPEC_DBLINK_XASL_NODE(ptr)->list_id)
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 struct orderby_stat

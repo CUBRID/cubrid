@@ -118,6 +118,7 @@ static char *stx_build_rlist_spec_type (THREAD_ENTRY * thread_p, char *ptr, REGU
 					OUTPTR_LIST * outptr_list);
 static char *stx_build_set_spec_type (THREAD_ENTRY * thread_p, char *tmp, SET_SPEC_TYPE * ptr);
 static char *stx_build_method_spec_type (THREAD_ENTRY * thread_p, char *tmp, METHOD_SPEC_TYPE * ptr);
+static char *stx_build_dblink_spec_type (THREAD_ENTRY * thread_p, char *ptr, DBLINK_SPEC_TYPE * dblink_spec);
 static char *stx_build_val_list (THREAD_ENTRY * thread_p, char *tmp, VAL_LIST * ptr);
 #if defined(ENABLE_UNUSED_FUNCTION)
 static char *stx_build_db_value_list (THREAD_ENTRY * thread_p, char *tmp, QPROC_DB_VALUE_LIST ptr);
@@ -4349,6 +4350,10 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr, ACCESS_SPEC_TYPE
       ptr = stx_build (thread_p, ptr, ACCESS_SPEC_JSON_TABLE_SPEC (access_spec));
       break;
 
+    case TARGET_DBLINK:
+      ptr = stx_build_dblink_spec_type (thread_p, ptr, &ACCESS_SPEC_DBLINK_SPEC (access_spec));
+      break;
+
     default:
       stx_set_xasl_errcode (thread_p, ER_QPROC_INVALID_XASLNODE);
       return NULL;
@@ -5020,6 +5025,37 @@ stx_build_method_spec_type (THREAD_ENTRY * thread_p, char *ptr, METHOD_SPEC_TYPE
 	  return NULL;
 	}
     }
+
+  return ptr;
+}
+
+static char *
+stx_build_dblink_spec_type (THREAD_ENTRY * thread_p, char *ptr, DBLINK_SPEC_TYPE * dblink_spec)
+{
+  int offset;
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      dblink_spec->regu_list_p = NULL;
+    }
+  else
+    {
+      dblink_spec->regu_list_p = stx_restore_regu_variable_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (dblink_spec->regu_list_p == NULL)
+	{
+	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+	  return NULL;
+	}
+    }
+
+  //ptr = or_unpack_int (ptr, &offset);
+
+  dblink_spec->conn_url = stx_restore_string(thread_p, ptr);
+  dblink_spec->conn_user = stx_restore_string(thread_p, ptr);
+  dblink_spec->conn_password = stx_restore_string(thread_p, ptr);
+  dblink_spec->conn_sql = stx_restore_string(thread_p, ptr);
 
   return ptr;
 }
