@@ -1892,7 +1892,7 @@ tz_encode_tz_id (const TZ_DECODE_INFO * tz_info, TZ_ID * tz_id)
 {
   if (tz_info->type == TZ_REGION_OFFSET)
     {
-      int offset = (tz_info->offset < 0) ? (-tz_info->offset) : tz_info->offset;
+      unsigned int offset = static_cast < unsigned int >((tz_info->offset < 0) ? (-tz_info->offset) : tz_info->offset);
 
       offset = offset & TZ_OFFSET_MASK;
 
