@@ -330,7 +330,7 @@ namespace cublog
        */
       static constexpr short SENTINEL_VOLID = -2;
       static constexpr int32_t SENTINEL_PAGEID = -2;
-      static constexpr struct vpid SENTINEL_VPID = { SENTINEL_PAGEID, SENTINEL_VOLID };
+      static constexpr vpid SENTINEL_VPID = { SENTINEL_PAGEID, SENTINEL_VOLID };
 
     public:
       redo_job_replication_delay_impl (const log_lsa &a_rcv_lsa, time_t a_start_time_msec, const char *a_source);
@@ -395,7 +395,7 @@ namespace cublog
   template <typename TYPE_LOG_REC>
   constexpr int32_t redo_job_replication_delay_impl<TYPE_LOG_REC>::SENTINEL_PAGEID;
   template <typename TYPE_LOG_REC>
-  constexpr struct vpid redo_job_replication_delay_impl<TYPE_LOG_REC>::SENTINEL_VPID;
+  constexpr vpid redo_job_replication_delay_impl<TYPE_LOG_REC>::SENTINEL_VPID;
 
   template <typename TYPE_LOG_REC>
   redo_job_replication_delay_impl<TYPE_LOG_REC>::redo_job_replication_delay_impl (
