@@ -84,6 +84,8 @@ for /f "tokens=* delims= " %%a IN ("%BUILD_LIST%") DO set BUILD_LIST=%%a
 echo Build list is [%BUILD_LIST%].
 set BUILD_LIST=%BUILD_LIST:ALL=BUILD DIST%
 set BUILD_LIST=%BUILD_LIST:BUILD=CUBRID%
+
+rem To package JDBC, add JDBC_PACKAGE at the following
 set BUILD_LIST=%BUILD_LIST:DIST=MSI_PACKAGE ZIP_PACKAGE CCI_PACKAGE%
 
 call :BUILD_PREPARE
@@ -228,6 +230,20 @@ if ERRORLEVEL 1 echo FAILD. & GOTO :EOF
 rmdir /s /q "%DIST_DIR%"\_CPack_Packages
 echo Package created. [%DIST_DIR%\%CUBRID_CCI_PACKAGE_NAME%.zip]
 set DIST_PKGS=%DIST_PKGS% %CUBRID_CCI_PACKAGE_NAME%.zip
+GOTO :EOF
+
+rem JDBC_PACKAGE is disabled. To enable it, please refer to the comment above BUILD_LIST
+:BUILD_JDBC_PACKAGE
+if NOT EXIST "%SOURCE_DIR%\cubrid-jdbc\src" echo Cannot found cubrid-jdbc submodule. & GOTO :EOF
+
+echo Packging JDBC in %SOURCE_DIR%\cubrid-jdbc\ ...
+set JDBC_VERSION=0
+for /f %%i IN (%SOURCE_DIR%\cubrid-jdbc\output\VERSION-DIST) DO set JDBC_VERSION=%%i
+echo drop cubrid_jdbc.jar into %DIST_DIR%
+copy %SOURCE_DIR%\cubrid-jdbc\cubrid_jdbc.jar %DIST_DIR%\JDBC-%JDBC_VERSION%-cubrid.jar
+if ERRORLEVEL 1 echo FAILD. & GOTO :EOF
+echo Package created. [%DIST_DIR%\JDBC-%JDBC_VERSION%-cubrid.jar]
+set DIST_PKGS=%DIST_PKGS% JDBC-%JDBC_VERSION%-cubrid.jar
 GOTO :EOF
 
 :ABSPATH
