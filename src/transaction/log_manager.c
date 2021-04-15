@@ -4760,7 +4760,7 @@ log_append_supplement_user (THREAD_ENTRY * thread_p, LOG_TDES * tdes, int with_l
     }
 
   spplmnt_usr = (LOG_REC_SUPPLEMENT_TRAN_USER *) node->data_header;
-  strcpy (spplmnt_usr->tran_user, tdes->client.get_db_user ());
+  strcpy (spplmnt_usr->user_name, tdes->client.get_db_user ());
   if (with_lock == LOG_PRIOR_LSA_WITH_LOCK)
     {
       (void) prior_lsa_next_record_with_lock (thread_p, node, tdes);
