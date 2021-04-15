@@ -292,7 +292,7 @@ namespace cublog
     if (a_start_time_msec > 0)
       {
 	const int64_t end_time_msec = util_gettime_msec ();
-	const double time_diff_msec = std::difftime (end_time_msec, a_start_time_msec);
+	const double time_diff_msec = difftime (end_time_msec, a_start_time_msec);
 	assert (time_diff_msec > .0);
 	perfmon_set_stat (thread_p, PSTAT_SC_REPL_DELAY, time_diff_msec, PSTAT_SC_REPL_DELAY_ALWAYS_COLLECT);
 
