@@ -115,7 +115,7 @@ option(ENABLE_32BIT "Build for 32-bit banaries (on 64-bit platform)" OFF)
 option(ENABLE_SYSTEMTAP "Enable dynamic tracing support using systemtap" ${ENABLE_SYSTEMTAP_DEFAULT})
 option(USE_DUMA "Use Detect Unintended Memory Access library" OFF)
 option(USE_CUBRID_ENV "Use CUBRID environment variables" ON)
-option(WITH_JDBC "Build JDBC driver" ON)
+option(WITH_JDBC "Build with JDBC driver" ON)
 option(WITH_CMSERVER "Build with Manager server" ON)
 option(UNIT_TESTS "Unit tests" OFF)
 
@@ -240,6 +240,7 @@ set(RELEASE_STRING ${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}.${CUBRID_PATC
 # BUILD_NUMBER (digital only version string) for legacy codes
 set(BUILD_NUMBER ${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}.${CUBRID_PATCH_VERSION}.${CUBRID_EXTRA_VERSION})
 set(BUILD_OS ${CMAKE_SYSTEM_NAME})
+string(TOLOWER ${CMAKE_BUILD_TYPE} BUILD_TYPE)
 
 if(MSVC)
   configure_file(cmake/version.rc.cmake version.rc)
@@ -264,7 +265,7 @@ if(UNIX)
     # C flags for both debug and release build
     set(CMAKE_C_COMMON_FLAGS "-ggdb -fno-omit-frame-pointer")
     # C++ flags for both debug and release build
-    set(CMAKE_CXX_COMMON_FLAGS "${CMAKE_C_COMMON_FLAGS} -std=c++0x")
+    set(CMAKE_CXX_COMMON_FLAGS "${CMAKE_C_COMMON_FLAGS} -std=c++17")
 
     # C flags for debug build
     set(CMAKE_C_DEBUG_FLAGS "-Wall -fno-inline ${CMAKE_C_COMMON_FLAGS}")
@@ -315,7 +316,7 @@ else(UNIX)
   #set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /WX /wd4820 /showIncludes" )
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W3 /wd4820" )
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /W3" )
-  set(CMAKE_CXX_STANDARD 11)
+  set(CMAKE_CXX_STANDARD 17)
 endif(UNIX)
 
 # check target platform
@@ -442,19 +443,16 @@ add_flex_bison_dependency(esql_lexer esql_grammar)
 add_custom_target(gen_esql_grammar DEPENDS ${BISON_esql_grammar_OUTPUTS})
 add_custom_target(gen_esql_lexer DEPENDS ${FLEX_esql_lexer_OUTPUTS})
 
-# java check
+# For java stored procedure server
 include(FindJNI)
 find_package(JNI 1.5)
 if(JNI_FOUND)
   set(JAVA_INC ${JAVA_INCLUDE_PATH} ${JAVA_INCLUDE_PATH2})
 endif(JNI_FOUND)
 
-include(FindJava)
-find_package(Java 1.5 COMPONENTS Development)
-
 # Build types
 if(CMAKE_BUILD_TYPE MATCHES "Coverage")
-  set(CMAKE_CXX_FLAGS_COVERAGE "-g -O0 --coverage -fprofile-arcs -ftest-coverage -std=c++0x"
+  set(CMAKE_CXX_FLAGS_COVERAGE "-g -O0 --coverage -fprofile-arcs -ftest-coverage -std=c++17"
     CACHE STRING "Flags used by the c++ compiler during coverage build." FORCE)
   set(CMAKE_C_FLAGS_COVERAGE "-g -O0 --coverage -fprofile-arcs -ftest-coverage"
     CACHE STRING "Flags used by the c compiler during coverage build." FORCE)
@@ -471,7 +469,7 @@ if(CMAKE_BUILD_TYPE MATCHES "Coverage")
 endif(CMAKE_BUILD_TYPE MATCHES "Coverage")
 
 if(CMAKE_BUILD_TYPE MATCHES "Profile")
-  set(CMAKE_CXX_FLAGS_PROFILE "-g -pg -std=c++0x"
+  set(CMAKE_CXX_FLAGS_PROFILE "-g -pg -std=c++17"
     CACHE STRING "Flags used by the c++ compiler during profile build." FORCE)
   set(CMAKE_C_FLAGS_PROFILE "-g -pg"
     CACHE STRING "Flags used by the c compiler during profile build." FORCE)
@@ -492,7 +490,6 @@ set(CONNECTION_DIR           ${CMAKE_SOURCE_DIR}/src/connection)
 set(DEBUGGING_DIR            ${CMAKE_SOURCE_DIR}/src/debugging)
 set(EXECUTABLES_DIR          ${CMAKE_SOURCE_DIR}/src/executables)
 set(HEAPLAYERS_DIR           ${CMAKE_SOURCE_DIR}/src/heaplayers)
-set(JDBC_DIR                 ${CMAKE_SOURCE_DIR}/src/jdbc)
 set(JSP_DIR                  ${CMAKE_SOURCE_DIR}/src/jsp)
 set(LOADDB_DIR               ${CMAKE_SOURCE_DIR}/src/loaddb)
 set(MONITOR_DIR              ${CMAKE_SOURCE_DIR}/src/monitor)
@@ -790,7 +787,6 @@ if(USE_CUBRID_ENV)
   set(CUBRID_LOCALEDIR msg)
   set(CUBRID_LOGDIR log)
   set(CUBRID_TMPDIR tmp)
-  set(CUBRID_JDBCDIR jdbc)
   set(CUBRID_SHLOCALESDIR locales)
   set(CUBRID_TZDIR timezones)
   set(CUBRID_DEMODIR demo)
@@ -862,8 +858,7 @@ else(USE_CUBRID_ENV)
     list(APPEND DIR_DEFS CUBRID_TMPDIR="${CUBRID_PREFIXDIR}/${CUBRID_TMPDIR}")
   endif()
   # directories for install
-  set(CUBRID_INCLUDEDIR jdbc CACHE STRING "The directory for header files")
-  set(CUBRID_JDBCDIR jdbc CACHE STRING "The directory for JDBC driver file")
+  set(CUBRID_INCLUDEDIR include CACHE STRING "The directory for header files")
   set(CUBRID_SHLOCALESDIR locales CACHE STRING "The directory for locale files")
   set(CUBRID_TZDIR timezones CACHE STRING "The directory for timezone files")
   set(CUBRID_DEMODIR demo CACHE STRING "The directory for demo data files")
@@ -1137,6 +1132,40 @@ include_directories(${CMAKE_BINARY_DIR}/external/Source/rapidjson/include)
 # add to external project targets
 list(APPEND EP_TARGETS ${RAPIDJSON_TARGET})
 
+if(WITH_JDBC AND EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
+  message("Build JDBC Driver from cubird-jdbc submodule")
+
+  set(JDBC_DIR ${CMAKE_SOURCE_DIR}/cubrid-jdbc)
+  set(JDBC_SOURCE ${JDBC_DIR}/src)
+
+  # clean and build JDBC
+  if(UNIX)
+    execute_process(COMMAND bash build.sh clean
+      WORKING_DIRECTORY ${JDBC_DIR})
+    execute_process(COMMAND bash build.sh
+      WORKING_DIRECTORY ${JDBC_DIR})
+  else(UNIX)
+    execute_process(COMMAND cmd /c build.bat clean
+      WORKING_DIRECTORY ${JDBC_DIR}
+    )
+    execute_process(COMMAND cmd /c build.bat
+      WORKING_DIRECTORY ${JDBC_DIR}
+    )
+  endif(UNIX)
+
+  # dist JDBC
+  if(USE_CUBRID_ENV)
+    set(CUBRID_JDBCDIR jdbc)
+  else(USE_CUBRID_ENV)
+    set(CUBRID_JDBCDIR jdbc CACHE STRING "The directory for JDBC driver file")
+  endif(USE_CUBRID_ENV)
+
+  install(DIRECTORY ${JDBC_DIR}/
+    DESTINATION ${CUBRID_JDBCDIR} COMPONENT JDBC
+    FILES_MATCHING PATTERN "*.jar"
+  )
+endif()
+
 # include subdirectories
 add_subdirectory(cas)
 add_subdirectory(sa)
@@ -1153,20 +1182,12 @@ add_subdirectory(contrib)
 add_subdirectory(tools)
 add_subdirectory(locales)
 add_subdirectory(timezones)
+add_subdirectory(jsp)
 if(AT_LEAST_ONE_UNIT_TEST)
   add_subdirectory(unit_tests)
   file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/run_scalability_unit_tests.sh
        DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/bin)
 endif()
-
-if(WITH_JDBC)
-  find_program(ANT ant PATHS $ENV{ANT_HOME} ENV PATH)
-  if(NOT ANT)
-    message(FATAL_ERROR "The ANT was not found. check PATH or install ant to build JDBC")
-  endif(NOT ANT)
-  add_subdirectory(jdbc)
-  add_subdirectory(java)
-endif(WITH_JDBC)
 
 if(WIN32)
   add_subdirectory(win)

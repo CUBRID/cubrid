@@ -26,6 +26,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <chrono>
 #include <fcntl.h>
 #include <string.h>
 #include <errno.h>
@@ -421,7 +422,7 @@ ut_time_string (char *buf, struct timeval *time_val)
 {
   struct tm tm, *tm_p;
   time_t sec;
-  int millisec;
+  long millisec;
 
   if (buf == NULL)
     {
@@ -430,12 +431,12 @@ ut_time_string (char *buf, struct timeval *time_val)
 
   if (time_val == NULL)
     {
-      struct timeb tb;
-
-      /* current time */
-      (void) ftime (&tb);
-      sec = tb.time;
-      millisec = tb.millitm;
+      timespec ts = { };
+      timespec_get (&ts, TIME_UTC);
+      sec = ts.tv_sec;
+      // *INDENT-OFF*
+      millisec = std::chrono::duration_cast<std::chrono::milliseconds> (std::chrono::nanoseconds (ts.tv_nsec)).count();
+      // *INDENT-ON*
     }
   else
     {

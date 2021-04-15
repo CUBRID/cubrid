@@ -677,7 +677,7 @@ shard_metadata_validate_key_range_internal (T_SHARD_KEY * key_p, T_SHM_SHARD_CON
   num_shard_conn = shm_conn_p->num_shard_conn;
   if (num_shard_conn < 0)
     {
-      SHARD_ERR ("%s: num shard connection is invalid.\n");
+      SHARD_ERR ("%s: num shard connection is invalid.\n", key_p->key_column);
       return -1;
     }
 
@@ -705,7 +705,7 @@ shard_metadata_validate_key_range_internal (T_SHARD_KEY * key_p, T_SHM_SHARD_CON
 	}
       if (j >= num_shard_conn)
 	{
-	  SHARD_ERR ("%s: shard range shard_id (%d) is invalid.\n", range_p->shard_id);
+	  SHARD_ERR ("%s: shard range shard_id (%d) is invalid.\n", key_p->key_column, range_p->shard_id);
 	  return -1;
 	}
 
@@ -714,7 +714,7 @@ shard_metadata_validate_key_range_internal (T_SHARD_KEY * key_p, T_SHM_SHARD_CON
 
   if ((modular >= 1) && (prv_range_max > modular))
     {
-      SHARD_ERR ("%s: shard range max (%d, modular %d) is invalid.\n", range_p->max, modular);
+      SHARD_ERR ("%s: shard range max (%d, modular %d) is invalid.\n", key_p->key_column, range_p->max, modular);
       return -1;
     }
 

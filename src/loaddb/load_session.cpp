@@ -198,7 +198,7 @@ namespace cubload
 		msg_type = LOADDB_MSG_COMMITTED_INSTANCES;
 	      }
 
-	    m_session.append_log_msg (msg_type, class_name.c_str (), m_session.stats_get_rows_committed ());
+	    m_session.append_log_msg (msg_type, class_name.c_str (), rows_number);
 	  }
 
 	// Clear the clientids.

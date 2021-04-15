@@ -81,6 +81,7 @@
 #include "xasl_predicate.hpp"
 
 #include <vector>
+#include <chrono>
 
 // XASL_STATE
 typedef struct xasl_state XASL_STATE;
@@ -6446,7 +6447,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 {
   SCAN_TYPE scan_type;
   INDX_INFO *indx_info;
-  QFILE_LIST_ID * list_id;
+  QFILE_LIST_ID *list_id;
   bool mvcc_select_lock_needed = false;
   int error_code = NO_ERROR;
 
@@ -6631,7 +6632,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 
     case TARGET_LIST:
       /* open a list file scan */
-      if (ACCESS_SPEC_XASL_NODE(curr_spec) && ACCESS_SPEC_XASL_NODE(curr_spec)->spec_list == curr_spec)
+      if (ACCESS_SPEC_XASL_NODE (curr_spec) && ACCESS_SPEC_XASL_NODE (curr_spec)->spec_list == curr_spec)
 	{
 	  /* if XASL of access spec for list scan is itself then this is for HQ */
 	  list_id = ACCESS_SPEC_CONNECT_BY_LIST_ID (curr_spec);
@@ -9505,7 +9506,7 @@ qexec_process_unique_stats (THREAD_ENTRY * thread_p, const OID * class_oid, UPDD
       /* Accumulate current statistics */
       qexec_update_btree_unique_stats_info (thread_p, &internal_class->m_unique_stats, &internal_class->m_scancache);
     }
-
+// *INDENT-OFF*
 for (const auto & it:internal_class->m_unique_stats.get_map ())
     {
       if (!it.second.is_unique ())
@@ -9520,6 +9521,7 @@ for (const auto & it:internal_class->m_unique_stats.get_map ())
 	  return error;
 	}
     }
+// *INDENT-ON*
   return NO_ERROR;
 }
 
@@ -14663,7 +14665,6 @@ qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt, c
   int stat = NO_ERROR;
   QFILE_LIST_ID *list_id = NULL;
   XASL_STATE xasl_state;
-  struct timeb tloc;
   struct tm *c_time_struct, tm_val;
   int tran_index;
 
@@ -14780,16 +14781,20 @@ qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt, c
   /* form the value descriptor to represent positional values */
   xasl_state.vd.dbval_cnt = dbval_cnt;
   xasl_state.vd.dbval_ptr = (DB_VALUE *) dbval_ptr;
-  ftime (&tloc);
-  c_time_struct = localtime_r (&tloc.time, &tm_val);
+  timespec tloc = { };
+  timespec_get (&tloc, TIME_UTC);
+  c_time_struct = localtime_r (&tloc.tv_sec, &tm_val);
 
-  xasl_state.vd.sys_epochtime = (DB_TIMESTAMP) tloc.time;
+  xasl_state.vd.sys_epochtime = (DB_TIMESTAMP) tloc.tv_sec;
 
   if (c_time_struct != NULL)
     {
+      // *INDENT-OFF*
+      auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::nanoseconds(tloc.tv_nsec));
+      // *INDENT-ON*
       db_datetime_encode (&xasl_state.vd.sys_datetime, c_time_struct->tm_mon + 1, c_time_struct->tm_mday,
 			  c_time_struct->tm_year + 1900, c_time_struct->tm_hour, c_time_struct->tm_min,
-			  c_time_struct->tm_sec, tloc.millitm);
+			  c_time_struct->tm_sec, ms.count ());
     }
 
   rand_buf_p = qmgr_get_rand_buf (thread_p);
@@ -15347,7 +15352,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 		}
 
 	      if (cycle == 0)
-	        {
+		{
 		  isleaf_value = 0;
 		}
 
@@ -15371,8 +15376,9 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 		  db_make_int (isleaf_valp, isleaf_value);
 
 		  /* preserve the parent position pseudocolumn value */
-		  if (qexec_get_tuple_column_value (tuple_rec.tpl,(xasl->outptr_list->valptr_cnt - PCOL_PARENTPOS_TUPLE_OFFSET),
-						    parent_pos_valp, &tp_Bit_domain) != NO_ERROR)
+		  if (qexec_get_tuple_column_value
+		      (tuple_rec.tpl, (xasl->outptr_list->valptr_cnt - PCOL_PARENTPOS_TUPLE_OFFSET), parent_pos_valp,
+		       &tp_Bit_domain) != NO_ERROR)
 		    {
 		      GOTO_EXIT_ON_ERROR;
 		    }
@@ -15405,7 +15411,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 		  if (has_order_siblings_by)
 		    {
 		      if (qexec_insert_tuple_into_list (thread_p, listfile2_tmp, xasl->outptr_list, &xasl_state->vd,
-						        tplrec) != NO_ERROR)
+							tplrec) != NO_ERROR)
 			{
 			  GOTO_EXIT_ON_ERROR;
 			}

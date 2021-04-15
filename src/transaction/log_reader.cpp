@@ -38,9 +38,14 @@ int log_reader::set_lsa_and_fetch_page (const log_lsa &lsa, fetch_mode fetch_pag
   return NO_ERROR;
 }
 
-const log_hdrpage &log_reader::get_page_header() const
+const log_hdrpage &log_reader::get_page_header () const
 {
   return m_page->hdr;
+}
+
+const log_page *log_reader::get_page () const
+{
+  return m_page;
 }
 
 void log_reader::align ()
@@ -109,7 +114,7 @@ int log_reader::skip (size_t size)
 	      // in the newly retrieved page, we're back to square zero
 	      m_lsa.offset = 0;
 
-	      align();
+	      align ();
 	    }
 	  else
 	    {
