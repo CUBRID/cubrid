@@ -1516,6 +1516,8 @@ fileio_lock_la_log_path (const char *db_full_name_p, const char *lock_path_p, in
 	  *last_deleted_arv_num = -1;
 	}
 
+      // ignore cppcheck error because a 'lseek' is performed on the file descriptor associated with the file handle
+      // cppcheck-suppress IOWithoutPositioning
       (void) fprintf (fp, "%-10d %s %d %s %ld", *last_deleted_arv_num, login_name, (int) GETPID (), host, time (NULL));
       fflush (fp);
     }
