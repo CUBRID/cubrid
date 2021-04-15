@@ -268,7 +268,7 @@ css_queue_remove_header_entry_ptr (CSS_QUEUE_ENTRY ** anchor, CSS_QUEUE_ENTRY * 
     }
 
   entry_p = *anchor;
-  prev_p = NULL;
+  prev_p = nullptr;
 
   while (entry_p)
     {
@@ -278,9 +278,13 @@ css_queue_remove_header_entry_ptr (CSS_QUEUE_ENTRY ** anchor, CSS_QUEUE_ENTRY * 
 	    {
 	      *anchor = entry_p->next;
 	    }
-	  else
+	  else if (prev_p != nullptr)
 	    {
 	      prev_p->next = entry_p->next;
+	    }
+	  else
+	    {
+	      assert (false);
 	    }
 
 	  css_free_queue_entry (entry_p);
