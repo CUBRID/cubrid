@@ -354,6 +354,7 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, LOG
     case LOG_2PC_START:
     case LOG_START_CHKPT:
     case LOG_SYSOP_ATOMIC_START:
+    case LOG_SUPPLEMENT_TRAN_USER:
       assert (rlength == 0 && rdata == NULL);
 
       error_code = prior_lsa_gen_record (thread_p, node, rec_type, ulength, udata);
