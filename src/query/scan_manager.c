@@ -158,7 +158,7 @@ static int reverse_key_list (KEY_VAL_RANGE * key_vals, int key_cnt);
 static int check_key_vals (KEY_VAL_RANGE * key_vals, int key_cnt, QPROC_KEY_VAL_FU * chk_fn);
 static int scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * indexal,
 				   TP_DOMAIN * btree_domainp, int num_term, REGU_VARIABLE * func, VAL_DESCR * vd,
-				   int key_minmax, bool is_iss);
+				   int key_minmax, bool is_iss, DB_VALUE *fetched_values);
 static int scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY_VAL_RANGE * key_val_range,
 				       INDX_SCAN_ID * iscan_id, TP_DOMAIN * btree_domainp, VAL_DESCR * vd);
 static int scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_limit_upper,
@@ -1492,7 +1492,8 @@ check_key_vals (KEY_VAL_RANGE * key_vals, int key_cnt, QPROC_KEY_VAL_FU * key_va
  */
 static int
 scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * indexable, TP_DOMAIN * btree_domainp,
-			int num_term, REGU_VARIABLE * func, VAL_DESCR * vd, int key_minmax, bool is_iss)
+			int num_term, REGU_VARIABLE * func, VAL_DESCR * vd, int key_minmax, bool is_iss,
+			DB_VALUE *fetched_values)
 {
   int ret = NO_ERROR;
   DB_VALUE *val = NULL;
@@ -1571,6 +1572,12 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
        operand = operand->next, idx_dom = idx_dom->next, i++)
     {
       ret = fetch_peek_dbval (thread_p, &(operand->value), vd, NULL, NULL, NULL, &val);
+      if (ret != NO_ERROR)
+	{
+	  goto err_exit;
+	}
+
+      ret = pr_clone_value (val, &fetched_values[i]);
       if (ret != NO_ERROR)
 	{
 	  goto err_exit;
@@ -1676,11 +1683,8 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	}
       else
 	{
-	  ret = fetch_peek_dbval (thread_p, &(operand->value), vd, NULL, NULL, NULL, &val);
-	  if (ret != NO_ERROR)
-	    {
-	      goto err_exit;
-	    }
+	  assert (fetched_values != NULL);
+	  val = &fetched_values[natts];
 	}
 
       if (need_new_setdomain == true)
@@ -1784,11 +1788,8 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	}
       else
 	{
-	  ret = fetch_peek_dbval (thread_p, &(operand->value), vd, NULL, NULL, NULL, &val);
-	  if (ret != NO_ERROR)
-	    {
-	      goto err_exit;
-	    }
+	  assert (fetched_values != NULL);
+	  val = &fetched_values[i];
 	}
 
       if (DB_IS_NULL (val))
@@ -1917,6 +1918,7 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
       curr_key_prefix_length = iscan_id->bt_attrs_prefix_length[0];
     }
 
+#if !defined(NDEBUG)
   if (key_ranges->key1)
     {
       if (key_ranges->key1->type == TYPE_FUNC && key_ranges->key1->value.funcp->ftype == F_MIDXKEY)
@@ -1948,7 +1950,11 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
 	  count = 1;
 	}
       key_val_range->num_index_term = MAX (key_val_range->num_index_term, count);
+      assert (key_val_range->num_index_term == iscan_id->key_cnt);
     }
+#endif /* NDEBUG */
+
+  key_val_range->num_index_term = iscan_id->key_cnt;
 
   if (key_ranges->key1)
     {
@@ -1965,7 +1971,8 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
 
 	  ret =
 	    scan_dbvals_to_midxkey (thread_p, &key_val_range->key1, &indexable, btree_domainp,
-				    key_val_range->num_index_term, key_ranges->key1, vd, key_minmax, iscan_id->iss.use);
+				    key_val_range->num_index_term, key_ranges->key1, vd, key_minmax, iscan_id->iss.use,
+				    iscan_id->fetched_values);
 	}
       else
 	{
@@ -2012,7 +2019,8 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
 
 	  ret =
 	    scan_dbvals_to_midxkey (thread_p, &key_val_range->key2, &indexable, btree_domainp,
-				    key_val_range->num_index_term, key_ranges->key2, vd, key_minmax, iscan_id->iss.use);
+				    key_val_range->num_index_term, key_ranges->key2, vd, key_minmax, iscan_id->iss.use,
+				    iscan_id->fetched_values);
 	}
       else
 	{
@@ -2061,11 +2069,23 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
 	{
 	  assert (key_val_range->range == EQ_NA);
 
-	  key_minmax = BTREE_COERCE_KEY_WITH_MAX_VALUE;
+	  ret = pr_clone_value (&key_val_range->key1, &key_val_range->key2);
+	  if (ret != NO_ERROR)
+	    {
+	      key_val_range->range = NA_NA;
 
-	  ret =
-	    scan_dbvals_to_midxkey (thread_p, &key_val_range->key2, &indexable, btree_domainp,
-				    key_val_range->num_index_term, key_ranges->key1, vd, key_minmax, iscan_id->iss.use);
+	      return ret;
+	    }
+
+	  /* Set minmax type opposite to key1 */
+	  if (key_val_range->key2.data.midxkey.min_max_val.type == MIN_COLUMN)
+	    {
+	      key_val_range->key2.data.midxkey.min_max_val.type = MAX_COLUMN;
+	    }
+	  else
+	    {
+	      key_val_range->key2.data.midxkey.min_max_val.type = MIN_COLUMN;
+	    }
 	}
       else
 	{
@@ -2237,10 +2257,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
 	  db_make_null (&key_vals[i].key2);
 	  key_vals[i].is_truncated = false;
 	  key_vals[i].num_index_term = 0;
-	}
 
-      for (i = 0; i < key_cnt; i++)
-	{
 	  key_vals[i].range = key_ranges[i].range;
 	  if (key_vals[i].range == INF_INF)
 	    {
@@ -3077,6 +3094,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   isidp->indx_cov.list_id = NULL;
   isidp->indx_cov.tplrec = NULL;
   isidp->indx_cov.lsid = NULL;
+  isidp->fetched_values = NULL;
 
   /* index scan info */
   BTS = &isidp->bt_scan;
@@ -3223,6 +3241,17 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 	{
 	  /* found multi-column key-val */
 	  need_copy_buf = true;
+
+	  /* make fetched values for scan_regu_key_to_index_key(). */
+	  isidp->fetched_values = (DB_VALUE *) db_private_alloc (thread_p, sizeof (DB_VALUE) * isidp->key_cnt);
+	  if (isidp->fetched_values == NULL)
+	    {
+	      goto exit_on_error;
+	    }
+	  for (int j = 0; j < isidp->key_cnt; j++)
+	    {
+	      db_make_null (&isidp->fetched_values[j]);
+	    }
 	}
       else
 	{			/* single-column index */
@@ -3289,6 +3318,10 @@ exit_on_error:
   if (isidp->key_vals)
     {
       db_private_free_and_init (thread_p, isidp->key_vals);
+    }
+  if (isidp->fetched_values)
+    {
+      db_private_free_and_init (thread_p, isidp->fetched_values);
     }
   if (isidp->bt_attr_ids)
     {
@@ -4712,6 +4745,10 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       if (isidp->key_vals)
 	{
 	  db_private_free_and_init (thread_p, isidp->key_vals);
+	}
+      if (isidp->fetched_values)
+	{
+	  db_private_free_and_init (thread_p, isidp->fetched_values);
 	}
 
       /* free allocated memory for the scan */
