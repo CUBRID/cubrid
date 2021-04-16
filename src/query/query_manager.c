@@ -2623,9 +2623,7 @@ qmgr_create_new_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP
       return NULL;
     }
 
-  num_buffer_pages = ((membuf_type == TEMP_FILE_MEMBUF_NORMAL)
-		      ? temp_mem_buffer_pages
-		      : index_scan_key_buffer_pages);
+  num_buffer_pages = ((membuf_type == TEMP_FILE_MEMBUF_NORMAL) ? temp_mem_buffer_pages : index_scan_key_buffer_pages);
 
   tfile_vfid_p = qmgr_get_temp_file_from_list (&qmgr_Query_table.temp_file_list[membuf_type]);
   if (tfile_vfid_p == NULL)
