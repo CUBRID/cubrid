@@ -6713,7 +6713,14 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	  goto exit_on_error;
 	}
       break;
-
+    case TARGET_DBLINK:
+      error_code =
+	scan_open_dblink_scan (thread_p, s_id,
+			       curr_spec->s.dblink_node.conn_url,
+			       curr_spec->s.dblink_node.conn_user,
+			       curr_spec->s.dblink_node.conn_password,
+			       curr_spec->s.dblink_node.conn_sql, curr_spec->s.dblink_node.regu_list_p);
+      break;
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
       error_code = ER_QPROC_INVALID_XASLNODE;

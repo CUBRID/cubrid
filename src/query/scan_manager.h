@@ -38,6 +38,7 @@
 #include "btree.h"		/* TODO: for BTREE_SCAN */
 #include "heap_file.h"		/* for HEAP_SCANCACHE */
 #include "method_scan.h"	/* for METHOD_SCAN_BUFFER */
+#include "dblink_scan.h"
 #include "oid.h"		/* for OID */
 #include "query_evaluator.h"
 #include "query_list.h"
@@ -87,8 +88,16 @@ typedef enum
 				 * through all slots even if they do not contain data. */
   S_HEAP_PAGE_SCAN,		/* scans heap pages and queries for page information */
   S_INDX_KEY_INFO_SCAN,		/* scans b-tree and queries for key info */
-  S_INDX_NODE_INFO_SCAN		/* scans b-tree nodes for info */
+  S_INDX_NODE_INFO_SCAN,	/* scans b-tree nodes for info */
+  S_DBLINK_SCAN			/* scans dblink */
 } SCAN_TYPE;
+
+typedef struct dblink_scan_id DBLINK_SCAN_ID;
+struct dblink_scan_id
+{
+  DBLINK_SCAN_BUFFER scan_buf;	/* value array buffer */
+  REGU_VARIABLE_LIST regu_list_p;
+};
 
 typedef struct heap_scan_id HEAP_SCAN_ID;
 struct heap_scan_id
@@ -356,6 +365,7 @@ struct scan_id_struct
     INDEX_NODE_SCAN_ID insid;	/* Scan b-tree nodes */
     SET_SCAN_ID ssid;		/* Set Scan Identifier */
     VA_SCAN_ID vaid;		/* Value Array Identifier */
+    DBLINK_SCAN_ID dblid;	/* DBLink Array Identifier */
     REGU_VALUES_SCAN_ID rvsid;	/* regu_variable list identifier */
     SHOWSTMT_SCAN_ID stsid;	/* show stmt identifier */
     JSON_TABLE_SCAN_ID jtid;
@@ -461,6 +471,10 @@ extern int scan_open_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				  val_list_node * val_list, val_descr * vd,
 				  /* */
 				  QFILE_LIST_ID * list_id, method_sig_list * meth_sig_list);
+extern int scan_open_dblink_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
+				  char *conn_url,
+				  char *conn_user, char *conn_password, char *sql_text, REGU_VARIABLE_LIST regu_list_p);
+
 extern int scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern SCAN_CODE scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern SCAN_CODE scan_next_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
