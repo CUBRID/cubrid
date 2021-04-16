@@ -996,12 +996,7 @@ cursor_buffer_last_page (CURSOR_ID * cursor_id_p, VPID * vpid_p)
 
   if (cursor_id_p->list_id.last_pgptr && VPID_EQ (&(cursor_id_p->list_id.first_vpid), vpid_p))
     {
-      if (cursor_id_p->buffer == NULL)
-	{
-	  return ER_FAILED;
-	}
-
-      memcpy (cursor_id_p->buffer, cursor_id_p->list_id.last_pgptr, CURSOR_BUFFER_SIZE);
+      cursor_id_p->buffer = cursor_id_p->list_id.last_pgptr;
     }
   else
     {
