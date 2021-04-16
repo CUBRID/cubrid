@@ -5052,10 +5052,10 @@ stx_build_dblink_spec_type (THREAD_ENTRY * thread_p, char *ptr, DBLINK_SPEC_TYPE
 
   //ptr = or_unpack_int (ptr, &offset);
 
-  dblink_spec->conn_url = stx_restore_string(thread_p, ptr);
-  dblink_spec->conn_user = stx_restore_string(thread_p, ptr);
-  dblink_spec->conn_password = stx_restore_string(thread_p, ptr);
-  dblink_spec->conn_sql = stx_restore_string(thread_p, ptr);
+  dblink_spec->conn_url = stx_restore_string (thread_p, ptr);
+  dblink_spec->conn_user = stx_restore_string (thread_p, ptr);
+  dblink_spec->conn_password = stx_restore_string (thread_p, ptr);
+  dblink_spec->conn_sql = stx_restore_string (thread_p, ptr);
 
   return ptr;
 }

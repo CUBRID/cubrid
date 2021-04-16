@@ -472,11 +472,8 @@ extern int scan_open_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				  /* */
 				  QFILE_LIST_ID * list_id, method_sig_list * meth_sig_list);
 extern int scan_open_dblink_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
-				  char * conn_url,
-				  char * conn_user,
-				  char * conn_password,
-				  char * sql_text,
-				  REGU_VARIABLE_LIST regu_list_p);
+				  char *conn_url,
+				  char *conn_user, char *conn_password, char *sql_text, REGU_VARIABLE_LIST regu_list_p);
 
 extern int scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern SCAN_CODE scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id);

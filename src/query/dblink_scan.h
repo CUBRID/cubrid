@@ -1,5 +1,4 @@
 /*
- * Copyright 2008 Search Solution Corporation
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -46,15 +45,16 @@ struct regu_variable_list_node;
 typedef struct dblink_scan_buffer DBLINK_SCAN_BUFFER;
 struct dblink_scan_buffer
 {				/* value array scanbuf */
- int conn_handle;
- int stmt_handle;
- int col_cnt;
- void *col_info;
+  int conn_handle;
+  int stmt_handle;
+  int col_cnt;
+  void *col_info;
 };
 
 extern int dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_BUFFER * scan_buffer_p,
-			char *conn_url, char *user_name, char *password, char *sql_text);
+			     char *conn_url, char *user_name, char *password, char *sql_text);
 extern int dblink_close_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_BUFFER * scan_buf);
-extern SCAN_CODE dblink_scan_next (THREAD_ENTRY * thread_p, DBLINK_SCAN_BUFFER * scan_buffer_p, regu_variable_list_node * value_list_p);
+extern SCAN_CODE dblink_scan_next (THREAD_ENTRY * thread_p, DBLINK_SCAN_BUFFER * scan_buffer_p,
+				   regu_variable_list_node * value_list_p);
 
 #endif

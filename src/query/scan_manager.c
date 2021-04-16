@@ -3979,37 +3979,25 @@ scan_open_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
  * scan_open_dblink_scan () -
  *   return: NO_ERROR, or ER_code
  *   scan_id(out): Scan identifier
- *   grouped(in):
- *   single_fetch(in):
- *   join_dbval(in):
- *   val_list(in):
- *   vd(in):
- *   list_id(in):
+ *   conn_url(in):
+ *   conn_user(in):
+ *   conn_password(in):
+ *   sql_text(in):
  *
- * Note: If you feel the need
  */
 int
 scan_open_dblink_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
-				  char * conn_url,
-				  char * conn_user,
-				  char * conn_password,
-				  char * sql_text,
-				  REGU_VARIABLE_LIST regu_list_p
-		       )
+		       char *conn_url,
+		       char *conn_user, char *conn_password, char *sql_text, REGU_VARIABLE_LIST regu_list_p)
 {
   /* scan type is DBLINK SCAN */
   scan_id->type = S_DBLINK_SCAN;
   scan_id->s.dblid.regu_list_p = regu_list_p;
-  
+
   /* initialize SCAN_ID structure */
   scan_init_scan_id (scan_id, false, S_SELECT, true, 0, QPROC_NO_SINGLE_INNER, NULL, NULL, NULL);
 
-  return dblink_open_scan (thread_p, &scan_id->s.dblid.scan_buf,
-  				conn_url,
-  				conn_user,
-  				conn_password,
-  				sql_text
-  			   );
+  return dblink_open_scan (thread_p, &scan_id->s.dblid.scan_buf, conn_url, conn_user, conn_password, sql_text);
 }
 
 /*
@@ -5089,7 +5077,7 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
     case S_DBLINK_SCAN:
       status = scan_next_dblink_scan (thread_p, scan_id);
-	  break;
+      break;
 
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
@@ -8082,7 +8070,7 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 	    }
 	  else if (llsidp->hlsid.hash_list_scan_yn == HASH_METH_HYBRID)
 	    {
-	      MAKE_TUPLE_POSTION(tuple_pos, hvalue->pos, scan_id_p);
+	      MAKE_TUPLE_POSTION (tuple_pos, hvalue->pos, scan_id_p);
 	      if (qfile_jump_scan_tuple_position (thread_p, scan_id_p, &tuple_pos, &tplrec, PEEK) != S_SUCCESS)
 		{
 		  return S_ERROR;
@@ -8113,7 +8101,7 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 	  else if (llsidp->hlsid.hash_list_scan_yn == HASH_METH_HYBRID)
 	    {
 	      simple_pos = ((HASH_SCAN_VALUE *) llsidp->hlsid.curr_hash_entry->data)->pos;
-	      MAKE_TUPLE_POSTION(tuple_pos, simple_pos, scan_id_p);
+	      MAKE_TUPLE_POSTION (tuple_pos, simple_pos, scan_id_p);
 
 	      if (qfile_jump_scan_tuple_position (thread_p, scan_id_p, &tuple_pos, &tplrec, PEEK) != S_SUCCESS)
 		{
@@ -8225,11 +8213,11 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
     {
       return HASH_METH_IN_MEM;
     }
-  else if ((UINT64) llsidp->list_id->tuple_cnt * (sizeof(HENTRY_HLS) + sizeof(QFILE_TUPLE_SIMPLE_POS)) <= mem_limit)
+  else if ((UINT64) llsidp->list_id->tuple_cnt * (sizeof (HENTRY_HLS) + sizeof (QFILE_TUPLE_SIMPLE_POS)) <= mem_limit)
     {
       /* bytes of 1 row = sizeof(HENTRY_HLS) + sizeof(QFILE_TUPLE_SIMPLE_POS) = 36 bytes (64bit) */
-      /* HENTRY_HLS = pointer(8bytes) * 3 = 24 bytes*/
-      /* SIMPLE_POS = pageid(4bytes) + voldid(2bytes) + padding(2bytes) + offset(4bytes) = 12 bytes*/
+      /* HENTRY_HLS = pointer(8bytes) * 3 = 24 bytes */
+      /* SIMPLE_POS = pageid(4bytes) + voldid(2bytes) + padding(2bytes) + offset(4bytes) = 12 bytes */
       return HASH_METH_HYBRID;
     }
   else

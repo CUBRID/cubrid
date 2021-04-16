@@ -5281,7 +5281,7 @@ pt_make_cselect_access_spec (XASL_NODE * xasl, METHOD_SIG_LIST * method_sig_list
  */
 static ACCESS_SPEC_TYPE *
 pt_make_dblink_access_spec (ACCESS_METHOD access, REGU_VARIABLE_LIST attr_list,
-					 char *url, char *user, char *password, char *sql)
+			    char *url, char *user, char *password, char *sql)
 {
   ACCESS_SPEC_TYPE *spec;
 
@@ -12250,25 +12250,26 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 		  free_and_init (reserved_offsets);
 		}
 
-	      if (strcmp(table_info->exposed, "dblink"))
-	      	{
-	          access =
-		    pt_make_class_access_spec (parser, flat, class_->info.name.db_object, scan_type, access_method, NULL,
-					       NULL, where, NULL, NULL, regu_attributes_pred, regu_attributes_rest, NULL,
-					       output_val_list, regu_var_list, NULL, cache_pred, cache_rest,
-					       NULL, NO_SCHEMA, db_values_array_p, regu_attributes_reserved);
-	      	}
+	      if (strcmp (table_info->exposed, "dblink"))
+		{
+		  access =
+		    pt_make_class_access_spec (parser, flat, class_->info.name.db_object, scan_type, access_method,
+					       NULL, NULL, where, NULL, NULL, regu_attributes_pred,
+					       regu_attributes_rest, NULL, output_val_list, regu_var_list, NULL,
+					       cache_pred, cache_rest, NULL, NO_SCHEMA, db_values_array_p,
+					       regu_attributes_reserved);
+		}
 	      else
-	        {
+		{
 		  /* this is a temmporal routine for dblink POC */
 		  static char dblink_url[] = "cci:CUBRID:192.168.1.8:55300:demodb:::";
 		  static char dblink_sql[] = "select col1, col2_varchar, col3_big from dblink";
 		  static char dblink_user[] = "dba";
 		  static char dblink_passowrd[] = "";
-		  
-	          access = pt_make_dblink_access_spec(access_method, regu_attributes_rest, 
-		  	dblink_url, dblink_user, dblink_passowrd, dblink_sql);
-	      	}
+
+		  access = pt_make_dblink_access_spec (access_method, regu_attributes_rest,
+						       dblink_url, dblink_user, dblink_passowrd, dblink_sql);
+		}
 	    }
 	  else if (PT_SPEC_SPECIAL_INDEX_SCAN (spec))
 	    {

@@ -1,5 +1,4 @@
 /*
- * Copyright 2008 Search Solution Corporation
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -263,7 +262,7 @@ dblink_scan_next (THREAD_ENTRY * thread_p, DBLINK_SCAN_BUFFER * scan_buffer_p, R
 	{
 	  valptrp->value.vfetch_to->domain.general_info.is_null = 0;
 	  value = valptrp->value.vfetch_to->data.p;
-	  switch (utype = (T_CCI_U_TYPE)CCI_GET_RESULT_INFO_TYPE (scan_buffer_p->col_info, col_no))
+	  switch (utype = (T_CCI_U_TYPE) CCI_GET_RESULT_INFO_TYPE (scan_buffer_p->col_info, col_no))
 	    {
 	    case CCI_U_TYPE_NULL:
 	      valptrp->value.vfetch_to->domain.general_info.is_null = 1;
@@ -284,7 +283,7 @@ dblink_scan_next (THREAD_ENTRY * thread_p, DBLINK_SCAN_BUFFER * scan_buffer_p, R
 		{
 		  scan_result = S_ERROR;
 		}
-	      memcpy(valptrp->value.vfetch_to->data.num.d.buf, (char *) value, strlen((char *)value));
+	      memcpy (valptrp->value.vfetch_to->data.num.d.buf, (char *) value, strlen ((char *) value));
 	      break;
 	    case CCI_U_TYPE_STRING:
 	    case CCI_U_TYPE_VARNCHAR:

@@ -4420,7 +4420,7 @@ xts_process_access_spec_type (char *ptr, const ACCESS_SPEC_TYPE * access_spec)
     case TARGET_DBLINK:
       ptr = xts_process_dblink_spec_type (ptr, &ACCESS_SPEC_DBLINK_SPEC (access_spec));
       break;
- 
+
     default:
       xts_Xasl_errcode = ER_QPROC_INVALID_XASLNODE;
       return NULL;
@@ -4945,28 +4945,28 @@ xts_process_dblink_spec_type (char *ptr, const DBLINK_SPEC_TYPE * dblink_spec)
     }
   ptr = or_pack_int (ptr, offset);
 
-  offset = xts_save_string(dblink_spec->conn_url);
+  offset = xts_save_string (dblink_spec->conn_url);
   if (offset == ER_FAILED)
     {
       return NULL;
     }
   ptr = or_pack_int (ptr, offset);
 
-  offset = xts_save_string(dblink_spec->conn_user);
+  offset = xts_save_string (dblink_spec->conn_user);
   if (offset == ER_FAILED)
     {
       return NULL;
     }
   ptr = or_pack_int (ptr, offset);
 
-  offset = xts_save_string(dblink_spec->conn_password);
+  offset = xts_save_string (dblink_spec->conn_password);
   if (offset == ER_FAILED)
     {
       return NULL;
     }
   ptr = or_pack_int (ptr, offset);
 
-  offset = xts_save_string(dblink_spec->conn_sql);
+  offset = xts_save_string (dblink_spec->conn_sql);
   if (offset == ER_FAILED)
     {
       return NULL;

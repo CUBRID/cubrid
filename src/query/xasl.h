@@ -797,7 +797,7 @@ union hybrid_node
   SHOWSTMT_SPEC_TYPE showstmt_node;	/* show stmt specification */
   SET_SPEC_TYPE set_node;	/* set specification */
   METHOD_SPEC_TYPE method_node;	/* method specification */
-  DBLINK_SPEC_TYPE dblink_node; /* dblink specification */
+  DBLINK_SPEC_TYPE dblink_node;	/* dblink specification */
   REGUVAL_LIST_SPEC_TYPE reguval_list_node;	/* reguval_list specification */
   json_table_spec_node json_table_node;	/* json_table specification */
 };				/* class/list access specification */
@@ -880,7 +880,7 @@ union hybrid_node
 
 #define ACCESS_SPEC_DBLINK_SPEC(ptr) \
 	((ptr)->s.dblink_node)
-	
+
 #define ACCESS_SPEC_DBLINK_XASL_NODE(ptr) \
 	((ptr)->s.dblink_node.xasl_node)
 
