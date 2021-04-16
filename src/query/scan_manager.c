@@ -1918,7 +1918,7 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
       curr_key_prefix_length = iscan_id->bt_attrs_prefix_length[0];
     }
 
-#if !defined(NDEBUG)
+  /* TO_DO : fix to get num_index_term when generating XASL */
   if (key_ranges->key1)
     {
       if (key_ranges->key1->type == TYPE_FUNC && key_ranges->key1->value.funcp->ftype == F_MIDXKEY)
@@ -1950,11 +1950,7 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
 	  count = 1;
 	}
       key_val_range->num_index_term = MAX (key_val_range->num_index_term, count);
-      assert (key_val_range->num_index_term == iscan_id->key_cnt);
     }
-#endif /* NDEBUG */
-
-  key_val_range->num_index_term = iscan_id->key_cnt;
 
   if (key_ranges->key1)
     {
