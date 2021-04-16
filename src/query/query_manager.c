@@ -2613,6 +2613,8 @@ qmgr_create_new_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP
   QMGR_TEMP_FILE *tfile_vfid_p, *temp;
   PAGE_PTR page_p;
   QFILE_PAGE_HEADER pgheader = { 0, NULL_PAGEID, NULL_PAGEID, 0, NULL_PAGEID, NULL_VOLID, NULL_VOLID, NULL_VOLID };
+  static int temp_mem_buffer_pages = prm_get_integer_value (PRM_ID_TEMP_MEM_BUFFER_PAGES);
+  static int index_scan_key_buffer_pages = prm_get_integer_value (PRM_ID_INDEX_SCAN_KEY_BUFFER_PAGES);
 
   assert (QMGR_IS_VALID_MEMBUF_TYPE (membuf_type));
 
@@ -2622,8 +2624,8 @@ qmgr_create_new_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP
     }
 
   num_buffer_pages = ((membuf_type == TEMP_FILE_MEMBUF_NORMAL)
-		      ? prm_get_integer_value (PRM_ID_TEMP_MEM_BUFFER_PAGES)
-		      : prm_get_integer_value (PRM_ID_INDEX_SCAN_KEY_BUFFER_PAGES));
+		      ? temp_mem_buffer_pages
+		      : index_scan_key_buffer_pages);
 
   tfile_vfid_p = qmgr_get_temp_file_from_list (&qmgr_Query_table.temp_file_list[membuf_type]);
   if (tfile_vfid_p == NULL)

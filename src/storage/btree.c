@@ -15059,6 +15059,7 @@ btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_
   DB_MIDXKEY *midxkey = NULL;
   DB_VALUE *swap_key = NULL;
   int i = 0;
+  static bool oracle_style_empty_string = prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING);
 
   /* Assert expected arguments. */
   assert (bts != NULL);
@@ -15276,7 +15277,7 @@ btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_
       bts->key_range.upper_key = swap_key;
     }
 
-  if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING))
+  if (oracle_style_empty_string)
     {
       /* TODO: A comment explaining this would be great. */
       int j, ids_size;
