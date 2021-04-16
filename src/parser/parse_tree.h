@@ -462,6 +462,13 @@ struct json_t;
 	   (op) == PT_QPRIOR || \
            (op) == PT_SYS_CONNECT_BY_PATH) ? true : false )
 
+#define PT_CHECK_HQ_OP_EXCEPT_PRIOR(op) \
+        ( ((op) == PT_LEVEL || \
+           (op) == PT_CONNECT_BY_ISCYCLE || \
+           (op) == PT_CONNECT_BY_ISLEAF || \
+           (op) == PT_CONNECT_BY_ROOT  || \
+	   (op) == PT_SYS_CONNECT_BY_PATH) ? true : false )
+
 #define PT_IS_NUMBERING_AFTER_EXECUTION(op) \
         ( ((op) == PT_INST_NUM || \
            (op) == PT_ROWNUM || \
