@@ -1147,7 +1147,7 @@ scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_term)
 {
   int rc = DB_UNK;
   DB_TYPE key_type;
-  int dummy_size1, dummy_size2, dummy_diff_column;
+  int dummy_diff_column;
   bool dummy_dom_is_desc, dummy_next_dom_is_desc;
   static bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
   static int coerce = (ignore_trailing_space) ? 1 : 3;
@@ -1179,8 +1179,8 @@ scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_term)
       if (key_type == DB_TYPE_MIDXKEY)
 	{
 	  rc =
-	    pr_midxkey_compare (db_get_midxkey (val1), db_get_midxkey (val2), 1, 1, num_index_term, NULL, &dummy_size1,
-				&dummy_size2, &dummy_diff_column, &dummy_dom_is_desc, &dummy_next_dom_is_desc);
+	    pr_midxkey_compare (db_get_midxkey (val1), db_get_midxkey (val2), 1, 1, num_index_term, NULL, NULL,
+				NULL, &dummy_diff_column, &dummy_dom_is_desc, &dummy_next_dom_is_desc);
 	}
       else
 	{
