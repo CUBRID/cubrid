@@ -1,5 +1,5 @@
 /*
- * 
+ *
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,11 +29,43 @@
 
 #include "regu_var.hpp"
 
-/* hash scan value */
-typedef struct hash_scan_value HASH_SCAN_VALUE;
-struct hash_scan_value
+#define MAKE_TUPLE_POSTION(tuple_pos, simple_pos, scan_id_p) \
+  do \
+    { \
+      tuple_pos.status = scan_id_p->status; \
+      tuple_pos.position = S_ON; \
+      tuple_pos.vpid = simple_pos->vpid; \
+      tuple_pos.offset = simple_pos->offset; \
+      tuple_pos.tpl = NULL; \
+      tuple_pos.tplno = 0; /* If tplno is needed, add it from scan_build_hash_list_scan() */ \
+    } \
+  while (0)
+
+/* kind of hash list scan method */
+enum hash_method
 {
-  QFILE_TUPLE tuple;		/* tuple */
+  HASH_METH_NOT_USE = 0,
+  HASH_METH_IN_MEM = 1,
+  HASH_METH_HYBRID = 2,
+  HASH_METH_HASH_FILE = 3 /* not used */
+};
+typedef enum hash_method HASH_METHOD;
+
+/* Tuple position structure for hash value */
+typedef struct qfile_tuple_simple_pos QFILE_TUPLE_SIMPLE_POS;
+struct qfile_tuple_simple_pos
+{
+  VPID vpid;			/* Real tuple page identifier */
+  int offset;			/* Tuple offset inside the page */
+};
+
+/* hash scan value */
+typedef union hash_scan_value HASH_SCAN_VALUE;
+union hash_scan_value
+{
+  void *data;			/* for free() */
+  QFILE_TUPLE_SIMPLE_POS *pos;	/* tuple position of temp file */
+  QFILE_TUPLE tuple;		/* tuple data */
 };
 
 /* hash scan key */
@@ -49,16 +81,19 @@ struct hash_scan_key
 typedef struct hash_list_scan HASH_LIST_SCAN;
 struct hash_list_scan
 {
-  bool hash_list_scan_yn;	/* Is hash list scan possible? */
   regu_variable_list_node *build_regu_list;	/* regulator variable list */
   regu_variable_list_node *probe_regu_list;	/* regulator variable list */
-  mht_table *hash_table;	/* memory hash table for hash list scan */
+  mht_hls_table *hash_table;	/* memory hash table for hash list scan */
   hash_scan_key *temp_key;	/* temp probe key */
-  HENTRY_PTR curr_hash_entry;	/* current hash entry */
+  hash_scan_key *temp_new_key;	/* temp probe key with db_value */
+  HENTRY_HLS_PTR curr_hash_entry;	/* current hash entry */
+  int hash_list_scan_yn;	/* Is hash list scan possible? */
+  bool need_coerce_type;	/* Are the types of probe and build different? */
 };
 
 HASH_SCAN_KEY *qdata_alloc_hscan_key (THREAD_ENTRY * thread_p, int val_cnt, bool alloc_vals);
 HASH_SCAN_VALUE *qdata_alloc_hscan_value (THREAD_ENTRY * thread_p, QFILE_TUPLE tpl);
+HASH_SCAN_VALUE *qdata_alloc_hscan_value_OID (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id_p);
 
 void qdata_free_hscan_key (THREAD_ENTRY * thread_p, HASH_SCAN_KEY * key, int val_count);
 void qdata_free_hscan_value (THREAD_ENTRY * thread_p, HASH_SCAN_VALUE * value);
@@ -70,7 +105,9 @@ int qdata_build_hscan_key (THREAD_ENTRY * thread_p, val_descr * vd, REGU_VARIABL
 unsigned int qdata_hash_scan_key (const void *key, unsigned int ht_size);
 HASH_SCAN_KEY *qdata_copy_hscan_key (THREAD_ENTRY * thread_p, HASH_SCAN_KEY * key,
 				     REGU_VARIABLE_LIST probe_regu_list, val_descr * vd);
+HASH_SCAN_KEY *qdata_copy_hscan_key_without_alloc (THREAD_ENTRY * thread_p, HASH_SCAN_KEY * key,
+						   REGU_VARIABLE_LIST probe_regu_list, HASH_SCAN_KEY * new_key);
 
-int qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *key, void *data, void *args);
+int qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *data, void *args);
 
 #endif /* _QUERY_HASH_SCAN_H_ */
