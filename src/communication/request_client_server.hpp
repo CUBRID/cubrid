@@ -257,7 +257,12 @@ namespace cubcomm
   template <typename MsgId>
   void request_server<MsgId>::register_request_handler (MsgId msgid, const server_request_handler &handler)
   {
-    m_request_handlers[msgid] = handler;
+    const auto it = m_request_handlers.find (msgid);
+    assert (it == m_request_handlers.cend ());
+    if (it == m_request_handlers.cend ())
+      {
+	m_request_handlers[msgid] = handler;
+      }
   }
 
   template <typename MsgId>
