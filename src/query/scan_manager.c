@@ -3188,6 +3188,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   /* TO_DO : fix to move this to XASL generator*/
   /* get the number of terms based on the first index key */
   key_ranges = &indx_info->key_info.key_ranges[0];
+  count = 0;
   if (key_ranges->key1)
     {
       if (key_ranges->key1->type == TYPE_FUNC && key_ranges->key1->value.funcp->ftype == F_MIDXKEY)
@@ -3197,10 +3198,10 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 	      count++;
 	    }
 	}
-    }
-  else
-    {
-      count = 1;
+      else
+	{
+	  count = 1;
+	}
     }
   isidp->num_index_term = count;
 
