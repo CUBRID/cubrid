@@ -32,8 +32,10 @@
 #include <string.h>
 #include <errno.h>
 #include <math.h>
-#include <sys/time.h>
 #include <sys/timeb.h>
+#if !defined (WINDOWS)
+#include <sys/time.h>
+#endif
 #include <assert.h>
 
 #include "string_opfunc.h"
