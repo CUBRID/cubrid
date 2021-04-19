@@ -3243,7 +3243,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 	    {
 	      goto exit_on_error;
 	    }
-	  for (int j = 0; j < isidp->key_cnt; j++)
+	  for (int j = 0; j < isidp->bt_num_attrs; j++)
 	    {
 	      db_make_null (&isidp->fetched_values[j]);
 	    }
