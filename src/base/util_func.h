@@ -27,6 +27,8 @@
 
 #ident "$Id$"
 
+#include <chrono>
+#include <ctime>
 #include <sys/types.h>
 #include <math.h>
 
@@ -72,5 +74,11 @@ extern int util_log_write_command (int argc, char *argv[]);
 
 extern int util_bsearch (const void *key, const void *base, int n_elems, unsigned int sizeof_elem,
 			 int (*func_compare) (const void *, const void *), bool * out_found);
+
+// *INDENT-OFF*
+template <typename Duration>
+void util_get_seconds_and_rest_since_epoch (std::chrono::seconds &secs, Duration &rest);
+void util_get_second_and_ms_since_epoch (time_t &secs, int &msec);
+// *INDENT-ON*
 
 #endif /* _UTIL_FUNC_H_ */
