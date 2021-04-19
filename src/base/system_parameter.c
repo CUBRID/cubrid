@@ -2347,9 +2347,9 @@ static UINT64 prm_ddl_audit_log_size_upper = 2147483648ULL;	/* 2G */
 static unsigned int prm_ddl_audit_log_size_flag = 0;
 
 UINT64 PRM_COUNT_DEBUG = false;
-static UINT64 prm_count_debug_default = 0;	/* 10M */
-static UINT64 prm_count_debug_lower = 0;	/* 10M */
-static UINT64 prm_count_debug_upper = UINT64_MAX;	/* 2G */
+static UINT64 prm_count_debug_default = 0;
+static UINT64 prm_count_debug_lower = 0;
+static UINT64 prm_count_debug_upper = UINT64_MAX;
 static unsigned int prm_count_debug_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
