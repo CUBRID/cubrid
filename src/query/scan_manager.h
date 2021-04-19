@@ -229,7 +229,8 @@ struct indx_scan_id
   bool check_not_vacuumed;	/* if true then during index scan, the entries will be checked if they should've been
 				 * vacuumed. Used in checkdb. */
   DISK_ISVALID not_vacuumed_res;	/* The result of not vacuumed checking operation */
-  DB_VALUE *fetched_values;	/* Used for scan_dbvals_to_midxkey() */
+  DB_VALUE *fetched_values;	/* used for scan_dbvals_to_midxkey() */
+  int num_index_term;		/* num of used attributes of the index attr */
 };
 
 typedef struct index_node_scan_id INDEX_NODE_SCAN_ID;

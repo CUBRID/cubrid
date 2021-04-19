@@ -1906,7 +1906,6 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
   int curr_key_prefix_length = 0;
   int count;
   int ret = NO_ERROR;
-  regu_variable_list_node *requ_list;
   DB_TYPE db_type;
   int key_len;
 
@@ -1918,39 +1917,7 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
       curr_key_prefix_length = iscan_id->bt_attrs_prefix_length[0];
     }
 
-  /* TO_DO : fix to get num_index_term when generating XASL */
-  if (key_ranges->key1)
-    {
-      if (key_ranges->key1->type == TYPE_FUNC && key_ranges->key1->value.funcp->ftype == F_MIDXKEY)
-	{
-	  for (requ_list = key_ranges->key1->value.funcp->operand, count = 0; requ_list; requ_list = requ_list->next)
-	    {
-	      count++;
-	    }
-	}
-      else
-	{
-	  count = 1;
-	}
-      key_val_range->num_index_term = count;
-    }
-
-  if (key_ranges->key2)
-    {
-      if (key_ranges->key2->type == TYPE_FUNC && key_ranges->key2->value.funcp->ftype == F_MIDXKEY)
-	{
-	  for (requ_list = key_ranges->key2->value.funcp->operand, count = 0; requ_list; requ_list = requ_list->next)
-	    {
-	      count++;
-	    }
-	}
-      else
-	{
-	  assert_release (key_val_range->num_index_term <= 1);
-	  count = 1;
-	}
-      key_val_range->num_index_term = MAX (key_val_range->num_index_term, count);
-    }
+  key_val_range->num_index_term = iscan_id->num_index_term;
 
   if (key_ranges->key1)
     {
@@ -3041,6 +3008,10 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   BTREE_SCAN *BTS;
   int coverage_enabled;
   int func_index_col_id;
+  int count;
+  KEY_RANGE *key_ranges = &indx_info->key_info.key_ranges[0];
+  regu_variable_list_node *requ_list;
+
 
   /* scan type is INDEX SCAN */
   scan_id->type = S_INDX_SCAN;
@@ -3091,6 +3062,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   isidp->indx_cov.tplrec = NULL;
   isidp->indx_cov.lsid = NULL;
   isidp->fetched_values = NULL;
+  isidp->num_index_term = 0;
 
   /* index scan info */
   BTS = &isidp->bt_scan;
@@ -3213,6 +3185,42 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   /* do not reset hsidp->caches_inited here */
   isidp->scancache_inited = false;
 
+  /* TO_DO : fix to move this to XASL generator*/
+  /* get the number of terms based on the first index key */
+  key_ranges = &indx_info->key_info.key_ranges[0];
+  if (key_ranges->key1)
+    {
+      if (key_ranges->key1->type == TYPE_FUNC && key_ranges->key1->value.funcp->ftype == F_MIDXKEY)
+	{
+	  for (requ_list = key_ranges->key1->value.funcp->operand, count = 0; requ_list; requ_list = requ_list->next)
+	    {
+	      count++;
+	    }
+	}
+    }
+  else
+    {
+      count = 1;
+    }
+  isidp->num_index_term = count;
+
+  if (key_ranges->key2)
+    {
+      if (key_ranges->key2->type == TYPE_FUNC && key_ranges->key2->value.funcp->ftype == F_MIDXKEY)
+	{
+	  for (requ_list = key_ranges->key2->value.funcp->operand, count = 0; requ_list; requ_list = requ_list->next)
+	    {
+	      count++;
+	    }
+	}
+      else
+	{
+	  assert_release (isidp->num_index_term <= 1);
+	  count = 1;
+	}
+      isidp->num_index_term = MAX (isidp->num_index_term, count);
+    }
+
   /* convert key values in the form of REGU_VARIABLE to the form of DB_VALUE */
   isidp->key_cnt = indx_info->key_info.key_cnt;
   if (isidp->key_cnt > 0)
@@ -3238,8 +3246,9 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 	  /* found multi-column key-val */
 	  need_copy_buf = true;
 
+
 	  /* make fetched values for scan_regu_key_to_index_key(). */
-	  isidp->fetched_values = (DB_VALUE *) db_private_alloc (thread_p, sizeof (DB_VALUE) * isidp->key_cnt);
+	  isidp->fetched_values = (DB_VALUE *) db_private_alloc (thread_p, sizeof (DB_VALUE) * isidp->num_index_term);
 	  if (isidp->fetched_values == NULL)
 	    {
 	      goto exit_on_error;
