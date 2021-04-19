@@ -4749,7 +4749,7 @@ log_append_abort_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * abort_
  *   tdes(in/out): State structure of transaction being aborted.
  *   abort_lsa(out): LSA of abort log.
  */
-static void
+void
 log_append_supplement_user (THREAD_ENTRY * thread_p, LOG_TDES * tdes, int with_lock)
 {
   LOG_REC_SUPPLEMENT_TRAN_USER *spplmnt_usr;
