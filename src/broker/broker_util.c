@@ -33,6 +33,7 @@
 #include <signal.h>
 #include <assert.h>
 #include <ctype.h>
+#include <sys/timeb.h>
 
 #if defined(WINDOWS)
 #include <winsock2.h>
@@ -40,12 +41,10 @@
 #include <direct.h>
 #include <io.h>
 #include <process.h>
-#include <sys/timeb.h>
 #include <mstcpip.h>
 #else
 #include <unistd.h>
 #include <sys/time.h>
-#include <sys/timeb.h>
 #include <netinet/tcp.h>
 #endif
 
@@ -60,6 +59,10 @@
 #include "broker_filename.h"
 #include "environment_variable.h"
 #include "porting.h"
+
+#if !defined (TIME_UTC)
+# define TIME_UTC 1
+#endif
 
 char db_err_log_file[BROKER_PATH_MAX];
 

@@ -52,6 +52,10 @@
 
 #define UTIL_LOG_FILENAME  "cubrid_utility.log"
 
+#if !defined (TIME_UTC)
+# define TIME_UTC 1
+#endif
+
 static char *util_Log_filename = NULL;
 static char util_Log_filename_buf[PATH_MAX];
 static char util_Log_buffer[UTIL_LOG_BUFFER_SIZE];
