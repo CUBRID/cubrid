@@ -564,7 +564,11 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_AVOID_VICTIM_CNT, "Num_data_page_avoid_victim"),
 
   /* Scalability statistics */
-  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_SC_REPL_DELAY, "Time_scalability_replication_delay"),
+  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_SC_REPL_DELAY, "Time_scal_replication_delay"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_SC_REPL_LOG_READ, "Scal_repl_log_read"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_SC_REPL_LOG_PROC, "Scal_repl_log_proc"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_SC_REPL_LOG_APPL_REDO_PARA, "Scal_repl_log_appl_redo_para"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_SC_REPL_LOG_APPL_REDO_SYNC, "Scal_repl_log_appl_redo_sync"),
 
   /* Array type statistics */
   PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_FIX_COUNTERS, "Num_data_page_fix_ext", &f_dump_in_file_Num_data_page_fix_ext,

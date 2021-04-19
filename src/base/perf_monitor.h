@@ -636,6 +636,10 @@ typedef enum
 
   /* Scalability statistics */
   PSTAT_SC_REPL_DELAY,
+  PSTAT_SC_REPL_LOG_READ,
+  PSTAT_SC_REPL_LOG_PROC,
+  PSTAT_SC_REPL_LOG_APPL_REDO_PARA,
+  PSTAT_SC_REPL_LOG_APPL_REDO_SYNC,
 
   /* Complex statistics */
   PSTAT_PBX_FIX_COUNTERS,
