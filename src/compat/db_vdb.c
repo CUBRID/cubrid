@@ -30,6 +30,7 @@
 #include <sys/timeb.h>
 #include <time.h>
 #include <assert.h>
+#include <chrono>
 
 #include "authenticate.h"
 #include "db.h"
@@ -68,7 +69,7 @@ enum
 };
 
 static struct timeb base_server_timeb = { 0, 0, 0, 0 };
-static struct timeb base_client_timeb = { 0, 0, 0, 0 };
+static timespec base_client_time = { };
 
 static int get_dimension_of (PT_NODE ** array);
 static DB_SESSION *db_open_local (void);
@@ -411,8 +412,6 @@ db_calculate_current_server_time (PARSER_CONTEXT * parser)
   DB_DATETIME datetime;
 
   struct timeb curr_server_timeb;
-  struct timeb curr_client_timeb;
-  int diff_mtime;
   int diff_time;
 
   if (base_server_timeb.time == 0)
@@ -420,9 +419,13 @@ db_calculate_current_server_time (PARSER_CONTEXT * parser)
       return;
     }
 
-  ftime (&curr_client_timeb);
-  diff_time = (int) (curr_client_timeb.time - base_client_timeb.time);
-  diff_mtime = curr_client_timeb.millitm - base_client_timeb.millitm;
+  timespec curr_client_time = { };
+  timespec_get (&curr_client_time, TIME_UTC);
+  diff_time = (int) (curr_client_time.tv_sec - base_client_time.tv_sec);
+  // *INDENT-OFF*
+  auto diff_mtime = std::chrono::duration_cast<std::chrono::milliseconds>
+        (std::chrono::nanoseconds (curr_client_time.tv_nsec - base_client_time.tv_nsec)).count ();
+  // *INDENT-ON*
 
   if (diff_time > MAX_SERVER_TIME_CACHE)
     {
@@ -484,7 +487,7 @@ db_set_base_server_time (DB_VALUE * db_val)
   base_server_timeb.millitm = dt->time % 1000;	/* set milliseconds */
 
   base_server_timeb.time = mktime (&c_time_struct);
-  ftime (&base_client_timeb);
+  timespec_get (&base_client_time, TIME_UTC);
 }
 
 /*
