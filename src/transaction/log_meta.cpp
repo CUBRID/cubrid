@@ -27,16 +27,16 @@ namespace cublog
   size_t
   meta::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
-    size_t size = 0;
+    size_t end_offset = start_offset;
 
-    size += serializator.get_packed_int_size (start_offset + size); // m_checkpoints.size ()
+    end_offset += serializator.get_packed_int_size (end_offset); // m_checkpoints.size ()
     for (const auto chkinfo : m_checkpoints)
       {
-	size += serializator.get_packed_bigint_size (start_offset + size);
-	size += serializator.get_packed_int_size (start_offset + size);
-	size += serializator.get_packed_size_overloaded (chkinfo.second, start_offset + size);
+	end_offset += serializator.get_packed_bigint_size (end_offset);
+	end_offset += serializator.get_packed_int_size (end_offset);
+	end_offset += serializator.get_packed_size_overloaded (chkinfo.second, end_offset);
       }
-    return size;
+    return end_offset - start_offset;
   }
 
   void
@@ -128,13 +128,13 @@ namespace cublog
   meta::get_checkpoint_info (const log_lsa &checkpoint_lsa) const
   {
     auto find_it = m_checkpoints.find (checkpoint_lsa);
-    if (find_it == m_checkpoints.cend ())
+    if (find_it != m_checkpoints.cend ())
       {
-	return nullptr;
+	return &find_it->second;
       }
     else
       {
-	return &find_it->second;
+	return nullptr;
       }
   }
 
