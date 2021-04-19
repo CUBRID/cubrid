@@ -230,7 +230,6 @@ struct indx_scan_id
 				 * vacuumed. Used in checkdb. */
   DISK_ISVALID not_vacuumed_res;	/* The result of not vacuumed checking operation */
   DB_VALUE *fetched_values;	/* used for scan_dbvals_to_midxkey() */
-  int num_index_term;		/* num of used attributes of the index attr */
 };
 
 typedef struct index_node_scan_id INDEX_NODE_SCAN_ID;
