@@ -52,10 +52,6 @@
 
 #define UTIL_LOG_FILENAME  "cubrid_utility.log"
 
-#if !defined (TIME_UTC)
-# define TIME_UTC 1
-#endif
-
 static char *util_Log_filename = NULL;
 static char util_Log_filename_buf[PATH_MAX];
 static char util_Log_buffer[UTIL_LOG_BUFFER_SIZE];
@@ -642,11 +638,11 @@ util_log_header (char *buf, size_t buf_len)
     }
 
   /* current time */
-  timespec ts = { };
-  timespec_get (&ts, TIME_UTC);
-  sec = ts.tv_sec;
+  struct timeval tval = { };
+  gettimeofday (&tval, nullptr);
+  sec = tval.tv_sec;
   // *INDENT-OFF*
-  auto millisec = std::chrono::duration_cast<std::chrono::milliseconds> (std::chrono::nanoseconds (ts.tv_nsec));
+  auto millisec = std::chrono::duration_cast<std::chrono::milliseconds> (std::chrono::microseconds (tval.tv_usec));
   // *INDENT-ON*
 
   tm_p = localtime_r (&sec, &tm);

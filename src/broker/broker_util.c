@@ -60,10 +60,6 @@
 #include "environment_variable.h"
 #include "porting.h"
 
-#if !defined (TIME_UTC)
-# define TIME_UTC 1
-#endif
-
 char db_err_log_file[BROKER_PATH_MAX];
 
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -434,11 +430,11 @@ ut_time_string (char *buf, struct timeval *time_val)
 
   if (time_val == NULL)
     {
-      timespec ts = { };
-      timespec_get (&ts, TIME_UTC);
-      sec = ts.tv_sec;
+      struct timeval tval = { };
+      gettimeofday (&tval, nullptr);
+      sec = tval.tv_sec;
       // *INDENT-OFF*
-      millisec = std::chrono::duration_cast<std::chrono::milliseconds> (std::chrono::nanoseconds (ts.tv_nsec)).count();
+      auto millisec = std::chrono::duration_cast<std::chrono::milliseconds> (std::chrono::microseconds (tval.tv_usec));
       // *INDENT-ON*
     }
   else
