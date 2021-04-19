@@ -627,7 +627,6 @@ util_log_header (char *buf, size_t buf_len)
   struct tm tm, *tm_p;
   time_t sec;
   int len;
-  struct timeb tb;
   char *p;
   const char *pid;
   int millisec;
@@ -809,9 +808,10 @@ template <typename Duration>
 void
 util_get_seconds_and_rest_since_epoch (std::chrono::seconds &secs, Duration &rest)
 {
-  using timept_secs = std::chrono::time_point<std::chrono::system_clock, std::chrono::seconds>;
-  auto now_timepoint = std::chrono::system_clock::now ();
-  timept_secs now_in_secs (now_timepoint);
+  using clock_t = std::chrono::system_clock;
+  using timept_secs = std::chrono::time_point<clock_t, std::chrono::seconds>;
+  auto now_timepoint = clock_t::now ();
+  timept_secs now_in_secs = std::chrono::time_point_cast<std::chrono::seconds> (now_timepoint);
   secs = now_in_secs.time_since_epoch ();
   rest = std::chrono::duration_cast<Duration> (now_timepoint - now_in_secs);
 }
