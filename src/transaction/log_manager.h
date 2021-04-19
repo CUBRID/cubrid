@@ -166,6 +166,8 @@ extern int log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LO
 				    LOG_TOPOP_RANGE ** out_nxtop_range_stack);
 extern void log_append_repl_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_commit);
 
+extern void log_append_supplement_user (THREAD_ENTRY * thread_p, LOG_TDES * tdes, int with_lock);
+
 /*
  * FOR DEBUGGING
  */

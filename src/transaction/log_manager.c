@@ -4742,6 +4742,38 @@ log_append_abort_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * abort_
 }
 
 /*
+ * log_append_abort_log - append abort log record along with time of termination
+ *
+ * return: nothing
+ *
+ *   tdes(in/out): State structure of transaction being aborted.
+ *   abort_lsa(out): LSA of abort log.
+ */
+static void
+log_append_supplement_user (THREAD_ENTRY * thread_p, LOG_TDES * tdes, int with_lock)
+{
+  LOG_REC_SUPPLEMENT_TRAN_USER *spplmnt_usr;
+  LOG_PRIOR_NODE *node;
+
+  node = prior_lsa_alloc_and_copy_data (thread_p, LOG_SUPPLEMENT_TRAN_USER, RV_NOT_DEFINED, NULL, 0, NULL, 0, NULL);
+  if (node == NULL)
+    {
+      return;
+    }
+
+  spplmnt_usr = (LOG_REC_SUPPLEMENT_TRAN_USER *) node->data_header;
+  strcpy (spplmnt_usr->user_name, tdes->client.get_db_user ());
+  if (with_lock == LOG_PRIOR_LSA_WITH_LOCK)
+    {
+      (void) prior_lsa_next_record_with_lock (thread_p, node, tdes);
+    }
+  else
+    {
+      (void) prior_lsa_next_record (thread_p, node, tdes);
+    }
+}
+
+/*
  * log_add_to_modified_class_list -
  *
  * return:
