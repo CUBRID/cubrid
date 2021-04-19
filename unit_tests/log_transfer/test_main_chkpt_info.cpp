@@ -134,17 +134,61 @@ TEST_CASE ("Test load and recovery on empty tran table", "")
 
 }
 
+void check_load (checkpoint_info obj)
+{
+  REQUIRE (log_Gl.trantable.num_total_indices - 1 == obj.m_trans.size());
+  std::vector<checkpoint_tran_info>::iterator it;
+  int found = 0;
+  for (int i = 0; i < log_Gl.trantable.num_total_indices; i++)
+    {
+      it = find (obj.m_trans.begin(), obj.m_trans.end(), log_Gl.trantable.all_tdes[i]->trid);
+      if (it != obj.m_trans.end())
+	{
+	  found++;
+	}
+    }
+  REQUIRE (found == log_Gl.trantable.num_total_indices - 1);
+}
+
+int search_for_id (int id)
+{
+  for (int i = 0; i < log_Gl.trantable.num_total_indices; i++)
+    {
+      if (log_Gl.trantable.all_tdes[i]->trid == id)
+	{
+	  return 1;
+	}
+    }
+  return 0;
+}
+
+void check_recovery (checkpoint_info obj)
+{
+  REQUIRE (log_Gl.trantable.num_total_indices - 1 == obj.m_trans.size());
+  int found = 0;
+  for (const checkpoint_tran_info tran_info : obj.m_trans)
+    {
+      if (search_for_id (tran_info.trid))
+	{
+	  found++;
+	}
+    }
+  REQUIRE (found == log_Gl.trantable.num_total_indices - 1);
+}
+
 TEST_CASE ("Test load and recovery on 100 tran table entries", "")
 {
   test_env_chkpt env;
   LOG_LSA smallest_lsa;
-  LOG_LSA star_lsa;
+  LOG_LSA start_lsa;
   THREAD_ENTRY thd;
 
   env.generate_tran_table();
   env.after.load_trantable_snapshot (&thd, smallest_lsa);
-  env.after.recovery_analysis (&thd, star_lsa);
+  check_load (env.after);
+  env.after.recovery_analysis (&thd, start_lsa);
   env.after.recovery_2pc_analysis (&thd);
+  check_recovery (env.after);
 
 }
 
@@ -292,6 +336,7 @@ test_env_chkpt::generate_tdes (int index)
   tdes->tail_lsa = generate_log_lsa();
   tdes->isloose_end = std::rand() % 2;
   tdes->head_lsa = generate_log_lsa();
+  tdes->state    = static_cast<TRAN_STATE> (std::rand() % TRAN_UNACTIVE_UNKNOWN);
 
   tdes->undo_nxlsa = generate_log_lsa();
   tdes->posp_nxlsa = generate_log_lsa();
@@ -739,11 +784,140 @@ logtb_realloc_topops_stack (LOG_TDES *tdes, int num_elms)
 }
 
 int
+logpb_prior_lsa_append_all_list (THREAD_ENTRY *thread_p)
+{
+  LOG_PRIOR_NODE *prior_list;
+  INT64 current_size;
+  current_size = log_Gl.prior_info.list_size;
+  prior_list = log_Gl.prior_info.prior_list_header;
+
+  log_Gl.prior_info.prior_list_header = NULL;
+  log_Gl.prior_info.prior_list_tail = NULL;
+  log_Gl.prior_info.list_size = 0;
+
+//  if (prior_list != NULL)
+//    {
+//      logpb_append_prior_lsa_list (thread_p, prior_list);
+//    }
+
+  return NO_ERROR;
+}
+
+int
+logpb_fetch_page (THREAD_ENTRY *thread_p, const LOG_LSA *req_lsa, LOG_CS_ACCESS_MODE access_mode,
+		  LOG_PAGE *log_pgptr)
+{
+  LOG_LSA append_lsa, append_prev_lsa;
+  int rv;
+
+  assert (log_pgptr != NULL);
+  assert (req_lsa != NULL);
+  assert (req_lsa->pageid != NULL_PAGEID);
+
+  LSA_COPY (&append_lsa, &log_Gl.hdr.append_lsa);
+  LSA_COPY (&append_prev_lsa, &log_Gl.append.prev_lsa);
+
+  /*
+   * This If block ensure belows,
+   *  case 1. log page (of pageid) is in log page buffer (not prior_lsa list)
+   *  case 2. EOL record which is written temporarily by
+   *          logpb_flush_all_append_pages is cleared so there is no EOL
+   *          in log page
+   */
+  //TODO
+//  if (LSA_LE (&append_lsa, req_lsa)	/* for case 1 */
+//      || LSA_LE (&append_prev_lsa, req_lsa))	/* for case 2 */
+//    {
+//      assert (LSA_LE (&log_Gl.append.prev_lsa, &log_Gl.hdr.append_lsa));
+
+//      /*
+//       * copy prior lsa list to log page buffer to ensure that required
+//       * pageid is in log page buffer
+//       */
+//      if (LSA_LE (&log_Gl.hdr.append_lsa, req_lsa))	/* retry with mutex */
+//        {
+//          logpb_prior_lsa_append_all_list (thread_p);
+//        }
+//    }
+
+  /*
+   * most of the cases, we don't need calling logpb_copy_page with LOG_CS exclusive access,
+   * if needed, we acquire READ mode in logpb_copy_page
+   */
+//  rv = logpb_copy_page (thread_p, req_lsa->pageid, access_mode, log_pgptr);
+  if (rv != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+PGLENGTH
+db_log_page_size (void)
+{
+  return 16384;
+}
+
+void LOG_READ_ALIGN (THREAD_ENTRY *thread_p, LOG_LSA *lsa, LOG_PAGE *log_pgptr)
+{
+  lsa->offset = DB_ALIGN (lsa->offset, DOUBLE_ALIGNMENT);
+  while (lsa->offset >= (int) LOGAREA_SIZE)
+    {
+      assert (log_pgptr != NULL);
+      lsa->pageid++;
+      if (logpb_fetch_page (thread_p, lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
+	{
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "LOG_READ_ALIGN");
+	}
+      lsa->offset -= LOGAREA_SIZE;
+      lsa->offset = DB_ALIGN (lsa->offset, DOUBLE_ALIGNMENT);
+    }
+}
+
+void LOG_READ_ADD_ALIGN (THREAD_ENTRY *thread_p, size_t add, LOG_LSA *lsa, LOG_PAGE *log_pgptr)
+{
+  lsa->offset += add;
+  LOG_READ_ALIGN (thread_p, lsa, log_pgptr);
+}
+
+void LOG_READ_ADVANCE_WHEN_DOESNT_FIT (THREAD_ENTRY *thread_p, size_t length, LOG_LSA *lsa, LOG_PAGE *log_pgptr)
+{
+  if (lsa->offset + static_cast < int > (length) >= static_cast < int > (LOGAREA_SIZE))
+    {
+      assert (log_pgptr != NULL);
+      lsa->pageid++;
+      if (logpb_fetch_page (thread_p, lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
+	{
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "LOG_READ_ADVANCE_WHEN_DOESNT_FIT");
+	}
+      lsa->offset = 0;
+    }
+}
+
+int
 log_read_sysop_start_postpone (THREAD_ENTRY *thread_p, LOG_LSA *log_lsa, LOG_PAGE *log_page, bool with_undo_data,
 			       LOG_REC_SYSOP_START_POSTPONE *sysop_start_postpone, int *undo_buffer_size,
 			       char **undo_buffer, int *undo_size, char **undo_data)
 {
-  assert (false);
+  int error_code = NO_ERROR;
+
+  if (log_page->hdr.logical_pageid != log_lsa->pageid)
+    {
+      error_code = logpb_fetch_page (thread_p, log_lsa, LOG_CS_FORCE_USE, log_page);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+    }
+
+  /* skip log record header */
+  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page);
+
+  /* read sysop_start_postpone */
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_SYSOP_START_POSTPONE), log_lsa, log_page);
+  *sysop_start_postpone = * (LOG_REC_SYSOP_START_POSTPONE *) (log_page->area + log_lsa->offset);
+  return NO_ERROR;
 }
 
 int
@@ -785,7 +959,7 @@ logtb_find_tran_index (THREAD_ENTRY *thread_p, TRANID trid)
 void
 log_2pc_recovery_analysis_info (THREAD_ENTRY *thread_p, log_tdes *tdes, LOG_LSA *upto_chain_lsa)
 {
-  assert (false);
+  assert (true);
 }
 
 namespace cubmem

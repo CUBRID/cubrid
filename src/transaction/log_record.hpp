@@ -357,6 +357,7 @@ struct log_info_chkpt_trans
   char user_name[LOG_USERNAME_MAX];	/* Name of the client */
 
   inline bool operator== (const log_info_chkpt_trans &ochkpt) const;
+  inline bool operator== (const int &id) const;
 };
 
 bool
@@ -423,6 +424,12 @@ log_info_chkpt_trans::operator== (const log_info_chkpt_trans &ochkpt) const
     }
 
   return true;
+}
+
+bool
+log_info_chkpt_trans::operator== (const int &id) const
+{
+  return trid == id;
 }
 
 typedef struct log_info_chkpt_sysop LOG_INFO_CHKPT_SYSOP;
