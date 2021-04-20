@@ -3949,7 +3949,6 @@ disk_rv_unreserve_sectors (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
       /* fix page again */
       memcpy (rcv->pgptr, pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH),
 	      sizeof (char *));
-//      rcv->pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
       if (rcv->pgptr == NULL)
 	{
 	  /* should not fail */
