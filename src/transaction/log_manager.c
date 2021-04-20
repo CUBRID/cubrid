@@ -1092,7 +1092,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
     }
 
   error_code = log_read_metalog_from_file ();
-  if (error_code != NO_ERROR)
+  if (error_code != NO_ERROR && !init_emergency)
     {
       // Unable to mount meta log
       goto error;
