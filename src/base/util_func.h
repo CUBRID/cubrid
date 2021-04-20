@@ -27,12 +27,9 @@
 
 #ident "$Id$"
 
-#if defined __cplusplus
-#include <chrono>
-#include <ctime>
-#endif
 #include <sys/types.h>
 #include <math.h>
+#include <time.h>
 
 #define UTIL_PID_ENVVAR_NAME         "UTIL_PID"
 #define UTIL_infinity()     (HUGE_VAL)
@@ -77,12 +74,6 @@ extern int util_log_write_command (int argc, char *argv[]);
 extern int util_bsearch (const void *key, const void *base, int n_elems, unsigned int sizeof_elem,
 			 int (*func_compare) (const void *, const void *), bool * out_found);
 
-// *INDENT-OFF*
-#if defined __cplusplus
-template <typename Duration>
-void util_get_seconds_and_rest_since_epoch (std::chrono::seconds &secs, Duration &rest);
-void util_get_second_and_ms_since_epoch (time_t &secs, int &msec);
-#endif
-// *INDENT-ON*
+extern void util_get_second_and_ms_since_epoch (time_t * secs, int *msec);
 
 #endif /* _UTIL_FUNC_H_ */

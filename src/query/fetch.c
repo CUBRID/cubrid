@@ -1830,7 +1830,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	  struct tm *c_time_struct, tm_val;
 
 	  /* get the local time of the system */
-	  util_get_second_and_ms_since_epoch (sec, millisec);
+	  util_get_second_and_ms_since_epoch (&sec, &millisec);
 	  c_time_struct = localtime_r (&sec, &tm_val);
 
 	  if (c_time_struct != NULL)

@@ -1275,7 +1275,7 @@ logddl_get_time_string (char *buf, struct timeval *time_val)
   if (time_val == NULL)
     {
       /* current time */
-      util_get_second_and_ms_since_epoch (sec, millisec);
+      util_get_second_and_ms_since_epoch (&sec, &millisec);
     }
   else
     {

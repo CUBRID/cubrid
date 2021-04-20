@@ -399,20 +399,18 @@ db_open_file_name (const char *name)
   return session;
 }
 
-// *INDENT-OFF
 static void
-db_calculate_current_time (struct timeb &tb)
+db_calculate_current_time (struct timeb *tb)
 {
+  assert (tb != nullptr);
+
   // use chrono functions to populate timeb
   time_t sec;
   int millisec;
-  util_get_second_and_ms_since_epoch (sec, millisec);
-  tb =
-  {
-  sec, (unsigned short) millisec, 0, 0};
+  util_get_second_and_ms_since_epoch (&sec, &millisec);
+  tb->time = sec;
+  tb->millitm = (unsigned short) millisec;
 }
-
-// *INDENT-ON*
 
 /*
  * db_calculate_current_server_time () -
@@ -437,7 +435,7 @@ db_calculate_current_server_time (PARSER_CONTEXT * parser)
       return;
     }
 
-  db_calculate_current_time (curr_client_timeb);
+  db_calculate_current_time (&curr_client_timeb);
   diff_time = (int) (curr_client_timeb.time - base_client_timeb.time);
   diff_mtime = curr_client_timeb.millitm - base_client_timeb.millitm;
 
@@ -501,7 +499,7 @@ db_set_base_server_time (DB_VALUE * db_val)
   base_server_timeb.millitm = dt->time % 1000;	/* set milliseconds */
 
   base_server_timeb.time = mktime (&c_time_struct);
-  db_calculate_current_time (base_client_timeb);
+  db_calculate_current_time (&base_client_timeb);
 }
 
 /*

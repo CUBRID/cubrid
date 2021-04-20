@@ -13217,7 +13217,7 @@ db_sys_datetime (DB_VALUE * result_datetime)
   /* now return null */
   db_value_domain_init (result_datetime, DB_TYPE_DATETIME, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 
-  util_get_second_and_ms_since_epoch (sec, millisec);
+  util_get_second_and_ms_since_epoch (&sec, &millisec);
 
   c_time_struct = localtime_r (&sec, &tm_val);
   if (c_time_struct == NULL)
@@ -13256,7 +13256,7 @@ db_sys_date_and_epoch_time (DB_VALUE * dt_dbval, DB_VALUE * ts_dbval)
   assert (dt_dbval != NULL);
   assert (ts_dbval != NULL);
 
-  util_get_second_and_ms_since_epoch (sec, millisec);
+  util_get_second_and_ms_since_epoch (&sec, &millisec);
 
   c_time_struct = localtime_r (&sec, &tm_val);
   if (c_time_struct == NULL)

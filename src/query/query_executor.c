@@ -14783,7 +14783,7 @@ qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt, c
   xasl_state.vd.dbval_ptr = (DB_VALUE *) dbval_ptr;
   time_t sec;
   int millisec;
-  util_get_second_and_ms_since_epoch (sec, millisec);
+  util_get_second_and_ms_since_epoch (&sec, &millisec);
   c_time_struct = localtime_r (&sec, &tm_val);
 
   xasl_state.vd.sys_epochtime = (DB_TIMESTAMP) sec;
