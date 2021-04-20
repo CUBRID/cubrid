@@ -365,12 +365,16 @@ qdata_aggregate_value_to_accumulator (cubthread::entry *thread_p, cubxasl::aggre
 	  if (acc->curr_cnt < 1)
 	    {
 	      /* first value */
-	      db_make_bigint (acc->value, (int64_t) 1 + (int64_t) prm_get_bigint_value (PRM_ID_COUNT_DEBUG));
+#if defined(NDEBUG)
+	      db_make_bigint (acc->value, (INT64) 1);
+#else
+	      db_make_bigint (acc->value, (INT64) 1 + (INT64) prm_get_bigint_value (PRM_ID_COUNT_DEBUG));
+#endif
 	    }
 	  else
 	    {
 	      /* increment */
-	      db_make_bigint (acc->value, db_get_bigint (acc->value) + (int64_t) 1);
+	      db_make_bigint (acc->value, (INT64) 1 + db_get_bigint (acc->value));
 	    }
 	}
       break;
