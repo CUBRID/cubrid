@@ -32,7 +32,6 @@
 #include <string.h>
 #include <errno.h>
 #include <math.h>
-#include <sys/timeb.h>
 #if !defined (WINDOWS)
 #include <sys/time.h>
 #endif
