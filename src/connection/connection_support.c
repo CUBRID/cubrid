@@ -370,6 +370,13 @@ css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
 #else
   struct pollfd po[1] = { {0, 0, 0} };
 #endif /* WINDOWS */
+  struct timespec poll_timeout;
+  sigset_t set;
+  sigemptyset(&set);
+  sigaddset(&set,SIGINT);
+
+  poll_timeout.tv_sec = 5;
+  poll_timeout.tv_nsec = 0;
 
   if (fd < 0)
     {
@@ -390,7 +397,8 @@ css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
       po[0].fd = fd;
       po[0].events = POLLIN;
       po[0].revents = 0;
-      n = poll (po, 1, timeout);
+
+      n = ppoll (po, 1, &poll_timeout, &set);
       if (n == 0)
 	{
 	  /* 0 means it timed out and no fd is changed. */
