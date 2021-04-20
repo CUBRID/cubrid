@@ -12386,13 +12386,13 @@ btree_node_common_prefix (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pag
   LEAF_REC leaf_pnt;
   int error = NO_ERROR;
 
-  btree_init_temp_key_value (&lf_clear_key, &lf_key);
-  btree_init_temp_key_value (&uf_clear_key, &uf_key);
-
   if (btree_node_is_compressed (thread_p, btid, page_ptr) == false)
     {
       return 0;
     }
+
+  btree_init_temp_key_value (&lf_clear_key, &lf_key);
+  btree_init_temp_key_value (&uf_clear_key, &uf_key);
 
   key_cnt = btree_node_number_of_keys (thread_p, page_ptr);
   assert (key_cnt >= 2);
