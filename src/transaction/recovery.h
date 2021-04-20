@@ -205,7 +205,7 @@ struct log_rcv
 
   // *INDENT-OFF*
   log_rcv () = default;
-  log_rcv (const log_rcv &) = delete;
+  log_rcv (const log_rcv &);
   log_rcv (log_rcv &&) = delete;
 
   log_rcv & operator= (const log_rcv &) = delete;
@@ -219,7 +219,7 @@ struct log_rcv
 
 struct rvfun
 {
-  using fun_t = int (*)(THREAD_ENTRY * thread_p, LOG_RCV * logrcv);
+  using fun_t = int (*)(THREAD_ENTRY * thread_p, const LOG_RCV * logrcv);
   using dump_fun_t = void (*)(FILE * fp, int length, void *data);
 
   LOG_RCVINDEX recv_index;	/* For verification */
