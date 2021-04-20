@@ -205,7 +205,7 @@ struct log_rcv
 
   // *INDENT-OFF*
   log_rcv () = default;
-  log_rcv (const log_rcv &);
+  log_rcv (const log_rcv &) = default;
   log_rcv (log_rcv &&) = delete;
 
   log_rcv & operator= (const log_rcv &) = delete;
