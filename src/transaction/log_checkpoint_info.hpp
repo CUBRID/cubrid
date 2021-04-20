@@ -35,12 +35,13 @@ namespace cublog
   using checkpoint_tran_info = log_info_chkpt_trans;	// todo: replace log_info_chkpt_trans
   using checkpoint_sysop_info = log_info_chkpt_sysop;	// todo: replace log_info_chkpt_sysop
 
-  class checkpoint_info : cubpacking::packable_object
+  class checkpoint_info : public cubpacking::packable_object
   {
     public:
       checkpoint_info () = default;
       checkpoint_info (checkpoint_info &&) = default;
       checkpoint_info (const checkpoint_info &) = default;
+      ~checkpoint_info () override = default;
 
       void pack (cubpacking::packer &serializator) const override;
       void unpack (cubpacking::unpacker &deserializator) override;
