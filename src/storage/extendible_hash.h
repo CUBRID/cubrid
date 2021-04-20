@@ -57,14 +57,14 @@ extern void ehash_print_bucket (THREAD_ENTRY * thread_p, EHID * ehid, int offset
 #endif
 
 /* Recovery functions */
-int ehash_rv_init_bucket_redo (THREAD_ENTRY * thread_p, const LOG_RCV * recv_p);
-int ehash_rv_init_dir_redo (THREAD_ENTRY * thread_p, const LOG_RCV * recv_p);
-int ehash_rv_insert_redo (THREAD_ENTRY * thread_p, const LOG_RCV * recv_p);
-int ehash_rv_insert_undo (THREAD_ENTRY * thread_p, const LOG_RCV * recv_p);
-int ehash_rv_delete_redo (THREAD_ENTRY * thread_p, const LOG_RCV * recv_p);
-int ehash_rv_delete_undo (THREAD_ENTRY * thread_p, const LOG_RCV * recv_p);
-int ehash_rv_increment (THREAD_ENTRY * thread_p, const LOG_RCV * recv_p);
-int ehash_rv_connect_bucket_redo (THREAD_ENTRY * thread_p, const LOG_RCV * recv_p);
-int ehash_rv_init_dir_new_page_redo (THREAD_ENTRY * thread_p, const LOG_RCV * recv_p);
+int ehash_rv_init_bucket_redo (THREAD_ENTRY * thread_p, const LOG_RCV * recv);
+int ehash_rv_init_dir_redo (THREAD_ENTRY * thread_p, const LOG_RCV * recv);
+int ehash_rv_insert_redo (THREAD_ENTRY * thread_p, const LOG_RCV * recv);
+int ehash_rv_insert_undo (THREAD_ENTRY * thread_p, const LOG_RCV * recv);
+int ehash_rv_delete_redo (THREAD_ENTRY * thread_p, const LOG_RCV * recv);
+int ehash_rv_delete_undo (THREAD_ENTRY * thread_p, const LOG_RCV * recv);
+int ehash_rv_increment (THREAD_ENTRY * thread_p, const LOG_RCV * recv);
+int ehash_rv_connect_bucket_redo (THREAD_ENTRY * thread_p, const LOG_RCV * recv);
+int ehash_rv_init_dir_new_page_redo (THREAD_ENTRY * thread_p, const LOG_RCV * recv);
 
 #endif /* _EXTENDIBLE_HASH_H_ */
