@@ -820,7 +820,6 @@ util_get_seconds_and_rest_since_epoch (std::chrono::seconds &secs, Duration &res
   secs = now_in_secs.time_since_epoch ();
   rest = std::chrono::duration_cast<Duration> (now_timepoint - now_in_secs);
 }
-// *INDENT-ON*
 
 void
 util_get_second_and_ms_since_epoch (time_t * secs, int *msec)
@@ -828,8 +827,9 @@ util_get_second_and_ms_since_epoch (time_t * secs, int *msec)
   assert (secs != NULL && msec != NULL);
   std::chrono::seconds secs_since_epoch;
   std::chrono::milliseconds rest_in_msec;
-  util_get_seconds_and_rest_since_epoch < std::chrono::milliseconds > (secs_since_epoch, rest_in_msec);
-  *secs = static_cast < time_t > (secs_since_epoch.count ());
-  *msec = static_cast < int >(rest_in_msec.count ());
+  util_get_seconds_and_rest_since_epoch<std::chrono::milliseconds> (secs_since_epoch, rest_in_msec);
+  *secs = static_cast<time_t> (secs_since_epoch.count ());
+  *msec = static_cast<int> (rest_in_msec.count ());
   assert (*msec < 1000);
 }
+// *INDENT-ON*
