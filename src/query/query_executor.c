@@ -14781,20 +14781,18 @@ qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt, c
   /* form the value descriptor to represent positional values */
   xasl_state.vd.dbval_cnt = dbval_cnt;
   xasl_state.vd.dbval_ptr = (DB_VALUE *) dbval_ptr;
-  timespec tloc = { };
-  timespec_get (&tloc, TIME_UTC);
-  c_time_struct = localtime_r (&tloc.tv_sec, &tm_val);
+  time_t sec;
+  int millisec;
+  util_get_second_and_ms_since_epoch (&sec, &millisec);
+  c_time_struct = localtime_r (&sec, &tm_val);
 
-  xasl_state.vd.sys_epochtime = (DB_TIMESTAMP) tloc.tv_sec;
+  xasl_state.vd.sys_epochtime = (DB_TIMESTAMP) sec;
 
   if (c_time_struct != NULL)
     {
-      // *INDENT-OFF*
-      auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::nanoseconds(tloc.tv_nsec));
-      // *INDENT-ON*
       db_datetime_encode (&xasl_state.vd.sys_datetime, c_time_struct->tm_mon + 1, c_time_struct->tm_mday,
 			  c_time_struct->tm_year + 1900, c_time_struct->tm_hour, c_time_struct->tm_min,
-			  c_time_struct->tm_sec, ms.count ());
+			  c_time_struct->tm_sec, millisec);
     }
 
   rand_buf_p = qmgr_get_rand_buf (thread_p);

@@ -54,6 +54,7 @@
 #include "db_elo.h"
 #include "string_regex.hpp"
 #include "tz_support.h"
+#include "util_func.h"
 
 #include <algorithm>
 #include <chrono>
@@ -13206,7 +13207,8 @@ db_sys_datetime (DB_VALUE * result_datetime)
   int error_status = NO_ERROR;
   DB_DATETIME datetime;
 
-  timespec tloc = { };
+  time_t sec;
+  int millisec;
   struct tm *c_time_struct, tm_val;
 
   assert (result_datetime != (DB_VALUE *) NULL);
@@ -13214,14 +13216,9 @@ db_sys_datetime (DB_VALUE * result_datetime)
   /* now return null */
   db_value_domain_init (result_datetime, DB_TYPE_DATETIME, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 
-  if (timespec_get (&tloc, TIME_UTC) != 0)
-    {
-      error_status = ER_SYSTEM_DATE;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-      return error_status;
-    }
+  util_get_second_and_ms_since_epoch (&sec, &millisec);
 
-  c_time_struct = localtime_r (&tloc.tv_sec, &tm_val);
+  c_time_struct = localtime_r (&sec, &tm_val);
   if (c_time_struct == NULL)
     {
       error_status = ER_SYSTEM_DATE;
@@ -13229,11 +13226,8 @@ db_sys_datetime (DB_VALUE * result_datetime)
       return error_status;
     }
 
-  // *INDENT-OFF*
-  auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::nanoseconds(tloc.tv_nsec));
-  // *INDENT-ON*
   db_datetime_encode (&datetime, c_time_struct->tm_mon + 1, c_time_struct->tm_mday, c_time_struct->tm_year + 1900,
-		      c_time_struct->tm_hour, c_time_struct->tm_min, c_time_struct->tm_sec, ms.count ());
+		      c_time_struct->tm_hour, c_time_struct->tm_min, c_time_struct->tm_sec, millisec);
   db_make_datetime (result_datetime, &datetime);
 
   return error_status;
@@ -13254,20 +13248,16 @@ db_sys_date_and_epoch_time (DB_VALUE * dt_dbval, DB_VALUE * ts_dbval)
 {
   int error_status = NO_ERROR;
   DB_DATETIME datetime;
-  timespec tloc = { };
+  time_t sec;
+  int millisec;
   struct tm *c_time_struct, tm_val;
 
   assert (dt_dbval != NULL);
   assert (ts_dbval != NULL);
 
-  if (timespec_get (&tloc, TIME_UTC) != 0)
-    {
-      error_status = ER_SYSTEM_DATE;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-      return error_status;
-    }
+  util_get_second_and_ms_since_epoch (&sec, &millisec);
 
-  c_time_struct = localtime_r (&tloc.tv_sec, &tm_val);
+  c_time_struct = localtime_r (&sec, &tm_val);
   if (c_time_struct == NULL)
     {
       error_status = ER_SYSTEM_DATE;
@@ -13275,14 +13265,11 @@ db_sys_date_and_epoch_time (DB_VALUE * dt_dbval, DB_VALUE * ts_dbval)
       return error_status;
     }
 
-  // *INDENT-OFF*
-  auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::nanoseconds(tloc.tv_nsec));
-  // *INDENT-ON*
   db_datetime_encode (&datetime, c_time_struct->tm_mon + 1, c_time_struct->tm_mday, c_time_struct->tm_year + 1900,
-		      c_time_struct->tm_hour, c_time_struct->tm_min, c_time_struct->tm_sec, ms.count ());
+		      c_time_struct->tm_hour, c_time_struct->tm_min, c_time_struct->tm_sec, millisec);
 
   db_make_datetime (dt_dbval, &datetime);
-  db_make_timestamp (ts_dbval, (DB_TIMESTAMP) tloc.tv_sec);
+  db_make_timestamp (ts_dbval, (DB_TIMESTAMP) sec);
 
   return error_status;
 }

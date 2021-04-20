@@ -62,6 +62,11 @@ static FILE *fopen_and_lock (const char *path);
 static int util_log_header (char *buf, size_t buf_len);
 static int util_log_write_internal (const char *msg, const char *prefix_str);
 
+// *INDENT-OFF*
+template <typename Duration>
+static void util_get_seconds_and_rest_since_epoch (std::chrono::seconds &secs, Duration &rest);
+// *INDENT-ON*
+
 /*
  * hashpjw() - returns hash value of given string
  *   return: hash value
@@ -628,9 +633,9 @@ util_log_header (char *buf, size_t buf_len)
   struct tm tm, *tm_p;
   time_t sec;
   int len;
-  struct timeb tb;
   char *p;
   const char *pid;
+  int millisec;
 
   if (buf == NULL)
     {
@@ -638,12 +643,7 @@ util_log_header (char *buf, size_t buf_len)
     }
 
   /* current time */
-  timespec ts = { };
-  timespec_get (&ts, TIME_UTC);
-  sec = ts.tv_sec;
-  // *INDENT-OFF*
-  auto millisec = std::chrono::duration_cast<std::chrono::milliseconds> (std::chrono::nanoseconds (ts.tv_nsec));
-  // *INDENT-ON*
+  util_get_second_and_ms_since_epoch (&sec, &millisec);
 
   tm_p = localtime_r (&sec, &tm);
 
@@ -652,7 +652,7 @@ util_log_header (char *buf, size_t buf_len)
   buf_len -= len;
 
   pid = envvar_get (UTIL_PID_ENVVAR_NAME);
-  len += snprintf (p, buf_len, ".%03ld (%s) ", millisec.count (), ((pid == NULL) ? "    " : pid));
+  len += snprintf (p, buf_len, ".%03d (%s) ", millisec, ((pid == NULL) ? "    " : pid));
 
   assert (len <= UTIL_LOG_MAX_HEADER_LEN);
 
@@ -837,3 +837,29 @@ util_msec_to_sec (int64_t msec)
 {
   return static_cast < time_t > (msec / 1000LL);
 }
+
+// *INDENT-OFF*
+template <typename Duration>
+void
+util_get_seconds_and_rest_since_epoch (std::chrono::seconds &secs, Duration &rest)
+{
+  using clock_t = std::chrono::system_clock;
+  using timept_secs = std::chrono::time_point<clock_t, std::chrono::seconds>;
+  auto now_timepoint = clock_t::now ();
+  timept_secs now_in_secs = std::chrono::time_point_cast<std::chrono::seconds> (now_timepoint);
+  secs = now_in_secs.time_since_epoch ();
+  rest = std::chrono::duration_cast<Duration> (now_timepoint - now_in_secs);
+}
+
+void
+util_get_second_and_ms_since_epoch (time_t * secs, int *msec)
+{
+  assert (secs != NULL && msec != NULL);
+  std::chrono::seconds secs_since_epoch;
+  std::chrono::milliseconds rest_in_msec;
+  util_get_seconds_and_rest_since_epoch<std::chrono::milliseconds> (secs_since_epoch, rest_in_msec);
+  *secs = static_cast<time_t> (secs_since_epoch.count ());
+  *msec = static_cast<int> (rest_in_msec.count ());
+  assert (*msec < 1000);
+}
+// *INDENT-ON*
