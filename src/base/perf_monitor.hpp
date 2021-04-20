@@ -37,14 +37,18 @@ class perfmon_tracker_counter_timer
 
     ~perfmon_tracker_counter_timer ();
 
-    /* mark result and start over
+    /* re-init without tracking time
+     */
+    void reset ();
+
+    /* manually track time without re-init
+     */
+    void track ();
+
+    /* track time and re-init
      * useful in loops
      */
-    void rewind ();
-
-  private:
-    void do_start ();
-    void do_stop ();
+    void track_and_reset ();
 
   private:
     const PERF_STAT_ID m_stat_id;

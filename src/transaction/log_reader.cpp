@@ -19,6 +19,7 @@
 #include "log_reader.hpp"
 
 #include "log_impl.h"
+#include "perf_monitor.hpp"
 #include "thread_manager.hpp"
 
 log_reader::log_reader ()
@@ -50,18 +51,24 @@ const log_page *log_reader::get_page () const
 
 void log_reader::align ()
 {
+  perfmon_tracker_counter_timer tracker_counter_timer (PSTAT_SC_REPL_LOG_READ);
+
   THREAD_ENTRY *thread_p = &cubthread::get_entry ();
   LOG_READ_ALIGN (thread_p, &m_lsa, m_page);
 }
 
 void log_reader::add_align (size_t size)
 {
+  perfmon_tracker_counter_timer tracker_counter_timer (PSTAT_SC_REPL_LOG_READ);
+
   THREAD_ENTRY *thread_p = &cubthread::get_entry ();
   LOG_READ_ADD_ALIGN (thread_p, size, &m_lsa, m_page);
 }
 
 void log_reader::advance_when_does_not_fit (size_t size)
 {
+  perfmon_tracker_counter_timer tracker_counter_timer (PSTAT_SC_REPL_LOG_READ);
+
   THREAD_ENTRY *thread_p = &cubthread::get_entry ();
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, size, &m_lsa, m_page);
 }

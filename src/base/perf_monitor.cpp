@@ -30,7 +30,7 @@ perfmon_tracker_counter_timer::perfmon_tracker_counter_timer (PERF_STAT_ID a_sta
 
   if (m_is_perf_tracking)
     {
-      do_start ();
+      reset ();
     }
 }
 
@@ -38,33 +38,35 @@ perfmon_tracker_counter_timer::~perfmon_tracker_counter_timer ()
 {
   if (m_is_perf_tracking)
     {
-      do_stop ();
+      track ();
     }
 }
 
-
-void perfmon_tracker_counter_timer::rewind ()
+void perfmon_tracker_counter_timer::reset ()
 {
   if (m_is_perf_tracking)
     {
-      do_stop ();
-      do_start ();
+      tsc_getticks (&m_start_tick);
     }
 }
 
-void perfmon_tracker_counter_timer::do_start ()
+void perfmon_tracker_counter_timer::track_and_reset ()
 {
-  tsc_getticks (&m_start_tick);
+  if (m_is_perf_tracking)
+    {
+      track ();
+      reset ();
+    }
 }
 
-void perfmon_tracker_counter_timer::do_stop ()
+void perfmon_tracker_counter_timer::track ()
 {
   cubthread::entry *const thread_entry_p = &cubthread::get_entry ();
 
   TSC_TICKS end_tick {0};
   tsc_getticks (&end_tick);
 
-  const auto elapsed_time = tsc_elapsed_utime (end_tick, m_start_tick);
+  const auto elapsed_time_usec = tsc_elapsed_utime (end_tick, m_start_tick);
 
-  perfmon_time_stat (thread_entry_p, m_stat_id, elapsed_time);
+  perfmon_time_stat (thread_entry_p, m_stat_id, elapsed_time_usec);
 }
