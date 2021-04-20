@@ -1918,7 +1918,7 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
       curr_key_prefix_length = iscan_id->bt_attrs_prefix_length[0];
     }
 
-  /* TO_DO : fix to move this to XASL generator*/
+  /* TO_DO : fix to move this to XASL generator */
   if (key_ranges->key1)
     {
       if (key_ranges->key1->type == TYPE_FUNC && key_ranges->key1->value.funcp->ftype == F_MIDXKEY)

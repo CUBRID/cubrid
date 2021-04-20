@@ -5058,8 +5058,6 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
 
   while (left <= right)
     {
-      btree_clear_key_value (&clear_key, &temp_key);	// clear previous key
-
       middle = CEIL_PTVDIV ((left + right), 2);	/* get the middle record */
 
       assert (middle > 0);
@@ -5452,9 +5450,6 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
 
       /* Compare searched key with current middle key. */
       c = btree_compare_key (key, &temp_key, btid->key_type, 1, 1, &start_col);
-
-      /* Clear current middle key. */
-      btree_clear_key_value (&clear_key, &temp_key);
 
       if (c == DB_UNK)
 	{

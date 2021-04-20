@@ -10148,6 +10148,8 @@ static int
 mr_index_lengthmem_string (void *memptr, TP_DOMAIN * domain)
 {
   int charlen;
+  OR_BUF buf;
+  int rc = NO_ERROR, compressed_length = 0, decompressed_length = 0, length = 0;
 
   /* generally, index key-value is short enough */
   charlen = OR_GET_BYTE (memptr);
@@ -10158,8 +10160,6 @@ mr_index_lengthmem_string (void *memptr, TP_DOMAIN * domain)
 
   assert (charlen == OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION);
 
-  OR_BUF buf;
-  int rc = NO_ERROR, compressed_length = 0, decompressed_length = 0, length = 0;
   or_init (&buf, (char *) memptr, -1);
 
   rc = or_get_varchar_compression_lengths (&buf, &compressed_length, &decompressed_length);
