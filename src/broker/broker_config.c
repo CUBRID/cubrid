@@ -666,7 +666,7 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	}
 
       br_info[num_brs].jdbc_cache_only_hint =
-	conf_get_value_table_on_off (ini_getstr (ini, sec_name, "JDBC_CACHE_ONLY_HINT", "OFF", &lineno));
+	conf_get_value_table_on_off (ini_getstr (ini, sec_name, "JDBC_CACHE_HINT_ONLY", "OFF", &lineno));
       if (br_info[num_brs].jdbc_cache_only_hint < 0)
 	{
 	  errcode = PARAM_BAD_VALUE;
@@ -1340,7 +1340,7 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info, int num_broker, in
       tmp_str = get_conf_string (br_info[i].jdbc_cache_only_hint, tbl_on_off);
       if (tmp_str)
 	{
-	  fprintf (fp, "JDBC_CACHE_ONLY_HINT\t=%s\n", tmp_str);
+	  fprintf (fp, "JDBC_CACHE_HINT_ONLY\t=%s\n", tmp_str);
 	}
 
       fprintf (fp, "JDBC_CACHE_LIFE_TIME\t=%d\n", br_info[i].jdbc_cache_life_time);
