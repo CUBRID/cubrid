@@ -62,7 +62,7 @@ namespace cublog
       std::condition_variable m_messages_condvar;             // notify internal thread of new messages
 
       std::thread m_thread;                                   // internal thread
-      bool m_shutdown;                                        // true to stop internal thread
+      bool m_shutdown = false;                                // true to stop internal thread
   };
 }
 
