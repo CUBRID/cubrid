@@ -4560,7 +4560,6 @@ logpb_create_log_info (const char *logname_info, const char *db_fullname)
     }
 }
 
-
 /*
  * logpb_get_guess_archive_num - Guess archive number
  *
@@ -6659,6 +6658,7 @@ logpb_initialize_log_names (THREAD_ENTRY * thread_p, const char *db_fullname, co
    */
   fileio_make_log_active_name (log_Name_active, log_Path, log_Prefix);
   fileio_make_log_info_name (log_Name_info, log_Path, log_Prefix);
+  fileio_make_log_metainfo_name (log_Name_metainfo, log_Path, log_Prefix);
   fileio_make_backup_volume_info_name (log_Name_bkupinfo, log_Path, log_Prefix);
   fileio_make_volume_info_name (log_Name_volinfo, db_fullname);
   fileio_make_log_archive_temp_name (log_Name_bg_archive, log_Archive_path, log_Prefix);
@@ -8075,6 +8075,14 @@ loop:
 	}
     }
 
+  error_code =
+    fileio_backup_volume (thread_p, &session, log_Name_metainfo, LOG_DBLOG_METAINFO_VOLID, NULL_PAGEID, false);
+  if (error_code != NO_ERROR)
+    {
+      LOG_CS_EXIT (thread_p);
+      goto error;
+    }
+
   /*
    * We must store the final bkvinf file at the very end of the backup
    * to have the best chance of having all of the information in it.
@@ -8672,6 +8680,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 		case LOG_DBLOG_BKUPINFO_VOLID:
 		case LOG_DBLOG_ACTIVE_VOLID:
 		case LOG_DBLOG_INFO_VOLID:
+		case LOG_DBLOG_METAINFO_VOLID:
 		case LOG_DBVOLINFO_VOLID:
 		case LOG_DBLOG_ARCHIVE_VOLID:
 		case LOG_DBTDE_KEYS_VOLID:
@@ -9921,7 +9930,6 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols, co
       /* Nothing, tde keys file can be unavailable */
     }
 
-
   fileio_make_log_info_name (to_volname, to_logpath, to_prefix_logname);
   logpb_create_log_info (to_volname, to_db_fullname);
 
@@ -9944,6 +9952,16 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols, co
   error_code = log_dump_log_info (to_volname, false, catmsg, to_volname, log_Gl.hdr.npages + 1);
   if (error_code != NO_ERROR && error_code != ER_LOG_MOUNT_FAIL)
     {
+      goto error;
+    }
+
+  /*
+   * Rename the log meta file
+   */
+  fileio_make_log_metainfo_name (to_volname, to_logpath, to_prefix_logname);
+  if (fileio_rename (LOG_DBLOG_METAINFO_VOLID, log_Name_metainfo, to_volname) == NULL)
+    {
+      error_code = ER_FAILED;
       goto error;
     }
 
@@ -10384,6 +10402,7 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *db_fulln
 
   fileio_unformat (thread_p, log_Name_active);
   fileio_unformat (thread_p, log_Name_info);
+  fileio_unformat (thread_p, log_Name_metainfo);
 
   return NO_ERROR;
 }
@@ -10449,6 +10468,7 @@ logpb_check_exist_any_volumes (THREAD_ENTRY * thread_p, const char *db_fullname,
   exist_cnt += logpb_check_if_exists (log_Name_active, first_vol) ? 1 : 0;
   exist_cnt += logpb_check_if_exists (log_Name_info, first_vol) ? 1 : 0;
   exist_cnt += logpb_check_if_exists (log_Name_volinfo, first_vol) ? 1 : 0;
+  exist_cnt += logpb_check_if_exists (log_Name_metainfo, first_vol) ? 1 : 0;
 
   if (exist_cnt > 0)
     {
@@ -11338,6 +11358,7 @@ delete_fixed_logs:
 
   fileio_unformat (thread_p, log_Name_active);
   fileio_unformat (thread_p, log_Name_info);
+  fileio_unformat (thread_p, log_Name_metainfo);
 
   return NO_ERROR;
 }

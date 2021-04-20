@@ -307,6 +307,10 @@ static void log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG
 
 static int logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, void *args);
 
+static void log_create_metalog_file ();
+static void log_read_metalog_from_file ();
+static void log_write_metalog_to_file ();
+
 #if defined(SERVER_MODE)
 // *INDENT-OFF*
 static void log_abort_task_execute (cubthread::entry &thread_ref, LOG_TDES &tdes);
@@ -909,6 +913,7 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const cha
 
   /* Create the information file to append log info stuff to the DBA */
   logpb_create_log_info (log_Name_info, NULL);
+  log_create_metalog_file (log_Name_metainfo);
 
   catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_LOGINFO_ACTIVE);
   if (catmsg == NULL)
@@ -1078,6 +1083,9 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
       logpb_fatal_error (thread_p, !init_emergency, ARG_FILE_LINE, "log_xinit");
       goto error;
     }
+
+  log_read_metalog_from_file ();
+
   logpb_decache_archive_info (thread_p);
   log_Gl.run_nxchkpt_atpageid = NULL_PAGEID;	/* Don't run the checkpoint */
   log_Gl.rcv_phase = LOG_RECOVERY_ANALYSIS_PHASE;
@@ -10213,6 +10221,37 @@ logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, vo
 					       false);
 
   return error_code;
+}
+
+void
+log_create_metalog_file ()
+{
+  FILE *fp = fopen (log_Name_metainfo, "w");
+  assert (fp);
+  log_Gl.m_metainfo.flush_to_file (fp);
+  fclose (fp);
+}
+
+void
+log_read_metalog_from_file ()
+{
+  FILE *fp = fopen (log_Name_metainfo, "r");
+  if (!fp)
+    {
+      assert (false);
+      return;
+    }
+  log_Gl.m_metainfo.load_from_file (fp);
+  fclose (fp);
+}
+
+void
+log_write_metalog_to_file ()
+{
+  FILE *fp = fopen (log_Name_metainfo, "r+");
+  assert (fp);
+  log_Gl.m_metainfo.flush_to_file (fp);
+  fclose (fp);
 }
 
 //

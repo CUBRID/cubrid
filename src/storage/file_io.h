@@ -83,6 +83,7 @@
 #define FILEIO_SUFFIX_LOGARCHIVE     "_lgar"
 #define FILEIO_SUFFIX_TMP_LOGARCHIVE "_lgar_t"
 #define FILEIO_SUFFIX_LOGINFO        "_lginf"
+#define FILEIO_SUFFIX_LOGMETA        "_lgmeta"
 #define FILEIO_SUFFIX_BACKUP         "_bk"
 #define FILEIO_SUFFIX_BACKUP_VOLINFO "_bkvinf"
 #define FILEIO_VOLEXT_PREFIX         "_x"
@@ -536,6 +537,7 @@ extern void fileio_make_removed_log_archive_name (char *logarchive_name, const c
 extern void fileio_make_log_archive_temp_name (char *log_archive_temp_name_p, const char *log_path_p,
 					       const char *db_name_p);
 extern void fileio_make_log_info_name (char *loginfo_name, const char *log_path, const char *dbname);
+extern void fileio_make_log_metainfo_name (char *log_meta_name_p, const char *log_path_p, const char *db_name_p);
 extern void fileio_make_backup_volume_info_name (char *backup_volinfo_name, const char *backinfo_path,
 						 const char *dbname);
 extern void fileio_make_backup_name (char *backup_name, const char *nopath_volname, const char *backup_path,

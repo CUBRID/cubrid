@@ -757,6 +757,7 @@ extern char log_Name_bkupinfo[];
 extern char log_Name_volinfo[];
 extern char log_Name_bg_archive[];
 extern char log_Name_removed_archive[];
+extern char log_Name_metainfo[];
 
 /* logging */
 #if defined (SA_MODE)
