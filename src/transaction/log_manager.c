@@ -913,7 +913,7 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const cha
 
   /* Create the information file to append log info stuff to the DBA */
   logpb_create_log_info (log_Name_info, NULL);
-  log_create_metalog_file (log_Name_metainfo);
+  log_create_metalog_file ();
 
   catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_LOGINFO_ACTIVE);
   if (catmsg == NULL)
