@@ -771,7 +771,8 @@ static SCAN_CODE heap_get_page_info (THREAD_ENTRY * thread_p, const OID * cls_oi
 static SCAN_CODE heap_get_bigone_content (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, bool ispeeking,
 					  OID * forward_oid, RECDES * recdes);
 static void heap_mvcc_log_insert (THREAD_ENTRY * thread_p, RECDES * p_recdes, LOG_DATA_ADDR * p_addr);
-static void heap_mvcc_log_delete (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * p_addr, LOG_RCVINDEX rcvindex);
+static void heap_mvcc_log_delete (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * p_addr, LOG_RCVINDEX rcvindex,
+				  RECDES * undo_recdes);
 static int heap_rv_mvcc_redo_delete_internal (THREAD_ENTRY * thread_p, PAGE_PTR page, PGSLOTID slotid, MVCCID mvccid);
 static void heap_mvcc_log_home_change_on_delete (THREAD_ENTRY * thread_p, RECDES * old_recdes, RECDES * new_recdes,
 						 LOG_DATA_ADDR * p_addr);
@@ -15825,7 +15826,7 @@ heap_rv_redo_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * rcvindex(in)		    : Index to recovery function
  */
 static void
-heap_mvcc_log_delete (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * p_addr, LOG_RCVINDEX rcvindex)
+heap_mvcc_log_delete (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * p_addr, LOG_RCVINDEX rcvindex, RECDES * undo_recdes)
 {
   char redo_data_buffer[OR_MVCCID_SIZE + MAX_ALIGNMENT];
   char *redo_data_p = PTR_ALIGN (redo_data_buffer, MAX_ALIGNMENT);
@@ -15868,7 +15869,15 @@ heap_mvcc_log_delete (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * p_addr, LOG_RCVIN
     }
   else
     {
-      log_append_undoredo_data (thread_p, rcvindex, p_addr, 0, redo_data_size, NULL, redo_data_p);
+      if (undo_recdes != NULL)
+	{
+	  log_append_undoredo_data (thread_p, rcvindex, p_addr, undo_recdes->length, redo_data_size, undo_recdes->data,
+				    redo_data_p);
+	}
+      else
+	{
+	  log_append_undoredo_data (thread_p, rcvindex, p_addr, 0, redo_data_size, NULL, redo_data_p);
+	}
     }
 }
 
@@ -20604,7 +20613,7 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
       log_addr.pgptr = context->overflow_page_watcher_p->pgptr;
       log_addr.vfid = &context->hfid.vfid;
       log_addr.offset = overflow_oid.slotid;
-      heap_mvcc_log_delete (thread_p, &log_addr, RVHF_MVCC_DELETE_OVERFLOW);
+      heap_mvcc_log_delete (thread_p, &log_addr, RVHF_MVCC_DELETE_OVERFLOW, NULL);
 
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
@@ -21029,7 +21038,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	  forward_addr.vfid = &context->hfid.vfid;
 	  forward_addr.pgptr = context->forward_page_watcher_p->pgptr;
 	  forward_addr.offset = forward_oid.slotid;
-	  heap_mvcc_log_delete (thread_p, &forward_addr, RVHF_MVCC_DELETE_REC_NEWHOME);
+	  heap_mvcc_log_delete (thread_p, &forward_addr, RVHF_MVCC_DELETE_REC_NEWHOME, NULL);
 
 	  HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
@@ -21412,7 +21421,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	  rec_address.pgptr = context->home_page_watcher_p->pgptr;
 	  rec_address.vfid = &context->hfid.vfid;
 	  rec_address.offset = context->oid.slotid;
-	  heap_mvcc_log_delete (thread_p, &rec_address, RVHF_MVCC_DELETE_REC_HOME);
+	  heap_mvcc_log_delete (thread_p, &rec_address, RVHF_MVCC_DELETE_REC_HOME, &context->home_recdes);
 
 	  HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
