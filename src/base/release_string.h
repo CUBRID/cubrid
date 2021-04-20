@@ -56,6 +56,8 @@ extern const char *rel_release_string (void);
 extern const char *rel_major_release_string (void);
 extern const char *rel_build_number (void);
 extern const char *rel_build_os (void);
+extern const char *rel_build_type (void);
+
 #if defined(VERSION_STRING)
 extern const char *rel_version_string (void);
 #endif /* VERSION_STRING */
