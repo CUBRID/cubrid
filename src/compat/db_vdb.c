@@ -399,6 +399,7 @@ db_open_file_name (const char *name)
   return session;
 }
 
+// *INDENT-OFF
 static void
 db_calculate_current_time (struct timeb &tb)
 {
@@ -408,8 +409,10 @@ db_calculate_current_time (struct timeb &tb)
   util_get_second_and_ms_since_epoch (sec, millisec);
   tb =
   {
-  sec, millisec, 0, 0};
+  sec, (unsigned short) millisec, 0, 0};
 }
+
+// *INDENT-ON*
 
 /*
  * db_calculate_current_server_time () -
