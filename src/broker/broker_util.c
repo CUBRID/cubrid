@@ -60,6 +60,7 @@
 #include "broker_filename.h"
 #include "environment_variable.h"
 #include "porting.h"
+#include "util_func.h"
 
 char db_err_log_file[BROKER_PATH_MAX];
 
@@ -422,7 +423,7 @@ ut_time_string (char *buf, struct timeval *time_val)
 {
   struct tm tm, *tm_p;
   time_t sec;
-  long millisec;
+  int millisec;
 
   if (buf == NULL)
     {
@@ -431,12 +432,7 @@ ut_time_string (char *buf, struct timeval *time_val)
 
   if (time_val == NULL)
     {
-      timespec ts = { };
-      timespec_get (&ts, TIME_UTC);
-      sec = ts.tv_sec;
-      // *INDENT-OFF*
-      millisec = std::chrono::duration_cast<std::chrono::milliseconds> (std::chrono::nanoseconds (ts.tv_nsec)).count();
-      // *INDENT-ON*
+      util_get_second_and_ms_since_epoch (sec, millisec);
     }
   else
     {
