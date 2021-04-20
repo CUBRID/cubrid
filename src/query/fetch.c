@@ -1825,17 +1825,17 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	  DB_TIMESTAMP db_timestamp;
 	  DB_DATETIME sys_datetime;
 	  DB_TIME db_time;
-	  struct timeval tval = { };
+	  timespec tloc = { };
 	  struct tm *c_time_struct, tm_val;
 
 	  /* get the local time of the system */
-	  gettimeofday (&tval, nullptr);
-	  c_time_struct = localtime_r (&tval.tv_sec, &tm_val);
+	  timespec_get (&tloc, TIME_UTC);
+	  c_time_struct = localtime_r (&tloc.tv_sec, &tm_val);
 
 	  if (c_time_struct != NULL)
 	    {
 	      // *INDENT-OFF*
-	      auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::microseconds(tval.tv_usec));
+	      auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::nanoseconds(tloc.tv_nsec));
 	      // *INDENT-ON*
 	      db_datetime_encode (&sys_datetime, c_time_struct->tm_mon + 1, c_time_struct->tm_mday,
 				  c_time_struct->tm_year + 1900, c_time_struct->tm_hour, c_time_struct->tm_min,

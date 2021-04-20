@@ -1276,11 +1276,11 @@ logddl_get_time_string (char *buf, struct timeval *time_val)
       struct timeb tb;
 
       /* current time */
-      struct timeval tval = { };
-      gettimeofday (&tval, nullptr);
-      sec = tval.tv_sec;
+      timespec ts = { };
+      timespec_get (&ts, TIME_UTC);
+      sec = ts.tv_sec;
       // *INDENT-OFF*
-      auto millisec = std::chrono::duration_cast<std::chrono::milliseconds> (std::chrono::microseconds (tval.tv_usec));
+      millisec = std::chrono::duration_cast<std::chrono::milliseconds> (std::chrono::nanoseconds (ts.tv_nsec)).count();
       // *INDENT-ON*
     }
   else

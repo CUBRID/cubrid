@@ -69,7 +69,7 @@ enum
 };
 
 static struct timeb base_server_timeb = { 0, 0, 0, 0 };
-static timeval base_client_timeval = { };
+static timespec base_client_time = { };
 
 static int get_dimension_of (PT_NODE ** array);
 static DB_SESSION *db_open_local (void);
@@ -419,12 +419,12 @@ db_calculate_current_server_time (PARSER_CONTEXT * parser)
       return;
     }
 
-  timeval curr_client_timeval = { };
-  gettimeofday (&curr_client_timeval, nullptr);
-  diff_time = (int) (curr_client_timeval.tv_sec - base_client_timeval.tv_sec);
+  timespec curr_client_time = { };
+  timespec_get (&curr_client_time, TIME_UTC);
+  diff_time = (int) (curr_client_time.tv_sec - base_client_time.tv_sec);
   // *INDENT-OFF*
-  const auto diff_mtime = std::chrono::duration_cast<std::chrono::milliseconds>
-      (std::chrono::microseconds (curr_client_timeval.tv_usec - base_client_timeval.tv_usec)).count ();
+  auto diff_mtime = std::chrono::duration_cast<std::chrono::milliseconds>
+        (std::chrono::nanoseconds (curr_client_time.tv_nsec - base_client_time.tv_nsec)).count ();
   // *INDENT-ON*
 
   if (diff_time > MAX_SERVER_TIME_CACHE)
@@ -487,7 +487,7 @@ db_set_base_server_time (DB_VALUE * db_val)
   base_server_timeb.millitm = dt->time % 1000;	/* set milliseconds */
 
   base_server_timeb.time = mktime (&c_time_struct);
-  gettimeofday (&base_client_timeval, nullptr);
+  timespec_get (&base_client_time, TIME_UTC);
 }
 
 /*

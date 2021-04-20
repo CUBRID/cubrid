@@ -638,11 +638,11 @@ util_log_header (char *buf, size_t buf_len)
     }
 
   /* current time */
-  struct timeval tval = { };
-  gettimeofday (&tval, nullptr);
-  sec = tval.tv_sec;
+  timespec ts = { };
+  timespec_get (&ts, TIME_UTC);
+  sec = ts.tv_sec;
   // *INDENT-OFF*
-  auto millisec = std::chrono::duration_cast<std::chrono::milliseconds> (std::chrono::microseconds (tval.tv_usec));
+  auto millisec = std::chrono::duration_cast<std::chrono::milliseconds> (std::chrono::nanoseconds (ts.tv_nsec));
   // *INDENT-ON*
 
   tm_p = localtime_r (&sec, &tm);
