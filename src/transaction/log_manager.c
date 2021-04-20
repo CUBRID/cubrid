@@ -305,7 +305,7 @@ static void log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG
 				   int data_size, const char *data);
 
 static int logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, void *args);
-
+static void log_append_supplement_user_at_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes, int with_lock);
 #if defined(SERVER_MODE)
 // *INDENT-OFF*
 static void log_abort_task_execute (cubthread::entry &thread_ref, LOG_TDES &tdes);
@@ -451,7 +451,8 @@ log_to_string (LOG_RECTYPE type)
       return "LOG_DUMMY_OVF_RECORD";
     case LOG_DUMMY_GENERIC:
       return "LOG_DUMMY_GENERIC";
-
+    case LOG_SUPPLEMENT_TRAN_USER:
+      return "LOG_SUPPLEMENT_TRAN_USER";
     case LOG_SMALLER_LOGREC_TYPE:
     case LOG_LARGER_LOGREC_TYPE:
       break;
@@ -2100,7 +2101,7 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_
       log_append_redo_crumbs (thread_p, rcvindex, addr, num_redo_crumbs, redo_crumbs);
       return;
     }
-
+  log_append_supplement_user_at_start (thread_p, tdes, LOG_PRIOR_LSA_WITHOUT_LOCK);
   /*
    * Now do the UNDO & REDO portion
    */
@@ -2228,6 +2229,8 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
       ;				/* NO-OP */
       return;
     }
+
+  log_append_supplement_user_at_start (thread_p, tdes, LOG_PRIOR_LSA_WITHOUT_LOCK);
 
   /*
    * NOW do the UNDO ...
@@ -2367,6 +2370,8 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
     {
       return;
     }
+
+  log_append_supplement_user_at_start (thread_p, tdes, LOG_PRIOR_LSA_WITHOUT_LOCK);
 
   node = prior_lsa_alloc_and_copy_crumbs (thread_p, rectype, rcvindex, addr, 0, NULL, num_crumbs, crumbs);
   if (node == NULL)
@@ -3379,7 +3384,7 @@ log_append_savepoint (THREAD_ENTRY * thread_p, const char *savept_name)
       error_code = ER_LOG_NONAME_SAVEPOINT;
       return NULL;
     }
-
+  log_append_supplement_user_at_start (thread_p, tdes, LOG_PRIOR_LSA_WITHOUT_LOCK);
   length = (int) strlen (savept_name) + 1;
 
   node =
@@ -4504,7 +4509,6 @@ log_append_repl_info_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is
     {
       tdes->append_repl_recidx = 0;
     }
-
   /* there is any replication info */
   while (tdes->append_repl_recidx < tdes->cur_repl_record)
     {
@@ -4710,6 +4714,7 @@ log_change_tran_as_completed (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECT
 static void
 log_append_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa)
 {
+  log_append_supplement_user (thread_p, tdes, LOG_PRIOR_LSA_WITHOUT_LOCK);
   log_append_donetime_internal (thread_p, tdes, commit_lsa, LOG_COMMIT, LOG_PRIOR_LSA_WITHOUT_LOCK);
 }
 
@@ -4738,16 +4743,17 @@ log_append_commit_log_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_L
 static void
 log_append_abort_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * abort_lsa)
 {
+  log_append_supplement_user (thread_p, tdes, LOG_PRIOR_LSA_WITHOUT_LOCK);
   log_append_donetime_internal (thread_p, tdes, abort_lsa, LOG_ABORT, LOG_PRIOR_LSA_WITHOUT_LOCK);
 }
 
 /*
- * log_append_abort_log - append abort log record along with time of termination
+ * log_append_supplement_user - append supplement user log record 
  *
  * return: nothing
  *
- *   tdes(in/out): State structure of transaction being aborted.
- *   abort_lsa(out): LSA of abort log.
+ *   tdes(in/out): State structure of transaction containing transaction user.
+ *   
  */
 void
 log_append_supplement_user (THREAD_ENTRY * thread_p, LOG_TDES * tdes, int with_lock)
@@ -4762,7 +4768,7 @@ log_append_supplement_user (THREAD_ENTRY * thread_p, LOG_TDES * tdes, int with_l
     }
 
   spplmnt_usr = (LOG_REC_SUPPLEMENT_TRAN_USER *) node->data_header;
-  strcpy (spplmnt_usr->user_name, tdes->client.get_db_user ());
+  memcpy (spplmnt_usr->user_name, tdes->client.get_db_user (), DB_MAX_USER_LENGTH);
   if (with_lock == LOG_PRIOR_LSA_WITH_LOCK)
     {
       (void) prior_lsa_next_record_with_lock (thread_p, node, tdes);
@@ -4770,6 +4776,15 @@ log_append_supplement_user (THREAD_ENTRY * thread_p, LOG_TDES * tdes, int with_l
   else
     {
       (void) prior_lsa_next_record (thread_p, node, tdes);
+    }
+}
+
+static void
+log_append_supplement_user_at_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes, int with_lock)
+{
+  if (LSA_ISNULL (&tdes->head_lsa))
+    {
+      log_append_supplement_user (thread_p, tdes, with_lock);
     }
 }
 
@@ -7659,6 +7674,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 	    case LOG_DUMMY_HA_SERVER_STATE:
 	    case LOG_DUMMY_OVF_RECORD:
 	    case LOG_DUMMY_GENERIC:
+	    case LOG_SUPPLEMENT_TRAN_USER:
 	      break;
 
 	    case LOG_RUN_POSTPONE:
@@ -8145,6 +8161,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 		    case LOG_2PC_COMMIT_INFORM_PARTICPS:
 		    case LOG_2PC_RECV_ACK:
 		    case LOG_DUMMY_CRASH_RECOVERY:
+		    case LOG_SUPPLEMENT_TRAN_USER:
 		    case LOG_SMALLER_LOGREC_TYPE:
 		    case LOG_LARGER_LOGREC_TYPE:
 		    default:
