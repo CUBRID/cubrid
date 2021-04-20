@@ -2101,7 +2101,11 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_
       log_append_redo_crumbs (thread_p, rcvindex, addr, num_redo_crumbs, redo_crumbs);
       return;
     }
-  log_append_supplement_user_at_start (thread_p, tdes, LOG_PRIOR_LSA_WITHOUT_LOCK);
+  if (prm_get_bool_value (PRM_ID_SUPPLEMENTAL_LOG) == true)
+    {
+      log_append_supplement_user_at_start (thread_p, tdes, LOG_PRIOR_LSA_WITHOUT_LOCK);
+    }
+
   /*
    * Now do the UNDO & REDO portion
    */
@@ -2230,7 +2234,10 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
       return;
     }
 
-  log_append_supplement_user_at_start (thread_p, tdes, LOG_PRIOR_LSA_WITHOUT_LOCK);
+  if (prm_get_bool_value (PRM_ID_SUPPLEMENTAL_LOG) == true)
+    {
+      log_append_supplement_user_at_start (thread_p, tdes, LOG_PRIOR_LSA_WITHOUT_LOCK);
+    }
 
   /*
    * NOW do the UNDO ...
@@ -2371,7 +2378,10 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
       return;
     }
 
-  log_append_supplement_user_at_start (thread_p, tdes, LOG_PRIOR_LSA_WITHOUT_LOCK);
+  if (prm_get_bool_value (PRM_ID_SUPPLEMENTAL_LOG) == true)
+    {
+      log_append_supplement_user_at_start (thread_p, tdes, LOG_PRIOR_LSA_WITHOUT_LOCK);
+    }
 
   node = prior_lsa_alloc_and_copy_crumbs (thread_p, rectype, rcvindex, addr, 0, NULL, num_crumbs, crumbs);
   if (node == NULL)
@@ -3384,7 +3394,12 @@ log_append_savepoint (THREAD_ENTRY * thread_p, const char *savept_name)
       error_code = ER_LOG_NONAME_SAVEPOINT;
       return NULL;
     }
-  log_append_supplement_user_at_start (thread_p, tdes, LOG_PRIOR_LSA_WITHOUT_LOCK);
+
+  if (prm_get_bool_value (PRM_ID_SUPPLEMENTAL_LOG) == true)
+    {
+      log_append_supplement_user_at_start (thread_p, tdes, LOG_PRIOR_LSA_WITHOUT_LOCK);
+    }
+
   length = (int) strlen (savept_name) + 1;
 
   node =
@@ -4714,7 +4729,10 @@ log_change_tran_as_completed (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECT
 static void
 log_append_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa)
 {
-  log_append_supplement_user (thread_p, tdes, LOG_PRIOR_LSA_WITHOUT_LOCK);
+  if (prm_get_bool_value (PRM_ID_SUPPLEMENTAL_LOG) == true)
+    {
+      log_append_supplement_user (thread_p, tdes, LOG_PRIOR_LSA_WITHOUT_LOCK);
+    }
   log_append_donetime_internal (thread_p, tdes, commit_lsa, LOG_COMMIT, LOG_PRIOR_LSA_WITHOUT_LOCK);
 }
 
@@ -4743,7 +4761,10 @@ log_append_commit_log_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_L
 static void
 log_append_abort_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * abort_lsa)
 {
-  log_append_supplement_user (thread_p, tdes, LOG_PRIOR_LSA_WITHOUT_LOCK);
+  if (prm_get_bool_value (PRM_ID_SUPPLEMENTAL_LOG) == true)
+    {
+      log_append_supplement_user (thread_p, tdes, LOG_PRIOR_LSA_WITHOUT_LOCK);
+    }
   log_append_donetime_internal (thread_p, tdes, abort_lsa, LOG_ABORT, LOG_PRIOR_LSA_WITHOUT_LOCK);
 }
 
@@ -4760,6 +4781,8 @@ log_append_supplement_user (THREAD_ENTRY * thread_p, LOG_TDES * tdes, int with_l
 {
   LOG_REC_SUPPLEMENT_TRAN_USER *spplmnt_usr;
   LOG_PRIOR_NODE *node;
+
+  assert (prm_get_bool_value (PRM_ID_SUPPLEMENTAL_LOG) == true);
 
   node = prior_lsa_alloc_and_copy_data (thread_p, LOG_SUPPLEMENT_TRAN_USER, RV_NOT_DEFINED, NULL, 0, NULL, 0, NULL);
   if (node == NULL)

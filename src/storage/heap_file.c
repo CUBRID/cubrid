@@ -21421,7 +21421,14 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	  rec_address.pgptr = context->home_page_watcher_p->pgptr;
 	  rec_address.vfid = &context->hfid.vfid;
 	  rec_address.offset = context->oid.slotid;
-	  heap_mvcc_log_delete (thread_p, &rec_address, RVHF_MVCC_DELETE_REC_HOME, &context->home_recdes);
+	  if (prm_get_bool_value (PRM_ID_SUPPLEMENTAL_LOG) == true)
+	    {
+	      heap_mvcc_log_delete (thread_p, &rec_address, RVHF_MVCC_DELETE_REC_HOME, &context->home_recdes);
+	    }
+	  else
+	    {
+	      heap_mvcc_log_delete (thread_p, &rec_address, RVHF_MVCC_DELETE_REC_HOME, NULL);
+	    }
 
 	  HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
