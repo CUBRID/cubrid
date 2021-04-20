@@ -1094,7 +1094,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
   error_code = log_read_metalog_from_file ();
   if (error_code != NO_ERROR)
     {
-      logpb_fatal_error (thread_p, !init_emergency, ARG_FILE_LINE, "log_xinit");
+      // Unable to mount meta log
       goto error;
     }
 
