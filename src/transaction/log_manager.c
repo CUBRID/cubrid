@@ -3961,7 +3961,7 @@ log_sysop_end_logical_undo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, cons
  * undo_nxlsa (in) : LSA of next undo LSA (equivalent to compensated undo record previous LSA).
  */
 void
-log_sysop_end_logical_compensate (THREAD_ENTRY * thread_p, LOG_LSA * undo_nxlsa)
+log_sysop_end_logical_compensate (THREAD_ENTRY * thread_p, const LOG_LSA * undo_nxlsa)
 {
   LOG_REC_SYSOP_END log_record;
 
@@ -3980,7 +3980,7 @@ log_sysop_end_logical_compensate (THREAD_ENTRY * thread_p, LOG_LSA * undo_nxlsa)
  * posp_lsa (in) : The LSA of postpone record which was executed by this run postpone.
  */
 void
-log_sysop_end_logical_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * posp_lsa)
+log_sysop_end_logical_run_postpone (THREAD_ENTRY * thread_p, const LOG_LSA * posp_lsa)
 {
   LOG_REC_SYSOP_END log_record;
 
@@ -8694,7 +8694,7 @@ log_get_charset_from_header_page (THREAD_ENTRY * thread_p, const char *db_fullna
  *              physical logging.
  */
 int
-log_rv_copy_char (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+log_rv_copy_char (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   char *to_data;
 
@@ -8751,7 +8751,7 @@ log_rv_dump_hexa (FILE * fp, int length, void *data)
  *              (e.g., removing a temporary volume) the data base domain.
  */
 int
-log_rv_outside_noop_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+log_rv_outside_noop_redo (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   return NO_ERROR;
 }

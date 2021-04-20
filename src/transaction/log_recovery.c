@@ -107,7 +107,7 @@ static void log_recovery_resetlog (THREAD_ENTRY * thread_p, const LOG_LSA * new_
 static int log_recovery_find_first_postpone (THREAD_ENTRY * thread_p, LOG_LSA * ret_lsa, LOG_LSA * start_postpone_lsa,
 					     LOG_TDES * tdes);
 
-static int log_rv_record_modify_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is_undo);
+static int log_rv_record_modify_internal (THREAD_ENTRY * thread_p, const LOG_RCV * rcv, bool is_undo);
 static int log_rv_undoredo_partial_changes_recursive (THREAD_ENTRY * thread_p, OR_BUF * rcv_buf, RECDES * record,
 						      bool is_undo);
 
@@ -418,7 +418,7 @@ end:
  */
 void
 log_rv_redo_record (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader,
-		    int (*redofun) (THREAD_ENTRY * thread_p, LOG_RCV *), LOG_RCV * rcv,
+		    int (*redofun) (THREAD_ENTRY * thread_p, const LOG_RCV *), LOG_RCV * rcv,
 		    const LOG_LSA * rcv_lsa_ptr, int undo_length, const char *undo_data, LOG_ZIP & redo_unzip)
 {
   int error_code;
@@ -5959,7 +5959,7 @@ log_rv_undoredo_record_partial_changes (THREAD_ENTRY * thread_p, char *rcv_data,
  * rcv (in)	 : Recovery data.
  */
 int
-log_rv_redo_record_modify (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+log_rv_redo_record_modify (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   return log_rv_record_modify_internal (thread_p, rcv, false);
 }
@@ -5977,7 +5977,7 @@ log_rv_redo_record_modify (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * rcv (in)	 : Recovery data.
  */
 int
-log_rv_undo_record_modify (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+log_rv_undo_record_modify (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   return log_rv_record_modify_internal (thread_p, rcv, true);
 }
@@ -5996,7 +5996,7 @@ log_rv_undo_record_modify (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * is_undo (in)  : True if undo recovery, false if redo recovery.
  */
 static int
-log_rv_record_modify_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is_undo)
+log_rv_record_modify_internal (THREAD_ENTRY * thread_p, const LOG_RCV * rcv, bool is_undo)
 {
   INT16 flags = rcv->offset & LOG_RV_RECORD_MODIFY_MASK;
   PGSLOTID slotid = rcv->offset & (~LOG_RV_RECORD_MODIFY_MASK);
