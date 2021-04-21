@@ -4429,12 +4429,6 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
     case S_JSON_TABLE_SCAN:
       s_id->position = S_BEFORE;
       break;
-#if 1 // ctshim: Cursor processing is required
-    case S_DBLINK_SCAN:
-      //s_id->s.dblid.cursor = 0;
-      //s_id->position = S_BEFORE;
-      break;
-#endif      
 
     case S_DBLINK_SCAN:
       status = dblink_scan_reset (thread_p, &s_id->s.dblid.scan_buf);

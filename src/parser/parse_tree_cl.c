@@ -9351,7 +9351,7 @@ pt_print_drop_variable (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_spec (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
 {
-#if 1 // ctshim
+#if defined(SUPPORT_CUBLINK)
   if(p->info.spec.entity_name)
         p->info.spec.entity_name = g (parser, p->info.spec.entity_name, arg);
   if(p->info.spec.cte_name)      

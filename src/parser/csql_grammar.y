@@ -433,7 +433,7 @@ static PT_NODE *parser_make_func_with_arg_count (PARSER_CONTEXT * parser, FUNC_T
                                                  size_t min_args, size_t max_args);
 static PT_NODE *parser_make_func_with_arg_count_mod2 (PARSER_CONTEXT * parser, FUNC_TYPE func_code, PT_NODE * args_list,
                                                       size_t min_args, size_t max_args, size_t mod2);
-#if 0
+#if !defined(SUPPORT_CUBLINK)
 static PT_NODE *parser_make_link (PT_NODE * list, PT_NODE * node);
 static PT_NODE *parser_make_link_or (PT_NODE * list, PT_NODE * node);
 #else
@@ -25087,7 +25087,7 @@ parser_make_expression (PARSER_CONTEXT * parser, PT_OP_TYPE OP, PT_NODE * arg1, 
   return expr;
 }
 
-#if 0
+#if !defined(SUPPORT_CUBLINK)
 static PT_NODE *
 parser_make_link (PT_NODE * list, PT_NODE * node)
 {
