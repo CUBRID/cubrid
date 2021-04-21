@@ -285,6 +285,7 @@ dblink_scan_next (THREAD_ENTRY * thread_p, DBLINK_SCAN_BUFFER * scan_buffer_p, R
 	{
 	  valptrp->value.vfetch_to->domain.general_info.is_null = 0;
 	  value = valptrp->value.vfetch_to->data.p;
+
 	  utype = dblink_get_basic_utype(CCI_GET_RESULT_INFO_TYPE (scan_buffer_p->col_info, col_no));
 	  switch (utype)
 	    {
@@ -305,6 +306,7 @@ dblink_scan_next (THREAD_ENTRY * thread_p, DBLINK_SCAN_BUFFER * scan_buffer_p, R
 	      	{
 	      	  valptrp->value.vfetch_to->domain.general_info.is_null = 1;
 	      	}
+
 	      break;
 	    case CCI_U_TYPE_NUMERIC:
 	      if (cci_get_data (scan_buffer_p->stmt_handle, col_no, type_map[utype], &value, &ind) < 0)
