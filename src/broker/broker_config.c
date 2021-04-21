@@ -247,7 +247,13 @@ const char *broker_keywords[] = {
   "SHARD_PROXY_CONN_WAIT_TIMEOUT",
   "SHARD_PROXY_LOG_MAX_SIZE",
   "SHARD_PROXY_SHM_ID",
-  "SHARD_PROXY_TIMEOUT"
+  "SHARD_PROXY_TIMEOUT",
+  "SHARD_NUM_PROXY",
+  "SHARD_PROXY_LOG",
+  "SHARD_PROXY_LOG_DIR",
+  /* For backword compatibility */
+  "SQL_LOG2",
+  "SHARD"
 };
 
 int broker_keywords_size = sizeof (broker_keywords) / sizeof (char *);
@@ -439,32 +445,32 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
       bool found = false;
 
       if (ini->key[i] == NULL)
-        {
-          continue;
-        }
+	{
+	  continue;
+	}
 
       key = strchr (ini->key[i], ':');
       if (key == NULL)
-        {
-          continue;
-        }
+	{
+	  continue;
+	}
 
       key++;
       for (j = 0; j < broker_keywords_size; j++)
-        {
-          if (strcasecmp (key, broker_keywords[j]) == 0)
-            {
-              found = true;
-              break;
-            }
-        }
+	{
+	  if (strcasecmp (key, broker_keywords[j]) == 0)
+	    {
+	      found = true;
+	      break;
+	    }
+	}
 
       if (!found)
-        {
-           PRINTERROR ("cubrid_broker.conf: invalid keyword '%s' (%d)\n", key, ini->lineno[i]);
-           ini_parser_free (ini);
-           return -1;
-        }
+	{
+	  PRINTERROR ("cubrid_broker.conf: invalid keyword '%s' (%d)\n", key, ini->lineno[i]);
+	  ini_parser_free (ini);
+	  return -1;
+	}
     }
 
   master_shm_id = ini_gethex (ini, SECTION_NAME, "MASTER_SHM_ID", 0, &lineno);
