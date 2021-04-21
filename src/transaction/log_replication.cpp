@@ -44,6 +44,7 @@ namespace cublog
 
   replicator::replicator (const log_lsa &start_redo_lsa)
     : m_redo_lsa { start_redo_lsa }
+    , m_perfmon_log_processing { PSTAT_SC_REPL_LOG_PROC, false }
   {
     log_zip_realloc_if_needed (m_undo_unzip, LOGAREA_SIZE);
     log_zip_realloc_if_needed (m_redo_unzip, LOGAREA_SIZE);
@@ -143,8 +144,10 @@ namespace cublog
 
     // redo all records from current position (m_redo_lsa) until end_redo_lsa
 
+    m_perfmon_log_processing.reset ();
     // make sure the log page is refreshed. otherwise it may be outdated and new records may be missed
     m_reader.set_lsa_and_fetch_page (m_redo_lsa, log_reader::fetch_mode::FORCE);
+    m_perfmon_log_processing.track_and_reset ();
 
     while (m_redo_lsa < end_redo_lsa)
       {
@@ -180,6 +183,7 @@ namespace cublog
 	    const log_rec_dbout_redo dbout_redo = m_reader.reinterpret_copy_and_add_align<log_rec_dbout_redo> ();
 	    log_rcv rcv;
 	    rcv.length = dbout_redo.length;
+
 	    log_rv_redo_record (&thread_entry, m_reader, RV_fun[dbout_redo.rcvindex].redofun, &rcv, &m_redo_lsa, 0,
 				nullptr, m_redo_unzip);
 	    break;
@@ -205,6 +209,8 @@ namespace cublog
 	  std::unique_lock<std::mutex> lock (m_redo_lsa_mutex);
 	  m_redo_lsa = header.forw_lsa;
 	}
+
+	m_perfmon_log_processing.track_and_reset ();
       }
   }
 

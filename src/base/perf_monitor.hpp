@@ -33,7 +33,7 @@
 class perfmon_tracker_counter_timer
 {
   public:
-    perfmon_tracker_counter_timer (PERF_STAT_ID a_stat_id);
+    perfmon_tracker_counter_timer (PERF_STAT_ID a_stat_id, bool a_raii_mode);
 
     ~perfmon_tracker_counter_timer ();
 
@@ -53,6 +53,7 @@ class perfmon_tracker_counter_timer
   private:
     const PERF_STAT_ID m_stat_id;
     const bool m_is_perf_tracking;
+    const bool m_raii_mode;
 
     TSC_TICKS m_start_tick;
 };

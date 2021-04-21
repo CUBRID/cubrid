@@ -25,6 +25,7 @@
 #include "log_reader.hpp"
 #include "log_record.hpp"
 #include "thread_entry_task.hpp"
+#include "perf_monitor.hpp"
 
 #include <condition_variable>
 #include <mutex>
@@ -80,6 +81,15 @@ namespace cublog
       LOG_ZIP m_redo_unzip;
 
       std::unique_ptr<cublog::redo_parallel> m_parallel_replication_redo;
+
+      /* track perf for log records' processing
+       * includes everything:
+       *    1 fixing/reading log page,
+       *    2 dispatching log redo job (if in the async/parallel scenario)
+       *    3 actually applying the redo
+       * in post-processing, 1 and 3 will be substracted as to remain with only the boilerplate activity
+       */
+      perfmon_tracker_counter_timer m_perfmon_log_processing;
   };
 
   extern int log_rpl_calculate_replication_delay (THREAD_ENTRY *thread_p, time_t a_start_time_msec,

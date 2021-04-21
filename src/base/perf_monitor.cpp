@@ -21,9 +21,10 @@
 #include "thread_compat.hpp"
 #include "thread_manager.hpp"
 
-perfmon_tracker_counter_timer::perfmon_tracker_counter_timer (PERF_STAT_ID a_stat_id)
+perfmon_tracker_counter_timer::perfmon_tracker_counter_timer (PERF_STAT_ID a_stat_id, bool a_raii_mode)
   : m_stat_id (a_stat_id)
   , m_is_perf_tracking (perfmon_is_perf_tracking ())
+  , m_raii_mode {a_raii_mode}
   , m_start_tick {0}
 {
   assert (pstat_Metadata[m_stat_id].valtype == PSTAT_COUNTER_TIMER_VALUE);
@@ -36,7 +37,7 @@ perfmon_tracker_counter_timer::perfmon_tracker_counter_timer (PERF_STAT_ID a_sta
 
 perfmon_tracker_counter_timer::~perfmon_tracker_counter_timer ()
 {
-  if (m_is_perf_tracking)
+  if (m_is_perf_tracking && m_raii_mode)
     {
       track ();
     }
