@@ -43,6 +43,11 @@ jobs:
       - checkout:
           path: cubrid
       - run:
+          name: Submodule
+          command: |
+            git submodule sync
+            git submodule update --init
+      - run:
           name: Build
           command: scl enable devtoolset-8 -- /entrypoint.sh build
       - persist_to_workspace:
