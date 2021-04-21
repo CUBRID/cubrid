@@ -9386,15 +9386,15 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
   fileio_make_log_metainfo_name (to_volname, to_logpath, to_prefix_logname);
   // *INDENT-OFF*
   try
-  {
-    std::filesystem::copy_file (log_Name_metainfo, to_volname);
-  }
+    {
+      std::filesystem::copy_file (log_Name_metainfo, to_volname);
+    }
   catch (std::filesystem::filesystem_error &e)
-  {
-    error_code = ER_COPYDB_CANNOT_COPY_VOLUME;
-    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 3, log_Name_metainfo, to_volname, e.what ());
-    goto error;
-  }
+    {
+      error_code = ER_COPYDB_CANNOT_COPY_VOLUME;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 3, log_Name_metainfo, to_volname, e.what ());
+      goto error;
+    }
   // *INDENT-ON*
 
   /*
