@@ -230,16 +230,15 @@ struct log_rec_replication
   int rcvindex;
 };
 
+/* Redefined for explicitness.
+ * Not using 'time_t' (which is unsigned) for backward compatibility of stored structure. */
 typedef INT64 time_msec_t;
 
 /* Log the time of termination of transaction */
 typedef struct log_rec_donetime LOG_REC_DONETIME;
 struct log_rec_donetime
 {
-  time_msec_t at_time;		/* Database creation time. For safety reasons .. LE: what?
-                                 * NOTE: stored as milliseconds with the value as accurate
-                                 * as possible as provided via system structs such as
-                                 * 'timeval' or 'timespec' */
+  time_msec_t at_time;		/* Transaction commit time stored as milliseconds */
 };
 
 /* Log the change of the server's HA state */
@@ -249,10 +248,7 @@ struct log_rec_ha_server_state
   int state;			/* ha_Server_state */
   int dummy;			/* dummy for alignment */
 
-  time_msec_t at_time;		/* time recorded by active server
-                                 * NOTE: stored as milliseconds with the value as accurate
-                                 * as possible as provided via system structs such as
-                                 * 'timeval' or 'timespec' */
+  time_msec_t at_time;		/* Time recorded by active server stored as milliseconds */
 };
 
 /* Information of database external redo log records */
