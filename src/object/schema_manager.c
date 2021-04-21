@@ -15622,9 +15622,10 @@ sm_truncate_using_destroy_heap (MOP class_mop)
  * sm_truncate_class () - truncates a class
  *   return: NO_ERROR on success, non-zero for ERROR
  *   class_mop(in):
+ *   is_cascade(in): whether to truncate cascade FK-referring classes
  */
 int
-sm_truncate_class (MOP class_mop)
+sm_truncate_class (MOP class_mop, const bool is_cascade)
 {
   SM_CLASS *class_ = NULL;
   SM_CLASS_CONSTRAINT *c = NULL;
@@ -15639,6 +15640,8 @@ sm_truncate_class (MOP class_mop)
   int au_save = 0;
 
   assert (class_mop != NULL);
+
+  er_log_debug (ARG_FILE_LINE, "enhance-truncate:sm_truncate_class(): is_cascade: %d\n", is_cascade); // will be removed
 
   error = tran_system_savepoint (SM_TRUNCATE_SAVEPOINT_NAME);
   if (error != NO_ERROR)

@@ -3206,6 +3206,7 @@ struct pt_stored_proc_param_info
 struct pt_truncate_info
 {
   PT_NODE *spec;		/* PT_SPEC */
+  bool is_cascade;  	        /* whether to truncate cascade FK-referring classes */
 };
 
 /* DO ENTITY INFO */
