@@ -32,7 +32,7 @@ test_defaults: &test_defaults
     - store_artifacts:
         path: /tmp/logs
 
-version: 2
+version: 2.1
 jobs:
   build:
     <<: *defaults
@@ -71,7 +71,7 @@ jobs:
     <<: *test_defaults
 
 workflows:
-  version: 2
+  version: 2.1
   build_test:
     jobs:
       - build
