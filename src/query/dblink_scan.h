@@ -1,4 +1,5 @@
 /*
+ *
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -56,5 +57,6 @@ extern int dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_BUFFER * scan_
 extern int dblink_close_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_BUFFER * scan_buf);
 extern SCAN_CODE dblink_scan_next (THREAD_ENTRY * thread_p, DBLINK_SCAN_BUFFER * scan_buffer_p,
 				   regu_variable_list_node * value_list_p);
+extern SCAN_CODE dblink_scan_reset (THREAD_ENTRY * thread_p, DBLINK_SCAN_BUFFER * scan_buffer_p);
 
 #endif
