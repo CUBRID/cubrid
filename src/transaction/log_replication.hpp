@@ -82,7 +82,7 @@ namespace cublog
       std::unique_ptr<cublog::redo_parallel> m_parallel_replication_redo;
   };
 
-  extern int log_rpl_calculate_replication_delay (THREAD_ENTRY *thread_p, time_t a_start_time_msec);
+  int log_rpl_calculate_replication_delay (THREAD_ENTRY *thread_p, time_t a_start_time_msec);
 }
 
 #endif // !_LOG_REPLICATION_HPP_

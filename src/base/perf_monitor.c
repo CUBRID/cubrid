@@ -566,7 +566,7 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_AVOID_VICTIM_CNT, "Num_data_page_avoid_victim"),
 
   /* Scalability statistics */
-  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_SC_REPL_DELAY, "Time_scalability_replication_delay"),
+  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_SC_REPL_DELAY, "Time_scalability_replication_delay_msec"),
 
   /* Array type statistics */
   PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_FIX_COUNTERS, "Num_data_page_fix_ext", &f_dump_in_file_Num_data_page_fix_ext,

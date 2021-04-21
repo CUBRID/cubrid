@@ -40,11 +40,6 @@ namespace cublog
     log_zip_realloc_if_needed (m_undo_unzip, LOGAREA_SIZE);
     log_zip_realloc_if_needed (m_redo_unzip, LOGAREA_SIZE);
 
-    // before initializing any threads, init stats
-    cubthread::entry *const thread_entry = &cubthread::get_entry ();
-    // initialization is always performed
-    perfmon_set_stat (thread_entry, PSTAT_SC_REPL_DELAY, 0, false);
-
     // depending on parameter, instantiate the mechanism to execute replication in parallel
     // mandatory to initialize before daemon such that:
     //  - race conditions, when daemon comes online, are avoided
@@ -177,15 +172,15 @@ namespace cublog
 	    break;
 	  }
 	  case LOG_COMMIT:
-	    calculate_replication_delay_or_dispatch_async<struct log_rec_donetime> (
+	    calculate_replication_delay_or_dispatch_async<log_rec_donetime> (
 		    thread_entry, m_redo_lsa);
 	    break;
 	  case LOG_ABORT:
-	    calculate_replication_delay_or_dispatch_async<struct log_rec_donetime> (
+	    calculate_replication_delay_or_dispatch_async<log_rec_donetime> (
 		    thread_entry, m_redo_lsa);
 	    break;
 	  case LOG_DUMMY_HA_SERVER_STATE:
-	    calculate_replication_delay_or_dispatch_async<struct log_rec_ha_server_state> (
+	    calculate_replication_delay_or_dispatch_async<log_rec_ha_server_state> (
 		    thread_entry, m_redo_lsa);
 	    break;
 	  default:
@@ -282,6 +277,7 @@ namespace cublog
       {
 	const int64_t end_time_msec = util_get_time_as_ms_since_epoch ();
 	const int64_t time_diff_msec = end_time_msec - a_start_time_msec;
+	assert(time_diff_msec > 0);
 
 	perfmon_set_stat (thread_p, PSTAT_SC_REPL_DELAY, static_cast<int> (time_diff_msec), false);
 
