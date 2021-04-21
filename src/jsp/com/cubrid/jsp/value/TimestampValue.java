@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. 
+ * Copyright (C) 2008 Search Solution Corporation.
  * Copyright (c) 2016 CUBRID Corporation.
  *
  * Redistribution and use in source and binary forms, with or without modification,
@@ -31,86 +31,85 @@
 
 package com.cubrid.jsp.value;
 
+import com.cubrid.jsp.exception.TypeMismatchException;
 import java.sql.Date;
 import java.sql.Time;
 import java.sql.Timestamp;
 import java.util.Calendar;
 
-import com.cubrid.jsp.exception.TypeMismatchException;
-
 public class TimestampValue extends Value {
-	private Timestamp timestamp;
+    private Timestamp timestamp;
 
-	public TimestampValue(int year, int mon, int day, int hour, int min, int sec) {
-		super();
-		Calendar cal = Calendar.getInstance();
-		cal.set(year, mon, day, hour, min, sec);
-		cal.set(Calendar.MILLISECOND, 0);
+    public TimestampValue(int year, int mon, int day, int hour, int min, int sec) {
+        super();
+        Calendar cal = Calendar.getInstance();
+        cal.set(year, mon, day, hour, min, sec);
+        cal.set(Calendar.MILLISECOND, 0);
 
-		this.timestamp = new Timestamp(cal.getTimeInMillis());
-	}
+        this.timestamp = new Timestamp(cal.getTimeInMillis());
+    }
 
-	public TimestampValue(int year, int mon, int day, int hour, int min,
-			int sec, int mode, int dbType) {
-		super(mode);
-		Calendar cal = Calendar.getInstance();
-		cal.clear();
-		cal.set(year, mon, day, hour, min, sec);
-		cal.set(Calendar.MILLISECOND, 0);
+    public TimestampValue(
+            int year, int mon, int day, int hour, int min, int sec, int mode, int dbType) {
+        super(mode);
+        Calendar cal = Calendar.getInstance();
+        cal.clear();
+        cal.set(year, mon, day, hour, min, sec);
+        cal.set(Calendar.MILLISECOND, 0);
 
-		this.timestamp = new Timestamp(cal.getTimeInMillis());
-		this.dbType = dbType;
-	}
+        this.timestamp = new Timestamp(cal.getTimeInMillis());
+        this.dbType = dbType;
+    }
 
-	public TimestampValue(Timestamp timestamp) {
-		this.timestamp = timestamp;
-	}
+    public TimestampValue(Timestamp timestamp) {
+        this.timestamp = timestamp;
+    }
 
-	public Date toDate() throws TypeMismatchException {
-		return new Date(timestamp.getTime());
-	}
+    public Date toDate() throws TypeMismatchException {
+        return new Date(timestamp.getTime());
+    }
 
-	public Time toTime() throws TypeMismatchException {
-		return new Time(timestamp.getTime());
-	}
+    public Time toTime() throws TypeMismatchException {
+        return new Time(timestamp.getTime());
+    }
 
-	public Timestamp toTimestamp() throws TypeMismatchException {
-		return timestamp;
-	}
+    public Timestamp toTimestamp() throws TypeMismatchException {
+        return timestamp;
+    }
 
-	public Timestamp toDatetime() throws TypeMismatchException {
-		return timestamp;
-	}
+    public Timestamp toDatetime() throws TypeMismatchException {
+        return timestamp;
+    }
 
-	public Object toDefault() throws TypeMismatchException {
-		return toTimestamp();
-	}
+    public Object toDefault() throws TypeMismatchException {
+        return toTimestamp();
+    }
 
-	public String toString() {
-		return timestamp.toString();
-	}
+    public String toString() {
+        return timestamp.toString();
+    }
 
-	public Date[] toDateArray() throws TypeMismatchException {
-		return new Date[] { toDate() };
-	}
+    public Date[] toDateArray() throws TypeMismatchException {
+        return new Date[] {toDate()};
+    }
 
-	public Time[] toTimeArray() throws TypeMismatchException {
-		return new Time[] { toTime() };
-	}
+    public Time[] toTimeArray() throws TypeMismatchException {
+        return new Time[] {toTime()};
+    }
 
-	public Timestamp[] toTimestampArray() throws TypeMismatchException {
-		return new Timestamp[] { toTimestamp() };
-	}
+    public Timestamp[] toTimestampArray() throws TypeMismatchException {
+        return new Timestamp[] {toTimestamp()};
+    }
 
-	public Timestamp[] toDatetimeArray() throws TypeMismatchException {
-		return new Timestamp[] { toDatetime() };
-	}
+    public Timestamp[] toDatetimeArray() throws TypeMismatchException {
+        return new Timestamp[] {toDatetime()};
+    }
 
-	public Object[] toObjectArray() throws TypeMismatchException {
-		return new Object[] { toObject() };
-	}
+    public Object[] toObjectArray() throws TypeMismatchException {
+        return new Object[] {toObject()};
+    }
 
-	public String[] toStringArray() throws TypeMismatchException {
-		return new String[] { toString() };
-	}
+    public String[] toStringArray() throws TypeMismatchException {
+        return new String[] {toString()};
+    }
 }
