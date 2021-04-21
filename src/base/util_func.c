@@ -815,19 +815,17 @@ util_bsearch (const void *key, const void *base, int n_elems, unsigned int sizeo
  * clock_gettime (which, as of now, does not have an implementation on Win32)
  */
 int64_t
-util_gettime_msec ()
+util_get_time_as_ms_since_epoch ()
 {
-  struct timeval now;
-  gettimeofday (&now, NULL);
-
-  const int64_t msec_from_sec = now.tv_sec * 1000LL;
-  const int64_t msec_from_usec = now.tv_usec / 1000LL;
   // *INDENT-OFF*
-  // overflow check
-  assert (std::numeric_limits<int64_t>::max () - msec_from_usec >= msec_from_sec);
+  using clock_t = std::chrono::system_clock;
+  using time_point_ms_t = std::chrono::time_point<clock_t, std::chrono::milliseconds>;
+
+  const clock_t::time_point now = clock_t::now ();
+  const time_point_ms_t now_in_ms = std::chrono::time_point_cast<std::chrono::milliseconds> (now);
   // *INDENT-ON*
-  const int64_t msec = msec_from_sec + msec_from_usec;
-  return msec;
+
+  return now_in_ms.time_since_epoch ().count ();
 }
 
 /* util_msec_to_sec - truncate milliseconds to seconds
@@ -835,7 +833,9 @@ util_gettime_msec ()
 time_t
 util_msec_to_sec (int64_t msec)
 {
-  return static_cast < time_t > (msec / 1000LL);
+  // *INDENT-OFF*
+  return static_cast<time_t> (msec / 1000LL);
+  // *INDENT-ON*
 }
 
 // *INDENT-OFF*
