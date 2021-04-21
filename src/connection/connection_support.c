@@ -390,7 +390,6 @@ css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
       po[0].fd = fd;
       po[0].events = POLLIN;
       po[0].revents = 0;
-
       n = poll (po, 1, timeout);
       if (n == 0)
 	{

@@ -6822,7 +6822,8 @@ qexec_close_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec)
     case TARGET_METHOD:
       perfmon_inc_stat (thread_p, PSTAT_QM_NUM_METHSCANS);
       break;
-     case TARGET_DBLINK:
+
+    case TARGET_DBLINK:
       break;
     }
 
