@@ -808,13 +808,15 @@ pp_print_syms (FILE * fp)
   if (pp_Symbol_table->get_symbol_count (pp_Symbol_table))
     {
       fprintf (fp, " *\n * Symbol table:\n *\n");
-      pp_Symbol_table->print_table (pp_Symbol_table, (void (*)()) es_print_symbol, fp, 1);	//TODO: get rid of function pointer conversion
+      //TODO: get rid of function pointer conversion
+      pp_Symbol_table->print_table (pp_Symbol_table, (void (*)()) es_print_symbol, fp, 1);
     }
 
   if (pp_Struct_table->get_symbol_count (pp_Struct_table))
     {
       fprintf (fp, " *\n * Structure table:\n *\n");
-      pp_Struct_table->print_table (pp_Struct_table, (void (*)()) es_print_struct, fp, 1);	//TODO: get rid of function pointer conversion
+      //TODO: get rid of function pointer conversion
+      pp_Struct_table->print_table (pp_Struct_table, (void (*)()) es_print_struct, fp, 1);
     }
 }
 
