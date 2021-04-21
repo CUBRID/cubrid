@@ -8863,6 +8863,16 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * class_,
 		  newspec->info.spec.flat_entity_list = spec->info.spec.flat_entity_list;
 		  spec->info.spec.flat_entity_list = NULL;
 		}
+#if defined(SUPPORT_CUBLINK)                
+              else if (newspec->info.spec.derived_table_type == PT_DERIVED_CUBLINK_TABLE)
+		{
+		  /* flat_entity_list is needed to gather referenced oids in xasl_generation
+		   * in pt_spec_to_xasl_class_oid_list */
+                  assert (false); // ctshim_assert
+		  newspec->info.spec.flat_entity_list = spec->info.spec.flat_entity_list;
+		  spec->info.spec.flat_entity_list = NULL;
+		}           
+#endif                      
 	      else
 		{
 		  if (newspec->info.spec.entity_name == NULL)

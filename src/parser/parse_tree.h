@@ -915,7 +915,9 @@ enum pt_node_type
   PT_JSON_TABLE,
   PT_JSON_TABLE_NODE,
   PT_JSON_TABLE_COLUMN,
-
+#if defined(SUPPORT_CUBLINK)
+  PT_CUBLINK_TABLE,
+#endif
   PT_NODE_NUMBER,		/* This is the number of node types */
   PT_LAST_NODE_NUMBER = PT_NODE_NUMBER
 };
@@ -1159,7 +1161,9 @@ typedef enum
   PT_IS_CTE_NON_REC_SUBQUERY,
 
   PT_DERIVED_JSON_TABLE,	// json table spec derivation
-
+#if defined(SUPPORT_CUBLINK)  
+  PT_DERIVED_CUBLINK_TABLE,     // cublink table spec derivation
+#endif
   // todo: separate into relevant enumerations
 } PT_MISC_TYPE;
 
@@ -3282,6 +3286,19 @@ struct pt_json_table_info
   bool is_correlated;
 };
 
+#if defined(SUPPORT_CUBLINK)
+typedef struct pt_cublink_info 
+{
+  PT_NODE *__cts_conn;  
+  PT_NODE *__cts_url;   /* url info */
+  PT_NODE *__cts_user;
+  PT_NODE *__cts_pwd;  
+  PT_NODE *qstr;        /* query string */
+  PT_NODE *cols;        /* column definition  */
+  bool    is_name;      /*  */
+} PT_CUBLINK_INFO;
+#endif
+
 /* Info field of the basic NODE
   If 'xyz' is the name of the field, then the structure type should be
   struct PT_XYZ_INFO xyz;
@@ -3386,6 +3403,9 @@ union pt_statement_info
   PT_TRACE_INFO trace;
   PT_KILLSTMT_INFO killstmt;
   PT_WITH_CLAUSE_INFO with_clause;
+#if defined(SUPPORT_CUBLINK)  
+  PT_CUBLINK_INFO cublink_table;
+#endif  
 };
 
 /*

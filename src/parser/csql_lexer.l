@@ -231,6 +231,7 @@ int yybuffer_pos;
 [cC][rR][iI][tT][iI][cC][aA][lL]					{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return CRITICAL; }
+[cC][uU][bB][lL][iI][nN][kK]					        { begin_token(yytext); 	return CUBLINK; }
 [cC][uU][mM][eE][_][dD][iI][sS][tT]					{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return CUME_DIST; }
