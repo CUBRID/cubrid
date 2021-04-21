@@ -15641,7 +15641,7 @@ sm_truncate_class (MOP class_mop, const bool is_cascade)
 
   assert (class_mop != NULL);
 
-  er_log_debug (ARG_FILE_LINE, "enhance-truncate:sm_truncate_class(): is_cascade: %d\n", is_cascade); // will be removed
+  er_log_debug (ARG_FILE_LINE, "enhance-truncate:sm_truncate_class(): is_cascade: %d\n", is_cascade);	// will be removed
 
   error = tran_system_savepoint (SM_TRUNCATE_SAVEPOINT_NAME);
   if (error != NO_ERROR)
