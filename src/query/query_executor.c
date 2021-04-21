@@ -1942,6 +1942,8 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	  break;
 	case S_VALUES_SCAN:
 	  break;
+	case S_DBLINK_SCAN:
+	  break;
 	}
       if (p->s_id.val_list)
 	{
@@ -2024,6 +2026,8 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	  pg_cnt += qexec_clear_regu_list (thread_p, xasl_p, p->s.method_node.method_regu_list, is_final);
 	  break;
 	case TARGET_REGUVAL_LIST:
+	  break;
+	case TARGET_DBLINK:
 	  break;
 	}
     }
@@ -6817,6 +6821,8 @@ qexec_close_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec)
 
     case TARGET_METHOD:
       perfmon_inc_stat (thread_p, PSTAT_QM_NUM_METHSCANS);
+      break;
+     case TARGET_DBLINK:
       break;
     }
 
