@@ -316,7 +316,7 @@ else(UNIX)
   #set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /WX /wd4820 /showIncludes" )
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W3 /wd4820" )
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /W3" )
-  set(CMAKE_CXX_STANDARD 17)
+  set(CMAKE_CXX_STANDARD "${CMAKE_CXX_FLAGS} /W3 /wd4820 /std:c+17")
 endif(UNIX)
 
 # check target platform
