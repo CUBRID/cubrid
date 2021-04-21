@@ -4100,7 +4100,7 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
 	  nxio_lsa = log_Gl.append.get_nxio_lsa ();
 	}
 
-// *INDENT-OFF*
+      // *INDENT-OFF*
       if (ats_Gl.is_page_server_connected ())
 	{
 	  log_Gl.wait_flushed_lsa (*flush_lsa);
