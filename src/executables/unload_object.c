@@ -164,7 +164,7 @@ static int64_t total_approximate_class_objects = 0;
 static FILE *unloadlog_file = NULL;
 
 
-static int get_estimated_objs (HFID * hfid, int64_t *est_objects);
+static int get_estimated_objs (HFID * hfid, int64_t * est_objects);
 static int set_referenced_subclasses (DB_OBJECT * class_);
 static bool check_referenced_domain (DB_DOMAIN * dom_list, bool set_cls_ref, int *num_cls_refp);
 static void extractobjects_cleanup (void);
@@ -186,7 +186,7 @@ static int all_classes_processed (void);
  *    est_objects(out): estimated number of object
  */
 static int
-get_estimated_objs (HFID * hfid, int64_t *est_objects)
+get_estimated_objs (HFID * hfid, int64_t * est_objects)
 {
   int ignore_npages;
   int nobjs = 0;
@@ -1217,11 +1217,11 @@ process_class (int cl_no)
 	{
 	  total = (int) (100 * ((float) total_objects / (float) total_approximate_class_objects));
 	}
-      fprintf (unloadlog_file, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), 0, 100, total);
+      fprintf (unloadlog_file, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), (long) 0, 100, total);
       fflush (unloadlog_file);
       if (verbose_flag)
 	{
-	  fprintf (stdout, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), 0, 100, total);
+	  fprintf (stdout, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), (long) 0, 100, total);
 	  fflush (stdout);
 	}
       goto exit_on_end;
@@ -1239,11 +1239,11 @@ process_class (int cl_no)
 	{
 	  total = (int) (100 * ((float) total_objects / (float) total_approximate_class_objects));
 	}
-      fprintf (unloadlog_file, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), 0, 100, total);
+      fprintf (unloadlog_file, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), (long) 0, 100, total);
       fflush (unloadlog_file);
       if (verbose_flag)
 	{
-	  fprintf (stdout, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), 0, 100, total);
+	  fprintf (stdout, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), (long) 0, 100, total);
 	  fflush (stdout);
 	}
       goto exit_on_end;

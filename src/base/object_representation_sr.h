@@ -53,6 +53,10 @@ struct or_default_value
   void *value;			/* default value */
   int val_length;		/* default value length */
   DB_DEFAULT_EXPR default_expr;	/* default expression */
+
+  // *INDENT-OFF*
+  or_default_value ();
+  // *INDENT-ON*
 };
 
 /*
@@ -116,6 +120,13 @@ struct or_attribute
   unsigned is_fixed:1;		/* non-zero if this is a fixed width attribute */
   unsigned is_autoincrement:1;	/* non-zero if att is auto increment att */
   unsigned is_notnull:1;	/* non-zero if has not null constraint */
+
+// *INDENT-OFF*
+  or_attribute ();
+
+  void initialize_values ();    // initialize values an object that was allocated without construction
+  // do not call on properly constructed objects
+// *INDENT-ON*
 };
 
 typedef struct or_foreign_key OR_FOREIGN_KEY;

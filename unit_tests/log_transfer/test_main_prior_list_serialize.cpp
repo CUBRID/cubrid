@@ -21,6 +21,8 @@
 
 #include "log_append.hpp"
 
+#include "fake_packable_object.hpp"
+
 #include <algorithm>
 #include <array>
 #include <random>
@@ -314,18 +316,6 @@ log_global log_Gl;
 pstat_global pstat_Global;
 pstat_metadata pstat_Metadata[1];
 
-void
-_er_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
-{
-  assert (false);
-}
-
-void
-er_set (int severity, const char *file_name, const int line_no, int err_id, int num_args, ...)
-{
-  assert (false);
-}
-
 PGLENGTH
 db_io_page_size ()
 {
@@ -416,20 +406,6 @@ pgbuf_get_vpid_ptr (PAGE_PTR pgptr)
   return nullptr;
 }
 
-int
-prm_get_integer_value (PARAM_ID prmid)
-{
-  assert (false);
-  return 0;
-}
-
-bool
-prm_get_bool_value (PARAM_ID prmid)
-{
-  assert (false);
-  return false;
-}
-
 const char *
 rv_rcvindex_string (LOG_RCVINDEX rcvindex)
 {
@@ -464,6 +440,10 @@ LOG_CS_EXIT (THREAD_ENTRY *thread_p)
 
 namespace cublog
 {
+  EXPAND_PACKABLE_OBJECT_EMPTY_DEF (meta);
+
+  EXPAND_PACKABLE_OBJECT_EMPTY_DEF (checkpoint_info);
+
   prior_recver::prior_recver (log_prior_lsa_info &prior_lsa_info)
     : m_prior_lsa_info (prior_lsa_info)
   {

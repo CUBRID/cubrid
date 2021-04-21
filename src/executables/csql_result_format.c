@@ -391,7 +391,7 @@ add_commas (char *string)
 static void
 strip_trailing_zeros (char *numeric_string)
 {
-  register char *prefix;
+  char *prefix;
   size_t remainder_len;
 
   if (numeric_string == NULL)

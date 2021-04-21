@@ -477,7 +477,7 @@ struct json_t;
 
 #define PT_IS_SERIAL(op) \
         ( ((op) == PT_CURRENT_VALUE || \
-           (op) == PT_NEXT_VALUE) ? true : false )
+           (op) == PT_NEXT_VALUE) )
 
 #define PT_IS_EXPR_NODE_WITH_OPERATOR(n, op_type) \
         ( (PT_IS_EXPR_NODE (n)) ? ((n)->info.expr.op == (op_type)) : false )

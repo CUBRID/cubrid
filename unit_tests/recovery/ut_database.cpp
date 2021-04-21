@@ -18,14 +18,17 @@
 
 #include "ut_database.hpp"
 
+#include <limits>
+
 /*******************************************************
  * ut_database_values_generator
  *******************************************************/
 
 ut_database_values_generator::ut_database_values_generator (const ut_database_config &a_database_config)
   : m_database_config (a_database_config)
-  , m_lsa_log_id (10100) // just starts from an arbitrary value
   , m_gen (m_rd ())
+    //, m_log_lsa () // the log_lsa ctor actually does not set any value
+  , m_rand_log_lsa_dist (0.9)
   , m_duration_in_millis_dist (0., a_database_config.max_duration_in_millis)
   // *INDENT-OFF*
   , m_add_or_update_volume_dist ({ut_database_config::ADD_VOLUME_DISCRETE_RATIO,
@@ -34,11 +37,37 @@ ut_database_values_generator::ut_database_values_generator (const ut_database_co
                                ut_database_config::UPDATE_PAGE_DISCRETE_RATIO})
   // *INDENT-ON*
 {
+  // the log_lsa ctor actually does not set any value - and better not touch it
+  // values must be explicitely set
+  m_log_lsa.pageid = 10101; // arbitrary
+  m_log_lsa.offset = 0;
 }
 
-INT64 ut_database_values_generator::increment_and_get_lsa_log_id ()
+const log_lsa &ut_database_values_generator::increment_and_get_lsa_log ()
 {
-  return ++m_lsa_log_id;
+  const auto if_false_increment_page_id_else_increment_offset = m_rand_log_lsa_dist (m_gen);
+  if (if_false_increment_page_id_else_increment_offset == false)
+    {
+      // increment page id
+      assert (m_log_lsa.pageid < MAX_LOG_LSA_PAGEID);
+      ++m_log_lsa.pageid;
+      m_log_lsa.offset = 0;
+    }
+  else
+    {
+      // increment offset
+      if (m_log_lsa.offset == MAX_LOG_LSA_OFFSET)
+	{
+	  ++m_log_lsa.pageid;
+	  m_log_lsa.offset = 0;
+	}
+      else
+	{
+	  ++m_log_lsa.offset;
+	}
+    }
+
+  return m_log_lsa;
 }
 
 double ut_database_values_generator::rand_duration_in_millis ()
@@ -112,20 +141,20 @@ const VPID &ut_page::get_vpid () const
 ux_ut_redo_job_impl ut_page::generate_changes (ut_database &a_database_recovery,
     ut_database_values_generator &a_db_global_values)
 {
-  const INT64 lsa_log_id = a_db_global_values.increment_and_get_lsa_log_id ();
+  const log_lsa log_lsa_v = a_db_global_values.increment_and_get_lsa_log (); // get a copy
   const double millis = a_db_global_values.rand_duration_in_millis ();
 
   ux_ut_redo_job_impl job_to_append
   {
     new ut_redo_job_impl (a_database_recovery, ut_redo_job_impl::job_type::ALTER_PAGE,
-			  lsa_log_id, m_vpid, millis)
+			  log_lsa_v, m_vpid, millis)
   };
   m_entries.push_front (std::move (job_to_append));
 
   ux_ut_redo_job_impl job_to_return
   {
     new ut_redo_job_impl (a_database_recovery, ut_redo_job_impl::job_type::ALTER_PAGE,
-			  lsa_log_id, m_vpid, millis)
+			  log_lsa_v, m_vpid, millis)
   };
   return job_to_return;
 }
@@ -192,12 +221,12 @@ ux_ut_redo_job_impl ut_volume::generate_changes (ut_database &a_database_recover
 	{
 	  // add new page and generate log entry
 	  // akin to 'extend volume' operation
-	  const auto lsa_log_id = a_db_global_values.increment_and_get_lsa_log_id ();
+	  const log_lsa log_lsa_v = a_db_global_values.increment_and_get_lsa_log (); // get a copy
 	  const double millis = a_db_global_values.rand_duration_in_millis ();
 	  ux_ut_redo_job_impl job
 	  {
 	    new ut_redo_job_impl (a_database_recovery, ut_redo_job_impl::job_type::NEW_PAGE,
-	    lsa_log_id, {static_cast<int32_t> (m_pages.size ()), m_volid}, millis)
+	    log_lsa_v, {static_cast<int32_t> (m_pages.size ()), m_volid}, millis)
 	  };
 	  add_new_page (m_pages);
 	  return job;
@@ -290,13 +319,13 @@ ux_ut_redo_job_impl ut_database::generate_changes (ut_database &a_database_recov
       if (add_or_update_volume == ut_database_values_generator::add_or_update::ADD)
 	{
 	  // add new volume and generate log entry
-	  const auto lsa_log_id = a_db_global_values.increment_and_get_lsa_log_id ();
+	  const log_lsa log_lsa_v = a_db_global_values.increment_and_get_lsa_log (); // get a copy
 	  const double millis = a_db_global_values.rand_duration_in_millis ();
 	  ux_ut_redo_job_impl job
 	  {
 	    // the value for page id is dummy and will not be used by this instance
 	    new ut_redo_job_impl (a_database_recovery, ut_redo_job_impl::job_type::NEW_VOLUME,
-	    lsa_log_id, {0, static_cast<short> (m_volumes.size ())}, millis)
+	    log_lsa_v, {0, static_cast<short> (m_volumes.size ())}, millis)
 	  };
 	  add_new_volume (m_volumes);
 	  return job;

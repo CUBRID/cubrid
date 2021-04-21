@@ -22,9 +22,13 @@
 
 project(Test)
 
+set(TEST_COMMON_DIR ${CMAKE_CURRENT_SOURCE_DIR}/common)
+set(TEST_FAKE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/fake)
+
 set (TEST_INCLUDES
   ${EP_INCLUDES}
-  ${CMAKE_CURRENT_SOURCE_DIR}/common  # todo: find a better solution
+  ${TEST_COMMON_DIR}
+  ${TEST_FAKE_DIR}
   )
 
 option (UNIT_TEST_MEMORY_ALLOC  "Unit testing: memory allocation")
@@ -60,10 +64,9 @@ include_directories(${CATCH2_DIR}/single_include)
 # add to tests external project targets
 list(APPEND TESTS_EXTERNAL_TARGETS ${CATCH2_TARGET})
 
-if (AT_LEAST_ONE_UNIT_TEST)
-  message("    common")
-  add_subdirectory(common)
-endif()
+message("    common and fake")
+add_subdirectory(common)
+add_subdirectory(fake)
 
 if (UNIT_TESTS OR UNIT_TEST_MEMORY_ALLOC)
   message("    memory_alloc")
@@ -119,4 +122,5 @@ if (UNIT_TESTS OR UNIT_TEST_LOG_RECOVERY_PARALLEL_POC)
   message("    recovery")
   add_subdirectory(recovery)
 endif(UNIT_TESTS OR UNIT_TEST_LOG_RECOVERY_PARALLEL_POC)
+
 
