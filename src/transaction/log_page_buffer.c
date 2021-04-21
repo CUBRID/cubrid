@@ -9381,7 +9381,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
     }
 
   /*
-   * Copy log meta-information file 
+   * Copy log meta-information file
    */
   fileio_make_log_metainfo_name (to_volname, to_logpath, to_prefix_logname);
   // *INDENT-OFF*
