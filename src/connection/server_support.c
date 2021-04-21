@@ -987,9 +987,6 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
   int max_num_loop, num_loop;
   SOCKET fd;
   struct pollfd po[1] = { {0, 0, 0} };
-  struct timespec p_timeout;
-  sigset_t set, oldset;
-  sigemptyset(&set);
 
   if (thread_p == NULL)
     {
@@ -1007,8 +1004,6 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
   max_num_loop = css_peer_alive_timeout / poll_timeout;
   num_loop = 0;
 
-  p_timeout.tv_sec = 0;
-  p_timeout.tv_nsec = 100000000;
   status = NO_ERRORS;
   /* check if socket has error or client is down */
   while (thread_p->shutdown == false && conn->stop_talk == false)
@@ -1041,9 +1036,7 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
       po[0].fd = fd;
       po[0].events = POLLIN;
       po[0].revents = 0;
-      //n = poll (po, 1, poll_timeout);
-
-      n = ppoll (po, 1, &p_timeout, &set);
+      n = poll (po, 1, poll_timeout);
       if (n == 0)
 	{
 	  if (num_loop < max_num_loop)
@@ -1081,7 +1074,6 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 
 	  if (errno == EINTR)
 	    {
-	      printf("######### interrupted\n");
 	      continue;
 	    }
 	  else
