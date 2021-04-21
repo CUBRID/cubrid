@@ -277,7 +277,7 @@ csql_invoke_system_editor (void)
     }
 
   /* invoke the system editor */
-  char *cmd = csql_get_tmp_buf (strlen (csql_Editor_cmd + 1 + filename.size ()));
+  const char *cmd = csql_get_tmp_buf (strlen (csql_Editor_cmd + 1 + filename.size ()));
   if (cmd == NULL)
     {
       nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);

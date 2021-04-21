@@ -1632,7 +1632,7 @@ csql_print_buffer (void)
   fflush (file.get ());
 
   /* invoke the print command */
-  char *cmd = csql_get_tmp_buf (1 + strlen (csql_Print_cmd) + 3 + filename.size ());
+  const char *cmd = csql_get_tmp_buf (1 + strlen (csql_Print_cmd) + 3 + filename.size ());
   if (cmd == NULL)
     {
       nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
