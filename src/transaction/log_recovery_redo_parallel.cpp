@@ -229,6 +229,22 @@ namespace cublog
     assert_idle ();
   }
 
+  bool
+  redo_parallel::redo_job_queue::is_idle () const
+  {
+    bool queues_empty = false;
+    bool in_progress_vpids_empty = false;
+    {
+      std::lock_guard<std::mutex> empty_queues_lock (m_produce_queue_mutex);
+      queues_empty = m_queues_empty;
+    }
+    {
+      std::lock_guard<std::mutex> empty_in_progress_vpids_lock (m_in_progress_mutex);
+      in_progress_vpids_empty = m_in_progress_vpids.empty ();
+    }
+    return queues_empty && in_progress_vpids_empty;
+  }
+
   void
   redo_parallel::redo_job_queue::assert_idle () const
   {
@@ -441,6 +457,15 @@ namespace cublog
     m_job_queue.wait_for_idle ();
   }
 
+  bool
+  redo_parallel::is_idle () const
+  {
+    assert (false == m_waited_for_termination);
+    assert (false == m_job_queue.get_adding_finished ());
+
+    return m_job_queue.is_idle ();
+  }
+
   void
   redo_parallel::do_init_worker_pool ()
   {
@@ -466,5 +491,23 @@ namespace cublog
 	auto task = new redo_task (m_task_state_bookkeeping, m_job_queue);
 	m_worker_pool->execute (task);
       }
+  }
+
+  /*********************************************************************
+   * redo_job_replication_delay_impl - definition
+   *********************************************************************/
+
+  redo_job_replication_delay_impl::redo_job_replication_delay_impl (
+	  const log_lsa &a_rcv_lsa, time_msec_t a_start_time_msec)
+    : redo_parallel::redo_job_base (SENTINEL_VPID, a_rcv_lsa)
+    , m_start_time_msec (a_start_time_msec)
+  {
+  }
+
+  int  redo_job_replication_delay_impl::execute (THREAD_ENTRY *thread_p, log_reader &,
+      LOG_ZIP &, LOG_ZIP &)
+  {
+    const int res = log_rpl_calculate_replication_delay (thread_p, m_start_time_msec);
+    return res;
   }
 }
