@@ -4430,6 +4430,10 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
       s_id->position = S_BEFORE;
       break;
 
+    case S_DBLINK_SCAN:
+      status = dblink_scan_reset (thread_p, &s_id->s.dblid.scan_buf);
+      break;
+
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
       status = S_ERROR;

@@ -285,7 +285,7 @@ dblink_scan_next (THREAD_ENTRY * thread_p, DBLINK_SCAN_BUFFER * scan_buffer_p, R
 	{
 	  valptrp->value.vfetch_to->domain.general_info.is_null = 0;
 	  value = valptrp->value.vfetch_to->data.p;
-	  utype = dblink_get_basic_utype(CCI_GET_RESULT_INFO_TYPE (scan_buffer_p->col_info, col_no));
+	  utype = dblink_get_basic_utype (CCI_GET_RESULT_INFO_TYPE (scan_buffer_p->col_info, col_no));
 	  switch (utype)
 	    {
 	    case CCI_U_TYPE_NULL:
@@ -302,9 +302,9 @@ dblink_scan_next (THREAD_ENTRY * thread_p, DBLINK_SCAN_BUFFER * scan_buffer_p, R
 		  scan_result = S_ERROR;
 		}
 	      if (ind == -1)
-	      	{
-	      	  valptrp->value.vfetch_to->domain.general_info.is_null = 1;
-	      	}
+		{
+		  valptrp->value.vfetch_to->domain.general_info.is_null = 1;
+		}
 	      break;
 	    case CCI_U_TYPE_NUMERIC:
 	      if (cci_get_data (scan_buffer_p->stmt_handle, col_no, type_map[utype], &value, &ind) < 0)
@@ -312,11 +312,11 @@ dblink_scan_next (THREAD_ENTRY * thread_p, DBLINK_SCAN_BUFFER * scan_buffer_p, R
 		  scan_result = S_ERROR;
 		}
 	      if (ind == -1)
-	      	{
-	      	  valptrp->value.vfetch_to->domain.general_info.is_null = 1;
+		{
+		  valptrp->value.vfetch_to->domain.general_info.is_null = 1;
 		  break;
-	        }
-	      memcpy(valptrp->value.vfetch_to->data.num.d.buf, (char *) value, strlen((char *)value));
+		}
+	      memcpy (valptrp->value.vfetch_to->data.num.d.buf, (char *) value, strlen ((char *) value));
 	      break;
 	    case CCI_U_TYPE_STRING:
 	    case CCI_U_TYPE_VARNCHAR:
@@ -329,10 +329,10 @@ dblink_scan_next (THREAD_ENTRY * thread_p, DBLINK_SCAN_BUFFER * scan_buffer_p, R
 		  scan_result = S_ERROR;
 		}
 	      if (ind == -1)
-	      	{
-	      	  valptrp->value.vfetch_to->domain.general_info.is_null = 1;
+		{
+		  valptrp->value.vfetch_to->domain.general_info.is_null = 1;
 		  break;
-	      	}
+		}
 	      valptrp->value.vfetch_to->data.ch.medium.buf = (char *) value;
 	      valptrp->value.vfetch_to->data.ch.medium.size = strlen ((char *) value);
 	      break;
@@ -346,10 +346,10 @@ dblink_scan_next (THREAD_ENTRY * thread_p, DBLINK_SCAN_BUFFER * scan_buffer_p, R
 		  scan_result = S_ERROR;
 		}
 	      if (ind == -1)
-	      	{
-	      	  valptrp->value.vfetch_to->domain.general_info.is_null = 1;
+		{
+		  valptrp->value.vfetch_to->domain.general_info.is_null = 1;
 		  break;
-	      	}
+		}
 	      dblink_make_date_time (utype, value_p, &date_time);
 	      break;
 	    case CCI_U_TYPE_DATETIMETZ:
@@ -362,10 +362,10 @@ dblink_scan_next (THREAD_ENTRY * thread_p, DBLINK_SCAN_BUFFER * scan_buffer_p, R
 		  scan_result = S_ERROR;
 		}
 	      if (ind == -1)
-	      	{
-	      	  valptrp->value.vfetch_to->domain.general_info.is_null = 1;
+		{
+		  valptrp->value.vfetch_to->domain.general_info.is_null = 1;
 		  break;
-	      	}
+		}
 	      dblink_make_date_time_tz (utype, value_p, &date_time_tz);
 	      break;
 	    case CCI_U_TYPE_JSON:
@@ -376,4 +376,21 @@ dblink_scan_next (THREAD_ENTRY * thread_p, DBLINK_SCAN_BUFFER * scan_buffer_p, R
 	}
     }
   return scan_result;
+}
+
+SCAN_CODE
+dblink_scan_reset (THREAD_ENTRY * thread_p, DBLINK_SCAN_BUFFER * scan_buffer_p)
+{
+  T_CCI_ERROR err_buf;
+
+  if (scan_buffer_p->stmt_handle >= 0)
+    {
+      if (cci_cursor (scan_buffer_p->stmt_handle, 1, CCI_CURSOR_FIRST, &err_buf) < 0)
+	{
+	  return S_ERROR;
+	}
+      return S_SUCCESS;
+    }
+
+  return S_ERROR;
 }
