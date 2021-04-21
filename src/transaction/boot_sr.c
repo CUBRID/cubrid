@@ -1959,7 +1959,8 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
 		BOOT_FORMAT_MAX_LENGTH);
   fprintf (stdout, format, rel_name (), rel_build_number ());
 #else /* NDEBUG */
-  fprintf (stdout, "\n%s (%s) (%d debug build)\n\n", rel_name (), rel_build_number (), rel_bit_platform ());
+  fprintf (stdout, "\n%s (%s) (%d %s build)\n\n", rel_name (), rel_build_number (), rel_bit_platform (),
+	   rel_build_type ());
 #endif /* !NDEBUG */
 
   if (old_ctrl_c_handler != SIG_ERR)
@@ -2752,7 +2753,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 		    BOOT_FORMAT_MAX_LENGTH);
       fprintf (stdout, format, rel_name ());
 #else /* NDEBUG */
-      fprintf (stdout, "\n%s (%s) (%d debug build)\n\n", rel_name (), rel_build_number (), rel_bit_platform ());
+      fprintf (stdout, "\n%s (%s) (%d %s build)\n\n", rel_name (), rel_build_number (), rel_bit_platform (),
+	       rel_build_type ());
 #endif /* !NDEBUG */
     }
 
