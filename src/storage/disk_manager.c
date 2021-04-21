@@ -3855,17 +3855,20 @@ disk_rv_reserve_sectors (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
       /* disk check is in progress. unfix page, get critical section again and then fix page and make the changes */
       VPID vpid;
       pgbuf_get_vpid (rcv->pgptr, &vpid);
-      pgbuf_unfix (thread_p, rcv->pgptr);
-      memset (rcv->pgptr, 0, sizeof (char *));
+      // make an exception to the const rule.
+      // *INDENT-OFF*
+      pgbuf_unfix (thread_p, (const_cast<LOG_RCV *> (rcv))->pgptr);
+      // *INDENT-ON*
       error_code = csect_enter_as_reader (thread_p, CSECT_DISK_CHECK, INF_WAIT);
       if (error_code != NO_ERROR)
 	{
 	  assert_release (false);
 	  return ER_FAILED;
 	}
-      /* fix page again */
-      memcpy (rcv->pgptr, pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH),
-	      sizeof (char *));
+      // strip const again
+      // *INDENT-OFF*
+      (const_cast<LOG_RCV *> (rcv))->pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      // *INDENT-ON*
       if (rcv->pgptr == NULL)
 	{
 	  /* should not fail */
@@ -3938,8 +3941,10 @@ disk_rv_unreserve_sectors (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
       /* disk check is in progress. unfix page, get critical section again and then fix page and make the changes */
       VPID vpid;
       pgbuf_get_vpid (rcv->pgptr, &vpid);
-      pgbuf_unfix (thread_p, rcv->pgptr);
-      memset (rcv->pgptr, 0, sizeof (char *));
+      // make an exception to the const rule.
+      // *INDENT-OFF*
+      pgbuf_unfix (thread_p, (const_cast<LOG_RCV *> (rcv))->pgptr);
+      // *INDENT-ON*
       error_code = csect_enter_as_reader (thread_p, CSECT_DISK_CHECK, INF_WAIT);
       if (error_code != NO_ERROR)
 	{
@@ -3947,8 +3952,10 @@ disk_rv_unreserve_sectors (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 	  return ER_FAILED;
 	}
       /* fix page again */
-      memcpy (rcv->pgptr, pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH),
-	      sizeof (char *));
+      // strip const again
+      // *INDENT-OFF*
+      (const_cast<LOG_RCV *> (rcv))->pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      // *INDENT-ON*;
       if (rcv->pgptr == NULL)
 	{
 	  /* should not fail */
