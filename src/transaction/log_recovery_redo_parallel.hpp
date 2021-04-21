@@ -20,6 +20,7 @@
 #define _LOG_RECOVERY_REDO_PARALLEL_HPP_
 
 #include "log_recovery_redo.hpp"
+#include "log_replication.hpp"
 
 #if defined(SERVER_MODE)
 #include "thread_manager.hpp"
@@ -35,7 +36,7 @@
 namespace cublog
 {
 #if defined(SERVER_MODE)
-  /* a class to handle infrastructure for parallel log recovery RAII-style;
+  /* a class to handle infrastructure for parallel log recovery/replication RAII-style;
    * usage:
    *  - instantiate an object of this class with the desired number of background workers
    *  - create and add jobs - see 'redo_job_impl'
@@ -72,6 +73,13 @@ namespace cublog
       /* wait until all data has been consumed internally; blocking call
        */
       void wait_for_idle ();
+
+      /* check if all fed data has ben consumed internally; non-blocking call
+       * NOTE: the nature of this function is 'volatile' - ie: what might be
+       * true at the moment the function is called is not necessarily true a moment
+       * later; it can be useful only if the caller is aware of the execution context
+       */
+      bool is_idle () const;
 
       /* mandatory to explicitly call this before dtor
        */
@@ -124,6 +132,13 @@ namespace cublog
 	  /* wait until all data has been consumed internally; blocking call
 	   */
 	  void wait_for_idle () const;
+
+	  /* check if all fed data has ben consumed internally; non-blocking call
+	   * NOTE: the nature of this function is 'volatile' - ie: what might be
+	   * true at the moment the function is called is not necessarily true a moment
+	   * later; it can be useful only if the caller is aware of the execution context
+	   */
+	  bool is_idle () const;
 
 	private:
 	  void assert_idle () const;
@@ -266,7 +281,8 @@ namespace cublog
   };
 
 
-  /* actual job implementation that performs log recovery redo
+  /* actual job implementation that performs log recovery/replication redo,
+   * also used for log replication
    */
   template <typename TYPE_LOG_REC>
   class redo_job_impl final : public redo_parallel::redo_job_base
@@ -298,6 +314,37 @@ namespace cublog
       const LOG_RECTYPE m_log_rtype;
       const log_reader::fetch_mode m_log_reader_page_fetch_mode;
   };
+
+
+  /* job implementation that performs log replication delay calculation
+   * using log records that register creation time
+   */
+  class redo_job_replication_delay_impl final : public redo_parallel::redo_job_base
+  {
+      /* sentinel VPID value needed for the internal mechanics of the parallel log recovery/replication
+       * internally, such a VPID is needed to maintain absolute order of the processing
+       * of the log records with respect to their order in the global log record
+       */
+      static constexpr vpid SENTINEL_VPID = { -2, -2 };
+
+    public:
+      redo_job_replication_delay_impl (const log_lsa &a_rcv_lsa, time_msec_t a_start_time_msec);
+
+      redo_job_replication_delay_impl (redo_job_replication_delay_impl const &) = delete;
+      redo_job_replication_delay_impl (redo_job_replication_delay_impl &&) = delete;
+
+      ~redo_job_replication_delay_impl () override = default;
+
+      redo_job_replication_delay_impl &operator = (redo_job_replication_delay_impl const &) = delete;
+      redo_job_replication_delay_impl &operator = (redo_job_replication_delay_impl &&) = delete;
+
+      int execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
+		   LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support) override;
+
+    private:
+      const time_msec_t m_start_time_msec;
+  };
+
 
   /*********************************************************************
    * template/inline implementations
@@ -412,7 +459,7 @@ log_rv_redo_record_sync_or_dispatch_async (
       using redo_job_impl_t = cublog::redo_job_impl<T>;
       std::unique_ptr<redo_job_impl_t> job
       {
-        new redo_job_impl_t (rcv_vpid, rcv_lsa, end_redo_lsa, log_rtype, force_each_log_page_fetch)
+	new redo_job_impl_t (rcv_vpid, rcv_lsa, end_redo_lsa, log_rtype, force_each_log_page_fetch)
       };
       parallel_recovery_redo->add (std::move (job));
     }

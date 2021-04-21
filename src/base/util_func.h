@@ -76,4 +76,7 @@ extern int util_bsearch (const void *key, const void *base, int n_elems, unsigne
 
 extern void util_get_second_and_ms_since_epoch (time_t * secs, int *msec);
 
+extern int64_t util_get_time_as_ms_since_epoch ();
+extern time_t util_msec_to_sec (int64_t msec);
+
 #endif /* _UTIL_FUNC_H_ */
