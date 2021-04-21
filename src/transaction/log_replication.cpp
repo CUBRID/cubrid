@@ -34,14 +34,6 @@
 
 namespace cublog
 {
-  // internal flags to govern whether replication statistics is collected or not
-  constexpr bool PSTAT_SC_REPL_DELAY_ALWAYS_COLLECT =
-#if !defined(NDEBUG)
-	  true;
-#else
-	  false;
-#endif
-
   replicator::replicator (const log_lsa &start_redo_lsa)
     : m_redo_lsa { start_redo_lsa }
   {
@@ -51,7 +43,7 @@ namespace cublog
     // before initializing any threads, init stats
     cubthread::entry *const thread_entry = &cubthread::get_entry ();
     // initialization is always performed
-    perfmon_set_stat (thread_entry, PSTAT_SC_REPL_DELAY, 0, true);
+    perfmon_set_stat (thread_entry, PSTAT_SC_REPL_DELAY, 0, false);
 
     // depending on parameter, instantiate the mechanism to execute replication in parallel
     // mandatory to initialize before daemon such that:
@@ -186,15 +178,15 @@ namespace cublog
 	  }
 	  case LOG_COMMIT:
 	    calculate_replication_delay_or_dispatch_async<struct log_rec_donetime> (
-		    thread_entry, m_redo_lsa, "LOG_COMMIT");
+		    thread_entry, m_redo_lsa);
 	    break;
 	  case LOG_ABORT:
 	    calculate_replication_delay_or_dispatch_async<struct log_rec_donetime> (
-		    thread_entry, m_redo_lsa, "LOG_ABORT");
+		    thread_entry, m_redo_lsa);
 	    break;
 	  case LOG_DUMMY_HA_SERVER_STATE:
 	    calculate_replication_delay_or_dispatch_async<struct log_rec_ha_server_state> (
-		    thread_entry, m_redo_lsa, "LOG_DUMMY_HA_SERVER_STATE");
+		    thread_entry, m_redo_lsa);
 	    break;
 	  default:
 	    // do nothing
@@ -231,7 +223,7 @@ namespace cublog
 
   template <typename T>
   void replicator::calculate_replication_delay_or_dispatch_async (cubthread::entry &thread_entry,
-      const log_lsa &rec_lsa, const char *a_source)
+      const log_lsa &rec_lsa)
   {
     const T log_rec = m_reader.reinterpret_copy_and_add_align<T> ();
     // at_time, expressed in milliseconds rather than seconds
@@ -241,17 +233,16 @@ namespace cublog
 	// dispatch a job; the time difference will be calculated when the job is actually
 	// picked up for completion by a task; this will give an accurate estimate of the actual
 	// delay between log genearation on the page server and log recovery on the page server
-	using redo_job_replication_delay_impl_t = cublog::redo_job_replication_delay_impl<T>;
-	std::unique_ptr<redo_job_replication_delay_impl_t> replication_delay_job
+	std::unique_ptr<cublog::redo_job_replication_delay_impl> replication_delay_job
 	{
-	  new redo_job_replication_delay_impl_t (m_redo_lsa, start_time_msec, a_source)
+	  new cublog::redo_job_replication_delay_impl (m_redo_lsa, start_time_msec)
 	};
 	m_parallel_replication_redo->add (std::move (replication_delay_job));
       }
     else
       {
 	// calculate the time difference synchronously
-	log_rpl_calculate_replication_delay (&thread_entry, start_time_msec, a_source);
+	log_rpl_calculate_replication_delay (&thread_entry, start_time_msec);
       }
   }
 
@@ -280,35 +271,27 @@ namespace cublog
   /* log_rpl_calculate_replication_delay - calculate delay based on a given start time value
    *        and the current time and log to the perfmon infrastructure; all calculations are
    *        done in milliseconds as that is the relevant scale needed
-   *
-   *  a_start_time_source: the name of the source where this
    */
   int
-  log_rpl_calculate_replication_delay (THREAD_ENTRY *thread_p, time_t a_start_time_msec,
-				       const char *a_start_time_source)
+  log_rpl_calculate_replication_delay (THREAD_ENTRY *thread_p, time_msec_t a_start_time_msec)
   {
     // skip calculation if bogus input (sometimes, it is -1);
-    // TODO: fix bogus input at the source if at all possible
+    // TODO: fix bogus input at the source if at all possible (debugging revealed that
+    // it happens for LOG_COMMIT messages only)
     if (a_start_time_msec > 0)
       {
-	const double time_diff_msec = difftime (end_time_msec, a_start_time_msec);
-	assert (time_diff_msec > .0);
-	perfmon_set_stat (thread_p, PSTAT_SC_REPL_DELAY, time_diff_msec, PSTAT_SC_REPL_DELAY_ALWAYS_COLLECT);
 	const int64_t end_time_msec = util_get_time_as_ms_since_epoch ();
+	const int64_t time_diff_msec = end_time_msec - a_start_time_msec;
 
-#if !defined(NDEBUG)
-	const double time_diff_sec = time_diff_msec / 1000.0;
-	er_log_debug (ARG_FILE_LINE, "repl_delay(%s): %9g sec, %9.2f msec",
-		      a_start_time_source, time_diff_sec, time_diff_msec);
-#endif
+	perfmon_set_stat (thread_p, PSTAT_SC_REPL_DELAY, static_cast<int> (time_diff_msec), false);
 
 	return NO_ERROR;
       }
     else
       {
-	er_log_debug (ARG_FILE_LINE, "log_rpl_calculate_replication_delay: encountered negative start"
-		      " source: '%s' time value: %lld milliseconds",
-		      a_start_time_source, a_start_time_msec);
+	er_log_debug (ARG_FILE_LINE, "log_rpl_calculate_replication_delay: "
+		      "encountered negative start time value: %lld milliseconds",
+		      a_start_time_msec);
 	return ER_FAILED;
       }
   }
