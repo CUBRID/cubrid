@@ -8497,7 +8497,10 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   qry_specs = node->info.create_entity.as_query_list;
   if (node->info.create_entity.entity_type == PT_CLASS)
     {
-      PT_NODE *select = NULL;
+      PT_NODE *select = node->info.create_entity.create_select;
+      PT_NODE *crt_attr = NULL;
+      PT_NODE *const qspec_attr = pt_get_select_list (parser, select);
+
       /* simple CLASSes must not have any query specs */
       if (qry_specs)
 	{
@@ -8505,9 +8508,18 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	  return;
 	}
       /* user variables are not allowed in select list for CREATE ... AS SELECT ... */
-      select = node->info.create_entity.create_select;
       if (select != NULL)
 	{
+	  for (crt_attr = qspec_attr; crt_attr != NULL; crt_attr = crt_attr->next)
+	    {
+	      if (crt_attr->alias_print == NULL && crt_attr->node_type != PT_NAME && crt_attr->node_type != PT_DOT_)
+		{
+		  PT_ERRORmf (parser, qry_specs, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_MISSING_ATTR_NAME,
+			      pt_short_print (parser, crt_attr));
+		  return;
+		}
+	    }
+
 	  if (select->info.query.with != NULL)
 	    {
 	      // run semantic check only for CREATE ... AS WITH ...

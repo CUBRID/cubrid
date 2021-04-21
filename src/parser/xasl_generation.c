@@ -12267,7 +12267,8 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 		{
 		  /* this is a temmporal routine for dblink POC */
 		  static char dblink_url[] = "cci:CUBRID:192.168.1.8:55300:demodb:::";
-		  static char dblink_sql[] = "select col1, col2_varchar, col3_big from dblink";
+		  static char dblink_sql[] = " select col6_date, col7_time, col8_datetime, col9_stamp, \
+						col10_stmptz, col11_dtimetz, col12_dtimeltz, col13_stmpltz from dblink";
 		  static char dblink_user[] = "dba";
 		  static char dblink_passowrd[] = "";
 
