@@ -12781,12 +12781,10 @@ pt_to_cublink_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE 
   //static char dblink_passowrd[] = "";
 
   access = pt_make_dblink_access_spec (access_method, regu_attributes_rest,
-				       (char *) pCublink->__cts_url->info.value.data_value.str->bytes /*dblink_url */ ,
-				       (char *) pCublink->__cts_user->info.value.data_value.
-				       str->bytes /* dblink_user */ ,
-				       (char *) pCublink->__cts_pwd->info.value.data_value.
-				       str->bytes /* dblink_passowrd */ ,
-				       (char *) pCublink->qstr->info.value.data_value.str->bytes /*dblink_sql */ );
+				       (char *) pCublink->__cts_url->info.value.data_value.str->bytes,
+				       (char *) pCublink->__cts_user->info.value.data_value.str->bytes,
+				       (char *) pCublink->__cts_pwd->info.value.data_value.str->bytes,
+				       (char *) pCublink->qstr->info.value.data_value.str->bytes);
 
   return access;
 }
