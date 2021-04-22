@@ -62,6 +62,14 @@ const size_t LOGPB_BUFFER_NPAGES_LOWER = 128;
 typedef struct log_hdrpage LOG_HDRPAGE;
 struct log_hdrpage
 {
+  bool operator== (const log_hdrpage &other)
+  {
+    return logical_pageid == other.logical_pageid
+	   && offset == other.offset
+	   && flags == other.flags
+	   && checksum == other.checksum;
+  }
+
   LOG_PAGEID logical_pageid;	/* Logical pageid in infinite log */
   PGLENGTH offset;		/* Offset of first log record in this page. This may be useful when previous log page
 				 * is corrupted and an archive of that page does not exist. Instead of losing the whole
@@ -81,6 +89,8 @@ typedef struct log_page LOG_PAGE;
 struct log_page
 {
   /* The log page */
+  bool operator== (const log_page &other);
+
   LOG_HDRPAGE hdr;
   char area[1];
 };

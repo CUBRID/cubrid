@@ -19,6 +19,7 @@
 #ifndef _ACTIVE_TRAN_SERVER_HPP_
 #define _ACTIVE_TRAN_SERVER_HPP_
 
+#include "async_log_page_receiver.hpp"
 #include "ats_ps_request.hpp"
 #include "request_sync_send_queue.hpp"
 
@@ -45,6 +46,11 @@ class active_tran_server
     void disconnect_page_server ();
     bool is_page_server_connected () const;
 
+    void init_log_page_receiver ();
+    void finalize_log_page_receiver ();
+
+    cublog::async_log_page_receiver &get_log_page_receiver ();
+
     void push_request (ats_to_ps_request reqid, std::string &&payload);
 
   private:
@@ -59,6 +65,7 @@ class active_tran_server
     std::unique_ptr<page_server_conn> m_ps_conn;
     std::unique_ptr<page_server_request_queue> m_ps_request_queue;
     std::unique_ptr<page_server_request_autosend> m_ps_request_autosend;
+    std::unique_ptr<cublog::async_log_page_receiver> m_async_log_page_receiver;
 };
 
 extern active_tran_server ats_Gl;

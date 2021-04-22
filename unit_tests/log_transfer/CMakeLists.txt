@@ -110,3 +110,37 @@ target_link_libraries(test_async_log_page_fetcher fake_thread_utils)
 add_dependencies(test_async_log_page_fetcher
   ${CATCH2_TARGET}
 )
+
+#
+# test_main_async_log_page_receiver
+# 
+
+set(TEST_ASYNC_LOG_PAGE_RECEIVER_SOURCES
+  ${TRANSACTION_DIR}/async_log_page_receiver.cpp
+  test_main_async_log_page_receiver.cpp)
+
+SET_SOURCE_FILES_PROPERTIES(
+  ${TEST_ASYNC_LOG_PAGE_FETCHER_SOURCES}
+  PROPERTIES LANGUAGE CXX)
+
+add_executable(test_async_log_page_receiver
+  ${TEST_ASYNC_LOG_PAGE_FETCHER_SOURCES}
+)
+
+target_compile_options(test_async_log_page_receiver PRIVATE
+  ${compile_warning_flags}
+)
+
+target_compile_definitions(test_async_log_page_receiver PRIVATE
+  ${COMMON_DEFS} SERVER_MODE
+)
+
+target_include_directories(test_async_log_page_receiver PRIVATE
+  ${TEST_INCLUDES}
+)
+
+target_link_libraries(test_async_log_page_receiver fake_thread_utils)
+
+add_dependencies(test_async_log_page_receiver
+  ${CATCH2_TARGET}
+)

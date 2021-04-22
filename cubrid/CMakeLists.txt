@@ -278,6 +278,7 @@ set(JSP_SOURCES
   )
 
 set(TRANSACTION_SOURCES
+  ${TRANSACTION_DIR}/async_log_page_receiver.cpp
   ${TRANSACTION_DIR}/boot_sr.c
   ${TRANSACTION_DIR}/client_credentials.cpp
   ${TRANSACTION_DIR}/locator.c
@@ -302,6 +303,7 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/log_recovery_redo.cpp
   ${TRANSACTION_DIR}/log_recovery_redo_parallel.cpp
   ${TRANSACTION_DIR}/log_replication.cpp
+  ${TRANSACTION_DIR}/log_storage.cpp
   ${TRANSACTION_DIR}/log_system_tran.cpp
   ${TRANSACTION_DIR}/log_tran_table.c
   ${TRANSACTION_DIR}/log_writer.c
@@ -315,6 +317,7 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/wait_for_graph.c
   )
 set(TRANSACTION_HEADERS
+  ${TRANSACTION_DIR}/async_log_page_receiver.hpp
   ${TRANSACTION_DIR}/client_credentials.hpp
   ${TRANSACTION_DIR}/log_2pc.h
   ${TRANSACTION_DIR}/log_append.hpp
