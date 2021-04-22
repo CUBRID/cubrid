@@ -26,6 +26,9 @@
 
 #include "config.h"
 
+#if defined (WINDOWS)
+#include <io.h>
+#endif
 #include <filesystem>
 #include <stdio.h>
 #include <stdlib.h>
