@@ -12612,7 +12612,7 @@ xchksum_insert_repl_log_and_demote_table_lock (THREAD_ENTRY * thread_p, REPL_INF
  * rcv (in)	 : Recovery data.
  */
 int
-locator_rv_redo_rename (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+locator_rv_redo_rename (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   /* Does nothing on recovery. */
   return NO_ERROR;

@@ -356,7 +356,7 @@ extern const LOG_LSA *pgbuf_set_lsa (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, co
 extern void pgbuf_reset_temp_lsa (PAGE_PTR pgptr);
 extern void pgbuf_set_tde_algorithm (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, TDE_ALGORITHM tde_algo,
 				     bool skip_logging);
-extern int pgbuf_rv_set_tde_algorithm (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int pgbuf_rv_set_tde_algorithm (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
 extern TDE_ALGORITHM pgbuf_get_tde_algorithm (PAGE_PTR pgptr);
 extern void pgbuf_get_vpid (PAGE_PTR pgptr, VPID * vpid);
 extern VPID *pgbuf_get_vpid_ptr (PAGE_PTR pgptr);
@@ -414,7 +414,7 @@ extern void pgbuf_daemons_get_stats (UINT64 * stats_out);
 
 extern int pgbuf_flush_control_from_dirty_ratio (void);
 
-extern int pgbuf_rv_flush_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int pgbuf_rv_flush_page (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
 extern void pgbuf_rv_flush_page_dump (FILE * fp, int length, void *data);
 
 extern int pgbuf_get_fix_count (PAGE_PTR pgptr);
@@ -424,12 +424,12 @@ extern PERF_PAGE_TYPE pgbuf_get_page_type_for_stat (THREAD_ENTRY * thread_p, PAG
 
 extern void pgbuf_log_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_new, int data_size, PAGE_TYPE ptype_new);
 extern void pgbuf_log_redo_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_new, int data_size, PAGE_TYPE ptype_new);
-extern int pgbuf_rv_new_page_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int pgbuf_rv_new_page_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int pgbuf_rv_new_page_redo (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
+extern int pgbuf_rv_new_page_undo (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
 extern void pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR page_dealloc);
-extern int pgbuf_rv_dealloc_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int pgbuf_rv_dealloc_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int pgbuf_rv_dealloc_undo_compensate (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int pgbuf_rv_dealloc_redo (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
+extern int pgbuf_rv_dealloc_undo (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
+extern int pgbuf_rv_dealloc_undo_compensate (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
 
 extern int pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thead_p, const VPID * vpid,
 						     PGBUF_LATCH_MODE latch_mode, PGBUF_LATCH_CONDITION latch_condition,

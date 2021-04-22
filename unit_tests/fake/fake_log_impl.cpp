@@ -19,6 +19,8 @@
 #include "log_impl.h"
 #include "log_prior_recv.hpp"
 
+#include "fake_packable_object.hpp"
+
 log_prior_lsa_info g_log_prior_lsa_info;
 log_global::log_global ()
   : m_prior_recver (g_log_prior_lsa_info)
@@ -51,3 +53,4 @@ cublog::prior_recver::prior_recver (log_prior_lsa_info &prior_lsa_info)
 {
 }
 
+EXPAND_PACKABLE_OBJECT_EMPTY_DEF (meta)

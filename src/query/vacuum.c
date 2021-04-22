@@ -2679,7 +2679,7 @@ vacuum_log_vacuum_heap_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, int n_slo
  * rcv (in)	 : Recovery structure.
  */
 int
-vacuum_rv_redo_vacuum_heap_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+vacuum_rv_redo_vacuum_heap_page (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   int i = 0;
   INT16 n_slots;
@@ -2828,7 +2828,7 @@ vacuum_log_remove_ovf_insid (THREAD_ENTRY * thread_p, PAGE_PTR ovfpage)
  * rcv (in)	 : Recovery data.
  */
 int
-vacuum_rv_redo_remove_ovf_insid (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+vacuum_rv_redo_remove_ovf_insid (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   MVCC_REC_HEADER rec_header;
   int error = NO_ERROR;
@@ -3141,7 +3141,7 @@ vacuum_master_task::should_force_data_update () const
  * rcv (in)	 : Recovery data.
  */
 int
-vacuum_rv_redo_vacuum_complete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+vacuum_rv_redo_vacuum_complete (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   MVCCID oldest_newest_mvccid = MVCCID_NULL;
 
@@ -4429,7 +4429,7 @@ vacuum_data_initialize_new_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * dat
  * rcv (in)	 : Recovery data.
  */
 int
-vacuum_rv_redo_initialize_data_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+vacuum_rv_redo_initialize_data_page (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   VACUUM_DATA_PAGE *data_page = (VACUUM_DATA_PAGE *) rcv->pgptr;
   VACUUM_LOG_BLOCKID last_blockid = VACUUM_NULL_LOG_BLOCKID;
@@ -4893,7 +4893,7 @@ vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_pa
  * rcv (in)	 : Recovery data.
  */
 int
-vacuum_rv_redo_data_finished (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+vacuum_rv_redo_data_finished (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   const char *rcv_data_ptr = rcv->data;
   VACUUM_LOG_BLOCKID blockid;
@@ -5268,7 +5268,7 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
  * rcv (in)	 : Recovery data.
  */
 int
-vacuum_rv_undoredo_data_set_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+vacuum_rv_undoredo_data_set_link (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   VACUUM_DATA_PAGE *data_page = (VACUUM_DATA_PAGE *) rcv->pgptr;
   VPID *next_vpid = (VPID *) rcv->data;
@@ -5318,7 +5318,7 @@ vacuum_rv_undoredo_data_set_link_dump (FILE * fp, int length, void *data)
  * rcv (in)	 : Recovery data.
  */
 int
-vacuum_rv_redo_append_data (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+vacuum_rv_redo_append_data (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   VACUUM_DATA_PAGE *data_page = (VACUUM_DATA_PAGE *) rcv->pgptr;
   int n_blocks = rcv->length / sizeof (VACUUM_DATA_ENTRY);
@@ -5660,7 +5660,7 @@ vacuum_is_safe_to_remove_archives (void)
  * rcv (in)	 : Recovery data.
  */
 int
-vacuum_rv_redo_start_job (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+vacuum_rv_redo_start_job (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   VACUUM_DATA_PAGE *data_page = (VACUUM_DATA_PAGE *) rcv->pgptr;
 
@@ -6062,7 +6062,7 @@ vacuum_log_add_dropped_file (THREAD_ENTRY * thread_p, const VFID * vfid, const O
  * rcv (in)	 : Recovery data.
  */
 int
-vacuum_rv_redo_add_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+vacuum_rv_redo_add_dropped_file (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   VACUUM_DROPPED_FILES_PAGE *page = NULL;
   INT16 position = rcv->offset;
@@ -6130,7 +6130,7 @@ vacuum_rv_redo_add_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * rcv (in)	 : Recovery data.
  */
 int
-vacuum_rv_undo_add_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+vacuum_rv_undo_add_dropped_file (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   VACUUM_DROPPED_FILES_PAGE *page = NULL;
   INT16 position = rcv->offset;
@@ -6164,7 +6164,7 @@ vacuum_rv_undo_add_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * rcv (in)      : recovery data
  */
 int
-vacuum_rv_replace_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+vacuum_rv_replace_dropped_file (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   VACUUM_DROPPED_FILES_PAGE *page = NULL;
   INT16 position = rcv->offset;
@@ -6286,7 +6286,7 @@ vacuum_notify_all_workers_dropped_file (const VFID & vfid_dropped, MVCCID mvccid
  *			  an undo for created heap files and indexes.
  */
 int
-vacuum_rv_notify_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+vacuum_rv_notify_dropped_file (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   int error = NO_ERROR;
   OID *class_oid;
@@ -6649,7 +6649,7 @@ vacuum_log_cleanup_dropped_files (THREAD_ENTRY * thread_p, PAGE_PTR page_p, INT1
  * NOTE: Consider not logging cleanup. Cleanup can be done at database restart.
  */
 int
-vacuum_rv_redo_cleanup_dropped_files (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+vacuum_rv_redo_cleanup_dropped_files (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   int offset = 0, mem_size;
   VACUUM_DROPPED_FILES_PAGE *page = (VACUUM_DROPPED_FILES_PAGE *) rcv->pgptr;
@@ -6729,7 +6729,7 @@ vacuum_dropped_files_set_next_page (THREAD_ENTRY * thread_p, VACUUM_DROPPED_FILE
  * rcv (in)	 : Recovery data.
  */
 int
-vacuum_rv_set_next_page_dropped_files (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+vacuum_rv_set_next_page_dropped_files (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   VACUUM_DROPPED_FILES_PAGE *page = (VACUUM_DROPPED_FILES_PAGE *) rcv->pgptr;
 
@@ -6737,7 +6737,7 @@ vacuum_rv_set_next_page_dropped_files (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   VPID_COPY (&page->next_page, (VPID *) rcv->data);
 
   /* Check recovery data is as expected */
-  assert (rcv->length = sizeof (VPID));
+  assert (rcv->length == sizeof (VPID));
 
   vacuum_er_log (VACUUM_ER_LOG_RECOVERY, "Set link for dropped files from page %d|%d to page %d|%d.",
 		 pgbuf_get_vpid_ptr (rcv->pgptr)->pageid, pgbuf_get_vpid_ptr (rcv->pgptr)->volid, page->next_page.volid,
@@ -7419,11 +7419,11 @@ vacuum_log_redoundo_vacuum_record (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGS
  * rcv (in)	 : Recovery structure.
  */
 int
-vacuum_rv_undo_vacuum_heap_record (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+vacuum_rv_undo_vacuum_heap_record (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
-  rcv->offset = (rcv->offset & (~VACUUM_LOG_VACUUM_HEAP_MASK));
-
-  return heap_rv_redo_insert (thread_p, rcv);
+  LOG_RCV copy_rcv = *rcv;
+  copy_rcv.offset = (copy_rcv.offset & (~VACUUM_LOG_VACUUM_HEAP_MASK));
+  return heap_rv_redo_insert (thread_p, &copy_rcv);
 }
 
 /*
@@ -7434,7 +7434,7 @@ vacuum_rv_undo_vacuum_heap_record (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * rcv (in)	 : Recovery structure.
  */
 int
-vacuum_rv_redo_vacuum_heap_record (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+vacuum_rv_redo_vacuum_heap_record (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   INT16 slotid;
   bool reusable;
@@ -7771,7 +7771,7 @@ vacuum_restore_thread (THREAD_ENTRY * thread_p, thread_type save_type)
  * rcv (in)	 : Recovery data.
  */
 int
-vacuum_rv_es_nop (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+vacuum_rv_es_nop (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   /* Do nothing */
   return NO_ERROR;
