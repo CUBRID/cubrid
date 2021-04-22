@@ -7675,6 +7675,7 @@ static PT_NODE *
 pt_init_truncate (PT_NODE * p)
 {
   p->info.truncate.spec = 0;
+  p->info.truncate.is_cascade = false;
   return p;
 }
 
@@ -7696,6 +7697,11 @@ pt_print_truncate (PARSER_CONTEXT * parser, PT_NODE * p)
 
   q = pt_append_nulstring (parser, q, "truncate ");
   q = pt_append_varchar (parser, q, r1);
+
+  if (p->info.truncate.is_cascade)
+    {
+      q = pt_append_nulstring (parser, q, " cascade");
+    }
 
   return q;
 }
