@@ -25,6 +25,7 @@
 
 #include "config.h"
 
+#include <limits>
 #include <stdio.h>
 #include <string.h>
 #include <signal.h>
@@ -806,6 +807,35 @@ util_bsearch (const void *key, const void *base, int n_elems, unsigned int sizeo
   /* not found */
   /* mid is the right position for key */
   return mid;
+}
+
+/* util_gettime_msec - returns current time in milliseconds
+ *
+ * NOTE: currently using gettimeofday; for portability, must be implemented using
+ * clock_gettime (which, as of now, does not have an implementation on Win32)
+ */
+int64_t
+util_get_time_as_ms_since_epoch ()
+{
+  // *INDENT-OFF*
+  using clock_t = std::chrono::system_clock;
+  using time_point_ms_t = std::chrono::time_point<clock_t, std::chrono::milliseconds>;
+
+  const clock_t::time_point now = clock_t::now ();
+  const time_point_ms_t now_in_ms = std::chrono::time_point_cast<std::chrono::milliseconds> (now);
+  // *INDENT-ON*
+
+  return now_in_ms.time_since_epoch ().count ();
+}
+
+/* util_msec_to_sec - truncate milliseconds to seconds
+ */
+time_t
+util_msec_to_sec (int64_t msec)
+{
+  // *INDENT-OFF*
+  return static_cast<time_t> (msec / 1000LL);
+  // *INDENT-ON*
 }
 
 // *INDENT-OFF*
