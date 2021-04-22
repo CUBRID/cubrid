@@ -6048,7 +6048,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (PRM_FOR_SERVER),
    PRM_BOOLEAN,
    &prm_supplemental_log_flag,
-   (void *) &prm_suppress_fsync_default,
+   (void *) &prm_supplemental_log_default,
    (void *) &PRM_SUPPLEMENTAL_LOG,
    (void *) NULL,
    (void *) NULL,
