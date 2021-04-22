@@ -848,6 +848,8 @@ xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, const XASL_CAC
 	  if (recompile_needed)
 	    {
 	      /* We need to recompile. */
+	      /* and we need to clear the list cache entry first */
+	      qfile_clear_list_cache (thread_p, (*xcache_entry)->list_ht_no);
 	      xcache_unfix (thread_p, *xcache_entry);
 	      *xcache_entry = NULL;
 	      if (search_mode == XASL_CACHE_SEARCH_FOR_EXECUTE)
