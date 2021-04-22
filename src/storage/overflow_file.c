@@ -1105,7 +1105,7 @@ overflow_dump (THREAD_ENTRY * thread_p, FILE * fp, VPID * ovf_vpid)
  *   rcv(in): Recovery structure
  */
 int
-overflow_rv_newpage_insert_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+overflow_rv_newpage_insert_redo (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   return log_rv_copy_char (thread_p, rcv);
 }
@@ -1117,7 +1117,7 @@ overflow_rv_newpage_insert_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *   rcv(in): Recovery structure
  */
 int
-overflow_rv_newpage_link_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+overflow_rv_newpage_link_undo (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   OVERFLOW_REST_PART *rest_parts;
 
@@ -1137,7 +1137,7 @@ overflow_rv_newpage_link_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *       deallocation of overflow page
  */
 int
-overflow_rv_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+overflow_rv_link (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   VPID *vpid;
   OVERFLOW_REST_PART *rest_parts;
@@ -1171,7 +1171,7 @@ overflow_rv_link_dump (FILE * fp, int length_ignore, void *data)
  *   rcv(in): Recovery structure
  */
 int
-overflow_rv_page_update_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+overflow_rv_page_update_redo (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   (void) pgbuf_set_page_ptype (thread_p, rcv->pgptr, PAGE_OVERFLOW);
 
