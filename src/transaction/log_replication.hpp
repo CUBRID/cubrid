@@ -66,7 +66,7 @@ namespace cublog
       void read_and_redo_record (cubthread::entry &thread_entry, LOG_RECTYPE rectype, const log_lsa &rec_lsa);
       template <typename T>
       void calculate_replication_delay_or_dispatch_async (cubthread::entry &thread_entry,
-	  const log_lsa &rec_lsa, const char *a_source);
+	  const log_lsa &rec_lsa);
 
     private:
       std::unique_ptr<cubthread::entry_task> m_daemon_task;
@@ -92,8 +92,7 @@ namespace cublog
       perfmon_tracker_counter_timer m_perfmon_log_processing;
   };
 
-  extern int log_rpl_calculate_replication_delay (THREAD_ENTRY *thread_p, time_t a_start_time_msec,
-      const char *a_start_time_source);
+  int log_rpl_calculate_replication_delay (THREAD_ENTRY *thread_p, time_t a_start_time_msec);
 }
 
 #endif // !_LOG_REPLICATION_HPP_

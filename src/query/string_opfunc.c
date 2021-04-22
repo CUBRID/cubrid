@@ -32,7 +32,6 @@
 #include <string.h>
 #include <errno.h>
 #include <math.h>
-#include <sys/timeb.h>
 #include <assert.h>
 
 #include "string_opfunc.h"

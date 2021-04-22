@@ -183,6 +183,8 @@ static void perfmon_stat_dump_in_buffer_thread_daemon_stats (const UINT64 * stat
 static void perfmon_print_timer_to_file (FILE * stream, int stat_index, UINT64 * stats_ptr);
 static void perfmon_print_timer_to_buffer (char **s, int stat_index, UINT64 * stats_ptr, int *remained_size);
 
+static void perfmon_dbg_check_metadata_definition();
+
 STATIC_INLINE size_t thread_stats_count (void) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE size_t perfmon_thread_daemon_stats_count (void) __attribute__ ((ALWAYS_INLINE));
 #if defined (SERVER_MODE)
@@ -564,8 +566,7 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_AVOID_VICTIM_CNT, "Num_data_page_avoid_victim"),
 
   /* Scalability statistics */
-  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_SC_REPL_DELAY, "Time_scal_replication_delay"),
-  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_SC_REPL_LOG_READ, "Scal_repl_log_read"),
+  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_SC_REPL_DELAY, "Time_scalability_replication_delay_msec"),
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_SC_REPL_LOG_PROC, "Scal_repl_log_proc"),
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_SC_REPL_LOG_APPL_REDO_PARA, "Scal_repl_log_appl_redo_para"),
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_SC_REPL_LOG_APPL_REDO_SYNC, "Scal_repl_log_appl_redo_sync"),
@@ -2995,6 +2996,23 @@ perfmon_stat_dump_in_file_snapshot_array_stat (FILE * stream, const UINT64 * sta
     }
 }
 
+/* perfmon_dbg_check_metadata_definition - check proper ordering of statistics definitions
+ *          - non-complex definitions come before the complex ones
+ *          - complex definitions all come at the end, just before PSTAT_COUNT
+ *        needed because dump to file/buffer functions depend on this
+ */
+void
+perfmon_dbg_check_metadata_definition()
+{
+  int idx = 0;
+
+  for (; idx < PSTAT_COUNT && pstat_Metadata[idx].valtype != PSTAT_COMPLEX_VALUE; ++idx);
+  for (; idx < PSTAT_COUNT; ++idx)
+    {
+      assert (pstat_Metadata[idx].valtype == PSTAT_COMPLEX_VALUE);
+    }
+}
+
 /*
  * perfmon_initialize () - Computes the metadata values & allocates/initializes global/transaction statistics values.
  *
@@ -3026,16 +3044,9 @@ perfmon_initialize (int num_trans)
     }
 #endif
 
-  /* check proper ordering of statistics definitions:
-   *  - non-complex definitions come before the complex ones
-   *  - complex definitions all come at the end, just before PSTAT_COUNT
-   * needed because dump to file/buffer functions depend on this
-   * NOTE: this should actually be a unit test */
-  for (idx = 0; idx < PSTAT_COUNT && pstat_Metadata[idx].valtype != PSTAT_COMPLEX_VALUE; ++idx);
-  for (; idx < PSTAT_COUNT; ++idx)
-    {
-      assert (pstat_Metadata[idx].valtype == PSTAT_COMPLEX_VALUE);
-    }
+#if !defined (NDEBUG)
+  perfmon_dbg_check_metadata_definition ();
+#endif
 
   for (idx = 0; idx < PSTAT_COUNT; idx++)
     {

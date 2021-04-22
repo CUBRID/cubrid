@@ -3181,7 +3181,7 @@ log_append_ha_server_state (THREAD_ENTRY * thread_p, int state)
   memset (ha_server_state, 0, sizeof (LOG_REC_HA_SERVER_STATE));
 
   ha_server_state->state = state;
-  ha_server_state->at_time = util_gettime_msec ();
+  ha_server_state->at_time = util_get_time_as_ms_since_epoch ();
 
   start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
@@ -4628,7 +4628,7 @@ log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA 
     }
 
   donetime = (LOG_REC_DONETIME *) node->data_header;
-  donetime->at_time = util_gettime_msec ();
+  donetime->at_time = util_get_time_as_ms_since_epoch ();
 
   if (with_lock == LOG_PRIOR_LSA_WITH_LOCK)
     {
