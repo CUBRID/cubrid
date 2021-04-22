@@ -1941,7 +1941,7 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
 
 #if defined(SERVER_MODE)
   /* Send a request to Page Server for the log. */
-  if (get_server_type () == SERVER_TYPE_TRANSACTION && !ats_Gl.get_log_page_receiver ().is_page_requested (pageid))
+  if (get_server_type () == SERVER_TYPE_TRANSACTION)
     {
       request_log_page_from_ps (pageid);
     }
