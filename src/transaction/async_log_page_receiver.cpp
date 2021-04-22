@@ -24,7 +24,7 @@ namespace cublog
     return m_requested_page_ids.find (log_pageid) != m_requested_page_ids.end ();
   }
 
-  shared_log_page
+  std::shared_ptr<LOG_PAGE>
   async_log_page_receiver::wait_for_page (LOG_PAGEID log_pageid)
   {
     std::unique_lock<std::mutex> lock (m_received_pages_mutex);
@@ -37,7 +37,7 @@ namespace cublog
   }
 
   void
-  async_log_page_receiver::set_page (shared_log_page log_page)
+  async_log_page_receiver::set_page (std::shared_ptr<LOG_PAGE> log_page)
   {
     {
       std::unique_lock<std::mutex> lock (m_received_pages_mutex);

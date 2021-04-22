@@ -1960,7 +1960,7 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
   if (get_server_type () == SERVER_TYPE_TRANSACTION && ats_Gl.get_log_page_receiver ().is_page_requested (pageid))
     {
       // wait for answer.
-      shared_log_page log_page = ats_Gl.get_log_page_receiver ().wait_for_page (pageid);
+      auto log_page = ats_Gl.get_log_page_receiver ().wait_for_page (pageid);
 
       // Sould be the same.
       assert (*log_page == *log_pgptr);
