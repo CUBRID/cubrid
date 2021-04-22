@@ -10252,7 +10252,7 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	{
 	  break;
 	}
-        // assert(false); // ctshim_assert    추가 점검 필요
+      // assert(false); // ctshim_assert    추가 점검 필요
 
       break;
 #endif
