@@ -150,11 +150,11 @@ set(TEST_ASYNC_LOG_PAGE_RECEIVER_SOURCES
   test_main_async_log_page_receiver.cpp)
 
 SET_SOURCE_FILES_PROPERTIES(
-  ${TEST_ASYNC_LOG_PAGE_FETCHER_SOURCES}
+  ${TEST_ASYNC_LOG_PAGE_RECEIVER_SOURCES}
   PROPERTIES LANGUAGE CXX)
 
 add_executable(test_async_log_page_receiver
-  ${TEST_ASYNC_LOG_PAGE_FETCHER_SOURCES}
+  ${TEST_ASYNC_LOG_PAGE_RECEIVER_SOURCES}
 )
 
 target_compile_options(test_async_log_page_receiver PRIVATE

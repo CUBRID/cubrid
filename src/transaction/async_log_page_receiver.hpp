@@ -42,10 +42,9 @@ namespace cublog
       std::shared_ptr<LOG_PAGE> wait_for_page (LOG_PAGEID log_pageid);
       void set_page (std::shared_ptr<LOG_PAGE> log_page);
     private:
-      std::mutex m_reqested_pages_mutex;
-      std::mutex m_received_pages_mutex;
+      std::mutex m_log_pages_mutex;
       std::condition_variable m_pages_cv;
-      std::unordered_set<LOG_PAGEID> m_requested_page_ids;
+      std::unordered_map<LOG_PAGEID, int> m_requested_page_id_count;
       std::unordered_map<LOG_PAGEID, std::shared_ptr<LOG_PAGE>> m_received_log_pages;
   };
 
