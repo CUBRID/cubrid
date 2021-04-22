@@ -353,15 +353,20 @@ xmalloc (size_t len)
 static void *
 xrealloc (void *ptr, size_t size)
 {
-  if ((ptr = realloc (ptr, size)) == NULL)
+  void *const realloc_ptr = realloc (ptr, size);
+  if (realloc_ptr == NULL)
     {
 #if defined(WINDOWS)
       error (NOMEMORY);
 #else
       errx (1, NOMEMORY);
 #endif
+      return NULL;
     }
-  return (ptr);
+  else
+    {
+      return realloc_ptr;
+    }
 }
 
 static char *
