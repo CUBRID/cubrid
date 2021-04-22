@@ -98,7 +98,6 @@ struct qfile_list_cache_entry
   struct timeval time_last_used;	/* when this entry used lastly */
   int ref_count;		/* how many times this query used */
   bool deletion_marker;		/* this entry will be deleted if marker set */
-  pthread_mutex_t list_cache_mutex;
 };
 
 enum
