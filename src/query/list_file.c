@@ -275,8 +275,6 @@ static int qfile_delete_list_cache_entry (THREAD_ENTRY * thread_p, void *data);
 static int qfile_end_use_of_list_cache_entry_local (THREAD_ENTRY * thread_p, void *data, void *args);
 static bool qfile_is_early_time (struct timeval *a, struct timeval *b);
 
-static int qfile_select_list_cache_entry (THREAD_ENTRY * thread_p, void *data, void *args);
-
 static int qfile_get_list_cache_entry_size_for_allocate (int nparam);
 #if defined(SERVER_MODE)
 static int *qfile_get_list_cache_entry_tran_index_array (QFILE_LIST_CACHE_ENTRY * ent);
@@ -5525,11 +5523,12 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
     {
       unsigned int i;
 
-#if defined(SERVER_MODE)
       /* check if it is marked to be deleted */
       if (lent->deletion_marker)
 	{
+#if defined(SERVER_MODE)
 	  if (lent->last_ta_idx == 0)
+#endif
 	    {
 	      qfile_delete_list_cache_entry (thread_p, lent);
 	    }
@@ -5538,6 +5537,7 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
 
       *result_cached = true;
 
+#if defined(SERVER_MODE)
       /* check if the cache is owned by me */
       for (i = 0; i < lent->last_ta_idx; i++)
 	{
@@ -5547,9 +5547,7 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
 	      break;
 	    }
 	}
-#endif
 
-#if defined(SERVER_MODE)
       /* finally, we found an useful cache entry to reuse */
       if (new_tran)
 	{
@@ -5610,107 +5608,6 @@ qfile_is_early_time (struct timeval *a, struct timeval *b)
     {
       return a->tv_sec < b->tv_sec;
     }
-}
-
-/*
- * qfile_select_list_cache_entry () - Select candidates to remove from the list cache
- *                               Will be used by mht_map_no_key() function
- *   return:
- *   data(in)   :
- *   args(in/out)   :
- */
-static int
-qfile_select_list_cache_entry (THREAD_ENTRY * thread_p, void *data, void *args)
-{
-  QFILE_LIST_CACHE_ENTRY *lent = (QFILE_LIST_CACHE_ENTRY *) data;
-  QFILE_LIST_CACHE_CANDIDATE *info = (QFILE_LIST_CACHE_CANDIDATE *) args;
-  QFILE_LIST_CACHE_ENTRY **p, **q;
-  int i;
-  size_t n;
-
-#if defined(SERVER_MODE)
-  if (info->include_in_use == false && lent->last_ta_idx > 0)
-    {
-      /* do not select one that is in use */
-      return NO_ERROR;
-    }
-  if (info->include_in_use == true && lent->last_ta_idx == 0)
-    {
-      /* this entry may be selected in the previous selection step */
-      return NO_ERROR;
-    }
-#endif /* SERVER_MODE */
-
-  p = info->time_candidates;
-  q = info->ref_candidates;
-  i = 0;
-
-  while (i < info->c_idx && (p || q))
-    {
-      if (p && qfile_is_early_time (&(lent->time_created), &((*p)->time_created)))
-	{
-	  if (info->c_idx < info->num_candidates)
-	    {
-	      n = sizeof (QFILE_LIST_CACHE_ENTRY *) * (info->c_idx - i);
-	    }
-	  else
-	    {
-	      n = sizeof (QFILE_LIST_CACHE_ENTRY *) * (info->c_idx - i - 1);
-	    }
-	  (void) memmove (p + 1, p, n);
-	  *p = lent;
-	  p = NULL;
-	}
-      else if (p)
-	{
-	  p++;
-	}
-
-      if (q && lent->ref_count < (*q)->ref_count)
-	{
-	  if (info->c_idx < info->num_candidates)
-	    {
-	      n = sizeof (QFILE_LIST_CACHE_ENTRY *) * (info->c_idx - i);
-	    }
-	  else
-	    {
-	      n = sizeof (QFILE_LIST_CACHE_ENTRY *) * (info->c_idx - i - 1);
-	    }
-
-	  (void) memmove (q + 1, q, n);
-	  *q = lent;
-	  q = NULL;
-	}
-      else if (q)
-	{
-	  q++;
-	}
-
-      i++;
-    }
-
-  if (info->c_idx < info->num_candidates)
-    {
-      if (p)
-	{
-	  *p = lent;
-	}
-
-      if (q)
-	{
-	  *q = lent;
-	}
-
-      info->c_idx++;
-    }
-
-  if (--info->selcnt <= 0)
-    {
-      /* due to the performance reason, stop traversing here */
-      return ER_FAILED;
-    }
-
-  return NO_ERROR;
 }
 
 /*
@@ -6025,6 +5922,7 @@ qfile_end_use_of_list_cache_entry (THREAD_ENTRY * thread_p, QFILE_LIST_CACHE_ENT
   /* if this entry will be deleted */
 #if defined(SERVER_MODE)
   if (lent->last_ta_idx == 0)
+#endif
     {
       /* to check if it's the last transaction using the lent */
       if (marker || lent->deletion_marker)
@@ -6032,6 +5930,7 @@ qfile_end_use_of_list_cache_entry (THREAD_ENTRY * thread_p, QFILE_LIST_CACHE_ENT
 	  qfile_delete_list_cache_entry (thread_p, lent);
 	}
     }
+#if defined(SERVER_MODE)
   else
     {
       /* to avoid resetting the deletion_marker
