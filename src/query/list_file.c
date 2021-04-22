@@ -193,7 +193,6 @@ static LF_ENTRY_DESCRIPTOR qfile_sort_list_entry_desc = {
 int qfile_Is_list_cache_disabled;
 
 static int qfile_Max_tuple_page_size;
-static int qfile_list_cache_Cleanup_flag;
 
 static int qfile_get_sort_list_size (SORT_LIST * sort_list);
 static int qfile_compare_tuple_values (QFILE_TUPLE tplp1, QFILE_TUPLE tplp2, TP_DOMAIN * domain, int *cmp);
@@ -314,19 +313,11 @@ qfile_list_cache_cleanup (THREAD_ENTRY * thread_p)
   BINARY_HEAP *bh = NULL;
   QFILE_CACHE_CLEANUP_CANDIDATE candidate;
   int candidate_index;
-  int err = NO_ERROR;
   unsigned int i, n;
 
   struct timeval current_time;
   int cleanup_count = prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_ENTRIES) * 8 / 10;
   int cleanup_pages = prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_PAGES) * 8 / 10;
-
-  /* We can allow only one cleanup process at a time. There is no point in duplicating this work. Therefore, anyone
-   * trying to do the cleanup should first try to set qfile_list_cache_Cleanup_flag. */
-  if (!ATOMIC_CAS_32 (&qfile_list_cache_Cleanup_flag, 0, 1))
-    {
-      return NO_ERROR;
-    }
 
   if (cleanup_count < 1)
     {
@@ -343,8 +334,7 @@ qfile_list_cache_cleanup (THREAD_ENTRY * thread_p)
 
   if (bh == NULL)
     {
-      err = ER_FAILED;
-      goto end;
+      return ER_FAILED;
     }
 
   gettimeofday (&current_time, NULL);
@@ -388,7 +378,6 @@ qfile_list_cache_cleanup (THREAD_ENTRY * thread_p)
   for (candidate_index = 0; candidate_index < bh->element_count; candidate_index++)
     {
       bh_element_at (bh, candidate_index, &candidate);
-      candidate.qcache->deletion_marker = true;
       qfile_delete_list_cache_entry (thread_p, candidate.qcache);
       if (qfile_List_cache.n_entries <= cleanup_count)
 	{
@@ -401,13 +390,7 @@ qfile_list_cache_cleanup (THREAD_ENTRY * thread_p)
 
   bh_destroy (thread_p, bh);
 
-end:
-  if (!ATOMIC_CAS_32 (&qfile_list_cache_Cleanup_flag, 1, 0))
-    {
-      assert_release (false);
-    }
-
-  return err;
+  return NO_ERROR;
 }
 #endif
 
@@ -1125,8 +1108,6 @@ qfile_initialize (void)
     {
       return ER_FAILED;
     }
-
-  qfile_list_cache_Cleanup_flag = 0;
 
   return true;
 }
@@ -5433,48 +5414,45 @@ qfile_delete_list_cache_entry (THREAD_ENTRY * thread_p, void *data)
       return ER_FAILED;
     }
 
-  if (lent->deletion_marker)
+  /* update counter */
+  qfile_List_cache.n_entries--;
+  qfile_List_cache.n_pages -= lent->list_id.page_cnt;
+
+  /* remove the entry from the hash table */
+  if (mht_rem2 (qfile_List_cache.list_hts[lent->list_ht_no], &lent->param_values, lent, NULL, NULL) != NO_ERROR)
     {
-      /* update counter */
-      qfile_List_cache.n_entries--;
-      qfile_List_cache.n_pages -= lent->list_id.page_cnt;
-
-      /* remove the entry from the hash table */
-      if (mht_rem2 (qfile_List_cache.list_hts[lent->list_ht_no], &lent->param_values, lent, NULL, NULL) != NO_ERROR)
+      if (!lent->deletion_marker)
 	{
-	  if (!lent->deletion_marker)
+	  char *s = NULL;
+
+	  if (lent->param_values.size > 0)
 	    {
-	      char *s = NULL;
+	      s = pr_valstring (&lent->param_values.vals[0]);
+	    }
 
-	      if (lent->param_values.size > 0)
-		{
-		  s = pr_valstring (&lent->param_values.vals[0]);
-		}
-
-	      er_log_debug (ARG_FILE_LINE,
-			    "ls_delete_list_cache_ent: mht_rem failed for param_values { %d %s ...}\n",
-			    lent->param_values.size, s ? s : "(null)");
-	      if (s)
-		{
-		  db_private_free (thread_p, s);
-		}
+	  er_log_debug (ARG_FILE_LINE,
+			"ls_delete_list_cache_ent: mht_rem failed for param_values { %d %s ...}\n",
+			lent->param_values.size, s ? s : "(null)");
+	  if (s)
+	    {
+	      db_private_free (thread_p, s);
 	    }
 	}
-
-      /* destroy the temp file of XASL_ID */
-      if (!VFID_ISNULL (&lent->list_id.temp_vfid)
-	  && file_temp_retire_preserved (thread_p, &lent->list_id.temp_vfid) != NO_ERROR)
-	{
-	  er_log_debug (ARG_FILE_LINE, "ls_delete_list_cache_ent: fl_destroy failed for vfid { %d %d }\n",
-			lent->list_id.temp_vfid.fileid, lent->list_id.temp_vfid.volid);
-	}
-
-      /* clear list_id */
-      qfile_update_qlist_count (thread_p, &lent->list_id, 1);
-      qfile_clear_list_id (&lent->list_id);
-
-      error_code = qfile_free_list_cache_entry (thread_p, lent, NULL);
     }
+
+  /* destroy the temp file of XASL_ID */
+  if (!VFID_ISNULL (&lent->list_id.temp_vfid)
+      && file_temp_retire_preserved (thread_p, &lent->list_id.temp_vfid) != NO_ERROR)
+    {
+      er_log_debug (ARG_FILE_LINE, "ls_delete_list_cache_ent: fl_destroy failed for vfid { %d %d }\n",
+		    lent->list_id.temp_vfid.fileid, lent->list_id.temp_vfid.volid);
+    }
+
+  /* clear list_id */
+  qfile_update_qlist_count (thread_p, &lent->list_id, 1);
+  qfile_clear_list_id (&lent->list_id);
+
+  error_code = qfile_free_list_cache_entry (thread_p, lent, NULL);
 
   return error_code;
 }
@@ -5551,7 +5529,10 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
       /* check if it is marked to be deleted */
       if (lent->deletion_marker)
 	{
-	  qfile_delete_list_cache_entry (thread_p, lent);
+	  if (lent->last_ta_idx == 0)
+	    {
+	      qfile_delete_list_cache_entry (thread_p, lent);
+	    }
 	  goto end;
 	}
 
@@ -6043,12 +6024,18 @@ qfile_end_use_of_list_cache_entry (THREAD_ENTRY * thread_p, QFILE_LIST_CACHE_ENT
 
   /* if this entry will be deleted */
 #if defined(SERVER_MODE)
-  if (marker && lent->last_ta_idx == 0)
+  if (lent->last_ta_idx == 0)
     {
-      qfile_delete_list_cache_entry (thread_p, lent);
+      /* to check if it's the last transaction using the lent */
+      if (marker || lent->deletion_marker)
+	{
+	  qfile_delete_list_cache_entry (thread_p, lent);
+	}
     }
   else
     {
+      /* to avoid resetting the deletion_marker
+       * that has already been set by other transaction */
       if (lent->deletion_marker == false)
 	{
 	  lent->deletion_marker = marker;
