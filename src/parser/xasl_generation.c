@@ -394,10 +394,11 @@ static ACCESS_SPEC_TYPE *pt_to_cselect_table_spec_list (PARSER_CONTEXT * parser,
 							PT_NODE * src_derived_tbl);
 static ACCESS_SPEC_TYPE *pt_to_json_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * json_table,
 						     PT_NODE * src_derived_tbl, PT_NODE * where_p);
-#if defined(SUPPORT_CUBLINK)                                                     
-static ACCESS_SPEC_TYPE *pt_to_cublink_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * cublink_table,
-						     PT_NODE * src_derived_tbl, PT_NODE * where_p);                                                     
-#endif                                                     
+#if defined(SUPPORT_CUBLINK)
+static ACCESS_SPEC_TYPE *pt_to_cublink_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec,
+							PT_NODE * cublink_table, PT_NODE * src_derived_tbl,
+							PT_NODE * where_p);
+#endif
 static ACCESS_SPEC_TYPE *pt_make_json_table_access_spec (PARSER_CONTEXT * parser, REGU_VARIABLE * json_reguvar,
 							 PRED_EXPR * where_pred, PT_JSON_TABLE_INFO * json_table,
 							 TABLE_INFO * tbl_info);
@@ -12745,13 +12746,13 @@ pt_to_json_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * j
   return access;
 }
 
- #if defined(SUPPORT_CUBLINK)
+#if defined(SUPPORT_CUBLINK)
 static ACCESS_SPEC_TYPE *
 pt_to_cublink_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * cublink_table,
-			    PT_NODE * src_derived_tbl, PT_NODE * where_p)
+			       PT_NODE * src_derived_tbl, PT_NODE * where_p)
 {
   ACCESS_SPEC_TYPE *access;
-  PT_CUBLINK_INFO*  pCublink = &(cublink_table->info.cublink_table);
+  PT_CUBLINK_INFO *pCublink = &(cublink_table->info.cublink_table);
 
   PRED_EXPR *where = pt_to_pred_expr (parser, where_p);
 
@@ -12765,25 +12766,27 @@ pt_to_cublink_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE 
   int *pred_offsets = NULL, *rest_offsets = NULL, *reserved_offsets = NULL;
 
   if (pt_split_attrs (parser, tbl_info, where_p, &pred_attrs, &rest_attrs, &reserved_attrs,
-                        &pred_offsets, &rest_offsets, &reserved_offsets) != NO_ERROR)
-  {
-        return NULL;
-  }
+		      &pred_offsets, &rest_offsets, &reserved_offsets) != NO_ERROR)
+    {
+      return NULL;
+    }
 
-  REGU_VARIABLE_LIST  regu_attributes_rest;
+  REGU_VARIABLE_LIST regu_attributes_rest;
   regu_attributes_rest =
-	pt_to_regu_variable_list (parser, rest_attrs, UNBOX_AS_VALUE, tbl_info->value_list, rest_offsets);
+    pt_to_regu_variable_list (parser, rest_attrs, UNBOX_AS_VALUE, tbl_info->value_list, rest_offsets);
 
-   //static char dblink_url[] = "cci:CUBRID:192.168.1.8:55300:demodb:::";
-   //static char dblink_sql[] = "select col1, col2_varchar, col3_big from dblink";
-   //static char dblink_user[] = "dba";
-   //static char dblink_passowrd[] = "";
+  //static char dblink_url[] = "cci:CUBRID:192.168.1.8:55300:demodb:::";
+  //static char dblink_sql[] = "select col1, col2_varchar, col3_big from dblink";
+  //static char dblink_user[] = "dba";
+  //static char dblink_passowrd[] = "";
 
-   access = pt_make_dblink_access_spec (access_method, regu_attributes_rest,
-				        (char*)pCublink->__cts_url->info.value.data_value.str->bytes /*dblink_url*/, 
-                                        (char*)pCublink->__cts_user->info.value.data_value.str->bytes/* dblink_user */, 
-                                        (char*)pCublink->__cts_pwd->info.value.data_value.str->bytes/* dblink_passowrd */, 
-                                        (char*)pCublink->qstr->info.value.data_value.str->bytes /*dblink_sql*/);
+  access = pt_make_dblink_access_spec (access_method, regu_attributes_rest,
+				       (char *) pCublink->__cts_url->info.value.data_value.str->bytes /*dblink_url */ ,
+				       (char *) pCublink->__cts_user->info.value.data_value.str->
+				       bytes /* dblink_user */ ,
+				       (char *) pCublink->__cts_pwd->info.value.data_value.str->
+				       bytes /* dblink_passowrd */ ,
+				       (char *) pCublink->qstr->info.value.data_value.str->bytes /*dblink_sql */ );
 
   return access;
 }
@@ -12935,14 +12938,14 @@ pt_to_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_key_pa
 	  access =
 	    pt_to_json_table_spec_list (parser, spec, spec->info.spec.derived_table, src_derived_tbl, where_part);
 	}
-#if defined(SUPPORT_CUBLINK)        
+#if defined(SUPPORT_CUBLINK)
       else if (spec->info.spec.derived_table_type == PT_DERIVED_CUBLINK_TABLE)
 	{
-	  /* PT_DERIVED_CUBLINK_TABLE derived table */         
-	  access =            
+	  /* PT_DERIVED_CUBLINK_TABLE derived table */
+	  access =
 	    pt_to_cublink_table_spec_list (parser, spec, spec->info.spec.derived_table, src_derived_tbl, where_part);
-	}         
-#endif        
+	}
+#endif
       else
 	{
 	  // unrecognized derived table type

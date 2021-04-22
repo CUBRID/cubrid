@@ -136,8 +136,10 @@ static PT_NODE *pt_get_all_json_table_attributes_and_types (PARSER_CONTEXT * par
 static PT_NODE *pt_json_table_gather_attribs (PARSER_CONTEXT * parser, PT_NODE * json_table_node, void *args,
 					      int *continue_walk);
 #if defined(SUPPORT_CUBLINK)
-static PT_NODE *pt_cublink_table_gather_attribs (PARSER_CONTEXT * parser, PT_NODE * cublink_column, void *args, int *continue_walk);
-static PT_NODE *pt_get_all_cublink_table_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * cublink_cols, const char *cublink_table_alias);
+static PT_NODE *pt_cublink_table_gather_attribs (PARSER_CONTEXT * parser, PT_NODE * cublink_column, void *args,
+						 int *continue_walk);
+static PT_NODE *pt_get_all_cublink_table_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * cublink_cols,
+							       const char *cublink_table_alias);
 #endif
 
 static PT_NODE *pt_get_all_showstmt_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * derived_table);
@@ -997,31 +999,31 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 	      table->info.json_table_info.tree =
 		parser_walk_tree (parser, table->info.json_table_info.tree, pt_bind_name_to_spec, spec, NULL, NULL);
 	    }
-#if defined(SUPPORT_CUBLINK)            
-          else  if (table->node_type == PT_CUBLINK_TABLE)
-	    {   
-	       assert (spec->info.spec.derived_table_type == PT_DERIVED_CUBLINK_TABLE);
-#if 0  // Is it the necessary code?            
-	       table->info.cublink_table.__cts_url =
-		        parser_walk_tree (parser, table->info.cublink_table.__cts_url, pt_bind_names, bind_arg, pt_bind_names_post,
-				  bind_arg);
+#if defined(SUPPORT_CUBLINK)
+	  else if (table->node_type == PT_CUBLINK_TABLE)
+	    {
+	      assert (spec->info.spec.derived_table_type == PT_DERIVED_CUBLINK_TABLE);
+#if 0				// Is it the necessary code?
+	      table->info.cublink_table.__cts_url =
+		parser_walk_tree (parser, table->info.cublink_table.__cts_url, pt_bind_names, bind_arg,
+				  pt_bind_names_post, bind_arg);
 
-                table->info.cublink_table.__cts_user =
-		        parser_walk_tree (parser, table->info.cublink_table.__cts_user, pt_bind_names, bind_arg, pt_bind_names_post,
-				  bind_arg);
+	      table->info.cublink_table.__cts_user =
+		parser_walk_tree (parser, table->info.cublink_table.__cts_user, pt_bind_names, bind_arg,
+				  pt_bind_names_post, bind_arg);
 
-                table->info.cublink_table.__cts_pwd =
-		        parser_walk_tree (parser, table->info.cublink_table.__cts_pwd, pt_bind_names, bind_arg, pt_bind_names_post,
-				  bind_arg);
+	      table->info.cublink_table.__cts_pwd =
+		parser_walk_tree (parser, table->info.cublink_table.__cts_pwd, pt_bind_names, bind_arg,
+				  pt_bind_names_post, bind_arg);
 
-	        table->info.cublink_table.qstr =
-		        parser_walk_tree (parser, table->info.cublink_table.qstr, pt_bind_names, bind_arg, pt_bind_names_post,
-				  bind_arg); 
+	      table->info.cublink_table.qstr =
+		parser_walk_tree (parser, table->info.cublink_table.qstr, pt_bind_names, bind_arg, pt_bind_names_post,
+				  bind_arg);
 #endif
-                table->info.cublink_table.cols =
-		        parser_walk_tree (parser, table->info.cublink_table.cols, pt_bind_name_to_spec, spec, NULL, NULL);                                                   
+	      table->info.cublink_table.cols =
+		parser_walk_tree (parser, table->info.cublink_table.cols, pt_bind_name_to_spec, spec, NULL, NULL);
 	    }
-#endif            
+#endif
 	  else
 	    {
 	      table = parser_walk_tree (parser, table, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
@@ -3660,20 +3662,20 @@ pt_find_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * name)
 	      name->info.name.default_value = pt_dbval_to_value (parser, &val);
 	      PT_NAME_INFO_SET_FLAG (name, PT_NAME_DEFAULTF_ACCEPTS);
 	    }
-#if defined(SUPPORT_CUBLINK)            
-          else  if (spec->info.spec.derived_table_type == PT_DERIVED_CUBLINK_TABLE)
+#if defined(SUPPORT_CUBLINK)
+	  else if (spec->info.spec.derived_table_type == PT_DERIVED_CUBLINK_TABLE)
 	    {
-              /*  default() 함수는 지원하지 않을 거라... 이하 생략
-	      // calling default() on any cublink table columns should return NULL
-	      // set PT_NAME_DEFAULTF_ACCEPTS flag to pass pt_check_defaultf()
-	      DB_VALUE val;
-              //assert (false); // ctshim_assert
-	      db_make_null (&val);
-	      name->info.name.default_value = pt_dbval_to_value (parser, &val);
-	      PT_NAME_INFO_SET_FLAG (name, PT_NAME_DEFAULTF_ACCEPTS);
-              */
-	    }              
-#endif            
+	      /*  default() 함수는 지원하지 않을 거라... 이하 생략
+	         // calling default() on any cublink table columns should return NULL
+	         // set PT_NAME_DEFAULTF_ACCEPTS flag to pass pt_check_defaultf()
+	         DB_VALUE val;
+	         //assert (false); // ctshim_assert
+	         db_make_null (&val);
+	         name->info.name.default_value = pt_dbval_to_value (parser, &val);
+	         PT_NAME_INFO_SET_FLAG (name, PT_NAME_DEFAULTF_ACCEPTS);
+	       */
+	    }
+#endif
 	}
     }
 
@@ -4496,12 +4498,12 @@ static PT_NODE *
 pt_cublink_table_gather_attribs (PARSER_CONTEXT * parser, PT_NODE * cublink_column, void *args, int *continue_walk)
 {
   PT_NODE **attribs = (PT_NODE **) args;
-  
+
   if (cublink_column->node_type == PT_ATTR_DEF)
     {
       PT_NODE *next_attr = cublink_column->info.attr_def.attr_name;
       next_attr->type_enum = cublink_column->type_enum;
-      
+
       if (cublink_column->data_type != NULL)
 	{
 	  next_attr->data_type = parser_copy_tree (parser, cublink_column->data_type);
@@ -4513,15 +4515,15 @@ pt_cublink_table_gather_attribs (PARSER_CONTEXT * parser, PT_NODE * cublink_colu
 
 static PT_NODE *
 pt_get_all_cublink_table_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * cublink_cols,
-					    const char *cublink_table_alias)
+					       const char *cublink_table_alias)
 {
   PT_NODE *attribs = NULL;
 
   parser_walk_tree (parser, cublink_cols, pt_cublink_table_gather_attribs, &attribs, NULL, NULL);
   if (attribs == NULL)
-      assert (false);
+    assert (false);
 
-   return attribs;
+  return attribs;
 }
 #endif
 
@@ -10054,9 +10056,9 @@ pt_get_attr_list_of_derived_table (PARSER_CONTEXT * parser, PT_MISC_TYPE derived
       assert (derived_table->node_type == PT_CUBLINK_TABLE);
 
       as_attr_list = pt_get_all_cublink_table_attributes_and_types (parser, derived_table->info.cublink_table.cols,
-								 derived_alias->info.name.original);                                                                 
+								    derived_alias->info.name.original);
       break;
- #endif     
+#endif
     default:
       /* this can't happen since we removed MERGE/CSELECT from grammar */
       assert (derived_table_type == PT_IS_CSELECT);

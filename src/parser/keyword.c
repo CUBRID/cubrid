@@ -122,9 +122,9 @@ static KEYWORD_RECORD keywords[] = {
   {CREATE, "CREATE", 0},
   {CRITICAL, "CRITICAL", 1},
   {CROSS, "CROSS", 0},
-  #if defined(SUPPORT_CUBLINK)
+#if defined(SUPPORT_CUBLINK)
   {CUBLINK, "CUBLINK", 1},
-  #endif
+#endif
   {CUME_DIST, "CUME_DIST", 1},
   {CURRENT, "CURRENT", 0},
   {CURRENT_DATE, "CURRENT_DATE", 0},

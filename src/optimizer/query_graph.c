@@ -2820,8 +2820,8 @@ set_seg_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_
 #if defined(SUPPORT_CUBLINK)
     case PT_CUBLINK_TABLE:
       // assert(false); //ctshim_assert 추가 검토 필요
-       (void) parser_walk_tree (parser, tree->info.cublink_table.qstr, set_seg_expr, arg, pt_continue_walk, NULL);
-       *continue_walk = PT_LIST_WALK;
+      (void) parser_walk_tree (parser, tree->info.cublink_table.qstr, set_seg_expr, arg, pt_continue_walk, NULL);
+      *continue_walk = PT_LIST_WALK;
       break;
 #endif
 
@@ -2963,7 +2963,7 @@ is_dependent_table (PT_NODE * entity)
 #if defined(SUPPORT_CUBLINK)
     case PT_DERIVED_CUBLINK_TABLE:
       // assert (false); // ctshim_assert  추가확인 필요
-      return true;      
+      return true;
 #endif
     case PT_IS_SUBQUERY:
     default:
