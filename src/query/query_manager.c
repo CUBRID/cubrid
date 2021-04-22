@@ -225,27 +225,8 @@ qmgr_is_allowed_result_cache (QUERY_FLAG flag)
     }
 
   if (query_cache_mode == QFILE_LIST_QUERY_CACHE_MODE_OFF
-      || (query_cache_mode == QFILE_LIST_QUERY_CACHE_MODE_SELECTIVELY_OFF && (flag & RESULT_CACHE_INHIBITED))
+      || query_cache_mode == QFILE_LIST_QUERY_CACHE_MODE_SELECTIVELY_OFF
       || (query_cache_mode == QFILE_LIST_QUERY_CACHE_MODE_SELECTIVELY_ON && !(flag & RESULT_CACHE_REQUIRED)))
-    {
-      return false;
-    }
-
-  return true;
-}
-
-static bool
-qmgr_can_get_result_from_cache (QUERY_FLAG flag)
-{
-  static int query_cache_mode = prm_get_integer_value (PRM_ID_LIST_QUERY_CACHE_MODE);
-
-  if (QFILE_IS_LIST_CACHE_DISABLED)
-    {
-      return false;
-    }
-
-  if (query_cache_mode == QFILE_LIST_QUERY_CACHE_MODE_OFF
-      || (query_cache_mode != QFILE_LIST_QUERY_CACHE_MODE_OFF && (flag & NOT_FROM_RESULT_CACHE)))
     {
       return false;
     }
@@ -1401,7 +1382,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
       goto exit_on_error;
     }
 
-  if (qmgr_can_get_result_from_cache (*flag_p))
+  if (qmgr_is_allowed_result_cache (*flag_p))
     {
       if (qmgr_is_related_class_modified (thread_p, xasl_cache_entry_p, tran_index))
 	{
