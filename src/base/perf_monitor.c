@@ -566,10 +566,20 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_AVOID_VICTIM_CNT, "Num_data_page_avoid_victim"),
 
   /* Scalability statistics */
+  /* Peek time in msec taken for the log to be transferred, processed an applied on the page server */
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_SC_REPL_DELAY, "Time_scalability_replication_delay_msec"),
+  /* perf data for processing log redo on the page server;
+   *  - if the infrastructure to apply redo log in parallel is used, it does not
+   *    include that part (which is logged separately as 'Scal_repl_log_redo');
+   *  - if the log redo is applied synchronously, these values will include the
+   *    values for 'Scal_repl_log_redo'
+   * TODO: in the synchronous mode, substract the values for 'Scal_repl_log_redo' our of these */
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_SC_REPL_LOG_PROC, "Scal_repl_log_proc"),
-  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_SC_REPL_LOG_APPL_REDO_PARA, "Scal_repl_log_appl_redo_para"),
-  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_SC_REPL_LOG_APPL_REDO_SYNC, "Scal_repl_log_appl_redo_sync"),
+  /* perf data for actually applying the log redo; it is relevant in two contexts:
+   *  - log recovery redo after a crash (either synchronously or using the parallel
+   *    infrastructure)
+   *  - log replication on the page server (either sync on in parallel) */
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_SC_REC_AND_REPL_LOG_REDO, "Scal_rec_and_repl_log_redo"),
 
   /* Array type statistics */
   PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_FIX_COUNTERS, "Num_data_page_fix_ext", &f_dump_in_file_Num_data_page_fix_ext,

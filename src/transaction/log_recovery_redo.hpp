@@ -23,6 +23,7 @@
 #include "log_record.hpp"
 #include "log_recovery.h"
 #include "page_buffer.h"
+#include "perf_monitor.hpp"
 #include "scope_exit.hpp"
 #include "system_parameter.h"
 #include "type_helper.hpp"
@@ -546,6 +547,8 @@ void log_rv_redo_record_sync (THREAD_ENTRY *thread_p, log_reader &log_pgptr_read
   // the lsa is ever-increasing, thus, not altering the order in which it has been added to the log in the first place
   log_Gl_recovery_redo_consistency_check.check (rcv_vpid, rcv_lsa);
 #endif
+
+  perfmon_tracker_counter_timer perfmon { PSTAT_SC_REC_AND_REPL_LOG_REDO, true };
 
   const LOG_DATA &log_data = log_rv_get_log_rec_data<T> (log_rec);
 
