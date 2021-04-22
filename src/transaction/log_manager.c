@@ -8129,6 +8129,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 		    case LOG_DUMMY_HA_SERVER_STATE:
 		    case LOG_DUMMY_OVF_RECORD:
 		    case LOG_DUMMY_GENERIC:
+		    case LOG_SUPPLEMENT_TRAN_USER:
 		      break;
 
 		    case LOG_POSTPONE:
@@ -8184,7 +8185,6 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 		    case LOG_2PC_COMMIT_INFORM_PARTICPS:
 		    case LOG_2PC_RECV_ACK:
 		    case LOG_DUMMY_CRASH_RECOVERY:
-		    case LOG_SUPPLEMENT_TRAN_USER:
 		    case LOG_SMALLER_LOGREC_TYPE:
 		    case LOG_LARGER_LOGREC_TYPE:
 		    default:
