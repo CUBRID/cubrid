@@ -40,8 +40,12 @@ jobs:
       MAKEFLAGS: -j2
     
     steps:
-      - checkout:
-          path: cubrid
+      - checkout
+      - run:
+          name: Submodules
+          command: |
+            git submodule sync
+            git submodule update --init
       - run:
           name: Build
           command: scl enable devtoolset-8 -- /entrypoint.sh build
