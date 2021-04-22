@@ -181,7 +181,7 @@ extern int file_alloc_multiple (THREAD_ENTRY * thread_p, const VFID * vfid, FILE
 extern int file_alloc_sticky_first_page (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_init,
 					 void *f_init_args, VPID * vpid_out, PAGE_PTR * page_out);
 extern int file_get_sticky_first_page (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * vpid_out);
-extern int file_rv_set_tde_algorithm (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_set_tde_algorithm (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
 extern int file_get_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, PGBUF_LATCH_CONDITION fix_head_cond,
 				   TDE_ALGORITHM * tde_algo);
 extern int file_apply_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, const TDE_ALGORITHM tde_algo);
@@ -227,31 +227,31 @@ extern int file_descriptor_dump (THREAD_ENTRY * thread_p, const VFID * vfid, FIL
 extern const char *file_type_to_string (FILE_TYPE fstruct_type);
 
 /* Recovery stuff */
-extern int file_rv_destroy (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int file_rv_perm_expand_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int file_rv_perm_expand_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int file_rv_partsect_set (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int file_rv_partsect_clear (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int file_rv_extdata_set_next (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int file_rv_extdata_add (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int file_rv_extdata_remove (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int file_rv_fhead_set_last_user_page_ftab (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int file_rv_fhead_alloc (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int file_rv_fhead_dealloc (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int file_rv_fhead_convert_ftab_to_user_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int file_rv_fhead_convert_user_to_ftab_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int file_rv_user_page_mark_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int file_rv_user_page_unmark_delete_logical (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int file_rv_user_page_unmark_delete_physical (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int file_rv_extdata_merge (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int file_rv_dealloc_on_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int file_rv_dealloc_on_postpone (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int file_rv_header_update_mark_deleted (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int file_rv_fhead_sticky_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int file_rv_tracker_unregister_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int file_rv_tracker_mark_heap_deleted (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is_undo);
-extern int file_rv_tracker_mark_heap_deleted_compensate_or_run_postpone (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int file_rv_tracker_reuse_heap (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_destroy (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
+extern int file_rv_perm_expand_redo (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
+extern int file_rv_perm_expand_undo (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
+extern int file_rv_partsect_set (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
+extern int file_rv_partsect_clear (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
+extern int file_rv_extdata_set_next (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
+extern int file_rv_extdata_add (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
+extern int file_rv_extdata_remove (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
+extern int file_rv_fhead_set_last_user_page_ftab (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
+extern int file_rv_fhead_alloc (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
+extern int file_rv_fhead_dealloc (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
+extern int file_rv_fhead_convert_ftab_to_user_page (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
+extern int file_rv_fhead_convert_user_to_ftab_page (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
+extern int file_rv_user_page_mark_delete (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
+extern int file_rv_user_page_unmark_delete_logical (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
+extern int file_rv_user_page_unmark_delete_physical (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
+extern int file_rv_extdata_merge (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
+extern int file_rv_dealloc_on_undo (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
+extern int file_rv_dealloc_on_postpone (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
+extern int file_rv_header_update_mark_deleted (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
+extern int file_rv_fhead_sticky_page (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
+extern int file_rv_tracker_unregister_undo (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
+extern int file_rv_tracker_mark_heap_deleted (THREAD_ENTRY * thread_p, const LOG_RCV * rcv, bool is_undo);
+extern int file_rv_tracker_mark_heap_deleted_compensate_or_run_postpone (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
+extern int file_rv_tracker_reuse_heap (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
 
 /* Recovery dump stuff */
 extern void file_rv_dump_vfid_and_vpid (FILE * fp, int length, void *data);

@@ -50,11 +50,11 @@ extern int overflow_get_capacity (THREAD_ENTRY * thread_p, const VPID * ovf_vpid
 #if defined (CUBRID_DEBUG)
 extern int overflow_dump (THREAD_ENTRY * thread_p, FILE * fp, VPID * ovf_vpid);
 #endif
-extern int overflow_rv_newpage_insert_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int overflow_rv_newpage_link_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int overflow_rv_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int overflow_rv_newpage_insert_redo (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
+extern int overflow_rv_newpage_link_undo (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
+extern int overflow_rv_link (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
 extern void overflow_rv_link_dump (FILE * fp, int length_ignore, void *data);
-extern int overflow_rv_page_update_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int overflow_rv_page_update_redo (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
 extern void overflow_rv_page_dump (FILE * fp, int length, void *data);
 extern char *overflow_get_first_page_data (char *page_ptr);
 #endif /* _OVERFLOW_FILE_H_ */
