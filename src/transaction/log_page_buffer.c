@@ -1955,6 +1955,7 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
     }
 
 #if defined(SERVER_MODE)
+  // *INDENT-OFF*
   if (get_server_type () == SERVER_TYPE_TRANSACTION && ats_Gl.get_log_page_receiver ().is_page_requested (pageid))
     {
       // wait for answer.
@@ -1963,6 +1964,7 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
       // Sould be the same.
       assert (*log_page == *log_pgptr);
     }
+  // *INDENT-ON*
 #endif // SERVER_MODE
 
   stat_page_found = PERF_PAGE_MODE_OLD_LOCK_WAIT;
@@ -1997,6 +1999,7 @@ static void
 request_log_page_from_ps (LOG_PAGEID log_pageid)
 {
 #if defined(SERVER_MODE)
+  // *INDENT-OFF*
   constexpr size_t BIG_INT_SIZE = 8;
   char buffer[BIG_INT_SIZE];
   std::memcpy (buffer, &log_pageid, sizeof (log_pageid));
@@ -2009,6 +2012,7 @@ request_log_page_from_ps (LOG_PAGEID log_pageid)
     {
       _er_log_debug (ARG_FILE_LINE, "Sent request for log to Page Server. Page ID: %lld \n", log_pageid);
     }
+  // *INDENT-ON*
 #endif // SERVER_MODE
 }
 
