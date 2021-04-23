@@ -5267,7 +5267,6 @@ qfile_print_list_cache_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *ke
 	   ent->list_id.temp_vfid.volid);
 
 #if defined(SERVER_MODE)
-  fprintf (fp, "  uncommitted_marker = %s\n", (ent->uncommitted_marker) ? "true" : "false");
   fprintf (fp, "  tran_isolation = %d\n", ent->tran_isolation);
   fprintf (fp, "  tran_index_array = [");
 
