@@ -879,7 +879,7 @@ css_master_accept (SOCKET sockfd)
  *       the new socket fd
  */
 bool
-css_tcp_setup_server_datagram (char *pathname, SOCKET * sockfd)
+css_tcp_setup_server_datagram (const char *pathname, SOCKET * sockfd)
 {
   int servlen;
   struct sockaddr_un serv_addr;
