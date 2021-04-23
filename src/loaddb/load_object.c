@@ -486,11 +486,11 @@ start:
       va_end (ap);
     }
 
-  if (nbytes > 0 && buf != NULL)
+  if (nbytes > 0)
     {
       if (nbytes < size)
 	{			/* OK */
-	  if (buflen > 0)
+	  if (buflen > 0 && buf != NULL)
 	    {			/* unformatted print */
 	      memcpy (tout->ptr, buf, buflen);
 	      *(tout->ptr + buflen) = '\0';	/* Null terminate */
