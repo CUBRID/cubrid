@@ -10004,7 +10004,8 @@ fileio_get_next_restore_file (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * s
       /* replace filename with the databases.txt info */
       if ((session_p->dbfile.volid == LOG_DBLOG_BKUPINFO_VOLID) || (session_p->dbfile.volid == LOG_DBLOG_INFO_VOLID)
 	  || (session_p->dbfile.volid == LOG_DBLOG_ARCHIVE_VOLID)
-	  || (session_p->dbfile.volid == LOG_DBLOG_ACTIVE_VOLID))
+	  || (session_p->dbfile.volid == LOG_DBLOG_ACTIVE_VOLID)
+	  || (session_p->dbfile.volid == LOG_DBLOG_METAINFO_VOLID))
 	{
 	  sprintf (file_name_p, "%s%c%s", session_p->bkup.log_path, PATH_SEPARATOR,
 		   fileio_get_base_file_name (file_header_p->vlabel));
