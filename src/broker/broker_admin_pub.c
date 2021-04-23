@@ -2009,7 +2009,7 @@ admin_conf_change (int master_shm_id, const char *br_name, const char *conf_name
       br_info_p->jdbc_cache = val;
       shm_as_p->jdbc_cache = val;
     }
-  else if (strcasecmp (conf_name, "JDBC_CACHE_ONLY_HINT") == 0)
+  else if (strcasecmp (conf_name, "JDBC_CACHE_HINT_ONLY") == 0)
     {
       int val;
 
