@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. 
+ * Copyright (C) 2008 Search Solution Corporation.
  * Copyright (c) 2016 CUBRID Corporation.
  *
  * Redistribution and use in source and binary forms, with or without modification,
@@ -39,120 +39,125 @@ import java.net.URLClassLoader;
 import java.util.HashMap;
 
 public class StoredProcedureClassLoader extends URLClassLoader {
-	private static volatile StoredProcedureClassLoader instance = null;
+    private static volatile StoredProcedureClassLoader instance = null;
 
-	private HashMap<String, Long> files = new HashMap<String, Long>();
+    private HashMap<String, Long> files = new HashMap<String, Long>();
 
-	private File root;
+    private File root;
 
-	private StoredProcedureClassLoader() {
-		super(new URL[0]);
-		init();
-	}
+    private StoredProcedureClassLoader() {
+        super(new URL[0]);
+        init();
+    }
 
-	private void init() {
-		root = new File(Server.getSpPath() + "/java");
-		initJars();
-		initClasses();
-	}
+    private void init() {
+        root = new File(Server.getSpPath() + "/java");
+        initJars();
+        initClasses();
+    }
 
-	private void initJars() {
-		File[] jars = root.listFiles(new FileFilter() {
-			public boolean accept(File f) {
-				return isJarFile(f);
+    private void initJars() {
+        File[] jars =
+                root.listFiles(
+                        new FileFilter() {
+                            public boolean accept(File f) {
+                                return isJarFile(f);
+                            }
+                        });
 
-			}
-		});
+        if (jars == null) {
+            return;
+        }
 
-		if (jars == null) {
-			return;
-		}
+        for (int i = 0; i < jars.length; i++) {
+            files.put(jars[i].getName(), jars[i].lastModified());
+        }
 
-		for (int i = 0; i < jars.length; i++) {
-			files.put(jars[i].getName(), jars[i].lastModified());
-		}
+        try {
+            addURL(root.toURI().toURL());
+            for (int i = 0; i < jars.length; i++) {
+                addURL(jars[i].toURI().toURL());
+            }
+        } catch (MalformedURLException e) {
+            Server.log(e);
+        }
+    }
 
-		try {
-			addURL(root.toURI().toURL());
-			for (int i = 0; i < jars.length; i++) {
-				addURL(jars[i].toURI().toURL());
-			}
-		} catch (MalformedURLException e) {
-			Server.log(e);
-		}
-	}
+    private void initClasses() {
+        File[] classes =
+                root.listFiles(
+                        new FileFilter() {
+                            public boolean accept(File f) {
+                                return isClassFile(f);
+                            }
+                        });
 
-	private void initClasses() {
-		File[] classes = root.listFiles(new FileFilter() {
-			public boolean accept(File f) {
-				return isClassFile(f);
-			}
-		});
+        if (classes == null) {
+            return;
+        }
 
-		if (classes == null) {
-			return;
-		}
+        for (int i = 0; i < classes.length; i++) {
+            files.put(classes[i].getName(), classes[i].lastModified());
+        }
+    }
 
-		for (int i = 0; i < classes.length; i++) {
-			files.put(classes[i].getName(), classes[i].lastModified());
-		}
-	}
+    public Class<?> loadClass(String name) throws ClassNotFoundException {
+        if (!modified()) {
+            return super.loadClass(name);
+        }
 
-	public Class<?> loadClass(String name) throws ClassNotFoundException {
-		if (!modified()) {
-			return super.loadClass(name);
-		}
+        instance = new StoredProcedureClassLoader();
+        return instance.loadClass(name);
+    }
 
-		instance = new StoredProcedureClassLoader();
-		return instance.loadClass(name);
-	}
+    private boolean modified() {
+        File[] files =
+                root.listFiles(
+                        new FileFilter() {
+                            public boolean accept(File f) {
+                                return isJarFile(f) || isClassFile(f);
+                            }
+                        });
 
-	private boolean modified() {
-		File[] files = root.listFiles(new FileFilter() {
-			public boolean accept(File f) {
-				return isJarFile(f) || isClassFile(f);
-			}
-		});
+        if (files == null) {
+            return !this.files.isEmpty();
+        }
 
-		if (files == null) {
-			return !this.files.isEmpty();
-		}
+        if (this.files.size() != files.length) {
+            return true;
+        }
 
-		if (this.files.size() != files.length) {
-			return true;
-		}
+        for (int i = 0; i < files.length; i++) {
+            if (!this.files.containsKey(files[i].getName())) {
+                return true;
+            }
 
-		for (int i = 0; i < files.length; i++) {
-			if (!this.files.containsKey(files[i].getName())) {
-				return true;
-			}
+            long l = this.files.get(files[i].getName());
+            if (files[i].lastModified() != l) {
+                return true;
+            }
+        }
 
-			long l = this.files.get(files[i].getName());
-			if (files[i].lastModified() != l) {
-				return true;
-			}
-		}
+        return false;
+    }
 
-		return false;
-	}
+    public static StoredProcedureClassLoader getInstance() {
+        if (instance == null) {
+            synchronized (StoredProcedureClassLoader.class) {
+                if (instance == null) {
+                    instance = new StoredProcedureClassLoader();
+                }
+            }
+        }
 
-	public static StoredProcedureClassLoader getInstance() {
-		if (instance == null) {
-			synchronized (StoredProcedureClassLoader.class) {
-				if (instance == null) {
-					instance = new StoredProcedureClassLoader();
-				}
-			}
-		}
+        return instance;
+    }
 
-		return instance;
-	}
+    private boolean isJarFile(File f) {
+        return f.getName().lastIndexOf(".jar") > 0;
+    }
 
-	private boolean isJarFile(File f) {
-		return f.getName().lastIndexOf(".jar") > 0;
-	}
-
-	private boolean isClassFile(File f) {
-		return f.getName().lastIndexOf(".class") > 0;
-	}
+    private boolean isClassFile(File f) {
+        return f.getName().lastIndexOf(".class") > 0;
+    }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. 
+ * Copyright (C) 2008 Search Solution Corporation.
  * Copyright (c) 2016 CUBRID Corporation.
  *
  * Redistribution and use in source and binary forms, with or without modification,
@@ -32,21 +32,21 @@
 package com.cubrid.jsp.exception;
 
 public class ExecuteException extends Exception {
-    	private static final long serialVersionUID = -8286926436211901696L;
+    private static final long serialVersionUID = -8286926436211901696L;
 
-	public ExecuteException() {
-		super();
-	}
+    public ExecuteException() {
+        super();
+    }
 
-	public ExecuteException(String message) {
-		super(message);
-	}
+    public ExecuteException(String message) {
+        super(message);
+    }
 
-	public ExecuteException(Throwable cause) {
-		super(cause);
-	}
+    public ExecuteException(Throwable cause) {
+        super(cause);
+    }
 
-	public ExecuteException(String message, Throwable cause) {
-		super(message, cause);
-	}
+    public ExecuteException(String message, Throwable cause) {
+        super(message, cause);
+    }
 }

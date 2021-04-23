@@ -41,8 +41,12 @@ jobs:
       BUILD_DIR_NAME: build_x86_64_release
     
     steps:
-      - checkout:
-          path: cubrid
+      - checkout
+      - run:
+          name: Submodules
+          command: |
+            git submodule sync
+            git submodule update --init
       - run:
           name: Build
           command: scl enable devtoolset-8 -- /entrypoint.sh build -b ${BUILD_DIR_NAME} -c -DUNIT_TESTS=ON

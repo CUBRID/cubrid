@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. 
+ * Copyright (C) 2008 Search Solution Corporation.
  * Copyright (c) 2016 CUBRID Corporation.
  *
  * Redistribution and use in source and binary forms, with or without modification,
@@ -31,22 +31,22 @@
 package com.cubrid.jsp;
 
 public enum ExecuteThreadStatus {
-	
-	IDLE (0),
-	PARSE (1),
-	INVOKE (2),
-	CALL (3),
-	RESULT (4),
-	DESTROY (5),
-	ERROR (-1),
-	END (-2);
-	
-	private int status;
-	ExecuteThreadStatus(int status) {
-		this.status = status;
-	}
-	
-	public int getValue() {
-		return this.status;
-	}
+    IDLE(0),
+    PARSE(1),
+    INVOKE(2),
+    CALL(3),
+    RESULT(4),
+    DESTROY(5),
+    ERROR(-1),
+    END(-2);
+
+    private int status;
+
+    ExecuteThreadStatus(int status) {
+        this.status = status;
+    }
+
+    public int getValue() {
+        return this.status;
+    }
 }

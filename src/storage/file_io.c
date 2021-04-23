@@ -1499,7 +1499,7 @@ fileio_lock_la_log_path (const char *db_full_name_p, const char *lock_path_p, in
 	  *last_deleted_arv_num = -1;
 	}
 
-      lseek (vol_fd, (off_t) 0, SEEK_SET);
+      fseek (fp, 0, SEEK_SET);
 
       if (GETHOSTNAME (host, CUB_MAXHOSTNAMELEN) != 0)
 	{
