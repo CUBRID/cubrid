@@ -40,6 +40,7 @@ namespace cublog
 
     private:
       cubthread::entry_workpool *m_threads = nullptr;
+      std::unique_ptr<cubthread::entry_manager> m_worker_pool_context_manager;
   };
 
 }

@@ -397,11 +397,14 @@ namespace cublog
    * redo_parallel - definition
    *********************************************************************/
 
-  redo_parallel::redo_parallel (unsigned a_worker_count)
-    : m_worker_pool (nullptr), m_waited_for_termination (false)
+  redo_parallel::redo_parallel (unsigned a_worker_count,
+				std::unique_ptr<cubthread::entry_manager> &&a_pool_context_manager)
+    : m_task_count { a_worker_count }
+    , m_pool_context_manager { std::move (a_pool_context_manager) }
+    , m_worker_pool (nullptr)
+    , m_waited_for_termination (false)
   {
     assert (a_worker_count > 0);
-    m_task_count = a_worker_count;
 
     do_init_worker_pool ();
     do_init_tasks ();
@@ -476,7 +479,8 @@ namespace cublog
     cubthread::manager *thread_manager = cubthread::get_manager ();
 
     m_worker_pool = thread_manager->create_worker_pool (m_task_count, m_task_count, "log_recovery_redo_thread_pool",
-		    nullptr, m_task_count, false /*debug_logging*/);
+		    m_pool_context_manager.get (),
+		    m_task_count, false /*debug_logging*/);
   }
 
   void

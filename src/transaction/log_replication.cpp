@@ -41,6 +41,11 @@ namespace cublog
     log_zip_realloc_if_needed (m_undo_unzip, LOGAREA_SIZE);
     log_zip_realloc_if_needed (m_redo_unzip, LOGAREA_SIZE);
 
+    // in case replication is applied synchronously, the perf subsystem needs
+    // to have a non-negative transation index on all threads
+    cubthread::entry &thread_entry = cubthread::get_entry ();
+    thread_entry.tran_index = LOG_SYSTEM_TRAN_INDEX;
+
     // depending on parameter, instantiate the mechanism to execute replication in parallel
     // mandatory to initialize before daemon such that:
     //  - race conditions, when daemon comes online, are avoided
@@ -51,7 +56,14 @@ namespace cublog
     assert (replication_parallel >= 0);
     if (replication_parallel > 0)
       {
-	m_parallel_replication_redo.reset (new cublog::redo_parallel (replication_parallel));
+	std::unique_ptr<cubthread::entry_manager> replication_thread_pool_context_manager
+	{
+	  new cubthread::system_worker_entry_manager (TT_REPLICATION, LOG_SYSTEM_TRAN_INDEX)
+	};
+
+	m_parallel_replication_redo.reset (
+		new cublog::redo_parallel (replication_parallel,
+					   std::move (replication_thread_pool_context_manager)));
       }
 
     // Create the daemon
@@ -283,7 +295,7 @@ namespace cublog
       {
 	const int64_t end_time_msec = util_get_time_as_ms_since_epoch ();
 	const int64_t time_diff_msec = end_time_msec - a_start_time_msec;
-	assert(time_diff_msec > 0);
+	assert (time_diff_msec > 0);
 
 	perfmon_set_stat (thread_p, PSTAT_SC_REPL_DELAY, static_cast<int> (time_diff_msec), false);
 
