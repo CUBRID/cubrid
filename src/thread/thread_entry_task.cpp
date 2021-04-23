@@ -118,4 +118,26 @@ namespace cubthread
     on_daemon_retire (context);
   }
 
+  system_worker_entry_manager::system_worker_entry_manager (
+	  thread_type a_thread_type, int a_tran_index)
+    : m_thread_type { a_thread_type }
+    , m_tran_index { a_tran_index }
+  {
+  }
+
+  void
+  system_worker_entry_manager::on_create (entry &context)
+  {
+    context.type = m_thread_type;
+    context.tran_index = m_tran_index;
+  }
+
+  void
+  system_worker_entry_manager::on_recycle (entry &context)
+  {
+    // thread type is 'not' reset in the parent, checked here
+    assert (context.type == m_thread_type);
+    // transaction index is reset in parent
+    context.tran_index = LOG_SYSTEM_TRAN_INDEX;
+  }
 } // namespace cubthread
