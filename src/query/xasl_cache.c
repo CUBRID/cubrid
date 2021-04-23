@@ -849,7 +849,6 @@ xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, const XASL_CAC
 	    {
 	      /* We need to recompile. */
 	      /* and we need to clear the list cache entry first */
-	      qfile_clear_list_cache (thread_p, (*xcache_entry)->list_ht_no);
 	      xcache_unfix (thread_p, *xcache_entry);
 	      *xcache_entry = NULL;
 	      if (search_mode == XASL_CACHE_SEARCH_FOR_EXECUTE)
@@ -1156,6 +1155,9 @@ xcache_unfix (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry)
 	{
 	  xcache_clone_decache (thread_p, &xcache_entry->cache_clones[--xcache_entry->n_cache_clones]);
 	}
+
+      /* need to clear list-cache first */
+      (void) qfile_clear_list_cache (thread_p, xcache_entry->list_ht_no);
 
       if (!xcache_Hashmap.erase (thread_p, xcache_entry->xasl_id))
 	{
