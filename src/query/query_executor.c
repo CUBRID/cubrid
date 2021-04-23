@@ -6724,6 +6724,23 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 			       curr_spec->s.dblink_node.conn_user,
 			       curr_spec->s.dblink_node.conn_password,
 			       curr_spec->s.dblink_node.conn_sql, curr_spec->s.dblink_node.regu_list_p);
+#if defined(SUPPORT_CUBLINK)
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit_on_error;
+	}
+
+      /* CUBLINK(..., "SELECT <result columns part> FROM ...") AS tnmae( <alias columns part> )
+       ** s_id->s.dblid.scan_buf.col_cnt is the number of elements in the list <result columns part>.
+       ** val_list->val_cnt is the number of elements in the list <alias columns part>.             */
+      if (val_list->val_cnt < s_id->s.dblid.scan_buf.col_cnt || s_id->s.dblid.scan_buf.col_cnt <= 0)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+	  error_code = ER_QPROC_INVALID_XASLNODE;
+	  goto exit_on_error;
+	}
+#endif
       break;
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);

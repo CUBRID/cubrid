@@ -209,14 +209,22 @@ dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_BUFFER * scan_buffer_p,
 
   if (scan_buffer_p->conn_handle < 0)
     {
+#if defined(SUPPORT_CUBLINK)
+      return err_buf.err_code;;
+#else
       error = err_buf.err_code;
+#endif
     }
   else
     {
       scan_buffer_p->stmt_handle = cci_prepare_and_execute (scan_buffer_p->conn_handle, sql_text, 0, &ret, &err_buf);
       if (ret < 0)
 	{
+#if defined(SUPPORT_CUBLINK)
+	  return err_buf.err_code;;
+#else
 	  error = err_buf.err_code;
+#endif
 	}
       else
 	{
@@ -224,7 +232,11 @@ dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_BUFFER * scan_buffer_p,
 								  &stmt_type, &scan_buffer_p->col_cnt);
 	  if (scan_buffer_p->col_info == NULL)
 	    {
+#if defined(SUPPORT_CUBLINK)
+	      return S_ERROR;
+#else
 	      error = S_ERROR;
+#endif
 	    }
 	}
     }
@@ -285,8 +297,8 @@ dblink_scan_next (THREAD_ENTRY * thread_p, DBLINK_SCAN_BUFFER * scan_buffer_p, R
       for (valptrp = regu_list_p, col_no = 1; col_no <= col_cnt; col_no++, valptrp = valptrp->next)
 	{
 	  valptrp->value.vfetch_to->domain.general_info.is_null = 0;
-	  value = valptrp->value.vfetch_to->data.p;
 	  utype = dblink_get_basic_utype (CCI_GET_RESULT_INFO_TYPE (scan_buffer_p->col_info, col_no));
+	  value = &valptrp->value.vfetch_to->data;
 	  switch (utype)
 	    {
 	    case CCI_U_TYPE_NULL:
@@ -297,8 +309,7 @@ dblink_scan_next (THREAD_ENTRY * thread_p, DBLINK_SCAN_BUFFER * scan_buffer_p, R
 	    case CCI_U_TYPE_FLOAT:
 	    case CCI_U_TYPE_DOUBLE:
 	    case CCI_U_TYPE_MONETARY:
-	      value = valptrp->value.vfetch_to->data.p;
-	      if (cci_get_data (scan_buffer_p->stmt_handle, col_no, type_map[utype], &value, &ind) < 0)
+	      if (cci_get_data (scan_buffer_p->stmt_handle, col_no, type_map[utype], value, &ind) < 0)
 		{
 		  scan_result = S_ERROR;
 		}
