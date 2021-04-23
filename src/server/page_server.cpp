@@ -93,8 +93,8 @@ void page_server::receive_log_page_fetch (cubpacking::unpacker &upk)
   std::string message;
 
   upk.unpack_string (message);
-  std::memcpy (&pageid, message.c_str (), sizeof (pageid));
   assert (message.size () == sizeof (pageid));
+  std::memcpy (&pageid, message.c_str (), sizeof (pageid));
 
   if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
     {
