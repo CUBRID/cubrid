@@ -684,7 +684,7 @@ STATIC_INLINE int file_partsect_pageid_to_offset (FILE_PARTIAL_SECTOR * partsect
 STATIC_INLINE bool file_partsect_alloc (FILE_PARTIAL_SECTOR * partsect,
 					VPID * vpid_out, int *offset_out) __attribute__ ((ALWAYS_INLINE));
 
-static int file_rv_partsect_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool set);
+static int file_rv_partsect_update (THREAD_ENTRY * thread_p, const LOG_RCV * rcv, bool set);
 
 /************************************************************************/
 /* Utility functions.                                                   */
@@ -721,7 +721,7 @@ static int file_perm_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_A
 			    VPID * vpid_alloc_out);
 static int file_perm_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPID * vpid_dealloc,
 			      FILE_ALLOC_TYPE alloc_type);
-static int file_rv_dealloc_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool compensate_or_run_postpone);
+static int file_rv_dealloc_internal (THREAD_ENTRY * thread_p, const LOG_RCV * rcv, bool compensate_or_run_postpone);
 
 STATIC_INLINE int file_create_temp_internal (THREAD_ENTRY * thread_p, int npages, FILE_TYPE ftype, bool is_numerable,
 					     VFID * vfid_out) __attribute__ ((ALWAYS_INLINE));
@@ -1053,7 +1053,7 @@ exit:
  * rcv (in)	 : Recovery data
  */
 int
-file_rv_fhead_set_last_user_page_ftab (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+file_rv_fhead_set_last_user_page_ftab (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   PAGE_PTR page_fhead = rcv->pgptr;
   VPID *vpid = (VPID *) rcv->data;
@@ -1162,7 +1162,7 @@ file_header_dealloc (FILE_HEADER * fhead, FILE_ALLOC_TYPE alloc_type, bool is_em
  * rcv (in)	 : Recovery data
  */
 int
-file_rv_fhead_alloc (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+file_rv_fhead_alloc (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   PAGE_PTR page_fhead = rcv->pgptr;
   FILE_HEADER *fhead;
@@ -1200,7 +1200,7 @@ file_rv_fhead_alloc (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * rcv (in)	 : Recovery data
  */
 int
-file_rv_fhead_dealloc (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+file_rv_fhead_dealloc (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   PAGE_PTR page_fhead = rcv->pgptr;
   FILE_HEADER *fhead;
@@ -1341,7 +1341,7 @@ file_header_update_mark_deleted (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, i
  * rcv (in)	 : Recovery data
  */
 int
-file_rv_header_update_mark_deleted (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+file_rv_header_update_mark_deleted (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   int delta = *(int *) rcv->data;
   PAGE_PTR page_fhead = rcv->pgptr;
@@ -2164,7 +2164,7 @@ file_extdata_find_not_full (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA ** ext
  * rcv (in)	 : Recovery data.
  */
 int
-file_rv_extdata_set_next (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+file_rv_extdata_set_next (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   PAGE_PTR page_ftab = rcv->pgptr;
   VPID *vpid_next = (VPID *) rcv->data;
@@ -2209,7 +2209,7 @@ file_rv_dump_extdata_set_next (FILE * fp, int ignore_length, void *data)
  * rcv (in)	 : Recovery data
  */
 int
-file_rv_extdata_add (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+file_rv_extdata_add (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   PAGE_PTR page_ftab = rcv->pgptr;
   FILE_EXTENSIBLE_DATA *extdata = NULL;
@@ -2246,7 +2246,7 @@ file_rv_extdata_add (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * rcv (in)	 : Recovery data
  */
 int
-file_rv_extdata_remove (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+file_rv_extdata_remove (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   PAGE_PTR page_ftab = rcv->pgptr;
   FILE_EXTENSIBLE_DATA *extdata = NULL;
@@ -2432,7 +2432,7 @@ file_log_extdata_set_next (THREAD_ENTRY * thread_p, const FILE_EXTENSIBLE_DATA *
  * rcv (in)	 : Recovery data
  */
 int
-file_rv_extdata_merge (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+file_rv_extdata_merge (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   FILE_EXTENSIBLE_DATA *extdata_in_page;
   FILE_EXTENSIBLE_DATA *extdata_in_rcv;
@@ -2876,7 +2876,7 @@ file_partsect_alloc (FILE_PARTIAL_SECTOR * partsect, VPID * vpid_out, int *offse
  * set (in)	 : True if bit should be set, false if bit should be cleared
  */
 static int
-file_rv_partsect_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool set)
+file_rv_partsect_update (THREAD_ENTRY * thread_p, const LOG_RCV * rcv, bool set)
 {
   PAGE_PTR page_ftab = rcv->pgptr;
   FILE_PARTIAL_SECTOR *partsect;
@@ -2917,7 +2917,7 @@ file_rv_partsect_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool set)
  * rcv (in)	 : Recovery data
  */
 int
-file_rv_partsect_set (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+file_rv_partsect_set (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   return file_rv_partsect_update (thread_p, rcv, true);
 }
@@ -2930,7 +2930,7 @@ file_rv_partsect_set (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * rcv (in)	 : Recovery data
  */
 int
-file_rv_partsect_clear (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+file_rv_partsect_clear (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   return file_rv_partsect_update (thread_p, rcv, false);
 }
@@ -4230,7 +4230,7 @@ exit:
  *	    with a commit and run postpone (of course).
  */
 int
-file_rv_destroy (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+file_rv_destroy (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   VFID *vfid = (VFID *) rcv->data;
   int error_code = NO_ERROR;
@@ -4384,7 +4384,7 @@ file_temp_retire_internal (THREAD_ENTRY * thread_p, const VFID * vfid, bool was_
  * rcv (in)	 : Recovery data
  */
 int
-file_rv_perm_expand_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+file_rv_perm_expand_undo (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   PAGE_PTR page_fhead = rcv->pgptr;
   FILE_HEADER *fhead;
@@ -4433,7 +4433,7 @@ file_rv_perm_expand_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * rcv (in)	 : Recovery data
  */
 int
-file_rv_perm_expand_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+file_rv_perm_expand_redo (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   PAGE_PTR page_fhead = rcv->pgptr;
   FILE_HEADER *fhead;
@@ -4783,7 +4783,7 @@ exit:
  * rcv (in)      : recovery data
  */
 int
-file_rv_fhead_convert_ftab_to_user_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+file_rv_fhead_convert_ftab_to_user_page (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   FILE_HEADER *fhead = (FILE_HEADER *) rcv->pgptr;
 
@@ -4803,7 +4803,7 @@ file_rv_fhead_convert_ftab_to_user_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * rcv (in)      : recovery data
  */
 int
-file_rv_fhead_convert_user_to_ftab_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+file_rv_fhead_convert_user_to_ftab_page (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   FILE_HEADER *fhead = (FILE_HEADER *) rcv->pgptr;
 
@@ -5601,7 +5601,7 @@ exit:
  * rcv (in)      : Recovery data
  */
 int
-file_rv_fhead_sticky_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+file_rv_fhead_sticky_page (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   PAGE_PTR page_fhead = rcv->pgptr;
   FILE_HEADER *fhead = (FILE_HEADER *) page_fhead;
@@ -5721,7 +5721,7 @@ file_set_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, TDE_ALGORITH
  *
  */
 int
-file_rv_set_tde_algorithm (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+file_rv_set_tde_algorithm (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   PAGE_PTR page_fhead = rcv->pgptr;
   FILE_HEADER *fhead = (FILE_HEADER *) page_fhead;
@@ -6469,7 +6469,7 @@ exit:
  * compensate_or_run_postpone (in) : Compensate if this is called for undo, run postpone if this is called for postpone.
  */
 static int
-file_rv_dealloc_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool compensate_or_run_postpone)
+file_rv_dealloc_internal (THREAD_ENTRY * thread_p, const LOG_RCV * rcv, bool compensate_or_run_postpone)
 {
   VPID vpid_fhead;
   PAGE_PTR page_fhead = NULL;
@@ -6611,7 +6611,7 @@ exit:
  * rcv (in)	 : Recovery data
  */
 int
-file_rv_dealloc_on_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+file_rv_dealloc_on_undo (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   file_log ("file_rv_dealloc_on_undo", "lsa = %lld|%d", LSA_AS_ARGS (&rcv->reference_lsa));
 
@@ -6626,7 +6626,7 @@ file_rv_dealloc_on_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * rcv (in)	 : Recovery data
  */
 int
-file_rv_dealloc_on_postpone (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+file_rv_dealloc_on_postpone (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   file_log ("file_rv_dealloc_on_postpone", "lsa = %lld|%d", LSA_AS_ARGS (&rcv->reference_lsa));
 
@@ -8141,7 +8141,7 @@ exit:
  * rcv (in)	 : Recovery data
  */
 int
-file_rv_user_page_mark_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+file_rv_user_page_mark_delete (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   PAGE_PTR page_ftab = rcv->pgptr;
   VPID *vpid_ptr = NULL;
@@ -8166,7 +8166,7 @@ file_rv_user_page_mark_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * rcv (in)	 : Recovery data
  */
 int
-file_rv_user_page_unmark_delete_logical (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+file_rv_user_page_unmark_delete_logical (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   PAGE_PTR page_fhead;
   PAGE_PTR page_ftab;
@@ -8279,7 +8279,7 @@ exit:
  * rcv (in)	 : Recovery data
  */
 int
-file_rv_user_page_unmark_delete_physical (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+file_rv_user_page_unmark_delete_physical (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   PAGE_PTR page_ftab = rcv->pgptr;
   VPID *vpid_ptr = NULL;
@@ -9888,7 +9888,7 @@ exit:
  * rcv (in)      : recovery data
  */
 int
-file_rv_tracker_unregister_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+file_rv_tracker_unregister_undo (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   PAGE_PTR page_track_head;
   int error_code = NO_ERROR;
@@ -10086,7 +10086,7 @@ exit:
  * rcv (in)      : recovery data
  */
 int
-file_rv_tracker_reuse_heap (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+file_rv_tracker_reuse_heap (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   FILE_EXTENSIBLE_DATA *extdata = NULL;
   FILE_TRACK_ITEM *item = NULL;
@@ -10321,7 +10321,7 @@ file_tracker_item_mark_heap_deleted (THREAD_ENTRY * thread_p, PAGE_PTR page_of_i
  * is_undo (in)  : true if called on undo/rollback, false if called on postpone
  */
 int
-file_rv_tracker_mark_heap_deleted (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is_undo)
+file_rv_tracker_mark_heap_deleted (THREAD_ENTRY * thread_p, const LOG_RCV * rcv, bool is_undo)
 {
   VFID *vfid = (VFID *) rcv->data;
   FILE_TRACK_MARK_HEAP_DELETED_CONTEXT context;
@@ -10352,7 +10352,7 @@ file_rv_tracker_mark_heap_deleted (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool 
  * rcv (in)      : recovery data
  */
 int
-file_rv_tracker_mark_heap_deleted_compensate_or_run_postpone (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+file_rv_tracker_mark_heap_deleted_compensate_or_run_postpone (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   FILE_EXTENSIBLE_DATA *extdata = NULL;
   FILE_TRACK_ITEM *item = NULL;

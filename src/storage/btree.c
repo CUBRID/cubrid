@@ -1560,9 +1560,9 @@ static int btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_
 
 static int btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid, OID * oid,
 				  int op_type, btree_unique_stats * unique_stat_info, int *unique,
-				  BTREE_MVCC_INFO * mvcc_info, LOG_LSA * undo_nxlsa, BTREE_OP_PURPOSE purpose);
+				  BTREE_MVCC_INFO * mvcc_info, const LOG_LSA * undo_nxlsa, BTREE_OP_PURPOSE purpose);
 static int btree_undo_delete_physical (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid, OID * oid,
-				       BTREE_MVCC_INFO * mvcc_info, LOG_LSA * undo_nxlsa);
+				       BTREE_MVCC_INFO * mvcc_info, const LOG_LSA * undo_nxlsa);
 static int btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid_int, DB_VALUE * key,
 				      PAGE_PTR * root_page, bool * is_leaf, BTREE_SEARCH_KEY_HELPER * search_key,
 				      bool * stop, bool * restart, void *other_args);
@@ -1624,7 +1624,8 @@ static void btree_key_record_check_no_visible (THREAD_ENTRY * thread_p, BTID_INT
 static int btree_delete_internal (THREAD_ENTRY * thread_p, BTID * btid, OID * oid, OID * class_oid,
 				  BTREE_MVCC_INFO * mvcc_info, DB_VALUE * key, OR_BUF * buffered_key, int *unique,
 				  int op_type, btree_unique_stats * unique_stat_info, BTREE_MVCC_INFO * match_mvccinfo,
-				  LOG_LSA * undo_nxlsa, BTREE_OBJECT_INFO * second_obj_info, BTREE_OP_PURPOSE purpose);
+				  const LOG_LSA * undo_nxlsa, BTREE_OBJECT_INFO * second_obj_info,
+				  BTREE_OP_PURPOSE purpose);
 static int btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid_int, DB_VALUE * key,
 				      PAGE_PTR * root_page, bool * is_leaf, BTREE_SEARCH_KEY_HELPER * search_key,
 				      bool * stop, bool * restart, void *other_args);
@@ -1679,13 +1680,13 @@ static void btree_record_add_delid (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 				    BTREE_NODE_TYPE node_type, int offset_to_object, MVCCID delete_mvccid,
 				    char **rv_undo_data, char **rv_redo_data);
 static int btree_undo_mvcc_delete (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_key, OID * oid,
-				   OID * class_oid, BTREE_MVCC_INFO * match_mvccinfo, LOG_LSA * undo_nxlsa);
+				   OID * class_oid, BTREE_MVCC_INFO * match_mvccinfo, const LOG_LSA * undo_nxlsa);
 static int btree_undo_insert_object (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_key, OID * oid,
-				     OID * class_oid, MVCCID insert_mvccid, LOG_LSA * undo_nxlsa);
+				     OID * class_oid, MVCCID insert_mvccid, const LOG_LSA * undo_nxlsa);
 static int btree_undo_insert_object_unique_multiupd (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_key,
 						     BTREE_OBJECT_INFO * inserted_object,
 						     BTREE_OBJECT_INFO * second_object, MVCCID insert_mvccid,
-						     LOG_LSA * undo_nxlsa);
+						     const LOG_LSA * undo_nxlsa);
 static int btree_key_remove_delete_mvccid_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 						  BTREE_DELETE_HELPER * delete_helper,
 						  BTREE_SEARCH_KEY_HELPER * search_key, PAGE_PTR leaf_page,
@@ -1709,9 +1710,9 @@ static void btree_record_replace_object (THREAD_ENTRY * thread_p, BTID_INT * bti
 					 BTREE_NODE_TYPE node_type, int *offset_to_replaced,
 					 BTREE_OBJECT_INFO * replacement, char **rv_undo_data, char **rv_redo_data);
 
-static int btree_rv_record_modify_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is_undo);
+static int btree_rv_record_modify_internal (THREAD_ENTRY * thread_p, const LOG_RCV * rcv, bool is_undo);
 static int btree_delete_postponed (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_key,
-				   BTREE_OBJECT_INFO * btree_obj, MVCCID tran_mvccid, LOG_LSA * reference_lsa);
+				   BTREE_OBJECT_INFO * btree_obj, MVCCID tran_mvccid, const LOG_LSA * reference_lsa);
 
 static MVCCID btree_get_creator_mvccid (THREAD_ENTRY * thread_p, PAGE_PTR root_page);
 static int btree_seq_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid, RECDES * ovf_record,
@@ -16921,7 +16922,7 @@ btree_rv_util_dump_nleafrec (THREAD_ENTRY * thread_p, FILE * fp, BTID_INT * btid
  * Note: Recover the in-memory unique statistics.
  */
 int
-btree_rv_update_tran_stats (THREAD_ENTRY * thread_p, LOG_RCV * recv)
+btree_rv_update_tran_stats (THREAD_ENTRY * thread_p, const LOG_RCV * recv)
 {
   char *datap;
   int num_nulls, num_oids, num_keys;
@@ -16965,7 +16966,7 @@ error:
  * Note: Recover the root header statistics for undo purposes.
  */
 int
-btree_rv_roothdr_undo_update (THREAD_ENTRY * thread_p, LOG_RCV * recv)
+btree_rv_roothdr_undo_update (THREAD_ENTRY * thread_p, const LOG_RCV * recv)
 {
   char *datap;
   BTREE_ROOT_HEADER *root_header = NULL;
@@ -17038,7 +17039,7 @@ btree_rv_roothdr_dump (FILE * fp, int length, void *data)
  * Note: Recover the overflow VFID in the root header
  */
 int
-btree_rv_ovfid_undoredo_update (THREAD_ENTRY * thread_p, LOG_RCV * recv)
+btree_rv_ovfid_undoredo_update (THREAD_ENTRY * thread_p, const LOG_RCV * recv)
 {
   VFID ovfid;
   BTREE_ROOT_HEADER *root_header = NULL;
@@ -17095,7 +17096,7 @@ btree_rv_ovfid_dump (FILE * fp, int length, void *data)
  * Note: Recover the update to a node header
  */
 int
-btree_rv_nodehdr_undoredo_update (THREAD_ENTRY * thread_p, LOG_RCV * recv)
+btree_rv_nodehdr_undoredo_update (THREAD_ENTRY * thread_p, const LOG_RCV * recv)
 {
   RECDES rec;
 #if !defined(NDEBUG)
@@ -17141,7 +17142,7 @@ btree_rv_nodehdr_undoredo_update (THREAD_ENTRY * thread_p, LOG_RCV * recv)
  * Note: Recover a node header insertion by reinserting the node header for redo purposes.
  */
 int
-btree_rv_nodehdr_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv)
+btree_rv_nodehdr_redo_insert (THREAD_ENTRY * thread_p, const LOG_RCV * recv)
 {
   RECDES rec;
   int sp_success;
@@ -17174,7 +17175,7 @@ btree_rv_nodehdr_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv)
  * Note: Recover a node header insertion by deletion  the node header for undo purposes.
  */
 int
-btree_rv_nodehdr_undo_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv)
+btree_rv_nodehdr_undo_insert (THREAD_ENTRY * thread_p, const LOG_RCV * recv)
 {
   PGSLOTID pg_slotid;
 
@@ -17196,7 +17197,7 @@ btree_rv_nodehdr_undo_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv)
  * Note: Recover the update to a node record
  */
 int
-btree_rv_noderec_undoredo_update (THREAD_ENTRY * thread_p, LOG_RCV * recv)
+btree_rv_noderec_undoredo_update (THREAD_ENTRY * thread_p, const LOG_RCV * recv)
 {
   RECDES rec;
   INT16 slotid;
@@ -17233,7 +17234,7 @@ btree_rv_noderec_undoredo_update (THREAD_ENTRY * thread_p, LOG_RCV * recv)
  * Note: Recover a node record insertion by reinserting the record for redo purposes
  */
 int
-btree_rv_noderec_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv)
+btree_rv_noderec_redo_insert (THREAD_ENTRY * thread_p, const LOG_RCV * recv)
 {
   RECDES rec;
   INT16 slotid;
@@ -17270,7 +17271,7 @@ btree_rv_noderec_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv)
  * Note: Recover a node record insertion by deleting the record for undo purposes
  */
 int
-btree_rv_noderec_undo_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv)
+btree_rv_noderec_undo_insert (THREAD_ENTRY * thread_p, const LOG_RCV * recv)
 {
   INT16 slotid;
   PGSLOTID pg_slotid;
@@ -17346,7 +17347,7 @@ btree_rv_noderec_dump_slot_id (FILE * fp, int length, void *data)
  * Note: Put a set of records to the page
  */
 int
-btree_rv_pagerec_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv)
+btree_rv_pagerec_insert (THREAD_ENTRY * thread_p, const LOG_RCV * recv)
 {
   RECDES rec;
   RECSET_HEADER *recset_header;
@@ -17409,7 +17410,7 @@ error:
  * Note: Delete a set of records from the page for undo or redo purpose
  */
 int
-btree_rv_pagerec_delete (THREAD_ENTRY * thread_p, LOG_RCV * recv)
+btree_rv_pagerec_delete (THREAD_ENTRY * thread_p, const LOG_RCV * recv)
 {
   RECSET_HEADER *recset_header;
   int i;
@@ -17441,7 +17442,7 @@ btree_rv_pagerec_delete (THREAD_ENTRY * thread_p, LOG_RCV * recv)
  * Note: Initialize a B+tree page.
  */
 int
-btree_rv_newpage_redo_init (THREAD_ENTRY * thread_p, LOG_RCV * recv)
+btree_rv_newpage_redo_init (THREAD_ENTRY * thread_p, const LOG_RCV * recv)
 {
   (void) pgbuf_set_page_ptype (thread_p, recv->pgptr, PAGE_BTREE);
 
@@ -17695,7 +17696,7 @@ btree_rv_read_keybuf_two_objects (THREAD_ENTRY * thread_p, char *datap, int data
  * recv (in)		  : Recovery data.
  */
 int
-btree_rv_keyval_undo_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv)
+btree_rv_keyval_undo_insert (THREAD_ENTRY * thread_p, const LOG_RCV * recv)
 {
   BTID_INT btid;
   BTID sys_btid;
@@ -17749,7 +17750,7 @@ btree_rv_keyval_undo_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv)
  * recv (in)		  : Recovery data.
  */
 int
-btree_rv_keyval_undo_insert_unique (THREAD_ENTRY * thread_p, LOG_RCV * recv)
+btree_rv_keyval_undo_insert_unique (THREAD_ENTRY * thread_p, const LOG_RCV * recv)
 {
   BTID_INT btid;
   BTID sys_btid;
@@ -17800,7 +17801,7 @@ btree_rv_keyval_undo_insert_unique (THREAD_ENTRY * thread_p, LOG_RCV * recv)
  *	 may need to also match the insert MVCCID (if the object was also inserted by this transaction).
  */
 int
-btree_rv_keyval_undo_insert_mvcc_delid (THREAD_ENTRY * thread_p, LOG_RCV * recv)
+btree_rv_keyval_undo_insert_mvcc_delid (THREAD_ENTRY * thread_p, const LOG_RCV * recv)
 {
   BTID_INT btid;
   BTID sys_btid;
@@ -17863,7 +17864,7 @@ btree_rv_keyval_undo_insert_mvcc_delid (THREAD_ENTRY * thread_p, LOG_RCV * recv)
  * by inserting the <key, val> pair to the tree.
  */
 int
-btree_rv_keyval_undo_delete (THREAD_ENTRY * thread_p, LOG_RCV * recv)
+btree_rv_keyval_undo_delete (THREAD_ENTRY * thread_p, const LOG_RCV * recv)
 {
   BTID_INT btid;
   BTID sys_btid;
@@ -17913,7 +17914,7 @@ btree_rv_keyval_undo_delete (THREAD_ENTRY * thread_p, LOG_RCV * recv)
  * rcv (in)	 : Recovery data.
  */
 int
-btree_rv_remove_marked_for_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+btree_rv_remove_marked_for_delete (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   BTID_INT btree_info;
   BTID sys_btid;
@@ -17995,7 +17996,7 @@ btree_rv_keyval_dump (FILE * fp, int length, void *data)
  * Note: Copy a whole page back for undo or redo purposes
  */
 int
-btree_rv_undoredo_copy_page (THREAD_ENTRY * thread_p, LOG_RCV * recv)
+btree_rv_undoredo_copy_page (THREAD_ENTRY * thread_p, const LOG_RCV * recv)
 {
   (void) pgbuf_set_page_ptype (thread_p, recv->pgptr, PAGE_BTREE);	/* redo */
 
@@ -18016,7 +18017,7 @@ btree_rv_undoredo_copy_page (THREAD_ENTRY * thread_p, LOG_RCV * recv)
  * to do nothing.
  */
 int
-btree_rv_nop (THREAD_ENTRY * thread_p, LOG_RCV * recv)
+btree_rv_nop (THREAD_ENTRY * thread_p, const LOG_RCV * recv)
 {
   assert (recv->pgptr != NULL);
   pgbuf_set_dirty (thread_p, recv->pgptr, DONT_FREE);
@@ -22355,7 +22356,7 @@ error:
  * Note: Decrement the in-memory global unique statistics.
  */
 int
-btree_rv_undo_global_unique_stats_commit (THREAD_ENTRY * thread_p, LOG_RCV * recv)
+btree_rv_undo_global_unique_stats_commit (THREAD_ENTRY * thread_p, const LOG_RCV * recv)
 {
   char *datap;
   int num_nulls, num_oids, num_keys;
@@ -22424,7 +22425,7 @@ error:
  * Note: Recover the in-memory global unique statistics.
  */
 int
-btree_rv_redo_global_unique_stats_commit (THREAD_ENTRY * thread_p, LOG_RCV * recv)
+btree_rv_redo_global_unique_stats_commit (THREAD_ENTRY * thread_p, const LOG_RCV * recv)
 {
   char *datap;
   int num_nulls, num_oids, num_keys;
@@ -25934,7 +25935,7 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
  */
 static int
 btree_undo_delete_physical (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid, OID * oid,
-			    BTREE_MVCC_INFO * mvcc_info, LOG_LSA * undo_nxlsa)
+			    BTREE_MVCC_INFO * mvcc_info, const LOG_LSA * undo_nxlsa)
 {
   if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
     {
@@ -26070,7 +26071,7 @@ btree_mvcc_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * c
 static int
 btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid, OID * oid, int op_type,
 		       btree_unique_stats * unique_stat_info, int *unique, BTREE_MVCC_INFO * mvcc_info,
-		       LOG_LSA * undo_nxlsa, BTREE_OP_PURPOSE purpose)
+		       const LOG_LSA * undo_nxlsa, BTREE_OP_PURPOSE purpose)
 {
   int error_code = NO_ERROR;	/* Error code. */
   BTID_INT btid_int;		/* B-tree info. */
@@ -28821,7 +28822,7 @@ btree_mvcc_info_to_heap_mvcc_header (BTREE_MVCC_INFO * mvcc_info, MVCC_REC_HEADE
  * rcv (in)	 : Recovery data.
  */
 int
-btree_rv_redo_record_modify (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+btree_rv_redo_record_modify (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   return btree_rv_record_modify_internal (thread_p, rcv, false);
 }
@@ -28834,7 +28835,7 @@ btree_rv_redo_record_modify (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * rcv (in)	 : Recovery data.
  */
 int
-btree_rv_undo_record_modify (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+btree_rv_undo_record_modify (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   return btree_rv_record_modify_internal (thread_p, rcv, true);
 }
@@ -28848,7 +28849,7 @@ btree_rv_undo_record_modify (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * is_undo (in)  : True if undo recovery, false if redo recovery.
  */
 static int
-btree_rv_record_modify_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is_undo)
+btree_rv_record_modify_internal (THREAD_ENTRY * thread_p, const LOG_RCV * rcv, bool is_undo)
 {
   short flags;			/* Flags set into rcv->offset. */
   PGSLOTID slotid;		/* Slot ID stored in rcv->offset. */
@@ -29275,7 +29276,7 @@ btree_rv_record_modify_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is
  * Note: Remove unique statistics from global hash
  */
 int
-btree_rv_remove_unique_stats (THREAD_ENTRY * thread_p, LOG_RCV * recv)
+btree_rv_remove_unique_stats (THREAD_ENTRY * thread_p, const LOG_RCV * recv)
 {
   BTID btid;
   LOG_TRAN_BTID_UNIQUE_STATS *unique_stats;
@@ -29462,7 +29463,7 @@ btree_vacuum_object (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_key
  */
 static int
 btree_undo_mvcc_delete (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_key, OID * oid, OID * class_oid,
-			BTREE_MVCC_INFO * match_mvccinfo, LOG_LSA * undo_nxlsa)
+			BTREE_MVCC_INFO * match_mvccinfo, const LOG_LSA * undo_nxlsa)
 {
   BTREE_MVCC_INFO mvcc_info = BTREE_MVCC_INFO_INITIALIZER;
 
@@ -29494,7 +29495,7 @@ btree_undo_mvcc_delete (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_
  */
 static int
 btree_undo_insert_object (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_key, OID * oid, OID * class_oid,
-			  MVCCID insert_mvccid, LOG_LSA * undo_nxlsa)
+			  MVCCID insert_mvccid, const LOG_LSA * undo_nxlsa)
 {
   BTREE_MVCC_INFO mvcc_info = BTREE_MVCC_INFO_INITIALIZER;
   BTREE_MVCC_INFO match_mvccinfo = BTREE_MVCC_INFO_INITIALIZER;
@@ -29533,7 +29534,7 @@ btree_undo_insert_object (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffere
 static int
 btree_undo_insert_object_unique_multiupd (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_key,
 					  BTREE_OBJECT_INFO * inserted_object, BTREE_OBJECT_INFO * second_object,
-					  MVCCID insert_mvccid, LOG_LSA * undo_nxlsa)
+					  MVCCID insert_mvccid, const LOG_LSA * undo_nxlsa)
 {
   BTREE_MVCC_INFO mvcc_info = BTREE_MVCC_INFO_INITIALIZER;
   BTREE_MVCC_INFO match_mvccinfo = BTREE_MVCC_INFO_INITIALIZER;
@@ -29572,7 +29573,7 @@ btree_undo_insert_object_unique_multiupd (THREAD_ENTRY * thread_p, BTID * btid, 
  */
 static int
 btree_delete_postponed (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_key, BTREE_OBJECT_INFO * btree_obj,
-			MVCCID tran_mvccid, LOG_LSA * reference_lsa)
+			MVCCID tran_mvccid, const LOG_LSA * reference_lsa)
 {
   BTREE_MVCC_INFO match_mvccinfo = BTREE_MVCC_INFO_INITIALIZER;
 
@@ -29617,7 +29618,7 @@ btree_delete_postponed (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_
 static int
 btree_delete_internal (THREAD_ENTRY * thread_p, BTID * btid, OID * oid, OID * class_oid, BTREE_MVCC_INFO * mvcc_info,
 		       DB_VALUE * key, OR_BUF * buffered_key, int *unique, int op_type,
-		       btree_unique_stats * unique_stat_info, BTREE_MVCC_INFO * match_mvccinfo, LOG_LSA * ref_lsa,
+		       btree_unique_stats * unique_stat_info, BTREE_MVCC_INFO * match_mvccinfo, const LOG_LSA * ref_lsa,
 		       BTREE_OBJECT_INFO * second_object_info, BTREE_OP_PURPOSE purpose)
 {
   /* Structure used by internal functions. */
@@ -32846,7 +32847,7 @@ btree_get_creator_mvccid (THREAD_ENTRY * thread_p, PAGE_PTR root_page)
  * rcv (in)	 : Recovery data.
  */
 int
-btree_rv_undo_mark_dealloc_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+btree_rv_undo_mark_dealloc_page (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   BTREE_NODE_HEADER *node_header = btree_get_node_header (thread_p, rcv->pgptr);
 
@@ -33272,7 +33273,7 @@ btree_online_index_set_normal_state (MVCCID & state)
 //
 int
 btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * cls_oid,
-			       OID * oid, int unique, BTREE_OP_PURPOSE purpose, LOG_LSA * undo_nxlsa)
+			       OID * oid, int unique, BTREE_OP_PURPOSE purpose, const LOG_LSA * undo_nxlsa)
 {
   btree_insert_list one_item_list (key, oid);
 
@@ -33294,7 +33295,7 @@ btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * 
 int
 btree_online_index_list_dispatcher (THREAD_ENTRY * thread_p, BTID * btid, OID * class_oid,
 				    btree_insert_list * insert_list, int unique, BTREE_OP_PURPOSE purpose,
-				    LOG_LSA * undo_nxlsa)
+				    const LOG_LSA * undo_nxlsa)
 {
   int error_code = NO_ERROR;
   /* Search key helper which will point to where data should inserted. */
@@ -35099,7 +35100,7 @@ btree_find_oid_with_page_and_record (THREAD_ENTRY * thread_p, BTID_INT * btid_in
  * by inserting the <key, val> pair to the tree during an online index operation.
  */
 int
-btree_rv_keyval_undo_online_index_tran_delete (THREAD_ENTRY * thread_p, LOG_RCV * recv)
+btree_rv_keyval_undo_online_index_tran_delete (THREAD_ENTRY * thread_p, const LOG_RCV * recv)
 {
   BTID_INT btid;
   BTID sys_btid;
@@ -35149,7 +35150,7 @@ btree_rv_keyval_undo_online_index_tran_delete (THREAD_ENTRY * thread_p, LOG_RCV 
  * recv (in)		  : Recovery data.
  */
 int
-btree_rv_keyval_undo_online_index_tran_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv)
+btree_rv_keyval_undo_online_index_tran_insert (THREAD_ENTRY * thread_p, const LOG_RCV * recv)
 {
   BTID_INT btid;
   BTID sys_btid;

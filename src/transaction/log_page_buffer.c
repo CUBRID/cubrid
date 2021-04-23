@@ -4100,6 +4100,17 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
 	  need_wakeup_LFT = true;
 	  nxio_lsa = log_Gl.append.get_nxio_lsa ();
 	}
+
+      // *INDENT-OFF*
+      if (ats_Gl.is_page_server_connected ())
+	{
+	  log_Gl.wait_flushed_lsa (*flush_lsa);
+	  if (prm_get_bool_value (PRM_ID_ER_LOG_COMMIT_CONFIRM))
+	    {
+	      _er_log_debug (ARG_FILE_LINE, "Page server committed LSA = %lld|%d.\n", LSA_AS_ARGS (&log_Gl.m_max_ps_flushed_lsa));
+	    }
+	}
+      // *INDENT-ON*
     }
 #endif /* SERVER_MODE */
 }

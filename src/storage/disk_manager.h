@@ -135,24 +135,24 @@ extern DISK_ISVALID disk_map_clone_clear (VSID * vsid, DISK_VOLMAP_CLONE * disk_
 extern DISK_ISVALID disk_map_clone_check_leaks (DISK_VOLMAP_CLONE * disk_map_clone);
 #endif /* SA_MODE */
 
-extern int disk_rv_redo_dboutside_newvol (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int disk_rv_undo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int disk_rv_redo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int disk_rv_redo_dboutside_newvol (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
+extern int disk_rv_undo_format (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
+extern int disk_rv_redo_format (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
 extern void disk_rv_dump_hdr (FILE * fp, int length_ignore, void *data);
-extern int disk_rv_redo_init_map (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int disk_rv_redo_init_map (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
 extern void disk_rv_dump_init_map (FILE * fp, int length_ignore, void *data);
-extern int disk_rv_undoredo_set_creation_time (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int disk_rv_undoredo_set_creation_time (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
 extern void disk_rv_dump_set_creation_time (FILE * fp, int length_ignore, void *data);
-extern int disk_rv_undoredo_set_boot_hfid (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int disk_rv_undoredo_set_boot_hfid (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
 extern void disk_rv_dump_set_boot_hfid (FILE * fp, int length_ignore, void *data);
-extern int disk_rv_undoredo_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int disk_rv_undoredo_link (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
 extern void disk_rv_dump_link (FILE * fp, int length_ignore, void *data);
-extern int disk_rv_redo_volume_expand (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int disk_rv_redo_volume_expand (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
 extern void disk_rv_dump_volume_expand (FILE * fp, int length_ignore, void *data);
-extern int disk_rv_reserve_sectors (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int disk_rv_unreserve_sectors (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int disk_rv_volhead_extend_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int disk_rv_volhead_extend_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int disk_rv_reserve_sectors (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
+extern int disk_rv_unreserve_sectors (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
+extern int disk_rv_volhead_extend_redo (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
+extern int disk_rv_volhead_extend_undo (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
 
 #if !defined (NDEBUG)
 extern void disk_volheader_check_magic (THREAD_ENTRY * thread_p, const PAGE_PTR page_volheader);
