@@ -490,8 +490,9 @@ start:
     {
       if (nbytes < size)
 	{			/* OK */
-	  if (buflen > 0 && buf != NULL)
+	  if (buflen > 0)
 	    {			/* unformatted print */
+	      assert (buf != NULL);
 	      memcpy (tout->ptr, buf, buflen);
 	      *(tout->ptr + buflen) = '\0';	/* Null terminate */
 	    }
