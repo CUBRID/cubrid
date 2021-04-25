@@ -20,14 +20,6 @@
 
 namespace cublog
 {
-  async_log_page_receiver::async_log_page_receiver ()
-  {
-  }
-
-  async_log_page_receiver::~async_log_page_receiver ()
-  {
-  }
-
   void
   async_log_page_receiver::set_page_requested (LOG_PAGEID log_pageid)
   {
@@ -64,7 +56,7 @@ namespace cublog
   }
 
   void
-  async_log_page_receiver::set_page (std::shared_ptr<LOG_PAGE> log_page)
+  async_log_page_receiver::set_page (std::shared_ptr<LOG_PAGE> &&log_page)
   {
     {
       std::unique_lock<std::mutex> lock (m_log_pages_mutex);

@@ -166,6 +166,7 @@ void active_tran_server::finalize_log_page_receiver ()
 cublog::async_log_page_receiver &
 active_tran_server::get_log_page_receiver ()
 {
+  assert (m_async_log_page_receiver);
   return *m_async_log_page_receiver;
 }
 
@@ -195,7 +196,7 @@ void active_tran_server::receive_log_page (cubpacking::unpacker &upk)
       std::memcpy (log_page, message.c_str () + sizeof (error_code), db_log_page_size ());
 
       std::shared_ptr<LOG_PAGE> shared_log_page (log_page);
-      m_async_log_page_receiver->set_page (shared_log_page);
+      m_async_log_page_receiver->set_page (std::move (shared_log_page));
 
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
 	{

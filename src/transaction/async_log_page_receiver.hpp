@@ -34,13 +34,14 @@ namespace cublog
   class async_log_page_receiver
   {
     public:
-      async_log_page_receiver ();
-      ~async_log_page_receiver ();
+      async_log_page_receiver () = default;
+      ~async_log_page_receiver () = default;
 
       void set_page_requested (LOG_PAGEID log_pageid);
       bool is_page_requested (LOG_PAGEID log_pageid);
       std::shared_ptr<LOG_PAGE> wait_for_page (LOG_PAGEID log_pageid);
-      void set_page (std::shared_ptr<LOG_PAGE> log_page);
+      void set_page (std::shared_ptr<LOG_PAGE> &&log_page);
+
     private:
       std::mutex m_log_pages_mutex;
       std::condition_variable m_pages_cv;
