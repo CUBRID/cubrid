@@ -48,9 +48,8 @@ class dummy_ps
     }
 
   private:
-    std::mutex m_log_pages_mutex;
+    std::mutex m_request_mutex;
     std::queue<LOG_PAGEID> m_requested_log_page_ids;
-//     std::condition_variable m_cv;
     weak_log_page_receiver m_log_page_receiver;
     std::atomic<bool> m_is_closed;
 };
@@ -112,11 +111,9 @@ test_env::run_test ()
   m_dummy_ps->close ();
   ps_thread.join ();
 
-  for (int i = 0; i < m_log_pages_count; ++i)
-    {
-      // Making sure we don't keep memory occupied at this point.
-      REQUIRE (m_log_page_receiver->is_page_requested (i) == false);
-    }
+  // Making sure we don't keep memory occupied at this point.
+  REQUIRE (m_log_page_receiver->get_requests_count () == 0);
+  REQUIRE (m_log_page_receiver->get_pages_count () == 0);
 }
 
 void
@@ -130,16 +127,10 @@ test_env::request_and_consume_log_pages (int start_log_page_id, int count)
 {
   for (int i = start_log_page_id; i < start_log_page_id + count; ++i)
     {
-      if (!m_log_page_receiver->is_page_requested (i))
+      if (m_log_page_receiver->try_set_page_requested (i))
 	{
 	  request_page_from_ps (i);
 	}
-      m_log_page_receiver->set_page_requested (i);
-    }
-
-  for (int i = start_log_page_id; i < start_log_page_id + count; ++i)
-    {
-      REQUIRE (m_log_page_receiver->is_page_requested (i) == true);
     }
 
   for (int i = start_log_page_id; i < start_log_page_id + count; ++i)
@@ -166,7 +157,7 @@ void
 dummy_ps::request_log_page (LOG_PAGEID page_id)
 {
   {
-    std::unique_lock<std::mutex> lock (m_log_pages_mutex);
+    std::unique_lock<std::mutex> lock (m_request_mutex);
     m_requested_log_page_ids.push (page_id);
   }
 }
@@ -176,7 +167,7 @@ dummy_ps::run ()
 {
   while (!m_is_closed)
     {
-      std::unique_lock<std::mutex> lock (m_log_pages_mutex);
+      std::unique_lock<std::mutex> lock (m_request_mutex);
       if (!m_requested_log_page_ids.empty ())
 	{
 	  LOG_PAGEID page_id = m_requested_log_page_ids.front ();
@@ -193,6 +184,6 @@ dummy_ps::run ()
 
 TEST_CASE ("First test", "")
 {
-  test_env env (2000);
+  test_env env (9999);
   do_test (env);
 }

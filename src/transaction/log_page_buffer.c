@@ -1956,7 +1956,7 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
 
 #if defined(SERVER_MODE)
   // *INDENT-OFF*
-  if (get_server_type () == SERVER_TYPE_TRANSACTION && ats_Gl.get_log_page_receiver ().is_page_requested (pageid))
+  if (get_server_type () == SERVER_TYPE_TRANSACTION && ats_Gl.is_page_server_connected ())
     {
       // wait for answer.
       auto log_page = ats_Gl.get_log_page_receiver ().wait_for_page (pageid);
@@ -2005,7 +2005,7 @@ request_log_page_from_ps (LOG_PAGEID log_pageid)
   std::memcpy (buffer, &log_pageid, sizeof (log_pageid));
   std::string message (buffer, BIG_INT_SIZE);
 
-  if (!ats_Gl.get_log_page_receiver ().is_page_requested (log_pageid))
+  if (ats_Gl.get_log_page_receiver ().try_set_page_requested (log_pageid))
     {
       ats_Gl.push_request (ats_to_ps_request::SEND_LOG_PAGE_FETCH, std::move (message));
 
@@ -2013,9 +2013,7 @@ request_log_page_from_ps (LOG_PAGEID log_pageid)
         {
           _er_log_debug (ARG_FILE_LINE, "Sent request for log to Page Server. Page ID: %lld \n", log_pageid);
         }
-    }
-  
-  ats_Gl.get_log_page_receiver ().set_page_requested (log_pageid);
+    }  
   // *INDENT-ON*
 #endif // SERVER_MODE
 }

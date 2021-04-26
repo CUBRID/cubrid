@@ -20,18 +20,37 @@
 
 namespace cublog
 {
-  void
-  async_log_page_receiver::set_page_requested (LOG_PAGEID log_pageid)
+  bool
+  async_log_page_receiver::try_set_page_requested (LOG_PAGEID log_pageid)
   {
     std::unique_lock<std::mutex> lock (m_log_pages_mutex);
-    m_requested_page_id_count[log_pageid]++;
+
+    bool result = false;
+    if (m_requested_page_id_count.find (log_pageid) != m_requested_page_id_count.end ())
+      {
+	m_requested_page_id_count[log_pageid]++;
+      }
+    else
+      {
+	m_requested_page_id_count[log_pageid] = 1;
+	result = true;
+      }
+
+    return result;
   }
 
-  bool
-  async_log_page_receiver::is_page_requested (LOG_PAGEID log_pageid)
+  std::size_t
+  async_log_page_receiver::get_requests_count ()
   {
     std::unique_lock<std::mutex> lock (m_log_pages_mutex);
-    return m_requested_page_id_count.find (log_pageid) != m_requested_page_id_count.end ();
+    return m_requested_page_id_count.size ();
+  }
+
+  std::size_t
+  async_log_page_receiver::get_pages_count ()
+  {
+    std::unique_lock<std::mutex> lock (m_log_pages_mutex);
+    return m_received_log_pages.size ();
   }
 
   std::shared_ptr<LOG_PAGE>
