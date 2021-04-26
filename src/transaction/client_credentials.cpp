@@ -116,7 +116,7 @@ clientids::set_program_name (const char *program_name_arg)
 {
   char prgname_buf[PATH_MAX] = {'\0'};
 
-  if (program_name_arg == NULL || basename_r (program_name_arg, prgname_buf, PATH_MAX) < 0)
+  if (program_name_arg == NULL)
     {
       string_ncopy (program_name, UNKNOWN_ID, PATH_MAX);
     }

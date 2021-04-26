@@ -18,9 +18,10 @@
 
 #include "log_checkpoint_info.hpp"
 
-#include "log_impl.h"
 #include "client_credentials.hpp"
 #include "critical_section.h"
+#include "log_impl.h"
+#include "log_manager.h"
 #include "memory_alloc.h"
 #include "page_buffer.h"
 #include "transaction_global.hpp"
@@ -256,7 +257,7 @@ namespace cublog
 
     scope_exit <std::function<void (void)>> unlock_on_exit ([thread_p] ()
     {
-      log_Gl.prior_info.prior_lsa_mutex.lock ();
+      log_Gl.prior_info.prior_lsa_mutex.unlock ();
       TR_TABLE_CS_EXIT (thread_p);
     });
 
@@ -286,5 +287,133 @@ namespace cublog
     log_system_tdes::map_all_tdes (mapper);
   }
 
-}
+  void
+  checkpoint_info::recovery_analysis (THREAD_ENTRY *thread_p, log_lsa &start_redo_lsa)
+  {
+    int error_code;
+    LOG_TDES *tdes = nullptr;
+    LOG_PAGE *log_page_local = nullptr;
+    LOG_LSA log_lsa_local;
+    char log_page_buffer[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+    LOG_REC_SYSOP_START_POSTPONE sysop_start_postpone;
 
+    /* Add the transactions to the transaction table */
+    for (auto chkpt : m_trans)
+      {
+	/*
+	 * If this is the first time, the transaction is seen. Assign a
+	 * new index to describe it and assume that the transaction was
+	 * active at the time of the crash, and thus it will be
+	 * unilaterally aborted. The truth of this statement will be find
+	 * reading the rest of the log
+	 */
+	tdes = logtb_rv_find_allocate_tran_index (thread_p, chkpt.trid, &NULL_LSA);
+	if (tdes == NULL)
+	  {
+	    logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_analysis");
+	    return;
+	  }
+	/*
+	 * Clear the transaction since it may have old stuff in it.
+	 * Use the one that is find in the checkpoint record
+	 */
+	logtb_clear_tdes (thread_p, tdes);
+
+	tdes->isloose_end = chkpt.isloose_end;
+	if (chkpt.state == TRAN_ACTIVE || chkpt.state == TRAN_UNACTIVE_ABORTED)
+	  {
+	    tdes->state = TRAN_UNACTIVE_UNILATERALLY_ABORTED;
+	  }
+	else
+	  {
+	    tdes->state = chkpt.state;
+	  }
+	LSA_COPY (&tdes->head_lsa, &chkpt.head_lsa);
+	LSA_COPY (&tdes->tail_lsa, &chkpt.tail_lsa);
+	LSA_COPY (&tdes->undo_nxlsa, &chkpt.undo_nxlsa);
+	LSA_COPY (&tdes->posp_nxlsa, &chkpt.posp_nxlsa);
+	LSA_COPY (&tdes->savept_lsa, &chkpt.savept_lsa);
+	LSA_COPY (&tdes->tail_topresult_lsa, &chkpt.tail_topresult_lsa);
+	LSA_COPY (&tdes->rcv.tran_start_postpone_lsa, &chkpt.start_postpone_lsa);
+	tdes->client.set_system_internal_with_user (chkpt.user_name);
+	if (LOG_ISTRAN_2PC (tdes))
+	  {
+	    m_has_2pc = true;
+	  }
+      }
+
+    /*
+     * Now add top system operations that were in the process of
+     * commit to this transactions
+     */
+
+    log_page_local = (LOG_PAGE *) PTR_ALIGN (log_page_buffer, MAX_ALIGNMENT);
+    log_page_local->hdr.logical_pageid = NULL_PAGEID;
+    log_page_local->hdr.offset = NULL_OFFSET;
+
+    for (auto sysop : m_sysops)
+      {
+	tdes = logtb_rv_find_allocate_tran_index (thread_p, sysop.trid, &NULL_LSA);
+	if (tdes == NULL)
+	  {
+	    logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_analysis");
+	    return;
+	  }
+
+	if (tdes->topops.max == 0 || (tdes->topops.last + 1) >= tdes->topops.max)
+	  {
+	    if (logtb_realloc_topops_stack (tdes, tdes->topops.last + 1) == NULL)
+	      {
+		logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_analysis");
+		return;
+	      }
+	  }
+
+	if (tdes->topops.last == -1)
+	  {
+	    tdes->topops.last++;
+	  }
+	else
+	  {
+	    assert (tdes->topops.last == 0);
+	  }
+	tdes->rcv.sysop_start_postpone_lsa = sysop.sysop_start_postpone_lsa;
+	tdes->rcv.atomic_sysop_start_lsa = sysop.atomic_sysop_start_lsa;
+	log_lsa_local = sysop.sysop_start_postpone_lsa;
+	error_code = log_read_sysop_start_postpone (thread_p, &log_lsa_local, log_page_local, false, &sysop_start_postpone,
+		     NULL, NULL, NULL, NULL);
+	if (error_code != NO_ERROR)
+	  {
+	    assert (false);
+	    return;
+	  }
+	tdes->topops.stack[tdes->topops.last].lastparent_lsa = sysop_start_postpone.sysop_end.lastparent_lsa;
+	tdes->topops.stack[tdes->topops.last].posp_lsa = sysop_start_postpone.posp_lsa;
+      }
+  }
+  void
+  checkpoint_info::recovery_2pc_analysis (THREAD_ENTRY *thread_p) const
+  {
+    if (!m_has_2pc)
+      {
+	return;
+      }
+
+    for (auto chkpt : m_trans)
+      {
+	int tran_index;
+	LOG_TDES *tdes;		/* Transaction descriptor */
+
+	tran_index = logtb_find_tran_index (thread_p, chkpt.trid);
+	if (tran_index != NULL_TRAN_INDEX)
+	  {
+	    tdes = LOG_FIND_TDES (tran_index);
+	    if (tdes != NULL && LOG_ISTRAN_2PC (tdes))
+	      {
+		log_2pc_recovery_analysis_info (thread_p, tdes, &chkpt.tail_lsa);
+	      }
+	  }
+      }
+  }
+
+}
