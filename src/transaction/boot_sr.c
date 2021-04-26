@@ -3934,7 +3934,6 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
   catalog_finalize ();
   qmgr_finalize (thread_p);
   (void) heap_manager_finalize ();
-  perfmon_finalize ();
   fileio_dismount_all (thread_p);
   disk_manager_final ();
   boot_server_status (BOOT_SERVER_DOWN);
@@ -3948,6 +3947,7 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
   lf_destroy_transaction_systems ();
 
   finalize_server_type ();
+  perfmon_finalize ();
 
 #if defined(SERVER_MODE)
   /* server mode shuts down all modules */
