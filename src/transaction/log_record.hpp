@@ -363,72 +363,6 @@ struct log_info_chkpt_trans
   inline bool operator== (const log_info_chkpt_trans &ochkpt) const;
 };
 
-bool
-log_info_chkpt_trans::operator== (const log_info_chkpt_trans &ochkpt) const
-{
-  if (isloose_end != ochkpt.isloose_end)
-    {
-      return false;
-    }
-
-  if (trid != ochkpt.trid)
-    {
-      return false;
-    }
-
-  if (state != ochkpt.state)
-    {
-      return false;
-    }
-
-  if (head_lsa != ochkpt.head_lsa)
-    {
-      return false;
-    }
-
-  if (tail_lsa != ochkpt.tail_lsa)
-    {
-      return false;
-    }
-
-  if (undo_nxlsa != ochkpt.undo_nxlsa)
-    {
-      return false;
-    }
-
-  if (posp_nxlsa != ochkpt.posp_nxlsa)
-    {
-      return false;
-    }
-
-  if (savept_lsa != ochkpt.savept_lsa)
-    {
-      return false;
-    }
-
-  if (tail_topresult_lsa != ochkpt.tail_topresult_lsa)
-    {
-      return false;
-    }
-
-  if (start_postpone_lsa != ochkpt.start_postpone_lsa)
-    {
-      return false;
-    }
-
-  if (strlen (user_name) != strlen (ochkpt.user_name))
-    {
-      return false;
-    }
-
-  if (strcmp (user_name, ochkpt.user_name) != 0)
-    {
-      return false;
-    }
-
-  return true;
-}
-
 typedef struct log_info_chkpt_sysop LOG_INFO_CHKPT_SYSOP;
 struct log_info_chkpt_sysop
 {
@@ -438,26 +372,6 @@ struct log_info_chkpt_sysop
 
   inline bool operator== (const log_info_chkpt_sysop &ochkpt) const;
 };
-
-bool
-log_info_chkpt_sysop::operator== (const log_info_chkpt_sysop &ochkpt) const
-{
-  if (trid != ochkpt.trid)
-    {
-      return false;
-    }
-
-  if (sysop_start_postpone_lsa != ochkpt.sysop_start_postpone_lsa)
-    {
-      return false;
-    }
-
-  if (atomic_sysop_start_lsa != ochkpt.atomic_sysop_start_lsa)
-    {
-      return false;
-    }
-  return true;
-}
 
 typedef struct log_rec_savept LOG_REC_SAVEPT;
 struct log_rec_savept

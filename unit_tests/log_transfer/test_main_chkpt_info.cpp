@@ -18,7 +18,7 @@
 
 #define CATCH_CONFIG_MAIN
 #include "catch2/catch.hpp"
-
+#include "fake_packable_object.hpp"
 #define private public
 #include "log_checkpoint_info.hpp"
 #undef private
@@ -529,6 +529,7 @@ namespace cubpacking
     // all pointers are initialized to NULL
   }
 }
+EXPAND_PACKABLE_OBJECT_EMPTY_DEF (meta)
 
 //unused stuff needed by the linker
 log_global log_Gl;

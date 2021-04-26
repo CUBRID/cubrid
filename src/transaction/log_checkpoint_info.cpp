@@ -21,6 +21,7 @@
 #include "client_credentials.hpp"
 #include "critical_section.h"
 #include "log_impl.h"
+#include "log_manager.h"
 #include "memory_alloc.h"
 #include "page_buffer.h"
 #include "scope_exit.hpp"
