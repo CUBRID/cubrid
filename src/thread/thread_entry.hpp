@@ -122,7 +122,9 @@ enum thread_type
 {
   TT_MASTER,
   TT_SERVER,
+  // used to designate generic 'user' operations threads
   TT_WORKER,
+  // used to designate generic system operations
   TT_DAEMON,
   TT_LOADDB,
   TT_VACUUM_MASTER,
