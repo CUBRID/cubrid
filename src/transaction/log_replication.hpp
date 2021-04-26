@@ -85,11 +85,10 @@ namespace cublog
       /* track perf for log records' processing
        * includes everything:
        *    1 fixing/reading log page,
-       *    2 dispatching log redo job (if in the async/parallel scenario)
-       *    3 actually applying the redo
-       * in post-processing, 1 and 3 will be substracted as to remain with only the boilerplate activity
+       *    2 dispatching log redo job - when in the async/parallel mode
+       *    3 actually applying the redo (the redo function) - when in the sync mode
        */
-      perfmon_tracker_counter_timer m_perfmon_log_processing;
+      perfmon_manual_tracker_counter_timer m_perfmon_log_processing;
   };
 
   int log_rpl_calculate_replication_delay (THREAD_ENTRY *thread_p, time_t a_start_time_msec);

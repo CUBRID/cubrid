@@ -36,7 +36,7 @@ namespace cublog
 {
   replicator::replicator (const log_lsa &start_redo_lsa)
     : m_redo_lsa { start_redo_lsa }
-    , m_perfmon_log_processing { PSTAT_SC_REPL_LOG_PROC, false }
+    , m_perfmon_log_processing { PSTAT_SCAL_REPL_LOG_PROC_SYNC }
   {
     log_zip_realloc_if_needed (m_undo_unzip, LOGAREA_SIZE);
     log_zip_realloc_if_needed (m_redo_unzip, LOGAREA_SIZE);
@@ -143,11 +143,12 @@ namespace cublog
 
     // redo all records from current position (m_redo_lsa) until end_redo_lsa
 
-    m_perfmon_log_processing.reset ();
+    m_perfmon_log_processing.start ();
     // make sure the log page is refreshed. otherwise it may be outdated and new records may be missed
     m_reader.set_lsa_and_fetch_page (m_redo_lsa, log_reader::fetch_mode::FORCE);
-    m_perfmon_log_processing.track_and_reset ();
+    m_perfmon_log_processing.track ();
 
+    m_perfmon_log_processing.start ();
     while (m_redo_lsa < end_redo_lsa)
       {
 	// read and redo a record
@@ -209,7 +210,7 @@ namespace cublog
 	  m_redo_lsa = header.forw_lsa;
 	}
 
-	m_perfmon_log_processing.track_and_reset ();
+	m_perfmon_log_processing.track_and_start ();
       }
   }
 
@@ -297,7 +298,7 @@ namespace cublog
 	const int64_t time_diff_msec = end_time_msec - a_start_time_msec;
 	assert (time_diff_msec > 0);
 
-	perfmon_set_stat (thread_p, PSTAT_SC_REPL_DELAY, static_cast<int> (time_diff_msec), false);
+	perfmon_set_stat (thread_p, PSTAT_SCAL_REPL_DELAY, static_cast<int> (time_diff_msec), false);
 
 	return NO_ERROR;
       }

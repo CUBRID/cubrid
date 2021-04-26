@@ -25,37 +25,51 @@
 
 #include "perf_monitor.h"
 
-/* RAII perf stat monitoring utility for counter timer
+/* manual perf stat monitoring utility for counter timer values
  *
  * NOTE: the global 'perfmon_is_perf_tracking' is only checked in the ctor
  * and used for the rest of the lifetime as is
  */
-class perfmon_tracker_counter_timer
+class perfmon_manual_tracker_counter_timer
 {
   public:
-    perfmon_tracker_counter_timer (PERF_STAT_ID a_stat_id, bool a_raii_mode);
-
-    ~perfmon_tracker_counter_timer ();
+    perfmon_manual_tracker_counter_timer (PERF_STAT_ID a_stat_id);
 
     /* re-init without tracking time
      */
-    void reset ();
+    void start ();
 
     /* manually track time without re-init
+     *
+     * NOTE: internally will:
+     *  - record time since previous start
+     *  - also add whatever internally kept time has been recorded so far
      */
     void track ();
 
     /* track time and re-init
      * useful in loops
      */
-    void track_and_reset ();
+    void track_and_start ();
 
   private:
     const PERF_STAT_ID m_stat_id;
     const bool m_is_perf_tracking;
-    const bool m_raii_mode;
 
     TSC_TICKS m_start_tick;
+};
+
+
+/* RAII perf stat monitoring utility for counter timer values
+ *
+ * NOTE: the global 'perfmon_is_perf_tracking' is only checked in the ctor
+ * and used for the rest of the lifetime as is
+ */
+class perfmon_raii_tracker_counter_timer final : private perfmon_manual_tracker_counter_timer
+{
+  public:
+    perfmon_raii_tracker_counter_timer (PERF_STAT_ID a_stat_id);
+    ~perfmon_raii_tracker_counter_timer ();
 };
 
 #endif // PERF_MONITOR_HPP

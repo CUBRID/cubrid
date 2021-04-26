@@ -21,29 +21,16 @@
 #include "thread_compat.hpp"
 #include "thread_manager.hpp"
 
-perfmon_tracker_counter_timer::perfmon_tracker_counter_timer (PERF_STAT_ID a_stat_id, bool a_raii_mode)
+perfmon_manual_tracker_counter_timer::perfmon_manual_tracker_counter_timer (PERF_STAT_ID a_stat_id)
   : m_stat_id (a_stat_id)
   , m_is_perf_tracking (perfmon_is_perf_tracking ())
-  , m_raii_mode {a_raii_mode}
-  , m_start_tick {0}
 {
   assert (pstat_Metadata[m_stat_id].valtype == PSTAT_COUNTER_TIMER_VALUE);
 
-  if (m_is_perf_tracking)
-    {
-      reset ();
-    }
+  start();
 }
 
-perfmon_tracker_counter_timer::~perfmon_tracker_counter_timer ()
-{
-  if (m_is_perf_tracking && m_raii_mode)
-    {
-      track ();
-    }
-}
-
-void perfmon_tracker_counter_timer::reset ()
+void perfmon_manual_tracker_counter_timer::start ()
 {
   if (m_is_perf_tracking)
     {
@@ -51,23 +38,37 @@ void perfmon_tracker_counter_timer::reset ()
     }
 }
 
-void perfmon_tracker_counter_timer::track_and_reset ()
+void perfmon_manual_tracker_counter_timer::track ()
+{
+  if (m_is_perf_tracking)
+    {
+      cubthread::entry *const thread_entry_p = &cubthread::get_entry ();
+
+      TSC_TICKS end_tick {0};
+      tsc_getticks (&end_tick);
+
+      const auto elapsed_time_usec = tsc_elapsed_utime (end_tick, m_start_tick);
+
+      perfmon_time_stat (thread_entry_p, m_stat_id, elapsed_time_usec);
+    }
+}
+
+void perfmon_manual_tracker_counter_timer::track_and_start ()
 {
   if (m_is_perf_tracking)
     {
       track ();
-      reset ();
+      start ();
     }
 }
 
-void perfmon_tracker_counter_timer::track ()
+perfmon_raii_tracker_counter_timer::perfmon_raii_tracker_counter_timer (PERF_STAT_ID a_stat_id)
+  : perfmon_manual_tracker_counter_timer (a_stat_id)
 {
-  cubthread::entry *const thread_entry_p = &cubthread::get_entry ();
+  start ();
+}
 
-  TSC_TICKS end_tick {0};
-  tsc_getticks (&end_tick);
-
-  const auto elapsed_time_usec = tsc_elapsed_utime (end_tick, m_start_tick);
-
-  perfmon_time_stat (thread_entry_p, m_stat_id, elapsed_time_usec);
+perfmon_raii_tracker_counter_timer::~perfmon_raii_tracker_counter_timer ()
+{
+  track ();
 }

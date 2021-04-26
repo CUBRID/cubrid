@@ -548,8 +548,6 @@ void log_rv_redo_record_sync (THREAD_ENTRY *thread_p, log_reader &log_pgptr_read
   log_Gl_recovery_redo_consistency_check.check (rcv_vpid, rcv_lsa);
 #endif
 
-  perfmon_tracker_counter_timer perfmon { PSTAT_SC_REC_AND_REPL_LOG_REDO, true };
-
   const LOG_DATA &log_data = log_rv_get_log_rec_data<T> (log_rec);
 
   LOG_RCV rcv;
@@ -592,6 +590,8 @@ void log_rv_redo_record_sync (THREAD_ENTRY *thread_p, log_reader &log_pgptr_read
   rvfun::fun_t redofunc = log_rv_get_fun<T> (log_rec, log_data.rcvindex);
   if (redofunc != nullptr)
     {
+      perfmon_raii_tracker_counter_timer perfmon { PSTAT_SCAL_REC_OR_REPL_LOG_REDO_FUNC };
+
       const int err_func = redofunc (thread_p, &rcv);
       if (err_func != NO_ERROR)
 	{

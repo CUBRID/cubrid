@@ -372,6 +372,8 @@ namespace cublog
   int  redo_job_impl<TYPE_LOG_REC>::execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
       LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support)
   {
+    perfmon_raii_tracker_counter_timer perfmon { PSTAT_SCAL_REC_OR_REPL_LOG_PROC_ASYNC };
+
     const auto &rcv_lsa = get_log_lsa ();
     const int err_set_lsa_and_fetch_page
       = log_pgptr_reader.set_lsa_and_fetch_page (rcv_lsa, m_log_reader_page_fetch_mode);
