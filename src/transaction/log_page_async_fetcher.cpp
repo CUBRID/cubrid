@@ -57,7 +57,7 @@ namespace cublog
 
     const auto thread_count = std::thread::hardware_concurrency ();
     m_worker_pool_context_manager.reset (
-	    new cubthread::system_worker_entry_manager (TT_WORKER, LOG_SYSTEM_TRAN_INDEX));
+	    new cubthread::system_worker_entry_manager (TT_WORKER));
     m_threads = thread_manager->create_worker_pool (thread_count, thread_count,
 		"async_page_fetcher_worker_pool",
 		m_worker_pool_context_manager.get (),

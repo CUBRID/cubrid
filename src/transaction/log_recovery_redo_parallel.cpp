@@ -406,8 +406,7 @@ namespace cublog
     assert (a_worker_count > 0);
 
     const thread_type tt = log_is_in_crash_recovery () ? TT_RECOVERY : TT_REPLICATION;
-    m_pool_context_manager = std::make_unique<cubthread::system_worker_entry_manager> (
-				     tt, LOG_SYSTEM_TRAN_INDEX);
+    m_pool_context_manager = std::make_unique<cubthread::system_worker_entry_manager> (tt);
 
     do_init_worker_pool ();
     do_init_tasks ();

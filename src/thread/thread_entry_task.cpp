@@ -118,10 +118,8 @@ namespace cubthread
     on_daemon_retire (context);
   }
 
-  system_worker_entry_manager::system_worker_entry_manager (
-	  thread_type a_thread_type, int a_tran_index)
+  system_worker_entry_manager::system_worker_entry_manager (thread_type a_thread_type)
     : m_thread_type { a_thread_type }
-    , m_tran_index { a_tran_index }
   {
   }
 
@@ -129,7 +127,7 @@ namespace cubthread
   system_worker_entry_manager::on_create (entry &context)
   {
     context.type = m_thread_type;
-    context.tran_index = m_tran_index;
+    context.tran_index = LOG_SYSTEM_TRAN_INDEX;
   }
 
   void

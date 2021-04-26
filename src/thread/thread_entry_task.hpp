@@ -142,8 +142,7 @@ namespace cubthread
   class system_worker_entry_manager : public entry_manager
   {
     public:
-      system_worker_entry_manager (thread_type a_thread_type,
-				   int a_tran_index = LOG_SYSTEM_TRAN_INDEX);
+      system_worker_entry_manager (thread_type a_thread_type);
       system_worker_entry_manager (const system_worker_entry_manager &) = delete;
       system_worker_entry_manager (system_worker_entry_manager &&) = delete;
 
@@ -156,7 +155,6 @@ namespace cubthread
 
     private:
       const thread_type m_thread_type;
-      const int m_tran_index;
   };
 } // namespace cubthread
 
