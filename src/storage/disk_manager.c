@@ -1193,7 +1193,7 @@ disk_get_link (THREAD_ENTRY * thread_p, INT16 volid, INT16 * next_volid, char *n
  *   rcv(in): Recovery structure
  */
 int
-disk_rv_redo_dboutside_newvol (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+disk_rv_redo_dboutside_newvol (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   DISK_VOLUME_HEADER *vhdr;
   char *vol_label;
@@ -1217,7 +1217,7 @@ disk_rv_redo_dboutside_newvol (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *   rcv(in): Recovery structure
  */
 int
-disk_rv_undo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+disk_rv_undo_format (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   VOLID volid = (VOLID) rcv->offset;
   int ret = NO_ERROR;
@@ -1322,29 +1322,29 @@ disk_rv_undo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *   rcv(in): Recovery structure
  */
 int
-disk_rv_redo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+disk_rv_redo_format (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   int error_code = NO_ERROR;
   DISK_VOLUME_HEADER *volheader;
   bool is_first_call = rcv->offset == -1;
   DKNSECTS nsect_free = 0;
   DKNSECTS nsect_diff;
+  LOG_RCV copy_rcv = *rcv;
 
-  rcv->offset = 0;
-  (void) pgbuf_set_page_ptype (thread_p, rcv->pgptr, PAGE_VOLHEADER);
-  error_code = log_rv_copy_char (thread_p, rcv);
+  copy_rcv.offset = 0;
+  (void) pgbuf_set_page_ptype (thread_p, copy_rcv.pgptr, PAGE_VOLHEADER);
+  error_code = log_rv_copy_char (thread_p, &copy_rcv);
   assert (error_code == NO_ERROR);
 
-  disk_verify_volume_header (thread_p, rcv->pgptr);
-  volheader = (DISK_VOLUME_HEADER *) rcv->pgptr;
-
+  disk_verify_volume_header (thread_p, copy_rcv.pgptr);
+  volheader = (DISK_VOLUME_HEADER *) copy_rcv.pgptr;
   if (is_first_call)
     {
       /* don't update disk cache. if the volume is successfully created, another disk_rv_redo_format call will follow,
        * and we can update disk cache then. */
 
       disk_log ("disk_rv_redo_format", "first call for volume %d at lsa %lld|%d", volheader->volid,
-		PGBUF_PAGE_LSA_AS_ARGS (rcv->pgptr));
+		PGBUF_PAGE_LSA_AS_ARGS (copy_rcv.pgptr));
       return NO_ERROR;
     }
 
@@ -1389,7 +1389,7 @@ disk_rv_redo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
     }
 
   disk_log ("disk_rv_redo_format", "second call for volume %d at lsa %lld|%d, free = %d, total = %d, max = %d",
-	    volheader->volid, PGBUF_PAGE_LSA_AS_ARGS (rcv->pgptr), nsect_free, volheader->nsect_total,
+	    volheader->volid, PGBUF_PAGE_LSA_AS_ARGS (copy_rcv.pgptr), nsect_free, volheader->nsect_total,
 	    volheader->nsect_max);
 
   return error_code;
@@ -1416,7 +1416,7 @@ disk_rv_dump_hdr (FILE * fp, int length_ignore, void *data)
  *   rcv(in): Recovery structure
  */
 int
-disk_rv_redo_init_map (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+disk_rv_redo_init_map (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   DKNSECTS nsects;
   DISK_STAB_UNIT *stab_unit;
@@ -1461,7 +1461,7 @@ disk_rv_dump_init_map (FILE * fp, int length_ignore, void *data)
  *   rcv(in): Recovery structure
  */
 int
-disk_rv_undoredo_set_creation_time (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+disk_rv_undoredo_set_creation_time (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   DISK_VOLUME_HEADER *vhdr;
   DISK_RECV_CHANGE_CREATION *change;
@@ -1502,7 +1502,7 @@ disk_rv_dump_set_creation_time (FILE * fp, int length_ignore, void *data)
  *   rcv(in): Recovery structure
  */
 int
-disk_rv_undoredo_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+disk_rv_undoredo_link (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   DISK_VOLUME_HEADER *vhdr;
   DISK_RECV_LINK_PERM_VOLUME *link;
@@ -1540,7 +1540,7 @@ disk_rv_dump_link (FILE * fp, int length_ignore, void *data)
  *   rcv(in): Recovery structure
  */
 int
-disk_rv_undoredo_set_boot_hfid (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+disk_rv_undoredo_set_boot_hfid (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   DISK_VOLUME_HEADER *vhdr;
   HFID *hfid;
@@ -1579,7 +1579,7 @@ disk_rv_dump_set_boot_hfid (FILE * fp, int length_ignore, void *data)
  *   rcv(in): Recovery structure
  */
 int
-disk_rv_redo_volume_expand (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+disk_rv_redo_volume_expand (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   DISK_RECV_DATA_VOLUME_EXPAND info;
 
@@ -1998,7 +1998,7 @@ disk_volume_expand (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLTYPE voltype, DK
  * rcv (in)      : Recovery data
  */
 int
-disk_rv_volhead_extend_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+disk_rv_volhead_extend_redo (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   DISK_VOLUME_HEADER *volheader = (DISK_VOLUME_HEADER *) rcv->pgptr;
   DKNSECTS nsect_extend = *(DKNSECTS *) rcv->data;
@@ -2057,7 +2057,7 @@ disk_rv_volhead_extend_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * rcv (in)      : recovery data
  */
 int
-disk_rv_volhead_extend_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+disk_rv_volhead_extend_undo (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   DISK_VOLUME_HEADER *volheader = (DISK_VOLUME_HEADER *) rcv->pgptr;
   DKNSECTS nsect_extend = *(DKNSECTS *) rcv->data;
@@ -3831,7 +3831,7 @@ disk_stab_dump (THREAD_ENTRY * thread_p, FILE * fp, const DISK_VOLUME_HEADER * v
  * rcv (in)	   : Recovery data.
  */
 int
-disk_rv_reserve_sectors (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+disk_rv_reserve_sectors (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   DISK_STAB_UNIT rv_unit = *(DISK_STAB_UNIT *) rcv->data;
   DISK_STAB_UNIT *stab_unit;
@@ -3855,15 +3855,20 @@ disk_rv_reserve_sectors (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       /* disk check is in progress. unfix page, get critical section again and then fix page and make the changes */
       VPID vpid;
       pgbuf_get_vpid (rcv->pgptr, &vpid);
-      pgbuf_unfix_and_init (thread_p, rcv->pgptr);
+      // make an exception to the const rule.
+      // *INDENT-OFF*
+      pgbuf_unfix (thread_p, (const_cast<LOG_RCV *> (rcv))->pgptr);
+      // *INDENT-ON*
       error_code = csect_enter_as_reader (thread_p, CSECT_DISK_CHECK, INF_WAIT);
       if (error_code != NO_ERROR)
 	{
 	  assert_release (false);
 	  return ER_FAILED;
 	}
-      /* fix page again */
-      rcv->pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      // strip const again
+      // *INDENT-OFF*
+      (const_cast<LOG_RCV *> (rcv))->pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      // *INDENT-ON*
       if (rcv->pgptr == NULL)
 	{
 	  /* should not fail */
@@ -3912,7 +3917,7 @@ disk_rv_reserve_sectors (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * rcv (in)	   : Recovery data.
  */
 int
-disk_rv_unreserve_sectors (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+disk_rv_unreserve_sectors (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   DISK_STAB_UNIT rv_unit = *(DISK_STAB_UNIT *) rcv->data;
   DISK_STAB_UNIT *stab_unit;
@@ -3936,7 +3941,10 @@ disk_rv_unreserve_sectors (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       /* disk check is in progress. unfix page, get critical section again and then fix page and make the changes */
       VPID vpid;
       pgbuf_get_vpid (rcv->pgptr, &vpid);
-      pgbuf_unfix_and_init (thread_p, rcv->pgptr);
+      // make an exception to the const rule.
+      // *INDENT-OFF*
+      pgbuf_unfix (thread_p, (const_cast<LOG_RCV *> (rcv))->pgptr);
+      // *INDENT-ON*
       error_code = csect_enter_as_reader (thread_p, CSECT_DISK_CHECK, INF_WAIT);
       if (error_code != NO_ERROR)
 	{
@@ -3944,7 +3952,10 @@ disk_rv_unreserve_sectors (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	  return ER_FAILED;
 	}
       /* fix page again */
-      rcv->pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      // strip const again
+      // *INDENT-OFF*
+      (const_cast<LOG_RCV *> (rcv))->pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      // *INDENT-ON*;
       if (rcv->pgptr == NULL)
 	{
 	  /* should not fail */

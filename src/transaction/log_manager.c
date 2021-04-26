@@ -308,6 +308,10 @@ static void log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG
 
 static int logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, void *args);
 
+static int log_create_metalog_file ();
+static int log_read_metalog_from_file ();
+static int log_write_metalog_to_file ();
+
 #if defined(SERVER_MODE)
 // *INDENT-OFF*
 static void log_abort_task_execute (cubthread::entry &thread_ref, LOG_TDES &tdes);
@@ -911,6 +915,14 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const cha
   /* Create the information file to append log info stuff to the DBA */
   logpb_create_log_info (log_Name_info, NULL);
 
+  /* Create meta log volume */
+  error_code = log_create_metalog_file ();
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
+
   catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_LOGINFO_ACTIVE);
   if (catmsg == NULL)
     {
@@ -1079,6 +1091,14 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
       logpb_fatal_error (thread_p, !init_emergency, ARG_FILE_LINE, "log_xinit");
       goto error;
     }
+
+  error_code = log_read_metalog_from_file ();
+  if (error_code != NO_ERROR && !init_emergency)
+    {
+      // Unable to mount meta log
+      goto error;
+    }
+
   logpb_decache_archive_info (thread_p);
   log_Gl.run_nxchkpt_atpageid = NULL_PAGEID;	/* Don't run the checkpoint */
   log_Gl.rcv_phase = LOG_RECOVERY_ANALYSIS_PHASE;
@@ -3962,7 +3982,7 @@ log_sysop_end_logical_undo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, cons
  * undo_nxlsa (in) : LSA of next undo LSA (equivalent to compensated undo record previous LSA).
  */
 void
-log_sysop_end_logical_compensate (THREAD_ENTRY * thread_p, LOG_LSA * undo_nxlsa)
+log_sysop_end_logical_compensate (THREAD_ENTRY * thread_p, const LOG_LSA * undo_nxlsa)
 {
   LOG_REC_SYSOP_END log_record;
 
@@ -3981,7 +4001,7 @@ log_sysop_end_logical_compensate (THREAD_ENTRY * thread_p, LOG_LSA * undo_nxlsa)
  * posp_lsa (in) : The LSA of postpone record which was executed by this run postpone.
  */
 void
-log_sysop_end_logical_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * posp_lsa)
+log_sysop_end_logical_run_postpone (THREAD_ENTRY * thread_p, const LOG_LSA * posp_lsa)
 {
   LOG_REC_SYSOP_END log_record;
 
@@ -8694,7 +8714,7 @@ log_get_charset_from_header_page (THREAD_ENTRY * thread_p, const char *db_fullna
  *              physical logging.
  */
 int
-log_rv_copy_char (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+log_rv_copy_char (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   char *to_data;
 
@@ -8751,7 +8771,7 @@ log_rv_dump_hexa (FILE * fp, int length, void *data)
  *              (e.g., removing a temporary volume) the data base domain.
  */
 int
-log_rv_outside_noop_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+log_rv_outside_noop_redo (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   return NO_ERROR;
 }
@@ -10213,6 +10233,56 @@ logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, vo
 					       false);
 
   return error_code;
+}
+
+// Create the meta log volume
+int
+log_create_metalog_file ()
+{
+  FILE *fp = fopen (log_Name_metainfo, "w");
+  if (!fp)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANNOT_CREATE_VOL, 3, boot_db_full_name (),
+	      er_get_msglog_filename ());
+      return ER_BO_CANNOT_CREATE_VOL;
+    }
+
+  log_Gl.m_metainfo.flush_to_file (fp);
+  fclose (fp);
+
+  return NO_ERROR;
+}
+
+// Get meta log from disk to log_Gl
+int
+log_read_metalog_from_file ()
+{
+  FILE *fp = fopen (log_Name_metainfo, "r");
+  if (!fp)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MOUNT_FAIL, 1, log_Name_metainfo);
+      return ER_LOG_MOUNT_FAIL;
+    }
+
+  log_Gl.m_metainfo.load_from_file (fp);
+  fclose (fp);
+  return NO_ERROR;
+}
+
+// Write meta log from log_Gl to disk
+int
+log_write_metalog_to_file ()
+{
+  FILE *fp = fopen (log_Name_metainfo, "r+");
+  if (!fp)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MOUNT_FAIL, 1, log_Name_metainfo);
+      return ER_LOG_MOUNT_FAIL;
+    }
+
+  log_Gl.m_metainfo.flush_to_file (fp);
+  fclose (fp);
+  return NO_ERROR;
 }
 
 //

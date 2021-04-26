@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. 
+ * Copyright (C) 2008 Search Solution Corporation.
  * Copyright (c) 2016 CUBRID Corporation.
  *
  * Redistribution and use in source and binary forms, with or without modification,
@@ -34,35 +34,35 @@ package com.cubrid.jsp;
 import java.util.HashMap;
 
 public class TargetMethodCache {
-	private HashMap<String, TargetMethod> methods;
+    private HashMap<String, TargetMethod> methods;
 
-	private static volatile TargetMethodCache instance = null;
+    private static volatile TargetMethodCache instance = null;
 
-	private TargetMethodCache() {
-		methods = new HashMap<String, TargetMethod>();
-	}
+    private TargetMethodCache() {
+        methods = new HashMap<String, TargetMethod>();
+    }
 
-	public TargetMethod get(String signature) throws Exception {
-		TargetMethod method = null;
+    public TargetMethod get(String signature) throws Exception {
+        TargetMethod method = null;
 
-		method = methods.get(signature);
-		if (method == null) {
-			method = new TargetMethod(signature);
-			methods.put(signature, method);
-		}
+        method = methods.get(signature);
+        if (method == null) {
+            method = new TargetMethod(signature);
+            methods.put(signature, method);
+        }
 
-		return method;
-	}
+        return method;
+    }
 
-	public static TargetMethodCache getInstance() {
-		if (instance == null) {
-			synchronized (TargetMethodCache.class) {
-				if (instance == null) {
-					instance = new TargetMethodCache();
-				}
-			}
-		}
+    public static TargetMethodCache getInstance() {
+        if (instance == null) {
+            synchronized (TargetMethodCache.class) {
+                if (instance == null) {
+                    instance = new TargetMethodCache();
+                }
+            }
+        }
 
-		return instance;
-	}
+        return instance;
+    }
 }

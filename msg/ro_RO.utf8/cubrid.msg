@@ -1335,7 +1335,7 @@ Verificați calea fișierului cheie (_keys) și asigurați-vă că acesta includ
 1264 Invalid format for configuration parameter %1s. Expected a 'hostname:port', found %2s
 1265 Error connecting with the page server at %s.
 1266 The high availability system is not compatible with the page server type.
-1267 Error reserved for scalability development.
+1267 Cannot copy volume %s to %s. Error: %s.
 1268 Error reserved for scalability development.
 1269 Error reserved for scalability development.
 1270 Error reserved for scalability development.

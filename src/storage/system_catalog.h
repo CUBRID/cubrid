@@ -193,13 +193,13 @@ extern DISK_ISVALID catalog_check_consistency (THREAD_ENTRY * thread_p);
 extern void catalog_dump (THREAD_ENTRY * thread_p, FILE * fp, int dump_flg);
 
 /* Recovery routines */
-extern int catalog_rv_new_page_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv);
-extern int catalog_rv_insert_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv);
-extern int catalog_rv_insert_undo (THREAD_ENTRY * thread_p, LOG_RCV * recv);
-extern int catalog_rv_delete_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv);
-extern int catalog_rv_delete_undo (THREAD_ENTRY * thread_p, LOG_RCV * recv);
-extern int catalog_rv_update (THREAD_ENTRY * thread_p, LOG_RCV * recv);
-extern int catalog_rv_ovf_page_logical_insert_undo (THREAD_ENTRY * thread_p, LOG_RCV * recv);
+extern int catalog_rv_new_page_redo (THREAD_ENTRY * thread_p, const LOG_RCV * recv);
+extern int catalog_rv_insert_redo (THREAD_ENTRY * thread_p, const LOG_RCV * recv);
+extern int catalog_rv_insert_undo (THREAD_ENTRY * thread_p, const LOG_RCV * recv);
+extern int catalog_rv_delete_redo (THREAD_ENTRY * thread_p, const LOG_RCV * recv);
+extern int catalog_rv_delete_undo (THREAD_ENTRY * thread_p, const LOG_RCV * recv);
+extern int catalog_rv_update (THREAD_ENTRY * thread_p, const LOG_RCV * recv);
+extern int catalog_rv_ovf_page_logical_insert_undo (THREAD_ENTRY * thread_p, const LOG_RCV * recv);
 extern int catalog_get_dir_oid_from_cache (THREAD_ENTRY * thread_p, const OID * class_id_p, OID * dir_oid_p);
 extern int catalog_start_access_with_dir_oid (THREAD_ENTRY * thread_p, CATALOG_ACCESS_INFO * catalog_access_info,
 					      LOCK lock_mode);

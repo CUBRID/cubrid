@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. 
+ * Copyright (C) 2008 Search Solution Corporation.
  * Copyright (c) 2016 CUBRID Corporation.
  *
  * Redistribution and use in source and binary forms, with or without modification,
@@ -32,21 +32,21 @@
 package com.cubrid.jsp.exception;
 
 public class TypeMismatchException extends Exception {
-    	private static final long serialVersionUID = -2825869847996279057L;
+    private static final long serialVersionUID = -2825869847996279057L;
 
-	public TypeMismatchException() {
-		super();
-	}
+    public TypeMismatchException() {
+        super();
+    }
 
-	public TypeMismatchException(String message, Throwable cause) {
-		super(message, cause);
-	}
+    public TypeMismatchException(String message, Throwable cause) {
+        super(message, cause);
+    }
 
-	public TypeMismatchException(String message) {
-		super(message);
-	}
+    public TypeMismatchException(String message) {
+        super(message);
+    }
 
-	public TypeMismatchException(Throwable cause) {
-		super(cause);
-	}
+    public TypeMismatchException(Throwable cause) {
+        super(cause);
+    }
 }

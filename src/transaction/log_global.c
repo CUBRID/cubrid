@@ -97,6 +97,7 @@ char log_Name_bkupinfo[PATH_MAX];
 char log_Name_volinfo[PATH_MAX];
 char log_Name_bg_archive[PATH_MAX];
 char log_Name_removed_archive[PATH_MAX];
+char log_Name_metainfo[PATH_MAX];
 
 // *INDENT-OFF*
 log_global::~log_global ()
