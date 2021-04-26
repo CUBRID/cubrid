@@ -47,13 +47,16 @@ const VOLID LOG_DBLOG_INFO_VOLID = LOG_DBFIRST_VOLID - 4;
 const VOLID LOG_DBLOG_BKUPINFO_VOLID = LOG_DBFIRST_VOLID - 3;
 /* Volid of active log */
 const VOLID LOG_DBLOG_ACTIVE_VOLID = LOG_DBFIRST_VOLID - 2;
-/* Volid of background archive logs */
-const VOLID LOG_DBLOG_BG_ARCHIVE_VOLID = LOG_DBFIRST_VOLID - 21;
-/* Volid of archive logs */
-const VOLID LOG_DBLOG_ARCHIVE_VOLID = LOG_DBFIRST_VOLID - 20;
+
 /* Volid of copies */
 const VOLID LOG_DBCOPY_VOLID = LOG_DBFIRST_VOLID - 19;
+/* Volid of archive logs */
+const VOLID LOG_DBLOG_ARCHIVE_VOLID = LOG_DBFIRST_VOLID - 20;
+/* Volid of background archive logs */
+const VOLID LOG_DBLOG_BG_ARCHIVE_VOLID = LOG_DBFIRST_VOLID - 21;
 /* Volid of double write buffer */
 const VOLID LOG_DBDWB_VOLID = LOG_DBFIRST_VOLID - 22;
+/* Volid of log meta file */
+const VOLID LOG_DBLOG_METAINFO_VOLID = LOG_DBFIRST_VOLID - 23;
 
 #endif // !_LOG_VOLIDS_HPP_
