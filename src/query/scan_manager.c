@@ -8023,7 +8023,7 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 	    }
 	  else if (llsidp->hlsid.hash_list_scan_yn == HASH_METH_HYBRID)
 	    {
-	      MAKE_TUPLE_POSTION(tuple_pos, hvalue->pos, scan_id_p);
+	      MAKE_TUPLE_POSTION (tuple_pos, hvalue->pos, scan_id_p);
 	      if (qfile_jump_scan_tuple_position (thread_p, scan_id_p, &tuple_pos, &tplrec, PEEK) != S_SUCCESS)
 		{
 		  return S_ERROR;
@@ -8054,7 +8054,7 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 	  else if (llsidp->hlsid.hash_list_scan_yn == HASH_METH_HYBRID)
 	    {
 	      simple_pos = ((HASH_SCAN_VALUE *) llsidp->hlsid.curr_hash_entry->data)->pos;
-	      MAKE_TUPLE_POSTION(tuple_pos, simple_pos, scan_id_p);
+	      MAKE_TUPLE_POSTION (tuple_pos, simple_pos, scan_id_p);
 
 	      if (qfile_jump_scan_tuple_position (thread_p, scan_id_p, &tuple_pos, &tplrec, PEEK) != S_SUCCESS)
 		{
@@ -8166,11 +8166,11 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
     {
       return HASH_METH_IN_MEM;
     }
-  else if ((UINT64) llsidp->list_id->tuple_cnt * (sizeof(HENTRY_HLS) + sizeof(QFILE_TUPLE_SIMPLE_POS)) <= mem_limit)
+  else if ((UINT64) llsidp->list_id->tuple_cnt * (sizeof (HENTRY_HLS) + sizeof (QFILE_TUPLE_SIMPLE_POS)) <= mem_limit)
     {
       /* bytes of 1 row = sizeof(HENTRY_HLS) + sizeof(QFILE_TUPLE_SIMPLE_POS) = 36 bytes (64bit) */
-      /* HENTRY_HLS = pointer(8bytes) * 3 = 24 bytes*/
-      /* SIMPLE_POS = pageid(4bytes) + voldid(2bytes) + padding(2bytes) + offset(4bytes) = 12 bytes*/
+      /* HENTRY_HLS = pointer(8bytes) * 3 = 24 bytes */
+      /* SIMPLE_POS = pageid(4bytes) + voldid(2bytes) + padding(2bytes) + offset(4bytes) = 12 bytes */
       return HASH_METH_HYBRID;
     }
   else

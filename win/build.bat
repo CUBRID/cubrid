@@ -16,7 +16,6 @@ REM   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 REM   See the License for the specific language governing permissions and
 REM   limitations under the License.
 REM 
-REM  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
 SETLOCAL
 
@@ -85,6 +84,8 @@ for /f "tokens=* delims= " %%a IN ("%BUILD_LIST%") DO set BUILD_LIST=%%a
 echo Build list is [%BUILD_LIST%].
 set BUILD_LIST=%BUILD_LIST:ALL=BUILD DIST%
 set BUILD_LIST=%BUILD_LIST:BUILD=CUBRID%
+
+rem To package JDBC, add JDBC_PACKAGE at the following
 set BUILD_LIST=%BUILD_LIST:DIST=MSI_PACKAGE ZIP_PACKAGE CCI_PACKAGE%
 
 call :BUILD_PREPARE
@@ -231,17 +232,19 @@ echo Package created. [%DIST_DIR%\%CUBRID_CCI_PACKAGE_NAME%.zip]
 set DIST_PKGS=%DIST_PKGS% %CUBRID_CCI_PACKAGE_NAME%.zip
 GOTO :EOF
 
+rem JDBC_PACKAGE is disabled. To enable it, please refer to the comment above BUILD_LIST
 :BUILD_JDBC_PACKAGE
-echo Buiding JDBC package in %BUILD_DIR%...
-if NOT EXIST %BUILD_PREFIX%\jdbc\cubrid_jdbc.jar echo Cannot found built jar. & GOTO :EOF
+if NOT EXIST "%SOURCE_DIR%\cubrid-jdbc\src" echo Cannot found cubrid-jdbc submodule. & GOTO :EOF
 
-echo drop JDBC-%BUILD_NUMBER%-cubrid.jar into %DIST_DIR%
-copy %BUILD_PREFIX%\jdbc\cubrid_jdbc.jar %DIST_DIR%\JDBC-%BUILD_NUMBER%-cubrid.jar
+echo Packging JDBC in %SOURCE_DIR%\cubrid-jdbc\ ...
+set JDBC_VERSION=0
+for /f %%i IN (%SOURCE_DIR%\cubrid-jdbc\output\VERSION-DIST) DO set JDBC_VERSION=%%i
+echo drop cubrid_jdbc.jar into %DIST_DIR%
+copy %SOURCE_DIR%\cubrid-jdbc\cubrid_jdbc.jar %DIST_DIR%\JDBC-%JDBC_VERSION%-cubrid.jar
 if ERRORLEVEL 1 echo FAILD. & GOTO :EOF
-echo Package created. [%DIST_DIR%\JDBC-%BUILD_NUMBER%-cubrid.jar]
-set DIST_PKGS=%DIST_PKGS% JDBC-%BUILD_NUMBER%-cubrid.jar
+echo Package created. [%DIST_DIR%\JDBC-%JDBC_VERSION%-cubrid.jar]
+set DIST_PKGS=%DIST_PKGS% JDBC-%JDBC_VERSION%-cubrid.jar
 GOTO :EOF
-
 
 :ABSPATH
 set %2=%~f1

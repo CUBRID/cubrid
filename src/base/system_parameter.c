@@ -9215,7 +9215,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, SY
     case PRM_INTEGER:
       {
 	/* convert string to int */
-	int val;
+	int val = 0;
 
 	if (set_default)
 	  {
@@ -9357,7 +9357,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, SY
     case PRM_FLOAT:
       {
 	/* convert string to float */
-	float val;
+	float val = 0.f;
 
 	if (set_default)
 	  {

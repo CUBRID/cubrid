@@ -242,6 +242,12 @@ typedef enum tp_match
   (((typeid) == DB_TYPE_VARCHAR)  || ((typeid) == DB_TYPE_CHAR) || \
    ((typeid) == DB_TYPE_VARNCHAR) || ((typeid) == DB_TYPE_NCHAR))
 
+#define TP_IS_FIXED_LEN_CHAR_TYPE(typeid) \
+  (((typeid) == DB_TYPE_CHAR) || ((typeid) == DB_TYPE_NCHAR))
+
+#define TP_IS_VAR_LEN_CHAR_TYPE(typeid) \
+    (((typeid) == DB_TYPE_VARCHAR) || ((typeid) == DB_TYPE_VARNCHAR))
+
 /*
  * TP_IS_CHAR_BIT_TYPE
  *    Tests to see if a type is one of the character or bit types.

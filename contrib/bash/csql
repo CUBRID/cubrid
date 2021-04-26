@@ -1,0 +1,52 @@
+#
+# Cubrid CSQL client utility bash autocompletion script
+# Usage:
+#   - copy to /etc/bash_completion_d/ and it should be picked up by bash
+#
+# TODO:
+#   - in case of '--input-file' list local [sql] files
+#   - for user, list database users if these can be extracted somehow
+
+_csql_bash_completion() 
+{
+  local curr prev opts_utilities_all
+  COMPREPLY=()
+  curr="${COMP_WORDS[COMP_CWORD]}"
+  prev="${COMP_WORDS[COMP_CWORD-1]}"
+
+  local opts=$(
+    for opt in `csql 2>&1 |
+      awk 'BEGIN { FS=" " } { for(i=1; i<=NF; ++i) if ( $i ~ /^--.+$/ ) print $i; }'`;
+    do
+      echo ${opt};
+    done)
+  declare -a opts_wo_arg
+  # strip value from "--<key>=<value>" options but leave the '=' as to suggest that
+  # the option expects a value
+  local re="(--[a-zA-Z0-9-]+=).+"
+  for opt in $opts; do
+    if [[ $opt =~ $re ]]; then
+      opts_wo_arg+=(${BASH_REMATCH[1]})
+    else
+      opts_wo_arg+=($opt)
+    fi
+  done;
+
+  # execute only if the environment is correct
+  if [[ ! -z ${CUBRID_DATABASES+y} && -f $CUBRID_DATABASES/databases.txt ]]; then
+    local opts_database_names=$(
+      for opt_db_name in `cat $CUBRID_DATABASES/databases.txt | egrep "^[^#].+$" |
+        awk 'BEGIN { FS = " " } { print $1; }'`;
+      do
+        echo ${opt_db_name};
+      done)
+    for database_name in ${opts_database_names}; do
+      opts_wo_arg+=($database_name)
+    done
+  fi
+
+  COMPREPLY=( $(compgen -W "${opts_wo_arg[*]}" -- ${curr}) )
+}
+
+complete -F _csql_bash_completion csql
+
