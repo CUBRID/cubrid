@@ -127,10 +127,12 @@ namespace cubthread
     assert (tracker.empty ());
 
 #if defined (SERVER_MODE)
-    for (auto iter = tracker.begin (); iter != tracker.end (); iter = tracker.erase (iter))
+    for (; !tracker.empty ();)
       {
+	const auto iter = tracker.begin ();
 	(*iter)->stop_execution ();
 	delete *iter;
+	tracker.erase (iter);
       }
 #endif // SERVER_MODE
   }

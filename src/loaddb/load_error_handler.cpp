@@ -32,6 +32,8 @@
 #include "thread_manager.hpp"
 #include "error_manager.h"
 
+#include <algorithm>
+
 namespace cubload
 {
 

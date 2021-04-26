@@ -2942,12 +2942,20 @@ getservershmid (char *dir, char *dbname)
     }
   if (fgets (cbuf, sizeof (cbuf), fdkey_file) == NULL)
     {
+      if (fdkey_file != nullptr)
+	{
+	  fclose (fdkey_file);
+	}
       return -1;
     }
 
   result = parse_int (&shm_key, cbuf, 16);
   if (result != 0)
     {
+      if (fdkey_file != nullptr)
+	{
+	  fclose (fdkey_file);
+	}
       return -1;
     }
 

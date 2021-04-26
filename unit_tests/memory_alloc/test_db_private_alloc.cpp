@@ -118,10 +118,10 @@ namespace test_memalloc
 
     //cubthread::set_manager (&cub_th_m);
     cubthread::initialize (thread_p);
-    cub_th_m = cubthread::get_manager();
+    cub_th_m = cubthread::get_manager ();
     cub_th_m->set_max_thread_count (100);
 
-    cub_th_m->alloc_entries();
+    cub_th_m->alloc_entries ();
     cub_th_m->init_entries (false);
 
     initialized = true;
@@ -135,43 +135,43 @@ namespace test_memalloc
   static int
   test_private_allocator ()
   {
-    static std::string prefix = std::string (4, ' ') + PORTABLE_FUNC_NAME + "<" + typeid (T).name() + ">: ";
+    static std::string prefix = std::string (4, ' ') + PORTABLE_FUNC_NAME + "<" + typeid (T).name () + ">: ";
     T *ptr = nullptr;
 
     {
       custom_thread_entry cte;
-      cubmem::private_allocator<T> private_alloc (cte.get_thread_entry());
+      cubmem::private_allocator<T> private_alloc (cte.get_thread_entry ());
 
       std::cout << prefix << "alloc 64" << std::endl;
       ptr = private_alloc.allocate (SIZE_64);
-      *ptr = T();
-      * (ptr + SIZE_64 - 1) = T();
+      *ptr = T ();
+      * (ptr + SIZE_64 - 1) = T ();
       private_alloc.deallocate (ptr);
     }
 
     {
       custom_thread_entry cte;
-      cubmem::private_allocator<T> private_alloc (cte.get_thread_entry());
+      cubmem::private_allocator<T> private_alloc (cte.get_thread_entry ());
       std::cout << prefix << "alloc 1M" << std::endl;
       ptr = private_alloc.allocate (SIZE_1_M);
-      *ptr = T();
-      * (ptr + SIZE_1_M - 1) = T();
+      *ptr = T ();
+      * (ptr + SIZE_1_M - 1) = T ();
       private_alloc.deallocate (ptr);
     }
 
     {
       custom_thread_entry cte;
-      cubmem::private_allocator<T> private_alloc (cte.get_thread_entry());
+      cubmem::private_allocator<T> private_alloc (cte.get_thread_entry ());
 
       std::cout << prefix << "alloc 64x64" << std::endl;
       std::array<T *, SIZE_64> ptr_array;
-      for (size_t i = 0; i < ptr_array.size(); i++)
+      for (size_t i = 0; i < ptr_array.size (); i++)
 	{
 	  ptr_array[i] = private_alloc.allocate (SIZE_64);
-	  *ptr_array[i] = T();
-	  * (ptr_array[i] + SIZE_64 - 1) = T();
+	  *ptr_array[i] = T ();
+	  * (ptr_array[i] + SIZE_64 - 1) = T ();
 	}
-      for (size_t i = 0; i < ptr_array.size(); i++)
+      for (size_t i = 0; i < ptr_array.size (); i++)
 	{
 	  private_alloc.deallocate (ptr_array[i]);
 	}
@@ -179,14 +179,14 @@ namespace test_memalloc
 
     {
       custom_thread_entry cte;
-      cubmem::private_allocator<T> private_alloc (cte.get_thread_entry());
+      cubmem::private_allocator<T> private_alloc (cte.get_thread_entry ());
 
       /* test containers */
       std::vector<T, cubmem::private_allocator<T>> vec (private_alloc);
       vec.resize (SIZE_64);
       vec.resize (SIZE_ONE_K);
       vec.resize (SIZE_16_K);
-      vec.clear();
+      vec.clear ();
     }
 
     return 0;
@@ -212,7 +212,7 @@ namespace test_memalloc
 
     /* function header */
     static std::string function_header =
-	    std::string ("    basic_perf") + typeid (T).name() + "," + typeid (Alloc).name() + ">\n";
+	    std::string ("    basic_perf") + typeid (T).name () + "," + typeid (Alloc).name () + ">\n";
 
     test_common::sync_cout (function_header);
 
@@ -252,7 +252,7 @@ namespace test_memalloc
 
     test_common::custom_assert (step == results.get_step_count ());
 
-    delete pointers;
+    delete [] pointers;
     delete alloc;
 
     return 0;
@@ -404,7 +404,7 @@ namespace test_memalloc
     test_common::custom_assert (random_value_cursor == actions.get_size ());
     test_common::custom_assert (step == result.get_step_count ());
 
-    delete pointers_pool;
+    delete [] pointers_pool;
     delete alloc;
 
     return 0;

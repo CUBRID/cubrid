@@ -1499,7 +1499,7 @@ fileio_lock_la_log_path (const char *db_full_name_p, const char *lock_path_p, in
 	  *last_deleted_arv_num = -1;
 	}
 
-      lseek (vol_fd, (off_t) 0, SEEK_SET);
+      fseek (fp, 0, SEEK_SET);
 
       if (GETHOSTNAME (host, CUB_MAXHOSTNAMELEN) != 0)
 	{
@@ -5818,6 +5818,13 @@ fileio_make_log_info_name (char *log_info_name_p, const char *log_path_p, const 
 	   FILEIO_SUFFIX_LOGINFO);
 }
 
+void
+fileio_make_log_metainfo_name (char *log_meta_name_p, const char *log_path_p, const char *db_name_p)
+{
+  sprintf (log_meta_name_p, "%s%s%s%s", log_path_p, FILEIO_PATH_SEPARATOR (log_path_p), db_name_p,
+	   FILEIO_SUFFIX_LOGMETA);
+}
+
 /*
  * fileio_make_backup_volume_info_name () - Build the name of volumes
  *   return: void
@@ -9997,7 +10004,8 @@ fileio_get_next_restore_file (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * s
       /* replace filename with the databases.txt info */
       if ((session_p->dbfile.volid == LOG_DBLOG_BKUPINFO_VOLID) || (session_p->dbfile.volid == LOG_DBLOG_INFO_VOLID)
 	  || (session_p->dbfile.volid == LOG_DBLOG_ARCHIVE_VOLID)
-	  || (session_p->dbfile.volid == LOG_DBLOG_ACTIVE_VOLID))
+	  || (session_p->dbfile.volid == LOG_DBLOG_ACTIVE_VOLID)
+	  || (session_p->dbfile.volid == LOG_DBLOG_METAINFO_VOLID))
 	{
 	  sprintf (file_name_p, "%s%c%s", session_p->bkup.log_path, PATH_SEPARATOR,
 		   fileio_get_base_file_name (file_header_p->vlabel));

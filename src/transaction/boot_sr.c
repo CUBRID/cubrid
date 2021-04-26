@@ -1983,7 +1983,8 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
 		BOOT_FORMAT_MAX_LENGTH);
   fprintf (stdout, format, rel_name (), rel_build_number ());
 #else /* NDEBUG */
-  fprintf (stdout, "\n%s (%s) (%d debug build)\n\n", rel_name (), rel_build_number (), rel_bit_platform ());
+  fprintf (stdout, "\n%s (%s) (%d %s build)\n\n", rel_name (), rel_build_number (), rel_bit_platform (),
+	   rel_build_type ());
 #endif /* !NDEBUG */
 
   if (old_ctrl_c_handler != SIG_ERR)
@@ -2813,7 +2814,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 		    BOOT_FORMAT_MAX_LENGTH);
       fprintf (stdout, format, rel_name ());
 #else /* NDEBUG */
-      fprintf (stdout, "\n%s (%s) (%d debug build)\n\n", rel_name (), rel_build_number (), rel_bit_platform ());
+      fprintf (stdout, "\n%s (%s) (%d %s build)\n\n", rel_name (), rel_build_number (), rel_bit_platform (),
+	       rel_build_type ());
 #endif /* !NDEBUG */
     }
 
@@ -3941,7 +3943,6 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
   catalog_finalize ();
   qmgr_finalize (thread_p);
   (void) heap_manager_finalize ();
-  perfmon_finalize ();
   fileio_dismount_all (thread_p);
   disk_manager_final ();
   boot_server_status (BOOT_SERVER_DOWN);
@@ -3955,6 +3956,7 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
   lf_destroy_transaction_systems ();
 
   finalize_server_type ();
+  perfmon_finalize ();
 
 #if defined(SERVER_MODE)
   /* server mode shuts down all modules */
