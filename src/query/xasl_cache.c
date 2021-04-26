@@ -1772,8 +1772,6 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
        */
       while (true)
 	{
-	  int num_entries;
-
 	  xcache_entry = iter.iterate ();
 	  if (xcache_entry == NULL)
 	    {
