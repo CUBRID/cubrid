@@ -533,6 +533,56 @@ namespace cubpacking
 //unused stuff needed by the linker
 log_global log_Gl;
 
+void
+log_2pc_recovery_analysis_info (THREAD_ENTRY *thread_p, log_tdes *tdes, LOG_LSA *upto_chain_lsa)
+{
+  assert (false);
+}
+
+LOG_TDES *
+logtb_rv_find_allocate_tran_index (THREAD_ENTRY *thread_p, TRANID trid, const LOG_LSA *log_lsa)
+{
+  assert (false);
+}
+
+void
+logtb_clear_tdes (THREAD_ENTRY *thread_p, LOG_TDES *tdes)
+{
+  assert (false);
+}
+
+void
+logpb_fatal_error (THREAD_ENTRY *thread_p, bool logexit, const char *file_name, const int lineno, const char *fmt, ...)
+{
+  assert (false);
+}
+
+void
+clientids::set_system_internal_with_user (const char *db_user_arg)
+{
+  assert (false);
+}
+
+void *
+logtb_realloc_topops_stack (LOG_TDES *tdes, int num_elms)
+{
+  assert (false);
+}
+
+int
+log_read_sysop_start_postpone (THREAD_ENTRY *thread_p, LOG_LSA *log_lsa, LOG_PAGE *log_page, bool with_undo_data,
+			       LOG_REC_SYSOP_START_POSTPONE *sysop_start_postpone, int *undo_buffer_size,
+			       char **undo_buffer, int *undo_size, char **undo_data)
+{
+  assert (false);
+}
+
+int
+logtb_find_tran_index (THREAD_ENTRY *thread_p, TRANID trid)
+{
+  assert (false);
+}
+
 bool
 prm_get_bool_value (PARAM_ID prmid)
 {
