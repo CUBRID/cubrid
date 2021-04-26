@@ -19,13 +19,15 @@
 #ifndef _COMMUNICATION_NODE_HPP_
 #define _COMMUNICATION_NODE_HPP_
 
+#include <string>
+
 namespace cubcomm
 {
 
   class node
   {
       int m_port;
-      const char *m_host;
+      std::string m_host;
 
       node() = delete;
       node (const node &) = delete;

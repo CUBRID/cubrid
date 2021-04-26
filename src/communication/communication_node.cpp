@@ -27,6 +27,6 @@ namespace cubcomm
   node::node (int port, char *host)
   {
     m_port = port;
-    memcpy (m_host, host, strlen (host));
+    m_host = host;
   }
 }
