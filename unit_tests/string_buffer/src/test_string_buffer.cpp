@@ -103,15 +103,23 @@ class test_string_buffer
 	      m_dim *= 2;
 	    }
 	  while (m_dim < m_len + len);
-	  m_ref = (char *) realloc (m_ref, m_dim);
+	  char *const realloc_m_ref = (char *) realloc (m_ref, m_dim);
+	  if (realloc_m_ref != nullptr)
+	    {
+	      m_ref = realloc_m_ref;
+	    }
+	  else
+	    {
+	      ERR ("[%s(%d)] StrBuf() realloc() new_len=%d", __FILE__, __LINE__, len);
+	    }
 	}
     }
 
-    void operator() (size_t size) // prepare for a test with a buffer of <size> bytes
+    void operator () (size_t size) // prepare for a test with a buffer of <size> bytes
     {
       m_len = 0;
       stack_allocator.~stack ();
-      m_sb.clear();
+      m_sb.clear ();
     }
 
     template<typename... Args> void format (const char *file, int line, Args &&... args)
@@ -134,9 +142,9 @@ class test_string_buffer
 	  ERR ("[%s(%d)] StrBuf() len()=%zu expect %zu", file, line, m_sb.len (), m_len);
 	  return;
 	}
-      if (strcmp (m_sb.get_buffer(), m_ref))//check content
+      if (strcmp (m_sb.get_buffer (), m_ref)) //check content
 	{
-	  ERR ("[%s(%d)] StrBuf() {\"%s\"} expect{\"%s\"}", file, line, m_sb.get_buffer(), m_ref);
+	  ERR ("[%s(%d)] StrBuf() {\"%s\"} expect{\"%s\"}", file, line, m_sb.get_buffer (), m_ref);
 	  return;
 	}
       const cubmem::block block { m_sb.len (), const_cast<char *> (m_sb.get_buffer ()) };
@@ -159,9 +167,9 @@ class test_string_buffer
 	  ERR ("[%s(%d)] StrBuf() len()=%zu expect %zu", file, line, m_sb.len (), m_len);
 	  return;
 	}
-      if (strcmp (m_sb.get_buffer(), m_ref) != 0)//check content
+      if (strcmp (m_sb.get_buffer (), m_ref) != 0) //check content
 	{
-	  ERR ("[%s(%d)] StrBuf() {\"%s\"} expect {\"%s\"}", file, line, m_sb.get_buffer(), m_ref);
+	  ERR ("[%s(%d)] StrBuf() {\"%s\"} expect {\"%s\"}", file, line, m_sb.get_buffer (), m_ref);
 	  return;
 	}
       const cubmem::block block { m_sb.len (), const_cast<char *> (m_sb.get_buffer ()) };

@@ -32,7 +32,7 @@
 #include "storage_common.h"
 #include "system.h"
 
-#include <string.h>
+#include <cstring>
 
 enum log_rectype
 {
@@ -230,11 +230,15 @@ struct log_rec_replication
   int rcvindex;
 };
 
+/* Redefined for explicitness.
+ * Not using 'time_t' (which is unsigned) for backward compatibility of stored structure. */
+typedef INT64 time_msec_t;
+
 /* Log the time of termination of transaction */
 typedef struct log_rec_donetime LOG_REC_DONETIME;
 struct log_rec_donetime
 {
-  INT64 at_time;		/* Database creation time. For safety reasons */
+  time_msec_t at_time;		/* Transaction commit time stored as milliseconds */
 };
 
 /* Log the change of the server's HA state */
@@ -244,7 +248,7 @@ struct log_rec_ha_server_state
   int state;			/* ha_Server_state */
   int dummy;			/* dummy for alignment */
 
-  INT64 at_time;		/* time recorded by active server */
+  time_msec_t at_time;		/* Time recorded by active server stored as milliseconds */
 };
 
 /* Information of database external redo log records */
@@ -521,5 +525,86 @@ struct log_rec_2pc_particp_ack
    || ((type) == LOG_MVCC_REDO_DATA) \
    || ((type) == LOG_MVCC_UNDOREDO_DATA) \
    || ((type) == LOG_MVCC_DIFF_UNDOREDO_DATA))
+
+bool
+log_info_chkpt_trans::operator== (const log_info_chkpt_trans &ochkpt) const
+{
+  if (isloose_end != ochkpt.isloose_end)
+    {
+      return false;
+    }
+
+  if (trid != ochkpt.trid)
+    {
+      return false;
+    }
+
+  if (state != ochkpt.state)
+    {
+      return false;
+    }
+
+  if (head_lsa != ochkpt.head_lsa)
+    {
+      return false;
+    }
+
+  if (tail_lsa != ochkpt.tail_lsa)
+    {
+      return false;
+    }
+
+  if (undo_nxlsa != ochkpt.undo_nxlsa)
+    {
+      return false;
+    }
+
+  if (posp_nxlsa != ochkpt.posp_nxlsa)
+    {
+      return false;
+    }
+
+  if (savept_lsa != ochkpt.savept_lsa)
+    {
+      return false;
+    }
+
+  if (tail_topresult_lsa != ochkpt.tail_topresult_lsa)
+    {
+      return false;
+    }
+
+  if (start_postpone_lsa != ochkpt.start_postpone_lsa)
+    {
+      return false;
+    }
+
+  if (std::strcmp (user_name, ochkpt.user_name) != 0)
+    {
+      return false;
+    }
+
+  return true;
+}
+
+bool
+log_info_chkpt_sysop::operator== (const log_info_chkpt_sysop &ochkpt) const
+{
+  if (trid != ochkpt.trid)
+    {
+      return false;
+    }
+
+  if (sysop_start_postpone_lsa != ochkpt.sysop_start_postpone_lsa)
+    {
+      return false;
+    }
+
+  if (atomic_sysop_start_lsa != ochkpt.atomic_sysop_start_lsa)
+    {
+      return false;
+    }
+  return true;
+}
 
 #endif // _LOG_RECORD_HPP_

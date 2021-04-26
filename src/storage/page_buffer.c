@@ -31,6 +31,7 @@
 
 #include "page_buffer.h"
 
+#include "active_tran_server.hpp"
 #include "storage_common.h"
 #include "memory_alloc.h"
 #include "system_parameter.h"
@@ -62,6 +63,7 @@
 #include "show_scan.h"
 #include "numeric_opfunc.h"
 #include "dbtype.h"
+#include "server_type.hpp"
 
 #if defined(SERVER_MODE)
 #include "connection_error.h"
@@ -1011,6 +1013,7 @@ static int pgbuf_unlock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_
 static PGBUF_BCB *pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid);
 static PGBUF_BCB *pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode,
 					   PGBUF_BUFFER_HASH * hash_anchor, PGBUF_FIX_PERF * perf, bool * try_again);
+static void pgbuf_request_data_page_from_page_server (const VPID * vpid);
 static int pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
 static int pgbuf_bcb_safe_flush_internal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool synchronous, bool * locked);
 static int pgbuf_invalidate_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
@@ -4525,7 +4528,7 @@ pgbuf_set_tde_algorithm (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, TDE_ALGORITHM 
  *   tde_algo (in) : encryption algorithm - NONE, AES, ARIA
  */
 int
-pgbuf_rv_set_tde_algorithm (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+pgbuf_rv_set_tde_algorithm (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   FILEIO_PAGE *iopage = NULL;
   PAGE_PTR pgptr = rcv->pgptr;
@@ -7709,6 +7712,8 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 	}
 #endif /* ENABLE_SYSTEMTAP */
 
+      pgbuf_request_data_page_from_page_server (vpid);
+
       if (dwb_read_page (thread_p, vpid, &bufptr->iopage_buffer->iopage, &success) != NO_ERROR)
 	{
 	  /* Should not happen */
@@ -7834,6 +7839,36 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
     }
 
   return bufptr;
+}
+
+/*
+ * pgbuf_request_data_page_from_page_server () - Sends a request for a page to Page Server.
+ *   return: void
+ */
+static void
+pgbuf_request_data_page_from_page_server (const VPID * vpid)
+{
+#if defined (SERVER_MODE)
+  // INDENT-OFF
+  /* Send a request to Page Server for the Page. */
+  if (get_server_type () == SERVER_TYPE_TRANSACTION)
+    {
+      constexpr size_t INT32_SIZE = 4;
+      constexpr size_t SHORT_SIZE = 2;
+      char buffer[INT32_SIZE + SHORT_SIZE];
+      std::memcpy (buffer, &(vpid->pageid), sizeof (vpid->pageid));
+      std::memcpy (buffer + INT32_SIZE, &(vpid->volid), sizeof (vpid->volid));
+      std::string message (buffer, sizeof (vpid));
+
+      ats_Gl.push_request (ats_to_ps_request::SEND_DATA_PAGE_FETCH, std::move (message));
+      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
+	{
+	  _er_log_debug (ARG_FILE_LINE, "Sent request for Page to Page Server. pageid: %ld volid: %d\n", vpid->pageid,
+			 vpid->volid);
+	}
+    }
+  // INDENT-ON 
+#endif // SERVER_MODE
 }
 
 /*
@@ -13687,7 +13722,7 @@ pgbuf_flush_control_from_dirty_ratio (void)
  * rcv (in)	 : Recovery data (VPID of page to flush).
  */
 int
-pgbuf_rv_flush_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+pgbuf_rv_flush_page (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   PAGE_PTR page_to_flush = NULL;
   VPID vpid_to_flush = VPID_INITIALIZER;
@@ -13924,7 +13959,7 @@ pgbuf_log_redo_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_new, int data_si
  * rcv (in)	 : Recovery data.
  */
 int
-pgbuf_rv_new_page_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+pgbuf_rv_new_page_redo (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   PAGE_TYPE set_page_type;
   assert (rcv->pgptr != NULL);
@@ -13958,7 +13993,7 @@ pgbuf_rv_new_page_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * rcv (in)      : recovery data
  */
 int
-pgbuf_rv_new_page_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+pgbuf_rv_new_page_undo (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   pgbuf_set_page_ptype (thread_p, rcv->pgptr, PAGE_UNKNOWN);
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
@@ -14037,7 +14072,7 @@ pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR page_dealloc)
  * rcv (in)      : recovery data
  */
 int
-pgbuf_rv_dealloc_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+pgbuf_rv_dealloc_redo (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   pgbuf_set_page_ptype (thread_p, rcv->pgptr, PAGE_UNKNOWN);
   pgbuf_set_tde_algorithm (thread_p, rcv->pgptr, TDE_ALGORITHM_NONE, true);
@@ -14056,7 +14091,7 @@ pgbuf_rv_dealloc_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *       fetch type OLD_PAGE_DEALLOCATED.
  */
 int
-pgbuf_rv_dealloc_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+pgbuf_rv_dealloc_undo (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   PAGE_PTR page_deallocated = NULL;
   PGBUF_DEALLOC_UNDO_DATA *udata = (PGBUF_DEALLOC_UNDO_DATA *) rcv->data;
@@ -14107,7 +14142,7 @@ pgbuf_rv_dealloc_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *
  */
 int
-pgbuf_rv_dealloc_undo_compensate (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+pgbuf_rv_dealloc_undo_compensate (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   PGBUF_DEALLOC_UNDO_DATA *udata = (PGBUF_DEALLOC_UNDO_DATA *) rcv->data;
   VPID vpid;

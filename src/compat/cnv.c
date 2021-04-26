@@ -6989,9 +6989,14 @@ db_value_to_string (const DB_VALUE * value, const char *format)
   while ((error = db_value_string (value, format, buffer, max_size)) == CNV_ERR_STRING_TOO_LONG)
     {
       max_size += max_size / 2;	/* Grow by 1.5x */
-      if ((buffer = (char *) realloc (buffer, max_size)) == NULL)
+      static char *const realloc_buffer = (char *) realloc (buffer, max_size);
+      if (realloc_buffer == NULL)
 	{
 	  return NULL;
+	}
+      else
+	{
+	  buffer = realloc_buffer;
 	}
     }
 

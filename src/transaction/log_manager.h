@@ -153,10 +153,10 @@ extern PGLENGTH log_get_io_page_size (THREAD_ENTRY * thread_p, const char *db_fu
 				      const char *prefix_logname);
 extern int log_get_charset_from_header_page (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 					     const char *prefix_logname);
-extern int log_rv_copy_char (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int log_rv_copy_char (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
 extern void log_rv_dump_char (FILE * fp, int length, void *data);
 extern void log_rv_dump_hexa (FILE * fp, int length, void *data);
-extern int log_rv_outside_noop_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int log_rv_outside_noop_redo (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern void log_simulate_crash (THREAD_ENTRY * thread_p, int flush_log, int flush_data_pages);
 #endif
@@ -193,8 +193,8 @@ extern void log_sysop_attach_to_outer (THREAD_ENTRY * thread_p);
 extern void log_sysop_commit (THREAD_ENTRY * thread_p);
 extern void log_sysop_end_logical_undo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VFID * vfid,
 					int undo_size, const char *undo_data);
-extern void log_sysop_end_logical_compensate (THREAD_ENTRY * thread_p, LOG_LSA * undo_nxlsa);
-extern void log_sysop_end_logical_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * posp_lsa);
+extern void log_sysop_end_logical_compensate (THREAD_ENTRY * thread_p, const LOG_LSA * undo_nxlsa);
+extern void log_sysop_end_logical_run_postpone (THREAD_ENTRY * thread_p, const LOG_LSA * posp_lsa);
 extern void log_sysop_end_recovery_postpone (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_record, int data_size,
 					     const char *data);
 extern int log_read_sysop_start_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page,

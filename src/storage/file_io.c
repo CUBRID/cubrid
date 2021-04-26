@@ -1499,7 +1499,7 @@ fileio_lock_la_log_path (const char *db_full_name_p, const char *lock_path_p, in
 	  *last_deleted_arv_num = -1;
 	}
 
-      lseek (vol_fd, (off_t) 0, SEEK_SET);
+      fseek (fp, 0, SEEK_SET);
 
       if (GETHOSTNAME (host, CUB_MAXHOSTNAMELEN) != 0)
 	{
@@ -5818,6 +5818,13 @@ fileio_make_log_info_name (char *log_info_name_p, const char *log_path_p, const 
 	   FILEIO_SUFFIX_LOGINFO);
 }
 
+void
+fileio_make_log_metainfo_name (char *log_meta_name_p, const char *log_path_p, const char *db_name_p)
+{
+  sprintf (log_meta_name_p, "%s%s%s%s", log_path_p, FILEIO_PATH_SEPARATOR (log_path_p), db_name_p,
+	   FILEIO_SUFFIX_LOGMETA);
+}
+
 /*
  * fileio_make_backup_volume_info_name () - Build the name of volumes
  *   return: void
@@ -6811,7 +6818,8 @@ fileio_initialize_backup (const char *db_full_name_p, const char *backup_destina
   fileio_determine_backup_buffer_size (session_p, buf_size);
 #endif
   if (prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE) > 0
-      && (session_p->bkup.iosize >= MIN (prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE), DB_INT32_MAX)))
+      && ((UINT64) session_p->bkup.iosize >=
+	  MIN (prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE), DB_INT32_MAX)))
     {
       er_log_debug (ARG_FILE_LINE,
 		    "Backup block buffer size %ld must be less "
@@ -8582,7 +8590,7 @@ fileio_flush_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p)
   bool is_force_new_bkvol = false;
 
   if (prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE) > 0
-      && session_p->bkup.count > prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE))
+      && (UINT64) session_p->bkup.count > prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE))
     {
       er_log_debug (ARG_FILE_LINE, "Backup_flush: Backup aborted because count %d larger than max volume size %ld\n",
 		    session_p->bkup.count, prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE));
@@ -8676,7 +8684,7 @@ fileio_flush_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p)
 
 	  if (is_interactive_need_new || is_force_new_bkvol
 	      || (prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE) > 0
-		  && (session_p->bkup.voltotalio >= prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE))))
+		  && ((UINT64) session_p->bkup.voltotalio >= prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE))))
 	    {
 #if defined(CUBRID_DEBUG)
 	      fprintf (stdout, "open a new backup volume\n");
@@ -9996,7 +10004,8 @@ fileio_get_next_restore_file (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * s
       /* replace filename with the databases.txt info */
       if ((session_p->dbfile.volid == LOG_DBLOG_BKUPINFO_VOLID) || (session_p->dbfile.volid == LOG_DBLOG_INFO_VOLID)
 	  || (session_p->dbfile.volid == LOG_DBLOG_ARCHIVE_VOLID)
-	  || (session_p->dbfile.volid == LOG_DBLOG_ACTIVE_VOLID))
+	  || (session_p->dbfile.volid == LOG_DBLOG_ACTIVE_VOLID)
+	  || (session_p->dbfile.volid == LOG_DBLOG_METAINFO_VOLID))
 	{
 	  sprintf (file_name_p, "%s%c%s", session_p->bkup.log_path, PATH_SEPARATOR,
 		   fileio_get_base_file_name (file_header_p->vlabel));
@@ -11827,7 +11836,7 @@ fileio_page_bitmap_dump (FILE * out_fp, const FILEIO_RESTORE_PAGE_BITMAP * page_
  *   is_page_corrupted (out): true, if the page is corrupted.
  */
 int
-fileio_page_check_corruption (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, bool *is_page_corrupted)
+fileio_page_check_corruption (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, bool * is_page_corrupted)
 {
   assert (io_page != NULL && is_page_corrupted != NULL);
 

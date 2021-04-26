@@ -5143,7 +5143,7 @@ catalog_clear_hash_table (THREAD_ENTRY * thread_p)
  *   recv(in): Recovery structure
  */
 int
-catalog_rv_new_page_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
+catalog_rv_new_page_redo (THREAD_ENTRY * thread_p, const LOG_RCV * recv_p)
 {
   char data[CATALOG_PAGE_HEADER_SIZE + MAX_ALIGNMENT], *aligned_data;
   RECDES record = { CATALOG_PAGE_HEADER_SIZE, CATALOG_PAGE_HEADER_SIZE, REC_HOME, NULL };
@@ -5182,7 +5182,7 @@ catalog_rv_new_page_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
  *   recv(in): Recovery structure
  */
 int
-catalog_rv_insert_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
+catalog_rv_insert_redo (THREAD_ENTRY * thread_p, const LOG_RCV * recv_p)
 {
   PGSLOTID slot_id;
   RECDES record;
@@ -5217,7 +5217,7 @@ catalog_rv_insert_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
  *   recv(in): Recovery structure
  */
 int
-catalog_rv_insert_undo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
+catalog_rv_insert_undo (THREAD_ENTRY * thread_p, const LOG_RCV * recv_p)
 {
   PGSLOTID slot_id;
 
@@ -5236,7 +5236,7 @@ catalog_rv_insert_undo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
  *   recv(in): Recovery structure
  */
 int
-catalog_rv_delete_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
+catalog_rv_delete_redo (THREAD_ENTRY * thread_p, const LOG_RCV * recv_p)
 {
   PGSLOTID slot_id;
 
@@ -5651,7 +5651,7 @@ exit:
  *   recv(in): Recovery structure
  */
 int
-catalog_rv_delete_undo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
+catalog_rv_delete_undo (THREAD_ENTRY * thread_p, const LOG_RCV * recv_p)
 {
   catalog_clear_hash_table (thread_p);
   return catalog_rv_insert_redo (thread_p, recv_p);
@@ -5665,7 +5665,7 @@ catalog_rv_delete_undo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
  * Note: Recover an update to a record in a slotted page
  */
 int
-catalog_rv_update (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
+catalog_rv_update (THREAD_ENTRY * thread_p, const LOG_RCV * recv_p)
 {
   PGSLOTID slot_id;
   RECDES record;
@@ -5694,7 +5694,7 @@ catalog_rv_update (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
  *   recv(in): Recovery structure
  */
 int
-catalog_rv_ovf_page_logical_insert_undo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
+catalog_rv_ovf_page_logical_insert_undo (THREAD_ENTRY * thread_p, const LOG_RCV * recv_p)
 {
   VPID *vpid_p;
 

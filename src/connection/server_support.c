@@ -2638,7 +2638,8 @@ css_process_server_server_connect (SOCKET master_fd)
       assert (false);
       return;
     }
-  cubcomm::channel chn;
+  constexpr int CHANNEL_POLL_TIMEOUT = 1000;	// 1000 milliseconds = 1 second
+  cubcomm::channel chn (CHANNEL_POLL_TIMEOUT);
   chn.accept (slave_fd);
   int request = css_get_master_request (slave_fd);	//read an integer to determine connection type
   switch (STATIC_CAST (cubcomm::server_server, request))

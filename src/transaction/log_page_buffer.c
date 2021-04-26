@@ -25,6 +25,7 @@
 #include "config.h"
 
 #include <cstring>
+#include <filesystem>
 #include <stdio.h>
 #include <stddef.h>
 #include <stdlib.h>
@@ -82,6 +83,9 @@
 #include "error_manager.h"
 #include "xserver_interface.h"
 #include "perf_monitor.h"
+#if defined (SERVER_MODE)
+#include "page_server.hpp"
+#endif
 #include "server_type.hpp"
 #include "storage_common.h"
 #include "system_parameter.h"
@@ -365,6 +369,9 @@ static bool logpb_is_log_active_from_backup_useful (THREAD_ENTRY * thread_p, con
 						    const char *db_full_name);
 static int logpb_peek_header_of_active_log_from_backup (THREAD_ENTRY * thread_p, const char *active_log_path,
 							LOG_HEADER * hdr);
+#if defined (SERVER_MODE)
+static void logpb_send_flushed_lsa_to_ats ();
+#endif // SERVER_MODE
 
 /*
  * FUNCTIONS RELATED TO LOG BUFFERING
@@ -1318,7 +1325,7 @@ logpb_initialize_header (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr, const cha
   assert (loghdr != NULL);
 
   /* to also initialize padding bytes */
-  memset (loghdr, 0, sizeof (LOG_HEADER));
+  loghdr->init ();
 
   strncpy (loghdr->magic, CUBRID_MAGIC_LOG_ACTIVE, CUBRID_MAGIC_MAX_LENGTH);
 
@@ -3797,6 +3804,13 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
     }
   flush_info->num_toflush = 0;
 
+#if defined (SERVER_MODE)
+  if (get_server_type () == SERVER_TYPE_PAGE)
+    {
+      logpb_send_flushed_lsa_to_ats ();
+    }
+#endif
+
   if (log_Gl.append.log_pgptr != NULL)
     {
       /* Add the append page */
@@ -3923,6 +3937,22 @@ error:
 
   return error_code;
 }
+
+#if defined (SERVER_MODE)
+void
+logpb_send_flushed_lsa_to_ats ()
+{
+  const log_lsa saved_lsa = log_Gl.append.get_nxio_lsa ();
+  if (prm_get_bool_value (PRM_ID_ER_LOG_COMMIT_CONFIRM))
+    {
+      _er_log_debug (ARG_FILE_LINE, "[COMMIT CONFIRM] Send saved LSA=%lld|%d.\n", LSA_AS_ARGS (&saved_lsa));
+    }
+  // *INDENT-OFF*
+  std::string message (reinterpret_cast<const char *> (&saved_lsa), sizeof (saved_lsa));
+  ps_Gl.push_request_to_active_tran_server (ps_to_ats_request::SEND_SAVED_LSA, std::move (message));
+  // *INDENT-ON*
+}
+#endif // SERVER_MODE
 
 /*
  * logpb_flush_pages_direct - flush all pages by itself.
@@ -4070,6 +4100,17 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
 	  need_wakeup_LFT = true;
 	  nxio_lsa = log_Gl.append.get_nxio_lsa ();
 	}
+
+      // *INDENT-OFF*
+      if (ats_Gl.is_page_server_connected ())
+	{
+	  log_Gl.wait_flushed_lsa (*flush_lsa);
+	  if (prm_get_bool_value (PRM_ID_ER_LOG_COMMIT_CONFIRM))
+	    {
+	      _er_log_debug (ARG_FILE_LINE, "Page server committed LSA = %lld|%d.\n", LSA_AS_ARGS (&log_Gl.m_max_ps_flushed_lsa));
+	    }
+	}
+      // *INDENT-ON*
     }
 #endif /* SERVER_MODE */
 }
@@ -4530,7 +4571,6 @@ logpb_create_log_info (const char *logname_info, const char *db_fullname)
       (void) logpb_add_volume (db_fullname, LOG_DBLOG_INFO_VOLID, logname_info, DISK_UNKNOWN_PURPOSE);
     }
 }
-
 
 /*
  * logpb_get_guess_archive_num - Guess archive number
@@ -6630,6 +6670,7 @@ logpb_initialize_log_names (THREAD_ENTRY * thread_p, const char *db_fullname, co
    */
   fileio_make_log_active_name (log_Name_active, log_Path, log_Prefix);
   fileio_make_log_info_name (log_Name_info, log_Path, log_Prefix);
+  fileio_make_log_metainfo_name (log_Name_metainfo, log_Path, log_Prefix);
   fileio_make_backup_volume_info_name (log_Name_bkupinfo, log_Path, log_Prefix);
   fileio_make_volume_info_name (log_Name_volinfo, db_fullname);
   fileio_make_log_archive_temp_name (log_Name_bg_archive, log_Archive_path, log_Prefix);
@@ -8046,6 +8087,14 @@ loop:
 	}
     }
 
+  error_code =
+    fileio_backup_volume (thread_p, &session, log_Name_metainfo, LOG_DBLOG_METAINFO_VOLID, NULL_PAGEID, false);
+  if (error_code != NO_ERROR)
+    {
+      LOG_CS_EXIT (thread_p);
+      goto error;
+    }
+
   /*
    * We must store the final bkvinf file at the very end of the backup
    * to have the best chance of having all of the information in it.
@@ -8643,6 +8692,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 		case LOG_DBLOG_BKUPINFO_VOLID:
 		case LOG_DBLOG_ACTIVE_VOLID:
 		case LOG_DBLOG_INFO_VOLID:
+		case LOG_DBLOG_METAINFO_VOLID:
 		case LOG_DBVOLINFO_VOLID:
 		case LOG_DBLOG_ARCHIVE_VOLID:
 		case LOG_DBTDE_KEYS_VOLID:
@@ -9342,6 +9392,23 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
     }
 
   /*
+   * Copy log meta-information file
+   */
+  fileio_make_log_metainfo_name (to_volname, to_logpath, to_prefix_logname);
+  // *INDENT-OFF*
+  try
+    {
+      std::filesystem::copy_file (log_Name_metainfo, to_volname);
+    }
+  catch (std::filesystem::filesystem_error &e)
+    {
+      error_code = ER_COPYDB_CANNOT_COPY_VOLUME;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 3, log_Name_metainfo, to_volname, e.what ());
+      goto error;
+    }
+  // *INDENT-ON*
+
+  /*
    * FIRST CREATE A NEW LOG FOR THE NEW DATABASE. This log is not a copy of
    * of the old log; it is a newly created one.
    * Compose the LOG name for the ACTIVE portion of the log.
@@ -9892,7 +9959,6 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols, co
       /* Nothing, tde keys file can be unavailable */
     }
 
-
   fileio_make_log_info_name (to_volname, to_logpath, to_prefix_logname);
   logpb_create_log_info (to_volname, to_db_fullname);
 
@@ -9915,6 +9981,16 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols, co
   error_code = log_dump_log_info (to_volname, false, catmsg, to_volname, log_Gl.hdr.npages + 1);
   if (error_code != NO_ERROR && error_code != ER_LOG_MOUNT_FAIL)
     {
+      goto error;
+    }
+
+  /*
+   * Rename the log meta file
+   */
+  fileio_make_log_metainfo_name (to_volname, to_logpath, to_prefix_logname);
+  if (fileio_rename (LOG_DBLOG_METAINFO_VOLID, log_Name_metainfo, to_volname) == NULL)
+    {
+      error_code = ER_FAILED;
       goto error;
     }
 
@@ -10355,6 +10431,7 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *db_fulln
 
   fileio_unformat (thread_p, log_Name_active);
   fileio_unformat (thread_p, log_Name_info);
+  fileio_unformat (thread_p, log_Name_metainfo);
 
   return NO_ERROR;
 }
@@ -10420,6 +10497,7 @@ logpb_check_exist_any_volumes (THREAD_ENTRY * thread_p, const char *db_fullname,
   exist_cnt += logpb_check_if_exists (log_Name_active, first_vol) ? 1 : 0;
   exist_cnt += logpb_check_if_exists (log_Name_info, first_vol) ? 1 : 0;
   exist_cnt += logpb_check_if_exists (log_Name_volinfo, first_vol) ? 1 : 0;
+  exist_cnt += logpb_check_if_exists (log_Name_metainfo, first_vol) ? 1 : 0;
 
   if (exist_cnt > 0)
     {
@@ -11309,6 +11387,7 @@ delete_fixed_logs:
 
   fileio_unformat (thread_p, log_Name_active);
   fileio_unformat (thread_p, log_Name_info);
+  fileio_unformat (thread_p, log_Name_metainfo);
 
   return NO_ERROR;
 }

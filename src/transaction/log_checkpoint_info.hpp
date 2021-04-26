@@ -16,6 +16,9 @@
  *
  */
 
+#ifndef _LOG_CHECKPOINT_INFO_HPP_
+#define _LOG_CHECKPOINT_INFO_HPP_
+
 #include "log_lsa.hpp"
 #include "log_record.hpp"
 #include "log_system_tran.hpp"
@@ -32,12 +35,13 @@ namespace cublog
   using checkpoint_tran_info = log_info_chkpt_trans;	// todo: replace log_info_chkpt_trans
   using checkpoint_sysop_info = log_info_chkpt_sysop;	// todo: replace log_info_chkpt_sysop
 
-  class checkpoint_info : cubpacking::packable_object
+  class checkpoint_info : public cubpacking::packable_object
   {
     public:
       checkpoint_info () = default;
       checkpoint_info (checkpoint_info &&) = default;
       checkpoint_info (const checkpoint_info &) = default;
+      ~checkpoint_info () override = default;
 
       void pack (cubpacking::packer &serializator) const override;
       void unpack (cubpacking::unpacker &deserializator) override;
@@ -64,3 +68,4 @@ namespace cublog
       bool m_has_2pc;				      // true if any LOG_ISTRAN_2PC (tdes) is true
   };
 }
+#endif

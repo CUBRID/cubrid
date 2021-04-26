@@ -153,9 +153,9 @@ main (int argc, char *argv[])
     status = javasp_get_server_info (db_name, jsp_info);
     if (status != NO_ERROR && command.compare ("start") != 0)
       {
-	char info_path[PATH_MAX], err_msg[PATH_MAX];
+	char info_path[PATH_MAX], err_msg[PATH_MAX + 32];
 	javasp_get_info_file (info_path, PATH_MAX, db_name.c_str ());
-	snprintf (err_msg, PATH_MAX, "Error while opening file (%s)", info_path);
+	snprintf (err_msg, sizeof (err_msg), "Error while opening file (%s)", info_path);
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, err_msg);
 	goto exit;
       }
@@ -310,9 +310,9 @@ javasp_start_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_na
 	  else
 	    {
 	      /* failed to write info file */
-	      char info_path[PATH_MAX], err_msg[PATH_MAX];
+	      char info_path[PATH_MAX], err_msg[PATH_MAX + 32];
 	      javasp_get_info_file (info_path, PATH_MAX, db_name.c_str ());
-	      snprintf (err_msg, PATH_MAX, "Error while writing to file: (%s)", info_path);
+	      snprintf (err_msg, sizeof (err_msg), "Error while writing to file: (%s)", info_path);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, err_msg);
 	      status = ER_SP_CANNOT_START_JVM;
 	    }

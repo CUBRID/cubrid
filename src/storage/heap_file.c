@@ -5856,7 +5856,7 @@ xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid, const O
  * rcv (in)      : recovery data
  */
 int
-heap_rv_mark_deleted_on_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+heap_rv_mark_deleted_on_undo (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   int error_code = file_rv_tracker_mark_heap_deleted (thread_p, rcv, true);
   if (error_code != NO_ERROR)
@@ -5874,7 +5874,7 @@ heap_rv_mark_deleted_on_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * rcv (in)      : recovery data
  */
 int
-heap_rv_mark_deleted_on_postpone (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+heap_rv_mark_deleted_on_postpone (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   int error_code = file_rv_tracker_mark_heap_deleted (thread_p, rcv, false);
   if (error_code != NO_ERROR)
@@ -15450,7 +15450,7 @@ heap_chnguess_clear (THREAD_ENTRY * thread_p, int tran_index)
  *   rcv(in): Recovery structure
  */
 int
-heap_rv_redo_newpage (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+heap_rv_redo_newpage (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   RECDES recdes;
   INT16 slotid;
@@ -15492,7 +15492,7 @@ heap_rv_redo_newpage (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * can be the heap header or a chain header.
  */
 int
-heap_rv_undoredo_pagehdr (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+heap_rv_undoredo_pagehdr (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   RECDES recdes;
   int sp_success;
@@ -15566,7 +15566,7 @@ heap_rv_dump_chain (FILE * fp, int ignore_length, void *data)
  * Note: Redo the insertion of an object at a specific location (OID).
  */
 int
-heap_rv_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+heap_rv_redo_insert (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   INT16 slotid;
   RECDES recdes;
@@ -15687,7 +15687,7 @@ heap_mvcc_log_insert (THREAD_ENTRY * thread_p, RECDES * p_recdes, LOG_DATA_ADDR 
  * Note: MVCC redo the insertion of an object at a specific location (OID).
  */
 int
-heap_rv_mvcc_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+heap_rv_mvcc_redo_insert (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   INT16 slotid;
   RECDES recdes;
@@ -15781,7 +15781,7 @@ heap_rv_mvcc_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * is reused since the object was never committed.
  */
 int
-heap_rv_undo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+heap_rv_undo_insert (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   INT16 slotid;
 
@@ -15804,7 +15804,7 @@ heap_rv_undo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * newly created object.
  */
 int
-heap_rv_redo_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+heap_rv_redo_delete (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   INT16 slotid;
 
@@ -15878,7 +15878,7 @@ heap_mvcc_log_delete (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * p_addr, LOG_RCVIN
  *   rcv(in): Recovery structure
  */
 int
-heap_rv_mvcc_undo_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+heap_rv_mvcc_undo_delete (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   INT16 slotid;
   MVCC_REC_HEADER mvcc_rec_header;
@@ -15931,7 +15931,7 @@ heap_rv_mvcc_undo_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * rcv (in)	 : Recovery data.
  */
 int
-heap_rv_mvcc_undo_delete_overflow (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+heap_rv_mvcc_undo_delete_overflow (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   MVCC_REC_HEADER mvcc_header;
 
@@ -16026,7 +16026,7 @@ heap_rv_mvcc_redo_delete_internal (THREAD_ENTRY * thread_p, PAGE_PTR page, PGSLO
  * rcv (in)	 : Recovery data.
  */
 int
-heap_rv_mvcc_redo_delete_home (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+heap_rv_mvcc_redo_delete_home (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   int error_code = NO_ERROR;
   int offset = 0;
@@ -16066,7 +16066,7 @@ heap_rv_mvcc_redo_delete_home (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * rcv (in)	 : Recovery data.
  */
 int
-heap_rv_mvcc_redo_delete_overflow (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+heap_rv_mvcc_redo_delete_overflow (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   int offset = 0;
   MVCCID mvccid;
@@ -16109,7 +16109,7 @@ heap_rv_mvcc_redo_delete_overflow (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * rcv (in)	 : Recovery data.
  */
 int
-heap_rv_mvcc_redo_delete_newhome (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+heap_rv_mvcc_redo_delete_newhome (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   int error_code = NO_ERROR;
   int offset = 0;
@@ -16144,7 +16144,7 @@ heap_rv_mvcc_redo_delete_newhome (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *       the marking of a deleted slot as reusable.
  */
 int
-heap_rv_redo_mark_reusable_slot (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+heap_rv_redo_mark_reusable_slot (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   INT16 slotid;
 
@@ -16161,7 +16161,7 @@ heap_rv_redo_mark_reusable_slot (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *   rcv(in): Recovery structure
  */
 int
-heap_rv_undo_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+heap_rv_undo_delete (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   INT16 slotid;
   INT16 recdes_type;
@@ -16196,7 +16196,7 @@ heap_rv_undo_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *   rev(in): Recovery structure
  */
 int
-heap_rv_undo_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+heap_rv_undo_update (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   INT16 recdes_type;
   int error_code;
@@ -16233,7 +16233,7 @@ heap_rv_undo_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *   rcv(in): Recovrery structure
  */
 int
-heap_rv_redo_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+heap_rv_redo_update (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   return heap_rv_undoredo_update (thread_p, rcv);
 }
@@ -16244,7 +16244,7 @@ heap_rv_redo_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *   rcv(in): Recovery structure
  */
 int
-heap_rv_undoredo_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+heap_rv_undoredo_update (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   INT16 slotid;
   RECDES recdes;
@@ -16280,7 +16280,7 @@ heap_rv_undoredo_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *   rcv(in): Recovery structure
  */
 int
-heap_rv_redo_reuse_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+heap_rv_redo_reuse_page (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   VPID vpid;
   RECDES recdes;
@@ -16332,7 +16332,7 @@ heap_rv_redo_reuse_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *   rcv(in): Recovery structure
  */
 int
-heap_rv_redo_reuse_page_reuse_oid (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+heap_rv_redo_reuse_page_reuse_oid (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   RECDES recdes;
   HEAP_CHAIN *chain;		/* Chain to next and prev page */
@@ -18915,7 +18915,7 @@ heap_mvcc_log_home_no_change (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * p_addr)
  *   rcv(in): Recovery structure
  */
 int
-heap_rv_redo_update_and_update_chain (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+heap_rv_redo_update_and_update_chain (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   int error_code = NO_ERROR;
   bool vacuum_status_change = false;
@@ -23859,7 +23859,7 @@ heap_page_get_vacuum_status (THREAD_ENTRY * thread_p, PAGE_PTR heap_page)
  * rcv (in)	 : Recovery data.
  */
 int
-heap_rv_nop (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+heap_rv_nop (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   assert (rcv->pgptr != NULL);
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
@@ -23878,7 +23878,7 @@ heap_rv_nop (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * rcv (in)	 : Recovery data.
  */
 int
-heap_rv_update_chain_after_mvcc_op (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+heap_rv_update_chain_after_mvcc_op (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   bool vacuum_status_change = false;
 
@@ -24045,7 +24045,7 @@ heap_mvcc_log_redistribute (THREAD_ENTRY * thread_p, RECDES * p_recdes, LOG_DATA
  *
  */
 int
-heap_rv_mvcc_redo_redistribute (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+heap_rv_mvcc_redo_redistribute (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   INT16 slotid;
   RECDES recdes;
@@ -24809,7 +24809,7 @@ heap_get_class_record (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * 
  * rcv (in)     : Recovery structure.
  */
 int
-heap_rv_undo_ovf_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+heap_rv_undo_ovf_update (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   int error_code;
 
@@ -25046,7 +25046,7 @@ heap_nonheader_page_capacity ()
  *
  */
 int
-heap_rv_postpone_append_pages_to_heap (THREAD_ENTRY * thread_p, LOG_RCV * recv)
+heap_rv_postpone_append_pages_to_heap (THREAD_ENTRY * thread_p, const LOG_RCV * recv)
 {
   int error_code = NO_ERROR;
   PGBUF_WATCHER page_watcher;

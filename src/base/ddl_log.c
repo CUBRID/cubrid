@@ -40,6 +40,7 @@
 #include <signal.h>
 #endif
 #include <assert.h>
+#include <chrono>
 
 #include "porting.h"
 #include "cas_common.h"
@@ -48,6 +49,7 @@
 #include "system_parameter.h"
 #include "environment_variable.h"
 #include "broker_config.h"
+#include "util_func.h"
 
 #define DDL_LOG_MSG 	            (256)
 #define DDL_LOG_PATH    	    "log/ddl_audit"
@@ -781,7 +783,7 @@ logddl_write ()
 	}
 
       len = logddl_create_log_msg (buf);
-      if (len < 0 || fwrite (buf, sizeof (char), len, fp) != len)
+      if (len < 0 || fwrite (buf, sizeof (char), len, fp) != (size_t) len)
 	{
 	  goto write_error;
 	}
@@ -807,7 +809,7 @@ logddl_write_tran_str (const char *fmt, ...)
 {
   FILE *fp = NULL;
   char msg[DDL_LOG_BUFFER_SIZE] = { 0 };
-  int len = 0;
+  size_t len = 0;
   struct timeval time_val;
   va_list args;
 
@@ -888,7 +890,7 @@ logddl_write_tran_str (const char *fmt, ...)
 	  len = DDL_LOG_BUFFER_SIZE;
 	}
 
-      if (len < 0 || fwrite (msg, sizeof (char), len, fp) != len)
+      if (fwrite (msg, sizeof (char), len, fp) != len)
 	{
 	  goto write_error;
 	}
@@ -967,7 +969,7 @@ logddl_write_end_for_csql_fileinput (const char *fmt, ...)
       logddl_file_copy (ddl_audit_handle->load_filename, ddl_audit_handle->copy_fullpath);
 
       len = logddl_create_log_msg (buf);
-      if (len < 0 || fwrite (buf, sizeof (char), len, fp) != len)
+      if (len < 0 || fwrite (buf, sizeof (char), len, fp) != (size_t) len)
 	{
 	  goto write_error;
 	}
@@ -1272,12 +1274,8 @@ logddl_get_time_string (char *buf, struct timeval *time_val)
 
   if (time_val == NULL)
     {
-      struct timeb tb;
-
       /* current time */
-      (void) ftime (&tb);
-      sec = tb.time;
-      millisec = tb.millitm;
+      util_get_second_and_ms_since_epoch (&sec, &millisec);
     }
   else
     {

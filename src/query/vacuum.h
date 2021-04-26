@@ -223,6 +223,7 @@ extern int vacuum_boot (THREAD_ENTRY * thread_p);
 extern void vacuum_stop_workers (THREAD_ENTRY * thread_p);
 extern void vacuum_stop_master (THREAD_ENTRY * thread_p);
 extern int xvacuum (THREAD_ENTRY * thread_p);
+extern void xvacuum_dump (THREAD_ENTRY * thread_p, FILE * outfp);
 
 extern int vacuum_create_file_for_vacuum_data (THREAD_ENTRY * thread_p, VFID * vacuum_data_vfid);
 extern int vacuum_data_load_and_recover (THREAD_ENTRY * thread_p);
@@ -233,34 +234,34 @@ extern LOG_PAGEID vacuum_min_log_pageid_to_keep (THREAD_ENTRY * thread_p);
 extern bool vacuum_is_safe_to_remove_archives (void);
 extern void vacuum_notify_server_crashed (LOG_LSA * recovery_lsa);
 extern void vacuum_notify_server_shutdown (void);
-extern int vacuum_rv_redo_vacuum_complete (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int vacuum_rv_redo_initialize_data_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int vacuum_rv_redo_data_finished (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int vacuum_rv_redo_vacuum_complete (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
+extern int vacuum_rv_redo_initialize_data_page (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
+extern int vacuum_rv_redo_data_finished (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
 extern void vacuum_rv_redo_data_finished_dump (FILE * fp, int length, void *data);
-extern int vacuum_rv_undoredo_data_set_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int vacuum_rv_undoredo_data_set_link (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
 extern void vacuum_rv_undoredo_data_set_link_dump (FILE * fp, int length, void *data);
-extern int vacuum_rv_redo_append_data (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int vacuum_rv_redo_append_data (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
 extern void vacuum_rv_redo_append_data_dump (FILE * fp, int length, void *data);
-extern int vacuum_rv_redo_start_job (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int vacuum_rv_redo_start_job (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
 
 extern int vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, int n_heap_objects,
 			     MVCCID threshold_mvccid, HFID * hfid, bool * reusable, bool was_interrupted);
-extern int vacuum_rv_redo_vacuum_heap_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int vacuum_rv_redo_remove_ovf_insid (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int vacuum_rv_undo_vacuum_heap_record (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int vacuum_rv_redo_vacuum_heap_record (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int vacuum_rv_redo_vacuum_heap_page (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
+extern int vacuum_rv_redo_remove_ovf_insid (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
+extern int vacuum_rv_undo_vacuum_heap_record (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
+extern int vacuum_rv_redo_vacuum_heap_record (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
 
 extern int vacuum_create_file_for_dropped_files (THREAD_ENTRY * thread_p, VFID * dropped_files_vfid);
 extern int vacuum_load_dropped_files_from_disk (THREAD_ENTRY * thread_p);
 extern int vacuum_is_file_dropped (THREAD_ENTRY * thread_p, bool * is_file_dropped, VFID * vfid, MVCCID mvccid);
-extern int vacuum_rv_notify_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int vacuum_rv_notify_dropped_file (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
 extern void vacuum_log_add_dropped_file (THREAD_ENTRY * thread_p, const VFID * vfid, const OID * class_oid,
 					 bool postpone_or_undo);
-extern int vacuum_rv_redo_add_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int vacuum_rv_undo_add_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int vacuum_rv_replace_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int vacuum_rv_redo_cleanup_dropped_files (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int vacuum_rv_set_next_page_dropped_files (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int vacuum_rv_redo_add_dropped_file (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
+extern int vacuum_rv_undo_add_dropped_file (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
+extern int vacuum_rv_replace_dropped_file (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
+extern int vacuum_rv_redo_cleanup_dropped_files (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
+extern int vacuum_rv_set_next_page_dropped_files (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
 
 extern DISK_ISVALID vacuum_check_not_vacuumed_recdes (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid,
 						      RECDES * recdes, int btree_node_type);
@@ -269,7 +270,7 @@ extern DISK_ISVALID vacuum_check_not_vacuumed_rec_header (THREAD_ENTRY * thread_
 extern bool vacuum_is_mvccid_vacuumed (MVCCID id);
 extern int vacuum_rv_check_at_undo (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, INT16 rec_type);
 
-extern int vacuum_rv_es_nop (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int vacuum_rv_es_nop (THREAD_ENTRY * thread_p, const LOG_RCV * rcv);
 #if defined (SERVER_MODE)
 extern void vacuum_notify_es_deleted (THREAD_ENTRY * thread_p, const char *uri);
 #endif /* SERVER_MODE */
