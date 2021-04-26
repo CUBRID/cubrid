@@ -53,7 +53,7 @@ jobs:
       - run:
           name: Unit tests
           command: |
-            cd /home/cubrid/${BUILD_DIR_NAME}/bin
+            cd /home/${BUILD_DIR_NAME}/bin
             sh ./run_scalability_unit_tests.sh
       - persist_to_workspace:
           root: .
