@@ -569,12 +569,11 @@ PSTAT_METADATA pstat_Metadata[] = {
   /* Peek time in msec taken for the log to be transferred, processed an applied on the page server */
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_SCAL_REPL_DELAY, "Time_scal_replication_delay_msec"),
   /* perf data for processing log redo on the page server - the synchronous part
-   *  - if the infrastructure to apply redo log in parallel is used, it does not
+   *  - if the infrastructure to apply recovery log redo in parallel is used, it does not
    *    include the calling of the redo function as that part will be
    *    included in the 'async' couterpart logging
    *  - if the log redo is applied synchronously, these values will include the
    *    effective calling of the redo function
-   * TODO: in the synchronous mode, substract the values for 'Scal_repl_log_redo' our of these
    */
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_SCAL_REPL_LOG_REDO_SYNC, "Scal_repl_log_redo_sync"),
   /* perf data for processing log redo:
