@@ -56,8 +56,7 @@ namespace cublog
        * - pool_context_manager: can be used to control the identity of the parallel
        *    tasks that consume jobs
        */
-      redo_parallel (unsigned a_worker_count,
-		     std::unique_ptr<cubthread::entry_manager> &&a_pool_context_manager);
+      redo_parallel (unsigned a_worker_count);
 
       redo_parallel (const redo_parallel &) = delete;
       redo_parallel (redo_parallel &&) = delete;
@@ -222,7 +221,7 @@ namespace cublog
 
     private:
       const unsigned m_task_count;
-      const std::unique_ptr<cubthread::entry_manager> m_pool_context_manager;
+      std::unique_ptr<cubthread::entry_manager> m_pool_context_manager;
 
       /* the workpool already has and internal bookkeeping and can also wait for the tasks to terminate;
        * however, it also has a hardcoded maximum wait time (60 seconds) after which it will assert;

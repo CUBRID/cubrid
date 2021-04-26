@@ -18,6 +18,7 @@
 
 #include "log_recovery_redo_parallel.hpp"
 
+#include "log_manager.h"
 #include "vpid.hpp"
 
 namespace cublog
@@ -397,14 +398,16 @@ namespace cublog
    * redo_parallel - definition
    *********************************************************************/
 
-  redo_parallel::redo_parallel (unsigned a_worker_count,
-				std::unique_ptr<cubthread::entry_manager> &&a_pool_context_manager)
+  redo_parallel::redo_parallel (unsigned a_worker_count)
     : m_task_count { a_worker_count }
-    , m_pool_context_manager { std::move (a_pool_context_manager) }
     , m_worker_pool (nullptr)
     , m_waited_for_termination (false)
   {
     assert (a_worker_count > 0);
+
+    const thread_type tt = log_is_in_crash_recovery () ? TT_RECOVERY : TT_REPLICATION;
+    m_pool_context_manager = std::make_unique<cubthread::system_worker_entry_manager> (
+				     tt, LOG_SYSTEM_TRAN_INDEX);
 
     do_init_worker_pool ();
     do_init_tasks ();

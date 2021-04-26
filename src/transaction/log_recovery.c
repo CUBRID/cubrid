@@ -3153,7 +3153,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
     assert (log_recovery_redo_parallel_count >= 0);
     if (log_recovery_redo_parallel_count > 0)
       {
-	parallel_recovery_redo.reset (new cublog::redo_parallel (log_recovery_redo_parallel_count, nullptr));
+	parallel_recovery_redo.reset (new cublog::redo_parallel (log_recovery_redo_parallel_count));
       }
   }
 #endif

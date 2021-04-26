@@ -56,14 +56,7 @@ namespace cublog
     assert (replication_parallel >= 0);
     if (replication_parallel > 0)
       {
-	std::unique_ptr<cubthread::entry_manager> replication_thread_pool_context_manager
-	{
-	  new cubthread::system_worker_entry_manager (TT_REPLICATION, LOG_SYSTEM_TRAN_INDEX)
-	};
-
-	m_parallel_replication_redo.reset (
-		new cublog::redo_parallel (replication_parallel,
-					   std::move (replication_thread_pool_context_manager)));
+	m_parallel_replication_redo.reset (new cublog::redo_parallel (replication_parallel));
       }
 
     // Create the daemon

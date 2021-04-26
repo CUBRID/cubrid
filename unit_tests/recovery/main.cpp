@@ -67,7 +67,7 @@ void execute_test (const log_recovery_test_config &a_test_config,
 		<< std::endl;
     }
 
-  cublog::redo_parallel log_redo_parallel (a_test_config.parallel_count, nullptr);
+  cublog::redo_parallel log_redo_parallel (a_test_config.parallel_count);
 
   ux_ut_database db_online { new ut_database (a_database_config) };
   ux_ut_database db_recovery { new ut_database (a_database_config) };
@@ -200,7 +200,7 @@ TEST_CASE ("log recovery parallel test: idle status", "[ci][dbg]")
   srand (time (nullptr));
   initialize_thread_infrastructure ();
 
-  cublog::redo_parallel log_redo_parallel (std::thread::hardware_concurrency (), nullptr);
+  cublog::redo_parallel log_redo_parallel (std::thread::hardware_concurrency ());
 
   REQUIRE (log_redo_parallel.is_idle ());
 
