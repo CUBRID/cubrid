@@ -220,15 +220,15 @@ TEST_CASE ("log recovery parallel test: idle status", "[ci][dbg]")
       ux_ut_redo_job_impl job = db_online->generate_changes (*db_recovery, global_values);
 
       if (job->is_volume_creation () || job->is_page_creation ())
-        {
-          // jobs not tied to a non-null vpid, are executed in-synch
-          db_recovery->apply_changes (std::move (job));
-        }
+	{
+	  // jobs not tied to a non-null vpid, are executed in-synch
+	  db_recovery->apply_changes (std::move (job));
+	}
       else
-        {
-          log_redo_parallel.add (std::move (job));
-          at_least_one_page_update = true;
-        }
+	{
+	  log_redo_parallel.add (std::move (job));
+	  at_least_one_page_update = true;
+	}
     }
 
   // sleep here more than 'max_duration_in_millis' to invalidate test

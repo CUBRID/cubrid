@@ -183,7 +183,7 @@ static void perfmon_stat_dump_in_buffer_thread_daemon_stats (const UINT64 * stat
 static void perfmon_print_timer_to_file (FILE * stream, int stat_index, UINT64 * stats_ptr);
 static void perfmon_print_timer_to_buffer (char **s, int stat_index, UINT64 * stats_ptr, int *remained_size);
 
-static void perfmon_dbg_check_metadata_definition();
+static void perfmon_dbg_check_metadata_definition ();
 
 STATIC_INLINE size_t thread_stats_count (void) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE size_t perfmon_thread_daemon_stats_count (void) __attribute__ ((ALWAYS_INLINE));
@@ -2999,7 +2999,7 @@ perfmon_stat_dump_in_file_snapshot_array_stat (FILE * stream, const UINT64 * sta
  *        needed because dump to file/buffer functions depend on this
  */
 void
-perfmon_dbg_check_metadata_definition()
+perfmon_dbg_check_metadata_definition ()
 {
   int idx = 0;
 

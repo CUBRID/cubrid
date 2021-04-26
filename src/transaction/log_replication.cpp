@@ -277,7 +277,7 @@ namespace cublog
       {
 	const int64_t end_time_msec = util_get_time_as_ms_since_epoch ();
 	const int64_t time_diff_msec = end_time_msec - a_start_time_msec;
-	assert(time_diff_msec > 0);
+	assert (time_diff_msec > 0);
 
 	perfmon_set_stat (thread_p, PSTAT_SC_REPL_DELAY, static_cast<int> (time_diff_msec), false);
 
