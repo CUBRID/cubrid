@@ -36,7 +36,7 @@ namespace cublog
 {
   replicator::replicator (const log_lsa &start_redo_lsa)
     : m_redo_lsa { start_redo_lsa }
-    , m_perfmon_log_processing { PSTAT_SCAL_REPL_LOG_PROC_SYNC }
+    , m_perfmon_log_processing { PSTAT_SCAL_REPL_LOG_REDO_SYNC }
   {
     log_zip_realloc_if_needed (m_undo_unzip, LOGAREA_SIZE);
     log_zip_realloc_if_needed (m_redo_unzip, LOGAREA_SIZE);

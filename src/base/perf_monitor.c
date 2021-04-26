@@ -576,11 +576,14 @@ PSTAT_METADATA pstat_Metadata[] = {
    *    effective calling of the redo function
    * TODO: in the synchronous mode, substract the values for 'Scal_repl_log_redo' our of these
    */
-  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_SCAL_REPL_LOG_PROC_SYNC, "Scal_repl_log_proc_sync"),
-  /* perf data for processing log redo on the page server - the asynchronous part
-   *  - it does include the part that effectively calls the redo function
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_SCAL_REPL_LOG_REDO_SYNC, "Scal_repl_log_redo_sync"),
+  /* perf data for processing log redo:
+   *  - during log crash recovery
+   *  - on the page server, when replication is executing in the asynchronouse mode
+   * in both cases, it does include the part that effectively calls the redo function, so, for accurate
+   * evaluation the part that effectively executes the redo function must be substracted from this one
    */
-  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_SCAL_REC_OR_REPL_LOG_PROC_ASYNC, "Scal_rec_or_repl_log_proc_async"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_LOG_REDO_ASYNC, "Log_redo_async"),
   /* perf data for actually applying the log redo; it is relevant in two contexts:
    *  - log recovery redo after a crash (either synchronously or using the parallel
    *    infrastructure)
@@ -588,7 +591,7 @@ PSTAT_METADATA pstat_Metadata[] = {
    *    parallel will log to this entry, so interpreting this must be done in conjunction
    *    with the way replication has been performed
    */
-  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_SCAL_REC_OR_REPL_LOG_REDO_FUNC, "Scal_rec_or_repl_log_redo_func"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_LOG_REDO_FUNC_EXEC, "Log_redo_func_exec"),
 
   /* Array type statistics */
   PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_FIX_COUNTERS, "Num_data_page_fix_ext", &f_dump_in_file_Num_data_page_fix_ext,

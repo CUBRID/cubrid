@@ -590,7 +590,7 @@ void log_rv_redo_record_sync (THREAD_ENTRY *thread_p, log_reader &log_pgptr_read
   rvfun::fun_t redofunc = log_rv_get_fun<T> (log_rec, log_data.rcvindex);
   if (redofunc != nullptr)
     {
-      perfmon_raii_tracker_counter_timer perfmon { PSTAT_SCAL_REC_OR_REPL_LOG_REDO_FUNC };
+      perfmon_raii_tracker_counter_timer perfmon { PSTAT_LOG_REDO_FUNC_EXEC };
 
       const int err_func = redofunc (thread_p, &rcv);
       if (err_func != NO_ERROR)
