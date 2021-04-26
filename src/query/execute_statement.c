@@ -14403,6 +14403,7 @@ do_execute_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
   if (!cursor_open (&cursor_id, list_id, false, statement->info.execute.oids_included))
     {
+      free_and_init (vals);
       return err;
     }
   cursor_id.query_id = parser->query_id;

@@ -2531,12 +2531,16 @@ handle_data_collation_rule (void *data, const char *s, int len)
   assert (len >= 0);
 
   t_rule = &(curr_coll_tail->rules[curr_coll_tail->count_rules]);
-  t_rule->t_buf = (char *) realloc (t_rule->t_buf, t_rule->t_buf_size + len);
-  if (t_rule->t_buf == NULL)
+  char *const realloc_t_buf = (char *) realloc (t_rule->t_buf, t_rule->t_buf_size + len);
+  if (realloc_t_buf == NULL)
     {
       pd->xml_error = XML_CUB_OUT_OF_MEMORY;
       PRINT_DEBUG_DATA (data, "memory allocation failed", -1);
       return -1;
+    }
+  else
+    {
+      t_rule->t_buf = realloc_t_buf;
     }
 
   /* copy partial data to data buffer */
@@ -2761,12 +2765,16 @@ end_collation_x_rule (void *data, const char *el_name)
 
   assert (strlen (ld->data_buffer) == ld->data_buf_count);
 
-  t_rule->t_buf = (char *) realloc (t_rule->t_buf, t_rule->t_buf_size + ld->data_buf_count);
-  if (t_rule->t_buf == NULL)
+  char *const realloc_t_buf = (char *) realloc (t_rule->t_buf, t_rule->t_buf_size + ld->data_buf_count);
+  if (realloc_t_buf == NULL)
     {
       pd->xml_error = XML_CUB_OUT_OF_MEMORY;
       PRINT_DEBUG_END (data, "memory allocation failed", -1);
       return -1;
+    }
+  else
+    {
+      t_rule->t_buf = realloc_t_buf;
     }
 
   /* copy partial data to rule tailoring buffer (character to be modified) */
@@ -2836,13 +2844,16 @@ end_collation_x_extend (void *data, const char *el_name)
   assert (t_rule->r_buf != NULL);
   assert (ld->data_buf_count > 0);
 
-  t_rule->r_buf = (char *) realloc (t_rule->r_buf, t_rule->r_buf_size + ld->data_buf_count);
-
-  if (t_rule->r_buf == NULL)
+  char *const realloc_r_buf = (char *) realloc (t_rule->r_buf, t_rule->r_buf_size + ld->data_buf_count);
+  if (realloc_r_buf == NULL)
     {
       pd->xml_error = XML_CUB_OUT_OF_MEMORY;
       PRINT_DEBUG_END (data, "memory allocation failed", -1);
       return -1;
+    }
+  else
+    {
+      t_rule->r_buf = realloc_r_buf;
     }
 
   memcpy (t_rule->r_buf + t_rule->r_buf_size, ld->data_buffer, ld->data_buf_count);
@@ -2891,12 +2902,16 @@ end_collation_x_context (void *data, const char *el_name)
 
   if (t_rule->t_buf_size < ld->data_buf_count)
     {
-      t_rule->t_buf = (char *) realloc (t_rule->t_buf, ld->data_buf_count);
-      if (t_rule->t_buf == NULL)
+      char *const realloc_t_buf = (char *) realloc (t_rule->t_buf, ld->data_buf_count);
+      if (realloc_t_buf == NULL)
 	{
 	  pd->xml_error = XML_CUB_OUT_OF_MEMORY;
 	  PRINT_DEBUG_END (data, "memory allocation failed", -1);
 	  return -1;
+	}
+      else
+	{
+	  t_rule->t_buf = realloc_t_buf;
 	}
     }
 
@@ -3477,11 +3492,15 @@ new_locale_collation (LOCALE_DATA * ld)
   assert (ld != NULL);
 
   /* check number of rules, increase array if necessary */
-  ld->collations = (LOCALE_COLLATION *) realloc (ld->collations, sizeof (LOCALE_COLLATION) * (ld->coll_cnt + 1));
-
-  if (ld->collations == NULL)
+  LOCALE_COLLATION *const realloc_collations
+    = (LOCALE_COLLATION *) realloc (ld->collations, sizeof (LOCALE_COLLATION) * (ld->coll_cnt + 1));
+  if (realloc_collations == NULL)
     {
       return NULL;
+    }
+  else
+    {
+      ld->collations = realloc_collations;
     }
 
   loc_collation = &(ld->collations[ld->coll_cnt]);
@@ -3512,13 +3531,16 @@ new_collation_rule (LOCALE_DATA * ld)
   /* check number of rules, increase array if necessary */
   if (curr_coll_tail->count_rules + 1 >= curr_coll_tail->max_rules)
     {
-      curr_coll_tail->rules = (TAILOR_RULE *)
-	realloc (curr_coll_tail->rules,
-		 sizeof (TAILOR_RULE) * (curr_coll_tail->max_rules + LOC_DATA_TAILOR_RULES_COUNT_GROW));
-
-      if (curr_coll_tail->rules == NULL)
+      TAILOR_RULE *const realloc_rules = (TAILOR_RULE *) realloc (curr_coll_tail->rules,
+								  sizeof (TAILOR_RULE) * (curr_coll_tail->max_rules +
+											  LOC_DATA_TAILOR_RULES_COUNT_GROW));
+      if (realloc_rules == NULL)
 	{
 	  return NULL;
+	}
+      else
+	{
+	  curr_coll_tail->rules = realloc_rules;
 	}
 
       curr_coll_tail->max_rules += LOC_DATA_TAILOR_RULES_COUNT_GROW;
@@ -3547,13 +3569,17 @@ new_transform_rule (LOCALE_DATA * ld)
   /* check number of rules, increase array if necessary */
   if (ld->alpha_tailoring.count_rules + 1 >= ld->alpha_tailoring.max_rules)
     {
-      ld->alpha_tailoring.rules = (TRANSFORM_RULE *)
-	realloc (ld->alpha_tailoring.rules,
-		 sizeof (TRANSFORM_RULE) * (ld->alpha_tailoring.max_rules + LOC_DATA_TAILOR_RULES_COUNT_GROW));
-
-      if (ld->alpha_tailoring.rules == NULL)
+      TRANSFORM_RULE *const realloc_alpha_tailoring_rules = (TRANSFORM_RULE *) realloc (ld->alpha_tailoring.rules,
+											sizeof (TRANSFORM_RULE) *
+											(ld->alpha_tailoring.max_rules +
+											 LOC_DATA_TAILOR_RULES_COUNT_GROW));
+      if (realloc_alpha_tailoring_rules == NULL)
 	{
 	  return NULL;
+	}
+      else
+	{
+	  ld->alpha_tailoring.rules = realloc_alpha_tailoring_rules;
 	}
 
       ld->alpha_tailoring.max_rules += LOC_DATA_TAILOR_RULES_COUNT_GROW;
@@ -3584,13 +3610,17 @@ new_collation_cubrid_rule (LOCALE_DATA * ld)
   /* check number of absolute rules, increase array if necessary */
   if (curr_coll_tail->cub_count_rules + 1 >= curr_coll_tail->cub_max_rules)
     {
-      curr_coll_tail->cub_rules = (CUBRID_TAILOR_RULE *)
-	realloc (curr_coll_tail->cub_rules,
-		 sizeof (CUBRID_TAILOR_RULE) * (curr_coll_tail->max_rules + LOC_DATA_COLL_CUBRID_TAILOR_COUNT_GROW));
-
-      if (curr_coll_tail->cub_rules == NULL)
+      CUBRID_TAILOR_RULE *const realloc_cub_rules = (CUBRID_TAILOR_RULE *) realloc (curr_coll_tail->cub_rules,
+										    sizeof (CUBRID_TAILOR_RULE) *
+										    (curr_coll_tail->max_rules +
+										     LOC_DATA_COLL_CUBRID_TAILOR_COUNT_GROW));
+      if (realloc_cub_rules == NULL)
 	{
 	  return NULL;
+	}
+      else
+	{
+	  curr_coll_tail->cub_rules = realloc_cub_rules;
 	}
 
       curr_coll_tail->cub_max_rules += LOC_DATA_COLL_CUBRID_TAILOR_COUNT_GROW;
@@ -4009,15 +4039,19 @@ load_console_conv_data (LOCALE_DATA * ld, bool is_verbose)
 
       if (txt_conv_count_items >= txt_conv_max_items)
 	{
-	  txt_conv_array =
-	    (TXT_CONV_ITEM *) realloc (txt_conv_array,
-				       sizeof (TXT_CONV_ITEM) * (txt_conv_max_items + TXT_CONV_ITEM_GROW_COUNT));
-
-	  if (txt_conv_array == NULL)
+	  TXT_CONV_ITEM *const realloc_txt_conv_array = (TXT_CONV_ITEM *) realloc (txt_conv_array,
+										   sizeof (TXT_CONV_ITEM) *
+										   (txt_conv_max_items +
+										    TXT_CONV_ITEM_GROW_COUNT));
+	  if (realloc_txt_conv_array == NULL)
 	    {
 	      LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_GEN, true);
 	      status = ER_LOC_GEN;
 	      goto error;
+	    }
+	  else
+	    {
+	      txt_conv_array = realloc_txt_conv_array;
 	    }
 
 	  txt_conv_max_items += TXT_CONV_ITEM_GROW_COUNT;
@@ -5148,13 +5182,17 @@ locale_get_cfg_locales (LOCALE_FILE ** p_locale_files, int *p_num_locales, bool 
       if (num_locales >= max_locales)
 	{
 	  max_locales *= 2;
-	  locale_files = (LOCALE_FILE *) realloc (locale_files, max_locales * sizeof (LOCALE_FILE));
-
-	  if (locale_files == NULL)
+	  LOCALE_FILE *const realloc_locale_files
+	    = (LOCALE_FILE *) realloc (locale_files, max_locales * sizeof (LOCALE_FILE));
+	  if (realloc_locale_files == NULL)
 	    {
 	      LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_INIT, true);
 	      err_status = ER_LOC_INIT;
 	      goto exit;
+	    }
+	  else
+	    {
+	      locale_files = realloc_locale_files;
 	    }
 	}
 
@@ -6821,14 +6859,19 @@ locale_check_and_set_shared_data (const LOC_SHARED_DATA_TYPE lsd_type, const cha
   /* set new shared data */
   if (alloced_shared_data <= count_shared_data)
     {
-      shared_data =
-	(LOC_SHARED_DATA *) realloc (shared_data,
-				     sizeof (LOC_SHARED_DATA) * (alloced_shared_data + SHARED_DATA_INCR_SIZE));
-      if (shared_data == NULL)
+      LOC_SHARED_DATA *const realloc_shared_data = (LOC_SHARED_DATA *) realloc (shared_data,
+										sizeof (LOC_SHARED_DATA) *
+										(alloced_shared_data +
+										 SHARED_DATA_INCR_SIZE));
+      if (realloc_shared_data == NULL)
 	{
 	  LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_GEN, true);
 	  status = ER_LOC_GEN;
 	  goto exit;
+	}
+      else
+	{
+	  shared_data = realloc_shared_data;
 	}
       alloced_shared_data += SHARED_DATA_INCR_SIZE;
     }

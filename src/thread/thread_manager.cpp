@@ -59,7 +59,7 @@ namespace cubthread
     , m_lf_tran_sys (NULL)
   {
     m_entry_manager = new entry_manager ();
-    m_daemon_entry_manager = new daemon_entry_manager();
+    m_daemon_entry_manager = new daemon_entry_manager ();
   }
 
   manager::~manager ()
@@ -124,10 +124,12 @@ namespace cubthread
     assert (tracker.empty ());
 
 #if defined (SERVER_MODE)
-    for (auto iter = tracker.begin (); iter != tracker.end (); iter = tracker.erase (iter))
+    for (; !tracker.empty ();)
       {
+	const auto iter = tracker.begin ();
 	(*iter)->stop_execution ();
 	delete *iter;
+	tracker.erase (iter);
       }
 #endif // SERVER_MODE
   }
@@ -590,7 +592,7 @@ namespace cubthread
   get_max_thread_count (void)
   {
     // system thread + managed threads
-    return 1 + (Manager != NULL ? Manager->get_max_thread_count() : 0);
+    return 1 + (Manager != NULL ? Manager->get_max_thread_count () : 0);
   }
 
   entry &
