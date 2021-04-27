@@ -54,7 +54,9 @@ class perfmon_manual_tracker_counter_timer
 
   private:
     const PERF_STAT_ID m_stat_id;
-    const bool m_is_perf_tracking;
+    /* must be re-inited at every 'start' to model the dynamic nature of perfmon tracking
+     */
+    bool m_is_perf_tracking;
 
     TSC_TICKS m_start_tick;
 };
