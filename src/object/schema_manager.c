@@ -420,6 +420,7 @@ static bool sm_is_possible_to_recreate_constraint (MOP class_mop, const SM_CLASS
 static bool sm_filter_index_pred_have_invalid_attrs (SM_CLASS_CONSTRAINT * constraint, char *class_name,
 						     SM_ATTRIBUTE * old_atts, SM_ATTRIBUTE * new_atts);
 
+static int sm_collect_truncatable_classes (MOP class_mop, unordered_oid_set& trun_classes, bool is_cascade);
 static int sm_truncate_class_internal (MOP class_mop);
 static int sm_truncate_using_delete (MOP class_mop);
 static int sm_save_nested_view_versions (PARSER_CONTEXT * parser, DB_OBJECT * class_object, SM_CLASS * class_);
@@ -15691,7 +15692,7 @@ int
 sm_truncate_class (MOP class_mop, const bool is_cascade)
 {
   int error = NO_ERROR;
-  unordered_oid_set trun_classes (1, oid_pseudo_key, oid_eq);;
+  unordered_oid_set trun_classes (1, oid_pseudo_key, oid_eq);
 
   assert (class_mop != NULL);
 
