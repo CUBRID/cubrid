@@ -35,6 +35,7 @@
 
 namespace cubthread
 {
+
   // cubthread::entry_task
   //
   //  description:
