@@ -2404,7 +2404,7 @@ xcache_check_recompilation_threshold (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY 
 	}
       assert (!VFID_ISNULL (&cls_info_p->ci_hfid.vfid));
 
-      if (!use_stat_estimation)
+      if (!prm_get_bool_value (PRM_ID_USE_STAT_ESTIMATION))
 	{
 	  /* Consider recompiling the plan when statistic is updated. */
 	  npages = cls_info_p->ci_tot_pages;
