@@ -89,6 +89,21 @@ struct log_page
   char area[1];
 };
 
+class log_page_wrapper
+{
+  public:
+    explicit log_page_wrapper (const char *buffer);
+    ~log_page_wrapper ();
+
+    bool operator== (const log_page_wrapper &other);
+    bool operator== (const LOG_PAGE &other);
+    const LOG_HDRPAGE &get_header () const;
+
+  private:
+    char *m_buffer;
+    LOG_PAGE *m_log_page;
+};
+
 const size_t MAXLOGNAME = (30 - 12);
 
 // vacuum blocks

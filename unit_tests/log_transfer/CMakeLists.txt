@@ -146,6 +146,7 @@ add_dependencies(test_async_log_page_fetcher
 # 
 
 set(TEST_ASYNC_LOG_PAGE_RECEIVER_SOURCES
+  ${TRANSACTION_DIR}/log_storage.cpp
   ${TRANSACTION_DIR}/async_log_page_receiver.cpp
   test_main_async_log_page_receiver.cpp)
 

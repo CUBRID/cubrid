@@ -53,7 +53,7 @@ namespace cublog
     return m_received_log_pages.size ();
   }
 
-  std::shared_ptr<LOG_PAGE>
+  std::shared_ptr<log_page_wrapper>
   async_log_page_receiver::wait_for_page (LOG_PAGEID log_pageid)
   {
     std::unique_lock<std::mutex> lock (m_log_pages_mutex);
@@ -75,11 +75,11 @@ namespace cublog
   }
 
   void
-  async_log_page_receiver::set_page (std::shared_ptr<LOG_PAGE> &&log_page)
+  async_log_page_receiver::set_page (std::shared_ptr<log_page_wrapper> &&log_page)
   {
     {
       std::unique_lock<std::mutex> lock (m_log_pages_mutex);
-      LOG_PAGEID page_id = log_page->hdr.logical_pageid;
+      LOG_PAGEID page_id = log_page->get_header ().logical_pageid;
       m_received_log_pages.insert (std::make_pair (page_id, log_page));
     } // unlock mutex
     m_pages_cv.notify_all ();

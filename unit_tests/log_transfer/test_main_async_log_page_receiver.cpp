@@ -19,9 +19,10 @@
 #define CATCH_CONFIG_MAIN
 
 #include "catch2/catch.hpp"
-#include "async_log_page_receiver.hpp"
 
+#include "async_log_page_receiver.hpp"
 #include "log_storage.hpp"
+#include "storage_common.h"
 
 #include <atomic>
 #include <memory>
@@ -34,7 +35,13 @@ const int count_skip_pages = 30;
 typedef std::shared_ptr<cublog::async_log_page_receiver> shared_log_page_receiver;
 typedef std::weak_ptr<cublog::async_log_page_receiver> weak_log_page_receiver;
 
-std::shared_ptr<LOG_PAGE> create_dummy_log_page (LOG_PAGEID page_id);
+std::shared_ptr<log_page_wrapper> create_dummy_log_page (LOG_PAGEID page_id);
+
+PGLENGTH
+db_log_page_size (void)
+{
+  return IO_DEFAULT_PAGE_SIZE;
+}
 
 class dummy_ps
 {
@@ -136,15 +143,18 @@ test_env::request_and_consume_log_pages (int start_log_page_id, int count)
   for (int i = start_log_page_id; i < start_log_page_id + count; ++i)
     {
       auto required_log_page = m_log_page_receiver->wait_for_page (i);
-      REQUIRE (required_log_page->hdr.logical_pageid == i);
+      REQUIRE (required_log_page->get_header ().logical_pageid  == i);
     }
 }
 
-std::shared_ptr<LOG_PAGE> create_dummy_log_page (LOG_PAGEID page_id)
+std::shared_ptr<log_page_wrapper> create_dummy_log_page (LOG_PAGEID page_id)
 {
-  auto log_page = std::make_shared<LOG_PAGE> ();
+  auto log_page = std::make_unique<LOG_PAGE> ();
   log_page->hdr.logical_pageid = page_id;
-  return log_page;
+  char *buffer = new char[db_log_page_size ()];
+  std::memcpy (buffer, log_page.get (), db_log_page_size ());
+
+  return std::make_shared<log_page_wrapper> (buffer);
 }
 
 dummy_ps::dummy_ps (shared_log_page_receiver log_page_receiver)

@@ -190,18 +190,13 @@ void active_tran_server::receive_log_page (cubpacking::unpacker &upk)
 
   if (error_code == NO_ERROR)
     {
-
-      char *log_page_buffer = new char [db_log_page_size ()];
-      LOG_PAGE *log_page = reinterpret_cast<LOG_PAGE *> (log_page_buffer);
-      std::memcpy (log_page, message.c_str () + sizeof (error_code), db_log_page_size ());
-
-      std::shared_ptr<LOG_PAGE> shared_log_page (log_page);
+      auto shared_log_page = std::make_shared<log_page_wrapper> (message.c_str () + sizeof (error_code));
       m_async_log_page_receiver->set_page (std::move (shared_log_page));
 
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
 	{
 	  _er_log_debug (ARG_FILE_LINE, "Received log page message from Page Server. Page ID: %lld\n",
-			 log_page->hdr.logical_pageid);
+			 shared_log_page->get_header ().logical_pageid);
 	}
     }
   else

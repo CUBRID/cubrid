@@ -41,14 +41,14 @@ namespace cublog
       bool try_set_page_requested (LOG_PAGEID log_pageid);
       std::size_t get_requests_count ();
       std::size_t get_pages_count ();
-      std::shared_ptr<LOG_PAGE> wait_for_page (LOG_PAGEID log_pageid);
-      void set_page (std::shared_ptr<LOG_PAGE> &&log_page);
+      std::shared_ptr<log_page_wrapper> wait_for_page (LOG_PAGEID log_pageid);
+      void set_page (std::shared_ptr<log_page_wrapper> &&log_page);
 
     private:
       std::mutex m_log_pages_mutex;
       std::condition_variable m_pages_cv;
       std::unordered_map<LOG_PAGEID, int> m_requested_page_id_count;
-      std::unordered_map<LOG_PAGEID, std::shared_ptr<LOG_PAGE>> m_received_log_pages;
+      std::unordered_map<LOG_PAGEID, std::shared_ptr<log_page_wrapper>> m_received_log_pages;
   };
 
 
