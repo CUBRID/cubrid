@@ -805,6 +805,8 @@ EXPORTS
     lang_get_collation
     lang_init
     db_default_expression_string
+    lang_Loc_charset
+    lang_Collations
 ; db private
 	db_private_alloc_debug
 	db_private_alloc_release
