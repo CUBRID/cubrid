@@ -53,8 +53,6 @@ namespace cublog
 
     public:
       /* - worker_count: the number of parallel tasks to spin that consume jobs
-       * - pool_context_manager: can be used to control the identity of the parallel
-       *    tasks that consume jobs
        */
       redo_parallel (unsigned a_worker_count);
 

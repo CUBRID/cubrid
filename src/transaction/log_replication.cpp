@@ -36,7 +36,7 @@ namespace cublog
 {
   replicator::replicator (const log_lsa &start_redo_lsa)
     : m_redo_lsa { start_redo_lsa }
-    , m_perfmon_log_processing { PSTAT_SCAL_REPL_LOG_REDO_SYNC }
+    , m_perfmon_log_processing { PSTAT_REDO_REPL_LOG_REDO_SYNC }
   {
     log_zip_realloc_if_needed (m_undo_unzip, LOGAREA_SIZE);
     log_zip_realloc_if_needed (m_redo_unzip, LOGAREA_SIZE);
@@ -289,7 +289,7 @@ namespace cublog
 	const int64_t time_diff_msec = end_time_msec - a_start_time_msec;
 	assert (time_diff_msec > 0);
 
-	perfmon_set_stat (thread_p, PSTAT_SCAL_REPL_DELAY, static_cast<int> (time_diff_msec), false);
+	perfmon_set_stat (thread_p, PSTAT_REDO_REPL_DELAY, static_cast<int> (time_diff_msec), false);
 
 	return NO_ERROR;
       }

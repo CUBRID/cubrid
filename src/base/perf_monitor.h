@@ -635,9 +635,9 @@ typedef enum
   PSTAT_PB_AVOID_DEALLOC_CNT,
   PSTAT_PB_AVOID_VICTIM_CNT,
 
-  /* Scalability (and recovery) related statistics */
-  PSTAT_SCAL_REPL_DELAY,
-  PSTAT_SCAL_REPL_LOG_REDO_SYNC,
+  /* Redo recovery and replication statistics */
+  PSTAT_REDO_REPL_DELAY,
+  PSTAT_REDO_REPL_LOG_REDO_SYNC,
   PSTAT_LOG_REDO_ASYNC,
   PSTAT_LOG_REDO_FUNC_EXEC,
 
