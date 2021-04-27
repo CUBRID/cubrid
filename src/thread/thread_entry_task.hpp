@@ -27,15 +27,14 @@
 #error Wrong module
 #endif // not SERVER_MODE and not SA_MODE
 
+#include "thread_entry.hpp"
 #include "thread_task.hpp"
+#include "transaction_global.hpp"
 
 #include <cassert>
 
 namespace cubthread
 {
-
-  // forward definition
-  class entry;
 
   // cubthread::entry_task
   //
@@ -133,6 +132,31 @@ namespace cubthread
       }
   };
 
+  // system_worker_entry_manager
+  //
+  // description:
+  //    - generic context manager implementation can be used to provide custom
+  //      thread type and transaction index
+  //    - useful in scenarios where there is no actual transaction and perf logging
+  //      still needs a non-null transaction index
+  //
+  class system_worker_entry_manager : public entry_manager
+  {
+    public:
+      system_worker_entry_manager (thread_type a_thread_type);
+      system_worker_entry_manager (const system_worker_entry_manager &) = delete;
+      system_worker_entry_manager (system_worker_entry_manager &&) = delete;
+
+      system_worker_entry_manager &operator = (const system_worker_entry_manager &) = delete;
+      system_worker_entry_manager &operator = (system_worker_entry_manager &&) = delete;
+
+    public:
+      void on_create (entry &context) override;
+      void on_recycle (entry &context) override;
+
+    private:
+      const thread_type m_thread_type;
+  };
 } // namespace cubthread
 
 #endif // _THREAD_ENTRY_TASK_HPP_
