@@ -74,4 +74,5 @@ namespace cublog
     // Ownership is transfered to m_threads.
     m_threads->execute (task);
   }
+
 }
