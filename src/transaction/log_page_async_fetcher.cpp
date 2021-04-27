@@ -38,10 +38,6 @@ namespace cublog
       async_page_fetcher::callback_func_type m_callback;
   };
 
-  /*********************************************************************
-   * definitions
-   *********************************************************************/
-
   void log_page_fetch_task::execute (context_type &context)
   {
     log_lsa loglsa {m_logpageid, 0};
@@ -57,7 +53,7 @@ namespace cublog
 
     const auto thread_count = std::thread::hardware_concurrency ();
     m_worker_pool_context_manager.reset (
-	    new cubthread::system_worker_entry_manager (TT_WORKER));
+	    new cubthread::system_worker_entry_manager (TT_SYSTEM_WORKER));
     m_threads = thread_manager->create_worker_pool (thread_count, thread_count,
 		"async_page_fetcher_worker_pool",
 		m_worker_pool_context_manager.get (),
