@@ -49,11 +49,15 @@ namespace cublog
 
   async_page_fetcher::async_page_fetcher ()
   {
-    cubthread::manager *thread_manager = cubthread::get_manager ();
+    cubthread::manager *const thread_manager = cubthread::get_manager ();
 
     const auto thread_count = std::thread::hardware_concurrency ();
-    m_threads = thread_manager->create_worker_pool (thread_count, thread_count, "async_page_fetcher_worker_pool",
-		nullptr, thread_count, false /*debug_logging*/);
+    m_worker_pool_context_manager.reset (
+	    new cubthread::system_worker_entry_manager (TT_SYSTEM_WORKER));
+    m_threads = thread_manager->create_worker_pool (thread_count, thread_count,
+		"async_page_fetcher_worker_pool",
+		m_worker_pool_context_manager.get (),
+		thread_count, false /*debug_logging*/);
 
     assert (m_threads);
   }
@@ -65,7 +69,7 @@ namespace cublog
 
   void async_page_fetcher::fetch_page (LOG_PAGEID pageid, callback_func_type &&func)
   {
-    log_page_fetch_task *task = new log_page_fetch_task (pageid, std::move (func));
+    log_page_fetch_task *const task = new log_page_fetch_task (pageid, std::move (func));
 
     // Ownership is transfered to m_threads.
     m_threads->execute (task);
