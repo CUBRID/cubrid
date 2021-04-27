@@ -24,8 +24,10 @@
 
 #if defined(CS_MODE)
 
+#include <assert.h>
 #include <limits.h>
 
+#include "connection_cl.h"
 #include "cubrid_log.h"
 
 typedef enum
@@ -68,6 +70,10 @@ typedef enum
   DATA_ITEM_TYPE_DCL,
   DATA_ITEM_TYPE_TIMER
 } DATA_ITEM_TYPE;
+
+extern int css_Service_id;
+
+CSS_CONN_ENTRY *g_conn_entry = NULL;
 
 /*
  * cubrid_log_set_connection_timeout () -
@@ -222,7 +228,28 @@ cubrid_log_connect_server (char *host, int port, char *dbname)
       return CUBRID_LOG_INVALID_DBNAME;
     }
 
+  css_Service_id = port;
+
+  // The system parameter 'tcp_connection_timeout' needs to set because it is used in the css_connect_to_cubrid_server() function call tree.
+  // However, I am not sure if calling this function is the right choice. I think I have to use lower-level functions.
+  // So, I will change this process which is connecting to the server after analysis.
+  g_conn_entry = css_connect_to_cubrid_server (host, dbname);
+  if (g_conn_entry == NULL)
+    {
+      goto cubrid_log_error;
+    }
+
   return CUBRID_LOG_SUCCESS;
+
+cubrid_log_error:
+
+  if (g_conn_entry != NULL)
+    {
+      css_free_conn (g_conn_entry);
+      g_conn_entry = NULL;
+    }
+
+  return CUBRID_LOG_FAILED_CONNECT;
 }
 
 /*
@@ -283,6 +310,11 @@ cubrid_log_clear_log_item (CUBRID_LOG_ITEM * log_item_list)
 int
 cubrid_log_finalize (void)
 {
+  assert (g_conn_entry != NULL);
+
+  css_free_conn (g_conn_entry);
+  g_conn_entry = NULL;
+
   return CUBRID_LOG_SUCCESS;
 }
 
