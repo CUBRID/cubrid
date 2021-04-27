@@ -15629,7 +15629,7 @@ sm_truncate_using_destroy_heap (MOP class_mop)
  *   return: NO_ERROR on success, non-zero for ERROR
  *   class_mop(in):
  *   trun_classes(in/out): a hash for skipping checked classes and collecting class OIDs
- *   is_cascade(in): whether to truncate cascade FK-classes
+ *   is_cascade(in): whether to cascade TRUNCATE to FK-referring classes
  */
 int
 sm_collect_truncatable_classes (MOP class_mop, unordered_oid_set & trun_classes, bool is_cascade)
@@ -15695,7 +15695,7 @@ sm_collect_truncatable_classes (MOP class_mop, unordered_oid_set & trun_classes,
  * sm_truncate_class () - truncates a class
  *   return: NO_ERROR on success, non-zero for ERROR
  *   class_mop(in):
- *   is_cascade(in): whether to truncate cascade FK-classes
+ *   is_cascade(in): whether to cascade TRUNCATE to FK-referring classes
  */
 int
 sm_truncate_class (MOP class_mop, const bool is_cascade)
