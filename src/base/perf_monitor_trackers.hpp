@@ -17,7 +17,7 @@
  */
 
 /*
- * perf_monitor.hpp - c++ helper classes over c code
+ * perf_monitor_trackers.hpp  - helper c++ classes over c code that ease tracking of resources
  */
 
 #ifndef PERF_MONITOR_HPP
