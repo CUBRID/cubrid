@@ -25,15 +25,19 @@
 
 #include "perf_monitor.h"
 
-/* manual perf stat monitoring utility for counter timer values
+/* perf monitoring utility for manually logging counter timer values
  *
- * NOTE: the global 'perfmon_is_perf_tracking' is only checked in the ctor
- * and used for the rest of the lifetime as is
+ * NOTE: the global 'perfmon_is_perf_tracking' is checked upon each call to 'start'
  */
-class perfmon_manual_tracker_counter_timer
+class perfmon_counter_timer_tracker final
 {
   public:
-    perfmon_manual_tracker_counter_timer (PERF_STAT_ID a_stat_id);
+    perfmon_counter_timer_tracker (PERF_STAT_ID a_stat_id);
+    perfmon_counter_timer_tracker (const perfmon_counter_timer_tracker &) = delete;
+    perfmon_counter_timer_tracker (perfmon_counter_timer_tracker &&) = delete;
+
+    perfmon_counter_timer_tracker& operator = (const perfmon_counter_timer_tracker &) = delete;
+    perfmon_counter_timer_tracker& operator = (perfmon_counter_timer_tracker &&) = delete;
 
     /* re-init without tracking time
      */
@@ -62,16 +66,22 @@ class perfmon_manual_tracker_counter_timer
 };
 
 
-/* RAII perf stat monitoring utility for counter timer values
- *
- * NOTE: the global 'perfmon_is_perf_tracking' is only checked in the ctor
- * and used for the rest of the lifetime as is
+/* perf monitoring utility for RAII-style logging counter timer values
  */
-class perfmon_raii_tracker_counter_timer final : private perfmon_manual_tracker_counter_timer
+class perfmon_counter_timer_raii_tracker final
 {
   public:
-    perfmon_raii_tracker_counter_timer (PERF_STAT_ID a_stat_id);
-    ~perfmon_raii_tracker_counter_timer ();
+    perfmon_counter_timer_raii_tracker (PERF_STAT_ID a_stat_id);
+    perfmon_counter_timer_raii_tracker (const perfmon_counter_timer_raii_tracker &) = delete;
+    perfmon_counter_timer_raii_tracker (perfmon_counter_timer_raii_tracker &&) = delete;
+
+    ~perfmon_counter_timer_raii_tracker ();
+
+    perfmon_counter_timer_raii_tracker& operator = (const perfmon_counter_timer_raii_tracker &) = delete;
+    perfmon_counter_timer_raii_tracker& operator = (perfmon_counter_timer_raii_tracker &&) = delete;
+
+  private:
+    perfmon_counter_timer_tracker m_tracker;
 };
 
 #endif // PERF_MONITOR_HPP

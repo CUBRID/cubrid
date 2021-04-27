@@ -596,7 +596,7 @@ void log_rv_redo_record_sync (THREAD_ENTRY *thread_p, log_reader &log_pgptr_read
        *  - log replication on the page server; both when applying the replication redo synchronously
        *    or in parallel will log to this entry
        */
-      perfmon_raii_tracker_counter_timer perfmon { PSTAT_LOG_REDO_FUNC_EXEC };
+      perfmon_counter_timer_raii_tracker perfmon { PSTAT_LOG_REDO_FUNC_EXEC };
 
       const int err_func = redofunc (thread_p, &rcv);
       if (err_func != NO_ERROR)

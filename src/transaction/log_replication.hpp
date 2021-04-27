@@ -89,7 +89,7 @@ namespace cublog
        *  - if the log redo is applied synchronously, these values will include the
        *    effective calling of the redo function
        */
-      perfmon_manual_tracker_counter_timer m_perfmon_log_processing;
+      perfmon_counter_timer_tracker m_perfmon_log_processing;
   };
 
   int log_rpl_calculate_replication_delay (THREAD_ENTRY *thread_p, time_t a_start_time_msec);

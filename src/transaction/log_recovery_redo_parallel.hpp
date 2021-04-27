@@ -375,7 +375,7 @@ namespace cublog
      * in both cases, it does include the part that effectively calls the redo function, so, for accurate
      * evaluation the part that effectively executes the redo function must be accounted for
      */
-    perfmon_raii_tracker_counter_timer perfmon { PSTAT_LOG_REDO_ASYNC };
+    perfmon_counter_timer_raii_tracker perfmon { PSTAT_LOG_REDO_ASYNC };
 
     const auto &rcv_lsa = get_log_lsa ();
     const int err_set_lsa_and_fetch_page
