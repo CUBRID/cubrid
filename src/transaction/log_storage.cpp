@@ -26,3 +26,12 @@ log_page::operator== (const log_page &other)
   return hdr == other.hdr
 	 && std::string (area, LOGAREA_SIZE) == std::string (other.area, LOGAREA_SIZE);
 }
+
+bool
+log_hdrpage::operator== (const log_hdrpage &other)
+{
+  return logical_pageid == other.logical_pageid
+	 && offset == other.offset
+	 && flags == other.flags
+	 && checksum == other.checksum;
+}

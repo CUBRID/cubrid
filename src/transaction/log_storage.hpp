@@ -62,13 +62,7 @@ const size_t LOGPB_BUFFER_NPAGES_LOWER = 128;
 typedef struct log_hdrpage LOG_HDRPAGE;
 struct log_hdrpage
 {
-  bool operator== (const log_hdrpage &other)
-  {
-    return logical_pageid == other.logical_pageid
-	   && offset == other.offset
-	   && flags == other.flags
-	   && checksum == other.checksum;
-  }
+  bool operator== (const log_hdrpage &other);
 
   LOG_PAGEID logical_pageid;	/* Logical pageid in infinite log */
   PGLENGTH offset;		/* Offset of first log record in this page. This may be useful when previous log page
