@@ -82,11 +82,12 @@ namespace cublog
 
       std::unique_ptr<cublog::redo_parallel> m_parallel_replication_redo;
 
-      /* track perf for log records' processing
-       * includes everything:
-       *    1 fixing/reading log page,
-       *    2 dispatching log redo job - when in the async/parallel mode
-       *    3 actually applying the redo (the redo function) - when in the sync mode
+      /* perf data for processing log redo on the page server - the synchronous part:
+       *  - if the infrastructure to apply recovery log redo in parallel is used, it does not
+       *    include the calling of the redo function as that part will be
+       *    included in the 'async' couterpart logging
+       *  - if the log redo is applied synchronously, these values will include the
+       *    effective calling of the redo function
        */
       perfmon_manual_tracker_counter_timer m_perfmon_log_processing;
   };

@@ -371,6 +371,12 @@ namespace cublog
   int  redo_job_impl<TYPE_LOG_REC>::execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader,
       LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support)
   {
+    /* perf data for processing log redo asynchronously, enabled:
+     *  - during log crash recovery
+     *  - on the page server, when replication is executing in the asynchronous mode
+     * in both cases, it does include the part that effectively calls the redo function, so, for accurate
+     * evaluation the part that effectively executes the redo function must be accounted for
+     */
     perfmon_raii_tracker_counter_timer perfmon { PSTAT_LOG_REDO_ASYNC };
 
     const auto &rcv_lsa = get_log_lsa ();

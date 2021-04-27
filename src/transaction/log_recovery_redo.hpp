@@ -590,6 +590,12 @@ void log_rv_redo_record_sync (THREAD_ENTRY *thread_p, log_reader &log_pgptr_read
   rvfun::fun_t redofunc = log_rv_get_fun<T> (log_rec, log_data.rcvindex);
   if (redofunc != nullptr)
     {
+      /* perf data for actually calling the log redo function; it is relevant in two contexts:
+       *  - log recovery redo after a crash (either synchronously or using the parallel
+       *    infrastructure)
+       *  - log replication on the page server; both when applying the replication redo synchronously
+       *    or in parallel will log to this entry
+       */
       perfmon_raii_tracker_counter_timer perfmon { PSTAT_LOG_REDO_FUNC_EXEC };
 
       const int err_func = redofunc (thread_p, &rcv);

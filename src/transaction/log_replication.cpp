@@ -139,9 +139,7 @@ namespace cublog
     m_perfmon_log_processing.start ();
     // make sure the log page is refreshed. otherwise it may be outdated and new records may be missed
     m_reader.set_lsa_and_fetch_page (m_redo_lsa, log_reader::fetch_mode::FORCE);
-    m_perfmon_log_processing.track ();
 
-    m_perfmon_log_processing.start ();
     while (m_redo_lsa < end_redo_lsa)
       {
 	// read and redo a record
