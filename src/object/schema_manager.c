@@ -15624,6 +15624,13 @@ sm_truncate_using_destroy_heap (MOP class_mop)
 }
 #endif
 
+/*
+ * sm_collect_truncatable_classes () - Collects OIDs of truncatable classes regarding the CASCADE option
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   class_mop(in):
+ *   trun_classes(in/out): a hash for skipping checked classes and collecting class OIDs
+ *   is_cascade(in): whether to truncate cascade FK-classes
+ */
 int
 sm_collect_truncatable_classes (MOP class_mop, unordered_oid_set & trun_classes, bool is_cascade)
 {
