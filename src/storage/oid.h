@@ -134,17 +134,20 @@
     (((unsigned int)(oidp)->volid) << 24)))
 
 /* wrapper functinos to be used as a callable object in c++ */
-inline bool oid_lt (const OID* oidp1, const OID* oidp2)
+inline bool
+oid_lt (const OID * oidp1, const OID * oidp2)
 {
   return OID_LT (oidp1, oidp2);
 }
 
-inline bool oid_eq (const OID* oidp1, const OID* oidp2)
+inline bool
+oid_eq (const OID * oidp1, const OID * oidp2)
 {
   return OID_EQ (oidp1, oidp2);
 }
 
-inline bool oid_pseudo_key (const OID* oidp)
+inline bool
+oid_pseudo_key (const OID * oidp)
 {
   return OID_PSEUDO_KEY (oidp);
 }
