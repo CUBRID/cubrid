@@ -232,7 +232,9 @@ static const char *method_file_extension = ".o";
 #include <nlist.h>
 #endif /* !WINDOWS */
 
+// *INDENT-OFF*
 using unordered_oid_set = std::unordered_set<OID*, decltype(oid_pseudo_key)*, decltype(oid_eq)*>;
+// *INDENT-ON*
 
 #if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
 const char TEXT_CONSTRAINT_PREFIX[] = "#text_";
@@ -420,7 +422,7 @@ static bool sm_is_possible_to_recreate_constraint (MOP class_mop, const SM_CLASS
 static bool sm_filter_index_pred_have_invalid_attrs (SM_CLASS_CONSTRAINT * constraint, char *class_name,
 						     SM_ATTRIBUTE * old_atts, SM_ATTRIBUTE * new_atts);
 
-static int sm_collect_truncatable_classes (MOP class_mop, unordered_oid_set& trun_classes, bool is_cascade);
+static int sm_collect_truncatable_classes (MOP class_mop, unordered_oid_set & trun_classes, bool is_cascade);
 static int sm_truncate_class_internal (MOP class_mop);
 static int sm_truncate_using_delete (MOP class_mop);
 static int sm_save_nested_view_versions (PARSER_CONTEXT * parser, DB_OBJECT * class_object, SM_CLASS * class_);
@@ -15623,7 +15625,7 @@ sm_truncate_using_destroy_heap (MOP class_mop)
 #endif
 
 int
-sm_collect_truncatable_classes (MOP class_mop, unordered_oid_set& trun_classes, bool is_cascade)
+sm_collect_truncatable_classes (MOP class_mop, unordered_oid_set & trun_classes, bool is_cascade)
 {
   int error = NO_ERROR;
   SM_CLASS *class_ = NULL;
@@ -15641,43 +15643,43 @@ sm_collect_truncatable_classes (MOP class_mop, unordered_oid_set& trun_classes, 
   trun_classes.emplace (ws_oid (class_mop));
 
   c = classobj_find_cons_primary_key (class_->constraints);
-  if (c != NULL) /* if no PK, it can be truncated */
-  {
-    for (fk_ref = c->fk_info; fk_ref; fk_ref = fk_ref->next)
-      {
-        if (!is_cascade)
-        {
-          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TRUNCATE_PK_REFERRED, 1, fk_ref->name);
-          return ER_TRUNCATE_PK_REFERRED;
-        }
+  if (c != NULL)		/* if no PK, it can be truncated */
+    {
+      for (fk_ref = c->fk_info; fk_ref; fk_ref = fk_ref->next)
+	{
+	  if (!is_cascade)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TRUNCATE_PK_REFERRED, 1, fk_ref->name);
+	      return ER_TRUNCATE_PK_REFERRED;
+	    }
 
-        if (trun_classes.find (&fk_ref->self_oid) != trun_classes.end())
-        {
-          continue; /* already checked */
-        }
+	  if (trun_classes.find (&fk_ref->self_oid) != trun_classes.end ())
+	    {
+	      continue;		/* already checked */
+	    }
 
-        if (fk_ref->delete_action == SM_FOREIGN_KEY_CASCADE)
-        {
-          MOP fk_child_mop = ws_mop (&fk_ref->self_oid, NULL);
-          if (fk_child_mop == NULL)
-          {
-            assert (er_errid () != NO_ERROR);
-            return er_errid ();
-          }
+	  if (fk_ref->delete_action == SM_FOREIGN_KEY_CASCADE)
+	    {
+	      MOP fk_child_mop = ws_mop (&fk_ref->self_oid, NULL);
+	      if (fk_child_mop == NULL)
+		{
+		  assert (er_errid () != NO_ERROR);
+		  return er_errid ();
+		}
 
-          error = sm_collect_truncatable_classes (fk_child_mop, trun_classes, is_cascade);
-          if (error != NO_ERROR)
-          {
-            return error;
-          }
-        }
-        else
-        {
-          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TRUNCATE_CANT_CASCADE, 1, fk_ref->name);
-          return ER_TRUNCATE_CANT_CASCADE;
-        }
-      }
-  }
+	      error = sm_collect_truncatable_classes (fk_child_mop, trun_classes, is_cascade);
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
+	    }
+	  else
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TRUNCATE_CANT_CASCADE, 1, fk_ref->name);
+	      return ER_TRUNCATE_CANT_CASCADE;
+	    }
+	}
+    }
 
   return NO_ERROR;
 }
@@ -15692,7 +15694,9 @@ int
 sm_truncate_class (MOP class_mop, const bool is_cascade)
 {
   int error = NO_ERROR;
+  // *INDENT-OFF*
   unordered_oid_set trun_classes (1, oid_pseudo_key, oid_eq);
+  // *INDENT-ON*
 
   assert (class_mop != NULL);
 
@@ -15704,10 +15708,11 @@ sm_truncate_class (MOP class_mop, const bool is_cascade)
 
   error = sm_collect_truncatable_classes (class_mop, trun_classes, is_cascade);
   if (error != NO_ERROR)
-  {
-    goto error_exit;
-  }
+    {
+      goto error_exit;
+    }
 
+  // *INDENT-OFF*
   for (const auto& cls_oid : trun_classes)
   {
     error = sm_truncate_class_internal (ws_mop (cls_oid, NULL));
@@ -15716,6 +15721,7 @@ sm_truncate_class (MOP class_mop, const bool is_cascade)
       goto error_exit;
     }
   }
+  // *INDENT-ON*
 
   return NO_ERROR;
 
@@ -15726,6 +15732,7 @@ error_exit:
     }
   return error;
 }
+
 /*
  * sm_truncate_class_internal () - truncates a class
  *   return: NO_ERROR on success, non-zero for ERROR
