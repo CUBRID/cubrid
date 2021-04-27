@@ -2353,7 +2353,6 @@ xcache_check_recompilation_threshold (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY 
   CLS_INFO *cls_info_p = NULL;
   int npages;
   bool recompile = false;
-  bool use_stat_estimation = prm_get_bool_value (PRM_ID_USE_STAT_ESTIMATION);
 
   (void) gettimeofday (&crt_time, NULL);
   if ((INT64) crt_time.tv_sec - xcache_entry->time_last_rt_check < XCACHE_RT_TIMEDIFF_IN_SEC)
