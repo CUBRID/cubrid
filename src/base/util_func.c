@@ -263,11 +263,15 @@ util_split_string (const char *str, const char *delim)
 	{
 	  break;
 	}
-      r = (char **) realloc (r, sizeof (char *) * (count + 1));
-      if (r == NULL)
+      char **const realloc_r = (char **) realloc (r, sizeof (char *) * (count + 1));
+      if (realloc_r == NULL)
 	{
 	  free (o);
 	  return NULL;
+	}
+      else
+	{
+	  r = realloc_r;
 	}
       r[count - 1] = strdup (v);
       r[count] = NULL;

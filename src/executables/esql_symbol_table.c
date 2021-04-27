@@ -517,11 +517,11 @@ pp_clone_symbol (SYMBOL * sym)
 LINK *
 pp_clone_type (LINK * tchain, LINK ** endp)
 {
-  LINK *last = NULL, *head = NULL;
+  LINK *last = nullptr, *head = nullptr;
 
   for (; tchain; tchain = tchain->next)
     {
-      if (head == NULL && last == NULL)	/* 1st node in the chain */
+      if (head == nullptr && last == nullptr)	/* 1st node in the chain */
 	{
 	  head = last = pp_new_link ();
 	}
@@ -748,8 +748,8 @@ pp_type_str (LINK * link)
 	    {
 	      strncat (target, buf, sizeof (target) - strnlen (target, sizeof (target)));
 	      snprintf (buf, sizeof (buf), " %s",
-			(link->decl.s.val.v_struct->tag ? link->decl.s.val.
-			 v_struct->tag : ((unsigned char *) "untagged")));
+			(link->decl.s.val.v_struct->tag ? link->decl.s.val.v_struct->
+			 tag : ((unsigned char *) "untagged")));
 	    }
 	}
 
@@ -808,13 +808,15 @@ pp_print_syms (FILE * fp)
   if (pp_Symbol_table->get_symbol_count (pp_Symbol_table))
     {
       fprintf (fp, " *\n * Symbol table:\n *\n");
-      pp_Symbol_table->print_table (pp_Symbol_table, (void (*)()) es_print_symbol, fp, 1);	//TODO: get rid of function pointer conversion
+      //TODO: get rid of function pointer conversion
+      pp_Symbol_table->print_table (pp_Symbol_table, (void (*)()) es_print_symbol, fp, 1);
     }
 
   if (pp_Struct_table->get_symbol_count (pp_Struct_table))
     {
       fprintf (fp, " *\n * Structure table:\n *\n");
-      pp_Struct_table->print_table (pp_Struct_table, (void (*)()) es_print_struct, fp, 1);	//TODO: get rid of function pointer conversion
+      //TODO: get rid of function pointer conversion
+      pp_Struct_table->print_table (pp_Struct_table, (void (*)()) es_print_struct, fp, 1);
     }
 }
 
