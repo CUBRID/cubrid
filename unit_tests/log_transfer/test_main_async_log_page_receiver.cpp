@@ -43,6 +43,8 @@ db_log_page_size (void)
   return IO_DEFAULT_PAGE_SIZE;
 }
 
+// This class simulates a page server's ability to receive log page requests and send back those log pages.
+// It has a main loop that will run for the entire test's duration that will check for active requests and satisfy them.
 class dummy_ps
 {
   public:
@@ -74,7 +76,7 @@ class test_env
     void request_and_consume_log_pages (int start_log_page_id, int count);
 
   private:
-    int m_log_pages_count;
+    std::size_t m_log_pages_count;
     std::vector<std::thread> m_threads;
     shared_log_page_receiver m_log_page_receiver;
     std::unique_ptr<dummy_ps> m_dummy_ps;
@@ -134,7 +136,7 @@ test_env::request_and_consume_log_pages (int start_log_page_id, int count)
 {
   for (int i = start_log_page_id; i < start_log_page_id + count; ++i)
     {
-      if (m_log_page_receiver->try_set_page_requested (i))
+      if (m_log_page_receiver->try_set_page_requested (i) == cublog::REQUEST_REQUIRED)
 	{
 	  request_page_from_ps (i);
 	}

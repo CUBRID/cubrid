@@ -20,12 +20,12 @@
 
 namespace cublog
 {
-  bool
+  request_send_state
   async_log_page_receiver::try_set_page_requested (LOG_PAGEID log_pageid)
   {
     std::unique_lock<std::mutex> lock (m_log_pages_mutex);
 
-    bool result = false;
+    request_send_state result = REQUEST_ALREADY_SENT;
     if (m_requested_page_id_count.find (log_pageid) != m_requested_page_id_count.end ())
       {
 	m_requested_page_id_count[log_pageid]++;
@@ -33,7 +33,7 @@ namespace cublog
     else
       {
 	m_requested_page_id_count[log_pageid] = 1;
-	result = true;
+	result = REQUEST_REQUIRED;
       }
 
     return result;

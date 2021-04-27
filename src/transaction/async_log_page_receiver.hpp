@@ -31,14 +31,18 @@
 namespace cublog
 {
 
+  enum request_send_state
+  {
+    REQUEST_ALREADY_SENT,
+    REQUEST_REQUIRED,
+  };
   class async_log_page_receiver
   {
     public:
       async_log_page_receiver () = default;
       ~async_log_page_receiver () = default;
 
-      // Returns false if page has an ongoing request already.
-      bool try_set_page_requested (LOG_PAGEID log_pageid);
+      request_send_state try_set_page_requested (LOG_PAGEID log_pageid);
       std::size_t get_requests_count ();
       std::size_t get_pages_count ();
       std::shared_ptr<log_page_wrapper> wait_for_page (LOG_PAGEID log_pageid);

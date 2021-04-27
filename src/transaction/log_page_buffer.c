@@ -2006,7 +2006,7 @@ request_log_page_from_ps (LOG_PAGEID log_pageid)
   std::memcpy (buffer, &log_pageid, sizeof (log_pageid));
   std::string message (buffer, BIG_INT_SIZE);
 
-  if (ats_Gl.get_log_page_receiver ().try_set_page_requested (log_pageid))
+  if (ats_Gl.get_log_page_receiver ().try_set_page_requested (log_pageid) == cublog::request_send_state::REQUEST_REQUIRED)
     {
       ats_Gl.push_request (ats_to_ps_request::SEND_LOG_PAGE_FETCH, std::move (message));
 
