@@ -246,11 +246,6 @@ namespace cublog
   void
   checkpoint_info::load_trantable_snapshot (THREAD_ENTRY *thread_p, LOG_LSA &smallest_lsa)
   {
-
-    LOG_TDES *act_tdes;		/* Transaction descriptor of an active transaction */
-    int i;
-    log_system_tdes::map_func mapper;
-
     //ENTER the critical section
     TR_TABLE_CS_ENTER (thread_p);
     log_Gl.prior_info.prior_lsa_mutex.lock ();
@@ -263,7 +258,7 @@ namespace cublog
 
     /* CHECKPOINT THE TRANSACTION TABLE */
     LSA_SET_NULL (&smallest_lsa);
-    for (i = 0; i < log_Gl.trantable.num_total_indices; i++)
+    for (size_t i = 0; i < log_Gl.trantable.num_total_indices; i++)
       {
 	/*
 	 * Don't checkpoint current system transaction. That is, the one of
@@ -273,14 +268,14 @@ namespace cublog
 	  {
 	    continue;
 	  }
-	act_tdes = LOG_FIND_TDES (i);
+	LOG_TDES *act_tdes = LOG_FIND_TDES (i);
 	assert (act_tdes != nullptr);
 	load_checkpoint_trans (*act_tdes, smallest_lsa);
 	load_checkpoint_topop (*act_tdes);
       }
 
     // Checkpoint system transactions' topops
-    mapper = [this] (log_tdes &tdes)
+    log_system_tdes::map_func mapper = [this] (log_tdes &tdes)
     {
       load_checkpoint_topop (tdes);
     };
@@ -290,12 +285,7 @@ namespace cublog
   void
   checkpoint_info::recovery_analysis (THREAD_ENTRY *thread_p, log_lsa &start_redo_lsa)
   {
-    int error_code;
     LOG_TDES *tdes = nullptr;
-    LOG_PAGE *log_page_local = nullptr;
-    LOG_LSA log_lsa_local;
-    char log_page_buffer[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
-    LOG_REC_SYSOP_START_POSTPONE sysop_start_postpone;
 
     /* Add the transactions to the transaction table */
     for (auto chkpt : m_trans)
@@ -346,8 +336,8 @@ namespace cublog
      * Now add top system operations that were in the process of
      * commit to this transactions
      */
-
-    log_page_local = (LOG_PAGE *) PTR_ALIGN (log_page_buffer, MAX_ALIGNMENT);
+    char log_page_buffer[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+    LOG_PAGE *log_page_local = (LOG_PAGE *) PTR_ALIGN (log_page_buffer, MAX_ALIGNMENT);
     log_page_local->hdr.logical_pageid = NULL_PAGEID;
     log_page_local->hdr.offset = NULL_OFFSET;
 
@@ -379,9 +369,10 @@ namespace cublog
 	  }
 	tdes->rcv.sysop_start_postpone_lsa = sysop.sysop_start_postpone_lsa;
 	tdes->rcv.atomic_sysop_start_lsa = sysop.atomic_sysop_start_lsa;
-	log_lsa_local = sysop.sysop_start_postpone_lsa;
-	error_code = log_read_sysop_start_postpone (thread_p, &log_lsa_local, log_page_local, false, &sysop_start_postpone,
-		     NULL, NULL, NULL, NULL);
+	LOG_LSA log_lsa_local = sysop.sysop_start_postpone_lsa;
+	LOG_REC_SYSOP_START_POSTPONE sysop_start_postpone;
+	int error_code = log_read_sysop_start_postpone (thread_p, &log_lsa_local, log_page_local, false, &sysop_start_postpone,
+			 NULL, NULL, NULL, NULL);
 	if (error_code != NO_ERROR)
 	  {
 	    assert (false);
@@ -401,13 +392,10 @@ namespace cublog
 
     for (auto chkpt : m_trans)
       {
-	int tran_index;
-	LOG_TDES *tdes;		/* Transaction descriptor */
-
-	tran_index = logtb_find_tran_index (thread_p, chkpt.trid);
+	int tran_index = logtb_find_tran_index (thread_p, chkpt.trid);
 	if (tran_index != NULL_TRAN_INDEX)
 	  {
-	    tdes = LOG_FIND_TDES (tran_index);
+	    LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
 	    if (tdes != NULL && LOG_ISTRAN_2PC (tdes))
 	      {
 		log_2pc_recovery_analysis_info (thread_p, tdes, &chkpt.tail_lsa);
