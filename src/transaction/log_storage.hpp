@@ -62,7 +62,7 @@ const size_t LOGPB_BUFFER_NPAGES_LOWER = 128;
 typedef struct log_hdrpage LOG_HDRPAGE;
 struct log_hdrpage
 {
-  bool operator== (const log_hdrpage &other);
+  bool operator== (const log_hdrpage &other) const;
 
   LOG_PAGEID logical_pageid;	/* Logical pageid in infinite log */
   PGLENGTH offset;		/* Offset of first log record in this page. This may be useful when previous log page
@@ -83,7 +83,7 @@ typedef struct log_page LOG_PAGE;
 struct log_page
 {
   /* The log page */
-  bool operator== (const log_page &other);
+  bool operator== (const log_page &other) const;
 
   LOG_HDRPAGE hdr;
   char area[1];
@@ -95,14 +95,15 @@ class log_page_owner
     explicit log_page_owner (const char *buffer);
     ~log_page_owner ();
 
-    bool operator== (const log_page_owner &other);
-    bool operator== (const LOG_PAGE &other);
+    bool operator== (const log_page_owner &other) const;
+    bool operator== (const LOG_PAGE &other) const;
     const LOG_HDRPAGE &get_header () const;
     LOG_PAGEID get_id () const;
 
   private:
-    char *m_buffer;
-    LOG_PAGE *m_log_page;
+    const LOG_PAGE *get_log_page () const;
+
+    std::string m_buffer;
 };
 
 const size_t MAXLOGNAME = (30 - 12);

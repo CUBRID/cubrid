@@ -1960,7 +1960,7 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
   if (get_server_type () == SERVER_TYPE_TRANSACTION && ats_Gl.is_page_server_connected ())
     {
       // wait for answer.
-      auto log_page = ats_Gl.get_log_page_receiver ().wait_for_page (pageid);
+      auto log_page = ats_Gl.get_page_broker ().wait_for_page (pageid);
 
       // Sould be the same.
       assert (*log_page == *log_pgptr);
@@ -2006,7 +2006,7 @@ request_log_page_from_ps (LOG_PAGEID log_pageid)
   std::memcpy (buffer, &log_pageid, sizeof (log_pageid));
   std::string message (buffer, BIG_INT_SIZE);
 
-  if (ats_Gl.get_log_page_receiver ().register_entry (log_pageid) == cublog::page_broker::ADDED_ENTRY)
+  if (ats_Gl.get_page_broker ().register_entry (log_pageid) == cublog::page_broker::ADDED_ENTRY)
     {
       ats_Gl.push_request (ats_to_ps_request::SEND_LOG_PAGE_FETCH, std::move (message));
 
