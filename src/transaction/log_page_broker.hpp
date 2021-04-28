@@ -30,7 +30,7 @@
 
 namespace cublog
 {
-  class async_page_receiver
+  class page_broker
   {
     public:
       enum entry_state
@@ -39,8 +39,8 @@ namespace cublog
 	EXISTING_ENTRY
       };
 
-      async_page_receiver () = default;
-      ~async_page_receiver () = default;
+      page_broker () = default;
+      ~page_broker () = default;
 
       entry_state register_entry (LOG_PAGEID log_pageid);
       std::size_t get_requests_count ();

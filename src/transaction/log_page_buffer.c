@@ -74,7 +74,7 @@
 #include "connection_sr.h"
 #endif
 #include "active_tran_server.hpp"
-#include "log_page_receiver.hpp"
+#include "log_page_broker.hpp"
 #include "ats_ps_request.hpp"
 #include "critical_section.h"
 #include "page_buffer.h"
@@ -2006,7 +2006,7 @@ request_log_page_from_ps (LOG_PAGEID log_pageid)
   std::memcpy (buffer, &log_pageid, sizeof (log_pageid));
   std::string message (buffer, BIG_INT_SIZE);
 
-  if (ats_Gl.get_log_page_receiver ().register_entry (log_pageid) == cublog::async_page_receiver::ADDED_ENTRY)
+  if (ats_Gl.get_log_page_receiver ().register_entry (log_pageid) == cublog::page_broker::ADDED_ENTRY)
     {
       ats_Gl.push_request (ats_to_ps_request::SEND_LOG_PAGE_FETCH, std::move (message));
 

@@ -20,7 +20,7 @@
 
 #include "catch2/catch.hpp"
 
-#include "log_page_receiver.hpp"
+#include "log_page_broker.hpp"
 #include "log_storage.hpp"
 #include "storage_common.h"
 
@@ -32,8 +32,8 @@
 const int count_pages_per_thread = 90;
 const int count_skip_pages = 30;
 
-typedef std::shared_ptr<cublog::async_page_receiver> shared_log_page_receiver;
-typedef std::weak_ptr<cublog::async_page_receiver> weak_log_page_receiver;
+typedef std::shared_ptr<cublog::page_broker> shared_log_page_receiver;
+typedef std::weak_ptr<cublog::page_broker> weak_log_page_receiver;
 
 std::shared_ptr<log_page_owner> create_dummy_log_page (LOG_PAGEID page_id);
 
@@ -90,7 +90,7 @@ void do_test (test_env &env)
 test_env::test_env (int log_pages_count)
   : m_log_pages_count (log_pages_count)
 {
-  m_log_page_receiver.reset (new cublog::async_page_receiver ());
+  m_log_page_receiver.reset (new cublog::page_broker ());
   m_dummy_ps.reset (new dummy_ps (m_log_page_receiver));
 }
 
@@ -136,7 +136,7 @@ test_env::request_and_consume_log_pages (int start_log_page_id, int count)
 {
   for (int i = start_log_page_id; i < start_log_page_id + count; ++i)
     {
-      if (m_log_page_receiver->register_entry (i) == cublog::async_page_receiver::ADDED_ENTRY)
+      if (m_log_page_receiver->register_entry (i) == cublog::page_broker::ADDED_ENTRY)
 	{
 	  request_page_from_ps (i);
 	}

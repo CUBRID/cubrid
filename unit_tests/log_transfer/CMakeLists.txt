@@ -145,33 +145,33 @@ add_dependencies(test_async_log_page_fetcher
 # test_main_async_log_page_receiver
 # 
 
-set(TEST_ASYNC_LOG_PAGE_RECEIVER_SOURCES
+set(TEST_ASYNC_LOG_PAGE_BROKER_SOURCES
   ${TRANSACTION_DIR}/log_storage.cpp
-  ${TRANSACTION_DIR}/log_page_receiver.cpp
-  test_main_async_log_page_receiver.cpp)
+  ${TRANSACTION_DIR}/log_page_broker.cpp
+  test_main_async_log_page_broker.cpp)
 
 SET_SOURCE_FILES_PROPERTIES(
-  ${TEST_ASYNC_LOG_PAGE_RECEIVER_SOURCES}
+  ${TEST_ASYNC_LOG_PAGE_BROKER_SOURCES}
   PROPERTIES LANGUAGE CXX)
 
-add_executable(test_async_log_page_receiver
-  ${TEST_ASYNC_LOG_PAGE_RECEIVER_SOURCES}
+add_executable(test_main_async_log_page_broker
+  ${TEST_ASYNC_LOG_PAGE_BROKER_SOURCES}
 )
 
-target_compile_options(test_async_log_page_receiver PRIVATE
+target_compile_options(test_main_async_log_page_broker PRIVATE
   ${compile_warning_flags}
 )
 
-target_compile_definitions(test_async_log_page_receiver PRIVATE
+target_compile_definitions(test_main_async_log_page_broker PRIVATE
   ${COMMON_DEFS} SERVER_MODE
 )
 
-target_include_directories(test_async_log_page_receiver PRIVATE
+target_include_directories(test_main_async_log_page_broker PRIVATE
   ${TEST_INCLUDES}
 )
 
-target_link_libraries(test_async_log_page_receiver fake_thread_utils)
+target_link_libraries(test_main_async_log_page_broker fake_thread_utils)
 
-add_dependencies(test_async_log_page_receiver
+add_dependencies(test_main_async_log_page_broker
   ${CATCH2_TARGET}
 )

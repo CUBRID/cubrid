@@ -16,12 +16,12 @@
  *
  */
 
-#include "log_page_receiver.hpp"
+#include "log_page_broker.hpp"
 
 namespace cublog
 {
-  async_page_receiver::entry_state
-  async_page_receiver::register_entry (LOG_PAGEID log_pageid)
+  page_broker::entry_state
+  page_broker::register_entry (LOG_PAGEID log_pageid)
   {
     std::unique_lock<std::mutex> lock (m_log_pages_mutex);
 
@@ -40,21 +40,21 @@ namespace cublog
   }
 
   std::size_t
-  async_page_receiver::get_requests_count ()
+  page_broker::get_requests_count ()
   {
     std::unique_lock<std::mutex> lock (m_log_pages_mutex);
     return m_requested_page_id_count.size ();
   }
 
   std::size_t
-  async_page_receiver::get_pages_count ()
+  page_broker::get_pages_count ()
   {
     std::unique_lock<std::mutex> lock (m_log_pages_mutex);
     return m_received_log_pages.size ();
   }
 
   std::shared_ptr<log_page_owner>
-  async_page_receiver::wait_for_page (LOG_PAGEID log_pageid)
+  page_broker::wait_for_page (LOG_PAGEID log_pageid)
   {
     std::unique_lock<std::mutex> lock (m_log_pages_mutex);
     m_pages_cv.wait (lock, [this, log_pageid]
@@ -75,7 +75,7 @@ namespace cublog
   }
 
   void
-  async_page_receiver::set_page (std::shared_ptr<log_page_owner> &&log_page)
+  page_broker::set_page (std::shared_ptr<log_page_owner> &&log_page)
   {
     {
       std::unique_lock<std::mutex> lock (m_log_pages_mutex);
