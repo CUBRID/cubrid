@@ -382,6 +382,7 @@ namespace cublog
 	tdes->topops.stack[tdes->topops.last].posp_lsa = sysop_start_postpone.posp_lsa;
       }
   }
+
   void
   checkpoint_info::recovery_2pc_analysis (THREAD_ENTRY *thread_p) const
   {
