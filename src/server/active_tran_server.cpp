@@ -155,7 +155,7 @@ bool active_tran_server::is_page_server_connected () const
 
 void active_tran_server::init_log_page_receiver ()
 {
-  m_async_log_page_receiver.reset (new cublog::async_log_page_receiver ());
+  m_async_log_page_receiver.reset (new cublog::async_page_receiver ());
 }
 
 void active_tran_server::finalize_log_page_receiver ()
@@ -163,7 +163,7 @@ void active_tran_server::finalize_log_page_receiver ()
   m_async_log_page_receiver.reset ();
 }
 
-cublog::async_log_page_receiver &
+cublog::async_page_receiver &
 active_tran_server::get_log_page_receiver ()
 {
   assert (m_async_log_page_receiver);
