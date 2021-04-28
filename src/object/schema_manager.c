@@ -15636,7 +15636,7 @@ sm_collect_truncatable_classes (MOP class_mop, unordered_oid_set & trun_classes,
 {
   int error = NO_ERROR;
   SM_CLASS *class_ = NULL;
-  SM_CLASS_CONSTRAINT *c = NULL;
+  SM_CLASS_CONSTRAINT *pk_constraint = NULL;
   SM_FOREIGN_KEY_INFO *fk_ref;
   OID *fk_cls_oid;
 
@@ -15649,42 +15649,47 @@ sm_collect_truncatable_classes (MOP class_mop, unordered_oid_set & trun_classes,
 
   trun_classes.emplace (ws_oid (class_mop));
 
-  c = classobj_find_cons_primary_key (class_->constraints);
-  if (c != NULL)		/* if no PK, it can be truncated */
+  pk_constraint = classobj_find_cons_primary_key (class_->constraints);
+  if (pk_constraint == NULL)
     {
-      for (fk_ref = c->fk_info; fk_ref; fk_ref = fk_ref->next)
+      /* if no PK, it can be truncated */
+      return NO_ERROR;
+    }
+
+  if (pk_constraint->fk_info && !is_cascade)
+    {
+      /* Not allowed to cascade with a FK, it fails. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TRUNCATE_PK_REFERRED, 1, fk_ref->name);
+      return ER_TRUNCATE_PK_REFERRED;
+    }
+
+  /* Find FK-child classes to cascade. */
+  for (fk_ref = pk_constraint->fk_info; fk_ref; fk_ref = fk_ref->next)
+    {
+      if (trun_classes.find (&fk_ref->self_oid) != trun_classes.end ())
 	{
-	  if (!is_cascade)
+	  continue;		/* already checked */
+	}
+
+      if (fk_ref->delete_action == SM_FOREIGN_KEY_CASCADE)
+	{
+	  MOP fk_child_mop = ws_mop (&fk_ref->self_oid, NULL);
+	  if (fk_child_mop == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TRUNCATE_PK_REFERRED, 1, fk_ref->name);
-	      return ER_TRUNCATE_PK_REFERRED;
+	      assert (er_errid () != NO_ERROR);
+	      return er_errid ();
 	    }
 
-	  if (trun_classes.find (&fk_ref->self_oid) != trun_classes.end ())
+	  error = sm_collect_truncatable_classes (fk_child_mop, trun_classes, is_cascade);
+	  if (error != NO_ERROR)
 	    {
-	      continue;		/* already checked */
+	      return error;
 	    }
-
-	  if (fk_ref->delete_action == SM_FOREIGN_KEY_CASCADE)
-	    {
-	      MOP fk_child_mop = ws_mop (&fk_ref->self_oid, NULL);
-	      if (fk_child_mop == NULL)
-		{
-		  assert (er_errid () != NO_ERROR);
-		  return er_errid ();
-		}
-
-	      error = sm_collect_truncatable_classes (fk_child_mop, trun_classes, is_cascade);
-	      if (error != NO_ERROR)
-		{
-		  return error;
-		}
-	    }
-	  else
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TRUNCATE_CANT_CASCADE, 1, fk_ref->name);
-	      return ER_TRUNCATE_CANT_CASCADE;
-	    }
+	}
+      else
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TRUNCATE_CANT_CASCADE, 1, fk_ref->name);
+	  return ER_TRUNCATE_CANT_CASCADE;
 	}
     }
 
