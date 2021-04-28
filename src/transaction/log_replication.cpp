@@ -41,11 +41,6 @@ namespace cublog
     log_zip_realloc_if_needed (m_undo_unzip, LOGAREA_SIZE);
     log_zip_realloc_if_needed (m_redo_unzip, LOGAREA_SIZE);
 
-    // in case replication is applied synchronously, the perf subsystem needs
-    // to have a non-negative transation index on all threads
-    cubthread::entry &thread_entry = cubthread::get_entry ();
-    thread_entry.tran_index = LOG_SYSTEM_TRAN_INDEX;
-
     // depending on parameter, instantiate the mechanism to execute replication in parallel
     // mandatory to initialize before daemon such that:
     //  - race conditions, when daemon comes online, are avoided
@@ -69,7 +64,10 @@ namespace cublog
     // therefore store it in in pointer such that we can be sure it is disposed of sometime towards the end
     m_daemon_task.reset (new cubthread::entry_callable_task (std::move (func_exec), std::move (func_retire)));
 
-    m_daemon = cubthread::get_manager ()->create_daemon (loop, m_daemon_task.get (), "cublog::replicator");
+    m_daemon_context_manager = std::make_unique<cubthread::system_worker_entry_manager> (TT_REPLICATION);
+
+    m_daemon = cubthread::get_manager ()->create_daemon (loop, m_daemon_task.get (), "cublog::replicator",
+	       m_daemon_context_manager.get ());
   }
 
   replicator::~replicator ()

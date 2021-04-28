@@ -70,6 +70,7 @@ namespace cublog
 
     private:
       std::unique_ptr<cubthread::entry_task> m_daemon_task;
+      std::unique_ptr<cubthread::entry_manager> m_daemon_context_manager;
       cubthread::daemon *m_daemon = nullptr;
 
       log_lsa m_redo_lsa = NULL_LSA;
