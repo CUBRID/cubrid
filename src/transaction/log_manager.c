@@ -4606,6 +4606,11 @@ log_append_repl_info_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool i
 static void
 log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa)
 {
+  if (prm_get_bool_value (PRM_ID_SUPPLEMENTAL_LOG) == true)
+  {
+    log_append_supplement_user (thread_p, tdes, LOG_PRIOR_LSA_WITH_LOCK);
+  }
+
   log_Gl.prior_info.prior_lsa_mutex.lock ();
 
   log_append_repl_info_with_lock (thread_p, tdes, true);
