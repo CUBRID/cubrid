@@ -77,6 +77,7 @@ namespace test_memalloc
       }
       void deallocate (T *pointer, size_t UNUSED (size))
       {
+	// cppcheck-suppress autovarInvalidDeallocation
 	free (pointer);
       }
       size_t max_size (void) const

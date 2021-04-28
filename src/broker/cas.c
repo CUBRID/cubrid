@@ -1379,6 +1379,10 @@ cas_main (void)
 
 	if (is_server_aborted ())
 	  {
+	    CLOSE_SOCKET (srv_sock_fd);
+#if defined(WINDOWS)
+	    WSACleanup ();
+#endif
 	    cas_final ();
 	    return 0;
 	  }
@@ -1386,6 +1390,10 @@ cas_main (void)
 	  {
 	    if (restart_is_needed ())
 	      {
+		CLOSE_SOCKET (srv_sock_fd);
+#if defined(WINDOWS)
+		WSACleanup ();
+#endif
 		cas_final ();
 		return 0;
 	      }
