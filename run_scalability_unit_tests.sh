@@ -18,6 +18,7 @@
 
 # A-Z
 ./test_async_log_page_fetcher
+./test_async_log_page_receiver
 ./test_meta_log
 ./test_prior_list_serialize
 ./test_prior_sendrecv

@@ -89,15 +89,16 @@ struct log_page
   char area[1];
 };
 
-class log_page_wrapper
+class log_page_owner
 {
   public:
-    explicit log_page_wrapper (const char *buffer);
-    ~log_page_wrapper ();
+    explicit log_page_owner (const char *buffer);
+    ~log_page_owner ();
 
-    bool operator== (const log_page_wrapper &other);
+    bool operator== (const log_page_owner &other);
     bool operator== (const LOG_PAGE &other);
     const LOG_HDRPAGE &get_header () const;
+    LOG_PAGEID get_id () const;
 
   private:
     char *m_buffer;

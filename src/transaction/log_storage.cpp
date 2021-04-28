@@ -36,32 +36,38 @@ log_hdrpage::operator== (const log_hdrpage &other)
 	 && checksum == other.checksum;
 }
 
-log_page_wrapper::log_page_wrapper (const char *buffer)
+log_page_owner::log_page_owner (const char *buffer)
 {
   m_buffer = new char [db_log_page_size ()];
   memcpy (m_buffer, buffer, db_log_page_size ());
   m_log_page = reinterpret_cast<LOG_PAGE *> (m_buffer);
 }
 
-log_page_wrapper::~log_page_wrapper ()
+log_page_owner::~log_page_owner ()
 {
   delete[] m_buffer;
 }
 
 bool
-log_page_wrapper::operator== (const log_page_wrapper &other)
+log_page_owner::operator== (const log_page_owner &other)
 {
   return *m_log_page == * (other.m_log_page);
 }
 
 bool
-log_page_wrapper::operator== (const LOG_PAGE &other)
+log_page_owner::operator== (const LOG_PAGE &other)
 {
   return *m_log_page == other;
 }
 
 const LOG_HDRPAGE &
-log_page_wrapper::get_header () const
+log_page_owner::get_header () const
 {
   return m_log_page->hdr;
+}
+
+LOG_PAGEID
+log_page_owner::get_id () const
+{
+  return m_log_page->hdr.logical_pageid;
 }
