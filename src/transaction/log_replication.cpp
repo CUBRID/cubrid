@@ -36,7 +36,7 @@ namespace cublog
 {
   replicator::replicator (const log_lsa &start_redo_lsa)
     : m_redo_lsa { start_redo_lsa }
-    , m_perfmon_log_processing { PSTAT_REDO_REPL_LOG_REDO_SYNC }
+    , m_perfmon_redo_sync { PSTAT_REDO_REPL_LOG_REDO_SYNC }
   {
     log_zip_realloc_if_needed (m_undo_unzip, LOGAREA_SIZE);
     log_zip_realloc_if_needed (m_redo_unzip, LOGAREA_SIZE);
@@ -134,7 +134,7 @@ namespace cublog
 
     // redo all records from current position (m_redo_lsa) until end_redo_lsa
 
-    m_perfmon_log_processing.start ();
+    m_perfmon_redo_sync.start ();
     // make sure the log page is refreshed. otherwise it may be outdated and new records may be missed
     m_reader.set_lsa_and_fetch_page (m_redo_lsa, log_reader::fetch_mode::FORCE);
 
@@ -199,7 +199,7 @@ namespace cublog
 	  m_redo_lsa = header.forw_lsa;
 	}
 
-	m_perfmon_log_processing.track_and_start ();
+	m_perfmon_redo_sync.track_and_start ();
       }
   }
 
