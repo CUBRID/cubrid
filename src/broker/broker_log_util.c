@@ -241,10 +241,10 @@ is_bind_with_size (char *buf, int *tot_val_size, int *info_size)
     }
 
   if ((strncmp (p, "CHAR", 4) != 0) || (strncmp (p, "VARCHAR", 7) != 0) || (strncmp (p, "NCHAR", 5) != 0)
-     || (strncmp (p, "VARNCHAR", 8) != 0))
-      {
-        *tot_val_size = strlen (info_end);
-      }
+      || (strncmp (p, "VARNCHAR", 8) != 0))
+    {
+      *tot_val_size = strlen (info_end);
+    }
   else if (tot_val_size)
     {
       len = size_end - size_begin;
