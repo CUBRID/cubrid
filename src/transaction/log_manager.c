@@ -305,7 +305,7 @@ static void log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG
 				   int data_size, const char *data);
 
 static int logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, void *args);
-static void log_append_supplement_user_at_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes, int with_lock);
+static void log_append_supplement_user_at_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 #if defined(SERVER_MODE)
 // *INDENT-OFF*
 static void log_abort_task_execute (cubthread::entry &thread_ref, LOG_TDES &tdes);
@@ -2103,7 +2103,7 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_
     }
   if (prm_get_bool_value (PRM_ID_SUPPLEMENTAL_LOG) == true)
     {
-      log_append_supplement_user_at_start (thread_p, tdes, LOG_PRIOR_LSA_WITHOUT_LOCK);
+      log_append_supplement_user_at_start (thread_p, tdes);
     }
 
   /*
@@ -2236,7 +2236,7 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
 
   if (prm_get_bool_value (PRM_ID_SUPPLEMENTAL_LOG) == true)
     {
-      log_append_supplement_user_at_start (thread_p, tdes, LOG_PRIOR_LSA_WITHOUT_LOCK);
+      log_append_supplement_user_at_start (thread_p, tdes);
     }
 
   /*
@@ -2380,7 +2380,7 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
 
   if (prm_get_bool_value (PRM_ID_SUPPLEMENTAL_LOG) == true)
     {
-      log_append_supplement_user_at_start (thread_p, tdes, LOG_PRIOR_LSA_WITHOUT_LOCK);
+      log_append_supplement_user_at_start (thread_p, tdes);
     }
 
   node = prior_lsa_alloc_and_copy_crumbs (thread_p, rectype, rcvindex, addr, 0, NULL, num_crumbs, crumbs);
@@ -3397,7 +3397,7 @@ log_append_savepoint (THREAD_ENTRY * thread_p, const char *savept_name)
 
   if (prm_get_bool_value (PRM_ID_SUPPLEMENTAL_LOG) == true)
     {
-      log_append_supplement_user_at_start (thread_p, tdes, LOG_PRIOR_LSA_WITHOUT_LOCK);
+      log_append_supplement_user_at_start (thread_p, tdes);
     }
 
   length = (int) strlen (savept_name) + 1;
@@ -4608,7 +4608,7 @@ log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, L
 {
   if (prm_get_bool_value (PRM_ID_SUPPLEMENTAL_LOG) == true)
   {
-    log_append_supplement_user (thread_p, tdes, LOG_PRIOR_LSA_WITH_LOCK);
+    log_append_supplement_user (thread_p, tdes);
   }
 
   log_Gl.prior_info.prior_lsa_mutex.lock ();
@@ -4736,7 +4736,7 @@ log_append_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commi
 {
   if (prm_get_bool_value (PRM_ID_SUPPLEMENTAL_LOG) == true)
     {
-      log_append_supplement_user (thread_p, tdes, LOG_PRIOR_LSA_WITHOUT_LOCK);
+      log_append_supplement_user (thread_p, tdes);
     }
   log_append_donetime_internal (thread_p, tdes, commit_lsa, LOG_COMMIT, LOG_PRIOR_LSA_WITHOUT_LOCK);
 }
@@ -4768,7 +4768,7 @@ log_append_abort_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * abort_
 {
   if (prm_get_bool_value (PRM_ID_SUPPLEMENTAL_LOG) == true)
     {
-      log_append_supplement_user (thread_p, tdes, LOG_PRIOR_LSA_WITHOUT_LOCK);
+      log_append_supplement_user (thread_p, tdes);
     }
   log_append_donetime_internal (thread_p, tdes, abort_lsa, LOG_ABORT, LOG_PRIOR_LSA_WITHOUT_LOCK);
 }
@@ -4782,7 +4782,7 @@ log_append_abort_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * abort_
  *   
  */
 void
-log_append_supplement_user (THREAD_ENTRY * thread_p, LOG_TDES * tdes, int with_lock)
+log_append_supplement_user (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
   LOG_REC_SUPPLEMENT_TRAN_USER *spplmnt_usr;
   LOG_PRIOR_NODE *node;
@@ -4797,22 +4797,15 @@ log_append_supplement_user (THREAD_ENTRY * thread_p, LOG_TDES * tdes, int with_l
 
   spplmnt_usr = (LOG_REC_SUPPLEMENT_TRAN_USER *) node->data_header;
   memcpy (spplmnt_usr->user_name, tdes->client.get_db_user (), DB_MAX_USER_LENGTH);
-  if (with_lock == LOG_PRIOR_LSA_WITH_LOCK)
-    {
-      (void) prior_lsa_next_record_with_lock (thread_p, node, tdes);
-    }
-  else
-    {
-      (void) prior_lsa_next_record (thread_p, node, tdes);
-    }
+  (void) prior_lsa_next_record (thread_p, node, tdes);
 }
 
 static void
-log_append_supplement_user_at_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes, int with_lock)
+log_append_supplement_user_at_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
   if (LSA_ISNULL (&tdes->head_lsa))
     {
-      log_append_supplement_user (thread_p, tdes, with_lock);
+      log_append_supplement_user (thread_p, tdes);
     }
 }
 
