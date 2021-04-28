@@ -55,8 +55,6 @@ namespace cublog
       std::unordered_map<LOG_PAGEID, std::shared_ptr<log_page_wrapper>> m_received_log_pages;
   };
 
-
 } // namespace cublog
-
 
 #endif // _ASYNC_LOG_PAGE_RECEIVER_HPP_
