@@ -139,7 +139,7 @@ is_bind_with_size (char *buf, int *tot_val_size, int *info_size)
     case CCI_U_TYPE_NCHAR:
     case CCI_U_TYPE_VARNCHAR:
       {
-	int len = strlen (p+1);
+	int len = strlen (p + 1);
 
 	if (p[len] == '\n')
 	  {
@@ -155,9 +155,9 @@ is_bind_with_size (char *buf, int *tot_val_size, int *info_size)
       break;
     default:
       if (tot_val_size)
-        {
+	{
 	  *tot_val_size = size;
-        }
+	}
       break;
     }
 
