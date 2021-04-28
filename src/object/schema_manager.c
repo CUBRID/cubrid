@@ -15659,7 +15659,7 @@ sm_collect_truncatable_classes (MOP class_mop, unordered_oid_set & trun_classes,
   if (pk_constraint->fk_info && !is_cascade)
     {
       /* Not allowed to cascade with a FK, it fails. */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TRUNCATE_PK_REFERRED, 1, fk_ref->name);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TRUNCATE_PK_REFERRED, 1, pk_constraint->fk_info->name);
       return ER_TRUNCATE_PK_REFERRED;
     }
 
