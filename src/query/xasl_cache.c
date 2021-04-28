@@ -2403,11 +2403,21 @@ xcache_check_recompilation_threshold (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY 
 	}
       assert (!VFID_ISNULL (&cls_info_p->ci_hfid.vfid));
 
-      if (file_get_num_user_pages (thread_p, &cls_info_p->ci_hfid.vfid, &npages) != NO_ERROR)
+      if (!prm_get_bool_value (PRM_ID_USE_STAT_ESTIMATION))
 	{
-	  ASSERT_ERROR ();
-	  catalog_free_class_info_and_init (cls_info_p);
-	  return false;
+	  /* Consider recompiling the plan when statistic is updated. */
+	  npages = cls_info_p->ci_tot_pages;
+	}
+      else
+	{
+	  /* Because statistics are automatically updated, number of real pages of file can be used */
+	  /* default of use_stat_estimation is 'false' because btree statistics estimations is so inaccurate. */
+	  if (file_get_num_user_pages (thread_p, &cls_info_p->ci_hfid.vfid, &npages) != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      catalog_free_class_info_and_init (cls_info_p);
+	      return false;
+	    }
 	}
       if (npages > XCACHE_RT_FACTOR * xcache_entry->related_objects[relobj].tcard
 	  || npages < xcache_entry->related_objects[relobj].tcard / XCACHE_RT_FACTOR)
