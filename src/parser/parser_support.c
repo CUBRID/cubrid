@@ -227,7 +227,6 @@ pt_and (PARSER_CONTEXT * parser, const PT_NODE * arg1, const PT_NODE * arg2)
   node = parser_new_node (parser, PT_EXPR);
   if (node)
     {
-      parser_init_node (node);
       node->info.expr.op = PT_AND;
       node->info.expr.arg1 = (PT_NODE *) arg1;
       node->info.expr.arg2 = (PT_NODE *) arg2;
@@ -253,7 +252,6 @@ pt_union (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2)
 
   if (node)
     {
-      parser_init_node (node);
       /* set query id # */
       node->info.query.id = (UINTPTR) node;
 
@@ -308,7 +306,6 @@ pt_name (PARSER_CONTEXT * parser, const char *name)
   node = parser_new_node (parser, PT_NAME);
   if (node)
     {
-      parser_init_node (node);
       node->info.name.original = pt_append_string (parser, NULL, name);
     }
 
@@ -330,7 +327,6 @@ pt_table_option (PARSER_CONTEXT * parser, const PT_TABLE_OPTION_TYPE option, PT_
   node = parser_new_node (parser, PT_TABLE_OPTION);
   if (node)
     {
-      parser_init_node (node);
       node->info.table_option.option = option;
       node->info.table_option.val = val;
     }
@@ -355,7 +351,6 @@ pt_expression (PARSER_CONTEXT * parser, PT_OP_TYPE op, PT_NODE * arg1, PT_NODE *
   node = parser_new_node (parser, PT_EXPR);
   if (node)
     {
-      parser_init_node (node);
       node->info.expr.op = op;
       node->info.expr.arg1 = arg1;
       node->info.expr.arg2 = arg2;
@@ -428,7 +423,6 @@ pt_entity (PARSER_CONTEXT * parser, const PT_NODE * entity_name, const PT_NODE *
   node = parser_new_node (parser, PT_SPEC);
   if (node)
     {
-      parser_init_node (node);
       node->info.spec.entity_name = (PT_NODE *) entity_name;
       node->info.spec.range_var = (PT_NODE *) range_var;
       node->info.spec.flat_entity_list = (PT_NODE *) flat_list;
@@ -453,7 +447,6 @@ pt_tuple_value (PARSER_CONTEXT * parser, PT_NODE * name, CURSOR_ID * cursor_p, i
   node = parser_new_node (parser, PT_TUPLE_VALUE);
   if (node)
     {
-      parser_init_node (node);
       node->info.tuple_value.name = name;
       node->info.tuple_value.index = index;
       node->info.tuple_value.cursor_p = cursor_p;
@@ -475,7 +468,6 @@ pt_insert_value (PARSER_CONTEXT * parser, PT_NODE * node)
   PT_NODE *insert_val = parser_new_node (parser, PT_INSERT_VALUE);
   if (insert_val != NULL)
     {
-      parser_init_node (insert_val);
       insert_val->info.insert_value.original_node = node;
     }
   return insert_val;
