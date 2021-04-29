@@ -164,6 +164,7 @@ typedef enum
   PERF_MODULE_SYSTEM = 0,
   PERF_MODULE_USER,
   PERF_MODULE_VACUUM,
+  PERF_MODULE_REPLICATION,
 
   PERF_MODULE_CNT
 } PERF_MODULE_TYPE;
@@ -634,8 +635,11 @@ typedef enum
   PSTAT_PB_AVOID_DEALLOC_CNT,
   PSTAT_PB_AVOID_VICTIM_CNT,
 
-  /* Scalability statistics */
-  PSTAT_SC_REPL_DELAY,
+  /* Redo recovery and replication statistics */
+  PSTAT_REDO_REPL_DELAY,
+  PSTAT_REDO_REPL_LOG_REDO_SYNC,
+  PSTAT_LOG_REDO_ASYNC,
+  PSTAT_LOG_REDO_FUNC_EXEC,
 
   /* Complex statistics */
   PSTAT_PBX_FIX_COUNTERS,
