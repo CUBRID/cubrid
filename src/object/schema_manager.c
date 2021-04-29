@@ -15650,15 +15650,16 @@ sm_collect_truncatable_classes (MOP class_mop, unordered_oid_set & trun_classes,
   trun_classes.emplace (ws_oid (class_mop));
 
   pk_constraint = classobj_find_cons_primary_key (class_->constraints);
-  if (pk_constraint == NULL)
+  if (pk_constraint == NULL || pk_constraint->fk_info == NULL)
     {
-      /* if no PK, it can be truncated */
+      /* if no PK or FK-referred, it can be truncated */
       return NO_ERROR;
     }
 
-  if (pk_constraint->fk_info && !is_cascade)
+  /* Now, there is a PK, and are some FKs-referring to the PK */
+
+  if (!is_cascade)
     {
-      /* Not allowed to cascade with a FK, it fails. */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TRUNCATE_PK_REFERRED, 1, pk_constraint->fk_info->name);
       return ER_TRUNCATE_PK_REFERRED;
     }
