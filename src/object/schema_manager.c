@@ -15640,7 +15640,7 @@ sm_collect_truncatable_classes (MOP class_mop, unordered_oid_set & trun_classes,
   SM_FOREIGN_KEY_INFO *fk_ref;
   OID *fk_cls_oid;
 
-  error = au_fetch_class (class_mop, &class_, AU_FETCH_READ, DB_AUTH_SELECT);
+  error = au_fetch_class (class_mop, &class_, AU_FETCH_READ, DB_AUTH_ALTER);
   if (error != NO_ERROR || class_ == NULL)
     {
       assert (er_errid () != NO_ERROR);
