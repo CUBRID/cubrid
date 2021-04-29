@@ -183,8 +183,10 @@ static void perfmon_stat_dump_in_buffer_thread_daemon_stats (const UINT64 * stat
 static void perfmon_print_timer_to_file (FILE * stream, int stat_index, UINT64 * stats_ptr);
 static void perfmon_print_timer_to_buffer (char **s, int stat_index, UINT64 * stats_ptr, int *remained_size);
 
-STATIC_INLINE size_t thread_stats_count (void) __attribute__((ALWAYS_INLINE));
-STATIC_INLINE size_t perfmon_thread_daemon_stats_count (void) __attribute__((ALWAYS_INLINE));
+static void perfmon_dbg_check_metadata_definition ();
+
+STATIC_INLINE size_t thread_stats_count (void) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE size_t perfmon_thread_daemon_stats_count (void) __attribute__ ((ALWAYS_INLINE));
 #if defined (SERVER_MODE)
 static void perfmon_peek_thread_daemon_stats (UINT64 * stats);
 #endif // SERVER_MODE
@@ -563,6 +565,13 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_AVOID_DEALLOC_CNT, "Num_data_page_avoid_dealloc"),
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_AVOID_VICTIM_CNT, "Num_data_page_avoid_victim"),
 
+  /* Scalability statistics */
+  /* Peek time in msec taken for the log to be transferred, processed an applied on the page server */
+  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_REDO_REPL_DELAY, "Redo_replication_delay_msec"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_REDO_REPL_LOG_REDO_SYNC, "Redo_replication_log_redo_sync"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_LOG_REDO_ASYNC, "Log_redo_async"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_LOG_REDO_FUNC_EXEC, "Log_redo_func_exec"),
+
   /* Array type statistics */
   PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_FIX_COUNTERS, "Num_data_page_fix_ext", &f_dump_in_file_Num_data_page_fix_ext,
 			       &f_dump_in_buffer_Num_data_page_fix_ext, &f_load_Num_data_page_fix_ext),
@@ -608,25 +617,25 @@ PSTAT_METADATA pstat_Metadata[] = {
 };
 
 STATIC_INLINE void perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, const int offset,
-					       UINT64 amount) __attribute__((ALWAYS_INLINE));
+					       UINT64 amount) __attribute__ ((ALWAYS_INLINE));
 
 static void perfmon_server_calc_stats (UINT64 * stats);
 
-STATIC_INLINE const char *perfmon_stat_module_name (const int module) __attribute__((ALWAYS_INLINE));
+STATIC_INLINE const char *perfmon_stat_module_name (const int module) __attribute__ ((ALWAYS_INLINE));
 #if defined (SERVER_MODE) || defined (SA_MODE)
-STATIC_INLINE int perfmon_get_module_type (THREAD_ENTRY * thread_p) __attribute__((ALWAYS_INLINE));
+STATIC_INLINE int perfmon_get_module_type (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 #endif
-STATIC_INLINE const char *perfmon_stat_page_type_name (const int page_type) __attribute__((ALWAYS_INLINE));
-STATIC_INLINE const char *perfmon_stat_page_mode_name (const int page_mode) __attribute__((ALWAYS_INLINE));
-STATIC_INLINE const char *perfmon_stat_holder_latch_name (const int holder_latch) __attribute__((ALWAYS_INLINE));
-STATIC_INLINE const char *perfmon_stat_cond_type_name (const int cond_type) __attribute__((ALWAYS_INLINE));
-STATIC_INLINE const char *perfmon_stat_promote_cond_name (const int cond_type) __attribute__((ALWAYS_INLINE));
-STATIC_INLINE const char *perfmon_stat_snapshot_name (const int snapshot) __attribute__((ALWAYS_INLINE));
-STATIC_INLINE const char *perfmon_stat_snapshot_record_type (const int rec_type) __attribute__((ALWAYS_INLINE));
-STATIC_INLINE const char *perfmon_stat_lock_mode_name (const int lock_mode) __attribute__((ALWAYS_INLINE));
+STATIC_INLINE const char *perfmon_stat_page_type_name (const int page_type) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE const char *perfmon_stat_page_mode_name (const int page_mode) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE const char *perfmon_stat_holder_latch_name (const int holder_latch) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE const char *perfmon_stat_cond_type_name (const int cond_type) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE const char *perfmon_stat_promote_cond_name (const int cond_type) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE const char *perfmon_stat_snapshot_name (const int snapshot) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE const char *perfmon_stat_snapshot_record_type (const int rec_type) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE const char *perfmon_stat_lock_mode_name (const int lock_mode) __attribute__ ((ALWAYS_INLINE));
 static const char *perfmon_stat_thread_stat_name (size_t index);
 
-STATIC_INLINE void perfmon_get_peek_stats (UINT64 * stats) __attribute__((ALWAYS_INLINE));
+STATIC_INLINE void perfmon_get_peek_stats (UINT64 * stats) __attribute__ ((ALWAYS_INLINE));
 
 #if defined(CS_MODE) || defined(SA_MODE)
 bool perfmon_Iscollecting_stats = false;
@@ -1443,8 +1452,12 @@ perfmon_server_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf
 	}
     }
 
+  /* only complex statistics here; or, in other words, statistics that
+   * define their own functions */
   for (; i < PSTAT_COUNT && remained_size > 0; i++)
     {
+      assert (pstat_Metadata[i].f_dump_in_buffer != nullptr);
+
       if (substr != NULL)
 	{
 	  s = strstr (pstat_Metadata[i].stat_name, substr);
@@ -1532,8 +1545,12 @@ perfmon_server_dump_stats (const UINT64 * stats, FILE * stream, const char *subs
 	}
     }
 
+  /* only complex statistics here; or, in other words, statistics that
+   * define their own functions */
   for (; i < PSTAT_COUNT; i++)
     {
+      assert (pstat_Metadata[i].f_dump_in_file != nullptr);
+
       if (substr != NULL)
 	{
 	  s = strstr (pstat_Metadata[i].stat_name, substr);
@@ -1829,6 +1846,8 @@ perfmon_stat_module_name (const int module)
       return "WORKER";
     case PERF_MODULE_VACUUM:
       return "VACUUM";
+    case PERF_MODULE_REPLICATION:
+      return "REPLICATION";
     default:
       break;
     }
@@ -1855,6 +1874,9 @@ perfmon_get_module_type (THREAD_ENTRY * thread_p)
     case TT_VACUUM_WORKER:
     case TT_VACUUM_MASTER:
       return PERF_MODULE_VACUUM;
+    case TT_REPLICATION:
+      return PERF_MODULE_REPLICATION;
+    case TT_RECOVERY:
     default:
       return PERF_MODULE_SYSTEM;
     }
@@ -2980,6 +3002,23 @@ perfmon_stat_dump_in_file_snapshot_array_stat (FILE * stream, const UINT64 * sta
     }
 }
 
+/* perfmon_dbg_check_metadata_definition - check proper ordering of statistics definitions
+ *          - non-complex definitions come before the complex ones
+ *          - complex definitions all come at the end, just before PSTAT_COUNT
+ *        needed because dump to file/buffer functions depend on this
+ */
+void
+perfmon_dbg_check_metadata_definition ()
+{
+  int idx = 0;
+
+  for (; idx < PSTAT_COUNT && pstat_Metadata[idx].valtype != PSTAT_COMPLEX_VALUE; ++idx);
+  for (; idx < PSTAT_COUNT; ++idx)
+    {
+      assert (pstat_Metadata[idx].valtype == PSTAT_COMPLEX_VALUE);
+    }
+}
+
 /*
  * perfmon_initialize () - Computes the metadata values & allocates/initializes global/transaction statistics values.
  *
@@ -3009,6 +3048,10 @@ perfmon_initialize (int num_trans)
       // always watching
       pstat_Global.n_watchers++;
     }
+#endif
+
+#if !defined (NDEBUG)
+  perfmon_dbg_check_metadata_definition ();
 #endif
 
   for (idx = 0; idx < PSTAT_COUNT; idx++)
@@ -3100,7 +3143,6 @@ perfmon_initialize (int num_trans)
     }
   memset (pstat_Global.is_watching, 0, memsize);
 
-  pstat_Global.n_watchers = 0;
   pstat_Global.initialized = true;
   return NO_ERROR;
 
@@ -3138,6 +3180,12 @@ perfmon_finalize (void)
     {
       free_and_init (pstat_Global.global_stats);
     }
+
+#if defined (SERVER_MODE)
+  // reset in case of 'always watching' initialization
+  pstat_Global.n_watchers = 0;
+#endif
+
 #if defined (SERVER_MODE) || defined (SA_MODE)
 #if !defined (HAVE_ATOMIC_BUILTINS)
   pthread_mutex_destroy (&pstat_Global.watch_lock);

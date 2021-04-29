@@ -19,10 +19,40 @@
 project(test_log_transfer)
 
 #
+# test_meta_log
+#
+set(TEST_LOG_META_SOURCES
+  ${BASE_DIR}/packer.cpp
+  ${TRANSACTION_DIR}/log_meta.cpp
+  test_main_log_meta.cpp
+  )
+set_source_files_properties(
+  ${TEST_LOG_META_SOURCES}
+  PROPERTIES LANGUAGE CXX
+  )
+add_executable(test_meta_log
+  ${TEST_LOG_META_SOURCES}
+  )
+target_compile_options(test_meta_log PRIVATE ${compile_warning_flags})
+target_compile_definitions(test_meta_log PRIVATE ${COMMON_DEFS})
+target_include_directories(test_meta_log PRIVATE ${TEST_INCLUDES})
+if(WIN32)
+  target_link_libraries(test_meta_log PRIVATE ws2_32)
+endif(WIN32)
+add_dependencies(test_meta_log ${CATCH2_TARGET})
+
+#
 # test_prior_list_serialize
 # 
 set(TEST_PRIOR_LIST_SERIALIZE_SOURCES
+  # Fake objects
+  ${TEST_FAKE_DIR}/fake_error_manager.cpp
+  ${TEST_FAKE_DIR}/fake_system_parameter.cpp
+
+  # What is tested
   ${TRANSACTION_DIR}/log_append.cpp
+
+  # Test
   test_main_prior_list_serialize.cpp
   )
 
@@ -76,3 +106,72 @@ target_include_directories(test_prior_sendrecv PRIVATE
 add_dependencies(test_prior_sendrecv
   ${CATCH2_TARGET}
   )
+
+#
+# test_log_page_fetcher
+# 
+
+set(TEST_LOG_PAGE_FETCHER_SOURCES
+  ${TRANSACTION_DIR}/log_page_fetcher.cpp
+  test_main_log_page_fetcher.cpp)
+
+SET_SOURCE_FILES_PROPERTIES(
+  ${TEST_LOG_PAGE_FETCHER_SOURCES}
+  PROPERTIES LANGUAGE CXX)
+
+add_executable(test_log_page_fetcher
+  ${TEST_LOG_PAGE_FETCHER_SOURCES}
+)
+
+target_compile_options(test_log_page_fetcher PRIVATE
+  ${compile_warning_flags}
+)
+
+target_compile_definitions(test_log_page_fetcher PRIVATE
+  ${COMMON_DEFS} SERVER_MODE
+)
+
+target_include_directories(test_log_page_fetcher PRIVATE
+  ${TEST_INCLUDES}
+)
+
+target_link_libraries(test_log_page_fetcher fake_thread_utils)
+
+add_dependencies(test_log_page_fetcher
+  ${CATCH2_TARGET}
+)
+
+#
+# test_log_page_broker
+# 
+
+set(TEST_LOG_PAGE_BROKER_SOURCES
+  ${TRANSACTION_DIR}/log_storage.cpp
+  ${TRANSACTION_DIR}/log_page_broker.cpp
+  test_main_log_page_broker.cpp)
+
+SET_SOURCE_FILES_PROPERTIES(
+  ${TEST_LOG_PAGE_BROKER_SOURCES}
+  PROPERTIES LANGUAGE CXX)
+
+add_executable(test_log_page_broker
+  ${TEST_LOG_PAGE_BROKER_SOURCES}
+)
+
+target_compile_options(test_log_page_broker PRIVATE
+  ${compile_warning_flags}
+)
+
+target_compile_definitions(test_log_page_broker PRIVATE
+  ${COMMON_DEFS} SERVER_MODE
+)
+
+target_include_directories(test_log_page_broker PRIVATE
+  ${TEST_INCLUDES}
+)
+
+target_link_libraries(test_log_page_broker fake_thread_utils)
+
+add_dependencies(test_log_page_broker
+  ${CATCH2_TARGET}
+)

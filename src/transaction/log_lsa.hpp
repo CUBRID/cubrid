@@ -64,6 +64,10 @@ constexpr std::int64_t NULL_LOG_PAGEID = -1;
 constexpr std::int16_t NULL_LOG_OFFSET = -1;
 constexpr log_lsa NULL_LSA { NULL_LOG_PAGEID, NULL_LOG_OFFSET };
 
+// maximum values for the log lsa bit-field members
+constexpr std::int64_t MAX_LOG_LSA_PAGEID = (static_cast<std::int64_t> (1u) << (48u - 1)) - 1;
+constexpr std::int16_t MAX_LOG_LSA_OFFSET = (static_cast<std::int16_t> (1u) << (16u - 1)) - 1;
+
 // functions
 void lsa_to_string (char *buf, int buf_size, const log_lsa *lsa);
 

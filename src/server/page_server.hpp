@@ -20,7 +20,7 @@
 #define _PAGE_SERVER_HPP_
 
 #include "ats_ps_request.hpp"
-#include "log_page_async_fetcher.hpp"
+#include "log_page_fetcher.hpp"
 #include "request_client_server.hpp"
 #include "request_sync_send_queue.hpp"
 
@@ -54,7 +54,7 @@ class page_server
     void push_request_to_active_tran_server (ps_to_ats_request reqid, std::string &&payload);
 
     void start_log_replicator (const log_lsa &start_lsa);
-    void finish_replication (cubthread::entry &thread_entry);
+    void finish_replication_during_shutdown (cubthread::entry &thread_entry);
 
     void init_log_page_fetcher ();
     void finalize_log_page_fetcher ();

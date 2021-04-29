@@ -47,6 +47,7 @@
 #include "log_comm.h"
 #include "log_common_impl.h"
 #include "log_lsa.hpp"
+#include "log_meta.hpp"
 #include "log_postpone_cache.hpp"
 #include "log_prior_send.hpp"
 #if defined (SERVER_MODE)
@@ -65,6 +66,8 @@
 #include "transaction_transient.hpp"
 
 #include <assert.h>
+#include <condition_variable>
+#include <mutex>
 #if defined(SOLARIS)
 #include <netdb.h>		/* for MAXHOSTNAMELEN */
 #endif /* SOLARIS */
@@ -646,16 +649,22 @@ struct log_global
   GLOBAL_UNIQUE_STATS_TABLE unique_stats_table;	/* global unique statistics */
 
   // *INDENT-OFF*
+  cublog::meta m_metainfo;
   cublog::prior_sender m_prior_sender;
 #if defined (SERVER_MODE)
   cublog::prior_recver m_prior_recver;
 #endif // SERVER_MODE = !SA_MODE
+
+  std::mutex m_ps_lsa_mutex;
+  std::condition_variable m_ps_lsa_cv;
+  LOG_LSA m_max_ps_flushed_lsa;
+
+  log_global ();
+  ~log_global ();
   // *INDENT-ON*
 
-  // *INDENT-OFF*
-  log_global ();
-   ~log_global ();
-  // *INDENT-ON*
+  void update_max_ps_flushed_lsa (const LOG_LSA & lsa);
+  void wait_flushed_lsa (const log_lsa & flush_lsa);
 };
 
 /* logging statistics */
@@ -755,6 +764,7 @@ extern char log_Name_bkupinfo[];
 extern char log_Name_volinfo[];
 extern char log_Name_bg_archive[];
 extern char log_Name_removed_archive[];
+extern char log_Name_metainfo[];
 
 /* logging */
 #if defined (SA_MODE)

@@ -87,6 +87,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/event_log.c
   ${BASE_DIR}/fault_injection.c
   ${BASE_DIR}/fileline_location.cpp
+  ${BASE_DIR}/filesys_temp.cpp
   ${BASE_DIR}/fixed_alloc.c
   ${BASE_DIR}/ini_parser.c
   ${BASE_DIR}/intl_support.c
@@ -113,6 +114,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/pinnable_buffer.cpp
   ${BASE_DIR}/pinning.cpp
   ${BASE_DIR}/perf_monitor.c
+  ${BASE_DIR}/perf_monitor_trackers.cpp
   ${BASE_DIR}/porting.c
   ${BASE_DIR}/printer.cpp
   ${BASE_DIR}/process_util.c
@@ -136,6 +138,7 @@ set (BASE_HEADERS
   ${BASE_DIR}/error_manager.h
   ${BASE_DIR}/extensible_array.hpp
   ${BASE_DIR}/fileline_location.hpp
+  ${BASE_DIR}/filesys_temp.hpp
   ${BASE_DIR}/locale_helper.hpp
   ${BASE_DIR}/lockfree_address_marker.hpp
   ${BASE_DIR}/lockfree_bitmap.hpp
@@ -154,6 +157,8 @@ set (BASE_HEADERS
   ${BASE_DIR}/packer.hpp
   ${BASE_DIR}/perf.hpp
   ${BASE_DIR}/perf_def.hpp
+  ${BASE_DIR}/perf_monitor.h
+  ${BASE_DIR}/perf_monitor_trackers.hpp
   ${BASE_DIR}/pinning.hpp
   ${BASE_DIR}/pinnable_buffer.hpp
   ${BASE_DIR}/porting_inline.hpp
@@ -286,12 +291,16 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/lock_table.c
   ${TRANSACTION_DIR}/log_2pc.c
   ${TRANSACTION_DIR}/log_append.cpp
+  ${TRANSACTION_DIR}/log_checkpoint_info.cpp
   ${TRANSACTION_DIR}/log_comm.c
   ${TRANSACTION_DIR}/log_compress.c
   ${TRANSACTION_DIR}/log_global.c
   ${TRANSACTION_DIR}/log_lsa.cpp
   ${TRANSACTION_DIR}/log_manager.c
+  ${TRANSACTION_DIR}/log_meta.cpp
   ${TRANSACTION_DIR}/log_page_buffer.c
+  ${TRANSACTION_DIR}/log_page_broker.cpp
+  ${TRANSACTION_DIR}/log_page_fetcher.cpp
   ${TRANSACTION_DIR}/log_postpone_cache.cpp
   ${TRANSACTION_DIR}/log_prior_send.cpp
   ${TRANSACTION_DIR}/log_prior_recv.cpp
@@ -300,6 +309,7 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/log_recovery_redo.cpp
   ${TRANSACTION_DIR}/log_recovery_redo_parallel.cpp
   ${TRANSACTION_DIR}/log_replication.cpp
+  ${TRANSACTION_DIR}/log_storage.cpp
   ${TRANSACTION_DIR}/log_system_tran.cpp
   ${TRANSACTION_DIR}/log_tran_table.c
   ${TRANSACTION_DIR}/log_writer.c
@@ -317,8 +327,12 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/log_2pc.h
   ${TRANSACTION_DIR}/log_append.hpp
   ${TRANSACTION_DIR}/log_archives.hpp
+  ${TRANSACTION_DIR}/log_checkpoint_info.hpp
   ${TRANSACTION_DIR}/log_common_impl.h
   ${TRANSACTION_DIR}/log_lsa.hpp
+  ${TRANSACTION_DIR}/log_meta.hpp
+  ${TRANSACTION_DIR}/log_page_broker.hpp
+  ${TRANSACTION_DIR}/log_page_fetcher.hpp  
   ${TRANSACTION_DIR}/log_postpone_cache.hpp
   ${TRANSACTION_DIR}/log_prior_send.hpp
   ${TRANSACTION_DIR}/log_prior_recv.hpp
@@ -349,7 +363,6 @@ set(SERVER_HEADERS
   )
 
 set(STORAGE_SOURCES
-  ${STORAGE_DIR}/log_page_async_fetcher.cpp
   ${STORAGE_DIR}/btree.c
   ${STORAGE_DIR}/btree_load.c
   ${STORAGE_DIR}/btree_unique.cpp
@@ -376,7 +389,7 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/tde.c
   )
 set(STORAGE_HEADERS
-  ${STORAGE_DIR}/log_page_async_fetcher.hpp
+  
   ${STORAGE_DIR}/btree_unique.hpp
   ${STORAGE_DIR}/record_descriptor.hpp
   ${STORAGE_DIR}/vpid.hpp
@@ -550,6 +563,7 @@ target_include_directories(cubrid PRIVATE ${JAVA_INC} ${EP_INCLUDES} ${FLEX_INCL
 if(UNIX)
   target_link_libraries(cubrid LINK_PRIVATE -Wl,-whole-archive ${EP_LIBS} -Wl,-no-whole-archive)
   target_link_libraries(cubrid LINK_PUBLIC ${CURSES_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} ${CMAKE_DL_LIBS})
+  target_link_libraries(cubrid PUBLIC stdc++fs)
 else(UNIX)
   target_link_libraries(cubrid LINK_PRIVATE ${EP_LIBS})
 endif(UNIX)

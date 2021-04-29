@@ -6481,6 +6481,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
   QO_INFO *new_info = (QO_INFO *) NULL;
   int i, j;
   bool check_afj_terms = false;
+  bool is_dummy_term = false;
   BITSET_ITERATOR bi, bj;
   BITSET nl_join_terms;		/* nested-loop join terms */
   BITSET sm_join_terms;		/* sort merge join terms */
@@ -6743,9 +6744,15 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	    edge_cnt++;
 
 	    /* set join type */
-	    if (join_type == NO_JOIN)
-	      {			/* the first time */
+	    if (join_type == NO_JOIN || is_dummy_term)
+	      {
+		/* the first time except dummy term */
 		join_type = QO_TERM_JOIN_TYPE (term);
+		is_dummy_term = QO_TERM_CLASS (term) == QO_TC_DUMMY_JOIN ? true : false;
+	      }
+	    else if (QO_TERM_CLASS (term) == QO_TC_DUMMY_JOIN)
+	      {
+		/* The dummy join term is excluded from the outer join check. */
 	      }
 	    else
 	      {			/* already assigned */

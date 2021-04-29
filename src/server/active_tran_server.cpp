@@ -99,7 +99,8 @@ int active_tran_server::connect_to_page_server (const std::string &host, int por
   assert (!is_page_server_connected ());
 
   // connect to page server
-  cubcomm::server_channel srv_chn (db_name);
+  constexpr int CHANNEL_POLL_TIMEOUT = 1000;    // 1000 milliseconds = 1 second
+  cubcomm::server_channel srv_chn (db_name, CHANNEL_POLL_TIMEOUT);
 
   srv_chn.set_channel_name ("ATS_PS_comm");
 
@@ -152,6 +153,23 @@ bool active_tran_server::is_page_server_connected () const
   return m_ps_request_queue != nullptr;
 }
 
+void active_tran_server::init_log_page_broker ()
+{
+  m_log_page_broker.reset (new cublog::page_broker ());
+}
+
+void active_tran_server::finalize_log_page_broker ()
+{
+  m_log_page_broker.reset ();
+}
+
+cublog::page_broker &
+active_tran_server::get_log_page_broker ()
+{
+  assert (m_log_page_broker);
+  return *m_log_page_broker;
+}
+
 void active_tran_server::push_request (ats_to_ps_request reqid, std::string &&payload)
 {
   if (!is_page_server_connected ())
@@ -172,13 +190,13 @@ void active_tran_server::receive_log_page (cubpacking::unpacker &upk)
 
   if (error_code == NO_ERROR)
     {
-      char log_page_buffer[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
-      LOG_PAGE *log_page = reinterpret_cast<LOG_PAGE *> (PTR_ALIGN (log_page_buffer, MAX_ALIGNMENT));
-      std::memcpy (log_page, message.c_str () + sizeof (error_code), db_log_page_size ());
+      auto shared_log_page = std::make_shared<log_page_owner> (message.c_str () + sizeof (error_code));
+      m_log_page_broker->set_page (std::move (shared_log_page));
+
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
 	{
 	  _er_log_debug (ARG_FILE_LINE, "Received log page message from Page Server. Page ID: %lld\n",
-			 log_page->hdr.logical_pageid);
+			 shared_log_page->get_id ());
 	}
     }
   else
@@ -198,6 +216,12 @@ void active_tran_server::receive_saved_lsa (cubpacking::unpacker &upk)
   upk.unpack_string (message);
   assert (sizeof (log_lsa) == message.size ());
   std::memcpy (&saved_lsa, message.c_str (), sizeof (log_lsa));
+
+  if (log_Gl.m_max_ps_flushed_lsa < saved_lsa)
+    {
+      log_Gl.update_max_ps_flushed_lsa (saved_lsa);
+    }
+
   if (prm_get_bool_value (PRM_ID_ER_LOG_COMMIT_CONFIRM))
     {
       _er_log_debug (ARG_FILE_LINE, "[COMMIT CONFIRM] Received LSA = %lld|%d.\n", LSA_AS_ARGS (&saved_lsa));

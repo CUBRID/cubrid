@@ -59,10 +59,6 @@ void page_server::set_active_tran_server_connection (cubcomm::channel &&chn)
 					std::bind (&page_server::receive_data_page_fetch, std::ref (*this),
 					    std::placeholders::_1));
 
-  m_ats_conn->register_request_handler (ats_to_ps_request::SEND_DATA_PAGE_FETCH,
-					std::bind (&page_server::receive_data_page_fetch, std::ref (*this),
-					    std::placeholders::_1));
-
   m_ats_conn->start_thread ();
 
   m_ats_request_queue.reset (new active_tran_server_request_queue (*m_ats_conn));
@@ -97,8 +93,8 @@ void page_server::receive_log_page_fetch (cubpacking::unpacker &upk)
   std::string message;
 
   upk.unpack_string (message);
-  std::memcpy (&pageid, message.c_str (), sizeof (pageid));
   assert (message.size () == sizeof (pageid));
+  std::memcpy (&pageid, message.c_str (), sizeof (pageid));
 
   if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
     {
@@ -169,12 +165,12 @@ page_server::start_log_replicator (const log_lsa &start_lsa)
 }
 
 void
-page_server::finish_replication (cubthread::entry &thread_entry)
+page_server::finish_replication_during_shutdown (cubthread::entry &thread_entry)
 {
   assert (m_replicator != nullptr);
 
   logpb_force_flush_pages (&thread_entry);
-  m_replicator->wait_replication_finish ();
+  m_replicator->wait_replication_finish_during_shutdown ();
   m_replicator.reset (nullptr);
 }
 

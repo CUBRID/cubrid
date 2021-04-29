@@ -2594,7 +2594,7 @@ stmt_execute_batch_array (STATEMENT_IMPL * pstmt)
 static int
 stmt_complete_batch (STATEMENT_IMPL * pstmt)
 {
-  int res;
+  int res = CCI_ER_NO_ERROR;
   int num_batch, i;
   dlisth h;
 
@@ -2611,7 +2611,7 @@ stmt_complete_batch (STATEMENT_IMPL * pstmt)
       res = cci_query_result_free (pstmt->query_result, pstmt->num_query);
     }
 
-  if (res != 0)
+  if (res != CCI_ER_NO_ERROR)
     {
       return err_from_cci (res);
     }
@@ -3898,7 +3898,7 @@ static int
 xcol_to_cci_set (CI_COLLECTION col, T_CCI_SET * rtset)
 {
   CCI_COLLECTION *co;
-  T_CCI_SET tset;
+  T_CCI_SET tset = nullptr;
   T_CCI_U_TYPE utype;
   int res, size, i;
   void **values;		/* values array */
@@ -3906,7 +3906,7 @@ xcol_to_cci_set (CI_COLLECTION col, T_CCI_SET * rtset)
   API_VAL_CCI_BIND *binds;	/* bind array */
 
   assert (col != NULL);
-  assert (tset != NULL);
+  assert (rtset != NULL);
 
   co = (CCI_COLLECTION *) col;
   res = co->indexer->ifs->length (co->indexer, &size);
