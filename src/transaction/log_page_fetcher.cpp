@@ -16,7 +16,7 @@
  *
  */
 
-#include "log_page_async_fetcher.hpp"
+#include "log_page_fetcher.hpp"
 
 #include "log_impl.h"
 #include "thread_manager.hpp"
