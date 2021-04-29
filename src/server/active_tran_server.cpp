@@ -19,6 +19,7 @@
 #include "active_tran_server.hpp"
 
 #include "communication_server_channel.hpp"
+#include "communication_node.hpp"
 #include "error_manager.h"
 #include "log_impl.h"
 #include "log_lsa.hpp"
@@ -48,6 +49,40 @@ active_tran_server::~active_tran_server ()
     }
 }
 
+int active_tran_server::parse_server_host (std::string host, std::vector<cubcomm::node> &connection_list,
+    const char *db_name)
+{
+  int exit_code;
+  std::string m_ps_hostname;
+  auto col_pos = host.find (":");
+  long port = -1;
+  try
+    {
+      port = std::stol (host.substr (col_pos + 1));
+    }
+  catch (...)
+    {
+    }
+
+  if (port < 1 || port > USHRT_MAX)
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_HOST_PORT_PARAMETER, 2, prm_get_name (PRM_ID_PAGE_SERVER_HOSTS),
+	      host.c_str ());
+      return ER_HOST_PORT_PARAMETER;
+    }
+  // host and port seem to be OK
+  m_ps_hostname = host.substr (0, col_pos);
+  er_log_debug (ARG_FILE_LINE, "Page server hosts: %s port: %d\n", m_ps_hostname.c_str (), port);
+  cubcomm::node conn{port, m_ps_hostname};
+  connection_list.push_back (conn);
+  if (exit_code == ER_HOST_PORT_PARAMETER && connect_to_page_server (m_ps_hostname, port, db_name) == NO_ERRORS)
+    {
+      exit_code = NO_ERROR;
+    }
+
+  return exit_code;
+}
+
 int active_tran_server::init_page_server_hosts (const char *db_name)
 {
   assert_is_active_tran_server ();
@@ -69,28 +104,22 @@ int active_tran_server::init_page_server_hosts (const char *db_name)
       return ER_HOST_PORT_PARAMETER;
     }
 
-  long port = -1;
-  try
+  size_t pos = 0;
+  std::string token;
+  std::string delimiter = ",";
+  int exit_code = ER_HOST_PORT_PARAMETER;
+  std::vector<cubcomm::node> connection_list;
+
+  while ((pos = hosts.find (delimiter)) != std::string::npos)
     {
-      port = std::stol (hosts.substr (col_pos + 1));
-    }
-  catch (...)
-    {
+      token = hosts.substr (0, pos);
+      hosts.erase (0, pos + delimiter.length());
+
+      exit_code = parse_server_host (token, connection_list, db_name);
     }
 
-  if (port < 1 || port > USHRT_MAX)
-    {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_HOST_PORT_PARAMETER, 2, prm_get_name (PRM_ID_PAGE_SERVER_HOSTS),
-	      hosts.c_str ());
-      return ER_HOST_PORT_PARAMETER;
-    }
-  m_ps_port = port;
-
-  // host and port seem to be OK
-  m_ps_hostname = hosts.substr (0, col_pos);
-  er_log_debug (ARG_FILE_LINE, "Page server hosts: %s port: %d\n", m_ps_hostname.c_str (), m_ps_port);
-
-  return connect_to_page_server (m_ps_hostname, m_ps_port, db_name);
+  exit_code = parse_server_host (hosts, connection_list, db_name);
+  return exit_code;
 }
 
 int active_tran_server::connect_to_page_server (const std::string &host, int port, const char *db_name)

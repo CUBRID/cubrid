@@ -26,12 +26,13 @@ namespace cubcomm
 
   class node
   {
-      int m_port;
+    public:
+      long m_port;
       std::string m_host;
 
       node() = delete;
       node (const node &) = delete;
-      node (int port, char *host);
+      node (long port, std::string host);
   };
 
 }

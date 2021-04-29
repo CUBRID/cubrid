@@ -24,6 +24,7 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 // forward declaration
 namespace cubpacking
@@ -50,6 +51,7 @@ class active_tran_server
   private:
     using page_server_request_autosend = cubcomm::request_queue_autosend<page_server_request_queue>;
 
+    int parse_server_host (std::string host, std::vector<cubcomm::node> &connection_list, const char *db_name);
     void receive_saved_lsa (cubpacking::unpacker &upk);
     void receive_log_page (cubpacking::unpacker &upk);
 

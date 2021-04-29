@@ -24,7 +24,7 @@
 namespace cubcomm
 {
 
-  node::node (int port, char *host)
+  node::node (long port, std::string host)
   {
     m_port = port;
     m_host = host;
