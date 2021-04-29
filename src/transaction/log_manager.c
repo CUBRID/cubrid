@@ -9663,7 +9663,7 @@ log_get_log_group_commit_interval (bool & is_timed_wait, cubthread::delta_time &
     }
 #endif /* SERVER_MODE */
 
-  const int MAX_WAIT_TIME_MSEC = 1000;
+  const int MAX_WAIT_TIME_MSEC = 3000;
   int log_group_commit_interval_msec = prm_get_integer_value (PRM_ID_LOG_GROUP_COMMIT_INTERVAL_MSECS);
 
   assert (log_group_commit_interval_msec >= 0);
@@ -9931,6 +9931,10 @@ log_check_ha_delay_info_execute (cubthread::entry &thread_ref)
       perfmon_set_stat (&thread_ref, PSTAT_HA_REPL_DELAY, 0, true);
 
       log_append_ha_server_state (&thread_ref, server_state);
+      // TODO: 2nd thing to try
+      // call this function to verify that the delay of 1 second between the moment
+      // the ha_dummy log entry is registered and it is consumed is gone
+      //log_wakeup_log_flush_daemon();
 
       csect_exit (&thread_ref, CSECT_HA_SERVER_STATE);
     }
@@ -10077,6 +10081,9 @@ log_check_ha_delay_info_daemon_init ()
 {
   assert (log_Check_ha_delay_info_daemon == NULL);
 
+  // TODO: 1st thing to try
+  // increase to greater than 1 sec to see that the 1 second delay between the moment the ha_dummy log entry
+  // is created and the moment it is consumed is somehow influenced
   cubthread::looper looper = cubthread::looper (std::chrono::seconds (1));
   cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (log_check_ha_delay_info_execute);
 
