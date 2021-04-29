@@ -20,6 +20,7 @@
 #define _ACTIVE_TRAN_SERVER_HPP_
 
 #include "ats_ps_request.hpp"
+#include "communication_node.hpp"
 #include "request_sync_send_queue.hpp"
 
 #include <memory>
@@ -51,7 +52,7 @@ class active_tran_server
   private:
     using page_server_request_autosend = cubcomm::request_queue_autosend<page_server_request_queue>;
 
-    int parse_server_host (std::string host, std::vector<cubcomm::node> &connection_list, const char *db_name);
+    int parse_server_host (std::string host, const char *db_name, bool *connected);
     void receive_saved_lsa (cubpacking::unpacker &upk);
     void receive_log_page (cubpacking::unpacker &upk);
 
@@ -61,6 +62,7 @@ class active_tran_server
     std::unique_ptr<page_server_conn> m_ps_conn;
     std::unique_ptr<page_server_request_queue> m_ps_request_queue;
     std::unique_ptr<page_server_request_autosend> m_ps_request_autosend;
+    std::vector<cubcomm::node> connection_list;
 };
 
 extern active_tran_server ats_Gl;
