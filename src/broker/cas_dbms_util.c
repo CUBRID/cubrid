@@ -74,7 +74,7 @@ cfg_get_dbinfo (char *alias, char *dbinfo)
   FILE *file;
   char *save, *token;
   char delim[] = "|";
-  char filename[BROKER_PATH_MAX];
+  char filename[BROKER_PATH_MAX] = { 0, };
   char line[DBINFO_MAX_LENGTH];
 
   if (shm_appl->db_connection_file[0] == '\0')
@@ -133,7 +133,7 @@ int
 cfg_read_dbinfo (DB_INFO ** db_info_p)
 {
   FILE *file;
-  char filename[BROKER_PATH_MAX];
+  char filename[BROKER_PATH_MAX] = { 0, };
   char line[DBINFO_MAX_LENGTH];
   char *str = NULL;
   DB_INFO *databases, *db, *last;
