@@ -19,6 +19,7 @@
 #ifndef _ACTIVE_TRAN_SERVER_HPP_
 #define _ACTIVE_TRAN_SERVER_HPP_
 
+#include "log_page_broker.hpp"
 #include "ats_ps_request.hpp"
 #include "request_sync_send_queue.hpp"
 
@@ -45,6 +46,11 @@ class active_tran_server
     void disconnect_page_server ();
     bool is_page_server_connected () const;
 
+    void init_log_page_broker ();
+    void finalize_log_page_broker ();
+
+    cublog::page_broker &get_log_page_broker ();
+
     void push_request (ats_to_ps_request reqid, std::string &&payload);
 
   private:
@@ -59,6 +65,7 @@ class active_tran_server
     std::unique_ptr<page_server_conn> m_ps_conn;
     std::unique_ptr<page_server_request_queue> m_ps_request_queue;
     std::unique_ptr<page_server_request_autosend> m_ps_request_autosend;
+    std::unique_ptr<cublog::page_broker> m_log_page_broker;
 };
 
 extern active_tran_server ats_Gl;

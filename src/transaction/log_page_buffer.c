@@ -74,6 +74,7 @@
 #include "connection_sr.h"
 #endif
 #include "active_tran_server.hpp"
+#include "log_page_broker.hpp"
 #include "ats_ps_request.hpp"
 #include "critical_section.h"
 #include "page_buffer.h"
@@ -352,6 +353,7 @@ static LOG_PRIOR_NODE *prior_lsa_remove_prior_list (THREAD_ENTRY * thread_p);
 static int logpb_append_prior_lsa_list (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * list);
 static int logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE access_mode,
 			    LOG_PAGE * log_pgptr);
+static void request_log_page_from_ps (LOG_PAGEID log_pageid);
 
 static void logpb_fatal_error_internal (THREAD_ENTRY * thread_p, bool log_exit, bool need_flush, const char *file_name,
 					const int lineno, const char *fmt, va_list ap);
@@ -1938,20 +1940,11 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
 
   /* Could not get from log page buffer cache */
 
-#if defined (SERVER_MODE)
+#if defined(SERVER_MODE)
   /* Send a request to Page Server for the log. */
   if (get_server_type () == SERVER_TYPE_TRANSACTION)
     {
-      constexpr size_t BIG_INT_SIZE = 8;
-      char buffer[BIG_INT_SIZE];
-      std::memcpy (buffer, &pageid, sizeof (pageid));
-      std::string message (buffer, BIG_INT_SIZE);
-
-      ats_Gl.push_request (ats_to_ps_request::SEND_LOG_PAGE_FETCH, std::move (message));
-      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
-	{
-	  _er_log_debug (ARG_FILE_LINE, "Sent request for log to Page Server. Page ID: %lld \n", pageid);
-	}
+      request_log_page_from_ps (pageid);
     }
 #endif // SERVER_MODE
 
@@ -1961,6 +1954,20 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
       rv = ER_FAILED;
       goto exit;
     }
+
+#if defined(SERVER_MODE)
+  // *INDENT-OFF*
+  if (get_server_type () == SERVER_TYPE_TRANSACTION && ats_Gl.is_page_server_connected ())
+    {
+      // wait for answer.
+      auto log_page = ats_Gl.get_log_page_broker ().wait_for_page (pageid);
+
+      // Sould be the same.
+      assert (*log_page == *log_pgptr);
+    }
+  // *INDENT-ON*
+#endif // SERVER_MODE
+
   stat_page_found = PERF_PAGE_MODE_OLD_LOCK_WAIT;
 
   /* Always exit through here */
@@ -1987,6 +1994,30 @@ exit:
     }
 
   return rv;
+}
+
+static void
+request_log_page_from_ps (LOG_PAGEID log_pageid)
+{
+#if defined(SERVER_MODE)
+  // *INDENT-OFF*
+  constexpr size_t BIG_INT_SIZE = 8;
+  char buffer[BIG_INT_SIZE];
+  std::memcpy (buffer, &log_pageid, sizeof (log_pageid));
+  std::string message (buffer, BIG_INT_SIZE);
+
+  if (ats_Gl.get_log_page_broker ().register_entry (log_pageid) == cublog::page_broker::ADDED_ENTRY)
+    {
+      // First to add an entry must also sent the request to the page server
+      ats_Gl.push_request (ats_to_ps_request::SEND_LOG_PAGE_FETCH, std::move (message));
+
+      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
+        {
+          _er_log_debug (ARG_FILE_LINE, "Sent request for log to Page Server. Page ID: %lld \n", log_pageid);
+        }
+    }  
+  // *INDENT-ON*
+#endif // SERVER_MODE
 }
 
 /*

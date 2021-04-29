@@ -34,7 +34,7 @@ namespace filesys //File System
 {
   struct file_closer //predicate|operator used as custom deleter in std::unique_ptr
   {
-    void operator() (FILE *fp) const
+    void operator () (FILE *fp) const
     {
       fclose (fp);
     }
@@ -45,7 +45,7 @@ namespace filesys //File System
 
   struct file_deleter //predicate|operator used as custom deleter in std::unique_ptr
   {
-    void operator() (const char *filename) const
+    void operator () (const char *filename) const
     {
 #ifdef LINUX
       unlink (filename);

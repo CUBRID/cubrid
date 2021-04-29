@@ -299,7 +299,8 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/log_manager.c
   ${TRANSACTION_DIR}/log_meta.cpp
   ${TRANSACTION_DIR}/log_page_buffer.c
-  ${TRANSACTION_DIR}/log_page_async_fetcher.cpp
+  ${TRANSACTION_DIR}/log_page_broker.cpp
+  ${TRANSACTION_DIR}/log_page_fetcher.cpp
   ${TRANSACTION_DIR}/log_postpone_cache.cpp
   ${TRANSACTION_DIR}/log_prior_send.cpp
   ${TRANSACTION_DIR}/log_prior_recv.cpp
@@ -308,6 +309,7 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/log_recovery_redo.cpp
   ${TRANSACTION_DIR}/log_recovery_redo_parallel.cpp
   ${TRANSACTION_DIR}/log_replication.cpp
+  ${TRANSACTION_DIR}/log_storage.cpp
   ${TRANSACTION_DIR}/log_system_tran.cpp
   ${TRANSACTION_DIR}/log_tran_table.c
   ${TRANSACTION_DIR}/log_writer.c
@@ -329,7 +331,8 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/log_common_impl.h
   ${TRANSACTION_DIR}/log_lsa.hpp
   ${TRANSACTION_DIR}/log_meta.hpp
-  ${TRANSACTION_DIR}/log_page_async_fetcher.hpp
+  ${TRANSACTION_DIR}/log_page_broker.hpp
+  ${TRANSACTION_DIR}/log_page_fetcher.hpp  
   ${TRANSACTION_DIR}/log_postpone_cache.hpp
   ${TRANSACTION_DIR}/log_prior_send.hpp
   ${TRANSACTION_DIR}/log_prior_recv.hpp

@@ -52,11 +52,11 @@ std::pair<std::string, int> filesys::open_temp_filedes (const char *prefix, int 
 {
 #ifdef LINUX
   char filename[PATH_MAX] = {};
-  snprintf (filename, sizeof (filename), "%s", unique_tmp_filename (prefix).c_str());
+  snprintf (filename, sizeof (filename), "%s", unique_tmp_filename (prefix).c_str ());
   auto filedesc = mkostemp (filename, flags);
 #elif WINDOWS
   auto filename = unique_tmp_filename (prefix);
-  auto filedesc = _open (filename.c_str(), _O_CREAT|_O_EXCL|_O_RDWR|flags);
+  auto filedesc = _open (filename.c_str (), _O_CREAT|_O_EXCL|_O_RDWR|flags);
 #endif
   return {filename, filedesc};
 }
@@ -66,12 +66,12 @@ std::pair<std::string, FILE *> filesys::open_temp_file (const char *prefix, cons
 {
 #ifdef LINUX
   char filename[PATH_MAX] = {};
-  snprintf (filename, sizeof (filename), "%s", unique_tmp_filename (prefix).c_str());
+  snprintf (filename, sizeof (filename), "%s", unique_tmp_filename (prefix).c_str ());
   auto filedesc = mkostemp (filename, flags);
   FILE *fileptr = fdopen (filedesc, mode);
 #elif WINDOWS
   auto filename = unique_tmp_filename (prefix);
-  auto *fileptr = fopen (filename.c_str(), mode);
+  auto *fileptr = fopen (filename.c_str (), mode);
 #endif
   return {filename, fileptr};
 }
