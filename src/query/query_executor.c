@@ -81,7 +81,6 @@
 #include "xasl_predicate.hpp"
 
 #include <vector>
-#include <chrono>
 
 // XASL_STATE
 typedef struct xasl_state XASL_STATE;

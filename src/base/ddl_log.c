@@ -40,7 +40,6 @@
 #include <signal.h>
 #endif
 #include <assert.h>
-#include <chrono>
 
 #include "porting.h"
 #include "cas_common.h"
