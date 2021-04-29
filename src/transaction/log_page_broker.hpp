@@ -16,8 +16,8 @@
  *
  */
 
-#ifndef _ASYNC_LOG_PAGE_RECEIVER_HPP_
-#define _ASYNC_LOG_PAGE_RECEIVER_HPP_
+#ifndef _LOG_PAGE_BROKER_HPP_
+#define _LOG_PAGE_BROKER_HPP_
 
 #include "log_storage.hpp"
 #include "storage_common.h"
@@ -57,4 +57,4 @@ namespace cublog
 
 } // namespace cublog
 
-#endif // _ASYNC_LOG_PAGE_RECEIVER_HPP_
+#endif // _LOG_PAGE_BROKER_HPP_

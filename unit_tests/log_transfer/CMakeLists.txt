@@ -113,7 +113,7 @@ add_dependencies(test_prior_sendrecv
 
 set(TEST_LOG_PAGE_FETCHER_SOURCES
   ${TRANSACTION_DIR}/log_page_fetcher.cpp
-  test_main_async_log_page_fetcher.cpp)
+  test_main_log_page_fetcher.cpp)
 
 SET_SOURCE_FILES_PROPERTIES(
   ${TEST_LOG_PAGE_FETCHER_SOURCES}
@@ -148,7 +148,7 @@ add_dependencies(test_log_page_fetcher
 set(TEST_LOG_PAGE_BROKER_SOURCES
   ${TRANSACTION_DIR}/log_storage.cpp
   ${TRANSACTION_DIR}/log_page_broker.cpp
-  test_main_async_log_page_broker.cpp)
+  test_main_log_page_broker.cpp)
 
 SET_SOURCE_FILES_PROPERTIES(
   ${TEST_LOG_PAGE_BROKER_SOURCES}
