@@ -138,26 +138,32 @@ sl_write_catalog (void)
 static int
 sl_read_catalog (void)
 {
-  FILE *catalog_fp;
+  FILE *read_catalog_fp;
   char info[LINE_MAX];
 
-  catalog_fp = fopen (sql_catalog_path, "r");
+  read_catalog_fp = fopen (sql_catalog_path, "r");
 
-  if (catalog_fp == NULL)
+  if (read_catalog_fp == NULL)
     {
       return sl_write_catalog ();
     }
 
-  if (fgets (info, LINE_MAX, catalog_fp) == NULL)
+  if (fgets (info, LINE_MAX, read_catalog_fp) == NULL)
     {
+      if (read_catalog_fp != NULL)
+	{
+	  fclose (read_catalog_fp);
+	}
       return ER_FAILED;
     }
 
   if (sscanf (info, CATALOG_FORMAT, &sl_Info.curr_file_id, &sl_Info.last_inserted_sql_id) != 2)
     {
+      fclose (read_catalog_fp);
       return ER_FAILED;
     }
 
+  fclose (read_catalog_fp);
   return NO_ERROR;
 }
 
