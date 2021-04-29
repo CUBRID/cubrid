@@ -7659,17 +7659,12 @@ mr_index_readval_midxkey (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
   midxkey.domain = domain;
   midxkey.min_max_val.position = -1;
   midxkey.min_max_val.type = MIN_COLUMN;
-
-  for (dom = domain->setdomain; dom; dom = dom->next)
-    {
-      midxkey.ncolumns += 1;
-    }
+  midxkey.ncolumns = domain->precision;
 
   if (!copy)
     {
       midxkey.buf = buf->ptr;
       db_make_midxkey (value, &midxkey);
-      value->need_clear = false;
       rc = or_advance (buf, size);
     }
   else
@@ -8045,22 +8040,30 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
 	}
     }
 
-  adv_size1 = adv_size2 = 0;
-  if (c != DB_EQ)
+  if (result_size1 != NULL)
     {
-      if (dom1 != NULL && OR_MULTI_ATT_IS_BOUND (bitptr1, i))
+      adv_size1 = 0;
+      if (c != DB_EQ)
 	{
-	  adv_size1 = pr_midxkey_element_disk_size (mem1, dom1);
+	  if (dom1 != NULL && OR_MULTI_ATT_IS_BOUND (bitptr1, i))
+	    {
+	      adv_size1 = pr_midxkey_element_disk_size (mem1, dom1);
+	    }
 	}
-
-      if (dom2 != NULL && OR_MULTI_ATT_IS_BOUND (bitptr2, i))
-	{
-	  adv_size2 = pr_midxkey_element_disk_size (mem2, dom2);
-	}
+      *result_size1 = size1 + adv_size1;
     }
-
-  *result_size1 = size1 + adv_size1;
-  *result_size2 = size2 + adv_size2;
+  if (result_size2 != NULL)
+    {
+      adv_size2 = 0;
+      if (c != DB_EQ)
+	{
+	  if (dom2 != NULL && OR_MULTI_ATT_IS_BOUND (bitptr2, i))
+	    {
+	      adv_size2 = pr_midxkey_element_disk_size (mem2, dom2);
+	    }
+	}
+      *result_size2 = size2 + adv_size2;
+    }
 
   *diff_column = i;
 
@@ -8089,7 +8092,7 @@ mr_cmpval_midxkey (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int to
   DB_VALUE_COMPARE_RESULT c = DB_UNK;
   DB_MIDXKEY *midxkey1;
   DB_MIDXKEY *midxkey2;
-  int dummy_size1, dummy_size2, dummy_diff_column;
+  int dummy_diff_column;
   bool dummy_dom_is_desc, dummy_next_dom_is_desc;
 
   midxkey1 = db_get_midxkey (value1);
@@ -8118,7 +8121,7 @@ mr_cmpval_midxkey (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int to
   assert_release (midxkey2->domain->precision == midxkey2->ncolumns);
 
   c = (DB_VALUE_COMPARE_RESULT) pr_midxkey_compare (midxkey1, midxkey2, do_coercion, total_order, -1, start_colp,
-						    &dummy_size1, &dummy_size2, &dummy_diff_column, &dummy_dom_is_desc,
+						    NULL, NULL, &dummy_diff_column, &dummy_dom_is_desc,
 						    &dummy_next_dom_is_desc);
 
   assert_release (c == DB_UNK || (DB_LT <= c && c <= DB_GT));
@@ -8144,7 +8147,7 @@ mr_index_cmpdisk_midxkey (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
   DB_MIDXKEY midxkey2;
   TP_DOMAIN *cmp_dom;
   int n_atts = 0;
-  int dummy_size1, dummy_size2, dummy_diff_column;
+  int dummy_diff_column;
   bool dummy_dom_is_desc = false, dummy_next_dom_is_desc;
 
   assert (false);
@@ -8184,7 +8187,7 @@ mr_index_cmpdisk_midxkey (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
   midxkey1.ncolumns = midxkey2.ncolumns = n_atts;
   midxkey1.domain = midxkey2.domain = domain;
 
-  c = pr_midxkey_compare (&midxkey1, &midxkey2, do_coercion, total_order, -1, start_colp, &dummy_size1, &dummy_size2,
+  c = pr_midxkey_compare (&midxkey1, &midxkey2, do_coercion, total_order, -1, start_colp, NULL, NULL,
 			  &dummy_diff_column, &dummy_dom_is_desc, &dummy_next_dom_is_desc);
   assert (c == DB_UNK || (DB_LT <= c && c <= DB_GT));
 
@@ -9196,7 +9199,7 @@ pr_midxkey_remove_prefix (DB_VALUE * key, int prefix)
 int
 pr_midxkey_common_prefix (DB_VALUE * key1, DB_VALUE * key2)
 {
-  int size1, size2, diff_column, ret;
+  int diff_column, ret;
   bool dom_is_desc = false, next_dom_is_desc = false;
   DB_MIDXKEY *midx_lf_key, *midx_uf_key;
 
@@ -9208,7 +9211,7 @@ pr_midxkey_common_prefix (DB_VALUE * key1, DB_VALUE * key2)
   midx_lf_key = db_get_midxkey (key1);
   midx_uf_key = db_get_midxkey (key2);
 
-  ret = pr_midxkey_compare (midx_lf_key, midx_uf_key, 0, 1, -1, NULL, &size1, &size2, &diff_column, &dom_is_desc,
+  ret = pr_midxkey_compare (midx_lf_key, midx_uf_key, 0, 1, -1, NULL, NULL, NULL, &diff_column, &dom_is_desc,
 			    &next_dom_is_desc);
 
   if (ret == DB_UNK)
@@ -10144,8 +10147,8 @@ mr_data_lengthmem_string (void *memptr, TP_DOMAIN * domain, int disk)
 static int
 mr_index_lengthmem_string (void *memptr, TP_DOMAIN * domain)
 {
-  OR_BUF buf;
   int charlen;
+  OR_BUF buf;
   int rc = NO_ERROR, compressed_length = 0, decompressed_length = 0, length = 0;
 
   /* generally, index key-value is short enough */
