@@ -2209,7 +2209,7 @@ parser_new_node (PARSER_CONTEXT * parser, PT_NODE_TYPE node_type)
 }
 
 /*
- * parser_init_node() - initialize a node
+ * parser_init_node() - initialize a node (Used when initializing the node for the first time after creation)
  *   return:
  *   node(in/out):
  */
@@ -2230,6 +2230,11 @@ parser_init_node (PT_NODE * node, PT_NODE_TYPE node_type)
   return node;
 }
 
+/*
+ * parser_reuse_init_node() - initialize a node (Used when re-initializing an existing Node while in use)
+ *   return:
+ *   node(in/out):
+ */
 PT_NODE *
 parser_reuse_init_node (PT_NODE * node)
 {
