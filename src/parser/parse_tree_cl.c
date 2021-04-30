@@ -2231,12 +2231,12 @@ parser_init_node (PT_NODE * node, PT_NODE_TYPE node_type)
 }
 
 /*
- * parser_reuse_init_node() - initialize a node (Used when re-initializing an existing Node while in use)
+ * parser_reinit_node() - initialize a node (Used when re-initializing an existing Node while in use)
  *   return:
  *   node(in/out):
  */
 PT_NODE *
-parser_reuse_init_node (PT_NODE * node)
+parser_reinit_node (PT_NODE * node)
 {
   if (node)
     {
@@ -4455,7 +4455,7 @@ pt_select_list_to_one_col (PARSER_CONTEXT * parser, PT_NODE * node, bool do_one)
 	      /* reset single tuple mark and move to derived */
 	      node->info.query.single_tuple = 0;
 	      derived = parser_copy_tree (parser, node);
-	      parser_reuse_init_node (node);
+	      parser_reinit_node (node);
 
 	      /* new range var */
 	      from = derived->info.query.q.select.from;
