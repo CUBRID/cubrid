@@ -1577,6 +1577,7 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	  goto err_exit;
 	}
 
+      pr_clear_value (&fetched_values[i]);
       ret = pr_clone_value (val, &fetched_values[i]);
       if (ret != NO_ERROR)
 	{
@@ -4743,6 +4744,10 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	}
       if (isidp->fetched_values)
 	{
+	  for (int j = 0; j < isidp->bt_num_attrs; j++)
+	    {
+	      pr_clear_value (&isidp->fetched_values[j]);
+	    }
 	  db_private_free_and_init (thread_p, isidp->fetched_values);
 	}
 
@@ -7707,11 +7712,11 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
     case S_LIST_SCAN:
       if (scan_id->s.llsid.hlsid.hash_list_scan_yn == HASH_METH_IN_MEM)
 	{
-	  fprintf (fp, "(hash temp buildtime : %d,", TO_MSEC (scan_id->scan_stats.elapsed_hash_build));
+	  fprintf (fp, "(hash temp, build time: %d,", TO_MSEC (scan_id->scan_stats.elapsed_hash_build));
 	}
       else if (scan_id->s.llsid.hlsid.hash_list_scan_yn == HASH_METH_HYBRID)
 	{
-	  fprintf (fp, "(hash temp(h) buildtime : %d,", TO_MSEC (scan_id->scan_stats.elapsed_hash_build));
+	  fprintf (fp, "(hash temp(h), build time: %d,", TO_MSEC (scan_id->scan_stats.elapsed_hash_build));
 	}
       else
 	{
