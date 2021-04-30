@@ -29,6 +29,8 @@
 #include <string.h>
 #include <ctype.h>
 #include <assert.h>
+#include <unordered_set>
+
 #ifdef HPUX
 #include <a.out.h>
 #endif /* HPUX */
@@ -230,7 +232,9 @@ static const char *method_file_extension = ".o";
 #include <nlist.h>
 #endif /* !WINDOWS */
 
-
+// *INDENT-OFF*
+using unordered_oid_set = std::unordered_set<OID*, decltype(oid_pseudo_key)*, decltype(oid_eq)*>;
+// *INDENT-ON*
 
 #if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
 const char TEXT_CONSTRAINT_PREFIX[] = "#text_";
@@ -418,6 +422,8 @@ static bool sm_is_possible_to_recreate_constraint (MOP class_mop, const SM_CLASS
 static bool sm_filter_index_pred_have_invalid_attrs (SM_CLASS_CONSTRAINT * constraint, char *class_name,
 						     SM_ATTRIBUTE * old_atts, SM_ATTRIBUTE * new_atts);
 
+static int sm_collect_truncatable_classes (MOP class_mop, unordered_oid_set & trun_classes, bool is_cascade);
+static int sm_truncate_class_internal (MOP class_mop);
 static int sm_truncate_using_delete (MOP class_mop);
 static int sm_save_nested_view_versions (PARSER_CONTEXT * parser, DB_OBJECT * class_object, SM_CLASS * class_);
 static bool sm_is_nested_view_recached (PARSER_CONTEXT * parser);
@@ -15619,13 +15625,134 @@ sm_truncate_using_destroy_heap (MOP class_mop)
 #endif
 
 /*
+ * sm_collect_truncatable_classes () - Collects OIDs of truncatable classes regarding the CASCADE option
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   class_mop(in):
+ *   trun_classes(in/out): a hash for skipping checked classes and collecting class OIDs
+ *   is_cascade(in): whether to cascade TRUNCATE to FK-referring classes
+ */
+int
+sm_collect_truncatable_classes (MOP class_mop, unordered_oid_set & trun_classes, bool is_cascade)
+{
+  int error = NO_ERROR;
+  SM_CLASS *class_ = NULL;
+  SM_CLASS_CONSTRAINT *pk_constraint = NULL;
+  SM_FOREIGN_KEY_INFO *fk_ref;
+  OID *fk_cls_oid;
+
+  error = au_fetch_class (class_mop, &class_, AU_FETCH_READ, DB_AUTH_ALTER);
+  if (error != NO_ERROR || class_ == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
+
+  trun_classes.emplace (ws_oid (class_mop));
+
+  pk_constraint = classobj_find_cons_primary_key (class_->constraints);
+  if (pk_constraint == NULL || pk_constraint->fk_info == NULL)
+    {
+      /* if no PK or FK-referred, it can be truncated */
+      return NO_ERROR;
+    }
+
+  /* Now, there is a PK, and are some FKs-referring to the PK */
+
+  if (!is_cascade)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TRUNCATE_PK_REFERRED, 1, pk_constraint->fk_info->name);
+      return ER_TRUNCATE_PK_REFERRED;
+    }
+
+  /* Find FK-child classes to cascade. */
+  for (fk_ref = pk_constraint->fk_info; fk_ref; fk_ref = fk_ref->next)
+    {
+      if (trun_classes.find (&fk_ref->self_oid) != trun_classes.end ())
+	{
+	  continue;		/* already checked */
+	}
+
+      if (fk_ref->delete_action == SM_FOREIGN_KEY_CASCADE)
+	{
+	  MOP fk_child_mop = ws_mop (&fk_ref->self_oid, NULL);
+	  if (fk_child_mop == NULL)
+	    {
+	      assert (er_errid () != NO_ERROR);
+	      return er_errid ();
+	    }
+
+	  error = sm_collect_truncatable_classes (fk_child_mop, trun_classes, is_cascade);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	}
+      else
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TRUNCATE_CANT_CASCADE, 1, fk_ref->name);
+	  return ER_TRUNCATE_CANT_CASCADE;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * sm_truncate_class () - truncates a class
  *   return: NO_ERROR on success, non-zero for ERROR
  *   class_mop(in):
- *   is_cascade(in): whether to truncate cascade FK-referring classes
+ *   is_cascade(in): whether to cascade TRUNCATE to FK-referring classes
  */
 int
 sm_truncate_class (MOP class_mop, const bool is_cascade)
+{
+  int error = NO_ERROR;
+  // *INDENT-OFF*
+  unordered_oid_set trun_classes (1, oid_pseudo_key, oid_eq);
+  // *INDENT-ON*
+
+  assert (class_mop != NULL);
+
+  error = tran_system_savepoint (SM_TRUNCATE_SAVEPOINT_NAME);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  error = sm_collect_truncatable_classes (class_mop, trun_classes, is_cascade);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  // *INDENT-OFF*
+  for (const auto& cls_oid : trun_classes)
+  {
+    error = sm_truncate_class_internal (ws_mop (cls_oid, NULL));
+    if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+  }
+  // *INDENT-ON*
+
+  return NO_ERROR;
+
+error_exit:
+  if (error != ER_LK_UNILATERALLY_ABORTED)
+    {
+      tran_abort_upto_system_savepoint (SM_TRUNCATE_SAVEPOINT_NAME);
+    }
+  return error;
+}
+
+/*
+ * sm_truncate_class_internal () - truncates a class
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   class_mop(in):
+ */
+int
+sm_truncate_class_internal (MOP class_mop)
 {
   SM_CLASS *class_ = NULL;
   SM_CLASS_CONSTRAINT *c = NULL;
@@ -15638,16 +15765,6 @@ sm_truncate_class (MOP class_mop, const bool is_cascade)
   SM_ATTRIBUTE *att = NULL;
   bool keep_pk = false;
   int au_save = 0;
-
-  assert (class_mop != NULL);
-
-  er_log_debug (ARG_FILE_LINE, "enhance-truncate:sm_truncate_class(): is_cascade: %d\n", is_cascade);	// will be removed
-
-  error = tran_system_savepoint (SM_TRUNCATE_SAVEPOINT_NAME);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
 
   /* We need to flush everything so that the server logs the inserts that happened before the truncate. We need this in
    * order to make sure that a rollback takes us into a consistent state. If we can prove that simply discarding the
@@ -15879,12 +15996,6 @@ sm_truncate_class (MOP class_mop, const bool is_cascade)
   return NO_ERROR;
 
 error_exit:
-
-  if (error != ER_LK_UNILATERALLY_ABORTED)
-    {
-      tran_abort_upto_system_savepoint (SM_TRUNCATE_SAVEPOINT_NAME);
-    }
-
   if (unique_save_info != NULL)
     {
       sm_free_constraint_info (&unique_save_info);
