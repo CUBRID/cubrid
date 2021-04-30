@@ -541,6 +541,8 @@ EXPORTS
     lang_init
     lang_set_charset_lang
     lang_set_parser_use_client_charset
+    lang_Loc_charset
+    lang_Collations
     msgcat_gets
     msgcat_open
     optarg

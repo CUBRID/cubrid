@@ -158,7 +158,7 @@ static int reverse_key_list (KEY_VAL_RANGE * key_vals, int key_cnt);
 static int check_key_vals (KEY_VAL_RANGE * key_vals, int key_cnt, QPROC_KEY_VAL_FU * chk_fn);
 static int scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * indexal,
 				   TP_DOMAIN * btree_domainp, int num_term, REGU_VARIABLE * func, VAL_DESCR * vd,
-				   int key_minmax, bool is_iss);
+				   int key_minmax, bool is_iss, DB_VALUE * fetched_values);
 static int scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY_VAL_RANGE * key_val_range,
 				       INDX_SCAN_ID * iscan_id, TP_DOMAIN * btree_domainp, VAL_DESCR * vd);
 static int scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_limit_upper,
@@ -1147,7 +1147,7 @@ scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_term)
 {
   int rc = DB_UNK;
   DB_TYPE key_type;
-  int dummy_size1, dummy_size2, dummy_diff_column;
+  int dummy_diff_column;
   bool dummy_dom_is_desc, dummy_next_dom_is_desc;
   static bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
   static int coerce = (ignore_trailing_space) ? 1 : 3;
@@ -1179,8 +1179,8 @@ scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_term)
       if (key_type == DB_TYPE_MIDXKEY)
 	{
 	  rc =
-	    pr_midxkey_compare (db_get_midxkey (val1), db_get_midxkey (val2), 1, 1, num_index_term, NULL, &dummy_size1,
-				&dummy_size2, &dummy_diff_column, &dummy_dom_is_desc, &dummy_next_dom_is_desc);
+	    pr_midxkey_compare (db_get_midxkey (val1), db_get_midxkey (val2), 1, 1, num_index_term, NULL, NULL,
+				NULL, &dummy_diff_column, &dummy_dom_is_desc, &dummy_next_dom_is_desc);
 	}
       else
 	{
@@ -1492,7 +1492,8 @@ check_key_vals (KEY_VAL_RANGE * key_vals, int key_cnt, QPROC_KEY_VAL_FU * key_va
  */
 static int
 scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * indexable, TP_DOMAIN * btree_domainp,
-			int num_term, REGU_VARIABLE * func, VAL_DESCR * vd, int key_minmax, bool is_iss)
+			int num_term, REGU_VARIABLE * func, VAL_DESCR * vd, int key_minmax, bool is_iss,
+			DB_VALUE * fetched_values)
 {
   int ret = NO_ERROR;
   DB_VALUE *val = NULL;
@@ -1571,6 +1572,13 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
        operand = operand->next, idx_dom = idx_dom->next, i++)
     {
       ret = fetch_peek_dbval (thread_p, &(operand->value), vd, NULL, NULL, NULL, &val);
+      if (ret != NO_ERROR)
+	{
+	  goto err_exit;
+	}
+
+      pr_clear_value (&fetched_values[i]);
+      ret = pr_clone_value (val, &fetched_values[i]);
       if (ret != NO_ERROR)
 	{
 	  goto err_exit;
@@ -1676,11 +1684,8 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	}
       else
 	{
-	  ret = fetch_peek_dbval (thread_p, &(operand->value), vd, NULL, NULL, NULL, &val);
-	  if (ret != NO_ERROR)
-	    {
-	      goto err_exit;
-	    }
+	  assert (fetched_values != NULL);
+	  val = &fetched_values[natts];
 	}
 
       if (need_new_setdomain == true)
@@ -1784,11 +1789,8 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	}
       else
 	{
-	  ret = fetch_peek_dbval (thread_p, &(operand->value), vd, NULL, NULL, NULL, &val);
-	  if (ret != NO_ERROR)
-	    {
-	      goto err_exit;
-	    }
+	  assert (fetched_values != NULL);
+	  val = &fetched_values[i];
 	}
 
       if (DB_IS_NULL (val))
@@ -1905,9 +1907,9 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
   int curr_key_prefix_length = 0;
   int count;
   int ret = NO_ERROR;
-  regu_variable_list_node *requ_list;
   DB_TYPE db_type;
   int key_len;
+  regu_variable_list_node *requ_list;
 
   assert ((key_ranges->range >= GE_LE && key_ranges->range <= INF_LT) || (key_ranges->range == EQ_NA));
   assert (!(key_ranges->key1 == NULL && key_ranges->key2 == NULL));
@@ -1917,6 +1919,7 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
       curr_key_prefix_length = iscan_id->bt_attrs_prefix_length[0];
     }
 
+  /* TO_DO : fix to move this to XASL generator */
   if (key_ranges->key1)
     {
       if (key_ranges->key1->type == TYPE_FUNC && key_ranges->key1->value.funcp->ftype == F_MIDXKEY)
@@ -1965,7 +1968,8 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
 
 	  ret =
 	    scan_dbvals_to_midxkey (thread_p, &key_val_range->key1, &indexable, btree_domainp,
-				    key_val_range->num_index_term, key_ranges->key1, vd, key_minmax, iscan_id->iss.use);
+				    key_val_range->num_index_term, key_ranges->key1, vd, key_minmax, iscan_id->iss.use,
+				    iscan_id->fetched_values);
 	}
       else
 	{
@@ -2012,7 +2016,8 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
 
 	  ret =
 	    scan_dbvals_to_midxkey (thread_p, &key_val_range->key2, &indexable, btree_domainp,
-				    key_val_range->num_index_term, key_ranges->key2, vd, key_minmax, iscan_id->iss.use);
+				    key_val_range->num_index_term, key_ranges->key2, vd, key_minmax, iscan_id->iss.use,
+				    iscan_id->fetched_values);
 	}
       else
 	{
@@ -2060,12 +2065,23 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
 	  && key_ranges->key1->type == TYPE_FUNC && key_ranges->key1->value.funcp->ftype == F_MIDXKEY)
 	{
 	  assert (key_val_range->range == EQ_NA);
+	  ret = pr_clone_value (&key_val_range->key1, &key_val_range->key2);
+	  if (ret != NO_ERROR)
+	    {
+	      key_val_range->range = NA_NA;
 
-	  key_minmax = BTREE_COERCE_KEY_WITH_MAX_VALUE;
+	      return ret;
+	    }
 
-	  ret =
-	    scan_dbvals_to_midxkey (thread_p, &key_val_range->key2, &indexable, btree_domainp,
-				    key_val_range->num_index_term, key_ranges->key1, vd, key_minmax, iscan_id->iss.use);
+	  /* Set minmax type opposite to key1 */
+	  if (key_val_range->key2.data.midxkey.min_max_val.type == MIN_COLUMN)
+	    {
+	      key_val_range->key2.data.midxkey.min_max_val.type = MAX_COLUMN;
+	    }
+	  else
+	    {
+	      key_val_range->key2.data.midxkey.min_max_val.type = MIN_COLUMN;
+	    }
 	}
       else
 	{
@@ -2237,10 +2253,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
 	  db_make_null (&key_vals[i].key2);
 	  key_vals[i].is_truncated = false;
 	  key_vals[i].num_index_term = 0;
-	}
 
-      for (i = 0; i < key_cnt; i++)
-	{
 	  key_vals[i].range = key_ranges[i].range;
 	  if (key_vals[i].range == INF_INF)
 	    {
@@ -3077,6 +3090,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   isidp->indx_cov.list_id = NULL;
   isidp->indx_cov.tplrec = NULL;
   isidp->indx_cov.lsid = NULL;
+  isidp->fetched_values = NULL;
 
   /* index scan info */
   BTS = &isidp->bt_scan;
@@ -3223,6 +3237,17 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 	{
 	  /* found multi-column key-val */
 	  need_copy_buf = true;
+
+	  /* make fetched values for scan_regu_key_to_index_key(). */
+	  isidp->fetched_values = (DB_VALUE *) db_private_alloc (thread_p, sizeof (DB_VALUE) * isidp->bt_num_attrs);
+	  if (isidp->fetched_values == NULL)
+	    {
+	      goto exit_on_error;
+	    }
+	  for (int j = 0; j < isidp->bt_num_attrs; j++)
+	    {
+	      db_make_null (&isidp->fetched_values[j]);
+	    }
 	}
       else
 	{			/* single-column index */
@@ -3289,6 +3314,10 @@ exit_on_error:
   if (isidp->key_vals)
     {
       db_private_free_and_init (thread_p, isidp->key_vals);
+    }
+  if (isidp->fetched_values)
+    {
+      db_private_free_and_init (thread_p, isidp->fetched_values);
     }
   if (isidp->bt_attr_ids)
     {
@@ -4712,6 +4741,14 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       if (isidp->key_vals)
 	{
 	  db_private_free_and_init (thread_p, isidp->key_vals);
+	}
+      if (isidp->fetched_values)
+	{
+	  for (int j = 0; j < isidp->bt_num_attrs; j++)
+	    {
+	      pr_clear_value (&isidp->fetched_values[j]);
+	    }
+	  db_private_free_and_init (thread_p, isidp->fetched_values);
 	}
 
       /* free allocated memory for the scan */
@@ -7675,11 +7712,11 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
     case S_LIST_SCAN:
       if (scan_id->s.llsid.hlsid.hash_list_scan_yn == HASH_METH_IN_MEM)
 	{
-	  fprintf (fp, "(hash temp buildtime : %d,", TO_MSEC (scan_id->scan_stats.elapsed_hash_build));
+	  fprintf (fp, "(hash temp, build time: %d,", TO_MSEC (scan_id->scan_stats.elapsed_hash_build));
 	}
       else if (scan_id->s.llsid.hlsid.hash_list_scan_yn == HASH_METH_HYBRID)
 	{
-	  fprintf (fp, "(hash temp(h) buildtime : %d,", TO_MSEC (scan_id->scan_stats.elapsed_hash_build));
+	  fprintf (fp, "(hash temp(h), build time: %d,", TO_MSEC (scan_id->scan_stats.elapsed_hash_build));
 	}
       else
 	{
@@ -7991,7 +8028,7 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 	    }
 	  else if (llsidp->hlsid.hash_list_scan_yn == HASH_METH_HYBRID)
 	    {
-	      MAKE_TUPLE_POSTION(tuple_pos, hvalue->pos, scan_id_p);
+	      MAKE_TUPLE_POSTION (tuple_pos, hvalue->pos, scan_id_p);
 	      if (qfile_jump_scan_tuple_position (thread_p, scan_id_p, &tuple_pos, &tplrec, PEEK) != S_SUCCESS)
 		{
 		  return S_ERROR;
@@ -8022,7 +8059,7 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 	  else if (llsidp->hlsid.hash_list_scan_yn == HASH_METH_HYBRID)
 	    {
 	      simple_pos = ((HASH_SCAN_VALUE *) llsidp->hlsid.curr_hash_entry->data)->pos;
-	      MAKE_TUPLE_POSTION(tuple_pos, simple_pos, scan_id_p);
+	      MAKE_TUPLE_POSTION (tuple_pos, simple_pos, scan_id_p);
 
 	      if (qfile_jump_scan_tuple_position (thread_p, scan_id_p, &tuple_pos, &tplrec, PEEK) != S_SUCCESS)
 		{
@@ -8134,11 +8171,11 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
     {
       return HASH_METH_IN_MEM;
     }
-  else if ((UINT64) llsidp->list_id->tuple_cnt * (sizeof(HENTRY_HLS) + sizeof(QFILE_TUPLE_SIMPLE_POS)) <= mem_limit)
+  else if ((UINT64) llsidp->list_id->tuple_cnt * (sizeof (HENTRY_HLS) + sizeof (QFILE_TUPLE_SIMPLE_POS)) <= mem_limit)
     {
       /* bytes of 1 row = sizeof(HENTRY_HLS) + sizeof(QFILE_TUPLE_SIMPLE_POS) = 36 bytes (64bit) */
-      /* HENTRY_HLS = pointer(8bytes) * 3 = 24 bytes*/
-      /* SIMPLE_POS = pageid(4bytes) + voldid(2bytes) + padding(2bytes) + offset(4bytes) = 12 bytes*/
+      /* HENTRY_HLS = pointer(8bytes) * 3 = 24 bytes */
+      /* SIMPLE_POS = pageid(4bytes) + voldid(2bytes) + padding(2bytes) + offset(4bytes) = 12 bytes */
       return HASH_METH_HYBRID;
     }
   else
