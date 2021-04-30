@@ -2200,7 +2200,7 @@ parser_new_node (PARSER_CONTEXT * parser, PT_NODE_TYPE node_type)
   node = parser_create_node (parser);
   if (node)
     {
-      parser_init_node (node, node_type, true, false);
+      parser_init_node (node, node_type);
       pt_parser_line_col (node);
       node->sql_user_text = g_query_string;
       node->sql_user_text_len = g_query_string_len;
@@ -2214,39 +2214,37 @@ parser_new_node (PARSER_CONTEXT * parser, PT_NODE_TYPE node_type)
  *   node(in/out):
  */
 PT_NODE *
-parser_init_node (PT_NODE * node, PT_NODE_TYPE node_type, bool bFirst, bool bKeepLnCn)
+parser_init_node (PT_NODE * node, PT_NODE_TYPE node_type)
 {
   assert (node_type < PT_LAST_NODE_NUMBER);
   int parser_id = node->parser_id;
-  if (bFirst)
-    {
-      memset (node, 0x00, sizeof (PT_NODE));
-      node->buffer_pos = -1;
-      node->type_enum = PT_TYPE_NONE;
 
-      node->parser_id = parser_id;
-      node->node_type = node_type;
-      node = (pt_init_f[node_type]) (node);
-      return node;
-    }
+  memset (node, 0x00, sizeof (PT_NODE));
+  node->buffer_pos = -1;
+  node->type_enum = PT_TYPE_NONE;
 
+  node->parser_id = parser_id;
+  node->node_type = node_type;
+  node = (pt_init_f[node_type]) (node);
+
+  return node;
+}
+
+PT_NODE *
+parser_reuse_init_node (PT_NODE * node)
+{
   if (node)
     {
-      PARSER_INIT_NODE_FUNC f;
-
-      assert (node_type < PT_LAST_NODE_NUMBER);
+      assert (node->node_type < PT_LAST_NODE_NUMBER);
 
       /* don't write over node_type, parser_id, sql_user_text, sql_user_text_len, cache_time */
+      int parser_id = node->parser_id;
+      PT_NODE_TYPE node_type = node->node_type;
       char *sql_user_text = node->sql_user_text;
       int sql_user_text_len = node->sql_user_text_len;
+      int line_number = node->line_number;
+      int column_number = node->column_number;
       CACHE_TIME cache_time = node->cache_time;
-      int line_number, column_number;
-
-      if (bKeepLnCn)
-	{
-	  line_number = node->line_number;
-	  column_number = node->column_number;
-	}
 
       memset (node, 0x00, sizeof (PT_NODE));
       node->buffer_pos = -1;
@@ -2257,15 +2255,11 @@ parser_init_node (PT_NODE * node, PT_NODE_TYPE node_type, bool bFirst, bool bKee
 
       node->sql_user_text = sql_user_text;
       node->sql_user_text_len = sql_user_text_len;
+      node->line_number = line_number;
+      node->column_number = column_number;
       node->cache_time = cache_time;
-      if (bKeepLnCn)
-	{
-	  node->line_number = line_number;
-	  node->column_number = column_number;
-	}
 
-      f = pt_init_f[node->node_type];
-      node = f (node);
+      node = (pt_init_f[node->node_type]) (node);
     }
 
   return node;
@@ -4456,7 +4450,7 @@ pt_select_list_to_one_col (PARSER_CONTEXT * parser, PT_NODE * node, bool do_one)
 	      /* reset single tuple mark and move to derived */
 	      node->info.query.single_tuple = 0;
 	      derived = parser_copy_tree (parser, node);
-	      parser_init_node (node, node->node_type, false, true);
+	      parser_reuse_init_node (node);
 
 	      /* new range var */
 	      from = derived->info.query.q.select.from;

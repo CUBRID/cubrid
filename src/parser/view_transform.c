@@ -10087,7 +10087,7 @@ mq_fetch_expression_for_real_class_update (PARSER_CONTEXT * parser, DB_OBJECT * 
   PT_NODE *spec;
   const char *attr_name;
 
-  parser_init_node (&vclass, PT_NAME, true, false);
+  parser_init_node (&vclass, PT_NAME);
   vclass.info.name.original = NULL;
   vclass.info.name.db_object = vclass_obj;
 
@@ -10239,7 +10239,7 @@ mq_is_updatable_local (DB_OBJECT * class_object, PT_FETCH_AS fetch_as)
       return false;
     }
 
-  parser_init_node (&class_, PT_NAME, true, false);
+  parser_init_node (&class_, PT_NAME);
   class_.info.name.original = NULL;
   class_.info.name.db_object = class_object;
 
@@ -10285,10 +10285,10 @@ mq_is_updatable_att (PARSER_CONTEXT * parser, DB_OBJECT * vmop, const char *att_
 {
   PT_NODE real, attr, *expr;
 
-  parser_init_node (&attr, PT_NAME, true, false);
+  parser_init_node (&attr, PT_NAME);
   attr.info.name.original = att_nam;
 
-  parser_init_node (&real, PT_NAME, true, false);
+  parser_init_node (&real, PT_NAME);
   real.info.name.original = NULL;
   real.info.name.db_object = rmop;
 
@@ -10458,10 +10458,10 @@ mq_get_attribute (DB_OBJECT * vclass_object, const char *attr_name, DB_OBJECT * 
 
   parser->au_save = save;
 
-  parser_init_node (&attr, PT_NAME, true, false);
+  parser_init_node (&attr, PT_NAME);
   attr.info.name.original = attr_name;
 
-  parser_init_node (&real, PT_NAME, true, false);
+  parser_init_node (&real, PT_NAME);
   real.info.name.original = NULL;
   real.info.name.db_object = real_class_object;
 
@@ -10507,7 +10507,7 @@ mq_oid (PARSER_CONTEXT * parser, PT_NODE * spec)
   AU_DISABLE (save);
   parser->au_save = save;
 
-  parser_init_node (&attr, PT_NAME, true, false);
+  parser_init_node (&attr, PT_NAME);
   attr.info.name.original = "";	/* oid's have null string attr name */
 
   real = spec->info.spec.flat_entity_list;
@@ -10563,10 +10563,10 @@ mq_update_attribute (DB_OBJECT * vclass_object, const char *attr_name, DB_OBJECT
 	}
     }
 
-  parser_init_node (&attr, PT_NAME, true, false);
+  parser_init_node (&attr, PT_NAME);
   attr.info.name.original = attr_name;
 
-  parser_init_node (&real, PT_NAME, true, false);
+  parser_init_node (&real, PT_NAME);
   real.info.name.original = NULL;
   real.info.name.db_object = real_class_object;
 
@@ -10648,7 +10648,7 @@ mq_fetch_one_real_class_get_cache (DB_OBJECT * vclass_object, PARSER_CONTEXT ** 
 	}
     }
 
-  parser_init_node (&vclass, PT_NAME, true, false);
+  parser_init_node (&vclass, PT_NAME);
   vclass.info.name.original = NULL;
   vclass.info.name.db_object = vclass_object;
 

@@ -6379,7 +6379,7 @@ pt_resolve_star (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * attr)
 		    }
 		  else
 		    {
-		      parser_init_node (attr_name, attr_name->node_type, false, true);
+		      parser_reuse_init_node (attr_name);
 		      attr_name->node_type = PT_DOT_;
 		      attr_name->info.dot.arg1 = dot_arg1;
 		      attr_name->info.dot.arg2 = dot_arg2;

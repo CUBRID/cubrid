@@ -13494,7 +13494,8 @@ pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list, SELUPD_LIST ** selu
 
       for (i = 0, node = node_list->info.node_list.list; i < list_len && node; ++i, node = node->next)
 	{
-	  parser_init_node (&new_node_list[i], PT_NODE_LIST, false, true);	/* type must be set before init */
+	  new_node_list[i].node_type = PT_NODE_LIST;
+	  parser_reuse_init_node (&new_node_list[i]);	/* type must be set before init */
 
 	  new_node_list[i].info.node_list.list = node;
 	  PT_SET_VALUE_QUERY (&new_node_list[i]);
