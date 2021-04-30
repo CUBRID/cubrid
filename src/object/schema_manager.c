@@ -15564,7 +15564,6 @@ end:
   return error;
 }
 
-#if 0
 /*
  * sm_truncate_using_destroy_heap() -
  *   return: error code
@@ -15595,7 +15594,7 @@ sm_truncate_using_destroy_heap (MOP class_mop)
   assert (!HFID_IS_NULL (insts_hfid));
 
   /* Destroy the heap */
-  error = heap_destroy_newly_created (insts_hfid);
+  error = heap_destroy_newly_created (insts_hfid, oid);
   if (error != NO_ERROR)
     {
       return error;
@@ -15622,7 +15621,6 @@ sm_truncate_using_destroy_heap (MOP class_mop)
 
   return error;
 }
-#endif
 
 /*
  * sm_collect_truncatable_classes () - Collects OIDs of truncatable classes regarding the CASCADE option
@@ -15763,7 +15761,6 @@ sm_truncate_class_internal (MOP class_mop)
   SM_CONSTRAINT_INFO *saved = NULL;
   DB_CTMPL *ctmpl = NULL;
   SM_ATTRIBUTE *att = NULL;
-  bool keep_pk = false;
   int au_save = 0;
 
   /* We need to flush everything so that the server logs the inserts that happened before the truncate. We need this in
@@ -15786,10 +15783,12 @@ sm_truncate_class_internal (MOP class_mop)
   c = classobj_find_cons_primary_key (class_->constraints);
   if (c != NULL && classobj_is_pk_referred (class_mop, c->fk_info, false, NULL))
     {
-      /* We need to perform a normal delete operation because we need to execute the FOREIGN KEY actions on the
-       * referring classes. We also need to keep the PRIMARY KEY constraint in order to correctly perform the FOREIGN
-       * KEY actions. */
-      keep_pk = true;
+      /* Fk-referred PK can't be dropped. so we just remove the instances of the current class. */
+      error = locator_remove_class_from_index (ws_oid (class_mop), &c->index_btid, &class_->header.ch_heap);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
     }
 
   /* collect index information */
@@ -15801,7 +15800,7 @@ sm_truncate_class_internal (MOP class_mop)
 	  continue;
 	}
 
-      if (keep_pk == true && c->type == SM_CONSTRAINT_PRIMARY_KEY)
+      if (c->type == SM_CONSTRAINT_PRIMARY_KEY)
 	{
 	  /* Do not save PK referred by FK. the PK can't be dropped. */
 	  continue;
@@ -15832,6 +15831,18 @@ sm_truncate_class_internal (MOP class_mop)
 		{
 		  goto error_exit;
 		}
+	    }
+	}
+      else
+	{
+	  /* The B+tree might contain OIDs of other classes in the inheritance
+	   * hierarchy. We cannot drop and recreate the index as this might be
+	   * too costly, so we just remove the instances of the current class.
+	   */
+	  error = locator_remove_class_from_index (ws_oid (class_mop), &c->index_btid, &class_->header.ch_heap);
+	  if (error != NO_ERROR)
+	    {
+	      goto error_exit;
 	    }
 	}
     }
@@ -15887,26 +15898,18 @@ sm_truncate_class_internal (MOP class_mop)
 	}
     }
 
-#if 0
-  if (keep_pk == true && log_does_allow_replication () == true)
-    {
-      error = sm_truncate_using_delete (class_mop);
-    }
-  else
+  if (sm_is_reuse_oid_class (class_mop))
     {
       error = sm_truncate_using_destroy_heap (class_mop);
     }
+  else
+    {
+      error = sm_truncate_using_delete (class_mop);
+    }
   if (error != NO_ERROR)
     {
       goto error_exit;
     }
-#else
-  error = sm_truncate_using_delete (class_mop);
-  if (error != NO_ERROR)
-    {
-      goto error_exit;
-    }
-#endif
 
   /* Normal index must be created earlier than unique constraint or FK, because of shared btree case. */
   for (saved = index_save_info; saved != NULL; saved = saved->next)
