@@ -432,7 +432,7 @@ main (int argc, char *argv[])
       /* Don't allow to skip vacuum on CS mode */
       goto print_usage;
     }
-    else if (explicit_single_line && csql_arg.single_line_execution == false)
+  else if (explicit_single_line && csql_arg.single_line_execution == false)
     {
       /* Don't allow both at once. */
       goto print_usage;
