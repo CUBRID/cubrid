@@ -224,7 +224,7 @@ struct json_t;
   ((t) == PT_TYPE_TIMESTAMPLTZ || (t) == PT_TYPE_DATETIMELTZ)
 
 #define PT_IS_PRIMITIVE_TYPE(t) \
-        (!(((t) == PT_TYPE_OBJECT) || ((t) == PT_TYPE_NONE)))
+        ( ((t) != PT_TYPE_OBJECT) && ((t) != PT_TYPE_NONE))
 
 #define PT_IS_PARAMETERIZED_TYPE(t) \
         ( ((t) == PT_TYPE_NUMERIC)  || \
