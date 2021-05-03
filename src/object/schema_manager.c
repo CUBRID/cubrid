@@ -15780,17 +15780,6 @@ sm_truncate_class_internal (MOP class_mop)
       goto error_exit;
     }
 
-  c = classobj_find_cons_primary_key (class_->constraints);
-  if (c != NULL && classobj_is_pk_referred (class_mop, c->fk_info, false, NULL))
-    {
-      /* Fk-referred PK can't be dropped. so we just remove the instances of the current class. */
-      error = locator_remove_class_from_index (ws_oid (class_mop), &c->index_btid, &class_->header.ch_heap);
-      if (error != NO_ERROR)
-	{
-	  goto error_exit;
-	}
-    }
-
   /* collect index information */
   for (c = class_->constraints; c; c = c->next)
     {
@@ -15800,13 +15789,23 @@ sm_truncate_class_internal (MOP class_mop)
 	  continue;
 	}
 
-      if (c->type == SM_CONSTRAINT_PRIMARY_KEY)
+      if ((c->type == SM_CONSTRAINT_PRIMARY_KEY && classobj_is_pk_referred (class_mop, c->fk_info, false, NULL))
+	  || !sm_is_possible_to_recreate_constraint (class_mop, class_, c))
 	{
-	  /* Do not save PK referred by FK. the PK can't be dropped. */
-	  continue;
+	  /*
+	   * 1. the PK referred to by a FK.
+	   * 2. the B+tree which contains OIDs of other classes in the inheritance hierarchy.
+	   *
+	   * In these cases, We cannot drop and recreate the index as this might be
+	   * too costly, so we just remove the instances of the current class.
+	   */
+	  error = locator_remove_class_from_index (ws_oid (class_mop), &c->index_btid, &class_->header.ch_heap);
+	  if (error != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
 	}
-
-      if (sm_is_possible_to_recreate_constraint (class_mop, class_, c))
+      else
 	{
 	  /* All the OIDs in the index should belong to the current class, so it is safe to drop and create the
 	   * constraint again. We save the information required to recreate the constraint. */
@@ -15831,18 +15830,6 @@ sm_truncate_class_internal (MOP class_mop)
 		{
 		  goto error_exit;
 		}
-	    }
-	}
-      else
-	{
-	  /* The B+tree might contain OIDs of other classes in the inheritance
-	   * hierarchy. We cannot drop and recreate the index as this might be
-	   * too costly, so we just remove the instances of the current class.
-	   */
-	  error = locator_remove_class_from_index (ws_oid (class_mop), &c->index_btid, &class_->header.ch_heap);
-	  if (error != NO_ERROR)
-	    {
-	      goto error_exit;
 	    }
 	}
     }
