@@ -5058,8 +5058,7 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
 
   while (left <= right)
     {
-      btree_clear_key_value (&clear_key, &temp_key);	// clear previous key
-
+      btree_clear_key_value (&clear_key, &temp_key);
       middle = CEIL_PTVDIV ((left + right), 2);	/* get the middle record */
 
       assert (middle > 0);
@@ -5455,7 +5454,6 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
 
       /* Clear current middle key. */
       btree_clear_key_value (&clear_key, &temp_key);
-
       if (c == DB_UNK)
 	{
 	  /* Unknown compare result? */
@@ -12391,13 +12389,13 @@ btree_node_common_prefix (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pag
   LEAF_REC leaf_pnt;
   int error = NO_ERROR;
 
-  btree_init_temp_key_value (&lf_clear_key, &lf_key);
-  btree_init_temp_key_value (&uf_clear_key, &uf_key);
-
   if (btree_node_is_compressed (thread_p, btid, page_ptr) == false)
     {
       return 0;
     }
+
+  btree_init_temp_key_value (&lf_clear_key, &lf_key);
+  btree_init_temp_key_value (&uf_clear_key, &uf_key);
 
   key_cnt = btree_node_number_of_keys (thread_p, page_ptr);
   assert (key_cnt >= 2);
@@ -15059,6 +15057,7 @@ btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_
   DB_MIDXKEY *midxkey = NULL;
   DB_VALUE *swap_key = NULL;
   int i = 0;
+  static bool oracle_style_empty_string = prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING);
 
   /* Assert expected arguments. */
   assert (bts != NULL);
@@ -15276,7 +15275,7 @@ btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_
       bts->key_range.upper_key = swap_key;
     }
 
-  if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING))
+  if (oracle_style_empty_string)
     {
       /* TODO: A comment explaining this would be great. */
       int j, ids_size;
@@ -18640,7 +18639,7 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain, int
   DB_VALUE_COMPARE_RESULT c = DB_UNK;
   DB_TYPE key1_type, key2_type;
   DB_TYPE dom_type;
-  int dummy_size1, dummy_size2, dummy_diff_column;
+  int dummy_diff_column;
   bool dom_is_desc = false, dummy_next_dom_is_desc;
   bool comparable = true;
 
@@ -18691,7 +18690,7 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain, int
 	}
 
       c = pr_midxkey_compare (db_get_midxkey (key1), db_get_midxkey (key2), do_coercion, total_order, -1, start_colp,
-			      &dummy_size1, &dummy_size2, &dummy_diff_column, &dom_is_desc, &dummy_next_dom_is_desc);
+			      NULL, NULL, &dummy_diff_column, &dom_is_desc, &dummy_next_dom_is_desc);
       assert_release (c == DB_UNK || (DB_LT <= c && c <= DB_GT));
 
       if (dom_is_desc)

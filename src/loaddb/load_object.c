@@ -492,6 +492,7 @@ start:
 	{			/* OK */
 	  if (buflen > 0)
 	    {			/* unformatted print */
+	      assert (buf != NULL);
 	      memcpy (tout->ptr, buf, buflen);
 	      *(tout->ptr + buflen) = '\0';	/* Null terminate */
 	    }
