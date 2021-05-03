@@ -137,7 +137,6 @@
     (((unsigned int)(oidp)->volid) << 24)))
 
 #ifdef __cplusplus
-/* wrapper functinos to be used as a callable object in c++ */
 // *INDENT-OFF*
 template <>
 struct std::hash<OID>
