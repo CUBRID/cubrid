@@ -65,7 +65,6 @@ namespace cublog
   void
   checkpoint_info::pack (cubpacking::packer &serializator) const
   {
-
     log_lsa_pack (m_start_redo_lsa, serializator);
     log_lsa_pack (m_snapshot_lsa, serializator);
 
@@ -427,5 +426,11 @@ namespace cublog
   checkpoint_info::get_start_redo_lsa () const
   {
     return m_start_redo_lsa;
+  }
+
+  void
+  checkpoint_info::set_start_redo_lsa (const log_lsa &start_redo_lsa)
+  {
+    m_start_redo_lsa = start_redo_lsa;
   }
 }
