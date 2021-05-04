@@ -34,7 +34,7 @@
 namespace cublog
 {
 
-  int
+  size_t
   log_lsa_size (cubpacking::packer &serializator, std::size_t start_offset, std::size_t size_arg)
   {
     size_t size = size_arg;
@@ -287,7 +287,7 @@ namespace cublog
   }
 
   void
-  checkpoint_info::recovery_analysis (THREAD_ENTRY *thread_p, log_lsa &start_redo_lsa)
+  checkpoint_info::recovery_analysis (THREAD_ENTRY *thread_p, log_lsa &start_redo_lsa) const
   {
     LOG_TDES *tdes = nullptr;
 
