@@ -272,6 +272,10 @@ namespace cublog
 	assert (act_tdes != nullptr);
 	load_checkpoint_trans (*act_tdes, smallest_lsa);
 	load_checkpoint_topop (*act_tdes);
+	if (LOG_ISTRAN_2PC (act_tdes))
+	  {
+	    m_has_2pc = true;
+	  }
       }
 
     // Checkpoint system transactions' topops
@@ -326,10 +330,6 @@ namespace cublog
 	LSA_COPY (&tdes->tail_topresult_lsa, &chkpt.tail_topresult_lsa);
 	LSA_COPY (&tdes->rcv.tran_start_postpone_lsa, &chkpt.start_postpone_lsa);
 	tdes->client.set_system_internal_with_user (chkpt.user_name);
-	if (LOG_ISTRAN_2PC (tdes))
-	  {
-	    m_has_2pc = true;
-	  }
       }
 
     /*
@@ -417,4 +417,15 @@ namespace cublog
     return m_sysops.size ();
   }
 
+  log_lsa
+  checkpoint_info::get_snapshot_lsa () const
+  {
+    return m_snapshot_lsa;
+  }
+
+  log_lsa
+  checkpoint_info::get_start_redo_lsa () const
+  {
+    return m_start_redo_lsa;
+  }
 }

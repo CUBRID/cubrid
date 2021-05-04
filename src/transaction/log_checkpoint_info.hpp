@@ -47,15 +47,16 @@ namespace cublog
       void unpack (cubpacking::unpacker &deserializator) override;
       size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
 
-      // with tran table and prior lock, save snapshot LSA and
+      // with tran table and prior lock, save snapshot LSA and get trans/sysops info from transaction table
       void load_trantable_snapshot (THREAD_ENTRY *thread_p, LOG_LSA &smallest_lsa);
-      // get trans/sysops info from transaction table
-      void recovery_analysis (THREAD_ENTRY *thread_p,
-			      log_lsa &start_redo_lsa);  // restore transaction table based on checkpoint info
-      void recovery_2pc_analysis (THREAD_ENTRY *thread_p) const;	      // if m_has_2pc, also do 2pc analysis
 
-      const log_lsa &get_snapshot_lsa () const;	      // the LSA of loaded snapshot
-      const log_lsa &get_start_redo_lsa () const;     // the LSA of starting redo (min LSA of checkpoint and oldest unflushed)
+      // restore transaction table based on checkpoint info
+      void recovery_analysis (THREAD_ENTRY *thread_p, log_lsa &start_redo_lsa) const;
+      // if m_has_2pc, also do 2pc analysis
+      void recovery_2pc_analysis (THREAD_ENTRY *thread_p) const;
+
+      log_lsa get_snapshot_lsa () const;	      // the LSA of loaded snapshot
+      log_lsa get_start_redo_lsa () const;     // the LSA of starting redo (min LSA of checkpoint and oldest unflushed)
       void set_start_redo_lsa (const log_lsa &start_redo_lsa);
 
       size_t get_transaction_count () const;
