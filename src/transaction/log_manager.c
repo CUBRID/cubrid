@@ -6637,10 +6637,6 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type
       log_page_p = log_dump_record_sysop_end (thread_p, log_lsa, log_page_p, log_zip_p, out_fp);
       break;
 
-    case LOG_END_CHKPT:
-      log_page_p = log_dump_record_checkpoint (thread_p, out_fp, log_lsa, log_page_p);
-      break;
-
     case LOG_SAVEPOINT:
       log_page_p = log_dump_record_save_point (thread_p, out_fp, log_lsa, log_page_p);
       break;
@@ -6683,6 +6679,7 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type
 
     case LOG_SMALLER_LOGREC_TYPE:
     case LOG_LARGER_LOGREC_TYPE:
+    case LOG_END_CHKPT:
     default:
       fprintf (out_fp, "log_dump: Unknown record type = %d (%s).\n", record_type, log_to_string (record_type));
       LSA_SET_NULL (log_lsa);
