@@ -6829,11 +6829,13 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 
   /* MARK THE CHECKPOINT PROCESS */
 
-  // Set the checkpoint target up until current end of log.
+  // Set the checkpoint target up until last log record.
   {
-    std::unique_lock < std::mutex > prior_ulock (log_Gl.prior_info.prior_lsa_mutex);
-    new_chkpt_lsa = log_Gl.prior_info.prior_lsa;
+    // *INDENT-OFF*
+    std::unique_lock<std::mutex> prior_ulock (log_Gl.prior_info.prior_lsa_mutex);
+    new_chkpt_lsa = log_Gl.prior_info.prev_lsa;
     assert (!LSA_ISNULL (&new_chkpt_lsa));
+    // *INDENT-ON*
   }
 
 

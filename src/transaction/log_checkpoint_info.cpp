@@ -257,7 +257,7 @@ namespace cublog
 
     /* CHECKPOINT THE TRANSACTION TABLE */
     LSA_SET_NULL (&smallest_lsa);
-    for (size_t i = 0; i < log_Gl.trantable.num_total_indices; i++)
+    for (int i = 0; i < log_Gl.trantable.num_total_indices; i++)
       {
 	/*
 	 * Don't checkpoint current system transaction. That is, the one of
