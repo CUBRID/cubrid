@@ -22,6 +22,7 @@
 #include "critical_section.h"
 #include "log_impl.h"
 #include "log_manager.h"
+#include "log_system_tran.hpp"
 #include "memory_alloc.h"
 #include "page_buffer.h"
 #include "scope_exit.hpp"
@@ -69,7 +70,7 @@ namespace cublog
     log_lsa_pack (m_snapshot_lsa, serializator);
 
     serializator.pack_bigint (m_trans.size ());
-    for (const checkpoint_tran_info tran_info : m_trans)
+    for (const auto &tran_info : m_trans)
       {
 	serializator.pack_int (tran_info.isloose_end);
 	serializator.pack_int (tran_info.trid);
@@ -86,7 +87,7 @@ namespace cublog
       }
 
     serializator.pack_bigint (m_sysops.size ());
-    for (const checkpoint_sysop_info sysop_info : m_sysops)
+    for (const auto &sysop_info : m_sysops)
       {
 	serializator.pack_int (sysop_info.trid);
 	log_lsa_pack (sysop_info.sysop_start_postpone_lsa, serializator);
@@ -106,7 +107,7 @@ namespace cublog
     deserializator.unpack_bigint (trans_size);
     for (unsigned i = 0; i < trans_size; i++)
       {
-	LOG_INFO_CHKPT_TRANS chkpt_trans;
+	tran_info chkpt_trans;
 
 	deserializator.unpack_int (chkpt_trans.isloose_end);
 	deserializator.unpack_int (chkpt_trans.trid);
@@ -130,7 +131,7 @@ namespace cublog
     deserializator.unpack_bigint (sysop_size);
     for (unsigned i = 0; i < sysop_size; i++)
       {
-	LOG_INFO_CHKPT_SYSOP chkpt_sysop;
+	sysop_info chkpt_sysop;
 	deserializator.unpack_int (chkpt_sysop.trid);
 	chkpt_sysop.sysop_start_postpone_lsa = log_lsa_unpack (deserializator);
 	chkpt_sysop.atomic_sysop_start_lsa = log_lsa_unpack (deserializator);
@@ -149,7 +150,7 @@ namespace cublog
     size = log_lsa_size (serializator, start_offset, size);
 
     size += serializator.get_packed_bigint_size (start_offset + size);
-    for (const checkpoint_tran_info tran_info : m_trans)
+    for (const auto &tran_info : m_trans)
       {
 	size += serializator.get_packed_int_size (start_offset + size);
 	size += serializator.get_packed_int_size (start_offset + size);
@@ -167,7 +168,7 @@ namespace cublog
       }
 
     size += serializator.get_packed_bigint_size (start_offset + size);
-    for (const checkpoint_sysop_info sysop_info : m_sysops)
+    for (const auto &sysop_info : m_sysops)
       {
 	size += serializator.get_packed_int_size (start_offset + size);
 	size = log_lsa_size (serializator, start_offset, size);
@@ -185,7 +186,7 @@ namespace cublog
     if (tdes.trid != NULL_TRANID && !LSA_ISNULL (&tdes.tail_lsa))
       {
 	m_trans.emplace_back ();
-	LOG_INFO_CHKPT_TRANS &chkpt_tran = m_trans.back ();
+	tran_info &chkpt_tran = m_trans.back ();
 
 	chkpt_tran.isloose_end = tdes.isloose_end;
 	chkpt_tran.trid = tdes.trid;
@@ -235,7 +236,7 @@ namespace cublog
 	 *       log_Gl.prior_info.prior_lsa_mutex. so we check this instead of state.
 	 */
 	m_sysops.emplace_back();
-	LOG_INFO_CHKPT_SYSOP &chkpt_topop = m_sysops.back();
+	sysop_info &chkpt_topop = m_sysops.back();
 	chkpt_topop.trid = tdes.trid;
 	chkpt_topop.sysop_start_postpone_lsa = tdes.rcv.sysop_start_postpone_lsa;
 	chkpt_topop.atomic_sysop_start_lsa = tdes.rcv.atomic_sysop_start_lsa;
@@ -432,5 +433,86 @@ namespace cublog
   checkpoint_info::set_start_redo_lsa (const log_lsa &start_redo_lsa)
   {
     m_start_redo_lsa = start_redo_lsa;
+  }
+
+  bool
+  checkpoint_info::tran_info::operator== (const tran_info &other) const
+  {
+    if (isloose_end != other.isloose_end)
+      {
+	return false;
+      }
+
+    if (trid != other.trid)
+      {
+	return false;
+      }
+
+    if (state != other.state)
+      {
+	return false;
+      }
+
+    if (head_lsa != other.head_lsa)
+      {
+	return false;
+      }
+
+    if (tail_lsa != other.tail_lsa)
+      {
+	return false;
+      }
+
+    if (undo_nxlsa != other.undo_nxlsa)
+      {
+	return false;
+      }
+
+    if (posp_nxlsa != other.posp_nxlsa)
+      {
+	return false;
+      }
+
+    if (savept_lsa != other.savept_lsa)
+      {
+	return false;
+      }
+
+    if (tail_topresult_lsa != other.tail_topresult_lsa)
+      {
+	return false;
+      }
+
+    if (start_postpone_lsa != other.start_postpone_lsa)
+      {
+	return false;
+      }
+
+    if (std::strcmp (user_name, other.user_name) != 0)
+      {
+	return false;
+      }
+
+    return true;
+  }
+
+  bool
+  checkpoint_info::sysop_info::operator== (const sysop_info &other) const
+  {
+    if (trid != other.trid)
+      {
+	return false;
+      }
+
+    if (sysop_start_postpone_lsa != other.sysop_start_postpone_lsa)
+      {
+	return false;
+      }
+
+    if (atomic_sysop_start_lsa != other.atomic_sysop_start_lsa)
+      {
+	return false;
+      }
+    return true;
   }
 }

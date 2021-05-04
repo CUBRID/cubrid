@@ -63,8 +63,6 @@ static int prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY *thread_p, LO
     const LOG_CRUMB *rcrumbs);
 static int prior_lsa_gen_2pc_prepare_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, int gtran_length,
     const char *gtran_data, int lock_length, const char *lock_data);
-static int prior_lsa_gen_end_chkpt_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, int tran_length,
-    const char *tran_data, int topop_length, const char *topop_data);
 static int prior_lsa_copy_undo_data_to_node (LOG_PRIOR_NODE *node, int length, const char *data);
 static int prior_lsa_copy_redo_data_to_node (LOG_PRIOR_NODE *node, int length, const char *data);
 static int prior_lsa_copy_undo_crumbs_to_node (LOG_PRIOR_NODE *node, int num_crumbs, const LOG_CRUMB *crumbs);
@@ -372,10 +370,6 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, LOG
       assert (addr == NULL);
       error_code = prior_lsa_gen_2pc_prepare_record (thread_p, node, ulength, udata, rlength, rdata);
       break;
-    case LOG_END_CHKPT:
-      assert (addr == NULL);
-      error_code = prior_lsa_gen_end_chkpt_record (thread_p, node, ulength, udata, rlength, rdata);
-      break;
 
     case LOG_RUN_POSTPONE:
     case LOG_COMPENSATE:
@@ -400,11 +394,15 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, LOG
     case LOG_REPLICATION_DATA:
     case LOG_REPLICATION_STATEMENT:
     case LOG_2PC_START:
-    case LOG_START_CHKPT:
     case LOG_SYSOP_ATOMIC_START:
       assert (rlength == 0 && rdata == NULL);
 
       error_code = prior_lsa_gen_record (thread_p, node, rec_type, ulength, udata);
+      break;
+
+    case LOG_START_CHKPT:
+    case LOG_END_CHKPT:
+      assert (false);
       break;
 
     default:
@@ -1212,43 +1210,6 @@ prior_lsa_gen_2pc_prepare_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, 
 }
 
 /*
- * prior_lsa_gen_end_chkpt_record -
- *
- * return: error code or NO_ERROR
- *
- *   node(in/out):
- *   tran_length(in):
- *   tran_data(in):
- *   topop_length(in):
- *   topop_data(in):
- */
-static int
-prior_lsa_gen_end_chkpt_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, int tran_length, const char *tran_data,
-				int topop_length, const char *topop_data)
-{
-  int error_code = NO_ERROR;
-
-  node->data_header_length = sizeof (LOG_REC_CHKPT);
-  node->data_header = (char *) malloc (node->data_header_length);
-  if (node->data_header == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) node->data_header_length);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
-  if (tran_length > 0)
-    {
-      error_code = prior_lsa_copy_undo_data_to_node (node, tran_length, tran_data);
-    }
-  if (topop_length > 0)
-    {
-      error_code = prior_lsa_copy_redo_data_to_node (node, topop_length, topop_data);
-    }
-
-  return error_code;
-}
-
-/*
  * prior_lsa_gen_record -
  *
  * return: error code or NO_ERROR
@@ -1275,7 +1236,6 @@ prior_lsa_gen_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_RECTYPE 
     case LOG_2PC_ABORT_DECISION:
     case LOG_2PC_COMMIT_INFORM_PARTICPS:
     case LOG_2PC_ABORT_INFORM_PARTICPS:
-    case LOG_START_CHKPT:
     case LOG_SYSOP_ATOMIC_START:
       assert (length == 0 && data == NULL);
       break;
@@ -1324,8 +1284,9 @@ prior_lsa_gen_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_RECTYPE 
       node->data_header_length = sizeof (LOG_REC_2PC_START);
       break;
 
+    case LOG_START_CHKPT:
     case LOG_END_CHKPT:
-      node->data_header_length = sizeof (LOG_REC_CHKPT);
+      assert (false);
       break;
 
     default:

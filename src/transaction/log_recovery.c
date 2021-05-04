@@ -3380,8 +3380,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	    case LOG_WILL_COMMIT:
 	    case LOG_COMMIT_WITH_POSTPONE:
 	    case LOG_SYSOP_START_POSTPONE:
-	    case LOG_START_CHKPT:
-	    case LOG_END_CHKPT:
 	    case LOG_SAVEPOINT:
 	    case LOG_2PC_COMMIT_DECISION:
 	    case LOG_2PC_ABORT_DECISION:
@@ -3417,6 +3415,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 	    case LOG_SMALLER_LOGREC_TYPE:
 	    case LOG_LARGER_LOGREC_TYPE:
+	    case LOG_START_CHKPT:
+	    case LOG_END_CHKPT:
 	    default:
 #if defined(CUBRID_DEBUG)
 	      er_log_debug (ARG_FILE_LINE,
@@ -4297,8 +4297,6 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		case LOG_COMMIT:
 		case LOG_SYSOP_START_POSTPONE:
 		case LOG_ABORT:
-		case LOG_START_CHKPT:
-		case LOG_END_CHKPT:
 		case LOG_2PC_PREPARE:
 		case LOG_2PC_START:
 		case LOG_2PC_ABORT_DECISION:
@@ -4337,6 +4335,8 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 
 		case LOG_SMALLER_LOGREC_TYPE:
 		case LOG_LARGER_LOGREC_TYPE:
+		case LOG_START_CHKPT:
+		case LOG_END_CHKPT:
 		default:
 #if defined(CUBRID_DEBUG)
 		  er_log_debug (ARG_FILE_LINE,
@@ -4862,7 +4862,6 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
   LOG_REC_SAVEPT *savept;	/* A savepoint log record */
   LOG_REC_COMPENSATE *compensate;	/* Compensating log record */
   LOG_REC_RUN_POSTPONE *run_posp;	/* A run postpone action */
-  LOG_REC_CHKPT *chkpt;		/* Checkpoint log record */
   LOG_REC_2PC_START *start_2pc;	/* A 2PC start log record */
   LOG_REC_2PC_PREPCOMMIT *prepared;	/* A 2PC prepare to commit */
   LOG_REC_REPLICATION *repl_log;
@@ -5087,21 +5086,6 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
       }
       break;
 
-    case LOG_END_CHKPT:
-      /* Read the DATA HEADER */
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_CHKPT), &log_lsa, log_pgptr);
-      chkpt = (LOG_REC_CHKPT *) ((char *) log_pgptr->area + log_lsa.offset);
-      undo_length = sizeof (LOG_INFO_CHKPT_TRANS) * chkpt->ntrans;
-      redo_length = sizeof (LOG_INFO_CHKPT_SYSOP) * chkpt->ntops;
-
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_CHKPT), &log_lsa, log_pgptr);
-      LOG_READ_ADD_ALIGN (thread_p, undo_length, &log_lsa, log_pgptr);
-      if (redo_length > 0)
-	{
-	  LOG_READ_ADD_ALIGN (thread_p, redo_length, &log_lsa, log_pgptr);
-	}
-      break;
-
     case LOG_SAVEPOINT:
       /* Read the DATA HEADER */
       LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_SAVEPT), &log_lsa, log_pgptr);
@@ -5150,7 +5134,6 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
       break;
 
     case LOG_WILL_COMMIT:
-    case LOG_START_CHKPT:
     case LOG_2PC_COMMIT_DECISION:
     case LOG_2PC_ABORT_DECISION:
     case LOG_2PC_COMMIT_INFORM_PARTICPS:
@@ -5181,6 +5164,8 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
 
     case LOG_SMALLER_LOGREC_TYPE:
     case LOG_LARGER_LOGREC_TYPE:
+    case LOG_START_CHKPT:
+    case LOG_END_CHKPT:
     default:
       break;
     }

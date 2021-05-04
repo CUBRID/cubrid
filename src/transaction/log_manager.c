@@ -260,9 +260,6 @@ static LOG_PAGE *log_dump_record_sysop_end (THREAD_ENTRY * thread_p, LOG_LSA * l
 static LOG_PAGE *log_dump_record_sysop_end_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * sysop_end,
 						     LOG_LSA * log_lsa, LOG_PAGE * log_page_p, LOG_ZIP * log_zip_p,
 						     FILE * out_fp);
-static LOG_PAGE *log_dump_record_checkpoint (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lsa_p,
-					     LOG_PAGE * log_page_p);
-static void log_dump_checkpoint_topops (FILE * out_fp, int length, void *data);
 static LOG_PAGE *log_dump_record_save_point (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lsa_p,
 					     LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record_2pc_prepare_commit (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lsa_p,
@@ -6466,65 +6463,6 @@ log_dump_record_sysop_end (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE 
   return log_page_p;
 }
 
-/*
- * log_dump_checkpoint_topops - DUMP CHECKPOINT OF TOP SYSTEM OPERATIONS
- *
- * return: nothing
- *
- *   length(in): Length to dump in bytes
- *   data(in): The data being logged
- *
- * NOTE: Dump the checkpoint top system operation structure.
- */
-static void
-log_dump_checkpoint_topops (FILE * out_fp, int length, void *data)
-{
-  int ntops, i;
-  LOG_INFO_CHKPT_SYSOP *chkpt_topops;	/* Checkpoint top system operations that are in commit postpone
-					 * mode */
-  LOG_INFO_CHKPT_SYSOP *chkpt_topone;	/* One top system ope */
-
-  chkpt_topops = (LOG_INFO_CHKPT_SYSOP *) data;
-  ntops = length / sizeof (*chkpt_topops);
-
-  /* Start dumping each checkpoint top system operation */
-
-  for (i = 0; i < ntops; i++)
-    {
-      chkpt_topone = &chkpt_topops[i];
-      fprintf (out_fp, "     Trid = %d \n", chkpt_topone->trid);
-      fprintf (out_fp, "     Sysop start postpone LSA = %lld|%d \n",
-	       LSA_AS_ARGS (&chkpt_topone->sysop_start_postpone_lsa));
-    }
-  (void) fprintf (out_fp, "\n");
-}
-
-static LOG_PAGE *
-log_dump_record_checkpoint (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
-{
-  LOG_REC_CHKPT *chkpt;		/* check point log record */
-  int length_active_tran;
-  int length_topope;
-
-  /* Read the DATA HEADER */
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*chkpt), log_lsa, log_page_p);
-
-  chkpt = (LOG_REC_CHKPT *) ((char *) log_page_p->area + log_lsa->offset);
-  fprintf (out_fp, ", Num_trans = %d,\n", chkpt->ntrans);
-  fprintf (out_fp, "     Redo_LSA = %lld|%d\n", LSA_AS_ARGS (&chkpt->redo_lsa));
-
-  length_active_tran = sizeof (LOG_INFO_CHKPT_TRANS) * chkpt->ntrans;
-  length_topope = (sizeof (LOG_INFO_CHKPT_SYSOP) * chkpt->ntops);
-  LOG_READ_ADD_ALIGN (thread_p, sizeof (*chkpt), log_lsa, log_page_p);
-  log_dump_data (thread_p, out_fp, length_active_tran, log_lsa, log_page_p, logpb_dump_checkpoint_trans, NULL);
-  if (length_topope > 0)
-    {
-      log_dump_data (thread_p, out_fp, length_active_tran, log_lsa, log_page_p, log_dump_checkpoint_topops, NULL);
-    }
-
-  return log_page_p;
-}
-
 static LOG_PAGE *
 log_dump_record_save_point (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
@@ -6723,7 +6661,6 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type
       log_page_p = log_dump_record_ha_server_state (thread_p, out_fp, log_lsa, log_page_p);
       break;
 
-    case LOG_START_CHKPT:
     case LOG_2PC_COMMIT_DECISION:
     case LOG_2PC_ABORT_DECISION:
     case LOG_2PC_COMMIT_INFORM_PARTICPS:
@@ -7634,8 +7571,6 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 	    case LOG_DBEXTERN_REDO_DATA:
 	    case LOG_DUMMY_HEAD_POSTPONE:
 	    case LOG_POSTPONE:
-	    case LOG_START_CHKPT:
-	    case LOG_END_CHKPT:
 	    case LOG_SAVEPOINT:
 	    case LOG_2PC_PREPARE:
 	    case LOG_2PC_START:
@@ -7667,6 +7602,8 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 	    case LOG_END_OF_LOG:
 	    case LOG_SMALLER_LOGREC_TYPE:
 	    case LOG_LARGER_LOGREC_TYPE:
+	    case LOG_START_CHKPT:
+	    case LOG_END_CHKPT:
 	    default:
 	      {
 		char msg[LINE_MAX];

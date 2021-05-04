@@ -95,8 +95,8 @@ enum log_rectype
   LOG_ABORT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS = 23,	/* Obsolete */
 #endif
   LOG_ABORT_TOPOPE = 24,	/* obsolete */
-  LOG_START_CHKPT = 25,		/* Start a checkpoint */
-  LOG_END_CHKPT = 26,		/* Checkpoint information */
+  LOG_START_CHKPT = 25,		/* obsolete. Start a checkpoint */
+  LOG_END_CHKPT = 26,		/* obsolete. Checkpoint information */
   LOG_SAVEPOINT = 27,		/* A user savepoint record */
   LOG_2PC_PREPARE = 28,		/* A prepare to commit record */
   LOG_2PC_START = 29,		/* Start the 2PC protocol by sending vote request messages to participants of
@@ -334,44 +334,7 @@ struct log_rec_run_postpone
   int length;			/* Length of redo data */
 };
 
-/* A checkpoint record */
-typedef struct log_rec_chkpt LOG_REC_CHKPT;
-struct log_rec_chkpt
-{
-  LOG_LSA redo_lsa;		/* Oldest LSA of dirty data page in page buffers */
-  int ntrans;			/* Number of active transactions */
-  int ntops;			/* Total number of system operations */
-};
 
-/* Transaction descriptor */
-typedef struct log_info_chkpt_trans LOG_INFO_CHKPT_TRANS;
-struct log_info_chkpt_trans
-{
-  int isloose_end;
-  TRANID trid;			/* Transaction identifier */
-  TRAN_STATE state;		/* Transaction state (e.g., Active, aborted) */
-  LOG_LSA head_lsa;		/* First log address of transaction */
-  LOG_LSA tail_lsa;		/* Last log record address of transaction */
-  LOG_LSA undo_nxlsa;		/* Next log record address of transaction for UNDO purposes. Needed since compensating
-                                 * log records are logged during UNDO */
-  LOG_LSA posp_nxlsa;		/* First address of a postpone record */
-  LOG_LSA savept_lsa;		/* Address of last savepoint */
-  LOG_LSA tail_topresult_lsa;	/* Address of last partial abort/commit */
-  LOG_LSA start_postpone_lsa;	/* Address of start postpone (if transaction was doing postpone during checkpoint) */
-  char user_name[LOG_USERNAME_MAX];	/* Name of the client */
-
-  inline bool operator== (const log_info_chkpt_trans &ochkpt) const;
-};
-
-typedef struct log_info_chkpt_sysop LOG_INFO_CHKPT_SYSOP;
-struct log_info_chkpt_sysop
-{
-  TRANID trid;			/* Transaction identifier */
-  LOG_LSA sysop_start_postpone_lsa;	/* saved lsa of system op start postpone log record */
-  LOG_LSA atomic_sysop_start_lsa;	/* saved lsa of atomic system op start */
-
-  inline bool operator== (const log_info_chkpt_sysop &ochkpt) const;
-};
 
 typedef struct log_rec_savept LOG_REC_SAVEPT;
 struct log_rec_savept
@@ -439,86 +402,5 @@ struct log_rec_2pc_particp_ack
    || ((type) == LOG_MVCC_REDO_DATA) \
    || ((type) == LOG_MVCC_UNDOREDO_DATA) \
    || ((type) == LOG_MVCC_DIFF_UNDOREDO_DATA))
-
-bool
-log_info_chkpt_trans::operator== (const log_info_chkpt_trans &ochkpt) const
-{
-  if (isloose_end != ochkpt.isloose_end)
-    {
-      return false;
-    }
-
-  if (trid != ochkpt.trid)
-    {
-      return false;
-    }
-
-  if (state != ochkpt.state)
-    {
-      return false;
-    }
-
-  if (head_lsa != ochkpt.head_lsa)
-    {
-      return false;
-    }
-
-  if (tail_lsa != ochkpt.tail_lsa)
-    {
-      return false;
-    }
-
-  if (undo_nxlsa != ochkpt.undo_nxlsa)
-    {
-      return false;
-    }
-
-  if (posp_nxlsa != ochkpt.posp_nxlsa)
-    {
-      return false;
-    }
-
-  if (savept_lsa != ochkpt.savept_lsa)
-    {
-      return false;
-    }
-
-  if (tail_topresult_lsa != ochkpt.tail_topresult_lsa)
-    {
-      return false;
-    }
-
-  if (start_postpone_lsa != ochkpt.start_postpone_lsa)
-    {
-      return false;
-    }
-
-  if (std::strcmp (user_name, ochkpt.user_name) != 0)
-    {
-      return false;
-    }
-
-  return true;
-}
-
-bool
-log_info_chkpt_sysop::operator== (const log_info_chkpt_sysop &ochkpt) const
-{
-  if (trid != ochkpt.trid)
-    {
-      return false;
-    }
-
-  if (sysop_start_postpone_lsa != ochkpt.sysop_start_postpone_lsa)
-    {
-      return false;
-    }
-
-  if (atomic_sysop_start_lsa != ochkpt.atomic_sysop_start_lsa)
-    {
-      return false;
-    }
-  return true;
-}
 
 #endif // _LOG_RECORD_HPP_
