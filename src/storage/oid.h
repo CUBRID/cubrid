@@ -154,7 +154,7 @@ inline bool operator==(const OID& oid1, const OID& oid2)
 
 inline bool operator!=(const OID& oid1, const OID& oid2)
 {
-  return !(oid1 == oid2);
+  return !OID_EQ (&oid1, &oid2);
 }
 // *INDENT-ON*
 #endif
