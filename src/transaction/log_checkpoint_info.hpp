@@ -58,6 +58,9 @@ namespace cublog
       const log_lsa &get_start_redo_lsa () const;     // the LSA of starting redo (min LSA of checkpoint and oldest unflushed)
       void set_start_redo_lsa (const log_lsa &start_redo_lsa);
 
+      size_t get_transaction_count () const;
+      size_t get_sysop_count () const;
+
     private:
       void load_checkpoint_trans (log_tdes &tdes, LOG_LSA &smallest_lsa);
       void load_checkpoint_topop (log_tdes &tdes);

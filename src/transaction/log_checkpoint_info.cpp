@@ -405,4 +405,16 @@ namespace cublog
       }
   }
 
+  size_t
+  checkpoint_info::get_transaction_count () const
+  {
+    return m_trans.size ();
+  }
+
+  size_t
+  checkpoint_info::get_sysop_count () const
+  {
+    return m_sysops.size ();
+  }
+
 }
