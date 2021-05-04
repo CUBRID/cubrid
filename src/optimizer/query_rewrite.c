@@ -226,13 +226,13 @@ qo_check_nullable_expr_with_spec (PARSER_CONTEXT * parser, PT_NODE * node, void 
 	case PT_IFNULL:
 	case PT_ISNULL:
 	case PT_CONCAT_WS:
-	    info->appears = false;
-	    parser_walk_tree (parser, node, qo_get_name_by_spec_id, info, NULL, NULL);
-	    if (info->appears)
-	      {
-		info->nullable = true;
-		*continue_walk = PT_STOP_WALK;
-	      }
+	  info->appears = false;
+	  parser_walk_tree (parser, node, qo_get_name_by_spec_id, info, NULL, NULL);
+	  if (info->appears)
+	    {
+	      info->nullable = true;
+	      *continue_walk = PT_STOP_WALK;
+	    }
 	  break;
 	default:
 	  break;
@@ -5496,7 +5496,8 @@ qo_rewrite_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
       prev_spec = NULL;
       for (spec = node->info.query.q.select.from; spec; prev_spec = spec, spec = spec->next)
 	{
-	  if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER || (spec->info.spec.join_type == PT_JOIN_RIGHT_OUTER && prev_spec))
+	  if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER
+	      || (spec->info.spec.join_type == PT_JOIN_RIGHT_OUTER && prev_spec))
 	    {
 	      if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER)
 		{
