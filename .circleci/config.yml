@@ -67,7 +67,7 @@ jobs:
     <<: *defaults
     environment:
       TEST_SUITE: sql
-    parallelism: 16
+    parallelism: 8
     <<: *test_defaults
 
 workflows:
