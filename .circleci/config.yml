@@ -2,6 +2,7 @@ defaults: &defaults
   working_directory: /home
   docker:
     - image: cubridci/cubridci:develop
+  resource_class: large
 
 test_defaults: &test_defaults
   steps:
@@ -37,7 +38,7 @@ jobs:
   build:
     <<: *defaults
     environment:
-      MAKEFLAGS: -j2
+      MAKEFLAGS: -j4
     
     steps:
       - checkout
@@ -60,13 +61,14 @@ jobs:
     <<: *defaults
     environment:
       TEST_SUITE: medium
+    parallelism: 4
     <<: *test_defaults
 
   test_sql:
     <<: *defaults
     environment:
       TEST_SUITE: sql
-    parallelism: 4
+    parallelism: 8
     <<: *test_defaults
 
 workflows:
