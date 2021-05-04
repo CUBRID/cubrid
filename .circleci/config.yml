@@ -61,7 +61,6 @@ jobs:
     <<: *defaults
     environment:
       TEST_SUITE: medium
-    parallelism: 4
     <<: *test_defaults
 
   test_sql:
