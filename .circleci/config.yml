@@ -38,7 +38,7 @@ jobs:
   build:
     <<: *defaults
     environment:
-      MAKEFLAGS: -j4
+      MAKEFLAGS: -j 10
     
     steps:
       - checkout
