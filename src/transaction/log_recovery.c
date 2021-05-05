@@ -26,9 +26,11 @@
 
 #include "boot_sr.h"
 #include "locator_sr.h"
+#include "log_checkpoint_info.hpp"
 #include "log_impl.h"
 #include "log_lsa.hpp"
 #include "log_manager.h"
+#include "log_meta.hpp"
 #include "log_reader.hpp"
 #include "log_recovery_redo_parallel.hpp"
 #include "log_system_tran.hpp"
@@ -52,8 +54,8 @@ static bool log_rv_find_checkpoint (THREAD_ENTRY * thread_p, VOLID volid, LOG_LS
 static int log_rv_analysis_undo_redo (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
 static int log_rv_analysis_dummy_head_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
 static int log_rv_analysis_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
-static int log_rv_analysis_run_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
-					 LOG_LSA * check_point);
+static int log_rv_analysis_run_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa,
+					 LOG_PAGE * log_page_p);
 static int log_rv_analysis_compensate (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p);
 static int log_rv_analysis_will_commit (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
 static int log_rv_analysis_commit_with_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa,
@@ -65,10 +67,6 @@ static int log_rv_analysis_complete (THREAD_ENTRY * thread_p, int tran_id, LOG_L
 				     LOG_LSA * prev_lsa, bool is_media_crash, time_t * stop_at,
 				     bool * did_incom_recovery);
 static int log_rv_analysis_sysop_end (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p);
-static int log_rv_analysis_start_checkpoint (LOG_LSA * log_lsa, LOG_LSA * start_lsa, bool * may_use_checkpoint);
-static int log_rv_analysis_end_checkpoint (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
-					   LOG_LSA * check_point, LOG_LSA * start_redo_lsa, bool * may_use_checkpoint,
-					   bool * may_need_synch_checkpoint_2pc);
 static int log_rv_analysis_save_point (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
 static int log_rv_analysis_2pc_prepare (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
 static int log_rv_analysis_2pc_start (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
@@ -79,10 +77,8 @@ static int log_rv_analysis_2pc_abort_inform_particps (THREAD_ENTRY * thread_p, i
 static int log_rv_analysis_2pc_recv_ack (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
 static int log_rv_analysis_log_end (int tran_id, LOG_LSA * log_lsa);
 static void log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type, int tran_id, LOG_LSA * log_lsa,
-				    LOG_PAGE * log_page_p, LOG_LSA * check_point, LOG_LSA * prev_lsa,
-				    LOG_LSA * start_lsa, LOG_LSA * start_redo_lsa, bool is_media_crash,
-				    time_t * stop_at, bool * did_incom_recovery, bool * may_use_checkpoint,
-				    bool * may_need_synch_checkpoint_2pc);
+				    LOG_PAGE * log_page_p, LOG_LSA * prev_lsa, bool is_media_crash, time_t * stop_at,
+				    bool * did_incom_recovery);
 static bool log_is_page_of_record_broken (THREAD_ENTRY * thread_p, const LOG_LSA * log_lsa,
 					  const LOG_RECORD_HEADER * log_rec_header);
 static void log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * start_redolsa,
@@ -1062,8 +1058,7 @@ log_rv_analysis_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_ls
  * Note:
  */
 static int
-log_rv_analysis_run_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
-			      LOG_LSA * check_point)
+log_rv_analysis_run_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
   LOG_TDES *tdes;
   LOG_REC_RUN_POSTPONE *run_posp;
@@ -1078,24 +1073,6 @@ log_rv_analysis_run_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * lo
   if (tdes->state != TRAN_UNACTIVE_WILL_COMMIT && tdes->state != TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE
       && tdes->state != TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE)
     {
-      /*
-       * If we are comming from a checkpoint this is the result of a
-       * system error since the transaction must have been already in
-       * one of these states.
-       * If we are not comming from a checkpoint, it is likely that
-       * we are in a commit point of either a transaction or a top
-       * operation.
-       */
-      if (!LSA_ISNULL (check_point))
-	{
-	  er_log_debug (ARG_FILE_LINE,
-			"log_recovery_analysis: SYSTEM ERROR\n Incorrect state = %s\n at log_rec at %lld|%d\n"
-			" for transaction = %d (index %d).\n State should have been either of\n %s\n %s\n %s\n",
-			log_state_string (tdes->state), (long long int) log_lsa->pageid, (int) log_lsa->offset,
-			tdes->trid, tdes->tran_index, log_state_string (TRAN_UNACTIVE_WILL_COMMIT),
-			log_state_string (TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE),
-			log_state_string (TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE));
-	}
       /*
        * Continue the execution by guessing that the transaction has
        * been committed
@@ -1707,282 +1684,6 @@ log_rv_analysis_sysop_end (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_l
 }
 
 /*
- * log_rv_analysis_start_checkpoint -
- *
- * return: error code
- *
- *   lsa(in/out):
- *   start_lsa(in/out):
- *   may_use_checkpoint(in/out):
- *
- * Note:
- */
-static int
-log_rv_analysis_start_checkpoint (LOG_LSA * log_lsa, LOG_LSA * start_lsa, bool * may_use_checkpoint)
-{
-  /*
-   * Use the checkpoint record only if it is the first record in the
-   * analysis. If it is not, it is likely that we are restarting from
-   * crashes when the multimedia crashes were off. We skip the
-   * checkpoint since it can contain stuff which does not exist any
-   * longer.
-   */
-
-  if (LSA_EQ (log_lsa, start_lsa))
-    {
-      *may_use_checkpoint = true;
-    }
-
-  return NO_ERROR;
-}
-
-/*
- * log_rv_analysis_end_checkpoint -
- *
- * return: error code
- *
- *   lsa(in/out):
- *   log_page_p(in/out):
- *   check_point(in/out):
- *   start_redo_lsa(in/out):
- *   may_use_checkpoint(in/out):
- *   may_need_synch_checkpoint_2pc(in/out):
- *
- * Note:
- */
-static int
-log_rv_analysis_end_checkpoint (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
-				LOG_LSA * check_point, LOG_LSA * start_redo_lsa, bool * may_use_checkpoint,
-				bool * may_need_synch_checkpoint_2pc)
-{
-  LOG_TDES *tdes;
-  LOG_REC_CHKPT *tmp_chkpt;
-  LOG_REC_CHKPT chkpt;
-  LOG_INFO_CHKPT_TRANS *chkpt_trans;
-  LOG_INFO_CHKPT_TRANS *chkpt_one;
-  LOG_INFO_CHKPT_SYSOP *chkpt_topops;
-  LOG_INFO_CHKPT_SYSOP *chkpt_topone;
-  int size;
-  void *area;
-  int i;
-
-  LOG_PAGE *log_page_local = NULL;
-  char log_page_buffer[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
-  LOG_LSA log_lsa_local;
-  LOG_REC_SYSOP_START_POSTPONE sysop_start_postpone;
-
-  int error_code = NO_ERROR;
-
-  /*
-   * Use the checkpoint record only if it is the first record in the
-   * analysis. If it is not, it is likely that we are restarting from
-   * crashes when the multimedia crashes were off. We skip the
-   * checkpoint since it can contain stuff which does not exist any
-   * longer.
-   */
-
-  if (*may_use_checkpoint == false)
-    {
-      return NO_ERROR;
-    }
-  *may_use_checkpoint = false;
-
-  /*
-   * Read the checkpoint record information to find out the
-   * start_redolsa and the active transactions
-   */
-
-  LSA_COPY (check_point, log_lsa);
-
-  /* Read the DATA HEADER */
-  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page_p);
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_CHKPT), log_lsa, log_page_p);
-  tmp_chkpt = (LOG_REC_CHKPT *) ((char *) log_page_p->area + log_lsa->offset);
-  chkpt = *tmp_chkpt;
-
-  /* GET THE CHECKPOINT TRANSACTION INFORMATION */
-  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_CHKPT), log_lsa, log_page_p);
-
-  /* Now get the data of active transactions */
-
-  area = NULL;
-  size = sizeof (LOG_INFO_CHKPT_TRANS) * chkpt.ntrans;
-  if (log_lsa->offset + size < (int) LOGAREA_SIZE)
-    {
-      chkpt_trans = (LOG_INFO_CHKPT_TRANS *) ((char *) log_page_p->area + log_lsa->offset);
-      log_lsa->offset += size;
-    }
-  else
-    {
-      /* Need to copy the data into a contiguous area */
-      area = malloc (size);
-      if (area == NULL)
-	{
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_analysis");
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-      /* Copy the data */
-      logpb_copy_from_log (thread_p, (char *) area, size, log_lsa, log_page_p);
-      chkpt_trans = (LOG_INFO_CHKPT_TRANS *) area;
-    }
-
-  /* Add the transactions to the transaction table */
-  for (i = 0; i < chkpt.ntrans; i++)
-    {
-      /*
-       * If this is the first time, the transaction is seen. Assign a
-       * new index to describe it and assume that the transaction was
-       * active at the time of the crash, and thus it will be
-       * unilaterally aborted. The truth of this statement will be find
-       * reading the rest of the log
-       */
-      tdes = logtb_rv_find_allocate_tran_index (thread_p, chkpt_trans[i].trid, log_lsa);
-      if (tdes == NULL)
-	{
-	  if (area != NULL)
-	    {
-	      free_and_init (area);
-	    }
-
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_analysis");
-	  return ER_FAILED;
-	}
-      chkpt_one = &chkpt_trans[i];
-
-      /*
-       * Clear the transaction since it may have old stuff in it.
-       * Use the one that is find in the checkpoint record
-       */
-      logtb_clear_tdes (thread_p, tdes);
-
-      tdes->isloose_end = chkpt_one->isloose_end;
-      if (chkpt_one->state == TRAN_ACTIVE || chkpt_one->state == TRAN_UNACTIVE_ABORTED)
-	{
-	  tdes->state = TRAN_UNACTIVE_UNILATERALLY_ABORTED;
-	}
-      else
-	{
-	  tdes->state = chkpt_one->state;
-	}
-      LSA_COPY (&tdes->head_lsa, &chkpt_one->head_lsa);
-      LSA_COPY (&tdes->tail_lsa, &chkpt_one->tail_lsa);
-      LSA_COPY (&tdes->undo_nxlsa, &chkpt_one->undo_nxlsa);
-      LSA_COPY (&tdes->posp_nxlsa, &chkpt_one->posp_nxlsa);
-      LSA_COPY (&tdes->savept_lsa, &chkpt_one->savept_lsa);
-      LSA_COPY (&tdes->tail_topresult_lsa, &chkpt_one->tail_topresult_lsa);
-      LSA_COPY (&tdes->rcv.tran_start_postpone_lsa, &chkpt_one->start_postpone_lsa);
-      tdes->client.set_system_internal_with_user (chkpt_one->user_name);
-      if (LOG_ISTRAN_2PC (tdes))
-	{
-	  *may_need_synch_checkpoint_2pc = true;
-	}
-    }
-
-  if (area != NULL)
-    {
-      free_and_init (area);
-    }
-
-  /*
-   * Now add top system operations that were in the process of
-   * commit to this transactions
-   */
-
-  log_page_local = (LOG_PAGE *) PTR_ALIGN (log_page_buffer, MAX_ALIGNMENT);
-  log_page_local->hdr.logical_pageid = NULL_PAGEID;
-  log_page_local->hdr.offset = NULL_OFFSET;
-
-  if (chkpt.ntops > 0)
-    {
-      size = sizeof (LOG_INFO_CHKPT_SYSOP) * chkpt.ntops;
-      if (log_lsa->offset + size < (int) LOGAREA_SIZE)
-	{
-	  chkpt_topops = ((LOG_INFO_CHKPT_SYSOP *) ((char *) log_page_p->area + log_lsa->offset));
-	  log_lsa->offset += size;
-	}
-      else
-	{
-	  /* Need to copy the data into a contiguous area */
-	  area = malloc (size);
-	  if (area == NULL)
-	    {
-	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_analysis");
-	      return ER_OUT_OF_VIRTUAL_MEMORY;
-	    }
-	  /* Copy the data */
-	  logpb_copy_from_log (thread_p, (char *) area, size, log_lsa, log_page_p);
-	  chkpt_topops = (LOG_INFO_CHKPT_SYSOP *) area;
-	}
-
-      /* Add the top system operations to the transactions */
-
-      for (i = 0; i < chkpt.ntops; i++)
-	{
-	  chkpt_topone = &chkpt_topops[i];
-	  tdes = logtb_rv_find_allocate_tran_index (thread_p, chkpt_topone->trid, log_lsa);
-	  if (tdes == NULL)
-	    {
-	      if (area != NULL)
-		{
-		  free_and_init (area);
-		}
-
-	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_analysis");
-	      return ER_FAILED;
-	    }
-
-	  if (tdes->topops.max == 0 || (tdes->topops.last + 1) >= tdes->topops.max)
-	    {
-	      if (logtb_realloc_topops_stack (tdes, chkpt.ntops) == NULL)
-		{
-		  if (area != NULL)
-		    {
-		      free_and_init (area);
-		    }
-
-		  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_analysis");
-		  return ER_OUT_OF_VIRTUAL_MEMORY;
-		}
-	    }
-
-	  if (tdes->topops.last == -1)
-	    {
-	      tdes->topops.last++;
-	    }
-	  else
-	    {
-	      assert (tdes->topops.last == 0);
-	    }
-	  tdes->rcv.sysop_start_postpone_lsa = chkpt_topone->sysop_start_postpone_lsa;
-	  tdes->rcv.atomic_sysop_start_lsa = chkpt_topone->atomic_sysop_start_lsa;
-	  log_lsa_local = chkpt_topone->sysop_start_postpone_lsa;
-	  error_code =
-	    log_read_sysop_start_postpone (thread_p, &log_lsa_local, log_page_local, false, &sysop_start_postpone,
-					   NULL, NULL, NULL, NULL);
-	  if (error_code != NO_ERROR)
-	    {
-	      assert (false);
-	      return error_code;
-	    }
-	  tdes->topops.stack[tdes->topops.last].lastparent_lsa = sysop_start_postpone.sysop_end.lastparent_lsa;
-	  tdes->topops.stack[tdes->topops.last].posp_lsa = sysop_start_postpone.posp_lsa;
-	}
-    }
-
-  if (LSA_LT (&chkpt.redo_lsa, start_redo_lsa))
-    {
-      LSA_COPY (start_redo_lsa, &chkpt.redo_lsa);
-    }
-
-  if (area != NULL)
-    {
-      free_and_init (area);
-    }
-
-  return NO_ERROR;
-}
-
-/*
  * log_rv_analysis_save_point -
  *
  * return: error code
@@ -2295,9 +1996,8 @@ log_rv_analysis_log_end (int tran_id, LOG_LSA * log_lsa)
  */
 static void
 log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type, int tran_id, LOG_LSA * log_lsa,
-			LOG_PAGE * log_page_p, LOG_LSA * checkpoint_lsa, LOG_LSA * prev_lsa, LOG_LSA * start_lsa,
-			LOG_LSA * start_redo_lsa, bool is_media_crash, time_t * stop_at, bool * did_incom_recovery,
-			bool * may_use_checkpoint, bool * may_need_synch_checkpoint_2pc)
+			LOG_PAGE * log_page_p, LOG_LSA * prev_lsa, bool is_media_crash, time_t * stop_at,
+			bool * did_incom_recovery)
 {
   switch (log_type)
     {
@@ -2322,7 +2022,7 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type, int tran_
       break;
 
     case LOG_RUN_POSTPONE:
-      (void) log_rv_analysis_run_postpone (thread_p, tran_id, log_lsa, log_page_p, checkpoint_lsa);
+      (void) log_rv_analysis_run_postpone (thread_p, tran_id, log_lsa, log_page_p);
       break;
 
     case LOG_COMPENSATE:
@@ -2349,15 +2049,6 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type, int tran_
 
     case LOG_SYSOP_END:
       log_rv_analysis_sysop_end (thread_p, tran_id, log_lsa, log_page_p);
-      break;
-
-    case LOG_START_CHKPT:
-      log_rv_analysis_start_checkpoint (log_lsa, start_lsa, may_use_checkpoint);
-      break;
-
-    case LOG_END_CHKPT:
-      log_rv_analysis_end_checkpoint (thread_p, log_lsa, log_page_p, checkpoint_lsa, start_redo_lsa,
-				      may_use_checkpoint, may_need_synch_checkpoint_2pc);
       break;
 
     case LOG_SAVEPOINT:
@@ -2497,7 +2188,6 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 		       LOG_LSA * end_redo_lsa, bool is_media_crash, time_t * stop_at, bool * did_incom_recovery,
 		       INT64 * num_redo_log_records)
 {
-  LOG_LSA checkpoint_lsa = { -1, -1 };
   LOG_LSA lsa;			/* LSA of log record to analyse */
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
   LOG_PAGE *log_page_p = NULL;	/* Log page pointer where LSA is located */
@@ -2507,17 +2197,10 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
   LOG_LSA first_corrupted_rec_lsa;
   LOG_RECTYPE log_rtype;	/* Log record type */
   LOG_RECORD_HEADER *log_rec = NULL;
-  LOG_REC_CHKPT *tmp_chkpt;	/* Temp Checkpoint log record */
-  LOG_REC_CHKPT chkpt;		/* Checkpoint log record */
-  LOG_INFO_CHKPT_TRANS *chkpt_trans;
   time_t last_at_time = -1;
   char time_val[CTIME_MAX];
-  bool may_need_synch_checkpoint_2pc = false, may_use_checkpoint = false, is_log_page_corrupted = false;
-  int tran_index;
+  bool is_log_page_corrupted = false;
   TRANID tran_id;
-  LOG_TDES *tdes;		/* Transaction descriptor */
-  void *area = NULL;
-  int size, i;
   const int block_size = 4 * ONE_K;
   int start_record_block, end_record_block;
   char null_buffer[block_size + MAX_ALIGNMENT], *null_block;
@@ -2540,6 +2223,11 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 
   LSA_SET_NULL (&first_corrupted_rec_lsa);
   LSA_COPY (&lsa, start_lsa);
+
+  // *INDENT-OFF*
+  // If the recovery start matches a checkpoint, use the checkpoint information.
+  const cublog::checkpoint_info *chkpt_infop = log_Gl.m_metainfo.get_checkpoint_info (*start_lsa);
+  // *INDENT-ON*
 
   LSA_COPY (start_redo_lsa, &lsa);
   LSA_COPY (end_redo_lsa, &lsa);
@@ -2915,9 +2603,16 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 		}
 	    }
 
-	  log_rv_analysis_record (thread_p, log_rtype, tran_id, &log_lsa, log_page_p, &checkpoint_lsa, &prev_lsa,
-				  start_lsa, start_redo_lsa, is_media_crash, stop_at, did_incom_recovery,
-				  &may_use_checkpoint, &may_need_synch_checkpoint_2pc);
+	  if (chkpt_infop != nullptr && chkpt_infop->get_snapshot_lsa () == log_lsa)
+	    {
+	      // The transaction table snapshot was taken before the next log record was logged.
+	      // Rebuild the transaction table image based on checkpoint information
+	      assert (start_redo_lsa != nullptr);
+	      chkpt_infop->recovery_analysis (thread_p, *start_redo_lsa);
+	    }
+
+	  log_rv_analysis_record (thread_p, log_rtype, tran_id, &log_lsa, log_page_p, &prev_lsa, is_media_crash,
+				  stop_at, did_incom_recovery);
 	  if (*did_incom_recovery == true)
 	    {
 	      LSA_SET_NULL (&lsa);
@@ -2955,77 +2650,9 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	}
     }
 
-  if (may_need_synch_checkpoint_2pc == true)
+  if (chkpt_infop != nullptr)
     {
-      /*
-       * We may need to obtain 2PC information of distributed transactions that
-       * were in the 2PC at the time of the checkpoint and they were still 2PC
-       * at the time of the crash.
-       * GET  the checkpoint log record information one more time..
-       */
-      log_lsa.pageid = checkpoint_lsa.pageid;
-      log_lsa.offset = checkpoint_lsa.offset;
-
-      log_page_p = (LOG_PAGE *) aligned_log_pgbuf;
-
-      if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_page_p) != NO_ERROR)
-	{
-	  /*
-	   * There is a problem. We have just read this page a little while ago
-	   */
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_analysis");
-	  return;
-	}
-
-      log_rec = LOG_GET_LOG_RECORD_HEADER (log_page_p, &log_lsa);
-
-      /* Read the DATA HEADER */
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_page_p);
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_CHKPT), &log_lsa, log_page_p);
-      tmp_chkpt = (LOG_REC_CHKPT *) ((char *) log_page_p->area + log_lsa.offset);
-      chkpt = *tmp_chkpt;
-
-      /* GET THE CHECKPOINT TRANSACTION INFORMATION */
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_CHKPT), &log_lsa, log_page_p);
-
-      /* Now get the data of active transactions */
-      area = NULL;
-      size = sizeof (LOG_INFO_CHKPT_TRANS) * chkpt.ntrans;
-      if (log_lsa.offset + size < (int) LOGAREA_SIZE)
-	{
-	  chkpt_trans = (LOG_INFO_CHKPT_TRANS *) ((char *) log_page_p->area + log_lsa.offset);
-	}
-      else
-	{
-	  /* Need to copy the data into a contiguous area */
-	  area = malloc (size);
-	  if (area == NULL)
-	    {
-	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_analysis");
-	      return;
-	    }
-	  /* Copy the data */
-	  logpb_copy_from_log (thread_p, (char *) area, size, &log_lsa, log_page_p);
-	  chkpt_trans = (LOG_INFO_CHKPT_TRANS *) area;
-	}
-
-      /* Add the transactions to the transaction table */
-      for (i = 0; i < chkpt.ntrans; i++)
-	{
-	  tran_index = logtb_find_tran_index (thread_p, chkpt_trans[i].trid);
-	  if (tran_index != NULL_TRAN_INDEX)
-	    {
-	      tdes = LOG_FIND_TDES (tran_index);
-	      if (tdes != NULL && LOG_ISTRAN_2PC (tdes))
-		{
-		  log_2pc_recovery_analysis_info (thread_p, tdes, &chkpt_trans[i].tail_lsa);
-		}
-	    }
-	}
-      if (area != NULL)
-	{
-	  free_and_init (area);
-	}
+      chkpt_infop->recovery_2pc_analysis (thread_p);
     }
 
   log_Gl.mvcc_table.reset_start_mvccid ();

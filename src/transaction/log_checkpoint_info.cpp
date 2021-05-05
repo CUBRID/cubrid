@@ -34,7 +34,7 @@
 namespace cublog
 {
 
-  int
+  size_t
   log_lsa_size (cubpacking::packer &serializator, std::size_t start_offset, std::size_t size_arg)
   {
     size_t size = size_arg;
@@ -65,7 +65,6 @@ namespace cublog
   void
   checkpoint_info::pack (cubpacking::packer &serializator) const
   {
-
     log_lsa_pack (m_start_redo_lsa, serializator);
     log_lsa_pack (m_snapshot_lsa, serializator);
 
@@ -258,7 +257,7 @@ namespace cublog
 
     /* CHECKPOINT THE TRANSACTION TABLE */
     LSA_SET_NULL (&smallest_lsa);
-    for (size_t i = 0; i < log_Gl.trantable.num_total_indices; i++)
+    for (int i = 0; i < log_Gl.trantable.num_total_indices; i++)
       {
 	/*
 	 * Don't checkpoint current system transaction. That is, the one of
@@ -272,6 +271,10 @@ namespace cublog
 	assert (act_tdes != nullptr);
 	load_checkpoint_trans (*act_tdes, smallest_lsa);
 	load_checkpoint_topop (*act_tdes);
+	if (LOG_ISTRAN_2PC (act_tdes))
+	  {
+	    m_has_2pc = true;
+	  }
       }
 
     // Checkpoint system transactions' topops
@@ -283,7 +286,7 @@ namespace cublog
   }
 
   void
-  checkpoint_info::recovery_analysis (THREAD_ENTRY *thread_p, log_lsa &start_redo_lsa)
+  checkpoint_info::recovery_analysis (THREAD_ENTRY *thread_p, log_lsa &start_redo_lsa) const
   {
     LOG_TDES *tdes = nullptr;
 
@@ -326,10 +329,6 @@ namespace cublog
 	LSA_COPY (&tdes->tail_topresult_lsa, &chkpt.tail_topresult_lsa);
 	LSA_COPY (&tdes->rcv.tran_start_postpone_lsa, &chkpt.start_postpone_lsa);
 	tdes->client.set_system_internal_with_user (chkpt.user_name);
-	if (LOG_ISTRAN_2PC (tdes))
-	  {
-	    m_has_2pc = true;
-	  }
       }
 
     /*
@@ -405,4 +404,33 @@ namespace cublog
       }
   }
 
+  size_t
+  checkpoint_info::get_transaction_count () const
+  {
+    return m_trans.size ();
+  }
+
+  size_t
+  checkpoint_info::get_sysop_count () const
+  {
+    return m_sysops.size ();
+  }
+
+  log_lsa
+  checkpoint_info::get_snapshot_lsa () const
+  {
+    return m_snapshot_lsa;
+  }
+
+  log_lsa
+  checkpoint_info::get_start_redo_lsa () const
+  {
+    return m_start_redo_lsa;
+  }
+
+  void
+  checkpoint_info::set_start_redo_lsa (const log_lsa &start_redo_lsa)
+  {
+    m_start_redo_lsa = start_redo_lsa;
+  }
 }

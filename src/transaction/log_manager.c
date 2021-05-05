@@ -310,7 +310,6 @@ static int logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, voi
 
 static int log_create_metalog_file ();
 static int log_read_metalog_from_file ();
-static int log_write_metalog_to_file ();
 
 #if defined(SERVER_MODE)
 // *INDENT-OFF*
