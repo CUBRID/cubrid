@@ -280,7 +280,8 @@ namespace cublog
   {
     // skip calculation if bogus input (sometimes, it is -1);
     // TODO: fix bogus input at the source if at all possible (debugging revealed that
-    // it happens for LOG_COMMIT messages only)
+    // it happens for LOG_COMMIT messages only and there is no point at the source where the 'at_time'
+    // is not filled in; the only other possibility is a reading misalignment that remains below the radar)
     if (a_start_time_msec > 0)
       {
 	const int64_t end_time_msec = util_get_time_as_ms_since_epoch ();
