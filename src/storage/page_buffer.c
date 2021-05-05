@@ -1787,6 +1787,8 @@ pgbuf_fix_debug (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fet
  *   request_mode(in): Page latch mode.
  *   condition(in): Page latch condition.
  */
+
+// TODO: Ilie - use this to read the page.
 #if !defined(NDEBUG)
 PAGE_PTR
 pgbuf_fix_debug (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode, PGBUF_LATCH_MODE request_mode,
@@ -7586,7 +7588,7 @@ end:
   if (bufptr != NULL)
     {
       /* victimize the buffer */
-      if (pgbuf_victimize_bcb (thread_p, bufptr) != NO_ERROR)
+      if (pgbuf_victimize_bcb (thread_p, bufptr) != NO_ERROR)	// TODO: Ilie - discard
 	{
 	  assert (false);
 	  bufptr = NULL;
@@ -7713,6 +7715,7 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 #endif /* ENABLE_SYSTEMTAP */
 
       pgbuf_request_data_page_from_page_server (vpid);
+      // TODO: Ilie Wait here for the page?
 
       if (dwb_read_page (thread_p, vpid, &bufptr->iopage_buffer->iopage, &success) != NO_ERROR)
 	{
@@ -7859,6 +7862,7 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid)
       std::memcpy (buffer, &(vpid->pageid), sizeof (vpid->pageid));
       std::memcpy (buffer + INT32_SIZE, &(vpid->volid), sizeof (vpid->volid));
       std::string message (buffer, sizeof (vpid));
+      // TODO: Ilie - add nxio_lsa
 
       ats_Gl.push_request (ats_to_ps_request::SEND_DATA_PAGE_FETCH, std::move (message));
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))

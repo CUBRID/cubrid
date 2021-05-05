@@ -115,6 +115,9 @@ void page_server::receive_data_page_fetch (cubpacking::unpacker &upk)
 
       upk.unpack_string (message);
       std::memcpy (&vpid, message.c_str (), sizeof (vpid));
+
+      // TODO: Ilie - get the page.
+      // fetcher.fetch_page(lsa + page_id); // non-blocking
       _er_log_debug (ARG_FILE_LINE, "Received request for Data Page from Transaction Server. pageid: %ld volid: %d\n",
 		     vpid.pageid, vpid.volid);
     }
