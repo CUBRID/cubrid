@@ -360,9 +360,6 @@ namespace cublog
   {
     bool finished = false;
 
-    //
-    context.tran_index = LOG_SYSTEM_TRAN_INDEX;
-
     for (; !finished ;)
       {
 	bool adding_finished = false;
