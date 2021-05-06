@@ -2042,7 +2042,7 @@ static bool prm_er_log_read_data_page_default = true;
 static unsigned int prm_er_log_read_data_page_flag = 0;
 
 bool PRM_ER_LOG_CALC_REPL_DELAY = true;
-static bool prm_er_log_calc_repl_delay_default = true;
+static bool prm_er_log_calc_repl_delay_default = false;
 static unsigned int prm_er_log_calc_repl_delay_flag = 0;
 
 bool PRM_DISABLE_VACUUM = false;
