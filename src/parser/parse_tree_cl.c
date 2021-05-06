@@ -2216,6 +2216,7 @@ parser_new_node (PARSER_CONTEXT * parser, PT_NODE_TYPE node_type)
 PT_NODE *
 parser_init_node (PT_NODE * node, PT_NODE_TYPE node_type)
 {
+  assert (node != NULL);
   assert (node_type < PT_LAST_NODE_NUMBER);
   int parser_id = node->parser_id;
 
