@@ -23415,49 +23415,66 @@ heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hf
       assert (false);
       return error_code;
     }
-  // NOTE: no collisions are expected when heap_cache_class_info is called
 
   assert (entry != NULL);
-  assert (entry->hfid.hpgid == NULL_PAGEID);
 
-  HFID_COPY (&entry->hfid, hfid);
-  if (classname_in != NULL)
+  if (entry->hfid.hpgid != NULL_PAGEID)
     {
-      classname_local = strdup (classname_in);
+      /* only hfid of the cached entry can be changed */
+      heap_hfid_table_log (thread_p, class_oid, "heap_cache_class_info the existing hfid: %d|%d|%d",
+			   HFID_AS_ARGS (&entry->hfid));
+
+      HFID_COPY (&entry->hfid, hfid);
+
+      if (classname_in != NULL)
+	{
+	  /* cached entry has to be the same as classname_in */
+	  assert (strcmp (entry->classname.load (), classname_in) != 0);
+	  return ER_FAILED;
+	}
     }
   else
     {
-      error_code = heap_get_class_info_from_record (thread_p, class_oid, &hfid_local, &classname_local);
-      if (error_code != NO_ERROR)
+      HFID_COPY (&entry->hfid, hfid);
+
+      if (classname_in != NULL)
 	{
-	  ASSERT_ERROR ();
-	  lf_tran_end_with_mb (t_entry);
-
-	  // remove from hash
-	  int success = 0;
-	  if (lf_hash_delete (t_entry, &heap_Hfid_table->hfid_hash, (void *) class_oid, &success) != NO_ERROR)
-	    {
-	      assert (false);
-	    }
-	  assert (success);
-
-	  heap_hfid_table_log (thread_p, class_oid, "heap_cache_class_info failed error=%d", error_code);
-
-	  if (classname_local != NULL)
-	    {
-	      free (classname_local);
-	    }
-
-	  return error_code;
+	  classname_local = strdup (classname_in);
 	}
-    }
+      else
+	{
+	  error_code = heap_get_class_info_from_record (thread_p, class_oid, &hfid_local, &classname_local);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      lf_tran_end_with_mb (t_entry);
 
-  entry->ftype = ftype;
+	      // remove from hash
+	      int success = 0;
+	      if (lf_hash_delete (t_entry, &heap_Hfid_table->hfid_hash, (void *) class_oid, &success) != NO_ERROR)
+		{
+		  assert (false);
+		}
+	      assert (success);
 
-  char *dummy_null = NULL;
-  if (!entry->classname.compare_exchange_strong (dummy_null, classname_local))
-    {
-      free (classname_local);
+	      heap_hfid_table_log (thread_p, class_oid, "heap_cache_class_info failed error=%d", error_code);
+
+	      if (classname_local != NULL)
+		{
+		  free (classname_local);
+		}
+
+	      return error_code;
+	    }
+	}
+
+      entry->ftype = ftype;
+
+      char *dummy_null = NULL;
+      if (!entry->classname.compare_exchange_strong (dummy_null, classname_local))
+	{
+	  free (classname_local);
+	}
     }
 
   lf_tran_end_with_mb (t_entry);
