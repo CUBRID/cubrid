@@ -62,7 +62,6 @@
 #include "porting.h"
 #include "error_manager.h"
 #include "connection_globals.h"
-#include "connection_server_rules.hpp"
 #include "filesys.hpp"
 #include "filesys_temp.hpp"
 #include "memory_alloc.h"
