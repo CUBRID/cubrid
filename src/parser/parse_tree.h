@@ -123,130 +123,129 @@ struct json_t;
 				|| (e)->type_enum==PT_TYPE_NULL)
 
 #define PT_IS_NUMERIC_TYPE(t) \
-        ( (((t) == PT_TYPE_INTEGER)  || \
-	   ((t) == PT_TYPE_BIGINT)   || \
-	   ((t) == PT_TYPE_FLOAT)    || \
-	   ((t) == PT_TYPE_DOUBLE)   || \
-	   ((t) == PT_TYPE_SMALLINT) || \
-	   ((t) == PT_TYPE_MONETARY) || \
-	   ((t) == PT_TYPE_LOGICAL) || \
-	   ((t) == PT_TYPE_NUMERIC)) ? true : false )
+        ( ((t) == PT_TYPE_INTEGER)  || \
+	  ((t) == PT_TYPE_BIGINT)   || \
+	  ((t) == PT_TYPE_FLOAT)    || \
+	  ((t) == PT_TYPE_DOUBLE)   || \
+	  ((t) == PT_TYPE_SMALLINT) || \
+	  ((t) == PT_TYPE_MONETARY) || \
+	  ((t) == PT_TYPE_LOGICAL)  || \
+	  ((t) == PT_TYPE_NUMERIC))
 
 #define PT_IS_DISCRETE_NUMBER_TYPE(t) \
-        ( (((t) == PT_TYPE_INTEGER)  || \
-           ((t) == PT_TYPE_BIGINT)   || \
-	   ((t) == PT_TYPE_SMALLINT)) ? true : false )
+        ( ((t) == PT_TYPE_INTEGER)  || \
+          ((t) == PT_TYPE_BIGINT)   || \
+	  ((t) == PT_TYPE_SMALLINT))
 
 #define PT_IS_COUNTER_TYPE(t) \
 		PT_IS_DISCRETE_NUMBER_TYPE(t)
 
 #define PT_IS_COLLECTION_TYPE(t) \
-        ( (((t) == PT_TYPE_SET)       || \
-	   ((t) == PT_TYPE_MULTISET)  || \
-	   ((t) == PT_TYPE_SEQUENCE)) ? true : false )
+        ( ((t) == PT_TYPE_SET)       || \
+	  ((t) == PT_TYPE_MULTISET)  || \
+	  ((t) == PT_TYPE_SEQUENCE))
 
 #define PT_IS_STRING_TYPE(t) \
-        ( (((t) == PT_TYPE_CHAR)     || \
-	   ((t) == PT_TYPE_VARCHAR)  || \
-	   ((t) == PT_TYPE_NCHAR)    || \
-	   ((t) == PT_TYPE_VARNCHAR) || \
-	   ((t) == PT_TYPE_BIT)      || \
-	   ((t) == PT_TYPE_VARBIT))  ? true : false )
+        ( ((t) == PT_TYPE_CHAR)     || \
+	  ((t) == PT_TYPE_VARCHAR)  || \
+	  ((t) == PT_TYPE_NCHAR)    || \
+	  ((t) == PT_TYPE_VARNCHAR) || \
+	  ((t) == PT_TYPE_BIT)      || \
+	  ((t) == PT_TYPE_VARBIT))
 
 #define PT_IS_NATIONAL_CHAR_STRING_TYPE(t) \
-        ( (((t) == PT_TYPE_NCHAR)      || \
-	   ((t) == PT_TYPE_VARNCHAR)) ? true : false )
+        ( ((t) == PT_TYPE_NCHAR)      || \
+	  ((t) == PT_TYPE_VARNCHAR))
 
 #define PT_IS_SIMPLE_CHAR_STRING_TYPE(t) \
-        ( (((t) == PT_TYPE_CHAR)      || \
-	   ((t) == PT_TYPE_VARCHAR)) ? true : false )
+        ( ((t) == PT_TYPE_CHAR)      || \
+	  ((t) == PT_TYPE_VARCHAR))
 
 #define PT_IS_CHAR_STRING_TYPE(t) \
-        ( (((t) == PT_TYPE_CHAR)      || \
-	   ((t) == PT_TYPE_VARCHAR)   || \
-	   ((t) == PT_TYPE_NCHAR)     || \
-	   ((t) == PT_TYPE_VARNCHAR)) ? true : false )
+        ( ((t) == PT_TYPE_CHAR)      || \
+	  ((t) == PT_TYPE_VARCHAR)   || \
+	  ((t) == PT_TYPE_NCHAR)     || \
+	  ((t) == PT_TYPE_VARNCHAR))
 
 #define PT_IS_BIT_STRING_TYPE(t) \
-        ( (((t) == PT_TYPE_BIT)      || \
-	   ((t) == PT_TYPE_VARBIT)) ? true : false )
+        ( ((t) == PT_TYPE_BIT)      || \
+	  ((t) == PT_TYPE_VARBIT))
 
 #define PT_IS_COMPLEX_TYPE(t) \
-        ( (((t) == PT_TYPE_MONETARY)  || \
-	   ((t) == PT_TYPE_NUMERIC)   || \
-	   ((t) == PT_TYPE_CHAR)      || \
-	   ((t) == PT_TYPE_VARCHAR)   || \
-	   ((t) == PT_TYPE_NCHAR)     || \
-	   ((t) == PT_TYPE_VARNCHAR)  || \
-	   ((t) == PT_TYPE_BIT)       || \
-	   ((t) == PT_TYPE_VARBIT)    || \
-	   ((t) == PT_TYPE_OBJECT)    || \
-	   ((t) == PT_TYPE_SET)       || \
-	   ((t) == PT_TYPE_MULTISET)  || \
-	   ((t) == PT_TYPE_SEQUENCE)  || \
-	   ((t) == PT_TYPE_ENUMERATION)) ? true : false )
+        ( ((t) == PT_TYPE_MONETARY)  || \
+	  ((t) == PT_TYPE_NUMERIC)   || \
+	  ((t) == PT_TYPE_CHAR)      || \
+	  ((t) == PT_TYPE_VARCHAR)   || \
+	  ((t) == PT_TYPE_NCHAR)     || \
+	  ((t) == PT_TYPE_VARNCHAR)  || \
+	  ((t) == PT_TYPE_BIT)       || \
+	  ((t) == PT_TYPE_VARBIT)    || \
+	  ((t) == PT_TYPE_OBJECT)    || \
+	  ((t) == PT_TYPE_SET)       || \
+	  ((t) == PT_TYPE_MULTISET)  || \
+	  ((t) == PT_TYPE_SEQUENCE)  || \
+	  ((t) == PT_TYPE_ENUMERATION))
 
 #define PT_IS_DATE_TIME_WITH_TZ_TYPE(t) \
-        ( ((t) == PT_TYPE_TIMESTAMPTZ  || \
-	   (t) == PT_TYPE_TIMESTAMPLTZ || \
-	   (t) == PT_TYPE_DATETIMETZ   || \
-	   (t) == PT_TYPE_DATETIMELTZ) ? true : false )
+        ( (t) == PT_TYPE_TIMESTAMPTZ  || \
+	  (t) == PT_TYPE_TIMESTAMPLTZ || \
+	  (t) == PT_TYPE_DATETIMETZ   || \
+	  (t) == PT_TYPE_DATETIMELTZ)
 
 #define PT_IS_DATE_TIME_TYPE(t) \
-        ( (((t) == PT_TYPE_DATE)       || \
-	   ((t) == PT_TYPE_TIME)       || \
-	   ((t) == PT_TYPE_TIMESTAMP)  || \
-	   ((t) == PT_TYPE_DATETIME)   || \
-	   ((t) == PT_TYPE_DATETIMETZ)   || \
-	   ((t) == PT_TYPE_DATETIMELTZ)  || \
-	   ((t) == PT_TYPE_TIMESTAMPTZ)  || \
-	   ((t) == PT_TYPE_TIMESTAMPLTZ)) ? true : false )
+        ( ((t) == PT_TYPE_DATE)         || \
+	  ((t) == PT_TYPE_TIME)         || \
+	  ((t) == PT_TYPE_TIMESTAMP)    || \
+	  ((t) == PT_TYPE_DATETIME)     || \
+	  ((t) == PT_TYPE_DATETIMETZ)   || \
+	  ((t) == PT_TYPE_DATETIMELTZ)  || \
+	  ((t) == PT_TYPE_TIMESTAMPTZ)  || \
+	  ((t) == PT_TYPE_TIMESTAMPLTZ))
 
 #define PT_HAS_DATE_PART(t) \
-        ( (((t) == PT_TYPE_DATE)       || \
-	   ((t) == PT_TYPE_TIMESTAMP)  || \
-	   ((t) == PT_TYPE_DATETIME)   || \
-	   ((t) == PT_TYPE_DATETIMETZ)   || \
-	   ((t) == PT_TYPE_DATETIMELTZ)  || \
-	   ((t) == PT_TYPE_TIMESTAMPTZ)  || \
-	   ((t) == PT_TYPE_TIMESTAMPLTZ)) ? true : false )
+        ( ((t) == PT_TYPE_DATE)         || \
+	  ((t) == PT_TYPE_TIMESTAMP)    || \
+	  ((t) == PT_TYPE_DATETIME)     || \
+	  ((t) == PT_TYPE_DATETIMETZ)   || \
+	  ((t) == PT_TYPE_DATETIMELTZ)  || \
+	  ((t) == PT_TYPE_TIMESTAMPTZ)  || \
+	  ((t) == PT_TYPE_TIMESTAMPLTZ))
 
 #define PT_HAS_TIME_PART(t) \
-        ( (((t) == PT_TYPE_TIME)       || \
-	   ((t) == PT_TYPE_TIMESTAMP)  || \
-	   ((t) == PT_TYPE_TIMESTAMPTZ)  || \
-	   ((t) == PT_TYPE_TIMESTAMPLTZ)  || \
-	   ((t) == PT_TYPE_DATETIME)	  || \
-	   ((t) == PT_TYPE_DATETIMETZ)	  || \
-	   ((t) == PT_TYPE_DATETIMELTZ)) ? true : false )
+        ( ((t) == PT_TYPE_TIME)         || \
+	  ((t) == PT_TYPE_TIMESTAMP)    || \
+	  ((t) == PT_TYPE_TIMESTAMPTZ)  || \
+	  ((t) == PT_TYPE_TIMESTAMPLTZ) || \
+	  ((t) == PT_TYPE_DATETIME)	|| \
+	  ((t) == PT_TYPE_DATETIMETZ)	|| \
+	  ((t) == PT_TYPE_DATETIMELTZ))
 
 #define PT_IS_LTZ_TYPE(t) \
   ((t) == PT_TYPE_TIMESTAMPLTZ || (t) == PT_TYPE_DATETIMELTZ)
 
 #define PT_IS_PRIMITIVE_TYPE(t) \
-        ( (((t) == PT_TYPE_OBJECT) || \
-	   ((t) == PT_TYPE_NONE))  ? false : true )
+        ( ((t) != PT_TYPE_OBJECT) && ((t) != PT_TYPE_NONE))
 
 #define PT_IS_PARAMETERIZED_TYPE(t) \
-        ( (((t) == PT_TYPE_NUMERIC)  || \
-	   ((t) == PT_TYPE_VARCHAR)  || \
-	   ((t) == PT_TYPE_CHAR)     || \
-	   ((t) == PT_TYPE_VARNCHAR) || \
-	   ((t) == PT_TYPE_NCHAR)    || \
-	   ((t) == PT_TYPE_VARBIT)   || \
-	   ((t) == PT_TYPE_BIT)	     || \
-	   ((t) == PT_TYPE_ENUMERATION))     ? true : false )
+        ( ((t) == PT_TYPE_NUMERIC)  || \
+	  ((t) == PT_TYPE_VARCHAR)  || \
+	  ((t) == PT_TYPE_CHAR)     || \
+	  ((t) == PT_TYPE_VARNCHAR) || \
+	  ((t) == PT_TYPE_NCHAR)    || \
+	  ((t) == PT_TYPE_VARBIT)   || \
+	  ((t) == PT_TYPE_BIT)	    || \
+	  ((t) == PT_TYPE_ENUMERATION))
 
 #define PT_IS_LOB_TYPE(t) \
-        ( (((t) == PT_TYPE_BLOB)  || \
-	   ((t) == PT_TYPE_CLOB))     ? true : false )
+        ( ((t) == PT_TYPE_BLOB)  || \
+	  ((t) == PT_TYPE_CLOB))
 
 #define PT_HAS_COLLATION(t) \
-        ( (((t) == PT_TYPE_CHAR)     || \
-	   ((t) == PT_TYPE_VARCHAR)  || \
-	   ((t) == PT_TYPE_NCHAR)    || \
-	   ((t) == PT_TYPE_VARNCHAR) || \
-	   ((t) == PT_TYPE_ENUMERATION))  ? true : false )
+        ( ((t) == PT_TYPE_CHAR)     || \
+	  ((t) == PT_TYPE_VARCHAR)  || \
+	  ((t) == PT_TYPE_NCHAR)    || \
+	  ((t) == PT_TYPE_VARNCHAR) || \
+	  ((t) == PT_TYPE_ENUMERATION))
 
 #define PT_VALUE_GET_BYTES(node) \
   ((node) == NULL ? NULL : \
@@ -283,129 +282,118 @@ struct json_t;
 #define pt_is_unary(op) PT_IS_UNARY(op)
 
 #define PT_IS_SELECT(n) \
-        ( (n) ? ((n)->node_type == PT_SELECT) : false )
+        ( (n) && ((n)->node_type == PT_SELECT) )
 
 #define PT_IS_UNION(n) \
-        ( (n) ? ((n)->node_type == PT_UNION) : false )
+        ( (n) && ((n)->node_type == PT_UNION) )
 
 #define PT_IS_INTERSECTION(n) \
-        ( (n) ? ((n)->node_type == PT_INTERSECTION) : false )
+        ( (n) && ((n)->node_type == PT_INTERSECTION) )
 
 #define PT_IS_DIFFERENCE(n) \
-        ( (n) ? ((n)->node_type == PT_DIFFERENCE) : false )
+        ( (n) && ((n)->node_type == PT_DIFFERENCE) )
 
 #define PT_IS_QUERY(n) \
-        ( (n) ? (PT_IS_QUERY_NODE_TYPE((n)->node_type)) : false )
+        ( (n) && (PT_IS_QUERY_NODE_TYPE((n)->node_type)) )
 
 #define PT_IS_CORRELATED_SUBQUERY(n) \
-        ( (PT_IS_QUERY((n)) && (n)->info.query.correlation_level > 0) ? \
-          true : false )
+        ( PT_IS_QUERY((n)) && ((n)->info.query.correlation_level > 0) )
 
 #define PT_IS_DOT_NODE(n) \
-        ( (n) ? ((n)->node_type == PT_DOT_) : false )
+        ( (n) && ((n)->node_type == PT_DOT_) )
 
 #define PT_IS_EXPR_NODE(n) \
-        ( (n) ? ((n)->node_type == PT_EXPR) : false )
+        ( (n) && ((n)->node_type == PT_EXPR) )
 
 #define PT_IS_ASSIGN_NODE(n) \
-        ( (n) ? ((n)->node_type == PT_EXPR && \
-                 (n)->info.expr.op == PT_ASSIGN) \
-              : false )
+        ( (n) && ((n)->node_type == PT_EXPR && (n)->info.expr.op == PT_ASSIGN) )
 
 #define PT_IS_FUNCTION(n) \
-        ( (n) ? ((n)->node_type == PT_FUNCTION) : false )
+        ( (n) && ((n)->node_type == PT_FUNCTION) )
 
 #define PT_IS_MULTI_COL_TERM(n) \
-	( ((n) && \
-	   PT_IS_FUNCTION((n)) && \
-	   PT_IS_SET_TYPE ((n)) && \
-	   (n)->info.function.function_type == F_SEQUENCE) ? true : false )
+	( (n) && \
+	  PT_IS_FUNCTION((n)) && \
+	  PT_IS_SET_TYPE ((n)) && \
+	  (n)->info.function.function_type == F_SEQUENCE)
 
 #define PT_IS_NAME_NODE(n) \
-        ( (n) ? ((n)->node_type == PT_NAME) : false )
+        ( (n) && ((n)->node_type == PT_NAME) )
 
 #define PT_IS_OID_NAME(n) \
-        ( (n) ? ((n)->node_type == PT_NAME && \
-                 ((n)->info.name.meta_class == PT_OID_ATTR || \
-                  (n)->info.name.meta_class == PT_VID_ATTR)) \
-              : false )
+        ( (n) && \
+          ((n)->node_type == PT_NAME && \
+             ((n)->info.name.meta_class == PT_OID_ATTR || \
+              (n)->info.name.meta_class == PT_VID_ATTR) ) \
+        )
 
 #define PT_IS_VALUE_NODE(n) \
-        ( (n) ? ((n)->node_type == PT_VALUE) : false )
+        ( (n) && ((n)->node_type == PT_VALUE) )
 
 #define PT_IS_INSERT_VALUE_NODE(n) \
-	( (n) ? ((n)->node_type == PT_INSERT_VALUE) : false )
+	( (n) && ((n)->node_type == PT_INSERT_VALUE) )
 
 #define PT_IS_SET_TYPE(n) \
-        ( (n) ? ((n)->type_enum == PT_TYPE_SET || \
-                 (n)->type_enum == PT_TYPE_MULTISET || \
-                 (n)->type_enum == PT_TYPE_SEQUENCE) \
-              : false )
+        ( (n) && ((n)->type_enum == PT_TYPE_SET || \
+                  (n)->type_enum == PT_TYPE_MULTISET || \
+                  (n)->type_enum == PT_TYPE_SEQUENCE) \
+        )
 
 #define PT_IS_HOSTVAR(n) \
-        ( (n) ? ((n)->node_type == PT_HOST_VAR) : false )
+        ( (n) && ((n)->node_type == PT_HOST_VAR) )
 
 #define PT_IS_INPUT_HOSTVAR(n) \
-        ( (n) ? ((n)->node_type == PT_HOST_VAR && \
-                 (n)->info.host_var.var_type == PT_HOST_IN) \
-              : false )
+        ( (n) && ((n)->node_type == PT_HOST_VAR && \
+                  (n)->info.host_var.var_type == PT_HOST_IN) \
+        )
 
 #define PT_IS_OUTPUT_HOSTVAR(n) \
-        ( (n) ? ((n)->node_type == PT_HOST_VAR && \
-                 (n)->info.host_var.var_type == PT_HOST_OUT) \
-              : false )
+        ( (n) && ((n)->node_type == PT_HOST_VAR && \
+                  (n)->info.host_var.var_type == PT_HOST_OUT) \
+        )
 
 #define PT_IS_PARAMETER(n) \
-        ( (n) ? ((n)->node_type == PT_NAME && \
-                 (n)->info.name.meta_class == PT_PARAMETER) : false )
+        ( (n) && ((n)->node_type == PT_NAME && \
+                  (n)->info.name.meta_class == PT_PARAMETER) )
 
 #define PT_IS_INPUT_PARAMETER(n) \
-        ( (n) ? ((n)->node_type == PT_NAME && \
-                 (n)->info.name.meta_class == PT_PARAMETER && \
-                 (n)->info.name.resolved == NULL) : false )
+        ( (n) && ((n)->node_type == PT_NAME && \
+                  (n)->info.name.meta_class == PT_PARAMETER && \
+                  (n)->info.name.resolved == NULL) )
 
 #define PT_IS_CONST(n) \
-        ( (n) ? ((n)->node_type == PT_VALUE || \
-                 (n)->node_type == PT_HOST_VAR || \
-                 ((n)->node_type == PT_NAME && \
-                  (n)->info.name.meta_class == PT_PARAMETER)) \
-              : false )
+        ( (n) && ((n)->node_type == PT_VALUE || \
+                  (n)->node_type == PT_HOST_VAR || \
+                  ((n)->node_type == PT_NAME && (n)->info.name.meta_class == PT_PARAMETER) ) \
+        )
 
 #define PT_IS_CONST_NOT_HOSTVAR(n) \
-        ( (n) ? ((n)->node_type == PT_VALUE || \
-                 ((n)->node_type == PT_NAME && \
-                  (n)->info.name.meta_class == PT_PARAMETER)) \
-              : false )
+        ( (n) && ((n)->node_type == PT_VALUE || \
+                  ((n)->node_type == PT_NAME && (n)->info.name.meta_class == PT_PARAMETER) ) \
+        )
 
 #define PT_IS_CONST_INPUT_HOSTVAR(n) \
-        ( (n) ? ((n)->node_type == PT_VALUE || \
-                 ((n)->node_type == PT_NAME && \
-                  (n)->info.name.meta_class == PT_PARAMETER) || \
-                 ((n)->node_type == PT_HOST_VAR && \
-                  (n)->info.host_var.var_type == PT_HOST_IN)) \
-              : false )
+        ( (n) && ((n)->node_type == PT_VALUE || \
+                  ((n)->node_type == PT_NAME && (n)->info.name.meta_class == PT_PARAMETER) || \
+                  ((n)->node_type == PT_HOST_VAR && (n)->info.host_var.var_type == PT_HOST_IN)) \
+        )
 
 #define PT_IS_CAST_CONST_INPUT_HOSTVAR(n) \
         ( (n) && \
           (n)->node_type == PT_EXPR && \
-          (n)->info.expr.op == PT_CAST \
-              ? PT_IS_CONST_INPUT_HOSTVAR((n)->info.expr.arg1) \
-              : false )
+          (n)->info.expr.op == PT_CAST && \
+          PT_IS_CONST_INPUT_HOSTVAR((n)->info.expr.arg1) )
 
 #define PT_IS_INSTNUM(n) \
-        ( (n) ? ((n)->node_type == PT_EXPR && \
-         ((n)->info.expr.op == PT_INST_NUM || \
-          (n)->info.expr.op == PT_ROWNUM)) \
-              : false )
+        ( (n) && ((n)->node_type == PT_EXPR && \
+                  ((n)->info.expr.op == PT_INST_NUM || (n)->info.expr.op == PT_ROWNUM)) \
+        )
 
 #define PT_IS_ORDERBYNUM(n) \
-        ( (n) ? ((n)->node_type == PT_EXPR && \
-         ((n)->info.expr.op == PT_ORDERBY_NUM)) \
-              : false )
+        ( (n) && ((n)->node_type == PT_EXPR && ((n)->info.expr.op == PT_ORDERBY_NUM)) )
 
 #define PT_IS_DISTINCT(n) \
-        ( ((n) && PT_IS_QUERY_NODE_TYPE((n)->node_type) ? \
-           (n)->info.query.all_distinct != PT_ALL : false) )
+        ( (n) && PT_IS_QUERY_NODE_TYPE((n)->node_type) && (n)->info.query.all_distinct != PT_ALL )
 
 #define PT_IS_META(n) \
         ( ((n) ? ((n)->node_type == PT_NAME ? \
@@ -413,33 +401,28 @@ struct json_t;
                    (n)->info.name.meta_class == PT_META_ATTR || \
                    (n)->info.name.meta_class == PT_CLASSOID_ATTR || \
                    (n)->info.name.meta_class == PT_OID_ATTR) : \
-                  ((n)->node_type == PT_SPEC ? \
-                   ((n)->info.spec.meta_class == PT_META_CLASS) : false)) \
+                  ((n)->node_type == PT_SPEC && ((n)->info.spec.meta_class == PT_META_CLASS))) \
               : false) )
 #define PT_IS_HINT_NODE(n) \
-        ( (n) ? ((n)->node_type == PT_NAME && \
-                 (n)->info.name.meta_class == PT_HINT_NAME) \
-            : false )
+        ( (n) && ((n)->node_type == PT_NAME && (n)->info.name.meta_class == PT_HINT_NAME) )
 
 #define PT_IS_UPDATE_OBJECT(n) \
-        ( ((n) && \
-           (n)->node_type == PT_UPDATE && \
-           (n)->info.update.spec == NULL) ? true : false )
+        ( (n) && (n)->node_type == PT_UPDATE && (n)->info.update.spec == NULL )
 
 #define PT_IS_UNARY(op) \
-        ( ((op) == PT_NOT || \
-           (op) == PT_IS_NULL || \
-           (op) == PT_IS_NOT_NULL || \
-           (op) == PT_EXISTS || \
-           (op) == PT_PRIOR || \
-           (op) == PT_CONNECT_BY_ROOT || \
-	   (op) == PT_QPRIOR || \
-           (op) == PT_UNARY_MINUS) ? true : false )
+        ( (op) == PT_NOT || \
+          (op) == PT_IS_NULL || \
+          (op) == PT_IS_NOT_NULL || \
+          (op) == PT_EXISTS || \
+          (op) == PT_PRIOR || \
+          (op) == PT_CONNECT_BY_ROOT || \
+	  (op) == PT_QPRIOR || \
+          (op) == PT_UNARY_MINUS) )
 
 #define PT_IS_N_COLUMN_UPDATE_EXPR(n) \
-        ( ((n) && \
-           (n)->node_type == PT_EXPR && \
-           (n)->info.expr.op == PT_PATH_EXPR_SET) ? true : false )
+        ( (n) && \
+          (n)->node_type == PT_EXPR && \
+          (n)->info.expr.op == PT_PATH_EXPR_SET )
 
 #define PT_DOES_FUNCTION_HAVE_DIFFERENT_ARGS(op) \
         ((op) == PT_MODULUS || (op) == PT_SUBSTRING || \
@@ -454,33 +437,32 @@ struct json_t;
 	 (op) == PT_STR_TO_DATE)
 
 #define PT_REQUIRES_HIERARCHICAL_QUERY(op) \
-        ( ((op) == PT_LEVEL || \
-           (op) == PT_CONNECT_BY_ISCYCLE || \
-           (op) == PT_CONNECT_BY_ISLEAF || \
-           (op) == PT_PRIOR || \
-           (op) == PT_CONNECT_BY_ROOT  || \
-	   (op) == PT_QPRIOR || \
-           (op) == PT_SYS_CONNECT_BY_PATH) ? true : false )
+        ( (op) == PT_LEVEL || \
+          (op) == PT_CONNECT_BY_ISCYCLE || \
+          (op) == PT_CONNECT_BY_ISLEAF || \
+          (op) == PT_PRIOR || \
+          (op) == PT_CONNECT_BY_ROOT  || \
+	  (op) == PT_QPRIOR || \
+          (op) == PT_SYS_CONNECT_BY_PATH )
 
 #define PT_CHECK_HQ_OP_EXCEPT_PRIOR(op) \
-        ( ((op) == PT_LEVEL || \
-           (op) == PT_CONNECT_BY_ISCYCLE || \
-           (op) == PT_CONNECT_BY_ISLEAF || \
-           (op) == PT_CONNECT_BY_ROOT  || \
-	   (op) == PT_SYS_CONNECT_BY_PATH) ? true : false )
+        ( (op) == PT_LEVEL || \
+          (op) == PT_CONNECT_BY_ISCYCLE || \
+          (op) == PT_CONNECT_BY_ISLEAF || \
+          (op) == PT_CONNECT_BY_ROOT  || \
+	  (op) == PT_SYS_CONNECT_BY_PATH )
 
 #define PT_IS_NUMBERING_AFTER_EXECUTION(op) \
-        ( ((op) == PT_INST_NUM || \
-           (op) == PT_ROWNUM || \
-           /*(int)(op) == (int)PT_GROUPBY_NUM || - TODO: this does not belong here. */ \
-           (op) == PT_ORDERBY_NUM) ? true : false )
+        ( (op) == PT_INST_NUM || \
+          (op) == PT_ROWNUM || \
+          /*(int)(op) == (int)PT_GROUPBY_NUM || - TODO: this does not belong here. */ \
+          (op) == PT_ORDERBY_NUM )
 
 #define PT_IS_SERIAL(op) \
-        ( ((op) == PT_CURRENT_VALUE || \
-           (op) == PT_NEXT_VALUE) ? true : false )
+        ( (op) == PT_CURRENT_VALUE || (op) == PT_NEXT_VALUE )
 
 #define PT_IS_EXPR_NODE_WITH_OPERATOR(n, op_type) \
-        ( (PT_IS_EXPR_NODE (n)) ? ((n)->info.expr.op == (op_type)) : false )
+        ( (PT_IS_EXPR_NODE (n)) && ((n)->info.expr.op == (op_type)) )
 
 #define PT_IS_EXPR_WITH_PRIOR_ARG(x) (PT_IS_EXPR_NODE (x) && \
 		PT_IS_EXPR_NODE_WITH_OPERATOR ((x)->info.expr.arg1, PT_PRIOR))
@@ -489,7 +471,7 @@ struct json_t;
 	( (n) ? (n)->data_type : NULL )
 
 #define PT_IS_SORT_SPEC_NODE(n) \
-        ( (n) ? ((n)->node_type == PT_SORT_SPEC) : false )
+        ( (n) && ((n)->node_type == PT_SORT_SPEC) )
 
 #define PT_IS_VALUE_QUERY(n) \
           ((n)->is_value_query == 1)

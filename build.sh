@@ -314,7 +314,9 @@ function build_package ()
 	# add VERSION-DIST instead of VERSION file for full version string
 	(cd $source_dir && echo "$version" > VERSION-DIST && ln -sfT . cubrid-$version &&
 	  (git ls-files -o VERSION-DIST ; git ls-files &&
-	    (cd $source_dir/cubridmanager && git ls-files) | sed -e "s|^|cubridmanager/|") | sed -e "/^VERSION$/d" -e "s|^|cubrid-$version/|" | $archive_cmd &&
+	    (cd $source_dir/cubridmanager && git ls-files) | sed -e "s|^|cubridmanager/|" && 
+	    ([ "$without_jdbc" = "true" ] || (cd $source_dir/cubrid-jdbc  && git ls-files -o output/VERSION-DIST; git ls-files) | sed -e "/^VERSION$/d" | sed -e "s|^|cubrid-jdbc/|")) | 
+            sed -e "/^VERSION$/d" -e "/^cubrid-jdbc$/d" -e "s|^|cubrid-$version/|" | $archive_cmd &&
 	    rm cubrid-$version VERSION-DIST)
 	if [ $? -eq 0 ]; then
 	  output_packages="$output_packages $package_name"
