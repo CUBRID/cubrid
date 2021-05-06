@@ -232,10 +232,6 @@ static const char *method_file_extension = ".o";
 #include <nlist.h>
 #endif /* !WINDOWS */
 
-// *INDENT-OFF*
-using unordered_oid_set = std::unordered_set<OID*, decltype(oid_pseudo_key)*, decltype(oid_eq)*>;
-// *INDENT-ON*
-
 #if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
 const char TEXT_CONSTRAINT_PREFIX[] = "#text_";
 #endif /* ENABLE_UNUSED_FUNCTION */
@@ -422,7 +418,7 @@ static bool sm_is_possible_to_recreate_constraint (MOP class_mop, const SM_CLASS
 static bool sm_filter_index_pred_have_invalid_attrs (SM_CLASS_CONSTRAINT * constraint, char *class_name,
 						     SM_ATTRIBUTE * old_atts, SM_ATTRIBUTE * new_atts);
 
-static int sm_collect_truncatable_classes (MOP class_mop, unordered_oid_set & trun_classes, bool is_cascade);
+static int sm_collect_truncatable_classes (MOP class_mop, std::unordered_set < OID > &trun_classes, bool is_cascade);
 static int sm_truncate_class_internal (MOP class_mop);
 static int sm_truncate_using_delete (MOP class_mop);
 static int sm_save_nested_view_versions (PARSER_CONTEXT * parser, DB_OBJECT * class_object, SM_CLASS * class_);
@@ -15630,7 +15626,7 @@ sm_truncate_using_destroy_heap (MOP class_mop)
  *   is_cascade(in): whether to cascade TRUNCATE to FK-referring classes
  */
 int
-sm_collect_truncatable_classes (MOP class_mop, unordered_oid_set & trun_classes, bool is_cascade)
+sm_collect_truncatable_classes (MOP class_mop, std::unordered_set < OID > &trun_classes, bool is_cascade)
 {
   int error = NO_ERROR;
   SM_CLASS *class_ = NULL;
@@ -15645,7 +15641,7 @@ sm_collect_truncatable_classes (MOP class_mop, unordered_oid_set & trun_classes,
       return er_errid ();
     }
 
-  trun_classes.emplace (ws_oid (class_mop));
+  trun_classes.emplace (*ws_oid (class_mop));
 
   pk_constraint = classobj_find_cons_primary_key (class_->constraints);
   if (pk_constraint == NULL || pk_constraint->fk_info == NULL)
@@ -15665,7 +15661,7 @@ sm_collect_truncatable_classes (MOP class_mop, unordered_oid_set & trun_classes,
   /* Find FK-child classes to cascade. */
   for (fk_ref = pk_constraint->fk_info; fk_ref; fk_ref = fk_ref->next)
     {
-      if (trun_classes.find (&fk_ref->self_oid) != trun_classes.end ())
+      if (trun_classes.find (fk_ref->self_oid) != trun_classes.end ())
 	{
 	  continue;		/* already checked */
 	}
@@ -15706,7 +15702,7 @@ sm_truncate_class (MOP class_mop, const bool is_cascade)
 {
   int error = NO_ERROR;
   // *INDENT-OFF*
-  unordered_oid_set trun_classes (1, oid_pseudo_key, oid_eq);
+  std::unordered_set<OID> trun_classes;
   // *INDENT-ON*
 
   assert (class_mop != NULL);
@@ -15726,7 +15722,7 @@ sm_truncate_class (MOP class_mop, const bool is_cascade)
   // *INDENT-OFF*
   for (const auto& cls_oid : trun_classes)
   {
-    error = sm_truncate_class_internal (ws_mop (cls_oid, NULL));
+    error = sm_truncate_class_internal (ws_mop (&cls_oid, NULL));
     if (error != NO_ERROR)
     {
       goto error_exit;
