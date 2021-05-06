@@ -37,8 +37,8 @@ jobs:
   build:
     <<: *defaults
     environment:
-      MAKEFLAGS: -j2
-    
+      MAKEFLAGS: -j 10
+    resource_class: large
     steps:
       - checkout
       - run:
@@ -60,13 +60,15 @@ jobs:
     <<: *defaults
     environment:
       TEST_SUITE: medium
+    resource_class: medium
     <<: *test_defaults
 
   test_sql:
     <<: *defaults
     environment:
       TEST_SUITE: sql
-    parallelism: 4
+    resource_class: medium
+    parallelism: 8
     <<: *test_defaults
 
 workflows:
