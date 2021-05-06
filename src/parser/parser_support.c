@@ -2717,25 +2717,6 @@ pt_column_updatable (PARSER_CONTEXT * parser, PT_NODE * statement)
 #endif
 
 /*
- * pt_has_error () - returns true if there are errors recorder for this parser
- *   return:
- *   parser(in):
- */
-int
-pt_has_error (const PARSER_CONTEXT * parser)
-{
-  if (parser && (parser->error_msgs != NULL || parser->has_internal_error))
-    {
-#if 0				/* TODO */
-      assert (er_errid () != NO_ERROR);
-#endif
-      return 1;
-    }
-
-  return 0;
-}
-
-/*
  * pt_statement_line_number () -
  *   return: a statement's starting source line number
  *   stmt(in):
