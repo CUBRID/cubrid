@@ -781,7 +781,7 @@ logddl_write ()
 	}
 
       len = logddl_create_log_msg (buf);
-      if (len < 0 || fwrite (buf, sizeof (char), len, fp) != len)
+      if (len < 0 || fwrite (buf, sizeof (char), len, fp) != (size_t) len)
 	{
 	  goto write_error;
 	}
@@ -967,7 +967,7 @@ logddl_write_end_for_csql_fileinput (const char *fmt, ...)
       logddl_file_copy (ddl_audit_handle->load_filename, ddl_audit_handle->copy_fullpath);
 
       len = logddl_create_log_msg (buf);
-      if (len < 0 || fwrite (buf, sizeof (char), len, fp) != len)
+      if (len < 0 || fwrite (buf, sizeof (char), len, fp) != (size_t) len)
 	{
 	  goto write_error;
 	}
