@@ -36,6 +36,7 @@
 namespace cublog
 {
 #if defined(SERVER_MODE)
+
   /* a class to handle infrastructure for parallel log recovery/replication RAII-style;
    * usage:
    *  - instantiate an object of this class with the desired number of background workers
@@ -100,6 +101,7 @@ namespace cublog
 	  using ux_redo_job_base = std::unique_ptr<redo_job_base>;
 	  using ux_redo_job_deque = std::deque<ux_redo_job_base>;
 	  using vpid_set = std::set<VPID>;
+	  using log_lsa_set = std::set<log_lsa>;
 
 	public:
 	  redo_job_queue ();
@@ -181,7 +183,10 @@ namespace cublog
 	   * mechanism guarantees ordering among entries with the same VPID;
 	   */
 	  vpid_set m_in_progress_vpids;
+	  log_lsa_set m_in_progress_lsas;
 	  mutable std::mutex m_in_progress_mutex;
+	  /* signalled when the 'in progress' containers are empty
+	   */
 	  mutable std::condition_variable m_in_progress_vpids_empty_cv;
       };
 

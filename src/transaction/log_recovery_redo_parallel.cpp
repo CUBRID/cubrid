@@ -91,7 +91,7 @@ namespace cublog
 
 	  // access the m_in_progress_vpids guarded; another option to reduce contention would
 	  // be to copy the contents (while guarded) and then check against the contents outside of lock
-	  std::lock_guard<std::mutex> lock_in_progress_vpids (m_in_progress_mutex);
+	  std::lock_guard<std::mutex> in_progress_lock (m_in_progress_mutex);
 	  job_to_consume = do_locked_find_job_to_consume ();
 	  if (job_to_consume == nullptr)
 	    {
@@ -184,9 +184,15 @@ namespace cublog
   void
   redo_parallel::redo_job_queue::do_locked_mark_job_started (const ux_redo_job_base &a_job)
   {
+    assert (m_in_progress_vpids.size () == m_in_progress_lsas.size ());
+
     const vpid &job_vpid = a_job->get_vpid ();
     assert (m_in_progress_vpids.find (job_vpid) == m_in_progress_vpids.cend ());
     m_in_progress_vpids.insert (job_vpid);
+
+    const log_lsa &job_log_lsa = a_job->get_log_lsa ();
+    assert (m_in_progress_lsas.find (job_log_lsa) == m_in_progress_lsas.cend ());
+    m_in_progress_lsas.insert (job_log_lsa);
   }
 
   void
@@ -194,13 +200,20 @@ namespace cublog
   {
     bool set_empty = false;
     {
-      std::lock_guard<std::mutex> lock_in_progress_vpids (m_in_progress_mutex);
+      std::lock_guard<std::mutex> in_progress_lock (m_in_progress_mutex);
 
       const auto &job_vpid = a_job->get_vpid ();
       const auto vpid_it = m_in_progress_vpids.find (job_vpid);
       assert (vpid_it != m_in_progress_vpids.cend ());
       m_in_progress_vpids.erase (vpid_it);
       set_empty = m_in_progress_vpids.empty ();
+
+      const log_lsa &job_log_lsa = a_job->get_log_lsa ();
+      const auto log_lsa_it = m_in_progress_lsas.find (job_log_lsa);
+      assert (log_lsa_it != m_in_progress_lsas.cend ());
+      m_in_progress_lsas.erase (log_lsa_it);
+
+      assert (m_in_progress_vpids.size () == m_in_progress_lsas.size ());
     }
     if (set_empty)
       {
@@ -220,11 +233,12 @@ namespace cublog
     }
 
     {
-      std::unique_lock<std::mutex> empty_in_progress_vpids_lock (m_in_progress_mutex);
-      m_in_progress_vpids_empty_cv.wait (empty_in_progress_vpids_lock, [this] ()
+      std::unique_lock<std::mutex> empty_in_progress_lock (m_in_progress_mutex);
+      m_in_progress_vpids_empty_cv.wait (empty_in_progress_lock, [this] ()
       {
 	return m_in_progress_vpids.empty ();
       });
+      assert (m_in_progress_lsas.empty ());
     }
 
     assert_idle ();
@@ -240,7 +254,7 @@ namespace cublog
       queues_empty = m_queues_empty;
     }
     {
-      std::lock_guard<std::mutex> empty_in_progress_vpids_lock (m_in_progress_mutex);
+      std::lock_guard<std::mutex> empty_in_progress_lock (m_in_progress_mutex);
       in_progress_vpids_empty = m_in_progress_vpids.empty ();
     }
     return queues_empty && in_progress_vpids_empty;
