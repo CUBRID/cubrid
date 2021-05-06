@@ -281,7 +281,7 @@ namespace cublog
     // skip calculation if bogus input (sometimes, it is -1);
     // TODO: fix bogus input at the source if at all possible (debugging revealed that
     // it happens for LOG_COMMIT messages only and there is no point at the source where the 'at_time'
-    // is not filled in; the only other possibility is a reading misalignment that remains below the radar)
+    // is not filled in)
     if (a_start_time_msec > 0)
       {
 	const int64_t end_time_msec = util_get_time_as_ms_since_epoch ();
@@ -290,9 +290,9 @@ namespace cublog
 
 	perfmon_set_stat (thread_p, PSTAT_REDO_REPL_DELAY, static_cast<int> (time_diff_msec), false);
 
-	if (prm_get_bool_value (PRM_ID_LOG_CALC_REPL_DELAY))
+	if (prm_get_bool_value (PRM_ID_ER_LOG_CALC_REPL_DELAY))
 	  {
-	    er_log_debug (ARG_FILE_LINE, "[CALC_REPL_DELAY]: %9lld msec", time_diff_msec);
+	    _er_log_debug (ARG_FILE_LINE, "[CALC_REPL_DELAY]: %9lld msec", time_diff_msec);
 	  }
 
 	return NO_ERROR;
