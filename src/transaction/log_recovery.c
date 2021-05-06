@@ -2170,7 +2170,7 @@ log_is_page_of_record_broken (THREAD_ENTRY * thread_p, const LOG_LSA * log_lsa,
  *   end_redo_lsa(in):
  *   ismedia_crash(in): Are we recovering from a media crash ?
  *   stopat(in/out): Where to stop the recovery process.
- *                   (It may be set as a side effectto the location of last
+ *                   (It may be set as a side effect to the location of last
  *                    recovery transaction).
  *   did_incom_recovery(in):
  *
@@ -2178,7 +2178,7 @@ log_is_page_of_record_broken (THREAD_ENTRY * thread_p, const LOG_LSA * log_lsa,
  *              last checkpoint record reflected in the log and the data
  *              volumes. The transaction table and the starting address for
  *              redo phase is created. When this phase is finished, we know
- *              the transactions that need to be unilateraly aborted (active)
+ *              the transactions that need to be unilaterally aborted (active)
  *              and the transactions that have to be completed due to postpone
  *              actions and client loose ends.
  */
@@ -2607,7 +2607,6 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	    {
 	      // The transaction table snapshot was taken before the next log record was logged.
 	      // Rebuild the transaction table image based on checkpoint information
-	      assert (start_redo_lsa != nullptr);
 	      chkpt_infop->recovery_analysis (thread_p, *start_redo_lsa);
 	    }
 
