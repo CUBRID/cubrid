@@ -18,6 +18,7 @@
 
 #include "log_recovery_redo_parallel.hpp"
 
+#include "log_manager.h"
 #include "vpid.hpp"
 
 namespace cublog
@@ -229,6 +230,22 @@ namespace cublog
     assert_idle ();
   }
 
+  bool
+  redo_parallel::redo_job_queue::is_idle () const
+  {
+    bool queues_empty = false;
+    bool in_progress_vpids_empty = false;
+    {
+      std::lock_guard<std::mutex> empty_queues_lock (m_produce_queue_mutex);
+      queues_empty = m_queues_empty;
+    }
+    {
+      std::lock_guard<std::mutex> empty_in_progress_vpids_lock (m_in_progress_mutex);
+      in_progress_vpids_empty = m_in_progress_vpids.empty ();
+    }
+    return queues_empty && in_progress_vpids_empty;
+  }
+
   void
   redo_parallel::redo_job_queue::assert_idle () const
   {
@@ -382,10 +399,14 @@ namespace cublog
    *********************************************************************/
 
   redo_parallel::redo_parallel (unsigned a_worker_count)
-    : m_worker_pool (nullptr), m_waited_for_termination (false)
+    : m_task_count { a_worker_count }
+    , m_worker_pool (nullptr)
+    , m_waited_for_termination (false)
   {
     assert (a_worker_count > 0);
-    m_task_count = a_worker_count;
+
+    const thread_type tt = log_is_in_crash_recovery () ? TT_RECOVERY : TT_REPLICATION;
+    m_pool_context_manager = std::make_unique<cubthread::system_worker_entry_manager> (tt);
 
     do_init_worker_pool ();
     do_init_tasks ();
@@ -441,6 +462,15 @@ namespace cublog
     m_job_queue.wait_for_idle ();
   }
 
+  bool
+  redo_parallel::is_idle () const
+  {
+    assert (false == m_waited_for_termination);
+    assert (false == m_job_queue.get_adding_finished ());
+
+    return m_job_queue.is_idle ();
+  }
+
   void
   redo_parallel::do_init_worker_pool ()
   {
@@ -451,7 +481,8 @@ namespace cublog
     cubthread::manager *thread_manager = cubthread::get_manager ();
 
     m_worker_pool = thread_manager->create_worker_pool (m_task_count, m_task_count, "log_recovery_redo_thread_pool",
-		    nullptr, m_task_count, false /*debug_logging*/);
+		    m_pool_context_manager.get (),
+		    m_task_count, false /*debug_logging*/);
   }
 
   void
@@ -466,5 +497,23 @@ namespace cublog
 	auto task = new redo_task (m_task_state_bookkeeping, m_job_queue);
 	m_worker_pool->execute (task);
       }
+  }
+
+  /*********************************************************************
+   * redo_job_replication_delay_impl - definition
+   *********************************************************************/
+
+  redo_job_replication_delay_impl::redo_job_replication_delay_impl (
+	  const log_lsa &a_rcv_lsa, time_msec_t a_start_time_msec)
+    : redo_parallel::redo_job_base (SENTINEL_VPID, a_rcv_lsa)
+    , m_start_time_msec (a_start_time_msec)
+  {
+  }
+
+  int  redo_job_replication_delay_impl::execute (THREAD_ENTRY *thread_p, log_reader &,
+      LOG_ZIP &, LOG_ZIP &)
+  {
+    const int res = log_rpl_calculate_replication_delay (thread_p, m_start_time_msec);
+    return res;
   }
 }

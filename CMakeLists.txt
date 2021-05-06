@@ -240,7 +240,17 @@ set(RELEASE_STRING ${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}.${CUBRID_PATC
 # BUILD_NUMBER (digital only version string) for legacy codes
 set(BUILD_NUMBER ${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}.${CUBRID_PATCH_VERSION}.${CUBRID_EXTRA_VERSION})
 set(BUILD_OS ${CMAKE_SYSTEM_NAME})
-string(TOLOWER ${CMAKE_BUILD_TYPE} BUILD_TYPE)
+
+# BUILD_TYPE
+if(CMAKE_BUILD_TYPE MATCHES "Debug")
+  set(BUILD_TYPE "debug")
+elseif(CMAKE_BUILD_TYPE MATCHES "Coverage|Profile")
+  string(TOLOWER "${CMAKE_BUILD_TYPE} debug" BUILD_TYPE)
+elseif(CMAKE_BUILD_TYPE MATCHES "Release|RelWithDebInfo")
+  set(BUILD_TYPE "release")
+else(CMAKE_BUILD_TYPE MATCHES "Debug")
+  set(BUILD_TYPE "unknown")
+endif(CMAKE_BUILD_TYPE MATCHES "Debug")
 
 if(MSVC)
   configure_file(cmake/version.rc.cmake version.rc)
@@ -314,7 +324,7 @@ else(UNIX)
   set(CMAKE_SHARED_LINKER_FLAGS_RELWITHDEBINFO "/INCREMENTAL:NO ${replaceIncFlag}" )
 
   #set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /WX /wd4820 /showIncludes" )
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W3 /wd4820" )
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W3 /wd4820 /std:c++17")
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /W3" )
   set(CMAKE_CXX_STANDARD 17)
 endif(UNIX)

@@ -164,6 +164,7 @@ typedef enum
   PERF_MODULE_SYSTEM = 0,
   PERF_MODULE_USER,
   PERF_MODULE_VACUUM,
+  PERF_MODULE_REPLICATION,
 
   PERF_MODULE_CNT
 } PERF_MODULE_TYPE;
@@ -634,6 +635,12 @@ typedef enum
   PSTAT_PB_AVOID_DEALLOC_CNT,
   PSTAT_PB_AVOID_VICTIM_CNT,
 
+  /* Redo recovery and replication statistics */
+  PSTAT_REDO_REPL_DELAY,
+  PSTAT_REDO_REPL_LOG_REDO_SYNC,
+  PSTAT_LOG_REDO_ASYNC,
+  PSTAT_LOG_REDO_FUNC_EXEC,
+
   /* Complex statistics */
   PSTAT_PBX_FIX_COUNTERS,
   PSTAT_PBX_PROMOTE_COUNTERS,
@@ -648,6 +655,10 @@ typedef enum
   PSTAT_THREAD_DAEMON_STATS,
   PSTAT_DWB_FLUSHED_BLOCK_NUM_VOLUMES,
   PSTAT_LOAD_THREAD_STATS,
+
+  /* IMPORTANT: only add complex statistics here; non-complex statistics
+   * should be added before the complex entries; dump to file/buffer internal
+   * functions depend on this invariant */
 
   PSTAT_COUNT
 } PERF_STAT_ID;

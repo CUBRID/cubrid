@@ -41,6 +41,7 @@
 #include "slotted_page.h"
 #include "system_parameter.h"
 #include "thread_manager.hpp"
+#include "util_func.h"
 
 static void log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 				LOG_RCVINDEX rcvindex, const VPID * rcv_vpid, LOG_RCV * rcv,
@@ -107,7 +108,7 @@ static void log_recovery_resetlog (THREAD_ENTRY * thread_p, const LOG_LSA * new_
 static int log_recovery_find_first_postpone (THREAD_ENTRY * thread_p, LOG_LSA * ret_lsa, LOG_LSA * start_postpone_lsa,
 					     LOG_TDES * tdes);
 
-static int log_rv_record_modify_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is_undo);
+static int log_rv_record_modify_internal (THREAD_ENTRY * thread_p, const LOG_RCV * rcv, bool is_undo);
 static int log_rv_undoredo_partial_changes_recursive (THREAD_ENTRY * thread_p, OR_BUF * rcv_buf, RECDES * record,
 						      bool is_undo);
 
@@ -418,7 +419,7 @@ end:
  */
 void
 log_rv_redo_record (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader,
-		    int (*redofun) (THREAD_ENTRY * thread_p, LOG_RCV *), LOG_RCV * rcv,
+		    int (*redofun) (THREAD_ENTRY * thread_p, const LOG_RCV *), LOG_RCV * rcv,
 		    const LOG_LSA * rcv_lsa_ptr, int undo_length, const char *undo_data, LOG_ZIP & redo_unzip)
 {
   int error_code;
@@ -1460,7 +1461,7 @@ log_rv_analysis_complete (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_ls
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_DONETIME), log_lsa, log_page_p);
 
   donetime = (LOG_REC_DONETIME *) ((char *) log_page_p->area + log_lsa->offset);
-  last_at_time = (time_t) donetime->at_time;
+  last_at_time = util_msec_to_sec (donetime->at_time);
   if (stop_at != NULL && *stop_at != (time_t) (-1) && difftime (*stop_at, last_at_time) < 0)
     {
 #if !defined(NDEBUG)
@@ -3690,7 +3691,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		    const LOG_REC_DONETIME *donetime = log_pgptr_reader.reinterpret_cptr<LOG_REC_DONETIME> ();
 		    // *INDENT-ON*
 
-		    if (difftime (*stopat, (time_t) donetime->at_time) < 0)
+		    // stopat is provided in seconds
+		    const time_t log_at_time = util_msec_to_sec (donetime->at_time);
+		    if (difftime (*stopat, log_at_time) < 0)
 		      {
 			/*
 			 * Stop the recovery process at this point
@@ -5959,7 +5962,7 @@ log_rv_undoredo_record_partial_changes (THREAD_ENTRY * thread_p, char *rcv_data,
  * rcv (in)	 : Recovery data.
  */
 int
-log_rv_redo_record_modify (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+log_rv_redo_record_modify (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   return log_rv_record_modify_internal (thread_p, rcv, false);
 }
@@ -5977,7 +5980,7 @@ log_rv_redo_record_modify (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * rcv (in)	 : Recovery data.
  */
 int
-log_rv_undo_record_modify (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+log_rv_undo_record_modify (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   return log_rv_record_modify_internal (thread_p, rcv, true);
 }
@@ -5996,7 +5999,7 @@ log_rv_undo_record_modify (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * is_undo (in)  : True if undo recovery, false if redo recovery.
  */
 static int
-log_rv_record_modify_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is_undo)
+log_rv_record_modify_internal (THREAD_ENTRY * thread_p, const LOG_RCV * rcv, bool is_undo)
 {
   INT16 flags = rcv->offset & LOG_RV_RECORD_MODIFY_MASK;
   PGSLOTID slotid = rcv->offset & (~LOG_RV_RECORD_MODIFY_MASK);

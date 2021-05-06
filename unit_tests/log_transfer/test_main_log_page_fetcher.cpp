@@ -19,7 +19,7 @@
 #define CATCH_CONFIG_MAIN
 
 #include "catch2/catch.hpp"
-#include "log_page_async_fetcher.hpp"
+#include "log_page_fetcher.hpp"
 #include "log_reader.hpp"
 
 #include <mutex>

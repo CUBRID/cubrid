@@ -25,6 +25,7 @@
 #include "log_reader.hpp"
 #include "log_record.hpp"
 #include "thread_entry_task.hpp"
+#include "perf_monitor_trackers.hpp"
 
 #include <condition_variable>
 #include <mutex>
@@ -63,8 +64,13 @@ namespace cublog
       void redo_upto (cubthread::entry &thread_entry, const log_lsa &end_redo_lsa);
       template <typename T>
       void read_and_redo_record (cubthread::entry &thread_entry, LOG_RECTYPE rectype, const log_lsa &rec_lsa);
+      template <typename T>
+      void calculate_replication_delay_or_dispatch_async (cubthread::entry &thread_entry,
+	  const log_lsa &rec_lsa);
 
+    private:
       std::unique_ptr<cubthread::entry_task> m_daemon_task;
+      std::unique_ptr<cubthread::entry_manager> m_daemon_context_manager;
       cubthread::daemon *m_daemon = nullptr;
 
       log_lsa m_redo_lsa = NULL_LSA;
@@ -76,7 +82,18 @@ namespace cublog
       LOG_ZIP m_redo_unzip;
 
       std::unique_ptr<cublog::redo_parallel> m_parallel_replication_redo;
+
+      /* perf data for processing log redo on the page server - the synchronous part:
+       *  - if the infrastructure to apply recovery log redo in parallel is used, it does not
+       *    include the calling of the redo function as that part will be
+       *    included in the 'async' couterpart logging
+       *  - if the log redo is applied synchronously, these values will include the
+       *    effective calling of the redo function
+       */
+      perfmon_counter_timer_tracker m_perfmon_redo_sync;
   };
+
+  int log_rpl_calculate_replication_delay (THREAD_ENTRY *thread_p, time_t a_start_time_msec);
 }
 
 #endif // !_LOG_REPLICATION_HPP_

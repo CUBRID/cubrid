@@ -60,6 +60,10 @@
 #if defined(SERVER_MODE)
 #include "server_support.h"
 #endif /* SERVER_MODE */
+#include "db_date.h"
+#include "fault_injection.h"
+#include "filter_pred_cache.h"
+#include "heap_file.h"
 #include "log_append.hpp"
 #include "log_archives.hpp"
 #include "log_compress.h"
@@ -68,27 +72,24 @@
 #include "log_system_tran.hpp"
 #include "log_volids.hpp"
 #include "log_writer.h"
-#include "partition_sr.h"
-#include "filter_pred_cache.h"
-#include "heap_file.h"
-#include "slotted_page.h"
 #include "object_primitive.h"
 #include "object_representation.h"
+#include "partition_sr.h"
+#include "slotted_page.h"
 #include "tz_support.h"
-#include "db_date.h"
-#include "fault_injection.h"
 #if defined (SA_MODE)
 #include "connection_support.h"
 #endif /* defined (SA_MODE) */
+#include "boot_sr.h"
 #include "db_value_printer.hpp"
 #include "mem_block.hpp"
 #include "string_buffer.hpp"
-#include "boot_sr.h"
 #include "thread_daemon.hpp"
 #include "thread_entry.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
 #include "transaction_transient.hpp"
+#include "util_func.h"
 #include "vacuum.h"
 #include "xasl_cache.h"
 
@@ -306,6 +307,10 @@ static void log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG
 				   int data_size, const char *data);
 
 static int logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, void *args);
+
+static int log_create_metalog_file ();
+static int log_read_metalog_from_file ();
+static int log_write_metalog_to_file ();
 
 #if defined(SERVER_MODE)
 // *INDENT-OFF*
@@ -910,6 +915,14 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const cha
   /* Create the information file to append log info stuff to the DBA */
   logpb_create_log_info (log_Name_info, NULL);
 
+  /* Create meta log volume */
+  error_code = log_create_metalog_file ();
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
+
   catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_LOGINFO_ACTIVE);
   if (catmsg == NULL)
     {
@@ -1078,6 +1091,14 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
       logpb_fatal_error (thread_p, !init_emergency, ARG_FILE_LINE, "log_xinit");
       goto error;
     }
+
+  error_code = log_read_metalog_from_file ();
+  if (error_code != NO_ERROR && !init_emergency)
+    {
+      // Unable to mount meta log
+      goto error;
+    }
+
   logpb_decache_archive_info (thread_p);
   log_Gl.run_nxchkpt_atpageid = NULL_PAGEID;	/* Don't run the checkpoint */
   log_Gl.rcv_phase = LOG_RECOVERY_ANALYSIS_PHASE;
@@ -3180,7 +3201,7 @@ log_append_ha_server_state (THREAD_ENTRY * thread_p, int state)
   memset (ha_server_state, 0, sizeof (LOG_REC_HA_SERVER_STATE));
 
   ha_server_state->state = state;
-  ha_server_state->at_time = time (NULL);
+  ha_server_state->at_time = util_get_time_as_ms_since_epoch ();
 
   start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
@@ -3961,7 +3982,7 @@ log_sysop_end_logical_undo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, cons
  * undo_nxlsa (in) : LSA of next undo LSA (equivalent to compensated undo record previous LSA).
  */
 void
-log_sysop_end_logical_compensate (THREAD_ENTRY * thread_p, LOG_LSA * undo_nxlsa)
+log_sysop_end_logical_compensate (THREAD_ENTRY * thread_p, const LOG_LSA * undo_nxlsa)
 {
   LOG_REC_SYSOP_END log_record;
 
@@ -3980,7 +4001,7 @@ log_sysop_end_logical_compensate (THREAD_ENTRY * thread_p, LOG_LSA * undo_nxlsa)
  * posp_lsa (in) : The LSA of postpone record which was executed by this run postpone.
  */
 void
-log_sysop_end_logical_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * posp_lsa)
+log_sysop_end_logical_run_postpone (THREAD_ENTRY * thread_p, const LOG_LSA * posp_lsa)
 {
   LOG_REC_SYSOP_END log_record;
 
@@ -4627,7 +4648,7 @@ log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA 
     }
 
   donetime = (LOG_REC_DONETIME *) node->data_header;
-  donetime->at_time = time (NULL);
+  donetime->at_time = util_get_time_as_ms_since_epoch ();
 
   if (with_lock == LOG_PRIOR_LSA_WITH_LOCK)
     {
@@ -6262,13 +6283,12 @@ static LOG_PAGE *
 log_dump_record_transaction_finish (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
   LOG_REC_DONETIME *donetime;
-  time_t tmp_time;
   char time_val[CTIME_MAX];
 
   /* Read the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*donetime), log_lsa, log_page_p);
   donetime = (LOG_REC_DONETIME *) ((char *) log_page_p->area + log_lsa->offset);
-  tmp_time = (time_t) donetime->at_time;
+  const time_t tmp_time = util_msec_to_sec (donetime->at_time);
   (void) ctime_r (&tmp_time, time_val);
   fprintf (out_fp, ",\n     Transaction finish time at = %s\n", time_val);
 
@@ -8694,7 +8714,7 @@ log_get_charset_from_header_page (THREAD_ENTRY * thread_p, const char *db_fullna
  *              physical logging.
  */
 int
-log_rv_copy_char (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+log_rv_copy_char (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   char *to_data;
 
@@ -8751,7 +8771,7 @@ log_rv_dump_hexa (FILE * fp, int length, void *data)
  *              (e.g., removing a temporary volume) the data base domain.
  */
 int
-log_rv_outside_noop_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+log_rv_outside_noop_redo (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   return NO_ERROR;
 }
@@ -10213,6 +10233,56 @@ logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, vo
 					       false);
 
   return error_code;
+}
+
+// Create the meta log volume
+int
+log_create_metalog_file ()
+{
+  FILE *fp = fopen (log_Name_metainfo, "w");
+  if (!fp)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANNOT_CREATE_VOL, 3, boot_db_full_name (),
+	      er_get_msglog_filename ());
+      return ER_BO_CANNOT_CREATE_VOL;
+    }
+
+  log_Gl.m_metainfo.flush_to_file (fp);
+  fclose (fp);
+
+  return NO_ERROR;
+}
+
+// Get meta log from disk to log_Gl
+int
+log_read_metalog_from_file ()
+{
+  FILE *fp = fopen (log_Name_metainfo, "r");
+  if (!fp)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MOUNT_FAIL, 1, log_Name_metainfo);
+      return ER_LOG_MOUNT_FAIL;
+    }
+
+  log_Gl.m_metainfo.load_from_file (fp);
+  fclose (fp);
+  return NO_ERROR;
+}
+
+// Write meta log from log_Gl to disk
+int
+log_write_metalog_to_file ()
+{
+  FILE *fp = fopen (log_Name_metainfo, "r+");
+  if (!fp)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MOUNT_FAIL, 1, log_Name_metainfo);
+      return ER_LOG_MOUNT_FAIL;
+    }
+
+  log_Gl.m_metainfo.flush_to_file (fp);
+  fclose (fp);
+  return NO_ERROR;
 }
 
 //
