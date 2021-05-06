@@ -29,4 +29,10 @@ namespace cubcomm
     m_port = port;
     m_host = host;
   }
+
+  node::node (const node &nd)
+  {
+    m_port = nd.m_port;
+    m_host = nd.m_host;
+  }
 }

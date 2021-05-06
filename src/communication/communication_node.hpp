@@ -31,7 +31,7 @@ namespace cubcomm
       std::string m_host;
 
       node() = delete;
-      node (const node &);
+      node (const node &nd);
       node (long port, std::string host);
   };
 
