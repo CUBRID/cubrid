@@ -257,7 +257,7 @@ cublog::checkpoint_info::unpack (cubpacking::unpacker &deserializator)
   m_start_redo_lsa = { bigint, static_cast<std::int16_t> (i) };
 }
 
-const log_lsa &
+log_lsa
 cublog::checkpoint_info::get_start_redo_lsa () const
 {
   return m_start_redo_lsa;
