@@ -2033,11 +2033,11 @@ static int prm_er_log_vacuum_default = 1;
 static unsigned int prm_er_log_vacuum_flag = 0;
 
 bool PRM_ER_LOG_READ_LOG_PAGE = true;
-static bool prm_er_log_read_log_page_default = true;
+static bool prm_er_log_read_log_page_default = false;
 static unsigned int prm_er_log_read_log_page_flag = 0;
 
 bool PRM_ER_LOG_READ_DATA_PAGE = true;
-static bool prm_er_log_read_data_page_default = true;
+static bool prm_er_log_read_data_page_default = false;
 static unsigned int prm_er_log_read_data_page_flag = 0;
 
 bool PRM_DISABLE_VACUUM = false;
