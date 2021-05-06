@@ -29,18 +29,12 @@
 
 #include <cassert>
 #include <cinttypes>
-#include <cstring>
 #include <cstddef>
-
-const int page_id_bit_count = 48;
-const int page_offset_bit_count = 16;
 
 struct log_lsa
 {
-std::int64_t pageid:
-  page_id_bit_count;		/* Log page identifier : 6 bytes length */
-std::int64_t offset:
-  page_offset_bit_count;		/* Offset in page : 2 bytes length.
+  std::int64_t pageid:48;		/* Log page identifier : 6 bytes length */
+  std::int64_t offset:16;		/* Offset in page : 2 bytes length.
                                           offset == 'area offset' */
   /* The offset field is defined as 16bit-INT64 type (not short), because of alignment */
 
@@ -50,8 +44,6 @@ std::int64_t offset:
     , offset (log_offset)
   {
   }
-
-  inline log_lsa (const int64_t value);
   inline log_lsa (const log_lsa &olsa) = default;
   inline log_lsa &operator= (const log_lsa &olsa) = default;
 
@@ -64,7 +56,6 @@ std::int64_t offset:
   inline bool operator<= (const log_lsa &olsa) const;
   inline bool operator> (const log_lsa &olsa) const;
   inline bool operator>= (const log_lsa &olsa) const;
-  inline operator int64_t () const;
 };
 
 using LOG_LSA = log_lsa;	/* Log address identifier */
@@ -99,12 +90,6 @@ inline bool LSA_GT (const log_lsa *plsa1, const log_lsa *plsa2);
 //////////////////////////////////////////////////////////////////////////
 // inline/template implementation
 //////////////////////////////////////////////////////////////////////////
-
-log_lsa::log_lsa (const int64_t value)
-{
-  pageid = (value << page_offset_bit_count) >> page_offset_bit_count;
-  offset = value >> page_id_bit_count;
-}
 
 bool
 log_lsa::is_null () const
@@ -154,13 +139,6 @@ bool
 log_lsa::operator>= (const log_lsa &olsa) const
 {
   return !operator< (olsa);
-}
-
-log_lsa::operator int64_t () const
-{
-  int64_t result = 0;
-  std::memcpy (&result, this, sizeof (result));
-  return result;
 }
 
 //
