@@ -23420,18 +23420,16 @@ heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hf
 
   if (entry->hfid.hpgid != NULL_PAGEID)
     {
+      assert (entry->classname != NULL);	/* The previous caching must be done. */
+
       /* only hfid of the cached entry can be changed */
-      heap_hfid_table_log (thread_p, class_oid, "heap_cache_class_info the existing hfid: %d|%d|%d",
-			   HFID_AS_ARGS (&entry->hfid));
+      assert (classname_in == NULL || strcmp (entry->classname.load (), classname_in) == 0);
+      assert (entry->ftype == ftype);
 
       HFID_COPY (&entry->hfid, hfid);
 
-      if (classname_in != NULL)
-	{
-	  /* cached entry has to be the same as classname_in */
-	  assert (strcmp (entry->classname.load (), classname_in) != 0);
-	  return ER_FAILED;
-	}
+      heap_hfid_table_log (thread_p, class_oid, "heap_cache_class_info the existing hfid: %d|%d|%d",
+			   HFID_AS_ARGS (&entry->hfid));
     }
   else
     {
