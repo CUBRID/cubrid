@@ -24,11 +24,18 @@
 
 #if defined(CS_MODE)
 
-#include <assert.h>
 #include <limits.h>
 
 #include "connection_cl.h"
 #include "cubrid_log.h"
+
+typedef enum
+{
+  CLOG_STAGE_CONFIGURATION,
+  CLOG_STAGE_PREPARATION,
+  CLOG_STAGE_EXTRACTION,
+  CLOG_STAGE_FINALIZATION
+} CLOG_STAGE;
 
 typedef enum
 {
@@ -73,7 +80,25 @@ typedef enum
 
 extern int css_Service_id;
 
-CSS_CONN_ENTRY *g_conn_entry = NULL;
+CLOG_STAGE g_stage = CLOG_STAGE_CONFIGURATION;
+
+CSS_CONN_ENTRY *g_conn_entry;
+
+int g_connection_timeout = 300;	/* min/max: -1/360 (sec) */
+int g_extraction_timeout = 300;	/* min/max: -1/360 (sec) */
+int g_max_log_item = 512;	/* min/max: 1/1024 */
+bool g_all_in_cond = false;
+
+uint64_t *g_extraction_table;
+int g_extraction_table_size;
+
+char **g_extraction_user;
+int g_extraction_user_size;
+
+FILE *g_trace_log;
+char g_trace_log_path[PATH_MAX + 1] = "./";
+int g_trace_log_level = 0;
+int g_trace_log_filesize = 10;	/* MB */
 
 /*
  * cubrid_log_set_connection_timeout () -
@@ -83,10 +108,17 @@ CSS_CONN_ENTRY *g_conn_entry = NULL;
 int
 cubrid_log_set_connection_timeout (int timeout)
 {
+  if (g_stage != CLOG_STAGE_CONFIGURATION)
+    {
+      return CUBRID_LOG_INVALID_FUNC_CALL_STAGE;
+    }
+
   if (timeout < -1 || timeout > 360)
     {
       return CUBRID_LOG_INVALID_CONNECTION_TIMEOUT;
     }
+
+  g_connection_timeout = timeout;
 
   return CUBRID_LOG_SUCCESS;
 }
@@ -99,10 +131,17 @@ cubrid_log_set_connection_timeout (int timeout)
 int
 cubrid_log_set_extraction_timeout (int timeout)
 {
+  if (g_stage != CLOG_STAGE_CONFIGURATION)
+    {
+      return CUBRID_LOG_INVALID_FUNC_CALL_STAGE;
+    }
+
   if (timeout < -1 || timeout > 360)
     {
       return CUBRID_LOG_INVALID_EXTRACTION_TIMEOUT;
     }
+
+  g_extraction_timeout = timeout;
 
   return CUBRID_LOG_SUCCESS;
 }
@@ -117,6 +156,16 @@ cubrid_log_set_extraction_timeout (int timeout)
 int
 cubrid_log_set_tracelog (char *path, int level, int filesize)
 {
+  if (g_stage != CLOG_STAGE_CONFIGURATION)
+    {
+      return CUBRID_LOG_INVALID_FUNC_CALL_STAGE;
+    }
+
+  if (strlen (path) > PATH_MAX)
+    {
+      return CUBRID_LOG_INVALID_PATH;
+    }
+
   if (level < 0 || level > 2)
     {
       return CUBRID_LOG_INVALID_LEVEL;
@@ -134,6 +183,10 @@ cubrid_log_set_tracelog (char *path, int level, int filesize)
 	}
     }
 
+  snprintf (g_trace_log_path, PATH_MAX + 1, "%s", path);
+  g_trace_log_level = level;
+  g_trace_log_filesize = filesize;
+
   return CUBRID_LOG_SUCCESS;
 }
 
@@ -145,10 +198,17 @@ cubrid_log_set_tracelog (char *path, int level, int filesize)
 int
 cubrid_log_set_max_log_item (int max_log_item)
 {
+  if (g_stage != CLOG_STAGE_CONFIGURATION)
+    {
+      return CUBRID_LOG_INVALID_FUNC_CALL_STAGE;
+    }
+
   if (max_log_item < 1 || max_log_item > 1024)
     {
       return CUBRID_LOG_INVALID_MAX_LOG_ITEM;
     }
+
+  g_max_log_item = max_log_item;
 
   return CUBRID_LOG_SUCCESS;
 }
@@ -161,10 +221,17 @@ cubrid_log_set_max_log_item (int max_log_item)
 int
 cubrid_log_set_all_in_cond (int retrieve_all)
 {
+  if (g_stage != CLOG_STAGE_CONFIGURATION)
+    {
+      return CUBRID_LOG_INVALID_FUNC_CALL_STAGE;
+    }
+
   if (retrieve_all < 0 || retrieve_all > 1)
     {
       return CUBRID_LOG_INVALID_RETRIEVE_ALL;
     }
+
+  g_all_in_cond = retrieve_all;
 
   return CUBRID_LOG_SUCCESS;
 }
@@ -178,10 +245,24 @@ cubrid_log_set_all_in_cond (int retrieve_all)
 int
 cubrid_log_set_extraction_table (uint64_t * classoid_arr, int arr_size)
 {
+  if (g_stage != CLOG_STAGE_CONFIGURATION)
+    {
+      return CUBRID_LOG_INVALID_FUNC_CALL_STAGE;
+    }
+
   if ((classoid_arr == NULL && arr_size != 0) || (classoid_arr != NULL && arr_size == 0))
     {
       return CUBRID_LOG_INVALID_CLASSOID_ARR_SIZE;
     }
+
+  g_extraction_table = (uint64_t *) malloc (sizeof (uint64_t) * arr_size);
+  if (g_extraction_table == NULL)
+    {
+      return CUBRID_LOG_FAILED_MALLOC;
+    }
+
+  memcpy (g_extraction_table, classoid_arr, arr_size);
+  g_extraction_table_size = arr_size;
 
   return CUBRID_LOG_SUCCESS;
 }
@@ -195,10 +276,30 @@ cubrid_log_set_extraction_table (uint64_t * classoid_arr, int arr_size)
 int
 cubrid_log_set_extraction_user (char **user_arr, int arr_size)
 {
+  int i;
+
+  if (g_stage != CLOG_STAGE_CONFIGURATION)
+    {
+      return CUBRID_LOG_INVALID_FUNC_CALL_STAGE;
+    }
+
   if ((user_arr == NULL && arr_size != 0) || (user_arr != NULL && arr_size == 0))
     {
       return CUBRID_LOG_INVALID_USER_ARR_SIZE;
     }
+
+  g_extraction_user = (char **) malloc (sizeof (char *) * arr_size);
+  if (g_extraction_user == NULL)
+    {
+      return CUBRID_LOG_FAILED_MALLOC;
+    }
+
+  for (i = 0; i < arr_size; i++)
+    {
+      g_extraction_user[i] = strdup (user_arr[i]);
+    }
+
+  g_extraction_user_size = arr_size;
 
   return CUBRID_LOG_SUCCESS;
 }
@@ -213,6 +314,11 @@ cubrid_log_set_extraction_user (char **user_arr, int arr_size)
 int
 cubrid_log_connect_server (char *host, int port, char *dbname)
 {
+  if (g_stage != CLOG_STAGE_CONFIGURATION)
+    {
+      return CUBRID_LOG_INVALID_FUNC_CALL_STAGE;
+    }
+
   if (host == NULL)
     {
       return CUBRID_LOG_INVALID_HOST;
@@ -239,6 +345,8 @@ cubrid_log_connect_server (char *host, int port, char *dbname)
       goto cubrid_log_error;
     }
 
+  g_stage = CLOG_STAGE_PREPARATION;
+
   return CUBRID_LOG_SUCCESS;
 
 cubrid_log_error:
@@ -261,6 +369,11 @@ cubrid_log_error:
 int
 cubrid_log_find_lsa (time_t timestamp, uint64_t * lsa)
 {
+  if (g_stage != CLOG_STAGE_PREPARATION)
+    {
+      return CUBRID_LOG_INVALID_FUNC_CALL_STAGE;
+    }
+
   if (lsa == NULL)
     {
       return CUBRID_LOG_INVALID_OUT_PARAM;
@@ -279,10 +392,17 @@ cubrid_log_find_lsa (time_t timestamp, uint64_t * lsa)
 int
 cubrid_log_extract (uint64_t * lsa, CUBRID_LOG_ITEM ** log_item_list, int *list_size)
 {
+  if (g_stage != CLOG_STAGE_PREPARATION && g_stage != CLOG_STAGE_EXTRACTION)
+    {
+      return CUBRID_LOG_INVALID_FUNC_CALL_STAGE;
+    }
+
   if (lsa == NULL || log_item_list == NULL || list_size == NULL)
     {
       return CUBRID_LOG_INVALID_OUT_PARAM;
     }
+
+  g_stage = CLOG_STAGE_EXTRACTION;
 
   return CUBRID_LOG_SUCCESS;
 }
@@ -295,6 +415,11 @@ cubrid_log_extract (uint64_t * lsa, CUBRID_LOG_ITEM ** log_item_list, int *list_
 int
 cubrid_log_clear_log_item (CUBRID_LOG_ITEM * log_item_list)
 {
+  if (g_stage != CLOG_STAGE_EXTRACTION)
+    {
+      return CUBRID_LOG_INVALID_FUNC_CALL_STAGE;
+    }
+
   if (log_item_list == NULL)
     {
       return CUBRID_LOG_INVALID_LOGITEM_LIST;
@@ -310,10 +435,47 @@ cubrid_log_clear_log_item (CUBRID_LOG_ITEM * log_item_list)
 int
 cubrid_log_finalize (void)
 {
-  assert (g_conn_entry != NULL);
+  int i = 0;
+
+  if (g_stage != CLOG_STAGE_PREPARATION && g_stage != CLOG_STAGE_EXTRACTION)
+    {
+      return CUBRID_LOG_INVALID_FUNC_CALL_STAGE;
+    }
 
   css_free_conn (g_conn_entry);
   g_conn_entry = NULL;
+
+  g_connection_timeout = 300;
+  g_extraction_timeout = 300;
+  g_max_log_item = 512;
+  g_all_in_cond = false;
+
+  if (g_extraction_table != NULL)
+    {
+      free (g_extraction_table);
+      g_extraction_table = NULL;
+    }
+
+  g_extraction_table_size = 0;
+
+  if (g_extraction_user != NULL)
+    {
+      for (i = 0; i < g_extraction_user_size; i++)
+	{
+	  free (g_extraction_user[i]);
+	}
+
+      free (g_extraction_user);
+      g_extraction_user = NULL;
+    }
+
+  g_extraction_user_size = 0;
+
+  snprintf (g_trace_log_path, PATH_MAX + 1, "%s", "./");
+  g_trace_log_level = 0;
+  g_trace_log_filesize = 10;
+
+  g_stage = CLOG_STAGE_CONFIGURATION;
 
   return CUBRID_LOG_SUCCESS;
 }

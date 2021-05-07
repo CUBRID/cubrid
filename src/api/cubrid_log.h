@@ -28,6 +28,8 @@
 #include <stdint.h>
 #include <time.h>
 
+#define CUBRID_LOG_FAILED_MALLOC                (-28)
+#define CUBRID_LOG_INVALID_FUNC_CALL_STAGE      (-27)
 #define CUBRID_LOG_INVALID_CONNECTION_TIMEOUT   (-26)
 #define CUBRID_LOG_INVALID_EXTRACTION_TIMEOUT   (-25)
 #define CUBRID_LOG_NO_FILE_PERMISSION           (-24)
