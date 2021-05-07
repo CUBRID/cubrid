@@ -6871,7 +6871,7 @@ scan_next_dblink_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   vaidp = &scan_id->s.dblid;
 
   /* execute dblink scan */
-  
+
   while ((qp_scan = dblink_scan_next (&vaidp->scan_info, scan_id->val_list)) == S_SUCCESS)
     {
       /* evaluate the predicate to see if the tuple qualifies */
@@ -6925,17 +6925,17 @@ scan_next_dblink_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
       return S_SUCCESS;
     }
-  
-    /* scan error or end of scan */
-    if (qp_scan == S_END)
-      {
-        scan_id->position = S_AFTER;
-        return S_END;
-      }
-    else
-      {
-        return S_ERROR;
-      }
+
+  /* scan error or end of scan */
+  if (qp_scan == S_END)
+    {
+      scan_id->position = S_AFTER;
+      return S_END;
+    }
+  else
+    {
+      return S_ERROR;
+    }
 }
 
 /*

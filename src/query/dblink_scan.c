@@ -70,13 +70,13 @@ static int type_map[] = {
   CCI_A_TYPE_DATE,		/* CCI_U_TYPE_DATE */
   CCI_A_TYPE_DATE,		/* CCI_U_TYPE_TIME */
   CCI_A_TYPE_DATE,		/* CCI_U_TYPE_TIMESTAMP */
-  
+
   /* not support for collection type, processing as null */
-  0,				/* CCI_U_TYPE_SET */	
+  0,				/* CCI_U_TYPE_SET */
   0,				/* CCI_U_TYPE_MULTISET */
   0,				/* CCI_U_TYPE_SEQUENCE */
   0,				/* CCI_U_TYPE_OBJECT */
-  
+
   0,				/* CCI_U_TYPE_RESULTSET */
   CCI_A_TYPE_BIGINT,		/* CCI_U_TYPE_BIGINT */
   CCI_A_TYPE_DATE,		/* CCI_U_TYPE_DATETIME */
@@ -343,7 +343,7 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 	      return S_ERROR;
 	    }
 	  NULL_CHECK (ind);
-	  codeset = (INTL_CODESET)valptrp->val->data.enumeration.str_val.info.codeset;
+	  codeset = (INTL_CODESET) valptrp->val->data.enumeration.str_val.info.codeset;
 	  numeric_coerce_string_to_num ((char *) value, ind, codeset, valptrp->val);
 	  break;
 
@@ -358,19 +358,19 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 	    {
 	      return S_ERROR;
 	    }
-	  NULL_CHECK (ind);	  
-  	  valptrp->val->data.ch.medium.buf = (char *) value;
+	  NULL_CHECK (ind);
+	  valptrp->val->data.ch.medium.buf = (char *) value;
 	  valptrp->val->data.ch.medium.size = ind;
 	  if (utype == CCI_U_TYPE_ENUM)
 	    {
 	      int collation = valptrp->val->domain.char_info.collation_id;
 
-	      codeset = (INTL_CODESET)valptrp->val->data.enumeration.str_val.info.codeset;
-	      db_make_enumeration(valptrp->val, 1, (char *) value, ind, codeset, collation);
+	      codeset = (INTL_CODESET) valptrp->val->data.enumeration.str_val.info.codeset;
+	      db_make_enumeration (valptrp->val, 1, (char *) value, ind, codeset, collation);
 	    }
 	  else if (utype == CCI_U_TYPE_JSON)
 	    {
-	      db_json_val_from_str ((char *)value, ind, valptrp->val);
+	      db_json_val_from_str ((char *) value, ind, valptrp->val);
 	    }
 	  break;
 
