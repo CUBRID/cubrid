@@ -254,9 +254,7 @@ static PT_NODE *pt_apply_cte (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNC
 static PT_NODE *pt_apply_json_table (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
 static PT_NODE *pt_apply_json_table_node (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
 static PT_NODE *pt_apply_json_table_column (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-#if defined(SUPPORT_CUBLINK)
-static PT_NODE *pt_apply_cublink_table (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-#endif
+static PT_NODE *pt_apply_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
 static PARSER_APPLY_NODE_FUNC pt_apply_func_array[PT_NODE_NUMBER];
 
 static PT_NODE *pt_init_alter_serial (PT_NODE * p);
@@ -359,9 +357,7 @@ static PT_NODE *pt_init_cte (PT_NODE * p);
 static PT_NODE *pt_init_json_table (PT_NODE * p);
 static PT_NODE *pt_init_json_table_node (PT_NODE * p);
 static PT_NODE *pt_init_json_table_column (PT_NODE * p);
-#if defined(SUPPORT_CUBLINK)
-static PT_NODE *pt_init_cublink_table (PT_NODE * p);
-#endif
+static PT_NODE *pt_init_dblink_table (PT_NODE * p);
 static PARSER_INIT_NODE_FUNC pt_init_func_array[PT_NODE_NUMBER];
 
 static PARSER_VARCHAR *pt_print_alter_index (PARSER_CONTEXT * parser, PT_NODE * p);
@@ -471,9 +467,8 @@ static PARSER_VARCHAR *pt_print_cte (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_json_table (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_json_table_node (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_json_table_columns (PARSER_CONTEXT * parser, PT_NODE * p);
-#if defined(SUPPORT_CUBLINK)
-static PARSER_VARCHAR *pt_print_cublink_table (PARSER_CONTEXT * parser, PT_NODE * p);
-#endif
+static PARSER_VARCHAR *pt_print_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p);
+
 #if defined(ENABLE_UNUSED_FUNCTION)
 static PT_NODE *pt_apply_use (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
 static PT_NODE *pt_init_use (PT_NODE * p);
@@ -4966,9 +4961,8 @@ pt_init_apply_f (void)
   pt_apply_func_array[PT_JSON_TABLE] = pt_apply_json_table;
   pt_apply_func_array[PT_JSON_TABLE_NODE] = pt_apply_json_table_node;
   pt_apply_func_array[PT_JSON_TABLE_COLUMN] = pt_apply_json_table_column;
-#if defined(SUPPORT_CUBLINK)
-  pt_apply_func_array[PT_CUBLINK_TABLE] = pt_apply_cublink_table;
-#endif
+  pt_apply_func_array[PT_DBLINK_TABLE] = pt_apply_dblink_table;
+
   pt_apply_f = pt_apply_func_array;
 }
 
@@ -5087,9 +5081,8 @@ pt_init_init_f (void)
   pt_init_func_array[PT_JSON_TABLE] = pt_init_json_table;
   pt_init_func_array[PT_JSON_TABLE_NODE] = pt_init_json_table_node;
   pt_init_func_array[PT_JSON_TABLE_COLUMN] = pt_init_json_table_column;
-#if defined(SUPPORT_CUBLINK)
-  pt_init_func_array[PT_CUBLINK_TABLE] = pt_init_cublink_table;
-#endif
+  pt_init_func_array[PT_DBLINK_TABLE] = pt_init_dblink_table;
+
   pt_init_f = pt_init_func_array;
 }
 
@@ -5206,9 +5199,8 @@ pt_init_print_f (void)
   pt_print_func_array[PT_JSON_TABLE] = pt_print_json_table;
   pt_print_func_array[PT_JSON_TABLE_NODE] = pt_print_json_table_node;
   pt_print_func_array[PT_JSON_TABLE_COLUMN] = pt_print_json_table_columns;
-#if defined(SUPPORT_CUBLINK)
-  pt_print_func_array[PT_CUBLINK_TABLE] = pt_print_cublink_table;
-#endif
+  pt_print_func_array[PT_DBLINK_TABLE] = pt_print_dblink_table;
+
   pt_print_f = pt_print_func_array;
 }
 
@@ -9351,36 +9343,6 @@ pt_print_drop_variable (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_spec (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
 {
-#if defined(SUPPORT_CUBLINK)
-  if (p->info.spec.entity_name)
-    p->info.spec.entity_name = g (parser, p->info.spec.entity_name, arg);
-  if (p->info.spec.cte_name)
-    p->info.spec.cte_name = g (parser, p->info.spec.cte_name, arg);
-  if (p->info.spec.cte_pointer)
-    p->info.spec.cte_pointer = g (parser, p->info.spec.cte_pointer, arg);
-  if (p->info.spec.except_list)
-    p->info.spec.except_list = g (parser, p->info.spec.except_list, arg);
-  if (p->info.spec.derived_table)
-    p->info.spec.derived_table = g (parser, p->info.spec.derived_table, arg);
-  if (p->info.spec.range_var)
-    p->info.spec.range_var = g (parser, p->info.spec.range_var, arg);
-  if (p->info.spec.as_attr_list)
-    p->info.spec.as_attr_list = g (parser, p->info.spec.as_attr_list, arg);
-  if (p->info.spec.referenced_attrs)
-    p->info.spec.referenced_attrs = g (parser, p->info.spec.referenced_attrs, arg);
-  if (p->info.spec.path_entities)
-    p->info.spec.path_entities = g (parser, p->info.spec.path_entities, arg);
-  if (p->info.spec.path_conjuncts)
-    p->info.spec.path_conjuncts = g (parser, p->info.spec.path_conjuncts, arg);
-  if (p->info.spec.flat_entity_list)
-    p->info.spec.flat_entity_list = g (parser, p->info.spec.flat_entity_list, arg);
-  if (p->info.spec.method_list)
-    p->info.spec.method_list = g (parser, p->info.spec.method_list, arg);
-  if (p->info.spec.on_cond)
-    p->info.spec.on_cond = g (parser, p->info.spec.on_cond, arg);
-  if (p->info.spec.partition)
-    p->info.spec.partition = g (parser, p->info.spec.partition, arg);
-#else
   p->info.spec.entity_name = g (parser, p->info.spec.entity_name, arg);
   p->info.spec.cte_name = g (parser, p->info.spec.cte_name, arg);
   p->info.spec.cte_pointer = g (parser, p->info.spec.cte_pointer, arg);
@@ -9395,7 +9357,7 @@ pt_apply_spec (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *a
   p->info.spec.method_list = g (parser, p->info.spec.method_list, arg);
   p->info.spec.on_cond = g (parser, p->info.spec.on_cond, arg);
   p->info.spec.partition = g (parser, p->info.spec.partition, arg);
-#endif
+
   /* p->info.spec.using_cond = g(parser, p->info.spec.using_cond, arg); -- does not support named columns join */
 
   return p;
@@ -9547,8 +9509,7 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 
 	      q = pt_append_nulstring (parser, q, ")");
 	    }
-#if defined(SUPPORT_CUBLINK)
-	  else if (p->info.spec.derived_table_type == PT_DERIVED_CUBLINK_TABLE)
+	  else if (p->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
 	    {
 	      //     assert (false); // ctshim_assert
 	      q = pt_append_varchar (parser, q, r1);
@@ -9568,7 +9529,6 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 	      // ignore on_cond, using_cond
 	      return q;
 	    }
-#endif
 	  else
 	    {
 	      q = pt_append_nulstring (parser, q, "(");
@@ -9577,7 +9537,7 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 	    }
 	}
     }
-  //PT_DERIVED_CUBLINK_TABLE ?
+  //PT_DERIVED_DBLINK_TABLE ?
   if (!(parser->custom_print & PT_SUPPRESS_RESOLVED) && (p->info.spec.derived_table_type != PT_DERIVED_JSON_TABLE))
     {
       save_custom = parser->custom_print;
@@ -9616,7 +9576,7 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
       parser->custom_print = save_custom;
     }
-  //PT_DERIVED_CUBLINK_TABLE ?
+  //PT_DERIVED_DBLINK_TABLE ?
   if (p->info.spec.as_attr_list && !PT_SPEC_IS_CTE (p) && (p->info.spec.derived_table_type != PT_DERIVED_JSON_TABLE))
     {
       save_custom = parser->custom_print;
@@ -19355,44 +19315,44 @@ pt_move_node (REFPTR (PT_NODE, destp), REFPTR (PT_NODE, srcp))
   srcp = NULL;
 }
 
-#if defined(SUPPORT_CUBLINK)
+
 static PT_NODE *
-pt_apply_cublink_table (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
 {
-  if (p->info.cublink_table.is_name)
-    assert (false);		// Not Yet
+  if (p->info.dblink_table.is_name)
+    assert (false);		// Not Yet ctshim_assert
   else
     {
 #if 0				// Is it the necessary code?
-      // p->info.cublink_table.__cts_conn = g(parser, p->info.cublink_table.__cts_conn, arg);
+      // p->info.dblink_table.__cts_conn = g(parser, p->info.dblink_table.__cts_conn, arg);
 
-      p->info.cublink_table.__cts_url = g (parser, p->info.cublink_table.__cts_url, arg);
-      p->info.cublink_table.__cts_user = g (parser, p->info.cublink_table.__cts_user, arg);
-      p->info.cublink_table.__cts_pwd = g (parser, p->info.cublink_table.__cts_pwd, arg);
-      p->info.cublink_table.qstr = g (parser, p->info.cublink_table.qstr, arg);
+      p->info.dblink_table.__cts_url = g (parser, p->info.dblink_table.__cts_url, arg);
+      p->info.dblink_table.__cts_user = g (parser, p->info.dblink_table.__cts_user, arg);
+      p->info.dblink_table.__cts_pwd = g (parser, p->info.dblink_table.__cts_pwd, arg);
+      p->info.dblink_table.qstr = g (parser, p->info.dblink_table.qstr, arg);
 #endif
     }
 
-  p->info.cublink_table.cols = g (parser, p->info.cublink_table.cols, arg);
+  p->info.dblink_table.cols = g (parser, p->info.dblink_table.cols, arg);
   return p;
 }
 
 static PT_NODE *
-pt_init_cublink_table (PT_NODE * p)
+pt_init_dblink_table (PT_NODE * p)
 {
-  memset (&p->info.cublink_table, 0x00, sizeof (PT_CUBLINK_INFO));
-  p->info.cublink_table.is_name = true;
+  memset (&p->info.dblink_table, 0x00, sizeof (PT_DBLINK_INFO));
+  p->info.dblink_table.is_name = true;
   return p;
 }
 
 static PARSER_VARCHAR *
-pt_print_cublink_table (PARSER_CONTEXT * parser, PT_NODE * p)
+pt_print_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = 0, *r;
 
-  q = pt_append_nulstring (parser, q, "CUBLINK(");
+  q = pt_append_nulstring (parser, q, "DBLINK(");
 
-  if (p->info.cublink_table.is_name)
+  if (p->info.dblink_table.is_name)
     {
       assert (false);		// Not Yet
     }
@@ -19402,40 +19362,40 @@ pt_print_cublink_table (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_bytes (parser, q, "URL=", strlen ("URL="));
 #if 1
       q =
-	pt_append_bytes (parser, q, (char *) p->info.cublink_table.__cts_url->info.value.data_value.str->bytes,
-			 p->info.cublink_table.__cts_url->info.value.data_value.str->length);
-      //q = pt_append_nulstring (parser, q, (char*)p->info.cublink_table.__cts_url->info.value.data_value.str->bytes);
+	pt_append_bytes (parser, q, (char *) p->info.dblink_table.__cts_url->info.value.data_value.str->bytes,
+			 p->info.dblink_table.__cts_url->info.value.data_value.str->length);
+      //q = pt_append_nulstring (parser, q, (char*)p->info.dblink_table.__cts_url->info.value.data_value.str->bytes);
       q = pt_append_bytes (parser, q, " USER=", strlen ("USER="));
       q =
-	pt_append_bytes (parser, q, (char *) p->info.cublink_table.__cts_user->info.value.data_value.str->bytes,
-			 p->info.cublink_table.__cts_user->info.value.data_value.str->length);
-      //q = pt_append_nulstring (parser, q, (char*)p->info.cublink_table.__cts_user->info.value.data_value.str->bytes);
+	pt_append_bytes (parser, q, (char *) p->info.dblink_table.__cts_user->info.value.data_value.str->bytes,
+			 p->info.dblink_table.__cts_user->info.value.data_value.str->length);
+      //q = pt_append_nulstring (parser, q, (char*)p->info.dblink_table.__cts_user->info.value.data_value.str->bytes);
       q = pt_append_bytes (parser, q, " PASSWORD=", strlen ("PASSWORD="));
       q =
-	pt_append_bytes (parser, q, (char *) p->info.cublink_table.__cts_pwd->info.value.data_value.str->bytes,
-			 p->info.cublink_table.__cts_pwd->info.value.data_value.str->length);
-      //q = pt_append_nulstring (parser, q, (char*)p->info.cublink_table.__cts_pwd->info.value.data_value.str->bytes); 
+	pt_append_bytes (parser, q, (char *) p->info.dblink_table.__cts_pwd->info.value.data_value.str->bytes,
+			 p->info.dblink_table.__cts_pwd->info.value.data_value.str->length);
+      //q = pt_append_nulstring (parser, q, (char*)p->info.dblink_table.__cts_pwd->info.value.data_value.str->bytes); 
       q = pt_append_bytes (parser, q, "'", 1);
 #else
-      r = pt_print_bytes (parser, p->info.cublink_table.__cts_url);
+      r = pt_print_bytes (parser, p->info.dblink_table.__cts_url);
       q = pt_append_varchar (parser, q, r);
       q = pt_append_nulstring (parser, q, " USER=");
-      r = pt_print_bytes (parser, p->info.cublink_table.__cts_user);
+      r = pt_print_bytes (parser, p->info.dblink_table.__cts_user);
       q = pt_append_varchar (parser, q, r);
       q = pt_append_nulstring (parser, q, " PASSWORD=");
-      r = pt_print_bytes (parser, p->info.cublink_table.__cts_pwd);
+      r = pt_print_bytes (parser, p->info.dblink_table.__cts_pwd);
       q = pt_append_varchar (parser, q, r);
 #endif
     }
 
   q = pt_append_nulstring (parser, q, ", \"");
-  if (p->info.cublink_table.qstr)
+  if (p->info.dblink_table.qstr)
     {
-      r = pt_print_bytes (parser, p->info.cublink_table.qstr);
+      r = pt_print_bytes (parser, p->info.dblink_table.qstr);
       q = pt_append_varchar (parser, q, r);
     }
   q = pt_append_nulstring (parser, q, "\")");
 
   return q;
 }
-#endif // #if defined(SUPPORT_CUBLINK)
+

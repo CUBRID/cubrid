@@ -2817,13 +2817,11 @@ set_seg_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_
       (void) parser_walk_tree (parser, tree->info.json_table_info.expr, set_seg_expr, arg, pt_continue_walk, NULL);
       *continue_walk = PT_LIST_WALK;
       break;
-#if defined(SUPPORT_CUBLINK)
-    case PT_CUBLINK_TABLE:
-      // assert(false); /* TO DO: check to need */ 
-      (void) parser_walk_tree (parser, tree->info.cublink_table.qstr, set_seg_expr, arg, pt_continue_walk, NULL);
+    case PT_DBLINK_TABLE:
+      // assert(false); //ctshim_assert 
+      (void) parser_walk_tree (parser, tree->info.dblink_table.qstr, set_seg_expr, arg, pt_continue_walk, NULL);
       *continue_walk = PT_LIST_WALK;
       break;
-#endif
     default:
       break;
     }
@@ -2959,11 +2957,11 @@ is_dependent_table (PT_NODE * entity)
 
     case PT_DERIVED_JSON_TABLE:
       return true;
-#if defined(SUPPORT_CUBLINK)
-    case PT_DERIVED_CUBLINK_TABLE:
-      // assert (false); /* TO DO: check to need */
+
+    case PT_DERIVED_DBLINK_TABLE:
+      // assert (false); // ctshim_assert  
       return true;
-#endif
+
     case PT_IS_SUBQUERY:
     default:
       // what else?

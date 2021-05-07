@@ -394,11 +394,9 @@ static ACCESS_SPEC_TYPE *pt_to_cselect_table_spec_list (PARSER_CONTEXT * parser,
 							PT_NODE * src_derived_tbl);
 static ACCESS_SPEC_TYPE *pt_to_json_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * json_table,
 						     PT_NODE * src_derived_tbl, PT_NODE * where_p);
-#if defined(SUPPORT_CUBLINK)
-static ACCESS_SPEC_TYPE *pt_to_cublink_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec,
-							PT_NODE * cublink_table, PT_NODE * src_derived_tbl,
+static ACCESS_SPEC_TYPE *pt_to_dblink_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec,
+							PT_NODE * dblink_table, PT_NODE * src_derived_tbl,
 							PT_NODE * where_p);
-#endif
 static ACCESS_SPEC_TYPE *pt_make_json_table_access_spec (PARSER_CONTEXT * parser, REGU_VARIABLE * json_reguvar,
 							 PRED_EXPR * where_pred, PT_JSON_TABLE_INFO * json_table,
 							 TABLE_INFO * tbl_info);
@@ -12734,20 +12732,19 @@ pt_to_json_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * j
   return access;
 }
 
-#if defined(SUPPORT_CUBLINK)
 static ACCESS_SPEC_TYPE *
-pt_to_cublink_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * cublink_table,
+pt_to_dblink_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * dblink_table,
 			       PT_NODE * src_derived_tbl, PT_NODE * where_p)
 {
   ACCESS_SPEC_TYPE *access;
-  PT_CUBLINK_INFO *pCublink = &(cublink_table->info.cublink_table);
+  PT_DBLINK_INFO *pdblink = &(dblink_table->info.dblink_table);
 
   PRED_EXPR *where = pt_to_pred_expr (parser, where_p);
 
   TABLE_INFO *tbl_info = pt_find_table_info (spec->info.spec.id, parser->symbols->table_info);
   assert (tbl_info != NULL);
 
-  REGU_VARIABLE *regu_var = pt_to_regu_variable (parser, pCublink->qstr, UNBOX_AS_VALUE);
+  REGU_VARIABLE *regu_var = pt_to_regu_variable (parser, pdblink->qstr, UNBOX_AS_VALUE);
   ACCESS_METHOD access_method = ACCESS_METHOD_SEQUENTIAL;
 
   PT_NODE *pred_attrs = NULL, *rest_attrs = NULL, *reserved_attrs = NULL;
@@ -12774,14 +12771,13 @@ pt_to_cublink_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE 
   //static char dblink_passowrd[] = "";
 
   access = pt_make_dblink_access_spec (access_method, where, regu_attributes_pred, regu_attributes_rest,
-				       (char *) pCublink->__cts_url->info.value.data_value.str->bytes,
-				       (char *) pCublink->__cts_user->info.value.data_value.str->bytes,
-				       (char *) pCublink->__cts_pwd->info.value.data_value.str->bytes,
-				       (char *) pCublink->qstr->info.value.data_value.str->bytes);
+				       (char *) pdblink->__cts_url->info.value.data_value.str->bytes,
+				       (char *) pdblink->__cts_user->info.value.data_value.str->bytes,
+				       (char *) pdblink->__cts_pwd->info.value.data_value.str->bytes,
+				       (char *) pdblink->qstr->info.value.data_value.str->bytes);
 
   return access;
 }
-#endif
 
 /*
  * pt_to_cte_table_spec_list () - Convert a PT_NODE CTE to an ACCESS_SPEC_LIST of representations
@@ -12929,14 +12925,12 @@ pt_to_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_key_pa
 	  access =
 	    pt_to_json_table_spec_list (parser, spec, spec->info.spec.derived_table, src_derived_tbl, where_part);
 	}
-#if defined(SUPPORT_CUBLINK)
-      else if (spec->info.spec.derived_table_type == PT_DERIVED_CUBLINK_TABLE)
+      else if (spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
 	{
-	  /* PT_DERIVED_CUBLINK_TABLE derived table */
+	  /* PT_DERIVED_DBLINK_TABLE derived table */
 	  access =
-	    pt_to_cublink_table_spec_list (parser, spec, spec->info.spec.derived_table, src_derived_tbl, where_part);
+	    pt_to_dblink_table_spec_list (parser, spec, spec->info.spec.derived_table, src_derived_tbl, where_part);
 	}
-#endif
       else
 	{
 	  // unrecognized derived table type

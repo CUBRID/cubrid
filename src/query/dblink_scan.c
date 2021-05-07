@@ -209,7 +209,8 @@ dblink_make_date_time_tz (T_CCI_U_TYPE utype, DB_VALUE * value_p, T_CCI_DATE_TZ 
 int
 dblink_open_scan (DBLINK_SCAN_INFO * scan_info, char *conn_url, char *user_name, char *password, char *sql_text)
 {
-  int ret, error = NO_ERROR;
+  int ret;
+
   T_CCI_ERROR err_buf;
   T_CCI_CUBRID_STMT stmt_type;
 
@@ -217,27 +218,27 @@ dblink_open_scan (DBLINK_SCAN_INFO * scan_info, char *conn_url, char *user_name,
 
   if (scan_info->conn_handle < 0)
     {
-      error = err_buf.err_code;
+      return err_buf.err_code;;
     }
   else
     {
       scan_info->stmt_handle = cci_prepare_and_execute (scan_info->conn_handle, sql_text, 0, &ret, &err_buf);
       if (ret < 0)
 	{
-	  error = err_buf.err_code;
+	  return err_buf.err_code;;
 	}
       else
 	{
 	  scan_info->col_info = (void *) cci_get_result_info (scan_info->stmt_handle, &stmt_type, &scan_info->col_cnt);
 	  if (scan_info->col_info == NULL)
 	    {
-	      error = S_ERROR;
+	      return S_ERROR;
 	    }
 	  scan_info->cursor = CCI_CURSOR_FIRST;
 	}
     }
 
-  return error;
+  return NO_ERROR;
 }
 
 /*

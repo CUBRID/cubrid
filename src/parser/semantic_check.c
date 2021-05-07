@@ -10246,15 +10246,14 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	}
 
       break;
-#if defined(SUPPORT_CUBLINK)
-    case PT_CUBLINK_TABLE:
+
+    case PT_DBLINK_TABLE:
       if (pt_has_error (parser))
 	{
 	  break;
 	}
 
       break;
-#endif
 
     default:			/* other node types */
       break;
