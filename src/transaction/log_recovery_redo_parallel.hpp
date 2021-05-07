@@ -84,6 +84,10 @@ namespace cublog
        */
       bool is_idle () const;
 
+      /* the minimum log_lsa that still has to be processed
+       */
+      log_lsa get_minimum_unprocessed_lsa () const;
+
       /* mandatory to explicitly call this before dtor
        */
       void wait_for_termination_and_stop_execution ();
@@ -102,6 +106,31 @@ namespace cublog
 	  using ux_redo_job_deque = std::deque<ux_redo_job_base>;
 	  using vpid_set = std::set<VPID>;
 	  using log_lsa_set = std::set<log_lsa>;
+
+	private:
+	  class minimum_log_lsa_in_queue
+	  {
+	      using log_lsas_t = std::tuple<log_lsa, log_lsa, log_lsa>;
+
+	    public:
+	      minimum_log_lsa_in_queue ();
+	      minimum_log_lsa_in_queue (const minimum_log_lsa_in_queue &) = delete;
+	      minimum_log_lsa_in_queue (minimum_log_lsa_in_queue &&) = delete;
+
+	      minimum_log_lsa_in_queue &operator = (const minimum_log_lsa_in_queue &) = delete;
+	      minimum_log_lsa_in_queue &operator = (minimum_log_lsa_in_queue &&) = delete;
+
+	      void set_for_produce (const log_lsa &a_lsa);
+	      void set_for_produce_and_consume (const log_lsa &a_produce_lsa, const log_lsa &a_consume_lsa);
+	      void set_for_consume (const log_lsa &a_lsa);
+	      void set_for_in_progress (const log_lsa &a_lsa);
+
+	      log_lsa get () const;
+
+	    private:
+	      mutable std::mutex m_access_mtx;
+	      log_lsas_t m_values;
+	  };
 
 	public:
 	  redo_job_queue ();
@@ -144,13 +173,17 @@ namespace cublog
 	   */
 	  bool is_idle () const;
 
+	  /* the minimum log_lsa that still has to be processed
+	   */
+	  log_lsa get_minimum_unprocessed_lsa () const;
+
 	private:
 	  void assert_idle () const;
 
 	  /* swap internal queues and notify if both are empty
 	   * assumes the consume queue is locked
 	   */
-	  void do_swap_queues_if_needed ();
+	  void do_swap_queues_if_needed (const std::unique_lock<std::mutex> &);
 
 	  /* find first job that can be consumed (ie: is not already marked
 	   * in the 'in progress vpids' set)
@@ -188,6 +221,12 @@ namespace cublog
 	  /* signalled when the 'in progress' containers are empty
 	   */
 	  mutable std::condition_variable m_in_progress_vpids_empty_cv;
+
+	  /* utility class to maintain a minimum log_lsa that is still
+	   * to be processed (consumed); if no job exists in the queue, the
+	   * value is null
+	   */
+	  minimum_log_lsa_in_queue m_minimum_log_lsa_to_process;
       };
 
       /* maintain a bookkeeping of tasks that are still performing work;

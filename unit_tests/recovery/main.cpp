@@ -203,6 +203,7 @@ TEST_CASE ("log recovery parallel test: idle status", "[ci][dbg]")
   cublog::redo_parallel log_redo_parallel (std::thread::hardware_concurrency ());
 
   REQUIRE (log_redo_parallel.is_idle ());
+  REQUIRE (log_redo_parallel.get_minimum_unprocessed_lsa ().is_null ());
 
   const ut_database_config database_config =
   {
@@ -215,9 +216,11 @@ TEST_CASE ("log recovery parallel test: idle status", "[ci][dbg]")
 
   ut_database_values_generator global_values{ database_config };
 
+  log_lsa single_supplied_lsa;
   for (bool at_least_one_page_update = false; !at_least_one_page_update; )
     {
       ux_ut_redo_job_impl job = db_online->generate_changes (*db_recovery, global_values);
+      single_supplied_lsa = job->get_log_lsa ();
 
       if (job->is_volume_creation () || job->is_page_creation ())
 	{
@@ -233,9 +236,12 @@ TEST_CASE ("log recovery parallel test: idle status", "[ci][dbg]")
 
   // sleep here more than 'max_duration_in_millis' to invalidate test
   REQUIRE_FALSE (log_redo_parallel.is_idle ());
+  REQUIRE_FALSE (log_redo_parallel.get_minimum_unprocessed_lsa ().is_null ());
+  REQUIRE (log_redo_parallel.get_minimum_unprocessed_lsa () == single_supplied_lsa);
 
   log_redo_parallel.wait_for_idle ();
   REQUIRE (log_redo_parallel.is_idle ());
+  REQUIRE (log_redo_parallel.get_minimum_unprocessed_lsa ().is_null ());
 
   log_redo_parallel.set_adding_finished ();
   log_redo_parallel.wait_for_termination_and_stop_execution ();

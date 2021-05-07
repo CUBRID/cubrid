@@ -24,6 +24,89 @@
 namespace cublog
 {
   /*********************************************************************
+   * redo_parallel::redo_job_queue::minimum_log_lsa_in_queue - utility to
+   *       support calculation of a minimum log_lsa while taking care to
+   *       ignore those that are null
+   *********************************************************************/
+
+  redo_parallel::redo_job_queue::minimum_log_lsa_in_queue::minimum_log_lsa_in_queue ()
+  {
+    std::lock_guard<std::mutex> lck { m_access_mtx };
+    // produce
+    std::get<0> (m_values).set_null ();
+    // consume
+    std::get<1> (m_values).set_null ();
+    // in-progress
+    std::get<2> (m_values).set_null ();
+  }
+
+  void
+  redo_parallel::redo_job_queue::minimum_log_lsa_in_queue::set_for_produce (const log_lsa &a_lsa)
+  {
+    std::lock_guard<std::mutex> lck { m_access_mtx };
+    std::get<0> (m_values) = a_lsa;
+  }
+
+  void
+  redo_parallel::redo_job_queue::minimum_log_lsa_in_queue::set_for_produce_and_consume (
+	  const log_lsa &a_produce_lsa, const log_lsa &a_consume_lsa)
+  {
+    std::lock_guard<std::mutex> lck { m_access_mtx };
+    std::get<0> (m_values) = a_produce_lsa;
+    std::get<1> (m_values) = a_consume_lsa;
+  }
+
+  void
+  redo_parallel::redo_job_queue::minimum_log_lsa_in_queue::set_for_consume (const log_lsa &a_lsa)
+  {
+    std::lock_guard<std::mutex> lck { m_access_mtx };
+    std::get<1> (m_values) = a_lsa;
+  }
+
+  void
+  redo_parallel::redo_job_queue::minimum_log_lsa_in_queue::set_for_in_progress (const log_lsa &a_lsa)
+  {
+    std::lock_guard<std::mutex> lck { m_access_mtx };
+    std::get<2> (m_values) = a_lsa;
+  }
+
+  log_lsa
+  redo_parallel::redo_job_queue::minimum_log_lsa_in_queue::get () const
+  {
+    log_lsas_t values;
+    {
+      // quickly get a snapshot
+      std::lock_guard<std::mutex> lck { m_access_mtx };
+      values = m_values;
+    }
+
+    // minimum ignoring nulls
+    const auto calculate_min_ftor = [] (const log_lsa &left, const log_lsa &rite)
+    {
+      return (left.is_null () && rite.is_null ())
+	     ? NULL_LSA
+	     : (left.is_null () && !rite.is_null ())
+	     ? rite
+	     : (!left.is_null () && rite.is_null ())
+	     ? left
+	     : (left < rite)
+	     ? left
+	     : [&] ()
+      {
+	assert (left != rite);
+	return rite;
+      }
+      ();
+    };
+
+    log_lsa res { std::get<0> (values) };
+    res = calculate_min_ftor (res, std::get<1> (values));
+    res = calculate_min_ftor (res, std::get<2> (values));
+
+    return res;
+  }
+
+  /*********************************************************************
    * redo_parallel::redo_job_queue - definition
    *********************************************************************/
 
@@ -50,6 +133,10 @@ namespace cublog
   redo_parallel::redo_job_queue::push_job (ux_redo_job_base &&job)
   {
     std::lock_guard<std::mutex> lck (m_produce_queue_mutex);
+    if (m_produce_queue->empty ())
+      {
+	m_minimum_log_lsa_to_process.set_for_produce (job->get_log_lsa ());
+      }
     m_produce_queue->push_back (std::move (job));
     m_queues_empty = false;
   }
@@ -73,7 +160,7 @@ namespace cublog
 
     out_adding_finished = false;
 
-    do_swap_queues_if_needed ();
+    do_swap_queues_if_needed (consume_queue_lock);
 
     if (m_consume_queue->size () > 0)
       {
@@ -134,8 +221,9 @@ namespace cublog
   }
 
   void
-  redo_parallel::redo_job_queue::do_swap_queues_if_needed ()
+  redo_parallel::redo_job_queue::do_swap_queues_if_needed (const std::unique_lock<std::mutex> &)
   {
+    // PRECOND: consume queue must be locked at this point
     // if consumption of everything in consume queue finished; see whether there's some more in the other one
     if (m_consume_queue->size () == 0)
       {
@@ -147,12 +235,21 @@ namespace cublog
 	// consumer queue is locked anyway, interested in not locking the producer queue
 	bool notify_queues_empty = false;
 	{
-	  // "atomic" swap
+	  // effectively, an 'atomic' swap because both queues are locked
 	  std::lock_guard<std::mutex> lck (m_produce_queue_mutex);
 	  std::swap (m_produce_queue, m_consume_queue);
 	  // if both queues empty, notify the, possibly waiting, producing thread
 	  m_queues_empty = m_produce_queue->empty () && m_consume_queue->empty ();
 	  notify_queues_empty = m_queues_empty;
+
+	  const log_lsa produce_minimum_log_lsa = m_produce_queue->empty ()
+						  ? NULL_LSA
+						  : (*m_produce_queue->begin ())->get_log_lsa ();
+	  const log_lsa consume_minimum_log_lsa = m_consume_queue->empty ()
+						  ? NULL_LSA
+						  : (* m_consume_queue->begin ())->get_log_lsa ();
+	  m_minimum_log_lsa_to_process.set_for_produce_and_consume (
+		  produce_minimum_log_lsa, consume_minimum_log_lsa);
 	}
 	if (notify_queues_empty)
 	  {
@@ -164,15 +261,26 @@ namespace cublog
   redo_parallel::redo_job_queue::ux_redo_job_base
   redo_parallel::redo_job_queue::do_locked_find_job_to_consume ()
   {
+    // PRECOND: both queues must be locked at this point
     ux_redo_job_base job;
-    auto consume_queue_it = m_consume_queue->begin ();
+    ux_redo_job_deque::iterator consume_queue_it = m_consume_queue->begin ();
     for (; consume_queue_it != m_consume_queue->end (); ++consume_queue_it)
       {
 	const vpid it_vpid = (*consume_queue_it)->get_vpid ();
 	if (m_in_progress_vpids.find ((it_vpid)) == m_in_progress_vpids.cend ())
 	  {
+	    const bool replace_produce_lsa { consume_queue_it == m_consume_queue->begin () };
 	    job = std::move (*consume_queue_it);
 	    m_consume_queue->erase (consume_queue_it);
+
+	    if (replace_produce_lsa)
+	      {
+		const log_lsa consume_minimum_log_lsa = m_consume_queue->empty ()
+							? NULL_LSA
+							: (* m_consume_queue->begin ())->get_log_lsa ();
+		m_minimum_log_lsa_to_process.set_for_consume (consume_minimum_log_lsa);
+	      }
+
 	    break;
 	  }
       }
@@ -193,6 +301,8 @@ namespace cublog
     const log_lsa &job_log_lsa = a_job->get_log_lsa ();
     assert (m_in_progress_lsas.find (job_log_lsa) == m_in_progress_lsas.cend ());
     m_in_progress_lsas.insert (job_log_lsa);
+
+    m_minimum_log_lsa_to_process.set_for_in_progress (*m_in_progress_lsas.cbegin ());
   }
 
   void
@@ -212,6 +322,11 @@ namespace cublog
       const auto log_lsa_it = m_in_progress_lsas.find (job_log_lsa);
       assert (log_lsa_it != m_in_progress_lsas.cend ());
       m_in_progress_lsas.erase (log_lsa_it);
+
+      const log_lsa in_progress_minimum_log_lsa = m_in_progress_lsas.empty ()
+	  ? NULL_LSA
+	  : *m_in_progress_lsas.cbegin ();
+      m_minimum_log_lsa_to_process.set_for_in_progress (in_progress_minimum_log_lsa);
 
       assert (m_in_progress_vpids.size () == m_in_progress_lsas.size ());
     }
@@ -258,6 +373,12 @@ namespace cublog
       in_progress_vpids_empty = m_in_progress_vpids.empty ();
     }
     return queues_empty && in_progress_vpids_empty;
+  }
+
+  log_lsa
+  redo_parallel::redo_job_queue::get_minimum_unprocessed_lsa () const
+  {
+    return m_minimum_log_lsa_to_process.get ();
   }
 
   void
@@ -480,6 +601,12 @@ namespace cublog
     assert (false == m_job_queue.get_adding_finished ());
 
     return m_job_queue.is_idle ();
+  }
+
+  log_lsa
+  redo_parallel::get_minimum_unprocessed_lsa () const
+  {
+    return m_job_queue.get_minimum_unprocessed_lsa ();
   }
 
   void
