@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. 
+ * Copyright (C) 2008 Search Solution Corporation.
  * Copyright (c) 2016 CUBRID Corporation.
  *
  * Redistribution and use in source and binary forms, with or without modification,
@@ -31,82 +31,81 @@
 
 package com.cubrid.jsp.value;
 
+import com.cubrid.jsp.Server;
+import com.cubrid.jsp.exception.TypeMismatchException;
+import cubrid.jdbc.driver.CUBRIDConnectionDefault;
+import cubrid.sql.CUBRIDOID;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 
-import com.cubrid.jsp.Server;
-import com.cubrid.jsp.exception.TypeMismatchException;
-
-import cubrid.jdbc.driver.CUBRIDConnectionDefault;
-import cubrid.sql.CUBRIDOID;
-
 public class OidValue extends Value {
-	private byte[] oidValue = null;
-	private CUBRIDOID oidObject = null;
-	
-	public OidValue (byte[] oid) {
-		this.oidValue = oid;
-	}
-	
-	public OidValue (CUBRIDOID oid) {
-		this.oidValue = oid.getOID();
-		this.oidObject = oid;
-	}
+    private byte[] oidValue = null;
+    private CUBRIDOID oidObject = null;
 
-	public OidValue(byte[] oid, int mode, int dbType) {
-		super(mode);
-		this.oidValue = oid;
-		this.dbType = dbType;
-	}
-	
-	public OidValue(CUBRIDOID oid, int mode, int dbType) {
-		super(mode);
-		this.oidObject = oid;
-		this.oidValue = oid.getOID();
-		this.dbType = dbType;
-	}
+    public OidValue(byte[] oid) {
+        this.oidValue = oid;
+    }
 
-	public CUBRIDOID[] toOidArray() throws TypeMismatchException {
-		createInstance();
-		return new CUBRIDOID[] { oidObject };
-	}
-	
-	public CUBRIDOID toOid() throws TypeMismatchException {
-		createInstance();
-		return oidObject;
-	}
-	
-	private void createInstance() {
-		if (oidValue != null && oidObject == null){
-			try {
-				CUBRIDConnectionDefault con = (CUBRIDConnectionDefault) DriverManager
-						.getConnection("jdbc:default:connection:");
-				oidObject = new CUBRIDOID (con, oidValue);
-			} catch (SQLException e) {
-				oidObject = null;
-			}
-		}
-	}
-	
-	public String toString() {
-		try {
-			createInstance();
-			return oidObject.getOidString();
-		} catch (SQLException e) {
-			Server.log(e);
-		}
-		return null;
-	}
+    public OidValue(CUBRIDOID oid) {
+        this.oidValue = oid.getOID();
+        this.oidObject = oid;
+    }
 
-	public String[] toStringArray() throws TypeMismatchException {
-		return new String[] { toString() };
-	}
+    public OidValue(byte[] oid, int mode, int dbType) {
+        super(mode);
+        this.oidValue = oid;
+        this.dbType = dbType;
+    }
 
-	public Object toObject() throws TypeMismatchException {
-		return toOid();
-	}
+    public OidValue(CUBRIDOID oid, int mode, int dbType) {
+        super(mode);
+        this.oidObject = oid;
+        this.oidValue = oid.getOID();
+        this.dbType = dbType;
+    }
 
-	public Object[] toObjectArray() throws TypeMismatchException {
-		return new Object[] { toObject() };
-	}
+    public CUBRIDOID[] toOidArray() throws TypeMismatchException {
+        createInstance();
+        return new CUBRIDOID[] {oidObject};
+    }
+
+    public CUBRIDOID toOid() throws TypeMismatchException {
+        createInstance();
+        return oidObject;
+    }
+
+    private void createInstance() {
+        if (oidValue != null && oidObject == null) {
+            try {
+                CUBRIDConnectionDefault con =
+                        (CUBRIDConnectionDefault)
+                                DriverManager.getConnection("jdbc:default:connection:");
+                oidObject = new CUBRIDOID(con, oidValue);
+            } catch (SQLException e) {
+                oidObject = null;
+            }
+        }
+    }
+
+    public String toString() {
+        try {
+            createInstance();
+            return oidObject.getOidString();
+        } catch (SQLException e) {
+            Server.log(e);
+        }
+        return null;
+    }
+
+    public String[] toStringArray() throws TypeMismatchException {
+        return new String[] {toString()};
+    }
+
+    public Object toObject() throws TypeMismatchException {
+        return toOid();
+    }
+
+    public Object[] toObjectArray() throws TypeMismatchException {
+        return new Object[] {toObject()};
+    }
 }

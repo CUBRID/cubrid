@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. 
+ * Copyright (C) 2008 Search Solution Corporation.
  * Copyright (c) 2016 CUBRID Corporation.
  *
  * Redistribution and use in source and binary forms, with or without modification,
@@ -31,19 +31,18 @@
 
 package com.cubrid.jsp.value;
 
+import com.cubrid.jsp.exception.TypeMismatchException;
 import java.sql.ResultSet;
 
-import com.cubrid.jsp.exception.TypeMismatchException;
-
 public class ResultSetValue extends Value {
-	private ResultSet rset;
+    private ResultSet rset;
 
-	public ResultSetValue(ResultSet rset) {
-		super();
-		this.rset = rset;
-	}
+    public ResultSetValue(ResultSet rset) {
+        super();
+        this.rset = rset;
+    }
 
-	public ResultSet toResultSet() throws TypeMismatchException {
-		return rset;
-	}
+    public ResultSet toResultSet() throws TypeMismatchException {
+        return rset;
+    }
 }

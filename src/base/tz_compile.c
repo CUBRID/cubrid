@@ -3364,7 +3364,7 @@ tzc_compile_ds_rules (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
     {
       int to_year_max = 0;
       bool has_default_abbrev = true;
-      char *prev_letter_abbrev = NULL;
+      const char *prev_letter_abbrev = NULL;
 
       ruleset = &(tzd->ds_rulesets[i]);
       ruleset->index_start = cur_rule_index;
@@ -3424,15 +3424,13 @@ tzc_compile_ds_rules (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
 	  cur_rule_index++;
 	}
 
+      const char empty[2] = { '-', 0 };
       if (has_default_abbrev == true && prev_letter_abbrev != NULL)
 	{
 	  ruleset->default_abrev = strdup (prev_letter_abbrev);
 	}
       else
 	{
-	  char empty[2];
-	  empty[0] = '-';
-	  empty[1] = '\0';
 	  prev_letter_abbrev = empty;
 	  ruleset->default_abrev = strdup (empty);
 	}
@@ -5057,6 +5055,10 @@ xml_start_mapZone (void *data, const char **attr)
       if (len_windows_zone > TZ_WINDOWS_ZONE_NAME_SIZE || len_territory > TZ_COUNTRY_CODE_SIZE)
 	{
 	  TZC_LOG_ERROR_1ARG (NULL, TZC_ERR_INVALID_VALUE, "TZ_WINDOWS_IANA_MAP");
+	  if (temp != nullptr)
+	    {
+	      free (temp);
+	    }
 	  return -1;
 	}
 

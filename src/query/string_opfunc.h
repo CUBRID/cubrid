@@ -64,19 +64,19 @@
         QSTR_COMPARE(id, string1, size1, string2, size2, ti)
 
 #define QSTR_COMPARE(id, string1, size1, string2, size2, ti) \
-  (lang_get_collation (id))->fastcmp ((lang_get_collation (id)), (string1), \
+  (LANG_GET_COLLATION (id))->fastcmp ((LANG_GET_COLLATION (id)), (string1), \
 				      (size1), (string2), (size2), ti)
 #define QSTR_MATCH(id, string1, size1, string2, size2, esc, has_last_escape, \
 		   match_size) \
-  (lang_get_collation (id))->strmatch ((lang_get_collation (id)), true, \
+  (LANG_GET_COLLATION (id))->strmatch ((LANG_GET_COLLATION (id)), true, \
 				       (string1), (size1), \
 				       (string2), (size2), (esc), \
 				       (has_last_escape), (match_size), false)
 #define QSTR_NEXT_ALPHA_CHAR(id, cur_chr, size, next_chr, len) \
-  (lang_get_collation (id))->next_coll_seq ((lang_get_collation (id)), \
+  (LANG_GET_COLLATION (id))->next_coll_seq ((LANG_GET_COLLATION (id)), \
 					(cur_chr), (size), (next_chr), (len), false)
 #define QSTR_SPLIT_KEY(id, is_desc, str1, size1, str2, size2, k, s, ti) \
-  (lang_get_collation (id))->split_key ((lang_get_collation (id)), is_desc, \
+  (LANG_GET_COLLATION (id))->split_key ((LANG_GET_COLLATION (id)), is_desc, \
 					(str1), (size1), (str2), (size2), \
 					(k), (s), ti)
 
