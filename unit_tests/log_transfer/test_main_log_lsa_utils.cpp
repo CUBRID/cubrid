@@ -24,24 +24,7 @@
 #include "log_lsa_utils.hpp"
 #include "packer.hpp"
 
-class test_env
-{
-  public:
-    test_env ();
-    ~test_env ();
-
-    void run_test ();
-};
-
-test_env::test_env ()
-{
-}
-
-test_env::~test_env ()
-{
-}
-
-void test_env::run_test ()
+TEST_CASE ("First test", "")
 {
   log_lsa lsa;
   lsa.pageid = 4;
@@ -62,17 +45,6 @@ void test_env::run_test ()
   log_lsa new_lsa (big_int);
 
   REQUIRE (lsa == new_lsa);
-}
-
-void do_test (test_env &env)
-{
-  env.run_test ();
-}
-
-TEST_CASE ("First test", "")
-{
-  test_env env;
-  do_test (env);
 }
 
 // Declarations for CUBRID stuff required by linker

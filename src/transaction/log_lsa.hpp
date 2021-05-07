@@ -37,10 +37,8 @@ const int page_offset_bit_count = 16;
 
 struct log_lsa
 {
-std::int64_t pageid:
-  page_id_bit_count;		/* Log page identifier : 6 bytes length */
-std::int64_t offset:
-  page_offset_bit_count;		/* Offset in page : 2 bytes length.
+  std::int64_t pageid:48;		/* Log page identifier : 6 bytes length */
+  std::int64_t offset:16;		/* Offset in page : 2 bytes length.
                                           offset == 'area offset' */
   /* The offset field is defined as 16bit-INT64 type (not short), because of alignment */
 
@@ -102,8 +100,7 @@ inline bool LSA_GT (const log_lsa *plsa1, const log_lsa *plsa2);
 
 log_lsa::log_lsa (const int64_t value)
 {
-  pageid = (value << page_offset_bit_count) >> page_offset_bit_count;
-  offset = value >> page_id_bit_count;
+  std::memcpy (this, &value, sizeof (value));
 }
 
 bool
