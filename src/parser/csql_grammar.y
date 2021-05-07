@@ -149,6 +149,8 @@ extern int yybuffer_pos;
 #define PRINT_2(a, b, c)
 #endif
 
+#define DBG_CTSHIM_PRINT(s) printf("rule matched:: Line %d, yyn %d,  [%s]\n", __LINE__, yyn, (s));
+
 #define STACK_SIZE	128
 
 typedef struct function_map FUNCTION_MAP;
@@ -429,9 +431,13 @@ static PT_NODE *parser_make_func_with_arg_count (PARSER_CONTEXT * parser, FUNC_T
                                                  size_t min_args, size_t max_args);
 static PT_NODE *parser_make_func_with_arg_count_mod2 (PARSER_CONTEXT * parser, FUNC_TYPE func_code, PT_NODE * args_list,
                                                       size_t min_args, size_t max_args, size_t mod2);
+#if !defined(SUPPORT_CUBLINK)
 static PT_NODE *parser_make_link (PT_NODE * list, PT_NODE * node);
 static PT_NODE *parser_make_link_or (PT_NODE * list, PT_NODE * node);
-
+#else
+#define  parser_make_link(l,n)     parser_append_node((n), (l))
+#define  parser_make_link_or(l,n)  parser_append_node_or((n), (l))
+#endif
 
 
 static void parser_save_and_set_cannot_cache (bool value);
@@ -530,6 +536,15 @@ static PT_NODE * pt_create_date_value (PARSER_CONTEXT *parser,
 static PT_NODE * pt_create_json_value (PARSER_CONTEXT *parser,
 				       const char *str);
 static void pt_jt_append_column_or_nested_node (PT_NODE * jt_node, PT_NODE * jt_col_or_nested);
+#if defined(SUPPORT_CUBLINK)
+typedef struct {
+        char* pUrl;
+        char* pUser;
+        char* pPwd;
+} SCubLinkConnInfo;
+static void pt_ct_check_fill_connection_info (char* pIn, SCubLinkConnInfo* pInfo);
+#endif
+
 static void pt_value_set_charset_coll (PARSER_CONTEXT *parser,
 				       PT_NODE *node,
 				       const int codeset_id,
@@ -1037,6 +1052,12 @@ int g_original_buffer_len;
 %type <node> json_table_node_rule
 %type <node> json_table_column_rule
 %type <node> json_table_column_list_rule
+
+%type <node> cublink_expr
+%type <node> cublink_conn
+%type <c2> cublink_identifier_col_attrs  
+%type <node> cublink_column_definition_list
+%type <node> cublink_column_definition
 /*}}}*/
 
 /* define rule type (cptr) */
@@ -1158,6 +1179,7 @@ int g_original_buffer_len;
 %token COUNT
 %token CREATE
 %token CROSS
+%token CUBLINK
 %token CURRENT
 %token CURRENT_DATE
 %token CURRENT_DATETIME
@@ -4864,6 +4886,20 @@ original_table_spec
 			$$ = ent;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
+		DBG_PRINT}}
+        | CUBLINK  '('  cublink_expr ')'   cublink_identifier_col_attrs 
+                {{                       
+                        DBG_CTSHIM_PRINT("CUBLINK cublink_specification")                                                               
+                        PT_NODE *ent = parser_new_node (this_parser, PT_SPEC);
+			if (ent)
+			  {
+			    ent->info.spec.derived_table = $3;  // cublink_expr
+			    ent->info.spec.derived_table_type = PT_DERIVED_CUBLINK_TABLE;                            
+			    ent->info.spec.range_var = CONTAINER_AT_0 ($5); // table name                                                        
+                            ent->info.spec.derived_table->info.cublink_table.cols = CONTAINER_AT_1 ($5); // def. columns 
+			  }
+			$$ = ent;                        
+		        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
 	;
 
@@ -24710,6 +24746,208 @@ json_table_rule
       DBG_PRINT}}
     ;
 
+    /* SUPPORT_CUBLINK */
+cublink_expr
+        :   cublink_conn  ','  DelimitedIdName  
+            {{
+             DBG_CTSHIM_PRINT("cublink_expr: IdName ','  DelimitedIdName")
+
+             PT_NODE *ct = parser_new_node(this_parser, PT_CUBLINK_TABLE) ;           
+             if( ct )
+             {
+                PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
+	        if (val)                    
+		  {
+                        val->type_enum = PT_TYPE_CHAR;
+                        val->info.value.string_type = ' ';
+                        val->info.value.data_value.str =
+                                pt_append_bytes (this_parser, NULL, $3, strlen ($3));
+                        
+                        PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);
+		   }
+
+                if( $1->node_type == PT_NAME )
+                {
+                        ct->info.cublink_table.is_name = true;
+                        ct->info.cublink_table.__cts_conn = $1;       
+                }
+                else // ( $1->node_type == PT_VALUE )
+                {
+                    ct->info.cublink_table.is_name = false;
+                    // in the order url, user, password        
+                    ct->info.cublink_table.__cts_conn = 0x00;  
+                    ct->info.cublink_table.__cts_url = $1;                           
+                    ct->info.cublink_table.__cts_user = $1->next;
+                    ct->info.cublink_table.__cts_pwd = $1->next->next;
+                    $1->next->next = 0x00;
+                    $1->next = 0x00;
+                }                 
+                ct->info.cublink_table.qstr = val;
+             }
+
+             $$ = ct;    
+             DBG_PRINT}}    
+        ;
+
+cublink_conn:
+        IdName
+        {{
+                 DBG_CTSHIM_PRINT("cublink_conn: IdName")
+
+                char* str_name = $1;
+                int   str_len = strlen(str_name);
+                PT_NODE* p = parser_new_node (this_parser, PT_NAME);
+                if (p)
+                {
+                        PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
+                        str_name = pt_check_identifier (this_parser, p, str_name, str_len);
+                        p->info.name.original = str_name;
+                }
+                $$ = p;
+                PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+                DBG_PRINT}}
+        | CHAR_STRING
+        {{
+                DBG_CTSHIM_PRINT("cublink_conn: CHAR_STRING")
+
+                 SCubLinkConnInfo  cInfo;
+                 pt_ct_check_fill_connection_info($1, &cInfo);
+
+                PT_NODE *node_list, *node;
+                char* pStr; 
+                int  i;
+
+                node_list = NULL;
+                for( i = 0; i < 3; i++)
+                {
+                        if( i == 0 )
+                                pStr = cInfo.pPwd;
+                        else if( i == 1 )  
+                                pStr = cInfo.pUser;
+                        else
+                                pStr = cInfo.pUrl;
+
+                        node = parser_new_node (this_parser, PT_VALUE);
+                        if( node == NULL )
+                                break;
+                                                    
+                        node->type_enum = PT_TYPE_CHAR;
+                        node->info.value.string_type = ' ';
+                        node->info.value.data_value.str =
+                                      pt_append_bytes (this_parser, NULL, pStr, strlen (pStr));
+                        PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, node);
+
+                        if(node_list)
+                                node->next = node_list;
+                      
+                        node_list = node;                       
+                }                      
+
+                if( i > 3 )  
+                {                          
+                        while (node_list)
+                        {
+                                node = node_list;
+                                node_list = node->next;
+                                parser_free_node (this_parser, node);
+                        }                             
+                }
+
+                $$ = node_list;   
+		DBG_PRINT}}
+        ;        
+
+cublink_identifier_col_attrs  
+        :  opt_as IdName '('  cublink_column_definition_list ')' 
+        {{                
+             DBG_CTSHIM_PRINT("cublink_identifier_col_attrs: opt_as IdName '('  cublink_column_definition_list ')'")
+             
+             container_2 ctn;
+             PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+             if (p)
+               {
+                        int size_in;
+                        char *str_name = $2;
+
+                        size_in = strlen(str_name);
+
+                        PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
+                        str_name = pt_check_identifier (this_parser, p,
+                                                        str_name, size_in);
+                        p->info.name.original = str_name;
+               }           
+              
+	      SET_CONTAINER_2 (ctn, p, $4);
+              $$ = ctn;              
+             DBG_PRINT}}
+        ;
+
+cublink_column_definition_list
+        :  cublink_column_definition_list ','  cublink_column_definition     
+           {{
+                DBG_CTSHIM_PRINT("cublink_column_definition_list: cublink_column_definition_list ','  cublink_column_definition")
+                $$ = parser_make_link($1, $3);
+	        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos);
+                DBG_PRINT}}
+        | cublink_column_definition
+           {{
+               DBG_CTSHIM_PRINT("cublink_column_definition_list: cublink_column_definition")
+               $$ = $1;
+               PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+             DBG_PRINT}}
+        ;
+    
+cublink_column_definition
+        : IdName primitive_type
+        {{
+                DBG_CTSHIM_PRINT("cublink_column_definition: IdName primitive_type")
+                              
+                PT_NODE *node = 0x00;
+                PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+                if (p)
+                {
+                        int size_in;
+                        char *str_name = $1;
+
+                        size_in = strlen(str_name);
+
+                        PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
+                        str_name = pt_check_identifier (this_parser, p,
+                                                        str_name, size_in);
+                        p->info.name.original = str_name;
+                                
+                        node = parser_new_node (this_parser, PT_ATTR_DEF);
+                        if (!node)
+                                parser_free_node(this_parser, p);
+                        else        
+                        {                    
+                                PT_NODE *dt;
+                                PT_TYPE_ENUM typ;
+
+                                node->type_enum = typ = TO_NUMBER (CONTAINER_AT_0 ($2));
+                                node->data_type = dt = CONTAINER_AT_1 ($2);
+                                node->info.attr_def.attr_name = p;
+
+                                if(typ == PT_TYPE_BLOB || typ == PT_TYPE_CLOB)
+                                        ; // TODO: error processing
+
+                                if (typ == PT_TYPE_CHAR && dt)
+                                        node->info.attr_def.size_constraint = dt->info.data_type.precision;
+                                if (typ == PT_TYPE_OBJECT && dt && dt->type_enum == PT_TYPE_VARCHAR)
+                                {
+                                        node->type_enum = dt->type_enum;
+                                        PT_NAME_INFO_SET_FLAG (node->info.attr_def.attr_name,
+                                                        PT_NAME_INFO_EXTERNAL);
+                                }
+                        }
+                }
+                $$ = node;
+		PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+        DBG_PRINT}}
+        ;
+    /* SUPPORT_CUBLINK */    
+
 %%
 
 
@@ -24847,6 +25085,7 @@ parser_make_expression (PARSER_CONTEXT * parser, PT_OP_TYPE OP, PT_NODE * arg1, 
   return expr;
 }
 
+#if !defined(SUPPORT_CUBLINK)
 static PT_NODE *
 parser_make_link (PT_NODE * list, PT_NODE * node)
 {
@@ -24860,6 +25099,7 @@ parser_make_link_or (PT_NODE * list, PT_NODE * node)
   parser_append_node_or (node, list);
   return list;
 }
+#endif
 
 static bool parser_cannot_cache_stack_default[STACK_SIZE];
 static bool *parser_cannot_cache_stack = parser_cannot_cache_stack_default;
@@ -27756,6 +27996,83 @@ pt_jt_append_column_or_nested_node (PT_NODE * jt_node, PT_NODE * jt_col_or_neste
         parser_append_node (jt_col_or_nested, jt_node->info.json_table_node_info.nested_paths);
     }
 }
+
+#if defined(SUPPORT_CUBLINK)
+static void pt_ct_check_fill_connection_info (char* p, SCubLinkConnInfo* pInfo)
+{  // URL=cci:CUBRID:192.168.1.8:55300:demodb::: USER=dba PASSWORD=
+   int   nCnt;
+   static const char*  pzName[3] = {"url=",  "user=", "password="};
+   static int    zLen[3] = { -1, };
+   
+   if(zLen[0] < 0)
+   {
+        for(nCnt = 0; nCnt < 3; nCnt++)
+                zLen[nCnt] = strlen(pzName[nCnt]);
+   }
+
+   memset(pInfo, 0x00, sizeof(SCubLinkConnInfo));
+      
+   nCnt = 0;
+   while(*p)
+     {        
+        while (*p)
+        {
+                if (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r')
+                        p++;
+                else
+                        break;
+        }
+        
+        if(!*p)
+             break;        
+
+        if (strncasecmp (p, pzName[0], zLen[0]) == 0)
+        {
+                assert(pInfo->pUrl == NULL);
+                p += zLen[0];
+                pInfo->pUrl = p;
+                nCnt++;                
+        }
+        else if (strncasecmp (p, pzName[1], zLen[1]) == 0)
+        {
+                assert(pInfo->pUser == NULL);
+                p += zLen[1];
+                pInfo->pUser = p;
+                nCnt++;
+        }
+        else if (strncasecmp (p, pzName[2], zLen[2]) == 0)  
+        {
+                assert(pInfo->pPwd == NULL);
+                p += zLen[2];
+                pInfo->pPwd = p;
+                nCnt++;
+        }  
+        else
+        {  // TODO: fail
+                assert(false);
+        } 
+
+        while (*p)
+        {
+                if (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r')
+                        break;
+                else
+                        p++;
+        }
+
+        if(*p)
+         {
+                 *p = 0x00;
+                 p++;
+         }
+     }   
+
+   if( nCnt != 3)
+     {  // TODO:
+          assert(false);
+     }  
+}
+#endif
 
 static PT_NODE *
 pt_create_paren_expr_list (PT_NODE * exp)

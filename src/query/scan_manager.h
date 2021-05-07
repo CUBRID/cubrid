@@ -95,8 +95,8 @@ typedef enum
 typedef struct dblink_scan_id DBLINK_SCAN_ID;
 struct dblink_scan_id
 {
-  DBLINK_SCAN_BUFFER scan_buf;	/* value array buffer */
-  REGU_VARIABLE_LIST regu_list_p;
+  DBLINK_SCAN_INFO scan_info;	/* information for dblink */
+  SCAN_PRED scan_pred;		/* scan predicates(filters) */
 };
 
 typedef struct heap_scan_id HEAP_SCAN_ID;
@@ -473,8 +473,12 @@ extern int scan_open_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				  /* */
 				  QFILE_LIST_ID * list_id, method_sig_list * meth_sig_list);
 extern int scan_open_dblink_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
+				  QPROC_SINGLE_FETCH single_fetch,
+				  SCAN_OPERATION_TYPE scan_op_type,
 				  char *conn_url,
-				  char *conn_user, char *conn_password, char *sql_text, REGU_VARIABLE_LIST regu_list_p);
+				  char *conn_user, char *conn_password, char *sql_text,
+				  VAL_DESCR * vd, val_list_node * val_list,
+				  REGU_VARIABLE_LIST regu_list_pred, PRED_EXPR * pr);
 
 extern int scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern SCAN_CODE scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id);

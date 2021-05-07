@@ -4938,11 +4938,18 @@ xts_process_dblink_spec_type (char *ptr, const DBLINK_SPEC_TYPE * dblink_spec)
 {
   int offset;
 
-  offset = xts_save_regu_variable_list (dblink_spec->regu_list_p);
+  offset = xts_save_regu_variable_list (dblink_spec->dblink_regu_list_pred);
   if (offset == ER_FAILED)
     {
       return NULL;
     }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_regu_variable_list (dblink_spec->dblink_regu_list_rest);
+    if (offset == ER_FAILED)
+      {
+	return NULL;
+      }
   ptr = or_pack_int (ptr, offset);
 
   offset = xts_save_string (dblink_spec->conn_url);

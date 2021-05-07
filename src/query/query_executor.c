@@ -6719,11 +6719,33 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
       break;
     case TARGET_DBLINK:
       error_code =
-	scan_open_dblink_scan (thread_p, s_id,
+	scan_open_dblink_scan (thread_p, s_id, 
+			       curr_spec->single_fetch, scan_op_type,
 			       curr_spec->s.dblink_node.conn_url,
 			       curr_spec->s.dblink_node.conn_user,
 			       curr_spec->s.dblink_node.conn_password,
-			       curr_spec->s.dblink_node.conn_sql, curr_spec->s.dblink_node.regu_list_p);
+			       curr_spec->s.dblink_node.conn_sql,
+			       vd, val_list,
+			       curr_spec->s.dblink_node.dblink_regu_list_pred,
+			       curr_spec->where_pred);
+#if defined(SUPPORT_CUBLINK)
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit_on_error;
+	}
+
+      /* CUBLINK(..., "SELECT <result columns part> FROM ...") AS tnmae( <alias columns part> )
+       ** s_id->s.dblid.scan_buf.col_cnt is the number of elements in the list <result columns part>.
+       ** val_list->val_cnt is the number of elements in the list <alias columns part>.             */
+      if (val_list->val_cnt < s_id->s.dblid.scan_info.col_cnt || s_id->s.dblid.scan_info.col_cnt <= 0)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+	  error_code = ER_QPROC_INVALID_XASLNODE;
+	  goto exit_on_error;
+	}
+#endif
+
       break;
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
