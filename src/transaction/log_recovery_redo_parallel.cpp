@@ -24,14 +24,15 @@
 namespace cublog
 {
   /*********************************************************************
-   * redo_parallel::redo_job_queue::minimum_log_lsa_in_queue - utility to
+   * redo_parallel::redo_job_queue::minimum_log_lsa - utility to
    *       support calculation of a minimum log_lsa while taking care to
    *       ignore those that are null
    *********************************************************************/
 
-  redo_parallel::redo_job_queue::minimum_log_lsa_in_queue::minimum_log_lsa_in_queue ()
+  /*redo_parallel::redo_job_queue::*/minimum_log_lsa::minimum_log_lsa ()
+    : m_last_non_null_minimum_value { NULL_LSA }
   {
-    std::lock_guard<std::mutex> lck { m_access_mtx };
+    std::lock_guard<std::mutex> lck { m_values_mtx };
     // produce
     std::get<0> (m_values).set_null ();
     // consume
@@ -41,47 +42,92 @@ namespace cublog
   }
 
   void
-  redo_parallel::redo_job_queue::minimum_log_lsa_in_queue::set_for_produce (const log_lsa &a_lsa)
+  /*redo_parallel::redo_job_queue::*/minimum_log_lsa::set_for_produce (const log_lsa &a_lsa)
   {
-    std::lock_guard<std::mutex> lck { m_access_mtx };
-    std::get<0> (m_values) = a_lsa;
+    {
+      std::lock_guard<std::mutex> lck { m_values_mtx };
+      std::get<0> (m_values) = a_lsa;
+
+      const log_lsa new_minimum_log_lsa = do_locked_calculate_minimum (m_values);
+      if (!new_minimum_log_lsa.is_null ())
+	{
+	  m_last_non_null_minimum_value = new_minimum_log_lsa;
+	}
+    }
+    m_wait_for_target_value_cv.notify_one ();
   }
 
   void
-  redo_parallel::redo_job_queue::minimum_log_lsa_in_queue::set_for_produce_and_consume (
+  /*redo_parallel::redo_job_queue::*/minimum_log_lsa::set_for_produce_and_consume (
 	  const log_lsa &a_produce_lsa, const log_lsa &a_consume_lsa)
   {
-    std::lock_guard<std::mutex> lck { m_access_mtx };
-    std::get<0> (m_values) = a_produce_lsa;
-    std::get<1> (m_values) = a_consume_lsa;
+    {
+      std::lock_guard<std::mutex> lck { m_values_mtx };
+      std::get<0> (m_values) = a_produce_lsa;
+      std::get<1> (m_values) = a_consume_lsa;
+
+      const log_lsa new_minimum_log_lsa = do_locked_calculate_minimum (m_values);
+      if (!new_minimum_log_lsa.is_null ())
+	{
+	  m_last_non_null_minimum_value = new_minimum_log_lsa;
+	}
+    }
+    m_wait_for_target_value_cv.notify_one ();
   }
 
   void
-  redo_parallel::redo_job_queue::minimum_log_lsa_in_queue::set_for_consume (const log_lsa &a_lsa)
+  /*redo_parallel::redo_job_queue::*/minimum_log_lsa::set_for_consume (const log_lsa &a_lsa)
   {
-    std::lock_guard<std::mutex> lck { m_access_mtx };
-    std::get<1> (m_values) = a_lsa;
+    {
+      std::lock_guard<std::mutex> lck { m_values_mtx };
+      std::get<1> (m_values) = a_lsa;
+
+      const log_lsa new_minimum_log_lsa = do_locked_calculate_minimum (m_values);
+      if (!new_minimum_log_lsa.is_null ())
+	{
+	  m_last_non_null_minimum_value = new_minimum_log_lsa;
+	}
+    }
+    m_wait_for_target_value_cv.notify_one ();
   }
 
   void
-  redo_parallel::redo_job_queue::minimum_log_lsa_in_queue::set_for_in_progress (const log_lsa &a_lsa)
+  /*redo_parallel::redo_job_queue::*/minimum_log_lsa::set_for_in_progress (const log_lsa &a_lsa)
   {
-    std::lock_guard<std::mutex> lck { m_access_mtx };
-    std::get<2> (m_values) = a_lsa;
+    {
+      std::lock_guard<std::mutex> lck { m_values_mtx };
+      std::get<2> (m_values) = a_lsa;
+
+      const log_lsa new_minimum_log_lsa = do_locked_calculate_minimum (m_values);
+      if (!new_minimum_log_lsa.is_null ())
+	{
+	  m_last_non_null_minimum_value = new_minimum_log_lsa;
+	}
+    }
+    m_wait_for_target_value_cv.notify_one ();
   }
 
   log_lsa
-  redo_parallel::redo_job_queue::minimum_log_lsa_in_queue::get () const
+  /*redo_parallel::redo_job_queue::*/minimum_log_lsa::get () const
   {
-    log_lsas_t values;
-    {
-      // quickly get a snapshot
-      std::lock_guard<std::mutex> lck { m_access_mtx };
-      values = m_values;
-    }
+//    log_lsas_t values;
+//    {
+//      // quickly get a snapshot
+//      std::lock_guard<std::mutex> lck { m_values_mtx };
+//      values = m_values;
+//    }
 
+//    return do_locked_calculate_minimum(values);
+    std::lock_guard<std::mutex> lck { m_values_mtx };
+    return m_last_non_null_minimum_value;
+  }
+
+  log_lsa
+  /*redo_parallel::redo_job_queue::*/minimum_log_lsa::do_locked_calculate_minimum (
+	  const log_lsas_t &a_values) const
+  {
     // minimum ignoring nulls
-    const auto calculate_min_ftor = [] (const log_lsa &left, const log_lsa &rite)
+    static const auto calculate_min_ftor = [] (const log_lsa &left, const log_lsa &rite)
     {
       return (left.is_null () && rite.is_null ())
 	     ? NULL_LSA
@@ -99,11 +145,36 @@ namespace cublog
       ();
     };
 
-    log_lsa res { std::get<0> (values) };
-    res = calculate_min_ftor (res, std::get<1> (values));
-    res = calculate_min_ftor (res, std::get<2> (values));
+    log_lsa res { std::get<0> (a_values) };
+    res = calculate_min_ftor (res, std::get<1> (a_values));
+    res = calculate_min_ftor (res, std::get<2> (a_values));
 
     return res;
+  }
+
+  void
+  /*redo_parallel::redo_job_queue::*/minimum_log_lsa::wait_for_target_lsa (const log_lsa &a_target_lsa)
+  {
+    assert (!a_target_lsa.is_null ());
+
+    // possible that the condition is met already, check upfront such that a gratuitous
+    // wait for the next notify is avoided
+    {
+      const log_lsa minimum_lsa = get ();
+      if (minimum_lsa.is_null () || minimum_lsa > a_target_lsa)
+	{
+	  return;
+	}
+    }
+
+    // otherwise, wait
+    std::unique_lock<std::mutex> lck { m_values_mtx };
+    m_wait_for_target_value_cv.wait (lck, [this, &a_target_lsa] ()
+    {
+      const bool res = m_last_non_null_minimum_value.is_null ()
+		       || m_last_non_null_minimum_value > a_target_lsa;
+      return res;
+    });
   }
 
   /*********************************************************************

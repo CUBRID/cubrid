@@ -37,6 +37,38 @@ namespace cublog
 {
 #if defined(SERVER_MODE)
 
+  class minimum_log_lsa
+  {
+      using log_lsas_t = std::tuple<log_lsa, log_lsa, log_lsa>;
+
+    public:
+      minimum_log_lsa ();
+      minimum_log_lsa (const minimum_log_lsa &) = delete;
+      minimum_log_lsa (minimum_log_lsa &&) = delete;
+
+      minimum_log_lsa &operator = (const minimum_log_lsa &) = delete;
+      minimum_log_lsa &operator = (minimum_log_lsa &&) = delete;
+
+      void set_for_produce (const log_lsa &a_lsa);
+      void set_for_produce_and_consume (const log_lsa &a_produce_lsa, const log_lsa &a_consume_lsa);
+      void set_for_consume (const log_lsa &a_lsa);
+      void set_for_in_progress (const log_lsa &a_lsa);
+
+      log_lsa get () const;
+
+      void wait_for_target_lsa (const log_lsa &a_target_lsa);
+
+    private:
+      log_lsa do_locked_calculate_minimum (const log_lsas_t &a_values) const;
+
+    private:
+      mutable std::mutex m_values_mtx;
+      log_lsas_t m_values;
+      log_lsa m_last_non_null_minimum_value;
+
+      std::condition_variable m_wait_for_target_value_cv;
+  };
+
   /* a class to handle infrastructure for parallel log recovery/replication RAII-style;
    * usage:
    *  - instantiate an object of this class with the desired number of background workers
@@ -108,29 +140,7 @@ namespace cublog
 	  using log_lsa_set = std::set<log_lsa>;
 
 	private:
-	  class minimum_log_lsa_in_queue
-	  {
-	      using log_lsas_t = std::tuple<log_lsa, log_lsa, log_lsa>;
-
-	    public:
-	      minimum_log_lsa_in_queue ();
-	      minimum_log_lsa_in_queue (const minimum_log_lsa_in_queue &) = delete;
-	      minimum_log_lsa_in_queue (minimum_log_lsa_in_queue &&) = delete;
-
-	      minimum_log_lsa_in_queue &operator = (const minimum_log_lsa_in_queue &) = delete;
-	      minimum_log_lsa_in_queue &operator = (minimum_log_lsa_in_queue &&) = delete;
-
-	      void set_for_produce (const log_lsa &a_lsa);
-	      void set_for_produce_and_consume (const log_lsa &a_produce_lsa, const log_lsa &a_consume_lsa);
-	      void set_for_consume (const log_lsa &a_lsa);
-	      void set_for_in_progress (const log_lsa &a_lsa);
-
-	      log_lsa get () const;
-
-	    private:
-	      mutable std::mutex m_access_mtx;
-	      log_lsas_t m_values;
-	  };
+	  // TODO: class minimum_log_lsa
 
 	public:
 	  redo_job_queue ();
@@ -226,7 +236,7 @@ namespace cublog
 	   * to be processed (consumed); if no job exists in the queue, the
 	   * value is null
 	   */
-	  minimum_log_lsa_in_queue m_minimum_log_lsa_to_process;
+	  minimum_log_lsa m_minimum_log_lsa_to_process;
       };
 
       /* maintain a bookkeeping of tasks that are still performing work;

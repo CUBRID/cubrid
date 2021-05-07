@@ -195,56 +195,137 @@ TEST_CASE ("log recovery parallel test: stress test", "[long]")
     }
 }
 
-TEST_CASE ("log recovery parallel test: idle status", "[ci][dbg]")
+TEST_CASE ("log recovery parallel test: idle status", "[ci]")
 {
   srand (time (nullptr));
   initialize_thread_infrastructure ();
 
-  cublog::redo_parallel log_redo_parallel (std::thread::hardware_concurrency ());
+  for (int i = 0; i < 50; ++i)
+    {
+      cublog::redo_parallel log_redo_parallel (std::thread::hardware_concurrency ());
 
-  REQUIRE (log_redo_parallel.is_idle ());
-  REQUIRE (log_redo_parallel.get_minimum_unprocessed_lsa ().is_null ());
+      REQUIRE (log_redo_parallel.is_idle ());
+      REQUIRE (log_redo_parallel.get_minimum_unprocessed_lsa ().is_null ());
+
+      const ut_database_config database_config =
+      {
+	42, // max_volume_count_per_database
+	42, // max_page_count_per_volume
+	.2, // max_duration_in_millis
+      };
+      ux_ut_database db_online { new ut_database (database_config) };
+      ux_ut_database db_recovery { new ut_database (database_config) };
+
+      ut_database_values_generator global_values{ database_config };
+
+      log_lsa single_supplied_lsa;
+      for (bool at_least_one_page_update = false; !at_least_one_page_update; )
+	{
+	  ux_ut_redo_job_impl job = db_online->generate_changes (*db_recovery, global_values);
+	  single_supplied_lsa = job->get_log_lsa ();
+
+	  if (job->is_volume_creation () || job->is_page_creation ())
+	    {
+	      // jobs not tied to a non-null vpid, are executed in-synch
+	      db_recovery->apply_changes (std::move (job));
+	    }
+	  else
+	    {
+	      log_redo_parallel.add (std::move (job));
+	      at_least_one_page_update = true;
+	    }
+	}
+
+      // sleep here more than 'max_duration_in_millis' to invalidate test
+      REQUIRE_FALSE (log_redo_parallel.is_idle ());
+      REQUIRE_FALSE (log_redo_parallel.get_minimum_unprocessed_lsa ().is_null ());
+      REQUIRE (log_redo_parallel.get_minimum_unprocessed_lsa () == single_supplied_lsa);
+
+      log_redo_parallel.wait_for_idle ();
+      REQUIRE (log_redo_parallel.is_idle ());
+      REQUIRE_FALSE (log_redo_parallel.get_minimum_unprocessed_lsa ().is_null ());
+
+      log_redo_parallel.set_adding_finished ();
+      log_redo_parallel.wait_for_termination_and_stop_execution ();
+
+      db_online->require_equal (*db_recovery);
+    }
+}
+
+TEST_CASE ("minimum log lsa: ", "[ci][dbg]")
+{
+  srand (time (nullptr));
 
   const ut_database_config database_config =
   {
     42, // max_volume_count_per_database
     42, // max_page_count_per_volume
-    5., // max_duration_in_millis
+    2., // max_duration_in_millis
   };
-  ux_ut_database db_online { new ut_database (database_config) };
-  ux_ut_database db_recovery { new ut_database (database_config) };
 
-  ut_database_values_generator global_values{ database_config };
+  ut_database_values_generator values_generator{ database_config };
 
-  log_lsa single_supplied_lsa;
-  for (bool at_least_one_page_update = false; !at_least_one_page_update; )
+  cublog::minimum_log_lsa min_log_lsa;
+  REQUIRE (min_log_lsa.get ().is_null ());
+
+  // collect some lsa's in a vector
+  std::vector<log_lsa> log_lsa_vec;
+  for (int i = 0; i < 10; ++i)
     {
-      ux_ut_redo_job_impl job = db_online->generate_changes (*db_recovery, global_values);
-      single_supplied_lsa = job->get_log_lsa ();
-
-      if (job->is_volume_creation () || job->is_page_creation ())
-	{
-	  // jobs not tied to a non-null vpid, are executed in-synch
-	  db_recovery->apply_changes (std::move (job));
-	}
-      else
-	{
-	  log_redo_parallel.add (std::move (job));
-	  at_least_one_page_update = true;
-	}
+      log_lsa_vec.push_back (values_generator.increment_and_get_lsa_log ());
     }
+  const log_lsa target_log_lsa = values_generator.increment_and_get_lsa_log ();
+  auto log_lsa_vec_it = log_lsa_vec.cbegin ();
+  // push few more values in the vector such that the target lsa is passed
+  log_lsa_vec.push_back (values_generator.increment_and_get_lsa_log ());
+  //log_lsa_vec.push_back(values_generator.increment_and_get_lsa_log());
 
-  // sleep here more than 'max_duration_in_millis' to invalidate test
-  REQUIRE_FALSE (log_redo_parallel.is_idle ());
-  REQUIRE_FALSE (log_redo_parallel.get_minimum_unprocessed_lsa ().is_null ());
-  REQUIRE (log_redo_parallel.get_minimum_unprocessed_lsa () == single_supplied_lsa);
+  //
+  // 1. idle test will immediately finish
+  //
+  std::thread th1 ([&] ()
+  {
+    min_log_lsa.wait_for_target_lsa (target_log_lsa);
+    REQUIRE (true);
+  });
+  th1.join ();
+  REQUIRE (min_log_lsa.get ().is_null ());
 
-  log_redo_parallel.wait_for_idle ();
-  REQUIRE (log_redo_parallel.is_idle ());
-  REQUIRE (log_redo_parallel.get_minimum_unprocessed_lsa ().is_null ());
+  //
+  // 2. produce & consume lsa's; leave in progress null
+  //
 
-  log_redo_parallel.set_adding_finished ();
-  log_redo_parallel.wait_for_termination_and_stop_execution ();
+  // push one value such that we can launch a waiting thread
+  // that will not return immediately
+  min_log_lsa.set_for_produce (*log_lsa_vec_it);
+  ++log_lsa_vec_it;
 
-  db_online->require_equal (*db_recovery);
+  std::thread th2 ([&] ()
+  {
+    min_log_lsa.wait_for_target_lsa (target_log_lsa);
+    REQUIRE (true);
+  });
+
+  for ( ; ; )
+    {
+      min_log_lsa.set_for_produce (*log_lsa_vec_it);
+      ++log_lsa_vec_it;
+      if (log_lsa_vec_it == log_lsa_vec.cend ())
+	{
+	  break;
+	}
+
+      min_log_lsa.set_for_consume (*log_lsa_vec_it);
+      ++log_lsa_vec_it;
+      if (log_lsa_vec_it == log_lsa_vec.cend ())
+	{
+	  break;
+	}
+
+      // leave in-progress null
+
+      REQUIRE (true);
+    }
+  th2.join ();
+  REQUIRE (min_log_lsa.get () > target_log_lsa);
 }
