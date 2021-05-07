@@ -310,7 +310,6 @@ static int logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, voi
 
 static int log_create_metalog_file ();
 static int log_read_metalog_from_file ();
-static int log_write_metalog_to_file ();
 
 #if defined(SERVER_MODE)
 // *INDENT-OFF*
@@ -9933,6 +9932,10 @@ log_check_ha_delay_info_execute (cubthread::entry &thread_ref)
       log_append_ha_server_state (&thread_ref, server_state);
 
       csect_exit (&thread_ref, CSECT_HA_SERVER_STATE);
+
+      /* useful when the server is in a relative idle state
+       */
+      log_wakeup_log_flush_daemon();
     }
   else
     {

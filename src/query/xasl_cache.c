@@ -399,6 +399,8 @@ xasl_cache_ent::init_clone_cache ()
 static void *
 xcache_entry_alloc (void)
 {
+  static int xcache_nentries = 0;
+
   XASL_CACHE_ENTRY *xcache_entry = (XASL_CACHE_ENTRY *) malloc (sizeof (XASL_CACHE_ENTRY));
   if (xcache_entry == NULL)
     {
@@ -406,6 +408,9 @@ xcache_entry_alloc (void)
     }
   xcache_entry->init_clone_cache ();
   pthread_mutex_init (&xcache_entry->cache_clones_mutex, NULL);
+
+  xcache_entry->list_ht_no = xcache_nentries++;
+
   return xcache_entry;
 }
 
@@ -445,7 +450,6 @@ xcache_entry_init (void *entry)
   xcache_entry->related_objects = NULL;
   xcache_entry->ref_count = 0;
   xcache_entry->clr_count = 0;
-  xcache_entry->list_ht_no = -1;
 
   xcache_entry->sql_info.sql_hash_text = NULL;
   xcache_entry->sql_info.sql_user_text = NULL;
@@ -844,6 +848,7 @@ xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, const XASL_CAC
 	  if (recompile_needed)
 	    {
 	      /* We need to recompile. */
+	      /* and we need to clear the list cache entry first */
 	      xcache_unfix (thread_p, *xcache_entry);
 	      *xcache_entry = NULL;
 	      if (search_mode == XASL_CACHE_SEARCH_FOR_EXECUTE)
@@ -1150,6 +1155,9 @@ xcache_unfix (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry)
 	{
 	  xcache_clone_decache (thread_p, &xcache_entry->cache_clones[--xcache_entry->n_cache_clones]);
 	}
+
+      /* need to clear list-cache first */
+      (void) qfile_clear_list_cache (thread_p, xcache_entry->list_ht_no);
 
       if (!xcache_Hashmap.erase (thread_p, xcache_entry->xasl_id))
 	{
@@ -1702,27 +1710,23 @@ xcache_invalidate_qcaches (THREAD_ENTRY * thread_p, const OID * oid)
        */
       while (true)
 	{
+	  int num_entries;
+
 	  xcache_entry = iter.iterate ();
 	  if (xcache_entry == NULL)
 	    {
 	      finished = true;
 	      break;
 	    }
-	  if (xcache_entry->list_ht_no < 0)
+
+	  num_entries = qfile_get_list_cache_number_of_entries (xcache_entry->list_ht_no);
+	  if (num_entries > 0 && xcache_entry_is_related_to_oid (xcache_entry, oid))
 	    {
-	      continue;
-	    }
-	  if (xcache_entry_is_related_to_oid (xcache_entry, oid))
-	    {
-	      res = qfile_clear_list_cache (thread_p, xcache_entry->list_ht_no, true);
+	      res = qfile_clear_list_cache (thread_p, xcache_entry->list_ht_no);
 	      if (res != NO_ERROR)
 		{
 		  finished = true;
 		  break;
-		}
-	      if (qfile_get_list_cache_number_of_entries (xcache_entry->list_ht_no) == 0)
-		{
-		  xcache_entry->list_ht_no = -1;
 		}
 	    }
 	}
@@ -1778,14 +1782,12 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
 	  /* Check invalidation conditions. */
 	  if (invalidate_check == NULL || invalidate_check (xcache_entry, arg))
 	    {
-	      /* delete query cache from xcache entry */
-	      if (xcache_entry->list_ht_no >= 0 && !QFILE_IS_LIST_CACHE_DISABLED && !qfile_has_no_cache_entries ())
+	      if (!QFILE_IS_LIST_CACHE_DISABLED && !qfile_has_no_cache_entries ())
 		{
-		  qfile_clear_list_cache (thread_p, xcache_entry->list_ht_no, true);
-		  if (qfile_get_list_cache_number_of_entries (xcache_entry->list_ht_no) == 0)
-		    {
-		      xcache_entry->list_ht_no = -1;
-		    }
+		  /* delete query cache from xcache entry */
+		  {
+		    qfile_clear_list_cache (thread_p, xcache_entry->list_ht_no);
+		  }
 		}
 
 	      /* Mark entry as deleted. */
@@ -2200,8 +2202,7 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
 	{
 	  candidate.xid = xcache_entry->xasl_id;
 	  candidate.xcache = xcache_entry;
-	  if (candidate.xid.cache_flag > 0
-	      || (candidate.xid.cache_flag & XCACHE_ENTRY_FLAGS_MASK) || xcache_entry->list_ht_no >= 0)
+	  if (candidate.xid.cache_flag > 0 || (candidate.xid.cache_flag & XCACHE_ENTRY_FLAGS_MASK))
 	    {
 	      /* Either marked for delete or recompile, or already recompiled. Not a valid candidate. */
 	      continue;
@@ -2224,7 +2225,6 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
 	  candidate.xcache = xcache_entry;
 	  if (candidate.xid.cache_flag > 0
 	      || (candidate.xid.cache_flag & XCACHE_ENTRY_FLAGS_MASK)
-	      || xcache_entry->list_ht_no >= 0
 	      || TIME_DIFF_SEC (current_time, candidate.xcache->time_last_used) <= xcache_Time_threshold)
 	    {
 	      continue;
@@ -2250,6 +2250,9 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
 	}
       /* Set intention to cleanup the entry. */
       candidate.xid.cache_flag = XCACHE_ENTRY_CLEANUP;
+
+      /* clear list cache entries first */
+      (void) qfile_clear_list_cache (thread_p, candidate.xcache->list_ht_no);
 
       /* Try delete. Would be better to decache the clones here. For simplicity, since is not an usual case,
        * clone decache is postponed - is decached when retired list will be cleared.
@@ -2400,11 +2403,21 @@ xcache_check_recompilation_threshold (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY 
 	}
       assert (!VFID_ISNULL (&cls_info_p->ci_hfid.vfid));
 
-      if (file_get_num_user_pages (thread_p, &cls_info_p->ci_hfid.vfid, &npages) != NO_ERROR)
+      if (!prm_get_bool_value (PRM_ID_USE_STAT_ESTIMATION))
 	{
-	  ASSERT_ERROR ();
-	  catalog_free_class_info_and_init (cls_info_p);
-	  return false;
+	  /* Consider recompiling the plan when statistic is updated. */
+	  npages = cls_info_p->ci_tot_pages;
+	}
+      else
+	{
+	  /* Because statistics are automatically updated, number of real pages of file can be used */
+	  /* default of use_stat_estimation is 'false' because btree statistics estimations is so inaccurate. */
+	  if (file_get_num_user_pages (thread_p, &cls_info_p->ci_hfid.vfid, &npages) != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      catalog_free_class_info_and_init (cls_info_p);
+	      return false;
+	    }
 	}
       if (npages > XCACHE_RT_FACTOR * xcache_entry->related_objects[relobj].tcard
 	  || npages < xcache_entry->related_objects[relobj].tcard / XCACHE_RT_FACTOR)

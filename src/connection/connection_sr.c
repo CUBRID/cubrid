@@ -1177,6 +1177,7 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
       if (css_send_data (conn, rid, pname.c_str (), pname.length () + 1) != NO_ERRORS)
 	{
 	  (void) unlink (pname.c_str ());
+	  close (socket_fd);
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
 	  goto fail_end;
 	}
@@ -1186,7 +1187,7 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
 	  css_free_conn (conn);
 	  close (socket_fd);
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
-	  goto fail_end;
+	  return NULL;
 	}
       // success
       (void) unlink (pname.c_str ());
