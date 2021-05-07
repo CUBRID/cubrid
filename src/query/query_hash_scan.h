@@ -41,13 +41,26 @@
     } \
   while (0)
 
+#define MAKE_OID_TO_TUPLE_POSTION(tuple_pos, oid, scan_id_p) \
+  do \
+    { \
+      tuple_pos.status = scan_id_p->status; \
+      tuple_pos.position = S_ON; \
+      tuple_pos.vpid.pageid = oid.pageid; \
+      tuple_pos.vpid.volid = oid.volid; \
+      tuple_pos.offset = oid.slotid; \
+      tuple_pos.tpl = NULL; \
+      tuple_pos.tplno = 0; /* If tplno is needed, add it from scan_build_hash_list_scan() */ \
+    } \
+  while (0)
+
 /* kind of hash list scan method */
 enum hash_method
 {
   HASH_METH_NOT_USE = 0,
   HASH_METH_IN_MEM = 1,
   HASH_METH_HYBRID = 2,
-  HASH_METH_HASH_FILE = 3 /* not used */
+  HASH_METH_HASH_FILE = 3
 };
 typedef enum hash_method HASH_METHOD;
 
@@ -84,10 +97,12 @@ struct hash_list_scan
   regu_variable_list_node *build_regu_list;	/* regulator variable list */
   regu_variable_list_node *probe_regu_list;	/* regulator variable list */
   mht_hls_table *hash_table;	/* memory hash table for hash list scan */
+  EHID *ehash_table;		/* extendible hash table file */
   hash_scan_key *temp_key;	/* temp probe key */
   hash_scan_key *temp_new_key;	/* temp probe key with db_value */
   HENTRY_HLS_PTR curr_hash_entry;	/* current hash entry */
   int hash_list_scan_yn;	/* Is hash list scan possible? */
+  unsigned int curr_hash_key;	/* current hash key */
   bool need_coerce_type;	/* Are the types of probe and build different? */
 };
 

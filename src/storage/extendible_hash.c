@@ -825,7 +825,6 @@ eh_dump_key (DB_TYPE key_type, void *key, OID * value_ptr)
 
 }
 #endif /* EHINSERTION_ORDER */
-
 /*
  * xehash_create () - Create an extendible hashing structure
  *   return: EHID * (NULL in case of error)
@@ -888,6 +887,10 @@ ehash_get_key_size (DB_TYPE key_type)
       key_size = sizeof (OID);
       break;
 
+    case DB_TYPE_INTEGER:
+      key_size = sizeof (int);
+      break;
+
 #if defined (ENABLE_UNUSED_FUNCTION)
     case DB_TYPE_DOUBLE:
       key_size = sizeof (double);
@@ -895,10 +898,6 @@ ehash_get_key_size (DB_TYPE key_type)
 
     case DB_TYPE_FLOAT:
       key_size = sizeof (float);
-      break;
-
-    case DB_TYPE_INTEGER:
-      key_size = sizeof (int);
       break;
 
     case DB_TYPE_BIGINT:
@@ -969,7 +968,7 @@ ehash_create_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, DB_TYPE key_type, i
   FILE_EHASH_DES ehdes;
   PAGE_TYPE ptype = PAGE_EHASH;
 
-  assert (key_type == DB_TYPE_STRING || key_type == DB_TYPE_OBJECT);
+  assert (key_type == DB_TYPE_STRING || key_type == DB_TYPE_OBJECT || key_type == DB_TYPE_INTEGER);
 
   if (ehid_p == NULL)
     {
@@ -1259,6 +1258,8 @@ xehash_destroy (THREAD_ENTRY * thread_p, EHID * ehid_p)
     {
       return ER_FAILED;
     }
+
+  ehash_dump (thread_p, ehid_p);
 
   dir_page_p = ehash_fix_ehid_page (thread_p, ehid_p, PGBUF_LATCH_WRITE);
   if (dir_page_p == NULL)
@@ -1732,12 +1733,10 @@ ehash_insert_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p, OID * 
     }
 
   dir_header_p = (EHASH_DIR_HEADER *) dir_root_page_p;
-
 #if defined(EHINSERTION_ORDER)
   fprintf (stdout, "Ex Hash %d|%d|%d Insert:", ehid_p->vfid.volid, ehid_p->vfid.fileid, ehid_p->pageid);
   eh_dump_key (dir_header_p->key_type, key_p, value_p);
 #endif /* EHINSERTION_ORDER */
-
   if (dir_header_p->key_type == DB_TYPE_STRING)
     {
       /* max length of class name is 255 */
@@ -2086,6 +2085,11 @@ ehash_write_key_to_record (RECDES * recdes_p, DB_TYPE key_type, void *key_p, sho
     case DB_TYPE_OBJECT:
       *(OID *) record_p = *(OID *) key_p;
       break;
+
+    case DB_TYPE_INTEGER:
+      *(int *) record_p = *(int *) key_p;
+      break;
+
 #if defined (ENABLE_UNUSED_FUNCTION)
     case DB_TYPE_DOUBLE:
       OR_MOVE_DOUBLE (key_p, record_p);
@@ -2093,10 +2097,6 @@ ehash_write_key_to_record (RECDES * recdes_p, DB_TYPE key_type, void *key_p, sho
 
     case DB_TYPE_FLOAT:
       *(float *) record_p = *(float *) key_p;
-      break;
-
-    case DB_TYPE_INTEGER:
-      *(int *) record_p = *(int *) key_p;
       break;
 
     case DB_TYPE_BIGINT:
@@ -2260,6 +2260,10 @@ ehash_compare_key (THREAD_ENTRY * thread_p, char *bucket_record_p, DB_TYPE key_t
     case DB_TYPE_OBJECT:
       compare_result = oid_compare ((OID *) key_p, (OID *) bucket_record_p);
       break;
+
+    case DB_TYPE_INTEGER:
+      compare_result = *(int *) key_p - *(int *) bucket_record_p;
+      break;
 #if defined (ENABLE_UNUSED_FUNCTION)
     case DB_TYPE_DOUBLE:
       OR_MOVE_DOUBLE (key_p, &d1);
@@ -2295,10 +2299,6 @@ ehash_compare_key (THREAD_ENTRY * thread_p, char *bucket_record_p, DB_TYPE key_t
 	{
 	  compare_result = -1;
 	}
-      break;
-
-    case DB_TYPE_INTEGER:
-      compare_result = *(int *) key_p - *(int *) bucket_record_p;
       break;
 
     case DB_TYPE_BIGINT:
@@ -4261,7 +4261,6 @@ ehash_hash_eight_bytes_type (char *key_p)
   return hash_key;
 }
 
-#if defined (ENABLE_UNUSED_FUNCTION)
 static EHASH_HASH_KEY
 ehash_hash_four_bytes_type (char *key_p)
 {
@@ -4292,6 +4291,7 @@ ehash_hash_four_bytes_type (char *key_p)
   return hash_key;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 static EHASH_HASH_KEY
 ehash_hash_two_bytes_type (char *key_p)
 {
@@ -4351,6 +4351,10 @@ ehash_hash (void *original_key_p, DB_TYPE key_type)
       hash_key = ehash_hash_eight_bytes_type (key);
       break;
 
+    case DB_TYPE_INTEGER:
+      hash_key = ehash_hash_four_bytes_type (key);
+      break;
+
 #if defined (ENABLE_UNUSED_FUNCTION)
     case DB_TYPE_BIGINT:
     case DB_TYPE_DOUBLE:
@@ -4368,7 +4372,6 @@ ehash_hash (void *original_key_p, DB_TYPE key_type)
     case DB_TYPE_TIME:
     case DB_TYPE_TIMESTAMP:
     case DB_TYPE_DATETIME:
-    case DB_TYPE_INTEGER:
       hash_key = ehash_hash_four_bytes_type (key);
       break;
 
@@ -4704,6 +4707,10 @@ ehash_apply_each (THREAD_ENTRY * thread_p, EHID * ehid_p, RECDES * recdes_p, DB_
     case DB_TYPE_OBJECT:
       memcpy (&next_key, bucket_record_p, sizeof (OID));
       break;
+
+    case DB_TYPE_INTEGER:
+      *((int *) &next_key) = *(int *) bucket_record_p;
+      break;
 #if defined (ENABLE_UNUSED_FUNCTION)
     case DB_TYPE_DOUBLE:
       OR_MOVE_DOUBLE (bucket_record_p, &next_key);
@@ -4711,10 +4718,6 @@ ehash_apply_each (THREAD_ENTRY * thread_p, EHID * ehid_p, RECDES * recdes_p, DB_
 
     case DB_TYPE_FLOAT:
       *((float *) &next_key) = *(float *) bucket_record_p;
-      break;
-
-    case DB_TYPE_INTEGER:
-      *((int *) &next_key) = *(int *) bucket_record_p;
       break;
 
     case DB_TYPE_BIGINT:
@@ -4921,6 +4924,10 @@ ehash_dump (THREAD_ENTRY * thread_p, EHID * ehid_p)
     case DB_TYPE_OBJECT:
       printf (" OID                                 *\n");
       break;
+
+    case DB_TYPE_INTEGER:
+      printf (" int                                    *\n");
+      break;
 #if defined (ENABLE_UNUSED_FUNCTION)
     case DB_TYPE_DOUBLE:
       printf (" double                                 *\n");
@@ -4928,10 +4935,6 @@ ehash_dump (THREAD_ENTRY * thread_p, EHID * ehid_p)
 
     case DB_TYPE_FLOAT:
       printf (" float                                 *\n");
-      break;
-
-    case DB_TYPE_INTEGER:
-      printf (" int                                    *\n");
       break;
 
     case DB_TYPE_BIGINT:
@@ -5196,6 +5199,11 @@ ehash_dump_bucket (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, DB_TYPE key_
 	  printf ("   (%5d,%5d,%5d)          ", ((OID *) bucket_record_p)->volid, ((OID *) bucket_record_p)->pageid,
 		  ((OID *) bucket_record_p)->slotid);
 	  break;
+
+	case DB_TYPE_INTEGER:
+	  printf ("    %14u              ", *(unsigned int *) bucket_record_p);
+	  break;
+
 #if defined (ENABLE_UNUSED_FUNCTION)
 	case DB_TYPE_DOUBLE:
 	  OR_MOVE_DOUBLE (bucket_record_p, &d);
@@ -5204,10 +5212,6 @@ ehash_dump_bucket (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, DB_TYPE key_
 
 	case DB_TYPE_FLOAT:
 	  printf ("    %20f      ", *(float *) bucket_record_p);
-	  break;
-
-	case DB_TYPE_INTEGER:
-	  printf ("    %14d              ", *(int *) bucket_record_p);
 	  break;
 
 	case DB_TYPE_BIGINT:
