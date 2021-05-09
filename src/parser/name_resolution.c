@@ -136,9 +136,9 @@ static PT_NODE *pt_get_all_json_table_attributes_and_types (PARSER_CONTEXT * par
 static PT_NODE *pt_json_table_gather_attribs (PARSER_CONTEXT * parser, PT_NODE * json_table_node, void *args,
 					      int *continue_walk);
 static PT_NODE *pt_dblink_table_gather_attribs (PARSER_CONTEXT * parser, PT_NODE * dblink_column, void *args,
-						 int *continue_walk);
+						int *continue_walk);
 static PT_NODE *pt_get_all_dblink_table_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * dblink_cols,
-							       const char *dblink_table_alias);
+							      const char *dblink_table_alias);
 static PT_NODE *pt_get_all_showstmt_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * derived_table);
 static void pt_get_attr_data_type (PARSER_CONTEXT * parser, DB_ATTRIBUTE * att, PT_NODE * attr);
 static PT_NODE *pt_unwhacked_spec (PARSER_CONTEXT * parser, PT_NODE * scope, PT_NODE * spec);
@@ -3644,10 +3644,10 @@ pt_find_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * name)
 
 	  else if (spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
 	    {
-	         // calling default() on any dblink table columns should return NULL
-	         // set PT_NAME_DEFAULTF_ACCEPTS flag to pass pt_check_defaultf()
-	         DB_VALUE val;
-	         assert (false); // ctshim_assert	      
+	      // calling default() on any dblink table columns should return NULL
+	      // set PT_NAME_DEFAULTF_ACCEPTS flag to pass pt_check_defaultf()
+	      DB_VALUE val;
+	      assert (false);	// ctshim_assert             
 	    }
 
 	}
@@ -4488,7 +4488,7 @@ pt_dblink_table_gather_attribs (PARSER_CONTEXT * parser, PT_NODE * dblink_column
 
 static PT_NODE *
 pt_get_all_dblink_table_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * dblink_cols,
-					       const char *dblink_table_alias)
+					      const char *dblink_table_alias)
 {
   PT_NODE *attribs = NULL;
 
@@ -10027,7 +10027,7 @@ pt_get_attr_list_of_derived_table (PARSER_CONTEXT * parser, PT_MISC_TYPE derived
       assert (derived_table->node_type == PT_DBLINK_TABLE);
 
       as_attr_list = pt_get_all_dblink_table_attributes_and_types (parser, derived_table->info.dblink_table.cols,
-								    derived_alias->info.name.original);
+								   derived_alias->info.name.original);
       break;
 
     default:

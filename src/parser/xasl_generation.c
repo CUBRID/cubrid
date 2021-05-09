@@ -395,8 +395,8 @@ static ACCESS_SPEC_TYPE *pt_to_cselect_table_spec_list (PARSER_CONTEXT * parser,
 static ACCESS_SPEC_TYPE *pt_to_json_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * json_table,
 						     PT_NODE * src_derived_tbl, PT_NODE * where_p);
 static ACCESS_SPEC_TYPE *pt_to_dblink_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec,
-							PT_NODE * dblink_table, PT_NODE * src_derived_tbl,
-							PT_NODE * where_p);
+						       PT_NODE * dblink_table, PT_NODE * src_derived_tbl,
+						       PT_NODE * where_p);
 static ACCESS_SPEC_TYPE *pt_make_json_table_access_spec (PARSER_CONTEXT * parser, REGU_VARIABLE * json_reguvar,
 							 PRED_EXPR * where_pred, PT_JSON_TABLE_INFO * json_table,
 							 TABLE_INFO * tbl_info);
@@ -12734,7 +12734,7 @@ pt_to_json_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * j
 
 static ACCESS_SPEC_TYPE *
 pt_to_dblink_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * dblink_table,
-			       PT_NODE * src_derived_tbl, PT_NODE * where_p)
+			      PT_NODE * src_derived_tbl, PT_NODE * where_p)
 {
   ACCESS_SPEC_TYPE *access;
   PT_DBLINK_INFO *pdblink = &(dblink_table->info.dblink_table);

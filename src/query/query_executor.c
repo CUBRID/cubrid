@@ -6719,15 +6719,13 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
       break;
     case TARGET_DBLINK:
       error_code =
-	scan_open_dblink_scan (thread_p, s_id, 
+	scan_open_dblink_scan (thread_p, s_id,
 			       curr_spec->single_fetch, scan_op_type,
 			       curr_spec->s.dblink_node.conn_url,
 			       curr_spec->s.dblink_node.conn_user,
 			       curr_spec->s.dblink_node.conn_password,
 			       curr_spec->s.dblink_node.conn_sql,
-			       vd, val_list,
-			       curr_spec->s.dblink_node.dblink_regu_list_pred,
-			       curr_spec->where_pred);
+			       vd, val_list, curr_spec->s.dblink_node.dblink_regu_list_pred, curr_spec->where_pred);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();

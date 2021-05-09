@@ -19398,4 +19398,3 @@ pt_print_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p)
 
   return q;
 }
-

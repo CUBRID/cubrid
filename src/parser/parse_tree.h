@@ -3379,7 +3379,7 @@ union pt_statement_info
   PT_POINTER_INFO pointer;
   PT_TRACE_INFO trace;
   PT_KILLSTMT_INFO killstmt;
-  PT_WITH_CLAUSE_INFO with_clause;  
+  PT_WITH_CLAUSE_INFO with_clause;
 };
 
 /*
