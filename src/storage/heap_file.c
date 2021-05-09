@@ -5209,13 +5209,6 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
 	      goto error;
 	    }
 
-	  error_code = heap_cache_class_info (thread_p, class_oid, hfid, file_type, NULL);
-	  if (error_code != NO_ERROR)
-	    {
-	      /* could not cache */
-	      ASSERT_ERROR ();
-	      goto error;
-	    }
 	  /* reuse successful */
 	  goto end;
 	}
@@ -5267,14 +5260,6 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
   error_code = file_descriptor_update (thread_p, &hfid->vfid, &des);
   if (error_code != NO_ERROR)
     {
-      ASSERT_ERROR ();
-      goto error;
-    }
-
-  error_code = heap_cache_class_info (thread_p, class_oid, hfid, file_type, NULL);
-  if (error_code != NO_ERROR)
-    {
-      /* Failed to cache HFID. */
       ASSERT_ERROR ();
       goto error;
     }

@@ -5469,6 +5469,20 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	      or_class_rep_dir (recdes, &rep_dir);
 	      assert (!OID_ISNULL (&rep_dir));
 #endif
+	      HFID new_hfid = HFID_INITIALIZER;
+	      HFID cached_hfid = HFID_INITIALIZER;
+
+	      or_class_hfid (recdes, &new_hfid);
+	      heap_get_class_info (thread_p, oid, &cached_hfid, NULL, NULL);
+	      if (!HFID_IS_NULL (&new_hfid) && !HFID_EQ (&cached_hfid, &new_hfid))
+		{
+		  error_code = heap_delete_hfid_from_cache (thread_p, oid);
+		  if (error_code != NO_ERROR)
+		    {
+		      goto error;
+		    }
+		}
+
 	      error_code = catalog_update (thread_p, recdes, oid);
 	      if (error_code < 0)
 		{
