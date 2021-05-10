@@ -9511,7 +9511,6 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 	    }
 	  else if (p->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
 	    {
-	      //     assert (false); // ctshim_assert
 	      q = pt_append_varchar (parser, q, r1);
 
 	      unsigned int alias_print_flag = (parser->custom_print & PT_PRINT_ALIAS);
@@ -9526,7 +9525,6 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 	      q = pt_append_varchar (parser, q, r1);
 	      q = pt_append_nulstring (parser, q, ")");
 
-	      // ignore on_cond, using_cond
 	      return q;
 	    }
 	  else

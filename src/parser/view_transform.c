@@ -8867,9 +8867,9 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * class_,
 		{
 		  /* flat_entity_list is needed to gather referenced oids in xasl_generation
 		   * in pt_spec_to_xasl_class_oid_list */
-		  assert (false);	// ctshim_assert
 		  newspec->info.spec.flat_entity_list = spec->info.spec.flat_entity_list;
 		  spec->info.spec.flat_entity_list = NULL;
+		  // ctshim_assert
 		}
 	      else
 		{

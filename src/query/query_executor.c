@@ -6726,6 +6726,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 			       curr_spec->s.dblink_node.conn_password,
 			       curr_spec->s.dblink_node.conn_sql,
 			       vd, val_list, curr_spec->s.dblink_node.dblink_regu_list_pred, curr_spec->where_pred);
+
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();

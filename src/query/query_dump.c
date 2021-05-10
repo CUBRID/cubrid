@@ -2857,7 +2857,6 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
       else if (type == TARGET_DBLINK)
 	{
 	  json_object_set_new (scan, "access", json_string ("dblink"));
-	  assert (false);	// TODO ctshim_assert
 	}
 
       scan_print_stats_json (&spec->s_id, scan);

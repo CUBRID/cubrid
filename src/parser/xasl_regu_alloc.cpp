@@ -200,7 +200,6 @@ regu_spec_target_init (access_spec_node &spec, TARGET_TYPE type)
       break;
     case TARGET_DBLINK:
       break;
-
     default:
       // do nothing
       break;

@@ -3641,15 +3641,13 @@ pt_find_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * name)
 	      name->info.name.default_value = pt_dbval_to_value (parser, &val);
 	      PT_NAME_INFO_SET_FLAG (name, PT_NAME_DEFAULTF_ACCEPTS);
 	    }
-
+#if 0
 	  else if (spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
 	    {
-	      // calling default() on any dblink table columns should return NULL
-	      // set PT_NAME_DEFAULTF_ACCEPTS flag to pass pt_check_defaultf()
-	      DB_VALUE val;
-	      assert (false);	// ctshim_assert             
+	      // TODO: ctshim_assert
+	      ;
 	    }
-
+#endif
 	}
     }
 
