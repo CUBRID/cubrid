@@ -5462,7 +5462,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 
       if (update_context.is_logical_old)
 	{
-	  /* Update the catalog as long as it is not the root class */
+	  /* Update the catalog and hfid cache as long as it is not the root class */
 	  if (!OID_IS_ROOTOID (oid))
 	    {
 #if !defined(NDEBUG)
@@ -5479,6 +5479,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		  goto error;
 		}
 
+	      /* if the hfid for the class is cached, and it is different from the NEW one, delete the previouse one. The new one is cached when it is accessed for the first time */
 	      if (!HFID_IS_NULL (&new_hfid) && is_hfid_cached)
 		{
 		  HFID cached_hfid = HFID_INITIALIZER;
