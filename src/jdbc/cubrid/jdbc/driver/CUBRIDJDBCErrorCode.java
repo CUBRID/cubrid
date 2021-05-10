@@ -84,6 +84,8 @@ public class CUBRIDJDBCErrorCode {
 	public static int lob_pos_invalid = -21139;
 	public static int lob_is_not_writable = -21140;
 	public static int request_timeout = -21141;
+    public static int invalid_prop_file = -21142;
+    public static int file_not_found_prop = -21143;
 
 	private static Hashtable<Integer, String> messageString;
 
@@ -173,6 +175,8 @@ public class CUBRIDJDBCErrorCode {
 			"Lob is not writable.");
 		messageString.put(new Integer(request_timeout), 
 			"Request timed out.");
+        messageString.put(new Integer(invalid_prop_file), "Invalid file - ");
+        messageString.put(new Integer(file_not_found_prop), "File not found - ");
 	}
 
 	public static String getMessage(int code) {
