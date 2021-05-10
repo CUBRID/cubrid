@@ -5470,16 +5470,30 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	      assert (!OID_ISNULL (&rep_dir));
 #endif
 	      HFID new_hfid = HFID_INITIALIZER;
-	      HFID cached_hfid = HFID_INITIALIZER;
+	      bool is_hfid_cached = false;
 
 	      or_class_hfid (recdes, &new_hfid);
-	      heap_get_class_info (thread_p, oid, &cached_hfid, NULL, NULL);
-	      if (!HFID_IS_NULL (&new_hfid) && !HFID_EQ (&cached_hfid, &new_hfid))
+	      error_code = heap_hfid_is_cached (thread_p, oid, &is_hfid_cached);
+	      if (error_code != NO_ERROR)
 		{
-		  error_code = heap_delete_hfid_from_cache (thread_p, oid);
+		  goto error;
+		}
+
+	      if (!HFID_IS_NULL (&new_hfid) && is_hfid_cached)
+		{
+		  HFID cached_hfid = HFID_INITIALIZER;
+		  error_code = heap_get_class_info (thread_p, oid, &cached_hfid, NULL, NULL);
 		  if (error_code != NO_ERROR)
 		    {
 		      goto error;
+		    }
+		  if (!HFID_EQ (&cached_hfid, &new_hfid))
+		    {
+		      error_code = heap_delete_hfid_from_cache (thread_p, oid);
+		      if (error_code != NO_ERROR)
+			{
+			  goto error;
+			}
 		    }
 		}
 

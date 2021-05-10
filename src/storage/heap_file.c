@@ -23573,6 +23573,43 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
 }
 
 /*
+ * heap_hfid_is_cached () - returns whether the class with the given class OID is cached or not
+ *
+ *   return: error code
+ *   thread_p  (in) :
+ *   class OID (in) : the class OID for which the entry will be returned
+ *   is_cached  (out): true if cached
+ */
+int
+heap_hfid_is_cached (THREAD_ENTRY * thread_p, const OID * class_oid, bool * is_cached)
+{
+  int error_code = NO_ERROR;
+  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_HFID_TABLE);
+  HEAP_HFID_TABLE_ENTRY *entry = NULL;
+
+  assert (class_oid != NULL && !OID_ISNULL (class_oid));
+
+  error_code = lf_hash_find (t_entry, &heap_Hfid_table->hfid_hash, (void *) class_oid, (void **) &entry);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  if (entry)
+    {
+      *is_cached = true;
+      lf_tran_end_with_mb (t_entry);
+    }
+  else
+    {
+      *is_cached = false;
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * heap_page_update_chain_after_mvcc_op () - Update max MVCCID and vacuum
  *					     status in heap page chain after
  *					     an MVCC op is executed.
