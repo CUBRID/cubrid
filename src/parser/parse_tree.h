@@ -3266,8 +3266,8 @@ struct pt_json_table_info
 
 typedef struct pt_dblink_info
 {
-  PT_NODE *conn;                /* name for DBLINK */
-  PT_NODE *url;		/* url info */
+  PT_NODE *conn;		/* name for DBLINK */
+  PT_NODE *url;			/* url info */
   PT_NODE *user;
   PT_NODE *pwd;
   PT_NODE *qstr;		/* query string */
