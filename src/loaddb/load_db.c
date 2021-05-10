@@ -505,7 +505,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	    {
 	      if (utility_get_option_bool_value (arg_map, LOAD_CS_FORCE_LOAD_S) != true)
 		{
-		  PRINT_AND_LOG_ERR_MSG ("loaddb: CS mode loaddb cannot be run in HA mode. Use loaddb SA mode.\n");
+		  PRINT_AND_LOG_ERR_MSG ("loaddb: CS mode loaddb cannot be run in HA mode. Please turn off HA mode.\n");
 		  status = 1;
 		  goto error_return;
 		}
