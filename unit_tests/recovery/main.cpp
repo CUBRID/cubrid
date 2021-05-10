@@ -265,8 +265,8 @@ TEST_CASE ("minimum log lsa: ", "[ci][dbg]")
 
   ut_database_values_generator values_generator{ database_config };
 
-  cublog::minimum_log_lsa min_log_lsa;
-  REQUIRE (min_log_lsa.get ().is_null ());
+  cublog::minimum_log_lsa_monitor min_log_lsa;
+  REQUIRE (min_log_lsa.get () == MAX_LSA);
 
   // collect some lsa's in a vector
   std::vector<log_lsa> log_lsa_vec;
@@ -276,56 +276,68 @@ TEST_CASE ("minimum log lsa: ", "[ci][dbg]")
     }
   const log_lsa target_log_lsa = values_generator.increment_and_get_lsa_log ();
   auto log_lsa_vec_it = log_lsa_vec.cbegin ();
-  // push few more values in the vector such that the target lsa is passed
+  // push at least 2 more values in the vector such that the target lsa is passed
+  // these two values ought to be distributed to the 'for_produce' and 'for_consume' functions
   log_lsa_vec.push_back (values_generator.increment_and_get_lsa_log ());
-  //log_lsa_vec.push_back(values_generator.increment_and_get_lsa_log());
+  log_lsa_vec.push_back (values_generator.increment_and_get_lsa_log ());
 
   //
   // 1. idle test will immediately finish
   //
-  std::thread th1 ([&] ()
   {
-    min_log_lsa.wait_for_target_lsa (target_log_lsa);
-    REQUIRE (true);
-  });
-  th1.join ();
-  REQUIRE (min_log_lsa.get ().is_null ());
-
-  //
-  // 2. produce & consume lsa's; leave in progress null
-  //
-
-  // push one value such that we can launch a waiting thread
-  // that will not return immediately
-  min_log_lsa.set_for_produce (*log_lsa_vec_it);
-  ++log_lsa_vec_it;
-
-  std::thread th2 ([&] ()
-  {
-    min_log_lsa.wait_for_target_lsa (target_log_lsa);
-    REQUIRE (true);
-  });
-
-  for ( ; ; )
+    std::thread observing_thread ([&] ()
     {
-      min_log_lsa.set_for_produce (*log_lsa_vec_it);
-      ++log_lsa_vec_it;
-      if (log_lsa_vec_it == log_lsa_vec.cend ())
-	{
-	  break;
-	}
+      const log_lsa min_lsa = min_log_lsa.wait_for_target_lsa (target_log_lsa);
+      REQUIRE (min_lsa != NULL_LSA);
+      REQUIRE (min_lsa == MAX_LSA);
+    });
+    observing_thread.join ();
+  }
 
-      min_log_lsa.set_for_consume (*log_lsa_vec_it);
-      ++log_lsa_vec_it;
-      if (log_lsa_vec_it == log_lsa_vec.cend ())
-	{
-	  break;
-	}
+  //
+  // 2. produce & consume lsa's; leave in progress untouched
+  //
+  {
+    // push one value such that we can launch a waiting thread
+    // that will not return immediately
+    min_log_lsa.set_for_produce (*log_lsa_vec_it);
+    ++log_lsa_vec_it;
 
-      // leave in-progress null
+    std::thread observing_thread ([&] ()
+    {
+      const log_lsa min_lsa = min_log_lsa.wait_for_target_lsa (target_log_lsa);
+      REQUIRE (min_lsa != NULL_LSA);
+      REQUIRE (min_lsa != MAX_LSA);
+    });
 
-      REQUIRE (true);
-    }
-  th2.join ();
-  REQUIRE (min_log_lsa.get () > target_log_lsa);
+    for ( ; ; )
+      {
+	min_log_lsa.set_for_produce (*log_lsa_vec_it);
+	++log_lsa_vec_it;
+	if (log_lsa_vec_it == log_lsa_vec.cend ())
+	  {
+	    break;
+	  }
+
+	min_log_lsa.set_for_consume (*log_lsa_vec_it);
+	++log_lsa_vec_it;
+	if (log_lsa_vec_it == log_lsa_vec.cend ())
+	  {
+	    break;
+	  }
+
+	// leave in-progress untouched
+
+	REQUIRE (true);
+      }
+    observing_thread.join ();
+    REQUIRE (min_log_lsa.get () != NULL_LSA);
+    REQUIRE (min_log_lsa.get () > target_log_lsa);
+    REQUIRE (min_log_lsa.get () != MAX_LSA);
+  }
+
+  //
+  // 2. all internal values
+  //
+  // TODO
 }

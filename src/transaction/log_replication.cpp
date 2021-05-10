@@ -51,7 +51,7 @@ namespace cublog
     assert (replication_parallel >= 0);
     if (replication_parallel > 0)
       {
-	m_parallel_replication_redo.reset (new cublog::redo_parallel (replication_parallel));
+	m_parallel_replication_redo.reset (new cublog::redo_parallel (replication_parallel/*, inject min lsa calculator*/));
       }
 
     // Create the daemon
