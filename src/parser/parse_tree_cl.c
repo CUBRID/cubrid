@@ -19322,11 +19322,11 @@ pt_apply_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g,
   else
     {
 #if 0				// Is it the necessary code?
-      // p->info.dblink_table.__cts_conn = g(parser, p->info.dblink_table.__cts_conn, arg);
+      // p->info.dblink_table.conn = g(parser, p->info.dblink_table.conn, arg);
 
-      p->info.dblink_table.__cts_url = g (parser, p->info.dblink_table.__cts_url, arg);
-      p->info.dblink_table.__cts_user = g (parser, p->info.dblink_table.__cts_user, arg);
-      p->info.dblink_table.__cts_pwd = g (parser, p->info.dblink_table.__cts_pwd, arg);
+      p->info.dblink_table.url = g (parser, p->info.dblink_table.url, arg);
+      p->info.dblink_table.user = g (parser, p->info.dblink_table.user, arg);
+      p->info.dblink_table.pwd = g (parser, p->info.dblink_table.pwd, arg);
       p->info.dblink_table.qstr = g (parser, p->info.dblink_table.qstr, arg);
 #endif
     }
@@ -19360,28 +19360,28 @@ pt_print_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_bytes (parser, q, "URL=", strlen ("URL="));
 #if 1
       q =
-	pt_append_bytes (parser, q, (char *) p->info.dblink_table.__cts_url->info.value.data_value.str->bytes,
-			 p->info.dblink_table.__cts_url->info.value.data_value.str->length);
-      //q = pt_append_nulstring (parser, q, (char*)p->info.dblink_table.__cts_url->info.value.data_value.str->bytes);
+	pt_append_bytes (parser, q, (char *) p->info.dblink_table.url->info.value.data_value.str->bytes,
+			 p->info.dblink_table.url->info.value.data_value.str->length);
+      //q = pt_append_nulstring (parser, q, (char*)p->info.dblink_table.url->info.value.data_value.str->bytes);
       q = pt_append_bytes (parser, q, " USER=", strlen ("USER="));
       q =
-	pt_append_bytes (parser, q, (char *) p->info.dblink_table.__cts_user->info.value.data_value.str->bytes,
-			 p->info.dblink_table.__cts_user->info.value.data_value.str->length);
-      //q = pt_append_nulstring (parser, q, (char*)p->info.dblink_table.__cts_user->info.value.data_value.str->bytes);
+	pt_append_bytes (parser, q, (char *) p->info.dblink_table.user->info.value.data_value.str->bytes,
+			 p->info.dblink_table.user->info.value.data_value.str->length);
+      //q = pt_append_nulstring (parser, q, (char*)p->info.dblink_table.user->info.value.data_value.str->bytes);
       q = pt_append_bytes (parser, q, " PASSWORD=", strlen ("PASSWORD="));
       q =
-	pt_append_bytes (parser, q, (char *) p->info.dblink_table.__cts_pwd->info.value.data_value.str->bytes,
-			 p->info.dblink_table.__cts_pwd->info.value.data_value.str->length);
-      //q = pt_append_nulstring (parser, q, (char*)p->info.dblink_table.__cts_pwd->info.value.data_value.str->bytes); 
+	pt_append_bytes (parser, q, (char *) p->info.dblink_table.pwd->info.value.data_value.str->bytes,
+			 p->info.dblink_table.pwd->info.value.data_value.str->length);
+      //q = pt_append_nulstring (parser, q, (char*)p->info.dblink_table.pwd->info.value.data_value.str->bytes); 
       q = pt_append_bytes (parser, q, "'", 1);
 #else
-      r = pt_print_bytes (parser, p->info.dblink_table.__cts_url);
+      r = pt_print_bytes (parser, p->info.dblink_table.url);
       q = pt_append_varchar (parser, q, r);
       q = pt_append_nulstring (parser, q, " USER=");
-      r = pt_print_bytes (parser, p->info.dblink_table.__cts_user);
+      r = pt_print_bytes (parser, p->info.dblink_table.user);
       q = pt_append_varchar (parser, q, r);
       q = pt_append_nulstring (parser, q, " PASSWORD=");
-      r = pt_print_bytes (parser, p->info.dblink_table.__cts_pwd);
+      r = pt_print_bytes (parser, p->info.dblink_table.pwd);
       q = pt_append_varchar (parser, q, r);
 #endif
     }

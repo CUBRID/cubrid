@@ -12773,9 +12773,9 @@ pt_to_dblink_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE *
   //static char dblink_passowrd[] = "";
 
   access = pt_make_dblink_access_spec (access_method, where, regu_attributes_pred, regu_attributes_rest,
-				       (char *) pdblink->__cts_url->info.value.data_value.str->bytes,
-				       (char *) pdblink->__cts_user->info.value.data_value.str->bytes,
-				       (char *) pdblink->__cts_pwd->info.value.data_value.str->bytes,
+				       (char *) pdblink->url->info.value.data_value.str->bytes,
+				       (char *) pdblink->user->info.value.data_value.str->bytes,
+				       (char *) pdblink->pwd->info.value.data_value.str->bytes,
 				       (char *) pdblink->qstr->info.value.data_value.str->bytes);
 
 

@@ -24757,16 +24757,16 @@ dblink_expr
                 if( $1->node_type == PT_NAME )
                 {
                         ct->info.dblink_table.is_name = true;
-                        ct->info.dblink_table.__cts_conn = $1;       
+                        ct->info.dblink_table.conn = $1;       
                 }
                 else // ( $1->node_type == PT_VALUE )
                 {
                     ct->info.dblink_table.is_name = false;
                     // in the order url, user, password        
-                    ct->info.dblink_table.__cts_conn = 0x00;  
-                    ct->info.dblink_table.__cts_url = $1;                           
-                    ct->info.dblink_table.__cts_user = $1->next;
-                    ct->info.dblink_table.__cts_pwd = $1->next->next;
+                    ct->info.dblink_table.conn = 0x00;  
+                    ct->info.dblink_table.url = $1;                           
+                    ct->info.dblink_table.user = $1->next;
+                    ct->info.dblink_table.pwd = $1->next->next;
                     $1->next->next = 0x00;
                     $1->next = 0x00;
                 }                 
