@@ -458,7 +458,7 @@ public class ConnectionProperties {
 
     public int getHoldCursor() {
         int holdability = ResultSet.HOLD_CURSORS_OVER_COMMIT;
-        if (holdCursor.getValueAsBoolean() == true) {
+        if (holdCursor.getValueAsBoolean() == false) {
             holdability = ResultSet.CLOSE_CURSORS_AT_COMMIT;
         }
         return holdability;
