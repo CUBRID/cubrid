@@ -9535,7 +9535,7 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 	    }
 	}
     }
-  //PT_DERIVED_DBLINK_TABLE ?
+
   if (!(parser->custom_print & PT_SUPPRESS_RESOLVED) && (p->info.spec.derived_table_type != PT_DERIVED_JSON_TABLE))
     {
       save_custom = parser->custom_print;
@@ -9574,7 +9574,7 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
       parser->custom_print = save_custom;
     }
-  //PT_DERIVED_DBLINK_TABLE ?
+
   if (p->info.spec.as_attr_list && !PT_SPEC_IS_CTE (p) && (p->info.spec.derived_table_type != PT_DERIVED_JSON_TABLE))
     {
       save_custom = parser->custom_print;
@@ -19358,7 +19358,7 @@ pt_print_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p)
     {
       q = pt_append_bytes (parser, q, "'", 1);
       q = pt_append_bytes (parser, q, "URL=", strlen ("URL="));
-#if 1
+
       q =
 	pt_append_bytes (parser, q, (char *) p->info.dblink_table.url->info.value.data_value.str->bytes,
 			 p->info.dblink_table.url->info.value.data_value.str->length);
@@ -19374,16 +19374,6 @@ pt_print_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p)
 			 p->info.dblink_table.pwd->info.value.data_value.str->length);
       //q = pt_append_nulstring (parser, q, (char*)p->info.dblink_table.pwd->info.value.data_value.str->bytes); 
       q = pt_append_bytes (parser, q, "'", 1);
-#else
-      r = pt_print_bytes (parser, p->info.dblink_table.url);
-      q = pt_append_varchar (parser, q, r);
-      q = pt_append_nulstring (parser, q, " USER=");
-      r = pt_print_bytes (parser, p->info.dblink_table.user);
-      q = pt_append_varchar (parser, q, r);
-      q = pt_append_nulstring (parser, q, " PASSWORD=");
-      r = pt_print_bytes (parser, p->info.dblink_table.pwd);
-      q = pt_append_varchar (parser, q, r);
-#endif
     }
 
   q = pt_append_nulstring (parser, q, ", \"");
