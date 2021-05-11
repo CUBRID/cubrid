@@ -35,14 +35,12 @@ namespace cubcomm
       node &operator= (const node &nd) = default;
       node &operator= (node &&nd) = default;
 
-      long get_port();
-      std::string get_host();
+      long get_port () const;
+      std::string get_host () const;
 
     private:
       long m_port = -1; // initialize with an invalid port
       std::string m_host;
-
-
   };
 
   inline node::node (long port, std::string host)
@@ -51,12 +49,12 @@ namespace cubcomm
     m_host = host;
   }
 
-  inline long node::get_port()
+  inline long node::get_port() const
   {
     return m_port;
   }
 
-  inline std::string node::get_host()
+  inline std::string node::get_host() const
   {
     return m_host;
   }
