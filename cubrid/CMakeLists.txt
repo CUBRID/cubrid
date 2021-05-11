@@ -192,7 +192,6 @@ set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_interface_sr.c
   ${COMMUNICATION_DIR}/network_sr.c
   ${COMMUNICATION_DIR}/communication_channel.cpp
-  ${COMMUNICATION_DIR}/communication_node.cpp
   ${COMMUNICATION_DIR}/communication_server_channel.cpp
   ${COMMUNICATION_DIR}/request_client_server.cpp
   )

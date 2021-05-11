@@ -44,7 +44,7 @@ class active_tran_server
     ~active_tran_server ();
 
     int init_page_server_hosts (const char *db_name);
-    int connect_to_page_server (const std::string &host, int port, const char *db_name);
+    int connect_to_page_server (cubcomm::node node, const char *db_name);
     void disconnect_page_server ();
     bool is_page_server_connected () const;
 
@@ -58,7 +58,7 @@ class active_tran_server
   private:
     using page_server_request_autosend = cubcomm::request_queue_autosend<page_server_request_queue>;
 
-    int parse_server_host (std::string host, const char *db_name, bool *connected);
+    void parse_server_host (std::string host, const char *db_name, bool *connected);
     void receive_saved_lsa (cubpacking::unpacker &upk);
     void receive_log_page (cubpacking::unpacker &upk);
 
@@ -69,7 +69,7 @@ class active_tran_server
     std::unique_ptr<page_server_request_queue> m_ps_request_queue;
     std::unique_ptr<page_server_request_autosend> m_ps_request_autosend;
     std::unique_ptr<cublog::page_broker> m_log_page_broker;
-    std::vector<cubcomm::node> connection_list;
+    std::vector<cubcomm::node> m_connection_list;
 };
 
 extern active_tran_server ats_Gl;

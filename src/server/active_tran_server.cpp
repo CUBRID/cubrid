@@ -48,7 +48,7 @@ active_tran_server::~active_tran_server ()
     }
 }
 
-int active_tran_server::parse_server_host (std::string host, const char *db_name, bool *connected)
+void active_tran_server::parse_server_host (std::string host, const char *db_name, bool *connected)
 {
   std::string m_ps_hostname;
   auto col_pos = host.find (":");
@@ -66,27 +66,14 @@ int active_tran_server::parse_server_host (std::string host, const char *db_name
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_HOST_PORT_PARAMETER, 2, prm_get_name (PRM_ID_PAGE_SERVER_HOSTS),
 	      host.c_str ());
-      return ER_HOST_PORT_PARAMETER;
+      return;
     }
   // host and port seem to be OK
   m_ps_hostname = host.substr (0, col_pos);
   er_log_debug (ARG_FILE_LINE, "Page server hosts: %s port: %d\n", m_ps_hostname.c_str (), port);
 
   cubcomm::node conn{port, m_ps_hostname};
-  connection_list.push_back (conn);
-
-  if (*connected)
-    {
-      return NO_ERROR;
-    }
-
-  if (connect_to_page_server (m_ps_hostname, port, db_name) == NO_ERROR)
-    {
-      *connected = true;
-      return NO_ERROR;
-    }
-
-  return ER_HOST_PORT_PARAMETER;
+  m_connection_list.push_back (conn);
 }
 
 int active_tran_server::init_page_server_hosts (const char *db_name)
@@ -113,21 +100,35 @@ int active_tran_server::init_page_server_hosts (const char *db_name)
   size_t pos = 0;
   std::string delimiter = ",";
   bool connected;
-  int exit_code = ER_HOST_PORT_PARAMETER;
 
   while ((pos = hosts.find (delimiter)) != std::string::npos)
     {
       std::string token = hosts.substr (0, pos);
       hosts.erase (0, pos + delimiter.length());
 
-      exit_code = std::max (parse_server_host (token, db_name, &connected), exit_code);
+      parse_server_host (token, db_name, &connected);
+    }
+  parse_server_host (hosts, db_name, &connected);
+
+  if (m_connection_list.empty ())
+    {
+      // no valid hosts
+      int exit_code = ER_HOST_PORT_PARAMETER;
+      ASSERT_ERROR_AND_SET (exit_code); // er_set was called
+      return exit_code;
     }
 
-  exit_code = std::max (parse_server_host (hosts, db_name, &connected), exit_code);
-  return exit_code;
+  for (cubcomm::node node : m_connection_list)
+    {
+      if (connect_to_page_server (node, db_name) == NO_ERROR)
+	{
+	  return NO_ERROR;
+	}
+    }
+  return ER_HOST_PORT_PARAMETER;
 }
 
-int active_tran_server::connect_to_page_server (const std::string &host, int port, const char *db_name)
+int active_tran_server::connect_to_page_server (cubcomm::node node, const char *db_name)
 {
   assert_is_active_tran_server ();
   assert (!is_page_server_connected ());
@@ -138,16 +139,16 @@ int active_tran_server::connect_to_page_server (const std::string &host, int por
 
   srv_chn.set_channel_name ("ATS_PS_comm");
 
-  css_error_code comm_error_code = srv_chn.connect (host.c_str (), port, CMD_SERVER_SERVER_CONNECT);
+  css_error_code comm_error_code = srv_chn.connect (node.get_host().c_str (), node.get_port(), CMD_SERVER_SERVER_CONNECT);
   if (comm_error_code != css_error_code::NO_ERRORS)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_PAGESERVER_CONNECTION, 1, host.c_str ());
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_PAGESERVER_CONNECTION, 1, node.get_host().c_str ());
       return ER_NET_PAGESERVER_CONNECTION;
     }
 
   if (!srv_chn.send_int (static_cast<int> (cubcomm::server_server::CONNECT_ACTIVE_TRAN_TO_PAGE_SERVER)))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_PAGESERVER_CONNECTION, 1, host.c_str ());
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_PAGESERVER_CONNECTION, 1, node.get_host().c_str ());
       return ER_NET_PAGESERVER_CONNECTION;
     }
 
