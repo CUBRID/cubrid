@@ -2819,7 +2819,6 @@ set_seg_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_
       break;
 
     case PT_DBLINK_TABLE:
-      (void) parser_walk_tree (parser, tree->info.dblink_table.qstr, set_seg_expr, arg, pt_continue_walk, NULL);
       *continue_walk = PT_LIST_WALK;
       break;
 
