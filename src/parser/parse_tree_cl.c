@@ -9357,7 +9357,6 @@ pt_apply_spec (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *a
   p->info.spec.method_list = g (parser, p->info.spec.method_list, arg);
   p->info.spec.on_cond = g (parser, p->info.spec.on_cond, arg);
   p->info.spec.partition = g (parser, p->info.spec.partition, arg);
-
   /* p->info.spec.using_cond = g(parser, p->info.spec.using_cond, arg); -- does not support named columns join */
 
   return p;

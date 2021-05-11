@@ -534,8 +534,8 @@ typedef struct {
         char* pUrl;
         char* pUser;
         char* pPwd;
-} SDbLinkConnInfo;
-static bool pt_ct_check_fill_connection_info (char* pIn, SDbLinkConnInfo* pInfo);
+} dblink_conn_info;
+static bool pt_ct_check_fill_connection_info (char* pIn, dblink_conn_info* pInfo);
 
 static void pt_value_set_charset_coll (PARSER_CONTEXT *parser,
 				       PT_NODE *node,
@@ -4881,13 +4881,13 @@ original_table_spec
 		DBG_PRINT}}
         | DBLINK  '('  dblink_expr ')'   dblink_identifier_col_attrs 
                 {{                       
-                        PT_NODE *ent = parser_new_node (this_parser, PT_SPEC);
+			PT_NODE *ent = parser_new_node (this_parser, PT_SPEC);
 			if (ent)
 			  {
 			    ent->info.spec.derived_table = $3;  // dblink_expr
 			    ent->info.spec.derived_table_type = PT_DERIVED_DBLINK_TABLE;                            
 			    ent->info.spec.range_var = CONTAINER_AT_0 ($5); // table name                                                        
-                            ent->info.spec.derived_table->info.dblink_table.cols = CONTAINER_AT_1 ($5); // def. columns 
+			    ent->info.spec.derived_table->info.dblink_table.cols = CONTAINER_AT_1 ($5); // def. columns 
 			  }
 			$$ = ent;                        
 		        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -24741,7 +24741,7 @@ dblink_expr
         :   dblink_conn  ','  DelimitedIdName  
             {{
              PT_NODE *ct = parser_new_node(this_parser, PT_DBLINK_TABLE) ;           
-             if( ct )
+             if(ct)
              {
                 PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
 	        if (val)                    
@@ -24794,7 +24794,7 @@ dblink_conn:
                 DBG_PRINT}}
         | CHAR_STRING
         {{
-                 SDbLinkConnInfo  cInfo;
+                 dblink_conn_info  cInfo;
                 if( pt_ct_check_fill_connection_info($1, &cInfo) == false )
                  {  // TODO:
                         assert(false);
@@ -24808,11 +24808,16 @@ dblink_conn:
                 for( i = 0; i < 3; i++)
                 {
                         if( i == 0 )
+                        {
                                 pStr = cInfo.pPwd;
+                        }
                         else if( i == 1 )  
-                                pStr = cInfo.pUser;
+                        {       pStr = cInfo.pUser;
+                        }
                         else
+                        {
                                 pStr = cInfo.pUrl;
+                        }
 
                         node = parser_new_node (this_parser, PT_VALUE);
                         if( node == NULL )
@@ -27975,7 +27980,7 @@ pt_jt_append_column_or_nested_node (PT_NODE * jt_node, PT_NODE * jt_col_or_neste
     }
 }
 
-static bool pt_ct_check_fill_connection_info (char* p, SDbLinkConnInfo* pInfo)
+static bool pt_ct_check_fill_connection_info (char* p, dblink_conn_info* pInfo)
 {  // URL=cci:CUBRID:192.168.1.8:55300:demodb::: USER=dba PASSWORD=
    int   nCnt;
    static const char*  pzName[3] = {"url=",  "user=", "password="};
@@ -27987,7 +27992,7 @@ static bool pt_ct_check_fill_connection_info (char* p, SDbLinkConnInfo* pInfo)
                 zLen[nCnt] = strlen(pzName[nCnt]);
    }
 
-   memset(pInfo, 0x00, sizeof(SDbLinkConnInfo));
+   memset(pInfo, 0x00, sizeof(dblink_conn_info));
       
    nCnt = 0;
    while(*p)
