@@ -101,6 +101,7 @@ struct hash_list_scan
   hash_scan_key *temp_key;	/* temp probe key */
   hash_scan_key *temp_new_key;	/* temp probe key with db_value */
   HENTRY_HLS_PTR curr_hash_entry;	/* current hash entry */
+  OID curr_oid;			/* current hash file oid */
   int hash_list_scan_yn;	/* Is hash list scan possible? */
   unsigned int curr_hash_key;	/* current hash key */
   bool need_coerce_type;	/* Are the types of probe and build different? */

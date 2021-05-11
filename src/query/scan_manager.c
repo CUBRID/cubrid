@@ -8104,9 +8104,8 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 	  return S_SUCCESS;
 
 	case HASH_METH_HASH_FILE:
-	  /* init curr_hash_entry */
-	  /* llsidp->hlsid.curr_hash_entry = NULL; 구현해야함 */
-	  eh_search = ehash_search (thread_p, llsidp->hlsid.ehash_table, &hash_key, &oid);
+	  /* init curr_oid and get value from hash table */
+	  eh_search = ehash_search_hls (thread_p, llsidp->hlsid.ehash_table, &hash_key, &oid, &llsidp->hlsid.curr_oid);
 	  switch (eh_search)
 	    {
 	    case EH_KEY_FOUND:
@@ -8129,43 +8128,67 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
     }
   else if (scan_id_p->position == S_ON)
     {
-      if (llsidp->hlsid.hash_list_scan_yn == HASH_METH_HASH_FILE)
+      switch (llsidp->hlsid.hash_list_scan_yn)
 	{
-	  return S_END;
-	}
-
-      hvalue =
-	(HASH_SCAN_VALUE *) mht_get_next_hls (llsidp->hlsid.hash_table, (void *) &llsidp->hlsid.curr_hash_key,
-					      (void **) &llsidp->hlsid.curr_hash_entry);
-      if (hvalue == NULL)
-	{
-	  if (llsidp->hlsid.hash_list_scan_yn == HASH_METH_HYBRID)
+	case HASH_METH_IN_MEM:
+	case HASH_METH_HYBRID:
+	  hvalue =
+	    (HASH_SCAN_VALUE *) mht_get_next_hls (llsidp->hlsid.hash_table, (void *) &llsidp->hlsid.curr_hash_key,
+						  (void **) &llsidp->hlsid.curr_hash_entry);
+	  if (hvalue == NULL)
 	    {
-	      qmgr_free_old_page_and_init (thread_p, scan_id_p->curr_pgptr, scan_id_p->list_id.tfile_vfid);
+	      if (llsidp->hlsid.hash_list_scan_yn == HASH_METH_HYBRID)
+		{
+		  qmgr_free_old_page_and_init (thread_p, scan_id_p->curr_pgptr, scan_id_p->list_id.tfile_vfid);
+		}
+	      scan_id_p->position = S_AFTER;
+	      return S_END;
 	    }
-	  scan_id_p->position = S_AFTER;
-	  return S_END;
-	}
-      if (llsidp->hlsid.hash_list_scan_yn == HASH_METH_IN_MEM)
-	{
-	  *tuple = ((HASH_SCAN_VALUE *) llsidp->hlsid.curr_hash_entry->data)->tuple;
-	}
-      else if (llsidp->hlsid.hash_list_scan_yn == HASH_METH_HYBRID)
-	{
-	  simple_pos = ((HASH_SCAN_VALUE *) llsidp->hlsid.curr_hash_entry->data)->pos;
-	  MAKE_TUPLE_POSTION (tuple_pos, simple_pos, scan_id_p);
+	  if (llsidp->hlsid.hash_list_scan_yn == HASH_METH_IN_MEM)
+	    {
+	      *tuple = ((HASH_SCAN_VALUE *) llsidp->hlsid.curr_hash_entry->data)->tuple;
+	    }
+	  else if (llsidp->hlsid.hash_list_scan_yn == HASH_METH_HYBRID)
+	    {
+	      simple_pos = ((HASH_SCAN_VALUE *) llsidp->hlsid.curr_hash_entry->data)->pos;
+	      MAKE_TUPLE_POSTION (tuple_pos, simple_pos, scan_id_p);
 
-	  if (qfile_jump_scan_tuple_position (thread_p, scan_id_p, &tuple_pos, &tplrec, PEEK) != S_SUCCESS)
+	      if (qfile_jump_scan_tuple_position (thread_p, scan_id_p, &tuple_pos, &tplrec, PEEK) != S_SUCCESS)
+		{
+		  return S_ERROR;
+		}
+	      *tuple = tplrec.tpl;
+	    }
+	  else
 	    {
 	      return S_ERROR;
 	    }
-	  *tuple = tplrec.tpl;
+	  return S_SUCCESS;
+
+	case HASH_METH_HASH_FILE:
+	  eh_search =
+	    ehash_search_next (thread_p, llsidp->hlsid.ehash_table, &llsidp->hlsid.curr_hash_key, &oid,
+			       &llsidp->hlsid.curr_oid);
+	  switch (eh_search)
+	    {
+	    case EH_KEY_FOUND:
+	      MAKE_OID_TO_TUPLE_POSTION (tuple_pos, oid, scan_id_p);
+	      if (qfile_jump_scan_tuple_position (thread_p, scan_id_p, &tuple_pos, &tplrec, PEEK) != S_SUCCESS)
+		{
+		  return S_ERROR;
+		}
+	      *tuple = tplrec.tpl;
+	      return S_SUCCESS;
+	    case EH_KEY_NOTFOUND:
+	      qmgr_free_old_page_and_init (thread_p, scan_id_p->curr_pgptr, scan_id_p->list_id.tfile_vfid);
+	      scan_id_p->position = S_AFTER;
+	      return S_END;
+	    case EH_ERROR_OCCURRED:
+	    default:
+	      return S_ERROR;
+	    }
+	  return S_END;
 	}
-      else
-	{
-	  return S_ERROR;
-	}
-      return S_SUCCESS;
     }
   else if (scan_id_p->position == S_AFTER)
     {
