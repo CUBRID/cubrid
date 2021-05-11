@@ -37,16 +37,25 @@ namespace cublog
 {
 #if defined(SERVER_MODE)
 
-  /* maintain a minimum log_lsa out of a set of log_lsa's
-   * implementation detail; not to be used directly; only exposed for unit testing
+  /* minimum_log_lsa_monitor - utility to support calculation of a minimum
+   *       lsa out of a set of, concurrently (or not), advacing ones; not
+   *       all lsa's participate in the game in every scenarios; those that
+   *       do not partake are gracefully ignored by being kept to a maximum
+   *       sentinel value
    */
   class minimum_log_lsa_monitor final
   {
-      using log_lsas_t = std::array<log_lsa, 3>;
+      static constexpr int ARRAY_LENGTH = 4;
 
-      static constexpr int PRODUCE_IDX = 0;
-      static constexpr int CONSUME_IDX = 1;
-      static constexpr int IN_PROGRESS_IDX = 2;
+      using log_lsas_t = std::array<log_lsa, ARRAY_LENGTH>;
+
+      enum ARRAY_INDEX
+      {
+	PRODUCE_IDX = 0,
+	CONSUME_IDX = 1,
+	IN_PROGRESS_IDX = 2,
+	OUTER_IDX = 3,
+      };
 
     public:
       minimum_log_lsa_monitor ();
@@ -60,12 +69,14 @@ namespace cublog
       void set_for_consume (const log_lsa &a_lsa);
       void set_for_produce_and_consume (const log_lsa &a_produce_lsa, const log_lsa &a_consume_lsa);
       void set_for_in_progress (const log_lsa &a_lsa);
+      void set_for_outer (const log_lsa &a_lsa);
 
       log_lsa get () const;
 
       log_lsa wait_for_target_lsa (const log_lsa &a_target_lsa);
 
     private:
+      void do_set_at (ARRAY_INDEX a_idx, const log_lsa &a_new_lsa);
       void do_locked_calculate_and_set_minimum (const std::lock_guard<std::mutex> &);
 
     private:
@@ -94,7 +105,7 @@ namespace cublog
     public:
       /* - worker_count: the number of parallel tasks to spin that consume jobs
        */
-      redo_parallel (unsigned a_worker_count);
+      redo_parallel (unsigned a_worker_count, minimum_log_lsa_monitor &a_minimum_log_lsa);
 
       redo_parallel (const redo_parallel &) = delete;
       redo_parallel (redo_parallel &&) = delete;
@@ -123,10 +134,6 @@ namespace cublog
        */
       bool is_idle () const;
 
-      /* the minimum log_lsa that still has to be processed
-       */
-      log_lsa get_minimum_unprocessed_lsa () const;
-
       /* mandatory to explicitly call this before dtor
        */
       void wait_for_termination_and_stop_execution ();
@@ -146,11 +153,8 @@ namespace cublog
 	  using vpid_set = std::set<VPID>;
 	  using log_lsa_set = std::set<log_lsa>;
 
-	private:
-	  // TODO: class minimum_log_lsa
-
 	public:
-	  redo_job_queue ();
+	  redo_job_queue (minimum_log_lsa_monitor &a_minimum_log_lsa);
 	  ~redo_job_queue ();
 
 	  redo_job_queue (redo_job_queue const &) = delete;
@@ -189,10 +193,6 @@ namespace cublog
 	   * later; it can be useful only if the caller is aware of the execution context
 	   */
 	  bool is_idle () const;
-
-	  /* the minimum log_lsa that still has to be processed
-	   */
-	  log_lsa get_minimum_unprocessed_lsa () const;
 
 	private:
 	  void assert_idle () const;
@@ -243,7 +243,7 @@ namespace cublog
 	   * to be processed (consumed); if no job exists in the queue, the
 	   * value is null
 	   */
-	  minimum_log_lsa_monitor m_minimum_log_lsa_to_process;
+	  minimum_log_lsa_monitor &m_minimum_log_lsa;
       };
 
       /* maintain a bookkeeping of tasks that are still performing work;
@@ -457,11 +457,10 @@ namespace cublog
   }
 
 #else /* SERVER_MODE */
-  /* dummy implementation for SA mode
+  /* dummy implementations for SA mode
    */
-  class redo_parallel final
-  {
-  };
+  class minimum_log_lsa_monitor final { };
+  class redo_parallel final { };
 #endif /* SERVER_MODE */
 }
 

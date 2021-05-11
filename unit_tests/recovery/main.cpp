@@ -67,7 +67,8 @@ void execute_test (const log_recovery_test_config &a_test_config,
 		<< std::endl;
     }
 
-  cublog::redo_parallel log_redo_parallel (a_test_config.parallel_count);
+  cublog::minimum_log_lsa_monitor minimum_log_lsa;
+  cublog::redo_parallel log_redo_parallel (a_test_config.parallel_count, minimum_log_lsa);
 
   ux_ut_database db_online { new ut_database (a_database_config) };
   ux_ut_database db_recovery { new ut_database (a_database_config) };
@@ -195,17 +196,18 @@ TEST_CASE ("log recovery parallel test: stress test", "[long]")
     }
 }
 
-TEST_CASE ("log recovery parallel test: idle status", "[ci]")
+TEST_CASE ("log recovery parallel test: idle status", "[ci][dbg]")
 {
   srand (time (nullptr));
   initialize_thread_infrastructure ();
 
   for (int i = 0; i < 50; ++i)
     {
-      cublog::redo_parallel log_redo_parallel (std::thread::hardware_concurrency ());
+      cublog::minimum_log_lsa_monitor minimum_log_lsa;
+      cublog::redo_parallel log_redo_parallel (std::thread::hardware_concurrency (), minimum_log_lsa);
 
       REQUIRE (log_redo_parallel.is_idle ());
-      REQUIRE (log_redo_parallel.get_minimum_unprocessed_lsa ().is_null ());
+      REQUIRE (minimum_log_lsa.get () == MAX_LSA);
 
       const ut_database_config database_config =
       {
@@ -238,12 +240,12 @@ TEST_CASE ("log recovery parallel test: idle status", "[ci]")
 
       // sleep here more than 'max_duration_in_millis' to invalidate test
       REQUIRE_FALSE (log_redo_parallel.is_idle ());
-      REQUIRE_FALSE (log_redo_parallel.get_minimum_unprocessed_lsa ().is_null ());
-      REQUIRE (log_redo_parallel.get_minimum_unprocessed_lsa () == single_supplied_lsa);
+      REQUIRE_FALSE (minimum_log_lsa.get ().is_null ());
+      REQUIRE (minimum_log_lsa.get () == single_supplied_lsa);
 
       log_redo_parallel.wait_for_idle ();
       REQUIRE (log_redo_parallel.is_idle ());
-      REQUIRE_FALSE (log_redo_parallel.get_minimum_unprocessed_lsa ().is_null ());
+      REQUIRE_FALSE (minimum_log_lsa.get ().is_null ());
 
       log_redo_parallel.set_adding_finished ();
       log_redo_parallel.wait_for_termination_and_stop_execution ();
@@ -252,7 +254,7 @@ TEST_CASE ("log recovery parallel test: idle status", "[ci]")
     }
 }
 
-TEST_CASE ("minimum log lsa: ", "[ci][dbg]")
+TEST_CASE ("minimum log lsa: ", "[ci]")
 {
   srand (time (nullptr));
 

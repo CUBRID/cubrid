@@ -36,7 +36,10 @@ namespace cublog
 {
   replicator::replicator (const log_lsa &start_redo_lsa)
     : m_redo_lsa { start_redo_lsa }
-    , m_perfmon_redo_sync { PSTAT_REDO_REPL_LOG_REDO_SYNC }
+      // minimum log_lsa monitoring is done even when applying replication synchronously
+      // no need to reset with start redo lsa
+    , m_minimum_log_lsa { new cublog::minimum_log_lsa_monitor () }
+  , m_perfmon_redo_sync { PSTAT_REDO_REPL_LOG_REDO_SYNC }
   {
     log_zip_realloc_if_needed (m_undo_unzip, LOGAREA_SIZE);
     log_zip_realloc_if_needed (m_redo_unzip, LOGAREA_SIZE);
@@ -51,7 +54,7 @@ namespace cublog
     assert (replication_parallel >= 0);
     if (replication_parallel > 0)
       {
-	m_parallel_replication_redo.reset (new cublog::redo_parallel (replication_parallel/*, inject min lsa calculator*/));
+	m_parallel_replication_redo.reset (new cublog::redo_parallel (replication_parallel, *m_minimum_log_lsa.get ()));
       }
 
     // Create the daemon
@@ -101,6 +104,7 @@ namespace cublog
 	  {
 	    assert (m_redo_lsa == nxio_lsa);
 	    // notify who waits for end of replication
+	    // TODO: this might not be needed since every modification of redo_lsa is notified anyway
 	    if (m_redo_lsa == nxio_lsa)
 	      {
 		m_redo_lsa_condvar.notify_all ();
@@ -197,7 +201,10 @@ namespace cublog
 	{
 	  std::unique_lock<std::mutex> lock (m_redo_lsa_mutex);
 	  m_redo_lsa = header.forw_lsa;
+	  m_minimum_log_lsa->set_for_outer (m_redo_lsa);
 	}
+	// to accurately track progress and avoid clients to wait for too long, notify each change
+	m_redo_lsa_condvar.notify_all ();
 
 	m_perfmon_redo_sync.track_and_start ();
       }
@@ -249,6 +256,7 @@ namespace cublog
       }
   }
 
+  // TODO: reimplement in terms of 'wait_until_replicated_lsa'?
   void
   replicator::wait_replication_finish_during_shutdown () const
   {
@@ -268,6 +276,53 @@ namespace cublog
     if (m_parallel_replication_redo != nullptr)
       {
 	m_parallel_replication_redo->wait_for_idle ();
+      }
+  }
+
+  void replicator::wait_until_replicated_lsa (const log_lsa &a_target_lsa)
+  {
+    if (m_parallel_replication_redo == nullptr)
+      {
+	// sync, check up-front
+	{
+	  std::lock_guard<std::mutex> lockg { m_redo_lsa_mutex };
+	  if (m_redo_lsa > a_target_lsa)
+	    {
+	      return;
+	    }
+	}
+
+	// if not, wait
+	std::unique_lock<std::mutex> ulock { m_redo_lsa_mutex };
+	m_redo_lsa_condvar.wait (ulock, [this, a_target_lsa] ()
+	{
+	  return m_redo_lsa > a_target_lsa;
+	});
+      }
+    else
+      {
+	// async, check up-front
+	if (m_parallel_replication_redo->is_idle ())
+	  {
+	    const log_lsa current_min_lsa = m_minimum_log_lsa->get ();
+	    if (current_min_lsa == MAX_LSA)
+	      {
+		// TODO: corner case that can appear is no entries have ever been processed
+		// the value is actually invalid but the condition would pass 'stricto sensu'
+		// what to do in this case?
+		assert (false);
+	      }
+	    else
+	      {
+		if (current_min_lsa > a_target_lsa)
+		  {
+		    return;
+		  }
+	      }
+	  }
+
+	// if not, wait
+	m_minimum_log_lsa->wait_for_target_lsa (a_target_lsa);
       }
   }
 
