@@ -388,7 +388,7 @@ public class ConnectionProperties {
     IntegerConnectionProperty clientCacheSize = new IntegerConnectionProperty(
     		"clientCacheSize", 1, 1, 1024);
     
-    BooleanConnectionProperty holdCursor = new BooleanConnectionProperty("hold_cursor", false);
+    BooleanConnectionProperty holdCursor = new BooleanConnectionProperty("hold_cursor", true);
     public boolean getLogOnException() {
 	return logOnException.getValueAsBoolean();
     }
