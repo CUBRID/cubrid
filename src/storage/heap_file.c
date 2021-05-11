@@ -6427,7 +6427,7 @@ heap_ovf_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * ovf_vfid,
 	  log_append_redo_data (thread_p, RVHF_STATS, &addr_hdr, sizeof (*heap_hdr), heap_hdr);
 	  pgbuf_set_dirty (thread_p, addr_hdr.pgptr, DONT_FREE);
 
-	  log_sysop_attach_to_outer (thread_p);
+	  log_sysop_commit (thread_p);
 	}
       else
 	{
