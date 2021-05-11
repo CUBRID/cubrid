@@ -4502,9 +4502,9 @@ catalog_update (THREAD_ENTRY * thread_p, RECDES * record_p, OID * class_oid_p)
 
   or_class_hfid (record_p, &(class_hfid));
 
-  if (HFID_IS_NULL (&class_info_p->ci_hfid) || !HFID_EQ (&class_info_p->ci_hfid, &class_hfid))
+  if (!HFID_EQ (&class_info_p->ci_hfid, &class_hfid))
     {
-      or_class_hfid (record_p, &(class_info_p->ci_hfid));
+      class_info_p->ci_hfid = class_hfid;
       if (!HFID_IS_NULL (&class_info_p->ci_hfid))
 	{
 	  if (catalog_update_class_info (thread_p, class_oid_p, class_info_p, NULL, false) == NULL)
