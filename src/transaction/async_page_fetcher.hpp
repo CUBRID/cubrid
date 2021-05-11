@@ -31,12 +31,14 @@ namespace cublog
   class async_page_fetcher
   {
     public:
-      using callback_func_type = std::function<void (const LOG_PAGE *, int)>;
+      using log_page_callback_type = std::function<void (const LOG_PAGE *, int)>;
+      using data_page_callback_type = std::function<void (PAGE_PTR, int)>;
 
       async_page_fetcher ();
       ~async_page_fetcher ();
 
-      void fetch_page (LOG_PAGEID pageid, callback_func_type &&func);
+      void fetch_log_page (LOG_PAGEID pageid, log_page_callback_type &&func);
+      void fetch_data_page (const VPID &vpid, data_page_callback_type &&func);
 
     private:
       cubthread::entry_workpool *m_threads = nullptr;

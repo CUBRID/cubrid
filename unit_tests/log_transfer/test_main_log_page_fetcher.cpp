@@ -19,8 +19,9 @@
 #define CATCH_CONFIG_MAIN
 
 #include "catch2/catch.hpp"
-#include "log_page_fetcher.hpp"
+#include "async_page_fetcher.hpp"
 #include "log_reader.hpp"
+#include "page_buffer.h"
 
 #include <mutex>
 #include <unordered_map>
@@ -110,7 +111,7 @@ test_env::run_test ()
 {
   for (auto log_page_id : m_log_pageids)
     {
-      m_async_page_fetcher.fetch_page (
+      m_async_page_fetcher.fetch_log_page (
 	      log_page_id,
 	      std::bind (
 		      &test_env::on_receive_log_page,
@@ -174,3 +175,10 @@ const log_page *log_reader::get_page () const
 
 // Mock some of the functionality
 log_reader::log_reader () = default; // needed by log_page_fetch_task::execute
+
+PAGE_PTR
+pgbuf_fix_debug (THREAD_ENTRY *thread_p, const VPID *vpid, PAGE_FETCH_MODE fetch_mode, PGBUF_LATCH_MODE request_mode,
+		 PGBUF_LATCH_CONDITION condition, const char *caller_file, int caller_line)
+{
+  return nullptr;
+}

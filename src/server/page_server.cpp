@@ -101,26 +101,23 @@ void page_server::receive_log_page_fetch (cubpacking::unpacker &upk)
       _er_log_debug (ARG_FILE_LINE, "Received request for log from Transaction Server. Page ID: %lld \n", pageid);
     }
 
-  assert (m_log_page_fetcher);
-  m_log_page_fetcher->fetch_page (pageid, std::bind (&page_server::on_log_page_read_result, this, std::placeholders::_1,
+  assert (m_page_fetcher);
+  m_page_fetcher->fetch_log_page (pageid, std::bind (&page_server::on_log_page_read_result, this, std::placeholders::_1,
 				  std::placeholders::_2));
 }
 
 void page_server::receive_data_page_fetch (cubpacking::unpacker &upk)
 {
-  if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
-    {
-      VPID vpid;
-      std::string message;
+  VPID vpid;
+  std::string message;
 
-      upk.unpack_string (message);
-      std::memcpy (&vpid, message.c_str (), sizeof (vpid));
+  upk.unpack_string (message);
+  std::memcpy (&vpid, message.c_str (), sizeof (vpid));
 
-      // TODO: Ilie - get the page.
-      // fetcher.fetch_page(lsa + page_id); // non-blocking
-      _er_log_debug (ARG_FILE_LINE, "Received request for Data Page from Transaction Server. pageid: %ld volid: %d\n",
-		     vpid.pageid, vpid.volid);
-    }
+  // TODO: Ilie
+  assert (m_page_fetcher);
+  m_page_fetcher->fetch_data_page (vpid, std::bind (&page_server::on_data_page_read_result, this, std::placeholders::_1,
+				   std::placeholders::_2));
 }
 
 void page_server::push_request_to_active_tran_server (ps_to_ats_request reqid, std::string &&payload)
@@ -158,6 +155,19 @@ void page_server::on_log_page_read_result (const LOG_PAGE *log_page, int error_c
 		     error_code);
     }
 }
+
+void page_server::on_data_page_read_result (PAGE_PTR page_ptr, int error_code)
+{
+  if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
+    {
+      _er_log_debug (ARG_FILE_LINE, "Sending Data Page...");
+    }
+
+  // TODO: Ilie - send the data page message.
+  std::string message (page_ptr);
+  m_ats_request_queue->push (ps_to_ats_request::SEND_DATA_PAGE, std::move (message));
+}
+
 void
 page_server::start_log_replicator (const log_lsa &start_lsa)
 {
@@ -180,13 +190,13 @@ page_server::finish_replication_during_shutdown (cubthread::entry &thread_entry)
 void
 page_server::init_log_page_fetcher ()
 {
-  m_log_page_fetcher.reset (new cublog::async_page_fetcher ());
+  m_page_fetcher.reset (new cublog::async_page_fetcher ());
 }
 
 void
 page_server::finalize_log_page_fetcher ()
 {
-  m_log_page_fetcher.reset ();
+  m_page_fetcher.reset ();
 }
 
 

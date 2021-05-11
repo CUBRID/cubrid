@@ -126,6 +126,8 @@ int active_tran_server::connect_to_page_server (const std::string &host, int por
 					   std::placeholders::_1));
   m_ps_conn->register_request_handler (ps_to_ats_request::SEND_LOG_PAGE,
 				       std::bind (&active_tran_server::receive_log_page, std::ref (*this), std::placeholders::_1));
+  m_ps_conn->register_request_handler (ps_to_ats_request::SEND_DATA_PAGE,
+				       std::bind (&active_tran_server::receive_data_page, std::ref (*this), std::placeholders::_1));
   m_ps_conn->start_thread ();
 
   m_ps_request_queue.reset (new page_server_request_queue (*m_ps_conn));
@@ -205,6 +207,17 @@ void active_tran_server::receive_log_page (cubpacking::unpacker &upk)
 	{
 	  _er_log_debug (ARG_FILE_LINE, "Received log page message from Page Server. Error code: %d\n", error_code);
 	}
+    }
+}
+
+void active_tran_server::receive_data_page (cubpacking::unpacker &upk)
+{
+  std::string message;
+  upk.unpack_string (message);
+
+  if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
+    {
+      _er_log_debug (ARG_FILE_LINE, "Received data page message from Page Server.");
     }
 }
 
