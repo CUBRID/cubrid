@@ -46,6 +46,7 @@ namespace cublog
       // seed the worker pool threads with a non-null transaction and a valid thread
       // identity as to properly identify these agains perf logging
       std::unique_ptr<cubthread::entry_manager> m_worker_pool_context_manager;
+      
   };
 
 }
