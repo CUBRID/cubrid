@@ -28,7 +28,6 @@ namespace cublog
    *********************************************************************/
 
   minimum_log_lsa_monitor::minimum_log_lsa_monitor ()
-    : m_min_calculated_lsa { MAX_LSA }
   {
     /* MAX_LSA is used as an internal sentinel value; this is considered safe as long as,
      * if the engine actually gets to this value, things are already haywire elsewhere
@@ -62,8 +61,6 @@ namespace cublog
       std::lock_guard<std::mutex> lck { m_values_mtx };
       m_values[PRODUCE_IDX] = a_produce_lsa;
       m_values[CONSUME_IDX] = a_consume_lsa;
-
-      do_locked_calculate_and_set_minimum (lck);
     }
     m_wait_for_target_value_cv.notify_all ();
   }
@@ -82,8 +79,22 @@ namespace cublog
   log_lsa
   minimum_log_lsa_monitor::get () const
   {
-    std::lock_guard<std::mutex> lck { m_values_mtx };
-    return m_min_calculated_lsa;
+    std::lock_guard<std::mutex> lockg { m_values_mtx };
+    const log_lsa new_minimum_log_lsa = std::min (
+    {
+      m_values[PRODUCE_IDX],
+      m_values[CONSUME_IDX],
+      m_values[IN_PROGRESS_IDX],
+      m_values[OUTER_IDX],
+    });
+    //_er_log_debug (ARG_FILE_LINE,
+    //               "[minlsa]: get PRODUCE=%lld|%d CONSUME=%lld|%d IN_PROGRESS=%lld|%d OUTER=%lld|%d ==> %lld|%d",
+    //               LSA_AS_ARGS (&m_values[PRODUCE_IDX]),
+    //               LSA_AS_ARGS (&m_values[CONSUME_IDX]),
+    //               LSA_AS_ARGS (&m_values[IN_PROGRESS_IDX]),
+    //               LSA_AS_ARGS (&m_values[OUTER_IDX]),
+    //               LSA_AS_ARGS (&new_minimum_log_lsa));
+    return new_minimum_log_lsa;
   }
 
   void
@@ -97,27 +108,12 @@ namespace cublog
       do_notify_change = m_values[a_idx] != a_new_lsa;
 
       m_values[a_idx] = a_new_lsa;
-
-      do_locked_calculate_and_set_minimum (lockg);
     }
 
     if (do_notify_change)
       {
 	m_wait_for_target_value_cv.notify_all ();
       }
-  }
-
-  void
-  minimum_log_lsa_monitor::do_locked_calculate_and_set_minimum (const std::lock_guard<std::mutex> &)
-  {
-    const log_lsa new_minimum_log_lsa = std::min (
-    {
-      m_values[PRODUCE_IDX],
-      m_values[CONSUME_IDX],
-      m_values[IN_PROGRESS_IDX],
-      m_values[OUTER_IDX],
-    });
-    m_min_calculated_lsa = new_minimum_log_lsa;
   }
 
   log_lsa
@@ -142,10 +138,11 @@ namespace cublog
     log_lsa outer_res;
     m_wait_for_target_value_cv.wait (lck, [this, &a_target_lsa, &outer_res] ()
     {
-      assert (m_min_calculated_lsa != MAX_LSA);
-      if (m_min_calculated_lsa > a_target_lsa)
+      const log_lsa minimum_lsa = get ();
+      assert (minimum_lsa != MAX_LSA);
+      if (minimum_lsa > a_target_lsa)
 	{
-	  outer_res = m_min_calculated_lsa;
+	  outer_res = minimum_lsa;
 	  return true;
 	}
       return false;

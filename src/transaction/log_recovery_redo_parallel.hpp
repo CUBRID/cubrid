@@ -77,12 +77,10 @@ namespace cublog
 
     private:
       void do_set_at (ARRAY_INDEX a_idx, const log_lsa &a_new_lsa);
-      void do_locked_calculate_and_set_minimum (const std::lock_guard<std::mutex> &);
 
     private:
       mutable std::mutex m_values_mtx;
       log_lsas_t m_values;
-      log_lsa m_min_calculated_lsa;
 
       std::condition_variable m_wait_for_target_value_cv;
   };
