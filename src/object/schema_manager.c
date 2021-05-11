@@ -15776,7 +15776,7 @@ sm_truncate_class_internal (MOP class_mop)
       goto error_exit;
     }
 
-  /* collect index information */
+  /* collect index information to drop and recreate, or revmoe btree records if it can't be dropped. */
   for (c = class_->constraints; c; c = c->next)
     {
       if (!SM_IS_CONSTRAINT_INDEX_FAMILY (c->type))
