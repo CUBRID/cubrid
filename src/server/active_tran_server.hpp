@@ -59,7 +59,7 @@ class active_tran_server
     using page_server_request_autosend = cubcomm::request_queue_autosend<page_server_request_queue>;
 
     int parse_server_host (const std::string &host);
-    int parse_page_server_hosts_config();
+    int parse_page_server_hosts_config ();
     void receive_saved_lsa (cubpacking::unpacker &upk);
     void receive_log_page (cubpacking::unpacker &upk);
 

@@ -27,7 +27,7 @@ namespace cubcomm
   class node
   {
     public:
-      node() = default;
+      node () = default;
       node (const node &nd) = default;
       node (node &&nd) = default;
       node (long port, std::string host);
