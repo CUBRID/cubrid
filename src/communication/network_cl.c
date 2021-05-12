@@ -1866,7 +1866,7 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 			error =
 			  method_invoke_for_server (rc, net_Server_host, net_Server_name, method_call_list_id,
 						    method_call_sig_list);
-			cursor_free_self_list_id ((QFILE_LIST_ID **) &method_call_list_id);
+			cursor_free_self_list_id ((QFILE_LIST_ID **) & method_call_list_id);
 			method_sig_list_freemem (method_call_sig_list);
 			if (error != NO_ERROR)
 			  {

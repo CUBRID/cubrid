@@ -152,36 +152,36 @@ cursor_copy_list_id (QFILE_LIST_ID * dest_list_id_p, const QFILE_LIST_ID * src_l
 void
 cursor_free_list_id (QFILE_LIST_ID ** list_id_p, bool self)
 {
-  if ((* list_id_p)->last_pgptr)
+  if ((*list_id_p)->last_pgptr)
     {
-      free_and_init ((* list_id_p)->last_pgptr);
+      free_and_init ((*list_id_p)->last_pgptr);
     }
-  if ((* list_id_p)->tpl_descr.f_valp)
+  if ((*list_id_p)->tpl_descr.f_valp)
     {
-      free_and_init ((* list_id_p)->tpl_descr.f_valp);
+      free_and_init ((*list_id_p)->tpl_descr.f_valp);
     }
-  if ((* list_id_p)->tpl_descr.clear_f_val_at_clone_decache)
+  if ((*list_id_p)->tpl_descr.clear_f_val_at_clone_decache)
     {
-      free_and_init ((* list_id_p)->tpl_descr.clear_f_val_at_clone_decache);
+      free_and_init ((*list_id_p)->tpl_descr.clear_f_val_at_clone_decache);
     }
-  if ((* list_id_p)->sort_list)
+  if ((*list_id_p)->sort_list)
     {
-      free_and_init ((* list_id_p)->sort_list);
+      free_and_init ((*list_id_p)->sort_list);
     }
-  if ((* list_id_p)->type_list.domp)
+  if ((*list_id_p)->type_list.domp)
     {
-      free_and_init ((* list_id_p)->type_list.domp);
+      free_and_init ((*list_id_p)->type_list.domp);
     }
   if (self)
     {
-      free_and_init (* list_id_p);
+      free_and_init (*list_id_p);
     }
 }
 
 void
 cursor_free_self_list_id (QFILE_LIST_ID ** list_id)
 {
-  if ((* list_id) != NULL)
+  if ((*list_id) != NULL)
     {
       cursor_free_list_id (list_id, true);
     }
@@ -1392,8 +1392,8 @@ cursor_free (CURSOR_ID * cursor_id_p)
       return;
     }
 
-  QFILE_LIST_ID * list_id_p = &(cursor_id_p->list_id);
-  cursor_free_list_id ((QFILE_LIST_ID **) &list_id_p, false);
+  QFILE_LIST_ID *list_id_p = &(cursor_id_p->list_id);
+  cursor_free_list_id ((QFILE_LIST_ID **) & list_id_p, false);
 
   if (cursor_id_p->buffer_area != NULL)
     {
