@@ -1825,18 +1825,19 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	  DB_TIMESTAMP db_timestamp;
 	  DB_DATETIME sys_datetime;
 	  DB_TIME db_time;
-	  struct timeb tloc;
+	  time_t sec;
+	  int millisec;
 	  struct tm *c_time_struct, tm_val;
 
 	  /* get the local time of the system */
-	  ftime (&tloc);
-	  c_time_struct = localtime_r (&tloc.time, &tm_val);
+	  util_get_second_and_ms_since_epoch (&sec, &millisec);
+	  c_time_struct = localtime_r (&sec, &tm_val);
 
 	  if (c_time_struct != NULL)
 	    {
 	      db_datetime_encode (&sys_datetime, c_time_struct->tm_mon + 1, c_time_struct->tm_mday,
 				  c_time_struct->tm_year + 1900, c_time_struct->tm_hour, c_time_struct->tm_min,
-				  c_time_struct->tm_sec, tloc.millitm);
+				  c_time_struct->tm_sec, millisec);
 	    }
 
 	  db_time = sys_datetime.time / 1000;

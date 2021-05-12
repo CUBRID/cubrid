@@ -59,6 +59,7 @@
 #include "broker_filename.h"
 #include "environment_variable.h"
 #include "porting.h"
+#include "util_func.h"
 
 char db_err_log_file[BROKER_PATH_MAX];
 
@@ -430,12 +431,7 @@ ut_time_string (char *buf, struct timeval *time_val)
 
   if (time_val == NULL)
     {
-      struct timeb tb;
-
-      /* current time */
-      (void) ftime (&tb);
-      sec = tb.time;
-      millisec = tb.millitm;
+      util_get_second_and_ms_since_epoch (&sec, &millisec);
     }
   else
     {

@@ -497,6 +497,28 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 
   get_loaddb_args (arg_map, &args);
 
+  if (utility_get_option_int_value (arg_map, LOAD_CS_MODE_S) == true)
+    {
+      if (sysprm_load_and_init (args.volume.c_str (), NULL, SYSPRM_IGNORE_INTL_PARAMS) == NO_ERROR)
+	{
+	  if (prm_get_integer_value (PRM_ID_HA_MODE))
+	    {
+	      if (utility_get_option_bool_value (arg_map, LOAD_CS_FORCE_LOAD_S) != true)
+		{
+		  PRINT_AND_LOG_ERR_MSG ("loaddb: CS mode loaddb cannot be run in HA mode. Please turn off HA mode.\n");
+		  status = 1;
+		  goto error_return;
+		}
+	    }
+	}
+      else
+	{
+	  PRINT_AND_LOG_ERR_MSG ("loaddb: Cannot load system parameters.\n");
+	  status = 1;
+	  goto error_return;
+	}
+    }
+
   if (ldr_validate_object_file (arg->argv0, &args) != NO_ERROR)
     {
       status = 1;

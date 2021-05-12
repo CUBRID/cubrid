@@ -151,8 +151,6 @@ extern int yybuffer_pos;
 
 #define STACK_SIZE	128
 
-#define PT_IS_SERIAL(op)	((op) == PT_NEXT_VALUE || (op) == PT_CURRENT_VALUE)
-
 typedef struct function_map FUNCTION_MAP;
 struct function_map
 {
@@ -20336,7 +20334,7 @@ primitive_type
 				break;
 			      }
 
-			    if (l > maxlen)
+			    if ((l > maxlen) || (len->type_enum != PT_TYPE_INTEGER))
 			      {
 				if (typ == PT_TYPE_BIT || typ == PT_TYPE_VARBIT)
 				  {

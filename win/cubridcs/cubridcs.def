@@ -445,6 +445,7 @@ EXPORTS
     utility_get_generic_message
     util_make_ha_conf
     util_get_ha_mode_for_sa_utils
+    util_get_second_and_ms_since_epoch
     util_is_localhost
     util_free_ha_conf
     util_split_string
