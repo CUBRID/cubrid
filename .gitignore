@@ -137,13 +137,3 @@ build_x86_64_debug/
 build_x86_64_release/
 build_x86_64_coverage/
 build_x86_64_profile/
-
-## Youngjinj
-.gitignore
-build/
-.vscode/
-cscope.files
-cscope.out
-tags
-csql.access
-csql.err
