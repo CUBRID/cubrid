@@ -1101,7 +1101,7 @@ pt_new_query_result_descriptor (PARSER_CONTEXT * parser, PT_NODE * query)
     {
       failure = !cursor_open (&r->res.s.cursor_id, list_id, false, r->oid_included);
       /* free result, which was copied by open cursor operation! */
-      cursor_free_self_list_id (list_id);
+      cursor_free_self_list_id ((QFILE_LIST_ID **) &list_id);
     }
   else
     {
@@ -1153,7 +1153,7 @@ pt_free_query_etc_area (PARSER_CONTEXT * parser, PT_NODE * query)
       && (pt_node_to_cmd_type (query) == CUBRID_STMT_SELECT || pt_node_to_cmd_type (query) == CUBRID_STMT_DO
 	  || pt_is_server_insert_with_generated_keys (parser, query)))
     {
-      cursor_free_self_list_id ((QFILE_LIST_ID *) query->etc);
+      cursor_free_self_list_id ((QFILE_LIST_ID **) &(query->etc));
     }
 }
 
