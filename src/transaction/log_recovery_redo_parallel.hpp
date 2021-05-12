@@ -66,14 +66,19 @@ namespace cublog
       minimum_log_lsa_monitor &operator = (minimum_log_lsa_monitor &&) = delete;
 
       void set_for_produce (const log_lsa &a_lsa);
-      void set_for_consume (const log_lsa &a_lsa);
       void set_for_produce_and_consume (const log_lsa &a_produce_lsa, const log_lsa &a_consume_lsa);
+      void set_for_consume_and_in_progress (const log_lsa &a_consume_lsa, const log_lsa &a_in_progress_lsa);
       void set_for_in_progress (const log_lsa &a_lsa);
       void set_for_outer (const log_lsa &a_lsa);
 
       log_lsa get () const;
 
-      log_lsa wait_for_target_lsa (const log_lsa &a_target_lsa);
+      /* wait till the recorder minimum lsa has passed the target lsa
+       * blocking call
+       *
+       * return: minimum log_lsa value calculated internally (mainly for testing purpose)
+       */
+      log_lsa wait_past_target_lsa (const log_lsa &a_target_lsa);
 
     private:
       void do_set_at (ARRAY_INDEX a_idx, const log_lsa &a_new_lsa);
@@ -177,7 +182,7 @@ namespace cublog
 	   * flag set to true signals to the callers that no more data is expected
 	   * and, therefore, they can also terminate
 	   */
-	  ux_redo_job_base pop_job (bool &adding_finished);
+	  ux_redo_job_base pop_job (bool &a_adding_finished);
 
 	  void notify_job_finished (const ux_redo_job_base &a_job);
 
@@ -198,7 +203,7 @@ namespace cublog
 	  /* swap internal queues and notify if both are empty
 	   * assumes the consume queue is locked
 	   */
-	  void do_swap_queues_if_needed (const std::unique_lock<std::mutex> &);
+	  void do_swap_queues_if_needed (const std::lock_guard<std::mutex> &a_consume_lockg);
 
 	  /* find first job that can be consumed (ie: is not already marked
 	   * in the 'in progress vpids' set)
@@ -206,12 +211,16 @@ namespace cublog
 	   * NOTE: '*_locked_*' functions are supposed to be called from within locked
 	   * areas with respect to the resources they make use of
 	   */
-	  ux_redo_job_base do_locked_find_job_to_consume ();
+	  ux_redo_job_base do_locked_find_job_to_consume_and_mark_in_progress (
+		  const std::lock_guard<std::mutex> &a_consume_lockg,
+		  const std::lock_guard<std::mutex> &a_in_progress_lockg);
 
 	  /* NOTE: '*_locked_*' functions are supposed to be called from within locked
 	   * areas with respect to the resources they make use of
 	   */
-	  void do_locked_mark_job_started (const ux_redo_job_base &a_job);
+	  void do_locked_mark_job_in_progress (
+		  const std::lock_guard<std::mutex> &a_in_progress_lockg,
+		  const ux_redo_job_base &a_job);
 
 	private:
 	  /* two queues are internally managed and take turns at being either

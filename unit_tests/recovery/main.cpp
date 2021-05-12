@@ -283,21 +283,19 @@ TEST_CASE ("minimum log lsa: ", "[ci]")
   log_lsa_vec.push_back (values_generator.increment_and_get_lsa_log ());
   log_lsa_vec.push_back (values_generator.increment_and_get_lsa_log ());
 
-  //
   // 1. idle test will immediately finish
   //
   {
     std::thread observing_thread ([&] ()
     {
-      const log_lsa min_lsa = min_log_lsa.wait_for_target_lsa (target_log_lsa);
+      const log_lsa min_lsa = min_log_lsa.wait_past_target_lsa (target_log_lsa);
       REQUIRE (min_lsa != NULL_LSA);
       REQUIRE (min_lsa == MAX_LSA);
     });
     observing_thread.join ();
   }
 
-  //
-  // 2. produce & consume lsa's; leave in progress untouched
+  // 2. produce & consume lsa's; leave others untouched
   //
   {
     // push one value such that we can launch a waiting thread
@@ -307,7 +305,7 @@ TEST_CASE ("minimum log lsa: ", "[ci]")
 
     std::thread observing_thread ([&] ()
     {
-      const log_lsa min_lsa = min_log_lsa.wait_for_target_lsa (target_log_lsa);
+      const log_lsa min_lsa = min_log_lsa.wait_past_target_lsa (target_log_lsa);
       REQUIRE (min_lsa != NULL_LSA);
       REQUIRE (min_lsa != MAX_LSA);
     });
@@ -321,14 +319,13 @@ TEST_CASE ("minimum log lsa: ", "[ci]")
 	    break;
 	  }
 
-	min_log_lsa.set_for_consume (*log_lsa_vec_it);
+	// leave in-progress untouched
+	min_log_lsa.set_for_consume_and_in_progress (*log_lsa_vec_it, MAX_LSA);
 	++log_lsa_vec_it;
 	if (log_lsa_vec_it == log_lsa_vec.cend ())
 	  {
 	    break;
 	  }
-
-	// leave in-progress untouched
 
 	REQUIRE (true);
       }
@@ -337,9 +334,4 @@ TEST_CASE ("minimum log lsa: ", "[ci]")
     REQUIRE (min_log_lsa.get () > target_log_lsa);
     REQUIRE (min_log_lsa.get () != MAX_LSA);
   }
-
-  //
-  // 2. all internal values
-  //
-  // TODO
 }
