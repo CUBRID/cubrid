@@ -135,22 +135,7 @@ TEST_CASE ("Test load and recovery on empty tran table", "")
 
 }
 
-std::map<TRANID, log_tdes *> recovery_map;
-void check_load (checkpoint_info obj)
-{
-  REQUIRE (log_Gl.trantable.num_total_indices - 1 == obj.m_trans.size());
-  std::vector<checkpoint_tran_info>::iterator it;
-  int found = 0;
-  for (int i = 0; i < log_Gl.trantable.num_total_indices; i++)
-    {
-      it = find (obj.m_trans.begin(), obj.m_trans.end(), log_Gl.trantable.all_tdes[i]->trid);
-      if (it != obj.m_trans.end())
-	{
-	  found++;
-	}
-    }
-  REQUIRE (found == log_Gl.trantable.num_total_indices - 1);
-}
+std::map<TRANID, log_tdes *> tran_map;
 
 int search_for_id (int id)
 {
@@ -166,16 +151,30 @@ int search_for_id (int id)
 
 void check_recovery (checkpoint_info obj)
 {
-  REQUIRE (log_Gl.trantable.num_total_indices - 1 == obj.m_trans.size());
-  int found = 0;
-  for (const checkpoint_tran_info tran_info : obj.m_trans)
+  std::map<TRANID, log_tdes *>::iterator itr;
+  for (itr = tran_map.begin(); itr != tran_map.end(); ++itr)
     {
-      if (search_for_id (tran_info.trid))
-	{
-	  found++;
-	}
+      REQUIRE (itr->first != NULL_TRANID);
     }
-  REQUIRE (found == log_Gl.trantable.num_total_indices - 1);
+
+  for (int i = 1; i < log_Gl.trantable.num_total_indices; i++)
+    {
+      LOG_TDES *tdes = log_Gl.trantable.all_tdes[i];
+      std::map<TRANID, log_tdes *>::const_iterator tdes_after = tran_map.find (tdes->trid);
+
+      if (tdes->trid != NULL && tdes->tail_lsa == NULL_LSA)
+	{
+	  REQUIRE (tdes_after == tran_map.end());
+	  continue;
+	}
+      REQUIRE (tdes_after != tran_map.end());
+      if (tdes->state == TRAN_ACTIVE || tdes->state == TRAN_UNACTIVE_ABORTED)
+	{
+	  REQUIRE (tdes_after->second->state == TRAN_UNACTIVE_UNILATERALLY_ABORTED);
+	  continue;
+	}
+      REQUIRE (tdes_after->second->state == tdes->state);
+    }
 }
 
 TEST_CASE ("Test load and recovery on 100 tran table entries", "")
@@ -187,7 +186,6 @@ TEST_CASE ("Test load and recovery on 100 tran table entries", "")
 
   env.generate_tran_table();
   env.after.load_trantable_snapshot (&thd, smallest_lsa);
-  check_load (env.after);
   env.after.recovery_analysis (&thd, start_lsa);
   env.after.recovery_2pc_analysis (&thd);
   check_recovery (env.after);
@@ -332,8 +330,8 @@ LOG_TDES *
 test_env_chkpt::generate_tdes (int index)
 {
   LOG_TDES *tdes = new log_tdes();
-  tdes->trid = index;
-  tdes->tran_index = index;
+  tdes->trid = index + 1;
+  tdes->tran_index = index + 1;
 
   tdes->tail_lsa = generate_log_lsa();
   tdes->isloose_end = std::rand() % 2;
@@ -373,7 +371,7 @@ test_env_chkpt::generate_tran_table()
   int size = log_Gl.trantable.num_total_indices * sizeof (*log_Gl.trantable.all_tdes);
   log_Gl.trantable.all_tdes = (LOG_TDES **) malloc (size);
 
-  for (int i = 0; i < log_Gl.trantable.num_total_indices; i++)
+  for (int i = 1; i < log_Gl.trantable.num_total_indices; i++)
     {
       log_Gl.trantable.all_tdes[i] = generate_tdes (i);
     }
@@ -703,13 +701,13 @@ logtb_rv_find_allocate_tran_index (THREAD_ENTRY *thread_p, TRANID trid, const LO
 
   assert (trid != NULL_TRANID);
 
-  for (int i = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
+  for (int i = 1; i < NUM_TOTAL_TRAN_INDICES; i++)
     {
       tdes = log_Gl.trantable.all_tdes[i];
       if (tdes != NULL && tdes->trid != NULL_TRANID && tdes->trid == trid)
 	{
 	  LSA_COPY (&tdes->head_lsa, log_lsa);
-	  recovery_map.insert (std::pair<TRANID, LOG_TDES> (trid, tdes));
+	  tran_map.insert (std::pair<TRANID, LOG_TDES *> (trid, tdes));
 	  return tdes;
 	}
     }
