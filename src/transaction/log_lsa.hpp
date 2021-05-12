@@ -29,7 +29,11 @@
 
 #include <cassert>
 #include <cinttypes>
+#include <cstring>
 #include <cstddef>
+
+const int page_id_bit_count = 48;
+const int page_offset_bit_count = 16;
 
 struct log_lsa
 {
@@ -44,6 +48,8 @@ struct log_lsa
     , offset (log_offset)
   {
   }
+
+  inline log_lsa (const int64_t value);
   inline log_lsa (const log_lsa &olsa) = default;
   inline log_lsa &operator= (const log_lsa &olsa) = default;
 
@@ -56,6 +62,7 @@ struct log_lsa
   inline bool operator<= (const log_lsa &olsa) const;
   inline bool operator> (const log_lsa &olsa) const;
   inline bool operator>= (const log_lsa &olsa) const;
+  inline operator int64_t () const;
 };
 
 using LOG_LSA = log_lsa;	/* Log address identifier */
@@ -90,6 +97,11 @@ inline bool LSA_GT (const log_lsa *plsa1, const log_lsa *plsa2);
 //////////////////////////////////////////////////////////////////////////
 // inline/template implementation
 //////////////////////////////////////////////////////////////////////////
+
+log_lsa::log_lsa (const int64_t value)
+{
+  std::memcpy (this, &value, sizeof (value));
+}
 
 bool
 log_lsa::is_null () const
@@ -139,6 +151,13 @@ bool
 log_lsa::operator>= (const log_lsa &olsa) const
 {
   return !operator< (olsa);
+}
+
+log_lsa::operator int64_t () const
+{
+  int64_t result = 0;
+  std::memcpy (&result, this, sizeof (result));
+  return result;
 }
 
 //

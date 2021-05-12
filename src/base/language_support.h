@@ -122,13 +122,6 @@ enum
   (((c) == INTL_CODESET_ISO88591) ? LANG_COLL_ISO_BINARY :	 \
     LANG_COLL_BINARY)))
 
-
-  /* collation and charset do be used by system : */
-#define LANG_SYS_COLLATION  (LANG_GET_BINARY_COLLATION(lang_charset()))
-
-#define LANG_SYS_CODESET  lang_charset()
-
-
 typedef struct db_charset DB_CHARSET;
 struct db_charset
 {
@@ -258,10 +251,27 @@ struct lang_locale_compat
   char checksum[32 + 1];
 };
 
+/* collation and charset do be used by system : */
+#if defined(NDEBUG)
+#define LANG_GET_COLLATION(i)  lang_Collations[i]
+#else /* DEBUG */
+#define LANG_GET_COLLATION(i)  lang_get_collation(i)
+#endif /* NDEBUG */
+
+#if defined(NDEBUG)
+#define LANG_SYS_COLLATION  (LANG_GET_BINARY_COLLATION(lang_Loc_charset))
+#define LANG_SYS_CODESET  lang_Loc_charset
+#else /* DEBUG */
+#define LANG_SYS_COLLATION  (LANG_GET_BINARY_COLLATION(lang_charset()))
+#define LANG_SYS_CODESET  lang_charset()
+#endif /* NDEBUG */
+
 #ifdef __cplusplus
 extern "C"
 {
 #endif
+  extern LANG_COLLATION *lang_Collations[LANG_MAX_COLLATIONS];
+  extern INTL_CODESET lang_Loc_charset;
   extern INTL_CODESET lang_charset (void);
   extern void lang_init_builtin (void);
   extern int lang_init (void);

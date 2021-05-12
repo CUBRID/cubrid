@@ -299,6 +299,7 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/log_comm.c
   ${TRANSACTION_DIR}/log_compress.c
   ${TRANSACTION_DIR}/log_lsa.cpp
+  ${TRANSACTION_DIR}/log_lsa_utils.cpp
   ${TRANSACTION_DIR}/log_writer.c
   ${TRANSACTION_DIR}/transaction_cl.c
   )
@@ -307,6 +308,7 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/log_archives.hpp
   ${TRANSACTION_DIR}/log_common_impl.h
   ${TRANSACTION_DIR}/log_lsa.hpp
+  ${TRANSACTION_DIR}/log_lsa_utils.hpp
   ${TRANSACTION_DIR}/log_record.hpp
   ${TRANSACTION_DIR}/log_storage.hpp
   ${TRANSACTION_DIR}/log_volids.hpp
