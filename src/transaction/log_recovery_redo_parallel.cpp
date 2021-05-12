@@ -257,7 +257,6 @@ namespace cublog
   void
   redo_parallel::redo_job_queue::do_swap_queues_if_needed (const std::lock_guard<std::mutex> &a_consume_lockg)
   {
-    // PRECOND: consume queue must be locked at this point
     // if consumption of everything in consume queue finished; see whether there's some more in the other one
     if (m_consume_queue->size () == 0)
       {
