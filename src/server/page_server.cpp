@@ -164,7 +164,7 @@ void page_server::on_data_page_read_result (PAGE_PTR page_ptr, int error_code)
     }
 
   // TODO: Ilie - send the data page message.
-  std::string message (page_ptr);
+  std::string message (page_ptr, db_page_size ());
   m_ats_request_queue->push (ps_to_ats_request::SEND_DATA_PAGE, std::move (message));
 }
 

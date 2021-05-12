@@ -65,6 +65,7 @@ namespace cublog
 
   void data_page_fetch_task::execute (context_type &context)
   {
+    // TODO: wait for replication
     PAGE_PTR page_ptr = pgbuf_fix_debug (&context, &m_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH, "", 0);
     assert (page_ptr);
     m_callback (page_ptr, NO_ERROR);
