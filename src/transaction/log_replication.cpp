@@ -259,7 +259,6 @@ namespace cublog
       }
   }
 
-  // TODO: reimplement in terms of 'wait_until_replicated_lsa'?
   void
   replicator::wait_replication_finish_during_shutdown () const
   {
@@ -282,7 +281,7 @@ namespace cublog
       }
   }
 
-  void replicator::wait_until_replicated_lsa (const log_lsa &a_target_lsa)
+  void replicator::wait_past_target_lsa (const log_lsa &a_target_lsa)
   {
     if (m_parallel_replication_redo == nullptr)
       {

@@ -63,7 +63,7 @@ namespace cublog
       /* wait until replication advances past the target lsa
        * blocking call
        */
-      void wait_until_replicated_lsa (const log_lsa &a_target_lsa);
+      void wait_past_target_lsa (const log_lsa &a_target_lsa);
 
     private:
       void redo_upto_nxio_lsa (cubthread::entry &thread_entry);
