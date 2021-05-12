@@ -4016,17 +4016,26 @@ scan_open_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
  */
 int
 scan_open_dblink_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
+		       QPROC_SINGLE_FETCH single_fetch,
+		       SCAN_OPERATION_TYPE scan_op_type,
 		       char *conn_url,
-		       char *conn_user, char *conn_password, char *sql_text, REGU_VARIABLE_LIST regu_list_p)
+		       char *conn_user, char *conn_password, char *sql_text,
+		       VAL_DESCR * vd, VAL_LIST * val_list, REGU_VARIABLE_LIST regu_list_pred, PRED_EXPR * pr)
 {
+  DBLINK_SCAN_ID *dblid = &scan_id->s.dblid;
+  DB_TYPE single_node_type = DB_TYPE_NULL;
+
   /* scan type is DBLINK SCAN */
   scan_id->type = S_DBLINK_SCAN;
-  scan_id->s.dblid.regu_list_p = regu_list_p;
 
   /* initialize SCAN_ID structure */
-  scan_init_scan_id (scan_id, false, S_SELECT, true, 0, QPROC_NO_SINGLE_INNER, NULL, NULL, NULL);
+  scan_init_scan_id (scan_id, false, S_SELECT, true, 0, single_fetch, NULL, val_list, vd);
 
-  return dblink_open_scan (thread_p, &scan_id->s.dblid.scan_buf, conn_url, conn_user, conn_password, sql_text);
+  /* scan predicates */
+  scan_init_scan_pred (&dblid->scan_pred, regu_list_pred, pr,
+		       ((pr) ? eval_fnc (thread_p, pr, &single_node_type) : NULL));
+
+  return dblink_open_scan (&scan_id->s.dblid.scan_info, conn_url, conn_user, conn_password, sql_text);
 }
 
 /*
@@ -4460,7 +4469,7 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
       break;
 
     case S_DBLINK_SCAN:
-      status = dblink_scan_reset (thread_p, &s_id->s.dblid.scan_buf);
+      status = dblink_scan_reset (&s_id->s.dblid.scan_info);
       break;
 
     default:
@@ -4924,7 +4933,7 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       break;
 
     case S_DBLINK_SCAN:
-      dblink_close_scan (thread_p, &scan_id->s.dblid.scan_buf);
+      dblink_close_scan (&scan_id->s.dblid.scan_info);
       break;
 
     case S_JSON_TABLE_SCAN:
@@ -6856,26 +6865,77 @@ scan_next_dblink_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 {
   DBLINK_SCAN_ID *vaidp;
   SCAN_CODE qp_scan;
+  DB_LOGICAL ev_res;
+  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
 
   vaidp = &scan_id->s.dblid;
 
   /* execute dblink scan */
-  qp_scan = dblink_scan_next (thread_p, &vaidp->scan_buf, vaidp->regu_list_p);
-  if (qp_scan != S_SUCCESS)
+
+  while ((qp_scan = dblink_scan_next (&vaidp->scan_info, scan_id->val_list)) == S_SUCCESS)
     {
-      /* scan error or end of scan */
-      if (qp_scan == S_END)
+      /* evaluate the predicate to see if the tuple qualifies */
+      ev_res = V_TRUE;
+      if (vaidp->scan_pred.pr_eval_fnc && vaidp->scan_pred.pred_expr)
 	{
-	  scan_id->position = S_AFTER;
-	  return S_END;
+	  ev_res = (*vaidp->scan_pred.pr_eval_fnc) (thread_p, vaidp->scan_pred.pred_expr, scan_id->vd, NULL);
+	  if (ev_res == V_ERROR)
+	    {
+	      return S_ERROR;
+	    }
+	}
+
+      if (scan_id->qualification == QPROC_QUALIFIED)
+	{
+	  if (ev_res != V_TRUE)	/* V_FALSE || V_UNKNOWN */
+	    {
+	      continue;		/* not qualified, continue to the next tuple */
+	    }
+	}
+      else if (scan_id->qualification == QPROC_NOT_QUALIFIED)
+	{
+	  if (ev_res != V_FALSE)	/* V_TRUE || V_UNKNOWN */
+	    {
+	      continue;		/* qualified, continue to the next tuple */
+	    }
+	}
+      else if (scan_id->qualification == QPROC_QUALIFIED_OR_NOT)
+	{
+	  if (ev_res == V_TRUE)
+	    {
+	      scan_id->qualification = QPROC_QUALIFIED;
+	    }
+	  else if (ev_res == V_FALSE)
+	    {
+	      scan_id->qualification = QPROC_NOT_QUALIFIED;
+	    }
+	  else			/* V_UNKNOWN */
+	    {
+	      /* nop */
+	      ;
+	    }
 	}
       else
-	{
-	  return S_ERROR;
+	{			/* invalid value; the same as QPROC_QUALIFIED */
+	  if (ev_res != V_TRUE)	/* V_FALSE || V_UNKNOWN */
+	    {
+	      continue;		/* not qualified, continue to the next tuple */
+	    }
 	}
+
+      return S_SUCCESS;
     }
 
-  return S_SUCCESS;
+  /* scan error or end of scan */
+  if (qp_scan == S_END)
+    {
+      scan_id->position = S_AFTER;
+      return S_END;
+    }
+  else
+    {
+      return S_ERROR;
+    }
 }
 
 /*

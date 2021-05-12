@@ -42,21 +42,22 @@ typedef enum
 } DBLINK_STATUS;
 
 struct regu_variable_list_node;
+struct val_list_node;
 
-typedef struct dblink_scan_buffer DBLINK_SCAN_BUFFER;
-struct dblink_scan_buffer
-{				/* value array scanbuf */
-  int conn_handle;
-  int stmt_handle;
-  int col_cnt;
-  void *col_info;
+typedef struct dblink_scan_info DBLINK_SCAN_INFO;
+struct dblink_scan_info
+{
+  int conn_handle;		/* connection handle for dblink */
+  int stmt_handle;		/* statement handle for dblink */
+  int col_cnt;			/* column count of dblink query result */
+  char cursor;			/* cursor position T_CCI_CURSOR_POS */
+  void *col_info;		/* column information T_CCI_COL_INFO */
 };
 
-extern int dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_BUFFER * scan_buffer_p,
+extern int dblink_open_scan (DBLINK_SCAN_INFO * scan_info,
 			     char *conn_url, char *user_name, char *password, char *sql_text);
-extern int dblink_close_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_BUFFER * scan_buf);
-extern SCAN_CODE dblink_scan_next (THREAD_ENTRY * thread_p, DBLINK_SCAN_BUFFER * scan_buffer_p,
-				   regu_variable_list_node * value_list_p);
-extern SCAN_CODE dblink_scan_reset (THREAD_ENTRY * thread_p, DBLINK_SCAN_BUFFER * scan_buffer_p);
+extern int dblink_close_scan (DBLINK_SCAN_INFO * scan_info);
+extern SCAN_CODE dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list);
+extern SCAN_CODE dblink_scan_reset (DBLINK_SCAN_INFO * scan_info);
 
 #endif

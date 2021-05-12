@@ -254,7 +254,7 @@ static PT_NODE *pt_apply_cte (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNC
 static PT_NODE *pt_apply_json_table (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
 static PT_NODE *pt_apply_json_table_node (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
 static PT_NODE *pt_apply_json_table_column (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-
+static PT_NODE *pt_apply_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
 static PARSER_APPLY_NODE_FUNC pt_apply_func_array[PT_NODE_NUMBER];
 
 static PT_NODE *pt_init_alter_serial (PT_NODE * p);
@@ -357,7 +357,7 @@ static PT_NODE *pt_init_cte (PT_NODE * p);
 static PT_NODE *pt_init_json_table (PT_NODE * p);
 static PT_NODE *pt_init_json_table_node (PT_NODE * p);
 static PT_NODE *pt_init_json_table_column (PT_NODE * p);
-
+static PT_NODE *pt_init_dblink_table (PT_NODE * p);
 static PARSER_INIT_NODE_FUNC pt_init_func_array[PT_NODE_NUMBER];
 
 static PARSER_VARCHAR *pt_print_alter_index (PARSER_CONTEXT * parser, PT_NODE * p);
@@ -467,6 +467,8 @@ static PARSER_VARCHAR *pt_print_cte (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_json_table (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_json_table_node (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_json_table_columns (PARSER_CONTEXT * parser, PT_NODE * p);
+static PARSER_VARCHAR *pt_print_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p);
+
 #if defined(ENABLE_UNUSED_FUNCTION)
 static PT_NODE *pt_apply_use (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
 static PT_NODE *pt_init_use (PT_NODE * p);
@@ -4959,6 +4961,7 @@ pt_init_apply_f (void)
   pt_apply_func_array[PT_JSON_TABLE] = pt_apply_json_table;
   pt_apply_func_array[PT_JSON_TABLE_NODE] = pt_apply_json_table_node;
   pt_apply_func_array[PT_JSON_TABLE_COLUMN] = pt_apply_json_table_column;
+  pt_apply_func_array[PT_DBLINK_TABLE] = pt_apply_dblink_table;
 
   pt_apply_f = pt_apply_func_array;
 }
@@ -5078,6 +5081,7 @@ pt_init_init_f (void)
   pt_init_func_array[PT_JSON_TABLE] = pt_init_json_table;
   pt_init_func_array[PT_JSON_TABLE_NODE] = pt_init_json_table_node;
   pt_init_func_array[PT_JSON_TABLE_COLUMN] = pt_init_json_table_column;
+  pt_init_func_array[PT_DBLINK_TABLE] = pt_init_dblink_table;
 
   pt_init_f = pt_init_func_array;
 }
@@ -5195,6 +5199,7 @@ pt_init_print_f (void)
   pt_print_func_array[PT_JSON_TABLE] = pt_print_json_table;
   pt_print_func_array[PT_JSON_TABLE_NODE] = pt_print_json_table_node;
   pt_print_func_array[PT_JSON_TABLE_COLUMN] = pt_print_json_table_columns;
+  pt_print_func_array[PT_DBLINK_TABLE] = pt_print_dblink_table;
 
   pt_print_f = pt_print_func_array;
 }
@@ -9503,6 +9508,24 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 
 	      q = pt_append_nulstring (parser, q, ")");
 	    }
+	  else if (p->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
+	    {
+	      q = pt_append_varchar (parser, q, r1);
+
+	      unsigned int alias_print_flag = (parser->custom_print & PT_PRINT_ALIAS);
+	      q = pt_append_nulstring (parser, q, " as ");
+	      parser->custom_print &= ~PT_PRINT_ALIAS;
+	      r1 = pt_print_bytes (parser, p->info.spec.range_var);
+	      q = pt_append_varchar (parser, q, r1);
+	      parser->custom_print |= alias_print_flag;
+
+	      q = pt_append_nulstring (parser, q, "(");
+	      r1 = pt_print_bytes_l (parser, p->info.spec.as_attr_list);
+	      q = pt_append_varchar (parser, q, r1);
+	      q = pt_append_nulstring (parser, q, ")");
+
+	      return q;
+	    }
 	  else
 	    {
 	      q = pt_append_nulstring (parser, q, "(");
@@ -9550,6 +9573,7 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
       parser->custom_print = save_custom;
     }
+
   if (p->info.spec.as_attr_list && !PT_SPEC_IS_CTE (p) && (p->info.spec.derived_table_type != PT_DERIVED_JSON_TABLE))
     {
       save_custom = parser->custom_print;
@@ -19286,4 +19310,78 @@ pt_move_node (REFPTR (PT_NODE, destp), REFPTR (PT_NODE, srcp))
 {
   destp = srcp;
   srcp = NULL;
+}
+
+
+static PT_NODE *
+pt_apply_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+{
+  if (p->info.dblink_table.is_name)
+    assert (false);		// Not Yet ctshim_assert
+  else
+    {
+#if 0				// Is it the necessary code?
+      // p->info.dblink_table.conn = g(parser, p->info.dblink_table.conn, arg);
+
+      p->info.dblink_table.url = g (parser, p->info.dblink_table.url, arg);
+      p->info.dblink_table.user = g (parser, p->info.dblink_table.user, arg);
+      p->info.dblink_table.pwd = g (parser, p->info.dblink_table.pwd, arg);
+      p->info.dblink_table.qstr = g (parser, p->info.dblink_table.qstr, arg);
+#endif
+    }
+
+  p->info.dblink_table.cols = g (parser, p->info.dblink_table.cols, arg);
+  return p;
+}
+
+static PT_NODE *
+pt_init_dblink_table (PT_NODE * p)
+{
+  memset (&p->info.dblink_table, 0x00, sizeof (PT_DBLINK_INFO));
+  p->info.dblink_table.is_name = true;
+  return p;
+}
+
+static PARSER_VARCHAR *
+pt_print_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  PARSER_VARCHAR *q = 0, *r;
+
+  q = pt_append_nulstring (parser, q, "DBLINK(");
+
+  if (p->info.dblink_table.is_name)
+    {
+      assert (false);		// Not Yet
+    }
+  else
+    {
+      q = pt_append_bytes (parser, q, "'", 1);
+      q = pt_append_bytes (parser, q, "URL=", strlen ("URL="));
+
+      q =
+	pt_append_bytes (parser, q, (char *) p->info.dblink_table.url->info.value.data_value.str->bytes,
+			 p->info.dblink_table.url->info.value.data_value.str->length);
+      //q = pt_append_nulstring (parser, q, (char*)p->info.dblink_table.url->info.value.data_value.str->bytes);
+      q = pt_append_bytes (parser, q, " USER=", strlen ("USER="));
+      q =
+	pt_append_bytes (parser, q, (char *) p->info.dblink_table.user->info.value.data_value.str->bytes,
+			 p->info.dblink_table.user->info.value.data_value.str->length);
+      //q = pt_append_nulstring (parser, q, (char*)p->info.dblink_table.user->info.value.data_value.str->bytes);
+      q = pt_append_bytes (parser, q, " PASSWORD=", strlen ("PASSWORD="));
+      q =
+	pt_append_bytes (parser, q, (char *) p->info.dblink_table.pwd->info.value.data_value.str->bytes,
+			 p->info.dblink_table.pwd->info.value.data_value.str->length);
+      //q = pt_append_nulstring (parser, q, (char*)p->info.dblink_table.pwd->info.value.data_value.str->bytes); 
+      q = pt_append_bytes (parser, q, "'", 1);
+    }
+
+  q = pt_append_nulstring (parser, q, ", \"");
+  if (p->info.dblink_table.qstr)
+    {
+      r = pt_print_bytes (parser, p->info.dblink_table.qstr);
+      q = pt_append_varchar (parser, q, r);
+    }
+  q = pt_append_nulstring (parser, q, "\")");
+
+  return q;
 }

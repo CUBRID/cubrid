@@ -574,7 +574,6 @@ typedef enum
 
   CUBRID_MAX_STMT_TYPE
 } T_CCI_CUBRID_STMT;
-
 #endif
 typedef int T_CCI_CONN;
 typedef int T_CCI_REQ;

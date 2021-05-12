@@ -778,7 +778,8 @@ struct method_spec_node
 
 struct dblink_spec_node
 {
-  REGU_VARIABLE_LIST regu_list_p;	/* regulator variable list */
+  REGU_VARIABLE_LIST dblink_regu_list_pred;	/* regu list for the predicate */
+  REGU_VARIABLE_LIST dblink_regu_list_rest;	/* regu list for rest of attrs */
   char *conn_url;		/* connection URL for remote DB server */
   char *conn_user;		/* user name for remote DB server */
   char *conn_password;		/* password for remote user */

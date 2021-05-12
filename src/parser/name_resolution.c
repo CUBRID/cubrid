@@ -135,6 +135,10 @@ static PT_NODE *pt_get_all_json_table_attributes_and_types (PARSER_CONTEXT * par
 							    const char *json_table_alias);
 static PT_NODE *pt_json_table_gather_attribs (PARSER_CONTEXT * parser, PT_NODE * json_table_node, void *args,
 					      int *continue_walk);
+static PT_NODE *pt_dblink_table_gather_attribs (PARSER_CONTEXT * parser, PT_NODE * dblink_column, void *args,
+						int *continue_walk);
+static PT_NODE *pt_get_all_dblink_table_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * dblink_cols,
+							      const char *dblink_table_alias);
 static PT_NODE *pt_get_all_showstmt_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * derived_table);
 static void pt_get_attr_data_type (PARSER_CONTEXT * parser, DB_ATTRIBUTE * att, PT_NODE * attr);
 static PT_NODE *pt_unwhacked_spec (PARSER_CONTEXT * parser, PT_NODE * scope, PT_NODE * spec);
@@ -991,6 +995,13 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 				  bind_arg);
 	      table->info.json_table_info.tree =
 		parser_walk_tree (parser, table->info.json_table_info.tree, pt_bind_name_to_spec, spec, NULL, NULL);
+	    }
+	  else if (table->node_type == PT_DBLINK_TABLE)
+	    {
+	      assert (spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE);
+
+	      table->info.dblink_table.cols =
+		parser_walk_tree (parser, table->info.dblink_table.cols, pt_bind_name_to_spec, spec, NULL, NULL);
 	    }
 	  else
 	    {
@@ -3630,6 +3641,13 @@ pt_find_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * name)
 	      name->info.name.default_value = pt_dbval_to_value (parser, &val);
 	      PT_NAME_INFO_SET_FLAG (name, PT_NAME_DEFAULTF_ACCEPTS);
 	    }
+#if 0
+	  else if (spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
+	    {
+	      // TODO: ctshim_assert
+	      ;
+	    }
+#endif
 	}
     }
 
@@ -4445,6 +4463,38 @@ pt_get_all_json_table_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * j
   sorted_attrs[columns_nr - 1]->next = NULL;
 
   return sorted_attrs[0];
+}
+
+static PT_NODE *
+pt_dblink_table_gather_attribs (PARSER_CONTEXT * parser, PT_NODE * dblink_column, void *args, int *continue_walk)
+{
+  PT_NODE **attribs = (PT_NODE **) args;
+
+  if (dblink_column->node_type == PT_ATTR_DEF)
+    {
+      PT_NODE *next_attr = dblink_column->info.attr_def.attr_name;
+      next_attr->type_enum = dblink_column->type_enum;
+
+      if (dblink_column->data_type != NULL)
+	{
+	  next_attr->data_type = parser_copy_tree (parser, dblink_column->data_type);
+	}
+      *attribs = parser_append_node (next_attr, *attribs);
+    }
+  return dblink_column;
+}
+
+static PT_NODE *
+pt_get_all_dblink_table_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * dblink_cols,
+					      const char *dblink_table_alias)
+{
+  PT_NODE *attribs = NULL;
+
+  parser_walk_tree (parser, dblink_cols, pt_dblink_table_gather_attribs, &attribs, NULL, NULL);
+  if (attribs == NULL)
+    assert (false);
+
+  return attribs;
 }
 
 /*
@@ -9971,6 +10021,13 @@ pt_get_attr_list_of_derived_table (PARSER_CONTEXT * parser, PT_MISC_TYPE derived
 								 derived_alias->info.name.original);
       break;
 
+    case PT_DERIVED_DBLINK_TABLE:
+      assert (derived_table->node_type == PT_DBLINK_TABLE);
+
+      as_attr_list = pt_get_all_dblink_table_attributes_and_types (parser, derived_table->info.dblink_table.cols,
+								   derived_alias->info.name.original);
+      break;
+
     default:
       /* this can't happen since we removed MERGE/CSELECT from grammar */
       assert (derived_table_type == PT_IS_CSELECT);
@@ -10117,6 +10174,10 @@ pt_set_attr_list_types (PARSER_CONTEXT * parser, PT_NODE * as_attr_list, PT_MISC
 
     case PT_DERIVED_JSON_TABLE:
       // nothing to do? Types already set during pt_json_table_gather_attribs ()
+      return;
+
+    case PT_DERIVED_DBLINK_TABLE:
+      // nothing to do? Types already set during pt_dblink_table_gather_attribs ()
       return;
 
     default:

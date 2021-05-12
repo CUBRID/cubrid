@@ -2818,6 +2818,10 @@ set_seg_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_
       *continue_walk = PT_LIST_WALK;
       break;
 
+    case PT_DBLINK_TABLE:
+      *continue_walk = PT_LIST_WALK;
+      break;
+
     default:
       break;
     }
@@ -2952,6 +2956,9 @@ is_dependent_table (PT_NODE * entity)
       return true;
 
     case PT_DERIVED_JSON_TABLE:
+      return true;
+
+    case PT_DERIVED_DBLINK_TABLE:
       return true;
 
     case PT_IS_SUBQUERY:

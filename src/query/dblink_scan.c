@@ -70,10 +70,13 @@ static int type_map[] = {
   CCI_A_TYPE_DATE,		/* CCI_U_TYPE_DATE */
   CCI_A_TYPE_DATE,		/* CCI_U_TYPE_TIME */
   CCI_A_TYPE_DATE,		/* CCI_U_TYPE_TIMESTAMP */
-  CCI_A_TYPE_SET,		/* CCI_U_TYPE_SET */
-  CCI_A_TYPE_SET,		/* CCI_U_TYPE_MULTISET */
-  CCI_A_TYPE_SET,		/* CCI_U_TYPE_SEQUENCE */
+
+  /* not support for collection type, processing as null */
+  0,				/* CCI_U_TYPE_SET */
+  0,				/* CCI_U_TYPE_MULTISET */
+  0,				/* CCI_U_TYPE_SEQUENCE */
   0,				/* CCI_U_TYPE_OBJECT */
+
   0,				/* CCI_U_TYPE_RESULTSET */
   CCI_A_TYPE_BIGINT,		/* CCI_U_TYPE_BIGINT */
   CCI_A_TYPE_DATE,		/* CCI_U_TYPE_DATETIME */
@@ -92,6 +95,9 @@ static int type_map[] = {
   /* end of disabled types */
   CCI_A_TYPE_STR		/* CCI_U_TYPE_JSON */
 };
+
+#define NULL_CHECK(ind) \
+	if ((ind) == -1) break
 
 static T_CCI_U_TYPE
 dblink_get_basic_utype (T_CCI_U_EXT_TYPE u_ext_type)
@@ -192,40 +198,43 @@ dblink_make_date_time_tz (T_CCI_U_TYPE utype, DB_VALUE * value_p, T_CCI_DATE_TZ 
 }
 
 /*
- * dblink_open_scan () -
+ * dblink_open_scan () - open the scan for dblink
  *   return: int
- *   scan_buf(in)       : Value array buffer
- *   list_id(in)        :
+ *   scan_info(out)      : dblink information
+ *   conn_url(in)        : connection URL for dblink
+ *   user_name(in)	 : user name for dblink
+ *   passowrd(in)	 : password for dblink
+ *   sql_text(in)	 : SQL text for dblink
  */
 int
-dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_BUFFER * scan_buffer_p,
-		  char *conn_url, char *user_name, char *password, char *sql_text)
+dblink_open_scan (DBLINK_SCAN_INFO * scan_info, char *conn_url, char *user_name, char *password, char *sql_text)
 {
-  int ret, error;
+  int ret;
+
   T_CCI_ERROR err_buf;
   T_CCI_CUBRID_STMT stmt_type;
 
-  scan_buffer_p->conn_handle = cci_connect_with_url_ex (conn_url, user_name, password, &err_buf);
+  scan_info->conn_handle = cci_connect_with_url_ex (conn_url, user_name, password, &err_buf);
 
-  if (scan_buffer_p->conn_handle < 0)
+  if (scan_info->conn_handle < 0)
     {
-      error = err_buf.err_code;
+      return err_buf.err_code;;
     }
   else
     {
-      scan_buffer_p->stmt_handle = cci_prepare_and_execute (scan_buffer_p->conn_handle, sql_text, 0, &ret, &err_buf);
+      scan_info->stmt_handle = cci_prepare_and_execute (scan_info->conn_handle, sql_text, 0, &ret, &err_buf);
       if (ret < 0)
 	{
-	  error = err_buf.err_code;
+	  return err_buf.err_code;;
 	}
       else
 	{
-	  scan_buffer_p->col_info = (void *) cci_get_result_info (scan_buffer_p->stmt_handle,
-								  &stmt_type, &scan_buffer_p->col_cnt);
-	  if (scan_buffer_p->col_info == NULL)
+	  scan_info->col_info = (void *) cci_get_result_info (scan_info->stmt_handle, &stmt_type, &scan_info->col_cnt);
+	  if (scan_info->col_info == NULL)
 	    {
-	      error = S_ERROR;
+	      return S_ERROR;
 	    }
+	  scan_info->cursor = CCI_CURSOR_FIRST;
 	}
     }
 
@@ -235,161 +244,206 @@ dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_BUFFER * scan_buffer_p,
 /*
  * dblink_close_scan () -
  *   return: int
- *   scan_buf(in)       : Value array buffer
+ *   scan_info(in)       : information for dblink
  */
 int
-dblink_close_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_BUFFER * scan_buffer_p)
+dblink_close_scan (DBLINK_SCAN_INFO * scan_info)
 {
   T_CCI_ERROR err_buf;
-  cci_close_req_handle (scan_buffer_p->stmt_handle);
-  cci_disconnect (scan_buffer_p->conn_handle, &err_buf);
+  int error;
+
+  if ((error = cci_close_req_handle (scan_info->stmt_handle)) < 0)
+    {
+      return error;
+    }
+
+  if ((error = cci_disconnect (scan_info->conn_handle, &err_buf)) < 0)
+    {
+      return error;
+    }
 
   return NO_ERROR;
 }
 
 /*
- * dblink_scan_next () -
- *   return: int
- *   scan_buf(in)       : Value array buffer
- *   val_list(in)       :
+ * dblink_scan_next () - get next tuple for dblink
+ *   return: SCAN_CODE
+ *   scan_info(in)      : information for dblink
+ *   val_list(in)       : value list for derived dblink table
  */
 SCAN_CODE
-dblink_scan_next (THREAD_ENTRY * thread_p, DBLINK_SCAN_BUFFER * scan_buffer_p, REGU_VARIABLE_LIST regu_list_p)
+dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 {
-  SCAN_CODE scan_result = S_SUCCESS;
   T_CCI_ERROR err_buf;
   int col_no, col_cnt, ind, error;
   T_CCI_U_TYPE utype;
-  void *value;
-  DB_VALUE *value_p;
-  T_CCI_DATE date_time;
-  T_CCI_DATE_TZ date_time_tz;
-  T_CCI_BIT bit_value;
-  REGU_VARIABLE_LIST valptrp;
+  T_CCI_BIT bit_val;		/* for bit or varbit type */
+  T_CCI_DATE date_time;		/* for date or time type */
+  T_CCI_DATE_TZ date_time_tz;	/* for date or time with zone */
+  void *value;			/* for any other type */
+  QPROC_DB_VALUE_LIST valptrp;
+  T_CCI_COL_INFO *col_info = (T_CCI_COL_INFO *) scan_info->col_info;
 
-  col_cnt = scan_buffer_p->col_cnt;
+  INTL_CODESET codeset;
 
-  if (scan_buffer_p->stmt_handle >= 0)
+  col_cnt = scan_info->col_cnt;
+
+  if (scan_info->stmt_handle < 0)
     {
-      if ((error = cci_cursor (scan_buffer_p->stmt_handle, 1, CCI_CURSOR_CURRENT, &err_buf)) < 0)
+      return S_ERROR;
+    }
+
+  if ((error = cci_cursor (scan_info->stmt_handle, 1, (T_CCI_CURSOR_POS) scan_info->cursor, &err_buf)) < 0)
+    {
+      if (error == CCI_ER_NO_MORE_DATA)
 	{
-	  if (error == CCI_ER_NO_MORE_DATA)
-	    {
-	      return S_END;
-	    }
+	  return S_END;
 	}
-      if (cci_fetch (scan_buffer_p->stmt_handle, &err_buf))
+      else
 	{
 	  return S_ERROR;
 	}
-      for (valptrp = regu_list_p, col_no = 1; col_no <= col_cnt; col_no++, valptrp = valptrp->next)
+    }
+
+  /* for next scan, set cursor posioning */
+  scan_info->cursor = CCI_CURSOR_CURRENT;
+
+  if ((error = cci_fetch (scan_info->stmt_handle, &err_buf)) < 0)
+    {
+      return S_ERROR;
+    }
+
+  assert (col_info);
+  assert (val_list->valp);
+
+  for (valptrp = val_list->valp, col_no = 1; col_no <= col_cnt; col_no++, valptrp = valptrp->next)
+    {
+      valptrp->val->domain.general_info.is_null = 0;
+      utype = dblink_get_basic_utype (CCI_GET_RESULT_INFO_TYPE (col_info, col_no));
+      value = &valptrp->val->data;
+      switch (utype)
 	{
-	  valptrp->value.vfetch_to->domain.general_info.is_null = 0;
-	  value = valptrp->value.vfetch_to->data.p;
-	  utype = dblink_get_basic_utype (CCI_GET_RESULT_INFO_TYPE (scan_buffer_p->col_info, col_no));
-	  switch (utype)
+	case CCI_U_TYPE_NULL:
+	  ind = -1;
+	  break;
+	case CCI_U_TYPE_BIGINT:
+	case CCI_U_TYPE_INT:
+	case CCI_U_TYPE_FLOAT:
+	case CCI_U_TYPE_DOUBLE:
+	case CCI_U_TYPE_MONETARY:
+	  if (cci_get_data (scan_info->stmt_handle, col_no, type_map[utype], value, &ind) < 0)
 	    {
-	    case CCI_U_TYPE_NULL:
-	      valptrp->value.vfetch_to->domain.general_info.is_null = 1;
-	      break;
-	    case CCI_U_TYPE_BIGINT:
-	    case CCI_U_TYPE_INT:
-	    case CCI_U_TYPE_FLOAT:
-	    case CCI_U_TYPE_DOUBLE:
-	    case CCI_U_TYPE_MONETARY:
-	      value = valptrp->value.vfetch_to->data.p;
-	      if (cci_get_data (scan_buffer_p->stmt_handle, col_no, type_map[utype], &value, &ind) < 0)
-		{
-		  scan_result = S_ERROR;
-		}
-	      if (ind == -1)
-		{
-		  valptrp->value.vfetch_to->domain.general_info.is_null = 1;
-		}
-	      break;
-	    case CCI_U_TYPE_NUMERIC:
-	      if (cci_get_data (scan_buffer_p->stmt_handle, col_no, type_map[utype], &value, &ind) < 0)
-		{
-		  scan_result = S_ERROR;
-		}
-	      if (ind == -1)
-		{
-		  valptrp->value.vfetch_to->domain.general_info.is_null = 1;
-		  break;
-		}
-	      memcpy (valptrp->value.vfetch_to->data.num.d.buf, (char *) value, strlen ((char *) value));
-	      break;
-	    case CCI_U_TYPE_STRING:
-	    case CCI_U_TYPE_VARNCHAR:
-	    case CCI_U_TYPE_CHAR:
-	    case CCI_U_TYPE_NCHAR:
-	    case CCI_U_TYPE_BIT:
-	    case CCI_U_TYPE_VARBIT:
-	      if (cci_get_data (scan_buffer_p->stmt_handle, col_no, type_map[utype], &value, &ind) < 0)
-		{
-		  scan_result = S_ERROR;
-		}
-	      if (ind == -1)
-		{
-		  valptrp->value.vfetch_to->domain.general_info.is_null = 1;
-		  break;
-		}
-	      valptrp->value.vfetch_to->data.ch.medium.buf = (char *) value;
-	      valptrp->value.vfetch_to->data.ch.medium.size = strlen ((char *) value);
-	      break;
-	    case CCI_U_TYPE_DATE:
-	    case CCI_U_TYPE_TIME:
-	    case CCI_U_TYPE_TIMESTAMP:
-	    case CCI_U_TYPE_DATETIME:
-	      value_p = valptrp->value.vfetch_to;
-	      if (cci_get_data (scan_buffer_p->stmt_handle, col_no, type_map[utype], &date_time, &ind) < 0)
-		{
-		  scan_result = S_ERROR;
-		}
-	      if (ind == -1)
-		{
-		  valptrp->value.vfetch_to->domain.general_info.is_null = 1;
-		  break;
-		}
-	      dblink_make_date_time (utype, value_p, &date_time);
-	      break;
-	    case CCI_U_TYPE_DATETIMETZ:
-	    case CCI_U_TYPE_DATETIMELTZ:
-	    case CCI_U_TYPE_TIMESTAMPTZ:
-	    case CCI_U_TYPE_TIMESTAMPLTZ:
-	      value_p = valptrp->value.vfetch_to;
-	      if (cci_get_data (scan_buffer_p->stmt_handle, col_no, type_map[utype], &date_time_tz, &ind) < 0)
-		{
-		  scan_result = S_ERROR;
-		}
-	      if (ind == -1)
-		{
-		  valptrp->value.vfetch_to->domain.general_info.is_null = 1;
-		  break;
-		}
-	      dblink_make_date_time_tz (utype, value_p, &date_time_tz);
-	      break;
-	    case CCI_U_TYPE_JSON:
-	    default:
-	      valptrp->value.vfetch_to->domain.general_info.is_null = 1;
+	      return S_ERROR;
+	    }
+	  NULL_CHECK (ind);
+	  break;
+
+	case CCI_U_TYPE_NUMERIC:
+	  if (cci_get_data (scan_info->stmt_handle, col_no, type_map[utype], &value, &ind) < 0)
+	    {
+	      return S_ERROR;
+	    }
+	  NULL_CHECK (ind);
+	  codeset = (INTL_CODESET) valptrp->val->data.enumeration.str_val.info.codeset;
+	  numeric_coerce_string_to_num ((char *) value, ind, codeset, valptrp->val);
+	  break;
+
+	case CCI_U_TYPE_STRING:
+	case CCI_U_TYPE_VARNCHAR:
+	case CCI_U_TYPE_CHAR:
+	case CCI_U_TYPE_NCHAR:
+	case CCI_U_TYPE_ENUM:
+	  /* for enum type, it will be coerced to string type in the future */
+	case CCI_U_TYPE_JSON:
+	  if (cci_get_data (scan_info->stmt_handle, col_no, type_map[utype], &value, &ind) < 0)
+	    {
+	      return S_ERROR;
+	    }
+	  NULL_CHECK (ind);
+	  valptrp->val->data.ch.medium.buf = (char *) value;
+	  valptrp->val->data.ch.medium.size = ind;
+	  if (utype == CCI_U_TYPE_ENUM)
+	    {
+	      int collation = valptrp->val->domain.char_info.collation_id;
+
+	      codeset = (INTL_CODESET) valptrp->val->data.enumeration.str_val.info.codeset;
+	      db_make_enumeration (valptrp->val, 1, (char *) value, ind, codeset, collation);
+	    }
+	  else if (utype == CCI_U_TYPE_JSON)
+	    {
+	      db_json_val_from_str ((char *) value, ind, valptrp->val);
+	    }
+	  break;
+
+	case CCI_U_TYPE_BIT:
+	case CCI_U_TYPE_VARBIT:
+	  if (cci_get_data (scan_info->stmt_handle, col_no, type_map[utype], &bit_val, &ind) < 0)
+	    {
+	      return S_ERROR;
+	    }
+	  NULL_CHECK (ind);
+	  if (utype == CCI_U_TYPE_BIT)
+	    {
+	      /* bit_val.size * 8 : bit length for the value */
+	      db_make_bit (valptrp->val, bit_val.size * 8, bit_val.buf, col_info[col_no - 1].precision);
+	    }
+	  else
+	    {
+	      /* bit_val.size * 8 : bit length for the value */
+	      db_make_varbit (valptrp->val, bit_val.size * 8, bit_val.buf, col_info[col_no - 1].precision);
+	    }
+	  break;
+
+	case CCI_U_TYPE_DATE:
+	case CCI_U_TYPE_TIME:
+	case CCI_U_TYPE_TIMESTAMP:
+	case CCI_U_TYPE_DATETIME:
+	  if (cci_get_data (scan_info->stmt_handle, col_no, type_map[utype], &date_time, &ind) < 0)
+	    {
+	      return S_ERROR;
+	    }
+	  NULL_CHECK (ind);
+	  dblink_make_date_time (utype, valptrp->val, &date_time);
+	  break;
+
+	case CCI_U_TYPE_DATETIMETZ:
+	case CCI_U_TYPE_DATETIMELTZ:
+	case CCI_U_TYPE_TIMESTAMPTZ:
+	case CCI_U_TYPE_TIMESTAMPLTZ:
+	  if (cci_get_data (scan_info->stmt_handle, col_no, type_map[utype], &date_time_tz, &ind) < 0)
+	    {
+	      return S_ERROR;
 	      break;
 	    }
+	  NULL_CHECK (ind);
+	  dblink_make_date_time_tz (utype, valptrp->val, &date_time_tz);
+	  break;
+	default:
+	  ind = -1;
+	  break;
+	}
+      if (ind == -1)
+	{
+	  valptrp->val->domain.general_info.is_null = 1;
 	}
     }
-  return scan_result;
+
+  return S_SUCCESS;
 }
 
+/*
+ * dblink_scan_reset () - reset the cursor
+ *   return: SCAN_CODE
+ *   scan_info(in)      : information for dblink
+ */
 SCAN_CODE
-dblink_scan_reset (THREAD_ENTRY * thread_p, DBLINK_SCAN_BUFFER * scan_buffer_p)
+dblink_scan_reset (DBLINK_SCAN_INFO * scan_info)
 {
   T_CCI_ERROR err_buf;
 
-  if (scan_buffer_p->stmt_handle >= 0)
+  if (scan_info->conn_handle >= 0 && scan_info->stmt_handle >= 0)
     {
-      if (cci_cursor (scan_buffer_p->stmt_handle, 1, CCI_CURSOR_FIRST, &err_buf) < 0)
-	{
-	  return S_ERROR;
-	}
+      scan_info->cursor = CCI_CURSOR_FIRST;
       return S_SUCCESS;
     }
 

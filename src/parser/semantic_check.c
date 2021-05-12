@@ -10247,6 +10247,14 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 
       break;
 
+    case PT_DBLINK_TABLE:
+      if (pt_has_error (parser))
+	{
+	  break;
+	}
+
+      break;
+
     default:			/* other node types */
       break;
     }

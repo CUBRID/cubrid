@@ -5038,15 +5038,30 @@ stx_build_dblink_spec_type (THREAD_ENTRY * thread_p, char *ptr, DBLINK_SPEC_TYPE
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
-      dblink_spec->regu_list_p = NULL;
+      dblink_spec->dblink_regu_list_pred = NULL;
     }
   else
     {
-      dblink_spec->regu_list_p = stx_restore_regu_variable_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
-      if (dblink_spec->regu_list_p == NULL)
+      dblink_spec->dblink_regu_list_pred =
+	stx_restore_regu_variable_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (dblink_spec->dblink_regu_list_pred == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      dblink_spec->dblink_regu_list_rest = NULL;
+    }
+  else
+    {
+      dblink_spec->dblink_regu_list_rest =
+	stx_restore_regu_variable_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (dblink_spec->dblink_regu_list_rest == NULL)
+	{
+	  goto error;
 	}
     }
 
@@ -5058,6 +5073,10 @@ stx_build_dblink_spec_type (THREAD_ENTRY * thread_p, char *ptr, DBLINK_SPEC_TYPE
   dblink_spec->conn_sql = stx_restore_string (thread_p, ptr);
 
   return ptr;
+
+error:
+  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+  return NULL;
 }
 
 static char *
