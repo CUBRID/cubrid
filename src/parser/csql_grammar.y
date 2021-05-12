@@ -20334,7 +20334,7 @@ primitive_type
 				break;
 			      }
 
-			    if (l > maxlen)
+			    if ((l > maxlen) || (len->type_enum != PT_TYPE_INTEGER))
 			      {
 				if (typ == PT_TYPE_BIT || typ == PT_TYPE_VARBIT)
 				  {
