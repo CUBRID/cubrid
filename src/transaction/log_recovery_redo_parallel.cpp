@@ -200,11 +200,11 @@ namespace cublog
   }
 
   redo_parallel::redo_job_queue::ux_redo_job_base
-  redo_parallel::redo_job_queue::pop_job (bool &a_out_adding_finished)
+  redo_parallel::redo_job_queue::pop_job (bool &out_adding_finished)
   {
     std::lock_guard<std::mutex> consume_lockg (m_consume_queue_mutex);
 
-    a_out_adding_finished = false;
+    out_adding_finished = false;
 
     do_swap_queues_if_needed (consume_lockg);
 
@@ -229,7 +229,7 @@ namespace cublog
 	ux_redo_job_base job_to_consume
 	  = do_locked_find_job_to_consume_and_mark_in_progress (consume_lockg, in_progress_lockg);
 
-	// specifically leave the 'a_out_adding_finished' on false as set at the beginning:
+	// specifically leave the 'out_adding_finished' on false as set at the beginning:
 	//  - even if adding has been finished, the produce queue might still have jobs to be consumed
 	//  - if so, setting the out param to true here, will cause consuming tasks to finish
 	//  - thus allowing for a corner case where the jobs are not fully processed and all
@@ -245,7 +245,7 @@ namespace cublog
 	// by other tasks - via the m_in_progress_vpids), there are a few times when false negatives are returned
 	// to the consumption tasks (see the 'return nullptr' in the 'then' branch); but, if control reaches here
 	// it is ensured that indeed no more data exists and that no more data will be produced
-	a_out_adding_finished = m_adding_finished.load ();
+	out_adding_finished = m_adding_finished.load ();
 
 	// if no more data will be produced (signalled by the flag), the
 	// consumer will just need to terminate; otherwise, consumer is expected to

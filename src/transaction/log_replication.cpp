@@ -103,11 +103,6 @@ namespace cublog
 	else
 	  {
 	    assert (m_redo_lsa == nxio_lsa);
-
-	    if (m_parallel_replication_redo != nullptr)
-	      {
-		const log_lsa min_lsa = m_minimum_log_lsa->get ();
-	      }
 	    break;
 	  }
       }

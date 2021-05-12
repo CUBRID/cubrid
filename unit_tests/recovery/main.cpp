@@ -327,7 +327,9 @@ TEST_CASE ("minimum log lsa: ", "[ci]")
 	    break;
 	  }
 
-	REQUIRE (true);
+	const auto current_min_lsa = min_log_lsa.get ();
+	REQUIRE (!current_min_lsa.is_null ());
+	REQUIRE (current_min_lsa != MAX_LSA);
       }
     observing_thread.join ();
     REQUIRE (min_log_lsa.get () != NULL_LSA);

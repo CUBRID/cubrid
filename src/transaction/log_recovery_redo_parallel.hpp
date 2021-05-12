@@ -71,6 +71,8 @@ namespace cublog
       void set_for_in_progress (const log_lsa &a_lsa);
       void set_for_outer (const log_lsa &a_lsa);
 
+      /* obtain the current calculated minimum value
+       */
       log_lsa get () const;
 
       /* wait till the recorder minimum lsa has passed the target lsa
@@ -182,7 +184,7 @@ namespace cublog
 	   * flag set to true signals to the callers that no more data is expected
 	   * and, therefore, they can also terminate
 	   */
-	  ux_redo_job_base pop_job (bool &a_adding_finished);
+	  ux_redo_job_base pop_job (bool &adding_finished);
 
 	  void notify_job_finished (const ux_redo_job_base &a_job);
 
