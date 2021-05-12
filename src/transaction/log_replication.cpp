@@ -36,11 +36,7 @@ namespace cublog
 {
   replicator::replicator (const log_lsa &start_redo_lsa)
     : m_redo_lsa { start_redo_lsa }
-      // TODO: no need to create this all the time
-      // minimum log_lsa monitoring is done even when applying replication synchronously
-      // no need to reset with start redo lsa
-    , m_minimum_log_lsa { new cublog::minimum_log_lsa_monitor () }
-  , m_perfmon_redo_sync { PSTAT_REDO_REPL_LOG_REDO_SYNC }
+    , m_perfmon_redo_sync { PSTAT_REDO_REPL_LOG_REDO_SYNC }
   {
     log_zip_realloc_if_needed (m_undo_unzip, LOGAREA_SIZE);
     log_zip_realloc_if_needed (m_redo_unzip, LOGAREA_SIZE);
@@ -55,6 +51,9 @@ namespace cublog
     assert (replication_parallel >= 0);
     if (replication_parallel > 0)
       {
+	m_minimum_log_lsa.reset (new cublog::minimum_log_lsa_monitor ());
+	// no need to reset with start redo lsa
+
 	m_parallel_replication_redo.reset (new cublog::redo_parallel (replication_parallel, *m_minimum_log_lsa.get ()));
       }
 
@@ -104,16 +103,11 @@ namespace cublog
 	else
 	  {
 	    assert (m_redo_lsa == nxio_lsa);
-	    // notify who waits for end of replication
-	    // TODO: this might not be needed since every modification of redo_lsa is notified anyway
-	    if (m_redo_lsa == nxio_lsa)
-	      {
-		m_redo_lsa_condvar.notify_all ();
-	      }
 
-	    // TODO: only when executing in parallel
-	    const log_lsa min_lsa = m_minimum_log_lsa->get ();
-	    //_er_log_debug (ARG_FILE_LINE, "[minlsa]: redo_upto_nxio_lsa %lld|%d ", LSA_AS_ARGS(&min_lsa));
+	    if (m_parallel_replication_redo != nullptr)
+	      {
+		const log_lsa min_lsa = m_minimum_log_lsa->get ();
+	      }
 	    break;
 	  }
       }
@@ -126,15 +120,7 @@ namespace cublog
       {
 	// without being aware of external context/factors, this is the earliest it is ensured that
 	// no records are to be added anymore
-	//m_parallel_replication_redo->wait_for_idle ();
-	const log_lsa min_lsa = m_minimum_log_lsa->get ();
-	_er_log_debug (ARG_FILE_LINE, "[minlsa]: conclude_task_execution %lld|%d ", LSA_AS_ARGS (&min_lsa));
-	const log_lsa nxio_lsa = log_Gl.append.get_nxio_lsa ();
-	log_lsa nxio_lsa_minus_one = nxio_lsa;
-	--nxio_lsa_minus_one.offset;
-	_er_log_debug (ARG_FILE_LINE, "[minlsa]: waiting nxio_lsa_minus_one %lld|%d ", LSA_AS_ARGS (&nxio_lsa_minus_one));
-	m_minimum_log_lsa->wait_past_target_lsa (nxio_lsa_minus_one);
-	_er_log_debug (ARG_FILE_LINE, "[minlsa]: waited nxio_lsa_minus_one %lld|%d DONE", LSA_AS_ARGS (&nxio_lsa_minus_one));
+	m_parallel_replication_redo->wait_for_idle ();
       }
     else
       {
@@ -214,8 +200,12 @@ namespace cublog
 	{
 	  std::unique_lock<std::mutex> lock (m_redo_lsa_mutex);
 	  m_redo_lsa = header.forw_lsa;
-	  m_minimum_log_lsa->set_for_outer (m_redo_lsa);
 	}
+	if (m_parallel_replication_redo != nullptr)
+	  {
+	    m_minimum_log_lsa->set_for_outer (m_redo_lsa);
+	  }
+
 	// to accurately track progress and avoid clients to wait for too long, notify each change
 	m_redo_lsa_condvar.notify_all ();
 

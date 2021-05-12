@@ -95,13 +95,6 @@ namespace cublog
       m_values[IN_PROGRESS_IDX],
       m_values[OUTER_IDX],
     });
-    //_er_log_debug (ARG_FILE_LINE,
-    //               "[minlsa]: get PRODUCE=%lld|%d CONSUME=%lld|%d IN_PROGRESS=%lld|%d OUTER=%lld|%d ==> %lld|%d",
-    //               LSA_AS_ARGS (&m_values[PRODUCE_IDX]),
-    //               LSA_AS_ARGS (&m_values[CONSUME_IDX]),
-    //               LSA_AS_ARGS (&m_values[IN_PROGRESS_IDX]),
-    //               LSA_AS_ARGS (&m_values[OUTER_IDX]),
-    //               LSA_AS_ARGS (&new_minimum_log_lsa));
     return new_minimum_log_lsa;
   }
 
