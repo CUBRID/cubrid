@@ -4379,7 +4379,7 @@ do_get_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 static int map_iso_levels (PARSER_CONTEXT * parser, PT_NODE * statement, DB_TRAN_ISOLATION * tran_isolation,
 			   PT_NODE * node);
-static int set_iso_level (PARSER_CONTEXT * parser, DB_TRAN_ISOLATION * tran_isolation, bool *async_ws,
+static int set_iso_level (PARSER_CONTEXT * parser, DB_TRAN_ISOLATION * tran_isolation, bool * async_ws,
 			  PT_NODE * statement, const DB_VALUE * level);
 static int check_timeout_value (PARSER_CONTEXT * parser, PT_NODE * statement, DB_VALUE * val);
 static const char *get_savepoint_name_from_db_value (DB_VALUE * val);
@@ -5020,7 +5020,7 @@ map_iso_levels (PARSER_CONTEXT * parser, PT_NODE * statement, DB_TRAN_ISOLATION 
  *       the enumerated type.
  */
 static int
-set_iso_level (PARSER_CONTEXT * parser, DB_TRAN_ISOLATION * tran_isolation, bool *async_ws, PT_NODE * statement,
+set_iso_level (PARSER_CONTEXT * parser, DB_TRAN_ISOLATION * tran_isolation, bool * async_ws, PT_NODE * statement,
 	       const DB_VALUE * level)
 {
   int error = NO_ERROR;
