@@ -31,9 +31,10 @@
 #include "system_parameter.h"
 
 #include <algorithm>
-#include <vector>
-#include <random>
 #include <cstdlib>
+#include <map>
+#include <random>
+#include <vector>
 
 using namespace cublog;
 
@@ -134,6 +135,7 @@ TEST_CASE ("Test load and recovery on empty tran table", "")
 
 }
 
+std::map<TRANID, log_tdes *> recovery_map;
 void check_load (checkpoint_info obj)
 {
   REQUIRE (log_Gl.trantable.num_total_indices - 1 == obj.m_trans.size());
@@ -697,50 +699,21 @@ log_system_tdes::rv_get_or_alloc_tdes (TRANID trid)
 LOG_TDES *
 logtb_rv_find_allocate_tran_index (THREAD_ENTRY *thread_p, TRANID trid, const LOG_LSA *log_lsa)
 {
-  LOG_TDES *tdes;		/* Transaction descriptor */
-  int tran_index;
+  LOG_TDES *tdes = NULL;		/* Transaction descriptor */
 
   assert (trid != NULL_TRANID);
 
-  if (trid < NULL_TRANID)
+  for (int i = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
     {
-      // *INDENT-OFF*
-      return log_system_tdes::rv_get_or_alloc_tdes (trid);
-      // *INDENT-ON*
-    }
-
-  /*
-   * If this is the first time, the transaction is seen. Assign a new
-   * index to describe it and assume that the transaction was active
-   * at the time of the crash, and thus it will be unilaterally aborted
-   */
-  tran_index = logtb_find_tran_index (thread_p, trid);
-  if (tran_index == NULL_TRAN_INDEX)
-    {
-      /* Define the index */
-      tran_index =
-	      logtb_allocate_tran_index_local (thread_p, trid, TRAN_UNACTIVE_UNILATERALLY_ABORTED, TRAN_LOCK_INFINITE_WAIT,
-		  TRAN_SERIALIZABLE);
-      tdes = LOG_FIND_TDES (tran_index);
-      if (tran_index == NULL_TRAN_INDEX || tdes == NULL)
-	{
-	  /*
-	   * Unable to assign a transaction index. The recovery process
-	   * cannot continue
-	   */
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_find_or_alloc");
-	  return NULL;
-	}
-      else
+      tdes = log_Gl.trantable.all_tdes[i];
+      if (tdes != NULL && tdes->trid != NULL_TRANID && tdes->trid == trid)
 	{
 	  LSA_COPY (&tdes->head_lsa, log_lsa);
+	  recovery_map.insert (std::pair<TRANID, LOG_TDES> (trid, tdes));
+	  return tdes;
 	}
     }
-  else
-    {
-      tdes = LOG_FIND_TDES (tran_index);
-    }
-
+  assert (false);
   return tdes;
 }
 
