@@ -15633,12 +15633,30 @@ sm_collect_truncatable_classes (MOP class_mop, std::unordered_set < OID > &trun_
   SM_CLASS_CONSTRAINT *pk_constraint = NULL;
   SM_FOREIGN_KEY_INFO *fk_ref;
   OID *fk_cls_oid;
+  int partition_type = DB_NOT_PARTITIONED_CLASS;
 
   error = au_fetch_class (class_mop, &class_, AU_FETCH_READ, DB_AUTH_ALTER);
   if (error != NO_ERROR || class_ == NULL)
     {
       assert (er_errid () != NO_ERROR);
       return er_errid ();
+    }
+
+  error = sm_partitioned_class_type (class_mop, &partition_type, NULL, NULL);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (partition_type == DB_PARTITION_CLASS)
+    {
+      /*
+       * No need to be added:
+       *  Partitioning classes will be truncated while truncating partitioned class of them.
+       * No need to check FK for cascaing:
+       *  It's enough to check the PK of the partitioned class for cascading.
+       */
+      return NO_ERROR;
     }
 
   trun_classes.emplace (*ws_oid (class_mop));
@@ -15757,6 +15775,7 @@ sm_truncate_class_internal (MOP class_mop)
   SM_CONSTRAINT_INFO *saved = NULL;
   DB_CTMPL *ctmpl = NULL;
   SM_ATTRIBUTE *att = NULL;
+  int partition_type = DB_NOT_PARTITIONED_CLASS;
   int au_save = 0;
 
   /* We need to flush everything so that the server logs the inserts that happened before the truncate. We need this in
@@ -15774,6 +15793,36 @@ sm_truncate_class_internal (MOP class_mop)
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto error_exit;
+    }
+
+  error = sm_partitioned_class_type (class_mop, &partition_type, NULL, NULL);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  if (partition_type == DB_PARTITIONED_CLASS)
+    {
+      DB_OBJLIST *subs;
+      SM_CLASS *subclass;
+      assert (class_->users);
+      for (subs = class_->users; subs; subs = subs->next)
+	{
+	  error = au_fetch_class (subs->op, &subclass, AU_FETCH_READ, AU_SELECT);
+	  if (error != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+	  if (subclass->partition)
+	    {
+	      /* FK referes to the PK of partitioned table, not the PK of partitioning table. So, no need to pass the cascading option */
+	      error = sm_truncate_class_internal (subs->op);
+	      if (error != NO_ERROR)
+		{
+		  goto error_exit;
+		}
+	    }
+	}
     }
 
   /* collect index information to drop and recreate, or revmoe btree records if it can't be dropped. */
