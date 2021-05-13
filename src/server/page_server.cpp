@@ -36,48 +36,69 @@ static void assert_page_server_type ();
 
 page_server::~page_server ()
 {
-  assert (m_ats_conn == nullptr);
+//  assert (m_ats_conn == nullptr);
   assert (m_replicator == nullptr);
+  assert (m_ats == nullptr || !m_ats->is_connected ());
 }
 
 void page_server::set_active_tran_server_connection (cubcomm::channel &&chn)
 {
   assert_page_server_type ();
 
-  chn.set_channel_name ("ATS_PS_comm");
-  er_log_debug (ARG_FILE_LINE, "Active transaction server connected to this page server. Channel id: %s.\n",
-		chn.get_channel_id ().c_str ());
+//  chn.set_channel_name ("ATS_PS_comm");
+//  er_log_debug (ARG_FILE_LINE, "Active transaction server connected to this page server. Channel id: %s.\n",
+//		chn.get_channel_id ().c_str ());
 
-  m_ats_conn.reset (new active_tran_server_conn (std::move (chn)));
-  m_ats_conn->register_request_handler (ats_to_ps_request::SEND_LOG_PRIOR_LIST,
-					std::bind (&page_server::receive_log_prior_list, std::ref (*this),
-					    std::placeholders::_1));
-  m_ats_conn->register_request_handler (ats_to_ps_request::SEND_LOG_PAGE_FETCH,
-					std::bind (&page_server::receive_log_page_fetch, std::ref (*this),
-					    std::placeholders::_1));
-  m_ats_conn->register_request_handler (ats_to_ps_request::SEND_DATA_PAGE_FETCH,
-					std::bind (&page_server::receive_data_page_fetch, std::ref (*this),
-					    std::placeholders::_1));
+//  m_ats_conn.reset (new active_tran_server_conn (std::move (chn)));
+//  m_ats_conn->register_request_handler (ats_to_ps_request::SEND_LOG_PRIOR_LIST,
+//					std::bind (&page_server::receive_log_prior_list, std::ref (*this),
+//					    std::placeholders::_1));
+//  m_ats_conn->register_request_handler (ats_to_ps_request::SEND_LOG_PAGE_FETCH,
+//					std::bind (&page_server::receive_log_page_fetch, std::ref (*this),
+//					    std::placeholders::_1));
+//  m_ats_conn->register_request_handler (ats_to_ps_request::SEND_DATA_PAGE_FETCH,
+//					std::bind (&page_server::receive_data_page_fetch, std::ref (*this),
+//					    std::placeholders::_1));
+//  m_ats_conn->start_thread ();
 
-  m_ats_conn->start_thread ();
+//  m_ats_request_queue.reset (new active_tran_server_request_queue (*m_ats_conn));
+//  m_ats_request_autosend.reset (new active_tran_server_request_autosend (*m_ats_request_queue));
+//  m_ats_request_autosend->start_thread ();
 
-  m_ats_request_queue.reset (new active_tran_server_request_queue (*m_ats_conn));
-  m_ats_request_autosend.reset (new active_tran_server_request_autosend (*m_ats_request_queue));
-  m_ats_request_autosend->start_thread ();
+  assert (m_ats == nullptr);
+  m_ats.reset (new ats_t ("ATS_PS_comm"));
+  m_ats->init (std::move (chn));
+//  m_ats->register_request_handler (ats_to_ps_request::SEND_LOG_PRIOR_LIST,
+//				   std::bind (&page_server::receive_log_prior_list, std::ref (*this),
+//				       std::placeholders::_1));
+  m_ats->register_request_handler (ats_to_ps_request::SEND_LOG_PRIOR_LIST,
+				   std::bind (&page_server::receive_log_prior_list, std::ref (*this),
+				       std::placeholders::_1));
+  m_ats->register_request_handler (ats_to_ps_request::SEND_LOG_PAGE_FETCH,
+				   std::bind (&page_server::receive_log_page_fetch, std::ref (*this),
+				       std::placeholders::_1));
+  m_ats->register_request_handler (ats_to_ps_request::SEND_DATA_PAGE_FETCH,
+				   std::bind (&page_server::receive_data_page_fetch, std::ref (*this),
+				       std::placeholders::_1));
+  m_ats->connect ();
 }
 
 void page_server::disconnect_active_tran_server ()
 {
-  m_ats_request_autosend.reset (nullptr);
-  m_ats_request_queue.reset (nullptr);
-  m_ats_conn.reset (nullptr);
+//  m_ats_request_autosend.reset (nullptr);
+//  m_ats_request_queue.reset (nullptr);
+//  m_ats_conn.reset (nullptr);
+
+  m_ats->disconnect ();
+  //m_ats.reset (nullptr); ??
 }
 
 bool page_server::is_active_tran_server_connected () const
 {
   assert_page_server_type ();
 
-  return m_ats_conn != nullptr;
+//  return (m_ats_conn != nullptr) && m_ats_conn->is_connected ();
+  return m_ats->is_connected ();
 }
 
 void page_server::receive_log_prior_list (cubpacking::unpacker &upk)
@@ -125,7 +146,8 @@ void page_server::push_request_to_active_tran_server (ps_to_ats_request reqid, s
   assert_page_server_type ();
   assert (is_active_tran_server_connected ());
 
-  m_ats_request_queue->push (reqid, std::move (payload));
+//  m_ats_request_queue->push (reqid, std::move (payload));
+  m_ats->push (reqid, std::move (payload));
 }
 
 void page_server::on_log_page_read_result (const LOG_PAGE *log_page, int error_code)
@@ -141,7 +163,8 @@ void page_server::on_log_page_read_result (const LOG_PAGE *log_page, int error_c
     }
 
   std::string message (buffer, buffer_size);
-  m_ats_request_queue->push (ps_to_ats_request::SEND_LOG_PAGE, std::move (message));
+//  m_ats_request_queue->push (ps_to_ats_request::SEND_LOG_PAGE, std::move (message));
+  m_ats->push (ps_to_ats_request::SEND_LOG_PAGE, std::move (message));
 
   if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
     {
