@@ -52,6 +52,7 @@ version=""
 last_checking_msg=""
 output_packages=""
 without_cmserver=""
+without_jdbc="false"
 
 function print_check ()
 {
@@ -194,6 +195,12 @@ function build_configure ()
     print_error "Manager server source path is not exist. It will not be built"
   fi
 
+  print_check "Checking JDBC directory"
+  if [ ! -d "$source_dir/cubrid-jdbc" -o ! -d "$source_dir/cubrid-jdbc/src" ]; then
+    without_jdbc="true"
+    print_error "JDBC source path is not exist. It will not be built"
+  fi
+
   print_check "Setting environment variables"
   if [ "x$java_dir" != "x" ]; then
     export JAVA_HOME="$java_dir"
@@ -280,6 +287,12 @@ function build_package ()
     print_error "Manager server source path is not exist. It will not be packaged"
   fi
 
+  print_check "Checking JDBC directory"
+  if [ ! -d "$source_dir/cubrid-jdbc" -o ! -d "$source_dir/cubrid-jdbc/src" ]; then
+    without_jdbc="true"
+    print_error "JDBC source path is not exist. It will not be packaged"
+  fi
+
   if [ ! -d $output_dir ]; then
     mkdir -p $output_dir
   fi
@@ -301,7 +314,9 @@ function build_package ()
 	# add VERSION-DIST instead of VERSION file for full version string
 	(cd $source_dir && echo "$version" > VERSION-DIST && ln -sfT . cubrid-$version &&
 	  (git ls-files -o VERSION-DIST ; git ls-files &&
-	    (cd $source_dir/cubridmanager && git ls-files) | sed -e "s|^|cubridmanager/|") | sed -e "/^VERSION$/d" -e "s|^|cubrid-$version/|" | $archive_cmd &&
+	    (cd $source_dir/cubridmanager && git ls-files) | sed -e "s|^|cubridmanager/|" && 
+	    ([ "$without_jdbc" = "true" ] || (cd $source_dir/cubrid-jdbc  && git ls-files -o output/VERSION-DIST; git ls-files) | sed -e "/^VERSION$/d" | sed -e "s|^|cubrid-jdbc/|")) | 
+            sed -e "/^VERSION$/d" -e "/^cubrid-jdbc$/d" -e "s|^|cubrid-$version/|" | $archive_cmd &&
 	    rm cubrid-$version VERSION-DIST)
 	if [ $? -eq 0 ]; then
 	  output_packages="$output_packages $package_name"
@@ -345,10 +360,13 @@ function build_package ()
 	fi
       ;;
       jdbc)
-	package_name="JDBC-$build_number-$product_name_lower"
-	jar_files=$(cd $build_dir/jdbc && ls $package_name*.jar)
-	cp $build_dir/jdbc/$package_name*.jar $output_dir
-	[ $? -eq 0 ] && output_packages="$output_packages $jar_files"
+        if [ "$without_jdbc" = "false" ]; then
+          jar_files=$(ls $source_dir/cubrid-jdbc/JDBC-*.jar)
+          jdbc_version=$(cat $source_dir/cubrid-jdbc/output/VERSION-DIST)
+          package_name="JDBC-$jdbc_version-$product_name_lower"
+          cp $source_dir/cubrid-jdbc/JDBC-*.jar $output_dir
+          [ $? -eq 0 ] && output_packages="$output_packages $jar_files"
+        fi
       ;;
     esac
     [ $? -eq 0 ] && print_result "OK [$package_name]" || print_fatal "Packaging for $package failed"
@@ -485,7 +503,7 @@ function get_options ()
 	packages="src zip_src tarball shell cci jdbc rpm"
 	;;
       *)
-	packages="tarball shell cci"
+	packages="tarball shell jdbc cci"
 	;;
     esac
   fi
@@ -506,7 +524,7 @@ function get_options ()
 function build_dist ()
 {
   if [ "$build_mode" = "coverage" ]; then
-    print_error "Pakcages with coverage mode is not supported. Skip"
+    print_error "Packages with coverage mode is not supported. Skip"
     return 0
   fi
 

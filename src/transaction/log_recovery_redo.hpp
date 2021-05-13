@@ -16,13 +16,14 @@
  *
  */
 
-#ifndef LOC_RECOVERY_REDO_LOG_REC_HPP
-#define LOC_RECOVERY_REDO_LOG_REC_HPP
+#ifndef _LOC_RECOVERY_REDO_HPP_
+#define _LOC_RECOVERY_REDO_HPP_
 
 #include "log_reader.hpp"
 #include "log_record.hpp"
 #include "log_recovery.h"
 #include "page_buffer.h"
+#include "perf_monitor_trackers.hpp"
 #include "scope_exit.hpp"
 #include "system_parameter.h"
 #include "type_helper.hpp"
@@ -510,17 +511,17 @@ inline int log_rv_get_log_rec_redo_data<LOG_REC_COMPENSATE> (THREAD_ENTRY *threa
 class vpid_lsa_consistency_check
 {
   public:
-    vpid_lsa_consistency_check() = default;
-    ~vpid_lsa_consistency_check() = default;
+    vpid_lsa_consistency_check () = default;
+    ~vpid_lsa_consistency_check () = default;
 
-    vpid_lsa_consistency_check(const vpid_lsa_consistency_check&) = delete;
-    vpid_lsa_consistency_check(vpid_lsa_consistency_check&&) = delete;
+    vpid_lsa_consistency_check (const vpid_lsa_consistency_check &) = delete;
+    vpid_lsa_consistency_check (vpid_lsa_consistency_check &&) = delete;
 
-    vpid_lsa_consistency_check& operator=(const vpid_lsa_consistency_check&) = delete;
-    vpid_lsa_consistency_check& operator=(vpid_lsa_consistency_check&&) = delete;
+    vpid_lsa_consistency_check &operator= (const vpid_lsa_consistency_check &) = delete;
+    vpid_lsa_consistency_check &operator= (vpid_lsa_consistency_check &&) = delete;
 
-    void check(const struct vpid &a_vpid, const struct log_lsa &a_log_lsa);
-    void cleanup();
+    void check (const struct vpid &a_vpid, const struct log_lsa &a_log_lsa);
+    void cleanup ();
 
   private:
     using vpid_key_t = std::pair<short, int32_t>;
@@ -589,6 +590,14 @@ void log_rv_redo_record_sync (THREAD_ENTRY *thread_p, log_reader &log_pgptr_read
   rvfun::fun_t redofunc = log_rv_get_fun<T> (log_rec, log_data.rcvindex);
   if (redofunc != nullptr)
     {
+      /* perf data for actually calling the log redo function; it is relevant in two contexts:
+       *  - log recovery redo after a crash (either synchronously or using the parallel
+       *    infrastructure)
+       *  - log replication on the page server; both when applying the replication redo synchronously
+       *    or in parallel will log to this entry
+       */
+      perfmon_counter_timer_raii_tracker perfmon { PSTAT_LOG_REDO_FUNC_EXEC };
+
       const int err_func = redofunc (thread_p, &rcv);
       if (err_func != NO_ERROR)
 	{
@@ -614,4 +623,4 @@ void log_rv_redo_record_sync (THREAD_ENTRY *thread_p, log_reader &log_pgptr_read
     }
 }
 
-#endif // LOC_RECOVERY_REDO_LOG_REC_HPP
+#endif // _LOC_RECOVERY_REDO_HPP_

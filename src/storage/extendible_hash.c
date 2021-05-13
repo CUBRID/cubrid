@@ -730,7 +730,7 @@ ehash_initialize_dir_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, void *a
  * rcv (in)	 : No data.
  */
 int
-ehash_rv_init_dir_new_page_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+ehash_rv_init_dir_new_page_redo (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 {
   pgbuf_set_page_ptype (thread_p, rcv->pgptr, PAGE_EHASH);
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
@@ -3412,7 +3412,7 @@ ehash_delete (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p)
   EHASH_DIR_HEADER *dir_header_p;
   PAGE_PTR dir_root_page_p;
   PAGE_PTR bucket_page_p;
-  VPID ovf_vpid;
+  VPID ovf_vpid VPID_INITIALIZER;
   VPID bucket_vpid;
   VPID sibling_vpid;
 
@@ -5313,7 +5313,7 @@ xeh_find (EHID * ehid, void *value, OID * oid)
  * local depth of the bucket page.
  */
 int
-ehash_rv_init_bucket_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
+ehash_rv_init_bucket_redo (THREAD_ENTRY * thread_p, const LOG_RCV * recv_p)
 {
   char alignment;
   EHASH_BUCKET_HEADER bucket_header;
@@ -5362,7 +5362,7 @@ ehash_rv_init_bucket_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
  *   recv(in): Recovery structure
  */
 int
-ehash_rv_init_dir_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
+ehash_rv_init_dir_redo (THREAD_ENTRY * thread_p, const LOG_RCV * recv_p)
 {
   pgbuf_set_page_ptype (thread_p, recv_p->pgptr, PAGE_EHASH);
 
@@ -5379,7 +5379,7 @@ ehash_rv_init_dir_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
  * structure contains the key type, and the entry to be inserted.
  */
 int
-ehash_rv_insert_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
+ehash_rv_insert_redo (THREAD_ENTRY * thread_p, const LOG_RCV * recv_p)
 {
   PGSLOTID slot_id;
   RECDES recdes;
@@ -5416,7 +5416,7 @@ ehash_rv_insert_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
  * avoid possible merge operations.
  */
 int
-ehash_rv_insert_undo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
+ehash_rv_insert_undo (THREAD_ENTRY * thread_p, const LOG_RCV * recv_p)
 {
   EHID ehid;
   char *record_p = (char *) recv_p->data;
@@ -5471,7 +5471,7 @@ ehash_rv_insert_undo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
  * entry to be deleted.
  */
 int
-ehash_rv_delete_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
+ehash_rv_delete_redo (THREAD_ENTRY * thread_p, const LOG_RCV * recv_p)
 {
   PGSLOTID slot_id;
   RECDES recdes;
@@ -5510,7 +5510,7 @@ ehash_rv_delete_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
  * followed by the entry to be inserted back.
  */
 int
-ehash_rv_delete_undo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
+ehash_rv_delete_undo (THREAD_ENTRY * thread_p, const LOG_RCV * recv_p)
 {
   EHID ehid;
   OID oid;
@@ -5695,7 +5695,7 @@ ehash_rv_delete (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p)
  * the recovery structure.
  */
 int
-ehash_rv_increment (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
+ehash_rv_increment (THREAD_ENTRY * thread_p, const LOG_RCV * recv_p)
 {
   int inc_cnt;
 
@@ -5719,7 +5719,7 @@ ehash_rv_increment (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
  * of the data area of the recovery stucture.
  */
 int
-ehash_rv_connect_bucket_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
+ehash_rv_connect_bucket_redo (THREAD_ENTRY * thread_p, const LOG_RCV * recv_p)
 {
   EHASH_REPETITION repetition;
   EHASH_DIR_RECORD *dir_record_p;

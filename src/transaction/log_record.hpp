@@ -32,7 +32,7 @@
 #include "storage_common.h"
 #include "system.h"
 
-#include <string.h>
+#include <cstring>
 
 enum log_rectype
 {
@@ -67,26 +67,26 @@ enum log_rectype
   LOG_COMMIT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS = 19,	/* Obsolete */
 #endif
   LOG_SYSOP_END = 20,		/* end of system operation record. Its functionality can vary based on LOG_SYSOP_END_TYPE:
-				 *
-				 * - LOG_SYSOP_END_COMMIT: the usual functionality. changes under system operation become
-				 *   permanent immediately
-				 *
-				 * - LOG_SYSOP_END_LOGICAL_UNDO: system operation is used for complex logical operation (that
-				 *   usually affects more than one page). end system operation also includes undo data that
-				 *   is processed during rollback or undo.
-				 *
-				 * - LOG_SYSOP_END_LOGICAL_COMPENSATE: system operation is used for complex logical operation
-				 *   that has the purpose of compensating a change on undo or rollback. end system operation
-				 *   also includes the LSA of previous undo log record.
-				 *
-				 * - LOG_SYSOP_END_LOGICAL_RUN_POSTPONE: system operation is used for complex logical operation
-				 *   that has the purpose of running a postpone record. end system operation also includes the
-				 *   postpone LSA and is_sysop_postpone (recovery is different for logical run postpones during
-				 *   system operation postpone compared to transaction postpone).
-				 *
-				 * - LOG_SYSOP_END_ABORT: any of the above system operations are not ended due to crash or
-				 *   errors. the system operation is rollbacked and ended with this type.
-				 */
+                                 *
+                                 * - LOG_SYSOP_END_COMMIT: the usual functionality. changes under system operation become
+                                 *   permanent immediately
+                                 *
+                                 * - LOG_SYSOP_END_LOGICAL_UNDO: system operation is used for complex logical operation (that
+                                 *   usually affects more than one page). end system operation also includes undo data that
+                                 *   is processed during rollback or undo.
+                                 *
+                                 * - LOG_SYSOP_END_LOGICAL_COMPENSATE: system operation is used for complex logical operation
+                                 *   that has the purpose of compensating a change on undo or rollback. end system operation
+                                 *   also includes the LSA of previous undo log record.
+                                 *
+                                 * - LOG_SYSOP_END_LOGICAL_RUN_POSTPONE: system operation is used for complex logical operation
+                                 *   that has the purpose of running a postpone record. end system operation also includes the
+                                 *   postpone LSA and is_sysop_postpone (recovery is different for logical run postpones during
+                                 *   system operation postpone compared to transaction postpone).
+                                 *
+                                 * - LOG_SYSOP_END_ABORT: any of the above system operations are not ended due to crash or
+                                 *   errors. the system operation is rollbacked and ended with this type.
+                                 */
 #if 0
   LOG_ABORT_WITH_CLIENT_USER_LOOSE_ENDS = 21,	/* Obsolete */
 #endif
@@ -100,20 +100,20 @@ enum log_rectype
   LOG_SAVEPOINT = 27,		/* A user savepoint record */
   LOG_2PC_PREPARE = 28,		/* A prepare to commit record */
   LOG_2PC_START = 29,		/* Start the 2PC protocol by sending vote request messages to participants of
-				 * distributed tran. */
+                                 * distributed tran. */
   LOG_2PC_COMMIT_DECISION = 30,	/* Beginning of the second phase of 2PC, need to perform local & global commits. */
   LOG_2PC_ABORT_DECISION = 31,	/* Beginning of the second phase of 2PC, need to perform local & global aborts. */
   LOG_2PC_COMMIT_INFORM_PARTICPS = 32,	/* Committing, need to inform the participants */
   LOG_2PC_ABORT_INFORM_PARTICPS = 33,	/* Aborting, need to inform the participants */
   LOG_2PC_RECV_ACK = 34,	/* Received ack. from the participant that it received the decision on the fate of
-				 * dist. trans. */
+                                 * dist. trans. */
   LOG_END_OF_LOG = 35,		/* End of log */
   LOG_DUMMY_HEAD_POSTPONE = 36,	/* A dummy log record. No-op */
   LOG_DUMMY_CRASH_RECOVERY = 37,	/* A dummy log record which indicate the start of crash recovery. No-op */
 
 #if 0				/* not used */
   LOG_DUMMY_FILLPAGE_FORARCHIVE = 38,	/* Indicates logical end of current page so it could be archived safely. No-op
-					 * This record is not generated no more. It's kept for backward compatibility. */
+                                         * This record is not generated no more. It's kept for backward compatibility. */
 #endif
   LOG_REPLICATION_DATA = 39,	/* Replication log for insert, delete or update */
   LOG_REPLICATION_STATEMENT = 40,	/* Replication log for schema, index, trigger or system catalog updates */
@@ -133,7 +133,7 @@ enum log_rectype
                  * redo phase of recovery and before finishing postpones */
 
   LOG_DUMMY_GENERIC,		/* used for flush for now. it is ridiculous to create dummy log records for every single
-				 * case. we should find a different approach */
+                                 * case. we should find a different approach */
 
   LOG_LARGER_LOGREC_TYPE	/* A higher bound for checks */
 };
@@ -191,8 +191,8 @@ struct log_vacuum_info
 {
   LOG_LSA prev_mvcc_op_log_lsa;	/* Log lsa of previous MVCC operation log record. Used by vacuum to process log data. */
   VFID vfid;			/* File identifier. Will be used by vacuum for heap files (TODO: maybe b-tree too).
-				 * Used to: - Find if the file was dropped/reused. - Find the type of objects in heap
-				 * file (reusable or referable). */
+                                 * Used to: - Find if the file was dropped/reused. - Find the type of objects in heap
+                                 * file (reusable or referable). */
 };
 
 /* Information of undo_redo log records for MVCC operations */
@@ -230,11 +230,15 @@ struct log_rec_replication
   int rcvindex;
 };
 
+/* Redefined for explicitness.
+ * Not using 'time_t' (which is unsigned) for backward compatibility of stored structure. */
+typedef INT64 time_msec_t;
+
 /* Log the time of termination of transaction */
 typedef struct log_rec_donetime LOG_REC_DONETIME;
 struct log_rec_donetime
 {
-  INT64 at_time;		/* Database creation time. For safety reasons */
+  time_msec_t at_time;		/* Transaction commit time stored as milliseconds */
 };
 
 /* Log the change of the server's HA state */
@@ -244,7 +248,7 @@ struct log_rec_ha_server_state
   int state;			/* ha_Server_state */
   int dummy;			/* dummy for alignment */
 
-  INT64 at_time;		/* time recorded by active server */
+  time_msec_t at_time;		/* Time recorded by active server stored as milliseconds */
 };
 
 /* Information of database external redo log records */
@@ -308,7 +312,7 @@ struct log_rec_sysop_end
     {
       LOG_LSA postpone_lsa;	/* postpone lsa */
       bool is_sysop_postpone;	/* true if run postpone is used during a system op postpone, false if used during
-				 * transaction postpone */
+                                 * transaction postpone */
     } run_postpone;		/* run postpone info */
   };
 };
@@ -349,7 +353,7 @@ struct log_info_chkpt_trans
   LOG_LSA head_lsa;		/* First log address of transaction */
   LOG_LSA tail_lsa;		/* Last log record address of transaction */
   LOG_LSA undo_nxlsa;		/* Next log record address of transaction for UNDO purposes. Needed since compensating
-				 * log records are logged during UNDO */
+                                 * log records are logged during UNDO */
   LOG_LSA posp_nxlsa;		/* First address of a postpone record */
   LOG_LSA savept_lsa;		/* Address of last savepoint */
   LOG_LSA tail_topresult_lsa;	/* Address of last partial abort/commit */
@@ -357,8 +361,84 @@ struct log_info_chkpt_trans
   char user_name[LOG_USERNAME_MAX];	/* Name of the client */
 
   inline bool operator== (const log_info_chkpt_trans &ochkpt) const;
-  inline bool operator== (const int &id) const;
 };
+
+typedef struct log_info_chkpt_sysop LOG_INFO_CHKPT_SYSOP;
+struct log_info_chkpt_sysop
+{
+  TRANID trid;			/* Transaction identifier */
+  LOG_LSA sysop_start_postpone_lsa;	/* saved lsa of system op start postpone log record */
+  LOG_LSA atomic_sysop_start_lsa;	/* saved lsa of atomic system op start */
+
+  inline bool operator== (const log_info_chkpt_sysop &ochkpt) const;
+};
+
+typedef struct log_rec_savept LOG_REC_SAVEPT;
+struct log_rec_savept
+{
+  LOG_LSA prv_savept;		/* Previous savepoint record */
+  int length;			/* Savepoint name */
+};
+
+/* Log a prepare to commit record */
+typedef struct log_rec_2pc_prepcommit LOG_REC_2PC_PREPCOMMIT;
+struct log_rec_2pc_prepcommit
+{
+  char user_name[DB_MAX_USER_LENGTH + 1];	/* Name of the client */
+  int gtrid;			/* Identifier of the global transaction */
+  int gtrinfo_length;		/* length of the global transaction info */
+  unsigned int num_object_locks;	/* Total number of update-type locks acquired by this transaction on the
+                                         * objects. */
+  unsigned int num_page_locks;	/* Total number of update-type locks acquired by this transaction on the pages. */
+};
+
+/* Start 2PC protocol. Record information about identifiers of participants. */
+typedef struct log_rec_2pc_start LOG_REC_2PC_START;
+struct log_rec_2pc_start
+{
+  char user_name[DB_MAX_USER_LENGTH + 1];	/* Name of the client */
+  int gtrid;			/* Identifier of the global tran */
+  int num_particps;		/* number of participants */
+  int particp_id_length;	/* length of a participant identifier */
+};
+
+/*
+ * Log the acknowledgment from a participant that it received the commit/abort
+ * decision
+ */
+typedef struct log_rec_2pc_particp_ack LOG_REC_2PC_PARTICP_ACK;
+struct log_rec_2pc_particp_ack
+{
+  int particp_index;		/* Index of the acknowledging participant */
+};
+
+#define LOG_GET_LOG_RECORD_HEADER(log_page_p, lsa) \
+  ((LOG_RECORD_HEADER *) ((log_page_p)->area + (lsa)->offset))
+
+/* Definitions used to identify UNDO/REDO/UNDOREDO log record data types */
+
+/* Is record type UNDO */
+#define LOG_IS_UNDO_RECORD_TYPE(type) \
+  (((type) == LOG_UNDO_DATA) || ((type) == LOG_MVCC_UNDO_DATA))
+
+/* Is record type REDO */
+#define LOG_IS_REDO_RECORD_TYPE(type) \
+  (((type) == LOG_REDO_DATA) || ((type) == LOG_MVCC_REDO_DATA))
+
+/* Is record type UNDOREDO */
+#define LOG_IS_UNDOREDO_RECORD_TYPE(type) \
+  (((type) == LOG_UNDOREDO_DATA) || ((type) == LOG_MVCC_UNDOREDO_DATA) \
+   || ((type) == LOG_DIFF_UNDOREDO_DATA) || ((type) == LOG_MVCC_DIFF_UNDOREDO_DATA))
+
+#define LOG_IS_DIFF_UNDOREDO_TYPE(type) \
+  ((type) == LOG_DIFF_UNDOREDO_DATA || (type) == LOG_MVCC_DIFF_UNDOREDO_DATA)
+
+/* Is record type used a MVCC operation */
+#define LOG_IS_MVCC_OP_RECORD_TYPE(type) \
+  (((type) == LOG_MVCC_UNDO_DATA) \
+   || ((type) == LOG_MVCC_REDO_DATA) \
+   || ((type) == LOG_MVCC_UNDOREDO_DATA) \
+   || ((type) == LOG_MVCC_DIFF_UNDOREDO_DATA))
 
 bool
 log_info_chkpt_trans::operator== (const log_info_chkpt_trans &ochkpt) const
@@ -413,34 +493,13 @@ log_info_chkpt_trans::operator== (const log_info_chkpt_trans &ochkpt) const
       return false;
     }
 
-  if (strlen (user_name) != strlen (ochkpt.user_name))
-    {
-      return false;
-    }
-
-  if (strcmp (user_name, ochkpt.user_name) != 0)
+  if (std::strcmp (user_name, ochkpt.user_name) != 0)
     {
       return false;
     }
 
   return true;
 }
-
-bool
-log_info_chkpt_trans::operator== (const int &id) const
-{
-  return trid == id;
-}
-
-typedef struct log_info_chkpt_sysop LOG_INFO_CHKPT_SYSOP;
-struct log_info_chkpt_sysop
-{
-  TRANID trid;			/* Transaction identifier */
-  LOG_LSA sysop_start_postpone_lsa;	/* saved lsa of system op start postpone log record */
-  LOG_LSA atomic_sysop_start_lsa;	/* saved lsa of atomic system op start */
-
-  inline bool operator== (const log_info_chkpt_sysop &ochkpt) const;
-};
 
 bool
 log_info_chkpt_sysop::operator== (const log_info_chkpt_sysop &ochkpt) const
@@ -461,72 +520,5 @@ log_info_chkpt_sysop::operator== (const log_info_chkpt_sysop &ochkpt) const
     }
   return true;
 }
-
-typedef struct log_rec_savept LOG_REC_SAVEPT;
-struct log_rec_savept
-{
-  LOG_LSA prv_savept;		/* Previous savepoint record */
-  int length;			/* Savepoint name */
-};
-
-/* Log a prepare to commit record */
-typedef struct log_rec_2pc_prepcommit LOG_REC_2PC_PREPCOMMIT;
-struct log_rec_2pc_prepcommit
-{
-  char user_name[DB_MAX_USER_LENGTH + 1];	/* Name of the client */
-  int gtrid;			/* Identifier of the global transaction */
-  int gtrinfo_length;		/* length of the global transaction info */
-  unsigned int num_object_locks;	/* Total number of update-type locks acquired by this transaction on the
-					 * objects. */
-  unsigned int num_page_locks;	/* Total number of update-type locks acquired by this transaction on the pages. */
-};
-
-/* Start 2PC protocol. Record information about identifiers of participants. */
-typedef struct log_rec_2pc_start LOG_REC_2PC_START;
-struct log_rec_2pc_start
-{
-  char user_name[DB_MAX_USER_LENGTH + 1];	/* Name of the client */
-  int gtrid;			/* Identifier of the global tran */
-  int num_particps;		/* number of participants */
-  int particp_id_length;	/* length of a participant identifier */
-};
-
-/*
- * Log the acknowledgment from a participant that it received the commit/abort
- * decision
- */
-typedef struct log_rec_2pc_particp_ack LOG_REC_2PC_PARTICP_ACK;
-struct log_rec_2pc_particp_ack
-{
-  int particp_index;		/* Index of the acknowledging participant */
-};
-
-#define LOG_GET_LOG_RECORD_HEADER(log_page_p, lsa) \
-  ((LOG_RECORD_HEADER *) ((log_page_p)->area + (lsa)->offset))
-
-/* Definitions used to identify UNDO/REDO/UNDOREDO log record data types */
-
-/* Is record type UNDO */
-#define LOG_IS_UNDO_RECORD_TYPE(type) \
-  (((type) == LOG_UNDO_DATA) || ((type) == LOG_MVCC_UNDO_DATA))
-
-/* Is record type REDO */
-#define LOG_IS_REDO_RECORD_TYPE(type) \
-  (((type) == LOG_REDO_DATA) || ((type) == LOG_MVCC_REDO_DATA))
-
-/* Is record type UNDOREDO */
-#define LOG_IS_UNDOREDO_RECORD_TYPE(type) \
-  (((type) == LOG_UNDOREDO_DATA) || ((type) == LOG_MVCC_UNDOREDO_DATA) \
-   || ((type) == LOG_DIFF_UNDOREDO_DATA) || ((type) == LOG_MVCC_DIFF_UNDOREDO_DATA))
-
-#define LOG_IS_DIFF_UNDOREDO_TYPE(type) \
-  ((type) == LOG_DIFF_UNDOREDO_DATA || (type) == LOG_MVCC_DIFF_UNDOREDO_DATA)
-
-/* Is record type used a MVCC operation */
-#define LOG_IS_MVCC_OP_RECORD_TYPE(type) \
-  (((type) == LOG_MVCC_UNDO_DATA) \
-   || ((type) == LOG_MVCC_REDO_DATA) \
-   || ((type) == LOG_MVCC_UNDOREDO_DATA) \
-   || ((type) == LOG_MVCC_DIFF_UNDOREDO_DATA))
 
 #endif // _LOG_RECORD_HPP_

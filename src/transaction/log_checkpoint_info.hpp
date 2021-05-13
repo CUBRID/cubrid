@@ -16,6 +16,9 @@
  *
  */
 
+#ifndef _LOG_CHECKPOINT_INFO_HPP_
+#define _LOG_CHECKPOINT_INFO_HPP_
+
 #include "log_lsa.hpp"
 #include "log_record.hpp"
 #include "log_system_tran.hpp"
@@ -32,27 +35,32 @@ namespace cublog
   using checkpoint_tran_info = log_info_chkpt_trans;	// todo: replace log_info_chkpt_trans
   using checkpoint_sysop_info = log_info_chkpt_sysop;	// todo: replace log_info_chkpt_sysop
 
-  class checkpoint_info : cubpacking::packable_object
+  class checkpoint_info : public cubpacking::packable_object
   {
     public:
       checkpoint_info () = default;
       checkpoint_info (checkpoint_info &&) = default;
       checkpoint_info (const checkpoint_info &) = default;
+      ~checkpoint_info () override = default;
 
       void pack (cubpacking::packer &serializator) const override;
       void unpack (cubpacking::unpacker &deserializator) override;
       size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
 
-      // with tran table and prior lock, save snapshot LSA and
+      // with tran table and prior lock, save snapshot LSA and get trans/sysops info from transaction table
       void load_trantable_snapshot (THREAD_ENTRY *thread_p, LOG_LSA &smallest_lsa);
-      // get trans/sysops info from transaction table
-      void recovery_analysis (THREAD_ENTRY *thread_p,
-			      log_lsa &start_redo_lsa);  // restore transaction table based on checkpoint info
-      void recovery_2pc_analysis (THREAD_ENTRY *thread_p) const;	      // if m_has_2pc, also do 2pc analysis
 
-      const log_lsa &get_snapshot_lsa () const;	      // the LSA of loaded snapshot
-      const log_lsa &get_start_redo_lsa () const;     // the LSA of starting redo (min LSA of checkpoint and oldest unflushed)
+      // restore transaction table based on checkpoint info
+      void recovery_analysis (THREAD_ENTRY *thread_p, log_lsa &start_redo_lsa) const;
+      // if m_has_2pc, also do 2pc analysis
+      void recovery_2pc_analysis (THREAD_ENTRY *thread_p) const;
+
+      log_lsa get_snapshot_lsa () const;	      // the LSA of loaded snapshot
+      log_lsa get_start_redo_lsa () const;     // the LSA of starting redo (min LSA of checkpoint and oldest unflushed)
       void set_start_redo_lsa (const log_lsa &start_redo_lsa);
+
+      size_t get_transaction_count () const;
+      size_t get_sysop_count () const;
 
     private:
       void load_checkpoint_trans (log_tdes &tdes, LOG_LSA &smallest_lsa);
@@ -65,3 +73,4 @@ namespace cublog
       bool m_has_2pc;				      // true if any LOG_ISTRAN_2PC (tdes) is true
   };
 }
+#endif

@@ -488,7 +488,7 @@ static int pt_split_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info, PT_
 static int pt_split_hash_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info, PT_NODE * pred,
 				PT_NODE ** build_attrs, PT_NODE ** probe_attrs);
 
-static int pt_split_hash_attrs_for_HQ (PARSER_CONTEXT * parser, PT_NODE * pred,	PT_NODE ** build_attrs,
+static int pt_split_hash_attrs_for_HQ (PARSER_CONTEXT * parser, PT_NODE * pred, PT_NODE ** build_attrs,
 				       PT_NODE ** probe_attrs, PT_NODE ** pred_without_HQ);
 
 static int pt_to_index_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info, QO_XASL_INDEX_INFO * index_pred,
@@ -873,8 +873,9 @@ pt_make_connect_by_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NO
       parser_free_tree (parser, pred_without_HQ);
 
       /* make list scan spec. */
-      xasl->spec_list = pt_make_list_access_spec (xasl, ACCESS_METHOD_SEQUENTIAL, NULL, where_without_HQ, connect_by->regu_list_pred,
-			      connect_by->regu_list_rest, regu_attributes_build, regu_attributes_probe);
+      xasl->spec_list =
+	pt_make_list_access_spec (xasl, ACCESS_METHOD_SEQUENTIAL, NULL, where_without_HQ, connect_by->regu_list_pred,
+				  connect_by->regu_list_rest, regu_attributes_build, regu_attributes_probe);
       if (xasl->spec_list == NULL)
 	{
 	  PT_INTERNAL_ERROR (parser, "generate hq(join) xasl");
@@ -2961,7 +2962,7 @@ pt_split_hash_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info, PT_NODE *
 
 	      arg1 = node->info.expr.arg1;
 	      arg2 = node->info.expr.arg2;
-	      assert(arg1 != NULL && arg2 != NULL);
+	      assert (arg1 != NULL && arg2 != NULL);
 
 	      UINTPTR spec_id[2], spec_id2[2];
 	      spec_id[0] = spec_id2[0] = table_info->spec_id;
@@ -3068,7 +3069,7 @@ pt_split_hash_attrs_for_HQ (PARSER_CONTEXT * parser, PT_NODE * pred, PT_NODE ** 
 
 	  CAST_POINTER_TO_NODE (node);
 
-	  if (!PT_IS_EXPR_NODE_WITH_OPERATOR(node, PT_EQ) || node->or_next)
+	  if (!PT_IS_EXPR_NODE_WITH_OPERATOR (node, PT_EQ) || node->or_next)
 	    {
 	      /* HASH LIST SCAN for HQ is possible under the following conditions */
 	      /* 1. CNF predicate (node is NOT PT_AND, PT_OR) */
@@ -3087,11 +3088,13 @@ pt_split_hash_attrs_for_HQ (PARSER_CONTEXT * parser, PT_NODE * pred, PT_NODE ** 
 
 	      arg1 = node->info.expr.arg1;
 	      arg2 = node->info.expr.arg2;
-	      assert(arg1 != NULL && arg2 != NULL);
+	      assert (arg1 != NULL && arg2 != NULL);
 
+	      // *INDENT-OFF*
 	      HASHABLE hashable_arg1, hashable_arg2;
 	      hashable_arg1 = hashable_arg2 = {false, false};
 	      HASH_ATTR hash_arg1, hash_arg2;
+	      // *INDENT-ON*
 
 	      parser_walk_tree (parser, arg1, pt_check_hashable, &hashable_arg1, NULL, NULL);
 	      parser_walk_tree (parser, arg2, pt_check_hashable, &hashable_arg2, NULL, NULL);
@@ -3100,16 +3103,14 @@ pt_split_hash_attrs_for_HQ (PARSER_CONTEXT * parser, PT_NODE * pred, PT_NODE ** 
 	      CHECK_HASH_ATTR (hashable_arg2, hash_arg2);
 
 	      if ((hash_arg1 == PROBE && hash_arg2 == BUILD) ||
-		  (hash_arg1 == PROBE && hash_arg2 == CONSTANT) ||
-		  (hash_arg1 == CONSTANT && hash_arg2 == BUILD))
+		  (hash_arg1 == PROBE && hash_arg2 == CONSTANT) || (hash_arg1 == CONSTANT && hash_arg2 == BUILD))
 		{
 		  /* arg1 is probe attr and arg2 is build attr */
 		  *build_attrs = parser_append_node (parser_copy_tree (parser, arg2), *build_attrs);
 		  *probe_attrs = parser_append_node (parser_copy_tree (parser, arg1), *probe_attrs);
 		}
 	      else if ((hash_arg1 == BUILD && hash_arg2 == PROBE) ||
-		       (hash_arg1 == BUILD && hash_arg2 == CONSTANT) ||
-		       (hash_arg1 == CONSTANT && hash_arg2 == PROBE))
+		       (hash_arg1 == BUILD && hash_arg2 == CONSTANT) || (hash_arg1 == CONSTANT && hash_arg2 == PROBE))
 		{
 		  /* arg1 is build attr and arg2 is probe attr */
 		  *build_attrs = parser_append_node (parser_copy_tree (parser, arg1), *build_attrs);
@@ -3472,7 +3473,7 @@ pt_check_hashable (PARSER_CONTEXT * parser, PT_NODE * tree, void *void_arg, int 
   *continue_walk = PT_CONTINUE_WALK;
   HASHABLE *hashable = (HASHABLE *) void_arg;
 
-  if (PT_IS_EXPR_NODE_WITH_OPERATOR(tree, PT_PRIOR))
+  if (PT_IS_EXPR_NODE_WITH_OPERATOR (tree, PT_PRIOR))
     {
       hashable->is_PRIOR = true;
       *continue_walk = PT_LIST_WALK;

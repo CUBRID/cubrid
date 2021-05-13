@@ -25,6 +25,7 @@
 #include "config.h"
 
 #include <cstring>
+#include <filesystem>
 #include <stdio.h>
 #include <stddef.h>
 #include <stdlib.h>
@@ -57,10 +58,11 @@
 #include "connection_defs.h"
 #include "language_support.h"
 #include "log_append.hpp"
+#include "log_checkpoint_info.hpp"
+#include "log_comm.h"
 #include "log_impl.h"
 #include "log_lsa.hpp"
 #include "log_manager.h"
-#include "log_comm.h"
 #include "log_volids.hpp"
 #include "log_writer.h"
 #include "lock_manager.h"
@@ -73,6 +75,7 @@
 #include "connection_sr.h"
 #endif
 #include "active_tran_server.hpp"
+#include "log_page_broker.hpp"
 #include "ats_ps_request.hpp"
 #include "critical_section.h"
 #include "page_buffer.h"
@@ -82,6 +85,9 @@
 #include "error_manager.h"
 #include "xserver_interface.h"
 #include "perf_monitor.h"
+#if defined (SERVER_MODE)
+#include "page_server.hpp"
+#endif
 #include "server_type.hpp"
 #include "storage_common.h"
 #include "system_parameter.h"
@@ -348,6 +354,7 @@ static LOG_PRIOR_NODE *prior_lsa_remove_prior_list (THREAD_ENTRY * thread_p);
 static int logpb_append_prior_lsa_list (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * list);
 static int logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE access_mode,
 			    LOG_PAGE * log_pgptr);
+static void request_log_page_from_ps (LOG_PAGEID log_pageid);
 
 static void logpb_fatal_error_internal (THREAD_ENTRY * thread_p, bool log_exit, bool need_flush, const char *file_name,
 					const int lineno, const char *fmt, va_list ap);
@@ -365,6 +372,9 @@ static bool logpb_is_log_active_from_backup_useful (THREAD_ENTRY * thread_p, con
 						    const char *db_full_name);
 static int logpb_peek_header_of_active_log_from_backup (THREAD_ENTRY * thread_p, const char *active_log_path,
 							LOG_HEADER * hdr);
+#if defined (SERVER_MODE)
+static void logpb_send_flushed_lsa_to_ats ();
+#endif // SERVER_MODE
 
 /*
  * FUNCTIONS RELATED TO LOG BUFFERING
@@ -1318,7 +1328,7 @@ logpb_initialize_header (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr, const cha
   assert (loghdr != NULL);
 
   /* to also initialize padding bytes */
-  memset (loghdr, 0, sizeof (LOG_HEADER));
+  loghdr->init ();
 
   strncpy (loghdr->magic, CUBRID_MAGIC_LOG_ACTIVE, CUBRID_MAGIC_MAX_LENGTH);
 
@@ -1931,20 +1941,11 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
 
   /* Could not get from log page buffer cache */
 
-#if defined (SERVER_MODE)
+#if defined(SERVER_MODE)
   /* Send a request to Page Server for the log. */
-  if (get_server_type () == SERVER_TYPE_TRANSACTION)
+  if (get_server_type () == SERVER_TYPE_TRANSACTION && ats_Gl.is_page_server_connected ())
     {
-      constexpr size_t BIG_INT_SIZE = 8;
-      char buffer[BIG_INT_SIZE];
-      std::memcpy (buffer, &pageid, sizeof (pageid));
-      std::string message (buffer, BIG_INT_SIZE);
-
-      ats_Gl.push_request (ats_to_ps_request::SEND_LOG_PAGE_FETCH, std::move (message));
-      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
-	{
-	  _er_log_debug (ARG_FILE_LINE, "Sent request for log to Page Server. Page ID: %lld \n", pageid);
-	}
+      request_log_page_from_ps (pageid);
     }
 #endif // SERVER_MODE
 
@@ -1954,6 +1955,20 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
       rv = ER_FAILED;
       goto exit;
     }
+
+#if defined(SERVER_MODE)
+  // *INDENT-OFF*
+  if (get_server_type () == SERVER_TYPE_TRANSACTION && ats_Gl.is_page_server_connected ())
+    {
+      // wait for answer.
+      auto log_page = ats_Gl.get_log_page_broker ().wait_for_page (pageid);
+
+      // Sould be the same.
+      assert (*log_page == *log_pgptr);
+    }
+  // *INDENT-ON*
+#endif // SERVER_MODE
+
   stat_page_found = PERF_PAGE_MODE_OLD_LOCK_WAIT;
 
   /* Always exit through here */
@@ -1980,6 +1995,30 @@ exit:
     }
 
   return rv;
+}
+
+static void
+request_log_page_from_ps (LOG_PAGEID log_pageid)
+{
+#if defined(SERVER_MODE)
+  // *INDENT-OFF*
+  constexpr size_t BIG_INT_SIZE = 8;
+  char buffer[BIG_INT_SIZE];
+  std::memcpy (buffer, &log_pageid, sizeof (log_pageid));
+  std::string message (buffer, BIG_INT_SIZE);
+
+  if (ats_Gl.get_log_page_broker ().register_entry (log_pageid) == cublog::page_broker::ADDED_ENTRY)
+    {
+      // First to add an entry must also sent the request to the page server
+      ats_Gl.push_request (ats_to_ps_request::SEND_LOG_PAGE_FETCH, std::move (message));
+
+      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
+        {
+          _er_log_debug (ARG_FILE_LINE, "Sent request for log to Page Server. Page ID: %lld \n", log_pageid);
+        }
+    }  
+  // *INDENT-ON*
+#endif // SERVER_MODE
 }
 
 /*
@@ -3797,6 +3836,13 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
     }
   flush_info->num_toflush = 0;
 
+#if defined (SERVER_MODE)
+  if (get_server_type () == SERVER_TYPE_PAGE)
+    {
+      logpb_send_flushed_lsa_to_ats ();
+    }
+#endif
+
   if (log_Gl.append.log_pgptr != NULL)
     {
       /* Add the append page */
@@ -3923,6 +3969,22 @@ error:
 
   return error_code;
 }
+
+#if defined (SERVER_MODE)
+void
+logpb_send_flushed_lsa_to_ats ()
+{
+  const log_lsa saved_lsa = log_Gl.append.get_nxio_lsa ();
+  if (prm_get_bool_value (PRM_ID_ER_LOG_COMMIT_CONFIRM))
+    {
+      _er_log_debug (ARG_FILE_LINE, "[COMMIT CONFIRM] Send saved LSA=%lld|%d.\n", LSA_AS_ARGS (&saved_lsa));
+    }
+  // *INDENT-OFF*
+  std::string message (reinterpret_cast<const char *> (&saved_lsa), sizeof (saved_lsa));
+  ps_Gl.push_request_to_active_tran_server (ps_to_ats_request::SEND_SAVED_LSA, std::move (message));
+  // *INDENT-ON*
+}
+#endif // SERVER_MODE
 
 /*
  * logpb_flush_pages_direct - flush all pages by itself.
@@ -4070,6 +4132,17 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
 	  need_wakeup_LFT = true;
 	  nxio_lsa = log_Gl.append.get_nxio_lsa ();
 	}
+
+      // *INDENT-OFF*
+      if (ats_Gl.is_page_server_connected ())
+	{
+	  log_Gl.wait_flushed_lsa (*flush_lsa);
+	  if (prm_get_bool_value (PRM_ID_ER_LOG_COMMIT_CONFIRM))
+	    {
+	      _er_log_debug (ARG_FILE_LINE, "Page server committed LSA = %lld|%d.\n", LSA_AS_ARGS (&log_Gl.m_max_ps_flushed_lsa));
+	    }
+	}
+      // *INDENT-ON*
     }
 #endif /* SERVER_MODE */
 }
@@ -4530,7 +4603,6 @@ logpb_create_log_info (const char *logname_info, const char *db_fullname)
       (void) logpb_add_volume (db_fullname, LOG_DBLOG_INFO_VOLID, logname_info, DISK_UNKNOWN_PURPOSE);
     }
 }
-
 
 /*
  * logpb_get_guess_archive_num - Guess archive number
@@ -6630,6 +6702,7 @@ logpb_initialize_log_names (THREAD_ENTRY * thread_p, const char *db_fullname, co
    */
   fileio_make_log_active_name (log_Name_active, log_Path, log_Prefix);
   fileio_make_log_info_name (log_Name_info, log_Path, log_Prefix);
+  fileio_make_log_metainfo_name (log_Name_metainfo, log_Path, log_Prefix);
   fileio_make_backup_volume_info_name (log_Name_bkupinfo, log_Path, log_Prefix);
   fileio_make_volume_info_name (log_Name_volinfo, db_fullname);
   fileio_make_log_archive_temp_name (log_Name_bg_archive, log_Archive_path, log_Prefix);
@@ -6676,90 +6749,6 @@ logpb_exist_log (THREAD_ENTRY * thread_p, const char *db_fullname, const char *l
   return fileio_is_volume_exist (log_Name_active);
 }
 
-void
-logpb_checkpoint_trans (LOG_INFO_CHKPT_TRANS * chkpt_entries, log_tdes * tdes, int &ntrans, int &ntops,
-			LOG_LSA & smallest_lsa)
-{
-  LOG_INFO_CHKPT_TRANS *chkpt_entry = &chkpt_entries[ntrans];
-  if (tdes != NULL && tdes->trid != NULL_TRANID && !LSA_ISNULL (&tdes->tail_lsa))
-    {
-      chkpt_entry->isloose_end = tdes->isloose_end;
-      chkpt_entry->trid = tdes->trid;
-      chkpt_entry->state = tdes->state;
-      LSA_COPY (&chkpt_entry->head_lsa, &tdes->head_lsa);
-      LSA_COPY (&chkpt_entry->tail_lsa, &tdes->tail_lsa);
-      if (chkpt_entry->state == TRAN_UNACTIVE_ABORTED)
-	{
-	  /*
-	   * Transaction is in the middle of an abort, since rollback does
-	   * is not run in a critical section. Set the undo point to be the
-	   * same as its tail. The recovery process will read the last
-	   * record which is likely a compensating one, and find where to
-	   * continue a rollback operation.
-	   */
-	  LSA_COPY (&chkpt_entry->undo_nxlsa, &tdes->tail_lsa);
-	}
-      else
-	{
-	  LSA_COPY (&chkpt_entry->undo_nxlsa, &tdes->undo_nxlsa);
-	}
-
-      LSA_COPY (&chkpt_entry->posp_nxlsa, &tdes->posp_nxlsa);
-      LSA_COPY (&chkpt_entry->savept_lsa, &tdes->savept_lsa);
-      LSA_COPY (&chkpt_entry->tail_topresult_lsa, &tdes->tail_topresult_lsa);
-      LSA_COPY (&chkpt_entry->start_postpone_lsa, &tdes->rcv.tran_start_postpone_lsa);
-      strncpy (chkpt_entry->user_name, tdes->client.get_db_user (), LOG_USERNAME_MAX);
-      ntrans++;
-      if (tdes->topops.last >= 0 && (tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE))
-	{
-	  ntops += tdes->topops.last + 1;
-	}
-
-      if (LSA_ISNULL (&smallest_lsa) || LSA_GT (&smallest_lsa, &tdes->head_lsa))
-	{
-	  LSA_COPY (&smallest_lsa, &tdes->head_lsa);
-	}
-    }
-}
-
-int
-logpb_checkpoint_topops (THREAD_ENTRY * thread_p, LOG_INFO_CHKPT_SYSOP * &chkpt_topops,
-			 LOG_INFO_CHKPT_TRANS * chkpt_trans, LOG_REC_CHKPT & tmp_chkpt, log_tdes * tdes, int &ntops,
-			 size_t & length_all_tops)
-{
-  if (tdes != NULL && tdes->trid != NULL_TRANID
-      && (!LSA_ISNULL (&tdes->rcv.sysop_start_postpone_lsa) || !LSA_ISNULL (&tdes->rcv.atomic_sysop_start_lsa)))
-    {
-      /* this transaction is running system operation postpone or an atomic system operation
-       * note: we cannot compare tdes->state with TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE. we are
-       *       not synchronizing setting transaction state.
-       *       however, setting tdes->rcv.sysop_start_postpone_lsa is protected by
-       *       log_Gl.prior_info.prior_lsa_mutex. so we check this instead of state.
-       */
-      if (ntops >= tmp_chkpt.ntops)
-	{
-	  tmp_chkpt.ntops += log_Gl.trantable.num_assigned_indices;
-	  length_all_tops = sizeof (*chkpt_topops) * tmp_chkpt.ntops;
-	  LOG_INFO_CHKPT_SYSOP *ptr = (LOG_INFO_CHKPT_SYSOP *) realloc (chkpt_topops, length_all_tops);
-	  if (ptr == NULL)
-	    {
-	      free_and_init (chkpt_trans);
-	      log_Gl.prior_info.prior_lsa_mutex.unlock ();
-	      TR_TABLE_CS_EXIT (thread_p);
-	      return ER_FAILED;
-	    }
-	  chkpt_topops = ptr;
-	}
-
-      LOG_INFO_CHKPT_SYSOP *chkpt_topop = &chkpt_topops[ntops];
-      chkpt_topop->trid = tdes->trid;
-      chkpt_topop->sysop_start_postpone_lsa = tdes->rcv.sysop_start_postpone_lsa;
-      chkpt_topop->atomic_sysop_start_lsa = tdes->rcv.atomic_sysop_start_lsa;
-      ntops++;
-    }
-  return NO_ERROR;
-}
-
 /*
  * logpb_checkpoint - Execute a fuzzy checkpoint
  *
@@ -6769,34 +6758,18 @@ logpb_checkpoint_topops (THREAD_ENTRY * thread_p, LOG_INFO_CHKPT_SYSOP * &chkpt_
 LOG_PAGEID
 logpb_checkpoint (THREAD_ENTRY * thread_p)
 {
-  if (get_server_type () == SERVER_TYPE_PAGE)
-    {
-      // TODO: reactivate once checkpoint is changed without log records
-      return NULL_LOG_PAGEID;
-    }
-
 #define detailed_er_log(...) if (detailed_logging) _er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
 
   LOG_TDES *tdes;		/* System transaction descriptor */
-  LOG_TDES *act_tdes;		/* Transaction descriptor of an active transaction */
-  LOG_REC_CHKPT *chkpt, tmp_chkpt;	/* Checkpoint log records */
-  LOG_INFO_CHKPT_TRANS *chkpt_trans;	/* Checkpoint tdes */
-  LOG_INFO_CHKPT_TRANS *chkpt_one;	/* Checkpoint tdes for one tran */
-  LOG_INFO_CHKPT_SYSOP *chkpt_topops;	/* Checkpoint top system operations that are in commit postpone
-					 * mode */
-  LOG_INFO_CHKPT_SYSOP *chkpt_topone;	/* One top system ope */
-  LOG_LSA chkpt_lsa;		/* copy of log_Gl.hdr.chkpt_lsa */
-  LOG_LSA chkpt_redo_lsa;	/* copy of log_Gl.chkpt_redo_lsa */
-  LOG_LSA newchkpt_lsa;		/* New address of the checkpoint record */
-  LOG_LSA smallest_lsa;
+  LOG_LSA prev_chkpt_lsa;	/* copy of log_Gl.hdr.chkpt_lsa */
+  LOG_LSA prev_chkpt_redo_lsa;	/* copy of log_Gl.chkpt_redo_lsa */
+  LOG_LSA new_chkpt_lsa;	/* New address of the checkpoint record */
+  LOG_LSA smallest_tran_lsa = NULL_LSA;	/* The smallest head_lsa of all transactions */
+  LOG_LSA oldest_unflushed_lsa = NULL_LSA;	/* The oldest LSA of a page that could not be flushed. */
+  LOG_LSA new_chkpt_redo_lsa;	/* Start LSA for redo recovery */
   unsigned int nobj_locks;	/* Avg number of locks */
   char logarv_name[PATH_MAX];	/* Archive name */
   char logarv_name_first[PATH_MAX];	/* Archive name */
-  int ntrans;			/* Number of trans */
-  int ntops;			/* Number of total active top actions */
-  int length_all_chkpt_trans;
-  size_t length_all_tops = 0;
-  int i;
   const char *catmsg;
   VOLID volid;
   VOLID curr_last_perm_volid;
@@ -6804,13 +6777,8 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   LOG_PAGEID smallest_pageid;
   int first_arv_num_not_needed;
   int last_arv_num_not_needed;
-  LOG_PRIOR_NODE *node;
-  void *ptr;
   int flushed_page_cnt = 0, vdes;
   bool detailed_logging = prm_get_bool_value (PRM_ID_LOG_CHKPT_DETAILED);
-  // *INDENT-OFF*
-  log_system_tdes::map_func mapper;
-  // *INDENT-ON*
 
   LOG_CS_ENTER (thread_p);
 
@@ -6853,21 +6821,23 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
    */
 
   (void) pthread_mutex_lock (&log_Gl.chkpt_lsa_lock);
-  LSA_COPY (&chkpt_lsa, &log_Gl.hdr.chkpt_lsa);
-  LSA_COPY (&chkpt_redo_lsa, &log_Gl.chkpt_redo_lsa);
+  LSA_COPY (&prev_chkpt_lsa, &log_Gl.hdr.chkpt_lsa);
+  LSA_COPY (&prev_chkpt_redo_lsa, &log_Gl.chkpt_redo_lsa);
   pthread_mutex_unlock (&log_Gl.chkpt_lsa_lock);
 
   logpb_flush_pages_direct (thread_p);
 
   /* MARK THE CHECKPOINT PROCESS */
-  node = prior_lsa_alloc_and_copy_data (thread_p, LOG_START_CHKPT, RV_NOT_DEFINED, NULL, 0, NULL, 0, NULL);
-  if (node == NULL)
-    {
-      goto error_cannot_chkpt;
-    }
 
-  newchkpt_lsa = prior_lsa_next_record (thread_p, node, tdes);
-  assert (!LSA_ISNULL (&newchkpt_lsa));
+  // Set the checkpoint target up until last log record.
+  {
+    // *INDENT-OFF*
+    std::unique_lock<std::mutex> prior_ulock (log_Gl.prior_info.prior_lsa_mutex);
+    new_chkpt_lsa = log_Gl.prior_info.prev_lsa;
+    assert (!LSA_ISNULL (&new_chkpt_lsa));
+    // *INDENT-ON*
+  }
+
 
   /*
    * Modify log header to record present checkpoint. The header is flushed
@@ -6883,8 +6853,8 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
     }
 
   detailed_er_log ("logpb_checkpoint: call pgbuf_flush_checkpoint()\n");
-  if (pgbuf_flush_checkpoint (thread_p, &newchkpt_lsa, &chkpt_redo_lsa, &tmp_chkpt.redo_lsa, &flushed_page_cnt) !=
-      NO_ERROR)
+  if (pgbuf_flush_checkpoint (thread_p, &new_chkpt_lsa, &prev_chkpt_redo_lsa, &oldest_unflushed_lsa, &flushed_page_cnt)
+      != NO_ERROR)
     {
       goto error_cannot_chkpt;
     }
@@ -6897,207 +6867,68 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 
   LOG_CS_ENTER (thread_p);
 
-  if (LSA_ISNULL (&tmp_chkpt.redo_lsa))
-    {
-      LSA_COPY (&tmp_chkpt.redo_lsa, &newchkpt_lsa);
-    }
+  assert (LSA_LE (&oldest_unflushed_lsa, &new_chkpt_lsa));
 
-  assert (LSA_LE (&tmp_chkpt.redo_lsa, &newchkpt_lsa));
+  new_chkpt_redo_lsa = oldest_unflushed_lsa.is_null ()? new_chkpt_lsa : oldest_unflushed_lsa;
 
 #if defined(SERVER_MODE)
   /* Save lower bound of flushed lsa */
-  if (!LSA_ISNULL (&tmp_chkpt.redo_lsa))
+  if (log_Gl.flushed_lsa_lower_bound.is_null () || new_chkpt_redo_lsa > log_Gl.flushed_lsa_lower_bound)
     {
-      if (LSA_ISNULL (&log_Gl.flushed_lsa_lower_bound) || LSA_GT (&tmp_chkpt.redo_lsa, &log_Gl.flushed_lsa_lower_bound))
-	{
-	  LSA_COPY (&log_Gl.flushed_lsa_lower_bound, &tmp_chkpt.redo_lsa);
-	}
+      log_Gl.flushed_lsa_lower_bound = new_chkpt_redo_lsa;
     }
 #endif /* SERVER_MODE */
 
-  TR_TABLE_CS_ENTER (thread_p);
-
-  /* allocate memory space for the transaction descriptors */
-  tmp_chkpt.ntrans = log_Gl.trantable.num_assigned_indices;
-  length_all_chkpt_trans = sizeof (*chkpt_trans) * tmp_chkpt.ntrans;
-
-  chkpt_trans = (LOG_INFO_CHKPT_TRANS *) malloc (length_all_chkpt_trans);
-  if (chkpt_trans == NULL)
-    {
-      TR_TABLE_CS_EXIT (thread_p);
-      goto error_cannot_chkpt;
-    }
-
-  log_Gl.prior_info.prior_lsa_mutex.lock ();
-
-  /* CHECKPOINT THE TRANSACTION TABLE */
-
-  LSA_SET_NULL (&smallest_lsa);
-  for (i = 0, ntrans = 0, ntops = 0; i < log_Gl.trantable.num_total_indices; i++)
-    {
-      /*
-       * Don't checkpoint current system transaction. That is, the one of
-       * checkpoint process
-       */
-      if (i == LOG_SYSTEM_TRAN_INDEX)
-	{
-	  continue;
-	}
-      act_tdes = LOG_FIND_TDES (i);
-      assert (ntrans < tmp_chkpt.ntrans);
-      logpb_checkpoint_trans (chkpt_trans, act_tdes, ntrans, ntops, smallest_lsa);
-    }
-
-  /*
-   * Reset the structure to the correct number of transactions and
-   * recalculate the length
-   */
-  tmp_chkpt.ntrans = ntrans;
-  length_all_chkpt_trans = sizeof (*chkpt_trans) * tmp_chkpt.ntrans;
-
-  /*
-   * Scan again if there were any top system operations in the process of being committed.
-   * NOTE that we checkpoint top system operations only when there are in the
-   * process of commit. Not knowledge of top system operations that are not
-   * in the process of commit is required since if there is a crash, the system
-   * operation is aborted as part of the transaction.
-   */
-
-  chkpt_topops = NULL;
-  if (ntops > 0)
-    {
-      tmp_chkpt.ntops = log_Gl.trantable.num_assigned_indices;
-      length_all_tops = sizeof (*chkpt_topops) * tmp_chkpt.ntops;
-      chkpt_topops = (LOG_INFO_CHKPT_SYSOP *) malloc (length_all_tops);
-      if (chkpt_topops == NULL)
-	{
-	  free_and_init (chkpt_trans);
-	  log_Gl.prior_info.prior_lsa_mutex.unlock ();
-	  TR_TABLE_CS_EXIT (thread_p);
-	  goto error_cannot_chkpt;
-	}
-
-      /* CHECKPOINTING THE TOP ACTIONS */
-      for (i = 0, ntrans = 0, ntops = 0; i < log_Gl.trantable.num_total_indices; i++)
-	{
-	  /*
-	   * Don't checkpoint current system transaction. That is, the one of
-	   * checkpoint process
-	   */
-	  if (i == LOG_SYSTEM_TRAN_INDEX)
-	    {
-	      continue;
-	    }
-	  act_tdes = LOG_FIND_TDES (i);
-	  error_code =
-	    logpb_checkpoint_topops (thread_p, chkpt_topops, chkpt_trans, tmp_chkpt, act_tdes, ntops, length_all_tops);
-	  if (error_code != NO_ERROR)
-	    {
-	      goto error_cannot_chkpt;
-	    }
-	}
-    }
-  else
-    {
-      tmp_chkpt.ntops = 1;
-      length_all_tops = sizeof (*chkpt_topops) * tmp_chkpt.ntops;
-      chkpt_topops = (LOG_INFO_CHKPT_SYSOP *) malloc (length_all_tops);
-      if (chkpt_topops == NULL)
-	{
-	  free_and_init (chkpt_trans);
-	  log_Gl.prior_info.prior_lsa_mutex.unlock ();
-	  TR_TABLE_CS_EXIT (thread_p);
-	  goto error_cannot_chkpt;
-	}
-    }
-
-  // Checkpoint system transactions' topops
-  // *INDENT-OFF*
-  mapper = [thread_p, &chkpt_topops, &chkpt_trans, &tmp_chkpt, &ntops, &length_all_tops, &error_code] (log_tdes &tdes)
+  // Build checkpoint info
   {
-    error_code =
-      logpb_checkpoint_topops (thread_p, chkpt_topops, chkpt_trans, tmp_chkpt, &tdes, ntops, length_all_tops);
-  };
+    // *INDENT-OFF*
+    cublog::checkpoint_info chk_info;
+    // *INDENT-ON*
 
-  log_system_tdes::map_all_tdes (mapper);
-  // *INDENT-ON*
-  if (error_code != NO_ERROR)
-    {
-      goto error_cannot_chkpt;
-    }
+    chk_info.set_start_redo_lsa (new_chkpt_redo_lsa);
+    chk_info.load_trantable_snapshot (thread_p, smallest_tran_lsa);
 
-  assert (sizeof (*chkpt_topops) * ntops <= length_all_tops);
-  tmp_chkpt.ntops = ntops;
-  length_all_tops = sizeof (*chkpt_topops) * tmp_chkpt.ntops;
+    /* Average the number of active transactions and locks */
+    nobj_locks = lock_get_number_object_locks ();
+    log_Gl.hdr.avg_ntrans = (log_Gl.hdr.avg_ntrans + (int) chk_info.get_transaction_count ()) >> 1;
+    log_Gl.hdr.avg_nlocks = (log_Gl.hdr.avg_nlocks + nobj_locks) >> 1;
 
-  node =
-    prior_lsa_alloc_and_copy_data (thread_p, LOG_END_CHKPT, RV_NOT_DEFINED, NULL, length_all_chkpt_trans,
-				   (char *) chkpt_trans, (int) length_all_tops, (char *) chkpt_topops);
-  if (node == NULL)
-    {
-      free_and_init (chkpt_trans);
+    // Add checkpoint info to meta log
+    log_Gl.m_metainfo.add_checkpoint_info (new_chkpt_lsa, std::move (chk_info));
+  }
 
-      if (chkpt_topops != NULL)
-	{
-	  free_and_init (chkpt_topops);
-	}
-      log_Gl.prior_info.prior_lsa_mutex.unlock ();
-      TR_TABLE_CS_EXIT (thread_p);
-      goto error_cannot_chkpt;
-    }
-
-  chkpt = (LOG_REC_CHKPT *) node->data_header;
-  *chkpt = tmp_chkpt;
-
-  prior_lsa_next_record_with_lock (thread_p, node, tdes);
-
-  log_Gl.prior_info.prior_lsa_mutex.unlock ();
-
-  TR_TABLE_CS_EXIT (thread_p);
-
-  free_and_init (chkpt_trans);
-
-  /* Any topops to log ? */
-  if (chkpt_topops != NULL)
-    {
-      free_and_init (chkpt_topops);
-    }
+  // Flush meta log (and checkpoint info) to disk
+  log_write_metalog_to_file ();
+  detailed_er_log ("logpb_checkpoint: wrote metalog containing checkpoint information.\n");
 
   /*
-   * END append
-   * Flush the page since we are going to flush the log header which
-   * reflects the new location of the last checkpoint log record
+   * Flush the page since we are going to flush the log header which reflects the new checkpoint LSA
    */
   logpb_flush_pages_direct (thread_p);
-  detailed_er_log ("logpb_checkpoint: call logpb_flush_all_append_pages()\n");
+  detailed_er_log ("logpb_checkpoint: call logpb_flush_pages_direct()\n");
 
   /*
    * Flush the log data header and update all checkpoints in volumes to
    * point to new checkpoint
    */
 
-  /* Average the number of active transactions and locks */
-  nobj_locks = lock_get_number_object_locks ();
-  log_Gl.hdr.avg_ntrans = (log_Gl.hdr.avg_ntrans + ntrans) >> 1;
-  log_Gl.hdr.avg_nlocks = (log_Gl.hdr.avg_nlocks + nobj_locks) >> 1;
-
   /* Flush the header */
   (void) pthread_mutex_lock (&log_Gl.chkpt_lsa_lock);
-  if (LSA_LT (&log_Gl.hdr.chkpt_lsa, &newchkpt_lsa))
+  if (LSA_LT (&log_Gl.hdr.chkpt_lsa, &new_chkpt_lsa))
     {
-      LSA_COPY (&log_Gl.hdr.chkpt_lsa, &newchkpt_lsa);
+      LSA_COPY (&log_Gl.hdr.chkpt_lsa, &new_chkpt_lsa);
     }
-  LSA_COPY (&chkpt_lsa, &log_Gl.hdr.chkpt_lsa);
+  LSA_COPY (&prev_chkpt_lsa, &log_Gl.hdr.chkpt_lsa);
 
-  if (LSA_ISNULL (&smallest_lsa))
+  if (LSA_ISNULL (&smallest_tran_lsa))
     {
       LSA_COPY (&log_Gl.hdr.smallest_lsa_at_last_chkpt, &log_Gl.hdr.chkpt_lsa);
     }
   else
     {
-      LSA_COPY (&log_Gl.hdr.smallest_lsa_at_last_chkpt, &smallest_lsa);
+      LSA_COPY (&log_Gl.hdr.smallest_lsa_at_last_chkpt, &smallest_tran_lsa);
     }
-  LSA_COPY (&log_Gl.chkpt_redo_lsa, &tmp_chkpt.redo_lsa);
+  LSA_COPY (&log_Gl.chkpt_redo_lsa, &new_chkpt_redo_lsa);
 
   pthread_mutex_unlock (&log_Gl.chkpt_lsa_lock);
 
@@ -7121,7 +6952,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
     {
       /* When volid is greater than boot_Db_parm->last_perm_volid, it means that the volume is now adding. We don't
        * need to care for the new volumes in here. */
-      if (disk_set_checkpoint (thread_p, volid, &chkpt_lsa) != NO_ERROR)
+      if (disk_set_checkpoint (thread_p, volid, &prev_chkpt_lsa) != NO_ERROR)
 	{
 	  goto error_cannot_chkpt;
 	}
@@ -7161,9 +6992,9 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
       LOG_LSA lsa;
 
 #if defined(SERVER_MODE)
-      smallest_pageid = MIN (log_Gl.flushed_lsa_lower_bound.pageid, tmp_chkpt.redo_lsa.pageid);
+      smallest_pageid = MIN (log_Gl.flushed_lsa_lower_bound.pageid, new_chkpt_redo_lsa.pageid);
 #else
-      smallest_pageid = tmp_chkpt.redo_lsa.pageid;
+      smallest_pageid = new_chkpt_redo_lsa.pageid;
 #endif
 
       logtb_find_smallest_lsa (thread_p, &lsa);
@@ -7247,6 +7078,11 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
    */
 
   log_Gl.run_nxchkpt_atpageid = (log_Gl.hdr.append_lsa.pageid + log_Gl.chkpt_every_npages);
+
+  // Drop older checkpoints information from meta log.
+  // It will be reflected to disk next time meta log is flushed.
+  log_Gl.m_metainfo.remove_checkpoint_info_before_lsa (prev_chkpt_lsa);
+
   /*
    * Clear all tail and heads information of current system transaction
    * todo - is it safe to clear though?
@@ -7266,7 +7102,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 	  log_Gl.chkpt_redo_lsa.pageid, flushed_page_cnt);
   er_log_debug (ARG_FILE_LINE, "end checkpoint\n");
 
-  return tmp_chkpt.redo_lsa.pageid;
+  return new_chkpt_redo_lsa.pageid;
 
   /* ******** */
 error_cannot_chkpt:
@@ -8046,6 +7882,14 @@ loop:
 	}
     }
 
+  error_code =
+    fileio_backup_volume (thread_p, &session, log_Name_metainfo, LOG_DBLOG_METAINFO_VOLID, NULL_PAGEID, false);
+  if (error_code != NO_ERROR)
+    {
+      LOG_CS_EXIT (thread_p);
+      goto error;
+    }
+
   /*
    * We must store the final bkvinf file at the very end of the backup
    * to have the best chance of having all of the information in it.
@@ -8643,6 +8487,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 		case LOG_DBLOG_BKUPINFO_VOLID:
 		case LOG_DBLOG_ACTIVE_VOLID:
 		case LOG_DBLOG_INFO_VOLID:
+		case LOG_DBLOG_METAINFO_VOLID:
 		case LOG_DBVOLINFO_VOLID:
 		case LOG_DBLOG_ARCHIVE_VOLID:
 		case LOG_DBTDE_KEYS_VOLID:
@@ -9342,6 +9187,23 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
     }
 
   /*
+   * Copy log meta-information file
+   */
+  fileio_make_log_metainfo_name (to_volname, to_logpath, to_prefix_logname);
+  // *INDENT-OFF*
+  try
+    {
+      std::filesystem::copy_file (log_Name_metainfo, to_volname);
+    }
+  catch (std::filesystem::filesystem_error &e)
+    {
+      error_code = ER_COPYDB_CANNOT_COPY_VOLUME;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 3, log_Name_metainfo, to_volname, e.what ());
+      goto error;
+    }
+  // *INDENT-ON*
+
+  /*
    * FIRST CREATE A NEW LOG FOR THE NEW DATABASE. This log is not a copy of
    * of the old log; it is a newly created one.
    * Compose the LOG name for the ACTIVE portion of the log.
@@ -9892,7 +9754,6 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols, co
       /* Nothing, tde keys file can be unavailable */
     }
 
-
   fileio_make_log_info_name (to_volname, to_logpath, to_prefix_logname);
   logpb_create_log_info (to_volname, to_db_fullname);
 
@@ -9915,6 +9776,16 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols, co
   error_code = log_dump_log_info (to_volname, false, catmsg, to_volname, log_Gl.hdr.npages + 1);
   if (error_code != NO_ERROR && error_code != ER_LOG_MOUNT_FAIL)
     {
+      goto error;
+    }
+
+  /*
+   * Rename the log meta file
+   */
+  fileio_make_log_metainfo_name (to_volname, to_logpath, to_prefix_logname);
+  if (fileio_rename (LOG_DBLOG_METAINFO_VOLID, log_Name_metainfo, to_volname) == NULL)
+    {
+      error_code = ER_FAILED;
       goto error;
     }
 
@@ -10355,6 +10226,7 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *db_fulln
 
   fileio_unformat (thread_p, log_Name_active);
   fileio_unformat (thread_p, log_Name_info);
+  fileio_unformat (thread_p, log_Name_metainfo);
 
   return NO_ERROR;
 }
@@ -10420,6 +10292,7 @@ logpb_check_exist_any_volumes (THREAD_ENTRY * thread_p, const char *db_fullname,
   exist_cnt += logpb_check_if_exists (log_Name_active, first_vol) ? 1 : 0;
   exist_cnt += logpb_check_if_exists (log_Name_info, first_vol) ? 1 : 0;
   exist_cnt += logpb_check_if_exists (log_Name_volinfo, first_vol) ? 1 : 0;
+  exist_cnt += logpb_check_if_exists (log_Name_metainfo, first_vol) ? 1 : 0;
 
   if (exist_cnt > 0)
     {
@@ -11309,6 +11182,7 @@ delete_fixed_logs:
 
   fileio_unformat (thread_p, log_Name_active);
   fileio_unformat (thread_p, log_Name_info);
+  fileio_unformat (thread_p, log_Name_metainfo);
 
   return NO_ERROR;
 }

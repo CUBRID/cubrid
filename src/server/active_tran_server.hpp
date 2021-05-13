@@ -19,10 +19,18 @@
 #ifndef _ACTIVE_TRAN_SERVER_HPP_
 #define _ACTIVE_TRAN_SERVER_HPP_
 
+#include "log_page_broker.hpp"
 #include "ats_ps_request.hpp"
 #include "request_sync_send_queue.hpp"
 
+#include <memory>
 #include <string>
+
+// forward declaration
+namespace cubpacking
+{
+  class unpacker;
+}
 
 class active_tran_server
 {
@@ -38,18 +46,29 @@ class active_tran_server
     void disconnect_page_server ();
     bool is_page_server_connected () const;
 
+    void init_log_page_broker ();
+    void finalize_log_page_broker ();
+
+    cublog::page_broker &get_log_page_broker ();
+
     void push_request (ats_to_ps_request reqid, std::string &&payload);
 
   private:
     using page_server_request_autosend = cubcomm::request_queue_autosend<page_server_request_queue>;
 
+    void receive_saved_lsa (cubpacking::unpacker &upk);
+    void receive_log_page (cubpacking::unpacker &upk);
+
     // communication with page server
     std::string m_ps_hostname;
-    int m_ps_port;
-    page_server_request_queue *m_ps_request_queue = nullptr;
-    page_server_request_autosend *m_ps_request_autosend = nullptr;
+    int m_ps_port = -1;
+    std::unique_ptr<page_server_conn> m_ps_conn;
+    std::unique_ptr<page_server_request_queue> m_ps_request_queue;
+    std::unique_ptr<page_server_request_autosend> m_ps_request_autosend;
+    std::unique_ptr<cublog::page_broker> m_log_page_broker;
 };
 
 extern active_tran_server ats_Gl;
 
 #endif // !_ACTIVE_TRAN_SERVER_HPP_
+

@@ -2245,6 +2245,21 @@ bind_value_print (char type, void *net_value, bool slow_log)
     case CCI_U_TYPE_STRING:
     case CCI_U_TYPE_NCHAR:
     case CCI_U_TYPE_VARNCHAR:
+      {
+	INTL_CODESET charset = CAS_SCHEMA_DEFAULT_CHARSET;
+	char *str_val;
+	int val_size;
+	int num_chars = 0;
+
+	net_arg_get_str (&str_val, &val_size, net_value);
+	if (val_size > 0)
+	  {
+	    num_chars = intl_char_count ((const unsigned char *) str_val, val_size, charset, &num_chars) - 1;
+	  }
+	write2_func ("(%d)", num_chars);
+	fwrite_func (str_val, val_size - 1);
+      }
+      break;
     case CCI_U_TYPE_BIT:
     case CCI_U_TYPE_VARBIT:
     case CCI_U_TYPE_NUMERIC:

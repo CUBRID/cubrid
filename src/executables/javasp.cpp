@@ -153,9 +153,9 @@ main (int argc, char *argv[])
     status = javasp_get_server_info (db_name, jsp_info);
     if (status != NO_ERROR && command.compare ("start") != 0)
       {
-	char info_path[PATH_MAX], err_msg[PATH_MAX];
+	char info_path[PATH_MAX], err_msg[PATH_MAX + 32];
 	javasp_get_info_file (info_path, PATH_MAX, db_name.c_str ());
-	snprintf (err_msg, PATH_MAX, "Error while opening file (%s)", info_path);
+	snprintf (err_msg, sizeof (err_msg), "Error while opening file (%s)", info_path);
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, err_msg);
 	goto exit;
       }
@@ -301,7 +301,7 @@ javasp_start_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_na
 
       if (status == NO_ERROR)
 	{
-	  JAVASP_SERVER_INFO jsp_new_info { getpid(), jsp_server_port () };
+	  JAVASP_SERVER_INFO jsp_new_info { getpid (), jsp_server_port () };
 
 	  if ((javasp_open_info_dir () && javasp_write_info (db_name.c_str (), jsp_new_info)))
 	    {
@@ -310,9 +310,9 @@ javasp_start_server (const JAVASP_SERVER_INFO jsp_info, const std::string &db_na
 	  else
 	    {
 	      /* failed to write info file */
-	      char info_path[PATH_MAX], err_msg[PATH_MAX];
+	      char info_path[PATH_MAX], err_msg[PATH_MAX + 32];
 	      javasp_get_info_file (info_path, PATH_MAX, db_name.c_str ());
-	      snprintf (err_msg, PATH_MAX, "Error while writing to file: (%s)", info_path);
+	      snprintf (err_msg, sizeof (err_msg), "Error while writing to file: (%s)", info_path);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, err_msg);
 	      status = ER_SP_CANNOT_START_JVM;
 	    }
@@ -482,14 +482,14 @@ javasp_dump_status (FILE *fp, JAVASP_STATUS_INFO status_info)
 {
   fprintf (fp, "Java Stored Procedure Server (%s, pid %d, port %d)\n", status_info.db_name, status_info.pid,
 	   status_info.port);
-  auto vm_args_len = status_info.vm_args.size();
+  auto vm_args_len = status_info.vm_args.size ();
   if (vm_args_len > 0)
     {
       fprintf (fp, "Java VM arguments :\n");
       fprintf (fp, " -------------------------------------------------\n");
       for (int i = 0; i < (int) vm_args_len; i++)
 	{
-	  fprintf (fp, "  %s\n", status_info.vm_args[i].c_str());
+	  fprintf (fp, "  %s\n", status_info.vm_args[i].c_str ());
 	}
       fprintf (fp, " -------------------------------------------------\n");
     }
@@ -566,7 +566,7 @@ static int
 javasp_get_server_info (const std::string &db_name, JAVASP_SERVER_INFO &info)
 {
   if (javasp_open_info_dir ()
-      && javasp_read_info (db_name.c_str(), info))
+      && javasp_read_info (db_name.c_str (), info))
     {
       return NO_ERROR;
     }
@@ -622,8 +622,8 @@ javasp_check_argument (int argc, char *argv[], std::string &command, std::string
     {
       /* check command */
       std::array<std::string, 5> commands = {"start", "stop", "restart", "status", "ping"};
-      auto it = find (commands.begin(), commands.end(), command);
-      if (it == commands.end())
+      auto it = find (commands.begin (), commands.end (), command);
+      if (it == commands.end ())
 	{
 	  status = ER_GENERIC_ERROR;
 	  JAVASP_PRINT_ERR_MSG ("Invalid command: %s\n", command.c_str ());

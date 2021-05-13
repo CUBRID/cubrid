@@ -78,19 +78,11 @@ static char *skip_token (char *p);
 #endif
 
 #if defined(WINDOWS)
-#define ALLOC_COUNTER_VALUE()                                           \
-        do {                                                            \
-            int _mem_size = sizeof(PDH_FMT_COUNTERVALUE_ITEM) *         \
-                                   num_counter_value;                   \
-            cntvalue_pid = (PDH_FMT_COUNTERVALUE_ITEM*) realloc(cntvalue_pid, _mem_size);               \
-            cntvalue_workset = (PDH_FMT_COUNTERVALUE_ITEM*) realloc(cntvalue_workset, _mem_size);       \
-            cntvalue_pct_cpu = (PDH_FMT_COUNTERVALUE_ITEM*) realloc(cntvalue_pct_cpu, _mem_size);       \
-            cntvalue_num_thr = (PDH_FMT_COUNTERVALUE_ITEM*) realloc(cntvalue_num_thr, _mem_size);       \
-        } while (0)
-
 #define IS_COUNTER_VALUE_PTR_NULL()                                     \
         (cntvalue_pid == NULL || cntvalue_workset == NULL ||            \
          cntvalue_pct_cpu == NULL || cntvalue_num_thr == NULL)
+
+static void alloc_counter_value ();
 
 typedef PDH_STATUS (__stdcall * PDHOpenQuery) (LPCSTR, DWORD_PTR, PDH_HQUERY *);
 typedef PDH_STATUS (__stdcall * PDHCloseQuery) (PDH_HQUERY);
@@ -347,6 +339,56 @@ retry:
   return (int) (((INT64) info.pr_size) * ((INT64) page_size) / 1024);
 }
 #elif defined(WINDOWS)
+static void
+alloc_counter_value ()
+{
+  PDH_FMT_COUNTERVALUE_ITEM *tmp_pid = NULL;
+  PDH_FMT_COUNTERVALUE_ITEM *tmp_cpu = NULL;
+  PDH_FMT_COUNTERVALUE_ITEM *tmp_workset = NULL;
+  PDH_FMT_COUNTERVALUE_ITEM *tmp_num_thr = NULL;
+
+  int _mem_size = sizeof (PDH_FMT_COUNTERVALUE_ITEM) * num_counter_value;
+  tmp_pid = (PDH_FMT_COUNTERVALUE_ITEM *) realloc (cntvalue_pid, _mem_size);
+  if (tmp_pid == NULL)
+    {
+      cntvalue_pid = NULL;
+    }
+  else
+    {
+      cntvalue_pid = tmp_pid;
+    }
+
+  tmp_workset = (PDH_FMT_COUNTERVALUE_ITEM *) realloc (cntvalue_workset, _mem_size);
+  if (tmp_workset == NULL)
+    {
+      cntvalue_workset = NULL;
+    }
+  else
+    {
+      cntvalue_workset = tmp_workset;
+    }
+
+  tmp_cpu = (PDH_FMT_COUNTERVALUE_ITEM *) realloc (cntvalue_pct_cpu, _mem_size);
+  if (tmp_cpu == NULL)
+    {
+      cntvalue_pct_cpu = NULL;
+    }
+  else
+    {
+      cntvalue_pct_cpu = tmp_cpu;
+    }
+
+  tmp_num_thr = (PDH_FMT_COUNTERVALUE_ITEM *) realloc (cntvalue_num_thr, _mem_size);
+  if (tmp_num_thr == NULL)
+    {
+      cntvalue_num_thr = NULL;
+    }
+  else
+    {
+      cntvalue_num_thr = tmp_num_thr;
+    }
+}
+
 int
 getsize (int pid)
 {
@@ -466,7 +508,7 @@ pdh_init ()
 
   num_counter_value = 128;
 
-  ALLOC_COUNTER_VALUE ();
+  alloc_counter_value ();
   if (IS_COUNTER_VALUE_PTR_NULL ())
     {
       return -1;
@@ -489,7 +531,7 @@ pdh_collect ()
 
   if (IS_COUNTER_VALUE_PTR_NULL ())
     {
-      ALLOC_COUNTER_VALUE ();
+      alloc_counter_value ();
       if (IS_COUNTER_VALUE_PTR_NULL ())
 	goto collect_error;
     }
@@ -509,7 +551,7 @@ pdh_collect ()
 	  if (pdh_status == PDH_MORE_DATA)
 	    {
 	      num_counter_value *= 2;
-	      ALLOC_COUNTER_VALUE ();
+	      alloc_counter_value ();
 	      if (IS_COUNTER_VALUE_PTR_NULL ())
 		{
 		  goto collect_error;
