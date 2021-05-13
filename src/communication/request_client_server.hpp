@@ -168,9 +168,12 @@ namespace cubcomm
       void start_thread ();	  // start thread that receives and handles requests
       void stop_thread ();	  // stop the thread
 
+      bool has_registered_handlers () const;
       void register_request_handler (MsgId msgid, const server_request_handler &handler);	  // register a handler
 
       const channel &get_channel () const;						  // get underlying channel
+
+      bool is_connected () const;
 
     protected:
       channel m_channel;	  // request are received on this channel
@@ -255,6 +258,12 @@ namespace cubcomm
   }
 
   template <typename MsgId>
+  bool request_server<MsgId>::has_registered_handlers () const
+  {
+    return m_request_handlers.size () > 0;
+  }
+
+  template <typename MsgId>
   void request_server<MsgId>::register_request_handler (MsgId msgid, const server_request_handler &handler)
   {
     const auto it = m_request_handlers.find (msgid);
@@ -274,6 +283,8 @@ namespace cubcomm
   template <typename MsgId>
   void request_server<MsgId>::start_thread ()
   {
+    assert (false == m_thread.joinable ());
+
     m_shutdown = false;
     m_thread = std::thread (&request_server::loop_handle_requests, std::ref (*this));
   }
@@ -281,8 +292,16 @@ namespace cubcomm
   template <typename MsgId>
   void request_server<MsgId>::stop_thread ()
   {
+    assert (is_connected ());
+
     m_shutdown = true;
     m_thread.join ();
+  }
+
+  template <typename MsgId>
+  bool request_server<MsgId>::is_connected () const
+  {
+    return m_thread.joinable ();
   }
 
   template <typename MsgId>
