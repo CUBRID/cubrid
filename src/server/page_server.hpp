@@ -44,7 +44,6 @@ namespace cubthread
 class page_server
 {
   public:
-//    using active_tran_server_conn = cubcomm::request_client_server<ps_to_ats_request, ats_to_ps_request>;
     using ats_t = cubcomm::request_sync_client_server<ps_to_ats_request, ats_to_ps_request, std::string>;
 
     page_server () = default;
@@ -62,18 +61,11 @@ class page_server
     void finalize_log_page_fetcher ();
 
   private:
-//    using active_tran_server_request_queue = cubcomm::request_sync_send_queue<active_tran_server_conn, std::string>;
-//    using active_tran_server_request_autosend = cubcomm::request_queue_autosend<active_tran_server_request_queue>;
-
     void receive_log_prior_list (cubpacking::unpacker &upk);
     void receive_log_page_fetch (cubpacking::unpacker &upk);
     void receive_data_page_fetch (cubpacking::unpacker &upk);
 
     void on_log_page_read_result (const LOG_PAGE *log_page, int error_code);
-
-//    std::unique_ptr<active_tran_server_conn> m_ats_conn;
-//    std::unique_ptr<active_tran_server_request_queue> m_ats_request_queue;
-//    std::unique_ptr<active_tran_server_request_autosend> m_ats_request_autosend;
 
     std::unique_ptr<ats_t> m_ats;
 
