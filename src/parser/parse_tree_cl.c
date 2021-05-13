@@ -2200,10 +2200,8 @@ parser_new_node (PARSER_CONTEXT * parser, PT_NODE_TYPE node_type)
   node = parser_create_node (parser);
   if (node)
     {
-      node->node_type = node_type;
+      parser_init_node (node, node_type);
       pt_parser_line_col (node);
-      parser_init_node (node);
-
       node->sql_user_text = g_query_string;
       node->sql_user_text_len = g_query_string_len;
     }
@@ -2211,60 +2209,63 @@ parser_new_node (PARSER_CONTEXT * parser, PT_NODE_TYPE node_type)
 }
 
 /*
- * parser_init_node() - initialize a node
+ * parser_init_node() - initialize a node (Used when initializing the node for the first time after creation)
  *   return:
  *   node(in/out):
  */
 PT_NODE *
-parser_init_node (PT_NODE * node)
+parser_init_node (PT_NODE * node, PT_NODE_TYPE node_type)
+{
+  assert (node != NULL);
+  assert (node_type < PT_LAST_NODE_NUMBER);
+  int parser_id = node->parser_id;
+
+  memset (node, 0x00, sizeof (PT_NODE));
+  node->buffer_pos = -1;
+  node->type_enum = PT_TYPE_NONE;
+
+  node->parser_id = parser_id;
+  node->node_type = node_type;
+  node = (pt_init_f[node_type]) (node);
+
+  return node;
+}
+
+/*
+ * parser_reinit_node() - initialize a node (Used when re-initializing an existing Node while in use)
+ *   return:
+ *   node(in/out):
+ */
+PT_NODE *
+parser_reinit_node (PT_NODE * node)
 {
   if (node)
     {
-      PARSER_INIT_NODE_FUNC f;
-
       assert (node->node_type < PT_LAST_NODE_NUMBER);
 
-      /* don't write over node_type, parser_id, line or column */
-      node->next = NULL;
-      node->or_next = NULL;
-      node->etc = NULL;
-      node->spec_ident = 0;
-      node->type_enum = PT_TYPE_NONE;
-      node->expected_domain = NULL;
-      node->data_type = NULL;
-      node->xasl_id = NULL;
-      node->alias_print = NULL;
-      node->expr_before_const_folding = NULL;
-      node->recompile = 0;
-      node->cannot_prepare = 0;
-      node->partition_pruned = 0;
-      node->si_datetime = 0;
-      node->si_tran_id = 0;
-      node->clt_cache_check = 0;
-      node->clt_cache_reusable = 0;
-      node->use_plan_cache = 0;
-      node->use_query_cache = 0;
-      node->is_hidden_column = 0;
-      node->is_paren = 0;
-      node->with_rollup = 0;
-      node->force_auto_parameterize = 0;
-      node->do_not_fold = 0;
-      node->is_cnf_start = 0;
-      node->is_click_counter = 0;
-      node->buffer_pos = -1;
-      node->next_row = NULL;
-      node->is_value_query = 0;
-      node->do_not_replace_orderby = 0;
-      node->is_added_by_parser = 0;
-      node->is_alias_enabled_expr = 0;
-      node->is_wrapped_res_for_coll = 0;
-      node->is_system_generated_stmt = 0;
-      node->use_auto_commit = 0;
-      /* initialize node info field */
-      memset (&(node->info), 0, sizeof (node->info));
+      /* don't write over node_type, parser_id, sql_user_text, sql_user_text_len, cache_time */
+      int parser_id = node->parser_id;
+      PT_NODE_TYPE node_type = node->node_type;
+      char *sql_user_text = node->sql_user_text;
+      int sql_user_text_len = node->sql_user_text_len;
+      int line_number = node->line_number;
+      int column_number = node->column_number;
+      CACHE_TIME cache_time = node->cache_time;
 
-      f = pt_init_f[node->node_type];
-      node = f (node);
+      memset (node, 0x00, sizeof (PT_NODE));
+      node->buffer_pos = -1;
+      node->type_enum = PT_TYPE_NONE;
+
+      node->parser_id = parser_id;
+      node->node_type = node_type;
+
+      node->sql_user_text = sql_user_text;
+      node->sql_user_text_len = sql_user_text_len;
+      node->line_number = line_number;
+      node->column_number = column_number;
+      node->cache_time = cache_time;
+
+      node = (pt_init_f[node->node_type]) (node);
     }
 
   return node;
@@ -4455,7 +4456,7 @@ pt_select_list_to_one_col (PARSER_CONTEXT * parser, PT_NODE * node, bool do_one)
 	      /* reset single tuple mark and move to derived */
 	      node->info.query.single_tuple = 0;
 	      derived = parser_copy_tree (parser, node);
-	      parser_init_node (node);
+	      parser_reinit_node (node);
 
 	      /* new range var */
 	      from = derived->info.query.q.select.from;

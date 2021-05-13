@@ -3212,7 +3212,7 @@ pt_append_statements_on_change_default (PARSER_CONTEXT * parser, PT_NODE * state
   /* redefine the default value */
   save_next = value->next;
   parser_free_subtrees (parser, value);
-  parser_init_node (value);
+  parser_reinit_node (value);
   value->type_enum = PT_TYPE_NULL;
   value->next = save_next;
 
@@ -3348,7 +3348,7 @@ pt_append_statements_on_insert (PARSER_CONTEXT * parser, PT_NODE * stmt_node, co
   /* redefine the insert value */
   save_next = value->next;
   parser_free_subtrees (parser, value);
-  parser_init_node (value);
+  parser_reinit_node (value);
   value->node_type = PT_VALUE;
   value->type_enum = PT_TYPE_NULL;
   value->next = save_next;
@@ -3502,7 +3502,7 @@ pt_append_statements_on_update (PARSER_CONTEXT * parser, PT_NODE * stmt_node, co
   /* redefine the assignment value */
   save_next = value->next;
   parser_free_subtrees (parser, value);
-  parser_init_node (value);
+  parser_reinit_node (value);
   value->node_type = PT_NAME;
   value->info.name.original = pt_append_string (parser, NULL, attr_name);
   PT_NAME_INFO_SET_FLAG (value, PT_NAME_INFO_EXTERNAL);
@@ -3712,7 +3712,7 @@ pt_resolve_insert_external (PARSER_CONTEXT * parser, PT_NODE * insert)
 	      rhs = a->info.expr.arg2;
 	      *a = *lhs;
 	      a->next = save_next;
-	      parser_init_node (lhs);	/* not to free subtrees */
+	      parser_reinit_node (lhs);	/* not to free subtrees */
 	      parser_free_tree (parser, lhs);
 	      parser_free_tree (parser, rhs);
 
@@ -3753,7 +3753,7 @@ pt_resolve_insert_external (PARSER_CONTEXT * parser, PT_NODE * insert)
 	      rhs = a->info.expr.arg2;
 	      *a = *lhs;
 	      a->next = save_next;
-	      parser_init_node (lhs);	/* not to free subtrees */
+	      parser_reinit_node (lhs);	/* not to free subtrees */
 	      parser_free_tree (parser, lhs);
 	      parser_free_tree (parser, rhs);
 

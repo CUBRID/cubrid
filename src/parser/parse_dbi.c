@@ -3009,8 +3009,7 @@ pt_bind_set_type (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val, int *
     }
   set_type = NULL;
 
-  tmp.node_type = PT_DATA_TYPE;
-  parser_init_node (&tmp);
+  parser_init_node (&tmp, PT_DATA_TYPE);
   tmp.line_number = node->line_number;
   tmp.column_number = node->column_number;
 

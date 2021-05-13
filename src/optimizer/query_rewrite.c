@@ -226,13 +226,13 @@ qo_check_nullable_expr_with_spec (PARSER_CONTEXT * parser, PT_NODE * node, void 
 	case PT_IFNULL:
 	case PT_ISNULL:
 	case PT_CONCAT_WS:
-	    info->appears = false;
-	    parser_walk_tree (parser, node, qo_get_name_by_spec_id, info, NULL, NULL);
-	    if (info->appears)
-	      {
-		info->nullable = true;
-		*continue_walk = PT_STOP_WALK;
-	      }
+	  info->appears = false;
+	  parser_walk_tree (parser, node, qo_get_name_by_spec_id, info, NULL, NULL);
+	  if (info->appears)
+	    {
+	      info->nullable = true;
+	      *continue_walk = PT_STOP_WALK;
+	    }
 	  break;
 	default:
 	  break;
@@ -839,7 +839,6 @@ qo_construct_new_set (PARSER_CONTEXT * parser, PT_NODE * node)
   /* create mset constructor subtree */
   if (arg && (set = parser_new_node (parser, PT_FUNCTION)) != NULL)
     {
-      parser_init_node (set);
       set->info.function.function_type = F_SEQUENCE;
       set->info.function.arg_list = arg;
       set->type_enum = PT_TYPE_SEQUENCE;
@@ -875,13 +874,14 @@ qo_make_new_derived_tblspec (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * 
   const char *dtblnam, *dattnam;
 
   dtbl = qo_construct_new_set (parser, pred);
-  if (dtbl)
+  if (!dtbl)
     {
-      spec = parser_new_node (parser, PT_SPEC);
+      return NULL;
     }
+
+  spec = parser_new_node (parser, PT_SPEC);
   if (spec)
     {
-      parser_init_node (spec);
       spec_id = (UINTPTR) spec;
       spec->info.spec.id = spec_id;
       spec->info.spec.only_all = PT_ONLY;
@@ -913,7 +913,6 @@ qo_make_new_derived_tblspec (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * 
 	  node->info.spec.path_conjuncts = eq = parser_new_node (parser, PT_EXPR);
 	  if (eq)
 	    {
-	      parser_init_node (eq);
 	      eq->type_enum = PT_TYPE_LOGICAL;
 	      eq->info.expr.op = PT_EQ;
 	      eq->info.expr.arg1 = pt_name (parser, dattnam);
@@ -5496,7 +5495,8 @@ qo_rewrite_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
       prev_spec = NULL;
       for (spec = node->info.query.q.select.from; spec; prev_spec = spec, spec = spec->next)
 	{
-	  if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER || (spec->info.spec.join_type == PT_JOIN_RIGHT_OUTER && prev_spec))
+	  if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER
+	      || (spec->info.spec.join_type == PT_JOIN_RIGHT_OUTER && prev_spec))
 	    {
 	      if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER)
 		{
