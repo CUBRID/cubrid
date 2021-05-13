@@ -136,8 +136,10 @@ TEST_CASE ("Test load and recovery on empty tran table", "")
 }
 
 std::map<TRANID, log_tdes *> tran_map;
+int afterCount;
 
-int search_for_id (int id)
+int
+search_for_id (int id)
 {
   for (int i = 0; i < log_Gl.trantable.num_total_indices; i++)
     {
@@ -149,7 +151,19 @@ int search_for_id (int id)
   return 0;
 }
 
-void check_recovery (checkpoint_info obj)
+void
+fullCompareTDES (log_tdes *td1, log_tdes *td2)
+{
+  REQUIRE (td1->head_lsa == td2->head_lsa);
+  REQUIRE (td1->tail_lsa == td2->tail_lsa);
+  REQUIRE (td1->undo_nxlsa == td2->undo_nxlsa);
+  REQUIRE (td1->posp_nxlsa == td2->posp_nxlsa);
+  REQUIRE (td1->savept_lsa == td2->savept_lsa);
+  REQUIRE (td1->tail_topresult_lsa == td2->tail_topresult_lsa);
+}
+
+void
+check_recovery (checkpoint_info obj)
 {
   std::map<TRANID, log_tdes *>::iterator itr;
   for (itr = tran_map.begin(); itr != tran_map.end(); ++itr)
@@ -174,7 +188,21 @@ void check_recovery (checkpoint_info obj)
 	  continue;
 	}
       REQUIRE (tdes_after->second->state == tdes->state);
+      fullCompareTDES (tdes, tdes_after->second);
     }
+}
+int
+numberOf2pc()
+{
+  int count = 0;
+  for (int i = 1; i < log_Gl.trantable.num_total_indices; i++)
+    {
+      if (LOG_ISTRAN_2PC (log_Gl.trantable.all_tdes[i]))
+	{
+	  count ++;
+	}
+    }
+  return count;
 }
 
 TEST_CASE ("Test load and recovery on 100 tran table entries", "")
@@ -185,10 +213,12 @@ TEST_CASE ("Test load and recovery on 100 tran table entries", "")
   THREAD_ENTRY thd;
 
   env.generate_tran_table();
+  int count = numberOf2pc();
   env.after.load_trantable_snapshot (&thd, smallest_lsa);
   env.after.recovery_analysis (&thd, start_lsa);
   env.after.recovery_2pc_analysis (&thd);
   check_recovery (env.after);
+  REQUIRE (count == afterCount);
 
 }
 
@@ -566,94 +596,6 @@ logtb_clear_tdes (THREAD_ENTRY *thread_p, LOG_TDES *tdes)
   LSA_SET_NULL (&tdes->rcv.analysis_last_aborted_sysop_start_lsa);
 }
 
-static void
-logtb_set_tdes (THREAD_ENTRY *thread_p, LOG_TDES *tdes, const BOOT_CLIENT_CREDENTIAL *client_credential,
-		int wait_msecs, TRAN_ISOLATION isolation)
-{
-#if defined(SERVER_MODE)
-  CSS_CONN_ENTRY *conn;
-#endif /* SERVER_MODE */
-  tdes->client.set_ids (*client_credential);
-  tdes->is_user_active = false;
-#if defined(SERVER_MODE)
-
-  conn = thread_p->conn_entry;
-  if (conn != NULL)
-    {
-      tdes->client_id = conn->client_id;
-    }
-  else
-    {
-      tdes->client_id = -1;
-    }
-#else /* SERVER_MODE */
-  tdes->client_id = -1;
-#endif /* SERVER_MODE */
-  tdes->wait_msecs = wait_msecs;
-  tdes->isolation = isolation;
-  tdes->isloose_end = false;
-  tdes->interrupt = false;
-  tdes->topops.stack = NULL;
-  tdes->topops.max = 0;
-  tdes->topops.last = -1;
-  tdes->num_transient_classnames = 0;
-  tdes->first_save_entry = NULL;
-}
-
-static int
-logtb_allocate_tran_index_local (THREAD_ENTRY *thread_p, TRANID trid, TRAN_STATE state, int wait_msecs,
-				 TRAN_ISOLATION isolation)
-{
-  int i;
-  int visited_loop_start_pos;
-  LOG_TDES *tdes;		/* Transaction descriptor */
-  int tran_index;		/* The assigned index */
-  int save_tran_index;		/* Save as a good index to assign */
-  /*
-   * Note that we could have found the entry already and it may be stored in
-   * tran_index.
-   */
-  for (i = log_Gl.trantable.hint_free_index, visited_loop_start_pos = 0;
-       tran_index == NULL_TRAN_INDEX && visited_loop_start_pos < 2; i = (i + 1) % NUM_TOTAL_TRAN_INDICES)
-    {
-      if (log_Gl.trantable.all_tdes[i]->trid == NULL_TRANID)
-	{
-	  tran_index = i;
-	}
-      if (i == log_Gl.trantable.hint_free_index)
-	{
-	  visited_loop_start_pos++;
-	}
-    }
-
-  if (tran_index != NULL_TRAN_INDEX)
-    {
-      log_Gl.trantable.hint_free_index = (tran_index + 1) % NUM_TOTAL_TRAN_INDICES;
-
-      log_Gl.trantable.num_assigned_indices++;
-      tdes = LOG_FIND_TDES (tran_index);
-      tdes->tran_index = tran_index;
-      logtb_clear_tdes (thread_p, tdes);
-      logtb_set_tdes (thread_p, tdes, NULL, wait_msecs, isolation);
-
-      if (trid == NULL_TRANID)
-	{
-	  /* Assign a new transaction identifier for the new index */
-	  tdes->trid = log_Gl.trantable.num_assigned_indices;
-	  state = TRAN_ACTIVE;
-	}
-      else
-	{
-	  tdes->trid = trid;
-	  tdes->state = state;
-	}
-
-      tdes->tran_abort_reason = TRAN_NORMAL;
-    }
-
-  return tran_index;
-}
-
 log_tdes *
 systdes_create_tdes ()
 {
@@ -672,25 +614,6 @@ log_system_tdes::rv_get_tdes (TRANID trid)
   else
     {
       return NULL;
-    }
-}
-
-log_tdes *
-log_system_tdes::rv_get_or_alloc_tdes (TRANID trid)
-{
-  log_tdes *tdes = rv_get_tdes (trid);
-  if (tdes == NULL)
-    {
-      log_tdes *tdes = systdes_create_tdes ();
-      tdes->state = TRAN_UNACTIVE_UNILATERALLY_ABORTED;
-      tdes->trid = trid;
-      systb_System_tdes[trid] = tdes;
-      return tdes;
-    }
-  else
-    {
-      assert (tdes->trid == trid);
-      return tdes;
     }
 }
 
@@ -754,116 +677,16 @@ logtb_realloc_topops_stack (LOG_TDES *tdes, int num_elms)
   return tdes->topops.stack;
 }
 
-int
-logpb_prior_lsa_append_all_list (THREAD_ENTRY *thread_p)
-{
-  LOG_PRIOR_NODE *prior_list;
-  INT64 current_size;
-  current_size = log_Gl.prior_info.list_size;
-  prior_list = log_Gl.prior_info.prior_list_header;
-
-  log_Gl.prior_info.prior_list_header = NULL;
-  log_Gl.prior_info.prior_list_tail = NULL;
-  log_Gl.prior_info.list_size = 0;
-
-//  if (prior_list != NULL)
-//    {
-//      logpb_append_prior_lsa_list (thread_p, prior_list);
-//    }
-
-  return NO_ERROR;
-}
-
-int
-logpb_fetch_page (THREAD_ENTRY *thread_p, const LOG_LSA *req_lsa, LOG_CS_ACCESS_MODE access_mode,
-		  LOG_PAGE *log_pgptr)
-{
-  LOG_LSA append_lsa, append_prev_lsa;
-  int rv;
-
-  assert (log_pgptr != NULL);
-  assert (req_lsa != NULL);
-  assert (req_lsa->pageid != NULL_PAGEID);
-
-  LSA_COPY (&append_lsa, &log_Gl.hdr.append_lsa);
-  LSA_COPY (&append_prev_lsa, &log_Gl.append.prev_lsa);
-
-  /*
-   * This If block ensure belows,
-   *  case 1. log page (of pageid) is in log page buffer (not prior_lsa list)
-   *  case 2. EOL record which is written temporarily by
-   *          logpb_flush_all_append_pages is cleared so there is no EOL
-   *          in log page
-   */
-  //TODO
-//  if (LSA_LE (&append_lsa, req_lsa)	/* for case 1 */
-//      || LSA_LE (&append_prev_lsa, req_lsa))	/* for case 2 */
-//    {
-//      assert (LSA_LE (&log_Gl.append.prev_lsa, &log_Gl.hdr.append_lsa));
-
-//      /*
-//       * copy prior lsa list to log page buffer to ensure that required
-//       * pageid is in log page buffer
-//       */
-//      if (LSA_LE (&log_Gl.hdr.append_lsa, req_lsa))	/* retry with mutex */
-//        {
-//          logpb_prior_lsa_append_all_list (thread_p);
-//        }
-//    }
-
-  /*
-   * most of the cases, we don't need calling logpb_copy_page with LOG_CS exclusive access,
-   * if needed, we acquire READ mode in logpb_copy_page
-   */
-//  rv = logpb_copy_page (thread_p, req_lsa->pageid, access_mode, log_pgptr);
-  if (rv != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  return NO_ERROR;
-}
-
 PGLENGTH
 db_log_page_size (void)
 {
   return 16384;
 }
 
-void LOG_READ_ALIGN (THREAD_ENTRY *thread_p, LOG_LSA *lsa, LOG_PAGE *log_pgptr)
+int
+logtb_get_current_tran_index (void)
 {
-  lsa->offset = DB_ALIGN (lsa->offset, DOUBLE_ALIGNMENT);
-  while (lsa->offset >= (int) LOGAREA_SIZE)
-    {
-      assert (log_pgptr != NULL);
-      lsa->pageid++;
-      if (logpb_fetch_page (thread_p, lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
-	{
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "LOG_READ_ALIGN");
-	}
-      lsa->offset -= LOGAREA_SIZE;
-      lsa->offset = DB_ALIGN (lsa->offset, DOUBLE_ALIGNMENT);
-    }
-}
-
-void LOG_READ_ADD_ALIGN (THREAD_ENTRY *thread_p, size_t add, LOG_LSA *lsa, LOG_PAGE *log_pgptr)
-{
-  lsa->offset += add;
-  LOG_READ_ALIGN (thread_p, lsa, log_pgptr);
-}
-
-void LOG_READ_ADVANCE_WHEN_DOESNT_FIT (THREAD_ENTRY *thread_p, size_t length, LOG_LSA *lsa, LOG_PAGE *log_pgptr)
-{
-  if (lsa->offset + static_cast < int > (length) >= static_cast < int > (LOGAREA_SIZE))
-    {
-      assert (log_pgptr != NULL);
-      lsa->pageid++;
-      if (logpb_fetch_page (thread_p, lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
-	{
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "LOG_READ_ADVANCE_WHEN_DOESNT_FIT");
-	}
-      lsa->offset = 0;
-    }
+  return 1;
 }
 
 int
@@ -871,30 +694,8 @@ log_read_sysop_start_postpone (THREAD_ENTRY *thread_p, LOG_LSA *log_lsa, LOG_PAG
 			       LOG_REC_SYSOP_START_POSTPONE *sysop_start_postpone, int *undo_buffer_size,
 			       char **undo_buffer, int *undo_size, char **undo_data)
 {
-  int error_code = NO_ERROR;
-
-  if (log_page->hdr.logical_pageid != log_lsa->pageid)
-    {
-      error_code = logpb_fetch_page (thread_p, log_lsa, LOG_CS_FORCE_USE, log_page);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
-    }
-
-  /* skip log record header */
-  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page);
-
-  /* read sysop_start_postpone */
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_SYSOP_START_POSTPONE), log_lsa, log_page);
-  *sysop_start_postpone = * (LOG_REC_SYSOP_START_POSTPONE *) (log_page->area + log_lsa->offset);
+  assert (true);
   return NO_ERROR;
-}
-
-int
-logtb_get_current_tran_index (void)
-{
-  return 1;
 }
 
 int
@@ -930,6 +731,7 @@ logtb_find_tran_index (THREAD_ENTRY *thread_p, TRANID trid)
 void
 log_2pc_recovery_analysis_info (THREAD_ENTRY *thread_p, log_tdes *tdes, LOG_LSA *upto_chain_lsa)
 {
+  afterCount++;
   assert (true);
 }
 
