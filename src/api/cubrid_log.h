@@ -117,24 +117,31 @@ struct cubrid_log_item
   CUBRID_LOG_ITEM *next;
 };
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
 /* API for the configuration step */
-extern int cubrid_log_set_connection_timeout (int timeout);
-extern int cubrid_log_set_extraction_timeout (int timeout);
-extern int cubrid_log_set_tracelog (char *path, int level, int filesize);
-extern int cubrid_log_set_max_log_item (int max_log_item);
-extern int cubrid_log_set_all_in_cond (int retrieve_all);
-extern int cubrid_log_set_extraction_table (uint64_t * classoid_arr, int arr_size);
-extern int cubrid_log_set_extraction_user (char **user_arr, int arr_size);
+  extern int cubrid_log_set_connection_timeout (int timeout);
+  extern int cubrid_log_set_extraction_timeout (int timeout);
+  extern int cubrid_log_set_tracelog (char *path, int level, int filesize);
+  extern int cubrid_log_set_max_log_item (int max_log_item);
+  extern int cubrid_log_set_all_in_cond (int retrieve_all);
+  extern int cubrid_log_set_extraction_table (uint64_t * classoid_arr, int arr_size);
+  extern int cubrid_log_set_extraction_user (char **user_arr, int arr_size);
 
 /* API for the preparation step */
-extern int cubrid_log_connect_server (char *host, int port, char *dbname);
-extern int cubrid_log_find_lsa (time_t timestamp, uint64_t * lsa);
+  extern int cubrid_log_connect_server (char *host, int port, char *dbname);
+  extern int cubrid_log_find_lsa (time_t timestamp, uint64_t * lsa);
 
 /* API for the extraction step */
-extern int cubrid_log_extract (uint64_t * lsa, CUBRID_LOG_ITEM ** log_item_list, int *list_size);
-extern int cubrid_log_clear_log_item (CUBRID_LOG_ITEM * log_item_list);
+  extern int cubrid_log_extract (uint64_t * lsa, CUBRID_LOG_ITEM ** log_item_list, int *list_size);
+  extern int cubrid_log_clear_log_item (CUBRID_LOG_ITEM * log_item_list);
 
 /* API for the finalization step */
-extern int cubrid_log_finalize (void);
+  extern int cubrid_log_finalize (void);
+#ifdef __cplusplus
+}
+#endif
 
-#endif /* _CUBRID_LOG_H_ */
+#endif				/* _CUBRID_LOG_H_ */

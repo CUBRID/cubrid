@@ -24,18 +24,22 @@
 
 #if defined(CS_MODE)
 
+#include <arpa/inet.h>
 #include <limits.h>
 
 #include "connection_cl.h"
+#include "connection_list_cl.h"
 #include "cubrid_log.h"
+
+#define CUBRID_LOG_ERROR_HANDLING(v) (err_code) = (v); goto cubrid_log_error
 
 typedef enum
 {
-  CLOG_STAGE_CONFIGURATION,
-  CLOG_STAGE_PREPARATION,
-  CLOG_STAGE_EXTRACTION,
-  CLOG_STAGE_FINALIZATION
-} CLOG_STAGE;
+  CUBRID_LOG_STAGE_CONFIGURATION,
+  CUBRID_LOG_STAGE_PREPARATION,
+  CUBRID_LOG_STAGE_EXTRACTION,
+  CUBRID_LOG_STAGE_FINALIZATION
+} CUBRID_LOG_STAGE;
 
 typedef enum
 {
@@ -78,9 +82,7 @@ typedef enum
   DATA_ITEM_TYPE_TIMER
 } DATA_ITEM_TYPE;
 
-extern int css_Service_id;
-
-CLOG_STAGE g_stage = CLOG_STAGE_CONFIGURATION;
+CUBRID_LOG_STAGE g_stage = CUBRID_LOG_STAGE_CONFIGURATION;
 
 CSS_CONN_ENTRY *g_conn_entry;
 
@@ -108,7 +110,7 @@ int g_trace_log_filesize = 10;	/* MB */
 int
 cubrid_log_set_connection_timeout (int timeout)
 {
-  if (g_stage != CLOG_STAGE_CONFIGURATION)
+  if (g_stage != CUBRID_LOG_STAGE_CONFIGURATION)
     {
       return CUBRID_LOG_INVALID_FUNC_CALL_STAGE;
     }
@@ -131,7 +133,7 @@ cubrid_log_set_connection_timeout (int timeout)
 int
 cubrid_log_set_extraction_timeout (int timeout)
 {
-  if (g_stage != CLOG_STAGE_CONFIGURATION)
+  if (g_stage != CUBRID_LOG_STAGE_CONFIGURATION)
     {
       return CUBRID_LOG_INVALID_FUNC_CALL_STAGE;
     }
@@ -156,7 +158,7 @@ cubrid_log_set_extraction_timeout (int timeout)
 int
 cubrid_log_set_tracelog (char *path, int level, int filesize)
 {
-  if (g_stage != CLOG_STAGE_CONFIGURATION)
+  if (g_stage != CUBRID_LOG_STAGE_CONFIGURATION)
     {
       return CUBRID_LOG_INVALID_FUNC_CALL_STAGE;
     }
@@ -198,7 +200,7 @@ cubrid_log_set_tracelog (char *path, int level, int filesize)
 int
 cubrid_log_set_max_log_item (int max_log_item)
 {
-  if (g_stage != CLOG_STAGE_CONFIGURATION)
+  if (g_stage != CUBRID_LOG_STAGE_CONFIGURATION)
     {
       return CUBRID_LOG_INVALID_FUNC_CALL_STAGE;
     }
@@ -221,7 +223,7 @@ cubrid_log_set_max_log_item (int max_log_item)
 int
 cubrid_log_set_all_in_cond (int retrieve_all)
 {
-  if (g_stage != CLOG_STAGE_CONFIGURATION)
+  if (g_stage != CUBRID_LOG_STAGE_CONFIGURATION)
     {
       return CUBRID_LOG_INVALID_FUNC_CALL_STAGE;
     }
@@ -245,7 +247,7 @@ cubrid_log_set_all_in_cond (int retrieve_all)
 int
 cubrid_log_set_extraction_table (uint64_t * classoid_arr, int arr_size)
 {
-  if (g_stage != CLOG_STAGE_CONFIGURATION)
+  if (g_stage != CUBRID_LOG_STAGE_CONFIGURATION)
     {
       return CUBRID_LOG_INVALID_FUNC_CALL_STAGE;
     }
@@ -278,7 +280,7 @@ cubrid_log_set_extraction_user (char **user_arr, int arr_size)
 {
   int i;
 
-  if (g_stage != CLOG_STAGE_CONFIGURATION)
+  if (g_stage != CUBRID_LOG_STAGE_CONFIGURATION)
     {
       return CUBRID_LOG_INVALID_FUNC_CALL_STAGE;
     }
@@ -304,6 +306,80 @@ cubrid_log_set_extraction_user (char **user_arr, int arr_size)
   return CUBRID_LOG_SUCCESS;
 }
 
+static int
+cubrid_log_connect_server_internal (char *host, int port, char *dbname)
+{
+  unsigned short rid;
+
+  char *recv_data = NULL;
+  int recv_data_size;
+
+  int reason;
+
+  CSS_QUEUE_ENTRY *queue_entry;
+  int err_code;
+
+  g_conn_entry = css_make_conn (INVALID_SOCKET);
+  if (g_conn_entry == NULL)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT);
+    }
+
+  if (css_common_connect
+      (host, g_conn_entry, DATA_REQUEST, dbname, strlen (dbname) + 1, port, g_connection_timeout, &rid, true) == NULL)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT);
+    }
+
+  css_queue_user_data_buffer (g_conn_entry, rid, sizeof (int), (char *) &reason);
+
+  if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, g_connection_timeout * 1000) != NO_ERRORS)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT);
+    }
+
+  if (recv_data == NULL || recv_data_size != sizeof (int))
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT);
+    }
+
+  reason = ntohl (*(int *) recv_data);
+
+  if (reason != SERVER_CONNECTED)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT);
+    }
+
+  if (recv_data != NULL && recv_data != (char *) &reason)
+    {
+      free_and_init (recv_data);
+    }
+
+  return CUBRID_LOG_SUCCESS;
+
+cubrid_log_error:
+
+  if (recv_data != NULL && recv_data != (char *) &reason)
+    {
+      free_and_init (recv_data);
+    }
+
+  queue_entry = css_find_queue_entry (g_conn_entry->buffer_queue, rid);
+  if (queue_entry != NULL)
+    {
+      queue_entry->buffer = NULL;
+      css_queue_remove_header_entry_ptr (&g_conn_entry->buffer_queue, queue_entry);
+    }
+
+  if (g_conn_entry != NULL)
+    {
+      css_free_conn (g_conn_entry);
+      g_conn_entry = NULL;
+    }
+
+  return err_code;
+}
+
 /*
  * cubrid_log_connect_server () -
  *   return:
@@ -314,50 +390,40 @@ cubrid_log_set_extraction_user (char **user_arr, int arr_size)
 int
 cubrid_log_connect_server (char *host, int port, char *dbname)
 {
-  if (g_stage != CLOG_STAGE_CONFIGURATION)
+  int err_code;
+
+  if (g_stage != CUBRID_LOG_STAGE_CONFIGURATION)
     {
-      return CUBRID_LOG_INVALID_FUNC_CALL_STAGE;
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_FUNC_CALL_STAGE);
     }
 
   if (host == NULL)
     {
-      return CUBRID_LOG_INVALID_HOST;
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_HOST);
     }
 
-  if (port > USHRT_MAX)
+  if (port < 0 || port > USHRT_MAX)
     {
-      return CUBRID_LOG_INVALID_PORT;
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_PORT);
     }
 
   if (dbname == NULL)
     {
-      return CUBRID_LOG_INVALID_DBNAME;
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_DBNAME);
     }
 
-  css_Service_id = port;
-
-  // The system parameter 'tcp_connection_timeout' needs to set because it is used in the css_connect_to_cubrid_server() function call tree.
-  // However, I am not sure if calling this function is the right choice. I think I have to use lower-level functions.
-  // So, I will change this process which is connecting to the server after analysis.
-  g_conn_entry = css_connect_to_cubrid_server (host, dbname);
-  if (g_conn_entry == NULL)
+  if (cubrid_log_connect_server_internal (host, port, dbname) != CUBRID_LOG_SUCCESS)
     {
-      goto cubrid_log_error;
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT);
     }
 
-  g_stage = CLOG_STAGE_PREPARATION;
+  g_stage = CUBRID_LOG_STAGE_PREPARATION;
 
   return CUBRID_LOG_SUCCESS;
 
 cubrid_log_error:
 
-  if (g_conn_entry != NULL)
-    {
-      css_free_conn (g_conn_entry);
-      g_conn_entry = NULL;
-    }
-
-  return CUBRID_LOG_FAILED_CONNECT;
+  return err_code;
 }
 
 /*
@@ -369,7 +435,7 @@ cubrid_log_error:
 int
 cubrid_log_find_lsa (time_t timestamp, uint64_t * lsa)
 {
-  if (g_stage != CLOG_STAGE_PREPARATION)
+  if (g_stage != CUBRID_LOG_STAGE_PREPARATION)
     {
       return CUBRID_LOG_INVALID_FUNC_CALL_STAGE;
     }
@@ -392,7 +458,7 @@ cubrid_log_find_lsa (time_t timestamp, uint64_t * lsa)
 int
 cubrid_log_extract (uint64_t * lsa, CUBRID_LOG_ITEM ** log_item_list, int *list_size)
 {
-  if (g_stage != CLOG_STAGE_PREPARATION && g_stage != CLOG_STAGE_EXTRACTION)
+  if (g_stage != CUBRID_LOG_STAGE_PREPARATION && g_stage != CUBRID_LOG_STAGE_EXTRACTION)
     {
       return CUBRID_LOG_INVALID_FUNC_CALL_STAGE;
     }
@@ -402,7 +468,7 @@ cubrid_log_extract (uint64_t * lsa, CUBRID_LOG_ITEM ** log_item_list, int *list_
       return CUBRID_LOG_INVALID_OUT_PARAM;
     }
 
-  g_stage = CLOG_STAGE_EXTRACTION;
+  g_stage = CUBRID_LOG_STAGE_EXTRACTION;
 
   return CUBRID_LOG_SUCCESS;
 }
@@ -415,7 +481,7 @@ cubrid_log_extract (uint64_t * lsa, CUBRID_LOG_ITEM ** log_item_list, int *list_
 int
 cubrid_log_clear_log_item (CUBRID_LOG_ITEM * log_item_list)
 {
-  if (g_stage != CLOG_STAGE_EXTRACTION)
+  if (g_stage != CUBRID_LOG_STAGE_EXTRACTION)
     {
       return CUBRID_LOG_INVALID_FUNC_CALL_STAGE;
     }
@@ -437,7 +503,7 @@ cubrid_log_finalize (void)
 {
   int i = 0;
 
-  if (g_stage != CLOG_STAGE_PREPARATION && g_stage != CLOG_STAGE_EXTRACTION)
+  if (g_stage != CUBRID_LOG_STAGE_PREPARATION && g_stage != CUBRID_LOG_STAGE_EXTRACTION)
     {
       return CUBRID_LOG_INVALID_FUNC_CALL_STAGE;
     }
@@ -475,7 +541,7 @@ cubrid_log_finalize (void)
   g_trace_log_level = 0;
   g_trace_log_filesize = 10;
 
-  g_stage = CLOG_STAGE_CONFIGURATION;
+  g_stage = CUBRID_LOG_STAGE_CONFIGURATION;
 
   return CUBRID_LOG_SUCCESS;
 }
