@@ -88,20 +88,20 @@ extern int cursor_copy_list_id (QFILE_LIST_ID * dest_list_id, const QFILE_LIST_I
           QFILE_LIST_ID *list_id_p = (QFILE_LIST_ID *) list_id; \
           if ((list_id_p)) { \
             if (list_id_p->last_pgptr) { \
-	      free_and_init (list_id_p->last_pgptr); \
-	    } \
+              free_and_init (list_id_p->last_pgptr); \
+            } \
             if (list_id_p->tpl_descr.f_valp) { \
-	      free_and_init (list_id_p->tpl_descr.f_valp); \
-	    } \
-	    if (list_id_p->tpl_descr.clear_f_val_at_clone_decache) { \
+              free_and_init (list_id_p->tpl_descr.f_valp); \
+            } \
+            if (list_id_p->tpl_descr.clear_f_val_at_clone_decache) { \
               free_and_init (list_id_p->tpl_descr.clear_f_val_at_clone_decache); \
-	    } \
-	    if (list_id_p->sort_list) { \
+            } \
+            if (list_id_p->sort_list) { \
               free_and_init (list_id_p->sort_list); \
-	    } \
-	    if (list_id_p->type_list.domp) { \
+            } \
+            if (list_id_p->type_list.domp) { \
               free_and_init (list_id_p->type_list.domp); \
-	    } \
+            } \
           } \
         } while (0)
 
