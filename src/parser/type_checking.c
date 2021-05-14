@@ -22983,7 +22983,9 @@ pt_common_collation (PT_COLL_INFER * arg1_coll_infer, PT_COLL_INFER * arg2_coll_
     }
 
   if (arg1_coll_infer->coll_id != arg2_coll_infer->coll_id
-      && arg1_coll_infer->coerc_level == arg2_coll_infer->coerc_level
+      && (arg1_coll_infer->coerc_level == PT_COLLATION_NOT_COERC
+         || arg2_coll_infer->coerc_level == PT_COLLATION_NOT_COERC
+         || arg1_coll_infer->coerc_level == arg2_coll_infer->coerc_level)
       && arg1_coll_infer->can_force_cs == arg2_coll_infer->can_force_cs)
     {
       goto error;
