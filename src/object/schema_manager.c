@@ -15651,7 +15651,7 @@ sm_collect_truncatable_classes (MOP class_mop, std::unordered_set < OID > &trun_
   if (partition_type == DB_PARTITION_CLASS)
     {
       /*
-       * No need to be added:
+       * No need to be added to trun_classes:
        *  Partitioning classes will be truncated while truncating partitioned class of them.
        * No need to check FK for cascaing:
        *  It's enough to check the PK of the partitioned class for cascading.
