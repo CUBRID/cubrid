@@ -37,15 +37,17 @@ static void assert_page_server_type ();
 page_server::~page_server ()
 {
   assert (m_replicator == nullptr);
-  assert (m_ats == nullptr || !m_ats->is_connected ());
+  assert (m_ats == nullptr);
 }
 
 void page_server::set_active_tran_server_connection (cubcomm::channel &&chn)
 {
   assert_page_server_type ();
 
+  chn.set_channel_name ("ATS_PS_comm");
+
   assert (m_ats == nullptr);
-  m_ats.reset (new ats_t ("ATS_PS_comm"));
+  m_ats.reset (new ats_t ());
 
   m_ats->init (std::move (chn));
 

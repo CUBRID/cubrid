@@ -17,7 +17,8 @@ namespace cubcomm // declarations
       using incoming_request_handler_t = typename request_client_server_t::server_request_handler;
 
     public:
-      request_sync_client_server (std::string a_channel_name);
+      request_sync_client_server () = default;
+      ~request_sync_client_server ();
       request_sync_client_server (const request_sync_client_server &) = delete;
       request_sync_client_server (request_sync_client_server &&) = delete;
 
@@ -25,7 +26,7 @@ namespace cubcomm // declarations
       request_sync_client_server &operator = (request_sync_client_server &&) = delete;
 
     public:
-      /* initialization functions should be called in the order:
+      /* initialization functions should be called in mandatory order:
        *   - init
        *   - register_request_handler [x many]
        *   - connect
@@ -35,6 +36,8 @@ namespace cubcomm // declarations
 				     const incoming_request_handler_t &a_incoming_request_handler);
       void connect ();
 
+      /* disconnect function expected to be called before dtor is hit
+       */
       void disconnect ();
 
       bool is_connected () const;
@@ -47,8 +50,6 @@ namespace cubcomm // declarations
       using request_queue_autosend_t = cubcomm::request_queue_autosend<request_sync_send_queue_t>;
 
     private:
-      const std::string m_channel_name;
-
       std::unique_ptr<request_client_server_t> m_conn;
       std::unique_ptr<request_sync_send_queue_t> m_queue;
       std::unique_ptr<request_queue_autosend_t> m_queue_autosend;
@@ -59,10 +60,9 @@ namespace cubcomm // declarations
 namespace cubcomm // definitions
 {
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
-  request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::request_sync_client_server (
-	  std::string a_channel_name)
-    : m_channel_name { a_channel_name }
+  request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::~request_sync_client_server ()
   {
+    assert (false == is_connected ());
   }
 
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
@@ -73,6 +73,8 @@ namespace cubcomm // definitions
     assert (m_conn == nullptr);
     assert (m_queue == nullptr);
     assert (m_queue_autosend == nullptr);
+
+    // TODO: set_channel_name here, or outside (as is now)?
 
     m_conn.reset (new request_client_server_t (std::move (a_channel)));
     m_queue.reset (new request_sync_send_queue_t (*m_conn));

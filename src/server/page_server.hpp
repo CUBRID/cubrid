@@ -21,8 +21,6 @@
 
 #include "ats_ps_request.hpp"
 #include "log_page_fetcher.hpp"
-#include "request_client_server.hpp"
-#include "request_sync_send_queue.hpp"
 #include "request_sync_client_server.hpp"
 
 #include <memory>
