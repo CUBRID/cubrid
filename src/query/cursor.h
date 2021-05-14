@@ -107,8 +107,8 @@ extern int cursor_copy_list_id (QFILE_LIST_ID * dest_list_id, const QFILE_LIST_I
 
 #define cursor_free_self_list_id(list_id) \
         do { \
-	  cursor_free_list_id (list_id); \
-	  free_and_init (list_id); \
+          cursor_free_list_id (list_id); \
+          free_and_init (list_id); \
         } while (0)
 
 extern int cursor_copy_vobj_to_dbvalue (struct or_buf *buf, DB_VALUE * db_value);
