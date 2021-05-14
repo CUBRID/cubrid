@@ -9866,6 +9866,10 @@ log_check_ha_delay_info_execute (cubthread::entry &thread_ref)
       log_append_ha_server_state (&thread_ref, server_state);
 
       csect_exit (&thread_ref, CSECT_HA_SERVER_STATE);
+
+      /* useful when the server is in a relative idle state
+       */
+      log_wakeup_log_flush_daemon();
     }
   else
     {
