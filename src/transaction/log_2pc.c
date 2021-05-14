@@ -1425,82 +1425,6 @@ log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, log_tdes * tde
     }
 }
 
-// *INDENT-OFF*
-void
-log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, log_tdes * tdes, log_reader & log_pgptr_reader)
-{
-  const LOG_REC_2PC_PREPCOMMIT *prepared;	/* A 2PC prepare to commit log record */
-  LK_ACQUIRED_LOCKS acq_locks;	/* List of acquired locks before the system crash */
-  int size;
-
-  log_pgptr_reader.advance_when_does_not_fit (sizeof (*prepared));
-  prepared = log_pgptr_reader.reinterpret_cptr<LOG_REC_2PC_PREPCOMMIT> ();
-
-  tdes->client.set_system_internal_with_user (prepared->user_name);
-
-  tdes->gtrid = prepared->gtrid;
-  tdes->gtrinfo.info_length = prepared->gtrinfo_length;
-
-  log_pgptr_reader.add_align (sizeof (*prepared));
-
-  if (tdes->gtrinfo.info_length > 0)
-    {
-      tdes->gtrinfo.info_data = malloc (tdes->gtrinfo.info_length);
-      if (tdes->gtrinfo.info_data == NULL)
-	{
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_read_prepare");
-
-	  return;
-	}
-
-      /* Read the global transaction user information data */
-      log_pgptr_reader.align ();
-
-      log_pgptr_reader.copy_from_log ((char *) tdes->gtrinfo.info_data, tdes->gtrinfo.info_length);
-    }
-
-  /* If the update-type locks that the transaction had obtained before the crash needs to be aqcuired, read them from
-   * the log record and obtain the locks at this time. */
-
-  if (acquire_locks != false)
-    {
-      /* Read in the list of locks to acquire */
-
-      log_pgptr_reader.align ();
-
-      acq_locks.nobj_locks = prepared->num_object_locks;
-      acq_locks.obj = NULL;
-
-      if (acq_locks.nobj_locks > 0)
-	{
-	  /* obtain the list of locks to acquire on objects */
-	  size = acq_locks.nobj_locks * sizeof (LK_ACQOBJ_LOCK);
-	  acq_locks.obj = (LK_ACQOBJ_LOCK *) malloc (size);
-	  if (acq_locks.obj == NULL)
-	    {
-	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_read_prepare");
-	      return;
-	    }
-
-	  log_pgptr_reader.copy_from_log ((char *) acq_locks.obj, size);
-	  log_pgptr_reader.align ();
-	}
-
-      if (acq_locks.nobj_locks > 0)
-	{
-	  /* Acquire the locks */
-	  if (lock_reacquire_crash_locks (thread_p, &acq_locks, tdes->tran_index) != LK_GRANTED)
-	    {
-	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_read_prepare");
-	      return;
-	    }
-
-	  free_and_init (acq_locks.obj);
-	}
-    }
-}
-// *INDENT-ON*
-
 /*
  * log_2pc_dump_gtrinfo - DUMP GLOBAL TRANSACTION USER INFORMATION
  *
@@ -2435,28 +2359,28 @@ log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, log_tdes * tde
  * NOTE:Is this the coordinator of a distributed transaction ? If it
  *              is, coordinator information is initialized by this function.
  */
-  bool log_2pc_is_tran_distributed (log_tdes * tdes)
-  {
-    int num_particps = 0;	/* Number of participating sites */
-    int particp_id_length;	/* Length of a particp_id */
-    void *block_particps_ids;	/* A block of participant identifiers */
+bool log_2pc_is_tran_distributed (log_tdes * tdes)
+{
+  int num_particps = 0;	/* Number of participating sites */
+  int particp_id_length;	/* Length of a particp_id */
+  void *block_particps_ids;	/* A block of participant identifiers */
 
-    if (tdes->coord != NULL)
-      {
-	return true;
-      }
+  if (tdes->coord != NULL)
+    {
+      return true;
+    }
 
-    num_particps = log_2pc_get_num_participants (&particp_id_length, &block_particps_ids);
-    if (num_particps > 0)
-      {
-	/* This is a distributed transaction and our site is the coordinator */
+  num_particps = log_2pc_get_num_participants (&particp_id_length, &block_particps_ids);
+  if (num_particps > 0)
+    {
+      /* This is a distributed transaction and our site is the coordinator */
 
-	/* If the coordinator info has not been recorded in the tdes, do it now */
-	(void) log_2pc_alloc_coord_info (tdes, num_particps, particp_id_length, block_particps_ids);
-      }
+      /* If the coordinator info has not been recorded in the tdes, do it now */
+      (void) log_2pc_alloc_coord_info (tdes, num_particps, particp_id_length, block_particps_ids);
+    }
 
-    return (tdes->coord != NULL);
-  }
+  return (tdes->coord != NULL);
+}
 
 /*
  * log_2pc_clear_and_is_tran_distributed - FIND IF TRANSACTION IS DISTRIBUTED AFTER
@@ -2473,8 +2397,84 @@ log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, log_tdes * tde
  *              we have all participants. This is needed since CUBRID does
  *              not inform me of new participants.
  */
-  bool log_2pc_clear_and_is_tran_distributed (log_tdes * tdes)
-  {
-    log_2pc_free_coord_info (tdes);
-    return log_2pc_is_tran_distributed (tdes);
-  }
+bool log_2pc_clear_and_is_tran_distributed (log_tdes * tdes)
+{
+  log_2pc_free_coord_info (tdes);
+  return log_2pc_is_tran_distributed (tdes);
+}
+
+// *INDENT-OFF*
+void
+log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, log_tdes * tdes, log_reader & log_pgptr_reader)
+{
+  const LOG_REC_2PC_PREPCOMMIT *prepared;	/* A 2PC prepare to commit log record */
+  LK_ACQUIRED_LOCKS acq_locks;	/* List of acquired locks before the system crash */
+  int size;
+
+  log_pgptr_reader.advance_when_does_not_fit (sizeof (*prepared));
+  prepared = log_pgptr_reader.reinterpret_cptr<LOG_REC_2PC_PREPCOMMIT> ();
+
+  tdes->client.set_system_internal_with_user (prepared->user_name);
+
+  tdes->gtrid = prepared->gtrid;
+  tdes->gtrinfo.info_length = prepared->gtrinfo_length;
+
+  log_pgptr_reader.add_align (sizeof (*prepared));
+
+  if (tdes->gtrinfo.info_length > 0)
+    {
+      tdes->gtrinfo.info_data = malloc (tdes->gtrinfo.info_length);
+      if (tdes->gtrinfo.info_data == NULL)
+	{
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_read_prepare");
+
+	  return;
+	}
+
+      /* Read the global transaction user information data */
+      log_pgptr_reader.align ();
+
+      log_pgptr_reader.copy_from_log ((char *) tdes->gtrinfo.info_data, tdes->gtrinfo.info_length);
+    }
+
+  /* If the update-type locks that the transaction had obtained before the crash needs to be aqcuired, read them from
+   * the log record and obtain the locks at this time. */
+
+  if (acquire_locks != false)
+    {
+      /* Read in the list of locks to acquire */
+
+      log_pgptr_reader.align ();
+
+      acq_locks.nobj_locks = prepared->num_object_locks;
+      acq_locks.obj = NULL;
+
+      if (acq_locks.nobj_locks > 0)
+	{
+	  /* obtain the list of locks to acquire on objects */
+	  size = acq_locks.nobj_locks * sizeof (LK_ACQOBJ_LOCK);
+	  acq_locks.obj = (LK_ACQOBJ_LOCK *) malloc (size);
+	  if (acq_locks.obj == NULL)
+	    {
+	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_read_prepare");
+	      return;
+	    }
+
+	  log_pgptr_reader.copy_from_log ((char *) acq_locks.obj, size);
+	  log_pgptr_reader.align ();
+	}
+
+      if (acq_locks.nobj_locks > 0)
+	{
+	  /* Acquire the locks */
+	  if (lock_reacquire_crash_locks (thread_p, &acq_locks, tdes->tran_index) != LK_GRANTED)
+	    {
+	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_read_prepare");
+	      return;
+	    }
+
+	  free_and_init (acq_locks.obj);
+	}
+    }
+}
+// *INDENT-ON*
