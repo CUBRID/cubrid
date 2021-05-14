@@ -45,9 +45,10 @@ namespace cublog
    */
   class minimum_log_lsa_monitor final
   {
+    private:
       static constexpr int ARRAY_LENGTH = 4;
 
-      using log_lsas_t = std::array<log_lsa, ARRAY_LENGTH>;
+      using log_lsa_array_t = std::array<log_lsa, ARRAY_LENGTH>;
 
       enum ARRAY_INDEX
       {
@@ -84,10 +85,12 @@ namespace cublog
 
     private:
       void do_set_at (ARRAY_INDEX a_idx, const log_lsa &a_new_lsa);
+      template <typename LOCKER>
+      log_lsa do_locked_get (const LOCKER &) const;
 
     private:
       mutable std::mutex m_values_mtx;
-      log_lsas_t m_values;
+      log_lsa_array_t m_values;
 
       std::condition_variable m_wait_for_target_value_cv;
   };

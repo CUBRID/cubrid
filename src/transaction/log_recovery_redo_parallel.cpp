@@ -84,10 +84,9 @@ namespace cublog
     do_set_at (OUTER_IDX, a_lsa);
   }
 
-  log_lsa
-  minimum_log_lsa_monitor::get () const
+  template <typename LOCKER>
+  log_lsa minimum_log_lsa_monitor::do_locked_get (const LOCKER &) const
   {
-    std::lock_guard<std::mutex> lockg { m_values_mtx };
     const log_lsa new_minimum_log_lsa = std::min (
     {
       m_values[PRODUCE_IDX],
@@ -96,6 +95,13 @@ namespace cublog
       m_values[OUTER_IDX],
     });
     return new_minimum_log_lsa;
+  }
+
+  log_lsa
+  minimum_log_lsa_monitor::get () const
+  {
+    std::lock_guard<std::mutex> lockg { m_values_mtx };
+    return do_locked_get (lockg);
   }
 
   void
@@ -127,19 +133,26 @@ namespace cublog
     // - no minimum lsa can actually be calculated, return immediately with the value
     //   and client should be able to decide what to do
     {
-      const log_lsa minimum_lsa = get ();
-      if (minimum_lsa == MAX_LSA || minimum_lsa > a_target_lsa)
+      const log_lsa current_minimum_lsa = get ();
+      if (current_minimum_lsa == MAX_LSA)
 	{
-	  return minimum_lsa;
+	  // TODO: corner case that can appear is no entries have ever been processed
+	  // the value is actually invalid but the condition would pass 'stricto sensu'
+	  // what to do in this case?
+	  // assert (false);
+	}
+      if (current_minimum_lsa > a_target_lsa)
+	{
+	  return current_minimum_lsa;
 	}
     }
 
     // otherwise, wait
     std::unique_lock<std::mutex> ulock { m_values_mtx };
     log_lsa outer_res;
-    m_wait_for_target_value_cv.wait (ulock, [this, &a_target_lsa, &outer_res] ()
+    m_wait_for_target_value_cv.wait (ulock, [this, &ulock, &a_target_lsa, &outer_res] ()
     {
-      const log_lsa minimum_lsa = get ();
+      const log_lsa minimum_lsa = do_locked_get (ulock); // get ();
       assert (minimum_lsa != MAX_LSA);
       if (minimum_lsa > a_target_lsa)
 	{
@@ -226,8 +239,8 @@ namespace cublog
 	// entry is found
 
 	std::lock_guard<std::mutex> in_progress_lockg (m_in_progress_mutex);
-	ux_redo_job_base job_to_consume
-	  = do_locked_find_job_to_consume_and_mark_in_progress (consume_lockg, in_progress_lockg);
+	ux_redo_job_base job_to_consume =
+		do_locked_find_job_to_consume_and_mark_in_progress (consume_lockg, in_progress_lockg);
 
 	// specifically leave the 'out_adding_finished' on false as set at the beginning:
 	//  - even if adding has been finished, the produce queue might still have jobs to be consumed
@@ -276,14 +289,11 @@ namespace cublog
 	  notify_queues_empty = m_queues_empty;
 
 	  // lsa's are ever incresing
-	  const log_lsa produce_minimum_log_lsa = m_produce_queue->empty ()
-						  ? MAX_LSA
-						  : (*m_produce_queue->begin ())->get_log_lsa ();
-	  const log_lsa consume_minimum_log_lsa = m_consume_queue->empty ()
-						  ? MAX_LSA
-						  : (* m_consume_queue->begin ())->get_log_lsa ();
-	  m_minimum_log_lsa.set_for_produce_and_consume (
-		  produce_minimum_log_lsa, consume_minimum_log_lsa);
+	  const log_lsa produce_minimum_log_lsa =
+		  m_produce_queue->empty () ? MAX_LSA : (*m_produce_queue->begin ())->get_log_lsa ();
+	  const log_lsa consume_minimum_log_lsa =
+		  m_consume_queue->empty () ? MAX_LSA : (* m_consume_queue->begin ())->get_log_lsa ();
+	  m_minimum_log_lsa.set_for_produce_and_consume (produce_minimum_log_lsa, consume_minimum_log_lsa);
 	}
 	if (notify_queues_empty)
 	  {
@@ -307,8 +317,8 @@ namespace cublog
 
 	    do_locked_mark_job_in_progress (a_in_progress_lockg, job);
 
-	    const log_lsa consume_minimum_log_lsa
-	      = m_consume_queue->empty () ? MAX_LSA : (* m_consume_queue->begin ())->get_log_lsa ();
+	    const log_lsa consume_minimum_log_lsa =
+		    m_consume_queue->empty () ? MAX_LSA : (* m_consume_queue->begin ())->get_log_lsa ();
 	    // mark transition in one go for consistency
 	    // if:
 	    //  - first the consume is being changed (or even cleared)

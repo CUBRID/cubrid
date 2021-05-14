@@ -196,62 +196,59 @@ TEST_CASE ("log recovery parallel test: stress test", "[long]")
     }
 }
 
-TEST_CASE ("log recovery parallel test: idle status", "[ci][dbg]")
+TEST_CASE ("log recovery parallel test: idle status", "[ci]")
 {
   srand (time (nullptr));
   initialize_thread_infrastructure ();
 
-  for (int i = 0; i < 50; ++i)
+  cublog::minimum_log_lsa_monitor minimum_log_lsa;
+  cublog::redo_parallel log_redo_parallel (std::thread::hardware_concurrency (), minimum_log_lsa);
+
+  REQUIRE (log_redo_parallel.is_idle ());
+  REQUIRE (minimum_log_lsa.get () == MAX_LSA);
+
+  const ut_database_config database_config =
+  {
+    42, // max_volume_count_per_database
+    42, // max_page_count_per_volume
+    .2, // max_duration_in_millis
+  };
+  ux_ut_database db_online { new ut_database (database_config) };
+  ux_ut_database db_recovery { new ut_database (database_config) };
+
+  ut_database_values_generator global_values{ database_config };
+
+  log_lsa single_supplied_lsa;
+  for (bool at_least_one_page_update = false; !at_least_one_page_update; )
     {
-      cublog::minimum_log_lsa_monitor minimum_log_lsa;
-      cublog::redo_parallel log_redo_parallel (std::thread::hardware_concurrency (), minimum_log_lsa);
+      ux_ut_redo_job_impl job = db_online->generate_changes (*db_recovery, global_values);
+      single_supplied_lsa = job->get_log_lsa ();
 
-      REQUIRE (log_redo_parallel.is_idle ());
-      REQUIRE (minimum_log_lsa.get () == MAX_LSA);
-
-      const ut_database_config database_config =
-      {
-	42, // max_volume_count_per_database
-	42, // max_page_count_per_volume
-	.2, // max_duration_in_millis
-      };
-      ux_ut_database db_online { new ut_database (database_config) };
-      ux_ut_database db_recovery { new ut_database (database_config) };
-
-      ut_database_values_generator global_values{ database_config };
-
-      log_lsa single_supplied_lsa;
-      for (bool at_least_one_page_update = false; !at_least_one_page_update; )
+      if (job->is_volume_creation () || job->is_page_creation ())
 	{
-	  ux_ut_redo_job_impl job = db_online->generate_changes (*db_recovery, global_values);
-	  single_supplied_lsa = job->get_log_lsa ();
-
-	  if (job->is_volume_creation () || job->is_page_creation ())
-	    {
-	      // jobs not tied to a non-null vpid, are executed in-synch
-	      db_recovery->apply_changes (std::move (job));
-	    }
-	  else
-	    {
-	      log_redo_parallel.add (std::move (job));
-	      at_least_one_page_update = true;
-	    }
+	  // jobs not tied to a non-null vpid, are executed in-synch
+	  db_recovery->apply_changes (std::move (job));
 	}
-
-      // sleep here more than 'max_duration_in_millis' to invalidate test
-      REQUIRE_FALSE (log_redo_parallel.is_idle ());
-      REQUIRE_FALSE (minimum_log_lsa.get ().is_null ());
-      REQUIRE (minimum_log_lsa.get () == single_supplied_lsa);
-
-      log_redo_parallel.wait_for_idle ();
-      REQUIRE (log_redo_parallel.is_idle ());
-      REQUIRE_FALSE (minimum_log_lsa.get ().is_null ());
-
-      log_redo_parallel.set_adding_finished ();
-      log_redo_parallel.wait_for_termination_and_stop_execution ();
-
-      db_online->require_equal (*db_recovery);
+      else
+	{
+	  log_redo_parallel.add (std::move (job));
+	  at_least_one_page_update = true;
+	}
     }
+
+  // sleep here more than 'max_duration_in_millis' to invalidate test
+  REQUIRE_FALSE (log_redo_parallel.is_idle ());
+  REQUIRE_FALSE (minimum_log_lsa.get ().is_null ());
+  REQUIRE (minimum_log_lsa.get () == single_supplied_lsa);
+
+  log_redo_parallel.wait_for_idle ();
+  REQUIRE (log_redo_parallel.is_idle ());
+  REQUIRE_FALSE (minimum_log_lsa.get ().is_null ());
+
+  log_redo_parallel.set_adding_finished ();
+  log_redo_parallel.wait_for_termination_and_stop_execution ();
+
+  db_online->require_equal (*db_recovery);
 }
 
 TEST_CASE ("minimum log lsa: ", "[ci]")
@@ -283,8 +280,7 @@ TEST_CASE ("minimum log lsa: ", "[ci]")
   log_lsa_vec.push_back (values_generator.increment_and_get_lsa_log ());
   log_lsa_vec.push_back (values_generator.increment_and_get_lsa_log ());
 
-  // 1. idle test will immediately finish
-  //
+  SECTION ("1. idle test; will immediately finish")
   {
     std::thread observing_thread ([&] ()
     {
@@ -295,8 +291,7 @@ TEST_CASE ("minimum log lsa: ", "[ci]")
     observing_thread.join ();
   }
 
-  // 2. produce & consume lsa's; leave others untouched
-  //
+  SECTION ("2. produce & consume lsa's; leave others untouched")
   {
     // push one value such that we can launch a waiting thread
     // that will not return immediately

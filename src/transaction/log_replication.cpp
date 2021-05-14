@@ -298,27 +298,7 @@ namespace cublog
       }
     else
       {
-	// async, check up-front
-	if (m_parallel_replication_redo->is_idle ())
-	  {
-	    const log_lsa current_min_lsa = m_minimum_log_lsa->get ();
-	    if (current_min_lsa == MAX_LSA)
-	      {
-		// TODO: corner case that can appear is no entries have ever been processed
-		// the value is actually invalid but the condition would pass 'stricto sensu'
-		// what to do in this case?
-		assert (false);
-	      }
-	    else
-	      {
-		if (current_min_lsa > a_target_lsa)
-		  {
-		    return;
-		  }
-	      }
-	  }
-
-	// if not, wait
+	// async
 	m_minimum_log_lsa->wait_past_target_lsa (a_target_lsa);
       }
   }
