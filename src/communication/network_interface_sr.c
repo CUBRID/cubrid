@@ -10446,3 +10446,40 @@ ssession_stop_attached_threads (void *session)
 {
   session_stop_attached_threads (session);
 }
+
+/*
+ * slog_reader_set_configuration -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+slog_reader_set_configuration (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply), *ptr;
+
+  int max_log_item;
+  int extraction_timeout;
+  int all_in_cond;
+  int extraction_user_count;
+  int extraction_table_count;
+
+  ptr = or_unpack_int (request, &max_log_item);
+  ptr = or_unpack_int (ptr, &extraction_timeout);
+  ptr = or_unpack_int (ptr, &all_in_cond);
+  ptr = or_unpack_int (ptr, &extraction_user_count);
+  ptr = or_unpack_int (ptr, &extraction_table_count);
+
+  _er_log_debug (ARG_FILE_LINE,
+		 "max_log_item = %d, extraction_timeout = %d, all_in_cond = %d, extraction_user_count = %d, extraction_table_count = %d",
+		 max_log_item, extraction_timeout, all_in_cond, extraction_user_count, extraction_table_count);
+
+  (void) or_pack_int (reply, NO_ERROR);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}

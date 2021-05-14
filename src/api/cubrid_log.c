@@ -30,6 +30,8 @@
 #include "connection_cl.h"
 #include "connection_list_cl.h"
 #include "cubrid_log.h"
+#include "network.h"
+#include "object_representation.h"
 
 #define CUBRID_LOG_ERROR_HANDLING(v) (err_code) = (v); goto cubrid_log_error
 
@@ -92,10 +94,10 @@ int g_max_log_item = 512;	/* min/max: 1/1024 */
 bool g_all_in_cond = false;
 
 uint64_t *g_extraction_table;
-int g_extraction_table_size;
+int g_extraction_table_count = 0;
 
 char **g_extraction_user;
-int g_extraction_user_size;
+int g_extraction_user_count = 0;
 
 FILE *g_trace_log;
 char g_trace_log_path[PATH_MAX + 1] = "./";
@@ -264,7 +266,7 @@ cubrid_log_set_extraction_table (uint64_t * classoid_arr, int arr_size)
     }
 
   memcpy (g_extraction_table, classoid_arr, arr_size);
-  g_extraction_table_size = arr_size;
+  g_extraction_table_count = arr_size;
 
   return CUBRID_LOG_SUCCESS;
 }
@@ -301,7 +303,7 @@ cubrid_log_set_extraction_user (char **user_arr, int arr_size)
       g_extraction_user[i] = strdup (user_arr[i]);
     }
 
-  g_extraction_user_size = arr_size;
+  g_extraction_user_count = arr_size;
 
   return CUBRID_LOG_SUCCESS;
 }
@@ -309,7 +311,7 @@ cubrid_log_set_extraction_user (char **user_arr, int arr_size)
 static int
 cubrid_log_connect_server_internal (char *host, int port, char *dbname)
 {
-  unsigned short rid;
+  unsigned short rid = 0;
 
   char *recv_data = NULL;
   int recv_data_size;
@@ -380,6 +382,73 @@ cubrid_log_error:
   return err_code;
 }
 
+static int
+cubrid_log_send_configurations (void)
+{
+  unsigned short rid = 0;
+
+  OR_ALIGNED_BUF ((OR_INT_SIZE * 5)) a_request;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *request = OR_ALIGNED_BUF_START (a_request), *ptr;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int request_size = OR_ALIGNED_BUF_SIZE (a_request);
+  int reply_size = OR_ALIGNED_BUF_SIZE (a_reply), reply_code;
+
+  char *recv_data = NULL;
+  int recv_data_size;
+
+  CSS_QUEUE_ENTRY *queue_entry;
+  int err_code;
+
+  ptr = or_pack_int (request, g_max_log_item);
+  ptr = or_pack_int (ptr, g_extraction_timeout);
+  ptr = or_pack_int (ptr, g_all_in_cond);
+  ptr = or_pack_int (ptr, g_extraction_user_count);
+  ptr = or_pack_int (ptr, g_extraction_table_count);
+
+  if (css_send_request_with_data_buffer
+      (g_conn_entry, NET_SERVER_LOG_READER_SET_CONFIGURATION, &rid, request, request_size, reply,
+       reply_size) != NO_ERRORS)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT);
+    }
+
+  if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, g_connection_timeout * 1000) != NO_ERRORS)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT);
+    }
+
+  if (recv_data == NULL || recv_data_size != sizeof (int))
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT);
+    }
+
+  or_unpack_int (recv_data, &reply_code);
+
+  if (reply_code != NO_ERROR)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT);
+    }
+
+  return CUBRID_LOG_SUCCESS;
+
+cubrid_log_error:
+
+  if (recv_data != NULL && recv_data != reply)
+    {
+      free_and_init (recv_data);
+    }
+
+  queue_entry = css_find_queue_entry (g_conn_entry->buffer_queue, rid);
+  if (queue_entry != NULL)
+    {
+      queue_entry->buffer = NULL;
+      css_queue_remove_header_entry_ptr (&g_conn_entry->buffer_queue, queue_entry);
+    }
+
+  return err_code;
+}
+
 /*
  * cubrid_log_connect_server () -
  *   return:
@@ -413,6 +482,11 @@ cubrid_log_connect_server (char *host, int port, char *dbname)
     }
 
   if (cubrid_log_connect_server_internal (host, port, dbname) != CUBRID_LOG_SUCCESS)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT);
+    }
+
+  if (cubrid_log_send_configurations () != CUBRID_LOG_SUCCESS)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT);
     }
@@ -522,11 +596,11 @@ cubrid_log_finalize (void)
       g_extraction_table = NULL;
     }
 
-  g_extraction_table_size = 0;
+  g_extraction_table_count = 0;
 
   if (g_extraction_user != NULL)
     {
-      for (i = 0; i < g_extraction_user_size; i++)
+      for (i = 0; i < g_extraction_user_count; i++)
 	{
 	  free (g_extraction_user[i]);
 	}
@@ -535,7 +609,7 @@ cubrid_log_finalize (void)
       g_extraction_user = NULL;
     }
 
-  g_extraction_user_size = 0;
+  g_extraction_user_count = 0;
 
   snprintf (g_trace_log_path, PATH_MAX + 1, "%s", "./");
   g_trace_log_level = 0;

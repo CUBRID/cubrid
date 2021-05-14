@@ -923,6 +923,9 @@ net_server_init (void)
   req_p->processing_function = svacuum_dump;
   req_p->name = "NET_SERVER_VACUUM_DUMP";
 
+  req_p = &net_Requests[NET_SERVER_LOG_READER_SET_CONFIGURATION];
+  req_p->processing_function = slog_reader_set_configuration;
+  req_p->name = "NET_SERVER_LOG_READER_SET_CONFIGURATION";
 }
 
 #if defined(CUBRID_DEBUG)

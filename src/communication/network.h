@@ -255,6 +255,8 @@ enum net_server_request
   NET_SERVER_LD_UPDATE_STATS,
 
   NET_SERVER_VACUUM_DUMP,
+
+  NET_SERVER_LOG_READER_SET_CONFIGURATION,
   /*
    * This is the last entry. It is also used for the end of an
    * array of statistics information on client/server communication.
