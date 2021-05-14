@@ -400,11 +400,6 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, LOG
       error_code = prior_lsa_gen_record (thread_p, node, rec_type, ulength, udata);
       break;
 
-    case LOG_START_CHKPT:
-    case LOG_END_CHKPT:
-      assert (false);
-      break;
-
     default:
       break;
     }
@@ -1282,11 +1277,6 @@ prior_lsa_gen_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_RECTYPE 
 
     case LOG_2PC_START:
       node->data_header_length = sizeof (LOG_REC_2PC_START);
-      break;
-
-    case LOG_START_CHKPT:
-    case LOG_END_CHKPT:
-      assert (false);
       break;
 
     default:

@@ -95,8 +95,13 @@ enum log_rectype
   LOG_ABORT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS = 23,	/* Obsolete */
 #endif
   LOG_ABORT_TOPOPE = 24,	/* obsolete */
-  LOG_START_CHKPT = 25,		/* obsolete. Start a checkpoint */
-  LOG_END_CHKPT = 26,		/* obsolete. Checkpoint information */
+#if 0
+  /* Previous checkpoint system used to have two log records: one for the start and one for the end. The end log
+   * record also included a snapshot of the transaction table. The checkpoint info is no longer saved in log records.
+   */
+  LOG_START_CHKPT = 25,		/* Start a checkpoint */
+  LOG_END_CHKPT = 26,		/* Checkpoint information */
+#endif
   LOG_SAVEPOINT = 27,		/* A user savepoint record */
   LOG_2PC_PREPARE = 28,		/* A prepare to commit record */
   LOG_2PC_START = 29,		/* Start the 2PC protocol by sending vote request messages to participants of

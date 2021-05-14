@@ -403,12 +403,6 @@ log_to_string (LOG_RECTYPE type)
     case LOG_ABORT:
       return "LOG_ABORT";
 
-    case LOG_START_CHKPT:
-      return "LOG_START_CHKPT";
-
-    case LOG_END_CHKPT:
-      return "LOG_END_CHKPT";
-
     case LOG_SAVEPOINT:
       return "LOG_SAVEPOINT";
 
@@ -7599,8 +7593,6 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 	    case LOG_END_OF_LOG:
 	    case LOG_SMALLER_LOGREC_TYPE:
 	    case LOG_LARGER_LOGREC_TYPE:
-	    case LOG_START_CHKPT:
-	    case LOG_END_CHKPT:
 	    default:
 	      {
 		char msg[LINE_MAX];
@@ -8060,8 +8052,6 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 
 		    case LOG_COMMIT:
 		    case LOG_ABORT:
-		    case LOG_START_CHKPT:
-		    case LOG_END_CHKPT:
 		    case LOG_2PC_ABORT_DECISION:
 		    case LOG_2PC_ABORT_INFORM_PARTICPS:
 		    case LOG_2PC_COMMIT_INFORM_PARTICPS:

@@ -3415,8 +3415,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 	    case LOG_SMALLER_LOGREC_TYPE:
 	    case LOG_LARGER_LOGREC_TYPE:
-	    case LOG_START_CHKPT:
-	    case LOG_END_CHKPT:
 	    default:
 #if defined(CUBRID_DEBUG)
 	      er_log_debug (ARG_FILE_LINE,
@@ -4335,8 +4333,6 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 
 		case LOG_SMALLER_LOGREC_TYPE:
 		case LOG_LARGER_LOGREC_TYPE:
-		case LOG_START_CHKPT:
-		case LOG_END_CHKPT:
 		default:
 #if defined(CUBRID_DEBUG)
 		  er_log_debug (ARG_FILE_LINE,
@@ -5164,8 +5160,6 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
 
     case LOG_SMALLER_LOGREC_TYPE:
     case LOG_LARGER_LOGREC_TYPE:
-    case LOG_START_CHKPT:
-    case LOG_END_CHKPT:
     default:
       break;
     }
