@@ -36,8 +36,8 @@ class perfmon_counter_timer_tracker final
     perfmon_counter_timer_tracker (const perfmon_counter_timer_tracker &) = delete;
     perfmon_counter_timer_tracker (perfmon_counter_timer_tracker &&) = delete;
 
-    perfmon_counter_timer_tracker& operator = (const perfmon_counter_timer_tracker &) = delete;
-    perfmon_counter_timer_tracker& operator = (perfmon_counter_timer_tracker &&) = delete;
+    perfmon_counter_timer_tracker &operator = (const perfmon_counter_timer_tracker &) = delete;
+    perfmon_counter_timer_tracker &operator = (perfmon_counter_timer_tracker &&) = delete;
 
     /* re-init without tracking time
      */
@@ -77,8 +77,8 @@ class perfmon_counter_timer_raii_tracker final
 
     ~perfmon_counter_timer_raii_tracker ();
 
-    perfmon_counter_timer_raii_tracker& operator = (const perfmon_counter_timer_raii_tracker &) = delete;
-    perfmon_counter_timer_raii_tracker& operator = (perfmon_counter_timer_raii_tracker &&) = delete;
+    perfmon_counter_timer_raii_tracker &operator = (const perfmon_counter_timer_raii_tracker &) = delete;
+    perfmon_counter_timer_raii_tracker &operator = (perfmon_counter_timer_raii_tracker &&) = delete;
 
   private:
     perfmon_counter_timer_tracker m_tracker;
