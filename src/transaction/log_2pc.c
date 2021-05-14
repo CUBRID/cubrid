@@ -2005,8 +2005,6 @@ log_2pc_recovery_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE record_ty
     case LOG_ABORT:
     case LOG_SYSOP_START_POSTPONE:
     case LOG_SYSOP_END:
-    case LOG_START_CHKPT:
-    case LOG_END_CHKPT:
     case LOG_DUMMY_CRASH_RECOVERY:
     case LOG_REPLICATION_DATA:
     case LOG_REPLICATION_STATEMENT:

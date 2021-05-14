@@ -6184,9 +6184,6 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
       LSA_COPY (final, &lrec->forw_lsa);
       return ER_INTERRUPTED;
 
-    case LOG_END_CHKPT:
-      break;
-
     case LOG_DUMMY_HA_SERVER_STATE:
       ha_server_state = la_get_ha_server_state (pg_ptr, final);
       if (ha_server_state == NULL)

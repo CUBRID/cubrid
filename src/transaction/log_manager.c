@@ -6673,7 +6673,6 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type
 
     case LOG_SMALLER_LOGREC_TYPE:
     case LOG_LARGER_LOGREC_TYPE:
-    case LOG_END_CHKPT:
     default:
       fprintf (out_fp, "log_dump: Unknown record type = %d (%s).\n", record_type, log_to_string (record_type));
       LSA_SET_NULL (log_lsa);
