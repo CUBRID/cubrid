@@ -82,8 +82,33 @@ struct cursor_id
 };
 
 extern int cursor_copy_list_id (QFILE_LIST_ID * dest_list_id, const QFILE_LIST_ID * src_list_id);
-extern void cursor_free_list_id (QFILE_LIST_ID ** list_id, bool self);
-extern void cursor_free_self_list_id (QFILE_LIST_ID ** list_id);
+
+#define cursor_free_list_id(list_id, self) \
+        do { \
+          if ((list_id)) { \
+            if (((QFILE_LIST_ID *) list_id)->last_pgptr) { \
+	      free_and_init (((QFILE_LIST_ID *) list_id)->last_pgptr); \
+	    } \
+            if (((QFILE_LIST_ID *) list_id)->tpl_descr.f_valp) { \
+	      free_and_init (((QFILE_LIST_ID *) list_id)->tpl_descr.f_valp); \
+	    } \
+	    if (((QFILE_LIST_ID *) list_id)->tpl_descr.clear_f_val_at_clone_decache) { \
+              free_and_init (((QFILE_LIST_ID *) list_id)->tpl_descr.clear_f_val_at_clone_decache); \
+	    } \
+	    if (((QFILE_LIST_ID *) list_id)->sort_list) { \
+              free_and_init (((QFILE_LIST_ID *) list_id)->sort_list); \
+	    } \
+	    if (((QFILE_LIST_ID *) list_id)->type_list.domp) { \
+              free_and_init (((QFILE_LIST_ID *) list_id)->type_list.domp); \
+	    } \
+	    if (self) { \
+              free_and_init (list_id); \
+	    } \
+          } \
+        } while (0)
+
+#define cursor_free_self_list_id(list_id) cursor_free_list_id (list_id, true)
+
 extern int cursor_copy_vobj_to_dbvalue (struct or_buf *buf, DB_VALUE * db_value);
 extern int cursor_fetch_page_having_tuple (CURSOR_ID * cursor_id, VPID * vpid, int position, int offset);
 #if defined (WINDOWS) || defined (CUBRID_DEBUG)
