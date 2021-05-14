@@ -85,8 +85,8 @@ namespace cublog
 
     private:
       void do_set_at (ARRAY_INDEX a_idx, const log_lsa &a_new_lsa);
-      template <typename LOCKER>
-      log_lsa do_locked_get (const LOCKER &) const;
+      template <typename T_LOCKER>
+      log_lsa do_locked_get (const T_LOCKER &) const;
 
     private:
       mutable std::mutex m_values_mtx;

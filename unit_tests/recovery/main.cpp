@@ -251,7 +251,7 @@ TEST_CASE ("log recovery parallel test: idle status", "[ci]")
   db_online->require_equal (*db_recovery);
 }
 
-TEST_CASE ("minimum log lsa", "[ci]")
+TEST_CASE ("minimum log lsa", "[ci][dbg]")
 {
   srand (time (nullptr));
 
@@ -269,16 +269,16 @@ TEST_CASE ("minimum log lsa", "[ci]")
 
   // collect some lsa's in a vector
   std::vector<log_lsa> log_lsa_vec;
-  for (int i = 0; i < 10; ++i)
+  for (int i = 0; i < 100; ++i)
     {
       log_lsa_vec.push_back (values_generator.increment_and_get_lsa_log ());
     }
   const log_lsa target_log_lsa = values_generator.increment_and_get_lsa_log ();
-  auto log_lsa_vec_it = log_lsa_vec.cbegin ();
   // push at least 2 more values in the vector such that the target lsa is passed
   // these two values ought to be distributed to the 'for_produce' and 'for_consume' functions
   log_lsa_vec.push_back (values_generator.increment_and_get_lsa_log ());
   log_lsa_vec.push_back (values_generator.increment_and_get_lsa_log ());
+  auto log_lsa_vec_it = log_lsa_vec.cbegin ();
 
   SECTION ("1. idle test; will immediately finish")
   {

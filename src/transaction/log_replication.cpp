@@ -280,16 +280,7 @@ namespace cublog
   {
     if (m_parallel_replication_redo == nullptr)
       {
-	// sync, check up-front
-	{
-	  std::lock_guard<std::mutex> lockg { m_redo_lsa_mutex };
-	  if (m_redo_lsa > a_target_lsa)
-	    {
-	      return;
-	    }
-	}
-
-	// if not, wait
+	// sync
 	std::unique_lock<std::mutex> ulock { m_redo_lsa_mutex };
 	m_redo_lsa_condvar.wait (ulock, [this, a_target_lsa] ()
 	{

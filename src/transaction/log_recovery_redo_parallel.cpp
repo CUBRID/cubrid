@@ -84,8 +84,8 @@ namespace cublog
     do_set_at (OUTER_IDX, a_lsa);
   }
 
-  template <typename LOCKER>
-  log_lsa minimum_log_lsa_monitor::do_locked_get (const LOCKER &) const
+  template <typename T_LOCKER>
+  log_lsa minimum_log_lsa_monitor::do_locked_get (const T_LOCKER &) const
   {
     const log_lsa new_minimum_log_lsa = std::min (
     {
@@ -128,35 +128,21 @@ namespace cublog
   {
     assert (!a_target_lsa.is_null ());
 
-    // check upfront to avoid gratuitously waiting:
-    // - the condition is met already
-    // - no minimum lsa can actually be calculated, return immediately with the value
-    //   and client should be able to decide what to do
+    std::unique_lock<std::mutex> ulock { m_values_mtx };
+    log_lsa outer_res;
+    m_wait_for_target_value_cv.wait (ulock, [this, &ulock, &a_target_lsa, &outer_res] ()
     {
-      const log_lsa current_minimum_lsa = get ();
+      const log_lsa current_minimum_lsa = do_locked_get (ulock);
       if (current_minimum_lsa == MAX_LSA)
 	{
-	  // TODO: corner case that can appear is no entries have ever been processed
+	  // TODO: corner case that can appear if no entries have ever been processed
 	  // the value is actually invalid but the condition would pass 'stricto sensu'
 	  // what to do in this case?
 	  // assert (false);
 	}
       if (current_minimum_lsa > a_target_lsa)
 	{
-	  return current_minimum_lsa;
-	}
-    }
-
-    // otherwise, wait
-    std::unique_lock<std::mutex> ulock { m_values_mtx };
-    log_lsa outer_res;
-    m_wait_for_target_value_cv.wait (ulock, [this, &ulock, &a_target_lsa, &outer_res] ()
-    {
-      const log_lsa minimum_lsa = do_locked_get (ulock); // get ();
-      assert (minimum_lsa != MAX_LSA);
-      if (minimum_lsa > a_target_lsa)
-	{
-	  outer_res = minimum_lsa;
+	  outer_res = current_minimum_lsa;
 	  return true;
 	}
       return false;
