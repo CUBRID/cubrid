@@ -5444,8 +5444,8 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
 	{
 	  PT_NODE *temp = NULL;
 	  int precision = 0, scale = 0;
-	  int units = LANG_SYS_CODESET; /* code set */
-	  int collation_id = LANG_SYS_COLLATION; /* collation_id */
+	  int units = LANG_SYS_CODESET;	/* code set */
+	  int collation_id = LANG_SYS_COLLATION;	/* collation_id */
 	  bool keep_searching = true;
 	  for (temp = arg2->data_type; temp != NULL && keep_searching; temp = temp->next)
 	    {
@@ -22984,8 +22984,8 @@ pt_common_collation (PT_COLL_INFER * arg1_coll_infer, PT_COLL_INFER * arg2_coll_
 
   if (arg1_coll_infer->coll_id != arg2_coll_infer->coll_id
       && (arg1_coll_infer->coerc_level == PT_COLLATION_NOT_COERC
-         || arg2_coll_infer->coerc_level == PT_COLLATION_NOT_COERC
-         || arg1_coll_infer->coerc_level == arg2_coll_infer->coerc_level)
+	  || arg2_coll_infer->coerc_level == PT_COLLATION_NOT_COERC
+	  || arg1_coll_infer->coerc_level == arg2_coll_infer->coerc_level)
       && arg1_coll_infer->can_force_cs == arg2_coll_infer->can_force_cs)
     {
       goto error;
