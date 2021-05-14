@@ -4,7 +4,10 @@
 #include "request_client_server.hpp"
 #include "request_sync_send_queue.hpp"
 
-namespace cubcomm // declarations
+//
+// declarations
+//
+namespace cubcomm
 {
   /* wrapper/helper encapsulating instances of request_client_server, request_sync_send_queue
    * and request_queue_autosend working together
@@ -56,8 +59,10 @@ namespace cubcomm // declarations
   };
 }
 
-
-namespace cubcomm // definitions
+//
+// implementations
+//
+namespace cubcomm
 {
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
   request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::~request_sync_client_server ()
