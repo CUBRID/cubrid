@@ -251,7 +251,7 @@ TEST_CASE ("log recovery parallel test: idle status", "[ci]")
   db_online->require_equal (*db_recovery);
 }
 
-TEST_CASE ("minimum log lsa: ", "[ci]")
+TEST_CASE ("minimum log lsa", "[ci]")
 {
   srand (time (nullptr));
 
