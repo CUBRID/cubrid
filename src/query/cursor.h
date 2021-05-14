@@ -86,7 +86,7 @@ extern int cursor_copy_list_id (QFILE_LIST_ID * dest_list_id, const QFILE_LIST_I
 #define cursor_free_list_id(list_id) \
         do { \
           QFILE_LIST_ID *list_id_p = (QFILE_LIST_ID *) list_id; \
-          if ((list_id_p)) { \
+          if (list_id_p) { \
             if (list_id_p->last_pgptr) { \
               free_and_init (list_id_p->last_pgptr); \
             } \
