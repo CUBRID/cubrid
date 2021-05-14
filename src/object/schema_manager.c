@@ -15808,7 +15808,7 @@ sm_truncate_class_internal (MOP class_mop)
       assert (class_->users);
       for (subs = class_->users; subs; subs = subs->next)
 	{
-	  error = au_fetch_class (subs->op, &subclass, AU_FETCH_READ, AU_SELECT);
+	  error = au_fetch_class (subs->op, &subclass, AU_FETCH_READ, DB_AUTH_ALTER);
 	  if (error != NO_ERROR)
 	    {
 	      goto error_exit;
