@@ -1788,7 +1788,6 @@ pgbuf_fix_debug (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fet
  *   condition(in): Page latch condition.
  */
 
-// TODO: Ilie - use this to read the page.
 #if !defined(NDEBUG)
 PAGE_PTR
 pgbuf_fix_debug (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode, PGBUF_LATCH_MODE request_mode,

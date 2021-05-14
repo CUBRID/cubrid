@@ -114,7 +114,6 @@ void page_server::receive_data_page_fetch (cubpacking::unpacker &upk)
   upk.unpack_string (message);
   std::memcpy (&vpid, message.c_str (), sizeof (vpid));
 
-  // TODO: Ilie
   assert (m_page_fetcher);
   m_page_fetcher->fetch_data_page (vpid, std::bind (&page_server::on_data_page_read_result, this, std::placeholders::_1,
 				   std::placeholders::_2));
@@ -163,7 +162,6 @@ void page_server::on_data_page_read_result (PAGE_PTR page_ptr, int error_code)
       _er_log_debug (ARG_FILE_LINE, "Sending Data Page...");
     }
 
-  // TODO: Ilie - send the data page message.
   std::string message (page_ptr, db_page_size ());
   m_ats_request_queue->push (ps_to_ats_request::SEND_DATA_PAGE, std::move (message));
 }
