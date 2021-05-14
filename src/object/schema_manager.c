@@ -15661,13 +15661,13 @@ sm_collect_truncatable_classes (MOP class_mop, std::unordered_set < OID > &trun_
   /* Find FK-child classes to cascade. */
   for (fk_ref = pk_constraint->fk_info; fk_ref; fk_ref = fk_ref->next)
     {
-      if (trun_classes.find (fk_ref->self_oid) != trun_classes.end ())
-	{
-	  continue;		/* already checked */
-	}
-
       if (fk_ref->delete_action == SM_FOREIGN_KEY_CASCADE)
 	{
+	  if (trun_classes.find (fk_ref->self_oid) != trun_classes.end ())
+	    {
+	      continue;		/* already checked */
+	    }
+
 	  MOP fk_child_mop = ws_mop (&fk_ref->self_oid, NULL);
 	  if (fk_child_mop == NULL)
 	    {
