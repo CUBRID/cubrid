@@ -1349,8 +1349,7 @@ cursor_free (CURSOR_ID * cursor_id_p)
       return;
     }
 
-  QFILE_LIST_ID *list_id_p = &(cursor_id_p->list_id);
-  cursor_free_list_id (list_id_p, false);
+  cursor_free_list_id (&(cursor_id_p->list_id));
 
   if (cursor_id_p->buffer_area != NULL)
     {
