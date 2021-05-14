@@ -69,7 +69,7 @@ struct log_2pc_global_data
   void (*dump_participants) (FILE * fp, int block_length, void *block_particps_id);
   int (*send_prepare) (int gtrid, int num_particps, void *block_particps_ids);
   // *INDENT-OFF*
-  // Indent weirdly puts an additional indentation to send_commit & send_abort delcarations. Probably because of bool.
+  // Indent weirdly puts an additional indentation to send_commit & send_abort declarations. Probably because of bool.
   bool (*send_commit) (int gtrid, int num_particps, int *particp_indices, void *block_particps_ids);
   bool (*send_abort) (int gtrid, int num_particps, int *particp_indices, void *block_particps_ids, int collect);
   // *INDENT-OFF*
@@ -1425,25 +1425,23 @@ log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, log_tdes * tde
     }
 }
 
+// *INDENT-OFF*
 void
 log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, log_tdes * tdes, log_reader & log_pgptr_reader)
 {
-  LOG_REC_2PC_PREPCOMMIT *prepared;	/* A 2PC prepare to commit log record */
+  const LOG_REC_2PC_PREPCOMMIT *prepared;	/* A 2PC prepare to commit log record */
   LK_ACQUIRED_LOCKS acq_locks;	/* List of acquired locks before the system crash */
   int size;
 
   log_pgptr_reader.advance_when_does_not_fit (sizeof (*prepared));
+  prepared = log_pgptr_reader.reinterpret_cptr<LOG_REC_2PC_PREPCOMMIT> ();
 
-  // *INDENT-OFF*
-  prepared = const_cast<LOG_REC_2PC_PREPCOMMIT*> (log_pgptr_reader.reinterpret_cptr<LOG_REC_2PC_PREPCOMMIT> ());
-  // *INDENT-ON*
+  tdes->client.set_system_internal_with_user (prepared->user_name);
 
-    tdes->client.set_system_internal_with_user (prepared->user_name);
+  tdes->gtrid = prepared->gtrid;
+  tdes->gtrinfo.info_length = prepared->gtrinfo_length;
 
-    tdes->gtrid = prepared->gtrid;
-    tdes->gtrinfo.info_length = prepared->gtrinfo_length;
-
-    log_pgptr_reader.add_align (sizeof (*prepared));
+  log_pgptr_reader.add_align (sizeof (*prepared));
 
   if (tdes->gtrinfo.info_length > 0)
     {
@@ -1501,6 +1499,7 @@ log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, log_tdes * tde
 	}
     }
 }
+// *INDENT-ON*
 
 /*
  * log_2pc_dump_gtrinfo - DUMP GLOBAL TRANSACTION USER INFORMATION
@@ -1512,10 +1511,9 @@ log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, log_tdes * tde
  *
  * NOTE:Dump global transaction user information
  */
-void
-log_2pc_dump_gtrinfo (FILE * fp, int length, void *data)
-{
-}
+  void log_2pc_dump_gtrinfo (FILE * fp, int length, void *data)
+  {
+  }
 
 /*
  * log_2pc_dump_acqobj_locks - DUMP THE ACQUIRED OBJECT LOCKS
@@ -1527,15 +1525,14 @@ log_2pc_dump_gtrinfo (FILE * fp, int length, void *data)
  *
  * NOTE: Dump the acquired object lock structure.
  */
-void
-log_2pc_dump_acqobj_locks (FILE * fp, int length, void *data)
-{
-  LK_ACQUIRED_LOCKS acq_locks;
+  void log_2pc_dump_acqobj_locks (FILE * fp, int length, void *data)
+  {
+    LK_ACQUIRED_LOCKS acq_locks;
 
-  acq_locks.nobj_locks = length / sizeof (LK_ACQOBJ_LOCK);
-  acq_locks.obj = (LK_ACQOBJ_LOCK *) data;
-  lock_dump_acquired (fp, &acq_locks);
-}
+    acq_locks.nobj_locks = length / sizeof (LK_ACQOBJ_LOCK);
+    acq_locks.obj = (LK_ACQOBJ_LOCK *) data;
+    lock_dump_acquired (fp, &acq_locks);
+  }
 
 /*
  * log_2pc_append_start - APPEND A VOTING LOG RECORD FOR THE 2PC PROTOCOL
@@ -1549,42 +1546,41 @@ log_2pc_dump_acqobj_locks (FILE * fp, int length, void *data)
  *              transaction is declared as collecting votes. This function is
  *              used by the coordinator site of a distributed transaction.
  */
-static void
-log_2pc_append_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
-{
-  LOG_REC_2PC_START *start_2pc;	/* Start 2PC log record */
-  LOG_PRIOR_NODE *node;
-  LOG_LSA start_lsa;
+  static void log_2pc_append_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+  {
+    LOG_REC_2PC_START *start_2pc;	/* Start 2PC log record */
+    LOG_PRIOR_NODE *node;
+    LOG_LSA start_lsa;
 
-  node =
-    prior_lsa_alloc_and_copy_data (thread_p, LOG_2PC_START, RV_NOT_DEFINED, NULL,
-				   (tdes->coord->particp_id_length * tdes->coord->num_particps),
-				   (char *) tdes->coord->block_particps_ids, 0, NULL);
-  if (node == NULL)
-    {
-      return;
-    }
+    node =
+      prior_lsa_alloc_and_copy_data (thread_p, LOG_2PC_START, RV_NOT_DEFINED, NULL,
+				     (tdes->coord->particp_id_length * tdes->coord->num_particps),
+				     (char *) tdes->coord->block_particps_ids, 0, NULL);
+    if (node == NULL)
+      {
+	return;
+      }
 
-  start_2pc = (LOG_REC_2PC_START *) node->data_header;
+    start_2pc = (LOG_REC_2PC_START *) node->data_header;
 
-  memcpy (start_2pc->user_name, tdes->client.get_db_user (), DB_MAX_USER_LENGTH);
-  start_2pc->gtrid = tdes->gtrid;
-  start_2pc->num_particps = tdes->coord->num_particps;
-  start_2pc->particp_id_length = tdes->coord->particp_id_length;
+    memcpy (start_2pc->user_name, tdes->client.get_db_user (), DB_MAX_USER_LENGTH);
+    start_2pc->gtrid = tdes->gtrid;
+    start_2pc->num_particps = tdes->coord->num_particps;
+    start_2pc->particp_id_length = tdes->coord->particp_id_length;
 
-  start_lsa = prior_lsa_next_record (thread_p, node, tdes);
+    start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
-  /*
-   * END append
-   * We need to flush the log so that we can find the participants of the
-   * 2PC in the event of a crash. This is needed since the participants do
-   * not know about the coordinator or other participants. Participants will
-   * always wait for the coordinators. We do not have a full 2PC in which
-   * participants know about each other and the coordinator.
-   */
-  tdes->state = TRAN_UNACTIVE_2PC_COLLECTING_PARTICIPANT_VOTES;
-  logpb_flush_pages (thread_p, &start_lsa);
-}
+    /*
+     * END append
+     * We need to flush the log so that we can find the participants of the
+     * 2PC in the event of a crash. This is needed since the participants do
+     * not know about the coordinator or other participants. Participants will
+     * always wait for the coordinators. We do not have a full 2PC in which
+     * participants know about each other and the coordinator.
+     */
+    tdes->state = TRAN_UNACTIVE_2PC_COLLECTING_PARTICIPANT_VOTES;
+    logpb_flush_pages (thread_p, &start_lsa);
+  }
 
 /*
  * log_2pc_append_decision - THE DECISION FOR THE DISTRIBUTED TRANSACTION HAS
@@ -1606,44 +1602,43 @@ log_2pc_append_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
  *              appended to the log. The second phase of the 2PC starts after
  *              the function finishes.
  */
-static void
-log_2pc_append_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE decision)
-{
-  LOG_PRIOR_NODE *node;
-  LOG_LSA start_lsa;
+  static void log_2pc_append_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE decision)
+  {
+    LOG_PRIOR_NODE *node;
+    LOG_LSA start_lsa;
 
-  node = prior_lsa_alloc_and_copy_data (thread_p, decision, RV_NOT_DEFINED, NULL, 0, NULL, 0, NULL);
-  if (node == NULL)
-    {
-      return;
-    }
+    node = prior_lsa_alloc_and_copy_data (thread_p, decision, RV_NOT_DEFINED, NULL, 0, NULL, 0, NULL);
+    if (node == NULL)
+      {
+	return;
+      }
 
-  start_lsa = prior_lsa_next_record (thread_p, node, tdes);
+    start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
-  if (decision == LOG_2PC_COMMIT_DECISION)
-    {
-      tdes->state = TRAN_UNACTIVE_2PC_COMMIT_DECISION;
+    if (decision == LOG_2PC_COMMIT_DECISION)
+      {
+	tdes->state = TRAN_UNACTIVE_2PC_COMMIT_DECISION;
 
-      /*
-       * END append
-       * We need to flush the log so that we can find the decision if a
-       * participant needed in the event of a crash. If the decision is not
-       * found in the log, we will assume abort
-       */
-      logpb_flush_pages (thread_p, &start_lsa);
-    }
-  else
-    {
-      tdes->state = TRAN_UNACTIVE_2PC_ABORT_DECISION;
+	/*
+	 * END append
+	 * We need to flush the log so that we can find the decision if a
+	 * participant needed in the event of a crash. If the decision is not
+	 * found in the log, we will assume abort
+	 */
+	logpb_flush_pages (thread_p, &start_lsa);
+      }
+    else
+      {
+	tdes->state = TRAN_UNACTIVE_2PC_ABORT_DECISION;
 
-      /*
-       * END append
-       * We do not need to flush the log since if the decision is not found in
-       * the log, abort is assumed.
-       */
-    }
+	/*
+	 * END append
+	 * We do not need to flush the log since if the decision is not found in
+	 * the log, abort is assumed.
+	 */
+      }
 
-}
+  }
 
 /*
  * log_2pc_alloc_coord_info - ALLOCATE COORDINATOR RELATED INFORMATION
@@ -1658,25 +1653,25 @@ log_2pc_append_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE d
  * NOTE:This function is used to allocate and initialize coordinator
  *              related information about participants.
  */
-log_tdes *
-log_2pc_alloc_coord_info (log_tdes * tdes, int num_particps, int particp_id_length, void *block_particps_ids)
-{
-  /* Initialize the coordinator information */
-  tdes->coord = (LOG_2PC_COORDINATOR *) malloc (sizeof (LOG_2PC_COORDINATOR));
-  if (tdes->coord == NULL)
-    {
-      return NULL;
-    }
-  else
-    {
-      tdes->coord->num_particps = num_particps;
-      tdes->coord->particp_id_length = particp_id_length;
-      tdes->coord->block_particps_ids = block_particps_ids;
-      tdes->coord->ack_received = NULL;
-    }
+  log_tdes *log_2pc_alloc_coord_info (log_tdes * tdes, int num_particps, int particp_id_length,
+				      void *block_particps_ids)
+  {
+    /* Initialize the coordinator information */
+    tdes->coord = (LOG_2PC_COORDINATOR *) malloc (sizeof (LOG_2PC_COORDINATOR));
+    if (tdes->coord == NULL)
+      {
+	return NULL;
+      }
+    else
+      {
+	tdes->coord->num_particps = num_particps;
+	tdes->coord->particp_id_length = particp_id_length;
+	tdes->coord->block_particps_ids = block_particps_ids;
+	tdes->coord->ack_received = NULL;
+      }
 
-  return tdes;
-}
+    return tdes;
+  }
 
 /*
  * log_2pc_free_coord_info -  FREE COORDINATOR RELATED INFORMATION
@@ -1688,24 +1683,23 @@ log_2pc_alloc_coord_info (log_tdes * tdes, int num_particps, int particp_id_leng
  * NOTE:This function is used to free coordinator related information
  *              about participants.
  */
-void
-log_2pc_free_coord_info (log_tdes * tdes)
-{
-  if (tdes->coord != NULL)
-    {
-      if (tdes->coord->ack_received != NULL)
-	{
-	  free_and_init (tdes->coord->ack_received);
-	}
+  void log_2pc_free_coord_info (log_tdes * tdes)
+  {
+    if (tdes->coord != NULL)
+      {
+	if (tdes->coord->ack_received != NULL)
+	  {
+	    free_and_init (tdes->coord->ack_received);
+	  }
 
-      if (tdes->coord->block_particps_ids != NULL)
-	{
-	  free_and_init (tdes->coord->block_particps_ids);
-	}
+	if (tdes->coord->block_particps_ids != NULL)
+	  {
+	    free_and_init (tdes->coord->block_particps_ids);
+	  }
 
-      free_and_init (tdes->coord);
-    }
-}
+	free_and_init (tdes->coord);
+      }
+  }
 
 /*
  * log_2pc_recovery_prepare -
@@ -1718,29 +1712,29 @@ log_2pc_free_coord_info (log_tdes * tdes)
  *
  * Note:
  */
-static void
-log_2pc_recovery_prepare (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
-{
-  /*
-   * This is a particpant of the distributed transaction. We
-   * need to continue looking since this participant may be
-   * a non root coordinator
-   */
+  static void
+    log_2pc_recovery_prepare (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
+  {
+    /*
+     * This is a particpant of the distributed transaction. We
+     * need to continue looking since this participant may be
+     * a non root coordinator
+     */
 
-  /* Get the DATA HEADER */
-  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page_p);
+    /* Get the DATA HEADER */
+    LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page_p);
 
-  /* The transaction was in prepared_to_commit state at the time of crash. So, read the global transaction identifier
-   * and list of locks from the log record, and acquire all of the locks. */
-  if (tdes->state == TRAN_UNACTIVE_2PC_PREPARE)
-    {
-      log_2pc_read_prepare (thread_p, LOG_2PC_OBTAIN_LOCKS, tdes, log_lsa, log_page_p);
-    }
-  else
-    {
-      log_2pc_read_prepare (thread_p, LOG_2PC_DONT_OBTAIN_LOCKS, tdes, log_lsa, log_page_p);
-    }
-}
+    /* The transaction was in prepared_to_commit state at the time of crash. So, read the global transaction identifier
+     * and list of locks from the log record, and acquire all of the locks. */
+    if (tdes->state == TRAN_UNACTIVE_2PC_PREPARE)
+      {
+	log_2pc_read_prepare (thread_p, LOG_2PC_OBTAIN_LOCKS, tdes, log_lsa, log_page_p);
+      }
+    else
+      {
+	log_2pc_read_prepare (thread_p, LOG_2PC_DONT_OBTAIN_LOCKS, tdes, log_lsa, log_page_p);
+      }
+  }
 
 /*
  * log_2pc_recovery_start -
@@ -1755,92 +1749,93 @@ log_2pc_recovery_prepare (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * lo
  *
  * Note:
  */
-static int
-log_2pc_recovery_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
-			int *ack_list, int *ack_count)
-{
-  LOG_REC_2PC_START *start_2pc;	/* A 2PC start log record */
-  void *block_particps_ids;	/* A block of participant identifiers */
-  int num_particps;
-  int particp_id_length;
-  int i;
+  static int
+    log_2pc_recovery_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
+			    int *ack_list, int *ack_count)
+  {
+    LOG_REC_2PC_START *start_2pc;	/* A 2PC start log record */
+    void *block_particps_ids;	/* A block of participant identifiers */
+    int num_particps;
+    int particp_id_length;
+    int i;
 
-  /* Obtain the coordinator information */
-  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page_p);
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*start_2pc), log_lsa, log_page_p);
+    /* Obtain the coordinator information */
+    LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page_p);
+    LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*start_2pc), log_lsa, log_page_p);
 
-  start_2pc = ((LOG_REC_2PC_START *) ((char *) log_page_p->area + log_lsa->offset));
-  /*
-   * Obtain the participant information for this coordinator
-   */
-  tdes->client.set_system_internal_with_user (start_2pc->user_name);
-  tdes->gtrid = start_2pc->gtrid;
+    start_2pc = ((LOG_REC_2PC_START *) ((char *) log_page_p->area + log_lsa->offset));
+    /*
+     * Obtain the participant information for this coordinator
+     */
+    tdes->client.set_system_internal_with_user (start_2pc->user_name);
+    tdes->gtrid = start_2pc->gtrid;
 
-  num_particps = start_2pc->num_particps;
-  particp_id_length = start_2pc->particp_id_length;
+    num_particps = start_2pc->num_particps;
+    particp_id_length = start_2pc->particp_id_length;
 
-  block_particps_ids = malloc (particp_id_length * num_particps);
-  if (block_particps_ids == NULL)
-    {
-      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_recovery_analysis_info");
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
+    block_particps_ids = malloc (particp_id_length * num_particps);
+    if (block_particps_ids == NULL)
+      {
+	logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_recovery_analysis_info");
+	return ER_OUT_OF_VIRTUAL_MEMORY;
+      }
 
-  LOG_READ_ADD_ALIGN (thread_p, sizeof (*start_2pc), log_lsa, log_page_p);
-  LOG_READ_ALIGN (thread_p, log_lsa, log_page_p);
+    LOG_READ_ADD_ALIGN (thread_p, sizeof (*start_2pc), log_lsa, log_page_p);
+    LOG_READ_ALIGN (thread_p, log_lsa, log_page_p);
 
-  /* Read in the participants info. block from the log */
-  logpb_copy_from_log (thread_p, (char *) block_particps_ids, particp_id_length * num_particps, log_lsa, log_page_p);
+    /* Read in the participants info. block from the log */
+    logpb_copy_from_log (thread_p, (char *) block_particps_ids, particp_id_length * num_particps, log_lsa, log_page_p);
 
-  /* Initialize the coordinator information */
-  if (log_2pc_alloc_coord_info (tdes, num_particps, particp_id_length, block_particps_ids) == NULL)
-    {
-      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_recovery_analysis_info");
-      return ER_FAILED;
-    }
+    /* Initialize the coordinator information */
+    if (log_2pc_alloc_coord_info (tdes, num_particps, particp_id_length, block_particps_ids) == NULL)
+      {
+	logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_recovery_analysis_info");
+	return ER_FAILED;
+      }
 
-  /* Initialize the Acknowledgement vector to false since we do not know what acknowledgments have already been
-   * received. we need to continue reading the log */
+    /* Initialize the Acknowledgement vector to false since we do not know what acknowledgments have already been
+     * received. we need to continue reading the log */
 
-  i = sizeof (int) * tdes->coord->num_particps;
-  tdes->coord->ack_received = (int *) malloc (i);
-  if (tdes->coord->ack_received == NULL)
-    {
-      log_2pc_free_coord_info (tdes);
-      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_recovery_analysis_info");
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
+    i = sizeof (int) * tdes->coord->num_particps;
+    tdes->coord->ack_received = (int *) malloc (i);
+    if (tdes->coord->ack_received == NULL)
+      {
+	log_2pc_free_coord_info (tdes);
+	logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_recovery_analysis_info");
+	return ER_OUT_OF_VIRTUAL_MEMORY;
+      }
 
-  for (i = 0; i < tdes->coord->num_particps; i++)
-    {
-      tdes->coord->ack_received[i] = false;
-    }
+    for (i = 0; i < tdes->coord->num_particps; i++)
+      {
+	tdes->coord->ack_received[i] = false;
+      }
 
-  if (*ack_count > 0 && ack_list != NULL)
-    {
-      /*
-       * Some participant acknowledgements have already been
-       * received. Copy this acknowledgement into the transaction
-       * descriptor.
-       */
-      for (i = 0; i < *ack_count; i++)
-	{
-	  if (ack_list[i] > tdes->coord->num_particps)
-	    {
-	      er_log_debug (ARG_FILE_LINE, "log_2pc_recovery_analysis_info:" " SYSTEM ERROR for log located at %lld|%d",
-			    log_lsa->pageid, log_lsa->offset);
-	    }
-	  else
-	    {
-	      tdes->coord->ack_received[ack_list[i]] = true;
-	    }
-	}
-      free_and_init (ack_list);
-      *ack_count = 0;
-    }
+    if (*ack_count > 0 && ack_list != NULL)
+      {
+	/*
+	 * Some participant acknowledgements have already been
+	 * received. Copy this acknowledgement into the transaction
+	 * descriptor.
+	 */
+	for (i = 0; i < *ack_count; i++)
+	  {
+	    if (ack_list[i] > tdes->coord->num_particps)
+	      {
+		er_log_debug (ARG_FILE_LINE,
+			      "log_2pc_recovery_analysis_info:" " SYSTEM ERROR for log located at %lld|%d",
+			      log_lsa->pageid, log_lsa->offset);
+	      }
+	    else
+	      {
+		tdes->coord->ack_received[ack_list[i]] = true;
+	      }
+	  }
+	free_and_init (ack_list);
+	*ack_count = 0;
+      }
 
-  return NO_ERROR;
-}
+    return NO_ERROR;
+  }
 
 /*
  * log_2pc_expand_ack_list -
@@ -1853,49 +1848,48 @@ log_2pc_recovery_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * log_
  *
  * Note:
  */
-static int *
-log_2pc_expand_ack_list (THREAD_ENTRY * thread_p, int *ack_list, int *ack_count, int *size_ack_list)
-{
-  int size;
+  static int *log_2pc_expand_ack_list (THREAD_ENTRY * thread_p, int *ack_list, int *ack_count, int *size_ack_list)
+  {
+    int size;
 
-  if ((*ack_count + 1) > (*size_ack_list))
-    {
-      /* allocate space */
-      if (*size_ack_list == 0)
-	{
-	  /*
-	   * Initialize the temporary area. Assume no more than 10
-	   * participants
-	   */
-	  *ack_count = 0;
-	  *size_ack_list = 10;
+    if ((*ack_count + 1) > (*size_ack_list))
+      {
+	/* allocate space */
+	if (*size_ack_list == 0)
+	  {
+	    /*
+	     * Initialize the temporary area. Assume no more than 10
+	     * participants
+	     */
+	    *ack_count = 0;
+	    *size_ack_list = 10;
 
-	  size = (*size_ack_list) * sizeof (int);
-	  ack_list = (int *) malloc (size);
-	  if (ack_list == NULL)
-	    {
-	      /* Out of memory */
-	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_recovery_analysis_info");
-	      return NULL;
-	    }
-	}
-      else
-	{
-	  /* expand ack list by 30% */
-	  *size_ack_list = ((int) (((float) (*size_ack_list) * 1.30) + 0.5));
-	  size = (*size_ack_list) * sizeof (int);
-	  ack_list = (int *) realloc (ack_list, size);
-	  if (ack_list == NULL)
-	    {
-	      /* Out of memory */
-	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_recovery_analysis_info");
-	      return NULL;
-	    }
-	}
-    }
+	    size = (*size_ack_list) * sizeof (int);
+	    ack_list = (int *) malloc (size);
+	    if (ack_list == NULL)
+	      {
+		/* Out of memory */
+		logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_recovery_analysis_info");
+		return NULL;
+	      }
+	  }
+	else
+	  {
+	    /* expand ack list by 30% */
+	    *size_ack_list = ((int) (((float) (*size_ack_list) * 1.30) + 0.5));
+	    size = (*size_ack_list) * sizeof (int);
+	    ack_list = (int *) realloc (ack_list, size);
+	    if (ack_list == NULL)
+	      {
+		/* Out of memory */
+		logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_recovery_analysis_info");
+		return NULL;
+	      }
+	  }
+      }
 
-  return ack_list;
-}
+    return ack_list;
+  }
 
 /*
  * log_2pc_recovery_recv_ack -
@@ -1909,19 +1903,19 @@ log_2pc_expand_ack_list (THREAD_ENTRY * thread_p, int *ack_list, int *ack_count,
  *
  * Note:
  */
-static void
-log_2pc_recovery_recv_ack (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p, int *ack_list,
-			   int *ack_count)
-{
-  LOG_REC_2PC_PARTICP_ACK *received_ack;	/* A 2PC recv decision ack */
+  static void
+    log_2pc_recovery_recv_ack (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p, int *ack_list,
+			       int *ack_count)
+  {
+    LOG_REC_2PC_PARTICP_ACK *received_ack;	/* A 2PC recv decision ack */
 
-  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page_p);
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*received_ack), log_lsa, log_page_p);
-  received_ack = ((LOG_REC_2PC_PARTICP_ACK *) ((char *) log_page_p->area + log_lsa->offset));
+    LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page_p);
+    LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*received_ack), log_lsa, log_page_p);
+    received_ack = ((LOG_REC_2PC_PARTICP_ACK *) ((char *) log_page_p->area + log_lsa->offset));
 
-  ack_list[*ack_count] = received_ack->particp_index;
-  (*ack_count)++;
-}
+    ack_list[*ack_count] = received_ack->particp_index;
+    (*ack_count)++;
+  }
 
 /*
  * log_2pc_recovery_analysis_record -
@@ -1940,106 +1934,107 @@ log_2pc_recovery_recv_ack (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE 
  *
  * Note:
  */
-static int
-log_2pc_recovery_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE record_type, LOG_TDES * tdes, LOG_LSA * log_lsa,
-				  LOG_PAGE * log_page_p, int **ack_list, int *ack_count, int *size_ack_list,
-				  bool * search_2pc_prepare, bool * search_2pc_start)
-{
-  switch (record_type)
-    {
-    case LOG_2PC_PREPARE:
-      if (*search_2pc_prepare)
-	{
-	  log_2pc_recovery_prepare (thread_p, tdes, log_lsa, log_page_p);
-	  *search_2pc_prepare = false;
-	}
-      break;
+  static int
+    log_2pc_recovery_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE record_type, LOG_TDES * tdes,
+				      LOG_LSA * log_lsa, LOG_PAGE * log_page_p, int **ack_list, int *ack_count,
+				      int *size_ack_list, bool * search_2pc_prepare, bool * search_2pc_start)
+  {
+    switch (record_type)
+      {
+      case LOG_2PC_PREPARE:
+	if (*search_2pc_prepare)
+	  {
+	    log_2pc_recovery_prepare (thread_p, tdes, log_lsa, log_page_p);
+	    *search_2pc_prepare = false;
+	  }
+	break;
 
-    case LOG_2PC_START:
-      if (*search_2pc_start)
-	{
-	  if (log_2pc_recovery_start (thread_p, tdes, log_lsa, log_page_p, *ack_list, ack_count) == NO_ERROR)
-	    {
-	      *search_2pc_start = false;
-	    }
-	}
-      break;
+      case LOG_2PC_START:
+	if (*search_2pc_start)
+	  {
+	    if (log_2pc_recovery_start (thread_p, tdes, log_lsa, log_page_p, *ack_list, ack_count) == NO_ERROR)
+	      {
+		*search_2pc_start = false;
+	      }
+	  }
+	break;
 
-    case LOG_2PC_RECV_ACK:
-      /*
-       * Coordiantor site: The distributed transaction is in the
-       * second phase of the 2PC, that is, coordinator has notfied
-       * the decision to participants and some of them as acknowledge
-       * the execution of the decsion.
-       */
-      if (*search_2pc_start && LOG_ISTRAN_2PC_IN_SECOND_PHASE (tdes))
-	{
-	  *ack_list = log_2pc_expand_ack_list (thread_p, *ack_list, ack_count, size_ack_list);
-	  log_2pc_recovery_recv_ack (thread_p, log_lsa, log_page_p, *ack_list, ack_count);
-	}
-      break;
+      case LOG_2PC_RECV_ACK:
+	/*
+	 * Coordiantor site: The distributed transaction is in the
+	 * second phase of the 2PC, that is, coordinator has notfied
+	 * the decision to participants and some of them as acknowledge
+	 * the execution of the decsion.
+	 */
+	if (*search_2pc_start && LOG_ISTRAN_2PC_IN_SECOND_PHASE (tdes))
+	  {
+	    *ack_list = log_2pc_expand_ack_list (thread_p, *ack_list, ack_count, size_ack_list);
+	    log_2pc_recovery_recv_ack (thread_p, log_lsa, log_page_p, *ack_list, ack_count);
+	  }
+	break;
 
-    case LOG_COMPENSATE:
-    case LOG_RUN_POSTPONE:
-    case LOG_WILL_COMMIT:
-    case LOG_COMMIT_WITH_POSTPONE:
-    case LOG_2PC_COMMIT_DECISION:
-    case LOG_2PC_ABORT_DECISION:
-    case LOG_2PC_COMMIT_INFORM_PARTICPS:
-    case LOG_2PC_ABORT_INFORM_PARTICPS:
-      /* Skip over this log record types */
-      break;
+      case LOG_COMPENSATE:
+      case LOG_RUN_POSTPONE:
+      case LOG_WILL_COMMIT:
+      case LOG_COMMIT_WITH_POSTPONE:
+      case LOG_2PC_COMMIT_DECISION:
+      case LOG_2PC_ABORT_DECISION:
+      case LOG_2PC_COMMIT_INFORM_PARTICPS:
+      case LOG_2PC_ABORT_INFORM_PARTICPS:
+	/* Skip over this log record types */
+	break;
 
-    case LOG_UNDOREDO_DATA:
-    case LOG_DIFF_UNDOREDO_DATA:
-    case LOG_UNDO_DATA:
-    case LOG_REDO_DATA:
-    case LOG_MVCC_UNDOREDO_DATA:
-    case LOG_MVCC_DIFF_UNDOREDO_DATA:
-    case LOG_MVCC_UNDO_DATA:
-    case LOG_MVCC_REDO_DATA:
-    case LOG_DBEXTERN_REDO_DATA:
-    case LOG_DUMMY_HEAD_POSTPONE:
-    case LOG_POSTPONE:
-    case LOG_SAVEPOINT:
-    case LOG_COMMIT:
-    case LOG_ABORT:
-    case LOG_SYSOP_START_POSTPONE:
-    case LOG_SYSOP_END:
-    case LOG_DUMMY_CRASH_RECOVERY:
-    case LOG_REPLICATION_DATA:
-    case LOG_REPLICATION_STATEMENT:
-    case LOG_END_OF_LOG:
-      /*
-       * Either the prepare to commit or start 2PC record should
-       * have already been found by now. Otherwise, it is likely that the
-       * transaction is not a distributed transaction that has loose end
-       * client actions
-       */
-      if (*search_2pc_start == false)
-	{
-	  *search_2pc_prepare = false;
-	}
-      else if (*search_2pc_prepare == false)
-	{
-	  *search_2pc_start = false;
-	}
+      case LOG_UNDOREDO_DATA:
+      case LOG_DIFF_UNDOREDO_DATA:
+      case LOG_UNDO_DATA:
+      case LOG_REDO_DATA:
+      case LOG_MVCC_UNDOREDO_DATA:
+      case LOG_MVCC_DIFF_UNDOREDO_DATA:
+      case LOG_MVCC_UNDO_DATA:
+      case LOG_MVCC_REDO_DATA:
+      case LOG_DBEXTERN_REDO_DATA:
+      case LOG_DUMMY_HEAD_POSTPONE:
+      case LOG_POSTPONE:
+      case LOG_SAVEPOINT:
+      case LOG_COMMIT:
+      case LOG_ABORT:
+      case LOG_SYSOP_START_POSTPONE:
+      case LOG_SYSOP_END:
+      case LOG_DUMMY_CRASH_RECOVERY:
+      case LOG_REPLICATION_DATA:
+      case LOG_REPLICATION_STATEMENT:
+      case LOG_END_OF_LOG:
+	/*
+	 * Either the prepare to commit or start 2PC record should
+	 * have already been found by now. Otherwise, it is likely that the
+	 * transaction is not a distributed transaction that has loose end
+	 * client actions
+	 */
+	if (*search_2pc_start == false)
+	  {
+	    *search_2pc_prepare = false;
+	  }
+	else if (*search_2pc_prepare == false)
+	  {
+	    *search_2pc_start = false;
+	  }
 
-      break;
+	break;
 
-    case LOG_SMALLER_LOGREC_TYPE:
-    case LOG_LARGER_LOGREC_TYPE:
-    default:
+      case LOG_SMALLER_LOGREC_TYPE:
+      case LOG_LARGER_LOGREC_TYPE:
+      default:
 #if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE, "log_2pc_recovery_analysis_info:" " Unknown record type = %d May be a system error",
-		    log_rec->type);
+	er_log_debug (ARG_FILE_LINE,
+		      "log_2pc_recovery_analysis_info:" " Unknown record type = %d May be a system error",
+		      log_rec->type);
 #endif /* CUBRID_DEBUG */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED, 1, log_lsa->pageid);
-      return ER_LOG_PAGE_CORRUPTED;
-    }
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED, 1, log_lsa->pageid);
+	return ER_LOG_PAGE_CORRUPTED;
+      }
 
-  return NO_ERROR;
-}
+    return NO_ERROR;
+  }
 
 /*
  * log_2pc_recovery_analysis_info - FIND 2PC information of given transaction
@@ -2063,110 +2058,109 @@ log_2pc_recovery_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE record_ty
  *              transaction. The rest of the 2PC information of this
  *              transaction is read by the redo phase of the recovery process.
  */
-void
-log_2pc_recovery_analysis_info (THREAD_ENTRY * thread_p, log_tdes * tdes, LOG_LSA * upto_chain_lsa)
-{
-  LOG_RECORD_HEADER *log_rec;	/* Pointer to log record */
-  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
-  LOG_PAGE *log_page_p = NULL;	/* Log page pointer where LSA is located */
-  LOG_LSA lsa;
-  LOG_LSA prev_tranlsa;		/* prev LSA of transaction */
-  bool search_2pc_prepare = false;
-  bool search_2pc_start = false;
-  int ack_count = 0;
-  int *ack_list = NULL;
-  int size_ack_list = 0;
+  void log_2pc_recovery_analysis_info (THREAD_ENTRY * thread_p, log_tdes * tdes, LOG_LSA * upto_chain_lsa)
+  {
+    LOG_RECORD_HEADER *log_rec;	/* Pointer to log record */
+    char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
+    LOG_PAGE *log_page_p = NULL;	/* Log page pointer where LSA is located */
+    LOG_LSA lsa;
+    LOG_LSA prev_tranlsa;	/* prev LSA of transaction */
+    bool search_2pc_prepare = false;
+    bool search_2pc_start = false;
+    int ack_count = 0;
+    int *ack_list = NULL;
+    int size_ack_list = 0;
 
-  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+    aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
-  if (!LOG_ISTRAN_2PC (tdes))
-    {
-      return;
-    }
+    if (!LOG_ISTRAN_2PC (tdes))
+      {
+	return;
+      }
 
-  /* For a transaction that was prepared to commit at the time of the crash, make sure that its global transaction
-   * identifier is obtained from the log and that the update_type locks that were acquired before the time of the crash
-   * are reacquired. */
+    /* For a transaction that was prepared to commit at the time of the crash, make sure that its global transaction
+     * identifier is obtained from the log and that the update_type locks that were acquired before the time of the crash
+     * are reacquired. */
 
-  if (tdes->gtrid == LOG_2PC_NULL_GTRID)
-    {
-      search_2pc_prepare = true;
-    }
+    if (tdes->gtrid == LOG_2PC_NULL_GTRID)
+      {
+	search_2pc_prepare = true;
+      }
 
-  /* If this is a coordinator transaction performing 2PC and voting record has not been read from the log in the
-   * recovery redo phase, read the voting record and any acknowledgement records logged for this transaction */
+    /* If this is a coordinator transaction performing 2PC and voting record has not been read from the log in the
+     * recovery redo phase, read the voting record and any acknowledgement records logged for this transaction */
 
-  if (tdes->coord == NULL)
-    {
-      search_2pc_start = true;
-    }
+    if (tdes->coord == NULL)
+      {
+	search_2pc_start = true;
+      }
 
-  /*
-   * Follow the undo tail chain starting at upto_chain_tail finding all
-   * 2PC related information
-   */
-  log_page_p = (LOG_PAGE *) aligned_log_pgbuf;
+    /*
+     * Follow the undo tail chain starting at upto_chain_tail finding all
+     * 2PC related information
+     */
+    log_page_p = (LOG_PAGE *) aligned_log_pgbuf;
 
-  LSA_COPY (&prev_tranlsa, upto_chain_lsa);
-  while (!LSA_ISNULL (&prev_tranlsa) && (search_2pc_prepare || search_2pc_start))
-    {
-      LSA_COPY (&lsa, &prev_tranlsa);
-      if ((logpb_fetch_page (thread_p, &lsa, LOG_CS_FORCE_USE, log_page_p)) != NO_ERROR)
-	{
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_recovery_analysis_info");
-	  break;
-	}
+    LSA_COPY (&prev_tranlsa, upto_chain_lsa);
+    while (!LSA_ISNULL (&prev_tranlsa) && (search_2pc_prepare || search_2pc_start))
+      {
+	LSA_COPY (&lsa, &prev_tranlsa);
+	if ((logpb_fetch_page (thread_p, &lsa, LOG_CS_FORCE_USE, log_page_p)) != NO_ERROR)
+	  {
+	    logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_recovery_analysis_info");
+	    break;
+	  }
 
-      while (prev_tranlsa.pageid == lsa.pageid && (search_2pc_prepare || search_2pc_start))
-	{
-	  lsa.offset = prev_tranlsa.offset;
+	while (prev_tranlsa.pageid == lsa.pageid && (search_2pc_prepare || search_2pc_start))
+	  {
+	    lsa.offset = prev_tranlsa.offset;
 
-	  log_rec = LOG_GET_LOG_RECORD_HEADER (log_page_p, &lsa);
-	  LSA_COPY (&prev_tranlsa, &log_rec->prev_tranlsa);
+	    log_rec = LOG_GET_LOG_RECORD_HEADER (log_page_p, &lsa);
+	    LSA_COPY (&prev_tranlsa, &log_rec->prev_tranlsa);
 
-	  if (log_2pc_recovery_analysis_record
-	      (thread_p, log_rec->type, tdes, &lsa, log_page_p, &ack_list, &ack_count, &size_ack_list,
-	       &search_2pc_prepare, &search_2pc_start) != NO_ERROR)
-	    {
-	      LSA_SET_NULL (&prev_tranlsa);
-	    }
-	  free_and_init (ack_list);
-	}			/* while */
-    }				/* while */
+	    if (log_2pc_recovery_analysis_record
+		(thread_p, log_rec->type, tdes, &lsa, log_page_p, &ack_list, &ack_count, &size_ack_list,
+		 &search_2pc_prepare, &search_2pc_start) != NO_ERROR)
+	      {
+		LSA_SET_NULL (&prev_tranlsa);
+	      }
+	    free_and_init (ack_list);
+	  }			/* while */
+      }				/* while */
 
-  /* Check for error conditions */
-  if (tdes->state == TRAN_UNACTIVE_2PC_PREPARE && tdes->gtrid == LOG_2PC_NULL_GTRID)
-    {
+    /* Check for error conditions */
+    if (tdes->state == TRAN_UNACTIVE_2PC_PREPARE && tdes->gtrid == LOG_2PC_NULL_GTRID)
+      {
 #if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE,
-		    "log_2pc_recovery_analysis_info:" " SYSTEM ERROR... Either the LOG_2PC_PREPARE/LOG_2PC_START\n"
-		    " log record was not found for participant of distributed" " trid = %d with state = %s", tdes->trid,
-		    log_state_string (tdes->state));
+	er_log_debug (ARG_FILE_LINE,
+		      "log_2pc_recovery_analysis_info:" " SYSTEM ERROR... Either the LOG_2PC_PREPARE/LOG_2PC_START\n"
+		      " log record was not found for participant of distributed" " trid = %d with state = %s",
+		      tdes->trid, log_state_string (tdes->state));
 #endif /* CUBRID_DEBUG */
-    }
+      }
 
-  /*
-   * Now the client should attach to this prepared transaction and
-   * provide the decision (commit/abort). Until then this thread
-   * is suspended.
-   */
+    /*
+     * Now the client should attach to this prepared transaction and
+     * provide the decision (commit/abort). Until then this thread
+     * is suspended.
+     */
 
-  if (search_2pc_start)
-    {
-      /*
-       * A 2PC start log record was not found for the coordinator
-       */
-      if (tdes->state != TRAN_UNACTIVE_2PC_PREPARE)
-	{
+    if (search_2pc_start)
+      {
+	/*
+	 * A 2PC start log record was not found for the coordinator
+	 */
+	if (tdes->state != TRAN_UNACTIVE_2PC_PREPARE)
+	  {
 #if defined(CUBRID_DEBUG)
-	  er_log_debug (ARG_FILE_LINE,
-			"log_2pc_recovery_analysis_info:" " SYSTEM ERROR... The LOG_2PC_START log record was"
-			" not found for coordinator of distributed trid = %d" " with state = %s", tdes->trid,
-			log_state_string (tdes->state));
+	    er_log_debug (ARG_FILE_LINE,
+			  "log_2pc_recovery_analysis_info:" " SYSTEM ERROR... The LOG_2PC_START log record was"
+			  " not found for coordinator of distributed trid = %d" " with state = %s", tdes->trid,
+			  log_state_string (tdes->state));
 #endif /* CUBRID_DEBUG */
-	}
-    }
-}
+	  }
+      }
+  }
 
 /*
  * log_2pc_recovery_collecting_participant_votes -
@@ -2177,18 +2171,17 @@ log_2pc_recovery_analysis_info (THREAD_ENTRY * thread_p, log_tdes * tdes, LOG_LS
  *
  * Note:
  */
-static void
-log_2pc_recovery_collecting_participant_votes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
-{
-  /*
-   * This is a participant which has not decided the fate of the
-   * distributed transaction. Abort the transaction
-   */
-  log_2pc_append_decision (thread_p, tdes, LOG_2PC_ABORT_DECISION);
+  static void log_2pc_recovery_collecting_participant_votes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+  {
+    /*
+     * This is a participant which has not decided the fate of the
+     * distributed transaction. Abort the transaction
+     */
+    log_2pc_append_decision (thread_p, tdes, LOG_2PC_ABORT_DECISION);
 
-  /* Let it fall thru the TRAN_UNACTIVE_2PC_ABORT_DECISION case */
-  log_2pc_recovery_abort_decision (thread_p, tdes);
-}
+    /* Let it fall thru the TRAN_UNACTIVE_2PC_ABORT_DECISION case */
+    log_2pc_recovery_abort_decision (thread_p, tdes);
+  }
 
 /*
  * log_2pc_recovery_abort_decision -
@@ -2199,47 +2192,46 @@ log_2pc_recovery_collecting_participant_votes (THREAD_ENTRY * thread_p, LOG_TDES
  *
  * Note:
  */
-static void
-log_2pc_recovery_abort_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
-{
-  TRAN_STATE state;
+  static void log_2pc_recovery_abort_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+  {
+    TRAN_STATE state;
 
-  /*
-   * An abort decision has already been taken and the system crash
-   * during the local abort. Retry it
-   */
+    /*
+     * An abort decision has already been taken and the system crash
+     * during the local abort. Retry it
+     */
 
-  /*
-   * The transaction has been declared as 2PC abort. We can execute
-   * the LOCAL ABORT AND THE REMOTE ABORTS IN PARALLEL, however our
-   * communication subsystem does not support asynchronous communication
-   * types. The abort of the participants is done after the local
-   * abort is completed.
-   */
+    /*
+     * The transaction has been declared as 2PC abort. We can execute
+     * the LOCAL ABORT AND THE REMOTE ABORTS IN PARALLEL, however our
+     * communication subsystem does not support asynchronous communication
+     * types. The abort of the participants is done after the local
+     * abort is completed.
+     */
 
-  /* Save the state.. so it can be reverted to the 2pc state .. */
-  state = tdes->state;
+    /* Save the state.. so it can be reverted to the 2pc state .. */
+    state = tdes->state;
 
-  /* 2PC protocol does not support RETAIN LOCK */
-  (void) log_abort_local (thread_p, tdes, false);
+    /* 2PC protocol does not support RETAIN LOCK */
+    (void) log_abort_local (thread_p, tdes, false);
 
-  if (tdes->state == TRAN_UNACTIVE_ABORTED)
-    {
-      tdes->state = state;	/* Revert to 2PC state... */
-    }
+    if (tdes->state == TRAN_UNACTIVE_ABORTED)
+      {
+	tdes->state = state;	/* Revert to 2PC state... */
+      }
 
-  /* Try to reconnect to participants that have not sent ACK. yet */
+    /* Try to reconnect to participants that have not sent ACK. yet */
 
-  /*
-   * If the following function fails, the transaction will be dangling and we
-   * need to retry sending the decision at another point.
-   * We have already decided and log the decision in the log file.
-   */
-  (void) log_2pc_send_abort_decision (tdes->gtrid, tdes->coord->num_particps, tdes->coord->ack_received,
-				      tdes->coord->block_particps_ids, true);
-  /* Check if all the acknowledgements have been received */
-  (void) log_complete_for_2pc (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID);
-}
+    /*
+     * If the following function fails, the transaction will be dangling and we
+     * need to retry sending the decision at another point.
+     * We have already decided and log the decision in the log file.
+     */
+    (void) log_2pc_send_abort_decision (tdes->gtrid, tdes->coord->num_particps, tdes->coord->ack_received,
+					tdes->coord->block_particps_ids, true);
+    /* Check if all the acknowledgements have been received */
+    (void) log_complete_for_2pc (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID);
+  }
 
 /*
  * log_2pc_recovery_commit_decision -
@@ -2250,30 +2242,29 @@ log_2pc_recovery_abort_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
  *
  * Note:
  */
-static void
-log_2pc_recovery_commit_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
-{
-  TRAN_STATE state;
+  static void log_2pc_recovery_commit_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+  {
+    TRAN_STATE state;
 
 
-  /* Save the state.. so it can be reverted to the 2pc state .. */
-  state = tdes->state;
+    /* Save the state.. so it can be reverted to the 2pc state .. */
+    state = tdes->state;
 
-  /* First perform local commit; 2PC protocol does not support RETAIN LOCK */
-  (void) log_commit_local (thread_p, tdes, false, false);
-  tdes->state = state;		/* Revert to 2PC state... */
+    /* First perform local commit; 2PC protocol does not support RETAIN LOCK */
+    (void) log_commit_local (thread_p, tdes, false, false);
+    tdes->state = state;	/* Revert to 2PC state... */
 
-  /*
-   * If the following function fails, the transaction will be dangling and we
-   * need to retry sending the decision at another point.
-   * We have already decided and log the decision in the log file.
-   */
+    /*
+     * If the following function fails, the transaction will be dangling and we
+     * need to retry sending the decision at another point.
+     * We have already decided and log the decision in the log file.
+     */
 
-  (void) log_2pc_send_commit_decision (tdes->gtrid, tdes->coord->num_particps, tdes->coord->ack_received,
-				       tdes->coord->block_particps_ids);
-  /* Check if all the acknowledgments have been received */
-  (void) log_complete_for_2pc (thread_p, tdes, LOG_COMMIT, LOG_DONT_NEED_NEWTRID);
-}
+    (void) log_2pc_send_commit_decision (tdes->gtrid, tdes->coord->num_particps, tdes->coord->ack_received,
+					 tdes->coord->block_particps_ids);
+    /* Check if all the acknowledgments have been received */
+    (void) log_complete_for_2pc (thread_p, tdes, LOG_COMMIT, LOG_DONT_NEED_NEWTRID);
+  }
 
 /*
  * log_2pc_recovery_committed_informing_participants -
@@ -2284,22 +2275,21 @@ log_2pc_recovery_commit_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
  *
  * Note:
  */
-static void
-log_2pc_recovery_committed_informing_participants (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
-{
-  /*
-   * Broadcast the commit to the participants that has not sent an
-   * acknowledgement yet.
-   *
-   * If the following function fails, the transaction will be
-   * dangling and we need to retry sending the decision at another
-   * point.
-   * We have already decided and log the decision in the log file.
-   */
-  (void) log_2pc_send_commit_decision (tdes->gtrid, tdes->coord->num_particps, tdes->coord->ack_received,
-				       tdes->coord->block_particps_ids);
-  (void) log_complete_for_2pc (thread_p, tdes, LOG_COMMIT, LOG_DONT_NEED_NEWTRID);
-}
+  static void log_2pc_recovery_committed_informing_participants (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+  {
+    /*
+     * Broadcast the commit to the participants that has not sent an
+     * acknowledgement yet.
+     *
+     * If the following function fails, the transaction will be
+     * dangling and we need to retry sending the decision at another
+     * point.
+     * We have already decided and log the decision in the log file.
+     */
+    (void) log_2pc_send_commit_decision (tdes->gtrid, tdes->coord->num_particps, tdes->coord->ack_received,
+					 tdes->coord->block_particps_ids);
+    (void) log_complete_for_2pc (thread_p, tdes, LOG_COMMIT, LOG_DONT_NEED_NEWTRID);
+  }
 
 /*
  * log_2pc_recovery_aborted_informing_participants -
@@ -2310,23 +2300,22 @@ log_2pc_recovery_committed_informing_participants (THREAD_ENTRY * thread_p, LOG_
  *
  * Note:
  */
-static void
-log_2pc_recovery_aborted_informing_participants (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
-{
-  /*
-   * Broadcast the abort to the participants that has not sent an
-   * acknowledgement yet.
-   *
-   * If the following function fails, the transaction will be
-   * dangling and we need to retry sending the decision at another
-   * point.
-   * We have already decided and log the decision in the log file.
-   */
+  static void log_2pc_recovery_aborted_informing_participants (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+  {
+    /*
+     * Broadcast the abort to the participants that has not sent an
+     * acknowledgement yet.
+     *
+     * If the following function fails, the transaction will be
+     * dangling and we need to retry sending the decision at another
+     * point.
+     * We have already decided and log the decision in the log file.
+     */
 
-  (void) log_2pc_send_abort_decision (tdes->gtrid, tdes->coord->num_particps, tdes->coord->ack_received,
-				      tdes->coord->block_particps_ids, true);
-  (void) log_complete_for_2pc (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID);
-}
+    (void) log_2pc_send_abort_decision (tdes->gtrid, tdes->coord->num_particps, tdes->coord->ack_received,
+					tdes->coord->block_particps_ids, true);
+    (void) log_complete_for_2pc (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID);
+  }
 
 /*
  * log_2pc_recovery - TRY TO FINISH TRANSACTIONS THAT WERE IN THE 2PC PROTOCOL
@@ -2337,78 +2326,77 @@ log_2pc_recovery_aborted_informing_participants (THREAD_ENTRY * thread_p, LOG_TD
  * NOTE:This function tries to finish up the transactions that were
  *              in the two phase commit protocol at the time of the crash.
  */
-void
-log_2pc_recovery (THREAD_ENTRY * thread_p)
-{
-  LOG_TDES *tdes;		/* Transaction descriptor */
-  int i;
+  void log_2pc_recovery (THREAD_ENTRY * thread_p)
+  {
+    LOG_TDES *tdes;		/* Transaction descriptor */
+    int i;
 
-  /*
-   * Try to finish distributed transaction that are in the uncertain phase
-   * of the two phase commit
-   */
+    /*
+     * Try to finish distributed transaction that are in the uncertain phase
+     * of the two phase commit
+     */
 
-  for (i = 0; i < log_Gl.trantable.num_total_indices; i++)
-    {
-      tdes = LOG_FIND_TDES (i);
+    for (i = 0; i < log_Gl.trantable.num_total_indices; i++)
+      {
+	tdes = LOG_FIND_TDES (i);
 
-      if (tdes == NULL || tdes->trid == NULL_TRANID || !LOG_ISTRAN_2PC (tdes))
-	{
-	  continue;
-	}
+	if (tdes == NULL || tdes->trid == NULL_TRANID || !LOG_ISTRAN_2PC (tdes))
+	  {
+	    continue;
+	  }
 
-      LOG_SET_CURRENT_TRAN_INDEX (thread_p, i);
+	LOG_SET_CURRENT_TRAN_INDEX (thread_p, i);
 
-      switch (tdes->state)
-	{
-	case TRAN_UNACTIVE_2PC_COLLECTING_PARTICIPANT_VOTES:
-	  log_2pc_recovery_collecting_participant_votes (thread_p, tdes);
-	  break;
+	switch (tdes->state)
+	  {
+	  case TRAN_UNACTIVE_2PC_COLLECTING_PARTICIPANT_VOTES:
+	    log_2pc_recovery_collecting_participant_votes (thread_p, tdes);
+	    break;
 
-	case TRAN_UNACTIVE_2PC_ABORT_DECISION:
-	  log_2pc_recovery_abort_decision (thread_p, tdes);
-	  break;
+	  case TRAN_UNACTIVE_2PC_ABORT_DECISION:
+	    log_2pc_recovery_abort_decision (thread_p, tdes);
+	    break;
 
-	case TRAN_UNACTIVE_2PC_COMMIT_DECISION:
-	  log_2pc_recovery_commit_decision (thread_p, tdes);
-	  break;
+	  case TRAN_UNACTIVE_2PC_COMMIT_DECISION:
+	    log_2pc_recovery_commit_decision (thread_p, tdes);
+	    break;
 
-	case TRAN_UNACTIVE_WILL_COMMIT:
-	case TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE:
-	  /*
-	   * All the local postpone actions had been completed; there are
-	   * not any client postpone actions. Thus, we can inform the
-	   * participants at this time.
-	   */
+	  case TRAN_UNACTIVE_WILL_COMMIT:
+	  case TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE:
+	    /*
+	     * All the local postpone actions had been completed; there are
+	     * not any client postpone actions. Thus, we can inform the
+	     * participants at this time.
+	     */
 
-	  tdes->state = TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS;
-	  /*
-	   * Let it fall thru the
-	   * TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS case
-	   */
+	    tdes->state = TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS;
+	    /*
+	     * Let it fall thru the
+	     * TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS case
+	     */
 
-	  /* FALLTHRU */
+	    /* FALLTHRU */
 
-	case TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS:
-	  log_2pc_recovery_committed_informing_participants (thread_p, tdes);
-	  break;
+	  case TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS:
+	    log_2pc_recovery_committed_informing_participants (thread_p, tdes);
+	    break;
 
-	case TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS:
-	  log_2pc_recovery_aborted_informing_participants (thread_p, tdes);
-	  break;
+	  case TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS:
+	    log_2pc_recovery_aborted_informing_participants (thread_p, tdes);
+	    break;
 
-	case TRAN_RECOVERY:
-	case TRAN_ACTIVE:
-	case TRAN_UNACTIVE_COMMITTED:
-	case TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE:
-	case TRAN_UNACTIVE_ABORTED:
-	case TRAN_UNACTIVE_UNILATERALLY_ABORTED:
-	case TRAN_UNACTIVE_2PC_PREPARE:
-	case TRAN_UNACTIVE_UNKNOWN:
-	  break;
-	}
-    }
-}
+	  case TRAN_RECOVERY:
+	  case TRAN_ACTIVE:
+	  case TRAN_UNACTIVE_COMMITTED:
+	  case TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE:
+	  case TRAN_UNACTIVE_ABORTED:
+	  case TRAN_UNACTIVE_UNILATERALLY_ABORTED:
+	  case TRAN_UNACTIVE_2PC_PREPARE:
+	  case TRAN_UNACTIVE_UNKNOWN:
+	    break;
+	  }
+      }
+  }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 /*
@@ -2420,22 +2408,21 @@ log_2pc_recovery (THREAD_ENTRY * thread_p)
  *              is in prepare to commit state (i.e., it is waiting for either
  *              commit or abort from its coordiantor).
  */
-bool
-log_is_tran_in_2pc (THREAD_ENTRY * thread_p)
-{
-  LOG_TDES *tdes;		/* Transaction descriptor */
-  int tran_index;
+  bool log_is_tran_in_2pc (THREAD_ENTRY * thread_p)
+  {
+    LOG_TDES *tdes;		/* Transaction descriptor */
+    int tran_index;
 
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  tdes = LOG_FIND_TDES (tran_index);
-  if (tdes == NULL)
-    {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
-      return false;
-    }
+    tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+    tdes = LOG_FIND_TDES (tran_index);
+    if (tdes == NULL)
+      {
+	er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
+	return false;
+      }
 
-  return (LOG_ISTRAN_2PC (tdes));
-}
+    return (LOG_ISTRAN_2PC (tdes));
+  }
 #endif
 
 /*
@@ -2448,29 +2435,28 @@ log_is_tran_in_2pc (THREAD_ENTRY * thread_p)
  * NOTE:Is this the coordinator of a distributed transaction ? If it
  *              is, coordinator information is initialized by this function.
  */
-bool
-log_2pc_is_tran_distributed (log_tdes * tdes)
-{
-  int num_particps = 0;		/* Number of participating sites */
-  int particp_id_length;	/* Length of a particp_id */
-  void *block_particps_ids;	/* A block of participant identifiers */
+  bool log_2pc_is_tran_distributed (log_tdes * tdes)
+  {
+    int num_particps = 0;	/* Number of participating sites */
+    int particp_id_length;	/* Length of a particp_id */
+    void *block_particps_ids;	/* A block of participant identifiers */
 
-  if (tdes->coord != NULL)
-    {
-      return true;
-    }
+    if (tdes->coord != NULL)
+      {
+	return true;
+      }
 
-  num_particps = log_2pc_get_num_participants (&particp_id_length, &block_particps_ids);
-  if (num_particps > 0)
-    {
-      /* This is a distributed transaction and our site is the coordinator */
+    num_particps = log_2pc_get_num_participants (&particp_id_length, &block_particps_ids);
+    if (num_particps > 0)
+      {
+	/* This is a distributed transaction and our site is the coordinator */
 
-      /* If the coordinator info has not been recorded in the tdes, do it now */
-      (void) log_2pc_alloc_coord_info (tdes, num_particps, particp_id_length, block_particps_ids);
-    }
+	/* If the coordinator info has not been recorded in the tdes, do it now */
+	(void) log_2pc_alloc_coord_info (tdes, num_particps, particp_id_length, block_particps_ids);
+      }
 
-  return (tdes->coord != NULL);
-}
+    return (tdes->coord != NULL);
+  }
 
 /*
  * log_2pc_clear_and_is_tran_distributed - FIND IF TRANSACTION IS DISTRIBUTED AFTER
@@ -2487,9 +2473,8 @@ log_2pc_is_tran_distributed (log_tdes * tdes)
  *              we have all participants. This is needed since CUBRID does
  *              not inform me of new participants.
  */
-bool
-log_2pc_clear_and_is_tran_distributed (log_tdes * tdes)
-{
-  log_2pc_free_coord_info (tdes);
-  return log_2pc_is_tran_distributed (tdes);
-}
+  bool log_2pc_clear_and_is_tran_distributed (log_tdes * tdes)
+  {
+    log_2pc_free_coord_info (tdes);
+    return log_2pc_is_tran_distributed (tdes);
+  }
