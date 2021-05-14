@@ -68,8 +68,11 @@ struct log_2pc_global_data
   char *(*sprintf_participant) (void *particp_id);
   void (*dump_participants) (FILE * fp, int block_length, void *block_particps_id);
   int (*send_prepare) (int gtrid, int num_particps, void *block_particps_ids);
-    bool (*send_commit) (int gtrid, int num_particps, int *particp_indices, void *block_particps_ids);
-    bool (*send_abort) (int gtrid, int num_particps, int *particp_indices, void *block_particps_ids, int collect);
+  // *INDENT-OFF*
+  // Indent weirdly puts an additional indentation to send_commit & send_abort delcarations. Probably because of bool.
+  bool (*send_commit) (int gtrid, int num_particps, int *particp_indices, void *block_particps_ids);
+  bool (*send_abort) (int gtrid, int num_particps, int *particp_indices, void *block_particps_ids, int collect);
+  // *INDENT-OFF*
 };
 struct log_2pc_global_data log_2pc_Userfun = { NULL, NULL, NULL, NULL, NULL, NULL, NULL };
 
@@ -1435,12 +1438,12 @@ log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, log_tdes * tde
   prepared = const_cast<LOG_REC_2PC_PREPCOMMIT*> (log_pgptr_reader.reinterpret_cptr<LOG_REC_2PC_PREPCOMMIT> ());
   // *INDENT-ON*
 
-  tdes->client.set_system_internal_with_user (prepared->user_name);
+    tdes->client.set_system_internal_with_user (prepared->user_name);
 
-  tdes->gtrid = prepared->gtrid;
-  tdes->gtrinfo.info_length = prepared->gtrinfo_length;
+    tdes->gtrid = prepared->gtrid;
+    tdes->gtrinfo.info_length = prepared->gtrinfo_length;
 
-  log_pgptr_reader.add_align (sizeof (*prepared));
+    log_pgptr_reader.add_align (sizeof (*prepared));
 
   if (tdes->gtrinfo.info_length > 0)
     {
