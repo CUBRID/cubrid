@@ -68,8 +68,11 @@ struct log_2pc_global_data
   char *(*sprintf_participant) (void *particp_id);
   void (*dump_participants) (FILE * fp, int block_length, void *block_particps_id);
   int (*send_prepare) (int gtrid, int num_particps, void *block_particps_ids);
+  // *INDENT-OFF*
+  // Indent weirdly puts an additional indentation to send_commit & send_abort declarations. Probably because of bool.
   bool (*send_commit) (int gtrid, int num_particps, int *particp_indices, void *block_particps_ids);
   bool (*send_abort) (int gtrid, int num_particps, int *particp_indices, void *block_particps_ids, int collect);
+  // *INDENT-ON*
 };
 struct log_2pc_global_data log_2pc_Userfun = { NULL, NULL, NULL, NULL, NULL, NULL, NULL };
 
@@ -77,8 +80,8 @@ static int log_2pc_get_num_participants (int *partid_len, void **block_particps_
 static int log_2pc_make_global_tran_id (TRANID tranid);
 static bool log_2pc_check_duplicate_global_tran_id (int gtrid);
 static int log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EXECUTE execute_2pc_type,
-				       bool *decision);
-static TRAN_STATE log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool *decision);
+				       bool * decision);
+static TRAN_STATE log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool * decision);
 static void log_2pc_append_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void log_2pc_append_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE decsion);
 static LOG_TDES *log_2pc_find_tran_descriptor (int gtrid);
@@ -92,7 +95,7 @@ static void log_2pc_recovery_recv_ack (THREAD_ENTRY * thread_p, LOG_LSA * log_ls
 				       int *ack_count);
 static int log_2pc_recovery_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE record_type, LOG_TDES * tdes,
 					     LOG_LSA * log_lsa, LOG_PAGE * log_page_p, int **ack_list, int *ack_count,
-					     int *size_ack_list, bool *search_2pc_prepare, bool *search_2pc_start);
+					     int *size_ack_list, bool * search_2pc_prepare, bool * search_2pc_start);
 static void log_2pc_recovery_collecting_participant_votes (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void log_2pc_recovery_abort_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void log_2pc_recovery_commit_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
@@ -474,7 +477,7 @@ log_2pc_check_duplicate_global_tran_id (int gtrid)
  * Note:
  */
 static int
-log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EXECUTE execute_2pc_type, bool *decision)
+log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EXECUTE execute_2pc_type, bool * decision)
 {
   int i;
 
@@ -547,7 +550,7 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
  * Note:
  */
 static TRAN_STATE
-log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool *decision)
+log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool * decision)
 {
   TRAN_STATE state;
 
@@ -674,7 +677,7 @@ log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool *dec
  *
  */
 TRAN_STATE
-log_2pc_commit (THREAD_ENTRY * thread_p, log_tdes * tdes, LOG_2PC_EXECUTE execute_2pc_type, bool *decision)
+log_2pc_commit (THREAD_ENTRY * thread_p, log_tdes * tdes, LOG_2PC_EXECUTE execute_2pc_type, bool * decision)
 {
   TRAN_STATE state;
 
@@ -1422,18 +1425,16 @@ log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, log_tdes * tde
     }
 }
 
+// *INDENT-OFF*
 void
 log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, log_tdes * tdes, log_reader & log_pgptr_reader)
 {
-  LOG_REC_2PC_PREPCOMMIT *prepared;	/* A 2PC prepare to commit log record */
+  const LOG_REC_2PC_PREPCOMMIT *prepared;	/* A 2PC prepare to commit log record */
   LK_ACQUIRED_LOCKS acq_locks;	/* List of acquired locks before the system crash */
   int size;
 
   log_pgptr_reader.advance_when_does_not_fit (sizeof (*prepared));
-
-  // *INDENT-OFF*
-  prepared = const_cast<LOG_REC_2PC_PREPCOMMIT*> (log_pgptr_reader.reinterpret_cptr<LOG_REC_2PC_PREPCOMMIT> ());
-  // *INDENT-ON*
+  prepared = log_pgptr_reader.reinterpret_cptr<LOG_REC_2PC_PREPCOMMIT> ();
 
   tdes->client.set_system_internal_with_user (prepared->user_name);
 
@@ -1498,6 +1499,7 @@ log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, log_tdes * tde
 	}
     }
 }
+// *INDENT-ON*
 
 /*
  * log_2pc_dump_gtrinfo - DUMP GLOBAL TRANSACTION USER INFORMATION
@@ -1940,7 +1942,7 @@ log_2pc_recovery_recv_ack (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE 
 static int
 log_2pc_recovery_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE record_type, LOG_TDES * tdes, LOG_LSA * log_lsa,
 				  LOG_PAGE * log_page_p, int **ack_list, int *ack_count, int *size_ack_list,
-				  bool *search_2pc_prepare, bool *search_2pc_start)
+				  bool * search_2pc_prepare, bool * search_2pc_start)
 {
   switch (record_type)
     {
@@ -2003,8 +2005,6 @@ log_2pc_recovery_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE record_ty
     case LOG_ABORT:
     case LOG_SYSOP_START_POSTPONE:
     case LOG_SYSOP_END:
-    case LOG_START_CHKPT:
-    case LOG_END_CHKPT:
     case LOG_DUMMY_CRASH_RECOVERY:
     case LOG_REPLICATION_DATA:
     case LOG_REPLICATION_STATEMENT:
@@ -2063,7 +2063,7 @@ log_2pc_recovery_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE record_ty
  *              transaction is read by the redo phase of the recovery process.
  */
 void
-log_2pc_recovery_analysis_info (THREAD_ENTRY * thread_p, log_tdes * tdes, LOG_LSA * upto_chain_lsa)
+log_2pc_recovery_analysis_info (THREAD_ENTRY * thread_p, log_tdes * tdes, const LOG_LSA * upto_chain_lsa)
 {
   LOG_RECORD_HEADER *log_rec;	/* Pointer to log record */
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
