@@ -21,10 +21,12 @@
 
 #include "log_page_broker.hpp"
 #include "ats_ps_request.hpp"
+#include "communication_node.hpp"
 #include "request_sync_client_server.hpp"
 
 #include <memory>
 #include <string>
+#include <vector>
 
 // forward declaration
 namespace cubpacking
@@ -39,7 +41,7 @@ class active_tran_server
     ~active_tran_server ();
 
     int init_page_server_hosts (const char *db_name);
-    int connect_to_page_server (const std::string &host, int port, const char *db_name);
+    int connect_to_page_server (const cubcomm::node &node, const char *db_name);
     void disconnect_page_server ();
     bool is_page_server_connected () const;
 
@@ -53,6 +55,8 @@ class active_tran_server
   private:
     using ps_t = cubcomm::request_sync_client_server<ats_to_ps_request, ps_to_ats_request, std::string>;
 
+    int parse_server_host (const std::string &host);
+    int parse_page_server_hosts_config ();
     void receive_saved_lsa (cubpacking::unpacker &upk);
     void receive_log_page (cubpacking::unpacker &upk);
 
@@ -63,6 +67,7 @@ class active_tran_server
     std::unique_ptr<ps_t> m_ps;
 
     std::unique_ptr<cublog::page_broker> m_log_page_broker;
+    std::vector<cubcomm::node> m_connection_list;
 };
 
 extern active_tran_server ats_Gl;
