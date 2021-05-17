@@ -42,42 +42,56 @@ class test_env_chkpt
 {
   public:
     test_env_chkpt ();
-    test_env_chkpt (int size_trans, int size_sysops);
+    test_env_chkpt (size_t size_trans, size_t size_sysops);
     ~test_env_chkpt ();
 
-    LOG_LSA generate_log_lsa();
+    LOG_LSA generate_log_lsa ();
     LOG_TDES *generate_tdes (int index);
-    LOG_2PC_GTRINFO generate_2pc_gtrinfo();
-    LOG_2PC_COORDINATOR *generate_2pc_coordinator();
+    LOG_2PC_GTRINFO generate_2pc_gtrinfo ();
+    LOG_2PC_COORDINATOR *generate_2pc_coordinator ();
     CLIENTIDS generate_client (int index);
-    LOG_INFO_CHKPT_TRANS generate_log_info_chkpt_trans();
-    LOG_INFO_CHKPT_SYSOP generate_log_info_chkpt_sysop();
+    LOG_INFO_CHKPT_TRANS generate_log_info_chkpt_trans ();
+    LOG_INFO_CHKPT_SYSOP generate_log_info_chkpt_sysop ();
     std::vector<LOG_LSA> used_logs;
-    void generate_tran_table();
+    void generate_tran_table ();
 
     static constexpr int MAX_RAND = 32700;
     static void require_equal (checkpoint_info before, checkpoint_info after);
 
-    checkpoint_info before;
-    checkpoint_info after;
+    checkpoint_info get_before ();
+    checkpoint_info get_after ();
+
+  private:
+    checkpoint_info m_before;
+    checkpoint_info m_after;
 
 };
+
+checkpoint_info test_env_chkpt::get_before ()
+{
+  return m_before;
+}
+
+checkpoint_info test_env_chkpt::get_after ()
+{
+  return m_after;
+}
 
 TEST_CASE ("Test pack/unpack checkpoint_info class 1", "")
 {
   test_env_chkpt env {100, 100};
 
   cubpacking::packer pac;
-  size_t size = env.before.get_packed_size (pac, 0);
+  size_t size = env.get_before ().get_packed_size (pac, 0);
   char buffer[size];
   pac.set_buffer (buffer, size);
-  env.before.pack (pac);
+  env.get_before ().pack (pac);
 
   cubpacking::unpacker unpac;
   unpac.set_buffer (buffer, size);
-  env.after.unpack (unpac);
+  env.get_after ().unpack (unpac);
 
-  env.require_equal (env.before, env.after);
+  env.require_equal (env.get_before (), env.get_after ());
 }
 
 TEST_CASE ("Test pack/unpack checkpoint_info class 2", "")
@@ -85,16 +99,16 @@ TEST_CASE ("Test pack/unpack checkpoint_info class 2", "")
   test_env_chkpt env {0, 100};
 
   cubpacking::packer pac;
-  size_t size = env.before.get_packed_size (pac, 0);
+  size_t size = env.get_before ().get_packed_size (pac, 0);
   char buffer[size];
   pac.set_buffer (buffer, size);
-  env.before.pack (pac);
+  env.get_before ().pack (pac);
 
   cubpacking::unpacker unpac;
   unpac.set_buffer (buffer, size);
-  env.after.unpack (unpac);
+  env.get_after ().unpack (unpac);
 
-  env.require_equal (env.before, env.after);
+  env.require_equal (env.get_before (), env.get_after ());
 }
 
 TEST_CASE ("Test pack/unpack checkpoint_info class 3", "")
@@ -102,24 +116,23 @@ TEST_CASE ("Test pack/unpack checkpoint_info class 3", "")
   test_env_chkpt env {220, 80};
 
   cubpacking::packer pac;
-  size_t size = env.before.get_packed_size (pac, 0);
-  size += env.before.get_packed_size (pac, size);
+  size_t size = env.get_before ().get_packed_size (pac, 0);
+  size += env.get_before ().get_packed_size (pac, size);
   char buffer[size];
   pac.set_buffer (buffer, size);
-  env.before.pack (pac);
-  env.before.pack (pac);
+  env.get_before ().pack (pac);
+  env.get_before ().pack (pac);
 
   cubpacking::unpacker unpac;
   unpac.set_buffer (buffer, size);
-  env.after.unpack (unpac);
-  env.require_equal (env.before, env.after);
+  env.get_after ().unpack (unpac);
+  env.require_equal (env.get_before (), env.get_after ());
 
   checkpoint_info after_2;
 
   after_2.unpack (unpac);
 
-  env.require_equal (env.after, after_2);
-
+  env.require_equal (env.get_after (), after_2);
 }
 
 TEST_CASE ("Test load and recovery on empty tran table", "")
@@ -129,17 +142,16 @@ TEST_CASE ("Test load and recovery on empty tran table", "")
   LOG_LSA star_lsa;
   THREAD_ENTRY thd;
 
-  env.after.load_trantable_snapshot (&thd, smallest_lsa);
-  env.after.recovery_analysis (&thd, star_lsa);
-  env.after.recovery_2pc_analysis (&thd);
-
+  env.get_after ().load_trantable_snapshot (&thd, smallest_lsa);
+  env.get_after ().recovery_analysis (&thd, star_lsa);
+  env.get_after ().recovery_2pc_analysis (&thd);
 }
 
 std::map<TRANID, log_tdes *> tran_map;
-int afterCount;
+int after_count;
 
 int
-search_for_id (int id)
+search_for_id (TRANID id)
 {
   for (int i = 0; i < log_Gl.trantable.num_total_indices; i++)
     {
@@ -152,7 +164,7 @@ search_for_id (int id)
 }
 
 void
-fullCompareTDES (log_tdes *td1, log_tdes *td2)
+full_compare_tdes (log_tdes *td1, log_tdes *td2)
 {
   REQUIRE (td1->head_lsa == td2->head_lsa);
   REQUIRE (td1->tail_lsa == td2->tail_lsa);
@@ -185,16 +197,18 @@ check_recovery (checkpoint_info obj)
       if (tdes->state == TRAN_ACTIVE || tdes->state == TRAN_UNACTIVE_ABORTED)
 	{
 	  REQUIRE (tdes_after->second->state == TRAN_UNACTIVE_UNILATERALLY_ABORTED);
+	  full_compare_tdes (tdes, tdes_after->second);
 	  continue;
 	}
       REQUIRE (tdes_after->second->state == tdes->state);
-      fullCompareTDES (tdes, tdes_after->second);
+      full_compare_tdes (tdes, tdes_after->second);
     }
 }
-int
-numberOf2pc()
+
+size_t
+number_of_2pc()
 {
-  int count = 0;
+  size_t count = 0;
   for (int i = 1; i < log_Gl.trantable.num_total_indices; i++)
     {
       if (LOG_ISTRAN_2PC (log_Gl.trantable.all_tdes[i]))
@@ -212,13 +226,13 @@ TEST_CASE ("Test load and recovery on 100 tran table entries", "")
   LOG_LSA start_lsa;
   THREAD_ENTRY thd;
 
-  env.generate_tran_table();
-  int count = numberOf2pc();
-  env.after.load_trantable_snapshot (&thd, smallest_lsa);
-  env.after.recovery_analysis (&thd, start_lsa);
-  env.after.recovery_2pc_analysis (&thd);
-  check_recovery (env.after);
-  REQUIRE (count == afterCount);
+  env.generate_tran_table ();
+  int count = number_of_2pc ();
+  env.get_after ().load_trantable_snapshot (&thd, smallest_lsa);
+  env.get_after ().recovery_analysis (&thd, start_lsa);
+  env.get_after ().recovery_2pc_analysis (&thd);
+  check_recovery (env.get_after ());
+  REQUIRE (count == after_count);
 
 }
 
@@ -226,28 +240,28 @@ test_env_chkpt::test_env_chkpt ()
 {
 }
 
-test_env_chkpt::test_env_chkpt (int size_trans, int size_sysops)
+test_env_chkpt::test_env_chkpt (size_t size_trans, size_t size_sysops)
 {
   std::srand (time (0));
-  before.m_start_redo_lsa = this->generate_log_lsa();
-  before.m_snapshot_lsa = this->generate_log_lsa();
+  m_before.m_start_redo_lsa = this->generate_log_lsa ();
+  m_before.m_snapshot_lsa = this->generate_log_lsa ();
 
   LOG_INFO_CHKPT_TRANS chkpt_trans_to_add;
   LOG_INFO_CHKPT_SYSOP chkpt_sysop_to_add;
 
   for (int i = 0; i < size_trans; i++)
     {
-      chkpt_trans_to_add = generate_log_info_chkpt_trans();
-      before.m_trans.push_back (chkpt_trans_to_add);
+      chkpt_trans_to_add = generate_log_info_chkpt_trans ();
+      m_before.m_trans.push_back (chkpt_trans_to_add);
     }
 
   for (int i = 0; i < size_sysops; i++)
     {
-      chkpt_sysop_to_add = generate_log_info_chkpt_sysop();
-      before.m_sysops.push_back (chkpt_sysop_to_add);
+      chkpt_sysop_to_add = generate_log_info_chkpt_sysop ();
+      m_before.m_sysops.push_back (chkpt_sysop_to_add);
     }
 
-  before.m_has_2pc = std::rand() % 2;
+  m_before.m_has_2pc = std::rand () % 2;
 }
 
 test_env_chkpt::~test_env_chkpt ()
@@ -255,51 +269,51 @@ test_env_chkpt::~test_env_chkpt ()
 }
 
 LOG_INFO_CHKPT_TRANS
-test_env_chkpt::generate_log_info_chkpt_trans()
+test_env_chkpt::generate_log_info_chkpt_trans ()
 {
   LOG_INFO_CHKPT_TRANS chkpt_trans;
 
-  chkpt_trans.isloose_end = std::rand() % 2; // can be true or false
-  chkpt_trans.trid        = std::rand() % MAX_RAND;
-  chkpt_trans.state       = static_cast<TRAN_STATE> (std::rand() % TRAN_UNACTIVE_UNKNOWN);
+  chkpt_trans.isloose_end = std::rand () % 2; // can be true or false
+  chkpt_trans.trid        = std::rand () % MAX_RAND;
+  chkpt_trans.state       = static_cast<TRAN_STATE> (std::rand () % TRAN_UNACTIVE_UNKNOWN);
 
-  chkpt_trans.head_lsa    = generate_log_lsa();
-  chkpt_trans.tail_lsa    = generate_log_lsa();
-  chkpt_trans.undo_nxlsa  = generate_log_lsa();
+  chkpt_trans.head_lsa    = generate_log_lsa ();
+  chkpt_trans.tail_lsa    = generate_log_lsa ();
+  chkpt_trans.undo_nxlsa  = generate_log_lsa ();
 
-  chkpt_trans.posp_nxlsa  = generate_log_lsa();
-  chkpt_trans.savept_lsa  = generate_log_lsa();
-  chkpt_trans.tail_topresult_lsa  = generate_log_lsa();
-  chkpt_trans.start_postpone_lsa  = generate_log_lsa();
+  chkpt_trans.posp_nxlsa  = generate_log_lsa ();
+  chkpt_trans.savept_lsa  = generate_log_lsa ();
+  chkpt_trans.tail_topresult_lsa  = generate_log_lsa ();
+  chkpt_trans.start_postpone_lsa  = generate_log_lsa ();
 
-  int length = std::rand() % LOG_USERNAME_MAX;
+  int length = std::rand () % LOG_USERNAME_MAX;
 
   length = std::min (5, length);
 
   for (int i = 0; i < length; i++)
     {
-      chkpt_trans.user_name[i] = 'A' + std::rand() % 20;
+      chkpt_trans.user_name[i] = 'A' + std::rand () % 20;
     }
 
   return chkpt_trans;
 }
 
 LOG_INFO_CHKPT_SYSOP
-test_env_chkpt::generate_log_info_chkpt_sysop()
+test_env_chkpt::generate_log_info_chkpt_sysop ()
 {
   LOG_INFO_CHKPT_SYSOP chkpt_sysop;
 
-  chkpt_sysop.trid                      = std::rand() % MAX_RAND;
-  chkpt_sysop.sysop_start_postpone_lsa  = generate_log_lsa();
-  chkpt_sysop.atomic_sysop_start_lsa    = generate_log_lsa();
+  chkpt_sysop.trid                      = std::rand () % MAX_RAND;
+  chkpt_sysop.sysop_start_postpone_lsa  = generate_log_lsa ();
+  chkpt_sysop.atomic_sysop_start_lsa    = generate_log_lsa ();
 
   return chkpt_sysop;
 }
 
 LOG_LSA
-test_env_chkpt::generate_log_lsa()
+test_env_chkpt::generate_log_lsa ()
 {
-  return log_lsa (std::rand() % MAX_RAND, std::rand() % MAX_RAND);
+  return log_lsa (std::rand () % MAX_RAND, std::rand () % MAX_RAND);
 }
 
 void
@@ -315,21 +329,21 @@ test_env_chkpt::require_equal (checkpoint_info before, checkpoint_info after)
 }
 
 LOG_2PC_GTRINFO
-test_env_chkpt::generate_2pc_gtrinfo()
+test_env_chkpt::generate_2pc_gtrinfo ()
 {
   log_2pc_gtrinfo pc;
-  pc.info_length = rand() % MAX_RAND;
+  pc.info_length = rand () % MAX_RAND;
   pc.info_data = malloc (pc.info_length);
 
   return pc;
 }
 
 LOG_2PC_COORDINATOR *
-test_env_chkpt::generate_2pc_coordinator()
+test_env_chkpt::generate_2pc_coordinator ()
 {
-  log_2pc_coordinator *pc = new log_2pc_coordinator();
-  pc->num_particps = rand() % MAX_RAND;
-  pc->particp_id_length = rand() % MAX_RAND;
+  log_2pc_coordinator *pc = new log_2pc_coordinator ();
+  pc->num_particps = rand () % MAX_RAND;
+  pc->particp_id_length = rand () % MAX_RAND;
 
   return pc;
 }
@@ -351,7 +365,7 @@ test_env_chkpt::generate_client (int index)
   clnt.login_name = (number);
   sprintf (number, "host_%d", index);
   clnt.host_name = (number);
-  clnt.process_id = rand() % MAX_RAND;
+  clnt.process_id = rand () % MAX_RAND;
 
   return clnt;
 }
@@ -556,44 +570,6 @@ log_system_tdes::map_all_tdes (const map_func &func)
 void
 logtb_clear_tdes (THREAD_ENTRY *thread_p, LOG_TDES *tdes)
 {
-  int i, j;
-  DB_VALUE *dbval;
-  HL_HEAPID save_heap_id;
-
-  tdes->isloose_end = false;
-  tdes->state = TRAN_ACTIVE;
-  LSA_SET_NULL (&tdes->head_lsa);
-  LSA_SET_NULL (&tdes->tail_lsa);
-  LSA_SET_NULL (&tdes->undo_nxlsa);
-  LSA_SET_NULL (&tdes->posp_nxlsa);
-  LSA_SET_NULL (&tdes->savept_lsa);
-  LSA_SET_NULL (&tdes->topop_lsa);
-  LSA_SET_NULL (&tdes->tail_topresult_lsa);
-  tdes->topops.last = -1;
-  tdes->gtrid = LOG_2PC_NULL_GTRID;
-  tdes->gtrinfo.info_length = 0;
-  tdes->cur_repl_record = 0;
-  tdes->append_repl_recidx = -1;
-  tdes->fl_mark_repl_recidx = -1;
-  LSA_SET_NULL (&tdes->repl_insert_lsa);
-  LSA_SET_NULL (&tdes->repl_update_lsa);
-  tdes->first_save_entry = NULL;
-  tdes->query_timeout = 0;
-  tdes->query_start_time = 0;
-  tdes->tran_start_time = 0;
-  tdes->waiting_for_res = NULL;
-  tdes->tran_abort_reason = TRAN_NORMAL;
-  tdes->num_exec_queries = 0;
-  tdes->suppress_replication = 0;
-  tdes->has_deadlock_priority = false;
-
-  tdes->num_log_records_written = 0;
-
-  LSA_SET_NULL (&tdes->rcv.tran_start_postpone_lsa);
-  LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
-  LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
-  LSA_SET_NULL (&tdes->rcv.analysis_last_aborted_sysop_lsa);
-  LSA_SET_NULL (&tdes->rcv.analysis_last_aborted_sysop_start_lsa);
 }
 
 log_tdes *
@@ -731,7 +707,7 @@ logtb_find_tran_index (THREAD_ENTRY *thread_p, TRANID trid)
 void
 log_2pc_recovery_analysis_info (THREAD_ENTRY *thread_p, log_tdes *tdes, LOG_LSA *upto_chain_lsa)
 {
-  afterCount++;
+  after_count++;
   assert (true);
 }
 
