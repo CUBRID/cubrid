@@ -15632,7 +15632,10 @@ sm_collect_truncatable_classes (MOP class_mop, std::unordered_set < OID > &trun_
   SM_CLASS *class_ = NULL;
   SM_CLASS_CONSTRAINT *pk_constraint = NULL;
   SM_FOREIGN_KEY_INFO *fk_ref;
+  DB_OBJLIST *subs;
+  SM_CLASS *subclass;
   OID *fk_cls_oid;
+  bool is_pk_referred = false;
   int partition_type = DB_NOT_PARTITIONED_CLASS;
 
   error = au_fetch_class (class_mop, &class_, AU_FETCH_READ, DB_AUTH_ALTER);
@@ -15642,38 +15645,58 @@ sm_collect_truncatable_classes (MOP class_mop, std::unordered_set < OID > &trun_
       return er_errid ();
     }
 
+  pk_constraint = classobj_find_cons_primary_key (class_->constraints);
+  is_pk_referred = pk_constraint != NULL && pk_constraint->fk_info != NULL;
+
+  if (is_pk_referred && !is_cascade)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TRUNCATE_PK_REFERRED, 1, pk_constraint->fk_info->name);
+      return ER_TRUNCATE_PK_REFERRED;
+    }
+
   error = sm_partitioned_class_type (class_mop, &partition_type, NULL, NULL);
   if (error != NO_ERROR)
     {
       return error;
     }
 
-  if (partition_type == DB_PARTITION_CLASS)
+  switch (partition_type)
     {
+    case DB_PARTITION_CLASS:
       /*
+       * TRUNCATE [partition class] is already prevented.
+       * This can be reached because if a FK of partitioned class referes a PK, FKs of the partition classes also refer to it.
+       *
        * No need to be added to trun_classes:
-       *  Partitioning classes will be truncated while truncating partitioned class of them.
+       *  Partition classes will be added when examining the partitioned class of them.
        * No need to check FK for cascaing:
        *  It's enough to check the PK of the partitioned class for cascading.
        */
       return NO_ERROR;
+    case DB_PARTITIONED_CLASS:
+      /* Find partition classes if exists */
+      assert (class_->users);
+      for (subs = class_->users; subs; subs = subs->next)
+	{
+	  error = au_fetch_class (subs->op, &subclass, AU_FETCH_READ, DB_AUTH_ALTER);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	  if (subclass->partition)
+	    {
+	      trun_classes.emplace (*ws_oid (subs->op));
+	    }
+	}
+      //yes, fallthrough
+    case DB_NOT_PARTITIONED_CLASS:
+      trun_classes.emplace (*ws_oid (class_mop));
     }
 
-  trun_classes.emplace (*ws_oid (class_mop));
-
-  pk_constraint = classobj_find_cons_primary_key (class_->constraints);
-  if (pk_constraint == NULL || pk_constraint->fk_info == NULL)
+  if (!is_pk_referred)
     {
       /* if no PK or FK-referred, it can be truncated */
       return NO_ERROR;
-    }
-
-  /* Now, there is a PK, and are some FKs-referring to the PK */
-
-  if (!is_cascade)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TRUNCATE_PK_REFERRED, 1, pk_constraint->fk_info->name);
-      return ER_TRUNCATE_PK_REFERRED;
     }
 
   /* Find FK-child classes to cascade. */
@@ -15775,7 +15798,6 @@ sm_truncate_class_internal (MOP class_mop)
   SM_CONSTRAINT_INFO *saved = NULL;
   DB_CTMPL *ctmpl = NULL;
   SM_ATTRIBUTE *att = NULL;
-  int partition_type = DB_NOT_PARTITIONED_CLASS;
   int au_save = 0;
 
   /* We need to flush everything so that the server logs the inserts that happened before the truncate. We need this in
@@ -15793,36 +15815,6 @@ sm_truncate_class_internal (MOP class_mop)
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto error_exit;
-    }
-
-  error = sm_partitioned_class_type (class_mop, &partition_type, NULL, NULL);
-  if (error != NO_ERROR)
-    {
-      goto error_exit;
-    }
-
-  if (partition_type == DB_PARTITIONED_CLASS)
-    {
-      DB_OBJLIST *subs;
-      SM_CLASS *subclass;
-      assert (class_->users);
-      for (subs = class_->users; subs; subs = subs->next)
-	{
-	  error = au_fetch_class (subs->op, &subclass, AU_FETCH_READ, DB_AUTH_ALTER);
-	  if (error != NO_ERROR)
-	    {
-	      goto error_exit;
-	    }
-	  if (subclass->partition)
-	    {
-	      /* FK referes to the PK of partitioned table, not the PK of partitioning table. So, no need to pass the cascading option */
-	      error = sm_truncate_class_internal (subs->op);
-	      if (error != NO_ERROR)
-		{
-		  goto error_exit;
-		}
-	    }
-	}
     }
 
   /* collect index information to drop and recreate, or revmoe btree records if it can't be dropped. */
