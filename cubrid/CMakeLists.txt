@@ -198,6 +198,7 @@ set(COMMUNICATION_SOURCES
 
 set(COMMUNICATION_HEADERS
   ${COMMUNICATION_DIR}/communication_channel.hpp
+  ${COMMUNICATION_DIR}/communication_node.hpp
   ${COMMUNICATION_DIR}/communication_server_channel.hpp
   ${CONNECTION_DIR}/connection_server_rules.hpp
   ${COMMUNICATION_DIR}/request_client_server.hpp
