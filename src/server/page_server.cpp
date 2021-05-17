@@ -155,14 +155,24 @@ void page_server::on_log_page_read_result (const LOG_PAGE *log_page, int error_c
     }
 }
 
-void page_server::on_data_page_read_result (PAGE_PTR page_ptr, int error_code)
+void page_server::on_data_page_read_result (FILEIO_PAGE *io_page, int error_code)
 {
+  char buffer[sizeof (int) + IO_MAX_PAGE_SIZE];
+  std::memcpy (buffer, &error_code, sizeof (error_code));
+  std::size_t buffer_size = sizeof (error_code);
+
+  if (error_code == NO_ERROR)
+    {
+      std::memcpy (buffer + sizeof (error_code), io_page->page, db_page_size ());
+      buffer_size += db_page_size ();
+    }
+
   if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
     {
       _er_log_debug (ARG_FILE_LINE, "Sending Data Page...");
     }
 
-  std::string message (page_ptr, db_page_size ());
+  std::string message (buffer, buffer_size);
   m_ats_request_queue->push (ps_to_ats_request::SEND_DATA_PAGE, std::move (message));
 }
 

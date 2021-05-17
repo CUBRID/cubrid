@@ -215,9 +215,20 @@ void active_tran_server::receive_data_page (cubpacking::unpacker &upk)
   std::string message;
   upk.unpack_string (message);
 
+  int error_code;
+  std::memcpy (&error_code, message.c_str (), sizeof (error_code));
+
   if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
     {
-      _er_log_debug (ARG_FILE_LINE, "Received data page message from Page Server.");
+      if (error_code == NO_ERROR)
+	{
+	  _er_log_debug (ARG_FILE_LINE,
+			 "Received data page message from Page Server."); // TODO: Ilie - print page info if no error.
+	}
+      else
+	{
+	  _er_log_debug (ARG_FILE_LINE, "Received data page message from Page Server. Error: %d \n", error_code);
+	}
     }
 }
 

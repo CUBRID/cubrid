@@ -16404,3 +16404,9 @@ exit_on_error:
 
   return error;
 }
+
+void
+cast_pgptr_to_iopgptr (FILEIO_PAGE * &io_page, PAGE_PTR page_ptr)
+{
+  CAST_PGPTR_TO_IOPGPTR (io_page, page_ptr);
+}

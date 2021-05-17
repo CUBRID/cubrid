@@ -66,9 +66,15 @@ namespace cublog
   void data_page_fetch_task::execute (context_type &context)
   {
     // TODO: wait for replication
-    PAGE_PTR page_ptr = pgbuf_fix_debug (&context, &m_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH, "", 0);
-    assert (page_ptr);
-    m_callback (page_ptr, NO_ERROR);
+    PAGE_PTR page_ptr = pgbuf_fix (&context, &m_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+
+    FILEIO_PAGE *io_pgptr = nullptr;
+    cast_pgptr_to_iopgptr (io_pgptr, page_ptr);
+
+    int error = io_pgptr != nullptr ? NO_ERROR : er_errid ();
+    m_callback (io_pgptr, error); // TODO: Ilie - send page info from above.
+
+    pgbuf_unfix (&context, page_ptr);
   }
 
   async_page_fetcher::async_page_fetcher ()

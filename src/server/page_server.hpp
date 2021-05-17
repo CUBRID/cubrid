@@ -68,7 +68,7 @@ class page_server
     void receive_data_page_fetch (cubpacking::unpacker &upk);
 
     void on_log_page_read_result (const LOG_PAGE *log_page, int error_code);
-    void on_data_page_read_result (PAGE_PTR page_ptr, int error_code);
+    void on_data_page_read_result (FILEIO_PAGE *page_ptr, int error_code);
 
     std::unique_ptr<active_tran_server_conn> m_ats_conn;
     std::unique_ptr<active_tran_server_request_queue> m_ats_request_queue;

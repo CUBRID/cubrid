@@ -182,3 +182,13 @@ pgbuf_fix_debug (THREAD_ENTRY *thread_p, const VPID *vpid, PAGE_FETCH_MODE fetch
 {
   return nullptr;
 }
+
+void
+cast_pgptr_to_iopgptr (FILEIO_PAGE *&io_page, PAGE_PTR page_ptr)
+{
+}
+
+void
+pgbuf_unfix_debug (THREAD_ENTRY *thread_p, PAGE_PTR pgptr, const char *caller_file, int caller_line)
+{
+}
