@@ -251,7 +251,7 @@ TEST_CASE ("log recovery parallel test: idle status", "[ci]")
   db_online->require_equal (*db_recovery);
 }
 
-TEST_CASE ("minimum log lsa", "[ci][dbg]")
+TEST_CASE ("minimum log lsa: simple test", "[ci]")
 {
   srand (time (nullptr));
 
@@ -331,4 +331,202 @@ TEST_CASE ("minimum log lsa", "[ci][dbg]")
     REQUIRE (min_log_lsa.get () > target_log_lsa);
     REQUIRE (min_log_lsa.get () != MAX_LSA);
   }
+}
+
+TEST_CASE ("minimum log lsa: complete test", "[ci][dbg]")
+{
+  // - use a ut_database_values_generator to generate ever-increasing lsa values
+  // - some deques that mirror the 3 separate containers used in actual functioning: prod, cons, in-progress
+  // - for the 'outer' don't use a container, just a single value
+  // - all these 4 need to be synched by the same mutex
+  // - some threads that randomly move the data simiar to how the actual tasks work and also
+  //    update the monitor
+  // - one more thread that continuosly checks correctness
+
+  constexpr log_lsa SENTINEL_LSA { MAX_LSA };
+
+  // we only use the lsa generation from here
+  const ut_database_config database_config { 42, 42, 2.};
+  ut_database_values_generator global_values{ database_config };
+
+  using log_lsa_deque = std::deque<log_lsa>;
+
+  cublog::minimum_log_lsa_monitor min_log_lsa_monitor;
+
+  log_lsa_deque produce_lsa_deq;
+  log_lsa_deque consume_lsa_deq;
+  log_lsa_deque in_progress_lsa_deq;
+  // seed with a first value
+  log_lsa outer_lsa = global_values.increment_and_get_lsa_log ();
+  min_log_lsa_monitor.set_for_outer (outer_lsa);
+
+  std::mutex deque_mutex;
+
+  std::atomic_bool do_execute_test { true };
+  std::atomic_bool do_execute_test_check { true };
+
+  std::thread checking_thread ([&] ()
+  {
+    while (true)
+      {
+	log_lsa min_produce { SENTINEL_LSA };
+	log_lsa min_consume { SENTINEL_LSA };
+	log_lsa min_in_progress { SENTINEL_LSA };
+	log_lsa min_outer { SENTINEL_LSA };
+	log_lsa min_lsa_from_monitor { SENTINEL_LSA };
+	{
+	  std::lock_guard<std::mutex> lockg { deque_mutex };
+	  min_produce = produce_lsa_deq.empty () ? SENTINEL_LSA : produce_lsa_deq.front ();
+	  min_consume = consume_lsa_deq.empty () ? SENTINEL_LSA : consume_lsa_deq.front ();
+	  min_in_progress = in_progress_lsa_deq.empty () ? SENTINEL_LSA : in_progress_lsa_deq.front ();
+	  min_outer = outer_lsa;
+	  min_lsa_from_monitor = min_log_lsa_monitor.get ();
+	}
+	const log_lsa min_lsa_calculated = std::min (
+	{
+	  min_produce,
+	  min_consume,
+	  min_in_progress,
+	  min_outer
+	});
+	REQUIRE (min_lsa_calculated == min_lsa_from_monitor);
+
+	if (false == do_execute_test_check.load ())
+	  {
+	    break;
+	  }
+	std::this_thread::yield ();
+      }
+  });
+  // allow check empty state
+  std::this_thread::sleep_for (std::chrono::milliseconds (2));
+
+  std::thread generate_log_lsas_thread ([&] ()
+  {
+    while (true)
+      {
+	const log_lsa new_lsa = global_values.increment_and_get_lsa_log ();
+	{
+	  std::lock_guard<std::mutex> lockg { deque_mutex };
+	  if (produce_lsa_deq.empty ())
+	    {
+	      min_log_lsa_monitor.set_for_produce (outer_lsa);
+	    }
+	  produce_lsa_deq.push_back (outer_lsa);
+	  outer_lsa = new_lsa;
+	  min_log_lsa_monitor.set_for_outer (new_lsa);
+	}
+	if (false == do_execute_test.load ())
+	  {
+	    break;
+	  }
+	std::this_thread::yield ();
+      }
+  });
+
+  std::thread swap_produce_and_consume_thread ([&] ()
+  {
+    while (true)
+      {
+	{
+	  std::lock_guard<std::mutex> lockg { deque_mutex };
+	  if (consume_lsa_deq.empty () && !produce_lsa_deq.empty ())
+	    {
+	      produce_lsa_deq.swap (consume_lsa_deq);
+	      const log_lsa min_cons_log_lsa = consume_lsa_deq.front ();
+	      min_log_lsa_monitor.set_for_produce_and_consume (SENTINEL_LSA, min_cons_log_lsa);
+	    }
+	  if (false == do_execute_test.load () && produce_lsa_deq.empty ())
+	    {
+	      break;
+	    }
+	}
+	std::this_thread::yield ();
+      }
+  });
+
+  std::vector<std::thread> move_consume_to_in_progress_threads;
+  for (int i = 0; i < 10; ++i)
+    {
+      move_consume_to_in_progress_threads.emplace_back (std::thread
+      {
+	[&] ()
+	{
+	  while (true)
+	    {
+	      {
+		std::lock_guard<std::mutex> lockg { deque_mutex };
+		if (!consume_lsa_deq.empty ())
+		  {
+		    const log_lsa lsa_to_move = consume_lsa_deq.front ();
+		    consume_lsa_deq.pop_front ();
+		    in_progress_lsa_deq.push_back (lsa_to_move);
+		    const log_lsa min_consume_lsa = consume_lsa_deq.empty ()
+						    ? SENTINEL_LSA
+						    : consume_lsa_deq.front ();
+		    min_log_lsa_monitor.set_for_consume_and_in_progress (min_consume_lsa, in_progress_lsa_deq.front ());
+		  }
+		if (false == do_execute_test.load () && consume_lsa_deq.empty ())
+		  {
+		    break;
+		  }
+	      }
+	      std::this_thread::yield ();
+	    }
+	}
+      });
+    }
+
+  std::vector<std::thread> in_progress_threads;
+  for (int i = 0; i < 10; ++i)
+    {
+      in_progress_threads.emplace_back (std::thread
+      {
+	[&] ()
+	{
+	  while (true)
+	    {
+	      {
+		std::lock_guard<std::mutex> lockg { deque_mutex };
+		if (!in_progress_lsa_deq.empty ())
+		  {
+		    const log_lsa lsa_to_finish = in_progress_lsa_deq.front ();
+		    in_progress_lsa_deq.pop_front ();
+		    const log_lsa min_in_progress_lsa = in_progress_lsa_deq.empty ()
+							? SENTINEL_LSA
+							: in_progress_lsa_deq.front ();
+		    min_log_lsa_monitor.set_for_in_progress (min_in_progress_lsa);
+		  }
+		// don't run to exhaustion
+		if (false == do_execute_test.load ())
+		  {
+		    break;
+		  }
+	      }
+	      std::this_thread::yield ();
+	    }
+	}
+      });
+    }
+
+  std::this_thread::sleep_for (std::chrono::milliseconds (200));
+
+  do_execute_test.store (false);
+
+  generate_log_lsas_thread.join ();
+  swap_produce_and_consume_thread.join ();
+  for (int i = 0; i < 10; ++i)
+    {
+      move_consume_to_in_progress_threads[i].join ();
+    }
+
+  for (int i = 0; i < 10; ++i)
+    {
+      in_progress_threads[i].join ();
+    }
+
+  // allow checking final state
+  std::this_thread::sleep_for (std::chrono::milliseconds (2));
+  do_execute_test_check.store (false);
+  checking_thread.join ();
 }
