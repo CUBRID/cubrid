@@ -292,7 +292,7 @@ namespace cublog
     LOG_TDES *tdes = nullptr;
 
     /* Add the transactions to the transaction table */
-    for (auto chkpt : m_trans)
+    for (const auto &chkpt : m_trans)
       {
 	/*
 	 * If this is the first time, the transaction is seen. Assign a
@@ -341,7 +341,7 @@ namespace cublog
     log_page_local->hdr.logical_pageid = NULL_PAGEID;
     log_page_local->hdr.offset = NULL_OFFSET;
 
-    for (auto sysop : m_sysops)
+    for (const auto &sysop : m_sysops)
       {
 	tdes = logtb_rv_find_allocate_tran_index (thread_p, sysop.trid, &NULL_LSA);
 	if (tdes == NULL)
@@ -391,7 +391,7 @@ namespace cublog
 	return;
       }
 
-    for (auto chkpt : m_trans)
+    for (const auto &chkpt : m_trans)
       {
 	int tran_index = logtb_find_tran_index (thread_p, chkpt.trid);
 	if (tran_index != NULL_TRAN_INDEX)

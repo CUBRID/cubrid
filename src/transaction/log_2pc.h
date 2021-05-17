@@ -96,7 +96,7 @@ void log_2pc_dump_gtrinfo (FILE * fp, int length, void *data);
 void log_2pc_dump_acqobj_locks (FILE * fp, int length, void *data);
 log_tdes *log_2pc_alloc_coord_info (log_tdes * tdes, int num_particps, int particp_id_length, void *block_particps_ids);
 void log_2pc_free_coord_info (log_tdes * tdes);
-void log_2pc_recovery_analysis_info (THREAD_ENTRY * thread_p, log_tdes * tdes, LOG_LSA * upto_chain_lsa);
+void log_2pc_recovery_analysis_info (THREAD_ENTRY * thread_p, log_tdes * tdes, const LOG_LSA * upto_chain_lsa);
 void log_2pc_recovery (THREAD_ENTRY * thread_p);
 bool log_2pc_is_tran_distributed (log_tdes * tdes);
 bool log_2pc_clear_and_is_tran_distributed (log_tdes * tdes);

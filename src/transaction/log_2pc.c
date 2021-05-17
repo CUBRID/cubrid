@@ -2063,7 +2063,7 @@ log_2pc_recovery_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE record_ty
  *              transaction is read by the redo phase of the recovery process.
  */
 void
-log_2pc_recovery_analysis_info (THREAD_ENTRY * thread_p, log_tdes * tdes, LOG_LSA * upto_chain_lsa)
+log_2pc_recovery_analysis_info (THREAD_ENTRY * thread_p, log_tdes * tdes, const LOG_LSA * upto_chain_lsa)
 {
   LOG_RECORD_HEADER *log_rec;	/* Pointer to log record */
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
