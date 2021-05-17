@@ -3803,7 +3803,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	}
 
       /* now we can set the nxio_lsa to append_lsa */
-      log_Gl.append.set_nxio_lsa (log_Gl.hdr.append_lsa);	// TODO: Ilie - this lsa is safe 
+      log_Gl.append.set_nxio_lsa (log_Gl.hdr.append_lsa);
 
       log_Pb.partial_append.status = LOGPB_APPENDREC_PARTIAL_FLUSHED_ORIGINAL;
 

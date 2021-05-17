@@ -460,6 +460,8 @@ extern void pgbuf_daemons_destroy ();
 #endif /* SERVER_MODE */
 
 extern int pgbuf_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int arg_cnt, void **ptr);
-extern void cast_pgptr_to_iopgptr (FILEIO_PAGE * &io_page, PAGE_PTR page_ptr);
+// *INDENT-OFF*
+extern void cast_pgptr_to_iopgptr (PAGE_PTR page_ptr, FILEIO_PAGE *&io_page);
+// *INDENT-ON*
 
 #endif /* _PAGE_BUFFER_H_ */

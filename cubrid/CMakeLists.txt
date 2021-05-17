@@ -284,7 +284,6 @@ set(JSP_SOURCES
   )
 
 set(TRANSACTION_SOURCES
-  ${TRANSACTION_DIR}/async_page_fetcher.cpp
   ${TRANSACTION_DIR}/boot_sr.c
   ${TRANSACTION_DIR}/client_credentials.cpp
   ${TRANSACTION_DIR}/locator.c
@@ -325,7 +324,6 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/wait_for_graph.c
   )
 set(TRANSACTION_HEADERS
-  ${TRANSACTION_DIR}/async_page_fetcher.hpp
   ${TRANSACTION_DIR}/client_credentials.hpp
   ${TRANSACTION_DIR}/log_2pc.h
   ${TRANSACTION_DIR}/log_append.hpp
@@ -366,6 +364,7 @@ set(SERVER_HEADERS
   )
 
 set(STORAGE_SOURCES
+  ${STORAGE_DIR}/async_page_fetcher.cpp
   ${STORAGE_DIR}/btree.c
   ${STORAGE_DIR}/btree_load.c
   ${STORAGE_DIR}/btree_unique.cpp
@@ -392,7 +391,7 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/tde.c
   )
 set(STORAGE_HEADERS
-  
+  ${STORAGE_DIR}/async_page_fetcher.hpp
   ${STORAGE_DIR}/btree_unique.hpp
   ${STORAGE_DIR}/record_descriptor.hpp
   ${STORAGE_DIR}/vpid.hpp
