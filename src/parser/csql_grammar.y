@@ -1171,7 +1171,6 @@ int g_original_buffer_len;
 %token COUNT
 %token CREATE
 %token CROSS
-%token DBLINK
 %token CURRENT
 %token CURRENT_DATE
 %token CURRENT_DATETIME
@@ -1549,6 +1548,7 @@ int g_original_buffer_len;
 %token <cptr> CUME_DIST
 %token <cptr> DATE_ADD
 %token <cptr> DATE_SUB
+%token <cptr> DBLINK
 %token <cptr> DECREMENT
 %token <cptr> DENSE_RANK
 %token <cptr> DONT_REUSE_OID
@@ -21811,6 +21811,14 @@ identifier
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+        | DBLINK
+                {{
+                        PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+                DBG_PRINT}}
 	| DECREMENT
 		{{
 

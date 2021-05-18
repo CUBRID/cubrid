@@ -260,7 +260,9 @@ int yybuffer_pos;
 [dD][aA][yY]_[sS][eE][cC][oO][nN][dD]     				{ begin_token(yytext);   return DAY_SECOND; }
 [dD][aA][yY]_[mM][iI][nN][uU][tT][eE]     				{ begin_token(yytext);   return DAY_MINUTE; }
 [dD][aA][yY]_[hH][oO][uU][rR]	       					{ begin_token(yytext);   return DAY_HOUR; }
-[dD][bB][lL][iI][nN][kK]					        { begin_token(yytext); 	 return DBLINK; }
+[dD][bB][lL][iI][nN][kK]					        { begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return DBLINK; }
 [dD][bB][tT][iI][mM][eE][zZ][oO][nN][eE]                                { begin_token(yytext);   return DB_TIMEZONE; }
 [dD][eE][aA][lL][lL][oO][cC][aA][tT][eE]				{ begin_token(yytext);   return DEALLOCATE; }
 [dD][eE][cC]								{ begin_token(yytext);   return NUMERIC; }
