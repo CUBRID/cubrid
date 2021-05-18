@@ -96,19 +96,19 @@ log_recovery_context::set_start_redo_lsa (const log_lsa &start_redo_lsa)
   m_start_redo_lsa = start_redo_lsa;
 }
 
-log_lsa
+const log_lsa &
 log_recovery_context::get_checkpoint_lsa () const
 {
   return m_checkpoint_lsa;
 }
 
-log_lsa
+const log_lsa &
 log_recovery_context::get_start_redo_lsa () const
 {
   return m_start_redo_lsa;
 }
 
-log_lsa
+const log_lsa &
 log_recovery_context::get_end_redo_lsa () const
 {
   return m_end_redo_lsa;

@@ -36,9 +36,9 @@ class log_recovery_context
     // Accessors
     void set_end_redo_lsa (const log_lsa &end_redo_lsa);
     void set_start_redo_lsa (const log_lsa &start_redo_lsa);
-    log_lsa get_checkpoint_lsa () const;
-    log_lsa get_start_redo_lsa () const;
-    log_lsa get_end_redo_lsa () const;
+    const log_lsa &get_checkpoint_lsa () const;
+    const log_lsa &get_start_redo_lsa () const;
+    const log_lsa &get_end_redo_lsa () const;
 
     // Restore related functions
     void init_for_restore (const time_t *stopat_p);   // Init recovery context for restore
