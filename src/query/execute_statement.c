@@ -12954,7 +12954,7 @@ cleanup:
       set_free (seq);
     }
 
-  cursor_free_self_list_id ((QFILE_LIST_ID *) qry->etc);
+  cursor_free_self_list_id (qry->etc);
   pt_end_query (parser, query_id_self);
 
   return cnt;
@@ -15716,7 +15716,7 @@ exit:
     {
       if (ins_select_stmt->etc != NULL)
 	{
-	  cursor_free_self_list_id ((QFILE_LIST_ID *) ins_select_stmt->etc);
+	  cursor_free_self_list_id (ins_select_stmt->etc);
 	  if (ins_query_id != NULL_QUERY_ID && !tran_was_latest_query_ended ())
 	    {
 	      qmgr_end_query (ins_query_id);
@@ -16521,7 +16521,7 @@ exit:
     {
       if (ins_select_stmt->etc != NULL)
 	{
-	  cursor_free_self_list_id ((QFILE_LIST_ID *) ins_select_stmt->etc);
+	  cursor_free_self_list_id (ins_select_stmt->etc);
 	  if (ins_query_id != NULL_QUERY_ID && !tran_was_latest_query_ended ())
 	    {
 	      qmgr_end_query (ins_query_id);
