@@ -1363,17 +1363,17 @@ _[uU][tT][fF]8[']		{
 
 "\\n"				{
 					csql_yylval.cptr = pt_append_string(this_parser, csql_yylval.cptr,
-									    (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) || this_parser->strings_have_no_escapes) ? "\\n" : "\n");
+									    (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) || this_parser->flag.strings_have_no_escapes) ? "\\n" : "\n");
 				}
 
 "\\r"				{
 					csql_yylval.cptr = pt_append_string(this_parser, csql_yylval.cptr,
-									    (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) || this_parser->strings_have_no_escapes) ? "\\r" : "\r");
+									    (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) || this_parser->flag.strings_have_no_escapes) ? "\\r" : "\r");
 				}
 
 "\\t"				{
 					csql_yylval.cptr = pt_append_string(this_parser, csql_yylval.cptr,
-									    (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) || this_parser->strings_have_no_escapes) ? "\\t" : "\t");
+									    (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) || this_parser->flag.strings_have_no_escapes) ? "\\t" : "\t");
 				}
 
 "\\%"				{
@@ -1385,7 +1385,7 @@ _[uU][tT][fF]8[']		{
 				}
 
 [\\]['"]			{
-					if (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) || this_parser->strings_have_no_escapes)
+					if (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) || this_parser->flag.strings_have_no_escapes)
 					  {
 					    csql_yylval.cptr = pt_append_string(this_parser, csql_yylval.cptr, "\\");
 					    unput(*(yytext + 1));
@@ -1399,14 +1399,14 @@ _[uU][tT][fF]8[']		{
 
 [\\].				{
 					csql_yylval.cptr = pt_append_string(this_parser, csql_yylval.cptr,
-							   (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) || this_parser->strings_have_no_escapes) ? yytext : yytext + 1);
+							   (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) || this_parser->flag.strings_have_no_escapes) ? yytext : yytext + 1);
 				}
 
 [\\]\n				{
 					this_parser->line = yylineno;
 					this_parser->column = yycolumn = yycolumn_end = 0;
 
-					if (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) || this_parser->strings_have_no_escapes)
+					if (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) || this_parser->flag.strings_have_no_escapes)
 					  {
 					    csql_yylval.cptr = pt_append_string(this_parser, csql_yylval.cptr, "\\\n");
 					  }
