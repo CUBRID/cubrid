@@ -32,13 +32,13 @@ namespace cublog
   {
     public:
       using log_page_callback_type = std::function<void (const LOG_PAGE *, int)>;
-      using data_page_callback_type = std::function<void (FILEIO_PAGE *, int)>;
+      using data_page_callback_type = std::function<void (const FILEIO_PAGE *, int)>;
 
       async_page_fetcher ();
       ~async_page_fetcher ();
 
       void fetch_log_page (LOG_PAGEID pageid, log_page_callback_type &&func);
-      void fetch_data_page (const VPID &vpid, data_page_callback_type &&func);
+      void fetch_data_page (const VPID &vpid, const LOG_LSA repl_lsa, data_page_callback_type &&func);
 
     private:
       cubthread::entry_workpool *m_threads = nullptr;

@@ -108,14 +108,18 @@ void page_server::receive_log_page_fetch (cubpacking::unpacker &upk)
 
 void page_server::receive_data_page_fetch (cubpacking::unpacker &upk)
 {
-  VPID vpid;
   std::string message;
-
   upk.unpack_string (message);
+
+  VPID vpid;
   std::memcpy (&vpid, message.c_str (), sizeof (vpid));
 
+  LOG_LSA nxio_lsa;
+  std::memcpy (&nxio_lsa, message.c_str () + sizeof (vpid), sizeof (nxio_lsa));
+
   assert (m_page_fetcher);
-  m_page_fetcher->fetch_data_page (vpid, std::bind (&page_server::on_data_page_read_result, this, std::placeholders::_1,
+  m_page_fetcher->fetch_data_page (vpid, nxio_lsa, std::bind (&page_server::on_data_page_read_result, this,
+				   std::placeholders::_1,
 				   std::placeholders::_2));
 }
 
@@ -155,7 +159,7 @@ void page_server::on_log_page_read_result (const LOG_PAGE *log_page, int error_c
     }
 }
 
-void page_server::on_data_page_read_result (FILEIO_PAGE *io_page, int error_code)
+void page_server::on_data_page_read_result (const FILEIO_PAGE *io_page, int error_code)
 {
   char buffer[sizeof (int) + IO_MAX_PAGE_SIZE];
   std::memcpy (buffer, &error_code, sizeof (error_code));
@@ -163,13 +167,21 @@ void page_server::on_data_page_read_result (FILEIO_PAGE *io_page, int error_code
 
   if (error_code == NO_ERROR)
     {
-      std::memcpy (buffer + sizeof (error_code), io_page->page, db_page_size ());
-      buffer_size += db_page_size ();
+      std::memcpy (buffer + sizeof (error_code), io_page, db_io_page_size ());
+      buffer_size += db_io_page_size ();
     }
 
   if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
     {
-      _er_log_debug (ARG_FILE_LINE, "Sending Data Page...");
+      if (error_code == NO_ERROR)
+	{
+	  _er_log_debug (ARG_FILE_LINE, "Sending data page.. LSA: %lld|%d, Page ID: %ld, Volid: %d",
+			 LSA_AS_ARGS (&io_page->prv.lsa), io_page->prv.pageid, io_page->prv.volid);
+	}
+      else
+	{
+	  _er_log_debug (ARG_FILE_LINE, "Sending data page.. Error code: %d\n", error_code);
+	}
     }
 
   std::string message (buffer, buffer_size);

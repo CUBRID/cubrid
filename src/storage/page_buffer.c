@@ -16414,7 +16414,7 @@ exit_on_error:
 
 // *INDENT-OFF*
 void
-cast_pgptr_to_iopgptr (PAGE_PTR page_ptr, FILEIO_PAGE *&io_page)
+pgbuf_cast_pgptr_to_iopgptr (PAGE_PTR page_ptr, FILEIO_PAGE *&io_page)
 {
   CAST_PGPTR_TO_IOPGPTR (io_page, page_ptr);
 }

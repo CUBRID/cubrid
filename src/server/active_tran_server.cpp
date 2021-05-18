@@ -301,11 +301,11 @@ void active_tran_server::receive_data_page (cubpacking::unpacker &upk)
     {
       if (error_code == NO_ERROR)
 	{
-	  char buf[IO_MAX_PAGE_SIZE];
-	  std::memcpy (buf, message.c_str () + sizeof (error_code), db_io_page_size ());
-	  const FILEIO_PAGE *io_page = (FILEIO_PAGE *) buf;
-	  _er_log_debug (ARG_FILE_LINE, "Received data page message from Page Server. LSA: %lld, Page ID: %ld, Volid: %d",
-			 io_page->prv.lsa, io_page->prv.pageid, io_page->prv.volid);
+	  char buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+	  FILEIO_PAGE *io_page = (FILEIO_PAGE *) PTR_ALIGN (buf, MAX_ALIGNMENT);
+	  std::memcpy (io_page, message.c_str () + sizeof (error_code), db_io_page_size ());
+	  _er_log_debug (ARG_FILE_LINE, "Received data page message from Page Server. LSA: %lld|%d, Page ID: %ld, Volid: %d",
+			 LSA_AS_ARGS (&io_page->prv.lsa), io_page->prv.pageid, io_page->prv.volid);
 	}
       else
 	{

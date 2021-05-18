@@ -184,7 +184,7 @@ pgbuf_fix_debug (THREAD_ENTRY *thread_p, const VPID *vpid, PAGE_FETCH_MODE fetch
 }
 
 void
-cast_pgptr_to_iopgptr (FILEIO_PAGE *&io_page, PAGE_PTR page_ptr)
+pgbuf_cast_pgptr_to_iopgptr (char *, fileio_page *&)
 {
 }
 
@@ -192,3 +192,17 @@ void
 pgbuf_unfix_debug (THREAD_ENTRY *thread_p, PAGE_PTR pgptr, const char *caller_file, int caller_line)
 {
 }
+
+PAGE_PTR
+pgbuf_fix_release (THREAD_ENTRY *thread_p, const VPID *vpid, PAGE_FETCH_MODE fetch_mode,
+		   PGBUF_LATCH_MODE request_mode, PGBUF_LATCH_CONDITION condition)
+{
+  return nullptr;
+}
+
+#if defined(NDEBUG)
+void
+pgbuf_unfix (THREAD_ENTRY *thread_p, PAGE_PTR pgptr)
+{
+}
+#endif
