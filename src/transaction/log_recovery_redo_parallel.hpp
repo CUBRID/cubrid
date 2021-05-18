@@ -35,7 +35,66 @@
 namespace cublog
 {
 #if defined(SERVER_MODE)
-  /* a class to handle infrastructure for parallel log recovery RAII-style;
+
+  /* minimum_log_lsa_monitor - utility to support calculation of a minimum
+   *       lsa out of a set of, concurrently (or not), advacing ones; not
+   *       all lsa's participate in the game in every scenarios; those that
+   *       do not partake are gracefully ignored by being kept to a maximum
+   *       sentinel value
+   */
+  class minimum_log_lsa_monitor final
+  {
+    private:
+      static constexpr int ARRAY_LENGTH = 4;
+
+      using log_lsa_array_t = std::array<log_lsa, ARRAY_LENGTH>;
+
+      enum ARRAY_INDEX
+      {
+	PRODUCE_IDX = 0,
+	CONSUME_IDX = 1,
+	IN_PROGRESS_IDX = 2,
+	OUTER_IDX = 3,
+      };
+
+    public:
+      minimum_log_lsa_monitor ();
+      minimum_log_lsa_monitor (const minimum_log_lsa_monitor &) = delete;
+      minimum_log_lsa_monitor (minimum_log_lsa_monitor &&) = delete;
+
+      minimum_log_lsa_monitor &operator = (const minimum_log_lsa_monitor &) = delete;
+      minimum_log_lsa_monitor &operator = (minimum_log_lsa_monitor &&) = delete;
+
+      void set_for_produce (const log_lsa &a_lsa);
+      void set_for_produce_and_consume (const log_lsa &a_produce_lsa, const log_lsa &a_consume_lsa);
+      void set_for_consume_and_in_progress (const log_lsa &a_consume_lsa, const log_lsa &a_in_progress_lsa);
+      void set_for_in_progress (const log_lsa &a_lsa);
+      void set_for_outer (const log_lsa &a_lsa);
+
+      /* obtain the current calculated minimum value
+       */
+      log_lsa get () const;
+
+      /* wait till the recorder minimum lsa has passed the target lsa
+       * blocking call
+       *
+       * return: minimum log_lsa value calculated internally (mainly for testing purpose)
+       */
+      log_lsa wait_past_target_lsa (const log_lsa &a_target_lsa);
+
+    private:
+      void do_set_at (ARRAY_INDEX a_idx, const log_lsa &a_new_lsa);
+      template <typename T_LOCKER>
+      log_lsa do_locked_get (const T_LOCKER &) const;
+
+    private:
+      mutable std::mutex m_values_mtx;
+      log_lsa_array_t m_values;
+
+      std::condition_variable m_wait_for_target_value_cv;
+  };
+
+  /* a class to handle infrastructure for parallel log recovery/replication RAII-style;
    * usage:
    *  - instantiate an object of this class with the desired number of background workers
    *  - create and add jobs - see 'redo_job_impl'
@@ -51,7 +110,9 @@ namespace cublog
       class redo_task;
 
     public:
-      redo_parallel (unsigned a_worker_count);
+      /* - worker_count: the number of parallel tasks to spin that consume jobs
+       */
+      redo_parallel (unsigned a_worker_count, minimum_log_lsa_monitor &a_minimum_log_lsa);
 
       redo_parallel (const redo_parallel &) = delete;
       redo_parallel (redo_parallel &&) = delete;
@@ -90,9 +151,10 @@ namespace cublog
 	  using ux_redo_job_base = std::unique_ptr<redo_job_base>;
 	  using ux_redo_job_deque = std::deque<ux_redo_job_base>;
 	  using vpid_set = std::set<VPID>;
+	  using log_lsa_set = std::set<log_lsa>;
 
 	public:
-	  redo_job_queue ();
+	  redo_job_queue (minimum_log_lsa_monitor &a_minimum_log_lsa);
 	  ~redo_job_queue ();
 
 	  redo_job_queue (redo_job_queue const &) = delete;
@@ -131,7 +193,7 @@ namespace cublog
 	  /* swap internal queues and notify if both are empty
 	   * assumes the consume queue is locked
 	   */
-	  void do_swap_queues_if_needed ();
+	  void do_swap_queues_if_needed (const std::lock_guard<std::mutex> &a_consume_lockg);
 
 	  /* find first job that can be consumed (ie: is not already marked
 	   * in the 'in progress vpids' set)
@@ -139,12 +201,16 @@ namespace cublog
 	   * NOTE: '*_locked_*' functions are supposed to be called from within locked
 	   * areas with respect to the resources they make use of
 	   */
-	  ux_redo_job_base do_locked_find_job_to_consume ();
+	  ux_redo_job_base do_locked_find_job_to_consume_and_mark_in_progress (
+		  const std::lock_guard<std::mutex> &a_consume_lockg,
+		  const std::lock_guard<std::mutex> &a_in_progress_lockg);
 
 	  /* NOTE: '*_locked_*' functions are supposed to be called from within locked
 	   * areas with respect to the resources they make use of
 	   */
-	  void do_locked_mark_job_started (const ux_redo_job_base &a_job);
+	  void do_locked_mark_job_in_progress (
+		  const std::lock_guard<std::mutex> &a_in_progress_lockg,
+		  const ux_redo_job_base &a_job);
 
 	private:
 	  /* two queues are internally managed and take turns at being either
@@ -164,8 +230,17 @@ namespace cublog
 	   * mechanism guarantees ordering among entries with the same VPID;
 	   */
 	  vpid_set m_in_progress_vpids;
+	  log_lsa_set m_in_progress_lsas;
 	  mutable std::mutex m_in_progress_mutex;
+	  /* signalled when the 'in progress' containers are empty
+	   */
 	  mutable std::condition_variable m_in_progress_vpids_empty_cv;
+
+	  /* utility class to maintain a minimum log_lsa that is still
+	   * to be processed (consumed); if no job exists in the queue, the
+	   * value is null
+	   */
+	  minimum_log_lsa_monitor &m_minimum_log_lsa;
       };
 
       /* maintain a bookkeeping of tasks that are still performing work;
@@ -341,11 +416,10 @@ namespace cublog
   }
 
 #else /* SERVER_MODE */
-  /* dummy implementation for SA mode
+  /* dummy implementations for SA mode
    */
-  class redo_parallel final
-  {
-  };
+  class minimum_log_lsa_monitor final { };
+  class redo_parallel final { };
 #endif /* SERVER_MODE */
 }
 
