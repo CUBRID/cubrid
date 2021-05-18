@@ -363,8 +363,7 @@ TEST_CASE ("minimum log lsa: complete test", "[ci]")
   // seed with a first value
   log_lsa outer_lsa = global_values.increment_and_get_lsa_log ();
   min_log_lsa_monitor.set_for_outer (outer_lsa);
-
-  //std::mutex deque_mutex;
+  std::mutex outer_lsa_mtx;
 
   std::atomic_bool do_execute_test { true };
   std::atomic_bool do_execute_test_check { true };
@@ -387,11 +386,14 @@ TEST_CASE ("minimum log lsa: complete test", "[ci]")
 	      std::lock_guard<std::mutex> produce_lockg { produce_lsa_deq_mtx };
 	      {
 		std::lock_guard<std::mutex> in_progress_lockg { in_progress_lsa_deq_mtx };
+		{
+		  std::lock_guard<std::mutex> outer_lockg { outer_lsa_mtx };
 
-		min_produce = produce_lsa_deq.empty () ? SENTINEL_LSA : produce_lsa_deq.front ();
-		min_consume = consume_lsa_deq.empty () ? SENTINEL_LSA : consume_lsa_deq.front ();
-		min_in_progress = in_progress_lsa_deq.empty () ? SENTINEL_LSA : in_progress_lsa_deq.front ();
-		min_outer = outer_lsa;
+		  min_produce = produce_lsa_deq.empty () ? SENTINEL_LSA : produce_lsa_deq.front ();
+		  min_consume = consume_lsa_deq.empty () ? SENTINEL_LSA : consume_lsa_deq.front ();
+		  min_in_progress = in_progress_lsa_deq.empty () ? SENTINEL_LSA : in_progress_lsa_deq.front ();
+		  min_outer = outer_lsa;
+		}
 	      }
 	    }
 	  }
@@ -427,15 +429,19 @@ TEST_CASE ("minimum log lsa: complete test", "[ci]")
 	const log_lsa new_lsa = global_values.increment_and_get_lsa_log ();
 	{
 	  std::lock_guard<std::mutex> produce_lockg { produce_lsa_deq_mtx };
-	  if (produce_lsa_deq.empty ())
-	    {
-	      min_log_lsa_monitor.set_for_produce (outer_lsa);
-	    }
-	  produce_lsa_deq.push_back (outer_lsa);
-	  // TODO: take out of lock?
-	  outer_lsa = new_lsa;
-	  min_log_lsa_monitor.set_for_outer (new_lsa);
+	  {
+	    std::lock_guard<std::mutex> outer_lockg { outer_lsa_mtx };
+
+	    if (produce_lsa_deq.empty ())
+	      {
+		min_log_lsa_monitor.set_for_produce (outer_lsa);
+	      }
+	    produce_lsa_deq.push_back (outer_lsa);
+
+	    outer_lsa = new_lsa;
+	  }
 	}
+	min_log_lsa_monitor.set_for_outer (new_lsa);
 	if (false == do_execute_test.load ())
 	  {
 	    break;
