@@ -19,8 +19,10 @@
 #include "async_page_fetcher.hpp"
 
 #include "log_impl.h"
+#include "log_replication.hpp"
 #include "thread_manager.hpp"
 #include "page_buffer.h"
+#include "page_server.hpp"
 
 namespace cublog
 {
@@ -66,7 +68,7 @@ namespace cublog
 
   void data_page_fetch_task::execute (context_type &context)
   {
-    // TODO: wait for replication
+    ps_Gl.get_replicator ().wait_past_target_lsa (m_lsa);
 
     PAGE_PTR page_ptr = pgbuf_fix (&context, &m_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
 

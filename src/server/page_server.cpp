@@ -114,11 +114,11 @@ void page_server::receive_data_page_fetch (cubpacking::unpacker &upk)
   VPID vpid;
   std::memcpy (&vpid, message.c_str (), sizeof (vpid));
 
-  LOG_LSA nxio_lsa;
-  std::memcpy (&nxio_lsa, message.c_str () + sizeof (vpid), sizeof (nxio_lsa));
+  LOG_LSA target_repl_lsa;
+  std::memcpy (&target_repl_lsa, message.c_str () + sizeof (vpid), sizeof (target_repl_lsa));
 
   assert (m_page_fetcher);
-  m_page_fetcher->fetch_data_page (vpid, nxio_lsa, std::bind (&page_server::on_data_page_read_result, this,
+  m_page_fetcher->fetch_data_page (vpid, target_repl_lsa, std::bind (&page_server::on_data_page_read_result, this,
 				   std::placeholders::_1,
 				   std::placeholders::_2));
 }
@@ -186,6 +186,13 @@ void page_server::on_data_page_read_result (const FILEIO_PAGE *io_page, int erro
 
   std::string message (buffer, buffer_size);
   m_ats_request_queue->push (ps_to_ats_request::SEND_DATA_PAGE, std::move (message));
+}
+
+cublog::replicator &
+page_server::get_replicator ()
+{
+  assert (m_replicator);
+  return *m_replicator;
 }
 
 void

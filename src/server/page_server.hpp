@@ -53,6 +53,7 @@ class page_server
     bool is_active_tran_server_connected () const;
     void push_request_to_active_tran_server (ps_to_ats_request reqid, std::string &&payload);
 
+    cublog::replicator &get_replicator ();
     void start_log_replicator (const log_lsa &start_lsa);
     void finish_replication_during_shutdown (cubthread::entry &thread_entry);
 
