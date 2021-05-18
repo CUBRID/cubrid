@@ -1214,16 +1214,16 @@ parser_create_parser (void)
 
   /* initialization */
   parser->query_id = NULL_QUERY_ID;
-  parser->bs.is_in_and_list = 0;
-  parser->bs.is_holdable = 0;
-  parser->bs.is_xasl_pinned_reference = 0;
-  parser->bs.recompile_xasl_pinned = 0;
+  parser->flag.is_in_and_list = 0;
+  parser->flag.is_holdable = 0;
+  parser->flag.is_xasl_pinned_reference = 0;
+  parser->flag.recompile_xasl_pinned = 0;
   parser->auto_param_count = 0;
-  parser->bs.return_generated_keys = 0;
-  parser->bs.is_system_generated_stmt = 0;
-  parser->bs.has_internal_error = 0;
+  parser->flag.return_generated_keys = 0;
+  parser->flag.is_system_generated_stmt = 0;
+  parser->flag.has_internal_error = 0;
   parser->max_print_len = 0;
-  parser->bs.is_auto_commit = 0;
+  parser->flag.is_auto_commit = 0;
 
   return parser;
 }

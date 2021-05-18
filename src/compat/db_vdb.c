@@ -567,10 +567,10 @@ db_compile_statement_local (DB_SESSION * session)
   parser = session->parser;
   stmt_ndx = session->stmt_ndx++;
   statement = session->statements[stmt_ndx];
-  statement->bs.use_plan_cache = 0;
-  statement->bs.use_query_cache = 0;
+  statement->flag.use_plan_cache = 0;
+  statement->flag.use_query_cache = 0;
 
-  statement->bs.is_system_generated_stmt = parser->bs.is_system_generated_stmt;
+  statement->flag.is_system_generated_stmt = parser->flag.is_system_generated_stmt;
 
   /* check if the statement is already processed */
   if (session->stage[stmt_ndx] >= StatementPreparedStage)
@@ -648,7 +648,7 @@ db_compile_statement_local (DB_SESSION * session)
 	    {
 	      if (q->col_type == DB_COL_PATH)
 		{
-		  statement->info.query.bs.do_not_cache = 1;
+		  statement->info.query.flag.do_not_cache = 1;
 		  break;
 		}
 	    }
@@ -704,12 +704,12 @@ db_compile_statement_local (DB_SESSION * session)
    * is disabled, old interface of do_statement() will be used instead. do_statement() makes a XASL everytime rather
    * than using XASL cache. Also, it can be executed in the server without touching the XASL cache by calling
    * prepare_and_execute_query(). */
-  if (prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES) > 0 && statement->bs.cannot_prepare == 0)
+  if (prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES) > 0 && statement->flag.cannot_prepare == 0)
     {
       if (session->is_subsession_for_prepared)
 	{
 	  /* cast host variables to their expected domain, before XASL generation. */
-	  session->parser->bs.set_host_var = 0;
+	  session->parser->flag.set_host_var = 0;
 	  err = do_cast_host_variables_to_expected_domain (session);
 	  if (err < 0)
 	    {
@@ -826,7 +826,7 @@ db_set_client_cache_time (DB_SESSION * session, int stmt_ndx, CACHE_TIME * cache
       if (cache_time)
 	{
 	  statement->cache_time = *cache_time;
-	  statement->bs.clt_cache_check = 1;
+	  statement->flag.clt_cache_check = 1;
 	}
     }
 
@@ -888,7 +888,7 @@ db_get_cacheinfo (DB_SESSION * session, int stmt_ndx, bool * use_plan_cache, boo
 
   if (use_plan_cache)
     {
-      if (statement->bs.use_plan_cache)
+      if (statement->flag.use_plan_cache)
 	{
 	  *use_plan_cache = true;
 	}
@@ -900,7 +900,7 @@ db_get_cacheinfo (DB_SESSION * session, int stmt_ndx, bool * use_plan_cache, boo
 
   if (use_query_cache)
     {
-      if (statement->bs.use_query_cache)
+      if (statement->flag.use_query_cache)
 	{
 	  *use_query_cache = true;
 	}
@@ -1043,7 +1043,7 @@ db_session_set_holdable (DB_SESSION * session, bool holdable)
     {
       return;
     }
-  session->parser->bs.is_holdable = holdable ? 1 : 0;
+  session->parser->flag.is_holdable = holdable ? 1 : 0;
 }
 
 /*
@@ -1060,8 +1060,8 @@ db_session_set_xasl_cache_pinned (DB_SESSION * session, bool is_pinned, bool rec
     {
       return;
     }
-  session->parser->bs.is_xasl_pinned_reference = is_pinned ? 1 : 0;
-  session->parser->bs.recompile_xasl_pinned = recompile ? 1 : 0;
+  session->parser->flag.is_xasl_pinned_reference = is_pinned ? 1 : 0;
+  session->parser->flag.recompile_xasl_pinned = recompile ? 1 : 0;
 }
 
 /*
@@ -1078,7 +1078,7 @@ db_session_set_return_generated_keys (DB_SESSION * session, bool return_generate
     {
       return;
     }
-  session->parser->bs.return_generated_keys = return_generated_keys ? 1 : 0;
+  session->parser->flag.return_generated_keys = return_generated_keys ? 1 : 0;
 }
 
 /*
@@ -1535,7 +1535,7 @@ db_push_values (DB_SESSION * session, int count, DB_VALUE * in_values)
 	{
 	  pt_set_host_variables (parser, count, in_values);
 
-	  if (parser->host_var_count > 0 && parser->bs.set_host_var == 0)
+	  if (parser->host_var_count > 0 && parser->flag.set_host_var == 0)
 	    {
 	      if (pt_has_error (session->parser))
 		{
@@ -1634,7 +1634,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
     }
 
   /* valid host variable was not set before */
-  if (session->parser->host_var_count > 0 && session->parser->bs.set_host_var == 0)
+  if (session->parser->host_var_count > 0 && session->parser->flag.set_host_var == 0)
     {
       if (pt_has_error (session->parser))
 	{
@@ -1668,7 +1668,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
   /* initialization */
   assert (parser != NULL);
   parser->query_id = NULL_QUERY_ID;
-  parser->bs.is_in_and_list = false;
+  parser->flag.is_in_and_list = false;
 
   /* now, we have a statement to execute */
   statement = session->statements[stmt_ndx];
@@ -1689,7 +1689,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 
   /* get sys_date, sys_time, sys_timestamp, sys_datetime values from the server */
   server_info_bits = 0;		/* init */
-  if (statement->bs.si_datetime || (statement->node_type == PT_CREATE_ENTITY || statement->node_type == PT_ALTER))
+  if (statement->flag.si_datetime || (statement->node_type == PT_CREATE_ENTITY || statement->node_type == PT_ALTER))
     {
       /* Some create and alter statement require the server timestamp even though it does not explicitly refer
        * timestamp-related pseudocolumns. For instance, create table foo (a timestamp default systimestamp); create
@@ -1702,7 +1702,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	}
     }
 
-  if (statement->bs.si_tran_id && DB_IS_NULL (&parser->local_transaction_id))
+  if (statement->flag.si_tran_id && DB_IS_NULL (&parser->local_transaction_id))
     {
       /* if it was reset in the previous execution step, fills it now */
       server_info_bits |= SI_LOCAL_TRANSACTION_ID;
@@ -1779,7 +1779,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	  err = er_errid ();
 	}
     }
-  else if (prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES) > 0 && statement->bs.cannot_prepare == 0)
+  else if (prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES) > 0 && statement->flag.cannot_prepare == 0)
     {
       /* now, execute the statement by calling do_execute_statement() */
       err = do_execute_statement (parser, statement);
@@ -1826,7 +1826,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
       assert (parser->host_var_count >= 0 && parser->auto_param_count >= 0);
       if (parser->host_var_count > 0)
 	{
-	  assert (parser->bs.set_host_var == 1);
+	  assert (parser->flag.set_host_var == 1);
 	}
       if (parser->host_var_count > 0 || parser->auto_param_count > 0)
 	{
@@ -1885,7 +1885,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
     {
       qres = NULL;
 
-      if (statement->bs.clt_cache_reusable)
+      if (statement->flag.clt_cache_reusable)
 	{
 	  qres = pt_make_cache_hit_result_descriptor ();
 	  if (qres == NULL)
@@ -2022,12 +2022,12 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
     }
 
   /* reset the parser values */
-  if (statement->bs.si_datetime)
+  if (statement->flag.si_datetime)
     {
       db_make_null (&parser->sys_datetime);
       db_make_null (&parser->sys_epochtime);
     }
-  if (statement->bs.si_tran_id)
+  if (statement->flag.si_tran_id)
     {
       db_make_null (&parser->local_transaction_id);
     }
@@ -2346,7 +2346,7 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
   /* set autoparam count */
   prepare_info.auto_param_count = prepared_session->parser->auto_param_count;
   /* set recompile */
-  prepare_info.recompile = prepared_stmt->bs.recompile;
+  prepare_info.recompile = prepared_stmt->flag.recompile;
   /* set OIDs included */
   if (prepare_info.stmt_type == CUBRID_STMT_SELECT)
     {
@@ -2491,7 +2491,7 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx)
 
   parser->host_var_count += prepare_info.auto_param_count;
   parser->auto_param_count = 0;
-  parser->bs.set_host_var = 1;
+  parser->flag.set_host_var = 1;
 
   /* Multi range optimization check: if host-variables were used (not auto-parameterized), the orderby_num () limit may
    * change and invalidate or validate multi range optimization. Check if query needs to be recompiled. */
@@ -2585,7 +2585,7 @@ do_cast_host_variables_to_expected_domain (DB_SESSION * session)
 	}
     }
 
-  session->parser->bs.set_host_var = 1;
+  session->parser->flag.set_host_var = 1;
 
   return NO_ERROR;
 }
@@ -2692,7 +2692,7 @@ db_check_limit_need_recompile (PARSER_CONTEXT * parent_parser, PT_NODE * stateme
   session->parser->host_var_expected_domains = parent_parser->host_var_expected_domains;
   session->parser->host_var_count = parent_parser->host_var_count;
   session->parser->auto_param_count = parent_parser->auto_param_count;
-  session->parser->bs.set_host_var = 1;
+  session->parser->flag.set_host_var = 1;
 
   if (pt_recompile_for_limit_optimizations (session->parser, query, xasl_flag))
     {
@@ -2705,7 +2705,7 @@ db_check_limit_need_recompile (PARSER_CONTEXT * parent_parser, PT_NODE * stateme
   session->parser->host_var_expected_domains = save_host_var_expected_domains;
   session->parser->auto_param_count = save_auto_param_count;
   session->parser->host_var_count = save_host_var_count;
-  session->parser->bs.set_host_var = 0;
+  session->parser->flag.set_host_var = 0;
 
 exit:
   /* clean up */
@@ -2755,17 +2755,17 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
 
   if (statement->info.execute.recompile)
     {
-      new_session->statements[0]->bs.recompile = statement->info.execute.recompile;
+      new_session->statements[0]->flag.recompile = statement->info.execute.recompile;
     }
 
   /* set host variable values in new session */
-  assert (session->parser->bs.set_host_var == 1);
+  assert (session->parser->flag.set_host_var == 1);
   err = do_set_user_host_variables (new_session, statement->info.execute.using_list);
   if (err != NO_ERROR)
     {
       return err;
     }
-  new_session->parser->bs.set_host_var = 0;
+  new_session->parser->flag.set_host_var = 0;
   idx = db_compile_statement (new_session);
   if (idx < 0)
     {
@@ -2773,7 +2773,7 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
       return er_errid ();
     }
 
-  if (new_session->parser->bs.set_host_var == 0)
+  if (new_session->parser->flag.set_host_var == 0)
     {
       /* Cast host variable to expected domain, if not already casted in db_compile_statement. */
       err = do_cast_host_variables_to_expected_domain (new_session);
@@ -2783,8 +2783,8 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
 	}
     }
 
-  new_session->parser->bs.is_holdable = session->parser->bs.is_holdable;
-  new_session->parser->bs.is_auto_commit = session->parser->bs.is_auto_commit;
+  new_session->parser->flag.is_holdable = session->parser->flag.is_holdable;
+  new_session->parser->flag.is_auto_commit = session->parser->flag.is_auto_commit;
   return db_execute_and_keep_statement_local (new_session, 1, result);
 }
 
@@ -3180,7 +3180,7 @@ db_set_system_generated_statement (DB_SESSION * session)
       return ER_OBJ_INVALID_ARGUMENTS;
     }
 
-  session->parser->bs.is_system_generated_stmt = 1;
+  session->parser->flag.is_system_generated_stmt = 1;
 
   return NO_ERROR;
 }
@@ -4060,10 +4060,10 @@ db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
     }
 
   /* Set parser auto commit. */
-  session->parser->bs.is_auto_commit = auto_commit ? 1 : 0;
+  session->parser->flag.is_auto_commit = auto_commit ? 1 : 0;
 
   /* Init statement auto commit. */
-  statement->bs.use_auto_commit = 0;
+  statement->flag.use_auto_commit = 0;
 
   if (!auto_commit || !db_session_is_last_statement (session))
     {
@@ -4073,7 +4073,7 @@ db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
   if (session->dimension > 1)
     {
       /* Search for select. */
-      if (!session->parser->bs.is_holdable)
+      if (!session->parser->flag.is_holdable)
 	{
 	  /* Check all statements. */
 	  dimension = session->dimension;
@@ -4109,7 +4109,7 @@ db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
 
   if (db_can_execute_statement_with_autocommit (session->parser, statement))
     {
-      statement->bs.use_auto_commit = 1;
+      statement->flag.use_auto_commit = 1;
     }
 
   return NO_ERROR;

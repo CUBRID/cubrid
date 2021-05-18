@@ -1525,7 +1525,7 @@ fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser, PT_NODE * co
 	{
 	  if (DB_IS_DATETIME_DEFAULT_EXPR (attr->default_value.default_expr.default_expr_type))
 	    {
-	      node->bs.si_datetime = true;
+	      node->flag.si_datetime = true;
 	      db_make_null (&parser->sys_datetime);
 	      break;
 	    }
