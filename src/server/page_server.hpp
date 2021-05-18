@@ -42,8 +42,6 @@ namespace cubthread
 class page_server
 {
   public:
-    using ats_t = cubcomm::request_sync_client_server<ps_to_ats_request, ats_to_ps_request, std::string>;
-
     page_server () = default;
     ~page_server ();
 
@@ -59,6 +57,8 @@ class page_server
     void finalize_log_page_fetcher ();
 
   private:
+    using ats_t = cubcomm::request_sync_client_server<ps_to_ats_request, ats_to_ps_request, std::string>;
+
     void receive_log_prior_list (cubpacking::unpacker &upk);
     void receive_log_page_fetch (cubpacking::unpacker &upk);
     void receive_data_page_fetch (cubpacking::unpacker &upk);
