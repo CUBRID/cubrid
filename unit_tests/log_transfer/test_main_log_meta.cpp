@@ -25,7 +25,7 @@
 #include <cstdint>
 
 // LSA higher than any other LSA's used in this test
-constexpr log_lsa MAX_LSA = { 1024, 1024 };
+constexpr log_lsa MAX_UT_LSA = { 1024, 1024 };
 
 class meta_file
 {
@@ -125,7 +125,7 @@ TEST_CASE ("Test checkpoint_info functions", "")
   match_checkpoint_info (meta_log.get_checkpoint_info (keyval3.first), &keyval3.second);
 
   // Remove all
-  REQUIRE (meta_log.remove_checkpoint_info_before_lsa (MAX_LSA) == 2);
+  REQUIRE (meta_log.remove_checkpoint_info_before_lsa (MAX_UT_LSA) == 2);
   // No keys exist
   REQUIRE (meta_log.get_checkpoint_info_size () == 0);
   REQUIRE (meta_log.get_checkpoint_info (keyval2.first) == nullptr);
