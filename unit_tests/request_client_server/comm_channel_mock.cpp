@@ -32,6 +32,7 @@
 
 std::mutex global_mutex;
 
+// maps contain non-owning pointers
 std::map<std::string, mock_socket_direction *> global_sender_sockdirs;
 std::map<std::string, mock_socket_direction *> global_receiver_sockdirs;
 
@@ -175,7 +176,7 @@ namespace cubcomm
   css_error_code channel::recv (char *buffer, std::size_t &maxlen_in_recvlen_out)
   {
     const std::string channel_id = get_channel_id ();
-    assert (global_receiver_sockdirs.find (channel_id) != global_receiver_sockdirs.end ());
+    assert (global_receiver_sockdirs.find (channel_id) != global_receiver_sockdirs.cend ());
 
     std::string message;
 
@@ -192,7 +193,7 @@ namespace cubcomm
   css_error_code channel::send (const char *buffer, std::size_t length)
   {
     const std::string channel_id = get_channel_id ();
-    assert (global_sender_sockdirs.find (channel_id) != global_sender_sockdirs.end ());
+    assert (global_sender_sockdirs.find (channel_id) != global_sender_sockdirs.cend ());
 
     global_sender_sockdirs[channel_id]->push_message (std::string (buffer, length));
     return NO_ERRORS;
@@ -248,7 +249,7 @@ namespace cubcomm
   int channel::wait_for (unsigned short int, unsigned short int &revents)
   {
     std::string chnid = get_channel_id ();
-    assert (global_receiver_sockdirs.find (chnid) != global_receiver_sockdirs.end ());
+    assert (global_receiver_sockdirs.find (chnid) != global_receiver_sockdirs.cend ());
     if (global_receiver_sockdirs[chnid]->has_message ())
       {
 	revents = POLLIN;

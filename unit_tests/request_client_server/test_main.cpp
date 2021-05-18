@@ -22,12 +22,17 @@
 #include "communication_channel.hpp"
 #include "request_client_server.hpp"
 #include "request_sync_send_queue.hpp"
+#include "request_sync_client_server.hpp"
 
 #include "comm_channel_mock.hpp"
 
 #include <array>
 #include <atomic>
 #include <functional>
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// common declarations
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 static std::atomic<size_t> global_sent_request_count;
 static std::atomic<size_t> global_handled_request_count;
@@ -49,9 +54,9 @@ template <typename ReqId, ReqId ExpectedVal>
 static void
 mock_check_expected_id (cubpacking::unpacker &upk);
 
-//
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Stuff for one client and one server test case
-//
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 // Request ids for requests sent by a client to a server
 enum class reqids
@@ -94,9 +99,9 @@ class test_client_and_server_env
     mock_socket_direction m_sockdir;	// socket direction
 };
 
-//
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Stuff for two client-server test case
-//
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 // Request ids exchanged by two client-server's
 enum class reqids_1_to_2
@@ -147,10 +152,10 @@ class test_two_client_server_env
     mock_socket_direction m_sockdir_two_one;		// socket direction from second client to first server
 };
 
-//
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Stuff for request_queue_autosend test case.
 // Also tests the request order. The request payload is extended to include the operation count.
-//
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 // Global op count, per each request id, is used by the server to check the requests are processed in the expected
 // order.
@@ -160,6 +165,17 @@ struct payload_with_op_count : public cubpacking::packable_object
 {
   int val;	  // static_cast<int> (requid)
   int op_count;	  // the op count
+
+  payload_with_op_count () = default;
+  payload_with_op_count (int a_val, int a_op_count)
+    : val { a_val }, op_count { a_op_count }
+  {
+  }
+  payload_with_op_count (const payload_with_op_count &) = delete;
+  payload_with_op_count (payload_with_op_count &&) = default;
+
+  payload_with_op_count &operator = (const payload_with_op_count &) = delete;
+  payload_with_op_count &operator = (payload_with_op_count &&) = default;
 
   /* used at packing to get info on how much memory to reserve */
   size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset = 0) const final;
@@ -175,6 +191,52 @@ template <typename ReqId, ReqId ExpectedVal>
 static void mock_check_expected_id_and_op_count (cubpacking::unpacker &upk);
 // Function for registering mock_check_expected_id_and_op_count handlers
 static void handler_register_mock_check_expected_id_and_op_count (test_request_server &req_sr);
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Stuff for two request_sync_client_server test case
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+using test_request_sync_client_server_one_t
+  = cubcomm::request_sync_client_server<reqids_1_to_2, reqids_2_to_1, payload_with_op_count>;
+using test_request_sync_client_server_two_t
+  = cubcomm::request_sync_client_server<reqids_2_to_1, reqids_1_to_2, payload_with_op_count>;
+
+using uq_test_request_sync_client_server_one_t = std::unique_ptr<test_request_sync_client_server_one_t>;
+using uq_test_request_sync_client_server_two_t = std::unique_ptr<test_request_sync_client_server_two_t>;
+
+class test_two_request_sync_client_server_env
+{
+  public:
+    test_two_request_sync_client_server_env ();
+    ~test_two_request_sync_client_server_env ();
+
+    test_request_sync_client_server_one_t &get_scs_one ();
+    test_request_sync_client_server_two_t &get_scs_two ();
+
+    void wait_for_all_messages (size_t a_1_to_2_message_count, size_t a_2_to_1_message_count);
+
+  private:
+    static uq_test_request_sync_client_server_one_t create_request_sync_client_server_one ();
+    static uq_test_request_sync_client_server_two_t create_request_sync_client_server_two ();
+
+    void mock_socket_between_two_sync_client_servers ()
+    {
+      add_socket_direction (m_scs_one->get_underlying_channel_id (), m_scs_two->get_underlying_channel_id (),
+			    m_sockdir_1_to_2);
+      add_socket_direction (m_scs_two->get_underlying_channel_id (), m_scs_one->get_underlying_channel_id (),
+			    m_sockdir_2_to_1);
+    }
+
+  private:
+    uq_test_request_sync_client_server_one_t m_scs_one;
+    uq_test_request_sync_client_server_two_t m_scs_two;
+    mock_socket_direction m_sockdir_1_to_2;
+    mock_socket_direction m_sockdir_2_to_1;
+};
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Test definitions
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 TEST_CASE ("A client and a server", "")
 {
@@ -416,6 +478,83 @@ TEST_CASE ("Test request_queue_autosend", "")
   require_all_sent_requests_are_handled ();
 }
 
+TEST_CASE ("Test request_sync_client_server", "")
+{
+  test_two_request_sync_client_server_env env;
+
+  env.get_scs_one ().connect ();
+  env.get_scs_two ().connect ();
+
+  REQUIRE (env.get_scs_one ().is_connected ());
+  REQUIRE (env.get_scs_two ().is_connected ());
+
+  constexpr int MESSAGE_COUNT = 4200;
+
+  std::thread thread_1_to_2_with_0 ([&] ()
+  {
+    for (int i = 0; i < MESSAGE_COUNT; ++i)
+      {
+	push_message_id_and_op (env.get_scs_one (), reqids_1_to_2::_0, i);
+	std::this_thread::yield ();
+      }
+  });
+
+  std::thread thread_1_to_2_with_1 ([&] ()
+  {
+    for (int i = 0; i < MESSAGE_COUNT; ++i)
+      {
+	push_message_id_and_op (env.get_scs_one (), reqids_1_to_2::_1, i);
+	std::this_thread::yield ();
+      }
+  });
+
+  std::thread thread_2_to_1_with_0 ([&] ()
+  {
+    for (int i = 0; i < MESSAGE_COUNT; ++i)
+      {
+	push_message_id_and_op (env.get_scs_two (), reqids_2_to_1::_0, i);
+	std::this_thread::yield ();
+      }
+  });
+
+  std::thread thread_2_to_1_with_1 ([&] ()
+  {
+    for (int i = 0; i < MESSAGE_COUNT; ++i)
+      {
+	push_message_id_and_op (env.get_scs_two (), reqids_2_to_1::_1, i);
+	std::this_thread::yield ();
+      }
+  });
+
+  std::thread thread_2_to_1_with_2 ([&] ()
+  {
+    for (int i = 0; i < MESSAGE_COUNT; ++i)
+      {
+	push_message_id_and_op (env.get_scs_two (), reqids_2_to_1::_2, i);
+	std::this_thread::yield ();
+      }
+  });
+
+  env.wait_for_all_messages ((MESSAGE_COUNT * 2) * 2, (MESSAGE_COUNT * 2) * 3);
+
+  env.get_scs_one ().disconnect ();
+  env.get_scs_two ().disconnect ();
+
+  require_all_sent_requests_are_handled ();
+
+  thread_1_to_2_with_0.join ();
+  thread_1_to_2_with_1.join ();
+  thread_2_to_1_with_0.join ();
+  thread_2_to_1_with_1.join ();
+  thread_2_to_1_with_2.join ();
+}
+
+//
+//
+// implementations
+//
+//
+
 static void
 init_globals ()
 {
@@ -545,6 +684,39 @@ mock_socket_between_client_and_server (const test_request_client &cl, const test
   add_socket_direction (cl.get_channel ().get_channel_id (), sr.get_channel ().get_channel_id (), sockdir);
 }
 
+test_client_and_server_env::test_client_and_server_env (test_handler_register_function &hreg)
+  : m_client (create_request_client ())
+  , m_server (create_request_server (hreg))
+  , m_sockdir ()
+{
+  mock_socket_between_client_and_server (m_client, m_server, m_sockdir);
+  init_globals ();
+}
+
+test_client_and_server_env::~test_client_and_server_env ()
+{
+  clear_socket_directions ();
+}
+
+test_request_client &
+test_client_and_server_env::get_client ()
+{
+  return m_client;
+}
+
+test_request_server &
+test_client_and_server_env::get_server ()
+{
+  return m_server;
+}
+
+void
+test_client_and_server_env::wait_for_all_messages ()
+{
+  m_sockdir.wait_until_message_count (global_sent_request_count * 2);  // each request sends two messages
+  m_sockdir.wait_for_all_messages ();
+}
+
 test_request_client_server_type_one
 create_request_client_server_one ()
 {
@@ -581,7 +753,7 @@ create_request_client_server_two ()
 
   test_request_client_server_type_two req_clsr = (std::move (chn));
 
-  // handles reqids_2_to_1
+  // handles reqids_1_to_2
   test_request_client_server_type_two::server_request_handler reqh0 = [] (cubpacking::unpacker &upk)
   {
     mock_check_expected_id<reqids_1_to_2, reqids_1_to_2::_0> (upk);
@@ -605,42 +777,10 @@ mock_socket_between_two_client_servers (const test_request_client_server_type_on
   add_socket_direction (clsr2.get_channel ().get_channel_id (), clsr1.get_channel ().get_channel_id (), sockdir_2_to_1);
 }
 
-test_client_and_server_env::test_client_and_server_env (test_handler_register_function &hreg)
-  : m_client (create_request_client ())
-  , m_server (create_request_server (hreg))
-  , m_sockdir ()
-{
-  mock_socket_between_client_and_server (m_client, m_server, m_sockdir);
-  init_globals ();
-}
-
-test_client_and_server_env::~test_client_and_server_env ()
-{
-  clear_socket_directions ();
-}
-
-test_request_client &
-test_client_and_server_env::get_client ()
-{
-  return m_client;
-}
-
-test_request_server &
-test_client_and_server_env::get_server ()
-{
-  return m_server;
-}
-
-void
-test_client_and_server_env::wait_for_all_messages ()
-{
-  m_sockdir.wait_until_message_count (global_sent_request_count * 2);  // each request sends two messages
-  m_sockdir.wait_for_all_messages ();
-}
 
 test_two_client_server_env::test_two_client_server_env ()
-  : m_first_cs (create_request_client_server_one())
-  , m_second_cs (create_request_client_server_two())
+  : m_first_cs (create_request_client_server_one ())
+  , m_second_cs (create_request_client_server_two ())
   , m_sockdir_one_two ()
   , m_sockdir_two_one ()
 {
@@ -693,6 +833,94 @@ payload_with_op_count::get_packed_size (cubpacking::packer &serializator, std::s
   size += serializator.get_packed_int_size (start_offset + size);
 
   return size;
+}
+
+test_two_request_sync_client_server_env::test_two_request_sync_client_server_env ()
+  : m_scs_one { create_request_sync_client_server_one () }
+  , m_scs_two { create_request_sync_client_server_two () }
+{
+  mock_socket_between_two_sync_client_servers ();
+  init_globals ();
+}
+
+test_two_request_sync_client_server_env::~test_two_request_sync_client_server_env ()
+{
+  clear_socket_directions ();
+}
+
+test_request_sync_client_server_one_t &test_two_request_sync_client_server_env::get_scs_one ()
+{
+  return *m_scs_one.get ();
+}
+
+test_request_sync_client_server_two_t &test_two_request_sync_client_server_env::get_scs_two ()
+{
+  return *m_scs_two.get ();
+}
+
+void test_two_request_sync_client_server_env::wait_for_all_messages (
+	size_t a_1_to_2_message_count, size_t a_2_to_1_message_count)
+{
+  m_sockdir_1_to_2.wait_until_message_count (a_1_to_2_message_count);
+  m_sockdir_2_to_1.wait_until_message_count (a_2_to_1_message_count);
+
+  m_sockdir_1_to_2.wait_for_all_messages ();
+  m_sockdir_2_to_1.wait_for_all_messages ();
+}
+
+uq_test_request_sync_client_server_one_t
+test_two_request_sync_client_server_env::create_request_sync_client_server_one ()
+{
+  uq_test_request_sync_client_server_one_t scs_one
+    = std::make_unique<test_request_sync_client_server_one_t> ();
+
+  cubcomm::channel chn;
+  chn.set_channel_name ("sync_client_server_one");
+  scs_one->init (std::move (chn));
+
+  // handle requests 2 to 1
+  test_request_sync_client_server_one_t::incoming_request_handler_t req_handler_0 = [] (cubpacking::unpacker &upk)
+  {
+    mock_check_expected_id<reqids_2_to_1, reqids_2_to_1::_0> (upk);
+  };
+  test_request_sync_client_server_one_t::incoming_request_handler_t req_handler_1 = [] (cubpacking::unpacker &upk)
+  {
+    mock_check_expected_id<reqids_2_to_1, reqids_2_to_1::_1> (upk);
+  };
+  test_request_sync_client_server_one_t::incoming_request_handler_t req_handler_2 = [] (cubpacking::unpacker &upk)
+  {
+    mock_check_expected_id<reqids_2_to_1, reqids_2_to_1::_2> (upk);
+  };
+  scs_one->register_request_handler (reqids_2_to_1::_0, req_handler_0);
+  scs_one->register_request_handler (reqids_2_to_1::_1, req_handler_1);
+  scs_one->register_request_handler (reqids_2_to_1::_2, req_handler_2);
+
+  return scs_one;
+}
+
+uq_test_request_sync_client_server_two_t
+test_two_request_sync_client_server_env::create_request_sync_client_server_two ()
+{
+  uq_test_request_sync_client_server_two_t scs_two
+    = std::make_unique<test_request_sync_client_server_two_t> ();
+
+  cubcomm::channel chn;
+  chn.set_channel_name ("sync_client_server_two");
+  scs_two->init (std::move (chn));
+
+  // handle requests 1 to 2
+  test_request_sync_client_server_two_t::incoming_request_handler_t req_handler_0 = [] (cubpacking::unpacker &upk)
+  {
+    mock_check_expected_id<reqids_1_to_2, reqids_1_to_2::_0> (upk);
+  };
+  test_request_sync_client_server_two_t::incoming_request_handler_t req_handler_1 = [] (cubpacking::unpacker &upk)
+  {
+    mock_check_expected_id<reqids_1_to_2, reqids_1_to_2::_1> (upk);
+  };
+  scs_two->register_request_handler (reqids_1_to_2::_0, req_handler_0);
+  scs_two->register_request_handler (reqids_1_to_2::_1, req_handler_1);
+
+  return scs_two;
 }
 
 //
