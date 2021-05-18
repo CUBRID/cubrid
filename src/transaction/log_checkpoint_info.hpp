@@ -19,12 +19,17 @@
 #ifndef _LOG_CHECKPOINT_INFO_HPP_
 #define _LOG_CHECKPOINT_INFO_HPP_
 
+#include "client_credentials.hpp"
+#include "log_comm.h"
 #include "log_lsa.hpp"
-#include "log_record.hpp"
-#include "log_system_tran.hpp"
 #include "packable_object.hpp"
+#include "storage_common.h"
+#include "thread_compat.hpp"
 
 #include <vector>
+
+// forward declaration
+struct log_tdes;
 
 //
 // log_checkpoint_info.hpp - the information saved during log checkpoint and used for recovery
@@ -32,9 +37,6 @@
 // Replaces LOG_REC_CHKPT
 namespace cublog
 {
-  using checkpoint_tran_info = log_info_chkpt_trans;	// todo: replace log_info_chkpt_trans
-  using checkpoint_sysop_info = log_info_chkpt_sysop;	// todo: replace log_info_chkpt_sysop
-
   class checkpoint_info : public cubpacking::packable_object
   {
     public:
@@ -66,11 +68,41 @@ namespace cublog
       void load_checkpoint_trans (log_tdes &tdes, LOG_LSA &smallest_lsa);
       void load_checkpoint_topop (log_tdes &tdes);
 
+      struct tran_info;
+      struct sysop_info;
+
       log_lsa m_start_redo_lsa;
       log_lsa m_snapshot_lsa;
-      std::vector<checkpoint_tran_info> m_trans;
-      std::vector<checkpoint_sysop_info> m_sysops;
+      std::vector<tran_info> m_trans;
+      std::vector<sysop_info> m_sysops;
       bool m_has_2pc;				      // true if any LOG_ISTRAN_2PC (tdes) is true
+  };
+
+  struct checkpoint_info::tran_info
+  {
+    int isloose_end;
+    TRANID trid;			/* Transaction identifier */
+    TRAN_STATE state;		/* Transaction state (e.g., Active, aborted) */
+    LOG_LSA head_lsa;		/* First log address of transaction */
+    LOG_LSA tail_lsa;		/* Last log record address of transaction */
+    LOG_LSA undo_nxlsa;		/* Next log record address of transaction for UNDO purposes. Needed since compensating
+                                   * log records are logged during UNDO */
+    LOG_LSA posp_nxlsa;		/* First address of a postpone record */
+    LOG_LSA savept_lsa;		/* Address of last savepoint */
+    LOG_LSA tail_topresult_lsa;	/* Address of last partial abort/commit */
+    LOG_LSA start_postpone_lsa;	/* Address of start postpone (if transaction was doing postpone during checkpoint) */
+    char user_name[LOG_USERNAME_MAX];	/* Name of the client */
+
+    inline bool operator== (const tran_info &other) const;
+  };
+
+  struct checkpoint_info::sysop_info
+  {
+    TRANID trid;			/* Transaction identifier */
+    LOG_LSA sysop_start_postpone_lsa;	/* saved lsa of system op start postpone log record */
+    LOG_LSA atomic_sysop_start_lsa;	/* saved lsa of atomic system op start */
+
+    inline bool operator== (const sysop_info &other) const;
   };
 }
 #endif

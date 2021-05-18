@@ -841,7 +841,6 @@ extern int logpb_initialize_log_names (THREAD_ENTRY * thread_p, const char *db_f
 extern bool logpb_exist_log (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 			     const char *prefix_logname);
 extern LOG_PAGEID logpb_checkpoint (THREAD_ENTRY * thread_p);
-extern void logpb_dump_checkpoint_trans (FILE * out_fp, int length, void *data);
 extern int logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_path,
 			 FILEIO_BACKUP_LEVEL backup_level, bool delete_unneeded_logarchives,
 			 const char *backup_verbose_file_path, int num_threads, FILEIO_ZIP_METHOD zip_method,

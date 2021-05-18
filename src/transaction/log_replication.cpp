@@ -51,7 +51,10 @@ namespace cublog
     assert (replication_parallel >= 0);
     if (replication_parallel > 0)
       {
-	m_parallel_replication_redo.reset (new cublog::redo_parallel (replication_parallel));
+	m_minimum_log_lsa.reset (new cublog::minimum_log_lsa_monitor ());
+	// no need to reset with start redo lsa
+
+	m_parallel_replication_redo.reset (new cublog::redo_parallel (replication_parallel, *m_minimum_log_lsa.get ()));
       }
 
     // Create the daemon
@@ -100,11 +103,6 @@ namespace cublog
 	else
 	  {
 	    assert (m_redo_lsa == nxio_lsa);
-	    // notify who waits for end of replication
-	    if (m_redo_lsa == nxio_lsa)
-	      {
-		m_redo_lsa_condvar.notify_all ();
-	      }
 	    break;
 	  }
       }
@@ -198,6 +196,13 @@ namespace cublog
 	  std::unique_lock<std::mutex> lock (m_redo_lsa_mutex);
 	  m_redo_lsa = header.forw_lsa;
 	}
+	if (m_parallel_replication_redo != nullptr)
+	  {
+	    m_minimum_log_lsa->set_for_outer (m_redo_lsa);
+	  }
+
+	// to accurately track progress and avoid clients to wait for too long, notify each change
+	m_redo_lsa_condvar.notify_all ();
 
 	m_perfmon_redo_sync.track_and_start ();
       }
@@ -268,6 +273,24 @@ namespace cublog
     if (m_parallel_replication_redo != nullptr)
       {
 	m_parallel_replication_redo->wait_for_idle ();
+      }
+  }
+
+  void replicator::wait_past_target_lsa (const log_lsa &a_target_lsa)
+  {
+    if (m_parallel_replication_redo == nullptr)
+      {
+	// sync
+	std::unique_lock<std::mutex> ulock { m_redo_lsa_mutex };
+	m_redo_lsa_condvar.wait (ulock, [this, a_target_lsa] ()
+	{
+	  return m_redo_lsa > a_target_lsa;
+	});
+      }
+    else
+      {
+	// async
+	m_minimum_log_lsa->wait_past_target_lsa (a_target_lsa);
       }
   }
 

@@ -36,9 +36,11 @@ namespace cubthread
   class daemon;
   class entry;
 }
+
 namespace cublog
 {
   // addind this here allows to include the corresponding header only in the source
+  class minimum_log_lsa_monitor;
   class redo_parallel;
 }
 
@@ -57,6 +59,11 @@ namespace cublog
        * no longer be modified (ie: increase)
        */
       void wait_replication_finish_during_shutdown () const;
+
+      /* wait until replication advances past the target lsa
+       * blocking call
+       */
+      void wait_past_target_lsa (const log_lsa &a_target_lsa);
 
     private:
       void redo_upto_nxio_lsa (cubthread::entry &thread_entry);
@@ -81,6 +88,7 @@ namespace cublog
       LOG_ZIP m_undo_unzip;
       LOG_ZIP m_redo_unzip;
 
+      std::unique_ptr<cublog::minimum_log_lsa_monitor> m_minimum_log_lsa;
       std::unique_ptr<cublog::redo_parallel> m_parallel_replication_redo;
 
       /* perf data for processing log redo on the page server - the synchronous part:
