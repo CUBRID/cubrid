@@ -32,6 +32,7 @@
 #include "log_manager.h"
 #include "log_meta.hpp"
 #include "log_reader.hpp"
+#include "log_recovery_context.hpp"
 #include "log_recovery_redo_parallel.hpp"
 #include "log_system_tran.hpp"
 #include "log_volids.hpp"
@@ -49,8 +50,6 @@ static void log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_
 				LOG_RCVINDEX rcvindex, const VPID * rcv_vpid, LOG_RCV * rcv,
 				const LOG_LSA * rcv_lsa_ptr, LOG_TDES * tdes, LOG_ZIP * undo_unzip_ptr);
 
-static bool log_rv_find_checkpoint (THREAD_ENTRY * thread_p, VOLID volid, LOG_LSA * rcv_lsa);
-
 static int log_rv_analysis_undo_redo (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
 static int log_rv_analysis_dummy_head_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
 static int log_rv_analysis_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
@@ -64,8 +63,7 @@ static int log_rv_analysis_sysop_start_postpone (THREAD_ENTRY * thread_p, int tr
 						 LOG_PAGE * log_page_p);
 static int log_rv_analysis_atomic_sysop_start (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
 static int log_rv_analysis_complete (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
-				     LOG_LSA * prev_lsa, bool is_media_crash, time_t * stop_at,
-				     bool * did_incom_recovery);
+				     LOG_LSA * prev_lsa, log_recovery_context & context);
 static int log_rv_analysis_sysop_end (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p);
 static int log_rv_analysis_save_point (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
 static int log_rv_analysis_2pc_prepare (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
@@ -77,17 +75,14 @@ static int log_rv_analysis_2pc_abort_inform_particps (THREAD_ENTRY * thread_p, i
 static int log_rv_analysis_2pc_recv_ack (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
 static int log_rv_analysis_log_end (int tran_id, LOG_LSA * log_lsa);
 static void log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type, int tran_id, LOG_LSA * log_lsa,
-				    LOG_PAGE * log_page_p, LOG_LSA * prev_lsa, bool is_media_crash, time_t * stop_at,
-				    bool * did_incom_recovery);
+				    LOG_PAGE * log_page_p, LOG_LSA * prev_lsa, log_recovery_context & context);
 static bool log_is_page_of_record_broken (THREAD_ENTRY * thread_p, const LOG_LSA * log_lsa,
 					  const LOG_RECORD_HEADER * log_rec_header);
-static void log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * start_redolsa,
-				   LOG_LSA * end_redo_lsa, bool ismedia_crash, time_t * stopat,
-				   bool * did_incom_recovery, INT64 * num_redo_log_records);
+static void log_recovery_analysis (THREAD_ENTRY * thread_p, INT64 * num_redo_log_records,
+				   log_recovery_context & context);
 static bool log_recovery_needs_skip_logical_redo (THREAD_ENTRY * thread_p, TRANID tran_id, LOG_RECTYPE log_rtype,
 						  LOG_RCVINDEX rcv_index, const LOG_LSA * lsa);
-static void log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const LOG_LSA * end_redo_lsa,
-			       time_t * stopat);
+static void log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context);
 static void log_recovery_abort_interrupted_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 						  const LOG_LSA * postpone_start_lsa);
 static void log_recovery_finish_sysop_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
@@ -562,7 +557,7 @@ log_rv_need_sync_redo (const vpid & a_rcv_vpid, LOG_RCVINDEX a_rcvindex)
  * NOTE: Find the recovery checkpoint address of the given volume. If
  *              it is smaller than rcv_lsa, rcv_lsa is reset to such value.
  */
-static bool
+bool
 log_rv_find_checkpoint (THREAD_ENTRY * thread_p, VOLID volid, LOG_LSA * rcv_lsa)
 {
   LOG_LSA chkpt_lsa;		/* Checkpoint LSA of volume */
@@ -733,6 +728,8 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   INT64 num_redo_log_records;
   int error_code = NO_ERROR;
 
+  log_recovery_context context;
+
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
   /* Save the transaction index and find the transaction descriptor */
@@ -767,22 +764,8 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   LSA_COPY (&rcv_lsa, &log_Gl.hdr.chkpt_lsa);
   if (ismedia_crash != false)
     {
-      /*
-       * Media crash, we may have to start from an older checkpoint...
-       * check disk headers
-       */
-      (void) fileio_map_mounted (thread_p, (bool (*)(THREAD_ENTRY *, VOLID, void *)) log_rv_find_checkpoint, &rcv_lsa);
-    }
-  else
-    {
-      /*
-       * We do incomplete recovery only when we are comming from a media crash.
-       * That is, we are restarting from a backup
-       */
-      if (stopat != NULL)
-	{
-	  *stopat = -1;
-	}
+      /* Media crash means restore from backup. */
+      context.init_for_restore (stopat);
     }
 
   /* Notify vacuum it may need to recover the lost block data.
@@ -802,11 +785,10 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
    */
 
   log_Gl.rcv_phase = LOG_RECOVERY_ANALYSIS_PHASE;
-  log_recovery_analysis (thread_p, &rcv_lsa, &start_redolsa, &end_redo_lsa, ismedia_crash, stopat,
-			 &did_incom_recovery, &num_redo_log_records);
+  log_recovery_analysis (thread_p, &num_redo_log_records, context);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_STARTED, 3, num_redo_log_records,
-	  start_redolsa.pageid, end_redo_lsa.pageid);
+	  context.get_start_redo_lsa ().pageid, context.get_end_redo_lsa ().pageid);
 
   LSA_COPY (&log_Gl.chkpt_redo_lsa, &start_redolsa);
 
@@ -818,7 +800,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
       return;
     }
 
-  if (did_incom_recovery == false)
+  if (!context.is_restore_incomplete ())
     {
       /* Read the End of file record to find out the previous address */
       eof = (LOG_RECORD_HEADER *) LOG_APPEND_PTR ();
@@ -845,7 +827,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
 
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, rcv_tran_index);
 
-  log_recovery_redo (thread_p, &start_redolsa, &end_redo_lsa, stopat);
+  log_recovery_redo (thread_p, context);
   boot_reset_db_parm (thread_p);
 
   /* Undo phase */
@@ -1409,39 +1391,33 @@ log_rv_analysis_atomic_sysop_start (THREAD_ENTRY * thread_p, int tran_id, LOG_LS
  */
 static int
 log_rv_analysis_complete (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
-			  LOG_LSA * prev_lsa, bool is_media_crash, time_t * stop_at, bool * did_incom_recovery)
+			  LOG_LSA * prev_lsa, log_recovery_context & context)
 {
-  LOG_REC_DONETIME *donetime;
-  int tran_index;
-  time_t last_at_time;
-  char time_val[CTIME_MAX];
-  LOG_LSA record_header_lsa;
-
-  /*
-   * The transaction has been fully completed. therefore, it was not
-   * active at the time of the crash
-   */
-  tran_index = logtb_find_tran_index (thread_p, tran_id);
-
-  if (is_media_crash != true)
+  const int tran_index = logtb_find_tran_index (thread_p, tran_id);
+  if (!context.is_restore_from_backup ())
     {
-      goto end;
+      // Recovery after crash
+      // The transaction has been fully completed. Therefore, it was not active at the time of the crash.
+      if (tran_index != NULL_TRAN_INDEX)
+	{
+	  logtb_free_tran_index (thread_p, tran_index);
+	}
+      return NO_ERROR;
     }
 
-  LSA_COPY (&record_header_lsa, log_lsa);
+  // Restore from backup
+  const LOG_LSA record_header_lsa = *log_lsa;
 
-  /*
-   * Need to read the donetime record to find out if we need to stop
-   * the recovery at this point.
-   */
+  /* Need to read the donetime record to find out if we need to stop the recovery at this point. */
   LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page_p);
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_DONETIME), log_lsa, log_page_p);
 
-  donetime = (LOG_REC_DONETIME *) ((char *) log_page_p->area + log_lsa->offset);
-  last_at_time = util_msec_to_sec (donetime->at_time);
-  if (stop_at != NULL && *stop_at != (time_t) (-1) && difftime (*stop_at, last_at_time) < 0)
+  const LOG_REC_DONETIME *const donetime = (LOG_REC_DONETIME *) ((char *) log_page_p->area + log_lsa->offset);
+  const time_t last_at_time = util_msec_to_sec (donetime->at_time);
+  if (context.does_restore_stop_before_time (last_at_time))
     {
 #if !defined(NDEBUG)
+      char time_val[CTIME_MAX];
       if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
 	{
 	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_STARTS));
@@ -1460,23 +1436,19 @@ log_rv_analysis_complete (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_ls
        */
       log_lsa->pageid = NULL_PAGEID;
       log_recovery_resetlog (thread_p, &record_header_lsa, prev_lsa);
-      *did_incom_recovery = true;
+      context.set_incomplete_restore ();
 
       return NO_ERROR;
     }
-
-end:
-
-  /*
-   * The transaction has been fully completed. Therefore, it was not
-   * active at the time of the crash
-   */
-  if (tran_index != NULL_TRAN_INDEX)
+  else
     {
-      logtb_free_tran_index (thread_p, tran_index);
+      // Transaction is completed.
+      if (tran_index != NULL_TRAN_INDEX)
+	{
+	  logtb_free_tran_index (thread_p, tran_index);
+	}
+      return NO_ERROR;
     }
-
-  return NO_ERROR;
 }
 
 /* TODO: We need to understand how recovery of system operations really works. We need to find its limitations.
@@ -1996,8 +1968,7 @@ log_rv_analysis_log_end (int tran_id, LOG_LSA * log_lsa)
  */
 static void
 log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type, int tran_id, LOG_LSA * log_lsa,
-			LOG_PAGE * log_page_p, LOG_LSA * prev_lsa, bool is_media_crash, time_t * stop_at,
-			bool * did_incom_recovery)
+			LOG_PAGE * log_page_p, LOG_LSA * prev_lsa, log_recovery_context & context)
 {
   switch (log_type)
     {
@@ -2043,8 +2014,7 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type, int tran_
 
     case LOG_COMMIT:
     case LOG_ABORT:
-      (void) log_rv_analysis_complete (thread_p, tran_id, log_lsa, log_page_p, prev_lsa, is_media_crash, stop_at,
-				       did_incom_recovery);
+      (void) log_rv_analysis_complete (thread_p, tran_id, log_lsa, log_page_p, prev_lsa, context);
       break;
 
     case LOG_SYSOP_END:
@@ -2184,9 +2154,7 @@ log_is_page_of_record_broken (THREAD_ENTRY * thread_p, const LOG_LSA * log_lsa,
  */
 
 static void
-log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * start_redo_lsa,
-		       LOG_LSA * end_redo_lsa, bool is_media_crash, time_t * stop_at, bool * did_incom_recovery,
-		       INT64 * num_redo_log_records)
+log_recovery_analysis (THREAD_ENTRY * thread_p, INT64 * num_redo_log_records, log_recovery_context & context)
 {
   LOG_LSA lsa;			/* LSA of log record to analyse */
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
@@ -2222,18 +2190,14 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
    */
 
   LSA_SET_NULL (&first_corrupted_rec_lsa);
-  LSA_COPY (&lsa, start_lsa);
+  lsa = context.get_checkpoint_lsa ();
 
   // *INDENT-OFF*
   // If the recovery start matches a checkpoint, use the checkpoint information.
-  const cublog::checkpoint_info *chkpt_infop = log_Gl.m_metainfo.get_checkpoint_info (*start_lsa);
+  const cublog::checkpoint_info *chkpt_infop = log_Gl.m_metainfo.get_checkpoint_info (lsa);
   // *INDENT-ON*
-
-  LSA_COPY (start_redo_lsa, &lsa);
-  LSA_COPY (end_redo_lsa, &lsa);
   LSA_COPY (&prev_lsa, &lsa);
   prev_prev_lsa.set_null ();
-  *did_incom_recovery = false;
 
   log_page_p = (LOG_PAGE *) aligned_log_pgbuf;
 
@@ -2252,12 +2216,9 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 
       if (is_log_page_broken)
 	{
-	  if (is_media_crash == true)
+	  if (context.is_restore_from_backup ())
 	    {
-	      if (stop_at != NULL)
-		{
-		  *stop_at = last_at_time;
-		}
+	      context.force_stop_restore_at (last_at_time);
 
 #if !defined(NDEBUG)
 	      if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
@@ -2266,8 +2227,8 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 		  (void) ctime_r (&last_at_time, time_val);
 		  fprintf (stdout,
 			   msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG,
-					   MSGCAT_LOG_INCOMPLTE_MEDIA_RECOVERY), end_redo_lsa->pageid,
-			   end_redo_lsa->offset, ((last_at_time == -1) ? "???...\n" : time_val));
+					   MSGCAT_LOG_INCOMPLTE_MEDIA_RECOVERY), context.get_end_redo_lsa ().pageid,
+			   context.get_end_redo_lsa ().offset, ((last_at_time == -1) ? "???...\n" : time_val));
 		  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_STARTS));
 		  fflush (stdout);
 		}
@@ -2292,7 +2253,6 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 		  return;
 		}
 	      log_recovery_resetlog (thread_p, &prev_lsa, &prev_prev_lsa);
-	      *did_incom_recovery = true;
 
 	      log_Gl.mvcc_table.reset_start_mvccid ();
 	      return;
@@ -2301,7 +2261,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	    {
 	      if (er_errid () == ER_TDE_CIPHER_IS_NOT_LOADED)
 		{
-		  /* TDE Moudle has to be loaded because there are some TDE-encrypted log pages */
+		  /* TDE Module has to be loaded because there are some TDE-encrypted log pages */
 		  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
 				     "log_recovery_analysis: log page %lld has been encrypted (TDE) and cannot be decrypted",
 				     log_page_p->hdr.logical_pageid);
@@ -2388,15 +2348,15 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	  log_lsa.offset = lsa.offset;
 	  log_rec = LOG_GET_LOG_RECORD_HEADER (log_page_p, &log_lsa);
 
-	  if (is_media_crash == true)
+	  if (context.is_restore_from_backup ())
 	    {
 	      /* Check also the last log page of current record. We need to check after obtaining log_rec. */
 	      is_log_page_broken = log_is_page_of_record_broken (thread_p, &log_lsa, log_rec);
 	      if (is_log_page_broken)
 		{
 		  /* Needs to reset the log. It is done in the outer loop. Set end_redo and prev used at reset. */
-		  LSA_COPY (end_redo_lsa, &lsa);
-		  LSA_COPY (&prev_lsa, end_redo_lsa);
+		  context.set_end_redo_lsa (lsa);
+		  LSA_COPY (&prev_lsa, &lsa);
 		  prev_prev_lsa = prev_lsa;
 		  er_log_debug (ARG_FILE_LINE, "logpb_recovery_analysis: broken record at LSA=%lld|%d ",
 				log_lsa.pageid, log_lsa.offset);
@@ -2462,7 +2422,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	       */
 	      if (LSA_GT (&log_lsa, &first_corrupted_rec_lsa))
 		{
-		  LOG_RESET_APPEND_LSA (end_redo_lsa);
+		  LOG_RESET_APPEND_LSA (&context.get_end_redo_lsa ());
 		  LSA_SET_NULL (&lsa);
 		  break;
 		}
@@ -2514,7 +2474,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	   * Get the address of next log record to scan
 	   */
 
-	  LSA_COPY (end_redo_lsa, &lsa);
+	  context.set_end_redo_lsa (lsa);
 	  LSA_COPY (&lsa, &log_rec->forw_lsa);
 
 	  if ((is_log_page_corrupted) && (log_rtype != LOG_END_OF_LOG) && (lsa.pageid != log_lsa.pageid))
@@ -2551,13 +2511,13 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	      break;
 	    }
 
-	  if (LSA_ISNULL (&lsa) && log_rtype != LOG_END_OF_LOG && *did_incom_recovery == false)
+	  if (LSA_ISNULL (&lsa) && log_rtype != LOG_END_OF_LOG && context.is_restore_incomplete () == false)
 	    {
-	      LOG_RESET_APPEND_LSA (end_redo_lsa);
+	      LOG_RESET_APPEND_LSA (&context.get_end_redo_lsa ());
 	      if (log_startof_nxrec (thread_p, &log_Gl.hdr.append_lsa, true) == NULL)
 		{
 		  /* We may destroy a record */
-		  LOG_RESET_APPEND_LSA (end_redo_lsa);
+		  LOG_RESET_APPEND_LSA (&context.get_end_redo_lsa ());
 		}
 	      else
 		{
@@ -2607,19 +2567,20 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	    {
 	      // The transaction table snapshot was taken before the next log record was logged.
 	      // Rebuild the transaction table image based on checkpoint information
-	      chkpt_infop->recovery_analysis (thread_p, *start_redo_lsa);
+	      LOG_LSA start_redo_lsa;
+	      chkpt_infop->recovery_analysis (thread_p, start_redo_lsa);
+	      context.set_end_redo_lsa (start_redo_lsa);
 	    }
 
-	  log_rv_analysis_record (thread_p, log_rtype, tran_id, &log_lsa, log_page_p, &prev_lsa, is_media_crash,
-				  stop_at, did_incom_recovery);
-	  if (*did_incom_recovery == true)
+	  log_rv_analysis_record (thread_p, log_rtype, tran_id, &log_lsa, log_page_p, &prev_lsa, context);
+	  if (context.is_restore_incomplete ())
 	    {
 	      LSA_SET_NULL (&lsa);
 	      break;
 	    }
-	  if (LSA_EQ (end_redo_lsa, &lsa))
+	  if (context.get_end_redo_lsa () == lsa)
 	    {
-	      assert_release (!LSA_EQ (end_redo_lsa, &lsa));
+	      assert_release (context.get_end_redo_lsa () != lsa);
 	      LSA_SET_NULL (&lsa);
 	      break;
 	    }
@@ -2635,7 +2596,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	      break;
 	    }
 
-	  LSA_COPY (&prev_lsa, end_redo_lsa);
+	  prev_lsa = context.get_end_redo_lsa ();
 	  prev_prev_lsa = prev_lsa;
 
 	  /*
@@ -2752,8 +2713,7 @@ log_recovery_needs_skip_logical_redo (THREAD_ENTRY * thread_p, TRANID tran_id, L
  *              respective compensating log records.
  */
 static void
-log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const LOG_LSA * end_redo_lsa,
-		   time_t * stopat)
+log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 {
   LOG_LSA lsa;			/* LSA of log record to redo */
   log_reader log_pgptr_reader;
@@ -2791,8 +2751,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
    * Transactions that were active at the time of the crash are aborted
    * during the log_recovery_undo phase
    */
-
-  LSA_COPY (&lsa, start_redolsa);
+  lsa = context.get_start_redo_lsa ();
 
   /* Defense for illegal start_redolsa */
   if ((lsa.offset + (int) sizeof (LOG_RECORD_HEADER)) >= LOGAREA_SIZE)
@@ -2825,7 +2784,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
       /* Fetch the page where the LSA record to undo is located */
       if (log_pgptr_reader.set_lsa_and_fetch_page (lsa) != NO_ERROR)
 	{
-	  if (end_redo_lsa != NULL && (LSA_ISNULL (end_redo_lsa) || LSA_GT (&lsa, end_redo_lsa)))
+	  if (lsa > context.get_end_redo_lsa ())
 	    {
 	      goto exit;
 	    }
@@ -2843,7 +2802,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	  /*
 	   * Do we want to stop the recovery redo process at this time ?
 	   */
-	  if (end_redo_lsa != NULL && !LSA_ISNULL (end_redo_lsa) && LSA_GT (&lsa, end_redo_lsa))
+	  if (lsa > context.get_end_redo_lsa ())
 	    {
 	      LSA_SET_NULL (&lsa);
 	      break;
@@ -2954,13 +2913,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		LSA_COPY (&log_Gl.hdr.mvcc_op_log_lsa, &rcv_lsa);
 
                 // *INDENT-OFF*
-                log_rv_redo_record_sync_or_dispatch_async<LOG_REC_MVCC_UNDOREDO> (thread_p, log_pgptr_reader,
-                                                                                  log_rec_mvcc_undoredo,
-                                                                                  rcv_lsa, end_redo_lsa,
-                                                                                  log_rtype, *undo_unzip_ptr,
-                                                                                  *redo_unzip_ptr,
-                                                                                  parallel_recovery_redo,
-                                                                                  force_each_log_page_fetch);
+                log_rv_redo_record_sync_or_dispatch_async<LOG_REC_MVCC_UNDOREDO>
+		  (thread_p, log_pgptr_reader, log_rec_mvcc_undoredo, rcv_lsa, &context.get_end_redo_lsa (), log_rtype,
+		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, force_each_log_page_fetch);
                 // *INDENT-ON*
 	      }
 	      break;
@@ -2979,12 +2934,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		const LOG_REC_UNDOREDO log_rec_undoredo
 		    = log_pgptr_reader.reinterpret_copy_and_add_align<LOG_REC_UNDOREDO> ();
 
-                log_rv_redo_record_sync_or_dispatch_async<LOG_REC_UNDOREDO> (thread_p, log_pgptr_reader,
-                                                                             log_rec_undoredo, rcv_lsa,
-                                                                             end_redo_lsa, log_rtype,
-                                                                             *undo_unzip_ptr, *redo_unzip_ptr,
-                                                                             parallel_recovery_redo,
-                                                                             force_each_log_page_fetch);
+                log_rv_redo_record_sync_or_dispatch_async<LOG_REC_UNDOREDO>
+		  (thread_p, log_pgptr_reader, log_rec_undoredo, rcv_lsa, &context.get_end_redo_lsa (), log_rtype,
+		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, force_each_log_page_fetch);
                 // *INDENT-ON*
 	      }
 	      break;
@@ -3016,11 +2968,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		 * relevant for vacuum as vacuum only processes undo data */
 
                 // *INDENT-OFF*
-                log_rv_redo_record_sync_or_dispatch_async<LOG_REC_MVCC_REDO> (thread_p, log_pgptr_reader,
-                                                                              log_rec_mvcc_redo, rcv_lsa, end_redo_lsa,
-                                                                              log_rtype, *undo_unzip_ptr,
-                                                                              *redo_unzip_ptr, parallel_recovery_redo,
-                                                                              force_each_log_page_fetch);
+                log_rv_redo_record_sync_or_dispatch_async<LOG_REC_MVCC_REDO>
+		  (thread_p, log_pgptr_reader, log_rec_mvcc_redo, rcv_lsa, &context.get_end_redo_lsa (), log_rtype,
+		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, force_each_log_page_fetch);
                 // *INDENT-ON*
 	      }
 	      break;
@@ -3043,11 +2993,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		    logpb_vacuum_reset_log_header_cache (thread_p, &log_Gl.hdr);
 		  }
 
-                log_rv_redo_record_sync_or_dispatch_async<LOG_REC_REDO> (thread_p, log_pgptr_reader,
-                                                                         log_rec_redo, rcv_lsa, end_redo_lsa,
-                                                                         log_rtype, *undo_unzip_ptr,
-                                                                         *redo_unzip_ptr, parallel_recovery_redo,
-                                                                         force_each_log_page_fetch);
+                log_rv_redo_record_sync_or_dispatch_async<LOG_REC_REDO>
+		  (thread_p, log_pgptr_reader, log_rec_redo, rcv_lsa, &context.get_end_redo_lsa (), log_rtype,
+		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, force_each_log_page_fetch);
                 // *INDENT-ON*
 	      }
 	      break;
@@ -3106,12 +3054,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		const LOG_REC_RUN_POSTPONE log_rec_run_posp
 		    = log_pgptr_reader.reinterpret_copy_and_add_align<LOG_REC_RUN_POSTPONE> ();
 
-                log_rv_redo_record_sync_or_dispatch_async<LOG_REC_RUN_POSTPONE> (thread_p, log_pgptr_reader,
-                                                                                 log_rec_run_posp, rcv_lsa,
-                                                                                 end_redo_lsa, log_rtype,
-                                                                                 *undo_unzip_ptr, *redo_unzip_ptr,
-                                                                                 parallel_recovery_redo,
-                                                                                 force_each_log_page_fetch);
+                log_rv_redo_record_sync_or_dispatch_async<LOG_REC_RUN_POSTPONE>
+		  (thread_p, log_pgptr_reader, log_rec_run_posp, rcv_lsa, &context.get_end_redo_lsa (), log_rtype,
+		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, force_each_log_page_fetch);
                 // *INDENT-ON*
 	      }
 	      break;
@@ -3128,12 +3073,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		const LOG_REC_COMPENSATE log_rec_compensate
 		    = log_pgptr_reader.reinterpret_copy_and_add_align<LOG_REC_COMPENSATE> ();
 
-                log_rv_redo_record_sync_or_dispatch_async<LOG_REC_COMPENSATE> (thread_p, log_pgptr_reader,
-                                                                               log_rec_compensate, rcv_lsa,
-                                                                               end_redo_lsa, log_rtype,
-                                                                               *undo_unzip_ptr, *redo_unzip_ptr,
-                                                                               parallel_recovery_redo,
-                                                                               force_each_log_page_fetch);
+                log_rv_redo_record_sync_or_dispatch_async<LOG_REC_COMPENSATE>
+		  (thread_p, log_pgptr_reader, log_rec_compensate, rcv_lsa, &context.get_end_redo_lsa (), log_rtype,
+		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, force_each_log_page_fetch);
                 // *INDENT-ON*
 	      }
 	      break;
@@ -3305,12 +3247,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		    free_tran = true;
 		  }
 
-		if (stopat != NULL && *stopat != -1)
+		if (context.is_restore_incomplete ())
 		  {
-		    /*
-		     * Need to read the donetime record to find out if we need to stop
-		     * the recovery at this point.
-		     */
+		    /* Need to read the donetime record to find out if we need to stop the recovery at this point. */
 		    log_pgptr_reader.add_align (sizeof (LOG_RECORD_HEADER));
 		    log_pgptr_reader.advance_when_does_not_fit (sizeof (LOG_REC_DONETIME));
 		    // *INDENT-OFF*
@@ -3319,7 +3258,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 		    // stopat is provided in seconds
 		    const time_t log_at_time = util_msec_to_sec (donetime->at_time);
-		    if (difftime (*stopat, log_at_time) < 0)
+		    if (context.does_restore_stop_before_time (log_at_time))
 		      {
 			/*
 			 * Stop the recovery process at this point
