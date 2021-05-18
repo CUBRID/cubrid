@@ -4041,10 +4041,10 @@ error_exit:
 void
 pt_copy_statement_flags (PT_NODE * source, PT_NODE * destination)
 {
-  destination->recompile = source->recompile;
-  destination->cannot_prepare = source->cannot_prepare;
-  destination->si_datetime = source->si_datetime;
-  destination->si_tran_id = source->si_tran_id;
+  destination->bs.recompile = source->bs.recompile;
+  destination->bs.cannot_prepare = source->bs.cannot_prepare;
+  destination->bs.si_datetime = source->bs.si_datetime;
+  destination->bs.si_tran_id = source->bs.si_tran_id;
 }
 
 /*
@@ -4162,11 +4162,11 @@ pt_dup_key_update_stmt (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * assig
     }
 
   /* We need the OID PT_VALUE to become a host variable, see qo_optimize_queries () */
-  node->info.update.search_cond->force_auto_parameterize = 1;
+  node->info.update.search_cond->bs.force_auto_parameterize = 1;
 
   /* We don't want constant folding on the WHERE clause because it might result in the host variable being removed from
    * the tree. */
-  node->info.update.search_cond->do_not_fold = 1;
+  node->info.update.search_cond->bs.do_not_fold = 1;
 
   func_node = NULL;
   name_node = NULL;
@@ -6845,7 +6845,7 @@ pt_make_query_show_exec_stats (PARSER_CONTEXT * parser)
       return NULL;
     }
 
-  parser->dont_collect_exec_stats = 1;
+  parser->bs.dont_collect_exec_stats = 1;
 
   show_node = pt_pop (parser);
   assert (show_node == node[0]);
@@ -6935,7 +6935,7 @@ pt_make_query_show_exec_stats_all (PARSER_CONTEXT * parser)
 
   show_node = pt_pop (parser);
   assert (show_node == node[0]);
-  parser->dont_collect_exec_stats = 1;
+  parser->bs.dont_collect_exec_stats = 1;
 
   return node[0];
 }
@@ -7529,7 +7529,7 @@ pt_split_delete_stmt (PARSER_CONTEXT * parser, PT_NODE * delete_stmt)
 	  if (last_new_del_stmt != NULL)
 	    {
 	      last_new_del_stmt->info.delete_.hint = delete_stmt->info.delete_.hint;
-	      last_new_del_stmt->recompile = delete_stmt->recompile;
+	      last_new_del_stmt->bs.recompile = delete_stmt->bs.recompile;
 	      if ((last_new_del_stmt->info.delete_.hint & PT_HINT_LK_TIMEOUT)
 		  && delete_stmt->info.delete_.waitsecs_hint != NULL)
 		{
@@ -8818,8 +8818,8 @@ pt_get_query_limit_from_limit (PARSER_CONTEXT * parser, PT_NODE * limit, DB_VALU
 
   domainp = tp_domain_resolve_default (DB_TYPE_BIGINT);
 
-  save_set_host_var = parser->set_host_var;
-  parser->set_host_var = 1;
+  save_set_host_var = parser->bs.set_host_var;
+  parser->bs.set_host_var = 1;
 
   assert (limit->node_type == PT_VALUE || limit->node_type == PT_HOST_VAR || limit->node_type == PT_EXPR);
 
@@ -8882,7 +8882,7 @@ cleanup:
       db_make_null (limit_val);
     }
 
-  parser->set_host_var = save_set_host_var;
+  parser->bs.set_host_var = save_set_host_var;
   return error;
 }
 
@@ -8962,8 +8962,8 @@ pt_check_ordby_num_for_multi_range_opt (PARSER_CONTEXT * parser, PT_NODE * query
 
   db_make_null (&limit_val);
 
-  save_set_host_var = parser->set_host_var;
-  parser->set_host_var = 1;
+  save_set_host_var = parser->bs.set_host_var;
+  parser->bs.set_host_var = 1;
 
   if (pt_get_query_limit_value (parser, query, &limit_val) != NO_ERROR)
     {
@@ -8999,7 +8999,7 @@ end_mro_candidate:
     }
 
 end:
-  parser->set_host_var = save_set_host_var;
+  parser->bs.set_host_var = save_set_host_var;
   return valid;
 }
 
@@ -9546,7 +9546,7 @@ pt_make_query_show_trace (PARSER_CONTEXT * parser)
   trace_func->alias_print = pt_append_string (parser, NULL, "trace");
   select->info.query.q.select.list = parser_append_node (trace_func, select->info.query.q.select.list);
 
-  parser->dont_collect_exec_stats = 1;
+  parser->bs.dont_collect_exec_stats = 1;
   parser->query_trace = false;
 
   return select;

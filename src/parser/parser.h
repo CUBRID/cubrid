@@ -504,7 +504,7 @@ extern "C"
 
   extern PT_NODE *pt_get_next_error (PT_NODE * errors, int *stmt_no, int *line_no, int *col_no, const char **msg);
   extern void pt_reset_error (PARSER_CONTEXT * parser);
-#define pt_has_error(parser) ( (parser) && ((parser)->error_msgs || (parser)->has_internal_error))
+#define pt_has_error(parser) ( (parser) && ((parser)->error_msgs || (parser)->bs.has_internal_error))
 
 #if defined (ENABLE_UNUSED_FUNCTION)
   extern bool pt_column_updatable (PARSER_CONTEXT * parser, PT_NODE * query);

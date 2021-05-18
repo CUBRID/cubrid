@@ -1875,9 +1875,9 @@ stmt
 
 			if (node)
 			  {
-			    node->si_datetime = (parser_si_datetime == true) ? 1 : 0;
-			    node->si_tran_id = (parser_si_tran_id == true) ? 1 : 0;
-			    node->cannot_prepare = (parser_cannot_prepare == true) ? 1 : 0;
+			    node->bs.si_datetime = (parser_si_datetime == true) ? 1 : 0;
+			    node->bs.si_tran_id = (parser_si_tran_id == true) ? 1 : 0;
+			    node->bs.cannot_prepare = (parser_cannot_prepare == true) ? 1 : 0;
 			  }
 
 			parser_restore_si_datetime ();
@@ -2381,7 +2381,7 @@ session_variable_assignment
 
 			PT_NODE* expr =
 				parser_make_expression (this_parser, PT_DEFINE_VARIABLE, $1, $3, NULL);
-			expr->do_not_fold = 1;
+			expr->bs.do_not_fold = 1;
 			$$ = expr;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
@@ -2401,7 +2401,7 @@ session_variable_definition
 
 			PT_NODE* expr =
 				parser_make_expression (this_parser, PT_DEFINE_VARIABLE, $1, $3, NULL);
-			expr->do_not_fold = 1;
+			expr->bs.do_not_fold = 1;
 			$$ = expr;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
@@ -2415,7 +2415,7 @@ session_variable_expression
 			PT_NODE *expr = NULL;
 			expr = parser_make_expression (this_parser, PT_EVALUATE_VARIABLE, $1, NULL,
 										   NULL);
-			expr->do_not_fold = 1;
+			expr->bs.do_not_fold = 1;
 			$$ = expr;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
@@ -3977,7 +3977,7 @@ do_stmt
 
 			    if (expr && PT_IS_QUERY_NODE_TYPE (expr->node_type))
 			      {
-				expr->info.query.single_tuple = 1;
+				expr->info.query.bs.single_tuple = 1;
 
 				if ((subq = pt_get_subquery_list (expr)) && subq->next)
 				{
@@ -7656,7 +7656,7 @@ update_assignment
 					if ((e2 = parser_new_node (this_parser, PT_VALUE)) == NULL)
 					  break;	/* error */
 					e2->type_enum = PT_TYPE_NULL;
-					e2->is_added_by_parser = 1;
+					e2->bs.is_added_by_parser = 1;
 				      }
 				    else
 				      {
@@ -11935,9 +11935,9 @@ csql_query
 
 			if (node && parser_cannot_cache)
 			  {
-			    node->info.query.reexecute = 1;
-			    node->info.query.do_cache = 0;
-			    node->info.query.do_not_cache = 1;
+			    node->info.query.bs.reexecute = 1;
+			    node->info.query.bs.do_cache = 0;
+			    node->info.query.bs.do_not_cache = 1;
 			  }
 
 			parser_restore_cannot_cache ();
@@ -12023,9 +12023,9 @@ csql_query_select_has_no_with_clause
 
 			if (node && parser_cannot_cache)
 			  {
-			    node->info.query.reexecute = 1;
-			    node->info.query.do_cache = 0;
-			    node->info.query.do_not_cache = 1;
+			    node->info.query.bs.reexecute = 1;
+			    node->info.query.bs.do_cache = 0;
+			    node->info.query.bs.do_not_cache = 1;
 			  }
 
 			parser_restore_cannot_cache ();
@@ -12111,9 +12111,9 @@ csql_query_without_subquery_and_with_clause
 
 			if (node && parser_cannot_cache)
 			  {
-			    node->info.query.reexecute = 1;
-			    node->info.query.do_cache = 0;
-			    node->info.query.do_not_cache = 1;
+			    node->info.query.bs.reexecute = 1;
+			    node->info.query.bs.do_cache = 0;
+			    node->info.query.bs.do_not_cache = 1;
 			  }
 
 			parser_restore_cannot_cache ();
@@ -12199,9 +12199,9 @@ csql_query_without_values_query
 
 			if (node && parser_cannot_cache)
 			  {
-			    node->info.query.reexecute = 1;
-			    node->info.query.do_cache = 0;
-			    node->info.query.do_not_cache = 1;
+			    node->info.query.bs.reexecute = 1;
+			    node->info.query.bs.do_cache = 0;
+			    node->info.query.bs.do_not_cache = 1;
 			  }
 
 			parser_restore_cannot_cache ();
@@ -12287,9 +12287,9 @@ csql_query_without_values_query_no_with_clause
 
 			if (node && parser_cannot_cache)
 			  {
-			    node->info.query.reexecute = 1;
-			    node->info.query.do_cache = 0;
-			    node->info.query.do_not_cache = 1;
+			    node->info.query.bs.reexecute = 1;
+			    node->info.query.bs.do_cache = 0;
+			    node->info.query.bs.do_not_cache = 1;
 			  }
 
 			parser_restore_cannot_cache ();
@@ -12375,9 +12375,9 @@ csql_query_without_values_and_single_subquery
 
 			if (node && parser_cannot_cache)
 			  {
-			    node->info.query.reexecute = 1;
-			    node->info.query.do_cache = 0;
-			    node->info.query.do_not_cache = 1;
+			    node->info.query.bs.reexecute = 1;
+			    node->info.query.bs.do_cache = 0;
+			    node->info.query.bs.do_not_cache = 1;
 			  }
 
 			parser_restore_cannot_cache ();
@@ -12463,9 +12463,9 @@ select_expression_without_subquery
 
 			if (node && parser_cannot_cache)
 			  {
-			    node->info.query.reexecute = 1;
-			    node->info.query.do_cache = 0;
-			    node->info.query.do_not_cache = 1;
+			    node->info.query.bs.reexecute = 1;
+			    node->info.query.bs.do_cache = 0;
+			    node->info.query.bs.do_not_cache = 1;
 			  }
 
 
@@ -12518,7 +12518,7 @@ select_expression_without_subquery
 			    stmt->info.query.id = (UINTPTR) stmt;
 			    stmt->info.query.q.union_.arg1 = $1;
 			    stmt->info.query.q.union_.arg2 = $9;
-                            stmt->recompile = $1->recompile | $9->recompile;
+                            stmt->bs.recompile = $1->bs.recompile | $9->bs.recompile;
 
 			    if (arg1 != NULL
 			        && arg1->info.query.is_subquery != PT_IS_SUBQUERY
@@ -12556,9 +12556,9 @@ select_expression
 
 			if (node && parser_cannot_cache)
 			  {
-			    node->info.query.reexecute = 1;
-			    node->info.query.do_cache = 0;
-			    node->info.query.do_not_cache = 1;
+			    node->info.query.bs.reexecute = 1;
+			    node->info.query.bs.do_cache = 0;
+			    node->info.query.bs.do_not_cache = 1;
 			  }
 
 
@@ -12610,7 +12610,7 @@ select_expression
 			    stmt->info.query.id = (UINTPTR) stmt;
 			    stmt->info.query.q.union_.arg1 = $1;
 			    stmt->info.query.q.union_.arg2 = $9;
-                            stmt->recompile = $1->recompile | $9->recompile;
+                            stmt->bs.recompile = $1->bs.recompile | $9->bs.recompile;
 
 			    if (arg1 != NULL
 			        && arg1->info.query.is_subquery != PT_IS_SUBQUERY
@@ -12648,9 +12648,9 @@ select_expression_without_values_query
 
 			if (node && parser_cannot_cache)
 			  {
-			    node->info.query.reexecute = 1;
-			    node->info.query.do_cache = 0;
-			    node->info.query.do_not_cache = 1;
+			    node->info.query.bs.reexecute = 1;
+			    node->info.query.bs.do_cache = 0;
+			    node->info.query.bs.do_not_cache = 1;
 			  }
 
 			if (parser_subquery_check == 0)
@@ -12701,7 +12701,7 @@ select_expression_without_values_query
 			    stmt->info.query.id = (UINTPTR) stmt;
 			    stmt->info.query.q.union_.arg1 = $1;
 			    stmt->info.query.q.union_.arg2 = $9;
-                            stmt->recompile = $1->recompile | $9->recompile;
+                            stmt->bs.recompile = $1->bs.recompile | $9->bs.recompile;
 
 			    if (arg1 != NULL
 			        && arg1->info.query.is_subquery != PT_IS_SUBQUERY
@@ -12739,9 +12739,9 @@ select_expression_without_values_query_no_with_clause
 
 			if (node && parser_cannot_cache)
 			  {
-			    node->info.query.reexecute = 1;
-			    node->info.query.do_cache = 0;
-			    node->info.query.do_not_cache = 1;
+			    node->info.query.bs.reexecute = 1;
+			    node->info.query.bs.do_cache = 0;
+			    node->info.query.bs.do_not_cache = 1;
 			  }
 
 			if (parser_subquery_check == 0)
@@ -12792,7 +12792,7 @@ select_expression_without_values_query_no_with_clause
 			    stmt->info.query.id = (UINTPTR) stmt;
 			    stmt->info.query.q.union_.arg1 = $1;
 			    stmt->info.query.q.union_.arg2 = $9;
-                            stmt->recompile = $1->recompile | $9->recompile;
+                            stmt->bs.recompile = $1->bs.recompile | $9->bs.recompile;
 
 			    if (arg1 != NULL
 			        && arg1->info.query.is_subquery != PT_IS_SUBQUERY
@@ -12830,9 +12830,9 @@ select_expression_without_values_and_single_subquery
 
 			if (node && parser_cannot_cache)
 			  {
-			    node->info.query.reexecute = 1;
-			    node->info.query.do_cache = 0;
-			    node->info.query.do_not_cache = 1;
+			    node->info.query.bs.reexecute = 1;
+			    node->info.query.bs.do_cache = 0;
+			    node->info.query.bs.do_not_cache = 1;
 			  }
 
 
@@ -12884,7 +12884,7 @@ select_expression_without_values_and_single_subquery
 			     stmt->info.query.id = (UINTPTR) stmt;
 			     stmt->info.query.q.union_.arg1 = $1;
 			     stmt->info.query.q.union_.arg2 = $9;
-                             stmt->recompile = $1->recompile | $9->recompile;
+                             stmt->bs.recompile = $1->bs.recompile | $9->bs.recompile;
 
 			     if (arg1 != NULL
 				 && arg1->info.query.is_subquery != PT_IS_SUBQUERY
@@ -13327,7 +13327,7 @@ cte_query_list
 			    stmt->info.query.id = (UINTPTR) stmt;
 			    stmt->info.query.q.union_.arg1 = arg1;
 		            stmt->info.query.q.union_.arg2 = arg2;
-                            stmt->recompile = arg1->recompile | arg2->recompile;
+                            stmt->bs.recompile = arg1->bs.recompile | arg2->bs.recompile;
 			  }
 
 			$$ = stmt;
@@ -13467,7 +13467,7 @@ opt_from_clause
 				  }
 				else
 				  {
-				    node->info.query.q.select.group_by->with_rollup = 1;
+				    node->info.query.q.select.group_by->bs.with_rollup = 1;
 				  }
 			      }
 
@@ -13686,7 +13686,7 @@ alias_enabled_expression_list
 			PT_NODE *node = $1;
 			if (node != NULL)
 			  {
-			    node->is_alias_enabled_expr = 1;
+			    node->bs.is_alias_enabled_expr = 1;
 			  }
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -13710,7 +13710,7 @@ alias_enabled_expression_
 			else if (PT_IS_QUERY_NODE_TYPE (node->node_type))
 			  {
 			    /* mark as single tuple query */
-			    node->info.query.single_tuple = 1;
+			    node->info.query.bs.single_tuple = 1;
 
 			    if ((subq = pt_get_subquery_list (node)) && subq->next)
 			      {
@@ -14588,7 +14588,7 @@ incr_arg_name__inc
 			else
 			  {
 			    node = parser_make_expression (this_parser, PT_INCR, $1, NULL, NULL);
-                            node->is_hidden_column = 1;
+                            node->bs.is_hidden_column = 1;
 			  }
 
 			$$ = node;
@@ -14630,7 +14630,7 @@ incr_arg_name__dec
 			else
 			  {
 			    node = parser_make_expression (this_parser, PT_DECR, $1, NULL, NULL);
-                            node->is_hidden_column = 1;
+                            node->bs.is_hidden_column = 1;
 			  }
 
 			$$ = node;
@@ -14667,7 +14667,7 @@ opt_orderby_clause
 		{{
 			PT_NODE *stmt = parser_top_orderby_node ();
 
-			if (!stmt->info.query.order_siblings)
+			if (!stmt->info.query.bs.order_siblings)
 			  {
 				parser_save_and_set_sysc (1);
 				parser_save_and_set_prc (1);
@@ -14862,7 +14862,7 @@ opt_siblings
 		{{
 
 			PT_NODE *stmt = parser_top_orderby_node ();
-			stmt->info.query.order_siblings = true;
+			stmt->info.query.bs.order_siblings = true;
 			if (stmt->info.query.q.select.connect_by == NULL)
 			    {
 				PT_ERRORmf(this_parser, stmt,
@@ -15026,7 +15026,7 @@ limit_options
 			if (node)
 			  {
 			    node->info.query.limit = $1;
-			    node->info.query.rewrite_limit = 1;
+			    node->info.query.bs.rewrite_limit = 1;
 			  }
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -15045,7 +15045,7 @@ limit_options
 				limit1->next = limit2;
 			      }
 			    node->info.query.limit = limit1;
-			    node->info.query.rewrite_limit = 1;
+			    node->info.query.bs.rewrite_limit = 1;
 			  }
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -15064,7 +15064,7 @@ limit_options
 				limit1->next = limit2;
 			      }
 			    node->info.query.limit = limit1;
-			    node->info.query.rewrite_limit = 1;
+			    node->info.query.bs.rewrite_limit = 1;
 			  }
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -16931,7 +16931,7 @@ reserved_func
 			if (node)
 			  {
 			    node->type_enum = PT_TYPE_NULL;
-			    node->is_added_by_parser = 1;
+			    node->bs.is_added_by_parser = 1;
 			  }
 
 			$$ = parser_make_expression (this_parser, PT_STR_TO_DATE, $4, node, parser_make_date_lang (2, NULL));
@@ -17599,7 +17599,7 @@ opt_analytic_partition_by
 			  {
 			    if (list->info.sort_spec.expr != NULL)
 			      {
-				list->info.sort_spec.expr->do_not_fold = true;
+				list->info.sort_spec.expr->bs.do_not_fold = true;
 			      }
 			  }
 
@@ -17642,7 +17642,7 @@ opt_analytic_order_by
 			  {
 			    if (list->info.sort_spec.expr != NULL)
 			      {
-				list->info.sort_spec.expr->do_not_fold = true;
+				list->info.sort_spec.expr->bs.do_not_fold = true;
 			      }
 			  }
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -17734,8 +17734,8 @@ case_expr
 			    if (expr->info.expr.arg2)
 			      {
 				    expr->info.expr.arg2->type_enum = PT_TYPE_NULL;
-				    expr->info.expr.arg2->is_hidden_column = 1;
-				    expr->info.expr.arg2->is_added_by_parser = 1;
+				    expr->info.expr.arg2->bs.is_hidden_column = 1;
+				    expr->info.expr.arg2->bs.is_added_by_parser = 1;
 			      }
 			  }
 
@@ -17788,7 +17788,7 @@ case_expr
 			    if (p)
 			      {
 				    p->type_enum = PT_TYPE_NULL;
-				    p->is_added_by_parser = 1;
+				    p->bs.is_added_by_parser = 1;
 			      }
 			    prev->info.expr.arg2 = p;
 			    PICE (prev);
@@ -17836,7 +17836,7 @@ case_expr
 			    if (p)
 			      {
 				    p->type_enum = PT_TYPE_NULL;
-				    p->is_added_by_parser = 1;
+				    p->bs.is_added_by_parser = 1;
 			      }
 			    prev->info.expr.arg2 = p;
 			    PICE (prev);
@@ -18606,11 +18606,11 @@ predicate_expr_sub
 				/* mark as single tuple list */
 				if (PT_IS_QUERY_NODE_TYPE (opd1->node_type))
 				  {
-				    opd1->info.query.single_tuple = 1;
+				    opd1->info.query.bs.single_tuple = 1;
 				  }
 				if (PT_IS_QUERY_NODE_TYPE (opd2->node_type))
 				  {
-				    opd2->info.query.single_tuple = 1;
+				    opd2->info.query.bs.single_tuple = 1;
 				  }
 			      }
 			    else
@@ -19201,7 +19201,7 @@ in_pred_operand
 		{{
 			container_2 ctn;
 			PT_NODE *exp = $1;
-			if (exp && exp->is_paren == 0)
+			if (exp && exp->bs.is_paren == 0)
 			  {
 			    SET_CONTAINER_2 (ctn, FROM_NUMBER (0), exp);
 			  }
@@ -26174,7 +26174,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
         parser_cannot_cache = true;
 
         expr = parser_make_expression (this_parser, key->op, NULL, NULL, NULL);
-        expr->do_not_fold = 1;
+        expr->bs.do_not_fold = 1;
 
         return expr;
       }
@@ -26198,7 +26198,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
 	    a1 = args;
 	  }
 	expr = parser_make_expression (this_parser, key->op, a1, NULL, NULL);
-	expr->do_not_fold = 1;
+	expr->bs.do_not_fold = 1;
 	return expr;
       }
 
@@ -26257,7 +26257,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
 	a1 = args;
 	if (key->op == PT_COERCIBILITY && a1)
 	  {
-	    a1->do_not_fold = 1;
+	    a1->bs.do_not_fold = 1;
 	  }
 
 	expr = parser_make_expression (this_parser, key->op, a1, NULL, NULL);
@@ -26404,7 +26404,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
           return NULL;
         }
       val->type_enum = PT_TYPE_NULL;
-      val->is_added_by_parser = 1;
+      val->bs.is_added_by_parser = 1;
 
       between_ge_lt = parser_make_expression (this_parser, PT_BETWEEN_GE_LT, a2, a2->next, NULL);
       if (between_ge_lt == NULL)
@@ -26419,7 +26419,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
           return NULL;
         }
 
-      between->do_not_fold = 1;
+      between->bs.do_not_fold = 1;
 
       return parser_make_expression (this_parser, key->op, a1, between, a3);
 
@@ -26686,7 +26686,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
 		     "%s can be used at top select statement only.",
 		     pt_short_print (this_parser, node));
 	}
-      node->is_hidden_column = 1;
+      node->bs.is_hidden_column = 1;
       parser_hidden_incr_list =
 	parser_append_node (node, parser_hidden_incr_list);
       if ((a1 = parser_copy_tree (this_parser, node->info.expr.arg1)) == NULL)
@@ -26704,7 +26704,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
       top_node = parser_is_select_stmt_node_empty () ? NULL : parser_top_select_stmt_node ();
       if (top_node)
       {
-	  top_node->is_click_counter = 1;
+	  top_node->bs.is_click_counter = 1;
       }
 
       return a1;
@@ -26739,7 +26739,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
 	  if (a2)
 	    {
 	      a2->type_enum = PT_TYPE_NULL;
-	      a2->is_added_by_parser = 1;
+	      a2->bs.is_added_by_parser = 1;
 	    }
 	}
 
@@ -26915,7 +26915,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
 	    if (p)
 	      {
 		    p->type_enum = PT_TYPE_NULL;
-		    p->is_added_by_parser = 1;
+		    p->bs.is_added_by_parser = 1;
 	      }
 	    prev->info.expr.arg2 = p;
 	    PICE (prev);
@@ -26986,7 +26986,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
 	  {
 	    expr->info.expr.arg2 =
 	      parser_copy_tree_list (this_parser, expr->info.expr.arg1);
-	    expr->info.expr.arg2->is_hidden_column = 1;
+	    expr->info.expr.arg2->bs.is_hidden_column = 1;
 	  }
 
 	return expr;
@@ -27027,7 +27027,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
 		  {
 		    val->type_enum = PT_TYPE_INTEGER;
 		    val->info.value.data_value.i = 1;
-		    val->is_hidden_column = 1;
+		    val->bs.is_hidden_column = 1;
 		  }
 		expr->info.expr.arg3 = parser_copy_tree (this_parser, sep);
 		expr->info.expr.arg3->next = val;
@@ -27075,7 +27075,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
 			  {
 			    val->type_enum = PT_TYPE_INTEGER;
 			    val->info.value.data_value.i = i - ws;
-			    val->is_hidden_column = 1;
+			    val->bs.is_hidden_column = 1;
 			  }
 			expr->info.expr.arg3->next = val;
 		      }
@@ -27099,8 +27099,8 @@ parser_keyword_func (const char *name, PT_NODE * args)
 	    if (val)
 	      {
 		    val->type_enum = PT_TYPE_NULL;
-		    val->is_hidden_column = 1;
-		    val->is_added_by_parser = 1;
+		    val->bs.is_hidden_column = 1;
+		    val->bs.is_added_by_parser = 1;
 	      }
 	    expr->info.expr.arg2 = val;
 	  }
@@ -27202,7 +27202,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
       node = parser_make_expression (this_parser, key->op, a1, NULL, NULL);
       if (node != NULL)
         {
-          node->do_not_fold = 1;
+          node->bs.do_not_fold = 1;
         }
 
       return node;
@@ -27768,7 +27768,7 @@ pt_create_paren_expr_list (PT_NODE * exp)
 	{
 	  exp->info.expr.paren_type = 1;
 	}
-      exp->is_paren = 1;
+      exp->bs.is_paren = 1;
     }
   else
     {
