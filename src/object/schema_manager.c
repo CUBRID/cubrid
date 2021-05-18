@@ -15028,7 +15028,20 @@ sm_is_possible_to_recreate_constraint (MOP class_mop, const SM_CLASS * const cla
 
   if (class_->users != NULL)
     {
-      return false;
+      if (class_->partition != NULL)
+	{
+	  /*
+	   * partitioned class
+	   *
+	   * if there is a child class it can be shared,
+	   * but if partitioned, it can't be shared becuase you can't inherit a partitioning table.
+	   */
+	  return true;
+	}
+      else
+	{
+	  return false;
+	}
     }
 
   assert (class_->inheritance != NULL && class_->users == NULL);
@@ -15793,6 +15806,7 @@ sm_truncate_class_internal (std::unordered_set < OID > &&trun_classes)
   MOP class_mop = NULL;
   int au_save = 0;
   OID class_oid = OID_INITIALIZER;
+  int partition_type = DB_NOT_PARTITIONED_CLASS;
 
   for (const auto& class_oid : trun_classes)
     {
@@ -15836,6 +15850,18 @@ sm_truncate_class_internal (std::unordered_set < OID > &&trun_classes)
 	  return error;
 	}
 
+      error = sm_partitioned_class_type (class_mop, &partition_type, NULL, NULL);
+      if (error != NO_ERROR)
+        {
+          return error;
+        }
+
+      if (partition_type == DB_PARTITION_CLASS)
+      {
+        /* constraints of partition classes are handled while the partitioned table of them are handled. skip it. */
+        continue;
+      }
+
       error = au_fetch_class (class_mop, &class_, AU_FETCH_WRITE, DB_AUTH_ALTER);
       if (error != NO_ERROR || class_ == NULL)
 	{
@@ -15856,9 +15882,6 @@ sm_truncate_class_internal (std::unordered_set < OID > &&trun_classes)
 	  if (!sm_is_possible_to_recreate_constraint (class_mop, class_, c))
 	    {
 	      /*
-	       * 1. the PK referred to by a FK.
-	       * 2. the B+tree which contains OIDs of other classes in the inheritance hierarchy.
-	       *
 	       * In these cases, We cannot drop and recreate the index as this might be
 	       * too costly, so we just remove the instances of the current class.
 	       */
@@ -15992,7 +16015,7 @@ sm_truncate_class_internal (std::unordered_set < OID > &&trun_classes)
 	    }
 	}
 
-      /* PK must be created earlier than FK, because of self referencing case */
+      /* PK must be created earlier than FK, because of referencing */
       for (saved = unique_save_info[class_oid]; saved != NULL; saved = saved->next)
 	{
 	  error = sm_add_constraint (class_mop, saved->constraint_type, saved->name, (const char **) saved->att_names,
@@ -16042,6 +16065,18 @@ sm_truncate_class_internal (std::unordered_set < OID > &&trun_classes)
   for (const auto& class_oid : trun_classes)
     {
       class_mop = ws_mop (&class_oid, NULL);
+      error = sm_partitioned_class_type (class_mop, &partition_type, NULL, NULL);
+      if (error != NO_ERROR)
+        {
+          return error;
+        }
+
+      if (partition_type == DB_PARTITION_CLASS)
+      {
+        // 이렇게 예외처리해야할 부분이 많으면 그냥 컬렉팅하지를 말고, 힙 파괴를 파티셔닝 테이블 찾아서 해주자. 그게 더 깔끔한거 맞나?
+        /* constraints of partition classes are handled while the partitioned table of them are handled. skip it. */
+        continue;
+      }
       /* reset auto_increment starting value */
       for (att = db_get_attributes (class_mop); att != NULL; att = db_attribute_next (att))
 	{
