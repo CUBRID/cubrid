@@ -333,19 +333,13 @@ TEST_CASE ("minimum log lsa: simple test", "[ci]")
   }
 }
 
-TEST_CASE ("minimum log lsa: complete test", "[ci][dbg]")
+TEST_CASE ("minimum log lsa: complete test", "[ci]")
 {
-  // - use a ut_database_values_generator to generate ever-increasing lsa values
-  // - some deques that mirror the 3 separate containers used in actual functioning: prod, cons, in-progress
-  // - for the 'outer' don't use a container, just a single value
-  // - all these 4 need to be synched by the same mutex
-  // - some threads that randomly move the data simiar to how the actual tasks work and also
-  //    update the monitor
-  // - one more thread that continuosly checks correctness
-
+  constexpr int TASK_THREAD_COUNT = 42;
   constexpr log_lsa SENTINEL_LSA { MAX_LSA };
 
-  // we only use the lsa generation from here
+  // use a ut_database_values_generator to generate ever-increasing lsa values
+  //
   const ut_database_config database_config { 42, 42, 2.};
   ut_database_values_generator global_values{ database_config };
 
@@ -353,18 +347,30 @@ TEST_CASE ("minimum log lsa: complete test", "[ci][dbg]")
 
   cublog::minimum_log_lsa_monitor min_log_lsa_monitor;
 
+  // some deques that mirror the 3 separate containers used in actual functioning: prod, cons, in-progress
+  //
   log_lsa_deque produce_lsa_deq;
+  std::mutex produce_lsa_deq_mtx;
+
   log_lsa_deque consume_lsa_deq;
+  std::mutex consume_lsa_deq_mtx;
+
   log_lsa_deque in_progress_lsa_deq;
+  std::mutex in_progress_lsa_deq_mtx;
+
+  // for the 'outer' don't use a container, just a single value
+  //
   // seed with a first value
   log_lsa outer_lsa = global_values.increment_and_get_lsa_log ();
   min_log_lsa_monitor.set_for_outer (outer_lsa);
 
-  std::mutex deque_mutex;
+  //std::mutex deque_mutex;
 
   std::atomic_bool do_execute_test { true };
   std::atomic_bool do_execute_test_check { true };
 
+  // one thread that continuosly checks correctness
+  //
   std::thread checking_thread ([&] ()
   {
     while (true)
@@ -375,11 +381,21 @@ TEST_CASE ("minimum log lsa: complete test", "[ci][dbg]")
 	log_lsa min_outer { SENTINEL_LSA };
 	log_lsa min_lsa_from_monitor { SENTINEL_LSA };
 	{
-	  std::lock_guard<std::mutex> lockg { deque_mutex };
-	  min_produce = produce_lsa_deq.empty () ? SENTINEL_LSA : produce_lsa_deq.front ();
-	  min_consume = consume_lsa_deq.empty () ? SENTINEL_LSA : consume_lsa_deq.front ();
-	  min_in_progress = in_progress_lsa_deq.empty () ? SENTINEL_LSA : in_progress_lsa_deq.front ();
-	  min_outer = outer_lsa;
+	  {
+	    std::lock_guard<std::mutex> consume_lockg { consume_lsa_deq_mtx };
+	    {
+	      std::lock_guard<std::mutex> produce_lockg { produce_lsa_deq_mtx };
+	      {
+		std::lock_guard<std::mutex> in_progress_lockg { in_progress_lsa_deq_mtx };
+
+		min_produce = produce_lsa_deq.empty () ? SENTINEL_LSA : produce_lsa_deq.front ();
+		min_consume = consume_lsa_deq.empty () ? SENTINEL_LSA : consume_lsa_deq.front ();
+		min_in_progress = in_progress_lsa_deq.empty () ? SENTINEL_LSA : in_progress_lsa_deq.front ();
+		min_outer = outer_lsa;
+	      }
+	    }
+	  }
+
 	  min_lsa_from_monitor = min_log_lsa_monitor.get ();
 	}
 	const log_lsa min_lsa_calculated = std::min (
@@ -398,21 +414,25 @@ TEST_CASE ("minimum log lsa: complete test", "[ci][dbg]")
 	std::this_thread::yield ();
       }
   });
-  // allow check empty state
+  // allow checking of initial (empty) state
   std::this_thread::sleep_for (std::chrono::milliseconds (2));
 
+  // some threads that randomly move the data simiar to how the actual tasks work and also
+  // update the monitor
+  //
   std::thread generate_log_lsas_thread ([&] ()
   {
     while (true)
       {
 	const log_lsa new_lsa = global_values.increment_and_get_lsa_log ();
 	{
-	  std::lock_guard<std::mutex> lockg { deque_mutex };
+	  std::lock_guard<std::mutex> produce_lockg { produce_lsa_deq_mtx };
 	  if (produce_lsa_deq.empty ())
 	    {
 	      min_log_lsa_monitor.set_for_produce (outer_lsa);
 	    }
 	  produce_lsa_deq.push_back (outer_lsa);
+	  // TODO: take out of lock?
 	  outer_lsa = new_lsa;
 	  min_log_lsa_monitor.set_for_outer (new_lsa);
 	}
@@ -424,108 +444,82 @@ TEST_CASE ("minimum log lsa: complete test", "[ci][dbg]")
       }
   });
 
-  std::thread swap_produce_and_consume_thread ([&] ()
-  {
-    while (true)
-      {
-	{
-	  std::lock_guard<std::mutex> lockg { deque_mutex };
-	  if (consume_lsa_deq.empty () && !produce_lsa_deq.empty ())
-	    {
-	      produce_lsa_deq.swap (consume_lsa_deq);
-	      const log_lsa min_cons_log_lsa = consume_lsa_deq.front ();
-	      min_log_lsa_monitor.set_for_produce_and_consume (SENTINEL_LSA, min_cons_log_lsa);
-	    }
-	  if (false == do_execute_test.load () && produce_lsa_deq.empty ())
-	    {
-	      break;
-	    }
-	}
-	std::this_thread::yield ();
-      }
-  });
-
-  std::vector<std::thread> move_consume_to_in_progress_threads;
-  for (int i = 0; i < 10; ++i)
+  std::vector<std::thread> task_threads;
+  task_threads.reserve (TASK_THREAD_COUNT);
+  for (int i = 0; i < TASK_THREAD_COUNT; ++i)
     {
-      move_consume_to_in_progress_threads.emplace_back (std::thread
+      task_threads.emplace_back ([&] ()
       {
-	[&] ()
-	{
-	  while (true)
+	while (false == do_execute_test.load ())
+	  {
+	    // swap produce with consume deques
 	    {
-	      {
-		std::lock_guard<std::mutex> lockg { deque_mutex };
-		if (!consume_lsa_deq.empty ())
+	      std::lock_guard<std::mutex> consume_lockg { consume_lsa_deq_mtx };
+	      if (consume_lsa_deq.empty ())
+		{
+		  std::lock_guard<std::mutex> produce_lockg { produce_lsa_deq_mtx };
+		  // produce queue might also be empty
+		  consume_lsa_deq.swap (produce_lsa_deq);
+		  const log_lsa min_produce_lsa = produce_lsa_deq.empty ()
+						  ? SENTINEL_LSA : produce_lsa_deq.front ();
+		  const log_lsa min_consume_lsa = consume_lsa_deq.empty ()
+						  ? SENTINEL_LSA : consume_lsa_deq.front ();
+		  min_log_lsa_monitor.set_for_produce_and_consume (min_produce_lsa, min_consume_lsa);
+
+		}
+	    }
+	    std::this_thread::yield ();
+
+	    // move consume to in progress
+	    {
+	      std::lock_guard<std::mutex> consume_lockg { consume_lsa_deq_mtx };
+	      if (false == consume_lsa_deq.empty ())
+		{
+		  const log_lsa to_in_progress_lsa = consume_lsa_deq.front ();
+		  consume_lsa_deq.pop_front ();
 		  {
-		    const log_lsa lsa_to_move = consume_lsa_deq.front ();
-		    consume_lsa_deq.pop_front ();
-		    in_progress_lsa_deq.push_back (lsa_to_move);
+		    std::lock_guard<std::mutex> in_progress_lockg { in_progress_lsa_deq_mtx };
+		    in_progress_lsa_deq.push_back (to_in_progress_lsa);
+
 		    const log_lsa min_consume_lsa = consume_lsa_deq.empty ()
-						    ? SENTINEL_LSA
-						    : consume_lsa_deq.front ();
-		    min_log_lsa_monitor.set_for_consume_and_in_progress (min_consume_lsa, in_progress_lsa_deq.front ());
+						    ? SENTINEL_LSA : consume_lsa_deq.front ();
+		    const log_lsa min_in_progress_lsa = in_progress_lsa_deq.front ();
+		    min_log_lsa_monitor.set_for_consume_and_in_progress (min_consume_lsa, min_in_progress_lsa);
 		  }
-		if (false == do_execute_test.load () && consume_lsa_deq.empty ())
-		  {
-		    break;
-		  }
-	      }
-	      std::this_thread::yield ();
+		}
 	    }
-	}
-      });
-    }
+	    std::this_thread::yield ();
 
-  std::vector<std::thread> in_progress_threads;
-  for (int i = 0; i < 10; ++i)
-    {
-      in_progress_threads.emplace_back (std::thread
-      {
-	[&] ()
-	{
-	  while (true)
+	    // consume in progress
 	    {
-	      {
-		std::lock_guard<std::mutex> lockg { deque_mutex };
-		if (!in_progress_lsa_deq.empty ())
-		  {
-		    const log_lsa lsa_to_finish = in_progress_lsa_deq.front ();
-		    in_progress_lsa_deq.pop_front ();
-		    const log_lsa min_in_progress_lsa = in_progress_lsa_deq.empty ()
-							? SENTINEL_LSA
-							: in_progress_lsa_deq.front ();
-		    min_log_lsa_monitor.set_for_in_progress (min_in_progress_lsa);
-		  }
-		// don't run to exhaustion
-		if (false == do_execute_test.load ())
-		  {
-		    break;
-		  }
-	      }
-	      std::this_thread::yield ();
+	      std::lock_guard<std::mutex> in_progress_lockg { in_progress_lsa_deq_mtx };
+	      if (!in_progress_lsa_deq.empty ())
+		{
+		  const log_lsa lsa_to_finish = in_progress_lsa_deq.front ();
+		  in_progress_lsa_deq.pop_front ();
+		  const log_lsa min_in_progress_lsa = in_progress_lsa_deq.empty ()
+						      ? SENTINEL_LSA : in_progress_lsa_deq.front ();
+		  min_log_lsa_monitor.set_for_in_progress (min_in_progress_lsa);
+		}
 	    }
-	}
+	    std::this_thread::yield ();
+	  }
       });
     }
 
+  // let it run for a short whilem, then wrap it all up
+  //
   std::this_thread::sleep_for (std::chrono::milliseconds (200));
 
   do_execute_test.store (false);
 
   generate_log_lsas_thread.join ();
-  swap_produce_and_consume_thread.join ();
-  for (int i = 0; i < 10; ++i)
+  for (int i = 0; i < TASK_THREAD_COUNT; ++i)
     {
-      move_consume_to_in_progress_threads[i].join ();
+      task_threads[i].join ();
     }
 
-  for (int i = 0; i < 10; ++i)
-    {
-      in_progress_threads[i].join ();
-    }
-
-  // allow checking final state
+  // allow checking of final state
   std::this_thread::sleep_for (std::chrono::milliseconds (2));
   do_execute_test_check.store (false);
   checking_thread.join ();
