@@ -22969,10 +22969,13 @@ pt_common_collation (PT_COLL_INFER * arg1_coll_infer, PT_COLL_INFER * arg2_coll_
 {
 #define MORE_COERCIBLE(arg1_coll_infer, arg2_coll_infer)		     \
   ((((arg1_coll_infer)->can_force_cs) && !((arg2_coll_infer)->can_force_cs)) \
-   || ((arg1_coll_infer)->coerc_level > (arg2_coll_infer)->coerc_level	     \
+   || (arg1_coll_infer)->coerc_level == PT_COLLATION_L4_BINARY_COERC \
+   || (arg2_coll_infer)->coerc_level == PT_COLLATION_L4_BINARY_COERC \
+   || (arg1_coll_infer)->coerc_level == PT_COLLATION_L4_BIN_COERC \
+    || (arg2_coll_infer)->coerc_level == PT_COLLATION_L4_BIN_COERC \
+    ||((arg1_coll_infer)->coerc_level > (arg2_coll_infer)->coerc_level \
        && (arg1_coll_infer)->can_force_cs == (arg2_coll_infer)->can_force_cs))
 
-  assert (common_coll != NULL);
   assert (common_cs != NULL);
   assert (arg1_coll_infer != NULL);
   assert (arg2_coll_infer != NULL);
@@ -22983,9 +22986,9 @@ pt_common_collation (PT_COLL_INFER * arg1_coll_infer, PT_COLL_INFER * arg2_coll_
     }
 
   if (arg1_coll_infer->coll_id != arg2_coll_infer->coll_id
-      && (arg1_coll_infer->coerc_level == PT_COLLATION_NOT_COERC
-	  || arg2_coll_infer->coerc_level == PT_COLLATION_NOT_COERC
-	  || arg1_coll_infer->coerc_level == arg2_coll_infer->coerc_level)
+      && (arg1_coll_infer->coerc_level != PT_COLLATION_L4_BIN_COERC
+	  && arg2_coll_infer->coerc_level != PT_COLLATION_L4_BIN_COERC
+	  && arg1_coll_infer->coerc_level == arg2_coll_infer->coerc_level)
       && arg1_coll_infer->can_force_cs == arg2_coll_infer->can_force_cs)
     {
       goto error;
@@ -22997,8 +23000,17 @@ pt_common_collation (PT_COLL_INFER * arg1_coll_infer, PT_COLL_INFER * arg2_coll_
 	{
 	  goto error;
 	}
-      *common_coll = arg2_coll_infer->coll_id;
-      *common_cs = arg2_coll_infer->codeset;
+      if (arg2_coll_infer->coerc_level == PT_COLLATION_L4_BIN_COERC
+	  || arg2_coll_infer->coerc_level == PT_COLLATION_L4_BINARY_COERC)
+	{
+	  *common_coll = arg2_coll_infer->coll_id;
+	  *common_cs = arg2_coll_infer->codeset;
+	}
+      else
+	{
+	  *common_coll = arg1_coll_infer->coll_id;
+	  *common_cs = arg1_coll_infer->codeset;
+	}
 
       /* check arg3 */
       if (op_has_3_args && arg3_coll_infer->coll_id != *common_coll)
@@ -23060,8 +23072,17 @@ pt_common_collation (PT_COLL_INFER * arg1_coll_infer, PT_COLL_INFER * arg2_coll_
 	  goto error;
 	}
 
-      *common_coll = arg1_coll_infer->coll_id;
-      *common_cs = arg1_coll_infer->codeset;
+      if (arg1_coll_infer->coerc_level == PT_COLLATION_L4_BIN_COERC
+	  || arg1_coll_infer->coerc_level == PT_COLLATION_L4_BINARY_COERC)
+	{
+	  *common_coll = arg1_coll_infer->coll_id;
+	  *common_cs = arg1_coll_infer->codeset;
+	}
+      else
+	{
+	  *common_coll = arg2_coll_infer->coll_id;
+	  *common_cs = arg2_coll_infer->codeset;
+	}
 
       /* check arg3 */
       if (op_has_3_args && arg3_coll_infer->coll_id != *common_coll)
@@ -23265,8 +23286,7 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
   else if (PT_IS_COLLECTION_TYPE (arg1_type)
 	   || (arg1_type == PT_TYPE_MAYBE && TP_IS_SET_TYPE (TP_DOMAIN_TYPE (arg1->expected_domain))))
     {
-      int status = pt_get_collation_info_for_collection_type (parser, arg1,
-							      &arg1_coll_inf);
+      int status = pt_get_collation_info_for_collection_type (parser, arg1, &arg1_coll_inf);
 
       if (status == ERROR_COLLATION)
 	{
@@ -23311,8 +23331,7 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
   else if (PT_IS_COLLECTION_TYPE (arg2_type)
 	   || (arg2_type == PT_TYPE_MAYBE && TP_IS_SET_TYPE (TP_DOMAIN_TYPE (arg2->expected_domain))))
     {
-      int status = pt_get_collation_info_for_collection_type (parser, arg2,
-							      &arg2_coll_inf);
+      int status = pt_get_collation_info_for_collection_type (parser, arg2, &arg2_coll_inf);
 
       if (status == ERROR_COLLATION)
 	{
@@ -23356,8 +23375,7 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
 	}
       else if (PT_IS_COLLECTION_TYPE (arg3_type))
 	{
-	  int status = pt_get_collation_info_for_collection_type (parser, arg3,
-								  &arg3_coll_inf);
+	  int status = pt_get_collation_info_for_collection_type (parser, arg3, &arg3_coll_inf);
 
 	  if (status == ERROR_COLLATION)
 	    {
