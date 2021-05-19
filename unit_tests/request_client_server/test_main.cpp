@@ -219,13 +219,7 @@ class test_two_request_sync_client_server_env
     static uq_test_request_sync_client_server_one_t create_request_sync_client_server_one ();
     static uq_test_request_sync_client_server_two_t create_request_sync_client_server_two ();
 
-    void mock_socket_between_two_sync_client_servers ()
-    {
-      add_socket_direction (m_scs_one->get_underlying_channel_id (), m_scs_two->get_underlying_channel_id (),
-			    m_sockdir_1_to_2);
-      add_socket_direction (m_scs_two->get_underlying_channel_id (), m_scs_one->get_underlying_channel_id (),
-			    m_sockdir_2_to_1);
-    }
+    void mock_socket_between_two_sync_client_servers ();
 
   private:
     uq_test_request_sync_client_server_one_t m_scs_one;
@@ -537,9 +531,6 @@ TEST_CASE ("Test request_sync_client_server", "")
 
   env.wait_for_all_messages ((MESSAGE_COUNT * 2) * 2, (MESSAGE_COUNT * 2) * 3);
 
-  env.get_scs_one ().disconnect ();
-  env.get_scs_two ().disconnect ();
-
   require_all_sent_requests_are_handled ();
 
   thread_1_to_2_with_0.join ();
@@ -843,6 +834,11 @@ test_two_request_sync_client_server_env::test_two_request_sync_client_server_env
 
 test_two_request_sync_client_server_env::~test_two_request_sync_client_server_env ()
 {
+  // reset pointers (aka: stop threads) before clearing mocked socket directions
+  // otherwise, internal checks are invalidated after the socket directions are cleared
+  m_scs_one.reset (nullptr);
+  m_scs_two.reset (nullptr);
+
   clear_socket_directions ();
 }
 
@@ -869,12 +865,8 @@ void test_two_request_sync_client_server_env::wait_for_all_messages (
 uq_test_request_sync_client_server_one_t
 test_two_request_sync_client_server_env::create_request_sync_client_server_one ()
 {
-  uq_test_request_sync_client_server_one_t scs_one
-    = std::make_unique<test_request_sync_client_server_one_t> ();
-
   cubcomm::channel chn;
   chn.set_channel_name ("sync_client_server_one");
-  scs_one->init (std::move (chn));
 
   // handle requests 2 to 1
   test_request_sync_client_server_one_t::incoming_request_handler_t req_handler_0 = [] (cubpacking::unpacker &upk)
@@ -889,9 +881,16 @@ test_two_request_sync_client_server_env::create_request_sync_client_server_one (
   {
     mock_check_expected_id<reqids_2_to_1, reqids_2_to_1::_2> (upk);
   };
-  scs_one->register_request_handler (reqids_2_to_1::_0, req_handler_0);
-  scs_one->register_request_handler (reqids_2_to_1::_1, req_handler_1);
-  scs_one->register_request_handler (reqids_2_to_1::_2, req_handler_2);
+
+  uq_test_request_sync_client_server_one_t scs_one
+  {
+    new test_request_sync_client_server_one_t (std::move (chn),
+    {
+      { reqids_2_to_1::_0, req_handler_0 },
+      { reqids_2_to_1::_1, req_handler_1 },
+      { reqids_2_to_1::_2, req_handler_2 }
+    })
+  };
 
   return scs_one;
 }
@@ -899,12 +898,8 @@ test_two_request_sync_client_server_env::create_request_sync_client_server_one (
 uq_test_request_sync_client_server_two_t
 test_two_request_sync_client_server_env::create_request_sync_client_server_two ()
 {
-  uq_test_request_sync_client_server_two_t scs_two
-    = std::make_unique<test_request_sync_client_server_two_t> ();
-
   cubcomm::channel chn;
   chn.set_channel_name ("sync_client_server_two");
-  scs_two->init (std::move (chn));
 
   // handle requests 1 to 2
   test_request_sync_client_server_two_t::incoming_request_handler_t req_handler_0 = [] (cubpacking::unpacker &upk)
@@ -915,10 +910,26 @@ test_two_request_sync_client_server_env::create_request_sync_client_server_two (
   {
     mock_check_expected_id<reqids_1_to_2, reqids_1_to_2::_1> (upk);
   };
-  scs_two->register_request_handler (reqids_1_to_2::_0, req_handler_0);
-  scs_two->register_request_handler (reqids_1_to_2::_1, req_handler_1);
+
+  uq_test_request_sync_client_server_two_t scs_two
+  {
+    new test_request_sync_client_server_two_t (std::move (chn),
+    {
+      { reqids_1_to_2::_0, req_handler_0 },
+      { reqids_1_to_2::_1, req_handler_1 }
+    })
+  };
 
   return scs_two;
+}
+
+void
+test_two_request_sync_client_server_env::mock_socket_between_two_sync_client_servers ()
+{
+  add_socket_direction (m_scs_one->get_underlying_channel_id (), m_scs_two->get_underlying_channel_id (),
+			m_sockdir_1_to_2);
+  add_socket_direction (m_scs_two->get_underlying_channel_id (), m_scs_one->get_underlying_channel_id (),
+			m_sockdir_2_to_1);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////

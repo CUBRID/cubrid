@@ -47,19 +47,21 @@ void page_server::set_active_tran_server_connection (cubcomm::channel &&chn)
   chn.set_channel_name ("ATS_PS_comm");
 
   assert (m_ats == nullptr);
-  m_ats.reset (new ats_t ());
-
-  m_ats->init (std::move (chn));
-
-  m_ats->register_request_handler (ats_to_ps_request::SEND_LOG_PRIOR_LIST,
-				   std::bind (&page_server::receive_log_prior_list, std::ref (*this),
-				       std::placeholders::_1));
-  m_ats->register_request_handler (ats_to_ps_request::SEND_LOG_PAGE_FETCH,
-				   std::bind (&page_server::receive_log_page_fetch, std::ref (*this),
-				       std::placeholders::_1));
-  m_ats->register_request_handler (ats_to_ps_request::SEND_DATA_PAGE_FETCH,
-				   std::bind (&page_server::receive_data_page_fetch, std::ref (*this),
-				       std::placeholders::_1));
+  m_ats.reset (new ats_t (std::move (chn),
+  {
+    {
+      ats_to_ps_request::SEND_LOG_PRIOR_LIST,
+      std::bind (&page_server::receive_log_prior_list, std::ref (*this), std::placeholders::_1)
+    },
+    {
+      ats_to_ps_request::SEND_LOG_PAGE_FETCH,
+      std::bind (&page_server::receive_log_page_fetch, std::ref (*this), std::placeholders::_1)
+    },
+    {
+      ats_to_ps_request::SEND_DATA_PAGE_FETCH,
+      std::bind (&page_server::receive_data_page_fetch, std::ref (*this), std::placeholders::_1)
+    },
+  }));
   m_ats->connect ();
   er_log_debug (ARG_FILE_LINE, "Active transaction server connected to this page server. Channel id: %s.\n",
 		"ATS_PS_comm");
@@ -67,7 +69,6 @@ void page_server::set_active_tran_server_connection (cubcomm::channel &&chn)
 
 void page_server::disconnect_active_tran_server ()
 {
-  m_ats->disconnect ();
   m_ats.reset (nullptr);
 }
 

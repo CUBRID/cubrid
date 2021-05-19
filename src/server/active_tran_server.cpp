@@ -194,15 +194,21 @@ active_tran_server::connect_to_page_server (const cubcomm::node &node, const cha
 		srv_chn.get_channel_id ().c_str ());
 
   assert (m_ps == nullptr);
-  m_ps.reset (new ps_t ());
-  m_ps->init (std::move (srv_chn));
-  m_ps->register_request_handler (ps_to_ats_request::SEND_SAVED_LSA,
-				  std::bind (&active_tran_server::receive_saved_lsa, std::ref (*this),
-				      std::placeholders::_1));
-  m_ps->register_request_handler (ps_to_ats_request::SEND_LOG_PAGE,
-				  std::bind (&active_tran_server::receive_log_page, std::ref (*this), std::placeholders::_1));
-  m_ps->register_request_handler (ps_to_ats_request::SEND_DATA_PAGE,
-				  std::bind (&active_tran_server::receive_data_page, std::ref (*this), std::placeholders::_1));
+  m_ps.reset (new ps_t (std::move (srv_chn),
+  {
+    {
+      ps_to_ats_request::SEND_SAVED_LSA,
+      std::bind (&active_tran_server::receive_saved_lsa, std::ref (*this), std::placeholders::_1)
+    },
+    {
+      ps_to_ats_request::SEND_LOG_PAGE,
+      std::bind (&active_tran_server::receive_log_page, std::ref (*this), std::placeholders::_1)
+    },
+    {
+      ps_to_ats_request::SEND_DATA_PAGE,
+      std::bind (&active_tran_server::receive_data_page, std::ref (*this), std::placeholders::_1)
+    }
+  }));
   m_ps->connect ();
 
   log_Gl.m_prior_sender.add_sink (std::bind (&active_tran_server::push_request, std::ref (*this),
@@ -216,7 +222,6 @@ active_tran_server::disconnect_page_server ()
 {
   assert_is_active_tran_server ();
 
-  m_ps->disconnect ();
   m_ps.reset (nullptr);
 }
 
