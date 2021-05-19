@@ -87,7 +87,7 @@ active_tran_server::parse_server_host (const std::string &host)
 }
 
 int
-active_tran_server::parse_page_server_hosts_config()
+active_tran_server::parse_page_server_hosts_config ()
 {
   std::string hosts = prm_get_string_value (PRM_ID_PAGE_SERVER_HOSTS);
 
@@ -113,7 +113,7 @@ active_tran_server::parse_page_server_hosts_config()
   while ((pos = hosts.find (delimiter)) != std::string::npos)
     {
       std::string token = hosts.substr (0, pos);
-      hosts.erase (0, pos + delimiter.length());
+      hosts.erase (0, pos + delimiter.length ());
 
       if (parse_server_host (token) != NO_ERROR)
 	{
@@ -132,7 +132,7 @@ int
 active_tran_server::init_page_server_hosts (const char *db_name)
 {
   assert_is_active_tran_server ();
-  int exit_code = parse_page_server_hosts_config();
+  int exit_code = parse_page_server_hosts_config ();
 
   if (m_connection_list.empty ())
     {
@@ -199,6 +199,8 @@ active_tran_server::connect_to_page_server (const cubcomm::node &node, const cha
 					   std::placeholders::_1));
   m_ps_conn->register_request_handler (ps_to_ats_request::SEND_LOG_PAGE,
 				       std::bind (&active_tran_server::receive_log_page, std::ref (*this), std::placeholders::_1));
+  m_ps_conn->register_request_handler (ps_to_ats_request::SEND_DATA_PAGE,
+				       std::bind (&active_tran_server::receive_data_page, std::ref (*this), std::placeholders::_1));
   m_ps_conn->start_thread ();
 
   m_ps_request_queue.reset (new page_server_request_queue (*m_ps_conn));
@@ -287,8 +289,32 @@ active_tran_server::receive_log_page (cubpacking::unpacker &upk)
     }
 }
 
-void
-active_tran_server::receive_saved_lsa (cubpacking::unpacker &upk)
+void active_tran_server::receive_data_page (cubpacking::unpacker &upk)
+{
+  std::string message;
+  upk.unpack_string (message);
+
+  int error_code;
+  std::memcpy (&error_code, message.c_str (), sizeof (error_code));
+
+  if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
+    {
+      if (error_code == NO_ERROR)
+	{
+	  char buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+	  FILEIO_PAGE *io_page = (FILEIO_PAGE *) PTR_ALIGN (buf, MAX_ALIGNMENT);
+	  std::memcpy (io_page, message.c_str () + sizeof (error_code), db_io_page_size ());
+	  _er_log_debug (ARG_FILE_LINE, "Received data page message from Page Server. LSA: %lld|%d, Page ID: %ld, Volid: %d",
+			 LSA_AS_ARGS (&io_page->prv.lsa), io_page->prv.pageid, io_page->prv.volid);
+	}
+      else
+	{
+	  _er_log_debug (ARG_FILE_LINE, "Received data page message from Page Server. Error: %d \n", error_code);
+	}
+    }
+}
+
+void active_tran_server::receive_saved_lsa (cubpacking::unpacker &upk)
 {
   std::string message;
   log_lsa saved_lsa;

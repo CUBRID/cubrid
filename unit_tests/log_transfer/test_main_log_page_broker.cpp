@@ -154,7 +154,7 @@ std::shared_ptr<log_page_owner> create_dummy_log_page (LOG_PAGEID page_id)
   auto log_page = std::make_unique<LOG_PAGE> ();
   log_page->hdr.logical_pageid = page_id;
   char *buffer = new char[db_log_page_size ()];
-  std::memcpy (buffer, log_page.get (), db_log_page_size ());
+  std::memcpy (buffer, log_page.get (), sizeof (LOG_PAGE));
 
   return std::make_shared<log_page_owner> (buffer);
 }
