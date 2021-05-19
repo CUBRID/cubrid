@@ -112,7 +112,7 @@ add_dependencies(test_prior_sendrecv
 # 
 
 set(TEST_LOG_PAGE_FETCHER_SOURCES
-  ${TRANSACTION_DIR}/log_page_fetcher.cpp
+  ${STORAGE_DIR}/async_page_fetcher.cpp
   test_main_log_page_fetcher.cpp)
 
 SET_SOURCE_FILES_PROPERTIES(
@@ -173,5 +173,40 @@ target_include_directories(test_log_page_broker PRIVATE
 target_link_libraries(test_log_page_broker fake_thread_utils)
 
 add_dependencies(test_log_page_broker
+  ${CATCH2_TARGET}
+)
+
+#
+# test_log_lsa_utils
+# 
+
+set(TEST_LOG_LSA_UTILS_SOURCES
+  ${TRANSACTION_DIR}/log_lsa_utils.cpp
+  ${BASE_DIR}/packer.cpp
+  test_main_log_lsa_utils.cpp)
+
+SET_SOURCE_FILES_PROPERTIES(
+  ${TEST_LOG_LSA_UTILS_SOURCES}
+  PROPERTIES LANGUAGE CXX)
+
+add_executable(test_log_lsa_utils
+  ${TEST_LOG_LSA_UTILS_SOURCES}
+)
+
+target_compile_options(test_log_lsa_utils PRIVATE
+  ${compile_warning_flags}
+)
+
+target_compile_definitions(test_log_lsa_utils PRIVATE
+  ${COMMON_DEFS} SERVER_MODE
+)
+
+target_include_directories(test_log_lsa_utils PRIVATE
+  ${TEST_INCLUDES}
+)
+
+# target_link_libraries(test_log_lsa_utils fake_thread_utils)
+
+add_dependencies(test_log_lsa_utils
   ${CATCH2_TARGET}
 )

@@ -7855,10 +7855,20 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid)
     {
       constexpr size_t INT32_SIZE = 4;
       constexpr size_t SHORT_SIZE = 2;
-      char buffer[INT32_SIZE + SHORT_SIZE];
+      char buffer[INT32_SIZE + SHORT_SIZE + sizeof (LOG_LSA)];
+
+      int bytes_copied = 0;
       std::memcpy (buffer, &(vpid->pageid), sizeof (vpid->pageid));
-      std::memcpy (buffer + INT32_SIZE, &(vpid->volid), sizeof (vpid->volid));
-      std::string message (buffer, sizeof (vpid));
+      bytes_copied += sizeof (vpid->pageid);
+
+      std::memcpy (buffer + bytes_copied, &(vpid->volid), sizeof (vpid->volid));
+      bytes_copied += sizeof (vpid->volid);
+
+      LOG_LSA nxio_lsa = log_Gl.append.get_nxio_lsa ();
+      std::memcpy (buffer + bytes_copied, &nxio_lsa, sizeof (nxio_lsa));
+      bytes_copied += sizeof (nxio_lsa);
+
+      std::string message (buffer, bytes_copied);
 
       ats_Gl.push_request (ats_to_ps_request::SEND_DATA_PAGE_FETCH, std::move (message));
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
@@ -16401,3 +16411,11 @@ exit_on_error:
 
   return error;
 }
+
+// *INDENT-OFF*
+void
+pgbuf_cast_pgptr_to_iopgptr (PAGE_PTR page_ptr, FILEIO_PAGE *&io_page)
+{
+  CAST_PGPTR_TO_IOPGPTR (io_page, page_ptr);
+}
+// *INDENT-ON*

@@ -22,6 +22,7 @@
 #include "critical_section.h"
 #include "log_impl.h"
 #include "log_manager.h"
+#include "log_system_tran.hpp"
 #include "memory_alloc.h"
 #include "page_buffer.h"
 #include "scope_exit.hpp"
@@ -34,7 +35,7 @@
 namespace cublog
 {
 
-  int
+  size_t
   log_lsa_size (cubpacking::packer &serializator, std::size_t start_offset, std::size_t size_arg)
   {
     size_t size = size_arg;
@@ -65,12 +66,11 @@ namespace cublog
   void
   checkpoint_info::pack (cubpacking::packer &serializator) const
   {
-
     log_lsa_pack (m_start_redo_lsa, serializator);
     log_lsa_pack (m_snapshot_lsa, serializator);
 
     serializator.pack_bigint (m_trans.size ());
-    for (const checkpoint_tran_info tran_info : m_trans)
+    for (const auto &tran_info : m_trans)
       {
 	serializator.pack_int (tran_info.isloose_end);
 	serializator.pack_int (tran_info.trid);
@@ -87,7 +87,7 @@ namespace cublog
       }
 
     serializator.pack_bigint (m_sysops.size ());
-    for (const checkpoint_sysop_info sysop_info : m_sysops)
+    for (const auto &sysop_info : m_sysops)
       {
 	serializator.pack_int (sysop_info.trid);
 	log_lsa_pack (sysop_info.sysop_start_postpone_lsa, serializator);
@@ -107,7 +107,7 @@ namespace cublog
     deserializator.unpack_bigint (trans_size);
     for (unsigned i = 0; i < trans_size; i++)
       {
-	LOG_INFO_CHKPT_TRANS chkpt_trans;
+	tran_info chkpt_trans;
 
 	deserializator.unpack_int (chkpt_trans.isloose_end);
 	deserializator.unpack_int (chkpt_trans.trid);
@@ -131,7 +131,7 @@ namespace cublog
     deserializator.unpack_bigint (sysop_size);
     for (unsigned i = 0; i < sysop_size; i++)
       {
-	LOG_INFO_CHKPT_SYSOP chkpt_sysop;
+	sysop_info chkpt_sysop;
 	deserializator.unpack_int (chkpt_sysop.trid);
 	chkpt_sysop.sysop_start_postpone_lsa = log_lsa_unpack (deserializator);
 	chkpt_sysop.atomic_sysop_start_lsa = log_lsa_unpack (deserializator);
@@ -150,7 +150,7 @@ namespace cublog
     size = log_lsa_size (serializator, start_offset, size);
 
     size += serializator.get_packed_bigint_size (start_offset + size);
-    for (const checkpoint_tran_info tran_info : m_trans)
+    for (const auto &tran_info : m_trans)
       {
 	size += serializator.get_packed_int_size (start_offset + size);
 	size += serializator.get_packed_int_size (start_offset + size);
@@ -168,7 +168,7 @@ namespace cublog
       }
 
     size += serializator.get_packed_bigint_size (start_offset + size);
-    for (const checkpoint_sysop_info sysop_info : m_sysops)
+    for (const auto &sysop_info : m_sysops)
       {
 	size += serializator.get_packed_int_size (start_offset + size);
 	size = log_lsa_size (serializator, start_offset, size);
@@ -186,7 +186,7 @@ namespace cublog
     if (tdes.trid != NULL_TRANID && !LSA_ISNULL (&tdes.tail_lsa))
       {
 	m_trans.emplace_back ();
-	LOG_INFO_CHKPT_TRANS &chkpt_tran = m_trans.back ();
+	tran_info &chkpt_tran = m_trans.back ();
 
 	chkpt_tran.isloose_end = tdes.isloose_end;
 	chkpt_tran.trid = tdes.trid;
@@ -236,7 +236,7 @@ namespace cublog
 	 *       log_Gl.prior_info.prior_lsa_mutex. so we check this instead of state.
 	 */
 	m_sysops.emplace_back();
-	LOG_INFO_CHKPT_SYSOP &chkpt_topop = m_sysops.back();
+	sysop_info &chkpt_topop = m_sysops.back();
 	chkpt_topop.trid = tdes.trid;
 	chkpt_topop.sysop_start_postpone_lsa = tdes.rcv.sysop_start_postpone_lsa;
 	chkpt_topop.atomic_sysop_start_lsa = tdes.rcv.atomic_sysop_start_lsa;
@@ -258,7 +258,7 @@ namespace cublog
 
     /* CHECKPOINT THE TRANSACTION TABLE */
     LSA_SET_NULL (&smallest_lsa);
-    for (size_t i = 0; i < log_Gl.trantable.num_total_indices; i++)
+    for (int i = 0; i < log_Gl.trantable.num_total_indices; i++)
       {
 	/*
 	 * Don't checkpoint current system transaction. That is, the one of
@@ -272,6 +272,10 @@ namespace cublog
 	assert (act_tdes != nullptr);
 	load_checkpoint_trans (*act_tdes, smallest_lsa);
 	load_checkpoint_topop (*act_tdes);
+	if (LOG_ISTRAN_2PC (act_tdes))
+	  {
+	    m_has_2pc = true;
+	  }
       }
 
     // Checkpoint system transactions' topops
@@ -283,12 +287,12 @@ namespace cublog
   }
 
   void
-  checkpoint_info::recovery_analysis (THREAD_ENTRY *thread_p, log_lsa &start_redo_lsa)
+  checkpoint_info::recovery_analysis (THREAD_ENTRY *thread_p, log_lsa &start_redo_lsa) const
   {
     LOG_TDES *tdes = nullptr;
 
     /* Add the transactions to the transaction table */
-    for (auto chkpt : m_trans)
+    for (const auto &chkpt : m_trans)
       {
 	/*
 	 * If this is the first time, the transaction is seen. Assign a
@@ -326,10 +330,6 @@ namespace cublog
 	LSA_COPY (&tdes->tail_topresult_lsa, &chkpt.tail_topresult_lsa);
 	LSA_COPY (&tdes->rcv.tran_start_postpone_lsa, &chkpt.start_postpone_lsa);
 	tdes->client.set_system_internal_with_user (chkpt.user_name);
-	if (LOG_ISTRAN_2PC (tdes))
-	  {
-	    m_has_2pc = true;
-	  }
       }
 
     /*
@@ -341,7 +341,7 @@ namespace cublog
     log_page_local->hdr.logical_pageid = NULL_PAGEID;
     log_page_local->hdr.offset = NULL_OFFSET;
 
-    for (auto sysop : m_sysops)
+    for (const auto &sysop : m_sysops)
       {
 	tdes = logtb_rv_find_allocate_tran_index (thread_p, sysop.trid, &NULL_LSA);
 	if (tdes == NULL)
@@ -391,7 +391,7 @@ namespace cublog
 	return;
       }
 
-    for (auto chkpt : m_trans)
+    for (const auto &chkpt : m_trans)
       {
 	int tran_index = logtb_find_tran_index (thread_p, chkpt.trid);
 	if (tran_index != NULL_TRAN_INDEX)
@@ -405,4 +405,114 @@ namespace cublog
       }
   }
 
+  size_t
+  checkpoint_info::get_transaction_count () const
+  {
+    return m_trans.size ();
+  }
+
+  size_t
+  checkpoint_info::get_sysop_count () const
+  {
+    return m_sysops.size ();
+  }
+
+  log_lsa
+  checkpoint_info::get_snapshot_lsa () const
+  {
+    return m_snapshot_lsa;
+  }
+
+  log_lsa
+  checkpoint_info::get_start_redo_lsa () const
+  {
+    return m_start_redo_lsa;
+  }
+
+  void
+  checkpoint_info::set_start_redo_lsa (const log_lsa &start_redo_lsa)
+  {
+    m_start_redo_lsa = start_redo_lsa;
+  }
+
+  bool
+  checkpoint_info::tran_info::operator== (const tran_info &other) const
+  {
+    if (isloose_end != other.isloose_end)
+      {
+	return false;
+      }
+
+    if (trid != other.trid)
+      {
+	return false;
+      }
+
+    if (state != other.state)
+      {
+	return false;
+      }
+
+    if (head_lsa != other.head_lsa)
+      {
+	return false;
+      }
+
+    if (tail_lsa != other.tail_lsa)
+      {
+	return false;
+      }
+
+    if (undo_nxlsa != other.undo_nxlsa)
+      {
+	return false;
+      }
+
+    if (posp_nxlsa != other.posp_nxlsa)
+      {
+	return false;
+      }
+
+    if (savept_lsa != other.savept_lsa)
+      {
+	return false;
+      }
+
+    if (tail_topresult_lsa != other.tail_topresult_lsa)
+      {
+	return false;
+      }
+
+    if (start_postpone_lsa != other.start_postpone_lsa)
+      {
+	return false;
+      }
+
+    if (std::strcmp (user_name, other.user_name) != 0)
+      {
+	return false;
+      }
+
+    return true;
+  }
+
+  bool
+  checkpoint_info::sysop_info::operator== (const sysop_info &other) const
+  {
+    if (trid != other.trid)
+      {
+	return false;
+      }
+
+    if (sysop_start_postpone_lsa != other.sysop_start_postpone_lsa)
+      {
+	return false;
+      }
+
+    if (atomic_sysop_start_lsa != other.atomic_sysop_start_lsa)
+      {
+	return false;
+      }
+    return true;
+  }
 }

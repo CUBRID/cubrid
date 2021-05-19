@@ -51,7 +51,10 @@ namespace cublog
     assert (replication_parallel >= 0);
     if (replication_parallel > 0)
       {
-	m_parallel_replication_redo.reset (new cublog::redo_parallel (replication_parallel));
+	m_minimum_log_lsa.reset (new cublog::minimum_log_lsa_monitor ());
+	// no need to reset with start redo lsa
+
+	m_parallel_replication_redo.reset (new cublog::redo_parallel (replication_parallel, *m_minimum_log_lsa.get ()));
       }
 
     // Create the daemon
@@ -100,11 +103,6 @@ namespace cublog
 	else
 	  {
 	    assert (m_redo_lsa == nxio_lsa);
-	    // notify who waits for end of replication
-	    if (m_redo_lsa == nxio_lsa)
-	      {
-		m_redo_lsa_condvar.notify_all ();
-	      }
 	    break;
 	  }
       }
@@ -198,6 +196,13 @@ namespace cublog
 	  std::unique_lock<std::mutex> lock (m_redo_lsa_mutex);
 	  m_redo_lsa = header.forw_lsa;
 	}
+	if (m_parallel_replication_redo != nullptr)
+	  {
+	    m_minimum_log_lsa->set_for_outer (m_redo_lsa);
+	  }
+
+	// to accurately track progress and avoid clients to wait for too long, notify each change
+	m_redo_lsa_condvar.notify_all ();
 
 	m_perfmon_redo_sync.track_and_start ();
       }
@@ -271,6 +276,24 @@ namespace cublog
       }
   }
 
+  void replicator::wait_past_target_lsa (const log_lsa &a_target_lsa)
+  {
+    if (m_parallel_replication_redo == nullptr)
+      {
+	// sync
+	std::unique_lock<std::mutex> ulock { m_redo_lsa_mutex };
+	m_redo_lsa_condvar.wait (ulock, [this, a_target_lsa] ()
+	{
+	  return m_redo_lsa > a_target_lsa;
+	});
+      }
+    else
+      {
+	// async
+	m_minimum_log_lsa->wait_past_target_lsa (a_target_lsa);
+      }
+  }
+
   /* log_rpl_calculate_replication_delay - calculate delay based on a given start time value
    *        and the current time and log to the perfmon infrastructure; all calculations are
    *        done in milliseconds as that is the relevant scale needed
@@ -280,14 +303,20 @@ namespace cublog
   {
     // skip calculation if bogus input (sometimes, it is -1);
     // TODO: fix bogus input at the source if at all possible (debugging revealed that
-    // it happens for LOG_COMMIT messages only)
+    // it happens for LOG_COMMIT messages only and there is no point at the source where the 'at_time'
+    // is not filled in)
     if (a_start_time_msec > 0)
       {
 	const int64_t end_time_msec = util_get_time_as_ms_since_epoch ();
 	const int64_t time_diff_msec = end_time_msec - a_start_time_msec;
-	assert (time_diff_msec > 0);
+	assert (time_diff_msec >= 0);
 
 	perfmon_set_stat (thread_p, PSTAT_REDO_REPL_DELAY, static_cast<int> (time_diff_msec), false);
+
+	if (prm_get_bool_value (PRM_ID_ER_LOG_CALC_REPL_DELAY))
+	  {
+	    _er_log_debug (ARG_FILE_LINE, "[CALC_REPL_DELAY]: %9lld msec", time_diff_msec);
+	  }
 
 	return NO_ERROR;
       }
