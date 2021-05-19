@@ -418,6 +418,8 @@ struct log_rcv_tdes
   LOG_LSA atomic_sysop_start_lsa;
   LOG_LSA analysis_last_aborted_sysop_lsa;	/* to recover logical redo operation. */
   LOG_LSA analysis_last_aborted_sysop_start_lsa;	/* to recover logical redo operation. */
+
+  inline bool operator== (const log_rcv_tdes & log_rcv) const;
 };
 
 typedef struct log_tdes LOG_TDES;
@@ -506,6 +508,7 @@ struct log_tdes
 
   log_postpone_cache m_log_postpone_cache;
 
+    log_tdes & operator= (const log_tdes &) = default;
   // *INDENT-OFF*
 #if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))
 
@@ -1085,4 +1088,31 @@ logtb_is_system_worker_tranid (TRANID trid)
   return trid < NULL_TRANID;
 }
 
+// *INDENT-OFF*
+inline bool
+log_rcv_tdes::operator== (const log_rcv_tdes &log_rcv) const
+{
+  if (sysop_start_postpone_lsa != log_rcv.sysop_start_postpone_lsa)
+    {
+      return false;
+    }
+  if (tran_start_postpone_lsa != log_rcv.tran_start_postpone_lsa)
+    {
+      return false;
+    }
+  if (atomic_sysop_start_lsa != log_rcv.atomic_sysop_start_lsa)
+    {
+      return false;
+    }
+  if (analysis_last_aborted_sysop_lsa != log_rcv.analysis_last_aborted_sysop_lsa)
+    {
+      return false;
+    }
+  if (analysis_last_aborted_sysop_start_lsa != log_rcv.analysis_last_aborted_sysop_start_lsa)
+    {
+      return false;
+    }
+  return true;
+}
+// *INDENT-ON*
 #endif /* _LOG_IMPL_H_ */

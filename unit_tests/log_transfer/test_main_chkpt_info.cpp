@@ -19,10 +19,13 @@
 #define CATCH_CONFIG_MAIN
 #include "catch2/catch.hpp"
 
-#include "client_credentials.hpp"
+// hack to access the private parts of log_checkpoint_info, to verify that the members remain the same after pack/unpack
 #define private public
 #include "log_checkpoint_info.hpp"
 #undef private
+
+#include "client_credentials.hpp"
+#include "fake_packable_object.hpp"
 #include "log_impl.h"
 #include "log_lsa.hpp"
 #include "log_record.hpp"
@@ -58,8 +61,8 @@ class test_env_chkpt
     static constexpr int MAX_RAND = 32700;
     static void require_equal (checkpoint_info before, checkpoint_info after);
 
-    checkpoint_info get_before ();
-    checkpoint_info get_after ();
+    checkpoint_info *get_before ();
+    checkpoint_info *get_after ();
 
   private:
     checkpoint_info m_before;
@@ -67,14 +70,14 @@ class test_env_chkpt
 
 };
 
-checkpoint_info test_env_chkpt::get_before ()
+checkpoint_info *test_env_chkpt::get_before ()
 {
-  return m_before;
+  return &m_before;
 }
 
-checkpoint_info test_env_chkpt::get_after ()
+checkpoint_info *test_env_chkpt::get_after ()
 {
-  return m_after;
+  return &m_after;
 }
 
 TEST_CASE ("Test pack/unpack checkpoint_info class 1", "")
@@ -82,16 +85,16 @@ TEST_CASE ("Test pack/unpack checkpoint_info class 1", "")
   test_env_chkpt env {100, 100};
 
   cubpacking::packer pac;
-  size_t size = env.get_before ().get_packed_size (pac, 0);
+  size_t size = env.get_before ()->get_packed_size (pac, 0);
   char buffer[size];
   pac.set_buffer (buffer, size);
-  env.get_before ().pack (pac);
+  env.get_before ()->pack (pac);
 
   cubpacking::unpacker unpac;
   unpac.set_buffer (buffer, size);
-  env.get_after ().unpack (unpac);
+  env.get_after ()->unpack (unpac);
 
-  env.require_equal (env.get_before (), env.get_after ());
+  env.require_equal (*env.get_before (), *env.get_after ());
 }
 
 TEST_CASE ("Test pack/unpack checkpoint_info class 2", "")
@@ -99,16 +102,16 @@ TEST_CASE ("Test pack/unpack checkpoint_info class 2", "")
   test_env_chkpt env {0, 100};
 
   cubpacking::packer pac;
-  size_t size = env.get_before ().get_packed_size (pac, 0);
+  size_t size = env.get_before ()->get_packed_size (pac, 0);
   char buffer[size];
   pac.set_buffer (buffer, size);
-  env.get_before ().pack (pac);
+  env.get_before ()->pack (pac);
 
   cubpacking::unpacker unpac;
   unpac.set_buffer (buffer, size);
-  env.get_after ().unpack (unpac);
+  env.get_after ()->unpack (unpac);
 
-  env.require_equal (env.get_before (), env.get_after ());
+  env.require_equal (*env.get_before (), *env.get_after ());
 }
 
 TEST_CASE ("Test pack/unpack checkpoint_info class 3", "")
@@ -116,24 +119,28 @@ TEST_CASE ("Test pack/unpack checkpoint_info class 3", "")
   test_env_chkpt env {220, 80};
 
   cubpacking::packer pac;
-  size_t size = env.get_before ().get_packed_size (pac, 0);
-  size += env.get_before ().get_packed_size (pac, size);
+  size_t size = env.get_before ()->get_packed_size (pac, 0);
+  size += env.get_before ()->get_packed_size (pac, size);
   char buffer[size];
   pac.set_buffer (buffer, size);
-  env.get_before ().pack (pac);
-  env.get_before ().pack (pac);
+  env.get_before ()->pack (pac);
+  env.get_before ()->pack (pac);
 
   cubpacking::unpacker unpac;
   unpac.set_buffer (buffer, size);
-  env.get_after ().unpack (unpac);
-  env.require_equal (env.get_before (), env.get_after ());
+  env.get_after ()->unpack (unpac);
+  env.require_equal (*env.get_before (), *env.get_after ());
 
   checkpoint_info after_2;
 
   after_2.unpack (unpac);
 
-  env.require_equal (env.get_after (), after_2);
+  env.require_equal (*env.get_after (), after_2);
 }
+
+std::map<TRANID, log_tdes *> tran_map;
+std::map<TRANID, log_tdes *> systb_System_tdes;
+int after_count;
 
 TEST_CASE ("Test load and recovery on empty tran table", "")
 {
@@ -142,13 +149,11 @@ TEST_CASE ("Test load and recovery on empty tran table", "")
   LOG_LSA star_lsa;
   THREAD_ENTRY thd;
 
-  env.get_after ().load_trantable_snapshot (&thd, smallest_lsa);
-  env.get_after ().recovery_analysis (&thd, star_lsa);
-  env.get_after ().recovery_2pc_analysis (&thd);
+  env.get_after ()->load_trantable_snapshot (&thd, smallest_lsa);
+  env.get_after ()->recovery_analysis (&thd, star_lsa);
+  env.get_after ()->recovery_2pc_analysis (&thd);
+  REQUIRE (tran_map.size() == 0);
 }
-
-std::map<TRANID, log_tdes *> tran_map;
-int after_count;
 
 int
 search_for_id (TRANID id)
@@ -164,11 +169,22 @@ search_for_id (TRANID id)
 }
 
 void
-full_compare_tdes (log_tdes *td1, log_tdes *td2)
+full_compare_tdes (log_tdes *td1, const log_tdes *td2)
 {
   REQUIRE (td1->head_lsa == td2->head_lsa);
   REQUIRE (td1->tail_lsa == td2->tail_lsa);
   REQUIRE (td1->undo_nxlsa == td2->undo_nxlsa);
+  REQUIRE (td1->posp_nxlsa == td2->posp_nxlsa);
+  REQUIRE (td1->savept_lsa == td2->savept_lsa);
+  REQUIRE (td1->tail_topresult_lsa == td2->tail_topresult_lsa);
+}
+
+void
+full_compare_tdes_active (log_tdes *td1, const log_tdes *td2)
+{
+  REQUIRE (td1->head_lsa == td2->head_lsa);
+  REQUIRE (td1->tail_lsa == td2->undo_nxlsa);
+  REQUIRE (td1->tail_lsa == td2->tail_lsa);
   REQUIRE (td1->posp_nxlsa == td2->posp_nxlsa);
   REQUIRE (td1->savept_lsa == td2->savept_lsa);
   REQUIRE (td1->tail_topresult_lsa == td2->tail_topresult_lsa);
@@ -186,8 +202,25 @@ check_recovery (checkpoint_info obj)
   for (int i = 1; i < log_Gl.trantable.num_total_indices; i++)
     {
       LOG_TDES *tdes = log_Gl.trantable.all_tdes[i];
-      std::map<TRANID, log_tdes *>::const_iterator tdes_after = tran_map.find (tdes->trid);
 
+      if (log_Gl.trantable.all_tdes[i]->trid < NULL_TRANID)
+	{
+	  std::map<TRANID, log_tdes *>::const_iterator tdes_after = systb_System_tdes.find (tdes->trid);
+
+	  if (tdes->topops.last == -1 || tdes->rcv.sysop_start_postpone_lsa == NULL_LSA
+	      || tdes->rcv.atomic_sysop_start_lsa == NULL_LSA)
+	    {
+	      REQUIRE (tdes_after->second->topops.last == -1);
+	    }
+	  else
+	    {
+	      REQUIRE (tdes_after->second->topops.last == 0);
+	      REQUIRE (tdes->rcv == tdes_after->second->rcv);
+	    }
+	  continue;
+	}
+
+      std::map<TRANID, log_tdes *>::const_iterator tdes_after = tran_map.find (tdes->trid);
       if (tdes->trid != NULL && tdes->tail_lsa == NULL_LSA)
 	{
 	  REQUIRE (tdes_after == tran_map.end());
@@ -197,7 +230,15 @@ check_recovery (checkpoint_info obj)
       if (tdes->state == TRAN_ACTIVE || tdes->state == TRAN_UNACTIVE_ABORTED)
 	{
 	  REQUIRE (tdes_after->second->state == TRAN_UNACTIVE_UNILATERALLY_ABORTED);
-	  full_compare_tdes (tdes, tdes_after->second);
+
+	  if (tdes->state == TRAN_UNACTIVE_ABORTED)
+	    {
+	      full_compare_tdes_active (tdes, tdes_after->second);
+	    }
+	  else
+	    {
+	      full_compare_tdes (tdes, tdes_after->second);
+	    }
 	  continue;
 	}
       REQUIRE (tdes_after->second->state == tdes->state);
@@ -211,7 +252,7 @@ number_of_2pc()
   size_t count = 0;
   for (int i = 1; i < log_Gl.trantable.num_total_indices; i++)
     {
-      if (LOG_ISTRAN_2PC (log_Gl.trantable.all_tdes[i]))
+      if (LOG_ISTRAN_2PC (log_Gl.trantable.all_tdes[i]) && log_Gl.trantable.all_tdes[i]->trid != NULL_TRANID)
 	{
 	  count ++;
 	}
@@ -228,10 +269,10 @@ TEST_CASE ("Test load and recovery on 100 tran table entries", "")
 
   env.generate_tran_table ();
   int count = number_of_2pc ();
-  env.get_after ().load_trantable_snapshot (&thd, smallest_lsa);
-  env.get_after ().recovery_analysis (&thd, start_lsa);
-  env.get_after ().recovery_2pc_analysis (&thd);
-  check_recovery (env.get_after ());
+  env.get_after ()->load_trantable_snapshot (&thd, smallest_lsa);
+  env.get_after ()->recovery_analysis (&thd, start_lsa);
+  env.get_after ()->recovery_2pc_analysis (&thd);
+  check_recovery (*env.get_after ());
   REQUIRE (count == after_count);
 
 }
@@ -380,7 +421,15 @@ test_env_chkpt::generate_tdes (int index)
   tdes->tail_lsa = generate_log_lsa();
   tdes->isloose_end = std::rand() % 2;
   tdes->head_lsa = generate_log_lsa();
-  tdes->state    = static_cast<TRAN_STATE> (std::rand() % TRAN_UNACTIVE_UNKNOWN);
+  if (index < TRAN_UNACTIVE_UNKNOWN)
+    {
+      tdes->state    = static_cast<TRAN_STATE> (index);
+    }
+  else
+    {
+      tdes->state    = static_cast<TRAN_STATE> (std::rand() % TRAN_UNACTIVE_UNKNOWN);
+    }
+
 
   tdes->undo_nxlsa = generate_log_lsa();
   tdes->posp_nxlsa = generate_log_lsa();
@@ -410,7 +459,7 @@ test_env_chkpt::generate_tdes (int index)
 void
 test_env_chkpt::generate_tran_table()
 {
-  log_Gl.trantable.num_total_indices = 100;
+  log_Gl.trantable.num_total_indices = 120;
 
   int size = log_Gl.trantable.num_total_indices * sizeof (*log_Gl.trantable.all_tdes);
   log_Gl.trantable.all_tdes = (LOG_TDES **) malloc (size);
@@ -419,6 +468,20 @@ test_env_chkpt::generate_tran_table()
     {
       log_Gl.trantable.all_tdes[i] = generate_tdes (i);
     }
+
+  log_Gl.trantable.all_tdes[101]->tail_lsa = NULL_LSA;
+  log_Gl.trantable.all_tdes[101]->trid = NULL_TRANID;
+
+  log_Gl.trantable.all_tdes[102]->tail_lsa = NULL_LSA;
+  log_Gl.trantable.all_tdes[102]->trid = NULL_TRANID;
+
+  log_Gl.trantable.all_tdes[103]->tail_lsa = NULL_LSA;
+  log_Gl.trantable.all_tdes[103]->trid = NULL_TRANID;
+
+  log_Gl.trantable.all_tdes[104]->trid = -104;
+  log_Gl.trantable.all_tdes[104]->rcv.atomic_sysop_start_lsa = generate_log_lsa ();
+  log_Gl.trantable.all_tdes[105]->trid = -105;
+  log_Gl.trantable.all_tdes[105]->rcv.sysop_start_postpone_lsa = generate_log_lsa ();
 }
 
 //
@@ -435,7 +498,6 @@ test_env_chkpt::generate_tran_table()
 #define LARGE_STRING_CODE 0xff
 
 std::mutex systb_Mutex;
-std::map<TRANID, log_tdes *> systb_System_tdes;
 
 //unused stuff needed by the linker
 log_global log_Gl;
@@ -531,6 +593,8 @@ log_global::~log_global ()
 
 namespace cublog
 {
+  EXPAND_PACKABLE_OBJECT_EMPTY_DEF (meta);
+
   prior_recver::prior_recver (log_prior_lsa_info &prior_lsa_info)
     : m_prior_lsa_info (prior_lsa_info)
   {
@@ -580,6 +644,25 @@ systdes_create_tdes ()
 }
 
 log_tdes *
+log_system_tdes::rv_get_or_alloc_tdes (TRANID trid)
+{
+  log_tdes *tdes = rv_get_tdes (trid);
+  if (tdes == NULL)
+    {
+      log_tdes *tdes = systdes_create_tdes ();
+      tdes->state = TRAN_UNACTIVE_UNILATERALLY_ABORTED;
+      tdes->trid = trid;
+      systb_System_tdes[trid] = tdes;
+      return tdes;
+    }
+  else
+    {
+      assert (tdes->trid == trid);
+      return tdes;
+    }
+}
+
+log_tdes *
 log_system_tdes::rv_get_tdes (TRANID trid)
 {
   auto it = systb_System_tdes.find (trid);
@@ -596,17 +679,31 @@ log_system_tdes::rv_get_tdes (TRANID trid)
 LOG_TDES *
 logtb_rv_find_allocate_tran_index (THREAD_ENTRY *thread_p, TRANID trid, const LOG_LSA *log_lsa)
 {
-  LOG_TDES *tdes = NULL;		/* Transaction descriptor */
+  LOG_TDES *tdes = new log_tdes();		/* Transaction descriptor */
 
   assert (trid != NULL_TRANID);
 
+  if (trid < NULL_TRANID)
+    {
+      return log_system_tdes::rv_get_or_alloc_tdes (trid);
+    }
+
   for (int i = 1; i < NUM_TOTAL_TRAN_INDICES; i++)
     {
-      tdes = log_Gl.trantable.all_tdes[i];
-      if (tdes != NULL && tdes->trid != NULL_TRANID && tdes->trid == trid)
+      if (log_Gl.trantable.all_tdes[i] == NULL)
 	{
-	  LSA_COPY (&tdes->head_lsa, log_lsa);
-	  tran_map.insert (std::pair<TRANID, LOG_TDES *> (trid, tdes));
+	  continue;
+	}
+
+      *tdes = *log_Gl.trantable.all_tdes[i];
+      if (tdes->trid != NULL_TRANID && tdes->trid == trid)
+	{
+	  if (tran_map.find (tdes->trid) != tran_map.end())
+	    {
+	      return tdes;
+	    }
+
+	  tran_map.insert (std::pair<TRANID, log_tdes *> (trid, tdes));
 	  return tdes;
 	}
     }
@@ -683,21 +780,15 @@ logtb_find_tran_index (THREAD_ENTRY *thread_p, TRANID trid)
 
   assert (trid != NULL_TRANID);
 
-  /* Avoid searching as much as possible */
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  tdes = LOG_FIND_TDES (tran_index);
-  if (tdes == NULL || tdes->trid != trid)
+
+  /* Search the transaction table for such transaction */
+  for (i = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
     {
-      tran_index = NULL_TRAN_INDEX;
-      /* Search the transaction table for such transaction */
-      for (i = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
+      tdes = log_Gl.trantable.all_tdes[i];
+      if (tdes != NULL && tdes->trid != NULL_TRANID && tdes->trid == trid)
 	{
-	  tdes = log_Gl.trantable.all_tdes[i];
-	  if (tdes != NULL && tdes->trid != NULL_TRANID && tdes->trid == trid)
-	    {
-	      tran_index = i;
-	      break;
-	    }
+	  tran_index = i;
+	  break;
 	}
     }
 
@@ -708,7 +799,6 @@ void
 log_2pc_recovery_analysis_info (THREAD_ENTRY *thread_p, log_tdes *tdes, LOG_LSA *upto_chain_lsa)
 {
   after_count++;
-  assert (true);
 }
 
 namespace cubmem
@@ -773,4 +863,10 @@ mvcc_snapshot::mvcc_snapshot ()
   , snapshot_fnc (NULL)
   , valid (false)
 {
+}
+
+int
+basename_r (const char *path, char *pathbuf, size_t buflen)
+{
+  return 1;
 }

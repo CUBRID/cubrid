@@ -59,7 +59,7 @@ class log_postpone_cache
     log_postpone_cache (const log_postpone_cache &other) = delete;
 
     log_postpone_cache &operator= (log_postpone_cache &&other) = delete;
-    log_postpone_cache &operator= (const log_postpone_cache &other) = delete;
+    log_postpone_cache &operator= (const log_postpone_cache &other) = default;
 
     ~log_postpone_cache () = default;
 

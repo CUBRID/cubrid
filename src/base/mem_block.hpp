@@ -67,10 +67,11 @@ namespace cubmem
       inline bool is_valid () const;
 
       inline char *move_ptr ();                                    //NOT RECOMMENDED! use move semantics: std::move()
+      block &operator= (const block &) = default;
 
     private:
       block (const block &) = delete;
-      block &operator= (const block &) = delete;
+
   };
 
   // stack_block - 8-byte aligned stack block of size S
@@ -176,13 +177,13 @@ namespace cubmem
       inline std::size_t get_size () const;
 
       inline char *release_ptr ();
+      extensible_block &operator= (const extensible_block &) = default;  //copy assignment
 
     private:
       block m_block;
       const block_allocator *m_allocator;
 
       extensible_block (const extensible_block &) = delete;             //copy ctor
-      extensible_block &operator= (const extensible_block &) = delete;  //copy assignment
   };
 
   // extensible_stack_block - extensible memory block that start with as a stack_block
