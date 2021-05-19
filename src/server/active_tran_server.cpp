@@ -201,6 +201,8 @@ active_tran_server::connect_to_page_server (const cubcomm::node &node, const cha
 				      std::placeholders::_1));
   m_ps->register_request_handler (ps_to_ats_request::SEND_LOG_PAGE,
 				  std::bind (&active_tran_server::receive_log_page, std::ref (*this), std::placeholders::_1));
+  m_ps->register_request_handler (ps_to_ats_request::SEND_DATA_PAGE,
+				  std::bind (&active_tran_server::receive_data_page, std::ref (*this), std::placeholders::_1));
   m_ps->connect ();
 
   log_Gl.m_prior_sender.add_sink (std::bind (&active_tran_server::push_request, std::ref (*this),
@@ -285,8 +287,32 @@ active_tran_server::receive_log_page (cubpacking::unpacker &upk)
     }
 }
 
-void
-active_tran_server::receive_saved_lsa (cubpacking::unpacker &upk)
+void active_tran_server::receive_data_page (cubpacking::unpacker &upk)
+{
+  std::string message;
+  upk.unpack_string (message);
+
+  int error_code;
+  std::memcpy (&error_code, message.c_str (), sizeof (error_code));
+
+  if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
+    {
+      if (error_code == NO_ERROR)
+	{
+	  char buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+	  FILEIO_PAGE *io_page = (FILEIO_PAGE *) PTR_ALIGN (buf, MAX_ALIGNMENT);
+	  std::memcpy (io_page, message.c_str () + sizeof (error_code), db_io_page_size ());
+	  _er_log_debug (ARG_FILE_LINE, "Received data page message from Page Server. LSA: %lld|%d, Page ID: %ld, Volid: %d",
+			 LSA_AS_ARGS (&io_page->prv.lsa), io_page->prv.pageid, io_page->prv.volid);
+	}
+      else
+	{
+	  _er_log_debug (ARG_FILE_LINE, "Received data page message from Page Server. Error: %d \n", error_code);
+	}
+    }
+}
+
+void active_tran_server::receive_saved_lsa (cubpacking::unpacker &upk)
 {
   std::string message;
   log_lsa saved_lsa;
