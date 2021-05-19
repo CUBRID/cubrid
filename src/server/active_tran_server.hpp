@@ -62,6 +62,7 @@ class active_tran_server
     int parse_page_server_hosts_config ();
     void receive_saved_lsa (cubpacking::unpacker &upk);
     void receive_log_page (cubpacking::unpacker &upk);
+    void receive_data_page (cubpacking::unpacker &upk);
 
     // communication with page server
     std::string m_ps_hostname;

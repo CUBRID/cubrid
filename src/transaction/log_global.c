@@ -108,9 +108,10 @@ log_global::~log_global ()
 void
 log_global::update_max_ps_flushed_lsa (const LOG_LSA &lsa)
 {
-  std::unique_lock<std::mutex> lock (m_ps_lsa_mutex);
-  m_max_ps_flushed_lsa = lsa;
-  lock.unlock ();
+  {
+    std::unique_lock<std::mutex> lock (m_ps_lsa_mutex);
+    m_max_ps_flushed_lsa = lsa;
+  } // lock.unlock ();
   m_ps_lsa_cv.notify_all ();
 }
 
