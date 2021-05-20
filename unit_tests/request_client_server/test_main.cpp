@@ -476,9 +476,6 @@ TEST_CASE ("Test request_sync_client_server", "")
 {
   test_two_request_sync_client_server_env env;
 
-  env.get_scs_one ().connect ();
-  env.get_scs_two ().connect ();
-
   REQUIRE (env.get_scs_one ().is_connected ());
   REQUIRE (env.get_scs_two ().is_connected ());
 
@@ -670,7 +667,7 @@ void
 mock_socket_between_client_and_server (const test_request_client &cl, const test_request_server &sr,
 				       mock_socket_direction &sockdir)
 {
-  add_socket_direction (cl.get_channel ().get_channel_id (), sr.get_channel ().get_channel_id (), sockdir);
+  add_socket_direction (cl.get_channel ().get_channel_id (), sr.get_channel ().get_channel_id (), sockdir, true);
 }
 
 test_client_and_server_env::test_client_and_server_env (test_handler_register_function &hreg)
@@ -762,8 +759,10 @@ mock_socket_between_two_client_servers (const test_request_client_server_type_on
 					const test_request_client_server_type_two &clsr2,
 					mock_socket_direction &sockdir_1_to_2, mock_socket_direction &sockdir_2_to_1)
 {
-  add_socket_direction (clsr1.get_channel ().get_channel_id (), clsr2.get_channel ().get_channel_id (), sockdir_1_to_2);
-  add_socket_direction (clsr2.get_channel ().get_channel_id (), clsr1.get_channel ().get_channel_id (), sockdir_2_to_1);
+  add_socket_direction (clsr1.get_channel ().get_channel_id (), clsr2.get_channel ().get_channel_id (), sockdir_1_to_2,
+			false);
+  add_socket_direction (clsr2.get_channel ().get_channel_id (), clsr1.get_channel ().get_channel_id (), sockdir_2_to_1,
+			true);
 }
 
 
@@ -927,9 +926,9 @@ void
 test_two_request_sync_client_server_env::mock_socket_between_two_sync_client_servers ()
 {
   add_socket_direction (m_scs_one->get_underlying_channel_id (), m_scs_two->get_underlying_channel_id (),
-			m_sockdir_1_to_2);
+			m_sockdir_1_to_2, false);
   add_socket_direction (m_scs_two->get_underlying_channel_id (), m_scs_one->get_underlying_channel_id (),
-			m_sockdir_2_to_1);
+			m_sockdir_2_to_1, true);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////

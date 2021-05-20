@@ -30,7 +30,6 @@ namespace cubcomm
       request_sync_client_server &operator = (request_sync_client_server &&) = delete;
 
     public:
-      void connect ();
       bool is_connected () const;
 
       /* only used by unit tests
@@ -70,6 +69,9 @@ namespace cubcomm
 	assert (pair.second != nullptr);
 	m_conn->register_request_handler (pair.first, pair.second);
       }
+
+    m_conn->start_thread ();
+    m_queue_autosend->start_thread ();
   }
 
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
@@ -78,20 +80,6 @@ namespace cubcomm
     m_queue_autosend.reset (nullptr);
     m_queue.reset (nullptr);
     m_conn.reset (nullptr);
-  }
-
-  template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
-  void
-  request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::connect ()
-  {
-    assert (m_conn != nullptr);
-    assert (m_queue != nullptr);
-    assert (m_queue_autosend != nullptr);
-    assert (m_conn->has_registered_handlers ());
-    assert (false == m_conn->is_connected ());
-
-    m_conn->start_thread ();
-    m_queue_autosend->start_thread ();
   }
 
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>

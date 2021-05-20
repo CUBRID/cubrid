@@ -46,6 +46,7 @@ void page_server::set_active_tran_server_connection (cubcomm::channel &&chn)
 
   chn.set_channel_name ("ATS_PS_comm");
 
+  const std::string channel_id { chn.get_channel_id () };
   assert (m_ats == nullptr);
   m_ats.reset (new ats_t (std::move (chn),
   {
@@ -62,9 +63,7 @@ void page_server::set_active_tran_server_connection (cubcomm::channel &&chn)
       std::bind (&page_server::receive_data_page_fetch, std::ref (*this), std::placeholders::_1)
     },
   }));
-  m_ats->connect ();
-  er_log_debug (ARG_FILE_LINE, "Active transaction server connected to this page server. Channel id: %s.\n",
-		"ATS_PS_comm");
+  er_log_debug (ARG_FILE_LINE, "PS connected to ATS. Channel id: %s.\n", channel_id);
 }
 
 void page_server::disconnect_active_tran_server ()
