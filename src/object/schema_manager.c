@@ -15633,7 +15633,6 @@ sm_collect_truncatable_classes (MOP class_mop, std::unordered_set < OID > &trun_
   SM_CLASS_CONSTRAINT *pk_constraint = NULL;
   SM_FOREIGN_KEY_INFO *fk_ref;
   DB_OBJLIST *subs;
-  SM_CLASS *subclass;
   OID *fk_cls_oid;
   bool is_pk_referred = false;
   int partition_type = DB_NOT_PARTITIONED_CLASS;
@@ -15679,14 +15678,6 @@ sm_collect_truncatable_classes (MOP class_mop, std::unordered_set < OID > &trun_
       assert (class_->users);
       for (subs = class_->users; subs; subs = subs->next)
 	{
-	  error = au_fetch_class (subs->op, &subclass, AU_FETCH_READ, DB_AUTH_ALTER);
-	  if (error != NO_ERROR)
-	    {
-	      return error;
-	    }
-
-	  assert (subclass->partition);
-
 	  trun_classes.emplace (*ws_oid (subs->op));
 	}
     }
