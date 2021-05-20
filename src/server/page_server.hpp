@@ -21,8 +21,7 @@
 
 #include "ats_ps_request.hpp"
 #include "async_page_fetcher.hpp"
-#include "request_client_server.hpp"
-#include "request_sync_send_queue.hpp"
+#include "request_sync_client_server.hpp"
 
 #include <memory>
 
@@ -43,8 +42,6 @@ namespace cubthread
 class page_server
 {
   public:
-    using active_tran_server_conn = cubcomm::request_client_server<ps_to_ats_request, ats_to_ps_request>;
-
     page_server () = default;
     ~page_server ();
 
@@ -61,8 +58,8 @@ class page_server
     void finalize_log_page_fetcher ();
 
   private:
-    using active_tran_server_request_queue = cubcomm::request_sync_send_queue<active_tran_server_conn, std::string>;
-    using active_tran_server_request_autosend = cubcomm::request_queue_autosend<active_tran_server_request_queue>;
+    using active_tran_server_conn_t =
+	    cubcomm::request_sync_client_server<ps_to_ats_request, ats_to_ps_request, std::string>;
 
     void receive_log_prior_list (cubpacking::unpacker &upk);
     void receive_log_page_fetch (cubpacking::unpacker &upk);
@@ -71,9 +68,7 @@ class page_server
     void on_log_page_read_result (const LOG_PAGE *log_page, int error_code);
     void on_data_page_read_result (const FILEIO_PAGE *page_ptr, int error_code);
 
-    std::unique_ptr<active_tran_server_conn> m_ats_conn;
-    std::unique_ptr<active_tran_server_request_queue> m_ats_request_queue;
-    std::unique_ptr<active_tran_server_request_autosend> m_ats_request_autosend;
+    std::unique_ptr<active_tran_server_conn_t> m_active_tran_server_conn;
 
     std::unique_ptr<cublog::replicator> m_replicator;
     std::unique_ptr<cublog::async_page_fetcher> m_page_fetcher;

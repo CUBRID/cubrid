@@ -44,7 +44,7 @@ active_tran_server::~active_tran_server ()
     }
   else
     {
-      assert (m_ps_request_queue == nullptr && m_ps_request_autosend == nullptr);
+      assert (m_page_server_conn == nullptr);
     }
 }
 
@@ -193,19 +193,22 @@ active_tran_server::connect_to_page_server (const cubcomm::node &node, const cha
   er_log_debug (ARG_FILE_LINE, "Successfully connected to the page server. Channel id: %s.\n",
 		srv_chn.get_channel_id ().c_str ());
 
-  m_ps_conn.reset (new page_server_conn (std::move (srv_chn)));
-  m_ps_conn->register_request_handler (ps_to_ats_request::SEND_SAVED_LSA,
-				       std::bind (&active_tran_server::receive_saved_lsa, std::ref (*this),
-					   std::placeholders::_1));
-  m_ps_conn->register_request_handler (ps_to_ats_request::SEND_LOG_PAGE,
-				       std::bind (&active_tran_server::receive_log_page, std::ref (*this), std::placeholders::_1));
-  m_ps_conn->register_request_handler (ps_to_ats_request::SEND_DATA_PAGE,
-				       std::bind (&active_tran_server::receive_data_page, std::ref (*this), std::placeholders::_1));
-  m_ps_conn->start_thread ();
-
-  m_ps_request_queue.reset (new page_server_request_queue (*m_ps_conn));
-  m_ps_request_autosend.reset (new page_server_request_autosend (*m_ps_request_queue));
-  m_ps_request_autosend->start_thread ();
+  assert (m_page_server_conn == nullptr);
+  m_page_server_conn.reset (new page_server_conn_t (std::move (srv_chn),
+  {
+    {
+      ps_to_ats_request::SEND_SAVED_LSA,
+      std::bind (&active_tran_server::receive_saved_lsa, std::ref (*this), std::placeholders::_1)
+    },
+    {
+      ps_to_ats_request::SEND_LOG_PAGE,
+      std::bind (&active_tran_server::receive_log_page, std::ref (*this), std::placeholders::_1)
+    },
+    {
+      ps_to_ats_request::SEND_DATA_PAGE,
+      std::bind (&active_tran_server::receive_data_page, std::ref (*this), std::placeholders::_1)
+    }
+  }));
 
   log_Gl.m_prior_sender.add_sink (std::bind (&active_tran_server::push_request, std::ref (*this),
 				  ats_to_ps_request::SEND_LOG_PRIOR_LIST, std::placeholders::_1));
@@ -218,16 +221,15 @@ active_tran_server::disconnect_page_server ()
 {
   assert_is_active_tran_server ();
 
-  m_ps_request_autosend.reset (nullptr);
-  m_ps_request_queue.reset (nullptr);
-  m_ps_conn.reset (nullptr);
+  m_page_server_conn.reset (nullptr);
 }
 
 bool
 active_tran_server::is_page_server_connected () const
 {
   assert_is_active_tran_server ();
-  return m_ps_request_queue != nullptr;
+
+  return m_page_server_conn != nullptr;
 }
 
 void
@@ -257,7 +259,7 @@ active_tran_server::push_request (ats_to_ps_request reqid, std::string &&payload
       return;
     }
 
-  m_ps_request_queue->push (reqid, std::move (payload));
+  m_page_server_conn->push (reqid, std::move (payload));
 }
 
 void
