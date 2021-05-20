@@ -24746,7 +24746,7 @@ json_table_rule
     ;
 
 dblink_expr
-        :   dblink_conn  ','  DelimitedIdName  
+        :   dblink_conn  ','  CHAR_STRING  
             {{
              PT_NODE *ct = parser_new_node(this_parser, PT_DBLINK_TABLE) ;           
              if(ct)
@@ -24858,7 +24858,7 @@ dblink_conn:
         ;        
 
 dblink_identifier_col_attrs  
-        :  opt_as IdName '('  dblink_column_definition_list ')' 
+        :  opt_as identifier '('  dblink_column_definition_list ')' 
         {{                
              container_2 ctn;
              PT_NODE *p = parser_new_node (this_parser, PT_NAME);
