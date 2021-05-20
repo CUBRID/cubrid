@@ -15123,36 +15123,37 @@ sm_free_constraint_info (SM_CONSTRAINT_INFO ** save_info)
 
 /*
  * sm_remove_constraint_info() - Remove and free one from SM_CONSTRAINT_INFO list
+ *   return: save_info->next
  *   save_info_list(in/out): The list to remove from
- *   save_info(in/out): The info to remove
+ *   save_info(in): The info to remove
  *
  * NOTE:
  *  - save_info_list can be set to other or NULL if the first item is removed.
- *  - save_info set to the next save_info
  */
-void
-sm_remove_constraint_info (SM_CONSTRAINT_INFO ** save_info_list, SM_CONSTRAINT_INFO ** save_info)
+SM_CONSTRAINT_INFO *
+sm_remove_constraint_info (SM_CONSTRAINT_INFO ** save_info_list, SM_CONSTRAINT_INFO * save_info)
 {
   SM_CONSTRAINT_INFO **info_ptr = NULL;
 
-  if (save_info_list == NULL || save_info == NULL || *save_info == NULL)
+  if (save_info_list == NULL || save_info == NULL)
     {
-      return;
+      return NULL;
     }
 
   info_ptr = save_info_list;
   while (*info_ptr != NULL)
     {
-      if (*info_ptr == *save_info)
+      if (*info_ptr == save_info)
 	{
-	  SM_CONSTRAINT_INFO *rem_info = *info_ptr;
-	  *save_info = *info_ptr = (*info_ptr)->next;
-	  rem_info->next = NULL;
-	  sm_free_constraint_info (&rem_info);
-	  return;
+	  *info_ptr = (*info_ptr)->next;
+	  save_info->next = NULL;
+	  sm_free_constraint_info (&save_info);
+	  return *info_ptr;
 	}
       info_ptr = &((*info_ptr)->next);
     }
+
+  return NULL;
 }
 
 /*
@@ -16019,7 +16020,7 @@ sm_truncate_class_internal (std::unordered_set < OID > &&trun_classes)
 		{
 		  return error;
 		}
-              sm_remove_constraint_info (&unique_save_info[class_oid], &saved);
+              saved = sm_remove_constraint_info (&unique_save_info[class_oid], saved);
               continue;
             }
           else if (error != NO_ERROR)
