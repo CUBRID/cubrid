@@ -15660,9 +15660,8 @@ sm_collect_truncatable_classes (MOP class_mop, std::unordered_set < OID > &trun_
       return error;
     }
 
-  switch (partition_type)
+  if (partition_type == DB_PARTITION_CLASS)
     {
-    case DB_PARTITION_CLASS:
       /*
        * TRUNCATE [partition class] is already prevented.
        * This can be reached because if a FK of partitioned class referes a PK, FKs of the partition classes also refer to it.
@@ -15673,7 +15672,9 @@ sm_collect_truncatable_classes (MOP class_mop, std::unordered_set < OID > &trun_
        *  It's enough to check the PK of the partitioned class for cascading.
        */
       return NO_ERROR;
-    case DB_PARTITIONED_CLASS:
+    }
+  else if (partition_type == DB_PARTITIONED_CLASS)
+    {
       /* Find partition classes if exists */
       assert (class_->users);
       for (subs = class_->users; subs; subs = subs->next)
@@ -15683,15 +15684,14 @@ sm_collect_truncatable_classes (MOP class_mop, std::unordered_set < OID > &trun_
 	    {
 	      return error;
 	    }
-	  if (subclass->partition)
-	    {
-	      trun_classes.emplace (*ws_oid (subs->op));
-	    }
+
+	  assert (subclass->partition);
+
+	  trun_classes.emplace (*ws_oid (subs->op));
 	}
-      //yes, fallthrough
-    case DB_NOT_PARTITIONED_CLASS:
-      trun_classes.emplace (*ws_oid (class_mop));
     }
+
+  trun_classes.emplace (*ws_oid (class_mop));
 
   if (!is_pk_referred)
     {
