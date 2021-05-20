@@ -657,6 +657,7 @@ net_histo_setup_names (void)
   net_Req_buffer[NET_SERVER_VACUUM_DUMP].name = "NET_SERVER_VACUUM_DUMP";
 
   net_Req_buffer[NET_SERVER_LOG_READER_SET_CONFIGURATION].name = "NET_SERVER_LOG_READER_SET_CONFIGURATION";
+  net_Req_buffer[NET_SERVER_LOG_READER_GET_LSA].name = "NET_SERVER_LOG_READER_GET_LSA";
 }
 
 /*

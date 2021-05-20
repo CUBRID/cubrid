@@ -30,6 +30,7 @@
 #include "connection_cl.h"
 #include "connection_list_cl.h"
 #include "cubrid_log.h"
+#include "log_lsa.hpp"
 #include "network.h"
 #include "object_representation.h"
 
@@ -103,6 +104,8 @@ FILE *g_trace_log;
 char g_trace_log_path[PATH_MAX + 1] = "./";
 int g_trace_log_level = 0;
 int g_trace_log_filesize = 10;	/* MB */
+
+LOG_LSA g_next_lsa = LSA_INITIALIZER;
 
 /*
  * cubrid_log_set_connection_timeout () -
@@ -500,6 +503,79 @@ cubrid_log_error:
   return err_code;
 }
 
+static int
+cubrid_log_find_start_lsa (time_t timestamp, LOG_LSA * lsa)
+{
+  unsigned short rid = 0;
+
+  OR_ALIGNED_BUF (OR_BIGINT_SIZE) a_request;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_LOG_LSA_ALIGNED_SIZE) a_reply;
+  char *request = OR_ALIGNED_BUF_START (a_request), *ptr;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int request_size = OR_ALIGNED_BUF_SIZE (a_request);
+  int reply_size = OR_ALIGNED_BUF_SIZE (a_reply), reply_code;
+
+  char *recv_data = NULL;
+  int recv_data_size;
+
+  CSS_QUEUE_ENTRY *queue_entry;
+  int err_code;
+
+  or_pack_int64 (request, (INT64) timestamp);
+
+  if (css_send_request_with_data_buffer
+      (g_conn_entry, NET_SERVER_LOG_READER_GET_LSA, &rid, request, request_size, reply, reply_size) != NO_ERRORS)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_LSA_NOT_FOUND);
+    }
+
+  if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, g_extraction_timeout * 1000) != NO_ERRORS)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_LSA_NOT_FOUND);
+    }
+
+  if (recv_data == NULL || recv_data_size != OR_INT_SIZE + OR_LOG_LSA_ALIGNED_SIZE)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_LSA_NOT_FOUND);
+    }
+
+  ptr = or_unpack_int (recv_data, &reply_code);
+
+  if (reply_code != NO_ERROR)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_LSA_NOT_FOUND);
+    }
+
+  or_unpack_log_lsa (ptr, lsa);
+
+#if !defined (NDEBUG)
+  printf ("start_time = %ld, start_lsa = %lld|%d\n", timestamp, LSA_AS_ARGS (lsa));
+#endif
+
+  if (recv_data != NULL && recv_data != reply)
+    {
+      free_and_init (recv_data);
+    }
+
+  return CUBRID_LOG_SUCCESS;
+
+cubrid_log_error:
+
+  if (recv_data != NULL && recv_data != reply)
+    {
+      free_and_init (recv_data);
+    }
+
+  queue_entry = css_find_queue_entry (g_conn_entry->buffer_queue, rid);
+  if (queue_entry != NULL)
+    {
+      queue_entry->buffer = NULL;
+      css_queue_remove_header_entry_ptr (&g_conn_entry->buffer_queue, queue_entry);
+    }
+
+  return err_code;
+}
+
 /*
  * cubrid_log_find_lsa () -
  *   return:
@@ -509,17 +585,38 @@ cubrid_log_error:
 int
 cubrid_log_find_lsa (time_t timestamp, uint64_t * lsa)
 {
+  int err_code;
+
   if (g_stage != CUBRID_LOG_STAGE_PREPARATION)
     {
-      return CUBRID_LOG_INVALID_FUNC_CALL_STAGE;
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_FUNC_CALL_STAGE);
+    }
+
+  if (timestamp > time (NULL))
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_TIMESTAMP);
     }
 
   if (lsa == NULL)
     {
-      return CUBRID_LOG_INVALID_OUT_PARAM;
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_OUT_PARAM);
     }
 
+  if (LSA_ISNULL (&g_next_lsa))
+    {
+      if (cubrid_log_find_start_lsa (timestamp, &g_next_lsa) != CUBRID_LOG_SUCCESS)
+	{
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_LSA_NOT_FOUND);
+	}
+    }
+
+  memcpy (lsa, &g_next_lsa, sizeof (uint64_t));
+
   return CUBRID_LOG_SUCCESS;
+
+cubrid_log_error:
+
+  return err_code;
 }
 
 /*
