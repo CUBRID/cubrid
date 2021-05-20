@@ -148,6 +148,7 @@ active_tran_server::init_page_server_hosts (const char *db_name)
       er_clear ();
     }
   exit_code = NO_ERROR;
+  cubcomm::node first_valid_connection;
   for (const cubcomm::node &node : m_connection_list)
     {
       exit_code = connect_to_page_server (node, db_name);
@@ -156,7 +157,7 @@ active_tran_server::init_page_server_hosts (const char *db_name)
 	  //found valid host clear the errors rom the bad ones
 	  er_clear ();
 	  // successfully connected to a page server. stop now.
-	  return exit_code;
+//	  return exit_code;
 	}
     }
   // failed to connect to any page server
@@ -168,7 +169,7 @@ int
 active_tran_server::connect_to_page_server (const cubcomm::node &node, const char *db_name)
 {
   assert_is_active_tran_server ();
-  assert (!is_page_server_connected ());
+//  assert (!is_page_server_connected ());
 
   // connect to page server
   constexpr int CHANNEL_POLL_TIMEOUT = 1000;    // 1000 milliseconds = 1 second
