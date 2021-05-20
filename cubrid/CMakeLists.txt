@@ -203,6 +203,7 @@ set(COMMUNICATION_HEADERS
   ${CONNECTION_DIR}/connection_server_rules.hpp
   ${COMMUNICATION_DIR}/request_client_server.hpp
   ${COMMUNICATION_DIR}/request_sync_send_queue.hpp
+  ${COMMUNICATION_DIR}/request_sync_client_server.hpp
   )
 
 set(DEBUGGING_HEADERS
