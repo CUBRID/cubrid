@@ -1,3 +1,21 @@
+/*
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ */
+
 #ifndef REQUEST_SYNC_CLIENT_SERVER_HPP
 #define REQUEST_SYNC_CLIENT_SERVER_HPP
 
@@ -34,8 +52,7 @@ namespace cubcomm
        */
       std::string get_underlying_channel_id () const;
 
-      void push (T_OUTGOING_MSG_ID a_outgoing_message_id,
-		 T_PAYLOAD &&a_payload);
+      void push (T_OUTGOING_MSG_ID a_outgoing_message_id, T_PAYLOAD &&a_payload);
 
     private:
       using request_sync_send_queue_t = cubcomm::request_sync_send_queue<request_client_server_t, T_PAYLOAD>;
@@ -92,7 +109,7 @@ namespace cubcomm
   request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::push (
 	  T_OUTGOING_MSG_ID a_outgoing_message_id, T_PAYLOAD &&a_payload)
   {
-    assert (m_conn != nullptr && m_conn->is_connected ());
+    assert (m_conn != nullptr && m_conn->is_thread_started ());
 
     m_queue->push (a_outgoing_message_id, std::move (a_payload));
   }

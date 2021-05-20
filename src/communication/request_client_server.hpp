@@ -172,7 +172,7 @@ namespace cubcomm
 
       const channel &get_channel () const;						  // get underlying channel
 
-      bool is_connected () const;
+      bool is_thread_started () const;
 
     protected:
       channel m_channel;	  // request are received on this channel
@@ -285,14 +285,14 @@ namespace cubcomm
   template <typename MsgId>
   void request_server<MsgId>::stop_thread ()
   {
-    assert (is_connected ());
+    assert (is_thread_started ());
 
     m_shutdown = true;
     m_thread.join ();
   }
 
   template <typename MsgId>
-  bool request_server<MsgId>::is_connected () const
+  bool request_server<MsgId>::is_thread_started () const
   {
     return m_thread.joinable ();
   }

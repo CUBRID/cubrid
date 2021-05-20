@@ -53,7 +53,8 @@ class active_tran_server
     void push_request (ats_to_ps_request reqid, std::string &&payload);
 
   private:
-    using ps_t = cubcomm::request_sync_client_server<ats_to_ps_request, ps_to_ats_request, std::string>;
+    using page_server_conn_t
+      = cubcomm::request_sync_client_server<ats_to_ps_request, ps_to_ats_request, std::string>;
 
     int parse_server_host (const std::string &host);
     int parse_page_server_hosts_config ();
@@ -65,7 +66,7 @@ class active_tran_server
     std::string m_ps_hostname;
     int m_ps_port = -1;
 
-    std::unique_ptr<ps_t> m_ps;
+    std::unique_ptr<page_server_conn_t> m_page_server_conn;
 
     std::unique_ptr<cublog::page_broker> m_log_page_broker;
     std::vector<cubcomm::node> m_connection_list;
