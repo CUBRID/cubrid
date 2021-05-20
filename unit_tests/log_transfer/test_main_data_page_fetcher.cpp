@@ -142,8 +142,8 @@ void test_env::on_receive_data_page (VPID page_id, const FILEIO_PAGE *data_page,
     {
       REQUIRE (error_code == NO_ERROR);
       REQUIRE (data_page != nullptr);
-      // REQUIRE (log_page->hdr.logical_pageid != NULL_PAGEID);
-      // REQUIRE (log_page->hdr.logical_pageid == page_id);
+      REQUIRE (data_page->prv.pageid == page_id.pageid);
+      REQUIRE (data_page->prv.volid == page_id.volid);
     }
   else
     {
@@ -151,7 +151,6 @@ void test_env::on_receive_data_page (VPID page_id, const FILEIO_PAGE *data_page,
       REQUIRE (data_page == nullptr);
     }
   g_data_page_fetcher_test_data.page_ids_requested[get_key (page_id)].is_page_received = true;
-  delete data_page;
 }
 
 PAGE_PTR
@@ -168,8 +167,8 @@ create_dummy_data_page (const VPID a_vpid)
 void
 delete_page (PAGE_PTR page_ptr)
 {
-  // FILEIO_PAGE* io_page = reinterpret_cast<FILEIO_PAGE*> (page_ptr);
-  // delete io_page;
+  FILEIO_PAGE *io_page = reinterpret_cast<FILEIO_PAGE *> (page_ptr);
+  delete io_page;
 }
 
 // Mock some of the functionality
