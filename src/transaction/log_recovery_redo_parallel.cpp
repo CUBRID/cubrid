@@ -126,11 +126,7 @@ namespace cublog
   log_lsa
   minimum_log_lsa_monitor::wait_past_target_lsa (const log_lsa &a_target_lsa)
   {
-    if (a_target_lsa.is_null ())
-      {
-	// nothing to wait for
-	return a_target_lsa;
-      }
+    assert (!a_target_lsa.is_null ());
 
     std::unique_lock<std::mutex> ulock { m_values_mtx };
     log_lsa outer_res;
