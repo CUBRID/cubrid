@@ -34,6 +34,8 @@ namespace cubcomm
   class request_sync_client_server
   {
     public:
+      using outgoing_msg_id_t = T_OUTGOING_MSG_ID;
+
       using request_client_server_t = cubcomm::request_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID>;
       using incoming_request_handler_t = typename request_client_server_t::server_request_handler;
 

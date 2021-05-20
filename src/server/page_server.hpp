@@ -58,8 +58,8 @@ class page_server
     void finalize_log_page_fetcher ();
 
   private:
-    using active_tran_server_conn_t
-      = cubcomm::request_sync_client_server<ps_to_ats_request, ats_to_ps_request, std::string>;
+    using active_tran_server_conn_t =
+	    cubcomm::request_sync_client_server<ps_to_ats_request, ats_to_ps_request, std::string>;
 
     void receive_log_prior_list (cubpacking::unpacker &upk);
     void receive_log_page_fetch (cubpacking::unpacker &upk);

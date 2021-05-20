@@ -196,10 +196,10 @@ static void handler_register_mock_check_expected_id_and_op_count (test_request_s
 // Stuff for two request_sync_client_server test case
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-using test_request_sync_client_server_one_t
-  = cubcomm::request_sync_client_server<reqids_1_to_2, reqids_2_to_1, payload_with_op_count>;
-using test_request_sync_client_server_two_t
-  = cubcomm::request_sync_client_server<reqids_2_to_1, reqids_1_to_2, payload_with_op_count>;
+using test_request_sync_client_server_one_t =
+	cubcomm::request_sync_client_server<reqids_1_to_2, reqids_2_to_1, payload_with_op_count>;
+using test_request_sync_client_server_two_t =
+	cubcomm::request_sync_client_server<reqids_2_to_1, reqids_1_to_2, payload_with_op_count>;
 
 using uq_test_request_sync_client_server_one_t = std::unique_ptr<test_request_sync_client_server_one_t>;
 using uq_test_request_sync_client_server_two_t = std::unique_ptr<test_request_sync_client_server_two_t>;
@@ -226,6 +226,33 @@ class test_two_request_sync_client_server_env
     uq_test_request_sync_client_server_two_t m_scs_two;
     mock_socket_direction m_sockdir_1_to_2;
     mock_socket_direction m_sockdir_2_to_1;
+};
+
+template <typename T_REQUEST_SYNC_CLIENT_SERVER>
+struct test_two_request_sync_client_server_thread_ftor
+{
+  public:
+    test_two_request_sync_client_server_thread_ftor (
+	    const int a_message_count,
+	    T_REQUEST_SYNC_CLIENT_SERVER &a_rscs,
+	    typename T_REQUEST_SYNC_CLIENT_SERVER::outgoing_msg_id_t a_msg_id)
+      : m_message_count { a_message_count }
+      , m_rscs { a_rscs }
+      , m_msg_id { a_msg_id }
+    {}
+
+    void operator () ()
+    {
+      for (int i = 0; i < m_message_count; ++i)
+	{
+	  push_message_id_and_op (m_rscs, m_msg_id, i);
+	}
+    }
+
+  private:
+    const int m_message_count;
+    T_REQUEST_SYNC_CLIENT_SERVER &m_rscs;
+    typename T_REQUEST_SYNC_CLIENT_SERVER::outgoing_msg_id_t m_msg_id;
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -478,60 +505,31 @@ TEST_CASE ("Test request_sync_client_server", "")
 
   constexpr int MESSAGE_COUNT = 4200;
 
-  std::thread thread_1_to_2_with_0 ([&] ()
-  {
-    for (int i = 0; i < MESSAGE_COUNT; ++i)
-      {
-	push_message_id_and_op (env.get_scs_one (), reqids_1_to_2::_0, i);
-	std::this_thread::yield ();
-      }
-  });
-
-  std::thread thread_1_to_2_with_1 ([&] ()
-  {
-    for (int i = 0; i < MESSAGE_COUNT; ++i)
-      {
-	push_message_id_and_op (env.get_scs_one (), reqids_1_to_2::_1, i);
-	std::this_thread::yield ();
-      }
-  });
-
-  std::thread thread_2_to_1_with_0 ([&] ()
-  {
-    for (int i = 0; i < MESSAGE_COUNT; ++i)
-      {
-	push_message_id_and_op (env.get_scs_two (), reqids_2_to_1::_0, i);
-	std::this_thread::yield ();
-      }
-  });
-
-  std::thread thread_2_to_1_with_1 ([&] ()
-  {
-    for (int i = 0; i < MESSAGE_COUNT; ++i)
-      {
-	push_message_id_and_op (env.get_scs_two (), reqids_2_to_1::_1, i);
-	std::this_thread::yield ();
-      }
-  });
-
-  std::thread thread_2_to_1_with_2 ([&] ()
-  {
-    for (int i = 0; i < MESSAGE_COUNT; ++i)
-      {
-	push_message_id_and_op (env.get_scs_two (), reqids_2_to_1::_2, i);
-	std::this_thread::yield ();
-      }
-  });
+  std::vector<std::thread> threads;
+  threads.emplace_back (
+	  test_two_request_sync_client_server_thread_ftor<test_request_sync_client_server_one_t> (
+		  MESSAGE_COUNT, env.get_scs_one (), reqids_1_to_2::_0));
+  threads.emplace_back (
+	  test_two_request_sync_client_server_thread_ftor<test_request_sync_client_server_one_t> (
+		  MESSAGE_COUNT, env.get_scs_one (), reqids_1_to_2::_1));
+  threads.emplace_back (
+	  test_two_request_sync_client_server_thread_ftor<test_request_sync_client_server_two_t> (
+		  MESSAGE_COUNT, env.get_scs_two (), reqids_2_to_1::_0));
+  threads.emplace_back (
+	  test_two_request_sync_client_server_thread_ftor<test_request_sync_client_server_two_t> (
+		  MESSAGE_COUNT, env.get_scs_two (), reqids_2_to_1::_1));
+  threads.emplace_back (
+	  test_two_request_sync_client_server_thread_ftor<test_request_sync_client_server_two_t> (
+		  MESSAGE_COUNT, env.get_scs_two (), reqids_2_to_1::_2));
 
   env.wait_for_all_messages ((MESSAGE_COUNT * 2) * 2, (MESSAGE_COUNT * 2) * 3);
 
   require_all_sent_requests_are_handled ();
 
-  thread_1_to_2_with_0.join ();
-  thread_1_to_2_with_1.join ();
-  thread_2_to_1_with_0.join ();
-  thread_2_to_1_with_1.join ();
-  thread_2_to_1_with_2.join ();
+  for (auto &th : threads)
+    {
+      th.join ();
+    }
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////

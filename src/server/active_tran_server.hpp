@@ -53,8 +53,8 @@ class active_tran_server
     void push_request (ats_to_ps_request reqid, std::string &&payload);
 
   private:
-    using page_server_conn_t
-      = cubcomm::request_sync_client_server<ats_to_ps_request, ps_to_ats_request, std::string>;
+    using page_server_conn_t =
+	    cubcomm::request_sync_client_server<ats_to_ps_request, ps_to_ats_request, std::string>;
 
     int parse_server_host (const std::string &host);
     int parse_page_server_hosts_config ();
