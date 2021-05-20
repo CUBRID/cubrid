@@ -15122,6 +15122,40 @@ sm_free_constraint_info (SM_CONSTRAINT_INFO ** save_info)
 }
 
 /*
+ * sm_remove_constraint_info() - Remove and free one from SM_CONSTRAINT_INFO list
+ *   save_info_list(in/out): The list to remove from
+ *   save_info(in/out): The info to remove
+ *
+ * NOTE:
+ *  - save_info_list can be set to other or NULL if the first item is removed.
+ *  - save_info set to the next save_info
+ */
+void
+sm_remove_constraint_info (SM_CONSTRAINT_INFO ** save_info_list, SM_CONSTRAINT_INFO ** save_info)
+{
+  SM_CONSTRAINT_INFO **info_ptr = NULL;
+
+  if (save_info_list == NULL || save_info == NULL || *save_info == NULL)
+    {
+      return;
+    }
+
+  info_ptr = save_info_list;
+  while (*info_ptr != NULL)
+    {
+      if (*info_ptr == *save_info)
+	{
+	  SM_CONSTRAINT_INFO *rem_info = *info_ptr;
+	  *save_info = *info_ptr = (*info_ptr)->next;
+	  rem_info->next = NULL;
+	  sm_free_constraint_info (&rem_info);
+	  return;
+	}
+      info_ptr = &((*info_ptr)->next);
+    }
+}
+
+/*
  * sm_touch_class () - makes sure that the XASL query cache is emptied
  *                     by performing a null operation on a class
  *   return: NO_ERROR on success, non-zero for ERROR
@@ -15804,6 +15838,8 @@ sm_truncate_class_internal (std::unordered_set < OID > &&trun_classes)
   DB_CTMPL *ctmpl = NULL;
   SM_ATTRIBUTE *att = NULL;
   MOP class_mop = NULL;
+  SM_CLASS *class_ = NULL;
+  SM_CLASS_CONSTRAINT *c = NULL;
   int au_save = 0;
   OID class_oid = OID_INITIALIZER;
   int partition_type = DB_NOT_PARTITIONED_CLASS;
@@ -15838,8 +15874,6 @@ sm_truncate_class_internal (std::unordered_set < OID > &&trun_classes)
 
   for (const auto& class_oid : trun_classes)
     {
-      SM_CLASS *class_ = NULL;
-      SM_CLASS_CONSTRAINT *c = NULL;
       class_mop = ws_mop (&class_oid, NULL);
       /* We need to flush everything so that the server logs the inserts that happened before the truncate. We need this in
        * order to make sure that a rollback takes us into a consistent state. If we can prove that simply discarding the
@@ -15962,15 +15996,37 @@ sm_truncate_class_internal (std::unordered_set < OID > &&trun_classes)
   for (const auto& class_oid : trun_classes)
     {
       class_mop = ws_mop (&class_oid, NULL);
-      for (saved = unique_save_info[class_oid]; saved != NULL; saved = saved->next)
+      for (saved = unique_save_info[class_oid]; saved != NULL;)
 	{
 	  error =
 	    sm_drop_constraint (class_mop, saved->constraint_type, saved->name, (const char **) saved->att_names, 0,
 				false);
-	  if (error != NO_ERROR)
+          if (error == ER_FK_CANT_DROP_PK_REFERRED)
+            {
+              assert (saved->constraint_type == DB_CONSTRAINT_PRIMARY_KEY);
+
+              error = au_fetch_class (class_mop, &class_, AU_FETCH_WRITE, DB_AUTH_ALTER);
+              if (error != NO_ERROR || class_ == NULL)
+                {
+                  assert (er_errid () != NO_ERROR);
+                  error = er_errid ();
+                  return error;
+                }
+
+              c = classobj_find_cons_primary_key (class_->constraints);
+	      error = locator_remove_class_from_index (ws_oid (class_mop), &c->index_btid, &class_->header.ch_heap);
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
+              sm_remove_constraint_info (&unique_save_info[class_oid], &saved);
+              continue;
+            }
+          else if (error != NO_ERROR)
 	    {
 	      return error;
 	    }
+          saved = saved->next;
 	}
 
       for (saved = index_save_info[class_oid]; saved != NULL; saved = saved->next)
