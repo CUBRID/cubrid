@@ -7868,6 +7868,11 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid)
       std::memcpy (buffer + bytes_copied, &nxio_lsa, sizeof (nxio_lsa));
       bytes_copied += sizeof (nxio_lsa);
 
+      _er_log_debug (ARG_FILE_LINE,
+		     "DBG: pgbuf_request_data_page_from_page_server:"
+		     "  vpid(%d|%hd)  lsa(%lld|%d)  bytes_copied(%d)\n",
+		     VPID_AS_ARGS (vpid), LSA_AS_ARGS (&nxio_lsa), bytes_copied);
+
       std::string message (buffer, bytes_copied);
 
       ats_Gl.push_request (ats_to_ps_request::SEND_DATA_PAGE_FETCH, std::move (message));
