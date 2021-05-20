@@ -930,6 +930,10 @@ net_server_init (void)
   req_p = &net_Requests[NET_SERVER_LOG_READER_GET_LSA];
   req_p->processing_function = slog_reader_get_lsa;
   req_p->name = "NET_SERVER_LOG_READER_GET_LSA";
+
+  req_p = &net_Requests[NET_SERVER_LOG_READER_GET_LOG_REFINED_INFO];
+  req_p->processing_function = slog_reader_get_log_refined_info;
+  req_p->name = "NET_SERVER_LOG_READER_GET_LOG_REFINED_INFO";
 }
 
 #if defined(CUBRID_DEBUG)

@@ -10517,3 +10517,38 @@ slog_reader_get_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
+
+/*
+ * slog_reader_get_log_refined_info -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+slog_reader_get_log_refined_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_LOG_LSA_ALIGNED_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply), *ptr;
+
+  LOG_LSA next_lsa;
+
+  assert (reqlen == OR_LOG_LSA_ALIGNED_SIZE);
+
+  or_unpack_log_lsa (request, &next_lsa);
+
+  _er_log_debug (ARG_FILE_LINE, "recv_next_lsa = %lld|%d", LSA_AS_ARGS (&next_lsa));
+
+  LSA_COPY (&next_lsa, &log_Gl.append.prev_lsa);
+
+  _er_log_debug (ARG_FILE_LINE, "send_next_lsa = %lld|%d", LSA_AS_ARGS (&next_lsa));
+
+  ptr = or_pack_int (reply, NO_ERROR);
+  or_pack_log_lsa (ptr, &next_lsa);
+
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
