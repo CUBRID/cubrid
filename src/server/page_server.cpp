@@ -75,7 +75,7 @@ bool page_server::is_active_tran_server_connected () const
 {
   assert_page_server_type ();
 
-  return m_ats != nullptr && m_ats->is_connected ();
+  return m_ats != nullptr;
 }
 
 void page_server::receive_log_prior_list (cubpacking::unpacker &upk)

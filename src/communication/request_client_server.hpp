@@ -168,7 +168,6 @@ namespace cubcomm
       void start_thread ();	  // start thread that receives and handles requests
       void stop_thread ();	  // stop the thread
 
-      bool has_registered_handlers () const;
       void register_request_handler (MsgId msgid, const server_request_handler &handler);	  // register a handler
 
       const channel &get_channel () const;						  // get underlying channel
@@ -255,12 +254,6 @@ namespace cubcomm
     assert (!other.m_thread.joinable ());   // cannot move if thread is started
     m_channel = std::move (other.m_channel);
     m_request_handlers = std::move (other.m_request_handlers);
-  }
-
-  template <typename MsgId>
-  bool request_server<MsgId>::has_registered_handlers () const
-  {
-    return m_request_handlers.size () > 0;
   }
 
   template <typename MsgId>

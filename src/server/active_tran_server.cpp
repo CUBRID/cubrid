@@ -228,7 +228,7 @@ active_tran_server::is_page_server_connected () const
 {
   assert_is_active_tran_server ();
 
-  return m_ps != nullptr && m_ps->is_connected ();
+  return m_ps != nullptr;
 }
 
 void

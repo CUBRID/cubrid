@@ -476,9 +476,6 @@ TEST_CASE ("Test request_sync_client_server", "")
 {
   test_two_request_sync_client_server_env env;
 
-  REQUIRE (env.get_scs_one ().is_connected ());
-  REQUIRE (env.get_scs_two ().is_connected ());
-
   constexpr int MESSAGE_COUNT = 4200;
 
   std::thread thread_1_to_2_with_0 ([&] ()

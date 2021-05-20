@@ -30,8 +30,6 @@ namespace cubcomm
       request_sync_client_server &operator = (request_sync_client_server &&) = delete;
 
     public:
-      bool is_connected () const;
-
       /* only used by unit tests
        */
       std::string get_underlying_channel_id () const;
@@ -83,14 +81,6 @@ namespace cubcomm
   }
 
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
-  bool
-  request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::is_connected () const
-  {
-    return m_conn != nullptr && m_conn->is_connected ()
-	   && m_queue != nullptr && m_queue_autosend != nullptr;
-  }
-
-  template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
   std::string
   request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::get_underlying_channel_id () const
   {
@@ -102,7 +92,7 @@ namespace cubcomm
   request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::push (
 	  T_OUTGOING_MSG_ID a_outgoing_message_id, T_PAYLOAD &&a_payload)
   {
-    assert (is_connected ());
+    assert (m_conn != nullptr && m_conn->is_connected ());
 
     m_queue->push (a_outgoing_message_id, std::move (a_payload));
   }
