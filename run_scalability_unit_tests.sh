@@ -18,6 +18,7 @@
 
 # A-Z
 ./test_log_page_fetcher
+./test_data_page_fetcher
 ./test_log_page_broker
 ./test_log_lsa_utils
 ./test_meta_log
