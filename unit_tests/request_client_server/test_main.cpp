@@ -235,7 +235,7 @@ struct test_two_request_sync_client_server_thread_ftor
     test_two_request_sync_client_server_thread_ftor (
 	    const int a_message_count,
 	    T_REQUEST_SYNC_CLIENT_SERVER &a_rscs,
-	    typename T_REQUEST_SYNC_CLIENT_SERVER::outgoing_msg_id_t a_msg_id)
+	    const typename T_REQUEST_SYNC_CLIENT_SERVER::outgoing_msg_id_t a_msg_id)
       : m_message_count { a_message_count }
       , m_rscs { a_rscs }
       , m_msg_id { a_msg_id }
@@ -252,7 +252,7 @@ struct test_two_request_sync_client_server_thread_ftor
   private:
     const int m_message_count;
     T_REQUEST_SYNC_CLIENT_SERVER &m_rscs;
-    typename T_REQUEST_SYNC_CLIENT_SERVER::outgoing_msg_id_t m_msg_id;
+    const typename T_REQUEST_SYNC_CLIENT_SERVER::outgoing_msg_id_t m_msg_id;
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -499,7 +499,7 @@ TEST_CASE ("Test request_queue_autosend", "")
   require_all_sent_requests_are_handled ();
 }
 
-TEST_CASE ("Test request_sync_client_server", "")
+TEST_CASE ("Two request_sync_client_server communicate with each other", "[dbg]")
 {
   test_two_request_sync_client_server_env env;
 
