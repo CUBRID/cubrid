@@ -100,7 +100,7 @@ void ut_redo_job_impl::busy_loop (double a_millis)
   do
     {
       const std::chrono::duration<double, std::milli> diff_millis = std::chrono::system_clock::now () - start;
-      diff_millis_count = diff_millis.count ();
+      diff_millis_count = diff_millis.count (); // side effect
     }
   while (diff_millis_count < a_millis);
 }
