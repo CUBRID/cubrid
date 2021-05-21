@@ -9932,7 +9932,7 @@ log_flush_execute (cubthread::entry & thread_ref)
 
   if (!need_flush && get_server_type () == SERVER_TYPE_PAGE)
     {
-      // page server needs to confirm that flushed log asap. if there is any unflushed log, flush it.
+      // page server needs to confirm the flushed log asap. if there is any unflushed log, flush it.
       // Unflushed log may be either:
       //    - In prior list (prior_list_header != nullptr)
       //    - Appended into pages, but not flushed to disk (nxio_lsa < append_lsa)
