@@ -15032,7 +15032,7 @@ sm_is_possible_to_recreate_constraint (MOP class_mop, const SM_CLASS * const cla
 	  /*
 	   * partitioned class
 	   *
-	   * if there is a child class it can be shared,
+	   * if there is a child class, it can be shared,
 	   * but if partitioned, it can't be shared becuase you can't inherit a partitioning table.
 	   */
 	  return true;
@@ -15837,10 +15837,10 @@ error_exit:
 /*
  * sm_truncate_class_internal () - truncates a class
  *   return: NO_ERROR on success, non-zero for ERROR
- *   class_mop(in):
+ *   trun_claases (in): class mops to truncate collected by sm_collect_truncatable_classes()
  */
 int
-sm_truncate_class_internal (std::unordered_set < OID > &&trun_classes)
+sm_truncate_class_internal (std::unordered_set<OID>&& trun_classes)
 {
   int error = NO_ERROR;
   std::unordered_map < OID, SM_CONSTRAINT_INFO * >unique_save_info;
@@ -15883,6 +15883,7 @@ sm_truncate_class_internal (std::unordered_set < OID > &&trun_classes)
       }
   );
 
+  /* Save constraints or if impossible, remove instances from the constraint  */
   for (const auto& class_oid : trun_classes)
     {
       class_mop = ws_mop (&class_oid, NULL);
@@ -15903,7 +15904,6 @@ sm_truncate_class_internal (std::unordered_set < OID > &&trun_classes)
 	  return error;
 	}
 
-      /* collect index information */
       for (c = class_->constraints; c; c = c->next)
 	{
 	  if (!SM_IS_CONSTRAINT_INDEX_FAMILY (c->type))
@@ -15956,11 +15956,10 @@ sm_truncate_class_internal (std::unordered_set < OID > &&trun_classes)
 
   /* Drop constraints. It's also faster to do this if we truncate by deleting. */
 
-  /* FK must be dropped earlier than PK, because of self referencing case */
+  /* FK must be dropped earlier than PK, because of referencing */
   for (const auto& class_oid : trun_classes)
     {
       class_mop = ws_mop (&class_oid, NULL);
-      /* FK must be dropped earlier than PK, because of self referencing case */
       if (fk_save_info[class_oid] != NULL)
 	{
 	  ctmpl = dbt_edit_class (class_mop);
@@ -16038,6 +16037,7 @@ sm_truncate_class_internal (std::unordered_set < OID > &&trun_classes)
 	}
     }
 
+  /* Destroy heap file, if impossible, delete instances from the heap */
   for (const auto& class_oid : trun_classes)
     {
       class_mop = ws_mop (&class_oid, NULL);
@@ -16056,6 +16056,7 @@ sm_truncate_class_internal (std::unordered_set < OID > &&trun_classes)
 	}
     }
 
+  /* Recreate constraints*/
   for (const auto& class_oid : trun_classes)
     {
       class_mop = ws_mop (&class_oid, NULL);
@@ -16118,10 +16119,10 @@ sm_truncate_class_internal (std::unordered_set < OID > &&trun_classes)
 	}
     }
 
+  /* reset auto_increment starting value */
   for (const auto& class_oid : trun_classes)
     {
       class_mop = ws_mop (&class_oid, NULL);
-      /* reset auto_increment starting value */
       for (att = db_get_attributes (class_mop); att != NULL; att = db_attribute_next (att))
 	{
 	  if (att->auto_increment != NULL)
