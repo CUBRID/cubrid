@@ -33,6 +33,7 @@
 #include "intl_support.h"
 #include "dbtype.h"
 #include "string_opfunc.h"
+#include "../base/chartype.h"
 
 /* It is not required for the keywords to be alphabetically sorted, as they
  * will be sorted when needed. See pt_find_keyword.
@@ -623,14 +624,7 @@ pt_find_keyword (const char *text)
 	  return NULL;
 	}
 
-      if (*p >= 'a' && *p <= 'z')
-	{
-	  *s = *p + ('A' - 'a');
-	}
-      else if (*p < 0x80)
-	{
-	  *s = *p;
-	}
+      *s = (unsigned char) char_toupper ((int) *p);
     }
   *s = 0x00;
 #else
