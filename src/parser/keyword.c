@@ -526,22 +526,26 @@ static KEYWORD_RECORD keywords[] = {
 static KEYWORD_RECORD *pt_find_keyword (const char *text);
 static int keyword_cmp (const void *k1, const void *k2);
 
-#define GET_KEYWORD_HASH_VALUE(h,s)  do {       \
-  unsigned char* p = (unsigned char*)(s);       \
-  for((h) = 5381;  *p; p++ )                    \
-    {                                           \
-      (h) = (((h) << 5) + (h)) + *p; /* hash * 33 + c */ \
-    }                                           \
-}while(0)
+#define GET_KEYWORD_HASH_VALUE(h,s)             \
+  do {                                          \
+      unsigned char* p = (unsigned char*)(s);   \
+      for((h) = 5381;  *p; p++ )                \
+        {                                       \
+             (h) = (((h) << 5) + (h)) + *p; /* hash * 33 + c */ \
+        }                                       \
+  }while(0)
 
 static int
 keyword_cmp (const void *k1, const void *k2)
 {
   if (((KEYWORD_RECORD *) k1)->hash_value > ((KEYWORD_RECORD *) k2)->hash_value)
-    return 1;
+    {
+      return 1;
+    }
   if (((KEYWORD_RECORD *) k1)->hash_value < ((KEYWORD_RECORD *) k2)->hash_value)
-    return -1;
-
+    {
+      return -1;
+    }
   return strcmp (((KEYWORD_RECORD *) k1)->keyword, ((KEYWORD_RECORD *) k2)->keyword);
 }
 
@@ -568,9 +572,13 @@ pt_find_keyword (const char *text)
 	{
 	  len = strlen (keywords[i].keyword);
 	  if (len < keyword_min_len)
-	    keyword_min_len = len;
+	    {
+	      keyword_min_len = len;
+	    }
 	  if (len > keyword_max_len)
-	    keyword_max_len = len;
+	    {
+	      keyword_max_len = len;
+	    }
 
 	  GET_KEYWORD_HASH_VALUE (keywords[i].hash_value, keywords[i].keyword);
 	}
@@ -611,12 +619,18 @@ pt_find_keyword (const char *text)
   for (p = (unsigned char *) text; *p; p++, s++)
     {
       if (*p >= 0x80)
-	return NULL;
+	{
+	  return NULL;
+	}
 
       if (*p >= 'a' && *p <= 'z')
-	*s = *p + ('A' - 'a');
+	{
+	  *s = *p + ('A' - 'a');
+	}
       else if (*p < 0x80)
-	*s = *p;
+	{
+	  *s = *p;
+	}
     }
   *s = 0x00;
 #else
@@ -629,16 +643,24 @@ pt_find_keyword (const char *text)
     {
       for (len = start_pos[i]; len < start_pos[i + 1]; len++)
 	{
-	  if (dummy.hash_value < keywords[len].hash_value)
-	    continue;
-	  else if (dummy.hash_value > keywords[len].hash_value)
-	    return NULL;
+	  if (dummy.hash_value > keywords[len].hash_value)
+	    {
+	      continue;
+	    }
+	  else if (dummy.hash_value < keywords[len].hash_value)
+	    {
+	      return NULL;
+	    }
 
 	  cmp = strcmp (dummy.keyword, keywords[len].keyword);
 	  if (cmp < 0)
-	    continue;
+	    {
+	      continue;
+	    }
 	  else if (cmp > 0)
-	    return NULL;
+	    {
+	      return NULL;
+	    }
 
 	  return keywords + len;
 	}
