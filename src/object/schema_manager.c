@@ -421,7 +421,6 @@ static bool sm_filter_index_pred_have_invalid_attrs (SM_CLASS_CONSTRAINT * const
 						     SM_ATTRIBUTE * old_atts, SM_ATTRIBUTE * new_atts);
 
 static int sm_collect_truncatable_classes (MOP class_mop, std::unordered_set < OID > &trun_classes, bool is_cascade);
-//static int sm_truncate_class_internal (MOP class_mop);
 static int sm_truncate_class_internal (std::unordered_set < OID > &&trun_classes);
 static int sm_truncate_using_delete (MOP class_mop);
 static int sm_save_nested_view_versions (PARSER_CONTEXT * parser, DB_OBJECT * class_object, SM_CLASS * class_);
@@ -15847,8 +15846,6 @@ sm_truncate_class_internal (std::unordered_set < OID > &&trun_classes)
   std::unordered_map < OID, SM_CONSTRAINT_INFO * >unique_save_info;
   std::unordered_map < OID, SM_CONSTRAINT_INFO * >fk_save_info;
   std::unordered_map < OID, SM_CONSTRAINT_INFO * >index_save_info;
-//  SM_CONSTRAINT_INFO *fk_save_info = NULL;
-//  SM_CONSTRAINT_INFO *index_save_info = NULL;
   SM_CONSTRAINT_INFO *saved = NULL;
   DB_CTMPL *ctmpl = NULL;
   SM_ATTRIBUTE *att = NULL;
