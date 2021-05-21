@@ -83,6 +83,7 @@
 #include "boot_sr.h"
 #include "db_value_printer.hpp"
 #include "mem_block.hpp"
+#include "server_type.hpp"
 #include "string_buffer.hpp"
 #include "thread_daemon.hpp"
 #include "thread_entry.hpp"
@@ -322,7 +323,7 @@ static cubthread::daemon *log_Remove_log_archive_daemon = NULL;
 static cubthread::daemon *log_Check_ha_delay_info_daemon = NULL;
 
 static cubthread::daemon *log_Flush_daemon = NULL;
-static std::atomic_bool log_Flush_has_been_requested = {false};
+static std::atomic<bool> log_Flush_has_been_requested = {false};
 // *INDENT-ON*
 
 static void log_daemons_init ();
@@ -9916,8 +9917,38 @@ log_check_ha_delay_info_execute (cubthread::entry &thread_ref)
 static void
 log_flush_execute (cubthread::entry & thread_ref)
 {
-  if (!BO_IS_SERVER_RESTARTED () || !log_Flush_has_been_requested)
+  if (!BO_IS_SERVER_RESTARTED ())
     {
+      return;
+    }
+
+  bool need_flush = false;
+
+  // check if flush was requested
+  {
+    bool expected_value = true;
+    need_flush = log_Flush_has_been_requested.compare_exchange_strong (expected_value, false);
+  }
+
+  if (!need_flush && get_server_type () == SERVER_TYPE_PAGE)
+    {
+      // page server needs to confirm that if flushed log asap.
+      // if there is any unflushed log, flush it.
+      // Unflushed log may be either:
+      //    - In prior list (prior_list_header != nullptr)
+      //    - Appended into pages, but not flushed to disk (nxio_lsa < append_lsa)
+
+      // log_lsa compare is not thread safe. Use atomic load on non-atomic type log_Gl.hdr.append_lsa
+      // Atomic operations need to reinterpret the 8-bytes of log_lsa as int64
+      log_lsa append_lsa =
+	static_cast<log_lsa> (ATOMIC_LOAD_64 (reinterpret_cast<std::int64_t *> (&log_Gl.hdr.append_lsa)));
+
+      need_flush = log_Gl.prior_info.prior_list_header != nullptr || log_Gl.append.get_nxio_lsa () < append_lsa;
+    }
+
+  if (!need_flush)
+    {
+      // Try again later
       return;
     }
 
@@ -9932,7 +9963,6 @@ log_flush_execute (cubthread::entry & thread_ref)
 
   pthread_mutex_lock (&log_Gl.group_commit_info.gc_mutex);
   pthread_cond_broadcast (&log_Gl.group_commit_info.gc_cond);
-  log_Flush_has_been_requested = false;
   pthread_mutex_unlock (&log_Gl.group_commit_info.gc_mutex);
 }
 #endif /* SERVER_MODE */
