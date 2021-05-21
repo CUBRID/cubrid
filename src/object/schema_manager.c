@@ -15630,6 +15630,15 @@ sm_truncate_using_destroy_heap (MOP class_mop)
   oid = ws_oid (class_mop);
   assert (!OID_ISTEMP (oid));
 
+  reuse_oid = sm_is_reuse_oid_class (class_mop);
+
+  error = au_fetch_class (class_mop, &class_, AU_FETCH_WRITE, DB_AUTH_ALTER);
+  if (error != NO_ERROR || class_ == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
+
   error = sm_partitioned_class_type (class_mop, &partition_type, NULL, NULL);
   if (error != NO_ERROR)
     {
@@ -15647,15 +15656,6 @@ sm_truncate_using_destroy_heap (MOP class_mop)
 	      return error;
 	    }
 	}
-    }
-
-  reuse_oid = sm_is_reuse_oid_class (class_mop);
-
-  error = au_fetch_class (class_mop, &class_, AU_FETCH_WRITE, DB_AUTH_ALTER);
-  if (error != NO_ERROR || class_ == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      return er_errid ();
     }
 
   insts_hfid = sm_ch_heap ((MOBJ) class_);
