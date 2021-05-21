@@ -10532,10 +10532,13 @@ slog_reader_get_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 void
 slog_reader_get_log_refined_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  OR_ALIGNED_BUF (OR_INT_SIZE + OR_LOG_LSA_ALIGNED_SIZE) a_reply;
+  // 348 24 
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_LOG_LSA_ALIGNED_SIZE + OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply), *ptr;
 
   LOG_LSA next_lsa;
+  int num_infos;
+  int total_length;
 
   assert (reqlen == OR_LOG_LSA_ALIGNED_SIZE);
 
@@ -10547,8 +10550,137 @@ slog_reader_get_log_refined_info (THREAD_ENTRY * thread_p, unsigned int rid, cha
 
   _er_log_debug (ARG_FILE_LINE, "send_next_lsa = %lld|%d", LSA_AS_ARGS (&next_lsa));
 
+  num_infos = 4;
+  total_length = 384;
+
   ptr = or_pack_int (reply, NO_ERROR);
-  or_pack_log_lsa (ptr, &next_lsa);
+  ptr = or_pack_log_lsa (ptr, &next_lsa);
+  ptr = or_pack_int (ptr, num_infos);
+  ptr = or_pack_int (ptr, total_length);
+
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
+ * slog_reader_get_log_refined_info_2 -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+slog_reader_get_log_refined_info_2 (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (384) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply), *ptr;
+
+  /* LOG_INFO 0 - DDL */
+  {
+    int trid = 47;
+    char user[32] = "jooho kim";
+    int data_item_type = 0;
+    int ddl_type = 0;
+    int object_type = 0;
+    uint64_t oid = 777;
+    uint64_t classoid = 888;
+    char statement[50] = "CREATE TABLE JOOHO_TBL (C1 INT, C2 VARCHAR (100))";
+    int statement_length = strlen (statement);
+
+    ptr = or_pack_int (reply, trid);
+    ptr = or_pack_stream (ptr, user, 32);
+    ptr = or_pack_int (ptr, data_item_type);
+    ptr = or_pack_int (ptr, ddl_type);
+    ptr = or_pack_int (ptr, object_type);
+    ptr = or_pack_int64 (ptr, oid);
+    ptr = or_pack_int64 (ptr, classoid);
+    ptr = or_pack_int (ptr, statement_length);
+    ptr = or_pack_stream (ptr, statement, statement_length);
+  }
+
+  /* LOG_INFO 1 - DML */
+  {
+    int trid = 57;
+    char user[32] = "jooho kim";
+    int data_item_type = 1;
+    int dml_type = 1;
+    uint64_t classoid = 888;
+    int num_changed_col = 3;
+    int changed_col_idx[3] = { 1, 3, 5 };	/* 10, "ABCD", "EFG" */
+    int num_cond_col = 2;
+    int cond_col_idx[2] = { 2, 4 };	/* 9, 99 */
+    int i;
+
+    ptr = or_pack_int (ptr, trid);
+    ptr = or_pack_stream (ptr, user, 32);
+    ptr = or_pack_int (ptr, data_item_type);
+    ptr = or_pack_int (ptr, dml_type);
+    ptr = or_pack_int64 (ptr, classoid);
+
+    {
+      ptr = or_pack_int (ptr, num_changed_col);
+
+      for (i = 0; i < num_changed_col; i++)
+	{
+	  ptr = or_pack_int (ptr, changed_col_idx[i]);
+	}
+
+      ptr = or_pack_int (ptr, 0);	/* or_unpack_int () */
+      ptr = or_pack_int (ptr, 10);
+
+      ptr = or_pack_int (ptr, 6);	/* or_unpack_stream () */
+      ptr = or_pack_stream (ptr, "ABCD", 4);
+
+      ptr = or_pack_int (ptr, 6);	/* or_unpack_stream () */
+      ptr = or_pack_stream (ptr, "EFG", 3);
+    }
+
+    {
+      ptr = or_pack_int (ptr, num_cond_col);
+
+      for (i = 0; i < num_cond_col; i++)
+	{
+	  ptr = or_pack_int (ptr, cond_col_idx[i]);
+	}
+
+      ptr = or_pack_int (ptr, 0);	/* or_unpack_int () */
+      ptr = or_pack_int (ptr, 9);
+
+      ptr = or_pack_int (ptr, 0);	/* or_unpack_int () */
+      ptr = or_pack_int (ptr, 99);
+    }
+  }
+
+  /* LOG_INFO 2 - DCL */
+  {
+    int trid = 67;
+    char user[32] = "jooho kim";
+    int data_item_type = 2;
+    int dcl_type = 0;
+    time_t timestamp = time (NULL);
+
+    ptr = or_pack_int (ptr, trid);
+    ptr = or_pack_stream (ptr, user, 32);
+    ptr = or_pack_int (ptr, data_item_type);
+    ptr = or_pack_int (ptr, dcl_type);
+    ptr = or_pack_int64 (ptr, timestamp);
+  }
+
+  /* LOG_INFO 3 - TIMER */
+  {
+    int trid = 77;
+    char user[32] = "jooho kim";
+    int data_item_type = 3;
+    time_t timestamp = time (NULL);
+
+    ptr = or_pack_int (ptr, trid);
+    ptr = or_pack_stream (ptr, user, 32);
+    ptr = or_pack_int (ptr, data_item_type);
+    ptr = or_pack_int64 (ptr, timestamp);
+  }
 
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }

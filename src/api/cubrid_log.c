@@ -25,6 +25,7 @@
 #if defined(CS_MODE)
 
 #include <arpa/inet.h>
+#include <assert.h>
 #include <limits.h>
 
 #include "connection_cl.h"
@@ -106,6 +107,9 @@ int g_trace_log_level = 0;
 int g_trace_log_filesize = 10;	/* MB */
 
 LOG_LSA g_next_lsa = LSA_INITIALIZER;
+
+char *g_log_infos = NULL;
+int g_log_infos_size = 0;
 
 /*
  * cubrid_log_set_connection_timeout () -
@@ -620,12 +624,12 @@ cubrid_log_error:
 }
 
 static int
-cubrid_log_extract_internal (LOG_LSA * next_lsa)
+cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_length)
 {
   unsigned short rid = 0;
 
   OR_ALIGNED_BUF (OR_LOG_LSA_ALIGNED_SIZE) a_request;
-  OR_ALIGNED_BUF (OR_INT_SIZE + OR_LOG_LSA_ALIGNED_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_LOG_LSA_ALIGNED_SIZE + OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *request = OR_ALIGNED_BUF_START (a_request), *ptr;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   int request_size = OR_ALIGNED_BUF_SIZE (a_request);
@@ -651,7 +655,7 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa)
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LSA);
     }
 
-  if (recv_data == NULL || recv_data_size != OR_INT_SIZE + OR_LOG_LSA_ALIGNED_SIZE)
+  if (recv_data == NULL || recv_data_size != OR_INT_SIZE + OR_LOG_LSA_ALIGNED_SIZE + OR_INT_SIZE + OR_INT_SIZE)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LSA);
     }
@@ -667,15 +671,52 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa)
   printf ("send_next_lsa = %lld|%d\n", LSA_AS_ARGS (next_lsa));
 #endif
 
-  or_unpack_log_lsa (ptr, next_lsa);
+  ptr = or_unpack_log_lsa (ptr, next_lsa);
 
 #if !defined (NDEBUG)
   printf ("recv_next_lsa = %lld|%d\n", LSA_AS_ARGS (next_lsa));
 #endif
 
+  ptr = or_unpack_int (ptr, num_infos);
+  or_unpack_int (ptr, total_length);
+
+#if !defined (NDEBUG)
+  printf ("num_infos = %d, total_length = %d\n", *num_infos, *total_length);
+#endif
+
   if (recv_data != NULL && recv_data != reply)
     {
       free_and_init (recv_data);
+    }
+
+  if (g_log_infos_size < *total_length)
+    {
+      g_log_infos = (char *) realloc ((void *) g_log_infos, *total_length + MAX_ALIGNMENT);
+      if (g_log_infos == NULL)
+	{
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LSA);
+	}
+
+      g_log_infos_size = *total_length;
+    }
+
+  reply = PTR_ALIGN (g_log_infos, MAX_ALIGNMENT);
+  reply_size = *total_length;
+
+  if (css_send_request_with_data_buffer
+      (g_conn_entry, NET_SERVER_LOG_READER_GET_LOG_REFINED_INFO_2, &rid, NULL, 0, reply, reply_size) != NO_ERRORS)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LSA);
+    }
+
+  if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, g_extraction_timeout * 1000) != NO_ERRORS)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LSA);
+    }
+
+  if (recv_data == NULL || recv_data_size != *total_length)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LSA);
     }
 
   return CUBRID_LOG_SUCCESS;
@@ -697,6 +738,26 @@ cubrid_log_error:
   return err_code;
 }
 
+static int
+cubrid_make_log_item_list (int num_infos, int total_length, CUBRID_LOG_ITEM ** log_item_list, int *list_size)
+{
+  int i;
+  int err_code;
+
+  for (i = 0; i < num_infos; i++)
+    {
+      // make LOG_ITEMs
+    }
+
+  *list_size = num_infos;
+
+  return CUBRID_LOG_SUCCESS;
+
+cubrid_log_error:
+
+  return err_code;
+}
+
 /*
  * cubrid_log_extract () -
  *   return:
@@ -707,6 +768,7 @@ cubrid_log_error:
 int
 cubrid_log_extract (uint64_t * lsa, CUBRID_LOG_ITEM ** log_item_list, int *list_size)
 {
+  int num_infos, total_length;
   int err_code;
 
   if (g_stage != CUBRID_LOG_STAGE_PREPARATION && g_stage != CUBRID_LOG_STAGE_EXTRACTION)
@@ -721,7 +783,12 @@ cubrid_log_extract (uint64_t * lsa, CUBRID_LOG_ITEM ** log_item_list, int *list_
 
   memcpy (&g_next_lsa, lsa, sizeof (LOG_LSA));
 
-  if (cubrid_log_extract_internal (&g_next_lsa) != CUBRID_LOG_SUCCESS)
+  if (cubrid_log_extract_internal (&g_next_lsa, &num_infos, &total_length) != CUBRID_LOG_SUCCESS)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LSA);
+    }
+
+  if (cubrid_make_log_item_list (num_infos, total_length, log_item_list, list_size) != CUBRID_LOG_SUCCESS)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LSA);
     }
