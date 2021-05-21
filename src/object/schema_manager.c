@@ -15843,9 +15843,9 @@ int
 sm_truncate_class_internal (std::unordered_set<OID>&& trun_classes)
 {
   int error = NO_ERROR;
-  std::unordered_map < OID, SM_CONSTRAINT_INFO * >unique_save_info;
-  std::unordered_map < OID, SM_CONSTRAINT_INFO * >fk_save_info;
-  std::unordered_map < OID, SM_CONSTRAINT_INFO * >index_save_info;
+  std::unordered_map<OID, SM_CONSTRAINT_INFO*> unique_save_info;
+  std::unordered_map<OID, SM_CONSTRAINT_INFO*> fk_save_info;
+  std::unordered_map<OID, SM_CONSTRAINT_INFO*> index_save_info;
   SM_CONSTRAINT_INFO *saved = NULL;
   DB_CTMPL *ctmpl = NULL;
   SM_ATTRIBUTE *att = NULL;
@@ -15883,7 +15883,7 @@ sm_truncate_class_internal (std::unordered_set<OID>&& trun_classes)
       }
   );
 
-  /* Save constraints or if impossible, remove instances from the constraint  */
+  /* Save constraints. Or, remove instances from the constraint if impossible */
   for (const auto& class_oid : trun_classes)
     {
       class_mop = ws_mop (&class_oid, NULL);
@@ -16001,6 +16001,13 @@ sm_truncate_class_internal (std::unordered_set<OID>&& trun_classes)
 				false);
           if (error == ER_FK_CANT_DROP_PK_REFERRED)
             {
+              /*
+               * While saving fk infos above, it can be determined as not recreatable and end up removing instances instead.
+               * A pk can't be dropped if there is a FK referring to it. So, in this case, instances in that pk also has to be removed.
+               *
+               * For example, there is A<-B, which means B referes to A using FK, and B is in an inheritance hierarchy. Because the FKs of a class
+               * in an inheritance hierarchy can't be dropped, instances in the PK of A is removed here.
+               */
               assert (saved->constraint_type == DB_CONSTRAINT_PRIMARY_KEY);
 
               error = au_fetch_class (class_mop, &class_, AU_FETCH_WRITE, DB_AUTH_ALTER);
@@ -16017,6 +16024,7 @@ sm_truncate_class_internal (std::unordered_set<OID>&& trun_classes)
 		{
 		  return error;
 		}
+              /* remove the constraint info to skip the creating constraint step below */
               saved = sm_remove_constraint_info (&unique_save_info[class_oid], saved);
               continue;
             }
@@ -16037,7 +16045,7 @@ sm_truncate_class_internal (std::unordered_set<OID>&& trun_classes)
 	}
     }
 
-  /* Destroy heap file, if impossible, delete instances from the heap */
+  /* Destroy heap file. Or, delete instances from the heap if impossible */
   for (const auto& class_oid : trun_classes)
     {
       class_mop = ws_mop (&class_oid, NULL);
@@ -16056,7 +16064,7 @@ sm_truncate_class_internal (std::unordered_set<OID>&& trun_classes)
 	}
     }
 
-  /* Recreate constraints*/
+  /* Recreate constraints */
   for (const auto& class_oid : trun_classes)
     {
       class_mop = ws_mop (&class_oid, NULL);
