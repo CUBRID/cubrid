@@ -72,29 +72,35 @@ TEST_CASE ("Test with a valid log page returned", "")
 {
   THREAD_ENTRY *thread_p = NULL;
   cubthread::initialize (thread_p);
-  cubthread::initialize_thread_entries ();
+  cubthread::initialize_thread_entries (); // + finalize
 
-  std::vector<VPID> vpids { {1, 0}, {2, 0}, {3, 0} };
-  test_env env (true, vpids);
-  do_test (env);
-}
+  SECTION ("1. Test with a valid log page returned")
+  {
+    std::vector<VPID> vpids { {1, 0}, {2, 0}, {3, 0} };
+    test_env env (true, vpids);
+    do_test (env);
+  }
 
-TEST_CASE ("Test with an invalid log page returned", "")
-{
-  std::vector<VPID> vpids { {4, 0}, {5, 0}, {6, 0} };
-  test_env env (false, vpids);
-  do_test (env);
-}
+  SECTION ("2. Test with a valid log page returned")
+  {
+    std::vector<VPID> vpids { {4, 0}, {5, 0}, {6, 0} };
+    test_env env (false, vpids);
+    do_test (env);
+  }
 
-TEST_CASE ("Test with a very big number of pages", "")
-{
-  std::vector<VPID> vpids;
-  for (auto i = 0; i < 10000; ++i)
-    {
-      vpids.push_back ({i, 0});
-    }
-  test_env env (true, vpids);
-  do_test (env);
+  SECTION ("3. Test with a very big number of pages")
+  {
+    std::vector<VPID> vpids;
+    for (auto i = 0; i < 10000; ++i)
+      {
+	vpids.push_back ({i, 0});
+      }
+    test_env env (true, vpids);
+    do_test (env);
+  }
+
+  // cubthread::retire_entry (thread_p);
+  cubthread::finalize ();
 }
 
 test_env::test_env (bool require_data_page_valid, std::vector<VPID> vpids)
