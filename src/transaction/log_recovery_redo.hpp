@@ -507,6 +507,7 @@ inline int log_rv_get_log_rec_redo_data<LOG_REC_COMPENSATE> (THREAD_ENTRY *threa
   return log_rv_get_unzip_and_diff_redo_log_data (thread_p, log_pgptr_reader, &rcv, 0, nullptr, redo_unzip_support);
 }
 
+#if !defined(NDEBUG)
 class vpid_lsa_consistency_check
 {
   public:
@@ -526,11 +527,10 @@ class vpid_lsa_consistency_check
     using vpid_key_t = std::pair<short, int32_t>;
     using vpid_log_lsa_map_t = std::map<vpid_key_t, struct log_lsa>;
 
-#if !defined(NDEBUG)
     std::mutex mtx;
     vpid_log_lsa_map_t consistency_check_map;
-#endif
 };
+#endif
 
 #if !defined(NDEBUG)
 extern vpid_lsa_consistency_check log_Gl_recovery_redo_consistency_check;
@@ -542,9 +542,12 @@ void log_rv_redo_record_sync (THREAD_ENTRY *thread_p, log_reader &log_pgptr_read
 			      LOG_ZIP &undo_unzip_support, LOG_ZIP &redo_unzip_support)
 {
 #if !defined(NDEBUG)
-  // bit of debug code to ensure that, should this code be executed asynchronously, within the same page,
-  // the lsa is ever-increasing, thus, not altering the order in which it has been added to the log in the first place
-  log_Gl_recovery_redo_consistency_check.check (rcv_vpid, rcv_lsa);
+  if (log_Gl.rcv_phase != LOG_RESTARTED)
+    {
+      // bit of debug code to ensure that, should this code be executed asynchronously, within the same page,
+      // the lsa is ever-increasing, thus, not altering the order in which it has been added to the log in the first place
+      log_Gl_recovery_redo_consistency_check.check (rcv_vpid, rcv_lsa);
+    }
 #endif
 
   const LOG_DATA &log_data = log_rv_get_log_rec_data<T> (log_rec);
