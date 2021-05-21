@@ -33,7 +33,7 @@
 #include "intl_support.h"
 #include "dbtype.h"
 #include "string_opfunc.h"
-#include "../base/chartype.h"
+#include "chartype.h"
 
 /* It is not required for the keywords to be alphabetically sorted, as they
  * will be sorted when needed. See pt_find_keyword.
