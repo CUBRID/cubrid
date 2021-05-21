@@ -6840,11 +6840,13 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
     // *INDENT-ON*
   }
 
+#if defined (SERVER_MODE)
   if (get_server_type () == SERVER_TYPE_PAGE)
     {
       // Wait the replication to catch up first
       ps_Gl.get_replicator ().wait_past_target_lsa (new_chkpt_redo_lsa);
     }
+#endif // SERVER_MODE = not SA_MODE
 
   /*
    * Modify log header to record present checkpoint. The header is flushed
