@@ -15624,9 +15624,30 @@ sm_truncate_using_destroy_heap (MOP class_mop)
   int error = NO_ERROR;
   bool reuse_oid = false;
   OID *oid = NULL;
+  DB_OBJLIST *subs;
+  int partition_type = DB_NOT_PARTITIONED_CLASS;
 
   oid = ws_oid (class_mop);
   assert (!OID_ISTEMP (oid));
+
+  error = sm_partitioned_class_type (class_mop, &partition_type, NULL, NULL);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (partition_type == DB_PARTITIONED_CLASS)
+    {
+      assert (class_->users);
+      for (subs = class_->users; subs; subs = subs->next)
+	{
+	  error = sm_truncate_using_destroy_heap (subs->op);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	}
+    }
 
   reuse_oid = sm_is_reuse_oid_class (class_mop);
 
@@ -15710,29 +15731,6 @@ sm_collect_truncatable_classes (MOP class_mop, std::unordered_set < OID > &trun_
       return error;
     }
 
-  if (partition_type == DB_PARTITION_CLASS)
-    {
-      /*
-       * TRUNCATE [partition class] is already prevented.
-       * This can be reached because if a FK of partitioned class referes a PK, FKs of the partition classes also refer to it.
-       *
-       * No need to be added to trun_classes:
-       *  Partition classes will be added when examining the partitioned class of them.
-       * No need to check FK for cascaing:
-       *  It's enough to check the PK of the partitioned class for cascading.
-       */
-      return NO_ERROR;
-    }
-  else if (partition_type == DB_PARTITIONED_CLASS)
-    {
-      /* Find partition classes if exists */
-      assert (class_->users);
-      for (subs = class_->users; subs; subs = subs->next)
-	{
-	  trun_classes.emplace (*ws_oid (subs->op));
-	}
-    }
-
   trun_classes.emplace (*ws_oid (class_mop));
 
   if (!is_pk_referred)
@@ -15756,6 +15754,22 @@ sm_collect_truncatable_classes (MOP class_mop, std::unordered_set < OID > &trun_
 	    {
 	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
+	    }
+
+	  int partition_type = DB_NOT_PARTITIONED_CLASS;
+	  error = sm_partitioned_class_type (class_mop, &partition_type, NULL, NULL);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+
+	  if (partition_type == DB_PARTITION_CLASS)
+	    {
+	      /*
+	       * FKs of all partition classes refers to a class that the parittioned class of them referes to.
+	       * But, partition class will be processed when the partitioned class is done.
+	       */
+	      continue;
 	    }
 
 	  error = sm_collect_truncatable_classes (fk_child_mop, trun_classes, is_cascade);
@@ -15843,7 +15857,6 @@ sm_truncate_class_internal (std::unordered_set < OID > &&trun_classes)
   SM_CLASS_CONSTRAINT *c = NULL;
   int au_save = 0;
   OID class_oid = OID_INITIALIZER;
-  int partition_type = DB_NOT_PARTITIONED_CLASS;
 
   for (const auto& class_oid : trun_classes)
     {
@@ -15884,18 +15897,6 @@ sm_truncate_class_internal (std::unordered_set < OID > &&trun_classes)
 	{
 	  return error;
 	}
-
-      error = sm_partitioned_class_type (class_mop, &partition_type, NULL, NULL);
-      if (error != NO_ERROR)
-        {
-          return error;
-        }
-
-      if (partition_type == DB_PARTITION_CLASS)
-      {
-        /* constraints of partition classes are handled while the partitioned table of them are handled. skip it. */
-        continue;
-      }
 
       error = au_fetch_class (class_mop, &class_, AU_FETCH_WRITE, DB_AUTH_ALTER);
       if (error != NO_ERROR || class_ == NULL)
@@ -16043,6 +16044,7 @@ sm_truncate_class_internal (std::unordered_set < OID > &&trun_classes)
   for (const auto& class_oid : trun_classes)
     {
       class_mop = ws_mop (&class_oid, NULL);
+
       if (sm_is_reuse_oid_class (class_mop))
 	{
 	  error = sm_truncate_using_destroy_heap (class_mop);
@@ -16122,18 +16124,6 @@ sm_truncate_class_internal (std::unordered_set < OID > &&trun_classes)
   for (const auto& class_oid : trun_classes)
     {
       class_mop = ws_mop (&class_oid, NULL);
-      error = sm_partitioned_class_type (class_mop, &partition_type, NULL, NULL);
-      if (error != NO_ERROR)
-        {
-          return error;
-        }
-
-      if (partition_type == DB_PARTITION_CLASS)
-      {
-        // 이렇게 예외처리해야할 부분이 많으면 그냥 컬렉팅하지를 말고, 힙 파괴를 파티셔닝 테이블 찾아서 해주자. 그게 더 깔끔한거 맞나?
-        /* constraints of partition classes are handled while the partitioned table of them are handled. skip it. */
-        continue;
-      }
       /* reset auto_increment starting value */
       for (att = db_get_attributes (class_mop); att != NULL; att = db_attribute_next (att))
 	{
