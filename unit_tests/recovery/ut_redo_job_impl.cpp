@@ -96,21 +96,11 @@ ux_ut_redo_job_impl ut_redo_job_impl::clone ()
 void ut_redo_job_impl::busy_loop (double a_millis)
 {
   const auto start = std::chrono::system_clock::now ();
-  int loop_count = 0;
-  while (true)
+  double volatile diff_millis_count = 0.;
+  do
     {
-      // https://stackoverflow.com/a/58758133
-      for (unsigned i = 0; i < 1000; i++)
-	{
-	  __asm__ __volatile__ ("" : "+g" (i) : :);
-	}
       const std::chrono::duration<double, std::milli> diff_millis = std::chrono::system_clock::now () - start;
-      const double diff_millis_count = diff_millis.count ();
-      if (a_millis <= diff_millis_count )
-	{
-	  auto dbg = loop_count;
-	  break;
-	}
-      ++loop_count;
+      diff_millis_count = diff_millis.count ();
     }
+  while (diff_millis_count < a_millis);
 }

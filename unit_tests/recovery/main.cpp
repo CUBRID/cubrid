@@ -333,7 +333,7 @@ TEST_CASE ("minimum log lsa: simple test", "[ci]")
   }
 }
 
-TEST_CASE ("minimum log lsa: complete test", "[ci][dbg]")
+TEST_CASE ("minimum log lsa: complete test", "[ci]")
 {
   constexpr int TASK_THREAD_COUNT = 42;
   constexpr log_lsa SENTINEL_LSA { MAX_LSA };
