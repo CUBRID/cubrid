@@ -209,6 +209,7 @@ static PT_NODE *pt_path_chain (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 static PT_NODE *pt_expand_isnull_preds_helper (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_expand_isnull_preds (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_check_and_replace_hostvar (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_NODE *pt_check_with_clause (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO * info);
 static DB_OBJECT *pt_find_class (PARSER_CONTEXT * parser, PT_NODE * p, bool for_update);
 static void pt_check_unique_attr (PARSER_CONTEXT * parser, const char *entity_name, PT_NODE * att,
@@ -8523,6 +8524,14 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	  if (select->info.query.with != NULL)
 	    {
 	      // run semantic check only for CREATE ... AS WITH ...
+	      if ((crt_attr = pt_check_with_clause (parser, select)) != NULL)
+		{
+		  /* no alias for CTE select list */
+		  PT_ERRORmf (parser, qry_specs, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_MISSING_ATTR_NAME,
+			      pt_short_print (parser, crt_attr));
+		  return;
+		}
+
 	      select = pt_semantic_check (parser, select);
 	    }
 
@@ -10701,6 +10710,57 @@ pt_check_and_replace_hostvar (PARSER_CONTEXT * parser, PT_NODE * node, void *arg
     }
 
   return node;
+}
+
+/*
+ * pt_check_with_clause () -  
+ *   do semantic checks on "create entity" has "with clause"
+ *   this function is called from pt_check_create_entity only
+ *   so, not needed to check NULL for node
+ *
+ *   return:  NULL if no errors, attribute of CTE otherwise
+ *   node(in): a "with" statement that needs to be checked.
+ */
+
+static PT_NODE *
+pt_check_with_clause (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE *cte = node->info.query.with->info.with_clause.cte_definition_list;
+
+  if (cte)
+    {
+      PT_NODE *cte_part;
+      PT_NODE *cte_attr;
+
+      if (cte->info.cte.as_attr_list == NULL)
+	{
+	  cte_part = cte->info.cte.non_recursive_part;
+	  if (cte_part)
+	    {
+	      for (cte_attr = pt_get_select_list (parser, cte_part); cte_attr != NULL; cte_attr = cte_attr->next)
+		{
+		  if (cte_attr->alias_print == NULL && cte_attr->node_type != PT_NAME && cte_attr->node_type != PT_DOT_)
+		    {
+		      return cte_attr;
+		    }
+		}
+	    }
+
+	  cte_part = cte->info.cte.recursive_part;
+	  if (cte_part)
+	    {
+	      for (cte_attr = pt_get_select_list (parser, cte_part); cte_attr != NULL; cte_attr = cte_attr->next)
+		{
+		  if (cte_attr->alias_print == NULL && cte_attr->node_type != PT_NAME && cte_attr->node_type != PT_DOT_)
+		    {
+		      return cte_attr;
+		    }
+		}
+	    }
+	}
+    }
+
+  return NULL;
 }
 
 /*
