@@ -16,7 +16,7 @@
 #
 #
 
-project(test_log_transfer)
+project(test_log)
 
 #
 # test_meta_log
