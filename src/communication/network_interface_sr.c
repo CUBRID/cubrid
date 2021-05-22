@@ -10551,7 +10551,7 @@ slog_reader_get_log_refined_info (THREAD_ENTRY * thread_p, unsigned int rid, cha
   _er_log_debug (ARG_FILE_LINE, "send_next_lsa = %lld|%d", LSA_AS_ARGS (&next_lsa));
 
   num_infos = 4;
-  total_length = 384;
+  total_length = 400;
 
   ptr = or_pack_int (reply, NO_ERROR);
   ptr = or_pack_log_lsa (ptr, &next_lsa);
@@ -10575,8 +10575,12 @@ slog_reader_get_log_refined_info (THREAD_ENTRY * thread_p, unsigned int rid, cha
 void
 slog_reader_get_log_refined_info_2 (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  OR_ALIGNED_BUF (384) a_reply;
+  OR_ALIGNED_BUF (400) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply), *ptr;
+
+  int log_info_len = 0;		// unused information
+
+  ptr = or_pack_int (reply, log_info_len);
 
   /* LOG_INFO 0 - DDL */
   {
@@ -10590,7 +10594,7 @@ slog_reader_get_log_refined_info_2 (THREAD_ENTRY * thread_p, unsigned int rid, c
     char statement[50] = "CREATE TABLE JOOHO_TBL (C1 INT, C2 VARCHAR (100))";
     int statement_length = strlen (statement);
 
-    ptr = or_pack_int (reply, trid);
+    ptr = or_pack_int (ptr, trid);
     ptr = or_pack_stream (ptr, user, 32);
     ptr = or_pack_int (ptr, data_item_type);
     ptr = or_pack_int (ptr, ddl_type);
@@ -10600,6 +10604,8 @@ slog_reader_get_log_refined_info_2 (THREAD_ENTRY * thread_p, unsigned int rid, c
     ptr = or_pack_int (ptr, statement_length);
     ptr = or_pack_stream (ptr, statement, statement_length);
   }
+
+  ptr = or_pack_int (ptr, log_info_len);
 
   /* LOG_INFO 1 - DML */
   {
@@ -10654,6 +10660,8 @@ slog_reader_get_log_refined_info_2 (THREAD_ENTRY * thread_p, unsigned int rid, c
     }
   }
 
+  ptr = or_pack_int (ptr, log_info_len);
+
   /* LOG_INFO 2 - DCL */
   {
     int trid = 67;
@@ -10668,6 +10676,8 @@ slog_reader_get_log_refined_info_2 (THREAD_ENTRY * thread_p, unsigned int rid, c
     ptr = or_pack_int (ptr, dcl_type);
     ptr = or_pack_int64 (ptr, timestamp);
   }
+
+  ptr = or_pack_int (ptr, log_info_len);
 
   /* LOG_INFO 3 - TIMER */
   {

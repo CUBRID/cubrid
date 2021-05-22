@@ -111,6 +111,9 @@ LOG_LSA g_next_lsa = LSA_INITIALIZER;
 char *g_log_infos = NULL;
 int g_log_infos_size = 0;
 
+CUBRID_LOG_ITEM *g_log_items = NULL;
+int g_log_items_count = 0;
+
 /*
  * cubrid_log_set_connection_timeout () -
  *   return:
@@ -738,17 +741,164 @@ cubrid_log_error:
   return err_code;
 }
 
-static int
-cubrid_make_log_item_list (int num_infos, int total_length, CUBRID_LOG_ITEM ** log_item_list, int *list_size)
+inline static int
+cubrid_log_make_ddl (char **data_info, DDL * ddl)
 {
+  char *ptr;
+
+  ptr = *data_info;
+
+  ptr = or_unpack_int (ptr, &ddl->ddl_type);
+  ptr = or_unpack_int (ptr, &ddl->object_type);
+  ptr = or_unpack_int64 (ptr, (INT64 *) & ddl->oid);
+  ptr = or_unpack_int64 (ptr, (INT64 *) & ddl->classoid);
+  ptr = or_unpack_int (ptr, &ddl->statement_length);
+  ptr = or_unpack_string_nocopy (ptr, &ddl->statement);
+
+  *data_info = ptr;
+
+  return CUBRID_LOG_SUCCESS;
+}
+
+inline static int
+cubrid_log_make_dcl (char **data_info, DCL * dcl)
+{
+  char *ptr;
+
+  ptr = *data_info;
+
+  ptr = or_unpack_int (ptr, &dcl->dcl_type);
+  ptr = or_unpack_int64 (ptr, &dcl->timestamp);
+
+  *data_info = ptr;
+
+  return CUBRID_LOG_SUCCESS;
+}
+
+inline static int
+cubrid_log_make_timer (char **data_info, TIMER * timer)
+{
+  char *ptr;
+
+  ptr = *data_info;
+
+  ptr = or_unpack_int64 (ptr, &timer->timestamp);
+
+  *data_info = ptr;
+
+  return CUBRID_LOG_SUCCESS;
+}
+
+static int
+cubrid_log_make_data_item (char **data_info, DATA_ITEM_TYPE data_item_type, CUBRID_DATA_ITEM * data_item)
+{
+  int err_code;
+
+  switch (data_item_type)
+    {
+    case DATA_ITEM_TYPE_DDL:
+      if (cubrid_log_make_ddl (data_info, &data_item->ddl) != CUBRID_LOG_SUCCESS)
+	{
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LSA);
+	}
+
+      break;
+
+    case DATA_ITEM_TYPE_DML:
+      break;
+
+    case DATA_ITEM_TYPE_DCL:
+      if (cubrid_log_make_dcl (data_info, &data_item->dcl) != CUBRID_LOG_SUCCESS)
+	{
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LSA);
+	}
+
+      break;
+
+    case DATA_ITEM_TYPE_TIMER:
+      if (cubrid_log_make_timer (data_info, &data_item->timer) != CUBRID_LOG_SUCCESS)
+	{
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LSA);
+	}
+
+      break;
+
+    default:
+      assert (0);
+    }
+
+  return CUBRID_LOG_SUCCESS;
+
+cubrid_log_error:
+
+  return err_code;
+}
+
+static int
+cubrid_log_make_log_item (char **log_info, CUBRID_LOG_ITEM * log_item)
+{
+  char *ptr;
+
+  int log_info_len;
+  int err_code;
+
+  ptr = *log_info;
+
+  ptr = or_unpack_int (ptr, &log_info_len);
+
+  ptr = or_unpack_int (ptr, &log_item->transaction_id);
+  ptr = or_unpack_string_nocopy (ptr, &log_item->user);
+  ptr = or_unpack_int (ptr, &log_item->data_item_type);
+
+  if (cubrid_log_make_data_item (&ptr, (DATA_ITEM_TYPE) log_item->data_item_type, &log_item->data_item) !=
+      CUBRID_LOG_SUCCESS)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LSA);
+    }
+
+  *log_info = ptr;
+
+  return CUBRID_LOG_SUCCESS;
+
+cubrid_log_error:
+
+  return err_code;
+}
+
+static int
+cubrid_log_make_log_item_list (int num_infos, int total_length, CUBRID_LOG_ITEM ** log_item_list, int *list_size)
+{
+  char *ptr;
+
   int i;
   int err_code;
 
-  for (i = 0; i < num_infos; i++)
+  if (g_log_items_count < num_infos)
     {
-      // make LOG_ITEMs
+      g_log_items = (CUBRID_LOG_ITEM *) realloc ((void *) g_log_items, sizeof (CUBRID_LOG_ITEM) * num_infos);
+      if (g_log_items == NULL)
+	{
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LSA);
+	}
+
+      g_log_items_count = num_infos;
     }
 
+  ptr = PTR_ALIGN (g_log_infos, MAX_ALIGNMENT);
+
+  for (i = 0; i < num_infos; i++)
+    {
+      if (cubrid_log_make_log_item (&ptr, &g_log_items[i]) != CUBRID_LOG_SUCCESS)
+	{
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LSA);
+	}
+
+      g_log_items[i].next = &g_log_items[i + 1];
+    }
+
+  g_log_items[num_infos - 1].next = NULL;
+
+  *log_item_list = g_log_items;
   *list_size = num_infos;
 
   return CUBRID_LOG_SUCCESS;
@@ -788,7 +938,7 @@ cubrid_log_extract (uint64_t * lsa, CUBRID_LOG_ITEM ** log_item_list, int *list_
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LSA);
     }
 
-  if (cubrid_make_log_item_list (num_infos, total_length, log_item_list, list_size) != CUBRID_LOG_SUCCESS)
+  if (cubrid_log_make_log_item_list (num_infos, total_length, log_item_list, list_size) != CUBRID_LOG_SUCCESS)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LSA);
     }
