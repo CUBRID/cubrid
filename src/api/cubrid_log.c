@@ -823,22 +823,75 @@ cubrid_log_clear_log_item (CUBRID_LOG_ITEM * log_item_list)
   return CUBRID_LOG_SUCCESS;
 }
 
-/*
- * cubrid_log_finalize () -
- *   return:
- */
-int
-cubrid_log_finalize (void)
+static int
+cubrid_log_disconnect_server (void)
 {
-  int i = 0;
+  unsigned short rid = 0;
 
-  if (g_stage != CUBRID_LOG_STAGE_PREPARATION && g_stage != CUBRID_LOG_STAGE_EXTRACTION)
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int reply_size = OR_ALIGNED_BUF_SIZE (a_reply), reply_code;
+
+  char *recv_data = NULL;
+  int recv_data_size;
+
+  CSS_QUEUE_ENTRY *queue_entry;
+  int err_code;
+
+  if (css_send_request_with_data_buffer
+      (g_conn_entry, NET_SERVER_LOG_READER_FINALIZE, &rid, NULL, 0, reply, reply_size) != NO_ERRORS)
     {
-      return CUBRID_LOG_INVALID_FUNC_CALL_STAGE;
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_DISCONNECT);
+    }
+
+  if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, g_extraction_timeout * 1000) != NO_ERRORS)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_DISCONNECT);
+    }
+
+  if (recv_data == NULL || recv_data_size != OR_INT_SIZE)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_DISCONNECT);
+    }
+
+  or_unpack_int (recv_data, &reply_code);
+
+  if (reply_code != NO_ERROR)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_DISCONNECT);
+    }
+
+  if (recv_data != NULL && recv_data != reply)
+    {
+      free_and_init (recv_data);
     }
 
   css_free_conn (g_conn_entry);
   g_conn_entry = NULL;
+
+  return CUBRID_LOG_SUCCESS;
+
+cubrid_log_error:
+
+  if (recv_data != NULL && recv_data != reply)
+    {
+      free_and_init (recv_data);
+    }
+
+  queue_entry = css_find_queue_entry (g_conn_entry->buffer_queue, rid);
+  if (queue_entry != NULL)
+    {
+      queue_entry->buffer = NULL;
+      css_queue_remove_header_entry_ptr (&g_conn_entry->buffer_queue, queue_entry);
+    }
+
+  return err_code;
+}
+
+static int
+cubrid_log_reset_globals (void)
+{
+  int i;
 
   g_connection_timeout = 300;
   g_extraction_timeout = 300;
@@ -870,9 +923,47 @@ cubrid_log_finalize (void)
   g_trace_log_level = 0;
   g_trace_log_filesize = 10;
 
+  g_next_lsa = LSA_INITIALIZER;
+
+  if (g_log_infos != NULL)
+    {
+      free (g_log_infos);
+      g_log_infos = NULL;
+    }
+
+  g_log_infos_size = 0;
+
+  return CUBRID_LOG_SUCCESS;
+}
+
+/*
+ * cubrid_log_finalize () -
+ *   return:
+ */
+int
+cubrid_log_finalize (void)
+{
+  int err_code;
+
+  if (g_stage != CUBRID_LOG_STAGE_PREPARATION && g_stage != CUBRID_LOG_STAGE_EXTRACTION)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_FUNC_CALL_STAGE);
+    }
+
+  if (cubrid_log_disconnect_server () != CUBRID_LOG_SUCCESS)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_DISCONNECT);
+    }
+
+  (void) cubrid_log_reset_globals ();
+
   g_stage = CUBRID_LOG_STAGE_CONFIGURATION;
 
   return CUBRID_LOG_SUCCESS;
+
+cubrid_log_error:
+
+  return err_code;
 }
 
 #endif /* CS_MODE */
