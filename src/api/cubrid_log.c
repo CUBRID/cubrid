@@ -761,6 +761,199 @@ cubrid_log_make_ddl (char **data_info, DDL * ddl)
 }
 
 inline static int
+cubrid_log_make_dml (char **data_info, DML * dml)
+{
+  char *ptr;
+
+  int i;
+  int err_code;
+
+  ptr = *data_info;
+
+  ptr = or_unpack_int (ptr, &dml->dml_type);
+  ptr = or_unpack_int64 (ptr, (INT64 *) & dml->classoid);
+  ptr = or_unpack_int (ptr, &dml->num_changed_column);
+
+  if (dml->num_changed_column)
+    {
+      // now, just malloc for validation and later, optimize it.
+      dml->changed_column_index = (int *) malloc (sizeof (int) * dml->num_changed_column);
+      if (dml->changed_column_index == NULL)
+	{
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LSA);
+	}
+
+      for (i = 0; i < dml->num_changed_column; i++)
+	{
+	  ptr = or_unpack_int (ptr, &dml->changed_column_index[i]);
+	}
+
+      dml->changed_column_data = (char **) malloc (sizeof (char *) * dml->num_changed_column);
+      if (dml->changed_column_data == NULL)
+	{
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LSA);
+	}
+
+      dml->changed_column_data_len = (int *) malloc (sizeof (int) * dml->num_changed_column);
+      if (dml->changed_column_data_len == NULL)
+	{
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LSA);
+	}
+
+      for (i = 0; i < dml->num_changed_column; i++)
+	{
+	  ptr = or_unpack_int (ptr, &dml->changed_column_data_len[i]);
+
+	  switch (dml->changed_column_data_len[i])
+	    {
+	    case 0:
+	      dml->changed_column_data[i] = ptr;
+	      ptr = or_unpack_int (ptr, (int *) dml->changed_column_data[i]);
+	      break;
+
+	    case 1:
+	      dml->changed_column_data[i] = ptr;
+	      ptr = or_unpack_int64 (ptr, (INT64 *) dml->changed_column_data[i]);
+	      break;
+
+	    case 2:
+	      dml->changed_column_data[i] = ptr;
+	      ptr = or_unpack_float (ptr, (float *) dml->changed_column_data[i]);
+	      break;
+
+	    case 3:
+	      dml->changed_column_data[i] = ptr;
+	      ptr = or_unpack_double (ptr, (double *) dml->changed_column_data[i]);
+	      break;
+
+	    case 4:
+	      dml->changed_column_data[i] = ptr;
+	      ptr = or_unpack_short (ptr, (short *) dml->changed_column_data[i]);
+	      break;
+
+	    case 5:
+	      dml->changed_column_data[i] = ptr;
+	      ptr = or_unpack_string_nocopy (ptr, &dml->changed_column_data[i]);
+	      break;
+
+	    case 6:
+	      dml->changed_column_data[i] = ptr;
+	      ptr = or_unpack_string_nocopy (ptr, &dml->changed_column_data[i]);
+	      break;
+
+	    case 7:
+	      dml->changed_column_data[i] = ptr;
+	      ptr = or_unpack_string_nocopy (ptr, &dml->changed_column_data[i]);
+	      break;
+
+	    case 8:
+	      dml->changed_column_data[i] = ptr;
+	      ptr = or_unpack_string_nocopy (ptr, &dml->changed_column_data[i]);
+	      break;
+
+	    default:
+	      assert (0);
+
+	    }
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &dml->num_cond_column);
+
+  if (dml->num_cond_column)
+    {
+      // now, just malloc for validation and later, optimize it.
+      dml->cond_column_index = (int *) malloc (sizeof (int) * dml->num_cond_column);
+      if (dml->cond_column_index == NULL)
+	{
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LSA);
+	}
+
+      for (i = 0; i < dml->num_cond_column; i++)
+	{
+	  ptr = or_unpack_int (ptr, &dml->cond_column_index[i]);
+	}
+
+      dml->cond_column_data = (char **) malloc (sizeof (char *) * dml->num_cond_column);
+      if (dml->cond_column_data == NULL)
+	{
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LSA);
+	}
+
+      dml->cond_column_data_len = (int *) malloc (sizeof (int) * dml->num_cond_column);
+      if (dml->cond_column_data_len == NULL)
+	{
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LSA);
+	}
+
+      for (i = 0; i < dml->num_cond_column; i++)
+	{
+	  ptr = or_unpack_int (ptr, &dml->cond_column_data_len[i]);
+
+	  switch (dml->cond_column_data_len[i])
+	    {
+	    case 0:
+	      dml->cond_column_data[i] = ptr;
+	      ptr = or_unpack_int (ptr, (int *) dml->cond_column_data[i]);
+	      break;
+
+	    case 1:
+	      dml->cond_column_data[i] = ptr;
+	      ptr = or_unpack_int64 (ptr, (INT64 *) dml->cond_column_data[i]);
+	      break;
+
+	    case 2:
+	      dml->cond_column_data[i] = ptr;
+	      ptr = or_unpack_float (ptr, (float *) dml->cond_column_data[i]);
+	      break;
+
+	    case 3:
+	      dml->cond_column_data[i] = ptr;
+	      ptr = or_unpack_double (ptr, (double *) dml->cond_column_data[i]);
+	      break;
+
+	    case 4:
+	      dml->cond_column_data[i] = ptr;
+	      ptr = or_unpack_short (ptr, (short *) dml->cond_column_data[i]);
+	      break;
+
+	    case 5:
+	      dml->cond_column_data[i] = ptr;
+	      ptr = or_unpack_string_nocopy (ptr, &dml->cond_column_data[i]);
+	      break;
+
+	    case 6:
+	      dml->cond_column_data[i] = ptr;
+	      ptr = or_unpack_string_nocopy (ptr, &dml->cond_column_data[i]);
+	      break;
+
+	    case 7:
+	      dml->cond_column_data[i] = ptr;
+	      ptr = or_unpack_string_nocopy (ptr, &dml->cond_column_data[i]);
+	      break;
+
+	    case 8:
+	      dml->cond_column_data[i] = ptr;
+	      ptr = or_unpack_string_nocopy (ptr, &dml->cond_column_data[i]);
+	      break;
+
+	    default:
+	      assert (0);
+
+	    }
+	}
+    }
+
+  *data_info = ptr;
+
+  return CUBRID_LOG_SUCCESS;
+
+cubrid_log_error:
+
+  return err_code;
+}
+
+inline static int
 cubrid_log_make_dcl (char **data_info, DCL * dcl)
 {
   char *ptr;
@@ -805,6 +998,11 @@ cubrid_log_make_data_item (char **data_info, DATA_ITEM_TYPE data_item_type, CUBR
       break;
 
     case DATA_ITEM_TYPE_DML:
+      if (cubrid_log_make_dml (data_info, &data_item->dml) != CUBRID_LOG_SUCCESS)
+	{
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LSA);
+	}
+
       break;
 
     case DATA_ITEM_TYPE_DCL:
