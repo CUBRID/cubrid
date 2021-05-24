@@ -8200,7 +8200,7 @@ slog_reader_get_log_refined_info (THREAD_ENTRY * thread_p, unsigned int rid, cha
   char *log_info_list;
   int error;
   int num_log_info;
-  ptr = or_unpack_int64 (request, &b_start_lsa);
+  ptr = or_unpack_int64 (request, (int64_t*)&b_start_lsa);
   memcpy (&start_lsa, &b_start_lsa, sizeof (UINT64));
 
   error = xlog_reader_get_log_refined_info (thread_p, start_lsa, &total_length, &log_info_list, &num_log_info);

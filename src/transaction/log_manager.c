@@ -10376,7 +10376,6 @@ get_lsa_from_time (THREAD_ENTRY * thread_p, int arv_num, time_t input, LOG_LSA *
   int error;
   time_t at_time;
   LOG_RECORD_HEADER *log_rec_header;
-  LOG_LSA process_lsa;
   LOG_PAGE *log_page_p = NULL;
   char *log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
 
@@ -10389,7 +10388,7 @@ get_lsa_from_time (THREAD_ENTRY * thread_p, int arv_num, time_t input, LOG_LSA *
   log_page_p->hdr.logical_pageid = NULL_PAGEID;
   log_page_p->hdr.offset = NULL_OFFSET;
   process_lsa.pageid = 1;
-  process_lsa.offfset = 0;
+  process_lsa.offset = 0;
 
   while (1)
     {
@@ -10537,7 +10536,7 @@ log_reader (void *arg)
   std::unordered_map < int, char *>tran_users;
   /*trid , tran user pair */
 
-  LOG_REC_SUPPLEMENTAL_INFO *supplement = NULL;
+  LOG_REC_SUPPLEMENT *supplement = NULL;
   LOG_REC_MVCC_UNDOREDO *mvcc_undoredo = NULL;
   LOG_REC_MVCC_UNDO *mvcc_undo = NULL;
   LOG_REC_MVCC_REDO *mvcc_redo = NULL;
@@ -10597,7 +10596,7 @@ log_reader (void *arg)
 	      user = item->second;
 	      if (user == NULL)
 		{
-		find_tran_user (thread_p, target_lsa, log_rec_header->trid, &user)}
+		find_tran_user (thread_p, target_lsa, log_rec_header->trid, &user);
 	      make_dcl (donetime->at_time, log_rec_header->trid, user, log_rec_header->type, &entry);
 	      LOG_READ_ADD_ALIGN (thread_p, sizeof (*donetime), &process_lsa, log_page_p);
 	      break;
@@ -10617,7 +10616,7 @@ log_reader (void *arg)
 	    case LOG_SUPPLEMENTAL_INFO:
 	      /*supplemental log info types : time, user, undo image */
 	      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*supplement), &process_lsa, log_page_p);
-	      supplement = (LOG_REC_SUPPLEMENTAL_INFO *) (log_page_p->area + process_lsa.offset);
+	      supplement = (LOG_REC_SUPPLEMENT *) (log_page_p->area + process_lsa.offset);
 	      supplement_length = supplement->length;
 	      LOG_READ_ADD_ALIGN (thread_p, sizeof (*supplement), &process_lsa, log_page_p);
 	      supplement_data = (char *) log_page_p->area + process_lsa.offset;
@@ -10799,7 +10798,7 @@ get_class_oid (THREAD_ENTRY * thread_p, LOG_LSA lsa, LOG_PAGE * log_pgptr)
   LSA_COPY (&process_lsa, &lsa);
   int found = false;
   LOG_RECORD_HEADER *log_rec_hdr = NULL;
-  LOG_REC_SUPPLEMENTAL_INFO *supplement;
+  LOG_REC_SUPPLEMENTAL *supplement;
   char *data;
   OID classoid = { -1, -1, -1 };
 
@@ -10807,10 +10806,10 @@ get_class_oid (THREAD_ENTRY * thread_p, LOG_LSA lsa, LOG_PAGE * log_pgptr)
     {
       log_rec_hdr = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &process_lsa);
       LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec_hdr), &process_lsa, log_pgptr);
-      if (log_rec_hdr->type == LOG_REC_SUPPLEMENTAL_INFO)
+      if (log_rec_hdr->type == LOG_REC_SUPPLEMENT)
 	{
 	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*supplement), &process_lsa, log_pgptr);
-	  supplement = (LOG_REC_SUPPLEMENTAL_INFO *) (log_pgptr->area + process_lsa.offset);
+	  supplement = (LOG_REC_SUPPLEMENT *) (log_pgptr->area + process_lsa.offset);
 	  if (supplement->type == LOG_SUPPLEMENT_CLASS_OID)
 	    {
 	      LOG_READ_ADD_ALIGN (thread_p, sizeof (*supplement), &process_lsa, log_pgptr);
@@ -11238,17 +11237,17 @@ find_tran_user (THREAD_ENTRY * thread_p, LOG_LSA lsa, int trid, char **user, LOG
   LSA_COPY (&process_lsa, &lsa);
   int found = false;
   LOG_RECORD_HEADER *log_rec_hdr = NULL;
-  LOG_REC_SUPPLEMENTAL_INFO *supplement;
+  LOG_REC_SUPPLEMENT *supplement;
   char *data;
 
   while (!LSA_ISNULL (&process_lsa))
     {
       log_rec_hdr = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &process_lsa);
       LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec_hdr), &process_lsa, log_pgptr);
-      if (log_rec_hdr->type == LOG_REC_SUPPLEMENTAL_INFO && log_rec_hdr->trid == trid)
+      if (log_rec_hdr->type == LOG_REC_SUPPLEMENT && log_rec_hdr->trid == trid)
 	{
 	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*supplement), &process_lsa, log_pgptr);
-	  supplement = (LOG_REC_SUPPLEMENTAL_INFO *) (log_pgptr->area + process_lsa.offset);
+	  supplement = (LOG_REC_SUPPLEMENT *) (log_pgptr->area + process_lsa.offset);
 	  if (supplement->type == LOG_SUPPLEMENT_TRAN_USER)
 	    {
 	      LOG_READ_ADD_ALIGN (thread_p, sizeof (*supplement), &process_lsa, log_pgptr);
