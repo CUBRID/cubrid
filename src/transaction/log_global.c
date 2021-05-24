@@ -81,6 +81,9 @@ log_global::log_global ()
 
 LOG_GLOBAL log_Gl;
 
+/*for CDC*/
+LOG_READER_INFO log_Reader_info;
+
 /* Name of the database and logs */
 char log_Path[PATH_MAX];
 char log_Archive_path[PATH_MAX];

@@ -216,6 +216,12 @@ extern void log_flush_daemon_get_stats (UINT64 * statsp);
 
 extern void log_update_global_btid_online_index_stats (THREAD_ENTRY * thread_p);
 
+/*For CDC */
+extern int  xlog_reader_get_lsa (THREAD_ENTRY * thread_p, time_t input_time, LOG_LSA *start_lsa);
+extern int  xlog_reader_get_log_refined_info (THREAD_ENTRY * thread_p, LOG_LSA start_lsa, int *total_length, char **log_info_list, int *num_log_info);
+extern int xlog_reader_set_configuration (THREAD_ENTRY *thread_p, int max_log_item, int timeout, int all_in_cond, char ** user, int num_user, uint64_t *classid, int num_class);
+extern int xlog_reader_finalize (int shutdown);
+
 //
 // log critical section
 //

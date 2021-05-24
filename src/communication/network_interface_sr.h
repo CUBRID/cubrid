@@ -185,6 +185,12 @@ extern void srepl_set_info (THREAD_ENTRY * thread_p, unsigned int rid, char *req
 extern void srepl_log_get_append_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slocator_check_fk_validity (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slogwr_get_log_pages (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+
+extern void slog_reader_get_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void slog_reader_set_configuration (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen);
+extern void slog_reader_get_log_refined_info (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen);
+extern void slog_reader_finalize (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen);
+
 /* external storage supports */
 extern void ses_posix_write_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void ses_posix_read_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);

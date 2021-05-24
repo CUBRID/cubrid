@@ -91,6 +91,9 @@
 #include "vacuum.h"
 #include "xasl_cache.h"
 
+#include "lockfree_circular_queue.hpp"
+#include <unordered_map>
+
 #include "dbtype.h"
 
 #if !defined(SERVER_MODE)
@@ -305,6 +308,23 @@ static void log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG
 				   int data_size, const char *data);
 
 static int logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, void *args);
+
+/*for CDC */
+static int log_reader_initialize();
+static THREAD_RET_T THREAD_CALLING_CONVENTION log_reader (void *arg);
+static OID get_class_oid (THREAD_ENTRY *thread_p, LOG_LSA lsa, LOG_PAGE *log_pgptr);
+static int find_pk (THREAD_ENTRY *thread_p, OID classoid, int repr_id, int *num_attr, int **pk_attr_id);
+static void make_dml (THREAD_ENTRY *thread_p, int trid, char *user, int dml_type, OID classoid, RECDES *undo_recdes, int ulength,
+          RECDES *redo_recdes, int rlength, LOG_INFO_ENTRY *dml_entry);
+static void make_ddl (char *supplement_data, int trid, const char *user, LOG_INFO_ENTRY *ddl_entry);
+static void make_dcl (time_t at_time, int trid, char *user, int type, LOG_INFO_ENTRY *dcl_entry);
+static void make_timer (time_t at_time, int trid, char *user, LOG_INFO_ENTRY *timer_entry);
+static int find_tran_user (THREAD_ENTRY *thread_p, LOG_LSA lsa, int trid, char **user);
+static int compare_data (const db_value *new_value, const db_value *cmpdata);
+static int put_data (const db_value *new_value, char *ptr);
+
+static int get_lsa_from_time (THREAD_ENTRY *thread_p, int arv_num, time_t input, LOG_LSA *start_lsa);
+static time_t get_start_time_from_file (THREAD_ENTRY *thread_p, int arvnum);
 
 #if defined(SERVER_MODE)
 // *INDENT-OFF*
@@ -10214,6 +10234,1399 @@ logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, vo
   return error_code;
 }
 
+/*For CDC interface */
+typedef struct arv_time
+{
+  int arv_num;
+  time_t time;
+
+}ARV_TIME;
+int  xlog_reader_get_lsa (THREAD_ENTRY * thread_p, time_t input_time, LOG_LSA *start_lsa)
+{
+  /*
+   * 1. get volume list
+   * 2. get fpage from each volume 
+   * 3. get commit/abort/ha_dummy_server_state which contains time from fpage 
+   * */
+  int begin = log_Gl.hdr.last_deleted_arv_num +1;
+  int last = log_Gl.hdr.nxarv_num;
+  char arv_name[PATH_MAX] ;
+  LOG_ARV_HEADER *arv_hdr;
+  int num_arvs = last - begin;
+  time_t tmp = 0;
+  int target_arv_num = -1;
+  int error = -1;  
+  log_reader_initialize();
+
+  for (int i =begin ; i < last; i++)
+  {
+   tmp = get_start_time_from_file (thread_p, i);
+   if (tmp >= input_time)
+   {
+     target_arv_num = i-1;
+     break;
+   }
+  }
+  if (target_arv_num == -1)
+  {
+    /*find from active log*/
+  }
+  else
+  {
+    /*find from archive log volume*/
+    error = get_lsa_from_time (thread_p, target_arv_num, input_time, start_lsa); 
+  }
+  /*volume list range ( log_Gl.hdr.last_deleted_arv_num - log_Gl.hdr.nxarv_num, active log */
+  LSA_COPY (start_lsa, &log_Gl.hdr.append_lsa);
+  return NO_ERROR; 
+  /*get fpageid*/
+
+
+
+}
+/*if arv_num == -1 , it means active log volume */
+static time_t get_start_time_from_file (THREAD_ENTRY *thread_p, int arv_num)
+{
+  time_t ret_time = 0; 
+  char arv_name[PATH_MAX] ;
+  LOG_ARV_HEADER *arv_hdr;
+  char hdr_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_hdr_pgbuf;
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
+  LOG_PAGE *hdr_pgptr;
+  LOG_PAGE *log_pgptr; 
+  LOG_PHY_PAGEID phy_pageid = NULL_PAGEID;
+  int vdes;
+  int error_code = NO_ERROR;
+  LOG_CS_ENTER_READ_MODE (thread_p);
+  if (arv_num == -1)
+  {
+  }else
+  {
+    LOG_ARCHIVE_CS_ENTER (thread_p);
+    aligned_hdr_pgbuf = PTR_ALIGN (hdr_pgbuf, MAX_ALIGNMENT);
+    aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+
+    hdr_pgptr = (LOG_PAGE *) aligned_hdr_pgbuf;
+    log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
+
+    fileio_make_log_archive_name (arv_name, log_Archive_path, log_Prefix, arv_num);
+
+
+  }
+}
+static int get_lsa_from_time (THREAD_ENTRY *thread_p, int arv_num, time_t input, LOG_LSA *start_lsa)
+{
+  LOG_LSA process_lsa;
+  int error;
+  time_t at_time;
+  LOG_RECORD_HEADER *log_rec_header;
+  LOG_LSA process_lsa;
+  LOG_PAGE *log_page_p = NULL;
+  char *log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+
+  LOG_REC_DONETIME *donetime;
+  LOG_REC_HA_SERVER_STATE *dummy;
+
+  int trid;
+  int index; 
+  log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  log_page_p->hdr.logical_pageid = NULL_PAGEID;
+  log_page_p->hdr.offset = NULL_OFFSET;
+  process_lsa.pageid = 1;
+  process_lsa.offfset = 0; 
+
+ while(1)
+  {
+
+    if(at_time > input)
+    {
+      LSA_COPY (start_lsa, &log_rec_header->forw_lsa);
+      break;
+    }
+
+    LSA_COPY (&process_lsa, &log_rec_header->forw_lsa);
+  }
+}
+int xlog_reader_get_log_refined_info (THREAD_ENTRY * thread_p, LOG_LSA start_lsa, int *total_length, char **log_info_list, int *num_log_info)
+{
+  int rv;
+  pthread_t log_info_reader_th;
+  int wait_time = 0;
+  *num_log_info = 0;
+  *total_length = 0;
+  char *data;
+  char *ptr;
+  int error_code;
+  /*need to check if it has been created before */
+  int timeout = 0;
+  struct timeval start, end;
+  LOG_INFO_ENTRY tmp; 
+
+  log_reader_initialize();
+  /*start log reader if not intialized */
+  rv = pthread_create(&log_info_reader_th, NULL, log_reader, (void*)&start_lsa);
+  if (rv != 0)
+  {
+    er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_READER_THREAD_CREATE, 0);
+  }
+ 
+//  pthread_mutex_lock (log_Reader_info.configuration_mutex);
+  timeout = log_Reader_info.extraction_timeout;
+  /*mutex, while accessing log_Reader_info*/
+  gettimeofday(&start, NULL);
+  while(log_info_queue->is_empty() == true)
+  {
+    gettimeofday (&start, NULL);
+    if(log_Reader_info.last_lsa == log_Gl.hdr.append_lsa )
+    {
+      return ER_LOG_READER_NOTHING_TO_RETURN; 
+    } 
+    if(wait_time >= timeout)
+    {
+      return ER_LOG_READER_TIMEOUT; 
+    } 
+      /*wait until extraction time out */
+    gettimeofday(&end, NULL);
+    sleep(1);
+    wait_time += end.tv_sec - start.tv_sec; 
+  }
+  
+  while(log_info_queue->is_empty() == false || (*num_log_info < log_Reader_info.max_log_item))
+  {
+    /*access to log_info_queue*/
+    log_info_queue->consume(tmp);
+    *total_length += tmp.length;
+    *total_length += OR_INT_SIZE;
+    (*num_log_info)++;
+    ptr = or_pack_int(*log_info_list, tmp.length);
+    ptr = or_pack_stream (ptr, tmp.log_info, tmp.length);
+    /*access to log reader info to get last lsa*/
+    /*1. get number of log info  
+     * 2. malloc
+     * 3. log_info_list[0] = .. log_info_list[1] = .. pointing to memory*/
+  }
+/*    
+    data = or_pack_int ( data, error_code);
+    data = or_pack_int64 (data, last_lsa);
+    data = or_pack_int (data, num_log_info);
+    data = or_pack_int (data, total_length);
+    data = or_pack_stream (data, ptr, total_length);
+*/
+ 
+  /* how to deal with NO_ERROR_WITHOUT_LOG_INFO */
+  /*
+   *  1. Create Log Reader 
+   *  2. Log Queue initialization will be done in Log Producer
+   *  3. wait until Log Queue is not empty
+   *  4. waiting time  will not exceeds a extraction timeout
+   *  5. return log info with total length of log info list 
+   * */
+   
+  return NO_ERROR;
+}
+
+int xlog_reader_finalize (int shutdown)
+{
+
+  if (shutdown > 1 || shutdown < 0)
+  {
+    assert(false);
+    return -1; // error code will be replaced 
+  }
+  if(log_Reader_info.shutdown == false)
+  {
+    return NO_ERROR;
+  }
+  
+  log_Reader_info.shutdown = shutdown; 
+  //log_finalize();
+  delete log_info_queue;
+  /*free the queues*/
+  return NO_ERROR;
+}
+
+int xlog_reader_set_configuration (THREAD_ENTRY *thread_p, int max_log_item, int timeout, int all_in_cond, char **user, int num_user, uint64_t *classoids, int num_class)
+{
+  pthread_mutex_lock (&log_Reader_info.configuration_mutex);
+  log_Reader_info.extraction_timeout = timeout ;
+  /*string copy is required */
+  log_Reader_info.user = user;
+  log_Reader_info.class_oids = classoids;
+  log_Reader_info.all_in_cond = all_in_cond;
+  log_Reader_info.max_log_item = max_log_item; 
+  /*consider initialization */
+  /*other configuration setting will be done */
+  pthread_mutex_unlock (&log_Reader_info.configuration_mutex);
+
+}
+
+static THREAD_RET_T THREAD_CALLING_CONVENTION 
+log_reader (void *arg)
+{
+  LOG_LSA target_lsa;
+  LOG_LSA process_lsa;
+  LOG_LSA lsa;
+  LOG_PAGE *log_page_p = NULL;
+  char *log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  LOG_RECORD_HEADER *log_rec_header;
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info();
+  TEMPORARY_LOG_BUFFER temp_logbuf[1024];
+//  TRAN_USER_TABLE user_table[MAX_TRAN_USER_TABLE];
+  std::unordered_map <int, char*> tran_users;
+  /*trid , tran user pair*/
+
+  LOG_REC_SUPPLEMENTAL_INFO * supplement = NULL;
+  LOG_REC_MVCC_UNDOREDO *mvcc_undoredo = NULL;
+  LOG_REC_MVCC_UNDO *mvcc_undo = NULL;
+  LOG_REC_MVCC_REDO *mvcc_redo = NULL;
+  
+  RECDES *undo_recdes;
+  RECDES *redo_recdes;
+  int undo_length;
+  int redo_length;
+  int is_zipped = false ;
+  int length;
+
+  OID classoid;
+
+  char *user; 
+  char *supplement_data;
+  int supplement_length;
+  int trid;
+  int index; 
+  auto item; 
+  LOG_INFO_ENTRY entry; 
+  target_lsa.pageid = ((LOG_LSA*)arg)->pageid;
+  target_lsa.offset = ((LOG_LSA*)arg)->offset;
+  log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  log_page_p->hdr.logical_pageid = NULL_PAGEID;
+  log_page_p->hdr.offset = NULL_OFFSET;
+  process_lsa = target_lsa;
+  /*
+   * 1. checks queue is initializd 
+   * 2. checks last LOG_LSA it has processed 
+   * 3. make dml, ddl, dcl, timer log_info 
+   * 4. store it into log Queue
+   * 5. | start lsa | length | log info |
+   * */
+  while(log_Reader_info.shutdown == false){
+    /*fetch log page */
+    if(logpb_fetch_page(thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
+    {
+      assert(false);
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_reader()");
+    }
+    lsa.pageid = process_lsa.pageid;
+    while(process_lsa.pageid == lsa.pageid)
+    {
+      log_rec_header = LOG_GET_LOG_RECORD_HEADER (log_page_p, &process_lsa);
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec_header), &process_lsa, log_page_p);
+  
+      switch (log_rec_header->type)
+      {
+        case LOG_COMMIT:
+        case LOG_ABORT :
+          LOG_REC_DONETIME *donetime; 
+          LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*donetime), &process_lsa, log_page_p);
+          donetime = (LOG_REC_DONETIME *)(log_page_p->area + process_lsa.offset);
+          
+          item = tran_users.find(log_rec_header->trid); /*if null? */
+          user = item->second;
+          if(user == NULL)
+          {
+            find_tran_user (thread_p, target_lsa, log_rec_header->trid, &user)
+          }
+          make_dcl (donetime->at_time, log_rec_header->trid, user, log_rec_header->type, &entry);
+          LOG_READ_ADD_ALIGN (thread_p, sizeof(*donetime), &process_lsa, log_page_p);
+          break;
+        case LOG_DUMMY_HA_SERVER_STATE :
+          LOG_REC_HA_SERVER_STATE *ha_dummy;
+          LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof(*ha_dummy), &process_lsa, log_page_p);
+          ha_dummy = (LOG_REC_HA_SERVER_STATE *)(log_page_p->area + process_lsa.offset);
+
+          item = tran_users.find(log_rec_header->trid);
+          user = item->second;
+          if(user == NULL)
+          {
+            find_tran_user (thread_p, target_lsa, log_rec_header->trid, &user);
+          }
+          make_timer (ha_dummy->at_time, trid, user, &entry);
+          break;
+        case LOG_SUPPLEMENTAL_INFO :
+          /*supplemental log info types : time, user, undo image*/
+          LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*supplement), &process_lsa, log_page_p);
+          supplement = (LOG_REC_SUPPLEMENTAL_INFO *)(log_page_p->area + process_lsa.offset);
+          supplement_length = supplement->length;
+          LOG_READ_ADD_ALIGN (thread_p, sizeof(*supplement), &process_lsa, log_page_p);
+          supplement_data = (char *)log_page_p->area + process_lsa.offset;
+
+          if(supplement->type == LOG_SUPPLEMENT_TRAN_USER)
+          {
+            /*log_rec_header->trid, supplement->length, */
+            memcpy(user, supplement_data, supplement_length);
+            tran_users.insert(std::make_pair(log_rec_header->trid, user));
+          }else if(supplement->type == LOG_SUPPLEMENT_STATEMENT)
+          {
+            
+            item = tran_users.find(log_rec_header->trid);
+            user = item->second;
+            if(user == NULL)
+            {
+              find_tran_user (thread_p, target_lsa, log_rec_header->trid, &user);
+              tran_users.insert(std::make_pair(log_rec_header->trid, user));
+            }
+          
+          /*DDL processing */
+           make_ddl(supplement_data, log_rec_header->trid, user,  &entry);
+          }
+          LOG_READ_ADD_ALIGN (thread_p, supplement_length, &process_lsa, log_page_p);
+          break;
+        case LOG_MVCC_UNDOREDO_DATA :
+          mvcc_undoredo = (LOG_MVCC_UNDOREDO_DATA *)(log_page_p->area + process_lsa.offset);
+          LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*mvcc_undoredo), &process_lsa, log_page_p);
+          /*mvcc_undoredo rcv type*/
+          if(mvcc_undoredo->undoredo.data.rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
+          {
+            undo_recdes->type = *(INT16*)(log_page_p->area + process_lsa.offset);
+            undo_length = mvcc_undoredo->undoredo.ulength;
+            if(ZIP_CHECK  (undo_length))
+            {
+              undo_length = (int) GET_ZIP_LEN (undo_length);
+            }
+            process_lsa.offset += sizeof(INT16);
+            undo_recdes->data = (char*)malloc(undo_length);
+            memcpy (undo_recdes->data, log_page_p->area+process_lsa.offset, undo_length);
+            process_lsa.offset += undo_length; 
+            LOG_READ_ALIGN (thread_p, &process_lsa, log_page_p); 
+            redo_recdes->type = *(INT16*)(log_page_p->area + process_lsa.offset); //align ?
+            redo_length = mvcc_undoredo->undoredo.rlength;
+            if(ZIP_CHECK (redo_length))
+            {
+              redo_length = (int) GET_ZIP_LEN (redo_length);
+            }
+            process_lsa.offset += sizeof(INT16);
+            redo_recdes->data = (char*)malloc(redo_length);
+            memcpy (redo_recdes->data, log_page_p->area+process_lsa.offset, redo_length);
+            process_lsa.offset += redo_length;
+            LOG_READ_ALIGN (thread_p, &process_lsa, log_page_p); 
+            make_dml (thread_p,log_rec_header->trid, user, 1, classoid, undo_recdes, undo_length, redo_recdes, redo_length, &entry );            
+            /*record type check*/
+            //log_get_redo_record();
+
+            /*OID check */
+
+          }else if(mvcc_undoredo->undoredo.data.rcvindex == RVHF_MVCC_INSERT)
+          {
+            undo_recdes->type = *(INT16*)(log_page_p->area + process_lsa.offset);
+            undo_length = mvcc_undoredo->undoredo.ulength;
+            if(ZIP_CHECK  (undo_length))
+            {
+              undo_length = (int) GET_ZIP_LEN (undo_length);
+               
+            }
+            process_lsa.offset += sizeof(INT16);
+            undo_recdes->data = (char*)malloc(undo_length);
+            memcpy(undo_recdes->data, log_page_p->area + process_lsa.offset, undo_length);
+            process_lsa.offset += undo_length;
+
+            LOG_READ_ALIGN (thread_p, &process_lsa, log_page_p); 
+            redo_recdes->type = *(INT16*)(log_page_p->area + process_lsa.offset); //align ?
+            redo_length = mvcc_undoredo->undoredo.rlength;
+            if(ZIP_CHECK (redo_length))
+            {
+              redo_length = (int) GET_ZIP_LEN (redo_length);
+            }
+            process_lsa.offset += sizeof(INT16);
+            redo_recdes->data = (char*)malloc(redo_length);
+            memcpy(redo_recdes->data, log_page_p->area + process_lsa.offset, redo_length);
+            make_dml (thread_p,log_rec_header->trid, user, 0, classoid, undo_recdes, undo_length, redo_recdes, redo_length, &entry ); 
+            switch(redo_recdes->type)
+            {
+              case REC_HOME :
+                break;
+              case REC_BIGONE :
+                break;
+              case REC_NEWHOME: 
+              default : 
+                break;
+            }
+
+          }else if(mvcc_undoredo->undoredo.data.rcvindex == RVHF_MVCC_DELETE_REC_HOME || mvcc_undoredo->undoredo.data.rcvindex == RVHF_MVCC_DELETE_OVERFLOW)
+          {
+            LOG_READ_ADD_ALIGN (thread_p, sizeof (*mvcc_undoredo), &process_lsa, log_page_p);
+            undo_recdes->type =  *(INT16 *)(log_page_p->area + process_lsa.offset);
+            classoid = get_class_oid (thread_p, log_rec_header->prev_tranlsa, log_page_p);
+            undo_length = mvcc_undoredo->undoredo.ulength;
+            undo_length = GET_ZIP_LEN (undo_length);
+            process_lsa.offset += sizeof(INT16);
+            undo_recdes->data = (char*)malloc(undo_length);
+            memcpy(undo_recdes->data, log_page_p->area + process_lsa.offset, undo_length);  
+            //if length > LOG_PAGE AREA? 
+            /*log_dump_data()*/
+            /*zip check is required to be processed before comparing undo and redo */
+            /*PK check */
+            item = tran_users.find(log_rec_header->trid);
+            user = item->second;
+            if(user == NULL)
+            {
+              find_tran_user (thread_p, target_lsa, log_rec_header->trid, &user);
+              tran_users.insert(std::make_pair(log_rec_header->trid, user));
+            }
+            
+            make_dml (thread_p, log_rec_header->trid, user, 2, classoid, undo_recdes, undo_length, NULL, 0,  &entry); 
+            if (ZIP_CHECK (undo_length))
+            {
+              length = (int) GET_ZIP_LEN (undo_length);
+              is_zipped = true;
+            }
+
+            if(undo_recdes->type == REC_HOME)
+            {
+              undo_recdes->data = NULL;
+            } 
+            else if (undo_recdes->type == REC_BIGONE)
+            {
+
+            }
+          }
+
+          /*mvcc_undoredo rec type*/
+            break;
+          case LOG_MVCC_UNDO_DATA :
+            /*RVHF_MVCC_UPDATE_OVERFLOW -> will be stored in tmp_buffer*/
+            break;
+          case LOG_MVCC_REDO_DATA :
+            break;
+          case LOG_UNDOREDO_DATA :
+            break;
+          case LOG_UNDO_DATA :
+            break;
+          case LOG_REDO_DATA :
+            break;
+          defalut :
+            break;
+        }
+      /*log record type */
+
+      /*when refined log info is queued, update log_Reader_info */
+        LSA_COPY (&entry.start_lsa, &target_lsa);
+        log_info_queue->produce(entry);
+        log_Reader_info.last_lsa.pageid = process_lsa.pageid;
+        log_Reader_info.last_lsa.offset = process_lsa.offset;
+        entry.length = 0;
+        LSA_SET_NULL (&entry.start_lsa);
+        entry.log_info = NULL; 
+      }
+    }
+  
+  return (THREAD_RET_T) -1;
+}
+static OID get_class_oid (THREAD_ENTRY *thread_p, LOG_LSA lsa, LOG_PAGE *log_pgptr)
+{
+  /*traverse prelsa record */
+  LOG_LSA process_lsa; 
+  LSA_COPY (&process_lsa, &lsa);
+  int found = false;
+  LOG_RECORD_HEADER *log_rec_hdr = NULL ;
+  LOG_REC_SUPPLEMENTAL_INFO *supplement;
+  char * data;
+  OID classoid = {-1, -1, -1};
+
+  while(!LSA_ISNULL(&process_lsa))
+  {
+    log_rec_hdr = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &process_lsa);
+    LOG_READ_ADD_ALIGN (thread_p, sizeof(*log_rec_hdr), &process_lsa, log_pgptr);
+    if (log_rec_hdr->type == LOG_REC_SUPPLEMENTAL_INFO)
+    {
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof(*supplement), &process_lsa, log_pgptr);
+      supplement = (LOG_REC_SUPPLEMENTAL_INFO *)(log_pgptr->area + process_lsa.offset);
+      if(supplement->type == LOG_SUPPLEMENT_CLASS_OID)
+      {
+        LOG_READ_ADD_ALIGN (thread_p, sizeof(*supplement), &process_lsa, log_pgptr);
+        data = (char *)log_pgptr->area + process_lsa.offset;
+        memcpy (&classoid, data, supplement->length);
+        return classoid; 
+      } 
+    }
+    LSA_COPY (&process_lsa , &log_rec_hdr->prev_tranlsa);
+  }
+  return classoid;  
+
+}
+
+static int find_pk (THREAD_ENTRY *thread_p, OID classoid, int repr_id, int *num_attr, int ** pk_attr_id)
+{
+  /*1. if PK exists, return 0 with PK column id(pk_attr_id) and number of columns(num_attr) 
+   *2. if PK does not exist, return -1 
+   *3. pk_attr_id is required to be free_and_init() from caller 
+   * */
+
+  /*refer locator_check_foreign_key */
+
+  /*check if it has PK and, maybe.. it can returns PK attributes ID */
+  OR_CLASSREP *rep = NULL;
+  OR_INDEX *index = NULL;
+  OR_ATTRIBUTE *index_att = NULL;
+  int has_pk = -1;
+  int num_idx_att = 0;
+  *num_attr = 0;
+  /*class representation initialization */
+
+  rep = heap_classrepr_get (thread_p, &classoid, NULL, repr_id, NULL); 
+
+  for (int i = 0; i < rep->n_indexes; i++)
+  {
+    index = rep->indexes + i;
+    if (index->type == BTREE_PRIMARY_KEY)
+    {
+      has_pk = 0;
+      /*reference : qexec_execute_build_indexes() */
+      if(index->func_index_info == NULL)
+      {
+        num_idx_att = index->n_atts;
+      }
+      else
+      {
+        num_idx_att = index->func_index_info->attr_index_start;
+      }
+
+      *pk_attr_id = (int *)malloc (sizeof(int) * num_idx_att);
+      
+      for(int j =0; j < num_idx_att; j++)
+      {
+        index_att = index->atts[j];
+        *pk_attr_id[j] = index_att->def_order;
+        *num_attr += 1;
+      }
+      break;
+    }  
+  }
+  return has_pk;
+}
+static int log_reader_initialize()
+{
+  pthread_mutex_init (&log_Reader_info.last_lsa_mutex, NULL);
+  pthread_mutex_init (&log_Reader_info.shutdown_mutex, NULL);
+  pthread_mutex_init (&log_Reader_info.is_initialized_mutex, NULL);
+  pthread_mutex_init (&log_Reader_info.configuration_mutex, NULL);
+
+  log_Reader_info.is_initialized = true;
+  log_Reader_info.shutdown = true;
+  LSA_SET_NULL (&log_Reader_info.last_lsa);
+  log_info_queue = new lockfree::circular_queue <LOG_INFO_ENTRY> (1024);
+}
+
+static void make_dml(THREAD_ENTRY *thread_p, int trid, char *user, int dml_type, OID classoid, RECDES *undo_recdes, int ulength, RECDES *redo_recdes, int rlength, LOG_INFO_ENTRY *dml_entry)
+{
+  /*this is for constructing dml data item */
+  int has_pk;
+  int *pk_attr_index; /*not attr_id, def_order array*/
+  int num_pk_attr;
+  /*aligned buffer for log_info should be created*/
+  int dataitem_type = 1; 
+
+  char *ptr;
+  uint64_t b_classoid = 0;
+
+  DB_VALUE *old_values = NULL;
+  DB_VALUE *new_values = NULL;
+  int oldval_deforder;
+  int newval_deforder;
+
+  int repid = or_rep_id (undo_recdes);
+
+  int num_change_col;
+  int *changed_col_idx = NULL;
+  char **changed_col_data = NULL;
+  int *changed_col_data_len = NULL;
+
+  int num_cond_col;
+  int *cond_col_idx = NULL;
+  char **cond_col_data = NULL;
+  int *cond_col_data_len = NULL;
+  
+  int ret; 
+  OR_CLASSREP *rep = NULL;
+  HEAP_CACHE_ATTRINFO *attr_info = NULL;
+  HEAP_ATTRVALUE *heap_value = NULL;
+
+  int i = 0;
+  int cnt = 0;
+  int index = 0;
+  int length = 0;
+  
+  dml_entry->log_info = (char*)malloc(2000); // FILEIO_MAX = 2000 ; 
+  
+  heap_attrinfo_start (thread_p, &classoid, -1, NULL, attr_info);
+
+  heap_attrinfo_read_dbvalues (thread_p, &classoid, undo_recdes, NULL, attr_info);
+  old_values = (DB_VALUE*)malloc(sizeof(DB_VALUE)*attr_info->num_values);
+  for (i = 0; i < attr_info->num_values; i++)
+  {
+    heap_value = &attr_info->values[i];
+    oldval_deforder = heap_value->read_attrepr->def_order;
+    old_values[oldval_deforder] = heap_value->dbvalue;
+  }
+
+  heap_attrinfo_read_dbvalues (thread_p, &classoid, redo_recdes, NULL, attr_info);
+  new_values = (DB_VALUE *)malloc(sizeof(DB_VALUE)*attr_info->num_values);
+  for (i = 0; i < attr_info->num_values; i++)
+  {
+    heap_value = &attr_info->values[i];
+    newval_deforder = heap_value->read_attrepr->def_order;
+    new_values[newval_deforder] = heap_value->dbvalue;
+  }
+
+  if(log_Reader_info.all_in_cond && dml_type != 0)
+  {
+    /*for dml type == insert, it does not need to find PK info */
+    has_pk = find_pk (thread_p, classoid, repid, &num_pk_attr, &pk_attr_index);
+  }
+  else
+  {
+    has_pk = -1;
+  }
+  ptr = or_pack_int (dml_entry->log_info, trid);
+  ptr = or_pack_string_with_length (ptr, user, 32);
+  ptr = or_pack_int (ptr, dataitem_type);
+  dml_entry->length = OR_INT_SIZE + 32 + OR_INT_SIZE ; 
+  memcpy (&b_classoid, &classoid, sizeof(int64_t));
+  switch(dml_type)
+  {
+    case 0 : 
+      /*insert*/
+      num_change_col = attr_info->num_values;
+      ptr = or_pack_int (ptr, 0);
+      ptr = or_pack_int64 (ptr, b_classoid);
+      ptr = or_pack_int(ptr, num_change_col);
+      for(i = 0; i < attr_info->num_values; i++)
+      {
+        ptr = or_pack_int (ptr, i);
+      }
+      for (i=0; i < num_change_col; i++)
+      {
+        dml_entry->length += put_data (&new_values[i], ptr);
+        // TODO variables related to 'DB_VALUE' should be modified
+      }
+      break;
+    case 1 : 
+      /*update*/
+      ptr = or_pack_int (ptr, 1);
+      ptr = or_pack_int64 (ptr, b_classoid);     
+      for(i = 0; i < attr_info->num_values; i++)
+      {
+        if((length = compare_data(&new_values[i], &old_values[i])) > 0)
+        {
+          // TODO variables related to 'DB_VALUE' should be modified
+          dml_entry->length += length;
+          changed_col_idx[cnt++] = i;
+        }
+      }
+      num_change_col = cnt;
+      or_pack_int (ptr, num_change_col);
+      for (i=0; i < num_change_col; i++)
+      {
+        or_pack_int(ptr, changed_col_idx[i]);
+      }
+
+      for(i=0; i < num_change_col; i++)
+      {
+        put_data (&new_values[changed_col_idx[i]], ptr);
+      }
+
+      if(has_pk)
+      {
+        num_cond_col = num_pk_attr;
+        cond_col_idx = pk_attr_index;
+        or_pack_int(ptr, num_cond_col);
+        
+        for(i=0; i< num_cond_col; i++)
+        {
+          or_pack_int(ptr, cond_col_idx[i]);
+        }
+        
+        for(i=0; i<num_cond_col; i++)
+        {
+          dml_entry->length += put_data (&old_values[cond_col_idx[i]], ptr);
+        }
+      }
+      else
+      {
+        num_cond_col = attr_info->num_values;
+        or_pack_int(ptr, num_cond_col);
+        for(i=0; i< num_cond_col; i++)
+        {
+          or_pack_int(ptr, i);
+        }
+        for(i=0; i< num_cond_col; i++)
+        {
+          dml_entry->length += put_data(&old_values[i], ptr);
+        }
+      }
+      break;
+    case 2 : 
+      /*delete*/
+      ptr = or_pack_int (ptr, 2);
+      ptr = or_pack_int64 (ptr, b_classoid);     
+      if(has_pk)
+      {
+        num_cond_col = num_pk_attr;
+        cond_col_idx = pk_attr_index;
+        or_pack_int(ptr, num_cond_col);
+        
+        for(i=0; i< num_cond_col; i++)
+        {
+          or_pack_int(ptr, cond_col_idx[i]);
+        }
+        
+        for(i=0; i<num_cond_col; i++)
+        {
+          dml_entry->length += put_data (&old_values[cond_col_idx[i]], ptr);
+        }
+      }
+      else
+      {
+        num_cond_col = attr_info->num_values;
+        or_pack_int(ptr, num_cond_col);
+        for(i=0; i< num_cond_col; i++)
+        {
+          or_pack_int(ptr, i);
+        }
+        for(i=0; i< num_cond_col; i++)
+        {
+          dml_entry->length += put_data(&old_values[i], ptr);
+        }
+      }
+      break; 
+  }
+  /*malloc the size of log_info and packing and  entry->log_info will pointing it  */
+
+end : 
+  if(pk_attr_index != NULL)
+  {
+    free_and_init (pk_attr_index);
+  }
+  if (changed_col_idx != NULL)
+  {
+    free_and_init (changed_col_idx);
+  }
+  if (changed_col_data != NULL)
+  {
+    free_and_init (changed_col_data);
+  }
+  if (changed_col_data_len != NULL)
+  {
+    free_and_init (changed_col_data_len);
+  }
+  if (cond_col_idx != NULL)
+  {
+    free_and_init (cond_col_idx);
+  }
+  if (cond_col_data != NULL)
+  {
+    free_and_init (cond_col_data);
+  }
+  if (cond_col_data_len != NULL)
+  {
+    free_and_init (cond_col_data_len);
+  }
+  heap_attrinfo_end (thread_p, attr_info);
+}
+static void make_ddl (char* supplement_data, int trid, const char *user, LOG_INFO_ENTRY *ddl_entry)
+{
+  /*ddl_entry is output parameter */
+  /*this is for constructing ddl data item*/
+  /*|statement type | class OID | object OID | statement length | statement | */
+
+  char * ptr = supplement_data;
+  int log_type;
+  int ddl_type;
+  int object_type; 
+  int64_t object_oid;
+  int64_t class_oid;
+  int statement_length;
+  char *statement ; 
+
+  char *log_info;
+  /*ddl log info : TRID | user | data_item_type | ddl_type | object_type | OID | class OID | statement length | statement | 
+   * make_ddl construct log info from ddl_type to statement */
+
+  int loginfo_length;
+  int dataitem_type = 0;
+
+  ptr = or_unpack_int (ptr, &log_type);
+  ptr = or_unpack_int64 (ptr, &class_oid);
+  ptr = or_unpack_int64 (ptr, &object_oid);
+  ptr = or_unpack_int (ptr, &statement_length);
+  ptr = or_unpack_string_nocopy (ptr, &statement);
+  switch (log_type)
+  {
+    case CUBRID_STMT_CREATE_CLASS :
+      ddl_type = 0;
+      object_type = 0;
+      break; 
+    case CUBRID_STMT_ALTER_CLASS :
+      ddl_type = 1;
+      object_type = 0;
+      break;
+    case CUBRID_STMT_DROP_CLASS :
+      ddl_type = 2;
+      object_type = 0;
+      break;
+    case CUBRID_STMT_RENAME_CLASS :
+      ddl_type = 3; 
+      object_type = 0;
+      break;
+    case CUBRID_STMT_CREATE_INDEX :
+      ddl_type = 0;
+      object_type = 1;
+      break;
+    case CUBRID_STMT_ALTER_INDEX :
+      ddl_type = 1;
+      object_type =1;
+      break;
+    case CUBRID_STMT_DROP_INDEX  :
+      ddl_type = 2;
+      object_type = 1; 
+      break;
+  }
+ loginfo_length = (OR_INT_SIZE 
+                    + sizeof(char) *32 
+                    + OR_INT_SIZE
+                    + OR_INT_SIZE
+                    + OR_INT_SIZE
+                    + OR_BIGINT_SIZE
+                    + OR_BIGINT_SIZE
+                    + OR_INT_SIZE
+                    + statement_length);
+  ddl_entry->log_info = (char*)malloc(loginfo_length);
+
+
+  ptr = or_pack_int (ddl_entry->log_info, trid);
+  ptr = or_pack_string_with_length (ptr, user, sizeof(char)*32);
+  ptr = or_pack_int(ptr, dataitem_type);
+  ptr = or_pack_int (ptr, ddl_type);
+  ptr = or_pack_int (ptr, object_type);
+  ptr = or_pack_int64 (ptr, object_oid);
+  ptr = or_pack_int64 (ptr, class_oid);
+  ptr = or_pack_int (ptr, statement_length);
+  ptr = or_pack_string_with_length ( ptr, statement, statement_length);
+  
+
+  ddl_entry->length = loginfo_length;
+}
+static void make_dcl(time_t at_time, int trid, char * user, int type, LOG_INFO_ENTRY *dcl_entry)
+{
+  int dcl_type;
+  char *ptr;
+  int dataitem_type = 2;
+  /*align..? maybe LOG_INFO_ENTRY.log_info need to be initialized*/
+  switch(type)
+  {
+    case LOG_COMMIT :
+      dcl_type = 0;
+      break;
+    case LOG_ABORT : 
+      dcl_type = 1; 
+      break;
+  }
+  dcl_entry->length = (OR_INT_SIZE 
+                      + sizeof(char)*32
+                      + OR_INT_SIZE
+                      + OR_INT_SIZE
+                      + OR_BIGINT_SIZE);   
+  dcl_entry->log_info = (char*)malloc(dcl_entry->length);
+
+  ptr = or_pack_int (dcl_entry->log_info, trid);
+  ptr = or_pack_string_with_length (ptr, user, sizeof(char) *32);
+  ptr = or_pack_int (ptr, dataitem_type);
+  ptr = or_pack_int (ptr, dcl_type);
+  ptr = or_pack_int64 (ptr, at_time);
+}
+static void make_timer(time_t at_time, int trid, char *user, LOG_INFO_ENTRY *timer_entry)
+{
+  int dataitem_type = 3;
+  char *ptr;
+  timer_entry->length = (OR_INT_SIZE 
+                      + sizeof(char)*32
+                      + OR_INT_SIZE
+                      + OR_BIGINT_SIZE);  
+ 
+  timer_entry->log_info = (char*)malloc(timer_entry->length);
+
+  ptr = or_pack_int (timer_entry->log_info, trid);
+  ptr = or_pack_string_with_length (ptr, user, sizeof(char) *32);
+  ptr = or_pack_int (ptr, dataitem_type);
+  ptr = or_pack_int64 (ptr, at_time);
+}
+static int find_tran_user(THREAD_ENTRY *thread_p, LOG_LSA lsa, int trid, char **user, LOG_PAGE *log_pgptr)
+{
+  /*find tran user at the end of the transaction  */
+  LOG_LSA process_lsa; 
+  LSA_COPY (&process_lsa, &lsa);
+  int found = false;
+  LOG_RECORD_HEADER *log_rec_hdr = NULL ;
+  LOG_REC_SUPPLEMENTAL_INFO *supplement;
+  char * data;
+
+  while(!LSA_ISNULL(&process_lsa))
+  {
+    log_rec_hdr = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &process_lsa);
+    LOG_READ_ADD_ALIGN (thread_p, sizeof(*log_rec_hdr), &process_lsa, log_pgptr);
+    if (log_rec_hdr->type == LOG_REC_SUPPLEMENTAL_INFO && log_rec_hdr->trid == trid)
+    {
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof(*supplement), &process_lsa, log_pgptr);
+      supplement = (LOG_REC_SUPPLEMENTAL_INFO *)(log_pgptr->area + process_lsa.offset);
+      if(supplement->type == LOG_SUPPLEMENT_TRAN_USER)
+      {
+        LOG_READ_ADD_ALIGN (thread_p, sizeof(*supplement), &process_lsa, log_pgptr);
+        data = (char *)log_pgptr->area + process_lsa.offset;
+        memcpy (*user, data, supplement->length);
+        return 0; 
+      } 
+    }
+    LSA_COPY (&process_lsa , &log_rec_hdr->forw_lsa);
+  }
+  return -1;  
+
+}
+
+static int compare_data (const db_value *new_value, const db_value *cmpdata)
+{
+  /* return 1 if different */
+  /* return 0 if same */
+  
+  const char *src, *end;
+  double d;
+  char line[1025];
+  char line2[1025];
+  int func_type = 0;
+  if (DB_IS_NULL (new_value))
+    {
+      return -1; /*error */
+    }
+  if (DB_IS_NULL (cmpdata))
+  {
+    return -1; /* error */
+  }
+  switch (DB_VALUE_TYPE (new_value))
+    {
+    case DB_TYPE_INTEGER:
+      if (db_get_int(new_value) == db_get_int(cmpdata))
+      {
+        return 0;
+      }
+      else
+      {
+        return OR_INT_SIZE * 2 ; //function code + integer value size ;
+      }
+      break;
+
+    case DB_TYPE_BIGINT:
+      
+      if (db_get_bigint (new_value) == db_get_bigint(cmpdata))
+      {
+        return 0;
+      }
+      else
+      {
+        return OR_INT_SIZE + OR_BIGINT_SIZE ;
+      }
+      break;
+
+    case DB_TYPE_SHORT:
+      if (db_get_short (new_value) == db_get_short(cmpdata))
+      {
+        return 0;
+      }
+      else
+      {
+        return OR_INT_SIZE + OR_SHORT_SIZE;
+      }
+      break;
+
+    case DB_TYPE_FLOAT:
+      if (db_get_float (new_value) == db_get_float(cmpdata))
+      {
+        return 0;
+      }
+      else
+      {
+        return OR_INT_SIZE + OR_FLOAT_SIZE;
+      }
+      break;
+
+    case DB_TYPE_DOUBLE:
+      if (db_get_double (new_value) == db_get_double(cmpdata))
+      {
+        return 0;
+      }
+      else
+      {
+        return OR_INT_SIZE + OR_DOUBLE_SIZE;
+      }
+      break;
+
+    case DB_TYPE_NUMERIC:
+      numeric_db_value_print (new_value, line);
+      numeric_db_value_print (cmpdata, line2);
+      if(strcmp(line, line2))
+      {
+        return 0;
+      }
+      else
+      {
+
+        return OR_INT_SIZE + strlen(line);
+      }
+      break;
+
+    case DB_TYPE_BIT:
+    case DB_TYPE_VARBIT:
+    case DB_TYPE_CHAR:
+    case DB_TYPE_NCHAR:
+    case DB_TYPE_VARCHAR:
+    case DB_TYPE_VARNCHAR:
+      /* Copy string into buf providing for any embedded quotes. Strings may have embedded NULL characters and
+       * embedded quotes.  None of the supported multibyte character codesets have a conflict between a quote
+       * character and the second byte of the multibyte character.
+       */
+      if(strcmp(db_get_string (new_value), db_get_string(cmpdata)))
+      {
+        return 0;
+      }
+      else
+      {
+
+        return OR_INT_SIZE + strlen(line);
+      }
+      
+      break;
+
+#define TOO_BIG_TO_MATTER       1024
+
+    case DB_TYPE_TIME:
+      (void) db_time_to_string (line, TOO_BIG_TO_MATTER, db_get_time (new_value));
+      (void) db_time_to_string (line2, TOO_BIG_TO_MATTER, db_get_time(cmpdata));
+      if (strcmp(line, line2))
+      {
+        return 0;
+      }
+      else
+      {
+
+        return OR_INT_SIZE + strlen(line);
+      }
+      break;
+
+    case DB_TYPE_TIMESTAMP:
+      (void) db_utime_to_string (line, TOO_BIG_TO_MATTER, db_get_timestamp (new_value));
+      (void) db_utime_to_string (line2, TOO_BIG_TO_MATTER, db_get_timestamp (cmpdata));
+      if (strcmp(line, line2))
+      {
+        return 0;
+      }
+      else
+      {
+
+        return OR_INT_SIZE + strlen(line);
+      }
+      break;
+
+    case DB_TYPE_TIMESTAMPLTZ:
+      (void) db_timestampltz_to_string (line, TOO_BIG_TO_MATTER, db_get_timestamp (new_value));
+      (void) db_timestampltz_to_string (line2, TOO_BIG_TO_MATTER, db_get_timestamp (cmpdata));
+      if (strcmp(line, line2))
+      {
+        return 0;
+      }
+      else
+      {
+
+        return OR_INT_SIZE + strlen(line);
+      }
+      break;
+
+    case DB_TYPE_TIMESTAMPTZ:
+    {
+      DB_TIMESTAMPTZ *ts_tz;
+
+      ts_tz = db_get_timestamptz (new_value);
+      (void) db_timestamptz_to_string (line, TOO_BIG_TO_MATTER, & (ts_tz->timestamp), & (ts_tz->tz_id));
+      ts_tz = db_get_timestamptz (cmpdata);
+      (void) db_timestamptz_to_string (line2, TOO_BIG_TO_MATTER, & (ts_tz->timestamp), & (ts_tz->tz_id));
+      if (strcmp(line, line2))
+      {
+        return 0;
+      }
+      else
+      {
+
+        return OR_INT_SIZE + strlen(line);
+      }
+    }
+    break;
+
+    case DB_TYPE_DATETIME:
+      (void) db_datetime_to_string (line, TOO_BIG_TO_MATTER, db_get_datetime (new_value));
+      (void) db_datetime_to_string (line2, TOO_BIG_TO_MATTER, db_get_datetime (cmpdata));
+      
+      if (strcmp(line, line2))
+      {
+        return 0;
+      }
+      else
+      {
+
+        return OR_INT_SIZE + strlen(line);
+      }
+      break;
+    case DB_TYPE_DATETIMELTZ:
+      (void) db_datetimeltz_to_string (line, TOO_BIG_TO_MATTER, db_get_datetime (new_value));
+      (void) db_datetimeltz_to_string (line2, TOO_BIG_TO_MATTER, db_get_datetime (cmpdata));
+      if (strcmp(line, line2))
+      {
+        return 0;
+      }
+      else
+      {
+
+        return OR_INT_SIZE + strlen(line);
+      }
+      break;
+
+    case DB_TYPE_DATETIMETZ:
+    {
+      DB_DATETIMETZ *dt_tz;
+
+      dt_tz = db_get_datetimetz (new_value);
+      (void) db_datetimetz_to_string (line, TOO_BIG_TO_MATTER, & (dt_tz->datetime), & (dt_tz->tz_id));
+      dt_tz = db_get_datetimetz (cmpdata);
+      (void) db_datetimetz_to_string (line2, TOO_BIG_TO_MATTER, & (dt_tz->datetime), & (dt_tz->tz_id));
+      if (strcmp(line, line2))
+      {
+        return 0;
+      }
+      else
+      {
+
+        return OR_INT_SIZE + strlen(line);
+      }
+    }
+    break;
+
+    case DB_TYPE_DATE:
+      (void) db_date_to_string (line, TOO_BIG_TO_MATTER, db_get_date (new_value));
+      (void) db_date_to_string (line2, TOO_BIG_TO_MATTER, db_get_date (cmpdata));
+
+      if (strcmp(line, line2))
+      {
+        return 0;
+      }
+      else
+      {
+
+        return OR_INT_SIZE + strlen(line);
+      }
+      break;
+
+    case DB_TYPE_MONETARY:
+      break;
+
+    case DB_TYPE_NULL:
+      /* Can't get here because the DB_IS_NULL test covers DB_TYPE_NULL */
+      break;
+
+    case DB_TYPE_VARIABLE:
+    case DB_TYPE_SUB:
+    case DB_TYPE_DB_VALUE:
+      /* make sure line is NULL terminated, may not be necessary line[0] = '\0'; */
+      break;
+
+    default:
+      /* NB: THERE MUST BE NO DEFAULT CASE HERE. ALL TYPES MUST BE HANDLED! */
+      assert (false);
+      break;
+    }
+}
+
+static int put_data (const db_value *new_value, char *ptr)
+{
+  /* return 1 if different */
+  /* return 0 if same */
+  
+  const char *src, *end;
+  double d;
+  char line[1025];
+  char line2[1025];
+  int func_type = 0;
+  if (DB_IS_NULL (new_value))
+    {
+      return -1; /*error */
+    }
+
+  switch (DB_VALUE_TYPE (new_value))
+    {
+    case DB_TYPE_INTEGER:
+        func_type = 0;
+        ptr = or_pack_int (ptr, func_type);
+        ptr = or_pack_int (ptr, db_get_int(new_value));
+        return OR_INT_SIZE * 2 ;
+      
+      break;
+
+    case DB_TYPE_BIGINT:
+      func_type = 1;
+      ptr = or_pack_int (ptr, func_type);
+      ptr = or_pack_int64 (ptr, db_get_bigint(new_value));
+      return OR_INT_SIZE + OR_BIGINT_SIZE ;
+    
+      break;
+
+    case DB_TYPE_SHORT:
+      func_type = 4;
+      ptr = or_pack_int (ptr, func_type);
+      ptr = or_pack_short (ptr, db_get_short(new_value));
+      return OR_INT_SIZE + OR_SHORT_SIZE;
+    
+      break;
+
+    case DB_TYPE_FLOAT:
+      func_type = 2;
+      ptr = or_pack_int (ptr, func_type);
+      ptr = or_pack_float (ptr, db_get_float(new_value));
+      
+      return OR_INT_SIZE + OR_FLOAT_SIZE;
+      
+      break;
+
+    case DB_TYPE_DOUBLE:
+        func_type = 3;
+        ptr = or_pack_int (ptr, func_type);
+        ptr = or_pack_double (ptr, db_get_double(new_value));
+        return OR_INT_SIZE + OR_DOUBLE_SIZE;
+      break;
+
+    case DB_TYPE_NUMERIC:
+      numeric_db_value_print (new_value, line);
+      
+        func_type = 7;
+        ptr = or_pack_int (ptr, func_type);
+        ptr = or_pack_string (ptr, line);
+        return OR_INT_SIZE + strlen(line);
+      break;
+
+    case DB_TYPE_BIT:
+    case DB_TYPE_VARBIT:
+    case DB_TYPE_CHAR:
+    case DB_TYPE_NCHAR:
+    case DB_TYPE_VARCHAR:
+    case DB_TYPE_VARNCHAR:
+      /* Copy string into buf providing for any embedded quotes. Strings may have embedded NULL characters and
+       * embedded quotes.  None of the supported multibyte character codesets have a conflict between a quote
+       * character and the second byte of the multibyte character.
+       */
+
+        func_type = 7;
+        ptr = or_pack_int (ptr, func_type);
+        ptr = or_pack_string (ptr, db_get_string(new_value));
+        return OR_INT_SIZE + strlen(line);
+      break;
+
+#define TOO_BIG_TO_MATTER       1024
+
+    case DB_TYPE_TIME:
+      (void) db_time_to_string (line, TOO_BIG_TO_MATTER, db_get_time (new_value));
+        func_type = 7;
+        ptr = or_pack_int (ptr, func_type);
+        ptr = or_pack_string (ptr, line);
+        return OR_INT_SIZE + strlen(line);
+      break;
+
+    case DB_TYPE_TIMESTAMP:
+      (void) db_utime_to_string (line, TOO_BIG_TO_MATTER, db_get_timestamp (new_value));
+        func_type = 7;
+        ptr = or_pack_int (ptr, func_type);
+        ptr = or_pack_string (ptr, line);
+        return OR_INT_SIZE + strlen(line);
+      break;
+
+    case DB_TYPE_TIMESTAMPLTZ:
+      (void) db_timestampltz_to_string (line, TOO_BIG_TO_MATTER, db_get_timestamp (new_value));
+        func_type = 7;
+        ptr = or_pack_int (ptr, func_type);
+        ptr = or_pack_string (ptr, line);
+        return OR_INT_SIZE + strlen(line);
+      break;
+
+    case DB_TYPE_TIMESTAMPTZ:
+    {
+      DB_TIMESTAMPTZ *ts_tz;
+
+      ts_tz = db_get_timestamptz (new_value);
+      (void) db_timestamptz_to_string (line, TOO_BIG_TO_MATTER, & (ts_tz->timestamp), & (ts_tz->tz_id));
+        func_type = 7;
+        ptr = or_pack_int (ptr, func_type);
+        ptr = or_pack_string (ptr, line);
+        return OR_INT_SIZE + strlen(line);
+    }
+    break;
+
+    case DB_TYPE_DATETIME:
+      (void) db_datetime_to_string (line, TOO_BIG_TO_MATTER, db_get_datetime (new_value));
+        func_type = 7;
+        ptr = or_pack_int (ptr, func_type);
+        ptr = or_pack_string (ptr, line);
+        return OR_INT_SIZE + strlen(line);
+      break;
+    case DB_TYPE_DATETIMELTZ:
+      (void) db_datetimeltz_to_string (line, TOO_BIG_TO_MATTER, db_get_datetime (new_value));
+        func_type = 7;
+        ptr = or_pack_int (ptr, func_type);
+        ptr = or_pack_string (ptr, line);
+        return OR_INT_SIZE + strlen(line);
+      break;
+
+    case DB_TYPE_DATETIMETZ:
+    {
+      DB_DATETIMETZ *dt_tz;
+
+      dt_tz = db_get_datetimetz (new_value);
+      (void) db_datetimetz_to_string (line, TOO_BIG_TO_MATTER, & (dt_tz->datetime), & (dt_tz->tz_id));
+        func_type = 7;
+        ptr = or_pack_int (ptr, func_type);
+        ptr = or_pack_string (ptr, line);
+        return OR_INT_SIZE + strlen(line);
+    }
+    break;
+
+    case DB_TYPE_DATE:
+      (void) db_date_to_string (line, TOO_BIG_TO_MATTER, db_get_date (new_value));
+        func_type = 7;
+        ptr = or_pack_int (ptr, func_type);
+        ptr = or_pack_string (ptr, line);
+        return OR_INT_SIZE + strlen(line);
+      break;
+
+    case DB_TYPE_MONETARY:
+      break;
+
+    case DB_TYPE_NULL:
+      /* Can't get here because the DB_IS_NULL test covers DB_TYPE_NULL */
+      break;
+
+    case DB_TYPE_VARIABLE:
+    case DB_TYPE_SUB:
+    case DB_TYPE_DB_VALUE:
+      /* make sure line is NULL terminated, may not be necessary line[0] = '\0'; */
+      break;
+
+    default:
+      /* NB: THERE MUST BE NO DEFAULT CASE HERE. ALL TYPES MUST BE HANDLED! */
+      assert (false);
+      break;
+    }
+}
 //
 // log critical section
 //
