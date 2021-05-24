@@ -15654,7 +15654,6 @@ sm_collect_truncatable_classes (MOP class_mop, std::unordered_set < OID > &trun_
   SM_CLASS_CONSTRAINT *pk_constraint = NULL;
   SM_FOREIGN_KEY_INFO *fk_ref;
   OID *fk_cls_oid;
-  bool is_pk_referred = false;
 
   error = au_fetch_class (class_mop, &class_, AU_FETCH_READ, DB_AUTH_ALTER);
   if (error != NO_ERROR || class_ == NULL)
@@ -15663,21 +15662,21 @@ sm_collect_truncatable_classes (MOP class_mop, std::unordered_set < OID > &trun_
       return er_errid ();
     }
 
-  pk_constraint = classobj_find_cons_primary_key (class_->constraints);
-  is_pk_referred = pk_constraint != NULL && pk_constraint->fk_info != NULL;
-
-  if (is_pk_referred && !is_cascade)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TRUNCATE_PK_REFERRED, 1, pk_constraint->fk_info->name);
-      return ER_TRUNCATE_PK_REFERRED;
-    }
-
   trun_classes.emplace (*ws_oid (class_mop));
 
-  if (!is_pk_referred)
+  pk_constraint = classobj_find_cons_primary_key (class_->constraints);
+  if (pk_constraint == NULL || pk_constraint->fk_info == NULL)
     {
       /* if no PK or FK-referred, it can be truncated */
       return NO_ERROR;
+    }
+
+  /* Now, there is a PK, and are some FKs-referring to the PK */
+
+  if (!is_cascade)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TRUNCATE_PK_REFERRED, 1, pk_constraint->fk_info->name);
+      return ER_TRUNCATE_PK_REFERRED;
     }
 
   /* Find FK-child classes to cascade. */
