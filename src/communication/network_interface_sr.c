@@ -10446,3 +10446,275 @@ ssession_stop_attached_threads (void *session)
 {
   session_stop_attached_threads (session);
 }
+
+#if 0
+/*
+ * slog_reader_set_configuration -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+slog_reader_set_configuration (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply), *ptr;
+
+  int max_log_item;
+  int extraction_timeout;
+  int all_in_cond;
+  int extraction_user_count;
+  int extraction_table_count;
+
+  ptr = or_unpack_int (request, &max_log_item);
+  ptr = or_unpack_int (ptr, &extraction_timeout);
+  ptr = or_unpack_int (ptr, &all_in_cond);
+  ptr = or_unpack_int (ptr, &extraction_user_count);
+  ptr = or_unpack_int (ptr, &extraction_table_count);
+
+  _er_log_debug (ARG_FILE_LINE,
+		 "max_log_item = %d, extraction_timeout = %d, all_in_cond = %d, extraction_user_count = %d, extraction_table_count = %d",
+		 max_log_item, extraction_timeout, all_in_cond, extraction_user_count, extraction_table_count);
+
+  (void) or_pack_int (reply, NO_ERROR);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
+ * slog_reader_get_lsa -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+slog_reader_get_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_LOG_LSA_ALIGNED_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply), *ptr;
+
+  time_t start_time;
+  LOG_LSA start_lsa;
+
+  assert (reqlen == sizeof (int64_t));
+
+  or_unpack_int64 (request, (INT64 *) & start_time);
+
+  LSA_COPY (&start_lsa, &log_Gl.append.prev_lsa);
+
+  _er_log_debug (ARG_FILE_LINE, "start_time = %ld, start_lsa = %lld|%d", start_time, LSA_AS_ARGS (&start_lsa));
+
+  ptr = or_pack_int (reply, NO_ERROR);
+  or_pack_log_lsa (ptr, &start_lsa);
+
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
+ * slog_reader_get_log_refined_info -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+slog_reader_get_log_refined_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  // 348 24 
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_LOG_LSA_ALIGNED_SIZE + OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply), *ptr;
+
+  LOG_LSA next_lsa;
+  int num_infos;
+  int total_length;
+
+  assert (reqlen == OR_LOG_LSA_ALIGNED_SIZE);
+
+  or_unpack_log_lsa (request, &next_lsa);
+
+  _er_log_debug (ARG_FILE_LINE, "recv_next_lsa = %lld|%d", LSA_AS_ARGS (&next_lsa));
+
+  LSA_COPY (&next_lsa, &log_Gl.append.prev_lsa);
+
+  _er_log_debug (ARG_FILE_LINE, "send_next_lsa = %lld|%d", LSA_AS_ARGS (&next_lsa));
+
+  num_infos = 4;
+  total_length = 400;
+
+  ptr = or_pack_int (reply, NO_ERROR);
+  ptr = or_pack_log_lsa (ptr, &next_lsa);
+  ptr = or_pack_int (ptr, num_infos);
+  ptr = or_pack_int (ptr, total_length);
+
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
+ * slog_reader_get_log_refined_info_2 -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+slog_reader_get_log_refined_info_2 (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (400) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply), *ptr;
+
+  int log_info_len = 0;		// unused information
+
+  ptr = or_pack_int (reply, log_info_len);
+
+  /* LOG_INFO 0 - DDL */
+  {
+    int trid = 47;
+    char user[32] = "jooho kim";
+    int data_item_type = 0;
+    int ddl_type = 0;
+    int object_type = 0;
+    uint64_t oid = 777;
+    uint64_t classoid = 888;
+    char statement[50] = "CREATE TABLE JOOHO_TBL (C1 INT, C2 VARCHAR (100))";
+    int statement_length = strlen (statement);
+
+    ptr = or_pack_int (ptr, trid);
+    ptr = or_pack_stream (ptr, user, 32);
+    ptr = or_pack_int (ptr, data_item_type);
+    ptr = or_pack_int (ptr, ddl_type);
+    ptr = or_pack_int (ptr, object_type);
+    ptr = or_pack_int64 (ptr, oid);
+    ptr = or_pack_int64 (ptr, classoid);
+    ptr = or_pack_int (ptr, statement_length);
+    ptr = or_pack_stream (ptr, statement, statement_length);
+  }
+
+  ptr = or_pack_int (ptr, log_info_len);
+
+  /* LOG_INFO 1 - DML */
+  {
+    int trid = 57;
+    char user[32] = "jooho kim";
+    int data_item_type = 1;
+    int dml_type = 1;
+    uint64_t classoid = 888;
+    int num_changed_col = 3;
+    int changed_col_idx[3] = { 1, 3, 5 };	/* 10, "ABCD", "EFG" */
+    int num_cond_col = 2;
+    int cond_col_idx[2] = { 2, 4 };	/* 9, 99 */
+    int i;
+
+    ptr = or_pack_int (ptr, trid);
+    ptr = or_pack_stream (ptr, user, 32);
+    ptr = or_pack_int (ptr, data_item_type);
+    ptr = or_pack_int (ptr, dml_type);
+    ptr = or_pack_int64 (ptr, classoid);
+
+    {
+      ptr = or_pack_int (ptr, num_changed_col);
+
+      for (i = 0; i < num_changed_col; i++)
+	{
+	  ptr = or_pack_int (ptr, changed_col_idx[i]);
+	}
+
+      ptr = or_pack_int (ptr, 0);	/* or_unpack_int () */
+      ptr = or_pack_int (ptr, 10);
+
+      ptr = or_pack_int (ptr, 6);	/* or_unpack_stream () */
+      ptr = or_pack_stream (ptr, "ABCD", 4);
+
+      ptr = or_pack_int (ptr, 6);	/* or_unpack_stream () */
+      ptr = or_pack_stream (ptr, "EFG", 3);
+    }
+
+    {
+      ptr = or_pack_int (ptr, num_cond_col);
+
+      for (i = 0; i < num_cond_col; i++)
+	{
+	  ptr = or_pack_int (ptr, cond_col_idx[i]);
+	}
+
+      ptr = or_pack_int (ptr, 0);	/* or_unpack_int () */
+      ptr = or_pack_int (ptr, 9);
+
+      ptr = or_pack_int (ptr, 0);	/* or_unpack_int () */
+      ptr = or_pack_int (ptr, 99);
+    }
+  }
+
+  ptr = or_pack_int (ptr, log_info_len);
+
+  /* LOG_INFO 2 - DCL */
+  {
+    int trid = 67;
+    char user[32] = "jooho kim";
+    int data_item_type = 2;
+    int dcl_type = 0;
+    time_t timestamp = time (NULL);
+
+    ptr = or_pack_int (ptr, trid);
+    ptr = or_pack_stream (ptr, user, 32);
+    ptr = or_pack_int (ptr, data_item_type);
+    ptr = or_pack_int (ptr, dcl_type);
+    ptr = or_pack_int64 (ptr, timestamp);
+  }
+
+  ptr = or_pack_int (ptr, log_info_len);
+
+  /* LOG_INFO 3 - TIMER */
+  {
+    int trid = 77;
+    char user[32] = "jooho kim";
+    int data_item_type = 3;
+    time_t timestamp = time (NULL);
+
+    ptr = or_pack_int (ptr, trid);
+    ptr = or_pack_stream (ptr, user, 32);
+    ptr = or_pack_int (ptr, data_item_type);
+    ptr = or_pack_int64 (ptr, timestamp);
+  }
+
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
+ * slog_reader_finalize -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+slog_reader_finalize (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  or_pack_int (reply, NO_ERROR);
+
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+#endif
