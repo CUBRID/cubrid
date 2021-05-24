@@ -256,11 +256,13 @@ enum net_server_request
 
   NET_SERVER_VACUUM_DUMP,
 
+#if 0
   NET_SERVER_LOG_READER_SET_CONFIGURATION,
   NET_SERVER_LOG_READER_GET_LSA,
   NET_SERVER_LOG_READER_GET_LOG_REFINED_INFO,
   NET_SERVER_LOG_READER_GET_LOG_REFINED_INFO_2,
   NET_SERVER_LOG_READER_FINALIZE,
+#endif
   /*
    * This is the last entry. It is also used for the end of an
    * array of statistics information on client/server communication.

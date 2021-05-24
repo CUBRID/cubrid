@@ -10447,6 +10447,7 @@ ssession_stop_attached_threads (void *session)
   session_stop_attached_threads (session);
 }
 
+#if 0
 /*
  * slog_reader_set_configuration -
  *
@@ -10716,3 +10717,4 @@ slog_reader_finalize (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
 
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
+#endif
