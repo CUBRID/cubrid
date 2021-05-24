@@ -8035,21 +8035,21 @@ slogwr_get_log_pages (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
 void
 slog_reader_get_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  OR_ALIGNED_BUF (OR_INT_SIZE + OR_BIGINT_SIZE*2) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_BIGINT_SIZE * 2) a_reply;
   OR_ALIGNED_BUF (OR_BIGINT_SIZE * 2) lsa_reply;
-  /*error code : 4bytes , LSA : 8bytes*/
+  /*error code : 4bytes , LSA : 8bytes */
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *packed_lsa = OR_ALIGNED_BUF_START (lsa_reply);
   char *ptr;
   LOG_LSA start_lsa;
-  time_t input_time; 
+  time_t input_time;
   uint64_t b_start_lsa;
   int error;
 
   ptr = or_unpack_int64 (request, &input_time);
 
   error = xlog_reader_get_lsa (thread_p, input_time, &start_lsa);
-  memcpy (&b_start_lsa, &start_lsa, sizeof(UINT64));
+  memcpy (&b_start_lsa, &start_lsa, sizeof (UINT64));
 
   if (error == ER_INTERRUPTED)
     {
@@ -8063,7 +8063,7 @@ slog_reader_get_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   else
     {
       ptr = or_pack_int (reply, error);
-      ptr = or_pack_int64(ptr, (int64_t)b_start_lsa);
+      ptr = or_pack_int64 (ptr, (int64_t) b_start_lsa);
       (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
     }
 
@@ -8098,19 +8098,22 @@ slog_reader_set_configuration (THREAD_ENTRY * thread_p, unsigned int rid, char *
   ptr = or_unpack_int (ptr, &timeout);
   ptr = or_unpack_int (ptr, &all_in_cond);
   ptr = or_unpack_int (ptr, &num_user);
-  user = (char**)malloc(sizeof(char*) * num_user);
-  for(int i = 0; i < num_user; i++){
-    user[i] = (char*)malloc(sizeof(char) * DB_MAX_USER_LENGTH +1);
-    ptr = or_unpack_string (ptr, &user[i]);
-  }
+  user = (char **) malloc (sizeof (char *) * num_user);
+  for (int i = 0; i < num_user; i++)
+    {
+      user[i] = (char *) malloc (sizeof (char) * DB_MAX_USER_LENGTH + 1);
+      ptr = or_unpack_string (ptr, &user[i]);
+    }
   ptr = or_unpack_int (ptr, &num_class);
-  classoids = (uint64_t*)malloc(sizeof(uint64_t) * num_class);
-  for(int i = 0; i < num_class; i++){
-    ptr = or_unpack_int64 (ptr, (int64_t*)&classoids[i]);
-  }
-  
-  error = xlog_reader_set_configuration (thread_p, max_log_item, timeout,all_in_cond,  user, num_user, classoids, num_class);
-  /*it is required to free the allocated heap memory*/
+  classoids = (uint64_t *) malloc (sizeof (uint64_t) * num_class);
+  for (int i = 0; i < num_class; i++)
+    {
+      ptr = or_unpack_int64 (ptr, (int64_t *) & classoids[i]);
+    }
+
+  error =
+    xlog_reader_set_configuration (thread_p, max_log_item, timeout, all_in_cond, user, num_user, classoids, num_class);
+  /*it is required to free the allocated heap memory */
   if (error == ER_INTERRUPTED)
     {
       (void) return_error_to_client (thread_p, rid);
@@ -8125,10 +8128,10 @@ slog_reader_set_configuration (THREAD_ENTRY * thread_p, unsigned int rid, char *
       ptr = or_pack_int (reply, error);
       (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
     }
-  for(int i=0; i < num_user; i++)
-  {
-    free_and_init (user[i]);
-  }
+  for (int i = 0; i < num_user; i++)
+    {
+      free_and_init (user[i]);
+    }
   free_and_init (classoids);
   /*free the **user, *class  */
   return;
@@ -8150,17 +8153,17 @@ void
 slog_reader_get_log_refined_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  /*total size of reply message is decided after log_item has been returned*/
+  /*total size of reply message is decided after log_item has been returned */
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
   LOG_LSA start_lsa;
   UINT64 b_start_lsa;
-  int total_length; 
+  int total_length;
   char *log_info_list;
-  int error; 
+  int error;
   int num_log_info;
   ptr = or_unpack_int64 (request, &b_start_lsa);
-  memcpy (&start_lsa , &b_start_lsa, sizeof(UINT64));
+  memcpy (&start_lsa, &b_start_lsa, sizeof (UINT64));
 
   error = xlog_reader_get_log_refined_info (thread_p, start_lsa, &total_length, &log_info_list, &num_log_info);
   if (error == ER_INTERRUPTED)
@@ -8175,7 +8178,7 @@ slog_reader_get_log_refined_info (THREAD_ENTRY * thread_p, unsigned int rid, cha
   else
     {
       ptr = or_pack_int (reply, error);
-      ptr = or_pack_stream (ptr, log_info_list, total_length); /*to be modified*/
+      ptr = or_pack_stream (ptr, log_info_list, total_length);	/*to be modified */
       (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
     }
 
@@ -8186,11 +8189,11 @@ void
 slog_reader_finalize (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  /*total size of reply message is decided after log_item has been returned*/
+  /*total size of reply message is decided after log_item has been returned */
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
   LOG_LSA start_lsa;
-  int total_length; 
+  int total_length;
   char *log_info_list;
   int error;
 
