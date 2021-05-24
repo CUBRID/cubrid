@@ -11660,6 +11660,100 @@ xrepl_set_info (THREAD_ENTRY * thread_p, REPL_INFO * repl_info)
   return error_code;
 }
 
+int
+xlog_supplement_statement (THREAD_ENTRY * thread_p, int statement_type, int num_class, char **classname_list,
+			   char *objname, char *stmt_text)
+{
+  LOG_TDES *tdes;		// classoid 
+  int tran_index;
+  int length;
+
+//  char cls_lower[DB_MAX_IDENTIFIER_LENGTH] = {0};
+  char *data;
+  char *ptr;
+//  int status; 
+  OID *classoids;
+  BTID btid;
+  int error_code;
+  uint64_t *classoids_bigint;
+  uint64_t btid_bigint;
+  int strlen;
+
+  assert (prm_get_bool_value (PRM_ID_SUPPLEMENTAL_LOG));
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tdes = LOG_FIND_TDES (tran_index);
+
+  switch (statement_type)
+    {
+    case CUBRID_STMT_CREATE_CLASS:
+    case CUBRID_STMT_ALTER_CLASS:
+    case CUBRID_STMT_RENAME_CLASS:
+    case CUBRID_STMT_TRUNCATE:
+      classoids = (OID *) malloc (sizeof (OID));
+      classoids_bigint = (uint64_t *) malloc (sizeof (int64_t));
+      xlocator_find_class_oid (thread_p, classname_list[0], &classoids[0], NULL_LOCK);
+      memcpy (&classoids_bigint[0], &classoids[0], sizeof (int64_t));
+      break;
+    case CUBRID_STMT_DROP_CLASS:
+      classoids = (OID *) malloc (sizeof (OID) * num_class);
+      classoids_bigint = (uint64_t *) malloc (sizeof (int64_t) * num_class);
+      for (int i = 0; i < num_class; i++)
+	{
+	  xlocator_find_class_oid (thread_p, classname_list[i], &classoids[i], NULL_LOCK);
+	  memcpy (&classoids_bigint[i], &classoids[i], sizeof (int64_t));
+	}
+      break;
+    case CUBRID_STMT_CREATE_INDEX:
+    case CUBRID_STMT_ALTER_INDEX:
+    case CUBRID_STMT_DROP_INDEX:
+      classoids = (OID *) malloc (sizeof (OID));
+      classoids_bigint = (uint64_t *) malloc (sizeof (int64_t));
+      printf ("%d class name for INDEX \n", classname_list[0]);
+      xlocator_find_class_oid (thread_p, classname_list[0], &classoids[0], NULL_LOCK);
+      memcpy (&classoids_bigint[0], &classoids[0], sizeof (int64_t));
+      error_code = heap_get_btid_from_index_name (thread_p, &classoids[0], objname, &btid);
+      memcpy (&btid_bigint, &btid.vfid, sizeof (int64_t));
+    }
+
+  /*|statement type | num_class | class oid | oid(index oid) | statement text | 
+   * 
+   * */
+  length = (OR_INT_SIZE + OR_INT_SIZE + (OR_BIGINT_SIZE * num_class) + or_packed_string_length (stmt_text, &strlen));
+
+  if (statement_type == CUBRID_STMT_CREATE_INDEX || statement_type == CUBRID_STMT_ALTER_INDEX
+      || statement_type == CUBRID_STMT_DROP_INDEX)
+    {
+      /*TODO  : make a macro for "HAVE OBJECT OID" */
+      length += OR_BIGINT_SIZE;
+    }
+
+  data = (char *) malloc (length);	// 필요한가? 
+  if (data == NULL)
+    {
+      return NO_ERROR;		// need to be changed to specific error code 
+    }
+
+  ptr = or_pack_int (data, statement_type);
+  ptr = or_pack_int (ptr, num_class);
+  for (int i = 0; i < num_class; i++)
+    {
+      ptr = or_pack_int64 (ptr, classoids_bigint[i]);
+    }
+
+  if (statement_type == CUBRID_STMT_CREATE_INDEX || statement_type == CUBRID_STMT_ALTER_INDEX
+      || statement_type == CUBRID_STMT_DROP_INDEX)
+    {
+      ptr = or_pack_int64 (ptr, btid_bigint);
+    }
+  ptr = or_pack_string_with_length (ptr, stmt_text, strlen);
+
+  log_append_supplemental_log (thread_p, LOG_SUPPLEMENT_STATEMENT, length, (void *) data);
+
+  free_and_init (data);
+  free_and_init (classoids);
+  free_and_init (classoids_bigint);
+}
+
 /*
  * xrepl_log_get_append_lsa () -
  *

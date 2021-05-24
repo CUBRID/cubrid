@@ -507,6 +507,10 @@ net_server_init (void)
   req_p->processing_function = slogtb_set_suppress_repl_on_transaction;
   req_p->name = "NET_SERVER_LOG_SET_SUPPRESS_REPL_ON_TRANSACTION";
 
+   /*CDC*/ req_p = &net_Requests[NET_SERVER_SUPPLEMENT_STMT];
+  req_p->processing_function = slog_supplement_statement;
+  req_p->name = "NET_SERVER_SUPPLEMENT_STMT";
+
   /* lock */
   req_p = &net_Requests[NET_SERVER_LK_DUMP];
   req_p->processing_function = slock_dump;
