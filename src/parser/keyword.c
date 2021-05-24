@@ -541,14 +541,13 @@ static int keyword_cmp (const void *k1, const void *k2);
 static int
 keyword_cmp (const void *k1, const void *k2)
 {
-  if (((KEYWORD_RECORD *) k1)->hash_value > ((KEYWORD_RECORD *) k2)->hash_value)
+  int cmp = ((KEYWORD_RECORD *) k1)->hash_value - ((KEYWORD_RECORD *) k2)->hash_value;
+
+  if (cmp != 0)
     {
-      return 1;
+      return cmp;
     }
-  if (((KEYWORD_RECORD *) k1)->hash_value < ((KEYWORD_RECORD *) k2)->hash_value)
-    {
-      return -1;
-    }
+
   return strcmp (((KEYWORD_RECORD *) k1)->keyword, ((KEYWORD_RECORD *) k2)->keyword);
 }
 
@@ -631,7 +630,8 @@ pt_find_keyword (const char *text)
 
   GET_KEYWORD_HASH_VALUE (dummy.hash_value, dummy.keyword);
   i = (dummy.hash_value >> 8);
-  if ((start_pos[i + 1] - start_pos[i]) <= MAGIC_NUM_BI_SEQ)
+  len = (start_pos[i + 1] - start_pos[i]);
+  if (len <= MAGIC_NUM_BI_SEQ)
     {
       for (len = start_pos[i]; len < start_pos[i + 1]; len++)
 	{
@@ -645,11 +645,11 @@ pt_find_keyword (const char *text)
 	    }
 
 	  cmp = strcmp (dummy.keyword, keywords[len].keyword);
-	  if (cmp < 0)
+	  if (cmp > 0)
 	    {
 	      continue;
 	    }
-	  else if (cmp > 0)
+	  else if (cmp < 0)
 	    {
 	      return NULL;
 	    }
