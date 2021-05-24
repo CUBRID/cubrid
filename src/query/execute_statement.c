@@ -3301,6 +3301,10 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PT_UNKNOWN_STATEMENT, 1, statement->node_type);
 	  break;
 	}
+      if (prm_get_bool_value (PRM_ID_SUPPLEMENTAL_LOG))
+	{
+	  do_supplemental_statement (parser, statement);
+	}
 
       /* enable data replication log */
       if (need_stmt_replication)
@@ -3753,6 +3757,11 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PT_UNKNOWN_STATEMENT, 1, statement->node_type);
       break;
+    }
+
+  if (prm_get_bool_value (PRM_ID_SUPPLEMENTAL_LOG))
+    {
+      do_supplemental_statement (parser, statement);
     }
 
   /* enable data replication log */
@@ -14675,6 +14684,7 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  return NO_ERROR;
 	}
       repl_stmt.statement_type = CUBRID_STMT_DROP_CLASS;
+      /*if (prm_get_bool_value (PRM_ID_SUPPLEMENTAL_LOG)) statement->info.drop.spec_list.info.spec.entity_name */
       break;
 
     case PT_CREATE_INDEX:
@@ -14922,6 +14932,316 @@ end:
   return error;
 }
 
+int
+do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  int error = NO_ERROR;
+  PARSER_VARCHAR **host_val = NULL;
+  static const char *unknown_name = "-";
+  char stmt_separator;
+  char *stmt_end = NULL;
+  char *sbr_text = NULL;
+  char *stmt_text = NULL;
+
+  int num_class = 0;
+  int num_object = 0;
+
+  PARSER_VARCHAR *classname = NULL;
+  PARSER_VARCHAR **classname_list = NULL;
+  PARSER_VARCHAR *objname = NULL;
+  PARSER_VARCHAR **objname_list = NULL;
+
+  PT_NODE *entity_list = NULL;
+  PT_NODE *entity = NULL;
+  PT_NODE *entity_spec = NULL;
+  PT_NODE *target = NULL;
+  int statement_type = 0;
+  OID *classoid = NULL;
+  OID *oid = NULL;
+  int stmt_length = 0;
+  /*class OID will be stored at server side using xlocator_find_class_oid() */
+
+  if (statement->sql_user_text == NULL || statement->sql_user_text_len == 0)
+    {
+      /* this should be loaddb. */
+      return NO_ERROR;
+    }
+
+  switch (statement->node_type)
+    {
+    case PT_CREATE_ENTITY:
+      classname = pt_print_bytes (parser, statement->info.create_entity.entity_name);
+      statement_type = CUBRID_STMT_CREATE_CLASS;
+      /*TODO : classifying vclass(VIEW) is required */
+      break;
+
+    case PT_ALTER:
+      classname = pt_print_bytes (parser, statement->info.alter.entity_name);
+      statement_type = CUBRID_STMT_ALTER_CLASS;
+      break;
+
+    case PT_RENAME:
+      classname = pt_print_bytes (parser, statement->info.rename.old_name);
+      statement_type = CUBRID_STMT_RENAME_CLASS;
+      break;
+
+    case PT_DROP:
+      /* No replication log will be written when there's no applicable table for "drop if exists" */
+      if (statement->info.drop.if_exists && statement->info.drop.spec_list == NULL)
+	{
+	  return NO_ERROR;
+	}
+      for (entity_spec = statement->info.drop.spec_list; entity_spec != NULL; entity_spec = entity_spec->next)
+	{
+	  entity_list = entity_spec->info.spec.flat_entity_list;
+	  for (entity = entity_list; entity != NULL; entity = entity->next)
+	    {
+	      classname_list = (PARSER_VARCHAR **) realloc (classname_list, sizeof (PARSER_VARCHAR *) * (++num_class));
+	      if (classname_list == NULL)
+		{
+		  return -1;	//error code definition is required  
+		}
+	      classname_list[num_class - 1] = pt_print_bytes (parser, entity);
+	      printf ("%s class name \n", (char *) (classname_list[num_class - 1]->bytes));
+	    }
+	}
+      statement_type = CUBRID_STMT_DROP_CLASS;
+      /*if (prm_get_bool_value (PRM_ID_SUPPLEMENTAL_LOG)) statement->info.drop.spec_list.info.spec.entity_name */
+      break;
+
+    case PT_CREATE_INDEX:
+      classname = pt_print_bytes (parser, statement->info.index.indexed_class->info.spec.entity_name);
+      objname = pt_print_bytes (parser, statement->info.index.index_name);
+      statement_type = CUBRID_STMT_CREATE_INDEX;
+      break;
+
+    case PT_ALTER_INDEX:
+//      classname = pt_print_bytes (parser, statement->info.index.indexed_class);
+      classname = pt_print_bytes (parser, statement->info.index.indexed_class->info.spec.entity_name);
+      objname = pt_print_bytes (parser, statement->info.index.index_name);
+      statement_type = CUBRID_STMT_ALTER_INDEX;
+      break;
+
+    case PT_DROP_INDEX:
+      classname = pt_print_bytes (parser, statement->info.index.indexed_class->info.spec.entity_name);
+      objname = pt_print_bytes (parser, statement->info.index.index_name);
+      statement_type = CUBRID_STMT_DROP_INDEX;
+      break;
+/*
+    case PT_CREATE_SERIAL:
+      statement_type = CUBRID_STMT_CREATE_SERIAL;
+      break;
+
+    case PT_ALTER_SERIAL:
+      statement_type = CUBRID_STMT_ALTER_SERIAL;
+      break;
+
+    case PT_DROP_SERIAL:
+      statement_type = CUBRID_STMT_DROP_SERIAL;
+      break;
+
+    case PT_CREATE_STORED_PROCEDURE:
+      statement_type = CUBRID_STMT_CREATE_STORED_PROCEDURE;
+      break;
+
+    case PT_ALTER_STORED_PROCEDURE:
+      statement_type = CUBRID_STMT_ALTER_STORED_PROCEDURE;
+      break;
+
+    case PT_DROP_STORED_PROCEDURE:
+      statement_type = CUBRID_STMT_DROP_STORED_PROCEDURE;
+      break;
+
+    case PT_CREATE_USER:
+      repl_stmt.statement_type = CUBRID_STMT_CREATE_USER;
+      break;
+
+    case PT_ALTER_USER:
+      repl_stmt.statement_type = CUBRID_STMT_ALTER_USER;
+      break;
+
+    case PT_DROP_USER:
+      repl_stmt.statement_type = CUBRID_STMT_DROP_USER;
+      break;
+
+    case PT_GRANT:
+      repl_stmt.statement_type = CUBRID_STMT_GRANT;
+      break;
+
+    case PT_REVOKE:
+      repl_stmt.statement_type = CUBRID_STMT_REVOKE;
+      break;
+
+    case PT_CREATE_TRIGGER:
+//how about get tr_trigger from spec list with convert_speclist_to_objlist (DB_OBJLIST *triggers, PT_NODE *speclist , it can be seen in do_drop_trigger
+
+      statement_type = CUBRID_STMT_CREATE_TRIGGER;
+      objname = PT_NODE_TR_NAME (statement);
+      target = PT_NODE_TR_TARGET (statement);
+      classname = target->info.event_target.class_name->info.name.original;
+      break;
+
+    case PT_RENAME_TRIGGER:
+      statement_type = CUBRID_STMT_RENAME_TRIGGER;
+      objname = statement->info.rename_trigger.old_name->info.name.original;
+      // not able to know classname
+      break;
+
+    case PT_DROP_TRIGGER:
+      statement_type = CUBRID_STMT_DROP_TRIGGER;
+      objname = PT_NODE_TR_NAME (statement);
+      classname = ; 
+      break;
+
+    case PT_REMOVE_TRIGGER:
+     statement_type = CUBRID_STMT_REMOVE_TRIGGER;
+     objname = PT_NODE_TR_NAME (statement);
+     classname =;
+      break;
+
+    case PT_ALTER_TRIGGER:
+      statement_type = CUBRID_STMT_SET_TRIGGER;
+      objname = statement->info.alter_trigger.trigger_spec_list->info.trigger_spec_list.trigger_name_list->info.name.original;
+      classname = ;
+      break;
+*/
+    case PT_TRUNCATE:
+      if (!truncate_need_repl_log (statement))
+	{
+	  return NO_ERROR;
+	}
+
+      assert (statement->info.spec.entity_name);
+      classname = pt_print_bytes (parser, statement->info.spec.entity_name->info.spec.entity_name);
+      statement_type = CUBRID_STMT_TRUNCATE;
+      break;
+
+    default:
+      return NO_ERROR;
+    }
+
+  if (parser->host_var_count == 0)
+    {
+      /* it may contain multiple statements */
+      if (strlen (statement->sql_user_text) > statement->sql_user_text_len)
+	{
+	  stmt_end = &statement->sql_user_text[statement->sql_user_text_len];
+	  stmt_separator = *stmt_end;
+	  *stmt_end = '\0';
+	}
+      stmt_text = statement->sql_user_text;
+    }
+  else
+    {
+      /*
+       * if the query string includes the host variables, while processing the variable holder '?'
+       * the values of the host variables can be replaced into the user's original query string
+       * the pt_print_db_value(...) returns the value string and its length.
+       * the length includes quotes in case of the char string.
+       */
+      char *sql_text = statement->sql_user_text;
+      int sql_len = statement->sql_user_text_len;
+      int i, n, nth;
+      int var_len = 0;
+      bool begin_quote = false;
+
+      host_val = (PARSER_VARCHAR **) malloc (sizeof (PARSER_VARCHAR *) * parser->host_var_count);
+      if (host_val == NULL)
+	{
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      for (i = 0; i < parser->host_var_count; i++)
+	{
+	  host_val[i] = pt_print_db_value (parser, &parser->host_variables[i]);
+	  var_len += host_val[i]->length;
+	}
+
+      sbr_text = (char *) malloc (sql_len + var_len);
+      if (sbr_text == NULL)
+	{
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto end;
+	}
+
+      n = nth = 0;
+
+      for (i = 0; i < sql_len; i++)
+	{
+	  if (sql_text[i] == '\'')
+	    {
+	      if (!begin_quote)
+		{
+		  begin_quote = true;
+		}
+	      else
+		{
+		  begin_quote = false;
+		}
+	    }
+
+	  if (sql_text[i] == '?' && !begin_quote)
+	    {
+	      if (nth < parser->host_var_count)
+		{
+		  strncpy (&sbr_text[n], (char *) host_val[nth]->bytes, host_val[nth]->length);
+		  n += host_val[nth++]->length;
+		}
+	      else
+		{
+		  error = ER_IT_UNKNOWN_VARIABLE;
+		  goto end;
+		}
+	    }
+	  else
+	    {
+	      sbr_text[n++] = sql_text[i];
+	    }
+	}
+
+      sbr_text[n] = 0;
+      stmt_text = sbr_text;
+    }
+
+//  repl_stmt.db_user = db_get_user_name ();
+
+  if (statement_type == PT_DROP)
+    {
+      error = log_supplement_statement (statement_type, num_class, classname_list, objname, stmt_text);
+    }
+  else
+    {
+      num_class = 1;
+      classname_list = (PARSER_VARCHAR **) malloc (sizeof (PARSER_VARCHAR *));
+      classname_list[0] = classname;
+      error = log_supplement_statement (statement_type, num_class, classname_list, objname, stmt_text);
+    }
+
+  if (stmt_end != NULL)
+    {
+      *stmt_end = stmt_separator;
+    }
+
+//  db_string_free (repl_stmt.db_user);
+
+end:
+  if (sbr_text)
+    {
+      free (sbr_text);
+    }
+
+  if (host_val)
+    {
+      free (host_val);
+    }
+
+  if (classname_list)
+    {
+      free (classname_list);
+    }
+
+  return error;
+}
 
 
 
