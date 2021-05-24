@@ -30,7 +30,6 @@
 
 #include "csql_grammar.h"
 #include "parser.h"
-#include "intl_support.h"
 #include "dbtype.h"
 #include "string_opfunc.h"
 #include "chartype.h"
@@ -527,14 +526,17 @@ static KEYWORD_RECORD keywords[] = {
 static KEYWORD_RECORD *pt_find_keyword (const char *text);
 static int keyword_cmp (const void *k1, const void *k2);
 
-#define GET_KEYWORD_HASH_VALUE(h,s)             \
-  do {                                          \
+
+/* The GET_KEYWORD_HASH_VALUE() macro is the definition of the djb2 algorithm as a macro.
+ * Refer to the string_hash() function implemented in the libcubmemc.c file.
+ */
+#define GET_KEYWORD_HASH_VALUE(h,s) do { \
       unsigned char* p = (unsigned char*)(s);   \
       for((h) = 5381;  *p; p++ )                \
         {                                       \
              (h) = (((h) << 5) + (h)) + *p; /* hash * 33 + c */ \
         }                                       \
-  }while(0)
+  } while(0)
 
 static int
 keyword_cmp (const void *k1, const void *k2)
@@ -613,7 +615,6 @@ pt_find_keyword (const char *text)
       return NULL;
     }
 
-#if 1
   /* Keywords are composed of ASCII characters(English letters, underbar).  */
   unsigned char *p, *s;
   s = (unsigned char *) dummy.keyword;
@@ -627,9 +628,6 @@ pt_find_keyword (const char *text)
       *s = (unsigned char) char_toupper ((int) *p);
     }
   *s = 0x00;
-#else
-  intl_identifier_upper (text, dummy.keyword);
-#endif
 
   GET_KEYWORD_HASH_VALUE (dummy.hash_value, dummy.keyword);
   i = (dummy.hash_value >> 8);
