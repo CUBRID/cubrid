@@ -83,6 +83,7 @@ LOG_GLOBAL log_Gl;
 
 /*for CDC*/
 LOG_READER_INFO log_Reader_info;
+lockfree::circular_queue <LOG_INFO_ENTRY> *log_info_queue;
 
 /* Name of the database and logs */
 char log_Path[PATH_MAX];

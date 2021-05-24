@@ -8190,7 +8190,7 @@ slog_reader_set_configuration (THREAD_ENTRY * thread_p, unsigned int rid, char *
 void
 slog_reader_get_log_refined_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE*3 + OR_LOG_LSA_ALIGNED_SIZE) a_reply;
   /*total size of reply message is decided after log_item has been returned */
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
@@ -8203,22 +8203,13 @@ slog_reader_get_log_refined_info (THREAD_ENTRY * thread_p, unsigned int rid, cha
   ptr = or_unpack_int64 (request, (int64_t*)&b_start_lsa);
   memcpy (&start_lsa, &b_start_lsa, sizeof (UINT64));
 
-  error = xlog_reader_get_log_refined_info (thread_p, start_lsa, &total_length, &log_info_list, &num_log_info);
-  if (error == ER_INTERRUPTED)
-    {
-      (void) return_error_to_client (thread_p, rid);
-    }
+  error = xlog_reader_get_log_refined_info (thread_p, start_lsa, &total_length, &num_log_info);
+  ptr = or_pack_int (reply, error);
+  ptr = or_pack_log_lsa (ptr, &log_Reader_info.last_lsa);
+  ptr = or_pack_int (ptr, num_log_info);
+  ptr = or_pack_int (ptr, total_length);
 
-  if (error == ER_NET_DATA_RECEIVE_TIMEDOUT)
-    {
-      css_end_server_request (thread_p->conn_entry);
-    }
-  else
-    {
-      ptr = or_pack_int (reply, error);
-      ptr = or_pack_stream (ptr, log_info_list, total_length);	/*to be modified */
-      (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-    }
+  (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 
   return;
 }

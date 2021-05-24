@@ -803,7 +803,7 @@ typedef struct tran_user
 */
 /*TRAN USER TABLE will be hash table composed of (trid : key, user[] : value) */
 /* *INDENT-ON* */
-lockfree::circular_queue < LOG_INFO_ENTRY > *log_info_queue;
+extern lockfree::circular_queue < LOG_INFO_ENTRY > *log_info_queue;
 /* *INDENT-OFF* */
 extern LOG_READER_INFO log_Reader_info;
 

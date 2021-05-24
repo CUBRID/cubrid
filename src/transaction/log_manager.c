@@ -43,7 +43,7 @@
 #include <fcntl.h>
 
 #include <cstdint>
-
+#include <utility>
 #include "log_manager.h"
 
 #include "btree.h"
@@ -319,12 +319,12 @@ static void make_dml (THREAD_ENTRY * thread_p, int trid, char *user, int dml_typ
 static void make_ddl (char *supplement_data, int trid, const char *user, LOG_INFO_ENTRY * ddl_entry);
 static void make_dcl (time_t at_time, int trid, char *user, int type, LOG_INFO_ENTRY * dcl_entry);
 static void make_timer (time_t at_time, int trid, char *user, LOG_INFO_ENTRY * timer_entry);
-static int find_tran_user (THREAD_ENTRY * thread_p, LOG_LSA lsa, int trid, char **user);
+static int find_tran_user (THREAD_ENTRY * thread_p, LOG_LSA lsa, int trid, char **user, LOG_PAGE *logpgptr);
 static int compare_data (const db_value * new_value, const db_value * cmpdata);
 static int put_data (const db_value * new_value, char *ptr);
 
-static int get_lsa_from_time (THREAD_ENTRY * thread_p, int arv_num, time_t input, LOG_LSA * start_lsa);
-static time_t get_start_time_from_file (THREAD_ENTRY * thread_p, int arvnum);
+static int get_lsa_from_time (THREAD_ENTRY * thread_p, time_t input, LOG_LSA * start_lsa);
+static time_t get_start_time_from_file (THREAD_ENTRY * thread_p, int arvnum, LOG_LSA *ret_lsa);
 
 #if defined(SERVER_MODE)
 // *INDENT-OFF*
@@ -2121,7 +2121,10 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_
       log_append_redo_crumbs (thread_p, rcvindex, addr, num_redo_crumbs, redo_crumbs);
       return;
     }
-
+    if (LSA_ISNULL(&tdes->head_lsa) && prm_get_bool_value (PRM_ID_SUPPLEMENTAL_LOG) == true)
+    {
+      log_append_supplemental_log (thread_p, LOG_SUPPLEMENT_TRAN_USER, LOG_USERNAME_MAX, tdes->client.get_db_user ());
+    }
   /*
    * Now do the UNDO & REDO portion
    */
@@ -2249,7 +2252,10 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
       ;				/* NO-OP */
       return;
     }
-
+    if (LSA_ISNULL(&tdes->head_lsa) && prm_get_bool_value (PRM_ID_SUPPLEMENTAL_LOG) == true)
+    {
+      log_append_supplemental_log (thread_p, LOG_SUPPLEMENT_TRAN_USER, LOG_USERNAME_MAX, tdes->client.get_db_user ());
+    }
   /*
    * NOW do the UNDO ...
    */
@@ -2389,6 +2395,11 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
       return;
     }
 
+    if (LSA_ISNULL(&tdes->head_lsa) && prm_get_bool_value (PRM_ID_SUPPLEMENTAL_LOG) == true)
+    {
+      log_append_supplemental_log (thread_p, LOG_SUPPLEMENT_TRAN_USER, LOG_USERNAME_MAX, tdes->client.get_db_user ());
+    }
+    
   node = prior_lsa_alloc_and_copy_crumbs (thread_p, rectype, rcvindex, addr, 0, NULL, num_crumbs, crumbs);
   if (node == NULL)
     {
@@ -3399,6 +3410,11 @@ log_append_savepoint (THREAD_ENTRY * thread_p, const char *savept_name)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_NONAME_SAVEPOINT, 0);
       error_code = ER_LOG_NONAME_SAVEPOINT;
       return NULL;
+    }
+
+    if (LSA_ISNULL(&tdes->head_lsa) && prm_get_bool_value (PRM_ID_SUPPLEMENTAL_LOG) == true)
+    {
+      log_append_supplemental_log (thread_p, LOG_SUPPLEMENT_TRAN_USER, LOG_USERNAME_MAX, tdes->client.get_db_user ());
     }
 
   length = (int) strlen (savept_name) + 1;
@@ -10307,11 +10323,12 @@ xlog_reader_get_lsa (THREAD_ENTRY * thread_p, time_t input_time, LOG_LSA * start
   time_t tmp = 0;
   int target_arv_num = -1;
   int error = -1;
+  LOG_LSA ret_lsa;
   log_reader_initialize ();
 
   for (int i = begin; i < last; i++)
     {
-      tmp = get_start_time_from_file (thread_p, i);
+      tmp = get_start_time_from_file (thread_p, i, &ret_lsa);
       if (tmp >= input_time)
 	{
 	  target_arv_num = i - 1;
@@ -10325,7 +10342,8 @@ xlog_reader_get_lsa (THREAD_ENTRY * thread_p, time_t input_time, LOG_LSA * start
   else
     {
       /*find from archive log volume */
-      error = get_lsa_from_time (thread_p, target_arv_num, input_time, start_lsa);
+      error = get_lsa_from_time (thread_p, input_time, &ret_lsa);
+      LSA_COPY (start_lsa, &ret_lsa);
     }
   /*volume list range ( log_Gl.hdr.last_deleted_arv_num - log_Gl.hdr.nxarv_num, active log */
   LSA_COPY (start_lsa, &log_Gl.hdr.append_lsa);
@@ -10338,39 +10356,101 @@ xlog_reader_get_lsa (THREAD_ENTRY * thread_p, time_t input_time, LOG_LSA * start
 
 /*if arv_num == -1 , it means active log volume */
 static time_t
-get_start_time_from_file (THREAD_ENTRY * thread_p, int arv_num)
+get_start_time_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA *ret_lsa)
 {
   time_t ret_time = 0;
   char arv_name[PATH_MAX];
   LOG_ARV_HEADER *arv_hdr;
   char hdr_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_hdr_pgbuf;
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
+  LOG_RECORD_HEADER *log_rec_header;
   LOG_PAGE *hdr_pgptr;
   LOG_PAGE *log_pgptr;
   LOG_PHY_PAGEID phy_pageid = NULL_PAGEID;
+  LOG_LSA process_lsa;
+  LOG_LSA lsa;
+  LOG_LSA *next;
   int vdes;
   int error_code = NO_ERROR;
+  LOG_REC_DONETIME *donetime;
+  LOG_REC_HA_SERVER_STATE *dummy;
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
   LOG_CS_ENTER_READ_MODE (thread_p);
   if (arv_num == -1)
     {
+      process_lsa.pageid = log_Gl.hdr.fpageid;
+      process_lsa.offset = 0;
     }
   else
     {
       LOG_ARCHIVE_CS_ENTER (thread_p);
       aligned_hdr_pgbuf = PTR_ALIGN (hdr_pgbuf, MAX_ALIGNMENT);
-      aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
       hdr_pgptr = (LOG_PAGE *) aligned_hdr_pgbuf;
-      log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
       fileio_make_log_archive_name (arv_name, log_Archive_path, log_Prefix, arv_num);
 
+      if (fileio_is_volume_exist (arv_name) == true)
+        {
+          vdes = fileio_mount (thread_p, log_Db_fullname, arv_name, LOG_DBLOG_ARCHIVE_VOLID, false, false);
+          if (vdes != NULL_VOLDES)
+            {
+              if (fileio_read (thread_p, vdes, hdr_pgptr, 0, LOG_PAGESIZE) == NULL)
+                {
+                  fileio_dismount (thread_p, vdes);
+                  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_READ, 3, 0LL, 0LL, arv_name);
 
+                  LOG_ARCHIVE_CS_EXIT (thread_p);
+                  return 0;
+                }
+              arv_hdr = (LOG_ARV_HEADER *) hdr_pgptr->area;
+              process_lsa.pageid = arv_hdr->fpageid;
+              process_lsa.offset = 0;
+              fileio_dismount (thread_p, vdes);
+              LOG_ARCHIVE_CS_EXIT (thread_p);
+             }
+         }
+      }
+  while(1)
+  {
+    if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_pgptr) != NO_ERROR)
+    {
+      assert (false);
     }
+    lsa.pageid = process_lsa.pageid;
+    while (process_lsa.pageid == lsa.pageid)
+    {
+      log_rec_header = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &process_lsa);
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec_header), &process_lsa, log_pgptr);
+      if(log_rec_header->type == LOG_COMMIT || log_rec_header->type == LOG_ABORT)
+      {
+        LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*donetime), &process_lsa, log_pgptr);
+        donetime = (LOG_REC_DONETIME *) (log_pgptr->area + process_lsa.offset);
+        LOG_CS_EXIT (thread_p);
+        LOG_READ_ADD_ALIGN (thread_p, sizeof(*donetime), &process_lsa, log_pgptr);
+        LSA_COPY (ret_lsa, &process_lsa);
+        return donetime->at_time;
+      }
+      if(log_rec_header->type == LOG_DUMMY_HA_SERVER_STATE)
+      { 
+        LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*dummy), &process_lsa, log_pgptr);
+        dummy = (LOG_REC_HA_SERVER_STATE *)(log_pgptr->area + process_lsa.offset);
+        LOG_CS_EXIT (thread_p);
+        LOG_READ_ADD_ALIGN (thread_p, sizeof(*dummy), &process_lsa, log_pgptr);
+        LSA_COPY (ret_lsa, &process_lsa);
+        return dummy->at_time;
+      }
+      next = log_startof_nxrec (thread_p, &process_lsa, true);
+      LSA_COPY (&process_lsa, next);
+    }
+  }
+
+  LOG_CS_EXIT (thread_p);
 }
 
 static int
-get_lsa_from_time (THREAD_ENTRY * thread_p, int arv_num, time_t input, LOG_LSA * start_lsa)
+get_lsa_from_time (THREAD_ENTRY * thread_p, time_t input, LOG_LSA * start_lsa)
 {
   LOG_LSA process_lsa;
   int error;
@@ -10381,31 +10461,59 @@ get_lsa_from_time (THREAD_ENTRY * thread_p, int arv_num, time_t input, LOG_LSA *
 
   LOG_REC_DONETIME *donetime;
   LOG_REC_HA_SERVER_STATE *dummy;
+  LOG_LSA lsa; 
 
   int trid;
   int index;
   log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
   log_page_p->hdr.logical_pageid = NULL_PAGEID;
   log_page_p->hdr.offset = NULL_OFFSET;
-  process_lsa.pageid = 1;
-  process_lsa.offset = 0;
-
-  while (1)
+  LSA_COPY ( &process_lsa, start_lsa); 
+   while (LSA_ISNULL(&process_lsa))
     {
-
-      if (at_time > input)
+      /*fetch log page */
+      if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
 	{
-	  LSA_COPY (start_lsa, &log_rec_header->forw_lsa);
-	  break;
+	  assert (false);
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_reader()");
 	}
-
-      LSA_COPY (&process_lsa, &log_rec_header->forw_lsa);
+      lsa.pageid = process_lsa.pageid;
+      while (process_lsa.pageid == lsa.pageid)
+      {
+        log_rec_header = LOG_GET_LOG_RECORD_HEADER (log_page_p, &process_lsa);
+        LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec_header), &process_lsa, log_page_p);
+        if(log_rec_header->type == LOG_COMMIT || log_rec_header->type == LOG_ABORT)
+        {
+          LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*donetime), &process_lsa, log_page_p);
+          donetime = (LOG_REC_DONETIME *) (log_page_p->area + process_lsa.offset);
+          LOG_CS_EXIT (thread_p);
+          LOG_READ_ADD_ALIGN (thread_p, sizeof(*donetime), &process_lsa, log_page_p);
+          if(donetime->at_time > input)
+          {
+	    LSA_COPY (start_lsa, &log_rec_header->forw_lsa);
+            return NO_ERROR;
+          }
+        }
+        if(log_rec_header->type == LOG_DUMMY_HA_SERVER_STATE)
+        { 
+          LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*dummy), &process_lsa, log_page_p);
+          dummy = (LOG_REC_HA_SERVER_STATE *)(log_page_p->area + process_lsa.offset);
+          LOG_CS_EXIT (thread_p);
+          LOG_READ_ADD_ALIGN (thread_p, sizeof(*dummy), &process_lsa, log_page_p);
+          if(dummy->at_time > input)
+          {
+	    LSA_COPY (start_lsa, &log_rec_header->forw_lsa);
+            return NO_ERROR;
+          }
+        } 
+        LSA_COPY (&process_lsa, &log_rec_header->forw_lsa);
+      }
     }
+   return -1; //NO log..
 }
 
 int
-xlog_reader_get_log_refined_info (THREAD_ENTRY * thread_p, LOG_LSA start_lsa, int *total_length, char **log_info_list,
-				  int *num_log_info)
+xlog_reader_get_log_refined_info (THREAD_ENTRY * thread_p, LOG_LSA start_lsa, int *total_length, int *num_log_info)
 {
   int rv;
   pthread_t log_info_reader_th;
@@ -10419,6 +10527,7 @@ xlog_reader_get_log_refined_info (THREAD_ENTRY * thread_p, LOG_LSA start_lsa, in
   int timeout = 0;
   struct timeval start, end;
   LOG_INFO_ENTRY tmp;
+  char *log_infos;
 
   log_reader_initialize ();
   /*start log reader if not intialized */
@@ -10453,11 +10562,14 @@ xlog_reader_get_log_refined_info (THREAD_ENTRY * thread_p, LOG_LSA start_lsa, in
     {
       /*access to log_info_queue */
       log_info_queue->consume (tmp);
+      //log_infos = (char*)realloc (*total_length + tmp.length);
+      //memcpy (log_infos + *total_length, tmp.log_info, tmp.length);
       *total_length += tmp.length;
       *total_length += OR_INT_SIZE;
       (*num_log_info)++;
-      ptr = or_pack_int (*log_info_list, tmp.length);
-      ptr = or_pack_stream (ptr, tmp.log_info, tmp.length);
+//      ptr = or_pack_int (*log_info_list, tmp.length);
+//      ptr = or_pack_stream (ptr, tmp.log_info, tmp.length);
+//      memcpy(log_infos + total_length, tmp.log_info, tmp.length);
       /*access to log reader info to get last lsa */
       /*1. get number of log info  
        * 2. malloc
@@ -10541,8 +10653,8 @@ log_reader (void *arg)
   LOG_REC_MVCC_UNDO *mvcc_undo = NULL;
   LOG_REC_MVCC_REDO *mvcc_redo = NULL;
 
-  RECDES *undo_recdes;
-  RECDES *redo_recdes;
+  RECDES *undo_recdes = NULL;
+  RECDES *redo_recdes = NULL;
   int undo_length;
   int redo_length;
   int is_zipped = false;
@@ -10555,7 +10667,7 @@ log_reader (void *arg)
   int supplement_length;
   int trid;
   int index;
-  auto item;
+  //std::pair<int,char*> item;
   LOG_INFO_ENTRY entry;
   target_lsa.pageid = ((LOG_LSA *) arg)->pageid;
   target_lsa.offset = ((LOG_LSA *) arg)->offset;
@@ -10591,12 +10703,12 @@ log_reader (void *arg)
 	      LOG_REC_DONETIME * donetime;
 	      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*donetime), &process_lsa, log_page_p);
 	      donetime = (LOG_REC_DONETIME *) (log_page_p->area + process_lsa.offset);
-
-	      item = tran_users.find (log_rec_header->trid);	/*if null? */
-	      user = item->second;
+              user = tran_users.at(log_rec_header->trid);
+//	      item = tran_users.find (log_rec_header->trid);	/*if null? */
+//	      user = item.second;
 	      if (user == NULL)
 		{
-		find_tran_user (thread_p, target_lsa, log_rec_header->trid, &user);
+		find_tran_user (thread_p, target_lsa, log_rec_header->trid, &user, log_page_p);
 	      make_dcl (donetime->at_time, log_rec_header->trid, user, log_rec_header->type, &entry);
 	      LOG_READ_ADD_ALIGN (thread_p, sizeof (*donetime), &process_lsa, log_page_p);
 	      break;
@@ -10605,11 +10717,12 @@ log_reader (void *arg)
 	      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*ha_dummy), &process_lsa, log_page_p);
 	      ha_dummy = (LOG_REC_HA_SERVER_STATE *) (log_page_p->area + process_lsa.offset);
 
-	      item = tran_users.find (log_rec_header->trid);
-	      user = item->second;
+              user = tran_users.at(log_rec_header->trid);
+	      //item = tran_users.find (log_rec_header->trid);
+	      //user = item.second;
 	      if (user == NULL)
 		{
-		  find_tran_user (thread_p, target_lsa, log_rec_header->trid, &user);
+		  find_tran_user (thread_p, target_lsa, log_rec_header->trid, &user, log_page_p);
 		}
 	      make_timer (ha_dummy->at_time, trid, user, &entry);
 	      break;
@@ -10621,20 +10734,21 @@ log_reader (void *arg)
 	      LOG_READ_ADD_ALIGN (thread_p, sizeof (*supplement), &process_lsa, log_page_p);
 	      supplement_data = (char *) log_page_p->area + process_lsa.offset;
 
-	      if (supplement->type == LOG_SUPPLEMENT_TRAN_USER)
+	      if (supplement->rec_type == LOG_SUPPLEMENT_TRAN_USER)
 		{
 		  /*log_rec_header->trid, supplement->length, */
 		  memcpy (user, supplement_data, supplement_length);
 		  tran_users.insert (std::make_pair (log_rec_header->trid, user));
 		}
-	      else if (supplement->type == LOG_SUPPLEMENT_STATEMENT)
+	      else if (supplement->rec_type == LOG_SUPPLEMENT_STATEMENT)
 		{
 
-		  item = tran_users.find (log_rec_header->trid);
-		  user = item->second;
+                  user = tran_users.at(log_rec_header->trid);
+		  //item = tran_users.find (log_rec_header->trid);
+		  //user = item.second;
 		  if (user == NULL)
 		    {
-		      find_tran_user (thread_p, target_lsa, log_rec_header->trid, &user);
+		      find_tran_user (thread_p, target_lsa, log_rec_header->trid, &user, log_page_p);
 		      tran_users.insert (std::make_pair (log_rec_header->trid, user));
 		    }
 
@@ -10644,9 +10758,13 @@ log_reader (void *arg)
 	      LOG_READ_ADD_ALIGN (thread_p, supplement_length, &process_lsa, log_page_p);
 	      break;
 	    case LOG_MVCC_UNDOREDO_DATA:
-	      mvcc_undoredo = (LOG_MVCC_UNDOREDO_DATA *) (log_page_p->area + process_lsa.offset);
+	      mvcc_undoredo = (LOG_REC_MVCC_UNDOREDO *) (log_page_p->area + process_lsa.offset);
 	      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*mvcc_undoredo), &process_lsa, log_page_p);
-	      /*mvcc_undoredo rcv type */
+	      classoid = get_class_oid (thread_p, log_rec_header->prev_tranlsa, log_page_p);
+              if(classoid.volid == 0 && classoid.pageid <= 194 && classoid.slotid <= 11)
+              {
+                break;
+              }      /*mvcc_undoredo rcv type */
 	      if (mvcc_undoredo->undoredo.data.rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
 		{
 		  undo_recdes->type = *(INT16 *) (log_page_p->area + process_lsa.offset);
@@ -10682,7 +10800,7 @@ log_reader (void *arg)
 	      else if (mvcc_undoredo->undoredo.data.rcvindex == RVHF_MVCC_INSERT)
 		{
 		  undo_recdes->type = *(INT16 *) (log_page_p->area + process_lsa.offset);
-		  undo_length = mvcc_undoredo->undoredo.ulength;
+                  undo_length = mvcc_undoredo->undoredo.ulength;
 		  if (ZIP_CHECK (undo_length))
 		    {
 		      undo_length = (int) GET_ZIP_LEN (undo_length);
@@ -10722,7 +10840,6 @@ log_reader (void *arg)
 		{
 		  LOG_READ_ADD_ALIGN (thread_p, sizeof (*mvcc_undoredo), &process_lsa, log_page_p);
 		  undo_recdes->type = *(INT16 *) (log_page_p->area + process_lsa.offset);
-		  classoid = get_class_oid (thread_p, log_rec_header->prev_tranlsa, log_page_p);
 		  undo_length = mvcc_undoredo->undoredo.ulength;
 		  undo_length = GET_ZIP_LEN (undo_length);
 		  process_lsa.offset += sizeof (INT16);
@@ -10732,14 +10849,17 @@ log_reader (void *arg)
 		  /*log_dump_data() */
 		  /*zip check is required to be processed before comparing undo and redo */
 		  /*PK check */
-		  item = tran_users.find (log_rec_header->trid);
-		  user = item->second;
+                  user = tran_users.at(log_rec_header->trid);
+		  //item = tran_users.find (log_rec_header->trid);
+		  //user = item->second;
 		  if (user == NULL)
 		    {
-		      find_tran_user (thread_p, target_lsa, log_rec_header->trid, &user);
+		      find_tran_user (thread_p, target_lsa, log_rec_header->trid, &user, log_page_p);
 		      tran_users.insert (std::make_pair (log_rec_header->trid, user));
 		    }
-
+                  #ifdef(!NDEBUG)
+                    fprintf(stdout,"transaction user :%s\n", user);
+                  #endif
 		  make_dml (thread_p, log_rec_header->trid, user, 2, classoid, undo_recdes, undo_length, NULL, 0,
 			    &entry);
 		  if (ZIP_CHECK (undo_length))
@@ -10784,9 +10904,11 @@ log_reader (void *arg)
 	  entry.length = 0;
 	  LSA_SET_NULL (&entry.start_lsa);
 	  entry.log_info = NULL;
+          if(redo_recdes) free_and_init (redo_recdes);
+          if(undo_recdes) free_and_init (undo_recdes);
 	}
+      }
     }
-
   return (THREAD_RET_T) - 1;
 }
 
@@ -10798,19 +10920,21 @@ get_class_oid (THREAD_ENTRY * thread_p, LOG_LSA lsa, LOG_PAGE * log_pgptr)
   LSA_COPY (&process_lsa, &lsa);
   int found = false;
   LOG_RECORD_HEADER *log_rec_hdr = NULL;
-  LOG_REC_SUPPLEMENTAL *supplement;
+  LOG_REC_SUPPLEMENT *supplement;
   char *data;
   OID classoid = { -1, -1, -1 };
-
+  LOG_LSA tmp;
+  tmp.pageid = process_lsa.pageid;
+/*it did for only one log page .. */
   while (!LSA_ISNULL (&process_lsa))
     {
       log_rec_hdr = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &process_lsa);
       LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec_hdr), &process_lsa, log_pgptr);
-      if (log_rec_hdr->type == LOG_REC_SUPPLEMENT)
+      if (log_rec_hdr->type == LOG_SUPPLEMENTAL_INFO)
 	{
 	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*supplement), &process_lsa, log_pgptr);
 	  supplement = (LOG_REC_SUPPLEMENT *) (log_pgptr->area + process_lsa.offset);
-	  if (supplement->type == LOG_SUPPLEMENT_CLASS_OID)
+	  if (supplement->rec_type == LOG_SUPPLEMENT_CLASS_OID)
 	    {
 	      LOG_READ_ADD_ALIGN (thread_p, sizeof (*supplement), &process_lsa, log_pgptr);
 	      data = (char *) log_pgptr->area + process_lsa.offset;
@@ -11239,16 +11363,16 @@ find_tran_user (THREAD_ENTRY * thread_p, LOG_LSA lsa, int trid, char **user, LOG
   LOG_RECORD_HEADER *log_rec_hdr = NULL;
   LOG_REC_SUPPLEMENT *supplement;
   char *data;
-
+  /*it dids .. only for one LOG Page */
   while (!LSA_ISNULL (&process_lsa))
     {
       log_rec_hdr = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &process_lsa);
       LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec_hdr), &process_lsa, log_pgptr);
-      if (log_rec_hdr->type == LOG_REC_SUPPLEMENT && log_rec_hdr->trid == trid)
+      if (log_rec_hdr->type == LOG_SUPPLEMENTAL_INFO && log_rec_hdr->trid == trid)
 	{
 	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*supplement), &process_lsa, log_pgptr);
 	  supplement = (LOG_REC_SUPPLEMENT *) (log_pgptr->area + process_lsa.offset);
-	  if (supplement->type == LOG_SUPPLEMENT_TRAN_USER)
+	  if (supplement->rec_type == LOG_SUPPLEMENT_TRAN_USER)
 	    {
 	      LOG_READ_ADD_ALIGN (thread_p, sizeof (*supplement), &process_lsa, log_pgptr);
 	      data = (char *) log_pgptr->area + process_lsa.offset;
