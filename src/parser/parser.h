@@ -83,7 +83,8 @@ extern "C"
 
   extern PT_NODE *parser_create_node (const PARSER_CONTEXT * parser);
   extern PT_NODE *parser_new_node (PARSER_CONTEXT * parser, PT_NODE_TYPE node);
-  extern PT_NODE *parser_init_node (PT_NODE * node);
+  extern PT_NODE *parser_init_node (PT_NODE * node, PT_NODE_TYPE node_type);
+  extern PT_NODE *parser_reinit_node (PT_NODE * node);
   extern void parser_free_node_resources (PT_NODE * node);
   extern void parser_free_node (const PARSER_CONTEXT * parser, PT_NODE * node);
   extern void parser_free_tree (PARSER_CONTEXT * parser, PT_NODE * tree);
@@ -503,7 +504,7 @@ extern "C"
 
   extern PT_NODE *pt_get_next_error (PT_NODE * errors, int *stmt_no, int *line_no, int *col_no, const char **msg);
   extern void pt_reset_error (PARSER_CONTEXT * parser);
-  extern int pt_has_error (const PARSER_CONTEXT * parser);
+#define pt_has_error(parser) ( (parser) && ((parser)->error_msgs || (parser)->flag.has_internal_error))
 
 #if defined (ENABLE_UNUSED_FUNCTION)
   extern bool pt_column_updatable (PARSER_CONTEXT * parser, PT_NODE * query);

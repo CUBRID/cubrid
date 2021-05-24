@@ -123,130 +123,129 @@ struct json_t;
 				|| (e)->type_enum==PT_TYPE_NULL)
 
 #define PT_IS_NUMERIC_TYPE(t) \
-        ( (((t) == PT_TYPE_INTEGER)  || \
-	   ((t) == PT_TYPE_BIGINT)   || \
-	   ((t) == PT_TYPE_FLOAT)    || \
-	   ((t) == PT_TYPE_DOUBLE)   || \
-	   ((t) == PT_TYPE_SMALLINT) || \
-	   ((t) == PT_TYPE_MONETARY) || \
-	   ((t) == PT_TYPE_LOGICAL) || \
-	   ((t) == PT_TYPE_NUMERIC)) ? true : false )
+        ( ((t) == PT_TYPE_INTEGER)  || \
+	  ((t) == PT_TYPE_BIGINT)   || \
+	  ((t) == PT_TYPE_FLOAT)    || \
+	  ((t) == PT_TYPE_DOUBLE)   || \
+	  ((t) == PT_TYPE_SMALLINT) || \
+	  ((t) == PT_TYPE_MONETARY) || \
+	  ((t) == PT_TYPE_LOGICAL)  || \
+	  ((t) == PT_TYPE_NUMERIC))
 
 #define PT_IS_DISCRETE_NUMBER_TYPE(t) \
-        ( (((t) == PT_TYPE_INTEGER)  || \
-           ((t) == PT_TYPE_BIGINT)   || \
-	   ((t) == PT_TYPE_SMALLINT)) ? true : false )
+        ( ((t) == PT_TYPE_INTEGER)  || \
+          ((t) == PT_TYPE_BIGINT)   || \
+	  ((t) == PT_TYPE_SMALLINT))
 
 #define PT_IS_COUNTER_TYPE(t) \
 		PT_IS_DISCRETE_NUMBER_TYPE(t)
 
 #define PT_IS_COLLECTION_TYPE(t) \
-        ( (((t) == PT_TYPE_SET)       || \
-	   ((t) == PT_TYPE_MULTISET)  || \
-	   ((t) == PT_TYPE_SEQUENCE)) ? true : false )
+        ( ((t) == PT_TYPE_SET)       || \
+	  ((t) == PT_TYPE_MULTISET)  || \
+	  ((t) == PT_TYPE_SEQUENCE))
 
 #define PT_IS_STRING_TYPE(t) \
-        ( (((t) == PT_TYPE_CHAR)     || \
-	   ((t) == PT_TYPE_VARCHAR)  || \
-	   ((t) == PT_TYPE_NCHAR)    || \
-	   ((t) == PT_TYPE_VARNCHAR) || \
-	   ((t) == PT_TYPE_BIT)      || \
-	   ((t) == PT_TYPE_VARBIT))  ? true : false )
+        ( ((t) == PT_TYPE_CHAR)     || \
+	  ((t) == PT_TYPE_VARCHAR)  || \
+	  ((t) == PT_TYPE_NCHAR)    || \
+	  ((t) == PT_TYPE_VARNCHAR) || \
+	  ((t) == PT_TYPE_BIT)      || \
+	  ((t) == PT_TYPE_VARBIT))
 
 #define PT_IS_NATIONAL_CHAR_STRING_TYPE(t) \
-        ( (((t) == PT_TYPE_NCHAR)      || \
-	   ((t) == PT_TYPE_VARNCHAR)) ? true : false )
+        ( ((t) == PT_TYPE_NCHAR)      || \
+	  ((t) == PT_TYPE_VARNCHAR))
 
 #define PT_IS_SIMPLE_CHAR_STRING_TYPE(t) \
-        ( (((t) == PT_TYPE_CHAR)      || \
-	   ((t) == PT_TYPE_VARCHAR)) ? true : false )
+        ( ((t) == PT_TYPE_CHAR)      || \
+	  ((t) == PT_TYPE_VARCHAR))
 
 #define PT_IS_CHAR_STRING_TYPE(t) \
-        ( (((t) == PT_TYPE_CHAR)      || \
-	   ((t) == PT_TYPE_VARCHAR)   || \
-	   ((t) == PT_TYPE_NCHAR)     || \
-	   ((t) == PT_TYPE_VARNCHAR)) ? true : false )
+        ( ((t) == PT_TYPE_CHAR)      || \
+	  ((t) == PT_TYPE_VARCHAR)   || \
+	  ((t) == PT_TYPE_NCHAR)     || \
+	  ((t) == PT_TYPE_VARNCHAR))
 
 #define PT_IS_BIT_STRING_TYPE(t) \
-        ( (((t) == PT_TYPE_BIT)      || \
-	   ((t) == PT_TYPE_VARBIT)) ? true : false )
+        ( ((t) == PT_TYPE_BIT)      || \
+	  ((t) == PT_TYPE_VARBIT))
 
 #define PT_IS_COMPLEX_TYPE(t) \
-        ( (((t) == PT_TYPE_MONETARY)  || \
-	   ((t) == PT_TYPE_NUMERIC)   || \
-	   ((t) == PT_TYPE_CHAR)      || \
-	   ((t) == PT_TYPE_VARCHAR)   || \
-	   ((t) == PT_TYPE_NCHAR)     || \
-	   ((t) == PT_TYPE_VARNCHAR)  || \
-	   ((t) == PT_TYPE_BIT)       || \
-	   ((t) == PT_TYPE_VARBIT)    || \
-	   ((t) == PT_TYPE_OBJECT)    || \
-	   ((t) == PT_TYPE_SET)       || \
-	   ((t) == PT_TYPE_MULTISET)  || \
-	   ((t) == PT_TYPE_SEQUENCE)  || \
-	   ((t) == PT_TYPE_ENUMERATION)) ? true : false )
+        ( ((t) == PT_TYPE_MONETARY)  || \
+	  ((t) == PT_TYPE_NUMERIC)   || \
+	  ((t) == PT_TYPE_CHAR)      || \
+	  ((t) == PT_TYPE_VARCHAR)   || \
+	  ((t) == PT_TYPE_NCHAR)     || \
+	  ((t) == PT_TYPE_VARNCHAR)  || \
+	  ((t) == PT_TYPE_BIT)       || \
+	  ((t) == PT_TYPE_VARBIT)    || \
+	  ((t) == PT_TYPE_OBJECT)    || \
+	  ((t) == PT_TYPE_SET)       || \
+	  ((t) == PT_TYPE_MULTISET)  || \
+	  ((t) == PT_TYPE_SEQUENCE)  || \
+	  ((t) == PT_TYPE_ENUMERATION))
 
 #define PT_IS_DATE_TIME_WITH_TZ_TYPE(t) \
-        ( ((t) == PT_TYPE_TIMESTAMPTZ  || \
-	   (t) == PT_TYPE_TIMESTAMPLTZ || \
-	   (t) == PT_TYPE_DATETIMETZ   || \
-	   (t) == PT_TYPE_DATETIMELTZ) ? true : false )
+        ( (t) == PT_TYPE_TIMESTAMPTZ  || \
+	  (t) == PT_TYPE_TIMESTAMPLTZ || \
+	  (t) == PT_TYPE_DATETIMETZ   || \
+	  (t) == PT_TYPE_DATETIMELTZ)
 
 #define PT_IS_DATE_TIME_TYPE(t) \
-        ( (((t) == PT_TYPE_DATE)       || \
-	   ((t) == PT_TYPE_TIME)       || \
-	   ((t) == PT_TYPE_TIMESTAMP)  || \
-	   ((t) == PT_TYPE_DATETIME)   || \
-	   ((t) == PT_TYPE_DATETIMETZ)   || \
-	   ((t) == PT_TYPE_DATETIMELTZ)  || \
-	   ((t) == PT_TYPE_TIMESTAMPTZ)  || \
-	   ((t) == PT_TYPE_TIMESTAMPLTZ)) ? true : false )
+        ( ((t) == PT_TYPE_DATE)         || \
+	  ((t) == PT_TYPE_TIME)         || \
+	  ((t) == PT_TYPE_TIMESTAMP)    || \
+	  ((t) == PT_TYPE_DATETIME)     || \
+	  ((t) == PT_TYPE_DATETIMETZ)   || \
+	  ((t) == PT_TYPE_DATETIMELTZ)  || \
+	  ((t) == PT_TYPE_TIMESTAMPTZ)  || \
+	  ((t) == PT_TYPE_TIMESTAMPLTZ))
 
 #define PT_HAS_DATE_PART(t) \
-        ( (((t) == PT_TYPE_DATE)       || \
-	   ((t) == PT_TYPE_TIMESTAMP)  || \
-	   ((t) == PT_TYPE_DATETIME)   || \
-	   ((t) == PT_TYPE_DATETIMETZ)   || \
-	   ((t) == PT_TYPE_DATETIMELTZ)  || \
-	   ((t) == PT_TYPE_TIMESTAMPTZ)  || \
-	   ((t) == PT_TYPE_TIMESTAMPLTZ)) ? true : false )
+        ( ((t) == PT_TYPE_DATE)         || \
+	  ((t) == PT_TYPE_TIMESTAMP)    || \
+	  ((t) == PT_TYPE_DATETIME)     || \
+	  ((t) == PT_TYPE_DATETIMETZ)   || \
+	  ((t) == PT_TYPE_DATETIMELTZ)  || \
+	  ((t) == PT_TYPE_TIMESTAMPTZ)  || \
+	  ((t) == PT_TYPE_TIMESTAMPLTZ))
 
 #define PT_HAS_TIME_PART(t) \
-        ( (((t) == PT_TYPE_TIME)       || \
-	   ((t) == PT_TYPE_TIMESTAMP)  || \
-	   ((t) == PT_TYPE_TIMESTAMPTZ)  || \
-	   ((t) == PT_TYPE_TIMESTAMPLTZ)  || \
-	   ((t) == PT_TYPE_DATETIME)	  || \
-	   ((t) == PT_TYPE_DATETIMETZ)	  || \
-	   ((t) == PT_TYPE_DATETIMELTZ)) ? true : false )
+        ( ((t) == PT_TYPE_TIME)         || \
+	  ((t) == PT_TYPE_TIMESTAMP)    || \
+	  ((t) == PT_TYPE_TIMESTAMPTZ)  || \
+	  ((t) == PT_TYPE_TIMESTAMPLTZ) || \
+	  ((t) == PT_TYPE_DATETIME)	|| \
+	  ((t) == PT_TYPE_DATETIMETZ)	|| \
+	  ((t) == PT_TYPE_DATETIMELTZ))
 
 #define PT_IS_LTZ_TYPE(t) \
   ((t) == PT_TYPE_TIMESTAMPLTZ || (t) == PT_TYPE_DATETIMELTZ)
 
 #define PT_IS_PRIMITIVE_TYPE(t) \
-        ( (((t) == PT_TYPE_OBJECT) || \
-	   ((t) == PT_TYPE_NONE))  ? false : true )
+        ( ((t) != PT_TYPE_OBJECT) && ((t) != PT_TYPE_NONE))
 
 #define PT_IS_PARAMETERIZED_TYPE(t) \
-        ( (((t) == PT_TYPE_NUMERIC)  || \
-	   ((t) == PT_TYPE_VARCHAR)  || \
-	   ((t) == PT_TYPE_CHAR)     || \
-	   ((t) == PT_TYPE_VARNCHAR) || \
-	   ((t) == PT_TYPE_NCHAR)    || \
-	   ((t) == PT_TYPE_VARBIT)   || \
-	   ((t) == PT_TYPE_BIT)	     || \
-	   ((t) == PT_TYPE_ENUMERATION))     ? true : false )
+        ( ((t) == PT_TYPE_NUMERIC)  || \
+	  ((t) == PT_TYPE_VARCHAR)  || \
+	  ((t) == PT_TYPE_CHAR)     || \
+	  ((t) == PT_TYPE_VARNCHAR) || \
+	  ((t) == PT_TYPE_NCHAR)    || \
+	  ((t) == PT_TYPE_VARBIT)   || \
+	  ((t) == PT_TYPE_BIT)	    || \
+	  ((t) == PT_TYPE_ENUMERATION))
 
 #define PT_IS_LOB_TYPE(t) \
-        ( (((t) == PT_TYPE_BLOB)  || \
-	   ((t) == PT_TYPE_CLOB))     ? true : false )
+        ( ((t) == PT_TYPE_BLOB)  || \
+	  ((t) == PT_TYPE_CLOB))
 
 #define PT_HAS_COLLATION(t) \
-        ( (((t) == PT_TYPE_CHAR)     || \
-	   ((t) == PT_TYPE_VARCHAR)  || \
-	   ((t) == PT_TYPE_NCHAR)    || \
-	   ((t) == PT_TYPE_VARNCHAR) || \
-	   ((t) == PT_TYPE_ENUMERATION))  ? true : false )
+        ( ((t) == PT_TYPE_CHAR)     || \
+	  ((t) == PT_TYPE_VARCHAR)  || \
+	  ((t) == PT_TYPE_NCHAR)    || \
+	  ((t) == PT_TYPE_VARNCHAR) || \
+	  ((t) == PT_TYPE_ENUMERATION))
 
 #define PT_VALUE_GET_BYTES(node) \
   ((node) == NULL ? NULL : \
@@ -283,129 +282,118 @@ struct json_t;
 #define pt_is_unary(op) PT_IS_UNARY(op)
 
 #define PT_IS_SELECT(n) \
-        ( (n) ? ((n)->node_type == PT_SELECT) : false )
+        ( (n) && ((n)->node_type == PT_SELECT) )
 
 #define PT_IS_UNION(n) \
-        ( (n) ? ((n)->node_type == PT_UNION) : false )
+        ( (n) && ((n)->node_type == PT_UNION) )
 
 #define PT_IS_INTERSECTION(n) \
-        ( (n) ? ((n)->node_type == PT_INTERSECTION) : false )
+        ( (n) && ((n)->node_type == PT_INTERSECTION) )
 
 #define PT_IS_DIFFERENCE(n) \
-        ( (n) ? ((n)->node_type == PT_DIFFERENCE) : false )
+        ( (n) && ((n)->node_type == PT_DIFFERENCE) )
 
 #define PT_IS_QUERY(n) \
-        ( (n) ? (PT_IS_QUERY_NODE_TYPE((n)->node_type)) : false )
+        ( (n) && (PT_IS_QUERY_NODE_TYPE((n)->node_type)) )
 
 #define PT_IS_CORRELATED_SUBQUERY(n) \
-        ( (PT_IS_QUERY((n)) && (n)->info.query.correlation_level > 0) ? \
-          true : false )
+        ( PT_IS_QUERY((n)) && ((n)->info.query.correlation_level > 0) )
 
 #define PT_IS_DOT_NODE(n) \
-        ( (n) ? ((n)->node_type == PT_DOT_) : false )
+        ( (n) && ((n)->node_type == PT_DOT_) )
 
 #define PT_IS_EXPR_NODE(n) \
-        ( (n) ? ((n)->node_type == PT_EXPR) : false )
+        ( (n) && ((n)->node_type == PT_EXPR) )
 
 #define PT_IS_ASSIGN_NODE(n) \
-        ( (n) ? ((n)->node_type == PT_EXPR && \
-                 (n)->info.expr.op == PT_ASSIGN) \
-              : false )
+        ( (n) && ((n)->node_type == PT_EXPR && (n)->info.expr.op == PT_ASSIGN) )
 
 #define PT_IS_FUNCTION(n) \
-        ( (n) ? ((n)->node_type == PT_FUNCTION) : false )
+        ( (n) && ((n)->node_type == PT_FUNCTION) )
 
 #define PT_IS_MULTI_COL_TERM(n) \
-	( ((n) && \
-	   PT_IS_FUNCTION((n)) && \
-	   PT_IS_SET_TYPE ((n)) && \
-	   (n)->info.function.function_type == F_SEQUENCE) ? true : false )
+	( (n) && \
+	  PT_IS_FUNCTION((n)) && \
+	  PT_IS_SET_TYPE ((n)) && \
+	  (n)->info.function.function_type == F_SEQUENCE)
 
 #define PT_IS_NAME_NODE(n) \
-        ( (n) ? ((n)->node_type == PT_NAME) : false )
+        ( (n) && ((n)->node_type == PT_NAME) )
 
 #define PT_IS_OID_NAME(n) \
-        ( (n) ? ((n)->node_type == PT_NAME && \
-                 ((n)->info.name.meta_class == PT_OID_ATTR || \
-                  (n)->info.name.meta_class == PT_VID_ATTR)) \
-              : false )
+        ( (n) && \
+          ((n)->node_type == PT_NAME && \
+             ((n)->info.name.meta_class == PT_OID_ATTR || \
+              (n)->info.name.meta_class == PT_VID_ATTR) ) \
+        )
 
 #define PT_IS_VALUE_NODE(n) \
-        ( (n) ? ((n)->node_type == PT_VALUE) : false )
+        ( (n) && ((n)->node_type == PT_VALUE) )
 
 #define PT_IS_INSERT_VALUE_NODE(n) \
-	( (n) ? ((n)->node_type == PT_INSERT_VALUE) : false )
+	( (n) && ((n)->node_type == PT_INSERT_VALUE) )
 
 #define PT_IS_SET_TYPE(n) \
-        ( (n) ? ((n)->type_enum == PT_TYPE_SET || \
-                 (n)->type_enum == PT_TYPE_MULTISET || \
-                 (n)->type_enum == PT_TYPE_SEQUENCE) \
-              : false )
+        ( (n) && ((n)->type_enum == PT_TYPE_SET || \
+                  (n)->type_enum == PT_TYPE_MULTISET || \
+                  (n)->type_enum == PT_TYPE_SEQUENCE) \
+        )
 
 #define PT_IS_HOSTVAR(n) \
-        ( (n) ? ((n)->node_type == PT_HOST_VAR) : false )
+        ( (n) && ((n)->node_type == PT_HOST_VAR) )
 
 #define PT_IS_INPUT_HOSTVAR(n) \
-        ( (n) ? ((n)->node_type == PT_HOST_VAR && \
-                 (n)->info.host_var.var_type == PT_HOST_IN) \
-              : false )
+        ( (n) && ((n)->node_type == PT_HOST_VAR && \
+                  (n)->info.host_var.var_type == PT_HOST_IN) \
+        )
 
 #define PT_IS_OUTPUT_HOSTVAR(n) \
-        ( (n) ? ((n)->node_type == PT_HOST_VAR && \
-                 (n)->info.host_var.var_type == PT_HOST_OUT) \
-              : false )
+        ( (n) && ((n)->node_type == PT_HOST_VAR && \
+                  (n)->info.host_var.var_type == PT_HOST_OUT) \
+        )
 
 #define PT_IS_PARAMETER(n) \
-        ( (n) ? ((n)->node_type == PT_NAME && \
-                 (n)->info.name.meta_class == PT_PARAMETER) : false )
+        ( (n) && ((n)->node_type == PT_NAME && \
+                  (n)->info.name.meta_class == PT_PARAMETER) )
 
 #define PT_IS_INPUT_PARAMETER(n) \
-        ( (n) ? ((n)->node_type == PT_NAME && \
-                 (n)->info.name.meta_class == PT_PARAMETER && \
-                 (n)->info.name.resolved == NULL) : false )
+        ( (n) && ((n)->node_type == PT_NAME && \
+                  (n)->info.name.meta_class == PT_PARAMETER && \
+                  (n)->info.name.resolved == NULL) )
 
 #define PT_IS_CONST(n) \
-        ( (n) ? ((n)->node_type == PT_VALUE || \
-                 (n)->node_type == PT_HOST_VAR || \
-                 ((n)->node_type == PT_NAME && \
-                  (n)->info.name.meta_class == PT_PARAMETER)) \
-              : false )
+        ( (n) && ((n)->node_type == PT_VALUE || \
+                  (n)->node_type == PT_HOST_VAR || \
+                  ((n)->node_type == PT_NAME && (n)->info.name.meta_class == PT_PARAMETER) ) \
+        )
 
 #define PT_IS_CONST_NOT_HOSTVAR(n) \
-        ( (n) ? ((n)->node_type == PT_VALUE || \
-                 ((n)->node_type == PT_NAME && \
-                  (n)->info.name.meta_class == PT_PARAMETER)) \
-              : false )
+        ( (n) && ((n)->node_type == PT_VALUE || \
+                  ((n)->node_type == PT_NAME && (n)->info.name.meta_class == PT_PARAMETER) ) \
+        )
 
 #define PT_IS_CONST_INPUT_HOSTVAR(n) \
-        ( (n) ? ((n)->node_type == PT_VALUE || \
-                 ((n)->node_type == PT_NAME && \
-                  (n)->info.name.meta_class == PT_PARAMETER) || \
-                 ((n)->node_type == PT_HOST_VAR && \
-                  (n)->info.host_var.var_type == PT_HOST_IN)) \
-              : false )
+        ( (n) && ((n)->node_type == PT_VALUE || \
+                  ((n)->node_type == PT_NAME && (n)->info.name.meta_class == PT_PARAMETER) || \
+                  ((n)->node_type == PT_HOST_VAR && (n)->info.host_var.var_type == PT_HOST_IN)) \
+        )
 
 #define PT_IS_CAST_CONST_INPUT_HOSTVAR(n) \
         ( (n) && \
           (n)->node_type == PT_EXPR && \
-          (n)->info.expr.op == PT_CAST \
-              ? PT_IS_CONST_INPUT_HOSTVAR((n)->info.expr.arg1) \
-              : false )
+          (n)->info.expr.op == PT_CAST && \
+          PT_IS_CONST_INPUT_HOSTVAR((n)->info.expr.arg1) )
 
 #define PT_IS_INSTNUM(n) \
-        ( (n) ? ((n)->node_type == PT_EXPR && \
-         ((n)->info.expr.op == PT_INST_NUM || \
-          (n)->info.expr.op == PT_ROWNUM)) \
-              : false )
+        ( (n) && ((n)->node_type == PT_EXPR && \
+                  ((n)->info.expr.op == PT_INST_NUM || (n)->info.expr.op == PT_ROWNUM)) \
+        )
 
 #define PT_IS_ORDERBYNUM(n) \
-        ( (n) ? ((n)->node_type == PT_EXPR && \
-         ((n)->info.expr.op == PT_ORDERBY_NUM)) \
-              : false )
+        ( (n) && ((n)->node_type == PT_EXPR && ((n)->info.expr.op == PT_ORDERBY_NUM)) )
 
 #define PT_IS_DISTINCT(n) \
-        ( ((n) && PT_IS_QUERY_NODE_TYPE((n)->node_type) ? \
-           (n)->info.query.all_distinct != PT_ALL : false) )
+        ( (n) && PT_IS_QUERY_NODE_TYPE((n)->node_type) && (n)->info.query.all_distinct != PT_ALL )
 
 #define PT_IS_META(n) \
         ( ((n) ? ((n)->node_type == PT_NAME ? \
@@ -413,33 +401,28 @@ struct json_t;
                    (n)->info.name.meta_class == PT_META_ATTR || \
                    (n)->info.name.meta_class == PT_CLASSOID_ATTR || \
                    (n)->info.name.meta_class == PT_OID_ATTR) : \
-                  ((n)->node_type == PT_SPEC ? \
-                   ((n)->info.spec.meta_class == PT_META_CLASS) : false)) \
+                  ((n)->node_type == PT_SPEC && ((n)->info.spec.meta_class == PT_META_CLASS))) \
               : false) )
 #define PT_IS_HINT_NODE(n) \
-        ( (n) ? ((n)->node_type == PT_NAME && \
-                 (n)->info.name.meta_class == PT_HINT_NAME) \
-            : false )
+        ( (n) && ((n)->node_type == PT_NAME && (n)->info.name.meta_class == PT_HINT_NAME) )
 
 #define PT_IS_UPDATE_OBJECT(n) \
-        ( ((n) && \
-           (n)->node_type == PT_UPDATE && \
-           (n)->info.update.spec == NULL) ? true : false )
+        ( (n) && (n)->node_type == PT_UPDATE && (n)->info.update.spec == NULL )
 
 #define PT_IS_UNARY(op) \
-        ( ((op) == PT_NOT || \
-           (op) == PT_IS_NULL || \
-           (op) == PT_IS_NOT_NULL || \
-           (op) == PT_EXISTS || \
-           (op) == PT_PRIOR || \
-           (op) == PT_CONNECT_BY_ROOT || \
-	   (op) == PT_QPRIOR || \
-           (op) == PT_UNARY_MINUS) ? true : false )
+        ( (op) == PT_NOT || \
+          (op) == PT_IS_NULL || \
+          (op) == PT_IS_NOT_NULL || \
+          (op) == PT_EXISTS || \
+          (op) == PT_PRIOR || \
+          (op) == PT_CONNECT_BY_ROOT || \
+	  (op) == PT_QPRIOR || \
+          (op) == PT_UNARY_MINUS) )
 
 #define PT_IS_N_COLUMN_UPDATE_EXPR(n) \
-        ( ((n) && \
-           (n)->node_type == PT_EXPR && \
-           (n)->info.expr.op == PT_PATH_EXPR_SET) ? true : false )
+        ( (n) && \
+          (n)->node_type == PT_EXPR && \
+          (n)->info.expr.op == PT_PATH_EXPR_SET )
 
 #define PT_DOES_FUNCTION_HAVE_DIFFERENT_ARGS(op) \
         ((op) == PT_MODULUS || (op) == PT_SUBSTRING || \
@@ -454,33 +437,32 @@ struct json_t;
 	 (op) == PT_STR_TO_DATE)
 
 #define PT_REQUIRES_HIERARCHICAL_QUERY(op) \
-        ( ((op) == PT_LEVEL || \
-           (op) == PT_CONNECT_BY_ISCYCLE || \
-           (op) == PT_CONNECT_BY_ISLEAF || \
-           (op) == PT_PRIOR || \
-           (op) == PT_CONNECT_BY_ROOT  || \
-	   (op) == PT_QPRIOR || \
-           (op) == PT_SYS_CONNECT_BY_PATH) ? true : false )
+        ( (op) == PT_LEVEL || \
+          (op) == PT_CONNECT_BY_ISCYCLE || \
+          (op) == PT_CONNECT_BY_ISLEAF || \
+          (op) == PT_PRIOR || \
+          (op) == PT_CONNECT_BY_ROOT  || \
+	  (op) == PT_QPRIOR || \
+          (op) == PT_SYS_CONNECT_BY_PATH )
 
 #define PT_CHECK_HQ_OP_EXCEPT_PRIOR(op) \
-        ( ((op) == PT_LEVEL || \
-           (op) == PT_CONNECT_BY_ISCYCLE || \
-           (op) == PT_CONNECT_BY_ISLEAF || \
-           (op) == PT_CONNECT_BY_ROOT  || \
-	   (op) == PT_SYS_CONNECT_BY_PATH) ? true : false )
+        ( (op) == PT_LEVEL || \
+          (op) == PT_CONNECT_BY_ISCYCLE || \
+          (op) == PT_CONNECT_BY_ISLEAF || \
+          (op) == PT_CONNECT_BY_ROOT  || \
+	  (op) == PT_SYS_CONNECT_BY_PATH )
 
 #define PT_IS_NUMBERING_AFTER_EXECUTION(op) \
-        ( ((op) == PT_INST_NUM || \
-           (op) == PT_ROWNUM || \
-           /*(int)(op) == (int)PT_GROUPBY_NUM || - TODO: this does not belong here. */ \
-           (op) == PT_ORDERBY_NUM) ? true : false )
+        ( (op) == PT_INST_NUM || \
+          (op) == PT_ROWNUM || \
+          /*(int)(op) == (int)PT_GROUPBY_NUM || - TODO: this does not belong here. */ \
+          (op) == PT_ORDERBY_NUM )
 
 #define PT_IS_SERIAL(op) \
-        ( ((op) == PT_CURRENT_VALUE || \
-           (op) == PT_NEXT_VALUE) ? true : false )
+        ( (op) == PT_CURRENT_VALUE || (op) == PT_NEXT_VALUE )
 
 #define PT_IS_EXPR_NODE_WITH_OPERATOR(n, op_type) \
-        ( (PT_IS_EXPR_NODE (n)) ? ((n)->info.expr.op == (op_type)) : false )
+        ( (PT_IS_EXPR_NODE (n)) && ((n)->info.expr.op == (op_type)) )
 
 #define PT_IS_EXPR_WITH_PRIOR_ARG(x) (PT_IS_EXPR_NODE (x) && \
 		PT_IS_EXPR_NODE_WITH_OPERATOR ((x)->info.expr.arg1, PT_PRIOR))
@@ -489,13 +471,13 @@ struct json_t;
 	( (n) ? (n)->data_type : NULL )
 
 #define PT_IS_SORT_SPEC_NODE(n) \
-        ( (n) ? ((n)->node_type == PT_SORT_SPEC) : false )
+        ( (n) && ((n)->node_type == PT_SORT_SPEC) )
 
 #define PT_IS_VALUE_QUERY(n) \
-          ((n)->is_value_query == 1)
+          ((n)->flag.is_value_query == 1)
 
 #define PT_SET_VALUE_QUERY(n) \
-          ((n)->is_value_query = 1)
+          ((n)->flag.is_value_query = 1)
 
 #define PT_IS_ORDER_DEPENDENT(n) \
         ( (n) ? \
@@ -552,13 +534,13 @@ struct json_t;
 	     parser_->host_var_expected_domains = parent_parser->host_var_expected_domains; \
              parser_->host_var_count = parent_parser->host_var_count; \
              parser_->auto_param_count = parent_parser->auto_param_count; \
-             parser_->set_host_var = 1; } } while (0)
+             parser_->flag.set_host_var = 1; } } while (0)
 
 #define RESET_HOST_VARIABLES_IF_INTERNAL_STATEMENT(parser_) \
     do { if (parent_parser) { \
              parser_->host_variables = NULL; parser_->host_var_count = 0; \
 	     parser_->host_var_expected_domains = NULL; \
-             parser_->auto_param_count = 0; parser_->set_host_var = 0; } } while (0)
+             parser_->auto_param_count = 0; parser_->flag.set_host_var = 0; } } while (0)
 
 #endif /* !SERVER_MODE */
 
@@ -2781,17 +2763,20 @@ struct pt_query_info
   int upd_del_class_cnt;	/* number of classes affected by update or delete in the generated SELECT statement */
   int mvcc_reev_extra_cls_cnt;	/* number of extra OID - CLASS_OID pairs added to the select list for condition and
 				 * assignment reevaluation in MVCC */
-  unsigned has_outer_spec:1;	/* has outer join spec ? */
-  unsigned is_sort_spec:1;	/* query is a sort spec expression */
-  unsigned is_insert_select:1;	/* query is a sub-select for insert statement */
-  unsigned single_tuple:1;	/* is single-tuple query ? */
-  unsigned vspec_as_derived:1;	/* is derived from vclass spec ? */
-  unsigned reexecute:1;		/* should be re-executed; not from the result caceh */
-  unsigned do_cache:1;		/* do cache the query result */
-  unsigned do_not_cache:1;	/* do not cache the query result */
-  unsigned order_siblings:1;	/* flag ORDER SIBLINGS BY */
-  unsigned rewrite_limit:1;	/* need to rewrite the limit clause */
-  unsigned has_system_class:1;	/* do not cache the query result */
+  struct
+  {
+    unsigned has_outer_spec:1;	/* has outer join spec ? */
+    unsigned is_sort_spec:1;	/* query is a sort spec expression */
+    unsigned is_insert_select:1;	/* query is a sub-select for insert statement */
+    unsigned single_tuple:1;	/* is single-tuple query ? */
+    unsigned vspec_as_derived:1;	/* is derived from vclass spec ? */
+    unsigned reexecute:1;	/* should be re-executed; not from the result caceh */
+    unsigned do_cache:1;	/* do cache the query result */
+    unsigned do_not_cache:1;	/* do not cache the query result */
+    unsigned order_siblings:1;	/* flag ORDER SIBLINGS BY */
+    unsigned rewrite_limit:1;	/* need to rewrite the limit clause */
+    unsigned has_system_class:1;	/* do not cache the query result */
+  } flag;
   PT_NODE *order_by;		/* PT_EXPR (list) */
   PT_NODE *orderby_for;		/* PT_EXPR (list) */
   PT_NODE *into_list;		/* PT_VALUE (list) */
@@ -3483,31 +3468,34 @@ struct parser_node
   PARSER_VARCHAR *expr_before_const_folding;	/* text before constant folding (used by value, host var nodes) */
   PT_TYPE_ENUM type_enum;	/* type enumeration tag PT_TYPE_??? */
   CACHE_TIME cache_time;	/* client or server cache time */
-  unsigned recompile:1;		/* the statement should be recompiled - used for plan cache */
-  unsigned cannot_prepare:1;	/* the statement cannot be prepared - used for plan cache */
-  unsigned partition_pruned:1;	/* partition pruning takes place */
-  unsigned si_datetime:1;	/* get server info; SYS_DATETIME */
-  unsigned si_tran_id:1;	/* get server info; LOCAL_TRANSACTION_ID */
-  unsigned clt_cache_check:1;	/* check client cache validity */
-  unsigned clt_cache_reusable:1;	/* client cache is reusable */
-  unsigned use_plan_cache:1;	/* used for plan cache */
-  unsigned use_query_cache:1;
-  unsigned is_hidden_column:1;
-  unsigned is_paren:1;
-  unsigned with_rollup:1;	/* WITH ROLLUP clause for GROUP BY */
-  unsigned force_auto_parameterize:1;	/* forces a call to qo_do_auto_parameterize (); this is a special flag used for
+  struct
+  {
+    unsigned recompile:1;	/* the statement should be recompiled - used for plan cache */
+    unsigned cannot_prepare:1;	/* the statement cannot be prepared - used for plan cache */
+    unsigned partition_pruned:1;	/* partition pruning takes place */
+    unsigned si_datetime:1;	/* get server info; SYS_DATETIME */
+    unsigned si_tran_id:1;	/* get server info; LOCAL_TRANSACTION_ID */
+    unsigned clt_cache_check:1;	/* check client cache validity */
+    unsigned clt_cache_reusable:1;	/* client cache is reusable */
+    unsigned use_plan_cache:1;	/* used for plan cache */
+    unsigned use_query_cache:1;
+    unsigned is_hidden_column:1;
+    unsigned is_paren:1;
+    unsigned with_rollup:1;	/* WITH ROLLUP clause for GROUP BY */
+    unsigned force_auto_parameterize:1;	/* forces a call to qo_do_auto_parameterize (); this is a special flag used for
 					 * processing ON DUPLICATE KEY UPDATE */
-  unsigned do_not_fold:1;	/* disables constant folding on the node */
-  unsigned is_cnf_start:1;
-  unsigned is_click_counter:1;	/* INCR/DECR(click counter) */
-  unsigned is_value_query:1;	/* for PT_VALUE,PT_NAME,PT_EXPR... that belongs to PT_NODE_LIST for PT_SELECT that
+    unsigned do_not_fold:1;	/* disables constant folding on the node */
+    unsigned is_cnf_start:1;
+    unsigned is_click_counter:1;	/* INCR/DECR(click counter) */
+    unsigned is_value_query:1;	/* for PT_VALUE,PT_NAME,PT_EXPR... that belongs to PT_NODE_LIST for PT_SELECT that
 				 * "values" generated */
-  unsigned do_not_replace_orderby:1;	/* when checking query in create/alter view, do not replace order by */
-  unsigned is_added_by_parser:1;	/* is added by parser during parsing */
-  unsigned is_alias_enabled_expr:1;	/* node allowed to have alias */
-  unsigned is_wrapped_res_for_coll:1;	/* is a result node wrapped with CAST by collation inference */
-  unsigned is_system_generated_stmt:1;	/* is internally generated by system */
-  unsigned use_auto_commit:1;	/* use autocommit */
+    unsigned do_not_replace_orderby:1;	/* when checking query in create/alter view, do not replace order by */
+    unsigned is_added_by_parser:1;	/* is added by parser during parsing */
+    unsigned is_alias_enabled_expr:1;	/* node allowed to have alias */
+    unsigned is_wrapped_res_for_coll:1;	/* is a result node wrapped with CAST by collation inference */
+    unsigned is_system_generated_stmt:1;	/* is internally generated by system */
+    unsigned use_auto_commit:1;	/* use autocommit */
+  } flag;
   PT_STATEMENT_INFO info;	/* depends on 'node_type' field */
 };
 
@@ -3617,29 +3605,32 @@ struct parser_context
 
   int max_print_len;		/* for pt_short_print */
 
-  unsigned has_internal_error:1;	/* 0 or 1 */
-  unsigned abort:1;		/* this flag is for aborting a transaction */
-  /* if deadlock occurs during query execution */
-  unsigned set_host_var:1;	/* 1 if the user has set host variables */
-  unsigned dont_prt_long_string:1;	/* make pt_print_value fail if the string is too long to print */
-  unsigned long_string_skipped:1;	/* pt_print_value sets it to 1 when it skipped printing a long string */
-  unsigned print_type_ambiguity:1;	/* pt_print_value sets it to 1 when it printed a value whose type cannot be
+  struct
+  {
+    unsigned has_internal_error:1;	/* 0 or 1 */
+    unsigned abort:1;		/* this flag is for aborting a transaction */
+    /* if deadlock occurs during query execution */
+    unsigned set_host_var:1;	/* 1 if the user has set host variables */
+    unsigned dont_prt_long_string:1;	/* make pt_print_value fail if the string is too long to print */
+    unsigned long_string_skipped:1;	/* pt_print_value sets it to 1 when it skipped printing a long string */
+    unsigned print_type_ambiguity:1;	/* pt_print_value sets it to 1 when it printed a value whose type cannot be
 					 * clearly determined from the string representation */
-  unsigned strings_have_no_escapes:1;
-  unsigned is_in_and_list:1;	/* set to 1 when the caller immediately above is pt_print_and_list(). Used because AND
+    unsigned strings_have_no_escapes:1;
+    unsigned is_in_and_list:1;	/* set to 1 when the caller immediately above is pt_print_and_list(). Used because AND
 				 * lists (CNF trees) can be printed via print_and_list or straight via pt_print_expr().
 				 * We need to keep print_and_list because it could get called before we get a chance to
 				 * mark the CNF start nodes. */
-  unsigned is_holdable:1;	/* set to true if result must be available across commits */
-  unsigned is_xasl_pinned_reference:1;	/* set to 1 if the prepared xasl cache need to be pinned in server side. To
-					 * prevent other thread from preempting the xasl cache again. This will
-					 * happen when a jdbc/cci driver retries to prepare/execute a query due to
-					 * CAS_ER_STMT_POOLING. */
-  unsigned recompile_xasl_pinned:1;	/* set to 1 when recompile again even the xasl cache entry has been pinned */
-  unsigned dont_collect_exec_stats:1;
-  unsigned return_generated_keys:1;
-  unsigned is_system_generated_stmt:1;
-  unsigned is_auto_commit:1;	/* set to true, if auto commit. */
+    unsigned is_holdable:1;	/* set to true if result must be available across commits */
+    unsigned is_xasl_pinned_reference:1;	/* set to 1 if the prepared xasl cache need to be pinned in server side. To
+						 * prevent other thread from preempting the xasl cache again. This will
+						 * happen when a jdbc/cci driver retries to prepare/execute a query due to
+						 * CAS_ER_STMT_POOLING. */
+    unsigned recompile_xasl_pinned:1;	/* set to 1 when recompile again even the xasl cache entry has been pinned */
+    unsigned dont_collect_exec_stats:1;
+    unsigned return_generated_keys:1;
+    unsigned is_system_generated_stmt:1;
+    unsigned is_auto_commit:1;	/* set to true, if auto commit. */
+  } flag;
 };
 
 /* used in assignments enumeration */

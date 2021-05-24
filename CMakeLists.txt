@@ -275,7 +275,7 @@ if(UNIX)
     # C flags for both debug and release build
     set(CMAKE_C_COMMON_FLAGS "-ggdb -fno-omit-frame-pointer")
     # C++ flags for both debug and release build
-    set(CMAKE_CXX_COMMON_FLAGS "${CMAKE_C_COMMON_FLAGS} -std=c++0x")
+    set(CMAKE_CXX_COMMON_FLAGS "${CMAKE_C_COMMON_FLAGS} -std=c++17")
 
     # C flags for debug build
     set(CMAKE_C_DEBUG_FLAGS "-Wall -fno-inline ${CMAKE_C_COMMON_FLAGS}")
@@ -324,9 +324,9 @@ else(UNIX)
   set(CMAKE_SHARED_LINKER_FLAGS_RELWITHDEBINFO "/INCREMENTAL:NO ${replaceIncFlag}" )
 
   #set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /WX /wd4820 /showIncludes" )
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W3 /wd4820" )
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W3 /wd4820 /std:c++17" )
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /W3" )
-  set(CMAKE_CXX_STANDARD 11)
+  set(CMAKE_CXX_STANDARD 17)
 endif(UNIX)
 
 # check target platform
@@ -462,7 +462,7 @@ endif(JNI_FOUND)
 
 # Build types
 if(CMAKE_BUILD_TYPE MATCHES "Coverage")
-  set(CMAKE_CXX_FLAGS_COVERAGE "-g -O0 --coverage -fprofile-arcs -ftest-coverage -std=c++0x"
+  set(CMAKE_CXX_FLAGS_COVERAGE "-g -O0 --coverage -fprofile-arcs -ftest-coverage -std=c++17"
     CACHE STRING "Flags used by the c++ compiler during coverage build." FORCE)
   set(CMAKE_C_FLAGS_COVERAGE "-g -O0 --coverage -fprofile-arcs -ftest-coverage"
     CACHE STRING "Flags used by the c compiler during coverage build." FORCE)
@@ -479,7 +479,7 @@ if(CMAKE_BUILD_TYPE MATCHES "Coverage")
 endif(CMAKE_BUILD_TYPE MATCHES "Coverage")
 
 if(CMAKE_BUILD_TYPE MATCHES "Profile")
-  set(CMAKE_CXX_FLAGS_PROFILE "-g -pg -std=c++0x"
+  set(CMAKE_CXX_FLAGS_PROFILE "-g -pg -std=c++17"
     CACHE STRING "Flags used by the c++ compiler during profile build." FORCE)
   set(CMAKE_C_FLAGS_PROFILE "-g -pg"
     CACHE STRING "Flags used by the c compiler during profile build." FORCE)
@@ -1086,8 +1086,8 @@ if(WITH_LIBOPENSSL STREQUAL "EXTERNAL")
       TIMEOUT              600
       DOWNLOAD_NO_PROGRESS 1
       CONFIGURE_COMMAND    <SOURCE_DIR>/config --prefix=${CMAKE_CURRENT_BINARY_DIR}/external no-shared # ${DEFAULT_CONFIGURE_OPTS}
-      BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND      make install_sw AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      BUILD_COMMAND        $(MAKE) all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND      $(MAKE) install_sw AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       )
     set(LIBOPENSSL_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libssl.a ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libcrypto.a)
     set(LIBOPENSSL_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
