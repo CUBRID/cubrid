@@ -1533,7 +1533,7 @@ pt_internal_error (PARSER_CONTEXT * parser, const char *file, int line, const ch
 
   if (parser && !pt_has_error (parser))
     {
-      parser->has_internal_error = 1;
+      parser->flag.has_internal_error = 1;
       pt_frob_error (parser, &node, "System error (%s) in %s (line: %d)", what, file, line);
     }
 
@@ -1789,8 +1789,8 @@ parser_parse_string_with_escapes (PARSER_CONTEXT * parser, const char *buffer, c
       parser->casecmp = intl_identifier_casecmp;
     }
 
-  parser->strings_have_no_escapes = strings_have_no_escapes ? 1 : 0;
-  parser->dont_collect_exec_stats = 0;
+  parser->flag.strings_have_no_escapes = strings_have_no_escapes ? 1 : 0;
+  parser->flag.dont_collect_exec_stats = 0;
 
   if (prm_get_bool_value (PRM_ID_QUERY_TRACE) == true)
     {
@@ -1895,9 +1895,9 @@ parser_parse_file (PARSER_CONTEXT * parser, FILE * file)
       parser->casecmp = intl_identifier_casecmp;
     }
 
-  parser->strings_have_no_escapes = 0;
-  parser->is_in_and_list = 0;
-  parser->dont_collect_exec_stats = 0;
+  parser->flag.strings_have_no_escapes = 0;
+  parser->flag.is_in_and_list = 0;
+  parser->flag.dont_collect_exec_stats = 0;
 
   if (prm_get_bool_value (PRM_ID_QUERY_TRACE) == true)
     {
@@ -2202,10 +2202,8 @@ parser_new_node (PARSER_CONTEXT * parser, PT_NODE_TYPE node_type)
   node = parser_create_node (parser);
   if (node)
     {
-      node->node_type = node_type;
+      parser_init_node (node, node_type);
       pt_parser_line_col (node);
-      parser_init_node (node);
-
       node->sql_user_text = g_query_string;
       node->sql_user_text_len = g_query_string_len;
     }
@@ -2213,60 +2211,63 @@ parser_new_node (PARSER_CONTEXT * parser, PT_NODE_TYPE node_type)
 }
 
 /*
- * parser_init_node() - initialize a node
+ * parser_init_node() - initialize a node (Used when initializing the node for the first time after creation)
  *   return:
  *   node(in/out):
  */
 PT_NODE *
-parser_init_node (PT_NODE * node)
+parser_init_node (PT_NODE * node, PT_NODE_TYPE node_type)
+{
+  assert (node != NULL);
+  assert (node_type < PT_LAST_NODE_NUMBER);
+  int parser_id = node->parser_id;
+
+  memset (node, 0x00, sizeof (PT_NODE));
+  node->buffer_pos = -1;
+  node->type_enum = PT_TYPE_NONE;
+
+  node->parser_id = parser_id;
+  node->node_type = node_type;
+  node = (pt_init_f[node_type]) (node);
+
+  return node;
+}
+
+/*
+ * parser_reinit_node() - initialize a node (Used when re-initializing an existing Node while in use)
+ *   return:
+ *   node(in/out):
+ */
+PT_NODE *
+parser_reinit_node (PT_NODE * node)
 {
   if (node)
     {
-      PARSER_INIT_NODE_FUNC f;
-
       assert (node->node_type < PT_LAST_NODE_NUMBER);
 
-      /* don't write over node_type, parser_id, line or column */
-      node->next = NULL;
-      node->or_next = NULL;
-      node->etc = NULL;
-      node->spec_ident = 0;
-      node->type_enum = PT_TYPE_NONE;
-      node->expected_domain = NULL;
-      node->data_type = NULL;
-      node->xasl_id = NULL;
-      node->alias_print = NULL;
-      node->expr_before_const_folding = NULL;
-      node->recompile = 0;
-      node->cannot_prepare = 0;
-      node->partition_pruned = 0;
-      node->si_datetime = 0;
-      node->si_tran_id = 0;
-      node->clt_cache_check = 0;
-      node->clt_cache_reusable = 0;
-      node->use_plan_cache = 0;
-      node->use_query_cache = 0;
-      node->is_hidden_column = 0;
-      node->is_paren = 0;
-      node->with_rollup = 0;
-      node->force_auto_parameterize = 0;
-      node->do_not_fold = 0;
-      node->is_cnf_start = 0;
-      node->is_click_counter = 0;
-      node->buffer_pos = -1;
-      node->next_row = NULL;
-      node->is_value_query = 0;
-      node->do_not_replace_orderby = 0;
-      node->is_added_by_parser = 0;
-      node->is_alias_enabled_expr = 0;
-      node->is_wrapped_res_for_coll = 0;
-      node->is_system_generated_stmt = 0;
-      node->use_auto_commit = 0;
-      /* initialize node info field */
-      memset (&(node->info), 0, sizeof (node->info));
+      /* don't write over node_type, parser_id, sql_user_text, sql_user_text_len, cache_time */
+      int parser_id = node->parser_id;
+      PT_NODE_TYPE node_type = node->node_type;
+      char *sql_user_text = node->sql_user_text;
+      int sql_user_text_len = node->sql_user_text_len;
+      int line_number = node->line_number;
+      int column_number = node->column_number;
+      CACHE_TIME cache_time = node->cache_time;
 
-      f = pt_init_f[node->node_type];
-      node = f (node);
+      memset (node, 0x00, sizeof (PT_NODE));
+      node->buffer_pos = -1;
+      node->type_enum = PT_TYPE_NONE;
+
+      node->parser_id = parser_id;
+      node->node_type = node_type;
+
+      node->sql_user_text = sql_user_text;
+      node->sql_user_text_len = sql_user_text_len;
+      node->line_number = line_number;
+      node->column_number = column_number;
+      node->cache_time = cache_time;
+
+      node = (pt_init_f[node->node_type]) (node);
     }
 
   return node;
@@ -2316,7 +2317,7 @@ pt_print_bytes (PARSER_CONTEXT * parser, const PT_NODE * node)
 
   CAST_POINTER_TO_NODE (node);
 
-  if (node->is_cnf_start && !parser->is_in_and_list)
+  if (node->flag.is_cnf_start && !parser->flag.is_in_and_list)
     {
       return pt_print_and_list (parser, node);
     }
@@ -2329,11 +2330,11 @@ pt_print_bytes (PARSER_CONTEXT * parser, const PT_NODE * node)
     }
 
   /* avoid recursion */
-  if (parser->is_in_and_list)
+  if (parser->flag.is_in_and_list)
     {
-      parser->is_in_and_list = 0;
+      parser->flag.is_in_and_list = 0;
       result = f (parser, (PT_NODE *) node);
-      parser->is_in_and_list = 1;
+      parser->flag.is_in_and_list = 1;
       return result;
     }
   else
@@ -2365,7 +2366,7 @@ pt_print_bytes_l (PARSER_CONTEXT * parser, const PT_NODE * p)
 
   prev = pt_print_bytes (parser, p);
 
-  if (p->is_cnf_start)
+  if (p->flag.is_cnf_start)
     {
       return prev;
     }
@@ -2809,7 +2810,7 @@ pt_print_and_list (PARSER_CONTEXT * parser, const PT_NODE * p)
       return NULL;
     }
 
-  parser->is_in_and_list = 1;
+  parser->flag.is_in_and_list = 1;
 
   for (n = p; n; n = n->next)
     {				/* print in the original order ... */
@@ -2832,7 +2833,7 @@ pt_print_and_list (PARSER_CONTEXT * parser, const PT_NODE * p)
 	}
     }
 
-  parser->is_in_and_list = 0;
+  parser->flag.is_in_and_list = 0;
 
   return q;
 }
@@ -3185,7 +3186,7 @@ pt_length_of_select_list (PT_NODE * list, int hidden_col)
     {				/* EXCLUDE_HIDDEN_COLUMNS */
       for (len = 0; list; list = list->next)
 	{
-	  if (list->is_hidden_column)
+	  if (list->flag.is_hidden_column)
 	    {
 	      /* skip hidden column */
 	      continue;
@@ -4455,9 +4456,9 @@ pt_select_list_to_one_col (PARSER_CONTEXT * parser, PT_NODE * node, bool do_one)
 	      char buf[20];
 
 	      /* reset single tuple mark and move to derived */
-	      node->info.query.single_tuple = 0;
+	      node->info.query.flag.single_tuple = 0;
 	      derived = parser_copy_tree (parser, node);
-	      parser_init_node (node);
+	      parser_reinit_node (node);
 
 	      /* new range var */
 	      from = derived->info.query.q.select.from;
@@ -8898,16 +8899,16 @@ pt_init_difference (PT_NODE * p)
   p->info.query.order_by = 0;
   p->info.query.orderby_for = 0;
   p->info.query.all_distinct = PT_ALL;
-  p->info.query.has_outer_spec = 0;
-  p->info.query.is_sort_spec = 0;
-  p->info.query.is_insert_select = 0;
-  p->info.query.single_tuple = 0;
-  p->info.query.vspec_as_derived = 0;
-  p->info.query.reexecute = 0;
-  p->info.query.do_cache = 0;
-  p->info.query.do_not_cache = 0;
-  p->info.query.order_siblings = 0;
-  p->info.query.has_system_class = 0;
+  p->info.query.flag.has_outer_spec = 0;
+  p->info.query.flag.is_sort_spec = 0;
+  p->info.query.flag.is_insert_select = 0;
+  p->info.query.flag.single_tuple = 0;
+  p->info.query.flag.vspec_as_derived = 0;
+  p->info.query.flag.reexecute = 0;
+  p->info.query.flag.do_cache = 0;
+  p->info.query.flag.do_not_cache = 0;
+  p->info.query.flag.order_siblings = 0;
+  p->info.query.flag.has_system_class = 0;
   p->info.query.hint = PT_HINT_NONE;
   p->info.query.qcache_hint = NULL;
   p->info.query.q.union_.select_list = 0;
@@ -8962,7 +8963,7 @@ pt_print_difference (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_varchar (parser, q, r1);
     }
 
-  if (p->info.query.limit && p->info.query.rewrite_limit)
+  if (p->info.query.limit && p->info.query.flag.rewrite_limit)
     {
       r1 = pt_print_bytes_l (parser, p->info.query.limit);
       q = pt_append_nulstring (parser, q, " limit ");
@@ -9423,7 +9424,7 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
     }
 
   /* check if a partition pruned SPEC */
-  if (PT_SPEC_IS_ENTITY (p) && p->partition_pruned)
+  if (PT_SPEC_IS_ENTITY (p) && p->flag.partition_pruned)
     {
       save_custom = parser->custom_print;
       parser->custom_print |= PT_SUPPRESS_RESOLVED;
@@ -11228,7 +11229,7 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_nulstring (parser, q, ", ");
 	}
       q = pt_append_varchar (parser, q, r1);
-      if (p->info.expr.arg2 && p->info.expr.arg2->is_hidden_column == 0)
+      if (p->info.expr.arg2 && p->info.expr.arg2->flag.is_hidden_column == 0)
 	{
 	  r2 = pt_print_bytes (parser, p->info.expr.arg2);
 	  if (r2)
@@ -11631,7 +11632,7 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_nulstring (parser, q, "coalesce(");
 	}
       q = pt_append_varchar (parser, q, r1);
-      if (p->info.expr.arg2 && p->info.expr.arg2->is_hidden_column == 0)
+      if (p->info.expr.arg2 && p->info.expr.arg2->flag.is_hidden_column == 0)
 	{
 	  r2 = pt_print_bytes (parser, p->info.expr.arg2);
 	  if (r2)
@@ -11717,7 +11718,7 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_nulstring (parser, q, "least(");
 	}
       q = pt_append_varchar (parser, q, r1);
-      if (p->info.expr.arg2 && p->info.expr.arg2->is_hidden_column == 0)
+      if (p->info.expr.arg2 && p->info.expr.arg2->flag.is_hidden_column == 0)
 	{
 	  r2 = pt_print_bytes (parser, p->info.expr.arg2);
 	  if (r2)
@@ -11739,7 +11740,7 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_nulstring (parser, q, "greatest(");
 	}
       q = pt_append_varchar (parser, q, r1);
-      if (p->info.expr.arg2 && p->info.expr.arg2->is_hidden_column == 0)
+      if (p->info.expr.arg2 && p->info.expr.arg2->flag.is_hidden_column == 0)
 	{
 	  r2 = pt_print_bytes (parser, p->info.expr.arg2);
 	  if (r2)
@@ -13134,15 +13135,15 @@ pt_init_intersection (PT_NODE * p)
   p->info.query.order_by = 0;
   p->info.query.orderby_for = 0;
   p->info.query.all_distinct = PT_ALL;
-  p->info.query.has_outer_spec = 0;
-  p->info.query.is_sort_spec = 0;
-  p->info.query.is_insert_select = 0;
-  p->info.query.single_tuple = 0;
-  p->info.query.vspec_as_derived = 0;
-  p->info.query.reexecute = 0;
-  p->info.query.do_not_cache = 0;
-  p->info.query.order_siblings = 0;
-  p->info.query.has_system_class = 0;
+  p->info.query.flag.has_outer_spec = 0;
+  p->info.query.flag.is_sort_spec = 0;
+  p->info.query.flag.is_insert_select = 0;
+  p->info.query.flag.single_tuple = 0;
+  p->info.query.flag.vspec_as_derived = 0;
+  p->info.query.flag.reexecute = 0;
+  p->info.query.flag.do_not_cache = 0;
+  p->info.query.flag.order_siblings = 0;
+  p->info.query.flag.has_system_class = 0;
   p->info.query.hint = PT_HINT_NONE;
   p->info.query.qcache_hint = NULL;
   p->info.query.q.union_.select_list = 0;
@@ -13196,7 +13197,7 @@ pt_print_intersection (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, " for");
       q = pt_append_varchar (parser, q, r1);
     }
-  if (p->info.query.limit && p->info.query.rewrite_limit)
+  if (p->info.query.limit && p->info.query.flag.rewrite_limit)
     {
       r1 = pt_print_bytes_l (parser, p->info.query.limit);
       q = pt_append_nulstring (parser, q, " limit ");
@@ -14266,15 +14267,15 @@ pt_init_select (PT_NODE * p)
   p->info.query.all_distinct = PT_ALL;
   p->info.query.is_subquery = (PT_MISC_TYPE) 0;
   p->info.query.is_view_spec = 0;
-  p->info.query.has_outer_spec = 0;
-  p->info.query.is_sort_spec = 0;
-  p->info.query.is_insert_select = 0;
-  p->info.query.single_tuple = 0;
-  p->info.query.vspec_as_derived = 0;
-  p->info.query.reexecute = 0;
-  p->info.query.do_not_cache = 0;
-  p->info.query.order_siblings = 0;
-  p->info.query.has_system_class = 0;
+  p->info.query.flag.has_outer_spec = 0;
+  p->info.query.flag.is_sort_spec = 0;
+  p->info.query.flag.is_insert_select = 0;
+  p->info.query.flag.single_tuple = 0;
+  p->info.query.flag.vspec_as_derived = 0;
+  p->info.query.flag.reexecute = 0;
+  p->info.query.flag.do_not_cache = 0;
+  p->info.query.flag.order_siblings = 0;
+  p->info.query.flag.has_system_class = 0;
   p->info.query.hint = PT_HINT_NONE;
   p->info.query.qcache_hint = NULL;
   p->info.query.upd_del_class_cnt = 0;
@@ -14827,7 +14828,7 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	  r1 = pt_print_bytes_l (parser, p->info.query.q.select.group_by);
 	  q = pt_append_nulstring (parser, q, " group by ");
 	  q = pt_append_varchar (parser, q, r1);
-	  if (p->info.query.q.select.group_by->with_rollup)
+	  if (p->info.query.q.select.group_by->flag.with_rollup)
 	    {
 	      q = pt_append_nulstring (parser, q, " with rollup");
 	    }
@@ -14914,7 +14915,7 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
       if (p->info.query.order_by)
 	{
 	  r1 = pt_print_bytes_l (parser, p->info.query.order_by);
-	  if (p->info.query.order_siblings)
+	  if (p->info.query.flag.order_siblings)
 	    {
 	      q = pt_append_nulstring (parser, q, " order siblings by ");
 	    }
@@ -14932,7 +14933,7 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_varchar (parser, q, r1);
 	}
 
-      if (p->info.query.limit && p->info.query.rewrite_limit)
+      if (p->info.query.limit && p->info.query.flag.rewrite_limit)
 	{
 	  r1 = pt_print_bytes_l (parser, p->info.query.limit);
 	  q = pt_append_nulstring (parser, q, " limit ");
@@ -15607,15 +15608,15 @@ pt_init_union_stmt (PT_NODE * p)
   p->info.query.orderby_for = 0;
   p->info.query.all_distinct = PT_ALL;
   p->info.query.into_list = 0;
-  p->info.query.has_outer_spec = 0;
-  p->info.query.is_sort_spec = 0;
-  p->info.query.is_insert_select = 0;
-  p->info.query.single_tuple = 0;
-  p->info.query.vspec_as_derived = 0;
-  p->info.query.reexecute = 0;
-  p->info.query.do_not_cache = 0;
-  p->info.query.order_siblings = 0;
-  p->info.query.has_system_class = 0;
+  p->info.query.flag.has_outer_spec = 0;
+  p->info.query.flag.is_sort_spec = 0;
+  p->info.query.flag.is_insert_select = 0;
+  p->info.query.flag.single_tuple = 0;
+  p->info.query.flag.vspec_as_derived = 0;
+  p->info.query.flag.reexecute = 0;
+  p->info.query.flag.do_not_cache = 0;
+  p->info.query.flag.order_siblings = 0;
+  p->info.query.flag.has_system_class = 0;
   p->info.query.hint = PT_HINT_NONE;
   p->info.query.qcache_hint = NULL;
   p->info.query.q.union_.select_list = 0;
@@ -15665,7 +15666,7 @@ pt_print_union_stmt (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, " for ");
       q = pt_append_varchar (parser, q, r1);
     }
-  if (p->info.query.limit && p->info.query.rewrite_limit)
+  if (p->info.query.limit && p->info.query.flag.rewrite_limit)
     {
       r1 = pt_print_bytes_l (parser, p->info.query.limit);
       q = pt_append_nulstring (parser, q, " limit ");
@@ -16564,9 +16565,9 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TYPE_BIT:
       if (p->info.value.text && prt_cs == INTL_CODESET_NONE && prt_coll_id == -1)
 	{
-	  if (parser->dont_prt_long_string && (strlen (p->info.value.text) >= DONT_PRT_LONG_STRING_LENGTH))
+	  if (parser->flag.dont_prt_long_string && (strlen (p->info.value.text) >= DONT_PRT_LONG_STRING_LENGTH))
 	    {
-	      parser->long_string_skipped = 1;
+	      parser->flag.long_string_skipped = 1;
 	      break;
 	    }
 
@@ -16575,11 +16576,11 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 	  break;
 	}
       r1 = p->info.value.data_value.str;
-      if (parser->dont_prt_long_string)
+      if (parser->flag.dont_prt_long_string)
 	{
 	  if (r1 && r1->length >= DONT_PRT_LONG_STRING_LENGTH)
 	    {
-	      parser->long_string_skipped = 1;
+	      parser->flag.long_string_skipped = 1;
 	      break;
 	    }
 	}
@@ -16638,9 +16639,9 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TYPE_VARBIT:
       if (p->info.value.text && prt_cs == INTL_CODESET_NONE && prt_coll_id == -1)
 	{
-	  if (parser->dont_prt_long_string && (strlen (p->info.value.text) >= DONT_PRT_LONG_STRING_LENGTH))
+	  if (parser->flag.dont_prt_long_string && (strlen (p->info.value.text) >= DONT_PRT_LONG_STRING_LENGTH))
 	    {
-	      parser->long_string_skipped = 1;
+	      parser->flag.long_string_skipped = 1;
 	      break;
 	    }
 
@@ -16649,11 +16650,11 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 	  break;
 	}
       r1 = p->info.value.data_value.str;
-      if (parser->dont_prt_long_string)
+      if (parser->flag.dont_prt_long_string)
 	{
 	  if (r1 && r1->length >= DONT_PRT_LONG_STRING_LENGTH)
 	    {
-	      parser->long_string_skipped = 1;
+	      parser->flag.long_string_skipped = 1;
 	      break;
 	    }
 	}
@@ -16679,11 +16680,11 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
       break;
     case PT_TYPE_MONETARY:
-      if (parser->dont_prt_long_string)
+      if (parser->flag.dont_prt_long_string)
 	{
 	  if (log10 (p->info.value.data_value.money.amount) >= DONT_PRT_LONG_STRING_LENGTH)
 	    {
-	      parser->long_string_skipped = 1;
+	      parser->flag.long_string_skipped = 1;
 	      break;
 	    }
 	}
@@ -16708,7 +16709,7 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 
 	if (pt_currency_to_db (val->type) == DB_CURRENCY_NULL)
 	  {
-	    parser->print_type_ambiguity = 1;
+	    parser->flag.print_type_ambiguity = 1;
 	  }
       }
       break;
@@ -16750,7 +16751,7 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
       break;
     default:
       q = pt_append_nulstring (parser, q, "-- Unknown value type --");
-      parser->print_type_ambiguity = 1;
+      parser->flag.print_type_ambiguity = 1;
       break;
     }
 

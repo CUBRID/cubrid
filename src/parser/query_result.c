@@ -495,7 +495,7 @@ pt_get_select_list (PARSER_CONTEXT * parser, PT_NODE * query)
 	      for (col = select_list; col && col->next; col = next)
 		{
 		  next = col->next;
-		  if (next->is_hidden_column)
+		  if (next->flag.is_hidden_column)
 		    {
 		      parser_free_tree (parser, next);
 		      col->next = NULL;
@@ -653,7 +653,7 @@ pt_get_titles (PARSER_CONTEXT * parser, PT_NODE * query)
 
   for (q = NULL, tail = NULL; s; s = s->next)
     {
-      if (s->is_hidden_column)
+      if (s->flag.is_hidden_column)
 	{
 	  continue;
 	}
@@ -1093,7 +1093,7 @@ pt_new_query_result_descriptor (PARSER_CONTEXT * parser, PT_NODE * query)
   r->res.s.cursor_id.query_id = parser->query_id;
   r->res.s.cursor_id.buffer = NULL;
   r->res.s.cursor_id.tuple_record.tpl = NULL;
-  r->res.s.holdable = parser->is_holdable;
+  r->res.s.holdable = parser->flag.is_holdable;
 
   list_id = (QFILE_LIST_ID *) query->etc;
   r->type_cnt = degree;
@@ -1153,7 +1153,7 @@ pt_free_query_etc_area (PARSER_CONTEXT * parser, PT_NODE * query)
       && (pt_node_to_cmd_type (query) == CUBRID_STMT_SELECT || pt_node_to_cmd_type (query) == CUBRID_STMT_DO
 	  || pt_is_server_insert_with_generated_keys (parser, query)))
     {
-      cursor_free_self_list_id ((QFILE_LIST_ID *) query->etc);
+      cursor_free_self_list_id (query->etc);
     }
 }
 
@@ -1446,7 +1446,7 @@ pt_find_users_class (PARSER_CONTEXT * parser, PT_NODE * name)
 int
 pt_is_server_insert_with_generated_keys (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  if (statement && statement->node_type == PT_INSERT && parser && parser->return_generated_keys
+  if (statement && statement->node_type == PT_INSERT && parser && parser->flag.return_generated_keys
       && statement->info.insert.server_allowed == SERVER_INSERT_IS_ALLOWED)
     {
       return 1;

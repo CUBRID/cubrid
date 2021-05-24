@@ -1144,7 +1144,7 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser, const char *trigger_stmt, DB_O
        */
       if (statement->info.scope.stmt && statement->info.scope.stmt->info.trigger_action.expression)
 	{
-	  statement->si_datetime |= statement->info.scope.stmt->info.trigger_action.expression->si_datetime;
+	  statement->flag.si_datetime |= statement->info.scope.stmt->info.trigger_action.expression->flag.si_datetime;
 	}
     }
 
@@ -1386,12 +1386,12 @@ pt_exec_trigger_stmt (PARSER_CONTEXT * parser, PT_NODE * trigger_stmt, DB_OBJECT
   server_info_bits = 0;		/* init */
 
   /* set sys_date, sys_time, sys_timestamp, sys_datetime values for trigger statement. */
-  if (trigger_stmt->si_datetime)
+  if (trigger_stmt->flag.si_datetime)
     {
       server_info_bits |= SI_SYS_DATETIME;
     }
 
-  if (trigger_stmt->si_tran_id)
+  if (trigger_stmt->flag.si_tran_id)
     {
       server_info_bits |= SI_LOCAL_TRANSACTION_ID;
     }
@@ -1518,12 +1518,12 @@ pt_exec_trigger_stmt (PARSER_CONTEXT * parser, PT_NODE * trigger_stmt, DB_OBJECT
     }
 
   /* reset the parser values */
-  if (trigger_stmt->si_datetime)
+  if (trigger_stmt->flag.si_datetime)
     {
       db_make_null (&parser->sys_datetime);
       db_make_null (&parser->sys_epochtime);
     }
-  if (trigger_stmt->si_tran_id)
+  if (trigger_stmt->flag.si_tran_id)
     {
       db_make_null (&parser->local_transaction_id);
     }
