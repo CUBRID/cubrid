@@ -1076,30 +1076,34 @@ extern int logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, const multi_
                                            bool write_to_log);
 // *INDENT-ON*
 
-extern int logtb_tran_update_btid_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid, int n_keys, int n_oids, int n_nulls);
+extern int logtb_tran_update_btid_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid, int n_keys, int n_oids,
+						int n_nulls);
 extern LOG_TRAN_BTID_UNIQUE_STATS *logtb_tran_find_btid_stats (THREAD_ENTRY * thread_p, const BTID * btid, bool create);
 extern int logtb_tran_prepare_count_optim_classes (THREAD_ENTRY * thread_p, const char **classes,
-					LC_PREFETCH_FLAGS * flags, int n_classes);
+						   LC_PREFETCH_FLAGS * flags, int n_classes);
 extern void logtb_tran_reset_count_optim_state (THREAD_ENTRY * thread_p);
 extern int logtb_find_log_records_count (int tran_index);
 
 extern int logtb_initialize_global_unique_stats_table (THREAD_ENTRY * thread_p);
 extern void logtb_finalize_global_unique_stats_table (THREAD_ENTRY * thread_p);
-extern int logtb_get_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid, int *num_oids, int *num_nulls, int *num_keys);
+extern int logtb_get_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid, int *num_oids, int *num_nulls,
+					  int *num_keys);
 extern int logtb_rv_update_global_unique_stats_by_abs (THREAD_ENTRY * thread_p, BTID * btid, int num_oids,
-					    int num_nulls, int num_keys);
+						       int num_nulls, int num_keys);
 extern int logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p, BTID * btid, int oid_delta,
-					   int null_delta, int key_delta, bool log);
+						      int null_delta, int key_delta, bool log);
 extern int logtb_delete_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid);
 extern int logtb_reflect_global_unique_stats_to_btree (THREAD_ENTRY * thread_p);
 extern int logtb_tran_update_all_global_unique_stats (THREAD_ENTRY * thread_p);
 
 extern int log_rv_undoredo_record_partial_changes (THREAD_ENTRY * thread_p, char *rcv_data, int rcv_data_length,
-					RECDES * record, bool is_undo);
+						   RECDES * record, bool is_undo);
 extern int log_rv_redo_record_modify (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int log_rv_undo_record_modify (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern char *log_rv_pack_redo_record_changes (char *ptr, int offset_to_data, int old_data_size, int new_data_size, char *new_data);
-extern char *log_rv_pack_undo_record_changes (char *ptr, int offset_to_data, int old_data_size, int new_data_size, char *old_data);
+extern char *log_rv_pack_redo_record_changes (char *ptr, int offset_to_data, int old_data_size, int new_data_size,
+					      char *new_data);
+extern char *log_rv_pack_undo_record_changes (char *ptr, int offset_to_data, int old_data_size, int new_data_size,
+					      char *old_data);
 
 extern void log_set_ha_promotion_time (THREAD_ENTRY * thread_p, INT64 ha_promotion_time);
 extern void log_set_db_restore_time (THREAD_ENTRY * thread_p, INT64 db_restore_time);
@@ -1113,11 +1117,14 @@ extern void logpb_vacuum_reset_log_header_cache (THREAD_ENTRY * thread_p, LOG_HE
 extern VACUUM_LOG_BLOCKID logpb_last_complete_blockid (void);
 extern int logpb_page_check_corruption (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, bool * is_page_corrupted);
 extern void logpb_dump_log_page_area (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int offset, int length);
-extern void logpb_page_get_first_null_block_lsa (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_LSA * first_null_block_lsa);
+extern void logpb_page_get_first_null_block_lsa (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr,
+						 LOG_LSA * first_null_block_lsa);
 
 extern void logtb_slam_transaction (THREAD_ENTRY * thread_p, int tran_index);
-extern int xlogtb_kill_tran_index (THREAD_ENTRY * thread_p, int kill_tran_index, char *kill_user, char *kill_host, int kill_pid);
-extern int xlogtb_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_id, bool is_dba_group_member, bool interrupt_only);
+extern int xlogtb_kill_tran_index (THREAD_ENTRY * thread_p, int kill_tran_index, char *kill_user, char *kill_host,
+				   int kill_pid);
+extern int xlogtb_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_id, bool is_dba_group_member,
+					  bool interrupt_only);
 extern THREAD_ENTRY *logtb_find_thread_by_tran_index (int tran_index);
 extern THREAD_ENTRY *logtb_find_thread_by_tran_index_except_me (int tran_index);
 extern int logtb_get_current_tran_index (void);
@@ -1162,7 +1169,8 @@ LOG_FIND_CURRENT_TDES (THREAD_ENTRY * thread_p = NULL)
   return LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 }
 
-inline bool
+inline
+  bool
 logtb_is_system_worker_tranid (TRANID trid)
 {
   return trid < NULL_TRANID;
