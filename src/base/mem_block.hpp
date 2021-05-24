@@ -183,7 +183,7 @@ namespace cubmem
       const block_allocator *m_allocator;
 
       extensible_block (const extensible_block &) = delete;             //copy ctor
-      extensible_block &operator= (const extensible_block &) = default;  //copy assignment
+      extensible_block &operator= (const extensible_block &) = delete;  //copy assignment
   };
 
   // extensible_stack_block - extensible memory block that start with as a stack_block
