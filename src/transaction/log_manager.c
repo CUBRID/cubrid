@@ -10528,15 +10528,16 @@ xlog_reader_get_log_refined_info (THREAD_ENTRY * thread_p, LOG_LSA start_lsa, in
   struct timeval start, end;
   LOG_INFO_ENTRY tmp;
   char *log_infos;
-
-  log_reader_initialize ();
+  
   /*start log reader if not intialized */
-  rv = pthread_create (&log_info_reader_th, NULL, log_reader, (void *) &start_lsa);
-  if (rv != 0)
+  if(log_Reader_info.log_reader_th == NULL)
+  {
+    rv = pthread_create (log_Reader_info.log_reader_th, NULL, log_reader, (void *) &start_lsa);
+    if (rv != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_READER_THREAD_CREATE, 0);
     }
-
+  }
 //  pthread_mutex_lock (log_Reader_info.configuration_mutex);
   timeout = log_Reader_info.extraction_timeout;
   /*mutex, while accessing log_Reader_info */
@@ -10562,8 +10563,8 @@ xlog_reader_get_log_refined_info (THREAD_ENTRY * thread_p, LOG_LSA start_lsa, in
     {
       /*access to log_info_queue */
       log_info_queue->consume (tmp);
-      //log_infos = (char*)realloc (*total_length + tmp.length);
-      //memcpy (log_infos + *total_length, tmp.log_info, tmp.length);
+      log_infos = (char*)realloc (log_infos, *total_length + tmp.length);
+      memcpy (log_infos + *total_length, tmp.log_info, tmp.length);
       *total_length += tmp.length;
       *total_length += OR_INT_SIZE;
       (*num_log_info)++;
@@ -10575,6 +10576,9 @@ xlog_reader_get_log_refined_info (THREAD_ENTRY * thread_p, LOG_LSA start_lsa, in
        * 2. malloc
        * 3. log_info_list[0] = .. log_info_list[1] = .. pointing to memory*/
     }
+    pthread_mutex_lock (&log_Reader_info.log_info_mutex);
+    log_Reader_info.log_infos = log_infos;
+    log_Reader_info.total_length = *total_length;
 /*    
     data = or_pack_int ( data, error_code);
     data = or_pack_int64 (data, last_lsa);
@@ -10857,7 +10861,7 @@ log_reader (void *arg)
 		      find_tran_user (thread_p, target_lsa, log_rec_header->trid, &user, log_page_p);
 		      tran_users.insert (std::make_pair (log_rec_header->trid, user));
 		    }
-                  #ifdef(!NDEBUG)
+                  #if !defined(NDEBUG)
                     fprintf(stdout,"transaction user :%s\n", user);
                   #endif
 		  make_dml (thread_p, log_rec_header->trid, user, 2, classoid, undo_recdes, undo_length, NULL, 0,
@@ -11006,9 +11010,12 @@ log_reader_initialize ()
   pthread_mutex_init (&log_Reader_info.shutdown_mutex, NULL);
   pthread_mutex_init (&log_Reader_info.is_initialized_mutex, NULL);
   pthread_mutex_init (&log_Reader_info.configuration_mutex, NULL);
-
+  pthread_mutex_init (&log_Reader_info.log_info_mutex, NULL);
+  log_Reader_info.log_reader_th = NULL;
   log_Reader_info.is_initialized = true;
   log_Reader_info.shutdown = true;
+  log_Reader_info.log_infos = NULL ;
+  log_Reader_info.total_length = 0;
   LSA_SET_NULL (&log_Reader_info.last_lsa);
   log_info_queue = new lockfree::circular_queue < LOG_INFO_ENTRY > (1024);
 }

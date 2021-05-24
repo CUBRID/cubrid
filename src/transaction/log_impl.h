@@ -782,7 +782,7 @@ typedef struct log_reader_info
   pthread_mutex_t shutdown_mutex;
   pthread_mutex_t is_initialized_mutex;
   pthread_mutex_t configuration_mutex;
-
+  pthread_mutex_t log_info_mutex;
   int is_initialized;
   int shutdown;			/*log reader thread exit condition */
   /* *INDENT-ON* */
@@ -793,6 +793,8 @@ typedef struct log_reader_info
   int all_in_cond;
   int max_log_item;
   int extraction_timeout;
+  char *log_infos;
+  int total_length;
 } LOG_READER_INFO;
 /*
 typedef struct tran_user
