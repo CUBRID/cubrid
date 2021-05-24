@@ -29,6 +29,7 @@
 #include "log_impl.h"
 #include "log_lsa.hpp"
 #include "log_record.hpp"
+#include "log_system_tran.hpp"
 #include "mem_block.hpp"
 #include "thread_entry.hpp"
 #include "system_parameter.h"
@@ -53,8 +54,8 @@ class test_env_chkpt
     LOG_2PC_GTRINFO generate_2pc_gtrinfo ();
     LOG_2PC_COORDINATOR *generate_2pc_coordinator ();
     CLIENTIDS generate_client (int index);
-    LOG_INFO_CHKPT_TRANS generate_log_info_chkpt_trans ();
-    LOG_INFO_CHKPT_SYSOP generate_log_info_chkpt_sysop ();
+    checkpoint_info::tran_info generate_log_info_chkpt_trans ();
+    checkpoint_info::sysop_info generate_log_info_chkpt_sysop ();
     std::vector<LOG_LSA> used_logs;
     void generate_tran_table ();
 
@@ -301,8 +302,8 @@ test_env_chkpt::test_env_chkpt (size_t size_trans, size_t size_sysops)
   m_before.m_start_redo_lsa = this->generate_log_lsa ();
   m_before.m_snapshot_lsa = this->generate_log_lsa ();
 
-  LOG_INFO_CHKPT_TRANS chkpt_trans_to_add;
-  LOG_INFO_CHKPT_SYSOP chkpt_sysop_to_add;
+  checkpoint_info::tran_info chkpt_trans_to_add;
+  checkpoint_info::sysop_info chkpt_sysop_to_add;
 
   for (int i = 0; i < size_trans; i++)
     {
@@ -323,10 +324,10 @@ test_env_chkpt::~test_env_chkpt ()
 {
 }
 
-LOG_INFO_CHKPT_TRANS
+checkpoint_info::tran_info
 test_env_chkpt::generate_log_info_chkpt_trans ()
 {
-  LOG_INFO_CHKPT_TRANS chkpt_trans;
+  checkpoint_info::tran_info chkpt_trans;
 
   chkpt_trans.isloose_end = std::rand () % 2; // can be true or false
   chkpt_trans.trid        = std::rand () % MAX_RAND;
@@ -353,10 +354,10 @@ test_env_chkpt::generate_log_info_chkpt_trans ()
   return chkpt_trans;
 }
 
-LOG_INFO_CHKPT_SYSOP
+checkpoint_info::sysop_info
 test_env_chkpt::generate_log_info_chkpt_sysop ()
 {
-  LOG_INFO_CHKPT_SYSOP chkpt_sysop;
+  checkpoint_info::sysop_info chkpt_sysop;
 
   chkpt_sysop.trid                      = std::rand () % MAX_RAND;
   chkpt_sysop.sysop_start_postpone_lsa  = generate_log_lsa ();
@@ -802,9 +803,90 @@ logtb_find_tran_index (THREAD_ENTRY *thread_p, TRANID trid)
 }
 
 void
-log_2pc_recovery_analysis_info (THREAD_ENTRY *thread_p, log_tdes *tdes, LOG_LSA *upto_chain_lsa)
+log_2pc_recovery_analysis_info (THREAD_ENTRY *thread_p, log_tdes *tdes, const LOG_LSA *upto_chain_lsa)
 {
   count_2pc_after_recovery++;
+}
+
+bool
+checkpoint_info::tran_info::operator== (const tran_info &other) const
+{
+  if (isloose_end != other.isloose_end)
+    {
+      return false;
+    }
+
+  if (trid != other.trid)
+    {
+      return false;
+    }
+
+  if (state != other.state)
+    {
+      return false;
+    }
+
+  if (head_lsa != other.head_lsa)
+    {
+      return false;
+    }
+
+  if (tail_lsa != other.tail_lsa)
+    {
+      return false;
+    }
+
+  if (undo_nxlsa != other.undo_nxlsa)
+    {
+      return false;
+    }
+
+  if (posp_nxlsa != other.posp_nxlsa)
+    {
+      return false;
+    }
+
+  if (savept_lsa != other.savept_lsa)
+    {
+      return false;
+    }
+
+  if (tail_topresult_lsa != other.tail_topresult_lsa)
+    {
+      return false;
+    }
+
+  if (start_postpone_lsa != other.start_postpone_lsa)
+    {
+      return false;
+    }
+
+  if (std::strcmp (user_name, other.user_name) != 0)
+    {
+      return false;
+    }
+
+  return true;
+}
+
+bool
+checkpoint_info::sysop_info::operator== (const sysop_info &other) const
+{
+  if (trid != other.trid)
+    {
+      return false;
+    }
+
+  if (sysop_start_postpone_lsa != other.sysop_start_postpone_lsa)
+    {
+      return false;
+    }
+
+  if (atomic_sysop_start_lsa != other.atomic_sysop_start_lsa)
+    {
+      return false;
+    }
+  return true;
 }
 
 namespace cubmem
