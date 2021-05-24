@@ -923,6 +923,27 @@ net_server_init (void)
   req_p->processing_function = svacuum_dump;
   req_p->name = "NET_SERVER_VACUUM_DUMP";
 
+#if 0
+  req_p = &net_Requests[NET_SERVER_LOG_READER_SET_CONFIGURATION];
+  req_p->processing_function = slog_reader_set_configuration;
+  req_p->name = "NET_SERVER_LOG_READER_SET_CONFIGURATION";
+
+  req_p = &net_Requests[NET_SERVER_LOG_READER_GET_LSA];
+  req_p->processing_function = slog_reader_get_lsa;
+  req_p->name = "NET_SERVER_LOG_READER_GET_LSA";
+
+  req_p = &net_Requests[NET_SERVER_LOG_READER_GET_LOG_REFINED_INFO];
+  req_p->processing_function = slog_reader_get_log_refined_info;
+  req_p->name = "NET_SERVER_LOG_READER_GET_LOG_REFINED_INFO";
+
+  req_p = &net_Requests[NET_SERVER_LOG_READER_GET_LOG_REFINED_INFO_2];
+  req_p->processing_function = slog_reader_get_log_refined_info_2;
+  req_p->name = "NET_SERVER_LOG_READER_GET_LOG_REFINED_INFO_2";
+
+  req_p = &net_Requests[NET_SERVER_LOG_READER_FINALIZE];
+  req_p->processing_function = slog_reader_finalize;
+  req_p->name = "NET_SERVER_LOG_READER_FINALIZE";
+#endif
 }
 
 #if defined(CUBRID_DEBUG)
