@@ -1127,13 +1127,15 @@ log_set_db_restore_time (THREAD_ENTRY * thread_p, INT64 db_restore_time);
 extern int
 logpb_prior_lsa_append_all_list (THREAD_ENTRY * thread_p);
 
-extern bool
+extern
+  bool
 logtb_check_class_for_rr_isolation_err (const OID * class_oid);
 
 extern void
 logpb_vacuum_reset_log_header_cache (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr);
 
-extern VACUUM_LOG_BLOCKID
+extern
+  VACUUM_LOG_BLOCKID
 logpb_last_complete_blockid (void);
 extern int
 logpb_page_check_corruption (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, bool * is_page_corrupted);
@@ -1161,9 +1163,11 @@ extern void
 logtb_wakeup_thread_with_tran_index (int tran_index, thread_resume_suspend_status resume_reason);
 #endif // SERVER_MODE
 
-extern bool
+extern
+  bool
 logtb_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag);
-extern bool
+extern
+  bool
 logtb_get_check_interrupt (THREAD_ENTRY * thread_p);
 extern int
 logpb_set_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr);
@@ -1201,8 +1205,7 @@ LOG_FIND_CURRENT_TDES (THREAD_ENTRY * thread_p = NULL)
   return LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 }
 
-inline
-  bool
+inline bool
 logtb_is_system_worker_tranid (TRANID trid)
 {
   return trid < NULL_TRANID;
