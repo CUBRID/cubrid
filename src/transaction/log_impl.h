@@ -58,6 +58,7 @@
 #include "thread_entry.hpp"
 #include "transaction_transient.hpp"
 #include "tde.h"
+#include "lockfree_circular_queue.hpp"
 
 #include <assert.h>
 #if defined(SOLARIS)
@@ -759,6 +760,57 @@ typedef struct log_logging_stat
   unsigned long async_commit_request_count;
 } LOG_LOGGING_STAT;
 
+/*for CDC interface */
+typedef struct log_info_entry
+{
+  LOG_LSA start_lsa;
+  int length;
+  char *log_info;
+} LOG_INFO_ENTRY;
+
+typedef struct temporary_log_buffer
+{
+  int tranid;
+  LOG_LSA lsa;
+  char *log_record;
+} TEMPORARY_LOG_BUFFER;
+
+typedef struct log_reader_info
+{
+  pthread_t *log_reader_th;
+  pthread_mutex_t last_lsa_mutex;
+  pthread_mutex_t shutdown_mutex;
+  pthread_mutex_t is_initialized_mutex;
+  pthread_mutex_t configuration_mutex;
+
+  int is_initialized;
+  int shutdown;			/*log reader thread exit condition */
+  /* *INDENT-ON* */
+  LOG_LSA last_lsa;
+  /*configuration */
+  char **user;
+  UINT64 *class_oids;
+  int all_in_cond;
+  int max_log_item;
+  int extraction_timeout;
+} LOG_READER_INFO;
+/*
+typedef struct tran_user
+{
+  int trid;
+  char user[DB_MAX_USER_LENGTH +1];
+}TRAN_USER_TABLE;
+*/
+/*TRAN USER TABLE will be hash table composed of (trid : key, user[] : value) */
+/* *INDENT-ON* */
+lockfree::circular_queue < LOG_INFO_ENTRY > *log_info_queue;
+/* *INDENT-OFF* */
+extern LOG_READER_INFO log_Reader_info;
+
+#define MAX_LOG_INFO_QUEUE_ENTRY  1024
+#define MAX_TRAN_USER_TABLE       4000
+/*Data structure for CDC interface end */
+
 // todo - move to manager
 enum log_cs_access_mode
 { LOG_CS_FORCE_USE, LOG_CS_SAFE_READER };
@@ -1117,7 +1169,8 @@ LOG_FIND_CURRENT_TDES (THREAD_ENTRY * thread_p = NULL)
   return LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 }
 
-inline bool
+inline
+  bool
 logtb_is_system_worker_tranid (TRANID trid)
 {
   return trid < NULL_TRANID;

@@ -1643,7 +1643,10 @@
 #define ER_SCALABILITY_DEV_RESERVED_ERROR19         -1282
 #define ER_SCALABILITY_DEV_RESERVED_ERROR20         -1283
 
-#define ER_LAST_ERROR                               -1284
+#define ER_LOG_READER_THREAD_CREATE                 -1284
+#define ER_LOG_READER_NOTHING_TO_RETURN             -1285
+#define ER_LOG_READER_TIMEOUT                       -1286
+#define ER_LAST_ERROR                               -1286
 
 /*
  * CAUTION!

@@ -723,6 +723,24 @@ net_server_init (void)
   req_p->processing_function = slogwr_get_log_pages;
   req_p->name = "NET_SERVER_LOGWR_GET_LOG_PAGES";
 
+  /*for CDC */
+  req_p = &net_Requests[NET_SERVER_LOG_READER_SET_CONFIGURATION];
+  req_p->processing_function = slog_reader_set_configuration;
+  req_p->name = "NET_SERVER_LOG_READER_SET_CONFIGURATION";
+
+  req_p = &net_Requests[NET_SERVER_LOG_READER_GET_LSA];
+  req_p->processing_function = slog_reader_get_lsa;
+  req_p->name = "NET_SERVER_LOG_READER_GET_LSA";
+
+  req_p = &net_Requests[NET_SERVER_LOG_READER_GET_LOG_REFINED_INFO];
+  req_p->processing_function = slog_reader_get_log_refined_info;
+  req_p->name = "NET_SERVER_LOG_READER_GET_LOG_REFINED_INFO";
+
+  req_p = &net_Requests[NET_SERVER_LOG_READER_FINALIZE];
+  req_p->processing_function = slog_reader_finalize;
+  req_p->name = "NET_SERVER_LOG_READER_FINALIZE";
+
+
   /* shutdown */
   req_p = &net_Requests[NET_SERVER_SHUTDOWN];
   req_p->action_attribute = CHECK_AUTHORIZATION;
