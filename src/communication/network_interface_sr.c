@@ -8073,11 +8073,9 @@ slogwr_get_log_pages (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
 void
 slog_reader_get_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  OR_ALIGNED_BUF (OR_INT_SIZE + OR_BIGINT_SIZE * 2) a_reply;
-  OR_ALIGNED_BUF (OR_BIGINT_SIZE * 2) lsa_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_LOG_LSA_ALIGNED_SIZE) a_reply;
   /*error code : 4bytes , LSA : 8bytes */
   char *reply = OR_ALIGNED_BUF_START (a_reply);
-  char *packed_lsa = OR_ALIGNED_BUF_START (lsa_reply);
   char *ptr;
   LOG_LSA start_lsa;
   time_t input_time;
@@ -8087,23 +8085,10 @@ slog_reader_get_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   ptr = or_unpack_int64 (request, &input_time);
 
   error = xlog_reader_get_lsa (thread_p, input_time, &start_lsa);
-  memcpy (&b_start_lsa, &start_lsa, sizeof (UINT64));
 
-  if (error == ER_INTERRUPTED)
-    {
-      (void) return_error_to_client (thread_p, rid);
-    }
-
-  if (error == ER_NET_DATA_RECEIVE_TIMEDOUT)
-    {
-      css_end_server_request (thread_p->conn_entry);
-    }
-  else
-    {
-      ptr = or_pack_int (reply, error);
-      ptr = or_pack_int64 (ptr, (int64_t) b_start_lsa);
-      (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-    }
+  ptr = or_pack_int (reply, error);
+  ptr = or_pack_log_lsa (ptr, &start_lsa);
+  (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 
   return;
 }
