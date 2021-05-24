@@ -40,8 +40,7 @@ option (UNIT_TEST_RESOURCE_TRACKER "Unit testing: resource tracker")
 option (UNIT_TEST_MONITOR "Unit testing: monitor")
 option (UNIT_TEST_LOADDB "Unit testing: loaddb module")
 option (UNIT_TEST_REQUEST_CS "Unit testing: request_client_server module")
-option (UNIT_TEST_LOG_TRANSFER "Unit testing: log transfer")
-option (UNIT_TEST_LOG_RECOVERY_PARALLEL_POC "Unit testing: log recovery parallel poc")
+option (UNIT_TEST_LOG "Unit testing: log")
 
 message("  unit_tests/...")
 
@@ -113,14 +112,7 @@ if (UNIT_TESTS OR UNIT_TEST_REQUEST_CS)
   add_subdirectory(request_client_server)
 endif(UNIT_TESTS OR UNIT_TEST_REQUEST_CS)
 
-if (UNIT_TESTS OR UNIT_TEST_LOG_TRANSFER)
+if (UNIT_TESTS OR UNIT_TEST_LOG)
   message("    log transfer")
-  add_subdirectory(log_transfer)
-endif(UNIT_TESTS OR UNIT_TEST_LOG_TRANSFER)
-
-if (UNIT_TESTS OR UNIT_TEST_LOG_RECOVERY_PARALLEL_POC)
-  message("    recovery")
-  add_subdirectory(recovery)
-endif(UNIT_TESTS OR UNIT_TEST_LOG_RECOVERY_PARALLEL_POC)
-
-
+  add_subdirectory(log)
+endif(UNIT_TESTS OR UNIT_TEST_LOG)

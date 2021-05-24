@@ -16,7 +16,7 @@
 #
 #
 
-project(test_log_transfer)
+project(test_log)
 
 #
 # test_meta_log
@@ -33,17 +33,25 @@ set_source_files_properties(
 add_executable(test_meta_log
   ${TEST_LOG_META_SOURCES}
   )
-target_compile_options(test_meta_log PRIVATE ${compile_warning_flags})
-target_compile_definitions(test_meta_log PRIVATE ${COMMON_DEFS})
-target_include_directories(test_meta_log PRIVATE ${TEST_INCLUDES})
+target_compile_options(test_meta_log PRIVATE
+  ${compile_warning_flags}
+  )
+target_compile_definitions(test_meta_log PRIVATE
+  ${COMMON_DEFS}
+  )
+target_include_directories(test_meta_log PRIVATE
+  ${TEST_INCLUDES}
+  )
 if(WIN32)
   target_link_libraries(test_meta_log PRIVATE ws2_32)
 endif(WIN32)
-add_dependencies(test_meta_log ${CATCH2_TARGET})
+add_dependencies(test_meta_log
+  ${CATCH2_TARGET}
+  )
 
 #
 # test_prior_list_serialize
-# 
+#
 set(TEST_PRIOR_LIST_SERIALIZE_SOURCES
   # Fake objects
   ${TEST_FAKE_DIR}/fake_error_manager.cpp
@@ -60,12 +68,14 @@ SET_SOURCE_FILES_PROPERTIES(
   ${TEST_PRIOR_LIST_SERIALIZE_SOURCES}
   PROPERTIES LANGUAGE CXX
   )
-  
+
 add_executable(test_prior_list_serialize
   ${TEST_PRIOR_LIST_SERIALIZE_SOURCES}
   )
 
-target_compile_options(test_prior_list_serialize PRIVATE ${compile_warning_flags})
+target_compile_options(test_prior_list_serialize PRIVATE
+  ${compile_warning_flags}
+  )
 target_compile_definitions(test_prior_list_serialize PRIVATE
   ${COMMON_DEFS} SERVER_MODE
   )
@@ -75,7 +85,7 @@ target_include_directories(test_prior_list_serialize PRIVATE
 add_dependencies(test_prior_list_serialize
   ${CATCH2_TARGET}
   )
-  
+
 #
 # test_prior_sendrecv
 #
@@ -92,11 +102,11 @@ set_source_files_properties(
 
 add_executable(test_prior_sendrecv
   ${TEST_PRIOR_SENDRECV_SOURCES}
-)
+  )
 
 target_compile_options(test_prior_sendrecv PRIVATE
   ${compile_warning_flags}
-)
+  )
 target_compile_definitions(test_prior_sendrecv PRIVATE
   ${COMMON_DEFS} SERVER_MODE
   )
@@ -109,8 +119,7 @@ add_dependencies(test_prior_sendrecv
 
 #
 # test_log_page_fetcher
-# 
-
+#
 set(TEST_LOG_PAGE_FETCHER_SOURCES
   ${STORAGE_DIR}/async_page_fetcher.cpp
   test_main_log_page_fetcher.cpp)
@@ -121,30 +130,25 @@ SET_SOURCE_FILES_PROPERTIES(
 
 add_executable(test_log_page_fetcher
   ${TEST_LOG_PAGE_FETCHER_SOURCES}
-)
+  )
 
 target_compile_options(test_log_page_fetcher PRIVATE
   ${compile_warning_flags}
-)
-
+  )
 target_compile_definitions(test_log_page_fetcher PRIVATE
   ${COMMON_DEFS} SERVER_MODE
-)
-
+  )
 target_include_directories(test_log_page_fetcher PRIVATE
   ${TEST_INCLUDES}
-)
-
+  )
 target_link_libraries(test_log_page_fetcher fake_thread_utils)
-
 add_dependencies(test_log_page_fetcher
   ${CATCH2_TARGET}
-)
+  )
 
 #
 # test_log_page_broker
-# 
-
+#
 set(TEST_LOG_PAGE_BROKER_SOURCES
   ${TRANSACTION_DIR}/log_storage.cpp
   ${TRANSACTION_DIR}/log_page_broker.cpp
@@ -156,30 +160,25 @@ SET_SOURCE_FILES_PROPERTIES(
 
 add_executable(test_log_page_broker
   ${TEST_LOG_PAGE_BROKER_SOURCES}
-)
+  )
 
 target_compile_options(test_log_page_broker PRIVATE
   ${compile_warning_flags}
-)
-
+  )
 target_compile_definitions(test_log_page_broker PRIVATE
   ${COMMON_DEFS} SERVER_MODE
-)
-
+  )
 target_include_directories(test_log_page_broker PRIVATE
   ${TEST_INCLUDES}
-)
-
+  )
 target_link_libraries(test_log_page_broker fake_thread_utils)
-
 add_dependencies(test_log_page_broker
   ${CATCH2_TARGET}
-)
+  )
 
 #
 # test_log_lsa_utils
-# 
-
+#
 set(TEST_LOG_LSA_UTILS_SOURCES
   ${TRANSACTION_DIR}/log_lsa_utils.cpp
   ${BASE_DIR}/packer.cpp
@@ -191,22 +190,61 @@ SET_SOURCE_FILES_PROPERTIES(
 
 add_executable(test_log_lsa_utils
   ${TEST_LOG_LSA_UTILS_SOURCES}
-)
+  )
 
 target_compile_options(test_log_lsa_utils PRIVATE
   ${compile_warning_flags}
-)
-
+  )
 target_compile_definitions(test_log_lsa_utils PRIVATE
   ${COMMON_DEFS} SERVER_MODE
-)
-
+  )
 target_include_directories(test_log_lsa_utils PRIVATE
   ${TEST_INCLUDES}
-)
-
+  )
 # target_link_libraries(test_log_lsa_utils fake_thread_utils)
-
 add_dependencies(test_log_lsa_utils
   ${CATCH2_TARGET}
-)
+  )
+
+#
+# test_log_recovery_parallel
+#
+set(TEST_LOG_RECOVERY_PARALLEL_SOURCES
+  ${TRANSACTION_DIR}/log_recovery_redo_parallel.cpp
+  ut_redo_job_impl.cpp
+  ut_database.cpp
+  test_main_log_recovery_parallel.cpp)
+
+set (TEST_LOG_RECOVERY_PARALLEL_HEADERS
+  ${TRANSACTION_DIR}/log_recovery_redo.hpp
+  ${TRANSACTION_DIR}/log_recovery_redo_parallel.hpp
+  ut_redo_job_impl.hpp
+  ut_database.hpp)
+
+SET_SOURCE_FILES_PROPERTIES(
+  ${TEST_LOG_RECOVERY_PARALLEL_SOURCES}
+  PROPERTIES LANGUAGE CXX)
+
+add_executable(test_log_recovery_parallel
+  ${TEST_LOG_RECOVERY_PARALLEL_SOURCES}
+  ${TEST_LOG_RECOVERY_PARALLEL_HEADERS}
+  )
+target_compile_options(test_log_recovery_parallel PRIVATE
+  ${compile_warning_flags}
+  )
+target_compile_definitions(test_log_recovery_parallel PRIVATE
+  ${COMMON_DEFS}
+  SERVER_MODE
+  )
+target_include_directories(test_log_recovery_parallel PRIVATE
+  ${TEST_INCLUDES}
+  )
+#target_link_libraries(test_log_recovery_parallel PRIVATE test_common)
+if(UNIX)
+  target_link_libraries(test_log_recovery_parallel PRIVATE cubrid )
+elseif(WIN32)
+  target_link_libraries(test_log_recovery_parallel PRIVATE cubrid-win-lib )
+else()
+  message( SEND_ERROR "Recovery only works on UNIX-like/WIN32")
+endif ()
+
