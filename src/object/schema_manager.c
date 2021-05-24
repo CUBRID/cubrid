@@ -15027,20 +15027,7 @@ sm_is_possible_to_recreate_constraint (MOP class_mop, const SM_CLASS * const cla
 
   if (class_->users != NULL)
     {
-      if (class_->partition != NULL)
-	{
-	  /*
-	   * partitioned class
-	   *
-	   * if there is a child class, it can be shared,
-	   * but if partitioned, it can't be shared becuase you can't inherit a partitioning table.
-	   */
-	  return true;
-	}
-      else
-	{
-	  return false;
-	}
+      return false;
     }
 
   assert (class_->inheritance != NULL && class_->users == NULL);
