@@ -66,6 +66,7 @@
 #include "log_volids.hpp"
 #include "log_writer.h"
 #include "lock_manager.h"
+#include "log_replication.hpp"
 #include "log_system_tran.hpp"
 #include "boot_sr.h"
 #if !defined(SERVER_MODE)
@@ -79,6 +80,7 @@
 #include "ats_ps_request.hpp"
 #include "critical_section.h"
 #include "page_buffer.h"
+#include "page_server.hpp"
 #include "double_write_buffer.h"
 #include "file_io.h"
 #include "disk_manager.h"
@@ -6838,6 +6840,13 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
     // *INDENT-ON*
   }
 
+#if defined (SERVER_MODE)
+  if (get_server_type () == SERVER_TYPE_PAGE)
+    {
+      // Wait the replication to catch up first
+      ps_Gl.get_replicator ().wait_past_target_lsa (new_chkpt_redo_lsa);
+    }
+#endif // SERVER_MODE = not SA_MODE
 
   /*
    * Modify log header to record present checkpoint. The header is flushed
