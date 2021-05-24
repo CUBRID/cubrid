@@ -20403,7 +20403,7 @@ heap_log_insert_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_
   log_addr.vfid = vfid_p;
   log_addr.offset = oid_p->slotid;
   log_addr.pgptr = page_p;
-
+  
   if (is_mvcc_op)
     {
       if (is_redistribute_op)
@@ -21607,7 +21607,10 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
     }
 
   HEAP_PERF_TRACK_PREPARE (thread_p, context);
-
+  if(prm_get_bool_value (PRM_ID_SUPPLEMENTAL_LOG))
+  {
+    log_append_supplemental_log (thread_p, LOG_SUPPLEMENT_CLASS_OID, sizeof(OID),(void*)&(context->class_oid)); 
+  }
   if (is_mvcc_op)
     {
       /* log old overflow record and set prev version lsa */
@@ -22545,6 +22548,10 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
    */
   if (!context->use_bulk_logging)
     {
+      if(prm_get_bool_value(PRM_ID_SUPPLEMENTAL_LOG))
+      {
+        log_append_supplemental_log (thread_p, LOG_SUPPLEMENT_CLASS_OID, sizeof(OID), (void*)&(context->class_oid));
+      }
       heap_log_insert_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->res_oid,
 				context->recdes_p, is_mvcc_op, context->is_redistribute_insert_with_delid);
     }
@@ -22725,7 +22732,10 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
     }
 
   HEAP_PERF_TRACK_PREPARE (thread_p, context);
-
+  if(prm_get_bool_value (PRM_ID_SUPPLEMENTAL_LOG))
+  {
+    log_append_supplemental_log (thread_p, LOG_SUPPLEMENT_CLASS_OID, sizeof(OID), (void*)&(context->class_oid));
+  }
   /*
    * Physical deletion and logging
    */
@@ -22916,7 +22926,10 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
     }
 
   HEAP_PERF_TRACK_PREPARE (thread_p, context);
-
+  if(prm_get_bool_value(PRM_ID_SUPPLEMENTAL_LOG))
+  {
+    log_append_supplemental_log (thread_p, LOG_SUPPLEMENT_CLASS_OID, sizeof(OID), (void*)&(context->class_oid));
+  }
   /*
    * Update record
    */

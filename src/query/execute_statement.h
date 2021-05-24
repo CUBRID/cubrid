@@ -133,6 +133,8 @@ extern int do_check_merge_trigger (PARSER_CONTEXT * parser, PT_NODE * statement,
 
 extern int do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement);
 
+extern int do_supplemental_statement (PARSER_CONTEXT *parser, PT_NODE *statment);
+
 extern int do_statement (PARSER_CONTEXT * parser, PT_NODE * statement);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int do_statements (PARSER_CONTEXT * parser, PT_NODE * statement_list);

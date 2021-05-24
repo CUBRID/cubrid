@@ -7884,6 +7884,43 @@ srepl_set_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int re
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
+void 
+slog_supplement_statement (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  int success = NO_ERROR;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+  
+  int supplement_type;
+  int num_class; 
+  char **classname_list;
+  char * objname;
+  char * stmt_text;
+
+  ptr = or_unpack_int (request, &supplement_type);
+  ptr = or_unpack_int (ptr, &num_class);
+  classname_list = (char**)malloc(sizeof(char*)*num_class);
+  for(int i = 0; i < num_class; i ++)
+  {
+    ptr = or_unpack_string_nocopy (ptr, &classname_list[i]);
+  }
+  if(supplement_type == CUBRID_STMT_ALTER_INDEX || supplement_type == CUBRID_STMT_CREATE_INDEX || supplement_type == CUBRID_STMT_DROP_INDEX)
+  {
+    ptr = or_unpack_string_nocopy (ptr, &objname);
+  }
+  ptr = or_unpack_string_nocopy(ptr, &stmt_text);
+
+  if (success == NO_ERROR)
+  {
+    success = xlog_supplement_statement (thread_p, supplement_type, num_class, classname_list, objname, stmt_text);
+  }
+
+  (void) or_pack_int (reply, success);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  free_and_init (classname_list);
+}
+
 /*
  * srepl_log_get_append_lsa -
  *

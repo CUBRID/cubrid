@@ -290,6 +290,7 @@ extern int repl_set_info (REPL_INFO * repl_info);
 
 extern int logwr_get_log_pages (LOGWR_CONTEXT * ctx_ptr);
 
+extern int log_supplement_statement (int supplement_type, int num_class, PARSER_VARCHAR **classname_list, PARSER_VARCHAR *objname, char * stmtm_txt);
 
 extern bool histo_is_supported (void);
 extern int histo_start (bool for_all_trans);

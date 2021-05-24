@@ -2323,7 +2323,7 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type, int tran_
     case LOG_DUMMY_HA_SERVER_STATE:
     case LOG_DUMMY_OVF_RECORD:
     case LOG_DUMMY_GENERIC:
-    case LOG_SUPPLEMENT_TRAN_USER:
+    case LOG_SUPPLEMENTAL_INFO:
       break;
 
     case LOG_SMALLER_LOGREC_TYPE:
@@ -3999,7 +3999,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	    case LOG_DUMMY_HA_SERVER_STATE:
 	    case LOG_DUMMY_OVF_RECORD:
 	    case LOG_DUMMY_GENERIC:
-	    case LOG_SUPPLEMENT_TRAN_USER:
+	    case LOG_SUPPLEMENTAL_INFO:
 	    case LOG_END_OF_LOG:
 	    case LOG_SYSOP_ATOMIC_START:
 	      break;
@@ -4801,7 +4801,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		case LOG_DUMMY_HA_SERVER_STATE:
 		case LOG_DUMMY_OVF_RECORD:
 		case LOG_DUMMY_GENERIC:
-		case LOG_SUPPLEMENT_TRAN_USER:
+		case LOG_SUPPLEMENTAL_INFO:
 		case LOG_SYSOP_ATOMIC_START:
 		  /* Not for UNDO ... */
 		  /* Break switch to go to previous record */
@@ -5454,6 +5454,7 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
   LOG_REC_2PC_START *start_2pc;	/* A 2PC start log record */
   LOG_REC_2PC_PREPCOMMIT *prepared;	/* A 2PC prepare to commit */
   LOG_REC_REPLICATION *repl_log;
+  LOG_REC_SUPPLEMENT *supplement;
 
   int undo_length;		/* Undo length */
   int redo_length;		/* Redo length */
@@ -5737,6 +5738,11 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
       LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_2PC_PARTICP_ACK), &log_lsa, log_pgptr);
       break;
 
+    case LOG_SUPPLEMENTAL_INFO :
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_SUPPLEMENT), &log_lsa, log_pgptr);
+      supplement = (LOG_REC_SUPPLEMENT *) ((char*) log_pgptr->area + log_lsa.offset);
+      LOG_READ_ADD_ALIGN (thread_p, sizeof(LOG_REC_SUPPLEMENT), &log_lsa, log_pgptr);
+      LOG_READ_ADD_ALIGN (thread_p, supplement->length, &log_lsa, log_pgptr);
     case LOG_WILL_COMMIT:
     case LOG_START_CHKPT:
     case LOG_2PC_COMMIT_DECISION:
@@ -5747,7 +5753,6 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
     case LOG_DUMMY_CRASH_RECOVERY:
     case LOG_DUMMY_OVF_RECORD:
     case LOG_DUMMY_GENERIC:
-    case LOG_SUPPLEMENT_TRAN_USER:
     case LOG_END_OF_LOG:
     case LOG_SYSOP_ATOMIC_START:
       break;

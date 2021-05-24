@@ -133,7 +133,7 @@ enum log_rectype
   LOG_DUMMY_GENERIC,		/* used for flush for now. it is ridiculous to create dummy log records for every single
 				 * case. we should find a different approach */
 
-  LOG_SUPPLEMENT_TRAN_USER,
+  LOG_SUPPLEMENTAL_INFO,
 
   LOG_LARGER_LOGREC_TYPE	/* A higher bound for checks */
 };
@@ -405,10 +405,20 @@ struct log_rec_2pc_particp_ack
   int particp_index;		/* Index of the acknowledging participant */
 };
 
-typedef struct log_rec_supplement_tran_user LOG_REC_SUPPLEMENT_TRAN_USER;
-struct log_rec_supplement_tran_user
+typedef enum supplement_rec_type
 {
-  char user_name[LOG_USERNAME_MAX];
+  LOG_SUPPLEMENT_TRAN_USER,
+  LOG_SUPPLEMENT_UNDO_FOR_DELETE,
+  LOG_SUPPLEMENT_CLASS_OID,
+  LOG_SUPPLEMENT_STATEMENT,
+  LOG_SUPPLEMENT_LARGER_REC_TYPE,
+}SUPPLEMENT_REC_TYPE;
+
+typedef struct log_rec_supplement LOG_REC_SUPPLEMENT;
+struct log_rec_supplement
+{
+  SUPPLEMENT_REC_TYPE rec_type;
+  int length;
 };
 
 #define LOG_GET_LOG_RECORD_HEADER(log_page_p, lsa) \
