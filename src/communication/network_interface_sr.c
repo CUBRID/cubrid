@@ -8216,7 +8216,7 @@ slog_reader_get_log_refined_info (THREAD_ENTRY * thread_p, unsigned int rid, cha
 void
 slog_reader_get_log_refined_info_2 (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  OR_ALIGNED_BUF (OR_INT_SIZE + log_Reader_info.total_length) a_reply;
+  OR_ALIGNED_BUF (2000) a_reply;
   /*total size of reply message is decided after log_item has been returned */
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   int error = NO_ERROR;
