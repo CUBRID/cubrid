@@ -14997,6 +14997,10 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  for (entity = entity_list; entity != NULL; entity = entity->next)
 	    {
 	      classname_list = (PARSER_VARCHAR **) realloc (classname_list, sizeof (PARSER_VARCHAR *) * (++num_class));
+              if(classname_list == NULL)
+              {
+                return -1; //error code definition is required  
+              }
 	      classname_list[num_class - 1] = pt_print_bytes (parser, entity);
 	      printf ("%s class name \n", (char *) (classname_list[num_class - 1]->bytes));
 	    }
