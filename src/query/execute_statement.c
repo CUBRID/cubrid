@@ -5962,7 +5962,7 @@ do_check_delete_trigger (PARSER_CONTEXT * parser, PT_NODE * statement, PT_DO_FUN
 	}
     }
 
-  if (statement->use_auto_commit)
+  if (statement->flag.use_auto_commit)
     {
       /* No active trigger is involved. Avoid lock and fetch request. */
       error = do_func (parser, statement);
@@ -5981,7 +5981,7 @@ do_check_delete_trigger (PARSER_CONTEXT * parser, PT_NODE * statement, PT_DO_FUN
 
   affected_count = error;
 
-  if (!statement->use_auto_commit)
+  if (!statement->flag.use_auto_commit)
     {
       node = statement->info.delete_.del_stmt_list;
       while (node != NULL)
@@ -6018,7 +6018,7 @@ do_check_delete_trigger (PARSER_CONTEXT * parser, PT_NODE * statement, PT_DO_FUN
 int
 do_check_insert_trigger (PARSER_CONTEXT * parser, PT_NODE * statement, PT_DO_FUNC * do_func)
 {
-  if (statement->use_auto_commit)
+  if (statement->flag.use_auto_commit)
     {
       /* no active trigger is involved. Avoid lock and fetch request. */
       return do_func (parser, statement);
@@ -6113,7 +6113,7 @@ do_check_update_trigger (PARSER_CONTEXT * parser, PT_NODE * statement, PT_DO_FUN
       return ER_BLOCK_NOWHERE_STMT;
     }
 
-  if (statement->use_auto_commit)
+  if (statement->flag.use_auto_commit)
     {
       /* no active trigger is involved. Avoid lock and fetch request. */
       err = do_func (parser, statement);
@@ -8066,8 +8066,8 @@ static void
 init_compile_context (PARSER_CONTEXT * parser)
 {
   memset (&parser->context, 0x00, sizeof (COMPILE_CONTEXT));
-  parser->context.is_xasl_pinned_reference = (bool) parser->is_xasl_pinned_reference;
-  parser->context.recompile_xasl_pinned = (bool) parser->recompile_xasl_pinned;
+  parser->context.is_xasl_pinned_reference = (bool) parser->flag.is_xasl_pinned_reference;
+  parser->context.recompile_xasl_pinned = (bool) parser->flag.recompile_xasl_pinned;
 }
 
 /*
@@ -8163,7 +8163,7 @@ update_at_server (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * statement, 
 
       query_flag = DEFAULT_EXEC_MODE;
 
-      if (parser->is_auto_commit)
+      if (parser->flag.is_auto_commit)
 	{
 	  query_flag |= TRAN_AUTO_COMMIT;
 	}
@@ -8194,7 +8194,7 @@ update_at_server (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * statement, 
 	      for (cl_name_node = spec->info.spec.flat_entity_list; cl_name_node && error == NO_ERROR;
 		   cl_name_node = cl_name_node->next)
 		{
-		  if (statement->use_auto_commit && tran_was_latest_query_committed ())
+		  if (statement->flag.use_auto_commit && tran_was_latest_query_committed ())
 		    {
 		      /* Nothing to flush. Avoids flush, since may fetch the class. */
 		      error = sm_decache_instances_after_query_executed_with_commit (cl_name_node->info.name.db_object);
@@ -8876,9 +8876,9 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	   */
 
 	  /* make query string */
-	  parser->dont_prt_long_string = 1;
-	  parser->long_string_skipped = 0;
-	  parser->print_type_ambiguity = 0;
+	  parser->flag.dont_prt_long_string = 1;
+	  parser->flag.long_string_skipped = 0;
+	  parser->flag.print_type_ambiguity = 0;
 	  PT_NODE_PRINT_TO_ALIAS (parser, statement, (PT_CONVERT_RANGE | PT_PRINT_QUOTES | PT_PRINT_USER));
 	  contextp->sql_hash_text = (char *) statement->alias_print;
 	  err =
@@ -8889,10 +8889,10 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      ASSERT_ERROR ();
 	      return err;
 	    }
-	  parser->dont_prt_long_string = 0;
-	  if (parser->long_string_skipped || parser->print_type_ambiguity)
+	  parser->flag.dont_prt_long_string = 0;
+	  if (parser->flag.long_string_skipped || parser->flag.print_type_ambiguity)
 	    {
-	      statement->cannot_prepare = 1;
+	      statement->flag.cannot_prepare = 1;
 	      return NO_ERROR;
 	    }
 	}
@@ -8906,8 +8906,8 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	   */
 
 	  /* look up server's XASL cache for this query string and get XASL file id (XASL_ID) returned if found */
-	  contextp->recompile_xasl = statement->recompile;
-	  if (statement->recompile == 0)
+	  contextp->recompile_xasl = statement->flag.recompile;
+	  if (statement->flag.recompile == 0)
 	    {
 	      err = prepare_query (contextp, &stream);
 
@@ -8990,7 +8990,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 		{
 		  free_and_init (stream.buffer);
 		}
-	      statement->use_plan_cache = 0;
+	      statement->flag.use_plan_cache = 0;
 	    }
 	  else
 	    {			/* if (!xasl_id) */
@@ -9013,11 +9013,11 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 		}
 	      if (err == NO_ERROR)
 		{
-		  statement->use_plan_cache = 1;
+		  statement->flag.use_plan_cache = 1;
 		}
 	      else
 		{
-		  statement->use_plan_cache = 0;
+		  statement->flag.use_plan_cache = 0;
 		}
 	    }
 	}
@@ -9188,17 +9188,17 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  query_flag |= NOT_FROM_RESULT_CACHE;
 	  query_flag |= RESULT_CACHE_INHIBITED;
 
-	  if (parser->is_xasl_pinned_reference)
+	  if (parser->flag.is_xasl_pinned_reference)
 	    {
 	      query_flag |= XASL_CACHE_PINNED_REFERENCE;
 	    }
 
-	  if (statement->use_auto_commit)
+	  if (statement->flag.use_auto_commit)
 	    {
 	      query_flag |= EXECUTE_QUERY_WITH_COMMIT;
 	    }
 
-	  if (parser->is_auto_commit)
+	  if (parser->flag.is_auto_commit)
 	    {
 	      query_flag |= TRAN_AUTO_COMMIT;
 	    }
@@ -9211,7 +9211,7 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  // When a transaction is under auto-commit mode, flush all dirty objects to server.
 	  // Otherwise, flush associated objects.
-	  if (statement->use_auto_commit)
+	  if (statement->flag.use_auto_commit)
 	    {
 	      err = tran_flush_to_commit ();
 	    }
@@ -9311,7 +9311,7 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 			{
 			  flat = spec->info.spec.flat_entity_list;
 			  class_obj = (flat) ? flat->info.name.db_object : NULL;
-			  if (statement->use_auto_commit && tran_was_latest_query_committed ())
+			  if (statement->flag.use_auto_commit && tran_was_latest_query_committed ())
 			    {
 			      /* Nothing to flush. Avoids flush, since may fetch the class. */
 			      err = sm_decache_instances_after_query_executed_with_commit (class_obj);
@@ -9349,7 +9349,7 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      flat = spec->info.spec.flat_entity_list;
 	      class_obj = (flat) ? flat->info.name.db_object : NULL;
 
-	      if (class_obj && (statement->use_auto_commit == false || !tran_was_latest_query_committed ()))
+	      if (class_obj && (statement->flag.use_auto_commit == false || !tran_was_latest_query_committed ()))
 		{
 		  err = db_is_vclass (class_obj);
 		  if (err > 0)
@@ -9798,7 +9798,7 @@ build_xasl_for_server_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       query_flag = DEFAULT_EXEC_MODE;
 
-      if (parser->is_auto_commit)
+      if (parser->flag.is_auto_commit)
 	{
 	  query_flag |= TRAN_AUTO_COMMIT;
 	}
@@ -9829,7 +9829,7 @@ build_xasl_for_server_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      if (node->info.spec.flag & PT_SPEC_FLAG_DELETE)
 		{
 		  class_obj = node->info.spec.flat_entity_list->info.name.db_object;
-		  if (statement->use_auto_commit && tran_was_latest_query_committed ())
+		  if (statement->flag.use_auto_commit && tran_was_latest_query_committed ())
 		    {
 		      /* Nothing to flush. Avoids flush, since may fetch the class. */
 		      error = sm_decache_instances_after_query_executed_with_commit (class_obj);
@@ -10227,9 +10227,9 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 	  /* Server-side deletion case: (by requesting server to execute XASL) build DELETE_PROC XASL */
 
 	  /* make query string */
-	  parser->dont_prt_long_string = 1;
-	  parser->long_string_skipped = 0;
-	  parser->print_type_ambiguity = 0;
+	  parser->flag.dont_prt_long_string = 1;
+	  parser->flag.long_string_skipped = 0;
+	  parser->flag.print_type_ambiguity = 0;
 	  PT_NODE_PRINT_TO_ALIAS (parser, statement, (PT_CONVERT_RANGE | PT_PRINT_QUOTES | PT_PRINT_USER));
 	  contextp->sql_hash_text = (char *) statement->alias_print;
 	  err =
@@ -10240,17 +10240,17 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 	      ASSERT_ERROR ();
 	      return err;
 	    }
-	  parser->dont_prt_long_string = 0;
-	  if (parser->long_string_skipped || parser->print_type_ambiguity)
+	  parser->flag.dont_prt_long_string = 0;
+	  if (parser->flag.long_string_skipped || parser->flag.print_type_ambiguity)
 	    {
-	      statement->cannot_prepare = 1;
+	      statement->flag.cannot_prepare = 1;
 	      err = NO_ERROR;
 	      break;
 	    }
 
 	  /* look up server's XASL cache for this query string and get XASL file id (XASL_ID) returned if found */
-	  contextp->recompile_xasl = statement->recompile;
-	  if (statement->recompile == 0)
+	  contextp->recompile_xasl = statement->flag.recompile;
+	  if (statement->flag.recompile == 0)
 	    {
 	      err = prepare_query (contextp, &stream);
 	      if (err != NO_ERROR)
@@ -10320,17 +10320,17 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 		{
 		  free_and_init (stream.buffer);
 		}
-	      statement->use_plan_cache = 0;
+	      statement->flag.use_plan_cache = 0;
 	    }
 	  else
 	    {
 	      if (err == NO_ERROR)
 		{
-		  statement->use_plan_cache = 1;
+		  statement->flag.use_plan_cache = 1;
 		}
 	      else
 		{
-		  statement->use_plan_cache = 0;
+		  statement->flag.use_plan_cache = 0;
 		}
 	    }
 	}
@@ -10390,7 +10390,7 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
     }
 
   /* if something failed or cannot be prepared in in del_stmt_list clear all statement->xasl_id */
-  if (err != NO_ERROR || (statement != NULL && statement->cannot_prepare == 1))
+  if (err != NO_ERROR || (statement != NULL && statement->flag.cannot_prepare == 1))
     {
       for (node = save_stmt; node != statement; node = node->next)
 	{
@@ -10399,7 +10399,7 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
       if (err == NO_ERROR && parent != NULL)
 	{
 	  /* set cannot_prepare to parent */
-	  parent->cannot_prepare = 1;
+	  parent->flag.cannot_prepare = 1;
 	}
     }
 
@@ -10482,17 +10482,17 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
       query_flag |= NOT_FROM_RESULT_CACHE;
       query_flag |= RESULT_CACHE_INHIBITED;
 
-      if (parser->is_xasl_pinned_reference)
+      if (parser->flag.is_xasl_pinned_reference)
 	{
 	  query_flag |= XASL_CACHE_PINNED_REFERENCE;
 	}
 
-      if (statement->use_auto_commit)
+      if (statement->flag.use_auto_commit)
 	{
 	  query_flag |= EXECUTE_QUERY_WITH_COMMIT;
 	}
 
-      if (parser->is_auto_commit)
+      if (parser->flag.is_auto_commit)
 	{
 	  query_flag |= TRAN_AUTO_COMMIT;
 	}
@@ -10505,7 +10505,7 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       // When a transaction is under auto-commit mode, flush all dirty objects to server.
       // Otherwise, flush associated objects.
-      if (statement->use_auto_commit)
+      if (statement->flag.use_auto_commit)
 	{
 	  err = tran_flush_to_commit ();
 	}
@@ -10590,7 +10590,7 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 		      flat = node->info.spec.flat_entity_list;
 		      class_obj = (flat) ? flat->info.name.db_object : NULL;
 
-		      if (statement->use_auto_commit && tran_was_latest_query_committed ())
+		      if (statement->flag.use_auto_commit && tran_was_latest_query_committed ())
 			{
 			  /* Nothing to flush. Avoids flush, since may fetch the class. */
 			  err2 = sm_decache_instances_after_query_executed_with_commit (class_obj);
@@ -10629,7 +10629,7 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      flat = node->info.spec.flat_entity_list;
 	      class_obj = (flat) ? flat->info.name.db_object : NULL;
 
-	      if (class_obj && (statement->use_auto_commit == false || !tran_was_latest_query_committed ()))
+	      if (class_obj && (statement->flag.use_auto_commit == false || !tran_was_latest_query_committed ()))
 		{
 		  err = db_is_vclass (class_obj);
 		  if (err > 0)
@@ -10874,9 +10874,9 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* make query string */
-  parser->dont_prt_long_string = 1;
-  parser->long_string_skipped = 0;
-  parser->print_type_ambiguity = 0;
+  parser->flag.dont_prt_long_string = 1;
+  parser->flag.long_string_skipped = 0;
+  parser->flag.print_type_ambiguity = 0;
   PT_NODE_PRINT_TO_ALIAS (parser, statement, (PT_CONVERT_RANGE | PT_PRINT_QUOTES | PT_PRINT_USER));
   contextp->sql_hash_text = (char *) statement->alias_print;
   error =
@@ -10887,16 +10887,16 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser, PT_NODE * statement)
       ASSERT_ERROR ();
       return error;
     }
-  parser->dont_prt_long_string = 0;
-  if (parser->long_string_skipped || parser->print_type_ambiguity)
+  parser->flag.dont_prt_long_string = 0;
+  if (parser->flag.long_string_skipped || parser->flag.print_type_ambiguity)
     {
-      statement->cannot_prepare = 1;
+      statement->flag.cannot_prepare = 1;
       return NO_ERROR;
     }
 
   /* look up server's XASL cache for this query string and get XASL file id (XASL_ID) returned if found */
-  contextp->recompile_xasl = statement->recompile;
-  if (statement->recompile == 0)
+  contextp->recompile_xasl = statement->flag.recompile;
+  if (statement->flag.recompile == 0)
     {
       error = prepare_query (contextp, &stream);
       if (error != NO_ERROR)
@@ -10959,17 +10959,17 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  free_and_init (stream.buffer);
 	}
 
-      statement->use_plan_cache = 0;
+      statement->flag.use_plan_cache = 0;
     }
   else
     {
       if (error == NO_ERROR)
 	{
-	  statement->use_plan_cache = 1;
+	  statement->flag.use_plan_cache = 1;
 	}
       else
 	{
-	  statement->use_plan_cache = 0;
+	  statement->flag.use_plan_cache = 0;
 	}
     }
 
@@ -11050,7 +11050,7 @@ do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  query_flag |= TRIGGER_IS_INVOLVED;
 	}
 
-      if (parser->is_auto_commit)
+      if (parser->flag.is_auto_commit)
 	{
 	  query_flag |= TRAN_AUTO_COMMIT;
 	}
@@ -11079,7 +11079,7 @@ do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  MOP class_obj = statement->info.insert.spec->info.spec.flat_entity_list->info.name.db_object;
 
-	  if (statement->use_auto_commit && tran_was_latest_query_committed ())
+	  if (statement->flag.use_auto_commit && tran_was_latest_query_committed ())
 	    {
 	      /* Nothing to flush. Avoids flush, since may fetch the class. */
 	      error = sm_decache_instances_after_query_executed_with_commit (class_obj);
@@ -11090,7 +11090,7 @@ do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	}
 
-      if (parser->return_generated_keys)
+      if (parser->flag.return_generated_keys)
 	{
 	  statement->etc = (void *) list_id;
 	}
@@ -12144,7 +12144,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
 	  goto cleanup;
 	}
 
-      if (parser->return_generated_keys)
+      if (parser->flag.return_generated_keys)
 	{
 	  seq = set_create_sequence (0);
 	  if (seq == NULL)
@@ -12369,7 +12369,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
 		{
 		  bool include_new_obj;
 
-		  include_new_obj = (parser->return_generated_keys && (*otemplate)->is_autoincrement_set);
+		  include_new_obj = (parser->flag.return_generated_keys && (*otemplate)->is_autoincrement_set);
 
 		  obt_quit (*otemplate);	/* free template */
 
@@ -12391,7 +12391,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
 		}
 	    }
 
-	  if (parser->abort)
+	  if (parser->flag.abort)
 	    {
 	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
@@ -12413,7 +12413,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
       goto cleanup;
     }
 
-  if (*otemplate != NULL && parser->return_generated_keys)
+  if (*otemplate != NULL && parser->flag.return_generated_keys)
     {
       /* a client side insert with template, with requested generated keys */
       value = db_value_create ();
@@ -12434,7 +12434,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
     }
   else
     {
-      if (!parser->return_generated_keys && (*otemplate == NULL || value_clauses->next != NULL))
+      if (!parser->flag.return_generated_keys && (*otemplate == NULL || value_clauses->next != NULL))
 	{
 	  /* a client side insert with subquery and no template, a client side insert with multiple insert values or a
 	   * server side insert for which the generated keys have not been requested */
@@ -12606,7 +12606,7 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 
   cnt = 0;
 
-  if (parser->return_generated_keys)
+  if (parser->flag.return_generated_keys)
     {
       seq = set_create_sequence (0);
       if (seq == NULL)
@@ -12840,7 +12840,7 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 
 		      obj = dbt_finish_object (otemplate);	/* flush template */
 
-		      include_new_obj = (obj && parser->return_generated_keys && otemplate->is_autoincrement_set);
+		      include_new_obj = (obj && parser->flag.return_generated_keys && otemplate->is_autoincrement_set);
 
 		      obt_quit (otemplate);	/* free template */
 
@@ -12898,7 +12898,7 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 	}
     }
 
-  if (parser->return_generated_keys && seq != NULL)
+  if (parser->flag.return_generated_keys && seq != NULL)
     {
       value = db_value_create ();
       if (value == NULL)
@@ -12954,7 +12954,7 @@ cleanup:
       set_free (seq);
     }
 
-  cursor_free_self_list_id ((QFILE_LIST_ID *) qry->etc);
+  cursor_free_self_list_id (qry->etc);
   pt_end_query (parser, query_id_self);
 
   return cnt;
@@ -13363,7 +13363,7 @@ do_insert (PARSER_CONTEXT * parser, PT_NODE * root_statement)
 
       /* check whether this transaction is a victim of deadlock during */
       /* request to the driver */
-      if (parser->abort)
+      if (parser->flag.abort)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  return (er_errid ());
@@ -13492,22 +13492,22 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
   query_flag |= NOT_FROM_RESULT_CACHE;
   query_flag |= RESULT_CACHE_INHIBITED;
 
-  if (parser->return_generated_keys)
+  if (parser->flag.return_generated_keys)
     {
       query_flag |= RETURN_GENERATED_KEYS;
     }
 
-  if (parser->is_xasl_pinned_reference)
+  if (parser->flag.is_xasl_pinned_reference)
     {
       query_flag |= XASL_CACHE_PINNED_REFERENCE;
     }
 
-  if (statement->use_auto_commit)
+  if (statement->flag.use_auto_commit)
     {
       query_flag |= EXECUTE_QUERY_WITH_COMMIT;
     }
 
-  if (parser->is_auto_commit)
+  if (parser->flag.is_auto_commit)
     {
       query_flag |= TRAN_AUTO_COMMIT;
     }
@@ -13520,7 +13520,7 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (ws_need_flush ())
     {
-      if (statement->use_auto_commit)
+      if (statement->flag.use_auto_commit)
 	{
 	  // When a transaction is under auto-commit mode, flush all dirty objects to server.
 	  err = tran_flush_to_commit ();
@@ -13546,7 +13546,7 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       /* set as result */
       err = list_id->tuple_cnt;
-      if (parser->return_generated_keys)
+      if (parser->flag.return_generated_keys)
 	{
 	  statement->etc = (void *) list_id;
 	}
@@ -13916,7 +13916,7 @@ do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_u
   error = NO_ERROR;
 
   /* click counter check */
-  if (statement->is_click_counter)
+  if (statement->flag.is_click_counter)
     {
       CHECK_MODIFICATION_ERROR ();
     }
@@ -13934,12 +13934,12 @@ do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_u
 
   query_flag = DEFAULT_EXEC_MODE;
 
-  if (parser->dont_collect_exec_stats)
+  if (parser->flag.dont_collect_exec_stats)
     {
       query_flag |= DONT_COLLECT_EXEC_STATS;
     }
 
-  if (parser->is_auto_commit)
+  if (parser->flag.is_auto_commit)
     {
       query_flag |= TRAN_AUTO_COMMIT;
     }
@@ -14097,7 +14097,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   contextp->sql_user_text_len = statement->sql_user_text_len;
 
   /* click counter check */
-  if (statement->is_click_counter)
+  if (statement->flag.is_click_counter)
     {
       CHECK_MODIFICATION_ERROR ();
     }
@@ -14117,9 +14117,9 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* make query string */
-  parser->dont_prt_long_string = 1;
-  parser->long_string_skipped = 0;
-  parser->print_type_ambiguity = 0;
+  parser->flag.dont_prt_long_string = 1;
+  parser->flag.long_string_skipped = 0;
+  parser->flag.print_type_ambiguity = 0;
   PT_NODE_PRINT_TO_ALIAS (parser, statement,
 			  (PT_CONVERT_RANGE | PT_PRINT_QUOTES | PT_PRINT_DIFFERENT_SYSTEM_PARAMETERS | PT_PRINT_USER));
   contextp->sql_hash_text = (char *) statement->alias_print;
@@ -14131,16 +14131,16 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       ASSERT_ERROR ();
       return err;
     }
-  parser->dont_prt_long_string = 0;
-  if (parser->long_string_skipped || parser->print_type_ambiguity)
+  parser->flag.dont_prt_long_string = 0;
+  if (parser->flag.long_string_skipped || parser->flag.print_type_ambiguity)
     {
-      statement->cannot_prepare = 1;
+      statement->flag.cannot_prepare = 1;
       return NO_ERROR;
     }
 
   /* look up server's XASL cache for this query string and get XASL file id (XASL_ID) returned if found */
-  contextp->recompile_xasl = statement->recompile;
-  if (statement->recompile == 0)
+  contextp->recompile_xasl = statement->flag.recompile;
+  if (statement->flag.recompile == 0)
     {
       XASL_NODE_HEADER xasl_header;
       stream.xasl_header = &xasl_header;
@@ -14237,17 +14237,17 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  free_and_init (stream.buffer);
 	}
-      statement->use_plan_cache = 0;
+      statement->flag.use_plan_cache = 0;
     }
   else
     {
       if (err == NO_ERROR)
 	{
-	  statement->use_plan_cache = 1;
+	  statement->flag.use_plan_cache = 1;
 	}
       else
 	{
-	  statement->use_plan_cache = 0;
+	  statement->flag.use_plan_cache = 0;
 	}
     }
 
@@ -14320,15 +14320,15 @@ do_execute_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   query_flag = DEFAULT_EXEC_MODE;
 
-  if (parser->is_holdable)
+  if (parser->flag.is_holdable)
     {
       query_flag |= RESULT_HOLDABLE;
     }
-  if (parser->is_xasl_pinned_reference)
+  if (parser->flag.is_xasl_pinned_reference)
     {
       query_flag |= XASL_CACHE_PINNED_REFERENCE;
     }
-  if (parser->is_auto_commit)
+  if (parser->flag.is_auto_commit)
     {
       query_flag |= TRAN_AUTO_COMMIT;
     }
@@ -14345,7 +14345,7 @@ do_execute_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       (void) parser_walk_tree (parser, statement, pt_flush_classes, NULL, NULL, NULL);
     }
 
-  if (parser->abort)
+  if (parser->flag.abort)
     {
       assert (er_errid () != NO_ERROR);
       return er_errid ();
@@ -14360,13 +14360,13 @@ do_execute_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   list_id = NULL;
 
   CACHE_TIME_RESET (&clt_cache_time);
-  if (statement->clt_cache_check)
+  if (statement->flag.clt_cache_check)
     {
       clt_cache_time = statement->cache_time;
-      statement->clt_cache_check = 0;
+      statement->flag.clt_cache_check = 0;
     }
   CACHE_TIME_RESET (&statement->cache_time);
-  statement->clt_cache_reusable = 0;
+  statement->flag.clt_cache_reusable = 0;
 
   err =
     execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
@@ -14376,7 +14376,7 @@ do_execute_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (CACHE_TIME_EQ (&clt_cache_time, &statement->cache_time))
     {
-      statement->clt_cache_reusable = 1;
+      statement->flag.clt_cache_reusable = 1;
     }
 
   /* save the returned QFILE_LIST_ID into 'statement->etc' */
@@ -14466,41 +14466,41 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* adjust query flag */
   query_flag = DEFAULT_EXEC_MODE;
 
-  if (statement->si_datetime == 1 || statement->si_tran_id == 1)
+  if (statement->flag.si_datetime == 1 || statement->flag.si_tran_id == 1)
     {
-      statement->info.query.reexecute = 1;
-      statement->info.query.do_not_cache = 1;
+      statement->info.query.flag.reexecute = 1;
+      statement->info.query.flag.do_not_cache = 1;
     }
 
-  if (statement->info.query.reexecute == 1)
+  if (statement->info.query.flag.reexecute == 1)
     {
       query_flag |= NOT_FROM_RESULT_CACHE;
     }
 
-  if (statement->info.query.do_cache == 1)
+  if (statement->info.query.flag.do_cache == 1)
     {
       query_flag |= RESULT_CACHE_REQUIRED;
     }
 
-  if (statement->info.query.do_not_cache == 1 || statement->info.query.oids_included)
+  if (statement->info.query.flag.do_not_cache == 1 || statement->info.query.oids_included)
     {
       query_flag |= RESULT_CACHE_INHIBITED;
     }
-  if (parser->is_holdable)
+  if (parser->flag.is_holdable)
     {
       query_flag |= RESULT_HOLDABLE;
     }
-  if (parser->is_xasl_pinned_reference)
+  if (parser->flag.is_xasl_pinned_reference)
     {
       query_flag |= XASL_CACHE_PINNED_REFERENCE;
     }
 
-  if (parser->dont_collect_exec_stats)
+  if (parser->flag.dont_collect_exec_stats)
     {
       query_flag |= DONT_COLLECT_EXEC_STATS;
     }
 
-  if (statement->use_auto_commit)
+  if (statement->flag.use_auto_commit)
     {
       query_flag |= EXECUTE_QUERY_WITH_COMMIT;
 
@@ -14521,7 +14521,7 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-  if (parser->is_auto_commit)
+  if (parser->flag.is_auto_commit)
     {
       query_flag |= TRAN_AUTO_COMMIT;
     }
@@ -14538,7 +14538,7 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       (void) parser_walk_tree (parser, statement, pt_flush_classes, NULL, NULL, NULL);
     }
 
-  if (parser->abort)
+  if (parser->flag.abort)
     {
       assert (er_errid () != NO_ERROR);
       return er_errid ();
@@ -14555,13 +14555,13 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   list_id = NULL;
 
   CACHE_TIME_RESET (&clt_cache_time);
-  if (statement->clt_cache_check)
+  if (statement->flag.clt_cache_check)
     {
       clt_cache_time = statement->cache_time;
-      statement->clt_cache_check = 0;
+      statement->flag.clt_cache_check = 0;
     }
   CACHE_TIME_RESET (&statement->cache_time);
-  statement->clt_cache_reusable = 0;
+  statement->flag.clt_cache_reusable = 0;
 
   err =
     execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
@@ -14571,7 +14571,7 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (CACHE_TIME_EQ (&clt_cache_time, &statement->cache_time))
     {
-      statement->clt_cache_reusable = 1;
+      statement->flag.clt_cache_reusable = 1;
     }
 
   /* save the returned QFILE_LIST_ID into 'statement->etc' */
@@ -15039,7 +15039,7 @@ do_execute_do (PARSER_CONTEXT * parser, PT_NODE * statement)
   query_flag |= NOT_FROM_RESULT_CACHE;
   query_flag |= RESULT_CACHE_INHIBITED;
 
-  if (parser->is_auto_commit)
+  if (parser->flag.is_auto_commit)
     {
       query_flag |= TRAN_AUTO_COMMIT;
     }
@@ -15252,7 +15252,7 @@ do_check_merge_trigger (PARSER_CONTEXT * parser, PT_NODE * statement, PT_DO_FUNC
       return ER_BLOCK_NOWHERE_STMT;
     }
 
-  if (statement->use_auto_commit)
+  if (statement->flag.use_auto_commit)
     {
       /* no active trigger is involved. Avoid lock and fetch request. */
       err = do_func (parser, statement);
@@ -15737,7 +15737,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       parser->query_id = ins_query_id;
       err = insert_subquery_results (parser, statement, values_list, flat, &savepoint_name);
       parser->query_id = query_id_self;
-      if (parser->abort)
+      if (parser->flag.abort)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  err = er_errid ();
@@ -15790,7 +15790,7 @@ exit:
     {
       if (ins_select_stmt->etc != NULL)
 	{
-	  cursor_free_self_list_id ((QFILE_LIST_ID *) ins_select_stmt->etc);
+	  cursor_free_self_list_id (ins_select_stmt->etc);
 	  if (ins_query_id != NULL_QUERY_ID && !tran_was_latest_query_ended ())
 	    {
 	      qmgr_end_query (ins_query_id);
@@ -16021,9 +16021,9 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       statement->info.merge.flags |= PT_MERGE_INFO_SERVER_OP;
 
       /* make query string */
-      parser->dont_prt_long_string = 1;
-      parser->long_string_skipped = 0;
-      parser->print_type_ambiguity = 0;
+      parser->flag.dont_prt_long_string = 1;
+      parser->flag.long_string_skipped = 0;
+      parser->flag.print_type_ambiguity = 0;
       PT_NODE_PRINT_TO_ALIAS (parser, statement, (PT_CONVERT_RANGE | PT_PRINT_QUOTES | PT_PRINT_USER));
       contextp->sql_hash_text = (char *) statement->alias_print;
       err = SHA1Compute ((unsigned char *) contextp->sql_hash_text, (unsigned) strlen (contextp->sql_hash_text),
@@ -16033,17 +16033,17 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  ASSERT_ERROR ();
 	  return err;
 	}
-      parser->dont_prt_long_string = 0;
-      if (parser->long_string_skipped || parser->print_type_ambiguity)
+      parser->flag.dont_prt_long_string = 0;
+      if (parser->flag.long_string_skipped || parser->flag.print_type_ambiguity)
 	{
-	  statement->cannot_prepare = 1;
+	  statement->flag.cannot_prepare = 1;
 	  statement->info.merge.flags &= ~PT_MERGE_INFO_SERVER_OP;
 	  goto cleanup;
 	}
 
       /* lookup in XASL cache */
-      contextp->recompile_xasl = statement->recompile;
-      if (statement->recompile == 0)
+      contextp->recompile_xasl = statement->flag.recompile;
+      if (statement->flag.recompile == 0)
 	{
 	  err = prepare_query (contextp, &stream);
 	  if (err != NO_ERROR)
@@ -16068,7 +16068,7 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 						  statement->info.merge.insert.attr_list, &default_expr_attrs);
 	      if (err != NO_ERROR)
 		{
-		  statement->use_plan_cache = 0;
+		  statement->flag.use_plan_cache = 0;
 		  statement->xasl_id = NULL;
 		  goto cleanup;
 		}
@@ -16137,19 +16137,19 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    {
 	      free_and_init (stream.buffer);
 	    }
-	  statement->use_plan_cache = 0;
+	  statement->flag.use_plan_cache = 0;
 	  statement->xasl_id = stream.xasl_id;
 	}
       else
 	{
 	  if (err == NO_ERROR)
 	    {
-	      statement->use_plan_cache = 1;
+	      statement->flag.use_plan_cache = 1;
 	      statement->xasl_id = stream.xasl_id;
 	    }
 	  else
 	    {
-	      statement->use_plan_cache = 0;
+	      statement->flag.use_plan_cache = 0;
 	    }
 
 	  goto cleanup;
@@ -16300,7 +16300,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  goto exit;
 	}
 
-      if (parser->is_xasl_pinned_reference)
+      if (parser->flag.is_xasl_pinned_reference)
 	{
 	  query_flag |= XASL_CACHE_PINNED_REFERENCE;
 	}
@@ -16308,12 +16308,12 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       query_flag |= NOT_FROM_RESULT_CACHE;
       query_flag |= RESULT_CACHE_INHIBITED;
 
-      if (statement->use_auto_commit)
+      if (statement->flag.use_auto_commit)
 	{
 	  query_flag |= EXECUTE_QUERY_WITH_COMMIT;
 	}
 
-      if (parser->is_auto_commit)
+      if (parser->flag.is_auto_commit)
 	{
 	  query_flag |= TRAN_AUTO_COMMIT;
 	}
@@ -16323,7 +16323,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  // When a transaction is under auto-commit mode, flush all dirty objects to server.
 	  // Otherwise, flush associated objects.
 
-	  if (statement->use_auto_commit)
+	  if (statement->flag.use_auto_commit)
 	    {
 	      err = tran_flush_to_commit ();
 	    }
@@ -16363,7 +16363,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  if (list_id->tuple_cnt > 0)
 	    {
-	      if (statement->use_auto_commit && tran_was_latest_query_committed ())
+	      if (statement->flag.use_auto_commit && tran_was_latest_query_committed ())
 		{
 		  /* Nothing to flush. Avoids flush, since may fetch the class. */
 		  err = sm_decache_instances_after_query_executed_with_commit (class_obj);
@@ -16400,7 +16400,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      goto exit;
 	    }
 
-	  if (parser->is_xasl_pinned_reference)
+	  if (parser->flag.is_xasl_pinned_reference)
 	    {
 	      query_flag |= XASL_CACHE_PINNED_REFERENCE;
 	    }
@@ -16555,7 +16555,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  /* execute subquery & insert its results into target class */
 	  err = insert_subquery_results (parser, statement, values_list, flat, &savepoint_name);
 	  parser->query_id = query_id_self;
-	  if (parser->abort)
+	  if (parser->flag.abort)
 	    {
 	      assert (er_errid () != NO_ERROR);
 	      err = er_errid ();
@@ -16595,7 +16595,7 @@ exit:
     {
       if (ins_select_stmt->etc != NULL)
 	{
-	  cursor_free_self_list_id ((QFILE_LIST_ID *) ins_select_stmt->etc);
+	  cursor_free_self_list_id (ins_select_stmt->etc);
 	  if (ins_query_id != NULL_QUERY_ID && !tran_was_latest_query_ended ())
 	    {
 	      qmgr_end_query (ins_query_id);
