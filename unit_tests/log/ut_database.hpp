@@ -103,10 +103,11 @@ class ut_database_values_generator
     std::discrete_distribution<int8_t> m_add_or_update_page_dist;
 };
 
+
 /*
  * a page in a unit test database volume
  */
-class ut_page
+class ut_page final
 {
   public:
     ut_page (short a_volid, int32_t a_pageid);
@@ -138,7 +139,7 @@ using ux_ut_page = std::unique_ptr<ut_page>;
 /*
  * a volume in a unit test database
  */
-class ut_volume
+class ut_volume final
 {
   public:
     ut_volume (const ut_database_config &a_database_config, short a_volid);
@@ -176,7 +177,7 @@ using ux_ut_volume = std::unique_ptr<ut_volume>;
 /*
  * a unit test database mock-like structure with database -<> volume
  */
-class ut_database
+class ut_database final
 {
   public:
     ut_database (const ut_database_config &a_database_config);

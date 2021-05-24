@@ -49,12 +49,12 @@ namespace cubcomm
     m_host = host;
   }
 
-  inline long node::get_port() const
+  inline long node::get_port () const
   {
     return m_port;
   }
 
-  inline std::string node::get_host() const
+  inline std::string node::get_host () const
   {
     return m_host;
   }

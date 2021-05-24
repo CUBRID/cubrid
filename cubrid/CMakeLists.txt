@@ -203,6 +203,7 @@ set(COMMUNICATION_HEADERS
   ${CONNECTION_DIR}/connection_server_rules.hpp
   ${COMMUNICATION_DIR}/request_client_server.hpp
   ${COMMUNICATION_DIR}/request_sync_send_queue.hpp
+  ${COMMUNICATION_DIR}/request_sync_client_server.hpp
   )
 
 set(DEBUGGING_HEADERS
@@ -302,7 +303,6 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/log_meta.cpp
   ${TRANSACTION_DIR}/log_page_buffer.c
   ${TRANSACTION_DIR}/log_page_broker.cpp
-  ${TRANSACTION_DIR}/log_page_fetcher.cpp
   ${TRANSACTION_DIR}/log_postpone_cache.cpp
   ${TRANSACTION_DIR}/log_prior_send.cpp
   ${TRANSACTION_DIR}/log_prior_recv.cpp
@@ -335,7 +335,6 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/log_lsa_utils.hpp
   ${TRANSACTION_DIR}/log_meta.hpp
   ${TRANSACTION_DIR}/log_page_broker.hpp
-  ${TRANSACTION_DIR}/log_page_fetcher.hpp  
   ${TRANSACTION_DIR}/log_postpone_cache.hpp
   ${TRANSACTION_DIR}/log_prior_send.hpp
   ${TRANSACTION_DIR}/log_prior_recv.hpp
@@ -366,6 +365,7 @@ set(SERVER_HEADERS
   )
 
 set(STORAGE_SOURCES
+  ${STORAGE_DIR}/async_page_fetcher.cpp
   ${STORAGE_DIR}/btree.c
   ${STORAGE_DIR}/btree_load.c
   ${STORAGE_DIR}/btree_unique.cpp
@@ -392,7 +392,7 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/tde.c
   )
 set(STORAGE_HEADERS
-  
+  ${STORAGE_DIR}/async_page_fetcher.hpp
   ${STORAGE_DIR}/btree_unique.hpp
   ${STORAGE_DIR}/record_descriptor.hpp
   ${STORAGE_DIR}/vpid.hpp

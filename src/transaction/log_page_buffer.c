@@ -66,6 +66,7 @@
 #include "log_volids.hpp"
 #include "log_writer.h"
 #include "lock_manager.h"
+#include "log_replication.hpp"
 #include "log_system_tran.hpp"
 #include "boot_sr.h"
 #if !defined(SERVER_MODE)
@@ -79,6 +80,7 @@
 #include "ats_ps_request.hpp"
 #include "critical_section.h"
 #include "page_buffer.h"
+#include "page_server.hpp"
 #include "double_write_buffer.h"
 #include "file_io.h"
 #include "disk_manager.h"
@@ -6838,6 +6840,13 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
     // *INDENT-ON*
   }
 
+#if defined (SERVER_MODE)
+  if (get_server_type () == SERVER_TYPE_PAGE)
+    {
+      // Wait the replication to catch up first
+      ps_Gl.get_replicator ().wait_past_target_lsa (new_chkpt_redo_lsa);
+    }
+#endif // SERVER_MODE = not SA_MODE
 
   /*
    * Modify log header to record present checkpoint. The header is flushed
@@ -7119,46 +7128,6 @@ error_cannot_chkpt:
   return NULL_PAGEID;
 
 #undef detailed_er_log
-}
-
-/*
- * logpb_dump_checkpoint_trans - Dump checkpoint transactions
- *
- * return: nothing
- *
- *   length(in): Length to dump in bytes
- *   data(in): The data being logged
- *
- * NOTE: Dump a checkpoint transactions structure.
- */
-void
-logpb_dump_checkpoint_trans (FILE * out_fp, int length, void *data)
-{
-  int ntrans, i;
-  LOG_INFO_CHKPT_TRANS *chkpt_trans, *chkpt_one;	/* Checkpoint tdes */
-
-  chkpt_trans = (LOG_INFO_CHKPT_TRANS *) data;
-  ntrans = length / sizeof (*chkpt_trans);
-
-  /* Start dumping each checkpoint transaction descriptor */
-
-  for (i = 0; i < ntrans; i++)
-    {
-      chkpt_one = &chkpt_trans[i];
-      fprintf (out_fp,
-	       "     Trid = %d, State = %s, isloose_end = %d,\n"
-	       "        Head_lsa = %lld|%d, Tail_lsa = %lld|%d, UndoNxtLSA = %lld|%d,\n"
-	       "        Postpone_lsa = %lld|%d, Save_lsa = %lld|%d, Tail_topresult_lsa = %lld|%d,\n"
-	       "	Client_User: name=%s.\n", chkpt_one->trid, log_state_string (chkpt_one->state),
-	       chkpt_one->isloose_end, (long long int) chkpt_one->head_lsa.pageid,
-	       (int) chkpt_one->head_lsa.offset, (long long int) chkpt_one->tail_lsa.pageid,
-	       (int) chkpt_one->tail_lsa.offset, (long long int) chkpt_one->undo_nxlsa.pageid,
-	       (int) chkpt_one->undo_nxlsa.offset, (long long int) chkpt_one->posp_nxlsa.pageid,
-	       (int) chkpt_one->posp_nxlsa.offset, (long long int) chkpt_one->savept_lsa.pageid,
-	       (int) chkpt_one->savept_lsa.offset, (long long int) chkpt_one->tail_topresult_lsa.pageid,
-	       (int) chkpt_one->tail_topresult_lsa.offset, chkpt_one->user_name);
-    }
-  (void) fprintf (out_fp, "\n");
 }
 
 /*

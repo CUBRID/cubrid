@@ -36,8 +36,8 @@ static void assert_page_server_type ();
 
 page_server::~page_server ()
 {
-  assert (m_ats_conn == nullptr);
   assert (m_replicator == nullptr);
+  assert (m_active_tran_server_conn == nullptr);
 }
 
 void page_server::set_active_tran_server_connection (cubcomm::channel &&chn)
@@ -48,36 +48,34 @@ void page_server::set_active_tran_server_connection (cubcomm::channel &&chn)
   er_log_debug (ARG_FILE_LINE, "Active transaction server connected to this page server. Channel id: %s.\n",
 		chn.get_channel_id ().c_str ());
 
-  m_ats_conn.reset (new active_tran_server_conn (std::move (chn)));
-  m_ats_conn->register_request_handler (ats_to_ps_request::SEND_LOG_PRIOR_LIST,
-					std::bind (&page_server::receive_log_prior_list, std::ref (*this),
-					    std::placeholders::_1));
-  m_ats_conn->register_request_handler (ats_to_ps_request::SEND_LOG_PAGE_FETCH,
-					std::bind (&page_server::receive_log_page_fetch, std::ref (*this),
-					    std::placeholders::_1));
-  m_ats_conn->register_request_handler (ats_to_ps_request::SEND_DATA_PAGE_FETCH,
-					std::bind (&page_server::receive_data_page_fetch, std::ref (*this),
-					    std::placeholders::_1));
-
-  m_ats_conn->start_thread ();
-
-  m_ats_request_queue.reset (new active_tran_server_request_queue (*m_ats_conn));
-  m_ats_request_autosend.reset (new active_tran_server_request_autosend (*m_ats_request_queue));
-  m_ats_request_autosend->start_thread ();
+  assert (m_active_tran_server_conn == nullptr);
+  m_active_tran_server_conn.reset (new active_tran_server_conn_t (std::move (chn),
+  {
+    {
+      ats_to_ps_request::SEND_LOG_PRIOR_LIST,
+      std::bind (&page_server::receive_log_prior_list, std::ref (*this), std::placeholders::_1)
+    },
+    {
+      ats_to_ps_request::SEND_LOG_PAGE_FETCH,
+      std::bind (&page_server::receive_log_page_fetch, std::ref (*this), std::placeholders::_1)
+    },
+    {
+      ats_to_ps_request::SEND_DATA_PAGE_FETCH,
+      std::bind (&page_server::receive_data_page_fetch, std::ref (*this), std::placeholders::_1)
+    },
+  }));
 }
 
 void page_server::disconnect_active_tran_server ()
 {
-  m_ats_request_autosend.reset (nullptr);
-  m_ats_request_queue.reset (nullptr);
-  m_ats_conn.reset (nullptr);
+  m_active_tran_server_conn.reset (nullptr);
 }
 
 bool page_server::is_active_tran_server_connected () const
 {
   assert_page_server_type ();
 
-  return m_ats_conn != nullptr;
+  return m_active_tran_server_conn != nullptr;
 }
 
 void page_server::receive_log_prior_list (cubpacking::unpacker &upk)
@@ -101,23 +99,26 @@ void page_server::receive_log_page_fetch (cubpacking::unpacker &upk)
       _er_log_debug (ARG_FILE_LINE, "Received request for log from Transaction Server. Page ID: %lld \n", pageid);
     }
 
-  assert (m_log_page_fetcher);
-  m_log_page_fetcher->fetch_page (pageid, std::bind (&page_server::on_log_page_read_result, this, std::placeholders::_1,
+  assert (m_page_fetcher);
+  m_page_fetcher->fetch_log_page (pageid, std::bind (&page_server::on_log_page_read_result, this, std::placeholders::_1,
 				  std::placeholders::_2));
 }
 
 void page_server::receive_data_page_fetch (cubpacking::unpacker &upk)
 {
-  if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
-    {
-      VPID vpid;
-      std::string message;
+  std::string message;
+  upk.unpack_string (message);
 
-      upk.unpack_string (message);
-      std::memcpy (&vpid, message.c_str (), sizeof (vpid));
-      _er_log_debug (ARG_FILE_LINE, "Received request for Data Page from Transaction Server. pageid: %ld volid: %d\n",
-		     vpid.pageid, vpid.volid);
-    }
+  VPID vpid;
+  std::memcpy (&vpid, message.c_str (), sizeof (vpid));
+
+  LOG_LSA target_repl_lsa;
+  std::memcpy (&target_repl_lsa, message.c_str () + sizeof (vpid), sizeof (target_repl_lsa));
+
+  assert (m_page_fetcher);
+  m_page_fetcher->fetch_data_page (vpid, target_repl_lsa, std::bind (&page_server::on_data_page_read_result, this,
+				   std::placeholders::_1,
+				   std::placeholders::_2));
 }
 
 void page_server::push_request_to_active_tran_server (ps_to_ats_request reqid, std::string &&payload)
@@ -125,7 +126,7 @@ void page_server::push_request_to_active_tran_server (ps_to_ats_request reqid, s
   assert_page_server_type ();
   assert (is_active_tran_server_connected ());
 
-  m_ats_request_queue->push (reqid, std::move (payload));
+  m_active_tran_server_conn->push (reqid, std::move (payload));
 }
 
 void page_server::on_log_page_read_result (const LOG_PAGE *log_page, int error_code)
@@ -141,7 +142,7 @@ void page_server::on_log_page_read_result (const LOG_PAGE *log_page, int error_c
     }
 
   std::string message (buffer, buffer_size);
-  m_ats_request_queue->push (ps_to_ats_request::SEND_LOG_PAGE, std::move (message));
+  m_active_tran_server_conn->push (ps_to_ats_request::SEND_LOG_PAGE, std::move (message));
 
   if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
     {
@@ -155,6 +156,43 @@ void page_server::on_log_page_read_result (const LOG_PAGE *log_page, int error_c
 		     error_code);
     }
 }
+
+void page_server::on_data_page_read_result (const FILEIO_PAGE *io_page, int error_code)
+{
+  char buffer[sizeof (int) + IO_MAX_PAGE_SIZE];
+  std::memcpy (buffer, &error_code, sizeof (error_code));
+  std::size_t buffer_size = sizeof (error_code);
+
+  if (error_code == NO_ERROR)
+    {
+      std::memcpy (buffer + sizeof (error_code), io_page, db_io_page_size ());
+      buffer_size += db_io_page_size ();
+    }
+
+  if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
+    {
+      if (error_code == NO_ERROR)
+	{
+	  _er_log_debug (ARG_FILE_LINE, "Sending data page.. LSA: %lld|%d, Page ID: %ld, Volid: %d",
+			 LSA_AS_ARGS (&io_page->prv.lsa), io_page->prv.pageid, io_page->prv.volid);
+	}
+      else
+	{
+	  _er_log_debug (ARG_FILE_LINE, "Sending data page.. Error code: %d\n", error_code);
+	}
+    }
+
+  std::string message (buffer, buffer_size);
+  m_active_tran_server_conn->push (ps_to_ats_request::SEND_DATA_PAGE, std::move (message));
+}
+
+cublog::replicator &
+page_server::get_replicator ()
+{
+  assert (m_replicator);
+  return *m_replicator;
+}
+
 void
 page_server::start_log_replicator (const log_lsa &start_lsa)
 {
@@ -177,13 +215,13 @@ page_server::finish_replication_during_shutdown (cubthread::entry &thread_entry)
 void
 page_server::init_log_page_fetcher ()
 {
-  m_log_page_fetcher.reset (new cublog::async_page_fetcher ());
+  m_page_fetcher.reset (new cublog::async_page_fetcher ());
 }
 
 void
 page_server::finalize_log_page_fetcher ()
 {
-  m_log_page_fetcher.reset ();
+  m_page_fetcher.reset ();
 }
 
 

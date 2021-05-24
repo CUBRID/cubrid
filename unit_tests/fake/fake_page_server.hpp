@@ -16,31 +16,22 @@
  *
  */
 
-#include "log_recovery_redo.hpp"
+#ifndef _FAKE_PAGE_SERVER_HPP_
+#define _FAKE_PAGE_SERVER_HPP_
 
-#if !defined(NDEBUG)
-void
-vpid_lsa_consistency_check::check (const vpid &a_vpid, const log_lsa &a_log_lsa)
+#include "log_lsa.hpp"
+
+namespace cublog
 {
-  std::lock_guard<std::mutex> lck (mtx);
-  const vpid_key_t key {a_vpid.volid, a_vpid.pageid};
-  const auto map_it =  consistency_check_map.find (key);
-  if (map_it != consistency_check_map.cend ())
-    {
-      assert ((*map_it).second < a_log_lsa);
-    }
-  consistency_check_map.emplace (key, a_log_lsa);
+  struct replicator
+  {
+    void wait_past_target_lsa (const log_lsa &lsa);
+  };
 }
 
-void
-vpid_lsa_consistency_check::cleanup ()
+struct page_server
 {
-  std::lock_guard<std::mutex> lck (mtx);
-  consistency_check_map.clear ();
-}
-#endif
+  cublog::replicator &get_replicator ();
+};
 
-#if !defined(NDEBUG)
-vpid_lsa_consistency_check log_Gl_recovery_redo_consistency_check;
 #endif
-
