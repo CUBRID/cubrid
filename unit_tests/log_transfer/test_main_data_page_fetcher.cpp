@@ -74,15 +74,17 @@ TEST_CASE ("Test with a valid log page returned", "")
   cubthread::initialize (thread_p);
   cubthread::initialize_thread_entries (); // + finalize
 
-  SECTION ("1. Test with a valid log page returned")
+  SECTION ("1. Test with valid data pages returned")
   {
     std::vector<VPID> vpids { {1, 0}, {2, 0}, {3, 0} };
     test_env env (true, vpids);
     do_test (env);
   }
 
-  SECTION ("2. Test with a valid log page returned")
+  SECTION ("2. Test with errors returned")
   {
+    er_set (0, "", 0, ER_FAILED, 0);
+
     std::vector<VPID> vpids { {4, 0}, {5, 0}, {6, 0} };
     test_env env (false, vpids);
     do_test (env);
@@ -222,19 +224,12 @@ PAGE_PTR
 pgbuf_fix_release (THREAD_ENTRY *thread_p, const VPID *vpid, PAGE_FETCH_MODE fetch_mode,
 		   PGBUF_LATCH_MODE request_mode, PGBUF_LATCH_CONDITION condition)
 {
-  if (g_data_page_fetcher_test_data.page_ids_requested[get_key (*vpid)].require_data_page_valid)
-    {
-      return create_dummy_data_page (*vpid);
-    }
-  else
-    {
-      return nullptr;
-    }
+  return pgbuf_fix_debug (thread_p, vpid, fetch_mode, request_mode, condition, nullptr, 0);
 }
 
 void
 pgbuf_unfix (THREAD_ENTRY *thread_p, PAGE_PTR pgptr)
 {
-  delete_page (pgptr);
+  pbguf_unfix_debug (thread_p, pgptr, nullptr, 0);
 }
 #endif //NDEBUG
