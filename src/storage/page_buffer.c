@@ -3625,6 +3625,9 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
 	  continue;
 	}
 
+      detailed_er_log ("pgbuf_flush_checkpoint: bcb=%p, vpid=%d|%d, oldest_unflush_lsa=%lld|%d selected for flush.\n",
+		       bufptr, VPID_AS_ARGS (&bufptr->vpid), LSA_AS_ARGS (&bufptr->oldest_unflush_lsa));
+
       if (!LSA_ISNULL (&bufptr->oldest_unflush_lsa) && prev_chkpt_redo_lsa != NULL && !LSA_ISNULL (prev_chkpt_redo_lsa))
 	{
 	  if (LSA_LT (&bufptr->oldest_unflush_lsa, prev_chkpt_redo_lsa))
