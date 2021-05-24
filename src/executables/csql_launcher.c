@@ -429,12 +429,12 @@ main (int argc, char *argv[])
     }
   else if (!csql_arg.sa_mode && csql_arg.skip_vacuum)
     {
-      /* Don't allow to skip vacuum on CS mode
-         goto print_usage;
-         }
-         else if (explicit_single_line && csql_arg.single_line_execution == false)
-         {
-         /* Don't allow both at once. */
+      /* Don't allow to skip vacuum on CS mode */
+      goto print_usage;
+    }
+  else if (explicit_single_line && csql_arg.single_line_execution == false)
+    {
+      /* Don't allow both at once. */
       goto print_usage;
     }
   else if (csql_arg.sa_mode)

@@ -209,6 +209,7 @@ static PT_NODE *pt_path_chain (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 static PT_NODE *pt_expand_isnull_preds_helper (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_expand_isnull_preds (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_check_and_replace_hostvar (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_NODE *pt_check_with_clause (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO * info);
 static DB_OBJECT *pt_find_class (PARSER_CONTEXT * parser, PT_NODE * p, bool for_update);
 static void pt_check_unique_attr (PARSER_CONTEXT * parser, const char *entity_name, PT_NODE * att,
@@ -715,7 +716,7 @@ pt_make_cast_with_compatible_info (PARSER_CONTEXT * parser, PT_NODE * att, PT_NO
       temp_expr->arg1 = att;
       new_att->next = next_att;
       new_att->etc = cinfo;	/* to make this as system added */
-      new_att->is_value_query = att->is_value_query;
+      new_att->flag.is_value_query = att->flag.is_value_query;
 
       new_att->data_type = parser_copy_tree_list (parser, new_dt);
       PT_EXPR_INFO_SET_FLAG (new_att, PT_EXPR_INFO_CAST_SHOULD_FOLD);
@@ -3212,7 +3213,7 @@ pt_append_statements_on_change_default (PARSER_CONTEXT * parser, PT_NODE * state
   /* redefine the default value */
   save_next = value->next;
   parser_free_subtrees (parser, value);
-  parser_init_node (value);
+  parser_reinit_node (value);
   value->type_enum = PT_TYPE_NULL;
   value->next = save_next;
 
@@ -3348,7 +3349,7 @@ pt_append_statements_on_insert (PARSER_CONTEXT * parser, PT_NODE * stmt_node, co
   /* redefine the insert value */
   save_next = value->next;
   parser_free_subtrees (parser, value);
-  parser_init_node (value);
+  parser_reinit_node (value);
   value->node_type = PT_VALUE;
   value->type_enum = PT_TYPE_NULL;
   value->next = save_next;
@@ -3502,7 +3503,7 @@ pt_append_statements_on_update (PARSER_CONTEXT * parser, PT_NODE * stmt_node, co
   /* redefine the assignment value */
   save_next = value->next;
   parser_free_subtrees (parser, value);
-  parser_init_node (value);
+  parser_reinit_node (value);
   value->node_type = PT_NAME;
   value->info.name.original = pt_append_string (parser, NULL, attr_name);
   PT_NAME_INFO_SET_FLAG (value, PT_NAME_INFO_EXTERNAL);
@@ -3712,7 +3713,7 @@ pt_resolve_insert_external (PARSER_CONTEXT * parser, PT_NODE * insert)
 	      rhs = a->info.expr.arg2;
 	      *a = *lhs;
 	      a->next = save_next;
-	      parser_init_node (lhs);	/* not to free subtrees */
+	      parser_reinit_node (lhs);	/* not to free subtrees */
 	      parser_free_tree (parser, lhs);
 	      parser_free_tree (parser, rhs);
 
@@ -3753,7 +3754,7 @@ pt_resolve_insert_external (PARSER_CONTEXT * parser, PT_NODE * insert)
 	      rhs = a->info.expr.arg2;
 	      *a = *lhs;
 	      a->next = save_next;
-	      parser_init_node (lhs);	/* not to free subtrees */
+	      parser_reinit_node (lhs);	/* not to free subtrees */
 	      parser_free_tree (parser, lhs);
 	      parser_free_tree (parser, rhs);
 
@@ -6570,11 +6571,11 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 
 	  for (names = name_list, chkflag = 0; names; names = names->next)
 	    {
-	      if (!names->partition_pruned
+	      if (!names->flag.partition_pruned
 		  && !intl_identifier_casecmp (names->info.name.original, subcls->partition->pname))
 		{
 		  chkflag = 1;
-		  names->partition_pruned = 1;	/* existence marking */
+		  names->flag.partition_pruned = 1;	/* existence marking */
 		  names->info.name.db_object = objs->op;
 
 		  if (smclass->partition->partition_type == DB_PARTITION_RANGE && cmd == PT_REORG_PARTITION)
@@ -6653,10 +6654,10 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 
 	  for (parts = part_list; parts; parts = parts->next)
 	    {
-	      if (!parts->partition_pruned
+	      if (!parts->flag.partition_pruned
 		  && !intl_identifier_casecmp (parts->info.parts.name->info.name.original, subcls->partition->pname))
 		{
-		  parts->partition_pruned = 1;	/* existence marking */
+		  parts->flag.partition_pruned = 1;	/* existence marking */
 		}
 	    }
 	}
@@ -6666,7 +6667,7 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
     {				/* checks unknown partition */
       for (names = name_list; names; names = names->next)
 	{
-	  if (!names->partition_pruned)
+	  if (!names->flag.partition_pruned)
 	    {
 	      PT_ERRORmf (parser, stmt, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_PARTITION_DOES_NOT_EXIST,
 			  names->info.name.original);
@@ -6827,7 +6828,7 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	    }
 
 	  parts_cnt++;
-	  if (parts->partition_pruned)
+	  if (parts->flag.partition_pruned)
 	    {
 	      if (name_list)
 		{
@@ -6835,7 +6836,7 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 		    {
 		      if (!intl_identifier_casecmp (part_name, names->info.name.original))
 			{
-			  names->partition_pruned = 0;
+			  names->flag.partition_pruned = 0;
 			  break;	/* REORG partition name reuse */
 			}
 		    }
@@ -7405,7 +7406,7 @@ pt_check_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_NODE * at
 
   if (do_semantic_check)
     {
-      qry->do_not_replace_orderby = 1;
+      qry->flag.do_not_replace_orderby = 1;
       qry = pt_semantic_check (parser, qry);
       if (pt_has_error (parser) || qry == NULL)
 	{
@@ -7992,7 +7993,7 @@ pt_check_create_view (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	}
       crt_qry = result_stmt;
 
-      crt_qry->do_not_replace_orderby = 1;
+      crt_qry->flag.do_not_replace_orderby = 1;
       result_stmt = pt_semantic_check (parser, crt_qry);
       if (pt_has_error (parser))
 	{
@@ -8523,6 +8524,14 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	  if (select->info.query.with != NULL)
 	    {
 	      // run semantic check only for CREATE ... AS WITH ...
+	      if ((crt_attr = pt_check_with_clause (parser, select)) != NULL)
+		{
+		  /* no alias for CTE select list */
+		  PT_ERRORmf (parser, qry_specs, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_MISSING_ATTR_NAME,
+			      pt_short_print (parser, crt_attr));
+		  return;
+		}
+
 	      select = pt_semantic_check (parser, select);
 	    }
 
@@ -9541,9 +9550,9 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
       /* Every type of node that can appear at the highest level should be listed here, unless no semantic check is
        * required. */
     case PT_DELETE:
-      if (top_node->cannot_prepare == 1)
+      if (top_node->flag.cannot_prepare == 1)
 	{
-	  node->cannot_prepare = 1;
+	  node->flag.cannot_prepare = 1;
 	}
 
       entity = NULL;
@@ -9595,9 +9604,9 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
       break;
 
     case PT_INSERT:
-      if (top_node && top_node->cannot_prepare == 1)
+      if (top_node && top_node->flag.cannot_prepare == 1)
 	{
-	  node->cannot_prepare = 1;
+	  node->flag.cannot_prepare = 1;
 	}
 
       if (node->info.insert.into_var != NULL && node->info.insert.value_clauses->next != NULL)
@@ -9704,9 +9713,9 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
     case PT_UNION:
     case PT_INTERSECTION:
     case PT_DIFFERENCE:
-      if (top_node->cannot_prepare == 1)
+      if (top_node->flag.cannot_prepare == 1)
 	{
-	  node->cannot_prepare = 1;
+	  node->flag.cannot_prepare = 1;
 	}
 
       /* semantic check {union|intersection|difference} operands */
@@ -9783,12 +9792,12 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
       break;
 
     case PT_SELECT:
-      if (top_node->cannot_prepare == 1)
+      if (top_node->flag.cannot_prepare == 1)
 	{
-	  node->cannot_prepare = 1;
+	  node->flag.cannot_prepare = 1;
 	}
 
-      if (node->info.query.single_tuple == 1)
+      if (node->info.query.flag.single_tuple == 1)
 	{
 	  if (pt_length_of_select_list (node->info.query.q.select.list, EXCLUDE_HIDDEN_COLUMNS) != 1)
 	    {
@@ -9896,7 +9905,7 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	  break;		/* error */
 	}
 
-      if (node->info.query.q.select.group_by != NULL && node->info.query.q.select.group_by->with_rollup)
+      if (node->info.query.q.select.group_by != NULL && node->info.query.q.select.group_by->flag.with_rollup)
 	{
 	  bool has_gbynum = false;
 
@@ -9983,9 +9992,9 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
       break;
 
     case PT_UPDATE:
-      if (top_node->cannot_prepare == 1)
+      if (top_node->flag.cannot_prepare == 1)
 	{
-	  node->cannot_prepare = 1;
+	  node->flag.cannot_prepare = 1;
 	}
 
       if (pt_has_aggregate (parser, node))
@@ -10145,9 +10154,9 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	  break;
 	}
 
-      if (top_node->cannot_prepare == 1)
+      if (top_node->flag.cannot_prepare == 1)
 	{
-	  node->cannot_prepare = 1;
+	  node->flag.cannot_prepare = 1;
 	}
 
       if (pt_has_aggregate (parser, node))
@@ -10663,8 +10672,8 @@ pt_check_and_replace_hostvar (PARSER_CONTEXT * parser, PT_NODE * node, void *arg
     }
 
   /* replace input host var/parameter with its value if given */
-  if ((pt_is_input_hostvar (node) && parser->host_var_count > node->info.host_var.index && parser->set_host_var == 1)
-      || pt_is_input_parameter (node))
+  if ((pt_is_input_hostvar (node) && parser->host_var_count > node->info.host_var.index
+       && parser->flag.set_host_var == 1) || pt_is_input_parameter (node))
     {
       type = pt_node_to_db_type (node);
       if (type == DB_TYPE_OBJECT || type == DB_TYPE_VOBJ || TP_IS_SET_TYPE (type))
@@ -10701,6 +10710,57 @@ pt_check_and_replace_hostvar (PARSER_CONTEXT * parser, PT_NODE * node, void *arg
     }
 
   return node;
+}
+
+/*
+ * pt_check_with_clause () -  
+ *   do semantic checks on "create entity" has "with clause"
+ *   this function is called from pt_check_create_entity only
+ *   so, not needed to check NULL for node
+ *
+ *   return:  NULL if no errors, attribute of CTE otherwise
+ *   node(in): a "with" statement that needs to be checked.
+ */
+
+static PT_NODE *
+pt_check_with_clause (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE *cte = node->info.query.with->info.with_clause.cte_definition_list;
+
+  if (cte)
+    {
+      PT_NODE *cte_part;
+      PT_NODE *cte_attr;
+
+      if (cte->info.cte.as_attr_list == NULL)
+	{
+	  cte_part = cte->info.cte.non_recursive_part;
+	  if (cte_part)
+	    {
+	      for (cte_attr = pt_get_select_list (parser, cte_part); cte_attr != NULL; cte_attr = cte_attr->next)
+		{
+		  if (cte_attr->alias_print == NULL && cte_attr->node_type != PT_NAME && cte_attr->node_type != PT_DOT_)
+		    {
+		      return cte_attr;
+		    }
+		}
+	    }
+
+	  cte_part = cte->info.cte.recursive_part;
+	  if (cte_part)
+	    {
+	      for (cte_attr = pt_get_select_list (parser, cte_part); cte_attr != NULL; cte_attr = cte_attr->next)
+		{
+		  if (cte_attr->alias_print == NULL && cte_attr->node_type != PT_NAME && cte_attr->node_type != PT_DOT_)
+		    {
+		      return cte_attr;
+		    }
+		}
+	    }
+	}
+    }
+
+  return NULL;
 }
 
 /*
@@ -10803,10 +10863,10 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 	  if (sc_info_ptr->system_class && PT_IS_QUERY (node))
 	    {
 	      /* do not cache the result if a system class is involved in the query */
-	      node->info.query.reexecute = 1;
-	      node->info.query.do_cache = 0;
-	      node->info.query.do_not_cache = 1;
-	      node->info.query.has_system_class = 1;
+	      node->info.query.flag.reexecute = 1;
+	      node->info.query.flag.do_cache = 0;
+	      node->info.query.flag.do_not_cache = 1;
+	      node->info.query.flag.has_system_class = 1;
 	    }
 
 	  if (node->node_type == PT_UPDATE || node->node_type == PT_DELETE || node->node_type == PT_INSERT
@@ -10820,13 +10880,13 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 	      node = parser_walk_tree (parser, node, pt_check_and_replace_hostvar, &check, pt_continue_walk, NULL);
 	      if (check)
 		{
-		  node->cannot_prepare = 1;
+		  node->flag.cannot_prepare = 1;
 		}
 
 	      /* because the statement has some object type PT_PARAMETER, it cannot be prepared */
 	      if (parent_parser != NULL)
 		{
-		  node->cannot_prepare = 1;
+		  node->flag.cannot_prepare = 1;
 		}
 	    }
 
@@ -11615,7 +11675,7 @@ pt_check_assignments (PARSER_CONTEXT * parser, PT_NODE * stmt)
 		    {
 		      for (; list && rhs_list; rhs_list = rhs_list->next)
 			{
-			  if (rhs_list->is_hidden_column)
+			  if (rhs_list->flag.is_hidden_column)
 			    {
 			      /* skip hidden column */
 			      continue;
@@ -12760,7 +12820,7 @@ pt_check_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
 		    }
 
 		  /* sorting node should be either an existing select node or an hidden column added by system */
-		  assert (n <= select_list_len || col->is_hidden_column);
+		  assert (n <= select_list_len || col->flag.is_hidden_column);
 
 		  if (col->node_type == PT_EXPR && col->info.expr.op == PT_ORDERBY_NUM)
 		    {
@@ -12837,7 +12897,7 @@ pt_check_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
 		{
 		  /* when check order by clause in create/alter view, do not change order_by and select_list. The order
 		   * by clause will be replaced in mq_translate_subqueries() again. */
-		  if (query->do_not_replace_orderby)
+		  if (query->flag.do_not_replace_orderby)
 		    {
 		      continue;
 		    }
@@ -12852,7 +12912,7 @@ pt_check_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
 		  else
 		    {
 		      /* mark as a hidden column */
-		      col->is_hidden_column = 1;
+		      col->flag.is_hidden_column = 1;
 		      parser_append_node (col, select_list);
 		    }
 		}
@@ -14680,7 +14740,7 @@ pt_check_analytic_function (PARSER_CONTEXT * parser, PT_NODE * func, void *arg, 
       /* try to match with something in the select list */
       for (col = select_list, index = 1; col; col = col->next, index++)
 	{
-	  if (col->is_hidden_column)
+	  if (col->flag.is_hidden_column)
 	    {
 	      /* skip hidden columns; they might disappear later on */
 	      continue;
@@ -16032,12 +16092,12 @@ pt_try_remove_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
       /* no column is ORDERBY_NUM, order_by can be removed */
       parser_free_tree (parser, query->info.query.order_by);
       query->info.query.order_by = NULL;
-      query->info.query.order_siblings = 0;
+      query->info.query.flag.order_siblings = 0;
 
       for (col = pt_get_select_list (parser, query); col && col->next; col = next)
 	{
 	  next = col->next;
-	  if (next->is_hidden_column)
+	  if (next->flag.is_hidden_column)
 	    {
 	      parser_free_tree (parser, next);
 	      col->next = NULL;
@@ -16178,7 +16238,7 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD
       pt_move_node (union_orderby, union_node->info.query.order_by);
       pt_move_node (union_orderby_for, union_node->info.query.orderby_for);
       pt_move_node (union_limit, union_node->info.query.limit);
-      union_rewrite_limit = union_node->info.query.rewrite_limit;
+      union_rewrite_limit = union_node->info.query.flag.rewrite_limit;
       pt_move_node (union_with_clause, union_node->info.query.with);
 
       /* When active node has a limit or orderby_for clause and union node has a limit or ORDERBY clause, need a
@@ -16215,7 +16275,7 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD
       if (union_limit != NULL)
 	{
 	  new_node->info.query.limit = union_limit;
-	  new_node->info.query.rewrite_limit = union_rewrite_limit;
+	  new_node->info.query.flag.rewrite_limit = union_rewrite_limit;
 	}
       if (union_with_clause)
 	{
