@@ -99,7 +99,6 @@ TEST_CASE ("Test with a valid log page returned", "")
     do_test (env);
   }
 
-  // cubthread::retire_entry (thread_p);
   cubthread::finalize ();
 }
 
