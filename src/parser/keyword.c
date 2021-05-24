@@ -530,12 +530,13 @@ static int keyword_cmp (const void *k1, const void *k2);
 /* The GET_KEYWORD_HASH_VALUE() macro is the definition of the djb2 algorithm as a macro.
  * Refer to the string_hash() function implemented in the libcubmemc.c file.
  */
-#define GET_KEYWORD_HASH_VALUE(h,s) do { \
-      unsigned char* p = (unsigned char*)(s);   \
-      for((h) = 5381;  *p; p++ )                \
-        {                                       \
+#define GET_KEYWORD_HASH_VALUE(h,s) \
+  do { \
+      unsigned char* p = (unsigned char*)(s); \
+      for((h) = 5381;  *p; p++ ) \
+        { \
              (h) = (((h) << 5) + (h)) + *p; /* hash * 33 + c */ \
-        }                                       \
+        } \
   } while(0)
 
 static int
