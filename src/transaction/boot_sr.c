@@ -2559,6 +2559,27 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
   else if (get_server_type () == SERVER_TYPE_TRANSACTION)
     {
+      // transaction server initializes usage of either local or remote storage
+      ats_Gl.init_has_remote_storage (get_server_type ());
+      if (ats_Gl.has_remote_storage ())
+	{
+	  // transaction server ought to be connected by now
+	  if (ats_Gl.is_page_server_connected ())
+	    {
+	      er_log_debug (ARG_FILE_LINE, "Transaction server runs on remote storage.");
+	    }
+	  else
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SCALABILITY_DEV_RESERVED_ERROR05, 0);
+	      error_code = ER_SCALABILITY_DEV_RESERVED_ERROR05;
+	      goto error;
+	    }
+	}
+      else
+	{
+	  er_log_debug (ARG_FILE_LINE, "Transaction server runs on local storage.");
+	}
+
       ats_Gl.init_log_page_broker ();
     }
 #endif // SERVER_MODE

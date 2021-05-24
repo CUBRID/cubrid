@@ -23,6 +23,7 @@
 #include "ats_ps_request.hpp"
 #include "communication_node.hpp"
 #include "request_sync_client_server.hpp"
+#include "server_type.hpp"
 
 #include <memory>
 #include <string>
@@ -50,6 +51,9 @@ class active_tran_server
 
     cublog::page_broker &get_log_page_broker ();
 
+    void init_has_remote_storage (const SERVER_TYPE a_server_type);
+    bool has_remote_storage () const;
+
     void push_request (ats_to_ps_request reqid, std::string &&payload);
 
   private:
@@ -70,6 +74,8 @@ class active_tran_server
 
     std::unique_ptr<cublog::page_broker> m_log_page_broker;
     std::vector<cubcomm::node> m_connection_list;
+
+    bool m_has_remote_storage;
 };
 
 extern active_tran_server ats_Gl;

@@ -251,6 +251,19 @@ active_tran_server::get_log_page_broker ()
   return *m_log_page_broker;
 }
 
+void active_tran_server::init_has_remote_storage (const SERVER_TYPE a_server_type)
+{
+  // precondition: server type must have been initialized
+  assert_is_active_tran_server ();
+
+  m_has_remote_storage = prm_get_bool_value (PRM_ID_REMOTE_STORAGE);
+}
+
+bool active_tran_server::has_remote_storage () const
+{
+  return m_has_remote_storage;
+}
+
 void
 active_tran_server::push_request (ats_to_ps_request reqid, std::string &&payload)
 {

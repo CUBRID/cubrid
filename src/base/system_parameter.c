@@ -708,6 +708,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_RECOVERY_PARALLEL_COUNT "recovery_parallel_count"
 #define PRM_NAME_REPLICATION_PARALLEL_COUNT "replication_parallel_count"
 
+#define PRM_NAME_REMOTE_STORAGE "remote_storage"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
@@ -2033,18 +2035,6 @@ int PRM_ER_LOG_VACUUM = 1;
 static int prm_er_log_vacuum_default = 1;
 static unsigned int prm_er_log_vacuum_flag = 0;
 
-bool PRM_ER_LOG_READ_LOG_PAGE = true;
-static bool prm_er_log_read_log_page_default = false;
-static unsigned int prm_er_log_read_log_page_flag = 0;
-
-bool PRM_ER_LOG_READ_DATA_PAGE = true;
-static bool prm_er_log_read_data_page_default = false;
-static unsigned int prm_er_log_read_data_page_flag = 0;
-
-bool PRM_ER_LOG_CALC_REPL_DELAY = true;
-static bool prm_er_log_calc_repl_delay_default = false;
-static unsigned int prm_er_log_calc_repl_delay_flag = 0;
-
 bool PRM_DISABLE_VACUUM = false;
 static bool prm_disable_vacuum_default = false;
 static unsigned int prm_disable_vacuum_flag = 0;
@@ -2382,18 +2372,6 @@ static int prm_server_type_lower = SERVER_TYPE_TRANSACTION;
 static int prm_server_type_upper = SERVER_TYPE_PAGE;
 static unsigned int prm_server_type_flag = 0;
 
-static unsigned int prm_recovery_parallel_count_flag = 0;
-static int prm_recovery_parallel_count_default = 8;
-int PRM_RECOVERY_PARALLEL_COUNT_CURRENT_VALUE = 8;
-static int prm_recovery_parallel_count_upper_value = 32;
-static int prm_recovery_parallel_count_lower_value = 0;
-
-static unsigned int prm_replication_parallel_count_flag = 0;
-static int prm_replication_parallel_count_default = 8;
-int PRM_REPLICATION_PARALLEL_COUNT_CURRENT_VALUE = 8;
-static int prm_replication_parallel_count_upper_value = 32;
-static int prm_replication_parallel_count_lower_value = 0;
-
 bool PRM_ER_LOG_PRIOR_TRANSFER = false;
 static bool prm_er_log_prior_transfer_default = false;
 static unsigned int prm_er_log_prior_transfer_flag = 0;
@@ -2409,6 +2387,34 @@ static unsigned int prm_er_log_comm_channel_flag = 0;
 bool PRM_ER_LOG_COMMIT_CONFIRM = false;
 static bool prm_er_log_commit_confirm_default = false;
 static unsigned int prm_er_log_commit_confirm_flag = 0;
+
+bool PRM_ER_LOG_READ_LOG_PAGE = true;
+static bool prm_er_log_read_log_page_default = false;
+static unsigned int prm_er_log_read_log_page_flag = 0;
+
+bool PRM_ER_LOG_READ_DATA_PAGE = true;
+static bool prm_er_log_read_data_page_default = false;
+static unsigned int prm_er_log_read_data_page_flag = 0;
+
+bool PRM_ER_LOG_CALC_REPL_DELAY = true;
+static bool prm_er_log_calc_repl_delay_default = false;
+static unsigned int prm_er_log_calc_repl_delay_flag = 0;
+
+static unsigned int prm_recovery_parallel_count_flag = 0;
+static int prm_recovery_parallel_count_default = 8;
+int PRM_RECOVERY_PARALLEL_COUNT_CURRENT_VALUE = 8;
+static int prm_recovery_parallel_count_upper_value = 32;
+static int prm_recovery_parallel_count_lower_value = 0;
+
+static unsigned int prm_replication_parallel_count_flag = 0;
+static int prm_replication_parallel_count_default = 8;
+int PRM_REPLICATION_PARALLEL_COUNT_CURRENT_VALUE = 8;
+static int prm_replication_parallel_count_upper_value = 32;
+static int prm_replication_parallel_count_lower_value = 0;
+
+static bool prm_remote_storage_default = false;
+bool PRM_REMOTE_STORAGE_CURRENT_VALUE = prm_remote_storage_default;
+static unsigned int prm_remote_storage_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -6231,6 +6237,18 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_REPLICATION_PARALLEL_COUNT_CURRENT_VALUE,
    (void *) &prm_replication_parallel_count_upper_value,
    (void *) &prm_replication_parallel_count_lower_value,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_REMOTE_STORAGE,
+   PRM_NAME_REMOTE_STORAGE,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_remote_storage_flag,
+   (void *) &prm_remote_storage_default,
+   (void *) &PRM_REMOTE_STORAGE_CURRENT_VALUE,
+   (void *) NULL,
+   (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
