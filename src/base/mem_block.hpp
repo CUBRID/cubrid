@@ -71,7 +71,6 @@ namespace cubmem
     private:
       block (const block &) = delete;
       block &operator= (const block &) = delete;
-
   };
 
   // stack_block - 8-byte aligned stack block of size S
