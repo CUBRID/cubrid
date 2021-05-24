@@ -230,6 +230,6 @@ pgbuf_fix_release (THREAD_ENTRY *thread_p, const VPID *vpid, PAGE_FETCH_MODE fet
 void
 pgbuf_unfix (THREAD_ENTRY *thread_p, PAGE_PTR pgptr)
 {
-  pbguf_unfix_debug (thread_p, pgptr, nullptr, 0);
+  pgbuf_unfix_debug (thread_p, pgptr, nullptr, 0);
 }
 #endif //NDEBUG
