@@ -3301,10 +3301,10 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PT_UNKNOWN_STATEMENT, 1, statement->node_type);
 	  break;
 	}
-      if(prm_get_bool_value (PRM_ID_SUPPLEMENTAL_LOG))
-      {
-        do_supplemental_statement (parser, statement);        
-      }
+      if (prm_get_bool_value (PRM_ID_SUPPLEMENTAL_LOG))
+	{
+	  do_supplemental_statement (parser, statement);
+	}
 
       /* enable data replication log */
       if (need_stmt_replication)
@@ -3759,9 +3759,9 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       break;
     }
 
-  if  (prm_get_bool_value (PRM_ID_SUPPLEMENTAL_LOG))
+  if (prm_get_bool_value (PRM_ID_SUPPLEMENTAL_LOG))
     {
-      do_supplemental_statement (parser, statement);        
+      do_supplemental_statement (parser, statement);
     }
 
   /* enable data replication log */
@@ -14684,7 +14684,7 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  return NO_ERROR;
 	}
       repl_stmt.statement_type = CUBRID_STMT_DROP_CLASS;
-      /*if (prm_get_bool_value (PRM_ID_SUPPLEMENTAL_LOG)) statement->info.drop.spec_list.info.spec.entity_name*/
+      /*if (prm_get_bool_value (PRM_ID_SUPPLEMENTAL_LOG)) statement->info.drop.spec_list.info.spec.entity_name */
       break;
 
     case PT_CREATE_INDEX:
@@ -14950,12 +14950,12 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   PARSER_VARCHAR **classname_list = NULL;
   PARSER_VARCHAR *objname = NULL;
   PARSER_VARCHAR **objname_list = NULL;
-  
+
   PT_NODE *entity_list = NULL;
   PT_NODE *entity = NULL;
   PT_NODE *entity_spec = NULL;
   PT_NODE *target = NULL;
-  int statement_type = 0; 
+  int statement_type = 0;
   OID *classoid = NULL;
   OID *oid = NULL;
   int stmt_length = 0;
@@ -14992,17 +14992,17 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  return NO_ERROR;
 	}
       for (entity_spec = statement->info.drop.spec_list; entity_spec != NULL; entity_spec = entity_spec->next)
-      {
-        entity_list = entity_spec->info.spec.flat_entity_list;
-        for(entity = entity_list; entity != NULL; entity = entity->next)
-        {
-          classname_list = (PARSER_VARCHAR**) realloc (classname_list, sizeof(PARSER_VARCHAR*) * (++num_class)); 
-          classname_list[num_class-1] = pt_print_bytes (parser, entity);
-          printf ("%s class name \n", (char*)(classname_list[num_class-1]->bytes));
-        }
-      }
+	{
+	  entity_list = entity_spec->info.spec.flat_entity_list;
+	  for (entity = entity_list; entity != NULL; entity = entity->next)
+	    {
+	      classname_list = (PARSER_VARCHAR **) realloc (classname_list, sizeof (PARSER_VARCHAR *) * (++num_class));
+	      classname_list[num_class - 1] = pt_print_bytes (parser, entity);
+	      printf ("%s class name \n", (char *) (classname_list[num_class - 1]->bytes));
+	    }
+	}
       statement_type = CUBRID_STMT_DROP_CLASS;
-      /*if (prm_get_bool_value (PRM_ID_SUPPLEMENTAL_LOG)) statement->info.drop.spec_list.info.spec.entity_name*/
+      /*if (prm_get_bool_value (PRM_ID_SUPPLEMENTAL_LOG)) statement->info.drop.spec_list.info.spec.entity_name */
       break;
 
     case PT_CREATE_INDEX:
@@ -15116,7 +15116,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NO_ERROR;
     }
 
-    if (parser->host_var_count == 0)
+  if (parser->host_var_count == 0)
     {
       /* it may contain multiple statements */
       if (strlen (statement->sql_user_text) > statement->sql_user_text_len)
@@ -15201,17 +15201,18 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 //  repl_stmt.db_user = db_get_user_name ();
 
-  if(statement_type == PT_DROP)
-  {
-    error = log_supplement_statement (statement_type, num_class, classname_list, objname, stmt_text);
-  }else
-  {
-    num_class = 1;
-    classname_list = (PARSER_VARCHAR**)malloc(sizeof(PARSER_VARCHAR*));
-    classname_list[0] = classname;
-    error = log_supplement_statement(statement_type, num_class, classname_list, objname, stmt_text);
-  }
-  
+  if (statement_type == PT_DROP)
+    {
+      error = log_supplement_statement (statement_type, num_class, classname_list, objname, stmt_text);
+    }
+  else
+    {
+      num_class = 1;
+      classname_list = (PARSER_VARCHAR **) malloc (sizeof (PARSER_VARCHAR *));
+      classname_list[0] = classname;
+      error = log_supplement_statement (statement_type, num_class, classname_list, objname, stmt_text);
+    }
+
   if (stmt_end != NULL)
     {
       *stmt_end = stmt_separator;
@@ -15231,9 +15232,9 @@ end:
     }
 
   if (classname_list)
-  { 
-    free (classname_list);
-  }
+    {
+      free (classname_list);
+    }
 
   return error;
 }

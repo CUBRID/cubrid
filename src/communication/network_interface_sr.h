@@ -239,5 +239,5 @@ extern void sloaddb_interrupt (THREAD_ENTRY * thread_p, unsigned int rid, char *
 extern void sloaddb_update_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void ssession_stop_attached_threads (void *session);
 
-extern void slog_supplement_statement(THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen);
+extern void slog_supplement_statement (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 #endif /* _NETWORK_INTERFACE_SR_H_ */

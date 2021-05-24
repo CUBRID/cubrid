@@ -4588,9 +4588,9 @@ static void
 log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa)
 {
   if (prm_get_bool_value (PRM_ID_SUPPLEMENTAL_LOG) == true)
-  {
-    log_append_supplemental_log (thread_p, LOG_SUPPLEMENT_TRAN_USER, LOG_USERNAME_MAX, tdes->client.get_db_user());
-  }
+    {
+      log_append_supplemental_log (thread_p, LOG_SUPPLEMENT_TRAN_USER, LOG_USERNAME_MAX, tdes->client.get_db_user ());
+    }
 
   log_Gl.prior_info.prior_lsa_mutex.lock ();
 
@@ -4717,7 +4717,7 @@ log_append_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commi
 {
   if (prm_get_bool_value (PRM_ID_SUPPLEMENTAL_LOG) == true)
     {
-      log_append_supplemental_log (thread_p, LOG_SUPPLEMENT_TRAN_USER, LOG_USERNAME_MAX, tdes->client.get_db_user());
+      log_append_supplemental_log (thread_p, LOG_SUPPLEMENT_TRAN_USER, LOG_USERNAME_MAX, tdes->client.get_db_user ());
     }
   log_append_donetime_internal (thread_p, tdes, commit_lsa, LOG_COMMIT, LOG_PRIOR_LSA_WITHOUT_LOCK);
 }
@@ -4749,7 +4749,7 @@ log_append_abort_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * abort_
 {
   if (prm_get_bool_value (PRM_ID_SUPPLEMENTAL_LOG) == true)
     {
-      log_append_supplemental_log (thread_p, LOG_SUPPLEMENT_TRAN_USER, LOG_USERNAME_MAX, tdes->client.get_db_user());
+      log_append_supplemental_log (thread_p, LOG_SUPPLEMENT_TRAN_USER, LOG_USERNAME_MAX, tdes->client.get_db_user ());
     }
   log_append_donetime_internal (thread_p, tdes, abort_lsa, LOG_ABORT, LOG_PRIOR_LSA_WITHOUT_LOCK);
 }
@@ -4765,7 +4765,8 @@ log_append_abort_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * abort_
  *   
  */
 
-void log_append_supplemental_log (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE rec_type, int length, const void * data)
+void
+log_append_supplemental_log (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE rec_type, int length, const void *data)
 {
   LOG_PRIOR_NODE *node;
   LOG_REC_SUPPLEMENT *supplement;
@@ -4774,17 +4775,19 @@ void log_append_supplemental_log (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE r
   tdes = LOG_FIND_TDES (tran_index);
   assert (prm_get_bool_value (PRM_ID_SUPPLEMENTAL_LOG) == true);
   /*supplement data will be stored at undo data */
-  node = prior_lsa_alloc_and_copy_data (thread_p, LOG_SUPPLEMENTAL_INFO, RV_NOT_DEFINED, NULL, length, (char*)data,0,NULL);
- if(node == NULL)
- {
-   return ;
- } 
- supplement = (LOG_REC_SUPPLEMENT *) node->data_header;
- supplement->rec_type = rec_type;
- supplement->length = length;
+  node =
+    prior_lsa_alloc_and_copy_data (thread_p, LOG_SUPPLEMENTAL_INFO, RV_NOT_DEFINED, NULL, length, (char *) data, 0,
+				   NULL);
+  if (node == NULL)
+    {
+      return;
+    }
+  supplement = (LOG_REC_SUPPLEMENT *) node->data_header;
+  supplement->rec_type = rec_type;
+  supplement->length = length;
 
- prior_lsa_next_record (thread_p, node, tdes);
-} 
+  prior_lsa_next_record (thread_p, node, tdes);
+}
 
 /*
  * log_add_to_modified_class_list -
