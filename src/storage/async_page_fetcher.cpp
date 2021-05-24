@@ -68,7 +68,13 @@ namespace cublog
 
   void data_page_fetch_task::execute (context_type &context)
   {
-    ps_Gl.get_replicator ().wait_past_target_lsa (m_lsa);
+    if (!m_lsa.is_null ())
+      {
+	// TODO: FIXME
+	// The transaction server boots and reads pages before initializing its log module and before knowing a safe target
+	// LSA for replication. A way of knowing this target LSA is required, but disable this wait until that's fixed.
+	ps_Gl.get_replicator ().wait_past_target_lsa (m_lsa);
+      }
 
     PAGE_PTR page_ptr = pgbuf_fix (&context, &m_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
 

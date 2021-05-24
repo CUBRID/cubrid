@@ -32,6 +32,8 @@
 
 std::mutex global_mutex;
 
+// maps contain non-owning pointers
+std::atomic_bool global_sockdirs_initialized = false;
 std::map<std::string, mock_socket_direction *> global_sender_sockdirs;
 std::map<std::string, mock_socket_direction *> global_receiver_sockdirs;
 
@@ -115,10 +117,18 @@ mock_socket_direction::wait_until_message_count (size_t count)
 
 void
 add_socket_direction (const std::string &sender_id, const std::string &receiver_id,
-		      mock_socket_direction &sockdir)
+		      mock_socket_direction &sockdir, bool last_one_to_be_initialized)
 {
   global_sender_sockdirs.emplace (sender_id, &sockdir);
   global_receiver_sockdirs.emplace (receiver_id, &sockdir);
+  if (last_one_to_be_initialized)
+    {
+      global_sockdirs_initialized.store (true);
+    }
+  else
+    {
+      global_sockdirs_initialized.store (false);
+    }
 }
 
 void
@@ -126,6 +136,7 @@ clear_socket_directions ()
 {
   global_sender_sockdirs.clear ();
   global_receiver_sockdirs.clear ();
+  global_sockdirs_initialized.store (false);
 }
 
 namespace cubcomm
@@ -175,7 +186,7 @@ namespace cubcomm
   css_error_code channel::recv (char *buffer, std::size_t &maxlen_in_recvlen_out)
   {
     const std::string channel_id = get_channel_id ();
-    assert (global_receiver_sockdirs.find (channel_id) != global_receiver_sockdirs.end ());
+    assert (global_receiver_sockdirs.find (channel_id) != global_receiver_sockdirs.cend ());
 
     std::string message;
 
@@ -192,7 +203,7 @@ namespace cubcomm
   css_error_code channel::send (const char *buffer, std::size_t length)
   {
     const std::string channel_id = get_channel_id ();
-    assert (global_sender_sockdirs.find (channel_id) != global_sender_sockdirs.end ());
+    assert (global_sender_sockdirs.find (channel_id) != global_sender_sockdirs.cend ());
 
     global_sender_sockdirs[channel_id]->push_message (std::string (buffer, length));
     return NO_ERRORS;
@@ -248,14 +259,21 @@ namespace cubcomm
   int channel::wait_for (unsigned short int, unsigned short int &revents)
   {
     std::string chnid = get_channel_id ();
-    assert (global_receiver_sockdirs.find (chnid) != global_receiver_sockdirs.end ());
-    if (global_receiver_sockdirs[chnid]->has_message ())
+    if (global_sockdirs_initialized.load () == false)
       {
-	revents = POLLIN;
+	revents = 0;
       }
     else
       {
-	revents = 0;
+	assert (global_receiver_sockdirs.find (chnid) != global_receiver_sockdirs.cend ());
+	if (global_receiver_sockdirs[chnid]->has_message ())
+	  {
+	    revents = POLLIN;
+	  }
+	else
+	  {
+	    revents = 0;
+	  }
       }
     return 0;
   }

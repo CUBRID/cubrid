@@ -172,6 +172,8 @@ namespace cubcomm
 
       const channel &get_channel () const;						  // get underlying channel
 
+      bool is_thread_started () const;
+
     protected:
       channel m_channel;	  // request are received on this channel
 
@@ -274,6 +276,8 @@ namespace cubcomm
   template <typename MsgId>
   void request_server<MsgId>::start_thread ()
   {
+    assert (false == m_thread.joinable ());
+
     m_shutdown = false;
     m_thread = std::thread (&request_server::loop_handle_requests, std::ref (*this));
   }
@@ -281,8 +285,16 @@ namespace cubcomm
   template <typename MsgId>
   void request_server<MsgId>::stop_thread ()
   {
+    assert (is_thread_started ());
+
     m_shutdown = true;
     m_thread.join ();
+  }
+
+  template <typename MsgId>
+  bool request_server<MsgId>::is_thread_started () const
+  {
+    return m_thread.joinable ();
   }
 
   template <typename MsgId>
