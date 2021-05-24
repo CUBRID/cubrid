@@ -24897,17 +24897,15 @@ dblink_column_definition
                         node->data_type = dt = CONTAINER_AT_1 ($2);
                         node->info.attr_def.attr_name = $1;
 
-                        if(typ == PT_TYPE_BLOB || typ == PT_TYPE_CLOB)
-                                ; // TODO: error processing
+                        if(typ == PT_TYPE_BLOB || typ == PT_TYPE_CLOB || typ == PT_TYPE_OBJECT)
+                          {
+                                // TODO: error processing
+                                PT_ERROR (this_parser, node, "invalid DBLINK column type");
+                                assert (false); 
+                          }
 
                         if (typ == PT_TYPE_CHAR && dt)
-                                node->info.attr_def.size_constraint = dt->info.data_type.precision;
-                        if (typ == PT_TYPE_OBJECT && dt && dt->type_enum == PT_TYPE_VARCHAR)
-                        {
-                                node->type_enum = dt->type_enum;
-                                PT_NAME_INFO_SET_FLAG (node->info.attr_def.attr_name,
-                                                PT_NAME_INFO_EXTERNAL);
-                        }
+                                node->info.attr_def.size_constraint = dt->info.data_type.precision;                      
                 }
 
                 $$ = node;
