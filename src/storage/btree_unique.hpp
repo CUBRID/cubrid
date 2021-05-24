@@ -98,7 +98,7 @@ class multi_index_unique_stats
     void to_string (string_buffer &strbuf) const;
 
     multi_index_unique_stats &operator= (multi_index_unique_stats &&other);
-    multi_index_unique_stats &operator= (const multi_index_unique_stats &other) = default;
+    multi_index_unique_stats &operator= (const multi_index_unique_stats &other) = delete ;
     void operator+= (const multi_index_unique_stats &other);
 
   private:

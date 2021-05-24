@@ -140,7 +140,7 @@ TEST_CASE ("Test pack/unpack checkpoint_info class 3", "")
 
 std::map<TRANID, log_tdes *> tran_map;
 std::map<TRANID, log_tdes *> systb_System_tdes;
-int after_count;
+int count_2pc_after_recovery;
 
 TEST_CASE ("Test load and recovery on empty tran table", "")
 {
@@ -177,6 +177,8 @@ full_compare_tdes (log_tdes *td1, const log_tdes *td2)
   REQUIRE (td1->posp_nxlsa == td2->posp_nxlsa);
   REQUIRE (td1->savept_lsa == td2->savept_lsa);
   REQUIRE (td1->tail_topresult_lsa == td2->tail_topresult_lsa);
+  REQUIRE (td1->rcv.sysop_start_postpone_lsa == td2->rcv.sysop_start_postpone_lsa);
+  REQUIRE (td1->rcv.atomic_sysop_start_lsa == td2->rcv.atomic_sysop_start_lsa);
 }
 
 void
@@ -188,6 +190,8 @@ full_compare_tdes_active (log_tdes *td1, const log_tdes *td2)
   REQUIRE (td1->posp_nxlsa == td2->posp_nxlsa);
   REQUIRE (td1->savept_lsa == td2->savept_lsa);
   REQUIRE (td1->tail_topresult_lsa == td2->tail_topresult_lsa);
+  REQUIRE (td1->rcv.sysop_start_postpone_lsa == td2->rcv.sysop_start_postpone_lsa);
+  REQUIRE (td1->rcv.atomic_sysop_start_lsa == td2->rcv.atomic_sysop_start_lsa);
 }
 
 void
@@ -203,25 +207,13 @@ check_recovery (checkpoint_info obj)
     {
       LOG_TDES *tdes = log_Gl.trantable.all_tdes[i];
 
-      if (log_Gl.trantable.all_tdes[i]->trid < NULL_TRANID)
+      if (log_Gl.trantable.all_tdes[i]->trid == NULL_TRANID)
 	{
-	  std::map<TRANID, log_tdes *>::const_iterator tdes_after = systb_System_tdes.find (tdes->trid);
-
-	  if (tdes->topops.last == -1 || tdes->rcv.sysop_start_postpone_lsa == NULL_LSA
-	      || tdes->rcv.atomic_sysop_start_lsa == NULL_LSA)
-	    {
-	      REQUIRE (tdes_after->second->topops.last == -1);
-	    }
-	  else
-	    {
-	      REQUIRE (tdes_after->second->topops.last == 0);
-	      REQUIRE (tdes->rcv == tdes_after->second->rcv);
-	    }
 	  continue;
 	}
 
       std::map<TRANID, log_tdes *>::const_iterator tdes_after = tran_map.find (tdes->trid);
-      if (tdes->trid != NULL && tdes->tail_lsa == NULL_LSA)
+      if (tdes->trid != NULL_TRANID && tdes->tail_lsa == NULL_LSA)
 	{
 	  REQUIRE (tdes_after == tran_map.end());
 	  continue;
@@ -244,10 +236,32 @@ check_recovery (checkpoint_info obj)
       REQUIRE (tdes_after->second->state == tdes->state);
       full_compare_tdes (tdes, tdes_after->second);
     }
+
+  for (itr = systb_System_tdes.begin(); itr != systb_System_tdes.end(); ++itr)
+    {
+      std::map<TRANID, log_tdes *>::const_iterator tdes_after = tran_map.find (itr->first);
+      // check topops/rcv only
+
+      if (tdes_after == tran_map.end())
+	{
+	  continue;
+	}
+
+      if (itr->second->topops.last == -1 || itr->second->rcv.sysop_start_postpone_lsa == NULL_LSA
+	  || itr->second->rcv.atomic_sysop_start_lsa == NULL_LSA)
+	{
+	  REQUIRE (tdes_after->second->topops.last == 0);
+	}
+      else
+	{
+	  REQUIRE (itr->second->rcv.sysop_start_postpone_lsa == tdes_after->second->rcv.sysop_start_postpone_lsa);
+	  REQUIRE (itr->second->rcv.atomic_sysop_start_lsa == tdes_after->second->rcv.atomic_sysop_start_lsa);
+	}
+    }
 }
 
 size_t
-number_of_2pc()
+number_of_2pc ()
 {
   size_t count = 0;
   for (int i = 1; i < log_Gl.trantable.num_total_indices; i++)
@@ -260,7 +274,7 @@ number_of_2pc()
   return count;
 }
 
-TEST_CASE ("Test load and recovery on 100 tran table entries", "")
+TEST_CASE ("Test load and recovery on every tran table entry ", "")
 {
   test_env_chkpt env;
   LOG_LSA smallest_lsa;
@@ -268,12 +282,12 @@ TEST_CASE ("Test load and recovery on 100 tran table entries", "")
   THREAD_ENTRY thd;
 
   env.generate_tran_table ();
-  int count = number_of_2pc ();
+  int count_2pc_in_trantable = number_of_2pc ();
   env.get_after ()->load_trantable_snapshot (&thd, smallest_lsa);
   env.get_after ()->recovery_analysis (&thd, start_lsa);
   env.get_after ()->recovery_2pc_analysis (&thd);
   check_recovery (*env.get_after ());
-  REQUIRE (count == after_count);
+  REQUIRE (count_2pc_in_trantable == count_2pc_after_recovery);
 
 }
 
@@ -459,29 +473,98 @@ test_env_chkpt::generate_tdes (int index)
 void
 test_env_chkpt::generate_tran_table()
 {
-  log_Gl.trantable.num_total_indices = 120;
-
+  log_Gl.trantable.num_total_indices = 18;
   int size = log_Gl.trantable.num_total_indices * sizeof (*log_Gl.trantable.all_tdes);
   log_Gl.trantable.all_tdes = (LOG_TDES **) malloc (size);
 
-  for (int i = 1; i < log_Gl.trantable.num_total_indices; i++)
-    {
-      log_Gl.trantable.all_tdes[i] = generate_tdes (i);
-    }
+  log_tdes *tdes;
+  int tran_index = 0;
+  log_Gl.trantable.all_tdes[tran_index] = generate_tdes (tran_index);
+  tran_index++;
 
-  log_Gl.trantable.all_tdes[101]->tail_lsa = NULL_LSA;
-  log_Gl.trantable.all_tdes[101]->trid = NULL_TRANID;
+  // Generate with NULL_TRANID
+  log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
+  tdes->trid = NULL_TRANID;
+  ++tran_index;
 
-  log_Gl.trantable.all_tdes[102]->tail_lsa = NULL_LSA;
-  log_Gl.trantable.all_tdes[102]->trid = NULL_TRANID;
+  // Generate with NULL tail
+  log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
+  tdes->tail_lsa = NULL_LSA;
+  tdes->rcv.atomic_sysop_start_lsa = NULL_LSA;
+  tdes->rcv.sysop_start_postpone_lsa = NULL_LSA;
+  ++tran_index;
 
-  log_Gl.trantable.all_tdes[103]->tail_lsa = NULL_LSA;
-  log_Gl.trantable.all_tdes[103]->trid = NULL_TRANID;
+  // Generate with (almost) every state
+  log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
+  tdes->state = TRAN_ACTIVE;
+  ++tran_index;
+  log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
+  tdes->state = TRAN_UNACTIVE_COMMITTED;
+  ++tran_index;
+  log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
+  tdes->state = TRAN_UNACTIVE_WILL_COMMIT;
+  ++tran_index;
+  log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
+  tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
+  ++tran_index;
+  log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
+  tdes->state = TRAN_UNACTIVE_ABORTED;
+  ++tran_index;
+  log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
+  tdes->state = TRAN_UNACTIVE_UNILATERALLY_ABORTED;
+  ++tran_index;
+  log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
+  tdes->state = TRAN_UNACTIVE_2PC_PREPARE;
+  ++tran_index;
+  log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
+  tdes->state = TRAN_UNACTIVE_2PC_COLLECTING_PARTICIPANT_VOTES;
+  ++tran_index;
+  log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
+  tdes->state = TRAN_UNACTIVE_2PC_ABORT_DECISION;
+  ++tran_index;
+  log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
+  tdes->state = TRAN_UNACTIVE_2PC_COMMIT_DECISION;
+  ++tran_index;
+  log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
+  tdes->state = TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS;
+  ++tran_index;
+  log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
+  tdes->state = TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS;
+  ++tran_index;
+  // Generate topops
+  log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
+  tdes->topops.last = 0;
+  tdes->rcv.sysop_start_postpone_lsa = NULL_LSA;
+  tdes->rcv.atomic_sysop_start_lsa = NULL_LSA;
+  ++tran_index;
+  log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
+  tdes->topops.last = 1;
+  tdes->rcv.sysop_start_postpone_lsa = {1, 1};
+  tdes->rcv.atomic_sysop_start_lsa = NULL_LSA;
+  ++tran_index;
+  log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
+  tdes->topops.last = 2;
+  tdes->rcv.sysop_start_postpone_lsa = NULL_LSA;
+  tdes->rcv.atomic_sysop_start_lsa = {1, 1};
+  ++tran_index;
+  log_Gl.trantable.all_tdes[tran_index] = tdes = generate_tdes (tran_index);
+  tdes->topops.last = 3;
+  tdes->rcv.sysop_start_postpone_lsa = {1, 1};
+  tdes->rcv.atomic_sysop_start_lsa = {1, 1};
 
-  log_Gl.trantable.all_tdes[104]->trid = -104;
-  log_Gl.trantable.all_tdes[104]->rcv.atomic_sysop_start_lsa = generate_log_lsa ();
-  log_Gl.trantable.all_tdes[105]->trid = -105;
-  log_Gl.trantable.all_tdes[105]->rcv.sysop_start_postpone_lsa = generate_log_lsa ();
+  assert (tran_index == log_Gl.trantable.num_total_indices);
+
+  // Generate system tdes with and without topops
+  tran_index = -2;
+  tdes = generate_tdes (tran_index);
+  tdes->topops.last = -1;
+  systb_System_tdes[tran_index] = tdes;
+  tran_index = -3;
+  tdes = generate_tdes (tran_index);
+  tdes->topops.last = 0;
+  tdes->rcv.sysop_start_postpone_lsa = {1, 1};
+  tdes->rcv.atomic_sysop_start_lsa = {1, 1};
+  systb_System_tdes[tran_index] = tdes;
 }
 
 //
@@ -526,40 +609,8 @@ prm_get_bool_value (PARAM_ID prmid)
   return false;
 }
 
-LOG_PRIOR_NODE *
-prior_lsa_alloc_and_copy_data (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, LOG_RCVINDEX rcvindex,
-			       LOG_DATA_ADDR *addr, int ulength, const char *udata, int rlength, const char *rdata)
-{
-  assert (false);
-}
-
-LOG_LSA
-prior_lsa_next_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, log_tdes *tdes)
-{
-  assert (false);
-}
-
 void
 _er_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
-{
-  assert (false);
-}
-
-int
-logtb_reflect_global_unique_stats_to_btree (THREAD_ENTRY *thread_p)
-{
-  assert (false);
-}
-
-int
-pgbuf_flush_checkpoint (THREAD_ENTRY *thread_p, const LOG_LSA *flush_upto_lsa, const LOG_LSA *prev_chkpt_redo_lsa,
-			LOG_LSA *smallest_lsa, int *flushed_page_cnt)
-{
-  assert (false);
-}
-
-int
-fileio_synchronize_all (THREAD_ENTRY *thread_p, bool include_log)
 {
   assert (false);
 }
@@ -568,18 +619,6 @@ int
 csect_exit (THREAD_ENTRY *thread_p, int cs_index)
 {
   assert (true);
-}
-
-void
-logpb_flush_pages_direct (THREAD_ENTRY *thread_p)
-{
-  assert (false);
-}
-
-LOG_TDES *
-logtb_get_system_tdes (THREAD_ENTRY *thread_p)
-{
-  assert (false);
 }
 
 log_global::log_global ()
@@ -636,44 +675,10 @@ logtb_clear_tdes (THREAD_ENTRY *thread_p, LOG_TDES *tdes)
 {
 }
 
-log_tdes *
-systdes_create_tdes ()
+LOG_TDES *
+logtb_get_system_tdes (THREAD_ENTRY *thread_p)
 {
-  log_tdes *tdes = new log_tdes ();
-  return tdes;
-}
-
-log_tdes *
-log_system_tdes::rv_get_or_alloc_tdes (TRANID trid)
-{
-  log_tdes *tdes = rv_get_tdes (trid);
-  if (tdes == NULL)
-    {
-      log_tdes *tdes = systdes_create_tdes ();
-      tdes->state = TRAN_UNACTIVE_UNILATERALLY_ABORTED;
-      tdes->trid = trid;
-      systb_System_tdes[trid] = tdes;
-      return tdes;
-    }
-  else
-    {
-      assert (tdes->trid == trid);
-      return tdes;
-    }
-}
-
-log_tdes *
-log_system_tdes::rv_get_tdes (TRANID trid)
-{
-  auto it = systb_System_tdes.find (trid);
-  if (it != systb_System_tdes.end ())
-    {
-      return it->second;
-    }
-  else
-    {
-      return NULL;
-    }
+  assert (false);
 }
 
 LOG_TDES *
@@ -685,7 +690,13 @@ logtb_rv_find_allocate_tran_index (THREAD_ENTRY *thread_p, TRANID trid, const LO
 
   if (trid < NULL_TRANID)
     {
-      return log_system_tdes::rv_get_or_alloc_tdes (trid);
+      LOG_TDES *sys_tdes = new log_tdes ();
+      tdes->topops.last = -1;
+      LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
+      LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
+      sys_tdes->trid = trid;
+      tran_map.insert (std::pair<TRANID, log_tdes *> (trid, sys_tdes));
+      return sys_tdes;
     }
 
   for (int i = 1; i < NUM_TOTAL_TRAN_INDICES; i++)
@@ -694,15 +705,16 @@ logtb_rv_find_allocate_tran_index (THREAD_ENTRY *thread_p, TRANID trid, const LO
 	{
 	  continue;
 	}
-
-      *tdes = *log_Gl.trantable.all_tdes[i];
-      if (tdes->trid != NULL_TRANID && tdes->trid == trid)
+      if (log_Gl.trantable.all_tdes[i]->trid != NULL_TRANID && log_Gl.trantable.all_tdes[i]->trid == trid)
 	{
-	  if (tran_map.find (tdes->trid) != tran_map.end())
+	  std::map<TRANID, log_tdes *>::const_iterator inside_tdes = tran_map.find (trid);
+	  if (inside_tdes != tran_map.end())
 	    {
-	      return tdes;
+	      return inside_tdes->second;
 	    }
 
+	  LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
+	  LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
 	  tran_map.insert (std::pair<TRANID, log_tdes *> (trid, tdes));
 	  return tdes;
 	}
@@ -757,12 +769,6 @@ db_log_page_size (void)
 }
 
 int
-logtb_get_current_tran_index (void)
-{
-  return 1;
-}
-
-int
 log_read_sysop_start_postpone (THREAD_ENTRY *thread_p, LOG_LSA *log_lsa, LOG_PAGE *log_page, bool with_undo_data,
 			       LOG_REC_SYSOP_START_POSTPONE *sysop_start_postpone, int *undo_buffer_size,
 			       char **undo_buffer, int *undo_size, char **undo_data)
@@ -798,7 +804,7 @@ logtb_find_tran_index (THREAD_ENTRY *thread_p, TRANID trid)
 void
 log_2pc_recovery_analysis_info (THREAD_ENTRY *thread_p, log_tdes *tdes, LOG_LSA *upto_chain_lsa)
 {
-  after_count++;
+  count_2pc_after_recovery++;
 }
 
 namespace cubmem
