@@ -8681,7 +8681,8 @@ repl_set_info (REPL_INFO * repl_info)
 }
 
 int
-log_supplement_statement (int supplement_type, int num_class, PARSER_VARCHAR **classname_list, PARSER_VARCHAR * objname, char * stmt_text)
+log_supplement_statement (int supplement_type, int num_class, PARSER_VARCHAR ** classname_list,
+			  PARSER_VARCHAR * objname, char *stmt_text)
 {
 #if defined(CS_MODE)
   int req_error, success = ER_FAILED;
@@ -8692,50 +8693,49 @@ log_supplement_statement (int supplement_type, int num_class, PARSER_VARCHAR **c
 //  int *class_strlen = (int*)malloc (sizeof(int) * num_class);
   reply = OR_ALIGNED_BUF_START (a_reply);
 
- /*supplement type | num class | class name | objname | stmt_text | */
-  request_size = (OR_INT_SIZE	
-                  + OR_INT_SIZE                 
-		  + length_const_string (stmt_text, &strlen1));
-  if(objname != NULL)
-  {
-    request_size += objname->length;
-  }
-  for (int i = 0; i < num_class; i ++)
-  {
-    request_size += classname_list[i]->length;
-  }
+  /*supplement type | num class | class name | objname | stmt_text | */
+  request_size = (OR_INT_SIZE + OR_INT_SIZE + length_const_string (stmt_text, &strlen1));
+  if (objname != NULL)
+    {
+      request_size += objname->length;
+    }
+  for (int i = 0; i < num_class; i++)
+    {
+      request_size += classname_list[i]->length;
+    }
 
   request = (char *) malloc (request_size);
   if (request == NULL)
-  {
-    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
-    return ER_FAILED;
-  }
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
+      return ER_FAILED;
+    }
 
   ptr = or_pack_int (request, supplement_type);
   ptr = or_pack_int (ptr, num_class);
   for (int i = 0; i < num_class; i++)
-  {
-    ptr = pack_const_string_with_length (ptr, (char*)classname_list[i]->bytes, classname_list[i]->length);
-  }
-  if(objname != NULL)
-  {
-    ptr = pack_const_string_with_length (ptr, (char*)objname->bytes, objname->length);
-  }
+    {
+      ptr = pack_const_string_with_length (ptr, (char *) classname_list[i]->bytes, classname_list[i]->length);
+    }
+  if (objname != NULL)
+    {
+      ptr = pack_const_string_with_length (ptr, (char *) objname->bytes, objname->length);
+    }
   ptr = pack_const_string_with_length (ptr, stmt_text, strlen1);
   req_error =
-    net_client_request (NET_SERVER_SUPPLEMENT_STMT, request, request_size, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
-    
+    net_client_request (NET_SERVER_SUPPLEMENT_STMT, request, request_size, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL,
+			0, NULL, 0);
+
   return success;
 #else /* CS_MODE */
   int r = ER_FAILED;
-  char ** classes = (char**)malloc(sizeof(char*)*num_class);
-  for(int i =0; i++ ; i< num_class)
-  {
-    classes[i] = (char*)classname_list[i]->bytes;  
-  }
-  char * object = (char*)objname->bytes; 
-  
+  char **classes = (char **) malloc (sizeof (char *) * num_class);
+  for (int i = 0; i++; i < num_class)
+    {
+      classes[i] = (char *) classname_list[i]->bytes;
+    }
+  char *object = (char *) objname->bytes;
+
   THREAD_ENTRY *thread_p = enter_server ();
   r = xlog_supplement_statement (thread_p, supplement_type, num_class, classes, object, stmt_text);
   exit_server (*thread_p);

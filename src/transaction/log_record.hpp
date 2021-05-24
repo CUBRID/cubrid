@@ -412,7 +412,7 @@ typedef enum supplement_rec_type
   LOG_SUPPLEMENT_CLASS_OID,
   LOG_SUPPLEMENT_STATEMENT,
   LOG_SUPPLEMENT_LARGER_REC_TYPE,
-}SUPPLEMENT_REC_TYPE;
+} SUPPLEMENT_REC_TYPE;
 
 typedef struct log_rec_supplement LOG_REC_SUPPLEMENT;
 struct log_rec_supplement
