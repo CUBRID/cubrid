@@ -73,7 +73,6 @@
 #include "release_string.h"
 #include "execute_statement.h"
 #include "crypt_opfunc.h"
-#include "scope_exit.hpp"
 
 #include "db.h"
 #include "object_accessor.h"
