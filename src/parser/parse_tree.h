@@ -1697,10 +1697,6 @@ typedef PT_NODE *(*PARSER_INIT_NODE_FUNC) (PT_NODE *);
 typedef PARSER_VARCHAR *(*PARSER_PRINT_NODE_FUNC) (PARSER_CONTEXT * parser, PT_NODE * node);
 typedef PT_NODE *(*PARSER_APPLY_NODE_FUNC) (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
 
-extern PARSER_INIT_NODE_FUNC *pt_init_f;
-extern PARSER_PRINT_NODE_FUNC *pt_print_f;
-extern PARSER_APPLY_NODE_FUNC *pt_apply_f;
-
 /* This is for loose reference to init node function vector */
 typedef void (*PARSER_GENERIC_VOID_FUNCTION) ();
 
