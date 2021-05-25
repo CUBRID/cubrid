@@ -1199,6 +1199,47 @@ cubrid_log_error:
   return err_code;
 }
 
+static int
+cubrid_log_clear_data_item (DATA_ITEM_TYPE data_item_type, CUBRID_DATA_ITEM * data_item)
+{
+  int err_code;
+
+  switch (data_item_type)
+    {
+    case DATA_ITEM_TYPE_DDL:
+      /* nothing to do */
+      break;
+
+    case DATA_ITEM_TYPE_DML:
+      free (data_item->dml.changed_column_index);
+      free (data_item->dml.changed_column_data);
+      free (data_item->dml.changed_column_data_len);
+
+      free (data_item->dml.cond_column_index);
+      free (data_item->dml.cond_column_data);
+      free (data_item->dml.cond_column_data_len);
+
+      break;
+
+    case DATA_ITEM_TYPE_DCL:
+      /* nothing to do */
+      break;
+
+    case DATA_ITEM_TYPE_TIMER:
+      /* nothing to do */
+      break;
+
+    default:
+      assert (0);
+    }
+
+  return CUBRID_LOG_SUCCESS;
+
+cubrid_log_error:
+
+  return err_code;
+}
+
 /*
  * cubrid_log_clear_log_item () -
  *   return:
@@ -1207,17 +1248,35 @@ cubrid_log_error:
 int
 cubrid_log_clear_log_item (CUBRID_LOG_ITEM * log_item_list)
 {
+  int i;
+  int err_code;
+
   if (g_stage != CUBRID_LOG_STAGE_EXTRACTION)
     {
-      return CUBRID_LOG_INVALID_FUNC_CALL_STAGE;
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_FUNC_CALL_STAGE);
     }
 
   if (log_item_list == NULL)
     {
-      return CUBRID_LOG_INVALID_LOGITEM_LIST;
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LOGITEM_LIST);
     }
 
+  for (i = 0; i < g_log_items_count; i++)	// if g_log_items_count == 0 then nothing to do
+    {
+      if (cubrid_log_clear_data_item ((DATA_ITEM_TYPE) g_log_items[i].data_item_type, &g_log_items[i].data_item) !=
+	  CUBRID_LOG_SUCCESS)
+	{
+	  CUBRID_LOG_ERROR_HANDLING (CUBIRD_LOG_FAILED_DEALLOC);
+	}
+    }
+
+  g_log_items_count = 0;
+
   return CUBRID_LOG_SUCCESS;
+
+cubrid_log_error:
+
+  return err_code;
 }
 
 static int
