@@ -2253,8 +2253,8 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
       return;
     }
 
-  /* 
-   * if pgptr is NULL, the user data can be spilled as un-encrypted. 
+  /*
+   * if pgptr is NULL, the user data can be spilled as un-encrypted.
    * Now it seems that there is no case, but can be in the future.
    */
   if (addr->pgptr != NULL && LOG_MAY_CONTAIN_USER_DATA (rcvindex))
@@ -2909,8 +2909,8 @@ log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DAT
 	  return;
 	}
 
-      /* 
-       * By the comment above for this function, all the potpone log is page-oriented, 
+      /*
+       * By the comment above for this function, all the potpone log is page-oriented,
        * and have to contain page address. However, code below check if addr->pgptr is NULL.
        * So, we also check it just in case.
        */
@@ -3086,7 +3086,7 @@ log_append_compensate_internal (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, 
   compensate->length = length;
 
   /*
-   * Although compensation log is page-oriented, pgptr can be NULL 
+   * Although compensation log is page-oriented, pgptr can be NULL
    * when fails to fix the page because of an error.
    * In this case, we don't encrypt the log and it can contain user data un-encrypted.
    * After all, it is very rare and exceptional case.
@@ -9939,32 +9939,30 @@ log_flush_execute (cubthread::entry & thread_ref)
 
       // log_lsa compare is not thread safe. Use atomic load on non-atomic type log_Gl.hdr.append_lsa
       // Atomic operations need to reinterpret the 8-bytes of log_lsa as int64
-      // *INDENT-OFF*
       log_lsa append_lsa =
-	static_cast<log_lsa> (ATOMIC_LOAD_64 (reinterpret_cast<std::int64_t *> (&log_Gl.hdr.append_lsa)));
-      // *INDENT-ON*
+          static_cast<log_lsa> (ATOMIC_LOAD_64 (reinterpret_cast<std::int64_t *> (&log_Gl.hdr.append_lsa)));
 
-need_flush = log_Gl.prior_info.prior_list_header != nullptr || log_Gl.append.get_nxio_lsa () < append_lsa;
-}
+      need_flush = log_Gl.prior_info.prior_list_header != nullptr || log_Gl.append.get_nxio_lsa () < append_lsa;
+    }
 
-if (!need_flush)
-  {
-    // Try again later
-    return;
-  }
+  if (!need_flush)
+    {
+      // Try again later
+      return;
+    }
 
   // refresh log trace flush time
-thread_ref.event_stats.trace_log_flush_time = prm_get_integer_value (PRM_ID_LOG_TRACE_FLUSH_TIME_MSECS);
+  thread_ref.event_stats.trace_log_flush_time = prm_get_integer_value (PRM_ID_LOG_TRACE_FLUSH_TIME_MSECS);
 
-LOG_CS_ENTER (&thread_ref);
-logpb_flush_pages_direct (&thread_ref);
-LOG_CS_EXIT (&thread_ref);
+  LOG_CS_ENTER (&thread_ref);
+  logpb_flush_pages_direct (&thread_ref);
+  LOG_CS_EXIT (&thread_ref);
 
-log_Stat.gc_flush_count++;
+  log_Stat.gc_flush_count++;
 
-pthread_mutex_lock (&log_Gl.group_commit_info.gc_mutex);
-pthread_cond_broadcast (&log_Gl.group_commit_info.gc_cond);
-pthread_mutex_unlock (&log_Gl.group_commit_info.gc_mutex);
+  pthread_mutex_lock (&log_Gl.group_commit_info.gc_mutex);
+  pthread_cond_broadcast (&log_Gl.group_commit_info.gc_cond);
+  pthread_mutex_unlock (&log_Gl.group_commit_info.gc_mutex);
 }
 #endif /* SERVER_MODE */
 
