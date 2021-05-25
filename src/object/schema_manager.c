@@ -15444,41 +15444,6 @@ sm_free_constraint_info (SM_CONSTRAINT_INFO ** save_info)
 }
 
 /*
- * sm_remove_constraint_info() - Remove and free one from SM_CONSTRAINT_INFO list
- *   return: save_info->next
- *   save_info_list(in/out): The list to remove from
- *   save_info(in): The info to remove
- *
- * NOTE:
- *  - save_info_list can be set to other or NULL if the first item is removed.
- */
-SM_CONSTRAINT_INFO *
-sm_remove_constraint_info (SM_CONSTRAINT_INFO ** save_info_list, SM_CONSTRAINT_INFO * save_info)
-{
-  SM_CONSTRAINT_INFO **info_ptr = NULL;
-
-  if (save_info_list == NULL || save_info == NULL)
-    {
-      return NULL;
-    }
-
-  info_ptr = save_info_list;
-  while (*info_ptr != NULL)
-    {
-      if (*info_ptr == save_info)
-	{
-	  *info_ptr = (*info_ptr)->next;
-	  save_info->next = NULL;
-	  sm_free_constraint_info (&save_info);
-	  return *info_ptr;
-	}
-      info_ptr = &((*info_ptr)->next);
-    }
-
-  return NULL;
-}
-
-/*
  * sm_touch_class () - makes sure that the XASL query cache is emptied
  *                     by performing a null operation on a class
  *   return: NO_ERROR on success, non-zero for ERROR
