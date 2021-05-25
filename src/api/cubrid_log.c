@@ -878,8 +878,7 @@ cubrid_log_make_dml (char **data_info, DML * dml)
 	      break;
 
 	    case 6:
-	      dml->changed_column_data[i] = ptr;
-	      ptr = or_unpack_string_nocopy (ptr, &dml->changed_column_data[i]);
+	      assert (0);	// unused pack func code: or_pack_stream()
 	      break;
 
 	    case 7:
@@ -972,8 +971,7 @@ cubrid_log_make_dml (char **data_info, DML * dml)
 	      break;
 
 	    case 6:
-	      dml->cond_column_data[i] = ptr;
-	      ptr = or_unpack_string_nocopy (ptr, &dml->cond_column_data[i]);
+	      assert (0);	// unused pack func code: or_pack_stream()
 	      break;
 
 	    case 7:
