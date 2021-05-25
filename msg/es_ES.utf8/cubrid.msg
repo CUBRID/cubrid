@@ -1332,7 +1332,7 @@ Verifique la ruta del archivo de claves (_keys) y asegúrese de que incluya la c
 1261 No se puede encontrar la clave en el momento de restaurar (índice de clave: %1$d, hora de creación: %2$s). Establezca la clave (índice de clave: %3$d) para la base de datos.
 1262 El archivo de claves está lleno.
 1263 No se puede cifrar con TDE la página de registro (pageid: %1$lld). Ya no se intentará cifrar esta página.
-1264 Error reserved for scalability development.
+1264 Invalid format for configuration parameter %1s. Expected a 'hostname:port', found %2s
 1265 Error reserved for scalability development.
 1266 Error reserved for scalability development.
 1267 Error reserved for scalability development.

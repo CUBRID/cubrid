@@ -1622,7 +1622,7 @@
 #define ER_TDE_MAX_KEY_FILE                         -1262
 #define ER_TDE_ENCRYPTION_LOGPAGE_ERORR_AND_OFF_TDE -1263
 
-#define ER_SCALABILITY_DEV_RESERVED_ERROR01         -1264
+#define ER_HOST_PORT_PARAMETER                      -1264
 #define ER_SCALABILITY_DEV_RESERVED_ERROR02         -1265
 #define ER_SCALABILITY_DEV_RESERVED_ERROR03         -1266
 #define ER_SCALABILITY_DEV_RESERVED_ERROR04         -1267
@@ -1643,7 +1643,7 @@
 #define ER_SCALABILITY_DEV_RESERVED_ERROR19         -1282
 #define ER_SCALABILITY_DEV_RESERVED_ERROR20         -1283
 
-#define ER_LAST_ERROR                               -1284
+#define ER_LAST_ERROR                               -1264
 
 /*
  * CAUTION!

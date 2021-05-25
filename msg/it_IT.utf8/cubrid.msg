@@ -1332,7 +1332,7 @@ Controllare il percorso del file della chiave (_keys) e assicurarsi che includa 
 1261 Impossibile trovare la chiave al momento del ripristino (indice chiave: %1$d, ora di creazione: %2$s). Imposta la chiave (indice chiave: %3$d) per il database.
 1262 Il file della chiave è pieno.
 1263 Impossibile crittografare TDE la pagina di registro (pageid: %1$lld). Non si tenterà più di crittografare questa pagina.
-1264 Error reserved for scalability development.
+1264 Invalid format for configuration parameter %1s. Expected a 'hostname:port', found %2s
 1265 Error reserved for scalability development.
 1266 Error reserved for scalability development.
 1267 Error reserved for scalability development.

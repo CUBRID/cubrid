@@ -453,6 +453,7 @@ enum param_id
   PRM_ID_DDL_AUDIT_LOG,
   PRM_ID_DDL_AUDIT_LOG_SIZE,
 
+  PRM_ID_PAGE_SERVER_HOSTS,
   PRM_ID_SERVER_TYPE,
 
   /* change PRM_LAST_ID when adding new system parameters */

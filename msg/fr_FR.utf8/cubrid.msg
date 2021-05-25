@@ -1332,7 +1332,7 @@ Vérifiez le chemin du fichier de clé (_keys) et assurez-vous qu'il inclut la c
 1261 Impossible de trouver la clé au moment de la restauration (index de clé: %1$d, heure de création: %2$s). Définissez la clé (index de clé: %3$d) pour la base de données.
 1262 Le fichier clé est plein.
 1263 Le chiffrement TDE de la page de journal échoue (pageid: %1$lld). Il ne sera plus essayé de crypter cette page.
-1264 Error reserved for scalability development.
+1264 Invalid format for configuration parameter %1s. Expected a 'hostname:port', found %2s
 1265 Error reserved for scalability development.
 1266 Error reserved for scalability development.
 1267 Error reserved for scalability development.

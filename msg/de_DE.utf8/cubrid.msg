@@ -1332,7 +1332,7 @@ $ LOADDB
 1261 Der Schlüssel kann zum Zeitpunkt der Wiederherstellung nicht gefunden werden (Schlüsselindex: %1$d, Erstellungszeit: %2$s). Legen Sie den Schlüssel (Schlüsselindex: %3$d) für die Datenbank fest.
 1262 Die Schlüsseldatei ist voll.
 1263 Die Protokollseite kann nicht mit TDE verschlüsselt werden (Seiten-ID: %1$lld). Es wird nicht mehr versucht, diese Seite zu verschlüsseln.
-1264 Error reserved for scalability development.
+1264 Invalid format for configuration parameter %1s. Expected a 'hostname:port', found %2s
 1265 Error reserved for scalability development.
 1266 Error reserved for scalability development.
 1267 Error reserved for scalability development.
