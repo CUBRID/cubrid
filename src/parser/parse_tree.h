@@ -3515,7 +3515,11 @@ struct execution_state_values
 typedef struct keyword_record KEYWORD_RECORD;
 struct keyword_record
 {
+#if defined(ENABLE_UNUSED_FUNCTION)
   short value;
+#else
+  unsigned short hash_value;
+#endif
   char keyword[MAX_KEYWORD_SIZE];
   short unreserved;		/* keyword can be used as an identifier, 0 means it is reserved and cannot be used as
 				 * an identifier, nonzero means it can be */

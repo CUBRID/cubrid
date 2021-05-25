@@ -30,9 +30,9 @@
 
 #include "csql_grammar.h"
 #include "parser.h"
-#include "intl_support.h"
 #include "dbtype.h"
 #include "string_opfunc.h"
+#include "chartype.h"
 
 /* It is not required for the keywords to be alphabetically sorted, as they
  * will be sorted when needed. See pt_find_keyword.
@@ -527,9 +527,28 @@ static KEYWORD_RECORD *pt_find_keyword (const char *text);
 static int keyword_cmp (const void *k1, const void *k2);
 
 
+/* The GET_KEYWORD_HASH_VALUE() macro is the definition of the djb2 algorithm as a macro.
+ * Refer to the string_hash() function implemented in the libcubmemc.c file.
+ */
+#define GET_KEYWORD_HASH_VALUE(h,s) \
+  do { \
+      unsigned char* p = (unsigned char*)(s); \
+      for((h) = 5381;  *p; p++ ) \
+        { \
+             (h) = (((h) << 5) + (h)) + *p; /* hash * 33 + c */ \
+        } \
+  } while(0)
+
 static int
 keyword_cmp (const void *k1, const void *k2)
 {
+  int cmp = ((KEYWORD_RECORD *) k1)->hash_value - ((KEYWORD_RECORD *) k2)->hash_value;
+
+  if (cmp != 0)
+    {
+      return cmp;
+    }
+
   return strcmp (((KEYWORD_RECORD *) k1)->keyword, ((KEYWORD_RECORD *) k2)->keyword);
 }
 
@@ -542,12 +561,46 @@ static KEYWORD_RECORD *
 pt_find_keyword (const char *text)
 {
   static bool keyword_sorted = false;
-  KEYWORD_RECORD *result_key;
+  static int keyword_min_len = MAX_KEYWORD_SIZE;
+  static int keyword_max_len = 0;
+  static int keyword_cnt = sizeof (keywords) / sizeof (keywords[0]);
+  static short start_pos[257];	// (0x00 ~ 0xFF) + 1  
+#define MAGIC_NUM_BI_SEQ        (5)	/* Performance intersection between binary and sequential search */
+  int i, len, cmp;
   KEYWORD_RECORD dummy;
 
   if (keyword_sorted == false)
     {
-      qsort (keywords, (sizeof (keywords) / sizeof (keywords[0])), sizeof (keywords[0]), keyword_cmp);
+      for (i = 0; i < keyword_cnt; i++)
+	{
+	  len = strlen (keywords[i].keyword);
+	  if (len < keyword_min_len)
+	    {
+	      keyword_min_len = len;
+	    }
+	  if (len > keyword_max_len)
+	    {
+	      keyword_max_len = len;
+	    }
+
+	  GET_KEYWORD_HASH_VALUE (keywords[i].hash_value, keywords[i].keyword);
+	}
+
+      memset (start_pos, 0x00, sizeof (start_pos));
+
+      qsort (keywords, keyword_cnt, sizeof (keywords[0]), keyword_cmp);
+
+      for (i = 0; i < keyword_cnt; i++)
+	{
+	  start_pos[((keywords[i].hash_value) >> 8)]++;
+	}
+
+      start_pos[256] = keyword_cnt;
+      for (i = 255; i >= 0; i--)
+	{
+	  start_pos[i] = start_pos[i + 1] - start_pos[i];
+	}
+
       keyword_sorted = true;
     }
 
@@ -556,18 +609,59 @@ pt_find_keyword (const char *text)
       return NULL;
     }
 
-  if (strlen (text) >= MAX_KEYWORD_SIZE)
+  len = strlen (text);
+  if (len < keyword_min_len || len > keyword_max_len)
     {
       return NULL;
     }
 
-  intl_identifier_upper (text, dummy.keyword);
+  /* Keywords are composed of ASCII characters(English letters, underbar).  */
+  unsigned char *p, *s;
+  s = (unsigned char *) dummy.keyword;
+  for (p = (unsigned char *) text; *p; p++, s++)
+    {
+      if (*p >= 0x80)
+	{
+	  return NULL;
+	}
 
-  result_key =
-    (KEYWORD_RECORD *) bsearch (&dummy, keywords, (sizeof (keywords) / sizeof (keywords[0])), sizeof (KEYWORD_RECORD),
-				keyword_cmp);
+      *s = (unsigned char) char_toupper ((int) *p);
+    }
+  *s = 0x00;
 
-  return result_key;
+  GET_KEYWORD_HASH_VALUE (dummy.hash_value, dummy.keyword);
+  i = (dummy.hash_value >> 8);
+  len = (start_pos[i + 1] - start_pos[i]);
+  if (len <= MAGIC_NUM_BI_SEQ)
+    {
+      for (len = start_pos[i]; len < start_pos[i + 1]; len++)
+	{
+	  if (dummy.hash_value > keywords[len].hash_value)
+	    {
+	      continue;
+	    }
+	  else if (dummy.hash_value < keywords[len].hash_value)
+	    {
+	      return NULL;
+	    }
+
+	  cmp = strcmp (dummy.keyword, keywords[len].keyword);
+	  if (cmp > 0)
+	    {
+	      continue;
+	    }
+	  else if (cmp < 0)
+	    {
+	      return NULL;
+	    }
+
+	  return keywords + len;
+	}
+
+      return NULL;
+    }
+
+  return (KEYWORD_RECORD *) bsearch (&dummy, keywords + start_pos[i], len, sizeof (KEYWORD_RECORD), keyword_cmp);
 }
 
 #if defined(ENABLE_UNUSED_FUNCTION)
