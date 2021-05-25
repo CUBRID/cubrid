@@ -468,6 +468,8 @@ cubrid_log_send_configurations (void)
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT);
     }
 
+  free (a_request);
+
   return CUBRID_LOG_SUCCESS;
 
 cubrid_log_error:
@@ -482,6 +484,11 @@ cubrid_log_error:
     {
       queue_entry->buffer = NULL;
       css_queue_remove_header_entry_ptr (&g_conn_entry->buffer_queue, queue_entry);
+    }
+
+  if (a_request != NULL)
+    {
+      free (a_request);
     }
 
   return err_code;
@@ -793,7 +800,7 @@ cubrid_log_make_dml (char **data_info, DML * dml)
 {
   char *ptr;
 
-  int i;
+  int i, pack_func_code;
   int err_code;
 
   ptr = *data_info;
@@ -830,53 +837,60 @@ cubrid_log_make_dml (char **data_info, DML * dml)
 
       for (i = 0; i < dml->num_changed_column; i++)
 	{
-	  ptr = or_unpack_int (ptr, &dml->changed_column_data_len[i]);
+	  ptr = or_unpack_int (ptr, &pack_func_code);
 
-	  switch (dml->changed_column_data_len[i])
+	  switch (pack_func_code)
 	    {
 	    case 0:
 	      dml->changed_column_data[i] = ptr;
 	      ptr = or_unpack_int (ptr, (int *) dml->changed_column_data[i]);
+	      dml->changed_column_data_len[i] = OR_INT_SIZE;
 	      break;
 
 	    case 1:
 	      dml->changed_column_data[i] = ptr;
 	      ptr = or_unpack_int64 (ptr, (INT64 *) dml->changed_column_data[i]);
+	      dml->changed_column_data_len[i] = OR_INT64_SIZE;
 	      break;
 
 	    case 2:
 	      dml->changed_column_data[i] = ptr;
 	      ptr = or_unpack_float (ptr, (float *) dml->changed_column_data[i]);
+	      dml->changed_column_data_len[i] = OR_FLOAT_SIZE;
 	      break;
 
 	    case 3:
 	      dml->changed_column_data[i] = ptr;
 	      ptr = or_unpack_double (ptr, (double *) dml->changed_column_data[i]);
+	      dml->changed_column_data_len[i] = OR_DOUBLE_SIZE;
 	      break;
 
 	    case 4:
 	      dml->changed_column_data[i] = ptr;
 	      ptr = or_unpack_short (ptr, (short *) dml->changed_column_data[i]);
+	      dml->changed_column_data_len[i] = OR_SHORT_SIZE;
 	      break;
 
 	    case 5:
 	      dml->changed_column_data[i] = ptr;
 	      ptr = or_unpack_string_nocopy (ptr, &dml->changed_column_data[i]);
+	      dml->changed_column_data_len[i] = strlen (dml->changed_column_data[i]);
 	      break;
 
 	    case 6:
-	      dml->changed_column_data[i] = ptr;
-	      ptr = or_unpack_string_nocopy (ptr, &dml->changed_column_data[i]);
+	      assert (0);	// unused pack func code: or_pack_stream()
 	      break;
 
 	    case 7:
 	      dml->changed_column_data[i] = ptr;
 	      ptr = or_unpack_string_nocopy (ptr, &dml->changed_column_data[i]);
+	      dml->changed_column_data_len[i] = strlen (dml->changed_column_data[i]);
 	      break;
 
 	    case 8:
 	      dml->changed_column_data[i] = ptr;
 	      ptr = or_unpack_string_nocopy (ptr, &dml->changed_column_data[i]);
+	      dml->changed_column_data_len[i] = strlen (dml->changed_column_data[i]);
 	      break;
 
 	    default:
@@ -916,53 +930,60 @@ cubrid_log_make_dml (char **data_info, DML * dml)
 
       for (i = 0; i < dml->num_cond_column; i++)
 	{
-	  ptr = or_unpack_int (ptr, &dml->cond_column_data_len[i]);
+	  ptr = or_unpack_int (ptr, &pack_func_code);
 
-	  switch (dml->cond_column_data_len[i])
+	  switch (pack_func_code)
 	    {
 	    case 0:
 	      dml->cond_column_data[i] = ptr;
 	      ptr = or_unpack_int (ptr, (int *) dml->cond_column_data[i]);
+	      dml->cond_column_data_len[i] = OR_INT_SIZE;
 	      break;
 
 	    case 1:
 	      dml->cond_column_data[i] = ptr;
 	      ptr = or_unpack_int64 (ptr, (INT64 *) dml->cond_column_data[i]);
+	      dml->cond_column_data_len[i] = OR_BIGINT_SIZE;
 	      break;
 
 	    case 2:
 	      dml->cond_column_data[i] = ptr;
 	      ptr = or_unpack_float (ptr, (float *) dml->cond_column_data[i]);
+	      dml->cond_column_data_len[i] = OR_FLOAT_SIZE;
 	      break;
 
 	    case 3:
 	      dml->cond_column_data[i] = ptr;
 	      ptr = or_unpack_double (ptr, (double *) dml->cond_column_data[i]);
+	      dml->cond_column_data_len[i] = OR_DOUBLE_SIZE;
 	      break;
 
 	    case 4:
 	      dml->cond_column_data[i] = ptr;
 	      ptr = or_unpack_short (ptr, (short *) dml->cond_column_data[i]);
+	      dml->cond_column_data_len[i] = OR_SHORT_SIZE;
 	      break;
 
 	    case 5:
 	      dml->cond_column_data[i] = ptr;
 	      ptr = or_unpack_string_nocopy (ptr, &dml->cond_column_data[i]);
+	      dml->cond_column_data_len[i] = strlen (dml->cond_column_data[i]);
 	      break;
 
 	    case 6:
-	      dml->cond_column_data[i] = ptr;
-	      ptr = or_unpack_string_nocopy (ptr, &dml->cond_column_data[i]);
+	      assert (0);	// unused pack func code: or_pack_stream()
 	      break;
 
 	    case 7:
 	      dml->cond_column_data[i] = ptr;
 	      ptr = or_unpack_string_nocopy (ptr, &dml->cond_column_data[i]);
+	      dml->cond_column_data_len[i] = strlen (dml->cond_column_data[i]);
 	      break;
 
 	    case 8:
 	      dml->cond_column_data[i] = ptr;
 	      ptr = or_unpack_string_nocopy (ptr, &dml->cond_column_data[i]);
+	      dml->cond_column_data_len[i] = strlen (dml->cond_column_data[i]);
 	      break;
 
 	    default:
@@ -1178,6 +1199,47 @@ cubrid_log_error:
   return err_code;
 }
 
+static int
+cubrid_log_clear_data_item (DATA_ITEM_TYPE data_item_type, CUBRID_DATA_ITEM * data_item)
+{
+  int err_code;
+
+  switch (data_item_type)
+    {
+    case DATA_ITEM_TYPE_DDL:
+      /* nothing to do */
+      break;
+
+    case DATA_ITEM_TYPE_DML:
+      free (data_item->dml.changed_column_index);
+      free (data_item->dml.changed_column_data);
+      free (data_item->dml.changed_column_data_len);
+
+      free (data_item->dml.cond_column_index);
+      free (data_item->dml.cond_column_data);
+      free (data_item->dml.cond_column_data_len);
+
+      break;
+
+    case DATA_ITEM_TYPE_DCL:
+      /* nothing to do */
+      break;
+
+    case DATA_ITEM_TYPE_TIMER:
+      /* nothing to do */
+      break;
+
+    default:
+      assert (0);
+    }
+
+  return CUBRID_LOG_SUCCESS;
+
+cubrid_log_error:
+
+  return err_code;
+}
+
 /*
  * cubrid_log_clear_log_item () -
  *   return:
@@ -1186,17 +1248,35 @@ cubrid_log_error:
 int
 cubrid_log_clear_log_item (CUBRID_LOG_ITEM * log_item_list)
 {
+  int i;
+  int err_code;
+
   if (g_stage != CUBRID_LOG_STAGE_EXTRACTION)
     {
-      return CUBRID_LOG_INVALID_FUNC_CALL_STAGE;
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_FUNC_CALL_STAGE);
     }
 
   if (log_item_list == NULL)
     {
-      return CUBRID_LOG_INVALID_LOGITEM_LIST;
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LOGITEM_LIST);
     }
 
+  for (i = 0; i < g_log_items_count; i++)	// if g_log_items_count == 0 then nothing to do
+    {
+      if (cubrid_log_clear_data_item ((DATA_ITEM_TYPE) g_log_items[i].data_item_type, &g_log_items[i].data_item) !=
+	  CUBRID_LOG_SUCCESS)
+	{
+	  CUBRID_LOG_ERROR_HANDLING (CUBIRD_LOG_FAILED_DEALLOC);
+	}
+    }
+
+  g_log_items_count = 0;
+
   return CUBRID_LOG_SUCCESS;
+
+cubrid_log_error:
+
+  return err_code;
 }
 
 static int
