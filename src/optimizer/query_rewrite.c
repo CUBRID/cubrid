@@ -226,13 +226,13 @@ qo_check_nullable_expr_with_spec (PARSER_CONTEXT * parser, PT_NODE * node, void 
 	case PT_IFNULL:
 	case PT_ISNULL:
 	case PT_CONCAT_WS:
-	    info->appears = false;
-	    parser_walk_tree (parser, node, qo_get_name_by_spec_id, info, NULL, NULL);
-	    if (info->appears)
-	      {
-		info->nullable = true;
-		*continue_walk = PT_STOP_WALK;
-	      }
+	  info->appears = false;
+	  parser_walk_tree (parser, node, qo_get_name_by_spec_id, info, NULL, NULL);
+	  if (info->appears)
+	    {
+	      info->nullable = true;
+	      *continue_walk = PT_STOP_WALK;
+	    }
 	  break;
 	default:
 	  break;
@@ -839,7 +839,6 @@ qo_construct_new_set (PARSER_CONTEXT * parser, PT_NODE * node)
   /* create mset constructor subtree */
   if (arg && (set = parser_new_node (parser, PT_FUNCTION)) != NULL)
     {
-      parser_init_node (set);
       set->info.function.function_type = F_SEQUENCE;
       set->info.function.arg_list = arg;
       set->type_enum = PT_TYPE_SEQUENCE;
@@ -875,13 +874,14 @@ qo_make_new_derived_tblspec (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * 
   const char *dtblnam, *dattnam;
 
   dtbl = qo_construct_new_set (parser, pred);
-  if (dtbl)
+  if (!dtbl)
     {
-      spec = parser_new_node (parser, PT_SPEC);
+      return NULL;
     }
+
+  spec = parser_new_node (parser, PT_SPEC);
   if (spec)
     {
-      parser_init_node (spec);
       spec_id = (UINTPTR) spec;
       spec->info.spec.id = spec_id;
       spec->info.spec.only_all = PT_ONLY;
@@ -913,7 +913,6 @@ qo_make_new_derived_tblspec (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * 
 	  node->info.spec.path_conjuncts = eq = parser_new_node (parser, PT_EXPR);
 	  if (eq)
 	    {
-	      parser_init_node (eq);
 	      eq->type_enum = PT_TYPE_LOGICAL;
 	      eq->info.expr.op = PT_EQ;
 	      eq->info.expr.arg1 = pt_name (parser, dattnam);
@@ -5496,7 +5495,8 @@ qo_rewrite_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
       prev_spec = NULL;
       for (spec = node->info.query.q.select.from; spec; prev_spec = spec, spec = spec->next)
 	{
-	  if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER || (spec->info.spec.join_type == PT_JOIN_RIGHT_OUTER && prev_spec))
+	  if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER
+	      || (spec->info.spec.join_type == PT_JOIN_RIGHT_OUTER && prev_spec))
 	    {
 	      if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER)
 		{
@@ -5779,7 +5779,7 @@ qo_rewrite_hidden_col_as_derived (PARSER_CONTEXT * parser, PT_NODE * node, PT_NO
 	      for (t_node = node->info.query.q.select.list; t_node && t_node->next; t_node = next)
 		{
 		  next = t_node->next;
-		  if (next->is_hidden_column)
+		  if (next->flag.is_hidden_column)
 		    {
 		      parser_free_tree (parser, next);
 		      t_node->next = NULL;
@@ -5800,7 +5800,7 @@ qo_rewrite_hidden_col_as_derived (PARSER_CONTEXT * parser, PT_NODE * node, PT_NO
 		  skip_query_rewrite_as_derived = true;
 		  for (t_node = node->info.query.q.select.list; t_node; t_node = t_node->next)
 		    {
-		      if (!t_node->is_hidden_column)
+		      if (!t_node->flag.is_hidden_column)
 			{
 			  skip_query_rewrite_as_derived = false;
 			}
@@ -5811,7 +5811,7 @@ qo_rewrite_hidden_col_as_derived (PARSER_CONTEXT * parser, PT_NODE * node, PT_NO
 		{
 		  for (t_node = node->info.query.q.select.list; t_node; t_node = t_node->next)
 		    {
-		      if (t_node->is_hidden_column)
+		      if (t_node->flag.is_hidden_column)
 			{
 			  /* make derived query */
 			  derived = mq_rewrite_query_as_derived (parser, node);
@@ -6835,7 +6835,7 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
       /* If LIMIT clause is specified without ORDER BY clause, we will rewrite the UNION query as derived. For example,
        * (SELECT ...) UNION (SELECT ...) LIMIT 10 will be rewritten to: SELECT * FROM ((SELECT ...) UNION (SELECT ...))
        * T WHERE INST_NUM() <= 10 */
-      if (node->info.query.limit && node->info.query.rewrite_limit)
+      if (node->info.query.limit && node->info.query.flag.rewrite_limit)
 	{
 	  limit = pt_limit_to_numbering_expr (parser, node->info.query.limit, PT_INST_NUM, false);
 	  if (limit != NULL)
@@ -6843,15 +6843,15 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 	      PT_NODE *limit_node;
 	      bool single_tuple_bak;
 
-	      node->info.query.rewrite_limit = 0;
+	      node->info.query.flag.rewrite_limit = 0;
 
 	      /* to move limit clause to derived */
 	      limit_node = node->info.query.limit;
 	      node->info.query.limit = NULL;
 
 	      /* to move single tuple to derived */
-	      single_tuple_bak = node->info.query.single_tuple;
-	      node->info.query.single_tuple = false;
+	      single_tuple_bak = node->info.query.flag.single_tuple;
+	      node->info.query.flag.single_tuple = false;
 
 	      derived = mq_rewrite_query_as_derived (parser, node);
 	      if (derived != NULL)
@@ -6865,7 +6865,7 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 
 		  node = derived;
 		}
-	      node->info.query.single_tuple = single_tuple_bak;
+	      node->info.query.flag.single_tuple = single_tuple_bak;
 	      node->info.query.limit = limit_node;
 	    }
 	}
@@ -7056,7 +7056,7 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 
 	      /* Not found aggregate function in cnf node and no ROLLUP clause. So, move it from HAVING clause to WHERE
 	       * clause. */
-	      if (can_move && !node->info.query.q.select.group_by->with_rollup)
+	      if (can_move && !node->info.query.q.select.group_by->flag.with_rollup)
 		{
 		  /* delete cnf node from HAVING clause */
 		  if (!prev)
@@ -7355,14 +7355,14 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 
       /* auto-parameterization is safe when it is done as the last step of rewrite optimization */
       if (!prm_get_bool_value (PRM_ID_HOSTVAR_LATE_BINDING)
-	  && prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES) > 0 && node->cannot_prepare == 0)
+	  && prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES) > 0 && node->flag.cannot_prepare == 0)
 	{
 	  call_auto_parameterize = true;
 	}
     }
 
   /* auto-parameterize convert value in expression to host variable (input marker) */
-  if (*wherep && (call_auto_parameterize || (*wherep)->force_auto_parameterize))
+  if (*wherep && (call_auto_parameterize || (*wherep)->flag.force_auto_parameterize))
     {
       qo_do_auto_parameterize (parser, *wherep);
     }
@@ -7387,7 +7387,7 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
       qo_do_auto_parameterize (parser, *aftercbfilterp);
     }
 
-  if (*merge_upd_wherep && (call_auto_parameterize || (*merge_upd_wherep)->force_auto_parameterize))
+  if (*merge_upd_wherep && (call_auto_parameterize || (*merge_upd_wherep)->flag.force_auto_parameterize))
     {
       qo_do_auto_parameterize (parser, *merge_upd_wherep);
     }
@@ -7447,7 +7447,7 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
     {
       if (node->info.query.is_subquery == PT_IS_SUBQUERY)
 	{
-	  if (node->info.query.single_tuple == 1)
+	  if (node->info.query.flag.single_tuple == 1)
 	    {
 	      node = qo_rewrite_hidden_col_as_derived (parser, node, NULL);
 	    }

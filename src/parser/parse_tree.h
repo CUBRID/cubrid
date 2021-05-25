@@ -474,10 +474,10 @@ struct json_t;
         ( (n) && ((n)->node_type == PT_SORT_SPEC) )
 
 #define PT_IS_VALUE_QUERY(n) \
-          ((n)->is_value_query == 1)
+          ((n)->flag.is_value_query == 1)
 
 #define PT_SET_VALUE_QUERY(n) \
-          ((n)->is_value_query = 1)
+          ((n)->flag.is_value_query = 1)
 
 #define PT_IS_ORDER_DEPENDENT(n) \
         ( (n) ? \
@@ -534,13 +534,13 @@ struct json_t;
 	     parser_->host_var_expected_domains = parent_parser->host_var_expected_domains; \
              parser_->host_var_count = parent_parser->host_var_count; \
              parser_->auto_param_count = parent_parser->auto_param_count; \
-             parser_->set_host_var = 1; } } while (0)
+             parser_->flag.set_host_var = 1; } } while (0)
 
 #define RESET_HOST_VARIABLES_IF_INTERNAL_STATEMENT(parser_) \
     do { if (parent_parser) { \
              parser_->host_variables = NULL; parser_->host_var_count = 0; \
 	     parser_->host_var_expected_domains = NULL; \
-             parser_->auto_param_count = 0; parser_->set_host_var = 0; } } while (0)
+             parser_->auto_param_count = 0; parser_->flag.set_host_var = 0; } } while (0)
 
 #endif /* !SERVER_MODE */
 
@@ -2763,17 +2763,20 @@ struct pt_query_info
   int upd_del_class_cnt;	/* number of classes affected by update or delete in the generated SELECT statement */
   int mvcc_reev_extra_cls_cnt;	/* number of extra OID - CLASS_OID pairs added to the select list for condition and
 				 * assignment reevaluation in MVCC */
-  unsigned has_outer_spec:1;	/* has outer join spec ? */
-  unsigned is_sort_spec:1;	/* query is a sort spec expression */
-  unsigned is_insert_select:1;	/* query is a sub-select for insert statement */
-  unsigned single_tuple:1;	/* is single-tuple query ? */
-  unsigned vspec_as_derived:1;	/* is derived from vclass spec ? */
-  unsigned reexecute:1;		/* should be re-executed; not from the result caceh */
-  unsigned do_cache:1;		/* do cache the query result */
-  unsigned do_not_cache:1;	/* do not cache the query result */
-  unsigned order_siblings:1;	/* flag ORDER SIBLINGS BY */
-  unsigned rewrite_limit:1;	/* need to rewrite the limit clause */
-  unsigned has_system_class:1;	/* do not cache the query result */
+  struct
+  {
+    unsigned has_outer_spec:1;	/* has outer join spec ? */
+    unsigned is_sort_spec:1;	/* query is a sort spec expression */
+    unsigned is_insert_select:1;	/* query is a sub-select for insert statement */
+    unsigned single_tuple:1;	/* is single-tuple query ? */
+    unsigned vspec_as_derived:1;	/* is derived from vclass spec ? */
+    unsigned reexecute:1;	/* should be re-executed; not from the result caceh */
+    unsigned do_cache:1;	/* do cache the query result */
+    unsigned do_not_cache:1;	/* do not cache the query result */
+    unsigned order_siblings:1;	/* flag ORDER SIBLINGS BY */
+    unsigned rewrite_limit:1;	/* need to rewrite the limit clause */
+    unsigned has_system_class:1;	/* do not cache the query result */
+  } flag;
   PT_NODE *order_by;		/* PT_EXPR (list) */
   PT_NODE *orderby_for;		/* PT_EXPR (list) */
   PT_NODE *into_list;		/* PT_VALUE (list) */
@@ -3464,31 +3467,34 @@ struct parser_node
   PARSER_VARCHAR *expr_before_const_folding;	/* text before constant folding (used by value, host var nodes) */
   PT_TYPE_ENUM type_enum;	/* type enumeration tag PT_TYPE_??? */
   CACHE_TIME cache_time;	/* client or server cache time */
-  unsigned recompile:1;		/* the statement should be recompiled - used for plan cache */
-  unsigned cannot_prepare:1;	/* the statement cannot be prepared - used for plan cache */
-  unsigned partition_pruned:1;	/* partition pruning takes place */
-  unsigned si_datetime:1;	/* get server info; SYS_DATETIME */
-  unsigned si_tran_id:1;	/* get server info; LOCAL_TRANSACTION_ID */
-  unsigned clt_cache_check:1;	/* check client cache validity */
-  unsigned clt_cache_reusable:1;	/* client cache is reusable */
-  unsigned use_plan_cache:1;	/* used for plan cache */
-  unsigned use_query_cache:1;
-  unsigned is_hidden_column:1;
-  unsigned is_paren:1;
-  unsigned with_rollup:1;	/* WITH ROLLUP clause for GROUP BY */
-  unsigned force_auto_parameterize:1;	/* forces a call to qo_do_auto_parameterize (); this is a special flag used for
+  struct
+  {
+    unsigned recompile:1;	/* the statement should be recompiled - used for plan cache */
+    unsigned cannot_prepare:1;	/* the statement cannot be prepared - used for plan cache */
+    unsigned partition_pruned:1;	/* partition pruning takes place */
+    unsigned si_datetime:1;	/* get server info; SYS_DATETIME */
+    unsigned si_tran_id:1;	/* get server info; LOCAL_TRANSACTION_ID */
+    unsigned clt_cache_check:1;	/* check client cache validity */
+    unsigned clt_cache_reusable:1;	/* client cache is reusable */
+    unsigned use_plan_cache:1;	/* used for plan cache */
+    unsigned use_query_cache:1;
+    unsigned is_hidden_column:1;
+    unsigned is_paren:1;
+    unsigned with_rollup:1;	/* WITH ROLLUP clause for GROUP BY */
+    unsigned force_auto_parameterize:1;	/* forces a call to qo_do_auto_parameterize (); this is a special flag used for
 					 * processing ON DUPLICATE KEY UPDATE */
-  unsigned do_not_fold:1;	/* disables constant folding on the node */
-  unsigned is_cnf_start:1;
-  unsigned is_click_counter:1;	/* INCR/DECR(click counter) */
-  unsigned is_value_query:1;	/* for PT_VALUE,PT_NAME,PT_EXPR... that belongs to PT_NODE_LIST for PT_SELECT that
+    unsigned do_not_fold:1;	/* disables constant folding on the node */
+    unsigned is_cnf_start:1;
+    unsigned is_click_counter:1;	/* INCR/DECR(click counter) */
+    unsigned is_value_query:1;	/* for PT_VALUE,PT_NAME,PT_EXPR... that belongs to PT_NODE_LIST for PT_SELECT that
 				 * "values" generated */
-  unsigned do_not_replace_orderby:1;	/* when checking query in create/alter view, do not replace order by */
-  unsigned is_added_by_parser:1;	/* is added by parser during parsing */
-  unsigned is_alias_enabled_expr:1;	/* node allowed to have alias */
-  unsigned is_wrapped_res_for_coll:1;	/* is a result node wrapped with CAST by collation inference */
-  unsigned is_system_generated_stmt:1;	/* is internally generated by system */
-  unsigned use_auto_commit:1;	/* use autocommit */
+    unsigned do_not_replace_orderby:1;	/* when checking query in create/alter view, do not replace order by */
+    unsigned is_added_by_parser:1;	/* is added by parser during parsing */
+    unsigned is_alias_enabled_expr:1;	/* node allowed to have alias */
+    unsigned is_wrapped_res_for_coll:1;	/* is a result node wrapped with CAST by collation inference */
+    unsigned is_system_generated_stmt:1;	/* is internally generated by system */
+    unsigned use_auto_commit:1;	/* use autocommit */
+  } flag;
   PT_STATEMENT_INFO info;	/* depends on 'node_type' field */
 };
 
@@ -3509,7 +3515,11 @@ struct execution_state_values
 typedef struct keyword_record KEYWORD_RECORD;
 struct keyword_record
 {
+#if defined(ENABLE_UNUSED_FUNCTION)
   short value;
+#else
+  unsigned short hash_value;
+#endif
   char keyword[MAX_KEYWORD_SIZE];
   short unreserved;		/* keyword can be used as an identifier, 0 means it is reserved and cannot be used as
 				 * an identifier, nonzero means it can be */
@@ -3598,29 +3608,32 @@ struct parser_context
 
   int max_print_len;		/* for pt_short_print */
 
-  unsigned has_internal_error:1;	/* 0 or 1 */
-  unsigned abort:1;		/* this flag is for aborting a transaction */
-  /* if deadlock occurs during query execution */
-  unsigned set_host_var:1;	/* 1 if the user has set host variables */
-  unsigned dont_prt_long_string:1;	/* make pt_print_value fail if the string is too long to print */
-  unsigned long_string_skipped:1;	/* pt_print_value sets it to 1 when it skipped printing a long string */
-  unsigned print_type_ambiguity:1;	/* pt_print_value sets it to 1 when it printed a value whose type cannot be
+  struct
+  {
+    unsigned has_internal_error:1;	/* 0 or 1 */
+    unsigned abort:1;		/* this flag is for aborting a transaction */
+    /* if deadlock occurs during query execution */
+    unsigned set_host_var:1;	/* 1 if the user has set host variables */
+    unsigned dont_prt_long_string:1;	/* make pt_print_value fail if the string is too long to print */
+    unsigned long_string_skipped:1;	/* pt_print_value sets it to 1 when it skipped printing a long string */
+    unsigned print_type_ambiguity:1;	/* pt_print_value sets it to 1 when it printed a value whose type cannot be
 					 * clearly determined from the string representation */
-  unsigned strings_have_no_escapes:1;
-  unsigned is_in_and_list:1;	/* set to 1 when the caller immediately above is pt_print_and_list(). Used because AND
+    unsigned strings_have_no_escapes:1;
+    unsigned is_in_and_list:1;	/* set to 1 when the caller immediately above is pt_print_and_list(). Used because AND
 				 * lists (CNF trees) can be printed via print_and_list or straight via pt_print_expr().
 				 * We need to keep print_and_list because it could get called before we get a chance to
 				 * mark the CNF start nodes. */
-  unsigned is_holdable:1;	/* set to true if result must be available across commits */
-  unsigned is_xasl_pinned_reference:1;	/* set to 1 if the prepared xasl cache need to be pinned in server side. To
-					 * prevent other thread from preempting the xasl cache again. This will
-					 * happen when a jdbc/cci driver retries to prepare/execute a query due to
-					 * CAS_ER_STMT_POOLING. */
-  unsigned recompile_xasl_pinned:1;	/* set to 1 when recompile again even the xasl cache entry has been pinned */
-  unsigned dont_collect_exec_stats:1;
-  unsigned return_generated_keys:1;
-  unsigned is_system_generated_stmt:1;
-  unsigned is_auto_commit:1;	/* set to true, if auto commit. */
+    unsigned is_holdable:1;	/* set to true if result must be available across commits */
+    unsigned is_xasl_pinned_reference:1;	/* set to 1 if the prepared xasl cache need to be pinned in server side. To
+						 * prevent other thread from preempting the xasl cache again. This will
+						 * happen when a jdbc/cci driver retries to prepare/execute a query due to
+						 * CAS_ER_STMT_POOLING. */
+    unsigned recompile_xasl_pinned:1;	/* set to 1 when recompile again even the xasl cache entry has been pinned */
+    unsigned dont_collect_exec_stats:1;
+    unsigned return_generated_keys:1;
+    unsigned is_system_generated_stmt:1;
+    unsigned is_auto_commit:1;	/* set to true, if auto commit. */
+  } flag;
 };
 
 /* used in assignments enumeration */

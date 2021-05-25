@@ -93,15 +93,15 @@ pt_tag_start_of_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, in
 
   if (node->next && node->next->type_enum == PT_TYPE_LOGICAL)
     {
-      node->next->is_cnf_start = false;
+      node->next->flag.is_cnf_start = false;
     }
 
   if (node->or_next && node->or_next->type_enum == PT_TYPE_LOGICAL)
     {
-      node->or_next->is_cnf_start = false;
+      node->or_next->flag.is_cnf_start = false;
     }
 
-  node->is_cnf_start = true;
+  node->flag.is_cnf_start = true;
   return node;
 }
 
@@ -561,7 +561,7 @@ pt_calculate_similarity (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
       ctx->accumulated_opcode += node->info.expr.op;
     }
 
-  if (node->is_cnf_start)
+  if (node->flag.is_cnf_start)
     {
       *continue_walk = PT_CONTINUE_WALK;
     }

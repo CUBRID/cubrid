@@ -765,7 +765,7 @@ mq_rewrite_agg_names (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, i
 	    }
 	  line_no = node->line_number;
 	  col_no = node->column_number;
-	  is_hidden_column = node->is_hidden_column;
+	  is_hidden_column = node->flag.is_hidden_column;
 	  if (!temp)
 	    {
 	      /* This was not found. add it */
@@ -784,7 +784,7 @@ mq_rewrite_agg_names (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, i
 	  node->data_type = data_type;
 	  node->line_number = line_no;
 	  node->column_number = col_no;
-	  node->is_hidden_column = is_hidden_column;
+	  node->flag.is_hidden_column = is_hidden_column;
 
 	  mq_insert_symbol (parser, &new_from->info.spec.as_attr_list, node);
 	}
@@ -824,7 +824,7 @@ mq_rewrite_agg_names (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, i
 	    }
 	  line_no = node->line_number;
 	  col_no = node->column_number;
-	  is_hidden_column = node->is_hidden_column;
+	  is_hidden_column = node->flag.is_hidden_column;
 	  if (!temp)
 	    {
 	      derived_select->info.query.q.select.list =
@@ -843,7 +843,7 @@ mq_rewrite_agg_names (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, i
 	  node->data_type = data_type;
 	  node->line_number = line_no;
 	  node->column_number = col_no;
-	  node->is_hidden_column = is_hidden_column;
+	  node->flag.is_hidden_column = is_hidden_column;
 
 	  mq_insert_symbol (parser, &new_from->info.spec.as_attr_list, node);
 
@@ -904,7 +904,7 @@ mq_rewrite_agg_names (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, i
 	    parser_append_node (node, derived_select->info.query.q.select.list);
 	  line_no = node->line_number;
 	  col_no = node->column_number;
-	  is_hidden_column = node->is_hidden_column;
+	  is_hidden_column = node->flag.is_hidden_column;
 	  node = pt_name (parser, mq_generate_name (parser, "a", &i));
 	  node->info.name.meta_class = PT_NORMAL;
 	  node->info.name.spec_id = new_from->info.spec.id;
@@ -913,7 +913,7 @@ mq_rewrite_agg_names (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, i
 	  node->data_type = data_type;
 	  node->line_number = line_no;
 	  node->column_number = col_no;
-	  node->is_hidden_column = is_hidden_column;
+	  node->flag.is_hidden_column = is_hidden_column;
 
 	  mq_insert_symbol (parser, &new_from->info.spec.as_attr_list, node);
 
@@ -1261,7 +1261,7 @@ mq_substitute_select_in_statement (PARSER_CONTEXT * parser, PT_NODE * statement,
 
   while (col)
     {
-      if (col->is_hidden_column)
+      if (col->flag.is_hidden_column)
 	{
 	  col = col->next;
 	  continue;
@@ -1560,7 +1560,7 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
 	      return NULL;
 	    }
 	  /* mark as a hidden column */
-	  result->is_hidden_column = 1;
+	  result->flag.is_hidden_column = 1;
 	  parser_append_node (result, statement->info.query.q.select.list);
 
 	  /* update position number of order by clause */
@@ -1779,7 +1779,7 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 		    {
 		      goto exit_on_error;
 		    }
-		  derived_table->info.query.order_siblings = query_spec->info.query.order_siblings;
+		  derived_table->info.query.flag.order_siblings = query_spec->info.query.flag.order_siblings;
 		}
 
 	      if (query_spec->info.query.orderby_for)
@@ -1992,7 +1992,7 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 	      if (query_spec->info.query.order_by != NULL)
 		{
 		  result->info.query.order_by = inside_order_by;
-		  result->info.query.order_siblings = query_spec->info.query.order_siblings;
+		  result->info.query.flag.order_siblings = query_spec->info.query.flag.order_siblings;
 		}
 
 	      if (query_spec->info.query.orderby_for != NULL)
@@ -2008,7 +2008,7 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 		    parser_append_node (parser_copy_tree_list (parser, query_spec->info.query.limit),
 					result->info.query.limit);
 
-		  result->info.query.rewrite_limit = 1;
+		  result->info.query.flag.rewrite_limit = 1;
 		}
 
 	    }
@@ -2288,21 +2288,21 @@ mq_check_authorization_path_entities (PARSER_CONTEXT * parser, PT_NODE * class_s
 static int
 mq_check_subqueries_for_prepare (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * subquery)
 {
-  if (node->cannot_prepare == 1)
+  if (node->flag.cannot_prepare == 1)
     {
       return 1;
     }
 
   while (subquery)
     {
-      if (subquery->cannot_prepare == 1)
+      if (subquery->flag.cannot_prepare == 1)
 	{
 	  return 1;
 	}
       subquery = subquery->next;
     }
 
-  return node->cannot_prepare;
+  return node->flag.cannot_prepare;
 }
 
 /*
@@ -2442,7 +2442,7 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree, PT_NODE * spec_list,
 			  return NULL;
 			}
 
-		      tree->cannot_prepare = mq_check_subqueries_for_prepare (parser, tree, subquery);
+		      tree->flag.cannot_prepare = mq_check_subqueries_for_prepare (parser, tree, subquery);
 #if defined(CUBRID_DEBUG)
 		      fprintf (stdout, "\n<subqueries of %s are>\n  %s\n", entity->info.name.original,
 			       parser_print_tree_list (parser, subquery));
@@ -3345,7 +3345,7 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement,
     }
 
   /* mark as a derived vclass spec query */
-  new_query->info.query.vspec_as_derived = 1;
+  new_query->info.query.flag.vspec_as_derived = 1;
 
   if (query_spec != NULL && PT_IS_VALUE_QUERY (query_spec))
     {
@@ -3354,7 +3354,7 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement,
 
   if (is_value_query)
     {
-      new_query->is_value_query = 1;
+      new_query->flag.is_value_query = 1;
 
       attrs = mq_fetch_attributes (parser, spec->info.spec.flat_entity_list);
       if (attrs == NULL && (pt_has_error (parser) || er_has_error ()))
@@ -3378,9 +3378,9 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement,
 
       for (col = new_query->info.query.q.select.list; col; col = col->next)
 	{
-	  if (col->is_hidden_column)
+	  if (col->flag.is_hidden_column)
 	    {
-	      col->is_hidden_column = 0;
+	      col->flag.is_hidden_column = 0;
 	    }
 	}
 
@@ -3420,7 +3420,7 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement,
 
   new_query->info.query.q.select.from = new_spec;
   new_query->info.query.is_subquery = PT_IS_SUBQUERY;
-  new_query->cannot_prepare = statement->cannot_prepare;
+  new_query->flag.cannot_prepare = statement->flag.cannot_prepare;
 
   /* free path entities, which will be handled by push_path */
   parser_free_tree (parser, new_spec->info.spec.path_entities);
@@ -3600,9 +3600,9 @@ mq_rewrite_query_as_derived (PARSER_CONTEXT * parser, PT_NODE * query)
       node->data_type = parser_copy_tree (parser, temp->data_type);
       spec->info.spec.as_attr_list = parser_append_node (node, spec->info.spec.as_attr_list);
       /* keep out hidden columns from derived select list */
-      if (query->info.query.order_by && temp->is_hidden_column)
+      if (query->info.query.order_by && temp->flag.is_hidden_column)
 	{
-	  temp->is_hidden_column = 0;
+	  temp->flag.is_hidden_column = 0;
 	}
       else
 	{
@@ -3623,7 +3623,7 @@ mq_rewrite_query_as_derived (PARSER_CONTEXT * parser, PT_NODE * query)
 
   /* move query id # */
   new_query->info.query.id = query->info.query.id;
-  new_query->recompile = query->recompile;
+  new_query->flag.recompile = query->flag.recompile;
   query->info.query.id = 0;
 
   return new_query;
@@ -3730,7 +3730,7 @@ mq_rewrite_aggregate_as_derived (PARSER_CONTEXT * parser, PT_NODE * agg_sel)
 
   /* derived tables are always subqueries */
   derived->info.query.is_subquery = PT_IS_SUBQUERY;
-  derived->cannot_prepare = agg_sel->cannot_prepare;
+  derived->flag.cannot_prepare = agg_sel->flag.cannot_prepare;
 
   /* move spec over */
   info.from = derived->info.query.q.select.from;
@@ -5316,7 +5316,7 @@ mq_set_types (PARSER_CONTEXT * parser, PT_NODE * query_spec, PT_NODE * attribute
       /* skip hidden column */
       while (col)
 	{
-	  if (col->is_hidden_column)
+	  if (col->flag.is_hidden_column)
 	    {
 	      col = col->next;
 	      continue;
@@ -8126,7 +8126,7 @@ mq_invert_insert_select (PARSER_CONTEXT * parser, PT_NODE * attr, PT_NODE * subq
   while (*value)
     {
       /* ignore the the hidden columns e.g. append when check order by see mq_update_order_by (...) */
-      if ((*value)->is_hidden_column == 1)
+      if ((*value)->flag.is_hidden_column == 1)
 	{
 	  value = &(*value)->next;
 	  continue;
@@ -8284,10 +8284,10 @@ mq_make_derived_spec (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * subquer
       tmp->data_type = parser_copy_tree (parser, col->data_type);
       PT_NAME_INFO_SET_FLAG (tmp, PT_NAME_GENERATED_DERIVED_SPEC);
       /* keep out hidden columns from derived select list */
-      if (subquery->info.query.order_by && col->is_hidden_column)
+      if (subquery->info.query.order_by && col->flag.is_hidden_column)
 	{
-	  col->is_hidden_column = 0;
-	  tmp->is_hidden_column = 0;
+	  col->flag.is_hidden_column = 0;
+	  tmp->flag.is_hidden_column = 0;
 	  spec->info.spec.as_attr_list = parser_append_node (tmp, spec->info.spec.as_attr_list);
 	}
       else
@@ -8372,7 +8372,7 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * class_,
       if (class_group_by_part || class_having_part)
 	{
 	  /* check for derived */
-	  if (statement->info.query.vspec_as_derived == 1)
+	  if (statement->info.query.flag.vspec_as_derived == 1)
 	    {
 	      /* set GROUP BY */
 	      if (class_group_by_part)
@@ -9191,7 +9191,7 @@ mq_lambda_node (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *co
 		{
 		  result->line_number = node->line_number;
 		  result->column_number = node->column_number;
-		  result->is_hidden_column = node->is_hidden_column;
+		  result->flag.is_hidden_column = node->flag.is_hidden_column;
 		  result->buffer_pos = node->buffer_pos;
 #if 0
 		  result->info.name.original = node->info.name.original;
@@ -10087,10 +10087,7 @@ mq_fetch_expression_for_real_class_update (PARSER_CONTEXT * parser, DB_OBJECT * 
   PT_NODE *spec;
   const char *attr_name;
 
-  vclass.node_type = PT_NAME;
-  parser_init_node (&vclass);
-  vclass.line_number = 0;
-  vclass.column_number = 0;
+  parser_init_node (&vclass, PT_NAME);
   vclass.info.name.original = NULL;
   vclass.info.name.db_object = vclass_obj;
 
@@ -10242,10 +10239,7 @@ mq_is_updatable_local (DB_OBJECT * class_object, PT_FETCH_AS fetch_as)
       return false;
     }
 
-  class_.node_type = PT_NAME;
-  parser_init_node (&class_);
-  class_.line_number = 0;
-  class_.column_number = 0;
+  parser_init_node (&class_, PT_NAME);
   class_.info.name.original = NULL;
   class_.info.name.db_object = class_object;
 
@@ -10291,16 +10285,10 @@ mq_is_updatable_att (PARSER_CONTEXT * parser, DB_OBJECT * vmop, const char *att_
 {
   PT_NODE real, attr, *expr;
 
-  attr.node_type = PT_NAME;
-  parser_init_node (&attr);
-  attr.line_number = 0;
-  attr.column_number = 0;
+  parser_init_node (&attr, PT_NAME);
   attr.info.name.original = att_nam;
 
-  real.node_type = PT_NAME;
-  parser_init_node (&real);
-  real.line_number = 0;
-  real.column_number = 0;
+  parser_init_node (&real, PT_NAME);
   real.info.name.original = NULL;
   real.info.name.db_object = rmop;
 
@@ -10470,16 +10458,10 @@ mq_get_attribute (DB_OBJECT * vclass_object, const char *attr_name, DB_OBJECT * 
 
   parser->au_save = save;
 
-  attr.node_type = PT_NAME;
-  parser_init_node (&attr);
-  attr.line_number = 0;
-  attr.column_number = 0;
+  parser_init_node (&attr, PT_NAME);
   attr.info.name.original = attr_name;
 
-  real.node_type = PT_NAME;
-  parser_init_node (&real);
-  real.line_number = 0;
-  real.column_number = 0;
+  parser_init_node (&real, PT_NAME);
   real.info.name.original = NULL;
   real.info.name.db_object = real_class_object;
 
@@ -10525,10 +10507,7 @@ mq_oid (PARSER_CONTEXT * parser, PT_NODE * spec)
   AU_DISABLE (save);
   parser->au_save = save;
 
-  attr.node_type = PT_NAME;
-  parser_init_node (&attr);
-  attr.line_number = 0;
-  attr.column_number = 0;
+  parser_init_node (&attr, PT_NAME);
   attr.info.name.original = "";	/* oid's have null string attr name */
 
   real = spec->info.spec.flat_entity_list;
@@ -10584,16 +10563,10 @@ mq_update_attribute (DB_OBJECT * vclass_object, const char *attr_name, DB_OBJECT
 	}
     }
 
-  attr.node_type = PT_NAME;
-  parser_init_node (&attr);
-  attr.line_number = 0;
-  attr.column_number = 0;
+  parser_init_node (&attr, PT_NAME);
   attr.info.name.original = attr_name;
 
-  real.node_type = PT_NAME;
-  parser_init_node (&real);
-  real.line_number = 0;
-  real.column_number = 0;
+  parser_init_node (&real, PT_NAME);
   real.info.name.original = NULL;
   real.info.name.db_object = real_class_object;
 
@@ -10675,11 +10648,7 @@ mq_fetch_one_real_class_get_cache (DB_OBJECT * vclass_object, PARSER_CONTEXT ** 
 	}
     }
 
-  vclass.node_type = PT_NAME;
-
-  parser_init_node (&vclass);
-  vclass.line_number = 0;
-  vclass.column_number = 0;
+  parser_init_node (&vclass, PT_NAME);
   vclass.info.name.original = NULL;
   vclass.info.name.db_object = vclass_object;
 
@@ -11317,7 +11286,7 @@ mq_rewrite_order_dependent_nodes (PARSER_CONTEXT * parser, PT_NODE * node, PT_NO
 	      node->etc = pt_cur->etc;
 
 	      /* Whatever it was, now it is visible. */
-	      pt_cur->is_hidden_column = 0;
+	      pt_cur->flag.is_hidden_column = 0;
 	      return node;
 	    }
 	}
@@ -11490,7 +11459,7 @@ mq_rewrite_order_dependent_query (PARSER_CONTEXT * parser, PT_NODE * select, int
 
 	  dt->info.spec.as_attr_list = parser_append_node (as_attr, dt->info.spec.as_attr_list);
 
-	  if (list->is_hidden_column == 0)
+	  if (list->flag.is_hidden_column == 0)
 	    {
 	      /* add entry in new select list */
 	      attr = pt_name (parser, name);

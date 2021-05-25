@@ -110,10 +110,16 @@ void page_server::receive_data_page_fetch (cubpacking::unpacker &upk)
   upk.unpack_string (message);
 
   VPID vpid;
-  std::memcpy (&vpid, message.c_str (), sizeof (vpid));
+  size_t bytes_read = 0;
+  std::memcpy (&vpid.pageid, message.c_str () + bytes_read, sizeof (vpid.pageid));
+  bytes_read += sizeof (vpid.pageid);
+
+  std::memcpy (&vpid.volid, message.c_str () + bytes_read, sizeof (vpid.volid));
+  bytes_read += sizeof (vpid.volid);
 
   LOG_LSA target_repl_lsa;
-  std::memcpy (&target_repl_lsa, message.c_str () + sizeof (vpid), sizeof (target_repl_lsa));
+  std::memcpy (&target_repl_lsa, message.c_str () + bytes_read, sizeof (target_repl_lsa));
+  bytes_read += sizeof (target_repl_lsa);
 
   assert (m_page_fetcher);
   m_page_fetcher->fetch_data_page (vpid, target_repl_lsa, std::bind (&page_server::on_data_page_read_result, this,
@@ -230,4 +236,3 @@ assert_page_server_type ()
 {
   assert (get_server_type () == SERVER_TYPE::SERVER_TYPE_PAGE);
 }
-

@@ -1271,6 +1271,8 @@ typedef struct _ha_config
 #define LOAD_TABLE_NAME_L                       "table"
 #define LOAD_COMPARE_STORAGE_ORDER_S            11820
 #define LOAD_COMPARE_STORAGE_ORDER_L            "compare-storage-order"
+#define LOAD_CS_FORCE_LOAD_S                    11824
+#define LOAD_CS_FORCE_LOAD_L                    "force-load"
 
 /* unloaddb option list */
 #define UNLOAD_INPUT_CLASS_FILE_S               'i'
