@@ -979,10 +979,9 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
       if (!css_tcp_listen_server_datagram (socket_fd, &datagram_fd))
 	{
 	  (void) unlink (pname.c_str ());
-	  css_free_conn (conn);
 	  close (socket_fd);
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
-	  return NULL;
+	  goto fail_end;
 	}
       // success
       (void) unlink (pname.c_str ());
