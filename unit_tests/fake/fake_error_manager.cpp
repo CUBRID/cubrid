@@ -18,12 +18,12 @@
 
 #include "error_manager.h"
 
-static int error_id = NO_ERROR;
+thread_local int  g_error_id = NO_ERROR;
 
 void
 er_set (int severity, const char *file_name, const int line_no, int err_id, int num_args, ...)
 {
-  error_id = err_id;
+  g_error_id = err_id;
 }
 
 void
@@ -34,17 +34,19 @@ _er_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
 int
 er_errid (void)
 {
-  return error_id;
+  return g_error_id;
 }
 
 void
 er_set_with_oserror (int severity, const char *file_name, const int line_no, int err_id, int num_args, ...)
 {
+  g_error_id = err_id;
 }
 
 void
 er_clear (void)
 {
+  g_error_id = NO_ERROR;
 }
 
 void

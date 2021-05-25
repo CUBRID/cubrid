@@ -50,7 +50,7 @@ int64_t get_key (VPID page_id)
 class test_env
 {
   public:
-    test_env (bool require_data_page_valid, std::vector<VPID> vpids);
+    test_env (bool require_data_page_valid, const std::vector<VPID> &vpids);
     ~test_env ();
 
     void run_test ();
@@ -68,7 +68,7 @@ void do_test (test_env &env)
   env.run_test ();
 }
 
-TEST_CASE ("Test with a valid log page returned", "")
+TEST_CASE ("Test for data page fetcher", "")
 {
   THREAD_ENTRY *thread_p = NULL;
   cubthread::initialize (thread_p);
@@ -83,8 +83,6 @@ TEST_CASE ("Test with a valid log page returned", "")
 
   SECTION ("2. Test with errors returned")
   {
-    er_set (0, "", 0, ER_FAILED, 0);
-
     std::vector<VPID> vpids { {4, 0}, {5, 0}, {6, 0} };
     test_env env (false, vpids);
     do_test (env);
@@ -104,7 +102,7 @@ TEST_CASE ("Test with a valid log page returned", "")
   cubthread::finalize ();
 }
 
-test_env::test_env (bool require_data_page_valid, std::vector<VPID> vpids)
+test_env::test_env (bool require_data_page_valid, const std::vector<VPID> &vpids)
   : m_vpids (vpids)
 {
   for (auto a_vpid : vpids)
@@ -203,6 +201,7 @@ pgbuf_fix_debug (THREAD_ENTRY *thread_p, const VPID *vpid, PAGE_FETCH_MODE fetch
     }
   else
     {
+      er_set (0, "", 0, ER_FAILED, 0);
       return nullptr;
     }
 }
