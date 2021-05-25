@@ -57,7 +57,7 @@ class active_tran_server
 	    cubcomm::request_sync_client_server<ats_to_ps_request, ps_to_ats_request, std::string>;
 
     int parse_server_host (const std::string &host);
-    int parse_page_server_hosts_config ();
+    int parse_page_server_hosts_config (std::string &hosts);
     void receive_saved_lsa (cubpacking::unpacker &upk);
     void receive_log_page (cubpacking::unpacker &upk);
     void receive_data_page (cubpacking::unpacker &upk);

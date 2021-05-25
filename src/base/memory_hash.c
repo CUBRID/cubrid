@@ -980,10 +980,10 @@ mht_create (const char *name, int est_size, unsigned int (*hash_func) (const voi
  */
 MHT_HLS_TABLE *
 mht_create_hls (const char *name, int est_size, unsigned int (*hash_func) (const void *key, unsigned int ht_size),
-	    int (*cmp_func) (const void *key1, const void *key2))
+		int (*cmp_func) (const void *key1, const void *key2))
 {
   MHT_HLS_TABLE *ht;
-  HENTRY_HLS_PTR *hvector;		/* Entries of hash table */
+  HENTRY_HLS_PTR *hvector;	/* Entries of hash table */
   unsigned int ht_estsize;
   size_t size;
 
@@ -1237,8 +1237,8 @@ mht_clear (MHT_TABLE * ht, int (*rem_func) (const void *key, void *data, void *a
 int
 mht_clear_hls (MHT_HLS_TABLE * ht, int (*rem_func) (const void *key, void *data, void *args), void *func_args)
 {
-  HENTRY_HLS_PTR *hvector;		/* Entries of hash table */
-  HENTRY_HLS_PTR hentry;		/* A hash table entry. linked list */
+  HENTRY_HLS_PTR *hvector;	/* Entries of hash table */
+  HENTRY_HLS_PTR hentry;	/* A hash table entry. linked list */
   HENTRY_HLS_PTR next_hentry = NULL;	/* Next element in linked list */
   unsigned int i, error_code;
 
@@ -1367,11 +1367,10 @@ mht_dump (THREAD_ENTRY * thread_p, FILE * out_fp, const MHT_TABLE * ht, const in
  */
 int
 mht_dump_hls (THREAD_ENTRY * thread_p, FILE * out_fp, const MHT_HLS_TABLE * ht, const int print_id_opt,
-	      int (*print_func) (THREAD_ENTRY * thread_p, FILE * fp, const void *data, void *args),
-	      void *func_args)
+	      int (*print_func) (THREAD_ENTRY * thread_p, FILE * fp, const void *data, void *args), void *func_args)
 {
-  HENTRY_HLS_PTR *hvector;		/* Entries of hash table */
-  HENTRY_HLS_PTR hentry;		/* A hash table entry. linked list */
+  HENTRY_HLS_PTR *hvector;	/* Entries of hash table */
+  HENTRY_HLS_PTR hentry;	/* A hash table entry. linked list */
   unsigned int i;
   int cont = TRUE;
 

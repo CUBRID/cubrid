@@ -348,8 +348,8 @@ qdata_copy_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key, REGU_VAR
  *   key(in): source key
  */
 HASH_SCAN_KEY *
-qdata_copy_hscan_key_without_alloc (cubthread::entry * thread_p, HASH_SCAN_KEY * key, REGU_VARIABLE_LIST probe_regu_list,
-				    HASH_SCAN_KEY * new_key)
+qdata_copy_hscan_key_without_alloc (cubthread::entry * thread_p, HASH_SCAN_KEY * key,
+				    REGU_VARIABLE_LIST probe_regu_list, HASH_SCAN_KEY * new_key)
 {
   DB_TYPE vtype1, vtype2;
   TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
@@ -506,8 +506,7 @@ int
 qdata_free_hscan_entry (const void *key, void *data, void *args)
 {
   /* free key */
-  qdata_free_hscan_key ((cubthread::entry *) args, (HASH_SCAN_KEY *) key,
-			key ? ((HASH_SCAN_KEY *) key)->val_count : 0);
+  qdata_free_hscan_key ((cubthread::entry *) args, (HASH_SCAN_KEY *) key, key ? ((HASH_SCAN_KEY *) key)->val_count : 0);
 
   /* free tuple */
   qdata_free_hscan_value ((cubthread::entry *) args, (HASH_SCAN_VALUE *) data);

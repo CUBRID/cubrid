@@ -149,7 +149,7 @@ struct mht_hls_table
   unsigned int (*hash_func) (const void *key, unsigned int htsize);
   int (*cmp_func) (const void *key1, const void *key2);
   const char *name;
-  HENTRY_HLS_PTR *table;		/* The hash table (entries) */
+  HENTRY_HLS_PTR *table;	/* The hash table (entries) */
   HENTRY_HLS_PTR prealloc_entries;	/* Free entries allocated for locality reasons */
   unsigned int size;		/* Better if prime number */
   unsigned int nentries;	/* Actual number of entries */
@@ -164,7 +164,8 @@ extern void *mht_get_hls (const MHT_HLS_TABLE * ht, const void *key, void **last
 extern MHT_HLS_TABLE *mht_create_hls (const char *name, int est_size,
 				      unsigned int (*hash_func) (const void *key, unsigned int ht_size),
 				      int (*cmp_func) (const void *key1, const void *key2));
-extern int mht_clear_hls (MHT_HLS_TABLE * ht, int (*rem_func) (const void *key, void *data, void *args), void *func_args);
+extern int mht_clear_hls (MHT_HLS_TABLE * ht, int (*rem_func) (const void *key, void *data, void *args),
+			  void *func_args);
 extern void mht_destroy_hls (MHT_HLS_TABLE * ht);
 extern int mht_dump_hls (THREAD_ENTRY * thread_p, FILE * out_fp, const MHT_HLS_TABLE * ht, const int print_id_opt,
 			 int (*print_func) (THREAD_ENTRY * thread_p, FILE * fp, const void *data, void *args),
