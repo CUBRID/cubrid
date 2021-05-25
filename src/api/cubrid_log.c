@@ -414,10 +414,10 @@ cubrid_log_send_configurations (void)
 
   for (i = 0; i < g_extraction_user_count; i++)
     {
-      request_size += or_packed_string_length (g_extraction_user[i]);
+      request_size += or_packed_string_length (g_extraction_user[i], NULL);
     }
 
-  request_size += (OR_BIGINT_SIZE * extraction_table_count);
+  request_size += (OR_BIGINT_SIZE * g_extraction_table_count);
 
   a_request = (char *) malloc (request_size + MAX_ALIGNMENT);
   if (a_request == NULL)
@@ -1266,7 +1266,7 @@ cubrid_log_clear_log_item (CUBRID_LOG_ITEM * log_item_list)
       if (cubrid_log_clear_data_item ((DATA_ITEM_TYPE) g_log_items[i].data_item_type, &g_log_items[i].data_item) !=
 	  CUBRID_LOG_SUCCESS)
 	{
-	  CUBRID_LOG_ERROR_HANDLING (CUBIRD_LOG_FAILED_DEALLOC);
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_DEALLOC);
 	}
     }
 
