@@ -1171,7 +1171,6 @@ int g_original_buffer_len;
 %token COUNT
 %token CREATE
 %token CROSS
-%token DBLINK
 %token CURRENT
 %token CURRENT_DATE
 %token CURRENT_DATETIME
@@ -1549,6 +1548,7 @@ int g_original_buffer_len;
 %token <cptr> CUME_DIST
 %token <cptr> DATE_ADD
 %token <cptr> DATE_SUB
+%token <cptr> DBLINK
 %token <cptr> DECREMENT
 %token <cptr> DENSE_RANK
 %token <cptr> DONT_REUSE_OID
@@ -21811,6 +21811,16 @@ identifier
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+        | DBLINK
+                {{
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  {
+			    p->info.name.original = $1;
+			  }
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+                DBG_PRINT}}
 	| DECREMENT
 		{{
 
@@ -24738,7 +24748,7 @@ json_table_rule
     ;
 
 dblink_expr
-        :   dblink_conn  ','  DelimitedIdName  
+        :   dblink_conn  ','  CHAR_STRING  
             {{
              PT_NODE *ct = parser_new_node(this_parser, PT_DBLINK_TABLE) ;           
              if(ct)
@@ -24850,30 +24860,17 @@ dblink_conn:
         ;        
 
 dblink_identifier_col_attrs  
-        :  opt_as IdName '('  dblink_column_definition_list ')' 
+        :  opt_as identifier '('  dblink_column_definition_list ')' 
         {{                
              container_2 ctn;
-             PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-             if (p)
-               {
-                        int size_in;
-                        char *str_name = $2;
-
-                        size_in = strlen(str_name);
-
-                        PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
-                        str_name = pt_check_identifier (this_parser, p,
-                                                        str_name, size_in);
-                        p->info.name.original = str_name;
-               }           
-              
-	      SET_CONTAINER_2 (ctn, p, $4);
-              $$ = ctn;              
+             
+	     SET_CONTAINER_2 (ctn, $2, $4);
+             $$ = ctn;              
              DBG_PRINT}}
         ;
 
 dblink_column_definition_list
-        :  dblink_column_definition_list ','  dblink_column_definition     
+        :  dblink_column_definition_list ','  dblink_column_definition
            {{
                 $$ = parser_make_link($1, $3);
 	        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos);
@@ -24884,49 +24881,33 @@ dblink_column_definition_list
                PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
              DBG_PRINT}}
         ;
-    
+
 dblink_column_definition
-        : IdName primitive_type
+        : identifier primitive_type
         {{
-                PT_NODE *node = 0x00;
-                PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-                if (p)
-                {
-                        int size_in;
-                        char *str_name = $1;
+                PT_NODE *node;              
 
-                        size_in = strlen(str_name);
+                node = parser_new_node (this_parser, PT_ATTR_DEF);
+                if (node)                            
+                {                    
+                        PT_NODE *dt;
+                        PT_TYPE_ENUM typ;
 
-                        PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
-                        str_name = pt_check_identifier (this_parser, p,
-                                                        str_name, size_in);
-                        p->info.name.original = str_name;
-                                
-                        node = parser_new_node (this_parser, PT_ATTR_DEF);
-                        if (!node)
-                                parser_free_node(this_parser, p);
-                        else        
-                        {                    
-                                PT_NODE *dt;
-                                PT_TYPE_ENUM typ;
+                        node->type_enum = typ = TO_NUMBER (CONTAINER_AT_0 ($2));
+                        node->data_type = dt = CONTAINER_AT_1 ($2);
+                        node->info.attr_def.attr_name = $1;
 
-                                node->type_enum = typ = TO_NUMBER (CONTAINER_AT_0 ($2));
-                                node->data_type = dt = CONTAINER_AT_1 ($2);
-                                node->info.attr_def.attr_name = p;
+                        if(typ == PT_TYPE_BLOB || typ == PT_TYPE_CLOB || typ == PT_TYPE_OBJECT)
+                          {
+                                // TODO: error processing
+                                PT_ERROR (this_parser, node, "invalid DBLINK column type");
+                                assert (false); 
+                          }
 
-                                if(typ == PT_TYPE_BLOB || typ == PT_TYPE_CLOB)
-                                        ; // TODO: error processing
-
-                                if (typ == PT_TYPE_CHAR && dt)
-                                        node->info.attr_def.size_constraint = dt->info.data_type.precision;
-                                if (typ == PT_TYPE_OBJECT && dt && dt->type_enum == PT_TYPE_VARCHAR)
-                                {
-                                        node->type_enum = dt->type_enum;
-                                        PT_NAME_INFO_SET_FLAG (node->info.attr_def.attr_name,
-                                                        PT_NAME_INFO_EXTERNAL);
-                                }
-                        }
+                        if (typ == PT_TYPE_CHAR && dt)
+                                node->info.attr_def.size_constraint = dt->info.data_type.precision;                      
                 }
+
                 $$ = node;
 		PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
