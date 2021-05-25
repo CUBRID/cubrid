@@ -207,6 +207,40 @@ add_dependencies(test_log_lsa_utils
   )
 
 #
+# test_data_page_fetcher
+# 
+
+set(TEST_DATA_PAGE_FETCHER_SOURCES
+  ${STORAGE_DIR}/async_page_fetcher.cpp
+  test_main_data_page_fetcher.cpp)
+
+SET_SOURCE_FILES_PROPERTIES(
+  ${TEST_DATA_PAGE_FETCHER_SOURCES}
+  PROPERTIES LANGUAGE CXX)
+
+add_executable(test_data_page_fetcher
+  ${TEST_DATA_PAGE_FETCHER_SOURCES}
+)
+
+target_compile_options(test_data_page_fetcher PRIVATE
+  ${compile_warning_flags}
+)
+
+target_compile_definitions(test_data_page_fetcher PRIVATE
+  ${COMMON_DEFS} SERVER_MODE
+)
+
+target_include_directories(test_data_page_fetcher PRIVATE
+  ${TEST_INCLUDES}
+)
+
+target_link_libraries(test_data_page_fetcher fake_thread_utils)
+
+add_dependencies(test_data_page_fetcher
+  ${CATCH2_TARGET}
+)
+
+#
 # test_log_recovery_parallel
 #
 set(TEST_LOG_RECOVERY_PARALLEL_SOURCES
