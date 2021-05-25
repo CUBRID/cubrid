@@ -2904,8 +2904,8 @@ ehash_split_bucket (THREAD_ENTRY * thread_p, EHASH_DIR_HEADER * dir_header_p, PA
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_CORRUPTED, 0);
       return NULL;
     }
-  /* There are no more bits left. TO_DO : change 32 to EHASH_MAXBIT */
-  if (bucket_header_p->local_depth >= 32)
+  /* There are no more bits left. TO_DO : change UINT_MAX to EHASH_MAXBIT */
+  if (bucket_header_p->local_depth >= UINT_MAX)
     {
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_CORRUPTED, 0);
       return NULL;
