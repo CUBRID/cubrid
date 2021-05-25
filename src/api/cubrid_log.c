@@ -397,11 +397,11 @@ cubrid_log_send_configurations (void)
 {
   unsigned short rid = 0;
 
-  OR_ALIGNED_BUF ((OR_INT_SIZE * 5)) a_request;
+  char *a_request;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *request = OR_ALIGNED_BUF_START (a_request), *ptr;
+  char *request, *ptr;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
-  int request_size = OR_ALIGNED_BUF_SIZE (a_request);
+  int request_size, i;
   int reply_size = OR_ALIGNED_BUF_SIZE (a_reply), reply_code;
 
   char *recv_data = NULL;
@@ -410,11 +410,39 @@ cubrid_log_send_configurations (void)
   CSS_QUEUE_ENTRY *queue_entry;
   int err_code;
 
+  request_size = OR_INT_SIZE * 5;
+
+  for (i = 0; i < g_extraction_user_count; i++)
+    {
+      request_size += or_packed_string_length (g_extraction_user[i]);
+    }
+
+  request_size += (OR_BIGINT_SIZE * extraction_table_count);
+
+  a_request = (char *) malloc (request_size + MAX_ALIGNMENT);
+  if (a_request == NULL)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT);
+    }
+
+  request = PTR_ALIGN (a_request, MAX_ALIGNMENT);
+
   ptr = or_pack_int (request, g_max_log_item);
   ptr = or_pack_int (ptr, g_extraction_timeout);
   ptr = or_pack_int (ptr, g_all_in_cond);
   ptr = or_pack_int (ptr, g_extraction_user_count);
+
+  for (i = 0; i < g_extraction_user_count; i++)
+    {
+      ptr = or_pack_string (ptr, g_extraction_user[i]);
+    }
+
   ptr = or_pack_int (ptr, g_extraction_table_count);
+
+  for (i = 0; i < g_extraction_table_count; i++)
+    {
+      ptr = or_pack_int64 (ptr, (INT64) g_extraction_table[i]);
+    }
 
   if (css_send_request_with_data_buffer
       (g_conn_entry, NET_SERVER_LOG_READER_SET_CONFIGURATION, &rid, request, request_size, reply,
