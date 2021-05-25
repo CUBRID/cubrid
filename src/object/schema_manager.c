@@ -447,8 +447,10 @@ static bool sm_is_possible_to_recreate_constraint (MOP class_mop, const SM_CLASS
 static bool sm_filter_index_pred_have_invalid_attrs (SM_CLASS_CONSTRAINT * constraint, char *class_name,
 						     SM_ATTRIBUTE * old_atts, SM_ATTRIBUTE * new_atts);
 
-static int sm_collect_truncatable_classes (MOP class_mop, std::unordered_set < OID > &trun_classes, bool is_cascade);
-static int sm_truncate_class_internal (std::unordered_set < OID > &&trun_classes);
+// *INDENT-OFF*
+static int sm_collect_truncatable_classes (MOP class_mop, std::unordered_set<OID>& trun_classes, bool is_cascade);
+static int sm_truncate_class_internal (std::unordered_set<OID>&& trun_classes)
+// *INDENT-ON*
 static int sm_truncate_using_delete (MOP class_mop);
 static int sm_truncate_using_destroy_heap (MOP class_mop);
 static int sm_save_nested_view_versions (PARSER_CONTEXT * parser, DB_OBJECT * class_object, SM_CLASS * class_);
