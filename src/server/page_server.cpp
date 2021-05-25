@@ -110,7 +110,7 @@ void page_server::receive_data_page_fetch (cubpacking::unpacker &upk)
   upk.unpack_string (message);
 
   VPID vpid;
-  int bytes_read = 0;
+  size_t bytes_read = 0;
   std::memcpy (&vpid.pageid, message.c_str () + bytes_read, sizeof (vpid.pageid));
   bytes_read += sizeof (vpid.pageid);
 
@@ -236,4 +236,3 @@ assert_page_server_type ()
 {
   assert (get_server_type () == SERVER_TYPE::SERVER_TYPE_PAGE);
 }
-
