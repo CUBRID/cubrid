@@ -87,16 +87,8 @@ active_tran_server::parse_server_host (const std::string &host)
 }
 
 int
-active_tran_server::parse_page_server_hosts_config ()
+active_tran_server::parse_page_server_hosts_config (std::string &hosts)
 {
-  std::string hosts = prm_get_string_value (PRM_ID_PAGE_SERVER_HOSTS);
-
-  if (!hosts.length ())
-    {
-      // no page server
-      return NO_ERROR;
-    }
-
   auto col_pos = hosts.find (":");
 
   if (col_pos < 1 || col_pos >= hosts.length () - 1)
@@ -132,7 +124,16 @@ int
 active_tran_server::init_page_server_hosts (const char *db_name)
 {
   assert_is_active_tran_server ();
-  int exit_code = parse_page_server_hosts_config ();
+
+  std::string hosts = prm_get_string_value (PRM_ID_PAGE_SERVER_HOSTS);
+
+  if (!hosts.length ())
+    {
+      // no page server
+      return NO_ERROR;
+    }
+
+  int exit_code = parse_page_server_hosts_config (hosts);
 
   if (m_connection_list.empty ())
     {
