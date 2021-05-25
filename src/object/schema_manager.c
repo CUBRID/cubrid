@@ -30,7 +30,6 @@
 #include <ctype.h>
 #include <assert.h>
 #include <unordered_set>
-#include <unordered_map>
 
 #ifdef HPUX
 #include <a.out.h>
