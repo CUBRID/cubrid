@@ -261,6 +261,8 @@ void active_tran_server::init_has_remote_storage (const SERVER_TYPE a_server_typ
 
 bool active_tran_server::has_remote_storage () const
 {
+  assert_is_active_tran_server ();
+
   return m_has_remote_storage;
 }
 
