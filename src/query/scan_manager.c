@@ -8278,7 +8278,7 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
   /* tempolary set HASH FILE */
   if (hash_list_scan_yn == HASH_METH_NOT_USE)
     {
-      return HASH_METH_IN_MEM;
+      return HASH_METH_HYBRID;
     }
   return HASH_METH_HASH_FILE;
 
