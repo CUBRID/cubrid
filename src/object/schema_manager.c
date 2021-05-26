@@ -15364,7 +15364,20 @@ sm_is_possible_to_recreate_constraint (MOP class_mop, const SM_CLASS * const cla
 
   if (class_->users != NULL)
     {
-      return false;
+      if (class_->partition != NULL)
+	{
+	  /*
+	   * partitioned class
+	   *
+	   * if there is a child class, it can be shared,
+	   * but if partitioned, it can't be shared becuase you can't inherit a partitioning table.
+	   */
+	  return true;
+	}
+      else
+	{
+	  return false;
+	}
     }
 
   assert (class_->inheritance != NULL && class_->users == NULL);
@@ -16036,7 +16049,7 @@ sm_collect_truncatable_classes (MOP class_mop, std::unordered_set < OID > &trun_
 	    }
 
 	  int partition_type = DB_NOT_PARTITIONED_CLASS;
-	  error = sm_partitioned_class_type (class_mop, &partition_type, NULL, NULL);
+	  error = sm_partitioned_class_type (fk_child_mop, &partition_type, NULL, NULL);
 	  if (error != NO_ERROR)
 	    {
 	      return error;
