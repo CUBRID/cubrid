@@ -15572,7 +15572,9 @@ sm_truncate_using_destroy_heap (MOP class_mop)
   SM_CLASS *class_ = NULL;
   int error = NO_ERROR;
   bool reuse_oid = false;
+  int partition_type = DB_NOT_PARTITIONED_CLASS;
   OID *oid = NULL;
+  DB_OBJLIST *subs;
 
   oid = ws_oid (class_mop);
   assert (!OID_ISTEMP (oid));
@@ -15584,6 +15586,25 @@ sm_truncate_using_destroy_heap (MOP class_mop)
     {
       assert (er_errid () != NO_ERROR);
       return er_errid ();
+    }
+
+  error = sm_partitioned_class_type (class_mop, &partition_type, NULL, NULL);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (partition_type == DB_PARTITIONED_CLASS)
+    {
+      assert (class_->users);
+      for (subs = class_->users; subs; subs = subs->next)
+	{
+	  error = sm_truncate_using_destroy_heap (subs->op);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	}
     }
 
   insts_hfid = sm_ch_heap ((MOBJ) class_);
@@ -15632,10 +15653,7 @@ sm_collect_truncatable_classes (MOP class_mop, std::unordered_set < OID > &trun_
   SM_CLASS *class_ = NULL;
   SM_CLASS_CONSTRAINT *pk_constraint = NULL;
   SM_FOREIGN_KEY_INFO *fk_ref;
-  DB_OBJLIST *subs;
   OID *fk_cls_oid;
-  bool is_pk_referred = false;
-  int partition_type = DB_NOT_PARTITIONED_CLASS;
 
   error = au_fetch_class (class_mop, &class_, AU_FETCH_READ, DB_AUTH_ALTER);
   if (error != NO_ERROR || class_ == NULL)
@@ -15644,50 +15662,21 @@ sm_collect_truncatable_classes (MOP class_mop, std::unordered_set < OID > &trun_
       return er_errid ();
     }
 
-  pk_constraint = classobj_find_cons_primary_key (class_->constraints);
-  is_pk_referred = pk_constraint != NULL && pk_constraint->fk_info != NULL;
-
-  if (is_pk_referred && !is_cascade)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TRUNCATE_PK_REFERRED, 1, pk_constraint->fk_info->name);
-      return ER_TRUNCATE_PK_REFERRED;
-    }
-
-  error = sm_partitioned_class_type (class_mop, &partition_type, NULL, NULL);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
-  if (partition_type == DB_PARTITION_CLASS)
-    {
-      /*
-       * TRUNCATE [partition class] is already prevented.
-       * This can be reached because if a FK of partitioned class referes a PK, FKs of the partition classes also refer to it.
-       *
-       * No need to be added to trun_classes:
-       *  Partition classes will be added when examining the partitioned class of them.
-       * No need to check FK for cascaing:
-       *  It's enough to check the PK of the partitioned class for cascading.
-       */
-      return NO_ERROR;
-    }
-  else if (partition_type == DB_PARTITIONED_CLASS)
-    {
-      /* Find partition classes if exists */
-      assert (class_->users);
-      for (subs = class_->users; subs; subs = subs->next)
-	{
-	  trun_classes.emplace (*ws_oid (subs->op));
-	}
-    }
-
   trun_classes.emplace (*ws_oid (class_mop));
 
-  if (!is_pk_referred)
+  pk_constraint = classobj_find_cons_primary_key (class_->constraints);
+  if (pk_constraint == NULL || pk_constraint->fk_info == NULL)
     {
       /* if no PK or FK-referred, it can be truncated */
       return NO_ERROR;
+    }
+
+  /* Now, there is a PK, and are some FKs-referring to the PK */
+
+  if (!is_cascade)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TRUNCATE_PK_REFERRED, 1, pk_constraint->fk_info->name);
+      return ER_TRUNCATE_PK_REFERRED;
     }
 
   /* Find FK-child classes to cascade. */
@@ -15705,6 +15694,22 @@ sm_collect_truncatable_classes (MOP class_mop, std::unordered_set < OID > &trun_
 	    {
 	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
+	    }
+
+	  int partition_type = DB_NOT_PARTITIONED_CLASS;
+	  error = sm_partitioned_class_type (fk_child_mop, &partition_type, NULL, NULL);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+
+	  if (partition_type == DB_PARTITION_CLASS)
+	    {
+	      /*
+	       * FKs of all partition classes refers to a class that the parittioned class of them referes to.
+	       * But, partition class will be processed when the partitioned class is done.
+	       */
+	      continue;
 	    }
 
 	  error = sm_collect_truncatable_classes (fk_child_mop, trun_classes, is_cascade);
