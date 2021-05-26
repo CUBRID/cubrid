@@ -15697,7 +15697,7 @@ sm_collect_truncatable_classes (MOP class_mop, std::unordered_set < OID > &trun_
 	    }
 
 	  int partition_type = DB_NOT_PARTITIONED_CLASS;
-	  error = sm_partitioned_class_type (class_mop, &partition_type, NULL, NULL);
+	  error = sm_partitioned_class_type (fk_child_mop, &partition_type, NULL, NULL);
 	  if (error != NO_ERROR)
 	    {
 	      return error;
