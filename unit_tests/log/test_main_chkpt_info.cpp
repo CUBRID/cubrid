@@ -170,11 +170,11 @@ search_for_id (TRANID id)
 }
 
 void
-full_compare_tdes (log_tdes *td1, const log_tdes *td2, bool active)
+full_compare_tdes (log_tdes *td1, const log_tdes *td2, bool is_unactive_aborted)
 {
   REQUIRE (td1->head_lsa == td2->head_lsa);
   REQUIRE (td1->tail_lsa == td2->tail_lsa);
-  if (active)
+  if (is_unactive_aborted)
     {
       REQUIRE (td1->tail_lsa == td2->undo_nxlsa);
     }
@@ -185,8 +185,6 @@ full_compare_tdes (log_tdes *td1, const log_tdes *td2, bool active)
   REQUIRE (td1->posp_nxlsa == td2->posp_nxlsa);
   REQUIRE (td1->savept_lsa == td2->savept_lsa);
   REQUIRE (td1->tail_topresult_lsa == td2->tail_topresult_lsa);
-  REQUIRE (td1->rcv.sysop_start_postpone_lsa == td2->rcv.sysop_start_postpone_lsa);
-  REQUIRE (td1->rcv.atomic_sysop_start_lsa == td2->rcv.atomic_sysop_start_lsa);
 }
 
 void
@@ -217,19 +215,31 @@ check_recovery (checkpoint_info obj)
       if (tdes->state == TRAN_ACTIVE || tdes->state == TRAN_UNACTIVE_ABORTED)
 	{
 	  REQUIRE (tdes_after->second->state == TRAN_UNACTIVE_UNILATERALLY_ABORTED);
-
-	  if (tdes->state == TRAN_UNACTIVE_ABORTED)
-	    {
-	      full_compare_tdes (tdes, tdes_after->second, true);
-	    }
-	  else
-	    {
-	      full_compare_tdes (tdes, tdes_after->second, false);
-	    }
-	  continue;
 	}
-      REQUIRE (tdes_after->second->state == tdes->state);
-      full_compare_tdes (tdes, tdes_after->second, false);
+      else
+	{
+	  REQUIRE (tdes_after->second->state == tdes->state);
+	}
+
+      full_compare_tdes (tdes, tdes_after->second, tdes->state == TRAN_UNACTIVE_ABORTED);
+
+      //check tdes sysop
+      if (tdes->rcv.sysop_start_postpone_lsa == NULL_LSA &&
+	  tdes->rcv.atomic_sysop_start_lsa == NULL_LSA)
+	{
+	  REQUIRE (tdes_after->second->topops.last == 0);
+	}
+      else
+	{
+	  if (tdes->topops.last == -1)
+	    {
+	      REQUIRE (tdes_after->second->topops.last == 0);
+	      continue;
+	    }
+	  REQUIRE (tdes->rcv.sysop_start_postpone_lsa == tdes_after->second->rcv.sysop_start_postpone_lsa);
+	  REQUIRE (tdes->rcv.atomic_sysop_start_lsa == tdes_after->second->rcv.atomic_sysop_start_lsa);
+
+	}
     }
 
   for (itr = systb_System_tdes.begin(); itr != systb_System_tdes.end(); ++itr)
