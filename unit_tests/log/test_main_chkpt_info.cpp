@@ -227,15 +227,11 @@ check_recovery (checkpoint_info obj)
       if (tdes->rcv.sysop_start_postpone_lsa == NULL_LSA &&
 	  tdes->rcv.atomic_sysop_start_lsa == NULL_LSA)
 	{
-	  REQUIRE (tdes_after->second->topops.last == 0);
+	  REQUIRE (tdes_after->second->topops.last == -1);
 	}
       else
 	{
-	  if (tdes->topops.last == -1)
-	    {
-	      REQUIRE (tdes_after->second->topops.last == 0);
-	      continue;
-	    }
+	  REQUIRE (tdes_after->second->topops.last == 0);
 	  REQUIRE (tdes->rcv.sysop_start_postpone_lsa == tdes_after->second->rcv.sysop_start_postpone_lsa);
 	  REQUIRE (tdes->rcv.atomic_sysop_start_lsa == tdes_after->second->rcv.atomic_sysop_start_lsa);
 
@@ -724,7 +720,7 @@ logtb_rv_find_allocate_tran_index (THREAD_ENTRY *thread_p, TRANID trid, const LO
 	    {
 	      return inside_tdes->second;
 	    }
-
+	  tdes->topops.last = -1;
 	  LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
 	  LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
 	  tran_map.insert (std::pair<TRANID, log_tdes *> (trid, tdes));
