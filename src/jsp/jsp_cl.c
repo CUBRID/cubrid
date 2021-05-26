@@ -1477,7 +1477,7 @@ jsp_receive_response (const SOCKET sockfd, const SP_ARGS * sp_args)
 	      error_code = jsp_receive_error (blk, sp_args);
 	      break;
 	    }
-    break;
+	  break;
 	}
       else
 	{
