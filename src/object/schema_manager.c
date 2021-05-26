@@ -222,6 +222,7 @@ public:
 
   sm_class_truncator (const sm_class_truncator& other) = delete;
   sm_class_truncator& operator=(const sm_class_truncator& other) = delete;
+  sm_class_truncator& operator=(const sm_class_truncator&& other) = delete;
 
 private:
   MOP m_mop = NULL;
