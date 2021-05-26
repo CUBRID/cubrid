@@ -83,6 +83,7 @@
 #include "boot_sr.h"
 #include "db_value_printer.hpp"
 #include "mem_block.hpp"
+#include "server_type.hpp"
 #include "string_buffer.hpp"
 #include "thread_daemon.hpp"
 #include "thread_entry.hpp"
@@ -322,7 +323,7 @@ static cubthread::daemon *log_Remove_log_archive_daemon = NULL;
 static cubthread::daemon *log_Check_ha_delay_info_daemon = NULL;
 
 static cubthread::daemon *log_Flush_daemon = NULL;
-static std::atomic_bool log_Flush_has_been_requested = {false};
+static std::atomic<bool> log_Flush_has_been_requested = {false};
 // *INDENT-ON*
 
 static void log_daemons_init ();
@@ -9916,24 +9917,54 @@ log_check_ha_delay_info_execute (cubthread::entry &thread_ref)
 static void
 log_flush_execute (cubthread::entry & thread_ref)
 {
-  if (!BO_IS_SERVER_RESTARTED () || !log_Flush_has_been_requested)
+  if (!BO_IS_SERVER_RESTARTED ())
     {
       return;
     }
 
+  bool need_flush = false;
+
+  // check if flush was requested
+  {
+    bool expected_value = true;
+    need_flush = log_Flush_has_been_requested.compare_exchange_strong (expected_value, false);
+  }
+
+  if (!need_flush && get_server_type () == SERVER_TYPE_PAGE)
+    {
+      // page server needs to confirm the flushed log asap. if there is any unflushed log, flush it.
+      // Unflushed log may be either:
+      //    - In prior list (prior_list_header != nullptr)
+      //    - Appended into pages, but not flushed to disk (nxio_lsa < append_lsa)
+
+      // log_lsa compare is not thread safe. Use atomic load on non-atomic type log_Gl.hdr.append_lsa
+      // Atomic operations need to reinterpret the 8-bytes of log_lsa as int64
+      // *INDENT-OFF*
+      log_lsa append_lsa =
+	static_cast<log_lsa> (ATOMIC_LOAD_64 (reinterpret_cast<std::int64_t *> (&log_Gl.hdr.append_lsa)));
+      // *INDENT-ON*
+
+need_flush = log_Gl.prior_info.prior_list_header != nullptr || log_Gl.append.get_nxio_lsa () < append_lsa;
+}
+
+if (!need_flush)
+  {
+    // Try again later
+    return;
+  }
+
   // refresh log trace flush time
-  thread_ref.event_stats.trace_log_flush_time = prm_get_integer_value (PRM_ID_LOG_TRACE_FLUSH_TIME_MSECS);
+thread_ref.event_stats.trace_log_flush_time = prm_get_integer_value (PRM_ID_LOG_TRACE_FLUSH_TIME_MSECS);
 
-  LOG_CS_ENTER (&thread_ref);
-  logpb_flush_pages_direct (&thread_ref);
-  LOG_CS_EXIT (&thread_ref);
+LOG_CS_ENTER (&thread_ref);
+logpb_flush_pages_direct (&thread_ref);
+LOG_CS_EXIT (&thread_ref);
 
-  log_Stat.gc_flush_count++;
+log_Stat.gc_flush_count++;
 
-  pthread_mutex_lock (&log_Gl.group_commit_info.gc_mutex);
-  pthread_cond_broadcast (&log_Gl.group_commit_info.gc_cond);
-  log_Flush_has_been_requested = false;
-  pthread_mutex_unlock (&log_Gl.group_commit_info.gc_mutex);
+pthread_mutex_lock (&log_Gl.group_commit_info.gc_mutex);
+pthread_cond_broadcast (&log_Gl.group_commit_info.gc_cond);
+pthread_mutex_unlock (&log_Gl.group_commit_info.gc_mutex);
 }
 #endif /* SERVER_MODE */
 
@@ -9947,7 +9978,7 @@ log_checkpoint_daemon_init ()
   assert (log_Checkpoint_daemon == NULL);
 
   cubthread::looper looper = cubthread::looper (log_get_checkpoint_interval);
-  cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (log_checkpoint_execute);
+  cubthread::entry_callable_task * daemon_task = new cubthread::entry_callable_task (log_checkpoint_execute);
 
   // create checkpoint daemon thread
   log_Checkpoint_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "log_checkpoint");
@@ -9964,17 +9995,15 @@ log_remove_log_archive_daemon_init ()
   assert (log_Remove_log_archive_daemon == NULL);
 
   log_remove_log_archive_daemon_task *daemon_task = new log_remove_log_archive_daemon_task ();
-  cubthread::period_function setup_period_function = std::bind (
-      &log_remove_log_archive_daemon_task::get_remove_log_archives_interval,
-      daemon_task,
-      std::placeholders::_1,
-      std::placeholders::_2);
+  cubthread::period_function setup_period_function =
+    std::bind (&log_remove_log_archive_daemon_task::get_remove_log_archives_interval, daemon_task,
+	       std::placeholders::_1, std::placeholders::_2);
 
   cubthread::looper looper = cubthread::looper (setup_period_function);
 
   // create log archive remover daemon thread
   log_Remove_log_archive_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task,
-                                                                            "log_remove_log_archive");
+									    "log_remove_log_archive");
 }
 #endif /* SERVER_MODE */
 
@@ -9990,7 +10019,7 @@ log_clock_daemon_init ()
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (200));
   log_Clock_daemon =
     cubthread::get_manager ()->create_daemon (looper, new cubthread::entry_callable_task (log_clock_execute),
-                                              "log_clock");
+					      "log_clock");
 }
 #endif /* SERVER_MODE */
 
@@ -10004,10 +10033,10 @@ log_check_ha_delay_info_daemon_init ()
   assert (log_Check_ha_delay_info_daemon == NULL);
 
   cubthread::looper looper = cubthread::looper (std::chrono::seconds (1));
-  cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (log_check_ha_delay_info_execute);
+  cubthread::entry_callable_task * daemon_task = new cubthread::entry_callable_task (log_check_ha_delay_info_execute);
 
   log_Check_ha_delay_info_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task,
-                                                                             "log_check_ha_delay_info");
+									     "log_check_ha_delay_info");
 }
 #endif /* SERVER_MODE */
 
@@ -10021,7 +10050,7 @@ log_flush_daemon_init ()
   assert (log_Flush_daemon == NULL);
 
   cubthread::looper looper = cubthread::looper (log_get_log_group_commit_interval);
-  cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (log_flush_execute);
+  cubthread::entry_callable_task * daemon_task = new cubthread::entry_callable_task (log_flush_execute);
 
   log_Flush_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "log_flush");
 }

@@ -3625,6 +3625,9 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
 	  continue;
 	}
 
+      detailed_er_log ("pgbuf_flush_checkpoint: bcb=%p, vpid=%d|%d, oldest_unflush_lsa=%lld|%d selected for flush.\n",
+		       bufptr, VPID_AS_ARGS (&bufptr->vpid), LSA_AS_ARGS (&bufptr->oldest_unflush_lsa));
+
       if (!LSA_ISNULL (&bufptr->oldest_unflush_lsa) && prev_chkpt_redo_lsa != NULL && !LSA_ISNULL (prev_chkpt_redo_lsa))
 	{
 	  if (LSA_LT (&bufptr->oldest_unflush_lsa, prev_chkpt_redo_lsa))
@@ -7849,17 +7852,16 @@ static void
 pgbuf_request_data_page_from_page_server (const VPID * vpid)
 {
 #if defined (SERVER_MODE)
-  // INDENT-OFF
+  // *INDENT-OFF*
   /* Send a request to Page Server for the Page. */
   if (get_server_type () == SERVER_TYPE_TRANSACTION)
     {
-      constexpr size_t INT32_SIZE = 4;
-      constexpr size_t SHORT_SIZE = 2;
-      char buffer[INT32_SIZE + SHORT_SIZE + sizeof (LOG_LSA)];
+      constexpr size_t PAGEID_SIZE = sizeof (VPID::pageid);
+      constexpr size_t VOLID_SIZE = sizeof (VPID::volid);
+      char buffer[PAGEID_SIZE + VOLID_SIZE + sizeof (LOG_LSA)];
 
-      int bytes_copied = 0;
       std::memcpy (buffer, &(vpid->pageid), sizeof (vpid->pageid));
-      bytes_copied += sizeof (vpid->pageid);
+      size_t bytes_copied = sizeof (vpid->pageid);
 
       std::memcpy (buffer + bytes_copied, &(vpid->volid), sizeof (vpid->volid));
       bytes_copied += sizeof (vpid->volid);
@@ -7869,7 +7871,6 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid)
       bytes_copied += sizeof (nxio_lsa);
 
       std::string message (buffer, bytes_copied);
-
       ats_Gl.push_request (ats_to_ps_request::SEND_DATA_PAGE_FETCH, std::move (message));
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
 	{
@@ -7877,7 +7878,7 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid)
 			 vpid->volid);
 	}
     }
-  // INDENT-ON 
+  // *INDENT-ON*
 #endif // SERVER_MODE
 }
 

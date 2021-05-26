@@ -235,8 +235,8 @@ namespace cublog
 	 *       however, setting tdes->rcv.sysop_start_postpone_lsa is protected by
 	 *       log_Gl.prior_info.prior_lsa_mutex. so we check this instead of state.
 	 */
-	m_sysops.emplace_back();
-	sysop_info &chkpt_topop = m_sysops.back();
+	m_sysops.emplace_back ();
+	sysop_info &chkpt_topop = m_sysops.back ();
 	chkpt_topop.trid = tdes.trid;
 	chkpt_topop.sysop_start_postpone_lsa = tdes.rcv.sysop_start_postpone_lsa;
 	chkpt_topop.atomic_sysop_start_lsa = tdes.rcv.atomic_sysop_start_lsa;

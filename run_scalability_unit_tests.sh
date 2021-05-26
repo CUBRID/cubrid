@@ -18,10 +18,11 @@
 
 # A-Z
 ./test_log_page_fetcher
+./test_data_page_fetcher
 ./test_log_page_broker
 ./test_log_lsa_utils
 ./test_meta_log
 ./test_prior_list_serialize
 ./test_prior_sendrecv
 ./test_request_cs
-./test_recovery [ci]
+./test_log_recovery_parallel [ci]
