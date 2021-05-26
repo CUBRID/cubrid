@@ -559,8 +559,13 @@ sm_class_truncator::save_constraints_or_clear (cons_predicate pred)
   int error = NO_ERROR;
   SM_CLASS_CONSTRAINT *c = NULL;
 
-  for (c = m_class->constraints; c && pred (*c); c = c->next)
+  for (c = m_class->constraints; c; c = c->next)
     {
+      if (!pred (*c))
+        {
+          continue;
+        }
+
       if ((c->type == SM_CONSTRAINT_PRIMARY_KEY && classobj_is_pk_referred (m_mop, c->fk_info, false, NULL))
          || !sm_is_possible_to_recreate_constraint (m_mop, m_class, c))
         {
@@ -630,8 +635,13 @@ sm_class_truncator::drop_saved_constraints (saved_cons_predicate pred)
           return error;
         }
 
-      for (saved = m_fk_info; saved != NULL && pred (*saved); saved = saved->next)
+      for (saved = m_fk_info; saved != NULL; saved = saved->next)
         {
+          if (!pred (*saved))
+            {
+              continue;
+            }
+
           error =
             dbt_drop_constraint (ctmpl, saved->constraint_type, saved->name, (const char **) saved->att_names, 0);
           if (error != NO_ERROR)
@@ -650,8 +660,13 @@ sm_class_truncator::drop_saved_constraints (saved_cons_predicate pred)
         }
     }
 
-  for (saved = m_unique_info; saved != NULL && pred (*saved); saved = saved->next)
+  for (saved = m_unique_info; saved != NULL; saved = saved->next)
     {
+      if (!pred (*saved))
+        {
+          continue;
+        }
+
       error =
         sm_drop_constraint (m_mop, saved->constraint_type, saved->name, (const char **) saved->att_names, 0,
                             false);
@@ -661,8 +676,13 @@ sm_class_truncator::drop_saved_constraints (saved_cons_predicate pred)
         }
     }
 
-  for (saved = m_index_info; saved != NULL && pred (*saved); saved = saved->next)
+  for (saved = m_index_info; saved != NULL; saved = saved->next)
     {
+      if (!pred (*saved))
+        {
+          continue;
+        }
+
       error = sm_drop_index (m_mop, saved->name);
       if (error != NO_ERROR)
         {
