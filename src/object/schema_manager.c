@@ -546,11 +546,19 @@ sm_class_truncator::~sm_class_truncator ()
   }
 }
 
+/*
+ * save_constraints_or_clear () - save constraints of the the class,
+ *                                or remove instance manually if it is impossible.
+ *
+ *   return: error code or NO_ERROR
+ *   pred(in): only constraints which meet this condition are processed
+ */
 int
 sm_class_truncator::save_constraints_or_clear (cons_predicate pred)
 {
   int error = NO_ERROR;
   SM_CLASS_CONSTRAINT *c = NULL;
+
   for (c = m_class->constraints; c && pred (*c); c = c->next)
     {
       if ((c->type == SM_CONSTRAINT_PRIMARY_KEY && classobj_is_pk_referred (m_mop, c->fk_info, false, NULL))
@@ -598,6 +606,12 @@ sm_class_truncator::save_constraints_or_clear (cons_predicate pred)
   return error;
 }
 
+/*
+ * drop_saved_constraints () - drop constraints saved in save_constraints_or_clear().
+ *
+ *   return: error code or NO_ERROR
+ *   pred(in): only constraints which meet this condition are processed
+ */
 int
 sm_class_truncator::drop_saved_constraints (saved_cons_predicate pred)
 {
@@ -605,6 +619,7 @@ sm_class_truncator::drop_saved_constraints (saved_cons_predicate pred)
   SM_CONSTRAINT_INFO *saved = NULL;
   int error = NO_ERROR;
 
+  /* Even for a class, FK must be dropped earlier than PK, because of the self-referencing case */
   if (m_fk_info != NULL)
     {
       ctmpl = dbt_edit_class (m_mop);
@@ -658,6 +673,11 @@ sm_class_truncator::drop_saved_constraints (saved_cons_predicate pred)
   return error;
 }
 
+/*
+ * truncate_heap () - truncate the heap of the class.
+ *
+ *   return: error code or NO_ERROR
+ */
 int
 sm_class_truncator::truncate_heap ()
 {
@@ -674,6 +694,12 @@ sm_class_truncator::truncate_heap ()
   return error;
 }
 
+/*
+ * restore_constraints () - restore constraints saved in save_constraints_or_clear().
+ *
+ *   return: error code or NO_ERROR
+ *   pred(in): only constraints which meet this condition are processed
+ */
 int
 sm_class_truncator::restore_constraints (saved_cons_predicate pred)
 {
@@ -693,7 +719,7 @@ sm_class_truncator::restore_constraints (saved_cons_predicate pred)
         }
     }
 
-  /* PK must be created earlier than FK, because of referencing */
+  /* Even for a class, PK must be created earlier than FK, because of the self-referencing case */
   for (saved = m_unique_info; saved != NULL && pred (*saved); saved = saved->next)
     {
       error = sm_add_constraint (m_mop, saved->constraint_type, saved->name, (const char **) saved->att_names,
@@ -738,6 +764,11 @@ sm_class_truncator::restore_constraints (saved_cons_predicate pred)
   return error;
 }
 
+/*
+ * reset_serials () - reset serials used by the class.
+ *
+ *   return: error code or NO_ERROR
+ */
 int
 sm_class_truncator::reset_serials ()
 {
@@ -16095,9 +16126,13 @@ error_exit:
 
 // *INDENT-OFF*
 /*
- * sm_truncate_class_internal () - truncates a class
+ * sm_truncate_class_internal () - truncates classes
  *   return: NO_ERROR on success, non-zero for ERROR
  *   trun_claases (in): class mops to truncate collected by sm_collect_truncatable_classes()
+ *
+ *   NOTE: this function truncates several classes which are bond in a partitioning or some foreign keys.
+ *   truncating a class consists of a few steps, each of which is done across all the classess one by one.
+ *   this horizontal processing is necessary that all FKs has to be processed before PKs.
  */
 int
 sm_truncate_class_internal (std::unordered_set<OID>&& trun_classes)
@@ -16116,7 +16151,7 @@ sm_truncate_class_internal (std::unordered_set<OID>&& trun_classes)
       return error;
     }
 
-  /* Save constraints. Or, remove instances from the constraint if impossible */
+  /* Save constraints. Or, remove instances from the constraint if impossible. FK first, then non-FK */
   for (auto& truncator : truncators)
     {
       auto cons_predicate = [](const SM_CLASS_CONSTRAINT& cons) -> bool
@@ -16190,7 +16225,7 @@ sm_truncate_class_internal (std::unordered_set<OID>&& trun_classes)
         }
     }
 
-  /* Recreate constraints. NON-FK first, and then FK */
+  /* Restore constraints. non-FK first, and then FK */
   for (auto& truncator : truncators)
     {
       auto saved_cons_predicate = [](const SM_CONSTRAINT_INFO& cons_info) -> bool
