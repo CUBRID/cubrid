@@ -30,6 +30,7 @@
 #include <ctype.h>
 #include <assert.h>
 #include <unordered_set>
+#include <algorithm>
 
 #ifdef HPUX
 #include <a.out.h>
@@ -16104,18 +16105,16 @@ sm_truncate_class_internal (std::unordered_set<OID>&& trun_classes)
   int error = NO_ERROR;
   std::vector<sm_class_truncator> truncators;
 
-  for (const auto& class_oid : trun_classes)
-  {
-    try
+  try
     {
-      truncators.emplace_back (class_oid);
+      std::for_each (trun_classes.begin(), trun_classes.end(),
+          [&truncators](const OID& oid) { truncators.emplace_back (oid); });
     }
-    catch (int& error)
+  catch (int& error)
     {
       // exception from sm_truncator constructor
       return error;
     }
-  }
 
   /* Save constraints. Or, remove instances from the constraint if impossible */
   for (auto& truncator : truncators)
