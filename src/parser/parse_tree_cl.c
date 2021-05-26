@@ -118,9 +118,9 @@ struct pt_tree_copy_info
   PT_CTE_COPY_INFO *cte_structures_list;
 };
 
-PARSER_INIT_NODE_FUNC *pt_init_f = NULL;
-PARSER_PRINT_NODE_FUNC *pt_print_f = NULL;
-PARSER_APPLY_NODE_FUNC *pt_apply_f = NULL;
+static PARSER_INIT_NODE_FUNC *pt_init_f = NULL;
+static PARSER_PRINT_NODE_FUNC *pt_print_f = NULL;
+static PARSER_APPLY_NODE_FUNC *pt_apply_f = NULL;
 PARSER_CONTEXT *parent_parser = NULL;
 
 static void strcat_with_realloc (PT_STRING_BLOCK * sb, const char *tail);
@@ -5209,13 +5209,16 @@ pt_init_print_f (void)
 void
 pt_init_node (PT_NODE * node, PT_NODE_TYPE node_type)
 {
-  PARSER_INIT_NODE_FUNC parser_init_node_func = pt_init_func_array[node_type];
-  if (!node || !parser_init_node_func)
+  assert (node_type < PT_LAST_NODE_NUMBER);
+  assert (pt_init_f != NULL);
+
+  if (!node || !(pt_init_f[node_type]))
     {
       return;
     }
 
-  parser_init_node_func (node);
+  memset (&(node->info), 0x00, sizeof (node->info));
+  (pt_init_f[node_type]) (node);
   node->node_type = node_type;
 }
 
@@ -6392,10 +6395,6 @@ pt_apply_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g
 static PT_NODE *
 pt_init_alter_trigger (PT_NODE * p)
 {
-  p->info.alter_trigger.trigger_owner = NULL;
-  p->info.alter_trigger.trigger_priority = NULL;
-  p->info.alter_trigger.trigger_spec_list = NULL;
-  p->info.alter_trigger.comment = NULL;
   p->info.alter_trigger.trigger_status = PT_MISC_DUMMY;
   return (p);
 }
@@ -6512,9 +6511,6 @@ pt_apply_attr_def (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, voi
 static PT_NODE *
 pt_init_attr_def (PT_NODE * p)
 {
-  p->info.attr_def.attr_name = 0;
-  p->info.attr_def.data_default = 0;
-  p->info.attr_def.auto_increment = 0;
   p->info.attr_def.attr_type = PT_NORMAL;
   return p;
 }
@@ -6952,23 +6948,8 @@ pt_apply_create_entity (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g
 static PT_NODE *
 pt_init_create_entity (PT_NODE * p)
 {
-  p->info.create_entity.entity_name = 0;
   p->info.create_entity.entity_type = (PT_MISC_TYPE) 0;
-  p->info.create_entity.supclass_list = 0;
-  p->info.create_entity.attr_def_list = 0;
-  p->info.create_entity.method_def_list = 0;
-  p->info.create_entity.method_file_list = 0;
-  p->info.create_entity.resolution_list = 0;
-  p->info.create_entity.as_query_list = 0;
-  p->info.create_entity.update = 0;
-  p->info.create_entity.constraint_list = 0;
-  p->info.create_entity.create_index = 0;
-  p->info.create_entity.partition_info = 0;
-  p->info.create_entity.create_like = 0;
-  p->info.create_entity.create_select = 0;
   p->info.create_entity.create_select_action = PT_CREATE_SELECT_NO_ACTION;
-  p->info.create_entity.or_replace = 0;
-  p->info.create_entity.if_not_exists = 0;
   return p;
 }
 
@@ -7249,13 +7230,7 @@ pt_apply_create_index (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g,
 static PT_NODE *
 pt_init_create_index (PT_NODE * p)
 {
-  p->info.index.indexed_class = NULL;
-  p->info.index.column_names = NULL;
-  p->info.index.function_expr = NULL;
-  p->info.index.func_no_args = 0;
   p->info.index.func_pos = -1;
-  p->info.index.where = NULL;
-  p->info.index.comment = NULL;
   return p;
 }
 
@@ -8471,13 +8446,9 @@ pt_apply_datatype (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, voi
 static PT_NODE *
 pt_init_datatype (PT_NODE * p)
 {
-  p->info.data_type.entity = 0;
-  p->info.data_type.precision = 0;
-  p->info.data_type.dec_precision = 0;
   p->info.data_type.units = (int) LANG_COERCIBLE_CODESET;
   p->info.data_type.collation_id = LANG_COERCIBLE_COLL;
   p->info.data_type.collation_flag = TP_DOMAIN_COLL_NORMAL;
-  p->info.data_type.enumeration = NULL;
   return p;
 }
 
@@ -8658,13 +8629,7 @@ pt_apply_delete (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void 
 static PT_NODE *
 pt_init_delete (PT_NODE * p)
 {
-  p->info.delete_.del_stmt_list = NULL;
   p->info.delete_.hint = PT_HINT_NONE;
-  p->info.delete_.waitsecs_hint = NULL;
-  p->info.delete_.ordered_hint = NULL;
-  p->info.delete_.use_nl_hint = NULL;
-  p->info.delete_.use_idx_hint = NULL;
-  p->info.delete_.use_merge_hint = NULL;
   return p;
 }
 
@@ -8889,26 +8854,8 @@ pt_apply_difference (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, v
 static PT_NODE *
 pt_init_difference (PT_NODE * p)
 {
-  p->info.query.q.union_.arg1 = 0;
-  p->info.query.q.union_.arg2 = 0;
-  p->info.query.order_by = 0;
-  p->info.query.orderby_for = 0;
   p->info.query.all_distinct = PT_ALL;
-  p->info.query.flag.has_outer_spec = 0;
-  p->info.query.flag.is_sort_spec = 0;
-  p->info.query.flag.is_insert_select = 0;
-  p->info.query.flag.single_tuple = 0;
-  p->info.query.flag.vspec_as_derived = 0;
-  p->info.query.flag.reexecute = 0;
-  p->info.query.flag.do_cache = 0;
-  p->info.query.flag.do_not_cache = 0;
-  p->info.query.flag.order_siblings = 0;
-  p->info.query.flag.has_system_class = 0;
   p->info.query.hint = PT_HINT_NONE;
-  p->info.query.qcache_hint = NULL;
-  p->info.query.q.union_.select_list = 0;
-  p->info.query.into_list = NULL;
-  p->info.query.is_order_dependent = false;
   p->info.query.scan_op_type = S_SELECT;
   return p;
 }
@@ -9063,9 +9010,6 @@ pt_apply_drop (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *a
 static PT_NODE *
 pt_init_drop (PT_NODE * p)
 {
-  p->info.drop.spec_list = 0;
-  p->info.drop.if_exists = false;
-  p->info.drop.is_cascade_constraints = false;
   return p;
 }
 
@@ -9127,10 +9071,6 @@ pt_apply_drop_index (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, v
 static PT_NODE *
 pt_init_drop_index (PT_NODE * p)
 {
-  p->info.index.indexed_class = p->info.index.column_names = NULL;
-  p->info.index.where = NULL;
-  p->info.index.function_expr = NULL;
-
   return p;
 }
 
@@ -9368,12 +9308,8 @@ pt_init_spec (PT_NODE * p)
 {
   p->info.spec.only_all = PT_ONLY;
   p->info.spec.location = -1;
-  p->info.spec.natural = false;
   p->info.spec.join_type = PT_JOIN_NONE;
-  p->info.spec.on_cond = NULL;
-  p->info.spec.using_cond = NULL;
   p->info.spec.auth_bypass_mask = DB_AUTH_NONE;
-  p->info.spec.partition = NULL;
   return p;
 }
 
@@ -9883,11 +9819,8 @@ pt_apply_expr (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *a
 static PT_NODE *
 pt_init_expr (PT_NODE * p)
 {
-  p->info.expr.flag = 0;
-  p->info.expr.location = 0;
-  p->info.expr.is_order_dependent = false;
   p->info.expr.recursive_type = PT_TYPE_NONE;
-  p->info.expr.coll_modifier = 0;
+
   return p;
 }
 
@@ -12258,24 +12191,8 @@ static PT_NODE *
 pt_init_function (PT_NODE * p)
 {
   p->info.function.function_type = (FUNC_TYPE) 0;
-  p->info.function.arg_list = 0;
   p->info.function.all_or_distinct = (PT_MISC_TYPE) 0;
-  p->info.function.generic_name = 0;
-  p->info.function.order_by = NULL;
-  p->info.function.percentile = NULL;
-  p->info.function.analytic.is_analytic = false;
-  p->info.function.analytic.partition_by = NULL;
-  p->info.function.analytic.order_by = NULL;
-  p->info.function.analytic.default_value = NULL;
-  p->info.function.analytic.expanded_list = NULL;
-  p->info.function.analytic.adjusted = false;
-  p->info.function.analytic.offset = NULL;
-  p->info.function.analytic.from_last = false;
-  p->info.function.analytic.ignore_nulls = false;
-  p->info.function.hidden_column = 0;
-  p->info.function.is_order_dependent = false;
-  p->info.function.is_type_checked = false;
-  p->info.function.coll_modifier = 0;
+
   return p;
 }
 
@@ -12711,9 +12628,6 @@ pt_apply_grant (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *
 static PT_NODE *
 pt_init_grant (PT_NODE * p)
 {
-  p->info.grant.auth_cmd_list = 0;
-  p->info.grant.user_list = 0;
-  p->info.grant.spec_list = 0;
   p->info.grant.grant_option = (PT_MISC_TYPE) 0;
 
   return (p);
@@ -12881,18 +12795,8 @@ pt_apply_insert (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void 
 static PT_NODE *
 pt_init_insert (PT_NODE * p)
 {
-  p->info.insert.spec = 0;
-  p->info.insert.attr_list = 0;
-  p->info.insert.value_clauses = NULL;
-  p->info.insert.into_var = 0;
   p->info.insert.is_subinsert = (PT_MISC_TYPE) 0;
   p->info.insert.hint = PT_HINT_NONE;
-  p->info.insert.waitsecs_hint = NULL;
-  p->info.insert.odku_assignments = NULL;
-  p->info.insert.do_replace = false;
-  p->info.insert.non_null_attrs = NULL;
-  p->info.insert.odku_non_null_attrs = NULL;
-  p->info.insert.has_uniques = 0;
   p->info.insert.server_allowed = SERVER_INSERT_NOT_CHECKED;
   return p;
 }
@@ -13106,25 +13010,8 @@ pt_apply_intersection (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g,
 static PT_NODE *
 pt_init_intersection (PT_NODE * p)
 {
-  p->info.query.q.union_.arg1 = 0;
-  p->info.query.q.union_.arg2 = 0;
-  p->info.query.order_by = 0;
-  p->info.query.orderby_for = 0;
   p->info.query.all_distinct = PT_ALL;
-  p->info.query.flag.has_outer_spec = 0;
-  p->info.query.flag.is_sort_spec = 0;
-  p->info.query.flag.is_insert_select = 0;
-  p->info.query.flag.single_tuple = 0;
-  p->info.query.flag.vspec_as_derived = 0;
-  p->info.query.flag.reexecute = 0;
-  p->info.query.flag.do_not_cache = 0;
-  p->info.query.flag.order_siblings = 0;
-  p->info.query.flag.has_system_class = 0;
   p->info.query.hint = PT_HINT_NONE;
-  p->info.query.qcache_hint = NULL;
-  p->info.query.q.union_.select_list = 0;
-  p->info.query.into_list = NULL;
-  p->info.query.is_order_dependent = false;
   p->info.query.scan_op_type = S_SELECT;
   return p;
 }
@@ -13341,10 +13228,6 @@ pt_apply_method_call (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, 
 static PT_NODE *
 pt_init_method_call (PT_NODE * p)
 {
-  p->info.method_call.method_name = 0;
-  p->info.method_call.arg_list = 0;
-  p->info.method_call.on_call_target = 0;
-  p->info.method_call.to_return_var = 0;
   return p;
 }
 
@@ -13406,9 +13289,6 @@ pt_apply_method_def (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, v
 static PT_NODE *
 pt_init_method_def (PT_NODE * p)
 {
-  p->info.method_def.method_name = 0;
-  p->info.method_def.method_args_list = 0;
-  p->info.method_def.function_name = 0;
   p->info.method_def.mthd_type = PT_NORMAL;
   return p;
 }
@@ -13488,12 +13368,7 @@ pt_apply_name (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *a
 static PT_NODE *
 pt_init_name (PT_NODE * p)
 {
-  p->info.name.location = 0;
-  p->info.name.partition = NULL;
-  p->info.name.indx_key_limit = NULL;
-  p->info.name.hidden_column = 0;
   p->info.name.db_object_chn = NULL_CHN;
-  p->info.name.coll_modifier = 0;
   return p;
 }
 
@@ -13802,9 +13677,6 @@ pt_apply_rename (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void 
 static PT_NODE *
 pt_init_rename (PT_NODE * p)
 {
-  p->info.rename.old_name = 0;
-  p->info.rename.in_class = 0;
-  p->info.rename.new_name = 0;
   return p;
 }
 
@@ -13919,9 +13791,6 @@ pt_apply_resolution (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, v
 static PT_NODE *
 pt_init_resolution (PT_NODE * p)
 {
-  p->info.resolution.attr_mthd_name = 0;
-  p->info.resolution.of_sup_class_name = 0;
-  p->info.resolution.as_attr_mthd_name = 0;
   p->info.resolution.attr_type = PT_NORMAL;
   return p;
 }
@@ -14211,53 +14080,11 @@ pt_apply_select (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void 
 static PT_NODE *
 pt_init_select (PT_NODE * p)
 {
-  p->info.query.q.select.list = 0;
-  p->info.query.into_list = 0;
-  p->info.query.q.select.list = NULL;
-  p->info.query.q.select.from = NULL;
-  p->info.query.q.select.where = NULL;
-  p->info.query.q.select.group_by = NULL;
-  p->info.query.q.select.connect_by = NULL;
-  p->info.query.q.select.start_with = NULL;
-  p->info.query.q.select.after_cb_filter = NULL;
-  p->info.query.q.select.having = NULL;
-  p->info.query.q.select.using_index = 0;
-  p->info.query.q.select.with_increment = 0;
-  p->info.query.q.select.ordered = NULL;
-  p->info.query.q.select.use_nl = NULL;
-  p->info.query.q.select.use_idx = NULL;
-  p->info.query.q.select.index_ss = NULL;
-  p->info.query.q.select.index_ls = NULL;
-  p->info.query.q.select.use_merge = NULL;
-  p->info.query.q.select.waitsecs_hint = NULL;
-  p->info.query.q.select.jdbc_life_time = NULL;
-  p->info.query.q.select.qo_summary = NULL;
-  p->info.query.q.select.check_where = NULL;
-  p->info.query.q.select.push_list = NULL;
   p->info.query.q.select.hint = PT_HINT_NONE;
-  p->info.query.q.select.flag = 0;
   p->info.query.q.select.check_cycles = CONNECT_BY_CYCLES_ERROR;
-  p->info.query.q.select.single_table_opt = 0;
-  p->info.query.order_by = 0;
-  p->info.query.orderby_for = 0;
   p->info.query.all_distinct = PT_ALL;
   p->info.query.is_subquery = (PT_MISC_TYPE) 0;
-  p->info.query.is_view_spec = 0;
-  p->info.query.flag.has_outer_spec = 0;
-  p->info.query.flag.is_sort_spec = 0;
-  p->info.query.flag.is_insert_select = 0;
-  p->info.query.flag.single_tuple = 0;
-  p->info.query.flag.vspec_as_derived = 0;
-  p->info.query.flag.reexecute = 0;
-  p->info.query.flag.do_not_cache = 0;
-  p->info.query.flag.order_siblings = 0;
-  p->info.query.flag.has_system_class = 0;
   p->info.query.hint = PT_HINT_NONE;
-  p->info.query.qcache_hint = NULL;
-  p->info.query.upd_del_class_cnt = 0;
-  p->info.query.mvcc_reev_extra_cls_cnt = 0;
-  p->info.query.is_order_dependent = false;
-  p->info.query.q.select.for_update = NULL;
   p->info.query.scan_op_type = S_SELECT;
   return p;
 }
@@ -15338,9 +15165,6 @@ pt_apply_sort_spec (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, vo
 static PT_NODE *
 pt_init_sort_spec (PT_NODE * p)
 {
-  p->info.sort_spec.expr = 0;
-  p->info.sort_spec.pos_descr.pos_no = 0;
-  p->info.sort_spec.pos_descr.dom = NULL;
   p->info.sort_spec.asc_or_desc = PT_ASC;
   p->info.sort_spec.nulls_first_or_last = PT_NULLS_DEFAULT;
   return p;
@@ -15578,25 +15402,8 @@ pt_apply_union_stmt (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, v
 static PT_NODE *
 pt_init_union_stmt (PT_NODE * p)
 {
-  p->info.query.q.union_.arg1 = 0;
-  p->info.query.q.union_.arg2 = 0;
-  p->info.query.order_by = 0;
-  p->info.query.orderby_for = 0;
   p->info.query.all_distinct = PT_ALL;
-  p->info.query.into_list = 0;
-  p->info.query.flag.has_outer_spec = 0;
-  p->info.query.flag.is_sort_spec = 0;
-  p->info.query.flag.is_insert_select = 0;
-  p->info.query.flag.single_tuple = 0;
-  p->info.query.flag.vspec_as_derived = 0;
-  p->info.query.flag.reexecute = 0;
-  p->info.query.flag.do_not_cache = 0;
-  p->info.query.flag.order_siblings = 0;
-  p->info.query.flag.has_system_class = 0;
   p->info.query.hint = PT_HINT_NONE;
-  p->info.query.qcache_hint = NULL;
-  p->info.query.q.union_.select_list = 0;
-  p->info.query.is_order_dependent = false;
   p->info.query.scan_op_type = S_SELECT;
   return p;
 }
@@ -15694,11 +15501,6 @@ static PT_NODE *
 pt_init_update (PT_NODE * p)
 {
   p->info.update.hint = PT_HINT_NONE;
-  p->info.update.waitsecs_hint = NULL;
-  p->info.update.ordered_hint = NULL;
-  p->info.update.use_nl_hint = NULL;
-  p->info.update.use_idx_hint = NULL;
-  p->info.update.use_merge_hint = NULL;
   return p;
 }
 
@@ -16165,12 +15967,6 @@ pt_apply_value (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *
 static PT_NODE *
 pt_init_value (PT_NODE * p)
 {
-  p->info.value.location = 0;
-  p->info.value.print_charset = false;
-  p->info.value.print_collation = false;
-  p->info.value.has_cs_introducer = false;
-  p->info.value.is_collate_allowed = false;
-  p->info.value.coll_modifier = 0;
   p->info.value.host_var_index = -1;
   return p;
 }
@@ -17217,22 +17013,7 @@ pt_apply_merge (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *
 static PT_NODE *
 pt_init_merge (PT_NODE * p)
 {
-  p->info.merge.into = NULL;
-  p->info.merge.using_clause = NULL;
-  p->info.merge.search_cond = NULL;
-  p->info.merge.insert.attr_list = NULL;
-  p->info.merge.insert.search_cond = NULL;
-  p->info.merge.insert.class_where = NULL;
-  p->info.merge.insert.value_clauses = NULL;
-  p->info.merge.update.assignment = NULL;
-  p->info.merge.update.search_cond = NULL;
-  p->info.merge.update.del_search_cond = NULL;
-  p->info.merge.update.do_class_attrs = false;
-  p->info.merge.update.has_delete = false;
-  p->info.merge.check_where = NULL;
-  p->info.merge.waitsecs_hint = NULL;
   p->info.merge.hint = PT_HINT_NONE;
-  p->info.merge.flags = 0;
 
   return p;
 }
@@ -17510,11 +17291,6 @@ pt_apply_cte (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *ar
 static PT_NODE *
 pt_init_cte (PT_NODE * p)
 {
-  p->info.cte.name = NULL;
-  p->info.cte.as_attr_list = NULL;
-  p->info.cte.recursive_part = NULL;
-  p->info.cte.non_recursive_part = NULL;
-
   return p;
 }
 
