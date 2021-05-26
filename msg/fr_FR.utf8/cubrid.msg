@@ -1336,8 +1336,8 @@ Vérifiez le chemin du fichier de clé (_keys) et assurez-vous qu'il inclut la c
 1265 Error connecting with the page server at %s.
 1266 The high availability system is not compatible with the page server type.
 1267 Cannot copy volume %s to %s. Error: %s.
-1268 Error reserved for scalability development.
-1269 Error reserved for scalability development.
+1268 Inconsistent setting: remote storage is specified, but no page server found in configuration.
+1269 Inconsistent setting: remote storage is specified, but no connection to page servers is possible.
 1270 Error reserved for scalability development.
 1271 Error reserved for scalability development.
 1272 Error reserved for scalability development.
