@@ -449,7 +449,7 @@ static bool sm_filter_index_pred_have_invalid_attrs (SM_CLASS_CONSTRAINT * const
 
 // *INDENT-OFF*
 static int sm_collect_truncatable_classes (MOP class_mop, std::unordered_set<OID>& trun_classes, bool is_cascade);
-static int sm_truncate_class_internal (std::unordered_set<OID>&& trun_classes)
+static int sm_truncate_class_internal (std::unordered_set<OID>&& trun_classes);
 // *INDENT-ON*
 static int sm_truncate_using_delete (MOP class_mop);
 static int sm_truncate_using_destroy_heap (MOP class_mop);
