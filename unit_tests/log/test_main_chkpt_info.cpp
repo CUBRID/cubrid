@@ -170,24 +170,18 @@ search_for_id (TRANID id)
 }
 
 void
-full_compare_tdes (log_tdes *td1, const log_tdes *td2)
+full_compare_tdes (log_tdes *td1, const log_tdes *td2, bool active)
 {
   REQUIRE (td1->head_lsa == td2->head_lsa);
   REQUIRE (td1->tail_lsa == td2->tail_lsa);
-  REQUIRE (td1->undo_nxlsa == td2->undo_nxlsa);
-  REQUIRE (td1->posp_nxlsa == td2->posp_nxlsa);
-  REQUIRE (td1->savept_lsa == td2->savept_lsa);
-  REQUIRE (td1->tail_topresult_lsa == td2->tail_topresult_lsa);
-  REQUIRE (td1->rcv.sysop_start_postpone_lsa == td2->rcv.sysop_start_postpone_lsa);
-  REQUIRE (td1->rcv.atomic_sysop_start_lsa == td2->rcv.atomic_sysop_start_lsa);
-}
-
-void
-full_compare_tdes_active (log_tdes *td1, const log_tdes *td2)
-{
-  REQUIRE (td1->head_lsa == td2->head_lsa);
-  REQUIRE (td1->tail_lsa == td2->undo_nxlsa);
-  REQUIRE (td1->tail_lsa == td2->tail_lsa);
+  if (active)
+    {
+      REQUIRE (td1->tail_lsa == td2->undo_nxlsa);
+    }
+  else
+    {
+      REQUIRE (td1->undo_nxlsa == td2->undo_nxlsa);
+    }
   REQUIRE (td1->posp_nxlsa == td2->posp_nxlsa);
   REQUIRE (td1->savept_lsa == td2->savept_lsa);
   REQUIRE (td1->tail_topresult_lsa == td2->tail_topresult_lsa);
@@ -214,28 +208,28 @@ check_recovery (checkpoint_info obj)
 	}
 
       std::map<TRANID, log_tdes *>::const_iterator tdes_after = tran_map.find (tdes->trid);
-      if (tdes->trid != NULL_TRANID && tdes->tail_lsa == NULL_LSA)
+      if (tdes->tail_lsa == NULL_LSA)
 	{
-	  REQUIRE (tdes_after == tran_map.end());
+	  REQUIRE (tdes_after == tran_map.end ());
 	  continue;
 	}
-      REQUIRE (tdes_after != tran_map.end());
+      REQUIRE (tdes_after != tran_map.end ());
       if (tdes->state == TRAN_ACTIVE || tdes->state == TRAN_UNACTIVE_ABORTED)
 	{
 	  REQUIRE (tdes_after->second->state == TRAN_UNACTIVE_UNILATERALLY_ABORTED);
 
 	  if (tdes->state == TRAN_UNACTIVE_ABORTED)
 	    {
-	      full_compare_tdes_active (tdes, tdes_after->second);
+	      full_compare_tdes (tdes, tdes_after->second, true);
 	    }
 	  else
 	    {
-	      full_compare_tdes (tdes, tdes_after->second);
+	      full_compare_tdes (tdes, tdes_after->second, false);
 	    }
 	  continue;
 	}
       REQUIRE (tdes_after->second->state == tdes->state);
-      full_compare_tdes (tdes, tdes_after->second);
+      full_compare_tdes (tdes, tdes_after->second, false);
     }
 
   for (itr = systb_System_tdes.begin(); itr != systb_System_tdes.end(); ++itr)
@@ -248,15 +242,22 @@ check_recovery (checkpoint_info obj)
 	  continue;
 	}
 
-      if (itr->second->topops.last == -1 || itr->second->rcv.sysop_start_postpone_lsa == NULL_LSA
-	  || itr->second->rcv.atomic_sysop_start_lsa == NULL_LSA)
+      if (itr->second->rcv.sysop_start_postpone_lsa == NULL_LSA &&
+	  itr->second->rcv.atomic_sysop_start_lsa == NULL_LSA)
 	{
-	  REQUIRE (tdes_after->second->topops.last == 0);
+	  REQUIRE (tdes_after == tran_map.end ());
 	}
       else
 	{
+	  REQUIRE (tdes_after != tran_map.end ());
+	  if (itr->second->topops.last == -1)
+	    {
+	      REQUIRE (tdes_after->second->topops.last == 0);
+	      continue;
+	    }
 	  REQUIRE (itr->second->rcv.sysop_start_postpone_lsa == tdes_after->second->rcv.sysop_start_postpone_lsa);
 	  REQUIRE (itr->second->rcv.atomic_sysop_start_lsa == tdes_after->second->rcv.atomic_sysop_start_lsa);
+
 	}
     }
 }
