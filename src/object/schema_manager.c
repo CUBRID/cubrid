@@ -634,7 +634,7 @@ sm_class_truncator::drop_saved_constraints (saved_cons_predicate pred)
         }
     }
 
-  for (saved = m_unique_info; saved != NULL && pred (*saved);)
+  for (saved = m_unique_info; saved != NULL && pred (*saved); saved = saved->next)
     {
       error =
         sm_drop_constraint (m_mop, saved->constraint_type, saved->name, (const char **) saved->att_names, 0,
@@ -643,7 +643,6 @@ sm_class_truncator::drop_saved_constraints (saved_cons_predicate pred)
         {
           return error;
         }
-      saved = saved->next;
     }
 
   for (saved = m_index_info; saved != NULL && pred (*saved); saved = saved->next)
