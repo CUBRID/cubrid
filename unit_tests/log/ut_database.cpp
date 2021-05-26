@@ -49,7 +49,7 @@ const log_lsa &ut_database_values_generator::increment_and_get_lsa_log ()
   if (if_false_increment_page_id_else_increment_offset == false)
     {
       // increment page id
-      assert (m_log_lsa.pageid < MAX_LOG_LSA_PAGEID);
+      REQUIRE (m_log_lsa.pageid < MAX_LOG_LSA_PAGEID);
       ++m_log_lsa.pageid;
       m_log_lsa.offset = 0;
     }
@@ -129,8 +129,8 @@ ut_database_values_generator::rand_add_or_update_page (const size_t a_current_pa
 ut_page::ut_page (short a_volid, int32_t a_pageid)
   : m_vpid {a_pageid, a_volid}
 {
-  assert (a_volid != NULL_VOLID);
-  assert (a_pageid != NULL_PAGEID);
+  REQUIRE (a_volid != NULL_VOLID);
+  REQUIRE (a_pageid != NULL_PAGEID);
 }
 
 const VPID &ut_page::get_vpid () const
@@ -190,7 +190,7 @@ void ut_page::require_equal (const ut_page &that) const
 ut_volume::ut_volume (const ut_database_config &a_database_config, short a_volid)
   : m_database_config (a_database_config), m_volid (a_volid)
 {
-  assert (a_volid != NULL_VOLID);
+  REQUIRE (a_volid != NULL_VOLID);
   // start a volume without any pages
 }
 
@@ -254,7 +254,7 @@ void ut_volume::apply_changes (ux_ut_redo_job_impl &&a_job)
 	{
 	  std::lock_guard<std::mutex> lock (m_apply_changes_mtx);
 	  const ux_ut_page &new_page = add_new_page (m_pages);
-	  assert (new_page->get_vpid ().volid == a_job->get_vpid ().volid);
+	  REQUIRE (new_page->get_vpid ().volid == a_job->get_vpid ().volid);
 	}
       else
 	{
@@ -347,12 +347,12 @@ void ut_database::apply_changes (ux_ut_redo_job_impl &&a_job)
     {
       std::lock_guard<std::mutex> lock (m_apply_changes_mtx);
       const auto &new_volume = add_new_volume (m_volumes);
-      assert (new_volume->get_volid () == a_job->get_vpid ().volid);
+      REQUIRE (new_volume->get_volid () == a_job->get_vpid ().volid);
     }
   else
     {
       std::lock_guard<std::mutex> lock (m_apply_changes_mtx);
-      assert (a_job->is_page_creation () || a_job->is_page_modification ());
+      REQUIRE ((a_job->is_page_creation () || a_job->is_page_modification ()));
       auto &volume = m_volumes.at (a_job->get_vpid ().volid);
       volume->apply_changes (std::move (a_job));
     }

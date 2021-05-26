@@ -1304,7 +1304,7 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * d
 		}
 	    }
 
-	  cursor_free_self_list_id ((QFILE_LIST_ID *) temp->etc);
+	  cursor_free_self_list_id (temp->etc);
 	  pt_end_query (parser, query_id_self);
 	}
       else

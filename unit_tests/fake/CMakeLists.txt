@@ -26,9 +26,10 @@ project(fake)
 #
 set(FAKE_THREAD_UTILS_SRC
   fake_error_manager.cpp
+  fake_page_server.cpp
+  fake_system_parameter.cpp
   fake_thread_entry.cpp
   fake_thread_utils.cpp
-  fake_system_parameter.cpp
   ${BASE_DIR}/perf.cpp
   ${THREAD_DIR}/thread_manager.cpp
   ${THREAD_DIR}/thread_daemon.cpp

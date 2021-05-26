@@ -1201,7 +1201,7 @@ pt_value_to_db (PARSER_CONTEXT * parser, PT_NODE * value)
 	}
       else			/* if (db_value) */
 	{
-	  if (parser->set_host_var == 1)
+	  if (parser->flag.set_host_var == 1)
 	    {
 	      PT_ERRORmf2 (parser, value, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_HOSTVAR_INDEX_ERROR,
 			   value->info.host_var.index, parser->host_var_count);
@@ -3009,8 +3009,7 @@ pt_bind_set_type (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val, int *
     }
   set_type = NULL;
 
-  tmp.node_type = PT_DATA_TYPE;
-  parser_init_node (&tmp);
+  parser_init_node (&tmp, PT_DATA_TYPE);
   tmp.line_number = node->line_number;
   tmp.column_number = node->column_number;
 
@@ -3096,7 +3095,7 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
       return;
     }
 
-  parser->set_host_var = 0;
+  parser->flag.set_host_var = 0;
 
   if (parser->host_var_count > count)
     {
@@ -3148,7 +3147,7 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
 	}
     }
 
-  parser->set_host_var = 1;	/* OK */
+  parser->flag.set_host_var = 1;	/* OK */
 }
 
 /*
@@ -3166,7 +3165,7 @@ pt_host_var_db_value (PARSER_CONTEXT * parser, PT_NODE * hv)
   if (hv && hv->node_type == PT_HOST_VAR)
     {
       idx = hv->info.host_var.index;
-      if (idx >= 0 && idx < parser->host_var_count && parser->set_host_var)
+      if (idx >= 0 && idx < parser->host_var_count && parser->flag.set_host_var)
 	{
 	  val = &parser->host_variables[idx];
 	}

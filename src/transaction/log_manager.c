@@ -83,6 +83,7 @@
 #include "boot_sr.h"
 #include "db_value_printer.hpp"
 #include "mem_block.hpp"
+#include "server_type.hpp"
 #include "string_buffer.hpp"
 #include "thread_daemon.hpp"
 #include "thread_entry.hpp"
@@ -260,9 +261,6 @@ static LOG_PAGE *log_dump_record_sysop_end (THREAD_ENTRY * thread_p, LOG_LSA * l
 static LOG_PAGE *log_dump_record_sysop_end_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * sysop_end,
 						     LOG_LSA * log_lsa, LOG_PAGE * log_page_p, LOG_ZIP * log_zip_p,
 						     FILE * out_fp);
-static LOG_PAGE *log_dump_record_checkpoint (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lsa_p,
-					     LOG_PAGE * log_page_p);
-static void log_dump_checkpoint_topops (FILE * out_fp, int length, void *data);
 static LOG_PAGE *log_dump_record_save_point (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lsa_p,
 					     LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record_2pc_prepare_commit (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lsa_p,
@@ -325,7 +323,7 @@ static cubthread::daemon *log_Remove_log_archive_daemon = NULL;
 static cubthread::daemon *log_Check_ha_delay_info_daemon = NULL;
 
 static cubthread::daemon *log_Flush_daemon = NULL;
-static std::atomic_bool log_Flush_has_been_requested = {false};
+static std::atomic<bool> log_Flush_has_been_requested = {false};
 // *INDENT-ON*
 
 static void log_daemons_init ();
@@ -405,12 +403,6 @@ log_to_string (LOG_RECTYPE type)
 
     case LOG_ABORT:
       return "LOG_ABORT";
-
-    case LOG_START_CHKPT:
-      return "LOG_START_CHKPT";
-
-    case LOG_END_CHKPT:
-      return "LOG_END_CHKPT";
 
     case LOG_SAVEPOINT:
       return "LOG_SAVEPOINT";
@@ -6466,65 +6458,6 @@ log_dump_record_sysop_end (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE 
   return log_page_p;
 }
 
-/*
- * log_dump_checkpoint_topops - DUMP CHECKPOINT OF TOP SYSTEM OPERATIONS
- *
- * return: nothing
- *
- *   length(in): Length to dump in bytes
- *   data(in): The data being logged
- *
- * NOTE: Dump the checkpoint top system operation structure.
- */
-static void
-log_dump_checkpoint_topops (FILE * out_fp, int length, void *data)
-{
-  int ntops, i;
-  LOG_INFO_CHKPT_SYSOP *chkpt_topops;	/* Checkpoint top system operations that are in commit postpone
-					 * mode */
-  LOG_INFO_CHKPT_SYSOP *chkpt_topone;	/* One top system ope */
-
-  chkpt_topops = (LOG_INFO_CHKPT_SYSOP *) data;
-  ntops = length / sizeof (*chkpt_topops);
-
-  /* Start dumping each checkpoint top system operation */
-
-  for (i = 0; i < ntops; i++)
-    {
-      chkpt_topone = &chkpt_topops[i];
-      fprintf (out_fp, "     Trid = %d \n", chkpt_topone->trid);
-      fprintf (out_fp, "     Sysop start postpone LSA = %lld|%d \n",
-	       LSA_AS_ARGS (&chkpt_topone->sysop_start_postpone_lsa));
-    }
-  (void) fprintf (out_fp, "\n");
-}
-
-static LOG_PAGE *
-log_dump_record_checkpoint (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
-{
-  LOG_REC_CHKPT *chkpt;		/* check point log record */
-  int length_active_tran;
-  int length_topope;
-
-  /* Read the DATA HEADER */
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*chkpt), log_lsa, log_page_p);
-
-  chkpt = (LOG_REC_CHKPT *) ((char *) log_page_p->area + log_lsa->offset);
-  fprintf (out_fp, ", Num_trans = %d,\n", chkpt->ntrans);
-  fprintf (out_fp, "     Redo_LSA = %lld|%d\n", LSA_AS_ARGS (&chkpt->redo_lsa));
-
-  length_active_tran = sizeof (LOG_INFO_CHKPT_TRANS) * chkpt->ntrans;
-  length_topope = (sizeof (LOG_INFO_CHKPT_SYSOP) * chkpt->ntops);
-  LOG_READ_ADD_ALIGN (thread_p, sizeof (*chkpt), log_lsa, log_page_p);
-  log_dump_data (thread_p, out_fp, length_active_tran, log_lsa, log_page_p, logpb_dump_checkpoint_trans, NULL);
-  if (length_topope > 0)
-    {
-      log_dump_data (thread_p, out_fp, length_active_tran, log_lsa, log_page_p, log_dump_checkpoint_topops, NULL);
-    }
-
-  return log_page_p;
-}
-
 static LOG_PAGE *
 log_dump_record_save_point (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
@@ -6699,10 +6632,6 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type
       log_page_p = log_dump_record_sysop_end (thread_p, log_lsa, log_page_p, log_zip_p, out_fp);
       break;
 
-    case LOG_END_CHKPT:
-      log_page_p = log_dump_record_checkpoint (thread_p, out_fp, log_lsa, log_page_p);
-      break;
-
     case LOG_SAVEPOINT:
       log_page_p = log_dump_record_save_point (thread_p, out_fp, log_lsa, log_page_p);
       break;
@@ -6723,7 +6652,6 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type
       log_page_p = log_dump_record_ha_server_state (thread_p, out_fp, log_lsa, log_page_p);
       break;
 
-    case LOG_START_CHKPT:
     case LOG_2PC_COMMIT_DECISION:
     case LOG_2PC_ABORT_DECISION:
     case LOG_2PC_COMMIT_INFORM_PARTICPS:
@@ -7634,8 +7562,6 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 	    case LOG_DBEXTERN_REDO_DATA:
 	    case LOG_DUMMY_HEAD_POSTPONE:
 	    case LOG_POSTPONE:
-	    case LOG_START_CHKPT:
-	    case LOG_END_CHKPT:
 	    case LOG_SAVEPOINT:
 	    case LOG_2PC_PREPARE:
 	    case LOG_2PC_START:
@@ -8126,8 +8052,6 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 
 		    case LOG_COMMIT:
 		    case LOG_ABORT:
-		    case LOG_START_CHKPT:
-		    case LOG_END_CHKPT:
 		    case LOG_2PC_ABORT_DECISION:
 		    case LOG_2PC_ABORT_INFORM_PARTICPS:
 		    case LOG_2PC_COMMIT_INFORM_PARTICPS:
@@ -9993,24 +9917,54 @@ log_check_ha_delay_info_execute (cubthread::entry &thread_ref)
 static void
 log_flush_execute (cubthread::entry & thread_ref)
 {
-  if (!BO_IS_SERVER_RESTARTED () || !log_Flush_has_been_requested)
+  if (!BO_IS_SERVER_RESTARTED ())
     {
       return;
     }
 
+  bool need_flush = false;
+
+  // check if flush was requested
+  {
+    bool expected_value = true;
+    need_flush = log_Flush_has_been_requested.compare_exchange_strong (expected_value, false);
+  }
+
+  if (!need_flush && get_server_type () == SERVER_TYPE_PAGE)
+    {
+      // page server needs to confirm the flushed log asap. if there is any unflushed log, flush it.
+      // Unflushed log may be either:
+      //    - In prior list (prior_list_header != nullptr)
+      //    - Appended into pages, but not flushed to disk (nxio_lsa < append_lsa)
+
+      // log_lsa compare is not thread safe. Use atomic load on non-atomic type log_Gl.hdr.append_lsa
+      // Atomic operations need to reinterpret the 8-bytes of log_lsa as int64
+      // *INDENT-OFF*
+      log_lsa append_lsa =
+	static_cast<log_lsa> (ATOMIC_LOAD_64 (reinterpret_cast<std::int64_t *> (&log_Gl.hdr.append_lsa)));
+      // *INDENT-ON*
+
+need_flush = log_Gl.prior_info.prior_list_header != nullptr || log_Gl.append.get_nxio_lsa () < append_lsa;
+}
+
+if (!need_flush)
+  {
+    // Try again later
+    return;
+  }
+
   // refresh log trace flush time
-  thread_ref.event_stats.trace_log_flush_time = prm_get_integer_value (PRM_ID_LOG_TRACE_FLUSH_TIME_MSECS);
+thread_ref.event_stats.trace_log_flush_time = prm_get_integer_value (PRM_ID_LOG_TRACE_FLUSH_TIME_MSECS);
 
-  LOG_CS_ENTER (&thread_ref);
-  logpb_flush_pages_direct (&thread_ref);
-  LOG_CS_EXIT (&thread_ref);
+LOG_CS_ENTER (&thread_ref);
+logpb_flush_pages_direct (&thread_ref);
+LOG_CS_EXIT (&thread_ref);
 
-  log_Stat.gc_flush_count++;
+log_Stat.gc_flush_count++;
 
-  pthread_mutex_lock (&log_Gl.group_commit_info.gc_mutex);
-  pthread_cond_broadcast (&log_Gl.group_commit_info.gc_cond);
-  log_Flush_has_been_requested = false;
-  pthread_mutex_unlock (&log_Gl.group_commit_info.gc_mutex);
+pthread_mutex_lock (&log_Gl.group_commit_info.gc_mutex);
+pthread_cond_broadcast (&log_Gl.group_commit_info.gc_cond);
+pthread_mutex_unlock (&log_Gl.group_commit_info.gc_mutex);
 }
 #endif /* SERVER_MODE */
 
@@ -10024,7 +9978,7 @@ log_checkpoint_daemon_init ()
   assert (log_Checkpoint_daemon == NULL);
 
   cubthread::looper looper = cubthread::looper (log_get_checkpoint_interval);
-  cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (log_checkpoint_execute);
+  cubthread::entry_callable_task * daemon_task = new cubthread::entry_callable_task (log_checkpoint_execute);
 
   // create checkpoint daemon thread
   log_Checkpoint_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "log_checkpoint");
@@ -10041,17 +9995,15 @@ log_remove_log_archive_daemon_init ()
   assert (log_Remove_log_archive_daemon == NULL);
 
   log_remove_log_archive_daemon_task *daemon_task = new log_remove_log_archive_daemon_task ();
-  cubthread::period_function setup_period_function = std::bind (
-      &log_remove_log_archive_daemon_task::get_remove_log_archives_interval,
-      daemon_task,
-      std::placeholders::_1,
-      std::placeholders::_2);
+  cubthread::period_function setup_period_function =
+    std::bind (&log_remove_log_archive_daemon_task::get_remove_log_archives_interval, daemon_task,
+	       std::placeholders::_1, std::placeholders::_2);
 
   cubthread::looper looper = cubthread::looper (setup_period_function);
 
   // create log archive remover daemon thread
   log_Remove_log_archive_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task,
-                                                                            "log_remove_log_archive");
+									    "log_remove_log_archive");
 }
 #endif /* SERVER_MODE */
 
@@ -10067,7 +10019,7 @@ log_clock_daemon_init ()
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (200));
   log_Clock_daemon =
     cubthread::get_manager ()->create_daemon (looper, new cubthread::entry_callable_task (log_clock_execute),
-                                              "log_clock");
+					      "log_clock");
 }
 #endif /* SERVER_MODE */
 
@@ -10081,10 +10033,10 @@ log_check_ha_delay_info_daemon_init ()
   assert (log_Check_ha_delay_info_daemon == NULL);
 
   cubthread::looper looper = cubthread::looper (std::chrono::seconds (1));
-  cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (log_check_ha_delay_info_execute);
+  cubthread::entry_callable_task * daemon_task = new cubthread::entry_callable_task (log_check_ha_delay_info_execute);
 
   log_Check_ha_delay_info_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task,
-                                                                             "log_check_ha_delay_info");
+									     "log_check_ha_delay_info");
 }
 #endif /* SERVER_MODE */
 
@@ -10098,7 +10050,7 @@ log_flush_daemon_init ()
   assert (log_Flush_daemon == NULL);
 
   cubthread::looper looper = cubthread::looper (log_get_log_group_commit_interval);
-  cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (log_flush_execute);
+  cubthread::entry_callable_task * daemon_task = new cubthread::entry_callable_task (log_flush_execute);
 
   log_Flush_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "log_flush");
 }
