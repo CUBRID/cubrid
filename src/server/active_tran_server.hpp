@@ -83,7 +83,7 @@ class active_tran_server
     std::unique_ptr<cublog::page_broker> m_log_page_broker;
     std::vector<cubcomm::node> m_connection_list;
 
-    bool m_has_remote_storage;
+    bool m_has_remote_storage = false;
 };
 
 extern active_tran_server ats_Gl;
