@@ -2298,7 +2298,7 @@ pt_is_compatible_without_cast (PARSER_CONTEXT * parser, SEMAN_COMPATIBLE_INFO * 
 
   if (dest_sci->type_enum != src->type_enum)
     {
-      if (src->type_enum == PT_TYPE_MAYBE)
+      if (src->type_enum == PT_TYPE_MAYBE && dest_sci->type_enum == PT_TYPE_NUMERIC)
 	{
 	  return true;
 	}
