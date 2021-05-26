@@ -210,7 +210,7 @@ public:
   using cons_predicate = std::function<bool(const SM_CLASS_CONSTRAINT&)>;
   using saved_cons_predicate = std::function<bool(const SM_CONSTRAINT_INFO&)>;
 
-  int save_constraints (cons_predicate pred, bool remove_instances_if_cant=true);
+  int save_constraints_or_clear (cons_predicate pred);
   int drop_saved_constraints (saved_cons_predicate pred);
   int truncate_heap ();
   int restore_constraints (saved_cons_predicate pred);
@@ -545,24 +545,15 @@ sm_class_truncator::~sm_class_truncator ()
 }
 
 int
-sm_class_truncator::save_constraints (cons_predicate pred, bool remove_instances_if_cant)
+sm_class_truncator::save_constraints_or_clear (cons_predicate pred)
 {
   int error = NO_ERROR;
   SM_CLASS_CONSTRAINT *c = NULL;
-  for (c = m_class->constraints; c; c = c->next)
+  for (c = m_class->constraints; c && pred (*c); c = c->next)
     {
-      if (!pred (*c))
-        {
-          continue;
-        }
-
       if ((c->type == SM_CONSTRAINT_PRIMARY_KEY && classobj_is_pk_referred (m_mop, c->fk_info, false, NULL))
          || !sm_is_possible_to_recreate_constraint (m_mop, m_class, c))
         {
-          if (!remove_instances_if_cant)
-          {
-            continue;
-          }
           /*
            * In these cases, We cannot drop and recreate the index as this might be
            * too costly, so we just remove the instances of the current class.
@@ -622,13 +613,8 @@ sm_class_truncator::drop_saved_constraints (saved_cons_predicate pred)
           return error;
         }
 
-      for (saved = m_fk_info; saved != NULL; saved = saved->next)
+      for (saved = m_fk_info; saved != NULL && pred (*saved); saved = saved->next)
         {
-          if (!pred (*saved))
-            {
-              continue;
-            }
-
           error =
             dbt_drop_constraint (ctmpl, saved->constraint_type, saved->name, (const char **) saved->att_names, 0);
           if (error != NO_ERROR)
@@ -647,13 +633,8 @@ sm_class_truncator::drop_saved_constraints (saved_cons_predicate pred)
         }
     }
 
-  for (saved = m_unique_info; saved != NULL;)
+  for (saved = m_unique_info; saved != NULL && pred (*saved);)
     {
-      if (!pred (*saved))
-        {
-          continue;
-        }
-
       error =
         sm_drop_constraint (m_mop, saved->constraint_type, saved->name, (const char **) saved->att_names, 0,
                             false);
@@ -664,13 +645,8 @@ sm_class_truncator::drop_saved_constraints (saved_cons_predicate pred)
       saved = saved->next;
     }
 
-  for (saved = m_index_info; saved != NULL; saved = saved->next)
+  for (saved = m_index_info; saved != NULL && pred (*saved); saved = saved->next)
     {
-      if (!pred (*saved))
-        {
-          continue;
-        }
-
       error = sm_drop_index (m_mop, saved->name);
       if (error != NO_ERROR)
         {
@@ -705,12 +681,8 @@ sm_class_truncator::restore_constraints (saved_cons_predicate pred)
   int error = NO_ERROR;
 
   /* Normal index must be created earlier than unique constraint or FK, because of shared btree case. */
-  for (saved = m_index_info; saved != NULL; saved = saved->next)
+  for (saved = m_index_info; saved != NULL && pred (*saved); saved = saved->next)
     {
-      if (!pred(*saved))
-        {
-          continue;
-        }
       error = sm_add_constraint (m_mop, saved->constraint_type, saved->name, (const char **) saved->att_names,
                                  saved->asc_desc, saved->prefix_length, false, saved->filter_predicate,
                                  saved->func_index_info, saved->comment, saved->index_status);
@@ -721,12 +693,8 @@ sm_class_truncator::restore_constraints (saved_cons_predicate pred)
     }
 
   /* PK must be created earlier than FK, because of referencing */
-  for (saved = m_unique_info; saved != NULL; saved = saved->next)
+  for (saved = m_unique_info; saved != NULL && pred (*saved); saved = saved->next)
     {
-      if (!pred(*saved))
-        {
-          continue;
-        }
       error = sm_add_constraint (m_mop, saved->constraint_type, saved->name, (const char **) saved->att_names,
                                  saved->asc_desc, saved->prefix_length, false, saved->filter_predicate,
                                  saved->func_index_info, saved->comment, saved->index_status);
@@ -745,12 +713,8 @@ sm_class_truncator::restore_constraints (saved_cons_predicate pred)
       return error;
     }
 
-  for (saved = m_fk_info; saved != NULL; saved = saved->next)
+  for (saved = m_fk_info; saved != NULL && pred (*saved); saved = saved->next)
     {
-      if (!pred(*saved))
-        {
-          continue;
-        }
       error = dbt_add_foreign_key (ctmpl, saved->name, (const char **) saved->att_names, saved->ref_cls_name,
                                    (const char **) saved->ref_attrs, saved->fk_delete_action,
                                    saved->fk_update_action, saved->comment);
@@ -16161,7 +16125,7 @@ sm_truncate_class_internal (std::unordered_set<OID>&& trun_classes)
           return cons.type == SM_CONSTRAINT_FOREIGN_KEY;
         };
 
-      error = truncator.save_constraints(cons_predicate, true);
+      error = truncator.save_constraints_or_clear (cons_predicate);
       if (error != NO_ERROR)
         {
           return error;
@@ -16199,7 +16163,7 @@ sm_truncate_class_internal (std::unordered_set<OID>&& trun_classes)
             }
         };
 
-      error = truncator.save_constraints(cons_predicate, true);
+      error = truncator.save_constraints_or_clear (cons_predicate);
       if (error != NO_ERROR)
       {
         return error;
