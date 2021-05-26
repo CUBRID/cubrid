@@ -11463,6 +11463,12 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs, PT_NODE * rhs)
 			  else
 			    {
 			      d = tp_domain_resolve_default (lhs_dbtype);
+			      if (lhs->type_enum == PT_TYPE_NUMERIC && lhs->data_type != NULL)
+				{
+				  d = tp_domain_copy (d, false);
+				  d->precision = lhs->data_type->info.data_type.precision;
+				  d->scale = lhs->data_type->info.data_type.dec_precision;
+				}
 			    }
 
 			  if (PT_HAS_COLLATION (lhs->type_enum))
