@@ -90,7 +90,7 @@ public class ExecuteThread extends Thread {
         super();
         this.client = client;
         output = new DataOutputStream(new BufferedOutputStream(this.client.getOutputStream()));
-        buffer = ByteBuffer.allocate(1024);
+        buffer = ByteBuffer.allocate(4096);
         packer = new CUBRIDPacker(buffer);
         unpacker = new CUBRIDUnpacker(buffer);
     }
@@ -257,6 +257,8 @@ public class ExecuteThread extends Thread {
         byte[] bytes = new byte[size];
         input.readFully(bytes);
 
+        ensureSpace(size);
+
         buffer.clear(); // always clear
         buffer.put(bytes);
         buffer.flip(); /* prepare to read */
@@ -376,5 +378,21 @@ public class ExecuteThread extends Thread {
         }
 
         return args;
+    }
+
+    private static final int EXPAND_FACTOR = 2;
+
+    private void ensureSpace(int size) {
+        if (buffer.remaining() > size) {
+            return;
+        }
+        int newCapacity = (int) (buffer.capacity() * EXPAND_FACTOR);
+        while (newCapacity < (buffer.capacity() + size)) {
+            newCapacity *= EXPAND_FACTOR;
+        }
+        ByteBuffer expanded = ByteBuffer.allocate(newCapacity);
+        expanded.order(buffer.order());
+        expanded.put(buffer);
+        buffer = expanded;
     }
 }
