@@ -1472,7 +1472,7 @@ fhs_destroy (THREAD_ENTRY * thread_p, EHID * ehid_p)
     }
 
   /* for debug */
-  fhs_dump (thread_p, ehid_p);
+  /* fhs_dump (thread_p, ehid_p); */
   /* for debug */
 
   dir_page_p = fhs_fix_ehid_page (thread_p, ehid_p, PGBUF_LATCH_WRITE);
