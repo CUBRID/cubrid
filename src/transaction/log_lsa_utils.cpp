@@ -40,8 +40,8 @@ namespace cublog::lsa_utils
   }
 
   std::size_t
-  get_packed_size (cubpacking::packer &serializator, std::size_t start_offset, std::size_t size)
+  get_packed_size (cubpacking::packer &serializator, std::size_t start_offset)
   {
-    return serializator.get_packed_bigint_size (start_offset + size);
+    return serializator.get_packed_bigint_size (start_offset);
   }
 }

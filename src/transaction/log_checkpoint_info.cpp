@@ -118,8 +118,8 @@ namespace cublog
   checkpoint_info::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
     size_t size =  0;
-    size += lsa_utils::get_packed_size (serializator, start_offset, size);
-    size += lsa_utils::get_packed_size (serializator, start_offset, size);
+    size += lsa_utils::get_packed_size (serializator, start_offset + size);
+    size += lsa_utils::get_packed_size (serializator, start_offset + size);
 
     size += serializator.get_packed_bigint_size (start_offset + size);
     for (const auto &tran_info : m_trans)
@@ -128,14 +128,14 @@ namespace cublog
 	size += serializator.get_packed_int_size (start_offset + size);
 	size += serializator.get_packed_int_size (start_offset + size);
 
-	size += lsa_utils::get_packed_size (serializator, start_offset, size);
-	size += lsa_utils::get_packed_size (serializator, start_offset, size);
-	size += lsa_utils::get_packed_size (serializator, start_offset, size);
+	size += lsa_utils::get_packed_size (serializator, start_offset + size);
+	size += lsa_utils::get_packed_size (serializator, start_offset + size);
+	size += lsa_utils::get_packed_size (serializator, start_offset + size);
 
-	size += lsa_utils::get_packed_size (serializator, start_offset, size);
-	size += lsa_utils::get_packed_size (serializator, start_offset, size);
-	size += lsa_utils::get_packed_size (serializator, start_offset, size);
-	size += lsa_utils::get_packed_size (serializator, start_offset, size);
+	size += lsa_utils::get_packed_size (serializator, start_offset + size);
+	size += lsa_utils::get_packed_size (serializator, start_offset + size);
+	size += lsa_utils::get_packed_size (serializator, start_offset + size);
+	size += lsa_utils::get_packed_size (serializator, start_offset + size);
 	size += serializator.get_packed_c_string_size (tran_info.user_name, strlen (tran_info.user_name), start_offset + size);
       }
 
@@ -143,8 +143,8 @@ namespace cublog
     for (const auto &sysop_info : m_sysops)
       {
 	size += serializator.get_packed_int_size (start_offset + size);
-	size += lsa_utils::get_packed_size (serializator, start_offset, size);
-	size += lsa_utils::get_packed_size (serializator, start_offset, size);
+	size += lsa_utils::get_packed_size (serializator, start_offset + size);
+	size += lsa_utils::get_packed_size (serializator, start_offset + size);
       }
 
     size += serializator.get_packed_bool_size (start_offset + size);
