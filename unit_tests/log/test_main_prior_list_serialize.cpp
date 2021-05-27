@@ -452,7 +452,7 @@ namespace cublog
 }
 
 log_global::log_global ()
-  : m_prior_recver (prior_info)
+  : m_prior_recver (std::make_unique<cublog::prior_recver> (prior_info))
 {
 }
 log_global::~log_global () = default;
