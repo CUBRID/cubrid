@@ -547,32 +547,6 @@ log_rv_need_sync_redo (const vpid & a_rcv_vpid, LOG_RCVINDEX a_rcvindex)
 }
 
 /*
- * log_rv_find_checkpoint - FIND RECOVERY CHECKPOINT
- *
- * return: true
- *
- *   volid(in): Volume identifier
- *   rcv_lsa(in/out): Recovery log sequence address
- *
- * NOTE: Find the recovery checkpoint address of the given volume. If
- *              it is smaller than rcv_lsa, rcv_lsa is reset to such value.
- */
-bool
-log_rv_find_checkpoint (THREAD_ENTRY * thread_p, VOLID volid, LOG_LSA * rcv_lsa)
-{
-  LOG_LSA chkpt_lsa;		/* Checkpoint LSA of volume */
-  int ret = NO_ERROR;
-
-  ret = disk_get_checkpoint (thread_p, volid, &chkpt_lsa);
-  if (LSA_ISNULL (rcv_lsa) || LSA_LT (&chkpt_lsa, rcv_lsa))
-    {
-      LSA_COPY (rcv_lsa, &chkpt_lsa);
-    }
-
-  return true;
-}
-
-/*
  * log_rv_get_unzip_log_data - GET UNZIP (UNDO or REDO) LOG DATA FROM LOG
  *
  * return: error code
@@ -2736,8 +2710,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
     if (log_recovery_redo_parallel_count > 0)
       {
 	minimum_log_lsa.reset (new cublog::minimum_log_lsa_monitor ());
-	parallel_recovery_redo.reset (new cublog::
-				      redo_parallel (log_recovery_redo_parallel_count, *minimum_log_lsa.get ()));
+	parallel_recovery_redo.
+	  reset (new cublog::redo_parallel (log_recovery_redo_parallel_count, *minimum_log_lsa.get ()));
       }
   }
 #endif

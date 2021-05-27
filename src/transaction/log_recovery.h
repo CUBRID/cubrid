@@ -47,6 +47,5 @@ bool log_rv_need_sync_redo (const vpid & a_rcv_vpid, LOG_RCVINDEX a_rcvindex);
 void log_rv_redo_record (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader,
 			 int (*redofun) (THREAD_ENTRY * thread_p, const LOG_RCV *), LOG_RCV * rcv,
 			 const LOG_LSA * rcv_lsa_ptr, int undo_length, const char *undo_data, LOG_ZIP & redo_unzip);
-bool log_rv_find_checkpoint (THREAD_ENTRY * thread_p, VOLID volid, LOG_LSA * rcv_lsa);
 
 #endif // _LOG_RECOVERY_H_

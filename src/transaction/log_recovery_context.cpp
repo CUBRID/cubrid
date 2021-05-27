@@ -18,11 +18,31 @@
 
 #include "log_recovery_context.hpp"
 
+#include "disk_manager.h"
 #include "file_io.h"
 #include "log_impl.h"
-#include "log_recovery.h"
 #include "server_type.hpp"
 #include "thread_manager.hpp"
+
+bool
+get_disk_checkpoint_min_lsa (THREAD_ENTRY *thread_p, VOLID volid, void *lsa)
+{
+  // the function signature is adapted to fileio_map_mounted. that last argument is actually a pointer to log_lsa.
+  assert (lsa != nullptr);
+  log_lsa &global_checkpoint_lsa = * (log_lsa *) lsa;
+  log_lsa local_checkpoint_lsa = NULL_LSA;
+
+  const int ret = disk_get_checkpoint (thread_p, volid, &local_checkpoint_lsa);
+  if (ret == NO_ERROR)
+    {
+      if (global_checkpoint_lsa.is_null () || local_checkpoint_lsa < global_checkpoint_lsa)
+	{
+	  global_checkpoint_lsa = local_checkpoint_lsa;
+	}
+    }
+
+  return true;
+}
 
 log_recovery_context::log_recovery_context ()
 {
@@ -40,8 +60,7 @@ log_recovery_context::init_for_restore (const time_t *stopat_p)
     }
 
   /* we may have to start from an older checkpoint... */
-  (void) fileio_map_mounted (&cubthread::get_entry (),
-			     (bool (*) (THREAD_ENTRY *, VOLID, void *)) log_rv_find_checkpoint, &m_checkpoint_lsa);
+  (void) fileio_map_mounted (&cubthread::get_entry (), get_disk_checkpoint_min_lsa, &m_checkpoint_lsa);
 }
 
 bool
