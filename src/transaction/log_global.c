@@ -124,6 +124,7 @@ log_global::wait_flushed_lsa (const log_lsa &flush_lsa)
   m_ps_lsa_cv.wait (lock, [flush_lsa, this] { return m_max_ps_flushed_lsa >= flush_lsa; });
 }
 
+#if defined (SERVER_MODE)
 void
 log_global::initialize_log_prior_receiver ()
 {
@@ -142,4 +143,5 @@ log_global::get_log_prior_receiver ()
   assert (m_prior_recver != nullptr);
   return *m_prior_recver;
 }
+#endif // SERVER_MODE
 // *INDENT-ON*
