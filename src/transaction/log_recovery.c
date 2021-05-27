@@ -720,10 +720,6 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   LOG_TDES *rcv_tdes;		/* Tran. descriptor for the recovery phase */
   int rcv_tran_index;		/* Saved transaction index */
   LOG_RECORD_HEADER *eof;	/* End of the log record */
-  LOG_LSA rcv_lsa;		/* Where to start the recovery */
-  LOG_LSA start_redolsa;	/* Where to start redo phase */
-  LOG_LSA end_redo_lsa;		/* Where to stop the redo phase */
-  bool did_incom_recovery;
   int tran_index;
   INT64 num_redo_log_records;
   int error_code = NO_ERROR;
@@ -761,7 +757,6 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
 
   /* Find the starting LSA for the analysis phase */
 
-  LSA_COPY (&rcv_lsa, &log_Gl.hdr.chkpt_lsa);
   if (ismedia_crash != false)
     {
       /* Media crash means restore from backup. */
@@ -776,7 +771,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
    *    backwards record by record until it either finds a MVCC op log record or until it reaches last block in
    *    vacuum data.
    */
-  vacuum_notify_server_crashed (&rcv_lsa);
+  vacuum_notify_server_crashed (&context.get_checkpoint_lsa ());
 
   /*
    * First,  ANALYSIS the log to find the state of the transactions
@@ -790,7 +785,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_STARTED, 3, num_redo_log_records,
 	  context.get_start_redo_lsa ().pageid, context.get_end_redo_lsa ().pageid);
 
-  LSA_COPY (&log_Gl.chkpt_redo_lsa, &start_redolsa);
+  log_Gl.chkpt_redo_lsa = context.get_start_redo_lsa ();
 
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, rcv_tran_index);
   if (logpb_fetch_start_append_page (thread_p) != NO_ERROR)
@@ -842,7 +837,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   log_system_tdes::rv_final ();
   // *INDENT-ON*
 
-  if (did_incom_recovery == true)
+  if (context.is_restore_incomplete ())
     {
       log_recovery_notpartof_volumes (thread_p);
     }
@@ -2741,8 +2736,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
     if (log_recovery_redo_parallel_count > 0)
       {
 	minimum_log_lsa.reset (new cublog::minimum_log_lsa_monitor ());
-	parallel_recovery_redo.
-	  reset (new cublog::redo_parallel (log_recovery_redo_parallel_count, *minimum_log_lsa.get ()));
+	parallel_recovery_redo.reset (new cublog::
+				      redo_parallel (log_recovery_redo_parallel_count, *minimum_log_lsa.get ()));
       }
   }
 #endif
