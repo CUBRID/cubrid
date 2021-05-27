@@ -8184,14 +8184,23 @@ slog_reader_get_log_refined_info (THREAD_ENTRY * thread_p, unsigned int rid, cha
   char *log_info_list;
   int error;
   int num_log_info;
-  ptr = or_unpack_int64 (request, (int64_t*)&b_start_lsa);
-  memcpy (&start_lsa, &b_start_lsa, sizeof (UINT64));
+  //ptr = or_unpack_int64 (request, (int64_t*)&b_start_lsa);
+  //memcpy (&start_lsa, &b_start_lsa, sizeof (UINT64));
 
-  error = xlog_reader_get_log_refined_info (thread_p, start_lsa, &total_length, &num_log_info);
+  ptr = or_unpack_log_lsa (request, &start_lsa);
+
+  error = xlog_reader_get_log_refined_info (thread_p, &start_lsa, &total_length, &num_log_info);
   ptr = or_pack_int (reply, error);
-  ptr = or_pack_log_lsa (ptr, &log_Reader_info.last_lsa);
+  pthread_mutex_lock(&log_Reader_info.last_lsa_mutex);
+  ptr = or_pack_log_lsa (ptr, &start_lsa); /*pack_int64*/
+  pthread_mutex_unlock(&log_Reader_info.last_lsa_mutex);
   ptr = or_pack_int (ptr, num_log_info);
   ptr = or_pack_int (ptr, total_length);
+  
+#if !defined(NDEBUG) && 1 //JOOHOK
+  _er_log_debug (ARG_FILE_LINE, "extraction start lsa : %lld|%d , next lsa : %lld|%d\n", LSA_AS_ARGS(&start_lsa), LSA_AS_ARGS(&log_Reader_info.last_lsa));
+  _er_log_debug (ARG_FILE_LINE, "total length : %d, num_log_info : %d\n", total_length, num_log_info);
+#endif
 
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 
@@ -8201,16 +8210,35 @@ slog_reader_get_log_refined_info (THREAD_ENTRY * thread_p, unsigned int rid, cha
 void
 slog_reader_get_log_refined_info_2 (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  OR_ALIGNED_BUF (2000) a_reply;
+  char *a_reply;
   /*total size of reply message is decided after log_item has been returned */
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-  int error = NO_ERROR;
-  char *ptr; 
+  char *reply; 
+  int reply_size = (log_Reader_info.total_length);
+  char *ptr;
+  char *ptr2;
 
-  ptr = or_pack_int (reply, error);
+  a_reply = (char*)malloc(reply_size + INT_ALIGNMENT);
+  reply = PTR_ALIGN (a_reply, INT_ALIGNMENT);
 
-  memcpy (reply + OR_INT_SIZE, log_Reader_info.log_infos, log_Reader_info.total_length);
-  (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  pthread_mutex_lock( &log_Reader_info.log_info_mutex);
+  memcpy (reply, log_Reader_info.log_infos, log_Reader_info.total_length);
+  (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, log_Reader_info.total_length);
+
+  #if !defined(NDEBUG) && 1
+  int len; 
+  int trid; 
+  char *user;
+  int type;
+  time_t at_time; 
+  int total_len;
+  ptr2 = or_unpack_int (reply, &len);
+  ptr2 = or_unpack_int (ptr2 , &trid);
+  ptr2 = or_unpack_string_nocopy (ptr2, &user);
+  ptr2 = or_unpack_int (ptr2, &type);
+  ptr2 = or_unpack_int64(ptr2, &at_time);
+  total_len = ptr2 - reply;
+  _er_log_debug (ARG_FILE_LINE, "TIMER LOG INFO log len : %d, trid : %d, user : %s, datatype : %d, time : %ld, total_len : %d \b", len, trid, user, type, at_time, total_len);
+  #endif 
 
   free_and_init (log_Reader_info.log_infos);
   pthread_mutex_unlock (&log_Reader_info.log_info_mutex);

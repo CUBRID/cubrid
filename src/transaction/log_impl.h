@@ -777,7 +777,7 @@ typedef struct temporary_log_buffer
 
 typedef struct log_reader_info
 {
-  pthread_t *log_reader_th;
+  pthread_t log_reader_th;
   pthread_mutex_t last_lsa_mutex;
   pthread_mutex_t shutdown_mutex;
   pthread_mutex_t is_initialized_mutex;
@@ -785,7 +785,6 @@ typedef struct log_reader_info
   pthread_mutex_t log_info_mutex;
   int is_initialized;
   int shutdown;			/*log reader thread exit condition */
-  /* *INDENT-ON* */
   LOG_LSA last_lsa;
   /*configuration */
   char **user;
@@ -805,7 +804,7 @@ typedef struct tran_user
 */
 /*TRAN USER TABLE will be hash table composed of (trid : key, user[] : value) */
 /* *INDENT-ON* */
-extern lockfree::circular_queue < LOG_INFO_ENTRY > *log_info_queue;
+extern lockfree::circular_queue < LOG_INFO_ENTRY* > *log_info_queue;
 /* *INDENT-OFF* */
 extern LOG_READER_INFO log_Reader_info;
 
