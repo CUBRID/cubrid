@@ -1256,7 +1256,7 @@ $ LOADDB
 1186 checksumdb: %1$s (hata kodu: %2$d).
 1187 Silinen yığın parçası sayfasında %1$d,%2$d geçersiz erişim olduğu.
 1188 Aktif '%1$s' kullanıcı bırakma izin verilmez.
-1189 Tarih ve saat belirtilen kombinasyonu yoktur (saat diliminin geçişi sırasında kurallarını ofset).
+1189 Tarih ve saat belirtilen kombinasyonu yoktur (saat diliminin geçişi sırasında kurallarını ofset).
 1190 Stand-alone vakum yürütme başlatılır.
 1191 Stand-alone vakum yürütme sona erer.
 1192 Değeri hassas %1$zu izin verilen maksimum %2$d aşıyor.
@@ -1336,8 +1336,8 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 1265 Error connecting with the page server at %s.
 1266 The high availability system is not compatible with the page server type.
 1267 Cannot copy volume %s to %s. Error: %s.
-1268 Error reserved for scalability development.
-1269 Error reserved for scalability development.
+1268 At least one valid page server host is necessary, but no page server found in configuration.
+1269 At least one valid page server host is necessary, but no page server could be connected.
 1270 Error reserved for scalability development.
 1271 Error reserved for scalability development.
 1272 Error reserved for scalability development.
