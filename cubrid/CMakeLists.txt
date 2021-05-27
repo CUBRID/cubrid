@@ -379,6 +379,7 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/extendible_hash.c
   ${STORAGE_DIR}/external_sort.c
   ${STORAGE_DIR}/file_io.c
+  ${STORAGE_DIR}/file_io.cpp
   ${STORAGE_DIR}/file_manager.c
   ${STORAGE_DIR}/heap_file.c
   ${STORAGE_DIR}/oid.c

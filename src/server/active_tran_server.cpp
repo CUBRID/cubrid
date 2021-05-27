@@ -300,15 +300,18 @@ void active_tran_server::receive_data_page (cubpacking::unpacker &upk)
   int error_code;
   std::memcpy (&error_code, message.c_str (), sizeof (error_code));
 
+  std::shared_ptr<data_page_owner> shared_data_page;
+  if (error_code == NO_ERROR)
+    {
+      shared_data_page = std::make_shared<data_page_owner> (message.c_str () + sizeof (error_code), db_io_page_size ());
+    }
+
   if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
     {
       if (error_code == NO_ERROR)
 	{
-	  char buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
-	  FILEIO_PAGE *io_page = (FILEIO_PAGE *) PTR_ALIGN (buf, MAX_ALIGNMENT);
-	  std::memcpy (io_page, message.c_str () + sizeof (error_code), db_io_page_size ());
 	  _er_log_debug (ARG_FILE_LINE, "Received data page message from Page Server. LSA: %lld|%d, Page ID: %ld, Volid: %d",
-			 LSA_AS_ARGS (&io_page->prv.lsa), io_page->prv.pageid, io_page->prv.volid);
+			 LSA_AS_ARGS (&shared_data_page->prv ().lsa), shared_data_page->prv ().pageid, shared_data_page->prv ().volid);
 	}
       else
 	{
