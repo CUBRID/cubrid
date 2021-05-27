@@ -269,12 +269,9 @@ static void *ehash_insert_helper (THREAD_ENTRY * thread_p, EHID * ehid, void *ke
 static EHASH_RESULT ehash_insert_to_bucket (THREAD_ENTRY * thread_p, EHID * ehid, VFID * ovf_file, bool is_temp,
 					    PAGE_PTR buc_pgptr, DB_TYPE key_type, void *key_ptr, OID * value_ptr,
 					    VPID * existing_ovf_vpid);
-static EHASH_RESULT ehash_insert_to_bucket_hls (THREAD_ENTRY * thread_p, EHID * ehid, VFID * ovf_file, bool is_temp,
-					    PAGE_PTR buc_pgptr, DB_TYPE key_type, void *key_ptr, OID * value_ptr,
-					    VPID * existing_ovf_vpid);
 static int ehash_compose_record (DB_TYPE key_type, void *key_ptr, OID * value_ptr, RECDES * recdes);
 static bool ehash_locate_slot (THREAD_ENTRY * thread_p, PAGE_PTR page, DB_TYPE key_type, void *key,
-			       PGSLOTID * position, bool need_to_backward);
+			       PGSLOTID * position);
 static PAGE_PTR ehash_split_bucket (THREAD_ENTRY * thread_p, EHASH_DIR_HEADER * dir_header, PAGE_PTR buc_pgptr,
 				    void *key, int *old_local_depth, int *new_local_depth, VPID * sib_vpid,
 				    bool is_temp);
@@ -353,17 +350,6 @@ static EHASH_HASH_KEY ehash_hash_two_bytes_type (char *key);
 static void eh_dump_key (DB_TYPE key_type, void *key, OID * value_ptr);
 #endif /* EHINSERTION_ORDER */
 static void ehash_dump_bucket (THREAD_ENTRY * thread_p, PAGE_PTR buc_pgptr, DB_TYPE key_type);
-
-/* extendible hash for hash list scan */
-static void ehash_read_oid_from_record_hls (char *record_p, OID * oid_p);
-static void ehash_read_key_from_record_hls (char *record_p, int * key);
-static void ehash_read_num_from_record_hls (char *record_p, short * num);
-
-static char *ehash_write_oid_to_record_hls (char *record_p, OID * oid_p);
-static char *ehash_write_key_to_record_hls (char *record_p, void *key_p);
-static char *ehash_write_num_to_record_hls (char *record_p, short num);
-static int ehash_compose_record_hls (DB_TYPE key_type, void *key_p, OID * value_p, RECDES * recdes_p, short num);
-/* end : extendible hash for hash list scan */
 
 /*
  * ehash_dir_locate()
@@ -839,6 +825,7 @@ eh_dump_key (DB_TYPE key_type, void *key, OID * value_ptr)
 
 }
 #endif /* EHINSERTION_ORDER */
+
 /*
  * xehash_create () - Create an extendible hashing structure
  *   return: EHID * (NULL in case of error)
@@ -901,10 +888,6 @@ ehash_get_key_size (DB_TYPE key_type)
       key_size = sizeof (OID);
       break;
 
-    case DB_TYPE_INTEGER:
-      key_size = sizeof (int);
-      break;
-
 #if defined (ENABLE_UNUSED_FUNCTION)
     case DB_TYPE_DOUBLE:
       key_size = sizeof (double);
@@ -912,6 +895,10 @@ ehash_get_key_size (DB_TYPE key_type)
 
     case DB_TYPE_FLOAT:
       key_size = sizeof (float);
+      break;
+
+    case DB_TYPE_INTEGER:
+      key_size = sizeof (int);
       break;
 
     case DB_TYPE_BIGINT:
@@ -982,7 +969,7 @@ ehash_create_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, DB_TYPE key_type, i
   FILE_EHASH_DES ehdes;
   PAGE_TYPE ptype = PAGE_EHASH;
 
-  assert (key_type == DB_TYPE_STRING || key_type == DB_TYPE_OBJECT || key_type == DB_TYPE_INTEGER);
+  assert (key_type == DB_TYPE_STRING || key_type == DB_TYPE_OBJECT);
 
   if (ehid_p == NULL)
     {
@@ -1273,8 +1260,6 @@ xehash_destroy (THREAD_ENTRY * thread_p, EHID * ehid_p)
       return ER_FAILED;
     }
 
-  ehash_dump (thread_p, ehid_p);
-
   dir_page_p = ehash_fix_ehid_page (thread_p, ehid_p, PGBUF_LATCH_WRITE);
   if (dir_page_p == NULL)
     {
@@ -1423,7 +1408,7 @@ ehash_search (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p, OID * value_p
       goto end;
     }
 
-  if (ehash_locate_slot (thread_p, bucket_page_p, dir_header_p->key_type, key_p, &slot_id, false) == false)
+  if (ehash_locate_slot (thread_p, bucket_page_p, dir_header_p->key_type, key_p, &slot_id) == false)
     {
       result = EH_KEY_NOTFOUND;
       goto end;
@@ -1442,158 +1427,6 @@ end:
   if (dir_root_page_p)
     {
       pgbuf_unfix_and_init (thread_p, dir_root_page_p);
-    }
-
-  return result;
-}
-
-/*
- * ehash_search_hls () - Search for the first key of duplicated keys;
- *			 return associated value.
- *   return: EH_SEARCH
- *   ehid(in): identifier for the extendible hashing structure
- *   key(in): key to search
- *   value_ptr(out): pointer to return the value associated with the key
- *
- * Note: Returns the value associated with the given key, if it is
- * found in the specified extendible hashing structure. If the
- * key is not found an error condition is returned.
- */
-EH_SEARCH
-ehash_search_hls (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p, OID * value_p, OID * last_oid_p)
-{
-  EHASH_DIR_HEADER *dir_header_p;
-  PAGE_PTR dir_root_page_p = NULL;
-  PAGE_PTR bucket_page_p = NULL;
-  VPID bucket_vpid;
-  RECDES recdes;
-  PGSLOTID slot_id;
-  EH_SEARCH result = EH_KEY_NOTFOUND;
-
-  if (ehid_p == NULL || key_p == NULL)
-    {
-      return EH_KEY_NOTFOUND;
-    }
-
-  dir_root_page_p =
-    ehash_find_bucket_vpid_with_hash (thread_p, ehid_p, key_p, PGBUF_LATCH_READ, PGBUF_LATCH_READ, &bucket_vpid, NULL,
-				      NULL);
-  if (dir_root_page_p == NULL)
-    {
-      return EH_ERROR_OCCURRED;
-    }
-
-  dir_header_p = (EHASH_DIR_HEADER *) dir_root_page_p;
-
-  if (bucket_vpid.pageid == NULL_PAGEID)
-    {
-      result = EH_KEY_NOTFOUND;
-      goto end;
-    }
-
-  bucket_page_p = ehash_fix_old_page (thread_p, &ehid_p->vfid, &bucket_vpid, PGBUF_LATCH_READ);
-  if (bucket_page_p == NULL)
-    {
-      result = EH_ERROR_OCCURRED;
-      goto end;
-    }
-
-  if (ehash_locate_slot (thread_p, bucket_page_p, dir_header_p->key_type, key_p, &slot_id, false) == false)
-    {
-      result = EH_KEY_NOTFOUND;
-      goto end;
-    }
-
-  (void) spage_get_record (thread_p, bucket_page_p, slot_id, &recdes, PEEK);
-  (void) ehash_read_oid_from_record (recdes.data, value_p);
-  /* save last oid */
-  last_oid_p->volid = bucket_vpid.volid;
-  last_oid_p->pageid = bucket_vpid.pageid;
-  last_oid_p->slotid = slot_id;
-
-  result = EH_KEY_FOUND;
-
-end:
-  if (bucket_page_p)
-    {
-      pgbuf_unfix_and_init (thread_p, bucket_page_p);
-    }
-
-  if (dir_root_page_p)
-    {
-      pgbuf_unfix_and_init (thread_p, dir_root_page_p);
-    }
-
-  return result;
-}
-
-/*
- * ehash_search_next () - Search for the next key; return associated value
- *   return: EH_SEARCH
- *   ehid(in): identifier for the extendible hashing structure
- *   key(in): key to search
- *   value_ptr(out): pointer to return the value associated with the key
- *   last_oid_p(in/out) : pointer to last oid of bucket associated with the key
- *
- * Note: Returns the next value associated with the given key, if it is
- * found in the specified extendible hashing structure.
- */
-EH_SEARCH
-ehash_search_next (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key, OID * value_p, OID * last_oid_p)
-{
-  EHASH_DIR_HEADER *dir_header_p;
-  PAGE_PTR bucket_page_p = NULL;
-  VPID bucket_vpid;
-  RECDES recdes;
-  EH_SEARCH result = EH_KEY_NOTFOUND;
-  char *bucket_key;
-  int compare_result;
-
-  if (ehid_p == NULL || last_oid_p->pageid == NULL_PAGEID)
-    {
-      return EH_KEY_NOTFOUND;
-    }
-
-  bucket_vpid.volid = last_oid_p->volid;
-  bucket_vpid.pageid = last_oid_p->pageid;
-  bucket_page_p = ehash_fix_old_page (thread_p, &ehid_p->vfid, &bucket_vpid, PGBUF_LATCH_READ);
-  if (bucket_page_p == NULL)
-    {
-      result = EH_ERROR_OCCURRED;
-      goto end;
-    }
-
-  if (last_oid_p->slotid <= 1)
-    {
-      /* already last slot id */
-      result = EH_KEY_NOTFOUND;
-      goto end;
-    }
-  (void) spage_get_record (thread_p, bucket_page_p, --last_oid_p->slotid, &recdes, PEEK);
-
-  /* compare key */
-  bucket_key = (char *) recdes.data;
-  bucket_key += sizeof (OID);
-  /* ehash_search_next() is olny used for DB_TYPE_INTEGER. TO_DO : refactor this */
-  if (ehash_compare_key (thread_p, bucket_key, DB_TYPE_INTEGER, key, recdes.type, &compare_result) != NO_ERROR)
-    {
-      result = EH_ERROR_OCCURRED;
-      goto end;
-    }
-  if (compare_result != 0)
-    {
-      /* the all keys is already found */
-      result = EH_KEY_NOTFOUND;
-      goto end;
-    }
-
-  (void) ehash_read_oid_from_record (recdes.data, value_p);
-  result = EH_KEY_FOUND;
-
-end:
-  if (bucket_page_p)
-    {
-      pgbuf_unfix_and_init (thread_p, bucket_page_p);
     }
 
   return result;
@@ -1816,7 +1649,7 @@ ehash_insert_bucket_after_extend_if_need (THREAD_ENTRY * thread_p, EHID * ehid_p
     }
 
   result =
-    ehash_insert_to_bucket_hls (thread_p, ehid_p, &dir_header_p->overflow_file, is_temp, bucket_page_p,
+    ehash_insert_to_bucket (thread_p, ehid_p, &dir_header_p->overflow_file, is_temp, bucket_page_p,
 			    dir_header_p->key_type, key_p, value_p, existing_ovf_vpid_p);
   if (result == EHASH_BUCKET_FULL)
     {
@@ -1851,7 +1684,7 @@ ehash_insert_bucket_after_extend_if_need (THREAD_ENTRY * thread_p, EHID * ehid_p
 	}
 
       result =
-	ehash_insert_to_bucket_hls (thread_p, ehid_p, &dir_header_p->overflow_file, is_temp, target_bucket_page_p,
+	ehash_insert_to_bucket (thread_p, ehid_p, &dir_header_p->overflow_file, is_temp, target_bucket_page_p,
 				dir_header_p->key_type, key_p, value_p, existing_ovf_vpid_p);
       pgbuf_unfix_and_init (thread_p, sibling_page_p);
     }
@@ -1899,10 +1732,12 @@ ehash_insert_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p, OID * 
     }
 
   dir_header_p = (EHASH_DIR_HEADER *) dir_root_page_p;
+
 #if defined(EHINSERTION_ORDER)
   fprintf (stdout, "Ex Hash %d|%d|%d Insert:", ehid_p->vfid.volid, ehid_p->vfid.fileid, ehid_p->pageid);
   eh_dump_key (dir_header_p->key_type, key_p, value_p);
 #endif /* EHINSERTION_ORDER */
+
   if (dir_header_p->key_type == DB_TYPE_STRING)
     {
       /* max length of class name is 255 */
@@ -2011,15 +1846,12 @@ ehash_insert_to_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p, VFID * ovf_file_
   bool is_replaced_oid = false;
 
   /* Check if insertion is possible, or not */
-  if (ehash_locate_slot (thread_p, bucket_page_p, key_type, key_p, &slot_no, true) == true &&
-      key_type != DB_TYPE_INTEGER)
+  if (ehash_locate_slot (thread_p, bucket_page_p, key_type, key_p, &slot_no) == true)
     {
       /*
-       * Key already exists. So, replace the associated value.
-       * if key_type is DB_TYPE_INTEGER, allow multiple values.
-       * TO_DO : add duplicate key type.
+       * Key already exists. So, replace the associated value
+       * MIGHT BE CHANGED to allow multiple values
        */
-
       (void) spage_get_record (thread_p, bucket_page_p, slot_no, &old_bucket_recdes, PEEK);
       bucket_record_p = (char *) old_bucket_recdes.data;
 
@@ -2223,86 +2055,6 @@ ehash_insert_to_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p, VFID * ovf_file_
   return EHASH_SUCCESSFUL_COMPLETION;
 }
 
-/*
- * ehash_insert_to_bucket () - Insert (key, value) to bucket
- *   return: EHASH_RESULT
- *   ehid(in): identifier for the extendible hashing structure
- *   overflow_file(in): Overflow file for extendible hash
- *   is_temp(in): is extensible hash temporary?
- *   buc_pgptr(in): bucket page to insert the key
- *   key_type(in): type of the key
- *   key_ptr(in): Pointer to the key
- *   value_ptr(in): Pointer to the associated value
- *   existing_ovf_vpid(in):
- *
- * Note: This function is used to insert a (key & assoc_value) pair
- * onto the given bucket. If the KEY already EXISTS in the bucket
- * the NEW ASSOCIATED VALUE REPLACES THE OLD ONE. Otherwise a
- * new entry is added to the bucket and the total number of
- * entries of this extendible hashing structure is incremented
- * by one. In the latter case, if the insertion is not possible
- * for some reason (e.g., the bucket does not have enough space
- * for the new record, etc.) an appropriate error code is returned.
- */
-static EHASH_RESULT
-ehash_insert_to_bucket_hls (THREAD_ENTRY * thread_p, EHID * ehid_p, VFID * ovf_file_p, bool is_temp,
-			PAGE_PTR bucket_page_p, DB_TYPE key_type, void *key_p, OID * value_p,
-			VPID * existing_ovf_vpid_p)
-{
-  char *bucket_record_p;
-  RECDES bucket_recdes;
-  RECDES old_bucket_recdes;
-
-  PGSLOTID slot_no;
-  int success;
-  short num;
-
-  /* Check if insertion is duplicate, or not */
-  if (ehash_locate_slot (thread_p, bucket_page_p, key_type, key_p, &slot_no, true) == true)
-    {
-      /* Key already exists. Append new data to the last slot of duplicate keys. */
-      (void) spage_get_record (thread_p, bucket_page_p, slot_no, &old_bucket_recdes, PEEK);
-      ehash_read_num_from_record_hls (old_bucket_recdes.data, &num);
-      num++;
-    }
-  else
-    {
-      /* Key does not exist in the bucket  */
-      num = 1;
-    }
-
-  /* insert it into the bucket */
-  if (ehash_compose_record_hls (key_type, key_p, value_p, &bucket_recdes, num) != NO_ERROR)
-    {
-      return EHASH_ERROR_OCCURRED;
-    }
-  /* Try to put the record to the slotted page */
-  success = spage_insert_at (thread_p, bucket_page_p, slot_no, &bucket_recdes);
-  if (success != SP_SUCCESS)
-    {
-      /* Problem the record was not inserted to the page */
-      ehash_free_recdes (&bucket_recdes);
-      if (success == SP_DOESNT_FIT)
-	{
-	  /* There is not enough space on the slotted page for the new record */
-	  return EHASH_BUCKET_FULL;
-	}
-      else
-	{
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  return EHASH_ERROR_OCCURRED;
-	}
-    }
-
-  if (bucket_recdes.data)
-    {
-      ehash_free_recdes (&bucket_recdes);
-    }
-
-  pgbuf_set_dirty (thread_p, bucket_page_p, DONT_FREE);
-  return EHASH_SUCCESSFUL_COMPLETION;
-}
-
 static int
 ehash_write_key_to_record (RECDES * recdes_p, DB_TYPE key_type, void *key_p, short key_size, OID * value_p,
 			   bool is_long_str)
@@ -2334,11 +2086,6 @@ ehash_write_key_to_record (RECDES * recdes_p, DB_TYPE key_type, void *key_p, sho
     case DB_TYPE_OBJECT:
       *(OID *) record_p = *(OID *) key_p;
       break;
-
-    case DB_TYPE_INTEGER:
-      *(int *) record_p = *(int *) key_p;
-      break;
-
 #if defined (ENABLE_UNUSED_FUNCTION)
     case DB_TYPE_DOUBLE:
       OR_MOVE_DOUBLE (key_p, record_p);
@@ -2346,6 +2093,10 @@ ehash_write_key_to_record (RECDES * recdes_p, DB_TYPE key_type, void *key_p, sho
 
     case DB_TYPE_FLOAT:
       *(float *) record_p = *(float *) key_p;
+      break;
+
+    case DB_TYPE_INTEGER:
+      *(int *) record_p = *(int *) key_p;
       break;
 
     case DB_TYPE_BIGINT:
@@ -2460,60 +2211,11 @@ ehash_compose_record (DB_TYPE key_type, void *key_p, OID * value_p, RECDES * rec
   return ehash_write_key_to_record (recdes_p, key_type, key_p, key_size, value_p, is_long_str);
 }
 
-/*
- * ehash_compose_record () -
- *   return: NO_ERROR, or ER_FAILED
- *   key_type(in): type of the key
- *   key_ptr(in): Pointer to the key
- *   value_ptr(in): Pointer to the associated value
- *   recdes(in): Pointer to the Record descriptor to fill in
- *
- * Note: This function prepares a record and sets the fields of the
- * passed record descriptor to describe it. All of the records
- * prepared by this function contain the
- * (associated_value, key_value) pairs (in this order). However,
- * these two fields may optionally be preceeded with the "ehid"
- * information. The records with the "ehid" information are used
- * for logging purposes. The ones without ehid information are
- * used to insert entries into the bucket pages. The dynamic
- * memory area allocated by this function for the record should
- * be freed by the caller function.
- *
- * If the key is of string type and it is > EHASH_MAX_STRING_SIZE, we
- * only include a prefix to the key. The caller is responsible
- * for the overflow part.
- */
-static int
-ehash_compose_record_hls (DB_TYPE key_type, void *key_p, OID * value_p, RECDES * recdes_p, short num)
-{
-  short key_size;
-  int record_size;
-  char *record_p;
-
-  /* record : oid | key(int) | flag(1bit) + num(15bit) (short) */
-  record_size = sizeof (OID) + sizeof (int) + sizeof (short);
-
-  if (ehash_allocate_recdes (recdes_p, record_size, REC_HOME) == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  recdes_p->type = REC_HOME;
-
-  record_p = recdes_p->data;
-  record_p = ehash_write_oid_to_record_hls (record_p, value_p);
-  record_p = ehash_write_key_to_record_hls (record_p, key_p);
-  record_p = ehash_write_num_to_record_hls (record_p, num);
-
-  return NO_ERROR;
-}
-
 static int
 ehash_compare_key (THREAD_ENTRY * thread_p, char *bucket_record_p, DB_TYPE key_type, void *key_p, INT16 record_type,
 		   int *out_compare_result_p)
 {
   int compare_result;
-  unsigned int u1, u2;
 #if defined (ENABLE_UNUSED_FUNCTION)
   VPID *ovf_vpid_p;
   double d1, d2;
@@ -2558,24 +2260,6 @@ ehash_compare_key (THREAD_ENTRY * thread_p, char *bucket_record_p, DB_TYPE key_t
     case DB_TYPE_OBJECT:
       compare_result = oid_compare ((OID *) key_p, (OID *) bucket_record_p);
       break;
-
-    case DB_TYPE_INTEGER:
-      u1 = *((unsigned int *) key_p);
-      u2 = *((unsigned int *) bucket_record_p);
-
-      if (u1 == u2)
-	{
-	  compare_result = 0;
-	}
-      else if (u1 > u2)
-	{
-	  compare_result = 1;
-	}
-      else
-	{
-	  compare_result = -1;
-	}
-      break;
 #if defined (ENABLE_UNUSED_FUNCTION)
     case DB_TYPE_DOUBLE:
       OR_MOVE_DOUBLE (key_p, &d1);
@@ -2611,6 +2295,10 @@ ehash_compare_key (THREAD_ENTRY * thread_p, char *bucket_record_p, DB_TYPE key_t
 	{
 	  compare_result = -1;
 	}
+      break;
+
+    case DB_TYPE_INTEGER:
+      compare_result = *(int *) key_p - *(int *) bucket_record_p;
       break;
 
     case DB_TYPE_BIGINT:
@@ -2703,14 +2391,13 @@ ehash_compare_key (THREAD_ENTRY * thread_p, char *bucket_record_p, DB_TYPE key_t
 
 static bool
 ehash_binary_search_bucket (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, PGSLOTID num_record, DB_TYPE key_type,
-			    void *key_p, PGSLOTID * out_position_p, bool need_to_backward)
+			    void *key_p, PGSLOTID * out_position_p)
 {
   char *bucket_record_p;
   RECDES recdes;
   PGSLOTID low, high;
   PGSLOTID middle;
   int compare_result;
-  short num;
 
   low = 1;
   high = num_record;
@@ -2735,51 +2422,7 @@ ehash_binary_search_bucket (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, PGS
 
       if (compare_result == 0)
 	{
-	  if (need_to_backward)
-	    {
-	      /* Find the first slotid */
-	      while (compare_result == 0)
-		{
-		  if (middle == 1)
-		    {
-		      *out_position_p = middle;
-		      return true;
-		    }
-		  --middle;
-
-		  if (spage_get_record (thread_p, bucket_page_p, middle, &recdes, PEEK) != S_SUCCESS)
-		    {
-		      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_CORRUPTED, 0);
-		      return false;
-		    }
-
-		  bucket_record_p = (char *) recdes.data;
-		  bucket_record_p += sizeof (OID);
-
-		  if (ehash_compare_key (thread_p, bucket_record_p, key_type, key_p, recdes.type, &compare_result) !=
-		      NO_ERROR)
-		    {
-		      return false;
-		    }
-		}
-	      *out_position_p = middle + 1;
-	    }
-	  else
-	    {
-	      /* go to last slot using num */
-	      if (spage_get_record (thread_p, bucket_page_p, middle, &recdes, PEEK) != S_SUCCESS)
-		{
-		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_CORRUPTED, 0);
-		  return false;
-		}
-	      ehash_read_num_from_record_hls((char *) recdes.data, &num);
-	      if (num <= 0)
-		{
-		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_CORRUPTED, 0);
-		  return false;
-		}
-	      *out_position_p = middle + num -1;
-	    }
+	  *out_position_p = middle;
 	  return true;
 	}
 
@@ -2826,7 +2469,7 @@ ehash_binary_search_bucket (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, PGS
  */
 static bool
 ehash_locate_slot (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, DB_TYPE key_type, void *key_p,
-		   PGSLOTID * out_position_p, bool need_to_backward)
+		   PGSLOTID * out_position_p)
 {
   RECDES recdes;
   PGSLOTID num_record;
@@ -2851,8 +2494,7 @@ ehash_locate_slot (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, DB_TYPE key_
       return false;
     }
 
-  return ehash_binary_search_bucket (thread_p, bucket_page_p, num_record, key_type, key_p, out_position_p,
-				     need_to_backward);
+  return ehash_binary_search_bucket (thread_p, bucket_page_p, num_record, key_type, key_p, out_position_p);
 }
 
 static int
@@ -3058,12 +2700,7 @@ ehash_split_bucket (THREAD_ENTRY * thread_p, EHASH_DIR_HEADER * dir_header_p, PA
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_CORRUPTED, 0);
       return NULL;
     }
-  /* There are no more bits left. TO_DO : change UINT_MAX to EHASH_MAXBIT */
-  if (bucket_header_p->local_depth >= UINT_MAX)
-    {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_CORRUPTED, 0);
-      return NULL;
-    }
+
   bucket_header_p = (EHASH_BUCKET_HEADER *) recdes.data;
   *out_old_local_depth_p = bucket_header_p->local_depth;
 
@@ -3835,7 +3472,7 @@ ehash_delete (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p)
       /* Try to delete key from buc_page */
 
       /* Check if deletion possible, or not */
-      if (ehash_locate_slot (thread_p, bucket_page_p, dir_header_p->key_type, key_p, &slot_no, false) == false)
+      if (ehash_locate_slot (thread_p, bucket_page_p, dir_header_p->key_type, key_p, &slot_no) == false)
 	{
 	  /* Key does not exist, so return errorcode */
 	  pgbuf_unfix_and_init (thread_p, bucket_page_p);
@@ -4045,7 +3682,7 @@ ehash_merge_permanent (THREAD_ENTRY * thread_p, EHID * ehid_p, PAGE_PTR dir_root
 #endif
 
       is_record_exist =
-	ehash_locate_slot (thread_p, sibling_page_p, dir_header_p->key_type, (void *) bucket_record_p, &new_slot_id, false);
+	ehash_locate_slot (thread_p, sibling_page_p, dir_header_p->key_type, (void *) bucket_record_p, &new_slot_id);
       if (is_record_exist == false)
 	{
 	  success = spage_insert_at (thread_p, sibling_page_p, new_slot_id, &recdes);
@@ -4624,6 +4261,7 @@ ehash_hash_eight_bytes_type (char *key_p)
   return hash_key;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 static EHASH_HASH_KEY
 ehash_hash_four_bytes_type (char *key_p)
 {
@@ -4654,7 +4292,6 @@ ehash_hash_four_bytes_type (char *key_p)
   return hash_key;
 }
 
-#if defined (ENABLE_UNUSED_FUNCTION)
 static EHASH_HASH_KEY
 ehash_hash_two_bytes_type (char *key_p)
 {
@@ -4714,10 +4351,6 @@ ehash_hash (void *original_key_p, DB_TYPE key_type)
       hash_key = ehash_hash_eight_bytes_type (key);
       break;
 
-    case DB_TYPE_INTEGER:
-      hash_key = ehash_hash_four_bytes_type (key);
-      break;
-
 #if defined (ENABLE_UNUSED_FUNCTION)
     case DB_TYPE_BIGINT:
     case DB_TYPE_DOUBLE:
@@ -4735,6 +4368,7 @@ ehash_hash (void *original_key_p, DB_TYPE key_type)
     case DB_TYPE_TIME:
     case DB_TYPE_TIMESTAMP:
     case DB_TYPE_DATETIME:
+    case DB_TYPE_INTEGER:
       hash_key = ehash_hash_four_bytes_type (key);
       break;
 
@@ -5070,10 +4704,6 @@ ehash_apply_each (THREAD_ENTRY * thread_p, EHID * ehid_p, RECDES * recdes_p, DB_
     case DB_TYPE_OBJECT:
       memcpy (&next_key, bucket_record_p, sizeof (OID));
       break;
-
-    case DB_TYPE_INTEGER:
-      *((int *) &next_key) = *(int *) bucket_record_p;
-      break;
 #if defined (ENABLE_UNUSED_FUNCTION)
     case DB_TYPE_DOUBLE:
       OR_MOVE_DOUBLE (bucket_record_p, &next_key);
@@ -5081,6 +4711,10 @@ ehash_apply_each (THREAD_ENTRY * thread_p, EHID * ehid_p, RECDES * recdes_p, DB_
 
     case DB_TYPE_FLOAT:
       *((float *) &next_key) = *(float *) bucket_record_p;
+      break;
+
+    case DB_TYPE_INTEGER:
+      *((int *) &next_key) = *(int *) bucket_record_p;
       break;
 
     case DB_TYPE_BIGINT:
@@ -5287,10 +4921,6 @@ ehash_dump (THREAD_ENTRY * thread_p, EHID * ehid_p)
     case DB_TYPE_OBJECT:
       printf (" OID                                 *\n");
       break;
-
-    case DB_TYPE_INTEGER:
-      printf (" int                                    *\n");
-      break;
 #if defined (ENABLE_UNUSED_FUNCTION)
     case DB_TYPE_DOUBLE:
       printf (" double                                 *\n");
@@ -5298,6 +4928,10 @@ ehash_dump (THREAD_ENTRY * thread_p, EHID * ehid_p)
 
     case DB_TYPE_FLOAT:
       printf (" float                                 *\n");
+      break;
+
+    case DB_TYPE_INTEGER:
+      printf (" int                                    *\n");
       break;
 
     case DB_TYPE_BIGINT:
@@ -5562,12 +5196,6 @@ ehash_dump_bucket (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, DB_TYPE key_
 	  printf ("   (%5d,%5d,%5d)          ", ((OID *) bucket_record_p)->volid, ((OID *) bucket_record_p)->pageid,
 		  ((OID *) bucket_record_p)->slotid);
 	  break;
-
-	case DB_TYPE_INTEGER:
-	  printf ("    %10u              ", *(unsigned int *) bucket_record_p);
-	  printf ("    %7d              ", *(short *) (bucket_record_p + sizeof (int)));
-	  break;
-
 #if defined (ENABLE_UNUSED_FUNCTION)
 	case DB_TYPE_DOUBLE:
 	  OR_MOVE_DOUBLE (bucket_record_p, &d);
@@ -5576,6 +5204,10 @@ ehash_dump_bucket (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, DB_TYPE key_
 
 	case DB_TYPE_FLOAT:
 	  printf ("    %20f      ", *(float *) bucket_record_p);
+	  break;
+
+	case DB_TYPE_INTEGER:
+	  printf ("    %14d              ", *(int *) bucket_record_p);
 	  break;
 
 	case DB_TYPE_BIGINT:
@@ -5994,7 +5626,7 @@ ehash_rv_delete (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p)
       /* Try to delete key from buc_page */
 
       /* Check if deletion possible, or not */
-      if (ehash_locate_slot (thread_p, bucket_page_p, dir_header_p->key_type, key_p, &slot_no, false) == false)
+      if (ehash_locate_slot (thread_p, bucket_page_p, dir_header_p->key_type, key_p, &slot_no) == false)
 	{
 	  /* Key does not exist, so return errorcode */
 	  pgbuf_unfix_and_init (thread_p, bucket_page_p);
@@ -6171,64 +5803,4 @@ ehash_write_ehid_to_record (char *record_p, EHID * ehid_p)
   record_p += (sizeof (EHID) - sizeof (PAGEID) - sizeof (FILEID));
 
   return record_p;
-}
-
-static char *
-ehash_write_oid_to_record_hls (char *record_p, OID * oid_p)
-{
-  *(PAGEID *) record_p = oid_p->pageid;
-  record_p += sizeof (PAGEID);
-
-  *(VOLID *) record_p = oid_p->volid;
-  record_p += sizeof (VOLID);
-
-  *(PGSLOTID *) record_p = oid_p->slotid;
-  record_p += sizeof (PGSLOTID);
-
-  return record_p;
-}
-
-static char *
-ehash_write_key_to_record_hls (char *record_p, void *key_p)
-{
-  *(int *) record_p = *(int *) key_p;
-  record_p += sizeof (int);
-
-  return record_p;
-}
-
-static char *
-ehash_write_num_to_record_hls (char *record_p, short num)
-{
-  *(short *) record_p = num;
-  record_p += sizeof (short);
-
-  return record_p;
-}
-
-static void
-ehash_read_oid_from_record_hls (char *record_p, OID * oid_p)
-{
-  oid_p->pageid = *(PAGEID *) record_p;
-  record_p += sizeof (PAGEID);
-
-  oid_p->volid = *(VOLID *) record_p;
-  record_p += sizeof (VOLID);
-
-  oid_p->slotid = *(PGSLOTID *) record_p;
-  record_p += sizeof (PGSLOTID);
-}
-
-static void
-ehash_read_key_from_record_hls (char *record_p, int * key)
-{
-  record_p += sizeof (OID);
-  *key = *(int *) record_p;
-}
-
-static void
-ehash_read_num_from_record_hls (char *record_p, short * num)
-{
-  record_p += sizeof (OID) + sizeof (int);
-  *num = *(short *) record_p;
 }
