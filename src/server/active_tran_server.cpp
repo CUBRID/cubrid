@@ -149,8 +149,8 @@ active_tran_server::init_page_server_hosts (const char *db_name)
     {
       if (m_has_remote_storage)
 	{
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_INCONSISTENT_REMOTE_STORAGE_VS_HOSTS, 0);
-	  return ER_INCONSISTENT_REMOTE_STORAGE_VS_HOSTS;
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_EMPTY_PAGE_SERVER_HOSTS_CONFIG, 0);
+	  return ER_EMPTY_PAGE_SERVER_HOSTS_CONFIG;
 	}
       else
 	{
@@ -201,10 +201,12 @@ active_tran_server::init_page_server_hosts (const char *db_name)
   if (valid_connection_count == 0 && m_has_remote_storage)
     {
       assert (exit_code != NO_ERROR);
-      // TODO: Inconsistent setting: remote storage is been specified, but no connection to page servers possible
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_INCONSISTENT_REMOTE_STORAGE_NO_CONN, 0);
-      return ER_INCONSISTENT_REMOTE_STORAGE_NO_CONN;
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_NO_PAGE_SERVER_CONNECTION, 0);
+      return ER_NO_PAGE_SERVER_CONNECTION;
     }
+
+  er_log_debug (ARG_FILE_LINE, "Transaction server runs on %s storage.",
+		m_has_remote_storage ? "remote" : "local");
 
   assert (exit_code == NO_ERROR);
   return exit_code;
