@@ -149,7 +149,7 @@ active_tran_server::init_page_server_hosts (const char *db_name)
     {
       if (m_has_remote_storage)
 	{
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_EMPTY_PAGE_SERVER_HOSTS_CONFIG, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EMPTY_PAGE_SERVER_HOSTS_CONFIG, 0);
 	  return ER_EMPTY_PAGE_SERVER_HOSTS_CONFIG;
 	}
       else
@@ -201,7 +201,7 @@ active_tran_server::init_page_server_hosts (const char *db_name)
   if (valid_connection_count == 0 && m_has_remote_storage)
     {
       assert (exit_code != NO_ERROR);
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_NO_PAGE_SERVER_CONNECTION, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NO_PAGE_SERVER_CONNECTION, 0);
       return ER_NO_PAGE_SERVER_CONNECTION;
     }
 

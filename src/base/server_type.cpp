@@ -54,8 +54,15 @@ int init_server_type (const char *db_name)
       er_code = ats_Gl.init_page_server_hosts (db_name);
     }
 
-  er_log_debug (ARG_FILE_LINE, "Starting server type: %s\n",
-		get_server_type () == SERVER_TYPE_PAGE ? "page" : "transaction");
+  if (er_code == NO_ERROR)
+    {
+      er_log_debug (ARG_FILE_LINE, "Starting server type: %s\n",
+		    get_server_type () == SERVER_TYPE_PAGE ? "page" : "transaction");
+    }
+  else
+    {
+      ASSERT_ERROR ();
+    }
   return er_code;
 }
 
