@@ -126,4 +126,14 @@ HASH_SCAN_KEY *qdata_copy_hscan_key_without_alloc (THREAD_ENTRY * thread_p, HASH
 
 int qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *data, void *args);
 
+/* FILE HASH STRUCTURE */
+extern EHID *fhs_create (THREAD_ENTRY * thread_p, EHID * ehid, DB_TYPE key_type, int exp_num_entries,
+			    OID * class_oid, int attr_id);
+extern int fhs_destroy (THREAD_ENTRY * thread_p, EHID * ehid);
+extern void *fhs_insert (THREAD_ENTRY * thread_p, EHID * ehid, void *key, OID * value_ptr);
+extern EH_SEARCH fhs_search (THREAD_ENTRY * thread_p, EHID * ehid, void *key, OID * value_ptr, OID * last_oid_p);
+extern EH_SEARCH fhs_search_next (THREAD_ENTRY * thread_p, EHID * ehid, void *key, OID * value_ptr, OID * last_oid_p);
+extern void fhs_dump (THREAD_ENTRY * thread_p, EHID * ehid);
+/* end : FILE HASH SCAN */
+
 #endif /* _QUERY_HASH_SCAN_H_ */

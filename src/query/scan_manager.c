@@ -49,7 +49,7 @@
 #include "dbtype.h"
 #include "xasl_predicate.hpp"
 #include "xasl.h"
-#include "xserver_interface.h"
+#include "query_hash_scan.h"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -3721,8 +3721,7 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 	    {
 	      return S_ERROR;
 	    }
-	  if (xehash_create
-	      (thread_p, llsidp->hlsid.ehash_table, DB_TYPE_INTEGER, llsidp->list_id->tuple_cnt, NULL, 0, true) == NULL)
+	  if (fhs_create (thread_p, llsidp->hlsid.ehash_table, DB_TYPE_INTEGER, llsidp->list_id->tuple_cnt, NULL, 0) == NULL)
 	    {
 	      return S_ERROR;
 	    }
@@ -4877,7 +4876,7 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       /* clear ehash table */
       if (llsidp->hlsid.ehash_table != NULL)
 	{
-	  xehash_destroy (thread_p, llsidp->hlsid.ehash_table);
+	  fhs_destroy (thread_p, llsidp->hlsid.ehash_table);
 	  db_private_free_and_init (thread_p, llsidp->hlsid.ehash_table);
 	}
       /* free temp keys and values */
@@ -7916,7 +7915,7 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       /* add to hash table */
       if (llsidp->hlsid.hash_list_scan_yn == HASH_METH_HASH_FILE)
 	{
-	  if (ehash_insert (thread_p, llsidp->hlsid.ehash_table, (void *) &hash_key, &oid) == NULL)
+	  if (fhs_insert (thread_p, llsidp->hlsid.ehash_table, (void *) &hash_key, &oid) == NULL)
 	    {
 	      return S_ERROR;
 	    }
@@ -8105,7 +8104,7 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 
 	case HASH_METH_HASH_FILE:
 	  /* init curr_oid and get value from hash table */
-	  eh_search = ehash_search_hls (thread_p, llsidp->hlsid.ehash_table, &hash_key, &oid, &llsidp->hlsid.curr_oid);
+	  eh_search = fhs_search (thread_p, llsidp->hlsid.ehash_table, &hash_key, &oid, &llsidp->hlsid.curr_oid);
 	  switch (eh_search)
 	    {
 	    case EH_KEY_FOUND:
@@ -8167,7 +8166,7 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 
 	case HASH_METH_HASH_FILE:
 	  eh_search =
-	    ehash_search_next (thread_p, llsidp->hlsid.ehash_table, &llsidp->hlsid.curr_hash_key, &oid,
+	    fhs_search_next (thread_p, llsidp->hlsid.ehash_table, &llsidp->hlsid.curr_hash_key, &oid,
 			       &llsidp->hlsid.curr_oid);
 	  switch (eh_search)
 	    {

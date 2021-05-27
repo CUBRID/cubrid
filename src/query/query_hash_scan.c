@@ -15,9 +15,18 @@
  *
  */
 
-//
-// query_hash_scan - implementation of hash list scan during queries
-//
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stddef.h>
+#include <math.h>
+#if defined(sun) || defined(HPUX)
+#include <sys/types.h>
+#include <netinet/in.h>
+#endif
+#if defined(_AIX)
+#include <net/nh.h>
+#endif
 
 #include "fetch.h"
 #include "memory_alloc.h"
@@ -30,9 +39,170 @@
 #include "query_hash_scan.h"
 #include "db_value_printer.hpp"
 #include "dbtype.h"
+#include "chartype.h"
+#include "storage_common.h"
+#include "error_manager.h"
+#include "page_buffer.h"
+#include "slotted_page.h"
+#include "file_manager.h"
+#include "overflow_file.h"
+#include "tz_support.h"
+#include "db_date.h"
+#include "thread_compat.hpp"
+
 
 static bool safe_memcpy (void *data, void *source, int size);
 static DB_VALUE_COMPARE_RESULT qdata_hscan_key_compare (HASH_SCAN_KEY * ckey1, HASH_SCAN_KEY * ckey2, int *diff_pos);
+
+/****************************************************************************/
+/************************ file hash structure *******************************/
+/****************************************************************************/
+/* Number of bits pseudo key consists of */
+#define FHS_HASH_KEY_BITS           (sizeof (FHS_HASH_KEY) * 8)
+
+/* Number of bits the short data type consists of */
+#define FHS_SHORT_BITS  (sizeof (short) * 8)
+
+typedef unsigned int FHS_HASH_KEY;	/* Pseudo_key type */
+
+/* Extendible hashing directory header */
+typedef struct fhs_dir_header FHS_DIR_HEADER;
+struct fhs_dir_header
+{
+  /* Fields should be ordered according to their sizes */
+  VFID bucket_file;		/* bucket file identifier */
+  VFID overflow_file;		/* overflow (buckets) file identifier */
+
+  /* Each one keeps the number of buckets having a local depth equal to the index value of counter. Used for noticing
+   * directory shrink condition */
+  int local_depth_count[FHS_HASH_KEY_BITS + 1];
+
+  DB_TYPE key_type;		/* type of the keys */
+  short depth;			/* global depth of the directory */
+  char alignment;		/* alignment value used on slots of bucket pages */
+};
+
+/* Directory elements : Pointer to the bucket */
+typedef struct fhs_dir_record FHS_DIR_RECORD;
+struct fhs_dir_record
+{
+  VPID bucket_vpid;		/* bucket pointer */
+};
+
+/* Each bucket has a header area to store its local depth */
+typedef struct fhs_bucket_header FHS_BUCKET_HEADER;
+struct fhs_bucket_header
+{
+  char local_depth;		/* The local depth of the bucket */
+};
+
+typedef struct fhs_repetition FHS_REPETITION;
+struct fhs_repetition
+{
+  /* The "vpid" is repeated "count" times */
+  VPID vpid;
+  int count;
+};
+
+typedef enum
+{
+  FHS_SUCCESSFUL_COMPLETION,
+  FHS_BUCKET_FULL,		/* Bucket full condition; used in insertion */
+  FHS_BUCKET_UNDERFLOW,	/* Bucket underflow condition; used in deletion */
+  FHS_BUCKET_EMPTY,		/* Bucket empty condition; used in deletion */
+  FHS_FULL_SIBLING_BUCKET,
+  FHS_NO_SIBLING_BUCKET,
+  FHS_ERROR_OCCURRED
+} FHS_RESULT;
+
+static void fhs_read_oid_from_record (char *record_p, OID * oid_p);
+static void fhs_read_key_from_record (char *record_p, int * key);
+static void fhs_read_num_from_record (char *record_p, short * num);
+static char *fhs_write_oid_to_record (char *record_p, OID * oid_p);
+static char *fhs_write_key_to_record (char *record_p, void *key_p);
+static char *fhs_write_num_to_record (char *record_p, short num);
+static int fhs_compose_record (DB_TYPE key_type, void *key_p, OID * value_p, RECDES * recdes_p, short num);
+static PAGE_PTR fhs_fix_ehid_page (THREAD_ENTRY * thread_p, EHID * ehid, PGBUF_LATCH_MODE latch_mode);
+static PAGE_PTR fhs_fix_old_page (THREAD_ENTRY * thread_p, const VFID * vfid_p, const VPID * vpid_p, PGBUF_LATCH_MODE latch_mode);
+static PAGE_PTR fhs_fix_nth_page (THREAD_ENTRY * thread_p, const VFID * vfid_p, int offset, PGBUF_LATCH_MODE latch_mode);
+static void fhs_dir_locate (int *out_page_no_p, int *out_offset_p);
+static char *fhs_allocate_recdes (RECDES * recdes_p, int size, short type);
+static void fhs_free_recdes (RECDES * recdes_p);
+static int fhs_initialize_dir_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, void *args);
+static int fhs_initialize_bucket_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, void *args);
+static bool fhs_binary_search_bucket (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, PGSLOTID num_record, DB_TYPE key_type,
+			    void *key_p, PGSLOTID * out_position_p, bool need_to_backward);
+static int fhs_find_bucket_vpid (THREAD_ENTRY * thread_p, EHID * ehid_p, FHS_DIR_HEADER * dir_header_p, int location,
+			PGBUF_LATCH_MODE latch, VPID * out_vpid_p);
+static FHS_HASH_KEY fhs_hash_four_bytes_type (char *key_p);
+static FHS_HASH_KEY fhs_hash (void *original_key_p, DB_TYPE key_type);
+static int fhs_compare_key (THREAD_ENTRY * thread_p, char *bucket_record_p, DB_TYPE key_type, void *key_p, INT16 record_type,
+		   int *out_compare_result_p);
+static bool fhs_locate_slot (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, DB_TYPE key_type, void *key_p,
+		   PGSLOTID * out_position_p, bool need_to_backward);
+static PAGE_PTR fhs_find_bucket_vpid_with_hash (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p, PGBUF_LATCH_MODE root_latch,
+				  PGBUF_LATCH_MODE bucket_latch, VPID * out_vpid_p, FHS_HASH_KEY * out_hash_key_p,
+				  int *out_location_p);
+static int fhs_insert_to_bucket_after_create (THREAD_ENTRY * thread_p, EHID * ehid_p, PAGE_PTR dir_root_page_p,
+				     FHS_DIR_HEADER * dir_header_p, VPID * bucket_vpid_p, int location,
+				     FHS_HASH_KEY hash_key, bool is_temp, void *key_p, OID * value_p,
+				     VPID * existing_ovf_vpid_p);
+static FHS_RESULT fhs_insert_bucket_after_extend_if_need (THREAD_ENTRY * thread_p, EHID * ehid_p, PAGE_PTR dir_root_page_p,
+					  FHS_DIR_HEADER * dir_header_p, VPID * bucket_vpid_p, void *key_p,
+					  FHS_HASH_KEY hash_key, int lock_type, bool is_temp, OID * value_p,
+					  VPID * existing_ovf_vpid_p);
+static char fhs_find_depth (THREAD_ENTRY * thread_p, EHID * ehid_p, int location, VPID * bucket_vpid_p, VPID * sibling_vpid_p);
+static int fhs_connect_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p, int local_depth, FHS_HASH_KEY hash_key,
+		      VPID * bucket_vpid_p);
+static void fhs_adjust_local_depth (THREAD_ENTRY * thread_p, EHID * ehid_p, PAGE_PTR dir_root_page_p,
+			  FHS_DIR_HEADER * dir_header_p, int depth, int delta);
+static FHS_RESULT fhs_insert_to_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p, VFID * ovf_file_p, bool is_temp,
+			PAGE_PTR bucket_page_p, DB_TYPE key_type, void *key_p, OID * value_p,
+			VPID * existing_ovf_vpid_p);
+static PAGE_PTR fhs_extend_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p, PAGE_PTR dir_root_page_p, FHS_DIR_HEADER * dir_header_p,
+		     PAGE_PTR bucket_page_p, void *key_p, FHS_HASH_KEY hash_key, int *out_new_bit_p,
+		     VPID * bucket_vpid, bool is_temp);
+static PAGE_PTR fhs_split_bucket (THREAD_ENTRY * thread_p, FHS_DIR_HEADER * dir_header_p, PAGE_PTR bucket_page_p, void *key_p,
+		    int *out_old_local_depth_p, int *out_new_local_depth_p, VPID * sibling_vpid_p);
+static int fhs_expand_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth);
+static int fhs_find_first_bit_position (THREAD_ENTRY * thread_p, FHS_DIR_HEADER * dir_header_p, PAGE_PTR bucket_page_p,
+			       FHS_BUCKET_HEADER * bucket_header_p, void *key_p, int num_recs, PGSLOTID first_slot_id,
+			       int *out_old_local_depth_p, int *out_new_local_depth_p);
+static int fhs_distribute_records_into_two_bucket (THREAD_ENTRY * thread_p, FHS_DIR_HEADER * dir_header_p,
+					  PAGE_PTR bucket_page_p, FHS_BUCKET_HEADER * bucket_header_p, int num_recs,
+					  PGSLOTID first_slot_id, PAGE_PTR sibling_page_p);
+static int fhs_get_pseudo_key (THREAD_ENTRY * thread_p, RECDES * recdes_p, DB_TYPE key_type, FHS_HASH_KEY * out_hash_key_p);
+
+/* Directory header size is aligned to size of integer */
+#define FHS_DIR_HEADER_SIZE \
+  ((ssize_t) (((sizeof(FHS_DIR_HEADER) + sizeof(int) - 1 ) / sizeof(int) ) * sizeof(int)))
+
+/* Number of pointers the first page of the directory contains */
+#define FHS_NUM_FIRST_PAGES \
+  ((DB_PAGESIZE - FHS_DIR_HEADER_SIZE) / SSIZEOF (FHS_DIR_RECORD))
+
+/* Offset of the last pointer in the first directory page */
+#define FHS_LAST_OFFSET_IN_FIRST_PAGE \
+  (FHS_DIR_HEADER_SIZE + (FHS_NUM_FIRST_PAGES - 1) * sizeof(FHS_DIR_RECORD))
+
+/* Number of pointers for each directory page (other than the first one)  */
+#define FHS_NUM_NON_FIRST_PAGES \
+  (DB_PAGESIZE / sizeof(FHS_DIR_RECORD))
+
+/* Offset of the last pointer in the other directory pages */
+#define FHS_LAST_OFFSET_IN_NON_FIRST_PAGE \
+  ((FHS_NUM_NON_FIRST_PAGES - 1) * sizeof(FHS_DIR_RECORD))
+
+#define GETBITS(value, pos, n) \
+  ( ((value) >> ( FHS_HASH_KEY_BITS - (pos) - (n) + 1)) & (~(~0UL << (n))) )
+#define FIND_OFFSET(hash_key, depth) (GETBITS((hash_key), 1, (depth)))
+#define GETBIT(word, pos) (GETBITS((word), (pos), 1))
+#define SETBIT(word,  pos) ( (word) | (1 << (FHS_HASH_KEY_BITS - (pos))) )
+#define CLEARBIT(word, pos) ( (word) & ~(1 << (FHS_HASH_KEY_BITS - (pos))) )
+
+/****************************************************************************/
+/************************ file hash structure *******************************/
+/****************************************************************************/
 
 /*
  * qdata_alloc_hscan_key () - allocate new hash key
@@ -513,5 +683,2438 @@ qdata_free_hscan_entry (const void *key, void *data, void *args)
   qdata_free_hscan_value ((cubthread::entry *) args, (HASH_SCAN_VALUE *) data);
 
   /* all ok */
+  return NO_ERROR;
+}
+
+/*
+ * fhs_dump_bucket () - Print the bucket's contents
+ *   return:
+ *   buc_pgptr(in): bucket page whose contents is going to be dumped
+ *   key_type(in): type of the key
+ *
+ * Note: A debugging function. Prints out the contents of the given bucket.
+ */
+static void
+fhs_dump_bucket (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, DB_TYPE key_type)
+{
+  FHS_BUCKET_HEADER *bucket_header_p;
+  char *bucket_record_p;
+  RECDES recdes;
+  PGSLOTID slot_id, first_slot_id = -1;
+  int key_size;
+  OID assoc_value;
+  int num_records;
+  int i, key;
+  short number;
+
+  (void) spage_next_record (bucket_page_p, &first_slot_id, &recdes, PEEK);
+  bucket_header_p = (FHS_BUCKET_HEADER *) recdes.data;
+
+  printf ("************************************************************\n");
+  printf ("*  local_depth : %d                                         *\n", bucket_header_p->local_depth);
+  printf ("*  no. records : %d                                         *\n",
+	  spage_number_of_records (bucket_page_p) - 1);
+  printf ("*                                                           *\n");
+  printf ("*   No        Key         number       Assoc Value          *\n");
+  printf ("*  ====   =============  ========   ==================      *\n");
+
+  num_records = spage_number_of_records (bucket_page_p);
+
+  for (slot_id = 1; slot_id < num_records; slot_id++)
+    {
+      printf ("*   %2d", slot_id);
+
+      spage_get_record (thread_p, bucket_page_p, slot_id, &recdes, PEEK);
+      bucket_record_p = (char *) recdes.data;
+      fhs_read_oid_from_record (bucket_record_p, &assoc_value);
+      fhs_read_key_from_record (bucket_record_p, &key);
+      fhs_read_num_from_record (bucket_record_p, &number);
+
+      switch (key_type)
+	{
+	case DB_TYPE_INTEGER:
+	  printf ("    %u              ", key);
+	  printf ("    %d              ", number);
+	  break;
+	default:
+	  /* Unspecified key type: Directory header has been corrupted */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_INVALID_KEY_TYPE, 1, key_type);
+	  return;
+	}
+      printf ("(%5d,%5d,%5d)  *\n", assoc_value.volid, assoc_value.pageid, assoc_value.slotid);
+
+    }
+
+  printf ("*********************************************************\n");
+}
+
+/*
+ * fhs_dump () - Dump directory & all buckets
+ *   return:
+ *   ehid(in): identifier for the extendible hashing structure to dump
+ *
+ * Note: A debugging function. Dumps the contents of the directory
+ * and the buckets of specified ext. hashing structure.
+ */
+void
+fhs_dump (THREAD_ENTRY * thread_p, EHID * ehid_p)
+{
+  FHS_DIR_HEADER *dir_header_p;
+  FHS_DIR_RECORD *dir_record_p;
+  int num_pages;
+  int num_ptrs;
+
+  int check_pages;
+  int end_offset;
+  int i;
+
+  PAGE_PTR dir_page_p, dir_root_page_p;
+  PGLENGTH dir_offset;
+  int dir_page_no;
+  int dir_ptr_no;
+
+  PAGE_PTR bucket_page_p;
+  int bucket_page_no;
+
+  if (ehid_p == NULL)
+    {
+      return;
+    }
+
+  dir_root_page_p = fhs_fix_ehid_page (thread_p, ehid_p, PGBUF_LATCH_READ);
+  if (dir_root_page_p == NULL)
+    {
+      return;
+    }
+
+  dir_header_p = (FHS_DIR_HEADER *) dir_root_page_p;
+
+  if (file_get_num_user_pages (thread_p, &ehid_p->vfid, &num_pages) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return;
+    }
+  num_pages -= 1;		/* The first page starts with 0 */
+
+  num_ptrs = 1 << dir_header_p->depth;
+  end_offset = num_ptrs - 1;	/* Directory first pointer has an offset of 0 */
+  fhs_dir_locate (&check_pages, &end_offset);
+
+  if (check_pages != num_pages)
+    {
+      pgbuf_unfix_and_init (thread_p, dir_root_page_p);
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_ROOT_CORRUPTED, 3, ehid_p->vfid.volid, ehid_p->vfid.fileid,
+	      ehid_p->pageid);
+      return;
+    }
+
+  printf ("*********************************************************\n");
+  printf ("*                      DIRECTORY                        *\n");
+  printf ("*                                                       *\n");
+  printf ("*    Depth    :  %d                                      *\n", dir_header_p->depth);
+  printf ("*    Key type : ");
+
+  switch (dir_header_p->key_type)
+    {
+    case DB_TYPE_STRING:
+      printf (" string                                 *\n");
+      break;
+
+    case DB_TYPE_OBJECT:
+      printf (" OID                                 *\n");
+      break;
+
+    case DB_TYPE_INTEGER:
+      printf (" int                                    *\n");
+      break;
+#if defined (ENABLE_UNUSED_FUNCTION)
+    case DB_TYPE_DOUBLE:
+      printf (" double                                 *\n");
+      break;
+
+    case DB_TYPE_FLOAT:
+      printf (" float                                 *\n");
+      break;
+
+    case DB_TYPE_BIGINT:
+      printf (" BIGINT                                 *\n");
+      break;
+
+    case DB_TYPE_SHORT:
+      printf (" short                                  *\n");
+      break;
+
+    case DB_TYPE_DATE:
+      printf (" date                                   *\n");
+      break;
+
+    case DB_TYPE_TIME:
+      printf (" time                                   *\n");
+      break;
+
+    case DB_TYPE_TIMESTAMP:
+      printf (" utime                                  *\n");
+      break;
+
+    case DB_TYPE_DATETIME:
+      printf (" datetime                               *\n");
+      break;
+
+    case DB_TYPE_MONETARY:
+      printf (" monetary                               *\n");
+      break;
+#endif
+    default:
+      /* Unspecified key type: Directory header has been corrupted */
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_ROOT_CORRUPTED, 3, ehid_p->vfid.volid, ehid_p->vfid.fileid,
+	      ehid_p->pageid);
+      pgbuf_unfix_and_init (thread_p, dir_root_page_p);
+      return;
+    }
+
+  printf ("*    Key size :  %ld                                      *\n", sizeof (FHS_HASH_KEY));
+  printf ("*                                                       *\n");
+  printf ("*               LOCAL DEPTH COUNTERS                    *\n");
+  for (i = 0; (unsigned int) i <= FHS_HASH_KEY_BITS; i++)
+    {
+      if (dir_header_p->local_depth_count[i] != 0)
+	{
+	  fprintf (stdout, "*    There are %d ", dir_header_p->local_depth_count[i]);
+	  fprintf (stdout, " buckets with local depth %d             *\n", i);
+	}
+    }
+
+  printf ("*                                                       *\n");
+  printf ("*                      POINTERS                         *\n");
+  printf ("*                                                       *\n");
+
+  /* Print directory */
+
+  dir_offset = FHS_DIR_HEADER_SIZE;
+  dir_page_no = 0;
+  dir_ptr_no = 0;
+
+  dir_page_p = fhs_fix_ehid_page (thread_p, ehid_p, PGBUF_LATCH_READ);
+  if (dir_page_p == NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, dir_root_page_p);
+      return;
+    }
+
+  for (i = 0; i < num_ptrs; i++)
+    {
+      if (DB_PAGESIZE - dir_offset < SSIZEOF (FHS_DIR_RECORD))
+	{
+	  /* We reached the end of the directory page. The next bucket pointer is in the next directory page. */
+
+	  /* Release previous page, and unlock it */
+	  pgbuf_unfix_and_init (thread_p, dir_page_p);
+
+	  dir_page_no++;
+
+	  /* Get another page */
+	  dir_page_p = fhs_fix_nth_page (thread_p, &ehid_p->vfid, dir_page_no, PGBUF_LATCH_READ);
+	  if (dir_page_p == NULL)
+	    {
+	      return;
+	    }
+
+	  dir_offset = 0;
+	}
+
+      /* Print out the next directory record */
+      dir_record_p = (FHS_DIR_RECORD *) ((char *) dir_page_p + dir_offset);
+
+      if (VPID_ISNULL (&dir_record_p->bucket_vpid))
+	{
+	  printf ("*    Dir loc :  %d   points to bucket page  id: NULL    *\n", dir_ptr_no);
+	}
+      else
+	{
+	  printf ("*    Dir loc :  %d   points to vol:%d bucket pgid: %d  *\n", dir_ptr_no,
+		  dir_record_p->bucket_vpid.volid, dir_record_p->bucket_vpid.pageid);
+	}
+
+      dir_ptr_no++;
+      dir_offset += sizeof (FHS_DIR_RECORD);
+    }
+
+  /* Release last page */
+  pgbuf_unfix_and_init (thread_p, dir_page_p);
+
+  printf ("*                                                       *\n");
+  printf ("*********************************************************\n");
+
+  /* Print buckets */
+
+  if (file_get_num_user_pages (thread_p, &dir_header_p->bucket_file, &num_pages) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return;
+    }
+  num_pages -= 1;
+
+  for (bucket_page_no = 0; bucket_page_no <= num_pages; bucket_page_no++)
+    {
+      bucket_page_p = fhs_fix_nth_page (thread_p, &dir_header_p->bucket_file, bucket_page_no, PGBUF_LATCH_READ);
+      if (bucket_page_p == NULL)
+	{
+	  pgbuf_unfix_and_init (thread_p, dir_root_page_p);
+	  return;
+	}
+
+      printf ("\n\n");
+      fhs_dump_bucket (thread_p, bucket_page_p, dir_header_p->key_type);
+      pgbuf_unfix_and_init (thread_p, bucket_page_p);
+    }
+
+  pgbuf_unfix_and_init (thread_p, dir_root_page_p);
+  return;
+}
+
+static char *
+fhs_write_oid_to_record (char *record_p, OID * oid_p)
+{
+  *(PAGEID *) record_p = oid_p->pageid;
+  record_p += sizeof (PAGEID);
+
+  *(VOLID *) record_p = oid_p->volid;
+  record_p += sizeof (VOLID);
+
+  *(PGSLOTID *) record_p = oid_p->slotid;
+  record_p += sizeof (PGSLOTID);
+
+  return record_p;
+}
+
+static char *
+fhs_write_key_to_record (char *record_p, void *key_p)
+{
+  *(int *) record_p = *(int *) key_p;
+  record_p += sizeof (int);
+
+  return record_p;
+}
+
+static char *
+fhs_write_num_to_record (char *record_p, short num)
+{
+  *(short *) record_p = num;
+  record_p += sizeof (short);
+
+  return record_p;
+}
+
+static void
+fhs_read_oid_from_record (char *record_p, OID * oid_p)
+{
+  oid_p->pageid = *(PAGEID *) record_p;
+  record_p += sizeof (PAGEID);
+
+  oid_p->volid = *(VOLID *) record_p;
+  record_p += sizeof (VOLID);
+
+  oid_p->slotid = *(PGSLOTID *) record_p;
+  record_p += sizeof (PGSLOTID);
+}
+
+static void
+fhs_read_key_from_record (char *record_p, int * key)
+{
+  record_p += sizeof (OID);
+  *key = *(int *) record_p;
+}
+
+static void
+fhs_read_num_from_record (char *record_p, short * num)
+{
+  record_p += sizeof (OID) + sizeof (int);
+  *num = *(short *) record_p;
+}
+
+/*
+ * fhs_compose_record () -
+ *   return: NO_ERROR, or ER_FAILED
+ *   key_type(in): type of the key
+ *   key_ptr(in): Pointer to the key
+ *   value_ptr(in): Pointer to the associated value
+ *   recdes(in): Pointer to the Record descriptor to fill in
+ *
+ * Note: record :  oid  | key(int) | flag(1bit) + num(15bit)
+ *                8byte    4byte             2byte    = 14byte
+ */
+static int
+fhs_compose_record (DB_TYPE key_type, void *key_p, OID * value_p, RECDES * recdes_p, short num)
+{
+  short key_size;
+  int record_size;
+  char *record_p;
+
+  /* record : oid | key(int) | flag(1bit) + num(15bit) (short) */
+  record_size = sizeof (OID) + sizeof (int) + sizeof (short);
+
+  if (fhs_allocate_recdes (recdes_p, record_size, REC_HOME) == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  recdes_p->type = REC_HOME;
+
+  record_p = recdes_p->data;
+  record_p = fhs_write_oid_to_record (record_p, value_p);
+  record_p = fhs_write_key_to_record (record_p, key_p);
+  record_p = fhs_write_num_to_record (record_p, num);
+
+  return NO_ERROR;
+}
+
+/*
+ * fhs_fix_ehid_page () -
+ *   return: specified page pointer, or NULL
+ *   ehid(in): extendible hashing structure
+ *   latch_mode(in): lock mode
+ */
+static PAGE_PTR
+fhs_fix_ehid_page (THREAD_ENTRY * thread_p, EHID * ehid, PGBUF_LATCH_MODE latch_mode)
+{
+  VPID vpid;
+
+  vpid.volid = ehid->vfid.volid;
+  vpid.pageid = ehid->pageid;
+
+  return fhs_fix_old_page (thread_p, &(ehid->vfid), &vpid, latch_mode);
+}
+
+/*
+ * fhs_fix_old_page () -
+ *   return: specified page pointer, or NULL
+ *   vfid_p(in): only for error reporting
+ *   vpid_p(in):
+ *   latch_mode(in): lock mode
+ */
+static PAGE_PTR
+fhs_fix_old_page (THREAD_ENTRY * thread_p, const VFID * vfid_p, const VPID * vpid_p, PGBUF_LATCH_MODE latch_mode)
+{
+  PAGE_PTR page_p;
+
+  page_p = pgbuf_fix (thread_p, vpid_p, OLD_PAGE, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_p == NULL)
+    {
+      if (er_errid () == ER_PB_BAD_PAGEID)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_UNKNOWN_EXT_HASH, 4, vfid_p->volid, vfid_p->fileid,
+		  vpid_p->volid, vpid_p->pageid);
+	}
+
+      return NULL;
+    }
+
+  (void) pgbuf_check_page_ptype (thread_p, page_p, PAGE_EHASH);
+
+  return page_p;
+}
+
+/*
+ * fhs_fix_nth_page () -
+ *   return: specified page pointer, or NULL
+ *   vfid(in):
+ *   offset(in):
+ *   lock(in): lock mode
+ */
+static PAGE_PTR
+fhs_fix_nth_page (THREAD_ENTRY * thread_p, const VFID * vfid_p, int offset, PGBUF_LATCH_MODE latch_mode)
+{
+  VPID vpid;
+
+  if (file_numerable_find_nth (thread_p, vfid_p, offset, false, NULL, NULL, &vpid) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return NULL;
+    }
+
+  return fhs_fix_old_page (thread_p, vfid_p, &vpid, latch_mode);
+}
+
+/*
+ * fhs_dir_locate()
+ *
+ *   page_no_var(in): The nth directory page containing the pointer
+ *   offset_var(in): The offset into the directory just like if the directory
+ *              where contained in one contiguous area.
+ *              SET by this macro according to the page_no_var where the
+ *              offset is located in this page.
+ *
+ * Note: This macro finds the location of a directory pointer
+ * (i.e. the number of directory page containing this pointer and
+ * the offset value to reach the pointer within that page).
+ * The pointer number is given to macro with the
+ * "offset_var" parameter.
+ * Since this operation is performed very frequently, it is
+ * coded as a macro. So, it must be used very carefully. Two
+ * variables should be passed as parameters. The variable passed
+ * to "offset_var" should have the number of pointer prior to
+ * this macro call.
+ * In the implementation of this macro, division operation
+ * is performed twice; once for the remainder and once for the
+ * quotient. This is preferred to the method of successive
+ * subtractions since built-in "/" and "%" operators take
+ * constant time, whereas the latter method has linear
+ * characteristic (i.e., it would take longer for bigger
+ * directory sizes).
+ */
+static void
+fhs_dir_locate (int *out_page_no_p, int *out_offset_p)
+{
+  int page_no, offset;
+
+  offset = *out_offset_p;
+
+  if (offset < FHS_NUM_FIRST_PAGES)
+    {
+      /* in the first page */
+      offset = offset * sizeof (FHS_DIR_RECORD) + FHS_DIR_HEADER_SIZE;
+      page_no = 0;		/* at least one page */
+    }
+  else
+    {
+      /* not in the first page */
+      offset -= FHS_NUM_FIRST_PAGES;
+      page_no = offset / FHS_NUM_NON_FIRST_PAGES + 1;
+      offset = (offset % FHS_NUM_NON_FIRST_PAGES) * sizeof (FHS_DIR_RECORD);
+    }
+
+  *out_page_no_p = page_no;
+  *out_offset_p = offset;
+}
+
+/*
+ * fhs_allocate_recdes () -
+ *   return: char *, or NULL
+ *   recdes(out) : Record descriptor
+ *   size(in)    : Request size
+ *   type(in)    : Request type
+ */
+static char *
+fhs_allocate_recdes (RECDES * recdes_p, int size, short type)
+{
+  recdes_p->area_size = recdes_p->length = size;
+  recdes_p->type = type;
+  recdes_p->data = NULL;
+
+  if (recdes_p->area_size > 0)
+    {
+      recdes_p->data = (char *) malloc (recdes_p->area_size);
+      if (recdes_p->data == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) recdes_p->area_size);
+	}
+    }
+
+  return recdes_p->data;
+}
+
+/*
+ * fhs_free_recdes () -
+ *   return:
+ *   recdes(in): Record descriptor
+ */
+static void
+fhs_free_recdes (RECDES * recdes_p)
+{
+  if (recdes_p->data)
+    {
+      free_and_init (recdes_p->data);
+    }
+  recdes_p->area_size = recdes_p->length = 0;
+
+}
+
+/*
+ * fhs_create () - Create an extendible hashing structure
+ *   return: EHID * (NULL in case of error)
+ *   ehid(in): identifier for the extendible hashing structure to
+ *             create. The volid field should already be set; others
+ *             are set by this function.
+ *   key_type(in): key type for the extendible hashing structure
+ *   exp_num_entries(in): expected number of entries (i.e., <key, oid> pairs).
+ *                   This figure is used as a guide to estimate the number of
+ *		     pages the extendible hashing structure will occupy.
+ *		     The purpose of this estimate is to increase the locality
+ *		     of reference on the disk.
+ *		     If the number of entries is not known, a negative value
+ *		     should be passed to this parameter.
+ *   class_oid(in): OID of the class for which the index is created
+ *   attr_id(in): Identifier of the attribute of the class for which the
+ *                index is created.
+ *
+ * Note: Creates an extendible hashing structure for the particular
+ * key type on the disk volume whose identifier is passed in
+ * ehid->vfid.volid field. It creates two files on this volume: one
+ * for the directory and one for the buckets. It also allocates
+ * the first page of each file; the first bucket and the root
+ * page of the directory.
+ * The directory header area of the root page is
+ * initialized by this function. Both the global depth of the
+ * directory and the local depth of first bucket are set to 0.
+ * The identifier of bucket file is kept in the directory header.
+ * The directory file identifier and directory root page
+ * identifier are loaded into the remaining fields of "Dir"
+ * to be used as the complete identifier of this extendible
+ * hashing structure for future reference.
+ */
+EHID *
+fhs_create (THREAD_ENTRY * thread_p, EHID * ehid_p, DB_TYPE key_type, int exp_num_entries, OID * class_oid_p,
+		     int attr_id)
+{
+  FHS_DIR_HEADER *dir_header_p = NULL;
+  FHS_DIR_RECORD *dir_record_p = NULL;
+  VFID dir_vfid = VFID_INITIALIZER;
+  VPID dir_vpid = VPID_INITIALIZER;
+  PAGE_PTR dir_page_p = NULL;
+  VFID bucket_vfid = VFID_INITIALIZER;
+  VPID bucket_vpid = VPID_INITIALIZER;
+  char init_bucket_data[3];
+  DKNPAGES exp_bucket_pages;
+  DKNPAGES exp_dir_pages;
+  short key_size;
+  char alignment;
+  OID value;
+  unsigned int i;
+  FILE_EHASH_DES ehdes;
+  PAGE_TYPE ptype = PAGE_EHASH;
+
+  assert (key_type == DB_TYPE_INTEGER);
+
+  if (ehid_p == NULL)
+    {
+      return NULL;
+    }
+
+  /* create a file descriptor */
+  if (class_oid_p != NULL)
+    {
+      COPY_OID (&ehdes.class_oid, class_oid_p);
+    }
+  else
+    {
+      OID_SET_NULL (&ehdes.class_oid);
+    }
+  ehdes.attr_id = attr_id;
+
+  /* Set the key size */
+  key_size = sizeof (FHS_HASH_KEY);
+
+  /* Estimate number of bucket pages */
+  if (exp_num_entries < 0)
+    {
+      /* Assume minimum size */
+      exp_bucket_pages = 1;
+    }
+  else
+    {
+      exp_bucket_pages = exp_num_entries * (key_size + sizeof (OID) + sizeof (short));
+      exp_bucket_pages = CEIL_PTVDIV (exp_bucket_pages, DB_PAGESIZE);
+    }
+
+  /* Calculate alignment to use on slots of bucket pages */
+  if (SSIZEOF (value.pageid) >= key_size)
+    {
+      alignment = sizeof (value.pageid);
+    }
+  else
+    {
+      alignment = (char) key_size;
+    }
+
+  /* TODO: M2 64-bit */
+  /* May want to remove later on; not portable to 64-bit machines */
+  if (alignment > SSIZEOF (int))
+    {
+      alignment = sizeof (int);
+    }
+
+  /* Create the first bucket and initialize its header */
+
+  bucket_vfid.volid = ehid_p->vfid.volid;
+
+  if (file_create_ehash (thread_p, exp_bucket_pages, true, &ehdes, &bucket_vfid) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return NULL;
+    }
+
+  /* Log the initialization of the first bucket page */
+
+  init_bucket_data[0] = alignment;
+  init_bucket_data[1] = 0;
+  init_bucket_data[2] = 1;
+
+  if (file_alloc (thread_p, &bucket_vfid, fhs_initialize_bucket_new_page, init_bucket_data, &bucket_vpid, NULL)
+      != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto exit_on_error;
+    }
+
+  /* Estimate number of directory pages */
+  if (exp_num_entries < 0)
+    {
+      exp_dir_pages = 1;
+    }
+  else
+    {
+      /* Calculate how many directory pages will be used */
+      fhs_dir_locate (&exp_dir_pages, &exp_bucket_pages);
+      /* exp_dir_pages is actually an index. the number of pages should be +1 */
+      exp_dir_pages++;
+    }
+
+  /* Create the directory (allocate the first page) and initialize its header */
+
+  dir_vfid.volid = bucket_vfid.volid;
+
+  /*
+   * Create the file and allocate the first page
+   *
+   * We do not initialize the page during the allocation since the file is
+   * new, and the file is going to be removed in the event of a crash.
+   */
+
+  if (file_create_ehash_dir (thread_p, exp_dir_pages, true, &ehdes, &dir_vfid) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto exit_on_error;
+    }
+  if (file_alloc (thread_p, &dir_vfid, file_init_temp_page_type, &ptype, &dir_vpid,
+		  &dir_page_p) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto exit_on_error;
+    }
+  if (dir_page_p == NULL)
+    {
+      assert_release (false);
+      goto exit_on_error;
+    }
+#if !defined (NDEBUG)
+  pgbuf_check_page_ptype (thread_p, dir_page_p, PAGE_EHASH);
+#endif
+
+  dir_header_p = (FHS_DIR_HEADER *) dir_page_p;
+
+  /* Initialize the directory header */
+  dir_header_p->depth = 0;
+  dir_header_p->key_type = key_type;
+  dir_header_p->alignment = alignment;
+  VFID_COPY (&dir_header_p->bucket_file, &bucket_vfid);
+  VFID_SET_NULL (&dir_header_p->overflow_file);
+
+  /* Initialize local depth information */
+  dir_header_p->local_depth_count[0] = 1;
+  for (i = 1; i <= FHS_HASH_KEY_BITS; i++)
+    {
+      dir_header_p->local_depth_count[i] = 0;
+    }
+
+  /*
+   * Check if the key is of fixed size, and if so, store this information
+   * in the directory header
+   */
+
+  dir_record_p = (FHS_DIR_RECORD *) ((char *) dir_page_p + FHS_DIR_HEADER_SIZE);
+  dir_record_p->bucket_vpid = bucket_vpid;
+
+  /* Finishing up; release the pages and return directory file id */
+  pgbuf_set_dirty (thread_p, dir_page_p, FREE);
+
+  VFID_COPY (&ehid_p->vfid, &dir_vfid);
+  ehid_p->pageid = dir_vpid.pageid;
+
+  return ehid_p;
+
+exit_on_error:
+
+  if (!VFID_ISNULL (&bucket_vfid))
+    {
+      if (file_destroy (thread_p, &bucket_vfid, true) != NO_ERROR)
+	{
+	  assert_release (false);
+	}
+    }
+  if (!VFID_ISNULL (&dir_vfid))
+    {
+      if (file_destroy (thread_p, &dir_vfid, true) != NO_ERROR)
+	{
+	  assert_release (false);
+	}
+    }
+  return NULL;
+}
+
+/*
+ * fhs_destroy () - destroy the extensible hash table
+ *
+ * return        : error code
+ * thread_p (in) : thread entry
+ * ehid_p (in)   : extensible hash identifier
+ *
+ * note: only temporary extensible hash tables can be destroyed.
+ */
+int
+fhs_destroy (THREAD_ENTRY * thread_p, EHID * ehid_p)
+{
+  FHS_DIR_HEADER *dir_header_p;
+  PAGE_PTR dir_page_p;
+
+  if (ehid_p == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  /* for debug */
+  fhs_dump (thread_p, ehid_p);
+  /* for debug */
+
+  dir_page_p = fhs_fix_ehid_page (thread_p, ehid_p, PGBUF_LATCH_WRITE);
+  if (dir_page_p == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  /* sysop 넣야 하는지 확인 필요 */
+  log_sysop_start (thread_p);
+
+  dir_header_p = (FHS_DIR_HEADER *) dir_page_p;
+
+  if (file_destroy (thread_p, &(dir_header_p->bucket_file), true) != NO_ERROR)
+    {
+      assert_release (false);
+    }
+  pgbuf_unfix (thread_p, dir_page_p);
+  if (file_destroy (thread_p, &ehid_p->vfid, true) != NO_ERROR)
+    {
+      assert_release (false);
+    }
+
+  log_sysop_commit (thread_p);
+
+  return NO_ERROR;
+}
+
+/*
+ * fhs_initialize_bucket_new_page () - Initialize a newly allocated page
+ *
+ * return	 : Error code.
+ * thread_p (in) : Thread entry
+ * page_p (in)	 : New bucket page
+ * args (in)     : Alignment, depth and is_temp. Used to initialize and log the page.
+ */
+static int
+fhs_initialize_bucket_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, void *args)
+{
+  char alignment;
+  char depth;
+  bool is_temp;
+  int offset = 0;
+  FHS_BUCKET_HEADER bucket_header;
+  RECDES bucket_recdes;
+  PGSLOTID slot_id;
+  int success = SP_SUCCESS;
+
+  int error_code = NO_ERROR;
+
+  alignment = *(char *) args;
+  offset += sizeof (alignment);
+
+  depth = *((char *) args + offset);
+  offset += sizeof (depth);
+
+  is_temp = *(bool *) ((char *) args + offset);
+
+  /*
+   * fetch and initialize the new page. The parameter UNANCHORED_KEEP_
+   * SEQUENCE indicates that the order of records will be preserved
+   * during insertions and deletions.
+   */
+
+  pgbuf_set_page_ptype (thread_p, page_p, PAGE_EHASH);
+
+  /*
+   * Initialize the bucket to contain variable-length records
+   * on ordered slots.
+   */
+  spage_initialize (thread_p, page_p, UNANCHORED_KEEP_SEQUENCE, alignment, DONT_SAFEGUARD_RVSPACE);
+
+  /* Initialize the bucket header */
+  bucket_header.local_depth = depth;
+
+  /* Set the record descriptor to the Bucket header */
+  bucket_recdes.data = (char *) &bucket_header;
+  bucket_recdes.area_size = bucket_recdes.length = sizeof (FHS_BUCKET_HEADER);
+  bucket_recdes.type = REC_HOME;
+
+  /*
+   * Insert the bucket header into the first slot (slot # 0)
+   * on the bucket page
+   */
+  success = spage_insert (thread_p, page_p, &bucket_recdes, &slot_id);
+  if (success != SP_SUCCESS)
+    {
+      /*
+       * Slotted page module refuses to insert a short size record to an
+       * empty page. This should never happen.
+       */
+      if (success != SP_ERROR)
+	{
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  error_code = ER_FAILED;
+	}
+      else
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	}
+      return error_code;
+    }
+
+  pgbuf_set_dirty (thread_p, page_p, DONT_FREE);
+
+  return NO_ERROR;
+}
+
+/*
+ * fhs_initialize_dir_new_pages () - Initialize new page used to expand extensible hash directory.
+ *
+ * return	    : Error code
+ * thread_p (in)    : Thread entry
+ * page_p (in)	    : New directory page
+ * ignore_args (in) : (not used)
+ */
+static int
+fhs_initialize_dir_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, void *args)
+{
+  bool is_temp = *(bool *) args;
+
+  pgbuf_set_page_ptype (thread_p, page_p, PAGE_EHASH);
+  pgbuf_set_dirty (thread_p, page_p, DONT_FREE);
+
+  return NO_ERROR;
+}
+
+/*
+ * fhs_search () - Search for the first key of duplicated keys;
+ *			 return associated value.
+ *   return: EH_SEARCH
+ *   ehid(in): identifier for the extendible hashing structure
+ *   key(in): key to search
+ *   value_ptr(out): pointer to return the value associated with the key
+ *
+ * Note: Returns the value associated with the given key, if it is
+ * found in the specified extendible hashing structure. If the
+ * key is not found an error condition is returned.
+ */
+EH_SEARCH
+fhs_search (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p, OID * value_p, OID * last_oid_p)
+{
+  FHS_DIR_HEADER *dir_header_p;
+  PAGE_PTR dir_root_page_p = NULL;
+  PAGE_PTR bucket_page_p = NULL;
+  VPID bucket_vpid;
+  RECDES recdes;
+  PGSLOTID slot_id;
+  EH_SEARCH result = EH_KEY_NOTFOUND;
+
+  if (ehid_p == NULL || key_p == NULL)
+    {
+      return EH_KEY_NOTFOUND;
+    }
+
+  dir_root_page_p =
+    fhs_find_bucket_vpid_with_hash (thread_p, ehid_p, key_p, PGBUF_LATCH_READ, PGBUF_LATCH_READ, &bucket_vpid, NULL,
+				      NULL);
+  if (dir_root_page_p == NULL)
+    {
+      return EH_ERROR_OCCURRED;
+    }
+
+  dir_header_p = (FHS_DIR_HEADER *) dir_root_page_p;
+
+  if (bucket_vpid.pageid == NULL_PAGEID)
+    {
+      result = EH_KEY_NOTFOUND;
+      goto end;
+    }
+
+  bucket_page_p = fhs_fix_old_page (thread_p, &ehid_p->vfid, &bucket_vpid, PGBUF_LATCH_READ);
+  if (bucket_page_p == NULL)
+    {
+      result = EH_ERROR_OCCURRED;
+      goto end;
+    }
+
+  if (fhs_locate_slot (thread_p, bucket_page_p, dir_header_p->key_type, key_p, &slot_id, false) == false)
+    {
+      result = EH_KEY_NOTFOUND;
+      goto end;
+    }
+
+  (void) spage_get_record (thread_p, bucket_page_p, slot_id, &recdes, PEEK);
+  fhs_read_oid_from_record (recdes.data, value_p);
+  /* save last oid */
+  last_oid_p->volid = bucket_vpid.volid;
+  last_oid_p->pageid = bucket_vpid.pageid;
+  last_oid_p->slotid = slot_id;
+
+  result = EH_KEY_FOUND;
+
+end:
+  if (bucket_page_p)
+    {
+      pgbuf_unfix_and_init (thread_p, bucket_page_p);
+    }
+
+  if (dir_root_page_p)
+    {
+      pgbuf_unfix_and_init (thread_p, dir_root_page_p);
+    }
+
+  return result;
+}
+
+/*
+ * fhs_search_next () - Search for the next key; return associated value
+ *   return: EH_SEARCH
+ *   ehid(in): identifier for the extendible hashing structure
+ *   key(in): key to search
+ *   value_ptr(out): pointer to return the value associated with the key
+ *   last_oid_p(in/out) : pointer to last oid of bucket associated with the key
+ *
+ * Note: Returns the next value associated with the given key, if it is
+ * found in the specified extendible hashing structure.
+ */
+EH_SEARCH
+fhs_search_next (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key, OID * value_p, OID * last_oid_p)
+{
+  FHS_DIR_HEADER *dir_header_p;
+  PAGE_PTR bucket_page_p = NULL;
+  VPID bucket_vpid;
+  RECDES recdes;
+  EH_SEARCH result = EH_KEY_NOTFOUND;
+  char *bucket_key;
+  int compare_result;
+
+  if (ehid_p == NULL || last_oid_p->pageid == NULL_PAGEID)
+    {
+      return EH_KEY_NOTFOUND;
+    }
+
+  bucket_vpid.volid = last_oid_p->volid;
+  bucket_vpid.pageid = last_oid_p->pageid;
+  bucket_page_p = fhs_fix_old_page (thread_p, &ehid_p->vfid, &bucket_vpid, PGBUF_LATCH_READ);
+  if (bucket_page_p == NULL)
+    {
+      result = EH_ERROR_OCCURRED;
+      goto end;
+    }
+
+  if (last_oid_p->slotid <= 1)
+    {
+      /* already last slot id */
+      result = EH_KEY_NOTFOUND;
+      goto end;
+    }
+  (void) spage_get_record (thread_p, bucket_page_p, --last_oid_p->slotid, &recdes, PEEK);
+
+  /* compare key */
+  bucket_key = (char *) recdes.data;
+  bucket_key += sizeof (OID);
+  if (fhs_compare_key (thread_p, bucket_key, DB_TYPE_INTEGER, key, recdes.type, &compare_result) != NO_ERROR)
+    {
+      result = EH_ERROR_OCCURRED;
+      goto end;
+    }
+  if (compare_result != 0)
+    {
+      /* the all keys is already found */
+      result = EH_KEY_NOTFOUND;
+      goto end;
+    }
+
+  fhs_read_oid_from_record (recdes.data, value_p);
+  result = EH_KEY_FOUND;
+
+end:
+  if (bucket_page_p)
+    {
+      pgbuf_unfix_and_init (thread_p, bucket_page_p);
+    }
+
+  return result;
+}
+
+static PAGE_PTR
+fhs_find_bucket_vpid_with_hash (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p, PGBUF_LATCH_MODE root_latch,
+				  PGBUF_LATCH_MODE bucket_latch, VPID * out_vpid_p, FHS_HASH_KEY * out_hash_key_p,
+				  int *out_location_p)
+{
+  FHS_DIR_HEADER *dir_header_p;
+  PAGE_PTR dir_root_page_p;
+  FHS_HASH_KEY hash_key;
+  int location;
+
+  dir_root_page_p = fhs_fix_ehid_page (thread_p, ehid_p, root_latch);
+  if (dir_root_page_p == NULL)
+    {
+      return NULL;
+    }
+
+  dir_header_p = (FHS_DIR_HEADER *) dir_root_page_p;
+
+  /* Get the pseudo key */
+  hash_key = fhs_hash (key_p, dir_header_p->key_type);
+  if (out_hash_key_p)
+    {
+      *out_hash_key_p = hash_key;
+    }
+
+  /* Find the location of bucket pointer in the directory */
+  location = FIND_OFFSET (hash_key, dir_header_p->depth);
+  if (out_location_p)
+    {
+      *out_location_p = location;
+    }
+
+  if (fhs_find_bucket_vpid (thread_p, ehid_p, dir_header_p, location, bucket_latch, out_vpid_p) != NO_ERROR)
+    {
+      pgbuf_unfix_and_init (thread_p, dir_root_page_p);
+      return NULL;
+    }
+
+  return dir_root_page_p;
+}
+
+/*
+ * fhs_locate_slot () - Locate the slot for the key
+ *   return: int
+ *   buc_pgptr(in): pointer to the bucket page
+ *   key_type(in):
+ *   key(in): key value to search
+ *   position(out): set to the location of the slot that contains the key if
+ *                  it exists, or that would contain the key if it does not.
+ *
+ * Note: This function locates a specific key in a bucket
+ * (namely, the slot number in the page). Currently this search
+ * is done by using the binary search method on the real key
+ * values. An alternative method is to use another hashing
+ * mechanism on the pseudo keys. If the key does not exist,
+ * position is set to the SLOTID value where it could be
+ * inserted and false is returned.
+ */
+static bool
+fhs_locate_slot (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, DB_TYPE key_type, void *key_p,
+		   PGSLOTID * out_position_p, bool need_to_backward)
+{
+  RECDES recdes;
+  PGSLOTID num_record;
+  PGSLOTID first_slot_id = -1;
+
+  num_record = spage_number_of_records (bucket_page_p) - 1;
+
+  /*
+   * If the bucket does not contain any records other than the header,
+   * then return immediately.
+   */
+  if (num_record < 1)
+    {
+      if (spage_next_record (bucket_page_p, &first_slot_id, &recdes, PEEK) != S_SUCCESS)
+	{
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_CORRUPTED, 0);
+	  *out_position_p = 1;
+	  return false;
+	}
+
+      *out_position_p = first_slot_id + 1;
+      return false;
+    }
+
+  return fhs_binary_search_bucket (thread_p, bucket_page_p, num_record, key_type, key_p, out_position_p,
+				     need_to_backward);
+}
+
+static int
+fhs_compare_key (THREAD_ENTRY * thread_p, char *bucket_record_p, DB_TYPE key_type, void *key_p, INT16 record_type,
+		   int *out_compare_result_p)
+{
+  int compare_result;
+  unsigned int u1, u2;
+
+  switch (key_type)
+    {
+    case DB_TYPE_INTEGER:
+      u1 = *((unsigned int *) key_p);
+      u2 = *((unsigned int *) bucket_record_p);
+
+      if (u1 == u2)
+	{
+	  compare_result = 0;
+	}
+      else if (u1 > u2)
+	{
+	  compare_result = 1;
+	}
+      else
+	{
+	  compare_result = -1;
+	}
+      break;
+
+    default:
+      /* Unspecified key type: Directory header has been corrupted */
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_CORRUPTED, 0);
+      return ER_EH_CORRUPTED;
+    }
+
+  *out_compare_result_p = compare_result;
+  return NO_ERROR;
+}
+
+/*
+ * fhs_hash () - Hash function
+ *   return: FHS_HASH_KEY
+ *   orig_key(in): original key to encode into a pseudo key
+ *   key_type(in): type of the key
+ *
+ * Note: This function converts the given original key into a pseudo
+ * key. Since the original key is presented as a character
+ * string, its conversion into a int-compatible type is essential
+ * prior to performing any operation on it.
+ * Depending on the "key_type", the original key might be
+ * folded (for DB_TYPE_STRING, DB_TYPE_OBJECT and DB_TYPE_DOUBLE) or duplicated
+ * (for DB_TYPE_SHORT) into a computer word.
+ * This function does not change the value of parameter
+ * orig_key, as it might be on a bucket.
+ */
+static FHS_HASH_KEY
+fhs_hash (void *original_key_p, DB_TYPE key_type)
+{
+  char *key = (char *) original_key_p;
+  FHS_HASH_KEY hash_key = 0;
+
+  switch (key_type)
+    {
+    case DB_TYPE_INTEGER:
+      hash_key = fhs_hash_four_bytes_type (key);
+      break;
+    default:
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_CORRUPTED, 0);
+    }
+
+  return hash_key;
+}
+
+static FHS_HASH_KEY
+fhs_hash_four_bytes_type (char *key_p)
+{
+  FHS_HASH_KEY hash_key = 0;
+  unsigned int i;
+  unsigned short Short, *Short2;
+  char Char;
+
+  Short = ntohs (*(unsigned short *) key_p);	/* Get the left half of the int */
+  Short2 = (unsigned short *) key_p;
+  Short2++;
+
+  Short += ntohs (*Short2);
+  hash_key = (FHS_HASH_KEY) (Short << FHS_SHORT_BITS);
+  hash_key += (FHS_HASH_KEY) Short;
+
+  /* Go over the chars of the given pseudo key */
+  Char = '\0';
+  key_p = (char *) &hash_key;
+  for (i = 0; i < sizeof (FHS_HASH_KEY); i++)
+    {
+      Char += (char) *key_p++;
+    }
+
+  /* Change the first byte of the pseudo key to the SUM of all of them */
+  memcpy (&hash_key, &Char, sizeof (char));
+
+  return hash_key;
+}
+
+static int
+fhs_find_bucket_vpid (THREAD_ENTRY * thread_p, EHID * ehid_p, FHS_DIR_HEADER * dir_header_p, int location,
+			PGBUF_LATCH_MODE latch, VPID * out_vpid_p)
+{
+  FHS_DIR_RECORD *dir_record_p;
+  PAGE_PTR dir_page_p;
+  int dir_offset;
+
+  fhs_dir_locate (&dir_offset, &location);
+
+  if (dir_offset != 0)
+    {
+      /* The bucket pointer is not in the root (first) page of the directory */
+      dir_page_p = fhs_fix_nth_page (thread_p, &ehid_p->vfid, dir_offset, latch);
+      if (dir_page_p == NULL)
+	{
+	  return ER_FAILED;
+	}
+
+      /* Find the bucket page containing the key */
+      dir_record_p = (FHS_DIR_RECORD *) ((char *) dir_page_p + location);
+      pgbuf_unfix_and_init (thread_p, dir_page_p);
+    }
+  else
+    {
+      dir_record_p = (FHS_DIR_RECORD *) ((char *) dir_header_p + location);
+    }
+
+  *out_vpid_p = dir_record_p->bucket_vpid;
+  return NO_ERROR;
+}
+
+static bool
+fhs_binary_search_bucket (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, PGSLOTID num_record, DB_TYPE key_type,
+			    void *key_p, PGSLOTID * out_position_p, bool need_to_backward)
+{
+  char *bucket_record_p;
+  RECDES recdes;
+  PGSLOTID low, high;
+  PGSLOTID middle;
+  int compare_result;
+  short num;
+
+  low = 1;
+  high = num_record;
+
+  do
+    {
+      middle = (high + low) >> 1;
+
+      if (spage_get_record (thread_p, bucket_page_p, middle, &recdes, PEEK) != S_SUCCESS)
+	{
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_CORRUPTED, 0);
+	  return false;
+	}
+
+      bucket_record_p = (char *) recdes.data;
+      bucket_record_p += sizeof (OID);
+
+      if (fhs_compare_key (thread_p, bucket_record_p, key_type, key_p, recdes.type, &compare_result) != NO_ERROR)
+	{
+	  return false;
+	}
+
+      if (compare_result == 0)
+	{
+	  if (need_to_backward)
+	    {
+	      /* Find the first slotid */
+	      while (compare_result == 0)
+		{
+		  if (middle == 1)
+		    {
+		      *out_position_p = middle;
+		      return true;
+		    }
+		  --middle;
+
+		  if (spage_get_record (thread_p, bucket_page_p, middle, &recdes, PEEK) != S_SUCCESS)
+		    {
+		      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_CORRUPTED, 0);
+		      return false;
+		    }
+
+		  bucket_record_p = (char *) recdes.data;
+		  bucket_record_p += sizeof (OID);
+
+		  if (fhs_compare_key (thread_p, bucket_record_p, key_type, key_p, recdes.type, &compare_result) !=
+		      NO_ERROR)
+		    {
+		      return false;
+		    }
+		}
+	      *out_position_p = middle + 1;
+	    }
+	  else
+	    {
+	      /* go to last slot using num */
+	      if (spage_get_record (thread_p, bucket_page_p, middle, &recdes, PEEK) != S_SUCCESS)
+		{
+		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_CORRUPTED, 0);
+		  return false;
+		}
+	      fhs_read_num_from_record((char *) recdes.data, &num);
+	      if (num <= 0)
+		{
+		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_CORRUPTED, 0);
+		  return false;
+		}
+	      *out_position_p = middle + num -1;
+	    }
+	  return true;
+	}
+
+      if (compare_result < 0)
+	{
+	  high = middle - 1;
+	}
+      else
+	{
+	  low = middle + 1;
+	}
+    }
+  while (high >= low);
+
+  if (high < middle)
+    {
+      *out_position_p = middle;
+    }
+  else
+    {
+      /* Key is NOT in bucket; it should be located at the right of middle key. */
+      *out_position_p = middle + 1;
+    }
+
+  return false;
+}
+
+/*
+ * fhs_insert () - Insert (key, assoc_value) pair to ext. hashing
+ *   return: void * (NULL is returned in case of error)
+ *   ehid(in): identifier of the extendible hashing structure
+ *   key(in): key value to insert
+ *   value_ptr(in): pointer to the associated value to insert
+ *
+ * Note: Inserts the given (key & assoc_value) pair into the specified
+ * extendible hashing structure. If the key already exists then
+ * the previous associated value is replaced with the new one.
+ * Otherwise, a new record is inserted to the correct bucket.
+ *      To perform the insertion operation safely in the concurrent
+ * environment, an auxiliary (and private) function
+ * "eh_insert_helper", which takes an additional parameter to
+ * specify the lock type to acquire on the directory, is used
+ * by this function. Hoping that this insertion will not effect
+ * the directory pages, it passes a shared lock
+ * (i.e, an "S_LOCK") for this parameter.
+ */
+void *
+fhs_insert (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p, OID * value_p)
+{
+  FHS_DIR_HEADER *dir_header_p;
+  PAGE_PTR dir_root_page_p;
+  VPID bucket_vpid;
+
+  FHS_HASH_KEY hash_key;
+  int location;
+  FHS_RESULT result;
+
+  dir_root_page_p =
+    fhs_find_bucket_vpid_with_hash (thread_p, ehid_p, key_p,
+				      PGBUF_LATCH_WRITE, PGBUF_LATCH_READ,
+				      &bucket_vpid, &hash_key, &location);
+  if (dir_root_page_p == NULL)
+    {
+      return NULL;
+    }
+
+  dir_header_p = (FHS_DIR_HEADER *) dir_root_page_p;
+  if (VPID_ISNULL (&bucket_vpid))
+    {
+        if (fhs_insert_to_bucket_after_create (thread_p, ehid_p, dir_root_page_p, dir_header_p, &bucket_vpid, location, hash_key, true, key_p,
+	       value_p, NULL) != NO_ERROR)
+	    {
+	      pgbuf_unfix_and_init (thread_p, dir_root_page_p);
+	      return NULL;
+	    }
+    }
+  else
+    {
+      result =
+	fhs_insert_bucket_after_extend_if_need (thread_p, ehid_p, dir_root_page_p, dir_header_p, &bucket_vpid, key_p,
+						  hash_key, X_LOCK, true, value_p, NULL);
+      if (result == FHS_ERROR_OCCURRED)
+	{
+	  pgbuf_unfix_and_init (thread_p, dir_root_page_p);
+	  return NULL;
+	}
+      else if (result == FHS_BUCKET_FULL)
+	{
+	  pgbuf_unfix_and_init (thread_p, dir_root_page_p);
+	  return fhs_insert (thread_p, ehid_p, key_p, value_p);
+	}
+    }
+
+  pgbuf_unfix_and_init (thread_p, dir_root_page_p);
+  return (key_p);
+}
+
+static int
+fhs_insert_to_bucket_after_create (THREAD_ENTRY * thread_p, EHID * ehid_p, PAGE_PTR dir_root_page_p,
+				     FHS_DIR_HEADER * dir_header_p, VPID * bucket_vpid_p, int location,
+				     FHS_HASH_KEY hash_key, bool is_temp, void *key_p, OID * value_p,
+				     VPID * existing_ovf_vpid_p)
+{
+  PAGE_PTR bucket_page_p;
+  FHS_BUCKET_HEADER bucket_header;
+  char found_depth;
+  char init_bucket_data[3];
+  VPID null_vpid = { NULL_VOLID, NULL_PAGEID };
+  FHS_RESULT ins_result;
+
+  int error_code = NO_ERROR;
+
+  found_depth = fhs_find_depth (thread_p, ehid_p, location, &null_vpid, &null_vpid);
+  if (found_depth == 0)
+    {
+      return ER_FAILED;
+    }
+
+  init_bucket_data[0] = dir_header_p->alignment;
+  init_bucket_data[1] = dir_header_p->depth - found_depth;
+  init_bucket_data[2] = is_temp;
+  bucket_header.local_depth = init_bucket_data[1];
+
+  /* sysop 지우는 것 검토해야함 */
+  log_sysop_start (thread_p);
+
+  error_code = file_alloc (thread_p, &dir_header_p->bucket_file, fhs_initialize_bucket_new_page, init_bucket_data,
+			   bucket_vpid_p, &bucket_page_p);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      log_sysop_abort (thread_p);
+      return ER_FAILED;
+    }
+  if (bucket_page_p == NULL)
+    {
+      assert_release (false);
+      log_sysop_abort (thread_p);
+      return ER_FAILED;
+    }
+  (void) pgbuf_check_page_ptype (thread_p, bucket_page_p, PAGE_EHASH);
+
+  if (fhs_connect_bucket (thread_p, ehid_p, bucket_header.local_depth, hash_key, bucket_vpid_p) != NO_ERROR)
+    {
+      pgbuf_unfix_and_init (thread_p, bucket_page_p);
+      log_sysop_abort (thread_p);
+      return ER_FAILED;
+    }
+
+  fhs_adjust_local_depth (thread_p, ehid_p, dir_root_page_p, dir_header_p, (int) bucket_header.local_depth, 1);
+
+  log_sysop_commit (thread_p);
+
+  ins_result =
+    fhs_insert_to_bucket (thread_p, ehid_p, &dir_header_p->overflow_file, is_temp, bucket_page_p,
+			    dir_header_p->key_type, key_p, value_p, existing_ovf_vpid_p);
+
+  if (ins_result != FHS_SUCCESSFUL_COMPLETION)
+    {
+      /* Slotted page module refuses to insert a short size record to an almost empty page. This should never happen. */
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      pgbuf_unfix_and_init (thread_p, bucket_page_p);
+      return ER_FAILED;
+    }
+
+  pgbuf_unfix_and_init (thread_p, bucket_page_p);
+  return NO_ERROR;
+}
+
+static FHS_RESULT
+fhs_insert_bucket_after_extend_if_need (THREAD_ENTRY * thread_p, EHID * ehid_p, PAGE_PTR dir_root_page_p,
+					  FHS_DIR_HEADER * dir_header_p, VPID * bucket_vpid_p, void *key_p,
+					  FHS_HASH_KEY hash_key, int lock_type, bool is_temp, OID * value_p,
+					  VPID * existing_ovf_vpid_p)
+{
+  PAGE_PTR bucket_page_p;
+  PAGE_PTR sibling_page_p = NULL;
+  PAGE_PTR target_bucket_page_p;
+  int new_bit;
+  FHS_RESULT result;
+
+  /* We need to put a X_LOCK on bucket page */
+  bucket_page_p = fhs_fix_old_page (thread_p, &ehid_p->vfid, bucket_vpid_p, PGBUF_LATCH_WRITE);
+  if (bucket_page_p == NULL)
+    {
+      return FHS_ERROR_OCCURRED;
+    }
+
+  result =
+    fhs_insert_to_bucket (thread_p, ehid_p, &dir_header_p->overflow_file, is_temp, bucket_page_p,
+			    dir_header_p->key_type, key_p, value_p, existing_ovf_vpid_p);
+  if (result == FHS_BUCKET_FULL)
+    {
+      if (lock_type == S_LOCK)
+	{
+	  pgbuf_unfix_and_init (thread_p, bucket_page_p);
+	  return FHS_BUCKET_FULL;
+	}
+
+      sibling_page_p =
+	fhs_extend_bucket (thread_p, ehid_p, dir_root_page_p, dir_header_p, bucket_page_p, key_p, hash_key, &new_bit,
+			     bucket_vpid_p, is_temp);
+      if (sibling_page_p == NULL)
+	{
+	  pgbuf_unfix_and_init (thread_p, bucket_page_p);
+	  return FHS_ERROR_OCCURRED;
+	}
+
+      /*
+       * Try to insert the new key & assoc_value pair into one of the buckets.
+       * The result of this attempt will determine if a recursive call is
+       * needed to insert the new key.
+       */
+
+      if (new_bit)
+	{
+	  target_bucket_page_p = sibling_page_p;
+	}
+      else
+	{
+	  target_bucket_page_p = bucket_page_p;
+	}
+
+      result =
+	fhs_insert_to_bucket (thread_p, ehid_p, &dir_header_p->overflow_file, is_temp, target_bucket_page_p,
+				dir_header_p->key_type, key_p, value_p, existing_ovf_vpid_p);
+      pgbuf_unfix_and_init (thread_p, sibling_page_p);
+    }
+
+  pgbuf_unfix_and_init (thread_p, bucket_page_p);
+  return result;
+}
+
+/*
+ * fhs_find_depth () - Find depth
+ *   return: char (will return 0 in case of error)
+ *   ehid(in): identifier for the extendible hashing structure
+ *   location(in): directory entry whose neighbooring area should be checked
+ *   bucket_vpid(in): vpid of the bucket pointed by the specified directory entry
+ *   sib_vpid(in): vpid of the sibling bucket
+ *
+ */
+static char
+fhs_find_depth (THREAD_ENTRY * thread_p, EHID * ehid_p, int location, VPID * bucket_vpid_p, VPID * sibling_vpid_p)
+{
+  FHS_DIR_HEADER dir_header;
+  FHS_DIR_RECORD *dir_record_p;
+  PAGE_PTR page_p;
+  int loc;
+  int rel_loc;
+  int iterations;
+  int page_no;
+  int prev_page_no;
+  int i;
+  unsigned int clear;
+  char check_depth = 2;
+  bool is_stop = false;
+  int check_bit;
+
+  prev_page_no = 0;
+  page_p = fhs_fix_ehid_page (thread_p, ehid_p, PGBUF_LATCH_WRITE);
+  if (page_p == NULL)
+    {
+      return 0;
+    }
+  memcpy (&dir_header, page_p, FHS_DIR_HEADER_SIZE);
+
+  while ((check_depth <= dir_header.depth) && !is_stop)
+    {
+      /*
+       * Find the base location for this iteration. The base location differs from
+       * the original location at the check_depth bit (it has the opposite value
+       * for this bit position) and at the remaining least significant bit
+       * positions (it has 0 for these bit positions).
+       */
+      clear = 1;
+      for (i = 1; i < check_depth - 1; i++)
+	{
+	  clear <<= 1;
+	  clear += 1;
+	}
+
+      clear = ~clear;
+      loc = location & clear;
+
+      check_bit = GETBIT (loc, FHS_HASH_KEY_BITS - check_depth + 1);
+      if (check_bit != 0)
+	{
+	  loc = CLEARBIT (loc, FHS_HASH_KEY_BITS - check_depth + 1);
+	}
+      else
+	{
+	  loc = SETBIT (loc, FHS_HASH_KEY_BITS - check_depth + 1);
+	}
+
+      /* "loc" is the base_location now */
+
+      iterations = 1 << (check_depth - 2);
+
+      for (i = 0; i < iterations; i++)
+	{
+	  rel_loc = loc | (i << 1);
+	  fhs_dir_locate (&page_no, &rel_loc);
+	  if (page_no != prev_page_no)
+	    {
+	      pgbuf_unfix_and_init (thread_p, page_p);
+	      page_p = fhs_fix_nth_page (thread_p, &ehid_p->vfid, page_no, PGBUF_LATCH_WRITE);
+	      if (page_p == NULL)
+		{
+		  return 0;
+		}
+	      prev_page_no = page_no;
+	    }
+	  dir_record_p = (FHS_DIR_RECORD *) ((char *) page_p + rel_loc);
+
+	  if (!((VPID_ISNULL (&dir_record_p->bucket_vpid)) || VPID_EQ (&dir_record_p->bucket_vpid, bucket_vpid_p)
+		|| VPID_EQ (&dir_record_p->bucket_vpid, sibling_vpid_p)))
+	    {
+	      is_stop = true;
+	      break;
+	    }
+	}
+
+      if (!is_stop)
+	{
+	  check_depth++;
+	}
+    }
+
+  pgbuf_unfix_and_init (thread_p, page_p);
+  return (check_depth - 1);
+}
+
+/*
+ * fhs_connect_bucket () - Connect bucket to directory
+ *   return: int NO_ERROR, or ER_FAILED
+ *   ehid(in): identifier for the extendible hashing structure
+ *   local_depth(in): local depth of the bucket; determines how many directory
+ *                    pointers are set to point to the given bucket identifier
+ *   hash_key(in): pseudo key that led to the bucket page; determines which
+ *                   pointers to be updated
+ *   bucket_vpid(in): Identifier of the bucket page to connect
+ *
+ * Note: This function connects the given bucket to the directory of
+ * specified extendible hashing structure. All the directory
+ * pointers whose number have the same value as the hash_key
+ * for the first "local_depth" bits are updated with "bucket_vpid".
+ * Since these pointers are successive to each other, it is
+ * known that a contagious area (possibly over several pages)
+ * on the directory will be updated. Thus, this function is
+ * implemented in the following way: First,  the directory pages
+ * to be updated are determined. Then, these pages are retrieved,
+ * updated and released one at a time. For recovery purposes, the
+ * contents of these pages are logged before and after they are updated.
+ */
+static int
+fhs_connect_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p, int local_depth, FHS_HASH_KEY hash_key,
+		      VPID * bucket_vpid_p)
+{
+  FHS_DIR_HEADER dir_header;
+  FHS_DIR_RECORD *dir_record_p;
+  FHS_REPETITION repetition;
+  PAGE_PTR page_p;
+  int location;
+  int first_page, last_page;
+  int first_ptr_offset, last_ptr_offset;
+  int start_offset, end_offset;
+  int diff;
+  int i, j;
+  int bef_length;
+  unsigned int set_bits;
+  unsigned int clear_bits;
+
+  repetition.vpid = *bucket_vpid_p;
+
+  page_p = fhs_fix_ehid_page (thread_p, ehid_p, PGBUF_LATCH_READ);
+  if (page_p == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  memcpy (&dir_header, page_p, FHS_DIR_HEADER_SIZE);
+  pgbuf_unfix_and_init (thread_p, page_p);
+
+  /* First find out how many page entries will be updated in the directory */
+  location = GETBITS (hash_key, 1, dir_header.depth);
+
+  diff = dir_header.depth - local_depth;
+  if (diff != 0)
+    {
+      /* There are more than one pointers that need to be updated */
+      for (set_bits = 0, i = 0; i < diff; i++)
+	{
+	  set_bits = 2 * set_bits + 1;
+	}
+      clear_bits = ~set_bits;
+
+      first_ptr_offset = location & clear_bits;
+      last_ptr_offset = location | set_bits;
+
+      fhs_dir_locate (&first_page, &first_ptr_offset);
+      fhs_dir_locate (&last_page, &last_ptr_offset);
+    }
+  else
+    {
+      /* There is only one pointer that needs to be updated */
+      first_ptr_offset = location;
+      fhs_dir_locate (&first_page, &first_ptr_offset);
+      last_page = first_page;
+      last_ptr_offset = first_ptr_offset;
+    }
+
+  /* Go over all of these pages */
+  for (i = first_page; i <= last_page; i++)
+    {
+      page_p = fhs_fix_nth_page (thread_p, &ehid_p->vfid, i, PGBUF_LATCH_WRITE);
+      if (page_p == NULL)
+	{
+	  return ER_FAILED;
+	}
+
+      if (i == first_page)
+	{
+	  start_offset = first_ptr_offset;
+	}
+      else
+	{
+	  start_offset = 0;
+	}
+
+      if (i == last_page)
+	{
+	  end_offset = last_ptr_offset + sizeof (FHS_DIR_RECORD);
+	}
+      else
+	{
+	  end_offset = DB_PAGESIZE;
+	}
+
+      /* Log this page */
+      bef_length = end_offset - start_offset;
+      repetition.count = bef_length / sizeof (FHS_DIR_RECORD);
+
+      /* Update the directory page */
+      dir_record_p = (FHS_DIR_RECORD *) ((char *) page_p + start_offset);
+      for (j = 0; j < repetition.count; j++)
+	{
+	  dir_record_p->bucket_vpid = *bucket_vpid_p;
+	  dir_record_p++;
+	}
+      pgbuf_set_dirty (thread_p, page_p, FREE);
+    }
+
+  return NO_ERROR;
+}
+
+static void
+fhs_adjust_local_depth (THREAD_ENTRY * thread_p, EHID * ehid_p, PAGE_PTR dir_root_page_p,
+			  FHS_DIR_HEADER * dir_header_p, int depth, int delta)
+{
+  /* Update the directory header for local depth counters */
+  dir_header_p->local_depth_count[depth] += delta;
+  pgbuf_set_dirty (thread_p, dir_root_page_p, DONT_FREE);
+}
+
+/*
+ * fhs_insert_to_bucket () - Insert (key, value) to bucket
+ *   return: FHS_RESULT
+ *   ehid(in): identifier for the extendible hashing structure
+ *   overflow_file(in): Overflow file for extendible hash
+ *   is_temp(in): is extensible hash temporary?
+ *   buc_pgptr(in): bucket page to insert the key
+ *   key_type(in): type of the key
+ *   key_ptr(in): Pointer to the key
+ *   value_ptr(in): Pointer to the associated value
+ *   existing_ovf_vpid(in):
+ *
+ * Note: This function is used to insert a (key & assoc_value) pair
+ * onto the given bucket. If the KEY already EXISTS in the bucket
+ * the NEW ASSOCIATED VALUE REPLACES THE OLD ONE. Otherwise a
+ * new entry is added to the bucket and the total number of
+ * entries of this extendible hashing structure is incremented
+ * by one. In the latter case, if the insertion is not possible
+ * for some reason (e.g., the bucket does not have enough space
+ * for the new record, etc.) an appropriate error code is returned.
+ */
+static FHS_RESULT
+fhs_insert_to_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p, VFID * ovf_file_p, bool is_temp,
+			PAGE_PTR bucket_page_p, DB_TYPE key_type, void *key_p, OID * value_p,
+			VPID * existing_ovf_vpid_p)
+{
+  char *bucket_record_p;
+  RECDES bucket_recdes;
+  RECDES old_bucket_recdes;
+
+  PGSLOTID slot_no;
+  int success;
+  short num;
+
+  /* Check if insertion is duplicate, or not */
+  if (fhs_locate_slot (thread_p, bucket_page_p, key_type, key_p, &slot_no, true) == true)
+    {
+      /* Key already exists. Append new data to the last slot of duplicate keys. */
+      (void) spage_get_record (thread_p, bucket_page_p, slot_no, &old_bucket_recdes, PEEK);
+      fhs_read_num_from_record (old_bucket_recdes.data, &num);
+      num++;
+    }
+  else
+    {
+      /* Key does not exist in the bucket  */
+      num = 1;
+    }
+
+  /* insert it into the bucket */
+  if (fhs_compose_record (key_type, key_p, value_p, &bucket_recdes, num) != NO_ERROR)
+    {
+      return FHS_ERROR_OCCURRED;
+    }
+  /* Try to put the record to the slotted page */
+  success = spage_insert_at (thread_p, bucket_page_p, slot_no, &bucket_recdes);
+  if (success != SP_SUCCESS)
+    {
+      /* Problem the record was not inserted to the page */
+      fhs_free_recdes (&bucket_recdes);
+      if (success == SP_DOESNT_FIT)
+	{
+	  /* There is not enough space on the slotted page for the new record */
+	  return FHS_BUCKET_FULL;
+	}
+      else
+	{
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  return FHS_ERROR_OCCURRED;
+	}
+    }
+
+  if (bucket_recdes.data)
+    {
+      fhs_free_recdes (&bucket_recdes);
+    }
+
+  pgbuf_set_dirty (thread_p, bucket_page_p, DONT_FREE);
+  return FHS_SUCCESSFUL_COMPLETION;
+}
+
+static PAGE_PTR
+fhs_extend_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p, PAGE_PTR dir_root_page_p, FHS_DIR_HEADER * dir_header_p,
+		     PAGE_PTR bucket_page_p, void *key_p, FHS_HASH_KEY hash_key, int *out_new_bit_p,
+		     VPID * bucket_vpid, bool is_temp)
+{
+  VPID sibling_vpid;
+  PAGE_PTR sibling_page_p = NULL;
+  VPID null_vpid = { NULL_VOLID, NULL_PAGEID };
+  int old_local_depth;
+  int new_local_depth;
+
+  if (!is_temp)
+    {
+      log_sysop_start (thread_p);
+    }
+
+  sibling_page_p =
+    fhs_split_bucket (thread_p, dir_header_p, bucket_page_p, key_p, &old_local_depth, &new_local_depth,
+			&sibling_vpid);
+  if (sibling_page_p == NULL)
+    {
+      if (!is_temp)
+	{
+	  log_sysop_abort (thread_p);
+	}
+      return NULL;
+    }
+
+  /* Save the bit position of hash_key to be used later in deciding whether to insert the new key to original bucket or
+   * to the new sibling bucket. */
+  *out_new_bit_p = GETBIT (hash_key, new_local_depth);
+
+  fhs_adjust_local_depth (thread_p, ehid_p, dir_root_page_p, dir_header_p, old_local_depth, -1);
+  fhs_adjust_local_depth (thread_p, ehid_p, dir_root_page_p, dir_header_p, new_local_depth, 2);
+
+  /* Check directory expansion condition */
+  if (new_local_depth > dir_header_p->depth)
+    {
+      if (fhs_expand_directory (thread_p, ehid_p, new_local_depth) != NO_ERROR)
+	{
+	  pgbuf_unfix_and_init (thread_p, sibling_page_p);
+	  return NULL;
+	}
+    }
+
+  /* Connect the buckets */
+  if ((new_local_depth - old_local_depth) > 1)
+    {
+      /* First, set all of them to NULL_PAGEID */
+      if (fhs_connect_bucket (thread_p, ehid_p, old_local_depth, hash_key, &null_vpid) != NO_ERROR)
+	{
+	  pgbuf_unfix_and_init (thread_p, sibling_page_p);
+	  if (!is_temp)
+	    {
+	      log_sysop_abort (thread_p);
+	    }
+	  return NULL;
+	}
+
+      /* Then, connect the Bucket page */
+      hash_key = CLEARBIT (hash_key, new_local_depth);
+      if (fhs_connect_bucket (thread_p, ehid_p, new_local_depth, hash_key, bucket_vpid) != NO_ERROR)
+	{
+	  pgbuf_unfix_and_init (thread_p, sibling_page_p);
+	  if (!is_temp)
+	    {
+	      log_sysop_abort (thread_p);
+	    }
+	  return NULL;
+	}
+    }
+
+  /* Finally, connect the Sibling bucket page */
+  hash_key = SETBIT (hash_key, new_local_depth);
+  if (fhs_connect_bucket (thread_p, ehid_p, new_local_depth, hash_key, &sibling_vpid) != NO_ERROR)
+    {
+      pgbuf_unfix_and_init (thread_p, sibling_page_p);
+      if (!is_temp)
+	{
+	  log_sysop_abort (thread_p);
+	}
+      return NULL;
+    }
+
+  if (!is_temp)
+    {
+      log_sysop_commit (thread_p);
+    }
+  return sibling_page_p;
+}
+
+/*
+ * fhs_split_bucket () - Split a bucket into two
+ *   return: PAGE_PTR (Sibling Pageptr), NULL in case of error in split.
+ *   dir_header(in): directory header;
+ *   buc_pgptr(in): pointer to bucket page to split
+ *   key(in): key value to insert after split
+ *   old_local_depth(in): old local depth before the split operation; to be set
+ *   new_local_depth(in): new local depth after the split operation; to be set
+ *   sib_vpid(in): vpid of the sibling bucket; to be set
+ *   is_temp(in): true if file is temporary (logging not required)
+ *
+ * Note: This function splits the given bucket into two buckets.
+ * First, the new local depth of the bucket is found. Then a
+ * sibling bucket is allocated, and the records are
+ * redistributed. The contents of the sibling bucket is logged
+ * for recovery purposes. (Note that the contents of the original
+ * bucket page that is splitting is logged in the insertion
+ * function after this function returns. Thus, this function
+ * does not release the buffer that contains this page). Finally,
+ * the given (key & assoc_value) pair is tried to be inserted
+ * onto the correct bucket. The result of this attempt is
+ * returned. (Note that this split may cause only one very
+ * small record separated from the others, and the new record
+ * may still be too big to fit into the bucket.) In addition to
+ * the return value, three parameters are set so that the
+ * directory can be updated to reflect this split.
+ */
+static PAGE_PTR
+fhs_split_bucket (THREAD_ENTRY * thread_p, FHS_DIR_HEADER * dir_header_p, PAGE_PTR bucket_page_p, void *key_p,
+		    int *out_old_local_depth_p, int *out_new_local_depth_p, VPID * sibling_vpid_p)
+{
+  FHS_BUCKET_HEADER *bucket_header_p;
+  VFID bucket_vfid;
+  PAGE_PTR sibling_page_p;
+  RECDES recdes;
+  PGSLOTID first_slot_id = -1;
+  int num_records;
+  char init_bucket_data[3];
+
+  int error_code = NO_ERROR;
+
+  num_records = spage_number_of_records (bucket_page_p);
+  /* Retrieve the bucket header and update it */
+  if (spage_next_record (bucket_page_p, &first_slot_id, &recdes, PEEK) != S_SUCCESS)
+    {
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_CORRUPTED, 0);
+      return NULL;
+    }
+  bucket_header_p = (FHS_BUCKET_HEADER *) recdes.data;
+  *out_old_local_depth_p = bucket_header_p->local_depth;
+
+  if (fhs_find_first_bit_position (thread_p, dir_header_p, bucket_page_p, bucket_header_p, key_p, num_records,
+				     first_slot_id, out_old_local_depth_p, out_new_local_depth_p) != NO_ERROR)
+    {
+      return NULL;
+    }
+
+  bucket_vfid = dir_header_p->bucket_file;
+  init_bucket_data[0] = dir_header_p->alignment;
+  init_bucket_data[1] = *out_new_local_depth_p;
+  init_bucket_data[2] = (bool) true;
+
+  error_code = file_alloc (thread_p, &bucket_vfid, fhs_initialize_bucket_new_page, init_bucket_data, sibling_vpid_p,
+			   &sibling_page_p);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return NULL;
+    }
+  if (sibling_page_p == NULL)
+    {
+      assert_release (false);
+      return NULL;
+    }
+
+  if (fhs_distribute_records_into_two_bucket (thread_p, dir_header_p, bucket_page_p, bucket_header_p, num_records,
+						first_slot_id, sibling_page_p) != NO_ERROR)
+    {
+      pgbuf_unfix_and_init (thread_p, sibling_page_p);
+      if (file_dealloc (thread_p, &bucket_vfid, sibling_vpid_p, FILE_EXTENDIBLE_HASH) != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	}
+      VPID_SET_NULL (sibling_vpid_p);
+      return NULL;
+    }
+
+  pgbuf_set_dirty (thread_p, sibling_page_p, DONT_FREE);
+  pgbuf_set_dirty (thread_p, bucket_page_p, DONT_FREE);
+
+  return sibling_page_p;
+}
+
+/*
+ * fhs_expand_directory () - Expand directory
+ *   return: NO_ERROR, or ER_FAILED
+ *   ehid(in): identifier for the extendible hashing structure to expand
+ *   new_depth(in): requested new depth
+ *   is_temp(in): true if file is temporary (logging not required)
+ *
+ * Note: This function expands the given extendible hashing directory
+ * as many times as necessary to attain the requested depth.
+ * This is performed with a single pass on the original
+ * directory (starting from the last pointer and working through
+ * the first one).
+ * During this operation, the directory is locked with X lock to
+ * prevent others from accessing wrong information. If the
+ * original directory is not large enough some new pages are
+ * allocated for the new directory. If the disk becomes full
+ * during this operation, or any system error occurs, the
+ * directory expansion is canceled and an error code is
+ * returned. For recovery purposes, the contents of the
+ * directory pages are logged during the expansion operation.
+ */
+static int
+fhs_expand_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth)
+{
+  int old_pages;
+  int old_ptrs;
+  int new_pages;
+  int new_ptrs;
+  int check_pages;
+
+  PAGE_PTR dir_header_page_p;
+  FHS_DIR_HEADER *dir_header_p;
+  int end_offset;
+  int new_end_offset;
+  int needed_pages;
+  int i, j;
+  int exp_times;
+
+  PAGE_PTR old_dir_page_p;
+  PGLENGTH old_dir_offset;
+  int old_dir_nth_page;
+
+  PAGE_PTR new_dir_page_p;
+  PGLENGTH new_dir_offset;
+  int new_dir_nth_page;
+
+  int error_code = NO_ERROR;
+  bool is_temp = true;
+
+  dir_header_page_p = fhs_fix_ehid_page (thread_p, ehid_p, PGBUF_LATCH_WRITE);
+  if (dir_header_page_p == NULL)
+    {
+      return ER_FAILED;
+    }
+  dir_header_p = (FHS_DIR_HEADER *) dir_header_page_p;
+
+  error_code = file_get_num_user_pages (thread_p, &ehid_p->vfid, &old_pages);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      pgbuf_unfix_and_init (thread_p, dir_header_page_p);
+      return error_code;
+    }
+  old_pages -= 1;		/* The first page starts with 0 */
+  old_ptrs = 1 << dir_header_p->depth;
+  exp_times = 1 << (new_depth - dir_header_p->depth);
+
+  new_ptrs = old_ptrs * exp_times;
+  end_offset = old_ptrs - 1;	/* Dir first pointer has an offset of 0 */
+  fhs_dir_locate (&check_pages, &end_offset);
+
+  /* Find how many pages the expanded directory will occupy */
+  new_end_offset = new_ptrs - 1;
+  fhs_dir_locate (&new_pages, &new_end_offset);
+  needed_pages = new_pages - old_pages;
+  if (needed_pages > 0)
+    {
+      error_code = file_alloc_multiple (thread_p, &ehid_p->vfid, fhs_initialize_dir_new_page, &is_temp, needed_pages,
+					NULL);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  pgbuf_unfix_and_init (thread_p, dir_header_page_p);
+	  return error_code;
+	}
+    }
+
+  /*****************************
+     Perform expansion
+   ******************************/
+
+  /* Initialize source variables */
+  old_dir_nth_page = old_pages;	/* The last page of the old directory */
+
+  old_dir_page_p = fhs_fix_nth_page (thread_p, &ehid_p->vfid, old_dir_nth_page, PGBUF_LATCH_WRITE);
+  if (old_dir_page_p == NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, dir_header_page_p);
+      return ER_FAILED;
+    }
+  old_dir_offset = end_offset;
+
+  /* Initialize destination variables */
+  new_dir_nth_page = new_pages;	/* The last page of the new directory */
+
+  new_dir_page_p = fhs_fix_nth_page (thread_p, &ehid_p->vfid, new_dir_nth_page, PGBUF_LATCH_WRITE);
+  if (new_dir_page_p == NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, dir_header_page_p);
+      pgbuf_unfix_and_init (thread_p, old_dir_page_p);
+      return ER_FAILED;
+    }
+  new_dir_offset = new_end_offset;
+
+  /* Copy old directory records to new (expanded) area */
+  for (j = old_ptrs; j > 0; j--)
+    {
+      if (old_dir_offset < 0)
+	{
+	  /*
+	   * We reached the end of the old directory page.
+	   * The next bucket pointer is in the previous directory page
+	   */
+	  pgbuf_unfix_and_init (thread_p, old_dir_page_p);
+
+	  /* get another page */
+	  old_dir_nth_page--;
+
+	  old_dir_page_p = fhs_fix_nth_page (thread_p, &ehid_p->vfid, old_dir_nth_page, PGBUF_LATCH_WRITE);
+	  if (old_dir_page_p == NULL)
+	    {
+	      /* Fetch error; so return */
+	      pgbuf_unfix_and_init (thread_p, dir_header_page_p);
+	      pgbuf_unfix_and_init (thread_p, new_dir_page_p);
+	      return ER_FAILED;
+	    }
+
+	  /*
+	   * Set the olddir_offset to the offset of the last pointer in the
+	   * current source directory page.
+	   */
+	  if (old_dir_nth_page)
+	    {
+	      /* This is not the first (root) directory page */
+	      old_dir_offset = FHS_LAST_OFFSET_IN_NON_FIRST_PAGE;
+	    }
+	  else
+	    {
+	      /* This is the first (root) directory page */
+	      old_dir_offset = FHS_LAST_OFFSET_IN_FIRST_PAGE;
+	    }
+	}
+
+      /* Copy the next directory record "exp_times" times */
+      for (i = 1; i <= exp_times; i++)
+	{
+	  if (new_dir_offset < 0)
+	    {
+	      /*
+	       * There is not any more entries in the new directory page.
+	       * Log this updated directory page, and get next one
+	       */
+	      pgbuf_set_dirty (thread_p, new_dir_page_p, FREE);
+
+	      /* get another page */
+	      new_dir_nth_page--;
+
+	      new_dir_page_p = fhs_fix_nth_page (thread_p, &ehid_p->vfid, new_dir_nth_page, PGBUF_LATCH_WRITE);
+	      if (new_dir_page_p == NULL)
+		{
+		  pgbuf_unfix_and_init (thread_p, dir_header_page_p);
+		  pgbuf_unfix_and_init (thread_p, old_dir_page_p);
+		  return ER_FAILED;
+		}
+
+	      /* Set the newdir_offset to the offset of the last pointer in the current destination directory page. */
+	      if (new_dir_nth_page != 0)
+		{
+		  /* This is not the first (root) dir page */
+		  new_dir_offset = FHS_LAST_OFFSET_IN_NON_FIRST_PAGE;
+		}
+	      else
+		{
+		  /* This is the first (root) dir page */
+		  new_dir_offset = FHS_LAST_OFFSET_IN_FIRST_PAGE;
+		}
+	    }
+
+	  if ((char *) new_dir_page_p + new_dir_offset != (char *) old_dir_page_p + old_dir_offset)
+	    {
+	      memcpy ((char *) new_dir_page_p + new_dir_offset, (char *) old_dir_page_p + old_dir_offset,
+		      sizeof (FHS_DIR_RECORD));
+	    }
+
+	  /* Advance the destination pointer to new spot */
+	  new_dir_offset -= sizeof (FHS_DIR_RECORD);
+	}
+
+      /* Advance the source pointer to new spot */
+      old_dir_offset -= sizeof (FHS_DIR_RECORD);
+    }
+
+  /*
+   * Update the directory header
+   */
+  dir_header_p->depth = new_depth;
+
+  /* Release the old and new directory pages */
+  pgbuf_unfix_and_init (thread_p, old_dir_page_p);
+  pgbuf_set_dirty (thread_p, new_dir_page_p, FREE);
+
+  /* Release the root page holding the directory header */
+  pgbuf_unfix_and_init (thread_p, dir_header_page_p);
+
+  return NO_ERROR;
+}
+
+static int
+fhs_find_first_bit_position (THREAD_ENTRY * thread_p, FHS_DIR_HEADER * dir_header_p, PAGE_PTR bucket_page_p,
+			       FHS_BUCKET_HEADER * bucket_header_p, void *key_p, int num_recs, PGSLOTID first_slot_id,
+			       int *out_old_local_depth_p, int *out_new_local_depth_p)
+{
+  int bit_position;
+  unsigned int i;
+  unsigned int difference = 0, check_bit = 0;
+  FHS_HASH_KEY first_hash_key, next_hash_key;
+  PGSLOTID slot_id;
+  RECDES recdes;
+
+  check_bit = 1 << (FHS_HASH_KEY_BITS - bucket_header_p->local_depth - 1);
+
+  /* Get the first pseudo key */
+  first_hash_key = fhs_hash (key_p, dir_header_p->key_type);
+
+  for (slot_id = first_slot_id + 1; slot_id < num_recs; slot_id++)
+    {
+      if (spage_get_record (thread_p, bucket_page_p, slot_id, &recdes, PEEK) != S_SUCCESS)
+	{
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_CORRUPTED, 0);
+	  return ER_EH_CORRUPTED;
+	}
+
+      if (fhs_get_pseudo_key (thread_p, &recdes, dir_header_p->key_type, &next_hash_key) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+
+      difference = (first_hash_key ^ next_hash_key) | difference;
+      if (difference & check_bit)
+	{
+	  break;
+	}
+    }
+
+  /* Initilize bit_position to one greater than the old local depth */
+  bit_position = *out_old_local_depth_p + 1;
+
+  /* Find out the correct bit_position that the keys differ */
+  for (i = bucket_header_p->local_depth + 1; i <= FHS_HASH_KEY_BITS; i++)
+    {
+      if (difference & check_bit)
+	{
+	  bit_position = i;
+	  break;
+	}
+
+      /* Shift the check bit position to right */
+      check_bit >>= 1;
+    }
+
+  /* Update the bucket header and the variable parameter to new local depth */
+  bucket_header_p->local_depth = bit_position;
+  *out_new_local_depth_p = bit_position;
+
+  return NO_ERROR;
+}
+
+static int
+fhs_distribute_records_into_two_bucket (THREAD_ENTRY * thread_p, FHS_DIR_HEADER * dir_header_p,
+					  PAGE_PTR bucket_page_p, FHS_BUCKET_HEADER * bucket_header_p, int num_recs,
+					  PGSLOTID first_slot_id, PAGE_PTR sibling_page_p)
+{
+  PGSLOTID slot_id, sibling_slot_id;
+  RECDES recdes;
+  FHS_HASH_KEY hash_key;
+  int i, success;
+
+  for (slot_id = i = first_slot_id + 1; i < num_recs; i++)
+    {
+      if (spage_get_record (thread_p, bucket_page_p, slot_id, &recdes, PEEK) != S_SUCCESS)
+	{
+	  return ER_FAILED;
+	}
+
+      if (fhs_get_pseudo_key (thread_p, &recdes, dir_header_p->key_type, &hash_key) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+
+      if (GETBIT (hash_key, bucket_header_p->local_depth))
+	{
+	  success = spage_insert (thread_p, sibling_page_p, &recdes, &sibling_slot_id);
+	  if (success != SP_SUCCESS)
+	    {
+	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+
+	      return ER_FAILED;
+	    }
+	  (void) spage_delete (thread_p, bucket_page_p, slot_id);
+	  /*
+	   * slotid is not changed since the current slot is deleted and the
+	   * next slot will take its slotid.
+	   */
+	}
+      else
+	{
+	  /* skip the slot */
+	  slot_id++;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+static int
+fhs_get_pseudo_key (THREAD_ENTRY * thread_p, RECDES * recdes_p, DB_TYPE key_type, FHS_HASH_KEY * out_hash_key_p)
+{
+  FHS_HASH_KEY hash_key;
+  char *bucket_record_p;
+
+      bucket_record_p = (char *) recdes_p->data;
+      bucket_record_p += sizeof (OID);
+      hash_key = fhs_hash (bucket_record_p, key_type);
+
+  *out_hash_key_p = hash_key;
   return NO_ERROR;
 }
