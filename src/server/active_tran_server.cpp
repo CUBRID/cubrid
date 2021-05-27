@@ -163,16 +163,17 @@ active_tran_server::init_page_server_hosts (const char *db_name)
 	    }
 	  //found valid host clear the errors rom the bad ones
 	  er_clear ();
+	  connected = true;
 	  continue;
 	  // successfully connected to a page server. stop now.
 //	  return exit_code;
 	}
       er_log_debug (ARG_FILE_LINE, "Failed to connect to host: %s port: %d\n", node.get_host ().c_str (), node.get_port ());
     }
-  exit_code = connect_to_page_server (first_valid_connection, db_name);
+//  exit_code = connect_to_page_server (first_valid_connection, db_name);
   // failed to connect to any page server
-  assert (exit_code != NO_ERROR);
-  return exit_code;
+  assert (connected);
+  return connected ? NO_ERROR : exit_code;
 }
 
 int
@@ -203,7 +204,7 @@ active_tran_server::connect_to_page_server (const cubcomm::node &node, const cha
 
   er_log_debug (ARG_FILE_LINE, "Successfully connected to the page server. Channel id: %s.\n",
 		srv_chn.get_channel_id ().c_str ());
-
+  m_page_server_conn = nullptr;
   assert (m_page_server_conn == nullptr);
   m_page_server_conn.reset (new page_server_conn_t (std::move (srv_chn),
   {
