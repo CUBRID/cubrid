@@ -76,9 +76,6 @@ log_global::log_global ()
   , mvcc_table ()
   , unique_stats_table GLOBAL_UNIQUE_STATS_TABLE_INITIALIZER
   , m_prior_sender ()
-#if defined (SERVER_MODE)
-  , m_prior_recver (prior_info)
-#endif // SERVER_MODE = !SA_MODE
 {
 }
 // *INDENT-ON*
@@ -125,5 +122,24 @@ log_global::wait_flushed_lsa (const log_lsa &flush_lsa)
     }
   std::unique_lock<std::mutex> lock (m_ps_lsa_mutex);
   m_ps_lsa_cv.wait (lock, [flush_lsa, this] { return m_max_ps_flushed_lsa >= flush_lsa; });
+}
+
+void
+log_global::initialize_log_prior_receiver ()
+{
+  m_prior_recver = std::make_unique<cublog::prior_recver> (prior_info);
+}
+
+void
+log_global::finalize_log_prior_receiver ()
+{
+  m_prior_recver.reset (nullptr);
+}
+
+cublog::prior_recver &
+log_global::get_log_prior_receiver ()
+{
+  assert (m_prior_recver != nullptr);
+  return *m_prior_recver;
 }
 // *INDENT-ON*

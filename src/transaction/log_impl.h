@@ -652,19 +652,26 @@ struct log_global
   cublog::meta m_metainfo;
   cublog::prior_sender m_prior_sender;
 #if defined (SERVER_MODE)
-  cublog::prior_recver m_prior_recver;
+  std::unique_ptr<cublog::prior_recver> m_prior_recver = nullptr;
 #endif // SERVER_MODE = !SA_MODE
 
   std::mutex m_ps_lsa_mutex;
   std::condition_variable m_ps_lsa_cv;
-  LOG_LSA m_max_ps_flushed_lsa;
+  LOG_LSA m_max_ps_flushed_lsa = NULL_LSA;
 
   log_global ();
   ~log_global ();
-  // *INDENT-ON*
+
+#if defined (SERVER_MODE)
+  void initialize_log_prior_receiver ();
+  void finalize_log_prior_receiver ();
+  cublog::prior_recver &get_log_prior_receiver ();
+#endif // SERVER_MODE
 
   void update_max_ps_flushed_lsa (const LOG_LSA & lsa);
   void wait_flushed_lsa (const log_lsa & flush_lsa);
+
+  // *INDENT-ON*
 };
 
 /* logging statistics */
