@@ -281,23 +281,35 @@ active_tran_server::is_page_server_connected () const
 }
 
 void
-active_tran_server::init_log_page_broker ()
+active_tran_server::init_page_brokers ()
 {
-  m_log_page_broker.reset (new cublog::page_broker ());
+  m_log_page_broker.reset (new page_broker<log_page_type> ());
+  m_data_page_broker.reset (new page_broker<data_page_type> ());
 }
 
 void
-active_tran_server::finalize_log_page_broker ()
+active_tran_server::finalize_page_brokers ()
 {
   m_log_page_broker.reset ();
+  m_data_page_broker.reset ();
 }
 
-cublog::page_broker &
-active_tran_server::get_log_page_broker ()
+template<>
+page_broker<log_page_type> &
+active_tran_server::get_page_broker ()
 {
   assert (m_log_page_broker);
   return *m_log_page_broker;
 }
+
+template<>
+page_broker<data_page_type> &
+active_tran_server::get_page_broker ()
+{
+  assert (m_data_page_broker);
+  return *m_data_page_broker;
+}
+
 
 bool active_tran_server::has_remote_storage () const
 {
@@ -329,7 +341,7 @@ active_tran_server::receive_log_page (cubpacking::unpacker &upk)
   if (error_code == NO_ERROR)
     {
       auto shared_log_page = std::make_shared<log_page_owner> (message.c_str () + sizeof (error_code));
-      m_log_page_broker->set_page (std::move (shared_log_page));
+      m_log_page_broker->set_page (shared_log_page->get_id (), std::move (shared_log_page));
 
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
 	{
@@ -358,6 +370,10 @@ void active_tran_server::receive_data_page (cubpacking::unpacker &upk)
   if (error_code == NO_ERROR)
     {
       shared_data_page = std::make_shared<data_page_owner> (message.c_str () + sizeof (error_code), db_io_page_size ());
+      VPID id;
+      id.pageid = shared_data_page->prv ().pageid;
+      id.volid = shared_data_page->prv ().volid;
+      m_data_page_broker->set_page (id, std::move (shared_data_page));
     }
 
   if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))

@@ -51,10 +51,11 @@ class active_tran_server
     void disconnect_page_server ();
     bool is_page_server_connected () const;
 
-    void init_log_page_broker ();
-    void finalize_log_page_broker ();
+    void init_page_brokers ();
+    void finalize_page_brokers ();
 
-    cublog::page_broker &get_log_page_broker ();
+    template <typename PageT>
+    page_broker<PageT> &get_page_broker ();
 
     bool has_remote_storage () const;
 
@@ -80,7 +81,8 @@ class active_tran_server
 
     std::unique_ptr<page_server_conn_t> m_page_server_conn;
 
-    std::unique_ptr<cublog::page_broker> m_log_page_broker;
+    std::unique_ptr<page_broker<log_page_type>> m_log_page_broker;
+    std::unique_ptr<page_broker<data_page_type>> m_data_page_broker;
     std::vector<cubcomm::node> m_connection_list;
 
     bool m_has_remote_storage = false;

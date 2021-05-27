@@ -24,37 +24,69 @@
 #include "tde.h"
 
 #include <condition_variable>
+#include <functional>
+#include <map>
 #include <mutex>
-#include <unordered_map>
-#include <unordered_set>
 
-namespace cublog
+namespace std
 {
-  class page_broker
+  template<> struct less<VPID>
   {
-    public:
-      enum entry_state
-      {
-	ADDED_ENTRY,
-	EXISTING_ENTRY
-      };
-
-      page_broker () = default;
-      ~page_broker () = default;
-
-      entry_state register_entry (LOG_PAGEID log_pageid);
-      std::size_t get_requests_count ();
-      std::size_t get_pages_count ();
-      std::shared_ptr<log_page_owner> wait_for_page (LOG_PAGEID log_pageid);
-      void set_page (std::shared_ptr<log_page_owner> &&log_page);
-
-    private:
-      std::mutex m_log_pages_mutex;
-      std::condition_variable m_pages_cv;
-      std::unordered_map<LOG_PAGEID, int> m_requested_page_id_count;
-      std::unordered_map<LOG_PAGEID, std::shared_ptr<log_page_owner>> m_received_log_pages;
+    bool operator () (const VPID &lhs, const VPID &rhs) const
+    {
+      return lhs.pageid < rhs.pageid ? true : lhs.pageid > rhs.pageid ? false : lhs.volid < rhs.volid; // debug this!
+    }
   };
+}
 
-} // namespace cublog
+struct log_page_type;
+struct data_page_type;
+
+template <typename T>
+struct map_type;
+
+template<>
+struct map_type<log_page_type>
+{
+  typedef LOG_PAGEID key;
+  typedef std::shared_ptr<log_page_owner> value;
+};
+
+template<>
+struct map_type<data_page_type>
+{
+  typedef vpid key;
+  typedef std::shared_ptr<data_page_owner> value;
+};
+
+enum entry_state
+{
+  ADDED_ENTRY,
+  EXISTING_ENTRY
+};
+
+template <typename PageT>
+class page_broker
+{
+  public:
+    page_broker () = default;
+    ~page_broker () = default;
+
+    entry_state register_entry (typename map_type<PageT>::key id);
+    size_t get_requests_count ();
+    size_t get_pages_count ();
+    typename map_type<PageT>::value wait_for_page (typename map_type<PageT>::key id);
+    void set_page (typename map_type<PageT>::key id, typename map_type<PageT>::value &&page);
+
+  private:
+    std::mutex m_pages_mutex;
+
+    std::condition_variable m_pages_cv;
+
+    std::map<typename map_type<PageT>::key, int> m_requested_page_id_count;
+    std::map<typename map_type<PageT>::key, typename map_type<PageT>::value> m_received_pages;
+};
+
+#include "log_page_broker.tpp"
 
 #endif // _LOG_PAGE_BROKER_HPP_

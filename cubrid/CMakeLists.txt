@@ -302,7 +302,6 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/log_manager.c
   ${TRANSACTION_DIR}/log_meta.cpp
   ${TRANSACTION_DIR}/log_page_buffer.c
-  ${TRANSACTION_DIR}/log_page_broker.cpp
   ${TRANSACTION_DIR}/log_postpone_cache.cpp
   ${TRANSACTION_DIR}/log_prior_send.cpp
   ${TRANSACTION_DIR}/log_prior_recv.cpp

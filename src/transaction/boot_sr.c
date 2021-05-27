@@ -2565,7 +2565,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
   else if (get_server_type () == SERVER_TYPE_TRANSACTION)
     {
-      ats_Gl.init_log_page_broker ();
+      ats_Gl.init_page_brokers ();
     }
 #endif // SERVER_MODE
 
@@ -3187,7 +3187,7 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
     }
   else if (get_server_type () == SERVER_TYPE_TRANSACTION)
     {
-      ats_Gl.finalize_log_page_broker ();
+      ats_Gl.finalize_page_brokers ();
     }
 #endif
 
