@@ -332,6 +332,7 @@ public class ExecuteThread extends Thread {
             resolvedResult = ValueUtilities.resolveValue(procedure.getReturnType(), result);
         }
 
+        buffer.clear();
         buffer.flip(); /* prepare to put */
         packer.packValue(resolvedResult, procedure.getReturnType(), this.charSet);
         returnOutArgs(procedure, packer);
@@ -353,6 +354,7 @@ public class ExecuteThread extends Thread {
 
     private void sendError(String exception, Socket socket) throws IOException {
 
+        buffer.clear();
         buffer.flip(); /* prepare to put */
         packer.packValue(new Integer(1), DBType.DB_INT, this.charSet);
         packer.packValue(exception, DBType.DB_STRING, this.charSet);
