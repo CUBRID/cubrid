@@ -28,6 +28,7 @@
 #include "fake_packable_object.hpp"
 #include "log_impl.h"
 #include "log_lsa.hpp"
+#include "log_lsa_utils.hpp"
 #include "log_record.hpp"
 #include "log_system_tran.hpp"
 #include "mem_block.hpp"
@@ -958,6 +959,26 @@ mvcc_snapshot::mvcc_snapshot ()
   , snapshot_fnc (NULL)
   , valid (false)
 {
+}
+
+void
+lsa_utils::pack (const log_lsa &lsa, cubpacking::packer &serializer)
+{
+  serializer.pack_bigint (static_cast<int64_t> (lsa));
+}
+
+void
+lsa_utils::unpack (cubpacking::unpacker &deserializer, log_lsa &lsa)
+{
+  uint64_t big_int = 0;
+  deserializer.unpack_bigint (big_int);
+  lsa = big_int;
+}
+
+std::size_t
+lsa_utils::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset, std::size_t size)
+{
+  return serializator.get_packed_bigint_size (start_offset + size);
 }
 
 int

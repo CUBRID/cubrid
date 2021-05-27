@@ -38,4 +38,10 @@ namespace cublog::lsa_utils
     deserializer.unpack_bigint (big_int);
     lsa = big_int;
   }
+
+  std::size_t
+  get_packed_size (cubpacking::packer &serializator, std::size_t start_offset, std::size_t size)
+  {
+    return serializator.get_packed_bigint_size (start_offset + size);
+  }
 }
