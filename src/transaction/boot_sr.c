@@ -2248,7 +2248,13 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  init_server_type (db_name);
+  error_code = init_server_type (db_name);
+  if (error_code != NO_ERROR)
+    {
+      // error already set
+      ASSERT_ERROR ();
+      goto error;
+    }
 
   if (get_server_type () == SERVER_TYPE_PAGE && !HA_DISABLED ())
     {

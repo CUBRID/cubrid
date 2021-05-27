@@ -23,6 +23,7 @@
 #include "ats_ps_request.hpp"
 #include "communication_node.hpp"
 #include "request_sync_client_server.hpp"
+#include "server_type.hpp"
 
 #include <memory>
 #include <string>
@@ -38,10 +39,15 @@ class active_tran_server
 {
   public:
     active_tran_server () = default;
+    active_tran_server (const active_tran_server &) = delete;
+    active_tran_server (active_tran_server &&) = delete;
+
     ~active_tran_server ();
 
+    active_tran_server &operator = (const active_tran_server &) = delete;
+    active_tran_server &operator = (active_tran_server &&) = delete;
+
     int init_page_server_hosts (const char *db_name);
-    int connect_to_page_server (const cubcomm::node &node, const char *db_name);
     void disconnect_page_server ();
     bool is_page_server_connected () const;
 
@@ -50,11 +56,16 @@ class active_tran_server
 
     cublog::page_broker &get_log_page_broker ();
 
+    bool has_remote_storage () const;
+
     void push_request (ats_to_ps_request reqid, std::string &&payload);
 
   private:
     using page_server_conn_t =
 	    cubcomm::request_sync_client_server<ats_to_ps_request, ps_to_ats_request, std::string>;
+
+  private:
+    int connect_to_page_server (const cubcomm::node &node, const char *db_name);
 
     int parse_server_host (const std::string &host);
     int parse_page_server_hosts_config (std::string &hosts);
@@ -62,6 +73,7 @@ class active_tran_server
     void receive_log_page (cubpacking::unpacker &upk);
     void receive_data_page (cubpacking::unpacker &upk);
 
+  private:
     // communication with page server
     std::string m_ps_hostname;
     int m_ps_port = -1;
@@ -70,6 +82,8 @@ class active_tran_server
 
     std::unique_ptr<cublog::page_broker> m_log_page_broker;
     std::vector<cubcomm::node> m_connection_list;
+
+    bool m_has_remote_storage = false;
 };
 
 extern active_tran_server ats_Gl;

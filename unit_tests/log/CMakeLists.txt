@@ -19,6 +19,36 @@
 project(test_log)
 
 #
+# test_checkpoint_info
+#
+
+set(TEST_CHKPT_INFO_SOURCES
+  ${TRANSACTION_DIR}/log_checkpoint_info.cpp
+  test_main_chkpt_info.cpp
+  ${TEST_FAKE_DIR}/fake_thread_entry.cpp
+  ${TRANSACTION_DIR}/client_credentials.cpp
+  ${BASE_DIR}/packer.cpp
+  )
+SET_SOURCE_FILES_PROPERTIES(
+  ${TEST_CHKPT_INFO_SOURCES}
+  PROPERTIES LANGUAGE CXX
+  )
+
+add_executable(test_checkpoint_info
+  ${TEST_CHKPT_INFO_SOURCES}
+  )
+
+target_compile_options(test_checkpoint_info PRIVATE ${compile_warning_flags})
+target_compile_definitions(test_checkpoint_info PRIVATE
+  ${COMMON_DEFS} SERVER_MODE
+  )
+target_include_directories(test_checkpoint_info PRIVATE
+  ${TEST_INCLUDES}
+  )
+add_dependencies(test_checkpoint_info
+  ${CATCH2_TARGET}
+  )
+#
 # test_meta_log
 #
 set(TEST_LOG_META_SOURCES
