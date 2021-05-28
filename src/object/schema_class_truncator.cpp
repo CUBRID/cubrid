@@ -36,8 +36,8 @@ namespace cubschema
   class class_truncate_context final
   {
     public:
-      using cons_predicate = std::function<bool(const SM_CLASS_CONSTRAINT&)>;
-      using saved_cons_predicate = std::function<bool(const SM_CONSTRAINT_INFO&)>;
+      using cons_predicate = std::function<bool (const SM_CLASS_CONSTRAINT &)>;
+      using saved_cons_predicate = std::function<bool (const SM_CONSTRAINT_INFO &)>;
 
       int save_constraints_or_clear (cons_predicate pred);
       int drop_saved_constraints (saved_cons_predicate pred);
@@ -45,20 +45,20 @@ namespace cubschema
       int restore_constraints (saved_cons_predicate pred);
       int reset_serials ();
 
-      class_truncate_context (const OID& class_oid);
-      class_truncate_context (class_truncate_context&& other);
+      class_truncate_context (const OID &class_oid);
+      class_truncate_context (class_truncate_context &&other);
       ~class_truncate_context ();
 
-      class_truncate_context (const class_truncate_context& other) = delete;
-      class_truncate_context& operator=(const class_truncate_context& other) = delete;
-      class_truncate_context& operator=(const class_truncate_context&& other) = delete;
+      class_truncate_context (const class_truncate_context &other) = delete;
+      class_truncate_context &operator= (const class_truncate_context &other) = delete;
+      class_truncate_context &operator= (const class_truncate_context &&other) = delete;
 
     private:
       MOP m_mop = NULL;
-      SM_CLASS* m_class = NULL;
-      SM_CONSTRAINT_INFO* m_unique_info = NULL;
-      SM_CONSTRAINT_INFO* m_fk_info = NULL;
-      SM_CONSTRAINT_INFO* m_index_info = NULL;
+      SM_CLASS *m_class = NULL;
+      SM_CONSTRAINT_INFO *m_unique_info = NULL;
+      SM_CONSTRAINT_INFO *m_fk_info = NULL;
+      SM_CONSTRAINT_INFO *m_index_info = NULL;
   };
 
   /*
@@ -80,8 +80,8 @@ namespace cubschema
     error = au_fetch_class (class_mop, &class_, AU_FETCH_READ, DB_AUTH_ALTER);
     if (error != NO_ERROR || class_ == NULL)
       {
-        assert (er_errid () != NO_ERROR);
-        return er_errid ();
+	assert (er_errid () != NO_ERROR);
+	return er_errid ();
       }
 
     m_trun_classes.emplace (*ws_oid (class_mop));
@@ -89,62 +89,62 @@ namespace cubschema
     pk_constraint = classobj_find_cons_primary_key (class_->constraints);
     if (pk_constraint == NULL || pk_constraint->fk_info == NULL)
       {
-        /* if no PK or FK-referred, it can be truncated */
-        return NO_ERROR;
+	/* if no PK or FK-referred, it can be truncated */
+	return NO_ERROR;
       }
 
     /* Now, there is a PK, and are some FKs-referring to the PK */
 
     if (!is_cascade)
       {
-        er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TRUNCATE_PK_REFERRED, 1, pk_constraint->fk_info->name);
-        return ER_TRUNCATE_PK_REFERRED;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TRUNCATE_PK_REFERRED, 1, pk_constraint->fk_info->name);
+	return ER_TRUNCATE_PK_REFERRED;
       }
 
     /* Find FK-child classes to cascade. */
     for (fk_ref = pk_constraint->fk_info; fk_ref; fk_ref = fk_ref->next)
       {
-        if (fk_ref->delete_action == SM_FOREIGN_KEY_CASCADE)
-          {
-            if (m_trun_classes.find (fk_ref->self_oid) != m_trun_classes.end ())
-              {
-                continue;		/* already checked */
-              }
+	if (fk_ref->delete_action == SM_FOREIGN_KEY_CASCADE)
+	  {
+	    if (m_trun_classes.find (fk_ref->self_oid) != m_trun_classes.end ())
+	      {
+		continue;		/* already checked */
+	      }
 
-            MOP fk_child_mop = ws_mop (&fk_ref->self_oid, NULL);
-            if (fk_child_mop == NULL)
-              {
-                assert (er_errid () != NO_ERROR);
-                return er_errid ();
-              }
+	    MOP fk_child_mop = ws_mop (&fk_ref->self_oid, NULL);
+	    if (fk_child_mop == NULL)
+	      {
+		assert (er_errid () != NO_ERROR);
+		return er_errid ();
+	      }
 
-            int partition_type = DB_NOT_PARTITIONED_CLASS;
-            error = sm_partitioned_class_type (fk_child_mop, &partition_type, NULL, NULL);
-            if (error != NO_ERROR)
-              {
-                return error;
-              }
+	    int partition_type = DB_NOT_PARTITIONED_CLASS;
+	    error = sm_partitioned_class_type (fk_child_mop, &partition_type, NULL, NULL);
+	    if (error != NO_ERROR)
+	      {
+		return error;
+	      }
 
-            if (partition_type == DB_PARTITION_CLASS)
-              {
-                /*
-                 * FKs of all partition classes refers to a class that the parittioned class of them referes to.
-                 * But, partition class will be processed when the partitioned class is done.
-                 */
-                continue;
-              }
+	    if (partition_type == DB_PARTITION_CLASS)
+	      {
+		/*
+		 * FKs of all partition classes refers to a class that the parittioned class of them referes to.
+		 * But, partition class will be processed when the partitioned class is done.
+		 */
+		continue;
+	      }
 
-            error = collect_trun_classes (fk_child_mop, is_cascade);
-            if (error != NO_ERROR)
-              {
-                return error;
-              }
-          }
-        else
-          {
-            er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TRUNCATE_CANT_CASCADE, 1, fk_ref->name);
-            return ER_TRUNCATE_CANT_CASCADE;
-          }
+	    error = collect_trun_classes (fk_child_mop, is_cascade);
+	    if (error != NO_ERROR)
+	      {
+		return error;
+	      }
+	  }
+	else
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TRUNCATE_CANT_CASCADE, 1, fk_ref->name);
+	    return ER_TRUNCATE_CANT_CASCADE;
+	  }
       }
 
     return NO_ERROR;
@@ -169,136 +169,139 @@ namespace cubschema
     error = collect_trun_classes (m_class_mop, is_cascade);
     if (error != NO_ERROR)
       {
-        return error;
+	return error;
       }
 
     try
       {
-        std::for_each (m_trun_classes.begin(), m_trun_classes.end(),
-            [&contexts](const OID& oid) { contexts.emplace_back (oid); });
+	std::for_each (m_trun_classes.begin(), m_trun_classes.end(),
+		       [&contexts] (const OID& oid)
+	{
+	  contexts.emplace_back (oid);
+	});
       }
-    catch (int& error)
+    catch (int &error)
       {
-        // exception from sm_context constructor
-        return error;
+	// exception from sm_context constructor
+	return error;
       }
 
     /* Save constraints. Or, remove instances from the constraint if impossible. FK first, then non-FK */
-    for (auto& context : contexts)
+    for (auto &context : contexts)
       {
-        auto cons_predicate = [](const SM_CLASS_CONSTRAINT& cons) -> bool
-          {
-            return cons.type == SM_CONSTRAINT_FOREIGN_KEY;
-          };
+	auto cons_predicate = [] (const SM_CLASS_CONSTRAINT& cons) -> bool
+	{
+	  return cons.type == SM_CONSTRAINT_FOREIGN_KEY;
+	};
 
-        error = context.save_constraints_or_clear (cons_predicate);
-        if (error != NO_ERROR)
-          {
-            return error;
-          }
+	error = context.save_constraints_or_clear (cons_predicate);
+	if (error != NO_ERROR)
+	  {
+	    return error;
+	  }
 
-        /* FK must be dropped earlier than PK, because of referencing */
-        auto saved_cons_predicate = [](const SM_CONSTRAINT_INFO& cons_info) -> bool
-          {
-            return cons_info.constraint_type == DB_CONSTRAINT_FOREIGN_KEY;
-          };
+	/* FK must be dropped earlier than PK, because of referencing */
+	auto saved_cons_predicate = [] (const SM_CONSTRAINT_INFO& cons_info) -> bool
+	{
+	  return cons_info.constraint_type == DB_CONSTRAINT_FOREIGN_KEY;
+	};
 
-        error = context.drop_saved_constraints (saved_cons_predicate);
-        if (error != NO_ERROR)
-          {
-            return error;
-          }
+	error = context.drop_saved_constraints (saved_cons_predicate);
+	if (error != NO_ERROR)
+	  {
+	    return error;
+	  }
       }
 
-    for (auto& context : contexts)
+    for (auto &context : contexts)
       {
-        auto cons_predicate = [](const SM_CLASS_CONSTRAINT& cons) -> bool
-          {
-            if (!SM_IS_CONSTRAINT_INDEX_FAMILY (cons.type))
-              {
-                assert (cons.type == SM_CONSTRAINT_NOT_NULL);
-                return false;
-              }
-            else if (cons.type == SM_CONSTRAINT_FOREIGN_KEY)
-              {
-                return false;
-              }
-            else
-              {
-                return true;
-              }
-          };
+	auto cons_predicate = [] (const SM_CLASS_CONSTRAINT& cons) -> bool
+	{
+	  if (!SM_IS_CONSTRAINT_INDEX_FAMILY (cons.type))
+	    {
+	      assert (cons.type == SM_CONSTRAINT_NOT_NULL);
+	      return false;
+	    }
+	  else if (cons.type == SM_CONSTRAINT_FOREIGN_KEY)
+	    {
+	      return false;
+	    }
+	  else
+	    {
+	      return true;
+	    }
+	};
 
-        error = context.save_constraints_or_clear (cons_predicate);
-        if (error != NO_ERROR)
-        {
-          return error;
-        }
+	error = context.save_constraints_or_clear (cons_predicate);
+	if (error != NO_ERROR)
+	  {
+	    return error;
+	  }
 
-        auto saved_cons_predicate = [](const SM_CONSTRAINT_INFO& cons_info) -> bool
-          {
-            return cons_info.constraint_type != DB_CONSTRAINT_FOREIGN_KEY;
-          };
+	auto saved_cons_predicate = [] (const SM_CONSTRAINT_INFO& cons_info) -> bool
+	{
+	  return cons_info.constraint_type != DB_CONSTRAINT_FOREIGN_KEY;
+	};
 
-        error = context.drop_saved_constraints (saved_cons_predicate);
-        if (error != NO_ERROR)
-          {
-            return error;
-          }
+	error = context.drop_saved_constraints (saved_cons_predicate);
+	if (error != NO_ERROR)
+	  {
+	    return error;
+	  }
       }
 
     /* Destroy heap file. Or, delete instances from the heap if impossible */
-    for (auto& context : contexts)
+    for (auto &context : contexts)
       {
-        error = context.truncate_heap();
-        if (error != NO_ERROR)
-          {
-            return error;
-          }
+	error = context.truncate_heap();
+	if (error != NO_ERROR)
+	  {
+	    return error;
+	  }
       }
 
     /* Restore constraints. non-FK first, and then FK */
-    for (auto& context : contexts)
+    for (auto &context : contexts)
       {
-        auto saved_cons_predicate = [](const SM_CONSTRAINT_INFO& cons_info) -> bool
-          {
-            return cons_info.constraint_type != DB_CONSTRAINT_FOREIGN_KEY;
-          };
+	auto saved_cons_predicate = [] (const SM_CONSTRAINT_INFO& cons_info) -> bool
+	{
+	  return cons_info.constraint_type != DB_CONSTRAINT_FOREIGN_KEY;
+	};
 
-        error = context.restore_constraints (saved_cons_predicate);
-        if (error != NO_ERROR)
-          {
-            return error;
-          }
+	error = context.restore_constraints (saved_cons_predicate);
+	if (error != NO_ERROR)
+	  {
+	    return error;
+	  }
       }
 
-    for (auto& context : contexts)
+    for (auto &context : contexts)
       {
-        auto saved_cons_predicate = [](const SM_CONSTRAINT_INFO& cons_info) -> bool
-          {
-            return cons_info.constraint_type == DB_CONSTRAINT_FOREIGN_KEY;
-          };
-        error = context.restore_constraints (saved_cons_predicate);
-        if (error != NO_ERROR)
-          {
-            return error;
-          }
+	auto saved_cons_predicate = [] (const SM_CONSTRAINT_INFO& cons_info) -> bool
+	{
+	  return cons_info.constraint_type == DB_CONSTRAINT_FOREIGN_KEY;
+	};
+	error = context.restore_constraints (saved_cons_predicate);
+	if (error != NO_ERROR)
+	  {
+	    return error;
+	  }
       }
 
     /* reset auto_increment starting value */
-    for (auto& context : contexts)
+    for (auto &context : contexts)
       {
-        error = context.reset_serials ();
-        if (error != NO_ERROR)
-          {
-            return error;
-          }
+	error = context.reset_serials ();
+	if (error != NO_ERROR)
+	  {
+	    return error;
+	  }
       }
 
     return error;
   }
 
-  class_truncate_context::class_truncate_context (const OID& class_oid)
+  class_truncate_context::class_truncate_context (const OID &class_oid)
   {
     int error = NO_ERROR;
     m_mop = ws_mop (&class_oid, NULL);
@@ -325,7 +328,7 @@ namespace cubschema
       }
   }
 
-  class_truncate_context::class_truncate_context (class_truncate_context&& other) :
+  class_truncate_context::class_truncate_context (class_truncate_context &&other) :
     m_mop (other.m_mop),
     m_class (other.m_class),
     m_unique_info (other.m_unique_info),
@@ -342,17 +345,17 @@ namespace cubschema
   class_truncate_context::~class_truncate_context ()
   {
     if (m_unique_info != NULL)
-    {
-      sm_free_constraint_info (&m_unique_info);
-    }
+      {
+	sm_free_constraint_info (&m_unique_info);
+      }
     if (m_fk_info != NULL)
-    {
-      sm_free_constraint_info (&m_fk_info);
-    }
+      {
+	sm_free_constraint_info (&m_fk_info);
+      }
     if (m_index_info != NULL)
-    {
-      sm_free_constraint_info (&m_index_info);
-    }
+      {
+	sm_free_constraint_info (&m_index_info);
+      }
   }
 
   /*
@@ -376,7 +379,7 @@ namespace cubschema
 	  }
 
 	if ((c->type == SM_CONSTRAINT_PRIMARY_KEY && classobj_is_pk_referred (m_mop, c->fk_info, false, NULL))
-	   || !sm_is_possible_to_recreate_constraint (m_mop, m_class, c))
+	    || !sm_is_possible_to_recreate_constraint (m_mop, m_class, c))
 	  {
 	    /*
 	     * In these cases, We cannot drop and recreate the index as this might be
@@ -452,7 +455,7 @@ namespace cubschema
 	      }
 
 	    error =
-	      dbt_drop_constraint (ctmpl, saved->constraint_type, saved->name, (const char **) saved->att_names, 0);
+		    dbt_drop_constraint (ctmpl, saved->constraint_type, saved->name, (const char **) saved->att_names, 0);
 	    if (error != NO_ERROR)
 	      {
 		dbt_abort_class (ctmpl);
@@ -477,8 +480,8 @@ namespace cubschema
 	  }
 
 	error =
-	  sm_drop_constraint (m_mop, saved->constraint_type, saved->name, (const char **) saved->att_names, 0,
-			      false);
+		sm_drop_constraint (m_mop, saved->constraint_type, saved->name, (const char **) saved->att_names, 0,
+				    false);
 	if (error != NO_ERROR)
 	  {
 	    return error;
