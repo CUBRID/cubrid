@@ -89,6 +89,7 @@ namespace cubprocedure
 
     DB_VALUE *value;
   };
+}
 
 // exposed as uppercase for naming convention
   using DB_ARG_LIST = cubprocedure::db_arg_list;
