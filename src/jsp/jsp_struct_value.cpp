@@ -26,9 +26,13 @@
 #include "object_representation.h" /* db_string_put_cs_and_collation() */
 #include "language_support.h" /* lang_* () */
 
+#include "memory_private_allocator.hpp" /* cubmem::PRIVATE_BLOCK_ALLOCATOR */
+
 #if !defined (SERVER_MODE)
 #include "work_space.h" /* WS_OID */
 #endif
+
+#include <cstring>
 
 namespace cubprocedure
 {
@@ -66,26 +70,40 @@ namespace cubprocedure
 	break;
 
       case DB_TYPE_FLOAT:
+      {
 	serializator.pack_int (sizeof (float));
 	// TODO: update packer
 	// serializator.pack_float (db_get_float (&v));
-	break;
+	float f = db_get_float (&v);
+	OR_BUF or_buf;
+	serializator.delegate_to_or_buf (OR_FLOAT_SIZE, or_buf);
+	OR_PUT_FLOAT (or_buf.ptr, f);
+      }
+      break;
 
       case DB_TYPE_DOUBLE:
+      {
 	serializator.pack_int (sizeof (double));
 	// TODO: update packer
 	// serializator.pack_double (db_get_double (&v));
-	assert (false);
-	break;
-
+	double d = db_get_double (&v);
+	OR_BUF or_buf;
+	serializator.delegate_to_or_buf (OR_DOUBLE_SIZE, or_buf);
+	OR_PUT_DOUBLE (or_buf.ptr, d);
+      }
+      break;
 
       case DB_TYPE_MONETARY:
       {
 	DB_MONETARY *money = db_get_monetary (&v);
 	serializator.pack_int (sizeof (double));
+
+	OR_BUF or_buf;
+	serializator.delegate_to_or_buf (OR_DOUBLE_SIZE, or_buf);
+	OR_PUT_DOUBLE (or_buf.ptr, money->amount);
+
 	// TODO: update packer
 	// serializator.pack_double (money->amount);
-	assert (false);
       }
       break;
 
@@ -93,7 +111,7 @@ namespace cubprocedure
       {
 	char str_buf[NUMERIC_MAX_STRING_SIZE];
 	numeric_db_value_print (&v, str_buf);
-	serializator.pack_int (db_get_string_size (&v));
+	serializator.pack_int (db_get_string_size (&v)); /* dummy length */
 	serializator.pack_c_string (str_buf, strlen (str_buf));
       }
       break;
@@ -189,6 +207,7 @@ namespace cubprocedure
 	  {
 	    if (set_get_element (set, i, &elem_v) != NO_ERROR) /* TODO: set_get_element_nocopy () */
 	      {
+		assert (false);
 		break;
 	      }
 
@@ -254,7 +273,7 @@ namespace cubprocedure
   {
     DB_TYPE type = DB_VALUE_TYPE (&v);
 
-    size_t size = serializator.get_packed_int_size (start_offset); /* type */
+    size_t size = start_offset + serializator.get_packed_int_size (start_offset); /* type */
     switch (type)
       {
       case DB_TYPE_INTEGER:
@@ -274,7 +293,11 @@ namespace cubprocedure
 
       case DB_TYPE_FLOAT:
 	size += serializator.get_packed_int_size (size);
-	assert (false);
+	size += OR_FLOAT_SIZE;
+
+	// FIXME: no alignment ?
+	// size += DB_ALIGN (size, OR_FLOAT_SIZE) - size + OR_FLOAT_SIZE;
+
 	// TODO: update packer
 	// size += serializator.get_packed_float_size (size);
 	break;
@@ -282,7 +305,12 @@ namespace cubprocedure
       case DB_TYPE_DOUBLE:
       case DB_TYPE_MONETARY:
 	size += serializator.get_packed_int_size (size);
-	assert (false);
+	size += OR_DOUBLE_SIZE;
+
+	// FIXME: no alignment
+	// size += DB_ALIGN (size, OR_DOUBLE_SIZE) - size + OR_DOUBLE_SIZE;
+
+	// assert (false);
 	// TODO: update packer
 	// size += serializator.get_packed_double_size (size);
 	break;
@@ -291,6 +319,7 @@ namespace cubprocedure
       {
 	char str_buf[NUMERIC_MAX_STRING_SIZE];
 	numeric_db_value_print (value, str_buf);
+	size += serializator.get_packed_int_size (size); /* dummy length */
 	size += serializator.get_packed_c_string_size (str_buf, strlen (str_buf), size);
       }
       break;
@@ -299,6 +328,7 @@ namespace cubprocedure
       case DB_TYPE_NCHAR:
       case DB_TYPE_VARNCHAR:
       case DB_TYPE_STRING:
+	size += serializator.get_packed_int_size (size);
 	size += serializator.get_packed_c_string_size (db_get_string (value), db_get_string_size (value), size);
 	break;
 
@@ -309,10 +339,13 @@ namespace cubprocedure
 	break;
 
       case DB_TYPE_OBJECT:
-	size += serializator.get_packed_int_size (size);
-	size += serializator.get_packed_int_size (size);
-	size += serializator.get_packed_short_size (size);
-	size += serializator.get_packed_short_size (size);
+#if !defined (SERVER_MODE)
+	size += serializator.get_packed_int_size (size); /* size */
+	size += serializator.get_packed_oid_size (size);
+#else
+	// TODO: Implement a way to pack DB_TYPE_OBJECT value on Server
+	assert (false);
+#endif
 	break;
 
       case DB_TYPE_DATE:
@@ -359,7 +392,8 @@ namespace cubprocedure
 	  {
 	    if (set_get_element (set, i, &elem_v) != NO_ERROR)
 	      {
-		return 0;
+		assert (false);
+		break;
 	      }
 
 	    size += get_packed_value_size_internal (serializator, size, elem_v);
@@ -375,6 +409,7 @@ namespace cubprocedure
 	break;
       }
 
+    size -= start_offset;
     return size;
   }
 
@@ -386,11 +421,11 @@ namespace cubprocedure
 	return;
       }
 
-    unpack_value_interanl (deserializator, *value);
+    unpack_value_interanl (deserializator, value);
   }
 
   void
-  sp_value::unpack_value_interanl (cubpacking::unpacker &deserializator, DB_VALUE &v)
+  sp_value::unpack_value_interanl (cubpacking::unpacker &deserializator, DB_VALUE *v)
   {
     int type;
     deserializator.unpack_int (type);
@@ -401,7 +436,7 @@ namespace cubprocedure
       {
 	int i;
 	deserializator.unpack_int (i);
-	db_make_int (&v, i);
+	db_make_int (v, i);
       }
       break;
 
@@ -409,7 +444,7 @@ namespace cubprocedure
       {
 	DB_BIGINT bi;
 	deserializator.unpack_bigint (bi);
-	db_make_bigint (&v, bi);
+	db_make_bigint (v, bi);
       }
       break;
 
@@ -417,7 +452,7 @@ namespace cubprocedure
       {
 	short s;
 	deserializator.unpack_short (s);
-	db_make_short (&v, s);
+	db_make_short (v, s);
       }
       break;
 
@@ -426,8 +461,10 @@ namespace cubprocedure
 	float f;
 	// TODO: update packer
 	// deserializator.unpack_float (f);
-	// db_make_float (&v, f);
-	assert (false);
+	OR_BUF or_buf;
+	deserializator.delegate_to_or_buf (OR_FLOAT_SIZE, or_buf);
+	OR_GET_FLOAT (or_buf.ptr, &f);
+	db_make_float (v, f);
       }
       break;
 
@@ -436,14 +473,17 @@ namespace cubprocedure
 	double d;
 	// TODO: update packer
 	// deserializator.unpack_double (d);
+	OR_BUF or_buf;
+	deserializator.delegate_to_or_buf (OR_DOUBLE_SIZE, or_buf);
+	OR_GET_DOUBLE (or_buf.ptr, &d);
+	db_make_double (v, d);
 	// db_make_double (&v, d);
-	assert (false);
       }
       break;
 
       case DB_TYPE_NUMERIC:
       {
-	cubmem::extensible_block blk;
+	cubmem::extensible_block blk { cubmem::PRIVATE_BLOCK_ALLOCATOR };
 	deserializator.unpack_string_to_memblock (blk);
 
 	INTL_CODESET codeset;
@@ -452,7 +492,7 @@ namespace cubprocedure
 #else
 	codeset = LANG_SYS_CODESET;
 #endif
-	if (numeric_coerce_string_to_num (blk.get_ptr (), strlen (blk.get_ptr ()), codeset, &v) != NO_ERROR)
+	if (numeric_coerce_string_to_num (blk.get_ptr (), strlen (blk.get_ptr ()), codeset, v) != NO_ERROR)
 	  {
 	    // TODO: needs error handling?
 	    assert (false);
@@ -465,7 +505,7 @@ namespace cubprocedure
       case DB_TYPE_VARNCHAR:
       case DB_TYPE_STRING:
       {
-	cubmem::extensible_block blk;
+	cubmem::extensible_block blk { cubmem::PRIVATE_BLOCK_ALLOCATOR };
 	deserializator.unpack_string_to_memblock (blk);
 
 	// TODO: unicode compose hanlding
@@ -483,7 +523,7 @@ namespace cubprocedure
 	if (lang_get_client_charset () == INTL_CODESET_UTF8
 	    && unicode_string_need_compose (blk.get_ptr (), len, &composed_size, lang_get_generic_unicode_norm ()))
 	  {
-	    cubmem::extensible_block blk_composed;
+	    cubmem::extensible_block blk_composed { cubmem::PRIVATE_BLOCK_ALLOCATOR };;
 	    bool is_composed = false;
 
 	    blk_composed.extend_to (composed_size + 1);
@@ -504,7 +544,7 @@ namespace cubprocedure
 	      }
 	  }
 #endif
-	db_make_string (&v, blk.get_ptr ());
+	db_make_string_copy (v, blk.get_ptr ());
 
 	INTL_CODESET codeset;
 	int collation;
@@ -515,8 +555,7 @@ namespace cubprocedure
 	codeset = LANG_SYS_CODESET;
 	collation = LANG_SYS_COLLATION;
 #endif
-	db_string_put_cs_and_collation (&v, codeset, collation);
-	v.need_clear = true;
+	db_string_put_cs_and_collation (v, codeset, collation);
       }
       break;
 
@@ -529,7 +568,7 @@ namespace cubprocedure
       case DB_TYPE_DATE:
       {
 	DB_DATE date;
-	cubmem::extensible_block blk;
+	cubmem::extensible_block blk { cubmem::PRIVATE_BLOCK_ALLOCATOR };
 	deserializator.unpack_string_to_memblock (blk);
 	if (db_string_to_date (blk.get_ptr (), &date) != NO_ERROR)
 	  {
@@ -538,7 +577,7 @@ namespace cubprocedure
 	  }
 	else
 	  {
-	    db_value_put_encoded_date (&v, &date);
+	    db_value_put_encoded_date (v, &date);
 	  }
       }
       break;
@@ -546,7 +585,7 @@ namespace cubprocedure
       case DB_TYPE_TIME:
       {
 	DB_TIME time;
-	cubmem::extensible_block blk;
+	cubmem::extensible_block blk { cubmem::PRIVATE_BLOCK_ALLOCATOR };
 	deserializator.unpack_string_to_memblock (blk);
 	if (db_string_to_time (blk.get_ptr (), &time) != NO_ERROR)
 	  {
@@ -555,7 +594,7 @@ namespace cubprocedure
 	  }
 	else
 	  {
-	    db_value_put_encoded_time (&v, &time);
+	    db_value_put_encoded_time (v, &time);
 	  }
       }
       break;
@@ -563,7 +602,7 @@ namespace cubprocedure
       case DB_TYPE_TIMESTAMP:
       {
 	DB_TIMESTAMP timestamp;
-	cubmem::extensible_block blk;
+	cubmem::extensible_block blk { cubmem::PRIVATE_BLOCK_ALLOCATOR };
 	deserializator.unpack_string_to_memblock (blk);
 	if (db_string_to_timestamp (blk.get_ptr (), &timestamp) != NO_ERROR)
 	  {
@@ -572,7 +611,7 @@ namespace cubprocedure
 	  }
 	else
 	  {
-	    db_make_timestamp (&v, timestamp);
+	    db_make_timestamp (v, timestamp);
 	  }
       }
       break;
@@ -580,7 +619,7 @@ namespace cubprocedure
       case DB_TYPE_DATETIME:
       {
 	DB_DATETIME datetime;
-	cubmem::extensible_block blk;
+	cubmem::extensible_block blk { cubmem::PRIVATE_BLOCK_ALLOCATOR };
 	deserializator.unpack_string_to_memblock (blk);
 	if (db_string_to_datetime (blk.get_ptr (), &datetime) != NO_ERROR)
 	  {
@@ -589,7 +628,7 @@ namespace cubprocedure
 	  }
 	else
 	  {
-	    db_make_datetime (value, &datetime);
+	    db_make_datetime (v, &datetime);
 	  }
       }
       break;
@@ -605,7 +644,7 @@ namespace cubprocedure
 	DB_VALUE elem;
 	for (int i = 0; i < ncol; i++)
 	  {
-	    unpack_value_interanl (deserializator, elem);
+	    unpack_value_interanl (deserializator, &elem);
 	    if (set_add_element (set, &elem) != NO_ERROR)
 	      {
 		// FIXME: error handling
@@ -613,19 +652,19 @@ namespace cubprocedure
 		assert (false);
 		break;
 	      }
-	    db_value_clear (&elem);
+	    // db_value_clear (&elem);
 	  }
 	if (type == DB_TYPE_SET)
 	  {
-	    db_make_set (&v, set);
+	    db_make_set (v, set);
 	  }
 	else if (type == DB_TYPE_MULTISET)
 	  {
-	    db_make_multiset (&v, set);
+	    db_make_multiset (v, set);
 	  }
 	else if (type == DB_TYPE_SEQUENCE)
 	  {
-	    db_make_sequence (&v, set);
+	    db_make_sequence (v, set);
 	  }
       }
       break;
@@ -636,7 +675,7 @@ namespace cubprocedure
 	OID oid;
 	deserializator.unpack_oid (oid);
 	MOP obj = ws_mop (&oid, NULL);
-	db_make_object (&v, obj);
+	db_make_object (v, obj);
 #else
 	// TODO: Implement a way to pack DB_TYPE_OBJECT value on Server
 	assert (false);
@@ -647,16 +686,18 @@ namespace cubprocedure
       case DB_TYPE_MONETARY:
       {
 	double monetary;
+
 	// TODO: update packer
-	// deserializator.unpack_double (d);
-	//
-	// if (db_make_monetary (&v, DB_CURRENCY_DEFAULT, monetary) != NO_ERROR)
-	//{
-	// FIXME: error handling
-	//assert (false);
-	//}
-	// db_make_double (&v, d);
-	assert (false);
+	// deserializator.unpack_double (monetary);
+
+	OR_BUF or_buf;
+	deserializator.delegate_to_or_buf (OR_DOUBLE_SIZE, or_buf);
+	OR_GET_DOUBLE (or_buf.ptr, &monetary);
+	if (db_make_monetary (v, DB_CURRENCY_DEFAULT, monetary) != NO_ERROR)
+	  {
+	    // FIXME: error handling
+	    assert (false);
+	  }
       }
       break;
 
@@ -664,13 +705,13 @@ namespace cubprocedure
       {
 	int val;
 	deserializator.unpack_int (val);
-	db_make_resultset (&v, val);
+	db_make_resultset (v, val);
       }
       break;
 
       case DB_TYPE_NULL:
       default:
-	db_make_null (&v);
+	db_make_null (v);
 	break;
       }
   }

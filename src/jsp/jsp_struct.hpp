@@ -84,7 +84,7 @@ namespace cubprocedure
     size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
 
     void pack_value_internal (cubpacking::packer &serializator, DB_VALUE &v) const;
-    void unpack_value_interanl (cubpacking::unpacker &deserializator, DB_VALUE &v);
+    void unpack_value_interanl (cubpacking::unpacker &deserializator, DB_VALUE *v);
     size_t get_packed_value_size_internal (cubpacking::packer &serializator, std::size_t start_offset, DB_VALUE &v) const;
 
     DB_VALUE *value;

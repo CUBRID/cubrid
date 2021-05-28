@@ -83,7 +83,6 @@ namespace cubprocedure
   sp_args::pack (cubpacking::packer &serializator) const
   {
     serializator.pack_c_string (name, strlen (name));
-
     serializator.pack_int (get_argument_count ());
 
     sp_value sp_val;
@@ -112,7 +111,6 @@ namespace cubprocedure
 
     sp_value sp_val;
     db_arg_list *p = args;
-    int i = 0;
     while (p != NULL)
       {
 	size += serializator.get_packed_int_size (size); /* arg_mode */
@@ -120,8 +118,6 @@ namespace cubprocedure
 
 	sp_val.value = p->val;
 	size += sp_val.get_packed_size (serializator, size); /* value */
-
-	i++;
 	p = p->next;
       }
 
