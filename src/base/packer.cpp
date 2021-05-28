@@ -61,9 +61,6 @@ namespace cubpacking
   //
 
   packer::packer (void)
-    : m_ptr (nullptr),
-      m_start_ptr (nullptr),
-      m_end_ptr (nullptr)
   {
     // all pointers are initialized to NULL
   }
