@@ -63,6 +63,8 @@ log_recovery_context::init_for_restore (const time_t *stopat_p)
 
   /* we may have to start from an older checkpoint... */
   (void) fileio_map_mounted (&cubthread::get_entry (), get_disk_checkpoint_min_lsa, &m_checkpoint_lsa);
+  m_start_redo_lsa = m_checkpoint_lsa;
+  m_end_redo_lsa = m_checkpoint_lsa;
 }
 
 bool
