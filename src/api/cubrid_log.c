@@ -1144,7 +1144,9 @@ cubrid_log_make_log_item (char **log_info, CUBRID_LOG_ITEM * log_item)
   ptr = or_unpack_int (ptr, &log_item->transaction_id);
   ptr = or_unpack_string_nocopy (ptr, &log_item->user);
   ptr = or_unpack_int (ptr, &log_item->data_item_type);
-
+#if !defined(NDEBUG) && 1 //JOOHOK
+  printf("CUBRID LOG ITEM | log info len : %d, trid : %d, user : %s, data item type : %d\n", log_info_len, log_item->transaction_id, log_item->user, log_item->data_item_type);
+#endif
   if (cubrid_log_make_data_item (&ptr, (DATA_ITEM_TYPE) log_item->data_item_type, &log_item->data_item) !=
       CUBRID_LOG_SUCCESS)
     {

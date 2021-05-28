@@ -795,17 +795,10 @@ typedef struct log_reader_info
   char *log_infos;
   int total_length;
 } LOG_READER_INFO;
-/*
-typedef struct tran_user
-{
-  int trid;
-  char user[DB_MAX_USER_LENGTH +1];
-}TRAN_USER_TABLE;
-*/
-/*TRAN USER TABLE will be hash table composed of (trid : key, user[] : value) */
-/* *INDENT-ON* */
-extern lockfree::circular_queue < LOG_INFO_ENTRY* > *log_info_queue;
+
 /* *INDENT-OFF* */
+extern lockfree::circular_queue < LOG_INFO_ENTRY* > *log_info_queue;
+/* *INDENT-ON* */
 extern LOG_READER_INFO log_Reader_info;
 
 #define MAX_LOG_INFO_QUEUE_ENTRY  1024
