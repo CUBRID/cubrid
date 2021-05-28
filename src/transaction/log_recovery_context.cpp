@@ -18,38 +18,12 @@
 
 #include "log_recovery_context.hpp"
 
-#include "disk_manager.h"
-#include "file_io.h"
-#include "log_impl.h"
 #include "server_type.hpp"
 #include "thread_manager.hpp"
-
-bool
-get_disk_checkpoint_min_lsa (THREAD_ENTRY *thread_p, VOLID volid, void *lsa)
-{
-  // the function signature is adapted to fileio_map_mounted. that last argument is actually a pointer to log_lsa.
-  assert (lsa != nullptr);
-  log_lsa &global_checkpoint_lsa = * (log_lsa *) lsa;
-  log_lsa local_checkpoint_lsa = NULL_LSA;
-
-  const int ret = disk_get_checkpoint (thread_p, volid, &local_checkpoint_lsa);
-  if (ret == NO_ERROR)
-    {
-      if (global_checkpoint_lsa.is_null () || local_checkpoint_lsa < global_checkpoint_lsa)
-	{
-	  global_checkpoint_lsa = local_checkpoint_lsa;
-	}
-    }
-
-  return true;
-}
 
 log_recovery_context::log_recovery_context ()
 {
   m_is_page_server = get_server_type () == SERVER_TYPE_PAGE;
-  m_checkpoint_lsa = log_Gl.hdr.chkpt_lsa;
-  m_start_redo_lsa = m_checkpoint_lsa;
-  m_end_redo_lsa = m_checkpoint_lsa;
 }
 
 void
@@ -64,19 +38,13 @@ log_recovery_context::init_for_recovery (const log_lsa &chkpt_lsa)
 void
 log_recovery_context::init_for_restore (const log_lsa &chkpt_lsa, const time_t *stopat_p)
 {
+  init_for_recovery (chkpt_lsa);
   m_checkpoint_lsa = chkpt_lsa;
   m_is_restore_from_backup = true;
   if (stopat_p)
     {
       m_restore_stop_point = *stopat_p;
     }
-
-  /* we may have to start from an older checkpoint... */
-  (void) fileio_map_mounted (&cubthread::get_entry (), get_disk_checkpoint_min_lsa, &m_checkpoint_lsa);
-
-  // Also init start/end redo LSA's as checkpoint LSA
-  m_start_redo_lsa = m_checkpoint_lsa;
-  m_end_redo_lsa = m_checkpoint_lsa;
 }
 
 bool

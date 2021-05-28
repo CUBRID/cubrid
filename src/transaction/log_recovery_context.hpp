@@ -42,8 +42,8 @@ class log_recovery_context
     const log_lsa &get_checkpoint_lsa () const;
     const log_lsa &get_start_redo_lsa () const;
     const log_lsa &get_end_redo_lsa () const;
-    void set_end_redo_lsa (const log_lsa &end_redo_lsa);
     void set_start_redo_lsa (const log_lsa &start_redo_lsa);
+    void set_end_redo_lsa (const log_lsa &end_redo_lsa);
 
     // Restore related functions
     void init_for_recovery (const log_lsa &chkpt_lsa);
