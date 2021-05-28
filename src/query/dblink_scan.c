@@ -80,9 +80,12 @@ static int type_map[] = {
   0,				/* CCI_U_TYPE_RESULTSET */
   CCI_A_TYPE_BIGINT,		/* CCI_U_TYPE_BIGINT */
   CCI_A_TYPE_DATE,		/* CCI_U_TYPE_DATETIME */
+
+  /* not support for BLOB, CLOB, and ENUM */
   0,				/* CCI_U_TYPE_BLOB */
   0,				/* CCI_U_TYPE_CLOB */
-  CCI_A_TYPE_STR,		/* CCI_U_TYPE_ENUM */
+  0,				/* CCI_U_TYPE_ENUM */
+
   CCI_A_TYPE_UINT,		/* CCI_U_TYPE_USHORT */
   CCI_A_TYPE_UINT,		/* CCI_U_TYPE_UINT */
   CCI_A_TYPE_UBIGINT,		/* CCI_U_TYPE_UBIGINT */
@@ -120,39 +123,101 @@ dblink_get_basic_utype (T_CCI_U_EXT_TYPE u_ext_type)
     }
 }
 
-static void
+static int
+dblink_make_cci_value (DB_VALUE * cci_value, T_CCI_U_TYPE utype, void *val, int prec, int len)
+{
+  int error;
+
+  switch (utype)
+    {
+    case CCI_U_TYPE_BIGINT:
+      error = db_make_bigint (cci_value, *(DB_BIGINT *) val);
+      break;
+    case CCI_U_TYPE_INT:
+      error = db_make_int (cci_value, *(int *) val);
+      break;
+    case CCI_U_TYPE_FLOAT:
+      error = db_make_float (cci_value, *(float *) val);
+      break;
+    case CCI_U_TYPE_DOUBLE:
+      error = db_make_double (cci_value, *(double *) val);
+      break;
+    case CCI_U_TYPE_MONETARY:
+      error = db_make_monetary (cci_value, db_get_currency_default (), *(double *) val);
+      break;
+    case CCI_U_TYPE_STRING:
+      error = db_make_varchar (cci_value, prec, (DB_CONST_C_CHAR) val, len, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+      break;
+    case CCI_U_TYPE_VARNCHAR:
+      error = db_make_varnchar (cci_value, prec, (DB_CONST_C_CHAR) val, len, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+      break;
+    case CCI_U_TYPE_CHAR:
+      error = db_make_char (cci_value, prec, (DB_CONST_C_CHAR) val, len, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+      break;
+    case CCI_U_TYPE_NCHAR:
+      error = db_make_nchar (cci_value, prec, (DB_CONST_C_CHAR) val, len, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+      break;
+    default:
+      assert (false);
+      break;
+    }
+
+  return error;
+}
+
+static int
 dblink_make_date_time (T_CCI_U_TYPE utype, DB_VALUE * value_p, T_CCI_DATE * date_time)
 {
   DB_TIME t_time;
   DB_DATE t_date;
   DB_DATETIME t_datetime;
   DB_TIMESTAMP t_timestamp;
+  int error;
 
   switch (utype)
     {
     case CCI_U_TYPE_TIME:
-      db_make_time (value_p, date_time->hh, date_time->mm, date_time->ss);
+      error = db_make_time (value_p, date_time->hh, date_time->mm, date_time->ss);
       break;
     case CCI_U_TYPE_DATE:
-      db_make_date (value_p, date_time->mon, date_time->day, date_time->yr);
+      error = db_make_date (value_p, date_time->mon, date_time->day, date_time->yr);
       break;
     case CCI_U_TYPE_DATETIME:
-      db_datetime_encode (&t_datetime, date_time->mon, date_time->day, date_time->yr,
-			  date_time->hh, date_time->mm, date_time->ss, date_time->ms);
-      db_make_datetime (value_p, &t_datetime);
+      error = db_datetime_encode (&t_datetime, date_time->mon, date_time->day, date_time->yr,
+				  date_time->hh, date_time->mm, date_time->ss, date_time->ms);
+      if (error != NO_ERROR)
+	{
+	  break;
+	}
+      error = db_make_datetime (value_p, &t_datetime);
       break;
     case CCI_U_TYPE_TIMESTAMP:
-      db_time_encode (&t_time, date_time->hh, date_time->mm, date_time->ss);
-      db_date_encode (&t_date, date_time->mon, date_time->day, date_time->yr);
-      db_timestamp_encode (&t_timestamp, &t_date, &t_time);
-      db_make_timestamp (value_p, t_timestamp);
+      error = db_time_encode (&t_time, date_time->hh, date_time->mm, date_time->ss);
+      if (error != NO_ERROR)
+	{
+	  break;
+	}
+      error = db_date_encode (&t_date, date_time->mon, date_time->day, date_time->yr);
+      if (error != NO_ERROR)
+	{
+	  break;
+	}
+      error = db_timestamp_encode (&t_timestamp, &t_date, &t_time);
+      if (error != NO_ERROR)
+	{
+	  break;
+	}
+      error = db_make_timestamp (value_p, t_timestamp);
       break;
     default:
+      assert (false);
       break;
     }
+
+  return error;
 }
 
-static void
+static int
 dblink_make_date_time_tz (T_CCI_U_TYPE utype, DB_VALUE * value_p, T_CCI_DATE_TZ * date_time_tz)
 {
   DB_TIME t_time;
@@ -161,40 +226,88 @@ dblink_make_date_time_tz (T_CCI_U_TYPE utype, DB_VALUE * value_p, T_CCI_DATE_TZ 
   DB_DATETIMETZ tz_datetime;
   DB_TIMESTAMPTZ tz_timestamp;
   TZ_REGION region;
+  int error;
 
   tz_get_session_tz_region (&region);
 
   switch (utype)
     {
     case CCI_U_TYPE_TIMESTAMPTZ:
-      db_time_encode (&t_time, date_time_tz->hh, date_time_tz->mm, date_time_tz->ss);
-      db_date_encode (&t_date, date_time_tz->mon, date_time_tz->day, date_time_tz->yr);
-      tz_create_timestamptz (&t_date, &t_time, date_time_tz->tz, strlen (date_time_tz->tz), &region, &tz_timestamp,
-			     NULL);
-      db_make_timestamptz (value_p, &tz_timestamp);
+      error = db_time_encode (&t_time, date_time_tz->hh, date_time_tz->mm, date_time_tz->ss);
+      if (error != NO_ERROR)
+	{
+	  break;
+	}
+      error = db_date_encode (&t_date, date_time_tz->mon, date_time_tz->day, date_time_tz->yr);
+      if (error != NO_ERROR)
+	{
+	  break;
+	}
+      error =
+	tz_create_timestamptz (&t_date, &t_time, date_time_tz->tz, strlen (date_time_tz->tz), &region, &tz_timestamp,
+			       NULL);
+      if (error != NO_ERROR)
+	{
+	  break;
+	}
+      error = db_make_timestamptz (value_p, &tz_timestamp);
       break;
     case CCI_U_TYPE_DATETIMETZ:
-      db_datetime_encode (&t_datetime, date_time_tz->mon, date_time_tz->day, date_time_tz->yr,
-			  date_time_tz->hh, date_time_tz->mm, date_time_tz->ss, date_time_tz->ms);
-      tz_create_datetimetz (&t_datetime, date_time_tz->tz, strlen (date_time_tz->tz), &region, &tz_datetime, NULL);
-      db_make_datetimetz (value_p, &tz_datetime);
+      error = db_datetime_encode (&t_datetime, date_time_tz->mon, date_time_tz->day, date_time_tz->yr,
+				  date_time_tz->hh, date_time_tz->mm, date_time_tz->ss, date_time_tz->ms);
+      if (error != NO_ERROR)
+	{
+	  break;
+	}
+      error =
+	tz_create_datetimetz (&t_datetime, date_time_tz->tz, strlen (date_time_tz->tz), &region, &tz_datetime, NULL);
+      if (error != NO_ERROR)
+	{
+	  break;
+	}
+      error = db_make_datetimetz (value_p, &tz_datetime);
       break;
     case CCI_U_TYPE_TIMESTAMPLTZ:
-      db_time_encode (&t_time, date_time_tz->hh, date_time_tz->mm, date_time_tz->ss);
-      db_date_encode (&t_date, date_time_tz->mon, date_time_tz->day, date_time_tz->yr);
-      tz_create_timestamptz (&t_date, &t_time, date_time_tz->tz, strlen (date_time_tz->tz), &region, &tz_timestamp,
-			     NULL);
-      db_make_timestampltz (value_p, tz_timestamp.timestamp);
+      error = db_time_encode (&t_time, date_time_tz->hh, date_time_tz->mm, date_time_tz->ss);
+      if (error != NO_ERROR)
+	{
+	  break;
+	}
+      error = db_date_encode (&t_date, date_time_tz->mon, date_time_tz->day, date_time_tz->yr);
+      if (error != NO_ERROR)
+	{
+	  break;
+	}
+      error =
+	tz_create_timestamptz (&t_date, &t_time, date_time_tz->tz, strlen (date_time_tz->tz), &region, &tz_timestamp,
+			       NULL);
+      if (error != NO_ERROR)
+	{
+	  break;
+	}
+      error = db_make_timestampltz (value_p, tz_timestamp.timestamp);
       break;
     case CCI_U_TYPE_DATETIMELTZ:
-      db_datetime_encode (&t_datetime, date_time_tz->mon, date_time_tz->day, date_time_tz->yr,
-			  date_time_tz->hh, date_time_tz->mm, date_time_tz->ss, date_time_tz->ms);
-      tz_create_datetimetz (&t_datetime, date_time_tz->tz, strlen (date_time_tz->tz), &region, &tz_datetime, NULL);
-      db_make_datetimeltz (value_p, &tz_datetime.datetime);
+      error = db_datetime_encode (&t_datetime, date_time_tz->mon, date_time_tz->day, date_time_tz->yr,
+				  date_time_tz->hh, date_time_tz->mm, date_time_tz->ss, date_time_tz->ms);
+      if (error != NO_ERROR)
+	{
+	  break;
+	}
+      error =
+	tz_create_datetimetz (&t_datetime, date_time_tz->tz, strlen (date_time_tz->tz), &region, &tz_datetime, NULL);
+      if (error != NO_ERROR)
+	{
+	  break;
+	}
+      error = db_make_datetimeltz (value_p, &tz_datetime.datetime);
       break;
     default:
+      assert (false);
       break;
     }
+
+  return error;
 }
 
 /*
@@ -215,23 +328,25 @@ dblink_open_scan (DBLINK_SCAN_INFO * scan_info, char *conn_url, char *user_name,
   T_CCI_CUBRID_STMT stmt_type;
 
   scan_info->conn_handle = cci_connect_with_url_ex (conn_url, user_name, password, &err_buf);
-
   if (scan_info->conn_handle < 0)
     {
-      return err_buf.err_code;;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+      return S_ERROR;
     }
   else
     {
       scan_info->stmt_handle = cci_prepare_and_execute (scan_info->conn_handle, sql_text, 0, &ret, &err_buf);
       if (ret < 0)
 	{
-	  return err_buf.err_code;;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+	  return S_ERROR;
 	}
       else
 	{
 	  scan_info->col_info = (void *) cci_get_result_info (scan_info->stmt_handle, &stmt_type, &scan_info->col_cnt);
 	  if (scan_info->col_info == NULL)
 	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_buf.err_code, 0);
 	      return S_ERROR;
 	    }
 	  scan_info->cursor = CCI_CURSOR_FIRST;
@@ -249,17 +364,22 @@ dblink_open_scan (DBLINK_SCAN_INFO * scan_info, char *conn_url, char *user_name,
 int
 dblink_close_scan (DBLINK_SCAN_INFO * scan_info)
 {
-  T_CCI_ERROR err_buf;
   int error;
+  T_CCI_ERROR err_buf;
+
+  assert (scan_info->stmt_handle >= 0 && scan_info->conn_handle >= 0);
 
   if ((error = cci_close_req_handle (scan_info->stmt_handle)) < 0)
     {
-      return error;
+      cci_get_err_msg (error, err_buf.err_msg, sizeof (err_buf.err_msg));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+      return S_ERROR;
     }
 
   if ((error = cci_disconnect (scan_info->conn_handle, &err_buf)) < 0)
     {
-      return error;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+      return S_ERROR;
     }
 
   return NO_ERROR;
@@ -275,7 +395,7 @@ SCAN_CODE
 dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 {
   T_CCI_ERROR err_buf;
-  int col_no, col_cnt, ind, error;
+  int col_no, col_cnt, ind, error = S_SUCCESS;
   T_CCI_U_TYPE utype;
   T_CCI_BIT bit_val;		/* for bit or varbit type */
   T_CCI_DATE date_time;		/* for date or time type */
@@ -288,10 +408,7 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 
   col_cnt = scan_info->col_cnt;
 
-  if (scan_info->stmt_handle < 0)
-    {
-      return S_ERROR;
-    }
+  assert (scan_info->stmt_handle >= 0);
 
   if ((error = cci_cursor (scan_info->stmt_handle, 1, (T_CCI_CURSOR_POS) scan_info->cursor, &err_buf)) < 0)
     {
@@ -301,6 +418,7 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 	}
       else
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
 	  return S_ERROR;
 	}
     }
@@ -310,6 +428,7 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 
   if ((error = cci_fetch (scan_info->stmt_handle, &err_buf)) < 0)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
       return S_ERROR;
     }
 
@@ -318,9 +437,16 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 
   for (valptrp = val_list->valp, col_no = 1; col_no <= col_cnt; col_no++, valptrp = valptrp->next)
     {
+      DB_VALUE cci_value;
+      DB_DATA cci_data;
+      int prec = col_info[col_no - 1].precision;
+
+      pr_clear_value (valptrp->val);
+
       valptrp->val->domain.general_info.is_null = 0;
       utype = dblink_get_basic_utype (CCI_GET_RESULT_INFO_TYPE (col_info, col_no));
-      value = &valptrp->val->data;
+      value = &cci_data;
+
       switch (utype)
 	{
 	case CCI_U_TYPE_NULL:
@@ -331,66 +457,73 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 	case CCI_U_TYPE_FLOAT:
 	case CCI_U_TYPE_DOUBLE:
 	case CCI_U_TYPE_MONETARY:
-	  if (cci_get_data (scan_info->stmt_handle, col_no, type_map[utype], value, &ind) < 0)
+	  if ((error = cci_get_data (scan_info->stmt_handle, col_no, type_map[utype], value, &ind)) < 0)
 	    {
+	      cci_get_err_msg (error, err_buf.err_msg, sizeof (err_buf.err_msg));
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
 	      return S_ERROR;
 	    }
 	  NULL_CHECK (ind);
+	  error = dblink_make_cci_value (&cci_value, utype, value, prec, ind);
 	  break;
 
 	case CCI_U_TYPE_NUMERIC:
-	  if (cci_get_data (scan_info->stmt_handle, col_no, type_map[utype], &value, &ind) < 0)
+	  if ((error = cci_get_data (scan_info->stmt_handle, col_no, type_map[utype], &value, &ind)) < 0)
 	    {
+	      cci_get_err_msg (error, err_buf.err_msg, sizeof (err_buf.err_msg));
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
 	      return S_ERROR;
 	    }
 	  NULL_CHECK (ind);
 	  codeset = (INTL_CODESET) valptrp->val->data.enumeration.str_val.info.codeset;
-	  numeric_coerce_string_to_num ((char *) value, ind, codeset, valptrp->val);
+	  error = numeric_coerce_string_to_num ((char *) value, ind, codeset, &cci_value);
 	  break;
 
 	case CCI_U_TYPE_STRING:
 	case CCI_U_TYPE_VARNCHAR:
 	case CCI_U_TYPE_CHAR:
 	case CCI_U_TYPE_NCHAR:
-	case CCI_U_TYPE_ENUM:
-	  /* for enum type, it will be coerced to string type in the future */
 	case CCI_U_TYPE_JSON:
-	  if (cci_get_data (scan_info->stmt_handle, col_no, type_map[utype], &value, &ind) < 0)
+	  if ((error = cci_get_data (scan_info->stmt_handle, col_no, type_map[utype], &value, &ind)) < 0)
 	    {
+	      cci_get_err_msg (error, err_buf.err_msg, sizeof (err_buf.err_msg));
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
 	      return S_ERROR;
 	    }
 	  NULL_CHECK (ind);
-	  valptrp->val->data.ch.medium.buf = (char *) value;
-	  valptrp->val->data.ch.medium.size = ind;
-	  if (utype == CCI_U_TYPE_ENUM)
-	    {
-	      int collation = valptrp->val->domain.char_info.collation_id;
 
-	      codeset = (INTL_CODESET) valptrp->val->data.enumeration.str_val.info.codeset;
-	      db_make_enumeration (valptrp->val, 1, (char *) value, ind, codeset, collation);
-	    }
-	  else if (utype == CCI_U_TYPE_JSON)
+	  if (utype == CCI_U_TYPE_JSON)
 	    {
-	      db_json_val_from_str ((char *) value, ind, valptrp->val);
+	      if ((error = db_json_val_from_str ((char *) value, ind, &cci_value)) < 0)
+		{
+		  /* er_set is already set in db_json_val_from_str */
+		  return S_ERROR;
+		}
+	    }
+	  else
+	    {
+	      error = dblink_make_cci_value (&cci_value, utype, value, prec, ind);
 	    }
 	  break;
 
 	case CCI_U_TYPE_BIT:
 	case CCI_U_TYPE_VARBIT:
-	  if (cci_get_data (scan_info->stmt_handle, col_no, type_map[utype], &bit_val, &ind) < 0)
+	  if ((error = cci_get_data (scan_info->stmt_handle, col_no, type_map[utype], &bit_val, &ind)) < 0)
 	    {
+	      cci_get_err_msg (error, err_buf.err_msg, sizeof (err_buf.err_msg));
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
 	      return S_ERROR;
 	    }
 	  NULL_CHECK (ind);
 	  if (utype == CCI_U_TYPE_BIT)
 	    {
 	      /* bit_val.size * 8 : bit length for the value */
-	      db_make_bit (valptrp->val, bit_val.size * 8, bit_val.buf, col_info[col_no - 1].precision);
+	      error = db_make_bit (&cci_value, bit_val.size * 8, bit_val.buf, prec);
 	    }
 	  else
 	    {
 	      /* bit_val.size * 8 : bit length for the value */
-	      db_make_varbit (valptrp->val, bit_val.size * 8, bit_val.buf, col_info[col_no - 1].precision);
+	      error = db_make_varbit (&cci_value, bit_val.size * 8, bit_val.buf, prec);
 	    }
 	  break;
 
@@ -398,25 +531,29 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 	case CCI_U_TYPE_TIME:
 	case CCI_U_TYPE_TIMESTAMP:
 	case CCI_U_TYPE_DATETIME:
-	  if (cci_get_data (scan_info->stmt_handle, col_no, type_map[utype], &date_time, &ind) < 0)
+	  if ((error = cci_get_data (scan_info->stmt_handle, col_no, type_map[utype], &date_time, &ind)) < 0)
 	    {
+	      cci_get_err_msg (error, err_buf.err_msg, sizeof (err_buf.err_msg));
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
 	      return S_ERROR;
 	    }
 	  NULL_CHECK (ind);
-	  dblink_make_date_time (utype, valptrp->val, &date_time);
+	  error = dblink_make_date_time (utype, &cci_value, &date_time);
 	  break;
 
 	case CCI_U_TYPE_DATETIMETZ:
 	case CCI_U_TYPE_DATETIMELTZ:
 	case CCI_U_TYPE_TIMESTAMPTZ:
 	case CCI_U_TYPE_TIMESTAMPLTZ:
-	  if (cci_get_data (scan_info->stmt_handle, col_no, type_map[utype], &date_time_tz, &ind) < 0)
+	  if ((error = cci_get_data (scan_info->stmt_handle, col_no, type_map[utype], &date_time_tz, &ind)) < 0)
 	    {
+	      cci_get_err_msg (error, err_buf.err_msg, sizeof (err_buf.err_msg));
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
 	      return S_ERROR;
 	      break;
 	    }
 	  NULL_CHECK (ind);
-	  dblink_make_date_time_tz (utype, valptrp->val, &date_time_tz);
+	  error = dblink_make_date_time_tz (utype, &cci_value, &date_time_tz);
 	  break;
 	default:
 	  ind = -1;
@@ -426,6 +563,32 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 	{
 	  valptrp->val->domain.general_info.is_null = 1;
 	}
+      else
+	{
+	  TP_DOMAIN dom;
+
+	  tp_domain_init (&dom, (DB_TYPE) valptrp->val->domain.general_info.type);
+	  if (TP_IS_CHAR_TYPE (dom.type->id))
+	    {
+	      dom.precision = valptrp->val->domain.char_info.length;
+	      dom.collation_id = valptrp->val->domain.char_info.collation_id;
+	      dom.codeset = LANG_SYS_CODESET;
+	    }
+	  else
+	    {
+	      dom.precision = valptrp->val->domain.numeric_info.precision;
+	      dom.scale = valptrp->val->domain.numeric_info.scale;
+	    }
+	  if (tp_value_cast_force (&cci_value, valptrp->val, &dom, false) != DOMAIN_COMPATIBLE)
+	    {
+	      return S_ERROR;
+	    }
+	}
+    }
+
+  if (error != NO_ERROR)
+    {
+      return S_ERROR;
     }
 
   return S_SUCCESS;
@@ -439,13 +602,9 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 SCAN_CODE
 dblink_scan_reset (DBLINK_SCAN_INFO * scan_info)
 {
-  T_CCI_ERROR err_buf;
+  assert (scan_info->conn_handle >= 0 && scan_info->stmt_handle >= 0);
 
-  if (scan_info->conn_handle >= 0 && scan_info->stmt_handle >= 0)
-    {
-      scan_info->cursor = CCI_CURSOR_FIRST;
-      return S_SUCCESS;
-    }
+  scan_info->cursor = CCI_CURSOR_FIRST;
 
-  return S_ERROR;
+  return S_SUCCESS;
 }
