@@ -216,19 +216,7 @@ namespace cubschema
       {
 	auto cons_predicate = [] (const SM_CLASS_CONSTRAINT& cons) -> bool
 	{
-	  if (!SM_IS_CONSTRAINT_INDEX_FAMILY (cons.type))
-	    {
-	      assert (cons.type == SM_CONSTRAINT_NOT_NULL);
-	      return false;
-	    }
-	  else if (cons.type == SM_CONSTRAINT_FOREIGN_KEY)
-	    {
-	      return false;
-	    }
-	  else
-	    {
-	      return true;
-	    }
+	  return cons.type != SM_CONSTRAINT_FOREIGN_KEY;
 	};
 
 	error = context.save_constraints_or_clear (cons_predicate);
@@ -374,6 +362,12 @@ namespace cubschema
       {
 	if (!pred (*c))
 	  {
+	    continue;
+	  }
+
+	if (!SM_IS_CONSTRAINT_INDEX_FAMILY (c->type))
+	  {
+	    assert (c->type == SM_CONSTRAINT_NOT_NULL);
 	    continue;
 	  }
 
