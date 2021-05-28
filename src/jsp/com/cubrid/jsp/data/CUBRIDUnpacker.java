@@ -47,6 +47,10 @@ public class CUBRIDUnpacker {
         this(ByteBuffer.wrap(byteArray));
     }
 
+    public void setBuffer(ByteBuffer buffer) {
+        this.buffer = buffer;
+    }
+
     public int unpackInt() {
         align(DataUtilities.INT_ALIGNMENT);
         return buffer.getInt();
@@ -75,12 +79,14 @@ public class CUBRIDUnpacker {
     }
 
     public float unpackFloat() {
-        align(DataUtilities.FLOAT_ALIGNMENT);
+        // TODO: alignment is not considered yet in cubpacking::packer
+        // align(DataUtilities.FLOAT_ALIGNMENT);
         return buffer.getFloat();
     }
 
     public double unpackDouble() {
-        align(DataUtilities.DOUBLE_ALIGNMENT);
+        // TODO: alignment is not considered yet in cubpacking::packer
+        // align(DataUtilities.DOUBLE_ALIGNMENT);
         return buffer.getDouble();
     }
 
@@ -119,24 +125,19 @@ public class CUBRIDUnpacker {
         Value arg = null;
         switch (paramType) {
             case DBType.DB_SHORT:
-                // assert paramSize == 4
                 arg = new ShortValue(unpackShort(), mode, dbType);
                 break;
             case DBType.DB_INT:
-                // assert paramSize == 4
                 arg = new IntValue(unpackInt(), mode, dbType);
                 break;
             case DBType.DB_BIGINT:
-                // assert paramSize == 8
                 arg = new LongValue(unpackBigint(), mode, dbType);
                 break;
             case DBType.DB_FLOAT:
-                // assert paramSize == 4
                 arg = new FloatValue(unpackFloat(), mode, dbType);
                 break;
             case DBType.DB_DOUBLE:
             case DBType.DB_MONETARY:
-                // assert paramSize == 8
                 arg = new DoubleValue(unpackDouble(), mode, dbType);
                 break;
             case DBType.DB_NUMERIC:
@@ -195,7 +196,6 @@ public class CUBRIDUnpacker {
             case DBType.DB_SEQUENCE:
                 {
                     int nCol = unpackInt();
-                    // TODO: unpacking for SET type
                     arg = new SetValue(unpackSetValue(nCol), mode, dbType);
                 }
                 break;
@@ -233,7 +233,7 @@ public class CUBRIDUnpacker {
         for (int i = 0; i < paramCount; i++) {
             int paramType = unpackInt();
             int paramSize = unpackInt();
-            // FIXME: dbType=0 is dummy, I'm not sure about it
+            // FIXME: dbType=0 is dummy, it is from legacy code. I'm not sure about it
             Value arg = unpackValue(paramSize, paramType, Value.IN, 0);
             args[i] = (arg);
         }
