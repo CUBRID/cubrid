@@ -29,6 +29,10 @@ using namespace cubschema;
 
 namespace cubschema
 {
+  /*
+   * This class is used internally by class_truncator while truncating, which could end up truncating several classes.
+   * This context is in charge of truncating each of truncating classes and saving the context of each.
+   */
   class class_truncate_context final
   {
     public:
@@ -147,12 +151,11 @@ namespace cubschema
   }
 
   /*
-   * truncate () - truncates classes
+   * truncate () - truncates classes colleted through collect_trun_classes()
    *   return: NO_ERROR on success, non-zero for ERROR
-   *   trun_claases (in): class mops to truncate collected by sm_collect_truncatable_classes()
    *
    *   NOTE: this function truncates several classes which are bond in a partitioning or some foreign keys.
-   *   truncating a class consists of a few steps, each of which is done across all the classess one by one.
+   *   truncating a class consists of a few steps, each of which is done one by one across all the classess.
    *   this horizontal processing is necessary that all FKs has to be processed before PKs.
    */
   int

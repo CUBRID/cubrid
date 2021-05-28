@@ -26,6 +26,10 @@
 
 namespace cubschema
 {
+  /*
+   * In charge of truncating a class.
+   * During that, it can truncate several classes related to the class with FK or partitioning.
+   */
   class class_truncator
   {
     public:
