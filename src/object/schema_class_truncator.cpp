@@ -173,8 +173,7 @@ namespace cubschema
 
     try
       {
-	std::for_each (m_trun_classes.begin(), m_trun_classes.end(),
-		       [&contexts] (const OID& oid)
+	std::for_each (m_trun_classes.begin(), m_trun_classes.end(), [&contexts] (const OID& oid)
 	{
 	  contexts.emplace_back (oid);
 	});
@@ -472,9 +471,8 @@ namespace cubschema
 	    continue;
 	  }
 
-	error =
-		sm_drop_constraint (m_mop, saved->constraint_type, saved->name, (const char **) saved->att_names, 0,
-				    false);
+	error = sm_drop_constraint (m_mop, saved->constraint_type,
+				    saved->name, (const char **) saved->att_names, 0, false);
 	if (error != NO_ERROR)
 	  {
 	    return error;
