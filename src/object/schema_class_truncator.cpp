@@ -27,150 +27,275 @@
 
 using namespace cubschema;
 
-/*
- * sm_truncate_class_internal () - truncates classes
- *   return: NO_ERROR on success, non-zero for ERROR
- *   trun_claases (in): class mops to truncate collected by sm_collect_truncatable_classes()
- *
- *   NOTE: this function truncates several classes which are bond in a partitioning or some foreign keys.
- *   truncating a class consists of a few steps, each of which is done across all the classess one by one.
- *   this horizontal processing is necessary that all FKs has to be processed before PKs.
- */
-int
-sm_truncate_class_internal (std::unordered_set<OID>&& trun_classes)
+namespace cubschema
 {
-  int error = NO_ERROR;
-  std::vector<class_truncator> truncators;
+  class class_truncate_context final
+  {
+    public:
+      using cons_predicate = std::function<bool(const SM_CLASS_CONSTRAINT&)>;
+      using saved_cons_predicate = std::function<bool(const SM_CONSTRAINT_INFO&)>;
 
-  try
-    {
-      std::for_each (trun_classes.begin(), trun_classes.end(),
-          [&truncators](const OID& oid) { truncators.emplace_back (oid); });
-    }
-  catch (int& error)
-    {
-      // exception from sm_truncator constructor
-      return error;
-    }
+      int save_constraints_or_clear (cons_predicate pred);
+      int drop_saved_constraints (saved_cons_predicate pred);
+      int truncate_heap ();
+      int restore_constraints (saved_cons_predicate pred);
+      int reset_serials ();
 
-  /* Save constraints. Or, remove instances from the constraint if impossible. FK first, then non-FK */
-  for (auto& truncator : truncators)
-    {
-      auto cons_predicate = [](const SM_CLASS_CONSTRAINT& cons) -> bool
-        {
-          return cons.type == SM_CONSTRAINT_FOREIGN_KEY;
-        };
+      class_truncate_context (const OID& class_oid);
+      class_truncate_context (class_truncate_context&& other);
+      ~class_truncate_context ();
 
-      error = truncator.save_constraints_or_clear (cons_predicate);
-      if (error != NO_ERROR)
-        {
-          return error;
-        }
+      class_truncate_context (const class_truncate_context& other) = delete;
+      class_truncate_context& operator=(const class_truncate_context& other) = delete;
+      class_truncate_context& operator=(const class_truncate_context&& other) = delete;
 
-      /* FK must be dropped earlier than PK, because of referencing */
-      auto saved_cons_predicate = [](const SM_CONSTRAINT_INFO& cons_info) -> bool
-        {
-          return cons_info.constraint_type == DB_CONSTRAINT_FOREIGN_KEY;
-        };
+    private:
+      MOP m_mop = NULL;
+      SM_CLASS* m_class = NULL;
+      SM_CONSTRAINT_INFO* m_unique_info = NULL;
+      SM_CONSTRAINT_INFO* m_fk_info = NULL;
+      SM_CONSTRAINT_INFO* m_index_info = NULL;
+  };
 
-      error = truncator.drop_saved_constraints (saved_cons_predicate);
-      if (error != NO_ERROR)
-        {
-          return error;
-        }
-    }
+  /*
+   * collect_trun_classes () - Collects OIDs of truncatable classes regarding the CASCADE option
+   *   return: NO_ERROR on success, non-zero for ERROR
+   *   class_mop(in):
+   *   trun_classes(in/out): a hash for skipping checked classes and collecting class OIDs
+   *   is_cascade(in): whether to cascade TRUNCATE to FK-referring classes
+   */
+  int
+  class_truncator::collect_trun_classes (MOP class_mop, bool is_cascade)
+  {
+    int error = NO_ERROR;
+    SM_CLASS *class_ = NULL;
+    SM_CLASS_CONSTRAINT *pk_constraint = NULL;
+    SM_FOREIGN_KEY_INFO *fk_ref;
+    OID *fk_cls_oid;
 
-  for (auto& truncator : truncators)
-    {
-      auto cons_predicate = [](const SM_CLASS_CONSTRAINT& cons) -> bool
-        {
-          if (!SM_IS_CONSTRAINT_INDEX_FAMILY (cons.type))
-            {
-              assert (cons.type == SM_CONSTRAINT_NOT_NULL);
-              return false;
-            }
-          else if (cons.type == SM_CONSTRAINT_FOREIGN_KEY)
-            {
-              return false;
-            }
-          else
-            {
-              return true;
-            }
-        };
+    error = au_fetch_class (class_mop, &class_, AU_FETCH_READ, DB_AUTH_ALTER);
+    if (error != NO_ERROR || class_ == NULL)
+      {
+        assert (er_errid () != NO_ERROR);
+        return er_errid ();
+      }
 
-      error = truncator.save_constraints_or_clear (cons_predicate);
-      if (error != NO_ERROR)
+    m_trun_classes.emplace (*ws_oid (class_mop));
+
+    pk_constraint = classobj_find_cons_primary_key (class_->constraints);
+    if (pk_constraint == NULL || pk_constraint->fk_info == NULL)
+      {
+        /* if no PK or FK-referred, it can be truncated */
+        return NO_ERROR;
+      }
+
+    /* Now, there is a PK, and are some FKs-referring to the PK */
+
+    if (!is_cascade)
+      {
+        er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TRUNCATE_PK_REFERRED, 1, pk_constraint->fk_info->name);
+        return ER_TRUNCATE_PK_REFERRED;
+      }
+
+    /* Find FK-child classes to cascade. */
+    for (fk_ref = pk_constraint->fk_info; fk_ref; fk_ref = fk_ref->next)
+      {
+        if (fk_ref->delete_action == SM_FOREIGN_KEY_CASCADE)
+          {
+            if (m_trun_classes.find (fk_ref->self_oid) != m_trun_classes.end ())
+              {
+                continue;		/* already checked */
+              }
+
+            MOP fk_child_mop = ws_mop (&fk_ref->self_oid, NULL);
+            if (fk_child_mop == NULL)
+              {
+                assert (er_errid () != NO_ERROR);
+                return er_errid ();
+              }
+
+            int partition_type = DB_NOT_PARTITIONED_CLASS;
+            error = sm_partitioned_class_type (fk_child_mop, &partition_type, NULL, NULL);
+            if (error != NO_ERROR)
+              {
+                return error;
+              }
+
+            if (partition_type == DB_PARTITION_CLASS)
+              {
+                /*
+                 * FKs of all partition classes refers to a class that the parittioned class of them referes to.
+                 * But, partition class will be processed when the partitioned class is done.
+                 */
+                continue;
+              }
+
+            error = collect_trun_classes (fk_child_mop, is_cascade);
+            if (error != NO_ERROR)
+              {
+                return error;
+              }
+          }
+        else
+          {
+            er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TRUNCATE_CANT_CASCADE, 1, fk_ref->name);
+            return ER_TRUNCATE_CANT_CASCADE;
+          }
+      }
+
+    return NO_ERROR;
+  }
+
+  /*
+   * truncate () - truncates classes
+   *   return: NO_ERROR on success, non-zero for ERROR
+   *   trun_claases (in): class mops to truncate collected by sm_collect_truncatable_classes()
+   *
+   *   NOTE: this function truncates several classes which are bond in a partitioning or some foreign keys.
+   *   truncating a class consists of a few steps, each of which is done across all the classess one by one.
+   *   this horizontal processing is necessary that all FKs has to be processed before PKs.
+   */
+  int
+  class_truncator::truncate (const bool is_cascade)
+  {
+    int error = NO_ERROR;
+    std::vector<class_truncate_context> truncators;
+
+    assert (m_class_mop != NULL);
+
+    error = collect_trun_classes (m_class_mop, is_cascade);
+    if (error != NO_ERROR)
       {
         return error;
       }
 
-      auto saved_cons_predicate = [](const SM_CONSTRAINT_INFO& cons_info) -> bool
-        {
-          return cons_info.constraint_type != DB_CONSTRAINT_FOREIGN_KEY;
-        };
+    try
+      {
+        std::for_each (m_trun_classes.begin(), m_trun_classes.end(),
+            [&truncators](const OID& oid) { truncators.emplace_back (oid); });
+      }
+    catch (int& error)
+      {
+        // exception from sm_truncator constructor
+        return error;
+      }
 
-      error = truncator.drop_saved_constraints (saved_cons_predicate);
-      if (error != NO_ERROR)
+    /* Save constraints. Or, remove instances from the constraint if impossible. FK first, then non-FK */
+    for (auto& truncator : truncators)
+      {
+        auto cons_predicate = [](const SM_CLASS_CONSTRAINT& cons) -> bool
+          {
+            return cons.type == SM_CONSTRAINT_FOREIGN_KEY;
+          };
+
+        error = truncator.save_constraints_or_clear (cons_predicate);
+        if (error != NO_ERROR)
+          {
+            return error;
+          }
+
+        /* FK must be dropped earlier than PK, because of referencing */
+        auto saved_cons_predicate = [](const SM_CONSTRAINT_INFO& cons_info) -> bool
+          {
+            return cons_info.constraint_type == DB_CONSTRAINT_FOREIGN_KEY;
+          };
+
+        error = truncator.drop_saved_constraints (saved_cons_predicate);
+        if (error != NO_ERROR)
+          {
+            return error;
+          }
+      }
+
+    for (auto& truncator : truncators)
+      {
+        auto cons_predicate = [](const SM_CLASS_CONSTRAINT& cons) -> bool
+          {
+            if (!SM_IS_CONSTRAINT_INDEX_FAMILY (cons.type))
+              {
+                assert (cons.type == SM_CONSTRAINT_NOT_NULL);
+                return false;
+              }
+            else if (cons.type == SM_CONSTRAINT_FOREIGN_KEY)
+              {
+                return false;
+              }
+            else
+              {
+                return true;
+              }
+          };
+
+        error = truncator.save_constraints_or_clear (cons_predicate);
+        if (error != NO_ERROR)
         {
           return error;
         }
-    }
 
-  /* Destroy heap file. Or, delete instances from the heap if impossible */
-  for (auto& truncator : truncators)
-    {
-      error = truncator.truncate_heap();
-      if (error != NO_ERROR)
-        {
-          return error;
-        }
-    }
+        auto saved_cons_predicate = [](const SM_CONSTRAINT_INFO& cons_info) -> bool
+          {
+            return cons_info.constraint_type != DB_CONSTRAINT_FOREIGN_KEY;
+          };
 
-  /* Restore constraints. non-FK first, and then FK */
-  for (auto& truncator : truncators)
-    {
-      auto saved_cons_predicate = [](const SM_CONSTRAINT_INFO& cons_info) -> bool
-        {
-          return cons_info.constraint_type != DB_CONSTRAINT_FOREIGN_KEY;
-        };
+        error = truncator.drop_saved_constraints (saved_cons_predicate);
+        if (error != NO_ERROR)
+          {
+            return error;
+          }
+      }
 
-      error = truncator.restore_constraints (saved_cons_predicate);
-      if (error != NO_ERROR)
-        {
-          return error;
-        }
-    }
+    /* Destroy heap file. Or, delete instances from the heap if impossible */
+    for (auto& truncator : truncators)
+      {
+        error = truncator.truncate_heap();
+        if (error != NO_ERROR)
+          {
+            return error;
+          }
+      }
 
-  for (auto& truncator : truncators)
-    {
-      auto saved_cons_predicate = [](const SM_CONSTRAINT_INFO& cons_info) -> bool
-        {
-          return cons_info.constraint_type == DB_CONSTRAINT_FOREIGN_KEY;
-        };
-      error = truncator.restore_constraints (saved_cons_predicate);
-      if (error != NO_ERROR)
-        {
-          return error;
-        }
-    }
+    /* Restore constraints. non-FK first, and then FK */
+    for (auto& truncator : truncators)
+      {
+        auto saved_cons_predicate = [](const SM_CONSTRAINT_INFO& cons_info) -> bool
+          {
+            return cons_info.constraint_type != DB_CONSTRAINT_FOREIGN_KEY;
+          };
 
-  /* reset auto_increment starting value */
-  for (auto& truncator : truncators)
-    {
-      error = truncator.reset_serials ();
-      if (error != NO_ERROR)
-        {
-          return error;
-        }
-    }
+        error = truncator.restore_constraints (saved_cons_predicate);
+        if (error != NO_ERROR)
+          {
+            return error;
+          }
+      }
 
-  return error;
-}
+    for (auto& truncator : truncators)
+      {
+        auto saved_cons_predicate = [](const SM_CONSTRAINT_INFO& cons_info) -> bool
+          {
+            return cons_info.constraint_type == DB_CONSTRAINT_FOREIGN_KEY;
+          };
+        error = truncator.restore_constraints (saved_cons_predicate);
+        if (error != NO_ERROR)
+          {
+            return error;
+          }
+      }
 
-namespace cubschema 
-{
-  class_truncator::class_truncator (const OID& class_oid)
+    /* reset auto_increment starting value */
+    for (auto& truncator : truncators)
+      {
+        error = truncator.reset_serials ();
+        if (error != NO_ERROR)
+          {
+            return error;
+          }
+      }
+
+    return error;
+  }
+
+  class_truncate_context::class_truncate_context (const OID& class_oid)
   {
     int error = NO_ERROR;
     m_mop = ws_mop (&class_oid, NULL);
@@ -197,7 +322,7 @@ namespace cubschema
       }
   }
 
-  class_truncator::class_truncator (class_truncator&& other) :
+  class_truncate_context::class_truncate_context (class_truncate_context&& other) :
     m_mop (other.m_mop),
     m_class (other.m_class),
     m_unique_info (other.m_unique_info),
@@ -211,7 +336,7 @@ namespace cubschema
     other.m_index_info = NULL;
   }
 
-  class_truncator::~class_truncator ()
+  class_truncate_context::~class_truncate_context ()
   {
     if (m_unique_info != NULL)
     {
@@ -235,7 +360,7 @@ namespace cubschema
    *   pred(in): only constraints which meet this condition are processed
    */
   int
-  class_truncator::save_constraints_or_clear (cons_predicate pred)
+  class_truncate_context::save_constraints_or_clear (cons_predicate pred)
   {
     int error = NO_ERROR;
     SM_CLASS_CONSTRAINT *c = NULL;
@@ -299,7 +424,7 @@ namespace cubschema
    *   pred(in): only constraints which meet this condition are processed
    */
   int
-  class_truncator::drop_saved_constraints (saved_cons_predicate pred)
+  class_truncate_context::drop_saved_constraints (saved_cons_predicate pred)
   {
     DB_CTMPL *ctmpl = NULL;
     SM_CONSTRAINT_INFO *saved = NULL;
@@ -380,7 +505,7 @@ namespace cubschema
    *   return: error code or NO_ERROR
    */
   int
-  class_truncator::truncate_heap ()
+  class_truncate_context::truncate_heap ()
   {
     int error = NO_ERROR;
     if (sm_is_reuse_oid_class (m_mop))
@@ -402,7 +527,7 @@ namespace cubschema
    *   pred(in): only constraints which meet this condition are processed
    */
   int
-  class_truncator::restore_constraints (saved_cons_predicate pred)
+  class_truncate_context::restore_constraints (saved_cons_predicate pred)
   {
     DB_CTMPL *ctmpl = NULL;
     SM_CONSTRAINT_INFO *saved = NULL;
@@ -471,7 +596,7 @@ namespace cubschema
    *   return: error code or NO_ERROR
    */
   int
-  class_truncator::reset_serials ()
+  class_truncate_context::reset_serials ()
   {
     int au_save = 0;
     SM_ATTRIBUTE *att = NULL;

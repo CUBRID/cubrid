@@ -29,7 +29,6 @@
 #include <string.h>
 #include <ctype.h>
 #include <assert.h>
-#include <unordered_set>
 
 #ifdef HPUX
 #include <a.out.h>
@@ -416,9 +415,6 @@ static void sm_reset_descriptors (MOP class_);
 static bool sm_filter_index_pred_have_invalid_attrs (SM_CLASS_CONSTRAINT * constraint, char *class_name,
 						     SM_ATTRIBUTE * old_atts, SM_ATTRIBUTE * new_atts);
 
-// *INDENT-OFF*
-static int sm_collect_truncatable_classes (MOP class_mop, std::unordered_set<OID>& trun_classes, bool is_cascade);
-// *INDENT-ON*
 static int sm_save_nested_view_versions (PARSER_CONTEXT * parser, DB_OBJECT * class_object, SM_CLASS * class_);
 static bool sm_is_nested_view_recached (PARSER_CONTEXT * parser);
 
@@ -15647,95 +15643,6 @@ sm_truncate_using_destroy_heap (MOP class_mop)
 }
 
 /*
- * sm_collect_truncatable_classes () - Collects OIDs of truncatable classes regarding the CASCADE option
- *   return: NO_ERROR on success, non-zero for ERROR
- *   class_mop(in):
- *   trun_classes(in/out): a hash for skipping checked classes and collecting class OIDs
- *   is_cascade(in): whether to cascade TRUNCATE to FK-referring classes
- */
-int
-sm_collect_truncatable_classes (MOP class_mop, std::unordered_set < OID > &trun_classes, bool is_cascade)
-{
-  int error = NO_ERROR;
-  SM_CLASS *class_ = NULL;
-  SM_CLASS_CONSTRAINT *pk_constraint = NULL;
-  SM_FOREIGN_KEY_INFO *fk_ref;
-  OID *fk_cls_oid;
-
-  error = au_fetch_class (class_mop, &class_, AU_FETCH_READ, DB_AUTH_ALTER);
-  if (error != NO_ERROR || class_ == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      return er_errid ();
-    }
-
-  trun_classes.emplace (*ws_oid (class_mop));
-
-  pk_constraint = classobj_find_cons_primary_key (class_->constraints);
-  if (pk_constraint == NULL || pk_constraint->fk_info == NULL)
-    {
-      /* if no PK or FK-referred, it can be truncated */
-      return NO_ERROR;
-    }
-
-  /* Now, there is a PK, and are some FKs-referring to the PK */
-
-  if (!is_cascade)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TRUNCATE_PK_REFERRED, 1, pk_constraint->fk_info->name);
-      return ER_TRUNCATE_PK_REFERRED;
-    }
-
-  /* Find FK-child classes to cascade. */
-  for (fk_ref = pk_constraint->fk_info; fk_ref; fk_ref = fk_ref->next)
-    {
-      if (fk_ref->delete_action == SM_FOREIGN_KEY_CASCADE)
-	{
-	  if (trun_classes.find (fk_ref->self_oid) != trun_classes.end ())
-	    {
-	      continue;		/* already checked */
-	    }
-
-	  MOP fk_child_mop = ws_mop (&fk_ref->self_oid, NULL);
-	  if (fk_child_mop == NULL)
-	    {
-	      assert (er_errid () != NO_ERROR);
-	      return er_errid ();
-	    }
-
-	  int partition_type = DB_NOT_PARTITIONED_CLASS;
-	  error = sm_partitioned_class_type (fk_child_mop, &partition_type, NULL, NULL);
-	  if (error != NO_ERROR)
-	    {
-	      return error;
-	    }
-
-	  if (partition_type == DB_PARTITION_CLASS)
-	    {
-	      /*
-	       * FKs of all partition classes refers to a class that the parittioned class of them referes to.
-	       * But, partition class will be processed when the partitioned class is done.
-	       */
-	      continue;
-	    }
-
-	  error = sm_collect_truncatable_classes (fk_child_mop, trun_classes, is_cascade);
-	  if (error != NO_ERROR)
-	    {
-	      return error;
-	    }
-	}
-      else
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TRUNCATE_CANT_CASCADE, 1, fk_ref->name);
-	  return ER_TRUNCATE_CANT_CASCADE;
-	}
-    }
-
-  return NO_ERROR;
-}
-
-/*
  * sm_truncate_class () - truncates a class
  *   return: NO_ERROR on success, non-zero for ERROR
  *   class_mop(in):
@@ -15745,9 +15652,7 @@ int
 sm_truncate_class (MOP class_mop, const bool is_cascade)
 {
   int error = NO_ERROR;
-  // *INDENT-OFF*
-  std::unordered_set<OID> trun_classes;
-  // *INDENT-ON*
+  cubschema::class_truncator truncator (class_mop);
 
   assert (class_mop != NULL);
 
@@ -15757,19 +15662,11 @@ sm_truncate_class (MOP class_mop, const bool is_cascade)
       goto error_exit;
     }
 
-  error = sm_collect_truncatable_classes (class_mop, trun_classes, is_cascade);
+  error = truncator.truncate (is_cascade);
   if (error != NO_ERROR)
     {
       goto error_exit;
     }
-
-  // *INDENT-OFF*
-  error = sm_truncate_class_internal (std::move(trun_classes));
-  if (error != NO_ERROR)
-    {
-      goto error_exit;
-    }
-  // *INDENT-ON*
 
   return NO_ERROR;
 

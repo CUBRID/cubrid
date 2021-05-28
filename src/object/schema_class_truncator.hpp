@@ -24,35 +24,20 @@
 
 #include <unordered_set>
 
-extern int sm_truncate_class_internal (std::unordered_set<OID>&& trun_classes);
 namespace cubschema
 {
-  class class_truncator final
+  class class_truncator
   {
-  public:
-    using cons_predicate = std::function<bool(const SM_CLASS_CONSTRAINT&)>;
-    using saved_cons_predicate = std::function<bool(const SM_CONSTRAINT_INFO&)>;
+    public:
+      class_truncator (MOP class_mop) : m_class_mop (class_mop) {}
 
-    int save_constraints_or_clear (cons_predicate pred);
-    int drop_saved_constraints (saved_cons_predicate pred);
-    int truncate_heap ();
-    int restore_constraints (saved_cons_predicate pred);
-    int reset_serials ();
+      int truncate (const bool is_cascade);
 
-    class_truncator (const OID& class_oid);
-    class_truncator (class_truncator&& other);
-    ~class_truncator ();
+    private:
+      int collect_trun_classes (MOP class_mop, const bool is_cascade);
 
-    class_truncator (const class_truncator& other) = delete;
-    class_truncator& operator=(const class_truncator& other) = delete;
-    class_truncator& operator=(const class_truncator&& other) = delete;
-
-  private:
-    MOP m_mop = NULL;
-    SM_CLASS* m_class = NULL;
-    SM_CONSTRAINT_INFO* m_unique_info = NULL;
-    SM_CONSTRAINT_INFO* m_fk_info = NULL;
-    SM_CONSTRAINT_INFO* m_index_info = NULL;
+      MOP m_class_mop;
+      std::unordered_set<OID> m_trun_classes;
   };
 }
 
