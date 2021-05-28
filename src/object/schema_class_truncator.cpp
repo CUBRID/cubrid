@@ -540,8 +540,13 @@ namespace cubschema
     int error = NO_ERROR;
 
     /* Normal index must be created earlier than unique constraint or FK, because of shared btree case. */
-    for (saved = m_index_info; saved != NULL && pred (*saved); saved = saved->next)
+    for (saved = m_index_info; saved != NULL; saved = saved->next)
       {
+	if (!pred (*saved))
+	  {
+	    continue;
+	  }
+
 	error = sm_add_constraint (m_mop, saved->constraint_type, saved->name, (const char **) saved->att_names,
 				   saved->asc_desc, saved->prefix_length, false, saved->filter_predicate,
 				   saved->func_index_info, saved->comment, saved->index_status);
@@ -552,8 +557,13 @@ namespace cubschema
       }
 
     /* Even for a class, PK must be created earlier than FK, because of the self-referencing case */
-    for (saved = m_unique_info; saved != NULL && pred (*saved); saved = saved->next)
+    for (saved = m_unique_info; saved != NULL; saved = saved->next)
       {
+	if (!pred (*saved))
+	  {
+	    continue;
+	  }
+
 	error = sm_add_constraint (m_mop, saved->constraint_type, saved->name, (const char **) saved->att_names,
 				   saved->asc_desc, saved->prefix_length, false, saved->filter_predicate,
 				   saved->func_index_info, saved->comment, saved->index_status);
@@ -572,8 +582,13 @@ namespace cubschema
 	return error;
       }
 
-    for (saved = m_fk_info; saved != NULL && pred (*saved); saved = saved->next)
+    for (saved = m_fk_info; saved != NULL; saved = saved->next)
       {
+	if (!pred (*saved))
+	  {
+	    continue;
+	  }
+
 	error = dbt_add_foreign_key (ctmpl, saved->name, (const char **) saved->att_names, saved->ref_cls_name,
 				     (const char **) saved->ref_attrs, saved->fk_delete_action,
 				     saved->fk_update_action, saved->comment);
