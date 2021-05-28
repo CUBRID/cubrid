@@ -177,4 +177,5 @@ CREATE OR REPLACE FUNCTION testInsert(val INT, del INT) RETURN int as language j
 CREATE OR REPLACE FUNCTION testSubquery(select_list string, from_claus string, where_claus string, val string) RETURN string as language java name 'SpPrepareTest.testSubquery(java.lang.String, java.lang.String, java.lang.String, java.lang.String) return java.lang.String';
 CREATE OR REPLACE FUNCTION testSubquery2(select_list string, from_claus string, where_claus string, val string) RETURN string as language java name 'SpPrepareTest.testSubquery2(java.lang.String, java.lang.String, java.lang.String, java.lang.String) return java.lang.String';
 CREATE OR REPLACE FUNCTION testDummy(n INT) RETURN int as language java name 'SpPrepareTest.testDummy(int) return int';
+CREATE OR REPLACE FUNCTION TestReturnString() RETURN STRING AS LANGUAGE JAVA NAME 'SpPrepareTest.testReturnString() return java.lang.String';
 COMMIT WORK;

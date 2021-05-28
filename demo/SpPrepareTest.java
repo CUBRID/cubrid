@@ -42,6 +42,18 @@ import java.sql.*;
 
 public class SpPrepareTest {
 
+   /*
+     * CREATE OR REPLACE FUNCTION TestReturnString() RETURN STRING
+     * AS LANGUAGE JAVA
+     * NAME 'SpCubrid.testReturnString() return java.lang.String';
+     */
+    public static String testReturnString() {
+        String temp = "";
+        for ( int i = 0; i< 10000; i++)
+            temp = temp + "1234567890";
+        return temp;
+    }
+
     /*
      * CREATE OR REPLACE FUNCTION hello() RETURN STRING
      * AS LANGUAGE JAVA
