@@ -2538,7 +2538,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, INT64 * num_redo_log_records, lo
 	      // Rebuild the transaction table image based on checkpoint information
 	      LOG_LSA start_redo_lsa;
 	      chkpt_infop->recovery_analysis (thread_p, start_redo_lsa);
-	      context.set_end_redo_lsa (start_redo_lsa);
+	      context.set_start_redo_lsa (start_redo_lsa);
 	    }
 
 	  log_rv_analysis_record (thread_p, log_rtype, tran_id, &log_lsa, log_page_p, &prev_lsa, context);
@@ -2710,8 +2710,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
     if (log_recovery_redo_parallel_count > 0)
       {
 	minimum_log_lsa.reset (new cublog::minimum_log_lsa_monitor ());
-	parallel_recovery_redo.
-	  reset (new cublog::redo_parallel (log_recovery_redo_parallel_count, *minimum_log_lsa.get ()));
+	parallel_recovery_redo.reset (new cublog::
+				      redo_parallel (log_recovery_redo_parallel_count, *minimum_log_lsa.get ()));
       }
   }
 #endif
