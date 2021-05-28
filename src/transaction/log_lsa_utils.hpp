@@ -20,7 +20,7 @@
 #define _LOG_LSA_UTILS_HPP_
 
 #include <cstdint>
-#include <cstdlib>
+#include <cstdio>
 
 struct log_lsa;
 namespace cubpacking
