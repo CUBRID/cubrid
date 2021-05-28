@@ -20,6 +20,7 @@
 #define _LOG_LSA_UTILS_HPP_
 
 #include <cstdint>
+#include <cstdlib>
 
 struct log_lsa;
 namespace cubpacking
@@ -32,7 +33,7 @@ namespace cublog::lsa_utils
 {
   void pack (const log_lsa &lsa, cubpacking::packer &serializer);
   void unpack (cubpacking::unpacker &deserializer, log_lsa &lsa);
-  std::size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset);
+  size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset);
 }
 
 #endif // _LOG_LSA_UTILS_HPP_

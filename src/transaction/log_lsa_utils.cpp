@@ -39,7 +39,7 @@ namespace cublog::lsa_utils
     lsa = big_int;
   }
 
-  std::size_t
+  size_t
   get_packed_size (cubpacking::packer &serializator, std::size_t start_offset)
   {
     return serializator.get_packed_bigint_size (start_offset);
