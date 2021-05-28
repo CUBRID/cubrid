@@ -45,16 +45,25 @@ SERVER_TYPE get_server_type ()
 
 #if defined (SERVER_MODE)
 
-void init_server_type (const char *db_name)
+int init_server_type (const char *db_name)
 {
+  int er_code = NO_ERROR;
   g_server_type = (SERVER_TYPE) prm_get_integer_value (PRM_ID_SERVER_TYPE);
   if (g_server_type == SERVER_TYPE_TRANSACTION)
     {
-      ats_Gl.init_page_server_hosts (db_name);
+      er_code = ats_Gl.init_page_server_hosts (db_name);
     }
 
-  er_log_debug (ARG_FILE_LINE, "Starting server type: %s\n",
-		get_server_type () == SERVER_TYPE_PAGE ? "page" : "transaction");
+  if (er_code == NO_ERROR)
+    {
+      er_log_debug (ARG_FILE_LINE, "Starting server type: %s\n",
+		    get_server_type () == SERVER_TYPE_PAGE ? "page" : "transaction");
+    }
+  else
+    {
+      ASSERT_ERROR ();
+    }
+  return er_code;
 }
 
 void finalize_server_type ()
@@ -72,9 +81,10 @@ void finalize_server_type ()
 
 #else // !SERVER_MODE = SA_MODE
 
-void init_server_type (const char *)
+int init_server_type (const char *)
 {
   g_server_type = SERVER_TYPE_TRANSACTION;
+  return NO_ERROR;
 }
 
 void finalize_server_type ()

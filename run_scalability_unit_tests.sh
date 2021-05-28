@@ -17,6 +17,7 @@
 #
 
 # A-Z
+./test_checkpoint_info
 ./test_log_page_fetcher
 ./test_data_page_fetcher
 ./test_log_page_broker

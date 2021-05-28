@@ -125,16 +125,41 @@ active_tran_server::init_page_server_hosts (const char *db_name)
 {
   assert_is_active_tran_server ();
 
-  std::string hosts = prm_get_string_value (PRM_ID_PAGE_SERVER_HOSTS);
+  /*
+   * Specified behavior:
+   * ===============================================================================
+   * |       \    hosts config     |   empty   |    bad    |          good         |
+   * |--------\--------------------|-----------|-----------|------------|----------|
+   * | storage \ connections to PS |           |           |    == 0    |   > 0    |
+   * |==========\==============================|===========|============|==========|
+   * |   local  |                      OK      |    N/A    |     OK     |   OK     |
+   * |----------|------------------------------|-----------|------------|----------|
+   * |   remote |                     Error    |   Error   |   Error    |   OK     |
+   * ===============================================================================
+   */
 
+  // read raw config
+  //
+  std::string hosts = prm_get_string_value (PRM_ID_PAGE_SERVER_HOSTS);
+  m_has_remote_storage = prm_get_bool_value (PRM_ID_REMOTE_STORAGE);
+
+  // check config validity
+  //
   if (!hosts.length ())
     {
-      // no page server
-      return NO_ERROR;
+      if (m_has_remote_storage)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EMPTY_PAGE_SERVER_HOSTS_CONFIG, 0);
+	  return ER_EMPTY_PAGE_SERVER_HOSTS_CONFIG;
+	}
+      else
+	{
+	  // no page server, local storage
+	  return NO_ERROR;
+	}
     }
 
   int exit_code = parse_page_server_hosts_config (hosts);
-
   if (m_connection_list.empty ())
     {
       // no valid hosts
@@ -202,7 +227,7 @@ active_tran_server::connect_to_page_server (const cubcomm::node &node, const cha
       return ER_NET_PAGESERVER_CONNECTION;
     }
 
-  er_log_debug (ARG_FILE_LINE, "Successfully connected to the page server. Channel id: %s.\n",
+  er_log_debug (ARG_FILE_LINE, "Transaction server successfully connected to the page server. Channel id: %s.\n",
 		srv_chn.get_channel_id ().c_str ());
   m_page_server_conn = nullptr;
   assert (m_page_server_conn == nullptr);
@@ -261,6 +286,13 @@ active_tran_server::get_log_page_broker ()
 {
   assert (m_log_page_broker);
   return *m_log_page_broker;
+}
+
+bool active_tran_server::has_remote_storage () const
+{
+  assert_is_active_tran_server ();
+
+  return m_has_remote_storage;
 }
 
 void
