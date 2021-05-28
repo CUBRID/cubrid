@@ -78,7 +78,9 @@ public class ExecuteThread extends Thread {
 
     /* TODO: It will be replaced with DirectByteBuffer-based new buffer which dynamically extended if overflow exists */
     /* Since DirectByteBuffer's allocation time is slow, DirectByteBuffer pooling should be implemented */
-    private ByteBuffer buffer;
+    private ByteBuffer readbuffer;
+    private ByteBuffer resultBuffer;
+
     private CUBRIDPacker packer;
     private CUBRIDUnpacker unpacker;
 
@@ -90,9 +92,12 @@ public class ExecuteThread extends Thread {
         super();
         this.client = client;
         output = new DataOutputStream(new BufferedOutputStream(this.client.getOutputStream()));
-        buffer = ByteBuffer.allocate(4096);
-        packer = new CUBRIDPacker(buffer);
-        unpacker = new CUBRIDUnpacker(buffer);
+
+        readbuffer = ByteBuffer.allocate(4096);
+        resultBuffer = ByteBuffer.allocate(4096);
+
+        packer = new CUBRIDPacker(resultBuffer);
+        unpacker = new CUBRIDUnpacker(readbuffer);
     }
 
     public Socket getSocket() {
@@ -257,11 +262,12 @@ public class ExecuteThread extends Thread {
         byte[] bytes = new byte[size];
         input.readFully(bytes);
 
-        ensureSpace(size);
+        ensureReadBufferSpace(size);
+        unpacker.setBuffer(readbuffer);
 
-        buffer.clear(); // always clear
-        buffer.put(bytes);
-        buffer.flip(); /* prepare to read */
+        readbuffer.clear(); // always clear
+        readbuffer.put(bytes);
+        readbuffer.flip(); /* prepare to read */
 
         StoredProcedure procedure = makeStoredProcedure();
         Method m = procedure.getTarget().getMethod();
@@ -332,14 +338,16 @@ public class ExecuteThread extends Thread {
             resolvedResult = ValueUtilities.resolveValue(procedure.getReturnType(), result);
         }
 
-        buffer.clear();
-        buffer.flip(); /* prepare to put */
+        resultBuffer.clear(); /* prepare to put */
+        packer.setBuffer(resultBuffer);
+
         packer.packValue(resolvedResult, procedure.getReturnType(), this.charSet);
         returnOutArgs(procedure, packer);
+        resultBuffer = packer.getBuffer();
 
         output.writeInt(REQ_CODE_RESULT);
-        output.writeInt(buffer.position() + 4);
-        output.write(buffer.array(), 0, buffer.position());
+        output.writeInt(resultBuffer.position() + 4);
+        output.write(resultBuffer.array(), 0, resultBuffer.position());
         output.writeInt(REQ_CODE_RESULT);
         output.flush();
     }
@@ -353,15 +361,20 @@ public class ExecuteThread extends Thread {
     }
 
     private void sendError(String exception, Socket socket) throws IOException {
+        resultBuffer.clear();
+        packer.setBuffer(resultBuffer);
 
-        buffer.clear();
-        buffer.flip(); /* prepare to put */
         packer.packValue(new Integer(1), DBType.DB_INT, this.charSet);
         packer.packValue(exception, DBType.DB_STRING, this.charSet);
 
+        resultBuffer = packer.getBuffer();
+
+        // errorBuffer.flip(); /* prepare to read */
         output.writeInt(REQ_CODE_ERROR);
-        output.writeInt(buffer.position() + 4);
-        output.write(buffer.array(), 0, buffer.position());
+        output.writeInt(resultBuffer.position() + 4);
+        // WritableByteChannel channel = Channels.newChannel(output);
+        // channel.write(errorBuffer);
+        output.write(resultBuffer.array(), 0, resultBuffer.position());
         output.writeInt(REQ_CODE_ERROR);
         output.flush();
     }
@@ -384,17 +397,17 @@ public class ExecuteThread extends Thread {
 
     private static final int EXPAND_FACTOR = 2;
 
-    private void ensureSpace(int size) {
-        if (buffer.remaining() > size) {
+    private void ensureReadBufferSpace(int size) {
+        if (readbuffer.capacity() > size) {
             return;
         }
-        int newCapacity = (int) (buffer.capacity() * EXPAND_FACTOR);
-        while (newCapacity < (buffer.capacity() + size)) {
+        int newCapacity = (int) (readbuffer.capacity() * EXPAND_FACTOR);
+        while (newCapacity < (readbuffer.capacity() + size)) {
             newCapacity *= EXPAND_FACTOR;
         }
         ByteBuffer expanded = ByteBuffer.allocate(newCapacity);
-        expanded.order(buffer.order());
-        expanded.put(buffer);
-        buffer = expanded;
+        expanded.order(readbuffer.order());
+        expanded.put(readbuffer);
+        readbuffer = expanded;
     }
 }
