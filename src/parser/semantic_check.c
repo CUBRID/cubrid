@@ -11423,8 +11423,15 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs, PT_NODE * rhs)
 
 		  if (rhs->node_type != PT_HOST_VAR)
 		    {
-		      d = pt_data_type_to_db_domain (parser, lhs->data_type, NULL);
-		      d = tp_domain_cache (d);
+		      if (lhs->data_type != NULL)
+			{
+			  d = pt_data_type_to_db_domain (parser, lhs->data_type, NULL);
+			  d = tp_domain_cache (d);
+			}
+		      else
+			{
+			  d = tp_domain_resolve_default (lhs_dbtype);
+			}
 		    }
 		  else
 		    {
@@ -11457,8 +11464,15 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs, PT_NODE * rhs)
 			    }
 			  else
 			    {
-			      d = pt_data_type_to_db_domain (parser, lhs->data_type, NULL);
-			      d = tp_domain_cache (d);
+			      if (lhs->data_type != NULL)
+				{
+				  d = pt_data_type_to_db_domain (parser, lhs->data_type, NULL);
+				  d = tp_domain_cache (d);
+				}
+			      else
+				{
+				  d = tp_domain_resolve_default (lhs_dbtype);
+				}
 			    }
 
 			  if (PT_HAS_COLLATION (lhs->type_enum))
