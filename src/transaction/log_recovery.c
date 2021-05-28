@@ -734,7 +734,12 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   if (ismedia_crash != false)
     {
       /* Media crash means restore from backup. */
-      context.init_for_restore (stopat);
+      context.init_for_restore (log_Gl.hdr.chkpt_lsa, stopat);
+    }
+  else
+    {
+      // Recovery after unexpected stop or crash
+      context.init_for_recovery (log_Gl.hdr.chkpt_lsa);
     }
 
   /* Notify vacuum it may need to recover the lost block data.
@@ -2710,8 +2715,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
     if (log_recovery_redo_parallel_count > 0)
       {
 	minimum_log_lsa.reset (new cublog::minimum_log_lsa_monitor ());
-	parallel_recovery_redo.reset (new cublog::
-				      redo_parallel (log_recovery_redo_parallel_count, *minimum_log_lsa.get ()));
+	parallel_recovery_redo.
+	  reset (new cublog::redo_parallel (log_recovery_redo_parallel_count, *minimum_log_lsa.get ()));
       }
   }
 #endif

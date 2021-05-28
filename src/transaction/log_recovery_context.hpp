@@ -46,7 +46,8 @@ class log_recovery_context
     void set_start_redo_lsa (const log_lsa &start_redo_lsa);
 
     // Restore related functions
-    void init_for_restore (const time_t *stopat_p);               // Init recovery context for restore
+    void init_for_recovery (const log_lsa &chkpt_lsa);
+    void init_for_restore (const log_lsa &chkpt_lsa, const time_t *stopat_p);   // Init recovery context for restore
     bool is_restore_from_backup () const;                         // see m_is_restore_from_backup
     bool is_restore_incomplete () const;                          // see m_is_restore_incomplete
     void set_incomplete_restore ();                               // set m_is_restore_incomplete to true

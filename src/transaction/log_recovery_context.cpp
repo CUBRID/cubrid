@@ -53,8 +53,18 @@ log_recovery_context::log_recovery_context ()
 }
 
 void
-log_recovery_context::init_for_restore (const time_t *stopat_p)
+log_recovery_context::init_for_recovery (const log_lsa &chkpt_lsa)
 {
+  // All LSA's are initialized as checkpoint LSA
+  m_checkpoint_lsa = chkpt_lsa;
+  m_start_redo_lsa = chkpt_lsa;
+  m_end_redo_lsa = chkpt_lsa;
+}
+
+void
+log_recovery_context::init_for_restore (const log_lsa &chkpt_lsa, const time_t *stopat_p)
+{
+  m_checkpoint_lsa = chkpt_lsa;
   m_is_restore_from_backup = true;
   if (stopat_p)
     {
@@ -63,6 +73,8 @@ log_recovery_context::init_for_restore (const time_t *stopat_p)
 
   /* we may have to start from an older checkpoint... */
   (void) fileio_map_mounted (&cubthread::get_entry (), get_disk_checkpoint_min_lsa, &m_checkpoint_lsa);
+
+  // Also init start/end redo LSA's as checkpoint LSA
   m_start_redo_lsa = m_checkpoint_lsa;
   m_end_redo_lsa = m_checkpoint_lsa;
 }
