@@ -3721,7 +3721,7 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 	    {
 	      return S_ERROR;
 	    }
-	  if (fhs_create (thread_p, llsidp->hlsid.ehash_table, DB_TYPE_INTEGER, llsidp->list_id->tuple_cnt, NULL, 0) == NULL)
+	  if (fhs_create (thread_p, llsidp->hlsid.ehash_table, DB_TYPE_INTEGER, llsidp->list_id->tuple_cnt) == NULL)
 	    {
 	      return S_ERROR;
 	    }
