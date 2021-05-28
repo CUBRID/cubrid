@@ -90,26 +90,11 @@ namespace cubprocedure
     DB_VALUE *value;
   };
 
-  struct sp_call : public cubpacking::packable_object
-  {
-    sp_call ();
-
-    void pack (cubpacking::packer &serializator) const override;
-    void unpack (cubpacking::unpacker &deserializator) override
-    {}
-    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
-
-    sp_args *args;
-    int command;
-  };
-}
-
 // exposed as uppercase for naming convention
-using DB_ARG_LIST = cubprocedure::db_arg_list;
+  using DB_ARG_LIST = cubprocedure::db_arg_list;
 
-using SP_HEADER = cubprocedure::sp_header;
-using SP_ARGS = cubprocedure::sp_args;
-using SP_CALL = cubprocedure::sp_call;
-using SP_VALUE = cubprocedure::sp_value;
+  using SP_HEADER = cubprocedure::sp_header;
+  using SP_ARGS = cubprocedure::sp_args;
+  using SP_VALUE = cubprocedure::sp_value;
 
 #endif // _JSP_STRUCT_HPP_

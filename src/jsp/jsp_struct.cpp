@@ -128,43 +128,7 @@ namespace cubprocedure
   void
   sp_args::unpack (cubpacking::unpacker &deserializator)
   {
-    // TODO
-  }
-
-//////////////////////////////////////////////////////////////////////////
-// call protocol
-//////////////////////////////////////////////////////////////////////////
-
-  sp_call::sp_call ()
-    : command (0),
-      args (nullptr)
-  {
-
-  }
-
-  void
-  sp_call::pack (cubpacking::packer &serializator) const
-  {
-    serializator.pack_int (command);
-    serializator.pack_int (args->get_packed_size (serializator, 0));
-
-    if (args)
-      {
-	args->pack (serializator);
-      }
-  }
-
-  size_t
-  sp_call::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
-  {
-    size_t size = serializator.get_packed_int_size (start_offset); /* command */
-    size += args->get_packed_size (serializator, size);
-
-    if (args)
-      {
-	size += args->get_packed_size (serializator, size);
-      }
-
-    return size;
+    // TODO : Future work in another subtasks
+    assert (false);
   }
 }
