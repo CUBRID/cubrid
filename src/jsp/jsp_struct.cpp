@@ -42,7 +42,7 @@ namespace cubprocedure
   size_t
   sp_header::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
-    size_t size = serializator.get_packed_int_size (command);
+    size_t size = serializator.get_packed_int_size (start_offset);
     size += serializator.get_packed_int_size (size);
     return size;
   }
