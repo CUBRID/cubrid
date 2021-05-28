@@ -50,13 +50,21 @@ public class CUBRIDPacker {
         this(ByteBuffer.wrap(byteArray));
     }
 
+    public void setBuffer(ByteBuffer buffer) {
+        this.buffer = buffer;
+    }
+
+    public ByteBuffer getBuffer() {
+        return this.buffer;
+    }
+
     public void packInt(int value) {
         align(DataUtilities.INT_ALIGNMENT);
         buffer.putInt(value);
     }
 
     public void packBool(boolean value) {
-        packInt(value ? 1 : 0);
+        buffer.putInt(value ? 1 : 0);
     }
 
     public void packShort(short value) {
@@ -69,16 +77,34 @@ public class CUBRIDPacker {
         buffer.putLong(value);
     }
 
+    public void packFloat(float value) {
+        // TODO: alignment is not considered yet in cubpacking::packer
+        // align(DataUtilities.FLOAT_ALIGNMENT);
+        buffer.putFloat(value);
+    }
+
+    public void packDouble(double value) {
+        // TODO: alignment is not considered yet in cubpacking::packer
+        // align(DataUtilities.DOUBLE_ALIGNMENT);
+        buffer.putDouble(value);
+    }
+
     public void packString(String value) {
         packCString(value.getBytes());
+    }
+
+    public void packString(String value, String charset) throws UnsupportedEncodingException {
+        packCString(value.getBytes(charset));
     }
 
     public void packCString(byte[] value) {
         int len = value.length;
         if (len < DataUtilities.MAX_SMALL_STRING_SIZE) {
+            ensureSpace(value.length + 1); // str + len
             buffer.put((byte) len);
             buffer.put(value);
         } else {
+            ensureSpace(value.length + 1 + 4); // str + LARGE_STRING_CODE + len
             buffer.put((byte) DataUtilities.LARGE_STRING_CODE);
 
             align(DataUtilities.INT_ALIGNMENT);
@@ -93,90 +119,92 @@ public class CUBRIDPacker {
     public void packValue(Object result, int ret_type, String charset)
             throws UnsupportedEncodingException {
         if (result == null) {
-            buffer.putInt(DBType.DB_NULL);
+            packInt(DBType.DB_NULL);
         } else if (result instanceof Short) {
-            buffer.putInt(DBType.DB_SHORT);
-            buffer.putInt(((Short) result).intValue());
+            packInt(DBType.DB_SHORT);
+            packShort((Short) result);
         } else if (result instanceof Integer) {
-            buffer.putInt(DBType.DB_INT);
-            buffer.putInt(((Integer) result).intValue());
+            packInt(DBType.DB_INT);
+            packInt(((Integer) result).intValue());
         } else if (result instanceof Long) {
-            buffer.putInt(DBType.DB_BIGINT);
-            buffer.putLong(((Long) result).longValue());
+            packInt(DBType.DB_BIGINT);
+            packBigInt(((Long) result).longValue());
         } else if (result instanceof Float) {
-            buffer.putInt(DBType.DB_FLOAT);
-            buffer.putFloat(((Float) result).floatValue());
+            packInt(DBType.DB_FLOAT);
+            packFloat(((Float) result).floatValue());
         } else if (result instanceof Double) {
-            buffer.putInt(ret_type);
-            buffer.putDouble(((Double) result).doubleValue());
+            packInt(ret_type);
+            packDouble(((Double) result).doubleValue());
         } else if (result instanceof BigDecimal) {
-            buffer.putInt(DBType.DB_NUMERIC);
-            DataUtilities.packAndSendString(((BigDecimal) result).toString(), buffer, charset);
+            packInt(DBType.DB_NUMERIC);
+            packString(((BigDecimal) result).toString(), charset);
         } else if (result instanceof String) {
-            buffer.putInt(DBType.DB_STRING);
-            DataUtilities.packAndSendString((String) result, buffer, charset);
+            packInt(DBType.DB_STRING);
+            packString((String) result, charset);
         } else if (result instanceof java.sql.Date) {
-            buffer.putInt(DBType.DB_DATE);
-            DataUtilities.packAndSendString(result.toString(), buffer, charset);
+            packInt(DBType.DB_DATE);
+            packString(result.toString(), charset);
         } else if (result instanceof java.sql.Time) {
-            buffer.putInt(DBType.DB_TIME);
-            DataUtilities.packAndSendString(result.toString(), buffer, charset);
+            packInt(DBType.DB_TIME);
+            packString(result.toString(), charset);
         } else if (result instanceof java.sql.Timestamp) {
-            buffer.putInt(ret_type);
+            packInt(ret_type);
 
             if (ret_type == DBType.DB_DATETIME) {
-                DataUtilities.packAndSendString(result.toString(), buffer, charset);
+                packString(result.toString());
             } else {
                 SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-                DataUtilities.packAndSendString(formatter.format(result), buffer, charset);
+                packString(formatter.format(result));
             }
         } else if (result instanceof CUBRIDOID) {
-            // TODO: implement CUBRIDOID type later
-            /*
-            buffer.putInt(DBType.DB_OBJECT);
+            packInt(DBType.DB_OBJECT);
             byte[] oid = ((CUBRIDOID) result).getOID();
-            buffer.putInt(UJCIUtil.bytes2int(oid, 0));
-            buffer.putInt(UJCIUtil.bytes2short(oid, 4));
-            buffer.putInt(UJCIUtil.bytes2short(oid, 6));
-            */
+            packInt(DataUtilities.bytes2int(oid, 0));
+            packShort(DataUtilities.bytes2short(oid, 4));
+            packShort(DataUtilities.bytes2short(oid, 6));
         } else if (result instanceof ResultSet) {
-            buffer.putInt(DBType.DB_RESULTSET);
-            buffer.putInt(((CUBRIDResultSet) result).getServerHandle());
+            packInt(DBType.DB_RESULTSET);
+            packInt(((CUBRIDResultSet) result).getServerHandle());
         } else if (result instanceof int[]) {
             int length = ((int[]) result).length;
             Integer[] array = new Integer[length];
+            packInt(array.length);
             for (int i = 0; i < array.length; i++) {
                 array[i] = new Integer(((int[]) result)[i]);
+                packValue(array[i], ret_type, charset);
             }
-            packValue(result, ret_type, charset);
+            packValue(array, ret_type, charset);
         } else if (result instanceof short[]) {
             int length = ((short[]) result).length;
             Short[] array = new Short[length];
+            packInt(array.length);
             for (int i = 0; i < array.length; i++) {
                 array[i] = new Short(((short[]) result)[i]);
+                packValue(array, ret_type, charset);
             }
-            packValue(result, ret_type, charset);
         } else if (result instanceof float[]) {
             int length = ((float[]) result).length;
             Float[] array = new Float[length];
+            packInt(array.length);
             for (int i = 0; i < array.length; i++) {
                 array[i] = new Float(((float[]) result)[i]);
+                packValue(array[i], ret_type, charset);
             }
-            packValue(result, ret_type, charset);
         } else if (result instanceof double[]) {
             int length = ((double[]) result).length;
             Double[] array = new Double[length];
+            packInt(array.length);
             for (int i = 0; i < array.length; i++) {
                 array[i] = new Double(((double[]) result)[i]);
+                packValue(array[i], ret_type, charset);
             }
-            packValue(result, ret_type, charset);
         } else if (result instanceof Object[]) {
-            buffer.putInt(ret_type);
+            packInt(ret_type);
             Object[] arr = (Object[]) result;
 
-            buffer.putInt(arr.length);
+            packInt(arr.length);
             for (int i = 0; i < arr.length; i++) {
-                packValue(result, ret_type, charset);
+                packValue(arr[i], ret_type, charset);
             }
         } else ;
     }
@@ -185,8 +213,25 @@ public class CUBRIDPacker {
         int currentPosition = buffer.position();
         int newPosition = DataUtilities.alignedPosition(buffer, size);
         if (newPosition - currentPosition > 0) {
-            buffer.limit(newPosition);
             buffer.position(newPosition);
         }
+    }
+
+    private static final int EXPAND_FACTOR = 2;
+
+    private void ensureSpace(int size) {
+        if (buffer.remaining() > size) {
+            return;
+        }
+        int newCapacity = (int) (buffer.capacity() * EXPAND_FACTOR);
+        while (newCapacity < (buffer.capacity() + size)) {
+            newCapacity *= EXPAND_FACTOR;
+        }
+        ByteBuffer expanded = ByteBuffer.allocate(newCapacity);
+
+        expanded.clear();
+        expanded.order(buffer.order());
+        expanded.put(buffer.array(), 0, buffer.position());
+        buffer = expanded;
     }
 }
