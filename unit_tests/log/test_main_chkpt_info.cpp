@@ -28,6 +28,7 @@
 #include "fake_packable_object.hpp"
 #include "log_impl.h"
 #include "log_lsa.hpp"
+#include "log_lsa_utils.hpp"
 #include "log_record.hpp"
 #include "log_system_tran.hpp"
 #include "mem_block.hpp"
