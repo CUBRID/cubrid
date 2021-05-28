@@ -159,7 +159,7 @@ namespace cubschema
   class_truncator::truncate (const bool is_cascade)
   {
     int error = NO_ERROR;
-    std::vector<class_truncate_context> truncators;
+    std::vector<class_truncate_context> contexts;
 
     assert (m_class_mop != NULL);
 
@@ -172,23 +172,23 @@ namespace cubschema
     try
       {
         std::for_each (m_trun_classes.begin(), m_trun_classes.end(),
-            [&truncators](const OID& oid) { truncators.emplace_back (oid); });
+            [&contexts](const OID& oid) { contexts.emplace_back (oid); });
       }
     catch (int& error)
       {
-        // exception from sm_truncator constructor
+        // exception from sm_context constructor
         return error;
       }
 
     /* Save constraints. Or, remove instances from the constraint if impossible. FK first, then non-FK */
-    for (auto& truncator : truncators)
+    for (auto& context : contexts)
       {
         auto cons_predicate = [](const SM_CLASS_CONSTRAINT& cons) -> bool
           {
             return cons.type == SM_CONSTRAINT_FOREIGN_KEY;
           };
 
-        error = truncator.save_constraints_or_clear (cons_predicate);
+        error = context.save_constraints_or_clear (cons_predicate);
         if (error != NO_ERROR)
           {
             return error;
@@ -200,14 +200,14 @@ namespace cubschema
             return cons_info.constraint_type == DB_CONSTRAINT_FOREIGN_KEY;
           };
 
-        error = truncator.drop_saved_constraints (saved_cons_predicate);
+        error = context.drop_saved_constraints (saved_cons_predicate);
         if (error != NO_ERROR)
           {
             return error;
           }
       }
 
-    for (auto& truncator : truncators)
+    for (auto& context : contexts)
       {
         auto cons_predicate = [](const SM_CLASS_CONSTRAINT& cons) -> bool
           {
@@ -226,7 +226,7 @@ namespace cubschema
               }
           };
 
-        error = truncator.save_constraints_or_clear (cons_predicate);
+        error = context.save_constraints_or_clear (cons_predicate);
         if (error != NO_ERROR)
         {
           return error;
@@ -237,7 +237,7 @@ namespace cubschema
             return cons_info.constraint_type != DB_CONSTRAINT_FOREIGN_KEY;
           };
 
-        error = truncator.drop_saved_constraints (saved_cons_predicate);
+        error = context.drop_saved_constraints (saved_cons_predicate);
         if (error != NO_ERROR)
           {
             return error;
@@ -245,9 +245,9 @@ namespace cubschema
       }
 
     /* Destroy heap file. Or, delete instances from the heap if impossible */
-    for (auto& truncator : truncators)
+    for (auto& context : contexts)
       {
-        error = truncator.truncate_heap();
+        error = context.truncate_heap();
         if (error != NO_ERROR)
           {
             return error;
@@ -255,27 +255,27 @@ namespace cubschema
       }
 
     /* Restore constraints. non-FK first, and then FK */
-    for (auto& truncator : truncators)
+    for (auto& context : contexts)
       {
         auto saved_cons_predicate = [](const SM_CONSTRAINT_INFO& cons_info) -> bool
           {
             return cons_info.constraint_type != DB_CONSTRAINT_FOREIGN_KEY;
           };
 
-        error = truncator.restore_constraints (saved_cons_predicate);
+        error = context.restore_constraints (saved_cons_predicate);
         if (error != NO_ERROR)
           {
             return error;
           }
       }
 
-    for (auto& truncator : truncators)
+    for (auto& context : contexts)
       {
         auto saved_cons_predicate = [](const SM_CONSTRAINT_INFO& cons_info) -> bool
           {
             return cons_info.constraint_type == DB_CONSTRAINT_FOREIGN_KEY;
           };
-        error = truncator.restore_constraints (saved_cons_predicate);
+        error = context.restore_constraints (saved_cons_predicate);
         if (error != NO_ERROR)
           {
             return error;
@@ -283,9 +283,9 @@ namespace cubschema
       }
 
     /* reset auto_increment starting value */
-    for (auto& truncator : truncators)
+    for (auto& context : contexts)
       {
-        error = truncator.reset_serials ();
+        error = context.reset_serials ();
         if (error != NO_ERROR)
           {
             return error;
