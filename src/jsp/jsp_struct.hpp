@@ -92,10 +92,10 @@ namespace cubprocedure
 }
 
 // exposed as uppercase for naming convention
-  using DB_ARG_LIST = cubprocedure::db_arg_list;
+using DB_ARG_LIST = cubprocedure::db_arg_list;
 
-  using SP_HEADER = cubprocedure::sp_header;
-  using SP_ARGS = cubprocedure::sp_args;
-  using SP_VALUE = cubprocedure::sp_value;
+using SP_HEADER = cubprocedure::sp_header;
+using SP_ARGS = cubprocedure::sp_args;
+using SP_VALUE = cubprocedure::sp_value;
 
 #endif // _JSP_STRUCT_HPP_
