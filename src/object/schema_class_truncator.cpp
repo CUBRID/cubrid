@@ -65,7 +65,6 @@ namespace cubschema
    * collect_trun_classes () - Collects OIDs of truncatable classes regarding the CASCADE option
    *   return: NO_ERROR on success, non-zero for ERROR
    *   class_mop(in):
-   *   trun_classes(in/out): a hash for skipping checked classes and collecting class OIDs
    *   is_cascade(in): whether to cascade TRUNCATE to FK-referring classes
    */
   int
