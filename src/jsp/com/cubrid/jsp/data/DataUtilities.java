@@ -133,4 +133,27 @@ public class DataUtilities {
 
         return len + pad;
     }
+
+    public static int bytes2int(byte[] b, int startIndex) {
+        int data = 0;
+        int endIndex = startIndex + 4;
+
+        for (int i = startIndex; i < endIndex; i++) {
+            data <<= 8;
+            data |= (b[i] & 0xff);
+        }
+
+        return data;
+    }
+
+    public static short bytes2short(byte[] b, int startIndex) {
+        short data = 0;
+        int endIndex = startIndex + 2;
+
+        for (int i = startIndex; i < endIndex; i++) {
+            data <<= 8;
+            data |= (b[i] & 0xff);
+        }
+        return data;
+    }
 }
