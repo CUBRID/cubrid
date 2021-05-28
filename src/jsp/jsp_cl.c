@@ -1323,7 +1323,7 @@ static int
 jsp_send_call_request (const SOCKET sockfd, const SP_ARGS * sp_args)
 {
   int error_code = NO_ERROR;
-  int req_size, nbytes;
+  size_t nbytes;
 
   packing_packer packer;
   packing_packer packer2;
@@ -1523,6 +1523,7 @@ jsp_receive_result (cubmem::extensible_block & blk, const SP_ARGS * sp_args)
   unpacker.set_buffer (blk.get_ptr (), blk.get_size ());
 
   SP_VALUE value_unpacker;
+  db_make_null (sp_args->returnval);
   value_unpacker.value = sp_args->returnval;
   value_unpacker.unpack (unpacker);
 
@@ -1552,6 +1553,8 @@ jsp_receive_error (cubmem::extensible_block & blk, const SP_ARGS * sp_args)
   int error_code = NO_ERROR;
   DB_VALUE error_value, error_msg;
 
+  db_make_null (&error_value);
+  db_make_null (&error_msg);
   db_make_null (sp_args->returnval);
 
   packing_unpacker unpacker;
