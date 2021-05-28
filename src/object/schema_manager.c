@@ -30,7 +30,6 @@
 #include <ctype.h>
 #include <assert.h>
 #include <unordered_set>
-#include <algorithm>
 
 #ifdef HPUX
 #include <a.out.h>
@@ -41,6 +40,7 @@
 #include "authenticate.h"
 #include "string_opfunc.h"
 #include "schema_manager.h"
+#include "schema_class_truncator.hpp"
 #include "porting.h"
 #include "chartype.h"
 #if !defined(WINDOWS)
@@ -203,36 +203,6 @@ struct sm_candidate
   unsigned int is_alias:1;	/* expanded alias candidates */
   unsigned int is_requested:1;	/* requested in a resolution specifier */
 };
-
-// *INDENT-OFF*
-class sm_class_truncator final
-{
-public:
-  using cons_predicate = std::function<bool(const SM_CLASS_CONSTRAINT&)>;
-  using saved_cons_predicate = std::function<bool(const SM_CONSTRAINT_INFO&)>;
-
-  int save_constraints_or_clear (cons_predicate pred);
-  int drop_saved_constraints (saved_cons_predicate pred);
-  int truncate_heap ();
-  int restore_constraints (saved_cons_predicate pred);
-  int reset_serials ();
-
-  sm_class_truncator (const OID& class_oid);
-  sm_class_truncator (sm_class_truncator&& other);
-  ~sm_class_truncator ();
-
-  sm_class_truncator (const sm_class_truncator& other) = delete;
-  sm_class_truncator& operator=(const sm_class_truncator& other) = delete;
-  sm_class_truncator& operator=(const sm_class_truncator&& other) = delete;
-
-private:
-  MOP m_mop = NULL;
-  SM_CLASS* m_class = NULL;
-  SM_CONSTRAINT_INFO* m_unique_info = NULL;
-  SM_CONSTRAINT_INFO* m_fk_info = NULL;
-  SM_CONSTRAINT_INFO* m_index_info = NULL;
-};
-// *INDENT-ON*
 
 /*
  * Static_method_table
@@ -443,18 +413,12 @@ static int sm_check_index_exist (MOP classop, char **out_shared_cons_name, DB_CO
 
 static void sm_reset_descriptors (MOP class_);
 
-static bool sm_is_possible_to_recreate_constraint (MOP class_mop, const SM_CLASS * const class_,
-						   const SM_CLASS_CONSTRAINT * const constraint);
-
 static bool sm_filter_index_pred_have_invalid_attrs (SM_CLASS_CONSTRAINT * constraint, char *class_name,
 						     SM_ATTRIBUTE * old_atts, SM_ATTRIBUTE * new_atts);
 
 // *INDENT-OFF*
 static int sm_collect_truncatable_classes (MOP class_mop, std::unordered_set<OID>& trun_classes, bool is_cascade);
-static int sm_truncate_class_internal (std::unordered_set<OID>&& trun_classes);
 // *INDENT-ON*
-static int sm_truncate_using_delete (MOP class_mop);
-static int sm_truncate_using_destroy_heap (MOP class_mop);
 static int sm_save_nested_view_versions (PARSER_CONTEXT * parser, DB_OBJECT * class_object, SM_CLASS * class_);
 static bool sm_is_nested_view_recached (PARSER_CONTEXT * parser);
 
@@ -487,333 +451,6 @@ static DB_OBJLIST *sm_fetch_all_objects_internal (DB_OBJECT * op, DB_FETCH_MODE 
 static int sm_flush_and_decache_objects_internal (MOP obj, MOP obj_class_mop, int decache);
 
 static void sm_free_resident_classes_virtual_query_cache (void);
-
-// *INDENT-OFF*
-sm_class_truncator::sm_class_truncator (const OID& class_oid)
-{
-  int error = NO_ERROR;
-  m_mop = ws_mop (&class_oid, NULL);
-  if (m_mop == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      throw er_errid ();
-    }
-
-  /* We need to flush everything so that the server logs the inserts that happened before the truncate. We need this in
-   * order to make sure that a rollback takes us into a consistent state. If we can prove that simply discarding the
-   * objects would work correctly we would be able to remove this call. However, it's better to be safe than sorry. */
-  error = sm_flush_and_decache_objects (m_mop, true);
-  if (error != NO_ERROR)
-    {
-      throw error;
-    }
-
-  error = au_fetch_class (m_mop, &m_class, AU_FETCH_WRITE, DB_AUTH_ALTER);
-  if (error != NO_ERROR || m_class == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      throw er_errid ();
-    }
-}
-
-sm_class_truncator::sm_class_truncator (sm_class_truncator&& other) :
-  m_mop (other.m_mop),
-  m_class (other.m_class),
-  m_unique_info (other.m_unique_info),
-  m_fk_info (other.m_fk_info),
-  m_index_info (other.m_index_info)
-{
-  other.m_mop = NULL;
-  other.m_class = NULL;
-  other.m_unique_info = NULL;
-  other.m_fk_info = NULL;
-  other.m_index_info = NULL;
-}
-
-sm_class_truncator::~sm_class_truncator ()
-{
-  if (m_unique_info != NULL)
-  {
-    sm_free_constraint_info (&m_unique_info);
-  }
-  if (m_fk_info != NULL)
-  {
-    sm_free_constraint_info (&m_fk_info);
-  }
-  if (m_index_info != NULL)
-  {
-    sm_free_constraint_info (&m_index_info);
-  }
-}
-
-/*
- * save_constraints_or_clear () - save constraints of the the class,
- *                                or remove instance manually if it is impossible.
- *
- *   return: error code or NO_ERROR
- *   pred(in): only constraints which meet this condition are processed
- */
-int
-sm_class_truncator::save_constraints_or_clear (cons_predicate pred)
-{
-  int error = NO_ERROR;
-  SM_CLASS_CONSTRAINT *c = NULL;
-
-  for (c = m_class->constraints; c; c = c->next)
-    {
-      if (!pred (*c))
-        {
-          continue;
-        }
-
-      if ((c->type == SM_CONSTRAINT_PRIMARY_KEY && classobj_is_pk_referred (m_mop, c->fk_info, false, NULL))
-         || !sm_is_possible_to_recreate_constraint (m_mop, m_class, c))
-        {
-          /*
-           * In these cases, We cannot drop and recreate the index as this might be
-           * too costly, so we just remove the instances of the current class.
-           */
-          error = locator_remove_class_from_index (ws_oid (m_mop), &c->index_btid, &m_class->header.ch_heap);
-          if (error != NO_ERROR)
-            {
-              return error;
-            }
-        }
-      else
-        {
-          /* All the OIDs in the index should belong to the current class, so it is safe to drop and create the
-           * constraint again. We save the information required to recreate the constraint. */
-
-          if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (c->type))
-            {
-              if (sm_save_constraint_info (&m_unique_info, c) != NO_ERROR)
-                {
-                  return error;
-                }
-            }
-          else if (c->type == SM_CONSTRAINT_FOREIGN_KEY)
-            {
-              if (sm_save_constraint_info (&m_fk_info, c) != NO_ERROR)
-                {
-                  return error;
-                }
-            }
-          else
-            {
-              if (sm_save_constraint_info (&m_index_info, c) != NO_ERROR)
-                {
-                  return error;
-                }
-            }
-        }
-    }
-
-  return error;
-}
-
-/*
- * drop_saved_constraints () - drop constraints saved in save_constraints_or_clear().
- *
- *   return: error code or NO_ERROR
- *   pred(in): only constraints which meet this condition are processed
- */
-int
-sm_class_truncator::drop_saved_constraints (saved_cons_predicate pred)
-{
-  DB_CTMPL *ctmpl = NULL;
-  SM_CONSTRAINT_INFO *saved = NULL;
-  int error = NO_ERROR;
-
-  /* Even for a class, FK must be dropped earlier than PK, because of the self-referencing case */
-  if (m_fk_info != NULL)
-    {
-      ctmpl = dbt_edit_class (m_mop);
-      if (ctmpl == NULL)
-        {
-          assert (er_errid () != NO_ERROR);
-          error = er_errid ();
-          return error;
-        }
-
-      for (saved = m_fk_info; saved != NULL; saved = saved->next)
-        {
-          if (!pred (*saved))
-            {
-              continue;
-            }
-
-          error =
-            dbt_drop_constraint (ctmpl, saved->constraint_type, saved->name, (const char **) saved->att_names, 0);
-          if (error != NO_ERROR)
-            {
-              dbt_abort_class (ctmpl);
-              return error;
-            }
-        }
-
-      if (dbt_finish_class (ctmpl) == NULL)
-        {
-          dbt_abort_class (ctmpl);
-          assert (er_errid () != NO_ERROR);
-          error = er_errid ();
-          return error;
-        }
-    }
-
-  for (saved = m_unique_info; saved != NULL; saved = saved->next)
-    {
-      if (!pred (*saved))
-        {
-          continue;
-        }
-
-      error =
-        sm_drop_constraint (m_mop, saved->constraint_type, saved->name, (const char **) saved->att_names, 0,
-                            false);
-      if (error != NO_ERROR)
-        {
-          return error;
-        }
-    }
-
-  for (saved = m_index_info; saved != NULL; saved = saved->next)
-    {
-      if (!pred (*saved))
-        {
-          continue;
-        }
-
-      error = sm_drop_index (m_mop, saved->name);
-      if (error != NO_ERROR)
-        {
-          return error;
-        }
-    }
-
-  return error;
-}
-
-/*
- * truncate_heap () - truncate the heap of the class.
- *
- *   return: error code or NO_ERROR
- */
-int
-sm_class_truncator::truncate_heap ()
-{
-  int error = NO_ERROR;
-  if (sm_is_reuse_oid_class (m_mop))
-    {
-      error = sm_truncate_using_destroy_heap (m_mop);
-    }
-  else
-    {
-      error = sm_truncate_using_delete (m_mop);
-    }
-
-  return error;
-}
-
-/*
- * restore_constraints () - restore constraints saved in save_constraints_or_clear().
- *
- *   return: error code or NO_ERROR
- *   pred(in): only constraints which meet this condition are processed
- */
-int
-sm_class_truncator::restore_constraints (saved_cons_predicate pred)
-{
-  DB_CTMPL *ctmpl = NULL;
-  SM_CONSTRAINT_INFO *saved = NULL;
-  int error = NO_ERROR;
-
-  /* Normal index must be created earlier than unique constraint or FK, because of shared btree case. */
-  for (saved = m_index_info; saved != NULL && pred (*saved); saved = saved->next)
-    {
-      error = sm_add_constraint (m_mop, saved->constraint_type, saved->name, (const char **) saved->att_names,
-                                 saved->asc_desc, saved->prefix_length, false, saved->filter_predicate,
-                                 saved->func_index_info, saved->comment, saved->index_status);
-      if (error != NO_ERROR)
-        {
-          return error;
-        }
-    }
-
-  /* Even for a class, PK must be created earlier than FK, because of the self-referencing case */
-  for (saved = m_unique_info; saved != NULL && pred (*saved); saved = saved->next)
-    {
-      error = sm_add_constraint (m_mop, saved->constraint_type, saved->name, (const char **) saved->att_names,
-                                 saved->asc_desc, saved->prefix_length, false, saved->filter_predicate,
-                                 saved->func_index_info, saved->comment, saved->index_status);
-      if (error != NO_ERROR)
-        {
-          return error;
-        }
-    }
-
-  /* To drop all xasl cache related class, we need to touch class. */
-  ctmpl = dbt_edit_class (m_mop);
-  if (ctmpl == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      error = er_errid ();
-      return error;
-    }
-
-  for (saved = m_fk_info; saved != NULL && pred (*saved); saved = saved->next)
-    {
-      error = dbt_add_foreign_key (ctmpl, saved->name, (const char **) saved->att_names, saved->ref_cls_name,
-                                   (const char **) saved->ref_attrs, saved->fk_delete_action,
-                                   saved->fk_update_action, saved->comment);
-
-      if (error != NO_ERROR)
-        {
-          dbt_abort_class (ctmpl);
-          return error;
-        }
-    }
-
-  if (dbt_finish_class (ctmpl) == NULL)
-    {
-      dbt_abort_class (ctmpl);
-      assert (er_errid () != NO_ERROR);
-      error = er_errid ();
-      return error;
-    }
-
-  return error;
-}
-
-/*
- * reset_serials () - reset serials used by the class.
- *
- *   return: error code or NO_ERROR
- */
-int
-sm_class_truncator::reset_serials ()
-{
-  int au_save = 0;
-  SM_ATTRIBUTE *att = NULL;
-  int error = NO_ERROR;
-
-  for (att = db_get_attributes (m_mop); att != NULL; att = db_attribute_next (att))
-    {
-      if (att->auto_increment != NULL)
-        {
-          AU_DISABLE (au_save);
-          error = do_reset_auto_increment_serial (att->auto_increment);
-          AU_ENABLE (au_save);
-
-          if (error != NO_ERROR)
-            {
-              return error;
-            }
-        }
-    }
-
-  return error;
-}
-// *INDENT-ON*
 
 /*
  * sc_set_current_schema()
@@ -15365,7 +15002,7 @@ sm_drop_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char 
  *       only contain OIDs of the class being truncated. It is safe to drop
  *       and recreate the index in this scenario.
  */
-static bool
+bool
 sm_is_possible_to_recreate_constraint (MOP class_mop, const SM_CLASS * const class_,
 				       const SM_CLASS_CONSTRAINT * const constraint)
 {
@@ -15866,7 +15503,7 @@ error_exit:
  *   return: error code
  *   class_mop(in): class (or instance) pointer
  */
-static int
+int
 sm_truncate_using_delete (MOP class_mop)
 {
   DB_SESSION *session = NULL;
@@ -15935,7 +15572,7 @@ end:
  *   return: error code
  *   class_mop(in): class (or instance) pointer
  */
-static int
+int
 sm_truncate_using_destroy_heap (MOP class_mop)
 {
   HFID *insts_hfid = NULL;
@@ -16129,9 +15766,9 @@ sm_truncate_class (MOP class_mop, const bool is_cascade)
   // *INDENT-OFF*
   error = sm_truncate_class_internal (std::move(trun_classes));
   if (error != NO_ERROR)
-  {
-    goto error_exit;
-  }
+    {
+      goto error_exit;
+    }
   // *INDENT-ON*
 
   return NO_ERROR;
@@ -16143,149 +15780,6 @@ error_exit:
     }
   return error;
 }
-
-// *INDENT-OFF*
-/*
- * sm_truncate_class_internal () - truncates classes
- *   return: NO_ERROR on success, non-zero for ERROR
- *   trun_claases (in): class mops to truncate collected by sm_collect_truncatable_classes()
- *
- *   NOTE: this function truncates several classes which are bond in a partitioning or some foreign keys.
- *   truncating a class consists of a few steps, each of which is done across all the classess one by one.
- *   this horizontal processing is necessary that all FKs has to be processed before PKs.
- */
-int
-sm_truncate_class_internal (std::unordered_set<OID>&& trun_classes)
-{
-  int error = NO_ERROR;
-  std::vector<sm_class_truncator> truncators;
-
-  try
-    {
-      std::for_each (trun_classes.begin(), trun_classes.end(),
-          [&truncators](const OID& oid) { truncators.emplace_back (oid); });
-    }
-  catch (int& error)
-    {
-      // exception from sm_truncator constructor
-      return error;
-    }
-
-  /* Save constraints. Or, remove instances from the constraint if impossible. FK first, then non-FK */
-  for (auto& truncator : truncators)
-    {
-      auto cons_predicate = [](const SM_CLASS_CONSTRAINT& cons) -> bool
-        {
-          return cons.type == SM_CONSTRAINT_FOREIGN_KEY;
-        };
-
-      error = truncator.save_constraints_or_clear (cons_predicate);
-      if (error != NO_ERROR)
-        {
-          return error;
-        }
-
-      /* FK must be dropped earlier than PK, because of referencing */
-      auto saved_cons_predicate = [](const SM_CONSTRAINT_INFO& cons_info) -> bool
-        {
-          return cons_info.constraint_type == DB_CONSTRAINT_FOREIGN_KEY;
-        };
-
-      error = truncator.drop_saved_constraints (saved_cons_predicate);
-      if (error != NO_ERROR)
-        {
-          return error;
-        }
-    }
-
-  for (auto& truncator : truncators)
-    {
-      auto cons_predicate = [](const SM_CLASS_CONSTRAINT& cons) -> bool
-        {
-          if (!SM_IS_CONSTRAINT_INDEX_FAMILY (cons.type))
-            {
-              assert (cons.type == SM_CONSTRAINT_NOT_NULL);
-              return false;
-            }
-          else if (cons.type == SM_CONSTRAINT_FOREIGN_KEY)
-            {
-              return false;
-            }
-          else
-            {
-              return true;
-            }
-        };
-
-      error = truncator.save_constraints_or_clear (cons_predicate);
-      if (error != NO_ERROR)
-      {
-        return error;
-      }
-
-      auto saved_cons_predicate = [](const SM_CONSTRAINT_INFO& cons_info) -> bool
-        {
-          return cons_info.constraint_type != DB_CONSTRAINT_FOREIGN_KEY;
-        };
-
-      error = truncator.drop_saved_constraints (saved_cons_predicate);
-      if (error != NO_ERROR)
-        {
-          return error;
-        }
-    }
-
-  /* Destroy heap file. Or, delete instances from the heap if impossible */
-  for (auto& truncator : truncators)
-    {
-      error = truncator.truncate_heap();
-      if (error != NO_ERROR)
-        {
-          return error;
-        }
-    }
-
-  /* Restore constraints. non-FK first, and then FK */
-  for (auto& truncator : truncators)
-    {
-      auto saved_cons_predicate = [](const SM_CONSTRAINT_INFO& cons_info) -> bool
-        {
-          return cons_info.constraint_type != DB_CONSTRAINT_FOREIGN_KEY;
-        };
-
-      error = truncator.restore_constraints (saved_cons_predicate);
-      if (error != NO_ERROR)
-        {
-          return error;
-        }
-    }
-
-  for (auto& truncator : truncators)
-    {
-      auto saved_cons_predicate = [](const SM_CONSTRAINT_INFO& cons_info) -> bool
-        {
-          return cons_info.constraint_type == DB_CONSTRAINT_FOREIGN_KEY;
-        };
-      error = truncator.restore_constraints (saved_cons_predicate);
-      if (error != NO_ERROR)
-        {
-          return error;
-        }
-    }
-
-  /* reset auto_increment starting value */
-  for (auto& truncator : truncators)
-    {
-      error = truncator.reset_serials ();
-      if (error != NO_ERROR)
-        {
-          return error;
-        }
-    }
-
-  return error;
-}
-// *INDENT-ON*
 
 /*
  * sm_has_non_null_attribute () - check if whether there is at least
