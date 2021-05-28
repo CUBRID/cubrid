@@ -48,6 +48,8 @@ log_recovery_context::log_recovery_context ()
 {
   m_is_page_server = get_server_type () == SERVER_TYPE_PAGE;
   m_checkpoint_lsa = log_Gl.hdr.chkpt_lsa;
+  m_start_redo_lsa = m_checkpoint_lsa;
+  m_end_redo_lsa = m_checkpoint_lsa;
 }
 
 void
