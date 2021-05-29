@@ -8096,6 +8096,7 @@ slog_reader_set_configuration (THREAD_ENTRY * thread_p, unsigned int rid, char *
   ptr = or_unpack_int (ptr, &timeout);
   ptr = or_unpack_int (ptr, &all_in_cond);
   ptr = or_unpack_int (ptr, &num_user);
+
   if (num_user > 0)
     {
       user = (char **) malloc (sizeof (char *) * num_user);
@@ -8105,7 +8106,9 @@ slog_reader_set_configuration (THREAD_ENTRY * thread_p, unsigned int rid, char *
 	  ptr = or_unpack_string (ptr, &user[i]);
 	}
     }
+
   ptr = or_unpack_int (ptr, &num_class);
+
   if (num_class > 0)
     {
       classoids = (uint64_t *) malloc (sizeof (uint64_t) * num_class);
@@ -8114,21 +8117,14 @@ slog_reader_set_configuration (THREAD_ENTRY * thread_p, unsigned int rid, char *
 	  ptr = or_unpack_int64 (ptr, (int64_t *) & classoids[i]);
 	}
     }
+
   error =
     xlog_reader_set_configuration (thread_p, max_log_item, timeout, all_in_cond, user, num_user, classoids, num_class);
+
   ptr = or_pack_int (reply, error);
+
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-  if (user != NULL)
-    {
-      for (int i = 0; i < num_user; i++)
-	{
-	  free_and_init (user[i]);
-	}
-    }
-  if (classoids != NULL)
-    {
-      free_and_init (classoids);
-    }
+
   return;
 }
 
@@ -8148,19 +8144,19 @@ slog_reader_get_log_refined_info (THREAD_ENTRY * thread_p, unsigned int rid, cha
   //ptr = or_unpack_int64 (request, (int64_t*)&b_start_lsa);
   //memcpy (&start_lsa, &b_start_lsa, sizeof (UINT64));
 
-  ptr = or_unpack_log_lsa (request, &start_lsa);
+  or_unpack_log_lsa (request, &start_lsa);
 
   error = xlog_reader_get_log_refined_info (thread_p, &start_lsa, &total_length, &num_log_info);
+
   ptr = or_pack_int (reply, error);
-  pthread_mutex_lock (&log_Reader_info.last_lsa_mutex);
+
   ptr = or_pack_log_lsa (ptr, &start_lsa);	/*pack_int64 */
-  pthread_mutex_unlock (&log_Reader_info.last_lsa_mutex);
   ptr = or_pack_int (ptr, num_log_info);
   ptr = or_pack_int (ptr, total_length);
 
 #if !defined(NDEBUG) && 1	//JOOHOK
   _er_log_debug (ARG_FILE_LINE, "extraction start lsa : %lld|%d , next lsa : %lld|%d\n", LSA_AS_ARGS (&start_lsa),
-		 LSA_AS_ARGS (&log_Reader_info.last_lsa));
+		 LSA_AS_ARGS (&start_lsa));
   _er_log_debug (ARG_FILE_LINE, "total length : %d, num_log_info : %d\n", total_length, num_log_info);
 #endif
 
@@ -8172,19 +8168,9 @@ slog_reader_get_log_refined_info (THREAD_ENTRY * thread_p, unsigned int rid, cha
 void
 slog_reader_get_log_refined_info_2 (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  char *a_reply;
-  /*total size of reply message is decided after log_item has been returned */
-  char *reply;
-  int reply_size = (log_Reader_info.total_length);
-  char *ptr;
-  char *ptr2;
+  (void) css_send_data_to_client (thread_p->conn_entry, rid, log_Infos, log_Infos_length);
 
-  a_reply = (char *) malloc (reply_size + INT_ALIGNMENT);
-  reply = PTR_ALIGN (a_reply, INT_ALIGNMENT);
-
-  pthread_mutex_lock (&log_Reader_info.log_info_mutex);
-  memcpy (reply, log_Reader_info.log_infos, log_Reader_info.total_length);
-  (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, log_Reader_info.total_length);
+  free_and_init (log_Infos);
 
 #if !defined(NDEBUG) && 0	//JOOHOK
   int len;
@@ -8204,8 +8190,6 @@ slog_reader_get_log_refined_info_2 (THREAD_ENTRY * thread_p, unsigned int rid, c
 		 trid, user, type, at_time, total_len);
 #endif
 
-  free_and_init (log_Reader_info.log_infos);
-  pthread_mutex_unlock (&log_Reader_info.log_info_mutex);
   return;
 }
 

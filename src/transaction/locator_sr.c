@@ -11670,7 +11670,7 @@ xlog_supplement_statement (THREAD_ENTRY * thread_p, int statement_type, int num_
 
 //  char cls_lower[DB_MAX_IDENTIFIER_LENGTH] = {0};
   char *data;
-  char *ptr;
+  char *ptr, *start_ptr;
 //  int status; 
   OID *classoids;
   BTID btid;
@@ -11727,14 +11727,18 @@ xlog_supplement_statement (THREAD_ENTRY * thread_p, int statement_type, int num_
       length += OR_BIGINT_SIZE;
     }
 
-  data = (char *) malloc (length);	// 필요한가? 
+  data = (char *) malloc (length*2);	// 필요한가? 
   if (data == NULL)
     {
       return NO_ERROR;		// need to be changed to specific error code 
     }
 
-  ptr = or_pack_int (data, statement_type);
-  ptr = or_pack_int (ptr, num_class);
+  ptr = start_ptr = PTR_ALIGN (data, MAX_ALIGNMENT);
+
+  ptr = or_pack_int (ptr, statement_type);
+  //ptr = or_pack_int (ptr, num_class);
+  ptr = or_pack_int64 (ptr, classoids_bigint[0]) ; 
+
   for (int i = 0; i < num_class; i++)
     {
       ptr = or_pack_int64 (ptr, classoids_bigint[i]);
@@ -11745,9 +11749,15 @@ xlog_supplement_statement (THREAD_ENTRY * thread_p, int statement_type, int num_
     {
       ptr = or_pack_int64 (ptr, btid_bigint);
     }
+  else
+    {
+      ptr = or_pack_int64 (ptr, 0);
+    }
+  ptr = or_pack_int (ptr, strlen);
   ptr = or_pack_string_with_length (ptr, stmt_text, strlen);
-
-  log_append_supplemental_log (thread_p, LOG_SUPPLEMENT_STATEMENT, length, (void *) data);
+  
+  length = ptr - start_ptr;
+  log_append_supplemental_log (thread_p, LOG_SUPPLEMENT_STATEMENT, length, (void *) start_ptr);
 
   free_and_init (data);
   free_and_init (classoids);
