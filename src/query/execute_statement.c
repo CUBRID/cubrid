@@ -3301,10 +3301,6 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PT_UNKNOWN_STATEMENT, 1, statement->node_type);
 	  break;
 	}
-      if (prm_get_bool_value (PRM_ID_SUPPLEMENTAL_LOG))
-	{
-	  do_supplemental_statement (parser, statement);
-	}
 
       /* enable data replication log */
       if (need_stmt_replication)
@@ -3330,6 +3326,11 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    {
 	      error = repl_error;
 	    }
+	}
+
+      if (prm_get_bool_value (PRM_ID_SUPPLEMENTAL_LOG))
+	{
+	  do_supplemental_statement (parser, statement);
 	}
     }
 
@@ -14684,7 +14685,6 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  return NO_ERROR;
 	}
       repl_stmt.statement_type = CUBRID_STMT_DROP_CLASS;
-      /*if (prm_get_bool_value (PRM_ID_SUPPLEMENTAL_LOG)) statement->info.drop.spec_list.info.spec.entity_name */
       break;
 
     case PT_CREATE_INDEX:
@@ -14991,6 +14991,8 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  return NO_ERROR;
 	}
+
+/*JOOHOK for statement */
       for (entity_spec = statement->info.drop.spec_list; entity_spec != NULL; entity_spec = entity_spec->next)
 	{
 	  entity_list = entity_spec->info.spec.flat_entity_list;
@@ -15005,6 +15007,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      printf ("%s class name \n", (char *) (classname_list[num_class - 1]->bytes));
 	    }
 	}
+
       statement_type = CUBRID_STMT_DROP_CLASS;
       /*if (prm_get_bool_value (PRM_ID_SUPPLEMENTAL_LOG)) statement->info.drop.spec_list.info.spec.entity_name */
       break;

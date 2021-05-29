@@ -10859,7 +10859,7 @@ log_reader (void *arg)
 	  _er_log_debug (ARG_FILE_LINE, "Log record type : %s, Time : %ld, LSA : (%lld|%d) \n", log_to_string (log_type), ha_dummy->at_time, LSA_AS_ARGS (&cur_log_rec_lsa));	// change to process_lsa 
 	  _er_log_debug (ARG_FILE_LINE, "trid : %d, tran_user : %s\n", trid, tran_user);
 #endif
-	  if (make_timer (ha_dummy->at_time, trid, tran_user, log_info_entry) != NO_ERROR)
+	  if (make_timer (ha_dummy->at_time, trid, NULL, log_info_entry) != NO_ERROR)
 	    {
 	      /* JOOHOK : debug log */
 	    }
@@ -11727,7 +11727,7 @@ make_ddl (char *supplement_data, int trid, const char *user, LOG_INFO_ENTRY * dd
   ptr = or_pack_int64 (ptr, object_oid);
   ptr = or_pack_int64 (ptr, class_oid);
   ptr = or_pack_int (ptr, statement_length);
-  ptr = or_pack_string_with_length (ptr, statement, statement_length);
+  ptr = or_pack_string (ptr, statement);
 
   ddl_entry->length = ptr - start_ptr;
 

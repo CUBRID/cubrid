@@ -590,7 +590,7 @@ cubrid_log_find_start_lsa (time_t timestamp, LOG_LSA * lsa)
 
   or_unpack_log_lsa (ptr, lsa);
 
-#if !defined (NDEBUG) && 1 // JOOHOK
+#if !defined (NDEBUG) && 1	// JOOHOK
   printf ("start_time = %ld, start_lsa = %lld|%d\n", timestamp, LSA_AS_ARGS (lsa));
 #endif
 
@@ -705,20 +705,20 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LSA);
     }
 
-#if !defined (NDEBUG) && 1 //JOOHOK
+#if !defined (NDEBUG) && 1	//JOOHOK
   printf ("send_next_lsa = %lld|%d\n", LSA_AS_ARGS (next_lsa));
 #endif
 
   ptr = or_unpack_log_lsa (ptr, next_lsa);
 
-#if !defined (NDEBUG) && 1 //JOOHOK
+#if !defined (NDEBUG) && 1	//JOOHOK
   printf ("recv_next_lsa = %lld|%d\n", LSA_AS_ARGS (next_lsa));
 #endif
 
   ptr = or_unpack_int (ptr, num_infos);
   or_unpack_int (ptr, total_length);
 
-#if !defined (NDEBUG) && 1 //JOOHOK
+#if !defined (NDEBUG) && 1	//JOOHOK
   printf ("num_infos = %d, total_length = %d\n", *num_infos, *total_length);
 #endif
 
@@ -808,8 +808,9 @@ cubrid_log_make_dml (char **data_info, DML * dml)
   ptr = or_unpack_int (ptr, &dml->dml_type);
   ptr = or_unpack_int64 (ptr, (INT64 *) & dml->classoid);
   ptr = or_unpack_int (ptr, &dml->num_changed_column);
-#if !defined (NDEBUG) && 1 // JOOHOK
-  printf ("dml_type= %d, classoid = %ld, num_changed_column %d\n", dml->dml_type, dml->classoid, dml->num_changed_column);
+#if !defined (NDEBUG) && 1	// JOOHOK
+  printf ("dml_type= %d, classoid = %ld, num_changed_column %d\n", dml->dml_type, dml->classoid,
+	  dml->num_changed_column);
 #endif
   if (dml->num_changed_column)
     {
@@ -847,55 +848,61 @@ cubrid_log_make_dml (char **data_info, DML * dml)
 	      dml->changed_column_data[i] = ptr;
 	      ptr = or_unpack_int (ptr, (int *) dml->changed_column_data[i]);
 	      dml->changed_column_data_len[i] = OR_INT_SIZE;
-              #if !defined (NDEBUG) && 1 // JOOHOK
-              printf ("changed_colum_data |  def_order : %d, data :  %d\n", dml->changed_column_index[i], dml->changed_column_data[i]);
-              #endif
+#if !defined (NDEBUG) && 1	// JOOHOK
+	      printf ("changed_colum_data |  def_order : %d, data :  %d\n", dml->changed_column_index[i],
+		      dml->changed_column_data[i]);
+#endif
 	      break;
 
 	    case 1:
 	      dml->changed_column_data[i] = ptr;
 	      ptr = or_unpack_int64 (ptr, (INT64 *) dml->changed_column_data[i]);
 	      dml->changed_column_data_len[i] = OR_INT64_SIZE;
-              #if !defined (NDEBUG) && 1 // JOOHOK
-              printf ("changed_colum_data |  def_order : %d, data :  %ld\n", dml->changed_column_index[i], dml->changed_column_data[i]);
-              #endif
-              break;
+#if !defined (NDEBUG) && 1	// JOOHOK
+	      printf ("changed_colum_data |  def_order : %d, data :  %ld\n", dml->changed_column_index[i],
+		      dml->changed_column_data[i]);
+#endif
+	      break;
 
 	    case 2:
 	      dml->changed_column_data[i] = ptr;
 	      ptr = or_unpack_float (ptr, (float *) dml->changed_column_data[i]);
 	      dml->changed_column_data_len[i] = OR_FLOAT_SIZE;
-	      #if !defined (NDEBUG) && 1 // JOOHOK
-              printf ("changed_colum_data |  def_order : %d, data :  %f\n", dml->changed_column_index[i], dml->changed_column_data[i]);
-              #endif
-              break;
+#if !defined (NDEBUG) && 1	// JOOHOK
+	      printf ("changed_colum_data |  def_order : %d, data :  %f\n", dml->changed_column_index[i],
+		      dml->changed_column_data[i]);
+#endif
+	      break;
 
 	    case 3:
 	      dml->changed_column_data[i] = ptr;
 	      ptr = or_unpack_double (ptr, (double *) dml->changed_column_data[i]);
 	      dml->changed_column_data_len[i] = OR_DOUBLE_SIZE;
-              #if !defined (NDEBUG) && 1 // JOOHOK
-              printf ("changed_colum_data |  def_order : %d, data :  %lf\n", dml->changed_column_index[i], dml->changed_column_data[i]);
-              #endif
+#if !defined (NDEBUG) && 1	// JOOHOK
+	      printf ("changed_colum_data |  def_order : %d, data :  %lf\n", dml->changed_column_index[i],
+		      dml->changed_column_data[i]);
+#endif
 	      break;
 
 	    case 4:
 	      dml->changed_column_data[i] = ptr;
 	      ptr = or_unpack_short (ptr, (short *) dml->changed_column_data[i]);
 	      dml->changed_column_data_len[i] = OR_SHORT_SIZE;
-	      #if !defined (NDEBUG) && 1 // JOOHOK
-              printf ("changed_colum_data |  def_order : %d, data :  %d\n", dml->changed_column_index[i], dml->changed_column_data[i]);
-              #endif
-              break;
+#if !defined (NDEBUG) && 1	// JOOHOK
+	      printf ("changed_colum_data |  def_order : %d, data :  %d\n", dml->changed_column_index[i],
+		      dml->changed_column_data[i]);
+#endif
+	      break;
 
 	    case 5:
 	      dml->changed_column_data[i] = ptr;
 	      ptr = or_unpack_string_nocopy (ptr, &dml->changed_column_data[i]);
 	      dml->changed_column_data_len[i] = strlen (dml->changed_column_data[i]);
-               #if !defined (NDEBUG) && 1 // JOOHOK
-              printf ("changed_colum_data |  def_order : %d, data :  %s\n", dml->changed_column_index[i], dml->changed_column_data[i]);
-              #endif
-              break;
+#if !defined (NDEBUG) && 1	// JOOHOK
+	      printf ("changed_colum_data |  def_order : %d, data :  %s\n", dml->changed_column_index[i],
+		      dml->changed_column_data[i]);
+#endif
+	      break;
 	    case 6:
 	      assert (0);	// unused pack func code: or_pack_stream()
 	      break;
@@ -904,18 +911,20 @@ cubrid_log_make_dml (char **data_info, DML * dml)
 	      dml->changed_column_data[i] = ptr;
 	      ptr = or_unpack_string_nocopy (ptr, &dml->changed_column_data[i]);
 	      dml->changed_column_data_len[i] = strlen (dml->changed_column_data[i]);
-	      #if !defined (NDEBUG) && 1 // JOOHOK
-              printf ("changed_colum_data |  def_order : %d, data :  %s\n", dml->changed_column_index[i], dml->changed_column_data[i]);
-              #endif
-              break;
+#if !defined (NDEBUG) && 1	// JOOHOK
+	      printf ("changed_colum_data |  def_order : %d, data :  %s\n", dml->changed_column_index[i],
+		      dml->changed_column_data[i]);
+#endif
+	      break;
 
 	    case 8:
 	      dml->changed_column_data[i] = ptr;
 	      ptr = or_unpack_string_nocopy (ptr, &dml->changed_column_data[i]);
 	      dml->changed_column_data_len[i] = strlen (dml->changed_column_data[i]);
-              #if !defined (NDEBUG) && 1 // JOOHOK
-              printf ("changed_colum_data |  def_order : %d, data :  %s\n", dml->changed_column_index[i], dml->changed_column_data[i]);
-              #endif
+#if !defined (NDEBUG) && 1	// JOOHOK
+	      printf ("changed_colum_data |  def_order : %d, data :  %s\n", dml->changed_column_index[i],
+		      dml->changed_column_data[i]);
+#endif
 	      break;
 
 	    default:
@@ -963,55 +972,61 @@ cubrid_log_make_dml (char **data_info, DML * dml)
 	      dml->cond_column_data[i] = ptr;
 	      ptr = or_unpack_int (ptr, (int *) dml->cond_column_data[i]);
 	      dml->cond_column_data_len[i] = OR_INT_SIZE;
-	      #if !defined (NDEBUG) && 1 // JOOHOK
-              printf ("changed_colum_data |  def_order : %d, data :  %d\n", dml->changed_column_index[i], dml->changed_column_data[i]);
-              #endif
-              break;
+#if !defined (NDEBUG) && 1	// JOOHOK
+	      printf ("changed_colum_data |  def_order : %d, data :  %d\n", dml->changed_column_index[i],
+		      dml->changed_column_data[i]);
+#endif
+	      break;
 
 	    case 1:
 	      dml->cond_column_data[i] = ptr;
 	      ptr = or_unpack_int64 (ptr, (INT64 *) dml->cond_column_data[i]);
 	      dml->cond_column_data_len[i] = OR_BIGINT_SIZE;
-	      #if !defined (NDEBUG) && 1 // JOOHOK
-              printf ("changed_colum_data |  def_order : %d, data :  %ld\n", dml->changed_column_index[i], dml->changed_column_data[i]);
-              #endif
-              break;
+#if !defined (NDEBUG) && 1	// JOOHOK
+	      printf ("changed_colum_data |  def_order : %d, data :  %ld\n", dml->changed_column_index[i],
+		      dml->changed_column_data[i]);
+#endif
+	      break;
 
 	    case 2:
 	      dml->cond_column_data[i] = ptr;
 	      ptr = or_unpack_float (ptr, (float *) dml->cond_column_data[i]);
 	      dml->cond_column_data_len[i] = OR_FLOAT_SIZE;
-	      #if !defined (NDEBUG) && 1 // JOOHOK
-              printf ("changed_colum_data |  def_order : %d, data :  %f\n", dml->changed_column_index[i], dml->changed_column_data[i]);
-              #endif
-              break;
+#if !defined (NDEBUG) && 1	// JOOHOK
+	      printf ("changed_colum_data |  def_order : %d, data :  %f\n", dml->changed_column_index[i],
+		      dml->changed_column_data[i]);
+#endif
+	      break;
 
 	    case 3:
 	      dml->cond_column_data[i] = ptr;
 	      ptr = or_unpack_double (ptr, (double *) dml->cond_column_data[i]);
 	      dml->cond_column_data_len[i] = OR_DOUBLE_SIZE;
-	      #if !defined (NDEBUG) && 1 // JOOHOK
-              printf ("changed_colum_data |  def_order : %d, data :  %lf\n", dml->changed_column_index[i], dml->changed_column_data[i]);
-              #endif
-              break;
+#if !defined (NDEBUG) && 1	// JOOHOK
+	      printf ("changed_colum_data |  def_order : %d, data :  %lf\n", dml->changed_column_index[i],
+		      dml->changed_column_data[i]);
+#endif
+	      break;
 
 	    case 4:
 	      dml->cond_column_data[i] = ptr;
 	      ptr = or_unpack_short (ptr, (short *) dml->cond_column_data[i]);
 	      dml->cond_column_data_len[i] = OR_SHORT_SIZE;
-	      #if !defined (NDEBUG) && 1 // JOOHOK
-              printf ("changed_colum_data |  def_order : %d, data :  %d\n", dml->changed_column_index[i], dml->changed_column_data[i]);
-              #endif  
-              break;
+#if !defined (NDEBUG) && 1	// JOOHOK
+	      printf ("changed_colum_data |  def_order : %d, data :  %d\n", dml->changed_column_index[i],
+		      dml->changed_column_data[i]);
+#endif
+	      break;
 
 	    case 5:
 	      dml->cond_column_data[i] = ptr;
 	      ptr = or_unpack_string_nocopy (ptr, &dml->cond_column_data[i]);
 	      dml->cond_column_data_len[i] = strlen (dml->cond_column_data[i]);
-	      #if !defined (NDEBUG) && 1 // JOOHOK
-              printf ("changed_colum_data |  def_order : %d, data :  %s\n", dml->changed_column_index[i], dml->changed_column_data[i]);
-              #endif 
-              break;
+#if !defined (NDEBUG) && 1	// JOOHOK
+	      printf ("changed_colum_data |  def_order : %d, data :  %s\n", dml->changed_column_index[i],
+		      dml->changed_column_data[i]);
+#endif
+	      break;
 	    case 6:
 	      assert (0);	// unused pack func code: or_pack_stream()
 	      break;
@@ -1020,19 +1035,21 @@ cubrid_log_make_dml (char **data_info, DML * dml)
 	      dml->cond_column_data[i] = ptr;
 	      ptr = or_unpack_string_nocopy (ptr, &dml->cond_column_data[i]);
 	      dml->cond_column_data_len[i] = strlen (dml->cond_column_data[i]);
-	      #if !defined (NDEBUG) && 1 // JOOHOK
-              printf ("changed_colum_data |  def_order : %d, data :  %s\n", dml->changed_column_index[i], dml->changed_column_data[i]);
-              #endif
-              break;
+#if !defined (NDEBUG) && 1	// JOOHOK
+	      printf ("changed_colum_data |  def_order : %d, data :  %s\n", dml->changed_column_index[i],
+		      dml->changed_column_data[i]);
+#endif
+	      break;
 
 	    case 8:
 	      dml->cond_column_data[i] = ptr;
 	      ptr = or_unpack_string_nocopy (ptr, &dml->cond_column_data[i]);
 	      dml->cond_column_data_len[i] = strlen (dml->cond_column_data[i]);
-	      #if !defined (NDEBUG) && 1 // JOOHOK
-              printf ("changed_colum_data |  def_order : %d, data :  %s\n", dml->changed_column_index[i], dml->changed_column_data[i]);
-              #endif
-              break;
+#if !defined (NDEBUG) && 1	// JOOHOK
+	      printf ("changed_colum_data |  def_order : %d, data :  %s\n", dml->changed_column_index[i],
+		      dml->changed_column_data[i]);
+#endif
+	      break;
 
 	    default:
 	      assert (0);
@@ -1144,8 +1161,9 @@ cubrid_log_make_log_item (char **log_info, CUBRID_LOG_ITEM * log_item)
   ptr = or_unpack_int (ptr, &log_item->transaction_id);
   ptr = or_unpack_string_nocopy (ptr, &log_item->user);
   ptr = or_unpack_int (ptr, &log_item->data_item_type);
-#if !defined(NDEBUG) && 1 //JOOHOK
-  printf("CUBRID LOG ITEM | log info len : %d, trid : %d, user : %s, data item type : %d\n", log_info_len, log_item->transaction_id, log_item->user, log_item->data_item_type);
+#if !defined(NDEBUG) && 1	//JOOHOK
+  printf ("CUBRID LOG ITEM | log info len : %d, trid : %d, user : %s, data item type : %d\n", log_info_len,
+	  log_item->transaction_id, log_item->user, log_item->data_item_type);
 #endif
   if (cubrid_log_make_data_item (&ptr, (DATA_ITEM_TYPE) log_item->data_item_type, &log_item->data_item) !=
       CUBRID_LOG_SUCCESS)
@@ -1191,6 +1209,8 @@ cubrid_log_make_log_item_list (int num_infos, int total_length, CUBRID_LOG_ITEM 
 	}
 
       g_log_items[i].next = &g_log_items[i + 1];
+
+      ptr = PTR_ALIGN (ptr, MAX_ALIGNMENT);
     }
 
   g_log_items[num_infos - 1].next = NULL;

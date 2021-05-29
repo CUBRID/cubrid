@@ -8693,25 +8693,26 @@ log_supplement_statement (int supplement_type, int num_class, PARSER_VARCHAR ** 
 //  int *class_strlen = (int*)malloc (sizeof(int) * num_class);
   reply = OR_ALIGNED_BUF_START (a_reply);
 
+  strlen1 = or_packed_string_length (stmt_text, NULL);
   /*supplement type | num class | class name | objname | stmt_text | */
-  request_size = (OR_INT_SIZE + OR_INT_SIZE + length_const_string (stmt_text, &strlen1));
+  request_size = (OR_INT_SIZE + OR_INT_SIZE + strlen1);
   if (objname != NULL)
     {
-      request_size += objname->length;
+      request_size += or_packed_string_length ((char *) objname->bytes, NULL);
     }
   for (int i = 0; i < num_class; i++)
     {
-      request_size += classname_list[i]->length;
+      request_size += or_packed_string_length ((char *) classname_list[i]->bytes, NULL);
     }
 
-  request = (char *) malloc (request_size);
+  request = (char *) malloc (request_size + MAX_ALIGNMENT);
   if (request == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
       return ER_FAILED;
     }
-
-  ptr = or_pack_int (request, supplement_type);
+  ptr = PTR_ALIGN (request, INT_ALIGNMENT);
+  ptr = or_pack_int (ptr, supplement_type);
   ptr = or_pack_int (ptr, num_class);
   for (int i = 0; i < num_class; i++)
     {
@@ -8721,7 +8722,7 @@ log_supplement_statement (int supplement_type, int num_class, PARSER_VARCHAR ** 
     {
       ptr = pack_const_string_with_length (ptr, (char *) objname->bytes, objname->length);
     }
-  ptr = pack_const_string_with_length (ptr, stmt_text, strlen1);
+  ptr = or_pack_string (ptr, stmt_text);
   req_error =
     net_client_request (NET_SERVER_SUPPLEMENT_STMT, request, request_size, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL,
 			0, NULL, 0);
