@@ -128,7 +128,7 @@ extern int xlocator_check_fk_validity (THREAD_ENTRY * thread_p, OID * cls_oid, H
 extern LOG_LSA *xrepl_log_get_append_lsa (void);
 extern int xrepl_set_info (THREAD_ENTRY * thread_p, REPL_INFO * repl_info);
 
-extern int xlog_supplement_statement (THREAD_ENTRY * thread_p, int statement_type, int num_class, char **classname_list,
+extern int xlog_supplement_statement (THREAD_ENTRY * thread_p, int statement_type, char *classname,
 				      char *objname, char *stmt_text);
 
 extern int xheap_create (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oid, bool reuse_oid);

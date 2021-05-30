@@ -8681,65 +8681,97 @@ repl_set_info (REPL_INFO * repl_info)
 }
 
 int
-log_supplement_statement (int supplement_type, int num_class, PARSER_VARCHAR ** classname_list,
-			  PARSER_VARCHAR * objname, char *stmt_text)
+log_supplement_statement (int supplement_type, PARSER_VARCHAR * classname, PARSER_VARCHAR * objname, char *stmt_text)
 {
 #if defined(CS_MODE)
-  int req_error, success = ER_FAILED;
-  int request_size = 0, strlen1;
-  char *request = NULL, *ptr;
+  int req_error, rep_error = ER_FAILED;
+  int request_size = 0;
+  char *request = NULL, *ptr, *start_ptr;
+
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply;
-//  int *class_strlen = (int*)malloc (sizeof(int) * num_class);
+
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  strlen1 = or_packed_string_length (stmt_text, NULL);
-  /*supplement type | num class | class name | objname | stmt_text | */
-  request_size = (OR_INT_SIZE + OR_INT_SIZE + strlen1);
+  /*supplement type | class name | objname | stmt_text | */
+  request_size = OR_INT_SIZE;
+  if (classname != NULL)
+    {
+      request_size += or_packed_string_length ((char *) classname->bytes, NULL);
+    }
+  else
+    {
+
+      request_size += or_packed_string_length (NULL, NULL);
+    }
+
   if (objname != NULL)
     {
       request_size += or_packed_string_length ((char *) objname->bytes, NULL);
     }
-  for (int i = 0; i < num_class; i++)
+  else
     {
-      request_size += or_packed_string_length ((char *) classname_list[i]->bytes, NULL);
+      request_size += or_packed_string_length (NULL, NULL);
     }
 
-  request = (char *) malloc (request_size + MAX_ALIGNMENT);
+  request_size += or_packed_string_length (stmt_text, NULL);
+
+  request = (char *) malloc (request_size * 2);
   if (request == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
       return ER_FAILED;
     }
-  ptr = PTR_ALIGN (request, INT_ALIGNMENT);
+
+  ptr = start_ptr = PTR_ALIGN (request, INT_ALIGNMENT);
+
   ptr = or_pack_int (ptr, supplement_type);
-  ptr = or_pack_int (ptr, num_class);
-  for (int i = 0; i < num_class; i++)
+  if (classname != NULL)
     {
-      ptr = pack_const_string_with_length (ptr, (char *) classname_list[i]->bytes, classname_list[i]->length);
+      ptr = pack_const_string_with_length (ptr, (char *) classname->bytes, classname->length);
     }
+  else
+    {
+      ptr = or_pack_string (ptr, NULL);
+    }
+
   if (objname != NULL)
     {
       ptr = pack_const_string_with_length (ptr, (char *) objname->bytes, objname->length);
     }
+  else
+    {
+      ptr = pack_const_string (ptr, NULL);
+    }
+
   ptr = or_pack_string (ptr, stmt_text);
+
+  request_size = ptr - start_ptr;
+
   req_error =
-    net_client_request (NET_SERVER_SUPPLEMENT_STMT, request, request_size, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL,
+    net_client_request (NET_SERVER_SUPPLEMENT_STMT, start_ptr, request_size, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL,
 			0, NULL, 0);
 
-  return success;
-#else /* CS_MODE */
-  int r = ER_FAILED;
-  char **classes = (char **) malloc (sizeof (char *) * num_class);
-  for (int i = 0; i++; i < num_class)
+  if (!req_error)
     {
-      classes[i] = (char *) classname_list[i]->bytes;
+      or_unpack_int (reply, &rep_error);
     }
+
+  free_and_init (request);
+
+  return rep_error;
+
+#else /* CS_MODE */
+
+  /*JOOHOK : SA mode를 지원할지, 지원한다면 개선하기 */
+  int r = ER_FAILED;
+  char *class_name = (char *) classname->bytes;
   char *object = (char *) objname->bytes;
 
   THREAD_ENTRY *thread_p = enter_server ();
-  r = xlog_supplement_statement (thread_p, supplement_type, num_class, classes, object, stmt_text);
+  r = xlog_supplement_statement (thread_p, supplement_type, class_name, object, stmt_text);
   exit_server (*thread_p);
+
   return r;
 #endif /* !CS_MODE */
 }

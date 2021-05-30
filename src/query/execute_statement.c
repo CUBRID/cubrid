@@ -14946,12 +14946,18 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   int num_class = 0;
   int num_object = 0;
 
+  int drop_stmt_length = 0, pre_drop_length = 0;
+  int drop_copied_length = 0;
+  char *drop_stmt = NULL;
+  const char *drop_prefix = "DROP TABLE ";
+  const char *if_exist_statement = "IF EXISTS ";
+  const char *cascade_statement = " CASCADE CONSTRAINTS";
+
   PARSER_VARCHAR *classname = NULL;
   PARSER_VARCHAR **classname_list = NULL;
   PARSER_VARCHAR *objname = NULL;
   PARSER_VARCHAR **objname_list = NULL;
 
-  PT_NODE *entity_list = NULL;
   PT_NODE *entity = NULL;
   PT_NODE *entity_spec = NULL;
   PT_NODE *target = NULL;
@@ -14959,7 +14965,6 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   OID *classoid = NULL;
   OID *oid = NULL;
   int stmt_length = 0;
-  /*class OID will be stored at server side using xlocator_find_class_oid() */
 
   if (statement->sql_user_text == NULL || statement->sql_user_text_len == 0)
     {
@@ -14995,21 +15000,22 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 /*JOOHOK for statement */
       for (entity_spec = statement->info.drop.spec_list; entity_spec != NULL; entity_spec = entity_spec->next)
 	{
-	  entity_list = entity_spec->info.spec.flat_entity_list;
-	  for (entity = entity_list; entity != NULL; entity = entity->next)
+	  entity = entity_spec->info.spec.flat_entity_list;
+	  classname_list = (PARSER_VARCHAR **) realloc (classname_list, sizeof (PARSER_VARCHAR *) * (++num_class));
+	  if (classname_list == NULL)
 	    {
-	      classname_list = (PARSER_VARCHAR **) realloc (classname_list, sizeof (PARSER_VARCHAR *) * (++num_class));
-	      if (classname_list == NULL)
-		{
-		  return -1;	//error code definition is required  
-		}
-	      classname_list[num_class - 1] = pt_print_bytes (parser, entity);
-	      printf ("%s class name \n", (char *) (classname_list[num_class - 1]->bytes));
+	      return -1;	//error code definition is required  
 	    }
+
+	  classname_list[num_class - 1] = pt_print_bytes (parser, entity);
+
+#if !defined(NDEBUG) && 1
+	  printf ("%s class name \n", (char *) (classname_list[num_class - 1]->bytes));
+#endif
 	}
 
       statement_type = CUBRID_STMT_DROP_CLASS;
-      /*if (prm_get_bool_value (PRM_ID_SUPPLEMENTAL_LOG)) statement->info.drop.spec_list.info.spec.entity_name */
+
       break;
 
     case PT_CREATE_INDEX:
@@ -15030,7 +15036,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       objname = pt_print_bytes (parser, statement->info.index.index_name);
       statement_type = CUBRID_STMT_DROP_INDEX;
       break;
-/*
+#if 0
     case PT_CREATE_SERIAL:
       statement_type = CUBRID_STMT_CREATE_SERIAL;
       break;
@@ -15080,34 +15086,42 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       statement_type = CUBRID_STMT_CREATE_TRIGGER;
       objname = PT_NODE_TR_NAME (statement);
+
       target = PT_NODE_TR_TARGET (statement);
-      classname = target->info.event_target.class_name->info.name.original;
+      classname = pt_print_bytes (parser, target->info.event_target.class_name);
+
       break;
 
     case PT_RENAME_TRIGGER:
       statement_type = CUBRID_STMT_RENAME_TRIGGER;
-      objname = statement->info.rename_trigger.old_name->info.name.original;
       // not able to know classname
+      objname = pt_print_bytes (parser, statement->info.rename_trigger.old_name);
+
       break;
 
     case PT_DROP_TRIGGER:
       statement_type = CUBRID_STMT_DROP_TRIGGER;
       objname = PT_NODE_TR_NAME (statement);
-      classname = ; 
+      //classname = ; 
+
       break;
 
     case PT_REMOVE_TRIGGER:
-     statement_type = CUBRID_STMT_REMOVE_TRIGGER;
-     objname = PT_NODE_TR_NAME (statement);
-     classname =;
+      statement_type = CUBRID_STMT_REMOVE_TRIGGER;
+      objname = PT_NODE_TR_NAME (statement);
+      //classname =;
+
       break;
 
     case PT_ALTER_TRIGGER:
       statement_type = CUBRID_STMT_SET_TRIGGER;
-      objname = statement->info.alter_trigger.trigger_spec_list->info.trigger_spec_list.trigger_name_list->info.name.original;
-      classname = ;
+      //classname = ;
+      objname =
+	pt_print_bytes (parser,
+			sstatement->info.alter_trigger.trigger_spec_list->info.trigger_spec_list.trigger_name_list);
+
       break;
-*/
+#endif
     case PT_TRUNCATE:
       if (!truncate_need_repl_log (statement))
 	{
@@ -15117,12 +15131,18 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       assert (statement->info.spec.entity_name);
       classname = pt_print_bytes (parser, statement->info.spec.entity_name->info.spec.entity_name);
       statement_type = CUBRID_STMT_TRUNCATE;
+
       break;
 
     default:
       return NO_ERROR;
     }
 
+  /*JOOHOK 
+   * 1. DDL has host variable ? 
+   * 2. CREATE TABLE tbl as SELECT * from t where b=?;
+   * 3. multiple statements ( drop... ; create ...;) 
+   */
   if (parser->host_var_count == 0)
     {
       /* it may contain multiple statements */
@@ -15206,18 +15226,45 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       stmt_text = sbr_text;
     }
 
-//  repl_stmt.db_user = db_get_user_name ();
-
   if (statement_type == PT_DROP)
     {
-      error = log_supplement_statement (statement_type, num_class, classname_list, objname, stmt_text);
+      /*length for ';' and '\0' are added as 2 */
+      pre_drop_length = strlen (drop_prefix) + strlen (if_exist_statement) + strlen (cascade_statement) + 2;
+
+      for (int i = 0; i < num_class; i++)
+	{
+	  drop_stmt_length = pre_drop_length + classname_list[i]->length;
+	  drop_stmt = (char *) malloc (drop_stmt_length);
+
+	  strncpy (drop_stmt, drop_prefix, strlen (drop_prefix));
+	  drop_copied_length = strlen (drop_prefix);
+
+	  if (statement->info.drop.if_exists)
+	    {
+	      strncpy (drop_stmt + drop_copied_length, if_exist_statement, strlen (if_exist_statement));
+	      drop_copied_length += strlen (if_exist_statement);
+	    }
+
+	  strncpy (drop_stmt + drop_copied_length, (char *) classname_list[i]->bytes, classname_list[i]->length);
+	  drop_copied_length += classname_list[i]->length;
+
+	  if (statement->info.drop.is_cascade_constraints)
+	    {
+	      strncpy (drop_stmt + drop_copied_length, cascade_statement, strlen (cascade_statement));
+	      drop_copied_length += strlen (cascade_statement);
+	    }
+
+	  drop_stmt[drop_copied_length] = ';';
+	  drop_stmt[drop_copied_length + 1] = '\0';
+
+	  error = log_supplement_statement (statement_type, classname_list[i], objname, drop_stmt);
+
+	  free (drop_stmt);
+	}
     }
   else
     {
-      num_class = 1;
-      classname_list = (PARSER_VARCHAR **) malloc (sizeof (PARSER_VARCHAR *));
-      classname_list[0] = classname;
-      error = log_supplement_statement (statement_type, num_class, classname_list, objname, stmt_text);
+      error = log_supplement_statement (statement_type, classname, objname, stmt_text);
     }
 
   if (stmt_end != NULL)
@@ -15225,9 +15272,8 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       *stmt_end = stmt_separator;
     }
 
-//  db_string_free (repl_stmt.db_user);
-
 end:
+
   if (sbr_text)
     {
       free (sbr_text);
