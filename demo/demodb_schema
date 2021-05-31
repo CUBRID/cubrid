@@ -192,4 +192,4 @@ CREATE OR REPLACE FUNCTION tFloat(f float) RETURN float as language java name 'S
 CREATE OR REPLACE FUNCTION tDobule(d double) RETURN double as language java name 'SpTypeTest.testDouble(double) return double';
 CREATE OR REPLACE FUNCTION tString(s string) RETURN string as language java name 'SpTypeTest.testString(java.lang.String) return java.lang.String';
 
-COMMIT WORK;1
+COMMIT WORK;
