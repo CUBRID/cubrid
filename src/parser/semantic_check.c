@@ -11424,7 +11424,7 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs, PT_NODE * rhs)
 		  if (rhs->node_type != PT_HOST_VAR)
 		    {
 		      d = tp_domain_resolve_default (lhs_dbtype);
-		      if (PT_IS_PARAMETERIZED_TYPE (lhs->type_enum))
+		      if (lhs->type_enum == PT_TYPE_NUMERIC && lhs->data_type != NULL)
 			{
 			  d = tp_domain_copy (d, false);
 			  d->precision = sci.prec;
@@ -11464,7 +11464,7 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs, PT_NODE * rhs)
 			  else
 			    {
 			      d = tp_domain_resolve_default (lhs_dbtype);
-			      if (PT_IS_PARAMETERIZED_TYPE (lhs->type_enum))
+			      if (lhs->type_enum == PT_TYPE_NUMERIC && lhs->data_type != NULL)
 				{
 				  d = tp_domain_copy (d, false);
 				  d->precision = sci.prec;
