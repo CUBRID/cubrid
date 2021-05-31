@@ -11467,7 +11467,7 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs, PT_NODE * rhs)
 			      // TODO: It should be considered for parameterized types, refer to PT_IS_PARAMETERIZED_TYPE()
 			      if (lhs->type_enum == PT_TYPE_NUMERIC && lhs->data_type != NULL)
 				{
-				  tp_domain_resolve (lhs_dbtype, NULL, sci.prec, sci.scale, NULL, 0);
+				  d = tp_domain_resolve (lhs_dbtype, NULL, sci.prec, sci.scale, NULL, 0);
 				}
 			      else
 				{
