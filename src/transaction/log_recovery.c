@@ -2602,8 +2602,8 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, INT64 * num_redo_log_records, lo
 	      break;
 	    }
 
-	  prev_lsa = context.get_end_redo_lsa ();
 	  prev_prev_lsa = prev_lsa;
+	  prev_lsa = context.get_end_redo_lsa ();
 
 	  /*
 	   * We can fix the lsa.pageid in the case of log_records without forward
@@ -2747,8 +2747,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
     if (log_recovery_redo_parallel_count > 0)
       {
 	minimum_log_lsa.reset (new cublog::minimum_log_lsa_monitor ());
-	parallel_recovery_redo.reset (new cublog::
-				      redo_parallel (log_recovery_redo_parallel_count, *minimum_log_lsa.get ()));
+	parallel_recovery_redo.
+	  reset (new cublog::redo_parallel (log_recovery_redo_parallel_count, *minimum_log_lsa.get ()));
       }
   }
 #endif
