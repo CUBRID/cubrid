@@ -60,10 +60,10 @@ log_recovery_context::is_restore_incomplete () const
 }
 
 void
-log_recovery_context::force_stop_restore_at (time_t stopat)
+log_recovery_context::set_forced_restore_stop ()
 {
   m_is_restore_incomplete = true;
-  m_restore_stop_point = stopat;
+  m_restore_stop_point = 0;       // reset time of stop
 }
 
 bool

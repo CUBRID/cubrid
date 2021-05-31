@@ -51,12 +51,12 @@ class log_recovery_context
     bool is_restore_from_backup () const;                         // see m_is_restore_from_backup
     bool is_restore_incomplete () const;                          // see m_is_restore_incomplete
     void set_incomplete_restore ();                               // set m_is_restore_incomplete to true
-    void force_stop_restore_at (time_t stopat);                   // Force incomplete restoration and change stop time
+    void set_forced_restore_stop ();                   // Force incomplete restoration and change stop time
     bool does_restore_stop_before_time (time_t complete_time);    // Is restore stopped before time argument
 
   private:
     // Restore related members
-    time_t m_restore_stop_point = 0;	      // restore stop point. no stop point if the value is zero or negative
+    time_t m_restore_stop_point = 0;	      // restore stop point. no stop point if the value is zero
     bool m_is_restore_from_backup = false;    // true if server is being restored restore from backup
     // false if server is recovering after forced stop
     bool m_is_restore_incomplete = false;     // true if restore is stopped before end of log

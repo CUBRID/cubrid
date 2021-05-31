@@ -2144,7 +2144,7 @@ log_rv_analysis_handle_fetch_page_fail (THREAD_ENTRY * thread_p, log_recovery_co
 {
   if (context.is_restore_from_backup ())
     {
-      context.force_stop_restore_at (-1);
+      context.set_forced_restore_stop ();
 
 #if !defined(NDEBUG)
       if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
@@ -2747,8 +2747,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
     if (log_recovery_redo_parallel_count > 0)
       {
 	minimum_log_lsa.reset (new cublog::minimum_log_lsa_monitor ());
-	parallel_recovery_redo.
-	  reset (new cublog::redo_parallel (log_recovery_redo_parallel_count, *minimum_log_lsa.get ()));
+	parallel_recovery_redo.reset (new cublog::
+				      redo_parallel (log_recovery_redo_parallel_count, *minimum_log_lsa.get ()));
       }
   }
 #endif
