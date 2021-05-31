@@ -69,7 +69,7 @@ log_recovery_context::force_stop_restore_at (time_t stopat)
 bool
 log_recovery_context::does_restore_stop_before_time (time_t complete_time)
 {
-  if (m_restore_stop_point == 0)
+  if (m_restore_stop_point <= 0)
     {
       // no stop point
       return false;

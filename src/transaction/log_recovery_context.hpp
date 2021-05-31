@@ -56,7 +56,7 @@ class log_recovery_context
 
   private:
     // Restore related members
-    time_t m_restore_stop_point = 0;	      // restore stop point. no stop point if the value is zero
+    time_t m_restore_stop_point = 0;	      // restore stop point. no stop point if the value is zero or negative
     bool m_is_restore_from_backup = false;    // true if server is being restored restore from backup
     // false if server is recovering after forced stop
     bool m_is_restore_incomplete = false;     // true if restore is stopped before end of log
