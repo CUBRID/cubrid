@@ -530,12 +530,8 @@ static PT_NODE * pt_create_json_value (PARSER_CONTEXT *parser,
 				       const char *str);
 static void pt_jt_append_column_or_nested_node (PT_NODE * jt_node, PT_NODE * jt_col_or_nested);
 
-typedef struct {
-        char* pUrl;
-        char* pUser;
-        char* pPwd;
-} dblink_conn_info;
-static bool pt_ct_check_fill_connection_info (char* pIn, dblink_conn_info* pInfo);
+#define  DBLINK_CONN_PARAM_CNT   (5)
+static bool pt_ct_check_fill_connection_info (char *pIn, char *pInfo[], char *perr_msg );
 
 static void pt_value_set_charset_coll (PARSER_CONTEXT *parser,
 				       PT_NODE *node,
@@ -24764,22 +24760,25 @@ dblink_expr
                         PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);
 		   }
 
-                if( $1->node_type == PT_NAME )
+                if( $1 )
                 {
-                        ct->info.dblink_table.is_name = true;
-                        ct->info.dblink_table.conn = $1;       
+                        if( $1->node_type == PT_NAME )
+                        {
+                                ct->info.dblink_table.is_name = true;
+                                ct->info.dblink_table.conn = $1;
+                        }
+                        else // ( $1->node_type == PT_VALUE )
+                        {
+                        ct->info.dblink_table.is_name = false;
+                        // in the order url, user, password
+                        ct->info.dblink_table.conn = 0x00;
+                        ct->info.dblink_table.url = $1;
+                        ct->info.dblink_table.user = $1->next;
+                        ct->info.dblink_table.pwd = $1->next->next;
+                        $1->next->next = 0x00;
+                        $1->next = 0x00;
+                        }
                 }
-                else // ( $1->node_type == PT_VALUE )
-                {
-                    ct->info.dblink_table.is_name = false;
-                    // in the order url, user, password        
-                    ct->info.dblink_table.conn = 0x00;  
-                    ct->info.dblink_table.url = $1;                           
-                    ct->info.dblink_table.user = $1->next;
-                    ct->info.dblink_table.pwd = $1->next->next;
-                    $1->next->next = 0x00;
-                    $1->next = 0x00;
-                }                 
                 ct->info.dblink_table.qstr = val;
              }
 
@@ -24804,56 +24803,50 @@ dblink_conn:
                 DBG_PRINT}}
         | CHAR_STRING
         {{
-                 dblink_conn_info  cInfo;
-                if( pt_ct_check_fill_connection_info($1, &cInfo) == false )
-                 {  // TODO:
-                        assert(false);
+                char *zInfo[DBLINK_CONN_PARAM_CNT];     
+                char err_msg[512]; 
+                PT_NODE *node_list = NULL;           
+
+                memset(zInfo, 0x00, sizeof(zInfo));
+                if( pt_ct_check_fill_connection_info($1, zInfo, err_msg) == false )
+                 {
+                       PT_ERROR (this_parser, $$, err_msg);
                  }
+                 else
+                 {
+                        PT_NODE *node;
+                        int  i;
+                        char dblink_url[512];
+                        static const char* dblink_url_fmt = "cci:CUBRID:%s:%s:%s:::" ;
 
-                PT_NODE *node_list, *node;
-                char* pStr; 
-                int  i;
+                        sprintf(dblink_url, dblink_url_fmt, zInfo[0], zInfo[1],zInfo[2]);
+                        zInfo[2] = dblink_url;
+                        
+                        for( i = DBLINK_CONN_PARAM_CNT - 1; i >= 2; i--)
+                        {                       
+                                node = parser_new_node (this_parser, PT_VALUE);
+                                if( node == NULL )
+                                {
+                                        while (node_list)
+                                        {
+                                                node = node_list;
+                                                node_list = node->next;
+                                                parser_free_node (this_parser, node);
+                                        }                            
 
-                node_list = NULL;
-                for( i = 0; i < 3; i++)
-                {
-                        if( i == 0 )
-                        {
-                                pStr = cInfo.pPwd;
-                        }
-                        else if( i == 1 )  
-                        {       pStr = cInfo.pUser;
-                        }
-                        else
-                        {
-                                pStr = cInfo.pUrl;
-                        }
+                                        break;
+                                }
+                                                        
+                                node->type_enum = PT_TYPE_CHAR;
+                                node->info.value.string_type = ' ';
+                                node->info.value.data_value.str =
+                                        pt_append_bytes (this_parser, NULL, zInfo[i], strlen (zInfo[i]));
+                                PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, node);
 
-                        node = parser_new_node (this_parser, PT_VALUE);
-                        if( node == NULL )
-                                break;
-                                                    
-                        node->type_enum = PT_TYPE_CHAR;
-                        node->info.value.string_type = ' ';
-                        node->info.value.data_value.str =
-                                      pt_append_bytes (this_parser, NULL, pStr, strlen (pStr));
-                        PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, node);
-
-                        if(node_list)
                                 node->next = node_list;
-                      
-                        node_list = node;                       
-                }                      
-
-                if( i > 3 )  
-                {                          
-                        while (node_list)
-                        {
-                                node = node_list;
-                                node_list = node->next;
-                                parser_free_node (this_parser, node);
-                        }                             
-                }
+                                node_list = node;
+                        } 
+                 }
 
                 $$ = node_list;   
 		DBG_PRINT}}
@@ -24899,13 +24892,13 @@ dblink_column_definition
 
                         if(typ == PT_TYPE_BLOB || typ == PT_TYPE_CLOB || typ == PT_TYPE_OBJECT)
                           {
-                                // TODO: error processing
-                                PT_ERROR (this_parser, node, "invalid DBLINK column type");
-                                assert (false); 
+                                PT_ERROR (this_parser, node, "not supported type for dblink");
                           }
 
                         if (typ == PT_TYPE_CHAR && dt)
-                                node->info.attr_def.size_constraint = dt->info.data_type.precision;                      
+                        {
+                                node->info.attr_def.size_constraint = dt->info.data_type.precision;
+                        }
                 }
 
                 $$ = node;
@@ -27961,59 +27954,192 @@ pt_jt_append_column_or_nested_node (PT_NODE * jt_node, PT_NODE * jt_col_or_neste
     }
 }
 
-static bool pt_ct_check_fill_connection_info (char* p, dblink_conn_info* pInfo)
-{  // URL=cci:CUBRID:192.168.1.8:55300:demodb::: USER=dba PASSWORD=
+static bool check_ipv4(char *p)
+{
+    // ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$
+    // 127.0.0.1    
+    char *num;
+    int  dot_cnt = 0;
+
+    num = p;
+    if( *num < '0' || *num > '9' )
+    {
+            return false;
+    }
+
+    for (++p; *p; p++)
+    {
+        if ( *p >= '0' && *p <= '9' )
+        {
+                continue;
+        }
+        else if ( (*p != '.') || (p[1] == '.') )
+        {
+                return false;
+        }
+        
+        dot_cnt++;
+        switch((int)(p - num))
+        {
+        case 1:
+                break;
+        case 2:
+        case 3:
+                if (*num == '0')
+                {
+                        return false;
+                }
+                else if( 255 < atoi(num) )
+                {
+                        return false;
+                }
+                break;
+        default:
+                return false;
+        }
+
+        num = p + 1;        
+        if( *num < '0' || *num > '9' )
+        {
+                return false;
+        }
+    }    
+
+    if( dot_cnt != 3 )
+        return false;
+    
+    switch((int)(p - num))
+    {
+    case 1:
+            break;
+    case 2:
+    case 3:
+            if (*num == '0')
+            {
+                    return false;
+            }
+            else if( 255 < atoi(num) )
+            {
+                    return false;
+            }
+            break;
+    default:
+            return false;
+    }
+
+    return true;
+}
+
+static bool check_hostname(char *p)
+{
+  // case RFC 1123)
+  //   ^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$
+  // case RFC 952) Hostname segment cannot start with a number
+  //   ^(([a-zA-Z]|[a-zA-Z][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z]|[A-Za-z][A-Za-z0-9\-]*[A-Za-z0-9])$
+  // The total length of the hostname must not exceed 255 characters
+  bool isdot = false;
+  char *s = p;
+  
+  if( char_isalnum(*p) == 0 )
+        return false;
+
+  for (p++; *p; p++)
+  {
+          if ( *p == '.' )
+          {
+                if(char_isalnum(p[-1]) == 0)
+                {
+                    return false;
+                }
+                isdot = true;
+          }
+          else if( isdot )
+          {
+                if(char_isalnum(*p) == 0)
+                {
+                    return false;
+                }
+                isdot = false;
+          }
+          else if( (char_isalnum(*p) == 0) && (*p != '-') )
+          {
+                return false;
+          }
+  }
+
+  if ( isdot || (p[-1] == '-') )
+  {
+        return false;
+  }
+
+  if( 255 < (int)(p - s) )
+  {
+        return false;
+  }
+
+  return true;
+}
+
+static bool pt_ct_check_fill_connection_info (char* p, char *pInfo[], char *perr_msg)
+{
+   // HOST=broker-hostname-or-ip PORT=broker-port DBNAME=db-name USER=string PASSWORD=string   
    int   nCnt;
-   static const char*  pzName[3] = {"url=",  "user=", "password="};
-   static int    zLen[3] = { -1, };
+   // Please keep the order in the array
+   static const char*  pzName[DBLINK_CONN_PARAM_CNT] = {"host=", "port=", "dbname=", "user=", "password="};
+   static int    zLen[DBLINK_CONN_PARAM_CNT] = { -1, };
    
+   perr_msg[0] = 0x00;
    if(zLen[0] < 0)
    {
-        for(nCnt = 0; nCnt < 3; nCnt++)
+        for(nCnt = 0; nCnt < DBLINK_CONN_PARAM_CNT; nCnt++)
+        {
                 zLen[nCnt] = strlen(pzName[nCnt]);
+        }
    }
-
-   memset(pInfo, 0x00, sizeof(dblink_conn_info));
-      
+        
    nCnt = 0;
-   while(*p)
+   while (*p)
      {        
         while (*p)
         {
                 if (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r')
+                {
                         p++;
+                }
                 else
+                {
                         break;
+                }
         }
         
         if(!*p)
-             break;        
+         {
+                 break;        
+         }
 
-        if (strncasecmp (p, pzName[0], zLen[0]) == 0)
+        int i;
+        for ( i = 0; i < DBLINK_CONN_PARAM_CNT; i++ )     
         {
-                assert(pInfo->pUrl == NULL);
-                p += zLen[0];
-                pInfo->pUrl = p;
-                nCnt++;                
+                if (strncasecmp (p, pzName[i], zLen[i]) == 0)
+                {
+                        break;               
+                }
         }
-        else if (strncasecmp (p, pzName[1], zLen[1]) == 0)
-        {
-                assert(pInfo->pUser == NULL);
-                p += zLen[1];
-                pInfo->pUser = p;
-                nCnt++;
-        }
-        else if (strncasecmp (p, pzName[2], zLen[2]) == 0)  
-        {
-                assert(pInfo->pPwd == NULL);
-                p += zLen[2];
-                pInfo->pPwd = p;
-                nCnt++;
-        }  
-        else
-        {  // TODO: fail
+
+        if ( i == DBLINK_CONN_PARAM_CNT )  
+        {  
+                sprintf(perr_msg, "Incorrect format of connection information for dblink");
                 return false;
         } 
+
+        if (pInfo[i])
+        {
+                nCnt--;
+        }
+
+        p += zLen[i];
+        pInfo[i] = p;
+        nCnt++;
 
         while (*p)
         {
@@ -28023,19 +28149,37 @@ static bool pt_ct_check_fill_connection_info (char* p, dblink_conn_info* pInfo)
                         p++;
         }
 
-        if(*p)
+        if (*p)
          {
                  *p = 0x00;
                  p++;
          }
      }   
 
-   if( nCnt != 3)
-     {  // TODO:          
+   if ( nCnt != DBLINK_CONN_PARAM_CNT)
+     {  
+          sprintf(perr_msg, "Incorrect format of connection information for dblink");
           return false;
      }  
 
-     return true;
+   //
+   if ( check_ipv4(pInfo[0]) == false )
+   {
+          if( check_hostname(pInfo[0]) == false )
+          {
+                sprintf(perr_msg, "Incorrect HOST format of connection information for dblink");
+                return false;
+          }
+   }
+
+   int port = atoi(pInfo[1]);
+   if( port < 0 || port > 65535 )
+   {
+           sprintf(perr_msg, "Invalid PORT of connection information for dblink");
+           return false;
+   }
+
+   return true;
 }
 
 static PT_NODE *

@@ -19318,17 +19318,8 @@ static PT_NODE *
 pt_apply_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
 {
   if (p->info.dblink_table.is_name)
-    assert (false);		// Not Yet ctshim_assert
-  else
     {
-#if 0				// Is it the necessary code?
-      // p->info.dblink_table.conn = g(parser, p->info.dblink_table.conn, arg);
-
-      p->info.dblink_table.url = g (parser, p->info.dblink_table.url, arg);
-      p->info.dblink_table.user = g (parser, p->info.dblink_table.user, arg);
-      p->info.dblink_table.pwd = g (parser, p->info.dblink_table.pwd, arg);
-      p->info.dblink_table.qstr = g (parser, p->info.dblink_table.qstr, arg);
-#endif
+      assert (false);		// Not Yet ctshim_assert
     }
 
   p->info.dblink_table.cols = g (parser, p->info.dblink_table.cols, arg);
@@ -19357,10 +19348,31 @@ pt_print_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p)
   else
     {
       q = pt_append_bytes (parser, q, "'", 1);
-      q = pt_append_nulstring (parser, q, "URL=");
-      q =
-	pt_append_bytes (parser, q, (char *) p->info.dblink_table.url->info.value.data_value.str->bytes,
-			 p->info.dblink_table.url->info.value.data_value.str->length);
+
+      char *t;
+      char *s = (char *) p->info.dblink_table.url->info.value.data_value.str->bytes;
+
+      // "cci:CUBRID:{HOST}:{PORT}:{DBNAME}:::"
+      // skip cci:
+      s = strchr (s, ':');
+      // skip CUBRID:
+      s = strchr (s + 1, ':');
+      // host     
+      t = ++s;
+      s = strchr (s, ':');
+      q = pt_append_nulstring (parser, q, "HOST=");
+      q = pt_append_bytes (parser, q, t, (int) (s - t));
+      // port     
+      t = ++s;
+      s = strchr (s, ':');
+      q = pt_append_nulstring (parser, q, " PORT=");
+      q = pt_append_bytes (parser, q, t, (int) (s - t));
+      // dbname     
+      t = ++s;
+      s = strchr (s, ':');
+      q = pt_append_nulstring (parser, q, " DBNAME=");
+      q = pt_append_bytes (parser, q, t, (int) (s - t));
+
       q = pt_append_nulstring (parser, q, " USER=");
       q =
 	pt_append_bytes (parser, q, (char *) p->info.dblink_table.user->info.value.data_value.str->bytes,
