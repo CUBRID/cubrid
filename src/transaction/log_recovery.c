@@ -812,6 +812,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
       eof = (LOG_RECORD_HEADER *) LOG_APPEND_PTR ();
       LOG_RESET_PREV_LSA (&eof->back_lsa);
     }
+  log_Gl.prior_info.check_lsa_consistency ();
 
 #if !defined(SERVER_MODE)
   LSA_COPY (&log_Gl.final_restored_lsa, &log_Gl.hdr.append_lsa);
@@ -2136,6 +2137,67 @@ log_is_page_of_record_broken (THREAD_ENTRY * thread_p, const LOG_LSA * log_lsa,
   return is_log_page_broken;
 }
 
+static void
+log_rv_analysis_handle_fetch_page_fail (THREAD_ENTRY * thread_p, log_recovery_context & context, LOG_PAGE * log_page_p,
+					const LOG_RECORD_HEADER * log_rec, const log_lsa & prev_lsa,
+					const log_lsa & prev_prev_lsa)
+{
+  if (context.is_restore_from_backup ())
+    {
+      context.force_stop_restore_at (-1);
+
+#if !defined(NDEBUG)
+      if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
+	{
+	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_STARTS));
+	  fprintf (stdout,
+		   msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG,
+				   MSGCAT_LOG_INCOMPLTE_MEDIA_RECOVERY), context.get_end_redo_lsa ().pageid,
+		   context.get_end_redo_lsa ().offset, "???...\n");
+	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_STARTS));
+	  fflush (stdout);
+	}
+#endif /* !NDEBUG */
+
+      /* if previous log record exists, reset tdes->tail_lsa/undo_nxlsa as previous of end_redo_lsa */
+      if (log_rec != NULL)
+	{
+	  LOG_TDES *last_log_tdes = LOG_FIND_TDES (logtb_find_tran_index (thread_p, log_rec->trid));
+	  if (last_log_tdes != NULL)
+	    {
+	      LSA_COPY (&last_log_tdes->tail_lsa, &log_rec->prev_tranlsa);
+	      LSA_COPY (&last_log_tdes->undo_nxlsa, &log_rec->prev_tranlsa);
+	      er_log_debug (ARG_FILE_LINE, "logpb_recovery_analysis: trid = %d, tail_lsa=%lld|%d\n",
+			    log_rec->trid, last_log_tdes->tail_lsa.pageid, last_log_tdes->tail_lsa.offset);
+	    }
+	}
+
+      assert (!prev_lsa.is_null ());
+      if (logpb_fetch_page (thread_p, &prev_lsa, LOG_CS_FORCE_USE, log_page_p) != NO_ERROR)
+	{
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "reset log is impossible");
+	  return;
+	}
+      log_recovery_resetlog (thread_p, &prev_lsa, &prev_prev_lsa);
+
+      log_Gl.mvcc_table.reset_start_mvccid ();
+    }
+  else
+    {
+      if (er_errid () == ER_TDE_CIPHER_IS_NOT_LOADED)
+	{
+	  /* TDE Module has to be loaded because there are some TDE-encrypted log pages */
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+			     "log_recovery_analysis: log page %lld has been encrypted (TDE) and cannot be decrypted",
+			     log_page_p->hdr.logical_pageid);
+	}
+      else
+	{
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_analysis");
+	}
+    }
+}
+
 /*
  * log_recovery_analysis - FIND STATE OF TRANSACTIONS AT SYSTEM CRASH
  *
@@ -2171,8 +2233,6 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, INT64 * num_redo_log_records, lo
   LOG_LSA first_corrupted_rec_lsa;
   LOG_RECTYPE log_rtype;	/* Log record type */
   LOG_RECORD_HEADER *log_rec = NULL;
-  time_t last_at_time = -1;
-  char time_val[CTIME_MAX];
   bool is_log_page_corrupted = false;
   TRANID tran_id;
   const int block_size = 4 * ONE_K;
@@ -2180,7 +2240,6 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, INT64 * num_redo_log_records, lo
   char null_buffer[block_size + MAX_ALIGNMENT], *null_block;
   int max_num_blocks = LOG_PAGESIZE / block_size;
   int last_checked_page_id = NULL_PAGEID;
-  bool is_log_page_broken;
 
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
   null_block = PTR_ALIGN (null_buffer, MAX_ALIGNMENT);
@@ -2207,7 +2266,6 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, INT64 * num_redo_log_records, lo
 
   log_page_p = (LOG_PAGE *) aligned_log_pgbuf;
 
-  is_log_page_broken = false;
   while (!LSA_ISNULL (&lsa))
     {
       /* Fetch the page where the LSA record to undo is located */
@@ -2217,67 +2275,8 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, INT64 * num_redo_log_records, lo
       if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_page_p) != NO_ERROR)
 	{
 	  // unable to fetch the current log page.
-	  is_log_page_broken = true;
-	}
-
-      if (is_log_page_broken)
-	{
-	  if (context.is_restore_from_backup ())
-	    {
-	      context.force_stop_restore_at (last_at_time);
-
-#if !defined(NDEBUG)
-	      if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
-		{
-		  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_STARTS));
-		  (void) ctime_r (&last_at_time, time_val);
-		  fprintf (stdout,
-			   msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG,
-					   MSGCAT_LOG_INCOMPLTE_MEDIA_RECOVERY), context.get_end_redo_lsa ().pageid,
-			   context.get_end_redo_lsa ().offset, ((last_at_time == -1) ? "???...\n" : time_val));
-		  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_STARTS));
-		  fflush (stdout);
-		}
-#endif /* !NDEBUG */
-
-	      /* if previous log record exists, reset tdes->tail_lsa/undo_nxlsa as previous of end_redo_lsa */
-	      if (log_rec != NULL)
-		{
-		  LOG_TDES *last_log_tdes = LOG_FIND_TDES (logtb_find_tran_index (thread_p, log_rec->trid));
-		  if (last_log_tdes != NULL)
-		    {
-		      LSA_COPY (&last_log_tdes->tail_lsa, &log_rec->prev_tranlsa);
-		      LSA_COPY (&last_log_tdes->undo_nxlsa, &log_rec->prev_tranlsa);
-		      er_log_debug (ARG_FILE_LINE, "logpb_recovery_analysis: trid = %d, tail_lsa=%lld|%d\n",
-				    log_rec->trid, last_log_tdes->tail_lsa.pageid, last_log_tdes->tail_lsa.offset);
-		    }
-		}
-	      assert (!prev_lsa.is_null ());
-	      if (logpb_fetch_page (thread_p, &prev_lsa, LOG_CS_FORCE_USE, log_page_p) != NO_ERROR)
-		{
-		  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "reset log is impossible");
-		  return;
-		}
-	      log_recovery_resetlog (thread_p, &prev_lsa, &prev_prev_lsa);
-
-	      log_Gl.mvcc_table.reset_start_mvccid ();
-	      return;
-	    }
-	  else
-	    {
-	      if (er_errid () == ER_TDE_CIPHER_IS_NOT_LOADED)
-		{
-		  /* TDE Module has to be loaded because there are some TDE-encrypted log pages */
-		  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-				     "log_recovery_analysis: log page %lld has been encrypted (TDE) and cannot be decrypted",
-				     log_page_p->hdr.logical_pageid);
-		}
-	      else
-		{
-		  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_analysis");
-		}
-	      return;
-	    }
+	  log_rv_analysis_handle_fetch_page_fail (thread_p, context, log_page_p, log_rec, prev_lsa, prev_prev_lsa);
+	  return;
 	}
 
       /* Check all log records in this phase */
@@ -2357,16 +2356,17 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, INT64 * num_redo_log_records, lo
 	  if (context.is_restore_from_backup ())
 	    {
 	      /* Check also the last log page of current record. We need to check after obtaining log_rec. */
-	      is_log_page_broken = log_is_page_of_record_broken (thread_p, &log_lsa, log_rec);
-	      if (is_log_page_broken)
+	      if (log_is_page_of_record_broken (thread_p, &log_lsa, log_rec))
 		{
 		  /* Needs to reset the log. It is done in the outer loop. Set end_redo and prev used at reset. */
-		  context.set_end_redo_lsa (lsa);
-		  LSA_COPY (&prev_lsa, &lsa);
 		  prev_prev_lsa = prev_lsa;
+		  prev_lsa = lsa;
+		  context.set_end_redo_lsa (lsa);
 		  er_log_debug (ARG_FILE_LINE, "logpb_recovery_analysis: broken record at LSA=%lld|%d ",
 				log_lsa.pageid, log_lsa.offset);
-		  break;
+		  log_rv_analysis_handle_fetch_page_fail (thread_p, context, log_page_p, log_rec, prev_lsa,
+							  prev_prev_lsa);
+		  return;
 		}
 	    }
 
@@ -2747,8 +2747,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
     if (log_recovery_redo_parallel_count > 0)
       {
 	minimum_log_lsa.reset (new cublog::minimum_log_lsa_monitor ());
-	parallel_recovery_redo.reset (new cublog::
-				      redo_parallel (log_recovery_redo_parallel_count, *minimum_log_lsa.get ()));
+	parallel_recovery_redo.
+	  reset (new cublog::redo_parallel (log_recovery_redo_parallel_count, *minimum_log_lsa.get ()));
       }
   }
 #endif
@@ -4764,6 +4764,7 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, const LOG_LSA * new_append_lsa, 
     }
 
   LOG_RESET_PREV_LSA (new_prev_lsa);
+  log_Gl.prior_info.check_lsa_consistency ();
 
   log_Gl.hdr.mvcc_op_log_lsa.set_null ();
 

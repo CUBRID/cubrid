@@ -128,6 +128,7 @@ struct log_prior_lsa_info
   log_prior_lsa_info ();
 
   void push_list (log_prior_node *&list_head, log_prior_node *&list_tail);
+  void check_lsa_consistency () const;
 };
 
 //
