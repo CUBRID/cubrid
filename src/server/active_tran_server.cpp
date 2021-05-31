@@ -177,11 +177,16 @@ active_tran_server::init_page_server_hosts (const char *db_name)
   cubcomm::node first_valid_connection;
   bool connected = false;
 
+  // use config to connect
+  //
+  int valid_connection_count = 0;
   for (const cubcomm::node &node : m_connection_list)
     {
-      exit_code = connect_to_page_server (node, db_name);
-      if (exit_code == NO_ERROR)
+      const int local_exit_code = connect_to_page_server (node, db_name);
+      if (local_exit_code == NO_ERROR)
 	{
+	  ++valid_connection_count;
+	  exit_code = NO_ERROR;
 	  if (!connected)
 	    {
 	      first_valid_connection = node;
@@ -193,9 +198,24 @@ active_tran_server::init_page_server_hosts (const char *db_name)
 	  // successfully connected to a page server. stop now.
 //	  return exit_code;
 	}
+      else
+	{
+	  exit_code = local_exit_code;
+	}
       er_log_debug (ARG_FILE_LINE, "Failed to connect to host: %s port: %d\n", node.get_host ().c_str (), node.get_port ());
     }
-//  exit_code = connect_to_page_server (first_valid_connection, db_name);
+  exit_code = connect_to_page_server (first_valid_connection, db_name);
+
+  if (valid_connection_count == 0 && m_has_remote_storage)
+    {
+      assert (exit_code != NO_ERROR);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NO_PAGE_SERVER_CONNECTION, 0);
+      return ER_NO_PAGE_SERVER_CONNECTION;
+    }
+
+  er_log_debug (ARG_FILE_LINE, "Transaction server runs on %s storage.",
+		m_has_remote_storage ? "remote" : "local");
+
   // failed to connect to any page server
   assert (connected);
   return connected ? NO_ERROR : exit_code;
