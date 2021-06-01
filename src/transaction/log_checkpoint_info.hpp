@@ -71,11 +71,11 @@ namespace cublog
       struct tran_info;
       struct sysop_info;
 
-      log_lsa m_start_redo_lsa;
-      log_lsa m_snapshot_lsa;
+      log_lsa m_start_redo_lsa = NULL_LSA;
+      log_lsa m_snapshot_lsa = NULL_LSA;
       std::vector<tran_info> m_trans;
       std::vector<sysop_info> m_sysops;
-      bool m_has_2pc;				      // true if any LOG_ISTRAN_2PC (tdes) is true
+      bool m_has_2pc = false;				      // true if any LOG_ISTRAN_2PC (tdes) is true
   };
 
   struct checkpoint_info::tran_info
