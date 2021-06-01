@@ -27954,132 +27954,6 @@ pt_jt_append_column_or_nested_node (PT_NODE * jt_node, PT_NODE * jt_col_or_neste
     }
 }
 
-static bool check_ipv4(char *p)
-{
-    // ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$
-    // 127.0.0.1    
-    char *num;
-    int  dot_cnt = 0;
-
-    num = p;
-    if( *num < '0' || *num > '9' )
-    {
-            return false;
-    }
-
-    for (++p; *p; p++)
-    {
-        if ( *p >= '0' && *p <= '9' )
-        {
-                continue;
-        }
-        else if ( (*p != '.') || (p[1] == '.') )
-        {
-                return false;
-        }
-        
-        dot_cnt++;
-        switch((int)(p - num))
-        {
-        case 1:
-                break;
-        case 2:
-        case 3:
-                if (*num == '0')
-                {
-                        return false;
-                }
-                else if( 255 < atoi(num) )
-                {
-                        return false;
-                }
-                break;
-        default:
-                return false;
-        }
-
-        num = p + 1;        
-        if( *num < '0' || *num > '9' )
-        {
-                return false;
-        }
-    }    
-
-    if( dot_cnt != 3 )
-        return false;
-    
-    switch((int)(p - num))
-    {
-    case 1:
-            break;
-    case 2:
-    case 3:
-            if (*num == '0')
-            {
-                    return false;
-            }
-            else if( 255 < atoi(num) )
-            {
-                    return false;
-            }
-            break;
-    default:
-            return false;
-    }
-
-    return true;
-}
-
-static bool check_hostname(char *p)
-{
-  // case RFC 1123)
-  //   ^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$
-  // case RFC 952) Hostname segment cannot start with a number
-  //   ^(([a-zA-Z]|[a-zA-Z][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z]|[A-Za-z][A-Za-z0-9\-]*[A-Za-z0-9])$
-  // The total length of the hostname must not exceed 255 characters
-  bool isdot = false;
-  char *s = p;
-  
-  if( char_isalnum(*p) == 0 )
-        return false;
-
-  for (p++; *p; p++)
-  {
-          if ( *p == '.' )
-          {
-                if(char_isalnum(p[-1]) == 0)
-                {
-                    return false;
-                }
-                isdot = true;
-          }
-          else if( isdot )
-          {
-                if(char_isalnum(*p) == 0)
-                {
-                    return false;
-                }
-                isdot = false;
-          }
-          else if( (char_isalnum(*p) == 0) && (*p != '-') )
-          {
-                return false;
-          }
-  }
-
-  if ( isdot || (p[-1] == '-') )
-  {
-        return false;
-  }
-
-  if( 255 < (int)(p - s) )
-  {
-        return false;
-  }
-
-  return true;
-}
-
 static bool pt_ct_check_fill_connection_info (char* p, char *pInfo[], char *perr_msg)
 {
    // HOST=broker-hostname-or-ip PORT=broker-port DBNAME=db-name USER=string PASSWORD=string   
@@ -28163,9 +28037,9 @@ static bool pt_ct_check_fill_connection_info (char* p, char *pInfo[], char *perr
      }  
 
    //
-   if ( check_ipv4(pInfo[0]) == false )
+   if ( pt_check_ipv4(pInfo[0]) == false )
    {
-          if( check_hostname(pInfo[0]) == false )
+          if( pt_check_hostname(pInfo[0]) == false )
           {
                 sprintf(perr_msg, "Incorrect HOST format of connection information for dblink");
                 return false;
