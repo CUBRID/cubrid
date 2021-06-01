@@ -46,7 +46,6 @@
 #include "page_buffer.h"
 #include "slotted_page.h"
 #include "file_manager.h"
-#include "overflow_file.h"
 #include "tz_support.h"
 #include "db_date.h"
 #include "thread_compat.hpp"
@@ -72,7 +71,6 @@ struct fhs_dir_header
 {
   /* Fields should be ordered according to their sizes */
   VFID bucket_file;		/* bucket file identifier */
-  VFID overflow_file;		/* overflow (buckets) file identifier */
 
   /* Each one keeps the number of buckets having a local depth equal to the index value of counter. Used for noticing
    * directory shrink condition */
@@ -160,7 +158,7 @@ static int fhs_connect_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p, int local
 			       VPID * bucket_vpid_p);
 static void fhs_adjust_local_depth (THREAD_ENTRY * thread_p, EHID * ehid_p, PAGE_PTR dir_root_page_p,
 				    FHS_DIR_HEADER * dir_header_p, int depth, int delta);
-static FHS_RESULT fhs_insert_to_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p, VFID * ovf_file_p,
+static FHS_RESULT fhs_insert_to_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p,
 					PAGE_PTR bucket_page_p, DB_TYPE key_type, void *key_p, OID * value_p,
 					VPID * existing_ovf_vpid_p);
 static PAGE_PTR fhs_extend_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p, PAGE_PTR dir_root_page_p,
@@ -1351,7 +1349,6 @@ fhs_create (THREAD_ENTRY * thread_p, EHID * ehid_p, DB_TYPE key_type, int exp_nu
   dir_header_p->key_type = key_type;
   dir_header_p->alignment = alignment;
   VFID_COPY (&dir_header_p->bucket_file, &bucket_vfid);
-  VFID_SET_NULL (&dir_header_p->overflow_file);
 
   /* Initialize local depth information */
   dir_header_p->local_depth_count[0] = 1;
@@ -2127,7 +2124,7 @@ fhs_insert_to_bucket_after_create (THREAD_ENTRY * thread_p, EHID * ehid_p, PAGE_
   fhs_adjust_local_depth (thread_p, ehid_p, dir_root_page_p, dir_header_p, (int) bucket_header.local_depth, 1);
 
   ins_result =
-    fhs_insert_to_bucket (thread_p, ehid_p, &dir_header_p->overflow_file, bucket_page_p,
+    fhs_insert_to_bucket (thread_p, ehid_p, bucket_page_p,
 			  dir_header_p->key_type, key_p, value_p, existing_ovf_vpid_p);
 
   if (ins_result != FHS_SUCCESSFUL_COMPLETION)
@@ -2161,7 +2158,7 @@ fhs_insert_bucket_after_extend_if_need (THREAD_ENTRY * thread_p, EHID * ehid_p, 
     }
 
   result =
-    fhs_insert_to_bucket (thread_p, ehid_p, &dir_header_p->overflow_file, bucket_page_p,
+    fhs_insert_to_bucket (thread_p, ehid_p, bucket_page_p,
 			  dir_header_p->key_type, key_p, value_p, existing_ovf_vpid_p);
   if (result == FHS_BUCKET_FULL)
     {
@@ -2190,7 +2187,7 @@ fhs_insert_bucket_after_extend_if_need (THREAD_ENTRY * thread_p, EHID * ehid_p, 
 	}
 
       result =
-	fhs_insert_to_bucket (thread_p, ehid_p, &dir_header_p->overflow_file, target_bucket_page_p,
+	fhs_insert_to_bucket (thread_p, ehid_p, target_bucket_page_p,
 			      dir_header_p->key_type, key_p, value_p, existing_ovf_vpid_p);
       pgbuf_unfix_and_init (thread_p, sibling_page_p);
     }
@@ -2435,7 +2432,6 @@ fhs_adjust_local_depth (THREAD_ENTRY * thread_p, EHID * ehid_p, PAGE_PTR dir_roo
  * fhs_insert_to_bucket () - Insert (key, value) to bucket
  *   return: FHS_RESULT
  *   ehid(in): identifier for the extendible hashing structure
- *   overflow_file(in): Overflow file for extendible hash
  *   buc_pgptr(in): bucket page to insert the key
  *   key_type(in): type of the key
  *   key_ptr(in): Pointer to the key
@@ -2452,7 +2448,7 @@ fhs_adjust_local_depth (THREAD_ENTRY * thread_p, EHID * ehid_p, PAGE_PTR dir_roo
  * for the new record, etc.) an appropriate error code is returned.
  */
 static FHS_RESULT
-fhs_insert_to_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p, VFID * ovf_file_p,
+fhs_insert_to_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p,
 		      PAGE_PTR bucket_page_p, DB_TYPE key_type, void *key_p, OID * value_p, VPID * existing_ovf_vpid_p)
 {
   char *bucket_record_p;
@@ -2892,6 +2888,7 @@ fhs_find_first_bit_position (THREAD_ENTRY * thread_p, FHS_DIR_HEADER * dir_heade
   /* Get the first pseudo key */
   first_hash_key = fhs_hash (key_p, dir_header_p->key_type);
 
+  /* 전체를 비교하여 depth를 찾는 방법.. 더좋은 방법이 있는지 고민해봐야함. */
   for (slot_id = first_slot_id + 1; slot_id < num_recs; slot_id++)
     {
       if (spage_get_record (thread_p, bucket_page_p, slot_id, &recdes, PEEK) != S_SUCCESS)
