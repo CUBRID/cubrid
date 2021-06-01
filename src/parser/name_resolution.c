@@ -3007,16 +3007,24 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
     case PT_FUNCTION:
       if (node->info.function.function_type == PT_GENERIC)
 	{
+	  const char *generic_name = node->info.function.generic_name;
 	  node->info.function.function_type = pt_find_function_type (node->info.function.generic_name);
 
 	  if (node->info.function.function_type == PT_GENERIC)
 	    {
 	      /*
 	       * It may be a method call since they are parsed as
-	       * nodes PT_FUNCTION.  If so, pt_make_method_call() will
+	       * nodes PT_FUNCTION.  If so, pt_make_stored_procedure() and pt_make_method_call() will
 	       * translate it into a method_call.
 	       */
-	      node1 = pt_make_method_call (parser, node, bind_arg);
+	      if (jsp_is_exist_stored_procedure (generic_name))
+		{
+		  node1 = pt_resolve_stored_procedure (parser, node, bind_arg);
+		}
+	      else
+		{
+		  node1 = pt_resolve_method (parser, node, bind_arg);
+		}
 
 	      if (node1->node_type == PT_METHOD_CALL)
 		{
@@ -8973,7 +8981,8 @@ pt_make_method_call (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAMES_ARG 
   if (jsp_is_exist_stored_procedure (new_node->info.method_call.method_name->info.name.original))
     {
       TP_DOMAIN *d = NULL;
-
+      node->info.method_call.method_type =
+	(PT_MISC_TYPE) jsp_get_sp_type (node->info.method_call.method_name->info.name.original);
       new_node->info.method_call.method_name->info.name.spec_id = (UINTPTR) new_node->info.method_call.method_name;
 
       new_node->info.method_call.method_name->info.name.meta_class = PT_METHOD;
