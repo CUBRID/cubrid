@@ -314,6 +314,59 @@ jsp_get_return_type (const char *name)
 }
 
 /*
+ * jsp_get_sp_type - Return Java Stored Procedure Type
+ *   return: if fail return error code
+ *           else return Java Stored Procedure Type
+ *   name(in): java stored procedure name
+ *
+ * Note:
+ */
+
+int
+jsp_get_sp_type (const char *name)
+{
+  DB_OBJECT *mop_p;
+  DB_VALUE sp_type_val;
+  int err;
+  int save;
+
+  AU_DISABLE (save);
+
+  mop_p = jsp_find_stored_procedure (name);
+  if (mop_p == NULL)
+    {
+      AU_ENABLE (save);
+
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
+
+  /* check type */
+  err = db_get (mop_p, SP_ATTR_SP_TYPE, &sp_type_val);
+  if (err != NO_ERROR)
+    {
+      AU_ENABLE (save);
+      return err;
+    }
+
+  AU_ENABLE (save);
+  return jsp_map_sp_type_to_pt_misc ((SP_TYPE_ENUM) db_get_int (&sp_type_val));
+}
+
+static PT_MISC_TYPE
+jsp_map_sp_type_to_pt_misc (SP_TYPE_ENUM sp_type)
+{
+  if (sp_type == SP_TYPE_PROCEDURE)
+    {
+      return PT_SP_PROCEDURE;
+    }
+  else
+    {
+      return PT_SP_FUNCTION;
+    }
+}
+
+/*
  * jsp_call_stored_procedure - call java stored procedure
  *   return: call jsp failed return error code
  *   parser(in/out): parser environment
