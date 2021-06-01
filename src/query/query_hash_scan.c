@@ -46,7 +46,6 @@
 #include "page_buffer.h"
 #include "slotted_page.h"
 #include "file_manager.h"
-#include "tz_support.h"
 #include "db_date.h"
 #include "thread_compat.hpp"
 
@@ -95,14 +94,6 @@ struct fhs_bucket_header
   char local_depth;		/* The local depth of the bucket */
 };
 
-typedef struct fhs_repetition FHS_REPETITION;
-struct fhs_repetition
-{
-  /* The "vpid" is repeated "count" times */
-  VPID vpid;
-  int count;
-};
-
 typedef enum
 {
   FHS_SUCCESSFUL_COMPLETION,
@@ -146,12 +137,11 @@ static PAGE_PTR fhs_find_bucket_vpid_with_hash (THREAD_ENTRY * thread_p, EHID * 
 						VPID * out_vpid_p, FHS_HASH_KEY * out_hash_key_p, int *out_location_p);
 static int fhs_insert_to_bucket_after_create (THREAD_ENTRY * thread_p, EHID * ehid_p, PAGE_PTR dir_root_page_p,
 					      FHS_DIR_HEADER * dir_header_p, VPID * bucket_vpid_p, int location,
-					      FHS_HASH_KEY hash_key, void *key_p, OID * value_p,
-					      VPID * existing_ovf_vpid_p);
+					      FHS_HASH_KEY hash_key, void *key_p, OID * value_p);
 static FHS_RESULT fhs_insert_bucket_after_extend_if_need (THREAD_ENTRY * thread_p, EHID * ehid_p,
 							  PAGE_PTR dir_root_page_p, FHS_DIR_HEADER * dir_header_p,
 							  VPID * bucket_vpid_p, void *key_p, FHS_HASH_KEY hash_key,
-							  OID * value_p, VPID * existing_ovf_vpid_p);
+							  OID * value_p);
 static char fhs_find_depth (THREAD_ENTRY * thread_p, EHID * ehid_p, int location, VPID * bucket_vpid_p,
 			    VPID * sibling_vpid_p);
 static int fhs_connect_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p, int local_depth, FHS_HASH_KEY hash_key,
@@ -159,8 +149,7 @@ static int fhs_connect_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p, int local
 static void fhs_adjust_local_depth (THREAD_ENTRY * thread_p, EHID * ehid_p, PAGE_PTR dir_root_page_p,
 				    FHS_DIR_HEADER * dir_header_p, int depth, int delta);
 static FHS_RESULT fhs_insert_to_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p,
-					PAGE_PTR bucket_page_p, DB_TYPE key_type, void *key_p, OID * value_p,
-					VPID * existing_ovf_vpid_p);
+					PAGE_PTR bucket_page_p, DB_TYPE key_type, void *key_p, OID * value_p);
 static PAGE_PTR fhs_extend_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p, PAGE_PTR dir_root_page_p,
 				   FHS_DIR_HEADER * dir_header_p, PAGE_PTR bucket_page_p, void *key_p,
 				   FHS_HASH_KEY hash_key, int *out_new_bit_p, VPID * bucket_vpid);
@@ -2047,8 +2036,8 @@ fhs_insert (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p, OID * value_p)
   if (VPID_ISNULL (&bucket_vpid))
     {
       if (fhs_insert_to_bucket_after_create
-	  (thread_p, ehid_p, dir_root_page_p, dir_header_p, &bucket_vpid, location, hash_key, key_p, value_p,
-	   NULL) != NO_ERROR)
+	  (thread_p, ehid_p, dir_root_page_p, dir_header_p, &bucket_vpid, location, hash_key, key_p,
+	   value_p) != NO_ERROR)
 	{
 	  pgbuf_unfix_and_init (thread_p, dir_root_page_p);
 	  return NULL;
@@ -2058,7 +2047,7 @@ fhs_insert (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p, OID * value_p)
     {
       result =
 	fhs_insert_bucket_after_extend_if_need (thread_p, ehid_p, dir_root_page_p, dir_header_p, &bucket_vpid, key_p,
-						hash_key, value_p, NULL);
+						hash_key, value_p);
       if (result == FHS_ERROR_OCCURRED)
 	{
 	  pgbuf_unfix_and_init (thread_p, dir_root_page_p);
@@ -2078,7 +2067,7 @@ fhs_insert (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p, OID * value_p)
 static int
 fhs_insert_to_bucket_after_create (THREAD_ENTRY * thread_p, EHID * ehid_p, PAGE_PTR dir_root_page_p,
 				   FHS_DIR_HEADER * dir_header_p, VPID * bucket_vpid_p, int location,
-				   FHS_HASH_KEY hash_key, void *key_p, OID * value_p, VPID * existing_ovf_vpid_p)
+				   FHS_HASH_KEY hash_key, void *key_p, OID * value_p)
 {
   PAGE_PTR bucket_page_p;
   FHS_BUCKET_HEADER bucket_header;
@@ -2123,9 +2112,7 @@ fhs_insert_to_bucket_after_create (THREAD_ENTRY * thread_p, EHID * ehid_p, PAGE_
 
   fhs_adjust_local_depth (thread_p, ehid_p, dir_root_page_p, dir_header_p, (int) bucket_header.local_depth, 1);
 
-  ins_result =
-    fhs_insert_to_bucket (thread_p, ehid_p, bucket_page_p,
-			  dir_header_p->key_type, key_p, value_p, existing_ovf_vpid_p);
+  ins_result = fhs_insert_to_bucket (thread_p, ehid_p, bucket_page_p, dir_header_p->key_type, key_p, value_p);
 
   if (ins_result != FHS_SUCCESSFUL_COMPLETION)
     {
@@ -2142,7 +2129,7 @@ fhs_insert_to_bucket_after_create (THREAD_ENTRY * thread_p, EHID * ehid_p, PAGE_
 static FHS_RESULT
 fhs_insert_bucket_after_extend_if_need (THREAD_ENTRY * thread_p, EHID * ehid_p, PAGE_PTR dir_root_page_p,
 					FHS_DIR_HEADER * dir_header_p, VPID * bucket_vpid_p, void *key_p,
-					FHS_HASH_KEY hash_key, OID * value_p, VPID * existing_ovf_vpid_p)
+					FHS_HASH_KEY hash_key, OID * value_p)
 {
   PAGE_PTR bucket_page_p;
   PAGE_PTR sibling_page_p = NULL;
@@ -2157,9 +2144,7 @@ fhs_insert_bucket_after_extend_if_need (THREAD_ENTRY * thread_p, EHID * ehid_p, 
       return FHS_ERROR_OCCURRED;
     }
 
-  result =
-    fhs_insert_to_bucket (thread_p, ehid_p, bucket_page_p,
-			  dir_header_p->key_type, key_p, value_p, existing_ovf_vpid_p);
+  result = fhs_insert_to_bucket (thread_p, ehid_p, bucket_page_p, dir_header_p->key_type, key_p, value_p);
   if (result == FHS_BUCKET_FULL)
     {
       sibling_page_p =
@@ -2186,9 +2171,7 @@ fhs_insert_bucket_after_extend_if_need (THREAD_ENTRY * thread_p, EHID * ehid_p, 
 	  target_bucket_page_p = bucket_page_p;
 	}
 
-      result =
-	fhs_insert_to_bucket (thread_p, ehid_p, target_bucket_page_p,
-			      dir_header_p->key_type, key_p, value_p, existing_ovf_vpid_p);
+      result = fhs_insert_to_bucket (thread_p, ehid_p, target_bucket_page_p, dir_header_p->key_type, key_p, value_p);
       pgbuf_unfix_and_init (thread_p, sibling_page_p);
     }
 
@@ -2324,7 +2307,6 @@ fhs_connect_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p, int local_depth, FHS
 {
   FHS_DIR_HEADER dir_header;
   FHS_DIR_RECORD *dir_record_p;
-  FHS_REPETITION repetition;
   PAGE_PTR page_p;
   int location;
   int first_page, last_page;
@@ -2332,11 +2314,9 @@ fhs_connect_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p, int local_depth, FHS
   int start_offset, end_offset;
   int diff;
   int i, j;
-  int bef_length;
+  int bef_length, count;
   unsigned int set_bits;
   unsigned int clear_bits;
-
-  repetition.vpid = *bucket_vpid_p;
 
   page_p = fhs_fix_ehid_page (thread_p, ehid_p, PGBUF_LATCH_READ);
   if (page_p == NULL)
@@ -2404,11 +2384,11 @@ fhs_connect_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p, int local_depth, FHS
 
       /* Log this page */
       bef_length = end_offset - start_offset;
-      repetition.count = bef_length / sizeof (FHS_DIR_RECORD);
+      count = bef_length / sizeof (FHS_DIR_RECORD);
 
       /* Update the directory page */
       dir_record_p = (FHS_DIR_RECORD *) ((char *) page_p + start_offset);
-      for (j = 0; j < repetition.count; j++)
+      for (j = 0; j < count; j++)
 	{
 	  dir_record_p->bucket_vpid = *bucket_vpid_p;
 	  dir_record_p++;
@@ -2449,7 +2429,7 @@ fhs_adjust_local_depth (THREAD_ENTRY * thread_p, EHID * ehid_p, PAGE_PTR dir_roo
  */
 static FHS_RESULT
 fhs_insert_to_bucket (THREAD_ENTRY * thread_p, EHID * ehid_p,
-		      PAGE_PTR bucket_page_p, DB_TYPE key_type, void *key_p, OID * value_p, VPID * existing_ovf_vpid_p)
+		      PAGE_PTR bucket_page_p, DB_TYPE key_type, void *key_p, OID * value_p)
 {
   char *bucket_record_p;
   RECDES bucket_recdes;
