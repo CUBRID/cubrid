@@ -15678,9 +15678,9 @@ sm_collect_truncatable_classes (MOP class_mop, std::unordered_set < OID > &trun_
   trun_classes.emplace (*ws_oid (class_mop));
 
   pk_constraint = classobj_find_cons_primary_key (class_->constraints);
-  if (pk_constraint == NULL || pk_constraint->fk_info == NULL)
+  if (pk_constraint == NULL || classobj_is_pk_referred (class_mop, pk_constraint->fk_info, false, NULL) == false)
     {
-      /* if no PK or FK-referred, it can be truncated */
+      /* if no PK, not FK-referred, or self-referencing, it can be truncated */
       return NO_ERROR;
     }
 
