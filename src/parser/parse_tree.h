@@ -1048,6 +1048,7 @@ typedef enum
   PT_IS_MTHD_EXPR,		/* is the method call part of an expr */
   PT_IS_CLASS_MTHD,		/* is the method a class method */
   PT_IS_INST_MTHD,		/* is the method an instance method */
+  PT_IS_JAVA_MTHD,		/* is the method java stored procedure */
   PT_METHOD_ENTITY,		/* this entity arose from a method call */
   PT_IS_SELECTOR_SPEC,		/* This is the 'real' correspondant of the whacked spec. down in the path entities
 				 * portion. */
@@ -2376,7 +2377,7 @@ struct pt_method_call_info
   PT_NODE *on_call_target;	/* PT_NAME */
   PT_NODE *to_return_var;	/* PT_NAME */
   PT_MISC_TYPE call_or_expr;	/* PT_IS_CALL_STMT or PT_IS_MTHD_EXPR */
-  PT_MISC_TYPE class_or_inst;	/* PT_IS_CLASS_MTHD or PT_IS_INST_MTHD */
+  PT_MISC_TYPE method_type;	/* PT_IS_CLASS_MTHD, PT_IS_INST_MTHD, PT_IS_JAVA_MTHD */
   UINTPTR method_id;		/* unique identifier so when copying we know if two methods are copies of the same
 				 * original method call. */
 };
