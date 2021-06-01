@@ -142,7 +142,7 @@ TEST_CASE ("Test pack/unpack checkpoint_info class 3", "")
 
 std::map<TRANID, log_tdes *> tran_map;
 std::map<TRANID, log_tdes *> systb_System_tdes;
-int count_2pc_after_recovery;
+size_t count_2pc_after_recovery;
 
 TEST_CASE ("Test load and recovery on empty tran table", "")
 {
@@ -197,7 +197,7 @@ check_recovery (checkpoint_info obj)
       REQUIRE (itr->first != NULL_TRANID);
     }
 
-  for (size_t i = 1; i < log_Gl.trantable.num_total_indices; i++)
+  for (size_t i = 1; i < (size_t) log_Gl.trantable.num_total_indices; i++)
     {
       LOG_TDES *tdes = log_Gl.trantable.all_tdes[i];
 
@@ -313,13 +313,13 @@ test_env_chkpt::test_env_chkpt (size_t size_trans, size_t size_sysops)
   checkpoint_info::tran_info chkpt_trans_to_add;
   checkpoint_info::sysop_info chkpt_sysop_to_add;
 
-  for (int i = 0; i < size_trans; i++)
+  for (size_t i = 0; i < size_trans; i++)
     {
       chkpt_trans_to_add = generate_log_info_chkpt_trans ();
       m_before.m_trans.push_back (chkpt_trans_to_add);
     }
 
-  for (int i = 0; i < size_sysops; i++)
+  for (size_t i = 0; i < size_sysops; i++)
     {
       chkpt_sysop_to_add = generate_log_info_chkpt_sysop ();
       m_before.m_sysops.push_back (chkpt_sysop_to_add);
