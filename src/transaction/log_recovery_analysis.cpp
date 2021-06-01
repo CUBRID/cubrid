@@ -88,26 +88,31 @@ static void log_recovery_notpartof_archives (THREAD_ENTRY *thread_p, int start_a
 void
 log_recovery_analysis (THREAD_ENTRY *thread_p, INT64 *num_redo_log_records, log_recovery_context &context)
 {
-  LOG_LSA lsa;			/* LSA of log record to analyse */
-  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
-  LOG_PAGE *log_page_p = NULL;	/* Log page pointer where LSA is located */
-  LOG_LSA log_lsa;
-  LOG_LSA prev_lsa;
-  LOG_LSA prev_prev_lsa;
-  LOG_LSA first_corrupted_rec_lsa;
-  LOG_RECTYPE log_rtype;	/* Log record type */
-  LOG_RECORD_HEADER *log_rec = NULL;
-  bool is_log_page_corrupted = false;
-  TRANID tran_id;
-  const int block_size = 4 * ONE_K;
-  int start_record_block, end_record_block;
-  char null_buffer[block_size + MAX_ALIGNMENT], *null_block;
-  int max_num_blocks = LOG_PAGESIZE / block_size;
-  int last_checked_page_id = NULL_PAGEID;
+  // Navigation LSA's
+  LOG_LSA record_nav_lsa = NULL_LSA;		/* LSA used to navigate from one record to the next */
+  LOG_LSA log_nav_lsa = NULL_LSA;		/* LSA used to navigate through log pages and the data inside the pages.*/
+  LOG_LSA prev_lsa = NULL_LSA;			/* LSA of previous log record */
+  LOG_LSA prev_prev_lsa = NULL_LSA;		/* LSA of record previous to previous log record */
 
-  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
-  null_block = PTR_ALIGN (null_buffer, MAX_ALIGNMENT);
-  memset (null_block, LOG_PAGE_INIT_VALUE, block_size);
+  // Log page
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  LOG_PAGE *log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+
+  // Current log record
+  LOG_RECTYPE log_rtype = LOG_LARGER_LOGREC_TYPE;	/* Log record type */
+  LOG_RECORD_HEADER *log_rec = NULL;
+
+  // Stuff used for corruption checks
+  LOG_LSA first_corrupted_rec_lsa = NULL_LSA;
+  bool is_log_page_corrupted = false;
+  constexpr int IO_BLOCK_SIZE = 4 * ONE_K;
+  int start_record_block = 0, end_record_block = 0;
+  char null_buffer[IO_BLOCK_SIZE + MAX_ALIGNMENT];
+  char *null_block = PTR_ALIGN (null_buffer, MAX_ALIGNMENT);
+  const int max_num_blocks = LOG_PAGESIZE / IO_BLOCK_SIZE;
+  LOG_PAGEID last_checked_page_id = NULL_PAGEID;
+
+  std::memset (null_block, LOG_PAGE_INIT_VALUE, IO_BLOCK_SIZE);
 
   if (num_redo_log_records != NULL)
     {
@@ -118,364 +123,350 @@ log_recovery_analysis (THREAD_ENTRY *thread_p, INT64 *num_redo_log_records, log_
    * Find the committed, aborted, and unilaterally aborted (active) transactions at system crash
    */
 
-  LSA_SET_NULL (&first_corrupted_rec_lsa);
-  lsa = context.get_checkpoint_lsa ();
+  // Start with the record at checkpoint LSA.
+  record_nav_lsa = context.get_checkpoint_lsa ();
 
   // If the recovery start matches a checkpoint, use the checkpoint information.
-  const cublog::checkpoint_info *chkpt_infop = log_Gl.m_metainfo.get_checkpoint_info (lsa);
-  LSA_COPY (&prev_lsa, &lsa);
-  prev_prev_lsa.set_null ();
+  const cublog::checkpoint_info *chkpt_infop = log_Gl.m_metainfo.get_checkpoint_info (record_nav_lsa);
 
-  log_page_p = (LOG_PAGE *) aligned_log_pgbuf;
-
-  while (!LSA_ISNULL (&lsa))
+  /* Check all log records in this phase */
+  while (!LSA_ISNULL (&record_nav_lsa))
     {
-      /* Fetch the page where the LSA record to undo is located */
-      LSA_COPY (&log_lsa, &lsa);
-
-      /* We may fetch only if log page not already broken, but is better in this way. */
-      if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_page_p) != NO_ERROR)
+      if (record_nav_lsa.pageid != log_nav_lsa.pageid)
 	{
-	  // unable to fetch the current log page.
-	  log_rv_analysis_handle_fetch_page_fail (thread_p, context, log_page_p, log_rec, prev_lsa, prev_prev_lsa);
-	  return;
+	  /* Fetch the page of record */
+	  /* We may fetch only if log page not already broken, but is better in this way. */
+	  if (logpb_fetch_page (thread_p, &record_nav_lsa, LOG_CS_FORCE_USE, log_page_p) != NO_ERROR)
+	    {
+	      // unable to fetch the current log page.
+	      log_rv_analysis_handle_fetch_page_fail (thread_p, context, log_page_p, log_rec, prev_lsa, prev_prev_lsa);
+	      return;
+	    }
+	}
+      log_nav_lsa = record_nav_lsa;
+
+      /* If an offset is missing, it is because an incomplete log record was archived. This log_record was completed
+       * later. Thus, we have to find the offset by searching for the next log_record in the page
+       */
+      if (record_nav_lsa.offset == NULL_OFFSET)
+	{
+	  record_nav_lsa.offset = log_page_p->hdr.offset;
+	  if (record_nav_lsa.offset == NULL_OFFSET)
+	    {
+	      /* Continue with next pageid */
+	      if (logpb_is_page_in_archive (record_nav_lsa.pageid))
+		{
+		  record_nav_lsa.pageid = record_nav_lsa.pageid + 1;
+		}
+	      else
+		{
+		  record_nav_lsa.pageid = NULL_PAGEID;
+		}
+	      continue;
+	    }
 	}
 
-      /* Check all log records in this phase */
-      while (!LSA_ISNULL (&lsa) && lsa.pageid == log_lsa.pageid)
-	{
-	  /*
-	   * If an offset is missing, it is because an incomplete log record was
-	   * archived. This log_record was completed later. Thus, we have to
-	   * find the offset by searching for the next log_record in the page
-	   */
-	  if (lsa.offset == NULL_OFFSET)
-	    {
-	      lsa.offset = log_page_p->hdr.offset;
-	      if (lsa.offset == NULL_OFFSET)
-		{
-		  /* Continue with next pageid */
-		  if (logpb_is_page_in_archive (log_lsa.pageid))
-		    {
-		      lsa.pageid = log_lsa.pageid + 1;
-		    }
-		  else
-		    {
-		      lsa.pageid = NULL_PAGEID;
-		    }
-		  continue;
-		}
-	    }
+      // Set-up a constant value for current record LSA to be used onward.
+      const LOG_LSA crt_record_lsa = record_nav_lsa;
+      assert (crt_record_lsa.pageid != NULL_PAGEID && crt_record_lsa.offset != NULL_OFFSET);
 
-	  /* If the page changed, check whether is corrupted. */
-	  if (last_checked_page_id != log_lsa.pageid)
-	    {
+      /* If the page changed, check whether is corrupted. */
+      if (last_checked_page_id != crt_record_lsa.pageid)
+	{
 #if !defined(NDEBUG)
-	      er_log_debug (ARG_FILE_LINE, "logpb_recovery_analysis: log page %lld, checksum %d\n",
-			    log_page_p->hdr.logical_pageid, log_page_p->hdr.checksum);
-	      if (prm_get_bool_value (PRM_ID_LOGPB_LOGGING_DEBUG))
-		{
-		  fileio_page_hexa_dump ((const char *) log_page_p, LOG_PAGESIZE);
-		}
+	  er_log_debug (ARG_FILE_LINE, "logpb_recovery_analysis: log page %lld, checksum %d\n",
+			log_page_p->hdr.logical_pageid, log_page_p->hdr.checksum);
+	  if (prm_get_bool_value (PRM_ID_LOGPB_LOGGING_DEBUG))
+	    {
+	      fileio_page_hexa_dump ((const char *) log_page_p, LOG_PAGESIZE);
+	    }
 #endif /* !NDEBUG */
 
-	      /* Check whether active log pages are corrupted. This may happen in case of partial page flush for instance. */
-	      if (logpb_page_check_corruption (thread_p, log_page_p, &is_log_page_corrupted) != NO_ERROR)
+	  /* Check whether active log pages are corrupted. This may happen in case of partial page flush for instance. */
+	  if (logpb_page_check_corruption (thread_p, log_page_p, &is_log_page_corrupted) != NO_ERROR)
+	    {
+	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_analysis");
+	      return;
+	    }
+
+	  if (is_log_page_corrupted)
+	    {
+	      if (logpb_is_page_in_archive (crt_record_lsa.pageid))
 		{
+		  /* Should not happen. */
 		  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_analysis");
 		  return;
 		}
 
-	      if (is_log_page_corrupted)
+	      /* Set first corrupted record lsa, if a block is corrupted. */
+	      logpb_page_get_first_null_block_lsa (thread_p, log_page_p, &first_corrupted_rec_lsa);
+
+	      /* Found corrupted log page. */
+	      if (prm_get_bool_value (PRM_ID_LOGPB_LOGGING_DEBUG))
 		{
-		  if (logpb_is_page_in_archive (log_lsa.pageid))
+		  _er_log_debug (ARG_FILE_LINE,
+				 "logpb_recovery_analysis: log page %lld is corrupted due to partial flush.\n",
+				 (long long int) crt_record_lsa.pageid);
+		}
+	    }
+
+	  /* Set last checked page id. */
+	  last_checked_page_id = crt_record_lsa.pageid;
+	}
+
+      /* Get the record header */
+      log_rec = LOG_GET_LOG_RECORD_HEADER (log_page_p, &crt_record_lsa);
+
+      if (context.is_restore_from_backup ())
+	{
+	  /* Check also the last log page of current record. We need to check after obtaining log_rec. */
+	  if (log_is_page_of_record_broken (thread_p, &crt_record_lsa, log_rec))
+	    {
+	      /* Needs to reset the log. It is done in the outer loop. Set end_redo and prev used at reset. */
+	      prev_prev_lsa = prev_lsa;
+	      prev_lsa = crt_record_lsa;
+	      context.set_end_redo_lsa (crt_record_lsa);
+	      er_log_debug (ARG_FILE_LINE, "logpb_recovery_analysis: broken record at LSA=%lld|%d ",
+			    LSA_AS_ARGS (&crt_record_lsa));
+	      log_rv_analysis_handle_fetch_page_fail (thread_p, context, log_page_p, log_rec, prev_lsa,
+						      prev_prev_lsa);
+	      return;
+	    }
+	}
+
+      /* Check whether null LSA is reached. */
+      if (!is_log_page_corrupted)
+	{
+	  /* For safety reason. Normally, checksum must detect corrupted pages. */
+	  if (LSA_ISNULL (&log_rec->forw_lsa)
+	      && log_rec->type != LOG_END_OF_LOG && !logpb_is_page_in_archive (crt_record_lsa.pageid))
+	    {
+	      /* Can't find the end of log. The next log is null. Consider the page corrupted. */
+	      logpb_page_get_first_null_block_lsa (thread_p, log_page_p, &first_corrupted_rec_lsa);
+	      is_log_page_corrupted = true;
+
+	      er_log_debug (ARG_FILE_LINE,
+			    "log_recovery_analysis: ** WARNING: An end of the log record was not found."
+			    "Latest log record at lsa = %lld|%d, first_corrupted_lsa = %lld|%d\n",
+			    LSA_AS_ARGS (&crt_record_lsa), LSA_AS_ARGS (&first_corrupted_rec_lsa));
+	    }
+	  else if (log_rec->forw_lsa.pageid == crt_record_lsa.pageid)
+	    {
+	      /* Quick fix. Sometimes page corruption is not detected. Check whether the current log record
+	      * is in corrupted block. If true, consider the page corrupted.
+	      */
+	      LOG_LSA temp_log_lsa;
+	      LSA_COPY (&temp_log_lsa, &log_rec->forw_lsa);
+	      temp_log_lsa.offset--;
+	      assert (crt_record_lsa.offset >= 0 && temp_log_lsa.offset > crt_record_lsa.offset);
+
+	      start_record_block = ((int) crt_record_lsa.offset + sizeof (LOG_HDRPAGE)) / IO_BLOCK_SIZE;
+	      assert (start_record_block >= 0 && start_record_block < max_num_blocks);
+	      end_record_block = ((int) temp_log_lsa.offset + sizeof (LOG_HDRPAGE)) / IO_BLOCK_SIZE;
+	      assert (end_record_block >= 0 && end_record_block < max_num_blocks);
+
+	      if (start_record_block != end_record_block)
+		{
+		  assert (start_record_block < end_record_block);
+		  if (memcmp (((char *) log_page_p) + (end_record_block * IO_BLOCK_SIZE), null_block, IO_BLOCK_SIZE) == 0)
 		    {
-		      /* Should not happen. */
-		      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_analysis");
-		      return;
+		      /* The current record is corrupted - ends into a corrupted block. */
+		      LSA_COPY (&first_corrupted_rec_lsa, &crt_record_lsa);
+		      is_log_page_corrupted = true;
+
+		      er_log_debug (ARG_FILE_LINE,
+				    "log_recovery_analysis: ** WARNING: An end of the log record was not found."
+				    "Latest log record at lsa = %lld|%d, first_corrupted_lsa = %lld|%d\n",
+				    LSA_AS_ARGS (&crt_record_lsa), LSA_AS_ARGS (&first_corrupted_rec_lsa));
 		    }
+		}
+	    }
+	}
 
-		  /* Set first corrupted record lsa, if a block is corrupted. */
-		  logpb_page_get_first_null_block_lsa (thread_p, log_page_p, &first_corrupted_rec_lsa);
+      if (is_log_page_corrupted && !LSA_ISNULL (&first_corrupted_rec_lsa))
+	{
+	  /* If the record is corrupted - it resides in a corrupted block, then
+	    * resets append lsa to last valid address and stop.
+	    */
+	  if (LSA_GT (&crt_record_lsa, &first_corrupted_rec_lsa))
+	    {
+	      LOG_RESET_APPEND_LSA (&context.get_end_redo_lsa ());
+	      break;
+	    }
+	  else
+	    {
+	      LOG_LSA temp_log_lsa;
+	      bool is_log_lsa_corrupted = false;
 
-		  /* Found corrupted log page. */
+	      if (LSA_EQ (&crt_record_lsa, &first_corrupted_rec_lsa)
+		  || LSA_GT (&log_rec->forw_lsa, &first_corrupted_rec_lsa))
+		{
+		  /* When log_lsa = first_corrupted_rec_lsa, forw_lsa may be NULL. */
+		  is_log_lsa_corrupted = true;
+		}
+	      else
+		{
+		  /* Check correctness of information from log header. */
+		  LSA_COPY (&temp_log_lsa, &crt_record_lsa);
+		  temp_log_lsa.offset += sizeof (LOG_RECORD_HEADER);
+		  temp_log_lsa.offset = DB_ALIGN (temp_log_lsa.offset, DOUBLE_ALIGNMENT);
+
+		  if ((temp_log_lsa.offset > (int) LOGAREA_SIZE)
+		      || (LSA_GT (&temp_log_lsa, &first_corrupted_rec_lsa)))
+		    {
+		      is_log_lsa_corrupted = true;
+		    }
+		}
+
+	      if (is_log_lsa_corrupted)
+		{
 		  if (prm_get_bool_value (PRM_ID_LOGPB_LOGGING_DEBUG))
 		    {
 		      _er_log_debug (ARG_FILE_LINE,
-				     "logpb_recovery_analysis: log page %lld is corrupted due to partial flush.\n",
-				     (long long int) log_lsa.pageid);
+				     "logpb_recovery_analysis: Partial page flush - first corrupted log record LSA = (%lld, %d)\n",
+				     (long long int) crt_record_lsa.pageid, crt_record_lsa.offset);
 		    }
-		}
-
-	      /* Set last checked page id. */
-	      last_checked_page_id = log_lsa.pageid;
-	    }
-
-	  /* Find the log record */
-	  log_lsa.offset = lsa.offset;
-	  log_rec = LOG_GET_LOG_RECORD_HEADER (log_page_p, &log_lsa);
-
-	  if (context.is_restore_from_backup ())
-	    {
-	      /* Check also the last log page of current record. We need to check after obtaining log_rec. */
-	      if (log_is_page_of_record_broken (thread_p, &log_lsa, log_rec))
-		{
-		  /* Needs to reset the log. It is done in the outer loop. Set end_redo and prev used at reset. */
-		  prev_prev_lsa = prev_lsa;
-		  prev_lsa = lsa;
-		  context.set_end_redo_lsa (lsa);
-		  er_log_debug (ARG_FILE_LINE, "logpb_recovery_analysis: broken record at LSA=%lld|%d ",
-				log_lsa.pageid, log_lsa.offset);
-		  log_rv_analysis_handle_fetch_page_fail (thread_p, context, log_page_p, log_rec, prev_lsa,
-							  prev_prev_lsa);
-		  return;
-		}
-	    }
-
-	  /* Check whether null LSA is reached. */
-	  if (!is_log_page_corrupted)
-	    {
-	      /* For safety reason. Normally, checksum must detect corrupted pages. */
-	      if (LSA_ISNULL (&log_rec->forw_lsa)
-		  && log_rec->type != LOG_END_OF_LOG && !logpb_is_page_in_archive (log_lsa.pageid))
-		{
-		  /* Can't find the end of log. The next log is null. Consider the page corrupted. */
-		  logpb_page_get_first_null_block_lsa (thread_p, log_page_p, &first_corrupted_rec_lsa);
-		  is_log_page_corrupted = true;
-
-		  er_log_debug (ARG_FILE_LINE,
-				"log_recovery_analysis: ** WARNING: An end of the log record was not found."
-				"Latest log record at lsa = %lld|%d, first_corrupted_lsa = %lld|%d\n",
-				log_lsa.pageid, log_lsa.offset, first_corrupted_rec_lsa.pageid,
-				first_corrupted_rec_lsa.offset);
-		}
-	      else if (log_rec->forw_lsa.pageid == log_lsa.pageid)
-		{
-		  /* Quick fix. Sometimes page corruption is not detected. Check whether the current log record
-		   * is in corrupted block. If true, consider the page corrupted.
-		   */
-		  LOG_LSA temp_log_lsa;
-		  LSA_COPY (&temp_log_lsa, &log_rec->forw_lsa);
-		  temp_log_lsa.offset--;
-		  assert (log_lsa.offset >= 0 && temp_log_lsa.offset > log_lsa.offset);
-
-		  start_record_block = ((int) log_lsa.offset + sizeof (LOG_HDRPAGE)) / block_size;
-		  assert (start_record_block >= 0 && start_record_block < max_num_blocks);
-		  end_record_block = ((int) temp_log_lsa.offset + sizeof (LOG_HDRPAGE)) / block_size;
-		  assert (end_record_block >= 0 && end_record_block < max_num_blocks);
-
-		  if (start_record_block != end_record_block)
-		    {
-		      assert (start_record_block < end_record_block);
-		      if (memcmp (((char *) log_page_p) + (end_record_block * block_size), null_block, block_size) == 0)
-			{
-			  /* The current record is corrupted - ends into a corrupted block. */
-			  LSA_COPY (&first_corrupted_rec_lsa, &log_lsa);
-			  is_log_page_corrupted = true;
-
-			  er_log_debug (ARG_FILE_LINE,
-					"log_recovery_analysis: ** WARNING: An end of the log record was not found."
-					"Latest log record at lsa = %lld|%d, first_corrupted_lsa = %lld|%d\n",
-					log_lsa.pageid, log_lsa.offset, first_corrupted_rec_lsa.pageid,
-					first_corrupted_rec_lsa.offset);
-			}
-		    }
-		}
-	    }
-
-	  if (is_log_page_corrupted && !LSA_ISNULL (&first_corrupted_rec_lsa))
-	    {
-	      /* If the record is corrupted - it resides in a corrupted block, then
-	       * resets append lsa to last valid address and stop.
-	       */
-	      if (LSA_GT (&log_lsa, &first_corrupted_rec_lsa))
-		{
-		  LOG_RESET_APPEND_LSA (&context.get_end_redo_lsa ());
-		  LSA_SET_NULL (&lsa);
+		  LOG_RESET_APPEND_LSA (&crt_record_lsa);
 		  break;
 		}
-	      else
-		{
-		  LOG_LSA temp_log_lsa;
-		  bool is_log_lsa_corrupted = false;
-
-		  if (LSA_EQ (&log_lsa, &first_corrupted_rec_lsa)
-		      || LSA_GT (&log_rec->forw_lsa, &first_corrupted_rec_lsa))
-		    {
-		      /* When log_lsa = first_corrupted_rec_lsa, forw_lsa may be NULL. */
-		      is_log_lsa_corrupted = true;
-		    }
-		  else
-		    {
-		      /* Check correctness of information from log header. */
-		      LSA_COPY (&temp_log_lsa, &log_lsa);
-		      temp_log_lsa.offset += sizeof (LOG_RECORD_HEADER);
-		      temp_log_lsa.offset = DB_ALIGN (temp_log_lsa.offset, DOUBLE_ALIGNMENT);
-
-		      if ((temp_log_lsa.offset > (int) LOGAREA_SIZE)
-			  || (LSA_GT (&temp_log_lsa, &first_corrupted_rec_lsa)))
-			{
-			  is_log_lsa_corrupted = true;
-			}
-		    }
-
-		  if (is_log_lsa_corrupted)
-		    {
-		      if (prm_get_bool_value (PRM_ID_LOGPB_LOGGING_DEBUG))
-			{
-			  _er_log_debug (ARG_FILE_LINE,
-					 "logpb_recovery_analysis: Partial page flush - first corrupted log record LSA = (%lld, %d)\n",
-					 (long long int) log_lsa.pageid, log_lsa.offset);
-			}
-		      LOG_RESET_APPEND_LSA (&log_lsa);
-		      LSA_SET_NULL (&lsa);
-		      break;
-		    }
-		}
-	    }
-
-	  tran_id = log_rec->trid;
-	  log_rtype = log_rec->type;
-
-	  /*
-	   * Save the address of last redo log record.
-	   * Get the address of next log record to scan
-	   */
-
-	  context.set_end_redo_lsa (lsa);
-	  LSA_COPY (&lsa, &log_rec->forw_lsa);
-
-	  if ((is_log_page_corrupted) && (log_rtype != LOG_END_OF_LOG) && (lsa.pageid != log_lsa.pageid))
-	    {
-	      /* The page is corrupted, do not allow to advance to the next page. */
-	      LSA_SET_NULL (&lsa);
-	    }
-
-	  /*
-	   * If the next page is NULL_PAGEID and the current page is an archive
-	   * page, this is not the end of the log. This situation happens when an
-	   * incomplete log record is archived. Thus, its forward address is NULL.
-	   * Note that we have to set lsa.pageid here since the log_lsa.pageid value
-	   * can be changed (e.g., the log record is stored in two pages: an
-	   * archive page, and an active page. Later, we try to modify it whenever
-	   * is possible.
-	   */
-
-	  if (LSA_ISNULL (&lsa) && logpb_is_page_in_archive (log_lsa.pageid))
-	    {
-	      lsa.pageid = log_lsa.pageid + 1;
-	    }
-
-	  if (!LSA_ISNULL (&lsa) && log_lsa.pageid != NULL_PAGEID
-	      && (lsa.pageid < log_lsa.pageid || (lsa.pageid == log_lsa.pageid && lsa.offset <= log_lsa.offset)))
-	    {
-	      /* It seems to be a system error. Maybe a loop in the log */
-	      er_log_debug (ARG_FILE_LINE,
-			    "log_recovery_analysis: ** System error: It seems to be a loop in the log\n."
-			    " Current log_rec at %lld|%d. Next log_rec at %lld|%d\n", (long long int) log_lsa.pageid,
-			    log_lsa.offset, (long long int) lsa.pageid, lsa.offset);
-	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_analysis");
-	      LSA_SET_NULL (&lsa);
-	      break;
-	    }
-
-	  if (LSA_ISNULL (&lsa) && log_rtype != LOG_END_OF_LOG && context.is_restore_incomplete () == false)
-	    {
-	      LOG_RESET_APPEND_LSA (&context.get_end_redo_lsa ());
-	      if (log_startof_nxrec (thread_p, &log_Gl.hdr.append_lsa, true) == NULL)
-		{
-		  /* We may destroy a record */
-		  LOG_RESET_APPEND_LSA (&context.get_end_redo_lsa ());
-		}
-	      else
-		{
-		  LOG_RESET_APPEND_LSA (&log_Gl.hdr.append_lsa);
-
-		  /*
-		   * Reset the forward address of current record to next record,
-		   * and then flush the page.
-		   */
-		  LSA_COPY (&log_rec->forw_lsa, &log_Gl.hdr.append_lsa);
-
-		  assert (log_lsa.pageid == log_page_p->hdr.logical_pageid);
-		  logpb_write_page_to_disk (thread_p, log_page_p, log_lsa.pageid);
-		}
-	      er_log_debug (ARG_FILE_LINE,
-			    "log_recovery_analysis: ** WARNING: An end of the log record was not found."
-			    " Will Assume = %lld|%d and Next Trid = %d\n",
-			    (long long int) log_Gl.hdr.append_lsa.pageid, log_Gl.hdr.append_lsa.offset, tran_id);
-	      log_Gl.hdr.next_trid = tran_id;
-	    }
-
-	  if (num_redo_log_records)
-	    {
-	      switch (log_rtype)
-		{
-		/* count redo log */
-		case LOG_REDO_DATA:
-		case LOG_UNDOREDO_DATA:
-		case LOG_DIFF_UNDOREDO_DATA:
-		case LOG_DBEXTERN_REDO_DATA:
-		case LOG_MVCC_REDO_DATA:
-		case LOG_MVCC_UNDOREDO_DATA:
-		case LOG_MVCC_DIFF_UNDOREDO_DATA:
-		case LOG_RUN_POSTPONE:
-		case LOG_COMPENSATE:
-		case LOG_2PC_PREPARE:
-		case LOG_2PC_START:
-		case LOG_2PC_RECV_ACK:
-		  (*num_redo_log_records)++;
-		  break;
-		default:
-		  break;
-		}
-	    }
-
-	  if (chkpt_infop != nullptr && chkpt_infop->get_snapshot_lsa () == log_lsa)
-	    {
-	      // The transaction table snapshot was taken before the next log record was logged.
-	      // Rebuild the transaction table image based on checkpoint information
-	      LOG_LSA start_redo_lsa;
-	      chkpt_infop->recovery_analysis (thread_p, start_redo_lsa);
-	      context.set_start_redo_lsa (start_redo_lsa);
-	    }
-
-	  log_rv_analysis_record (thread_p, log_rtype, tran_id, &log_lsa, log_page_p, &prev_lsa, context);
-	  if (context.is_restore_incomplete ())
-	    {
-	      LSA_SET_NULL (&lsa);
-	      break;
-	    }
-	  if (context.get_end_redo_lsa () == lsa)
-	    {
-	      assert_release (context.get_end_redo_lsa () != lsa);
-	      LSA_SET_NULL (&lsa);
-	      break;
-	    }
-	  if ((is_log_page_corrupted) && (log_rtype == LOG_END_OF_LOG))
-	    {
-	      /* The page is corrupted. Stop if end of log was found in page. In this case,
-	       * the remaining data in log page is corrupted. If end of log is not found,
-	       * then we will advance up to NULL LSA. It is important to initialize page with -1.
-	       * Another option may be to store the previous LSA in header page.
-	       * Or, to use checksum on log records, but this may slow down the system.
-	       */
-	      LSA_SET_NULL (&lsa);
-	      break;
-	    }
-
-	  prev_prev_lsa = prev_lsa;
-	  prev_lsa = context.get_end_redo_lsa ();
-
-	  /*
-	   * We can fix the lsa.pageid in the case of log_records without forward
-	   * address at this moment.
-	   */
-	  if (lsa.offset == NULL_OFFSET && lsa.pageid != NULL_PAGEID && lsa.pageid < log_lsa.pageid)
-	    {
-	      lsa.pageid = log_lsa.pageid;
 	    }
 	}
+
+      const TRANID tran_id = log_rec->trid;
+      log_rtype = log_rec->type;
+
+      /* Save the address of last redo log record. Get the address of next log record to scan */
+      context.set_end_redo_lsa (crt_record_lsa);
+      LOG_LSA next_record_lsa = log_rec->forw_lsa;
+
+      if ((is_log_page_corrupted) && (log_rtype != LOG_END_OF_LOG) && (next_record_lsa.pageid != crt_record_lsa.pageid))
+	{
+	  /* The page is corrupted, do not allow to advance to the next page. */
+	  LSA_SET_NULL (&next_record_lsa);
+	}
+
+      /*
+      * If the next page is NULL_PAGEID and the current page is an archive
+      * page, this is not the end of the log. This situation happens when an
+      * incomplete log record is archived. Thus, its forward address is NULL.
+      * Note that we have to set lsa.pageid here since the log_lsa.pageid value
+      * can be changed (e.g., the log record is stored in two pages: an
+      * archive page, and an active page. Later, we try to modify it whenever
+      * is possible.
+      */
+
+      if (LSA_ISNULL (&next_record_lsa) && logpb_is_page_in_archive (crt_record_lsa.pageid))
+	{
+	  next_record_lsa.pageid = crt_record_lsa.pageid + 1;
+	}
+
+      if (!LSA_ISNULL (&next_record_lsa) && crt_record_lsa.pageid != NULL_PAGEID && next_record_lsa <= crt_record_lsa)
+	{
+	  /* It seems to be a system error. Maybe a loop in the log */
+	  er_log_debug (ARG_FILE_LINE,
+			"log_recovery_analysis: ** System error: It seems to be a loop in the log\n."
+			" Current log_rec at %lld|%d. Next log_rec at %lld|%d\n", (long long int) crt_record_lsa.pageid,
+			crt_record_lsa.offset, (long long int) next_record_lsa.pageid, next_record_lsa.offset);
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_analysis");
+	  return;
+	}
+
+      if (LSA_ISNULL (&next_record_lsa) && log_rtype != LOG_END_OF_LOG && context.is_restore_incomplete () == false)
+	{
+	  LOG_RESET_APPEND_LSA (&context.get_end_redo_lsa ());
+	  if (log_startof_nxrec (thread_p, &log_Gl.hdr.append_lsa, true) == NULL)
+	    {
+	      /* We may destroy a record */
+	      LOG_RESET_APPEND_LSA (&context.get_end_redo_lsa ());
+	    }
+	  else
+	    {
+	      LOG_RESET_APPEND_LSA (&log_Gl.hdr.append_lsa);
+
+	      /*
+	      * Reset the forward address of current record to next record,
+	      * and then flush the page.
+	      */
+	      LSA_COPY (&log_rec->forw_lsa, &log_Gl.hdr.append_lsa);
+
+	      assert (crt_record_lsa.pageid == log_page_p->hdr.logical_pageid);
+	      logpb_write_page_to_disk (thread_p, log_page_p, crt_record_lsa.pageid);
+	    }
+	  er_log_debug (ARG_FILE_LINE,
+			"log_recovery_analysis: ** WARNING: An end of the log record was not found."
+			" Will Assume = %lld|%d and Next Trid = %d\n",
+			(long long int) log_Gl.hdr.append_lsa.pageid, log_Gl.hdr.append_lsa.offset, tran_id);
+	  log_Gl.hdr.next_trid = tran_id;
+	}
+
+      if (num_redo_log_records)
+	{
+	  switch (log_rtype)
+	    {
+	    /* count redo log */
+	    case LOG_REDO_DATA:
+	    case LOG_UNDOREDO_DATA:
+	    case LOG_DIFF_UNDOREDO_DATA:
+	    case LOG_DBEXTERN_REDO_DATA:
+	    case LOG_MVCC_REDO_DATA:
+	    case LOG_MVCC_UNDOREDO_DATA:
+	    case LOG_MVCC_DIFF_UNDOREDO_DATA:
+	    case LOG_RUN_POSTPONE:
+	    case LOG_COMPENSATE:
+	    case LOG_2PC_PREPARE:
+	    case LOG_2PC_START:
+	    case LOG_2PC_RECV_ACK:
+	      (*num_redo_log_records)++;
+	      break;
+	    default:
+	      break;
+	    }
+	}
+
+      if (chkpt_infop != nullptr && chkpt_infop->get_snapshot_lsa () == crt_record_lsa)
+	{
+	  // The transaction table snapshot was taken before the next log record was logged.
+	  // Rebuild the transaction table image based on checkpoint information
+	  LOG_LSA start_redo_lsa;
+	  chkpt_infop->recovery_analysis (thread_p, start_redo_lsa);
+	  context.set_start_redo_lsa (start_redo_lsa);
+	}
+
+      log_rv_analysis_record (thread_p, log_rtype, tran_id, &log_nav_lsa, log_page_p, &prev_lsa, context);
+      if (context.is_restore_incomplete ())
+	{
+	  break;
+	}
+      if (context.get_end_redo_lsa () == next_record_lsa)
+	{
+	  assert_release (context.get_end_redo_lsa () != next_record_lsa);
+	  break;
+	}
+      if ((is_log_page_corrupted) && (log_rtype == LOG_END_OF_LOG))
+	{
+	  /* The page is corrupted. Stop if end of log was found in page. In this case,
+	    * the remaining data in log page is corrupted. If end of log is not found,
+	    * then we will advance up to NULL LSA. It is important to initialize page with -1.
+	    * Another option may be to store the previous LSA in header page.
+	    * Or, to use checksum on log records, but this may slow down the system.
+	    */
+	  break;
+	}
+
+      prev_prev_lsa = prev_lsa;
+      prev_lsa = context.get_end_redo_lsa ();
+
+      /*
+      * We can fix the lsa.pageid in the case of log_records without forward
+      * address at this moment.
+      */
+      if (next_record_lsa.offset == NULL_OFFSET && next_record_lsa.pageid != NULL_PAGEID
+	  && next_record_lsa.pageid < crt_record_lsa.pageid)
+	{
+	  next_record_lsa.pageid = crt_record_lsa.pageid;
+	}
+
+      record_nav_lsa = next_record_lsa;
     }
 
   if (chkpt_infop != nullptr)
