@@ -24782,7 +24782,7 @@ dblink_expr
                 ct->info.dblink_table.qstr = val;
              }
 
-             $$ = ct;    
+             $$ = ct;   
              DBG_PRINT}}    
         ;
 
@@ -24805,12 +24805,18 @@ dblink_conn:
         {{
                 char *zInfo[DBLINK_CONN_PARAM_CNT];     
                 char err_msg[512]; 
-                PT_NODE *node_list = NULL;           
+                PT_NODE *node_list = NULL;
 
                 memset(zInfo, 0x00, sizeof(zInfo));
                 if( pt_ct_check_fill_connection_info($1, zInfo, err_msg) == false )
                  {
-                       PT_ERROR (this_parser, $$, err_msg);
+                       node_list = parser_new_node (this_parser, PT_VALUE);
+                       PT_ERROR (this_parser, node_list, err_msg);
+                       if (node_list)
+                         {
+                                 parser_free_node (this_parser, node_list);
+                                 node_list = NULL;
+                         }
                  }
                  else
                  {
@@ -24848,7 +24854,7 @@ dblink_conn:
                         } 
                  }
 
-                $$ = node_list;   
+                $$ = node_list;
 		DBG_PRINT}}
         ;        
 
