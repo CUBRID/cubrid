@@ -2091,26 +2091,27 @@ void corruption_checker::find_first_corrupted_block (const LOG_PAGE *log_pgptr)
     }
 }
 
-
-bool corruption_checker::is_page_corrupted () const
+bool
+corruption_checker::is_page_corrupted () const
 {
   return m_is_page_corrupted;
 }
 
-
-const log_lsa &corruption_checker::get_first_corrupted_lsa () const
+const
+log_lsa &corruption_checker::get_first_corrupted_lsa () const
 {
   return m_first_corrupted_rec_lsa;
 }
 
-
-const char *corruption_checker::get_block_ptr (const LOG_PAGE *page, size_t block_index) const
+const char *
+corruption_checker::get_block_ptr (const LOG_PAGE *page, size_t block_index) const
 {
   return (reinterpret_cast<const char *> (page)) + block_index * IO_BLOCK_SIZE;
 }
 
-void corruption_checker::check_log_record (const log_lsa &record_lsa, const log_rec_header &record_header,
-    const LOG_PAGE *log_page_p)
+void
+corruption_checker::check_log_record (const log_lsa &record_lsa, const log_rec_header &record_header,
+				      const LOG_PAGE *log_page_p)
 {
   if (m_is_page_corrupted)
     {
