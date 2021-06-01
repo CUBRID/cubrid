@@ -68,7 +68,7 @@
 #define MAX_STRING_SEGMENT_LENGTH 254
 #define DONT_PRT_LONG_STRING_LENGTH 256
 
-#define PT_APPLY_CHECK_ACTION(parser, ptr, arg)  if((ptr)) (ptr) = g ((parser), (ptr), (arg))
+#define PT_APPLY_CHECK_ACTION(parser, ptr, arg)  if((ptr)) (ptr) = pt_walk_private ((parser), (ptr), (arg))
 
 typedef struct pt_lambda_arg PT_LAMBDA_ARG;
 struct pt_lambda_arg
@@ -120,6 +120,10 @@ struct pt_tree_copy_info
   PT_CTE_COPY_INFO *cte_structures_list;
 };
 
+typedef PT_NODE *(*PARSER_INIT_NODE_FUNC) (PT_NODE *);
+typedef PARSER_VARCHAR *(*PARSER_PRINT_NODE_FUNC) (PARSER_CONTEXT * parser, PT_NODE * node);
+typedef PT_NODE *(*PARSER_APPLY_NODE_FUNC) (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+
 static PARSER_INIT_NODE_FUNC *pt_init_f = NULL;
 static PARSER_PRINT_NODE_FUNC *pt_print_f = NULL;
 static PARSER_APPLY_NODE_FUNC *pt_apply_f = NULL;
@@ -156,106 +160,106 @@ static void pt_init_print_f (void);
  * ALL 4 function vectors.  (apply, init, print, tree_print
  */
 
-static PT_NODE *pt_apply_alter_serial (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_attach (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_auto_increment (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_create_serial (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_create_trigger (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_drop_serial (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_drop_trigger (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_evaluate (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_event_object (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_event_spec (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_event_target (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_execute_trigger (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_get_opt_lvl (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_get_trigger (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_get_xaction (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_isolation_lvl (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_partition (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_parts (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_remove_trigger (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_savepoint (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_scope (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_set_opt_lvl (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_set_sys_params (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_set_trigger (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_set_xaction (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_sp_parameter (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_prepare (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_timeout (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_trigger_action (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_trigger_spec_list (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_alter_index (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_alter (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_alter_user (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_attr_def (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_attr_ordering (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_auth_cmd (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_check_option (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_commit_work (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_constraint (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_create_entity (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_create_index (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_create_user (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_data_default (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_datatype (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_delete (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_difference (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_dot (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_drop_index (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_drop (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_drop_user (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_drop_variable (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_error_msg (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_expr (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_file_path (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_function (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_get_stats (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_grant (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_host_var (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_insert (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_intersection (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_method_call (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_method_def (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_name (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_named_arg (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_node_list (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_pointer (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_prepare_to_commit (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_rename (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_rename_trigger (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_resolution (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_revoke (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_rollback_work (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_select (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_set_names (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_set_timezone (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_set_session_variables (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_drop_session_variables (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_showstmt (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_sort_spec (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_spec (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_table_option (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_truncate (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_do (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_union_stmt (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_update (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_update_stats (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_value (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_merge (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_tuple_value (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_query_trace (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_insert_value (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_kill (PARSER_CONTEXT * parser, PT_NODE * P, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_vacuum (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_with_clause (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_cte (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_json_table (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_json_table_node (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_json_table_column (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
+static PT_NODE *pt_apply_alter_serial (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_attach (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_auto_increment (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_create_serial (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_create_trigger (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_drop_serial (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_drop_trigger (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_evaluate (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_event_object (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_event_spec (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_event_target (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_execute_trigger (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_get_opt_lvl (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_get_trigger (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_get_xaction (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_isolation_lvl (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_partition (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_parts (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_remove_trigger (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_savepoint (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_scope (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_set_opt_lvl (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_set_sys_params (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_set_trigger (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_set_xaction (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_sp_parameter (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_prepare (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_timeout (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_trigger_action (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_trigger_spec_list (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_alter_index (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_alter (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_alter_user (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_attr_def (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_attr_ordering (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_auth_cmd (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_check_option (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_commit_work (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_constraint (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_create_entity (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_create_index (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_create_user (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_data_default (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_datatype (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_delete (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_difference (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_dot (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_drop_index (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_drop (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_drop_user (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_drop_variable (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_error_msg (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_expr (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_file_path (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_function (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_get_stats (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_grant (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_host_var (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_insert (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_intersection (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_method_call (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_method_def (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_name (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_named_arg (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_node_list (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_pointer (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_prepare_to_commit (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_rename (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_rename_trigger (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_resolution (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_revoke (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_rollback_work (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_select (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_set_names (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_set_timezone (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_set_session_variables (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_drop_session_variables (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_showstmt (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_sort_spec (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_spec (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_table_option (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_truncate (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_do (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_union_stmt (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_update (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_update_stats (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_value (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_merge (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_tuple_value (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_query_trace (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_insert_value (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_kill (PARSER_CONTEXT * parser, PT_NODE * P, void *arg);
+static PT_NODE *pt_apply_vacuum (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_with_clause (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_cte (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_json_table (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_json_table_node (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_json_table_column (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 
 static PARSER_APPLY_NODE_FUNC pt_apply_func_array[PT_NODE_NUMBER];
 
@@ -470,7 +474,7 @@ static PARSER_VARCHAR *pt_print_json_table (PARSER_CONTEXT * parser, PT_NODE * p
 static PARSER_VARCHAR *pt_print_json_table_node (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_json_table_columns (PARSER_CONTEXT * parser, PT_NODE * p);
 #if defined(ENABLE_UNUSED_FUNCTION)
-static PT_NODE *pt_apply_use (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
+static PT_NODE *pt_apply_use (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_init_use (PT_NODE * p);
 static PARSER_VARCHAR *pt_print_use (PARSER_CONTEXT * parser, PT_NODE * p);
 #endif
@@ -928,7 +932,7 @@ pt_walk_private (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg)
 	      return NULL;
 	    }
 
-	  (*apply) (parser, node, pt_walk_private, walk);
+	  (*apply) (parser, node, walk);
 
 	  if (node->data_type)
 	    {
@@ -999,7 +1003,7 @@ parser_walk_leaves (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE_WALK_FUNCTI
 	  return NULL;
 	}
 
-      (*apply) (parser, walk, pt_walk_private, &walk_argument);
+      (*apply) (parser, walk, &walk_argument);
 
       if (walk->data_type)
 	{
@@ -5456,7 +5460,7 @@ pt_show_event_type (PT_EVENT_TYPE p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_alter (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_alter (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.alter.entity_name, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.alter.super.sup_class_list, arg);
@@ -6192,7 +6196,7 @@ pt_print_alter (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_alter_index (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_alter_index (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.index.indexed_class, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.index.column_names, arg);
@@ -6321,7 +6325,7 @@ pt_print_alter_index (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_alter_user (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_alter_user (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.alter_user.user_name, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.alter_user.password, arg);
@@ -6382,7 +6386,7 @@ pt_print_alter_user (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.alter_trigger.trigger_spec_list, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.alter_trigger.trigger_priority, arg);
@@ -6454,7 +6458,7 @@ pt_print_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_attach (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_attach (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   return p;
 }
@@ -6496,7 +6500,7 @@ pt_print_attach (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_attr_def (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_attr_def (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.attr_def.attr_name, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.attr_def.data_default, arg);
@@ -6723,7 +6727,7 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_attr_ordering (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_attr_ordering (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.attr_ordering.after, arg);
   return p;
@@ -6777,7 +6781,7 @@ pt_print_attr_ordering (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_auth_cmd (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_auth_cmd (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.auth_cmd.attr_mthd_list, arg);
   return p;
@@ -6828,7 +6832,7 @@ pt_print_auth_cmd (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_check_option (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_check_option (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.check_option.expr, arg);
 
@@ -6874,7 +6878,7 @@ pt_print_check_option (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_commit_work (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_commit_work (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   return p;
 }
@@ -6921,7 +6925,7 @@ pt_print_commit_work (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_create_entity (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_create_entity (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.create_entity.entity_name, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.create_entity.supclass_list, arg);
@@ -7213,7 +7217,7 @@ pt_print_create_entity (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_create_index (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_create_index (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.index.indexed_class, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.index.column_names, arg);
@@ -7351,7 +7355,7 @@ pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_create_user (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_create_user (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.create_user.user_name, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.create_user.password, arg);
@@ -7425,7 +7429,7 @@ pt_print_create_user (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_create_trigger (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_create_trigger (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.create_trigger.trigger_name, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.create_trigger.trigger_priority, arg);
@@ -7520,7 +7524,7 @@ pt_print_create_trigger (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   return p;
 }
@@ -7612,7 +7616,7 @@ pt_print_drop_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_prepare (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_prepare (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   return p;
 }
@@ -7638,7 +7642,7 @@ pt_init_prepare (PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_truncate (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_truncate (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.truncate.spec, arg);
   return p;
@@ -7688,7 +7692,7 @@ pt_print_truncate (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_table_option (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_table_option (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.table_option.val, arg);
   return p;
@@ -7789,7 +7793,7 @@ pt_print_table_option (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_do (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_do (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.do_.expr, arg);
   return p;
@@ -7838,7 +7842,7 @@ pt_print_do (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_sp_parameter (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_sp_parameter (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   return p;
 }
@@ -7892,7 +7896,7 @@ pt_print_sp_parameter (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_partition (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_partition (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.partition.expr, arg);
   if (p->info.partition.type == PT_PARTITION_HASH)
@@ -7968,7 +7972,7 @@ pt_print_partition (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_parts (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_parts (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.parts.name, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.parts.values, arg);
@@ -8317,7 +8321,7 @@ pt_print_drop_serial (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_create_serial (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_create_serial (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.serial.start_val, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.serial.increment_val, arg);
@@ -8335,7 +8339,7 @@ pt_apply_create_serial (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_alter_serial (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_alter_serial (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.serial.increment_val, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.serial.min_val, arg);
@@ -8352,7 +8356,7 @@ pt_apply_alter_serial (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g,
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_drop_serial (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_drop_serial (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   return p;
 }
@@ -8367,7 +8371,7 @@ pt_apply_drop_serial (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, 
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_data_default (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_data_default (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.data_default.default_value, arg);
   return p;
@@ -8432,7 +8436,7 @@ pt_print_data_default (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_datatype (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_datatype (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.data_type.entity, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.data_type.virt_data_type, arg);
@@ -8604,7 +8608,7 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_delete (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_delete (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.delete_.with, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.delete_.target_classes, arg);
@@ -8837,7 +8841,7 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_difference (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_difference (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.query.with, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.query.q.union_.arg1, arg);
@@ -8926,7 +8930,7 @@ pt_print_difference (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_dot (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_dot (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.dot.arg1, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.dot.arg2, arg);
@@ -8997,7 +9001,7 @@ pt_print_dot (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_drop (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_drop (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.drop.spec_list, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.drop.internal_stmts, arg);
@@ -9055,7 +9059,7 @@ pt_print_drop (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_drop_index (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_drop_index (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.index.indexed_class, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.index.column_names, arg);
@@ -9143,7 +9147,7 @@ pt_print_drop_index (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_drop_user (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_drop_user (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.drop_user.user_name, arg);
   return p;
@@ -9189,7 +9193,7 @@ pt_print_drop_user (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_drop_trigger (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_drop_trigger (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.drop_trigger.trigger_spec_list, arg);
   return p;
@@ -9234,7 +9238,7 @@ pt_print_drop_trigger (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_drop_variable (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_drop_variable (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.drop_variable.var_names, arg);
   return p;
@@ -9279,7 +9283,7 @@ pt_print_drop_variable (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_spec (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_spec (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.spec.entity_name, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.spec.cte_name, arg);
@@ -9559,7 +9563,7 @@ pt_print_class_name (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_evaluate (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_evaluate (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.evaluate.expression, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.evaluate.into_var, arg);
@@ -9612,7 +9616,7 @@ pt_print_evaluate (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_event_object (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_event_object (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.event_object.event_object, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.event_object.correlation_name, arg);
@@ -9653,7 +9657,7 @@ pt_print_event_object (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_event_spec (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_event_spec (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.event_spec.event_target, arg);
   return p;
@@ -9701,7 +9705,7 @@ pt_print_event_spec (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_event_target (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_event_target (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.event_target.class_name, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.event_target.attribute, arg);
@@ -9754,7 +9758,7 @@ pt_print_event_target (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_execute_trigger (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_execute_trigger (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.execute_trigger.trigger_spec_list, arg);
   return p;
@@ -9799,7 +9803,7 @@ pt_print_execute_trigger (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_expr (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_expr (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.expr.arg1, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.expr.arg2, arg);
@@ -12122,7 +12126,7 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_file_path (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_file_path (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   return p;
 }
@@ -12167,7 +12171,7 @@ pt_print_file_path (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_function (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_function (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.function.arg_list, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.function.order_by, arg);
@@ -12453,7 +12457,7 @@ pt_print_function (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_get_opt_lvl (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_get_opt_lvl (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.get_opt_lvl.args, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.get_opt_lvl.into_var, arg);
@@ -12513,7 +12517,7 @@ pt_print_get_opt_lvl (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_get_trigger (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_get_trigger (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.get_trigger.into_var, arg);
   return p;
@@ -12563,7 +12567,7 @@ pt_print_get_trigger (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_get_xaction (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_get_xaction (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.get_xaction.into_var, arg);
   return p;
@@ -12613,7 +12617,7 @@ pt_print_get_xaction (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_grant (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_grant (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.grant.auth_cmd_list, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.grant.user_list, arg);
@@ -12677,7 +12681,7 @@ pt_print_grant (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_host_var (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_host_var (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   return p;
 }
@@ -12773,7 +12777,7 @@ pt_print_host_var (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_insert (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_insert (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.insert.spec, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.insert.attr_list, arg);
@@ -12992,7 +12996,7 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_intersection (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_intersection (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.query.with, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.query.q.union_.arg1, arg);
@@ -13080,7 +13084,7 @@ pt_print_intersection (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_auto_increment (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_auto_increment (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   return p;
 }
@@ -13135,7 +13139,7 @@ pt_print_auto_increment (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_isolation_lvl (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_isolation_lvl (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.isolation_lvl.level, arg);
   return p;
@@ -13212,7 +13216,7 @@ pt_print_isolation_lvl (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_method_call (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_method_call (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.method_call.method_name, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.method_call.arg_list, arg);
@@ -13274,7 +13278,7 @@ pt_print_method_call (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_method_def (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_method_def (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.method_def.method_name, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.method_def.method_args_list, arg);
@@ -13353,7 +13357,7 @@ pt_print_method_def (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_name (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_name (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.name.path_correlation, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.name.default_value, arg);
@@ -13576,7 +13580,7 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_prepare_to_commit (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_prepare_to_commit (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   return p;
 }
@@ -13617,7 +13621,7 @@ pt_print_prepare_to_commit (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_remove_trigger (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_remove_trigger (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.remove_trigger.trigger_spec_list, arg);
   return p;
@@ -13662,7 +13666,7 @@ pt_print_remove_trigger (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_rename (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_rename (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.rename.old_name, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.rename.in_class, arg);
@@ -13725,7 +13729,7 @@ pt_print_rename (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_rename_trigger (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_rename_trigger (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.rename_trigger.old_name, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.rename_trigger.new_name, arg);
@@ -13776,7 +13780,7 @@ pt_print_rename_trigger (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_resolution (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_resolution (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.resolution.attr_mthd_name, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.resolution.of_sup_class_name, arg);
@@ -13837,7 +13841,7 @@ pt_print_resolution (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_revoke (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_revoke (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.revoke.auth_cmd_list, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.revoke.user_list, arg);
@@ -13897,7 +13901,7 @@ pt_print_revoke (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_rollback_work (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_rollback_work (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.rollback_work.save_name, arg);
   return p;
@@ -13948,7 +13952,7 @@ pt_print_rollback_work (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_savepoint (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_savepoint (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.savepoint.save_name, arg);
   return p;
@@ -13994,7 +13998,7 @@ pt_print_savepoint (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_scope (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_scope (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.scope.from, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.scope.stmt, arg);
@@ -14043,7 +14047,7 @@ pt_print_scope (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_select (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_select (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.query.with, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.query.q.select.list, arg);
@@ -14782,7 +14786,7 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_set_names (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_set_names (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.set_names.charset_node, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.set_names.collation_node, arg);
@@ -14799,7 +14803,7 @@ pt_apply_set_names (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, vo
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_set_timezone (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_set_timezone (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.set_timezone.timezone_node, arg);
 
@@ -14887,7 +14891,7 @@ pt_print_set_timezone (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_set_opt_lvl (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_set_opt_lvl (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.set_opt_lvl.val, arg);
   return p;
@@ -14947,7 +14951,7 @@ pt_print_set_opt_lvl (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_set_sys_params (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_set_sys_params (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.set_sys_params.val, arg);
   return p;
@@ -14996,7 +15000,7 @@ pt_print_set_sys_params (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_set_trigger (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_set_trigger (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.set_trigger.val, arg);
   return p;
@@ -15058,7 +15062,7 @@ pt_print_set_trigger (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_showstmt (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_showstmt (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.showstmt.show_args, arg);
   return p;
@@ -15107,7 +15111,7 @@ pt_print_showstmt (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_set_xaction (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_set_xaction (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.set_xaction.xaction_modes, arg);
   return p;
@@ -15152,7 +15156,7 @@ pt_print_set_xaction (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_sort_spec (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_sort_spec (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.sort_spec.expr, arg);
   return p;
@@ -15211,7 +15215,7 @@ pt_print_sort_spec (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_timeout (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_timeout (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.timeout.val, arg);
   return p;
@@ -15272,7 +15276,7 @@ pt_print_timeout (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_trigger_action (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_trigger_action (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.trigger_action.expression, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.trigger_action.string, arg);
@@ -15333,7 +15337,7 @@ pt_print_trigger_action (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_trigger_spec_list (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_trigger_spec_list (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.trigger_spec_list.trigger_name_list, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.trigger_spec_list.event_list, arg);
@@ -15378,7 +15382,7 @@ pt_print_trigger_spec_list (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_union_stmt (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_union_stmt (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.query.with, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.query.q.union_.arg1, arg);
@@ -15470,7 +15474,7 @@ pt_print_union_stmt (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_update (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_update (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.update.with, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.update.spec, arg);
@@ -15734,7 +15738,7 @@ pt_print_update (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_update_stats (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_update_stats (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.update_stats.class_list, arg);
   return p;
@@ -15797,7 +15801,7 @@ pt_print_update_stats (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_get_stats (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_get_stats (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.get_stats.class_, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.get_stats.args, arg);
@@ -15861,7 +15865,7 @@ pt_print_get_stats (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_use (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_use (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.use.use_list, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.use.exclude_list, arg);
@@ -15946,7 +15950,7 @@ pt_print_use (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_value (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_value (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   switch (p->type_enum)
     {
@@ -15993,7 +15997,7 @@ pt_init_set_session_variables (PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_set_session_variables (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_set_session_variables (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.set_variables.assignments, arg);
   return p;
@@ -16024,7 +16028,7 @@ pt_print_set_session_variables (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_drop_session_variables (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_drop_session_variables (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.drop_session_var.variables, arg);
   return p;
@@ -16548,7 +16552,7 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_error_msg (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_error_msg (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   return p;
 }
@@ -16604,7 +16608,7 @@ pt_print_error_msg (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_constraint (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_constraint (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   switch (p->info.constraint.type)
     {
@@ -16886,7 +16890,7 @@ pt_print_constraint (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_pointer (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_pointer (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   if (p->info.pointer.do_walk)
     {
@@ -16944,7 +16948,7 @@ pt_print_pointer (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_node_list (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_node_list (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.node_list.list, arg);
   return p;
@@ -16986,7 +16990,7 @@ pt_print_node_list (PARSER_CONTEXT * parser, PT_NODE * p)
  *   arg(in):
  */
 static PT_NODE *
-pt_apply_merge (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_merge (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.merge.into, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.merge.using_clause, arg);
@@ -17146,7 +17150,7 @@ pt_print_merge (PARSER_CONTEXT * parser, PT_NODE * p)
  * arg (in) :
  */
 static PT_NODE *
-pt_apply_tuple_value (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_tuple_value (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.tuple_value.name, arg);
   return p;
@@ -17194,14 +17198,14 @@ pt_print_tuple_value (PARSER_CONTEXT * parser, PT_NODE * p)
  * arg (in) :
  */
 static PT_NODE *
-pt_apply_insert_value (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_insert_value (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.insert_value.original_node, arg);
   return p;
 }
 
 static PT_NODE *
-pt_apply_kill (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_kill (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   return p;
 }
@@ -17241,7 +17245,7 @@ pt_init_kill (PT_NODE * p)
  * arg(in):
  */
 static PT_NODE *
-pt_apply_with_clause (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_with_clause (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.with_clause.cte_definition_list, arg);
 
@@ -17273,7 +17277,7 @@ pt_init_with_clause (PT_NODE * p)
  * arg(in):
  */
 static PT_NODE *
-pt_apply_cte (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_cte (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.cte.non_recursive_part, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.cte.recursive_part, arg);
@@ -17408,7 +17412,7 @@ pt_print_cte (PARSER_CONTEXT * parser, PT_NODE * p)
  * arg (in) :
  */
 static PT_NODE *
-pt_apply_named_arg (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_named_arg (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.named_arg.name, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.named_arg.value, arg);
@@ -18642,7 +18646,7 @@ pt_sort_spec_list_to_name_node_list (PARSER_CONTEXT * parser, PT_NODE * sort_spe
  * arg (in)    : Argument for function g.
  */
 static PT_NODE *
-pt_apply_vacuum (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_vacuum (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   assert (PT_IS_VACUUM_NODE (p));
 
@@ -18691,7 +18695,7 @@ pt_print_vacuum (PARSER_CONTEXT * parser, PT_NODE * p)
  * arg (in) :
  */
 static PT_NODE *
-pt_apply_query_trace (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_query_trace (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   return p;
 }
@@ -18763,7 +18767,7 @@ pt_init_json_table (PT_NODE * p)
 }
 
 static PT_NODE *
-pt_apply_json_table (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_json_table (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.json_table_info.expr, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.json_table_info.tree, arg);
@@ -18807,7 +18811,7 @@ pt_init_json_table_node (PT_NODE * p)
 }
 
 static PT_NODE *
-pt_apply_json_table_node (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_json_table_node (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.json_table_node_info.columns, arg);
   PT_APPLY_CHECK_ACTION (parser, p->info.json_table_node_info.nested_paths, arg);
@@ -18875,7 +18879,7 @@ pt_init_json_table_column (PT_NODE * p)
 }
 
 static PT_NODE *
-pt_apply_json_table_column (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+pt_apply_json_table_column (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_CHECK_ACTION (parser, p->info.json_table_column_info.name, arg);
   return p;
