@@ -16,7 +16,11 @@
 # 
 #
 
-install(FILES ${CMAKE_SOURCE_DIR}/demo/demodb_objects ${CMAKE_SOURCE_DIR}/demo/demodb_schema
+install(FILES 
+  ${CMAKE_SOURCE_DIR}/demo/demodb_objects 
+  ${CMAKE_SOURCE_DIR}/demo/demodb_schema
+  ${CMAKE_SOURCE_DIR}/demo/SpPrepareTest.java
+  ${CMAKE_SOURCE_DIR}/demo/SpTypeTest.java
   DESTINATION ${CUBRID_DEMODIR}) 
 
 if(UNIX)
