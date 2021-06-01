@@ -39,10 +39,10 @@ namespace cubschema
       using cons_predicate = std::function<bool (const SM_CLASS_CONSTRAINT &)>;
       using saved_cons_predicate = std::function<bool (const SM_CONSTRAINT_INFO &)>;
 
-      int save_constraints_or_clear (cons_predicate pred);
-      int drop_saved_constraints (saved_cons_predicate pred);
+      int save_constraints_or_clear (cons_predicate pred = nullptr);
+      int drop_saved_constraints (saved_cons_predicate pred = nullptr);
       int truncate_heap ();
-      int restore_constraints (saved_cons_predicate pred);
+      int restore_constraints (saved_cons_predicate pred = nullptr);
       int reset_serials ();
 
       class_truncate_context (const OID &class_oid);
@@ -199,12 +199,7 @@ namespace cubschema
 	  }
 
 	/* FK must be dropped earlier than PK, because of referencing */
-	auto saved_cons_predicate = [] (const SM_CONSTRAINT_INFO& cons_info) -> bool
-	{
-	  return cons_info.constraint_type == DB_CONSTRAINT_FOREIGN_KEY;
-	};
-
-	error = context.drop_saved_constraints (saved_cons_predicate);
+	error = context.drop_saved_constraints ();
 	if (error != NO_ERROR)
 	  {
 	    return error;
@@ -359,7 +354,7 @@ namespace cubschema
 
     for (c = m_class->constraints; c; c = c->next)
       {
-	if (!pred (*c))
+	if (pred && !pred (*c))
 	  {
 	    continue;
 	  }
@@ -441,7 +436,7 @@ namespace cubschema
 
 	for (saved = m_fk_info; saved != NULL; saved = saved->next)
 	  {
-	    if (!pred (*saved))
+	    if (pred && !pred (*saved))
 	      {
 		continue;
 	      }
@@ -466,7 +461,7 @@ namespace cubschema
 
     for (saved = m_unique_info; saved != NULL; saved = saved->next)
       {
-	if (!pred (*saved))
+	if (pred && !pred (*saved))
 	  {
 	    continue;
 	  }
@@ -481,7 +476,7 @@ namespace cubschema
 
     for (saved = m_index_info; saved != NULL; saved = saved->next)
       {
-	if (!pred (*saved))
+	if (pred && !pred (*saved))
 	  {
 	    continue;
 	  }
@@ -533,7 +528,7 @@ namespace cubschema
     /* Normal index must be created earlier than unique constraint or FK, because of shared btree case. */
     for (saved = m_index_info; saved != NULL; saved = saved->next)
       {
-	if (!pred (*saved))
+	if (pred && !pred (*saved))
 	  {
 	    continue;
 	  }
@@ -550,7 +545,7 @@ namespace cubschema
     /* Even for a class, PK must be created earlier than FK, because of the self-referencing case */
     for (saved = m_unique_info; saved != NULL; saved = saved->next)
       {
-	if (!pred (*saved))
+	if (pred && !pred (*saved))
 	  {
 	    continue;
 	  }
@@ -575,7 +570,7 @@ namespace cubschema
 
     for (saved = m_fk_info; saved != NULL; saved = saved->next)
       {
-	if (!pred (*saved))
+	if (pred && !pred (*saved))
 	  {
 	    continue;
 	  }
