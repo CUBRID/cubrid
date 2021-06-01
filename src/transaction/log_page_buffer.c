@@ -11150,15 +11150,13 @@ logpb_debug_check_log_page (THREAD_ENTRY * thread_p, void *log_pgptr_ptr)
       return;
     }
 
-  if (log_pgptr->hdr.logical_pageid == -1)
+  if (log_pgptr->hdr.logical_pageid == NULL_PAGEID)
     {
       /* Skip checking for null logical pageid. */
       return;
     }
 
-  err = logpb_page_check_corruption (thread_p, log_pgptr, &is_log_page_corrupted);
-
-  assert (err == NO_ERROR && is_log_page_corrupted == false);
+  assert (logpb_page_has_valid_checksum (log_pgptr));;
 }
 #endif
 
