@@ -330,13 +330,14 @@ dblink_open_scan (DBLINK_SCAN_INFO * scan_info, char *conn_url, char *user_name,
   scan_info->conn_handle = cci_connect_with_url_ex (conn_url, user_name, password, &err_buf);
   if (scan_info->conn_handle < 0)
     {
+      scan_info->stmt_handle = -1;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
       return S_ERROR;
     }
   else
     {
       scan_info->stmt_handle = cci_prepare_and_execute (scan_info->conn_handle, sql_text, 0, &ret, &err_buf);
-      if (ret < 0)
+      if (scan_info->stmt_handle < 0)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
 	  return S_ERROR;
@@ -368,19 +369,25 @@ dblink_close_scan (DBLINK_SCAN_INFO * scan_info)
   int error;
   T_CCI_ERROR err_buf;
 
-  assert (scan_info->stmt_handle >= 0 && scan_info->conn_handle >= 0);
+  /*  note: return NO_ERROR even though the connection or stmt handle is not valid */
 
-  if ((error = cci_close_req_handle (scan_info->stmt_handle)) < 0)
+  if (scan_info->stmt_handle >= 0)
     {
-      cci_get_err_msg (error, err_buf.err_msg, sizeof (err_buf.err_msg));
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
-      return S_ERROR;
+      if ((error = cci_close_req_handle (scan_info->stmt_handle)) < 0)
+	{
+	  cci_get_err_msg (error, err_buf.err_msg, sizeof (err_buf.err_msg));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+	  return S_ERROR;
+	}
     }
 
-  if ((error = cci_disconnect (scan_info->conn_handle, &err_buf)) < 0)
+  if (scan_info->conn_handle >= 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
-      return S_ERROR;
+      if ((error = cci_disconnect (scan_info->conn_handle, &err_buf)) < 0)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+	  return S_ERROR;
+	}
     }
 
   return NO_ERROR;
