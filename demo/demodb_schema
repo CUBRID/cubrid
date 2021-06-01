@@ -185,11 +185,11 @@ CREATE OR REPLACE FUNCTION tInt(i int) RETURN int as language java name 'SpTypeT
 CREATE OR REPLACE FUNCTION tInt2(i int) RETURN int as language java name 'SpTypeTest.testInt2(int) return int';
 CREATE OR REPLACE FUNCTION tIntTwo(i int, j int) RETURN int as language java name 'SpTypeTest.testIntArgs(int, int) return int';
 
-CREATE OR REPLACE PROCEDURE tIntOut(i OUT int) RETURN int as language java name 'SpTypeTest.testOutInt(int[] o)';
-CREATE OR REPLACE PROCEDURE tIntOut2(i OUT int) RETURN int as language java name 'SpTypeTest.testOutInt2(int[] o)';
+CREATE OR REPLACE PROCEDURE tIntOut(i OUT int) as language java name 'SpTypeTest.testOutInt(int[] o)';
+CREATE OR REPLACE PROCEDURE tIntOut2(i OUT int) as language java name 'SpTypeTest.testOutInt2(int[] o)';
 
 CREATE OR REPLACE FUNCTION tFloat(f float) RETURN float as language java name 'SpTypeTest.testFloat(float) return float';
 CREATE OR REPLACE FUNCTION tDobule(d double) RETURN double as language java name 'SpTypeTest.testDouble(double) return double';
-CREATE OR REPLACE FUNCTION tString(s string) RETURN string as language java name 'SpTypeTest.testString(java.lang.String) return java.lang.String';
+CREATE OR REPLACE FUNCTION tString(s string) RETURN STRING as language java name 'SpTypeTest.testString(java.lang.String) return java.lang.String';
 
 COMMIT WORK;
