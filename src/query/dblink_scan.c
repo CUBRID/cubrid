@@ -580,7 +580,7 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 	      dom.precision = valptrp->val->domain.numeric_info.precision;
 	      dom.scale = valptrp->val->domain.numeric_info.scale;
 	    }
-	  if (tp_value_cast_force (&cci_value, valptrp->val, &dom, false) != DOMAIN_COMPATIBLE)
+	  if (db_value_coerce (&cci_value, valptrp->val, &dom) != DOMAIN_COMPATIBLE)
 	    {
 	      return S_ERROR;
 	    }
