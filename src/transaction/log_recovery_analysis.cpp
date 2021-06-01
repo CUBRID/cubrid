@@ -119,10 +119,8 @@ log_recovery_analysis (THREAD_ENTRY *thread_p, INT64 *num_redo_log_records, log_
   LSA_SET_NULL (&first_corrupted_rec_lsa);
   lsa = context.get_checkpoint_lsa ();
 
-  // *INDENT-OFF*
   // If the recovery start matches a checkpoint, use the checkpoint information.
   const cublog::checkpoint_info *chkpt_infop = log_Gl.m_metainfo.get_checkpoint_info (lsa);
-  // *INDENT-ON*
   LSA_COPY (&prev_lsa, &lsa);
   prev_prev_lsa.set_null ();
 
