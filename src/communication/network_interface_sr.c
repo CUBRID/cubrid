@@ -8162,27 +8162,42 @@ slog_reader_get_log_refined_info (THREAD_ENTRY * thread_p, unsigned int rid, cha
 void
 slog_reader_get_log_refined_info_2 (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
+#if !defined(NDEBUG) && 1	//JOOHOK
+  char *reply, *ptr;
+  int len;
+  int trid;
+  char *user;
+  int data_type;
+  int dml_type;
+  uint64_t classoid;
+  int num_changed_col;
+  int func_code;
+  int changed_data;
+  int index;
+  int total_len;
+  ptr = or_unpack_int (log_Infos, &len);
+  ptr = or_unpack_int (ptr, &trid);
+  ptr = or_unpack_string_nocopy (ptr, &user);
+  ptr = or_unpack_int (ptr, &data_type);
+  if (data_type == 1)
+    {
+      ptr = or_unpack_int (ptr, &dml_type);
+      ptr = or_unpack_int64 (ptr, (int64_t *) & classoid);
+      ptr = or_unpack_int (ptr, &num_changed_col);
+      ptr = or_unpack_int (ptr, &index);
+      ptr = or_unpack_int (ptr, &func_code);
+      ptr = or_unpack_int (ptr, &changed_data);
+      total_len = ptr - log_Infos;
+      _er_log_debug (ARG_FILE_LINE,
+		     "DML LOG INFO log len : %d, trid : %d, user : %s, datatype : %d, dml_type : %d, classoid : %lld, num changed col : %d, index : %d,  func code : %d, changed data : %d \b",
+		     len, trid, user, data_type, dml_type, classoid, num_changed_col, index, func_code, changed_data);
+    }
+#endif
+
   (void) css_send_data_to_client (thread_p->conn_entry, rid, log_Infos, log_Infos_length);
 
   free_and_init (log_Infos);
 
-#if !defined(NDEBUG) && 0	//JOOHOK
-  int len; 
-  int trid;
-  char *user;
-  int type;
-  time_t at_time;
-  int total_len;
-  ptr2 = or_unpack_int (reply, &len);
-  ptr2 = or_unpack_int (ptr2, &trid);
-  ptr2 = or_unpack_string_nocopy (ptr2, &user);
-  ptr2 = or_unpack_int (ptr2, &type);
-  ptr2 = or_unpack_int64 (ptr2, &at_time);
-  total_len = ptr2 - reply;
-  _er_log_debug (ARG_FILE_LINE,
-		 "TIMER LOG INFO log len : %d, trid : %d, user : %s, datatype : %d, time : %ld, total_len : %d \b", len,
-		 trid, user, type, at_time, total_len);
-#endif
 
   return;
 }

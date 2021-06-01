@@ -11738,12 +11738,12 @@ xlog_supplement_statement (THREAD_ENTRY * thread_p, int statement_type, char *cl
   ptr = start_ptr = PTR_ALIGN (data, MAX_ALIGNMENT);
 
   ptr = or_pack_int (ptr, statement_type);
-  ptr = or_pack_int64 (ptr, classoid_bigint);
+  ptr = or_pack_int64 (ptr, (INT64)classoid_bigint);
 
   if (statement_type == CUBRID_STMT_CREATE_INDEX || statement_type == CUBRID_STMT_ALTER_INDEX
       || statement_type == CUBRID_STMT_DROP_INDEX)
     {
-      ptr = or_pack_int64 (ptr, btid_bigint);
+      ptr = or_pack_int64 (ptr,(INT64) btid_bigint);
     }
   else
     {

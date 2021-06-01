@@ -15871,8 +15871,15 @@ heap_mvcc_log_delete (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * p_addr, LOG_RCVIN
     {
       if (undo_recdes != NULL)
 	{
-	  log_append_undoredo_data (thread_p, rcvindex, p_addr, undo_recdes->length, redo_data_size, undo_recdes->data,
+          /*undo_recdes->type */
+          int length = undo_recdes->length + sizeof(undo_recdes->type);
+          char * start_ptr = undo_recdes->data;
+          char * tmp_data = (char *)malloc(length);
+          memcpy(tmp_data, &undo_recdes->type, sizeof(INT16));
+          memcpy(tmp_data + sizeof(INT16), undo_recdes->data, undo_recdes->length); 
+	  log_append_undoredo_data (thread_p, rcvindex, p_addr, length, redo_data_size, tmp_data,
 				    redo_data_p);
+          free (tmp_data);
 	}
       else
 	{
@@ -21423,7 +21430,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	  rec_address.offset = context->oid.slotid;
 	  if (prm_get_bool_value (PRM_ID_SUPPLEMENTAL_LOG) == true)
 	    {
-	      heap_mvcc_log_delete (thread_p, &rec_address, RVHF_MVCC_DELETE_REC_HOME, &context->home_recdes);
+	      heap_mvcc_log_delete (thread_p, &rec_address, RVHF_MVCC_DELETE_REC_HOME, &built_recdes);
 	    }
 	  else
 	    {
