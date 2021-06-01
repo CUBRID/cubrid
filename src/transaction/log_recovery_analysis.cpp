@@ -79,6 +79,8 @@ static void log_rv_analysis_record (THREAD_ENTRY *thread_p, LOG_RECTYPE log_type
 				    LOG_PAGE *log_page_p, LOG_LSA *prev_lsa, log_recovery_context &context);
 static bool log_is_page_of_record_broken (THREAD_ENTRY *thread_p, const LOG_LSA *log_lsa,
     const LOG_RECORD_HEADER *log_rec_header);
+static void logpb_page_get_first_null_block_lsa (THREAD_ENTRY *thread_p, LOG_PAGE *log_pgptr,
+    LOG_LSA *first_null_block_lsa);
 static void log_recovery_resetlog (THREAD_ENTRY *thread_p, const LOG_LSA *new_append_lsa,
 				   const LOG_LSA *new_prev_lsa);
 static void log_recovery_notpartof_archives (THREAD_ENTRY *thread_p, int start_arv_num, const char *info_reason);
