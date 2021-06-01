@@ -8901,11 +8901,11 @@ pt_resolve_method_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  return false;		/* not a method */
 	}
-      node->info.method_call.class_or_inst = PT_IS_CLASS_MTHD;
+      node->info.method_call.method_type = PT_IS_CLASS_MTHD;
     }
   else
     {
-      node->info.method_call.class_or_inst = PT_IS_INST_MTHD;
+      node->info.method_call.method_type = PT_IS_INST_MTHD;
     }
 
   /* look up the domain of the method's return type */

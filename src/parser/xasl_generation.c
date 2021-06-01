@@ -3779,7 +3779,7 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 		}
 	    }
 
-	  (*tail)->method_type = ((node->info.method_call.class_or_inst == PT_IS_CLASS_MTHD)
+	  (*tail)->method_type = ((node->info.method_call.method_type == PT_IS_CLASS_MTHD)
 				  ? METHOD_IS_CLASS_METHOD : METHOD_IS_INSTANCE_METHOD);
 
 	  /* num_method_args does not include the target by convention */
