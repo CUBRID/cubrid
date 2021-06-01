@@ -367,8 +367,7 @@ STATIC_INLINE int logpb_get_log_buffer_index (LOG_PAGEID log_pageid) __attribute
 static int logpb_fetch_header_from_active_log (THREAD_ENTRY * thread_p, const char *db_fullname,
 					       const char *logpath, const char *prefix_logname, LOG_HEADER * hdr,
 					       LOG_PAGE * log_pgptr);
-static int logpb_compute_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int *checksum_crc32);
-static int logpb_page_has_valid_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, bool * has_valid_checksum);
+static void logpb_compute_page_checksum (const LOG_PAGE * log_pgptr, int *checksum_crc32);
 
 static bool logpb_is_log_active_from_backup_useful (THREAD_ENTRY * thread_p, const char *active_log_path,
 						    const char *db_full_name);
@@ -453,10 +452,10 @@ logpb_initialize_log_buffer (LOG_BUFFER * log_buffer_p, LOG_PAGE * log_pg)
  *   Note: Currently CRC32 is used as checksum.
  *   Note: any changes to this requires changes to logwr_check_page_checksum
  */
-static int
-logpb_compute_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int *checksum_crc32)
+static void
+logpb_compute_page_checksum (const LOG_PAGE * log_pgptr, int *checksum_crc32)
 {
-  int error_code = NO_ERROR, saved_checksum_crc32;
+  int saved_checksum_crc32;
   const int block_size = 4096;
   const int max_num_pages = IO_MAX_PAGE_SIZE / block_size;
   const int sample_nbytes = 16;
@@ -467,11 +466,15 @@ logpb_compute_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int 
 
   assert (log_pgptr != NULL && checksum_crc32 != NULL);
 
+  // The checksum value itself must be stripped to compute a new checksum.
+  // Strip the const from log_page. The initial value will be restored.
+  LOG_PAGE *nonconst_log_pgptr = const_cast < LOG_PAGE * >(log_pgptr);
+
   /* Save the old page checksum. */
   saved_checksum_crc32 = log_pgptr->hdr.checksum;
 
   /* Resets checksum to not affect the new computation. */
-  log_pgptr->hdr.checksum = 0;
+  nonconst_log_pgptr->hdr.checksum = 0;
 
   char *p = buf;
   for (int i = 0; i < num_pages; i++)
@@ -490,9 +493,7 @@ logpb_compute_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int 
   crypt_crc32 ((char *) buf, (int) sizeof_buf, checksum_crc32);
 
   /* Restores the saved checksum */
-  log_pgptr->hdr.checksum = saved_checksum_crc32;
-
-  return error_code;
+  nonconst_log_pgptr->hdr.checksum = saved_checksum_crc32;
 }
 
 /*
@@ -510,11 +511,7 @@ logpb_set_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
   assert (log_pgptr != NULL);
 
   /* Computes the page checksum. */
-  error_code = logpb_compute_page_checksum (thread_p, log_pgptr, &checksum_crc32);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
+  logpb_compute_page_checksum (log_pgptr, &checksum_crc32);
 
   log_pgptr->hdr.checksum = checksum_crc32;
   logpb_log ("logpb_set_page_checksum: log page %lld has checksum = %d\n",
@@ -525,32 +522,23 @@ logpb_set_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
 
 /*
  * logpb_page_has_valid_checksum - Check whether the log page checksum is valid.
- *   return: error code
- *   thread_p(in): thread entry
- *   log_pgptr(in): the log page
- *   has_valid_checksum(out): true, if has valid checksum.
  */
-static int
-logpb_page_has_valid_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, bool * has_valid_checksum)
+bool
+logpb_page_has_valid_checksum (const LOG_PAGE * log_pgptr)
 {
-  int checksum_crc32, error_code = NO_ERROR;
+  int checksum_crc32;
 
-  assert (log_pgptr != NULL && has_valid_checksum != NULL);
+  assert (log_pgptr != NULL);
 
-  error_code = logpb_compute_page_checksum (thread_p, log_pgptr, &checksum_crc32);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
+  logpb_compute_page_checksum (log_pgptr, &checksum_crc32);
 
-  *has_valid_checksum = (checksum_crc32 == log_pgptr->hdr.checksum);
-  if (*has_valid_checksum == false)
+  const bool ret = (checksum_crc32 == log_pgptr->hdr.checksum);
+  if (ret == false)
     {
       logpb_log ("logpb_page_has_valid_checksum: log page %lld has checksum = %d, computed checksum = %d\n",
 		 (long long int) log_pgptr->hdr.logical_pageid, log_pgptr->hdr.checksum, checksum_crc32);
     }
-
-  return NO_ERROR;
+  return ret;
 }
 
 /*
@@ -11145,31 +11133,6 @@ logpb_last_complete_blockid (void)
 
   /* the previous block is the one completed */
   return blockid - 1;
-}
-
-/*
- * logpb_page_check_corruption - Check whether the log page is corrupted.
- *   return: error code
- *   thread_p(in): thread entry
- *   log_pgptr(in): the log page
- *   is_page_corrupted(out): true, if the log page is corrupted.
- */
-int
-logpb_page_check_corruption (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, bool * is_page_corrupted)
-{
-  int error_code;
-  bool has_valid_checksum;
-
-  assert (log_pgptr != NULL && is_page_corrupted != NULL);
-
-  error_code = logpb_page_has_valid_checksum (thread_p, log_pgptr, &has_valid_checksum);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  *is_page_corrupted = !has_valid_checksum;
-  return NO_ERROR;
 }
 
 #if !defined(NDEBUG)
