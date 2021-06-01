@@ -346,7 +346,8 @@ dblink_open_scan (DBLINK_SCAN_INFO * scan_info, char *conn_url, char *user_name,
 	  scan_info->col_info = (void *) cci_get_result_info (scan_info->stmt_handle, &stmt_type, &scan_info->col_cnt);
 	  if (scan_info->col_info == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_buf.err_code, 0);
+	      /* this can not be reached, something wrong */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "unknown error");
 	      return S_ERROR;
 	    }
 	  scan_info->cursor = CCI_CURSOR_FIRST;
@@ -572,7 +573,7 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 	    {
 	      dom.precision = valptrp->val->domain.char_info.length;
 	      dom.collation_id = valptrp->val->domain.char_info.collation_id;
-	      dom.codeset = LANG_SYS_CODESET;
+	      dom.codeset = valptrp->val->data.ch.medium.codeset;
 	    }
 	  else
 	    {
