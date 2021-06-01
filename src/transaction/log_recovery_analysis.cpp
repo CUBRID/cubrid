@@ -118,7 +118,6 @@ int
 log_rv_analysis_check_page_corruption (THREAD_ENTRY *thread_p, LOG_PAGEID pageid, const LOG_PAGE *log_page_p,
 				       corruption_checker &checker)
 {
-  /* If the page changed, check whether is corrupted. */
 #if !defined(NDEBUG)
   er_log_debug (ARG_FILE_LINE, "logpb_recovery_analysis: log page %lld, checksum %d\n",
 		log_page_p->hdr.logical_pageid, log_page_p->hdr.checksum);
@@ -199,6 +198,7 @@ log_recovery_analysis (THREAD_ENTRY *thread_p, INT64 *num_redo_log_records, log_
 	      return;
 	    }
 
+	  /* If the page changed, check whether is corrupted. */
 	  if (log_rv_analysis_check_page_corruption (thread_p, record_nav_lsa.pageid, log_page_p, checker) != NO_ERROR)
 	    {
 	      return;
