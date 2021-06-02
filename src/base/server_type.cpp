@@ -93,7 +93,7 @@ int init_server_type (const char *)
 {
   int err_code = NO_ERROR;
 
-  g_server_type = (SERVER_TYPE) prm_get_integer_value (PRM_ID_SERVER_TYPE);
+  g_server_type = SERVER_TYPE_TRANSACTION;
 
   const bool uses_remote_storage = prm_get_bool_value (PRM_ID_REMOTE_STORAGE);
   if (uses_remote_storage)
