@@ -11423,7 +11423,15 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs, PT_NODE * rhs)
 
 		  if (rhs->node_type != PT_HOST_VAR)
 		    {
-		      d = tp_domain_resolve_default (lhs_dbtype);
+		      // TODO: It should be considered for parameterized types, refer to PT_IS_PARAMETERIZED_TYPE()
+		      if (lhs->type_enum == PT_TYPE_NUMERIC && lhs->data_type != NULL)
+			{
+			  d = tp_domain_resolve (lhs_dbtype, NULL, sci.prec, sci.scale, NULL, 0);
+			}
+		      else
+			{
+			  d = tp_domain_resolve_default (lhs_dbtype);
+			}
 		    }
 		  else
 		    {
@@ -11456,7 +11464,15 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs, PT_NODE * rhs)
 			    }
 			  else
 			    {
-			      d = tp_domain_resolve_default (lhs_dbtype);
+			      // TODO: It should be considered for parameterized types, refer to PT_IS_PARAMETERIZED_TYPE()
+			      if (lhs->type_enum == PT_TYPE_NUMERIC && lhs->data_type != NULL)
+				{
+				  d = tp_domain_resolve (lhs_dbtype, NULL, sci.prec, sci.scale, NULL, 0);
+				}
+			      else
+				{
+				  d = tp_domain_resolve_default (lhs_dbtype);
+				}
 			    }
 
 			  if (PT_HAS_COLLATION (lhs->type_enum))

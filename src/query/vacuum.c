@@ -7465,7 +7465,7 @@ vacuum_rv_redo_vacuum_heap_record (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
  * recovery_lsa (in) : Recovery starting LSA.
  */
 void
-vacuum_notify_server_crashed (LOG_LSA * recovery_lsa)
+vacuum_notify_server_crashed (const LOG_LSA * recovery_lsa)
 {
   LSA_COPY (&vacuum_Data.recovery_lsa, recovery_lsa);
 }

@@ -22,6 +22,7 @@
 #include "communication_server_channel.hpp"
 #include "connection_defs.h"
 #include "error_manager.h"
+#include "log_impl.h"
 #include "page_server.hpp"
 #include "system_parameter.h"
 
@@ -52,6 +53,13 @@ int init_server_type (const char *db_name)
   if (g_server_type == SERVER_TYPE_TRANSACTION)
     {
       er_code = ats_Gl.init_page_server_hosts (db_name);
+    }
+  else
+    {
+      assert (g_server_type == SERVER_TYPE_PAGE);
+
+      // page server needs a log prior receiver
+      log_Gl.initialize_log_prior_receiver ();
     }
 
   if (er_code == NO_ERROR)
