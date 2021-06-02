@@ -1699,7 +1699,6 @@ jsp_do_call_stored_procedure (DB_VALUE * returnval, DB_ARG_LIST * args, const ch
 
   db_make_null (&method);
   db_make_null (&param);
-  //memset (&sp_args, 0, sizeof (SP_ARGS));
 
   mop_p = jsp_find_stored_procedure (name);
   if (!mop_p)
