@@ -530,7 +530,7 @@ static PT_NODE * pt_create_json_value (PARSER_CONTEXT *parser,
 				       const char *str);
 static void pt_jt_append_column_or_nested_node (PT_NODE * jt_node, PT_NODE * jt_col_or_nested);
 
-#define  DBLINK_CONN_PARAM_CNT   (5)
+#define DBLINK_CONN_PARAM_CNT   (5)
 static bool pt_ct_check_fill_connection_info (char *pIn, char *pInfo[], char *perr_msg );
 
 static void pt_value_set_charset_coll (PARSER_CONTEXT *parser,
