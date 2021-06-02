@@ -77,8 +77,6 @@ static void log_rv_analysis_record (THREAD_ENTRY *thread_p, LOG_RECTYPE log_type
 				    LOG_PAGE *log_page_p, LOG_LSA *prev_lsa, log_recovery_context &context);
 static bool log_is_page_of_record_broken (THREAD_ENTRY *thread_p, const LOG_LSA *log_lsa,
     const LOG_RECORD_HEADER *log_rec_header);
-static void logpb_page_get_first_null_block_lsa (THREAD_ENTRY *thread_p, LOG_PAGE *log_pgptr,
-    LOG_LSA *first_null_block_lsa);
 static void log_recovery_resetlog (THREAD_ENTRY *thread_p, const LOG_LSA *new_append_lsa,
 				   const LOG_LSA *new_prev_lsa);
 static void log_recovery_notpartof_archives (THREAD_ENTRY *thread_p, int start_arv_num, const char *info_reason);
@@ -448,50 +446,6 @@ log_recovery_analysis (THREAD_ENTRY *thread_p, INT64 *num_redo_log_records, log_
     }
 
   return;
-}
-
-/*
- * logpb_page_get_first_null_block_lsa - Get LSA of first null block in log page.
- *
- * return: nothing
- *   thread_p(in): thread entry
- *   log_pgptr(in): log page
- *   first_null_block_lsa(out): LSA of first null block.
- */
-void
-logpb_page_get_first_null_block_lsa (THREAD_ENTRY *thread_p, LOG_PAGE *log_pgptr, LOG_LSA *first_null_block_lsa)
-{
-  const int block_size = 4 * ONE_K;
-  char null_buffer[block_size + MAX_ALIGNMENT], *null_block;
-  int i, max_num_blocks = LOG_PAGESIZE / block_size;
-
-  assert (log_pgptr != NULL && first_null_block_lsa != NULL);
-
-  null_block = PTR_ALIGN (null_buffer, MAX_ALIGNMENT);
-  memset (null_block, LOG_PAGE_INIT_VALUE, block_size);
-
-  LSA_SET_NULL (first_null_block_lsa);
-
-  /* Set LSA of first NULL block. */
-  for (i = 0; i < max_num_blocks; i++)
-    {
-      /* Search for null blocks. */
-      if (memcmp (((char *) log_pgptr) + (i * block_size), null_block, block_size) == 0)
-	{
-	  /* Found the null block. Computes its LSA. */
-	  first_null_block_lsa->pageid = log_pgptr->hdr.logical_pageid;
-	  first_null_block_lsa->offset = i * block_size;
-
-	  if (first_null_block_lsa->offset > 0)
-	    {
-	      /* Skip log header size. */
-	      first_null_block_lsa->offset -= sizeof (LOG_HDRPAGE);
-	    }
-
-	  assert (first_null_block_lsa->offset >= 0);
-	  break;
-	}
-    }
 }
 
 static void
