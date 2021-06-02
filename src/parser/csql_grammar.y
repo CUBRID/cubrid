@@ -24769,14 +24769,14 @@ dblink_expr
                         }
                         else // ( $1->node_type == PT_VALUE )
                         {
-                        ct->info.dblink_table.is_name = false;
-                        // in the order url, user, password
-                        ct->info.dblink_table.conn = 0x00;
-                        ct->info.dblink_table.url = $1;
-                        ct->info.dblink_table.user = $1->next;
-                        ct->info.dblink_table.pwd = $1->next->next;
-                        $1->next->next = 0x00;
-                        $1->next = 0x00;
+                                ct->info.dblink_table.is_name = false;
+                                // in the order url, user, password
+                                ct->info.dblink_table.conn = 0x00;
+                                ct->info.dblink_table.url = $1;
+                                ct->info.dblink_table.user = $1->next;
+                                ct->info.dblink_table.pwd = $1->next->next;
+                                $1->next->next = 0x00;
+                                $1->next = 0x00;
                         }
                 }
                 ct->info.dblink_table.qstr = val;
