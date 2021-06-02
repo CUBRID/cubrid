@@ -84,7 +84,7 @@ static void log_recovery_notpartof_archives (THREAD_ENTRY *thread_p, int start_a
 class corruption_checker
 {
     //////////////////////////////////////////////////////////////////////////
-    // Does log data sanity checks and save the results.
+    // Does log data sanity checks and saves the results.
     //////////////////////////////////////////////////////////////////////////
 
   public:
