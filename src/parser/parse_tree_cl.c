@@ -68,7 +68,12 @@
 #define MAX_STRING_SEGMENT_LENGTH 254
 #define DONT_PRT_LONG_STRING_LENGTH 256
 
-#define PT_APPLY_CHECK_ACTION(parser, ptr, arg)  if((ptr)) (ptr) = pt_walk_private ((parser), (ptr), (arg))
+#define PT_APPLY_WALK(parser, ptr, arg) do { \
+         if((ptr))                           \
+           {                                 \
+                (ptr) = pt_walk_private ((parser), (ptr), (arg)); \
+           }                                 \
+      } while (0)
 
 typedef struct pt_lambda_arg PT_LAMBDA_ARG;
 struct pt_lambda_arg
@@ -5462,9 +5467,9 @@ pt_show_event_type (PT_EVENT_TYPE p)
 static PT_NODE *
 pt_apply_alter (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.alter.entity_name, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.alter.super.sup_class_list, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.alter.super.resolution_list, arg);
+  PT_APPLY_WALK (parser, p->info.alter.entity_name, arg);
+  PT_APPLY_WALK (parser, p->info.alter.super.sup_class_list, arg);
+  PT_APPLY_WALK (parser, p->info.alter.super.resolution_list, arg);
 
   switch (p->info.alter.code)
     {
@@ -5474,65 +5479,65 @@ pt_apply_alter (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
     case PT_DROP_QUERY:
     case PT_MODIFY_QUERY:
     case PT_RESET_QUERY:
-      PT_APPLY_CHECK_ACTION (parser, p->info.alter.alter_clause.query.query, arg);
-      PT_APPLY_CHECK_ACTION (parser, p->info.alter.alter_clause.query.query_no_list, arg);
-      PT_APPLY_CHECK_ACTION (parser, p->info.alter.alter_clause.query.attr_def_list, arg);
+      PT_APPLY_WALK (parser, p->info.alter.alter_clause.query.query, arg);
+      PT_APPLY_WALK (parser, p->info.alter.alter_clause.query.query_no_list, arg);
+      PT_APPLY_WALK (parser, p->info.alter.alter_clause.query.attr_def_list, arg);
       break;
     case PT_ADD_ATTR_MTHD:
     case PT_DROP_ATTR_MTHD:
     case PT_MODIFY_ATTR_MTHD:
     case PT_CHANGE_ATTR:
-      PT_APPLY_CHECK_ACTION (parser, p->info.alter.alter_clause.attr_mthd.attr_def_list, arg);
-      PT_APPLY_CHECK_ACTION (parser, p->info.alter.alter_clause.attr_mthd.attr_old_name, arg);
-      PT_APPLY_CHECK_ACTION (parser, p->info.alter.alter_clause.attr_mthd.attr_mthd_name_list, arg);
-      PT_APPLY_CHECK_ACTION (parser, p->info.alter.alter_clause.attr_mthd.mthd_def_list, arg);
-      PT_APPLY_CHECK_ACTION (parser, p->info.alter.alter_clause.attr_mthd.mthd_file_list, arg);
-      PT_APPLY_CHECK_ACTION (parser, p->info.alter.alter_clause.attr_mthd.mthd_name_list, arg);
+      PT_APPLY_WALK (parser, p->info.alter.alter_clause.attr_mthd.attr_def_list, arg);
+      PT_APPLY_WALK (parser, p->info.alter.alter_clause.attr_mthd.attr_old_name, arg);
+      PT_APPLY_WALK (parser, p->info.alter.alter_clause.attr_mthd.attr_mthd_name_list, arg);
+      PT_APPLY_WALK (parser, p->info.alter.alter_clause.attr_mthd.mthd_def_list, arg);
+      PT_APPLY_WALK (parser, p->info.alter.alter_clause.attr_mthd.mthd_file_list, arg);
+      PT_APPLY_WALK (parser, p->info.alter.alter_clause.attr_mthd.mthd_name_list, arg);
       break;
     case PT_RENAME_ATTR_MTHD:
     case PT_RENAME_ENTITY:
-      PT_APPLY_CHECK_ACTION (parser, p->info.alter.alter_clause.rename.old_name, arg);
-      PT_APPLY_CHECK_ACTION (parser, p->info.alter.alter_clause.rename.new_name, arg);
-      PT_APPLY_CHECK_ACTION (parser, p->info.alter.alter_clause.rename.mthd_name, arg);
+      PT_APPLY_WALK (parser, p->info.alter.alter_clause.rename.old_name, arg);
+      PT_APPLY_WALK (parser, p->info.alter.alter_clause.rename.new_name, arg);
+      PT_APPLY_WALK (parser, p->info.alter.alter_clause.rename.mthd_name, arg);
       break;
 #if defined (ENABLE_RENAME_CONSTRAINT)
     case PT_RENAME_CONSTRAINT:
     case PT_RENAME_INDEX:
-      PT_APPLY_CHECK_ACTION (parser, p->info.alter.alter_clause.rename.old_name, arg);
-      PT_APPLY_CHECK_ACTION (parser, p->info.alter.alter_clause.rename.new_name, arg);
+      PT_APPLY_WALK (parser, p->info.alter.alter_clause.rename.old_name, arg);
+      PT_APPLY_WALK (parser, p->info.alter.alter_clause.rename.new_name, arg);
       break;
 #endif
     case PT_MODIFY_DEFAULT:
     case PT_ALTER_DEFAULT:
-      PT_APPLY_CHECK_ACTION (parser, p->info.alter.alter_clause.ch_attr_def.attr_name_list, arg);
-      PT_APPLY_CHECK_ACTION (parser, p->info.alter.alter_clause.ch_attr_def.data_default_list, arg);
+      PT_APPLY_WALK (parser, p->info.alter.alter_clause.ch_attr_def.attr_name_list, arg);
+      PT_APPLY_WALK (parser, p->info.alter.alter_clause.ch_attr_def.data_default_list, arg);
       break;
       /* TODO merge all the *_PARTITION cases below into a single case if it is safe to do so. */
     case PT_APPLY_PARTITION:
-      PT_APPLY_CHECK_ACTION (parser, p->info.alter.alter_clause.partition.info, arg);
+      PT_APPLY_WALK (parser, p->info.alter.alter_clause.partition.info, arg);
       break;
     case PT_DROP_PARTITION:
     case PT_ANALYZE_PARTITION:
     case PT_PROMOTE_PARTITION:
-      PT_APPLY_CHECK_ACTION (parser, p->info.alter.alter_clause.partition.name_list, arg);
+      PT_APPLY_WALK (parser, p->info.alter.alter_clause.partition.name_list, arg);
       break;
     case PT_REMOVE_PARTITION:
       break;
     case PT_ADD_PARTITION:
-      PT_APPLY_CHECK_ACTION (parser, p->info.alter.alter_clause.partition.parts, arg);
+      PT_APPLY_WALK (parser, p->info.alter.alter_clause.partition.parts, arg);
       break;
     case PT_ADD_HASHPARTITION:
     case PT_COALESCE_PARTITION:
-      PT_APPLY_CHECK_ACTION (parser, p->info.alter.alter_clause.partition.size, arg);
+      PT_APPLY_WALK (parser, p->info.alter.alter_clause.partition.size, arg);
       break;
     case PT_REORG_PARTITION:
-      PT_APPLY_CHECK_ACTION (parser, p->info.alter.alter_clause.partition.name_list, arg);
-      PT_APPLY_CHECK_ACTION (parser, p->info.alter.alter_clause.partition.parts, arg);
+      PT_APPLY_WALK (parser, p->info.alter.alter_clause.partition.name_list, arg);
+      PT_APPLY_WALK (parser, p->info.alter.alter_clause.partition.parts, arg);
       break;
     }
-  PT_APPLY_CHECK_ACTION (parser, p->info.alter.constraint_list, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.alter.create_index, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.alter.internal_stmts, arg);
+  PT_APPLY_WALK (parser, p->info.alter.constraint_list, arg);
+  PT_APPLY_WALK (parser, p->info.alter.create_index, arg);
+  PT_APPLY_WALK (parser, p->info.alter.internal_stmts, arg);
   return p;
 }
 
@@ -6198,10 +6203,10 @@ pt_print_alter (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_alter_index (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.index.indexed_class, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.index.column_names, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.index.where, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.index.function_expr, arg);
+  PT_APPLY_WALK (parser, p->info.index.indexed_class, arg);
+  PT_APPLY_WALK (parser, p->info.index.column_names, arg);
+  PT_APPLY_WALK (parser, p->info.index.where, arg);
+  PT_APPLY_WALK (parser, p->info.index.function_expr, arg);
 
   return p;
 }
@@ -6327,8 +6332,8 @@ pt_print_alter_index (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_alter_user (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.alter_user.user_name, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.alter_user.password, arg);
+  PT_APPLY_WALK (parser, p->info.alter_user.user_name, arg);
+  PT_APPLY_WALK (parser, p->info.alter_user.password, arg);
   return p;
 }
 
@@ -6388,8 +6393,8 @@ pt_print_alter_user (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.alter_trigger.trigger_spec_list, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.alter_trigger.trigger_priority, arg);
+  PT_APPLY_WALK (parser, p->info.alter_trigger.trigger_spec_list, arg);
+  PT_APPLY_WALK (parser, p->info.alter_trigger.trigger_priority, arg);
   return p;
 }
 
@@ -6502,10 +6507,10 @@ pt_print_attach (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_attr_def (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.attr_def.attr_name, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.attr_def.data_default, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.attr_def.auto_increment, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.attr_def.ordering_info, arg);
+  PT_APPLY_WALK (parser, p->info.attr_def.attr_name, arg);
+  PT_APPLY_WALK (parser, p->info.attr_def.data_default, arg);
+  PT_APPLY_WALK (parser, p->info.attr_def.auto_increment, arg);
+  PT_APPLY_WALK (parser, p->info.attr_def.ordering_info, arg);
   return p;
 }
 
@@ -6729,7 +6734,7 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_attr_ordering (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.attr_ordering.after, arg);
+  PT_APPLY_WALK (parser, p->info.attr_ordering.after, arg);
   return p;
 }
 
@@ -6783,7 +6788,7 @@ pt_print_attr_ordering (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_auth_cmd (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.auth_cmd.attr_mthd_list, arg);
+  PT_APPLY_WALK (parser, p->info.auth_cmd.attr_mthd_list, arg);
   return p;
 }
 
@@ -6834,7 +6839,7 @@ pt_print_auth_cmd (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_check_option (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.check_option.expr, arg);
+  PT_APPLY_WALK (parser, p->info.check_option.expr, arg);
 
   return p;
 }
@@ -6927,22 +6932,22 @@ pt_print_commit_work (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_create_entity (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.create_entity.entity_name, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.create_entity.supclass_list, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.create_entity.class_attr_def_list, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.create_entity.attr_def_list, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.create_entity.method_def_list, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.create_entity.method_file_list, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.create_entity.resolution_list, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.create_entity.as_query_list, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.create_entity.object_id_list, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.create_entity.update, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.create_entity.constraint_list, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.create_entity.create_index, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.create_entity.partition_info, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.create_entity.internal_stmts, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.create_entity.create_like, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.create_entity.create_select, arg);
+  PT_APPLY_WALK (parser, p->info.create_entity.entity_name, arg);
+  PT_APPLY_WALK (parser, p->info.create_entity.supclass_list, arg);
+  PT_APPLY_WALK (parser, p->info.create_entity.class_attr_def_list, arg);
+  PT_APPLY_WALK (parser, p->info.create_entity.attr_def_list, arg);
+  PT_APPLY_WALK (parser, p->info.create_entity.method_def_list, arg);
+  PT_APPLY_WALK (parser, p->info.create_entity.method_file_list, arg);
+  PT_APPLY_WALK (parser, p->info.create_entity.resolution_list, arg);
+  PT_APPLY_WALK (parser, p->info.create_entity.as_query_list, arg);
+  PT_APPLY_WALK (parser, p->info.create_entity.object_id_list, arg);
+  PT_APPLY_WALK (parser, p->info.create_entity.update, arg);
+  PT_APPLY_WALK (parser, p->info.create_entity.constraint_list, arg);
+  PT_APPLY_WALK (parser, p->info.create_entity.create_index, arg);
+  PT_APPLY_WALK (parser, p->info.create_entity.partition_info, arg);
+  PT_APPLY_WALK (parser, p->info.create_entity.internal_stmts, arg);
+  PT_APPLY_WALK (parser, p->info.create_entity.create_like, arg);
+  PT_APPLY_WALK (parser, p->info.create_entity.create_select, arg);
   return p;
 }
 
@@ -7219,12 +7224,12 @@ pt_print_create_entity (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_create_index (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.index.indexed_class, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.index.column_names, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.index.index_name, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.index.prefix_length, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.index.where, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.index.function_expr, arg);
+  PT_APPLY_WALK (parser, p->info.index.indexed_class, arg);
+  PT_APPLY_WALK (parser, p->info.index.column_names, arg);
+  PT_APPLY_WALK (parser, p->info.index.index_name, arg);
+  PT_APPLY_WALK (parser, p->info.index.prefix_length, arg);
+  PT_APPLY_WALK (parser, p->info.index.where, arg);
+  PT_APPLY_WALK (parser, p->info.index.function_expr, arg);
   return p;
 }
 
@@ -7357,10 +7362,10 @@ pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_create_user (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.create_user.user_name, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.create_user.password, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.create_user.groups, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.create_user.members, arg);
+  PT_APPLY_WALK (parser, p->info.create_user.user_name, arg);
+  PT_APPLY_WALK (parser, p->info.create_user.password, arg);
+  PT_APPLY_WALK (parser, p->info.create_user.groups, arg);
+  PT_APPLY_WALK (parser, p->info.create_user.members, arg);
   return p;
 }
 
@@ -7431,12 +7436,12 @@ pt_print_create_user (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_create_trigger (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.create_trigger.trigger_name, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.create_trigger.trigger_priority, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.create_trigger.trigger_event, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.create_trigger.trigger_reference, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.create_trigger.trigger_condition, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.create_trigger.trigger_action, arg);
+  PT_APPLY_WALK (parser, p->info.create_trigger.trigger_name, arg);
+  PT_APPLY_WALK (parser, p->info.create_trigger.trigger_priority, arg);
+  PT_APPLY_WALK (parser, p->info.create_trigger.trigger_event, arg);
+  PT_APPLY_WALK (parser, p->info.create_trigger.trigger_reference, arg);
+  PT_APPLY_WALK (parser, p->info.create_trigger.trigger_condition, arg);
+  PT_APPLY_WALK (parser, p->info.create_trigger.trigger_action, arg);
   return p;
 }
 
@@ -7644,7 +7649,7 @@ pt_init_prepare (PT_NODE * p)
 static PT_NODE *
 pt_apply_truncate (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.truncate.spec, arg);
+  PT_APPLY_WALK (parser, p->info.truncate.spec, arg);
   return p;
 }
 
@@ -7694,7 +7699,7 @@ pt_print_truncate (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_table_option (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.table_option.val, arg);
+  PT_APPLY_WALK (parser, p->info.table_option.val, arg);
   return p;
 }
 
@@ -7795,7 +7800,7 @@ pt_print_table_option (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_do (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.do_.expr, arg);
+  PT_APPLY_WALK (parser, p->info.do_.expr, arg);
   return p;
 }
 
@@ -7898,14 +7903,14 @@ pt_print_sp_parameter (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_partition (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.partition.expr, arg);
+  PT_APPLY_WALK (parser, p->info.partition.expr, arg);
   if (p->info.partition.type == PT_PARTITION_HASH)
     {
-      PT_APPLY_CHECK_ACTION (parser, p->info.partition.hashsize, arg);
+      PT_APPLY_WALK (parser, p->info.partition.hashsize, arg);
     }
   else
     {
-      PT_APPLY_CHECK_ACTION (parser, p->info.partition.parts, arg);
+      PT_APPLY_WALK (parser, p->info.partition.parts, arg);
     }
 
   return p;
@@ -7974,8 +7979,8 @@ pt_print_partition (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_parts (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.parts.name, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.parts.values, arg);
+  PT_APPLY_WALK (parser, p->info.parts.name, arg);
+  PT_APPLY_WALK (parser, p->info.parts.values, arg);
 
   return p;
 }
@@ -8323,10 +8328,10 @@ pt_print_drop_serial (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_create_serial (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.serial.start_val, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.serial.increment_val, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.serial.min_val, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.serial.max_val, arg);
+  PT_APPLY_WALK (parser, p->info.serial.start_val, arg);
+  PT_APPLY_WALK (parser, p->info.serial.increment_val, arg);
+  PT_APPLY_WALK (parser, p->info.serial.min_val, arg);
+  PT_APPLY_WALK (parser, p->info.serial.max_val, arg);
   return p;
 }
 
@@ -8341,9 +8346,9 @@ pt_apply_create_serial (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 static PT_NODE *
 pt_apply_alter_serial (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.serial.increment_val, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.serial.min_val, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.serial.max_val, arg);
+  PT_APPLY_WALK (parser, p->info.serial.increment_val, arg);
+  PT_APPLY_WALK (parser, p->info.serial.min_val, arg);
+  PT_APPLY_WALK (parser, p->info.serial.max_val, arg);
   return p;
 }
 
@@ -8373,7 +8378,7 @@ pt_apply_drop_serial (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 static PT_NODE *
 pt_apply_data_default (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.data_default.default_value, arg);
+  PT_APPLY_WALK (parser, p->info.data_default.default_value, arg);
   return p;
 }
 
@@ -8438,9 +8443,9 @@ pt_print_data_default (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_datatype (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.data_type.entity, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.data_type.virt_data_type, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.data_type.enumeration, arg);
+  PT_APPLY_WALK (parser, p->info.data_type.entity, arg);
+  PT_APPLY_WALK (parser, p->info.data_type.virt_data_type, arg);
+  PT_APPLY_WALK (parser, p->info.data_type.enumeration, arg);
   return p;
 }
 
@@ -8610,19 +8615,19 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_delete (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.delete_.with, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.delete_.target_classes, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.delete_.spec, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.delete_.search_cond, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.delete_.using_index, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.delete_.cursor_name, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.delete_.internal_stmts, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.delete_.waitsecs_hint, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.delete_.ordered_hint, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.delete_.use_nl_hint, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.delete_.use_idx_hint, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.delete_.use_merge_hint, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.delete_.limit, arg);
+  PT_APPLY_WALK (parser, p->info.delete_.with, arg);
+  PT_APPLY_WALK (parser, p->info.delete_.target_classes, arg);
+  PT_APPLY_WALK (parser, p->info.delete_.spec, arg);
+  PT_APPLY_WALK (parser, p->info.delete_.search_cond, arg);
+  PT_APPLY_WALK (parser, p->info.delete_.using_index, arg);
+  PT_APPLY_WALK (parser, p->info.delete_.cursor_name, arg);
+  PT_APPLY_WALK (parser, p->info.delete_.internal_stmts, arg);
+  PT_APPLY_WALK (parser, p->info.delete_.waitsecs_hint, arg);
+  PT_APPLY_WALK (parser, p->info.delete_.ordered_hint, arg);
+  PT_APPLY_WALK (parser, p->info.delete_.use_nl_hint, arg);
+  PT_APPLY_WALK (parser, p->info.delete_.use_idx_hint, arg);
+  PT_APPLY_WALK (parser, p->info.delete_.use_merge_hint, arg);
+  PT_APPLY_WALK (parser, p->info.delete_.limit, arg);
 
   return p;
 }
@@ -8843,12 +8848,12 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_difference (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.query.with, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.query.q.union_.arg1, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.query.q.union_.arg2, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.query.into_list, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.query.order_by, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.query.orderby_for, arg);
+  PT_APPLY_WALK (parser, p->info.query.with, arg);
+  PT_APPLY_WALK (parser, p->info.query.q.union_.arg1, arg);
+  PT_APPLY_WALK (parser, p->info.query.q.union_.arg2, arg);
+  PT_APPLY_WALK (parser, p->info.query.into_list, arg);
+  PT_APPLY_WALK (parser, p->info.query.order_by, arg);
+  PT_APPLY_WALK (parser, p->info.query.orderby_for, arg);
   return p;
 }
 
@@ -8932,9 +8937,9 @@ pt_print_difference (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_dot (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.dot.arg1, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.dot.arg2, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.dot.selector, arg);
+  PT_APPLY_WALK (parser, p->info.dot.arg1, arg);
+  PT_APPLY_WALK (parser, p->info.dot.arg2, arg);
+  PT_APPLY_WALK (parser, p->info.dot.selector, arg);
   return p;
 }
 
@@ -9003,8 +9008,8 @@ pt_print_dot (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_drop (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.drop.spec_list, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.drop.internal_stmts, arg);
+  PT_APPLY_WALK (parser, p->info.drop.spec_list, arg);
+  PT_APPLY_WALK (parser, p->info.drop.internal_stmts, arg);
   return p;
 }
 
@@ -9061,10 +9066,10 @@ pt_print_drop (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_drop_index (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.index.indexed_class, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.index.column_names, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.index.where, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.index.function_expr, arg);
+  PT_APPLY_WALK (parser, p->info.index.indexed_class, arg);
+  PT_APPLY_WALK (parser, p->info.index.column_names, arg);
+  PT_APPLY_WALK (parser, p->info.index.where, arg);
+  PT_APPLY_WALK (parser, p->info.index.function_expr, arg);
 
   return p;
 }
@@ -9149,7 +9154,7 @@ pt_print_drop_index (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_drop_user (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.drop_user.user_name, arg);
+  PT_APPLY_WALK (parser, p->info.drop_user.user_name, arg);
   return p;
 }
 
@@ -9195,7 +9200,7 @@ pt_print_drop_user (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_drop_trigger (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.drop_trigger.trigger_spec_list, arg);
+  PT_APPLY_WALK (parser, p->info.drop_trigger.trigger_spec_list, arg);
   return p;
 }
 
@@ -9240,7 +9245,7 @@ pt_print_drop_trigger (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_drop_variable (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.drop_variable.var_names, arg);
+  PT_APPLY_WALK (parser, p->info.drop_variable.var_names, arg);
   return p;
 }
 
@@ -9285,21 +9290,21 @@ pt_print_drop_variable (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_spec (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.spec.entity_name, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.spec.cte_name, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.spec.cte_pointer, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.spec.except_list, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.spec.derived_table, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.spec.range_var, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.spec.as_attr_list, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.spec.referenced_attrs, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.spec.path_entities, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.spec.path_conjuncts, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.spec.flat_entity_list, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.spec.method_list, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.spec.on_cond, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.spec.partition, arg);
-  /* PT_APPLY_CHECK_ACTION (parser, p->info.spec.using_cond, arg); -- does not support named columns join */
+  PT_APPLY_WALK (parser, p->info.spec.entity_name, arg);
+  PT_APPLY_WALK (parser, p->info.spec.cte_name, arg);
+  PT_APPLY_WALK (parser, p->info.spec.cte_pointer, arg);
+  PT_APPLY_WALK (parser, p->info.spec.except_list, arg);
+  PT_APPLY_WALK (parser, p->info.spec.derived_table, arg);
+  PT_APPLY_WALK (parser, p->info.spec.range_var, arg);
+  PT_APPLY_WALK (parser, p->info.spec.as_attr_list, arg);
+  PT_APPLY_WALK (parser, p->info.spec.referenced_attrs, arg);
+  PT_APPLY_WALK (parser, p->info.spec.path_entities, arg);
+  PT_APPLY_WALK (parser, p->info.spec.path_conjuncts, arg);
+  PT_APPLY_WALK (parser, p->info.spec.flat_entity_list, arg);
+  PT_APPLY_WALK (parser, p->info.spec.method_list, arg);
+  PT_APPLY_WALK (parser, p->info.spec.on_cond, arg);
+  PT_APPLY_WALK (parser, p->info.spec.partition, arg);
+  /* PT_APPLY_WALK (parser, p->info.spec.using_cond, arg); -- does not support named columns join */
 
   return p;
 }
@@ -9565,8 +9570,8 @@ pt_print_class_name (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_evaluate (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.evaluate.expression, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.evaluate.into_var, arg);
+  PT_APPLY_WALK (parser, p->info.evaluate.expression, arg);
+  PT_APPLY_WALK (parser, p->info.evaluate.into_var, arg);
   return p;
 }
 
@@ -9618,8 +9623,8 @@ pt_print_evaluate (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_event_object (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.event_object.event_object, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.event_object.correlation_name, arg);
+  PT_APPLY_WALK (parser, p->info.event_object.event_object, arg);
+  PT_APPLY_WALK (parser, p->info.event_object.correlation_name, arg);
   return p;
 }
 
@@ -9659,7 +9664,7 @@ pt_print_event_object (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_event_spec (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.event_spec.event_target, arg);
+  PT_APPLY_WALK (parser, p->info.event_spec.event_target, arg);
   return p;
 }
 
@@ -9707,8 +9712,8 @@ pt_print_event_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_event_target (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.event_target.class_name, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.event_target.attribute, arg);
+  PT_APPLY_WALK (parser, p->info.event_target.class_name, arg);
+  PT_APPLY_WALK (parser, p->info.event_target.attribute, arg);
   return p;
 }
 
@@ -9760,7 +9765,7 @@ pt_print_event_target (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_execute_trigger (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.execute_trigger.trigger_spec_list, arg);
+  PT_APPLY_WALK (parser, p->info.execute_trigger.trigger_spec_list, arg);
   return p;
 }
 
@@ -9805,13 +9810,13 @@ pt_print_execute_trigger (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_expr (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.expr.arg1, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.expr.arg2, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.expr.value, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.expr.arg3, arg);
+  PT_APPLY_WALK (parser, p->info.expr.arg1, arg);
+  PT_APPLY_WALK (parser, p->info.expr.arg2, arg);
+  PT_APPLY_WALK (parser, p->info.expr.value, arg);
+  PT_APPLY_WALK (parser, p->info.expr.arg3, arg);
 
   /* walk cast type in case it might contain a name */
-  PT_APPLY_CHECK_ACTION (parser, p->info.expr.cast_type, arg);
+  PT_APPLY_WALK (parser, p->info.expr.cast_type, arg);
 
   return p;
 }
@@ -12173,16 +12178,16 @@ pt_print_file_path (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_function (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.function.arg_list, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.function.order_by, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.function.percentile, arg);
+  PT_APPLY_WALK (parser, p->info.function.arg_list, arg);
+  PT_APPLY_WALK (parser, p->info.function.order_by, arg);
+  PT_APPLY_WALK (parser, p->info.function.percentile, arg);
   if (p->info.function.analytic.is_analytic)
     {
-      PT_APPLY_CHECK_ACTION (parser, p->info.function.analytic.partition_by, arg);
-      PT_APPLY_CHECK_ACTION (parser, p->info.function.analytic.order_by, arg);
-      PT_APPLY_CHECK_ACTION (parser, p->info.function.analytic.offset, arg);
-      PT_APPLY_CHECK_ACTION (parser, p->info.function.analytic.default_value, arg);
-      PT_APPLY_CHECK_ACTION (parser, p->info.function.analytic.expanded_list, arg);
+      PT_APPLY_WALK (parser, p->info.function.analytic.partition_by, arg);
+      PT_APPLY_WALK (parser, p->info.function.analytic.order_by, arg);
+      PT_APPLY_WALK (parser, p->info.function.analytic.offset, arg);
+      PT_APPLY_WALK (parser, p->info.function.analytic.default_value, arg);
+      PT_APPLY_WALK (parser, p->info.function.analytic.expanded_list, arg);
     }
   return p;
 }
@@ -12459,8 +12464,8 @@ pt_print_function (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_get_opt_lvl (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.get_opt_lvl.args, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.get_opt_lvl.into_var, arg);
+  PT_APPLY_WALK (parser, p->info.get_opt_lvl.args, arg);
+  PT_APPLY_WALK (parser, p->info.get_opt_lvl.into_var, arg);
   return p;
 }
 
@@ -12519,7 +12524,7 @@ pt_print_get_opt_lvl (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_get_trigger (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.get_trigger.into_var, arg);
+  PT_APPLY_WALK (parser, p->info.get_trigger.into_var, arg);
   return p;
 }
 
@@ -12569,7 +12574,7 @@ pt_print_get_trigger (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_get_xaction (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.get_xaction.into_var, arg);
+  PT_APPLY_WALK (parser, p->info.get_xaction.into_var, arg);
   return p;
 }
 
@@ -12619,9 +12624,9 @@ pt_print_get_xaction (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_grant (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.grant.auth_cmd_list, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.grant.user_list, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.grant.spec_list, arg);
+  PT_APPLY_WALK (parser, p->info.grant.auth_cmd_list, arg);
+  PT_APPLY_WALK (parser, p->info.grant.user_list, arg);
+  PT_APPLY_WALK (parser, p->info.grant.spec_list, arg);
   return p;
 }
 
@@ -12779,16 +12784,16 @@ pt_print_host_var (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_insert (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.insert.spec, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.insert.attr_list, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.insert.value_clauses, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.insert.into_var, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.insert.where, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.insert.internal_stmts, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.insert.waitsecs_hint, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.insert.odku_assignments, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.insert.odku_non_null_attrs, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.insert.non_null_attrs, arg);
+  PT_APPLY_WALK (parser, p->info.insert.spec, arg);
+  PT_APPLY_WALK (parser, p->info.insert.attr_list, arg);
+  PT_APPLY_WALK (parser, p->info.insert.value_clauses, arg);
+  PT_APPLY_WALK (parser, p->info.insert.into_var, arg);
+  PT_APPLY_WALK (parser, p->info.insert.where, arg);
+  PT_APPLY_WALK (parser, p->info.insert.internal_stmts, arg);
+  PT_APPLY_WALK (parser, p->info.insert.waitsecs_hint, arg);
+  PT_APPLY_WALK (parser, p->info.insert.odku_assignments, arg);
+  PT_APPLY_WALK (parser, p->info.insert.odku_non_null_attrs, arg);
+  PT_APPLY_WALK (parser, p->info.insert.non_null_attrs, arg);
   return p;
 }
 
@@ -12998,12 +13003,12 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_intersection (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.query.with, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.query.q.union_.arg1, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.query.q.union_.arg2, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.query.into_list, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.query.order_by, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.query.orderby_for, arg);
+  PT_APPLY_WALK (parser, p->info.query.with, arg);
+  PT_APPLY_WALK (parser, p->info.query.q.union_.arg1, arg);
+  PT_APPLY_WALK (parser, p->info.query.q.union_.arg2, arg);
+  PT_APPLY_WALK (parser, p->info.query.into_list, arg);
+  PT_APPLY_WALK (parser, p->info.query.order_by, arg);
+  PT_APPLY_WALK (parser, p->info.query.orderby_for, arg);
   return p;
 }
 
@@ -13141,7 +13146,7 @@ pt_print_auto_increment (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_isolation_lvl (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.isolation_lvl.level, arg);
+  PT_APPLY_WALK (parser, p->info.isolation_lvl.level, arg);
   return p;
 }
 
@@ -13218,10 +13223,10 @@ pt_print_isolation_lvl (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_method_call (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.method_call.method_name, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.method_call.arg_list, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.method_call.on_call_target, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.method_call.to_return_var, arg);
+  PT_APPLY_WALK (parser, p->info.method_call.method_name, arg);
+  PT_APPLY_WALK (parser, p->info.method_call.arg_list, arg);
+  PT_APPLY_WALK (parser, p->info.method_call.on_call_target, arg);
+  PT_APPLY_WALK (parser, p->info.method_call.to_return_var, arg);
   return p;
 }
 
@@ -13280,9 +13285,9 @@ pt_print_method_call (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_method_def (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.method_def.method_name, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.method_def.method_args_list, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.method_def.function_name, arg);
+  PT_APPLY_WALK (parser, p->info.method_def.method_name, arg);
+  PT_APPLY_WALK (parser, p->info.method_def.method_args_list, arg);
+  PT_APPLY_WALK (parser, p->info.method_def.function_name, arg);
   return p;
 }
 
@@ -13359,9 +13364,9 @@ pt_print_method_def (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_name (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.name.path_correlation, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.name.default_value, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.name.indx_key_limit, arg);
+  PT_APPLY_WALK (parser, p->info.name.path_correlation, arg);
+  PT_APPLY_WALK (parser, p->info.name.default_value, arg);
+  PT_APPLY_WALK (parser, p->info.name.indx_key_limit, arg);
   return p;
 }
 
@@ -13623,7 +13628,7 @@ pt_print_prepare_to_commit (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_remove_trigger (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.remove_trigger.trigger_spec_list, arg);
+  PT_APPLY_WALK (parser, p->info.remove_trigger.trigger_spec_list, arg);
   return p;
 }
 
@@ -13668,9 +13673,9 @@ pt_print_remove_trigger (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_rename (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.rename.old_name, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.rename.in_class, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.rename.new_name, arg);
+  PT_APPLY_WALK (parser, p->info.rename.old_name, arg);
+  PT_APPLY_WALK (parser, p->info.rename.in_class, arg);
+  PT_APPLY_WALK (parser, p->info.rename.new_name, arg);
   return p;
 }
 
@@ -13731,8 +13736,8 @@ pt_print_rename (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_rename_trigger (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.rename_trigger.old_name, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.rename_trigger.new_name, arg);
+  PT_APPLY_WALK (parser, p->info.rename_trigger.old_name, arg);
+  PT_APPLY_WALK (parser, p->info.rename_trigger.new_name, arg);
   return p;
 }
 
@@ -13782,9 +13787,9 @@ pt_print_rename_trigger (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_resolution (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.resolution.attr_mthd_name, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.resolution.of_sup_class_name, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.resolution.as_attr_mthd_name, arg);
+  PT_APPLY_WALK (parser, p->info.resolution.attr_mthd_name, arg);
+  PT_APPLY_WALK (parser, p->info.resolution.of_sup_class_name, arg);
+  PT_APPLY_WALK (parser, p->info.resolution.as_attr_mthd_name, arg);
   return p;
 }
 
@@ -13843,9 +13848,9 @@ pt_print_resolution (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_revoke (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.revoke.auth_cmd_list, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.revoke.user_list, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.revoke.spec_list, arg);
+  PT_APPLY_WALK (parser, p->info.revoke.auth_cmd_list, arg);
+  PT_APPLY_WALK (parser, p->info.revoke.user_list, arg);
+  PT_APPLY_WALK (parser, p->info.revoke.spec_list, arg);
   return p;
 }
 
@@ -13903,7 +13908,7 @@ pt_print_revoke (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_rollback_work (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.rollback_work.save_name, arg);
+  PT_APPLY_WALK (parser, p->info.rollback_work.save_name, arg);
   return p;
 }
 
@@ -13954,7 +13959,7 @@ pt_print_rollback_work (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_savepoint (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.savepoint.save_name, arg);
+  PT_APPLY_WALK (parser, p->info.savepoint.save_name, arg);
   return p;
 }
 
@@ -14000,8 +14005,8 @@ pt_print_savepoint (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_scope (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.scope.from, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.scope.stmt, arg);
+  PT_APPLY_WALK (parser, p->info.scope.from, arg);
+  PT_APPLY_WALK (parser, p->info.scope.stmt, arg);
   return p;
 }
 
@@ -14049,31 +14054,31 @@ pt_print_scope (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_select (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.query.with, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.query.q.select.list, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.query.q.select.from, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.query.q.select.where, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.query.q.select.connect_by, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.query.q.select.start_with, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.query.q.select.after_cb_filter, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.query.q.select.group_by, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.query.q.select.having, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.query.q.select.using_index, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.query.q.select.with_increment, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.query.q.select.ordered, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.query.q.select.use_nl, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.query.q.select.use_idx, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.query.q.select.index_ss, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.query.q.select.index_ls, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.query.q.select.use_merge, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.query.q.select.waitsecs_hint, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.query.into_list, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.query.order_by, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.query.orderby_for, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.query.qcache_hint, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.query.q.select.check_where, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.query.limit, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.query.q.select.for_update, arg);
+  PT_APPLY_WALK (parser, p->info.query.with, arg);
+  PT_APPLY_WALK (parser, p->info.query.q.select.list, arg);
+  PT_APPLY_WALK (parser, p->info.query.q.select.from, arg);
+  PT_APPLY_WALK (parser, p->info.query.q.select.where, arg);
+  PT_APPLY_WALK (parser, p->info.query.q.select.connect_by, arg);
+  PT_APPLY_WALK (parser, p->info.query.q.select.start_with, arg);
+  PT_APPLY_WALK (parser, p->info.query.q.select.after_cb_filter, arg);
+  PT_APPLY_WALK (parser, p->info.query.q.select.group_by, arg);
+  PT_APPLY_WALK (parser, p->info.query.q.select.having, arg);
+  PT_APPLY_WALK (parser, p->info.query.q.select.using_index, arg);
+  PT_APPLY_WALK (parser, p->info.query.q.select.with_increment, arg);
+  PT_APPLY_WALK (parser, p->info.query.q.select.ordered, arg);
+  PT_APPLY_WALK (parser, p->info.query.q.select.use_nl, arg);
+  PT_APPLY_WALK (parser, p->info.query.q.select.use_idx, arg);
+  PT_APPLY_WALK (parser, p->info.query.q.select.index_ss, arg);
+  PT_APPLY_WALK (parser, p->info.query.q.select.index_ls, arg);
+  PT_APPLY_WALK (parser, p->info.query.q.select.use_merge, arg);
+  PT_APPLY_WALK (parser, p->info.query.q.select.waitsecs_hint, arg);
+  PT_APPLY_WALK (parser, p->info.query.into_list, arg);
+  PT_APPLY_WALK (parser, p->info.query.order_by, arg);
+  PT_APPLY_WALK (parser, p->info.query.orderby_for, arg);
+  PT_APPLY_WALK (parser, p->info.query.qcache_hint, arg);
+  PT_APPLY_WALK (parser, p->info.query.q.select.check_where, arg);
+  PT_APPLY_WALK (parser, p->info.query.limit, arg);
+  PT_APPLY_WALK (parser, p->info.query.q.select.for_update, arg);
   return p;
 }
 
@@ -14788,8 +14793,8 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_set_names (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.set_names.charset_node, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.set_names.collation_node, arg);
+  PT_APPLY_WALK (parser, p->info.set_names.charset_node, arg);
+  PT_APPLY_WALK (parser, p->info.set_names.collation_node, arg);
   return p;
 }
 
@@ -14805,7 +14810,7 @@ pt_apply_set_names (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 static PT_NODE *
 pt_apply_set_timezone (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.set_timezone.timezone_node, arg);
+  PT_APPLY_WALK (parser, p->info.set_timezone.timezone_node, arg);
 
   return p;
 }
@@ -14893,7 +14898,7 @@ pt_print_set_timezone (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_set_opt_lvl (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.set_opt_lvl.val, arg);
+  PT_APPLY_WALK (parser, p->info.set_opt_lvl.val, arg);
   return p;
 }
 
@@ -14953,7 +14958,7 @@ pt_print_set_opt_lvl (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_set_sys_params (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.set_sys_params.val, arg);
+  PT_APPLY_WALK (parser, p->info.set_sys_params.val, arg);
   return p;
 }
 
@@ -15002,7 +15007,7 @@ pt_print_set_sys_params (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_set_trigger (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.set_trigger.val, arg);
+  PT_APPLY_WALK (parser, p->info.set_trigger.val, arg);
   return p;
 }
 
@@ -15064,7 +15069,7 @@ pt_print_set_trigger (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_showstmt (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.showstmt.show_args, arg);
+  PT_APPLY_WALK (parser, p->info.showstmt.show_args, arg);
   return p;
 }
 
@@ -15113,7 +15118,7 @@ pt_print_showstmt (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_set_xaction (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.set_xaction.xaction_modes, arg);
+  PT_APPLY_WALK (parser, p->info.set_xaction.xaction_modes, arg);
   return p;
 }
 
@@ -15158,7 +15163,7 @@ pt_print_set_xaction (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_sort_spec (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.sort_spec.expr, arg);
+  PT_APPLY_WALK (parser, p->info.sort_spec.expr, arg);
   return p;
 }
 
@@ -15217,7 +15222,7 @@ pt_print_sort_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_timeout (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.timeout.val, arg);
+  PT_APPLY_WALK (parser, p->info.timeout.val, arg);
   return p;
 }
 
@@ -15278,8 +15283,8 @@ pt_print_timeout (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_trigger_action (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.trigger_action.expression, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.trigger_action.string, arg);
+  PT_APPLY_WALK (parser, p->info.trigger_action.expression, arg);
+  PT_APPLY_WALK (parser, p->info.trigger_action.string, arg);
   return p;
 }
 
@@ -15339,8 +15344,8 @@ pt_print_trigger_action (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_trigger_spec_list (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.trigger_spec_list.trigger_name_list, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.trigger_spec_list.event_list, arg);
+  PT_APPLY_WALK (parser, p->info.trigger_spec_list.trigger_name_list, arg);
+  PT_APPLY_WALK (parser, p->info.trigger_spec_list.event_list, arg);
   return p;
 }
 
@@ -15384,13 +15389,13 @@ pt_print_trigger_spec_list (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_union_stmt (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.query.with, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.query.q.union_.arg1, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.query.q.union_.arg2, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.query.into_list, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.query.order_by, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.query.orderby_for, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.query.limit, arg);
+  PT_APPLY_WALK (parser, p->info.query.with, arg);
+  PT_APPLY_WALK (parser, p->info.query.q.union_.arg1, arg);
+  PT_APPLY_WALK (parser, p->info.query.q.union_.arg2, arg);
+  PT_APPLY_WALK (parser, p->info.query.into_list, arg);
+  PT_APPLY_WALK (parser, p->info.query.order_by, arg);
+  PT_APPLY_WALK (parser, p->info.query.orderby_for, arg);
+  PT_APPLY_WALK (parser, p->info.query.limit, arg);
 
   // todo - there is a lot less stuff here than on pt_apply_select. I am not sure this is safe.
   //        e.g. this is used for parser_copy_tree too. which should deep copy entire tree! otherwise we may have some
@@ -15476,23 +15481,23 @@ pt_print_union_stmt (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_update (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.update.with, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.update.spec, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.update.assignment, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.update.search_cond, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.update.order_by, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.update.orderby_for, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.update.using_index, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.update.object_parameter, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.update.cursor_name, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.update.check_where, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.update.internal_stmts, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.update.waitsecs_hint, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.update.ordered_hint, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.update.use_nl_hint, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.update.use_idx_hint, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.update.use_merge_hint, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.update.limit, arg);
+  PT_APPLY_WALK (parser, p->info.update.with, arg);
+  PT_APPLY_WALK (parser, p->info.update.spec, arg);
+  PT_APPLY_WALK (parser, p->info.update.assignment, arg);
+  PT_APPLY_WALK (parser, p->info.update.search_cond, arg);
+  PT_APPLY_WALK (parser, p->info.update.order_by, arg);
+  PT_APPLY_WALK (parser, p->info.update.orderby_for, arg);
+  PT_APPLY_WALK (parser, p->info.update.using_index, arg);
+  PT_APPLY_WALK (parser, p->info.update.object_parameter, arg);
+  PT_APPLY_WALK (parser, p->info.update.cursor_name, arg);
+  PT_APPLY_WALK (parser, p->info.update.check_where, arg);
+  PT_APPLY_WALK (parser, p->info.update.internal_stmts, arg);
+  PT_APPLY_WALK (parser, p->info.update.waitsecs_hint, arg);
+  PT_APPLY_WALK (parser, p->info.update.ordered_hint, arg);
+  PT_APPLY_WALK (parser, p->info.update.use_nl_hint, arg);
+  PT_APPLY_WALK (parser, p->info.update.use_idx_hint, arg);
+  PT_APPLY_WALK (parser, p->info.update.use_merge_hint, arg);
+  PT_APPLY_WALK (parser, p->info.update.limit, arg);
 
   return p;
 }
@@ -15740,7 +15745,7 @@ pt_print_update (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_update_stats (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.update_stats.class_list, arg);
+  PT_APPLY_WALK (parser, p->info.update_stats.class_list, arg);
   return p;
 }
 
@@ -15803,9 +15808,9 @@ pt_print_update_stats (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_get_stats (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.get_stats.class_, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.get_stats.args, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.get_stats.into_var, arg);
+  PT_APPLY_WALK (parser, p->info.get_stats.class_, arg);
+  PT_APPLY_WALK (parser, p->info.get_stats.args, arg);
+  PT_APPLY_WALK (parser, p->info.get_stats.into_var, arg);
   return p;
 }
 
@@ -15867,8 +15872,8 @@ pt_print_get_stats (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_use (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.use.use_list, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.use.exclude_list, arg);
+  PT_APPLY_WALK (parser, p->info.use.use_list, arg);
+  PT_APPLY_WALK (parser, p->info.use.exclude_list, arg);
   return p;
 }
 
@@ -15957,7 +15962,7 @@ pt_apply_value (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
     case PT_TYPE_SET:
     case PT_TYPE_MULTISET:
     case PT_TYPE_SEQUENCE:
-      PT_APPLY_CHECK_ACTION (parser, p->info.value.data_value.set, arg);
+      PT_APPLY_WALK (parser, p->info.value.data_value.set, arg);
     default:
       break;
     }
@@ -15999,7 +16004,7 @@ pt_init_set_session_variables (PT_NODE * p)
 static PT_NODE *
 pt_apply_set_session_variables (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.set_variables.assignments, arg);
+  PT_APPLY_WALK (parser, p->info.set_variables.assignments, arg);
   return p;
 }
 
@@ -16030,7 +16035,7 @@ pt_print_set_session_variables (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_drop_session_variables (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.drop_session_var.variables, arg);
+  PT_APPLY_WALK (parser, p->info.drop_session_var.variables, arg);
   return p;
 }
 
@@ -16617,25 +16622,25 @@ pt_apply_constraint (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
       break;
 
     case PT_CONSTRAIN_PRIMARY_KEY:
-      PT_APPLY_CHECK_ACTION (parser, p->info.constraint.un.primary_key.attrs, arg);
+      PT_APPLY_WALK (parser, p->info.constraint.un.primary_key.attrs, arg);
       break;
 
     case PT_CONSTRAIN_FOREIGN_KEY:
-      PT_APPLY_CHECK_ACTION (parser, p->info.constraint.un.foreign_key.attrs, arg);
-      PT_APPLY_CHECK_ACTION (parser, p->info.constraint.un.foreign_key.referenced_class, arg);
-      PT_APPLY_CHECK_ACTION (parser, p->info.constraint.un.foreign_key.referenced_attrs, arg);
+      PT_APPLY_WALK (parser, p->info.constraint.un.foreign_key.attrs, arg);
+      PT_APPLY_WALK (parser, p->info.constraint.un.foreign_key.referenced_class, arg);
+      PT_APPLY_WALK (parser, p->info.constraint.un.foreign_key.referenced_attrs, arg);
       break;
 
     case PT_CONSTRAIN_NOT_NULL:
-      PT_APPLY_CHECK_ACTION (parser, p->info.constraint.un.not_null.attr, arg);
+      PT_APPLY_WALK (parser, p->info.constraint.un.not_null.attr, arg);
       break;
 
     case PT_CONSTRAIN_UNIQUE:
-      PT_APPLY_CHECK_ACTION (parser, p->info.constraint.un.unique.attrs, arg);
+      PT_APPLY_WALK (parser, p->info.constraint.un.unique.attrs, arg);
       break;
 
     case PT_CONSTRAIN_CHECK:
-      PT_APPLY_CHECK_ACTION (parser, p->info.constraint.un.check.expr, arg);
+      PT_APPLY_WALK (parser, p->info.constraint.un.check.expr, arg);
       break;
     }
 
@@ -16894,7 +16899,7 @@ pt_apply_pointer (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   if (p->info.pointer.do_walk)
     {
-      PT_APPLY_CHECK_ACTION (parser, p->info.pointer.node, arg);
+      PT_APPLY_WALK (parser, p->info.pointer.node, arg);
     }
 
   return p;
@@ -16950,7 +16955,7 @@ pt_print_pointer (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_node_list (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.node_list.list, arg);
+  PT_APPLY_WALK (parser, p->info.node_list.list, arg);
   return p;
 }
 
@@ -16992,18 +16997,18 @@ pt_print_node_list (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_merge (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.merge.into, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.merge.using_clause, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.merge.search_cond, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.merge.insert.attr_list, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.merge.insert.value_clauses, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.merge.insert.search_cond, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.merge.insert.class_where, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.merge.update.assignment, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.merge.update.search_cond, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.merge.update.del_search_cond, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.merge.check_where, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.merge.waitsecs_hint, arg);
+  PT_APPLY_WALK (parser, p->info.merge.into, arg);
+  PT_APPLY_WALK (parser, p->info.merge.using_clause, arg);
+  PT_APPLY_WALK (parser, p->info.merge.search_cond, arg);
+  PT_APPLY_WALK (parser, p->info.merge.insert.attr_list, arg);
+  PT_APPLY_WALK (parser, p->info.merge.insert.value_clauses, arg);
+  PT_APPLY_WALK (parser, p->info.merge.insert.search_cond, arg);
+  PT_APPLY_WALK (parser, p->info.merge.insert.class_where, arg);
+  PT_APPLY_WALK (parser, p->info.merge.update.assignment, arg);
+  PT_APPLY_WALK (parser, p->info.merge.update.search_cond, arg);
+  PT_APPLY_WALK (parser, p->info.merge.update.del_search_cond, arg);
+  PT_APPLY_WALK (parser, p->info.merge.check_where, arg);
+  PT_APPLY_WALK (parser, p->info.merge.waitsecs_hint, arg);
 
   return p;
 }
@@ -17152,7 +17157,7 @@ pt_print_merge (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_tuple_value (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.tuple_value.name, arg);
+  PT_APPLY_WALK (parser, p->info.tuple_value.name, arg);
   return p;
 }
 
@@ -17200,7 +17205,7 @@ pt_print_tuple_value (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_insert_value (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.insert_value.original_node, arg);
+  PT_APPLY_WALK (parser, p->info.insert_value.original_node, arg);
   return p;
 }
 
@@ -17247,7 +17252,7 @@ pt_init_kill (PT_NODE * p)
 static PT_NODE *
 pt_apply_with_clause (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.with_clause.cte_definition_list, arg);
+  PT_APPLY_WALK (parser, p->info.with_clause.cte_definition_list, arg);
 
   return p;
 }
@@ -17279,8 +17284,8 @@ pt_init_with_clause (PT_NODE * p)
 static PT_NODE *
 pt_apply_cte (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.cte.non_recursive_part, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.cte.recursive_part, arg);
+  PT_APPLY_WALK (parser, p->info.cte.non_recursive_part, arg);
+  PT_APPLY_WALK (parser, p->info.cte.recursive_part, arg);
 
   return p;
 }
@@ -17414,8 +17419,8 @@ pt_print_cte (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_named_arg (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.named_arg.name, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.named_arg.value, arg);
+  PT_APPLY_WALK (parser, p->info.named_arg.name, arg);
+  PT_APPLY_WALK (parser, p->info.named_arg.value, arg);
   return p;
 }
 
@@ -18769,8 +18774,8 @@ pt_init_json_table (PT_NODE * p)
 static PT_NODE *
 pt_apply_json_table (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.json_table_info.expr, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.json_table_info.tree, arg);
+  PT_APPLY_WALK (parser, p->info.json_table_info.expr, arg);
+  PT_APPLY_WALK (parser, p->info.json_table_info.tree, arg);
   return p;
 }
 
@@ -18813,8 +18818,8 @@ pt_init_json_table_node (PT_NODE * p)
 static PT_NODE *
 pt_apply_json_table_node (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.json_table_node_info.columns, arg);
-  PT_APPLY_CHECK_ACTION (parser, p->info.json_table_node_info.nested_paths, arg);
+  PT_APPLY_WALK (parser, p->info.json_table_node_info.columns, arg);
+  PT_APPLY_WALK (parser, p->info.json_table_node_info.nested_paths, arg);
   return p;
 }
 
@@ -18881,7 +18886,7 @@ pt_init_json_table_column (PT_NODE * p)
 static PT_NODE *
 pt_apply_json_table_column (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_CHECK_ACTION (parser, p->info.json_table_column_info.name, arg);
+  PT_APPLY_WALK (parser, p->info.json_table_column_info.name, arg);
   return p;
 }
 
