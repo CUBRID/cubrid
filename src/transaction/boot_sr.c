@@ -4027,7 +4027,7 @@ xboot_backup (THREAD_ENTRY * thread_p, const char *backup_path, FILEIO_BACKUP_LE
   const bool uses_remote_storage = prm_get_bool_value (PRM_ID_REMOTE_STORAGE);
   if (uses_remote_storage)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TOOL_INVALID_WITH_REMOTE_STORAGE, 1, "backupdb");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TOOL_INVALID_WITH_REMOTE_STORAGE, 1, "'backupdb'");
       error_code = ER_TOOL_INVALID_WITH_REMOTE_STORAGE;
     }
   else
@@ -4090,7 +4090,7 @@ xboot_copy (REFPTR (THREAD_ENTRY, thread_p), const char *from_dbname, const char
   const bool uses_remote_storage = prm_get_bool_value (PRM_ID_REMOTE_STORAGE);
   if (uses_remote_storage)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TOOL_INVALID_WITH_REMOTE_STORAGE, 1, "copydb");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TOOL_INVALID_WITH_REMOTE_STORAGE, 1, "'copydb'");
       error_code = ER_TOOL_INVALID_WITH_REMOTE_STORAGE;
       goto error;
     }
@@ -5468,7 +5468,7 @@ xboot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGES log_npag
     const bool uses_remote_storage = prm_get_bool_value (PRM_ID_REMOTE_STORAGE);
     if (uses_remote_storage)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TOOL_INVALID_WITH_REMOTE_STORAGE, 1, "patchdb");
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TOOL_INVALID_WITH_REMOTE_STORAGE, 1, "'emergency_patchlog'");
 	error_code = ER_TOOL_INVALID_WITH_REMOTE_STORAGE;
 	goto error_exit;
       }

@@ -1338,7 +1338,7 @@ Verifique la ruta del archivo de claves (_keys) y asegúrese de que incluya la c
 1267 Cannot copy volume %s to %s. Error: %s.
 1268 At least one valid page server host is necessary, but no page server found in configuration.
 1269 At least one valid page server host is necessary, but no page server could be connected.
-1270 This tool (%1$s) cannot be executed on a server with remote storage enabled.
+1270 %1$s cannot be executed on a server with remote storage enabled.
 1271 Error reserved for scalability development.
 1272 Error reserved for scalability development.
 1273 Error reserved for scalability development.
