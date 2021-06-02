@@ -284,6 +284,7 @@ log_recovery_analysis (THREAD_ENTRY *thread_p, INT64 *num_redo_log_records, log_
 		  /* Check correctness of information from log header. */
 		  LOG_LSA end_of_header_lsa = crt_record_lsa;
 		  end_of_header_lsa.offset += sizeof (LOG_RECORD_HEADER);
+		  end_of_header_lsa.offset = DB_ALIGN (end_of_header_lsa.offset, MAX_ALIGNMENT);
 		  if (end_of_header_lsa.offset > LOGAREA_SIZE || end_of_header_lsa > checker.get_first_corrupted_lsa ())
 		    {
 		      is_log_lsa_corrupted = true;
@@ -321,8 +322,9 @@ log_recovery_analysis (THREAD_ENTRY *thread_p, INT64 *num_redo_log_records, log_
       /*
        * If the next page is NULL_PAGEID and the current page is an archive page, this is not the end of the log.
        * This situation happens when an incomplete log record is archived. Thus, its forward address is NULL.
-       * Note that we have to set lsa.pageid here since the log_lsa.pageid value can be changed (e.g., the log record
-       * is stored in two pages: an archive page, and an active page). Later, we try to modify it whenever is possible.
+       * Note that we have to set next_record_lsa.pageid here since the crt_record_lsa.pageid value can be changed
+       * (e.g., the log record is stored in two pages: an archive page, and an active page). Later, we try to modify
+       * it whenever is possible.
        */
 
       if (LSA_ISNULL (&next_record_lsa) && logpb_is_page_in_archive (crt_record_lsa.pageid))
