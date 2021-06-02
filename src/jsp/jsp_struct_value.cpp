@@ -277,22 +277,22 @@ namespace cubprocedure
     switch (type)
       {
       case DB_TYPE_INTEGER:
-	size += serializator.get_packed_int_size (size);
+	size += serializator.get_packed_int_size (size); /* size */
 	size += serializator.get_packed_int_size (size);
 	break;
 
       case DB_TYPE_SHORT:
-	size += serializator.get_packed_int_size (size);
+	size += serializator.get_packed_int_size (size); /* size */
 	size += serializator.get_packed_short_size (size);
 	break;
 
       case DB_TYPE_BIGINT:
-	size += serializator.get_packed_int_size (size);
+	size += serializator.get_packed_int_size (size); /* size */
 	size += serializator.get_packed_bigint_size (size);
 	break;
 
       case DB_TYPE_FLOAT:
-	size += serializator.get_packed_int_size (size);
+	size += serializator.get_packed_int_size (size); /* size */
 	size += OR_FLOAT_SIZE;
 
 	// FIXME: no alignment ?
@@ -304,7 +304,7 @@ namespace cubprocedure
 
       case DB_TYPE_DOUBLE:
       case DB_TYPE_MONETARY:
-	size += serializator.get_packed_int_size (size);
+	size += serializator.get_packed_int_size (size); /* size */
 	size += OR_DOUBLE_SIZE;
 
 	// FIXME: no alignment
@@ -328,7 +328,7 @@ namespace cubprocedure
       case DB_TYPE_NCHAR:
       case DB_TYPE_VARNCHAR:
       case DB_TYPE_STRING:
-	size += serializator.get_packed_int_size (size);
+	size += serializator.get_packed_int_size (size); /* dummy size */
 	size += serializator.get_packed_c_string_size (db_get_string (value), db_get_string_size (value), size);
 	break;
 
@@ -350,31 +350,31 @@ namespace cubprocedure
 
       case DB_TYPE_DATE:
       case DB_TYPE_TIME:
-	size += serializator.get_packed_int_size (size);
-	size += serializator.get_packed_int_size (size);
-	size += serializator.get_packed_int_size (size);
-	size += serializator.get_packed_int_size (size);
+	size += serializator.get_packed_int_size (size); /* size */
+	size += serializator.get_packed_int_size (size); /* hour */
+	size += serializator.get_packed_int_size (size); /* min */
+	size += serializator.get_packed_int_size (size); /* sec */
 	break;
 
       case DB_TYPE_TIMESTAMP:
-	size += serializator.get_packed_int_size (size);
-	size += serializator.get_packed_int_size (size);
-	size += serializator.get_packed_int_size (size);
-	size += serializator.get_packed_int_size (size);
-	size += serializator.get_packed_int_size (size);
-	size += serializator.get_packed_int_size (size);
-	size += serializator.get_packed_int_size (size);
+	size += serializator.get_packed_int_size (size); /* size */
+	size += serializator.get_packed_int_size (size); /* year */
+	size += serializator.get_packed_int_size (size); /* month */
+	size += serializator.get_packed_int_size (size); /* day */
+	size += serializator.get_packed_int_size (size); /* hour */
+	size += serializator.get_packed_int_size (size); /* min */
+	size += serializator.get_packed_int_size (size); /* sec */
 	break;
 
       case DB_TYPE_DATETIME:
-	size += serializator.get_packed_int_size (size);
-	size += serializator.get_packed_int_size (size);
-	size += serializator.get_packed_int_size (size);
-	size += serializator.get_packed_int_size (size);
-	size += serializator.get_packed_int_size (size);
-	size += serializator.get_packed_int_size (size);
-	size += serializator.get_packed_int_size (size);
-	size += serializator.get_packed_int_size (size);
+	size += serializator.get_packed_int_size (size); /* size */
+	size += serializator.get_packed_int_size (size); /* year */
+	size += serializator.get_packed_int_size (size); /* month */
+	size += serializator.get_packed_int_size (size); /* day */
+	size += serializator.get_packed_int_size (size); /* hour */
+	size += serializator.get_packed_int_size (size); /* min */
+	size += serializator.get_packed_int_size (size); /* sec */
+	size += serializator.get_packed_int_size (size); /* msec */
 	break;
 
       case DB_TYPE_SET:
@@ -385,8 +385,8 @@ namespace cubprocedure
 	int ncol = set_size (set);
 	DB_VALUE elem_v;
 
-	size += serializator.get_packed_int_size (size);
-	size += serializator.get_packed_int_size (size);
+	size += serializator.get_packed_int_size (size); /* size */
+	size += serializator.get_packed_int_size (size); /* ncol */
 
 	for (int i = 0; i < ncol; i++)
 	  {
@@ -403,7 +403,7 @@ namespace cubprocedure
       break;
 
       case DB_TYPE_NULL:
-	size += serializator.get_packed_int_size (size);
+	size += serializator.get_packed_int_size (size); /* NULL (0) */
 	break;
       default:
 	break;
