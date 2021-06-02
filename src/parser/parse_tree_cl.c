@@ -5538,6 +5538,8 @@ pt_apply_alter (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *
 static PT_NODE *
 pt_init_alter (PT_NODE * p)
 {
+  p->info.alter.constraint_list = NULL;
+  p->info.alter.create_index = NULL;
   return p;
 }
 
@@ -6206,6 +6208,9 @@ pt_apply_alter_index (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, 
 static PT_NODE *
 pt_init_alter_index (PT_NODE * p)
 {
+  p->info.index.indexed_class = p->info.index.column_names = NULL;
+  p->info.index.where = NULL;
+
   return p;
 }
 
@@ -6329,6 +6334,7 @@ pt_apply_alter_user (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, v
 static PT_NODE *
 pt_init_alter_user (PT_NODE * p)
 {
+  p->info.alter_user.user_name = p->info.alter_user.password = p->info.alter_user.comment = NULL;
   return p;
 }
 
@@ -6729,6 +6735,8 @@ pt_apply_attr_ordering (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g
 static PT_NODE *
 pt_init_attr_ordering (PT_NODE * p)
 {
+  p->info.attr_ordering.after = NULL;
+  p->info.attr_ordering.first = false;
   return p;
 }
 
@@ -6782,6 +6790,7 @@ static PT_NODE *
 pt_init_auth_cmd (PT_NODE * p)
 {
   p->info.auth_cmd.auth_cmd = PT_NO_PRIV;
+  p->info.auth_cmd.attr_mthd_list = 0;
   return (p);
 }
 
@@ -6832,6 +6841,8 @@ pt_apply_check_option (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g,
 static PT_NODE *
 pt_init_check_option (PT_NODE * p)
 {
+  p->info.check_option.spec_id = 0;
+  p->info.check_option.expr = NULL;
   return (p);
 }
 
@@ -6874,6 +6885,7 @@ pt_apply_commit_work (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, 
 static PT_NODE *
 pt_init_commit_work (PT_NODE * p)
 {
+  p->info.commit_work.retain_lock = 0;
   return (p);
 }
 
@@ -7354,6 +7366,8 @@ pt_apply_create_user (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, 
 static PT_NODE *
 pt_init_create_user (PT_NODE * p)
 {
+  p->info.create_user.user_name = p->info.create_user.password = p->info.create_user.groups =
+    p->info.create_user.members = p->info.create_user.comment = NULL;
   return p;
 }
 
@@ -7636,6 +7650,7 @@ pt_apply_truncate (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, voi
 static PT_NODE *
 pt_init_truncate (PT_NODE * p)
 {
+  p->info.truncate.spec = 0;
   return p;
 }
 
@@ -7686,6 +7701,7 @@ static PT_NODE *
 pt_init_table_option (PT_NODE * p)
 {
   p->info.table_option.option = PT_TABLE_OPTION_NONE;
+  p->info.table_option.val = NULL;
   return p;
 }
 
@@ -7785,6 +7801,7 @@ pt_apply_do (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg
 static PT_NODE *
 pt_init_do (PT_NODE * p)
 {
+  p->info.do_.expr = 0;
   return p;
 }
 
@@ -8053,6 +8070,7 @@ pt_init_alter_serial (PT_NODE * p)
 static PT_NODE *
 pt_init_drop_serial (PT_NODE * p)
 {
+  p->info.serial.if_exists = 0;
   return (p);
 }
 
@@ -8922,6 +8940,17 @@ pt_apply_dot (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *ar
 static PT_NODE *
 pt_init_dot (PT_NODE * p)
 {
+  if (!p)
+    {
+      return NULL;
+    }
+
+  p->info.dot.arg1 = NULL;
+  p->info.dot.arg2 = NULL;
+  p->info.dot.selector = NULL;
+  p->info.dot.tag_click_counter = 0;
+  p->info.dot.coll_modifier = 0;
+
   return p;
 }
 
@@ -9126,6 +9155,7 @@ pt_apply_drop_user (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, vo
 static PT_NODE *
 pt_init_drop_user (PT_NODE * p)
 {
+  p->info.drop_user.user_name = NULL;
   return p;
 }
 
@@ -9542,6 +9572,7 @@ pt_apply_evaluate (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, voi
 static PT_NODE *
 pt_init_evaluate (PT_NODE * p)
 {
+  p->info.evaluate.into_var = 0;
   return (p);
 }
 
@@ -13061,6 +13092,8 @@ pt_apply_auto_increment (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION 
 static PT_NODE *
 pt_init_auto_increment (PT_NODE * p)
 {
+  p->info.auto_increment.start_val = NULL;
+  p->info.auto_increment.increment_val = NULL;
   return (p);
 }
 
@@ -13116,6 +13149,8 @@ static PT_NODE *
 pt_init_isolation_lvl (PT_NODE * p)
 {
   p->info.isolation_lvl.schema = p->info.isolation_lvl.instances = PT_NO_ISOLATION_LEVEL;
+  p->info.isolation_lvl.level = NULL;
+  p->info.isolation_lvl.async_ws = 0;
   return (p);
 }
 
@@ -13704,6 +13739,8 @@ pt_apply_rename_trigger (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION 
 static PT_NODE *
 pt_init_rename_trigger (PT_NODE * p)
 {
+  p->info.rename_trigger.old_name = 0;
+  p->info.rename_trigger.new_name = 0;
   return p;
 }
 
@@ -13815,6 +13852,9 @@ pt_apply_revoke (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void 
 static PT_NODE *
 pt_init_revoke (PT_NODE * p)
 {
+  p->info.revoke.auth_cmd_list = 0;
+  p->info.revoke.user_list = 0;
+  p->info.revoke.spec_list = 0;
   return (p);
 }
 
@@ -13870,6 +13910,8 @@ pt_apply_rollback_work (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g
 static PT_NODE *
 pt_init_rollback_work (PT_NODE * p)
 {
+  p->info.rollback_work.save_name = 0;
+
   return (p);
 }
 
@@ -13919,6 +13961,7 @@ pt_apply_savepoint (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, vo
 static PT_NODE *
 pt_init_savepoint (PT_NODE * p)
 {
+  p->info.savepoint.save_name = 0;
   return (p);
 }
 
@@ -15029,6 +15072,7 @@ static PT_NODE *
 pt_init_showstmt (PT_NODE * p)
 {
   p->info.showstmt.show_type = SHOWSTMT_NULL;
+  p->info.showstmt.show_args = NULL;
   return (p);
 }
 
@@ -15703,6 +15747,7 @@ pt_apply_update_stats (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g,
 static PT_NODE *
 pt_init_update_stats (PT_NODE * p)
 {
+  p->info.update_stats.class_list = NULL;
   return p;
 }
 
@@ -15767,6 +15812,7 @@ pt_apply_get_stats (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, vo
 static PT_NODE *
 pt_init_get_stats (PT_NODE * p)
 {
+  p->info.get_stats.into_var = NULL;
   return p;
 }
 
@@ -15829,6 +15875,8 @@ pt_apply_use (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *ar
 static PT_NODE *
 pt_init_use (PT_NODE * p)
 {
+  p->info.use.use_list = 0;
+  p->info.use.exclude_list = 0;
   return p;
 }
 
@@ -15931,6 +15979,7 @@ pt_init_value (PT_NODE * p)
 static PT_NODE *
 pt_init_set_session_variables (PT_NODE * p)
 {
+  p->info.set_variables.assignments = NULL;
   return p;
 }
 
@@ -15988,6 +16037,7 @@ pt_apply_drop_session_variables (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_F
 static PT_NODE *
 pt_init_drop_session_variables (PT_NODE * p)
 {
+  p->info.drop_session_var.variables = NULL;
   return p;
 }
 
@@ -16600,6 +16650,10 @@ pt_init_constraint (PT_NODE * node)
   if (node)
     {
       node->info.constraint.type = PT_CONSTRAIN_UNKNOWN;
+      node->info.constraint.name = NULL;
+      node->info.constraint.deferrable = 0;
+      node->info.constraint.initially_deferred = 0;
+      node->info.constraint.comment = NULL;
     }
   return node;
 }
@@ -16853,6 +16907,9 @@ pt_init_pointer (PT_NODE * node)
 {
   if (node)
     {
+      node->info.pointer.node = NULL;
+      node->info.pointer.sel = 0;
+      node->info.pointer.rank = 0;
       node->info.pointer.type = PT_POINTER_NORMAL;
       node->info.pointer.do_walk = true;
     }
@@ -16903,6 +16960,7 @@ static PT_NODE *
 pt_init_node_list (PT_NODE * p)
 {
   p->info.node_list.list_type = (PT_MISC_TYPE) 0;
+  p->info.node_list.list = NULL;
   return p;
 }
 
@@ -17103,6 +17161,8 @@ pt_apply_tuple_value (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, 
 static PT_NODE *
 pt_init_tuple_value (PT_NODE * p)
 {
+  p->info.tuple_value.name = NULL;
+  p->info.tuple_value.cursor_p = NULL;
   p->info.tuple_value.index = -1;
 
   return p;
@@ -17155,7 +17215,10 @@ pt_apply_kill (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *a
 static PT_NODE *
 pt_init_insert_value (PT_NODE * p)
 {
+  p->info.insert_value.original_node = NULL;
   db_make_null (&p->info.insert_value.value);
+  p->info.insert_value.is_evaluated = false;
+  p->info.insert_value.replace_names = false;
 
   return p;
 }
@@ -17164,6 +17227,7 @@ static PT_NODE *
 pt_init_kill (PT_NODE * p)
 {
   p->info.killstmt.kill_type = KILLSTMT_TRAN;
+  p->info.killstmt.tran_id_list = NULL;
 
   return p;
 }
@@ -17194,6 +17258,9 @@ pt_apply_with_clause (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, 
 static PT_NODE *
 pt_init_with_clause (PT_NODE * p)
 {
+  p->info.with_clause.cte_definition_list = NULL;
+  p->info.with_clause.recursive = 0;
+
   return p;
 }
 
@@ -17357,6 +17424,9 @@ pt_apply_named_arg (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, vo
 static PT_NODE *
 pt_init_named_arg (PT_NODE * p)
 {
+  p->info.named_arg.name = NULL;
+  p->info.named_arg.value = NULL;
+
   return p;
 }
 
@@ -18687,6 +18757,9 @@ pt_clean_tree_copy_info (PT_TREE_COPY_INFO * tree_copy_info)
 static PT_NODE *
 pt_init_json_table (PT_NODE * p)
 {
+  p->info.json_table_info.expr = NULL;
+  p->info.json_table_info.tree = NULL;
+  p->info.json_table_info.is_correlated = false;
   return p;
 }
 
@@ -18728,6 +18801,9 @@ pt_print_json_table (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_init_json_table_node (PT_NODE * p)
 {
+  p->info.json_table_node_info.columns = NULL;
+  p->info.json_table_node_info.nested_paths = NULL;
+  p->info.json_table_node_info.path = NULL;
   return p;
 }
 
@@ -18789,9 +18865,13 @@ pt_print_json_table_node (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_init_json_table_column (PT_NODE * p)
 {
+  p->info.json_table_column_info.name = NULL;
+  p->info.json_table_column_info.path = NULL;
   p->info.json_table_column_info.func = JSON_TABLE_EXTRACT;
   p->info.json_table_column_info.on_error.m_behavior = JSON_TABLE_RETURN_NULL;
+  p->info.json_table_column_info.on_error.m_default_value = NULL;
   p->info.json_table_column_info.on_empty.m_behavior = JSON_TABLE_RETURN_NULL;
+  p->info.json_table_column_info.on_empty.m_default_value = NULL;
   return p;
 }
 
