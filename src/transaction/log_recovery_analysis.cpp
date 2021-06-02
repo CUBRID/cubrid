@@ -156,6 +156,13 @@ log_recovery_analysis (THREAD_ENTRY *thread_p, INT64 *num_redo_log_records, log_
   LOG_LSA prev_lsa = NULL_LSA;			/* LSA of previous log record */
   LOG_LSA prev_prev_lsa = NULL_LSA;		/* LSA of record previous to previous log record */
 
+  // Two additional log_lsa will be used in the while loop:
+  //
+  //	- A constant crt_record_lsa, that is used everywhere the LSA of current record can be used. No other variables,
+  //	even if they have the same values, should be used as an immutable reference to the current record LSA.
+  //	- A next_record_lsa, that is copied from log_rec->forw_lsa and is adjusted if its pageid/offset values are
+  //	null.
+
   // Log page
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   LOG_PAGE *log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
