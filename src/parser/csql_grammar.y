@@ -24896,7 +24896,7 @@ dblink_column_definition
                         node->data_type = dt = CONTAINER_AT_1 ($2);
                         node->info.attr_def.attr_name = $1;
 
-                        if(typ == PT_TYPE_BLOB || typ == PT_TYPE_CLOB || typ == PT_TYPE_OBJECT)
+                        if(typ == PT_TYPE_BLOB || typ == PT_TYPE_CLOB || typ == PT_TYPE_OBJECT || typ == PT_TYPE_ENUMERATION)
                           {
                                 PT_ERROR (this_parser, node, "not supported type for dblink");
                           }
