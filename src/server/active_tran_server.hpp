@@ -56,7 +56,7 @@ class active_tran_server
 
     cublog::page_broker &get_log_page_broker ();
 
-    bool has_remote_storage () const;
+    bool uses_remote_storage () const;
 
     void push_request (ats_to_ps_request reqid, std::string &&payload);
 
@@ -83,7 +83,7 @@ class active_tran_server
     std::unique_ptr<cublog::page_broker> m_log_page_broker;
     std::vector<cubcomm::node> m_connection_list;
 
-    bool m_has_remote_storage = false;
+    bool m_uses_remote_storage = false;
 };
 
 extern active_tran_server ats_Gl;

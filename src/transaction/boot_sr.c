@@ -2248,21 +2248,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  error_code = init_server_type (db_name);
-  if (error_code != NO_ERROR)
-    {
-      // error already set
-      ASSERT_ERROR ();
-      goto error;
-    }
-
-  if (get_server_type () == SERVER_TYPE_PAGE && !HA_DISABLED ())
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INCOMPATIBLE_SERVER_TYPE_HA_CONFIG, 0);
-      error_code = ER_INCOMPATIBLE_SERVER_TYPE_HA_CONFIG;
-      goto error;
-    }
-
   if (common_ha_mode != prm_get_integer_value (PRM_ID_HA_MODE) && !HA_DISABLED ())
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_CONFLICT_EXISTS_ON_MULTIPLE_SECTIONS, 6, "cubrid.conf", "common",
@@ -2360,6 +2345,20 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   /* *INDENT-ON* */
 
   pr_Enable_string_compression = prm_get_bool_value (PRM_ID_ENABLE_STRING_COMPRESSION);
+
+  error_code = init_server_type (db_name);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
+
+  if (get_server_type () == SERVER_TYPE_PAGE && !HA_DISABLED ())
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INCOMPATIBLE_SERVER_TYPE_HA_CONFIG, 0);
+      error_code = ER_INCOMPATIBLE_SERVER_TYPE_HA_CONFIG;
+      goto error;
+    }
 
   /*
    * Compose the full name of the database and find location of logs
@@ -4024,9 +4023,18 @@ xboot_backup (THREAD_ENTRY * thread_p, const char *backup_path, FILEIO_BACKUP_LE
 {
   int error_code;
 
-  error_code =
-    logpb_backup (thread_p, boot_Db_parm->nvols, backup_path, backup_level, delete_unneeded_logarchives,
-		  backup_verbose_file, num_threads, zip_method, zip_level, skip_activelog, sleep_msecs, separate_keys);
+  const bool uses_remote_storage = prm_get_bool_value (PRM_ID_REMOTE_STORAGE);
+  if (uses_remote_storage)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TOOL_INVALID_WITH_REMOTE_STORAGE, 1, "backupdb");
+      error_code = ER_TOOL_INVALID_WITH_REMOTE_STORAGE;
+    }
+  else
+    {
+      error_code = logpb_backup (thread_p, boot_Db_parm->nvols, backup_path, backup_level,
+				 delete_unneeded_logarchives, backup_verbose_file, num_threads, zip_method,
+				 zip_level, skip_activelog, sleep_msecs, separate_keys);
+    }
   return error_code;
 }
 
@@ -4077,6 +4085,14 @@ xboot_copy (REFPTR (THREAD_ENTRY, thread_p), const char *from_dbname, const char
 #endif
 
   assert (thread_p != NULL);
+
+  const bool uses_remote_storage = prm_get_bool_value (PRM_ID_REMOTE_STORAGE);
+  if (uses_remote_storage)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TOOL_INVALID_WITH_REMOTE_STORAGE, 1, "copydb");
+      error_code = ER_TOOL_INVALID_WITH_REMOTE_STORAGE;
+      goto error;
+    }
 
   /* If db_path and/or log_path are NULL find the defaults */
 
@@ -5446,6 +5462,16 @@ xboot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGES log_npag
       error_code = ER_BO_CANT_LOAD_SYSPRM;
       goto error_exit;
     }
+
+  {
+    const bool uses_remote_storage = prm_get_bool_value (PRM_ID_REMOTE_STORAGE);
+    if (uses_remote_storage)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TOOL_INVALID_WITH_REMOTE_STORAGE, 1, "patchdb");
+	error_code = ER_TOOL_INVALID_WITH_REMOTE_STORAGE;
+	goto error_exit;
+      }
+  }
 
   if (db_name == NULL)
     {
