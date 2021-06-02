@@ -1031,7 +1031,7 @@ extern bool logtb_check_class_for_rr_isolation_err (const OID * class_oid);
 extern void logpb_vacuum_reset_log_header_cache (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr);
 
 extern VACUUM_LOG_BLOCKID logpb_last_complete_blockid (void);
-extern int logpb_page_check_corruption (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, bool * is_page_corrupted);
+extern bool logpb_page_has_valid_checksum (const LOG_PAGE * log_pgptr);
 extern void logpb_dump_log_page_area (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int offset, int length);
 extern void logtb_slam_transaction (THREAD_ENTRY * thread_p, int tran_index);
 extern int xlogtb_kill_tran_index (THREAD_ENTRY * thread_p, int kill_tran_index, char *kill_user, char *kill_host,
@@ -1048,7 +1048,7 @@ extern void logtb_wakeup_thread_with_tran_index (int tran_index, thread_resume_s
 
 extern bool logtb_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag);
 extern bool logtb_get_check_interrupt (THREAD_ENTRY * thread_p);
-extern int logpb_set_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr);
+extern void logpb_set_page_checksum (LOG_PAGE * log_pgptr);
 
 extern LOG_TDES *logtb_get_system_tdes (THREAD_ENTRY * thread_p = NULL);
 

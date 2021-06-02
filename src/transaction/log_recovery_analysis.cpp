@@ -46,8 +46,6 @@
 
 #include <cstring>
 
-static void logpb_page_get_first_null_block_lsa (THREAD_ENTRY *thread_p, LOG_PAGE *log_pgptr,
-    LOG_LSA *first_null_block_lsa);
 static void log_rv_analysis_handle_fetch_page_fail (THREAD_ENTRY *thread_p, log_recovery_context &context,
     LOG_PAGE *log_page_p, const LOG_RECORD_HEADER *log_rec,
     const log_lsa &prev_lsa, const log_lsa &prev_prev_lsa);
@@ -79,11 +77,75 @@ static void log_rv_analysis_record (THREAD_ENTRY *thread_p, LOG_RECTYPE log_type
 				    LOG_PAGE *log_page_p, LOG_LSA *prev_lsa, log_recovery_context &context);
 static bool log_is_page_of_record_broken (THREAD_ENTRY *thread_p, const LOG_LSA *log_lsa,
     const LOG_RECORD_HEADER *log_rec_header);
-static void logpb_page_get_first_null_block_lsa (THREAD_ENTRY *thread_p, LOG_PAGE *log_pgptr,
-    LOG_LSA *first_null_block_lsa);
 static void log_recovery_resetlog (THREAD_ENTRY *thread_p, const LOG_LSA *new_append_lsa,
 				   const LOG_LSA *new_prev_lsa);
 static void log_recovery_notpartof_archives (THREAD_ENTRY *thread_p, int start_arv_num, const char *info_reason);
+
+class corruption_checker
+{
+    //////////////////////////////////////////////////////////////////////////
+    // Does log data sanity checks and saves the results.
+    //////////////////////////////////////////////////////////////////////////
+
+  public:
+    static constexpr size_t IO_BLOCK_SIZE = 4 * ONE_K;   // 4k
+
+    corruption_checker ();
+
+    // Check if given page checksum is correct. Otherwise page is corrupted
+    void check_page_checksum (const LOG_PAGE *log_pgptr);
+    // Additional checks on log record:
+    void check_log_record (const log_lsa &record_lsa, const log_rec_header &record_header, const LOG_PAGE *log_page_p);
+    // Detect the address of first block having only 0xFF bytes
+    void find_first_corrupted_block (const LOG_PAGE *log_pgptr);
+
+    bool is_page_corrupted () const;		      // is last checked page corrupted?
+    const log_lsa &get_first_corrupted_lsa () const;  // get the address of first block full of 0xFF
+
+  private:
+
+    const char *get_block_ptr (const LOG_PAGE *page, size_t block_index) const;	  // the starting pointer of block
+
+    bool m_is_page_corrupted = false;		      // true if last checked page is corrupted, false otherwise
+    LOG_LSA m_first_corrupted_rec_lsa = NULL_LSA;     // set by last find_first_corrupted_block call
+    std::unique_ptr<char[]> m_null_block;	      // 4k of 0xFF for null block check
+    size_t m_blocks_in_page_count = 0;		      // number of blocks in a log page
+};
+
+int
+log_rv_analysis_check_page_corruption (THREAD_ENTRY *thread_p, LOG_PAGEID pageid, const LOG_PAGE *log_page_p,
+				       corruption_checker &checker)
+{
+#if !defined(NDEBUG)
+  er_log_debug (ARG_FILE_LINE, "logpb_recovery_analysis: log page %lld, checksum %d\n",
+		log_page_p->hdr.logical_pageid, log_page_p->hdr.checksum);
+  if (prm_get_bool_value (PRM_ID_LOGPB_LOGGING_DEBUG))
+    {
+      fileio_page_hexa_dump ((const char *) log_page_p, LOG_PAGESIZE);
+    }
+#endif /* !NDEBUG */
+
+  checker.check_page_checksum (log_page_p);
+  if (checker.is_page_corrupted ())
+    {
+      if (logpb_is_page_in_archive (pageid))
+	{
+	  /* Should not happen. */
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_analysis_check_page_corruption");
+	  return ER_FAILED;
+	}
+
+      checker.find_first_corrupted_block (log_page_p);
+
+      /* Found corrupted log page. */
+      if (prm_get_bool_value (PRM_ID_LOGPB_LOGGING_DEBUG))
+	{
+	  _er_log_debug (ARG_FILE_LINE, "logpb_recovery_analysis: log page %lld is corrupted due to partial flush.\n",
+			 (long long int) pageid);
+	}
+    }
+  return NO_ERROR;
+}
 
 void
 log_recovery_analysis (THREAD_ENTRY *thread_p, INT64 *num_redo_log_records, log_recovery_context &context)
@@ -110,16 +172,7 @@ log_recovery_analysis (THREAD_ENTRY *thread_p, INT64 *num_redo_log_records, log_
   LOG_RECORD_HEADER *log_rec = NULL;
 
   // Stuff used for corruption checks
-  LOG_LSA first_corrupted_rec_lsa = NULL_LSA;
-  bool is_log_page_corrupted = false;
-  constexpr int IO_BLOCK_SIZE = 4 * ONE_K;
-  int start_record_block = 0, end_record_block = 0;
-  char null_buffer[IO_BLOCK_SIZE + MAX_ALIGNMENT];
-  char *null_block = PTR_ALIGN (null_buffer, MAX_ALIGNMENT);
-  const int max_num_blocks = LOG_PAGESIZE / IO_BLOCK_SIZE;
-  LOG_PAGEID last_checked_page_id = NULL_PAGEID;
-
-  std::memset (null_block, LOG_PAGE_INIT_VALUE, IO_BLOCK_SIZE);
+  corruption_checker checker;
 
   if (num_redo_log_records != NULL)
     {
@@ -147,6 +200,12 @@ log_recovery_analysis (THREAD_ENTRY *thread_p, INT64 *num_redo_log_records, log_
 	    {
 	      // unable to fetch the current log page.
 	      log_rv_analysis_handle_fetch_page_fail (thread_p, context, log_page_p, log_rec, prev_lsa, prev_prev_lsa);
+	      return;
+	    }
+
+	  /* If the page changed, check whether is corrupted. */
+	  if (log_rv_analysis_check_page_corruption (thread_p, record_nav_lsa.pageid, log_page_p, checker) != NO_ERROR)
+	    {
 	      return;
 	    }
 	}
@@ -177,50 +236,6 @@ log_recovery_analysis (THREAD_ENTRY *thread_p, INT64 *num_redo_log_records, log_
       const LOG_LSA crt_record_lsa = record_nav_lsa;
       assert (crt_record_lsa.pageid != NULL_PAGEID && crt_record_lsa.offset != NULL_OFFSET);
 
-      /* If the page changed, check whether is corrupted. */
-      if (last_checked_page_id != crt_record_lsa.pageid)
-	{
-#if !defined(NDEBUG)
-	  er_log_debug (ARG_FILE_LINE, "logpb_recovery_analysis: log page %lld, checksum %d\n",
-			log_page_p->hdr.logical_pageid, log_page_p->hdr.checksum);
-	  if (prm_get_bool_value (PRM_ID_LOGPB_LOGGING_DEBUG))
-	    {
-	      fileio_page_hexa_dump ((const char *) log_page_p, LOG_PAGESIZE);
-	    }
-#endif /* !NDEBUG */
-
-	  /* Check whether active log pages are corrupted. This may happen in case of partial page flush for instance. */
-	  if (logpb_page_check_corruption (thread_p, log_page_p, &is_log_page_corrupted) != NO_ERROR)
-	    {
-	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_analysis");
-	      return;
-	    }
-
-	  if (is_log_page_corrupted)
-	    {
-	      if (logpb_is_page_in_archive (crt_record_lsa.pageid))
-		{
-		  /* Should not happen. */
-		  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_analysis");
-		  return;
-		}
-
-	      /* Set first corrupted record lsa, if a block is corrupted. */
-	      logpb_page_get_first_null_block_lsa (thread_p, log_page_p, &first_corrupted_rec_lsa);
-
-	      /* Found corrupted log page. */
-	      if (prm_get_bool_value (PRM_ID_LOGPB_LOGGING_DEBUG))
-		{
-		  _er_log_debug (ARG_FILE_LINE,
-				 "logpb_recovery_analysis: log page %lld is corrupted due to partial flush.\n",
-				 (long long int) crt_record_lsa.pageid);
-		}
-	    }
-
-	  /* Set last checked page id. */
-	  last_checked_page_id = crt_record_lsa.pageid;
-	}
-
       /* Get the record header */
       log_rec = LOG_GET_LOG_RECORD_HEADER (log_page_p, &crt_record_lsa);
 
@@ -242,71 +257,24 @@ log_recovery_analysis (THREAD_ENTRY *thread_p, INT64 *num_redo_log_records, log_
 	}
 
       /* Check whether null LSA is reached. */
-      if (!is_log_page_corrupted)
-	{
-	  /* For safety reason. Normally, checksum must detect corrupted pages. */
-	  if (LSA_ISNULL (&log_rec->forw_lsa)
-	      && log_rec->type != LOG_END_OF_LOG && !logpb_is_page_in_archive (crt_record_lsa.pageid))
-	    {
-	      /* Can't find the end of log. The next log is null. Consider the page corrupted. */
-	      logpb_page_get_first_null_block_lsa (thread_p, log_page_p, &first_corrupted_rec_lsa);
-	      is_log_page_corrupted = true;
+      checker.check_log_record (crt_record_lsa, *log_rec, log_page_p);
 
-	      er_log_debug (ARG_FILE_LINE,
-			    "log_recovery_analysis: ** WARNING: An end of the log record was not found."
-			    "Latest log record at lsa = %lld|%d, first_corrupted_lsa = %lld|%d\n",
-			    LSA_AS_ARGS (&crt_record_lsa), LSA_AS_ARGS (&first_corrupted_rec_lsa));
-	    }
-	  else if (log_rec->forw_lsa.pageid == crt_record_lsa.pageid)
-	    {
-	      /* Quick fix. Sometimes page corruption is not detected. Check whether the current log record
-	      * is in corrupted block. If true, consider the page corrupted.
-	      */
-	      LOG_LSA temp_log_lsa;
-	      LSA_COPY (&temp_log_lsa, &log_rec->forw_lsa);
-	      temp_log_lsa.offset--;
-	      assert (crt_record_lsa.offset >= 0 && temp_log_lsa.offset > crt_record_lsa.offset);
-
-	      start_record_block = ((int) crt_record_lsa.offset + sizeof (LOG_HDRPAGE)) / IO_BLOCK_SIZE;
-	      assert (start_record_block >= 0 && start_record_block < max_num_blocks);
-	      end_record_block = ((int) temp_log_lsa.offset + sizeof (LOG_HDRPAGE)) / IO_BLOCK_SIZE;
-	      assert (end_record_block >= 0 && end_record_block < max_num_blocks);
-
-	      if (start_record_block != end_record_block)
-		{
-		  assert (start_record_block < end_record_block);
-		  if (memcmp (((char *) log_page_p) + (end_record_block * IO_BLOCK_SIZE), null_block, IO_BLOCK_SIZE) == 0)
-		    {
-		      /* The current record is corrupted - ends into a corrupted block. */
-		      LSA_COPY (&first_corrupted_rec_lsa, &crt_record_lsa);
-		      is_log_page_corrupted = true;
-
-		      er_log_debug (ARG_FILE_LINE,
-				    "log_recovery_analysis: ** WARNING: An end of the log record was not found."
-				    "Latest log record at lsa = %lld|%d, first_corrupted_lsa = %lld|%d\n",
-				    LSA_AS_ARGS (&crt_record_lsa), LSA_AS_ARGS (&first_corrupted_rec_lsa));
-		    }
-		}
-	    }
-	}
-
-      if (is_log_page_corrupted && !LSA_ISNULL (&first_corrupted_rec_lsa))
+      if (checker.is_page_corrupted () && !checker.get_first_corrupted_lsa ().is_null ())
 	{
 	  /* If the record is corrupted - it resides in a corrupted block, then
-	    * resets append lsa to last valid address and stop.
-	    */
-	  if (LSA_GT (&crt_record_lsa, &first_corrupted_rec_lsa))
+	   * resets append lsa to last valid address and stop.
+	   */
+	  if (crt_record_lsa > checker.get_first_corrupted_lsa ())
 	    {
 	      LOG_RESET_APPEND_LSA (&context.get_end_redo_lsa ());
 	      break;
 	    }
 	  else
 	    {
-	      LOG_LSA temp_log_lsa;
 	      bool is_log_lsa_corrupted = false;
 
-	      if (LSA_EQ (&crt_record_lsa, &first_corrupted_rec_lsa)
-		  || LSA_GT (&log_rec->forw_lsa, &first_corrupted_rec_lsa))
+	      if (crt_record_lsa == checker.get_first_corrupted_lsa ()
+		  || log_rec->forw_lsa > checker.get_first_corrupted_lsa ())
 		{
 		  /* When log_lsa = first_corrupted_rec_lsa, forw_lsa may be NULL. */
 		  is_log_lsa_corrupted = true;
@@ -314,12 +282,10 @@ log_recovery_analysis (THREAD_ENTRY *thread_p, INT64 *num_redo_log_records, log_
 	      else
 		{
 		  /* Check correctness of information from log header. */
-		  LSA_COPY (&temp_log_lsa, &crt_record_lsa);
-		  temp_log_lsa.offset += sizeof (LOG_RECORD_HEADER);
-		  temp_log_lsa.offset = DB_ALIGN (temp_log_lsa.offset, DOUBLE_ALIGNMENT);
-
-		  if ((temp_log_lsa.offset > (int) LOGAREA_SIZE)
-		      || (LSA_GT (&temp_log_lsa, &first_corrupted_rec_lsa)))
+		  LOG_LSA end_of_header_lsa = crt_record_lsa;
+		  end_of_header_lsa.offset += sizeof (LOG_RECORD_HEADER);
+		  end_of_header_lsa.offset = DB_ALIGN (end_of_header_lsa.offset, MAX_ALIGNMENT);
+		  if (end_of_header_lsa.offset > LOGAREA_SIZE || end_of_header_lsa > checker.get_first_corrupted_lsa ())
 		    {
 		      is_log_lsa_corrupted = true;
 		    }
@@ -346,21 +312,20 @@ log_recovery_analysis (THREAD_ENTRY *thread_p, INT64 *num_redo_log_records, log_
       context.set_end_redo_lsa (crt_record_lsa);
       LOG_LSA next_record_lsa = log_rec->forw_lsa;
 
-      if ((is_log_page_corrupted) && (log_rtype != LOG_END_OF_LOG) && (next_record_lsa.pageid != crt_record_lsa.pageid))
+      if (checker.is_page_corrupted () && (log_rtype != LOG_END_OF_LOG)
+	  && (next_record_lsa.pageid != crt_record_lsa.pageid))
 	{
 	  /* The page is corrupted, do not allow to advance to the next page. */
 	  LSA_SET_NULL (&next_record_lsa);
 	}
 
       /*
-      * If the next page is NULL_PAGEID and the current page is an archive
-      * page, this is not the end of the log. This situation happens when an
-      * incomplete log record is archived. Thus, its forward address is NULL.
-      * Note that we have to set lsa.pageid here since the log_lsa.pageid value
-      * can be changed (e.g., the log record is stored in two pages: an
-      * archive page, and an active page. Later, we try to modify it whenever
-      * is possible.
-      */
+       * If the next page is NULL_PAGEID and the current page is an archive page, this is not the end of the log.
+       * This situation happens when an incomplete log record is archived. Thus, its forward address is NULL.
+       * Note that we have to set next_record_lsa.pageid here since the crt_record_lsa.pageid value can be changed
+       * (e.g., the log record is stored in two pages: an archive page, and an active page). Later, we try to modify
+       * it whenever is possible.
+       */
 
       if (LSA_ISNULL (&next_record_lsa) && logpb_is_page_in_archive (crt_record_lsa.pageid))
 	{
@@ -391,9 +356,9 @@ log_recovery_analysis (THREAD_ENTRY *thread_p, INT64 *num_redo_log_records, log_
 	      LOG_RESET_APPEND_LSA (&log_Gl.hdr.append_lsa);
 
 	      /*
-	      * Reset the forward address of current record to next record,
-	      * and then flush the page.
-	      */
+	       * Reset the forward address of current record to next record,
+	       * and then flush the page.
+	       */
 	      LSA_COPY (&log_rec->forw_lsa, &log_Gl.hdr.append_lsa);
 
 	      assert (crt_record_lsa.pageid == log_page_p->hdr.logical_pageid);
@@ -449,14 +414,14 @@ log_recovery_analysis (THREAD_ENTRY *thread_p, INT64 *num_redo_log_records, log_
 	  assert_release (context.get_end_redo_lsa () != next_record_lsa);
 	  break;
 	}
-      if ((is_log_page_corrupted) && (log_rtype == LOG_END_OF_LOG))
+      if (checker.is_page_corrupted () && (log_rtype == LOG_END_OF_LOG))
 	{
 	  /* The page is corrupted. Stop if end of log was found in page. In this case,
-	    * the remaining data in log page is corrupted. If end of log is not found,
-	    * then we will advance up to NULL LSA. It is important to initialize page with -1.
-	    * Another option may be to store the previous LSA in header page.
-	    * Or, to use checksum on log records, but this may slow down the system.
-	    */
+	   * the remaining data in log page is corrupted. If end of log is not found,
+	   * then we will advance up to NULL LSA. It is important to initialize page with -1.
+	   * Another option may be to store the previous LSA in header page.
+	   * Or, to use checksum on log records, but this may slow down the system.
+	   */
 	  break;
 	}
 
@@ -464,9 +429,9 @@ log_recovery_analysis (THREAD_ENTRY *thread_p, INT64 *num_redo_log_records, log_
       prev_lsa = context.get_end_redo_lsa ();
 
       /*
-      * We can fix the lsa.pageid in the case of log_records without forward
-      * address at this moment.
-      */
+       * We can fix the lsa.pageid in the case of log_records without forward
+       * address at this moment.
+       */
       if (next_record_lsa.offset == NULL_OFFSET && next_record_lsa.pageid != NULL_PAGEID
 	  && next_record_lsa.pageid < crt_record_lsa.pageid)
 	{
@@ -490,50 +455,6 @@ log_recovery_analysis (THREAD_ENTRY *thread_p, INT64 *num_redo_log_records, log_
     }
 
   return;
-}
-
-/*
- * logpb_page_get_first_null_block_lsa - Get LSA of first null block in log page.
- *
- * return: nothing
- *   thread_p(in): thread entry
- *   log_pgptr(in): log page
- *   first_null_block_lsa(out): LSA of first null block.
- */
-void
-logpb_page_get_first_null_block_lsa (THREAD_ENTRY *thread_p, LOG_PAGE *log_pgptr, LOG_LSA *first_null_block_lsa)
-{
-  const int block_size = 4 * ONE_K;
-  char null_buffer[block_size + MAX_ALIGNMENT], *null_block;
-  int i, max_num_blocks = LOG_PAGESIZE / block_size;
-
-  assert (log_pgptr != NULL && first_null_block_lsa != NULL);
-
-  null_block = PTR_ALIGN (null_buffer, MAX_ALIGNMENT);
-  memset (null_block, LOG_PAGE_INIT_VALUE, block_size);
-
-  LSA_SET_NULL (first_null_block_lsa);
-
-  /* Set LSA of first NULL block. */
-  for (i = 0; i < max_num_blocks; i++)
-    {
-      /* Search for null blocks. */
-      if (memcmp (((char *) log_pgptr) + (i * block_size), null_block, block_size) == 0)
-	{
-	  /* Found the null block. Computes its LSA. */
-	  first_null_block_lsa->pageid = log_pgptr->hdr.logical_pageid;
-	  first_null_block_lsa->offset = i * block_size;
-
-	  if (first_null_block_lsa->offset > 0)
-	    {
-	      /* Skip log header size. */
-	      first_null_block_lsa->offset -= sizeof (LOG_HDRPAGE);
-	    }
-
-	  assert (first_null_block_lsa->offset >= 0);
-	  break;
-	}
-    }
 }
 
 static void
@@ -2103,4 +2024,101 @@ log_recovery_notpartof_archives (THREAD_ENTRY *thread_p, int start_arv_num, cons
       logpb_flush_header (thread_p);	/* to get rid off archives */
     }
 
+}
+
+corruption_checker::corruption_checker ()
+{
+  m_blocks_in_page_count = LOG_PAGESIZE / IO_BLOCK_SIZE;
+  m_null_block.reset (new char[IO_BLOCK_SIZE]);
+  std::memset (m_null_block.get (), LOG_PAGE_INIT_VALUE, IO_BLOCK_SIZE);
+}
+
+void
+corruption_checker::check_page_checksum (const LOG_PAGE *log_pgptr)
+{
+  m_is_page_corrupted = !logpb_page_has_valid_checksum (log_pgptr);
+}
+
+void corruption_checker::find_first_corrupted_block (const LOG_PAGE *log_pgptr)
+{
+  m_first_corrupted_rec_lsa = NULL_LSA;
+  for (size_t block_index = 0; block_index < m_blocks_in_page_count; ++block_index)
+    {
+      if (std::memcmp (get_block_ptr (log_pgptr, block_index), m_null_block.get (), IO_MAX_PAGE_SIZE) == 0)
+	{
+	  // Found a block full of 0xFF
+	  m_first_corrupted_rec_lsa.pageid = log_pgptr->hdr.logical_pageid;
+	  m_first_corrupted_rec_lsa.offset =
+		  block_index == 0 ? 0 : block_index * IO_MAX_PAGE_SIZE - sizeof (LOG_HDRPAGE);
+	}
+    }
+}
+
+bool
+corruption_checker::is_page_corrupted () const
+{
+  return m_is_page_corrupted;
+}
+
+const
+log_lsa &corruption_checker::get_first_corrupted_lsa () const
+{
+  return m_first_corrupted_rec_lsa;
+}
+
+const char *
+corruption_checker::get_block_ptr (const LOG_PAGE *page, size_t block_index) const
+{
+  return (reinterpret_cast<const char *> (page)) + block_index * IO_BLOCK_SIZE;
+}
+
+void
+corruption_checker::check_log_record (const log_lsa &record_lsa, const log_rec_header &record_header,
+				      const LOG_PAGE *log_page_p)
+{
+  if (m_is_page_corrupted)
+    {
+      // Already found corruption
+      return;
+    }
+
+  /* For safety reason. Normally, checksum must detect corrupted pages. */
+  if (LSA_ISNULL (&record_header.forw_lsa) && record_header.type != LOG_END_OF_LOG
+      && !logpb_is_page_in_archive (record_lsa.pageid))
+    {
+      /* Can't find the end of log. The next log is null. Consider the page corrupted. */
+      m_is_page_corrupted = true;
+      find_first_corrupted_block (log_page_p);
+
+      er_log_debug (ARG_FILE_LINE,
+		    "log_recovery_analysis: ** WARNING: An end of the log record was not found."
+		    "Latest log record at lsa = %lld|%d, first_corrupted_lsa = %lld|%d\n",
+		    LSA_AS_ARGS (&record_lsa), LSA_AS_ARGS (&m_first_corrupted_rec_lsa));
+    }
+  else if (record_header.forw_lsa.pageid == record_lsa.pageid)
+    {
+      /* Quick fix. Sometimes page corruption is not detected. Check whether the current log record
+       * is in corrupted block. If true, consider the page corrupted.
+       */
+      size_t start_block_index = (record_lsa.offset + sizeof (LOG_HDRPAGE) - 1) / IO_BLOCK_SIZE;
+      assert (start_block_index <= m_blocks_in_page_count);
+      size_t end_block_index = (record_header.forw_lsa.offset + sizeof (LOG_HDRPAGE) - 1) / IO_BLOCK_SIZE;
+      assert (end_block_index <= m_blocks_in_page_count);
+
+      if (start_block_index != end_block_index)
+	{
+	  assert (start_block_index < end_block_index);
+	  if (std::memcmp (get_block_ptr (log_page_p, end_block_index), m_null_block.get (), IO_BLOCK_SIZE) == 0)
+	    {
+	      /* The current record is corrupted - ends into a corrupted block. */
+	      m_first_corrupted_rec_lsa = record_lsa;
+	      m_is_page_corrupted = true;
+
+	      er_log_debug (ARG_FILE_LINE,
+			    "log_recovery_analysis: ** WARNING: An end of the log record was not found."
+			    "Latest log record at lsa = %lld|%d, first_corrupted_lsa = %lld|%d\n",
+			    LSA_AS_ARGS (&record_lsa), LSA_AS_ARGS (&m_first_corrupted_rec_lsa));
+	    }
+	}
+    }
 }
