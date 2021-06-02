@@ -26,8 +26,8 @@ namespace cubprocedure
 //////////////////////////////////////////////////////////////////////////
 
   sp_header::sp_header ()
-    : command ()
-    , size ()
+    : command (0)
+    , size (0)
   {
 
   }
