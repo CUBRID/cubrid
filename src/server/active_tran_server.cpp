@@ -195,8 +195,6 @@ active_tran_server::init_page_server_hosts (const char *db_name)
 	  er_clear ();
 	  connected = true;
 	  continue;
-	  // successfully connected to a page server. stop now.
-//	  return exit_code;
 	}
       else
 	{
@@ -225,7 +223,6 @@ int
 active_tran_server::connect_to_page_server (const cubcomm::node &node, const char *db_name)
 {
   assert_is_active_tran_server ();
-//  assert (!is_page_server_connected ());
 
   // connect to page server
   constexpr int CHANNEL_POLL_TIMEOUT = 1000;    // 1000 milliseconds = 1 second
@@ -249,8 +246,7 @@ active_tran_server::connect_to_page_server (const cubcomm::node &node, const cha
 
   er_log_debug (ARG_FILE_LINE, "Transaction server successfully connected to the page server. Channel id: %s.\n",
 		srv_chn.get_channel_id ().c_str ());
-  m_page_server_conn = nullptr;
-  assert (m_page_server_conn == nullptr);
+
   m_page_server_conn.reset (new page_server_conn_t (std::move (srv_chn),
   {
     {
