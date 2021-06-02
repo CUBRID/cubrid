@@ -1048,7 +1048,7 @@ extern void logtb_wakeup_thread_with_tran_index (int tran_index, thread_resume_s
 
 extern bool logtb_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag);
 extern bool logtb_get_check_interrupt (THREAD_ENTRY * thread_p);
-extern int logpb_set_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr);
+extern void logpb_set_page_checksum (LOG_PAGE * log_pgptr);
 
 extern LOG_TDES *logtb_get_system_tdes (THREAD_ENTRY * thread_p = NULL);
 
