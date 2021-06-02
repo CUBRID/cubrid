@@ -256,6 +256,11 @@ set(JSP_SOURCES
   ${JSP_DIR}/jsp_comm.c
   ${JSP_DIR}/jsp_file.c
   ${JSP_DIR}/jsp_sr.c
+  ${JSP_DIR}/jsp_struct.cpp
+  ${JSP_DIR}/jsp_struct_value.cpp
+  )
+set(JSP_HEADERS
+  ${JSP_DIR}/jsp_struct.hpp
   )
 
 set(TRANSACTION_SOURCES

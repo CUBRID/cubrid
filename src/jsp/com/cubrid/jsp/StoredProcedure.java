@@ -259,6 +259,39 @@ public class StoredProcedure {
         return makeReturnValue(result);
     }
 
+    public Value makeOutValue(Object object) throws ExecuteException {
+        Object obj = null;
+        if (object instanceof byte[]) {
+            obj = new Byte(((byte[]) object)[0]);
+        } else if (object instanceof short[]) {
+            obj = new Short(((short[]) object)[0]);
+        } else if (object instanceof int[]) {
+            obj = new Integer(((int[]) object)[0]);
+        } else if (object instanceof long[]) {
+            obj = new Long(((long[]) object)[0]);
+        } else if (object instanceof float[]) {
+            obj = new Float(((float[]) object)[0]);
+        } else if (object instanceof double[]) {
+            obj = new Double(((double[]) object)[0]);
+        } else if (object instanceof byte[][]) {
+            obj = ((byte[][]) object)[0];
+        } else if (object instanceof short[][]) {
+            obj = ((short[][]) object)[0];
+        } else if (object instanceof int[][]) {
+            obj = ((int[][]) object)[0];
+        } else if (object instanceof long[][]) {
+            obj = ((long[][]) object)[0];
+        } else if (object instanceof float[][]) {
+            obj = ((float[][]) object)[0];
+        } else if (object instanceof double[][]) {
+            obj = ((double[][]) object)[0];
+        } else if (object instanceof Object[]) {
+            obj = ((Object[]) object)[0];
+        }
+
+        return makeReturnValue(obj);
+    }
+
     public Value makeReturnValue(Object o) throws ExecuteException {
         Value val = null;
 
