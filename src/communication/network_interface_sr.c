@@ -8067,6 +8067,11 @@ slog_reader_get_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 
   error = xlog_reader_get_lsa (thread_p, input_time, &start_lsa);
 
+  if (error != NO_ERROR)
+    {
+      _er_log_debug (ARG_FILE_LINE, "[ERROR] slog_reader_get_lsa : %d ", error);
+    }
+
   ptr = or_pack_int (reply, error);
   ptr = or_pack_log_lsa (ptr, &start_lsa);
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
@@ -8112,8 +8117,16 @@ slog_reader_set_configuration (THREAD_ENTRY * thread_p, unsigned int rid, char *
 	}
     }
 
+#if defined(NDEBUG)		//JOOHOK2
+  _er_log_debug (ARG_FILE_LINE, "SET CONFIGURATION PHASE");
+#endif
+
   error =
     xlog_reader_set_configuration (thread_p, max_log_item, timeout, all_in_cond, user, num_user, classoids, num_class);
+
+#if defined(NDEBUG)		//JOOHOK2
+  _er_log_debug (ARG_FILE_LINE, "SET CONFIGURATION ERROR CODE : %d", error);
+#endif
 
   ptr = or_pack_int (reply, error);
 
@@ -8141,6 +8154,10 @@ slog_reader_get_log_refined_info (THREAD_ENTRY * thread_p, unsigned int rid, cha
   or_unpack_log_lsa (request, &start_lsa);
 
   error = xlog_reader_get_log_refined_info (thread_p, &start_lsa, &total_length, &num_log_info);
+  if (error != NO_ERROR)
+    {
+      _er_log_debug (ARG_FILE_LINE, "[ERROR] xlog_reader_get_log_refined_info %d ", error);
+    }
 
   ptr = or_pack_int (reply, error);
 

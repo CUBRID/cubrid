@@ -10632,6 +10632,8 @@ get_lsa_from_time (THREAD_ENTRY * thread_p, time_t input, LOG_LSA * start_lsa)
   return -1;			//NO log..
 }
 
+LOG_READER_ARGS log_reader_args;
+
 int
 xlog_reader_get_log_refined_info (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, int *total_length, int *num_log_info)
 {
@@ -10645,28 +10647,32 @@ xlog_reader_get_log_refined_info (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, 
 
   assert (!LSA_ISNULL (start_lsa));
 
+  *num_log_info = 0;
+  *total_length = 0;
+
+  if (LSA_GE (start_lsa, &log_Gl.append.prev_lsa))
+    {
+      /*JOOHOK : 버퍼에 있는 로그만 기준으로 할지, 디스크에 있는 것만 기준으로 할지 처리 필요 */
+      return ER_LOG_READER_NOTHING_TO_RETURN;
+    }
+
   /*JOOHOK : 스레드 생성 시점 다시 고려하기 */
+
   if (log_Reader_info.shutdown == true)
     {
-      LOG_READER_ARGS args;
-      LSA_COPY (&args.start_lsa, start_lsa);
-      args.thread_p = thread_p;
+//      LOG_READER_ARGS args;
+      LSA_COPY (&log_reader_args.start_lsa, start_lsa);
+      log_reader_args.thread_p = thread_p;
 
       log_Reader_info.shutdown = false;
       //JOOHOK : log_remove_log_archive_daemon_init() - reference to make cubthread daemon 
-      rv = pthread_create (&log_Reader_info.log_reader_th, NULL, log_reader, (void *) &args);
+      rv = pthread_create (&log_Reader_info.log_reader_th, NULL, log_reader, (void *) &log_reader_args);
       if (rv != 0)
 	{
 	  log_Reader_info.shutdown = true;
 	  return ER_LOG_READER_THREAD_CREATE;
 	  /*JOOHOK : 에러처리 */
 	}
-    }
-
-  if (LSA_GE (&log_Reader_info.next_lsa, &log_Gl.hdr.append_lsa))
-    {
-      /*JOOHOK : 버퍼에 있는 로그만 기준으로 할지, 디스크에 있는 것만 기준으로 할지 처리 필요 */
-      return ER_LOG_READER_NOTHING_TO_RETURN;
     }
 
   wait_time = 0;
@@ -10688,17 +10694,18 @@ xlog_reader_get_log_refined_info (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, 
 
       if (wait_time >= timeout)
 	{
-	  log_Reader_info.shutdown = true;
 	  return ER_LOG_READER_TIMEOUT;
+	}
+
+      if (log_Reader_info.shutdown == true)
+	{
+	  return ER_LOG_READER_NOTHING_TO_RETURN;
 	}
 
 #if !defined(NDEBUG) && 1	//JOOHOK
       _er_log_debug (ARG_FILE_LINE, "wait time/timeout = %ld/%ld\n", wait_time, timeout);
 #endif
     }
-
-  *num_log_info = 0;
-  *total_length = 0;
 
   while (log_info_queue->is_empty () == false && (*num_log_info < log_Reader_info.max_log_item))
     {
@@ -10721,7 +10728,7 @@ xlog_reader_get_log_refined_info (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, 
 	  LSA_COPY (start_lsa, &consume->start_lsa);
 
 #if !defined(NDEBUG) && 1	//JOOHOK
-	  _er_log_debug (ARG_FILE_LINE, "Consumes address : 0x%x\n", consume);
+	  _er_log_debug (ARG_FILE_LINE, "start lsa in xlog_reader : %lld|%ld \n", LSA_AS_ARGS (start_lsa));
 #endif
 
 	  if (consume->log_info != NULL)
@@ -10811,6 +10818,7 @@ log_reader (void *arg)
 
   LOG_REC_MVCC_UNDO *mvcc_undo = NULL;
   LOG_REC_MVCC_REDO *mvcc_redo = NULL;
+  LOG_RCVINDEX rcvindex;
 
   RECDES undo_recdes = RECDES_INITIALIZER;
   RECDES redo_recdes = RECDES_INITIALIZER;
@@ -10841,25 +10849,27 @@ log_reader (void *arg)
 
   log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
-  /*fetch log page */
-  if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
+  if (log_Reader_info.shutdown == false)
     {
-      assert (false);
-      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_reader()");
-      /*logpb_fatal_error need to be deleted, since this won't kill server */
+      /*fetch log page */
+      if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
+	{
+	  assert (false);
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_reader()");
+	  /*logpb_fatal_error need to be deleted, since this won't kill server */
+	}
+
+      log_info_entry = (LOG_INFO_ENTRY *) malloc (sizeof (LOG_INFO_ENTRY));
+      if (log_info_entry == NULL)
+	{
+	  return (THREAD_RET_T) - 1;
+	  /*JOOHOK error handling : debug log + error message */
+	}
+
+      log_info_entry->length = 0;
+      LSA_SET_NULL (&log_info_entry->start_lsa);
+      log_info_entry->log_info = NULL;
     }
-
-  log_info_entry = (LOG_INFO_ENTRY *) malloc (sizeof (LOG_INFO_ENTRY));
-  if (log_info_entry == NULL)
-    {
-      return (THREAD_RET_T) - 1;
-      /*JOOHOK error handling : debug log + error message */
-    }
-
-  log_info_entry->length = 0;
-  LSA_SET_NULL (&log_info_entry->start_lsa);
-  log_info_entry->log_info = NULL;
-
   while (log_Reader_info.shutdown == false && !LSA_ISNULL (&process_lsa))
     {
       log_rec_header = LOG_GET_LOG_RECORD_HEADER (log_page_p, &process_lsa);
@@ -11022,18 +11032,20 @@ log_reader (void *arg)
 	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*mvcc_undoredo), &process_lsa, log_page_p);
 	  mvcc_undoredo = (LOG_REC_MVCC_UNDOREDO *) (log_page_p->area + process_lsa.offset);
 
+	  rcvindex = mvcc_undoredo->undoredo.data.rcvindex;
 	  get_class_oid (thread_p, cur_log_rec_lsa, classoid);
 
 	  if (OID_ISNULL (&classoid))
 	    {
 	      /*JOOHOK : debug log */
 	    }
-
-	  if (oid_is_system_class (&classoid) || !is_filtered_class (classoid))	//except dual class.. bug fix 
+	  if (!OID_ISNULL (&classoid))
 	    {
-	      break;
+	      if (oid_is_system_class (&classoid) || !is_filtered_class (classoid))	//except dual class.. bug fix 
+		{
+		  break;
+		}
 	    }
-
 	  LOG_READ_ADD_ALIGN (thread_p, sizeof (*mvcc_undoredo), &process_lsa, log_page_p);
 
 	  if (tran_users.count (trid) == 0)
@@ -11058,7 +11070,7 @@ log_reader (void *arg)
 			 classoid.volid, classoid.pageid, classoid.slotid);
 #endif
 
-	  if (mvcc_undoredo->undoredo.data.rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
+	  if (rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
 	    {
 	      undo_recdes.type = *(INT16 *) (log_page_p->area + process_lsa.offset);
 #if 0
@@ -11147,8 +11159,7 @@ log_reader (void *arg)
 	      process_lsa.offset += redo_length;
 	      LOG_READ_ALIGN (thread_p, &process_lsa, log_page_p);
 #if !defined(NDEBUG) && 0	// JOOHOK
-	      _er_log_debug (ARG_FILE_LINE, "rcvindex : %s\n",
-			     rv_rcvindex_string (mvcc_undoredo->undoredo.data.rcvindex));
+	      _er_log_debug (ARG_FILE_LINE, "rcvindex : %s\n", rv_rcvindex_string (rcvindex));
 	      _er_log_debug (ARG_FILE_LINE, "undo type   : %d , redo type : %d\n", undo_recdes.type, redo_recdes.type);
 	      _er_log_debug (ARG_FILE_LINE, "undo length : %d , redo length : %d\n", undo_length, redo_length);
 #endif
@@ -11160,7 +11171,7 @@ log_reader (void *arg)
 	      /*OID check */
 
 	    }
-	  else if (mvcc_undoredo->undoredo.data.rcvindex == RVHF_MVCC_INSERT)
+	  else if (rcvindex == RVHF_MVCC_INSERT)
 	    {
 //                  redo_recdes.type = *(INT16 *)(log_page_p->area + process_lsa.offset);
 	      int repid_and_flag_bits = 0;
@@ -11247,8 +11258,7 @@ log_reader (void *arg)
 
 #if !defined(NDEBUG) && 1	// JOOHOK
 
-		  _er_log_debug (ARG_FILE_LINE, "rcvindex : %s\n",
-				 rv_rcvindex_string (mvcc_undoredo->undoredo.data.rcvindex));
+		  _er_log_debug (ARG_FILE_LINE, "rcvindex : %s\n", rv_rcvindex_string (rcvindex));
 		  _er_log_debug (ARG_FILE_LINE, "undo type   :  , redo type : %d\n", redo_recdes.type);
 		  _er_log_debug (ARG_FILE_LINE, "undo length : %d , redo length : %d\n",
 				 mvcc_undoredo->undoredo.ulength, redo_length);
@@ -11276,8 +11286,7 @@ log_reader (void *arg)
 		  log_zip_free (log_zip_ptr);
 		}
 	    }
-	  else if (mvcc_undoredo->undoredo.data.rcvindex == RVHF_MVCC_DELETE_REC_HOME
-		   || mvcc_undoredo->undoredo.data.rcvindex == RVHF_MVCC_DELETE_OVERFLOW)
+	  else if (rcvindex == RVHF_MVCC_DELETE_REC_HOME || rcvindex == RVHF_MVCC_DELETE_OVERFLOW)
 	    {
 	      undo_length = mvcc_undoredo->undoredo.ulength;
 
@@ -11332,8 +11341,7 @@ log_reader (void *arg)
 		  undo_recdes.data = tmp_data;
 
 #if !defined(NDEBUG) && 0	// JOOHOK
-		  _er_log_debug (ARG_FILE_LINE, "rcvindex : %s\n",
-				 rv_rcvindex_string (mvcc_undoredo->undoredo.data.rcvindex));
+		  _er_log_debug (ARG_FILE_LINE, "rcvindex : %s\n", rv_rcvindex_string (rcvindex));
 		  _er_log_debug (ARG_FILE_LINE, "undo type   : %d , undo length : %d\n", undo_recdes.type, undo_length);
 #endif
 
@@ -11373,7 +11381,7 @@ log_reader (void *arg)
 	}
 
       /*other mechanism for waking up thread */
-      while (log_info_queue->is_full () || LSA_EQ (&log_Gl.hdr.append_lsa, &next_log_rec_lsa))
+      while (log_info_queue->is_full () || LSA_LE (&log_Gl.append.prev_lsa, &next_log_rec_lsa))
 	{
 	  if (log_info_queue->is_full ())
 	    {
@@ -11381,11 +11389,11 @@ log_reader (void *arg)
 	      _er_log_debug (ARG_FILE_LINE, "QUEUE IS FULL ");
 #endif
 	    }
-	  else if (LSA_LE (&log_Gl.hdr.append_lsa, &next_log_rec_lsa))
+	  else if (LSA_LE (&log_Gl.append.prev_lsa, &next_log_rec_lsa))
 	    {
 #if !defined (NDEBUG) && 1	//JOOHOK
 	      _er_log_debug (ARG_FILE_LINE, "append lsa %lld|%ld | next lsa %lld|%ld",
-			     LSA_AS_ARGS (&log_Gl.hdr.append_lsa), LSA_AS_ARGS (&next_log_rec_lsa));
+			     LSA_AS_ARGS (&log_Gl.append.prev_lsa), LSA_AS_ARGS (&next_log_rec_lsa));
 #endif
 	    }
 	  sleep (2);
@@ -11941,11 +11949,13 @@ make_ddl (char *supplement_data, int trid, const char *user, LOG_INFO_ENTRY * dd
   ptr = or_unpack_int64 (ptr, (INT64 *) & class_oid);
   memcpy (&classoid, &class_oid, sizeof (OID));
 
-  if (oid_is_system_class (&classoid) || !is_filtered_class (classoid))
+  if (!OID_ISNULL (&classoid))
     {
-      return -1;
+      if (oid_is_system_class (&classoid) || !is_filtered_class (classoid))
+	{
+	  return -1;
+	}
     }
-
   ptr = or_unpack_int64 (ptr, (INT64 *) & object_oid);
   ptr = or_unpack_int (ptr, &statement_length);
   ptr = or_unpack_string_nocopy (ptr, &statement);
@@ -12565,6 +12575,18 @@ put_data (const db_value * new_value, char **data_ptr)
       break;
 
     case DB_TYPE_CHAR:
+      func_type = 7;
+      ptr = or_pack_int (ptr, func_type);
+      ptr = or_pack_string_with_length (ptr, db_get_string (new_value), new_value->domain.char_info.length);
+
+#if !defined(NDEBUG) && 1	//JOOHOK
+      _er_log_debug (ARG_FILE_LINE, "%s\n ", db_get_string (new_value));
+#endif
+
+      //return OR_INT_SIZE + strlen (db_get_string (new_value));
+
+      break;
+
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARCHAR:
     case DB_TYPE_VARNCHAR:

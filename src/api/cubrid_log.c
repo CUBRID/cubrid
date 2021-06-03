@@ -35,7 +35,7 @@
 #include "network.h"
 #include "object_representation.h"
 
-#define CUBRID_LOG_ERROR_HANDLING(v) (err_code) = (v); goto cubrid_log_error
+#define CUBRID_LOG_ERROR_HANDLING(v) (err_code) = (v); printf ("file: %s, line: %d\n", __FILE__, __LINE__); goto cubrid_log_error
 
 typedef enum
 {
@@ -91,7 +91,7 @@ CUBRID_LOG_STAGE g_stage = CUBRID_LOG_STAGE_CONFIGURATION;
 CSS_CONN_ENTRY *g_conn_entry;
 
 int g_connection_timeout = 300;	/* min/max: -1/360 (sec) */
-int g_extraction_timeout = 300;	/* min/max: -1/360 (sec) */
+int g_extraction_timeout = 300 * 4;	/* min/max: -1/360 (sec) */
 int g_max_log_item = 512;	/* min/max: 1/1024 */
 bool g_all_in_cond = false;
 
@@ -155,7 +155,7 @@ cubrid_log_set_extraction_timeout (int timeout)
       return CUBRID_LOG_INVALID_EXTRACTION_TIMEOUT;
     }
 
-  g_extraction_timeout = timeout;
+  g_extraction_timeout = timeout * 4;
 
   return CUBRID_LOG_SUCCESS;
 }
@@ -678,6 +678,7 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
 
   CSS_QUEUE_ENTRY *queue_entry;
   int err_code;
+  int rc = NO_ERROR;
 
   or_pack_log_lsa (request, next_lsa);
 
@@ -702,7 +703,14 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
 
   if (reply_code != NO_ERROR)
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LSA);
+      if (reply_code == -1285 || reply_code == -1286)
+	{
+	  rc = reply_code;
+	}
+      else
+	{
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LSA);
+	}
     }
 
 #if !defined (NDEBUG) && 1	//JOOHOK
@@ -741,6 +749,11 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
   reply = PTR_ALIGN (g_log_infos, MAX_ALIGNMENT);
   reply_size = *total_length;
 
+  if (rc == -1285 || rc == -1286)
+    {
+      goto cubrid_log_end;
+    }
+
   if (css_send_request_with_data_buffer
       (g_conn_entry, NET_SERVER_LOG_READER_GET_LOG_REFINED_INFO_2, &rid, NULL, 0, reply, reply_size) != NO_ERRORS)
     {
@@ -758,6 +771,10 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
     }
 
   return CUBRID_LOG_SUCCESS;
+
+cubrid_log_end:
+
+  return rc;
 
 cubrid_log_error:
 
@@ -1237,6 +1254,7 @@ cubrid_log_extract (uint64_t * lsa, CUBRID_LOG_ITEM ** log_item_list, int *list_
 {
   int num_infos, total_length;
   int err_code;
+  int rc;
 
   if (g_stage != CUBRID_LOG_STAGE_PREPARATION && g_stage != CUBRID_LOG_STAGE_EXTRACTION)
     {
@@ -1250,7 +1268,17 @@ cubrid_log_extract (uint64_t * lsa, CUBRID_LOG_ITEM ** log_item_list, int *list_
 
   memcpy (&g_next_lsa, lsa, sizeof (LOG_LSA));
 
-  if (cubrid_log_extract_internal (&g_next_lsa, &num_infos, &total_length) != CUBRID_LOG_SUCCESS)
+  rc = cubrid_log_extract_internal (&g_next_lsa, &num_infos, &total_length);
+  if (rc == -1285)
+    {
+      return CUBRID_LOG_SUCCESS_WITH_NO_LOGITEM;
+    }
+  else if (rc == -1286)
+    {
+      return CUBRID_LOG_EXTRACTION_TIMEOUT;
+/*debug logging : trace logging */
+    }
+  else if (rc != CUBRID_LOG_SUCCESS)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LSA);
     }
