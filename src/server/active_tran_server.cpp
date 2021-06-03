@@ -141,13 +141,13 @@ active_tran_server::init_page_server_hosts (const char *db_name)
   // read raw config
   //
   std::string hosts = prm_get_string_value (PRM_ID_PAGE_SERVER_HOSTS);
-  m_has_remote_storage = prm_get_bool_value (PRM_ID_REMOTE_STORAGE);
+  m_uses_remote_storage = prm_get_bool_value (PRM_ID_REMOTE_STORAGE);
 
   // check config validity
   //
   if (!hosts.length ())
     {
-      if (m_has_remote_storage)
+      if (m_uses_remote_storage)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EMPTY_PAGE_SERVER_HOSTS_CONFIG, 0);
 	  return ER_EMPTY_PAGE_SERVER_HOSTS_CONFIG;
@@ -198,7 +198,7 @@ active_tran_server::init_page_server_hosts (const char *db_name)
 
   // validate connections vs. config
   //
-  if (valid_connection_count == 0 && m_has_remote_storage)
+  if (valid_connection_count == 0 && m_uses_remote_storage)
     {
       assert (exit_code != NO_ERROR);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NO_PAGE_SERVER_CONNECTION, 0);
@@ -206,7 +206,7 @@ active_tran_server::init_page_server_hosts (const char *db_name)
     }
 
   er_log_debug (ARG_FILE_LINE, "Transaction server runs on %s storage.",
-		m_has_remote_storage ? "remote" : "local");
+		m_uses_remote_storage ? "remote" : "local");
 
   assert (exit_code == NO_ERROR);
   return exit_code;
@@ -299,11 +299,11 @@ active_tran_server::get_log_page_broker ()
   return *m_log_page_broker;
 }
 
-bool active_tran_server::has_remote_storage () const
+bool active_tran_server::uses_remote_storage () const
 {
   assert_is_active_tran_server ();
 
-  return m_has_remote_storage;
+  return m_uses_remote_storage;
 }
 
 void
