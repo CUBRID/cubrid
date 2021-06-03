@@ -4002,7 +4002,6 @@ scan_open_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
   scan_id->s.msid.init (thread_p, meth_sig_list, list_id);
   return scan_id->s.msid.open ();
-  //return method_open_scan (thread_p, &scan_id->s.vaid.scan_buf, list_id, meth_sig_list);
 }
 
 /*
@@ -6754,7 +6753,6 @@ scan_next_json_table_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 static SCAN_CODE
 scan_next_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 {
-  VA_SCAN_ID *vaidp;
   SCAN_CODE qp_scan;
   val_list_node vl;
   QPROC_DB_VALUE_LIST src_valp;
@@ -6764,7 +6762,6 @@ scan_next_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
   /* execute method scan */
   qp_scan = scan_id->s.msid.next_scan (vl);
-  //qp_scan = method_scan_next (thread_p, &vaidp->scan_buf, &vl);
   if (qp_scan != S_SUCCESS)
     {
       /* scan error or end of scan */
