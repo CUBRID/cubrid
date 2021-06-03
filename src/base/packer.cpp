@@ -922,8 +922,8 @@ namespace cubpacking
   packer::delegate_to_or_buf (const size_t size, or_buf &buf)
   {
     check_range (m_ptr, m_end_ptr, size);
-    m_ptr += size;
     OR_BUF_INIT (buf, m_ptr, size);
+    m_ptr += size;
   }
 
   const char *
@@ -966,9 +966,9 @@ namespace cubpacking
   unpacker::delegate_to_or_buf (const size_t size, or_buf &buf)
   {
     check_range (m_ptr, m_end_ptr, size);
-    m_ptr += size;
     // promise you won't write on it!
     OR_BUF_INIT (buf, const_cast <char *> (m_ptr), size);
+    m_ptr += size;
   }
 
 } /* namespace cubpacking */

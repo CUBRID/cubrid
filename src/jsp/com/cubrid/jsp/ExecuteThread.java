@@ -31,43 +31,26 @@
 
 package com.cubrid.jsp;
 
+import com.cubrid.jsp.data.CUBRIDPacker;
+import com.cubrid.jsp.data.CUBRIDUnpacker;
+import com.cubrid.jsp.data.DBType;
+import com.cubrid.jsp.data.DataUtilities;
 import com.cubrid.jsp.exception.ExecuteException;
 import com.cubrid.jsp.exception.TypeMismatchException;
-import com.cubrid.jsp.value.DateValue;
-import com.cubrid.jsp.value.DatetimeValue;
-import com.cubrid.jsp.value.DoubleValue;
-import com.cubrid.jsp.value.FloatValue;
-import com.cubrid.jsp.value.IntValue;
-import com.cubrid.jsp.value.LongValue;
-import com.cubrid.jsp.value.NullValue;
-import com.cubrid.jsp.value.NumericValue;
-import com.cubrid.jsp.value.OidValue;
-import com.cubrid.jsp.value.SetValue;
-import com.cubrid.jsp.value.ShortValue;
-import com.cubrid.jsp.value.StringValue;
-import com.cubrid.jsp.value.TimeValue;
-import com.cubrid.jsp.value.TimestampValue;
 import com.cubrid.jsp.value.Value;
+import com.cubrid.jsp.value.ValueUtilities;
 import cubrid.jdbc.driver.CUBRIDConnectionDefault;
-import cubrid.jdbc.driver.CUBRIDResultSet;
-import cubrid.jdbc.jci.UConnection;
-import cubrid.jdbc.jci.UJCIUtil;
-import cubrid.sql.CUBRIDOID;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.math.BigDecimal;
 import java.net.Socket;
+import java.nio.ByteBuffer;
 import java.sql.Connection;
-import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.text.SimpleDateFormat;
-import java.util.Calendar;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -86,35 +69,20 @@ public class ExecuteThread extends Thread {
     private static final int REQ_CODE_UTIL_TERMINATE_THREAD = 0xFE;
     private static final int REQ_CODE_UTIL_TERMINATE_SERVER = 0xFF; // to shutdown javasp server
 
-    /* DB Types */
-    public static final int DB_NULL = 0;
-    public static final int DB_INT = 1;
-    public static final int DB_FLOAT = 2;
-    public static final int DB_DOUBLE = 3;
-    public static final int DB_STRING = 4;
-    public static final int DB_OBJECT = 5;
-    public static final int DB_SET = 6;
-    public static final int DB_MULTISET = 7;
-    public static final int DB_SEQUENCE = 8;
-    public static final int DB_TIME = 10;
-    public static final int DB_TIMESTAMP = 11;
-    public static final int DB_DATE = 12;
-    public static final int DB_MONETARY = 13;
-    public static final int DB_SHORT = 18;
-    public static final int DB_NUMERIC = 22;
-    public static final int DB_CHAR = 25;
-    public static final int DB_RESULTSET = 28;
-    public static final int DB_BIGINT = 31;
-    public static final int DB_DATETIME = 32;
-
     private Socket client;
     private CUBRIDConnectionDefault connection = null;
     private String threadName = null;
 
     private DataInputStream input;
     private DataOutputStream output;
-    private ByteArrayOutputStream byteBuf = new ByteArrayOutputStream(1024);
-    private DataOutputStream outBuf = new DataOutputStream(byteBuf);
+
+    /* TODO: It will be replaced with DirectByteBuffer-based new buffer which dynamically extended if overflow exists */
+    /* Since DirectByteBuffer's allocation time is slow, DirectByteBuffer pooling should be implemented */
+    private ByteBuffer readbuffer;
+    private ByteBuffer resultBuffer;
+
+    private CUBRIDPacker packer;
+    private CUBRIDUnpacker unpacker;
 
     private AtomicInteger status = new AtomicInteger(ExecuteThreadStatus.IDLE.getValue());
 
@@ -124,6 +92,12 @@ public class ExecuteThread extends Thread {
         super();
         this.client = client;
         output = new DataOutputStream(new BufferedOutputStream(this.client.getOutputStream()));
+
+        readbuffer = ByteBuffer.allocate(4096);
+        resultBuffer = ByteBuffer.allocate(4096);
+
+        packer = new CUBRIDPacker(resultBuffer);
+        unpacker = new CUBRIDUnpacker(readbuffer);
     }
 
     public Socket getSocket() {
@@ -139,8 +113,6 @@ public class ExecuteThread extends Thread {
 
     public void closeSocket() {
         try {
-            byteBuf.close();
-            outBuf.close();
             output.close();
             client.close();
         } catch (IOException e) {
@@ -148,8 +120,6 @@ public class ExecuteThread extends Thread {
 
         client = null;
         output = null;
-        byteBuf = null;
-        outBuf = null;
         connection = null;
         charSet = null;
     }
@@ -215,17 +185,17 @@ public class ExecuteThread extends Thread {
                         {
                             String dbName = Server.getServerName();
                             List<String> vm_args = Server.getJVMArguments();
-                            int length = getLengthtoSend(dbName) + 12;
+                            int length = DataUtilities.getLengthtoSend(dbName) + 12;
                             for (String arg : vm_args) {
-                                length += getLengthtoSend(arg) + 4;
+                                length += DataUtilities.getLengthtoSend(arg) + 4;
                             }
                             output.writeInt(length);
                             output.writeInt(Server.getServerPort());
-                            packAndSendRawString(dbName, output);
+                            DataUtilities.packAndSendRawString(dbName, output);
 
                             output.writeInt(vm_args.size());
                             for (String arg : vm_args) {
-                                packAndSendRawString(arg, output);
+                                DataUtilities.packAndSendRawString(arg, output);
                             }
                             output.flush();
                             break;
@@ -286,6 +256,19 @@ public class ExecuteThread extends Thread {
 
     private void processStoredProcedure() throws Exception {
         setStatus(ExecuteThreadStatus.PARSE);
+
+        /* read buffer */
+        int size = input.readInt();
+        byte[] bytes = new byte[size];
+        input.readFully(bytes);
+
+        ensureReadBufferSpace(size);
+        unpacker.setBuffer(readbuffer);
+
+        readbuffer.clear(); // always clear
+        readbuffer.put(bytes);
+        readbuffer.flip(); /* prepare to read */
+
         StoredProcedure procedure = makeStoredProcedure();
         Method m = procedure.getTarget().getMethod();
 
@@ -311,21 +294,12 @@ public class ExecuteThread extends Thread {
     }
 
     private StoredProcedure makeStoredProcedure() throws Exception {
-        int methodSigLength = input.readInt();
-        byte[] methodSig = new byte[methodSigLength];
-        input.readFully(methodSig);
+        String methodSig = unpacker.unpackCString();
+        int paramCount = unpacker.unpackInt();
+        Value[] args = readArguments(unpacker, paramCount);
+        int returnType = unpacker.unpackInt();
 
-        int paramCount = input.readInt();
-        Value[] args = readArguments(input, paramCount);
-
-        int returnType = input.readInt();
-
-        int endCode = input.readInt();
-        if (endCode != REQ_CODE_INVOKE_SP) {
-            return null;
-        }
-
-        storedProcedure = new StoredProcedure(new String(methodSig), args, returnType);
+        storedProcedure = new StoredProcedure(methodSig, args, returnType);
         return storedProcedure;
     }
 
@@ -343,125 +317,37 @@ public class ExecuteThread extends Thread {
         }
     }
 
-    private Object toDbTypeValue(int dbType, Value result) throws TypeMismatchException {
-        Object resolvedResult = null;
-
-        if (result == null) return null;
-
-        switch (dbType) {
-            case DB_INT:
-                resolvedResult = result.toIntegerObject();
-                break;
-            case DB_BIGINT:
-                resolvedResult = result.toLongObject();
-                break;
-            case DB_FLOAT:
-                resolvedResult = result.toFloatObject();
-                break;
-            case DB_DOUBLE:
-            case DB_MONETARY:
-                resolvedResult = result.toDoubleObject();
-                break;
-            case DB_CHAR:
-            case DB_STRING:
-                resolvedResult = result.toString();
-                break;
-            case DB_SET:
-            case DB_MULTISET:
-            case DB_SEQUENCE:
-                resolvedResult = result.toObjectArray();
-                break;
-            case DB_TIME:
-                resolvedResult = result.toTime();
-                break;
-            case DB_DATE:
-                resolvedResult = result.toDate();
-                break;
-            case DB_TIMESTAMP:
-                resolvedResult = result.toTimestamp();
-                break;
-            case DB_DATETIME:
-                resolvedResult = result.toDatetime();
-                break;
-            case DB_SHORT:
-                resolvedResult = result.toShortObject();
-                break;
-            case DB_NUMERIC:
-                resolvedResult = result.toBigDecimal();
-                break;
-            case DB_OBJECT:
-                resolvedResult = result.toOid();
-                break;
-            case DB_RESULTSET:
-                resolvedResult = result.toResultSet();
-                break;
-            default:
-                break;
-        }
-
-        return resolvedResult;
-    }
-
-    private void returnOutArgs(StoredProcedure sp, DataOutputStream dos)
+    private void returnOutArgs(StoredProcedure sp, CUBRIDPacker packer)
             throws IOException, ExecuteException, TypeMismatchException {
         Value[] args = sp.getArgs();
         for (int i = 0; i < args.length; i++) {
             if (args[i].getMode() > Value.IN) {
-                Value v = makeOutBingValue(sp, args[i].getResolved());
-                sendValue(toDbTypeValue(args[i].getDbType(), v), dos, args[i].getDbType());
+                Value v = sp.makeOutValue(args[i].getResolved());
+                packer.packValue(
+                        ValueUtilities.resolveValue(args[i].getDbType(), v),
+                        args[i].getDbType(),
+                        this.charSet);
             }
         }
-    }
-
-    private Value makeOutBingValue(StoredProcedure sp, Object object) throws ExecuteException {
-        Object obj = null;
-        if (object instanceof byte[]) {
-            obj = new Byte(((byte[]) object)[0]);
-        } else if (object instanceof short[]) {
-            obj = new Short(((short[]) object)[0]);
-        } else if (object instanceof int[]) {
-            obj = new Integer(((int[]) object)[0]);
-        } else if (object instanceof long[]) {
-            obj = new Long(((long[]) object)[0]);
-        } else if (object instanceof float[]) {
-            obj = new Float(((float[]) object)[0]);
-        } else if (object instanceof double[]) {
-            obj = new Double(((double[]) object)[0]);
-        } else if (object instanceof byte[][]) {
-            obj = ((byte[][]) object)[0];
-        } else if (object instanceof short[][]) {
-            obj = ((short[][]) object)[0];
-        } else if (object instanceof int[][]) {
-            obj = ((int[][]) object)[0];
-        } else if (object instanceof long[][]) {
-            obj = ((long[][]) object)[0];
-        } else if (object instanceof float[][]) {
-            obj = ((float[][]) object)[0];
-        } else if (object instanceof double[][]) {
-            obj = ((double[][]) object)[0];
-        } else if (object instanceof Object[]) {
-            obj = ((Object[]) object)[0];
-        }
-
-        return sp.makeReturnValue(obj);
     }
 
     private void sendResult(Value result, StoredProcedure procedure)
             throws IOException, ExecuteException, TypeMismatchException {
         Object resolvedResult = null;
         if (result != null) {
-            resolvedResult = toDbTypeValue(procedure.getReturnType(), result);
+            resolvedResult = ValueUtilities.resolveValue(procedure.getReturnType(), result);
         }
 
-        byteBuf.reset();
+        resultBuffer.clear(); /* prepare to put */
+        packer.setBuffer(resultBuffer);
 
-        sendValue(resolvedResult, outBuf, procedure.getReturnType());
-        returnOutArgs(procedure, outBuf);
-        outBuf.flush();
+        packer.packValue(resolvedResult, procedure.getReturnType(), this.charSet);
+        returnOutArgs(procedure, packer);
+        resultBuffer = packer.getBuffer();
 
         output.writeInt(REQ_CODE_RESULT);
-        output.writeInt(byteBuf.size() + 4);
-        byteBuf.writeTo(output);
+        output.writeInt(resultBuffer.position() + 4);
+        output.write(resultBuffer.array(), 0, resultBuffer.position());
         output.writeInt(REQ_CODE_RESULT);
         output.flush();
     }
@@ -475,334 +361,53 @@ public class ExecuteThread extends Thread {
     }
 
     private void sendError(String exception, Socket socket) throws IOException {
-        byteBuf.reset();
+        resultBuffer.clear();
+        packer.setBuffer(resultBuffer);
 
-        try {
-            sendValue(new Integer(1), outBuf, DB_INT);
-            sendValue(exception, outBuf, DB_STRING);
-        } catch (ExecuteException e) {
-            // ignore, never happened
-        }
+        packer.packValue(new Integer(1), DBType.DB_INT, this.charSet);
+        packer.packValue(exception, DBType.DB_STRING, this.charSet);
 
-        outBuf.flush();
+        resultBuffer = packer.getBuffer();
+
+        // errorBuffer.flip(); /* prepare to read */
         output.writeInt(REQ_CODE_ERROR);
-        output.writeInt(byteBuf.size() + 4);
-        byteBuf.writeTo(output);
+        output.writeInt(resultBuffer.position() + 4);
+        // WritableByteChannel channel = Channels.newChannel(output);
+        // channel.write(errorBuffer);
+        output.write(resultBuffer.array(), 0, resultBuffer.position());
         output.writeInt(REQ_CODE_ERROR);
         output.flush();
     }
 
-    private Value[] readArguments(DataInputStream dis, int paramCount)
-            throws IOException, TypeMismatchException, SQLException {
+    private Value[] readArguments(CUBRIDUnpacker u, int paramCount) throws TypeMismatchException {
         Value[] args = new Value[paramCount];
 
         for (int i = 0; i < paramCount; i++) {
-            int mode = dis.readInt();
-            int dbType = dis.readInt();
-            int paramType = dis.readInt();
-            int paramSize = dis.readInt();
+            int mode = u.unpackInt();
+            int dbType = u.unpackInt();
+            int paramType = u.unpackInt();
+            int paramSize = u.unpackInt();
 
-            Value arg = readArgument(dis, paramSize, paramType, mode, dbType);
+            Value arg = u.unpackValue(paramSize, paramType, mode, dbType);
             args[i] = (arg);
         }
 
         return args;
     }
 
-    private Value[] readArgumentsForSet(DataInputStream dis, int paramCount)
-            throws IOException, TypeMismatchException, SQLException {
-        Value[] args = new Value[paramCount];
+    private static final int EXPAND_FACTOR = 2;
 
-        for (int i = 0; i < paramCount; i++) {
-            int paramType = dis.readInt();
-            int paramSize = dis.readInt();
-            Value arg = readArgument(dis, paramSize, paramType, Value.IN, 0);
-            args[i] = (arg);
+    private void ensureReadBufferSpace(int size) {
+        if (readbuffer.capacity() > size) {
+            return;
         }
-
-        return args;
-    }
-
-    private Value readArgument(
-            DataInputStream dis, int paramSize, int paramType, int mode, int dbType)
-            throws IOException, TypeMismatchException, SQLException {
-        Value arg = null;
-        switch (paramType) {
-            case DB_SHORT:
-                // assert paramSize == 4
-                arg = new ShortValue((short) dis.readInt(), mode, dbType);
-                break;
-            case DB_INT:
-                // assert paramSize == 4
-                arg = new IntValue(dis.readInt(), mode, dbType);
-                break;
-            case DB_BIGINT:
-                // assert paramSize == 8
-                arg = new LongValue(dis.readLong(), mode, dbType);
-                break;
-            case DB_FLOAT:
-                // assert paramSize == 4
-                arg = new FloatValue(dis.readFloat(), mode, dbType);
-                break;
-            case DB_DOUBLE:
-            case DB_MONETARY:
-                // assert paramSize == 8
-                arg = new DoubleValue(dis.readDouble(), mode, dbType);
-                break;
-            case DB_NUMERIC:
-                {
-                    byte[] paramValue = new byte[paramSize];
-                    dis.readFully(paramValue);
-
-                    int i;
-                    for (i = 0; i < paramValue.length; i++) {
-                        if (paramValue[i] == 0) break;
-                    }
-
-                    byte[] strValue = new byte[i];
-                    System.arraycopy(paramValue, 0, strValue, 0, i);
-
-                    arg = new NumericValue(new String(strValue), mode, dbType);
-                }
-                break;
-            case DB_CHAR:
-            case DB_STRING:
-                // assert paramSize == n
-                {
-                    byte[] paramValue = new byte[paramSize];
-                    dis.readFully(paramValue);
-
-                    int i;
-                    for (i = 0; i < paramValue.length; i++) {
-                        if (paramValue[i] == 0) break;
-                    }
-
-                    byte[] strValue = new byte[i];
-                    System.arraycopy(paramValue, 0, strValue, 0, i);
-                    arg = new StringValue(new String(strValue), mode, dbType);
-                }
-                break;
-            case DB_DATE:
-                // assert paramSize == 3
-                {
-                    int year = dis.readInt();
-                    int month = dis.readInt();
-                    int day = dis.readInt();
-
-                    arg = new DateValue(year, month, day, mode, dbType);
-                }
-                break;
-            case DB_TIME:
-                // assert paramSize == 3
-                {
-                    int hour = dis.readInt();
-                    int min = dis.readInt();
-                    int sec = dis.readInt();
-                    Calendar cal = Calendar.getInstance();
-                    cal.set(0, 0, 0, hour, min, sec);
-
-                    arg = new TimeValue(hour, min, sec, mode, dbType);
-                }
-                break;
-            case DB_TIMESTAMP:
-                // assert paramSize == 6
-                {
-                    int year = dis.readInt();
-                    int month = dis.readInt();
-                    int day = dis.readInt();
-                    int hour = dis.readInt();
-                    int min = dis.readInt();
-                    int sec = dis.readInt();
-                    Calendar cal = Calendar.getInstance();
-                    cal.set(year, month, day, hour, min, sec);
-
-                    arg = new TimestampValue(year, month, day, hour, min, sec, mode, dbType);
-                }
-                break;
-            case DB_DATETIME:
-                // assert paramSize == 7
-                {
-                    int year = dis.readInt();
-                    int month = dis.readInt();
-                    int day = dis.readInt();
-                    int hour = dis.readInt();
-                    int min = dis.readInt();
-                    int sec = dis.readInt();
-                    int msec = dis.readInt();
-                    Calendar cal = Calendar.getInstance();
-                    cal.set(year, month, day, hour, min, sec);
-
-                    arg = new DatetimeValue(year, month, day, hour, min, sec, msec, mode, dbType);
-                }
-                break;
-            case DB_SET:
-            case DB_MULTISET:
-            case DB_SEQUENCE:
-                {
-                    int nCol = dis.readInt();
-                    // System.out.println(nCol);
-                    arg = new SetValue(readArgumentsForSet(dis, nCol), mode, dbType);
-                }
-                break;
-            case DB_OBJECT:
-                {
-                    int page = dis.readInt();
-                    short slot = (short) dis.readInt();
-                    short vol = (short) dis.readInt();
-
-                    byte[] bOID = new byte[UConnection.OID_BYTE_SIZE];
-                    bOID[0] = ((byte) ((page >>> 24) & 0xFF));
-                    bOID[1] = ((byte) ((page >>> 16) & 0xFF));
-                    bOID[2] = ((byte) ((page >>> 8) & 0xFF));
-                    bOID[3] = ((byte) ((page >>> 0) & 0xFF));
-                    bOID[4] = ((byte) ((slot >>> 8) & 0xFF));
-                    bOID[5] = ((byte) ((slot >>> 0) & 0xFF));
-                    bOID[6] = ((byte) ((vol >>> 8) & 0xFF));
-                    bOID[7] = ((byte) ((vol >>> 0) & 0xFF));
-
-                    arg = new OidValue(bOID, mode, dbType);
-                }
-                break;
-            case DB_NULL:
-                arg = new NullValue(mode, dbType);
-                break;
-            default:
-                // unknown type
-                break;
+        int newCapacity = (int) (readbuffer.capacity() * EXPAND_FACTOR);
+        while (newCapacity < (readbuffer.capacity() + size)) {
+            newCapacity *= EXPAND_FACTOR;
         }
-        return arg;
-    }
-
-    private void sendValue(Object result, DataOutputStream dos, int ret_type)
-            throws IOException, ExecuteException {
-        if (result == null) {
-            dos.writeInt(DB_NULL);
-        } else if (result instanceof Short) {
-            dos.writeInt(DB_SHORT);
-            dos.writeInt(((Short) result).intValue());
-        } else if (result instanceof Integer) {
-            dos.writeInt(DB_INT);
-            dos.writeInt(((Integer) result).intValue());
-        } else if (result instanceof Long) {
-            dos.writeInt(DB_BIGINT);
-            dos.writeLong(((Long) result).longValue());
-        } else if (result instanceof Float) {
-            dos.writeInt(DB_FLOAT);
-            dos.writeFloat(((Float) result).floatValue());
-        } else if (result instanceof Double) {
-            dos.writeInt(ret_type);
-            dos.writeDouble(((Double) result).doubleValue());
-        } else if (result instanceof BigDecimal) {
-            dos.writeInt(DB_NUMERIC);
-            packAndSendString(((BigDecimal) result).toString(), dos);
-        } else if (result instanceof String) {
-            dos.writeInt(DB_STRING);
-            packAndSendString((String) result, dos);
-        } else if (result instanceof java.sql.Date) {
-            dos.writeInt(DB_DATE);
-            packAndSendString(result.toString(), dos);
-        } else if (result instanceof java.sql.Time) {
-            dos.writeInt(DB_TIME);
-            packAndSendString(result.toString(), dos);
-        } else if (result instanceof java.sql.Timestamp) {
-            dos.writeInt(ret_type);
-
-            if (ret_type == DB_DATETIME) {
-                packAndSendString(result.toString(), dos);
-            } else {
-                SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-                packAndSendString(formatter.format(result), dos);
-            }
-        } else if (result instanceof CUBRIDOID) {
-            dos.writeInt(DB_OBJECT);
-            byte[] oid = ((CUBRIDOID) result).getOID();
-            dos.writeInt(UJCIUtil.bytes2int(oid, 0));
-            dos.writeInt(UJCIUtil.bytes2short(oid, 4));
-            dos.writeInt(UJCIUtil.bytes2short(oid, 6));
-        } else if (result instanceof ResultSet) {
-            dos.writeInt(DB_RESULTSET);
-            dos.writeInt(((CUBRIDResultSet) result).getServerHandle());
-        } else if (result instanceof int[]) {
-            int length = ((int[]) result).length;
-            Integer[] array = new Integer[length];
-            for (int i = 0; i < array.length; i++) {
-                array[i] = new Integer(((int[]) result)[i]);
-            }
-            sendValue(array, dos, ret_type);
-        } else if (result instanceof short[]) {
-            int length = ((short[]) result).length;
-            Short[] array = new Short[length];
-            for (int i = 0; i < array.length; i++) {
-                array[i] = new Short(((short[]) result)[i]);
-            }
-            sendValue(array, dos, ret_type);
-        } else if (result instanceof float[]) {
-            int length = ((float[]) result).length;
-            Float[] array = new Float[length];
-            for (int i = 0; i < array.length; i++) {
-                array[i] = new Float(((float[]) result)[i]);
-            }
-            sendValue(array, dos, ret_type);
-        } else if (result instanceof double[]) {
-            int length = ((double[]) result).length;
-            Double[] array = new Double[length];
-            for (int i = 0; i < array.length; i++) {
-                array[i] = new Double(((double[]) result)[i]);
-            }
-            sendValue(array, dos, ret_type);
-        } else if (result instanceof Object[]) {
-            dos.writeInt(ret_type);
-            Object[] arr = (Object[]) result;
-
-            dos.writeInt(arr.length);
-            for (int i = 0; i < arr.length; i++) {
-                sendValue(arr[i], dos, ret_type);
-            }
-        } else ;
-    }
-
-    private int getLengthtoSend(String str) throws IOException {
-        byte b[] = str.getBytes();
-
-        int len = b.length + 1;
-
-        int bits = len & 3;
-        int pad = 0;
-
-        if (bits != 0) pad = 4 - bits;
-
-        return len + pad;
-    }
-
-    private void packAndSendRawString(String str, DataOutputStream dos) throws IOException {
-        byte b[] = str.getBytes();
-
-        int len = b.length + 1;
-        int bits = len & 3;
-        int pad = 0;
-
-        if (bits != 0) pad = 4 - bits;
-
-        dos.writeInt(len + pad);
-        dos.write(b);
-        for (int i = 0; i <= pad; i++) {
-            dos.writeByte(0);
-        }
-    }
-
-    private void packAndSendString(String str, DataOutputStream dos) throws IOException {
-        byte b[] = str.getBytes(this.charSet);
-
-        int len = b.length + 1;
-        int bits = len & 3;
-        int pad = 0;
-
-        if (bits != 0) pad = 4 - bits;
-
-        dos.writeInt(len + pad);
-        dos.write(b);
-        for (int i = 0; i <= pad; i++) {
-            dos.writeByte(0);
-        }
+        ByteBuffer expanded = ByteBuffer.allocate(newCapacity);
+        expanded.order(readbuffer.order());
+        expanded.put(readbuffer);
+        readbuffer = expanded;
     }
 }
