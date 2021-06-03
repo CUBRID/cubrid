@@ -21,11 +21,13 @@
 #include "dbtype.h"
 #include "object_representation.h"
 
-#include "packer.hpp"
+#include "packer.hpp" /* packing_packer */
 #include "memory_private_allocator.hpp" /* cubmem::PRIVATE_BLOCK_ALLOCATOR */
 
 #include "network_interface_sr.h"
 #include "xasl.h"
+
+#include "method_def.hpp" /* METHOD_SUCCESS, METHOD_ERROR */
 
 #include "server_support.h"
 
@@ -37,66 +39,82 @@ namespace cubscan
 {
   namespace method
   {
-    int scanner::init (cubthread::entry *thread_p, METHOD_SIG_LIST *sig_list, qfile_list_id *list_id)
+
+    scanner::scanner ()
+      : m_thread_p (nullptr)
+      , m_method_sig_list (nullptr)
+      , m_list_id (nullptr)
+      , m_dbval_list (nullptr)
+
+	int scanner::init (cubthread::entry *thread_p, METHOD_SIG_LIST *sig_list, qfile_list_id *list_id)
     {
-      // TODO: interpret method signature and set internal representation for this class
-      m_method_sig_list = sig_list;
-      m_num_methods = m_method_sig_list->num_methods;
-      if (m_num_methods <= 0)
+      // check initialized
+      if (m_thread_p != thread_p)
 	{
-	  // something wrong, cannot reach here
-	  assert (false);
-	  return ER_FAILED;
+	  m_thread_p = thread_p;
 	}
-      m_result_vector.resize (m_num_methods);
 
-      m_list_id = list_id;
-      if (m_list_id->tuple_cnt == 1)
+      if (m_method_sig_list != sig_list)
 	{
-	  int type_count = list_id->type_list.type_cnt;
-	  m_arg_vector.resize (type_count);
-	  m_arg_dom_vector.resize (type_count);
-
-	  for (int i = 0; i < type_count; i++)
+	  // TODO: interpret method signature and set internal representation for this class
+	  m_method_sig_list = sig_list;
+	  m_num_methods = m_method_sig_list->num_methods;
+	  if (m_num_methods <= 0)
 	    {
-	      TP_DOMAIN *domain = list_id->type_list.domp[i];
-	      if (domain == NULL || domain->type == NULL)
+	      // something wrong, cannot reach here
+	      assert (false);
+	      return ER_FAILED;
+	    }
+	  m_result_vector.resize (m_num_methods);
+	}
+
+      if (m_list_id != list_id)
+	{
+	  m_list_id = list_id;
+	  if (m_list_id->tuple_cnt == 1)
+	    {
+	      int type_count = list_id->type_list.type_cnt;
+	      m_arg_vector.resize (type_count);
+	      m_arg_dom_vector.resize (type_count);
+
+	      for (int i = 0; i < type_count; i++)
 		{
-		  return ER_FAILED;
+		  TP_DOMAIN *domain = list_id->type_list.domp[i];
+		  if (domain == NULL || domain->type == NULL)
+		    {
+		      return ER_FAILED;
+		    }
+		  m_arg_dom_vector[i] = domain;
 		}
-	      m_arg_dom_vector[i] = domain;
+	    }
+	  else
+	    {
+	      // something wrong, cannot reach here
+	      assert (false);
+	      return ER_FAILED;
 	    }
 	}
-      else
+
+      if (m_dbval_list == nullptr)
 	{
-	  // something wrong, cannot reach here
-	  assert (false);
-	  return ER_FAILED;
+	  m_dbval_list = (qproc_db_value_list *) malloc (sizeof (m_dbval_list[0]) * m_num_methods);
+	  if (m_dbval_list == NULL)
+	    {
+	      return ER_FAILED;
+	    }
 	}
 
-      m_dbval_list = (qproc_db_value_list *) malloc (sizeof (m_dbval_list[0]) * m_num_methods);
-      if (m_dbval_list == NULL)
-	{
-	  return ER_FAILED;
-	}
-
-#ifdef SERVER_MODE
-      /*
-        if (m_vacomm_buffer == NULL)
-        {
-      m_vacomm_buffer = method_initialize_vacomm_buffer ();
-      if (m_vacomm_buffer == NULL)
-      {
-        return ER_FAILED;
-      }
-        }
-      */
-#endif /* SERVER_MODE */
+      return NO_ERROR;
     }
 
     int scanner::open ()
     {
-      /* do nothing yet */
+      if (get_single_tuple () != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+
+      request ();
 
       return NO_ERROR;
     }
@@ -104,94 +122,50 @@ namespace cubscan
     int scanner::close ()
     {
       close_value_array ();
+
+      return S_SUCCESS;
     }
 
-    SCAN_CODE scanner::receive_value (DB_VALUE *value)
+    int scanner::request ()
     {
-      /*
-      #ifdef SERVER_MODE
-      int error;
-      char *p;
-      VACOMM_BUFFER *vacomm_buffer_p = m_vacomm_buffer;
-      if (vacomm_buffer_p->cur_pos == 0)
-      {
-      if (vacomm_buffer_p->status == METHOD_EOF)
-      {
-      return S_END;
-      }
+      int error = NO_ERROR;
+#if defined(SERVER_MODE)
+      error = xs_send ();
+#else
+      // TODO for standalone mode
+      assert (false);
+#endif
 
-      vacomm_buffer_p->status = METHOD_ERROR;
-
-      error = xs_receive_data_from_client (m_thread_p, &vacomm_buffer_p->area, &vacomm_buffer_p->size);
-      if (error == NO_ERROR)
-      {
-      vacomm_buffer_p->buffer = vacomm_buffer_p->area + VACOMM_BUFFER_HEADER_SIZE;
-      p = or_unpack_int (vacomm_buffer_p->area + VACOMM_BUFFER_HEADER_LENGTH_OFFSET, &vacomm_buffer_p->length);
-      p = or_unpack_int (vacomm_buffer_p->area + VACOMM_BUFFER_HEADER_STATUS_OFFSET, &vacomm_buffer_p->status);
-
-      if (vacomm_buffer_p->status == METHOD_ERROR)
-      {
-        p = or_unpack_int (vacomm_buffer_p->area + VACOMM_BUFFER_HEADER_ERROR_OFFSET, &vacomm_buffer_p->error);
-      }
-      else
-      {
-        p =
-      	  or_unpack_int (vacomm_buffer_p->area + VACOMM_BUFFER_HEADER_NO_VALS_OFFSET, &vacomm_buffer_p->num_vals);
-      }
-
-      if (vacomm_buffer_p->status == METHOD_SUCCESS)
-      {
-        error = xs_send_action_to_client (m_thread_p, (VACOMM_BUFFER_CLIENT_ACTION) vacomm_buffer_p->action);
-        if (error != NO_ERROR)
-          {
-            return S_ERROR;
-          }
-      }
-      }
-      else
-      {
-      xs_send_action_to_client (m_thread_p, (VACOMM_BUFFER_CLIENT_ACTION) vacomm_buffer_p->action);
-      return S_ERROR;
-      }
-      }
-
-      if (vacomm_buffer_p->status == METHOD_ERROR)
-      {
-      return S_ERROR;
-      }
-
-      if (vacomm_buffer_p->num_vals > 0)
-      {
-      p = or_unpack_db_value (vacomm_buffer_p->buffer + vacomm_buffer_p->cur_pos, dbval_p);
-      vacomm_buffer_p->cur_pos += OR_VALUE_ALIGNED_SIZE (dbval_p);
-      vacomm_buffer_p->num_vals--;
-      }
-      else
-      {
-      return S_END;
-      }
-
-      if (vacomm_buffer_p->num_vals == 0)
-      {
-      vacomm_buffer_p->cur_pos = 0;
-      }
-
-      return S_SUCCESS;
-      #endif
-      */
-      return S_SUCCESS;
+      return error;
     }
 
+    int scanner::receive (DB_VALUE &val)
+    {
+      int error = NO_ERROR;
+#if defined(SERVER_MODE)
+      error = xs_receive (val);
+#else
+      // TODO for standalone mode
+      assert (false);
+#endif
+      return error;
+    }
+
+#if defined(SERVER_MODE)
     int
     scanner::xs_send ()
     {
-#if defined(SERVER_MODE)
       OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
       char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-      unsigned int  rid = css_get_comm_request_id (m_thread_p);
+      /* pack headers with legacy or_pack_* */
+      char *ptr = or_pack_int (reply, (int) METHOD_CALL);
+      ptr = or_pack_int (ptr, length);
 
-      char *ptr;
+      packing_packer packer;
+      cubmem::extensible_block databuf { cubmem::PRIVATE_BLOCK_ALLOCATOR };
+
+      /* get packed data size */
       int length = OR_INT_SIZE; /* arg count */
       for (DB_VALUE &value : m_arg_vector)
 	{
@@ -199,13 +173,11 @@ namespace cubscan
 	}
       length += or_method_sig_list_length ((void *) m_method_sig_list);
 
-      ptr = or_pack_int (reply, (int) METHOD_CALL);
-      ptr = or_pack_int (ptr, length);
-
-      cubmem::extensible_block databuf { cubmem::PRIVATE_BLOCK_ALLOCATOR };
+      /* set databuf size and get start ptr */
       databuf.extend_to (length);
-
       ptr = databuf.get_ptr ();
+
+      /* pack data */
       ptr = or_pack_int (ptr, m_arg_vector.size ());
       for (DB_VALUE &value : m_arg_vector)
 	{
@@ -213,57 +185,57 @@ namespace cubscan
 	}
       ptr = or_pack_method_sig_list (ptr, (void *) m_method_sig_list);
 
-      css_send_reply_and_data_to_client (m_thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply),
-					 databuf.get_ptr (), length);
-#endif
-      return NO_ERROR;
+      /* send */
+      unsigned int rid = css_get_comm_request_id (m_thread_p);
+      return css_send_reply_and_data_to_client (m_thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply),
+	     databuf.get_ptr (), length);
     }
+#endif
 
-    int
-    scanner::xs_receive ()
-    {
 #if defined(SERVER_MODE)
+    int
+    scanner::xs_receive (DB_VALUE &val)
+    {
       char *data_p = NULL;
       int data_size;
-      xs_receive_data_from_client (m_thread_p, &data_p, &data_size);
-
-      int count;
-      char *ptr = or_unpack_int (data_p, &count);
-      assert (m_result_vector.size() == count);
-
-      for (int i = 0; i < count; i++)
+      int error = xs_receive_data_from_client (m_thread_p, &data_p, &data_size);
+      if (error == NO_ERROR)
 	{
-	  ptr = or_unpack_db_value (ptr, &m_result_vector[i]);
+	  packing_unpacker unpacker (data_p, (size_t) data_size);
+
+	  int status;
+	  unpacker.unpack_int (status);
+
+	  if (status == METHOD_SUCCESS)
+	    {
+	      unpacker.unpack_db_value (val);
+	    }
+	  else
+	    {
+	      unpacker.unpack_int (error); /* er_errid */
+	    }
 	}
-#endif
-      return NO_ERROR;
+      return error;
     }
+#endif
 
     SCAN_CODE scanner::next_scan (val_list_node &vl)
     {
-      SCAN_CODE result = S_ERROR;
+      SCAN_CODE result = S_SUCCESS;
 
 #if defined(SERVER_MODE)
-      if (!get_single_tuple ())
-	{
-	  return S_ERROR;
-	}
-
-      // send
-      xs_send ();
-      xs_receive ();
-
-      qproc_db_value_list *dbval_list_p = m_dbval_list;
       for (int i = 0; i < m_num_methods; i++)
 	{
 	  DB_VALUE *dbval_p = (DB_VALUE *) malloc (sizeof (DB_VALUE));
 	  db_make_null (dbval_p);
+
+	  receive (m_result_vector[i]);
+
 	  db_value_clone (&m_result_vector[i], dbval_p);
-	  dbval_list_p->val = dbval_p;
-	  dbval_list_p++;
+	  m_dbval_list[i].val = dbval_p;
+	  m_dbval_list[i].next = NULL;
 	}
 
-      vl.val_cnt = m_num_methods;
       next_value_array (vl);
 #endif
 
@@ -280,8 +252,9 @@ namespace cubscan
     SCAN_CODE scanner::next_value_array (val_list_node &vl)
     {
       SCAN_CODE scan_result = S_SUCCESS;
-
       qproc_db_value_list *dbval_list = m_dbval_list;
+
+      vl.val_cnt = m_num_methods;
       for (int n = 0; n < vl.val_cnt; n++)
 	{
 	  dbval_list->next = dbval_list + 1;
