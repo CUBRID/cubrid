@@ -224,7 +224,7 @@ method_invoke_for_server (unsigned int rc, char *host_p, char *server_name_p, st
   }
 
 end:
-  free_and_init (values_p);
+  free_and_init (arg_values_p);
 
   pr_clear_value (&value);
   for (count = 0, value_p = val_list_p; count < value_count; count++, value_p++)

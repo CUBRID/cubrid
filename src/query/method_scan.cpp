@@ -45,8 +45,11 @@ namespace cubscan
       , m_method_sig_list (nullptr)
       , m_list_id (nullptr)
       , m_dbval_list (nullptr)
+    {
 
-	int scanner::init (cubthread::entry *thread_p, METHOD_SIG_LIST *sig_list, qfile_list_id *list_id)
+    }
+
+    int scanner::init (cubthread::entry *thread_p, METHOD_SIG_LIST *sig_list, qfile_list_id *list_id)
     {
       // check initialized
       if (m_thread_p != thread_p)
@@ -158,10 +161,6 @@ namespace cubscan
       OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
       char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-      /* pack headers with legacy or_pack_* */
-      char *ptr = or_pack_int (reply, (int) METHOD_CALL);
-      ptr = or_pack_int (ptr, length);
-
       packing_packer packer;
       cubmem::extensible_block databuf { cubmem::PRIVATE_BLOCK_ALLOCATOR };
 
@@ -172,6 +171,10 @@ namespace cubscan
 	  length += or_db_value_size (&value);
 	}
       length += or_method_sig_list_length ((void *) m_method_sig_list);
+
+      /* pack headers with legacy or_pack_* */
+      char *ptr = or_pack_int (reply, (int) METHOD_CALL);
+      ptr = or_pack_int (ptr, length);
 
       /* set databuf size and get start ptr */
       databuf.extend_to (length);
@@ -269,8 +272,8 @@ namespace cubscan
 
     int scanner::get_single_tuple ()
     {
-      assert (m_list_id->type_list.type_cnt == m_arg_vector.size ());
-      assert (m_list_id->type_list.type_cnt == m_arg_dom_vector.size ());
+      assert ((size_t) m_list_id->type_list.type_cnt == m_arg_vector.size ());
+      assert ((size_t) m_list_id->type_list.type_cnt == m_arg_dom_vector.size ());
 
       int error_code = NO_ERROR;
       QFILE_LIST_SCAN_ID scan_id;
