@@ -78,7 +78,7 @@ class active_tran_server
     std::string m_ps_hostname;
     int m_ps_port = -1;
 
-    std::vector<std::unique_ptr<page_server_conn_t>> m_page_server_conn;
+    std::vector<std::unique_ptr<page_server_conn_t>> m_page_server_conn_vec;
 
     std::unique_ptr<cublog::page_broker> m_log_page_broker;
     std::vector<cubcomm::node> m_connection_list;

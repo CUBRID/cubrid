@@ -44,7 +44,7 @@ active_tran_server::~active_tran_server ()
     }
   else
     {
-      assert (m_page_server_conn.empty());
+      assert (m_page_server_conn_vec.empty());
     }
 }
 
@@ -124,7 +124,7 @@ int
 active_tran_server::init_page_server_hosts (const char *db_name)
 {
   assert_is_active_tran_server ();
-
+  assert (m_page_server_conn_vec.empty());
   /*
    * Specified behavior:
    * ===============================================================================
@@ -174,9 +174,6 @@ active_tran_server::init_page_server_hosts (const char *db_name)
       er_clear ();
     }
   exit_code = NO_ERROR;
-  cubcomm::node first_valid_connection;
-  bool connected = false;
-
   // use config to connect
   //
   int valid_connection_count = 0;
@@ -187,20 +184,14 @@ active_tran_server::init_page_server_hosts (const char *db_name)
 	{
 	  ++valid_connection_count;
 	  exit_code = NO_ERROR;
-	  if (!connected)
-	    {
-	      first_valid_connection = node;
-	    }
 	  //found valid host clear the errors rom the bad ones
 	  er_clear ();
-	  connected = true;
-	  continue;
 	}
       else
 	{
 	  exit_code = local_exit_code;
+	  er_log_debug (ARG_FILE_LINE, "Failed to connect to host: %s port: %d\n", node.get_host ().c_str (), node.get_port ());
 	}
-      er_log_debug (ARG_FILE_LINE, "Failed to connect to host: %s port: %d\n", node.get_host ().c_str (), node.get_port ());
     }
 
   // validate connections vs. config
@@ -216,8 +207,8 @@ active_tran_server::init_page_server_hosts (const char *db_name)
 		m_uses_remote_storage ? "remote" : "local");
 
   // failed to connect to any page server
-  assert (connected);
-  return connected ? NO_ERROR : exit_code;
+  assert (valid_connection_count);
+  return valid_connection_count ? NO_ERROR : exit_code;
 }
 
 int
@@ -248,7 +239,7 @@ active_tran_server::connect_to_page_server (const cubcomm::node &node, const cha
   er_log_debug (ARG_FILE_LINE, "Transaction server successfully connected to the page server. Channel id: %s.\n",
 		srv_chn.get_channel_id ().c_str ());
 
-  m_page_server_conn.emplace_back (new page_server_conn_t (std::move (srv_chn),
+  m_page_server_conn_vec.emplace_back (new page_server_conn_t (std::move (srv_chn),
   {
     {
       ps_to_ats_request::SEND_SAVED_LSA,
@@ -275,7 +266,7 @@ active_tran_server::disconnect_page_server ()
 {
   assert_is_active_tran_server ();
 
-  m_page_server_conn.clear();
+  m_page_server_conn_vec.clear();
 }
 
 bool
@@ -283,7 +274,7 @@ active_tran_server::is_page_server_connected () const
 {
   assert_is_active_tran_server ();
 
-  return m_page_server_conn.empty();
+  return !m_page_server_conn_vec.empty();
 }
 
 void
@@ -320,7 +311,7 @@ active_tran_server::push_request (ats_to_ps_request reqid, std::string &&payload
       return;
     }
 
-  m_page_server_conn[0]->push (reqid, std::move (payload));
+  m_page_server_conn_vec[0]->push (reqid, std::move (payload));
 }
 
 void
