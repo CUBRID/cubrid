@@ -3521,6 +3521,15 @@ struct keyword_record
 				 * an identifier, nonzero means it can be */
 };
 
+
+typedef struct function_map FUNCTION_MAP;
+struct function_map
+{
+  unsigned short hash_value;
+  const char *keyword;
+  int op;
+};
+
 typedef struct pt_plan_trace_info
 {
   QUERY_TRACE_FORMAT format;

@@ -187,6 +187,8 @@ extern "C"
   extern bool pt_is_keyword (const char *s);
   extern bool pt_is_const_expr_node (PT_NODE * node);
 
+  extern FUNCTION_MAP *pt_find_function_name (const char *name);
+
   extern PT_NODE *pt_add_row_oid (PARSER_CONTEXT * parser, PT_NODE * stmt);
   extern PT_NODE *pt_add_row_oid_name (PARSER_CONTEXT * parser, PT_NODE * stmt);
   extern PT_NODE *pt_add_column_oid (PARSER_CONTEXT * parser, PT_NODE * stmt);

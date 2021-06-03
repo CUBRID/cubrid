@@ -38,6 +38,7 @@
  * will be sorted when needed. See pt_find_keyword.
  */
 
+/* Keyword names must be written in uppercase */
 static KEYWORD_RECORD keywords[] = {
   {ABSOLUTE_, "ABSOLUTE", 0},
   {ACCESS, "ACCESS", 1},
@@ -526,6 +527,161 @@ static KEYWORD_RECORD keywords[] = {
 static KEYWORD_RECORD *pt_find_keyword (const char *text);
 static int keyword_cmp (const void *k1, const void *k2);
 
+/* Function names must be written in lowercase */
+static FUNCTION_MAP functions[] = {
+  {0, "abs", PT_ABS},
+  {0, "acos", PT_ACOS},
+  {0, "addtime", PT_ADDTIME},
+  {0, "asin", PT_ASIN},
+  {0, "atan", PT_ATAN},
+  {0, "atan2", PT_ATAN2},
+  {0, "bin", PT_BIN},
+  {0, "bit_count", PT_BIT_COUNT},
+  {0, "bit_to_blob", PT_BIT_TO_BLOB},
+  {0, "blob_from_file", PT_BLOB_FROM_FILE},
+  {0, "blob_length", PT_BLOB_LENGTH},
+  {0, "blob_to_bit", PT_BLOB_TO_BIT},
+  {0, "ceil", PT_CEIL},
+  {0, "ceiling", PT_CEIL},
+  {0, "char_length", PT_CHAR_LENGTH},
+  {0, "char_to_blob", PT_CHAR_TO_BLOB},
+  {0, "char_to_clob", PT_CHAR_TO_CLOB},
+  {0, "character_length", PT_CHAR_LENGTH},
+  {0, "clob_from_file", PT_CLOB_FROM_FILE},
+  {0, "clob_length", PT_CLOB_LENGTH},
+  {0, "concat", PT_CONCAT},
+  {0, "concat_ws", PT_CONCAT_WS},
+  {0, "cos", PT_COS},
+  {0, "cot", PT_COT},
+  {0, "cume_dist", PT_CUME_DIST},
+  {0, "curtime", PT_CURRENT_TIME},
+  {0, "curdate", PT_CURRENT_DATE},
+  {0, "utc_time", PT_UTC_TIME},
+  {0, "utc_date", PT_UTC_DATE},
+  {0, "datediff", PT_DATEDIFF},
+  {0, "timediff", PT_TIMEDIFF},
+  {0, "date_format", PT_DATE_FORMAT},
+  {0, "dayofmonth", PT_DAYOFMONTH},
+  {0, "dayofyear", PT_DAYOFYEAR},
+  {0, "decode", PT_DECODE},
+  {0, "decr", PT_DECR},
+  {0, "degrees", PT_DEGREES},
+  {0, "drand", PT_DRAND},
+  {0, "drandom", PT_DRANDOM},
+  {0, "exec_stats", PT_EXEC_STATS},
+  {0, "exp", PT_EXP},
+  {0, "field", PT_FIELD},
+  {0, "floor", PT_FLOOR},
+  {0, "from_days", PT_FROMDAYS},
+  {0, "greatest", PT_GREATEST},
+  {0, "groupby_num", PT_GROUPBY_NUM},
+  {0, "incr", PT_INCR},
+  {0, "index_cardinality", PT_INDEX_CARDINALITY},
+  {0, "inst_num", PT_INST_NUM},
+  {0, "instr", PT_INSTR},
+  {0, "instrb", PT_INSTR},
+  {0, "last_day", PT_LAST_DAY},
+  {0, "length", PT_CHAR_LENGTH},
+  {0, "lengthb", PT_CHAR_LENGTH},
+  {0, "least", PT_LEAST},
+  {0, "like_match_lower_bound", PT_LIKE_LOWER_BOUND},
+  {0, "like_match_upper_bound", PT_LIKE_UPPER_BOUND},
+  {0, "list_dbs", PT_LIST_DBS},
+  {0, "locate", PT_LOCATE},
+  {0, "ln", PT_LN},
+  {0, "log2", PT_LOG2},
+  {0, "log10", PT_LOG10},
+  {0, "log", PT_LOG},
+  {0, "lpad", PT_LPAD},
+  {0, "ltrim", PT_LTRIM},
+  {0, "makedate", PT_MAKEDATE},
+  {0, "maketime", PT_MAKETIME},
+  {0, "mid", PT_MID},
+  {0, "months_between", PT_MONTHS_BETWEEN},
+  {0, "new_time", PT_NEW_TIME},
+  {0, "format", PT_FORMAT},
+  {0, "now", PT_CURRENT_DATETIME},
+  {0, "nvl", PT_NVL},
+  {0, "nvl2", PT_NVL2},
+  {0, "orderby_num", PT_ORDERBY_NUM},
+  {0, "percent_rank", PT_PERCENT_RANK},
+  {0, "power", PT_POWER},
+  {0, "pow", PT_POWER},
+  {0, "pi", PT_PI},
+  {0, "radians", PT_RADIANS},
+  {0, "rand", PT_RAND},
+  {0, "random", PT_RANDOM},
+  {0, "repeat", PT_REPEAT},
+  {0, "space", PT_SPACE},
+  {0, "reverse", PT_REVERSE},
+  {0, "disk_size", PT_DISK_SIZE},
+  {0, "round", PT_ROUND},
+  {0, "row_count", PT_ROW_COUNT},
+  {0, "last_insert_id", PT_LAST_INSERT_ID},
+  {0, "rpad", PT_RPAD},
+  {0, "rtrim", PT_RTRIM},
+  {0, "sec_to_time", PT_SECTOTIME},
+  {0, "serial_current_value", PT_CURRENT_VALUE},
+  {0, "serial_next_value", PT_NEXT_VALUE},
+  {0, "sign", PT_SIGN},
+  {0, "sin", PT_SIN},
+  {0, "sqrt", PT_SQRT},
+  {0, "strcmp", PT_STRCMP},
+  {0, "substr", PT_SUBSTRING},
+  {0, "substring_index", PT_SUBSTRING_INDEX},
+  {0, "find_in_set", PT_FINDINSET},
+  {0, "md5", PT_MD5},
+/*
+ * temporarily block aes_encrypt and aes_decrypt functions until binary string charset is available.
+ *
+ *  {0, "aes_encrypt", PT_AES_ENCRYPT},
+ *  {0, "aes_decrypt", PT_AES_DECRYPT},
+ */
+  {0, "sha1", PT_SHA_ONE},
+  {0, "sha2", PT_SHA_TWO},
+  {0, "substrb", PT_SUBSTRING},
+  {0, "tan", PT_TAN},
+  {0, "time_format", PT_TIME_FORMAT},
+  {0, "to_char", PT_TO_CHAR},
+  {0, "to_date", PT_TO_DATE},
+  {0, "to_datetime", PT_TO_DATETIME},
+  {0, "to_days", PT_TODAYS},
+  {0, "time_to_sec", PT_TIMETOSEC},
+  {0, "to_number", PT_TO_NUMBER},
+  {0, "to_time", PT_TO_TIME},
+  {0, "to_timestamp", PT_TO_TIMESTAMP},
+  {0, "trunc", PT_TRUNC},
+  {0, "tz_offset", PT_TZ_OFFSET},
+  {0, "unix_timestamp", PT_UNIX_TIMESTAMP},
+  {0, "typeof", PT_TYPEOF},
+  {0, "from_unixtime", PT_FROM_UNIXTIME},
+  {0, "from_tz", PT_FROM_TZ},
+  {0, "weekday", PT_WEEKDAY},
+  {0, "dayofweek", PT_DAYOFWEEK},
+  {0, "version", PT_VERSION},
+  {0, "quarter", PT_QUARTERF},
+  {0, "week", PT_WEEKF},
+  {0, "hex", PT_HEX},
+  {0, "ascii", PT_ASCII},
+  {0, "conv", PT_CONV},
+  {0, "inet_aton", PT_INET_ATON},
+  {0, "inet_ntoa", PT_INET_NTOA},
+  {0, "coercibility", PT_COERCIBILITY},
+  {0, "width_bucket", PT_WIDTH_BUCKET},
+  {0, "trace_stats", PT_TRACE_STATS},
+  {0, "str_to_date", PT_STR_TO_DATE},
+  {0, "to_base64", PT_TO_BASE64},
+  {0, "from_base64", PT_FROM_BASE64},
+  {0, "sys_guid", PT_SYS_GUID},
+  {0, "sleep", PT_SLEEP},
+  {0, "to_datetime_tz", PT_TO_DATETIME_TZ},
+  {0, "to_timestamp_tz", PT_TO_TIMESTAMP_TZ},
+  {0, "utc_timestamp", PT_UTC_TIMESTAMP},
+  {0, "crc32", PT_CRC32},
+  {0, "schema_def", PT_SCHEMA_DEF},
+  {0, "conv_tz", PT_CONV_TZ},
+};
+
 
 /* The GET_KEYWORD_HASH_VALUE() macro is the definition of the djb2 algorithm as a macro.
  * Refer to the string_hash() function implemented in the libcubmemc.c file.
@@ -538,6 +694,8 @@ static int keyword_cmp (const void *k1, const void *k2);
              (h) = (((h) << 5) + (h)) + *p; /* hash * 33 + c */ \
         } \
   } while(0)
+
+#define MAGIC_NUM_BI_SEQ        (5)	/* Performance intersection between binary and sequential search */
 
 static int
 keyword_cmp (const void *k1, const void *k2)
@@ -565,7 +723,6 @@ pt_find_keyword (const char *text)
   static int keyword_max_len = 0;
   static int keyword_cnt = sizeof (keywords) / sizeof (keywords[0]);
   static short start_pos[257];	// (0x00 ~ 0xFF) + 1  
-#define MAGIC_NUM_BI_SEQ        (5)	/* Performance intersection between binary and sequential search */
   int i, len, cmp;
   KEYWORD_RECORD dummy;
 
@@ -759,4 +916,130 @@ pt_get_keyword_rec (int *rec_count)
   *(rec_count) = sizeof (keywords) / sizeof (keywords[0]);
 
   return (KEYWORD_RECORD *) (keywords);
+}
+
+
+
+static int
+function_keyword_cmp (const void *f1, const void *f2)
+{
+  int cmp = ((FUNCTION_MAP *) f1)->hash_value - ((FUNCTION_MAP *) f2)->hash_value;
+
+  if (cmp != 0)
+    {
+      return cmp;
+    }
+
+  return strcmp (((FUNCTION_MAP *) f1)->keyword, ((FUNCTION_MAP *) f2)->keyword);
+}
+
+
+
+FUNCTION_MAP *
+pt_find_function_name (const char *text)
+{
+  static bool function_keyword_sorted = false;
+  static int function_min_len = MAX_KEYWORD_SIZE;
+  static int function_max_len = 0;
+  static int functions_cnt = sizeof (functions) / sizeof (functions[0]);
+  static short function_start_pos[257];	// (0x00 ~ 0xFF) + 1  
+  int i, len, cmp;
+  FUNCTION_MAP dummy;
+
+  if (function_keyword_sorted == false)
+    {
+      for (i = 0; i < functions_cnt; i++)
+	{
+	  len = strlen (functions[i].keyword);
+	  if (len < function_min_len)
+	    {
+	      function_min_len = len;
+	    }
+	  if (len > function_max_len)
+	    {
+	      function_max_len = len;
+	    }
+
+	  GET_KEYWORD_HASH_VALUE (functions[i].hash_value, functions[i].keyword);
+	}
+
+      memset (function_start_pos, 0x00, sizeof (function_start_pos));
+
+      qsort (functions, functions_cnt, sizeof (functions[0]), function_keyword_cmp);
+
+      for (i = 0; i < functions_cnt; i++)
+	{
+	  function_start_pos[((functions[i].hash_value) >> 8)]++;
+	}
+
+      function_start_pos[256] = functions_cnt;
+      for (i = 255; i >= 0; i--)
+	{
+	  function_start_pos[i] = function_start_pos[i + 1] - function_start_pos[i];
+	}
+
+      function_keyword_sorted = true;
+    }
+
+  if (!text)
+    {
+      return NULL;
+    }
+
+  len = strlen (text);
+  if (len < function_min_len || len > function_max_len)
+    {
+      return NULL;
+    }
+
+  /* function name are composed of ASCII characters.  */
+  char temp[MAX_KEYWORD_SIZE];
+  unsigned char *p, *s;
+  s = (unsigned char *) temp;
+  for (p = (unsigned char *) text; *p; p++, s++)
+    {
+      if (*p >= 0x80)
+	{
+	  return NULL;
+	}
+
+      *s = (unsigned char) char_tolower ((int) *p);
+    }
+  *s = 0x00;
+  dummy.keyword = temp;
+
+  GET_KEYWORD_HASH_VALUE (dummy.hash_value, dummy.keyword);
+  i = (dummy.hash_value >> 8);
+  len = (function_start_pos[i + 1] - function_start_pos[i]);
+  if (len <= MAGIC_NUM_BI_SEQ)
+    {
+      for (len = function_start_pos[i]; len < function_start_pos[i + 1]; len++)
+	{
+	  if (dummy.hash_value > functions[len].hash_value)
+	    {
+	      continue;
+	    }
+	  else if (dummy.hash_value < functions[len].hash_value)
+	    {
+	      return NULL;
+	    }
+
+	  cmp = strcmp (dummy.keyword, functions[len].keyword);
+	  if (cmp > 0)
+	    {
+	      continue;
+	    }
+	  else if (cmp < 0)
+	    {
+	      return NULL;
+	    }
+
+	  return functions + len;
+	}
+
+      return NULL;
+    }
+
+  return (FUNCTION_MAP *) bsearch (&dummy, functions + function_start_pos[i], len, sizeof (FUNCTION_MAP),
+				   function_keyword_cmp);
 }
