@@ -6758,8 +6758,6 @@ scan_next_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   QPROC_DB_VALUE_LIST src_valp;
   QPROC_DB_VALUE_LIST dest_valp;
 
-  vaidp = &scan_id->s.vaid;
-
   /* execute method scan */
   qp_scan = scan_id->s.msid.next_scan (vl);
   if (qp_scan != S_SUCCESS)
