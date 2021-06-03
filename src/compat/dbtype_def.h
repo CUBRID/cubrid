@@ -1028,7 +1028,8 @@ extern "C"
   typedef struct db_enumeration DB_ENUMERATION;
   struct db_enumeration
   {
-    DB_ENUM_ELEMENT *elements;	/* array of enumeration elements */
+    DB_ENUM_ELEMENT *elements;	/* array of enumerat
+				   #include <string.h>ion elements */
     int collation_id;		/* collation */
     unsigned short count;	/* count of enumeration elements */
   };
