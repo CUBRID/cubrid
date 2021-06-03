@@ -3796,7 +3796,7 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 		break;
 
 	      err = db_get (mop_p, SP_ATTR_TARGET, &method);
-	      (*tail)->method_name = (char *) db_get_string (&method);
+	      // (*tail)->method_name = (char *) db_get_string (&method);
 
 	      db_get (mop_p, SP_ATTR_ARGS, &param);
 	      DB_SET *param_set = db_get_set (&param);
