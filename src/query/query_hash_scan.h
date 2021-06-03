@@ -90,6 +90,17 @@ struct hash_scan_key
   db_value **values;		/* value array */
 };
 
+typedef struct file_hash_scan_id FHSID;
+struct file_hash_scan_id
+{
+  /* Fields should be ordered according to their sizes */
+  EHID ehid;			/* dir file identifier */
+  VFID bucket_file;		/* bucket file identifier */
+  DB_TYPE key_type;		/* type of the keys */
+  short depth;			/* global depth of the directory */
+  char alignment;		/* alignment value used on slots of bucket pages */
+};
+
 /* hash list scan */
 typedef struct hash_list_scan HASH_LIST_SCAN;
 struct hash_list_scan
@@ -97,7 +108,7 @@ struct hash_list_scan
   regu_variable_list_node *build_regu_list;	/* regulator variable list */
   regu_variable_list_node *probe_regu_list;	/* regulator variable list */
   mht_hls_table *hash_table;	/* memory hash table for hash list scan */
-  EHID *ehash_table;		/* extendible hash table file */
+  FHSID *ehash_table;		/* extendible hash table file */
   hash_scan_key *temp_key;	/* temp probe key */
   hash_scan_key *temp_new_key;	/* temp probe key with db_value */
   HENTRY_HLS_PTR curr_hash_entry;	/* current hash entry */
@@ -127,12 +138,12 @@ HASH_SCAN_KEY *qdata_copy_hscan_key_without_alloc (THREAD_ENTRY * thread_p, HASH
 int qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *data, void *args);
 
 /* FILE HASH STRUCTURE */
-extern EHID *fhs_create (THREAD_ENTRY * thread_p, EHID * ehid, DB_TYPE key_type, int exp_num_entries);
-extern int fhs_destroy (THREAD_ENTRY * thread_p, EHID * ehid);
-extern void *fhs_insert (THREAD_ENTRY * thread_p, EHID * ehid, void *key, OID * value_ptr);
-extern EH_SEARCH fhs_search (THREAD_ENTRY * thread_p, EHID * ehid, void *key, OID * value_ptr, OID * last_oid_p);
-extern EH_SEARCH fhs_search_next (THREAD_ENTRY * thread_p, EHID * ehid, void *key, OID * value_ptr, OID * last_oid_p);
-extern void fhs_dump (THREAD_ENTRY * thread_p, EHID * ehid);
+extern FHSID *fhs_create (THREAD_ENTRY * thread_p, FHSID * fhsid, DB_TYPE key_type, int exp_num_entries);
+extern int fhs_destroy (THREAD_ENTRY * thread_p, FHSID * fhsid);
+extern void *fhs_insert (THREAD_ENTRY * thread_p, FHSID * fhsid, void *key, OID * value_ptr);
+extern EH_SEARCH fhs_search (THREAD_ENTRY * thread_p, FHSID * fhsid, void *key, OID * value_ptr, OID * last_oid_p);
+extern EH_SEARCH fhs_search_next (THREAD_ENTRY * thread_p, FHSID * fhsid, void *key, OID * value_ptr, OID * last_oid_p);
+extern void fhs_dump (THREAD_ENTRY * thread_p, FHSID * fhsid);
 /* end : FILE HASH SCAN */
 
 #endif /* _QUERY_HASH_SCAN_H_ */

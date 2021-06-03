@@ -3716,7 +3716,7 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
       /* create hash table */
       if (llsidp->hlsid.hash_list_scan_yn == HASH_METH_HASH_FILE)
 	{
-	  llsidp->hlsid.ehash_table = (EHID *) db_private_alloc (thread_p, sizeof (EHID));
+	  llsidp->hlsid.ehash_table = (FHSID *) db_private_alloc (thread_p, sizeof (FHSID));
 	  if (llsidp->hlsid.ehash_table == NULL)
 	    {
 	      return S_ERROR;
