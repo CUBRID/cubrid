@@ -268,13 +268,12 @@ method_send_error_to_server (unsigned int rc, char *host_p, char *server_name_p)
  *   method_sig_list(in): Method signatures
  */
 int
-method_invoke_for_server (unsigned int rc, char *host_p, char *server_name_p, qfile_list_id * list_id_p,
+method_invoke_for_server (unsigned int rc, char *host_p, char *server_name_p, std::vector < DB_VALUE > &args,
 			  method_sig_list * method_sig_list_p)
 {
   DB_VALUE *val_list_p = NULL;
   DB_VALUE **values_p;
   int *oid_cols;
-  CURSOR_ID cursor_id;
   int turn_on_auth = 1;
   int cursor_result;
   int num_method;
@@ -285,192 +284,171 @@ method_invoke_for_server (unsigned int rc, char *host_p, char *server_name_p, qf
   DB_VALUE value;
   METHOD_SIG *meth_sig_p;
   int error = NO_ERROR;
-  VACOMM_BUFFER vacomm_buffer;
   int count;
   DB_VALUE *value_p;
 
-  db_make_null (&value);
+  {
+    db_make_null (&value);
 
-  if (method_initialize_vacomm_buffer (&vacomm_buffer, rc, host_p, server_name_p) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
+    meth_sig_p = method_sig_list_p->method_sig;
+    value_count = 0;
 
-  meth_sig_p = method_sig_list_p->method_sig;
-  value_count = 0;
+    for (num_method = 0; num_method < method_sig_list_p->num_methods; num_method++)
+      {
+	value_count += meth_sig_p->num_method_args + 1;
+	meth_sig_p = meth_sig_p->next;
+      }
 
-  for (num_method = 0; num_method < method_sig_list_p->num_methods; num_method++)
-    {
-      value_count += meth_sig_p->num_method_args + 1;
-      meth_sig_p = meth_sig_p->next;
-    }
+    /*
+       if (list_id_p->type_list.type_cnt > value_count)
+       {
+       value_count = list_id_p->type_list.type_cnt;
+       }
+     */
 
-  if (list_id_p->type_list.type_cnt > value_count)
-    {
-      value_count = list_id_p->type_list.type_cnt;
-    }
+    val_list_p = (DB_VALUE *) malloc (sizeof (DB_VALUE) * value_count);
+    if (val_list_p == NULL)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE) * value_count);
+	// method_clear_vacomm_buffer (&vacomm_buffer);
+	return ER_FAILED;
+      }
 
-  val_list_p = (DB_VALUE *) malloc (sizeof (DB_VALUE) * value_count);
-  if (val_list_p == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE) * value_count);
-      method_clear_vacomm_buffer (&vacomm_buffer);
-      return ER_FAILED;
-    }
+    for (count = 0, value_p = val_list_p; count < value_count; count++, value_p++)
+      {
+	db_make_null (value_p);
+      }
 
-  for (count = 0, value_p = val_list_p; count < value_count; count++, value_p++)
-    {
-      db_make_null (value_p);
-    }
+    values_p = (DB_VALUE **) malloc (sizeof (DB_VALUE *) * (value_count + 1));
+    if (values_p == NULL)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE *) * (value_count + 1));
+	// method_clear_vacomm_buffer (&vacomm_buffer);
+	free_and_init (val_list_p);
+	return ER_FAILED;
+      }
 
-  values_p = (DB_VALUE **) malloc (sizeof (DB_VALUE *) * (value_count + 1));
-  if (values_p == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE *) * (value_count + 1));
-      method_clear_vacomm_buffer (&vacomm_buffer);
-      free_and_init (val_list_p);
-      return ER_FAILED;
-    }
+    oid_cols = (int *) malloc (sizeof (int) * method_sig_list_p->num_methods);
+    if (oid_cols == NULL)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		sizeof (int) * method_sig_list_p->num_methods);
+	// method_clear_vacomm_buffer (&vacomm_buffer);
+	free_and_init (val_list_p);
+	free_and_init (values_p);
+	return ER_FAILED;
+      }
 
-  oid_cols = (int *) malloc (sizeof (int) * method_sig_list_p->num_methods);
-  if (oid_cols == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (int) * method_sig_list_p->num_methods);
-      method_clear_vacomm_buffer (&vacomm_buffer);
-      free_and_init (val_list_p);
-      free_and_init (values_p);
-      return ER_FAILED;
-    }
+    meth_sig_p = method_sig_list_p->method_sig;
+    for (num_method = 0; num_method < method_sig_list_p->num_methods; num_method++)
+      {
+	oid_cols[num_method] = meth_sig_p->method_arg_pos[0];
+	meth_sig_p = meth_sig_p->next;
+      }
 
-  meth_sig_p = method_sig_list_p->method_sig;
-  for (num_method = 0; num_method < method_sig_list_p->num_methods; num_method++)
-    {
-      oid_cols[num_method] = meth_sig_p->method_arg_pos[0];
-      meth_sig_p = meth_sig_p->next;
-    }
+    std::vector < DB_VALUE > result_values (method_sig_list_p->num_methods);
+    for (num_method = 0, meth_sig_p = method_sig_list_p->method_sig; num_method < method_sig_list_p->num_methods;
+	 ++num_method, meth_sig_p = meth_sig_p->next)
+      {
+	/* The first position # is for the object ID */
+	num_args = meth_sig_p->num_method_args + 1;
+	for (arg = 0; arg < num_args; ++arg)
+	  {
+	    pos = meth_sig_p->method_arg_pos[arg];
+	    values_p[arg] = &args[pos];
+	  }
 
-  if (!cursor_open (&cursor_id, list_id_p, false, false))
-    {
-      method_clear_vacomm_buffer (&vacomm_buffer);
-      free_and_init (values_p);
-      free_and_init (val_list_p);
-      free_and_init (oid_cols);
-      return ER_FAILED;
-    }
+	values_p[num_args] = (DB_VALUE *) 0;
+	db_make_null (&value);
 
-  /* tfile_vfid pointer as query id for method scan */
-  cursor_id.query_id = (QUERY_ID) list_id_p->tfile_vfid;
+	if (meth_sig_p->class_name != NULL)
+	  {
+	    /* Don't call the method if the object is NULL or it has been deleted.  A method call on a NULL object is
+	     * NULL. */
+	    if (!DB_IS_NULL (values_p[0]))
+	      {
+		error = db_is_any_class (db_get_object (values_p[0]));
+		if (error == 0)
+		  {
+		    error = db_is_instance (db_get_object (values_p[0]));
+		  }
+	      }
+	    if (error == ER_HEAP_UNKNOWN_OBJECT)
+	      {
+		error = NO_ERROR;
+	      }
+	    else if (error > 0)
+	      {
+		/* methods must run with authorization turned on and database modifications turned off. */
+		turn_on_auth = 0;
+		AU_ENABLE (turn_on_auth);
+		db_disable_modification ();
+		error = obj_send_array (db_get_object (values_p[0]), meth_sig_p->method_name, &value, &values_p[1]);
+		db_enable_modification ();
+		AU_DISABLE (turn_on_auth);
+	      }
+	  }
+	else
+	  {
+	    /* java stored procedure call */
+	    turn_on_auth = 0;
+	    AU_ENABLE (turn_on_auth);
+	    db_disable_modification ();
+	    error = jsp_call_from_server (&value, values_p, meth_sig_p->method_name, meth_sig_p->num_method_args);
+	    db_enable_modification ();
+	    AU_DISABLE (turn_on_auth);
+	  }
 
-  cursor_set_oid_columns (&cursor_id, oid_cols, method_sig_list_p->num_methods);
+	if (error != NO_ERROR)
+	  {
+	    cursor_result = -1;
+	    goto end;
+	  }
 
-  while (true)
-    {
-      cursor_result = cursor_next_tuple (&cursor_id);
-      if (cursor_result != DB_CURSOR_SUCCESS)
-	{
-	  break;
-	}
+	if (DB_VALUE_TYPE (&value) == DB_TYPE_ERROR)
+	  {
+	    if (er_errid () == NO_ERROR)	/* caller has not set an error */
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1);
+	      }
+	    cursor_result = -1;
+	    goto end;
+	  }
 
-      if (cursor_get_tuple_value_list (&cursor_id, list_id_p->type_list.type_cnt, val_list_p) != NO_ERROR)
-	{
-	  cursor_result = -1;
-	  goto end;
-	}
+	db_value_clone (&value, &result_values[num_method]);
 
-      for (num_method = 0, meth_sig_p = method_sig_list_p->method_sig; num_method < method_sig_list_p->num_methods;
-	   ++num_method, meth_sig_p = meth_sig_p->next)
-	{
-	  /* The first position # is for the object ID */
-	  num_args = meth_sig_p->num_method_args + 1;
-	  for (arg = 0; arg < num_args; ++arg)
-	    {
-	      pos = meth_sig_p->method_arg_pos[arg];
-	      values_p[arg] = &val_list_p[pos];
-	    }
+	// TODO: send value to server
+	// error = method_send_value_to_server (&value, &vacomm_buffer);
 
-	  values_p[num_args] = (DB_VALUE *) 0;
-	  db_make_null (&value);
+	pr_clear_value (&value);
+      }
 
-	  if (meth_sig_p->class_name != NULL)
-	    {
-	      /* Don't call the method if the object is NULL or it has been deleted.  A method call on a NULL object is
-	       * NULL. */
-	      if (!DB_IS_NULL (values_p[0]))
-		{
-		  error = db_is_any_class (db_get_object (values_p[0]));
-		  if (error == 0)
-		    {
-		      error = db_is_instance (db_get_object (values_p[0]));
-		    }
-		}
-	      if (error == ER_HEAP_UNKNOWN_OBJECT)
-		{
-		  error = NO_ERROR;
-		}
-	      else if (error > 0)
-		{
-		  /* methods must run with authorization turned on and database modifications turned off. */
-		  turn_on_auth = 0;
-		  AU_ENABLE (turn_on_auth);
-		  db_disable_modification ();
-		  error = obj_send_array (db_get_object (values_p[0]), meth_sig_p->method_name, &value, &values_p[1]);
-		  db_enable_modification ();
-		  AU_DISABLE (turn_on_auth);
-		}
-	    }
-	  else
-	    {
-	      /* java stored procedure call */
-	      turn_on_auth = 0;
-	      AU_ENABLE (turn_on_auth);
-	      db_disable_modification ();
-	      error = jsp_call_from_server (&value, values_p, meth_sig_p->method_name, meth_sig_p->num_method_args);
-	      db_enable_modification ();
-	      AU_DISABLE (turn_on_auth);
-	    }
+    packing_packer packer;
+    cubmem::extensible_block ext_blk;
 
-	  if (error != NO_ERROR)
-	    {
-	      cursor_result = -1;
-	      goto end;
-	    }
+    int length = OR_INT_SIZE;
+  for (DB_VALUE & value:result_values)
+      {
+	length += or_db_value_size (&value);
+      }
+    ext_blk.extend_to (length);
 
-	  if (DB_VALUE_TYPE (&value) == DB_TYPE_ERROR)
-	    {
-	      if (er_errid () == NO_ERROR)	/* caller has not set an error */
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1);
-		}
-	      cursor_result = -1;
-	      goto end;
-	    }
+    char *ptr = ext_blk.get_ptr ();
+    ptr = or_pack_int (ptr, result_values.size ());
+  for (DB_VALUE & value:result_values)
+      {
+	ptr = or_pack_db_value (ptr, &value);
+      }
 
-	  error = method_send_value_to_server (&value, &vacomm_buffer);
-	  if (error != NO_ERROR)
-	    {
-	      if (vacomm_buffer.action == VACOMM_BUFFER_ABORT)
-		{
-		  cursor_result = DB_CURSOR_END;
-		}
-	      else
-		{
-		  cursor_result = -1;
-		}
-	      goto end;
-	    }
+    net_client_send_data (host_p, rc, ext_blk.get_ptr (), length);
 
-	  pr_clear_value (&value);
-	}
-
-      for (count = 0, value_p = val_list_p; count < value_count; count++, value_p++)
-	{
-	  pr_clear_value (value_p);
-	}
-    }
+    for (count = 0, value_p = val_list_p; count < value_count; count++, value_p++)
+      {
+	pr_clear_value (value_p);
+      }
+  }
 
 end:
-  cursor_close (&cursor_id);
   free_and_init (values_p);
 
   pr_clear_value (&value);
@@ -481,18 +459,6 @@ end:
 
   free_and_init (val_list_p);
   free_and_init (oid_cols);
-
-  if (cursor_result == DB_CURSOR_END)
-    {
-      error = method_send_eof_to_server (&vacomm_buffer);
-      method_clear_vacomm_buffer (&vacomm_buffer);
-      return error;
-    }
-  else
-    {
-      method_clear_vacomm_buffer (&vacomm_buffer);
-      return ER_FAILED;
-    }
 }
 
 /*

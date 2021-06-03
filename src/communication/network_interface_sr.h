@@ -33,7 +33,7 @@
 #include "file_io.h"
 #include "log_comm.h"
 #include "log_writer.h"
-#include "method_scan.h"
+#include "method_scan.hpp"
 #include "thread_compat.hpp"
 
 // forward definitions

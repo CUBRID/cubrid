@@ -25,6 +25,9 @@
 #define _QUERY_METHOD_H_
 
 #ident "$Id$"
+
+#include <vector>
+
 #include "dbtype_def.h"
 
 // forward def
@@ -49,7 +52,7 @@ struct vacomm_buffer
 
 extern int method_send_error_to_server (unsigned int rc, char *host, char *server_name);
 
-extern int method_invoke_for_server (unsigned int rc, char *host, char *server_name, qfile_list_id * list_id,
+extern int method_invoke_for_server (unsigned int rc, char *host, char *server_name, std::vector < DB_VALUE > &args,
 				     method_sig_list * method_sig_list);
 
 void method_sig_list_freemem (method_sig_list * meth_sig_list);

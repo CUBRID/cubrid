@@ -37,7 +37,10 @@
 
 #include "btree.h"		/* TODO: for BTREE_SCAN */
 #include "heap_file.h"		/* for HEAP_SCANCACHE */
-#include "method_scan.h"	/* for METHOD_SCAN_BUFFER */
+
+//#include "method_scan.h"      /* for METHOD_SCAN_BUFFER */
+#include "method_scan.hpp"	/* METHOD_SCAN_ID */
+
 #include "oid.h"		/* for OID */
 #include "query_evaluator.h"
 #include "query_list.h"
@@ -288,7 +291,7 @@ struct set_scan_id
 typedef struct va_scan_id VA_SCAN_ID;
 struct va_scan_id
 {
-  METHOD_SCAN_BUFFER scan_buf;	/* value array buffer */
+  // METHOD_SCAN_BUFFER scan_buf;       /* value array buffer */
 };
 
 /* Note: Scan position is currently supported only for list file scans. */
@@ -360,6 +363,7 @@ struct scan_id_struct
     REGU_VALUES_SCAN_ID rvsid;	/* regu_variable list identifier */
     SHOWSTMT_SCAN_ID stsid;	/* show stmt identifier */
     JSON_TABLE_SCAN_ID jtid;
+    METHOD_SCAN_ID msid;
   } s;
 
   SCAN_STATS scan_stats;

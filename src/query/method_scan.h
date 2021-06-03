@@ -64,8 +64,6 @@ struct vacomm_buffer
 };
 #endif
 
-#define MAX_XS_SCANBUF_DBVALS 256
-
 typedef struct method_info METHOD_INFO;
 struct method_info
 {

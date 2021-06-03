@@ -34,6 +34,8 @@
 #include <sys/resource.h>
 #endif /* !WINDDOWS */
 
+#include <vector>
+
 #include "network.h"
 #include "network_interface_cl.h"
 #include "chartype.h"
@@ -1825,7 +1827,6 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 	      {
 		char *methoddata;
 		int methoddata_size;
-		QFILE_LIST_ID *method_call_list_id = (QFILE_LIST_ID *) 0;
 		METHOD_SIG_LIST *method_call_sig_list = (METHOD_SIG_LIST *) 0;
 
 		er_clear ();
@@ -1856,17 +1857,28 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 			  }
 #endif /* CS_MODE */
 			error = COMPARE_SIZE_AND_BUFFER (&methoddata_size, size, &methoddata, reply);
-			ptr = or_unpack_unbound_listid (methoddata, (void **) &method_call_list_id);
-			method_call_list_id->last_pgptr = NULL;
+
+			// TODO: read DB_VALUEs
+			// ptr = or_unpack_unbound_listid (methoddata, (void **) &method_call_list_id);
+			// method_call_list_id->last_pgptr = NULL;
+
+			int arg_count;
+			ptr = or_unpack_int (methoddata, &arg_count);
+
+			std::vector < DB_VALUE > args (arg_count);
+			for (int i = 0; i < arg_count; i++)
+			  {
+			    ptr = or_unpack_db_value (ptr, &args[i]);
+			  }
 			ptr = or_unpack_method_sig_list (ptr, (void **) &method_call_sig_list);
 
 			COMPARE_AND_FREE_BUFFER (methoddata, reply);
 			free_and_init (methoddata);
 
 			error =
-			  method_invoke_for_server (rc, net_Server_host, net_Server_name, method_call_list_id,
-						    method_call_sig_list);
-			cursor_free_self_list_id (method_call_list_id);
+			  method_invoke_for_server (rc, net_Server_host, net_Server_name, args, method_call_sig_list);
+
+			// cursor_free_self_list_id (method_call_list_id);
 			method_sig_list_freemem (method_call_sig_list);
 			if (error != NO_ERROR)
 			  {

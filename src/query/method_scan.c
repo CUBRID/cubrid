@@ -94,7 +94,7 @@ method_open_value_array_scan (METHOD_SCAN_BUFFER * scan_buffer_p)
   num_methods = scan_buffer_p->s.method_ctl.method_sig_list->num_methods;
   if (num_methods <= 0)
     {
-      num_methods = MAX_XS_SCANBUF_DBVALS;	/* for safe-guard */
+      num_methods = 256;	// MAX_XS_SCANBUF_DBVALS;      /* for safe-guard */
     }
 
   scan_buffer_p->dbval_list = (QPROC_DB_VALUE_LIST) malloc (sizeof (scan_buffer_p->dbval_list[0]) * num_methods);
