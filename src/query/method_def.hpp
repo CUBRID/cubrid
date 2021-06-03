@@ -38,6 +38,8 @@ typedef enum
   METHOD_IS_JAVA_SP = 3
 } METHOD_TYPE;
 
+/* this structure will be used at the next */
+#if 0
 typedef struct method_arg_info METHOD_ARG_INFO;
 struct method_arg_info
 {
@@ -45,6 +47,7 @@ struct method_arg_info
   int *arg_type; /* DB_TYPE */
   int result_type; /* DB_TYPE */
 };
+#endif
 
 typedef struct method_sig_node METHOD_SIG;
 struct method_sig_node
@@ -59,7 +62,10 @@ struct method_sig_node
   union
   {
     char *class_name;		/* class for the method */
+    /* this structure will be used at the next subtask */
+#if 0
     METHOD_ARG_INFO arg_info;
+#endif
   };
 
   method_sig_node () = default;

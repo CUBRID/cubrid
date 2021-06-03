@@ -3787,6 +3787,8 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 	      (*tail)->class_name = NULL;
 	      (*tail)->method_type = METHOD_IS_JAVA_SP;
 
+/* this routine will be used at the next subtask */
+#if 0
 	      int err;
 	      DB_OBJECT *mop_p = jsp_find_stored_procedure ((*tail)->method_name);
 	      DB_OBJECT *arg_mop_p;
@@ -3828,13 +3830,6 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 
 		  (*tail)->arg_info.arg_type[i] = db_get_int (&arg_type);
 		  pr_clear_value (&temp);
-
-		  /*
-		     if (sp_args.arg_type[i] == DB_TYPE_RESULTSET && !is_prepare_call[call_cnt])
-		     {
-		     break;
-		     }
-		   */
 		}
 	      err = db_get (mop_p, SP_ATTR_RETURN_TYPE, &result_type);
 	      if (err != NO_ERROR)
@@ -3843,6 +3838,7 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 		}
 
 	      (*tail)->arg_info.result_type = db_get_int (&result_type);
+#endif
 	    }
 	}
       else
