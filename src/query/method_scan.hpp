@@ -54,7 +54,7 @@ namespace cubscan
       public:
 	const static int METHOD_CALL = 2;
 
-	scanner () = default;
+	scanner ();
 
 //////////////////////////////////////////////////////////////////////////
 // Main SCAN routines
