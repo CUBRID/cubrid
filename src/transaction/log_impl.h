@@ -786,7 +786,9 @@ typedef struct log_reader_info
   LOG_LSA next_lsa;
 
   /*configuration */
+  int num_user;
   char **user;
+  int num_class;
   UINT64 *class_oids;
   int all_in_cond;
   int max_log_item;

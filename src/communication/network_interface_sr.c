@@ -8162,7 +8162,7 @@ slog_reader_get_log_refined_info (THREAD_ENTRY * thread_p, unsigned int rid, cha
 void
 slog_reader_get_log_refined_info_2 (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-#if !defined(NDEBUG) && 1	//JOOHOK
+#if !defined(NDEBUG) && 0	//JOOHOK
   char *reply, *ptr;
   int len;
   int trid;

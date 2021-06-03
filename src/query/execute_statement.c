@@ -15121,7 +15121,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 			sstatement->info.alter_trigger.trigger_spec_list->info.trigger_spec_list.trigger_name_list);
 
       break;
-#endif
+
     case PT_TRUNCATE:
       if (!truncate_need_repl_log (statement))
 	{
@@ -15133,7 +15133,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       statement_type = CUBRID_STMT_TRUNCATE;
 
       break;
-
+#endif
     default:
       return NO_ERROR;
     }
