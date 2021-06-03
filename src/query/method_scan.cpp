@@ -162,7 +162,7 @@ namespace cubscan
       char *reply = OR_ALIGNED_BUF_START (a_reply);
 
       packing_packer packer;
-      cubmem::extensible_block databuf { cubmem::PRIVATE_BLOCK_ALLOCATOR };
+      cubmem::extensible_block databuf;
 
       /* get packed data size */
       int length = OR_INT_SIZE; /* arg count */
