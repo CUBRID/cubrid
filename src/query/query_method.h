@@ -34,24 +34,7 @@
 struct method_sig_list;
 struct qfile_list_id;
 
-#define VACOMM_BUFFER_SIZE 4096
-
-typedef struct vacomm_buffer VACOMM_BUFFER;
-struct vacomm_buffer
-{
-  char *host;			/* server machine name */
-  char *server_name;		/* server name */
-  int rc;			/* trans request ID */
-  int num_vals;			/* number of values */
-  char *area;			/* buffer + header */
-  char *buffer;			/* buffer */
-  int cur_pos;			/* current position */
-  int size;			/* size of buffer */
-  int action;			/* client action */
-};
-
 extern int method_send_error_to_server (unsigned int rc, char *host, char *server_name);
-
 extern int method_invoke_for_server (unsigned int rc, char *host, char *server_name, std::vector < DB_VALUE > &args,
 				     method_sig_list * method_sig_list);
 
