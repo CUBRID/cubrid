@@ -257,93 +257,36 @@ static PT_NODE *pt_apply_json_table_column (PARSER_CONTEXT * parser, PT_NODE * p
 
 static PARSER_APPLY_NODE_FUNC pt_apply_func_array[PT_NODE_NUMBER];
 
-static PT_NODE *pt_init_alter_serial (PT_NODE * p);
 static PT_NODE *pt_init_alter_trigger (PT_NODE * p);
-static PT_NODE *pt_init_attach (PT_NODE * p);
-static PT_NODE *pt_init_auto_increment (PT_NODE * p);
-static PT_NODE *pt_init_create_serial (PT_NODE * p);
-static PT_NODE *pt_init_create_trigger (PT_NODE * p);
-static PT_NODE *pt_init_drop_serial (PT_NODE * p);
-static PT_NODE *pt_init_drop_trigger (PT_NODE * p);
-static PT_NODE *pt_init_evaluate (PT_NODE * p);
-static PT_NODE *pt_init_event_object (PT_NODE * p);
-static PT_NODE *pt_init_event_spec (PT_NODE * p);
-static PT_NODE *pt_init_event_target (PT_NODE * p);
-static PT_NODE *pt_init_execute_trigger (PT_NODE * p);
 static PT_NODE *pt_init_get_opt_lvl (PT_NODE * p);
-static PT_NODE *pt_init_get_trigger (PT_NODE * p);
-static PT_NODE *pt_init_get_xaction (PT_NODE * p);
 static PT_NODE *pt_init_isolation_lvl (PT_NODE * p);
-static PT_NODE *pt_init_partition (PT_NODE * p);
-static PT_NODE *pt_init_parts (PT_NODE * p);
-static PT_NODE *pt_init_remove_trigger (PT_NODE * p);
-static PT_NODE *pt_init_savepoint (PT_NODE * p);
-static PT_NODE *pt_init_scope (PT_NODE * p);
 static PT_NODE *pt_init_set_opt_lvl (PT_NODE * p);
-static PT_NODE *pt_init_set_sys_params (PT_NODE * p);
-static PT_NODE *pt_init_set_trigger (PT_NODE * p);
-static PT_NODE *pt_init_set_xaction (PT_NODE * p);
-static PT_NODE *pt_init_sp_parameter (PT_NODE * p);
-static PT_NODE *pt_init_stored_procedure (PT_NODE * p);
-static PT_NODE *pt_init_prepare (PT_NODE * p);
-static PT_NODE *pt_init_timeout (PT_NODE * p);
-static PT_NODE *pt_init_trigger_action (PT_NODE * p);
-static PT_NODE *pt_init_trigger_spec_list (PT_NODE * p);
-static PT_NODE *pt_init_alter_index (PT_NODE * p);
-static PT_NODE *pt_init_alter (PT_NODE * p);
-static PT_NODE *pt_init_alter_user (PT_NODE * p);
+
 static PT_NODE *pt_init_attr_def (PT_NODE * p);
-static PT_NODE *pt_init_attr_ordering (PT_NODE * p);
 static PT_NODE *pt_init_auth_cmd (PT_NODE * p);
-static PT_NODE *pt_init_check_option (PT_NODE * p);
-static PT_NODE *pt_init_commit_work (PT_NODE * p);
 static PT_NODE *pt_init_constraint (PT_NODE * node);
 static PT_NODE *pt_init_create_entity (PT_NODE * p);
 static PT_NODE *pt_init_create_index (PT_NODE * p);
-static PT_NODE *pt_init_create_user (PT_NODE * p);
 static PT_NODE *pt_init_data_default (PT_NODE * p);
 static PT_NODE *pt_init_datatype (PT_NODE * p);
 static PT_NODE *pt_init_delete (PT_NODE * p);
 static PT_NODE *pt_init_difference (PT_NODE * p);
-static PT_NODE *pt_init_dot (PT_NODE * p);
-static PT_NODE *pt_init_drop_index (PT_NODE * p);
-static PT_NODE *pt_init_drop (PT_NODE * p);
-static PT_NODE *pt_init_drop_user (PT_NODE * p);
-static PT_NODE *pt_init_drop_variable (PT_NODE * p);
-static PT_NODE *pt_init_error_msg (PT_NODE * p);
 static PT_NODE *pt_init_expr (PT_NODE * p);
-static PT_NODE *pt_init_file_path (PT_NODE * p);
 static PT_NODE *pt_init_function (PT_NODE * p);
-static PT_NODE *pt_init_get_stats (PT_NODE * p);
 static PT_NODE *pt_init_grant (PT_NODE * p);
-static PT_NODE *pt_init_host_var (PT_NODE * p);
 static PT_NODE *pt_init_insert (PT_NODE * p);
 static PT_NODE *pt_init_intersection (PT_NODE * p);
-static PT_NODE *pt_init_method_call (PT_NODE * p);
 static PT_NODE *pt_init_method_def (PT_NODE * p);
 static PT_NODE *pt_init_name (PT_NODE * p);
-static PT_NODE *pt_init_named_arg (PT_NODE * p);
 static PT_NODE *pt_init_node_list (PT_NODE * p);
 static PT_NODE *pt_init_pointer (PT_NODE * node);
-static PT_NODE *pt_init_prepare_to_commit (PT_NODE * p);
-static PT_NODE *pt_init_rename (PT_NODE * p);
-static PT_NODE *pt_init_rename_trigger (PT_NODE * p);
 static PT_NODE *pt_init_resolution (PT_NODE * p);
-static PT_NODE *pt_init_revoke (PT_NODE * p);
-static PT_NODE *pt_init_rollback_work (PT_NODE * p);
 static PT_NODE *pt_init_select (PT_NODE * p);
-static PT_NODE *pt_init_set_names (PT_NODE * p);
-static PT_NODE *pt_init_set_timezone (PT_NODE * p);
-static PT_NODE *pt_init_set_session_variables (PT_NODE * p);
-static PT_NODE *pt_init_drop_session_variables (PT_NODE * p);
 static PT_NODE *pt_init_showstmt (PT_NODE * p);
 static PT_NODE *pt_init_sort_spec (PT_NODE * p);
 static PT_NODE *pt_init_spec (PT_NODE * p);
 static PT_NODE *pt_init_table_option (PT_NODE * p);
-static PT_NODE *pt_init_truncate (PT_NODE * p);
-static PT_NODE *pt_init_do (PT_NODE * p);
 static PT_NODE *pt_init_union_stmt (PT_NODE * p);
-static PT_NODE *pt_init_update_stats (PT_NODE * p);
 static PT_NODE *pt_init_update (PT_NODE * p);
 static PT_NODE *pt_init_value (PT_NODE * p);
 static PT_NODE *pt_init_merge (PT_NODE * p);
@@ -352,10 +295,6 @@ static PT_NODE *pt_init_query_trace (PT_NODE * p);
 static PT_NODE *pt_init_insert_value (PT_NODE * p);
 static PT_NODE *pt_init_kill (PT_NODE * p);
 static PT_NODE *pt_init_vacuum (PT_NODE * p);
-static PT_NODE *pt_init_with_clause (PT_NODE * p);
-static PT_NODE *pt_init_cte (PT_NODE * p);
-static PT_NODE *pt_init_json_table (PT_NODE * p);
-static PT_NODE *pt_init_json_table_node (PT_NODE * p);
 static PT_NODE *pt_init_json_table_column (PT_NODE * p);
 
 static PARSER_INIT_NODE_FUNC pt_init_func_array[PT_NODE_NUMBER];
@@ -469,7 +408,6 @@ static PARSER_VARCHAR *pt_print_json_table_node (PARSER_CONTEXT * parser, PT_NOD
 static PARSER_VARCHAR *pt_print_json_table_columns (PARSER_CONTEXT * parser, PT_NODE * p);
 #if defined(ENABLE_UNUSED_FUNCTION)
 static PT_NODE *pt_apply_use (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_init_use (PT_NODE * p);
 static PARSER_VARCHAR *pt_print_use (PARSER_CONTEXT * parser, PT_NODE * p);
 #endif
 
@@ -2226,7 +2164,10 @@ parser_init_node (PT_NODE * node, PT_NODE_TYPE node_type)
 
   node->parser_id = parser_id;
   node->node_type = node_type;
-  node = (pt_init_f[node_type]) (node);
+  if (pt_init_f[node_type])
+    {
+      node = (pt_init_f[node_type]) (node);
+    }
 
   return node;
 }
@@ -2265,7 +2206,10 @@ parser_reinit_node (PT_NODE * node)
       node->column_number = column_number;
       node->cache_time = cache_time;
 
-      node = (pt_init_f[node->node_type]) (node);
+      if (pt_init_f[node->node_type])
+	{
+	  node = (pt_init_f[node->node_type]) (node);
+	}
     }
 
   return node;
@@ -4971,113 +4915,118 @@ pt_init_apply_f (void)
 static void
 pt_init_init_f (void)
 {
-  pt_init_func_array[PT_ALTER] = pt_init_alter;
-  pt_init_func_array[PT_ALTER_INDEX] = pt_init_alter_index;
-  pt_init_func_array[PT_ALTER_USER] = pt_init_alter_user;
+#define pt_init_func_null_function ((PARSER_INIT_NODE_FUNC)(NULL))
+  /* Notice:
+   * To initialize for any member variable of PT_STATEMENT_INFO to a non-zero value, 
+   * define a init function and assign a value for the member variable
+   */
+  pt_init_func_array[PT_ALTER] = pt_init_func_null_function;
+  pt_init_func_array[PT_ALTER_INDEX] = pt_init_func_null_function;
+  pt_init_func_array[PT_ALTER_USER] = pt_init_func_null_function;
   pt_init_func_array[PT_ALTER_TRIGGER] = pt_init_alter_trigger;
-  pt_init_func_array[PT_ALTER_SERIAL] = pt_init_alter_serial;
-  pt_init_func_array[PT_2PC_ATTACH] = pt_init_attach;
+  pt_init_func_array[PT_ALTER_SERIAL] = pt_init_func_null_function;
+  pt_init_func_array[PT_2PC_ATTACH] = pt_init_func_null_function;
   pt_init_func_array[PT_ATTR_DEF] = pt_init_attr_def;
-  pt_init_func_array[PT_ATTR_ORDERING] = pt_init_attr_ordering;
+  pt_init_func_array[PT_ATTR_ORDERING] = pt_init_func_null_function;
   pt_init_func_array[PT_AUTH_CMD] = pt_init_auth_cmd;
-  pt_init_func_array[PT_CHECK_OPTION] = pt_init_check_option;
-  pt_init_func_array[PT_COMMIT_WORK] = pt_init_commit_work;
+  pt_init_func_array[PT_CHECK_OPTION] = pt_init_func_null_function;
+  pt_init_func_array[PT_COMMIT_WORK] = pt_init_func_null_function;
   pt_init_func_array[PT_CREATE_ENTITY] = pt_init_create_entity;
   pt_init_func_array[PT_CREATE_INDEX] = pt_init_create_index;
-  pt_init_func_array[PT_CREATE_USER] = pt_init_create_user;
-  pt_init_func_array[PT_CREATE_TRIGGER] = pt_init_create_trigger;
-  pt_init_func_array[PT_CREATE_SERIAL] = pt_init_create_serial;
+  pt_init_func_array[PT_CREATE_USER] = pt_init_func_null_function;
+  pt_init_func_array[PT_CREATE_TRIGGER] = pt_init_func_null_function;
+  pt_init_func_array[PT_CREATE_SERIAL] = pt_init_func_null_function;
   pt_init_func_array[PT_DATA_DEFAULT] = pt_init_data_default;
   pt_init_func_array[PT_DATA_TYPE] = pt_init_datatype;
   pt_init_func_array[PT_DELETE] = pt_init_delete;
   pt_init_func_array[PT_DIFFERENCE] = pt_init_difference;
-  pt_init_func_array[PT_DOT_] = pt_init_dot;
-  pt_init_func_array[PT_DROP] = pt_init_drop;
-  pt_init_func_array[PT_DROP_INDEX] = pt_init_drop_index;
-  pt_init_func_array[PT_DROP_USER] = pt_init_drop_user;
-  pt_init_func_array[PT_DROP_TRIGGER] = pt_init_drop_trigger;
-  pt_init_func_array[PT_DROP_SERIAL] = pt_init_drop_serial;
-  pt_init_func_array[PT_DROP_VARIABLE] = pt_init_drop_variable;
+  pt_init_func_array[PT_DOT_] = pt_init_func_null_function;
+  pt_init_func_array[PT_DROP] = pt_init_func_null_function;
+  pt_init_func_array[PT_DROP_INDEX] = pt_init_func_null_function;
+  pt_init_func_array[PT_DROP_USER] = pt_init_func_null_function;
+  pt_init_func_array[PT_DROP_TRIGGER] = pt_init_func_null_function;
+  pt_init_func_array[PT_DROP_SERIAL] = pt_init_func_null_function;
+  pt_init_func_array[PT_DROP_VARIABLE] = pt_init_func_null_function;
   pt_init_func_array[PT_SPEC] = pt_init_spec;
-  pt_init_func_array[PT_EVALUATE] = pt_init_evaluate;
-  pt_init_func_array[PT_EVENT_OBJECT] = pt_init_event_object;
-  pt_init_func_array[PT_EVENT_SPEC] = pt_init_event_spec;
-  pt_init_func_array[PT_EVENT_TARGET] = pt_init_event_target;
-  pt_init_func_array[PT_EXECUTE_TRIGGER] = pt_init_execute_trigger;
+  pt_init_func_array[PT_EVALUATE] = pt_init_func_null_function;
+  pt_init_func_array[PT_EVENT_OBJECT] = pt_init_func_null_function;
+  pt_init_func_array[PT_EVENT_SPEC] = pt_init_func_null_function;
+  pt_init_func_array[PT_EVENT_TARGET] = pt_init_func_null_function;
+  pt_init_func_array[PT_EXECUTE_TRIGGER] = pt_init_func_null_function;
   pt_init_func_array[PT_EXPR] = pt_init_expr;
-  pt_init_func_array[PT_FILE_PATH] = pt_init_file_path;
+  pt_init_func_array[PT_FILE_PATH] = pt_init_func_null_function;
   pt_init_func_array[PT_FUNCTION] = pt_init_function;
   pt_init_func_array[PT_GET_OPT_LVL] = pt_init_get_opt_lvl;
-  pt_init_func_array[PT_GET_TRIGGER] = pt_init_get_trigger;
-  pt_init_func_array[PT_GET_XACTION] = pt_init_get_xaction;
+  pt_init_func_array[PT_GET_TRIGGER] = pt_init_func_null_function;
+  pt_init_func_array[PT_GET_XACTION] = pt_init_func_null_function;
   pt_init_func_array[PT_GRANT] = pt_init_grant;
-  pt_init_func_array[PT_HOST_VAR] = pt_init_host_var;
+  pt_init_func_array[PT_HOST_VAR] = pt_init_func_null_function;
   pt_init_func_array[PT_INSERT] = pt_init_insert;
   pt_init_func_array[PT_INTERSECTION] = pt_init_intersection;
-  pt_init_func_array[PT_AUTO_INCREMENT] = pt_init_auto_increment;
+  pt_init_func_array[PT_AUTO_INCREMENT] = pt_init_func_null_function;
   pt_init_func_array[PT_ISOLATION_LVL] = pt_init_isolation_lvl;
-  pt_init_func_array[PT_METHOD_CALL] = pt_init_method_call;
+  pt_init_func_array[PT_METHOD_CALL] = pt_init_func_null_function;
   pt_init_func_array[PT_METHOD_DEF] = pt_init_method_def;
   pt_init_func_array[PT_NAME] = pt_init_name;
-  pt_init_func_array[PT_NAMED_ARG] = pt_init_named_arg;
-  pt_init_func_array[PT_PREPARE_TO_COMMIT] = pt_init_prepare_to_commit;
-  pt_init_func_array[PT_REMOVE_TRIGGER] = pt_init_remove_trigger;
-  pt_init_func_array[PT_RENAME] = pt_init_rename;
-  pt_init_func_array[PT_RENAME_TRIGGER] = pt_init_rename_trigger;
+  pt_init_func_array[PT_NAMED_ARG] = pt_init_func_null_function;
+  pt_init_func_array[PT_PREPARE_TO_COMMIT] = pt_init_func_null_function;
+  pt_init_func_array[PT_REMOVE_TRIGGER] = pt_init_func_null_function;
+  pt_init_func_array[PT_RENAME] = pt_init_func_null_function;
+  pt_init_func_array[PT_RENAME_TRIGGER] = pt_init_func_null_function;
   pt_init_func_array[PT_RESOLUTION] = pt_init_resolution;
-  pt_init_func_array[PT_REVOKE] = pt_init_revoke;
-  pt_init_func_array[PT_ROLLBACK_WORK] = pt_init_rollback_work;
-  pt_init_func_array[PT_SAVEPOINT] = pt_init_savepoint;
-  pt_init_func_array[PT_SCOPE] = pt_init_scope;
+  pt_init_func_array[PT_REVOKE] = pt_init_func_null_function;
+  pt_init_func_array[PT_ROLLBACK_WORK] = pt_init_func_null_function;
+  pt_init_func_array[PT_SAVEPOINT] = pt_init_func_null_function;
+  pt_init_func_array[PT_SCOPE] = pt_init_func_null_function;
   pt_init_func_array[PT_SELECT] = pt_init_select;
-  pt_init_func_array[PT_SET_NAMES] = pt_init_set_names;
-  pt_init_func_array[PT_SET_TIMEZONE] = pt_init_set_timezone;
+  pt_init_func_array[PT_SET_NAMES] = pt_init_func_null_function;
+  pt_init_func_array[PT_SET_TIMEZONE] = pt_init_func_null_function;
   pt_init_func_array[PT_SET_OPT_LVL] = pt_init_set_opt_lvl;
-  pt_init_func_array[PT_SET_SYS_PARAMS] = pt_init_set_sys_params;
-  pt_init_func_array[PT_SET_TRIGGER] = pt_init_set_trigger;
-  pt_init_func_array[PT_SET_XACTION] = pt_init_set_xaction;
+  pt_init_func_array[PT_SET_SYS_PARAMS] = pt_init_func_null_function;
+  pt_init_func_array[PT_SET_TRIGGER] = pt_init_func_null_function;
+  pt_init_func_array[PT_SET_XACTION] = pt_init_func_null_function;
   pt_init_func_array[PT_SHOWSTMT] = pt_init_showstmt;
   pt_init_func_array[PT_SORT_SPEC] = pt_init_sort_spec;
-  pt_init_func_array[PT_TIMEOUT] = pt_init_timeout;
-  pt_init_func_array[PT_TRIGGER_ACTION] = pt_init_trigger_action;
-  pt_init_func_array[PT_TRIGGER_SPEC_LIST] = pt_init_trigger_spec_list;
+  pt_init_func_array[PT_TIMEOUT] = pt_init_func_null_function;
+  pt_init_func_array[PT_TRIGGER_ACTION] = pt_init_func_null_function;
+  pt_init_func_array[PT_TRIGGER_SPEC_LIST] = pt_init_func_null_function;
   pt_init_func_array[PT_UNION] = pt_init_union_stmt;
   pt_init_func_array[PT_UPDATE] = pt_init_update;
-  pt_init_func_array[PT_UPDATE_STATS] = pt_init_update_stats;
-  pt_init_func_array[PT_GET_STATS] = pt_init_get_stats;
+  pt_init_func_array[PT_UPDATE_STATS] = pt_init_func_null_function;
+  pt_init_func_array[PT_GET_STATS] = pt_init_func_null_function;
 #if defined (ENABLE_UNUSED_FUNCTION)
-  pt_init_func_array[PT_USE] = pt_init_use;
+  pt_init_func_array[PT_USE] = pt_init_func_null_function;
 #endif
   pt_init_func_array[PT_VALUE] = pt_init_value;
-  pt_init_func_array[PT_ZZ_ERROR_MSG] = pt_init_error_msg;
+  pt_init_func_array[PT_ZZ_ERROR_MSG] = pt_init_func_null_function;
   pt_init_func_array[PT_CONSTRAINT] = pt_init_constraint;
   pt_init_func_array[PT_NODE_POINTER] = pt_init_pointer;
 
-  pt_init_func_array[PT_CREATE_STORED_PROCEDURE] = pt_init_stored_procedure;
-  pt_init_func_array[PT_ALTER_STORED_PROCEDURE] = pt_init_stored_procedure;
-  pt_init_func_array[PT_DROP_STORED_PROCEDURE] = pt_init_stored_procedure;
-  pt_init_func_array[PT_PREPARE_STATEMENT] = pt_init_prepare;
-  pt_init_func_array[PT_EXECUTE_PREPARE] = pt_init_prepare;
-  pt_init_func_array[PT_DEALLOCATE_PREPARE] = pt_init_prepare;
-  pt_init_func_array[PT_TRUNCATE] = pt_init_truncate;
-  pt_init_func_array[PT_DO] = pt_init_do;
-  pt_init_func_array[PT_SP_PARAMETERS] = pt_init_sp_parameter;
-  pt_init_func_array[PT_PARTITION] = pt_init_partition;
-  pt_init_func_array[PT_PARTS] = pt_init_parts;
+  pt_init_func_array[PT_CREATE_STORED_PROCEDURE] = pt_init_func_null_function;
+  pt_init_func_array[PT_ALTER_STORED_PROCEDURE] = pt_init_func_null_function;
+  pt_init_func_array[PT_DROP_STORED_PROCEDURE] = pt_init_func_null_function;
+  pt_init_func_array[PT_PREPARE_STATEMENT] = pt_init_func_null_function;
+  pt_init_func_array[PT_EXECUTE_PREPARE] = pt_init_func_null_function;
+  pt_init_func_array[PT_DEALLOCATE_PREPARE] = pt_init_func_null_function;
+  pt_init_func_array[PT_TRUNCATE] = pt_init_func_null_function;
+  pt_init_func_array[PT_DO] = pt_init_func_null_function;
+  pt_init_func_array[PT_SP_PARAMETERS] = pt_init_func_null_function;
+  pt_init_func_array[PT_PARTITION] = pt_init_func_null_function;
+  pt_init_func_array[PT_PARTS] = pt_init_func_null_function;
   pt_init_func_array[PT_NODE_LIST] = pt_init_node_list;
   pt_init_func_array[PT_TABLE_OPTION] = pt_init_table_option;
-  pt_init_func_array[PT_SET_SESSION_VARIABLES] = pt_init_set_session_variables;
-  pt_init_func_array[PT_DROP_SESSION_VARIABLES] = pt_init_drop_session_variables;
+  pt_init_func_array[PT_SET_SESSION_VARIABLES] = pt_init_func_null_function;
+  pt_init_func_array[PT_DROP_SESSION_VARIABLES] = pt_init_func_null_function;
   pt_init_func_array[PT_MERGE] = pt_init_merge;
   pt_init_func_array[PT_TUPLE_VALUE] = pt_init_tuple_value;
   pt_init_func_array[PT_QUERY_TRACE] = pt_init_query_trace;
   pt_init_func_array[PT_INSERT_VALUE] = pt_init_insert_value;
   pt_init_func_array[PT_KILL_STMT] = pt_init_kill;
   pt_init_func_array[PT_VACUUM] = pt_init_vacuum;
-  pt_init_func_array[PT_WITH_CLAUSE] = pt_init_with_clause;
-  pt_init_func_array[PT_CTE] = pt_init_cte;
-  pt_init_func_array[PT_JSON_TABLE] = pt_init_json_table;
-  pt_init_func_array[PT_JSON_TABLE_NODE] = pt_init_json_table_node;
+  pt_init_func_array[PT_WITH_CLAUSE] = pt_init_func_null_function;
+  pt_init_func_array[PT_CTE] = pt_init_func_null_function;
+  pt_init_func_array[PT_JSON_TABLE] = pt_init_func_null_function;
+  pt_init_func_array[PT_JSON_TABLE_NODE] = pt_init_func_null_function;
   pt_init_func_array[PT_JSON_TABLE_COLUMN] = pt_init_json_table_column;
 
   pt_init_f = pt_init_func_array;
@@ -5209,16 +5158,22 @@ pt_init_print_f (void)
 void
 pt_init_node (PT_NODE * node, PT_NODE_TYPE node_type)
 {
+  /* There is only one path where this function is called.
+   * Also, node_type is fixed to PT_DOT_.      
+   */
   assert (node_type < PT_LAST_NODE_NUMBER);
   assert (pt_init_f != NULL);
 
-  if (!node || !(pt_init_f[node_type]))
+  if (!node)
     {
       return;
     }
 
   memset (&(node->info), 0x00, sizeof (node->info));
-  (pt_init_f[node_type]) (node);
+  if (pt_init_f[node_type])
+    {
+      (pt_init_f[node_type]) (node);
+    }
   node->node_type = node_type;
 }
 
@@ -5527,17 +5482,6 @@ pt_apply_alter (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *
   p->info.alter.constraint_list = g (parser, p->info.alter.constraint_list, arg);
   p->info.alter.create_index = g (parser, p->info.alter.create_index, arg);
   p->info.alter.internal_stmts = g (parser, p->info.alter.internal_stmts, arg);
-  return p;
-}
-
-/*
- * pt_init_alter () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_alter (PT_NODE * p)
-{
   return p;
 }
 
@@ -6199,17 +6143,6 @@ pt_apply_alter_index (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, 
 }
 
 /*
- * pt_init_alter_index () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_alter_index (PT_NODE * p)
-{
-  return p;
-}
-
-/*
  * pt_print_alter_index () -
  *   return:
  *   parser(in):
@@ -6318,17 +6251,6 @@ pt_apply_alter_user (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, v
 {
   p->info.alter_user.user_name = g (parser, p->info.alter_user.user_name, arg);
   p->info.alter_user.password = g (parser, p->info.alter_user.password, arg);
-  return p;
-}
-
-/*
- * pt_init_alter_user () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_alter_user (PT_NODE * p)
-{
   return p;
 }
 
@@ -6449,17 +6371,6 @@ static PT_NODE *
 pt_apply_attach (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
 {
   return p;
-}
-
-/*
- * pt_init_attach () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_attach (PT_NODE * p)
-{
-  return (p);
 }
 
 /*
@@ -6722,17 +6633,6 @@ pt_apply_attr_ordering (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g
 }
 
 /*
- * pt_init_attr_ordering () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_attr_ordering (PT_NODE * p)
-{
-  return p;
-}
-
-/*
  * pt_print_attr_ordering () -
  *   return:
  *   parser(in):
@@ -6825,17 +6725,6 @@ pt_apply_check_option (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g,
 }
 
 /*
- * pt_init_check_option () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_check_option (PT_NODE * p)
-{
-  return (p);
-}
-
-/*
  * pt_print_check_option () -
  *   return:
  *   parser(in):
@@ -6864,17 +6753,6 @@ static PT_NODE *
 pt_apply_commit_work (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
 {
   return p;
-}
-
-/*
- * pt_init_commit_work () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_commit_work (PT_NODE * p)
-{
-  return (p);
 }
 
 /*
@@ -7347,17 +7225,6 @@ pt_apply_create_user (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, 
 }
 
 /*
- * pt_init_create_user () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_create_user (PT_NODE * p)
-{
-  return p;
-}
-
-/*
  * pt_print_create_user () -
  *   return:
  *   parser(in):
@@ -7418,17 +7285,6 @@ pt_apply_create_trigger (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION 
   p->info.create_trigger.trigger_condition = g (parser, p->info.create_trigger.trigger_condition, arg);
   p->info.create_trigger.trigger_action = g (parser, p->info.create_trigger.trigger_action, arg);
   return p;
-}
-
-/*
- * pt_init_create_trigger () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_create_trigger (PT_NODE * p)
-{
-  return (p);
 }
 
 /*
@@ -7507,17 +7363,6 @@ static PT_NODE *
 pt_apply_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
 {
   return p;
-}
-
-/*
- * pt_init_stored_procedure () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_stored_procedure (PT_NODE * p)
-{
-  return (p);
 }
 
 /*
@@ -7601,17 +7446,6 @@ pt_apply_prepare (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void
   return p;
 }
 
-/*
- * pt_init_prepare () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_prepare (PT_NODE * p)
-{
-  return (p);
-}
-
 /* TRUNCATE ENTITY */
 /*
  * pt_apply_truncate () -
@@ -7625,17 +7459,6 @@ static PT_NODE *
 pt_apply_truncate (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
 {
   p->info.truncate.spec = g (parser, p->info.truncate.spec, arg);
-  return p;
-}
-
-/*
- * pt_init_truncate () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_truncate (PT_NODE * p)
-{
   return p;
 }
 
@@ -7778,17 +7601,6 @@ pt_apply_do (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg
 }
 
 /*
- * pt_init_do () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_do (PT_NODE * p)
-{
-  return p;
-}
-
-/*
  * pt_print_do () -
  *   return:
  *   parser(in):
@@ -7822,17 +7634,6 @@ static PT_NODE *
 pt_apply_sp_parameter (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
 {
   return p;
-}
-
-/*
- * pt_init_sp_parameter () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_sp_parameter (PT_NODE * p)
-{
-  return (p);
 }
 
 /*
@@ -7886,17 +7687,6 @@ pt_apply_partition (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, vo
     }
 
   return p;
-}
-
-/*
- * pt_init_partition () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_partition (PT_NODE * p)
-{
-  return (p);
 }
 
 /*
@@ -7958,17 +7748,6 @@ pt_apply_parts (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *
 }
 
 /*
- * pt_init_parts () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_parts (PT_NODE * p)
-{
-  return (p);
-}
-
-/*
  * pt_print_parts () -
  *   return:
  *   parser(in):
@@ -8021,39 +7800,6 @@ pt_print_parts (PARSER_CONTEXT * parser, PT_NODE * p)
     }
 
   return q;
-}
-
-/*
- * pt_init_create_serial () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_create_serial (PT_NODE * p)
-{
-  return (p);
-}
-
-/*
- * pt_init_alter_serial () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_alter_serial (PT_NODE * p)
-{
-  return (p);
-}
-
-/*
- * pt_init_drop_serial () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_drop_serial (PT_NODE * p)
-{
-  return (p);
 }
 
 /*
@@ -8915,17 +8661,6 @@ pt_apply_dot (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *ar
 }
 
 /*
- * pt_init_dot () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_dot (PT_NODE * p)
-{
-  return p;
-}
-
-/*
  * pt_print_dot () -
  *   return:
  *   parser(in):
@@ -8970,17 +8705,6 @@ pt_apply_drop (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *a
 {
   p->info.drop.spec_list = g (parser, p->info.drop.spec_list, arg);
   p->info.drop.internal_stmts = g (parser, p->info.drop.internal_stmts, arg);
-  return p;
-}
-
-/*
- * pt_init_drop () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_drop (PT_NODE * p)
-{
   return p;
 }
 
@@ -9031,17 +8755,6 @@ pt_apply_drop_index (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, v
   p->info.index.where = g (parser, p->info.index.where, arg);
   p->info.index.function_expr = g (parser, p->info.index.function_expr, arg);
 
-  return p;
-}
-
-/*
- * pt_init_drop_index () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_drop_index (PT_NODE * p)
-{
   return p;
 }
 
@@ -9119,17 +8832,6 @@ pt_apply_drop_user (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, vo
 }
 
 /*
- * pt_init_drop_user () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_drop_user (PT_NODE * p)
-{
-  return p;
-}
-
-/*
  * pt_print_drop_user () -
  *   return:
  *   parser(in):
@@ -9164,17 +8866,6 @@ pt_apply_drop_trigger (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g,
 }
 
 /*
- * pt_init_drop_trigger () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_drop_trigger (PT_NODE * p)
-{
-  return (p);
-}
-
-/*
  * pt_print_drop_trigger () -
  *   return:
  *   parser(in):
@@ -9205,17 +8896,6 @@ static PT_NODE *
 pt_apply_drop_variable (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
 {
   p->info.drop_variable.var_names = g (parser, p->info.drop_variable.var_names, arg);
-  return p;
-}
-
-/*
- * pt_init_drop_variable () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_drop_variable (PT_NODE * p)
-{
   return p;
 }
 
@@ -9535,17 +9215,6 @@ pt_apply_evaluate (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, voi
 }
 
 /*
- * pt_init_evaluate () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_evaluate (PT_NODE * p)
-{
-  return (p);
-}
-
-/*
  * pt_print_evaluate () -
  *   return:
  *   parser(in):
@@ -9587,17 +9256,6 @@ pt_apply_event_object (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g,
 }
 
 /*
- * pt_init_event_object () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_event_object (PT_NODE * p)
-{
-  return (p);
-}
-
-/*
  * pt_print_event_object () -
  *   return:
  *   parser(in):
@@ -9624,17 +9282,6 @@ pt_apply_event_spec (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, v
 {
   p->info.event_spec.event_target = g (parser, p->info.event_spec.event_target, arg);
   return p;
-}
-
-/*
- * pt_init_event_spec () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_event_spec (PT_NODE * p)
-{
-  return (p);
 }
 
 /*
@@ -9676,17 +9323,6 @@ pt_apply_event_target (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g,
 }
 
 /*
- * pt_init_event_target () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_event_target (PT_NODE * p)
-{
-  return (p);
-}
-
-/*
  * pt_print_event_target () -
  *   return:
  *   parser(in):
@@ -9725,17 +9361,6 @@ pt_apply_execute_trigger (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION
 {
   p->info.execute_trigger.trigger_spec_list = g (parser, p->info.execute_trigger.trigger_spec_list, arg);
   return p;
-}
-
-/*
- * pt_init_execute_trigger () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_execute_trigger (PT_NODE * p)
-{
-  return (p);
 }
 
 /*
@@ -12095,16 +11720,6 @@ pt_apply_file_path (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, vo
   return p;
 }
 
-/*
- * pt_init_file_path () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_file_path (PT_NODE * p)
-{
-  return p;
-}
 
 /*
  * pt_print_file_path () -
@@ -12488,17 +12103,6 @@ pt_apply_get_trigger (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, 
 }
 
 /*
- * pt_init_get_trigger () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_get_trigger (PT_NODE * p)
-{
-  return (p);
-}
-
-/*
  * pt_print_get_trigger () -
  *   return:
  *   parser(in):
@@ -12535,17 +12139,6 @@ pt_apply_get_xaction (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, 
 {
   p->info.get_xaction.into_var = g (parser, p->info.get_xaction.into_var, arg);
   return p;
-}
-
-/*
- * pt_init_get_xaction () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_get_xaction (PT_NODE * p)
-{
-  return (p);
 }
 
 /*
@@ -12646,17 +12239,6 @@ pt_print_grant (PARSER_CONTEXT * parser, PT_NODE * p)
  */
 static PT_NODE *
 pt_apply_host_var (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
-{
-  return p;
-}
-
-/*
- * pt_init_host_var () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_host_var (PT_NODE * p)
 {
   return p;
 }
@@ -13054,17 +12636,6 @@ pt_apply_auto_increment (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION 
 }
 
 /*
- * pt_init_auto_increment () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_auto_increment (PT_NODE * p)
-{
-  return (p);
-}
-
-/*
  * pt_print_auto_increment () -
  *   return:
  *   parser(in):
@@ -13182,17 +12753,6 @@ pt_apply_method_call (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, 
   p->info.method_call.arg_list = g (parser, p->info.method_call.arg_list, arg);
   p->info.method_call.on_call_target = g (parser, p->info.method_call.on_call_target, arg);
   p->info.method_call.to_return_var = g (parser, p->info.method_call.to_return_var, arg);
-  return p;
-}
-
-/*
- * pt_init_method_call () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_method_call (PT_NODE * p)
-{
   return p;
 }
 
@@ -13546,17 +13106,6 @@ pt_apply_prepare_to_commit (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTI
 }
 
 /*
- * pt_init_prepare_to_commit () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_prepare_to_commit (PT_NODE * p)
-{
-  return (p);
-}
-
-/*
  * pt_print_prepare_to_commit () -
  *   return:
  *   parser(in):
@@ -13585,17 +13134,6 @@ pt_apply_remove_trigger (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION 
 {
   p->info.remove_trigger.trigger_spec_list = g (parser, p->info.remove_trigger.trigger_spec_list, arg);
   return p;
-}
-
-/*
- * pt_init_remove_trigger () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_remove_trigger (PT_NODE * p)
-{
-  return (p);
 }
 
 /*
@@ -13631,17 +13169,6 @@ pt_apply_rename (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void 
   p->info.rename.old_name = g (parser, p->info.rename.old_name, arg);
   p->info.rename.in_class = g (parser, p->info.rename.in_class, arg);
   p->info.rename.new_name = g (parser, p->info.rename.new_name, arg);
-  return p;
-}
-
-/*
- * pt_init_rename () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_rename (PT_NODE * p)
-{
   return p;
 }
 
@@ -13693,17 +13220,6 @@ pt_apply_rename_trigger (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION 
 {
   p->info.rename_trigger.old_name = g (parser, p->info.rename_trigger.old_name, arg);
   p->info.rename_trigger.new_name = g (parser, p->info.rename_trigger.new_name, arg);
-  return p;
-}
-
-/*
- * pt_init_rename_trigger () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_rename_trigger (PT_NODE * p)
-{
   return p;
 }
 
@@ -13808,17 +13324,6 @@ pt_apply_revoke (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void 
 }
 
 /*
- * pt_init_revoke () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_revoke (PT_NODE * p)
-{
-  return (p);
-}
-
-/*
  * pt_print_revoke () -
  *   return:
  *   parser(in):
@@ -13863,17 +13368,6 @@ pt_apply_rollback_work (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g
 }
 
 /*
- * pt_init_rollback_work () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_rollback_work (PT_NODE * p)
-{
-  return (p);
-}
-
-/*
  * pt_print_rollback_work () -
  *   return:
  *   parser(in):
@@ -13912,17 +13406,6 @@ pt_apply_savepoint (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, vo
 }
 
 /*
- * pt_init_savepoint () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_savepoint (PT_NODE * p)
-{
-  return (p);
-}
-
-/*
  * pt_print_savepoint () -
  *   return:
  *   parser(in):
@@ -13955,17 +13438,6 @@ pt_apply_scope (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *
   p->info.scope.from = g (parser, p->info.scope.from, arg);
   p->info.scope.stmt = g (parser, p->info.scope.stmt, arg);
   return p;
-}
-
-/*
- * pt_init_scope () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_scope (PT_NODE * p)
-{
-  return (p);
 }
 
 /*
@@ -14763,28 +14235,6 @@ pt_apply_set_timezone (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g,
 }
 
 /*
- * pt_init_set_names () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_set_names (PT_NODE * p)
-{
-  return (p);
-}
-
-/*
- * pt_init_set_timezone () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_set_timezone (PT_NODE * p)
-{
-  return (p);
-}
-
-/*
  * pt_print_set_names () -
  *   return:
  *   parser(in):
@@ -14910,17 +14360,6 @@ pt_apply_set_sys_params (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION 
 }
 
 /*
- * pt_init_set_sys_params () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_set_sys_params (PT_NODE * p)
-{
-  return (p);
-}
-
-/*
  * pt_print_set_sys_params () -
  *   return:
  *   parser(in):
@@ -14956,17 +14395,6 @@ pt_apply_set_trigger (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, 
 {
   p->info.set_trigger.val = g (parser, p->info.set_trigger.val, arg);
   return p;
-}
-
-/*
- * pt_init_set_trigger () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_set_trigger (PT_NODE * p)
-{
-  return (p);
 }
 
 /*
@@ -15069,17 +14497,6 @@ pt_apply_set_xaction (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, 
 }
 
 /*
- * pt_init_set_xaction () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_set_xaction (PT_NODE * p)
-{
-  return (p);
-}
-
-/*
  * pt_print_set_xaction () -
  *   return:
  *   parser(in):
@@ -15173,17 +14590,6 @@ pt_apply_timeout (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void
 }
 
 /*
- * pt_init_timeout () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_timeout (PT_NODE * p)
-{
-  return (p);
-}
-
-/*
  * pt_print_timeout () -
  *   return:
  *   parser(in):
@@ -15235,17 +14641,6 @@ pt_apply_trigger_action (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION 
 }
 
 /*
- * pt_init_trigger_action () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_trigger_action (PT_NODE * p)
-{
-  return (p);
-}
-
-/*
  * pt_print_trigger_action () -
  *   return:
  *   parser(in):
@@ -15293,17 +14688,6 @@ pt_apply_trigger_spec_list (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTI
   p->info.trigger_spec_list.trigger_name_list = g (parser, p->info.trigger_spec_list.trigger_name_list, arg);
   p->info.trigger_spec_list.event_list = g (parser, p->info.trigger_spec_list.event_list, arg);
   return p;
-}
-
-/*
- * pt_init_trigger_spec_list () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_trigger_spec_list (PT_NODE * p)
-{
-  return (p);
 }
 
 /*
@@ -15696,17 +15080,6 @@ pt_apply_update_stats (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g,
 }
 
 /*
- * pt_init_update_stats () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_update_stats (PT_NODE * p)
-{
-  return p;
-}
-
-/*
  * pt_print_update_stats () -
  *   return:
  *   parser(in):
@@ -15760,17 +15133,6 @@ pt_apply_get_stats (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, vo
 }
 
 /*
- * pt_init_get_stats () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_get_stats (PT_NODE * p)
-{
-  return p;
-}
-
-/*
  * pt_print_get_stats () -
  *   return:
  *   parser(in):
@@ -15818,17 +15180,6 @@ pt_apply_use (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *ar
 {
   p->info.use.use_list = g (parser, p->info.use.use_list, arg);
   p->info.use.exclude_list = g (parser, p->info.use.exclude_list, arg);
-  return p;
-}
-
-/*
- * pt_init_use () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_use (PT_NODE * p)
-{
   return p;
 }
 
@@ -15924,17 +15275,6 @@ pt_init_value (PT_NODE * p)
 }
 
 /*
- * pt_init_set_session_variables () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_set_session_variables (PT_NODE * p)
-{
-  return p;
-}
-
-/*
  * pt_apply_set_session_variables () -
  *   return:
  *   parser(in):
@@ -15977,17 +15317,6 @@ static PT_NODE *
 pt_apply_drop_session_variables (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
 {
   p->info.drop_session_var.variables = g (parser, p->info.drop_session_var.variables, arg);
-  return p;
-}
-
-/*
- * pt_init_drop_session_variables () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_drop_session_variables (PT_NODE * p)
-{
   return p;
 }
 
@@ -16502,16 +15831,6 @@ pt_apply_error_msg (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, vo
   return p;
 }
 
-/*
- * pt_init_error_msg () -
- *   return:
- *   p(in):
- */
-static PT_NODE *
-pt_init_error_msg (PT_NODE * p)
-{
-  return p;
-}
 
 /*
  * pt_print_error_msg () -
@@ -17185,18 +16504,6 @@ pt_apply_with_clause (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, 
   return p;
 }
 
-/*
- * pt_init_with_clause ()
- * return :
- * parser (in) :
- * p (in) :
- */
-static PT_NODE *
-pt_init_with_clause (PT_NODE * p)
-{
-  return p;
-}
-
 /* CTE */
 /*
  * pt_apply_cte() -
@@ -17212,18 +16519,6 @@ pt_apply_cte (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *ar
   p->info.cte.non_recursive_part = g (parser, p->info.cte.non_recursive_part, arg);
   p->info.cte.recursive_part = g (parser, p->info.cte.recursive_part, arg);
 
-  return p;
-}
-
-/*
- * pt_init_cte ()
- * return :
- * parser (in) :
- * p (in) :
- */
-static PT_NODE *
-pt_init_cte (PT_NODE * p)
-{
   return p;
 }
 
@@ -17346,17 +16641,6 @@ pt_apply_named_arg (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, vo
 {
   p->info.named_arg.name = g (parser, p->info.named_arg.name, arg);
   p->info.named_arg.value = g (parser, p->info.named_arg.value, arg);
-  return p;
-}
-
-/*
- * pt_init_named_arg ()
- * return :
- * p (in) :
- */
-static PT_NODE *
-pt_init_named_arg (PT_NODE * p)
-{
   return p;
 }
 
@@ -18685,12 +17969,6 @@ pt_clean_tree_copy_info (PT_TREE_COPY_INFO * tree_copy_info)
 }
 
 static PT_NODE *
-pt_init_json_table (PT_NODE * p)
-{
-  return p;
-}
-
-static PT_NODE *
 pt_apply_json_table (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
 {
   p->info.json_table_info.expr = g (parser, p->info.json_table_info.expr, arg);
@@ -18723,12 +18001,6 @@ pt_print_json_table (PARSER_CONTEXT * parser, PT_NODE * p)
   pstr = pt_append_nulstring (parser, pstr, ")");
 
   return pstr;
-}
-
-static PT_NODE *
-pt_init_json_table_node (PT_NODE * p)
-{
-  return p;
 }
 
 static PT_NODE *
