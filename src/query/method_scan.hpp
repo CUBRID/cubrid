@@ -54,7 +54,11 @@ namespace cubscan
       public:
 	const static int METHOD_CALL = 2;
 
-	scanner() = default;
+	scanner () = default;
+
+//////////////////////////////////////////////////////////////////////////
+// Main SCAN routines
+//////////////////////////////////////////////////////////////////////////
 
 	int init (cubthread::entry *thread_p, method_sig_list *sig_list, qfile_list_id *list_id);
 	int open ();
@@ -64,13 +68,20 @@ namespace cubscan
       protected:
 
 //////////////////////////////////////////////////////////////////////////
-// Communication with CAS routine declarations
+// Common interface to send args and receive values
+//////////////////////////////////////////////////////////////////////////
+
+	int request ();
+	int receive (DB_VALUE &return_val);
+
+#if defined(SERVER_MODE)
+//////////////////////////////////////////////////////////////////////////
+// Communication with CAS
 //////////////////////////////////////////////////////////////////////////
 
 	int xs_send ();
-	int xs_receive ();
-
-	SCAN_CODE receive_value (DB_VALUE *value);
+	int xs_receive (DB_VALUE &val);
+#endif
 
 //////////////////////////////////////////////////////////////////////////
 // Value array scanning declarations
@@ -89,10 +100,6 @@ namespace cubscan
       private:
 
 	cubthread::entry *m_thread_p; /* thread entry */
-
-#ifdef SERVER_MODE
-	// VACOMM_BUFFER m_vacomm_buffer; /* value array buffer to communicate with CAS */
-#endif
 
 	/* signatures */
 	// TODO: method signature list will be interpret according to the method types in the future
