@@ -1858,14 +1858,13 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 #endif /* CS_MODE */
 			error = COMPARE_SIZE_AND_BUFFER (&methoddata_size, size, &methoddata, reply);
 
-			// TODO: read DB_VALUEs
-			// ptr = or_unpack_unbound_listid (methoddata, (void **) &method_call_list_id);
-			// method_call_list_id->last_pgptr = NULL;
-
 			int arg_count;
 			ptr = or_unpack_int (methoddata, &arg_count);
 
-			std::vector < DB_VALUE > args (arg_count);
+      // *INDENT-OFF*
+			std::vector <DB_VALUE> args (arg_count);
+      // *INDENT-ON*
+
 			for (int i = 0; i < arg_count; i++)
 			  {
 			    ptr = or_unpack_db_value (ptr, &args[i]);
@@ -1878,7 +1877,6 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 			error =
 			  method_invoke_for_server (rc, net_Server_host, net_Server_name, args, method_call_sig_list);
 
-			// cursor_free_self_list_id (method_call_list_id);
 			method_sig_list_freemem (method_call_sig_list);
 			if (error != NO_ERROR)
 			  {
