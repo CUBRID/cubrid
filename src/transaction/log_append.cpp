@@ -172,6 +172,12 @@ log_prior_lsa_info::push_list (log_prior_node *&list_head, log_prior_node *&list
 }
 
 void
+log_prior_lsa_info::check_lsa_consistency () const
+{
+  assert (prev_lsa < prior_lsa);
+}
+
+void
 LOG_RESET_APPEND_LSA (const LOG_LSA *lsa)
 {
   // todo - concurrency safe-guard

@@ -28,6 +28,7 @@
 #include "fake_packable_object.hpp"
 #include "log_impl.h"
 #include "log_lsa.hpp"
+#include "log_lsa_utils.hpp"
 #include "log_record.hpp"
 #include "log_system_tran.hpp"
 #include "mem_block.hpp"
@@ -87,12 +88,12 @@ TEST_CASE ("Test pack/unpack checkpoint_info class 1", "")
 
   cubpacking::packer pac;
   size_t size = env.get_before ()->get_packed_size (pac, 0);
-  char buffer[size];
-  pac.set_buffer (buffer, size);
+  std::unique_ptr<char[]> buffer (new char[size]);
+  pac.set_buffer (buffer.get (), size);
   env.get_before ()->pack (pac);
 
   cubpacking::unpacker unpac;
-  unpac.set_buffer (buffer, size);
+  unpac.set_buffer (buffer.get (), size);
   env.get_after ()->unpack (unpac);
 
   env.require_equal (*env.get_before (), *env.get_after ());
@@ -104,12 +105,12 @@ TEST_CASE ("Test pack/unpack checkpoint_info class 2", "")
 
   cubpacking::packer pac;
   size_t size = env.get_before ()->get_packed_size (pac, 0);
-  char buffer[size];
-  pac.set_buffer (buffer, size);
+  std::unique_ptr<char[]> buffer (new char[size]);
+  pac.set_buffer (buffer.get (), size);
   env.get_before ()->pack (pac);
 
   cubpacking::unpacker unpac;
-  unpac.set_buffer (buffer, size);
+  unpac.set_buffer (buffer.get (), size);
   env.get_after ()->unpack (unpac);
 
   env.require_equal (*env.get_before (), *env.get_after ());
@@ -122,13 +123,13 @@ TEST_CASE ("Test pack/unpack checkpoint_info class 3", "")
   cubpacking::packer pac;
   size_t size = env.get_before ()->get_packed_size (pac, 0);
   size += env.get_before ()->get_packed_size (pac, size);
-  char buffer[size];
-  pac.set_buffer (buffer, size);
+  std::unique_ptr<char[]> buffer (new char[size]);
+  pac.set_buffer (buffer.get (), size);
   env.get_before ()->pack (pac);
   env.get_before ()->pack (pac);
 
   cubpacking::unpacker unpac;
-  unpac.set_buffer (buffer, size);
+  unpac.set_buffer (buffer.get (), size);
   env.get_after ()->unpack (unpac);
   env.require_equal (*env.get_before (), *env.get_after ());
 
@@ -141,7 +142,7 @@ TEST_CASE ("Test pack/unpack checkpoint_info class 3", "")
 
 std::map<TRANID, log_tdes *> tran_map;
 std::map<TRANID, log_tdes *> systb_System_tdes;
-int count_2pc_after_recovery;
+size_t count_2pc_after_recovery;
 
 TEST_CASE ("Test load and recovery on empty tran table", "")
 {
@@ -159,7 +160,7 @@ TEST_CASE ("Test load and recovery on empty tran table", "")
 int
 search_for_id (TRANID id)
 {
-  for (int i = 0; i < log_Gl.trantable.num_total_indices; i++)
+  for (size_t i = 0; i < log_Gl.trantable.num_total_indices; i++)
     {
       if (log_Gl.trantable.all_tdes[i]->trid == id)
 	{
@@ -196,7 +197,7 @@ check_recovery (checkpoint_info obj)
       REQUIRE (itr->first != NULL_TRANID);
     }
 
-  for (int i = 1; i < log_Gl.trantable.num_total_indices; i++)
+  for (size_t i = 1; i < (size_t) log_Gl.trantable.num_total_indices; i++)
     {
       LOG_TDES *tdes = log_Gl.trantable.all_tdes[i];
 
@@ -290,7 +291,7 @@ TEST_CASE ("Test load and recovery on every tran table entry ", "")
   THREAD_ENTRY thd;
 
   env.generate_tran_table ();
-  int count_2pc_in_trantable = number_of_2pc ();
+  size_t count_2pc_in_trantable = number_of_2pc ();
   env.get_after ()->load_trantable_snapshot (&thd, smallest_lsa);
   env.get_after ()->recovery_analysis (&thd, start_lsa);
   env.get_after ()->recovery_2pc_analysis (&thd);
@@ -305,20 +306,20 @@ test_env_chkpt::test_env_chkpt ()
 
 test_env_chkpt::test_env_chkpt (size_t size_trans, size_t size_sysops)
 {
-  std::srand (time (0));
+  std::srand ((unsigned int) time (0));
   m_before.m_start_redo_lsa = this->generate_log_lsa ();
   m_before.m_snapshot_lsa = this->generate_log_lsa ();
 
   checkpoint_info::tran_info chkpt_trans_to_add;
   checkpoint_info::sysop_info chkpt_sysop_to_add;
 
-  for (int i = 0; i < size_trans; i++)
+  for (size_t i = 0; i < size_trans; i++)
     {
       chkpt_trans_to_add = generate_log_info_chkpt_trans ();
       m_before.m_trans.push_back (chkpt_trans_to_add);
     }
 
-  for (int i = 0; i < size_sysops; i++)
+  for (size_t i = 0; i < size_sysops; i++)
     {
       chkpt_sysop_to_add = generate_log_info_chkpt_sysop ();
       m_before.m_sysops.push_back (chkpt_sysop_to_add);
@@ -627,10 +628,11 @@ int
 csect_exit (THREAD_ENTRY *thread_p, int cs_index)
 {
   assert (true);
+  return NO_ERROR;
 }
 
 log_global::log_global ()
-  : m_prior_recver (prior_info)
+  : m_prior_recver (std::make_unique<cublog::prior_recver> (prior_info))
 {
 }
 
@@ -663,6 +665,7 @@ int
 csect_enter (THREAD_ENTRY *thread_p, int cs_index, int wait_secs)
 {
   assert (true);
+  return NO_ERROR;
 }
 
 void
@@ -687,6 +690,7 @@ LOG_TDES *
 logtb_get_system_tdes (THREAD_ENTRY *thread_p)
 {
   assert (false);
+  return nullptr;
 }
 
 LOG_TDES *
