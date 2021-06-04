@@ -35,7 +35,7 @@
 #include "network.h"
 #include "object_representation.h"
 
-#define CUBRID_LOG_ERROR_HANDLING(v) (err_code) = (v); goto cubrid_log_error
+#define CUBRID_LOG_ERROR_HANDLING(v) (err_code) = (v); fprintf (g_trace_log, "file: %s, line: %d\n", __FILE__, __LINE__); goto cubrid_log_error
 
 typedef enum
 {
@@ -200,6 +200,11 @@ cubrid_log_set_tracelog (char *path, int level, int filesize)
   snprintf (g_trace_log_path, PATH_MAX + 1, "%s", path);
   g_trace_log_level = level;
   g_trace_log_filesize = filesize;
+  g_trace_log = fopen (path, "a+");
+  if (g_trace_log == NULL)
+    {
+      return CUBRID_LOG_INVALID_PATH;
+    }
 
   return CUBRID_LOG_SUCCESS;
 }
@@ -275,7 +280,7 @@ cubrid_log_set_extraction_table (uint64_t * classoid_arr, int arr_size)
       return CUBRID_LOG_FAILED_MALLOC;
     }
 
-  memcpy (g_extraction_table, classoid_arr, arr_size);
+  memcpy (g_extraction_table, classoid_arr, arr_size * sizeof (uint64_t));
   g_extraction_table_count = arr_size;
 
   return CUBRID_LOG_SUCCESS;
@@ -397,11 +402,11 @@ cubrid_log_send_configurations (void)
 {
   unsigned short rid = 0;
 
-  OR_ALIGNED_BUF ((OR_INT_SIZE * 5)) a_request;
+  char *a_request;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *request = OR_ALIGNED_BUF_START (a_request), *ptr;
+  char *request, *ptr;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
-  int request_size = OR_ALIGNED_BUF_SIZE (a_request);
+  int request_size, i;
   int reply_size = OR_ALIGNED_BUF_SIZE (a_reply), reply_code;
 
   char *recv_data = NULL;
@@ -410,11 +415,58 @@ cubrid_log_send_configurations (void)
   CSS_QUEUE_ENTRY *queue_entry;
   int err_code;
 
+  request_size = OR_INT_SIZE * 5;
+
+  for (i = 0; i < g_extraction_user_count; i++)
+    {
+      request_size += or_packed_string_length (g_extraction_user[i], NULL);
+    }
+
+  request_size += (OR_BIGINT_SIZE * g_extraction_table_count);
+
+  a_request = (char *) malloc (request_size + MAX_ALIGNMENT);
+  if (a_request == NULL)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT);
+    }
+
+#if !defined (NDEBUG)
+  fprintf (g_trace_log,
+	   "configuration : max_log_item : %d, extraction_timeout : %d, all_in_cond : %d, num_user : %d, num_class : %d\n",
+	   g_max_log_item, g_extraction_timeout, g_all_in_cond, g_extraction_user_count, g_extraction_table_count);
+  fprintf (g_trace_log, "user : ");
+  for (i = 0; i < g_extraction_user_count; i++)
+    {
+      fprintf (g_trace_log, "| %s | ", g_extraction_user[i]);
+    }
+
+  fprintf (g_trace_log, "classes : ");
+  for (i = 0; i < g_extraction_table_count; i++)
+    {
+      fprintf (g_trace_log, "| %lld | ", g_extraction_table[i]);
+    }
+#endif
+
+  request = PTR_ALIGN (a_request, MAX_ALIGNMENT);
+
   ptr = or_pack_int (request, g_max_log_item);
   ptr = or_pack_int (ptr, g_extraction_timeout);
   ptr = or_pack_int (ptr, g_all_in_cond);
   ptr = or_pack_int (ptr, g_extraction_user_count);
+
+  for (i = 0; i < g_extraction_user_count; i++)
+    {
+      ptr = or_pack_string (ptr, g_extraction_user[i]);
+    }
+
   ptr = or_pack_int (ptr, g_extraction_table_count);
+
+  for (i = 0; i < g_extraction_table_count; i++)
+    {
+      ptr = or_pack_int64 (ptr, (INT64) g_extraction_table[i]);
+    }
+
+  request_size = ptr - request;
 
   if (css_send_request_with_data_buffer
       (g_conn_entry, NET_SERVER_LOG_READER_SET_CONFIGURATION, &rid, request, request_size, reply,
@@ -440,6 +492,8 @@ cubrid_log_send_configurations (void)
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT);
     }
 
+  free (a_request);
+
   return CUBRID_LOG_SUCCESS;
 
 cubrid_log_error:
@@ -456,6 +510,11 @@ cubrid_log_error:
       css_queue_remove_header_entry_ptr (&g_conn_entry->buffer_queue, queue_entry);
     }
 
+  if (a_request != NULL)
+    {
+      free (a_request);
+    }
+
   return err_code;
 }
 
@@ -470,6 +529,20 @@ int
 cubrid_log_connect_server (char *host, int port, char *dbname)
 {
   int err_code;
+
+  if (g_trace_log == NULL)
+    {
+      g_trace_log = fopen ("./cubrid_trace.log", "a+");
+      if (g_trace_log == NULL)
+	{
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT);
+	}
+    }
+
+  if (er_init (NULL, ER_NEVER_EXIT) != NO_ERROR)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT);
+    }
 
   if (g_stage != CUBRID_LOG_STAGE_CONFIGURATION)
     {
@@ -536,7 +609,7 @@ cubrid_log_find_start_lsa (time_t timestamp, LOG_LSA * lsa)
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_LSA_NOT_FOUND);
     }
 
-  if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, g_extraction_timeout * 1000) != NO_ERRORS)
+  if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, g_extraction_timeout * 1000 * 4) != NO_ERRORS)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_LSA_NOT_FOUND);
     }
@@ -555,8 +628,8 @@ cubrid_log_find_start_lsa (time_t timestamp, LOG_LSA * lsa)
 
   or_unpack_log_lsa (ptr, lsa);
 
-#if !defined (NDEBUG)
-  printf ("start_time = %ld, start_lsa = %lld|%d\n", timestamp, LSA_AS_ARGS (lsa));
+#if !defined (NDEBUG) && 1	// JOOHOK
+  fprintf (g_trace_log, "start_time = %ld, start_lsa = %lld|%d\n", timestamp, LSA_AS_ARGS (lsa));
 #endif
 
   if (recv_data != NULL && recv_data != reply)
@@ -643,6 +716,7 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
 
   CSS_QUEUE_ENTRY *queue_entry;
   int err_code;
+  int rc = NO_ERROR;
 
   or_pack_log_lsa (request, next_lsa);
 
@@ -653,7 +727,7 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LSA);
     }
 
-  if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, g_extraction_timeout * 1000) != NO_ERRORS)
+  if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, g_extraction_timeout * 1000 * 4) != NO_ERRORS)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LSA);
     }
@@ -667,24 +741,35 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
 
   if (reply_code != NO_ERROR)
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LSA);
+      if (reply_code == -1285 || reply_code == -1286)
+	{
+	  rc = reply_code;
+
+#if !defined (NDEBUG) && 1	// JOOHOK
+	  fprintf (g_trace_log, "while get log info_1 : error code : %d ", rc);
+#endif
+	}
+      else
+	{
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LSA);
+	}
     }
 
-#if !defined (NDEBUG)
-  printf ("send_next_lsa = %lld|%d\n", LSA_AS_ARGS (next_lsa));
+#if !defined (NDEBUG)		//JOOHOK
+  fprintf (g_trace_log, "send_next_lsa = %lld|%d\n", LSA_AS_ARGS (next_lsa));
 #endif
 
   ptr = or_unpack_log_lsa (ptr, next_lsa);
 
-#if !defined (NDEBUG)
-  printf ("recv_next_lsa = %lld|%d\n", LSA_AS_ARGS (next_lsa));
+#if !defined (NDEBUG)		//JOOHOK
+  fprintf (g_trace_log, "recv_next_lsa = %lld|%d\n", LSA_AS_ARGS (next_lsa));
 #endif
 
   ptr = or_unpack_int (ptr, num_infos);
   or_unpack_int (ptr, total_length);
 
-#if !defined (NDEBUG)
-  printf ("num_infos = %d, total_length = %d\n", *num_infos, *total_length);
+#if !defined (NDEBUG)		//JOOHOK
+  fprintf (g_trace_log, "num_infos = %d, total_length = %d\n", *num_infos, *total_length);
 #endif
 
   if (recv_data != NULL && recv_data != reply)
@@ -706,13 +791,18 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
   reply = PTR_ALIGN (g_log_infos, MAX_ALIGNMENT);
   reply_size = *total_length;
 
+  if (rc == -1285 || rc == -1286)
+    {
+      goto cubrid_log_end;
+    }
+
   if (css_send_request_with_data_buffer
       (g_conn_entry, NET_SERVER_LOG_READER_GET_LOG_REFINED_INFO_2, &rid, NULL, 0, reply, reply_size) != NO_ERRORS)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LSA);
     }
 
-  if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, g_extraction_timeout * 1000) != NO_ERRORS)
+  if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, g_extraction_timeout * 1000 * 4) != NO_ERRORS)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LSA);
     }
@@ -723,6 +813,10 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
     }
 
   return CUBRID_LOG_SUCCESS;
+
+cubrid_log_end:
+
+  return rc;
 
 cubrid_log_error:
 
@@ -746,6 +840,9 @@ cubrid_log_make_ddl (char **data_info, DDL * ddl)
 {
   char *ptr;
 
+#if !defined (NDEBUG)		// JOOHOK
+  fprintf (g_trace_log, "start MAKE DDL \n");
+#endif
   ptr = *data_info;
 
   ptr = or_unpack_int (ptr, &ddl->ddl_type);
@@ -755,6 +852,10 @@ cubrid_log_make_ddl (char **data_info, DDL * ddl)
   ptr = or_unpack_int (ptr, &ddl->statement_length);
   ptr = or_unpack_string_nocopy (ptr, &ddl->statement);
 
+#if !defined (NDEBUG)		// JOOHOK
+  fprintf (g_trace_log, "ddl_type= %d, object type : %d, classoid = %lld statement_length %d \n", ddl->ddl_type,
+	   ddl->object_type, ddl->classoid, ddl->statement_length);
+#endif
   *data_info = ptr;
 
   return CUBRID_LOG_SUCCESS;
@@ -765,14 +866,23 @@ cubrid_log_make_dml (char **data_info, DML * dml)
 {
   char *ptr;
 
-  int i;
+  int i, pack_func_code;
   int err_code;
+
+#if !defined (NDEBUG)		// JOOHOK
+  fprintf (g_trace_log, "start MAKE DML \n");
+#endif
 
   ptr = *data_info;
 
   ptr = or_unpack_int (ptr, &dml->dml_type);
   ptr = or_unpack_int64 (ptr, (INT64 *) & dml->classoid);
   ptr = or_unpack_int (ptr, &dml->num_changed_column);
+
+#if !defined (NDEBUG)		// JOOHOK
+  fprintf (g_trace_log, "dml_type= %d, classoid = %ld, num_changed_column %d\n", dml->dml_type, dml->classoid,
+	   dml->num_changed_column);
+#endif
 
   if (dml->num_changed_column)
     {
@@ -802,53 +912,91 @@ cubrid_log_make_dml (char **data_info, DML * dml)
 
       for (i = 0; i < dml->num_changed_column; i++)
 	{
-	  ptr = or_unpack_int (ptr, &dml->changed_column_data_len[i]);
+	  ptr = or_unpack_int (ptr, &pack_func_code);
 
-	  switch (dml->changed_column_data_len[i])
+	  switch (pack_func_code)
 	    {
 	    case 0:
 	      dml->changed_column_data[i] = ptr;
 	      ptr = or_unpack_int (ptr, (int *) dml->changed_column_data[i]);
+	      dml->changed_column_data_len[i] = OR_INT_SIZE;
+#if !defined (NDEBUG) && 0	// JOOHOK
+	      printf ("changed_colum_data |  def_order : %d, data :  %d\n", dml->changed_column_index[i],
+		      *(int *) dml->changed_column_data[i]);
+#endif
 	      break;
 
 	    case 1:
 	      dml->changed_column_data[i] = ptr;
 	      ptr = or_unpack_int64 (ptr, (INT64 *) dml->changed_column_data[i]);
+	      dml->changed_column_data_len[i] = OR_INT64_SIZE;
+#if !defined (NDEBUG) && 0	// JOOHOK
+	      printf ("changed_colum_data |  def_order : %d, data :  %ld\n", dml->changed_column_index[i],
+		      *(int64_t *) dml->changed_column_data[i]);
+#endif
 	      break;
 
 	    case 2:
 	      dml->changed_column_data[i] = ptr;
 	      ptr = or_unpack_float (ptr, (float *) dml->changed_column_data[i]);
+	      dml->changed_column_data_len[i] = OR_FLOAT_SIZE;
+#if !defined (NDEBUG) && 0	// JOOHOK
+	      printf ("changed_colum_data |  def_order : %d, data :  %f\n", dml->changed_column_index[i],
+		      *(float *) dml->changed_column_data[i]);
+#endif
 	      break;
 
 	    case 3:
 	      dml->changed_column_data[i] = ptr;
 	      ptr = or_unpack_double (ptr, (double *) dml->changed_column_data[i]);
+	      dml->changed_column_data_len[i] = OR_DOUBLE_SIZE;
+#if !defined (NDEBUG) && 0	// JOOHOK
+	      printf ("changed_colum_data |  def_order : %d, data :  %lf\n", dml->changed_column_index[i],
+		      *(double *) dml->changed_column_data[i]);
+#endif
 	      break;
 
 	    case 4:
 	      dml->changed_column_data[i] = ptr;
 	      ptr = or_unpack_short (ptr, (short *) dml->changed_column_data[i]);
+	      dml->changed_column_data_len[i] = OR_SHORT_SIZE;
+#if !defined (NDEBUG) && 0	// JOOHOK
+	      printf ("changed_colum_data |  def_order : %d, data :  %d\n", dml->changed_column_index[i],
+		      *(short *) dml->changed_column_data[i]);
+#endif
 	      break;
 
 	    case 5:
 	      dml->changed_column_data[i] = ptr;
 	      ptr = or_unpack_string_nocopy (ptr, &dml->changed_column_data[i]);
+	      dml->changed_column_data_len[i] = strlen (dml->changed_column_data[i]);
+#if !defined (NDEBUG) && 0	// JOOHOK
+	      printf ("changed_colum_data |  def_order : %d, data :  %s\n", dml->changed_column_index[i],
+		      dml->changed_column_data[i]);
+#endif
 	      break;
-
 	    case 6:
-	      dml->changed_column_data[i] = ptr;
-	      ptr = or_unpack_string_nocopy (ptr, &dml->changed_column_data[i]);
+	      assert (0);	// unused pack func code: or_pack_stream()
 	      break;
 
 	    case 7:
 	      dml->changed_column_data[i] = ptr;
 	      ptr = or_unpack_string_nocopy (ptr, &dml->changed_column_data[i]);
+	      dml->changed_column_data_len[i] = strlen (dml->changed_column_data[i]);
+#if !defined (NDEBUG) && 0	// JOOHOK
+	      printf ("changed_colum_data |  def_order : %d, data :  %s\n", dml->changed_column_index[i],
+		      dml->changed_column_data[i]);
+#endif
 	      break;
 
 	    case 8:
 	      dml->changed_column_data[i] = ptr;
 	      ptr = or_unpack_string_nocopy (ptr, &dml->changed_column_data[i]);
+	      dml->changed_column_data_len[i] = strlen (dml->changed_column_data[i]);
+#if !defined (NDEBUG) && 0	// JOOHOK
+	      printf ("changed_colum_data |  def_order : %d, data :  %s\n", dml->changed_column_index[i],
+		      dml->changed_column_data[i]);
+#endif
 	      break;
 
 	    default:
@@ -859,6 +1007,11 @@ cubrid_log_make_dml (char **data_info, DML * dml)
     }
 
   ptr = or_unpack_int (ptr, &dml->num_cond_column);
+
+#if !defined (NDEBUG)		// JOOHOK
+  fprintf (g_trace_log, "dml_type= %d, classoid = %ld, num_cond_column %d\n", dml->dml_type, dml->classoid,
+	   dml->num_cond_column);
+#endif
 
   if (dml->num_cond_column)
     {
@@ -888,53 +1041,91 @@ cubrid_log_make_dml (char **data_info, DML * dml)
 
       for (i = 0; i < dml->num_cond_column; i++)
 	{
-	  ptr = or_unpack_int (ptr, &dml->cond_column_data_len[i]);
+	  ptr = or_unpack_int (ptr, &pack_func_code);
 
-	  switch (dml->cond_column_data_len[i])
+	  switch (pack_func_code)
 	    {
 	    case 0:
 	      dml->cond_column_data[i] = ptr;
 	      ptr = or_unpack_int (ptr, (int *) dml->cond_column_data[i]);
+	      dml->cond_column_data_len[i] = OR_INT_SIZE;
+#if !defined (NDEBUG) && 0	// JOOHOK
+	      printf ("cond_colum_data |  def_order : %d, data :  %d\n", dml->cond_column_index[i],
+		      dml->cond_column_data[i]);
+#endif
 	      break;
 
 	    case 1:
 	      dml->cond_column_data[i] = ptr;
 	      ptr = or_unpack_int64 (ptr, (INT64 *) dml->cond_column_data[i]);
+	      dml->cond_column_data_len[i] = OR_BIGINT_SIZE;
+#if !defined (NDEBUG) && 0	// JOOHOK
+	      printf ("cond_colum_data |  def_order : %d, data :  %ld\n", dml->cond_column_index[i],
+		      dml->cond_column_data[i]);
+#endif
 	      break;
 
 	    case 2:
 	      dml->cond_column_data[i] = ptr;
 	      ptr = or_unpack_float (ptr, (float *) dml->cond_column_data[i]);
+	      dml->cond_column_data_len[i] = OR_FLOAT_SIZE;
+#if !defined (NDEBUG) && 0	// JOOHOK
+	      printf ("cond_colum_data |  def_order : %d, data :  %f\n", dml->cond_column_index[i],
+		      dml->cond_column_data[i]);
+#endif
 	      break;
 
 	    case 3:
 	      dml->cond_column_data[i] = ptr;
 	      ptr = or_unpack_double (ptr, (double *) dml->cond_column_data[i]);
+	      dml->cond_column_data_len[i] = OR_DOUBLE_SIZE;
+#if !defined (NDEBUG) && 0	// JOOHOK
+	      printf ("cond_colum_data |  def_order : %d, data :  %lf\n", dml->cond_column_index[i],
+		      dml->cond_column_data[i]);
+#endif
 	      break;
 
 	    case 4:
 	      dml->cond_column_data[i] = ptr;
 	      ptr = or_unpack_short (ptr, (short *) dml->cond_column_data[i]);
+	      dml->cond_column_data_len[i] = OR_SHORT_SIZE;
+#if !defined (NDEBUG) && 0	// JOOHOK
+	      printf ("cond_colum_data |  def_order : %d, data :  %d\n", dml->cond_column_index[i],
+		      dml->cond_column_data[i]);
+#endif
 	      break;
 
 	    case 5:
 	      dml->cond_column_data[i] = ptr;
 	      ptr = or_unpack_string_nocopy (ptr, &dml->cond_column_data[i]);
+	      dml->cond_column_data_len[i] = strlen (dml->cond_column_data[i]);
+#if !defined (NDEBUG) && 0	// JOOHOK
+	      printf ("cond_colum_data |  def_order : %d, data :  %s\n", dml->cond_column_index[i],
+		      dml->cond_column_data[i]);
+#endif
 	      break;
-
 	    case 6:
-	      dml->cond_column_data[i] = ptr;
-	      ptr = or_unpack_string_nocopy (ptr, &dml->cond_column_data[i]);
+	      assert (0);	// unused pack func code: or_pack_stream()
 	      break;
 
 	    case 7:
 	      dml->cond_column_data[i] = ptr;
 	      ptr = or_unpack_string_nocopy (ptr, &dml->cond_column_data[i]);
+	      dml->cond_column_data_len[i] = strlen (dml->cond_column_data[i]);
+#if !defined (NDEBUG) && 0	// JOOHOK
+	      printf ("cond_colum_data |  def_order : %d, data :  %s\n", dml->cond_column_index[i],
+		      dml->cond_column_data[i]);
+#endif
 	      break;
 
 	    case 8:
 	      dml->cond_column_data[i] = ptr;
 	      ptr = or_unpack_string_nocopy (ptr, &dml->cond_column_data[i]);
+	      dml->cond_column_data_len[i] = strlen (dml->cond_column_data[i]);
+#if !defined (NDEBUG) && 0	// JOOHOK
+	      printf ("cond_colum_data |  def_order : %d, data :  %s\n", dml->cond_column_index[i],
+		      dml->cond_column_data[i]);
+#endif
 	      break;
 
 	    default:
@@ -958,6 +1149,9 @@ cubrid_log_make_dcl (char **data_info, DCL * dcl)
 {
   char *ptr;
 
+#if !defined (NDEBUG)		// JOOHOK
+  fprintf (g_trace_log, "make dcl start \n");
+#endif
   ptr = *data_info;
 
   ptr = or_unpack_int (ptr, &dcl->dcl_type);
@@ -965,6 +1159,9 @@ cubrid_log_make_dcl (char **data_info, DCL * dcl)
 
   *data_info = ptr;
 
+#if !defined (NDEBUG)		// JOOHOK
+  fprintf (g_trace_log, "make dcl finished\n");
+#endif
   return CUBRID_LOG_SUCCESS;
 }
 
@@ -973,12 +1170,18 @@ cubrid_log_make_timer (char **data_info, TIMER * timer)
 {
   char *ptr;
 
+#if !defined (NDEBUG)		// JOOHOK
+  fprintf (g_trace_log, "make timer start \n");
+#endif
   ptr = *data_info;
 
   ptr = or_unpack_int64 (ptr, &timer->timestamp);
 
   *data_info = ptr;
 
+#if !defined (NDEBUG)		// JOOHOK
+  fprintf (g_trace_log, "make timer finished \n");
+#endif
   return CUBRID_LOG_SUCCESS;
 }
 
@@ -1048,6 +1251,11 @@ cubrid_log_make_log_item (char **log_info, CUBRID_LOG_ITEM * log_item)
   ptr = or_unpack_string_nocopy (ptr, &log_item->user);
   ptr = or_unpack_int (ptr, &log_item->data_item_type);
 
+#if !defined(NDEBUG)		//JOOHOK
+  fprintf (g_trace_log, "CUBRID LOG ITEM | log info len : %d, trid : %d, user : %s, data item type : %d\n",
+	   log_info_len, log_item->transaction_id, log_item->user, log_item->data_item_type);
+#endif
+
   if (cubrid_log_make_data_item (&ptr, (DATA_ITEM_TYPE) log_item->data_item_type, &log_item->data_item) !=
       CUBRID_LOG_SUCCESS)
     {
@@ -1092,6 +1300,8 @@ cubrid_log_make_log_item_list (int num_infos, int total_length, CUBRID_LOG_ITEM 
 	}
 
       g_log_items[i].next = &g_log_items[i + 1];
+
+      ptr = PTR_ALIGN (ptr, MAX_ALIGNMENT);
     }
 
   g_log_items[num_infos - 1].next = NULL;
@@ -1118,6 +1328,7 @@ cubrid_log_extract (uint64_t * lsa, CUBRID_LOG_ITEM ** log_item_list, int *list_
 {
   int num_infos, total_length;
   int err_code;
+  int rc;
 
   if (g_stage != CUBRID_LOG_STAGE_PREPARATION && g_stage != CUBRID_LOG_STAGE_EXTRACTION)
     {
@@ -1131,7 +1342,17 @@ cubrid_log_extract (uint64_t * lsa, CUBRID_LOG_ITEM ** log_item_list, int *list_
 
   memcpy (&g_next_lsa, lsa, sizeof (LOG_LSA));
 
-  if (cubrid_log_extract_internal (&g_next_lsa, &num_infos, &total_length) != CUBRID_LOG_SUCCESS)
+  rc = cubrid_log_extract_internal (&g_next_lsa, &num_infos, &total_length);
+  if (rc == -1285)
+    {
+      return CUBRID_LOG_SUCCESS_WITH_NO_LOGITEM;
+    }
+  else if (rc == -1286)
+    {
+      return CUBRID_LOG_EXTRACTION_TIMEOUT;
+/*debug logging : trace logging */
+    }
+  else if (rc != CUBRID_LOG_SUCCESS)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LSA);
     }
@@ -1141,7 +1362,50 @@ cubrid_log_extract (uint64_t * lsa, CUBRID_LOG_ITEM ** log_item_list, int *list_
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LSA);
     }
 
+  memcpy (lsa, &g_next_lsa, sizeof (uint64_t));
+
   g_stage = CUBRID_LOG_STAGE_EXTRACTION;
+
+  return CUBRID_LOG_SUCCESS;
+
+cubrid_log_error:
+
+  return err_code;
+}
+
+static int
+cubrid_log_clear_data_item (DATA_ITEM_TYPE data_item_type, CUBRID_DATA_ITEM * data_item)
+{
+  int err_code;
+
+  switch (data_item_type)
+    {
+    case DATA_ITEM_TYPE_DDL:
+      /* nothing to do */
+      break;
+
+    case DATA_ITEM_TYPE_DML:
+      free (data_item->dml.changed_column_index);
+      free (data_item->dml.changed_column_data);
+      free (data_item->dml.changed_column_data_len);
+
+      free (data_item->dml.cond_column_index);
+      free (data_item->dml.cond_column_data);
+      free (data_item->dml.cond_column_data_len);
+
+      break;
+
+    case DATA_ITEM_TYPE_DCL:
+      /* nothing to do */
+      break;
+
+    case DATA_ITEM_TYPE_TIMER:
+      /* nothing to do */
+      break;
+
+    default:
+      assert (0);
+    }
 
   return CUBRID_LOG_SUCCESS;
 
@@ -1158,17 +1422,35 @@ cubrid_log_error:
 int
 cubrid_log_clear_log_item (CUBRID_LOG_ITEM * log_item_list)
 {
+  int i;
+  int err_code;
+
   if (g_stage != CUBRID_LOG_STAGE_EXTRACTION)
     {
-      return CUBRID_LOG_INVALID_FUNC_CALL_STAGE;
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_FUNC_CALL_STAGE);
     }
 
   if (log_item_list == NULL)
     {
-      return CUBRID_LOG_INVALID_LOGITEM_LIST;
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LOGITEM_LIST);
     }
 
+  for (i = 0; i < g_log_items_count; i++)	// if g_log_items_count == 0 then nothing to do
+    {
+      if (cubrid_log_clear_data_item ((DATA_ITEM_TYPE) g_log_items[i].data_item_type, &g_log_items[i].data_item) !=
+	  CUBRID_LOG_SUCCESS)
+	{
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_DEALLOC);
+	}
+    }
+
+  g_log_items_count = 0;
+
   return CUBRID_LOG_SUCCESS;
+
+cubrid_log_error:
+
+  return err_code;
 }
 
 static int
@@ -1192,7 +1474,7 @@ cubrid_log_disconnect_server (void)
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_DISCONNECT);
     }
 
-  if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, g_extraction_timeout * 1000) != NO_ERRORS)
+  if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, g_extraction_timeout * 1000 * 4) != NO_ERRORS)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_DISCONNECT);
     }
@@ -1212,6 +1494,11 @@ cubrid_log_disconnect_server (void)
   if (recv_data != NULL && recv_data != reply)
     {
       free_and_init (recv_data);
+    }
+
+  if (g_trace_log != NULL)
+    {
+      fclose (g_trace_log);
     }
 
   css_free_conn (g_conn_entry);

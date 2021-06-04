@@ -189,6 +189,7 @@ extern void slogwr_get_log_pages (THREAD_ENTRY * thread_p, unsigned int rid, cha
 extern void slog_reader_get_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slog_reader_set_configuration (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slog_reader_get_log_refined_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void slog_reader_get_log_refined_info_2 (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slog_reader_finalize (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 
 /* external storage supports */

@@ -7894,33 +7894,27 @@ slog_supplement_statement (THREAD_ENTRY * thread_p, unsigned int rid, char *requ
   char *ptr;
 
   int supplement_type;
-  int num_class;
-  char **classname_list;
+  char *classname;
   char *objname;
   char *stmt_text;
 
   ptr = or_unpack_int (request, &supplement_type);
-  ptr = or_unpack_int (ptr, &num_class);
-  classname_list = (char **) malloc (sizeof (char *) * num_class);
-  for (int i = 0; i < num_class; i++)
-    {
-      ptr = or_unpack_string_nocopy (ptr, &classname_list[i]);
-    }
-  if (supplement_type == CUBRID_STMT_ALTER_INDEX || supplement_type == CUBRID_STMT_CREATE_INDEX
-      || supplement_type == CUBRID_STMT_DROP_INDEX)
-    {
-      ptr = or_unpack_string_nocopy (ptr, &objname);
-    }
+  ptr = or_unpack_string_nocopy (ptr, &classname);
+
+  /*JOOHOK : objname이 있는 경우, 없는 경우를 구분할 수 있도록 프로토콜을 수정, -> dependency 줄이기 */
+//  if (supplement_type == CUBRID_STMT_ALTER_INDEX || supplement_type == CUBRID_STMT_CREATE_INDEX
+//      || supplement_type == CUBRID_STMT_DROP_INDEX)
+//    {
+  ptr = or_unpack_string_nocopy (ptr, &objname);
+//    }
+
   ptr = or_unpack_string_nocopy (ptr, &stmt_text);
 
-  if (success == NO_ERROR)
-    {
-      success = xlog_supplement_statement (thread_p, supplement_type, num_class, classname_list, objname, stmt_text);
-    }
+  success = xlog_supplement_statement (thread_p, supplement_type, classname, objname, stmt_text);
 
   (void) or_pack_int (reply, success);
+
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-  free_and_init (classname_list);
 }
 
 /*
@@ -8058,26 +8052,11 @@ slogwr_get_log_pages (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
   return;
 }
 
-/*
- * slogwr_get_log_pages -
- *
- * return:
- *
- *   thread_p(in):
- *   rid(in):
- *   request(in):
- *   reqlen(in):
- *
- * Note:
- */
 void
 slog_reader_get_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  OR_ALIGNED_BUF (OR_INT_SIZE + OR_BIGINT_SIZE * 2) a_reply;
-  OR_ALIGNED_BUF (OR_BIGINT_SIZE * 2) lsa_reply;
-  /*error code : 4bytes , LSA : 8bytes */
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_LOG_LSA_ALIGNED_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
-  char *packed_lsa = OR_ALIGNED_BUF_START (lsa_reply);
   char *ptr;
   LOG_LSA start_lsa;
   time_t input_time;
@@ -8087,39 +8066,18 @@ slog_reader_get_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   ptr = or_unpack_int64 (request, &input_time);
 
   error = xlog_reader_get_lsa (thread_p, input_time, &start_lsa);
-  memcpy (&b_start_lsa, &start_lsa, sizeof (UINT64));
 
-  if (error == ER_INTERRUPTED)
-    {
-      (void) return_error_to_client (thread_p, rid);
-    }
+#if !defined(NDEBUG)		//JOOHOK2
+  _er_log_debug (ARG_FILE_LINE, "[ERROR] slog_reader_get_lsa : %d ", error);
+#endif
 
-  if (error == ER_NET_DATA_RECEIVE_TIMEDOUT)
-    {
-      css_end_server_request (thread_p->conn_entry);
-    }
-  else
-    {
-      ptr = or_pack_int (reply, error);
-      ptr = or_pack_int64 (ptr, (int64_t) b_start_lsa);
-      (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-    }
+  ptr = or_pack_int (reply, error);
+  ptr = or_pack_log_lsa (ptr, &start_lsa);
+  (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 
   return;
 }
 
-/*
- * slogwr_get_log_pages -
- *
- * return:
- *
- *   thread_p(in):
- *   rid(in):
- *   request(in):
- *   reqlen(in):
- *
- * Note:
- */
 void
 slog_reader_set_configuration (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
@@ -8128,69 +8086,86 @@ slog_reader_set_configuration (THREAD_ENTRY * thread_p, unsigned int rid, char *
   char *ptr;
   int error;
   int max_log_item, time_out, all_in_cond, num_user, num_class;
-  uint64_t *classoids;
-  char **user;
+  uint64_t *classoids = NULL;
+  char **user = NULL;
+  int user_len = 0;
+
+  char *dummy_user = NULL;
   int timeout;
 
   ptr = or_unpack_int (request, &max_log_item);
   ptr = or_unpack_int (ptr, &timeout);
   ptr = or_unpack_int (ptr, &all_in_cond);
   ptr = or_unpack_int (ptr, &num_user);
-  user = (char **) malloc (sizeof (char *) * num_user);
-  for (int i = 0; i < num_user; i++)
+
+  if (num_user > 0)
     {
-      user[i] = (char *) malloc (sizeof (char) * DB_MAX_USER_LENGTH + 1);
-      ptr = or_unpack_string (ptr, &user[i]);
+      user = (char **) malloc (sizeof (char *) * num_user);
+      if (user == NULL)
+	{
+#if !defined(NDEBUG)		//JOOHOK2
+	  _er_log_debug (ARG_FILE_LINE, "SET CONFIGURATION : user alloc failed ");
+#endif
+	}
+      for (int i = 0; i < num_user; i++)
+	{
+	  ptr = or_unpack_string (ptr, &dummy_user);
+	  user_len = strlen (dummy_user);
+	  user[i] = (char *) malloc (user_len + 1);
+	  if (user[i] == NULL)
+	    {
+#if !defined(NDEBUG)		//JOOHOK2
+	      _er_log_debug (ARG_FILE_LINE, "SET CONFIGURATION : user[%d] alloc failed ", i);
+#endif
+	    }
+	  memcpy (user[i], dummy_user, user_len);
+	  db_private_free_and_init (NULL, dummy_user);
+	  user[i][user_len] = '\0';
+	}
     }
+
   ptr = or_unpack_int (ptr, &num_class);
-  classoids = (uint64_t *) malloc (sizeof (uint64_t) * num_class);
-  for (int i = 0; i < num_class; i++)
+
+  if (num_class > 0)
     {
-      ptr = or_unpack_int64 (ptr, (int64_t *) & classoids[i]);
+      classoids = (uint64_t *) malloc (sizeof (uint64_t) * num_class);
+      if (classoids == NULL)
+	{
+#if !defined(NDEBUG)		//JOOHOK2
+	  _er_log_debug (ARG_FILE_LINE, "SET CONFIGURATION : classoids alloc failed ");
+#endif
+	}
+      for (int i = 0; i < num_class; i++)
+	{
+	  ptr = or_unpack_int64 (ptr, (INT64 *) & classoids[i]);
+	}
     }
+
+#if !defined(NDEBUG)		//JOOHOK2
+  _er_log_debug (ARG_FILE_LINE,
+		 "SET CONFIGURATION | max_log_item : %d, timeout : %d, all_in_cond : %d, num_user : %d, num_class :%d",
+		 max_log_item, timeout, all_in_cond, num_user, num_class);
+
+#endif
 
   error =
     xlog_reader_set_configuration (thread_p, max_log_item, timeout, all_in_cond, user, num_user, classoids, num_class);
-  /*it is required to free the allocated heap memory */
-  if (error == ER_INTERRUPTED)
-    {
-      (void) return_error_to_client (thread_p, rid);
-    }
 
-  if (error == ER_NET_DATA_RECEIVE_TIMEDOUT)
-    {
-      css_end_server_request (thread_p->conn_entry);
-    }
-  else
-    {
-      ptr = or_pack_int (reply, error);
-      (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-    }
-  for (int i = 0; i < num_user; i++)
-    {
-      free_and_init (user[i]);
-    }
-  free_and_init (classoids);
-  /*free the **user, *class  */
+  ptr = or_pack_int (reply, error);
+
+  (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+
+#if !defined(NDEBUG)		//JOOHOK2
+  _er_log_debug (ARG_FILE_LINE, "SET CONFIGURATION ERROR CODE : %d", error);
+#endif
+
   return;
 }
 
-/*
- * slogwr_get_log_pages -
- *
- * return:
- *
- *   thread_p(in):
- *   rid(in):
- *   request(in):
- *   reqlen(in):
- *
- * Note:
- */
 void
 slog_reader_get_log_refined_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 3 + OR_LOG_LSA_ALIGNED_SIZE) a_reply;
   /*total size of reply message is decided after log_item has been returned */
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
@@ -8200,25 +8175,78 @@ slog_reader_get_log_refined_info (THREAD_ENTRY * thread_p, unsigned int rid, cha
   char *log_info_list;
   int error;
   int num_log_info;
-  ptr = or_unpack_int64 (request, &b_start_lsa);
-  memcpy (&start_lsa, &b_start_lsa, sizeof (UINT64));
+  //ptr = or_unpack_int64 (request, (int64_t*)&b_start_lsa);
+  //memcpy (&start_lsa, &b_start_lsa, sizeof (UINT64));
 
-  error = xlog_reader_get_log_refined_info (thread_p, start_lsa, &total_length, &log_info_list, &num_log_info);
-  if (error == ER_INTERRUPTED)
-    {
-      (void) return_error_to_client (thread_p, rid);
-    }
+  or_unpack_log_lsa (request, &start_lsa);
 
-  if (error == ER_NET_DATA_RECEIVE_TIMEDOUT)
+#if !defined(NDEBUG)		//JOOHOK
+  _er_log_debug (ARG_FILE_LINE, "SERVER RECV LSA : %lld|%ld", LSA_AS_ARGS (&start_lsa));
+#endif
+  error = xlog_reader_get_log_refined_info (thread_p, &start_lsa, &total_length, &num_log_info);
+
+#if !defined(NDEBUG)		//JOOHOK2
+  _er_log_debug (ARG_FILE_LINE, "LOG_READER_GET_LOG_REFINED_INFO ERROR CODE : %d", error);
+#endif
+
+  ptr = or_pack_int (reply, error);
+
+  ptr = or_pack_log_lsa (ptr, &start_lsa);	/*pack_int64 */
+  ptr = or_pack_int (ptr, num_log_info);
+  ptr = or_pack_int (ptr, total_length);
+
+
+  (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+
+#if !defined(NDEBUG)		//JOOHOK
+  _er_log_debug (ARG_FILE_LINE, "SERVER SEND NEXT LSA : %lld|%d\n", LSA_AS_ARGS (&start_lsa));
+#endif
+
+  return;
+}
+
+void
+slog_reader_get_log_refined_info_2 (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+#if !defined(NDEBUG) && 0	//JOOHOK
+  char *reply, *ptr;
+  int len;
+  int trid;
+  char *user;
+  int data_type;
+  int dml_type;
+  uint64_t classoid;
+  int num_changed_col;
+  int func_code;
+  int changed_data;
+  int index;
+  int total_len;
+  ptr = or_unpack_int (log_Infos, &len);
+  ptr = or_unpack_int (ptr, &trid);
+  ptr = or_unpack_string_nocopy (ptr, &user);
+  ptr = or_unpack_int (ptr, &data_type);
+  if (data_type == 1)
     {
-      css_end_server_request (thread_p->conn_entry);
+      ptr = or_unpack_int (ptr, &dml_type);
+      ptr = or_unpack_int64 (ptr, (int64_t *) & classoid);
+      ptr = or_unpack_int (ptr, &num_changed_col);
+      ptr = or_unpack_int (ptr, &index);
+      ptr = or_unpack_int (ptr, &func_code);
+      ptr = or_unpack_int (ptr, &changed_data);
+      total_len = ptr - log_Infos;
+      _er_log_debug (ARG_FILE_LINE,
+		     "DML LOG INFO log len : %d, trid : %d, user : %s, datatype : %d, dml_type : %d, classoid : %lld, num changed col : %d, index : %d,  func code : %d, changed data : %d \b",
+		     len, trid, user, data_type, dml_type, classoid, num_changed_col, index, func_code, changed_data);
     }
-  else
-    {
-      ptr = or_pack_int (reply, error);
-      ptr = or_pack_stream (ptr, log_info_list, total_length);	/*to be modified */
-      (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-    }
+#endif
+
+  (void) css_send_data_to_client (thread_p->conn_entry, rid, log_Infos, log_Infos_length);
+
+#if !defined(NDEBUG)		//JOOHOK
+  _er_log_debug (ARG_FILE_LINE, "slog_reader_get_log_refined_info_2 finished");
+#endif
+  free_and_init (log_Infos);
+
 
   return;
 }
@@ -8227,7 +8255,6 @@ void
 slog_reader_finalize (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  /*total size of reply message is decided after log_item has been returned */
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
   LOG_LSA start_lsa;
@@ -8236,6 +8263,11 @@ slog_reader_finalize (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
   int error;
 
   error = xlog_reader_finalize (true);
+
+#if !defined(NDEBUG)		//JOOHOK2
+  _er_log_debug (ARG_FILE_LINE, "LOG_READER_FINALIZE ERROR CODE : %d", error);
+#endif
+
   ptr = or_pack_int (reply, error);
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 
