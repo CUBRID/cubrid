@@ -18,19 +18,8 @@
 
 #ident "$Id$"
 
-#include "config.h"
-
 #include <string.h>
-
 #include "dblink_scan.h"
-
-#include "network_interface_sr.h"	/* TODO: should not be here */
-
-#ifndef	SERVER_MODE
-#include "object_accessor.h"
-#include "dbi.h"
-#include "authenticate.h"
-#endif
 
 #include "xasl.h"
 
