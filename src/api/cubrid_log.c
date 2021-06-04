@@ -35,7 +35,7 @@
 #include "network.h"
 #include "object_representation.h"
 
-#define CUBRID_LOG_ERROR_HANDLING(v) (err_code) = (v); printf ("file: %s, line: %d\n", __FILE__, __LINE__); goto cubrid_log_error
+#define CUBRID_LOG_ERROR_HANDLING(v) (err_code) = (v); fprintf (g_trace_log, "file: %s, line: %d\n", __FILE__, __LINE__); goto cubrid_log_error
 
 typedef enum
 {
@@ -200,6 +200,11 @@ cubrid_log_set_tracelog (char *path, int level, int filesize)
   snprintf (g_trace_log_path, PATH_MAX + 1, "%s", path);
   g_trace_log_level = level;
   g_trace_log_filesize = filesize;
+  g_trace_log = fopen (path, "a+");
+  if (g_trace_log == NULL)
+    {
+      return CUBRID_LOG_INVALID_PATH;
+    }
 
   return CUBRID_LOG_SUCCESS;
 }
@@ -425,6 +430,23 @@ cubrid_log_send_configurations (void)
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT);
     }
 
+#if !defined (NDEBUG)
+  fprintf (g_trace_log,
+	   "configuration : max_log_item : %d, extraction_timeout : %d, all_in_cond : %d, num_user : %d, num_class : %d\n",
+	   g_max_log_item, g_extraction_timeout, g_all_in_cond, g_extraction_user_count, g_extraction_table_count);
+  fprintf (g_trace_log, "user : ");
+  for (i = 0; i < g_extraction_user_count; i++)
+    {
+      fprintf (g_trace_log, "| %s | ", g_extraction_user[i]);
+    }
+
+  fprintf (g_trace_log, "classes : ");
+  for (i = 0; i < g_extraction_table_count; i++)
+    {
+      fprintf (g_trace_log, "| %lld | ", g_extraction_table[i]);
+    }
+#endif
+
   request = PTR_ALIGN (a_request, MAX_ALIGNMENT);
 
   ptr = or_pack_int (request, g_max_log_item);
@@ -443,6 +465,8 @@ cubrid_log_send_configurations (void)
     {
       ptr = or_pack_int64 (ptr, (INT64) g_extraction_table[i]);
     }
+
+  request_size = ptr - request;
 
   if (css_send_request_with_data_buffer
       (g_conn_entry, NET_SERVER_LOG_READER_SET_CONFIGURATION, &rid, request, request_size, reply,
@@ -505,6 +529,20 @@ int
 cubrid_log_connect_server (char *host, int port, char *dbname)
 {
   int err_code;
+
+  if (g_trace_log == NULL)
+    {
+      g_trace_log = fopen ("./cubrid_trace.log", "a+");
+      if (g_trace_log == NULL)
+	{
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT);
+	}
+    }
+
+  if (er_init (NULL, ER_NEVER_EXIT) != NO_ERROR)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT);
+    }
 
   if (g_stage != CUBRID_LOG_STAGE_CONFIGURATION)
     {
@@ -591,7 +629,7 @@ cubrid_log_find_start_lsa (time_t timestamp, LOG_LSA * lsa)
   or_unpack_log_lsa (ptr, lsa);
 
 #if !defined (NDEBUG) && 1	// JOOHOK
-  printf ("start_time = %ld, start_lsa = %lld|%d\n", timestamp, LSA_AS_ARGS (lsa));
+  fprintf (g_trace_log, "start_time = %ld, start_lsa = %lld|%d\n", timestamp, LSA_AS_ARGS (lsa));
 #endif
 
   if (recv_data != NULL && recv_data != reply)
@@ -706,6 +744,10 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
       if (reply_code == -1285 || reply_code == -1286)
 	{
 	  rc = reply_code;
+
+#if !defined (NDEBUG) && 1	// JOOHOK
+	  fprintf (g_trace_log, "while get log info_1 : error code : %d ", rc);
+#endif
 	}
       else
 	{
@@ -713,21 +755,21 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
 	}
     }
 
-#if !defined (NDEBUG) && 1	//JOOHOK
-  printf ("send_next_lsa = %lld|%d\n", LSA_AS_ARGS (next_lsa));
+#if !defined (NDEBUG)		//JOOHOK
+  fprintf (g_trace_log, "send_next_lsa = %lld|%d\n", LSA_AS_ARGS (next_lsa));
 #endif
 
   ptr = or_unpack_log_lsa (ptr, next_lsa);
 
-#if !defined (NDEBUG) && 1	//JOOHOK
-  printf ("recv_next_lsa = %lld|%d\n", LSA_AS_ARGS (next_lsa));
+#if !defined (NDEBUG)		//JOOHOK
+  fprintf (g_trace_log, "recv_next_lsa = %lld|%d\n", LSA_AS_ARGS (next_lsa));
 #endif
 
   ptr = or_unpack_int (ptr, num_infos);
   or_unpack_int (ptr, total_length);
 
-#if !defined (NDEBUG) && 1	//JOOHOK
-  printf ("num_infos = %d, total_length = %d\n", *num_infos, *total_length);
+#if !defined (NDEBUG)		//JOOHOK
+  fprintf (g_trace_log, "num_infos = %d, total_length = %d\n", *num_infos, *total_length);
 #endif
 
   if (recv_data != NULL && recv_data != reply)
@@ -798,6 +840,9 @@ cubrid_log_make_ddl (char **data_info, DDL * ddl)
 {
   char *ptr;
 
+#if !defined (NDEBUG)		// JOOHOK
+  fprintf (g_trace_log, "start MAKE DDL \n");
+#endif
   ptr = *data_info;
 
   ptr = or_unpack_int (ptr, &ddl->ddl_type);
@@ -807,6 +852,10 @@ cubrid_log_make_ddl (char **data_info, DDL * ddl)
   ptr = or_unpack_int (ptr, &ddl->statement_length);
   ptr = or_unpack_string_nocopy (ptr, &ddl->statement);
 
+#if !defined (NDEBUG)		// JOOHOK
+  fprintf (g_trace_log, "ddl_type= %d, object type : %d, classoid = %lld statement_length %d \n", ddl->ddl_type,
+	   ddl->object_type, ddl->classoid, ddl->statement_length);
+#endif
   *data_info = ptr;
 
   return CUBRID_LOG_SUCCESS;
@@ -820,15 +869,21 @@ cubrid_log_make_dml (char **data_info, DML * dml)
   int i, pack_func_code;
   int err_code;
 
+#if !defined (NDEBUG)		// JOOHOK
+  fprintf (g_trace_log, "start MAKE DML \n");
+#endif
+
   ptr = *data_info;
 
   ptr = or_unpack_int (ptr, &dml->dml_type);
   ptr = or_unpack_int64 (ptr, (INT64 *) & dml->classoid);
   ptr = or_unpack_int (ptr, &dml->num_changed_column);
-#if !defined (NDEBUG) && 0	// JOOHOK
-  printf ("dml_type= %d, classoid = %ld, num_changed_column %d\n", dml->dml_type, dml->classoid,
-	  dml->num_changed_column);
+
+#if !defined (NDEBUG)		// JOOHOK
+  fprintf (g_trace_log, "dml_type= %d, classoid = %ld, num_changed_column %d\n", dml->dml_type, dml->classoid,
+	   dml->num_changed_column);
 #endif
+
   if (dml->num_changed_column)
     {
       // now, just malloc for validation and later, optimize it.
@@ -952,6 +1007,11 @@ cubrid_log_make_dml (char **data_info, DML * dml)
     }
 
   ptr = or_unpack_int (ptr, &dml->num_cond_column);
+
+#if !defined (NDEBUG)		// JOOHOK
+  fprintf (g_trace_log, "dml_type= %d, classoid = %ld, num_cond_column %d\n", dml->dml_type, dml->classoid,
+	   dml->num_cond_column);
+#endif
 
   if (dml->num_cond_column)
     {
@@ -1089,6 +1149,9 @@ cubrid_log_make_dcl (char **data_info, DCL * dcl)
 {
   char *ptr;
 
+#if !defined (NDEBUG)		// JOOHOK
+  fprintf (g_trace_log, "make dcl start \n");
+#endif
   ptr = *data_info;
 
   ptr = or_unpack_int (ptr, &dcl->dcl_type);
@@ -1096,6 +1159,9 @@ cubrid_log_make_dcl (char **data_info, DCL * dcl)
 
   *data_info = ptr;
 
+#if !defined (NDEBUG)		// JOOHOK
+  fprintf (g_trace_log, "make dcl finished\n");
+#endif
   return CUBRID_LOG_SUCCESS;
 }
 
@@ -1104,12 +1170,18 @@ cubrid_log_make_timer (char **data_info, TIMER * timer)
 {
   char *ptr;
 
+#if !defined (NDEBUG)		// JOOHOK
+  fprintf (g_trace_log, "make timer start \n");
+#endif
   ptr = *data_info;
 
   ptr = or_unpack_int64 (ptr, &timer->timestamp);
 
   *data_info = ptr;
 
+#if !defined (NDEBUG)		// JOOHOK
+  fprintf (g_trace_log, "make timer finished \n");
+#endif
   return CUBRID_LOG_SUCCESS;
 }
 
@@ -1178,10 +1250,12 @@ cubrid_log_make_log_item (char **log_info, CUBRID_LOG_ITEM * log_item)
   ptr = or_unpack_int (ptr, &log_item->transaction_id);
   ptr = or_unpack_string_nocopy (ptr, &log_item->user);
   ptr = or_unpack_int (ptr, &log_item->data_item_type);
-#if !defined(NDEBUG) && 1	//JOOHOK
-  printf ("CUBRID LOG ITEM | log info len : %d, trid : %d, user : %s, data item type : %d\n", log_info_len,
-	  log_item->transaction_id, log_item->user, log_item->data_item_type);
+
+#if !defined(NDEBUG)		//JOOHOK
+  fprintf (g_trace_log, "CUBRID LOG ITEM | log info len : %d, trid : %d, user : %s, data item type : %d\n",
+	   log_info_len, log_item->transaction_id, log_item->user, log_item->data_item_type);
 #endif
+
   if (cubrid_log_make_data_item (&ptr, (DATA_ITEM_TYPE) log_item->data_item_type, &log_item->data_item) !=
       CUBRID_LOG_SUCCESS)
     {
@@ -1420,6 +1494,11 @@ cubrid_log_disconnect_server (void)
   if (recv_data != NULL && recv_data != reply)
     {
       free_and_init (recv_data);
+    }
+
+  if (g_trace_log != NULL)
+    {
+      fclose (g_trace_log);
     }
 
   css_free_conn (g_conn_entry);
