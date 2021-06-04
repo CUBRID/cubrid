@@ -10752,6 +10752,8 @@ int
 xlog_reader_finalize (int shutdown)
 {
 
+  int i = 0;
+
   if (shutdown > 1 || shutdown < 0)
     {
       assert (false);
@@ -10763,6 +10765,15 @@ xlog_reader_finalize (int shutdown)
       return NO_ERROR;
     }
 
+  while (log_Reader_info.num_user > 0)
+    {
+      free (log_Reader_info.user[i++]);
+    }
+
+  if (log_Reader_info.num_class > 0)
+    {
+      free (log_Reader_info.class_oids);
+    }
   log_Reader_info.shutdown = shutdown;
   //log_finalize();
   //delete log_info_queue;
@@ -11535,6 +11546,7 @@ find_pk (THREAD_ENTRY * thread_p, OID classoid, int repr_id, int *num_attr, int 
   int idx_incache = -1;
 
   int has_pk = -1;
+  int *pk_attr;
   int num_idx_att = 0;
   *num_attr = 0;
   /*class representation initialization */
@@ -11557,14 +11569,15 @@ find_pk (THREAD_ENTRY * thread_p, OID classoid, int repr_id, int *num_attr, int 
 	      num_idx_att = index->func_index_info->attr_index_start;
 	    }
 
-	  *pk_attr_id = (int *) malloc (sizeof (int) * num_idx_att);
+	  pk_attr = (int *) malloc (sizeof (int) * num_idx_att);
 
 	  for (int j = 0; j < num_idx_att; j++)
 	    {
 	      index_att = index->atts[j];
-	      *pk_attr_id[j] = index_att->def_order;
+	      pk_attr[j] = index_att->def_order;
 	      *num_attr += 1;
 	    }
+	  *pk_attr_id = pk_attr;
 	  break;
 	}
     }
@@ -12842,7 +12855,7 @@ is_filtered_user (char *user)
 
   for (i = 0; i < log_Reader_info.num_user; i++)
     {
-      if (strcmp (log_Reader_info.user[i], user))
+      if (strcmp (log_Reader_info.user[i], user) == 0)
 	{
 	  return true;
 	}

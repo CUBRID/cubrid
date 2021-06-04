@@ -8089,6 +8089,9 @@ slog_reader_set_configuration (THREAD_ENTRY * thread_p, unsigned int rid, char *
   int max_log_item, time_out, all_in_cond, num_user, num_class;
   uint64_t *classoids = NULL;
   char **user = NULL;
+  int user_len = 0;
+
+  char *dummy_user = NULL;
   int timeout;
 
   ptr = or_unpack_int (request, &max_log_item);
@@ -8101,8 +8104,12 @@ slog_reader_set_configuration (THREAD_ENTRY * thread_p, unsigned int rid, char *
       user = (char **) malloc (sizeof (char *) * num_user);
       for (int i = 0; i < num_user; i++)
 	{
-	  user[i] = (char *) malloc (sizeof (char) * DB_MAX_USER_LENGTH + 1);
-	  ptr = or_unpack_string (ptr, &user[i]);
+	  ptr = or_unpack_string (ptr, &dummy_user);
+	  user_len = strlen (dummy_user);
+	  user[i] = (char *) malloc (user_len + 1);
+	  memcpy (user[i], dummy_user, user_len);
+	  db_private_free_and_init (NULL, dummy_user);
+	  user[i][user_len] = '\0';
 	}
     }
 
@@ -8113,7 +8120,7 @@ slog_reader_set_configuration (THREAD_ENTRY * thread_p, unsigned int rid, char *
       classoids = (uint64_t *) malloc (sizeof (uint64_t) * num_class);
       for (int i = 0; i < num_class; i++)
 	{
-	  ptr = or_unpack_int64 (ptr, (int64_t *) & classoids[i]);
+	  ptr = or_unpack_int64 (ptr, (INT64 *) & classoids[i]);
 	}
     }
 

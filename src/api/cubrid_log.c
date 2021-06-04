@@ -275,7 +275,7 @@ cubrid_log_set_extraction_table (uint64_t * classoid_arr, int arr_size)
       return CUBRID_LOG_FAILED_MALLOC;
     }
 
-  memcpy (g_extraction_table, classoid_arr, arr_size);
+  memcpy (g_extraction_table, classoid_arr, arr_size * sizeof (uint64_t));
   g_extraction_table_count = arr_size;
 
   return CUBRID_LOG_SUCCESS;
@@ -571,7 +571,7 @@ cubrid_log_find_start_lsa (time_t timestamp, LOG_LSA * lsa)
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_LSA_NOT_FOUND);
     }
 
-  if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, g_extraction_timeout * 1000 *4) != NO_ERRORS)
+  if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, g_extraction_timeout * 1000 * 4) != NO_ERRORS)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_LSA_NOT_FOUND);
     }
@@ -689,7 +689,7 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LSA);
     }
 
-  if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, g_extraction_timeout * 1000*4) != NO_ERRORS)
+  if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, g_extraction_timeout * 1000 * 4) != NO_ERRORS)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LSA);
     }
@@ -760,7 +760,7 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LSA);
     }
 
-  if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, g_extraction_timeout * 1000 *4) != NO_ERRORS)
+  if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, g_extraction_timeout * 1000 * 4) != NO_ERRORS)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LSA);
     }
@@ -1400,7 +1400,7 @@ cubrid_log_disconnect_server (void)
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_DISCONNECT);
     }
 
-  if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, g_extraction_timeout * 1000 *4) != NO_ERRORS)
+  if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, g_extraction_timeout * 1000 * 4) != NO_ERRORS)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_DISCONNECT);
     }
