@@ -9515,6 +9515,61 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 
 	      unsigned int alias_print_flag = (parser->custom_print & PT_PRINT_ALIAS);
 	      q = pt_append_nulstring (parser, q, " as ");
+#if 1
+	      // It has been temporarily modified for testing and will be re-edited as soon as possible.
+	      parser->custom_print &= ~PT_PRINT_ALIAS;
+	      q = pt_append_nulstring (parser, q, p->info.spec.range_var->info.name.original);
+
+	      parser->custom_print |= alias_print_flag;
+
+	      q = pt_append_nulstring (parser, q, "(");
+
+	      char *tp, *s;
+	      char find_str[512];
+	      int find_str_len;
+	      find_str_len = sprintf (find_str, "[%s].[", p->info.spec.range_var->info.name.original);
+
+	      r1 = pt_print_bytes_l (parser, p->info.spec.derived_table->info.dblink_table.cols);
+	      tp = (char *) r1->bytes;
+
+	      s = strstr (tp, find_str);
+	      while (s)
+		{
+		  memset (s, ' ', find_str_len);
+		  s += find_str_len;
+		  while (*s != ']')
+		    {
+		      s++;
+		    }
+		  *s = ' ';
+		  s = strstr (s + 1, find_str);
+		}
+
+	      tp = (char *) r1->bytes;
+	      s = tp;
+	      while (*s == ' ')
+		{
+		  s++;
+		}
+	      *tp = *s;		// first character
+
+	      for (s++, tp++; *s; s++)
+		{
+		  if (*s != ' ')
+		    {
+		      *tp++ = *s;
+		    }
+		  else if (tp[-1] != ' ')
+		    {
+		      *tp++ = *s;
+		    }
+		}
+	      *tp = 0x00;
+
+	      q = pt_append_nulstring (parser, q, (char *) r1->bytes);
+
+	      q = pt_append_nulstring (parser, q, ")");
+#else
 	      parser->custom_print &= ~PT_PRINT_ALIAS;
 	      r1 = pt_print_bytes (parser, p->info.spec.range_var);
 	      q = pt_append_varchar (parser, q, r1);
@@ -9524,7 +9579,7 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 	      r1 = pt_print_bytes_l (parser, p->info.spec.as_attr_list);
 	      q = pt_append_varchar (parser, q, r1);
 	      q = pt_append_nulstring (parser, q, ")");
-
+#endif
 	      return q;
 	    }
 	  else
@@ -19387,8 +19442,17 @@ pt_print_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p)
   q = pt_append_bytes (parser, q, ", ", 2);
   if (p->info.dblink_table.qstr)
     {
+#if 1
+      // It has been temporarily modified for testing and will be re-edited as soon as possible.
+      q = pt_append_bytes (parser, q, "'", 1);
+      r =
+	pt_append_bytes (parser, q, (const char *) (p->info.dblink_table.qstr->info.value.data_value.str->bytes),
+			 p->info.dblink_table.qstr->info.value.data_value.str->length);
+      q = pt_append_bytes (parser, r, "'", 1);
+#else
       r = pt_print_bytes (parser, p->info.dblink_table.qstr);
       q = pt_append_varchar (parser, q, r);
+#endif
     }
   q = pt_append_bytes (parser, q, ")", 1);
 
