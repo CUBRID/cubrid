@@ -177,6 +177,7 @@ active_tran_server::init_page_server_hosts (const char *db_name)
   // use config to connect
   //
   int valid_connection_count = 0;
+  bool failed_conn = false;
   for (const cubcomm::node &node : m_connection_list)
     {
       const int local_exit_code = connect_to_page_server (node, db_name);
@@ -184,16 +185,20 @@ active_tran_server::init_page_server_hosts (const char *db_name)
 	{
 	  ++valid_connection_count;
 	  exit_code = NO_ERROR;
-	  //found valid host clear the errors rom the bad ones
-	  er_clear ();
 	}
       else
 	{
 	  exit_code = local_exit_code;
+	  failed_conn = true;
 	  er_log_debug (ARG_FILE_LINE, "Failed to connect to host: %s port: %d\n", node.get_host ().c_str (), node.get_port ());
 	}
     }
 
+  if (failed_conn && valid_connection_count > 0)
+    {
+      //at least one valid host exists clear the error remaining from previous failing ones
+      er_clear ();
+    }
   // validate connections vs. config
   //
   if (valid_connection_count == 0 && m_uses_remote_storage)
@@ -202,13 +207,24 @@ active_tran_server::init_page_server_hosts (const char *db_name)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NO_PAGE_SERVER_CONNECTION, 0);
       return ER_NO_PAGE_SERVER_CONNECTION;
     }
-
-  er_log_debug (ARG_FILE_LINE, "Transaction server runs on %s storage.",
-		m_uses_remote_storage ? "remote" : "local");
+  if (valid_connection_count == 0)
+    {
+      // failed to connect to any page server
+      assert (exit_code != NO_ERROR);
+      er_clear ();
+      exit_code = NO_ERROR;
+      er_log_debug (ARG_FILE_LINE, "Transaction server runs on %s storage.",
+		    m_uses_remote_storage ? "remote" : "local");
+    }
+  else
+    {
+      er_log_debug (ARG_FILE_LINE, "Transaction server runs on %s storage.",
+		    m_uses_remote_storage ? "remote" : "local");
+    }
 
   // failed to connect to any page server
-  assert (valid_connection_count);
-  return valid_connection_count ? NO_ERROR : exit_code;
+  assert (valid_connection_count > 0);
+  return valid_connection_count > 0 ? NO_ERROR : exit_code;
 }
 
 int
