@@ -39,6 +39,7 @@
 #include "file_io.h"
 #include "lockfree_circular_queue.hpp"
 #include "log_append.hpp"
+#include "log_lsa_utils.hpp"
 #include "log_manager.h"
 #include "log_impl.h"
 #include "log_volids.hpp"
@@ -64,6 +65,7 @@
 #include "numeric_opfunc.h"
 #include "dbtype.h"
 #include "server_type.hpp"
+#include "vpid_utilities.hpp"
 
 #if defined(SERVER_MODE)
 #include "connection_error.h"
@@ -3616,6 +3618,7 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
 
       bufptr = PGBUF_FIND_BCB_PTR (bufid);
       PGBUF_BCB_LOCK (bufptr);
+#include "log_lsa_utils.hpp"
 
       /* flush condition check */
       if (!pgbuf_bcb_is_dirty (bufptr)
@@ -4269,6 +4272,7 @@ pgbuf_copy_from_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offs
       pgbuf_set_dirty (thread_p, pgptr, FREE);
     }
   else
+#include "log_lsa_utils.hpp"
     {
       area = NULL;
     }
@@ -4609,7 +4613,8 @@ pgbuf_get_vpid (PAGE_PTR pgptr, VPID * vpid)
  * Note: Once the buffer is freed, the content of the vpid pointer may be
  *       updated by the page buffer manager, thus a lot of care should be taken.
  *       The values of the vpid pointer must not be altered by the caller.
- *       Once the page is freed, the vpid pointer should not be used any longer.
+ *       Once the page is freed, the vpid
+                                  #include "log_lsa_utils.hpp"pointer should not be used any longer.
  */
 VPID *
 pgbuf_get_vpid_ptr (PAGE_PTR pgptr)
@@ -4693,6 +4698,7 @@ pgbuf_get_page_ptype (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 
   /* NOTE: Does not need to hold mutex since the page is fixed */
 
+#include "log_lsa_utils.hpp"
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
   assert_release (pgbuf_check_bcb_page_vpid (bufptr, false) == true);
 
@@ -7856,28 +7862,29 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid)
   /* Send a request to Page Server for the Page. */
   if (get_server_type () == SERVER_TYPE_TRANSACTION)
     {
-      constexpr size_t PAGEID_SIZE = sizeof (VPID::pageid);
-      constexpr size_t VOLID_SIZE = sizeof (VPID::volid);
-      char buffer[PAGEID_SIZE + VOLID_SIZE + sizeof (LOG_LSA)];
+      cubpacking::packer pac;
+      int size = 0;
 
-      std::memcpy (buffer, &(vpid->pageid), sizeof (vpid->pageid));
-      size_t bytes_copied = sizeof (vpid->pageid);
+      // *INDENT-OFF*
+      size += cublog::lsa_utils::get_packed_size();
+      size += cublog::vpid_utils::get_packed_size();
+      std::unique_ptr<char[]> buffer (new char[size]);
 
-      std::memcpy (buffer + bytes_copied, &(vpid->volid), sizeof (vpid->volid));
-      bytes_copied += sizeof (vpid->volid);
-
+      pac.set_buffer (buffer.get (), size);
+      cublog::vpid_utils::pack(vpid, pac);
       LOG_LSA nxio_lsa = log_Gl.append.get_nxio_lsa ();
-      std::memcpy (buffer + bytes_copied, &nxio_lsa, sizeof (nxio_lsa));
-      bytes_copied += sizeof (nxio_lsa);
+      cublog::vpid_utils::pack(nxio_lsa);
+      // *INDENT-ON*
 
-      std::string message (buffer, bytes_copied);
-      ats_Gl.push_request (ats_to_ps_request::SEND_DATA_PAGE_FETCH, std::move (message));
-      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
-	{
-	  _er_log_debug (ARG_FILE_LINE, "Sent request for Page to Page Server. pageid: %ld volid: %d\n", vpid->pageid,
-			 vpid->volid);
-	}
+  std::string message (buffer, size);
+  ats_Gl.push_request (ats_to_ps_request::SEND_DATA_PAGE_FETCH, std::move (message));
+  if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
+    {
+      _er_log_debug (ARG_FILE_LINE, "Sent request for Page to Page Server. pageid: %ld volid: %d\n", vpid->pageid,
+		     vpid->volid);
     }
+}
+
   // *INDENT-ON*
 #endif // SERVER_MODE
 }
@@ -15866,10 +15873,10 @@ class pgbuf_page_flush_daemon_task : public cubthread::entry_task
     void execute (cubthread::entry & thread_ref) override
     {
       if (!BO_IS_SERVER_RESTARTED ())
-	{
-	  // wait for boot to finish
-	  return;
-	}
+        {
+          // wait for boot to finish
+          return;
+        }
 
       // did not timeout, someone requested flush... run at least once
       bool force_one_run = pgbuf_Page_flush_daemon->was_woken_up ();
@@ -15877,30 +15884,30 @@ class pgbuf_page_flush_daemon_task : public cubthread::entry_task
 
       /* flush pages as long as necessary */
       while (force_one_run || pgbuf_keep_victim_flush_thread_running ())
-	{
-	  pgbuf_flush_victim_candidates (&thread_ref, prm_get_float_value (PRM_ID_PB_BUFFER_FLUSH_RATIO), &m_perf_track,
-					 &stop_iteration);
-	  force_one_run = false;
-	  if (stop_iteration)
-	    {
-	      break;
-	    }
-	}
+        {
+          pgbuf_flush_victim_candidates (&thread_ref, prm_get_float_value (PRM_ID_PB_BUFFER_FLUSH_RATIO), &m_perf_track,
+                                         &stop_iteration);
+          force_one_run = false;
+          if (stop_iteration)
+            {
+              break;
+            }
+        }
 
       /* performance tracking */
       if (m_perf_track.is_perf_tracking)
-	{
-	  /* register sleep time. */
-	  PERF_UTIME_TRACKER_TIME_AND_RESTART (&thread_ref, &m_perf_track, PSTAT_PB_FLUSH_SLEEP);
+        {
+          /* register sleep time. */
+          PERF_UTIME_TRACKER_TIME_AND_RESTART (&thread_ref, &m_perf_track, PSTAT_PB_FLUSH_SLEEP);
 
 	  /* update is_perf_tracking */
 	  m_perf_track.is_perf_tracking = perfmon_is_perf_tracking ();
 	}
       else
-	{
-	  /* update is_perf_tracking and start timer if it became true */
-	  PERF_UTIME_TRACKER_START (&thread_ref, &m_perf_track);
-	}
+        {
+          /* update is_perf_tracking and start timer if it became true */
+          PERF_UTIME_TRACKER_START (&thread_ref, &m_perf_track);
+        }
     }
 };
 #endif /* SERVER_MODE */
@@ -15951,17 +15958,17 @@ class pgbuf_flush_control_daemon_task : public cubthread::entry_task
     void execute (cubthread::entry & thread_ref) override
     {
       if (!BO_IS_SERVER_RESTARTED ())
-	{
-	  // wait for boot to finish
-	  return;
-	}
+        {
+          // wait for boot to finish
+          return;
+        }
 
       if (m_first_run)
-	{
-	  gettimeofday (&m_end, NULL);
-	  m_first_run = false;
-	  return;
-	}
+        {
+          gettimeofday (&m_end, NULL);
+          m_first_run = false;
+          return;
+        }
 
       struct timeval begin, diff;
       int token_gen, token_consumed;
