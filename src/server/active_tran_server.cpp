@@ -310,14 +310,8 @@ active_tran_server::get_page_broker ()
   return *m_data_page_broker;
 }
 
-bool active_tran_server::uses_remote_storage () const
-{
-  assert_is_active_tran_server ();
-
-  return m_uses_remote_storage;
-}
-
-bool active_tran_server::has_remote_storage () const
+bool
+active_tran_server::uses_remote_storage () const
 {
   assert_is_active_tran_server ();
 
