@@ -166,13 +166,18 @@ void page_server::on_log_page_read_result (const LOG_PAGE *log_page, int error_c
 void page_server::on_data_page_read_result (const FILEIO_PAGE *io_page, int error_code)
 {
   char buffer[sizeof (int) + IO_MAX_PAGE_SIZE];
-  std::memcpy (buffer, &error_code, sizeof (error_code));
-  std::size_t buffer_size = sizeof (error_code);
-
-  if (error_code == NO_ERROR)
+  std::string message;
+  if (error_code != NO_ERROR)
     {
-      std::memcpy (buffer + sizeof (error_code), io_page, db_io_page_size ());
-      buffer_size += db_io_page_size ();
+      char buffer[sizeof (int)];
+      std::memcpy (buffer, &error_code, sizeof (error_code));
+      message = std::string (buffer, sizeof (int));
+    }
+  else
+    {
+      char buffer[IO_MAX_PAGE_SIZE];
+      std::memcpy (buffer, io_page, db_io_page_size ());
+      message = std::string (buffer, db_io_page_size ());
     }
 
   if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
@@ -188,7 +193,6 @@ void page_server::on_data_page_read_result (const FILEIO_PAGE *io_page, int erro
 	}
     }
 
-  std::string message (buffer, buffer_size);
   m_active_tran_server_conn->push (ps_to_ats_request::SEND_DATA_PAGE, std::move (message));
 }
 

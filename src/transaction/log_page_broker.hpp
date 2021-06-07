@@ -56,7 +56,7 @@ template<>
 struct map_type<data_page_type>
 {
   typedef vpid key;
-  typedef std::shared_ptr<data_page_owner> value;
+  typedef std::shared_ptr<std::string> value;
 };
 
 enum entry_state

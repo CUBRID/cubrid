@@ -363,29 +363,33 @@ void active_tran_server::receive_data_page (cubpacking::unpacker &upk)
   std::string message;
   upk.unpack_string (message);
 
-  int error_code;
-  std::memcpy (&error_code, message.c_str (), sizeof (error_code));
-
-  std::shared_ptr<data_page_owner> shared_data_page;
-  if (error_code == NO_ERROR)
+  if (message.size () == sizeof (int))
     {
-      shared_data_page = std::make_shared<data_page_owner> (message.c_str () + sizeof (error_code), db_io_page_size ());
-      VPID id;
-      id.pageid = shared_data_page->prv ().pageid;
-      id.volid = shared_data_page->prv ().volid;
-      m_data_page_broker->set_page (id, std::move (shared_data_page));
-    }
+      // We have an error.
+      int error_code;
+      std::memcpy (&error_code, message.c_str (), sizeof (error_code));
 
-  if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
-    {
-      if (error_code == NO_ERROR)
-	{
-	  _er_log_debug (ARG_FILE_LINE, "Received data page message from Page Server. LSA: %lld|%d, Page ID: %ld, Volid: %d",
-			 LSA_AS_ARGS (&shared_data_page->prv ().lsa), shared_data_page->prv ().pageid, shared_data_page->prv ().volid);
-	}
-      else
+      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
 	{
 	  _er_log_debug (ARG_FILE_LINE, "Received data page message from Page Server. Error: %d \n", error_code);
+	}
+    }
+  else
+    {
+      // We have a page.
+      auto shared_data_page = std::make_shared<std::string> (message);
+
+      auto io_page = (FILEIO_PAGE *)shared_data_page->c_str ();
+      VPID id;
+      id.pageid = io_page->prv.pageid;
+      id.volid = io_page->prv.volid;
+
+      m_data_page_broker->set_page (id, std::move (shared_data_page));
+
+      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
+	{
+	  _er_log_debug (ARG_FILE_LINE, "Received data page message from Page Server. LSA: %lld|%d, Page ID: %ld, Volid: %d",
+			 LSA_AS_ARGS (&io_page->prv.lsa), io_page->prv.pageid, io_page->prv.volid);
 	}
     }
 }
