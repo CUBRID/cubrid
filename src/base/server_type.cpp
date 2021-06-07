@@ -22,6 +22,7 @@
 #include "communication_server_channel.hpp"
 #include "connection_defs.h"
 #include "error_manager.h"
+#include "log_impl.h"
 #include "page_server.hpp"
 #include "system_parameter.h"
 
@@ -53,6 +54,13 @@ int init_server_type (const char *db_name)
     {
       er_code = ats_Gl.init_page_server_hosts (db_name);
     }
+  else
+    {
+      assert (g_server_type == SERVER_TYPE_PAGE);
+
+      // page server needs a log prior receiver
+      log_Gl.initialize_log_prior_receiver ();
+    }
 
   if (er_code == NO_ERROR)
     {
@@ -83,8 +91,18 @@ void finalize_server_type ()
 
 int init_server_type (const char *)
 {
+  int err_code = NO_ERROR;
+
   g_server_type = SERVER_TYPE_TRANSACTION;
-  return NO_ERROR;
+
+  const bool uses_remote_storage = prm_get_bool_value (PRM_ID_REMOTE_STORAGE);
+  if (uses_remote_storage)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TOOL_INVALID_WITH_REMOTE_STORAGE, 1, "Stand-alone mode");
+      err_code = ER_TOOL_INVALID_WITH_REMOTE_STORAGE;
+    }
+
+  return err_code;
 }
 
 void finalize_server_type ()

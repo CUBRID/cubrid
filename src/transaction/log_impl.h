@@ -652,19 +652,26 @@ struct log_global
   cublog::meta m_metainfo;
   cublog::prior_sender m_prior_sender;
 #if defined (SERVER_MODE)
-  cublog::prior_recver m_prior_recver;
+  std::unique_ptr<cublog::prior_recver> m_prior_recver = nullptr;
 #endif // SERVER_MODE = !SA_MODE
 
   std::mutex m_ps_lsa_mutex;
   std::condition_variable m_ps_lsa_cv;
-  LOG_LSA m_max_ps_flushed_lsa;
+  LOG_LSA m_max_ps_flushed_lsa = NULL_LSA;
 
   log_global ();
   ~log_global ();
-  // *INDENT-ON*
+
+#if defined (SERVER_MODE)
+  void initialize_log_prior_receiver ();
+  void finalize_log_prior_receiver ();
+  cublog::prior_recver &get_log_prior_receiver ();
+#endif // SERVER_MODE
 
   void update_max_ps_flushed_lsa (const LOG_LSA & lsa);
   void wait_flushed_lsa (const log_lsa & flush_lsa);
+
+  // *INDENT-ON*
 };
 
 /* logging statistics */
@@ -1024,11 +1031,8 @@ extern bool logtb_check_class_for_rr_isolation_err (const OID * class_oid);
 extern void logpb_vacuum_reset_log_header_cache (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr);
 
 extern VACUUM_LOG_BLOCKID logpb_last_complete_blockid (void);
-extern int logpb_page_check_corruption (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, bool * is_page_corrupted);
+extern bool logpb_page_has_valid_checksum (const LOG_PAGE * log_pgptr);
 extern void logpb_dump_log_page_area (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int offset, int length);
-extern void logpb_page_get_first_null_block_lsa (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr,
-						 LOG_LSA * first_null_block_lsa);
-
 extern void logtb_slam_transaction (THREAD_ENTRY * thread_p, int tran_index);
 extern int xlogtb_kill_tran_index (THREAD_ENTRY * thread_p, int kill_tran_index, char *kill_user, char *kill_host,
 				   int kill_pid);
@@ -1044,7 +1048,7 @@ extern void logtb_wakeup_thread_with_tran_index (int tran_index, thread_resume_s
 
 extern bool logtb_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag);
 extern bool logtb_get_check_interrupt (THREAD_ENTRY * thread_p);
-extern int logpb_set_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr);
+extern void logpb_set_page_checksum (LOG_PAGE * log_pgptr);
 
 extern LOG_TDES *logtb_get_system_tdes (THREAD_ENTRY * thread_p = NULL);
 

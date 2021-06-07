@@ -367,8 +367,7 @@ STATIC_INLINE int logpb_get_log_buffer_index (LOG_PAGEID log_pageid) __attribute
 static int logpb_fetch_header_from_active_log (THREAD_ENTRY * thread_p, const char *db_fullname,
 					       const char *logpath, const char *prefix_logname, LOG_HEADER * hdr,
 					       LOG_PAGE * log_pgptr);
-static int logpb_compute_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int *checksum_crc32);
-static int logpb_page_has_valid_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, bool * has_valid_checksum);
+static int logpb_compute_page_checksum (const LOG_PAGE * log_pgptr);
 
 static bool logpb_is_log_active_from_backup_useful (THREAD_ENTRY * thread_p, const char *active_log_path,
 						    const char *db_full_name);
@@ -446,17 +445,14 @@ logpb_initialize_log_buffer (LOG_BUFFER * log_buffer_p, LOG_PAGE * log_pg)
 
 /*
  * logpb_compute_page_checksum - Computes log page checksum.
- * return: error code
- * thread_p (in) : thread entry
- * log_pgptr (in) : log page pointer
- * checksum_crc32(out): computed checksum
+ *
  *   Note: Currently CRC32 is used as checksum.
  *   Note: any changes to this requires changes to logwr_check_page_checksum
  */
 static int
-logpb_compute_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int *checksum_crc32)
+logpb_compute_page_checksum (const LOG_PAGE * log_pgptr)
 {
-  int error_code = NO_ERROR, saved_checksum_crc32;
+  int saved_checksum_crc32;
   const int block_size = 4096;
   const int max_num_pages = IO_MAX_PAGE_SIZE / block_size;
   const int sample_nbytes = 16;
@@ -464,14 +460,21 @@ logpb_compute_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int 
   char buf[max_num_pages * sample_nbytes * 2];
   const int num_pages = LOG_PAGESIZE / block_size;
   const size_t sizeof_buf = num_pages * sample_nbytes * 2;
+  int checksum_crc32;
 
-  assert (log_pgptr != NULL && checksum_crc32 != NULL);
+  assert (log_pgptr != NULL);
+
+  // The checksum value itself must be stripped to compute a new checksum.
+  // Strip the const from log_page. The initial value will be restored.
+  // *INDENT-OFF*
+  LOG_PAGE *nonconst_log_pgptr = const_cast<LOG_PAGE *> (log_pgptr);
+  // *INDENT-ON*
 
   /* Save the old page checksum. */
   saved_checksum_crc32 = log_pgptr->hdr.checksum;
 
   /* Resets checksum to not affect the new computation. */
-  log_pgptr->hdr.checksum = 0;
+  nonconst_log_pgptr->hdr.checksum = 0;
 
   char *p = buf;
   for (int i = 0; i < num_pages; i++)
@@ -487,70 +490,48 @@ logpb_compute_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int 
       p += sample_nbytes;
     }
 
-  crypt_crc32 ((char *) buf, (int) sizeof_buf, checksum_crc32);
+  crypt_crc32 ((char *) buf, (int) sizeof_buf, &checksum_crc32);
 
   /* Restores the saved checksum */
-  log_pgptr->hdr.checksum = saved_checksum_crc32;
+  nonconst_log_pgptr->hdr.checksum = saved_checksum_crc32;
 
-  return error_code;
+  return checksum_crc32;
 }
 
 /*
  * logpb_set_page_checksum - Set log page checksum.
- * return: error code
- * thread_p (in) : thread entry
- * log_pgptr (in) : log page pointer
+ *
  *   Note: Currently CRC32 is used as checksum.
  */
-int
-logpb_set_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
+void
+logpb_set_page_checksum (LOG_PAGE * log_pgptr)
 {
-  int error_code = NO_ERROR, checksum_crc32;
-
   assert (log_pgptr != NULL);
 
   /* Computes the page checksum. */
-  error_code = logpb_compute_page_checksum (thread_p, log_pgptr, &checksum_crc32);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
+  const int checksum_crc32 = logpb_compute_page_checksum (log_pgptr);
 
   log_pgptr->hdr.checksum = checksum_crc32;
   logpb_log ("logpb_set_page_checksum: log page %lld has checksum = %d\n",
 	     (long long int) log_pgptr->hdr.logical_pageid, checksum_crc32);
-
-  return NO_ERROR;
 }
 
 /*
  * logpb_page_has_valid_checksum - Check whether the log page checksum is valid.
- *   return: error code
- *   thread_p(in): thread entry
- *   log_pgptr(in): the log page
- *   has_valid_checksum(out): true, if has valid checksum.
  */
-static int
-logpb_page_has_valid_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, bool * has_valid_checksum)
+bool
+logpb_page_has_valid_checksum (const LOG_PAGE * log_pgptr)
 {
-  int checksum_crc32, error_code = NO_ERROR;
+  assert (log_pgptr != NULL);
 
-  assert (log_pgptr != NULL && has_valid_checksum != NULL);
-
-  error_code = logpb_compute_page_checksum (thread_p, log_pgptr, &checksum_crc32);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  *has_valid_checksum = (checksum_crc32 == log_pgptr->hdr.checksum);
-  if (*has_valid_checksum == false)
+  const int checksum_crc32 = logpb_compute_page_checksum (log_pgptr);
+  const bool ret = (checksum_crc32 == log_pgptr->hdr.checksum);
+  if (ret == false)
     {
       logpb_log ("logpb_page_has_valid_checksum: log page %lld has checksum = %d, computed checksum = %d\n",
 		 (long long int) log_pgptr->hdr.logical_pageid, log_pgptr->hdr.checksum, checksum_crc32);
     }
-
-  return NO_ERROR;
+  return ret;
 }
 
 /*
@@ -2318,11 +2299,7 @@ logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAG
   logpb_log ("called logpb_write_page_to_disk for logical_pageid = %lld\n", (long long int) logical_pageid);
 
   /* Set page CRC before writing to disk. */
-  error_code = logpb_set_page_checksum (thread_p, log_pgptr);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
+  logpb_set_page_checksum (log_pgptr);
 
   phy_pageid = logpb_to_physical_pageid (logical_pageid);
   logpb_log ("phy_pageid in logpb_write_page_to_disk is %lld\n", (long long int) phy_pageid);
@@ -2833,10 +2810,7 @@ logpb_writev_append_pages (THREAD_ENTRY * thread_p, LOG_PAGE ** to_flush, DKNPAG
       for (i = 0; i < npages; i++)
 	{
 	  /* Set page CRC before writing to disk. */
-	  if (logpb_set_page_checksum (thread_p, to_flush[i]) != NO_ERROR)
-	    {
-	      return NULL;
-	    }
+	  logpb_set_page_checksum (to_flush[i]);
 	}
       for (i = 0; i < npages; i++)
 	{
@@ -3201,50 +3175,6 @@ logpb_dump_log_page_area (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int off
       dest_ptr += sprintf (dest_ptr, "\n");
       logpb_log ("logpb_dump_log_page_area: header = %s data = %s\n", log_header_string, log_block_string);
       count_remaining_bytes -= count_bytes_to_dump;
-    }
-}
-
-/*
- * logpb_page_get_first_null_block_lsa - Get LSA of first null block in log page.
- *
- * return: nothing
- *   thread_p(in): thread entry
- *   log_pgptr(in): log page
- *   first_null_block_lsa(out): LSA of first null block.
- */
-void
-logpb_page_get_first_null_block_lsa (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_LSA * first_null_block_lsa)
-{
-  const int block_size = 4 * ONE_K;
-  char null_buffer[block_size + MAX_ALIGNMENT], *null_block;
-  int i, max_num_blocks = LOG_PAGESIZE / block_size;
-
-  assert (log_pgptr != NULL && first_null_block_lsa != NULL);
-
-  null_block = PTR_ALIGN (null_buffer, MAX_ALIGNMENT);
-  memset (null_block, LOG_PAGE_INIT_VALUE, block_size);
-
-  LSA_SET_NULL (first_null_block_lsa);
-
-  /* Set LSA of first NULL block. */
-  for (i = 0; i < max_num_blocks; i++)
-    {
-      /* Search for null blocks. */
-      if (memcmp (((char *) log_pgptr) + (i * block_size), null_block, block_size) == 0)
-	{
-	  /* Found the null block. Computes its LSA. */
-	  first_null_block_lsa->pageid = log_pgptr->hdr.logical_pageid;
-	  first_null_block_lsa->offset = i * block_size;
-
-	  if (first_null_block_lsa->offset > 0)
-	    {
-	      /* Skip log header size. */
-	      first_null_block_lsa->offset -= sizeof (LOG_HDRPAGE);
-	    }
-
-	  assert (first_null_block_lsa->offset >= 0);
-	  break;
-	}
     }
 }
 
@@ -5818,11 +5748,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
 
   log_archive_er_log ("logpb_archive_active_log, arvhdr->fpageid = %lld\n", arvhdr->fpageid);
 
-  error_code = logpb_set_page_checksum (thread_p, malloc_arv_hdr_pgptr);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
+  logpb_set_page_checksum (malloc_arv_hdr_pgptr);
 
   write_mode = dwb_is_created () == true ? FILEIO_WRITE_NO_COMPENSATE_WRITE : FILEIO_WRITE_DEFAULT_WRITE;
   if (fileio_write (thread_p, vdes, malloc_arv_hdr_pgptr, 0, LOG_PAGESIZE, write_mode) == NULL)
@@ -9224,12 +9150,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
   LSA_SET_NULL (&eof->forw_lsa);
   eof->type = LOG_END_OF_LOG;
 
-  error_code = logpb_set_page_checksum (thread_p, to_malloc_log_pgptr);
-  if (error_code != NO_ERROR)
-    {
-      fileio_dismount (thread_p, to_vdes);
-      goto error;
-    }
+  logpb_set_page_checksum (to_malloc_log_pgptr);
 
   log_Gl.hdr.eof_lsa.pageid = to_malloc_log_pgptr->hdr.logical_pageid;
   log_Gl.hdr.eof_lsa.offset = 0;
@@ -9267,12 +9188,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
       goto error;
     }
 
-  error_code = logpb_set_page_checksum (thread_p, to_malloc_log_pgptr);
-  if (error_code != NO_ERROR)
-    {
-      fileio_dismount (thread_p, to_vdes);
-      goto error;
-    }
+  logpb_set_page_checksum (to_malloc_log_pgptr);
 
   /* Now write the log header */
   phy_pageid = logpb_to_physical_pageid (to_malloc_log_pgptr->hdr.logical_pageid);
@@ -11191,31 +11107,6 @@ logpb_last_complete_blockid (void)
   return blockid - 1;
 }
 
-/*
- * logpb_page_check_corruption - Check whether the log page is corrupted.
- *   return: error code
- *   thread_p(in): thread entry
- *   log_pgptr(in): the log page
- *   is_page_corrupted(out): true, if the log page is corrupted.
- */
-int
-logpb_page_check_corruption (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, bool * is_page_corrupted)
-{
-  int error_code;
-  bool has_valid_checksum;
-
-  assert (log_pgptr != NULL && is_page_corrupted != NULL);
-
-  error_code = logpb_page_has_valid_checksum (thread_p, log_pgptr, &has_valid_checksum);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  *is_page_corrupted = !has_valid_checksum;
-  return NO_ERROR;
-}
-
 #if !defined(NDEBUG)
 void
 logpb_debug_check_log_page (THREAD_ENTRY * thread_p, void *log_pgptr_ptr)
@@ -11231,15 +11122,13 @@ logpb_debug_check_log_page (THREAD_ENTRY * thread_p, void *log_pgptr_ptr)
       return;
     }
 
-  if (log_pgptr->hdr.logical_pageid == -1)
+  if (log_pgptr->hdr.logical_pageid == NULL_PAGEID)
     {
       /* Skip checking for null logical pageid. */
       return;
     }
 
-  err = logpb_page_check_corruption (thread_p, log_pgptr, &is_log_page_corrupted);
-
-  assert (err == NO_ERROR && is_log_page_corrupted == false);
+  assert (logpb_page_has_valid_checksum (log_pgptr));;
 }
 #endif
 

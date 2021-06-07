@@ -57,7 +57,7 @@ class active_tran_server
     template <typename PageT>
     page_broker<PageT> &get_page_broker ();
 
-    bool has_remote_storage () const;
+    bool uses_remote_storage () const;
 
     void push_request (ats_to_ps_request reqid, std::string &&payload);
 
@@ -85,7 +85,7 @@ class active_tran_server
     std::unique_ptr<page_broker<data_page_type>> m_data_page_broker;
     std::vector<cubcomm::node> m_connection_list;
 
-    bool m_has_remote_storage = false;
+    bool m_uses_remote_storage = false;
 };
 
 extern active_tran_server ats_Gl;

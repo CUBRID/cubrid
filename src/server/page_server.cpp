@@ -82,7 +82,7 @@ void page_server::receive_log_prior_list (cubpacking::unpacker &upk)
 {
   std::string message;
   upk.unpack_string (message);
-  log_Gl.m_prior_recver.push_message (std::move (message));
+  log_Gl.get_log_prior_receiver ().push_message (std::move (message));
 }
 
 void page_server::receive_log_page_fetch (cubpacking::unpacker &upk)

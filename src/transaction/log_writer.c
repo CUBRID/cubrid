@@ -2441,7 +2441,7 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p, char *logpg_area, int *logpg_used
 	  if (pageid >= nxio_lsa.pageid)
 	    {
 	      /* page is not flushed yet, may be changed : update checksum before send */
-	      (void) logpb_set_page_checksum (thread_p, log_pgptr);
+	      logpb_set_page_checksum (log_pgptr);
 	    }
 	  else
 	    {
