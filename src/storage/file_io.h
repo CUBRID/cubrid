@@ -204,22 +204,6 @@ struct fileio_page
   FILEIO_PAGE_WATERMARK prv2;	/* system page area. It should be located at the end of page. */
 };
 
-// *INDENT-OFF*
-class data_page_owner
-{
-  public:
-    explicit data_page_owner (const char *data_page_start, size_t size);
-    ~data_page_owner ();
-    const FILEIO_PAGE_RESERVED &prv ();
-
-  private:
-    std::string m_data_page_string;
-    FILEIO_PAGE *m_io_pgptr = nullptr;
-    PAGE_PTR m_pgptr;
-};
-
-// *INDENT-ON*
-
 STATIC_INLINE FILEIO_PAGE_WATERMARK *
 fileio_get_page_watermark_pos (FILEIO_PAGE * io_page, PGLENGTH page_size)
 {
