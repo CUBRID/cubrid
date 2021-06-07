@@ -6708,6 +6708,12 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   int flushed_page_cnt = 0, vdes;
   bool detailed_logging = prm_get_bool_value (PRM_ID_LOG_CHKPT_DETAILED);
 
+  if (is_tran_server_with_remote_storage ())
+    {
+      er_log_debug (ARG_FILE_LINE, "checkpoints are disallowed on transaction server with remote storage\n");
+      return NULL_PAGEID;
+    }
+
   LOG_CS_ENTER (thread_p);
 
 #if defined(SERVER_MODE)

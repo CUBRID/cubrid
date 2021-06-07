@@ -29,4 +29,6 @@ int init_server_type (const char *db_name);
 void finalize_server_type ();
 SERVER_TYPE get_server_type ();
 
+bool is_tran_server_with_remote_storage ();
+
 #endif
