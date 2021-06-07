@@ -1339,7 +1339,7 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 1268 At least one valid page server host is necessary, but no page server found in configuration.
 1269 At least one valid page server host is necessary, but no page server could be connected.
 1270 %1$s cannot be executed on a server with remote storage enabled.
-1271 Error reserved for scalability development.
+1271 Command cannot be executed on a server with remote storage enabled.
 1272 Error reserved for scalability development.
 1273 Error reserved for scalability development.
 1274 Error reserved for scalability development.
