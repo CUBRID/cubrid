@@ -8770,6 +8770,10 @@ log_active_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VAL
 
   assert (arg_cnt == 1);
 
+  /* place any early-out before any initialization */
+  /* function can be executed either in server or standalone mode; however, in standalone mode,
+   * it is guarded by earlier guards, so this check only deals with server mode */
+
   ctx = (ACTIVE_LOG_HEADER_SCAN_CTX *) db_private_alloc (thread_p, sizeof (ACTIVE_LOG_HEADER_SCAN_CTX));
 
   if (ctx == NULL)
