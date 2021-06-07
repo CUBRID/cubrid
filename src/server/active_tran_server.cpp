@@ -212,7 +212,7 @@ active_tran_server::init_page_server_hosts (const char *db_name)
       // failed to connect to any page server
       assert (exit_code != NO_ERROR);
       er_clear ();
-      exit_code = NO_ERROR;
+      exit_code = ER_NO_PAGE_SERVER_CONNECTION;
       er_log_debug (ARG_FILE_LINE, "Transaction server runs on %s storage.",
 		    m_uses_remote_storage ? "remote" : "local");
     }
