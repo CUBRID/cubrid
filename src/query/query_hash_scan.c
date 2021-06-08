@@ -140,7 +140,7 @@ static int fhs_connect_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, int loc
 static FHS_RESULT fhs_insert_to_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, PAGE_PTR bucket_page_p, void *key_p,
 					OID * value_p);
 static FHS_RESULT fhs_insert_to_dk_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, VPID * next_bucket, void *key_p,
-					OID * value_p);
+					   OID * value_p);
 static PAGE_PTR fhs_extend_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, PAGE_PTR bucket_page_p, void *key_p,
 				   FHS_HASH_KEY hash_key, int *out_new_bit_p, VPID * bucket_vpid);
 static PAGE_PTR fhs_split_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, PAGE_PTR bucket_page_p, void *key_p,
@@ -700,7 +700,7 @@ fhs_dump_bucket (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, DB_TYPE key_ty
 
   num_records = spage_number_of_records (bucket_page_p);
 
-  for (slot_id = 1; slot_id < 2 /*num_records*/; slot_id++)
+  for (slot_id = 1; slot_id < 2 /*num_records */ ; slot_id++)
     {
       printf ("*   %2d", slot_id);
 
@@ -1514,8 +1514,6 @@ fhs_search (THREAD_ENTRY * thread_p, FHSID * fhsid_p, void *key_p, OID * value_p
   PGSLOTID slot_id;
   EH_SEARCH result = EH_KEY_NOTFOUND;
   short flag;
-
-  /* search 시 inderect flag 확인 및 dk_bucket 조회 로직 추가 */
 
   if (fhsid_p == NULL || key_p == NULL)
     {
@@ -2343,13 +2341,13 @@ fhs_insert_to_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, PAGE_PTR bucket_
       fhs_read_flag_from_record (old_bucket_recdes.data, &flag);
 
       if (flag == FHS_FLAG_INDIRECT)
-        {
-          /* the case of inserting record into DK bucket */
-          /* get the dk bucket vpid */
-          fhs_read_oid_from_record (old_bucket_recdes.data, &tmp_oid);
-          dk_bucket_vpid.pageid = tmp_oid.pageid;
-          dk_bucket_vpid.volid = tmp_oid.volid;
-          /* insert new record into dk_bucket */
+	{
+	  /* the case of inserting record into DK bucket */
+	  /* get the dk bucket vpid */
+	  fhs_read_oid_from_record (old_bucket_recdes.data, &tmp_oid);
+	  dk_bucket_vpid.pageid = tmp_oid.pageid;
+	  dk_bucket_vpid.volid = tmp_oid.volid;
+	  /* insert new record into dk_bucket */
 	  if (fhs_insert_to_dk_bucket (thread_p, fhsid_p, &dk_bucket_vpid, key_p, value_p) != FHS_SUCCESSFUL_COMPLETION)
 	    {
 	      /* This should never happen. */
@@ -2357,13 +2355,14 @@ fhs_insert_to_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, PAGE_PTR bucket_
 	      goto error;
 	    }
 	  return FHS_SUCCESSFUL_COMPLETION;
-        }
+	}
       else if (flag + 1 >= FHS_MAX_DUP_KEY)
-        {
-          /* the case of inserting firstly to DK bucket */
-          /* make DK bucket page */
-          success = file_alloc (thread_p, &fhsid_p->bucket_file, fhs_initialize_dk_bucket_new_page, &null_vpid, &dk_bucket_vpid,
-				   &dk_bucket_page_p);
+	{
+	  /* the case of inserting firstly to DK bucket */
+	  /* make DK bucket page */
+	  success =
+	    file_alloc (thread_p, &fhsid_p->bucket_file, fhs_initialize_dk_bucket_new_page, &null_vpid, &dk_bucket_vpid,
+			&dk_bucket_page_p);
 	  if (success != NO_ERROR || dk_bucket_page_p == NULL)
 	    {
 	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -2412,16 +2411,16 @@ fhs_insert_to_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, PAGE_PTR bucket_
 	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	      goto error;
 	    }
-        }
+	}
       else
-        {
-          /* the case of inserting duplicate key record into bucket */
-          if (fhs_compose_record (thread_p, key_p, value_p, &bucket_recdes, ++flag) != NO_ERROR)
+	{
+	  /* the case of inserting duplicate key record into bucket */
+	  if (fhs_compose_record (thread_p, key_p, value_p, &bucket_recdes, ++flag) != NO_ERROR)
 	    {
 	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	      goto error;
 	    }
-        }
+	}
     }
   else
     {
@@ -2491,7 +2490,7 @@ error:
  * if DK bucket is full, create new DK bucket and connect to prior DK bucket
  */
 static FHS_RESULT
-fhs_insert_to_dk_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, VPID *next_bucket_vpid, void *key_p, OID * value_p)
+fhs_insert_to_dk_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, VPID * next_bucket_vpid, void *key_p, OID * value_p)
 {
   RECDES bucket_recdes, old_bucket_recdes;
   PGSLOTID tmp_slot;
@@ -2502,7 +2501,7 @@ fhs_insert_to_dk_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, VPID *next_bu
   PAGE_PTR new_dk_bucket_page_p = NULL;
   VPID null_vpid = { NULL_VOLID, NULL_PAGEID };
 
-  /* get last DK bucket page (순서때문에 이렇게 하는 것인데.. 속도 저하 문제는 있음)*/
+  /* get last DK bucket page (순서때문에 이렇게 하는 것인데.. 속도 저하 문제는 있음) */
   tmp_bucket_vpid = *next_bucket_vpid;
   do
     {
@@ -2532,8 +2531,9 @@ fhs_insert_to_dk_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, VPID *next_bu
   if (success == SP_DOESNT_FIT)
     {
       /* make new dk_bucket page */
-      success = file_alloc (thread_p, &fhsid_p->bucket_file, fhs_initialize_dk_bucket_new_page, &null_vpid, &cur_bucket_vpid,
-			   &new_dk_bucket_page_p);
+      success =
+	file_alloc (thread_p, &fhsid_p->bucket_file, fhs_initialize_dk_bucket_new_page, &null_vpid, &cur_bucket_vpid,
+		    &new_dk_bucket_page_p);
       if (success != NO_ERROR || dk_bucket_page_p == NULL)
 	{
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);

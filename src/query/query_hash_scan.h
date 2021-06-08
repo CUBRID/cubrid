@@ -107,12 +107,22 @@ struct hash_list_scan
 {
   regu_variable_list_node *build_regu_list;	/* regulator variable list */
   regu_variable_list_node *probe_regu_list;	/* regulator variable list */
-  mht_hls_table *hash_table;	/* memory hash table for hash list scan */
-  FHSID *ehash_table;		/* extendible hash table file */
   hash_scan_key *temp_key;	/* temp probe key */
   hash_scan_key *temp_new_key;	/* temp probe key with db_value */
-  HENTRY_HLS_PTR curr_hash_entry;	/* current hash entry */
-  OID curr_oid;			/* current hash file oid */
+  union
+  {
+    struct
+    {
+      mht_hls_table *hash_table;	/* memory hash table for hash list scan */
+      HENTRY_HLS_PTR curr_hash_entry;	/* current hash entry */
+    } memory;
+    struct
+    {
+      FHSID *hash_table;	/* extendible hash table file */
+      OID curr_oid;		/* current bucket oid */
+      bool is_dk_bucket;	/* is current bucket dk? */
+    } file;
+  };
   int hash_list_scan_yn;	/* Is hash list scan possible? */
   unsigned int curr_hash_key;	/* current hash key */
   bool need_coerce_type;	/* Are the types of probe and build different? */

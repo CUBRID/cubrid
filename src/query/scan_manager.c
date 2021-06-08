@@ -3716,21 +3716,21 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
       /* create hash table */
       if (llsidp->hlsid.hash_list_scan_yn == HASH_METH_HASH_FILE)
 	{
-	  llsidp->hlsid.ehash_table = (FHSID *) db_private_alloc (thread_p, sizeof (FHSID));
-	  if (llsidp->hlsid.ehash_table == NULL)
+	  llsidp->hlsid.file.hash_table = (FHSID *) db_private_alloc (thread_p, sizeof (FHSID));
+	  if (llsidp->hlsid.file.hash_table == NULL)
 	    {
 	      return S_ERROR;
 	    }
-	  if (fhs_create (thread_p, llsidp->hlsid.ehash_table, llsidp->list_id->tuple_cnt) == NULL)
+	  if (fhs_create (thread_p, llsidp->hlsid.file.hash_table, llsidp->list_id->tuple_cnt) == NULL)
 	    {
 	      return S_ERROR;
 	    }
 	}
       else
 	{
-	  llsidp->hlsid.hash_table =
+	  llsidp->hlsid.memory.hash_table =
 	    mht_create_hls ("Hash List Scan", llsidp->list_id->tuple_cnt, qdata_hash_scan_key, qdata_hscan_key_eq);
-	  if (llsidp->hlsid.hash_table == NULL)
+	  if (llsidp->hlsid.memory.hash_table == NULL)
 	    {
 	      return S_ERROR;
 	    }
@@ -3757,11 +3757,10 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
     }
   else
     {
-      llsidp->hlsid.hash_table = NULL;
+      llsidp->hlsid.memory.hash_table = NULL;
+      llsidp->hlsid.memory.curr_hash_entry = NULL;
       llsidp->hlsid.temp_key = NULL;
       llsidp->hlsid.temp_new_key = NULL;
-      llsidp->hlsid.curr_hash_entry = NULL;
-      llsidp->hlsid.ehash_table = NULL;
     }
 
   return NO_ERROR;
@@ -4862,7 +4861,7 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
     case S_LIST_SCAN:
       llsidp = &scan_id->s.llsid;
       /* clear hash list scan table */
-      if (llsidp->hlsid.hash_table != NULL)
+      if (llsidp->hlsid.hash_list_scan_yn == HASH_METH_IN_MEM || llsidp->hlsid.hash_list_scan_yn == HASH_METH_HYBRID)
 	{
 #if 0
 	  (void) mht_dump_hls (thread_p, stdout, llsidp->hlsid.hash_table, 1, qdata_print_hash_scan_entry,
@@ -4870,14 +4869,13 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  printf ("temp file : tuple count = %d, file_size = %dK\n", llsidp->list_id->tuple_cnt,
 		  llsidp->list_id->page_cnt * 16);
 #endif
-	  mht_clear_hls (llsidp->hlsid.hash_table, qdata_free_hscan_entry, (void *) thread_p);
-	  mht_destroy_hls (llsidp->hlsid.hash_table);
+	  mht_clear_hls (llsidp->hlsid.memory.hash_table, qdata_free_hscan_entry, (void *) thread_p);
+	  mht_destroy_hls (llsidp->hlsid.memory.hash_table);
 	}
-      /* clear ehash table */
-      if (llsidp->hlsid.ehash_table != NULL)
+      else if (llsidp->hlsid.hash_list_scan_yn == HASH_METH_HASH_FILE)
 	{
-	  fhs_destroy (thread_p, llsidp->hlsid.ehash_table);
-	  db_private_free_and_init (thread_p, llsidp->hlsid.ehash_table);
+	  fhs_destroy (thread_p, llsidp->hlsid.file.hash_table);
+	  db_private_free_and_init (thread_p, llsidp->hlsid.file.hash_table);
 	}
       /* free temp keys and values */
       if (llsidp->hlsid.temp_key != NULL)
@@ -7915,14 +7913,14 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       /* add to hash table */
       if (llsidp->hlsid.hash_list_scan_yn == HASH_METH_HASH_FILE)
 	{
-	  if (fhs_insert (thread_p, llsidp->hlsid.ehash_table, (void *) &hash_key, &oid) == NULL)
+	  if (fhs_insert (thread_p, llsidp->hlsid.file.hash_table, (void *) &hash_key, &oid) == NULL)
 	    {
 	      return S_ERROR;
 	    }
 	}
       else
 	{
-	  if (mht_put_hls (llsidp->hlsid.hash_table, (void *) &hash_key, (void *) new_value) == NULL)
+	  if (mht_put_hls (llsidp->hlsid.memory.hash_table, (void *) &hash_key, (void *) new_value) == NULL)
 	    {
 	      return S_ERROR;
 	    }
@@ -8073,11 +8071,11 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 	case HASH_METH_IN_MEM:
 	case HASH_METH_HYBRID:
 	  /* init curr_hash_entry */
-	  llsidp->hlsid.curr_hash_entry = NULL;
+	  llsidp->hlsid.memory.curr_hash_entry = NULL;
 	  /* get value from hash table */
 	  hvalue =
-	    (HASH_SCAN_VALUE *) mht_get_hls (llsidp->hlsid.hash_table, (void *) &hash_key,
-					     (void **) &llsidp->hlsid.curr_hash_entry);
+	    (HASH_SCAN_VALUE *) mht_get_hls (llsidp->hlsid.memory.hash_table, (void *) &hash_key,
+					     (void **) &llsidp->hlsid.memory.curr_hash_entry);
 	  if (hvalue == NULL)
 	    {
 	      return S_END;
@@ -8104,7 +8102,8 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 
 	case HASH_METH_HASH_FILE:
 	  /* init curr_oid and get value from hash table */
-	  eh_search = fhs_search (thread_p, llsidp->hlsid.ehash_table, &hash_key, &oid, &llsidp->hlsid.curr_oid);
+	  eh_search =
+	    fhs_search (thread_p, llsidp->hlsid.file.hash_table, &hash_key, &oid, &llsidp->hlsid.file.curr_oid);
 	  switch (eh_search)
 	    {
 	    case EH_KEY_FOUND:
@@ -8132,8 +8131,9 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 	case HASH_METH_IN_MEM:
 	case HASH_METH_HYBRID:
 	  hvalue =
-	    (HASH_SCAN_VALUE *) mht_get_next_hls (llsidp->hlsid.hash_table, (void *) &llsidp->hlsid.curr_hash_key,
-						  (void **) &llsidp->hlsid.curr_hash_entry);
+	    (HASH_SCAN_VALUE *) mht_get_next_hls (llsidp->hlsid.memory.hash_table,
+						  (void *) &llsidp->hlsid.curr_hash_key,
+						  (void **) &llsidp->hlsid.memory.curr_hash_entry);
 	  if (hvalue == NULL)
 	    {
 	      if (llsidp->hlsid.hash_list_scan_yn == HASH_METH_HYBRID)
@@ -8145,11 +8145,11 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 	    }
 	  if (llsidp->hlsid.hash_list_scan_yn == HASH_METH_IN_MEM)
 	    {
-	      *tuple = ((HASH_SCAN_VALUE *) llsidp->hlsid.curr_hash_entry->data)->tuple;
+	      *tuple = ((HASH_SCAN_VALUE *) llsidp->hlsid.memory.curr_hash_entry->data)->tuple;
 	    }
 	  else if (llsidp->hlsid.hash_list_scan_yn == HASH_METH_HYBRID)
 	    {
-	      simple_pos = ((HASH_SCAN_VALUE *) llsidp->hlsid.curr_hash_entry->data)->pos;
+	      simple_pos = ((HASH_SCAN_VALUE *) llsidp->hlsid.memory.curr_hash_entry->data)->pos;
 	      MAKE_TUPLE_POSTION (tuple_pos, simple_pos, scan_id_p);
 
 	      if (qfile_jump_scan_tuple_position (thread_p, scan_id_p, &tuple_pos, &tplrec, PEEK) != S_SUCCESS)
@@ -8166,8 +8166,8 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 
 	case HASH_METH_HASH_FILE:
 	  eh_search =
-	    fhs_search_next (thread_p, llsidp->hlsid.ehash_table, &llsidp->hlsid.curr_hash_key, &oid,
-			     &llsidp->hlsid.curr_oid);
+	    fhs_search_next (thread_p, llsidp->hlsid.file.hash_table, &llsidp->hlsid.curr_hash_key, &oid,
+			     &llsidp->hlsid.file.curr_oid);
 	  switch (eh_search)
 	    {
 	    case EH_KEY_FOUND:
