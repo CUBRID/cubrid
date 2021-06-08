@@ -341,13 +341,13 @@ active_tran_server::receive_log_page (cubpacking::unpacker &upk)
   if (error_code == NO_ERROR)
     {
       auto shared_log_page = std::make_shared<log_page_owner> (message.c_str () + sizeof (error_code));
-      m_log_page_broker->set_page (shared_log_page->get_id (), std::move (shared_log_page));
 
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
 	{
 	  _er_log_debug (ARG_FILE_LINE, "Received log page message from Page Server. Page ID: %lld\n",
 			 shared_log_page->get_id ());
 	}
+      m_log_page_broker->set_page (shared_log_page->get_id (), std::move (shared_log_page));
     }
   else
     {
