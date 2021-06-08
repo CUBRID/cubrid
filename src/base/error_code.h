@@ -1643,7 +1643,7 @@
 #define ER_SCALABILITY_DEV_RESERVED_ERROR19         -1282
 #define ER_SCALABILITY_DEV_RESERVED_ERROR20         -1283
 
-#define ER_DBLINK		    		    -1284
+#define ER_DBLINK		    		      -1284
 #define ER_DBLINK_INVALID_COLUMNS_SPECIFIED         -1285
 
 #define ER_LAST_ERROR                               -1286
