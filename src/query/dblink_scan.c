@@ -161,8 +161,9 @@ dblink_make_date_time (T_CCI_U_TYPE utype, DB_VALUE * value_p, T_CCI_DATE * date
   DB_DATE t_date;
   DB_DATETIME t_datetime;
   DB_TIMESTAMP t_timestamp;
-  int error;
+  int error = NO_ERROR;
 
+  db_make_null (value_p);
   switch (utype)
     {
     case CCI_U_TYPE_TIME:
@@ -215,8 +216,9 @@ dblink_make_date_time_tz (T_CCI_U_TYPE utype, DB_VALUE * value_p, T_CCI_DATE_TZ 
   DB_DATETIMETZ tz_datetime;
   DB_TIMESTAMPTZ tz_timestamp;
   TZ_REGION region;
-  int error;
+  int error = NO_ERROR;
 
+  db_make_null (value_p);
   tz_get_session_tz_region (&region);
 
   switch (utype)
@@ -366,6 +368,7 @@ dblink_close_scan (DBLINK_SCAN_INFO * scan_info)
 	{
 	  cci_get_err_msg (error, err_buf.err_msg, sizeof (err_buf.err_msg));
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+	  (void) cci_disconnect (scan_info->conn_handle, &err_buf);
 	  return S_ERROR;
 	}
     }
