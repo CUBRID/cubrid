@@ -395,7 +395,7 @@ SCAN_CODE
 dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 {
   T_CCI_ERROR err_buf;
-  int col_no, col_cnt, ind, error = S_SUCCESS;
+  int col_no, col_cnt, ind, error = NO_ERROR;
   T_CCI_U_TYPE utype;
   T_CCI_BIT bit_val;		/* for bit or varbit type */
   T_CCI_DATE date_time;		/* for date or time type */
