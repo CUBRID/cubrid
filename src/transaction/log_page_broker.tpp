@@ -38,7 +38,7 @@ page_broker<PageT>::register_entry (typename map_type<PageT>::key id)
 
 template <typename PageT>
 size_t
-page_broker<PageT>::get_requests_count ()
+page_broker<PageT>::get_requests_count () const
 {
   std::unique_lock<std::mutex> lock (m_pages_mutex);
   return m_requested_page_id_count.size ();
@@ -46,7 +46,7 @@ page_broker<PageT>::get_requests_count ()
 
 template <typename PageT>
 std::size_t
-page_broker<PageT>::get_pages_count ()
+page_broker<PageT>::get_pages_count () const
 {
   std::unique_lock<std::mutex> lock (m_pages_mutex);
   return m_received_pages.size ();

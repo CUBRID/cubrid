@@ -73,13 +73,13 @@ class page_broker
     ~page_broker () = default;
 
     entry_state register_entry (typename map_type<PageT>::key id);
-    size_t get_requests_count ();
-    size_t get_pages_count ();
+    size_t get_requests_count () const;
+    size_t get_pages_count () const;
     typename map_type<PageT>::value wait_for_page (typename map_type<PageT>::key id);
     void set_page (typename map_type<PageT>::key id, typename map_type<PageT>::value &&page);
 
   private:
-    std::mutex m_pages_mutex;
+    mutable std::mutex m_pages_mutex;
 
     std::condition_variable m_pages_cv;
 

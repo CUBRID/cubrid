@@ -7756,13 +7756,16 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 
 #if defined(SERVER_MODE)
 	// *INDENT-OFF*
-        auto data_page = ats_Gl.get_page_broker<data_page_type> ().wait_for_page (*vpid);
-      
-        char buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
-	FILEIO_PAGE *io_page = (FILEIO_PAGE *) PTR_ALIGN (buf, MAX_ALIGNMENT);
-	std::memcpy (io_page, data_page->c_str (), db_io_page_size ());
+	if (get_server_type () == SERVER_TYPE_TRANSACTION)
+	  {
+	    auto data_page = ats_Gl.get_page_broker<data_page_type> ().wait_for_page (*vpid);
 	
-	assert (bufptr->iopage_buffer->iopage.prv == io_page->prv);
+	    char buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+	    FILEIO_PAGE *io_page = (FILEIO_PAGE *) PTR_ALIGN (buf, MAX_ALIGNMENT);
+	    std::memcpy (io_page, data_page->c_str (), db_io_page_size ());
+
+	    assert (bufptr->iopage_buffer->iopage.prv == io_page->prv);
+    	}
 	// *INDENT-ON*
 #endif // SERVER_MODE
 
