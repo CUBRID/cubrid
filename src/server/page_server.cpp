@@ -20,11 +20,13 @@
 
 #include "error_manager.h"
 #include "log_impl.h"
+#include "log_lsa_utils.hpp"
 #include "log_prior_recv.hpp"
 #include "log_replication.hpp"
 #include "packer.hpp"
 #include "server_type.hpp"
 #include "system_parameter.h"
+#include "vpid_utilities.hpp"
 
 #include <cassert>
 #include <cstring>
@@ -110,16 +112,10 @@ void page_server::receive_data_page_fetch (cubpacking::unpacker &upk)
   upk.unpack_string (message);
 
   VPID vpid;
-  size_t bytes_read = 0;
-  std::memcpy (&vpid.pageid, message.c_str () + bytes_read, sizeof (vpid.pageid));
-  bytes_read += sizeof (vpid.pageid);
-
-  std::memcpy (&vpid.volid, message.c_str () + bytes_read, sizeof (vpid.volid));
-  bytes_read += sizeof (vpid.volid);
+  cublog::vpid_utils::unpack (upk, vpid);
 
   LOG_LSA target_repl_lsa;
-  std::memcpy (&target_repl_lsa, message.c_str () + bytes_read, sizeof (target_repl_lsa));
-  bytes_read += sizeof (target_repl_lsa);
+  cublog::lsa_utils::unpack (upk, target_repl_lsa);
 
   assert (m_page_fetcher);
   m_page_fetcher->fetch_data_page (vpid, target_repl_lsa, std::bind (&page_server::on_data_page_read_result, this,
