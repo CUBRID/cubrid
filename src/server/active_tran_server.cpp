@@ -205,26 +205,21 @@ active_tran_server::init_page_server_hosts (const char *db_name)
     {
       assert (exit_code != NO_ERROR);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NO_PAGE_SERVER_CONNECTION, 0);
-      return ER_NO_PAGE_SERVER_CONNECTION;
+      exit_code = ER_NO_PAGE_SERVER_CONNECTION;
     }
-  if (valid_connection_count == 0)
+  else if (valid_connection_count == 0)
     {
       // failed to connect to any page server
       assert (exit_code != NO_ERROR);
       er_clear ();
-      exit_code = ER_NO_PAGE_SERVER_CONNECTION;
-      er_log_debug (ARG_FILE_LINE, "Transaction server runs on %s storage.",
-		    m_uses_remote_storage ? "remote" : "local");
+      exit_code = NO_ERROR;
     }
-  else
-    {
-      er_log_debug (ARG_FILE_LINE, "Transaction server runs on %s storage.",
-		    m_uses_remote_storage ? "remote" : "local");
-    }
+  er_log_debug (ARG_FILE_LINE, "Transaction server runs on %s storage.",
+		m_uses_remote_storage ? "remote" : "local");
 
   // failed to connect to any page server
-  assert (valid_connection_count > 0);
-  return valid_connection_count > 0 ? NO_ERROR : exit_code;
+  assert (valid_connection_count > 0 || !m_uses_remote_storage);
+  return exit_code;
 }
 
 int
