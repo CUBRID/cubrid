@@ -41,6 +41,7 @@
 #include "page_buffer.h"
 #include "perf_monitor.h"
 #include "resource_shared_pool.hpp"
+#include "server_type.hpp"
 #include "thread_entry_task.hpp"
 #if defined (SERVER_MODE)
 #include "thread_daemon.hpp"
@@ -1124,27 +1125,25 @@ xvacuum_dump (THREAD_ENTRY * thread_p, FILE * outfp)
 
   fprintf (outfp, "\n");
   fprintf (outfp, "*** Vacuum Dump ***\n");
-  fprintf (outfp, "First log page ID referenced = %lld ", min_log_pageid);
-
-  if (logpb_is_page_in_archive (min_log_pageid))
+  fprintf (outfp, "First log page ID referenced = %" PRId64 " ", min_log_pageid);
+  if (!is_tran_server_with_remote_storage ())
     {
-      LOG_CS_ENTER_READ_MODE (thread_p);
-      archive_number = logpb_get_archive_number (thread_p, min_log_pageid);
-      if (archive_number < 0)
+      if (logpb_is_page_in_archive (min_log_pageid))
 	{
-	  /* this is an assertion case but ignore. */
-	  fprintf (outfp, "\n");
+	  LOG_CS_ENTER_READ_MODE (thread_p);
+	  archive_number = logpb_get_archive_number (thread_p, min_log_pageid);
+	  if (archive_number >= 0)
+	    {
+	      fprintf (outfp, "(in %s%s%03d)", log_Prefix, FILEIO_SUFFIX_LOGARCHIVE, archive_number);
+	    }
+	  LOG_CS_EXIT (thread_p);
 	}
       else
 	{
-	  fprintf (outfp, "(in %s%s%03d)\n", log_Prefix, FILEIO_SUFFIX_LOGARCHIVE, archive_number);
+	  fprintf (outfp, "(in %s)", fileio_get_base_file_name (log_Name_active));
 	}
-      LOG_CS_EXIT (thread_p);
     }
-  else
-    {
-      fprintf (outfp, "(in %s)\n", fileio_get_base_file_name (log_Name_active));
-    }
+  fprintf (outfp, "\n");
 }
 
 /*
