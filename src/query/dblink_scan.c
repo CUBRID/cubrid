@@ -432,6 +432,12 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
   assert (col_info);
   assert (val_list->valp);
 
+  if (val_list->val_cnt != col_cnt)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_INVALID_COLUMNS_SPECIFIED, 0);
+      return S_ERROR;
+    }
+
   for (valptrp = val_list->valp, col_no = 1; col_no <= col_cnt; col_no++, valptrp = valptrp->next)
     {
       DB_VALUE cci_value;

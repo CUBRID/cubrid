@@ -6736,10 +6736,10 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
       /* DBLINK(..., "SELECT <result columns part> FROM ...") AS tnmae( <alias columns part> )
        ** s_id->s.dblid.scan_buf.col_cnt is the number of elements in the list <result columns part>.
        ** val_list->val_cnt is the number of elements in the list <alias columns part>.             */
-      if (val_list->val_cnt < s_id->s.dblid.scan_info.col_cnt || s_id->s.dblid.scan_info.col_cnt <= 0)
+      if (val_list->val_cnt != s_id->s.dblid.scan_info.col_cnt)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
-	  error_code = ER_QPROC_INVALID_XASLNODE;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_INVALID_COLUMNS_SPECIFIED, 0);
+	  error_code = ER_DBLINK_INVALID_COLUMNS_SPECIFIED;
 	  goto exit_on_error;
 	}
       break;
