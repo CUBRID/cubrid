@@ -62,7 +62,15 @@ static DB_VALUE_COMPARE_RESULT qdata_hscan_key_compare (HASH_SCAN_KEY * ckey1, H
 /* Number of bits the short data type consists of */
 #define FHS_SHORT_BITS  (sizeof (short) * 8)
 
-typedef unsigned int FHS_HASH_KEY;	/* Pseudo_key type */
+#define FHS_FLAG_INDIRECT	-1	/* 0xFFFF, record is page id for duplicate key bucket */
+#define FHS_FLAG_DUMMY_NUM	0	/* 0x0000, flag of record in dk bucket */
+
+/* key */
+typedef unsigned int FHS_HASH_KEY;
+#define FHS_KEY_TYPE DB_TYPE_INTEGER
+#define FHS_KEY_SIZE (sizeof (FHS_HASH_KEY))
+#define FHS_ALIGNMENT ((char) FHS_KEY_SIZE)
+#define FHS_MAX_DUP_KEY 100
 
 /* Directory elements : Pointer to the bucket */
 typedef struct fhs_dir_record FHS_DIR_RECORD;
@@ -81,7 +89,7 @@ struct fhs_bucket_header
 typedef struct fhs_dk_bucket_header FHS_DK_BUCKET_HEADER;
 struct fhs_dk_bucket_header
 {
-  VPID bucket_vpid;		/* bucket pointer */
+  VPID next_bucket;		/* bucket pointer */
 };
 
 typedef enum
@@ -93,19 +101,19 @@ typedef enum
 
 static void fhs_read_oid_from_record (char *record_p, OID * oid_p);
 static void fhs_read_key_from_record (char *record_p, int *key);
-static void fhs_read_num_from_record (char *record_p, short *num);
+static void fhs_read_flag_from_record (char *record_p, short *flag);
 static char *fhs_write_oid_to_record (char *record_p, OID * oid_p);
 static char *fhs_write_key_to_record (char *record_p, void *key_p);
-static char *fhs_write_num_to_record (char *record_p, short num);
-static int fhs_compose_record (DB_TYPE key_type, void *key_p, OID * value_p, RECDES * recdes_p, short num);
+static char *fhs_write_flag_to_record (char *record_p, short flag);
+static int fhs_compose_record (THREAD_ENTRY * thread_p, void *key_p, OID * value_p, RECDES * recdes_p, short flag);
 static PAGE_PTR fhs_fix_ehid_page (THREAD_ENTRY * thread_p, EHID * ehid, PGBUF_LATCH_MODE latch_mode);
 static PAGE_PTR fhs_fix_old_page (THREAD_ENTRY * thread_p, const VFID * vfid_p, const VPID * vpid_p,
 				  PGBUF_LATCH_MODE latch_mode);
 static PAGE_PTR fhs_fix_nth_page (THREAD_ENTRY * thread_p, const VFID * vfid_p, int offset,
 				  PGBUF_LATCH_MODE latch_mode);
 static void fhs_dir_locate (int *out_page_no_p, int *out_offset_p);
-static char *fhs_allocate_recdes (RECDES * recdes_p, int size, short type);
-static void fhs_free_recdes (RECDES * recdes_p);
+static char *fhs_allocate_recdes (THREAD_ENTRY * thread_p, RECDES * recdes_p, int size, short type);
+static void fhs_free_recdes (THREAD_ENTRY * thread_p, RECDES * recdes_p);
 static int fhs_initialize_dir_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, void *args);
 static int fhs_initialize_bucket_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, void *args);
 static int fhs_initialize_dk_bucket_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, void *args);
@@ -129,7 +137,9 @@ static char fhs_find_depth (THREAD_ENTRY * thread_p, FHSID * fhsid_p, int locati
 			    VPID * sibling_vpid_p);
 static int fhs_connect_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, int local_depth, FHS_HASH_KEY hash_key,
 			       VPID * bucket_vpid_p);
-static FHS_RESULT fhs_insert_to_bucket (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, DB_TYPE key_type, void *key_p,
+static FHS_RESULT fhs_insert_to_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, PAGE_PTR bucket_page_p, void *key_p,
+					OID * value_p);
+static FHS_RESULT fhs_insert_to_dk_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, VPID * next_bucket, void *key_p,
 					OID * value_p);
 static PAGE_PTR fhs_extend_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, PAGE_PTR bucket_page_p, void *key_p,
 				   FHS_HASH_KEY hash_key, int *out_new_bit_p, VPID * bucket_vpid);
@@ -665,6 +675,7 @@ static void
 fhs_dump_bucket (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, DB_TYPE key_type)
 {
   FHS_BUCKET_HEADER *bucket_header_p;
+  FHS_DK_BUCKET_HEADER *dk_bucket_header_p;
   char *bucket_record_p;
   RECDES recdes;
   PGSLOTID slot_id, first_slot_id = -1;
@@ -672,22 +683,24 @@ fhs_dump_bucket (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, DB_TYPE key_ty
   OID assoc_value;
   int num_records;
   int i, key;
-  short number;
+  short flag;
 
   (void) spage_next_record (bucket_page_p, &first_slot_id, &recdes, PEEK);
   bucket_header_p = (FHS_BUCKET_HEADER *) recdes.data;
+  dk_bucket_header_p = (FHS_DK_BUCKET_HEADER *) recdes.data;
 
-  printf ("************************************************************\n");
+  printf ("*************************************************************\n");
   printf ("*  local_depth : %d                                         *\n", bucket_header_p->local_depth);
+  printf ("*  next_vpid   : %d                                         *\n", dk_bucket_header_p->next_bucket.pageid);
   printf ("*  no. records : %d                                         *\n",
 	  spage_number_of_records (bucket_page_p) - 1);
   printf ("*                                                           *\n");
-  printf ("*   No        Key         number       Assoc Value          *\n");
+  printf ("*   No        Key         flag         OID Value            *\n");
   printf ("*  ====   =============  ========   ==================      *\n");
 
   num_records = spage_number_of_records (bucket_page_p);
 
-  for (slot_id = 1; slot_id < num_records; slot_id++)
+  for (slot_id = 1; slot_id < 2 /*num_records*/; slot_id++)
     {
       printf ("*   %2d", slot_id);
 
@@ -695,24 +708,24 @@ fhs_dump_bucket (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, DB_TYPE key_ty
       bucket_record_p = (char *) recdes.data;
       fhs_read_oid_from_record (bucket_record_p, &assoc_value);
       fhs_read_key_from_record (bucket_record_p, &key);
-      fhs_read_num_from_record (bucket_record_p, &number);
+      fhs_read_flag_from_record (bucket_record_p, &flag);
 
       switch (key_type)
 	{
 	case DB_TYPE_INTEGER:
-	  printf ("    %u              ", key);
-	  printf ("    %d              ", number);
+	  printf ("      %u  ", key);
+	  printf ("    %d       ", flag);
 	  break;
 	default:
 	  /* Unspecified key type: Directory header has been corrupted */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_INVALID_KEY_TYPE, 1, key_type);
 	  return;
 	}
-      printf ("(%5d,%5d,%5d)  *\n", assoc_value.volid, assoc_value.pageid, assoc_value.slotid);
+      printf ("(%5d,%5d,%5d)     *\n", assoc_value.volid, assoc_value.pageid, assoc_value.slotid);
 
     }
 
-  printf ("*********************************************************\n");
+  printf ("*************************************************************\n");
 }
 
 /*
@@ -894,9 +907,9 @@ fhs_write_key_to_record (char *record_p, void *key_p)
 }
 
 static char *
-fhs_write_num_to_record (char *record_p, short num)
+fhs_write_flag_to_record (char *record_p, short flag)
 {
-  *(short *) record_p = num;
+  *(short *) record_p = flag;
   record_p += sizeof (short);
 
   return record_p;
@@ -923,34 +936,31 @@ fhs_read_key_from_record (char *record_p, int *key)
 }
 
 static void
-fhs_read_num_from_record (char *record_p, short *num)
+fhs_read_flag_from_record (char *record_p, short *flag)
 {
   record_p += sizeof (OID) + sizeof (int);
-  *num = *(short *) record_p;
+  *flag = *(short *) record_p;
 }
 
 /*
  * fhs_compose_record () -
  *   return: NO_ERROR, or ER_FAILED
- *   key_type(in): type of the key
  *   key_ptr(in): Pointer to the key
  *   value_ptr(in): Pointer to the associated value
  *   recdes(in): Pointer to the Record descriptor to fill in
  *
- * Note: record :  oid  | key(int) | flag(1bit) + num(15bit)
- *                8byte    4byte             2byte    = 14byte
+ * Note: record :  oid  | key(int) | flag(short)
+ *                8byte    4byte       2byte    = 14byte
  */
 static int
-fhs_compose_record (DB_TYPE key_type, void *key_p, OID * value_p, RECDES * recdes_p, short num)
+fhs_compose_record (THREAD_ENTRY * thread_p, void *key_p, OID * value_p, RECDES * recdes_p, short flag)
 {
-  short key_size;
   int record_size;
   char *record_p;
 
-  /* record : oid | key(int) | flag(1bit) + num(15bit) (short) */
-  record_size = sizeof (OID) + sizeof (int) + sizeof (short);
-
-  if (fhs_allocate_recdes (recdes_p, record_size, REC_HOME) == NULL)
+  /* record : oid | key(int) | flag(short) */
+  record_size = sizeof (OID) + sizeof (FHS_HASH_KEY) + sizeof (short);
+  if (fhs_allocate_recdes (thread_p, recdes_p, record_size, REC_HOME) == NULL)
     {
       return ER_FAILED;
     }
@@ -960,7 +970,7 @@ fhs_compose_record (DB_TYPE key_type, void *key_p, OID * value_p, RECDES * recde
   record_p = recdes_p->data;
   record_p = fhs_write_oid_to_record (record_p, value_p);
   record_p = fhs_write_key_to_record (record_p, key_p);
-  record_p = fhs_write_num_to_record (record_p, num);
+  record_p = fhs_write_flag_to_record (record_p, flag);
 
   return NO_ERROR;
 }
@@ -1092,7 +1102,7 @@ fhs_dir_locate (int *out_page_no_p, int *out_offset_p)
  *   type(in)    : Request type
  */
 static char *
-fhs_allocate_recdes (RECDES * recdes_p, int size, short type)
+fhs_allocate_recdes (THREAD_ENTRY * thread_p, RECDES * recdes_p, int size, short type)
 {
   recdes_p->area_size = recdes_p->length = size;
   recdes_p->type = type;
@@ -1100,7 +1110,7 @@ fhs_allocate_recdes (RECDES * recdes_p, int size, short type)
 
   if (recdes_p->area_size > 0)
     {
-      recdes_p->data = (char *) malloc (recdes_p->area_size);
+      recdes_p->data = (char *) db_private_alloc (thread_p, recdes_p->area_size);
       if (recdes_p->data == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) recdes_p->area_size);
@@ -1116,11 +1126,11 @@ fhs_allocate_recdes (RECDES * recdes_p, int size, short type)
  *   recdes(in): Record descriptor
  */
 static void
-fhs_free_recdes (RECDES * recdes_p)
+fhs_free_recdes (THREAD_ENTRY * thread_p, RECDES * recdes_p)
 {
   if (recdes_p->data)
     {
-      free_and_init (recdes_p->data);
+      db_private_free_and_init (thread_p, recdes_p->data);
     }
   recdes_p->area_size = recdes_p->length = 0;
 
@@ -1160,7 +1170,7 @@ fhs_free_recdes (RECDES * recdes_p)
  * hashing structure for future reference.
  */
 FHSID *
-fhs_create (THREAD_ENTRY * thread_p, FHSID * fhsid_p, DB_TYPE key_type, int exp_num_entries)
+fhs_create (THREAD_ENTRY * thread_p, FHSID * fhsid_p, int exp_num_entries)
 {
   FHS_DIR_RECORD *dir_record_p = NULL;
   VFID dir_vfid = VFID_INITIALIZER;
@@ -1168,16 +1178,13 @@ fhs_create (THREAD_ENTRY * thread_p, FHSID * fhsid_p, DB_TYPE key_type, int exp_
   PAGE_PTR dir_page_p = NULL;
   VFID bucket_vfid = VFID_INITIALIZER;
   VPID bucket_vpid = VPID_INITIALIZER;
-  char init_bucket_data[2];
+  char init_bucket_data;
   DKNPAGES exp_bucket_pages;
   DKNPAGES exp_dir_pages;
   short key_size;
-  char alignment;
   OID value;
   unsigned int i;
   PAGE_TYPE ptype = PAGE_EHASH;
-
-  assert (key_type == DB_TYPE_INTEGER);
 
   if (fhsid_p == NULL)
     {
@@ -1199,23 +1206,6 @@ fhs_create (THREAD_ENTRY * thread_p, FHSID * fhsid_p, DB_TYPE key_type, int exp_
       exp_bucket_pages = CEIL_PTVDIV (exp_bucket_pages, DB_PAGESIZE);
     }
 
-  /* Calculate alignment to use on slots of bucket pages */
-  if (SSIZEOF (value.pageid) >= key_size)
-    {
-      alignment = sizeof (value.pageid);
-    }
-  else
-    {
-      alignment = (char) key_size;
-    }
-
-  /* TODO: M2 64-bit */
-  /* May want to remove later on; not portable to 64-bit machines */
-  if (alignment > SSIZEOF (int))
-    {
-      alignment = sizeof (int);
-    }
-
   /* Create the first bucket and initialize its header */
   if (file_create_ehash (thread_p, exp_bucket_pages, true, NULL, &bucket_vfid) != NO_ERROR)
     {
@@ -1223,12 +1213,9 @@ fhs_create (THREAD_ENTRY * thread_p, FHSID * fhsid_p, DB_TYPE key_type, int exp_
       return NULL;
     }
 
-  /* Log the initialization of the first bucket page */
-
-  init_bucket_data[0] = alignment;
-  init_bucket_data[1] = 0;
-
-  if (file_alloc (thread_p, &bucket_vfid, fhs_initialize_bucket_new_page, init_bucket_data, &bucket_vpid, NULL)
+  /* initialization of the first bucket page */
+  init_bucket_data = 0;
+  if (file_alloc (thread_p, &bucket_vfid, fhs_initialize_bucket_new_page, &init_bucket_data, &bucket_vpid, NULL)
       != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -1287,8 +1274,8 @@ fhs_create (THREAD_ENTRY * thread_p, FHSID * fhsid_p, DB_TYPE key_type, int exp_
 
   /* Initialize the file hash scan id */
   fhsid_p->depth = 0;
-  fhsid_p->key_type = key_type;
-  fhsid_p->alignment = alignment;
+  fhsid_p->key_type = FHS_KEY_TYPE;
+  fhsid_p->alignment = FHS_ALIGNMENT;
   VFID_COPY (&fhsid_p->bucket_file, &bucket_vfid);
   VFID_COPY (&fhsid_p->ehid.vfid, &dir_vfid);
   fhsid_p->ehid.pageid = dir_vpid.pageid;
@@ -1353,14 +1340,12 @@ fhs_destroy (THREAD_ENTRY * thread_p, FHSID * fhsid_p)
  * return	 : Error code.
  * thread_p (in) : Thread entry
  * page_p (in)	 : New bucket page
- * args (in)     : Alignment, depth. Used to initialize and log the page.
+ * args (in)     : depth. Used to initialize and log the page.
  */
 static int
 fhs_initialize_bucket_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, void *args)
 {
-  char alignment;
   char depth;
-  int offset = 0;
   FHS_BUCKET_HEADER bucket_header;
   RECDES bucket_recdes;
   PGSLOTID slot_id;
@@ -1368,11 +1353,7 @@ fhs_initialize_bucket_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, void *
 
   int error_code = NO_ERROR;
 
-  alignment = *(char *) args;
-  offset += sizeof (alignment);
-
-  depth = *((char *) args + offset);
-  offset += sizeof (depth);
+  depth = *((char *) args);
 
   /*
    * fetch and initialize the new page. The parameter UNANCHORED_KEEP_
@@ -1386,7 +1367,7 @@ fhs_initialize_bucket_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, void *
    * Initialize the bucket to contain variable-length records
    * on ordered slots.
    */
-  spage_initialize (thread_p, page_p, UNANCHORED_KEEP_SEQUENCE, alignment, DONT_SAFEGUARD_RVSPACE);
+  spage_initialize (thread_p, page_p, UNANCHORED_KEEP_SEQUENCE, FHS_ALIGNMENT, DONT_SAFEGUARD_RVSPACE);
 
   /* Initialize the bucket header */
   bucket_header.local_depth = depth;
@@ -1430,26 +1411,20 @@ fhs_initialize_bucket_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, void *
  * return	 : Error code.
  * thread_p (in) : Thread entry
  * page_p (in)	 : New bucket page
- * args (in)     : Alignment, depth. Used to initialize and log the page.
+ * args (in)     : depth. Used to initialize and log the page.
  */
 static int
 fhs_initialize_dk_bucket_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, void *args)
 {
-  char alignment;
-  char depth;
-  int offset = 0;
-  FHS_BUCKET_HEADER bucket_header;
+  VPID next_bucket;
+  FHS_DK_BUCKET_HEADER dk_bucket_header;
   RECDES bucket_recdes;
   PGSLOTID slot_id;
   int success = SP_SUCCESS;
 
   int error_code = NO_ERROR;
 
-  alignment = *(char *) args;
-  offset += sizeof (alignment);
-
-  depth = *((char *) args + offset);
-  offset += sizeof (depth);
+  next_bucket = *((VPID *) args);
 
   /*
    * fetch and initialize the new page. The parameter UNANCHORED_KEEP_
@@ -1463,14 +1438,14 @@ fhs_initialize_dk_bucket_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, voi
    * Initialize the bucket to contain variable-length records
    * on ordered slots.
    */
-  spage_initialize (thread_p, page_p, UNANCHORED_KEEP_SEQUENCE, alignment, DONT_SAFEGUARD_RVSPACE);
+  spage_initialize (thread_p, page_p, UNANCHORED_KEEP_SEQUENCE, FHS_ALIGNMENT, DONT_SAFEGUARD_RVSPACE);
 
   /* Initialize the bucket header */
-  bucket_header.local_depth = depth;
+  dk_bucket_header.next_bucket = next_bucket;
 
   /* Set the record descriptor to the Bucket header */
-  bucket_recdes.data = (char *) &bucket_header;
-  bucket_recdes.area_size = bucket_recdes.length = sizeof (FHS_BUCKET_HEADER);
+  bucket_recdes.data = (char *) &dk_bucket_header;
+  bucket_recdes.area_size = bucket_recdes.length = sizeof (FHS_DK_BUCKET_HEADER);
   bucket_recdes.type = REC_HOME;
 
   /*
@@ -1538,6 +1513,9 @@ fhs_search (THREAD_ENTRY * thread_p, FHSID * fhsid_p, void *key_p, OID * value_p
   RECDES recdes;
   PGSLOTID slot_id;
   EH_SEARCH result = EH_KEY_NOTFOUND;
+  short flag;
+
+  /* search 시 inderect flag 확인 및 dk_bucket 조회 로직 추가 */
 
   if (fhsid_p == NULL || key_p == NULL)
     {
@@ -1569,6 +1547,7 @@ fhs_search (THREAD_ENTRY * thread_p, FHSID * fhsid_p, void *key_p, OID * value_p
     }
 
   (void) spage_get_record (thread_p, bucket_page_p, slot_id, &recdes, PEEK);
+
   fhs_read_oid_from_record (recdes.data, value_p);
   /* save last oid */
   last_oid_p->volid = bucket_vpid.volid;
@@ -1606,6 +1585,8 @@ fhs_search_next (THREAD_ENTRY * thread_p, FHSID * fhsid_p, void *key, OID * valu
   EH_SEARCH result = EH_KEY_NOTFOUND;
   char *bucket_key;
   int compare_result;
+
+  /* search_next 시 inderect flag 확인 및 dk_bucket 조회 로직 추가 */
 
   if (fhsid_p == NULL || last_oid_p->pageid == NULL_PAGEID)
     {
@@ -1853,7 +1834,7 @@ fhs_binary_search_bucket (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, PGSLO
   PGSLOTID low, high;
   PGSLOTID middle;
   int compare_result;
-  short num;
+  short flag;
 
   low = 1;
   high = num_record;
@@ -1909,19 +1890,19 @@ fhs_binary_search_bucket (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, PGSLO
 	    }
 	  else
 	    {
-	      /* go to last slot using num */
+	      /* go to last slot using flag */
 	      if (spage_get_record (thread_p, bucket_page_p, middle, &recdes, PEEK) != S_SUCCESS)
 		{
 		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_CORRUPTED, 0);
 		  return false;
 		}
-	      fhs_read_num_from_record ((char *) recdes.data, &num);
-	      if (num <= 0)
+	      fhs_read_flag_from_record ((char *) recdes.data, &flag);
+	      if (flag <= 0)
 		{
 		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_CORRUPTED, 0);
 		  return false;
 		}
-	      *out_position_p = middle + num - 1;
+	      *out_position_p = middle + flag - 1;
 	    }
 	  return true;
 	}
@@ -2011,7 +1992,7 @@ fhs_insert_to_bucket_after_create (THREAD_ENTRY * thread_p, FHSID * fhsid_p, VPI
   PAGE_PTR bucket_page_p;
   FHS_BUCKET_HEADER bucket_header;
   char found_depth;
-  char init_bucket_data[2];
+  char init_bucket_data;
   VPID null_vpid = { NULL_VOLID, NULL_PAGEID };
   FHS_RESULT ins_result;
 
@@ -2023,11 +2004,10 @@ fhs_insert_to_bucket_after_create (THREAD_ENTRY * thread_p, FHSID * fhsid_p, VPI
       return ER_FAILED;
     }
 
-  init_bucket_data[0] = fhsid_p->alignment;
-  init_bucket_data[1] = fhsid_p->depth - found_depth;
-  bucket_header.local_depth = init_bucket_data[1];
+  init_bucket_data = fhsid_p->depth - found_depth;
+  bucket_header.local_depth = init_bucket_data;
 
-  error_code = file_alloc (thread_p, &fhsid_p->bucket_file, fhs_initialize_bucket_new_page, init_bucket_data,
+  error_code = file_alloc (thread_p, &fhsid_p->bucket_file, fhs_initialize_bucket_new_page, &init_bucket_data,
 			   bucket_vpid_p, &bucket_page_p);
   if (error_code != NO_ERROR)
     {
@@ -2049,7 +2029,7 @@ fhs_insert_to_bucket_after_create (THREAD_ENTRY * thread_p, FHSID * fhsid_p, VPI
       return ER_FAILED;
     }
 
-  ins_result = fhs_insert_to_bucket (thread_p, bucket_page_p, fhsid_p->key_type, key_p, value_p);
+  ins_result = fhs_insert_to_bucket (thread_p, fhsid_p, bucket_page_p, key_p, value_p);
 
   if (ins_result != FHS_SUCCESSFUL_COMPLETION)
     {
@@ -2080,7 +2060,7 @@ fhs_insert_bucket_after_extend_if_need (THREAD_ENTRY * thread_p, FHSID * fhsid_p
       return FHS_ERROR_OCCURRED;
     }
 
-  result = fhs_insert_to_bucket (thread_p, bucket_page_p, fhsid_p->key_type, key_p, value_p);
+  result = fhs_insert_to_bucket (thread_p, fhsid_p, bucket_page_p, key_p, value_p);
   if (result == FHS_BUCKET_FULL)
     {
       sibling_page_p = fhs_extend_bucket (thread_p, fhsid_p, bucket_page_p, key_p, hash_key, &new_bit, bucket_vpid_p);
@@ -2105,7 +2085,7 @@ fhs_insert_bucket_after_extend_if_need (THREAD_ENTRY * thread_p, FHSID * fhsid_p
 	  target_bucket_page_p = bucket_page_p;
 	}
 
-      result = fhs_insert_to_bucket (thread_p, target_bucket_page_p, fhsid_p->key_type, key_p, value_p);
+      result = fhs_insert_to_bucket (thread_p, fhsid_p, target_bucket_page_p, key_p, value_p);
       pgbuf_unfix_and_init (thread_p, sibling_page_p);
     }
 
@@ -2329,10 +2309,8 @@ fhs_connect_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, int local_depth, F
  *   return: FHS_RESULT
  *   fhsid(in): identifier for the extendible hashing structure
  *   buc_pgptr(in): bucket page to insert the key
- *   key_type(in): type of the key
  *   key_ptr(in): Pointer to the key
  *   value_ptr(in): Pointer to the associated value
- *   existing_ovf_vpid(in):
  *
  * Note: This function is used to insert a (key & assoc_value) pair
  * onto the given bucket. If the KEY already EXISTS in the bucket
@@ -2344,85 +2322,268 @@ fhs_connect_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, int local_depth, F
  * for the new record, etc.) an appropriate error code is returned.
  */
 static FHS_RESULT
-fhs_insert_to_bucket (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, DB_TYPE key_type, void *key_p, OID * value_p)
+fhs_insert_to_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, PAGE_PTR bucket_page_p, void *key_p, OID * value_p)
 {
-  char *bucket_record_p;
   RECDES bucket_recdes;
   RECDES old_bucket_recdes;
 
-  PGSLOTID slot_no;
+  PGSLOTID slot_no, tmp_slot;
   int success;
-  short num;
+  short flag;
+  VPID dk_bucket_vpid;
+  PAGE_PTR dk_bucket_page_p = NULL;
+  OID tmp_oid;
+  VPID null_vpid = { NULL_VOLID, NULL_PAGEID };
 
   /* Check if insertion is duplicate, or not */
-  if (fhs_locate_slot (thread_p, bucket_page_p, key_type, key_p, &slot_no, true) == true)
+  if (fhs_locate_slot (thread_p, bucket_page_p, fhsid_p->key_type, key_p, &slot_no, true) == true)
     {
       /* Key already exists. Append new data to the last slot of duplicate keys. */
       (void) spage_get_record (thread_p, bucket_page_p, slot_no, &old_bucket_recdes, PEEK);
-      fhs_read_num_from_record (old_bucket_recdes.data, &num);
-      /* num >= MAX 이면 page 만들고 거기에 옮겨 담아 박세훈 */
-      /* num >= max와 indirect flag 확인필요. */
-      /* 1. page 만들기 
-         2. 데이터 넣기 */
-/*
-      bucket_vfid = dir_header_p->bucket_file;
-  init_bucket_data[0] = dir_header_p->alignment;
-  init_bucket_data[1] = *out_new_local_depth_p;
+      fhs_read_flag_from_record (old_bucket_recdes.data, &flag);
 
-  error_code = file_alloc (thread_p, &bucket_vfid, fhs_initialize_bucket_new_page, init_bucket_data, sibling_vpid_p,
-			   &sibling_page_p);
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return NULL;
-    }
-  if (sibling_page_p == NULL)
-    {
-      assert_release (false);
-      return NULL;
-    }
-*/
+      if (flag == FHS_FLAG_INDIRECT)
+        {
+          /* the case of inserting record into DK bucket */
+          /* get the dk bucket vpid */
+          fhs_read_oid_from_record (old_bucket_recdes.data, &tmp_oid);
+          dk_bucket_vpid.pageid = tmp_oid.pageid;
+          dk_bucket_vpid.volid = tmp_oid.volid;
+          /* insert new record into dk_bucket */
+	  if (fhs_insert_to_dk_bucket (thread_p, fhsid_p, &dk_bucket_vpid, key_p, value_p) != FHS_SUCCESSFUL_COMPLETION)
+	    {
+	      /* This should never happen. */
+	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      goto error;
+	    }
+	  return FHS_SUCCESSFUL_COMPLETION;
+        }
+      else if (flag + 1 >= FHS_MAX_DUP_KEY)
+        {
+          /* the case of inserting firstly to DK bucket */
+          /* make DK bucket page */
+          success = file_alloc (thread_p, &fhsid_p->bucket_file, fhs_initialize_dk_bucket_new_page, &null_vpid, &dk_bucket_vpid,
+				   &dk_bucket_page_p);
+	  if (success != NO_ERROR || dk_bucket_page_p == NULL)
+	    {
+	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      goto error;
+	    }
+	  /* insert new record into dk_bucket */
+	  if (fhs_compose_record (thread_p, key_p, value_p, &bucket_recdes, FHS_FLAG_DUMMY_NUM) != NO_ERROR)
+	    {
+	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      goto error;
+	    }
+	  success = spage_insert (thread_p, dk_bucket_page_p, &bucket_recdes, &tmp_slot);
+	  if (success != SP_SUCCESS)
+	    {
+	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      goto error;
+	    }
+	  fhs_free_recdes (thread_p, &bucket_recdes);
 
-
-      /* 변경 */
-      num++;
+	  /* move duplicate key from bucket to dk_bucket */
+	  success = spage_insert (thread_p, dk_bucket_page_p, &old_bucket_recdes, &tmp_slot);
+	  if (success != SP_SUCCESS)
+	    {
+	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      goto error;
+	    }
+	  (void) spage_delete (thread_p, bucket_page_p, slot_no);
+	  for (int i = flag - 1; i > 0; i--)
+	    {
+	      (void) spage_get_record (thread_p, bucket_page_p, slot_no, &old_bucket_recdes, PEEK);
+	      success = spage_insert (thread_p, dk_bucket_page_p, &old_bucket_recdes, &tmp_slot);
+	      if (success != SP_SUCCESS)
+		{
+		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+		  goto error;
+		}
+	      (void) spage_delete (thread_p, bucket_page_p, slot_no);
+	      /* slot_no is not changed since the current slot is deleted */
+	    }
+	  /* make indirect record for bucket */
+	  tmp_oid.pageid = dk_bucket_vpid.pageid;
+	  tmp_oid.volid = dk_bucket_vpid.volid;
+	  tmp_oid.slotid = 0;
+	  if (fhs_compose_record (thread_p, key_p, &tmp_oid, &bucket_recdes, FHS_FLAG_INDIRECT) != NO_ERROR)
+	    {
+	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      goto error;
+	    }
+        }
+      else
+        {
+          /* the case of inserting duplicate key record into bucket */
+          if (fhs_compose_record (thread_p, key_p, value_p, &bucket_recdes, ++flag) != NO_ERROR)
+	    {
+	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      goto error;
+	    }
+        }
     }
   else
     {
-      /* Key does not exist in the bucket  */
-      num = 1;
+      /* Key does not exist in the bucket */
+      if (fhs_compose_record (thread_p, key_p, value_p, &bucket_recdes, 1) != NO_ERROR)
+	{
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  goto error;
+	}
     }
-
   /* insert it into the bucket */
-  if (fhs_compose_record (key_type, key_p, value_p, &bucket_recdes, num) != NO_ERROR)
-    {
-      return FHS_ERROR_OCCURRED;
-    }
-  /* Try to put the record to the slotted page */
   success = spage_insert_at (thread_p, bucket_page_p, slot_no, &bucket_recdes);
   if (success != SP_SUCCESS)
     {
       /* Problem the record was not inserted to the page */
-      fhs_free_recdes (&bucket_recdes);
+      fhs_free_recdes (thread_p, &bucket_recdes);
       if (success == SP_DOESNT_FIT)
 	{
 	  /* There is not enough space on the slotted page for the new record */
+	  if (dk_bucket_page_p)
+	    {
+	      pgbuf_set_dirty (thread_p, dk_bucket_page_p, FREE);
+	    }
 	  return FHS_BUCKET_FULL;
 	}
       else
 	{
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  return FHS_ERROR_OCCURRED;
+	  goto error;
 	}
     }
 
   if (bucket_recdes.data)
     {
-      fhs_free_recdes (&bucket_recdes);
+      fhs_free_recdes (thread_p, &bucket_recdes);
+    }
+  if (dk_bucket_page_p)
+    {
+      pgbuf_set_dirty (thread_p, dk_bucket_page_p, FREE);
     }
 
   pgbuf_set_dirty (thread_p, bucket_page_p, DONT_FREE);
   return FHS_SUCCESSFUL_COMPLETION;
+
+error:
+  if (bucket_recdes.data)
+    {
+      fhs_free_recdes (thread_p, &bucket_recdes);
+    }
+  if (dk_bucket_page_p)
+    {
+      pgbuf_set_dirty (thread_p, dk_bucket_page_p, FREE);
+    }
+  return FHS_ERROR_OCCURRED;
+}
+
+/*
+ * fhs_insert_to_dk_bucket () - Insert (key, value) to dk bucket
+ *   return: FHS_RESULT
+ *   fhsid(in): identifier for the extendible hashing structure
+ *   buc_pgptr(in): bucket page to insert the key
+ *   key_ptr(in): Pointer to the key
+ *   value_ptr(in): Pointer to the associated value
+ *
+ * Note:
+ * Insert (key, value) to DK bucket
+ * if DK bucket is full, create new DK bucket and connect to prior DK bucket
+ */
+static FHS_RESULT
+fhs_insert_to_dk_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, VPID *next_bucket_vpid, void *key_p, OID * value_p)
+{
+  RECDES bucket_recdes, old_bucket_recdes;
+  PGSLOTID tmp_slot;
+  int success;
+  FHS_DK_BUCKET_HEADER *dk_bucket_header_p;
+  VPID tmp_bucket_vpid, cur_bucket_vpid;
+  PAGE_PTR dk_bucket_page_p = NULL;
+  PAGE_PTR new_dk_bucket_page_p = NULL;
+  VPID null_vpid = { NULL_VOLID, NULL_PAGEID };
+
+  /* get last DK bucket page (순서때문에 이렇게 하는 것인데.. 속도 저하 문제는 있음)*/
+  tmp_bucket_vpid = *next_bucket_vpid;
+  do
+    {
+      if (dk_bucket_page_p)
+	{
+	  pgbuf_unfix_and_init (thread_p, dk_bucket_page_p);
+	}
+      dk_bucket_page_p = fhs_fix_old_page (thread_p, &fhsid_p->bucket_file, &tmp_bucket_vpid, PGBUF_LATCH_WRITE);
+      if (dk_bucket_page_p == NULL)
+	{
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  goto error;
+	}
+      (void) spage_get_record (thread_p, dk_bucket_page_p, 0, &old_bucket_recdes, PEEK);
+      dk_bucket_header_p = (FHS_DK_BUCKET_HEADER *) old_bucket_recdes.data;
+      tmp_bucket_vpid = dk_bucket_header_p->next_bucket;
+    }
+  while (!(tmp_bucket_vpid.volid == NULL_VOLID && tmp_bucket_vpid.pageid == NULL_PAGEID));
+
+  /* insert new record into dk_bucket */
+  if (fhs_compose_record (thread_p, key_p, value_p, &bucket_recdes, FHS_FLAG_DUMMY_NUM) != NO_ERROR)
+    {
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      goto error;
+    }
+  success = spage_insert (thread_p, dk_bucket_page_p, &bucket_recdes, &tmp_slot);
+  if (success == SP_DOESNT_FIT)
+    {
+      /* make new dk_bucket page */
+      success = file_alloc (thread_p, &fhsid_p->bucket_file, fhs_initialize_dk_bucket_new_page, &null_vpid, &cur_bucket_vpid,
+			   &new_dk_bucket_page_p);
+      if (success != NO_ERROR || dk_bucket_page_p == NULL)
+	{
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  goto error;
+	}
+      /* connect with prior page */
+      dk_bucket_header_p->next_bucket = cur_bucket_vpid;
+      pgbuf_set_dirty (thread_p, dk_bucket_page_p, DONT_FREE);
+
+      /* insert record into new dk_bucket */
+      success = spage_insert (thread_p, new_dk_bucket_page_p, &bucket_recdes, &tmp_slot);
+      if (success != SP_SUCCESS)
+	{
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  goto error;
+	}
+      pgbuf_set_dirty (thread_p, new_dk_bucket_page_p, DONT_FREE);
+    }
+  else if (success != SP_SUCCESS)
+    {
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      goto error;
+    }
+
+  if (dk_bucket_page_p)
+    {
+      pgbuf_unfix_and_init (thread_p, dk_bucket_page_p);
+    }
+  fhs_free_recdes (thread_p, &bucket_recdes);
+  if (new_dk_bucket_page_p)
+    {
+      pgbuf_unfix_and_init (thread_p, new_dk_bucket_page_p);
+    }
+
+  return FHS_SUCCESSFUL_COMPLETION;
+
+error:
+  if (bucket_recdes.data)
+    {
+      fhs_free_recdes (thread_p, &bucket_recdes);
+    }
+  if (dk_bucket_page_p)
+    {
+      pgbuf_unfix_and_init (thread_p, dk_bucket_page_p);
+    }
+  if (new_dk_bucket_page_p)
+    {
+      pgbuf_unfix_and_init (thread_p, new_dk_bucket_page_p);
+    }
+  return FHS_ERROR_OCCURRED;
 }
 
 static PAGE_PTR
@@ -2520,7 +2681,7 @@ fhs_split_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, PAGE_PTR bucket_page
   RECDES recdes;
   PGSLOTID first_slot_id = -1;
   int num_records;
-  char init_bucket_data[2];
+  char init_bucket_data;
 
   int error_code = NO_ERROR;
 
@@ -2541,10 +2702,9 @@ fhs_split_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, PAGE_PTR bucket_page
     }
 
   bucket_vfid = fhsid_p->bucket_file;
-  init_bucket_data[0] = fhsid_p->alignment;
-  init_bucket_data[1] = *out_new_local_depth_p;
+  init_bucket_data = *out_new_local_depth_p;
 
-  error_code = file_alloc (thread_p, &bucket_vfid, fhs_initialize_bucket_new_page, init_bucket_data, sibling_vpid_p,
+  error_code = file_alloc (thread_p, &bucket_vfid, fhs_initialize_bucket_new_page, &init_bucket_data, sibling_vpid_p,
 			   &sibling_page_p);
   if (error_code != NO_ERROR)
     {
