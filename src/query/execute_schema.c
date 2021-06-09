@@ -8624,7 +8624,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	       * the error code is not need to set at this point
 	       * because the error code is already set from dblink
 	       */
-	      error = -1;
+	      error = ER_FAILED;
 	      goto error_exit;
 	    }
 
