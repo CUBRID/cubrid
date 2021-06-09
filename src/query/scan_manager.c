@@ -8275,13 +8275,6 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
   /* Since dptr is searched after scan_open_scan, it is checked when llsidp->list_id->tuple_cnt <= 0 */
 
   /* list file size check */
-  /* tempolary set HASH FILE */
-  if (hash_list_scan_yn == HASH_METH_NOT_USE)
-    {
-      return HASH_METH_HYBRID;
-    }
-  return HASH_METH_HASH_FILE;
-
   if (mem_limit == 0)
     {
       return HASH_METH_NOT_USE;
