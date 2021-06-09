@@ -1140,10 +1140,6 @@ xvacuum_dump (THREAD_ENTRY * thread_p, FILE * outfp)
 	    {
 	      fprintf (outfp, "(in %s%s%03d)\n", log_Prefix, FILEIO_SUFFIX_LOGARCHIVE, archive_number);
 	    }
-//        if (archive_number >= 0)
-//          {
-//            fprintf (outfp, "(in %s%s%03d)", log_Prefix, FILEIO_SUFFIX_LOGARCHIVE, archive_number);
-//          }
 	  LOG_CS_EXIT (thread_p);
 	}
       else
