@@ -9521,7 +9521,18 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 	      parser->custom_print |= alias_print_flag;
 
 	      q = pt_append_nulstring (parser, q, "(");
-	      r1 = pt_print_bytes_l (parser, p->info.spec.as_attr_list);
+
+	      if (parser->custom_print & PT_SUPPRESS_RESOLVED)
+		{
+		  r1 = pt_print_bytes_l (parser, p->info.spec.derived_table->info.dblink_table.cols);
+		}
+	      else
+		{
+		  parser->custom_print |= PT_SUPPRESS_RESOLVED;
+		  r1 = pt_print_bytes_l (parser, p->info.spec.derived_table->info.dblink_table.cols);
+		  parser->custom_print &= ~PT_SUPPRESS_RESOLVED;
+		}
+
 	      q = pt_append_varchar (parser, q, r1);
 	      q = pt_append_nulstring (parser, q, ")");
 
@@ -19387,7 +19398,11 @@ pt_print_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p)
   q = pt_append_bytes (parser, q, ", ", 2);
   if (p->info.dblink_table.qstr)
     {
+      unsigned int alias_print_flag = (parser->custom_print & PT_CHARSET_COLLATE_FULL);
+      parser->custom_print &= ~PT_CHARSET_COLLATE_FULL;
       r = pt_print_bytes (parser, p->info.dblink_table.qstr);
+      parser->custom_print |= alias_print_flag;
+
       q = pt_append_varchar (parser, q, r);
     }
   q = pt_append_bytes (parser, q, ")", 1);
