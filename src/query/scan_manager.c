@@ -8225,10 +8225,10 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
   UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
 
   /* no_hash_list_scan sql hint check */
-/*  if (hash_list_scan_yn == HASH_METH_NOT_USE)
+  if (hash_list_scan_yn == HASH_METH_NOT_USE)
     {
       return HASH_METH_NOT_USE;
-    }*/
+    }
 
   /* count of tuple of list file > 0 */
   if (llsidp->list_id->tuple_cnt <= 0)

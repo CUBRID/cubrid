@@ -1330,9 +1330,9 @@ fhs_destroy (THREAD_ENTRY * thread_p, FHSID * fhsid_p)
       return ER_FAILED;
     }
 
-  /* for debug */
+#if 0  /* for debug */
   fhs_dump (thread_p, fhsid_p);
-  /* for debug */
+#endif  /* for debug */
 
   if (file_destroy (thread_p, &(fhsid_p->bucket_file), true) != NO_ERROR)
     {
@@ -2489,7 +2489,7 @@ fhs_insert_to_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, PAGE_PTR bucket_
 	  for (int i = flag - 1; i > 0; i--)
 	    {
 	      (void) spage_get_record (thread_p, bucket_page_p, slot_no, &old_bucket_recdes, PEEK);
-	      success = spage_insert (thread_p, dk_bucket_page_p, &old_bucket_recdes, &tmp_slot);
+	      success = spage_insert_at (thread_p, dk_bucket_page_p, tmp_slot, &old_bucket_recdes);
 	      if (success != SP_SUCCESS)
 		{
 		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
