@@ -1686,16 +1686,9 @@ typedef struct pt_json_table_info PT_JSON_TABLE_INFO;
 typedef struct pt_json_table_node_info PT_JSON_TABLE_NODE_INFO;
 typedef struct pt_json_table_column_info PT_JSON_TABLE_COLUMN_INFO;
 
-typedef PT_NODE *(*PT_NODE_FUNCTION) (PARSER_CONTEXT * p, PT_NODE * tree, void *arg);
-
 typedef PT_NODE *(*PT_NODE_WALK_FUNCTION) (PARSER_CONTEXT * p, PT_NODE * tree, void *arg, int *continue_walk);
 
-typedef void (*PT_NODE_APPLY_FUNCTION) (PARSER_CONTEXT * p, PT_NODE * tree, PT_NODE_FUNCTION f, void *arg);
-
 typedef PARSER_VARCHAR *(*PT_PRINT_VALUE_FUNC) (PARSER_CONTEXT * parser, const PT_NODE * val);
-typedef PT_NODE *(*PARSER_INIT_NODE_FUNC) (PT_NODE *);
-typedef PARSER_VARCHAR *(*PARSER_PRINT_NODE_FUNC) (PARSER_CONTEXT * parser, PT_NODE * node);
-typedef PT_NODE *(*PARSER_APPLY_NODE_FUNC) (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
 
 /* This is for loose reference to init node function vector */
 typedef void (*PARSER_GENERIC_VOID_FUNCTION) ();
