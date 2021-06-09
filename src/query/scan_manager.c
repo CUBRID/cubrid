@@ -8168,7 +8168,7 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 	case HASH_METH_HASH_FILE:
 	  eh_search =
 	    fhs_search_next (thread_p, llsidp->hlsid.file.hash_table, &llsidp->hlsid.curr_hash_key, &oid,
-			     &llsidp->hlsid.file.curr_oid, &llsidp->hlsid.file.is_dk_bucket);
+			     &llsidp->hlsid.file.curr_oid, llsidp->hlsid.file.is_dk_bucket);
 	  switch (eh_search)
 	    {
 	    case EH_KEY_FOUND:
