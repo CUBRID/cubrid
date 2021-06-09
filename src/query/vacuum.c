@@ -40,6 +40,7 @@
 #include "overflow_file.h"
 #include "page_buffer.h"
 #include "perf_monitor.h"
+#include "porting.h"
 #include "resource_shared_pool.hpp"
 #include "server_type.hpp"
 #include "thread_entry_task.hpp"
