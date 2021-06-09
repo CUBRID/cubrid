@@ -40,7 +40,6 @@
 #include "overflow_file.h"
 #include "page_buffer.h"
 #include "perf_monitor.h"
-#include "porting.h"
 #include "resource_shared_pool.hpp"
 #include "server_type.hpp"
 #include "thread_entry_task.hpp"
@@ -1126,7 +1125,7 @@ xvacuum_dump (THREAD_ENTRY * thread_p, FILE * outfp)
 
   fprintf (outfp, "\n");
   fprintf (outfp, "*** Vacuum Dump ***\n");
-  fprintf (outfp, "First log page ID referenced = %" PRId64 " ", min_log_pageid);
+  fprintf (outfp, "First log page ID referenced = %lld", (long long int) min_log_pageid);
   if (!is_tran_server_with_remote_storage ())
     {
       if (logpb_is_page_in_archive (min_log_pageid))
