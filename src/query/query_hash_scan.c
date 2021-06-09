@@ -712,7 +712,7 @@ fhs_dump_bucket (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, DB_TYPE key_ty
 
   num_records = spage_number_of_records (bucket_page_p);
 
-  for (slot_id = 1; slot_id < 2 /*num_records */ ; slot_id++)
+  for (slot_id = 1; slot_id < num_records; slot_id++)
     {
       printf ("*   %2d", slot_id);
 
