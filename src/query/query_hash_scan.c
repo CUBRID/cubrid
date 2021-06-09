@@ -48,6 +48,7 @@
 #include "file_manager.h"
 #include "db_date.h"
 #include "thread_compat.hpp"
+#include "oid.h"
 
 
 static bool safe_memcpy (void *data, void *source, int size);
@@ -63,14 +64,25 @@ static DB_VALUE_COMPARE_RESULT qdata_hscan_key_compare (HASH_SCAN_KEY * ckey1, H
 #define FHS_SHORT_BITS  (sizeof (short) * 8)
 
 #define FHS_FLAG_INDIRECT	-1	/* 0xFFFF, record is page id for duplicate key bucket */
-#define FHS_FLAG_DUMMY_NUM	0	/* 0x0000, flag of record in dk bucket */
+#define FHS_FLAG_DUMMY_NUM	0	/* meaningless flag of record in dk bucket */
+
+#define FHS_HEADER_SLOT_ID	0
+#define FHS_FIRST_SLOT_ID	1
 
 /* key */
 typedef unsigned int FHS_HASH_KEY;
 #define FHS_KEY_TYPE DB_TYPE_INTEGER
 #define FHS_KEY_SIZE (sizeof (FHS_HASH_KEY))
 #define FHS_ALIGNMENT ((char) FHS_KEY_SIZE)
-#define FHS_MAX_DUP_KEY 100
+#define FHS_MAX_DUP_KEY 2
+
+#define SET_VPID(dest_vpid, vol_id, page_id)  \
+  do \
+    { \
+      (dest_vpid).volid = vol_id; \
+      (dest_vpid).pageid = page_id; \
+    } \
+  while (0)
 
 /* Directory elements : Pointer to the bucket */
 typedef struct fhs_dir_record FHS_DIR_RECORD;
@@ -1506,20 +1518,21 @@ fhs_initialize_dir_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, void *arg
  * key is not found an error condition is returned.
  */
 EH_SEARCH
-fhs_search (THREAD_ENTRY * thread_p, FHSID * fhsid_p, void *key_p, OID * value_p, OID * last_oid_p)
+fhs_search (THREAD_ENTRY * thread_p, FHSID * fhsid_p, void *key_p, OID * value_p, OID * last_oid_p, bool * is_dk_bucket)
 {
   PAGE_PTR bucket_page_p = NULL;
-  VPID bucket_vpid;
+  PAGE_PTR dk_bucket_page_p = NULL;
+  VPID bucket_vpid, dk_bucket_vpid;
   RECDES recdes;
   PGSLOTID slot_id;
   EH_SEARCH result = EH_KEY_NOTFOUND;
   short flag;
+  OID temp_oid;
 
   if (fhsid_p == NULL || key_p == NULL)
     {
       return EH_KEY_NOTFOUND;
     }
-
   if (fhs_find_bucket_vpid_with_hash (thread_p, fhsid_p, key_p, PGBUF_LATCH_READ, PGBUF_LATCH_READ, &bucket_vpid, NULL,
 				      NULL) != NO_ERROR)
     {
@@ -1530,34 +1543,66 @@ fhs_search (THREAD_ENTRY * thread_p, FHSID * fhsid_p, void *key_p, OID * value_p
       result = EH_KEY_NOTFOUND;
       goto end;
     }
-
   bucket_page_p = fhs_fix_old_page (thread_p, &fhsid_p->bucket_file, &bucket_vpid, PGBUF_LATCH_READ);
   if (bucket_page_p == NULL)
     {
       result = EH_ERROR_OCCURRED;
       goto end;
     }
-
   if (fhs_locate_slot (thread_p, bucket_page_p, fhsid_p->key_type, key_p, &slot_id, false) == false)
     {
       result = EH_KEY_NOTFOUND;
       goto end;
     }
+  if (spage_get_record (thread_p, bucket_page_p, slot_id, &recdes, PEEK) != S_SUCCESS)
+    {
+      result = EH_ERROR_OCCURRED;
+      goto end;
+    }
 
-  (void) spage_get_record (thread_p, bucket_page_p, slot_id, &recdes, PEEK);
-
-  fhs_read_oid_from_record (recdes.data, value_p);
-  /* save last oid */
-  last_oid_p->volid = bucket_vpid.volid;
-  last_oid_p->pageid = bucket_vpid.pageid;
-  last_oid_p->slotid = slot_id;
-
-  result = EH_KEY_FOUND;
+  fhs_read_flag_from_record (recdes.data, &flag);
+  if (flag == FHS_FLAG_INDIRECT)
+    {
+      /* indirect data. search DK bucket */
+      *is_dk_bucket = true;
+      fhs_read_oid_from_record (recdes.data, &temp_oid);
+      SET_VPID (dk_bucket_vpid, temp_oid.volid, temp_oid.pageid);
+      /* fix dk bucket page */
+      dk_bucket_page_p = fhs_fix_old_page (thread_p, &fhsid_p->bucket_file, &dk_bucket_vpid, PGBUF_LATCH_READ);
+      if (dk_bucket_page_p == NULL)
+	{
+	  result = EH_ERROR_OCCURRED;
+	  goto end;
+	}
+      /* get first record */
+      if (spage_get_record (thread_p, dk_bucket_page_p, FHS_FIRST_SLOT_ID, &recdes, PEEK) != S_SUCCESS)
+	{
+	  result = EH_ERROR_OCCURRED;
+	  goto end;
+	}
+      fhs_read_oid_from_record (recdes.data, value_p);
+      /* save last oid */
+      SET_OID (last_oid_p, dk_bucket_vpid.volid, dk_bucket_vpid.pageid, FHS_FIRST_SLOT_ID);
+      result = EH_KEY_FOUND;
+    }
+  else
+    {
+      /* direct data */
+      *is_dk_bucket = false;
+      fhs_read_oid_from_record (recdes.data, value_p);
+      /* save last oid */
+      SET_OID (last_oid_p, bucket_vpid.volid, bucket_vpid.pageid, slot_id);
+      result = EH_KEY_FOUND;
+    }
 
 end:
   if (bucket_page_p)
     {
       pgbuf_unfix_and_init (thread_p, bucket_page_p);
+    }
+  if (dk_bucket_page_p)
+    {
+      pgbuf_unfix_and_init (thread_p, dk_bucket_page_p);
     }
 
   return result;
@@ -1575,24 +1620,25 @@ end:
  * found in the specified extendible hashing structure.
  */
 EH_SEARCH
-fhs_search_next (THREAD_ENTRY * thread_p, FHSID * fhsid_p, void *key, OID * value_p, OID * last_oid_p)
+fhs_search_next (THREAD_ENTRY * thread_p, FHSID * fhsid_p, void *key, OID * value_p, OID * last_oid_p,
+		 bool is_dk_bucket)
 {
   PAGE_PTR bucket_page_p = NULL;
-  VPID bucket_vpid;
+  PAGE_PTR next_bucket_page_p = NULL;
+  VPID bucket_vpid, next_bucket_vpid;
   RECDES recdes;
   EH_SEARCH result = EH_KEY_NOTFOUND;
   char *bucket_key;
   int compare_result;
-
-  /* search_next 시 inderect flag 확인 및 dk_bucket 조회 로직 추가 */
+  PGSLOTID num_record;
+  OID temp_oid;
 
   if (fhsid_p == NULL || last_oid_p->pageid == NULL_PAGEID)
     {
       return EH_KEY_NOTFOUND;
     }
 
-  bucket_vpid.volid = last_oid_p->volid;
-  bucket_vpid.pageid = last_oid_p->pageid;
+  SET_VPID (bucket_vpid, last_oid_p->volid, last_oid_p->pageid);
   bucket_page_p = fhs_fix_old_page (thread_p, &fhsid_p->ehid.vfid, &bucket_vpid, PGBUF_LATCH_READ);
   if (bucket_page_p == NULL)
     {
@@ -1600,38 +1646,81 @@ fhs_search_next (THREAD_ENTRY * thread_p, FHSID * fhsid_p, void *key, OID * valu
       goto end;
     }
 
-  if (last_oid_p->slotid <= 1)
+  if (is_dk_bucket)
     {
-      /* already last slot id */
-      result = EH_KEY_NOTFOUND;
-      goto end;
+      num_record = spage_number_of_records (bucket_page_p) - 1;
+      if (last_oid_p->slotid >= num_record)
+	{
+	  /* already last slot id */
+	  /* search data in next bucket */
+	  (void) spage_get_record (thread_p, bucket_page_p, FHS_HEADER_SLOT_ID, &recdes, PEEK);
+	  fhs_read_oid_from_record (recdes.data, &temp_oid);
+	  SET_VPID (next_bucket_vpid, temp_oid.volid, temp_oid.pageid);
+	  if (VPID_ISNULL (&next_bucket_vpid))
+	    {
+	      result = EH_KEY_NOTFOUND;
+	      goto end;
+	    }
+	  next_bucket_page_p = fhs_fix_old_page (thread_p, &fhsid_p->ehid.vfid, &next_bucket_vpid, PGBUF_LATCH_READ);
+	  /* get first record */
+	  if (spage_get_record (thread_p, next_bucket_page_p, FHS_FIRST_SLOT_ID, &recdes, PEEK) != S_SUCCESS)
+	    {
+	      result = EH_ERROR_OCCURRED;
+	      goto end;
+	    }
+	  fhs_read_oid_from_record (recdes.data, value_p);
+	  /* save last oid */
+	  SET_OID (last_oid_p, next_bucket_vpid.volid, next_bucket_vpid.pageid, FHS_FIRST_SLOT_ID);
+	  result = EH_KEY_FOUND;
+	  goto end;
+	}
+      else
+	{
+	  (void) spage_get_record (thread_p, bucket_page_p, ++last_oid_p->slotid, &recdes, PEEK);
+	  fhs_read_oid_from_record (recdes.data, value_p);
+	  result = EH_KEY_FOUND;
+	  goto end;
+	}
     }
-  (void) spage_get_record (thread_p, bucket_page_p, --last_oid_p->slotid, &recdes, PEEK);
+  else
+    {
+      if (last_oid_p->slotid <= 1)
+	{
+	  /* already last slot id */
+	  result = EH_KEY_NOTFOUND;
+	  goto end;
+	}
+      (void) spage_get_record (thread_p, bucket_page_p, --last_oid_p->slotid, &recdes, PEEK);
 
-  /* compare key */
-  bucket_key = (char *) recdes.data;
-  bucket_key += sizeof (OID);
-  if (fhs_compare_key (thread_p, bucket_key, DB_TYPE_INTEGER, key, recdes.type, &compare_result) != NO_ERROR)
-    {
-      result = EH_ERROR_OCCURRED;
-      goto end;
-    }
-  if (compare_result != 0)
-    {
-      /* the all keys is already found */
-      result = EH_KEY_NOTFOUND;
-      goto end;
-    }
+      /* compare key */
+      bucket_key = (char *) recdes.data;
+      bucket_key += sizeof (OID);
+      if (fhs_compare_key (thread_p, bucket_key, DB_TYPE_INTEGER, key, recdes.type, &compare_result) != NO_ERROR)
+	{
+	  result = EH_ERROR_OCCURRED;
+	  goto end;
+	}
+      if (compare_result != 0)
+	{
+	  /* the all keys is already found */
+	  result = EH_KEY_NOTFOUND;
+	  goto end;
+	}
 
-  fhs_read_oid_from_record (recdes.data, value_p);
-  result = EH_KEY_FOUND;
+      fhs_read_oid_from_record (recdes.data, value_p);
+      result = EH_KEY_FOUND;
+      goto end;
+    }
 
 end:
   if (bucket_page_p)
     {
       pgbuf_unfix_and_init (thread_p, bucket_page_p);
     }
-
+  if (next_bucket_page_p)
+    {
+      pgbuf_unfix_and_init (thread_p, next_bucket_page_p);
+    }
   return result;
 }
 
@@ -1895,12 +1984,19 @@ fhs_binary_search_bucket (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, PGSLO
 		  return false;
 		}
 	      fhs_read_flag_from_record ((char *) recdes.data, &flag);
-	      if (flag <= 0)
+	      if (flag == FHS_FLAG_INDIRECT)
+		{
+		  *out_position_p = middle;
+		}
+	      else if (flag >= 1)
+		{
+		  *out_position_p = middle + flag - 1;
+		}
+	      else
 		{
 		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_CORRUPTED, 0);
 		  return false;
 		}
-	      *out_position_p = middle + flag - 1;
 	    }
 	  return true;
 	}
@@ -2501,7 +2597,7 @@ fhs_insert_to_dk_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, VPID * next_b
   PAGE_PTR new_dk_bucket_page_p = NULL;
   VPID null_vpid = { NULL_VOLID, NULL_PAGEID };
 
-  /* get last DK bucket page (순서때문에 이렇게 하는 것인데.. 속도 저하 문제는 있음) */
+  /* get last DK bucket page. TO_DO : add last_page for performance */
   tmp_bucket_vpid = *next_bucket_vpid;
   do
     {
@@ -2519,7 +2615,7 @@ fhs_insert_to_dk_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, VPID * next_b
       dk_bucket_header_p = (FHS_DK_BUCKET_HEADER *) old_bucket_recdes.data;
       tmp_bucket_vpid = dk_bucket_header_p->next_bucket;
     }
-  while (!(tmp_bucket_vpid.volid == NULL_VOLID && tmp_bucket_vpid.pageid == NULL_PAGEID));
+  while (!VPID_ISNULL (&tmp_bucket_vpid));
 
   /* insert new record into dk_bucket */
   if (fhs_compose_record (thread_p, key_p, value_p, &bucket_recdes, FHS_FLAG_DUMMY_NUM) != NO_ERROR)

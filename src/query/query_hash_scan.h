@@ -151,8 +151,10 @@ int qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void 
 extern FHSID *fhs_create (THREAD_ENTRY * thread_p, FHSID * fhsid, int exp_num_entries);
 extern int fhs_destroy (THREAD_ENTRY * thread_p, FHSID * fhsid);
 extern void *fhs_insert (THREAD_ENTRY * thread_p, FHSID * fhsid, void *key, OID * value_ptr);
-extern EH_SEARCH fhs_search (THREAD_ENTRY * thread_p, FHSID * fhsid, void *key, OID * value_ptr, OID * last_oid_p);
-extern EH_SEARCH fhs_search_next (THREAD_ENTRY * thread_p, FHSID * fhsid, void *key, OID * value_ptr, OID * last_oid_p);
+extern EH_SEARCH fhs_search (THREAD_ENTRY * thread_p, FHSID * fhsid, void *key, OID * value_ptr, OID * last_oid_p,
+			     bool * is_dk_bucket);
+extern EH_SEARCH fhs_search_next (THREAD_ENTRY * thread_p, FHSID * fhsid, void *key, OID * value_ptr, OID * last_oid_p,
+				  bool is_dk_bucket);
 extern void fhs_dump (THREAD_ENTRY * thread_p, FHSID * fhsid);
 /* end : FILE HASH SCAN */
 
