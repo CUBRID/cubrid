@@ -145,49 +145,6 @@ cursor_copy_list_id (QFILE_LIST_ID * dest_list_id_p, const QFILE_LIST_ID * src_l
 }
 
 /*
- * cursor_free_list_id () - Area allocated for list file identifier is freed
- *   return: nothing
- *   list_id: List file identifier
- */
-void
-cursor_free_list_id (QFILE_LIST_ID * list_id_p, bool self)
-{
-  if (list_id_p->last_pgptr)
-    {
-      free_and_init (list_id_p->last_pgptr);
-    }
-  if (list_id_p->tpl_descr.f_valp)
-    {
-      free_and_init (list_id_p->tpl_descr.f_valp);
-    }
-  if (list_id_p->tpl_descr.clear_f_val_at_clone_decache)
-    {
-      free_and_init (list_id_p->tpl_descr.clear_f_val_at_clone_decache);
-    }
-  if (list_id_p->sort_list)
-    {
-      free_and_init (list_id_p->sort_list);
-    }
-  if (list_id_p->type_list.domp)
-    {
-      free_and_init (list_id_p->type_list.domp);
-    }
-  if (self)
-    {
-      free_and_init (list_id_p);
-    }
-}
-
-void
-cursor_free_self_list_id (QFILE_LIST_ID * list_id)
-{
-  if (list_id != NULL)
-    {
-      cursor_free_list_id (list_id, true);
-    }
-}
-
-/*
  * cursor_has_set_vobjs () -
  *   return: nonzero iff set has some vobjs, zero otherwise
  *   seq(in): set/sequence db_value
@@ -1392,7 +1349,7 @@ cursor_free (CURSOR_ID * cursor_id_p)
       return;
     }
 
-  cursor_free_list_id (&cursor_id_p->list_id, false);
+  cursor_free_list_id (&(cursor_id_p->list_id));
 
   if (cursor_id_p->buffer_area != NULL)
     {
