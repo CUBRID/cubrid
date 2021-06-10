@@ -1043,6 +1043,7 @@ int g_original_buffer_len;
 
 %type <node> dblink_expr
 %type <node> dblink_conn
+%type <node> dblink_conn_str
 %type <c2> dblink_identifier_col_attrs  
 %type <node> dblink_column_definition_list
 %type <node> dblink_column_definition
@@ -1657,6 +1658,7 @@ int g_original_buffer_len;
 %token <cptr> SECTIONS
 %token <cptr> SEPARATOR
 %token <cptr> SERIAL
+%token <cptr> SERVER
 %token <cptr> SHOW
 %token <cptr> SLEEP
 %token <cptr> SLOTS
@@ -2620,7 +2622,7 @@ create_stmt
 	  opt_method_files 				/* 12 */
 	  opt_inherit_resolution_list			/* 13 */
 	  opt_partition_clause 				/* 14 */
-      opt_create_as_clause				/* 15 */
+          opt_create_as_clause				/* 15 */
 		{{
 
 			PT_NODE *qc = parser_pop_hint_node ();
@@ -3093,6 +3095,25 @@ create_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+
+	| CREATE SERVER	 identifier '(' dblink_conn_str ')'					/* 1 */	       
+		{{
+                        PT_NODE *node = parser_new_node (this_parser, PT_CREATE_SERVER);
+			if (node)
+			  {   
+                                node->info.create_server.server_name = $3;		
+                                node->info.create_server.host = $5;		
+                                node->info.create_server.user = $5->next;
+                                node->info.create_server.pwd = $5->next->next;  
+                                node->info.create_server.comment = NULL;	
+                                $5->next->next = 0x00;
+                                $5->next = 0x00;                              
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}                
 	;
 
 opt_serial_option_list
@@ -4195,6 +4216,19 @@ drop_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| DROP SERVER identifier
+		{{
+                        PT_NODE *node = parser_new_node (this_parser, PT_DROP_SERVER);
+
+			if (node)
+			  {
+			    node->info.drop_server.server_name = $3;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}                
 	| deallocate_or_drop PREPARE identifier
 		{{
 
@@ -22779,6 +22813,14 @@ identifier
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+        | SERVER
+                {{
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
 	| SHOW
 		{{
 
@@ -24801,7 +24843,14 @@ dblink_conn:
                 $$ = p;
                 PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
                 DBG_PRINT}}
-        | CHAR_STRING
+        | dblink_conn_str
+        {{
+                $$ = $1;
+		DBG_PRINT}}
+        ;   
+
+dblink_conn_str:
+        CHAR_STRING
         {{
                 char *zInfo[DBLINK_CONN_PARAM_CNT];     
                 char err_msg[512]; 
@@ -24856,7 +24905,7 @@ dblink_conn:
 
                 $$ = node_list;
 		DBG_PRINT}}
-        ;        
+        ;             
 
 dblink_identifier_col_attrs  
         :  opt_as identifier '('  dblink_column_definition_list ')' 

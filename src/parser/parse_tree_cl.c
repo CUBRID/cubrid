@@ -4963,6 +4963,8 @@ pt_init_apply_f (void)
   pt_apply_func_array[PT_JSON_TABLE_NODE] = pt_apply_json_table_node;
   pt_apply_func_array[PT_JSON_TABLE_COLUMN] = pt_apply_json_table_column;
   pt_apply_func_array[PT_DBLINK_TABLE] = pt_apply_dblink_table;
+  pt_apply_func_array[PT_CREATE_SERVER] = pt_apply_create_server;
+  pt_apply_func_array[PT_DROP_SERVER] = pt_apply_drop_server;
 
   pt_apply_f = pt_apply_func_array;
 }
@@ -5083,6 +5085,8 @@ pt_init_init_f (void)
   pt_init_func_array[PT_JSON_TABLE_NODE] = pt_init_json_table_node;
   pt_init_func_array[PT_JSON_TABLE_COLUMN] = pt_init_json_table_column;
   pt_init_func_array[PT_DBLINK_TABLE] = pt_init_dblink_table;
+  pt_init_func_array[PT_CREATE_SERVER] = pt_init_create_server;
+  pt_init_func_array[PT_DROP_SERVER] = pt_init_drop_server;
 
   pt_init_f = pt_init_func_array;
 }
@@ -5201,6 +5205,8 @@ pt_init_print_f (void)
   pt_print_func_array[PT_JSON_TABLE_NODE] = pt_print_json_table_node;
   pt_print_func_array[PT_JSON_TABLE_COLUMN] = pt_print_json_table_columns;
   pt_print_func_array[PT_DBLINK_TABLE] = pt_print_dblink_table;
+  pt_print_func_array[PT_CREATE_SERVER] = pt_print_create_server;
+  pt_print_func_array[PT_DROP_SERVER] = pt_print_drop_server;
 
   pt_print_f = pt_print_func_array;
 }

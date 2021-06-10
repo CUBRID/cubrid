@@ -809,7 +809,10 @@ int yybuffer_pos;
 										csql_yylval.cptr = pt_makename(yytext);
 										return SERIAL; }
 [sS][eE][rR][iI][aA][lL][iI][zZ][aA][bB][lL][eE]			{ begin_token(yytext);   return SERIALIZABLE; }
-[sS][eE][sS][sS][iI][oO][nN]						{ begin_token(yytext);   return SESSION; }
+[sS][eE][rR]vV][eE][rR]			                                { begin_token(yytext);
+                                                                                csql_yylval.cptr = pt_makename(yytext);
+                                                                                return SERVER; }
+[sS][eE][sS][sS][iI][oO][nN] 						{ begin_token(yytext);   return SESSION; }
 [sS][eE][sS][sS][iI][oO][nN][tT][iI][mM][eE][zZ][oO][nN][eE]            { begin_token(yytext);	 return SESSION_TIMEZONE; }
 [sS][eE][sS][sS][iI][oO][nN]_[uU][sS][eE][rR]				{ begin_token(yytext);   return SESSION_USER; }
 [sS][eE][tT]								{ begin_token(yytext);   return SET; }
