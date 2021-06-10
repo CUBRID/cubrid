@@ -20,7 +20,7 @@
 
 #include "catch2/catch.hpp"
 
-#include "log_page_broker.hpp"
+#include "page_broker.hpp"
 #include "log_storage.hpp"
 #include "storage_common.h"
 

@@ -302,7 +302,6 @@ active_tran_server::get_page_broker ()
     {
       m_log_page_broker.reset (new page_broker<log_page_type> ());
     }
-  assert (m_log_page_broker);
   return *m_log_page_broker;
 }
 
@@ -314,7 +313,6 @@ active_tran_server::get_page_broker ()
     {
       m_data_page_broker.reset (new page_broker<data_page_type> ());
     }
-  assert (m_data_page_broker);
   return *m_data_page_broker;
 }
 

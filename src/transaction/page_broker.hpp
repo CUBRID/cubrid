@@ -16,8 +16,8 @@
  *
  */
 
-#ifndef _LOG_PAGE_BROKER_HPP_
-#define _LOG_PAGE_BROKER_HPP_
+#ifndef _PAGE_BROKER_HPP_
+#define _PAGE_BROKER_HPP_
 
 #include "log_storage.hpp"
 #include "storage_common.h"
@@ -87,6 +87,6 @@ class page_broker
     std::map<typename map_type<PageT>::key, typename map_type<PageT>::value> m_received_pages;
 };
 
-#include "log_page_broker.tpp"
+#include "page_broker.cpp.hpp"
 
-#endif // _LOG_PAGE_BROKER_HPP_
+#endif // _PAGE_BROKER_HPP_

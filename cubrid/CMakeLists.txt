@@ -335,7 +335,6 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/log_lsa.hpp
   ${TRANSACTION_DIR}/log_lsa_utils.hpp
   ${TRANSACTION_DIR}/log_meta.hpp
-  ${TRANSACTION_DIR}/log_page_broker.hpp
   ${TRANSACTION_DIR}/log_postpone_cache.hpp
   ${TRANSACTION_DIR}/log_prior_send.hpp
   ${TRANSACTION_DIR}/log_prior_recv.hpp
@@ -353,6 +352,8 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/mvcc.h
   ${TRANSACTION_DIR}/mvcc_active_tran.hpp
   ${TRANSACTION_DIR}/mvcc_table.hpp
+  ${TRANSACTION_DIR}/page_broker.hpp
+  ${TRANSACTION_DIR}/page_broker.cpp.hpp
   ${TRANSACTION_DIR}/transaction_global.hpp
   ${TRANSACTION_DIR}/transaction_transient.hpp
   )

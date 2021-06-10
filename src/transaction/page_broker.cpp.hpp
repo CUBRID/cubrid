@@ -16,6 +16,8 @@
  *
  */
 
+#include "page_broker.hpp"  // for convenience - code completion.
+
 template <typename PageT>
 entry_state
 page_broker<PageT>::register_entry (typename map_type<PageT>::key id)
