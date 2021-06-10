@@ -3618,7 +3618,6 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
 
       bufptr = PGBUF_FIND_BCB_PTR (bufid);
       PGBUF_BCB_LOCK (bufptr);
-#include "log_lsa_utils.hpp"
 
       /* flush condition check */
       if (!pgbuf_bcb_is_dirty (bufptr)
@@ -4272,7 +4271,6 @@ pgbuf_copy_from_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offs
       pgbuf_set_dirty (thread_p, pgptr, FREE);
     }
   else
-#include "log_lsa_utils.hpp"
     {
       area = NULL;
     }
@@ -4698,7 +4696,6 @@ pgbuf_get_page_ptype (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 
   /* NOTE: Does not need to hold mutex since the page is fixed */
 
-#include "log_lsa_utils.hpp"
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
   assert_release (pgbuf_check_bcb_page_vpid (bufptr, false) == true);
 
