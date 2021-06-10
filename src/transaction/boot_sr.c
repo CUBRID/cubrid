@@ -2523,6 +2523,14 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
    * Now restart the recovery manager and execute any recovery actions
    */
 
+#if defined (SERVER_MODE)
+  // transaction server _needs_ connection with page server
+  if (get_server_type () == SERVER_TYPE_TRANSACTION)
+    {
+      ats_Gl.init_log_page_broker ();
+    }
+#endif // SERVER_MODE
+
   log_initialize (thread_p, boot_Db_full_name, log_path, log_prefix, from_backup, r_args);
 
   error_code = boot_after_copydb (thread_p);	// only does something if this is first boot after copydb
@@ -2557,14 +2565,11 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 
 #if defined (SERVER_MODE)
+  // TODO: not sure, but I think page server's initialization must come after log has been initialized
   if (get_server_type () == SERVER_TYPE_PAGE)
     {
       ps_Gl.start_log_replicator (log_Gl.append.get_nxio_lsa ());
       ps_Gl.init_log_page_fetcher ();
-    }
-  else if (get_server_type () == SERVER_TYPE_TRANSACTION)
-    {
-      ats_Gl.init_log_page_broker ();
     }
 #endif // SERVER_MODE
 
@@ -2992,9 +2997,9 @@ xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart, const cha
  *  thread_p (in)   : Thread entry
  *  r_args(in)      : Restart argument structure contains various options
  *
- * There might be no proper master key after restoring database 
+ * There might be no proper master key after restoring database
  * even if we have a server mk file and the backup mk file (in the case of timed restore).
- * 
+ *
  * There are several cases but we simplify it into two case:
  * (1) The master key set on the database can be found in the server _keys file
  * (2) not (1), which means no server mk file or no master key in the server mk file.
@@ -3045,10 +3050,10 @@ boot_reset_mk_after_restart_from_backup (THREAD_ENTRY * thread_p, BO_RESTART_ARG
 	}
     }
 
-  /* 
+  /*
    * case (2):
    * There isn't the key set on the database in the server key file,
-   * So we just copy the backup file as a new server key file 
+   * So we just copy the backup file as a new server key file
    * and set the first key in the file as the master key.
    */
 
