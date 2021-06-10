@@ -23,7 +23,7 @@
 
 #include <cstring>
 
-namespace cublog::vpid_utils
+namespace vpid_utils
 {
   void
   pack (const vpid &vpd, cubpacking::packer &serializer)

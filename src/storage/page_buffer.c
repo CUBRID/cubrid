@@ -7866,14 +7866,14 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid)
       int size = 0;
 
       // *INDENT-OFF*
-      size += cublog::lsa_utils::get_packed_size();
-      size += cublog::vpid_utils::get_packed_size();
-      std::unique_ptr<char[]> buffer (new char[size]);
+      size += cublog::lsa_utils::get_packed_size(pac, size);
+      size += vpid_utils::get_packed_size(pac, size);
+      char buffer[size];
 
-      pac.set_buffer (buffer.get (), size);
-      cublog::vpid_utils::pack(vpid, pac);
+      pac.set_buffer (buffer, size);
+      vpid_utils::pack(*vpid, pac);
       LOG_LSA nxio_lsa = log_Gl.append.get_nxio_lsa ();
-      cublog::vpid_utils::pack(nxio_lsa);
+      cublog::lsa_utils::pack(nxio_lsa, pac);
       // *INDENT-ON*
 
   std::string message (buffer, size);

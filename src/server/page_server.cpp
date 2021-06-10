@@ -112,7 +112,7 @@ void page_server::receive_data_page_fetch (cubpacking::unpacker &upk)
   upk.unpack_string (message);
 
   VPID vpid;
-  cublog::vpid_utils::unpack (upk, vpid);
+  vpid_utils::unpack (upk, vpid);
 
   LOG_LSA target_repl_lsa;
   cublog::lsa_utils::unpack (upk, target_repl_lsa);
