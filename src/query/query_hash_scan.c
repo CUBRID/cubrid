@@ -74,7 +74,7 @@ typedef unsigned int FHS_HASH_KEY;
 #define FHS_KEY_TYPE DB_TYPE_INTEGER
 #define FHS_KEY_SIZE (sizeof (FHS_HASH_KEY))
 #define FHS_ALIGNMENT ((char) FHS_KEY_SIZE)
-#define FHS_MAX_DUP_KEY 2
+#define FHS_MAX_DUP_KEY 100 /* 10% of MAXNUM (PAGE 16K / RECORD 14 bytes) */
 
 #define SET_VPID(dest_vpid, vol_id, page_id)  \
   do \
