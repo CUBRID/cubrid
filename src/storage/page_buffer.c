@@ -7858,22 +7858,22 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid)
   // *INDENT-OFF*
   /* Send a request to Page Server for the Page. */
   if (get_server_type () == SERVER_TYPE_TRANSACTION)
-    {
+  {
       cubpacking::packer pac;
       int size = 0;
 
       // *INDENT-OFF*
       size += cublog::lsa_utils::get_packed_size(pac, size);
       size += vpid_utils::get_packed_size(pac, size);
-      char buffer[size];
+      std::unique_ptr<char[]> buffer (new char[size]);
 
-      pac.set_buffer (buffer, size);
+      pac.set_buffer (buffer.get (), size);
       vpid_utils::pack(*vpid, pac);
       LOG_LSA nxio_lsa = log_Gl.append.get_nxio_lsa ();
       cublog::lsa_utils::pack(nxio_lsa, pac);
       // *INDENT-ON*
 
-  std::string message (buffer, size);
+  std::string message (buffer.get (), size);
   ats_Gl.push_request (ats_to_ps_request::SEND_DATA_PAGE_FETCH, std::move (message));
   if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
     {
