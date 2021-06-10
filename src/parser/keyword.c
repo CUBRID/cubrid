@@ -697,19 +697,158 @@ static FUNCTION_MAP functions[] = {
 
 #define MAGIC_NUM_BI_SEQ        (5)	/* Performance intersection between binary and sequential search */
 
-static int
-keyword_cmp (const void *k1, const void *k2)
+typedef struct
 {
-  int cmp = ((KEYWORD_RECORD *) k1)->hash_value - ((KEYWORD_RECORD *) k2)->hash_value;
+  int min_len;
+  int max_len;
+  int cnt;
+  int (*func_char_convert) (int);
+  short start_pos[257];		// (0x00 ~ 0xFF) + 1  
+} KEYWORDS_TABLE_SRCH_INFO;
 
-  if (cmp != 0)
-    {
-      return cmp;
-    }
+template < typename T > static int
+keyword_hash_comparator (const void *lhs, const void *rhs)
+{
+  int cmp = ((T *) lhs)->hash_value - ((T *) rhs)->hash_value;
 
-  return strcmp (((KEYWORD_RECORD *) k1)->keyword, ((KEYWORD_RECORD *) k2)->keyword);
+  return cmp ? cmp : strcmp (((T *) lhs)->keyword, ((T *) rhs)->keyword);
 }
 
+template < typename T, typename Func > void
+init_keyword_tables (T & keywords, KEYWORDS_TABLE_SRCH_INFO & info, Func func_cmp)
+{
+  int i, len;
+
+  for (i = 0; i < info.cnt; i++)
+    {
+      len = strlen (keywords[i].keyword);
+      if (len < info.min_len)
+	{
+	  info.min_len = len;
+	}
+      if (len > info.max_len)
+	{
+	  info.max_len = len;
+	}
+
+      GET_KEYWORD_HASH_VALUE (keywords[i].hash_value, keywords[i].keyword);
+    }
+
+  qsort (keywords, info.cnt, sizeof (keywords[0]), func_cmp);
+
+  for (i = 0; i < info.cnt; i++)
+    {
+      info.start_pos[((keywords[i].hash_value) >> 8)]++;
+    }
+
+  info.start_pos[256] = info.cnt;
+  for (i = 255; i >= 0; i--)
+    {
+      info.start_pos[i] = info.start_pos[i + 1] - info.start_pos[i];
+    }
+}
+
+
+template < typename T, typename T2, typename Func > T2 *
+find_keyword_tables (T & keywords, T2 & dummy, KEYWORDS_TABLE_SRCH_INFO & info, Func func_cmp, const char *text)
+{
+  int len;
+  if (!text)
+    {
+      return NULL;
+    }
+
+  len = strlen (text);
+  if (len < info.min_len || len > info.max_len)
+    {
+      return NULL;
+    }
+
+  unsigned char *p, *s;
+  s = (unsigned char *) dummy.keyword;
+
+  /* Keywords are composed of ASCII characters(English letters, underbar).  */
+  /* Function name are composed of ASCII characters.  */
+  for (p = (unsigned char *) text; *p; p++, s++)
+    {
+      if (*p >= 0x80)
+	{
+	  return NULL;
+	}
+
+      *s = (unsigned char) info.func_char_convert ((int) *p);
+    }
+  *s = 0x00;
+
+  GET_KEYWORD_HASH_VALUE (dummy.hash_value, dummy.keyword);
+  int idx, pos, cmp;
+  idx = (dummy.hash_value >> 8);
+  len = (info.start_pos[idx + 1] - info.start_pos[idx]);
+  if (len <= MAGIC_NUM_BI_SEQ)
+    {
+      for (pos = info.start_pos[idx]; pos < info.start_pos[idx + 1]; pos++)
+	{
+	  cmp = func_cmp (&dummy, &(keywords[pos]));
+	  if (cmp > 0)
+	    {
+	      continue;
+	    }
+
+	  return (cmp ? NULL : (keywords + pos));
+	}
+
+      return NULL;
+    }
+
+  return (T2 *) bsearch (&dummy, keywords + info.start_pos[idx], len, sizeof (keywords[0]), func_cmp);
+}
+
+#ifndef NDEBUG
+void
+verify_test (bool is_keywords, KEYWORDS_TABLE_SRCH_INFO & info)
+{
+  int i;
+
+  if (is_keywords)
+    {
+      KEYWORD_RECORD *pk;
+      for (i = 0; i < info.cnt; i++)
+	{
+	  pk = pt_find_keyword (keywords[i].keyword);
+	  assert (pk);
+	  assert (strcasecmp (pk->keyword, keywords[i].keyword) == 0);
+	}
+
+      for (i = 0; i < sizeof (functions) / sizeof (functions[0]); i++)
+	{
+	  pk = pt_find_keyword (functions[i].keyword);
+	  if (pk)
+	    {
+	      assert (strcasecmp (pk->keyword, functions[i].keyword) == 0);
+	    }
+	}
+    }
+  else
+    {
+      FUNCTION_MAP *pf;
+      for (i = 0; i < info.cnt; i++)
+	{
+	  pf = pt_find_function_name (functions[i].keyword);
+	  assert (pf);
+	  assert (strcasecmp (pf->keyword, functions[i].keyword) == 0);
+	}
+
+      for (i = 0; i < sizeof (keywords) / sizeof (keywords[0]); i++)
+	{
+	  pf = pt_find_function_name (keywords[i].keyword);
+	  if (pf)
+	    {
+	      assert (strcasecmp (pf->keyword, keywords[i].keyword) == 0);
+	    }
+	}
+    }
+}
+#endif
 /*
  * pt_find_keyword () -
  *   return: keyword record corresponding to keyword text
@@ -719,106 +858,29 @@ static KEYWORD_RECORD *
 pt_find_keyword (const char *text)
 {
   static bool keyword_sorted = false;
-  static int keyword_min_len = MAX_KEYWORD_SIZE;
-  static int keyword_max_len = 0;
-  static int keyword_cnt = sizeof (keywords) / sizeof (keywords[0]);
-  static short start_pos[257];	// (0x00 ~ 0xFF) + 1  
+  static KEYWORDS_TABLE_SRCH_INFO kinfo;
   int i, len, cmp;
   KEYWORD_RECORD dummy;
 
   if (keyword_sorted == false)
     {
-      for (i = 0; i < keyword_cnt; i++)
-	{
-	  len = strlen (keywords[i].keyword);
-	  if (len < keyword_min_len)
-	    {
-	      keyword_min_len = len;
-	    }
-	  if (len > keyword_max_len)
-	    {
-	      keyword_max_len = len;
-	    }
+      kinfo.min_len = MAX_KEYWORD_SIZE;
+      kinfo.max_len = 0;
+      kinfo.cnt = sizeof (keywords) / sizeof (keywords[0]);
+      memset (kinfo.start_pos, 0x00, sizeof (kinfo.start_pos));
+      kinfo.func_char_convert = char_toupper;
 
-	  GET_KEYWORD_HASH_VALUE (keywords[i].hash_value, keywords[i].keyword);
-	}
-
-      memset (start_pos, 0x00, sizeof (start_pos));
-
-      qsort (keywords, keyword_cnt, sizeof (keywords[0]), keyword_cmp);
-
-      for (i = 0; i < keyword_cnt; i++)
-	{
-	  start_pos[((keywords[i].hash_value) >> 8)]++;
-	}
-
-      start_pos[256] = keyword_cnt;
-      for (i = 255; i >= 0; i--)
-	{
-	  start_pos[i] = start_pos[i + 1] - start_pos[i];
-	}
+      init_keyword_tables (keywords, kinfo, keyword_hash_comparator < KEYWORD_RECORD >);
 
       keyword_sorted = true;
+
+#ifndef NDEBUG
+      verify_test (true, kinfo);
+#endif
     }
 
-  if (!text)
-    {
-      return NULL;
-    }
-
-  len = strlen (text);
-  if (len < keyword_min_len || len > keyword_max_len)
-    {
-      return NULL;
-    }
-
-  /* Keywords are composed of ASCII characters(English letters, underbar).  */
-  unsigned char *p, *s;
-  s = (unsigned char *) dummy.keyword;
-  for (p = (unsigned char *) text; *p; p++, s++)
-    {
-      if (*p >= 0x80)
-	{
-	  return NULL;
-	}
-
-      *s = (unsigned char) char_toupper ((int) *p);
-    }
-  *s = 0x00;
-
-  GET_KEYWORD_HASH_VALUE (dummy.hash_value, dummy.keyword);
-  i = (dummy.hash_value >> 8);
-  len = (start_pos[i + 1] - start_pos[i]);
-  if (len <= MAGIC_NUM_BI_SEQ)
-    {
-      for (len = start_pos[i]; len < start_pos[i + 1]; len++)
-	{
-	  if (dummy.hash_value > keywords[len].hash_value)
-	    {
-	      continue;
-	    }
-	  else if (dummy.hash_value < keywords[len].hash_value)
-	    {
-	      return NULL;
-	    }
-
-	  cmp = strcmp (dummy.keyword, keywords[len].keyword);
-	  if (cmp > 0)
-	    {
-	      continue;
-	    }
-	  else if (cmp < 0)
-	    {
-	      return NULL;
-	    }
-
-	  return keywords + len;
-	}
-
-      return NULL;
-    }
-
-  return (KEYWORD_RECORD *) bsearch (&dummy, keywords + start_pos[i], len, sizeof (KEYWORD_RECORD), keyword_cmp);
+  return (KEYWORD_RECORD *) find_keyword_tables (keywords, dummy, kinfo, keyword_hash_comparator < KEYWORD_RECORD >,
+						 text);
 }
 
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -904,7 +966,7 @@ pt_is_keyword (const char *text)
 */
 }
 
-
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * pt_get_keyword_rec () -
  *   return: KEYWORD_RECORD
@@ -917,129 +979,35 @@ pt_get_keyword_rec (int *rec_count)
 
   return (KEYWORD_RECORD *) (keywords);
 }
-
-
-
-static int
-function_keyword_cmp (const void *f1, const void *f2)
-{
-  int cmp = ((FUNCTION_MAP *) f1)->hash_value - ((FUNCTION_MAP *) f2)->hash_value;
-
-  if (cmp != 0)
-    {
-      return cmp;
-    }
-
-  return strcmp (((FUNCTION_MAP *) f1)->keyword, ((FUNCTION_MAP *) f2)->keyword);
-}
-
-
+#endif
 
 FUNCTION_MAP *
 pt_find_function_name (const char *text)
 {
   static bool function_keyword_sorted = false;
-  static int function_min_len = MAX_KEYWORD_SIZE;
-  static int function_max_len = 0;
-  static int functions_cnt = sizeof (functions) / sizeof (functions[0]);
-  static short function_start_pos[257];	// (0x00 ~ 0xFF) + 1  
+  static KEYWORDS_TABLE_SRCH_INFO finfo;
   int i, len, cmp;
   FUNCTION_MAP dummy;
 
   if (function_keyword_sorted == false)
     {
-      for (i = 0; i < functions_cnt; i++)
-	{
-	  len = strlen (functions[i].keyword);
-	  if (len < function_min_len)
-	    {
-	      function_min_len = len;
-	    }
-	  if (len > function_max_len)
-	    {
-	      function_max_len = len;
-	    }
+      finfo.min_len = MAX_KEYWORD_SIZE;
+      finfo.max_len = 0;
+      finfo.cnt = sizeof (functions) / sizeof (functions[0]);
+      memset (finfo.start_pos, 0x00, sizeof (finfo.start_pos));
+      finfo.func_char_convert = char_tolower;
 
-	  GET_KEYWORD_HASH_VALUE (functions[i].hash_value, functions[i].keyword);
-	}
-
-      memset (function_start_pos, 0x00, sizeof (function_start_pos));
-
-      qsort (functions, functions_cnt, sizeof (functions[0]), function_keyword_cmp);
-
-      for (i = 0; i < functions_cnt; i++)
-	{
-	  function_start_pos[((functions[i].hash_value) >> 8)]++;
-	}
-
-      function_start_pos[256] = functions_cnt;
-      for (i = 255; i >= 0; i--)
-	{
-	  function_start_pos[i] = function_start_pos[i + 1] - function_start_pos[i];
-	}
+      init_keyword_tables (functions, finfo, keyword_hash_comparator < FUNCTION_MAP >);
 
       function_keyword_sorted = true;
+
+#ifndef NDEBUG
+      verify_test (false, finfo);
+#endif
     }
 
-  if (!text)
-    {
-      return NULL;
-    }
-
-  len = strlen (text);
-  if (len < function_min_len || len > function_max_len)
-    {
-      return NULL;
-    }
-
-  /* function name are composed of ASCII characters.  */
   char temp[MAX_KEYWORD_SIZE];
-  unsigned char *p, *s;
-  s = (unsigned char *) temp;
-  for (p = (unsigned char *) text; *p; p++, s++)
-    {
-      if (*p >= 0x80)
-	{
-	  return NULL;
-	}
 
-      *s = (unsigned char) char_tolower ((int) *p);
-    }
-  *s = 0x00;
   dummy.keyword = temp;
-
-  GET_KEYWORD_HASH_VALUE (dummy.hash_value, dummy.keyword);
-  i = (dummy.hash_value >> 8);
-  len = (function_start_pos[i + 1] - function_start_pos[i]);
-  if (len <= MAGIC_NUM_BI_SEQ)
-    {
-      for (len = function_start_pos[i]; len < function_start_pos[i + 1]; len++)
-	{
-	  if (dummy.hash_value > functions[len].hash_value)
-	    {
-	      continue;
-	    }
-	  else if (dummy.hash_value < functions[len].hash_value)
-	    {
-	      return NULL;
-	    }
-
-	  cmp = strcmp (dummy.keyword, functions[len].keyword);
-	  if (cmp > 0)
-	    {
-	      continue;
-	    }
-	  else if (cmp < 0)
-	    {
-	      return NULL;
-	    }
-
-	  return functions + len;
-	}
-
-      return NULL;
-    }
-
-  return (FUNCTION_MAP *) bsearch (&dummy, functions + function_start_pos[i], len, sizeof (FUNCTION_MAP),
-				   function_keyword_cmp);
+  return (FUNCTION_MAP *) find_keyword_tables (functions, dummy, finfo, keyword_hash_comparator < FUNCTION_MAP >, text);
 }

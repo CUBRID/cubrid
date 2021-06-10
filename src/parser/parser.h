@@ -291,8 +291,8 @@ extern "C"
 
 #if defined(ENABLE_UNUSED_FUNCTION)
   extern int pt_identifier_or_keyword (const char *text);
-#endif				/* ENABLE_UNUSED_FUNCTION */
   extern KEYWORD_RECORD *pt_get_keyword_rec (int *rec_count);
+#endif				/* ENABLE_UNUSED_FUNCTION */
   extern int pt_type_generic_func (PARSER_CONTEXT * parser, PT_NODE * node);
 #if defined(ENABLE_UNUSED_FUNCTION)
   extern void pt_string_to_data_type (PARSER_CONTEXT * parser, const char *s, PT_NODE * node);
