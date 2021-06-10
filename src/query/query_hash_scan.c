@@ -1330,7 +1330,7 @@ fhs_destroy (THREAD_ENTRY * thread_p, FHSID * fhsid_p)
       return ER_FAILED;
     }
 
-#if 1				/* for debug */
+#if 0				/* for debug */
   fhs_dump (thread_p, fhsid_p);
 #endif /* for debug */
 
@@ -3042,7 +3042,7 @@ fhs_find_first_bit_position (THREAD_ENTRY * thread_p, FHSID * fhsid_p, PAGE_PTR 
   /* Get the first pseudo key */
   first_hash_key = fhs_hash (key_p, fhsid_p->key_type);
 
-  /* 전체를 비교하여 depth를 찾는 방법.. 더좋은 방법이 있는지 고민해봐야함. */
+  /* TO_DO : Is there any way to find the depth more effectively? */
   for (slot_id = first_slot_id + 1; slot_id < num_recs; slot_id++)
     {
       if (spage_get_record (thread_p, bucket_page_p, slot_id, &recdes, PEEK) != S_SUCCESS)
