@@ -873,7 +873,8 @@ logpb_locate_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE f
       else
 	{
 	  stat_page_found = PERF_PAGE_MODE_OLD_LOCK_WAIT;
-	  if (logpb_read_page_from_file (thread_p, pageid, LOG_CS_FORCE_USE, log_bufptr->logpage) != NO_ERROR)
+	  if (logpb_read_page_from_file_or_page_server (thread_p, pageid, LOG_CS_FORCE_USE, log_bufptr->logpage) !=
+	      NO_ERROR)
 	    {
 	      return NULL;
 	    }
@@ -1823,7 +1824,7 @@ logpb_copy_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE 
   LOG_CS_ENTER_READ_MODE (thread_p);
   if (log_pgptr != NULL)
     {
-      rv = logpb_read_page_from_file (thread_p, pageid, LOG_CS_FORCE_USE, log_pgptr);
+      rv = logpb_read_page_from_file_or_page_server (thread_p, pageid, LOG_CS_FORCE_USE, log_pgptr);
       if (rv != NO_ERROR)
 	{
 	  LOG_CS_EXIT (thread_p);
@@ -1885,7 +1886,7 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
 
       if (log_bufptr->pageid == NULL_PAGEID)
 	{
-	  rv = logpb_read_page_from_file (thread_p, pageid, access_mode, log_pgptr);
+	  rv = logpb_read_page_from_file_or_page_server (thread_p, pageid, access_mode, log_pgptr);
 	  if (rv != NO_ERROR)
 	    {
 	      rv = ER_FAILED;
@@ -1909,6 +1910,7 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
   else
     {
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED, 1, pageid);
+      // TODO: LOG_CS_EXIT?
       return ER_LOG_PAGE_CORRUPTED;
     }
 
@@ -1916,6 +1918,7 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
     {
       /* Copy page from log_bufptr into log_pgptr */
       memcpy (log_pgptr, log_bufptr->logpage, LOG_PAGESIZE);
+      // TODO: why this extra check?
       if (log_bufptr->pageid == pageid)
 	{
 	  goto exit;
@@ -1924,33 +1927,12 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
 
   /* Could not get from log page buffer cache */
 
-#if defined(SERVER_MODE)
-  /* Send a request to Page Server for the log. */
-  if (get_server_type () == SERVER_TYPE_TRANSACTION && ats_Gl.is_page_server_connected ())
-    {
-      request_log_page_from_ps (pageid);
-    }
-#endif // SERVER_MODE
-
-  rv = logpb_read_page_from_file (thread_p, pageid, access_mode, log_pgptr);
+  rv = logpb_read_page_from_file_or_page_server (thread_p, pageid, access_mode, log_pgptr);
   if (rv != NO_ERROR)
     {
       rv = ER_FAILED;
       goto exit;
     }
-
-#if defined(SERVER_MODE)
-  // *INDENT-OFF*
-  if (get_server_type () == SERVER_TYPE_TRANSACTION && ats_Gl.is_page_server_connected ())
-    {
-      // wait for answer.
-      auto log_page = ats_Gl.get_log_page_broker ().wait_for_page (pageid);
-
-      // Sould be the same.
-      assert (*log_page == *log_pgptr);
-    }
-  // *INDENT-ON*
-#endif // SERVER_MODE
 
   stat_page_found = PERF_PAGE_MODE_OLD_LOCK_WAIT;
 
@@ -2001,6 +1983,61 @@ request_log_page_from_ps (LOG_PAGEID log_pageid)
         }
     }  
   // *INDENT-ON*
+#endif // SERVER_MODE
+}
+
+/*
+ */
+int
+logpb_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
+					  LOG_CS_ACCESS_MODE access_mode, LOG_PAGE * log_pgptr)
+{
+#if defined (SERVER_MODE)
+  // execution contexts:
+  //  1) TS with remote storage => only read from PS
+  //  2) TS with local storage => both read from PS and from file and compare results
+  //  3) PS  => only read from file
+
+  const SERVER_TYPE server_type = get_server_type ();
+  if (server_type == SERVER_TYPE_TRANSACTION && ats_Gl.is_page_server_connected ())
+    {
+      // context 2)
+      request_log_page_from_ps (pageid);
+    }
+
+  bool read_from_disk = false;
+  if (!is_tran_server_with_remote_storage ())
+    {
+      // context 2) or 3) - either TS with local storage or PS
+      const int res_read_from_file = logpb_read_page_from_file (thread_p, pageid, access_mode, log_pgptr);
+      if (res_read_from_file != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return res_read_from_file;
+	}
+      read_from_disk = true;
+    }
+
+  if (server_type == SERVER_TYPE_TRANSACTION && ats_Gl.is_page_server_connected ())
+    {
+      std::shared_ptr < log_page_owner > log_page_from_page_server
+	= ats_Gl.get_log_page_broker ().wait_for_page (pageid);
+      if (read_from_disk)
+	{
+	  // context 2)
+	  // argument log_pgptr already contains value read from local storage
+	  assert (*log_page_from_page_server == *log_pgptr);
+	}
+      else
+	{
+	  // context 1)
+	  std::memcpy (log_pgptr, log_page_from_page_server->get_log_page (), LOG_PAGESIZE);
+	}
+    }
+
+  return NO_ERROR;
+#else // SERVER_MODE
+  return logpb_read_page_from_file (thread_p, pageid, access_mode, log_pgptr);
 #endif // SERVER_MODE
 }
 
