@@ -93,16 +93,23 @@ class log_page_owner
 {
   public:
     explicit log_page_owner (const char *buffer);
+
+    log_page_owner (const log_page_owner &) = delete;
+    log_page_owner (log_page_owner &&) = delete;
+
     ~log_page_owner ();
+
+    log_page_owner &operator = (const log_page_owner &) = delete;
+    log_page_owner &operator = (log_page_owner &&) = delete;
 
     bool operator== (const log_page_owner &other) const;
     bool operator== (const LOG_PAGE &other) const;
-    const LOG_HDRPAGE &get_header () const;
+//    const LOG_HDRPAGE &get_header () const;
     LOG_PAGEID get_id () const;
 
-  private:
     const LOG_PAGE *get_log_page () const;
 
+  private:
     std::string m_buffer;
 };
 

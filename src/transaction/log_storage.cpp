@@ -57,11 +57,11 @@ log_page_owner::operator== (const LOG_PAGE &other) const
   return *get_log_page () == other;
 }
 
-const LOG_HDRPAGE &
-log_page_owner::get_header () const
-{
-  return get_log_page ()->hdr;
-}
+//const LOG_HDRPAGE &
+//log_page_owner::get_header () const
+//{
+//  return get_log_page ()->hdr;
+//}
 
 LOG_PAGEID
 log_page_owner::get_id () const
