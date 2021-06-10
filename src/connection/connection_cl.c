@@ -26,6 +26,10 @@
 
 #include "config.h"
 
+#if defined (WINDOWS)
+#include <io.h>
+#endif
+#include <filesystem>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -57,6 +61,8 @@
 #include "porting.h"
 #include "error_manager.h"
 #include "connection_globals.h"
+#include "filesys.hpp"
+#include "filesys_temp.hpp"
 #include "memory_alloc.h"
 #include "system_parameter.h"
 #include "environment_variable.h"
@@ -861,7 +867,7 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
   int server_port_id;
   int connection_protocol;
 #if !defined(WINDOWS)
-  char *pname;
+  std::string pname;
   int datagram_fd, socket_fd;
 #endif
 
@@ -953,35 +959,35 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
 #else /* WINDOWS */
       /* send the "pathname" for the datagram */
       /* be sure to open the datagram first.  */
-      pname = tempnam (NULL, "csql");
-      if (pname)
+      pname = std::filesystem::temp_directory_path ();
+      pname += "/csql_tcp_setup_server" + std::to_string (getpid ());
+      (void) unlink (pname.c_str ());	// make sure file is deleted
+
+      if (!css_tcp_setup_server_datagram (pname.c_str (), &socket_fd))
 	{
-	  if (css_tcp_setup_server_datagram (pname, &socket_fd)
-	      && css_send_data (conn, rid, pname, strlen (pname) + 1) == NO_ERRORS
-	      && css_tcp_listen_server_datagram (socket_fd, &datagram_fd))
-	    {
-	      (void) unlink (pname);
-	      /* don't use free_and_init on pname since it came from tempnam() */
-	      free (pname);
-	      css_free_conn (conn);
-	      close (socket_fd);
-	      return (css_make_conn (datagram_fd));
-	    }
-	  else
-	    {
-	      /* don't use free_and_init on pname since it came from tempnam() */
-	      free (pname);
-	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1,
-				   server_name);
-	      goto fail_end;
-	    }
-	}
-      else
-	{
-	  /* Could not create the temporary file */
+	  (void) unlink (pname.c_str ());
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
 	  goto fail_end;
 	}
+      if (css_send_data (conn, rid, pname.c_str (), pname.length () + 1) != NO_ERRORS)
+	{
+	  (void) unlink (pname.c_str ());
+	  close (socket_fd);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
+	  goto fail_end;
+	}
+      if (!css_tcp_listen_server_datagram (socket_fd, &datagram_fd))
+	{
+	  (void) unlink (pname.c_str ());
+	  close (socket_fd);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
+	  goto fail_end;
+	}
+      // success
+      (void) unlink (pname.c_str ());
+      css_free_conn (conn);
+      close (socket_fd);
+      return (css_make_conn (datagram_fd));
 #endif /* WINDOWS */
     }
 
