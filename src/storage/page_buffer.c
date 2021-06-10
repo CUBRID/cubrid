@@ -7876,7 +7876,7 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid)
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
         {
           _er_log_debug (ARG_FILE_LINE, "Sent request for Page to Page Server. pageid: %ld volid: %d\n", vpid->pageid,
-		     vpid->volid);
+                      vpid->volid);
 	}
     }
   // *INDENT-ON*
