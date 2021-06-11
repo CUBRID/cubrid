@@ -873,8 +873,8 @@ logpb_locate_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE f
       else
 	{
 	  stat_page_found = PERF_PAGE_MODE_OLD_LOCK_WAIT;
-	  if (logpb_read_page_from_file_or_page_server (thread_p, pageid, LOG_CS_FORCE_USE, log_bufptr->logpage) !=
-	      NO_ERROR)
+	  if (logpb_read_page_from_file_or_page_server (thread_p, pageid, LOG_CS_FORCE_USE, log_bufptr->logpage, true)
+	      != NO_ERROR)
 	    {
 	      return NULL;
 	    }
@@ -1824,7 +1824,7 @@ logpb_copy_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE 
   LOG_CS_ENTER_READ_MODE (thread_p);
   if (log_pgptr != NULL)
     {
-      rv = logpb_read_page_from_file_or_page_server (thread_p, pageid, LOG_CS_FORCE_USE, log_pgptr);
+      rv = logpb_read_page_from_file_or_page_server (thread_p, pageid, LOG_CS_FORCE_USE, log_pgptr, true);
       if (rv != NO_ERROR)
 	{
 	  LOG_CS_EXIT (thread_p);
@@ -1886,7 +1886,7 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
 
       if (log_bufptr->pageid == NULL_PAGEID)
 	{
-	  rv = logpb_read_page_from_file_or_page_server (thread_p, pageid, access_mode, log_pgptr);
+	  rv = logpb_read_page_from_file_or_page_server (thread_p, pageid, access_mode, log_pgptr, false);
 	  if (rv != NO_ERROR)
 	    {
 	      rv = ER_FAILED;
@@ -1927,7 +1927,7 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
 
   /* Could not get from log page buffer cache */
 
-  rv = logpb_read_page_from_file_or_page_server (thread_p, pageid, access_mode, log_pgptr);
+  rv = logpb_read_page_from_file_or_page_server (thread_p, pageid, access_mode, log_pgptr, true);
   if (rv != NO_ERROR)
     {
       rv = ER_FAILED;
@@ -1990,7 +1990,8 @@ request_log_page_from_ps (LOG_PAGEID log_pageid)
  */
 int
 logpb_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
-					  LOG_CS_ACCESS_MODE access_mode, LOG_PAGE * log_pgptr)
+					  LOG_CS_ACCESS_MODE access_mode, LOG_PAGE * log_pgptr,
+					  bool do_compare_local_with_remote)
 {
 #if defined (SERVER_MODE)
   // execution contexts:
@@ -2026,7 +2027,10 @@ logpb_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, LOG_PAGEID pa
 	{
 	  // context 2)
 	  // argument log_pgptr already contains value read from local storage
-	  assert (*log_page_from_page_server == *log_pgptr);
+	  if (do_compare_local_with_remote)
+	    {
+	      assert (*log_page_from_page_server == *log_pgptr);
+	    }
 	}
       else
 	{

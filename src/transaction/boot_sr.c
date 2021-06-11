@@ -2568,7 +2568,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   // TODO: not sure, but I think page server's initialization must come after log has been initialized
   if (get_server_type () == SERVER_TYPE_PAGE)
     {
-      ps_Gl.start_log_replicator (log_Gl.append.get_nxio_lsa ());
+      const log_lsa next_io_lsa = log_Gl.append.get_nxio_lsa ();
+      ps_Gl.start_log_replicator (next_io_lsa);
       ps_Gl.init_log_page_fetcher ();
     }
 #endif // SERVER_MODE

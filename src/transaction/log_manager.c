@@ -864,7 +864,7 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const cha
 
     temp_pgptr = (LOG_PAGE *) aligned_temp_pgbuf;
     memset (temp_pgptr, 0, LOG_PAGESIZE);
-    logpb_read_page_from_file_or_page_server (thread_p, LOGPB_HEADER_PAGE_ID, LOG_CS_FORCE_USE, temp_pgptr);
+    logpb_read_page_from_file_or_page_server (thread_p, LOGPB_HEADER_PAGE_ID, LOG_CS_FORCE_USE, temp_pgptr, true);
     assert (memcmp ((LOG_HEADER *) temp_pgptr->area, &log_Gl.hdr, sizeof (log_Gl.hdr)) != 0);
   }
 #endif /* CUBRID_DEBUG */
@@ -883,7 +883,7 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const cha
 
     temp_pgptr = (LOG_PAGE *) aligned_temp_pgbuf;
     memset (temp_pgptr, 0, LOG_PAGESIZE);
-    logpb_read_page_from_file_or_page_server (thread_p, LOGPB_HEADER_PAGE_ID, LOG_CS_FORCE_USE, temp_pgptr);
+    logpb_read_page_from_file_or_page_server (thread_p, LOGPB_HEADER_PAGE_ID, LOG_CS_FORCE_USE, temp_pgptr, true);
     assert (memcmp ((LOG_HEADER *) temp_pgptr->area, &log_Gl.hdr, sizeof (log_Gl.hdr)) == 0);
   }
 #endif /* CUBRID_DEBUG */
