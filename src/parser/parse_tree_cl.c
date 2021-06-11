@@ -18309,7 +18309,7 @@ pt_apply_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
     {
       assert (false);		// Not Yet ctshim_assert
     }
-  PT_APPLY_WALK(parser, p->info.dblink_table.cols, arg);
+  PT_APPLY_WALK (parser, p->info.dblink_table.cols, arg);
   return p;
 }
 
@@ -18368,6 +18368,15 @@ pt_print_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p)
       q =
 	pt_append_bytes (parser, q, (char *) p->info.dblink_table.pwd->info.value.data_value.str->bytes,
 			 p->info.dblink_table.pwd->info.value.data_value.str->length);
+
+      // properties   
+      s = strchr (s, '?');
+      if (s)
+	{
+	  q = pt_append_nulstring (parser, q, " PROPERTIES=");
+	  q = pt_append_nulstring (parser, q, s + 1);
+	}
+
       q = pt_append_bytes (parser, q, "'", 1);
     }
 
