@@ -23,6 +23,8 @@
 #ifndef _METHOD_DEF_H_
 #define _METHOD_DEF_H_
 
+#include "packer.hpp"
+
 typedef enum
 {
   METHOD_SUCCESS = 1,
@@ -38,8 +40,8 @@ typedef enum
   METHOD_IS_JAVA_SP = 3
 } METHOD_TYPE;
 
-/* this structure will be used at the next */
 #if 0
+/* this structure will be used at the next */
 typedef struct method_arg_info METHOD_ARG_INFO;
 struct method_arg_info
 {
@@ -63,9 +65,7 @@ struct method_sig_node
   {
     char *class_name;		/* class for the method */
     /* this structure will be used at the next subtask */
-#if 0
-    METHOD_ARG_INFO arg_info;
-#endif
+    // METHOD_ARG_INFO arg_info;
   };
 
   method_sig_node () = default;
@@ -76,6 +76,12 @@ struct method_sig_list
   /* signature for methods */
   METHOD_SIG *method_sig;	/* one method signature */
   int num_methods;		/* number of signatures */
+
+  void pack (cubpacking::packer &serializator) const;
+  void unpack (cubpacking::unpacker &deserializator);
+  size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset = 0) const;
+
+  void freemem ();
 
   method_sig_list () = default;
 };

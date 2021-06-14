@@ -27,15 +27,16 @@
 
 #include <vector>
 
-#include "storage_common.h"
-
-#include "dbtype_def.h"
+#include "dbtype_def.h" /* DB_VALUE */
 #include "method_def.hpp" /* method_sig_list */
-
 #include "object_domain.h" /* TP_DOMAIN */
+#include "query_list.h" /* qfile_list_id, qfile_list_scan_id */
+
+#if defined (SA_MODE)
+#include "query_method.h"
+#endif
 
 /* forward declarations */
-struct qfile_list_id;
 struct val_list_node;
 struct qproc_db_value_list;
 
@@ -52,7 +53,6 @@ namespace cubscan
     class scanner
     {
       public:
-	const static int METHOD_CALL = 2;
 
 	scanner ();
 
@@ -95,22 +95,24 @@ namespace cubscan
 // argument declarations
 //////////////////////////////////////////////////////////////////////////
 
-	int get_single_tuple ();
+	SCAN_CODE get_single_tuple ();
 
       private:
 
 	cubthread::entry *m_thread_p; /* thread entry */
 
-	/* signatures */
 	// TODO: method signature list will be interpret according to the method types in the future
 	method_sig_list *m_method_sig_list;	/* method signatures */
-	int m_num_methods;
 
+	qfile_list_id *m_list_id; 		/* list file from cselect */
+	qfile_list_scan_id m_scan_id;	/* for scanning list file */
 
-	qfile_list_id *m_list_id; /* args */
 	std::vector<TP_DOMAIN *> m_arg_dom_vector; /* placeholder for arg value's domain */
 	std::vector<DB_VALUE> m_arg_vector;        /* placeholder for arg value */
+
+#if defined (SA_MODE)
 	std::vector<DB_VALUE> m_result_vector;     /* placeholder for result value */
+#endif
 
 	qproc_db_value_list *m_dbval_list; /* result */
     };

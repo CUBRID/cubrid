@@ -33,11 +33,18 @@
 // forward def
 struct method_sig_list;
 struct qfile_list_id;
+struct method_sig_node;
 
-extern int method_send_error_to_server (unsigned int rc, char *host, char *server_name);
+#if defined(CS_MODE)
+extern int method_send_error_to_server (unsigned int rc, char *host_p, char *server_name, int error_id);
 extern int method_invoke_for_server (unsigned int rc, char *host, char *server_name, std::vector < DB_VALUE > &args,
 				     method_sig_list * method_sig_list);
+#else
 
-void method_sig_list_freemem (method_sig_list * meth_sig_list);
+// TODO: for standalone
+
+#endif
+
+extern int method_invoke (DB_VALUE & result, std::vector < DB_VALUE * >&arg_vals, method_sig_node * method_sig_list);
 
 #endif /* _QUERY_METHOD_H_ */
