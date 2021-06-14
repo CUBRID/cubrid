@@ -18346,38 +18346,37 @@ pt_print_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p)
     {
       q = pt_append_bytes (parser, q, "'", 1);
 
-      char *t;
-      char *s = (char *) p->info.dblink_table.url->info.value.data_value.str->bytes;
+      char *t, *s;
+      PT_DBLINK_INFO *pt = &(p->info.dblink_table);
 
-      // "cci:CUBRID:{HOST}:{PORT}:{DBNAME}:::"
+      // "cci:CUBRID:{HOST}:{PORT}:{DBNAME}:<user-name>:<password>:{PROPERITIES}"
+      s = (char *) pt->url->info.value.data_value.str->bytes;
       // skip cci:
       s = strchr (s, ':');
       // skip CUBRID:
       s = strchr (s + 1, ':');
-      // host     
-      t = ++s;
-      s = strchr (s, ':');
-      q = pt_append_nulstring (parser, q, "HOST=");
-      q = pt_append_bytes (parser, q, t, (int) (s - t));
-      // port     
-      t = ++s;
-      s = strchr (s, ':');
-      q = pt_append_nulstring (parser, q, " PORT=");
-      q = pt_append_bytes (parser, q, t, (int) (s - t));
-      // dbname     
-      t = ++s;
-      s = strchr (s, ':');
-      q = pt_append_nulstring (parser, q, " DBNAME=");
-      q = pt_append_bytes (parser, q, t, (int) (s - t));
 
-      q = pt_append_nulstring (parser, q, " USER=");
+      t = ++s;
+      // host           
+      s = strchr (s, ':');
+      // port           
+      s = strchr (s + 1, ':');
+      // dbname           
+      s = strchr (s + 1, ':');
+      q = pt_append_bytes (parser, q, t, (int) (s - t));
+      t = s + 2;
+
+      q = pt_append_nulstring (parser, q, ":");
       q =
-	pt_append_bytes (parser, q, (char *) p->info.dblink_table.user->info.value.data_value.str->bytes,
-			 p->info.dblink_table.user->info.value.data_value.str->length);
-      q = pt_append_nulstring (parser, q, " PASSWORD=");
+	pt_append_bytes (parser, q, (char *) pt->user->info.value.data_value.str->bytes,
+			 pt->user->info.value.data_value.str->length);
+      q = pt_append_nulstring (parser, q, ":");
       q =
-	pt_append_bytes (parser, q, (char *) p->info.dblink_table.pwd->info.value.data_value.str->bytes,
-			 p->info.dblink_table.pwd->info.value.data_value.str->length);
+	pt_append_bytes (parser, q, (char *) pt->pwd->info.value.data_value.str->bytes,
+			 pt->pwd->info.value.data_value.str->length);
+      // properties
+      q = pt_append_nulstring (parser, q, t);
+
       q = pt_append_bytes (parser, q, "'", 1);
     }
 
