@@ -205,6 +205,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/fetch.c
   ${QUERY_DIR}/filter_pred_cache.c
   ${QUERY_DIR}/list_file.c
+  ${QUERY_DIR}/method_def.cpp
   ${QUERY_DIR}/method_scan.cpp
   ${QUERY_DIR}/numeric_opfunc.c
   ${QUERY_DIR}/partition.c
