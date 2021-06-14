@@ -59,6 +59,8 @@
 #include "log_writer.h"
 #include "object_representation.h"
 
+#include "packer.hpp"
+
 /*
  * To check for errors from the comm system. Note that if we get any error
  * other than RECORD_TRUNCATED or CANT_ALLOC_BUFFER, we will call it a
@@ -1827,7 +1829,6 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 	      {
 		char *methoddata;
 		int methoddata_size;
-		METHOD_SIG_LIST *method_call_sig_list = (METHOD_SIG_LIST *) 0;
 
 		er_clear ();
 		error = NO_ERROR;
@@ -1858,26 +1859,29 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 #endif /* CS_MODE */
 			error = COMPARE_SIZE_AND_BUFFER (&methoddata_size, size, &methoddata, reply);
 
+			packing_unpacker unpacker (methoddata, (size_t) methoddata_size);
+
 			int arg_count;
-			ptr = or_unpack_int (methoddata, &arg_count);
+			unpacker.unpack_int (arg_count);
 
       // *INDENT-OFF*
-			std::vector <DB_VALUE> args (arg_count);
+			std::vector<DB_VALUE> args (arg_count);
       // *INDENT-ON*
 
 			for (int i = 0; i < arg_count; i++)
 			  {
-			    ptr = or_unpack_db_value (ptr, &args[i]);
+			    unpacker.unpack_db_value (args[i]);
 			  }
-			ptr = or_unpack_method_sig_list (ptr, (void **) &method_call_sig_list);
+
+			METHOD_SIG_LIST sig_list;
+			sig_list.unpack (unpacker);
 
 			COMPARE_AND_FREE_BUFFER (methoddata, reply);
 			free_and_init (methoddata);
 
-			error =
-			  method_invoke_for_server (rc, net_Server_host, net_Server_name, args, method_call_sig_list);
+			error = method_invoke_for_server (rc, net_Server_host, net_Server_name, args, &sig_list);
 
-			method_sig_list_freemem (method_call_sig_list);
+			sig_list.freemem ();
 			if (error != NO_ERROR)
 			  {
 			    assert (er_errid () != NO_ERROR);
@@ -1911,7 +1915,7 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 		if (error != NO_ERROR)
 		  {
 		    return_error_to_server (net_Server_host, rc);
-		    method_send_error_to_server (rc, net_Server_host, net_Server_name);
+		    method_send_error_to_server (rc, net_Server_host, net_Server_name, error);
 		  }
 		css_queue_receive_data_buffer (rc, replybuf, replysize);
 	      }
