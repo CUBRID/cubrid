@@ -5447,6 +5447,10 @@ la_apply_statement_log (LA_ITEM * item)
     case CUBRID_STMT_ALTER_STORED_PROCEDURE:
     case CUBRID_STMT_DROP_STORED_PROCEDURE:
 
+      /* ctshim */
+    case CUBRID_STMT_CREATE_SERVER:
+    case CUBRID_STMT_DROP_SERVER:
+
     case CUBRID_STMT_TRUNCATE:
 
       /* TODO: check it */

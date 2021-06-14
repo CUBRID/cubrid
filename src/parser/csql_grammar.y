@@ -3096,24 +3096,25 @@ create_stmt
 
 		DBG_PRINT}}
 
-	| CREATE SERVER	 identifier '(' dblink_conn_str ')'					/* 1 */	       
+	| CREATE SERVER identifier '(' dblink_conn_str ')'					       
 		{{
                         PT_NODE *node = parser_new_node (this_parser, PT_CREATE_SERVER);
 			if (node)
 			  {   
-                                node->info.create_server.server_name = $3;		
-                                node->info.create_server.host = $5;		
-                                node->info.create_server.user = $5->next;
-                                node->info.create_server.pwd = $5->next->next;  
-                                node->info.create_server.comment = NULL;	
-                                $5->next->next = 0x00;
-                                $5->next = 0x00;                              
+                                node->info.create_server.server_name = $3;
+                                PT_NODE *list = $5;
+                                node->info.create_server.host = list;
+                                node->info.create_server.user = list->next;
+                                node->info.create_server.pwd = list->next->next;
+                                node->info.create_server.comment = NULL;
+                                list->next->next = 0x00;
+                                list->next = 0x00;
 			  }
 
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}                
+		DBG_PRINT}}
 	;
 
 opt_serial_option_list

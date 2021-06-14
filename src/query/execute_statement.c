@@ -3068,6 +3068,9 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	case PT_DROP_SESSION_VARIABLES:
 	case PT_SET_NAMES:
 	case PT_SET_TIMEZONE:
+	  /* ctshim  */
+	case PT_CREATE_SERVER:
+	case PT_DROP_SERVER:
 
 	  /* Need to get dirty version when fetch the instance. That's because we are in an update command. */
 	  db_set_read_fetch_instance_version (LC_FETCH_DIRTY_VERSION);
@@ -3295,6 +3298,17 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	case PT_SET_TIMEZONE:
 	  error = do_set_timezone (parser, statement);
+	  break;
+
+	  /* ctshim  */
+	case PT_CREATE_SERVER:
+	  //error = jsp_drop_stored_procedure (parser, statement);
+	  assert (0);
+	  break;
+
+	case PT_DROP_SERVER:
+	  //error = jsp_drop_stored_procedure (parser, statement);
+	  assert (0);
 	  break;
 
 	default:
@@ -3554,6 +3568,9 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_DROP_SESSION_VARIABLES:
     case PT_SET_NAMES:
     case PT_SET_TIMEZONE:
+      /* ctshim  */
+    case PT_CREATE_SERVER:
+    case PT_DROP_SERVER:
       /* Need to get dirty version when fetch the instance. That's because we are in an update command. */
       db_set_read_fetch_instance_version (LC_FETCH_DIRTY_VERSION);
       break;
@@ -3749,6 +3766,13 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       break;
     case PT_SET_TIMEZONE:
       err = do_set_timezone (parser, statement);
+      break;
+      /* ctshim  */
+    case PT_CREATE_SERVER:
+      assert (0);
+      break;
+    case PT_DROP_SERVER:
+      assert (0);
       break;
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PT_UNKNOWN_STATEMENT, 1, statement->node_type);
@@ -14715,6 +14739,14 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
     case PT_DROP_STORED_PROCEDURE:
       repl_stmt.statement_type = CUBRID_STMT_DROP_STORED_PROCEDURE;
+      break;
+
+      /* ctshim  */
+    case PT_CREATE_SERVER:
+      repl_stmt.statement_type = CUBRID_STMT_CREATE_SERVER;
+      break;
+    case PT_DROP_SERVER:
+      repl_stmt.statement_type = CUBRID_STMT_DROP_SERVER;
       break;
 
     case PT_CREATE_USER:

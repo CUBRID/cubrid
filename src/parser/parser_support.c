@@ -1234,6 +1234,9 @@ pt_is_ddl_statement (const PT_NODE * node)
 	case PT_REMOVE_TRIGGER:
 	case PT_RENAME_TRIGGER:
 	case PT_UPDATE_STATS:
+	  /* ctshim  */
+	case PT_CREATE_SERVER:
+	case PT_DROP_SERVER:
 	  return true;
 	default:
 	  break;

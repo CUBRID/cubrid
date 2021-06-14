@@ -266,6 +266,8 @@ static PT_NODE *pt_apply_json_table (PARSER_CONTEXT * parser, PT_NODE * p, void 
 static PT_NODE *pt_apply_json_table_node (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_json_table_column (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_create_server (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_drop_server (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 
 static PARSER_APPLY_NODE_FUNC pt_apply_func_array[PT_NODE_NUMBER];
 
@@ -419,6 +421,8 @@ static PARSER_VARCHAR *pt_print_json_table (PARSER_CONTEXT * parser, PT_NODE * p
 static PARSER_VARCHAR *pt_print_json_table_node (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_json_table_columns (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p);
+static PARSER_VARCHAR *pt_print_create_server (PARSER_CONTEXT * parser, PT_NODE * p);
+static PARSER_VARCHAR *pt_print_drop_server (PARSER_CONTEXT * parser, PT_NODE * p);
 
 #if defined(ENABLE_UNUSED_FUNCTION)
 static PT_NODE *pt_apply_use (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
@@ -5054,8 +5058,8 @@ pt_init_init_f (void)
   pt_init_func_array[PT_JSON_TABLE_NODE] = pt_init_func_null_function;
   pt_init_func_array[PT_JSON_TABLE_COLUMN] = pt_init_json_table_column;
   pt_init_func_array[PT_DBLINK_TABLE] = pt_init_dblink_table;
-  pt_init_func_array[PT_CREATE_SERVER] = pt_init_create_server;
-  pt_init_func_array[PT_DROP_SERVER] = pt_init_drop_server;
+  pt_init_func_array[PT_CREATE_SERVER] = pt_init_func_null_function;
+  pt_init_func_array[PT_DROP_SERVER] = pt_init_func_null_function;
 
   pt_init_f = pt_init_func_array;
 }
@@ -18315,7 +18319,7 @@ pt_apply_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
     {
       assert (false);		// Not Yet ctshim_assert
     }
-  PT_APPLY_WALK(parser, p->info.dblink_table.cols, arg);
+  PT_APPLY_WALK (parser, p->info.dblink_table.cols, arg);
   return p;
 }
 
@@ -18388,6 +18392,45 @@ pt_print_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_varchar (parser, q, r);
     }
   q = pt_append_bytes (parser, q, ")", 1);
+
+  return q;
+}
+
+
+
+static PT_NODE *
+pt_apply_create_server (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
+{
+  PT_APPLY_WALK (parser, p->info.create_server.server_name, arg);
+  return p;
+}
+
+static PARSER_VARCHAR *
+pt_print_create_server (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  PARSER_VARCHAR *q = 0, *r;
+
+  q = pt_append_nulstring (parser, q, "CREATE SERVER()");
+
+
+  return q;
+}
+
+static PT_NODE *
+pt_apply_drop_server (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
+{
+  PT_APPLY_WALK (parser, p->info.drop_server.server_name, arg);
+  return p;
+}
+
+static PARSER_VARCHAR *
+pt_print_drop_server (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  PARSER_VARCHAR *q = 0, *r;
+
+  q = pt_append_nulstring (parser, q, "DROP SERVER ");
+  r = pt_print_bytes (parser, p->info.drop_server.server_name);
+  q = pt_append_varchar (parser, q, r);
 
   return q;
 }

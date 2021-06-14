@@ -844,6 +844,9 @@ enum pt_node_type
   PT_MERGE = CUBRID_STMT_MERGE,
   PT_SET_NAMES = CUBRID_STMT_SET_NAMES,
   PT_SET_TIMEZONE = CUBRID_STMT_SET_TIMEZONE,
+  /* ctshim */
+  PT_CREATE_SERVER = CUBRID_STMT_CREATE_SERVER,
+  PT_DROP_SERVER = CUBRID_STMT_DROP_SERVER,
 
   PT_DIFFERENCE = CUBRID_MAX_STMT_TYPE,	/* these enumerations must be distinct from statements */
   PT_INTERSECTION,		/* difference intersection and union are reported as CUBRID_STMT_SELECT. */
@@ -898,8 +901,6 @@ enum pt_node_type
   PT_JSON_TABLE_NODE,
   PT_JSON_TABLE_COLUMN,
   PT_DBLINK_TABLE,
-  PT_CREATE_SERVER,
-  PT_DROP_SERVER,
   PT_NODE_NUMBER,		/* This is the number of node types */
   PT_LAST_NODE_NUMBER = PT_NODE_NUMBER
 };

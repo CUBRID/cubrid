@@ -141,7 +141,10 @@ static CSQL_CMD_STRING_TABLE csql_Cmd_string_table[] = {
   {CUBRID_STMT_DO, "DO"},
   {CUBRID_STMT_SET_NAMES, "SET NAMES"},
   {CUBRID_STMT_VACUUM, "VACUUM"},
-  {CUBRID_STMT_SET_TIMEZONE, "SET TIMEZONE"}
+  {CUBRID_STMT_SET_TIMEZONE, "SET TIMEZONE"},
+  /* ctshim */
+  {CUBRID_STMT_CREATE_SERVER, "CREATE SERVER"},
+  {CUBRID_STMT_DROP_SERVER, "DROP SERVER"}
 };
 
 static const char *csql_Isolation_level_string[] = {
