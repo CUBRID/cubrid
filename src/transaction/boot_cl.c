@@ -5625,30 +5625,29 @@ catcls_vclass_install (void)
   // *INDENT-OFF*
   struct catcls_function
   {
-    const char *name;
     const DEF_FUNCTION function;
   }
   clist[] =
   {
-    {"CTV_CLASS_NAME", boot_define_view_class},
-    {"CTV_SUPER_CLASS_NAME", boot_define_view_super_class},
-    {"CTV_VCLASS_NAME", boot_define_view_vclass},
-    {"CTV_ATTRIBUTE_NAME", boot_define_view_attribute},
-    {"CTV_ATTR_SD_NAME", boot_define_view_attribute_set_domain},
-    {"CTV_METHOD_NAME", boot_define_view_method},
-    {"CTV_METHARG_NAME", boot_define_view_method_argument},
-    {"CTV_METHARG_SD_NAME", boot_define_view_method_argument_set_domain},
-    {"CTV_METHFILE_NAME", boot_define_view_method_file},
-    {"CTV_INDEX_NAME", boot_define_view_index},
-    {"CTV_INDEXKEY_NAME", boot_define_view_index_key},
-    {"CTV_AUTH_NAME", boot_define_view_authorization},
-    {"CTV_TRIGGER_NAME", boot_define_view_trigger},
-    {"CTV_PARTITION_NAME", boot_define_view_partition},
-    {"CTV_STORED_PROC_NAME", boot_define_view_stored_procedure},
-    {"CTV_STORED_PROC_ARGS_NAME", boot_define_view_stored_procedure_arguments},
-    {"CTV_DB_COLLATION_NAME", boot_define_view_db_collation},
-    {"CTV_DB_CHARSET_NAME", boot_define_view_db_charset},
-    {CTV_DB_SERVER_NAME, boot_define_view_db_server}
+    { boot_define_view_class},  /* CTV_CLASS_NAME */
+    { boot_define_view_super_class}, /* CTV_SUPER_CLASS_NAME */
+    { boot_define_view_vclass}, /* CTV_VCLASS_NAME */
+    { boot_define_view_attribute}, /* CTV_ATTRIBUTE_NAME */
+    { boot_define_view_attribute_set_domain}, /* CTV_ATTR_SD_NAME */
+    { boot_define_view_method}, /* CTV_METHOD_NAME */
+    { boot_define_view_method_argument}, /* CTV_METHARG_NAME */
+    { boot_define_view_method_argument_set_domain}, /* CTV_METHARG_SD_NAME */
+    { boot_define_view_method_file}, /* CTV_METHFILE_NAME */
+    { boot_define_view_index}, /* CTV_INDEX_NAME */
+    { boot_define_view_index_key}, /* CTV_INDEXKEY_NAME */
+    { boot_define_view_authorization}, /* CTV_AUTH_NAME */
+    { boot_define_view_trigger}, /* CTV_TRIGGER_NAME */
+    { boot_define_view_partition}, /* CTV_PARTITION_NAME */
+    { boot_define_view_stored_procedure}, /* CTV_STORED_PROC_NAME */
+    { boot_define_view_stored_procedure_arguments}, /* CTV_STORED_PROC_ARGS_NAME */
+    { boot_define_view_db_collation}, /* CTV_DB_COLLATION_NAME */
+    { boot_define_view_db_charset}, /* CTV_DB_CHARSET_NAME */
+    { boot_define_view_db_server} /* CTV_DB_SERVER_NAME */
   };
   // *INDENT-ON*
 
@@ -5758,18 +5757,41 @@ boot_destroy_catalog_classes (void)
   int i;
   MOP classmop;
   const char *classes[] = {
-    CT_CLASS_NAME, CT_ATTRIBUTE_NAME, CT_DOMAIN_NAME,
-    CT_METHOD_NAME, CT_METHSIG_NAME, CT_METHARG_NAME,
-    CT_METHFILE_NAME, CT_QUERYSPEC_NAME, CT_INDEX_NAME,
-    CT_INDEXKEY_NAME, CT_CLASSAUTH_NAME, CT_DATATYPE_NAME,
-    CT_PARTITION_NAME, CT_STORED_PROC_NAME, CT_STORED_PROC_ARGS_NAME,
-    CTV_CLASS_NAME, CTV_SUPER_CLASS_NAME, CTV_VCLASS_NAME,
-    CTV_ATTRIBUTE_NAME, CTV_ATTR_SD_NAME, CTV_METHOD_NAME,
-    CTV_METHARG_NAME, CTV_METHARG_SD_NAME, CTV_METHFILE_NAME,
-    CTV_INDEX_NAME, CTV_INDEXKEY_NAME, CTV_AUTH_NAME,
-    CTV_TRIGGER_NAME, CTV_PARTITION_NAME, CTV_STORED_PROC_NAME,
-    CTV_STORED_PROC_ARGS_NAME, CT_COLLATION_NAME, CT_DB_SERVER_NAME,
-    CTV_DB_SERVER_NAME, NULL
+    CT_CLASS_NAME,
+    CT_ATTRIBUTE_NAME,
+    CT_DOMAIN_NAME,
+    CT_METHOD_NAME,
+    CT_METHSIG_NAME,
+    CT_METHARG_NAME,
+    CT_METHFILE_NAME,
+    CT_QUERYSPEC_NAME,
+    CT_INDEX_NAME,
+    CT_INDEXKEY_NAME,
+    CT_CLASSAUTH_NAME,
+    CT_DATATYPE_NAME,
+    CT_PARTITION_NAME,
+    CT_STORED_PROC_NAME,
+    CT_STORED_PROC_ARGS_NAME,
+    CTV_CLASS_NAME,
+    CTV_SUPER_CLASS_NAME,
+    CTV_VCLASS_NAME,
+    CTV_ATTRIBUTE_NAME,
+    CTV_ATTR_SD_NAME,
+    CTV_METHOD_NAME,
+    CTV_METHARG_NAME,
+    CTV_METHARG_SD_NAME,
+    CTV_METHFILE_NAME,
+    CTV_INDEX_NAME,
+    CTV_INDEXKEY_NAME,
+    CTV_AUTH_NAME,
+    CTV_TRIGGER_NAME,
+    CTV_PARTITION_NAME,
+    CTV_STORED_PROC_NAME,
+    CTV_STORED_PROC_ARGS_NAME,
+    CT_COLLATION_NAME,
+    CT_DB_SERVER_NAME,
+    CTV_DB_SERVER_NAME,
+    NULL
   };
 
   /* check if catalog exists */
