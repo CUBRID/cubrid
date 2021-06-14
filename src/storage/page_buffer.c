@@ -7756,7 +7756,7 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 
 #if defined(SERVER_MODE)
 	// *INDENT-OFF*
-	if (get_server_type () == SERVER_TYPE_TRANSACTION)
+	if (get_server_type () == SERVER_TYPE_TRANSACTION && ats_Gl.is_page_server_connected ()) 
 	  {
 	    auto data_page = ats_Gl.get_page_broker<data_page_type> ().wait_for_page (*vpid);
 	
