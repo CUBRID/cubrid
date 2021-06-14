@@ -7866,9 +7866,9 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid)
       std::memcpy (buffer + bytes_copied, &(vpid->volid), sizeof (vpid->volid));
       bytes_copied += sizeof (vpid->volid);
 
-      LOG_LSA nxio_lsa = log_Gl.append.get_nxio_lsa ();
-      std::memcpy (buffer + bytes_copied, &nxio_lsa, sizeof (nxio_lsa));
-      bytes_copied += sizeof (nxio_lsa);
+      LOG_LSA lsa = log_Gl.append.get_highest_evicted_lsa ();
+      std::memcpy (buffer + bytes_copied, &lsa, sizeof (lsa));
+      bytes_copied += sizeof (lsa);
 
       std::string message (buffer, bytes_copied);
       ats_Gl.push_request (ats_to_ps_request::SEND_DATA_PAGE_FETCH, std::move (message));
@@ -7913,6 +7913,11 @@ pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
       pgbuf_bcb_update_flags (thread_p, bufptr, 0, PGBUF_BCB_TO_VACUUM_FLAG);
     }
   assert (bufptr->latch_mode == PGBUF_NO_LATCH);
+
+  if (bufptr->oldest_unflush_lsa > log_Gl.append.get_highest_evicted_lsa ())
+    {
+      log_Gl.append.set_highest_evicted_lsa (bufptr->oldest_unflush_lsa);
+    }
 
   /* a safe victim */
   if (pgbuf_delete_from_hash_chain (thread_p, bufptr) != NO_ERROR)

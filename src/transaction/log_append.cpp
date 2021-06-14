@@ -117,6 +117,19 @@ log_append_info::set_nxio_lsa (const LOG_LSA &next_io_lsa)
   nxio_lsa.store (next_io_lsa);
 }
 
+LOG_LSA
+log_append_info::get_highest_evicted_lsa () const
+{
+  return highest_evicted_lsa.load ();
+}
+
+void
+log_append_info::set_highest_evicted_lsa (const LOG_LSA lsa)
+{
+  highest_evicted_lsa.store (lsa);
+}
+
+
 log_prior_lsa_info::log_prior_lsa_info ()
   : prior_lsa (NULL_LSA)
   , prev_lsa (NULL_LSA)

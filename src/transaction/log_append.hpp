@@ -74,6 +74,7 @@ struct log_append_info
 {
   int vdes;			/* Volume descriptor of active log */
   std::atomic<LOG_LSA> nxio_lsa;  /* Lowest log sequence number which has not been written to disk (for WAL). */
+  std::atomic<LOG_LSA> highest_evicted_lsa;
   /* todo - not really belonging here. should be part of page buffer. */
   LOG_LSA prev_lsa;		/* Address of last append log record */
   LOG_PAGE *log_pgptr;		/* The log page which is fixed */
@@ -85,6 +86,9 @@ struct log_append_info
 
   LOG_LSA get_nxio_lsa () const;
   void set_nxio_lsa (const LOG_LSA &next_io_lsa);
+
+  LOG_LSA get_highest_evicted_lsa () const;
+  void set_highest_evicted_lsa (const LOG_LSA lsa);
 };
 
 typedef struct log_prior_node LOG_PRIOR_NODE;
