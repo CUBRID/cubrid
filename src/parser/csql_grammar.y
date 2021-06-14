@@ -530,7 +530,7 @@ static PT_NODE * pt_create_json_value (PARSER_CONTEXT *parser,
 				       const char *str);
 static void pt_jt_append_column_or_nested_node (PT_NODE * jt_node, PT_NODE * jt_col_or_nested);
 
-#define DBLINK_CONN_PARAM_CNT   (5)
+#define DBLINK_CONN_PARAM_CNT   (6)
 static bool pt_ct_check_fill_connection_info (char *pIn, char *pInfo[], char *perr_msg );
 
 static void pt_value_set_charset_coll (PARSER_CONTEXT *parser,
@@ -24808,7 +24808,7 @@ dblink_conn:
                 PT_NODE *node_list = NULL;
 
                 memset(zInfo, 0x00, sizeof(zInfo));
-                if( pt_ct_check_fill_connection_info($1, zInfo, err_msg) == false )
+                if ( pt_ct_check_fill_connection_info($1, zInfo, err_msg) == false )
                  {
                        node_list = parser_new_node (this_parser, PT_VALUE);
                        PT_ERROR (this_parser, node_list, err_msg);
@@ -24822,13 +24822,15 @@ dblink_conn:
                  {
                         PT_NODE *node;
                         int  i;
-                        char dblink_url[512];
-                        static const char* dblink_url_fmt = "cci:CUBRID:%s:%s:%s:::" ;
+                        char dblink_url[4096];
+                        static const char* dblink_url_fmt = "cci:CUBRID:%s:%s:%s:::%s" ;
+                        // cci:CUBRID:<host>:<port>:<db_name>:<db_user>:<db_password>:[?<properties>]
 
-                        sprintf(dblink_url, dblink_url_fmt, zInfo[0], zInfo[1],zInfo[2]);
+                        sprintf(dblink_url, dblink_url_fmt, 
+                                zInfo[0], zInfo[1],zInfo[2], zInfo[DBLINK_CONN_PARAM_CNT-1]);
                         zInfo[2] = dblink_url;
-                        
-                        for( i = DBLINK_CONN_PARAM_CNT - 1; i >= 2; i--)
+
+                        for( i = DBLINK_CONN_PARAM_CNT - 2; i >= 2; i--)
                         {                       
                                 node = parser_new_node (this_parser, PT_VALUE);
                                 if( node == NULL )
@@ -27961,93 +27963,57 @@ pt_jt_append_column_or_nested_node (PT_NODE * jt_node, PT_NODE * jt_col_or_neste
 }
 
 static bool pt_ct_check_fill_connection_info (char* p, char *pInfo[], char *perr_msg)
-{
-   // HOST=broker-hostname-or-ip PORT=broker-port DBNAME=db-name USER=string PASSWORD=string   
-   int   nCnt;
-   // Please keep the order in the array
-   static const char*  pzName[DBLINK_CONN_PARAM_CNT] = {"host=", "port=", "dbname=", "user=", "password="};
-   static int    zLen[DBLINK_CONN_PARAM_CNT] = { -1, };
-   
+{   
+   //  <host>:<port>:<db_name>:<db_user>:<db_password>:[?<properties>]     
+   int   nCnt, i;
+   char* s;
+ 
    perr_msg[0] = 0x00;
-   if(zLen[0] < 0)
-   {
-        for(nCnt = 0; nCnt < DBLINK_CONN_PARAM_CNT; nCnt++)
-        {
-                zLen[nCnt] = strlen(pzName[nCnt]);
-        }
-   }
-        
+   if ( *p == ':' )
+     {
+         sprintf(perr_msg, "Incorrect format of connection information for dblink");
+         return false;    
+     }
+     
    nCnt = 0;
-   while (*p)
-     {        
-        while (*p)
+   for (s = p; *p; p++ )
+     {
+        if (*p == '\\')
         {
-                if (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r')
-                {
-                        p++;
-                }
-                else
-                {
-                        break;
-                }
+           if ( p[1] == ':' || p[1] == '\\' || p[1] == '\'' ) 
+             {
+                p++;
+             }            
         }
-        
-        if(!*p)
-         {
-                 break;        
-         }
-
-        int i;
-        for ( i = 0; i < DBLINK_CONN_PARAM_CNT; i++ )     
+        else if (*p == ':')
         {
-                if (strncasecmp (p, pzName[i], zLen[i]) == 0)
-                {
-                        break;               
-                }
+           pInfo[nCnt++] = s;
+           *p = 0x00;
+           s = p + 1;
+           if (nCnt == (DBLINK_CONN_PARAM_CNT-1))
+             {
+                pInfo[nCnt] = s;                 
+                break;
+             }
         }
+     }  
 
-        if ( i == DBLINK_CONN_PARAM_CNT )  
-        {  
+   // Check essential items
+   for( i = 0; i < (DBLINK_CONN_PARAM_CNT-1); i++ ) 
+     {
+          if ( !pInfo[i] )
+            {
                 sprintf(perr_msg, "Incorrect format of connection information for dblink");
                 return false;
-        } 
-
-        if (pInfo[i])
-        {
-                nCnt--;
-        }
-
-        p += zLen[i];
-        pInfo[i] = p;
-        nCnt++;
-
-        while (*p)
-        {
-                if (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r')
-                        break;
-                else
-                        p++;
-        }
-
-        if (*p)
-         {
-                 *p = 0x00;
-                 p++;
-         }
-     }   
-
-   if ( nCnt != DBLINK_CONN_PARAM_CNT)
-     {  
-          sprintf(perr_msg, "Incorrect format of connection information for dblink");
-          return false;
-     }  
+            }
+     }
 
    //
    if ( pt_check_ipv4(pInfo[0]) == false )
    {
           if( pt_check_hostname(pInfo[0]) == false )
           {
-                sprintf(perr_msg, "Incorrect HOST format of connection information for dblink");
+                sprintf(perr_msg, "Incorrect host(IP) format of connection information for dblink");
                 return false;
           }
    }
@@ -28058,6 +28024,12 @@ static bool pt_ct_check_fill_connection_info (char* p, char *pInfo[], char *perr
            sprintf(perr_msg, "Invalid PORT of connection information for dblink");
            return false;
    }
+
+   if( pInfo[DBLINK_CONN_PARAM_CNT-1][0] &&  pInfo[DBLINK_CONN_PARAM_CNT-1][0] != '?' )
+     {
+           sprintf(perr_msg, "Invalid properties of connection information for dblink");
+           return false;
+     }
 
    return true;
 }
