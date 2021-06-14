@@ -242,6 +242,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/fetch.c
   ${QUERY_DIR}/filter_pred_cache.c
   ${QUERY_DIR}/list_file.c
+  ${QUERY_DIR}/method_def.cpp
   ${QUERY_DIR}/method_scan.cpp
   ${QUERY_DIR}/numeric_opfunc.c
   ${QUERY_DIR}/partition.c
@@ -269,7 +270,6 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/xasl_to_stream.c
   )
 set(QUERY_HEADERS
-  ${QUERY_DIR}/method_scan.hpp
   ${QUERY_DIR}/query_aggregate.hpp
   ${QUERY_DIR}/query_hash_scan.h
   ${QUERY_DIR}/query_analytic.hpp
