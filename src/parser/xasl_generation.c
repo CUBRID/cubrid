@@ -3840,6 +3840,7 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 	      (*tail)->arg_info.result_type = db_get_int (&result_type);
 #endif
 	    }
+	  tail = &(*tail)->next;
 	}
       else
 	{
