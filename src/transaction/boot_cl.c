@@ -4061,7 +4061,7 @@ boot_define_db_server (MOP class_mop)
       return error_code;
     }
 
-  error_code = smt_add_attribute (def, "password", "varchar(4096)", NULL);
+  error_code = smt_add_attribute (def, "password", "string", (DB_DOMAIN *) 0);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -5561,7 +5561,7 @@ boot_define_view_db_server (void)
     {"db_name", "varchar(255)"},
     {"user_name", "varchar(255)"},
     //{"password", "varchar(256)"}
-    {"properties", "varchar(2048)"},    
+    {"properties", "varchar(2048)"},
     {"owner", "varchar(256)"},
     {"comment", "varchar(1024)"}
 
