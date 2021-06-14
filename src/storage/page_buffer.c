@@ -7914,9 +7914,9 @@ pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
     }
   assert (bufptr->latch_mode == PGBUF_NO_LATCH);
 
-  if (bufptr->oldest_unflush_lsa > log_Gl.append.get_highest_evicted_lsa ())
+  if (bufptr->iopage_buffer->iopage.prv.lsa > log_Gl.append.get_highest_evicted_lsa ())
     {
-      log_Gl.append.set_highest_evicted_lsa (bufptr->oldest_unflush_lsa);
+      log_Gl.append.set_highest_evicted_lsa (bufptr->iopage_buffer->iopage.prv.lsa);
     }
 
   /* a safe victim */
