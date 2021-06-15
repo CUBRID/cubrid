@@ -429,11 +429,11 @@ log_recovery_analysis (THREAD_ENTRY *thread_p, INT64 *num_redo_log_records, log_
       if (checker.is_page_corrupted () && (log_rtype == LOG_END_OF_LOG))
 	{
 	  /* The page is corrupted. Stop if end of log was found in page. In this case,
-	    * the remaining data in log page is corrupted. If end of log is not found,
-	    * then we will advance up to NULL LSA. It is important to initialize page with -1.
-	    * Another option may be to store the previous LSA in header page.
-	    * Or, to use checksum on log records, but this may slow down the system.
-	    */
+	   * the remaining data in log page is corrupted. If end of log is not found,
+	   * then we will advance up to NULL LSA. It is important to initialize page with -1.
+	   * Another option may be to store the previous LSA in header page.
+	   * Or, to use checksum on log records, but this may slow down the system.
+	   */
 	  break;
 	}
 
