@@ -104,7 +104,7 @@ class log_page_owner
 
     bool operator== (const log_page_owner &other) const;
     bool operator== (const LOG_PAGE &other) const;
-//    const LOG_HDRPAGE &get_header () const;
+    const LOG_HDRPAGE &get_header () const;
     LOG_PAGEID get_id () const;
 
     const LOG_PAGE *get_log_page () const;
