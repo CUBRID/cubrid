@@ -60,7 +60,7 @@ std::pair<std::string, int> filesys::open_temp_filedes (const char *prefix, int 
   auto filedesc = mkostemp (filename, flags);
 #elif WINDOWS
   auto filename = unique_tmp_filename (prefix);
-  auto filedesc = _open (filename.c_str(), _O_CREAT|_O_EXCL|_O_RDWR|flags);
+  auto filedesc = _open (filename.c_str(), _O_CREAT|_O_EXCL|_O_RDWR|flags, _S_IWRITE);
 #endif
   return {filename, filedesc};
 }
