@@ -32,7 +32,7 @@ TEST_CASE ("First test", "")
   char buffer[8];
 
   cubpacking::packer packer (buffer, 8);
-  cublog::lsa_utils::pack (lsa, packer);
+  cublog::lsa_utils::pack (packer, lsa);
 
   cubpacking::unpacker unpacker (buffer, 8);
   log_lsa unpacked_lsa;

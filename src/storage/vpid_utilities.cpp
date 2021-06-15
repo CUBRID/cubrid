@@ -16,24 +16,35 @@
  *
  */
 
-#ifndef _LOG_LSA_UTILS_HPP_
-#define _LOG_LSA_UTILS_HPP_
+#include "vpid_utilities.hpp"
 
-#include <cstdint>
-#include <cstdio>
+#include "dbtype.h"
+#include "packer.hpp"
 
-struct log_lsa;
-namespace cubpacking
+#include <cstring>
+
+namespace vpid_utils
 {
-  class packer;
-  class unpacker;
-}
+  void
+  pack (cubpacking::packer &serializer, const vpid &vpd)
+  {
+    int64_t result = 0;
+    std::memcpy (&result, &vpd, sizeof (result));
 
-namespace cublog::lsa_utils
-{
-  void pack (cubpacking::packer &serializer, const log_lsa &lsa);
-  void unpack (cubpacking::unpacker &deserializer, log_lsa &lsa);
-  size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset);
-}
+    serializer.pack_bigint (result);
+  }
 
-#endif // _LOG_LSA_UTILS_HPP_
+  void
+  unpack (cubpacking::unpacker &deserializer, vpid &vpd)
+  {
+    uint64_t big_int = 0;
+    deserializer.unpack_bigint (big_int);
+    std::memcpy (&vpd, &big_int, sizeof (big_int));
+  }
+
+  size_t
+  get_packed_size (cubpacking::packer &serializator, std::size_t start_offset)
+  {
+    return serializator.get_packed_bigint_size (start_offset);
+  }
+}
