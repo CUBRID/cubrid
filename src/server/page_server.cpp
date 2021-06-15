@@ -165,7 +165,6 @@ void page_server::on_log_page_read_result (const LOG_PAGE *log_page, int error_c
 
 void page_server::on_data_page_read_result (const FILEIO_PAGE *io_page, int error_code)
 {
-  char buffer[sizeof (int) + IO_MAX_PAGE_SIZE];
   std::string message;
   if (error_code != NO_ERROR)
     {

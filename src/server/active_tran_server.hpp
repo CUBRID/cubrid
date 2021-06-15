@@ -54,8 +54,8 @@ class active_tran_server
     void init_page_brokers ();
     void finalize_page_brokers ();
 
-    template <typename PageT>
-    page_broker<PageT> &get_page_broker ();
+    page_broker<log_page_type> &get_log_page_broker ();
+    page_broker<data_page_type> &get_data_page_broker ();
 
     bool uses_remote_storage () const;
 

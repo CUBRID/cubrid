@@ -7758,7 +7758,7 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 	// *INDENT-OFF*
 	if (get_server_type () == SERVER_TYPE_TRANSACTION && ats_Gl.is_page_server_connected ()) 
 	  {
-	    auto data_page = ats_Gl.get_page_broker<data_page_type> ().wait_for_page (*vpid);
+	    auto data_page = ats_Gl.get_data_page_broker ().wait_for_page (*vpid);
 	
 	    char buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
 	    FILEIO_PAGE *io_page = (FILEIO_PAGE *) PTR_ALIGN (buf, MAX_ALIGNMENT);
