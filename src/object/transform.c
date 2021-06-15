@@ -216,6 +216,7 @@ static META_ATTRIBUTE class_atts[] = {
   {"properties", DB_TYPE_SET, 0, NULL, 0, 0, NULL},
   {"comment", DB_TYPE_STRING, 1, NULL, 0, 0, NULL},
   {"partition", DB_TYPE_SET, 1, META_PARTITION_NAME, 1, 0, NULL},
+  {"conn_server", DB_TYPE_OBJECT, 1, "object", 0, 0, NULL},
   {NULL, (DB_TYPE) 0, 0, NULL, 0, 0, NULL}
 };
 META_CLASS tf_Metaclass_class = { META_CLASS_NAME, {META_PAGE_CLASS, 0, META_VOLUME}, 0, 0, 0,
@@ -303,7 +304,8 @@ static CT_ATTR ct_class_atts[] = {
   {"query_specs", NULL_ATTRID, DB_TYPE_SEQUENCE},
   {"indexes", NULL_ATTRID, DB_TYPE_SEQUENCE},
   {"comment", NULL_ATTRID, DB_TYPE_VARCHAR},
-  {"partition", NULL_ATTRID, DB_TYPE_SEQUENCE}
+  {"partition", NULL_ATTRID, DB_TYPE_SEQUENCE},
+  {"conn_server", NULL_ATTRID, DB_TYPE_OBJECT}
 };
 
 static CT_ATTR ct_attribute_atts[] = {

@@ -1964,6 +1964,12 @@ boot_define_class (MOP class_mop)
       return error_code;
     }
 
+  error_code = smt_add_attribute (def, "conn_server", CT_DB_SERVER_NAME, NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
   error_code = sm_update_class (def, NULL);
   if (error_code != NO_ERROR)
     {
