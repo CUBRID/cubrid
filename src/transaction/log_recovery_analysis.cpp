@@ -428,6 +428,13 @@ log_recovery_analysis (THREAD_ENTRY *thread_p, INT64 *num_redo_log_records, log_
 	      break;
 	    }
 	}
+      else
+	{
+	  if (log_rtype == LOG_END_OF_LOG)
+	    {
+	      log_rv_analysis_log_end (tran_id, &log_nav_lsa);
+	    }
+	}
 
       prev_prev_lsa = prev_lsa;
       prev_lsa = context.get_end_redo_lsa ();
