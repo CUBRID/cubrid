@@ -8770,6 +8770,16 @@ log_active_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VAL
 
   assert (arg_cnt == 1);
 
+  /* place any early-out before any initialization */
+  /* function can be executed either in server or standalone mode; however, in standalone mode,
+   * it is guarded by earlier guards, so this check only deals with server mode */
+  if (is_tran_server_with_remote_storage ())
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COMMAND_INVALID_WITH_REMOTE_STORAGE, 0);
+      error = ER_COMMAND_INVALID_WITH_REMOTE_STORAGE;
+      goto exit_on_error;
+    }
+
   ctx = (ACTIVE_LOG_HEADER_SCAN_CTX *) db_private_alloc (thread_p, sizeof (ACTIVE_LOG_HEADER_SCAN_CTX));
 
   if (ctx == NULL)
@@ -9129,6 +9139,16 @@ log_archive_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VA
   *ptr = NULL;
 
   assert (DB_VALUE_TYPE (arg_values[0]) == DB_TYPE_CHAR);
+
+  /* place any early-out before any initialization */
+  /* function can be executed either in server or standalone mode; however, in standalone mode,
+   * it is guarded by earlier guards, so this check only deals with server mode */
+  if (is_tran_server_with_remote_storage ())
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COMMAND_INVALID_WITH_REMOTE_STORAGE, 0);
+      error = ER_COMMAND_INVALID_WITH_REMOTE_STORAGE;
+      goto exit_on_error;
+    }
 
   ctx = (ARCHIVE_LOG_HEADER_SCAN_CTX *) db_private_alloc (thread_p, sizeof (ARCHIVE_LOG_HEADER_SCAN_CTX));
   if (ctx == NULL)
@@ -9645,7 +9665,7 @@ log_wakeup_remove_log_archive_daemon ()
 void
 log_wakeup_checkpoint_daemon ()
 {
-  if (log_Checkpoint_daemon)
+  if (log_Checkpoint_daemon != nullptr)
     {
       log_Checkpoint_daemon->wakeup ();
     }
@@ -9975,11 +9995,14 @@ log_checkpoint_daemon_init ()
 {
   assert (log_Checkpoint_daemon == NULL);
 
-  cubthread::looper looper = cubthread::looper (log_get_checkpoint_interval);
-  cubthread::entry_callable_task * daemon_task = new cubthread::entry_callable_task (log_checkpoint_execute);
+  if (!is_tran_server_with_remote_storage ())
+    {
+      cubthread::looper looper = cubthread::looper (log_get_checkpoint_interval);
+      cubthread::entry_callable_task * daemon_task = new cubthread::entry_callable_task (log_checkpoint_execute);
 
-  // create checkpoint daemon thread
-  log_Checkpoint_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "log_checkpoint");
+      // create checkpoint daemon thread
+      log_Checkpoint_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "log_checkpoint");
+    }
 }
 #endif /* SERVER_MODE */
 

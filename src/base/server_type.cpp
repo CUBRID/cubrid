@@ -28,7 +28,10 @@
 
 #include <string>
 
-static SERVER_TYPE g_server_type;
+static SERVER_TYPE g_server_type = SERVER_TYPE_TRANSACTION;
+#if !defined(NDEBUG)
+static bool g_server_type_initialized = false;
+#endif
 
 SERVER_TYPE get_server_type ()
 {
@@ -50,6 +53,9 @@ int init_server_type (const char *db_name)
 {
   int er_code = NO_ERROR;
   g_server_type = (SERVER_TYPE) prm_get_integer_value (PRM_ID_SERVER_TYPE);
+#if !defined(NDEBUG)
+  g_server_type_initialized = true;
+#endif
   if (g_server_type == SERVER_TYPE_TRANSACTION)
     {
       er_code = ats_Gl.init_page_server_hosts (db_name);
@@ -87,6 +93,17 @@ void finalize_server_type ()
     }
 }
 
+bool is_tran_server_with_remote_storage ()
+{
+  assert (g_server_type_initialized);
+
+  if (get_server_type () == SERVER_TYPE_TRANSACTION)
+    {
+      return ats_Gl.uses_remote_storage ();
+    }
+  return false;
+}
+
 #else // !SERVER_MODE = SA_MODE
 
 int init_server_type (const char *)
@@ -94,6 +111,9 @@ int init_server_type (const char *)
   int err_code = NO_ERROR;
 
   g_server_type = SERVER_TYPE_TRANSACTION;
+#if !defined(NDEBUG)
+  g_server_type_initialized = true;
+#endif
 
   const bool uses_remote_storage = prm_get_bool_value (PRM_ID_REMOTE_STORAGE);
   if (uses_remote_storage)
@@ -107,6 +127,11 @@ int init_server_type (const char *)
 
 void finalize_server_type ()
 {
+}
+
+bool is_tran_server_with_remote_storage ()
+{
+  return false;
 }
 
 #endif // !SERVER_MODE = SA_MODE

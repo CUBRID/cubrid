@@ -1,6 +1,6 @@
 /*
  * Copyright 2008 Search Solution Corporation
- * Copyright 2021 CUBRID Corporation
+ * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,19 +16,24 @@
  *
  */
 
-#ifndef _SERVER_TYPE_H_
-#define _SERVER_TYPE_H_
+#ifndef _VPID_UTILS_HPP_
+#define _VPID_UTILS_HPP_
 
-typedef enum
+#include <cstdint>
+#include <cstdio>
+
+struct vpid;
+namespace cubpacking
 {
-  SERVER_TYPE_TRANSACTION,
-  SERVER_TYPE_PAGE,
-} SERVER_TYPE;
+  class packer;
+  class unpacker;
+}
 
-int init_server_type (const char *db_name);
-void finalize_server_type ();
-SERVER_TYPE get_server_type ();
+namespace vpid_utils
+{
+  void pack (cubpacking::packer &serializer, const vpid &vpd);
+  void unpack (cubpacking::unpacker &deserializer, vpid &vpd);
+  size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset);
+}
 
-bool is_tran_server_with_remote_storage ();
-
-#endif
+#endif // _VPID_UTILS_HPP_

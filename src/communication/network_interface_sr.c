@@ -83,6 +83,7 @@
 #include "xasl_cache.h"
 #include "elo.h"
 #include "transaction_transient.hpp"
+#include "server_type.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -1822,7 +1823,14 @@ slog_checkpoint (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int r
 
   log_wakeup_checkpoint_daemon ();
 
-  /* just send back a dummy message */
+  if (is_tran_server_with_remote_storage ())
+    {
+      error = ER_TOOL_INVALID_WITH_REMOTE_STORAGE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TOOL_INVALID_WITH_REMOTE_STORAGE, 1, "'checkpoint'");
+      return_error_to_client (thread_p, rid);
+    }
+
+  /* proper error code is expected as a response */
   (void) or_pack_errcode (reply, error);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
