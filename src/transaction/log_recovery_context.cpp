@@ -116,3 +116,9 @@ log_recovery_context::get_end_redo_lsa () const
 {
   return m_end_redo_lsa;
 }
+
+bool
+log_recovery_context::is_page_server () const
+{
+  return m_is_page_server;
+}

@@ -404,25 +404,29 @@ log_recovery_analysis (THREAD_ENTRY *thread_p, INT64 *num_redo_log_records, log_
 	  context.set_start_redo_lsa (start_redo_lsa);
 	}
 
-      log_rv_analysis_record (thread_p, log_rtype, tran_id, &log_nav_lsa, log_page_p, &prev_lsa, context);
-      if (context.is_restore_incomplete ())
+      if (!context.is_page_server ())
 	{
-	  break;
-	}
-      if (context.get_end_redo_lsa () == next_record_lsa)
-	{
-	  assert_release (context.get_end_redo_lsa () != next_record_lsa);
-	  break;
-	}
-      if (checker.is_page_corrupted () && (log_rtype == LOG_END_OF_LOG))
-	{
-	  /* The page is corrupted. Stop if end of log was found in page. In this case,
-	   * the remaining data in log page is corrupted. If end of log is not found,
-	   * then we will advance up to NULL LSA. It is important to initialize page with -1.
-	   * Another option may be to store the previous LSA in header page.
-	   * Or, to use checksum on log records, but this may slow down the system.
-	   */
-	  break;
+	  // If this is not page server, analyze records to rebuild the state of transaction table
+	  log_rv_analysis_record (thread_p, log_rtype, tran_id, &log_nav_lsa, log_page_p, &prev_lsa, context);
+	  if (context.is_restore_incomplete ())
+	    {
+	      break;
+	    }
+	  if (context.get_end_redo_lsa () == next_record_lsa)
+	    {
+	      assert_release (context.get_end_redo_lsa () != next_record_lsa);
+	      break;
+	    }
+	  if (checker.is_page_corrupted () && (log_rtype == LOG_END_OF_LOG))
+	    {
+	      /* The page is corrupted. Stop if end of log was found in page. In this case,
+	       * the remaining data in log page is corrupted. If end of log is not found,
+	       * then we will advance up to NULL LSA. It is important to initialize page with -1.
+	       * Another option may be to store the previous LSA in header page.
+	       * Or, to use checksum on log records, but this may slow down the system.
+	       */
+	      break;
+	    }
 	}
 
       prev_prev_lsa = prev_lsa;
