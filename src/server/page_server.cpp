@@ -111,11 +111,12 @@ void page_server::receive_data_page_fetch (cubpacking::unpacker &upk)
   std::string message;
   upk.unpack_string (message);
 
+  cubpacking::unpacker message_upk (message.c_str (), message.size ());
   VPID vpid;
-  vpid_utils::unpack (upk, vpid);
+  vpid_utils::unpack (message_upk, vpid);
 
   LOG_LSA target_repl_lsa;
-  cublog::lsa_utils::unpack (upk, target_repl_lsa);
+  cublog::lsa_utils::unpack (message_upk, target_repl_lsa);
 
   assert (m_page_fetcher);
   m_page_fetcher->fetch_data_page (vpid, target_repl_lsa, std::bind (&page_server::on_data_page_read_result, this,

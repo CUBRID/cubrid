@@ -6775,7 +6775,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   LOG_CS_EXIT (thread_p);
 
 #if defined (SERVER_MODE)
-  if (get_server_type () == SERVER_TYPE_PAGE)
+  if (get_server_type () == SERVER_TYPE_PAGE && LOG_ISRESTARTED ())
     {
       // Wait the replication to catch up first
       ps_Gl.get_replicator ().wait_past_target_lsa (new_chkpt_lsa);

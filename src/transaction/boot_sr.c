@@ -2412,6 +2412,13 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
    * Now continue the normal restart process. At this point the data volumes
    * are ok. However, some recovery may need to take place
    */
+#if defined (SERVER_MODE)
+  if (get_server_type () == SERVER_TYPE_TRANSACTION)
+    {
+      // Data page broker is required before volumes are mounted.
+      ats_Gl.init_page_brokers ();
+    }
+#endif
 
   /* Mount the data volume */
   error_code = boot_mount (thread_p, LOG_DBFIRST_VOLID, boot_Db_full_name, NULL);
@@ -2561,10 +2568,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     {
       ps_Gl.start_log_replicator (log_Gl.append.get_nxio_lsa ());
       ps_Gl.init_log_page_fetcher ();
-    }
-  else if (get_server_type () == SERVER_TYPE_TRANSACTION)
-    {
-      ats_Gl.init_page_brokers ();
     }
 #endif // SERVER_MODE
 
