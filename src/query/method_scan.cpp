@@ -83,7 +83,8 @@ namespace cubscan
 
       if (m_dbval_list == nullptr)
 	{
-	  m_dbval_list = (qproc_db_value_list *) malloc (sizeof (m_dbval_list[0]) * m_method_sig_list->num_methods);
+	  m_dbval_list = (qproc_db_value_list *) db_private_alloc (m_thread_p,
+			 sizeof (m_dbval_list[0]) * m_method_sig_list->num_methods);
 	  if (m_dbval_list == NULL)
 	    {
 	      return ER_FAILED;
@@ -235,7 +236,7 @@ namespace cubscan
 	  int num_methods = m_method_sig_list->num_methods;
 	  for (int i = 0; i < num_methods; i++)
 	    {
-	      DB_VALUE *dbval_p = (DB_VALUE *) malloc (sizeof (DB_VALUE));
+	      DB_VALUE *dbval_p = (DB_VALUE *) db_private_alloc (m_thread_p, sizeof (DB_VALUE));
 	      dbval_list->val = dbval_p;
 
 	      db_make_null (dbval_p);
@@ -259,7 +260,7 @@ namespace cubscan
     int
     scanner::close_value_array ()
     {
-      free_and_init (m_dbval_list);
+      db_private_free_and_init (m_thread_p, m_dbval_list);
       return NO_ERROR;
     }
 

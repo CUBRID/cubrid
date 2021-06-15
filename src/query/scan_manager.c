@@ -6786,7 +6786,7 @@ scan_next_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
 	  pr_clear_value (src_valp->val);
-	  free_and_init (src_valp->val);
+	  db_private_free_and_init (thread_p, src_valp->val);
 	  return S_ERROR;
 	}
       else if (!qdata_copy_db_value (dest_valp->val, src_valp->val))
@@ -6795,7 +6795,7 @@ scan_next_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	}
 
       pr_clear_value (src_valp->val);
-      free_and_init (src_valp->val);
+      db_private_free_and_init (thread_p, src_valp->val);
     }
 
   return S_SUCCESS;
