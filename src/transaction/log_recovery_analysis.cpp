@@ -412,11 +412,6 @@ log_recovery_analysis (THREAD_ENTRY *thread_p, INT64 *num_redo_log_records, log_
 	    {
 	      break;
 	    }
-	  if (context.get_end_redo_lsa () == next_record_lsa)
-	    {
-	      assert_release (context.get_end_redo_lsa () != next_record_lsa);
-	      break;
-	    }
 	}
       else
 	{
@@ -426,6 +421,11 @@ log_recovery_analysis (THREAD_ENTRY *thread_p, INT64 *num_redo_log_records, log_
 	    }
 	}
 
+      if (context.get_end_redo_lsa () == next_record_lsa)
+	{
+	  assert_release (context.get_end_redo_lsa () != next_record_lsa);
+	  break;
+	}
       if (checker.is_page_corrupted () && (log_rtype == LOG_END_OF_LOG))
 	{
 	  /* The page is corrupted. Stop if end of log was found in page. In this case,
