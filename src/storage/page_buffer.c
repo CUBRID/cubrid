@@ -7859,16 +7859,16 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid)
   if (get_server_type () == SERVER_TYPE_TRANSACTION)
     {
       cubpacking::packer pac;
-      int size = 0;
+      size_t size = 0;
 
-      size += cublog::lsa_utils::get_packed_size(pac, size);
-      size += vpid_utils::get_packed_size(pac, size);
+      size += cublog::lsa_utils::get_packed_size (pac, size);
+      size += vpid_utils::get_packed_size (pac, size);
       std::unique_ptr<char[]> buffer (new char[size]);
 
       pac.set_buffer (buffer.get (), size);
-      vpid_utils::pack(pac, *vpid);
+      vpid_utils::pack (pac, *vpid);
       LOG_LSA nxio_lsa = log_Gl.append.get_nxio_lsa ();
-      cublog::lsa_utils::pack(pac, nxio_lsa);
+      cublog::lsa_utils::pack (pac, nxio_lsa);
 
       std::string message (buffer.get (), size);
       ats_Gl.push_request (ats_to_ps_request::SEND_DATA_PAGE_FETCH, std::move (message));
