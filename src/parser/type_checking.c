@@ -6022,9 +6022,9 @@ pt_apply_expressions_definition (PARSER_CONTEXT * parser, PT_NODE ** node)
   /* check the expression contains NULL argument. If the op does not specially treat NULL args, for instance, NVL,
    * NVL2, IS [NOT] NULL and so on, just decide the retun type as NULL. */
   if (!does_op_specially_treat_null_arg (op)
-      && ((arg1 && !arg1->is_added_by_parser && arg1_type == PT_TYPE_NULL)
-	  || (arg2 && !arg2->is_added_by_parser && arg2_type == PT_TYPE_NULL)
-	  || (arg3 && !arg3->is_added_by_parser && arg3_type == PT_TYPE_NULL)))
+      && ((arg1 && !arg1->flag.is_added_by_parser && arg1_type == PT_TYPE_NULL)
+	  || (arg2 && !arg2->flag.is_added_by_parser && arg2_type == PT_TYPE_NULL)
+	  || (arg3 && !arg3->flag.is_added_by_parser && arg3_type == PT_TYPE_NULL)))
     {
       expr->type_enum = PT_TYPE_NULL;
       return NO_ERROR;
@@ -7087,7 +7087,8 @@ pt_to_false_subquery (PARSER_CONTEXT * parser, PT_NODE * node)
   int col_cnt, i;
   PT_NODE *col, *set, *spec;
 
-  if (node->info.query.has_outer_spec == 1 || node->info.query.is_sort_spec || node->info.query.is_insert_select)
+  if (node->info.query.flag.has_outer_spec == 1 || node->info.query.flag.is_sort_spec
+      || node->info.query.flag.is_insert_select)
     {
       /* rewrite as empty subquery for example, SELECT a, b FROM x LEFT OUTER JOIN y WHERE 0 <> 0 => SELECT null, null
        * FROM table({}) as av6749(av_1) WHERE 0 <> 0 */
@@ -7207,7 +7208,7 @@ pt_to_false_subquery (PARSER_CONTEXT * parser, PT_NODE * node)
     }
   else
     {
-      int hidden = node->is_hidden_column;
+      int hidden = node->flag.is_hidden_column;
 
       /* rewrite as null value */
       next = node->next;
@@ -7230,7 +7231,7 @@ pt_to_false_subquery (PARSER_CONTEXT * parser, PT_NODE * node)
       node->alias_print = alias_print;
       node->type_enum = PT_TYPE_NULL;
       node->info.value.location = 0;
-      node->is_hidden_column = hidden;
+      node->flag.is_hidden_column = hidden;
       node->next = next;	/* restore link */
     }
 
@@ -7310,11 +7311,11 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 	      || (node->next && (node->next->info.spec.join_type == PT_JOIN_LEFT_OUTER
 				 || (node->next->info.spec.join_type == PT_JOIN_RIGHT_OUTER))))
 	    {
-	      derived_table->info.query.has_outer_spec = 1;
+	      derived_table->info.query.flag.has_outer_spec = 1;
 	    }
 	  else
 	    {
-	      derived_table->info.query.has_outer_spec = 0;
+	      derived_table->info.query.flag.has_outer_spec = 0;
 	    }
 	}
       break;
@@ -7323,7 +7324,7 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
       /* if sort spec expression is query, mark it as such */
       if (node->info.sort_spec.expr && PT_IS_QUERY (node->info.sort_spec.expr))
 	{
-	  node->info.sort_spec.expr->info.query.is_sort_spec = 1;
+	  node->info.sort_spec.expr->info.query.flag.is_sort_spec = 1;
 	}
       break;
 
@@ -7335,15 +7336,15 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
       arg2 = node->info.query.q.union_.arg2;
       if (arg1 != NULL)
 	{
-	  arg1->info.query.has_outer_spec = node->info.query.has_outer_spec;
+	  arg1->info.query.flag.has_outer_spec = node->info.query.flag.has_outer_spec;
 	}
       if (arg2 != NULL)
 	{
-	  arg2->info.query.has_outer_spec = node->info.query.has_outer_spec;
+	  arg2->info.query.flag.has_outer_spec = node->info.query.flag.has_outer_spec;
 	}
 
       /* rewrite limit clause as numbering expression and add it to the corresponding predicate */
-      if (node->info.query.limit && node->info.query.rewrite_limit)
+      if (node->info.query.limit && node->info.query.flag.rewrite_limit)
 	{
 	  PT_NODE *limit, *t_node;
 	  PT_NODE **expr_pred;
@@ -7373,7 +7374,7 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 		      t_node->next = limit;
 		    }
 
-		  node->info.query.rewrite_limit = 0;
+		  node->info.query.flag.rewrite_limit = 0;
 		}
 	      else
 		{
@@ -7385,7 +7386,7 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 
     case PT_SELECT:
       /* rewrite limit clause as numbering expression and add it to the corresponding predicate */
-      if (node->info.query.limit && node->info.query.rewrite_limit)
+      if (node->info.query.limit && node->info.query.flag.rewrite_limit)
 	{
 	  PT_NODE *limit, *t_node;
 	  PT_NODE **expr_pred;
@@ -7429,7 +7430,7 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 		  t_node->next = limit;
 		}
 
-	      node->info.query.rewrite_limit = 0;
+	      node->info.query.flag.rewrite_limit = 0;
 	    }
 	  else
 	    {
@@ -7442,7 +7443,7 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
       /* mark inserted sub-query as belonging to insert statement */
       if (node->info.insert.value_clauses->info.node_list.list_type == PT_IS_SUBQUERY)
 	{
-	  node->info.insert.value_clauses->info.node_list.list->info.query.is_insert_select = 1;
+	  node->info.insert.value_clauses->info.node_list.list->info.query.flag.is_insert_select = 1;
 	}
       break;
 
@@ -7817,7 +7818,7 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
       node->info.merge.update.search_cond = pt_where_type (parser, node->info.merge.update.search_cond);
       node->info.merge.update.del_search_cond = pt_where_type (parser, node->info.merge.update.del_search_cond);
 
-      if (parser->set_host_var == 0)
+      if (parser->flag.set_host_var == 0)
 	{
 	  PT_NODE *v;
 	  PT_NODE *list = NULL;
@@ -7934,7 +7935,7 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
 	    }
 	}
 
-      if (parser->set_host_var == 0)
+      if (parser->flag.set_host_var == 0)
 	{
 	  PT_NODE *v = NULL;
 	  PT_NODE *list = NULL;
@@ -8190,7 +8191,7 @@ pt_wrap_select_list_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * query, PT_T
 
 	    for (item = select_list; item != NULL; prev = item, item = item->next)
 	      {
-		if (item->is_hidden_column)
+		if (item->flag.is_hidden_column)
 		  {
 		    continue;
 		  }
@@ -8358,7 +8359,7 @@ pt_wrap_collection_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * arg, PT_TYPE
   new_att->line_number = arg->line_number;
   new_att->column_number = arg->column_number;
   new_att->alias_print = arg->alias_print;
-  new_att->is_hidden_column = arg->is_hidden_column;
+  new_att->flag.is_hidden_column = arg->flag.is_hidden_column;
   arg->alias_print = NULL;
 
 
@@ -8460,7 +8461,7 @@ pt_wrap_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * arg, PT_TYPE_ENUM new_t
   new_att->line_number = arg->line_number;
   new_att->column_number = arg->column_number;
   new_att->alias_print = arg->alias_print;
-  new_att->is_hidden_column = arg->is_hidden_column;
+  new_att->flag.is_hidden_column = arg->flag.is_hidden_column;
   arg->alias_print = NULL;
 
   new_att->type_enum = new_type;
@@ -10169,9 +10170,10 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  node->type_enum = PT_TYPE_NONE;
 	  break;
 	}
-      if (common_type == PT_TYPE_MAYBE)
+
+      if (common_type == PT_TYPE_MAYBE && arg1_type != PT_TYPE_NULL && arg2_type != PT_TYPE_NULL)
 	{
-	  common_type = (arg1_type == PT_TYPE_MAYBE && arg2_type != PT_TYPE_NULL) ? arg2_type : arg1_type;
+	  common_type = (arg1_type == PT_TYPE_MAYBE) ? arg2_type : arg1_type;
 	}
 
       if (common_type == PT_TYPE_MAYBE)
@@ -18804,7 +18806,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
       return expr;
     }
 
-  if (expr->do_not_fold)
+  if (expr->flag.do_not_fold)
     {
       return expr;
     }
@@ -18820,7 +18822,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
   expr->next = NULL;
   result_type = expr->type_enum;
   result = expr;
-  is_hidden_column = expr->is_hidden_column;
+  is_hidden_column = expr->flag.is_hidden_column;
 
   op = expr->info.expr.op;
 
@@ -18833,7 +18835,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	  /* const folding OK , replace current node with arg1 VALUE */
 	  result = parser_copy_tree (parser, expr->info.expr.arg1);
 	  result->info.value.location = location;
-	  result->is_hidden_column = is_hidden_column;
+	  result->flag.is_hidden_column = is_hidden_column;
 	  if (result->info.value.text == NULL)
 	    {
 	      result->info.value.text = pt_append_string (parser, NULL, result->alias_print);
@@ -19399,7 +19401,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	      res->info.expr.arg1 = parser_copy_tree_list (parser, opd1);
 	      res->type_enum = expr->type_enum;
 	      res->info.expr.location = expr->info.expr.location;
-	      res->is_hidden_column = is_hidden_column;
+	      res->flag.is_hidden_column = is_hidden_column;
 	      PT_EXPR_INFO_SET_FLAG (res, PT_EXPR_INFO_CAST_SHOULD_FOLD);
 
 	      if (pt_is_set_type (expr))
@@ -19703,8 +19705,8 @@ end:
       result->line_number = line;
       result->column_number = column;
       result->alias_print = alias_print;
-      result->is_hidden_column = is_hidden_column;
-      result->is_value_query = expr->is_value_query;
+      result->flag.is_hidden_column = is_hidden_column;
+      result->flag.is_value_query = expr->flag.is_value_query;
 
       if (result != expr)
 	{
@@ -19718,7 +19720,7 @@ end:
 	    {
 	      alias_print = expr->alias_print;
 	    }
-	  if (result->alias_print == NULL && expr->is_alias_enabled_expr)
+	  if (result->alias_print == NULL && expr->flag.is_alias_enabled_expr)
 	    {
 	      result->alias_print = pt_append_string (parser, NULL, alias_print);
 	    }
@@ -19986,7 +19988,7 @@ pt_fold_const_function (PARSER_CONTEXT * parser, PT_NODE * func)
 	}
     }
 
-  if (func->do_not_fold)
+  if (func->flag.do_not_fold)
     {
       return func;
     }
@@ -20047,7 +20049,7 @@ pt_fold_const_function (PARSER_CONTEXT * parser, PT_NODE * func)
 	    {
 	      result->info.value.text = func->alias_print;
 	    }
-	  if (alias_print == NULL && func->is_alias_enabled_expr)
+	  if (alias_print == NULL && func->flag.is_alias_enabled_expr)
 	    {
 	      alias_print = func->alias_print;
 	    }
@@ -20501,7 +20503,7 @@ pt_coerce_value_internal (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest
       /* binding of host variables may be delayed in the case of an esql PREPARE statement until an OPEN cursor or an
        * EXECUTE statement. in this case we seem to have no choice but to assume each host variable is typeless and can
        * be coerced into any desired type. */
-      if (parser->set_host_var == 0)
+      if (parser->flag.set_host_var == 0)
 	{
 	  dest->type_enum = desired_type;
 	  dest->data_type = parser_copy_tree_list (parser, data_type);
@@ -23622,7 +23624,7 @@ coerce_result:
     case PT_GREATEST:
     case PT_LEAST:
     case PT_NULLIF:
-      if (expr->is_wrapped_res_for_coll)
+      if (expr->flag.is_wrapped_res_for_coll)
 	{
 	  break;
 	}
@@ -23662,7 +23664,7 @@ coerce_result:
 	    pt_coerce_node_collation (parser, expr, common_coll, common_cs, true, false,
 				      PT_COLL_WRAP_TYPE_FOR_MAYBE (expr_wrap_type), PT_TYPE_NONE);
 
-	  expr->is_wrapped_res_for_coll = 1;
+	  expr->flag.is_wrapped_res_for_coll = 1;
 	  if (new_node == NULL)
 	    {
 	      goto error;
@@ -23717,12 +23719,12 @@ coerce_result:
 	{
 	  if (expr->type_enum == PT_TYPE_MAYBE)
 	    {
-	      if (expr->is_wrapped_res_for_coll)
+	      if (expr->flag.is_wrapped_res_for_coll)
 		{
 		  break;
 		}
 	      expr_wrap_type = pt_wrap_type_for_collation (arg1, arg2, arg3, NULL);
-	      expr->is_wrapped_res_for_coll = 1;
+	      expr->flag.is_wrapped_res_for_coll = 1;
 	    }
 	  else
 	    {

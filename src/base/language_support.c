@@ -59,11 +59,12 @@
 #define ASCII_SPACE 0x20
 
 static INTL_LANG lang_Lang_id = INTL_LANG_ENGLISH;
-static INTL_CODESET lang_Loc_charset = INTL_CODESET_ISO88591;
 static char lang_Loc_name[LANG_MAX_LANGNAME] = LANG_NAME_DEFAULT;
 static char lang_Msg_loc_name[LANG_MAX_LANGNAME] = LANG_NAME_DEFAULT;
 static char lang_Lang_name[LANG_MAX_LANGNAME] = LANG_NAME_DEFAULT;
 static DB_CURRENCY lang_Loc_currency = DB_CURRENCY_DOLLAR;
+INTL_CODESET lang_Loc_charset = INTL_CODESET_ISO88591;
+LANG_COLLATION *lang_Collations[LANG_MAX_COLLATIONS] = { NULL };
 
 /* built-in collations */
 /* number of characters in the (extended) alphabet per language */
@@ -159,9 +160,6 @@ extern TEXT_CONVERSION con_Iso_8859_9_conv;
 static LANG_LOCALE_DATA *lang_Loaded_locales[LANG_MAX_LOADED_LOCALES] = { NULL };
 
 static int lang_Count_locales = 0;
-
-/* all loaded collations */
-static LANG_COLLATION *lang_Collations[LANG_MAX_COLLATIONS] = { NULL };
 
 static int lang_Count_collations = 0;
 

@@ -3966,7 +3966,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
 	      goto end_create;
 	    }
 
-	  if (alter->info.alter.code == PT_REORG_PARTITION && parts->partition_pruned)
+	  if (alter->info.alter.code == PT_REORG_PARTITION && parts->flag.partition_pruned)
 	    {			/* reused partition */
 	      newpci->obj = ws_find_class (newpci->pname);
 	      if (newpci->obj == NULL)
@@ -5423,7 +5423,7 @@ do_create_partition_constraint (PT_NODE * alter, SM_CLASS * root_class, SM_CLASS
 	{
 	  MOP subclass_op = parts->info.parts.name->info.name.db_object;
 
-	  if (alter_op == PT_REORG_PARTITION && parts->partition_pruned)
+	  if (alter_op == PT_REORG_PARTITION && parts->flag.partition_pruned)
 	    {
 	      continue;		/* reused partition */
 	    }
@@ -6390,7 +6390,7 @@ do_reorganize_partition_post (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTI
   name = alter->info.alter.alter_clause.partition.parts;
   while (name)
     {
-      if (name->partition_pruned != 0)
+      if (name->flag.partition_pruned != 0)
 	{
 	  /* at least one partitions has been changed */
 	  update = true;
@@ -8606,11 +8606,38 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   create_select = node->info.create_entity.create_select;
   if (create_select != NULL)
     {
+      DB_QUERY_TYPE *column;
+
       error = pt_get_select_query_columns (parser, create_select, &query_columns);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
 	}
+
+      /* check for mis-creating string type with -1 precision */
+      for (column = query_columns; column != NULL; column = db_query_format_next (column))
+        {
+          switch (column->domain->type->id)
+            {
+              case DB_TYPE_VARCHAR:
+                if (column->domain->precision == DB_DEFAULT_PRECISION)
+                  {
+                    column->domain->precision = DB_MAX_VARCHAR_PRECISION;
+                  }
+                break;
+              case DB_TYPE_VARNCHAR:
+                if (column->domain->precision == DB_DEFAULT_PRECISION)
+                  {
+                    column->domain->precision = DB_MAX_VARNCHAR_PRECISION;
+                  }
+                else if (column->domain->precision > DB_MAX_VARNCHAR_PRECISION)
+                  {
+                    column->domain->precision = DB_MAX_VARNCHAR_PRECISION;
+                  }
+                default:
+                break;
+            }
+        }
     }
   assert (!(create_like != NULL && create_select != NULL));
 

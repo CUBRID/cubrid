@@ -692,46 +692,46 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks, PT_NODE * spe
     {
       /* Need to allocate more space in the locks array. Do not free locks array if memory allocation fails, it will be
        * freed by the caller of this function */
-      void *ptr = NULL;
       size_t new_size = lcks->allocated_count + 1;
 
       /* expand classes */
-      ptr = realloc (lcks->classes, new_size * sizeof (char *));
-      if (ptr == NULL)
+      char **const realloc_ptr_classes = (char **) realloc (lcks->classes, new_size * sizeof (char *));
+      if (realloc_ptr_classes == NULL)
 	{
 	  PT_ERRORmf (parser, spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY,
 		      new_size * sizeof (char *));
 	  return ER_FAILED;
 	}
-      lcks->classes = (char **) ptr;
+      lcks->classes = realloc_ptr_classes;
 
       /* expand only_all */
-      ptr = realloc (lcks->only_all, new_size * sizeof (int));
-      if (ptr == NULL)
+      int *const realloc_ptr_only_all = (int *) realloc (lcks->only_all, new_size * sizeof (int));
+      if (realloc_ptr_only_all == NULL)
 	{
 	  PT_ERRORmf (parser, spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY, new_size * sizeof (int));
 	  return ER_FAILED;
 	}
-      lcks->only_all = (int *) ptr;
+      lcks->only_all = realloc_ptr_only_all;
 
       /* expand locks */
-      ptr = realloc (lcks->locks, new_size * sizeof (LOCK));
-      if (ptr == NULL)
+      LOCK *const realloc_ptr_locks = (LOCK *) realloc (lcks->locks, new_size * sizeof (LOCK));
+      if (realloc_ptr_locks == NULL)
 	{
 	  PT_ERRORmf (parser, spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY, new_size * sizeof (LOCK));
 	  return ER_FAILED;
 	}
-      lcks->locks = (LOCK *) ptr;
+      lcks->locks = realloc_ptr_locks;
 
       /* flags */
-      ptr = realloc (lcks->flags, new_size * sizeof (LC_PREFETCH_FLAGS));
-      if (ptr == NULL)
+      LC_PREFETCH_FLAGS *const realloc_ptr_flags
+	= (LC_PREFETCH_FLAGS *) realloc (lcks->flags, new_size * sizeof (LC_PREFETCH_FLAGS));
+      if (realloc_ptr_flags == NULL)
 	{
 	  PT_ERRORmf (parser, spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY,
 		      new_size * sizeof (LC_PREFETCH_FLAGS));
 	  return ER_FAILED;
 	}
-      lcks->flags = (LC_PREFETCH_FLAGS *) ptr;
+      lcks->flags = realloc_ptr_flags;
 
       lcks->allocated_count++;
     }
@@ -1144,7 +1144,7 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser, const char *trigger_stmt, DB_O
        */
       if (statement->info.scope.stmt && statement->info.scope.stmt->info.trigger_action.expression)
 	{
-	  statement->si_datetime |= statement->info.scope.stmt->info.trigger_action.expression->si_datetime;
+	  statement->flag.si_datetime |= statement->info.scope.stmt->info.trigger_action.expression->flag.si_datetime;
 	}
     }
 
@@ -1386,12 +1386,12 @@ pt_exec_trigger_stmt (PARSER_CONTEXT * parser, PT_NODE * trigger_stmt, DB_OBJECT
   server_info_bits = 0;		/* init */
 
   /* set sys_date, sys_time, sys_timestamp, sys_datetime values for trigger statement. */
-  if (trigger_stmt->si_datetime)
+  if (trigger_stmt->flag.si_datetime)
     {
       server_info_bits |= SI_SYS_DATETIME;
     }
 
-  if (trigger_stmt->si_tran_id)
+  if (trigger_stmt->flag.si_tran_id)
     {
       server_info_bits |= SI_LOCAL_TRANSACTION_ID;
     }
@@ -1518,12 +1518,12 @@ pt_exec_trigger_stmt (PARSER_CONTEXT * parser, PT_NODE * trigger_stmt, DB_OBJECT
     }
 
   /* reset the parser values */
-  if (trigger_stmt->si_datetime)
+  if (trigger_stmt->flag.si_datetime)
     {
       db_make_null (&parser->sys_datetime);
       db_make_null (&parser->sys_epochtime);
     }
-  if (trigger_stmt->si_tran_id)
+  if (trigger_stmt->flag.si_tran_id)
     {
       db_make_null (&parser->local_transaction_id);
     }

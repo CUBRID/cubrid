@@ -94,6 +94,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/fault_injection.c
   ${BASE_DIR}/fileline_location.cpp
   ${BASE_DIR}/fixed_alloc.c
+  ${BASE_DIR}/filesys_temp.cpp
   ${BASE_DIR}/cubrid_getopt_long.c
   ${BASE_DIR}/ini_parser.c
   ${BASE_DIR}/intl_support.c
@@ -138,6 +139,8 @@ set(BASE_HEADERS
   ${BASE_DIR}/error_manager.h
   ${BASE_DIR}/extensible_array.hpp
   ${BASE_DIR}/fileline_location.hpp
+  ${BASE_DIR}/filesys.hpp
+  ${BASE_DIR}/filesys_temp.hpp
   ${BASE_DIR}/locale_helper.hpp
   ${BASE_DIR}/lockfree_bitmap.hpp
   ${BASE_DIR}/mem_block.hpp
@@ -487,6 +490,7 @@ target_include_directories(cubridcs PRIVATE ${FLEX_INCLUDE_DIRS} ${EP_INCLUDES})
 if(UNIX)
   target_link_libraries(cubridcs LINK_PRIVATE -Wl,-whole-archive cas ${EP_LIBS} -Wl,-no-whole-archive)
   target_link_libraries(cubridcs LINK_PUBLIC ${CURSES_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} ${CMAKE_DL_LIBS})
+  target_link_libraries(cubridcs PUBLIC stdc++fs)
 else(UNIX)
   target_link_libraries(cubridcs LINK_PRIVATE cas ${EP_LIBS})
 endif(UNIX)

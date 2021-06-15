@@ -252,7 +252,7 @@ namespace test_memalloc
 
     test_common::custom_assert (step == results.get_step_count ());
 
-    delete pointers;
+    delete [] pointers;
     delete alloc;
 
     return 0;
@@ -404,7 +404,7 @@ namespace test_memalloc
     test_common::custom_assert (random_value_cursor == actions.get_size ());
     test_common::custom_assert (step == result.get_step_count ());
 
-    delete pointers_pool;
+    delete [] pointers_pool;
     delete alloc;
 
     return 0;
