@@ -788,6 +788,22 @@ struct pgbuf_buffer_pool
 #if defined (SERVER_MODE)
   pthread_mutex_t show_status_mutex;
 #endif
+
+  /* *INDENT-OFF* */
+  std::atomic<LOG_LSA> highest_evicted_lsa = NULL_LSA;
+
+  LOG_LSA
+  get_highest_evicted_lsa () const
+  {
+    return highest_evicted_lsa.load ();
+  };
+  
+  void
+  set_highest_evicted_lsa (const LOG_LSA lsa)
+  {
+    highest_evicted_lsa.store (lsa);
+  }
+  /* *INDENT-ON* */
 };
 
 /* victim candidate list */
@@ -7866,7 +7882,7 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid)
       std::memcpy (buffer + bytes_copied, &(vpid->volid), sizeof (vpid->volid));
       bytes_copied += sizeof (vpid->volid);
 
-      LOG_LSA lsa = log_Gl.append.get_highest_evicted_lsa ();
+      LOG_LSA lsa = pgbuf_Pool.get_highest_evicted_lsa ();
       std::memcpy (buffer + bytes_copied, &lsa, sizeof (lsa));
       bytes_copied += sizeof (lsa);
 
@@ -7914,9 +7930,9 @@ pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
     }
   assert (bufptr->latch_mode == PGBUF_NO_LATCH);
 
-  if (bufptr->iopage_buffer->iopage.prv.lsa > log_Gl.append.get_highest_evicted_lsa ())
+  if (bufptr->iopage_buffer->iopage.prv.lsa > pgbuf_Pool.get_highest_evicted_lsa ())
     {
-      log_Gl.append.set_highest_evicted_lsa (bufptr->iopage_buffer->iopage.prv.lsa);
+      pgbuf_Pool.set_highest_evicted_lsa (bufptr->iopage_buffer->iopage.prv.lsa);
     }
 
   /* a safe victim */
