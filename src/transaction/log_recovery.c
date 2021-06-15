@@ -992,7 +992,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
   // *INDENT-OFF*
   std::unique_ptr<cublog::minimum_log_lsa_monitor> minimum_log_lsa;
   std::unique_ptr<cublog::redo_parallel> parallel_recovery_redo;
-  // *INDENT-ON*
 #if defined(SERVER_MODE)
   {
     const int log_recovery_redo_parallel_count = prm_get_integer_value (PRM_ID_RECOVERY_PARALLEL_COUNT);
@@ -1000,11 +999,12 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
     if (log_recovery_redo_parallel_count > 0)
       {
 	minimum_log_lsa.reset (new cublog::minimum_log_lsa_monitor ());
-	parallel_recovery_redo.reset (new cublog::
-				      redo_parallel (log_recovery_redo_parallel_count, *minimum_log_lsa.get ()));
+	parallel_recovery_redo.reset (new cublog::redo_parallel (log_recovery_redo_parallel_count,
+								 *minimum_log_lsa.get ()));
       }
   }
 #endif
+  // *INDENT-ON*
 
   /*
    * GO FORWARD, redoing records of all transactions including aborted ones.
