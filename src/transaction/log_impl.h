@@ -801,8 +801,7 @@ extern int logpb_fetch_page (THREAD_ENTRY * thread_p, const LOG_LSA * req_lsa, L
 extern int logpb_copy_page_from_log_buffer (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgptr);
 extern int logpb_copy_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgptr);
 extern int logpb_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
-						     LOG_CS_ACCESS_MODE access_mode, LOG_PAGE * log_pgptr,
-						     bool do_compare_local_with_remote);
+						     LOG_CS_ACCESS_MODE access_mode, LOG_PAGE * log_pgptr);
 extern int logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE access_mode,
 				      LOG_PAGE * log_pgptr);
 extern int logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int num_pages,
