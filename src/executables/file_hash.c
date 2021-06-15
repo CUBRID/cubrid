@@ -216,8 +216,8 @@ fh_create (const char *name, int est_size, int page_size, int cached_pages, cons
   /* Open the hash file */
   if (!hash_filename || hash_filename[0] == '\0')
     {
-      auto[filename, file] = filesys::open_temp_file ("fhash_");
-      fclose (file);
+      auto[filename, filedes] = filesys::open_temp_filedes ("fhash_");
+      close (filedes);
       ht->hash_filename = strdup (filename.c_str ());
     }
   else

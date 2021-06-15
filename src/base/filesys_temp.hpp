@@ -28,6 +28,9 @@
 
 namespace filesys //File System
 {
+  //opens a new file in OS's tmp folder; return file name & open descriptor
+  std::pair<std::string, int> open_temp_filedes (const char *prefix, int flags=0);
+
   //opens a new file in OS's tmp folder; return file name & FILE*
   std::pair<std::string, FILE *> open_temp_file (const char *prefix, const char *mode="w", int flags=0);
 }
