@@ -4611,8 +4611,7 @@ pgbuf_get_vpid (PAGE_PTR pgptr, VPID * vpid)
  * Note: Once the buffer is freed, the content of the vpid pointer may be
  *       updated by the page buffer manager, thus a lot of care should be taken.
  *       The values of the vpid pointer must not be altered by the caller.
- *       Once the page is freed, the vpid
-                                  #include "log_lsa_utils.hpp"pointer should not be used any longer.
+ *       Once the page is freed, the vpid pointer should not be used any longer.
  */
 VPID *
 pgbuf_get_vpid_ptr (PAGE_PTR pgptr)
@@ -7867,9 +7866,9 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid)
       std::unique_ptr<char[]> buffer (new char[size]);
 
       pac.set_buffer (buffer.get (), size);
-      vpid_utils::pack(*vpid, pac);
+      vpid_utils::pack(pac, *vpid);
       LOG_LSA nxio_lsa = log_Gl.append.get_nxio_lsa ();
-      cublog::lsa_utils::pack(nxio_lsa, pac);
+      cublog::lsa_utils::pack(pac, nxio_lsa);
 
       std::string message (buffer.get (), size);
       ats_Gl.push_request (ats_to_ps_request::SEND_DATA_PAGE_FETCH, std::move (message));

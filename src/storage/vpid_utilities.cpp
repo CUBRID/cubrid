@@ -26,10 +26,10 @@
 namespace vpid_utils
 {
   void
-  pack (const vpid &vpd, cubpacking::packer &serializer)
+  pack (cubpacking::packer &serializer, const vpid &vpd)
   {
     int64_t result = 0;
-    memcpy (&result, &vpd, sizeof (result));
+    std::memcpy (&result, &vpd, sizeof (result));
 
     serializer.pack_bigint (result);
   }
@@ -39,7 +39,7 @@ namespace vpid_utils
   {
     uint64_t big_int = 0;
     deserializer.unpack_bigint (big_int);
-    memcpy (&vpd, &big_int, sizeof (big_int));
+    std::memcpy (&vpd, &big_int, sizeof (big_int));
   }
 
   size_t

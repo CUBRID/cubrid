@@ -38,8 +38,8 @@ namespace cublog
   void
   checkpoint_info::pack (cubpacking::packer &serializator) const
   {
-    lsa_utils::pack (m_start_redo_lsa, serializator);
-    lsa_utils::pack (m_snapshot_lsa, serializator);
+    lsa_utils::pack (serializator, m_start_redo_lsa);
+    lsa_utils::pack (serializator, m_snapshot_lsa);
 
     serializator.pack_bigint (m_trans.size ());
     for (const auto &tran_info : m_trans)
@@ -47,14 +47,14 @@ namespace cublog
 	serializator.pack_int (tran_info.isloose_end);
 	serializator.pack_int (tran_info.trid);
 	serializator.pack_int (tran_info.state);
-	lsa_utils::pack (tran_info.head_lsa, serializator);
-	lsa_utils::pack (tran_info.tail_lsa, serializator);
-	lsa_utils::pack (tran_info.undo_nxlsa, serializator);
+	lsa_utils::pack (serializator, tran_info.head_lsa);
+	lsa_utils::pack (serializator, tran_info.tail_lsa);
+	lsa_utils::pack (serializator, tran_info.undo_nxlsa);
 
-	lsa_utils::pack (tran_info.posp_nxlsa, serializator);
-	lsa_utils::pack (tran_info.savept_lsa, serializator);
-	lsa_utils::pack (tran_info.tail_topresult_lsa, serializator);
-	lsa_utils::pack (tran_info.start_postpone_lsa, serializator);
+	lsa_utils::pack (serializator, tran_info.posp_nxlsa);
+	lsa_utils::pack (serializator, tran_info.savept_lsa);
+	lsa_utils::pack (serializator, tran_info.tail_topresult_lsa);
+	lsa_utils::pack (serializator, tran_info.start_postpone_lsa);
 	serializator.pack_c_string (tran_info.user_name, strlen (tran_info.user_name));
       }
 
@@ -62,8 +62,8 @@ namespace cublog
     for (const auto &sysop_info : m_sysops)
       {
 	serializator.pack_int (sysop_info.trid);
-	lsa_utils::pack (sysop_info.sysop_start_postpone_lsa, serializator);
-	lsa_utils::pack (sysop_info.atomic_sysop_start_lsa, serializator);
+	lsa_utils::pack (serializator, sysop_info.sysop_start_postpone_lsa);
+	lsa_utils::pack (serializator, sysop_info.atomic_sysop_start_lsa);
       }
 
     serializator.pack_bool (m_has_2pc);

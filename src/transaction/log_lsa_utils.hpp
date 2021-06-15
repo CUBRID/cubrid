@@ -31,7 +31,7 @@ namespace cubpacking
 
 namespace cublog::lsa_utils
 {
-  void pack (const log_lsa &lsa, cubpacking::packer &serializer);
+  void pack (cubpacking::packer &serializer, const log_lsa &lsa);
   void unpack (cubpacking::unpacker &deserializer, log_lsa &lsa);
   size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset);
 }

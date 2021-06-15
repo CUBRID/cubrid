@@ -31,7 +31,7 @@ namespace cubpacking
 
 namespace vpid_utils
 {
-  void pack (const vpid &vpd, cubpacking::packer &serializer);
+  void pack (cubpacking::packer &serializer, const vpid &vpd);
   void unpack (cubpacking::unpacker &deserializer, vpid &vpd);
   size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset);
 }
