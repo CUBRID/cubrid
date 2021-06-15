@@ -25,24 +25,6 @@ log_page::operator== (const log_page &other) const
 {
   return hdr == other.hdr
 	 && std::string (area, LOGAREA_SIZE) == std::string (other.area, LOGAREA_SIZE);
-//  const std::string this_area { area, LOGAREA_SIZE };
-//  const std::string other_area { other.area, LOGAREA_SIZE };
-//  const auto res { hdr == other.hdr &&this_area == other_area };
-//  //&& std::string (area, LOGAREA_SIZE) == std::string (other.area, LOGAREA_SIZE);
-//  if (!res)
-//    {
-//      const auto log_area_size = LOGAREA_SIZE;
-//      const char *ta = reinterpret_cast<const char *> (area);
-//      const char *oa = reinterpret_cast<const char *> (other.area);
-//      for (int i = 0; i < log_area_size; ++i)
-//	{
-//	  if (ta[i] != oa[i])
-//	    {
-//	      const char tac = ta[i];
-//	      const char oac = oa[i];
-//	    }
-//	}
-//    }
 }
 
 bool
