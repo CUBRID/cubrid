@@ -8950,7 +8950,7 @@ pt_resolve_method_type (PARSER_CONTEXT * parser, PT_NODE * node)
  * pt_make_method_call () - creates a PT_METHOD_CALL node and initilaizes from PT_FUNCTION node
  *   return:
  *   parser(in):
- *   node(in): an PT_FUNCTION node that may really be a method call
+ *   f_node(in): an PT_FUNCTION node that may really be a method call
  *   bind_arg(in):
  */
 static PT_NODE *

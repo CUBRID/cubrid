@@ -69,9 +69,9 @@ method_send_value_to_server (unsigned int rc, char *host_p, char *server_name_p,
 /*
  * method_send_error_to_server () - Send an error indication to the server
  *   return:
- *   rc(in)     : enquiry return code
- *   host(in)   : host name
- *   server_name(in)    : server name
+ *   rc (in)     : enquiry return code
+ *   host_p (in)   : host name
+ *   error_id (in)    : error_id to send
  */
 int
 method_send_error_to_server (unsigned int rc, char *host_p, char *server_name, int error_id)
@@ -146,10 +146,12 @@ method_invoke_for_server (unsigned int rc, char *host_p, char *server_name_p, st
  *   return: int
  *   result (out)     :
  *   arg_vals (in)   : objects & arguments DB_VALUEs
- *   method_sig_list (in) : Method signatures
+ *   meth_sig_p (in) : Method signatures
  */
+// *INDENT-OFF*
 int
-method_invoke (DB_VALUE & result, std::vector < DB_VALUE * >&arg_vals, method_sig_node * meth_sig_p)
+method_invoke (DB_VALUE & result, std::vector <DB_VALUE *> &arg_vals, method_sig_node * meth_sig_p)
+// *INDENT-ON*
 {
   int error = NO_ERROR;
   int turn_on_auth = 1;
@@ -200,7 +202,7 @@ method_invoke (DB_VALUE & result, std::vector < DB_VALUE * >&arg_vals, method_si
 /*
  * method_has_set_vobjs () -
  *   return: nonzero iff set has some vobjs, zero otherwise
- *   seq(in): set/sequence db_value
+ *   set (in): set/sequence db_value
  */
 static bool
 method_has_set_vobjs (DB_SET * set)
@@ -233,7 +235,7 @@ method_has_set_vobjs (DB_SET * set)
  * method_fixup_set_vobjs() - if val is a set/seq of vobjs then
  * 			    turn it into a set/seq of vmops
  *   return: NO_ERROR on all ok, ER status( or ER_FAILED) otherwise
- *   val(in/out): a db_value
+ *   value_p (in/out): a db_value
  */
 static int
 method_fixup_set_vobjs (DB_VALUE * value_p)
@@ -327,10 +329,10 @@ method_fixup_set_vobjs (DB_VALUE * value_p)
 /*
  * method_fixup_vobjs () -
  *   return: NO_ERROR on all ok, ER status( or ER_FAILED) otherwise
- *   value(in/out): a db_value
- * Note: if value is an OID then turn it into an OBJECT type value
- *       if value is a VOBJ then turn it into a vmop
- *       if value is a set/seq then do same fixups on its elements
+ *   value_p (in/out): a db_value
+ * Note: if value_p is an OID then turn it into an OBJECT type value
+ *       if value_p is a VOBJ then turn it into a vmop
+ *       if value_p is a set/seq then do same fixups on its elements
  */
 static int
 method_fixup_vobjs (DB_VALUE * value_p)
