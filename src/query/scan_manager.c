@@ -6760,45 +6760,42 @@ scan_next_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
   /* execute method scan */
   qp_scan = scan_id->s.msid.next_scan (vl);
-  if (qp_scan != S_SUCCESS)
+  if (qp_scan == S_SUCCESS)
     {
-      /* scan error or end of scan */
-      if (qp_scan == S_END)
+      /* copy the result into the value list of the scan ID */
+      for (src_valp = vl.valp, dest_valp = scan_id->val_list->valp; src_valp && dest_valp;
+	   src_valp = src_valp->next, dest_valp = dest_valp->next)
 	{
-	  scan_id->position = S_AFTER;
-	  return S_END;
-	}
-      else
-	{
-	  return S_ERROR;
+	  if (DB_IS_NULL (src_valp->val))
+	    {
+	      pr_clear_value (dest_valp->val);
+	    }
+	  else if (DB_VALUE_DOMAIN_TYPE (src_valp->val) != DB_VALUE_DOMAIN_TYPE (dest_valp->val))
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
+	      qp_scan = S_ERROR;
+	      break;
+	    }
+	  else if (!qdata_copy_db_value (dest_valp->val, src_valp->val))
+	    {
+	      qp_scan = S_ERROR;
+	      break;
+	    }
 	}
     }
-
-  /* copy the result into the value list of the scan ID */
-  for (src_valp = vl.valp, dest_valp = scan_id->val_list->valp; src_valp && dest_valp;
-       src_valp = src_valp->next, dest_valp = dest_valp->next)
+  else if (qp_scan == S_END)
     {
-      if (DB_IS_NULL (src_valp->val))
-	{
-	  pr_clear_value (dest_valp->val);
-	}
-      else if (DB_VALUE_DOMAIN_TYPE (src_valp->val) != DB_VALUE_DOMAIN_TYPE (dest_valp->val))
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
-	  pr_clear_value (src_valp->val);
-	  db_private_free_and_init (thread_p, src_valp->val);
-	  return S_ERROR;
-	}
-      else if (!qdata_copy_db_value (dest_valp->val, src_valp->val))
-	{
-	  return S_ERROR;
-	}
+      scan_id->position = S_AFTER;
+    }
 
+  /* clear */
+  for (src_valp = vl.valp; src_valp; src_valp = src_valp->next)
+    {
       pr_clear_value (src_valp->val);
       db_private_free_and_init (thread_p, src_valp->val);
     }
 
-  return S_SUCCESS;
+  return qp_scan;
 }
 
 /*

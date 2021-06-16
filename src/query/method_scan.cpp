@@ -107,12 +107,6 @@ namespace cubscan
 
       close_value_array ();
 
-      // clear
-      for (DB_VALUE &value : m_arg_vector)
-	{
-	  db_value_clear (&value);
-	}
-
 #if defined (SA_MODE)
       for (DB_VALUE &value : m_result_vector)
 	{
@@ -154,7 +148,7 @@ namespace cubscan
     scanner::xs_send ()
     {
       packing_packer packer;
-      cubmem::extensible_block eb;
+      cubmem::extensible_block eb { cubmem::PRIVATE_BLOCK_ALLOCATOR };
 
       /* get packed data size */
       size_t total_size = packer.get_packed_int_size (0);
@@ -227,6 +221,12 @@ namespace cubscan
 	  if (request () != NO_ERROR)
 	    {
 	      scan_code = S_ERROR;
+	    }
+
+	  // clear
+	  for (DB_VALUE &value : m_arg_vector)
+	    {
+	      db_value_clear (&value);
 	    }
 	}
 
