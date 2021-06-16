@@ -20,6 +20,8 @@
 
 #include "authenticate.h"
 #include "dbi.h"
+#include "db.h"
+#include "dbtype_function.h"
 #include "execute_statement.h"
 #include "network_interface_cl.h"
 
@@ -499,17 +501,106 @@ namespace cubschema
   int
   class_truncate_context::truncate_heap ()
   {
-    int error = NO_ERROR;
-    if (sm_is_reuse_oid_class (m_mop))
+    /*
+     * case 1: REUSE_OID
+     * case 2: DONT_REUSE_OID with no domain referring to this class
+     * case 3: DONT_REUSE_OID with some domains referring to this class
+     *
+     * case 1 and 2: destory heap, case 3: use DELETE query to delete all records.
+     */
+    if (!sm_is_reuse_oid_class (m_mop))
       {
-	error = sm_truncate_using_destroy_heap (m_mop);
-      }
-    else
-      {
-	error = sm_truncate_using_delete (m_mop);
+	/*
+	 * This is case 3.
+	 * Check if (1) there is a doamin referring to this class or (2) there is a general object domain in any user table (non system class).
+	 * We check it using SELECT to _db_domain.
+	 */
+	int error = NO_ERROR;
+	DB_SESSION *session = NULL;
+	DB_QUERY_RESULT *result = NULL;
+	STATEMENT_ID stmt_id;
+	DB_VALUE value;
+	char select_query[DB_MAX_IDENTIFIER_LENGTH + 256] = { 0 };
+	constexpr int CNT_CATCLS_OBJECTS = 5;
+	int cnt_refers = CNT_CATCLS_OBJECTS + 1;
+
+	const char *class_name = db_get_class_name (m_mop);
+	if (class_name == NULL)
+	  {
+	    return ER_FAILED;
+	  }
+
+	/*
+	 * !!CAUTION!!
+	 * If [data_type] is DB_TYPE_OBEJCT and [class_of] is NULL, it is a gerneal object domain, but we have to check only user classes.
+	 * To do that, we use walkaround in which we count the number of general object domains in existing system catalogs
+	 * and if the SELECT result is over this, we asuume that there is a general object in a user class.
+	 *
+	 * The number is now 5 and hard-coded, so we MUST consider it when add or remove a general object domain in a system class.
+	 * If it is changed, we MUST change the value of CNT_CATCLS_OBJECTS.
+	 *
+	 * We add a QA test case to confirm there are only 5 general object domains in system classes, which will help notice this constraint
+	 * and has to be changed along if CNT_CATCLS_OBJECTS is changed.
+	 *
+	 * See CBRD-23983 for the details.
+	 */
+	(void) snprintf (select_query, sizeof (select_query),
+			 "SELECT COUNT(*) FROM [_db_domain] WHERE [data_type]=%d AND ([class_of].[class_name]='%s' OR [class_of] IS NULL) LIMIT %d",
+			 DB_TYPE_OBJECT, class_name, CNT_CATCLS_OBJECTS + 1);
+
+	session = db_open_buffer (select_query);
+	if (session == NULL)
+	  {
+	    assert (er_errid () != NO_ERROR);
+	    error = er_errid ();
+	    return error;
+	  }
+
+	stmt_id = db_compile_statement (session);
+	if (stmt_id != 1)
+	  {
+	    assert (er_errid () != NO_ERROR);
+	    error = er_errid ();
+	    db_close_session (session);
+	    return error;
+	  }
+
+	error = db_execute_statement_local (session, stmt_id, &result);
+	if (error < 0)
+	  {
+	    db_close_session (session);
+	    return error;
+	  }
+
+	error = db_query_first_tuple (result);
+	if (error < 0)
+	  {
+	    db_query_end (result);
+	    db_close_session (session);
+	    return error;
+	  }
+
+	error = db_query_get_tuple_value (result, 0, &value);
+	if (error != NO_ERROR)
+	  {
+	    db_query_end (result);
+	    db_close_session (session);
+	    return error;
+	  }
+
+	cnt_refers = db_get_int (&value);
+
+	db_query_end (result);
+	db_close_session (session);
+
+	if (cnt_refers > CNT_CATCLS_OBJECTS)
+	  {
+	    return sm_truncate_using_delete (m_mop);
+	  }
       }
 
-    return error;
+    /* Now, the heap is REUSE_OID, or DONT_REUSE_OID with no domain referring to this class. (case 1, 2) */
+    return sm_truncate_using_destroy_heap (m_mop);
   }
 
   /*
