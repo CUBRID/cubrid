@@ -30,7 +30,8 @@
 
 namespace std
 {
-  template<> struct less<VPID>
+  template<>
+  struct less<VPID>
   {
     bool operator () (const VPID &lhs, const VPID &rhs) const
     {
@@ -59,10 +60,10 @@ struct map_type<data_page_type>
   typedef std::shared_ptr<std::string> value;
 };
 
-enum entry_state
+enum class page_broker_register_entry_state
 {
-  ADDED_ENTRY,
-  EXISTING_ENTRY
+  ADDED,
+  EXISTING
 };
 
 template <typename PageT>
@@ -72,7 +73,7 @@ class page_broker
     page_broker () = default;
     ~page_broker () = default;
 
-    entry_state register_entry (typename map_type<PageT>::key id);
+    page_broker_register_entry_state register_entry (typename map_type<PageT>::key id);
     size_t get_requests_count () const;
     size_t get_pages_count () const;
     typename map_type<PageT>::value wait_for_page (typename map_type<PageT>::key id);
@@ -90,12 +91,12 @@ class page_broker
 // -- Implementation --
 
 template <typename PageT>
-entry_state
+page_broker_register_entry_state
 page_broker<PageT>::register_entry (typename map_type<PageT>::key id)
 {
   std::unique_lock<std::mutex> lock (m_pages_mutex);
 
-  entry_state result = EXISTING_ENTRY;
+  page_broker_register_entry_state result = page_broker_register_entry_state::EXISTING;
   auto iterator = m_requested_page_id_count.find (id);
   if (iterator != m_requested_page_id_count.end ())
     {
@@ -104,7 +105,7 @@ page_broker<PageT>::register_entry (typename map_type<PageT>::key id)
   else
     {
       m_requested_page_id_count[id] = 1;
-      result = ADDED_ENTRY;
+      result = page_broker_register_entry_state::ADDED;
     }
 
   return result;

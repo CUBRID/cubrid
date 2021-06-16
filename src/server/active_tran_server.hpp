@@ -19,9 +19,9 @@
 #ifndef _ACTIVE_TRAN_SERVER_HPP_
 #define _ACTIVE_TRAN_SERVER_HPP_
 
-#include "page_broker.hpp"
 #include "ats_ps_request.hpp"
 #include "communication_node.hpp"
+#include "page_broker.hpp"
 #include "request_sync_client_server.hpp"
 #include "server_type.hpp"
 

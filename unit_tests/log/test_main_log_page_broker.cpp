@@ -136,7 +136,7 @@ test_env::request_and_consume_log_pages (int start_log_page_id, int count)
 {
   for (int i = start_log_page_id; i < start_log_page_id + count; ++i)
     {
-      if (m_log_page_receiver->register_entry (i) == ADDED_ENTRY)
+      if (m_log_page_receiver->register_entry (i) == page_broker_register_entry_state::ADDED)
 	{
 	  request_page_from_ps (i);
 	}
