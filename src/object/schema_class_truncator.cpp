@@ -511,7 +511,7 @@ namespace cubschema
     if (!sm_is_reuse_oid_class (m_mop))
       {
 	/*
-	 * This is case 3.
+	 * This is the case 3.
 	 * Check if (1) there is a doamin referring to this class or (2) there is a general object domain in any user table (non system class).
 	 * We check it using SELECT to _db_domain.
 	 */
