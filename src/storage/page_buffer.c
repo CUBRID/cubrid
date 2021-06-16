@@ -792,17 +792,28 @@ struct pgbuf_buffer_pool
   /* *INDENT-OFF* */
   std::atomic<LOG_LSA> highest_evicted_lsa = NULL_LSA;
 
+  void
+  update_highest_evicted_lsa (log_lsa evicted_lsa)
+  {
+    log_lsa crt_highest;
+    do
+      {
+        crt_highest = highest_evicted_lsa;
+        if (crt_highest > evicted_lsa)
+          {
+            // already higher
+            break;
+          }
+      }
+    while (!highest_evicted_lsa.compare_exchange_weak (crt_highest, evicted_lsa));
+  }
+
   LOG_LSA
   get_highest_evicted_lsa () const
   {
     return highest_evicted_lsa.load ();
   };
   
-  void
-  set_highest_evicted_lsa (const LOG_LSA lsa)
-  {
-    highest_evicted_lsa.store (lsa);
-  }
   /* *INDENT-ON* */
 };
 
@@ -7930,9 +7941,9 @@ pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
     }
   assert (bufptr->latch_mode == PGBUF_NO_LATCH);
 
-  if (bufptr->iopage_buffer->iopage.prv.lsa > pgbuf_Pool.get_highest_evicted_lsa ())
+  if (pgbuf_Pool.get_highest_evicted_lsa () < bufptr->iopage_buffer->iopage.prv.lsa)
     {
-      pgbuf_Pool.set_highest_evicted_lsa (bufptr->iopage_buffer->iopage.prv.lsa);
+      pgbuf_Pool.update_highest_evicted_lsa (bufptr->iopage_buffer->iopage.prv.lsa);
     }
 
   /* a safe victim */
