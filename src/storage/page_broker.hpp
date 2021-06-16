@@ -99,7 +99,7 @@ page_broker<PageT>::register_entry (typename map_type<PageT>::key id)
   auto iterator = m_requested_page_id_count.find (id);
   if (iterator != m_requested_page_id_count.end ())
     {
-      *iterator++;
+      iterator->second++;
     }
   else
     {
