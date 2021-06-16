@@ -44,7 +44,7 @@ active_tran_server::~active_tran_server ()
     }
   else
     {
-      assert (m_page_server_conn_vec.empty());
+      assert (m_page_server_conn_vec.empty ());
     }
 }
 
@@ -124,7 +124,7 @@ int
 active_tran_server::init_page_server_hosts (const char *db_name)
 {
   assert_is_active_tran_server ();
-  assert (m_page_server_conn_vec.empty());
+  assert (m_page_server_conn_vec.empty ());
   /*
    * Specified behavior:
    * ===============================================================================
@@ -277,7 +277,7 @@ active_tran_server::disconnect_page_server ()
 {
   assert_is_active_tran_server ();
 
-  m_page_server_conn_vec.clear();
+  m_page_server_conn_vec.clear ();
 }
 
 bool
@@ -285,7 +285,7 @@ active_tran_server::is_page_server_connected () const
 {
   assert_is_active_tran_server ();
 
-  return !m_page_server_conn_vec.empty();
+  return !m_page_server_conn_vec.empty ();
 }
 
 void
@@ -369,6 +369,7 @@ void active_tran_server::receive_data_page (cubpacking::unpacker &upk)
   std::string message;
   upk.unpack_string (message);
 
+  // The message is either an error code or the content of the data page
   if (message.size () == sizeof (int))
     {
       // We have an error.
@@ -382,10 +383,11 @@ void active_tran_server::receive_data_page (cubpacking::unpacker &upk)
     }
   else
     {
+      assert (message.size () == db_io_page_size ());
       // We have a page.
-      auto shared_data_page = std::make_shared<std::string> (message);
+      auto shared_data_page = std::make_shared<std::string> (std::move (message));
 
-      auto io_page = (FILEIO_PAGE *)shared_data_page->c_str ();
+      auto io_page = reinterpret_cast<const FILEIO_PAGE *> (shared_data_page->c_str ());
       VPID id;
       id.pageid = io_page->prv.pageid;
       id.volid = io_page->prv.volid;

@@ -219,13 +219,13 @@ page_server::finish_replication_during_shutdown (cubthread::entry &thread_entry)
 }
 
 void
-page_server::init_log_page_fetcher ()
+page_server::init_page_fetcher ()
 {
   m_page_fetcher.reset (new cublog::async_page_fetcher ());
 }
 
 void
-page_server::finalize_log_page_fetcher ()
+page_server::finalize_page_fetcher ()
 {
   m_page_fetcher.reset ();
 }

@@ -352,8 +352,6 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/mvcc.h
   ${TRANSACTION_DIR}/mvcc_active_tran.hpp
   ${TRANSACTION_DIR}/mvcc_table.hpp
-  ${TRANSACTION_DIR}/page_broker.hpp
-  ${TRANSACTION_DIR}/page_broker.cpp.hpp
   ${TRANSACTION_DIR}/transaction_global.hpp
   ${TRANSACTION_DIR}/transaction_transient.hpp
   )
@@ -400,6 +398,7 @@ set(STORAGE_HEADERS
   ${STORAGE_DIR}/async_page_fetcher.hpp
   ${STORAGE_DIR}/btree_unique.hpp
   ${STORAGE_DIR}/record_descriptor.hpp
+  ${STORAGE_DIR}/page_broker.hpp
   ${STORAGE_DIR}/vpid.hpp
   ${STORAGE_DIR}/vpid_utilities.hpp
 )

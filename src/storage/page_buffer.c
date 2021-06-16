@@ -7767,7 +7767,7 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 	    std::memcpy (io_page, data_page->c_str (), db_io_page_size ());
 
 	    assert (bufptr->iopage_buffer->iopage.prv == io_page->prv);
-    	}
+    	  }
 	// *INDENT-ON*
 #endif // SERVER_MODE
 
