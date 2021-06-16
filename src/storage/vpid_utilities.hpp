@@ -21,9 +21,9 @@
 
 #include "dbtype_def.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <functional>
 
 struct vpid;
 namespace cubpacking
