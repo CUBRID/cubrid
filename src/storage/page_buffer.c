@@ -7894,8 +7894,8 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid)
 
       pac.set_buffer (buffer.get (), size);
       vpid_utils::pack (pac, *vpid);
-      LOG_LSA nxio_lsa = log_Gl.append.get_nxio_lsa ();
-      cublog::lsa_utils::pack (pac, nxio_lsa);
+      LOG_LSA lsa = pgbuf_Pool.get_highest_evicted_lsa ();
+      cublog::lsa_utils::pack (pac, lsa);
 
       std::string message (buffer.get (), size);
       ats_Gl.push_request (ats_to_ps_request::SEND_DATA_PAGE_FETCH, std::move (message));
