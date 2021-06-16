@@ -1899,12 +1899,10 @@ alterdbhost (UTIL_FUNCTION_ARG * arg)
   const char *db_name;
   const char *host_name;
   int dbtxt_vdes = NULL_VOLDES;
-  int log_vdes = NULL_VOLDES;
   char dbtxt_label[PATH_MAX];
   char host_name_buf[CUB_MAXHOSTNAMELEN + 1];
   DB_INFO *db = NULL;
   DB_INFO *dir = NULL;
-  const char *log_prefix;
   int num_hosts;
 
   if (utility_get_option_string_table_size (arg_map) != 1)
@@ -1967,28 +1965,10 @@ alterdbhost (UTIL_FUNCTION_ARG * arg)
 	}
     }
   db = cfg_find_db_list (dir, db_name);
+
   if (db == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_DATABASE, 1, db_name);
-      goto error;
-    }
-
-  /* Compose the full name of the database and find location of logs */
-  log_prefix = fileio_get_base_file_name (db_name);
-  COMPOSE_FULL_NAME (BO_DB_FULLNAME, sizeof (BO_DB_FULLNAME), db->pathname, db_name);
-
-  /* System is not restarted. Read the header from disk */
-  logpb_initialize_log_names (NULL, BO_DB_FULLNAME, db->logpath, log_prefix);
-
-  /* Avoid setting errors at this moment related to existance of files. */
-  if (fileio_is_volume_exist (log_Name_active) == false)
-    {
-      goto error;
-    }
-
-  if ((log_vdes =
-       fileio_mount (NULL, BO_DB_FULLNAME, log_Name_active, LOG_DBLOG_ACTIVE_VOLID, true, false)) == NULL_VOLDES)
-    {
       goto error;
     }
 
@@ -1997,9 +1977,6 @@ alterdbhost (UTIL_FUNCTION_ARG * arg)
       cfg_free_hosts (db->hosts);
     }
   db->hosts = cfg_get_hosts (host_name, &num_hosts, false);
-
-  /* Dismount lgat */
-  fileio_dismount (NULL, log_vdes);
 
 #if defined(WINDOWS) && !defined(DONT_USE_MANDATORY_LOCK_IN_WINDOWS)
   /* must unlock this before we can open it again for writing */
