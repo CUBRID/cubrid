@@ -7941,10 +7941,7 @@ pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
     }
   assert (bufptr->latch_mode == PGBUF_NO_LATCH);
 
-  if (pgbuf_Pool.get_highest_evicted_lsa () < bufptr->iopage_buffer->iopage.prv.lsa)
-    {
-      pgbuf_Pool.update_highest_evicted_lsa (bufptr->iopage_buffer->iopage.prv.lsa);
-    }
+  pgbuf_Pool.update_highest_evicted_lsa (bufptr->iopage_buffer->iopage.prv.lsa);
 
   /* a safe victim */
   if (pgbuf_delete_from_hash_chain (thread_p, bufptr) != NO_ERROR)
