@@ -8221,7 +8221,7 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
  *      6. list file from dptr is not allowed
 */
 static HASH_METHOD
-check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_type)
+check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_yn)
 {
   int build_cnt;
   regu_variable_list_node *build, *probe;
@@ -8229,7 +8229,7 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_t
   UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
 
   /* no_hash_list_scan sql hint check */
-  if (hash_list_scan_type == HASH_METH_NOT_USE)
+  if (hash_list_scan_yn == 0)
     {
       return HASH_METH_NOT_USE;
     }
