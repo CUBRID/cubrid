@@ -19,6 +19,9 @@
 #ifndef _VPID_UTILS_HPP_
 #define _VPID_UTILS_HPP_
 
+#include "dbtype_def.h"
+
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 
@@ -34,6 +37,25 @@ namespace vpid_utils
   void pack (cubpacking::packer &serializer, const vpid &vpd);
   void unpack (cubpacking::unpacker &deserializer, vpid &vpd);
   size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset);
+}
+
+namespace std
+{
+  template<>
+  struct less<VPID>
+  {
+    bool operator () (const VPID &lhs, const VPID &rhs) const
+    {
+      if (lhs.volid != rhs.volid)
+	{
+	  return lhs.volid < rhs.volid;
+	}
+      else
+	{
+	  return lhs.pageid < rhs.pageid;
+	}
+    }
+  };
 }
 
 #endif // _VPID_UTILS_HPP_

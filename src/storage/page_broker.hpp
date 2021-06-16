@@ -22,23 +22,12 @@
 #include "log_storage.hpp"
 #include "storage_common.h"
 #include "tde.h"
+#include "vpid_utilities.hpp"
 
 #include <condition_variable>
 #include <functional>
 #include <map>
 #include <mutex>
-
-namespace std
-{
-  template<>
-  struct less<VPID>
-  {
-    bool operator () (const VPID &lhs, const VPID &rhs) const
-    {
-      return lhs.pageid < rhs.pageid ? true : lhs.pageid > rhs.pageid ? false : lhs.volid < rhs.volid; // debug this!
-    }
-  };
-}
 
 struct log_page_type;
 struct data_page_type;
