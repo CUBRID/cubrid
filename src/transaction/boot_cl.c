@@ -5635,25 +5635,25 @@ catcls_vclass_install (void)
   }
   clist[] =
   {
-    { boot_define_view_class},  /* CTV_CLASS_NAME */
-    { boot_define_view_super_class}, /* CTV_SUPER_CLASS_NAME */
-    { boot_define_view_vclass}, /* CTV_VCLASS_NAME */
-    { boot_define_view_attribute}, /* CTV_ATTRIBUTE_NAME */
-    { boot_define_view_attribute_set_domain}, /* CTV_ATTR_SD_NAME */
-    { boot_define_view_method}, /* CTV_METHOD_NAME */
-    { boot_define_view_method_argument}, /* CTV_METHARG_NAME */
-    { boot_define_view_method_argument_set_domain}, /* CTV_METHARG_SD_NAME */
-    { boot_define_view_method_file}, /* CTV_METHFILE_NAME */
-    { boot_define_view_index}, /* CTV_INDEX_NAME */
-    { boot_define_view_index_key}, /* CTV_INDEXKEY_NAME */
-    { boot_define_view_authorization}, /* CTV_AUTH_NAME */
-    { boot_define_view_trigger}, /* CTV_TRIGGER_NAME */
-    { boot_define_view_partition}, /* CTV_PARTITION_NAME */
-    { boot_define_view_stored_procedure}, /* CTV_STORED_PROC_NAME */
-    { boot_define_view_stored_procedure_arguments}, /* CTV_STORED_PROC_ARGS_NAME */
-    { boot_define_view_db_collation}, /* CTV_DB_COLLATION_NAME */
-    { boot_define_view_db_charset}, /* CTV_DB_CHARSET_NAME */
-    { boot_define_view_db_server} /* CTV_DB_SERVER_NAME */
+    {boot_define_view_class},  /* CTV_CLASS_NAME */
+    {boot_define_view_super_class}, /* CTV_SUPER_CLASS_NAME */
+    {boot_define_view_vclass}, /* CTV_VCLASS_NAME */
+    {boot_define_view_attribute}, /* CTV_ATTRIBUTE_NAME */
+    {boot_define_view_attribute_set_domain}, /* CTV_ATTR_SD_NAME */
+    {boot_define_view_method}, /* CTV_METHOD_NAME */
+    {boot_define_view_method_argument}, /* CTV_METHARG_NAME */
+    {boot_define_view_method_argument_set_domain}, /* CTV_METHARG_SD_NAME */
+    {boot_define_view_method_file}, /* CTV_METHFILE_NAME */
+    {boot_define_view_index}, /* CTV_INDEX_NAME */
+    {boot_define_view_index_key}, /* CTV_INDEXKEY_NAME */
+    {boot_define_view_authorization}, /* CTV_AUTH_NAME */
+    {boot_define_view_trigger}, /* CTV_TRIGGER_NAME */
+    {boot_define_view_partition}, /* CTV_PARTITION_NAME */
+    {boot_define_view_stored_procedure}, /* CTV_STORED_PROC_NAME */
+    {boot_define_view_stored_procedure_arguments}, /* CTV_STORED_PROC_ARGS_NAME */
+    {boot_define_view_db_collation}, /* CTV_DB_COLLATION_NAME */
+    {boot_define_view_db_charset}, /* CTV_DB_CHARSET_NAME */
+    {boot_define_view_db_server} /* CTV_DB_SERVER_NAME */
   };
   // *INDENT-ON*
 
