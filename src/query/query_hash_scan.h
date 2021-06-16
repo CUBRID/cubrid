@@ -123,7 +123,7 @@ struct hash_list_scan
       bool is_dk_bucket;	/* is current bucket dk? */
     } file;
   };
-  int hash_list_scan_yn;	/* Is hash list scan possible? */
+  HASH_METHOD hash_list_scan_type;	/* IN_MEM, HYBRID or HASH_FILE */
   unsigned int curr_hash_key;	/* current hash key */
   bool need_coerce_type;	/* Are the types of probe and build different? */
 };

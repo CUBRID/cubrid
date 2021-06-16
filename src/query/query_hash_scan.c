@@ -406,7 +406,7 @@ int
 qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *data, void *args)
 {
   HASH_SCAN_VALUE *data2 = (HASH_SCAN_VALUE *) data;
-  int hash_list_scan_yn = args ? *((int *) args) : 0;
+  HASH_METHOD hash_list_scan_type = args ? *((HASH_METHOD *) args) : HASH_METH_NOT_USE;
 
   if (data2 == NULL || args == NULL)
     {
@@ -418,12 +418,12 @@ qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *dat
     }
 
   fprintf (fp, "LIST_CACHE_ENTRY (%p) {\n", data);
-  if (hash_list_scan_yn == HASH_METH_IN_MEM)
+  if (hash_list_scan_type == HASH_METH_IN_MEM)
     {
       fprintf (fp, "data_size = [%d]  data = [%.*s]\n", QFILE_GET_TUPLE_LENGTH (data2->tuple),
 	       QFILE_GET_TUPLE_LENGTH (data2->tuple), data2->tuple);
     }
-  else if (hash_list_scan_yn == HASH_METH_HYBRID)
+  else if (hash_list_scan_type == HASH_METH_HYBRID)
     {
       fprintf (fp, "pageid = [%d]  volid = [%d]  offset = [%d]\n", data2->pos->vpid.pageid,
 	       data2->pos->vpid.volid, data2->pos->offset);
