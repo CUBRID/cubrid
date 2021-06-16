@@ -448,10 +448,12 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/storage_common.c
   ${STORAGE_DIR}/system_catalog.c
   ${STORAGE_DIR}/tde.c
+  ${STORAGE_DIR}/vpid_utilities.cpp
   )
 set(STORAGE_HEADERS
   ${STORAGE_DIR}/btree_unique.hpp
   ${STORAGE_DIR}/record_descriptor.hpp
+  ${STORAGE_DIR}/vpid_utilities.hpp
 )
 
 set(SESSION_SOURCES

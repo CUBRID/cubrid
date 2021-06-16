@@ -39,6 +39,7 @@
 #include "file_io.h"
 #include "lockfree_circular_queue.hpp"
 #include "log_append.hpp"
+#include "log_lsa_utils.hpp"
 #include "log_manager.h"
 #include "log_impl.h"
 #include "log_volids.hpp"
@@ -64,6 +65,7 @@
 #include "numeric_opfunc.h"
 #include "dbtype.h"
 #include "server_type.hpp"
+#include "vpid_utilities.hpp"
 
 #if defined(SERVER_MODE)
 #include "connection_error.h"
@@ -7883,26 +7885,24 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid)
   /* Send a request to Page Server for the Page. */
   if (get_server_type () == SERVER_TYPE_TRANSACTION)
     {
-      constexpr size_t PAGEID_SIZE = sizeof (VPID::pageid);
-      constexpr size_t VOLID_SIZE = sizeof (VPID::volid);
-      char buffer[PAGEID_SIZE + VOLID_SIZE + sizeof (LOG_LSA)];
+      cubpacking::packer pac;
+      size_t size = 0;
 
-      std::memcpy (buffer, &(vpid->pageid), sizeof (vpid->pageid));
-      size_t bytes_copied = sizeof (vpid->pageid);
+      size += cublog::lsa_utils::get_packed_size (pac, size);
+      size += vpid_utils::get_packed_size (pac, size);
+      std::unique_ptr<char[]> buffer (new char[size]);
 
-      std::memcpy (buffer + bytes_copied, &(vpid->volid), sizeof (vpid->volid));
-      bytes_copied += sizeof (vpid->volid);
+      pac.set_buffer (buffer.get (), size);
+      vpid_utils::pack (pac, *vpid);
+      LOG_LSA nxio_lsa = log_Gl.append.get_nxio_lsa ();
+      cublog::lsa_utils::pack (pac, nxio_lsa);
 
-      LOG_LSA lsa = pgbuf_Pool.get_highest_evicted_lsa ();
-      std::memcpy (buffer + bytes_copied, &lsa, sizeof (lsa));
-      bytes_copied += sizeof (lsa);
-
-      std::string message (buffer, bytes_copied);
+      std::string message (buffer.get (), size);
       ats_Gl.push_request (ats_to_ps_request::SEND_DATA_PAGE_FETCH, std::move (message));
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
-	{
-	  _er_log_debug (ARG_FILE_LINE, "Sent request for Page to Page Server. pageid: %ld volid: %d\n", vpid->pageid,
-			 vpid->volid);
+        {
+          _er_log_debug (ARG_FILE_LINE, "Sent request for Page to Page Server. pageid: %ld volid: %d\n", vpid->pageid,
+                      vpid->volid);
 	}
     }
   // *INDENT-ON*
@@ -15895,10 +15895,10 @@ class pgbuf_page_flush_daemon_task : public cubthread::entry_task
     void execute (cubthread::entry & thread_ref) override
     {
       if (!BO_IS_SERVER_RESTARTED ())
-	{
-	  // wait for boot to finish
-	  return;
-	}
+        {
+          // wait for boot to finish
+          return;
+        }
 
       // did not timeout, someone requested flush... run at least once
       bool force_one_run = pgbuf_Page_flush_daemon->was_woken_up ();
@@ -15906,30 +15906,30 @@ class pgbuf_page_flush_daemon_task : public cubthread::entry_task
 
       /* flush pages as long as necessary */
       while (force_one_run || pgbuf_keep_victim_flush_thread_running ())
-	{
-	  pgbuf_flush_victim_candidates (&thread_ref, prm_get_float_value (PRM_ID_PB_BUFFER_FLUSH_RATIO), &m_perf_track,
-					 &stop_iteration);
-	  force_one_run = false;
-	  if (stop_iteration)
-	    {
-	      break;
-	    }
-	}
+        {
+          pgbuf_flush_victim_candidates (&thread_ref, prm_get_float_value (PRM_ID_PB_BUFFER_FLUSH_RATIO), &m_perf_track,
+                                         &stop_iteration);
+          force_one_run = false;
+          if (stop_iteration)
+            {
+              break;
+            }
+        }
 
       /* performance tracking */
       if (m_perf_track.is_perf_tracking)
-	{
-	  /* register sleep time. */
-	  PERF_UTIME_TRACKER_TIME_AND_RESTART (&thread_ref, &m_perf_track, PSTAT_PB_FLUSH_SLEEP);
+        {
+          /* register sleep time. */
+          PERF_UTIME_TRACKER_TIME_AND_RESTART (&thread_ref, &m_perf_track, PSTAT_PB_FLUSH_SLEEP);
 
 	  /* update is_perf_tracking */
 	  m_perf_track.is_perf_tracking = perfmon_is_perf_tracking ();
 	}
       else
-	{
-	  /* update is_perf_tracking and start timer if it became true */
-	  PERF_UTIME_TRACKER_START (&thread_ref, &m_perf_track);
-	}
+        {
+          /* update is_perf_tracking and start timer if it became true */
+          PERF_UTIME_TRACKER_START (&thread_ref, &m_perf_track);
+        }
     }
 };
 #endif /* SERVER_MODE */
@@ -15980,17 +15980,17 @@ class pgbuf_flush_control_daemon_task : public cubthread::entry_task
     void execute (cubthread::entry & thread_ref) override
     {
       if (!BO_IS_SERVER_RESTARTED ())
-	{
-	  // wait for boot to finish
-	  return;
-	}
+        {
+          // wait for boot to finish
+          return;
+        }
 
       if (m_first_run)
-	{
-	  gettimeofday (&m_end, NULL);
-	  m_first_run = false;
-	  return;
-	}
+        {
+          gettimeofday (&m_end, NULL);
+          m_first_run = false;
+          return;
+        }
 
       struct timeval begin, diff;
       int token_gen, token_consumed;
