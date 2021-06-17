@@ -986,8 +986,6 @@ mht_create_hls (const char *name, int est_size, unsigned int (*hash_func) (const
   unsigned int ht_estsize;
   size_t size;
 
-  assert (hash_func != NULL && cmp_func != NULL);
-
   /* Get a good number of entries for hash table */
   if (est_size <= 0)
     {
@@ -1560,16 +1558,14 @@ mht_get_hls (const MHT_HLS_TABLE * ht, const void *key, void **last)
       hash %= ht->size;
     }
 
-  /* In HASH LIST SCAN, key comparison is performed in executor. */
-  hentry = ht->table[hash];
-
-  if (hentry != NULL)
+  /* In HASH LIST SCAN, only hash key comparison is performed. */
+  for (hentry = ht->table[hash]; hentry != NULL; hentry = hentry->next)
     {
-      if (last != NULL)
+      if (hentry->key == hash)
 	{
 	  *((HENTRY_HLS_PTR *) last) = hentry;
+	  return hentry->data;
 	}
-      return hentry->data;
     }
   return NULL;
 }

@@ -96,7 +96,7 @@ struct file_hash_scan_id
   /* Fields should be ordered according to their sizes */
   EHID ehid;			/* dir file identifier */
   VFID bucket_file;		/* bucket file identifier */
-  unsigned short depth;			/* global depth of the directory */
+  unsigned short depth;		/* global depth of the directory */
   char alignment;		/* alignment value used on slots of bucket pages */
 };
 
@@ -138,7 +138,7 @@ int qdata_free_hscan_entry (const void *key, void *data, void *args);
 int qdata_hscan_key_eq (const void *key1, const void *key2);
 
 int qdata_build_hscan_key (THREAD_ENTRY * thread_p, val_descr * vd, REGU_VARIABLE_LIST regu_list, HASH_SCAN_KEY * key);
-unsigned int qdata_hash_scan_key (const void *key, unsigned int ht_size);
+unsigned int qdata_hash_scan_key (const void *key, unsigned int ht_size, HASH_METHOD hash_method);
 HASH_SCAN_KEY *qdata_copy_hscan_key (THREAD_ENTRY * thread_p, HASH_SCAN_KEY * key,
 				     REGU_VARIABLE_LIST probe_regu_list, val_descr * vd);
 HASH_SCAN_KEY *qdata_copy_hscan_key_without_alloc (THREAD_ENTRY * thread_p, HASH_SCAN_KEY * key,

@@ -130,8 +130,8 @@ static int fhs_initialize_bucket_new_page (THREAD_ENTRY * thread_p, PAGE_PTR pag
 static int fhs_initialize_dk_bucket_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, void *args);
 static bool fhs_binary_search_bucket (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, PGSLOTID num_record,
 				      void *key_p, PGSLOTID * out_position_p, bool need_to_backward);
-static FHS_HASH_KEY fhs_hash_four_bytes_type (char *key_p);
 static FHS_HASH_KEY fhs_hash (void *original_key_p);
+static FHS_HASH_KEY fhs_hash_four_bytes_type (char *key_p);
 static int fhs_compare_key (THREAD_ENTRY * thread_p, char *bucket_record_p, void *key_p,
 			    INT16 record_type, int *out_compare_result_p);
 static bool fhs_locate_slot (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, void *key_p,
@@ -281,7 +281,7 @@ qdata_free_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key, int val_
  *   ht_size(in): hash table size (in buckets)
  */
 unsigned int
-qdata_hash_scan_key (const void *key, unsigned int ht_size)
+qdata_hash_scan_key (const void *key, unsigned int ht_size, HASH_METHOD hash_method)
 {
   HASH_SCAN_KEY *ckey = (HASH_SCAN_KEY *) key;
   unsigned int hash_val = 0, tmp_hash_val;
@@ -296,6 +296,11 @@ qdata_hash_scan_key (const void *key, unsigned int ht_size)
 	{
 	  hash_val = tmp_hash_val;
 	}
+    }
+
+  if (hash_method == HASH_METH_HASH_FILE)
+    {
+      hash_val = fhs_hash (&hash_val);
     }
 
   return hash_val;
@@ -1708,7 +1713,7 @@ fhs_find_bucket_vpid_with_hash (THREAD_ENTRY * thread_p, FHSID * fhsid_p, void *
   PAGE_PTR dir_page_p;
 
   /* Get the pseudo key */
-  hash_key = fhs_hash (key_p);
+  hash_key = *((FHS_HASH_KEY *) key_p);
   if (out_hash_key_p)
     {
       *out_hash_key_p = hash_key;
@@ -2988,7 +2993,7 @@ fhs_find_first_bit_position (THREAD_ENTRY * thread_p, FHSID * fhsid_p, PAGE_PTR 
   check_bit = 1 << (FHS_HASH_KEY_BITS - bucket_header_p->local_depth - 1);
 
   /* Get the first pseudo key */
-  first_hash_key = fhs_hash (key_p);
+  first_hash_key = *((FHS_HASH_KEY *) key_p);
 
   /* TO_DO : Is there any way to find the depth more effectively? */
   for (slot_id = first_slot_id + 1; slot_id < num_recs; slot_id++)
@@ -3089,7 +3094,7 @@ fhs_get_pseudo_key (THREAD_ENTRY * thread_p, RECDES * recdes_p, FHS_HASH_KEY * o
 
   bucket_record_p = (char *) recdes_p->data;
   bucket_record_p += sizeof (OID);
-  hash_key = fhs_hash (bucket_record_p);
+  hash_key = *((FHS_HASH_KEY *) bucket_record_p);
 
   *out_hash_key_p = hash_key;
   return NO_ERROR;

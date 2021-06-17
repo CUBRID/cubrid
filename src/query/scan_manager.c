@@ -3728,8 +3728,7 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 	}
       else
 	{
-	  llsidp->hlsid.memory.hash_table =
-	    mht_create_hls ("Hash List Scan", llsidp->list_id->tuple_cnt, qdata_hash_scan_key, qdata_hscan_key_eq);
+	  llsidp->hlsid.memory.hash_table = mht_create_hls ("Hash List Scan", llsidp->list_id->tuple_cnt, NULL, NULL);
 	  if (llsidp->hlsid.memory.hash_table == NULL)
 	    {
 	      return S_ERROR;
@@ -7879,7 +7878,7 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	}
 
       /* make hash key */
-      hash_key = qdata_hash_scan_key (new_key, UINT_MAX);
+      hash_key = qdata_hash_scan_key (new_key, UINT_MAX, llsidp->hlsid.hash_list_scan_type);
 
       /* create new value */
       if (llsidp->hlsid.hash_list_scan_type == HASH_METH_IN_MEM)
@@ -8064,7 +8063,7 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 	  return S_ERROR;
 	}
       /* make hash key */
-      hash_key = qdata_hash_scan_key (key, UINT_MAX);
+      hash_key = qdata_hash_scan_key (key, UINT_MAX, llsidp->hlsid.hash_list_scan_type);
       llsidp->hlsid.curr_hash_key = hash_key;
 
       switch (llsidp->hlsid.hash_list_scan_type)
