@@ -7756,6 +7756,22 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 	  return NULL;
 	}
 
+#if defined(SERVER_MODE)
+	// *INDENT-OFF*
+	if (get_server_type () == SERVER_TYPE_TRANSACTION && ats_Gl.is_page_server_connected ()) 
+	  {
+	    auto data_page = ats_Gl.get_data_page_broker ().wait_for_page (*vpid);
+	
+	    char buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+	    FILEIO_PAGE *io_page = (FILEIO_PAGE *) PTR_ALIGN (buf, MAX_ALIGNMENT);
+	    std::memcpy (io_page, data_page->c_str (), db_io_page_size ());
+
+	    assert (bufptr->iopage_buffer->iopage.prv == io_page->prv);
+    	  }
+	// *INDENT-ON*
+#endif // SERVER_MODE
+
+
       CAST_IOPGPTR_TO_PGPTR (pgptr, &bufptr->iopage_buffer->iopage);
       tde_algo = pgbuf_get_tde_algorithm (pgptr);
       if (tde_algo != TDE_ALGORITHM_NONE)

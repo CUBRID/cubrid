@@ -44,7 +44,7 @@ active_tran_server::~active_tran_server ()
     }
   else
     {
-      assert (m_page_server_conn_vec.empty());
+      assert (m_page_server_conn_vec.empty ());
     }
 }
 
@@ -124,7 +124,7 @@ int
 active_tran_server::init_page_server_hosts (const char *db_name)
 {
   assert_is_active_tran_server ();
-  assert (m_page_server_conn_vec.empty());
+  assert (m_page_server_conn_vec.empty ());
   /*
    * Specified behavior:
    * ===============================================================================
@@ -277,7 +277,7 @@ active_tran_server::disconnect_page_server ()
 {
   assert_is_active_tran_server ();
 
-  m_page_server_conn_vec.clear();
+  m_page_server_conn_vec.clear ();
 }
 
 bool
@@ -285,29 +285,39 @@ active_tran_server::is_page_server_connected () const
 {
   assert_is_active_tran_server ();
 
-  return !m_page_server_conn_vec.empty();
+  return !m_page_server_conn_vec.empty ();
 }
 
 void
-active_tran_server::init_log_page_broker ()
+active_tran_server::init_page_brokers ()
 {
-  m_log_page_broker.reset (new cublog::page_broker ());
+  m_log_page_broker.reset (new page_broker<log_page_type> ());
+  m_data_page_broker.reset (new page_broker<data_page_type> ());
 }
 
 void
-active_tran_server::finalize_log_page_broker ()
+active_tran_server::finalize_page_brokers ()
 {
   m_log_page_broker.reset ();
+  m_data_page_broker.reset ();
 }
 
-cublog::page_broker &
+page_broker<log_page_type> &
 active_tran_server::get_log_page_broker ()
 {
   assert (m_log_page_broker);
   return *m_log_page_broker;
 }
 
-bool active_tran_server::uses_remote_storage () const
+page_broker<data_page_type> &
+active_tran_server::get_data_page_broker ()
+{
+  assert (m_data_page_broker);
+  return *m_data_page_broker;
+}
+
+bool
+active_tran_server::uses_remote_storage () const
 {
   assert_is_active_tran_server ();
 
@@ -337,13 +347,13 @@ active_tran_server::receive_log_page (cubpacking::unpacker &upk)
   if (error_code == NO_ERROR)
     {
       auto shared_log_page = std::make_shared<log_page_owner> (message.c_str () + sizeof (error_code));
-      m_log_page_broker->set_page (std::move (shared_log_page));
 
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
 	{
 	  _er_log_debug (ARG_FILE_LINE, "Received log page message from Page Server. Page ID: %lld\n",
 			 shared_log_page->get_id ());
 	}
+      m_log_page_broker->set_page (shared_log_page->get_id (), std::move (shared_log_page));
     }
   else
     {
@@ -359,22 +369,35 @@ void active_tran_server::receive_data_page (cubpacking::unpacker &upk)
   std::string message;
   upk.unpack_string (message);
 
-  int error_code;
-  std::memcpy (&error_code, message.c_str (), sizeof (error_code));
-
-  if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
+  // The message is either an error code or the content of the data page
+  if (message.size () == sizeof (int))
     {
-      if (error_code == NO_ERROR)
-	{
-	  char buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
-	  FILEIO_PAGE *io_page = (FILEIO_PAGE *) PTR_ALIGN (buf, MAX_ALIGNMENT);
-	  std::memcpy (io_page, message.c_str () + sizeof (error_code), db_io_page_size ());
-	  _er_log_debug (ARG_FILE_LINE, "Received data page message from Page Server. LSA: %lld|%d, Page ID: %ld, Volid: %d",
-			 LSA_AS_ARGS (&io_page->prv.lsa), io_page->prv.pageid, io_page->prv.volid);
-	}
-      else
+      // We have an error.
+      int error_code;
+      std::memcpy (&error_code, message.c_str (), sizeof (error_code));
+
+      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
 	{
 	  _er_log_debug (ARG_FILE_LINE, "Received data page message from Page Server. Error: %d \n", error_code);
+	}
+    }
+  else
+    {
+      assert (message.size () == db_io_page_size ());
+      // We have a page.
+      auto shared_data_page = std::make_shared<std::string> (std::move (message));
+
+      auto io_page = reinterpret_cast<const FILEIO_PAGE *> (shared_data_page->c_str ());
+      VPID id;
+      id.pageid = io_page->prv.pageid;
+      id.volid = io_page->prv.volid;
+
+      m_data_page_broker->set_page (id, std::move (shared_data_page));
+
+      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
+	{
+	  _er_log_debug (ARG_FILE_LINE, "Received data page message from Page Server. LSA: %lld|%d, Page ID: %ld, Volid: %d",
+			 LSA_AS_ARGS (&io_page->prv.lsa), io_page->prv.pageid, io_page->prv.volid);
 	}
     }
 }
