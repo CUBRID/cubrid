@@ -8047,7 +8047,7 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
   QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
   unsigned int hash_key;
   EH_SEARCH eh_search;
-  OID oid;
+  OID result;
 
   llsidp = &scan_id->s.llsid;
   key = llsidp->hlsid.temp_key;
@@ -8100,13 +8100,11 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 
 	case HASH_METH_HASH_FILE:
 	  /* init curr_oid and get value from hash table */
-	  eh_search =
-	    fhs_search (thread_p, llsidp->hlsid.file.hash_table, &hash_key, &oid, &llsidp->hlsid.file.curr_oid,
-			&llsidp->hlsid.file.is_dk_bucket);
+	  eh_search = fhs_search (thread_p, &llsidp->hlsid, &result);
 	  switch (eh_search)
 	    {
 	    case EH_KEY_FOUND:
-	      MAKE_OID_TO_TUPLE_POSTION (tuple_pos, oid, scan_id_p);
+	      MAKE_OID_TO_TUPLE_POSTION (tuple_pos, result, scan_id_p);
 	      if (qfile_jump_scan_tuple_position (thread_p, scan_id_p, &tuple_pos, &tplrec, PEEK) != S_SUCCESS)
 		{
 		  return S_ERROR;
@@ -8166,13 +8164,11 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 	  return S_SUCCESS;
 
 	case HASH_METH_HASH_FILE:
-	  eh_search =
-	    fhs_search_next (thread_p, llsidp->hlsid.file.hash_table, &llsidp->hlsid.curr_hash_key, &oid,
-			     &llsidp->hlsid.file.curr_oid, llsidp->hlsid.file.is_dk_bucket);
+	  eh_search = fhs_search_next (thread_p, &llsidp->hlsid, &result);
 	  switch (eh_search)
 	    {
 	    case EH_KEY_FOUND:
-	      MAKE_OID_TO_TUPLE_POSTION (tuple_pos, oid, scan_id_p);
+	      MAKE_OID_TO_TUPLE_POSTION (tuple_pos, result, scan_id_p);
 	      if (qfile_jump_scan_tuple_position (thread_p, scan_id_p, &tuple_pos, &tplrec, PEEK) != S_SUCCESS)
 		{
 		  return S_ERROR;

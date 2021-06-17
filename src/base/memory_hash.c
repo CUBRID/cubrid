@@ -1544,7 +1544,7 @@ mht_get2 (const MHT_TABLE * ht, const void *key, void **last)
 void *
 mht_get_hls (const MHT_HLS_TABLE * ht, const void *key, void **last)
 {
-  unsigned int hash;
+  unsigned int hash, hash_idx;
   HENTRY_HLS_PTR hentry;
 
   assert (ht != NULL && key != NULL);
@@ -1555,11 +1555,11 @@ mht_get_hls (const MHT_HLS_TABLE * ht, const void *key, void **last)
   hash = *((unsigned int *) key);
   if (hash >= ht->size)
     {
-      hash %= ht->size;
+      hash_idx = hash % ht->size;
     }
 
   /* In HASH LIST SCAN, only hash key comparison is performed. */
-  for (hentry = ht->table[hash]; hentry != NULL; hentry = hentry->next)
+  for (hentry = ht->table[hash_idx]; hentry != NULL; hentry = hentry->next)
     {
       if (hentry->key == hash)
 	{
