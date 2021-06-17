@@ -790,6 +790,33 @@ struct pgbuf_buffer_pool
 #if defined (SERVER_MODE)
   pthread_mutex_t show_status_mutex;
 #endif
+
+  /* *INDENT-OFF* */
+  std::atomic<LOG_LSA> highest_evicted_lsa = NULL_LSA;
+
+  void
+  update_highest_evicted_lsa (log_lsa evicted_lsa)
+  {
+    log_lsa crt_highest;
+    do
+      {
+        crt_highest = highest_evicted_lsa;
+        if (crt_highest > evicted_lsa)
+          {
+            // already higher
+            break;
+          }
+      }
+    while (!highest_evicted_lsa.compare_exchange_weak (crt_highest, evicted_lsa));
+  }
+
+  LOG_LSA
+  get_highest_evicted_lsa () const
+  {
+    return highest_evicted_lsa.load ();
+  };
+  
+  /* *INDENT-ON* */
 };
 
 /* victim candidate list */
@@ -7883,8 +7910,8 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid)
 
       pac.set_buffer (buffer.get (), size);
       vpid_utils::pack (pac, *vpid);
-      LOG_LSA nxio_lsa = log_Gl.append.get_nxio_lsa ();
-      cublog::lsa_utils::pack (pac, nxio_lsa);
+      LOG_LSA lsa = pgbuf_Pool.get_highest_evicted_lsa ();
+      cublog::lsa_utils::pack (pac, lsa);
 
       std::string message (buffer.get (), size);
       ats_Gl.push_request (ats_to_ps_request::SEND_DATA_PAGE_FETCH, std::move (message));
@@ -7929,6 +7956,8 @@ pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
       pgbuf_bcb_update_flags (thread_p, bufptr, 0, PGBUF_BCB_TO_VACUUM_FLAG);
     }
   assert (bufptr->latch_mode == PGBUF_NO_LATCH);
+
+  pgbuf_Pool.update_highest_evicted_lsa (bufptr->iopage_buffer->iopage.prv.lsa);
 
   /* a safe victim */
   if (pgbuf_delete_from_hash_chain (thread_p, bufptr) != NO_ERROR)
