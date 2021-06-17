@@ -96,8 +96,7 @@ struct file_hash_scan_id
   /* Fields should be ordered according to their sizes */
   EHID ehid;			/* dir file identifier */
   VFID bucket_file;		/* bucket file identifier */
-  DB_TYPE key_type;		/* type of the keys */
-  short depth;			/* global depth of the directory */
+  unsigned short depth;			/* global depth of the directory */
   char alignment;		/* alignment value used on slots of bucket pages */
 };
 
