@@ -7880,50 +7880,48 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       /* make hash key */
       hash_key = qdata_hash_scan_key (new_key, UINT_MAX, llsidp->hlsid.hash_list_scan_type);
 
-      /* create new value */
-      if (llsidp->hlsid.hash_list_scan_type == HASH_METH_IN_MEM)
+      switch (llsidp->hlsid.hash_list_scan_type)
 	{
+	case HASH_METH_IN_MEM:
+	  /* create new value */
 	  new_value = qdata_alloc_hscan_value (thread_p, tplrec.tpl);
 	  if (new_value == NULL)
 	    {
 	      return S_ERROR;
 	    }
-	}
-      else if (llsidp->hlsid.hash_list_scan_type == HASH_METH_HYBRID)
-	{
+	  /* add to hash table */
+	  if (mht_put_hls (llsidp->hlsid.memory.hash_table, (void *) &hash_key, (void *) new_value) == NULL)
+	    {
+	      return S_ERROR;
+	    }
+	  break;
+	case HASH_METH_HYBRID:
+	  /* create new value */
 	  new_value = qdata_alloc_hscan_value_OID (thread_p, &llsidp->lsid);
 	  if (new_value == NULL)
 	    {
 	      return S_ERROR;
 	    }
-	}
-      else if (llsidp->hlsid.hash_list_scan_type == HASH_METH_HASH_FILE)
-	{
+	  /* add to hash table */
+	  if (mht_put_hls (llsidp->hlsid.memory.hash_table, (void *) &hash_key, (void *) new_value) == NULL)
+	    {
+	      return S_ERROR;
+	    }
+	  break;
+	case HASH_METH_HASH_FILE:
 	  /* curr_offset is int and slotid is short. */
 	  /* In fact, the offset is a position within a page(16K), so it can be stored as a short type. */
 	  oid.volid = llsidp->lsid.curr_vpid.volid;
 	  oid.pageid = llsidp->lsid.curr_vpid.pageid;
 	  oid.slotid = llsidp->lsid.curr_offset;
-	}
-      else
-	{
-	  return S_ERROR;
-	}
-
-      /* add to hash table */
-      if (llsidp->hlsid.hash_list_scan_type == HASH_METH_HASH_FILE)
-	{
+	  /* add to hash table */
 	  if (fhs_insert (thread_p, llsidp->hlsid.file.hash_table, (void *) &hash_key, &oid) == NULL)
 	    {
 	      return S_ERROR;
 	    }
-	}
-      else
-	{
-	  if (mht_put_hls (llsidp->hlsid.memory.hash_table, (void *) &hash_key, (void *) new_value) == NULL)
-	    {
-	      return S_ERROR;
-	    }
+	  break;
+	default:
+	  return S_ERROR;
 	}
     }
 
