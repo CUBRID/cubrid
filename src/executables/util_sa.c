@@ -1965,7 +1965,6 @@ alterdbhost (UTIL_FUNCTION_ARG * arg)
 	}
     }
   db = cfg_find_db_list (dir, db_name);
-
   if (db == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_DATABASE, 1, db_name);
