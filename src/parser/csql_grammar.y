@@ -151,168 +151,6 @@ extern int yybuffer_pos;
 
 #define STACK_SIZE	128
 
-typedef struct function_map FUNCTION_MAP;
-struct function_map
-{
-  const char *keyword;
-  int op;
-};
-
-
-static FUNCTION_MAP functions[] = {
-  {"abs", PT_ABS},
-  {"acos", PT_ACOS},
-  {"addtime", PT_ADDTIME},
-  {"asin", PT_ASIN},
-  {"atan", PT_ATAN},
-  {"atan2", PT_ATAN2},
-  {"bin", PT_BIN},
-  {"bit_count", PT_BIT_COUNT},
-  {"bit_to_blob", PT_BIT_TO_BLOB},
-  {"blob_from_file", PT_BLOB_FROM_FILE},
-  {"blob_length", PT_BLOB_LENGTH},
-  {"blob_to_bit", PT_BLOB_TO_BIT},
-  {"ceil", PT_CEIL},
-  {"ceiling", PT_CEIL},
-  {"char_length", PT_CHAR_LENGTH},
-  {"char_to_blob", PT_CHAR_TO_BLOB},
-  {"char_to_clob", PT_CHAR_TO_CLOB},
-  {"character_length", PT_CHAR_LENGTH},
-  {"clob_from_file", PT_CLOB_FROM_FILE},
-  {"clob_length", PT_CLOB_LENGTH},
-  {"concat", PT_CONCAT},
-  {"concat_ws", PT_CONCAT_WS},
-  {"cos", PT_COS},
-  {"cot", PT_COT},
-  {"cume_dist", PT_CUME_DIST},
-  {"curtime", PT_CURRENT_TIME},
-  {"curdate", PT_CURRENT_DATE},
-  {"utc_time", PT_UTC_TIME},
-  {"utc_date", PT_UTC_DATE},
-  {"datediff", PT_DATEDIFF},
-  {"timediff",PT_TIMEDIFF},
-  {"date_format", PT_DATE_FORMAT},
-  {"dayofmonth", PT_DAYOFMONTH},
-  {"dayofyear", PT_DAYOFYEAR},
-  {"decode", PT_DECODE},
-  {"decr", PT_DECR},
-  {"degrees", PT_DEGREES},
-  {"drand", PT_DRAND},
-  {"drandom", PT_DRANDOM},
-  {"exec_stats", PT_EXEC_STATS},
-  {"exp", PT_EXP},
-  {"field", PT_FIELD},
-  {"floor", PT_FLOOR},
-  {"from_days", PT_FROMDAYS},
-  {"greatest", PT_GREATEST},
-  {"groupby_num", PT_GROUPBY_NUM},
-  {"incr", PT_INCR},
-  {"index_cardinality", PT_INDEX_CARDINALITY},
-  {"inst_num", PT_INST_NUM},
-  {"instr", PT_INSTR},
-  {"instrb", PT_INSTR},
-  {"last_day", PT_LAST_DAY},
-  {"length", PT_CHAR_LENGTH},
-  {"lengthb", PT_CHAR_LENGTH},
-  {"least", PT_LEAST},
-  {"like_match_lower_bound", PT_LIKE_LOWER_BOUND},
-  {"like_match_upper_bound", PT_LIKE_UPPER_BOUND},
-  {"list_dbs", PT_LIST_DBS},
-  {"locate", PT_LOCATE},
-  {"ln", PT_LN},
-  {"log2", PT_LOG2},
-  {"log10", PT_LOG10},
-  {"log", PT_LOG},
-  {"lpad", PT_LPAD},
-  {"ltrim", PT_LTRIM},
-  {"makedate", PT_MAKEDATE},
-  {"maketime", PT_MAKETIME},
-  {"mid", PT_MID},
-  {"months_between", PT_MONTHS_BETWEEN},
-  {"new_time", PT_NEW_TIME},
-  {"format", PT_FORMAT},
-  {"now", PT_CURRENT_DATETIME},
-  {"nvl", PT_NVL},
-  {"nvl2", PT_NVL2},
-  {"orderby_num", PT_ORDERBY_NUM},
-  {"percent_rank", PT_PERCENT_RANK},
-  {"power", PT_POWER},
-  {"pow", PT_POWER},
-  {"pi", PT_PI},
-  {"radians", PT_RADIANS},
-  {"rand", PT_RAND},
-  {"random", PT_RANDOM},
-  {"repeat", PT_REPEAT},
-  {"space", PT_SPACE},
-  {"reverse", PT_REVERSE},
-  {"disk_size", PT_DISK_SIZE},
-  {"round", PT_ROUND},
-  {"row_count", PT_ROW_COUNT},
-  {"last_insert_id", PT_LAST_INSERT_ID},
-  {"rpad", PT_RPAD},
-  {"rtrim", PT_RTRIM},
-  {"sec_to_time", PT_SECTOTIME},
-  {"serial_current_value", PT_CURRENT_VALUE},
-  {"serial_next_value", PT_NEXT_VALUE},
-  {"sign", PT_SIGN},
-  {"sin", PT_SIN},
-  {"sqrt", PT_SQRT},
-  {"strcmp", PT_STRCMP},
-  {"substr", PT_SUBSTRING},
-  {"substring_index", PT_SUBSTRING_INDEX},
-  {"find_in_set", PT_FINDINSET},
-  {"md5", PT_MD5},
-/*
- * temporarily block aes_encrypt and aes_decrypt functions until binary string charset is available.
- *
- *  {"aes_encrypt", PT_AES_ENCRYPT},
- *  {"aes_decrypt", PT_AES_DECRYPT},
- */
-  {"sha1", PT_SHA_ONE},
-  {"sha2", PT_SHA_TWO},
-  {"substrb", PT_SUBSTRING},
-  {"tan", PT_TAN},
-  {"time_format", PT_TIME_FORMAT},
-  {"to_char", PT_TO_CHAR},
-  {"to_date", PT_TO_DATE},
-  {"to_datetime", PT_TO_DATETIME},
-  {"to_days", PT_TODAYS},
-  {"time_to_sec", PT_TIMETOSEC},
-  {"to_number", PT_TO_NUMBER},
-  {"to_time", PT_TO_TIME},
-  {"to_timestamp", PT_TO_TIMESTAMP},
-  {"trunc", PT_TRUNC},
-  {"tz_offset", PT_TZ_OFFSET},
-  {"unix_timestamp", PT_UNIX_TIMESTAMP},
-  {"typeof", PT_TYPEOF},
-  {"from_unixtime", PT_FROM_UNIXTIME},
-  {"from_tz", PT_FROM_TZ},
-  {"weekday", PT_WEEKDAY},
-  {"dayofweek", PT_DAYOFWEEK},
-  {"version", PT_VERSION},
-  {"quarter", PT_QUARTERF},
-  {"week", PT_WEEKF},
-  {"hex", PT_HEX},
-  {"ascii", PT_ASCII},
-  {"conv", PT_CONV},
-  {"inet_aton", PT_INET_ATON},
-  {"inet_ntoa", PT_INET_NTOA},
-  {"coercibility", PT_COERCIBILITY},
-  {"width_bucket", PT_WIDTH_BUCKET},
-  {"trace_stats", PT_TRACE_STATS},
-  {"str_to_date", PT_STR_TO_DATE},
-  {"to_base64", PT_TO_BASE64},
-  {"from_base64", PT_FROM_BASE64},
-  {"sys_guid", PT_SYS_GUID},
-  {"sleep", PT_SLEEP},
-  {"to_datetime_tz", PT_TO_DATETIME_TZ},
-  {"to_timestamp_tz", PT_TO_TIMESTAMP_TZ},
-  {"utc_timestamp", PT_UTC_TIMESTAMP},
-  {"crc32", PT_CRC32},
-  {"schema_def", PT_SCHEMA_DEF},
-  {"conv_tz", PT_CONV_TZ},
-};
-
 
 static int parser_groupby_exception = 0;
 
@@ -422,7 +260,6 @@ typedef enum
   SERIAL_CACHE,
 } SERIAL_DEFINE;
 
-FUNCTION_MAP *keyword_offset (const char *name);
 
 static PT_NODE *parser_make_expr_with_func (PARSER_CONTEXT * parser, FUNC_TYPE func_code, PT_NODE * args_list);
 static PT_NODE *parser_make_func_with_arg_count (PARSER_CONTEXT * parser, FUNC_TYPE func_code, PT_NODE * args_list,
@@ -26065,52 +25902,6 @@ PT_HINT parser_hint_table[] = {
 
 
 
-static int
-function_keyword_cmp (const void *f1, const void *f2)
-{
-  return strcasecmp (((FUNCTION_MAP *) f1)->keyword,
-		     ((FUNCTION_MAP *) f2)->keyword);
-}
-
-
-
-FUNCTION_MAP *
-keyword_offset (const char *text)
-{
-  static bool function_keyword_sorted = false;
-  FUNCTION_MAP dummy;
-  FUNCTION_MAP *result_key;
-
-  if (function_keyword_sorted == false)
-    {
-      qsort (functions,
-	     (sizeof (functions) / sizeof (functions[0])),
-	     sizeof (functions[0]), function_keyword_cmp);
-
-      function_keyword_sorted = true;
-    }
-
-  if (!text)
-    {
-      return NULL;
-    }
-
-  if (strlen (text) >= MAX_KEYWORD_SIZE)
-    {
-      return NULL;
-    }
-
-  dummy.keyword = text;
-
-  result_key =
-    (FUNCTION_MAP *) bsearch (&dummy, functions,
-			      (sizeof (functions) / sizeof (functions[0])),
-			      sizeof (FUNCTION_MAP), function_keyword_cmp);
-
-  return result_key;
-}
-
-
 PT_NODE *
 parser_keyword_func (const char *name, PT_NODE * args)
 {
@@ -26124,7 +25915,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
 
   parser_function_code = PT_EMPTY;
   c = parser_count_list (args);
-  key = keyword_offset (name);
+  key = pt_find_function_name (name);
   if (key == NULL)
     return NULL;
 
