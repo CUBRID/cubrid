@@ -4861,7 +4861,8 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
     case S_LIST_SCAN:
       llsidp = &scan_id->s.llsid;
       /* clear hash list scan table */
-      if (llsidp->hlsid.hash_list_scan_type == HASH_METH_IN_MEM || llsidp->hlsid.hash_list_scan_type == HASH_METH_HYBRID)
+      if (llsidp->hlsid.hash_list_scan_type == HASH_METH_IN_MEM
+	  || llsidp->hlsid.hash_list_scan_type == HASH_METH_HYBRID)
 	{
 #if 0
 	  (void) mht_dump_hls (thread_p, stdout, llsidp->hlsid.hash_table, 1, qdata_print_hash_scan_entry,
@@ -8291,7 +8292,7 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
     {
       /* bytes of 1 row = sizeof(HENTRY_HLS) + sizeof(QFILE_TUPLE_SIMPLE_POS) = 44 bytes (64bit) */
       /* HENTRY_HLS = pointer(8bytes) * 4 = 32 bytes */
-      /* SIMPLE_POS = pageid(4bytes) + voldid(2bytes) + padding(2bytes) + offset(4bytes) = 12 bytes */
+      /* SIMPLE_POS = pageid(4bytes) + volid(2bytes) + padding(2bytes) + offset(4bytes) = 12 bytes */
       return HASH_METH_HYBRID;
     }
   else

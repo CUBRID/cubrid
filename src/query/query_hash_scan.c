@@ -71,7 +71,6 @@ static DB_VALUE_COMPARE_RESULT qdata_hscan_key_compare (HASH_SCAN_KEY * ckey1, H
 
 /* key */
 typedef unsigned int FHS_HASH_KEY;
-#define FHS_KEY_TYPE DB_TYPE_INTEGER
 #define FHS_KEY_SIZE (sizeof (FHS_HASH_KEY))
 #define FHS_ALIGNMENT ((char) FHS_KEY_SIZE)
 #define FHS_MAX_DUP_KEY 100	/* 10% of MAXNUM (PAGE 16K / RECORD 14 bytes) */
@@ -130,12 +129,12 @@ static int fhs_initialize_dir_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p
 static int fhs_initialize_bucket_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, void *args);
 static int fhs_initialize_dk_bucket_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, void *args);
 static bool fhs_binary_search_bucket (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, PGSLOTID num_record,
-				      DB_TYPE key_type, void *key_p, PGSLOTID * out_position_p, bool need_to_backward);
+				      void *key_p, PGSLOTID * out_position_p, bool need_to_backward);
 static FHS_HASH_KEY fhs_hash_four_bytes_type (char *key_p);
-static FHS_HASH_KEY fhs_hash (void *original_key_p, DB_TYPE key_type);
-static int fhs_compare_key (THREAD_ENTRY * thread_p, char *bucket_record_p, DB_TYPE key_type, void *key_p,
+static FHS_HASH_KEY fhs_hash (void *original_key_p);
+static int fhs_compare_key (THREAD_ENTRY * thread_p, char *bucket_record_p, void *key_p,
 			    INT16 record_type, int *out_compare_result_p);
-static bool fhs_locate_slot (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, DB_TYPE key_type, void *key_p,
+static bool fhs_locate_slot (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, void *key_p,
 			     PGSLOTID * out_position_p, bool need_to_backward);
 static int fhs_find_bucket_vpid_with_hash (THREAD_ENTRY * thread_p, FHSID * fhsid_p, void *key_p,
 					   PGBUF_LATCH_MODE root_latch, PGBUF_LATCH_MODE bucket_latch,
@@ -164,8 +163,7 @@ static int fhs_find_first_bit_position (THREAD_ENTRY * thread_p, FHSID * fhsid_p
 static int fhs_distribute_records_into_two_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p,
 						   PAGE_PTR bucket_page_p, FHS_BUCKET_HEADER * bucket_header_p,
 						   int num_recs, PGSLOTID first_slot_id, PAGE_PTR sibling_page_p);
-static int fhs_get_pseudo_key (THREAD_ENTRY * thread_p, RECDES * recdes_p, DB_TYPE key_type,
-			       FHS_HASH_KEY * out_hash_key_p);
+static int fhs_get_pseudo_key (THREAD_ENTRY * thread_p, RECDES * recdes_p, FHS_HASH_KEY * out_hash_key_p);
 
 /* Number of pointers the first page of the directory contains */
 #define FHS_NUM_FIRST_PAGES \
@@ -679,12 +677,11 @@ qdata_free_hscan_entry (const void *key, void *data, void *args)
  * fhs_dump_bucket () - Print the bucket's contents
  *   return:
  *   buc_pgptr(in): bucket page whose contents is going to be dumped
- *   key_type(in): type of the key
  *
  * Note: A debugging function. Prints out the contents of the given bucket.
  */
 static void
-fhs_dump_bucket (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, DB_TYPE key_type)
+fhs_dump_bucket (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p)
 {
   FHS_BUCKET_HEADER *bucket_header_p;
   FHS_DK_BUCKET_HEADER *dk_bucket_header_p;
@@ -722,19 +719,9 @@ fhs_dump_bucket (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, DB_TYPE key_ty
       fhs_read_key_from_record (bucket_record_p, &key);
       fhs_read_flag_from_record (bucket_record_p, &flag);
 
-      switch (key_type)
-	{
-	case DB_TYPE_INTEGER:
-	  printf ("      %u  ", key);
-	  printf ("    %d       ", flag);
-	  break;
-	default:
-	  /* Unspecified key type: Directory header has been corrupted */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_INVALID_KEY_TYPE, 1, key_type);
-	  return;
-	}
+      printf ("      %u  ", key);
+      printf ("    %d       ", flag);
       printf ("(%5d,%5d,%5d)     *\n", assoc_value.volid, assoc_value.pageid, assoc_value.slotid);
-
     }
 
   printf ("*************************************************************\n");
@@ -794,20 +781,8 @@ fhs_dump (THREAD_ENTRY * thread_p, FHSID * fhsid_p)
   printf ("*                      DIRECTORY                        *\n");
   printf ("*                                                       *\n");
   printf ("*    Depth    :  %d                                      *\n", fhsid_p->depth);
-  printf ("*    Key type : ");
-
-  switch (fhsid_p->key_type)
-    {
-    case DB_TYPE_INTEGER:
-      printf (" int                                    *\n");
-      break;
-    default:
-      /* Unspecified key type: Directory header has been corrupted */
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_ROOT_CORRUPTED, 3, fhsid_p->ehid.vfid.volid,
-	      fhsid_p->ehid.vfid.fileid, fhsid_p->ehid.pageid);
-      return;
-    }
-
+  printf ("*    Key type : int                                     *\n");
+  printf (" int                                    *\n");
   printf ("*    Key size :  %ld                                      *\n", sizeof (FHS_HASH_KEY));
   printf ("*                                                       *\n");
   printf ("*                      POINTERS                         *\n");
@@ -887,7 +862,7 @@ fhs_dump (THREAD_ENTRY * thread_p, FHSID * fhsid_p)
 	}
 
       printf ("\n\n");
-      fhs_dump_bucket (thread_p, bucket_page_p, fhsid_p->key_type);
+      fhs_dump_bucket (thread_p, bucket_page_p);
       pgbuf_unfix_and_init (thread_p, bucket_page_p);
     }
 
@@ -1154,7 +1129,6 @@ fhs_free_recdes (THREAD_ENTRY * thread_p, RECDES * recdes_p)
  *   ehid(in): identifier for the extendible hashing structure to
  *             create. The volid field should already be set; others
  *             are set by this function.
- *   key_type(in): key type for the extendible hashing structure
  *   exp_num_entries(in): expected number of entries (i.e., <key, oid> pairs).
  *                   This figure is used as a guide to estimate the number of
  *		     pages the extendible hashing structure will occupy.
@@ -1286,7 +1260,6 @@ fhs_create (THREAD_ENTRY * thread_p, FHSID * fhsid_p, int exp_num_entries)
 
   /* Initialize the file hash scan id */
   fhsid_p->depth = 0;
-  fhsid_p->key_type = FHS_KEY_TYPE;
   fhsid_p->alignment = FHS_ALIGNMENT;
   VFID_COPY (&fhsid_p->bucket_file, &bucket_vfid);
   VFID_COPY (&fhsid_p->ehid.vfid, &dir_vfid);
@@ -1549,7 +1522,7 @@ fhs_search (THREAD_ENTRY * thread_p, FHSID * fhsid_p, void *key_p, OID * value_p
       result = EH_ERROR_OCCURRED;
       goto end;
     }
-  if (fhs_locate_slot (thread_p, bucket_page_p, fhsid_p->key_type, key_p, &slot_id, false) == false)
+  if (fhs_locate_slot (thread_p, bucket_page_p, key_p, &slot_id, false) == false)
     {
       result = EH_KEY_NOTFOUND;
       goto end;
@@ -1695,7 +1668,7 @@ fhs_search_next (THREAD_ENTRY * thread_p, FHSID * fhsid_p, void *key, OID * valu
       /* compare key */
       bucket_key = (char *) recdes.data;
       bucket_key += sizeof (OID);
-      if (fhs_compare_key (thread_p, bucket_key, DB_TYPE_INTEGER, key, recdes.type, &compare_result) != NO_ERROR)
+      if (fhs_compare_key (thread_p, bucket_key, key, recdes.type, &compare_result) != NO_ERROR)
 	{
 	  result = EH_ERROR_OCCURRED;
 	  goto end;
@@ -1735,7 +1708,7 @@ fhs_find_bucket_vpid_with_hash (THREAD_ENTRY * thread_p, FHSID * fhsid_p, void *
   PAGE_PTR dir_page_p;
 
   /* Get the pseudo key */
-  hash_key = fhs_hash (key_p, fhsid_p->key_type);
+  hash_key = fhs_hash (key_p);
   if (out_hash_key_p)
     {
       *out_hash_key_p = hash_key;
@@ -1767,7 +1740,6 @@ fhs_find_bucket_vpid_with_hash (THREAD_ENTRY * thread_p, FHSID * fhsid_p, void *
  * fhs_locate_slot () - Locate the slot for the key
  *   return: int
  *   buc_pgptr(in): pointer to the bucket page
- *   key_type(in):
  *   key(in): key value to search
  *   position(out): set to the location of the slot that contains the key if
  *                  it exists, or that would contain the key if it does not.
@@ -1781,7 +1753,7 @@ fhs_find_bucket_vpid_with_hash (THREAD_ENTRY * thread_p, FHSID * fhsid_p, void *
  * inserted and false is returned.
  */
 static bool
-fhs_locate_slot (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, DB_TYPE key_type, void *key_p,
+fhs_locate_slot (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, void *key_p,
 		 PGSLOTID * out_position_p, bool need_to_backward)
 {
   RECDES recdes;
@@ -1807,41 +1779,30 @@ fhs_locate_slot (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, DB_TYPE key_ty
       return false;
     }
 
-  return fhs_binary_search_bucket (thread_p, bucket_page_p, num_record, key_type, key_p, out_position_p,
-				   need_to_backward);
+  return fhs_binary_search_bucket (thread_p, bucket_page_p, num_record, key_p, out_position_p, need_to_backward);
 }
 
 static int
-fhs_compare_key (THREAD_ENTRY * thread_p, char *bucket_record_p, DB_TYPE key_type, void *key_p, INT16 record_type,
+fhs_compare_key (THREAD_ENTRY * thread_p, char *bucket_record_p, void *key_p, INT16 record_type,
 		 int *out_compare_result_p)
 {
   int compare_result;
   unsigned int u1, u2;
 
-  switch (key_type)
+  u1 = *((unsigned int *) key_p);
+  u2 = *((unsigned int *) bucket_record_p);
+
+  if (u1 == u2)
     {
-    case DB_TYPE_INTEGER:
-      u1 = *((unsigned int *) key_p);
-      u2 = *((unsigned int *) bucket_record_p);
-
-      if (u1 == u2)
-	{
-	  compare_result = 0;
-	}
-      else if (u1 > u2)
-	{
-	  compare_result = 1;
-	}
-      else
-	{
-	  compare_result = -1;
-	}
-      break;
-
-    default:
-      /* Unspecified key type: Directory header has been corrupted */
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_CORRUPTED, 0);
-      return ER_EH_CORRUPTED;
+      compare_result = 0;
+    }
+  else if (u1 > u2)
+    {
+      compare_result = 1;
+    }
+  else
+    {
+      compare_result = -1;
     }
 
   *out_compare_result_p = compare_result;
@@ -1852,32 +1813,20 @@ fhs_compare_key (THREAD_ENTRY * thread_p, char *bucket_record_p, DB_TYPE key_typ
  * fhs_hash () - Hash function
  *   return: FHS_HASH_KEY
  *   orig_key(in): original key to encode into a pseudo key
- *   key_type(in): type of the key
  *
  * Note: This function converts the given original key into a pseudo
  * key. Since the original key is presented as a character
  * string, its conversion into a int-compatible type is essential
  * prior to performing any operation on it.
- * Depending on the "key_type", the original key might be
- * folded (for DB_TYPE_STRING, DB_TYPE_OBJECT and DB_TYPE_DOUBLE) or duplicated
- * (for DB_TYPE_SHORT) into a computer word.
  * This function does not change the value of parameter
  * orig_key, as it might be on a bucket.
  */
 static FHS_HASH_KEY
-fhs_hash (void *original_key_p, DB_TYPE key_type)
+fhs_hash (void *original_key_p)
 {
   char *key = (char *) original_key_p;
   FHS_HASH_KEY hash_key = 0;
-
-  switch (key_type)
-    {
-    case DB_TYPE_INTEGER:
-      hash_key = fhs_hash_four_bytes_type (key);
-      break;
-    default:
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_CORRUPTED, 0);
-    }
+  hash_key = fhs_hash_four_bytes_type (key);
 
   return hash_key;
 }
@@ -1913,7 +1862,7 @@ fhs_hash_four_bytes_type (char *key_p)
 }
 
 static bool
-fhs_binary_search_bucket (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, PGSLOTID num_record, DB_TYPE key_type,
+fhs_binary_search_bucket (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, PGSLOTID num_record,
 			  void *key_p, PGSLOTID * out_position_p, bool need_to_backward)
 {
   char *bucket_record_p;
@@ -1939,7 +1888,7 @@ fhs_binary_search_bucket (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, PGSLO
       bucket_record_p = (char *) recdes.data;
       bucket_record_p += sizeof (OID);
 
-      if (fhs_compare_key (thread_p, bucket_record_p, key_type, key_p, recdes.type, &compare_result) != NO_ERROR)
+      if (fhs_compare_key (thread_p, bucket_record_p, key_p, recdes.type, &compare_result) != NO_ERROR)
 	{
 	  return false;
 	}
@@ -1967,8 +1916,7 @@ fhs_binary_search_bucket (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, PGSLO
 		  bucket_record_p = (char *) recdes.data;
 		  bucket_record_p += sizeof (OID);
 
-		  if (fhs_compare_key (thread_p, bucket_record_p, key_type, key_p, recdes.type, &compare_result) !=
-		      NO_ERROR)
+		  if (fhs_compare_key (thread_p, bucket_record_p, key_p, recdes.type, &compare_result) != NO_ERROR)
 		    {
 		      return false;
 		    }
@@ -2430,7 +2378,7 @@ fhs_insert_to_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, PAGE_PTR bucket_
   VPID null_vpid = { NULL_VOLID, NULL_PAGEID };
 
   /* Check if insertion is duplicate, or not */
-  if (fhs_locate_slot (thread_p, bucket_page_p, fhsid_p->key_type, key_p, &slot_no, true) == true)
+  if (fhs_locate_slot (thread_p, bucket_page_p, key_p, &slot_no, true) == true)
     {
       /* Key already exists. Append new data to the last slot of duplicate keys. */
       (void) spage_get_record (thread_p, bucket_page_p, slot_no, &old_bucket_recdes, PEEK);
@@ -3040,7 +2988,7 @@ fhs_find_first_bit_position (THREAD_ENTRY * thread_p, FHSID * fhsid_p, PAGE_PTR 
   check_bit = 1 << (FHS_HASH_KEY_BITS - bucket_header_p->local_depth - 1);
 
   /* Get the first pseudo key */
-  first_hash_key = fhs_hash (key_p, fhsid_p->key_type);
+  first_hash_key = fhs_hash (key_p);
 
   /* TO_DO : Is there any way to find the depth more effectively? */
   for (slot_id = first_slot_id + 1; slot_id < num_recs; slot_id++)
@@ -3051,7 +2999,7 @@ fhs_find_first_bit_position (THREAD_ENTRY * thread_p, FHSID * fhsid_p, PAGE_PTR 
 	  return ER_EH_CORRUPTED;
 	}
 
-      if (fhs_get_pseudo_key (thread_p, &recdes, fhsid_p->key_type, &next_hash_key) != NO_ERROR)
+      if (fhs_get_pseudo_key (thread_p, &recdes, &next_hash_key) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -3103,7 +3051,7 @@ fhs_distribute_records_into_two_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p
 	  return ER_FAILED;
 	}
 
-      if (fhs_get_pseudo_key (thread_p, &recdes, fhsid_p->key_type, &hash_key) != NO_ERROR)
+      if (fhs_get_pseudo_key (thread_p, &recdes, &hash_key) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -3134,14 +3082,14 @@ fhs_distribute_records_into_two_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p
 }
 
 static int
-fhs_get_pseudo_key (THREAD_ENTRY * thread_p, RECDES * recdes_p, DB_TYPE key_type, FHS_HASH_KEY * out_hash_key_p)
+fhs_get_pseudo_key (THREAD_ENTRY * thread_p, RECDES * recdes_p, FHS_HASH_KEY * out_hash_key_p)
 {
   FHS_HASH_KEY hash_key;
   char *bucket_record_p;
 
   bucket_record_p = (char *) recdes_p->data;
   bucket_record_p += sizeof (OID);
-  hash_key = fhs_hash (bucket_record_p, key_type);
+  hash_key = fhs_hash (bucket_record_p);
 
   *out_hash_key_p = hash_key;
   return NO_ERROR;
