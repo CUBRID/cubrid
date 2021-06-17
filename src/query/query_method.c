@@ -24,238 +24,64 @@
 
 #include "query_method.h"
 
-#include "authenticate.h"
-#include "config.h"
-#include "db.h"
+#include <vector>
+
+#include "authenticate.h"	/* AU_ENABLE, AU_DISABLE */
+#include "dbi.h"		/* db_enable_modification(), db_disable_modification() */
 #include "dbtype.h"
-#include "jsp_cl.h"
-#include "method_def.hpp"
+#include "jsp_cl.h"		/* jsp_call_from_server() */
+#include "method_def.hpp"	/* method_sig_list, method_sig_node */
+#include "object_accessor.h"	/* obj_ */
+#include "object_primitive.h"	/* pr_is_set_type() */
+#include "set_object.h"		/* set_convert_oids_to_objects() */
+#include "virtual_object.h"	/* vid_oid_to_object() */
+
+#if defined (CS_MODE)
 #include "network.h"
 #include "network_interface_cl.h"
-#include "object_accessor.h"
-#include "object_primitive.h"
-#include "object_representation.h"
-#include "query_list.h"
-#include "regu_var.hpp"
-
-static int method_initialize_vacomm_buffer (VACOMM_BUFFER * vacomm_buffer, unsigned int rc, char *host,
-					    char *server_name);
-static void method_clear_vacomm_buffer (VACOMM_BUFFER * vacomm_buffer);
-static int method_send_value_to_server (DB_VALUE * dbval, VACOMM_BUFFER * vacomm_buffer);
-static int method_send_eof_to_server (VACOMM_BUFFER * vacomm_buffer);
-static void methid_sig_freemem (method_sig_node * meth_sig);
-
-/*
- * method_clear_vacomm_buffer () - Clears the comm buffer
- *   return:
- *   vacomm_buffer(in)  : Transmission buffer
- */
-static void
-method_clear_vacomm_buffer (VACOMM_BUFFER * vacomm_buffer_p)
-{
-  if (vacomm_buffer_p)
-    {
-      free_and_init (vacomm_buffer_p->area);
-      free_and_init (vacomm_buffer_p->host);
-      free_and_init (vacomm_buffer_p->server_name);
-    }
-}
-
-/*
- * method_initialize_vacomm_buffer () - Initializes the comm buffer
- *   return:
- *   vacomm_buffer(in)  :
- *   rc(in)     : client transmission request ID
- *   host(in)   :
- *   server_name(in)    :
- */
-static int
-method_initialize_vacomm_buffer (VACOMM_BUFFER * vacomm_buffer_p, unsigned int rc, char *host_p, char *server_name_p)
-{
-  vacomm_buffer_p->rc = rc;
-  vacomm_buffer_p->server_name = NULL;
-  vacomm_buffer_p->area = NULL;
-
-  vacomm_buffer_p->host = strdup (host_p);
-  if (vacomm_buffer_p->host == NULL)
-    {
-      method_clear_vacomm_buffer (vacomm_buffer_p);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (strlen (host_p) + 1));
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
-  vacomm_buffer_p->server_name = strdup (server_name_p);
-  if (vacomm_buffer_p->server_name == NULL)
-    {
-      method_clear_vacomm_buffer (vacomm_buffer_p);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (strlen (server_name_p) + 1));
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
-  vacomm_buffer_p->area = (char *) malloc (VACOMM_BUFFER_SIZE);
-  if (vacomm_buffer_p->area == NULL)
-    {
-      method_clear_vacomm_buffer (vacomm_buffer_p);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) VACOMM_BUFFER_SIZE);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
-  vacomm_buffer_p->buffer = vacomm_buffer_p->area + VACOMM_BUFFER_HEADER_SIZE;
-  vacomm_buffer_p->num_vals = 0;
-  vacomm_buffer_p->cur_pos = 0;
-  vacomm_buffer_p->size = VACOMM_BUFFER_SIZE - VACOMM_BUFFER_HEADER_SIZE;
-  vacomm_buffer_p->action = VACOMM_BUFFER_SEND;
-
-  return NO_ERROR;
-}
-
-/*
- * method_send_value_to_server () -
- *   return:
- *   dbval(in)  : value
- *   vacomm_buffer(in)  : Transmission buffer
- *
- * Note: If the db_value will fit into the transmission buffer,
- * pack it into the buffer.  Otherwise, if the buffer is empty,
- * expand it, else send the buffer to the server and then pack
- * the value into the buffer.
- */
-static int
-method_send_value_to_server (DB_VALUE * dbval_p, VACOMM_BUFFER * vacomm_buffer_p)
-{
-  int dbval_length;
-  char *new_area_p, *p;
-  int error = 0;
-  int length;
-  int action;
-
-  dbval_length = OR_VALUE_ALIGNED_SIZE (dbval_p);
-  while ((vacomm_buffer_p->cur_pos + dbval_length) > vacomm_buffer_p->size)
-    {
-      if (vacomm_buffer_p->cur_pos == 0)
-	{
-	  new_area_p = (char *) realloc (vacomm_buffer_p->area, dbval_length + VACOMM_BUFFER_HEADER_SIZE);
-	  if (new_area_p == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		      (size_t) (dbval_length + VACOMM_BUFFER_HEADER_SIZE));
-	      return ER_OUT_OF_VIRTUAL_MEMORY;
-	    }
-
-	  vacomm_buffer_p->area = new_area_p;
-	  vacomm_buffer_p->buffer = (vacomm_buffer_p->area + VACOMM_BUFFER_HEADER_SIZE);
-	  vacomm_buffer_p->size = dbval_length;
-	}
-      else
-	{
-	  if (vacomm_buffer_p->action == VACOMM_BUFFER_SEND)
-	    {
-	      length = vacomm_buffer_p->cur_pos + VACOMM_BUFFER_HEADER_SIZE;
-	      p = or_pack_int (vacomm_buffer_p->area + VACOMM_BUFFER_HEADER_LENGTH_OFFSET, length);
-	      p = or_pack_int (vacomm_buffer_p->area + VACOMM_BUFFER_HEADER_STATUS_OFFSET, (int) METHOD_SUCCESS);
-	      p = or_pack_int (vacomm_buffer_p->area + VACOMM_BUFFER_HEADER_NO_VALS_OFFSET, vacomm_buffer_p->num_vals);
-	      error =
-		net_client_send_data (vacomm_buffer_p->host, vacomm_buffer_p->rc, vacomm_buffer_p->area,
-				      vacomm_buffer_p->cur_pos + VACOMM_BUFFER_HEADER_SIZE);
-	      if (error != NO_ERROR)
-		{
-		  return ER_FAILED;
-		}
-
-	      error = net_client_receive_action (vacomm_buffer_p->rc, &action);
-	      if (error)
-		{
-		  return ER_FAILED;
-		}
-
-	      vacomm_buffer_p->action = action;
-	      if (vacomm_buffer_p->action != VACOMM_BUFFER_SEND)
-		{
-		  return ER_FAILED;
-		}
-	    }
-	  vacomm_buffer_p->cur_pos = 0;
-	  vacomm_buffer_p->num_vals = 0;
-	}
-    }
-
-  ++vacomm_buffer_p->num_vals;
-  p = or_pack_db_value (vacomm_buffer_p->buffer + vacomm_buffer_p->cur_pos, dbval_p);
-
-#if !defined(NDEBUG)
-  /* suppress valgrind UMW error */
-  do
-    {
-      char *new_pos = vacomm_buffer_p->buffer + vacomm_buffer_p->cur_pos + dbval_length;
-
-      if (new_pos > p)
-	{
-	  memset (p, 0, new_pos - p);
-	}
-    }
-  while (0);
+#include "mem_block.hpp"	/* cubmem::extensible_block */
+#include "packer.hpp"		/* packing_packer */
 #endif
 
-  vacomm_buffer_p->cur_pos += dbval_length;
-  return NO_ERROR;
-}
+/* FIXME: duplicated function implementation; The following three functions are ported from the client cursor (cursor.c) */
+static bool method_has_set_vobjs (DB_SET * set);
+static int method_fixup_set_vobjs (DB_VALUE * value_p);
+static int method_fixup_vobjs (DB_VALUE * value_p);
 
 /*
- * method_send_eof_to_server () -
- *   return:
- *   vacomm_buffer(in)  : Transmission buffer
- *
- * Note: Send the transmission buffer to the server and indicate EOF.
- */
-static int
-method_send_eof_to_server (VACOMM_BUFFER * vacomm_buffer_p)
-{
-  int length, error;
-  char *p;
-
-  length = vacomm_buffer_p->cur_pos + VACOMM_BUFFER_HEADER_SIZE;
-  p = or_pack_int (vacomm_buffer_p->area + VACOMM_BUFFER_HEADER_LENGTH_OFFSET, length);
-  p = or_pack_int (vacomm_buffer_p->area + VACOMM_BUFFER_HEADER_STATUS_OFFSET, (int) METHOD_EOF);
-  p = or_pack_int (vacomm_buffer_p->area + VACOMM_BUFFER_HEADER_NO_VALS_OFFSET, vacomm_buffer_p->num_vals);
-
-  error =
-    net_client_send_data (vacomm_buffer_p->host, vacomm_buffer_p->rc, vacomm_buffer_p->area,
-			  vacomm_buffer_p->cur_pos + VACOMM_BUFFER_HEADER_SIZE);
-
-  if (error != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  return NO_ERROR;
-}
-
-/*
- * method_send_error_to_server () - Send an error indication to the server
+ * method_send_value_to_server () - Send an error indication to the server
  *   return:
  *   rc(in)     : enquiry return code
  *   host(in)   : host name
  *   server_name(in)    : server name
  */
 int
-method_send_error_to_server (unsigned int rc, char *host_p, char *server_name_p)
+method_send_value_to_server (unsigned int rc, char *host_p, char *server_name_p, DB_VALUE & value)
 {
-  char *p;
-  char area[VACOMM_BUFFER_HEADER_SIZE];
-  int error;
+  packing_packer packer;
+  cubmem::extensible_block ext_blk;
+  int code = METHOD_SUCCESS;
+  packer.set_buffer_and_pack_all (ext_blk, code, value);
 
-  p = or_pack_int (area + VACOMM_BUFFER_HEADER_LENGTH_OFFSET, VACOMM_BUFFER_HEADER_SIZE);
-  p = or_pack_int (area + VACOMM_BUFFER_HEADER_STATUS_OFFSET, (int) METHOD_ERROR);
-  p = or_pack_int (area + VACOMM_BUFFER_HEADER_ERROR_OFFSET, er_errid ());
+  return net_client_send_data (host_p, rc, ext_blk.get_ptr (), packer.get_current_size ());
+}
 
-  error = net_client_send_data (host_p, rc, area, VACOMM_BUFFER_HEADER_SIZE);
+/*
+ * method_send_error_to_server () - Send an error indication to the server
+ *   return:
+ *   rc (in)     : enquiry return code
+ *   host_p (in)   : host name
+ *   error_id (in)    : error_id to send
+ */
+int
+method_send_error_to_server (unsigned int rc, char *host_p, char *server_name, int error_id)
+{
+  packing_packer packer;
+  cubmem::extensible_block ext_blk;
+  int code = METHOD_ERROR;
+  packer.set_buffer_and_pack_all (ext_blk, code, error_id);
 
-  if (error != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  return NO_ERROR;
+  return net_client_send_data (host_p, rc, (char *) ext_blk.get_ptr (), packer.get_current_size ());
 }
 
 /*
@@ -264,270 +90,290 @@ method_send_error_to_server (unsigned int rc, char *host_p, char *server_name_p)
  *   rc(in)     :
  *   host(in)   :
  *   server_name(in)    :
- *   list_id(in)        : List ID for objects & arguments
+ *   args (in)        : objects & arguments DB_VALUEs
  *   method_sig_list(in): Method signatures
  */
 int
-method_invoke_for_server (unsigned int rc, char *host_p, char *server_name_p, qfile_list_id * list_id_p,
+method_invoke_for_server (unsigned int rc, char *host_p, char *server_name_p, std::vector < DB_VALUE > &args,
 			  method_sig_list * method_sig_list_p)
 {
-  DB_VALUE *val_list_p = NULL;
-  DB_VALUE **values_p;
-  int *oid_cols;
-  CURSOR_ID cursor_id;
-  int turn_on_auth = 1;
-  int cursor_result;
-  int num_method;
-  int num_args;
-  int pos;
-  int arg;
-  int value_count;
-  DB_VALUE value;
-  METHOD_SIG *meth_sig_p;
   int error = NO_ERROR;
-  VACOMM_BUFFER vacomm_buffer;
-  int count;
-  DB_VALUE *value_p;
+  DB_VALUE result;
 
-  db_make_null (&value);
+  // *INDENT-OFF*
+  std::vector <DB_VALUE *> arg_val_p;
+  // *INDENT-ON*
 
-  if (method_initialize_vacomm_buffer (&vacomm_buffer, rc, host_p, server_name_p) != NO_ERROR)
+  for (METHOD_SIG * meth_sig_p = method_sig_list_p->method_sig; meth_sig_p; meth_sig_p = meth_sig_p->next)
     {
-      return ER_FAILED;
-    }
-
-  meth_sig_p = method_sig_list_p->method_sig;
-  value_count = 0;
-
-  for (num_method = 0; num_method < method_sig_list_p->num_methods; num_method++)
-    {
-      value_count += meth_sig_p->num_method_args + 1;
-      meth_sig_p = meth_sig_p->next;
-    }
-
-  if (list_id_p->type_list.type_cnt > value_count)
-    {
-      value_count = list_id_p->type_list.type_cnt;
-    }
-
-  val_list_p = (DB_VALUE *) malloc (sizeof (DB_VALUE) * value_count);
-  if (val_list_p == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE) * value_count);
-      method_clear_vacomm_buffer (&vacomm_buffer);
-      return ER_FAILED;
-    }
-
-  for (count = 0, value_p = val_list_p; count < value_count; count++, value_p++)
-    {
-      db_make_null (value_p);
-    }
-
-  values_p = (DB_VALUE **) malloc (sizeof (DB_VALUE *) * (value_count + 1));
-  if (values_p == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE *) * (value_count + 1));
-      method_clear_vacomm_buffer (&vacomm_buffer);
-      free_and_init (val_list_p);
-      return ER_FAILED;
-    }
-
-  oid_cols = (int *) malloc (sizeof (int) * method_sig_list_p->num_methods);
-  if (oid_cols == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (int) * method_sig_list_p->num_methods);
-      method_clear_vacomm_buffer (&vacomm_buffer);
-      free_and_init (val_list_p);
-      free_and_init (values_p);
-      return ER_FAILED;
-    }
-
-  meth_sig_p = method_sig_list_p->method_sig;
-  for (num_method = 0; num_method < method_sig_list_p->num_methods; num_method++)
-    {
-      oid_cols[num_method] = meth_sig_p->method_arg_pos[0];
-      meth_sig_p = meth_sig_p->next;
-    }
-
-  if (!cursor_open (&cursor_id, list_id_p, false, false))
-    {
-      method_clear_vacomm_buffer (&vacomm_buffer);
-      free_and_init (values_p);
-      free_and_init (val_list_p);
-      free_and_init (oid_cols);
-      return ER_FAILED;
-    }
-
-  /* tfile_vfid pointer as query id for method scan */
-  cursor_id.query_id = (QUERY_ID) list_id_p->tfile_vfid;
-
-  cursor_set_oid_columns (&cursor_id, oid_cols, method_sig_list_p->num_methods);
-
-  while (true)
-    {
-      cursor_result = cursor_next_tuple (&cursor_id);
-      if (cursor_result != DB_CURSOR_SUCCESS)
+      /* The first position # is for the object ID */
+      int num_args = meth_sig_p->num_method_args + 1;
+      arg_val_p.resize (num_args + 1, NULL);	/* + 1 for C method */
+      for (int i = 0; i < num_args; ++i)
 	{
-	  break;
+	  int pos = meth_sig_p->method_arg_pos[i];
+	  arg_val_p[i] = &args[pos];
+	  method_fixup_vobjs (arg_val_p[i]);
 	}
 
-      if (cursor_get_tuple_value_list (&cursor_id, list_id_p->type_list.type_cnt, val_list_p) != NO_ERROR)
+      error = method_invoke (result, arg_val_p, meth_sig_p);
+      if (error != NO_ERROR)
 	{
-	  cursor_result = -1;
-	  goto end;
+	  pr_clear_value (&result);
+	  return error;
 	}
 
-      for (num_method = 0, meth_sig_p = method_sig_list_p->method_sig; num_method < method_sig_list_p->num_methods;
-	   ++num_method, meth_sig_p = meth_sig_p->next)
+      if (DB_VALUE_TYPE (&result) == DB_TYPE_ERROR)
 	{
-	  /* The first position # is for the object ID */
-	  num_args = meth_sig_p->num_method_args + 1;
-	  for (arg = 0; arg < num_args; ++arg)
+	  if (er_errid () == NO_ERROR)	/* caller has not set an error */
 	    {
-	      pos = meth_sig_p->method_arg_pos[arg];
-	      values_p[arg] = &val_list_p[pos];
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1);
 	    }
-
-	  values_p[num_args] = (DB_VALUE *) 0;
-	  db_make_null (&value);
-
-	  if (meth_sig_p->class_name != NULL)
-	    {
-	      /* Don't call the method if the object is NULL or it has been deleted.  A method call on a NULL object is
-	       * NULL. */
-	      if (!DB_IS_NULL (values_p[0]))
-		{
-		  error = db_is_any_class (db_get_object (values_p[0]));
-		  if (error == 0)
-		    {
-		      error = db_is_instance (db_get_object (values_p[0]));
-		    }
-		}
-	      if (error == ER_HEAP_UNKNOWN_OBJECT)
-		{
-		  error = NO_ERROR;
-		}
-	      else if (error > 0)
-		{
-		  /* methods must run with authorization turned on and database modifications turned off. */
-		  turn_on_auth = 0;
-		  AU_ENABLE (turn_on_auth);
-		  db_disable_modification ();
-		  error = obj_send_array (db_get_object (values_p[0]), meth_sig_p->method_name, &value, &values_p[1]);
-		  db_enable_modification ();
-		  AU_DISABLE (turn_on_auth);
-		}
-	    }
-	  else
-	    {
-	      /* java stored procedure call */
-	      turn_on_auth = 0;
-	      AU_ENABLE (turn_on_auth);
-	      db_disable_modification ();
-	      error = jsp_call_from_server (&value, values_p, meth_sig_p->method_name, meth_sig_p->num_method_args);
-	      db_enable_modification ();
-	      AU_DISABLE (turn_on_auth);
-	    }
-
-	  if (error != NO_ERROR)
-	    {
-	      cursor_result = -1;
-	      goto end;
-	    }
-
-	  if (DB_VALUE_TYPE (&value) == DB_TYPE_ERROR)
-	    {
-	      if (er_errid () == NO_ERROR)	/* caller has not set an error */
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1);
-		}
-	      cursor_result = -1;
-	      goto end;
-	    }
-
-	  error = method_send_value_to_server (&value, &vacomm_buffer);
-	  if (error != NO_ERROR)
-	    {
-	      if (vacomm_buffer.action == VACOMM_BUFFER_ABORT)
-		{
-		  cursor_result = DB_CURSOR_END;
-		}
-	      else
-		{
-		  cursor_result = -1;
-		}
-	      goto end;
-	    }
-
-	  pr_clear_value (&value);
+	  pr_clear_value (&result);
+	  return ER_GENERIC_ERROR;
 	}
 
-      for (count = 0, value_p = val_list_p; count < value_count; count++, value_p++)
-	{
-	  pr_clear_value (value_p);
-	}
+      /* send a result value to server */
+      method_send_value_to_server (rc, host_p, server_name_p, result);
+      pr_clear_value (&result);
     }
 
-end:
-  cursor_close (&cursor_id);
-  free_and_init (values_p);
+  return error;
+}
 
-  pr_clear_value (&value);
-  for (count = 0, value_p = val_list_p; count < value_count; count++, value_p++)
+/*
+ * method_invoke () -
+ *   return: int
+ *   result (out)     :
+ *   arg_vals (in)   : objects & arguments DB_VALUEs
+ *   meth_sig_p (in) : Method signatures
+ */
+// *INDENT-OFF*
+int
+method_invoke (DB_VALUE & result, std::vector <DB_VALUE *> &arg_vals, method_sig_node * meth_sig_p)
+// *INDENT-ON*
+{
+  int error = NO_ERROR;
+  int turn_on_auth = 1;
+  assert (meth_sig_p != NULL);
+
+  db_make_null (&result);
+  if (meth_sig_p->method_type != METHOD_IS_JAVA_SP)
     {
-      pr_clear_value (value_p);
-    }
-
-  free_and_init (val_list_p);
-  free_and_init (oid_cols);
-
-  if (cursor_result == DB_CURSOR_END)
-    {
-      error = method_send_eof_to_server (&vacomm_buffer);
-      method_clear_vacomm_buffer (&vacomm_buffer);
-      return error;
+      /* Don't call the method if the object is NULL or it has been deleted.  A method call on a NULL object is
+       * NULL. */
+      if (!DB_IS_NULL (arg_vals[0]))
+	{
+	  error = db_is_any_class (db_get_object (arg_vals[0]));
+	  if (error == 0)
+	    {
+	      error = db_is_instance (db_get_object (arg_vals[0]));
+	    }
+	}
+      if (error == ER_HEAP_UNKNOWN_OBJECT)
+	{
+	  error = NO_ERROR;
+	}
+      else if (error > 0)
+	{
+	  /* methods must run with authorization turned on and database modifications turned off. */
+	  turn_on_auth = 0;
+	  AU_ENABLE (turn_on_auth);
+	  db_disable_modification ();
+	  error = obj_send_array (db_get_object (arg_vals[0]), meth_sig_p->method_name, &result, &arg_vals[1]);
+	  db_enable_modification ();
+	  AU_DISABLE (turn_on_auth);
+	}
     }
   else
     {
-      method_clear_vacomm_buffer (&vacomm_buffer);
+      /* java stored procedure call */
+      turn_on_auth = 0;
+      AU_ENABLE (turn_on_auth);
+      db_disable_modification ();
+      error = jsp_call_from_server (&result, &arg_vals[0], meth_sig_p->method_name, meth_sig_p->num_method_args);
+      db_enable_modification ();
+      AU_DISABLE (turn_on_auth);
+    }
+
+  return error;
+}
+
+/*
+ * method_has_set_vobjs () -
+ *   return: nonzero iff set has some vobjs, zero otherwise
+ *   set (in): set/sequence db_value
+ */
+static bool
+method_has_set_vobjs (DB_SET * set)
+{
+  int i, size;
+  DB_VALUE element;
+
+  size = db_set_size (set);
+
+  for (i = 0; i < size; i++)
+    {
+      if (db_set_get (set, i, &element) != NO_ERROR)
+	{
+	  return false;
+	}
+
+      if (DB_VALUE_TYPE (&element) == DB_TYPE_VOBJ)
+	{
+	  pr_clear_value (&element);
+	  return true;
+	}
+
+      pr_clear_value (&element);
+    }
+
+  return false;
+}
+
+/*
+ * method_fixup_set_vobjs() - if val is a set/seq of vobjs then
+ * 			    turn it into a set/seq of vmops
+ *   return: NO_ERROR on all ok, ER status( or ER_FAILED) otherwise
+ *   value_p (in/out): a db_value
+ */
+static int
+method_fixup_set_vobjs (DB_VALUE * value_p)
+{
+  DB_TYPE type;
+  int rc, i, size;
+  DB_VALUE element;
+  DB_SET *set, *new_set;
+
+  type = DB_VALUE_TYPE (value_p);
+  if (!pr_is_set_type (type))
+    {
       return ER_FAILED;
     }
+
+  set = db_get_set (value_p);
+  size = db_set_size (set);
+
+  if (method_has_set_vobjs (set) == false)
+    {
+      return set_convert_oids_to_objects (set);
+    }
+
+  switch (type)
+    {
+    case DB_TYPE_SET:
+      new_set = db_set_create_basic (NULL, NULL);
+      break;
+    case DB_TYPE_MULTISET:
+      new_set = db_set_create_multi (NULL, NULL);
+      break;
+    case DB_TYPE_SEQUENCE:
+      new_set = db_seq_create (NULL, NULL, size);
+      break;
+    default:
+      return ER_FAILED;
+    }
+
+  /* fixup element vobjs into vmops and add them to new */
+  for (i = 0; i < size; i++)
+    {
+      if (db_set_get (set, i, &element) != NO_ERROR)
+	{
+	  db_set_free (new_set);
+	  return ER_FAILED;
+	}
+
+      if (method_fixup_vobjs (&element) != NO_ERROR)
+	{
+	  db_set_free (new_set);
+	  return ER_FAILED;
+	}
+
+      if (type == DB_TYPE_SEQUENCE)
+	{
+	  rc = db_seq_put (new_set, i, &element);
+	}
+      else
+	{
+	  rc = db_set_add (new_set, &element);
+	}
+
+      if (rc != NO_ERROR)
+	{
+	  db_set_free (new_set);
+	  return ER_FAILED;
+	}
+    }
+
+  pr_clear_value (value_p);
+
+  switch (type)
+    {
+    case DB_TYPE_SET:
+      db_make_set (value_p, new_set);
+      break;
+    case DB_TYPE_MULTISET:
+      db_make_multiset (value_p, new_set);
+      break;
+    case DB_TYPE_SEQUENCE:
+      db_make_sequence (value_p, new_set);
+      break;
+    default:
+      db_set_free (new_set);
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
 }
 
 /*
- * methid_sig_freemem () -
- *   return:
- *   method_sig(in)     : pointer to a method_sig
- *
- * Note: Free function for METHOD_SIG using free_and_init.
+ * method_fixup_vobjs () -
+ *   return: NO_ERROR on all ok, ER status( or ER_FAILED) otherwise
+ *   value_p (in/out): a db_value
+ * Note: if value_p is an OID then turn it into an OBJECT type value
+ *       if value_p is a VOBJ then turn it into a vmop
+ *       if value_p is a set/seq then do same fixups on its elements
  */
-static void
-methid_sig_freemem (method_sig_node * method_sig)
+static int
+method_fixup_vobjs (DB_VALUE * value_p)
 {
-  if (method_sig != NULL)
-    {
-      methid_sig_freemem (method_sig->next);
-      db_private_free_and_init (NULL, method_sig->method_name);
-      db_private_free_and_init (NULL, method_sig->class_name);
-      db_private_free_and_init (NULL, method_sig->method_arg_pos);
-      db_private_free_and_init (NULL, method_sig);
-    }
-}
+  DB_OBJECT *obj;
+  int rc;
 
-/*
- * method_sig_list_freemem () -
- *   return:
- *   meth_sig_list(in)        : pointer to a meth_sig_list
- *
- * Note: Free function for METHOD_SIG_LIST using free_and_init.
- */
-void
-method_sig_list_freemem (method_sig_list * meth_sig_list)
-{
-  if (meth_sig_list != NULL)
+  switch (DB_VALUE_DOMAIN_TYPE (value_p))
     {
-      methid_sig_freemem (meth_sig_list->method_sig);
-      db_private_free_and_init (NULL, meth_sig_list);
+    case DB_TYPE_OID:
+      rc = vid_oid_to_object (value_p, &obj);
+      db_make_object (value_p, obj);
+      break;
+
+    case DB_TYPE_VOBJ:
+      if (DB_IS_NULL (value_p))
+	{
+	  pr_clear_value (value_p);
+	  db_value_domain_init (value_p, DB_TYPE_OBJECT, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+	  rc = NO_ERROR;
+	}
+      else
+	{
+	  rc = vid_vobj_to_object (value_p, &obj);
+	  pr_clear_value (value_p);
+	  db_make_object (value_p, obj);
+	}
+      break;
+
+    case DB_TYPE_SET:
+    case DB_TYPE_MULTISET:
+    case DB_TYPE_SEQUENCE:
+      // fixup any set/seq of vobjs into a set/seq of vmops
+      rc = method_fixup_set_vobjs (value_p);
+      value_p->need_clear = true;
+      break;
+
+    default:
+      rc = NO_ERROR;
+      break;
     }
+
+  return rc;
 }

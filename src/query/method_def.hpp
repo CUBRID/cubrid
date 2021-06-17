@@ -23,6 +23,8 @@
 #ifndef _METHOD_DEF_H_
 #define _METHOD_DEF_H_
 
+#include "packer.hpp"
+
 typedef enum
 {
   METHOD_SUCCESS = 1,
@@ -32,22 +34,22 @@ typedef enum
 
 typedef enum
 {
-  VACOMM_BUFFER_SEND = 1,
-  VACOMM_BUFFER_ABORT
-} VACOMM_BUFFER_CLIENT_ACTION;
-
-#define VACOMM_BUFFER_HEADER_SIZE           (OR_INT_SIZE * 3)
-#define VACOMM_BUFFER_HEADER_LENGTH_OFFSET  (0)
-#define VACOMM_BUFFER_HEADER_STATUS_OFFSET  (OR_INT_SIZE)
-#define VACOMM_BUFFER_HEADER_NO_VALS_OFFSET (OR_INT_SIZE * 2)
-#define VACOMM_BUFFER_HEADER_ERROR_OFFSET   (OR_INT_SIZE * 2)
-
-typedef enum
-{
   METHOD_IS_NONE = 0,
   METHOD_IS_INSTANCE_METHOD = 1,
-  METHOD_IS_CLASS_METHOD
+  METHOD_IS_CLASS_METHOD = 2,
+  METHOD_IS_JAVA_SP = 3
 } METHOD_TYPE;
+
+#if 0
+/* this structure will be used at the next */
+typedef struct method_arg_info METHOD_ARG_INFO;
+struct method_arg_info
+{
+  int *arg_mode; /* IN, OUT, INOUT */
+  int *arg_type; /* DB_TYPE */
+  int result_type; /* DB_TYPE */
+};
+#endif
 
 typedef struct method_sig_node METHOD_SIG;
 struct method_sig_node
@@ -55,10 +57,16 @@ struct method_sig_node
   /* method signature */
   METHOD_SIG *next;
   char *method_name;		/* method name */
-  char *class_name;		/* class for the method */
   METHOD_TYPE method_type;	/* instance or class method */
   int num_method_args;		/* number of arguments */
   int *method_arg_pos;		/* arg position in list file */
+
+  union
+  {
+    char *class_name;		/* class for the method */
+    /* this structure will be used at the next subtask */
+    // METHOD_ARG_INFO arg_info;
+  };
 
   method_sig_node () = default;
 };
@@ -68,6 +76,12 @@ struct method_sig_list
   /* signature for methods */
   METHOD_SIG *method_sig;	/* one method signature */
   int num_methods;		/* number of signatures */
+
+  void pack (cubpacking::packer &serializator) const;
+  void unpack (cubpacking::unpacker &deserializator);
+  size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset = 0) const;
+
+  void freemem ();
 
   method_sig_list () = default;
 };

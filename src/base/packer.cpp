@@ -402,16 +402,14 @@ namespace cubpacking
   void
   packer::pack_db_value (const db_value &value)
   {
-    char *old_ptr;
-
     size_t value_size = or_packed_value_size (&value, 1, 1, 0);
 
     align (MAX_ALIGNMENT);
     check_range (m_ptr, m_end_ptr, value_size);
-    old_ptr = m_ptr;
 
-    m_ptr = or_pack_value (m_ptr, (db_value *) &value);
-    assert (old_ptr + value_size == m_ptr);
+    OR_BUF orbuf;
+    delegate_to_or_buf (value_size, orbuf);
+    or_put_value (&orbuf, (db_value *) &value, 1, 1, 0);
 
     check_range (m_ptr, m_end_ptr, 0);
   }
