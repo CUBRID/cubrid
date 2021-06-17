@@ -2445,16 +2445,16 @@ shf_destroy_when_new (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
   int error;
   HFID hfid;
   OID class_oid;
-  int no_referrer;
+  int force;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
 
   ptr = or_unpack_hfid (request, &hfid);
   ptr = or_unpack_oid (ptr, &class_oid);
-  ptr = or_unpack_int (ptr, &no_referrer);
+  ptr = or_unpack_int (ptr, &force);
 
-  error = xheap_destroy_newly_created (thread_p, &hfid, &class_oid, (bool) no_referrer);
+  error = xheap_destroy_newly_created (thread_p, &hfid, &class_oid, force);
   if (error != NO_ERROR)
     {
       (void) return_error_to_client (thread_p, rid);
