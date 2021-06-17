@@ -6781,6 +6781,8 @@ scan_next_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      qp_scan = S_ERROR;
 	      break;
 	    }
+
+	  pr_clear_value (src_valp->val);
 	}
     }
   else if (qp_scan == S_END)
@@ -6791,7 +6793,6 @@ scan_next_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   /* clear */
   for (src_valp = vl.valp; src_valp; src_valp = src_valp->next)
     {
-      pr_clear_value (src_valp->val);
       db_private_free_and_init (thread_p, src_valp->val);
     }
 

@@ -108,7 +108,7 @@ method_invoke_for_server (unsigned int rc, char *host_p, char *server_name_p, st
     {
       /* The first position # is for the object ID */
       int num_args = meth_sig_p->num_method_args + 1;
-      arg_val_p.resize (num_args, NULL);
+      arg_val_p.resize (num_args + 1, NULL);	/* + 1 for C method */
       for (int i = 0; i < num_args; ++i)
 	{
 	  int pos = meth_sig_p->method_arg_pos[i];

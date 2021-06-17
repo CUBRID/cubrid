@@ -107,6 +107,11 @@ namespace cubscan
 
       close_value_array ();
 
+      for (DB_VALUE &value : m_arg_vector)
+	{
+	  db_value_clear (&value);
+	}
+
 #if defined (SA_MODE)
       for (DB_VALUE &value : m_result_vector)
 	{
@@ -215,18 +220,15 @@ namespace cubscan
     SCAN_CODE scanner::next_scan (val_list_node &vl)
     {
       SCAN_CODE scan_code = S_SUCCESS;
+
+      next_value_array (vl);
+
       scan_code = get_single_tuple ();
       if (scan_code == S_SUCCESS)
 	{
 	  if (request () != NO_ERROR)
 	    {
 	      scan_code = S_ERROR;
-	    }
-
-	  // clear
-	  for (DB_VALUE &value : m_arg_vector)
-	    {
-	      db_value_clear (&value);
 	    }
 	}
 
@@ -238,22 +240,17 @@ namespace cubscan
 	    {
 	      DB_VALUE *dbval_p = (DB_VALUE *) db_private_alloc (m_thread_p, sizeof (DB_VALUE));
 	      dbval_list->val = dbval_p;
-
 	      db_make_null (dbval_p);
+
 	      if (receive (*dbval_p) != NO_ERROR)
 		{
 		  scan_code = S_ERROR;
 		  break;
 		}
+
 	      dbval_list++;
 	    }
 	}
-
-      if (scan_code == S_SUCCESS)
-	{
-	  next_value_array (vl);
-	}
-
       return scan_code;
     }
 
@@ -264,22 +261,20 @@ namespace cubscan
       return NO_ERROR;
     }
 
-    SCAN_CODE scanner::next_value_array (val_list_node &vl)
+    void scanner::next_value_array (val_list_node &vl)
     {
-      SCAN_CODE scan_result = S_SUCCESS;
       qproc_db_value_list *dbval_list = m_dbval_list;
 
       vl.val_cnt = m_method_sig_list->num_methods;
       for (int n = 0; n < vl.val_cnt; n++)
 	{
+	  dbval_list->val = nullptr;
 	  dbval_list->next = dbval_list + 1;
 	  dbval_list++;
 	}
 
       m_dbval_list[vl.val_cnt - 1].next = NULL;
       vl.valp = m_dbval_list;
-
-      return scan_result;
     }
 
     SCAN_CODE scanner::get_single_tuple ()
