@@ -276,7 +276,8 @@ void
 active_tran_server::disconnect_page_server ()
 {
   assert_is_active_tran_server ();
-
+  std::string msg = "" + static_cast<int> (cubcomm::server_server::CONNECT_ACTIVE_TRAN_TO_PAGE_SERVER);
+  push_request (ats_to_ps_request::SEND_DISCONNECT_MSG, std::move (msg));
   m_page_server_conn_vec.clear ();
 }
 

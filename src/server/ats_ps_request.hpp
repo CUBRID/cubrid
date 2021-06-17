@@ -23,14 +23,16 @@ enum class ats_to_ps_request
 {
   SEND_LOG_PRIOR_LIST,
   SEND_LOG_PAGE_FETCH,
-  SEND_DATA_PAGE_FETCH
+  SEND_DATA_PAGE_FETCH,
+  SEND_DISCONNECT_MSG
 };
 
 enum class ps_to_ats_request
 {
   SEND_SAVED_LSA,
   SEND_LOG_PAGE,
-  SEND_DATA_PAGE
+  SEND_DATA_PAGE,
+  SEND_DISCONNECT_RSP
 };
 
 #endif // !_ATS_PS_REQUEST_IDS_HPP_
