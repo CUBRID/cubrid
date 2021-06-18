@@ -62,7 +62,18 @@ method_sig_list::pack (cubpacking::packer &serializator) const
 	{
 	  serializator.pack_c_string (sig_p->class_name, strlen (sig_p->class_name));
 	}
-
+      else
+	{
+	  for (int i = 0; i < sig_p->num_method_args; i++)
+	    {
+	      serializator.pack_int (sig_p->arg_info.arg_mode[i]);
+	    }
+	  for (int i = 0; i < sig_p->num_method_args; i++)
+	    {
+	      serializator.pack_int (sig_p->arg_info.arg_type[i]);
+	    }
+	  serializator.pack_int (sig_p->arg_info.result_type);
+	}
       sig_p = sig_p->next;
     }
 }
@@ -89,6 +100,15 @@ method_sig_list::get_packed_size (cubpacking::packer &serializator, std::size_t 
       if (sig_p->method_type != METHOD_IS_JAVA_SP)
 	{
 	  size += serializator.get_packed_c_string_size (sig_p->class_name, strlen (sig_p->class_name), size);
+	}
+      else
+	{
+	  for (int i = 0; i < sig_p->num_method_args; i++)
+	    {
+	      size += serializator.get_packed_int_size (size); /* method_sig->arg_info.arg_mode[i] */
+	      size += serializator.get_packed_int_size (size); /* method_sig->arg_info.arg_type[i] */
+	    }
+	  size += serializator.get_packed_int_size (size); /* method_sig->arg_info.result_type */
 	}
 
       sig_p = sig_p->next;
@@ -127,12 +147,24 @@ method_sig_list::unpack (cubpacking::unpacker &deserializator)
 	      deserializator.unpack_int (method_sig_p->method_arg_pos[n]);
 	    }
 
-	  method_sig_p->class_name = nullptr;
 	  if (method_sig_p->method_type != METHOD_IS_JAVA_SP)
 	    {
+	      method_sig_p->class_name = nullptr;
 	      cubmem::extensible_block class_name_blk { cubmem::PRIVATE_BLOCK_ALLOCATOR };
 	      deserializator.unpack_string_to_memblock (class_name_blk);
 	      method_sig_p->class_name = class_name_blk.release_ptr ();
+	    }
+	  else
+	    {
+	      for (int i = 0; i < method_sig_p->num_method_args; i++)
+		{
+		  deserializator.unpack_int (method_sig_p->arg_info.arg_mode[i]);
+		}
+	      for (int i = 0; i < method_sig_p->num_method_args; i++)
+		{
+		  deserializator.unpack_int (method_sig_p->arg_info.arg_type[i]);
+		}
+	      deserializator.unpack_int (method_sig_p->arg_info.result_type);
 	    }
 
 	  if (i != num_methods - 1) /* last */

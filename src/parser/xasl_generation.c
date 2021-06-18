@@ -3782,63 +3782,90 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 
 	      (*tail)->method_type = PT_IS_CLASS_METHOD (node) ? METHOD_IS_CLASS_METHOD : METHOD_IS_INSTANCE_METHOD;
 	    }
-	  else
+	  else if (PT_IS_JAVA_SP (node))
 	    {
 	      (*tail)->class_name = NULL;
 	      (*tail)->method_type = METHOD_IS_JAVA_SP;
-
-/* this routine will be used at the next subtask */
-#if 0
-	      int err;
-	      DB_OBJECT *mop_p = jsp_find_stored_procedure ((*tail)->method_name);
-	      DB_OBJECT *arg_mop_p;
-	      DB_VALUE method, param, mode, arg_type, result_type, temp;
-
-	      if (!mop_p)
-		break;
-
-	      err = db_get (mop_p, SP_ATTR_TARGET, &method);
-	      // (*tail)->method_name = (char *) db_get_string (&method);
-
-	      db_get (mop_p, SP_ATTR_ARGS, &param);
-	      DB_SET *param_set = db_get_set (&param);
 
 	      int num_args = (*tail)->num_method_args;
 	      (*tail)->arg_info.arg_mode = regu_int_array_alloc (num_args);
 	      (*tail)->arg_info.arg_type = regu_int_array_alloc (num_args);
 
-	      for (int i = 0; i < num_args; i++)
+	      DB_OBJECT *mop_p = jsp_find_stored_procedure ((*tail)->method_name);
+	      if (mop_p)
 		{
-		  set_get_element (param_set, i, &temp);
-		  arg_mop_p = db_get_object (&temp);
-
-		  err = db_get (arg_mop_p, SP_ATTR_MODE, &mode);
-		  if (err != NO_ERROR)
+		  /* java stored procedure signature */
+		  DB_VALUE method;
+		  if (db_get (mop_p, SP_ATTR_TARGET, &method) == NO_ERROR)
 		    {
-		      pr_clear_value (&temp);
+		      (*tail)->method_name = (char *) db_get_string (&method);
+		    }
+		  else
+		    {
 		      break;
 		    }
 
-		  (*tail)->arg_info.arg_mode[i] = db_get_int (&mode);
-
-		  err = db_get (arg_mop_p, SP_ATTR_DATA_TYPE, &arg_type);
-		  if (err != NO_ERROR)
+		  DB_VALUE args;
+		  /* arg_mode, arg_type */
+		  if (db_get (mop_p, SP_ATTR_ARGS, &args) == NO_ERROR)
 		    {
-		      pr_clear_value (&temp);
+		      DB_SET *param_set = db_get_set (&args);
+		      DB_VALUE mode, arg_type, temp;
+		      int i;
+		      for (i = 0; i < num_args; i++)
+			{
+			  set_get_element (param_set, i, &temp);
+			  DB_OBJECT *arg_mop_p = db_get_object (&temp);
+			  if (arg_mop_p)
+			  {
+			  if (db_get (arg_mop_p, SP_ATTR_MODE, &mode) == NO_ERROR)
+			    {
+			      (*tail)->arg_info.arg_mode[i] = db_get_int (&mode);
+			    }
+
+			  if (db_get (arg_mop_p, SP_ATTR_DATA_TYPE, &arg_type) == NO_ERROR)
+			    {
+			      (*tail)->arg_info.arg_type[i] = db_get_int (&arg_type);
+			    }
+
+			  pr_clear_value (&mode);
+			  pr_clear_value (&arg_type);
+			  pr_clear_value (&temp);
+			  }
+			  else
+			  {
+				break;
+			  }
+			}
+		      pr_clear_value (&args);
+		    }
+		  else
+		    {
 		      break;
 		    }
 
-		  (*tail)->arg_info.arg_type[i] = db_get_int (&arg_type);
-		  pr_clear_value (&temp);
+		  /* result type */
+		  DB_VALUE result_type;
+		  if (db_get (mop_p, SP_ATTR_RETURN_TYPE, &result_type) == NO_ERROR)
+		    {
+		      (*tail)->arg_info.result_type = db_get_int (&result_type);
+		      pr_clear_value (&result_type);
+		    }
+		  else
+		    {
+		      break;
+		    }
 		}
-	      err = db_get (mop_p, SP_ATTR_RETURN_TYPE, &result_type);
-	      if (err != NO_ERROR)
+	      else
 		{
 		  break;
 		}
-
-	      (*tail)->arg_info.result_type = db_get_int (&result_type);
-#endif
+	    }
+	  else
+	    {
+	      /* should be never happened */
+	      assert (false);
+	      break;
 	    }
 	  tail = &(*tail)->next;
 	}
