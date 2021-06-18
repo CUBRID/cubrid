@@ -10171,74 +10171,77 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_ATTR
   /* need to have macros for this !! */
   index->vfid.volid = boot_User_volid;
 
-  /* Count maximum possible subclasses */
-  max_classes = 1;		/* Start with 1 for the current class */
-  for (sub = subclasses; sub != NULL; sub = sub->next)
+  if (!class_->dont_load_index)
     {
-      max_classes++;
-    }
-
-  /* Allocate arrays to hold subclass information */
-  attr_ids_size = max_classes * n_attrs * sizeof (int);
-  attr_ids = (int *) malloc (attr_ids_size);
-  if (attr_ids == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, attr_ids_size);
-      goto mem_error;
-    }
-
-  oids = (OID *) malloc (max_classes * sizeof (OID));
-  if (oids == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, max_classes * sizeof (OID));
-      goto mem_error;
-    }
-
-  hfids = (HFID *) malloc (max_classes * sizeof (HFID));
-  if (hfids == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, max_classes * sizeof (HFID));
-      goto mem_error;
-    }
-
-  /* Enter the base class information into the arrays */
-  n_classes = 0;
-  COPY_OID (&oids[n_classes], WS_OID (classop));
-  for (i = 0; i < n_attrs; i++)
-    {
-      attr_ids[i] = attrs[i]->id;
-    }
-  HFID_COPY (&hfids[n_classes], sm_ch_heap ((MOBJ) class_));
-  n_classes++;
-
-  /* If we're creating a UNIQUE B-tree or a FOREIGN KEY, we need to collect information from subclasses which
-   * inherit the constraint */
-  if (unique_pk || (fk_refcls_oid != NULL && !OID_ISNULL (fk_refcls_oid)))
-    {
-      error = collect_hier_class_info (classop, subclasses, constraint_name, reverse, &n_classes, n_attrs, oids,
-				       attr_ids, hfids);
-      if (error != NO_ERROR)
+      /* Count maximum possible subclasses */
+      max_classes = 1;		/* Start with 1 for the current class */
+      for (sub = subclasses; sub != NULL; sub = sub->next)
 	{
-	  goto gen_error;
+	  max_classes++;
 	}
-    }
 
-  /* Are there any populated classes for this index ? */
-  has_instances = 0;
-  for (i = 0; i < n_classes; i++)
-    {
-      if (!HFID_IS_NULL (&hfids[i]) && heap_has_instance (&hfids[i], &oids[i], false))
+      /* Allocate arrays to hold subclass information */
+      attr_ids_size = max_classes * n_attrs * sizeof (int);
+      attr_ids = (int *) malloc (attr_ids_size);
+      if (attr_ids == NULL)
 	{
-	  /* in case of error and instances exist */
-	  has_instances = 1;
-	  break;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, attr_ids_size);
+	  goto mem_error;
+	}
+
+      oids = (OID *) malloc (max_classes * sizeof (OID));
+      if (oids == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, max_classes * sizeof (OID));
+	  goto mem_error;
+	}
+
+      hfids = (HFID *) malloc (max_classes * sizeof (HFID));
+      if (hfids == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, max_classes * sizeof (HFID));
+	  goto mem_error;
+	}
+
+      /* Enter the base class information into the arrays */
+      n_classes = 0;
+      COPY_OID (&oids[n_classes], WS_OID (classop));
+      for (i = 0; i < n_attrs; i++)
+	{
+	  attr_ids[i] = attrs[i]->id;
+	}
+      HFID_COPY (&hfids[n_classes], sm_ch_heap ((MOBJ) class_));
+      n_classes++;
+
+      /* If we're creating a UNIQUE B-tree or a FOREIGN KEY, we need to collect information from subclasses which
+       * inherit the constraint */
+      if (unique_pk || (fk_refcls_oid != NULL && !OID_ISNULL (fk_refcls_oid)))
+	{
+	  error = collect_hier_class_info (classop, subclasses, constraint_name, reverse, &n_classes, n_attrs, oids,
+					   attr_ids, hfids);
+	  if (error != NO_ERROR)
+	    {
+	      goto gen_error;
+	    }
+	}
+
+      /* Are there any populated classes for this index ? */
+      has_instances = 0;
+      for (i = 0; i < n_classes; i++)
+	{
+	  if (!HFID_IS_NULL (&hfids[i]) && heap_has_instance (&hfids[i], &oids[i], false))
+	    {
+	      /* in case of error and instances exist */
+	      has_instances = 1;
+	      break;
+	    }
 	}
     }
 
   /* If there are no instances, then call btree_add_index() to create an empty index, otherwise call
    * btree_load_index () to load all of the instances (including applicable subclasses) into a new B-tree */
   // TODO: optimize has_instances case
-  if (!has_instances || index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+  if (class_->dont_load_index || !has_instances || index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
     {
       error = btree_add_index (index, domain, WS_OID (classop), attrs[0]->id, unique_pk);
     }
