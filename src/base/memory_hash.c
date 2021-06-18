@@ -1557,6 +1557,10 @@ mht_get_hls (const MHT_HLS_TABLE * ht, const void *key, void **last)
     {
       hash_idx = hash % ht->size;
     }
+  else
+    {
+      hash_idx = hash;
+    }
 
   /* In HASH LIST SCAN, only hash key comparison is performed. */
   for (hentry = ht->table[hash_idx]; hentry != NULL; hentry = hentry->next)
