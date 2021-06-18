@@ -41,14 +41,14 @@
     } \
   while (0)
 
-#define MAKE_OID_TO_TUPLE_POSTION(tuple_pos, oid, scan_id_p) \
+#define MAKE_TFTID_TO_TUPLE_POSTION(tuple_pos, tftid, scan_id_p) \
   do \
     { \
       tuple_pos.status = scan_id_p->status; \
       tuple_pos.position = S_ON; \
-      tuple_pos.vpid.pageid = oid.pageid; \
-      tuple_pos.vpid.volid = oid.volid; \
-      tuple_pos.offset = oid.slotid; \
+      tuple_pos.vpid.pageid = tftid.pageid; \
+      tuple_pos.vpid.volid = tftid.volid; \
+      tuple_pos.offset = tftid.offset; \
       tuple_pos.tpl = NULL; \
       tuple_pos.tplno = 0; /* If tplno is needed, add it from scan_build_hash_list_scan() */ \
     } \
@@ -147,11 +147,28 @@ HASH_SCAN_KEY *qdata_copy_hscan_key_without_alloc (THREAD_ENTRY * thread_p, HASH
 int qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *data, void *args);
 
 /* FILE HASH STRUCTURE */
+typedef struct temp_file_tuple_id TFTID;
+struct temp_file_tuple_id
+{
+  int pageid;
+  short volid;
+  short offset;			/* Since the maximum page size is 16K, can store the offset in the short type. */
+};
+
+#define SET_TFTID(dest_tftid, vol_id, page_id, param_offset)  \
+  do \
+    { \
+      (dest_tftid).volid = vol_id; \
+      (dest_tftid).pageid = page_id; \
+      (dest_tftid).offset = param_offset; \
+    } \
+  while (0)
+
 extern FHSID *fhs_create (THREAD_ENTRY * thread_p, FHSID * fhsid, int exp_num_entries);
 extern int fhs_destroy (THREAD_ENTRY * thread_p, FHSID * fhsid);
-extern void *fhs_insert (THREAD_ENTRY * thread_p, FHSID * fhsid, void *key, OID * value_ptr);
-extern EH_SEARCH fhs_search (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hlsid, OID * value_ptr);
-extern EH_SEARCH fhs_search_next (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hlsid, OID * value_ptr);
+extern void *fhs_insert (THREAD_ENTRY * thread_p, FHSID * fhsid, void *key, TFTID * value_ptr);
+extern EH_SEARCH fhs_search (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hlsid, TFTID * value_ptr);
+extern EH_SEARCH fhs_search_next (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hlsid, TFTID * value_ptr);
 extern void fhs_dump (THREAD_ENTRY * thread_p, FHSID * fhsid);
 /* end : FILE HASH SCAN */
 

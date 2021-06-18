@@ -7834,7 +7834,7 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   HASH_SCAN_KEY *key, *new_key;
   HASH_SCAN_VALUE *new_value;
   unsigned int hash_key;
-  OID oid;
+  TFTID tftid;
 
   llsidp = &scan_id->s.llsid;
   key = llsidp->hlsid.temp_key;
@@ -7909,13 +7909,11 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	    }
 	  break;
 	case HASH_METH_HASH_FILE:
-	  /* curr_offset is int and slotid is short. */
-	  /* In fact, the offset is a position within a page(16K), so it can be stored as a short type. */
-	  oid.volid = llsidp->lsid.curr_vpid.volid;
-	  oid.pageid = llsidp->lsid.curr_vpid.pageid;
-	  oid.slotid = llsidp->lsid.curr_offset;
+	  /* curr_offset is int and tftid.offset is short. */
+	  /* the offset is a position within a page(16K), so it can be stored as a short type. */
+	  SET_TFTID (tftid, llsidp->lsid.curr_vpid.volid, llsidp->lsid.curr_vpid.pageid, llsidp->lsid.curr_offset);
 	  /* add to hash table */
-	  if (fhs_insert (thread_p, llsidp->hlsid.file.hash_table, (void *) &hash_key, &oid) == NULL)
+	  if (fhs_insert (thread_p, llsidp->hlsid.file.hash_table, (void *) &hash_key, &tftid) == NULL)
 	    {
 	      return S_ERROR;
 	    }
@@ -8047,7 +8045,7 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
   QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
   unsigned int hash_key;
   EH_SEARCH eh_search;
-  OID result;
+  TFTID result;
 
   llsidp = &scan_id->s.llsid;
   key = llsidp->hlsid.temp_key;
@@ -8104,7 +8102,7 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 	  switch (eh_search)
 	    {
 	    case EH_KEY_FOUND:
-	      MAKE_OID_TO_TUPLE_POSTION (tuple_pos, result, scan_id_p);
+	      MAKE_TFTID_TO_TUPLE_POSTION (tuple_pos, result, scan_id_p);
 	      if (qfile_jump_scan_tuple_position (thread_p, scan_id_p, &tuple_pos, &tplrec, PEEK) != S_SUCCESS)
 		{
 		  return S_ERROR;
@@ -8168,7 +8166,7 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 	  switch (eh_search)
 	    {
 	    case EH_KEY_FOUND:
-	      MAKE_OID_TO_TUPLE_POSTION (tuple_pos, result, scan_id_p);
+	      MAKE_TFTID_TO_TUPLE_POSTION (tuple_pos, result, scan_id_p);
 	      if (qfile_jump_scan_tuple_position (thread_p, scan_id_p, &tuple_pos, &tplrec, PEEK) != S_SUCCESS)
 		{
 		  return S_ERROR;
