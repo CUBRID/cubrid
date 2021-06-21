@@ -308,7 +308,7 @@ namespace cubschema
 	throw er_errid ();
       }
 
-    m_class->dont_load_index = true;
+    m_class->dont_load_index_from_heap = true;
   }
 
   class_truncate_context::class_truncate_context (class_truncate_context &&other) :
@@ -327,7 +327,7 @@ namespace cubschema
 
   class_truncate_context::~class_truncate_context ()
   {
-    m_class->dont_load_index = false;
+    m_class->dont_load_index_from_heap = false;
 
     if (m_unique_info != NULL)
       {

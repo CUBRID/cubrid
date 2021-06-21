@@ -6621,7 +6621,7 @@ classobj_make_class (const char *name)
   class_->has_active_triggers = 0;
   class_->dont_decache_constraints_or_flush = 0;
   class_->recache_constraints = 0;
-  class_->dont_load_index = 0;
+  class_->dont_load_index_from_heap = 0;
 
   class_->att_ids = 0;
   class_->method_ids = 0;

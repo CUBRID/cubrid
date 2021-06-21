@@ -773,7 +773,7 @@ struct sm_class
   unsigned has_active_triggers:1;	/* set if trigger processing is required */
   unsigned dont_decache_constraints_or_flush:1;	/* prevent decaching class constraint and flushing. */
   unsigned recache_constraints:1;	/* class constraints need recache. */
-  unsigned dont_load_index:1;	/* don't load index, but create a new empty one when allocating an index. e.g. TRUNCATE */
+  unsigned dont_load_index_from_heap:1;	/* don't load index, but create a new empty one when allocating an index. e.g. TRUNCATE */
 };
 
 
