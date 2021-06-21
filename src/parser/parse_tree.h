@@ -3284,6 +3284,7 @@ typedef struct pt_create_server_info
 
 typedef struct pt_drop_server_info
 {
+  bool if_exists;		/* IF EXISTS clause for DROP SERVER */
   PT_NODE *server_name;		/* name */
 } PT_DROP_SERVER_INFO;
 

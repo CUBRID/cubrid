@@ -4263,13 +4263,14 @@ drop_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| DROP SERVER identifier
+	| DROP SERVER opt_if_exists identifier
 		{{
                         PT_NODE *node = parser_new_node (this_parser, PT_DROP_SERVER);
 
 			if (node)
 			  {
-			    node->info.drop_server.server_name = $3;
+                            node->info.serial.if_exists = $3;
+			    node->info.drop_server.server_name = $4;
 			  }
 
 			$$ = node;
