@@ -3274,8 +3274,11 @@ typedef struct pt_create_server_info
 {
   PT_NODE *server_name;
   PT_NODE *host;
+  PT_NODE *port;
+  PT_NODE *dbname;
   PT_NODE *user;
   PT_NODE *pwd;
+  PT_NODE *prop;
   PT_NODE *comment;
 } PT_CREATE_SERVER_INFO;
 

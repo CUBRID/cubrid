@@ -83,6 +83,8 @@ void csql_yyerror (const char *s);
 extern int g_msg[1024];
 extern int msg_ptr;
 extern int yybuffer_pos;
+
+extern void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, container_10 *ctn, container_2 info);
 /*%CODE_END%*/%}
 
 %{
@@ -422,6 +424,17 @@ typedef enum
   SERIAL_CACHE,
 } SERIAL_DEFINE;
 
+typedef enum
+{
+  CONN_INFO_HOST = 0,  
+  CONN_INFO_PORT,
+  CONN_INFO_DBNAME,
+  CONN_INFO_USER,
+  CONN_INFO_PASSWORD,
+  CONN_INFO_PROPERTIES,
+  CONN_INFO_COMMENT,
+} CONN_INFO_DEFINE;
+
 FUNCTION_MAP *keyword_offset (const char *name);
 
 static PT_NODE *parser_make_expr_with_func (PARSER_CONTEXT * parser, FUNC_TYPE func_code, PT_NODE * args_list);
@@ -598,6 +611,16 @@ int g_original_buffer_len;
     fprintf (File, "%d.%d-%d.%d",			\
 	     (Loc).first_line, (Loc).first_column,	\
 	     (Loc).last_line,  (Loc).last_column)
+
+#define SET_CPTR_2_PTNAME(rv, iv, b_p) do {             \
+   (rv) = parser_new_node (this_parser, PT_NAME);       \
+   if ((rv))                                            \
+     {                                                  \
+             (rv)->info.name.original = (iv);           \
+     }                                                  \
+   PARSER_SAVE_ERR_CONTEXT ((rv), (b_p))                \
+   DBG_PRINT                                            \
+} while (0)
 
 %}
 
@@ -1047,6 +1070,8 @@ int g_original_buffer_len;
 %type <c2> dblink_identifier_col_attrs  
 %type <node> dblink_column_definition_list
 %type <node> dblink_column_definition
+%type <c10> connect_info
+%type <c2>  connect_item
 /*}}}*/
 
 /* define rule type (cptr) */
@@ -1546,6 +1571,7 @@ int g_original_buffer_len;
 %token <cptr> DATE_ADD
 %token <cptr> DATE_SUB
 %token <cptr> DBLINK
+%token <cptr> DBNAME
 %token <cptr> DECREMENT
 %token <cptr> DENSE_RANK
 %token <cptr> DONT_REUSE_OID
@@ -1565,6 +1591,7 @@ int g_original_buffer_len;
 %token <cptr> HASH
 %token <cptr> HEADER
 %token <cptr> HEAP
+%token <cptr> HOST
 %token <cptr> IFNULL
 %token <cptr> INACTIVE
 %token <cptr> INCREMENT
@@ -1639,8 +1666,10 @@ int g_original_buffer_len;
 %token <cptr> PERCENT_RANK
 %token <cptr> PERCENTILE_CONT
 %token <cptr> PERCENTILE_DISC
+%token <cptr> PORT
 %token <cptr> PRINT
 %token <cptr> PRIORITY
+%token <cptr> PROPERTIES
 %token <cptr> QUARTER
 %token <cptr> QUEUES
 %token <cptr> RANGE_
@@ -1711,6 +1740,7 @@ int g_original_buffer_len;
 %token <cptr> EUCKR_STRING
 %token <cptr> ISO_STRING
 %token <cptr> UTF8_STRING
+%token <cptr> IPV4_ADDRESS
 
 /*}}}*/
 
@@ -3096,19 +3126,35 @@ create_stmt
 
 		DBG_PRINT}}
 
-	| CREATE SERVER identifier '(' dblink_conn_str ')'					       
+	| CREATE SERVER identifier '(' connect_info ')'
 		{{
                         PT_NODE *node = parser_new_node (this_parser, PT_CREATE_SERVER);
 			if (node)
-			  {   
+			  {
                                 node->info.create_server.server_name = $3;
-                                PT_NODE *list = $5;
-                                node->info.create_server.host = list;
-                                node->info.create_server.user = list->next;
-                                node->info.create_server.pwd = list->next->next;
-                                node->info.create_server.comment = NULL;
-                                list->next->next = 0x00;
-                                list->next = 0x00;
+                                container_10 x = $5;
+                                PT_CREATE_SERVER_INFO *si = &node->info.create_server;
+                                /* container order
+                                * 1: HOST(IP/NAME)
+                                * 2: PORT
+                                * 3: DBNMAE
+                                * 4: USER
+                                * 5: PASSWORD
+                                * 6: PROPERTIES
+                                * 7: COMMENT
+                                */
+                                si->host = CONTAINER_AT_0($5);
+                                si->port = CONTAINER_AT_1($5);
+                                si->dbname = CONTAINER_AT_2($5);
+                                si->user = CONTAINER_AT_3($5);
+                                if( !si->host || !si->port || !si->dbname || !si->user )
+                                  {
+                                      PT_ERROR(this_parser, node, "Required information is missing.");
+                                  }
+
+                                si->pwd = CONTAINER_AT_4($5);
+                                si->prop = CONTAINER_AT_5($5);
+                                si->comment = CONTAINER_AT_6($5);
 			  }
 
 			$$ = node;
@@ -21852,6 +21898,8 @@ identifier
 			$$ = p;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
                 DBG_PRINT}}
+        | DBNAME 
+                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| DECREMENT
 		{{
 
@@ -22022,6 +22070,8 @@ identifier
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+        | HOST 
+                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| INACTIVE
 		{{
 
@@ -22634,6 +22684,8 @@ identifier
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+        | PORT 
+                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| PRINT
 		{{
 
@@ -22654,6 +22706,8 @@ identifier
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+        | PROPERTIES 
+                {{  SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| QUEUES
 		{{
 
@@ -24785,6 +24839,118 @@ json_table_rule
         $$ = jt;
       DBG_PRINT}}
     ;
+
+connect_info
+        : connect_info ',' connect_item
+          {{
+               container_10 ctn = $1;
+
+               pt_fill_conn_info_container(this_parser, @$.buffer_pos, &ctn, $3);
+	        $$ = ctn;
+           DBG_PRINT }}
+        | connect_item
+          {{               
+                container_10 ctn;
+                memset(&ctn, 0x00, sizeof(container_10));
+
+                pt_fill_conn_info_container(this_parser, @$.buffer_pos, &ctn, $1);    
+	        $$ = ctn;
+           DBG_PRINT}}
+        ;
+
+connect_item    
+        :  HOST '=' identifier 
+          {{
+                container_2 ctn;
+
+                if( pt_check_hostname($3) == false )
+                  {
+                        PT_NODE* node = pt_top(this_parser);     
+                        PT_ERROR (this_parser, node, "Incorrect hostname format");
+                  }
+
+                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_HOST), $3);
+                $$ = ctn;
+            DBG_PRINT}}
+        | HOST '=' IPV4_ADDRESS
+          {{
+                container_2 ctn;
+    		PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
+                if (val)
+                   {
+                        val->info.value.data_value.str =
+                                pt_append_bytes (this_parser, NULL, $3, strlen ($3));
+                        val->type_enum = PT_TYPE_CHAR;
+                        PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);
+                   }
+                
+                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_HOST), val);
+                $$ = ctn;
+
+	   DBG_PRINT}}
+        | PORT '=' UNSIGNED_INTEGER 
+          {{
+                container_2 ctn;
+                PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
+                if (val)
+                  {
+                        val->info.value.data_value.i = atoi($3);
+                        val->type_enum = PT_TYPE_INTEGER;
+                        PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);
+                  }
+
+                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_PORT), val);
+                $$ = ctn;
+           DBG_PRINT}}
+        | DBNAME '=' identifier 
+          {{
+                container_2 ctn;
+                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_DBNAME), $3);
+                $$ = ctn;
+           DBG_PRINT}}
+        | USER '=' identifier
+          {{
+                container_2 ctn;
+                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_USER), $3);
+                $$ = ctn;
+            DBG_PRINT}}
+        | PASSWORD '=' 
+          {{
+                container_2 ctn;
+                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_PASSWORD), NULL);
+                $$ = ctn;
+           DBG_PRINT}}
+        | PASSWORD '=' CHAR_STRING
+          {{
+                container_2 ctn;
+                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_PASSWORD), $3);
+                $$ = ctn;
+           DBG_PRINT}}
+        | PROPERTIES '=' 
+          {{
+                container_2 ctn;
+                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_PROPERTIES), NULL);
+                $$ = ctn;
+           DBG_PRINT}}
+        | PROPERTIES '=' CHAR_STRING 
+          {{
+                container_2 ctn;
+                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_PROPERTIES), $3);
+                $$ = ctn;
+           DBG_PRINT}}
+        | COMMENT '='
+          {{
+                container_2 ctn;
+                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_COMMENT), NULL);
+                $$ = ctn;
+           DBG_PRINT }}
+        | COMMENT '=' char_string
+          {{
+                container_2 ctn;
+                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_COMMENT), $3);
+                $$ = ctn;
+           DBG_PRINT}}
+        ;
 
 dblink_expr
         :   dblink_conn  ','  CHAR_STRING  
@@ -28117,4 +28283,76 @@ pt_create_paren_expr_list (PT_NODE * exp)
       parser_groupby_exception = PT_EXPR;
     }
   return exp;
+}
+
+void
+pt_fill_conn_info_container(PARSER_CONTEXT *parser,  int buffer_pos, container_10 *ctn, container_2 info)
+{
+  /* container order
+  * 1: HOST(IP/NAME)
+  * 2: PORT
+  * 3: DBNMAE
+  * 4: USER
+  * 5: PASSWORD
+  * 6: PROPERTIES
+  * 7: COMMENT
+  */                 
+   PT_NODE* node = pt_top(parser);
+   PARSER_SAVE_ERR_CONTEXT (node, buffer_pos)
+
+   switch(TO_NUMBER (CONTAINER_AT_0(info)))
+     {
+        case CONN_INFO_HOST:
+                if (ctn->c1 != NULL)
+                {
+                        PT_ERROR (parser, node, "HOST information was duplicated.");
+                }
+                ctn->c1 = CONTAINER_AT_1(info);
+                break;
+        case CONN_INFO_PORT:
+                if( ctn->c2 != NULL )
+                {
+                    PT_ERROR (parser, node, "PORT information was duplicated.");
+                }
+                ctn->c2 = CONTAINER_AT_1(info);
+                break;
+        case CONN_INFO_DBNAME:
+                if( ctn->c3 != NULL )
+                {
+                    PT_ERROR (parser, node, "DBNAME information was duplicated.");
+                }
+                ctn->c3 = CONTAINER_AT_1(info);
+                break;                
+        case CONN_INFO_USER:
+                if( ctn->c4 != NULL )
+                {
+                    PT_ERROR (parser, node, "USER information was duplicated.");
+                }
+                ctn->c4 = CONTAINER_AT_1(info);
+                break;                
+        case CONN_INFO_PASSWORD:
+                if( ctn->c5 != NULL )
+                {
+                    PT_ERROR (parser, node, "PASSWORD information was duplicated.");
+                }
+                ctn->c5 = CONTAINER_AT_1(info);
+                break;
+        case CONN_INFO_PROPERTIES:
+                if( ctn->c6 != NULL )
+                {
+                    PT_ERROR (parser, node, "PROPERTIES information was duplicated.");
+                }
+                ctn->c6 = CONTAINER_AT_1(info);
+                break;                
+        case CONN_INFO_COMMENT:
+                if( ctn->c7 != NULL )
+                {
+                    PT_ERROR (parser, node, "COMMENT information was duplicated.");
+                }
+                ctn->c7 = CONTAINER_AT_1(info);        
+                break;
+        default:
+                assert(0);
+                break;
+    }
 }
