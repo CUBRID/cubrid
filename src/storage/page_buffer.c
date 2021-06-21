@@ -1042,6 +1042,8 @@ static int pgbuf_unlock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_
 static PGBUF_BCB *pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid);
 static PGBUF_BCB *pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode,
 					   PGBUF_BUFFER_HASH * hash_anchor, PGBUF_FIX_PERF * perf, bool * try_again);
+static void pgbuf_io_read_local (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_page, PGBUF_BCB * bufptr,
+				 PGBUF_BUFFER_HASH * hash_anchor, bool * success);
 static void pgbuf_request_data_page_from_page_server (const VPID * vpid);
 static int pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
 static int pgbuf_bcb_safe_flush_internal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool synchronous, bool * locked);
@@ -7659,11 +7661,6 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   PGBUF_STATUS *show_status = &pgbuf_Pool.show_status[tran_index];
 
-#if defined (ENABLE_SYSTEMTAP)
-  bool monitored = false;
-  QUERY_ID query_id = NULL_QUERY_ID;
-#endif /* ENABLE_SYSTEMTAP */
-
   assert (fetch_mode != OLD_PAGE_IF_IN_BUFFER);
 
   /* The page is not found in the hash chain the caller is holding hash_anchor->hash_mutex */
@@ -7735,53 +7732,8 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
       perfmon_inc_stat (thread_p, PSTAT_PB_NUM_IOREADS);
       show_status->num_pages_read++;
 
-#if defined(ENABLE_SYSTEMTAP)
-      query_id = qmgr_get_current_query_id (thread_p);
-      if (query_id != NULL_QUERY_ID)
-	{
-	  monitored = true;
-	  CUBRID_IO_READ_START (query_id);
-	}
-#endif /* ENABLE_SYSTEMTAP */
-
       pgbuf_request_data_page_from_page_server (vpid);
-
-      if (dwb_read_page (thread_p, vpid, &bufptr->iopage_buffer->iopage, &success) != NO_ERROR)
-	{
-	  /* Should not happen */
-	  assert (false);
-	  return NULL;
-	}
-      else if (success == true)
-	{
-	  /* Nothing to do, copied from DWB */
-	}
-      else if (fileio_read (thread_p, fileio_get_volume_descriptor (vpid->volid), &bufptr->iopage_buffer->iopage,
-			    vpid->pageid, IO_PAGESIZE) == NULL)
-	{
-	  /* There was an error in reading the page. Clean the buffer... since it may have been corrupted */
-	  ASSERT_ERROR ();
-
-	  /* bufptr->mutex will be released in following function. */
-	  pgbuf_put_bcb_into_invalid_list (thread_p, bufptr);
-
-	  /*
-	   * Now, caller is not holding any mutex.
-	   * the last argument of pgbuf_unlock_page () is true that
-	   * means hash_mutex must be held before unlocking page.
-	   */
-	  (void) pgbuf_unlock_page (thread_p, hash_anchor, vpid, true);
-
-#if defined(ENABLE_SYSTEMTAP)
-	  if (monitored == true)
-	    {
-	      CUBRID_IO_READ_END (query_id, IO_PAGESIZE, 1);
-	    }
-#endif /* ENABLE_SYSTEMTAP */
-
-	  PGBUF_BCB_CHECK_MUTEX_LEAKS ();
-	  return NULL;
-	}
+      pgbuf_io_read_local (thread_p, vpid, &bufptr->iopage_buffer->iopage, bufptr, hash_anchor, &success);
 
 #if defined(SERVER_MODE)
 	// *INDENT-OFF*
@@ -7815,12 +7767,6 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 	    }
 	}
 
-#if defined(ENABLE_SYSTEMTAP)
-      if (monitored == true)
-	{
-	  CUBRID_IO_READ_END (query_id, IO_PAGESIZE, 0);
-	}
-#endif /* ENABLE_SYSTEMTAP */
       if (pgbuf_is_temporary_volume (vpid->volid) == true)
 	{
 	  /* Check if the first time to access */
@@ -7889,6 +7835,56 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
   return bufptr;
 }
 
+void
+pgbuf_io_read_local (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_page, PGBUF_BCB * bufptr,
+		     PGBUF_BUFFER_HASH * hash_anchor, bool * success)
+{
+  if (dwb_read_page (thread_p, vpid, io_page, success) != NO_ERROR)
+    {
+      /* Should not happen */
+      assert (false);
+    }
+  else if (*success == true)
+    {
+      /* Nothing to do, copied from DWB */
+    }
+  else if (fileio_read (thread_p, fileio_get_volume_descriptor (vpid->volid), io_page,
+			vpid->pageid, IO_PAGESIZE) == NULL)
+    {
+      /* There was an error in reading the page. Clean the buffer... since it may have been corrupted */
+      ASSERT_ERROR ();
+
+      /* bufptr->mutex will be released in following function. */
+      pgbuf_put_bcb_into_invalid_list (thread_p, bufptr);
+
+      /*
+       * Now, caller is not holding any mutex.
+       * the last argument of pgbuf_unlock_page () is true that
+       * means hash_mutex must be held before unlocking page.
+       */
+      (void) pgbuf_unlock_page (thread_p, hash_anchor, vpid, true);
+
+#if defined(ENABLE_SYSTEMTAP)
+      bool monitored = false;
+      QUERY_ID query_id = NULL_QUERY_ID;
+
+      query_id = qmgr_get_current_query_id (thread_p);
+      if (query_id != NULL_QUERY_ID)
+	{
+	  monitored = true;
+	  CUBRID_IO_READ_START (query_id);
+	}
+
+      if (monitored == true)
+	{
+	  CUBRID_IO_READ_END (query_id, IO_PAGESIZE, 1);
+	}
+#endif /* ENABLE_SYSTEMTAP */
+
+      PGBUF_BCB_CHECK_MUTEX_LEAKS ();
+    }
+}
+
 /*
  * pgbuf_request_data_page_from_page_server () - Sends a request for a page to Page Server.
  *   return: void
@@ -7919,7 +7915,7 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid)
         {
           _er_log_debug (ARG_FILE_LINE, "Sent request for Page to Page Server. pageid: %ld volid: %d\n", vpid->pageid,
                       vpid->volid);
-	}
+	} 
     }
   // *INDENT-ON*
 #endif // SERVER_MODE
