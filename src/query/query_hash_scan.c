@@ -787,7 +787,6 @@ fhs_dump (THREAD_ENTRY * thread_p, FHSID * fhsid_p)
   printf ("*                                                       *\n");
   printf ("*    Depth    :  %d                                      *\n", fhsid_p->depth);
   printf ("*    Key type : int                                     *\n");
-  printf (" int                                    *\n");
   printf ("*    Key size :  %ld                                      *\n", sizeof (FHS_HASH_KEY));
   printf ("*                                                       *\n");
   printf ("*                      POINTERS                         *\n");
@@ -1832,16 +1831,9 @@ fhs_hash_four_bytes_type (char *key_p)
 {
   FHS_HASH_KEY hash_key = 0;
   unsigned int i;
-  unsigned short Short, *Short2;
   char Char;
 
-  Short = ntohs (*(unsigned short *) key_p);	/* Get the left half of the int */
-  Short2 = (unsigned short *) key_p;
-  Short2++;
-
-  Short += ntohs (*Short2);
-  hash_key = (FHS_HASH_KEY) (Short << FHS_SHORT_BITS);
-  hash_key += (FHS_HASH_KEY) Short;
+  hash_key = (FHS_HASH_KEY) ntohl (*(unsigned int *) key_p);
 
   /* Go over the chars of the given pseudo key */
   Char = '\0';
