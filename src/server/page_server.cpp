@@ -111,11 +111,12 @@ void page_server::receive_data_page_fetch (cubpacking::unpacker &upk)
   std::string message;
   upk.unpack_string (message);
 
+  cubpacking::unpacker message_upk (message.c_str (), message.size ());
   VPID vpid;
-  vpid_utils::unpack (upk, vpid);
+  vpid_utils::unpack (message_upk, vpid);
 
   LOG_LSA target_repl_lsa;
-  cublog::lsa_utils::unpack (upk, target_repl_lsa);
+  cublog::lsa_utils::unpack (message_upk, target_repl_lsa);
 
   assert (m_page_fetcher);
   m_page_fetcher->fetch_data_page (vpid, target_repl_lsa, std::bind (&page_server::on_data_page_read_result, this,
@@ -161,14 +162,18 @@ void page_server::on_log_page_read_result (const LOG_PAGE *log_page, int error_c
 
 void page_server::on_data_page_read_result (const FILEIO_PAGE *io_page, int error_code)
 {
-  char buffer[sizeof (int) + IO_MAX_PAGE_SIZE];
-  std::memcpy (buffer, &error_code, sizeof (error_code));
-  std::size_t buffer_size = sizeof (error_code);
-
-  if (error_code == NO_ERROR)
+  std::string message;
+  if (error_code != NO_ERROR)
     {
-      std::memcpy (buffer + sizeof (error_code), io_page, db_io_page_size ());
-      buffer_size += db_io_page_size ();
+      char buffer[sizeof (int)];
+      std::memcpy (buffer, &error_code, sizeof (error_code));
+      message = std::string (buffer, sizeof (int));
+    }
+  else
+    {
+      char buffer[IO_MAX_PAGE_SIZE];
+      std::memcpy (buffer, io_page, db_io_page_size ());
+      message = std::string (buffer, db_io_page_size ());
     }
 
   if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
@@ -184,7 +189,6 @@ void page_server::on_data_page_read_result (const FILEIO_PAGE *io_page, int erro
 	}
     }
 
-  std::string message (buffer, buffer_size);
   m_active_tran_server_conn->push (ps_to_ats_request::SEND_DATA_PAGE, std::move (message));
 }
 
@@ -215,13 +219,13 @@ page_server::finish_replication_during_shutdown (cubthread::entry &thread_entry)
 }
 
 void
-page_server::init_log_page_fetcher ()
+page_server::init_page_fetcher ()
 {
   m_page_fetcher.reset (new cublog::async_page_fetcher ());
 }
 
 void
-page_server::finalize_log_page_fetcher ()
+page_server::finalize_page_fetcher ()
 {
   m_page_fetcher.reset ();
 }

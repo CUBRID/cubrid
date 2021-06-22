@@ -20,7 +20,7 @@
 
 #include "catch2/catch.hpp"
 
-#include "log_page_broker.hpp"
+#include "page_broker.hpp"
 #include "log_storage.hpp"
 #include "storage_common.h"
 
@@ -32,8 +32,8 @@
 const int count_pages_per_thread = 90;
 const int count_skip_pages = 30;
 
-typedef std::shared_ptr<cublog::page_broker> shared_log_page_receiver;
-typedef std::weak_ptr<cublog::page_broker> weak_log_page_receiver;
+typedef std::shared_ptr<page_broker<log_page_type>> shared_log_page_receiver;
+typedef std::weak_ptr<page_broker<log_page_type>> weak_log_page_receiver;
 
 std::shared_ptr<log_page_owner> create_dummy_log_page (LOG_PAGEID page_id);
 
@@ -90,7 +90,7 @@ void do_test (test_env &env)
 test_env::test_env (int log_pages_count)
   : m_log_pages_count (log_pages_count)
 {
-  m_log_page_receiver.reset (new cublog::page_broker ());
+  m_log_page_receiver.reset (new page_broker<log_page_type> ());
   m_dummy_ps.reset (new dummy_ps (m_log_page_receiver));
 }
 
@@ -136,7 +136,7 @@ test_env::request_and_consume_log_pages (int start_log_page_id, int count)
 {
   for (int i = start_log_page_id; i < start_log_page_id + count; ++i)
     {
-      if (m_log_page_receiver->register_entry (i) == cublog::page_broker::ADDED_ENTRY)
+      if (m_log_page_receiver->register_entry (i) == page_broker_register_entry_state::ADDED)
 	{
 	  request_page_from_ps (i);
 	}
@@ -188,7 +188,7 @@ dummy_ps::run ()
 
 	  if (auto log_page_receiver = m_log_page_receiver.lock ())
 	    {
-	      log_page_receiver->set_page (std::move (log_page));
+	      log_page_receiver->set_page (page_id, std::move (log_page));
 	    }
 	}
     }

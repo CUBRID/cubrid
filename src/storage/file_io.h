@@ -180,6 +180,13 @@ struct fileio_page_reserved
   INT32 p_reserve_1;
   INT32 p_reserve_2;		/* unused - Reserved field */
   INT64 tde_nonce;		/* tde nonce. atomic counter for temp pages, lsa for perm pages */
+
+  // *INDENT-OFF*
+  inline bool operator== (const fileio_page_reserved & other) const
+  {
+    return lsa == other.lsa && pageid == other.pageid && volid == other.volid;
+  }
+  // *INDENT-ON*
 };
 
 typedef struct fileio_page_watermark FILEIO_PAGE_WATERMARK;

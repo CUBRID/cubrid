@@ -182,7 +182,6 @@ add_dependencies(test_log_page_fetcher
 #
 set(TEST_LOG_PAGE_BROKER_SOURCES
   ${TRANSACTION_DIR}/log_storage.cpp
-  ${TRANSACTION_DIR}/log_page_broker.cpp
   test_main_log_page_broker.cpp)
 
 SET_SOURCE_FILES_PROPERTIES(

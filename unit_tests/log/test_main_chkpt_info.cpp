@@ -154,7 +154,7 @@ TEST_CASE ("Test load and recovery on empty tran table", "")
   env.get_after ()->load_trantable_snapshot (&thd, smallest_lsa);
   env.get_after ()->recovery_analysis (&thd, star_lsa);
   env.get_after ()->recovery_2pc_analysis (&thd);
-  REQUIRE (tran_map.size() == 0);
+  REQUIRE (tran_map.size () == 0);
 }
 
 int
@@ -192,7 +192,7 @@ void
 check_recovery (checkpoint_info obj)
 {
   std::map<TRANID, log_tdes *>::iterator itr;
-  for (itr = tran_map.begin(); itr != tran_map.end(); ++itr)
+  for (itr = tran_map.begin (); itr != tran_map.end (); ++itr)
     {
       REQUIRE (itr->first != NULL_TRANID);
     }
@@ -239,12 +239,12 @@ check_recovery (checkpoint_info obj)
 	}
     }
 
-  for (itr = systb_System_tdes.begin(); itr != systb_System_tdes.end(); ++itr)
+  for (itr = systb_System_tdes.begin (); itr != systb_System_tdes.end (); ++itr)
     {
       std::map<TRANID, log_tdes *>::const_iterator tdes_after = tran_map.find (itr->first);
       // check topops/rcv only
 
-      if (tdes_after == tran_map.end())
+      if (tdes_after == tran_map.end ())
 	{
 	  continue;
 	}
@@ -437,50 +437,50 @@ test_env_chkpt::generate_client (int index)
 LOG_TDES *
 test_env_chkpt::generate_tdes (int index)
 {
-  LOG_TDES *tdes = new log_tdes();
+  LOG_TDES *tdes = new log_tdes ();
   tdes->trid = index + 1;
   tdes->tran_index = index + 1;
 
-  tdes->tail_lsa = generate_log_lsa();
-  tdes->isloose_end = std::rand() % 2;
-  tdes->head_lsa = generate_log_lsa();
+  tdes->tail_lsa = generate_log_lsa ();
+  tdes->isloose_end = std::rand () % 2;
+  tdes->head_lsa = generate_log_lsa ();
   if (index < TRAN_UNACTIVE_UNKNOWN)
     {
       tdes->state    = static_cast<TRAN_STATE> (index);
     }
   else
     {
-      tdes->state    = static_cast<TRAN_STATE> (std::rand() % TRAN_UNACTIVE_UNKNOWN);
+      tdes->state    = static_cast<TRAN_STATE> (std::rand () % TRAN_UNACTIVE_UNKNOWN);
     }
 
 
-  tdes->undo_nxlsa = generate_log_lsa();
-  tdes->posp_nxlsa = generate_log_lsa();
-  tdes->savept_lsa = generate_log_lsa();
-  tdes->tail_topresult_lsa = generate_log_lsa();
-  tdes->rcv.tran_start_postpone_lsa = generate_log_lsa();
-  tdes->wait_msecs = rand() % MAX_RAND;
-  tdes->client_id  = rand() % MAX_RAND;
-  tdes->gtrid      = rand() % MAX_RAND;
+  tdes->undo_nxlsa = generate_log_lsa ();
+  tdes->posp_nxlsa = generate_log_lsa ();
+  tdes->savept_lsa = generate_log_lsa ();
+  tdes->tail_topresult_lsa = generate_log_lsa ();
+  tdes->rcv.tran_start_postpone_lsa = generate_log_lsa ();
+  tdes->wait_msecs = rand () % MAX_RAND;
+  tdes->client_id  = rand () % MAX_RAND;
+  tdes->gtrid      = rand () % MAX_RAND;
 
-  tdes->num_transient_classnames = rand() % MAX_RAND;
-  tdes->num_repl_records         = rand() % MAX_RAND;
-  tdes->cur_repl_record          = rand() % MAX_RAND;
-  tdes->append_repl_recidx       = rand() % MAX_RAND;
-  tdes->fl_mark_repl_recidx      = rand() % MAX_RAND;
-  tdes->repl_insert_lsa          = generate_log_lsa();
-  tdes->repl_update_lsa          = generate_log_lsa();
+  tdes->num_transient_classnames = rand () % MAX_RAND;
+  tdes->num_repl_records         = rand () % MAX_RAND;
+  tdes->cur_repl_record          = rand () % MAX_RAND;
+  tdes->append_repl_recidx       = rand () % MAX_RAND;
+  tdes->fl_mark_repl_recidx      = rand () % MAX_RAND;
+  tdes->repl_insert_lsa          = generate_log_lsa ();
+  tdes->repl_update_lsa          = generate_log_lsa ();
 
   tdes->client  = generate_client (index);
-  tdes->gtrinfo = generate_2pc_gtrinfo();
-  tdes->coord   = generate_2pc_coordinator();
+  tdes->gtrinfo = generate_2pc_gtrinfo ();
+  tdes->coord   = generate_2pc_coordinator ();
 
   return tdes;
 }
 
 
 void
-test_env_chkpt::generate_tran_table()
+test_env_chkpt::generate_tran_table ()
 {
   log_Gl.trantable.num_total_indices = 18;
   int size = log_Gl.trantable.num_total_indices * sizeof (*log_Gl.trantable.all_tdes);
@@ -696,7 +696,7 @@ logtb_get_system_tdes (THREAD_ENTRY *thread_p)
 LOG_TDES *
 logtb_rv_find_allocate_tran_index (THREAD_ENTRY *thread_p, TRANID trid, const LOG_LSA *log_lsa)
 {
-  LOG_TDES *tdes = new log_tdes();		/* Transaction descriptor */
+  LOG_TDES *tdes = new log_tdes ();		/* Transaction descriptor */
 
   assert (trid != NULL_TRANID);
 
@@ -720,7 +720,7 @@ logtb_rv_find_allocate_tran_index (THREAD_ENTRY *thread_p, TRANID trid, const LO
       if (log_Gl.trantable.all_tdes[i]->trid != NULL_TRANID && log_Gl.trantable.all_tdes[i]->trid == trid)
 	{
 	  std::map<TRANID, log_tdes *>::const_iterator inside_tdes = tran_map.find (trid);
-	  if (inside_tdes != tran_map.end())
+	  if (inside_tdes != tran_map.end ())
 	    {
 	      return inside_tdes->second;
 	    }

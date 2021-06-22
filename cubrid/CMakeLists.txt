@@ -302,7 +302,6 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/log_manager.c
   ${TRANSACTION_DIR}/log_meta.cpp
   ${TRANSACTION_DIR}/log_page_buffer.c
-  ${TRANSACTION_DIR}/log_page_broker.cpp
   ${TRANSACTION_DIR}/log_postpone_cache.cpp
   ${TRANSACTION_DIR}/log_prior_send.cpp
   ${TRANSACTION_DIR}/log_prior_recv.cpp
@@ -336,7 +335,6 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/log_lsa.hpp
   ${TRANSACTION_DIR}/log_lsa_utils.hpp
   ${TRANSACTION_DIR}/log_meta.hpp
-  ${TRANSACTION_DIR}/log_page_broker.hpp
   ${TRANSACTION_DIR}/log_postpone_cache.hpp
   ${TRANSACTION_DIR}/log_prior_send.hpp
   ${TRANSACTION_DIR}/log_prior_recv.hpp
@@ -400,6 +398,7 @@ set(STORAGE_HEADERS
   ${STORAGE_DIR}/async_page_fetcher.hpp
   ${STORAGE_DIR}/btree_unique.hpp
   ${STORAGE_DIR}/record_descriptor.hpp
+  ${STORAGE_DIR}/page_broker.hpp
   ${STORAGE_DIR}/vpid.hpp
   ${STORAGE_DIR}/vpid_utilities.hpp
 )
