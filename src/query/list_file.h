@@ -165,6 +165,9 @@ QFILE_LIST_CACHE_ENTRY *qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, 
 QFILE_LIST_CACHE_ENTRY *qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no,
 						       const DB_VALUE_ARRAY * params, const QFILE_LIST_ID * list_id,
 						       XASL_CACHE_ENTRY * xasl);
+int qcache_get_new_ht_no (THREAD_ENTRY * thread_p);
+void qcache_free_ht_no (THREAD_ENTRY * thread_p, int ht_no);
+
 int qfile_end_use_of_list_cache_entry (THREAD_ENTRY * thread_p, QFILE_LIST_CACHE_ENTRY * lent, bool marker);
 
 /* Scan related routines */

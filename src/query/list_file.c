@@ -96,6 +96,8 @@ typedef struct qfile_list_cache QFILE_LIST_CACHE;
 struct qfile_list_cache
 {
   MHT_TABLE **list_hts;		/* array of memory hash tables for list cache; pool for list_ht of XASL_CACHE_ENTRY */
+  int *free_list;		/* array of freed hash tables */
+  int next;			/* the next freed hash table number */
   unsigned int n_hts;		/* number of elements of list_hts */
   int n_entries;		/* total number of cache entries */
   int n_pages;			/* total number of pages used by the cache */
@@ -158,7 +160,7 @@ struct qfile_list_cache_entry_pool
  */
 
 /* list cache and related information */
-static QFILE_LIST_CACHE qfile_List_cache = { NULL, 0, 0, 0, 0, 0, 0, 0 };
+static QFILE_LIST_CACHE qfile_List_cache = { NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0 };
 
 /* information of candidates to be removed from XASL cache */
 static QFILE_LIST_CACHE_CANDIDATE qfile_List_cache_candidate = { 0, 0, 0, 0, NULL, NULL, NULL, 0, 0, false };
@@ -391,6 +393,55 @@ qfile_list_cache_cleanup (THREAD_ENTRY * thread_p)
   return NO_ERROR;
 }
 #endif
+
+int
+qcache_get_new_ht_no (THREAD_ENTRY * thread_p)
+{
+  int ht_no = -1;
+
+  if (QFILE_IS_LIST_CACHE_DISABLED)
+    {
+      return NO_ERROR;
+    }
+
+  if (csect_enter (thread_p, CSECT_QPROC_LIST_CACHE, INF_WAIT) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  if (qfile_List_cache.next >= 0)
+    {
+      ht_no = qfile_List_cache.next;
+      qfile_List_cache.next = qfile_List_cache.free_list[qfile_List_cache.next];
+    }
+
+  csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
+
+  return ht_no;
+}
+
+void
+qcache_free_ht_no (THREAD_ENTRY * thread_p, int ht_no)
+{
+  if (QFILE_IS_LIST_CACHE_DISABLED)
+    {
+      return;
+    }
+
+  if (csect_enter (thread_p, CSECT_QPROC_LIST_CACHE, INF_WAIT) != NO_ERROR)
+    {
+      return;
+    }
+
+  if (ht_no >= 0)
+    {
+      (void) mht_clear (qfile_List_cache.list_hts[ht_no], NULL, NULL);
+      qfile_List_cache.free_list[ht_no] = qfile_List_cache.next;
+      qfile_List_cache.next = ht_no;
+    }
+
+  csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
+}
 
 /* qfile_modify_type_list () -
  *   return:
@@ -4922,8 +4973,9 @@ qfile_initialize_list_cache (THREAD_ENTRY * thread_p)
   else
     {
       /* create */
-      qfile_List_cache.n_hts = prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES) + 10;
+      qfile_List_cache.n_hts = prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES);
       qfile_List_cache.list_hts = (MHT_TABLE **) calloc (qfile_List_cache.n_hts, sizeof (MHT_TABLE *));
+      qfile_List_cache.free_list = (int *) calloc (qfile_List_cache.n_hts, sizeof (int));
       if (qfile_List_cache.list_hts == NULL)
 	{
 	  goto error;
@@ -4934,11 +4986,14 @@ qfile_initialize_list_cache (THREAD_ENTRY * thread_p)
 	  qfile_List_cache.list_hts[i] =
 	    mht_create ("list file cache (DB_VALUE list)", prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_ENTRIES),
 			qfile_hash_db_value_array, qfile_compare_equal_db_value_array);
+	  qfile_List_cache.free_list[i] = i + 1;
 	  if (qfile_List_cache.list_hts[i] == NULL)
 	    {
 	      goto error;
 	    }
 	}
+
+      qfile_List_cache.free_list[i - 1] = -1;
     }
 
   qfile_List_cache.n_entries = 0;

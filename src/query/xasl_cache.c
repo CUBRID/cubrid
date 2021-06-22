@@ -399,8 +399,6 @@ xasl_cache_ent::init_clone_cache ()
 static void *
 xcache_entry_alloc (void)
 {
-  static int xcache_nentries = 0;
-
   XASL_CACHE_ENTRY *xcache_entry = (XASL_CACHE_ENTRY *) malloc (sizeof (XASL_CACHE_ENTRY));
   if (xcache_entry == NULL)
     {
@@ -409,7 +407,7 @@ xcache_entry_alloc (void)
   xcache_entry->init_clone_cache ();
   pthread_mutex_init (&xcache_entry->cache_clones_mutex, NULL);
 
-  xcache_entry->list_ht_no = xcache_nentries++;
+  xcache_entry->list_ht_no = -1;
 
   return xcache_entry;
 }
@@ -1157,8 +1155,11 @@ xcache_unfix (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry)
 	}
 
       /* need to clear list-cache first */
-      (void) qfile_clear_list_cache (thread_p, xcache_entry->list_ht_no);
-
+      if (xcache_entry->list_ht_no >= 0)
+	{
+	  (void) qfile_clear_list_cache (thread_p, xcache_entry->list_ht_no);
+	  qcache_free_ht_no (thread_p, xcache_entry->list_ht_no);
+	}
       if (!xcache_Hashmap.erase (thread_p, xcache_entry->xasl_id))
 	{
 	  /* Failure is not expected. */
@@ -1718,7 +1719,10 @@ xcache_invalidate_qcaches (THREAD_ENTRY * thread_p, const OID * oid)
 	      finished = true;
 	      break;
 	    }
-
+	  if (xcache_entry->list_ht_no < 0)
+	    {
+	      continue;
+	    }
 	  num_entries = qfile_get_list_cache_number_of_entries (xcache_entry->list_ht_no);
 	  if (num_entries > 0 && xcache_entry_is_related_to_oid (xcache_entry, oid))
 	    {
@@ -1782,7 +1786,7 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
 	  /* Check invalidation conditions. */
 	  if (invalidate_check == NULL || invalidate_check (xcache_entry, arg))
 	    {
-	      if (!QFILE_IS_LIST_CACHE_DISABLED && !qfile_has_no_cache_entries ())
+	      if (xcache_entry->list_ht_no >= 0 && !QFILE_IS_LIST_CACHE_DISABLED && !qfile_has_no_cache_entries ())
 		{
 		  /* delete query cache from xcache entry */
 		  {
@@ -1800,6 +1804,11 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
 		  while (xcache_entry->n_cache_clones > 0)
 		    {
 		      xcache_clone_decache (thread_p, &xcache_entry->cache_clones[--xcache_entry->n_cache_clones]);
+		    }
+		  if (xcache_entry->list_ht_no >= 0)
+		    {
+		      /* should be freed before xasl erase */
+		      qcache_free_ht_no (thread_p, xcache_entry->list_ht_no);
 		    }
 		  delete_xids[n_delete_xids++] = xcache_entry->xasl_id;
 		}
@@ -2252,7 +2261,11 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
       candidate.xid.cache_flag = XCACHE_ENTRY_CLEANUP;
 
       /* clear list cache entries first */
-      (void) qfile_clear_list_cache (thread_p, candidate.xcache->list_ht_no);
+      if (candidate.xcache->list_ht_no >= 0)
+	{
+	  (void) qfile_clear_list_cache (thread_p, candidate.xcache->list_ht_no);
+	  qcache_free_ht_no (thread_p, candidate.xcache->list_ht_no);
+	}
 
       /* Try delete. Would be better to decache the clones here. For simplicity, since is not an usual case,
        * clone decache is postponed - is decached when retired list will be cleared.
