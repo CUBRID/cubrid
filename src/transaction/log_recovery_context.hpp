@@ -54,6 +54,9 @@ class log_recovery_context
     void set_forced_restore_stop ();                   // Force incomplete restoration and change stop time
     bool does_restore_stop_before_time (time_t complete_time);    // Is restore stopped before time argument
 
+    // Page server
+    bool is_page_server () const;
+
   private:
     // Restore related members
     time_t m_restore_stop_point = 0;	      // restore stop point. no stop point if the value is zero

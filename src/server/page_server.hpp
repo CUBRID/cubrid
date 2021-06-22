@@ -54,8 +54,8 @@ class page_server
     void start_log_replicator (const log_lsa &start_lsa);
     void finish_replication_during_shutdown (cubthread::entry &thread_entry);
 
-    void init_log_page_fetcher ();
-    void finalize_log_page_fetcher ();
+    void init_page_fetcher ();
+    void finalize_page_fetcher ();
 
   private:
     using active_tran_server_conn_t =

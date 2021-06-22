@@ -16,24 +16,46 @@
  *
  */
 
-#ifndef _LOG_LSA_UTILS_HPP_
-#define _LOG_LSA_UTILS_HPP_
+#ifndef _VPID_UTILS_HPP_
+#define _VPID_UTILS_HPP_
+
+#include "dbtype_def.h"
 
 #include <cstdint>
 #include <cstdio>
+#include <functional>
 
-struct log_lsa;
+struct vpid;
 namespace cubpacking
 {
   class packer;
   class unpacker;
 }
 
-namespace cublog::lsa_utils
+namespace vpid_utils
 {
-  void pack (cubpacking::packer &serializer, const log_lsa &lsa);
-  void unpack (cubpacking::unpacker &deserializer, log_lsa &lsa);
+  void pack (cubpacking::packer &serializer, const vpid &vpd);
+  void unpack (cubpacking::unpacker &deserializer, vpid &vpd);
   size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset);
 }
 
-#endif // _LOG_LSA_UTILS_HPP_
+namespace std
+{
+  template<>
+  struct less<VPID>
+  {
+    bool operator () (const VPID &lhs, const VPID &rhs) const
+    {
+      if (lhs.volid != rhs.volid)
+	{
+	  return lhs.volid < rhs.volid;
+	}
+      else
+	{
+	  return lhs.pageid < rhs.pageid;
+	}
+    }
+  };
+}
+
+#endif // _VPID_UTILS_HPP_

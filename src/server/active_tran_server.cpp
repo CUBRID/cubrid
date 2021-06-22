@@ -44,7 +44,7 @@ active_tran_server::~active_tran_server ()
     }
   else
     {
-      assert (m_page_server_conn == nullptr);
+      assert (m_page_server_conn_vec.empty ());
     }
 }
 
@@ -124,7 +124,7 @@ int
 active_tran_server::init_page_server_hosts (const char *db_name)
 {
   assert_is_active_tran_server ();
-
+  assert (m_page_server_conn_vec.empty ());
   /*
    * Specified behavior:
    * ===============================================================================
@@ -174,41 +174,51 @@ active_tran_server::init_page_server_hosts (const char *db_name)
       er_clear ();
     }
   exit_code = NO_ERROR;
-
   // use config to connect
   //
   int valid_connection_count = 0;
+  bool failed_conn = false;
   for (const cubcomm::node &node : m_connection_list)
     {
       const int local_exit_code = connect_to_page_server (node, db_name);
       if (local_exit_code == NO_ERROR)
 	{
-	  // found valid host clear the errors from the bad ones
 	  ++valid_connection_count;
 	  exit_code = NO_ERROR;
-	  er_clear ();
-	  // successfully connected to a page server. stop now.
-	  break;
 	}
       else
 	{
 	  exit_code = local_exit_code;
+	  failed_conn = true;
+	  er_log_debug (ARG_FILE_LINE, "Failed to connect to host: %s port: %d\n", node.get_host ().c_str (), node.get_port ());
 	}
     }
 
+  if (failed_conn && valid_connection_count > 0)
+    {
+      //at least one valid host exists clear the error remaining from previous failing ones
+      er_clear ();
+    }
   // validate connections vs. config
   //
   if (valid_connection_count == 0 && m_uses_remote_storage)
     {
       assert (exit_code != NO_ERROR);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NO_PAGE_SERVER_CONNECTION, 0);
-      return ER_NO_PAGE_SERVER_CONNECTION;
+      exit_code = ER_NO_PAGE_SERVER_CONNECTION;
     }
-
+  else if (valid_connection_count == 0)
+    {
+      // failed to connect to any page server
+      assert (exit_code != NO_ERROR);
+      er_clear ();
+      exit_code = NO_ERROR;
+    }
   er_log_debug (ARG_FILE_LINE, "Transaction server runs on %s storage.",
 		m_uses_remote_storage ? "remote" : "local");
 
-  assert (exit_code == NO_ERROR);
+  // failed to connect to any page server
+  assert (valid_connection_count > 0 || !m_uses_remote_storage);
   return exit_code;
 }
 
@@ -216,7 +226,6 @@ int
 active_tran_server::connect_to_page_server (const cubcomm::node &node, const char *db_name)
 {
   assert_is_active_tran_server ();
-  assert (!is_page_server_connected ());
 
   // connect to page server
   constexpr int CHANNEL_POLL_TIMEOUT = 1000;    // 1000 milliseconds = 1 second
@@ -241,8 +250,7 @@ active_tran_server::connect_to_page_server (const cubcomm::node &node, const cha
   er_log_debug (ARG_FILE_LINE, "Transaction server successfully connected to the page server. Channel id: %s.\n",
 		srv_chn.get_channel_id ().c_str ());
 
-  assert (m_page_server_conn == nullptr);
-  m_page_server_conn.reset (new page_server_conn_t (std::move (srv_chn),
+  m_page_server_conn_vec.emplace_back (new page_server_conn_t (std::move (srv_chn),
   {
     {
       ps_to_ats_request::SEND_SAVED_LSA,
@@ -269,7 +277,7 @@ active_tran_server::disconnect_page_server ()
 {
   assert_is_active_tran_server ();
 
-  m_page_server_conn.reset (nullptr);
+  m_page_server_conn_vec.clear ();
 }
 
 bool
@@ -277,29 +285,39 @@ active_tran_server::is_page_server_connected () const
 {
   assert_is_active_tran_server ();
 
-  return m_page_server_conn != nullptr;
+  return !m_page_server_conn_vec.empty ();
 }
 
 void
-active_tran_server::init_log_page_broker ()
+active_tran_server::init_page_brokers ()
 {
-  m_log_page_broker.reset (new cublog::page_broker ());
+  m_log_page_broker.reset (new page_broker<log_page_type> ());
+  m_data_page_broker.reset (new page_broker<data_page_type> ());
 }
 
 void
-active_tran_server::finalize_log_page_broker ()
+active_tran_server::finalize_page_brokers ()
 {
   m_log_page_broker.reset ();
+  m_data_page_broker.reset ();
 }
 
-cublog::page_broker &
+page_broker<log_page_type> &
 active_tran_server::get_log_page_broker ()
 {
   assert (m_log_page_broker);
   return *m_log_page_broker;
 }
 
-bool active_tran_server::uses_remote_storage () const
+page_broker<data_page_type> &
+active_tran_server::get_data_page_broker ()
+{
+  assert (m_data_page_broker);
+  return *m_data_page_broker;
+}
+
+bool
+active_tran_server::uses_remote_storage () const
 {
   assert_is_active_tran_server ();
 
@@ -314,7 +332,7 @@ active_tran_server::push_request (ats_to_ps_request reqid, std::string &&payload
       return;
     }
 
-  m_page_server_conn->push (reqid, std::move (payload));
+  m_page_server_conn_vec[0]->push (reqid, std::move (payload));
 }
 
 void
@@ -329,13 +347,13 @@ active_tran_server::receive_log_page (cubpacking::unpacker &upk)
   if (error_code == NO_ERROR)
     {
       auto shared_log_page = std::make_shared<log_page_owner> (message.c_str () + sizeof (error_code));
-      m_log_page_broker->set_page (std::move (shared_log_page));
 
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
 	{
 	  _er_log_debug (ARG_FILE_LINE, "Received log page message from Page Server. Page ID: %lld\n",
 			 shared_log_page->get_id ());
 	}
+      m_log_page_broker->set_page (shared_log_page->get_id (), std::move (shared_log_page));
     }
   else
     {
@@ -351,22 +369,35 @@ void active_tran_server::receive_data_page (cubpacking::unpacker &upk)
   std::string message;
   upk.unpack_string (message);
 
-  int error_code;
-  std::memcpy (&error_code, message.c_str (), sizeof (error_code));
-
-  if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
+  // The message is either an error code or the content of the data page
+  if (message.size () == sizeof (int))
     {
-      if (error_code == NO_ERROR)
-	{
-	  char buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
-	  FILEIO_PAGE *io_page = (FILEIO_PAGE *) PTR_ALIGN (buf, MAX_ALIGNMENT);
-	  std::memcpy (io_page, message.c_str () + sizeof (error_code), db_io_page_size ());
-	  _er_log_debug (ARG_FILE_LINE, "Received data page message from Page Server. LSA: %lld|%d, Page ID: %ld, Volid: %d",
-			 LSA_AS_ARGS (&io_page->prv.lsa), io_page->prv.pageid, io_page->prv.volid);
-	}
-      else
+      // We have an error.
+      int error_code;
+      std::memcpy (&error_code, message.c_str (), sizeof (error_code));
+
+      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
 	{
 	  _er_log_debug (ARG_FILE_LINE, "Received data page message from Page Server. Error: %d \n", error_code);
+	}
+    }
+  else
+    {
+      assert (message.size () == db_io_page_size ());
+      // We have a page.
+      auto shared_data_page = std::make_shared<std::string> (std::move (message));
+
+      auto io_page = reinterpret_cast<const FILEIO_PAGE *> (shared_data_page->c_str ());
+      VPID id;
+      id.pageid = io_page->prv.pageid;
+      id.volid = io_page->prv.volid;
+
+      m_data_page_broker->set_page (id, std::move (shared_data_page));
+
+      if (prm_get_bool_value (PRM_ID_ER_LOG_READ_DATA_PAGE))
+	{
+	  _er_log_debug (ARG_FILE_LINE, "Received data page message from Page Server. LSA: %lld|%d, Page ID: %ld, Volid: %d",
+			 LSA_AS_ARGS (&io_page->prv.lsa), io_page->prv.pageid, io_page->prv.volid);
 	}
     }
 }

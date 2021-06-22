@@ -10167,9 +10167,10 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  node->type_enum = PT_TYPE_NONE;
 	  break;
 	}
-      if (common_type == PT_TYPE_MAYBE)
+
+      if (common_type == PT_TYPE_MAYBE && arg1_type != PT_TYPE_NULL && arg2_type != PT_TYPE_NULL)
 	{
-	  common_type = (arg1_type == PT_TYPE_MAYBE && arg2_type != PT_TYPE_NULL) ? arg2_type : arg1_type;
+	  common_type = (arg1_type == PT_TYPE_MAYBE) ? arg2_type : arg1_type;
 	}
 
       if (common_type == PT_TYPE_MAYBE)

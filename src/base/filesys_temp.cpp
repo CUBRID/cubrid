@@ -20,6 +20,7 @@
  * file_sys.cpp: File System namespace & functionality
  */
 #include "filesys_temp.hpp"
+#include <filesystem>
 #include <stdlib.h>
 
 #ifdef LINUX
@@ -35,7 +36,10 @@ namespace
   std::string unique_tmp_filename (const char *prefix="cub_") //generates an unique filename in tmp folder
   {
 #ifdef LINUX
-    std::string filename = std::string ("/tmp/") + prefix + "XXXXXX"; //used with mkstemp()
+    std::string filename = std::filesystem::temp_directory_path ();
+    filename += "/";
+    filename += prefix;
+    filename += "XXXXXX"; //used with mkstemp()
     //TBD (not necessary yet)
 #elif WINDOWS
     char buf[L_tmpnam] = {};

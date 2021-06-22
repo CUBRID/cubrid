@@ -76,7 +76,7 @@
 #include "connection_sr.h"
 #endif
 #include "active_tran_server.hpp"
-#include "log_page_broker.hpp"
+#include "page_broker.hpp"
 #include "ats_ps_request.hpp"
 #include "critical_section.h"
 #include "page_buffer.h"
@@ -1972,7 +1972,7 @@ request_log_page_from_ps (LOG_PAGEID log_pageid)
   std::memcpy (buffer, &log_pageid, sizeof (log_pageid));
   std::string message (buffer, BIG_INT_SIZE);
 
-  if (ats_Gl.get_log_page_broker ().register_entry (log_pageid) == cublog::page_broker::ADDED_ENTRY)
+  if (ats_Gl.get_log_page_broker ().register_entry (log_pageid) == page_broker_register_entry_state::ADDED)
     {
       // First to add an entry must also sent the request to the page server
       ats_Gl.push_request (ats_to_ps_request::SEND_LOG_PAGE_FETCH, std::move (message));
@@ -6823,7 +6823,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   LOG_CS_EXIT (thread_p);
 
 #if defined (SERVER_MODE)
-  if (get_server_type () == SERVER_TYPE_PAGE)
+  if (get_server_type () == SERVER_TYPE_PAGE && LOG_ISRESTARTED ())
     {
       // Wait the replication to catch up first
       ps_Gl.get_replicator ().wait_past_target_lsa (new_chkpt_lsa);

@@ -19,9 +19,9 @@
 #ifndef _ACTIVE_TRAN_SERVER_HPP_
 #define _ACTIVE_TRAN_SERVER_HPP_
 
-#include "log_page_broker.hpp"
 #include "ats_ps_request.hpp"
 #include "communication_node.hpp"
+#include "page_broker.hpp"
 #include "request_sync_client_server.hpp"
 #include "server_type.hpp"
 
@@ -51,10 +51,11 @@ class active_tran_server
     void disconnect_page_server ();
     bool is_page_server_connected () const;
 
-    void init_log_page_broker ();
-    void finalize_log_page_broker ();
+    void init_page_brokers ();
+    void finalize_page_brokers ();
 
-    cublog::page_broker &get_log_page_broker ();
+    page_broker<log_page_type> &get_log_page_broker ();
+    page_broker<data_page_type> &get_data_page_broker ();
 
     bool uses_remote_storage () const;
 
@@ -78,9 +79,10 @@ class active_tran_server
     std::string m_ps_hostname;
     int m_ps_port = -1;
 
-    std::unique_ptr<page_server_conn_t> m_page_server_conn;
+    std::vector<std::unique_ptr<page_server_conn_t>> m_page_server_conn_vec;
 
-    std::unique_ptr<cublog::page_broker> m_log_page_broker;
+    std::unique_ptr<page_broker<log_page_type>> m_log_page_broker;
+    std::unique_ptr<page_broker<data_page_type>> m_data_page_broker;
     std::vector<cubcomm::node> m_connection_list;
 
     bool m_uses_remote_storage = false;
