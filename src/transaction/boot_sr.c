@@ -2408,10 +2408,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  /*
-   * Now continue the normal restart process. At this point the data volumes
-   * are ok. However, some recovery may need to take place
-   */
 #if defined (SERVER_MODE)
   if (get_server_type () == SERVER_TYPE_TRANSACTION)
     {
@@ -2419,6 +2415,11 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       ats_Gl.init_page_brokers ();
     }
 #endif
+
+  /*
+   * Now continue the normal restart process. At this point the data volumes
+   * are ok. However, some recovery may need to take place
+   */
 
   /* Mount the data volume */
   error_code = boot_mount (thread_p, LOG_DBFIRST_VOLID, boot_Db_full_name, NULL);
@@ -2530,14 +2531,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
    * Now restart the recovery manager and execute any recovery actions
    */
 
-#if defined (SERVER_MODE)
-  // transaction server _needs_ connection with page server
-  if (get_server_type () == SERVER_TYPE_TRANSACTION)
-    {
-      ats_Gl.init_log_page_broker ();
-    }
-#endif // SERVER_MODE
-
   log_initialize (thread_p, boot_Db_full_name, log_path, log_prefix, from_backup, r_args);
 
   error_code = boot_after_copydb (thread_p);	// only does something if this is first boot after copydb
@@ -2572,7 +2565,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 
 #if defined (SERVER_MODE)
-  // TODO: not sure, but I think page server's initialization must come after log has been initialized
+  // page server-specific initialization needs log to be initialized
   if (get_server_type () == SERVER_TYPE_PAGE)
     {
       const log_lsa next_io_lsa = log_Gl.append.get_nxio_lsa ();
