@@ -72,9 +72,14 @@ static int log_rv_analysis_2pc_abort_decision (THREAD_ENTRY *thread_p, int tran_
 static int log_rv_analysis_2pc_commit_inform_particps (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa);
 static int log_rv_analysis_2pc_abort_inform_particps (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa);
 static int log_rv_analysis_2pc_recv_ack (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_lsa);
-static int log_rv_analysis_log_end (int tran_id, LOG_LSA *log_lsa);
+static int log_rv_analysis_log_end (int tran_id, const LOG_LSA *log_lsa);
 static void log_rv_analysis_record (THREAD_ENTRY *thread_p, LOG_RECTYPE log_type, int tran_id, LOG_LSA *log_lsa,
 				    LOG_PAGE *log_page_p, LOG_LSA *prev_lsa, log_recovery_context &context);
+static void log_rv_analysis_record_on_page (THREAD_ENTRY *thread_p, LOG_RECTYPE log_type, int tran_id,
+    const LOG_LSA *log_lsa);
+static void log_rv_analysis_record_on_tran (THREAD_ENTRY *thread_p, LOG_RECTYPE log_type, int tran_id,
+    LOG_LSA *log_lsa, LOG_PAGE *log_page_p, LOG_LSA *prev_lsa,
+    log_recovery_context &context);
 static bool log_is_page_of_record_broken (THREAD_ENTRY *thread_p, const LOG_LSA *log_lsa,
     const LOG_RECORD_HEADER *log_rec_header);
 static void log_recovery_resetlog (THREAD_ENTRY *thread_p, const LOG_LSA *new_append_lsa,
@@ -404,23 +409,11 @@ log_recovery_analysis (THREAD_ENTRY *thread_p, INT64 *num_redo_log_records, log_
 	  context.set_start_redo_lsa (start_redo_lsa);
 	}
 
-      if (!context.is_page_server ())
+      log_rv_analysis_record (thread_p, log_rtype, tran_id, &log_nav_lsa, log_page_p, &prev_lsa, context);
+      if (context.is_restore_incomplete ())
 	{
-	  // If this is not page server, analyze records to rebuild the state of transaction table
-	  log_rv_analysis_record (thread_p, log_rtype, tran_id, &log_nav_lsa, log_page_p, &prev_lsa, context);
-	  if (context.is_restore_incomplete ())
-	    {
-	      break;
-	    }
+	  break;
 	}
-      else
-	{
-	  if (log_rtype == LOG_END_OF_LOG)
-	    {
-	      log_rv_analysis_log_end (tran_id, &log_nav_lsa);
-	    }
-	}
-
       if (context.get_end_redo_lsa () == next_record_lsa)
 	{
 	  assert_release (context.get_end_redo_lsa () != next_record_lsa);
@@ -1565,7 +1558,7 @@ log_rv_analysis_2pc_recv_ack (THREAD_ENTRY *thread_p, int tran_id, LOG_LSA *log_
  * Note:
  */
 static int
-log_rv_analysis_log_end (int tran_id, LOG_LSA *log_lsa)
+log_rv_analysis_log_end (int tran_id, const LOG_LSA *log_lsa)
 {
   if (!logpb_is_page_in_archive (log_lsa->pageid))
     {
@@ -1590,6 +1583,35 @@ log_rv_analysis_log_end (int tran_id, LOG_LSA *log_lsa)
 static void
 log_rv_analysis_record (THREAD_ENTRY *thread_p, LOG_RECTYPE log_type, int tran_id, LOG_LSA *log_lsa,
 			LOG_PAGE *log_page_p, LOG_LSA *prev_lsa, log_recovery_context &context)
+{
+  if (context.is_page_server ())
+    {
+      log_rv_analysis_record_on_page (thread_p, log_type, tran_id, log_lsa);
+    }
+  else
+    {
+      log_rv_analysis_record_on_tran (thread_p, log_type, tran_id, log_lsa, log_page_p, prev_lsa, context);
+    }
+}
+
+//
+// log_rv_analysis_record_on_page - find the end of log
+//
+static void
+log_rv_analysis_record_on_page (THREAD_ENTRY *thread_p, LOG_RECTYPE log_type, int tran_id, const LOG_LSA *log_lsa)
+{
+  if (log_type == LOG_END_OF_LOG)
+    {
+      log_rv_analysis_log_end (tran_id, log_lsa);
+    }
+}
+
+//
+// log_rv_analysis_record_on_tran - rebuild the transaction table when the server stopped unexpectedly
+//
+static void
+log_rv_analysis_record_on_tran (THREAD_ENTRY *thread_p, LOG_RECTYPE log_type, int tran_id, LOG_LSA *log_lsa,
+				LOG_PAGE *log_page_p, LOG_LSA *prev_lsa, log_recovery_context &context)
 {
   switch (log_type)
     {
