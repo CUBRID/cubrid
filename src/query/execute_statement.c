@@ -1171,45 +1171,36 @@ normal_exit:
 }
 
 
-/*
- * do_get_serial_obj_id() -
- *   return: serial object
- *   serial_obj_id(out):
- *   serial_class_mop(in):
- *   serial_name(in):
- *
- * Note:
- */
-MOP
-do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id, DB_OBJECT * serial_class_mop, const char *serial_name)
+static MOP
+do_get_obj_id (DB_IDENTIFIER * obj_id, DB_OBJECT * class_mop, const char *name, const char *attr_name)
 {
   DB_OBJECT *mop;
   DB_VALUE val;
   DB_IDENTIFIER *db_id;
   char *p;
-  size_t serial_name_size;
+  size_t name_size;
   int save;
 
-  OID_SET_NULL (serial_obj_id);
+  OID_SET_NULL (obj_id);
 
-  if (serial_class_mop == NULL || serial_name == NULL)
+  if (class_mop == NULL || name == NULL)
     {
       return NULL;
     }
 
-  serial_name_size = intl_identifier_lower_string_size (serial_name);
-  p = (char *) malloc (serial_name_size + 1);
+  name_size = intl_identifier_lower_string_size (name);
+  p = (char *) malloc (name_size + 1);
   if (p == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (serial_name_size + 1));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (name_size + 1));
       return NULL;
     }
 
-  intl_identifier_lower (serial_name, p);
+  intl_identifier_lower (name, p);
   db_make_string (&val, p);
 
   AU_DISABLE (save);
-  mop = db_find_unique (serial_class_mop, SERIAL_ATTR_NAME, &val);
+  mop = db_find_unique (class_mop, attr_name, &val);
   AU_ENABLE (save);
 
   if (mop == NULL)
@@ -1227,7 +1218,7 @@ do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id, DB_OBJECT * serial_class_mo
 
       if (db_id != NULL)
 	{
-	  *serial_obj_id = *db_id;
+	  *obj_id = *db_id;
 	}
       else
 	{
@@ -1239,6 +1230,22 @@ do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id, DB_OBJECT * serial_class_mo
   free_and_init (p);
 
   return mop;
+}
+
+
+/*
+ * do_get_serial_obj_id() -
+ *   return: serial object
+ *   serial_obj_id(out):
+ *   serial_class_mop(in):
+ *   serial_name(in):
+ *
+ * Note:
+ */
+MOP
+do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id, DB_OBJECT * serial_class_mop, const char *serial_name)
+{
+  return do_get_obj_id (serial_obj_id, serial_class_mop, serial_name, SERIAL_ATTR_NAME);
 }
 
 /*
@@ -3068,7 +3075,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	case PT_DROP_SESSION_VARIABLES:
 	case PT_SET_NAMES:
 	case PT_SET_TIMEZONE:
-	  /* ctshim  */
+	  /* TODO: check it  */
 	case PT_CREATE_SERVER:
 	case PT_DROP_SERVER:
 
@@ -3300,15 +3307,12 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  error = do_set_timezone (parser, statement);
 	  break;
 
-	  /* ctshim  */
 	case PT_CREATE_SERVER:
-	  //error = jsp_drop_stored_procedure (parser, statement);
-	  assert (0);
+	  error = do_create_server (parser, statement);
 	  break;
 
 	case PT_DROP_SERVER:
-	  //error = jsp_drop_stored_procedure (parser, statement);
-	  assert (0);
+	  error = do_drop_server (parser, statement);
 	  break;
 
 	default:
@@ -3568,7 +3572,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_DROP_SESSION_VARIABLES:
     case PT_SET_NAMES:
     case PT_SET_TIMEZONE:
-      /* ctshim  */
+      /* TODO: check it  */
     case PT_CREATE_SERVER:
     case PT_DROP_SERVER:
       /* Need to get dirty version when fetch the instance. That's because we are in an update command. */
@@ -3767,12 +3771,11 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_SET_TIMEZONE:
       err = do_set_timezone (parser, statement);
       break;
-      /* ctshim  */
     case PT_CREATE_SERVER:
-      assert (0);
+      err = do_create_server (parser, statement);
       break;
     case PT_DROP_SERVER:
-      assert (0);
+      err = do_drop_server (parser, statement);
       break;
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PT_UNKNOWN_STATEMENT, 1, statement->node_type);
@@ -14741,7 +14744,6 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       repl_stmt.statement_type = CUBRID_STMT_DROP_STORED_PROCEDURE;
       break;
 
-      /* ctshim  */
     case PT_CREATE_SERVER:
       repl_stmt.statement_type = CUBRID_STMT_CREATE_SERVER;
       break;
@@ -17754,5 +17756,363 @@ do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** class
     }
 
 exit:
+  return error;
+}
+
+MOP
+do_get_server_obj_id (DB_IDENTIFIER * server_obj_id, DB_OBJECT * server_class_mop, const char *server_name)
+{
+  return do_get_obj_id (server_obj_id, server_class_mop, server_name, "link_name");
+}
+
+int
+do_drop_server (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  DB_OBJECT *server_class = NULL, *server_object = NULL;
+  DB_IDENTIFIER server_obj_id;
+  DB_VALUE class_name_val;
+  char *name;
+  int error = NO_ERROR;
+  int save;
+  bool au_disable_flag = false;
+
+  CHECK_MODIFICATION_ERROR ();
+
+  db_make_null (&class_name_val);
+  OID_SET_NULL (&server_obj_id);
+
+  server_class = sm_find_class (CT_DB_SERVER_NAME);
+  if (server_class == NULL)
+    {
+      error = ER_QPROC_DB_SERVER_NOT_FOUND;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto end;
+    }
+
+  name = (char *) statement->info.drop_server.server_name->info.name.original;
+  server_object = do_get_server_obj_id (&server_obj_id, server_class, name);
+  if (server_object == NULL)
+    {
+      if (statement->info.drop_server.if_exists)
+	{
+	  return NO_ERROR;
+	}
+      error = ER_QPROC_SERVER_NOT_FOUND;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, name);
+      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RT_SERVER_NOT_DEFINED, name);
+      goto end;
+    }
+
+  /* check if user is creator or DBA  */
+  error = au_check_serial_authorization (server_object);
+  if (error != NO_ERROR)
+    {
+      if (error == ER_QPROC_CANNOT_UPDATE_SERIAL)
+	{
+	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RT_SERVER_ALTER_NOT_ALLOWED, 0);
+	}
+      goto end;
+    }
+
+  AU_DISABLE (save);
+  au_disable_flag = true;
+
+  error = db_drop (server_object);
+
+end:
+  pr_clear_value (&class_name_val);
+
+  if (au_disable_flag)
+    {
+      AU_ENABLE (save);
+    }
+
+  return error;
+}
+
+
+static int
+do_create_server_internal (MOP * server_object, const char *server_name, const char *host, DB_VALUE * port_no,
+			   const char *dbname, const char *username, const char *password, const char *properties,
+			   const char *comment)
+{
+  DB_OBJECT *ret_obj = NULL;
+  DB_OTMPL *obj_tmpl = NULL;
+  DB_VALUE value;
+  DB_OBJECT *server_class = NULL;
+  int au_save, error = NO_ERROR;
+
+  db_make_null (&value);
+
+  /* temporarily disable authorization to access _db_server class */
+  AU_DISABLE (au_save);
+
+  server_class = sm_find_class (CT_DB_SERVER_NAME);
+  if (server_class == NULL)
+    {
+      error = ER_QPROC_DB_SERVER_NOT_FOUND;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto end;
+    }
+
+  obj_tmpl = dbt_create_object_internal ((MOP) server_class);
+  if (obj_tmpl == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      goto end;
+    }
+
+  /* server_name */
+  db_make_string (&value, server_name);
+  error = dbt_put_internal (obj_tmpl, "link_name", &value);
+  pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* host */
+  db_make_string (&value, host);
+  error = dbt_put_internal (obj_tmpl, "host", &value);
+  pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* port */
+  error = dbt_put_internal (obj_tmpl, "port", port_no);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* dbname */
+  db_make_string (&value, dbname);
+  error = dbt_put_internal (obj_tmpl, "db_name", &value);
+  pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* username */
+  db_make_string (&value, username);
+  error = dbt_put_internal (obj_tmpl, "user_name", &value);
+  pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* password */
+  db_make_string (&value, password);
+  error = dbt_put_internal (obj_tmpl, "password", &value);
+  pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* properties */
+  db_make_string (&value, properties);
+  error = dbt_put_internal (obj_tmpl, "properties", &value);
+  pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* owner */
+  db_make_object (&value, Au_user);
+  error = dbt_put_internal (obj_tmpl, "owner", &value);
+  pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* comment */
+  db_make_string (&value, comment);
+  error = dbt_put_internal (obj_tmpl, "comment", &value);
+  pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  ret_obj = dbt_finish_object (obj_tmpl);
+  if (ret_obj == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+    }
+  else if (server_object != NULL)
+    {
+      *server_object = ret_obj;
+    }
+
+end:
+  if (obj_tmpl != NULL && ret_obj == NULL)
+    {
+      dbt_abort_object (obj_tmpl);
+    }
+  AU_ENABLE (au_save);
+  return error;
+}
+
+int
+do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  DB_OBJECT *server_class = NULL, *server_object = NULL;
+  DB_IDENTIFIER server_obj_id;
+  DB_VALUE *pval = NULL;
+  char *server_name = NULL;
+  DB_VALUE port_no;
+  DB_DATA_STATUS data_stat;
+  const char *host = NULL;
+  const char *dbname = NULL;
+  const char *username = NULL;
+  const char *password = NULL;
+  const char *properties = NULL;
+  const char *comment = NULL;
+  int error = NO_ERROR;
+  int save;
+  bool au_disable_flag = false;
+
+  PT_CREATE_SERVER_INFO *si = &statement->info.create_server;
+
+  CHECK_MODIFICATION_ERROR ();
+
+  db_make_null (&port_no);
+  db_make_int (&port_no, 0);
+
+  server_class = sm_find_class (CT_DB_SERVER_NAME);
+  if (server_class == NULL)
+    {
+      error = ER_QPROC_DB_SERVER_NOT_FOUND;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto end;
+    }
+
+  server_name = (char *) si->server_name->info.name.original;
+  server_object = do_get_server_obj_id (&server_obj_id, server_class, server_name);
+  if (server_object != NULL)
+    {
+      error = ER_QPROC_SERVER_ALREADY_EXIST;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, server_name);
+      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SERVER_ALREADY_EXIST, server_name);
+      goto end;
+    }
+
+  /* HOST */
+  assert ((si->host->node_type == PT_NAME) || (si->host->node_type == PT_VALUE));
+  if (si->host->node_type == PT_VALUE)
+    {
+      host = (char *) PT_VALUE_GET_BYTES (si->host);
+    }
+  else
+    {
+      host = (char *) si->host->info.name.original;
+    }
+  if (host == NULL)
+    {
+      error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
+      goto end;
+    }
+
+  /* PORT */
+  db_value_domain_init (&port_no, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
+  pval = pt_value_to_db (parser, si->port);
+  if (pval == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      goto end;
+    }
+
+  error = numeric_db_value_coerce_to_num (pval, &port_no, &data_stat);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+  pval = NULL;
+
+  /* DBNAME */
+  assert (si->dbname->node_type == PT_NAME);
+  dbname = (char *) si->dbname->info.name.original;
+  if (dbname == NULL)
+    {
+      error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
+      goto end;
+    }
+
+  /* USER */
+  assert (si->user->node_type == PT_NAME);
+  username = (char *) si->user->info.name.original;
+  if (username == NULL)
+    {
+      error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
+      goto end;
+    }
+
+  /* PASSWORD */
+  if (si->pwd != NULL)
+    {
+      assert (si->pwd->node_type == PT_VALUE);
+      password = (char *) PT_VALUE_GET_BYTES (si->pwd);
+      if (password == NULL)
+	{
+	  error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
+	  goto end;
+	}
+    }
+
+  /* PROPERTIES */
+  if (si->prop != NULL)
+    {
+      assert (si->prop->node_type == PT_VALUE);
+      properties = (char *) PT_VALUE_GET_BYTES (si->prop);
+      if (properties == NULL)
+	{
+	  error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
+	  goto end;
+	}
+    }
+
+  /* COMMENT */
+  if (si->comment != NULL)
+    {
+      assert (si->comment->node_type == PT_VALUE);
+      comment = (char *) PT_VALUE_GET_BYTES (si->comment);
+      if (comment == NULL)
+	{
+	  error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
+	  goto end;
+	}
+    }
+
+  /* now create serial object which is insert into db_serial */
+  AU_DISABLE (save);
+  au_disable_flag = true;
+
+  server_object = NULL;
+  error =
+    do_create_server_internal (&server_object, server_name, host, &port_no, dbname, username, password, properties,
+			       comment);
+  if (error >= 0)
+    {
+      error = NO_ERROR;
+    }
+
+end:
+  if (au_disable_flag == true)
+    {
+      AU_ENABLE (save);
+    }
+
+  pr_clear_value (&port_no);
+
   return error;
 }

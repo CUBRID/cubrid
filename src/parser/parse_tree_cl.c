@@ -18418,9 +18418,53 @@ static PARSER_VARCHAR *
 pt_print_create_server (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = 0, *r;
+  PT_CREATE_SERVER_INFO *si = &(p->info.create_server);
 
-  q = pt_append_nulstring (parser, q, "CREATE SERVER()");
+  q = pt_append_nulstring (parser, q, "CREATE SERVER ");
+  q = pt_append_nulstring (parser, q, (char *) si->server_name->info.name.original);
+  q = pt_append_nulstring (parser, q, " ( HOST=");
+  if (si->host->node_type == PT_VALUE)
+    {
+      q = pt_append_bytes (parser, q, (char *) si->host->info.value.data_value.str->bytes,
+			   si->host->info.value.data_value.str->length);
+    }
+  else
+    {
+      q = pt_append_nulstring (parser, q, (char *) si->host->info.name.original);
+    }
 
+  q = pt_append_nulstring (parser, q, ", PORT=");
+  r = pt_print_bytes (parser, si->port);
+  q = pt_append_varchar (parser, q, r);
+
+  q = pt_append_nulstring (parser, q, ", DBNAME=");
+  q = pt_append_nulstring (parser, q, (char *) si->dbname->info.name.original);
+
+  q = pt_append_nulstring (parser, q, ", USER=");
+  q = pt_append_nulstring (parser, q, (char *) si->user->info.name.original);
+
+  if (si->pwd != NULL)
+    {
+      q = pt_append_nulstring (parser, q, ", PASSWORD=");
+      r = pt_print_bytes (parser, si->pwd);
+      q = pt_append_varchar (parser, q, r);
+    }
+
+  if (si->prop != NULL)
+    {
+      q = pt_append_nulstring (parser, q, ", PROPERTIES=");
+      r = pt_print_bytes (parser, si->prop);
+      q = pt_append_varchar (parser, q, r);
+    }
+#if 0
+  if (si->comment != NULL)
+    {
+      q = pt_append_nulstring (parser, q, ", COMMENT=");
+      r = pt_print_bytes (parser, si->comment);
+      q = pt_append_varchar (parser, q, r);
+    }
+#endif
+  q = pt_append_nulstring (parser, q, " )");
 
   return q;
 }
@@ -18435,11 +18479,17 @@ pt_apply_drop_server (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 static PARSER_VARCHAR *
 pt_print_drop_server (PARSER_CONTEXT * parser, PT_NODE * p)
 {
-  PARSER_VARCHAR *q = 0, *r;
+  PARSER_VARCHAR *q = 0;
 
-  q = pt_append_nulstring (parser, q, "DROP SERVER ");
-  r = pt_print_bytes (parser, p->info.drop_server.server_name);
-  q = pt_append_varchar (parser, q, r);
+  if (p->info.drop_server.if_exists)
+    {
+      q = pt_append_nulstring (parser, q, "DROP SERVER IF EXISTS ");
+    }
+  else
+    {
+      q = pt_append_nulstring (parser, q, "DROP SERVER ");
+    }
 
+  q = pt_append_nulstring (parser, q, (char *) p->info.drop_server.server_name->info.name.original);
   return q;
 }

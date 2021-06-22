@@ -24924,7 +24924,18 @@ connect_item
         | PASSWORD '=' CHAR_STRING
           {{
                 container_2 ctn;
-                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_PASSWORD), $3);
+                PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
+	        if (val)                    
+		  {
+                        val->type_enum = PT_TYPE_CHAR;
+                        val->info.value.string_type = ' ';
+                        val->info.value.data_value.str =
+                                pt_append_bytes (this_parser, NULL, $3, strlen ($3));
+                        
+                        PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);
+		   }
+
+                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_PASSWORD), val);
                 $$ = ctn;
            DBG_PRINT}}
         | PROPERTIES '=' 
@@ -24936,7 +24947,18 @@ connect_item
         | PROPERTIES '=' CHAR_STRING 
           {{
                 container_2 ctn;
-                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_PROPERTIES), $3);
+                PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
+	        if (val)                    
+		  {
+                        val->type_enum = PT_TYPE_CHAR;
+                        val->info.value.string_type = ' ';
+                        val->info.value.data_value.str =
+                                pt_append_bytes (this_parser, NULL, $3, strlen ($3));
+                        
+                        PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);
+		   }
+
+                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_PROPERTIES), val);
                 $$ = ctn;
            DBG_PRINT}}
         | COMMENT '='

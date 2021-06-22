@@ -1356,7 +1356,7 @@ logddl_is_ddl_type (int node_type)
     case PT_RENAME_TRIGGER:
     case PT_UPDATE_STATS:
     case PT_TRUNCATE:
-      /* ctshim  */
+      /* TODO: check it  */
     case PT_CREATE_SERVER:
     case PT_DROP_SERVER:
       return true;
