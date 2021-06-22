@@ -808,8 +808,11 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
 
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, rcv_tran_index);
 
-  log_recovery_undo (thread_p);
-  boot_reset_db_parm (thread_p);
+  if (!context.is_page_server ())
+    {
+      log_recovery_undo (thread_p);
+      boot_reset_db_parm (thread_p);
+    }
 
   // *INDENT-OFF*
   log_system_tdes::rv_final ();
@@ -989,7 +992,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
   // *INDENT-OFF*
   std::unique_ptr<cublog::minimum_log_lsa_monitor> minimum_log_lsa;
   std::unique_ptr<cublog::redo_parallel> parallel_recovery_redo;
-  // *INDENT-ON*
 #if defined(SERVER_MODE)
   {
     const int log_recovery_redo_parallel_count = prm_get_integer_value (PRM_ID_RECOVERY_PARALLEL_COUNT);
@@ -997,11 +999,12 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
     if (log_recovery_redo_parallel_count > 0)
       {
 	minimum_log_lsa.reset (new cublog::minimum_log_lsa_monitor ());
-	parallel_recovery_redo.
-	  reset (new cublog::redo_parallel (log_recovery_redo_parallel_count, *minimum_log_lsa.get ()));
+	parallel_recovery_redo.reset (new cublog::redo_parallel (log_recovery_redo_parallel_count,
+								 *minimum_log_lsa.get ()));
       }
   }
 #endif
+  // *INDENT-ON*
 
   /*
    * GO FORWARD, redoing records of all transactions including aborted ones.
@@ -1649,13 +1652,16 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 #endif
   LOG_CS_ENTER (thread_p);
 
-  log_Gl.mvcc_table.reset_start_mvccid ();
+  if (!context.is_page_server ())
+    {
+      log_Gl.mvcc_table.reset_start_mvccid ();
 
-  /* Abort all atomic system operations that were open when server crashed */
-  log_recovery_abort_all_atomic_sysops (thread_p);
+      /* Abort all atomic system operations that were open when server crashed */
+      log_recovery_abort_all_atomic_sysops (thread_p);
 
-  /* Now finish all postpone operations */
-  log_recovery_finish_all_postpone (thread_p);
+      /* Now finish all postpone operations */
+      log_recovery_finish_all_postpone (thread_p);
+    }
 
   /* Flush all dirty pages */
   logpb_flush_pages_direct (thread_p);
