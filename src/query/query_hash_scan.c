@@ -857,7 +857,7 @@ fhs_dump (THREAD_ENTRY * thread_p, FHSID * fhsid_p)
     }
   num_pages -= 1;
 
-  for (bucket_page_no = 0; bucket_page_no <= num_pages; bucket_page_no++)
+/*  for (bucket_page_no = 0; bucket_page_no <= num_pages; bucket_page_no++)
     {
       bucket_page_p = fhs_fix_nth_page (thread_p, &fhsid_p->bucket_file, bucket_page_no, PGBUF_LATCH_READ);
       if (bucket_page_p == NULL)
@@ -868,7 +868,7 @@ fhs_dump (THREAD_ENTRY * thread_p, FHSID * fhsid_p)
       printf ("\n\n");
       fhs_dump_bucket (thread_p, bucket_page_p);
       pgbuf_unfix_and_init (thread_p, bucket_page_p);
-    }
+    }*/
 
   return;
 }
@@ -922,14 +922,14 @@ fhs_read_tftid_from_record (char *record_p, TFTID * tftid_p)
 static void
 fhs_read_key_from_record (char *record_p, int *key)
 {
-  record_p += sizeof (OID);
+  record_p += sizeof (TFTID);
   *key = *(int *) record_p;
 }
 
 static void
 fhs_read_flag_from_record (char *record_p, short *flag)
 {
-  record_p += sizeof (OID) + sizeof (int);
+  record_p += sizeof (TFTID) + sizeof (int);
   *flag = *(short *) record_p;
 }
 
@@ -1302,7 +1302,7 @@ fhs_destroy (THREAD_ENTRY * thread_p, FHSID * fhsid_p)
       return ER_FAILED;
     }
 
-#if 0				/* for debug */
+#if 1				/* for debug */
   fhs_dump (thread_p, fhsid_p);
 #endif /* for debug */
 
@@ -1661,7 +1661,7 @@ fhs_search_next (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hlsid_p, TFTID * valu
 
       /* compare key */
       bucket_key = (char *) recdes.data;
-      bucket_key += sizeof (OID);
+      bucket_key += sizeof (TFTID);
       if (fhs_compare_key (thread_p, bucket_key, (void *) &hlsid_p->curr_hash_key, recdes.type, &compare_result) !=
 	  NO_ERROR)
 	{
@@ -1872,9 +1872,9 @@ fhs_binary_search_bucket (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, PGSLO
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_CORRUPTED, 0);
 	  return false;
 	}
-
+      fhs_read_flag_from_record ((char *) recdes.data, &flag);
       bucket_record_p = (char *) recdes.data;
-      bucket_record_p += sizeof (OID);
+      bucket_record_p += sizeof (TFTID);
 
       if (fhs_compare_key (thread_p, bucket_record_p, key_p, recdes.type, &compare_result) != NO_ERROR)
 	{
@@ -1902,7 +1902,7 @@ fhs_binary_search_bucket (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, PGSLO
 		    }
 
 		  bucket_record_p = (char *) recdes.data;
-		  bucket_record_p += sizeof (OID);
+		  bucket_record_p += sizeof (TFTID);
 
 		  if (fhs_compare_key (thread_p, bucket_record_p, key_p, recdes.type, &compare_result) != NO_ERROR)
 		    {
@@ -1914,12 +1914,6 @@ fhs_binary_search_bucket (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, PGSLO
 	  else
 	    {
 	      /* go to last slot using flag */
-	      if (spage_get_record (thread_p, bucket_page_p, middle, &recdes, PEEK) != S_SUCCESS)
-		{
-		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_CORRUPTED, 0);
-		  return false;
-		}
-	      fhs_read_flag_from_record ((char *) recdes.data, &flag);
 	      if (flag == FHS_FLAG_INDIRECT)
 		{
 		  *out_position_p = middle;
@@ -1943,7 +1937,7 @@ fhs_binary_search_bucket (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, PGSLO
 	}
       else
 	{
-	  low = middle + 1;
+	  low = (flag > 0) ? middle + flag : middle + 1;
 	}
     }
   while (high >= low);
@@ -2135,7 +2129,7 @@ fhs_insert_bucket_after_extend_if_need (THREAD_ENTRY * thread_p, FHSID * fhsid_p
 static char
 fhs_find_depth (THREAD_ENTRY * thread_p, FHSID * fhsid_p, int location, VPID * bucket_vpid_p, VPID * sibling_vpid_p)
 {
-  PAGE_PTR page_p;
+  PAGE_PTR page_p = NULL;
   FHS_DIR_RECORD *dir_record_p;
   int loc;
   int rel_loc;
@@ -3074,7 +3068,7 @@ fhs_get_pseudo_key (THREAD_ENTRY * thread_p, RECDES * recdes_p, FHS_HASH_KEY * o
   char *bucket_record_p;
 
   bucket_record_p = (char *) recdes_p->data;
-  bucket_record_p += sizeof (OID);
+  bucket_record_p += sizeof (TFTID);
   hash_key = *((FHS_HASH_KEY *) bucket_record_p);
 
   *out_hash_key_p = hash_key;
