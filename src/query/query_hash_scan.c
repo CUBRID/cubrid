@@ -876,7 +876,7 @@ fhs_dump (THREAD_ENTRY * thread_p, FHSID * fhsid_p)
 static inline char *
 fhs_write_tftid_to_record (char *record_p, TFTID * tftid_p)
 {
-  memcpy(record_p, tftid_p, sizeof(TFTID));
+  memcpy (record_p, tftid_p, sizeof(TFTID));
   record_p += sizeof (TFTID);
   return record_p;
 }
@@ -902,7 +902,7 @@ fhs_write_flag_to_record (char *record_p, short flag)
 static inline void
 fhs_read_tftid_from_record (char *record_p, TFTID * tftid_p)
 {
-  memcpy(tftid_p, record_p, sizeof(TFTID));
+  memcpy (tftid_p, record_p, sizeof(TFTID));
 }
 
 static inline void
