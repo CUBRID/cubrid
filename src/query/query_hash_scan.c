@@ -73,7 +73,7 @@ static DB_VALUE_COMPARE_RESULT qdata_hscan_key_compare (HASH_SCAN_KEY * ckey1, H
 typedef unsigned int FHS_HASH_KEY;
 #define FHS_KEY_SIZE (sizeof (FHS_HASH_KEY))
 #define FHS_ALIGNMENT ((char) FHS_KEY_SIZE)
-#define FHS_MAX_DUP_KEY 100	/* 10% of MAXNUM (PAGE 16K / RECORD 14 bytes) */
+#define FHS_MAX_DUP_KEY 2	/* 10% of MAXNUM (PAGE 16K / RECORD 14 bytes) */
 
 #define SET_VPID(dest_vpid, vol_id, page_id)  \
   do \
@@ -110,12 +110,12 @@ typedef enum
   FHS_ERROR_OCCURRED
 } FHS_RESULT;
 
-static void fhs_read_tftid_from_record (char *record_p, TFTID * tftid_p);
-static void fhs_read_key_from_record (char *record_p, int *key);
-static void fhs_read_flag_from_record (char *record_p, short *flag);
-static char *fhs_write_tftid_to_record (char *record_p, TFTID * tftid_p);
-static char *fhs_write_key_to_record (char *record_p, void *key_p);
-static char *fhs_write_flag_to_record (char *record_p, short flag);
+static void inline fhs_read_tftid_from_record (char *record_p, TFTID * tftid_p);
+static void inline fhs_read_key_from_record (char *record_p, int *key);
+static void inline fhs_read_flag_from_record (char *record_p, short *flag);
+static char inline *fhs_write_tftid_to_record (char *record_p, TFTID * tftid_p);
+static char inline *fhs_write_key_to_record (char *record_p, void *key_p);
+static char inline *fhs_write_flag_to_record (char *record_p, short flag);
 static int fhs_compose_record (THREAD_ENTRY * thread_p, void *key_p, TFTID * value_p, RECDES * recdes_p, short flag);
 static PAGE_PTR fhs_fix_ehid_page (THREAD_ENTRY * thread_p, EHID * ehid, PGBUF_LATCH_MODE latch_mode);
 static PAGE_PTR fhs_fix_old_page (THREAD_ENTRY * thread_p, const VFID * vfid_p, const VPID * vpid_p,
@@ -857,7 +857,7 @@ fhs_dump (THREAD_ENTRY * thread_p, FHSID * fhsid_p)
     }
   num_pages -= 1;
 
-/*  for (bucket_page_no = 0; bucket_page_no <= num_pages; bucket_page_no++)
+  for (bucket_page_no = 0; bucket_page_no <= num_pages; bucket_page_no++)
     {
       bucket_page_p = fhs_fix_nth_page (thread_p, &fhsid_p->bucket_file, bucket_page_no, PGBUF_LATCH_READ);
       if (bucket_page_p == NULL)
@@ -868,27 +868,20 @@ fhs_dump (THREAD_ENTRY * thread_p, FHSID * fhsid_p)
       printf ("\n\n");
       fhs_dump_bucket (thread_p, bucket_page_p);
       pgbuf_unfix_and_init (thread_p, bucket_page_p);
-    }*/
+    }
 
   return;
 }
 
-static char *
+static inline char *
 fhs_write_tftid_to_record (char *record_p, TFTID * tftid_p)
 {
-  *(PAGEID *) record_p = tftid_p->pageid;
-  record_p += sizeof (PAGEID);
-
-  *(VOLID *) record_p = tftid_p->volid;
-  record_p += sizeof (VOLID);
-
-  *(INT16 *) record_p = tftid_p->offset;
-  record_p += sizeof (INT16);
-
+  memcpy(record_p, tftid_p, sizeof(TFTID));
+  record_p += sizeof (TFTID);
   return record_p;
 }
 
-static char *
+static inline char *
 fhs_write_key_to_record (char *record_p, void *key_p)
 {
   *(int *) record_p = *(int *) key_p;
@@ -897,7 +890,7 @@ fhs_write_key_to_record (char *record_p, void *key_p)
   return record_p;
 }
 
-static char *
+static inline char *
 fhs_write_flag_to_record (char *record_p, short flag)
 {
   *(short *) record_p = flag;
@@ -906,27 +899,20 @@ fhs_write_flag_to_record (char *record_p, short flag)
   return record_p;
 }
 
-static void
+static inline void
 fhs_read_tftid_from_record (char *record_p, TFTID * tftid_p)
 {
-  tftid_p->pageid = *(PAGEID *) record_p;
-  record_p += sizeof (PAGEID);
-
-  tftid_p->volid = *(VOLID *) record_p;
-  record_p += sizeof (VOLID);
-
-  tftid_p->offset = *(INT16 *) record_p;
-  record_p += sizeof (INT16);
+  memcpy(tftid_p, record_p, sizeof(TFTID));
 }
 
-static void
+static inline void
 fhs_read_key_from_record (char *record_p, int *key)
 {
   record_p += sizeof (TFTID);
   *key = *(int *) record_p;
 }
 
-static void
+static inline void
 fhs_read_flag_from_record (char *record_p, short *flag)
 {
   record_p += sizeof (TFTID) + sizeof (int);
@@ -1302,7 +1288,7 @@ fhs_destroy (THREAD_ENTRY * thread_p, FHSID * fhsid_p)
       return ER_FAILED;
     }
 
-#if 1				/* for debug */
+#if 0				/* for debug */
   fhs_dump (thread_p, fhsid_p);
 #endif /* for debug */
 
