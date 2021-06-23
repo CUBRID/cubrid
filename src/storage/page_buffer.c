@@ -16119,6 +16119,12 @@ pgbuf_daemons_init ()
   pgbuf_page_post_flush_daemon_init ();
   pgbuf_flush_control_daemon_init ();
 }
+
+void
+pgbuf_highest_evicted_lsa_init ()
+{
+  pgbuf_Pool.update_highest_evicted_lsa (log_Gl.hdr.append_lsa);
+}
 #endif /* SERVER_MODE */
 
 #if defined (SERVER_MODE)
