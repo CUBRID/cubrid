@@ -7732,13 +7732,9 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
       perfmon_inc_stat (thread_p, PSTAT_PB_NUM_IOREADS);
       show_status->num_pages_read++;
 
-      // pgbuf_request_data_page_from_page_server (vpid);
-      // pgbuf_io_read_local (thread_p, vpid, &bufptr->iopage_buffer->iopage, bufptr, hash_anchor, &success);
-      int result =
-	pgbuf_read_page_from_file_or_page_server (thread_p, vpid, &bufptr->iopage_buffer->iopage, bufptr, hash_anchor,
-						  &success);
+      int error_code = pgbuf_read_page_from_file_or_page_server (thread_p, vpid, &bufptr->iopage_buffer->iopage);
 
-      if (result != NO_ERROR)
+      if (error_code != NO_ERROR)
 	{
 	  /* There was an error in reading the page. Clean the buffer... since it may have been corrupted */
 	  ASSERT_ERROR ();
@@ -7769,10 +7765,8 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 	      CUBRID_IO_READ_END (query_id, IO_PAGESIZE, 1);
 	    }
 #endif /* ENABLE_SYSTEMTAP */
-
 	  PGBUF_BCB_CHECK_MUTEX_LEAKS ();
 	}
-
 
 #if defined(ENABLE_SYSTEMTAP)
       bool monitored = false;
@@ -7876,9 +7870,19 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 }
 
 int
-pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_page_local)
+pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_page)
 {
-  //Commment with situations.
+
+// Server type --- Storage Config Type --- Data Type --- Connection to PS --- Local Read --- Remote Read
+//     PS                Local            Perm & Temp          Never              Yes            No
+// -----------------------------------------------------------------------------------------------------
+//     TS                Local                Perm              Yes               Yes           Yes
+//                                                               No               Yes            No
+//                                            Temp             Yes/No             Yes            No
+//                       Remote               Perm              Yes                No           Yes
+//                                            Temp              Yes               Yes            No
+
+#if defined(SERVER_MODE)
   bool is_tran_server = get_server_type () == SERVER_TYPE_TRANSACTION;
   bool is_page_server = get_server_type () == SERVER_TYPE_PAGE;
   bool is_temporary_page = pgbuf_is_temporary_volume (vpid->volid);
@@ -7886,30 +7890,27 @@ pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * 
 
   bool request_from_ps = is_tran_server && ats_Gl.is_page_server_connected () && !is_temporary_page;
   bool read_from_local = is_page_server || (is_using_local_storage || is_temporary_page);
+#else
+  bool read_from_local = true;	// SA
+#endif
 
+  int error_code = ER_FAILED;
+
+#if defined(SERVER_MODE)
   if (request_from_ps)
     {
       pgbuf_request_data_page_from_page_server (vpid);
+      auto data_page = ats_Gl.get_data_page_broker ().wait_for_page (*vpid);
+      std::memcpy (io_page, data_page->c_str (), db_io_page_size ());
+      error_code = NO_ERROR;
     }
+#endif
+
   if (read_from_local)
     {
-      pgbuf_read_page_from_file (thread_p, vpid, io_page_local);
+      error_code = pgbuf_read_page_from_file (thread_p, vpid, io_page);
     }
-
-  if (request_from_ps)
-    {
-      auto data_page = ats_Gl.get_data_page_broker ().wait_for_page (*vpid);
-      std::memcpy (io_page_local, data_page->c_str (), db_io_page_size ());
-    }
-
-  if (request_from_ps)
-    {
-      // use page from PS
-    }
-  else
-    {
-      // use page from local
-    }
+  return error_code;
 }
 
 int				//return int (error)
