@@ -2454,7 +2454,7 @@ shf_destroy_when_new (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
   ptr = or_unpack_oid (ptr, &class_oid);
   ptr = or_unpack_int (ptr, &force);
 
-  error = xheap_destroy_newly_created (thread_p, &hfid, &class_oid, force);
+  error = xheap_destroy_newly_created (thread_p, &hfid, &class_oid, (bool) force);
   if (error != NO_ERROR)
     {
       (void) return_error_to_client (thread_p, rid);

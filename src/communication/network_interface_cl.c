@@ -1705,7 +1705,7 @@ heap_destroy (const HFID * hfid)
  * NOTE:
  */
 int
-heap_destroy_newly_created (const HFID * hfid, const OID * class_oid, const int force)
+heap_destroy_newly_created (const HFID * hfid, const OID * class_oid, const bool force)
 {
 #if defined(CS_MODE)
   int error = ER_NET_CLIENT_DATA_RECEIVE;
@@ -1721,7 +1721,7 @@ heap_destroy_newly_created (const HFID * hfid, const OID * class_oid, const int 
 
   ptr = or_pack_hfid (request, hfid);
   ptr = or_pack_oid (ptr, class_oid);
-  ptr = or_pack_int (ptr, force);
+  ptr = or_pack_int (ptr, (int) force);
 
   req_error =
     net_client_request (NET_SERVER_HEAP_DESTROY_WHEN_NEW, request, OR_ALIGNED_BUF_SIZE (a_request), reply,

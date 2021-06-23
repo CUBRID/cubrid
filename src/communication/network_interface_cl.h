@@ -119,7 +119,7 @@ extern int heap_create (HFID * hfid, const OID * class_oid, bool reuse_oid);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int heap_destroy (const HFID * hfid);
 #endif
-extern int heap_destroy_newly_created (const HFID * hfid, const OID * class_oid, const int force = 0);
+extern int heap_destroy_newly_created (const HFID * hfid, const OID * class_oid, const bool force = false);
 extern int heap_reclaim_addresses (const HFID * hfid);
 extern int file_apply_tde_to_class_files (const OID * class_oid);
 #ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG

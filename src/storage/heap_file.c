@@ -5801,7 +5801,7 @@ xheap_destroy (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid
  * identifier if it is a newly created heap file.
  */
 int
-xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid, const int force)
+xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid, const bool force)
 {
   VFID vfid;
   FILE_TYPE file_type;
