@@ -7913,7 +7913,7 @@ pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * 
   return error_code;
 }
 
-int				//return int (error)
+int
 pgbuf_read_page_from_file (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_page)
 {
   bool success = false;
@@ -7930,7 +7930,7 @@ pgbuf_read_page_from_file (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_
     }
   else if (fileio_read (thread_p, fileio_get_volume_descriptor (vpid->volid), io_page,
 			vpid->pageid, IO_PAGESIZE) == NULL)
-    {				// just return err
+    {
       return ER_FAILED;
     }
 }
