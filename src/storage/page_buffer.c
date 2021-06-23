@@ -7766,6 +7766,7 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 	  (void) pgbuf_unlock_page (thread_p, hash_anchor, vpid, true);
 
 	  PGBUF_BCB_CHECK_MUTEX_LEAKS ();
+	  return NULL;
 	}
 
       CAST_IOPGPTR_TO_PGPTR (pgptr, &bufptr->iopage_buffer->iopage);
@@ -7889,10 +7890,9 @@ pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * 
       auto data_page = ats_Gl.get_data_page_broker ().wait_for_page (*vpid);
       if (read_from_local)
 	{
-	  char buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
-	  FILEIO_PAGE *received_io_page = (FILEIO_PAGE *) PTR_ALIGN (buf, MAX_ALIGNMENT);
-	  std::memcpy (received_io_page, data_page->c_str (), db_io_page_size ());
-	  assert (received_io_page->prv == static_cast < FILEIO_PAGE * >(io_page)->prv);
+	  // *INDENT-OFF*
+	  assert (reinterpret_cast<FILEIO_PAGE const*> (data_page->c_str ())->prv == reinterpret_cast<FILEIO_PAGE *> (io_page)->prv);
+	  // *INDENT-ON*
 	}
 
       std::memcpy (io_page, data_page->c_str (), db_io_page_size ());
@@ -7957,7 +7957,7 @@ pgbuf_request_data_page_from_page_server (const VPID * vpid)
         {
           _er_log_debug (ARG_FILE_LINE, "Sent request for Page to Page Server. pageid: %ld volid: %d\n", vpid->pageid,
                       vpid->volid);
-	} 
+	}
     }
   // *INDENT-ON*
 #endif // SERVER_MODE
