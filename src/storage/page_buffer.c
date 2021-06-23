@@ -7732,7 +7732,23 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
       perfmon_inc_stat (thread_p, PSTAT_PB_NUM_IOREADS);
       show_status->num_pages_read++;
 
+#if defined(ENABLE_SYSTEMTAP)
+      bool monitored = false;
+      QUERY_ID query_id = qmgr_get_current_query_id (thread_p);
+      if (query_id != NULL_QUERY_ID)
+	{
+	  monitored = true;
+	  CUBRID_IO_READ_START (query_id);
+	}
+#endif /* ENABLE_SYSTEMTAP */
       int error_code = pgbuf_read_page_from_file_or_page_server (thread_p, vpid, &bufptr->iopage_buffer->iopage);
+
+#if defined(ENABLE_SYSTEMTAP)
+      if (monitored)
+	{
+	  CUBRID_IO_READ_END (query_id, IO_PAGESIZE, error_code != NO_ERROR);
+	}
+#endif /* ENABLE_SYSTEMTAP */
 
       if (error_code != NO_ERROR)
 	{
@@ -7749,41 +7765,8 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 	   */
 	  (void) pgbuf_unlock_page (thread_p, hash_anchor, vpid, true);
 
-#if defined(ENABLE_SYSTEMTAP)
-	  bool monitored = false;
-	  QUERY_ID query_id = NULL_QUERY_ID;
-
-	  query_id = qmgr_get_current_query_id (thread_p);
-	  if (query_id != NULL_QUERY_ID)
-	    {
-	      monitored = true;
-	      CUBRID_IO_READ_START (query_id);
-	    }
-
-	  if (monitored == true)
-	    {
-	      CUBRID_IO_READ_END (query_id, IO_PAGESIZE, 1);
-	    }
-#endif /* ENABLE_SYSTEMTAP */
 	  PGBUF_BCB_CHECK_MUTEX_LEAKS ();
 	}
-
-#if defined(ENABLE_SYSTEMTAP)
-      bool monitored = false;
-      QUERY_ID query_id = NULL_QUERY_ID;
-
-      query_id = qmgr_get_current_query_id (thread_p);
-      if (query_id != NULL_QUERY_ID)
-	{
-	  monitored = true;
-	  CUBRID_IO_READ_START (query_id);
-	}
-
-      if (monitored == true)
-	{
-	  CUBRID_IO_READ_END (query_id, IO_PAGESIZE, 1);
-	}
-#endif /* ENABLE_SYSTEMTAP */
 
       CAST_IOPGPTR_TO_PGPTR (pgptr, &bufptr->iopage_buffer->iopage);
       tde_algo = pgbuf_get_tde_algorithm (pgptr);
@@ -7887,30 +7870,37 @@ pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * 
   bool is_page_server = get_server_type () == SERVER_TYPE_PAGE;
   bool is_temporary_page = pgbuf_is_temporary_volume (vpid->volid);
   bool is_using_local_storage = !ats_Gl.uses_remote_storage ();
-
   bool request_from_ps = is_tran_server && ats_Gl.is_page_server_connected () && !is_temporary_page;
   bool read_from_local = is_page_server || (is_using_local_storage || is_temporary_page);
-#else
-  bool read_from_local = true;	// SA
-#endif
-
-  int error_code = ER_FAILED;
-
-#if defined(SERVER_MODE)
-  if (request_from_ps)
-    {
-      pgbuf_request_data_page_from_page_server (vpid);
-      auto data_page = ats_Gl.get_data_page_broker ().wait_for_page (*vpid);
-      std::memcpy (io_page, data_page->c_str (), db_io_page_size ());
-      error_code = NO_ERROR;
-    }
-#endif
+  int error_code = NO_ERROR;
 
   if (read_from_local)
     {
       error_code = pgbuf_read_page_from_file (thread_p, vpid, io_page);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
     }
-  return error_code;
+  if (request_from_ps)
+    {
+      pgbuf_request_data_page_from_page_server (vpid);
+      auto data_page = ats_Gl.get_data_page_broker ().wait_for_page (*vpid);
+      if (read_from_local)
+	{
+	  char buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+	  FILEIO_PAGE *received_io_page = (FILEIO_PAGE *) PTR_ALIGN (buf, MAX_ALIGNMENT);
+	  std::memcpy (received_io_page, data_page->c_str (), db_io_page_size ());
+	  assert (received_io_page->prv == static_cast < FILEIO_PAGE * >(io_page)->prv);
+	}
+
+      std::memcpy (io_page, data_page->c_str (), db_io_page_size ());
+    }
+  return NO_ERROR;
+#else // !SERVER_MODE = SA_MODE
+  return pgbuf_read_page_from_file (thread_p, vpid, io_page);
+#endif // !SERVER_MODE = SA_MODE
 }
 
 int
@@ -7931,7 +7921,9 @@ pgbuf_read_page_from_file (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_
   else if (fileio_read (thread_p, fileio_get_volume_descriptor (vpid->volid), io_page,
 			vpid->pageid, IO_PAGESIZE) == NULL)
     {
-      return ER_FAILED;
+      int error_code = ER_FAILED;
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
     }
 }
 
