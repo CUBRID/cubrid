@@ -310,6 +310,13 @@ static void logpb_set_unavailable_archive (THREAD_ENTRY * thread_p, int arv_num)
 static void logpb_dismount_log_archive (THREAD_ENTRY * thread_p);
 static bool logpb_is_archive_available (THREAD_ENTRY * thread_p, int arv_num);
 static void logpb_archive_active_log (THREAD_ENTRY * thread_p);
+#if defined (SERVER_MODE)
+static void logpb_assert_correctness_read_page_from_file_or_page_server (LOG_PAGEID pageid,
+									 const LOG_PAGE * left_log_pgptr,
+									 const LOG_PAGE * rite_log_pgptr);
+#endif /* SERVER_MODE */
+extern int logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE access_mode,
+				      LOG_PAGE * log_pgptr);
 static int logpb_remove_archive_logs_internal (THREAD_ENTRY * thread_p, int first, int last, const char *info_reason);
 static void logpb_append_archives_removed_to_log_info (int first, int last, const char *info_reason);
 static int logpb_verify_length (const char *db_fullname, const char *log_path, const char *log_prefix);
@@ -1910,7 +1917,10 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
   else
     {
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED, 1, pageid);
-      // TODO: LOG_CS_EXIT?
+      if (log_csect_entered)
+	{
+	  LOG_CS_EXIT (thread_p);
+	}
       return ER_LOG_PAGE_CORRUPTED;
     }
 
@@ -1918,7 +1928,6 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
     {
       /* Copy page from log_bufptr into log_pgptr */
       memcpy (log_pgptr, log_bufptr->logpage, LOG_PAGESIZE);
-      // TODO: why this extra check?
       if (log_bufptr->pageid == pageid)
 	{
 	  goto exit;
@@ -1986,6 +1995,24 @@ request_log_page_from_ps (LOG_PAGEID log_pageid)
 #endif // SERVER_MODE
 }
 
+#if defined (SERVER_MODE)
+void logpb_assert_correctness_read_page_from_file_or_page_server (LOG_PAGEID pageid,
+    const LOG_PAGE * left_log_pgptr, const LOG_PAGE * rite_log_pgptr)
+{
+  bool pages_equal (*left_log_pgptr == *rite_log_pgptr || pageid == LOGPB_HEADER_PAGE_ID);
+
+  if (!pages_equal && pageid == log_Gl.hdr.append_lsa.pageid)
+    {
+      const char* const left_log_page_area = left_log_pgptr->area;
+      const char* const rite_log_page_area = rite_log_pgptr->area;
+      const int cmp_res = strncmp(left_log_page_area, rite_log_page_area, log_Gl.hdr.append_lsa.offset);
+      pages_equal = left_log_pgptr->hdr == rite_log_pgptr->hdr && cmp_res == 0;
+    }
+
+  assert (pages_equal);
+}
+#endif // SERVER_MODE
+
 /*
  * logpb_read_page_from_file_or_page_server - depending on the server type and whether or not
  *        transaction server is being executed in a remote storage context, read log pages from
@@ -2003,21 +2030,21 @@ logpb_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, LOG_PAGEID pa
 {
 #if defined (SERVER_MODE)
   // execution contexts:
-  //  1) TS with remote storage => only read from PS
-  //  2) TS with local storage => both read from PS and from file and compare results
-  //  3) PS  => only read from file
+  //  1) TS with remote storage: only read from PS
+  //  2) TS with local storage + connected to PS: both read from PS and from file and compare results
+  //  3) PS or TS with local storage + not connected to PS: only read from file
 
   const SERVER_TYPE server_type = get_server_type ();
   if (server_type == SERVER_TYPE_TRANSACTION && ats_Gl.is_page_server_connected ())
     {
-      // context 2)
+      // context 1) or 2)
       request_log_page_from_ps (pageid);
     }
 
   bool read_from_disk = false;
   if (!is_tran_server_with_remote_storage ())
     {
-      // context 2) or 3) - either TS with local storage or PS
+      // context 2) or 3)
       const int res_read_from_file = logpb_read_page_from_file (thread_p, pageid, access_mode, log_pgptr);
       if (res_read_from_file != NO_ERROR)
 	{
@@ -2029,15 +2056,17 @@ logpb_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, LOG_PAGEID pa
 
   if (server_type == SERVER_TYPE_TRANSACTION && ats_Gl.is_page_server_connected ())
     {
-      std::shared_ptr < log_page_owner > log_page_from_page_server
-	= ats_Gl.get_log_page_broker ().wait_for_page (pageid);
+      // *INDENT-OFF*
+      std::shared_ptr<log_page_owner> log_page_from_page_server
+          = ats_Gl.get_log_page_broker ().wait_for_page (pageid);
+      // *INDENT-ON*
       if (read_from_disk)
 	{
 	  // context 2)
-	  // argument log_pgptr already contains value read from local storage
+	  // log_pgptr already contains value read from local storage
 	  const LOG_PAGE *const log_page_from_page_server_pgptr = log_page_from_page_server->get_log_page ();
-	  assert (*log_page_from_page_server_pgptr == *log_pgptr
-		  || pageid == LOGPB_HEADER_PAGE_ID || pageid == log_Gl.hdr.append_lsa.pageid);
+	  logpb_assert_correctness_read_page_from_file_or_page_server(
+		pageid, log_page_from_page_server_pgptr, log_pgptr);
 	}
       else
 	{
