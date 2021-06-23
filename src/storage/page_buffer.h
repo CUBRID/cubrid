@@ -456,6 +456,7 @@ extern bool pgbuf_is_io_stressful (void);
 
 #if defined (SERVER_MODE)
 extern void pgbuf_daemons_init ();
+extern void pgbuf_highest_evicted_lsa_init ();
 extern void pgbuf_daemons_destroy ();
 #endif /* SERVER_MODE */
 
