@@ -24899,7 +24899,7 @@ connect_item
                         val->type_enum = PT_TYPE_INTEGER;
                         if( val->info.value.data_value.i < 0 || val->info.value.data_value.i > 65535 )
                           {                                
-                            PT_ERROR (this_parser, val, "Invalid PORT number.");"
+                            PT_ERROR (this_parser, val, "Invalid PORT number.");
                           }
                         PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);
                   }
