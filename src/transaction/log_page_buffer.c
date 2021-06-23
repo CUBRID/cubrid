@@ -2664,28 +2664,31 @@ logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY current_setdirty)
   log_Gl.hdr.append_lsa.pageid++;
   log_Gl.hdr.append_lsa.offset = 0;
 
-  /*
-   * Is the next logical page to archive, currently located at the physical
-   * location of the next logical append page ? (Remember the log is a RING).
-   * If so, we need to archive the log from the next logical page to archive
-   * up to the closest page that does not hold the current append log record.
-   */
-
-  if (LOGPB_AT_NEXT_ARCHIVE_PAGE_ID (log_Gl.hdr.append_lsa.pageid))
+  if (!is_tran_server_with_remote_storage ())
     {
-      /* The log must be archived */
-      logpb_archive_active_log (thread_p);
-    }
+      /*
+       * Is the next logical page to archive, currently located at the physical
+       * location of the next logical append page ? (Remember the log is a RING).
+       * If so, we need to archive the log from the next logical page to archive
+       * up to the closest page that does not hold the current append log record.
+       */
 
-  /*
-   * Has the log been cycled ?
-   */
-  if (LOGPB_IS_FIRST_PHYSICAL_PAGE (log_Gl.hdr.append_lsa.pageid))
-    {
-      log_Gl.hdr.fpageid += LOGPB_ACTIVE_NPAGES;
+      if (LOGPB_AT_NEXT_ARCHIVE_PAGE_ID (log_Gl.hdr.append_lsa.pageid))
+	{
+	  /* The log must be archived */
+	  logpb_archive_active_log (thread_p);
+	}
 
-      /* Flush the header to save updates by archiving. */
-      logpb_flush_header (thread_p);
+      /*
+       * Has the log been cycled ?
+       */
+      if (LOGPB_IS_FIRST_PHYSICAL_PAGE (log_Gl.hdr.append_lsa.pageid))
+	{
+	  log_Gl.hdr.fpageid += LOGPB_ACTIVE_NPAGES;
+
+	  /* Flush the header to save updates by archiving. */
+	  logpb_flush_header (thread_p);
+	}
     }
 
   /*
