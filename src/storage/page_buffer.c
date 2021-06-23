@@ -7870,9 +7870,9 @@ pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * 
   bool is_tran_server = get_server_type () == SERVER_TYPE_TRANSACTION;
   bool is_page_server = get_server_type () == SERVER_TYPE_PAGE;
   bool is_temporary_page = pgbuf_is_temporary_volume (vpid->volid);
-  bool is_using_local_storage = !ats_Gl.uses_remote_storage ();
+  bool is_using_local_storage = is_page_server || !ats_Gl.uses_remote_storage ();
   bool request_from_ps = is_tran_server && ats_Gl.is_page_server_connected () && !is_temporary_page;
-  bool read_from_local = is_page_server || (is_using_local_storage || is_temporary_page);
+  bool read_from_local = is_using_local_storage || is_temporary_page;
   int error_code = NO_ERROR;
 
   if (read_from_local)
@@ -7925,6 +7925,7 @@ pgbuf_read_page_from_file (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_
       ASSERT_ERROR_AND_SET (error_code);
       return error_code;
     }
+  return NO_ERROR;
 }
 
 /*
