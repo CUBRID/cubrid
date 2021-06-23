@@ -840,7 +840,7 @@ logpb_locate_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE f
 
   if (log_bufptr->pageid != NULL_PAGEID && log_bufptr->pageid != pageid)
     {
-      if (log_bufptr->dirty == true)
+      if (log_bufptr->dirty == true && !is_tran_server_with_remote_storage ())
 	{
 	  /* should not happen */
 	  assert_release (false);
@@ -3229,6 +3229,20 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 
   gettimeofday (&start_time, NULL);
 #endif /* CUBRID_DEBUG */
+
+  if (is_tran_server_with_remote_storage ())
+    {
+      // Do not write on local disk
+      rv = pthread_mutex_lock (&flush_info->flush_mutex);
+      flush_info->num_toflush = 0;
+      pthread_mutex_unlock (&flush_info->flush_mutex);
+
+      log_Gl.append.set_nxio_lsa (log_Gl.hdr.append_lsa);
+
+      return NO_ERROR;
+    }
+
+  // Write on local disk
 
   rv = pthread_mutex_lock (&flush_info->flush_mutex);
   hold_flush_mutex = true;
