@@ -7891,7 +7891,8 @@ pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * 
       if (read_from_local)
 	{
 	  // *INDENT-OFF*
-	  assert (reinterpret_cast<FILEIO_PAGE const*> (data_page->c_str ())->prv == reinterpret_cast<FILEIO_PAGE *> (io_page)->prv);
+	  assert (reinterpret_cast<FILEIO_PAGE const*> (data_page->c_str ())->prv == 
+            reinterpret_cast<FILEIO_PAGE *> (io_page)->prv);
 	  // *INDENT-ON*
 	}
 
