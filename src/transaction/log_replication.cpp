@@ -18,10 +18,13 @@
 
 #include "log_replication.hpp"
 
+#include "btree_load.h"
 #include "log_impl.h"
 #include "log_recovery.h"
 #include "log_recovery_redo.hpp"
 #include "log_recovery_redo_parallel.hpp"
+#include "object_representation.h"
+#include "page_buffer.h"
 #include "recovery.h"
 #include "thread_looper.hpp"
 #include "thread_manager.hpp"
@@ -34,6 +37,65 @@
 
 namespace cublog
 {
+  int
+  rv_redo_btree_stats (THREAD_ENTRY *thread_p, const VPID &vpid, const LOG_LSA &record_lsa,
+		       const log_unique_stats &stats)
+  {
+    // Simulate what recovery redo would do to apply the changes:
+    //
+    //  1. Fix the page exclusively.
+    //  2. Apply change
+    //  3. Update page LSA
+    //  4. Set dirty and free page.
+    //
+
+    int error_code = NO_ERROR;
+    PAGE_PTR root_page = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+    if (root_page == NULL)
+      {
+	assert (false);	    // I can't fail, can I?
+	return ER_FAILED;
+      }
+
+    // Get the b-tree header and update the stats
+
+    BTREE_ROOT_HEADER *root_header = btree_get_root_header (thread_p, root_page);
+    assert (root_header != nullptr);
+
+    root_header->num_keys += stats.num_keys;
+    root_header->num_oids += stats.num_oids;
+    root_header->num_nulls += stats.num_nulls;
+
+    pgbuf_set_lsa (thread_p, root_page, &record_lsa);
+    pgbuf_set_dirty_and_free (thread_p, root_page);
+
+    return NO_ERROR;
+  }
+
+  class redo_job_btree_stats : public redo_parallel::redo_job_base
+  {
+    public:
+      redo_job_btree_stats (const VPID &vpid, const log_lsa &record_lsa, const log_unique_stats &stats);
+
+      int execute (THREAD_ENTRY *thread_p, log_reader &log_pgptr_reader, LOG_ZIP &undo_unzip_support,
+		   LOG_ZIP &redo_unzip_support) override;
+
+    private:
+      log_unique_stats m_stats;
+  };
+
+  redo_job_btree_stats::redo_job_btree_stats (const VPID &vpid, const log_lsa &record_lsa, const log_unique_stats &stats)
+    : redo_parallel::redo_job_base (vpid, record_lsa)
+    , m_stats (stats)
+  {
+  }
+
+  int
+  redo_job_btree_stats::execute (THREAD_ENTRY *thread_p, log_reader &, LOG_ZIP &, LOG_ZIP &)
+  {
+    return rv_redo_btree_stats (thread_p, get_vpid (), get_log_lsa (), m_stats);
+  }
+
   replicator::replicator (const log_lsa &start_redo_lsa)
     : m_redo_lsa { start_redo_lsa }
     , m_perfmon_redo_sync { PSTAT_REDO_REPL_LOG_REDO_SYNC }
@@ -224,9 +286,49 @@ namespace cublog
 	MVCCID_FORWARD (log_Gl.hdr.mvcc_next_id);
       }
 
-    log_rv_redo_record_sync_or_dispatch_async (
-	    &thread_entry, m_reader, log_rec, rec_lsa, nullptr, rectype,
+    // Redo b-tree stats differs from what the recovery usually does. Get the recovery index before deciding how to
+    // proceed.
+    LOG_RCVINDEX rcvindex = log_rv_get_log_rec_data (log_rec).rcvindex;
+    if (rcvindex == RVBT_MVCC_INCREMENTS_UPD)
+      {
+	LOG_RCV rcv;
+	rcv.length = log_rv_get_log_rec_redo_length<T> (log_rec);
+	const int err = log_rv_get_log_rec_redo_data (&thread_entry, m_reader, log_rec, rcv, rectype, m_undo_unzip,
+			m_redo_unzip);
+	if (err != NO_ERROR)
+	  {
+	    logpb_fatal_error (&thread_entry, true, ARG_FILE_LINE, "");
+	    return;
+	  }
+	BTID btid;
+	log_unique_stats stats;
+	const char *datap = rcv.data;
+	OR_GET_BTID (datap, &btid);
+	datap += OR_BTID_ALIGNED_SIZE;
+	stats.num_keys = OR_GET_INT (datap);
+	datap += OR_INT_SIZE;
+	stats.num_oids = OR_GET_INT (datap);
+	datap += OR_INT_SIZE;
+	stats.num_nulls = OR_GET_INT (datap);
+	datap += OR_INT_SIZE;
+
+	VPID root_vpid = { btid.root_pageid, btid.vfid.volid };
+
+	if (m_parallel_replication_redo)
+	  {
+	    auto job = std::make_unique<redo_job_btree_stats> (root_vpid, rec_lsa, stats);
+	    m_parallel_replication_redo->add (std::move (job));
+	  }
+	else
+	  {
+	    rv_redo_btree_stats (&thread_entry, root_vpid, rec_lsa, stats);
+	  }
+      }
+    else
+      {
+	log_rv_redo_record_sync_or_dispatch_async (&thread_entry, m_reader, log_rec, rec_lsa, nullptr, rectype,
 	    m_undo_unzip, m_redo_unzip, m_parallel_replication_redo, true);
+      }
   }
 
   template <typename T>
