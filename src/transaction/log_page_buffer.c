@@ -310,6 +310,12 @@ static void logpb_set_unavailable_archive (THREAD_ENTRY * thread_p, int arv_num)
 static void logpb_dismount_log_archive (THREAD_ENTRY * thread_p);
 static bool logpb_is_archive_available (THREAD_ENTRY * thread_p, int arv_num);
 static void logpb_archive_active_log (THREAD_ENTRY * thread_p);
+#if defined (SERVER_MODE)
+static void logpb_verify_page_read (LOG_PAGEID pageid, const LOG_PAGE * left_log_pgptr,
+				    const LOG_PAGE * rite_log_pgptr);
+#endif /* SERVER_MODE */
+extern int logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE access_mode,
+				      LOG_PAGE * log_pgptr);
 static int logpb_remove_archive_logs_internal (THREAD_ENTRY * thread_p, int first, int last, const char *info_reason);
 static void logpb_append_archives_removed_to_log_info (int first, int last, const char *info_reason);
 static int logpb_verify_length (const char *db_fullname, const char *log_path, const char *log_prefix);
@@ -873,7 +879,8 @@ logpb_locate_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE f
       else
 	{
 	  stat_page_found = PERF_PAGE_MODE_OLD_LOCK_WAIT;
-	  if (logpb_read_page_from_file (thread_p, pageid, LOG_CS_FORCE_USE, log_bufptr->logpage) != NO_ERROR)
+	  if (logpb_read_page_from_file_or_page_server (thread_p, pageid, LOG_CS_FORCE_USE, log_bufptr->logpage)
+	      != NO_ERROR)
 	    {
 	      return NULL;
 	    }
@@ -1823,7 +1830,7 @@ logpb_copy_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE 
   LOG_CS_ENTER_READ_MODE (thread_p);
   if (log_pgptr != NULL)
     {
-      rv = logpb_read_page_from_file (thread_p, pageid, LOG_CS_FORCE_USE, log_pgptr);
+      rv = logpb_read_page_from_file_or_page_server (thread_p, pageid, LOG_CS_FORCE_USE, log_pgptr);
       if (rv != NO_ERROR)
 	{
 	  LOG_CS_EXIT (thread_p);
@@ -1885,7 +1892,7 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
 
       if (log_bufptr->pageid == NULL_PAGEID)
 	{
-	  rv = logpb_read_page_from_file (thread_p, pageid, access_mode, log_pgptr);
+	  rv = logpb_read_page_from_file_or_page_server (thread_p, pageid, access_mode, log_pgptr);
 	  if (rv != NO_ERROR)
 	    {
 	      rv = ER_FAILED;
@@ -1909,6 +1916,10 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
   else
     {
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED, 1, pageid);
+      if (log_csect_entered)
+	{
+	  LOG_CS_EXIT (thread_p);
+	}
       return ER_LOG_PAGE_CORRUPTED;
     }
 
@@ -1924,33 +1935,12 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
 
   /* Could not get from log page buffer cache */
 
-#if defined(SERVER_MODE)
-  /* Send a request to Page Server for the log. */
-  if (get_server_type () == SERVER_TYPE_TRANSACTION && ats_Gl.is_page_server_connected ())
-    {
-      request_log_page_from_ps (pageid);
-    }
-#endif // SERVER_MODE
-
-  rv = logpb_read_page_from_file (thread_p, pageid, access_mode, log_pgptr);
+  rv = logpb_read_page_from_file_or_page_server (thread_p, pageid, access_mode, log_pgptr);
   if (rv != NO_ERROR)
     {
       rv = ER_FAILED;
       goto exit;
     }
-
-#if defined(SERVER_MODE)
-  // *INDENT-OFF*
-  if (get_server_type () == SERVER_TYPE_TRANSACTION && ats_Gl.is_page_server_connected ())
-    {
-      // wait for answer.
-      auto log_page = ats_Gl.get_log_page_broker ().wait_for_page (pageid);
-
-      // Sould be the same.
-      assert (*log_page == *log_pgptr);
-    }
-  // *INDENT-ON*
-#endif // SERVER_MODE
 
   stat_page_found = PERF_PAGE_MODE_OLD_LOCK_WAIT;
 
@@ -1999,8 +1989,95 @@ request_log_page_from_ps (LOG_PAGEID log_pageid)
         {
           _er_log_debug (ARG_FILE_LINE, "Sent request for log to Page Server. Page ID: %lld \n", log_pageid);
         }
-    }  
+    }
   // *INDENT-ON*
+#endif // SERVER_MODE
+}
+
+#if defined (SERVER_MODE)
+void
+logpb_verify_page_read (LOG_PAGEID pageid, const LOG_PAGE * left_log_pgptr, const LOG_PAGE * rite_log_pgptr)
+{
+  bool pages_equal (*left_log_pgptr == *rite_log_pgptr || pageid == LOGPB_HEADER_PAGE_ID);
+
+  if (!pages_equal && pageid == log_Gl.hdr.append_lsa.pageid)
+    {
+      const char* const left_log_page_area = left_log_pgptr->area;
+      const char* const rite_log_page_area = rite_log_pgptr->area;
+      const int cmp_res = strncmp(left_log_page_area, rite_log_page_area, log_Gl.hdr.append_lsa.offset);
+      pages_equal = left_log_pgptr->hdr == rite_log_pgptr->hdr && cmp_res == 0;
+    }
+
+  assert (pages_equal);
+}
+#endif // SERVER_MODE
+
+/*
+ * logpb_read_page_from_file_or_page_server - depending on the server type and whether or not
+ *        transaction server is being executed in a remote storage context, read log pages from
+ *        either local storage or page server, or both
+ *
+ * return: error when reading from local storage fails
+ *
+ *   pageid(in): Page identifier
+ *   access_mode(in): access mode
+ *   log_pgptr(out): Page buffer to copy log page to
+ */
+int
+logpb_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
+					  LOG_CS_ACCESS_MODE access_mode, LOG_PAGE * log_pgptr)
+{
+#if defined (SERVER_MODE)
+  // execution contexts:
+  //  1) TS with remote storage: only read from PS
+  //  2) TS with local storage + connected to PS: both read from PS and from file and compare results
+  //  3) PS or TS with local storage + not connected to PS: only read from file
+
+  const SERVER_TYPE server_type = get_server_type ();
+  if (server_type == SERVER_TYPE_TRANSACTION && ats_Gl.is_page_server_connected ())
+    {
+      // context 1) or 2)
+      request_log_page_from_ps (pageid);
+    }
+
+  bool read_from_disk = false;
+  if (!is_tran_server_with_remote_storage ())
+    {
+      // context 2) or 3)
+      const int res_read_from_file = logpb_read_page_from_file (thread_p, pageid, access_mode, log_pgptr);
+      if (res_read_from_file != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return res_read_from_file;
+	}
+      read_from_disk = true;
+    }
+
+  if (server_type == SERVER_TYPE_TRANSACTION && ats_Gl.is_page_server_connected ())
+    {
+      // *INDENT-OFF*
+      std::shared_ptr<log_page_owner> log_page_from_page_server
+          = ats_Gl.get_log_page_broker ().wait_for_page (pageid);
+      // *INDENT-ON*
+      if (read_from_disk)
+	{
+	  // context 2)
+	  // log_pgptr already contains value read from local storage
+	  const LOG_PAGE *const log_page_from_page_server_pgptr = log_page_from_page_server->get_log_page ();
+	  logpb_verify_page_read(pageid, log_page_from_page_server_pgptr, log_pgptr);
+	}
+      else
+	{
+	  // context 1)
+          // *INDENT-OFF*
+	  std::memcpy (log_pgptr, log_page_from_page_server->get_log_page (), LOG_PAGESIZE);
+          // *INDENT-ON*
+	}
+    }
+
+  return NO_ERROR;
+#else // SERVER_MODE
+  return logpb_read_page_from_file (thread_p, pageid, access_mode, log_pgptr);
 #endif // SERVER_MODE
 }
 
@@ -2117,9 +2194,9 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_AC
 	    }
 	  else
 	    {
-	      /* 
+	      /*
 	       * fetched from active.
-	       * In case of being fetched from archive log, no need to be decrypted 
+	       * In case of being fetched from archive log, no need to be decrypted
 	       * because it already decrypted in logpb_fetch_from_archive()
 	       */
 	      TDE_ALGORITHM tde_algo = logpb_get_tde_algorithm ((LOG_PAGE *) log_pgptr);
@@ -2316,7 +2393,7 @@ logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAG
       error_code = tde_encrypt_log_page (log_pgptr, logpb_get_tde_algorithm (log_pgptr), enc_pgptr);
       if (error_code != NO_ERROR)
 	{
-	  /* 
+	  /*
 	   * if encrpytion fails, it just skip it and off the tde flag. The page will never be encrypted in this case.
 	   * It menas once it fails, the page always spill user data un-encrypted from then.
 	   */
@@ -2822,7 +2899,7 @@ logpb_writev_append_pages (THREAD_ENTRY * thread_p, LOG_PAGE ** to_flush, DKNPAG
 	    {
 	      if (tde_encrypt_log_page (log_pgptr, logpb_get_tde_algorithm (log_pgptr), enc_pgptr) != NO_ERROR)
 		{
-		  /* 
+		  /*
 		   * if encrpytion fails, it just skip it and off the tde flag. The page will never be encrypted in this case.
 		   * It menas once it fails, the page always spill user data un-encrypted from then.
 		   */
@@ -2939,7 +3016,7 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
 	  enc_pgptr = (LOG_PAGE *) PTR_ALIGN (enc_pgbuf, MAX_ALIGNMENT);
 	  if (tde_encrypt_log_page (log_pgptr, logpb_get_tde_algorithm (log_pgptr), enc_pgptr) != NO_ERROR)
 	    {
-	      /* 
+	      /*
 	       * if encrpytion fails, it just skip it and off the tde flag. The page will never be encrypted in this case.
 	       * It menas once it fails, the page always spill user data un-encrypted from then.
 	       */
@@ -8287,7 +8364,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 	{
 	  LSA_COPY (&session->bkup.last_chkpt_lsa, &session->bkup.bkuphdr->chkpt_lsa);
 
-	  /* 
+	  /*
 	   * The tde key file (_keys) which is going to be used during restart
 	   * is the thing in the first time (the highest level).
 	   */
@@ -11146,8 +11223,8 @@ logpb_get_memsize ()
 
 /*
  * logpb_set_tde_algorithm () - set tde encryption algorithm to the log page
- * 
- * return         : encryption algorithm  
+ *
+ * return         : encryption algorithm
  * log_pgptr(in)  : Log page pointer
  */
 TDE_ALGORITHM
@@ -11173,7 +11250,7 @@ logpb_get_tde_algorithm (const LOG_PAGE * log_pgptr)
 
 /*
  * logpb_set_tde_algorithm () - set tde encryption algorithm to the log page
- *   
+ *
  * thread_p (in)  : Thread entry
  * log_pgptr(in)  : Log page pointer
  * tde_algo (in)  : Encryption algorithm
