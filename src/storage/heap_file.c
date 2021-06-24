@@ -5795,12 +5795,13 @@ xheap_destroy (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid
  *   return: NO_ERROR
  *   hfid(in): Object heap file identifier.
  *   class_oid(in): class OID
+ *   force (in): destroy the heap forcefully, not just marking delete  even if it is DONT_REUSE_OID
  *
  * Note: Destroy the heap file associated with the given heap
  * identifier if it is a newly created heap file.
  */
 int
-xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid)
+xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid, const bool force)
 {
   VFID vfid;
   FILE_TYPE file_type;
@@ -5813,7 +5814,7 @@ xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid, const O
       ASSERT_ERROR ();
       return ret;
     }
-  if (file_type == FILE_HEAP_REUSE_SLOTS)
+  if (file_type == FILE_HEAP_REUSE_SLOTS || force)
     {
       ret = xheap_destroy (thread_p, hfid, class_oid);
       return ret;

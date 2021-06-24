@@ -15614,7 +15614,7 @@ sm_truncate_using_destroy_heap (MOP class_mop)
   assert (!HFID_IS_NULL (insts_hfid));
 
   /* Destroy the heap */
-  error = heap_destroy_newly_created (insts_hfid, oid);
+  error = heap_destroy_newly_created (insts_hfid, oid, true);
   if (error != NO_ERROR)
     {
       return error;
