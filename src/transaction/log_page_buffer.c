@@ -314,7 +314,7 @@ static void logpb_archive_active_log (THREAD_ENTRY * thread_p);
 static void logpb_verify_page_read (LOG_PAGEID pageid, const LOG_PAGE * left_log_pgptr,
 				    const LOG_PAGE * rite_log_pgptr);
 #endif /* SERVER_MODE */
-extern int logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE access_mode,
+static int logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE access_mode,
 				      LOG_PAGE * log_pgptr);
 static int logpb_remove_archive_logs_internal (THREAD_ENTRY * thread_p, int first, int last, const char *info_reason);
 static void logpb_append_archives_removed_to_log_info (int first, int last, const char *info_reason);
