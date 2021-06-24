@@ -10171,7 +10171,7 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_ATTR
   /* need to have macros for this !! */
   index->vfid.volid = boot_User_volid;
 
-  if (!class_->dont_load_index_from_heap)
+  if (class_->load_index_from_heap)
     {
       /* Count maximum possible subclasses */
       max_classes = 1;		/* Start with 1 for the current class */
@@ -10241,7 +10241,7 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_ATTR
   /* If there are no instances, then call btree_add_index() to create an empty index, otherwise call
    * btree_load_index () to load all of the instances (including applicable subclasses) into a new B-tree */
   // TODO: optimize has_instances case
-  if (class_->dont_load_index_from_heap || !has_instances || index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+  if (!class_->load_index_from_heap || !has_instances || index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
     {
       error = btree_add_index (index, domain, WS_OID (classop), attrs[0]->id, unique_pk);
     }
