@@ -3058,6 +3058,12 @@ pt_show_node_type (PT_NODE * node)
       return "WITH";
     case PT_CTE:
       return "CTE";
+    case PT_DBLINK_TABLE:
+      return "DBLINK";
+    case PT_CREATE_SERVER:
+      return "CREATE_SERVER";
+    case PT_DROP_SERVER:
+      return "DROP_SERVER";
     default:
       return "NODE: type unknown";
     }
