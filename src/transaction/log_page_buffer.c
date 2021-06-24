@@ -311,9 +311,8 @@ static void logpb_dismount_log_archive (THREAD_ENTRY * thread_p);
 static bool logpb_is_archive_available (THREAD_ENTRY * thread_p, int arv_num);
 static void logpb_archive_active_log (THREAD_ENTRY * thread_p);
 #if defined (SERVER_MODE)
-static void logpb_assert_correctness_read_page_from_file_or_page_server (LOG_PAGEID pageid,
-									 const LOG_PAGE * left_log_pgptr,
-									 const LOG_PAGE * rite_log_pgptr);
+static void logpb_verify_page_read (LOG_PAGEID pageid, const LOG_PAGE * left_log_pgptr,
+				    const LOG_PAGE * rite_log_pgptr);
 #endif /* SERVER_MODE */
 extern int logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE access_mode,
 				      LOG_PAGE * log_pgptr);
@@ -1996,8 +1995,8 @@ request_log_page_from_ps (LOG_PAGEID log_pageid)
 }
 
 #if defined (SERVER_MODE)
-void logpb_assert_correctness_read_page_from_file_or_page_server (LOG_PAGEID pageid,
-    const LOG_PAGE * left_log_pgptr, const LOG_PAGE * rite_log_pgptr)
+void
+logpb_verify_page_read (LOG_PAGEID pageid, const LOG_PAGE * left_log_pgptr, const LOG_PAGE * rite_log_pgptr)
 {
   bool pages_equal (*left_log_pgptr == *rite_log_pgptr || pageid == LOGPB_HEADER_PAGE_ID);
 
@@ -2065,13 +2064,14 @@ logpb_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, LOG_PAGEID pa
 	  // context 2)
 	  // log_pgptr already contains value read from local storage
 	  const LOG_PAGE *const log_page_from_page_server_pgptr = log_page_from_page_server->get_log_page ();
-	  logpb_assert_correctness_read_page_from_file_or_page_server(
-		pageid, log_page_from_page_server_pgptr, log_pgptr);
+	  logpb_verify_page_read(pageid, log_page_from_page_server_pgptr, log_pgptr);
 	}
       else
 	{
 	  // context 1)
+          // *INDENT-OFF*
 	  std::memcpy (log_pgptr, log_page_from_page_server->get_log_page (), LOG_PAGESIZE);
+          // *INDENT-ON*
 	}
     }
 
