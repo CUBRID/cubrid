@@ -5087,6 +5087,10 @@ qfile_finalize_list_cache (THREAD_ENTRY * thread_p)
 	}
       free_and_init (qfile_List_cache.list_hts);
     }
+  if (qfile_List_cache.free_list)
+    {
+      free_and_init (qfile_List_cache.free_list);
+    }
 
   /* list cache entry pool */
   if (qfile_List_cache_entry_pool.pool)
