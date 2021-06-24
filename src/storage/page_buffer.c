@@ -16159,11 +16159,22 @@ pgbuf_daemons_init ()
   pgbuf_page_post_flush_daemon_init ();
   pgbuf_flush_control_daemon_init ();
 }
+#endif /* SERVER_MODE */
 
+#if defined (SERVER_MODE)
+/*
+ * pgbuf_highest_evicted_lsa_init () - initialize highest evicted lsa to the previously
+ *      appended lsa
+ *
+ * NOTE: important, at least, in the context of the scalability scenario where, upon [re]boot
+ *    TS requests from the PS the latest log page; at which point the PS has a routine to actually
+ *    wait the replication progress "past" a certain point; 'prev_lsa' is that point which allows
+ *    the PS to serve the latest log page to the TS
+ */
 void
 pgbuf_highest_evicted_lsa_init ()
 {
-  pgbuf_Pool.update_highest_evicted_lsa (log_Gl.hdr.append_lsa);
+  pgbuf_Pool.update_highest_evicted_lsa (log_Gl.append.prev_lsa);
 }
 #endif /* SERVER_MODE */
 
