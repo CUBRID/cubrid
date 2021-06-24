@@ -309,6 +309,8 @@ namespace cubschema
 	assert (er_errid () != NO_ERROR);
 	throw er_errid ();
       }
+
+    m_class->load_index_from_heap = 0;
   }
 
   class_truncate_context::class_truncate_context (class_truncate_context &&other) :
@@ -327,6 +329,8 @@ namespace cubschema
 
   class_truncate_context::~class_truncate_context ()
   {
+    m_class->load_index_from_heap = 1;
+
     if (m_unique_info != NULL)
       {
 	sm_free_constraint_info (&m_unique_info);
