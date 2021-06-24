@@ -65,6 +65,10 @@ void page_server::set_active_tran_server_connection (cubcomm::channel &&chn)
       ats_to_ps_request::SEND_DATA_PAGE_FETCH,
       std::bind (&page_server::receive_data_page_fetch, std::ref (*this), std::placeholders::_1)
     },
+    {
+      ats_to_ps_request::SEND_DISCONNECT_MSG,
+      std::bind (&page_server::receive_disconnect_request, std::ref (*this), std::placeholders::_1)
+    },
   }));
 }
 
@@ -122,6 +126,14 @@ void page_server::receive_data_page_fetch (cubpacking::unpacker &upk)
   m_page_fetcher->fetch_data_page (vpid, target_repl_lsa, std::bind (&page_server::on_data_page_read_result, this,
 				   std::placeholders::_1,
 				   std::placeholders::_2));
+}
+
+void page_server::receive_disconnect_request (cubpacking::unpacker &upk)
+{
+  std::string exit_code = 1;
+  push_request_to_active_tran_server (ps_to_ats_request::SEND_DISCONNECT_RSP, std::move (exit_code));
+
+  //start a thread to destroy the PS object
 }
 
 void page_server::push_request_to_active_tran_server (ps_to_ats_request reqid, std::string &&payload)

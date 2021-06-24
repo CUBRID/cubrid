@@ -263,6 +263,10 @@ active_tran_server::connect_to_page_server (const cubcomm::node &node, const cha
     {
       ps_to_ats_request::SEND_DATA_PAGE,
       std::bind (&active_tran_server::receive_data_page, std::ref (*this), std::placeholders::_1)
+    },
+    {
+      ps_to_ats_request::SEND_DISCONNECT_RSP,
+      std::bind (&active_tran_server::receive_disconnect, std::ref (*this), std::placeholders::_1)
     }
   }));
 
@@ -277,8 +281,12 @@ active_tran_server::disconnect_page_server ()
 {
   assert_is_active_tran_server ();
   std::string msg = "" + static_cast<int> (cubcomm::server_server::CONNECT_ACTIVE_TRAN_TO_PAGE_SERVER);
-  push_request (ats_to_ps_request::SEND_DISCONNECT_MSG, std::move (msg));
-  m_page_server_conn_vec.clear ();
+
+  for (int i = 0; i < m_page_server_conn_vec.size(); i++)
+    {
+      push_request (i, ats_to_ps_request::SEND_DISCONNECT_MSG, std::move (msg));
+    }
+//  m_page_server_conn_vec.clear ();
 }
 
 bool
@@ -326,14 +334,14 @@ active_tran_server::uses_remote_storage () const
 }
 
 void
-active_tran_server::push_request (ats_to_ps_request reqid, std::string &&payload)
+active_tran_server::push_request (int page_server_index, ats_to_ps_request reqid, std::string &&payload)
 {
   if (!is_page_server_connected ())
     {
       return;
     }
 
-  m_page_server_conn_vec[0]->push (reqid, std::move (payload));
+  m_page_server_conn_vec[page_server_index]->push (reqid, std::move (payload));
 }
 
 void
@@ -421,6 +429,11 @@ void active_tran_server::receive_saved_lsa (cubpacking::unpacker &upk)
     {
       _er_log_debug (ARG_FILE_LINE, "[COMMIT CONFIRM] Received LSA = %lld|%d.\n", LSA_AS_ARGS (&saved_lsa));
     }
+}
+
+void active_tran_server::receive_disconnect (cubpacking::unpacker &upk)
+{
+  m_page_server_conn_vec.clear ();
 }
 
 void

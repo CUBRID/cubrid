@@ -59,7 +59,7 @@ class active_tran_server
 
     bool uses_remote_storage () const;
 
-    void push_request (ats_to_ps_request reqid, std::string &&payload);
+    void push_request (int page_server_index, ats_to_ps_request reqid, std::string &&payload);
 
   private:
     using page_server_conn_t =
@@ -73,6 +73,7 @@ class active_tran_server
     void receive_saved_lsa (cubpacking::unpacker &upk);
     void receive_log_page (cubpacking::unpacker &upk);
     void receive_data_page (cubpacking::unpacker &upk);
+    void receive_disconnect (cubpacking::unpacker &upk);
 
   private:
     // communication with page server
