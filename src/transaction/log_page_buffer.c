@@ -139,7 +139,7 @@ static int rv;
 
 
 /* PAGES OF ACTIVE LOG PORTION */
-#define LOGPB_HEADER_PAGE_ID             (-9)	/* The first log page in the infinite log sequence. It is always kept
+#define LOGPB_HEADER_PAGE_ID             (-9LL)	/* The first log page in the infinite log sequence. It is always kept
 						 * on the active portion of the log. Log records are not stored on this
 						 * page. This page is backed up in all archive logs */
 #define LOGPB_NEXT_ARCHIVE_PAGE_ID    (log_Gl.hdr.nxarv_pageid)
