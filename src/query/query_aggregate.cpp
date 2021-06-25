@@ -357,7 +357,7 @@ qdata_aggregate_value_to_accumulator (cubthread::entry *thread_p, cubxasl::aggre
       if (is_acc_to_acc)
 	{
 	  /* from qdata_aggregate_accumulator_to_accumulator (). value param is number of count */
-	  db_make_int (acc->value, db_get_int (acc->value) + db_get_int (value));
+	  db_make_bigint (acc->value, db_get_bigint (acc->value) + db_get_bigint (value));
 	}
       else
 	{
@@ -365,12 +365,16 @@ qdata_aggregate_value_to_accumulator (cubthread::entry *thread_p, cubxasl::aggre
 	  if (acc->curr_cnt < 1)
 	    {
 	      /* first value */
-	      db_make_int (acc->value, 1);
+#if defined(NDEBUG)
+	      db_make_bigint (acc->value, (INT64) 1);
+#else
+	      db_make_bigint (acc->value, (INT64) 1 + (INT64) prm_get_bigint_value (PRM_ID_COUNT_DEBUG));
+#endif
 	    }
 	  else
 	    {
 	      /* increment */
-	      db_make_int (acc->value, db_get_int (acc->value) + 1);
+	      db_make_bigint (acc->value, (INT64) 1 + db_get_bigint (acc->value));
 	    }
 	}
       break;
@@ -999,11 +1003,11 @@ qdata_evaluate_aggregate_optimize (cubthread::entry *thread_p, cubxasl::aggregat
     case PT_COUNT:
       if (agg_p->option == Q_ALL)
 	{
-	  db_make_int (agg_p->accumulator.value, oid_count - null_count);
+	  db_make_bigint (agg_p->accumulator.value, oid_count - null_count);
 	}
       else
 	{
-	  db_make_int (agg_p->accumulator.value, key_count);
+	  db_make_bigint (agg_p->accumulator.value, key_count);
 	}
       break;
 
@@ -1219,7 +1223,8 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
       /* set count-star aggregate values */
       if (agg_p->function == PT_COUNT_STAR)
 	{
-	  db_make_int (agg_p->accumulator.value, agg_p->accumulator.curr_cnt);
+	  db_make_bigint (agg_p->accumulator.value,
+			  agg_p->accumulator.curr_cnt + (int64_t) prm_get_bigint_value (PRM_ID_COUNT_DEBUG));
 	}
 
       /* the value of groupby_num() remains unchanged; it will be changed while evaluating groupby_num predicates
