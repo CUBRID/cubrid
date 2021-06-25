@@ -2541,7 +2541,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 
 #if defined(SERVER_MODE)
-
   pgbuf_daemons_init ();
   pgbuf_highest_evicted_lsa_init ();
   dwb_daemons_init ();
