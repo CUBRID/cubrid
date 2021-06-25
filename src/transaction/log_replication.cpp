@@ -62,9 +62,9 @@ namespace cublog
     BTREE_ROOT_HEADER *root_header = btree_get_root_header (thread_p, root_page);
     assert (root_header != nullptr);
 
-    root_header->num_keys += stats.num_keys;
-    root_header->num_oids += stats.num_oids;
-    root_header->num_nulls += stats.num_nulls;
+    root_header->num_keys = stats.num_keys;
+    root_header->num_oids = stats.num_oids;
+    root_header->num_nulls = stats.num_nulls;
 
     pgbuf_set_lsa (thread_p, root_page, &record_lsa);
     pgbuf_set_dirty_and_free (thread_p, root_page);
@@ -289,7 +289,7 @@ namespace cublog
     // Redo b-tree stats differs from what the recovery usually does. Get the recovery index before deciding how to
     // proceed.
     LOG_RCVINDEX rcvindex = log_rv_get_log_rec_data (log_rec).rcvindex;
-    if (rcvindex == RVBT_MVCC_INCREMENTS_UPD)
+    if (rcvindex == RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT)
       {
 	LOG_RCV rcv;
 	rcv.length = log_rv_get_log_rec_redo_length<T> (log_rec);
@@ -342,7 +342,7 @@ namespace cublog
       {
 	// dispatch a job; the time difference will be calculated when the job is actually
 	// picked up for completion by a task; this will give an accurate estimate of the actual
-	// delay between log genearation on the page server and log recovery on the page server
+	// delay between log generation on the page server and log recovery on the page server
 	std::unique_ptr<cublog::redo_job_replication_delay_impl> replication_delay_job
 	{
 	  new cublog::redo_job_replication_delay_impl (m_redo_lsa, start_time_msec)
