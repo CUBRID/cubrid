@@ -329,7 +329,10 @@ namespace cubschema
 
   class_truncate_context::~class_truncate_context ()
   {
-    m_class->load_index_from_heap = 1;
+    if (m_class != NULL)
+      {
+	m_class->load_index_from_heap = 1;
+      }
 
     if (m_unique_info != NULL)
       {
