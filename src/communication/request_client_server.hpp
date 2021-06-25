@@ -318,7 +318,7 @@ namespace cubcomm
 	  }
 	handle_request (message_buffer, message_size);
       }
-    er_log_thread_finished (this, &m_thread, m_thread::get_id ());
+    er_log_thread_finished (this, &m_thread, m_thread.get_id ());
   }
 
   template <typename MsgId>
