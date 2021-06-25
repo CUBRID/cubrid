@@ -789,7 +789,8 @@ cursor_prefetch_first_hidden_oid (CURSOR_ID * cursor_id_p)
   char *tuple_p;
   OID *current_oid_p;
   QFILE_TUPLE current_tuple;
-  int tupel_count, oid_index = 0, current_tuple_length, i;
+  INT64 tupel_count;
+  int oid_index = 0, current_tuple_length, i;
   DB_TYPE type;
 
   if (cursor_id_p == NULL)
@@ -843,7 +844,8 @@ cursor_prefetch_column_oids (CURSOR_ID * cursor_id_p)
   char *tuple_p;
   OID *current_oid_p;
   QFILE_TUPLE current_tuple;
-  int tuple_count, oid_index = 0, current_tuple_length;
+  INT64 tuple_count;
+  int oid_index = 0, current_tuple_length;
   int j, tuple_index, col_index, col_num;
   DB_TYPE type;
 

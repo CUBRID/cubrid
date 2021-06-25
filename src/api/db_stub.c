@@ -691,7 +691,7 @@ static int
 api_rs_fetch_tell (API_RESULTSET * res, int *offset)
 {
   CI_RESULTSET_STRUCTURE *prs;
-  int tpl_pos;
+  INT64 tpl_pos;
 
   prs = (CI_RESULTSET_STRUCTURE *) res;
 

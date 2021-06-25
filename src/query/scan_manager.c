@@ -7752,11 +7752,11 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
     {
     case S_HEAP_SCAN:
     case S_LIST_SCAN:
-      fprintf (fp, ", readrows: %d, rows: %d)", scan_id->scan_stats.read_rows, scan_id->scan_stats.qualified_rows);
+      fprintf (fp, ", readrows: %lld, rows: %lld)", scan_id->scan_stats.read_rows, scan_id->scan_stats.qualified_rows);
       break;
 
     case S_INDX_SCAN:
-      fprintf (fp, ", readkeys: %d, filteredkeys: %d, rows: %d", scan_id->scan_stats.read_keys,
+      fprintf (fp, ", readkeys: %lld, filteredkeys: %lld, rows: %lld", scan_id->scan_stats.read_keys,
 	       scan_id->scan_stats.qualified_keys, scan_id->scan_stats.key_qualified_rows);
 
       if (scan_id->scan_stats.covered_index == true)
@@ -7782,7 +7782,7 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
 
       if (scan_id->scan_stats.covered_index == false)
 	{
-	  fprintf (fp, " (lookup time: %d, rows: %d)", TO_MSEC (scan_id->scan_stats.elapsed_lookup),
+	  fprintf (fp, " (lookup time: %d, rows: %lld)", TO_MSEC (scan_id->scan_stats.elapsed_lookup),
 		   scan_id->scan_stats.data_qualified_rows);
 	}
       break;

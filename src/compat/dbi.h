@@ -550,7 +550,7 @@ extern "C"
 
   extern int db_query_get_tuple_valuelist (DB_QUERY_RESULT * result, int size, DB_VALUE * value_list);
 
-  extern int db_query_tuple_count (DB_QUERY_RESULT * result);
+  extern INT64 db_query_tuple_count (DB_QUERY_RESULT * result);
 
   extern int db_query_column_count (DB_QUERY_RESULT * result);
 

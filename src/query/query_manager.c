@@ -756,7 +756,7 @@ qmgr_dump_query_entry (QMGR_QUERY_ENTRY * query_p)
     {
       list_id_p = query_p->list_id;
       fprintf (stdout,
-	       "\t\t{type_list: {%d, %p}, tuple_cnt: %d, page_cnt: %d,\n"
+	       "\t\t{type_list: {%d, %p}, tuple_cnt: %lld, page_cnt: %d,\n"
 	       "\t first_vpid: {%d, %d}, last_vpid: {%d, %d},\n"
 	       "\t last_pgptr: %p, last_offset: %d, lasttpl_len: %d}\n", list_id_p->type_list.type_cnt,
 	       (void *) list_id_p->type_list.domp, list_id_p->tuple_cnt, list_id_p->page_cnt,

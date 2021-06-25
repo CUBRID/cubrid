@@ -1089,7 +1089,7 @@ db_dump_query_result (DB_QUERY_RESULT * r)
     {
       fprintf (stdout, "Query_id: %lld \n", (long long) r->res.s.query_id);
       fprintf (stdout, "Stmt_id: %d \n", r->res.s.stmt_id);
-      fprintf (stdout, "Tuple Cnt: %d \n", r->res.s.cursor_id.list_id.tuple_cnt);
+      fprintf (stdout, "Tuple Cnt: %lld \n", r->res.s.cursor_id.list_id.tuple_cnt);
       fprintf (stdout, "Stmt_type: %d \n", r->res.s.stmt_type);
     }				/* if */
   else if (r->type == T_GET)
@@ -2455,8 +2455,8 @@ int
 db_query_seek_tuple (DB_QUERY_RESULT * result, int offset, int seek_mode)
 {
   int scan;
-  int rel1, rel2, rel3, rel_n;
-  int curr_tplno, tpl_cnt;
+  INT64 rel1, rel2, rel3, rel_n;
+  INT64 curr_tplno, tpl_cnt;
   DB_QUERY_TPLPOS *tplpos;
   CURSOR_POSITION *c_pos;
 
@@ -3085,10 +3085,10 @@ db_query_get_tuple_valuelist (DB_QUERY_RESULT * result, int size, DB_VALUE * val
  * note : If an error is detected, the function returns -1 and the
  *    db_error_string() function can be used to see a description of the error.
  */
-int
+INT64
 db_query_tuple_count (DB_QUERY_RESULT * result)
 {
-  int retval;
+  INT64 retval;
 
   CHECK_1ARG_MINUSONE (result);
 

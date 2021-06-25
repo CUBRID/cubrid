@@ -5260,7 +5260,7 @@ qfile_print_list_cache_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *ke
     }
 
   fprintf (fp,
-	   " } tuple_cnt %d page_cnt %d first_vpid { %d %d } last_vpid { %d %d } lasttpl_len %d query_id %lld  "
+	   " } tuple_cnt %lld page_cnt %d first_vpid { %d %d } last_vpid { %d %d } lasttpl_len %d query_id %lld  "
 	   " temp_vfid { %d %d } }\n", ent->list_id.tuple_cnt, ent->list_id.page_cnt, ent->list_id.first_vpid.pageid,
 	   ent->list_id.first_vpid.volid, ent->list_id.last_vpid.pageid, ent->list_id.last_vpid.volid,
 	   ent->list_id.lasttpl_len, (long long) ent->list_id.query_id, ent->list_id.temp_vfid.fileid,

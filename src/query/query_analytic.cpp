@@ -808,7 +808,7 @@ qdata_finalize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 
       if (func_p->function == PT_COUNT)
 	{
-	  db_make_int (func_p->value, list_id_p->tuple_cnt);
+	  db_make_bigint (func_p->value, list_id_p->tuple_cnt);
 	}
       else
 	{
@@ -1098,7 +1098,7 @@ qdata_analytic_interpolation (cubthread::entry *thread_p, cubxasl::analytic_list
 			      QFILE_LIST_SCAN_ID *scan_id)
 {
   int error = NO_ERROR;
-  int tuple_count;
+  INT64 tuple_count;
   double row_num_d, f_row_num_d, c_row_num_d, percentile_d;
   FUNC_TYPE function;
   double cur_group_percentile;

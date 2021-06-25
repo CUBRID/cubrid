@@ -159,7 +159,7 @@ qdata_initialize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_
       /* This set is made, because if class is empty, aggregate results should return NULL, except count(*) and count */
       if (agg_p->function == PT_COUNT_STAR || agg_p->function == PT_COUNT)
 	{
-	  db_make_int (agg_p->accumulator.value, 0);
+	  db_make_bigint (agg_p->accumulator.value, 0);
 	}
 
       /* create temporary list file to handle distincts */
@@ -1310,7 +1310,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 
 	      if (agg_p->function == PT_COUNT)
 		{
-		  db_make_int (agg_p->accumulator.value, list_id_p->tuple_cnt);
+		  db_make_bigint (agg_p->accumulator.value, list_id_p->tuple_cnt);
 		}
 	      else
 		{
@@ -2893,7 +2893,7 @@ qdata_aggregate_interpolation (cubthread::entry *thread_p, cubxasl::aggregate_li
 			       QFILE_LIST_SCAN_ID *scan_id)
 {
   int error = NO_ERROR;
-  int tuple_count;
+  INT64 tuple_count;
   double row_num_d, f_row_num_d, c_row_num_d, percentile_d;
   FUNC_TYPE function;
   double cur_group_percentile;
