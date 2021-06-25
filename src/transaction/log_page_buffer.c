@@ -2424,12 +2424,12 @@ logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int
 		  ASSERT_ERROR ();
 		  assert (false);
 		}
-	      logpb_debug_check_log_page (thread_p, (LOG_PAGE *) aligned_log_pgbuf);
+	      logpb_debug_check_log_page (thread_p, aligned_log_pgbuf);
 	      ptr += LOG_PAGESIZE;
 	    }
 	  else
 	    {
-	      logpb_debug_check_log_page (thread_p, (LOG_PAGE *) ptr);
+	      logpb_debug_check_log_page (thread_p, ptr);
 	      ptr += LOG_PAGESIZE;
 	    }
 	}
@@ -11280,11 +11280,9 @@ logpb_last_complete_blockid (void)
 
 #if !defined(NDEBUG)
 void
-logpb_debug_check_log_page (THREAD_ENTRY * thread_p, void *log_pgptr_ptr)
+logpb_debug_check_log_page (THREAD_ENTRY * thread_p, const void *log_pgptr_ptr)
 {
-  int err;
-  bool is_log_page_corrupted;
-  LOG_PAGE *log_pgptr = (LOG_PAGE *) log_pgptr_ptr;
+  const LOG_PAGE *const log_pgptr = (LOG_PAGE *) log_pgptr_ptr;
 
   assert (log_pgptr != NULL);
   if (boot_Server_status != BOOT_SERVER_UP && log_pgptr->hdr.logical_pageid == LOGPB_HEADER_PAGE_ID)
