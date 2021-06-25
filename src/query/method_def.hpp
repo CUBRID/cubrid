@@ -34,11 +34,18 @@ typedef enum
 
 typedef enum
 {
+  METHOD_REQ_REGISTER = 1,
+  METHOD_REQ_INVOKE,
+  METHOD_REQ_CLEANUP
+} METHOD_REQUEST;
+
+enum METHOD_TYPE
+{
   METHOD_IS_NONE = 0,
   METHOD_IS_INSTANCE_METHOD = 1,
   METHOD_IS_CLASS_METHOD = 2,
   METHOD_IS_JAVA_SP = 3
-} METHOD_TYPE;
+};
 
 typedef struct method_arg_info METHOD_ARG_INFO;
 struct method_arg_info
@@ -63,6 +70,12 @@ struct method_sig_node
     char *class_name;		/* class name for the class method */
     METHOD_ARG_INFO arg_info;  /* argument info for javasp's server-side calling */
   };
+
+  void pack (cubpacking::packer &serializator) const;
+  void unpack (cubpacking::unpacker &deserializator);
+  size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset = 0) const;
+
+  void freemem ();
 
   method_sig_node () = default;
 };

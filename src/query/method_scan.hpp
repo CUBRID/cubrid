@@ -25,12 +25,17 @@
 #error Belongs to server module
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
+#include <functional>
 #include <vector>
 
 #include "dbtype_def.h" /* DB_VALUE */
 #include "method_def.hpp" /* method_sig_list */
 #include "object_domain.h" /* TP_DOMAIN */
 #include "query_list.h" /* qfile_list_id, qfile_list_scan_id */
+
+#if defined (SERVER_MODE)
+#include "jsp_struct.hpp"
+#endif
 
 #if defined (SA_MODE)
 #include "query_method.h"
@@ -50,10 +55,67 @@ namespace cubscan
 {
   namespace method
   {
+
+#if defined (SERVER_MODE)
+	#if 0
+	class external_caller_group
+	{
+		public:
+			external_caller_group ()
+			{
+				caller.
+			}
+			void prepare ();
+			void execute ();
+			void end ();
+			
+		private:
+			std::array <external_caller *, METHOD_TYPE> caller;
+		void addCaller (external_caller& caller);
+
+	};
+
+	class external_caller
+	{
+		public:
+		  external_caller ();
+		  virtual ~external_caller();
+
+		  void connect ();
+		  void disconnect ();
+
+		  bool is_connected ();
+
+
+		private:
+	};
+	#endif
+
+    class javasp_caller
+    {
+      public:
+	void connect ();
+	void disconnect ();
+
+	// bool is_connected ();
+
+	int request (METHOD_SIG *&method_sig, std::vector<DB_VALUE> &arg_base);
+	int receive (DB_VALUE &returnval);
+	// int callback_dispatch (int code);
+      private:
+	int alloc_response (cubmem::extensible_block &blk);
+	int receive_result (cubmem::extensible_block &blk, DB_VALUE &returnval);
+	int receive_error (cubmem::extensible_block &blk, DB_VALUE &returnval);
+
+	SOCKET m_sock_fd = INVALID_SOCKET;
+	bool is_connected = false;
+    };
+#endif
+
     class scanner
     {
       public:
-
+	using xs_callback_func = std::function<int (cubmem::block &)>;
 	scanner ();
 
 //////////////////////////////////////////////////////////////////////////
@@ -71,16 +133,16 @@ namespace cubscan
 // Common interface to send args and receive values
 //////////////////////////////////////////////////////////////////////////
 
-	int request ();
-	int receive (DB_VALUE &return_val);
+	int request (method_sig_node *method_sig);
+	int receive (METHOD_TYPE method_type, DB_VALUE &return_val);
 
 #if defined(SERVER_MODE)
 //////////////////////////////////////////////////////////////////////////
 // Communication with CAS
 //////////////////////////////////////////////////////////////////////////
 
-	int xs_send ();
-	int xs_receive (DB_VALUE &val);
+	int xs_send (cubmem::block &mem);
+	int xs_receive (const xs_callback_func &func);
 #endif
 
 //////////////////////////////////////////////////////////////////////////
@@ -100,6 +162,9 @@ namespace cubscan
       private:
 
 	cubthread::entry *m_thread_p; /* thread entry */
+#if defined (SERVER_MODE)
+	javasp_caller m_caller;
+#endif
 
 	// TODO: method signature list will be interpret according to the method types in the future
 	method_sig_list *m_method_sig_list;	/* method signatures */
@@ -116,6 +181,7 @@ namespace cubscan
 
 	qproc_db_value_list *m_dbval_list; /* result */
     };
+
   }
 } // namespace cubscan
 

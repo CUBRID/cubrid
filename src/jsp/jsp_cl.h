@@ -82,6 +82,7 @@ extern int jsp_get_sp_type (const char *name);
 
 extern void jsp_init (void);
 extern void jsp_close_connection (void);
+
 extern MOP jsp_find_stored_procedure (const char *name);
 
 extern void jsp_set_prepare_call (void);

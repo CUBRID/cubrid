@@ -63,6 +63,8 @@ method_send_value_to_server (unsigned int rc, char *host_p, char *server_name_p,
   int code = METHOD_SUCCESS;
   packer.set_buffer_and_pack_all (ext_blk, code, value);
 
+  pr_clear_value (&value);
+
   return net_client_send_data (host_p, rc, ext_blk.get_ptr (), packer.get_current_size ());
 }
 
@@ -100,42 +102,19 @@ method_invoke_for_server (unsigned int rc, char *host_p, char *server_name_p, st
   int error = NO_ERROR;
   DB_VALUE result;
 
-  // *INDENT-OFF*
-  std::vector <DB_VALUE *> arg_val_p;
-  // *INDENT-ON*
-
   for (METHOD_SIG * meth_sig_p = method_sig_list_p->method_sig; meth_sig_p; meth_sig_p = meth_sig_p->next)
     {
-      /* The first position # is for the object ID */
-      int num_args = meth_sig_p->num_method_args + 1;
-      arg_val_p.resize (num_args + 1, NULL);	/* + 1 for C method */
-      for (int i = 0; i < num_args; ++i)
+      error = method_invoke (result, args, meth_sig_p);
+      if (error == NO_ERROR)
 	{
-	  int pos = meth_sig_p->method_arg_pos[i];
-	  arg_val_p[i] = &args[pos];
-	  method_fixup_vobjs (arg_val_p[i]);
-	}
-
-      error = method_invoke (result, arg_val_p, meth_sig_p);
-      if (error != NO_ERROR)
-	{
+	  /* send a result value to server */
+	  method_send_value_to_server (rc, host_p, server_name_p, result);
 	  pr_clear_value (&result);
-	  return error;
 	}
-
-      if (DB_VALUE_TYPE (&result) == DB_TYPE_ERROR)
+      else
 	{
-	  if (er_errid () == NO_ERROR)	/* caller has not set an error */
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1);
-	    }
-	  pr_clear_value (&result);
-	  return ER_GENERIC_ERROR;
+	  break;
 	}
-
-      /* send a result value to server */
-      method_send_value_to_server (rc, host_p, server_name_p, result);
-      pr_clear_value (&result);
     }
 
   return error;
@@ -145,29 +124,44 @@ method_invoke_for_server (unsigned int rc, char *host_p, char *server_name_p, st
  * method_invoke () -
  *   return: int
  *   result (out)     :
- *   arg_vals (in)   : objects & arguments DB_VALUEs
+ *   args (in)   : objects & arguments DB_VALUEs
  *   meth_sig_p (in) : Method signatures
  */
 // *INDENT-OFF*
 int
-method_invoke (DB_VALUE & result, std::vector <DB_VALUE *> &arg_vals, method_sig_node * meth_sig_p)
+method_invoke (DB_VALUE & result, std::vector < DB_VALUE > &args, method_sig_node * meth_sig_p)
 // *INDENT-ON*
 {
   int error = NO_ERROR;
   int turn_on_auth = 1;
+
   assert (meth_sig_p != NULL);
+  // assert (meth_sig_p->method_type == METHOD_IS_CLASS_METHOD || meth_sig_p->method_type == METHOD_IS_INSTANCE_METHOD);
+
+  /* The first position # is for the object ID */
+  int num_args = meth_sig_p->num_method_args + 1;
+
+  // *INDENT-OFF*
+  std::vector <DB_VALUE *> arg_val_p (num_args + 1, NULL); /* + 1 for C method */      
+  // *INDENT-ON*
+  for (int i = 0; i < num_args; ++i)
+    {
+      int pos = meth_sig_p->method_arg_pos[i];
+      arg_val_p[i] = &args[pos];
+      method_fixup_vobjs (arg_val_p[i]);
+    }
 
   db_make_null (&result);
   if (meth_sig_p->method_type != METHOD_IS_JAVA_SP)
     {
       /* Don't call the method if the object is NULL or it has been deleted.  A method call on a NULL object is
        * NULL. */
-      if (!DB_IS_NULL (arg_vals[0]))
+      if (!DB_IS_NULL (arg_val_p[0]))
 	{
-	  error = db_is_any_class (db_get_object (arg_vals[0]));
+	  error = db_is_any_class (db_get_object (arg_val_p[0]));
 	  if (error == 0)
 	    {
-	      error = db_is_instance (db_get_object (arg_vals[0]));
+	      error = db_is_instance (db_get_object (arg_val_p[0]));
 	    }
 	}
       if (error == ER_HEAP_UNKNOWN_OBJECT)
@@ -180,7 +174,7 @@ method_invoke (DB_VALUE & result, std::vector <DB_VALUE *> &arg_vals, method_sig
 	  turn_on_auth = 0;
 	  AU_ENABLE (turn_on_auth);
 	  db_disable_modification ();
-	  error = obj_send_array (db_get_object (arg_vals[0]), meth_sig_p->method_name, &result, &arg_vals[1]);
+	  error = obj_send_array (db_get_object (arg_val_p[0]), meth_sig_p->method_name, &result, &arg_val_p[1]);
 	  db_enable_modification ();
 	  AU_DISABLE (turn_on_auth);
 	}
@@ -191,9 +185,24 @@ method_invoke (DB_VALUE & result, std::vector <DB_VALUE *> &arg_vals, method_sig
       turn_on_auth = 0;
       AU_ENABLE (turn_on_auth);
       db_disable_modification ();
-      error = jsp_call_from_server (&result, &arg_vals[0], meth_sig_p->method_name, meth_sig_p->num_method_args);
+      error = jsp_call_from_server (&result, &arg_val_p[0], meth_sig_p->method_name, meth_sig_p->num_method_args);
       db_enable_modification ();
       AU_DISABLE (turn_on_auth);
+    }
+
+  /* error handling */
+  if (error != NO_ERROR)
+    {
+      pr_clear_value (&result);
+    }
+  else if (DB_VALUE_TYPE (&result) == DB_TYPE_ERROR)
+    {
+      if (er_errid () == NO_ERROR)	/* caller has not set an error */
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1);
+	}
+      pr_clear_value (&result);
+      error = ER_GENERIC_ERROR;
     }
 
   return error;

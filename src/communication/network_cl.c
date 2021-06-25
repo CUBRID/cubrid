@@ -1873,15 +1873,16 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 			    unpacker.unpack_db_value (args[i]);
 			  }
 
-			METHOD_SIG_LIST sig_list;
-			sig_list.unpack (unpacker);
+			METHOD_SIG sig;
+			sig.unpack (unpacker);
 
 			COMPARE_AND_FREE_BUFFER (methoddata, reply);
 			free_and_init (methoddata);
 
-			error = method_invoke_for_server (rc, net_Server_host, net_Server_name, args, &sig_list);
+			DB_VALUE result;
+			error = method_invoke (result, args, &sig);
+			sig.freemem ();
 
-			sig_list.freemem ();
 			if (error != NO_ERROR)
 			  {
 			    assert (er_errid () != NO_ERROR);
@@ -1894,7 +1895,8 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 			  }
 			else
 			  {
-			    error = NO_ERROR;
+			    /* send a result value to server */
+			    method_send_value_to_server (rc, net_Server_host, net_Server_name, result);
 			  }
 #if defined(CS_MODE)
 			if (need_to_reset == true)

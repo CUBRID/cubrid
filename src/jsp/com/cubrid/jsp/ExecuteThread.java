@@ -249,7 +249,10 @@ public class ExecuteThread extends Thread {
     }
 
     private int listenCommand() throws Exception {
-        input = new DataInputStream(new BufferedInputStream(this.client.getInputStream()));
+        if (input == null || this.connection != null)
+        {
+            input = new DataInputStream(new BufferedInputStream(this.client.getInputStream()));
+        }
         setStatus(ExecuteThreadStatus.IDLE);
         return input.readInt();
     }
