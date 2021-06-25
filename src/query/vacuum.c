@@ -3434,6 +3434,11 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 			     (unsigned long long int) mvccid, LSA_AS_ARGS (&rcv_lsa));
 	      error_code = btree_vacuum_insert_mvccid (thread_p, btid_int.sys_btid, &key_buf, &oid, &class_oid, mvccid);
 	    }
+	  else if (log_record_data.rcvindex == RVBT_MARK_DELETED)
+	    {
+	      /* A serial object was marked deleted. It does not really need vacuuming */
+	      /* Fall through */
+	    }
 	  else
 	    {
 	      /* Unexpected. */

@@ -236,26 +236,32 @@ typedef enum mvcc_satisfies_vacuum_result MVCC_SATISFIES_VACUUM_RESULT;
 // TODO - replace with functions
 
 /* Is log record for a heap MVCC operation */
-#define LOG_IS_MVCC_HEAP_OPERATION(rcvindex) \
-  (((rcvindex) == RVHF_MVCC_DELETE_REC_HOME) \
-   || ((rcvindex) == RVHF_MVCC_INSERT) \
-   || ((rcvindex) == RVHF_UPDATE_NOTIFY_VACUUM) \
-   || ((rcvindex) == RVHF_MVCC_DELETE_MODIFY_HOME) \
-   || ((rcvindex) == RVHF_MVCC_NO_MODIFY_HOME) \
-   || ((rcvindex) == RVHF_MVCC_REDISTRIBUTE))
+inline bool
+LOG_IS_MVCC_HEAP_OPERATION (LOG_RCVINDEX rcvindex)
+{
+  return rcvindex == RVHF_MVCC_DELETE_REC_HOME
+    || rcvindex == RVHF_MVCC_INSERT
+    || rcvindex == RVHF_UPDATE_NOTIFY_VACUUM
+    || rcvindex == RVHF_MVCC_DELETE_MODIFY_HOME
+    || rcvindex == RVHF_MVCC_NO_MODIFY_HOME || rcvindex == RVHF_MVCC_REDISTRIBUTE;
+}
 
 /* Is log record for a b-tree MVCC operation */
-#define LOG_IS_MVCC_BTREE_OPERATION(rcvindex) \
-  ((rcvindex) == RVBT_MVCC_DELETE_OBJECT \
-   || (rcvindex) == RVBT_MVCC_INSERT_OBJECT \
-   || (rcvindex) == RVBT_MVCC_INSERT_OBJECT_UNQ \
-   || (rcvindex) == RVBT_MVCC_NOTIFY_VACUUM)
+inline bool
+LOG_IS_MVCC_BTREE_OPERATION (LOG_RCVINDEX rcvindex)
+{
+  return rcvindex == RVBT_MVCC_DELETE_OBJECT
+    || rcvindex == RVBT_MVCC_INSERT_OBJECT
+    || rcvindex == RVBT_MVCC_INSERT_OBJECT_UNQ || rcvindex == RVBT_MVCC_NOTIFY_VACUUM || rcvindex == RVBT_MARK_DELETED;
+}
 
 /* Is log record for a MVCC operation */
-#define LOG_IS_MVCC_OPERATION(rcvindex) \
-  (LOG_IS_MVCC_HEAP_OPERATION (rcvindex) \
-   || LOG_IS_MVCC_BTREE_OPERATION (rcvindex) \
-   || ((rcvindex) == RVES_NOTIFY_VACUUM))
+inline bool
+LOG_IS_MVCC_OPERATION (LOG_RCVINDEX rcvindex)
+{
+  return LOG_IS_MVCC_HEAP_OPERATION (rcvindex) || LOG_IS_MVCC_BTREE_OPERATION (rcvindex)
+    || rcvindex == RVES_NOTIFY_VACUUM;
+}
 
 extern MVCC_SATISFIES_SNAPSHOT_RESULT mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header,
 							       MVCC_SNAPSHOT * snapshot);
