@@ -87,6 +87,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/event_log.c
   ${BASE_DIR}/fault_injection.c
   ${BASE_DIR}/fileline_location.cpp
+  ${BASE_DIR}/filesys_temp.cpp
   ${BASE_DIR}/fixed_alloc.c
   ${BASE_DIR}/ini_parser.c
   ${BASE_DIR}/intl_support.c
@@ -135,6 +136,7 @@ set (BASE_HEADERS
   ${BASE_DIR}/error_manager.h
   ${BASE_DIR}/extensible_array.hpp
   ${BASE_DIR}/fileline_location.hpp
+  ${BASE_DIR}/filesys_temp.hpp
   ${BASE_DIR}/locale_helper.hpp
   ${BASE_DIR}/lockfree_address_marker.hpp
   ${BASE_DIR}/lockfree_bitmap.hpp
@@ -500,6 +502,7 @@ target_include_directories(cubrid PRIVATE ${JAVA_INC} ${EP_INCLUDES} ${FLEX_INCL
 if(UNIX)
   target_link_libraries(cubrid LINK_PRIVATE -Wl,-whole-archive ${EP_LIBS} -Wl,-no-whole-archive)
   target_link_libraries(cubrid LINK_PUBLIC ${CURSES_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} ${CMAKE_DL_LIBS})
+  target_link_libraries(cubrid PUBLIC stdc++fs)
 else(UNIX)
   target_link_libraries(cubrid LINK_PRIVATE ${EP_LIBS})
 endif(UNIX)
