@@ -2360,6 +2360,14 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
+#if defined (SERVER_MODE)
+  if (get_server_type () == SERVER_TYPE_TRANSACTION)
+    {
+      // Data page broker is required before volumes are mounted.
+      ats_Gl.init_page_brokers ();
+    }
+#endif
+
   /*
    * Compose the full name of the database and find location of logs
    */
@@ -2407,14 +2415,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     {
       goto error;
     }
-
-#if defined (SERVER_MODE)
-  if (get_server_type () == SERVER_TYPE_TRANSACTION)
-    {
-      // Data page broker is required before volumes are mounted.
-      ats_Gl.init_page_brokers ();
-    }
-#endif
 
   /*
    * Now continue the normal restart process. At this point the data volumes
