@@ -85,7 +85,7 @@ namespace cubcomm
   }
 
   void
-  er_log_thread_stopped (const void *instance_ptr, const void *thread_ptr, std::thread::id thread_id)
+  er_log_thread_finished (const void *instance_ptr, const void *thread_ptr, std::thread::id thread_id)
   {
     er_log_thread_start_or_finish (instance_ptr, thread_ptr, thread_id, "finished");
   }
