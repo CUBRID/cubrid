@@ -55,7 +55,7 @@ struct dblink_scan_info
 };
 
 extern int dblink_open_scan (DBLINK_SCAN_INFO * scan_info,
-			     char *conn_url, char *user_name, char *password, char *sql_text);
+			     char *conn_url, char *user_name, char *password, char *sql_text, VAL_DESCR * vd);
 extern int dblink_close_scan (DBLINK_SCAN_INFO * scan_info);
 extern SCAN_CODE dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list);
 extern SCAN_CODE dblink_scan_reset (DBLINK_SCAN_INFO * scan_info);

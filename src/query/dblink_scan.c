@@ -19,6 +19,7 @@
 #ident "$Id$"
 
 #include <string.h>
+#include "query_executor.h"
 #include "dblink_scan.h"
 
 #include "xasl.h"
@@ -311,12 +312,11 @@ dblink_make_date_time_tz (T_CCI_U_TYPE utype, DB_VALUE * value_p, T_CCI_DATE_TZ 
  *   sql_text(in)	 : SQL text for dblink
  */
 int
-dblink_open_scan (DBLINK_SCAN_INFO * scan_info, char *conn_url, char *user_name, char *password, char *sql_text)
+dblink_open_scan (DBLINK_SCAN_INFO *scan_info, char *conn_url, char *user_name, char *password, 
+	char *sql_text, VAL_DESCR *vd)
 {
   int ret;
-
   T_CCI_ERROR err_buf;
-  T_CCI_CUBRID_STMT stmt_type;
 
   scan_info->conn_handle = cci_connect_with_url_ex (conn_url, user_name, password, &err_buf);
   if (scan_info->conn_handle < 0)
@@ -327,14 +327,74 @@ dblink_open_scan (DBLINK_SCAN_INFO * scan_info, char *conn_url, char *user_name,
     }
   else
     {
-      scan_info->stmt_handle = cci_prepare_and_execute (scan_info->conn_handle, sql_text, 0, &ret, &err_buf);
+      scan_info->stmt_handle = cci_prepare (scan_info->conn_handle, sql_text, 0, &err_buf);
       if (scan_info->stmt_handle < 0)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+	  return S_ERROR;
+	}
+
+      if (vd && vd->dbval_cnt > 0)
+      	{
+      	  int i;
+	  T_CCI_PARAM_INFO *param;
+	  T_CCI_A_TYPE a_type;
+	  T_CCI_U_TYPE u_type;
+	  void *value;
+	  double adouble;
+
+      	  for (i = 0; i < vd->dbval_cnt; i++)
+      	    {
+	      value = &vd->dbval_ptr[i].data;
+      	      switch (vd->dbval_ptr[i].domain.general_info.type)
+      	      	{
+      	      	case DB_TYPE_INTEGER:
+		  a_type = CCI_A_TYPE_INT;
+		  u_type = CCI_U_TYPE_BIGINT;
+		  break;
+      	      	case DB_TYPE_BIGINT:
+		  a_type = CCI_A_TYPE_BIGINT;
+		  u_type = CCI_U_TYPE_BIGINT;
+		  break;
+		case DB_TYPE_NUMERIC:
+		 numeric_coerce_num_to_double (db_locate_numeric(&vd->dbval_ptr[i]), vd->dbval_ptr[i].domain.numeric_info.scale, &adouble);
+		 value = &adouble;
+		case DB_TYPE_DOUBLE:
+		case DB_TYPE_FLOAT:
+		  a_type = CCI_A_TYPE_DOUBLE;
+		  u_type = CCI_U_TYPE_DOUBLE;
+		  break;
+		case DB_TYPE_STRING:
+		case DB_TYPE_VARNCHAR:
+		case DB_TYPE_CHAR:
+		case DB_TYPE_NCHAR:
+		  a_type = CCI_A_TYPE_STR;
+		  u_type = CCI_U_TYPE_STRING;
+		  value = (void *)vd->dbval_ptr[i].data.ch.medium.buf;
+		  break;
+		default:
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "bind: not supported type");
+		  return S_ERROR;
+      	        }
+      	      ret = cci_bind_param (scan_info->stmt_handle, i + 1, a_type, value, u_type, 0);
+              if (ret < 0)
+	        {
+	          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "bind param");
+	          return S_ERROR;
+	        }
+      	    }
+  	}
+
+      ret = cci_execute (scan_info->stmt_handle, 0, 0, &err_buf);
+      if (ret < 0)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
 	  return S_ERROR;
 	}
       else
 	{
+	  T_CCI_CUBRID_STMT stmt_type;
+
 	  scan_info->col_info = (void *) cci_get_result_info (scan_info->stmt_handle, &stmt_type, &scan_info->col_cnt);
 	  if (scan_info->col_info == NULL)
 	    {

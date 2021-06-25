@@ -4035,7 +4035,7 @@ scan_open_dblink_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   scan_init_scan_pred (&dblid->scan_pred, regu_list_pred, pr,
 		       ((pr) ? eval_fnc (thread_p, pr, &single_node_type) : NULL));
 
-  return dblink_open_scan (&scan_id->s.dblid.scan_info, conn_url, conn_user, conn_password, sql_text);
+  return dblink_open_scan (&scan_id->s.dblid.scan_info, conn_url, conn_user, conn_password, sql_text, vd);
 }
 
 /*

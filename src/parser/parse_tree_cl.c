@@ -12339,7 +12339,10 @@ pt_print_host_var (PARSER_CONTEXT * parser, PT_NODE * p)
   q = pt_append_nulstring (parser, q, " ");
   q = pt_append_nulstring (parser, q, p->info.host_var.str);
   /* for internal print, print a host variable with its index */
-  sprintf (s, ":%d", p->info.host_var.index);
+  if (!(parser->custom_print & PT_PRINT_NO_HOST_VAR_INDEX))
+    {
+      sprintf (s, ":%d", p->info.host_var.index);
+    }
   q = pt_append_nulstring (parser, q, s);
   q = pt_append_nulstring (parser, q, " ");
 
@@ -18371,7 +18374,11 @@ pt_print_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p)
     }
 
   q = pt_append_bytes (parser, q, ", ", 2);
-  if (p->info.dblink_table.qstr)
+  if (p->info.dblink_table.rewritten)
+    {
+      q = pt_append_varchar (parser, q, p->info.dblink_table.rewritten);
+    }
+  else if (p->info.dblink_table.qstr)
     {
       unsigned int alias_print_flag = (parser->custom_print & PT_CHARSET_COLLATE_FULL);
       parser->custom_print &= ~PT_CHARSET_COLLATE_FULL;

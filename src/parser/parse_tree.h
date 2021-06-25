@@ -114,6 +114,7 @@ struct json_t;
 
 #define PT_IS_QUERY_NODE_TYPE(x) \
     (  (x) == PT_SELECT     || (x) == PT_UNION \
+    || (x) == PT_DBLINK_TABLE \
     || (x) == PT_DIFFERENCE || (x) == PT_INTERSECTION)
 
 #define PT_IS_CLASSOID_NAME(x) \
@@ -779,7 +780,9 @@ enum pt_custom_print
 
   PT_PRINT_USER = (0x1 << 20),
 
-  PT_PRINT_ORIGINAL_BEFORE_CONST_FOLDING = (0x1 << 21)
+  PT_PRINT_ORIGINAL_BEFORE_CONST_FOLDING = (0x1 << 21),
+
+  PT_PRINT_NO_HOST_VAR_INDEX = (0x1 << 22)
 };
 
 /* all statement node types should be assigned their API statement enumeration */
@@ -3264,6 +3267,8 @@ typedef struct pt_dblink_info
   PT_NODE *pwd;
   PT_NODE *qstr;		/* query string */
   PT_NODE *cols;		/* column definition  */
+  PT_NODE *pushed_pred;		/* pushed predicate from main query */
+  PARSER_VARCHAR *rewritten;	/* rewritten query string for dblink */
   bool is_name;			/*  */
 } PT_DBLINK_INFO;
 

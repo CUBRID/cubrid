@@ -12739,7 +12739,7 @@ pt_to_dblink_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE *
 {
   ACCESS_SPEC_TYPE *access;
   PT_DBLINK_INFO *pdblink = &(dblink_table->info.dblink_table);
-
+  char *sql;
 
   PRED_EXPR *where = pt_to_pred_expr (parser, where_p);
 
@@ -12767,11 +12767,19 @@ pt_to_dblink_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE *
   regu_attributes_pred =
     pt_to_regu_variable_list (parser, pred_attrs, UNBOX_AS_VALUE, tbl_info->value_list, pred_offsets);
 
+  if (pdblink->rewritten)
+    {
+      sql = (char *) pdblink->rewritten->bytes;
+    }
+  else
+    {
+      sql = (char *) pdblink->qstr->info.value.data_value.str->bytes;
+    }
+
   access = pt_make_dblink_access_spec (access_method, where, regu_attributes_pred, regu_attributes_rest,
 				       (char *) pdblink->url->info.value.data_value.str->bytes,
 				       (char *) pdblink->user->info.value.data_value.str->bytes,
-				       (char *) pdblink->pwd->info.value.data_value.str->bytes,
-				       (char *) pdblink->qstr->info.value.data_value.str->bytes);
+				       (char *) pdblink->pwd->info.value.data_value.str->bytes, (char *) sql);
 
   return access;
 }
