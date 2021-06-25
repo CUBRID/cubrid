@@ -370,9 +370,13 @@ static void logpb_fatal_error_internal (THREAD_ENTRY * thread_p, bool log_exit, 
 static int logpb_copy_log_header (THREAD_ENTRY * thread_p, LOG_HEADER * to_hdr, const LOG_HEADER * from_hdr);
 STATIC_INLINE LOG_BUFFER *logpb_get_log_buffer (LOG_PAGE * log_pg) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int logpb_get_log_buffer_index (LOG_PAGEID log_pageid) __attribute__ ((ALWAYS_INLINE));
-static int logpb_fetch_header_from_active_log (THREAD_ENTRY * thread_p, const char *db_fullname,
-					       const char *logpath, const char *prefix_logname, LOG_HEADER * hdr,
-					       LOG_PAGE * log_pgptr);
+static int logpb_fetch_active_log_header_from_file (THREAD_ENTRY * thread_p, const char *db_fullname,
+						    const char *logpath, const char *prefix_logname, LOG_HEADER * hdr,
+						    LOG_PAGE * log_pgptr);
+static int logpb_fetch_active_log_header_from_page_server (LOG_HEADER * hdr, LOG_PAGE * log_pgptr);
+static int logpb_fetch_active_log_header_from_file_or_page_server (THREAD_ENTRY * thread_p, const char *db_fullname,
+								   const char *logpath, const char *prefix_logname,
+								   LOG_HEADER * hdr);
 static int logpb_compute_page_checksum (const LOG_PAGE * log_pgptr);
 
 static bool logpb_is_log_active_from_backup_useful (THREAD_ENTRY * thread_p, const char *active_log_path,
@@ -1492,7 +1496,7 @@ logpb_fetch_header_with_buffer (THREAD_ENTRY * thread_p, LOG_HEADER * hdr, LOG_P
 }
 
 /*
- * logpb_fetch_header_from_active_log - Fetch log header directly from active log file
+ * logpb_fetch_active_log_header_from_file - Fetch log header directly from active log file
  *
  * return: error code
  *
@@ -1501,9 +1505,9 @@ logpb_fetch_header_with_buffer (THREAD_ENTRY * thread_p, LOG_HEADER * hdr, LOG_P
  *
  * NOTE: Should be used only during boot sequence.
  */
-static int
-logpb_fetch_header_from_active_log (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
-				    const char *prefix_logname, LOG_HEADER * hdr, LOG_PAGE * log_pgptr)
+int
+logpb_fetch_active_log_header_from_file (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
+					 const char *prefix_logname, LOG_HEADER * hdr, LOG_PAGE * log_pgptr)
 {
   LOG_HEADER *log_hdr;		/* The log header */
   LOG_PHY_PAGEID phy_pageid;
@@ -1554,8 +1558,98 @@ logpb_fetch_header_from_active_log (THREAD_ENTRY * thread_p, const char *db_full
   if (log_pgptr->hdr.logical_pageid != LOGPB_HEADER_PAGE_ID || log_pgptr->hdr.offset != NULL_OFFSET)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED, 1, phy_pageid);
+      // TODO: above error message says:
+      //  Internal error: logical log page %1$lld may be corrupted.
+      // but a phys page is is logged; should not LOGPB_HEADER_PAGE_ID actually be logged?
       error_code = ER_LOG_PAGE_CORRUPTED;
       goto error;
+    }
+
+error:
+  return error_code;
+}
+
+#if defined (SERVER_MODE)
+/*
+ * logpb_fetch_active_log_header_from_page_server - Fetch log header from page server
+ *
+ * return: error code
+ *
+ *   hdr(in/out): Pointer where log header is to be copied
+ *   log_pgptr(in/out): log page buffer ptr
+ *
+ * NOTE: Should be used only: during boot sequence; on a transaction server with remote storage
+ */
+// *INDENT-OFF*
+int
+logpb_fetch_active_log_header_from_page_server (LOG_HEADER * hdr, LOG_PAGE * log_pgptr)
+{
+  assert (is_tran_server_with_remote_storage ());
+
+  request_log_page_from_ps (LOGPB_HEADER_PAGE_ID);
+
+  std::shared_ptr<log_page_owner> log_page_from_page_server
+    = ats_Gl.get_log_page_broker ().wait_for_page (LOGPB_HEADER_PAGE_ID);
+
+  const LOG_PAGE *const log_page_from_page_server_pgptr = log_page_from_page_server->get_log_page ();
+  const LOG_HEADER *const log_hdr = reinterpret_cast<const LOG_HEADER*> (log_page_from_page_server_pgptr->area);
+  *hdr = *log_hdr;
+
+  std::memcpy (log_pgptr, log_page_from_page_server_pgptr, LOG_PAGESIZE);
+
+  if (log_pgptr->hdr.logical_pageid != LOGPB_HEADER_PAGE_ID || log_pgptr->hdr.offset != NULL_OFFSET)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED, 1, LOGPB_HEADER_PAGE_ID);
+      return ER_LOG_PAGE_CORRUPTED;
+    }
+
+  return NO_ERROR;
+}
+// *INDENT-ON*
+#endif // SERVER_MODE
+
+/*
+ * logpb_fetch_active_log_header_from_file_or_page_server - Fetch log header from page server or
+ *          directly from active log file
+ *
+ * return: error code
+ *
+ *   hdr(in/out): Pointer where log header is to be copied
+ *   log_pgptr(in/out): log page buffer ptr
+ *
+ * NOTE: Should be used only during boot sequence
+ */
+int
+logpb_fetch_active_log_header_from_file_or_page_server (THREAD_ENTRY * thread_p, const char *db_fullname,
+							const char *logpath, const char *prefix_logname,
+							LOG_HEADER * hdr)
+{
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char *const aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  LOG_PAGE *const log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
+
+  assert (hdr != nullptr);
+
+#if defined (SERVER_MODE)
+  int res_code = NO_ERROR;
+  if (is_tran_server_with_remote_storage ())
+    {
+      res_code = logpb_fetch_active_log_header_from_page_server (hdr, log_pgptr);
+    }
+  else
+    {
+      res_code =
+	logpb_fetch_active_log_header_from_file (thread_p, db_fullname, logpath, prefix_logname, hdr, log_pgptr);
+    }
+#else // SERVER_MODE
+  const int res_code =
+    logpb_fetch_active_log_header_from_file (thread_p, db_fullname, logpath, prefix_logname, hdr, log_pgptr);
+#endif // SERVER_MODE
+
+  if (res_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return res_code;
     }
 
 #if !defined(NDEBUG)
@@ -1565,8 +1659,7 @@ logpb_fetch_header_from_active_log (THREAD_ENTRY * thread_p, const char *db_full
     }
 #endif
 
-error:
-  return error_code;
+  return NO_ERROR;
 }
 
 // it peeks header page of the backuped log active file
@@ -2463,8 +2556,6 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p, const bool force_read_log
   static LOG_HEADER hdr;	/* Log header */
   static bool is_header_read_from_file = false;
   static bool is_log_header_validated = false;
-  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
-  LOG_PAGE *log_pgptr = NULL;
   int error_code = NO_ERROR;
 
   if (force_read_log_header)
@@ -2472,8 +2563,6 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p, const bool force_read_log
       is_header_read_from_file = false;
       is_log_header_validated = false;
     }
-
-  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
@@ -2513,9 +2602,8 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p, const bool force_read_log
 
   if (!is_header_read_from_file)
     {
-      log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
-
-      error_code = logpb_fetch_header_from_active_log (thread_p, db_fullname, logpath, prefix_logname, &hdr, log_pgptr);
+      error_code =
+	logpb_fetch_active_log_header_from_file_or_page_server (thread_p, db_fullname, logpath, prefix_logname, &hdr);
       if (error_code != NO_ERROR)
 	{
 	  goto error;
