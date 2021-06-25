@@ -2002,9 +2002,9 @@ logpb_verify_page_read (LOG_PAGEID pageid, const LOG_PAGE * left_log_pgptr, cons
 
   if (!pages_equal && pageid == log_Gl.hdr.append_lsa.pageid)
     {
-      const char* const left_log_page_area = left_log_pgptr->area;
-      const char* const rite_log_page_area = rite_log_pgptr->area;
-      const int cmp_res = strncmp(left_log_page_area, rite_log_page_area, log_Gl.hdr.append_lsa.offset);
+      const char *const left_log_page_area = left_log_pgptr->area;
+      const char *const rite_log_page_area = rite_log_pgptr->area;
+      const int cmp_res = strncmp (left_log_page_area, rite_log_page_area, log_Gl.hdr.append_lsa.offset);
       pages_equal = left_log_pgptr->hdr == rite_log_pgptr->hdr && cmp_res == 0;
     }
 
@@ -2059,18 +2059,18 @@ logpb_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, LOG_PAGEID pa
       std::shared_ptr<log_page_owner> log_page_from_page_server
           = ats_Gl.get_log_page_broker ().wait_for_page (pageid);
       // *INDENT-ON*
+      const LOG_PAGE *const log_page_from_page_server_pgptr = log_page_from_page_server->get_log_page ();
       if (read_from_disk)
 	{
 	  // context 2)
 	  // log_pgptr already contains value read from local storage
-	  const LOG_PAGE *const log_page_from_page_server_pgptr = log_page_from_page_server->get_log_page ();
-	  logpb_verify_page_read(pageid, log_page_from_page_server_pgptr, log_pgptr);
+	  logpb_verify_page_read (pageid, log_page_from_page_server_pgptr, log_pgptr);
 	}
       else
 	{
 	  // context 1)
           // *INDENT-OFF*
-	  std::memcpy (log_pgptr, log_page_from_page_server->get_log_page (), LOG_PAGESIZE);
+	  std::memcpy (log_pgptr, log_page_from_page_server_pgptr, LOG_PAGESIZE);
           // *INDENT-ON*
 	}
     }
