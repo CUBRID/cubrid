@@ -2408,10 +2408,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  /*
-   * Now continue the normal restart process. At this point the data volumes
-   * are ok. However, some recovery may need to take place
-   */
 #if defined (SERVER_MODE)
   if (get_server_type () == SERVER_TYPE_TRANSACTION)
     {
@@ -2419,6 +2415,11 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       ats_Gl.init_page_brokers ();
     }
 #endif
+
+  /*
+   * Now continue the normal restart process. At this point the data volumes
+   * are ok. However, some recovery may need to take place
+   */
 
   /* Mount the data volume */
   error_code = boot_mount (thread_p, LOG_DBFIRST_VOLID, boot_Db_full_name, NULL);
@@ -2541,6 +2542,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
 #if defined(SERVER_MODE)
   pgbuf_daemons_init ();
+  pgbuf_highest_evicted_lsa_init ();
   dwb_daemons_init ();
 #endif /* SERVER_MODE */
 
@@ -2564,9 +2566,11 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 
 #if defined (SERVER_MODE)
+  // page server-specific initialization needs log to be initialized
   if (get_server_type () == SERVER_TYPE_PAGE)
     {
-      ps_Gl.start_log_replicator (log_Gl.append.get_nxio_lsa ());
+      const log_lsa next_io_lsa = log_Gl.append.get_nxio_lsa ();
+      ps_Gl.start_log_replicator (next_io_lsa);
       ps_Gl.init_page_fetcher ();
     }
 #endif // SERVER_MODE
@@ -2995,9 +2999,9 @@ xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart, const cha
  *  thread_p (in)   : Thread entry
  *  r_args(in)      : Restart argument structure contains various options
  *
- * There might be no proper master key after restoring database 
+ * There might be no proper master key after restoring database
  * even if we have a server mk file and the backup mk file (in the case of timed restore).
- * 
+ *
  * There are several cases but we simplify it into two case:
  * (1) The master key set on the database can be found in the server _keys file
  * (2) not (1), which means no server mk file or no master key in the server mk file.
@@ -3048,10 +3052,10 @@ boot_reset_mk_after_restart_from_backup (THREAD_ENTRY * thread_p, BO_RESTART_ARG
 	}
     }
 
-  /* 
+  /*
    * case (2):
    * There isn't the key set on the database in the server key file,
-   * So we just copy the backup file as a new server key file 
+   * So we just copy the backup file as a new server key file
    * and set the first key in the file as the master key.
    */
 

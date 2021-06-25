@@ -1042,6 +1042,8 @@ static int pgbuf_unlock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_
 static PGBUF_BCB *pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid);
 static PGBUF_BCB *pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode,
 					   PGBUF_BUFFER_HASH * hash_anchor, PGBUF_FIX_PERF * perf, bool * try_again);
+static int pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_page);
+static int pgbuf_read_page_from_file (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_page);
 static void pgbuf_request_data_page_from_page_server (const VPID * vpid);
 static int pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
 static int pgbuf_bcb_safe_flush_internal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool synchronous, bool * locked);
@@ -7659,11 +7661,6 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   PGBUF_STATUS *show_status = &pgbuf_Pool.show_status[tran_index];
 
-#if defined (ENABLE_SYSTEMTAP)
-  bool monitored = false;
-  QUERY_ID query_id = NULL_QUERY_ID;
-#endif /* ENABLE_SYSTEMTAP */
-
   assert (fetch_mode != OLD_PAGE_IF_IN_BUFFER);
 
   /* The page is not found in the hash chain the caller is holding hash_anchor->hash_mutex */
@@ -7736,28 +7733,24 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
       show_status->num_pages_read++;
 
 #if defined(ENABLE_SYSTEMTAP)
-      query_id = qmgr_get_current_query_id (thread_p);
+      bool monitored = false;
+      QUERY_ID query_id = qmgr_get_current_query_id (thread_p);
       if (query_id != NULL_QUERY_ID)
 	{
 	  monitored = true;
 	  CUBRID_IO_READ_START (query_id);
 	}
 #endif /* ENABLE_SYSTEMTAP */
+      int error_code = pgbuf_read_page_from_file_or_page_server (thread_p, vpid, &bufptr->iopage_buffer->iopage);
 
-      pgbuf_request_data_page_from_page_server (vpid);
+#if defined(ENABLE_SYSTEMTAP)
+      if (monitored)
+	{
+	  CUBRID_IO_READ_END (query_id, IO_PAGESIZE, error_code != NO_ERROR);
+	}
+#endif /* ENABLE_SYSTEMTAP */
 
-      if (dwb_read_page (thread_p, vpid, &bufptr->iopage_buffer->iopage, &success) != NO_ERROR)
-	{
-	  /* Should not happen */
-	  assert (false);
-	  return NULL;
-	}
-      else if (success == true)
-	{
-	  /* Nothing to do, copied from DWB */
-	}
-      else if (fileio_read (thread_p, fileio_get_volume_descriptor (vpid->volid), &bufptr->iopage_buffer->iopage,
-			    vpid->pageid, IO_PAGESIZE) == NULL)
+      if (error_code != NO_ERROR)
 	{
 	  /* There was an error in reading the page. Clean the buffer... since it may have been corrupted */
 	  ASSERT_ERROR ();
@@ -7772,32 +7765,9 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 	   */
 	  (void) pgbuf_unlock_page (thread_p, hash_anchor, vpid, true);
 
-#if defined(ENABLE_SYSTEMTAP)
-	  if (monitored == true)
-	    {
-	      CUBRID_IO_READ_END (query_id, IO_PAGESIZE, 1);
-	    }
-#endif /* ENABLE_SYSTEMTAP */
-
 	  PGBUF_BCB_CHECK_MUTEX_LEAKS ();
 	  return NULL;
 	}
-
-#if defined(SERVER_MODE)
-	// *INDENT-OFF*
-	if (get_server_type () == SERVER_TYPE_TRANSACTION && ats_Gl.is_page_server_connected ()) 
-	  {
-	    auto data_page = ats_Gl.get_data_page_broker ().wait_for_page (*vpid);
-	
-	    char buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
-	    FILEIO_PAGE *io_page = (FILEIO_PAGE *) PTR_ALIGN (buf, MAX_ALIGNMENT);
-	    std::memcpy (io_page, data_page->c_str (), db_io_page_size ());
-
-	    assert (bufptr->iopage_buffer->iopage.prv == io_page->prv);
-    	  }
-	// *INDENT-ON*
-#endif // SERVER_MODE
-
 
       CAST_IOPGPTR_TO_PGPTR (pgptr, &bufptr->iopage_buffer->iopage);
       tde_algo = pgbuf_get_tde_algorithm (pgptr);
@@ -7815,12 +7785,6 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 	    }
 	}
 
-#if defined(ENABLE_SYSTEMTAP)
-      if (monitored == true)
-	{
-	  CUBRID_IO_READ_END (query_id, IO_PAGESIZE, 0);
-	}
-#endif /* ENABLE_SYSTEMTAP */
       if (pgbuf_is_temporary_volume (vpid->volid) == true)
 	{
 	  /* Check if the first time to access */
@@ -7887,6 +7851,82 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
     }
 
   return bufptr;
+}
+
+int
+pgbuf_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_page)
+{
+
+// Server type --- Storage Config Type --- Data Type --- Connection to PS --- Local Read --- Remote Read
+//     PS                Local            Perm & Temp          Never              Yes            No
+// -----------------------------------------------------------------------------------------------------
+//     TS                Local                Perm              Yes               Yes           Yes
+//                                                               No               Yes            No
+//                                            Temp             Yes/No             Yes            No
+//                       Remote               Perm              Yes                No           Yes
+//                                            Temp              Yes               Yes            No
+
+#if defined(SERVER_MODE)
+  bool is_tran_server = get_server_type () == SERVER_TYPE_TRANSACTION;
+  bool is_page_server = get_server_type () == SERVER_TYPE_PAGE;
+  bool is_temporary_page = pgbuf_is_temporary_volume (vpid->volid);
+  bool is_using_local_storage = is_page_server || !ats_Gl.uses_remote_storage ();
+  bool request_from_ps = is_tran_server && ats_Gl.is_page_server_connected () && !is_temporary_page;
+  bool read_from_local = is_using_local_storage || is_temporary_page;
+  int error_code = NO_ERROR;
+
+  if (read_from_local)
+    {
+      error_code = pgbuf_read_page_from_file (thread_p, vpid, io_page);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+    }
+  if (request_from_ps)
+    {
+      pgbuf_request_data_page_from_page_server (vpid);
+      auto data_page = ats_Gl.get_data_page_broker ().wait_for_page (*vpid);
+      if (read_from_local)
+	{
+	  // *INDENT-OFF*
+	  assert (reinterpret_cast<FILEIO_PAGE const*> (data_page->c_str ())->prv == 
+            reinterpret_cast<FILEIO_PAGE *> (io_page)->prv);
+	  // *INDENT-ON*
+	}
+
+      std::memcpy (io_page, data_page->c_str (), db_io_page_size ());
+    }
+  return NO_ERROR;
+#else // !SERVER_MODE = SA_MODE
+  return pgbuf_read_page_from_file (thread_p, vpid, io_page);
+#endif // !SERVER_MODE = SA_MODE
+}
+
+int
+pgbuf_read_page_from_file (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_page)
+{
+  bool success = false;
+  if (dwb_read_page (thread_p, vpid, io_page, &success) != NO_ERROR)
+    {
+      /* Should not happen */
+      assert (false);
+      return ER_FAILED;
+    }
+  else if (success == true)
+    {
+      /* Nothing to do, copied from DWB */
+      return NO_ERROR;
+    }
+  else if (fileio_read (thread_p, fileio_get_volume_descriptor (vpid->volid), io_page,
+			vpid->pageid, IO_PAGESIZE) == NULL)
+    {
+      int error_code = ER_FAILED;
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+  return NO_ERROR;
 }
 
 /*
@@ -16118,6 +16158,23 @@ pgbuf_daemons_init ()
   pgbuf_page_flush_daemon_init ();
   pgbuf_page_post_flush_daemon_init ();
   pgbuf_flush_control_daemon_init ();
+}
+#endif /* SERVER_MODE */
+
+#if defined (SERVER_MODE)
+/*
+ * pgbuf_highest_evicted_lsa_init () - initialize highest evicted lsa to the previously
+ *      appended lsa
+ *
+ * NOTE: important, at least, in the context of the scalability scenario where, upon [re]boot
+ *    TS requests from the PS the latest log page; at which point the PS has a routine to actually
+ *    wait the replication progress "past" a certain point; 'prev_lsa' is that point which allows
+ *    the PS to serve the latest log page to the TS
+ */
+void
+pgbuf_highest_evicted_lsa_init ()
+{
+  pgbuf_Pool.update_highest_evicted_lsa (log_Gl.append.prev_lsa);
 }
 #endif /* SERVER_MODE */
 

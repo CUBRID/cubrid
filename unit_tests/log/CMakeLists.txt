@@ -114,7 +114,7 @@ target_include_directories(test_prior_list_serialize PRIVATE
   ${TEST_INCLUDES}
   )
 add_dependencies(test_prior_list_serialize
-  ${CATCH2_TARGET}
+  ${CATCH2_TARGET} ${LZ4_TARGET}
   )
 
 #
