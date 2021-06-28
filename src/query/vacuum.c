@@ -3437,7 +3437,6 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 	  else if (log_record_data.rcvindex == RVBT_MARK_DELETED)
 	    {
 	      /* A serial object was marked deleted. It does not really need vacuuming */
-	      /* Fall through */
 	    }
 	  else
 	    {
