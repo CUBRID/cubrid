@@ -6635,11 +6635,6 @@ or_pack_listid (char *ptr, void *listid_ptr)
   ptr += OR_PTR_SIZE;
 
   ptr = or_pack_int64 (ptr, listid->tuple_cnt);
-  //OR_PUT_INT64 (ptr, listid->tuple_cnt);
-  //ptr += OR_INT64_SIZE;
-
-  //OR_PUT_INT (ptr, listid->tuple_cnt);
-  //ptr += OR_INT_SIZE;
 
   OR_PUT_INT (ptr, listid->page_cnt);
   ptr += OR_INT_SIZE;
@@ -6727,11 +6722,6 @@ or_unpack_listid (char *ptr, void *listid_ptr)
   ptr += OR_PTR_SIZE;
 
   ptr = or_unpack_int64 (ptr, &listid->tuple_cnt);
-  //OR_GET_INT64 (ptr, listid->tuple_cnt);
-  //ptr += OR_INT64_SIZE;
-
-  //listid->tuple_cnt = OR_GET_INT (ptr);
-  //ptr += OR_INT_SIZE;
 
   listid->page_cnt = OR_GET_INT (ptr);
   ptr += OR_INT_SIZE;
@@ -6846,11 +6836,13 @@ or_listid_length (void *listid_ptr)
 
   length = OR_PTR_SIZE /* query_id */  + OR_PTR_SIZE;	/* tfile_vfid */
 
-  length = DB_ALIGN (length, MAX_ALIGNMENT);
+  /* aligned length for tuple_count (INT64, 8) */
+  length = DB_ALIGN (length, MAX_ALIGNMENT); // aligned offset
+  length += OR_INT64_SIZE;
 
-  /* QFILE_LIST_ID 1 tuple_cnt and 8 fixed item page_cnt first_vpid.pageid first_vpid.volid last_vpid.pageid last_vpid.volid
+  /* 8 fixed item page_cnt first_vpid.pageid first_vpid.volid last_vpid.pageid last_vpid.volid
    * last_offset lasttpl_len type_list_type_cnt */
-  length += OR_INT64_SIZE + OR_INT_SIZE * 8;
+  length += OR_INT_SIZE * 8;
 
   for (i = 0; i < listid->type_list.type_cnt; i++)
     {
