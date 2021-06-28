@@ -17962,7 +17962,7 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
   if (attr_val[1] == NULL)
     {
-      error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
+      error = ER_FAILED;
       goto end;
     }
 
@@ -17988,7 +17988,7 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   attr_val[2] = (char *) si->dbname->info.name.original;
   if (attr_val[2] == NULL)
     {
-      error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
+      error = ER_FAILED;
       goto end;
     }
 
@@ -17997,7 +17997,7 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   attr_val[3] = (char *) si->user->info.name.original;
   if (attr_val[3] == NULL)
     {
-      error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
+      error = ER_FAILED;
       goto end;
     }
 
@@ -18008,7 +18008,7 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
       attr_val[4] = (char *) PT_VALUE_GET_BYTES (si->pwd);
       if (attr_val[4] == NULL)
 	{
-	  error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
+	  error = ER_FAILED;
 	  goto end;
 	}
     }
@@ -18020,7 +18020,7 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
       attr_val[5] = (char *) PT_VALUE_GET_BYTES (si->prop);
       if (attr_val[5] == NULL)
 	{
-	  error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
+	  error = ER_FAILED;
 	  goto end;
 	}
     }
@@ -18032,7 +18032,7 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
       attr_val[6] = (char *) PT_VALUE_GET_BYTES (si->comment);
       if (attr_val[6] == NULL)
 	{
-	  error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
+	  error = ER_FAILED;
 	  goto end;
 	}
     }
