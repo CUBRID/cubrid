@@ -309,11 +309,11 @@ struct scan_stats
 
   /* for heap & list scan */
   INT64 read_rows;		/* # of rows read */
-  INT64 qualified_rows;	/* # of rows qualified by data filter */
+  INT64 qualified_rows;		/* # of rows qualified by data filter */
 
   /* for btree scan */
   INT64 read_keys;		/* # of keys read */
-  INT64 qualified_keys;	/* # of keys qualified by key filter */
+  INT64 qualified_keys;		/* # of keys qualified by key filter */
   INT64 key_qualified_rows;	/* # of rows qualified by key filter */
   INT64 data_qualified_rows;	/* # of rows qualified by data filter */
   struct timeval elapsed_lookup;

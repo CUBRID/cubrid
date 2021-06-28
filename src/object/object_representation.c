@@ -6837,7 +6837,7 @@ or_listid_length (void *listid_ptr)
   length = OR_PTR_SIZE /* query_id */  + OR_PTR_SIZE;	/* tfile_vfid */
 
   /* aligned length for tuple_count (INT64, 8) */
-  length = DB_ALIGN (length, MAX_ALIGNMENT); // aligned offset
+  length = DB_ALIGN (length, MAX_ALIGNMENT);	// aligned offset
   length += OR_INT64_SIZE;
 
   /* 8 fixed item page_cnt first_vpid.pageid first_vpid.volid last_vpid.pageid last_vpid.volid
