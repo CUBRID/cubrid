@@ -1089,7 +1089,7 @@ db_dump_query_result (DB_QUERY_RESULT * r)
     {
       fprintf (stdout, "Query_id: %lld \n", (long long) r->res.s.query_id);
       fprintf (stdout, "Stmt_id: %d \n", r->res.s.stmt_id);
-      fprintf (stdout, "Tuple Cnt: %lld \n", r->res.s.cursor_id.list_id.tuple_cnt);
+      fprintf (stdout, "Tuple Cnt: %lld \n", (long long) r->res.s.cursor_id.list_id.tuple_cnt);
       fprintf (stdout, "Stmt_type: %d \n", r->res.s.stmt_type);
     }				/* if */
   else if (r->type == T_GET)
