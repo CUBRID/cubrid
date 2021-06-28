@@ -18452,14 +18452,14 @@ pt_print_create_server (PARSER_CONTEXT * parser, PT_NODE * p)
       r = pt_print_bytes (parser, si->prop);
       q = pt_append_varchar (parser, q, r);
     }
-#if 0
+
   if (si->comment != NULL)
     {
       q = pt_append_nulstring (parser, q, ", COMMENT=");
       r = pt_print_bytes (parser, si->comment);
       q = pt_append_varchar (parser, q, r);
     }
-#endif
+
   q = pt_append_nulstring (parser, q, " )");
 
   return q;

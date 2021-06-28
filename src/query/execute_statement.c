@@ -17832,9 +17832,8 @@ end:
 
 
 static int
-do_create_server_internal (MOP * server_object, const char *server_name, const char *host, DB_VALUE * port_no,
-			   const char *dbname, const char *username, const char *password, const char *properties,
-			   const char *comment)
+do_create_server_internal (MOP * server_object, DB_VALUE * port_no, const char **attr_names, char **attr_val,
+			   int attr_cnt)
 {
   DB_OBJECT *ret_obj = NULL;
   DB_OTMPL *obj_tmpl = NULL;
@@ -17863,24 +17862,6 @@ do_create_server_internal (MOP * server_object, const char *server_name, const c
       goto end;
     }
 
-  /* server_name */
-  db_make_string (&value, server_name);
-  error = dbt_put_internal (obj_tmpl, "link_name", &value);
-  pr_clear_value (&value);
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
-
-  /* host */
-  db_make_string (&value, host);
-  error = dbt_put_internal (obj_tmpl, "host", &value);
-  pr_clear_value (&value);
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
-
   /* port */
   error = dbt_put_internal (obj_tmpl, "port", port_no);
   if (error != NO_ERROR)
@@ -17888,54 +17869,20 @@ do_create_server_internal (MOP * server_object, const char *server_name, const c
       goto end;
     }
 
-  /* dbname */
-  db_make_string (&value, dbname);
-  error = dbt_put_internal (obj_tmpl, "db_name", &value);
-  pr_clear_value (&value);
-  if (error != NO_ERROR)
+  for (int i = 0; i < attr_cnt; i++)
     {
-      goto end;
-    }
-
-  /* username */
-  db_make_string (&value, username);
-  error = dbt_put_internal (obj_tmpl, "user_name", &value);
-  pr_clear_value (&value);
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
-
-  /* password */
-  db_make_string (&value, password);
-  error = dbt_put_internal (obj_tmpl, "password", &value);
-  pr_clear_value (&value);
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
-
-  /* properties */
-  db_make_string (&value, properties);
-  error = dbt_put_internal (obj_tmpl, "properties", &value);
-  pr_clear_value (&value);
-  if (error != NO_ERROR)
-    {
-      goto end;
+      db_make_string (&value, attr_val[i]);
+      error = dbt_put_internal (obj_tmpl, attr_names[i], &value);
+      pr_clear_value (&value);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
     }
 
   /* owner */
   db_make_object (&value, Au_user);
   error = dbt_put_internal (obj_tmpl, "owner", &value);
-  pr_clear_value (&value);
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
-
-  /* comment */
-  db_make_string (&value, comment);
-  error = dbt_put_internal (obj_tmpl, "comment", &value);
   pr_clear_value (&value);
   if (error != NO_ERROR)
     {
@@ -17968,15 +17915,11 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_OBJECT *server_class = NULL, *server_object = NULL;
   DB_IDENTIFIER server_obj_id;
   DB_VALUE *pval = NULL;
-  char *server_name = NULL;
   DB_VALUE port_no;
   DB_DATA_STATUS data_stat;
-  const char *host = NULL;
-  const char *dbname = NULL;
-  const char *username = NULL;
-  const char *password = NULL;
-  const char *properties = NULL;
-  const char *comment = NULL;
+  char *attr_val[7];
+  const char *attr_names[7] = { "link_name", "host", "db_name", "user_name", "password", "properties", "comment" };
+
   int error = NO_ERROR;
   int save;
   bool au_disable_flag = false;
@@ -17985,6 +17928,7 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
+  memset (attr_val, 0x00, sizeof (attr_val));
   db_make_null (&port_no);
   db_make_int (&port_no, 0);
 
@@ -17996,13 +17940,13 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto end;
     }
 
-  server_name = (char *) si->server_name->info.name.original;
-  server_object = do_get_server_obj_id (&server_obj_id, server_class, server_name);
+  attr_val[0] = (char *) si->server_name->info.name.original;
+  server_object = do_get_server_obj_id (&server_obj_id, server_class, attr_val[0]);
   if (server_object != NULL)
     {
       error = ER_DBLINK_SERVER_ALREADY_EXISTS;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, server_name);
-      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SERVER_ALREADY_EXISTS, server_name);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, attr_val[0]);
+      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SERVER_ALREADY_EXISTS, attr_val[0]);
       goto end;
     }
 
@@ -18010,13 +17954,13 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   assert ((si->host->node_type == PT_NAME) || (si->host->node_type == PT_VALUE));
   if (si->host->node_type == PT_VALUE)
     {
-      host = (char *) PT_VALUE_GET_BYTES (si->host);
+      attr_val[1] = (char *) PT_VALUE_GET_BYTES (si->host);
     }
   else
     {
-      host = (char *) si->host->info.name.original;
+      attr_val[1] = (char *) si->host->info.name.original;
     }
-  if (host == NULL)
+  if (attr_val[1] == NULL)
     {
       error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
       goto end;
@@ -18041,8 +17985,8 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* DBNAME */
   assert (si->dbname->node_type == PT_NAME);
-  dbname = (char *) si->dbname->info.name.original;
-  if (dbname == NULL)
+  attr_val[2] = (char *) si->dbname->info.name.original;
+  if (attr_val[2] == NULL)
     {
       error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
       goto end;
@@ -18050,8 +17994,8 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* USER */
   assert (si->user->node_type == PT_NAME);
-  username = (char *) si->user->info.name.original;
-  if (username == NULL)
+  attr_val[3] = (char *) si->user->info.name.original;
+  if (attr_val[3] == NULL)
     {
       error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
       goto end;
@@ -18061,8 +18005,8 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (si->pwd != NULL)
     {
       assert (si->pwd->node_type == PT_VALUE);
-      password = (char *) PT_VALUE_GET_BYTES (si->pwd);
-      if (password == NULL)
+      attr_val[4] = (char *) PT_VALUE_GET_BYTES (si->pwd);
+      if (attr_val[4] == NULL)
 	{
 	  error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
 	  goto end;
@@ -18073,8 +18017,8 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (si->prop != NULL)
     {
       assert (si->prop->node_type == PT_VALUE);
-      properties = (char *) PT_VALUE_GET_BYTES (si->prop);
-      if (properties == NULL)
+      attr_val[5] = (char *) PT_VALUE_GET_BYTES (si->prop);
+      if (attr_val[5] == NULL)
 	{
 	  error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
 	  goto end;
@@ -18085,8 +18029,8 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (si->comment != NULL)
     {
       assert (si->comment->node_type == PT_VALUE);
-      comment = (char *) PT_VALUE_GET_BYTES (si->comment);
-      if (comment == NULL)
+      attr_val[6] = (char *) PT_VALUE_GET_BYTES (si->comment);
+      if (attr_val[6] == NULL)
 	{
 	  error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
 	  goto end;
@@ -18099,8 +18043,8 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   server_object = NULL;
   error =
-    do_create_server_internal (&server_object, server_name, host, &port_no, dbname, username, password, properties,
-			       comment);
+    do_create_server_internal (&server_object, &port_no, attr_names, attr_val,
+			       sizeof (attr_names) / sizeof (attr_names[0]));
   if (error >= 0)
     {
       error = NO_ERROR;
