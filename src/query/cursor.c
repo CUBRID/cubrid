@@ -844,8 +844,7 @@ cursor_prefetch_column_oids (CURSOR_ID * cursor_id_p)
   char *tuple_p;
   OID *current_oid_p;
   QFILE_TUPLE current_tuple;
-  int tuple_count;
-  int oid_index = 0, current_tuple_length;
+  int tuple_count, oid_index = 0, current_tuple_length;
   int j, tuple_index, col_index, col_num;
   DB_TYPE type;
 
