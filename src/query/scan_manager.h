@@ -304,18 +304,18 @@ typedef struct scan_stats SCAN_STATS;
 struct scan_stats
 {
   struct timeval elapsed_scan;
-  UINT64 num_fetches;
-  UINT64 num_ioreads;
+  INT64 num_fetches;
+  INT64 num_ioreads;
 
   /* for heap & list scan */
-  UINT64 read_rows;		/* # of rows read */
-  UINT64 qualified_rows;		/* # of rows qualified by data filter */
+  INT64 read_rows;		/* # of rows read */
+  INT64 qualified_rows;	/* # of rows qualified by data filter */
 
   /* for btree scan */
-  UINT64 read_keys;		/* # of keys read */
-  UINT64 qualified_keys;		/* # of keys qualified by key filter */
-  UINT64 key_qualified_rows;	/* # of rows qualified by key filter */
-  UINT64 data_qualified_rows;	/* # of rows qualified by data filter */
+  INT64 read_keys;		/* # of keys read */
+  INT64 qualified_keys;	/* # of keys qualified by key filter */
+  INT64 key_qualified_rows;	/* # of rows qualified by key filter */
+  INT64 data_qualified_rows;	/* # of rows qualified by data filter */
   struct timeval elapsed_lookup;
   bool covered_index;
   bool multi_range_opt;
