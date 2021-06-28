@@ -61,7 +61,7 @@ struct cursor_id
   VPID next_vpid;		/* Next page identifier */
   VPID header_vpid;		/* Header page identifier in buffer area */
   int on_overflow;		/* cursor buffer has an overflow page */
-  INT64 tuple_no;			/* Tuple position number */
+  int tuple_no;			/* Tuple position number */
   QFILE_TUPLE_RECORD tuple_record;	/* Tuple descriptor */
   char *buffer;			/* Current page */
   char *buffer_area;
