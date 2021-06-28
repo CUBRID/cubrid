@@ -808,7 +808,7 @@ cursor_prefetch_first_hidden_oid (CURSOR_ID * cursor_id_p)
    * search through the current buffer to store interesting OIDs
    * in the oid_set area, eliminating duplicates.
    */
-  for (i = 0; i < tupel_count; i++)
+  for (i = 0; i < tuple_count; i++)
     {
       current_tuple_length = QFILE_GET_TUPLE_LENGTH (current_tuple);
 
