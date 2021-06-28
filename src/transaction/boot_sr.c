@@ -2363,7 +2363,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 #if defined (SERVER_MODE)
   if (get_server_type () == SERVER_TYPE_TRANSACTION)
     {
-      // Data page broker is required before volumes are mounted.
+      // Log page broker is required to load log header.
       ats_Gl.init_page_brokers ();
     }
 #endif

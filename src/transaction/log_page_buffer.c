@@ -362,7 +362,7 @@ static LOG_PRIOR_NODE *prior_lsa_remove_prior_list (THREAD_ENTRY * thread_p);
 static int logpb_append_prior_lsa_list (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * list);
 static int logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE access_mode,
 			    LOG_PAGE * log_pgptr);
-static void request_log_page_from_ps (LOG_PAGEID log_pageid);
+static void request_log_page_from_page_server (LOG_PAGEID log_pageid);
 
 static void logpb_fatal_error_internal (THREAD_ENTRY * thread_p, bool log_exit, bool need_flush, const char *file_name,
 					const int lineno, const char *fmt, va_list ap);
@@ -370,13 +370,12 @@ static void logpb_fatal_error_internal (THREAD_ENTRY * thread_p, bool log_exit, 
 static int logpb_copy_log_header (THREAD_ENTRY * thread_p, LOG_HEADER * to_hdr, const LOG_HEADER * from_hdr);
 STATIC_INLINE LOG_BUFFER *logpb_get_log_buffer (LOG_PAGE * log_pg) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int logpb_get_log_buffer_index (LOG_PAGEID log_pageid) __attribute__ ((ALWAYS_INLINE));
-static int logpb_fetch_active_log_header_from_file (THREAD_ENTRY * thread_p, const char *db_fullname,
-						    const char *logpath, const char *prefix_logname, LOG_HEADER * hdr,
-						    LOG_PAGE * log_pgptr);
-static int logpb_fetch_active_log_header_from_page_server (LOG_HEADER * hdr, LOG_PAGE * log_pgptr);
-static int logpb_fetch_active_log_header_from_file_or_page_server (THREAD_ENTRY * thread_p, const char *db_fullname,
-								   const char *logpath, const char *prefix_logname,
-								   LOG_HEADER * hdr);
+static int logpb_fetch_header_from_file (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
+					 const char *prefix_logname, LOG_HEADER * hdr, LOG_PAGE * log_pgptr);
+static int logpb_fetch_header_from_page_server (LOG_HEADER * hdr, LOG_PAGE * log_pgptr);
+static int logpb_fetch_header_from_file_or_page_server (THREAD_ENTRY * thread_p, const char *db_fullname,
+							const char *logpath, const char *prefix_logname,
+							LOG_HEADER * hdr);
 static int logpb_compute_page_checksum (const LOG_PAGE * log_pgptr);
 
 static bool logpb_is_log_active_from_backup_useful (THREAD_ENTRY * thread_p, const char *active_log_path,
@@ -1496,7 +1495,7 @@ logpb_fetch_header_with_buffer (THREAD_ENTRY * thread_p, LOG_HEADER * hdr, LOG_P
 }
 
 /*
- * logpb_fetch_active_log_header_from_file - Fetch log header directly from active log file
+ * logpb_fetch_header_from_file - Fetch log header directly from active log file
  *
  * return: error code
  *
@@ -1506,8 +1505,8 @@ logpb_fetch_header_with_buffer (THREAD_ENTRY * thread_p, LOG_HEADER * hdr, LOG_P
  * NOTE: Should be used only during boot sequence.
  */
 int
-logpb_fetch_active_log_header_from_file (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
-					 const char *prefix_logname, LOG_HEADER * hdr, LOG_PAGE * log_pgptr)
+logpb_fetch_header_from_file (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
+			      const char *prefix_logname, LOG_HEADER * hdr, LOG_PAGE * log_pgptr)
 {
   LOG_HEADER *log_hdr;		/* The log header */
   LOG_PHY_PAGEID phy_pageid;
@@ -1557,10 +1556,7 @@ logpb_fetch_active_log_header_from_file (THREAD_ENTRY * thread_p, const char *db
 
   if (log_pgptr->hdr.logical_pageid != LOGPB_HEADER_PAGE_ID || log_pgptr->hdr.offset != NULL_OFFSET)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED, 1, phy_pageid);
-      // TODO: above error message says:
-      //  Internal error: logical log page %1$lld may be corrupted.
-      // but a phys page is is logged; should not LOGPB_HEADER_PAGE_ID actually be logged?
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED, 1, LOGPB_HEADER_PAGE_ID);
       error_code = ER_LOG_PAGE_CORRUPTED;
       goto error;
     }
@@ -1571,7 +1567,7 @@ error:
 
 #if defined (SERVER_MODE)
 /*
- * logpb_fetch_active_log_header_from_page_server - Fetch log header from page server
+ * logpb_fetch_header_from_page_server - Fetch log header from page server
  *
  * return: error code
  *
@@ -1582,20 +1578,20 @@ error:
  */
 // *INDENT-OFF*
 int
-logpb_fetch_active_log_header_from_page_server (LOG_HEADER * hdr, LOG_PAGE * log_pgptr)
+logpb_fetch_header_from_page_server (LOG_HEADER * hdr, LOG_PAGE * log_pgptr)
 {
   assert (is_tran_server_with_remote_storage ());
 
-  request_log_page_from_ps (LOGPB_HEADER_PAGE_ID);
+  request_log_page_from_page_server (LOGPB_HEADER_PAGE_ID);
 
-  std::shared_ptr<log_page_owner> log_page_from_page_server
+  std::shared_ptr<log_page_owner> brokered_log_hdr_page
     = ats_Gl.get_log_page_broker ().wait_for_page (LOGPB_HEADER_PAGE_ID);
 
-  const LOG_PAGE *const log_page_from_page_server_pgptr = log_page_from_page_server->get_log_page ();
-  const LOG_HEADER *const log_hdr = reinterpret_cast<const LOG_HEADER*> (log_page_from_page_server_pgptr->area);
+  const LOG_PAGE *const log_hdr_page = brokered_log_hdr_page->get_log_page ();
+  const LOG_HEADER *const log_hdr = reinterpret_cast<const LOG_HEADER*> (log_hdr_page->area);
   *hdr = *log_hdr;
 
-  std::memcpy (log_pgptr, log_page_from_page_server_pgptr, LOG_PAGESIZE);
+  std::memcpy (log_pgptr, log_hdr_page, LOG_PAGESIZE);
 
   if (log_pgptr->hdr.logical_pageid != LOGPB_HEADER_PAGE_ID || log_pgptr->hdr.offset != NULL_OFFSET)
     {
@@ -1609,7 +1605,7 @@ logpb_fetch_active_log_header_from_page_server (LOG_HEADER * hdr, LOG_PAGE * log
 #endif // SERVER_MODE
 
 /*
- * logpb_fetch_active_log_header_from_file_or_page_server - Fetch log header from page server or
+ * logpb_fetch_header_from_file_or_page_server - Fetch log header from page server or
  *          directly from active log file
  *
  * return: error code
@@ -1620,9 +1616,8 @@ logpb_fetch_active_log_header_from_page_server (LOG_HEADER * hdr, LOG_PAGE * log
  * NOTE: Should be used only during boot sequence
  */
 int
-logpb_fetch_active_log_header_from_file_or_page_server (THREAD_ENTRY * thread_p, const char *db_fullname,
-							const char *logpath, const char *prefix_logname,
-							LOG_HEADER * hdr)
+logpb_fetch_header_from_file_or_page_server (THREAD_ENTRY * thread_p, const char *db_fullname,
+					     const char *logpath, const char *prefix_logname, LOG_HEADER * hdr)
 {
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   char *const aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
@@ -1634,16 +1629,14 @@ logpb_fetch_active_log_header_from_file_or_page_server (THREAD_ENTRY * thread_p,
   int res_code = NO_ERROR;
   if (is_tran_server_with_remote_storage ())
     {
-      res_code = logpb_fetch_active_log_header_from_page_server (hdr, log_pgptr);
+      res_code = logpb_fetch_header_from_page_server (hdr, log_pgptr);
     }
   else
     {
-      res_code =
-	logpb_fetch_active_log_header_from_file (thread_p, db_fullname, logpath, prefix_logname, hdr, log_pgptr);
+      res_code = logpb_fetch_header_from_file (thread_p, db_fullname, logpath, prefix_logname, hdr, log_pgptr);
     }
 #else // SERVER_MODE
-  const int res_code =
-    logpb_fetch_active_log_header_from_file (thread_p, db_fullname, logpath, prefix_logname, hdr, log_pgptr);
+  const int res_code = logpb_fetch_header_from_file (thread_p, db_fullname, logpath, prefix_logname, hdr, log_pgptr);
 #endif // SERVER_MODE
 
   if (res_code != NO_ERROR)
@@ -2064,7 +2057,7 @@ exit:
 }
 
 static void
-request_log_page_from_ps (LOG_PAGEID log_pageid)
+request_log_page_from_page_server (LOG_PAGEID log_pageid)
 {
 #if defined(SERVER_MODE)
   // *INDENT-OFF*
@@ -2130,7 +2123,7 @@ logpb_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, LOG_PAGEID pa
   if (server_type == SERVER_TYPE_TRANSACTION && ats_Gl.is_page_server_connected ())
     {
       // context 1) or 2)
-      request_log_page_from_ps (pageid);
+      request_log_page_from_page_server (pageid);
     }
 
   bool read_from_disk = false;
@@ -2149,21 +2142,21 @@ logpb_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, LOG_PAGEID pa
   if (server_type == SERVER_TYPE_TRANSACTION && ats_Gl.is_page_server_connected ())
     {
       // *INDENT-OFF*
-      std::shared_ptr<log_page_owner> log_page_from_page_server
+      std::shared_ptr<log_page_owner> brokered_log_page
           = ats_Gl.get_log_page_broker ().wait_for_page (pageid);
       // *INDENT-ON*
-      const LOG_PAGE *const log_page_from_page_server_pgptr = log_page_from_page_server->get_log_page ();
+      const LOG_PAGE *const log_page_from_page_server = brokered_log_page->get_log_page ();
       if (read_from_disk)
 	{
 	  // context 2)
 	  // log_pgptr already contains value read from local storage
-	  logpb_verify_page_read (pageid, log_page_from_page_server_pgptr, log_pgptr);
+	  logpb_verify_page_read (pageid, log_page_from_page_server, log_pgptr);
 	}
       else
 	{
 	  // context 1)
           // *INDENT-OFF*
-	  std::memcpy (log_pgptr, log_page_from_page_server_pgptr, LOG_PAGESIZE);
+	  std::memcpy (log_pgptr, log_page_from_page_server, LOG_PAGESIZE);
           // *INDENT-ON*
 	}
     }
@@ -2424,12 +2417,12 @@ logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int
 		  ASSERT_ERROR ();
 		  assert (false);
 		}
-	      logpb_debug_check_log_page (thread_p, aligned_log_pgbuf);
+	      logpb_debug_check_log_page (thread_p, (LOG_PAGE *) aligned_log_pgbuf);
 	      ptr += LOG_PAGESIZE;
 	    }
 	  else
 	    {
-	      logpb_debug_check_log_page (thread_p, ptr);
+	      logpb_debug_check_log_page (thread_p, (LOG_PAGE *) ptr);
 	      ptr += LOG_PAGESIZE;
 	    }
 	}
@@ -2602,8 +2595,7 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p, const bool force_read_log
 
   if (!is_header_read_from_file)
     {
-      error_code =
-	logpb_fetch_active_log_header_from_file_or_page_server (thread_p, db_fullname, logpath, prefix_logname, &hdr);
+      error_code = logpb_fetch_header_from_file_or_page_server (thread_p, db_fullname, logpath, prefix_logname, &hdr);
       if (error_code != NO_ERROR)
 	{
 	  goto error;
@@ -11280,10 +11272,8 @@ logpb_last_complete_blockid (void)
 
 #if !defined(NDEBUG)
 void
-logpb_debug_check_log_page (THREAD_ENTRY * thread_p, const void *log_pgptr_ptr)
+logpb_debug_check_log_page (THREAD_ENTRY * thread_p, const LOG_PAGE * log_pgptr)
 {
-  const LOG_PAGE *const log_pgptr = (LOG_PAGE *) log_pgptr_ptr;
-
   assert (log_pgptr != NULL);
   if (boot_Server_status != BOOT_SERVER_UP && log_pgptr->hdr.logical_pageid == LOGPB_HEADER_PAGE_ID)
     {
