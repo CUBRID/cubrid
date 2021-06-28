@@ -4269,7 +4269,7 @@ drop_stmt
 
 			if (node)
 			  {
-                            node->info.serial.if_exists = $3;
+                            node->info.drop_server.if_exists = $3;
 			    node->info.drop_server.server_name = $4;
 			  }
 

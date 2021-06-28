@@ -18407,16 +18407,6 @@ static PT_NODE *
 pt_apply_create_server (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_WALK (parser, p->info.create_server.server_name, arg);
-  /*
-     PT_NODE *server_name;
-     PT_NODE *host;
-     PT_NODE *port;  
-     PT_NODE *dbname;  
-     PT_NODE *user;
-     PT_NODE *pwd;
-     PT_NODE *prop;
-     PT_NODE *comment;
-   */
   return p;
 }
 

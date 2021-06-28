@@ -1356,9 +1356,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1284 dblink - %1$s
 1285 dblink - invalid number of columns specified.
-1286 _db_server class not found.
-1287 Server "%1$s" not found.
-1288 Server "%1$s" already exist.
+1286 dblink - catalog _db_server class not found.
+1287 dblink - server "%1$s" not found.
+1288 dblink - server "%1$s" already exists.
 
 1289 Last Error
 
@@ -1825,7 +1825,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 303 Unexpected number of arguments %1$d.
 304 Could not find compatible signature for function %1$s()
 305 Signature %1$s is not compatible with function arguments.
-306 Server '%1$s' already exist.
+306 The server '%1$s' already exists.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %1$d bytes.
@@ -1909,7 +1909,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 80 Isolation level value in MVCC must be 'read committed', 'repeatable read' or 'serializable'.
 81 '%1$s' is an 'auto_increment' object, which is not allowed to be altered as a serial.
 82 Invalid JSON: '%1$s'.
-83 The server '%1$s' is not defined yet.
+83 The server '%1$s' is not defined.
 84 The owner or DBA can only alter the definition of the target server.
 
 $set 11 MSGCAT_SET_AUTHORIZATION

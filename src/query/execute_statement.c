@@ -17784,7 +17784,7 @@ do_drop_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   server_class = sm_find_class (CT_DB_SERVER_NAME);
   if (server_class == NULL)
     {
-      error = ER_QPROC_DB_SERVER_NOT_FOUND;
+      error = ER_DBLINK_CATALOG_DB_SERVER_NOT_FOUND;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
       goto end;
     }
@@ -17797,7 +17797,7 @@ do_drop_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  return NO_ERROR;
 	}
-      error = ER_QPROC_SERVER_NOT_FOUND;
+      error = ER_DBLINK_SERVER_NOT_FOUND;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, name);
       PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RT_SERVER_NOT_DEFINED, name);
       goto end;
@@ -17850,7 +17850,7 @@ do_create_server_internal (MOP * server_object, const char *server_name, const c
   server_class = sm_find_class (CT_DB_SERVER_NAME);
   if (server_class == NULL)
     {
-      error = ER_QPROC_DB_SERVER_NOT_FOUND;
+      error = ER_DBLINK_CATALOG_DB_SERVER_NOT_FOUND;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
       goto end;
     }
@@ -17991,7 +17991,7 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   server_class = sm_find_class (CT_DB_SERVER_NAME);
   if (server_class == NULL)
     {
-      error = ER_QPROC_DB_SERVER_NOT_FOUND;
+      error = ER_DBLINK_CATALOG_DB_SERVER_NOT_FOUND;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
       goto end;
     }
@@ -18000,9 +18000,9 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   server_object = do_get_server_obj_id (&server_obj_id, server_class, server_name);
   if (server_object != NULL)
     {
-      error = ER_QPROC_SERVER_ALREADY_EXIST;
+      error = ER_DBLINK_SERVER_ALREADY_EXISTS;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, server_name);
-      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SERVER_ALREADY_EXIST, server_name);
+      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SERVER_ALREADY_EXISTS, server_name);
       goto end;
     }
 

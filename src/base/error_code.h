@@ -1645,9 +1645,9 @@
 
 #define ER_DBLINK		    		      -1284
 #define ER_DBLINK_INVALID_COLUMNS_SPECIFIED         -1285
-#define ER_QPROC_DB_SERVER_NOT_FOUND		    -1286
-#define ER_QPROC_SERVER_NOT_FOUND                   -1287
-#define ER_QPROC_SERVER_ALREADY_EXIST               -1288
+#define ER_DBLINK_CATALOG_DB_SERVER_NOT_FOUND	    -1286
+#define ER_DBLINK_SERVER_NOT_FOUND                  -1287
+#define ER_DBLINK_SERVER_ALREADY_EXISTS             -1288
 
 #define ER_LAST_ERROR                               -1289
 
