@@ -3724,7 +3724,7 @@ pwrite_with_injected_fault (THREAD_ENTRY * thread_p, int fd, const void *buf, si
 		      pthread_mutex_unlock (&fileio_Sys_vol_info_header.mutex);
 		      if (sys_volinfo)
 			{
-			  logpb_debug_check_log_page (thread_p, (void *) buf);
+			  logpb_debug_check_log_page (thread_p, (LOG_PAGE *) buf);
 			}
 		    }
 #endif /* defined (SERVER_MODE) || (SA_MODE) */
