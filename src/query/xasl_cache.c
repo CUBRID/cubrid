@@ -1157,7 +1157,7 @@ xcache_unfix (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry)
       /* need to clear list-cache first */
       if (xcache_entry->list_ht_no >= 0)
 	{
-	  (void) qfile_clear_list_cache (thread_p, xcache_entry->list_ht_no);
+	  (void) qfile_clear_list_cache (thread_p, xcache_entry->list_ht_no, true);
 	}
       if (!xcache_Hashmap.erase (thread_p, xcache_entry->xasl_id))
 	{
@@ -1725,7 +1725,7 @@ xcache_invalidate_qcaches (THREAD_ENTRY * thread_p, const OID * oid)
 	  num_entries = qfile_get_list_cache_number_of_entries (xcache_entry->list_ht_no);
 	  if (num_entries > 0 && xcache_entry_is_related_to_oid (xcache_entry, oid))
 	    {
-	      res = qfile_clear_list_cache (thread_p, xcache_entry->list_ht_no);
+	      res = qfile_clear_list_cache (thread_p, xcache_entry->list_ht_no, false);
 	      if (res != NO_ERROR)
 		{
 		  finished = true;
@@ -1756,6 +1756,7 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
   int n_delete_xids = 0;
   int xid_index = 0;
   bool finished = false;
+  bool del_mark;
 
   if (!xcache_Enabled)
     {
@@ -1785,16 +1786,17 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
 	  /* Check invalidation conditions. */
 	  if (invalidate_check == NULL || invalidate_check (xcache_entry, arg))
 	    {
+	      del_mark = xcache_entry_mark_deleted (thread_p, xcache_entry);
 	      if (xcache_entry->list_ht_no >= 0 && !QFILE_IS_LIST_CACHE_DISABLED && !qfile_has_no_cache_entries ())
 		{
 		  /* delete query cache from xcache entry */
 		  {
-		    qfile_clear_list_cache (thread_p, xcache_entry->list_ht_no);
+		    qfile_clear_list_cache (thread_p, xcache_entry->list_ht_no, del_mark);
 		  }
 		}
 
 	      /* Mark entry as deleted. */
-	      if (xcache_entry_mark_deleted (thread_p, xcache_entry))
+	      if (del_mark)
 		{
 		  /*
 		   * Successfully marked for delete. Save it to delete after the iteration.
@@ -2257,7 +2259,7 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
       /* clear list cache entries first */
       if (candidate.xcache->list_ht_no >= 0)
 	{
-	  (void) qfile_clear_list_cache (thread_p, candidate.xcache->list_ht_no);
+	  (void) qfile_clear_list_cache (thread_p, candidate.xcache->list_ht_no, true);
 	}
 
       /* Try delete. Would be better to decache the clones here. For simplicity, since is not an usual case,
