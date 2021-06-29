@@ -73,7 +73,6 @@ class active_tran_server
     void receive_saved_lsa (cubpacking::unpacker &upk);
     void receive_log_page (cubpacking::unpacker &upk);
     void receive_data_page (cubpacking::unpacker &upk);
-    void receive_disconnect (cubpacking::unpacker &upk);
 
   private:
     // communication with page server

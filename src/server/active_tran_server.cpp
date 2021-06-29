@@ -263,10 +263,6 @@ active_tran_server::connect_to_page_server (const cubcomm::node &node, const cha
     {
       ps_to_ats_request::SEND_DATA_PAGE,
       std::bind (&active_tran_server::receive_data_page, std::ref (*this), std::placeholders::_1)
-    },
-    {
-      ps_to_ats_request::SEND_DISCONNECT_RSP,
-      std::bind (&active_tran_server::receive_disconnect, std::ref (*this), std::placeholders::_1)
     }
   }));
 
@@ -281,12 +277,16 @@ active_tran_server::disconnect_page_server ()
 {
   assert_is_active_tran_server ();
   std::string msg = "" + static_cast<int> (cubcomm::server_server::CONNECT_ACTIVE_TRAN_TO_PAGE_SERVER);
+  er_log_debug (ARG_FILE_LINE, "Transaction server starts disconnecting from the page servers.");
 
   for (int i = 0; i < m_page_server_conn_vec.size(); i++)
     {
+      er_log_debug (ARG_FILE_LINE, "Transaction server disconnected from page server with channel id: %s.\n",
+		    m_page_server_conn_vec[i].get_underlying_channel_id ());
       push_request (i, ats_to_ps_request::SEND_DISCONNECT_MSG, std::move (msg));
     }
-//  m_page_server_conn_vec.clear ();
+  m_page_server_conn_vec.clear ();
+  er_log_debug (ARG_FILE_LINE, "Transaction server disconnected from all page servers.");
 }
 
 bool
@@ -429,11 +429,6 @@ void active_tran_server::receive_saved_lsa (cubpacking::unpacker &upk)
     {
       _er_log_debug (ARG_FILE_LINE, "[COMMIT CONFIRM] Received LSA = %lld|%d.\n", LSA_AS_ARGS (&saved_lsa));
     }
-}
-
-void active_tran_server::receive_disconnect (cubpacking::unpacker &upk)
-{
-  m_page_server_conn_vec.clear ();
 }
 
 void

@@ -75,6 +75,8 @@ void page_server::set_active_tran_server_connection (cubcomm::channel &&chn)
 
 void page_server::disconnect_active_tran_server ()
 {
+  er_log_debug (ARG_FILE_LINE, "Page server disconnected from active transaction server with channel id: %s.\n",
+		m_active_tran_server_conn.get_underlying_channel_id ());
   m_active_tran_server_conn.reset (nullptr);
 }
 
@@ -131,9 +133,6 @@ void page_server::receive_data_page_fetch (cubpacking::unpacker &upk)
 
 void page_server::receive_disconnect_request (cubpacking::unpacker &upk)
 {
-  std::string exit_code (m_active_tran_server_conn->get_underlying_channel_id ());
-  push_request_to_active_tran_server (ps_to_ats_request::SEND_DISCONNECT_RSP, std::move (exit_code));
-
   //start a thread to destroy the PS object
   std::thread thread (&page_server::disconnect_active_tran_server, std::ref (*this));
 }
