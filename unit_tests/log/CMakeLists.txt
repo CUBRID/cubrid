@@ -49,6 +49,10 @@ target_include_directories(test_checkpoint_info PRIVATE
 add_dependencies(test_checkpoint_info
   ${CATCH2_TARGET}
   )
+if(WIN32)
+  target_link_libraries(test_checkpoint_info PRIVATE ws2_32)
+endif(WIN32)
+
 #
 # test_meta_log
 #
