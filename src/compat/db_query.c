@@ -2450,13 +2450,14 @@ db_query_last_tuple (DB_QUERY_RESULT * result)
  * result(in/out): Query result structure
  * offset(in): Offset tuple count
  * seek_mode(in): Tuple seek mode
+ *
  */
 int
 db_query_seek_tuple (DB_QUERY_RESULT * result, int offset, int seek_mode)
 {
   int scan;
-  INT64 rel1, rel2, rel3, rel_n;
-  INT64 curr_tplno, tpl_cnt;
+  int rel1, rel2, rel3, rel_n;
+  int curr_tplno, tpl_cnt;
   DB_QUERY_TPLPOS *tplpos;
   CURSOR_POSITION *c_pos;
 
@@ -2482,7 +2483,12 @@ db_query_seek_tuple (DB_QUERY_RESULT * result, int offset, int seek_mode)
 
 	/* find the optimal relative position for the scan: relative to the beginning, current tuple position or end. */
 	curr_tplno = result->res.s.cursor_id.tuple_no;
-	tpl_cnt = result->res.s.cursor_id.list_id.tuple_cnt;
+
+	// TODO: list_id.tuple_cnt could have over INT_MAX. But higher layers (CAS function, API, etc) that use this function are not supporting INT64 range.
+	// To support results beyond the int range, offset and tuple count have be extended to INT64 types
+	assert (result->res.s.cursor_id.list_id.tuple_cnt <= INT_MAX);
+
+	tpl_cnt = MIN (result->res.s.cursor_id.list_id.tuple_cnt, INT_MAX);
 	switch (seek_mode)
 	  {
 	  case DB_CURSOR_SEEK_SET:
@@ -3085,7 +3091,7 @@ db_query_get_tuple_valuelist (DB_QUERY_RESULT * result, int size, DB_VALUE * val
  * note : If an error is detected, the function returns -1 and the
  *    db_error_string() function can be used to see a description of the error.
  */
-INT64
+int
 db_query_tuple_count (DB_QUERY_RESULT * result)
 {
   INT64 retval;
@@ -3101,7 +3107,10 @@ db_query_tuple_count (DB_QUERY_RESULT * result)
   switch (result->type)
     {
     case T_SELECT:
-      retval = result->res.s.cursor_id.list_id.tuple_cnt;
+      // TODO: To support results beyond the int range, offset and tuple count have be extended to INT64 types
+      assert (result->res.s.cursor_id.list_id.tuple_cnt <= INT_MAX);
+
+      retval = MIN (result->res.s.cursor_id.list_id.tuple_cnt, INT_MAX);
       break;
 
     case T_CALL:
