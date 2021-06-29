@@ -158,7 +158,7 @@ extern "C"
   extern int db_execute_with_values (const char *CSQL_query, DB_QUERY_RESULT ** result, DB_QUERY_ERROR * query_error,
 				     int arg_count, DB_VALUE * vals);
 
-  extern int db_query_seek_tuple (DB_QUERY_RESULT * result, INT64 offset, int seek_mode);
+  extern int db_query_seek_tuple (DB_QUERY_RESULT * result, int offset, int seek_mode);
 
   extern DB_QUERY_TPLPOS *db_query_get_tplpos (DB_QUERY_RESULT * result);
 

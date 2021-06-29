@@ -1285,7 +1285,7 @@ vid_getall_mops (MOP class_mop, SM_CLASS * class_p, DB_FETCH_MODE purpose)
   DB_QUERY_RESULT *qres;
   DB_QUERY_ERROR query_error;
   char query[2000];
-  INT64 t, tuple_cnt;
+  int t, tuple_cnt;
   DB_VALUE value;
   MOP mop;
   SM_CLASS_TYPE class_type;

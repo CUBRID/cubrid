@@ -3094,7 +3094,7 @@ db_query_get_tuple_valuelist (DB_QUERY_RESULT * result, int size, DB_VALUE * val
 int
 db_query_tuple_count (DB_QUERY_RESULT * result)
 {
-  INT64 retval;
+  int retval;
 
   CHECK_1ARG_MINUSONE (result);
 
@@ -3109,7 +3109,6 @@ db_query_tuple_count (DB_QUERY_RESULT * result)
     case T_SELECT:
       // TODO: To support results beyond the int range, offset and tuple count have be extended to INT64 types
       assert (result->res.s.cursor_id.list_id.tuple_cnt <= INT_MAX);
-
       retval = MIN (result->res.s.cursor_id.list_id.tuple_cnt, INT_MAX);
       break;
 
