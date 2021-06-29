@@ -1396,8 +1396,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 	    {
 	      xasl_cache_entry_p->list_ht_no = qcache_get_new_ht_no (thread_p);
 	    }
-
-	  if (xasl_cache_entry_p->list_ht_no >= 0)
+	  else if (xasl_cache_entry_p->list_ht_no >= 0)
 	    {
 	      /* lookup the list cache with the parameter values (DB_VALUE array) */
 	      list_cache_entry_p =

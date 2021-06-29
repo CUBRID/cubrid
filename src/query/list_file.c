@@ -96,8 +96,8 @@ typedef struct qfile_list_cache QFILE_LIST_CACHE;
 struct qfile_list_cache
 {
   MHT_TABLE **list_hts;		/* array of memory hash tables for list cache; pool for list_ht of XASL_CACHE_ENTRY */
-  int *free_list;		/* array of freed hash tables */
-  int next;			/* the next freed hash table number */
+  int *free_ht_list;		/* array of freed hash tables */
+  int next_ht_no;		/* the next freed hash table number */
   unsigned int n_hts;		/* number of elements of list_hts */
   int n_entries;		/* total number of cache entries */
   int n_pages;			/* total number of pages used by the cache */
@@ -274,7 +274,7 @@ static int qfile_print_list_cache_entry (THREAD_ENTRY * thread_p, FILE * fp, con
 static void qfile_add_uncommitted_list_cache_entry (int tran_index, QFILE_LIST_CACHE_ENTRY * lent);
 static void qfile_delete_uncommitted_list_cache_entry (int tran_index, QFILE_LIST_CACHE_ENTRY * lent);
 static int qfile_delete_list_cache_entry (THREAD_ENTRY * thread_p, void *data);
-static int qfile_end_use_of_list_cache_entry_local (THREAD_ENTRY * thread_p, void *data, void *args);
+static int qfile_invalidate_list_cache_entry (THREAD_ENTRY * thread_p, void *data, void *args);
 static bool qfile_is_early_time (struct timeval *a, struct timeval *b);
 
 static int qfile_get_list_cache_entry_size_for_allocate (int nparam);
@@ -409,10 +409,10 @@ qcache_get_new_ht_no (THREAD_ENTRY * thread_p)
       return ER_FAILED;
     }
 
-  if (qfile_List_cache.next >= 0)
+  if (qfile_List_cache.next_ht_no >= 0)
     {
-      ht_no = qfile_List_cache.next;
-      qfile_List_cache.next = qfile_List_cache.free_list[qfile_List_cache.next];
+      ht_no = qfile_List_cache.next_ht_no;
+      qfile_List_cache.next_ht_no = qfile_List_cache.free_ht_list[qfile_List_cache.next_ht_no];
     }
 
   csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
@@ -423,7 +423,7 @@ qcache_get_new_ht_no (THREAD_ENTRY * thread_p)
 void
 qcache_free_ht_no (THREAD_ENTRY * thread_p, int ht_no)
 {
-  if (QFILE_IS_LIST_CACHE_DISABLED)
+  if (QFILE_IS_LIST_CACHE_DISABLED || ht_no < 0)
     {
       return;
     }
@@ -433,12 +433,9 @@ qcache_free_ht_no (THREAD_ENTRY * thread_p, int ht_no)
       return;
     }
 
-  if (ht_no >= 0)
-    {
-      (void) mht_clear (qfile_List_cache.list_hts[ht_no], NULL, NULL);
-      qfile_List_cache.free_list[ht_no] = qfile_List_cache.next;
-      qfile_List_cache.next = ht_no;
-    }
+  (void) mht_clear (qfile_List_cache.list_hts[ht_no], NULL, NULL);
+  qfile_List_cache.free_ht_list[ht_no] = qfile_List_cache.next_ht_no;
+  qfile_List_cache.next_ht_no = ht_no;
 
   csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
 }
@@ -4968,14 +4965,16 @@ qfile_initialize_list_cache (THREAD_ENTRY * thread_p)
 	  (void) mht_map_no_key (thread_p, qfile_List_cache.list_hts[i], qfile_free_list_cache_entry,
 				 qfile_List_cache.list_hts[i]);
 	  (void) mht_clear (qfile_List_cache.list_hts[i], NULL, NULL);
+	  qfile_List_cache.free_ht_list[i] = i + 1;
 	}
+      qfile_List_cache.free_ht_list[i - 1] = -1;
     }
   else
     {
       /* create */
       qfile_List_cache.n_hts = prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES) + 10;
       qfile_List_cache.list_hts = (MHT_TABLE **) calloc (qfile_List_cache.n_hts, sizeof (MHT_TABLE *));
-      qfile_List_cache.free_list = (int *) calloc (qfile_List_cache.n_hts, sizeof (int));
+      qfile_List_cache.free_ht_list = (int *) calloc (qfile_List_cache.n_hts, sizeof (int));
       if (qfile_List_cache.list_hts == NULL)
 	{
 	  goto error;
@@ -4986,14 +4985,13 @@ qfile_initialize_list_cache (THREAD_ENTRY * thread_p)
 	  qfile_List_cache.list_hts[i] =
 	    mht_create ("list file cache (DB_VALUE list)", prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_ENTRIES),
 			qfile_hash_db_value_array, qfile_compare_equal_db_value_array);
-	  qfile_List_cache.free_list[i] = i + 1;
+	  qfile_List_cache.free_ht_list[i] = i + 1;
 	  if (qfile_List_cache.list_hts[i] == NULL)
 	    {
 	      goto error;
 	    }
 	}
-
-      qfile_List_cache.free_list[i - 1] = -1;
+      qfile_List_cache.free_ht_list[i - 1] = -1;
     }
 
   qfile_List_cache.n_entries = 0;
@@ -5049,6 +5047,7 @@ error:
 	  mht_destroy (qfile_List_cache.list_hts[i]);
 	}
       free_and_init (qfile_List_cache.list_hts);
+      free_and_init (qfile_List_cache.free_ht_list);
     }
   qfile_List_cache.n_hts = 0;
 
@@ -5082,14 +5081,15 @@ qfile_finalize_list_cache (THREAD_ENTRY * thread_p)
       for (i = 0; i < qfile_List_cache.n_hts; i++)
 	{
 	  bool del = true;
-	  (void) mht_map_no_key (thread_p, qfile_List_cache.list_hts[i], qfile_end_use_of_list_cache_entry_local, &del);
+	  (void) mht_map_no_key (thread_p, qfile_List_cache.list_hts[i], qfile_invalidate_list_cache_entry, &del);
 	  mht_destroy (qfile_List_cache.list_hts[i]);
 	}
       free_and_init (qfile_List_cache.list_hts);
     }
-  if (qfile_List_cache.free_list)
+
+  if (qfile_List_cache.free_ht_list)
     {
-      free_and_init (qfile_List_cache.free_list);
+      free_and_init (qfile_List_cache.free_ht_list);
     }
 
   /* list cache entry pool */
@@ -5112,7 +5112,7 @@ int
 qfile_clear_list_cache (THREAD_ENTRY * thread_p, int list_ht_no)
 {
   int rc;
-  bool del = true;
+  bool del = false;
   int cnt;
 
   if (QFILE_IS_LIST_CACHE_DISABLED)
@@ -5133,8 +5133,7 @@ qfile_clear_list_cache (THREAD_ENTRY * thread_p, int list_ht_no)
   cnt = 0;
   do
     {
-      rc =
-	mht_map_no_key (thread_p, qfile_List_cache.list_hts[list_ht_no], qfile_end_use_of_list_cache_entry_local, &del);
+      rc = mht_map_no_key (thread_p, qfile_List_cache.list_hts[list_ht_no], qfile_invalidate_list_cache_entry, &del);
       if (rc != NO_ERROR)
 	{
 	  csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
@@ -5155,7 +5154,7 @@ qfile_clear_list_cache (THREAD_ENTRY * thread_p, int list_ht_no)
 
   if (qfile_get_list_cache_number_of_entries (list_ht_no) == 0)
     {
-      (void) mht_clear (qfile_List_cache.list_hts[list_ht_no], NULL, NULL);
+      qcache_free_ht_no (thread_p, list_ht_no);
     }
 
   csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
@@ -5514,15 +5513,49 @@ qfile_delete_list_cache_entry (THREAD_ENTRY * thread_p, void *data)
 }
 
 /*
- * qfile_end_use_of_list_cache_entry_local () -
+ * qfile_invalidate_list_cache_entry () -
  *   return:
- *   data(in)   :
- *   args(in)   :
+ *   data(in)   : QFILE_LIST_CACHE_ENTRY
+ *   args(in)   : deletion marker
  */
 static int
-qfile_end_use_of_list_cache_entry_local (THREAD_ENTRY * thread_p, void *data, void *args)
+qfile_invalidate_list_cache_entry (THREAD_ENTRY * thread_p, void *data, void *args)
 {
-  return qfile_end_use_of_list_cache_entry (thread_p, (QFILE_LIST_CACHE_ENTRY *) data, *((bool *) args));
+  QFILE_LIST_CACHE_ENTRY *lent = (QFILE_LIST_CACHE_ENTRY *) data;
+  bool del = *((bool *) args);
+
+  if (QFILE_IS_LIST_CACHE_DISABLED)
+    {
+      return ER_FAILED;
+    }
+  if (lent == NULL || qfile_List_cache.n_hts == 0)
+    {
+      return ER_FAILED;
+    }
+
+  if (csect_enter (thread_p, CSECT_QPROC_LIST_CACHE, INF_WAIT) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+#if defined(SERVER_MODE)
+  if (del || lent->last_ta_idx == 0)
+#endif
+    {
+      /* the entry can not be used any more */
+      qfile_delete_list_cache_entry (thread_p, lent);
+    }
+#if defined(SERVER_MODE)
+  else
+    {
+      /* other transaction is not ended yet */
+      lent->deletion_marker = true;
+    }
+#endif
+
+  csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
+
+  return NO_ERROR;
 }
 
 /*

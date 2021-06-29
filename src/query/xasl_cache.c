@@ -1158,7 +1158,6 @@ xcache_unfix (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry)
       if (xcache_entry->list_ht_no >= 0)
 	{
 	  (void) qfile_clear_list_cache (thread_p, xcache_entry->list_ht_no);
-	  qcache_free_ht_no (thread_p, xcache_entry->list_ht_no);
 	}
       if (!xcache_Hashmap.erase (thread_p, xcache_entry->xasl_id))
 	{
@@ -1805,11 +1804,6 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
 		    {
 		      xcache_clone_decache (thread_p, &xcache_entry->cache_clones[--xcache_entry->n_cache_clones]);
 		    }
-		  if (xcache_entry->list_ht_no >= 0)
-		    {
-		      /* should be freed before xasl erase */
-		      qcache_free_ht_no (thread_p, xcache_entry->list_ht_no);
-		    }
 		  delete_xids[n_delete_xids++] = xcache_entry->xasl_id;
 		}
 	    }
@@ -2264,7 +2258,6 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
       if (candidate.xcache->list_ht_no >= 0)
 	{
 	  (void) qfile_clear_list_cache (thread_p, candidate.xcache->list_ht_no);
-	  qcache_free_ht_no (thread_p, candidate.xcache->list_ht_no);
 	}
 
       /* Try delete. Would be better to decache the clones here. For simplicity, since is not an usual case,
