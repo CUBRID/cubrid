@@ -17770,7 +17770,6 @@ do_drop_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   DB_OBJECT *server_class = NULL, *server_object = NULL;
   DB_IDENTIFIER server_obj_id;
-  DB_VALUE class_name_val;
   char *name;
   int error = NO_ERROR;
   int save;
@@ -17778,7 +17777,6 @@ do_drop_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
-  db_make_null (&class_name_val);
   OID_SET_NULL (&server_obj_id);
 
   server_class = sm_find_class (CT_DB_SERVER_NAME);
@@ -17820,8 +17818,6 @@ do_drop_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   error = db_drop (server_object);
 
 end:
-  pr_clear_value (&class_name_val);
-
   if (au_disable_flag)
     {
       AU_ENABLE (save);
