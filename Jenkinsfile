@@ -2,7 +2,7 @@ pipeline {
   agent none
 
   triggers {
-    pollSCM('H 21 * * *')
+    pollSCM('H 21 * * 1,3,4,6,7')
   }
 
   environment {
