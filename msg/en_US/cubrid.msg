@@ -1359,8 +1359,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1286 dblink - catalog _db_server class not found.
 1287 dblink - server "%1$s" not found.
 1288 dblink - server "%1$s" already exists.
+1289 dblink - Cannot update server object.
 
-1289 Last Error
+1290 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

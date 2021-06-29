@@ -8662,7 +8662,7 @@ au_get_dba_user (void)
  *   record_object(in): row object pointer
  */
 int
-au_check_owner (MOP record_object)
+au_check_owner (MOP record_object, int err_code)
 {
   DB_VALUE creator_val;
   MOP creator;
@@ -8678,7 +8678,7 @@ au_check_owner (MOP record_object)
 
   creator = db_get_object (&creator_val);
 
-  ret_val = ER_QPROC_CANNOT_UPDATE_SERIAL;
+  ret_val = err_code;
 
   if (ws_is_same_object (creator, Au_user) || au_is_dba_group_member (Au_user))
     {

@@ -17804,10 +17804,10 @@ do_drop_server (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* check if user is creator or DBA  */
-  error = au_check_owner (server_object);
+  error = au_check_owner (server_object, ER_DBLINK_CANNOT_UPDATE_SERVER);
   if (error != NO_ERROR)
     {
-      if (error == ER_QPROC_CANNOT_UPDATE_SERIAL)
+      if (error == ER_DBLINK_CANNOT_UPDATE_SERVER)
 	{
 	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RT_SERVER_ALTER_NOT_ALLOWED, 0);
 	}

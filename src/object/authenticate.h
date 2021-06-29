@@ -265,8 +265,8 @@ extern void au_dump_auth (FILE * fp);
 extern void au_describe_user_method (MOP user, DB_VALUE * returnval);
 extern void au_info_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * info);
 extern void au_describe_root_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * info);
-extern int au_check_owner (MOP record_object);
-#define au_check_serial_authorization  au_check_owner
+extern int au_check_owner (MOP record_object, int err_code);
+#define au_check_serial_authorization(obj)  au_check_owner((obj), ER_QPROC_CANNOT_UPDATE_SERIAL)
 extern const char *au_get_public_user_name (void);
 extern const char *au_get_user_class_name (void);
 #if defined(ENABLE_UNUSED_FUNCTION)
