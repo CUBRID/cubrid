@@ -31,6 +31,7 @@
 #include <cassert>
 #include <cstring>
 #include <functional>
+#include <thread>
 
 page_server ps_Gl;
 
@@ -130,10 +131,11 @@ void page_server::receive_data_page_fetch (cubpacking::unpacker &upk)
 
 void page_server::receive_disconnect_request (cubpacking::unpacker &upk)
 {
-  std::string exit_code = 1;
+  std::string exit_code (m_active_tran_server_conn->get_underlying_channel_id ());
   push_request_to_active_tran_server (ps_to_ats_request::SEND_DISCONNECT_RSP, std::move (exit_code));
 
   //start a thread to destroy the PS object
+  std::thread thread (&page_server::disconnect_active_tran_server, std::ref (*this));
 }
 
 void page_server::push_request_to_active_tran_server (ps_to_ats_request reqid, std::string &&payload)
