@@ -153,7 +153,6 @@ add_dependencies(test_prior_sendrecv
 #
 set(TEST_LOG_PAGE_FETCHER_SOURCES
   ${STORAGE_DIR}/async_page_fetcher.cpp
-  ${TEST_FAKE_DIR}/fake_page_server.cpp
   test_main_log_page_fetcher.cpp)
 
 SET_SOURCE_FILES_PROPERTIES(

@@ -16,7 +16,7 @@
  *
  */
 
-#include "fake_page_server.hpp"
+//#include "fake_page_server.hpp"
 
 cublog::replicator replicator_GL;
 page_server ps_Gl;

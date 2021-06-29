@@ -21,17 +21,17 @@
 
 #include "log_lsa.hpp"
 
-namespace cublog
-{
-  struct replicator
-  {
-    void wait_past_target_lsa (const log_lsa &lsa);
-  };
-}
-
-struct page_server
-{
-  cublog::replicator &get_replicator ();
-};
+//namespace cublog
+//{
+//  struct replicator
+//  {
+//    void wait_past_target_lsa (const log_lsa &lsa);
+//  };
+//}
+//
+//struct page_server
+//{
+//  cublog::replicator &get_replicator ();
+//};
 
 #endif
