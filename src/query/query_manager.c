@@ -1391,22 +1391,14 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 
       if (do_not_cache == false)
 	{
-	  /* lookup the hash table number for qfile list cache */
-	  if (xasl_cache_entry_p->list_ht_no < 0)
+	  /* lookup the list cache with the parameter values (DB_VALUE array) */
+	  list_cache_entry_p = qfile_lookup_list_cache_entry (thread_p, xasl_cache_entry_p, &params, &cached_result);
+
+	  /* If we've got the cached result, return it. */
+	  if (cached_result)
 	    {
-	      xasl_cache_entry_p->list_ht_no = qcache_get_new_ht_no (thread_p);
-	    }
-	  else if (xasl_cache_entry_p->list_ht_no >= 0)
-	    {
-	      /* lookup the list cache with the parameter values (DB_VALUE array) */
-	      list_cache_entry_p =
-		qfile_lookup_list_cache_entry (thread_p, xasl_cache_entry_p->list_ht_no, &params, &cached_result);
-	      /* If we've got the cached result, return it. */
-	      if (cached_result)
-		{
-		  /* found the cached result */
-		  CACHE_TIME_MAKE (server_cache_time_p, &list_cache_entry_p->time_created);
-		}
+	      /* found the cached result */
+	      CACHE_TIME_MAKE (server_cache_time_p, &list_cache_entry_p->time_created);
 	    }
 	}
     }

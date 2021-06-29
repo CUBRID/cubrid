@@ -399,23 +399,11 @@ qcache_get_new_ht_no (THREAD_ENTRY * thread_p)
 {
   int ht_no = -1;
 
-  if (QFILE_IS_LIST_CACHE_DISABLED)
-    {
-      return NO_ERROR;
-    }
-
-  if (csect_enter (thread_p, CSECT_QPROC_LIST_CACHE, INF_WAIT) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
   if (qfile_List_cache.next_ht_no >= 0)
     {
       ht_no = qfile_List_cache.next_ht_no;
       qfile_List_cache.next_ht_no = qfile_List_cache.free_ht_list[qfile_List_cache.next_ht_no];
     }
-
-  csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
 
   return ht_no;
 }
@@ -5542,7 +5530,7 @@ qfile_end_use_of_list_cache_entry_local (THREAD_ENTRY * thread_p, void *data, vo
  *       values as the key.
  */
 QFILE_LIST_CACHE_ENTRY *
-qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB_VALUE_ARRAY * params,
+qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xasl, const DB_VALUE_ARRAY * params,
 			       bool * result_cached)
 {
   QFILE_LIST_CACHE_ENTRY *lent;
@@ -5567,7 +5555,8 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
     {
       return NULL;
     }
-  if (qfile_List_cache.n_hts == 0 || list_ht_no < 0)
+
+  if (qfile_List_cache.n_hts == 0)
     {
       return NULL;
     }
@@ -5577,10 +5566,18 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
       return NULL;
     }
 
+  if (xasl->list_ht_no < 0)
+    {
+      xasl->list_ht_no = qcache_get_new_ht_no (thread_p);
+      csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
+
+      return NULL;
+    }
+
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
   /* look up the hash table with the key */
-  lent = (QFILE_LIST_CACHE_ENTRY *) mht_get (qfile_List_cache.list_hts[list_ht_no], params);
+  lent = (QFILE_LIST_CACHE_ENTRY *) mht_get (qfile_List_cache.list_hts[xasl->list_ht_no], params);
   qfile_List_cache.lookup_counter++;	/* counter */
 
   if (lent)
