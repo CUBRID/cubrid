@@ -8656,20 +8656,20 @@ au_get_dba_user (void)
 }
 
 /*
- * au_check_row_authorization - check whether the current user is able to
+ * au_check_owner - check whether the current user is able to
  *                                 modify row object or not
  *   return: NO_ERROR if available, otherwise error code
- *   row_object(in): row object pointer
+ *   record_object(in): row object pointer
  */
-static int
-au_check_row_authorization (MOP row_object)
+int
+au_check_owner (MOP record_object)
 {
   DB_VALUE creator_val;
   MOP creator;
   DB_SET *groups;
   int ret_val;
 
-  ret_val = db_get (row_object, "owner", &creator_val);
+  ret_val = db_get (record_object, "owner", &creator_val);
 
   if (ret_val != NO_ERROR || DB_IS_NULL (&creator_val))
     {
@@ -8701,24 +8701,6 @@ au_check_row_authorization (MOP row_object)
   pr_clear_value (&creator_val);
 
   return ret_val;
-}
-
-/*
- * au_check_serial_authorization - check whether the current user is able to
- *                                 modify serial object or not
- *   return: NO_ERROR if available, otherwise error code
- *   serial_object(in): serial object pointer
- */
-int
-au_check_serial_authorization (MOP serial_object)
-{
-  return au_check_row_authorization (serial_object);
-}
-
-int
-au_check_server_authorization (MOP server_object)
-{
-  return au_check_row_authorization (server_object);
 }
 
 const char *
