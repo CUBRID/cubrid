@@ -5569,9 +5569,6 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xasl,
   if (xasl->list_ht_no < 0)
     {
       xasl->list_ht_no = qcache_get_new_ht_no (thread_p);
-      csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
-
-      return NULL;
     }
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
