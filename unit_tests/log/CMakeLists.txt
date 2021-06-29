@@ -233,7 +233,7 @@ target_compile_definitions(test_log_lsa_utils PRIVATE
 target_include_directories(test_log_lsa_utils PRIVATE
   ${TEST_INCLUDES}
   )
-target_link_libraries(test_log_lsa_utils fake_thread_utils)get
+target_link_libraries(test_log_lsa_utils fake_thread_utils)
 add_dependencies(test_log_lsa_utils
   ${CATCH2_TARGET}
   )
