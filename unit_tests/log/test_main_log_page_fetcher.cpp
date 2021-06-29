@@ -174,66 +174,7 @@ const log_page *log_reader::get_page () const
 }
 
 // Mock some of the functionality
-
-//#include "log_recovery_redo_parallel.hpp"
-#include "log_replication.hpp"
-#include "page_server.hpp"
-
-cublog::replicator replicator_GL (NULL_LSA);
-page_server ps_Gl;
-
-namespace cublog
-{
-  class redo_parallel {};
-  class minimum_log_lsa_monitor {};
-
-  replicator::replicator(const log_lsa& start_redo_lsa)
-    : m_perfmon_redo_sync{ PSTAT_REDO_REPL_LOG_REDO_SYNC }
-  {
-  }
-
-  replicator::~replicator()
-  {
-  }
-
-  void
-  replicator::wait_past_target_lsa(const log_lsa& lsa)
-  {
-  }
-}
-
-namespace cubcomm
-{
-  channel::~channel()
-  {
-  }
-
-  void channel::close_connection()
-  {
-  }
-
-  css_error_code channel::connect(const char* hostname, int port)
-  {
-    return NO_ERRORS;
-  }
-}
-
-perfmon_counter_timer_tracker::perfmon_counter_timer_tracker(PERF_STAT_ID a_stat_id)
-  : m_stat_id (a_stat_id)
-{
-}
-
-page_server::~page_server()
-{
-}
-
-cublog::replicator&
-page_server::get_replicator()
-{
-  return replicator_GL;
-}
-
-log_reader::log_reader() = default; // needed by log_page_fetch_task::execute
+log_reader::log_reader () = default; // needed by log_page_fetch_task::execute
 
 PAGE_PTR
 pgbuf_fix_debug (THREAD_ENTRY *thread_p, const VPID *vpid, PAGE_FETCH_MODE fetch_mode, PGBUF_LATCH_MODE request_mode,
