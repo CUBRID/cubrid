@@ -42,7 +42,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${FAKE_THREAD_UTILS_SRC}
   PROPERTIES LANGUAGE CXX
 )
-add_library(fake_thread_utils
+add_library(fake_thread_utils STATIC
   ${FAKE_THREAD_UTILS_SRC}
 )
 target_compile_options(fake_thread_utils PRIVATE
