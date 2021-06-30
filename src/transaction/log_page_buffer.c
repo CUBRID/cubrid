@@ -1993,7 +1993,7 @@ request_log_page_from_ps (LOG_PAGEID log_pageid)
   if (ats_Gl.get_log_page_broker ().register_entry (log_pageid) == page_broker_register_entry_state::ADDED)
     {
       // First to add an entry must also sent the request to the page server
-      ats_Gl.push_request (0, ats_to_ps_request::SEND_LOG_PAGE_FETCH, std::move (message));
+      ats_Gl.push_request (ats_to_ps_request::SEND_LOG_PAGE_FETCH, std::move (message));
 
       if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
         {

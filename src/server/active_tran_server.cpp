@@ -266,7 +266,7 @@ active_tran_server::connect_to_page_server (const cubcomm::node &node, const cha
     },
   }));
 
-  log_Gl.m_prior_sender.add_sink (std::bind (&active_tran_server::push_request, std::ref (*this), 0,
+  log_Gl.m_prior_sender.add_sink (std::bind (&active_tran_server::push_request, std::ref (*this),
 				  ats_to_ps_request::SEND_LOG_PRIOR_LIST, std::placeholders::_1));
 
   return NO_ERROR;
@@ -276,7 +276,7 @@ void
 active_tran_server::disconnect_page_server ()
 {
   assert_is_active_tran_server ();
-  const int payload = cubcomm::server_server::CONNECT_ACTIVE_TRAN_TO_PAGE_SERVER;
+  const int payload = static_cast<int> (cubcomm::server_server::CONNECT_ACTIVE_TRAN_TO_PAGE_SERVER);
   std::string msg (reinterpret_cast<const char *> (&payload), sizeof (payload));
   er_log_debug (ARG_FILE_LINE, "Transaction server starts disconnecting from the page servers.");
 
@@ -284,7 +284,7 @@ active_tran_server::disconnect_page_server ()
     {
       er_log_debug (ARG_FILE_LINE, "Transaction server disconnected from page server with channel id: %s.\n",
 		    m_page_server_conn_vec[i]->get_underlying_channel_id ());
-      m_page_server_conn_vec[i]->push (ats_to_ps_request::SEND_DISCONNECT_MSG, msg);
+      m_page_server_conn_vec[i]->push (ats_to_ps_request::SEND_DISCONNECT_MSG, std::move (msg));
     }
   m_page_server_conn_vec.clear ();
   er_log_debug (ARG_FILE_LINE, "Transaction server disconnected from all page servers.");
