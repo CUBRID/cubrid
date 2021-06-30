@@ -97,10 +97,10 @@ class ut_database_values_generator
     std::uniform_real_distribution<double> m_duration_in_millis_dist;
 
     // discrete distribution for adding new volumes or updating existing volumes
-    std::discrete_distribution<int8_t> m_add_or_update_volume_dist;
+    std::discrete_distribution<int32_t> m_add_or_update_volume_dist;
 
     // discrete distribution for adding new pages or updating existing pages
-    std::discrete_distribution<int8_t> m_add_or_update_page_dist;
+    std::discrete_distribution<int32_t> m_add_or_update_page_dist;
 };
 
 
