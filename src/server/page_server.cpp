@@ -135,7 +135,7 @@ void page_server::receive_disconnect_request (cubpacking::unpacker &upk)
 {
   //start a thread to destroy the ATS to PS connection object
   std::thread disconnect_thread (&page_server::disconnect_active_tran_server, std::ref (*this));
-  disconnect_thread.detach();
+  disconnect_thread.detach ();
 }
 
 void page_server::push_request_to_active_tran_server (ps_to_ats_request reqid, std::string &&payload)

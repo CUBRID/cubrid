@@ -284,7 +284,7 @@ active_tran_server::disconnect_page_server ()
     {
       er_log_debug (ARG_FILE_LINE, "Transaction server disconnected from page server with channel id: %s.\n",
 		    m_page_server_conn_vec[i]->get_underlying_channel_id ());
-      m_page_server_conn_vec[i]->push (ats_to_ps_request::SEND_DISCONNECT_MSG, std::move (msg));
+      m_page_server_conn_vec[i]->push (ats_to_ps_request::SEND_DISCONNECT_MSG, std::move (std::string (msg)));
     }
   m_page_server_conn_vec.clear ();
   er_log_debug (ARG_FILE_LINE, "Transaction server disconnected from all page servers.");
