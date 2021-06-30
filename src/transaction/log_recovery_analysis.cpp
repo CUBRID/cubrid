@@ -122,8 +122,11 @@ log_rv_analysis_check_page_corruption (THREAD_ENTRY *thread_p, LOG_PAGEID pageid
 				       corruption_checker &checker)
 {
 #if !defined(NDEBUG)
-  er_log_debug (ARG_FILE_LINE, "logpb_recovery_analysis: log page %lld, checksum %d\n",
-		log_page_p->hdr.logical_pageid, log_page_p->hdr.checksum);
+  if (prm_get_bool_value (PRM_ID_RECOVERY_LOGGING_DEBUG))
+    {
+      _er_log_debug (ARG_FILE_LINE, "logpb_recovery_analysis: log page %lld, checksum %d\n",
+		     log_page_p->hdr.logical_pageid, log_page_p->hdr.checksum);
+    }
   if (prm_get_bool_value (PRM_ID_LOGPB_LOGGING_DEBUG))
     {
       fileio_page_hexa_dump ((const char *) log_page_p, LOG_PAGESIZE);
@@ -143,11 +146,8 @@ log_rv_analysis_check_page_corruption (THREAD_ENTRY *thread_p, LOG_PAGEID pageid
       checker.find_first_corrupted_block (log_page_p);
 
       /* Found corrupted log page. */
-      if (prm_get_bool_value (PRM_ID_LOGPB_LOGGING_DEBUG))
-	{
-	  _er_log_debug (ARG_FILE_LINE, "logpb_recovery_analysis: log page %lld is corrupted due to partial flush.\n",
-			 (long long int) pageid);
-	}
+      er_log_debug (ARG_FILE_LINE, "logpb_recovery_analysis: log page %lld is corrupted due to partial flush.\n",
+		    (long long int) pageid);
     }
   return NO_ERROR;
 }
@@ -298,12 +298,9 @@ log_recovery_analysis (THREAD_ENTRY *thread_p, INT64 *num_redo_log_records, log_
 
 	      if (is_log_lsa_corrupted)
 		{
-		  if (prm_get_bool_value (PRM_ID_LOGPB_LOGGING_DEBUG))
-		    {
-		      _er_log_debug (ARG_FILE_LINE,
-				     "logpb_recovery_analysis: Partial page flush - first corrupted log record LSA = (%lld, %d)\n",
-				     (long long int) crt_record_lsa.pageid, crt_record_lsa.offset);
-		    }
+		  er_log_debug (ARG_FILE_LINE, "logpb_recovery_analysis: Partial page flush - "
+				"first corrupted log record LSA = (%lld, %d)\n",
+				(long long int) crt_record_lsa.pageid, crt_record_lsa.offset);
 		  LOG_RESET_APPEND_LSA (&crt_record_lsa);
 		  break;
 		}
@@ -453,7 +450,7 @@ log_recovery_analysis (THREAD_ENTRY *thread_p, INT64 *num_redo_log_records, log_
 
   log_Gl.mvcc_table.reset_start_mvccid ();
 
-  if (prm_get_bool_value (PRM_ID_LOGPB_LOGGING_DEBUG))
+  if (prm_get_bool_value (PRM_ID_RECOVERY_LOGGING_DEBUG))
     {
       _er_log_debug (ARG_FILE_LINE, "log_recovery_analysis: end of analysis phase, append_lsa = (%lld|%d) \n",
 		     (long long int) log_Gl.hdr.append_lsa.pageid, log_Gl.hdr.append_lsa.offset);
@@ -492,8 +489,11 @@ log_rv_analysis_handle_fetch_page_fail (THREAD_ENTRY *thread_p, log_recovery_con
 	    {
 	      LSA_COPY (&last_log_tdes->tail_lsa, &log_rec->prev_tranlsa);
 	      LSA_COPY (&last_log_tdes->undo_nxlsa, &log_rec->prev_tranlsa);
-	      er_log_debug (ARG_FILE_LINE, "logpb_recovery_analysis: trid = %d, tail_lsa=%lld|%d\n",
-			    log_rec->trid, last_log_tdes->tail_lsa.pageid, last_log_tdes->tail_lsa.offset);
+	      if (prm_get_bool_value (PRM_ID_RECOVERY_LOGGING_DEBUG))
+		{
+		  _er_log_debug (ARG_FILE_LINE, "logpb_recovery_analysis: trid = %d, tail_lsa=%lld|%d\n",
+				 log_rec->trid, last_log_tdes->tail_lsa.pageid, last_log_tdes->tail_lsa.offset);
+		}
 	    }
 	}
 
