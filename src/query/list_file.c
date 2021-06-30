@@ -293,7 +293,7 @@ qfile_compare_cleanup_candidates (const void *left, const void *right, BH_CMP_AR
   INT64 left_weight = ((QFILE_CACHE_CLEANUP_CANDIDATE *) left)->weight;
   INT64 right_weight = ((QFILE_CACHE_CLEANUP_CANDIDATE *) right)->weight;
 
-  if (left_weight < right_weight)
+  if (left_weight > right_weight)
     {
       return BH_LT;
     }
@@ -347,7 +347,6 @@ qfile_list_cache_cleanup (THREAD_ENTRY * thread_p)
       HENTRY_PTR hentry;
       INT64 page_ref;
       INT64 lru_sec;
-      INT64 clr_cnt;
 
       ht = qfile_List_cache.list_hts[n];
       for (hvector = ht->table, i = 0; i < ht->size; hvector++, i++)
@@ -365,10 +364,9 @@ qfile_list_cache_cleanup (THREAD_ENTRY * thread_p)
 		      // exclude in-transaction
 		      continue;
 		    }
-		  page_ref = candidate.qcache->list_id.page_cnt / (candidate.qcache->ref_count + 1);
+		  page_ref = candidate.qcache->list_id.page_cnt + 1;
 		  lru_sec = current_time.tv_sec - candidate.qcache->time_last_used.tv_sec;
-		  clr_cnt = candidate.qcache->xcache_entry->clr_count + 1;
-		  candidate.weight = page_ref * lru_sec * clr_cnt;
+		  candidate.weight = page_ref * lru_sec / (candidate.qcache->ref_count + 1);
 		  (void) bh_try_insert (bh, &candidate, NULL);
 		}
 	    }
