@@ -4950,6 +4950,19 @@ pgbuf_is_temporary_volume (VOLID volid)
     {
       return false;
     }
+
+#if defined (SERVER_MODE)
+  /* when a new permanent volume is being added, this is done via a series of log record entries;
+   * out of these, it is not the first one that actually updates the cache bookkeeping;
+   * as such, the disk cache bookkeeping seems to "lag" behind;
+   * in replication context, on the page server, prefer to just skip the check and consider
+   * all volumes as permanent because page server does not deal with temporary volumes anyway */
+  if (cubthread::get_entry ().type == TT_REPLICATION)
+    {
+      return false;
+    }
+#endif /* SERVER_MODE */
+
   return (LOG_DBFIRST_VOLID <= volid && xdisk_get_purpose (NULL, volid) == DB_TEMPORARY_DATA_PURPOSE);
 }
 

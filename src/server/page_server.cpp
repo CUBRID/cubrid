@@ -31,6 +31,7 @@
 #include <cassert>
 #include <cstring>
 #include <functional>
+#include <thread>
 
 page_server ps_Gl;
 
@@ -65,11 +66,17 @@ void page_server::set_active_tran_server_connection (cubcomm::channel &&chn)
       ats_to_ps_request::SEND_DATA_PAGE_FETCH,
       std::bind (&page_server::receive_data_page_fetch, std::ref (*this), std::placeholders::_1)
     },
+    {
+      ats_to_ps_request::SEND_DISCONNECT_MSG,
+      std::bind (&page_server::receive_disconnect_request, std::ref (*this), std::placeholders::_1)
+    },
   }));
 }
 
 void page_server::disconnect_active_tran_server ()
 {
+  er_log_debug (ARG_FILE_LINE, "Page server disconnected from active transaction server with channel id: %s.\n",
+		m_active_tran_server_conn->get_underlying_channel_id ());
   m_active_tran_server_conn.reset (nullptr);
 }
 
@@ -122,6 +129,13 @@ void page_server::receive_data_page_fetch (cubpacking::unpacker &upk)
   m_page_fetcher->fetch_data_page (vpid, target_repl_lsa, std::bind (&page_server::on_data_page_read_result, this,
 				   std::placeholders::_1,
 				   std::placeholders::_2));
+}
+
+void page_server::receive_disconnect_request (cubpacking::unpacker &upk)
+{
+  //start a thread to destroy the ATS to PS connection object
+  std::thread disconnect_thread (&page_server::disconnect_active_tran_server, std::ref (*this));
+  disconnect_thread.detach ();
 }
 
 void page_server::push_request_to_active_tran_server (ps_to_ats_request reqid, std::string &&payload)

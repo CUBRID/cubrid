@@ -926,7 +926,7 @@ extern int logtb_find_client_name_host_pid (int tran_index, const char **client_
 					    const char **client_user_name, const char **client_host_name,
 					    int *client_pid);
 #if !defined(NDEBUG)
-extern void logpb_debug_check_log_page (THREAD_ENTRY * thread_p, void *log_pgptr_ptr);
+extern void logpb_debug_check_log_page (THREAD_ENTRY * thread_p, const LOG_PAGE * log_pgptr);
 #endif
 #if defined (SERVER_MODE)
 extern int logtb_find_client_tran_name_host_pid (int &tran_index, const char **client_prog_name,
