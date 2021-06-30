@@ -31,8 +31,7 @@ enum class ps_to_ats_request
 {
   SEND_SAVED_LSA,
   SEND_LOG_PAGE,
-  SEND_DATA_PAGE,
-  SEND_DISCONNECT_RSP
+  SEND_DATA_PAGE
 };
 
 #endif // !_ATS_PS_REQUEST_IDS_HPP_
