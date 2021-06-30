@@ -85,7 +85,7 @@ typedef struct qfile_cleanup_candidate QFILE_CACHE_CLEANUP_CANDIDATE;
 struct qfile_cleanup_candidate
 {
   QFILE_LIST_CACHE_ENTRY *qcache;
-  INT64 weight;
+  double weight;
 };
 
 typedef SCAN_CODE (*ADVANCE_FUCTION) (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID *, QFILE_TUPLE_RECORD *,
@@ -290,10 +290,10 @@ static int qfile_compare_with_interpolation_domain (char *fp0, char *fp1, SUBKEY
 static BH_CMP_RESULT
 qfile_compare_cleanup_candidates (const void *left, const void *right, BH_CMP_ARG ignore_arg)
 {
-  INT64 left_weight = ((QFILE_CACHE_CLEANUP_CANDIDATE *) left)->weight;
-  INT64 right_weight = ((QFILE_CACHE_CLEANUP_CANDIDATE *) right)->weight;
+  double left_weight = ((QFILE_CACHE_CLEANUP_CANDIDATE *) left)->weight;
+  double right_weight = ((QFILE_CACHE_CLEANUP_CANDIDATE *) right)->weight;
 
-  if (left_weight > right_weight)
+  if (left_weight < right_weight)
     {
       return BH_LT;
     }
@@ -366,7 +366,7 @@ qfile_list_cache_cleanup (THREAD_ENTRY * thread_p)
 		    }
 		  page_ref = candidate.qcache->list_id.page_cnt + 1;
 		  lru_sec = current_time.tv_sec - candidate.qcache->time_last_used.tv_sec;
-		  candidate.weight = page_ref * lru_sec / (candidate.qcache->ref_count + 1);
+		  candidate.weight = (double) (candidate.qcache->ref_count + 1) / (double) (page_ref * lru_sec);
 		  (void) bh_try_insert (bh, &candidate, NULL);
 		}
 	    }
