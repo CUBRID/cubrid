@@ -5568,7 +5568,10 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xasl,
 
   if (xasl->list_ht_no < 0)
     {
-      xasl->list_ht_no = qcache_get_new_ht_no (thread_p);
+      if ((xasl->list_ht_no = qcache_get_new_ht_no (thread_p)) < 0)
+	{
+	  goto end;
+	}
     }
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
