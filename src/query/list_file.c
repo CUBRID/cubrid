@@ -373,7 +373,8 @@ qfile_list_cache_cleanup (THREAD_ENTRY * thread_p)
 	}
     }
 
-  for (candidate_index = 0; candidate_index < bh->element_count; candidate_index++)
+  /* traverse in reverse for weight ordering, from light weight to heavy weight */
+  for (candidate_index = bh->element_count - 1; candidate_index >= 0; candidate_index--)
     {
       bh_element_at (bh, candidate_index, &candidate);
       qfile_delete_list_cache_entry (thread_p, candidate.qcache);
