@@ -236,7 +236,9 @@ target_compile_definitions(test_log_lsa_utils PRIVATE
 target_include_directories(test_log_lsa_utils PRIVATE
   ${TEST_INCLUDES}
   )
-target_link_libraries(test_log_lsa_utils fake_thread_utils)
+if (WIN32)
+ target_link_libraries(test_log_lsa_utils PRIVATE ws2_32)
+endif ()
 add_dependencies(test_log_lsa_utils
   ${CATCH2_TARGET}
   )
@@ -279,7 +281,7 @@ add_dependencies(test_data_page_fetcher
 #
 # test_log_recovery_parallel
 #
-if(UNIX)
+#if(UNIX)
   set(TEST_LOG_RECOVERY_PARALLEL_SOURCES
     ${TRANSACTION_DIR}/log_recovery_redo_parallel.cpp
     ut_redo_job_impl.cpp
@@ -311,11 +313,11 @@ if(UNIX)
     ${TEST_INCLUDES}
     )
   target_link_libraries(test_log_recovery_parallel PRIVATE test_common)
-  #if(UNIX)
-  target_link_libraries(test_log_recovery_parallel PRIVATE cubrid )
-  #elseif(WIN32)
-  #  target_link_libraries(test_log_recovery_parallel PRIVATE cubrid-win-lib )
-  #else()
-  #  message( SEND_ERROR "Recovery only works on UNIX-like/WIN32")
-  #endif ()
-endif ()
+  if(UNIX)
+    target_link_libraries(test_log_recovery_parallel PRIVATE cubrid )
+  elseif(WIN32)
+    target_link_libraries(test_log_recovery_parallel PRIVATE cubrid-win-lib )
+  else()
+    message( SEND_ERROR "Recovery only works on UNIX-like/WIN32")
+  endif ()
+#endif ()
