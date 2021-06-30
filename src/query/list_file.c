@@ -411,21 +411,9 @@ qcache_get_new_ht_no (THREAD_ENTRY * thread_p)
 void
 qcache_free_ht_no (THREAD_ENTRY * thread_p, int ht_no)
 {
-  if (QFILE_IS_LIST_CACHE_DISABLED || ht_no < 0)
-    {
-      return;
-    }
-
-  if (csect_enter (thread_p, CSECT_QPROC_LIST_CACHE, INF_WAIT) != NO_ERROR)
-    {
-      return;
-    }
-
   (void) mht_clear (qfile_List_cache.list_hts[ht_no], NULL, NULL);
   qfile_List_cache.free_ht_list[ht_no] = qfile_List_cache.next_ht_no;
   qfile_List_cache.next_ht_no = ht_no;
-
-  csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
 }
 
 /* qfile_modify_type_list () -
@@ -5514,7 +5502,10 @@ qfile_end_use_of_list_cache_entry_local (THREAD_ENTRY * thread_p, void *data, vo
       return ER_FAILED;
     }
 
-  lent->invalidate = *((bool *) args);
+  if (lent->invalidate == false)
+    {
+      lent->invalidate = *((bool *) args);
+    }
 
   return qfile_end_use_of_list_cache_entry (thread_p, lent, true);
 }
