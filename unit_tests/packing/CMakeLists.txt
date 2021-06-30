@@ -46,7 +46,6 @@ target_include_directories(test_packing PRIVATE
 
 if(UNIX)
   target_link_libraries(test_packing PRIVATE
-    fake_thread_utils
     test_common
     cubrid
     )
