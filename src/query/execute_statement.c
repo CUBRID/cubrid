@@ -17802,7 +17802,7 @@ do_drop_server (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* check if user is creator or DBA  */
-  error = au_check_owner (server_object, ER_DBLINK_CANNOT_UPDATE_SERVER);
+  error = au_check_server_authorization (server_object);
   if (error != NO_ERROR)
     {
       if (error == ER_DBLINK_CANNOT_UPDATE_SERVER)

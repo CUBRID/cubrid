@@ -8655,30 +8655,14 @@ au_get_dba_user (void)
   return Au_dba_user;
 }
 
-/*
- * au_check_owner - check whether the current user is able to
- *                                 modify row object or not
- *   return: NO_ERROR if available, otherwise error code
- *   record_object(in): row object pointer
- */
-int
-au_check_owner (MOP record_object, int err_code)
+static int
+au_check_owner (DB_VALUE * creator_val)
 {
-  DB_VALUE creator_val;
   MOP creator;
   DB_SET *groups;
-  int ret_val;
+  int ret_val = ER_FAILED;
 
-  ret_val = db_get (record_object, "owner", &creator_val);
-
-  if (ret_val != NO_ERROR || DB_IS_NULL (&creator_val))
-    {
-      return ret_val;
-    }
-
-  creator = db_get_object (&creator_val);
-
-  ret_val = err_code;
+  creator = db_get_object (creator_val);
 
   if (ws_is_same_object (creator, Au_user) || au_is_dba_group_member (Au_user))
     {
@@ -8686,20 +8670,65 @@ au_check_owner (MOP record_object, int err_code)
     }
   else if (au_get_set (Au_user, "groups", &groups) == NO_ERROR)
     {
-      if (set_ismember (groups, &creator_val))
+      if (set_ismember (groups, creator_val))
 	{
 	  ret_val = NO_ERROR;
 	}
       set_free (groups);
     }
 
+  return ret_val;
+}
+
+/*
+ * au_check_serial_authorization - check whether the current user is able to
+ *                                 modify serial object or not
+ *   return: NO_ERROR if available, otherwise error code
+ *   serial_object(in): serial object pointer
+ */
+int
+au_check_serial_authorization (MOP serial_object)
+{
+  DB_VALUE creator_val;
+  int ret_val;
+
+  ret_val = db_get (serial_object, "owner", &creator_val);
+  if (ret_val != NO_ERROR || DB_IS_NULL (&creator_val))
+    {
+      return ret_val;
+    }
+
+  ret_val = au_check_owner (&creator_val);
   if (ret_val != NO_ERROR)
     {
+      ret_val = ER_QPROC_CANNOT_UPDATE_SERIAL;
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ret_val, 0);
     }
 
   pr_clear_value (&creator_val);
+  return ret_val;
+}
 
+int
+au_check_server_authorization (MOP server_object)
+{
+  DB_VALUE creator_val;
+  int ret_val;
+
+  ret_val = db_get (server_object, "owner", &creator_val);
+  if (ret_val != NO_ERROR || DB_IS_NULL (&creator_val))
+    {
+      return ret_val;
+    }
+
+  ret_val = au_check_owner (&creator_val);
+  if (ret_val != NO_ERROR)
+    {
+      ret_val = ER_DBLINK_CANNOT_UPDATE_SERVER;
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ret_val, 0);
+    }
+
+  pr_clear_value (&creator_val);
   return ret_val;
 }
 
