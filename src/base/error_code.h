@@ -1645,8 +1645,12 @@
 
 #define ER_DBLINK		    		      -1284
 #define ER_DBLINK_INVALID_COLUMNS_SPECIFIED         -1285
+#define ER_DBLINK_CATALOG_DB_SERVER_NOT_FOUND	    -1286
+#define ER_DBLINK_SERVER_NOT_FOUND                  -1287
+#define ER_DBLINK_SERVER_ALREADY_EXISTS             -1288
+#define ER_DBLINK_CANNOT_UPDATE_SERVER              -1289
 
-#define ER_LAST_ERROR                               -1286
+#define ER_LAST_ERROR                               -1290
 
 /*
  * CAUTION!

@@ -845,6 +845,9 @@ enum pt_node_type
   PT_SET_NAMES = CUBRID_STMT_SET_NAMES,
   PT_SET_TIMEZONE = CUBRID_STMT_SET_TIMEZONE,
 
+  PT_CREATE_SERVER = CUBRID_STMT_CREATE_SERVER,
+  PT_DROP_SERVER = CUBRID_STMT_DROP_SERVER,
+
   PT_DIFFERENCE = CUBRID_MAX_STMT_TYPE,	/* these enumerations must be distinct from statements */
   PT_INTERSECTION,		/* difference intersection and union are reported as CUBRID_STMT_SELECT. */
   PT_UNION,
@@ -3267,6 +3270,26 @@ typedef struct pt_dblink_info
   bool is_name;			/*  */
 } PT_DBLINK_INFO;
 
+typedef struct pt_create_server_info
+{
+  PT_NODE *server_name;
+  PT_NODE *host;
+  PT_NODE *port;
+  PT_NODE *dbname;
+  PT_NODE *user;
+  PT_NODE *pwd;
+  PT_NODE *prop;
+  PT_NODE *comment;
+} PT_CREATE_SERVER_INFO;
+
+typedef struct pt_drop_server_info
+{
+  bool if_exists;		/* IF EXISTS clause for DROP SERVER */
+  PT_NODE *server_name;		/* name */
+} PT_DROP_SERVER_INFO;
+
+
+
 /* Info field of the basic NODE
   If 'xyz' is the name of the field, then the structure type should be
   struct PT_XYZ_INFO xyz;
@@ -3288,6 +3311,7 @@ union pt_statement_info
   PT_COMMIT_WORK_INFO commit_work;
   PT_CONSTRAINT_INFO constraint;
   PT_CREATE_ENTITY_INFO create_entity;
+  PT_CREATE_SERVER_INFO create_server;
   PT_CREATE_TRIGGER_INFO create_trigger;
   PT_CREATE_USER_INFO create_user;
   PT_CTE_INFO cte;
@@ -3299,6 +3323,7 @@ union pt_statement_info
   PT_DOT_INFO dot;
   PT_DROP_INFO drop;
   PT_DROP_SESSION_VAR_INFO drop_session_var;
+  PT_DROP_SERVER_INFO drop_server;
   PT_DROP_TRIGGER_INFO drop_trigger;
   PT_DROP_USER_INFO drop_user;
   PT_DROP_VARIABLE_INFO drop_variable;
