@@ -300,9 +300,9 @@ log_recovery_analysis (THREAD_ENTRY *thread_p, INT64 *num_redo_log_records, log_
 		{
 		  if (prm_get_bool_value (PRM_ID_LOGPB_LOGGING_DEBUG))
 		    {
-		      er_log_debug (ARG_FILE_LINE, "logpb_recovery_analysis: Partial page flush - "
-				    "first corrupted log record LSA = (%lld, %d)\n",
-				    (long long int) crt_record_lsa.pageid, crt_record_lsa.offset);
+		      _er_log_debug (ARG_FILE_LINE, "logpb_recovery_analysis: Partial page flush - "
+				     "first corrupted log record LSA = (%lld, %d)\n",
+				     (long long int) crt_record_lsa.pageid, crt_record_lsa.offset);
 		    }
 		  LOG_RESET_APPEND_LSA (&crt_record_lsa);
 		  break;
