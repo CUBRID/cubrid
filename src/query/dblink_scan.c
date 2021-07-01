@@ -360,6 +360,7 @@ dblink_open_scan (DBLINK_SCAN_INFO * scan_info, char *conn_url, char *user_name,
 		  numeric_coerce_num_to_double (db_locate_numeric (&vd->dbval_ptr[i]),
 						vd->dbval_ptr[i].domain.numeric_info.scale, &adouble);
 		  value = &adouble;
+		  /* fall through down for set the type as double */
 		case DB_TYPE_DOUBLE:
 		case DB_TYPE_FLOAT:
 		  a_type = CCI_A_TYPE_DOUBLE;
@@ -372,6 +373,11 @@ dblink_open_scan (DBLINK_SCAN_INFO * scan_info, char *conn_url, char *user_name,
 		  a_type = CCI_A_TYPE_STR;
 		  u_type = CCI_U_TYPE_STRING;
 		  value = (void *) vd->dbval_ptr[i].data.ch.medium.buf;
+		  break;
+		case DB_TYPE_BIT:
+		case DB_TYPE_VARBIT:
+		  a_type = CCI_A_TYPE_BIT;
+		  u_type = CCI_U_TYPE_BIT;
 		  break;
 		default:
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "bind: not supported type");
