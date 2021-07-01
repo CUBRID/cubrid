@@ -351,6 +351,8 @@ static int logpb_add_archive_page_info (THREAD_ENTRY * thread_p, int arv_num, LO
 static int logpb_get_archive_num_from_info_table (THREAD_ENTRY * thread_p, LOG_PAGEID page_id);
 
 static int logpb_flush_all_append_pages (THREAD_ENTRY * thread_p);
+static int logpb_write_append_pages_to_disk (THREAD_ENTRY * thread_p);
+static void logpb_skip_flush_append_pages ();
 static int logpb_append_next_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * ndoe);
 
 static void logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header);
@@ -849,7 +851,7 @@ logpb_locate_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE f
 
   if (log_bufptr->pageid != NULL_PAGEID && log_bufptr->pageid != pageid)
     {
-      if (log_bufptr->dirty == true)
+      if (log_bufptr->dirty == true && !is_tran_server_with_remote_storage ())
 	{
 	  /* should not happen */
 	  assert_release (false);
@@ -2821,28 +2823,31 @@ logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY current_setdirty)
   log_Gl.hdr.append_lsa.pageid++;
   log_Gl.hdr.append_lsa.offset = 0;
 
-  /*
-   * Is the next logical page to archive, currently located at the physical
-   * location of the next logical append page ? (Remember the log is a RING).
-   * If so, we need to archive the log from the next logical page to archive
-   * up to the closest page that does not hold the current append log record.
-   */
-
-  if (LOGPB_AT_NEXT_ARCHIVE_PAGE_ID (log_Gl.hdr.append_lsa.pageid))
+  if (!is_tran_server_with_remote_storage ())
     {
-      /* The log must be archived */
-      logpb_archive_active_log (thread_p);
-    }
+      /*
+       * Is the next logical page to archive, currently located at the physical
+       * location of the next logical append page ? (Remember the log is a RING).
+       * If so, we need to archive the log from the next logical page to archive
+       * up to the closest page that does not hold the current append log record.
+       */
 
-  /*
-   * Has the log been cycled ?
-   */
-  if (LOGPB_IS_FIRST_PHYSICAL_PAGE (log_Gl.hdr.append_lsa.pageid))
-    {
-      log_Gl.hdr.fpageid += LOGPB_ACTIVE_NPAGES;
+      if (LOGPB_AT_NEXT_ARCHIVE_PAGE_ID (log_Gl.hdr.append_lsa.pageid))
+	{
+	  /* The log must be archived */
+	  logpb_archive_active_log (thread_p);
+	}
 
-      /* Flush the header to save updates by archiving. */
-      logpb_flush_header (thread_p);
+      /*
+       * Has the log been cycled ?
+       */
+      if (LOGPB_IS_FIRST_PHYSICAL_PAGE (log_Gl.hdr.append_lsa.pageid))
+	{
+	  log_Gl.hdr.fpageid += LOGPB_ACTIVE_NPAGES;
+
+	  /* Flush the header to save updates by archiving. */
+	  logpb_flush_header (thread_p);
+	}
     }
 
   /*
@@ -3344,6 +3349,38 @@ logpb_dump_log_page_area (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int off
 static int
 logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 {
+  if (is_tran_server_with_remote_storage ())
+    {
+      logpb_skip_flush_append_pages ();
+      return NO_ERROR;
+    }
+  else
+    {
+      return logpb_write_append_pages_to_disk (thread_p);
+    }
+}
+
+static void
+logpb_skip_flush_append_pages ()
+{
+  logpb_log ("called logpb_skip_flush_append_pages\n");
+
+  pthread_mutex_lock (&log_Gl.flush_info.flush_mutex);
+  log_Gl.flush_info.num_toflush = 0;
+  pthread_mutex_unlock (&log_Gl.flush_info.flush_mutex);
+
+  log_Gl.append.set_nxio_lsa (log_Gl.hdr.append_lsa);
+}
+
+/*
+ * logpb_write_append_pages_to_disk - Flush log append pages
+ *
+ * return: 1 : log flushed, 0 : do not need log flush, < 0 : error code
+ *
+ */
+static int
+logpb_write_append_pages_to_disk (THREAD_ENTRY * thread_p)
+{
   LOG_BUFFER *bufptr = NULL;	/* The current buffer log append page scanned */
   LOG_BUFFER *prv_bufptr = NULL;	/* The previous buffer log append page scanned */
   int idxflush;			/* An index into the first log page buffer to flush */
@@ -3379,10 +3416,10 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
-  logpb_log ("called logpb_flush_all_append_pages\n");
+  logpb_log ("called logpb_write_append_pages_to_disk\n");
 
 #if defined(CUBRID_DEBUG)
-  er_log_debug (ARG_FILE_LINE, "logpb_flush_all_append_pages: start\n");
+  er_log_debug (ARG_FILE_LINE, "logpb_write_append_pages_to_disk: start\n");
 
   gettimeofday (&start_time, NULL);
 #endif /* CUBRID_DEBUG */
@@ -3458,8 +3495,8 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
   if (log_Gl.append.get_nxio_lsa ().pageid != logpb_get_page_id (flush_info->toflush[0]))
     {
       er_log_debug (ARG_FILE_LINE,
-		    "logpb_flush_all_append_pages: SYSTEM ERROR\n  NXIO_PAGE %d does not seem the same as next free"
-		    " append page %d to flush\n", log_Gl.append.get_nxio_lsa ().pageid,
+		    "logpb_write_append_pages_to_disk: SYSTEM ERROR\n  NXIO_PAGE %d does not seem the same as next"
+		    " free append page %d to flush\n", log_Gl.append.get_nxio_lsa ().pageid,
 		    logpb_get_page_id (flush_info->toflush[0]));
       goto error;
     }
@@ -3506,7 +3543,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
        * Save the log record type of this record, overwrite an eof record on such position, and flush the page.
        * Then, restore the record back on the page and change the current append log sequence address.
        */
-      logpb_log ("logpb_flush_all_append_pages: incomplete record at log_Gl.append.prev_lsa=%lld|%d when flush is "
+      logpb_log ("logpb_write_append_pages_to_disk: incomplete record at log_Gl.append.prev_lsa=%lld|%d when flush is "
 		 "called. we'll overwrite the log record with eof.\n", (long long int) log_Gl.append.prev_lsa.pageid,
 		 (int) log_Gl.append.prev_lsa.offset);
 
@@ -3517,7 +3554,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
       if (bufptr->pageid != first_append_pageid)
 	{
 	  assert_release (false);
-	  logpb_log ("logpb_flush_all_append_pages: fatal error, partial page not found in log page buffer.");
+	  logpb_log ("logpb_write_append_pages_to_disk: fatal error, partial page not found in log page buffer.");
 	  error_code = ER_FAILED;
 	  goto error;
 	}
@@ -3548,7 +3585,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
     }
   else if (log_Pb.partial_append.status == LOGPB_APPENDREC_PARTIAL_FLUSHED_END_OF_LOG)
     {
-      logpb_log ("logpb_flush_all_append_pages: continue flushing page of partially appended log record.\n");
+      logpb_log ("logpb_write_append_pages_to_disk: continue flushing page of partially appended log record.\n");
     }
   else if (log_Pb.partial_append.status == LOGPB_APPENDREC_PARTIAL_ENDED
 	   || log_Pb.partial_append.status == LOGPB_APPENDREC_SUCCESS)
@@ -3557,7 +3594,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
        * Don't advance the log address, the log end of file is overwritten at a later point. */
       LOG_RECORD_HEADER eof;
 
-      logpb_log ("logpb_flush_all_append_pages: append end of log record at append_lsa = %lld|%d.\n",
+      logpb_log ("logpb_write_append_pages_to_disk: append end of log record at append_lsa = %lld|%d.\n",
 		 (long long int) log_Gl.hdr.append_lsa.pageid, (int) log_Gl.hdr.append_lsa.offset);
       eof.trid = LOG_READ_NEXT_TRANID;
       LSA_SET_NULL (&eof.prev_tranlsa);
@@ -3672,7 +3709,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	      /* found dirty */
 	      break;
 	    }
-	  logpb_log ("logpb_flush_all_append_pages: skip flushing not dirty page %lld.\n", bufptr->pageid);
+	  logpb_log ("logpb_write_append_pages_to_disk: skip flushing not dirty page %lld.\n", bufptr->pageid);
 	}
       if (i == flush_info->num_toflush)
 	{
@@ -3732,7 +3769,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	  need_sync = true;
 	  flush_page_count += i - idxflush;
 
-	  logpb_log ("logpb_flush_all_append_pages: flushed all pages in range [%lld, %lld].\n",
+	  logpb_log ("logpb_write_append_pages_to_disk: flushed all pages in range [%lld, %lld].\n",
 		     (long long int) flush_info->toflush[idxflush]->hdr.logical_pageid,
 		     (long long int) flush_info->toflush[idxflush]->hdr.logical_pageid + i - idxflush - 1);
 
@@ -3768,7 +3805,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	  /* not expected. */
 	  assert_release (false);
 
-	  logpb_log ("logpb_flush_all_append_pages: fatal error, nxio_lsa %lld|%d page not found in buffer. "
+	  logpb_log ("logpb_write_append_pages_to_disk: fatal error, nxio_lsa %lld|%d page not found in buffer. "
 		     "bufptr->pageid is %lld instead.\n",
 		     (long long int) nxio_lsa.pageid, (int) nxio_lsa.offset, (long long int) bufptr->pageid);
 
@@ -3781,7 +3818,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	  /* not expected */
 	  assert_release (false);
 
-	  logpb_log ("logpb_flush_all_append_pages: fatal error, nxio_lsa %lld|%d page is not dirty.\n",
+	  logpb_log ("logpb_write_append_pages_to_disk: fatal error, nxio_lsa %lld|%d page is not dirty.\n",
 		     (long long int) nxio_lsa.pageid, (int) nxio_lsa.offset);
 
 	  error_code = ER_FAILED;
@@ -3793,7 +3830,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
       bufptr->dirty = false;
       flush_page_count += 1;
 
-      logpb_log ("logpb_flush_all_append_pages: flushed nxio_lsa = %lld|%d page to disk.\n",
+      logpb_log ("logpb_write_append_pages_to_disk: flushed nxio_lsa = %lld|%d page to disk.\n",
 		 (long long int) log_Gl.append.get_nxio_lsa ().pageid, (int) log_Gl.append.get_nxio_lsa ().offset);
 
       if (logpb_Logging)
@@ -3807,8 +3844,8 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
     }
   else
     {
-      logpb_log ("logpb_flush_all_append_pages: skipped flushing nxio_lsa = %lld|%d page to disk because it matches "
-		 "the header page for incomplete record (prev_lsa = %lld|%d).\n",
+      logpb_log ("logpb_write_append_pages_to_disk: skipped flushing nxio_lsa = %lld|%d page to disk because it "
+		 "matches the header page for incomplete record (prev_lsa = %lld|%d).\n",
 		 (long long int) log_Gl.append.get_nxio_lsa ().pageid, (int) log_Gl.append.get_nxio_lsa ().offset,
 		 (long long int) log_Gl.append.prev_lsa.pageid, (int) log_Gl.append.prev_lsa.offset);
     }
@@ -3840,7 +3877,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 #if !defined(NDEBUG)
   if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG) && logpb_is_any_dirty (thread_p) == true)
     {
-      er_log_debug (ARG_FILE_LINE, "logpb_flush_all_append_pages: Log Buffer contains dirty pages\n");
+      er_log_debug (ARG_FILE_LINE, "logpb_write_append_pages_to_disk: Log Buffer contains dirty pages\n");
       logpb_dump (thread_p, stdout);
       fflush (stdout);
     }
@@ -3896,7 +3933,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 
       log_Pb.partial_append.status = LOGPB_APPENDREC_PARTIAL_FLUSHED_ORIGINAL;
 
-      logpb_log ("logpb_flush_all_append_pages: completed partial record and flush again its first page %lld. "
+      logpb_log ("logpb_write_append_pages_to_disk: completed partial record and flush again its first page %lld. "
 		 "nxio_lsa = %lld|%d.\n",
 		 (long long int) log_Pb.partial_append.log_page_record_header->hdr.logical_pageid,
 		 (long long int) log_Gl.append.get_nxio_lsa ().pageid, (int) log_Gl.append.get_nxio_lsa ().offset);
@@ -3906,14 +3943,14 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
       /* we cannot set nxio_lsa to append_lsa yet. set it to append.prev_lsa */
       log_Gl.append.set_nxio_lsa (log_Gl.append.prev_lsa);
 
-      logpb_log ("logpb_flush_all_append_pages: partial record flushed... set nxio_lsa = %lld|%d.\n",
+      logpb_log ("logpb_write_append_pages_to_disk: partial record flushed... set nxio_lsa = %lld|%d.\n",
 		 (long long int) log_Gl.append.get_nxio_lsa ().pageid, (int) log_Gl.append.get_nxio_lsa ().offset);
     }
   else if (log_Pb.partial_append.status == LOGPB_APPENDREC_SUCCESS)
     {
       log_Gl.append.set_nxio_lsa (log_Gl.hdr.append_lsa);
 
-      logpb_log ("logpb_flush_all_append_pages: set nxio_lsa = %lld|%d.\n",
+      logpb_log ("logpb_write_append_pages_to_disk: set nxio_lsa = %lld|%d.\n",
 		 (long long int) log_Gl.append.get_nxio_lsa ().pageid, (int) log_Gl.append.get_nxio_lsa ().offset);
     }
   else
@@ -3957,7 +3994,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
   log_Stat.total_commit_count_in_flush_pages += log_Stat.last_commit_count_in_flush_pages;
 
   er_log_debug (ARG_FILE_LINE,
-		"logpb_flush_all_append_pages: flush page(%ld / %d / %ld) avg flush count(%f), avg flush sec(%f)"
+		"logpb_write_append_pages_to_disk: flush page(%ld / %d / %ld) avg flush count(%f), avg flush sec(%f)"
 		"commit count(%ld) avg commit count(%f)\n", log_Stat.last_flush_count_by_trans, dirty_page_count,
 		curr_flush_count,
 		(double) log_Stat.total_flush_count_by_trans / log_Stat.flushall_append_pages_call_count,
@@ -4045,7 +4082,7 @@ error:
       pthread_mutex_unlock (&flush_info->flush_mutex);
     }
 
-  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "logpb_flush_all_append_pages");
+  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "logpb_write_append_pages_to_disk");
 
 #if defined(SERVER_MODE)
   if (thread_p && thread_p->type != TT_DAEMON && thread_p->type != TT_VACUUM_MASTER
