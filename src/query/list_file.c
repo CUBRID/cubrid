@@ -365,7 +365,7 @@ qfile_list_cache_cleanup (THREAD_ENTRY * thread_p)
 		      continue;
 		    }
 		  page_ref = candidate.qcache->list_id.page_cnt + 1;
-		  lru_sec = current_time.tv_sec - candidate.qcache->time_last_used.tv_sec;
+		  lru_sec = current_time.tv_sec - candidate.qcache->time_last_used.tv_sec + 1;
 		  candidate.weight = (double) (candidate.qcache->ref_count + 1) / (double) (page_ref * lru_sec);
 		  (void) bh_try_insert (bh, &candidate, NULL);
 		}
