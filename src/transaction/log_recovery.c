@@ -561,6 +561,10 @@ log_rv_need_sync_redo (LOG_RCVINDEX rcvindex)
     case RVDK_NEWVOL:
     case RVDK_FORMAT:
     case RVDK_INITMAP:
+    case RVDK_EXPAND_VOLUME:
+    case RVDK_VOLHEAD_EXPAND:
+      // Creating/expanding a volume needs to be waited before applying other changes in new pages
+      return true;
     case RVDK_RESERVE_SECTORS:
     case RVDK_UNRESERVE_SECTORS:
       return true;
