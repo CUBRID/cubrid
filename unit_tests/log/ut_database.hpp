@@ -39,11 +39,11 @@
  */
 struct ut_database_config
 {
-  static constexpr short ADD_VOLUME_DISCRETE_RATIO = 1;
-  static constexpr short UPDATE_VOLUME_DISCRETE_RATIO = 39;
+  static constexpr int32_t ADD_VOLUME_DISCRETE_RATIO = 1;
+  static constexpr int32_t UPDATE_VOLUME_DISCRETE_RATIO = 39;
 
-  static constexpr short ADD_PAGE_DISCRETE_RATIO = 1;
-  static constexpr short UPDATE_PAGE_DISCRETE_RATIO = 19;
+  static constexpr int32_t ADD_PAGE_DISCRETE_RATIO = 1;
+  static constexpr int32_t UPDATE_PAGE_DISCRETE_RATIO = 19;
 
   const size_t max_volume_count_per_database;
   const size_t max_page_count_per_volume;

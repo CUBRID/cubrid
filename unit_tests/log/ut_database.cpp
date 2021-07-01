@@ -86,7 +86,7 @@ ut_database_values_generator::rand_add_or_update_volume (const size_t a_current_
   if (a_current_volume_count < m_database_config.max_volume_count_per_database)
     {
       // while there is still space to add volumes, choose randomly
-      const int8_t random_value = m_add_or_update_volume_dist (m_gen);
+      const int32_t random_value = m_add_or_update_volume_dist (m_gen);
       return (random_value == 0)
 	     ? add_or_update::ADD
 	     : add_or_update::UPDATE;
@@ -110,7 +110,7 @@ ut_database_values_generator::rand_add_or_update_page (const size_t a_current_pa
   if (a_current_page_count < m_database_config.max_page_count_per_volume)
     {
       // while there is still space to add pages, choose randomly
-      const int8_t random_value = m_add_or_update_page_dist (m_gen);
+      const int32_t random_value = m_add_or_update_page_dist (m_gen);
       return (random_value == 0)
 	     ? add_or_update::ADD
 	     : add_or_update::UPDATE;
