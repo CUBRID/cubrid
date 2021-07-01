@@ -4958,7 +4958,7 @@ qfile_initialize_list_cache (THREAD_ENTRY * thread_p)
       for (i = 0; i < qfile_List_cache.n_hts; i++)
 	{
 	  qfile_List_cache.list_hts[i] =
-	    mht_create ("list file cache (DB_VALUE list)", prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_ENTRIES),
+	    mht_create ("list file cache (DB_VALUE list)", qfile_List_cache.n_hts,
 			qfile_hash_db_value_array, qfile_compare_equal_db_value_array);
 	  qfile_List_cache.free_ht_list[i] = i + 1;
 	  if (qfile_List_cache.list_hts[i] == NULL)
@@ -5105,6 +5105,16 @@ qfile_clear_list_cache (THREAD_ENTRY * thread_p, int list_ht_no, bool invalidate
       return ER_FAILED;
     }
 
+  if (qfile_get_list_cache_number_of_entries (list_ht_no) == 0)
+    {
+      /* if no entries, to invalidate free the entry here */
+      if (invalidate)
+	{
+	  qcache_free_ht_no (thread_p, list_ht_no);
+	}
+      goto end;
+    }
+
   cnt = 0;
   do
     {
@@ -5129,6 +5139,7 @@ qfile_clear_list_cache (THREAD_ENTRY * thread_p, int list_ht_no, bool invalidate
       er_log_debug (ARG_FILE_LINE, "ls_clear_list_cache: failed to delete all entries\n");
     }
 
+end:
   csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
 
   return NO_ERROR;
