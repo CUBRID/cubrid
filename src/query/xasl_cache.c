@@ -1476,6 +1476,7 @@ xcache_insert (THREAD_ENTRY * thread_p, const compile_context * context, XASL_ST
       (*xcache_entry)->stream = *stream;
       (*xcache_entry)->time_last_rt_check = (INT64) time_stored.tv_sec;
       (*xcache_entry)->time_last_used = time_stored;
+      (*xcache_entry)->list_ht_no = -1;
 
       /* Now that new entry is initialized, we can try to insert it. */
 
