@@ -2898,7 +2898,7 @@ qdata_aggregate_interpolation (cubthread::entry *thread_p, cubxasl::aggregate_li
 			       QFILE_LIST_SCAN_ID *scan_id)
 {
   int error = NO_ERROR;
-  int tuple_count;
+  INT64 tuple_count;
   double row_num_d, f_row_num_d, c_row_num_d, percentile_d;
   FUNC_TYPE function;
   double cur_group_percentile;
