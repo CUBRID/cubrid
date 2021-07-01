@@ -629,7 +629,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_LOG_UNIQUE_STATS "log_unique_stats"
 
 #define PRM_NAME_LOGPB_LOGGING_DEBUG "logpb_logging_debug"
-#define PRM_NAME_RECOVERY_LOGGING_DEBUG "recovery_logging_debug"
 
 #define PRM_NAME_FORCE_RESTART_TO_SKIP_RECOVERY "force_restart_to_skip_recovery"
 
@@ -2128,10 +2127,6 @@ static unsigned int prm_log_unique_stats_flag = 0;
 bool PRM_LOGPB_LOGGING_DEBUG = false;
 static bool prm_logpb_logging_debug_default = false;
 static unsigned int prm_logpb_logging_debug_flag = 0;
-
-bool PRM_RECOVERY_LOGGING_DEBUG = false;
-static bool prm_recovery_logging_debug_default = false;
-static unsigned int prm_recovery_logging_debug_flag = 0;
 
 bool PRM_FORCE_RESTART_TO_SKIP_RECOVERY = false;
 static bool prm_force_restart_to_skip_recovery_default = false;
@@ -5525,17 +5520,6 @@ static SYSPRM_PARAM prm_Def[] = {
    &prm_logpb_logging_debug_flag,
    (void *) &prm_logpb_logging_debug_default,
    (void *) &PRM_LOGPB_LOGGING_DEBUG,
-   (void *) NULL, (void *) NULL,
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
-  {PRM_ID_RECOVERY_LOGGING_DEBUG,
-   PRM_NAME_RECOVERY_LOGGING_DEBUG,
-   (PRM_FOR_SERVER | PRM_HIDDEN),
-   PRM_BOOLEAN,
-   &prm_recovery_logging_debug_flag,
-   (void *) &prm_recovery_logging_debug_default,
-   (void *) &PRM_RECOVERY_LOGGING_DEBUG,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
