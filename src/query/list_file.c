@@ -314,8 +314,6 @@ qfile_list_cache_cleanup (THREAD_ENTRY * thread_p)
   QFILE_CACHE_CLEANUP_CANDIDATE candidate;
   int candidate_index;
   unsigned int i, n;
-  bool invalidate;
-  int ht_no;
 
   struct timeval current_time;
   int cleanup_count = prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_ENTRIES) * 8 / 10;
@@ -379,18 +377,7 @@ qfile_list_cache_cleanup (THREAD_ENTRY * thread_p)
   for (candidate_index = bh->element_count - 1; candidate_index >= 0; candidate_index--)
     {
       bh_element_at (bh, candidate_index, &candidate);
-
-      invalidate = candidate.qcache->invalidate;
-      ht_no = candidate.qcache->list_ht_no;
       qfile_delete_list_cache_entry (thread_p, candidate.qcache);
-      if (invalidate && qfile_get_list_cache_number_of_entries (ht_no) == 0)
-	{
-	  /* this hash table has no entries and invalidated
-	   * it needs to free
-	   */
-	  qcache_free_ht_no (thread_p, ht_no);
-	}
-
       if (qfile_List_cache.n_entries <= cleanup_count)
 	{
 	  if (qfile_List_cache.n_pages <= cleanup_pages)
@@ -5460,11 +5447,16 @@ qfile_delete_list_cache_entry (THREAD_ENTRY * thread_p, void *data)
   /* this function should be called within CSECT_QPROC_LIST_CACHE */
   QFILE_LIST_CACHE_ENTRY *lent = (QFILE_LIST_CACHE_ENTRY *) data;
   int error_code = ER_FAILED;
+  bool invalidate;
+  int ht_no;
 
   if (data == NULL || lent->list_ht_no < 0)
     {
       return ER_FAILED;
     }
+
+  invalidate = lent->invalidate;
+  ht_no = lent->list_ht_no;
 
   /* update counter */
   qfile_List_cache.n_entries--;
@@ -5503,6 +5495,15 @@ qfile_delete_list_cache_entry (THREAD_ENTRY * thread_p, void *data)
   /* clear list_id */
   qfile_update_qlist_count (thread_p, &lent->list_id, 1);
   qfile_clear_list_id (&lent->list_id);
+
+  /* to check if it's the last list cache entry of the hash table */
+  if (invalidate && qfile_get_list_cache_number_of_entries (ht_no) == 0)
+    {
+      /* this hash table has no entries and invalidated
+       * it needs to free
+       */
+      qcache_free_ht_no (thread_p, ht_no);
+    }
 
   error_code = qfile_free_list_cache_entry (thread_p, lent, NULL);
 
@@ -5925,7 +5926,6 @@ end:
 int
 qfile_end_use_of_list_cache_entry (THREAD_ENTRY * thread_p, QFILE_LIST_CACHE_ENTRY * lent, bool marker)
 {
-  int list_ht_no;
   int tran_index;
   bool invalidate = false;
 #if defined(SERVER_MODE)
@@ -5953,8 +5953,6 @@ qfile_end_use_of_list_cache_entry (THREAD_ENTRY * thread_p, QFILE_LIST_CACHE_ENT
     {
       return ER_FAILED;
     }
-
-  list_ht_no = lent->list_ht_no;
 
 #if defined(SERVER_MODE)
   /* remove my transaction id from the entry and do compaction */
@@ -6007,7 +6005,6 @@ qfile_end_use_of_list_cache_entry (THREAD_ENTRY * thread_p, QFILE_LIST_CACHE_ENT
       /* to check if it's the last transaction using the lent */
       if (marker || lent->deletion_marker)
 	{
-	  invalidate = lent->invalidate;
 	  qfile_delete_list_cache_entry (thread_p, lent);
 	}
     }
@@ -6022,11 +6019,6 @@ qfile_end_use_of_list_cache_entry (THREAD_ENTRY * thread_p, QFILE_LIST_CACHE_ENT
 	}
     }
 #endif
-
-  if (invalidate && qfile_get_list_cache_number_of_entries (list_ht_no) == 0)
-    {
-      qcache_free_ht_no (thread_p, list_ht_no);
-    }
 
   csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
 
