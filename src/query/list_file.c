@@ -314,6 +314,8 @@ qfile_list_cache_cleanup (THREAD_ENTRY * thread_p)
   QFILE_CACHE_CLEANUP_CANDIDATE candidate;
   int candidate_index;
   unsigned int i, n;
+  bool invalidate;
+  int ht_no;
 
   struct timeval current_time;
   int cleanup_count = prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_ENTRIES) * 8 / 10;
@@ -377,7 +379,18 @@ qfile_list_cache_cleanup (THREAD_ENTRY * thread_p)
   for (candidate_index = bh->element_count - 1; candidate_index >= 0; candidate_index--)
     {
       bh_element_at (bh, candidate_index, &candidate);
+
+      invalidate = candidate.qcache->invalidate;
+      ht_no = candidate.qcache->list_ht_no;
       qfile_delete_list_cache_entry (thread_p, candidate.qcache);
+      if (invalidate && qfile_get_list_cache_number_of_entries (ht_no) == 0)
+	{
+	  /* this hash table has no entries and invalidated
+	   * it needs to free
+	   */
+	  qcache_free_ht_no (thread_p, ht_no);
+	}
+
       if (qfile_List_cache.n_entries <= cleanup_count)
 	{
 	  if (qfile_List_cache.n_pages <= cleanup_pages)
