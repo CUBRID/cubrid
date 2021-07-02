@@ -39,11 +39,11 @@
  */
 struct ut_database_config
 {
-  static constexpr short ADD_VOLUME_DISCRETE_RATIO = 1;
-  static constexpr short UPDATE_VOLUME_DISCRETE_RATIO = 39;
+  static constexpr int32_t ADD_VOLUME_DISCRETE_RATIO = 1;
+  static constexpr int32_t UPDATE_VOLUME_DISCRETE_RATIO = 39;
 
-  static constexpr short ADD_PAGE_DISCRETE_RATIO = 1;
-  static constexpr short UPDATE_PAGE_DISCRETE_RATIO = 19;
+  static constexpr int32_t ADD_PAGE_DISCRETE_RATIO = 1;
+  static constexpr int32_t UPDATE_PAGE_DISCRETE_RATIO = 19;
 
   const size_t max_volume_count_per_database;
   const size_t max_page_count_per_volume;
@@ -97,10 +97,10 @@ class ut_database_values_generator
     std::uniform_real_distribution<double> m_duration_in_millis_dist;
 
     // discrete distribution for adding new volumes or updating existing volumes
-    std::discrete_distribution<int8_t> m_add_or_update_volume_dist;
+    std::discrete_distribution<int32_t> m_add_or_update_volume_dist;
 
     // discrete distribution for adding new pages or updating existing pages
-    std::discrete_distribution<int8_t> m_add_or_update_page_dist;
+    std::discrete_distribution<int32_t> m_add_or_update_page_dist;
 };
 
 

@@ -1,8 +1,8 @@
 image:
-  - Visual Studio 2017
+  - Visual Studio 2019
 
 environment:
-  CMAKE_GENERATOR: "Visual Studio 15 2017 Win64"
+  CMAKE_GENERATOR: "Visual Studio 16 2019"
   BUILD_TYPE: RelWithDebInfo
 
 matrix:
@@ -13,5 +13,5 @@ install:
 
 build_script:
   - cmake -E make_directory build
-  - cmake -E chdir build cmake -G "%CMAKE_GENERATOR%" -DCMAKE_BUILD_TYPE=%BUILD_TYPE% ..
+  - cmake -E chdir build cmake -G "%CMAKE_GENERATOR%" -A x64 -DCMAKE_BUILD_TYPE=%BUILD_TYPE% -DUNIT_TESTS=ON ..
   - cmake --build build --config %BUILD_TYPE%
