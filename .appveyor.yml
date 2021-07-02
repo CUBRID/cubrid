@@ -13,5 +13,5 @@ install:
 
 build_script:
   - cmake -E make_directory build
-  - cmake -E chdir build cmake -G "%CMAKE_GENERATOR%" -A Win64 -DCMAKE_BUILD_TYPE=%BUILD_TYPE% -DUNIT_TESTS ..
+  - cmake -E chdir build cmake -G "%CMAKE_GENERATOR%" -A x64 -DCMAKE_BUILD_TYPE=%BUILD_TYPE% -DUNIT_TESTS ..
   - cmake --build build --config %BUILD_TYPE%
