@@ -2450,7 +2450,6 @@ db_query_last_tuple (DB_QUERY_RESULT * result)
  * result(in/out): Query result structure
  * offset(in): Offset tuple count
  * seek_mode(in): Tuple seek mode
- *
  */
 int
 db_query_seek_tuple (DB_QUERY_RESULT * result, int offset, int seek_mode)

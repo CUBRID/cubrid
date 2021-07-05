@@ -365,11 +365,7 @@ qdata_aggregate_value_to_accumulator (cubthread::entry *thread_p, cubxasl::aggre
 	  if (acc->curr_cnt < 1)
 	    {
 	      /* first value */
-#if defined(NDEBUG)
 	      db_make_bigint (acc->value, (INT64) 1);
-#else
-	      db_make_bigint (acc->value, (INT64) 1 + (INT64) prm_get_bigint_value (PRM_ID_COUNT_DEBUG));
-#endif
 	    }
 	  else
 	    {
@@ -1223,8 +1219,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
       /* set count-star aggregate values */
       if (agg_p->function == PT_COUNT_STAR)
 	{
-	  db_make_bigint (agg_p->accumulator.value,
-			  agg_p->accumulator.curr_cnt + (int64_t) prm_get_bigint_value (PRM_ID_COUNT_DEBUG));
+	  db_make_bigint (agg_p->accumulator.value, agg_p->accumulator.curr_cnt);
 	}
 
       /* the value of groupby_num() remains unchanged; it will be changed while evaluating groupby_num predicates

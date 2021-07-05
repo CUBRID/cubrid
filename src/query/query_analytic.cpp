@@ -816,7 +816,7 @@ qdata_finalize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 
       if (func_p->function == PT_COUNT)
 	{
-	  db_make_bigint (func_p->value, list_id_p->tuple_cnt + (int64_t) prm_get_bigint_value (PRM_ID_COUNT_DEBUG));
+	  db_make_bigint (func_p->value, list_id_p->tuple_cnt);
 	}
       else
 	{
