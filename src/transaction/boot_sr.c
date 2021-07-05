@@ -2900,6 +2900,11 @@ error:
   cubthread::finalize ();
 #endif /* SA_MODE */
 
+  if (prm_get_bool_value (PRM_ID_DUMP_FILE_CACHE))
+    {
+      fileio_cache_dump ();
+    }
+
   return error_code;
 }
 

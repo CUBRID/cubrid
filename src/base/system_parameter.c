@@ -709,6 +709,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_REPLICATION_PARALLEL_COUNT "replication_parallel_count"
 
 #define PRM_NAME_REMOTE_STORAGE "remote_storage"
+#define PRM_NAME_DUMP_FILE_CACHE "dump_fileio_cache_after_boot"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -2415,6 +2416,10 @@ static int prm_replication_parallel_count_lower_value = 0;
 static bool prm_remote_storage_default = false;
 bool PRM_REMOTE_STORAGE_CURRENT_VALUE = prm_remote_storage_default;
 static unsigned int prm_remote_storage_flag = 0;
+
+static bool prm_dump_file_cache_default = false;
+bool PRM_DUMP_FILE_CACHE_CURRENT_VALUE = prm_dump_file_cache_default;
+static unsigned int prm_dump_file_cache_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -6247,6 +6252,18 @@ static SYSPRM_PARAM prm_Def[] = {
    &prm_remote_storage_flag,
    (void *) &prm_remote_storage_default,
    (void *) &PRM_REMOTE_STORAGE_CURRENT_VALUE,
+   (void *) NULL,
+   (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_DUMP_FILE_CACHE,
+   PRM_NAME_DUMP_FILE_CACHE,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_dump_file_cache_flag,
+   (void *) &prm_dump_file_cache_default,
+   (void *) &PRM_DUMP_FILE_CACHE_CURRENT_VALUE,
    (void *) NULL,
    (void *) NULL,
    (char *) NULL,

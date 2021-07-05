@@ -464,6 +464,7 @@ struct flush_stats
 
 extern int fileio_open (const char *vlabel, int flags, int mode);
 extern void fileio_close (int vdes);
+extern void fileio_cache_dump ();
 extern int fileio_format (THREAD_ENTRY * thread_p, const char *db_fullname, const char *vlabel, VOLID volid,
 			  DKNPAGES npages, bool sweep_clean, bool dolock, bool dosync, size_t page_size,
 			  int kbytes_to_be_written_per_sec, bool reuse_file);
