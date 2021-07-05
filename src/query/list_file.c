@@ -5085,31 +5085,38 @@ qfile_finalize_list_cache (THREAD_ENTRY * thread_p)
  *   list_ht_no(in)     :
  */
 int
-qfile_clear_list_cache (THREAD_ENTRY * thread_p, int list_ht_no, bool invalidate)
+qfile_clear_list_cache (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry, bool invalidate)
 {
   int rc;
   int cnt;
+  int list_ht_no;
 
-  if (QFILE_IS_LIST_CACHE_DISABLED)
+  if (csect_enter (thread_p, CSECT_QPROC_LIST_CACHE, INF_WAIT) != NO_ERROR)
     {
-      return ER_FAILED;
+      goto end;
+      //return ER_FAILED;
+    }
+
+  if (QFILE_IS_LIST_CACHE_DISABLED || xcache_entry->list_ht_no < 0)
+    {
+      goto end;
+      //return ER_FAILED;
     }
 
   if (qfile_List_cache.n_hts == 0)
     {
-      return ER_FAILED;
+      goto end;
+      //return ER_FAILED;
     }
 
-  if (csect_enter (thread_p, CSECT_QPROC_LIST_CACHE, INF_WAIT) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
+  list_ht_no = xcache_entry->list_ht_no;
 
   if (qfile_get_list_cache_number_of_entries (list_ht_no) == 0)
     {
       /* if no entries, to invalidate free the entry here */
       if (invalidate)
 	{
+	  xcache_entry->list_ht_no = -1;
 	  qcache_free_ht_no (thread_p, list_ht_no);
 	}
       goto end;
@@ -5502,6 +5509,7 @@ qfile_delete_list_cache_entry (THREAD_ENTRY * thread_p, void *data)
       /* this hash table has no entries and invalidated
        * it needs to free
        */
+      lent->xcache_entry->list_ht_no = -1;
       qcache_free_ht_no (thread_p, ht_no);
     }
 
