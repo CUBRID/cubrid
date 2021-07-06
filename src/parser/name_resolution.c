@@ -241,7 +241,7 @@ static PT_NODE *pt_get_attr_list_of_derived_table (PARSER_CONTEXT * parser, PT_M
 static void pt_set_attr_list_types (PARSER_CONTEXT * parser, PT_NODE * as_attr_list, PT_MISC_TYPE derived_table_type,
 				    PT_NODE * derived_table, PT_NODE * parent_spec);
 static PT_NODE *pt_count_with_clauses (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-static void pt_resolve_dblink_name (PARSER_CONTEXT * parser, PT_NODE * node);
+static void pt_resolve_dblink_server_name (PARSER_CONTEXT * parser, PT_NODE * node);
 
 /*
  * pt_undef_names_pre () - Set error if name matching spec is found. Used in
@@ -1002,7 +1002,7 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 	      assert (spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE);
 	      if (table->info.dblink_table.is_name)
 		{
-		  pt_resolve_dblink_name (parser, table);
+		  pt_resolve_dblink_server_name (parser, table);
 		  if (pt_has_error (parser))
 		    return;
 		}
@@ -10236,7 +10236,7 @@ pt_bind_name_to_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 }
 
 static void
-pt_resolve_dblink_name (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_resolve_dblink_server_name (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_NODE *val[3];
   DB_VALUE values[3];
