@@ -502,7 +502,6 @@ static bool fileio_synchronize_sys_volume (THREAD_ENTRY * thread_p, FILEIO_SYSTE
 static bool fileio_synchronize_volume (THREAD_ENTRY * thread_p, FILEIO_VOLUME_INFO * vol_info_p, APPLY_ARG * arg);
 static int fileio_cache (VOLID volid, const char *vlabel, int vdes, FILEIO_LOCKF_TYPE lockf_type);
 static void fileio_decache (THREAD_ENTRY * thread_p, int vdes);
-void fileio_cache_dump (void);
 static void fileio_dump_cached_file (VOLID volid, int vdes, const char *vlabel);
 static bool fileio_dump_volinfo (THREAD_ENTRY * thread_p, FILEIO_VOLUME_INFO * vol_info_p, APPLY_ARG *);
 static bool fileio_dump_sysvolinfo (THREAD_ENTRY * thread_p, FILEIO_SYSTEM_VOLUME_INFO * sys_volinfo, APPLY_ARG *);
