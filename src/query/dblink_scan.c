@@ -39,29 +39,29 @@
 #include <cas_cci.h>
 
 // *INDENT-OFF*
-#define  DATETIME_DECODE(date, dt, m, d, y, hour, minute, sec, msec) \
+#define  DATETIME_DECODE(date, dt, m, d, y, hour, min, sec, msec) \
   do \
     {  \
-      db_datetime_decode (&(dt), &d, &y, &m, &hour, &minute, &sec, &msec); \
+      db_datetime_decode (&(dt), &d, &y, &m, &hour, &min, &sec, &msec); \
       date.hh = hour; \
-      date.mm = minute;  \ 
+      date.mm = min;  \
       date.ss = sec; \
-      date.ms = msec;  \ 
+      date.ms = msec;  \
       date.mon = m; \
       date.day = d; \
       date.yr = y; \
     } \
   while (0)
   	
-#define TIMESTAMP_DECODE(date, dt, tm, m, d, y, hour, minute, sec) \
+#define TIMESTAMP_DECODE(date, dt, tm, m, d, y, hour, min, sec) \
   do \
     { \
-      db_time_decode (&tm, &hour, &minute, &sec); \
+      db_time_decode (&tm, &hour, &min, &sec); \
       db_date_decode (&dt, &m, &d, &y); \
       date.hh = hour; \
-      date.mm = minute; \ 
+      date.mm = min; \
       date.ss = sec; \
-      date.ms = 0; \ 
+      date.ms = 0; \
       date.mon = m; \
       date.day = d; \
       date.yr = y; \
