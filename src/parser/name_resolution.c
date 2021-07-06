@@ -241,6 +241,7 @@ static PT_NODE *pt_get_attr_list_of_derived_table (PARSER_CONTEXT * parser, PT_M
 static void pt_set_attr_list_types (PARSER_CONTEXT * parser, PT_NODE * as_attr_list, PT_MISC_TYPE derived_table_type,
 				    PT_NODE * derived_table, PT_NODE * parent_spec);
 static PT_NODE *pt_count_with_clauses (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static void pt_resolve_dblink_name (PARSER_CONTEXT * parser, PT_NODE * node);
 
 /*
  * pt_undef_names_pre () - Set error if name matching spec is found. Used in
@@ -999,6 +1000,12 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 	  else if (table->node_type == PT_DBLINK_TABLE)
 	    {
 	      assert (spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE);
+	      if (table->info.dblink_table.is_name)
+		{
+		  pt_resolve_dblink_name (parser, table);
+		  if (pt_has_error (parser))
+		    return;
+		}
 
 	      table->info.dblink_table.cols =
 		parser_walk_tree (parser, table->info.dblink_table.cols, pt_bind_name_to_spec, spec, NULL, NULL);
@@ -3641,13 +3648,6 @@ pt_find_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * name)
 	      name->info.name.default_value = pt_dbval_to_value (parser, &val);
 	      PT_NAME_INFO_SET_FLAG (name, PT_NAME_DEFAULTF_ACCEPTS);
 	    }
-#if 0
-	  else if (spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
-	    {
-	      // TODO: ctshim_assert
-	      ;
-	    }
-#endif
 	}
     }
 
@@ -10233,4 +10233,81 @@ pt_bind_name_to_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
   node->info.name.resolved = spec->info.spec.range_var->info.name.original;
   node->info.name.meta_class = PT_NORMAL;	// so far, only normals are used.
   return node;
+}
+
+static void
+pt_resolve_dblink_name (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE *val[3];
+  DB_VALUE values[3];
+  PT_DBLINK_INFO *dblink_table = &node->info.dblink_table;
+  int i;
+
+  assert (dblink_table->conn && dblink_table->conn->node_type == PT_NAME);
+
+  db_make_null (&(values[0]));
+  db_make_null (&(values[1]));
+  db_make_null (&(values[2]));
+  i = get_dblink_info_from_dbserver (parser, dblink_table->conn->info.name.original, values);
+  if (i != NO_ERROR)
+    {
+      if (i == ER_DBLINK_SERVER_NOT_FOUND)
+	{
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RT_SERVER_NOT_DEFINED,
+		      dblink_table->conn->info.name.original);
+	}
+      else if (i == ER_DBLINK_CANNOT_UPDATE_SERVER)
+	{
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RT_SERVER_ALTER_NOT_ALLOWED, 0);
+	}
+      else if (!pt_has_error (parser))
+	{
+	  PT_ERROR (parser, node, "Failed to obtain server information");
+	}
+
+      pr_clear_value (&(values[0]));
+      pr_clear_value (&(values[1]));
+      pr_clear_value (&(values[2]));
+      return;
+    }
+
+  for (i = 0; i < 3; i++)
+    {
+      val[i] = parser_new_node (parser, PT_VALUE);
+      if (val[i] == NULL)
+	{
+	  if (!pt_has_error (parser))
+	    {
+	      PT_ERROR (parser, node, "allocation error");
+	    }
+
+	  while (--i >= 0)
+	    {
+	      parser_free_node (parser, val[i]);
+	    }
+
+	  return;
+	}
+
+      val[i]->type_enum = PT_TYPE_CHAR;
+      val[i]->info.value.string_type = ' ';
+    }
+
+  dblink_table->url = val[0];
+  dblink_table->user = val[1];
+  dblink_table->pwd = val[2];
+
+  char *url, *username, *password;
+
+  url = (char *) db_get_string (&(values[0]));
+  username = (char *) db_get_string (&(values[1]));
+  password = (char *) db_get_string (&(values[2]));
+
+  dblink_table->url->info.value.data_value.str = pt_append_nulstring (parser, NULL, url);
+  dblink_table->user->info.value.data_value.str = pt_append_nulstring (parser, NULL, username);
+  dblink_table->pwd->info.value.data_value.str = pt_append_nulstring (parser, NULL, (password ? password : ""));
+
+  pr_clear_value (&(values[0]));
+  pr_clear_value (&(values[1]));
+  pr_clear_value (&(values[2]));
 }

@@ -17759,7 +17759,7 @@ exit:
   return error;
 }
 
-MOP
+static MOP
 do_get_server_obj_id (DB_IDENTIFIER * server_obj_id, DB_OBJECT * server_class_mop, const char *server_name)
 {
   return do_get_obj_id (server_obj_id, server_class_mop, server_name, "link_name");
@@ -17801,6 +17801,9 @@ do_drop_server (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto end;
     }
 
+  AU_DISABLE (save);
+  au_disable_flag = true;
+
   /* check if user is creator or DBA  */
   error = au_check_server_authorization (server_object);
   if (error != NO_ERROR)
@@ -17811,9 +17814,6 @@ do_drop_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       goto end;
     }
-
-  AU_DISABLE (save);
-  au_disable_flag = true;
 
   error = db_drop (server_object);
 
@@ -18033,7 +18033,7 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-  /* now create serial object which is insert into db_serial */
+  /* now create server object which is insert into _db_server */
   AU_DISABLE (save);
   au_disable_flag = true;
 
@@ -18053,6 +18053,117 @@ end:
     }
 
   pr_clear_value (&port_no);
+
+  return error;
+}
+
+int
+get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, const char *server, DB_VALUE * out_val)
+{
+  char *server_name, *t;
+  DB_OBJECT *server_object, *server_class;
+  DB_IDENTIFIER server_obj_id;
+  int error;
+
+  t = strchr ((char *) server, '.');	/* FIXME */
+  server_name = (t != NULL) ? (t + 1) : (char *) server;
+
+  server_class = sm_find_class (CT_DB_SERVER_NAME);
+  if (server_class == NULL)
+    {
+      error = ER_DBLINK_CATALOG_DB_SERVER_NOT_FOUND;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      return error;
+    }
+
+  server_object = do_get_server_obj_id (&server_obj_id, server_class, server_name);
+  if (server_object == NULL)
+    {
+      error = ER_DBLINK_SERVER_NOT_FOUND;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, server_name);
+      return error;
+    }
+
+  int au_save;
+  bool is_au_disable = true;
+
+  AU_DISABLE (au_save);
+
+  error = au_check_server_authorization (server_object);
+  if (error != NO_ERROR)
+    {
+      AU_ENABLE (au_save);
+      return error;
+    }
+
+  // cci:CUBRID:<host>:<port>:<db_name>:<db_user>:<db_password>:[?<properties>]
+  const char *dblink_url_fmt_prop = "cci:CUBRID:%s:%d:%s:::?%s";
+  const char *dblink_url_fmt_none = "cci:CUBRID:%s:%d:%s:::";
+  const char *url_attr_names[4] = { "host", "port", "db_name", "properties" };
+  DB_VALUE values[4];
+  char dblink_url[4096];
+  int port_no, i;
+  char *host, *dbname, *prop;
+
+  for (i = 0; i < 4; i++)
+    {
+      db_make_null (&(values[i]));
+      error = db_get (server_object, url_attr_names[i], &(values[i]));
+      if (error < 0)
+	{
+	  goto error_end;
+	}
+    }
+
+  error = db_get (server_object, "user_name", &(out_val[1]));
+  if (error < 0)
+    {
+      goto error_end;
+    }
+
+  error = db_get (server_object, "password", &(out_val[2]));
+  if (error < 0)
+    {
+      goto error_end;
+    }
+
+  AU_ENABLE (au_save);
+  is_au_disable = false;
+
+  host = (char *) db_get_string (&(values[0]));
+  port_no = db_get_int (&(values[1]));
+  dbname = (char *) db_get_string (&(values[2]));
+  prop = (char *) db_get_string (&(values[3]));
+
+  if (prop && *prop)
+    {
+      sprintf (dblink_url, dblink_url_fmt_prop, host, port_no, dbname, ((prop[0] == '?') ? prop + 1 : prop));
+    }
+  else
+    {
+      sprintf (dblink_url, dblink_url_fmt_none, host, port_no, dbname);
+    }
+
+  error = db_make_string (&(out_val[0]), dblink_url);
+  if (error == NO_ERROR)
+    {
+      while (--i >= 0)
+	{
+	  pr_clear_value (&(values[i]));
+	}
+      return NO_ERROR;
+    }
+
+error_end:
+  if (is_au_disable)
+    {
+      AU_ENABLE (au_save);
+    }
+
+  while (--i >= 0)
+    {
+      pr_clear_value (&(values[i]));
+    }
 
   return error;
 }

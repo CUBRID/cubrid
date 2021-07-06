@@ -8856,20 +8856,13 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * class_,
 	  spec->info.spec.path_entities = NULL;
 	  if (newspec)
 	    {
-	      if (newspec->info.spec.derived_table_type == PT_DERIVED_JSON_TABLE)
+	      if ((newspec->info.spec.derived_table_type == PT_DERIVED_JSON_TABLE)
+		  || (newspec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE))
 		{
 		  /* flat_entity_list is needed to gather referenced oids in xasl_generation
 		   * in pt_spec_to_xasl_class_oid_list */
 		  newspec->info.spec.flat_entity_list = spec->info.spec.flat_entity_list;
 		  spec->info.spec.flat_entity_list = NULL;
-		}
-	      else if (newspec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
-		{
-		  /* flat_entity_list is needed to gather referenced oids in xasl_generation
-		   * in pt_spec_to_xasl_class_oid_list */
-		  newspec->info.spec.flat_entity_list = spec->info.spec.flat_entity_list;
-		  spec->info.spec.flat_entity_list = NULL;
-		  // ctshim_assert
 		}
 	      else
 		{
