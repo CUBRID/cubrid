@@ -5094,19 +5094,16 @@ qfile_clear_list_cache (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry
   if (csect_enter (thread_p, CSECT_QPROC_LIST_CACHE, INF_WAIT) != NO_ERROR)
     {
       goto end;
-      //return ER_FAILED;
     }
 
   if (QFILE_IS_LIST_CACHE_DISABLED || xcache_entry->list_ht_no < 0)
     {
       goto end;
-      //return ER_FAILED;
     }
 
   if (qfile_List_cache.n_hts == 0)
     {
       goto end;
-      //return ER_FAILED;
     }
 
   list_ht_no = xcache_entry->list_ht_no;
