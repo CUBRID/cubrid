@@ -1632,6 +1632,10 @@ logpb_fetch_header_from_file_or_page_server (THREAD_ENTRY * thread_p, const char
   if (is_tran_server_with_remote_storage ())
     {
       res_code = logpb_fetch_header_from_page_server (hdr, log_pgptr);
+      if (res_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	}
     }
   else
     {
@@ -1643,7 +1647,6 @@ logpb_fetch_header_from_file_or_page_server (THREAD_ENTRY * thread_p, const char
 
   if (res_code != NO_ERROR)
     {
-      ASSERT_ERROR ();
       return res_code;
     }
 
