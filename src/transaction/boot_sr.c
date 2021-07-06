@@ -2385,10 +2385,10 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 	}
     }
 
-  if (prm_get_bool_value (PRM_ID_DUMP_FILE_CACHE))
-    {
-      fileio_cache_dump (thread_p);
-    }
+//  if (prm_get_bool_value (PRM_ID_DUMP_FILE_CACHE))
+//    {
+//      fileio_cache_dump (thread_p);
+//    }
 
   /* Initialize the transaction table */
   logtb_define_trantable (thread_p, -1, -1);
@@ -2852,6 +2852,11 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   json_set_alloc_funcs (malloc, free);
 #endif
 
+  if (prm_get_bool_value (PRM_ID_DUMP_FILE_CACHE))
+    {
+      fileio_cache_dump (thread_p);
+    }
+
   return NO_ERROR;
 
 error:
@@ -2875,11 +2880,6 @@ error:
   if (tran_index != NULL_TRAN_INDEX)
     {
       logtb_free_tran_index (thread_p, tran_index);
-    }
-
-  if (prm_get_bool_value (PRM_ID_DUMP_FILE_CACHE))
-    {
-      fileio_cache_dump (thread_p);
     }
 
   session_states_finalize (thread_p);
