@@ -754,14 +754,16 @@ logpb_invalidate_pool (THREAD_ENTRY * thread_p)
 
   /*
    * Flush any append dirty buffers at this moment.
-   * Then, invalidate any buffer that it is not fixed and dirty
    */
   logpb_flush_pages_direct (thread_p);
 
+  /*
+   * Invalidate any buffer that is not fixed.
+   */
   for (i = 0; i < log_Pb.num_buffers; i++)
     {
       log_bufptr = LOGPB_FIND_BUFPTR (i);
-      if (log_bufptr->pageid != NULL_PAGEID && !log_bufptr->dirty == false)
+      if (log_bufptr->pageid != NULL_PAGEID)
 	{
 	  logpb_initialize_log_buffer (log_bufptr, log_bufptr->logpage);
 	}
