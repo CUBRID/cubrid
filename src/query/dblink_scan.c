@@ -38,56 +38,85 @@
 #include "tz_support.h"
 #include <cas_cci.h>
 
+#define  DATETIME_DECODE(date, dt, m, d, y, hour, min, sec, msec) \
+  do \
+    {  \
+      db_datetime_decode (&(dt), &d, &y, &m, &hour, &min, &sec, &msec); \
+      date.hh = hour; \
+      date.mm = min;  \ 
+      date.ss = sec; \
+      date.ms = msec;  \ 
+      date.mon = m; \
+      date.day = d; \
+      date.yr = y; \
+    } \
+  while (0)
+  	
+#define TIMESTAMP_DECODE(date, dt, tm, m, d, y, hour, min, sec) \
+  do \
+    { \
+      db_time_decode (&tm, &hour, &min, &sec); \
+      db_date_decode (&dt, &m, &d, &y); \
+      date.hh = hour; \
+      date.mm = min; \ 
+      date.ss = sec; \
+      date.ms = 0; \ 
+      date.mon = m; \
+      date.day = d; \
+      date.yr = y; \
+    } \
+  while (0)
+
 /*
  * dblink_scan.c - Routines to implement scanning the values
  *                 received by the cci interface
  */
 
-static int type_map[] = {
-  0,
-  CCI_A_TYPE_STR,		/* CCI_U_TYPE_CHAR */
-  CCI_A_TYPE_STR,		/* CCI_U_TYPE_STRING */
-  CCI_A_TYPE_STR,		/* CCI_U_TYPE_NCHAR */
-  CCI_A_TYPE_STR,		/* CCI_U_TYPE_VARNCHAR */
-  CCI_A_TYPE_BIT,		/* CCI_U_TYPE_BIT */
-  CCI_A_TYPE_BIT,		/* CCI_U_TYPE_VARBIT */
-  CCI_A_TYPE_STR,		/* CCI_U_TYPE_NUMERIC */
-  CCI_A_TYPE_INT,		/* CCI_U_TYPE_INT */
-  CCI_A_TYPE_INT,		/* CCI_U_TYPE_SHORT */
-  CCI_A_TYPE_DOUBLE,		/* CCI_U_TYPE_MONETARY */
-  CCI_A_TYPE_FLOAT,		/* CCI_U_TYPE_FLOAT */
-  CCI_A_TYPE_DOUBLE,		/* CCI_U_TYPE_DOUBLE */
-  CCI_A_TYPE_DATE,		/* CCI_U_TYPE_DATE */
-  CCI_A_TYPE_DATE,		/* CCI_U_TYPE_TIME */
-  CCI_A_TYPE_DATE,		/* CCI_U_TYPE_TIMESTAMP */
+  static int type_map[] = {
+    0,
+    CCI_A_TYPE_STR,		/* CCI_U_TYPE_CHAR */
+    CCI_A_TYPE_STR,		/* CCI_U_TYPE_STRING */
+    CCI_A_TYPE_STR,		/* CCI_U_TYPE_NCHAR */
+    CCI_A_TYPE_STR,		/* CCI_U_TYPE_VARNCHAR */
+    CCI_A_TYPE_BIT,		/* CCI_U_TYPE_BIT */
+    CCI_A_TYPE_BIT,		/* CCI_U_TYPE_VARBIT */
+    CCI_A_TYPE_STR,		/* CCI_U_TYPE_NUMERIC */
+    CCI_A_TYPE_INT,		/* CCI_U_TYPE_INT */
+    CCI_A_TYPE_INT,		/* CCI_U_TYPE_SHORT */
+    CCI_A_TYPE_DOUBLE,		/* CCI_U_TYPE_MONETARY */
+    CCI_A_TYPE_FLOAT,		/* CCI_U_TYPE_FLOAT */
+    CCI_A_TYPE_DOUBLE,		/* CCI_U_TYPE_DOUBLE */
+    CCI_A_TYPE_DATE,		/* CCI_U_TYPE_DATE */
+    CCI_A_TYPE_DATE,		/* CCI_U_TYPE_TIME */
+    CCI_A_TYPE_DATE,		/* CCI_U_TYPE_TIMESTAMP */
 
-  /* not support for collection type, processing as null */
-  0,				/* CCI_U_TYPE_SET */
-  0,				/* CCI_U_TYPE_MULTISET */
-  0,				/* CCI_U_TYPE_SEQUENCE */
-  0,				/* CCI_U_TYPE_OBJECT */
+    /* not support for collection type, processing as null */
+    0,				/* CCI_U_TYPE_SET */
+    0,				/* CCI_U_TYPE_MULTISET */
+    0,				/* CCI_U_TYPE_SEQUENCE */
+    0,				/* CCI_U_TYPE_OBJECT */
 
-  0,				/* CCI_U_TYPE_RESULTSET */
-  CCI_A_TYPE_BIGINT,		/* CCI_U_TYPE_BIGINT */
-  CCI_A_TYPE_DATE,		/* CCI_U_TYPE_DATETIME */
+    0,				/* CCI_U_TYPE_RESULTSET */
+    CCI_A_TYPE_BIGINT,		/* CCI_U_TYPE_BIGINT */
+    CCI_A_TYPE_DATE,		/* CCI_U_TYPE_DATETIME */
 
-  /* not support for BLOB, CLOB, and ENUM */
-  0,				/* CCI_U_TYPE_BLOB */
-  0,				/* CCI_U_TYPE_CLOB */
-  0,				/* CCI_U_TYPE_ENUM */
+    /* not support for BLOB, CLOB, and ENUM */
+    0,				/* CCI_U_TYPE_BLOB */
+    0,				/* CCI_U_TYPE_CLOB */
+    0,				/* CCI_U_TYPE_ENUM */
 
-  CCI_A_TYPE_UINT,		/* CCI_U_TYPE_USHORT */
-  CCI_A_TYPE_UINT,		/* CCI_U_TYPE_UINT */
-  CCI_A_TYPE_UBIGINT,		/* CCI_U_TYPE_UBIGINT */
-  CCI_A_TYPE_DATE_TZ,		/* CCI_U_TYPE_TIMESTAMPTZ */
-  CCI_A_TYPE_DATE_TZ,		/* CCI_U_TYPE_TIMESTAMPLTZ */
-  CCI_A_TYPE_DATE_TZ,		/* CCI_U_TYPE_DATETIMETZ */
-  CCI_A_TYPE_DATE_TZ,		/* CCI_U_TYPE_DATETIMELTZ */
-  /* Disabled type */
-  CCI_A_TYPE_DATE_TZ,		/* CCI_U_TYPE_TIMETZ - internal only, RESERVED */
-  /* end of disabled types */
-  CCI_A_TYPE_STR		/* CCI_U_TYPE_JSON */
-};
+    CCI_A_TYPE_UINT,		/* CCI_U_TYPE_USHORT */
+    CCI_A_TYPE_UINT,		/* CCI_U_TYPE_UINT */
+    CCI_A_TYPE_UBIGINT,		/* CCI_U_TYPE_UBIGINT */
+    CCI_A_TYPE_DATE_TZ,		/* CCI_U_TYPE_TIMESTAMPTZ */
+    CCI_A_TYPE_DATE_TZ,		/* CCI_U_TYPE_TIMESTAMPLTZ */
+    CCI_A_TYPE_DATE_TZ,		/* CCI_U_TYPE_DATETIMETZ */
+    CCI_A_TYPE_DATE_TZ,		/* CCI_U_TYPE_DATETIMELTZ */
+    /* Disabled type */
+    CCI_A_TYPE_DATE_TZ,		/* CCI_U_TYPE_TIMETZ - internal only, RESERVED */
+    /* end of disabled types */
+    CCI_A_TYPE_STR		/* CCI_U_TYPE_JSON */
+  };
 
 #define NULL_CHECK(ind) \
 	if ((ind) == -1) break
@@ -302,6 +331,147 @@ dblink_make_date_time_tz (T_CCI_U_TYPE utype, DB_VALUE * value_p, T_CCI_DATE_TZ 
   return error;
 }
 
+static int
+dblink_bind_param (DBLINK_SCAN_INFO * scan_info, VAL_DESCR * vd)
+{
+  int i, ret;
+  T_CCI_PARAM_INFO *param;
+  T_CCI_A_TYPE a_type;
+  T_CCI_U_TYPE u_type;
+  void *value;
+  double adouble;
+  int month, day, year;
+  int hh, mm, ss, ms;
+  DB_TIMESTAMP *timestamp;
+  DB_DATETIME *datetime;
+  DB_DATETIME dt_local;
+  TZ_ID *zone_id;
+  DB_DATE date;
+  DB_TIME time;
+  T_CCI_DATE cci_date;
+
+  unsigned char type;
+
+  for (i = 0; i < vd->dbval_cnt; i++)
+    {
+      value = &vd->dbval_ptr[i].data;
+      type = vd->dbval_ptr[i].domain.general_info.type;
+      switch (vd->dbval_ptr[i].domain.general_info.type)
+	{
+	case DB_TYPE_INTEGER:
+	  a_type = CCI_A_TYPE_INT;
+	  u_type = CCI_U_TYPE_BIGINT;
+	  break;
+	case DB_TYPE_BIGINT:
+	  a_type = CCI_A_TYPE_BIGINT;
+	  u_type = CCI_U_TYPE_BIGINT;
+	  break;
+	case DB_TYPE_NUMERIC:
+	case DB_TYPE_DOUBLE:
+	case DB_TYPE_FLOAT:
+	  a_type = CCI_A_TYPE_DOUBLE;
+	  u_type = CCI_U_TYPE_DOUBLE;
+	  if (type == DB_TYPE_NUMERIC)
+	    {
+	      numeric_coerce_num_to_double (db_locate_numeric (&vd->dbval_ptr[i]),
+					    vd->dbval_ptr[i].domain.numeric_info.scale, &adouble);
+	      value = &adouble;
+	    }
+	  break;
+	case DB_TYPE_STRING:
+	case DB_TYPE_VARNCHAR:
+	case DB_TYPE_CHAR:
+	case DB_TYPE_NCHAR:
+	  a_type = CCI_A_TYPE_STR;
+	  u_type = CCI_U_TYPE_STRING;
+	  value = (void *) vd->dbval_ptr[i].data.ch.medium.buf;
+	  break;
+	case DB_TYPE_DATE:
+	  a_type = CCI_A_TYPE_DATE;
+	  u_type = CCI_U_TYPE_DATE;
+	  db_date_decode ((DB_DATE *) value, &month, &day, &year);
+	  cci_date.mon = month;
+	  cci_date.day = day;
+	  cci_date.yr = year;
+	  value = &cci_date;
+	  break;
+	case DB_TYPE_TIME:
+	  a_type = CCI_A_TYPE_DATE;
+	  u_type = CCI_U_TYPE_TIME;
+	  db_time_decode (&vd->dbval_ptr[i].data.time, &hh, &mm, &ss);
+	  cci_date.hh = hh;
+	  cci_date.mm = mm;
+	  cci_date.ss = ss;
+	  cci_date.ms = 0;
+	  value = &cci_date;
+	  break;
+	case DB_TYPE_DATETIME:
+	  a_type = CCI_A_TYPE_DATE;
+	  u_type = CCI_U_TYPE_DATETIME;
+	  DATETIME_DECODE (cci_date, vd->dbval_ptr[i].data.datetime, month, day, year, hh, mm, ss, ms);
+	  value = &cci_date;
+	  break;
+	case DB_TYPE_TIMESTAMP:
+	  a_type = CCI_A_TYPE_DATE;
+	  u_type = CCI_U_TYPE_TIMESTAMP;
+	  timestamp = &vd->dbval_ptr[i].data.utime;
+	  db_timestamp_decode_ses (timestamp, &date, &time);
+	  TIMESTAMP_DECODE (cci_date, date, time, month, day, year, hh, mm, ss);
+	  value = &cci_date;
+	  break;
+	case DB_TYPE_TIMESTAMPTZ:
+	  a_type = CCI_A_TYPE_DATE;
+	  u_type = CCI_U_TYPE_TIMESTAMPTZ;
+	  timestamp = &vd->dbval_ptr[i].data.timestamptz.timestamp;
+	  zone_id = &vd->dbval_ptr[i].data.timestamptz.tz_id;
+	  db_timestamp_decode_w_tz_id (timestamp, zone_id, &date, &time);
+	  TIMESTAMP_DECODE (cci_date, date, time, month, day, year, hh, mm, ss);
+	  value = &cci_date;
+	  break;
+	case DB_TYPE_TIMESTAMPLTZ:
+	  a_type = CCI_A_TYPE_DATE;
+	  u_type = CCI_U_TYPE_TIMESTAMPLTZ;
+	  timestamp = &vd->dbval_ptr[i].data.timestamptz.timestamp;
+	  db_timestamp_decode_utc (timestamp, &date, &time);
+	  TIMESTAMP_DECODE (cci_date, date, time, month, day, year, hh, mm, ss);
+	  value = &cci_date;
+	  break;
+	case DB_TYPE_DATETIMETZ:
+	  a_type = CCI_A_TYPE_DATE;
+	  u_type = CCI_U_TYPE_DATETIMETZ;
+	  datetime = &vd->dbval_ptr[i].data.datetimetz.datetime;
+	  zone_id = &vd->dbval_ptr[i].data.datetimetz.tz_id;
+	  tz_utc_datetimetz_to_local (datetime, zone_id, &dt_local);
+	  DATETIME_DECODE (cci_date, dt_local, month, day, year, hh, mm, ss, ms);
+	  value = &cci_date;
+	  break;
+	case DB_TYPE_DATETIMELTZ:
+	  a_type = CCI_A_TYPE_DATE;
+	  u_type = CCI_U_TYPE_DATETIMELTZ;
+	  datetime = &vd->dbval_ptr[i].data.datetimetz.datetime;
+	  tz_datetimeltz_to_local (datetime, &dt_local);
+	  DATETIME_DECODE (cci_date, dt_local, month, day, year, hh, mm, ss, ms);
+	  value = &cci_date;
+	  break;
+	default:
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "bind: not supported type");
+	  return S_ERROR;
+	}
+      ret = cci_bind_param (scan_info->stmt_handle, i + 1, a_type, value, u_type, 0);
+      if (ret < 0)
+	{
+	  if (ret == CCI_ER_BIND_INDEX)
+	    {
+	      break;
+	    }
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "invalid bind param");
+	  return S_ERROR;
+	}
+    }
+
+  return S_SUCCESS;
+}
+
 /*
  * dblink_open_scan () - open the scan for dblink
  *   return: int
@@ -336,59 +506,9 @@ dblink_open_scan (DBLINK_SCAN_INFO * scan_info, char *conn_url, char *user_name,
 
       if (vd && vd->dbval_cnt > 0)
 	{
-	  int i;
-	  T_CCI_PARAM_INFO *param;
-	  T_CCI_A_TYPE a_type;
-	  T_CCI_U_TYPE u_type;
-	  void *value;
-	  double adouble;
-
-	  for (i = 0; i < vd->dbval_cnt; i++)
+	  if (dblink_bind_param (scan_info, vd) < 0)
 	    {
-	      value = &vd->dbval_ptr[i].data;
-	      switch (vd->dbval_ptr[i].domain.general_info.type)
-		{
-		case DB_TYPE_INTEGER:
-		  a_type = CCI_A_TYPE_INT;
-		  u_type = CCI_U_TYPE_BIGINT;
-		  break;
-		case DB_TYPE_BIGINT:
-		  a_type = CCI_A_TYPE_BIGINT;
-		  u_type = CCI_U_TYPE_BIGINT;
-		  break;
-		case DB_TYPE_NUMERIC:
-		  numeric_coerce_num_to_double (db_locate_numeric (&vd->dbval_ptr[i]),
-						vd->dbval_ptr[i].domain.numeric_info.scale, &adouble);
-		  value = &adouble;
-		  /* fall through down for set the type as double */
-		case DB_TYPE_DOUBLE:
-		case DB_TYPE_FLOAT:
-		  a_type = CCI_A_TYPE_DOUBLE;
-		  u_type = CCI_U_TYPE_DOUBLE;
-		  break;
-		case DB_TYPE_STRING:
-		case DB_TYPE_VARNCHAR:
-		case DB_TYPE_CHAR:
-		case DB_TYPE_NCHAR:
-		  a_type = CCI_A_TYPE_STR;
-		  u_type = CCI_U_TYPE_STRING;
-		  value = (void *) vd->dbval_ptr[i].data.ch.medium.buf;
-		  break;
-		case DB_TYPE_BIT:
-		case DB_TYPE_VARBIT:
-		  a_type = CCI_A_TYPE_BIT;
-		  u_type = CCI_U_TYPE_BIT;
-		  break;
-		default:
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "bind: not supported type");
-		  return S_ERROR;
-		}
-	      ret = cci_bind_param (scan_info->stmt_handle, i + 1, a_type, value, u_type, 0);
-	      if (ret < 0)
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "bind param");
-		  return S_ERROR;
-		}
+	      return S_ERROR;
 	    }
 	}
 
