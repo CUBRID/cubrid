@@ -38,6 +38,7 @@
 #include "tz_support.h"
 #include <cas_cci.h>
 
+// *INDENT-OFF*
 #define  DATETIME_DECODE(date, dt, m, d, y, hour, min, sec, msec) \
   do \
     {  \
@@ -66,57 +67,58 @@
       date.yr = y; \
     } \
   while (0)
+// *INDENT-ON*
 
 /*
  * dblink_scan.c - Routines to implement scanning the values
  *                 received by the cci interface
  */
 
-  static int type_map[] = {
-    0,
-    CCI_A_TYPE_STR,		/* CCI_U_TYPE_CHAR */
-    CCI_A_TYPE_STR,		/* CCI_U_TYPE_STRING */
-    CCI_A_TYPE_STR,		/* CCI_U_TYPE_NCHAR */
-    CCI_A_TYPE_STR,		/* CCI_U_TYPE_VARNCHAR */
-    CCI_A_TYPE_BIT,		/* CCI_U_TYPE_BIT */
-    CCI_A_TYPE_BIT,		/* CCI_U_TYPE_VARBIT */
-    CCI_A_TYPE_STR,		/* CCI_U_TYPE_NUMERIC */
-    CCI_A_TYPE_INT,		/* CCI_U_TYPE_INT */
-    CCI_A_TYPE_INT,		/* CCI_U_TYPE_SHORT */
-    CCI_A_TYPE_DOUBLE,		/* CCI_U_TYPE_MONETARY */
-    CCI_A_TYPE_FLOAT,		/* CCI_U_TYPE_FLOAT */
-    CCI_A_TYPE_DOUBLE,		/* CCI_U_TYPE_DOUBLE */
-    CCI_A_TYPE_DATE,		/* CCI_U_TYPE_DATE */
-    CCI_A_TYPE_DATE,		/* CCI_U_TYPE_TIME */
-    CCI_A_TYPE_DATE,		/* CCI_U_TYPE_TIMESTAMP */
+static int type_map[] = {
+  0,
+  CCI_A_TYPE_STR,		/* CCI_U_TYPE_CHAR */
+  CCI_A_TYPE_STR,		/* CCI_U_TYPE_STRING */
+  CCI_A_TYPE_STR,		/* CCI_U_TYPE_NCHAR */
+  CCI_A_TYPE_STR,		/* CCI_U_TYPE_VARNCHAR */
+  CCI_A_TYPE_BIT,		/* CCI_U_TYPE_BIT */
+  CCI_A_TYPE_BIT,		/* CCI_U_TYPE_VARBIT */
+  CCI_A_TYPE_STR,		/* CCI_U_TYPE_NUMERIC */
+  CCI_A_TYPE_INT,		/* CCI_U_TYPE_INT */
+  CCI_A_TYPE_INT,		/* CCI_U_TYPE_SHORT */
+  CCI_A_TYPE_DOUBLE,		/* CCI_U_TYPE_MONETARY */
+  CCI_A_TYPE_FLOAT,		/* CCI_U_TYPE_FLOAT */
+  CCI_A_TYPE_DOUBLE,		/* CCI_U_TYPE_DOUBLE */
+  CCI_A_TYPE_DATE,		/* CCI_U_TYPE_DATE */
+  CCI_A_TYPE_DATE,		/* CCI_U_TYPE_TIME */
+  CCI_A_TYPE_DATE,		/* CCI_U_TYPE_TIMESTAMP */
 
-    /* not support for collection type, processing as null */
-    0,				/* CCI_U_TYPE_SET */
-    0,				/* CCI_U_TYPE_MULTISET */
-    0,				/* CCI_U_TYPE_SEQUENCE */
-    0,				/* CCI_U_TYPE_OBJECT */
+  /* not support for collection type, processing as null */
+  0,				/* CCI_U_TYPE_SET */
+  0,				/* CCI_U_TYPE_MULTISET */
+  0,				/* CCI_U_TYPE_SEQUENCE */
+  0,				/* CCI_U_TYPE_OBJECT */
 
-    0,				/* CCI_U_TYPE_RESULTSET */
-    CCI_A_TYPE_BIGINT,		/* CCI_U_TYPE_BIGINT */
-    CCI_A_TYPE_DATE,		/* CCI_U_TYPE_DATETIME */
+  0,				/* CCI_U_TYPE_RESULTSET */
+  CCI_A_TYPE_BIGINT,		/* CCI_U_TYPE_BIGINT */
+  CCI_A_TYPE_DATE,		/* CCI_U_TYPE_DATETIME */
 
-    /* not support for BLOB, CLOB, and ENUM */
-    0,				/* CCI_U_TYPE_BLOB */
-    0,				/* CCI_U_TYPE_CLOB */
-    0,				/* CCI_U_TYPE_ENUM */
+  /* not support for BLOB, CLOB, and ENUM */
+  0,				/* CCI_U_TYPE_BLOB */
+  0,				/* CCI_U_TYPE_CLOB */
+  0,				/* CCI_U_TYPE_ENUM */
 
-    CCI_A_TYPE_UINT,		/* CCI_U_TYPE_USHORT */
-    CCI_A_TYPE_UINT,		/* CCI_U_TYPE_UINT */
-    CCI_A_TYPE_UBIGINT,		/* CCI_U_TYPE_UBIGINT */
-    CCI_A_TYPE_DATE_TZ,		/* CCI_U_TYPE_TIMESTAMPTZ */
-    CCI_A_TYPE_DATE_TZ,		/* CCI_U_TYPE_TIMESTAMPLTZ */
-    CCI_A_TYPE_DATE_TZ,		/* CCI_U_TYPE_DATETIMETZ */
-    CCI_A_TYPE_DATE_TZ,		/* CCI_U_TYPE_DATETIMELTZ */
-    /* Disabled type */
-    CCI_A_TYPE_DATE_TZ,		/* CCI_U_TYPE_TIMETZ - internal only, RESERVED */
-    /* end of disabled types */
-    CCI_A_TYPE_STR		/* CCI_U_TYPE_JSON */
-  };
+  CCI_A_TYPE_UINT,		/* CCI_U_TYPE_USHORT */
+  CCI_A_TYPE_UINT,		/* CCI_U_TYPE_UINT */
+  CCI_A_TYPE_UBIGINT,		/* CCI_U_TYPE_UBIGINT */
+  CCI_A_TYPE_DATE_TZ,		/* CCI_U_TYPE_TIMESTAMPTZ */
+  CCI_A_TYPE_DATE_TZ,		/* CCI_U_TYPE_TIMESTAMPLTZ */
+  CCI_A_TYPE_DATE_TZ,		/* CCI_U_TYPE_DATETIMETZ */
+  CCI_A_TYPE_DATE_TZ,		/* CCI_U_TYPE_DATETIMELTZ */
+  /* Disabled type */
+  CCI_A_TYPE_DATE_TZ,		/* CCI_U_TYPE_TIMETZ - internal only, RESERVED */
+  /* end of disabled types */
+  CCI_A_TYPE_STR		/* CCI_U_TYPE_JSON */
+};
 
 #define NULL_CHECK(ind) \
 	if ((ind) == -1) break
