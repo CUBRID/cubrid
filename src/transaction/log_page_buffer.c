@@ -758,7 +758,7 @@ logpb_invalidate_pool (THREAD_ENTRY * thread_p)
   logpb_flush_pages_direct (thread_p);
 
   /*
-   * Invalidate any buffer that is not fixed.
+   * Invalidate all buffers.
    */
   for (i = 0; i < log_Pb.num_buffers; i++)
     {
