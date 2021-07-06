@@ -85,7 +85,7 @@ typedef struct qfile_cleanup_candidate QFILE_CACHE_CLEANUP_CANDIDATE;
 struct qfile_cleanup_candidate
 {
   QFILE_LIST_CACHE_ENTRY *qcache;
-  INT64 weight;
+  double weight;
 };
 
 typedef SCAN_CODE (*ADVANCE_FUCTION) (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID *, QFILE_TUPLE_RECORD *,
@@ -96,6 +96,8 @@ typedef struct qfile_list_cache QFILE_LIST_CACHE;
 struct qfile_list_cache
 {
   MHT_TABLE **list_hts;		/* array of memory hash tables for list cache; pool for list_ht of XASL_CACHE_ENTRY */
+  int *free_ht_list;		/* array of freed hash tables */
+  int next_ht_no;		/* the next freed hash table number */
   unsigned int n_hts;		/* number of elements of list_hts */
   int n_entries;		/* total number of cache entries */
   int n_pages;			/* total number of pages used by the cache */
@@ -158,7 +160,7 @@ struct qfile_list_cache_entry_pool
  */
 
 /* list cache and related information */
-static QFILE_LIST_CACHE qfile_List_cache = { NULL, 0, 0, 0, 0, 0, 0, 0 };
+static QFILE_LIST_CACHE qfile_List_cache = { NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0 };
 
 /* information of candidates to be removed from XASL cache */
 static QFILE_LIST_CACHE_CANDIDATE qfile_List_cache_candidate = { 0, 0, 0, 0, NULL, NULL, NULL, 0, 0, false };
@@ -288,8 +290,8 @@ static int qfile_compare_with_interpolation_domain (char *fp0, char *fp1, SUBKEY
 static BH_CMP_RESULT
 qfile_compare_cleanup_candidates (const void *left, const void *right, BH_CMP_ARG ignore_arg)
 {
-  INT64 left_weight = ((QFILE_CACHE_CLEANUP_CANDIDATE *) left)->weight;
-  INT64 right_weight = ((QFILE_CACHE_CLEANUP_CANDIDATE *) right)->weight;
+  double left_weight = ((QFILE_CACHE_CLEANUP_CANDIDATE *) left)->weight;
+  double right_weight = ((QFILE_CACHE_CLEANUP_CANDIDATE *) right)->weight;
 
   if (left_weight < right_weight)
     {
@@ -345,7 +347,6 @@ qfile_list_cache_cleanup (THREAD_ENTRY * thread_p)
       HENTRY_PTR hentry;
       INT64 page_ref;
       INT64 lru_sec;
-      INT64 clr_cnt;
 
       ht = qfile_List_cache.list_hts[n];
       for (hvector = ht->table, i = 0; i < ht->size; hvector++, i++)
@@ -363,17 +364,17 @@ qfile_list_cache_cleanup (THREAD_ENTRY * thread_p)
 		      // exclude in-transaction
 		      continue;
 		    }
-		  page_ref = candidate.qcache->list_id.page_cnt / (candidate.qcache->ref_count + 1);
-		  lru_sec = current_time.tv_sec - candidate.qcache->time_last_used.tv_sec;
-		  clr_cnt = candidate.qcache->xcache_entry->clr_count + 1;
-		  candidate.weight = page_ref * lru_sec * clr_cnt;
+		  page_ref = candidate.qcache->list_id.page_cnt + 1;
+		  lru_sec = current_time.tv_sec - candidate.qcache->time_last_used.tv_sec + 1;
+		  candidate.weight = (double) (candidate.qcache->ref_count + 1) / (double) (page_ref * lru_sec);
 		  (void) bh_try_insert (bh, &candidate, NULL);
 		}
 	    }
 	}
     }
 
-  for (candidate_index = 0; candidate_index < bh->element_count; candidate_index++)
+  /* traverse in reverse for weight ordering, from light weight to heavy weight */
+  for (candidate_index = bh->element_count - 1; candidate_index >= 0; candidate_index--)
     {
       bh_element_at (bh, candidate_index, &candidate);
       qfile_delete_list_cache_entry (thread_p, candidate.qcache);
@@ -391,6 +392,28 @@ qfile_list_cache_cleanup (THREAD_ENTRY * thread_p)
   return NO_ERROR;
 }
 #endif
+
+int
+qcache_get_new_ht_no (THREAD_ENTRY * thread_p)
+{
+  int ht_no = -1;
+
+  if (qfile_List_cache.next_ht_no >= 0)
+    {
+      ht_no = qfile_List_cache.next_ht_no;
+      qfile_List_cache.next_ht_no = qfile_List_cache.free_ht_list[qfile_List_cache.next_ht_no];
+    }
+
+  return ht_no;
+}
+
+void
+qcache_free_ht_no (THREAD_ENTRY * thread_p, int ht_no)
+{
+  (void) mht_clear (qfile_List_cache.list_hts[ht_no], NULL, NULL);
+  qfile_List_cache.free_ht_list[ht_no] = qfile_List_cache.next_ht_no;
+  qfile_List_cache.next_ht_no = ht_no;
+}
 
 /* qfile_modify_type_list () -
  *   return:
@@ -4917,13 +4940,16 @@ qfile_initialize_list_cache (THREAD_ENTRY * thread_p)
 	  (void) mht_map_no_key (thread_p, qfile_List_cache.list_hts[i], qfile_free_list_cache_entry,
 				 qfile_List_cache.list_hts[i]);
 	  (void) mht_clear (qfile_List_cache.list_hts[i], NULL, NULL);
+	  qfile_List_cache.free_ht_list[i] = i + 1;
 	}
+      qfile_List_cache.free_ht_list[i - 1] = -1;
     }
   else
     {
       /* create */
       qfile_List_cache.n_hts = prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES) + 10;
       qfile_List_cache.list_hts = (MHT_TABLE **) calloc (qfile_List_cache.n_hts, sizeof (MHT_TABLE *));
+      qfile_List_cache.free_ht_list = (int *) calloc (qfile_List_cache.n_hts, sizeof (int));
       if (qfile_List_cache.list_hts == NULL)
 	{
 	  goto error;
@@ -4932,13 +4958,15 @@ qfile_initialize_list_cache (THREAD_ENTRY * thread_p)
       for (i = 0; i < qfile_List_cache.n_hts; i++)
 	{
 	  qfile_List_cache.list_hts[i] =
-	    mht_create ("list file cache (DB_VALUE list)", prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_ENTRIES),
+	    mht_create ("list file cache (DB_VALUE list)", qfile_List_cache.n_hts,
 			qfile_hash_db_value_array, qfile_compare_equal_db_value_array);
+	  qfile_List_cache.free_ht_list[i] = i + 1;
 	  if (qfile_List_cache.list_hts[i] == NULL)
 	    {
 	      goto error;
 	    }
 	}
+      qfile_List_cache.free_ht_list[i - 1] = -1;
     }
 
   qfile_List_cache.n_entries = 0;
@@ -4994,6 +5022,7 @@ error:
 	  mht_destroy (qfile_List_cache.list_hts[i]);
 	}
       free_and_init (qfile_List_cache.list_hts);
+      free_and_init (qfile_List_cache.free_ht_list);
     }
   qfile_List_cache.n_hts = 0;
 
@@ -5026,11 +5055,17 @@ qfile_finalize_list_cache (THREAD_ENTRY * thread_p)
     {
       for (i = 0; i < qfile_List_cache.n_hts; i++)
 	{
-	  bool del = true;
-	  (void) mht_map_no_key (thread_p, qfile_List_cache.list_hts[i], qfile_end_use_of_list_cache_entry_local, &del);
+	  bool invalidate = true;
+	  (void) mht_map_no_key (thread_p, qfile_List_cache.list_hts[i], qfile_end_use_of_list_cache_entry_local,
+				 &invalidate);
 	  mht_destroy (qfile_List_cache.list_hts[i]);
 	}
       free_and_init (qfile_List_cache.list_hts);
+    }
+
+  if (qfile_List_cache.free_ht_list)
+    {
+      free_and_init (qfile_List_cache.free_ht_list);
     }
 
   /* list cache entry pool */
@@ -5050,32 +5085,46 @@ qfile_finalize_list_cache (THREAD_ENTRY * thread_p)
  *   list_ht_no(in)     :
  */
 int
-qfile_clear_list_cache (THREAD_ENTRY * thread_p, int list_ht_no)
+qfile_clear_list_cache (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry, bool invalidate)
 {
   int rc;
-  bool del = true;
   int cnt;
+  int list_ht_no;
 
-  if (QFILE_IS_LIST_CACHE_DISABLED)
+  if (csect_enter (thread_p, CSECT_QPROC_LIST_CACHE, INF_WAIT) != NO_ERROR)
     {
-      return ER_FAILED;
+      goto end;
+    }
+
+  if (QFILE_IS_LIST_CACHE_DISABLED || xcache_entry->list_ht_no < 0)
+    {
+      goto end;
     }
 
   if (qfile_List_cache.n_hts == 0)
     {
-      return ER_FAILED;
+      goto end;
     }
 
-  if (csect_enter (thread_p, CSECT_QPROC_LIST_CACHE, INF_WAIT) != NO_ERROR)
+  list_ht_no = xcache_entry->list_ht_no;
+
+  if (qfile_get_list_cache_number_of_entries (list_ht_no) == 0)
     {
-      return ER_FAILED;
+      /* if no entries, to invalidate free the entry here */
+      if (invalidate)
+	{
+	  xcache_entry->list_ht_no = -1;
+	  qcache_free_ht_no (thread_p, list_ht_no);
+	}
+      goto end;
     }
 
   cnt = 0;
   do
     {
       rc =
-	mht_map_no_key (thread_p, qfile_List_cache.list_hts[list_ht_no], qfile_end_use_of_list_cache_entry_local, &del);
+	mht_map_no_key (thread_p, qfile_List_cache.list_hts[list_ht_no], qfile_end_use_of_list_cache_entry_local,
+			&invalidate);
       if (rc != NO_ERROR)
 	{
 	  csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
@@ -5094,11 +5143,7 @@ qfile_clear_list_cache (THREAD_ENTRY * thread_p, int list_ht_no)
       er_log_debug (ARG_FILE_LINE, "ls_clear_list_cache: failed to delete all entries\n");
     }
 
-  if (qfile_get_list_cache_number_of_entries (list_ht_no) == 0)
-    {
-      (void) mht_clear (qfile_List_cache.list_hts[list_ht_no], NULL, NULL);
-    }
-
+end:
   csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
 
   return NO_ERROR;
@@ -5306,6 +5351,7 @@ qfile_print_list_cache_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *ke
 
       fprintf (fp, "  ref_count = %d\n", ent->ref_count);
       fprintf (fp, "  deletion_marker = %s\n", (ent->deletion_marker) ? "true" : "false");
+      fprintf (fp, "  invalidate = %s\n", (ent->invalidate) ? "true" : "false");
       fprintf (fp, "}\n");
     }
 
@@ -5405,11 +5451,16 @@ qfile_delete_list_cache_entry (THREAD_ENTRY * thread_p, void *data)
   /* this function should be called within CSECT_QPROC_LIST_CACHE */
   QFILE_LIST_CACHE_ENTRY *lent = (QFILE_LIST_CACHE_ENTRY *) data;
   int error_code = ER_FAILED;
+  bool invalidate;
+  int ht_no;
 
   if (data == NULL || lent->list_ht_no < 0)
     {
       return ER_FAILED;
     }
+
+  invalidate = lent->invalidate;
+  ht_no = lent->list_ht_no;
 
   /* update counter */
   qfile_List_cache.n_entries--;
@@ -5449,21 +5500,43 @@ qfile_delete_list_cache_entry (THREAD_ENTRY * thread_p, void *data)
   qfile_update_qlist_count (thread_p, &lent->list_id, 1);
   qfile_clear_list_id (&lent->list_id);
 
+  /* to check if it's the last list cache entry of the hash table */
+  if (invalidate && qfile_get_list_cache_number_of_entries (ht_no) == 0)
+    {
+      /* this hash table has no entries and invalidated
+       * it needs to free
+       */
+      lent->xcache_entry->list_ht_no = -1;
+      qcache_free_ht_no (thread_p, ht_no);
+    }
+
   error_code = qfile_free_list_cache_entry (thread_p, lent, NULL);
 
   return error_code;
 }
 
 /*
- * qfile_end_use_of_list_cache_entry_local () -
+ * qfile_end_use_of_list_cache_entry_local ()
  *   return:
- *   data(in)   :
- *   args(in)   :
+ *   data(in)   : a list cached entry
+ *   args(in)   : invalidate is true if the xcache entry is erased
  */
 static int
 qfile_end_use_of_list_cache_entry_local (THREAD_ENTRY * thread_p, void *data, void *args)
 {
-  return qfile_end_use_of_list_cache_entry (thread_p, (QFILE_LIST_CACHE_ENTRY *) data, *((bool *) args));
+  QFILE_LIST_CACHE_ENTRY *lent = (QFILE_LIST_CACHE_ENTRY *) data;
+
+  if (lent == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  if (lent->invalidate == false)
+    {
+      lent->invalidate = *((bool *) args);
+    }
+
+  return qfile_end_use_of_list_cache_entry (thread_p, lent, true);
 }
 
 /*
@@ -5477,7 +5550,7 @@ qfile_end_use_of_list_cache_entry_local (THREAD_ENTRY * thread_p, void *data, vo
  *       values as the key.
  */
 QFILE_LIST_CACHE_ENTRY *
-qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB_VALUE_ARRAY * params,
+qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xasl, const DB_VALUE_ARRAY * params,
 			       bool * result_cached)
 {
   QFILE_LIST_CACHE_ENTRY *lent;
@@ -5502,7 +5575,8 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
     {
       return NULL;
     }
-  if (qfile_List_cache.n_hts == 0 || list_ht_no < 0)
+
+  if (qfile_List_cache.n_hts == 0)
     {
       return NULL;
     }
@@ -5512,10 +5586,18 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
       return NULL;
     }
 
+  if (xasl->list_ht_no < 0)
+    {
+      if ((xasl->list_ht_no = qcache_get_new_ht_no (thread_p)) < 0)
+	{
+	  goto end;
+	}
+    }
+
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
   /* look up the hash table with the key */
-  lent = (QFILE_LIST_CACHE_ENTRY *) mht_get (qfile_List_cache.list_hts[list_ht_no], params);
+  lent = (QFILE_LIST_CACHE_ENTRY *) mht_get (qfile_List_cache.list_hts[xasl->list_ht_no], params);
   qfile_List_cache.lookup_counter++;	/* counter */
 
   if (lent)
@@ -5787,6 +5869,7 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
   (void) gettimeofday (&lent->time_last_used, NULL);
   lent->ref_count = 0;
   lent->deletion_marker = false;
+  lent->invalidate = false;
   lent->xcache_entry = xasl;
 
   /* record my transaction id into the entry */
@@ -5849,6 +5932,7 @@ int
 qfile_end_use_of_list_cache_entry (THREAD_ENTRY * thread_p, QFILE_LIST_CACHE_ENTRY * lent, bool marker)
 {
   int tran_index;
+  bool invalidate = false;
 #if defined(SERVER_MODE)
   int *p, *r;
 #if defined(WINDOWS)
