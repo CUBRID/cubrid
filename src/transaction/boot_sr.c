@@ -2385,11 +2385,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 	}
     }
 
-//  if (prm_get_bool_value (PRM_ID_DUMP_FILE_CACHE))
-//    {
-//      fileio_cache_dump (thread_p);
-//    }
-
   /* Initialize the transaction table */
   logtb_define_trantable (thread_p, -1, -1);
 

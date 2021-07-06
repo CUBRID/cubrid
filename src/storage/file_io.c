@@ -2111,7 +2111,7 @@ fileio_cache_dump (THREAD_ENTRY * thread_p)
 }
 
 /*
- * fileio_dump_cached_file () - Dump information about given valume.
+ * fileio_dump_cached_file () - Dump information about given volume.
  *    return: void
  *    volid(in):  Volume ID
  *    vdes(in):   Volume descriptor
@@ -2124,7 +2124,8 @@ fileio_dump_cached_file (VOLID volid, int vdes, const char *vlabel)
 }
 
 /*
- * fileio_dump_volinfo () - Iterator function to call fileio_dump_volinfo to print volume info.
+ * fileio_dump_volinfo () - Iterator function to call fileio_dump_volinfo
+ * to print volume information.
  *    return: false to keep the iteration going
  *    vdvol_info_p(in): Volume information structure
  */
@@ -2136,7 +2137,8 @@ fileio_dump_volinfo (THREAD_ENTRY *, FILEIO_VOLUME_INFO * vol_info_p, APPLY_ARG 
 }
 
 /*
- * fileio_dump_sysvolinfo () - Iterator function to call fileio_dump_volinfo to print system volume info.
+ * fileio_dump_sysvolinfo () - Iterator function to call fileio_dump_volinfo
+ * to print system volume information.
  *    return: false to keep the iteration going
  *    sys_volinfo(in): System volume information structure
  */
