@@ -18320,7 +18320,12 @@ pt_move_node (REFPTR (PT_NODE, destp), REFPTR (PT_NODE, srcp))
 static PT_NODE *
 pt_apply_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  if (((PT_WALK_ARG *) arg)->post_function == free_node_in_tree_post)
+#if 0				// TODO: Exception cases require further review.
+  PT_WALK_ARG *walk = (PT_WALK_ARG *) arg;
+
+  if ((walk->post_function == free_node_in_tree_post)
+      || (walk->post_function == copy_node_in_tree_post) || (walk->pre_function == copy_node_in_tree_pre))
+#endif
     {
       if (p->info.dblink_table.is_name)
 	{
@@ -18408,12 +18413,15 @@ pt_print_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p)
   return q;
 }
 
-
-
 static PT_NODE *
 pt_apply_create_server (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  if (((PT_WALK_ARG *) arg)->post_function == free_node_in_tree_post)
+#if 0				// TODO: Exception cases require further review.
+  PT_WALK_ARG *walk = (PT_WALK_ARG *) arg;
+
+  if ((walk->post_function == free_node_in_tree_post)
+      || (walk->post_function == copy_node_in_tree_post) || (walk->pre_function == copy_node_in_tree_pre))
+#endif
     {
       PT_APPLY_WALK (parser, p->info.create_server.server_name, arg);
       PT_APPLY_WALK (parser, p->info.create_server.host, arg);
@@ -18486,7 +18494,12 @@ pt_print_create_server (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_drop_server (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  if (((PT_WALK_ARG *) arg)->post_function == free_node_in_tree_post)
+#if 0				// TODO: Exception cases require further review.
+  PT_WALK_ARG *walk = (PT_WALK_ARG *) arg;
+
+  if ((walk->post_function == free_node_in_tree_post)
+      || (walk->post_function == copy_node_in_tree_post) || (walk->pre_function == copy_node_in_tree_pre))
+#endif
     {
       PT_APPLY_WALK (parser, p->info.drop_server.server_name, arg);
     }
