@@ -10241,15 +10241,15 @@ pt_resolve_dblink_server_name (PARSER_CONTEXT * parser, PT_NODE * node)
   PT_NODE *val[3];
   DB_VALUE values[3];
   PT_DBLINK_INFO *dblink_table = &node->info.dblink_table;
-  int i;
+  int i, error;
 
   assert (dblink_table->conn && dblink_table->conn->node_type == PT_NAME);
 
   db_make_null (&(values[0]));
   db_make_null (&(values[1]));
   db_make_null (&(values[2]));
-  i = get_dblink_info_from_dbserver (parser, dblink_table->conn->info.name.original, values);
-  if (i != NO_ERROR)
+  error = get_dblink_info_from_dbserver (parser, dblink_table->conn->info.name.original, values);
+  if (error != NO_ERROR)
     {
       if (i == ER_DBLINK_SERVER_NOT_FOUND)
 	{
