@@ -7986,7 +7986,8 @@ pt_check_create_view (PARSER_CONTEXT * parser, PT_NODE * stmt)
       /* TODO This seems to flag too many queries as view specs because it also traverses the tree to subqueries. It
        * might need a pre_function that returns PT_STOP_WALK for subqueries. */
       do_not_replace_orderby = true;
-      result_stmt = parser_walk_tree (parser, crt_qry, pt_set_is_view_spec, (void *) &do_not_replace_orderby, NULL, NULL);
+      result_stmt =
+	parser_walk_tree (parser, crt_qry, pt_set_is_view_spec, (void *) &do_not_replace_orderby, NULL, NULL);
       if (result_stmt == NULL)
 	{
 	  assert (false);
