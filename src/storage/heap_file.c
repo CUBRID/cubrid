@@ -18491,7 +18491,7 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes, R
 	  pgbuf_ordered_unfix (thread_p, page_watcher);
 	}
       db_make_int (record_info[HEAP_RECORD_INFO_T_REPRID], or_rep_id (recdes));
-      db_make_int (record_info[HEAP_RECORD_INFO_T_REPRID], or_chn (recdes));
+      db_make_int (record_info[HEAP_RECORD_INFO_T_CHN], or_chn (recdes));
       or_mvcc_get_header (recdes, &mvcc_header);
       db_make_bigint (record_info[HEAP_RECORD_INFO_T_MVCC_INSID], MVCC_GET_INSID (&mvcc_header));
       if (MVCC_IS_HEADER_DELID_VALID (&mvcc_header))
@@ -18502,7 +18502,6 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes, R
 	{
 	  db_make_null (record_info[HEAP_RECORD_INFO_T_MVCC_DELID]);
 	}
-      db_make_int (record_info[HEAP_RECORD_INFO_T_CHN], OR_GET_MVCC_CHN (&mvcc_header));
       db_make_int (record_info[HEAP_RECORD_INFO_T_MVCC_FLAGS], MVCC_GET_FLAG (&mvcc_header));
       if (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_VALID_PREV_VERSION))
 	{
@@ -18546,7 +18545,7 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes, R
 	  return S_ERROR;
 	}
       db_make_int (record_info[HEAP_RECORD_INFO_T_REPRID], or_rep_id (recdes));
-      db_make_int (record_info[HEAP_RECORD_INFO_T_REPRID], or_chn (recdes));
+      db_make_int (record_info[HEAP_RECORD_INFO_T_CHN], or_chn (recdes));
 
       or_mvcc_get_header (recdes, &mvcc_header);
       db_make_bigint (record_info[HEAP_RECORD_INFO_T_MVCC_INSID], MVCC_GET_INSID (&mvcc_header));
@@ -18558,7 +18557,6 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes, R
 	{
 	  db_make_null (record_info[HEAP_RECORD_INFO_T_MVCC_DELID]);
 	}
-      db_make_int (record_info[HEAP_RECORD_INFO_T_CHN], OR_GET_MVCC_CHN (&mvcc_header));
       db_make_int (record_info[HEAP_RECORD_INFO_T_MVCC_FLAGS], MVCC_GET_FLAG (&mvcc_header));
       if (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_VALID_PREV_VERSION))
 	{
