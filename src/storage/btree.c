@@ -22447,13 +22447,6 @@ btree_rv_redo_global_unique_stats_commit (THREAD_ENTRY * thread_p, const LOG_RCV
   num_keys = OR_GET_INT (datap);
   datap += OR_INT_SIZE;
 
-  /* Because this log record is logical, it will be processed even if the B-tree was deleted. If the B-tree was deleted
-   * then skip update of unique statistics in global hash. */
-  if (disk_is_page_sector_reserved (thread_p, btid.vfid.volid, btid.root_pageid) != DISK_VALID)
-    {
-      /* The B-tree was already deleted */
-      return NO_ERROR;
-    }
   if (logtb_rv_update_global_unique_stats_by_abs (thread_p, &btid, num_oids, num_nulls, num_keys) != NO_ERROR)
     {
       goto error;
