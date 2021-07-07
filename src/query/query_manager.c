@@ -1392,8 +1392,8 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
       if (do_not_cache == false)
 	{
 	  /* lookup the list cache with the parameter values (DB_VALUE array) */
-	  list_cache_entry_p =
-	    qfile_lookup_list_cache_entry (thread_p, xasl_cache_entry_p->list_ht_no, &params, &cached_result);
+	  list_cache_entry_p = qfile_lookup_list_cache_entry (thread_p, xasl_cache_entry_p, &params, &cached_result);
+
 	  /* If we've got the cached result, return it. */
 	  if (cached_result)
 	    {
@@ -1507,7 +1507,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
   /* If it is allowed to cache the query result or if it is required to cache, put the list file id(QFILE_LIST_ID) into
    * the list cache. Provided are the corresponding XASL cache entry to be linked, and the parameters (host variables -
    * DB_VALUES). */
-  if (qmgr_is_allowed_result_cache (*flag_p) && do_not_cache == false)
+  if (qmgr_is_allowed_result_cache (*flag_p) && do_not_cache == false && xasl_cache_entry_p->list_ht_no >= 0)
     {
       /* check once more to ensure that the related XASL entry is still valid */
       if (xcache_can_entry_cache_list (xasl_cache_entry_p))
