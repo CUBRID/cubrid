@@ -5301,11 +5301,8 @@ pt_make_dblink_access_spec (ACCESS_METHOD access,
       spec->s.dblink_node.conn_user = user;
       spec->s.dblink_node.conn_password = password;
       spec->s.dblink_node.conn_sql = sql;
-      if (host_var_count > 0)
-	{
-	  spec->s.dblink_node.host_var_count = host_var_count;
-	  spec->s.dblink_node.host_var_index = host_var_index;
-	}
+      spec->s.dblink_node.host_var_count = host_var_count;
+      spec->s.dblink_node.host_var_index = host_var_index;
     }
 
   return spec;
@@ -12813,11 +12810,15 @@ pt_to_dblink_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE *
       sql = (char *) pdblink->qstr->info.value.data_value.str->bytes;
     }
 
-  parser_walk_tree (parser, pdblink->pushed_pred, pt_host_vars_count, &count, NULL, NULL);
+  if (pdblink->pushed_pred)
+    {
+      parser_walk_tree (parser, pdblink->pushed_pred, pt_host_vars_count, &count, NULL, NULL);
+    }
+
+  pdblink->host_vars.count = 0;
   if (count > 0)
     {
-      pdblink->host_vars.count = 0;
-      pdblink->host_vars.index = (int *) malloc (count * sizeof (int));
+      pdblink->host_vars.index = (int *) parser_alloc (parser, count * sizeof (int));
       parser_walk_tree (parser, pdblink->pushed_pred, pt_host_vars_index, &pdblink->host_vars, NULL, NULL);
     }
 

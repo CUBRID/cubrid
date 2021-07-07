@@ -5067,9 +5067,9 @@ stx_build_dblink_spec_type (THREAD_ENTRY * thread_p, char *ptr, DBLINK_SPEC_TYPE
 
   /* host variable count */
   ptr = or_unpack_int (ptr, &dblink_spec->host_var_count);
-  ptr = or_unpack_int (ptr, &offset);
   if (dblink_spec->host_var_count > 0)
     {
+      ptr = or_unpack_int (ptr, &offset);
       dblink_spec->host_var_index =
 	stx_restore_int_array (thread_p, &xasl_unpack_info->packed_xasl[offset], dblink_spec->host_var_count);
       if (dblink_spec->host_var_index == NULL)

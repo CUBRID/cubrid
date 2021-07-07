@@ -4960,8 +4960,8 @@ xts_process_dblink_spec_type (char *ptr, const DBLINK_SPEC_TYPE * dblink_spec)
 	{
 	  return NULL;
 	}
+      ptr = or_pack_int (ptr, offset);
     }
-  ptr = or_pack_int (ptr, offset);
 
   offset = xts_save_string (dblink_spec->conn_url);
   if (offset == ER_FAILED)
