@@ -18345,6 +18345,8 @@ static PARSER_VARCHAR *
 pt_print_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = 0, *r;
+  PT_DBLINK_INFO *pt = &(p->info.dblink_table);
+  bool print_detail = true;
 
   q = pt_append_nulstring (parser, q, "DBLINK(");
 
@@ -18352,48 +18354,57 @@ pt_print_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p)
     {
       q = pt_append_nulstring (parser, q, p->info.dblink_table.conn->info.name.original);
 
-      /* For Query-cache:
-       * Separate comments have been added 
-       * for cases where there is no change in the query but information on the server has changed. */
-      q = pt_append_bytes (parser, q, " /* ", 4);
+      if (!pt->url || !pt->user || !pt->pwd)
+	{
+	  print_detail = false;
+	}
+      else
+	{
+	  /* For Query-cache:
+	   * Separate comments have been added 
+	   * for cases where there is no change in the query but information on the server has changed. */
+	  q = pt_append_bytes (parser, q, " /* ", 4);
+	}
     }
 
-  q = pt_append_bytes (parser, q, "'", 1);
+  if (print_detail)
+    {
+      q = pt_append_bytes (parser, q, "'", 1);
 
-  char *t, *s;
-  PT_DBLINK_INFO *pt = &(p->info.dblink_table);
+      char *t, *s;
 
-  // "cci:CUBRID:{HOST}:{PORT}:{DBNAME}:<user-name>:<password>:{PROPERITIES}"
-  s = (char *) pt->url->info.value.data_value.str->bytes;
-  // skip cci:
-  s = strchr (s, ':');
-  // skip CUBRID:
-  s = strchr (s + 1, ':');
+      // "cci:CUBRID:{HOST}:{PORT}:{DBNAME}:<user-name>:<password>:{PROPERITIES}"
+      s = (char *) pt->url->info.value.data_value.str->bytes;
+      // skip cci:
+      s = strchr (s, ':');
+      // skip CUBRID:
+      s = strchr (s + 1, ':');
 
-  t = ++s;
-  // host           
-  s = strchr (s, ':');
-  // port           
-  s = strchr (s + 1, ':');
-  // dbname           
-  s = strchr (s + 1, ':');
-  q = pt_append_bytes (parser, q, t, (int) (s - t));
-  t = s + 2;
+      t = ++s;
+      // host           
+      s = strchr (s, ':');
+      // port           
+      s = strchr (s + 1, ':');
+      // dbname           
+      s = strchr (s + 1, ':');
+      q = pt_append_bytes (parser, q, t, (int) (s - t));
+      t = s + 2;
 
-  q = pt_append_nulstring (parser, q, ":");
-  q =
-    pt_append_bytes (parser, q, (char *) pt->user->info.value.data_value.str->bytes,
-		     pt->user->info.value.data_value.str->length);
-  q = pt_append_nulstring (parser, q, ":");
-  q =
-    pt_append_bytes (parser, q, (char *) pt->pwd->info.value.data_value.str->bytes,
-		     pt->pwd->info.value.data_value.str->length);
-  // properties
-  q = pt_append_nulstring (parser, q, t);
+      q = pt_append_nulstring (parser, q, ":");
+      q =
+	pt_append_bytes (parser, q, (char *) pt->user->info.value.data_value.str->bytes,
+			 pt->user->info.value.data_value.str->length);
+      q = pt_append_nulstring (parser, q, ":");
+      q =
+	pt_append_bytes (parser, q, (char *) pt->pwd->info.value.data_value.str->bytes,
+			 pt->pwd->info.value.data_value.str->length);
+      // properties
+      q = pt_append_nulstring (parser, q, t);
 
-  q = pt_append_bytes (parser, q, "'", 1);
+      q = pt_append_bytes (parser, q, "'", 1);
+    }
 
-  if (p->info.dblink_table.is_name)
+  if (print_detail)
     {
       q = pt_append_bytes (parser, q, " */ ", 4);
     }

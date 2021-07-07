@@ -10252,12 +10252,12 @@ pt_resolve_dblink_server_name (PARSER_CONTEXT * parser, PT_NODE * node)
   error = get_dblink_info_from_dbserver (parser, dblink_table->conn->info.name.original, values);
   if (error != NO_ERROR)
     {
-      if (i == ER_DBLINK_SERVER_NOT_FOUND)
+      if (error == ER_DBLINK_SERVER_NOT_FOUND)
 	{
 	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RT_SERVER_NOT_DEFINED,
 		      dblink_table->conn->info.name.original);
 	}
-      else if (i == ER_DBLINK_CANNOT_UPDATE_SERVER)
+      else if (error == ER_DBLINK_CANNOT_UPDATE_SERVER)
 	{
 	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RT_SERVER_ALTER_NOT_ALLOWED, 0);
 	}
