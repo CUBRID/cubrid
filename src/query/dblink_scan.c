@@ -457,13 +457,13 @@ dblink_bind_param (DBLINK_SCAN_INFO * scan_info, VAL_DESCR * vd, DBLINK_HOST_VAR
 	  value = &cci_date;
 	  break;
 	default:
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "bind: not supported type");
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_UNSUPPORTED_TYPE, 0);
 	  return S_ERROR;
 	}
       ret = cci_bind_param (scan_info->stmt_handle, n + 1, a_type, value, u_type, 0);
       if (ret < 0)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "invalid bind param");
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_INVALID_BIND_PARAM, 0);
 	  return S_ERROR;
 	}
     }
