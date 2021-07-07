@@ -18063,8 +18063,12 @@ get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, const char *server, DB_V
   char *server_name, *t;
   DB_OBJECT *server_object, *server_class;
   DB_IDENTIFIER server_obj_id;
-  int error;
+  DB_VALUE values[4];
+  int au_save, error, cnt;
+  bool is_au_disable = false;
+  const char *url_attr_names[4] = { "host", "port", "db_name", "properties" };
 
+  cnt = 0;
   t = strchr ((char *) server, '.');	/* FIXME */
   server_name = (t != NULL) ? (t + 1) : (char *) server;
 
@@ -18073,7 +18077,7 @@ get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, const char *server, DB_V
     {
       error = ER_DBLINK_CATALOG_DB_SERVER_NOT_FOUND;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-      return error;
+      goto error_end;
     }
 
   server_object = do_get_server_obj_id (&server_obj_id, server_class, server_name);
@@ -18081,34 +18085,22 @@ get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, const char *server, DB_V
     {
       error = ER_DBLINK_SERVER_NOT_FOUND;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, server_name);
-      return error;
+      goto error_end;
     }
 
-  int au_save;
-  bool is_au_disable = true;
-
   AU_DISABLE (au_save);
+  is_au_disable = true;
 
   error = au_check_server_authorization (server_object);
   if (error != NO_ERROR)
     {
-      AU_ENABLE (au_save);
-      return error;
+      goto error_end;
     }
 
-  // cci:CUBRID:<host>:<port>:<db_name>:<db_user>:<db_password>:[?<properties>]
-  const char *dblink_url_fmt_prop = "cci:CUBRID:%s:%d:%s:::?%s";
-  const char *dblink_url_fmt_none = "cci:CUBRID:%s:%d:%s:::";
-  const char *url_attr_names[4] = { "host", "port", "db_name", "properties" };
-  DB_VALUE values[4];
-  char dblink_url[4096];
-  int port_no, i;
-  char *host, *dbname, *prop;
-
-  for (i = 0; i < 4; i++)
+  for (cnt = 0; cnt < 4; cnt++)
     {
-      db_make_null (&(values[i]));
-      error = db_get (server_object, url_attr_names[i], &(values[i]));
+      db_make_null (&(values[cnt]));
+      error = db_get (server_object, url_attr_names[cnt], &(values[cnt]));
       if (error < 0)
 	{
 	  goto error_end;
@@ -18122,36 +18114,33 @@ get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, const char *server, DB_V
     }
 
   error = db_get (server_object, "password", &(out_val[2]));
-  if (error < 0)
-    {
-      goto error_end;
-    }
-
-  AU_ENABLE (au_save);
-  is_au_disable = false;
-
-  host = (char *) db_get_string (&(values[0]));
-  port_no = db_get_int (&(values[1]));
-  dbname = (char *) db_get_string (&(values[2]));
-  prop = (char *) db_get_string (&(values[3]));
-
-  if (prop && *prop)
-    {
-      sprintf (dblink_url, dblink_url_fmt_prop, host, port_no, dbname, ((prop[0] == '?') ? prop + 1 : prop));
-    }
-  else
-    {
-      sprintf (dblink_url, dblink_url_fmt_none, host, port_no, dbname);
-    }
-
-  error = db_make_string (&(out_val[0]), dblink_url);
   if (error == NO_ERROR)
     {
-      while (--i >= 0)
+      // cci:CUBRID:<host>:<port>:<db_name>:<db_user>:<db_password>:[?<properties>]
+      const char *dblink_url_fmt_prop = "cci:CUBRID:%s:%d:%s:::?%s";
+      const char *dblink_url_fmt_none = "cci:CUBRID:%s:%d:%s:::";
+      char dblink_url[4096];
+      int port_no;
+      char *host, *dbname, *prop;
+
+      AU_ENABLE (au_save);
+      is_au_disable = false;
+
+      host = (char *) db_get_string (&(values[0]));
+      port_no = db_get_int (&(values[1]));
+      dbname = (char *) db_get_string (&(values[2]));
+      prop = (char *) db_get_string (&(values[3]));
+
+      if (prop && *prop)
 	{
-	  pr_clear_value (&(values[i]));
+	  sprintf (dblink_url, dblink_url_fmt_prop, host, port_no, dbname, ((prop[0] == '?') ? prop + 1 : prop));
 	}
-      return NO_ERROR;
+      else
+	{
+	  sprintf (dblink_url, dblink_url_fmt_none, host, port_no, dbname);
+	}
+
+      error = db_make_string (&(out_val[0]), dblink_url);
     }
 
 error_end:
@@ -18160,9 +18149,9 @@ error_end:
       AU_ENABLE (au_save);
     }
 
-  while (--i >= 0)
+  while (--cnt >= 0)
     {
-      pr_clear_value (&(values[i]));
+      pr_clear_value (&(values[cnt]));
     }
 
   return error;
