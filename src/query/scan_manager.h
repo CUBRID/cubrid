@@ -478,7 +478,7 @@ extern int scan_open_dblink_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				  char *conn_url,
 				  char *conn_user, char *conn_password, char *sql_text,
 				  VAL_DESCR * vd, val_list_node * val_list,
-				  REGU_VARIABLE_LIST regu_list_pred, PRED_EXPR * pr);
+				  DBLINK_HOST_VARS * host_vars, PRED_EXPR * pr);
 
 extern int scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern SCAN_CODE scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id);

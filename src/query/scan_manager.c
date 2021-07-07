@@ -4020,7 +4020,7 @@ scan_open_dblink_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 		       SCAN_OPERATION_TYPE scan_op_type,
 		       char *conn_url,
 		       char *conn_user, char *conn_password, char *sql_text,
-		       VAL_DESCR * vd, VAL_LIST * val_list, REGU_VARIABLE_LIST regu_list_pred, PRED_EXPR * pr)
+		       VAL_DESCR * vd, VAL_LIST * val_list, DBLINK_HOST_VARS * host_vars, PRED_EXPR * pr)
 {
   DBLINK_SCAN_ID *dblid = &scan_id->s.dblid;
   DB_TYPE single_node_type = DB_TYPE_NULL;
@@ -4032,10 +4032,9 @@ scan_open_dblink_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   scan_init_scan_id (scan_id, false, S_SELECT, true, 0, single_fetch, NULL, val_list, vd);
 
   /* scan predicates */
-  scan_init_scan_pred (&dblid->scan_pred, regu_list_pred, pr,
-		       ((pr) ? eval_fnc (thread_p, pr, &single_node_type) : NULL));
+  scan_init_scan_pred (&dblid->scan_pred, NULL, pr, ((pr) ? eval_fnc (thread_p, pr, &single_node_type) : NULL));
 
-  return dblink_open_scan (&scan_id->s.dblid.scan_info, conn_url, conn_user, conn_password, sql_text, vd);
+  return dblink_open_scan (&scan_id->s.dblid.scan_info, conn_url, conn_user, conn_password, sql_text, vd, host_vars);
 }
 
 /*

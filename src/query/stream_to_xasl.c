@@ -5032,7 +5032,7 @@ stx_build_method_spec_type (THREAD_ENTRY * thread_p, char *ptr, METHOD_SPEC_TYPE
 static char *
 stx_build_dblink_spec_type (THREAD_ENTRY * thread_p, char *ptr, DBLINK_SPEC_TYPE * dblink_spec)
 {
-  int offset;
+  int offset, count;
   XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &offset);
@@ -5065,7 +5065,18 @@ stx_build_dblink_spec_type (THREAD_ENTRY * thread_p, char *ptr, DBLINK_SPEC_TYPE
 	}
     }
 
-  //ptr = or_unpack_int (ptr, &offset);
+  /* host variable count */
+  ptr = or_unpack_int (ptr, &dblink_spec->host_var_count);
+  ptr = or_unpack_int (ptr, &offset);
+  if (dblink_spec->host_var_count > 0)
+    {
+      dblink_spec->host_var_index =
+	stx_restore_int_array (thread_p, &xasl_unpack_info->packed_xasl[offset], dblink_spec->host_var_count);
+      if (dblink_spec->host_var_index == NULL)
+	{
+	  goto error;
+	}
+    }
 
   dblink_spec->conn_url = stx_restore_string (thread_p, ptr);
   dblink_spec->conn_user = stx_restore_string (thread_p, ptr);

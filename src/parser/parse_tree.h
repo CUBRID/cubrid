@@ -114,7 +114,6 @@ struct json_t;
 
 #define PT_IS_QUERY_NODE_TYPE(x) \
     (  (x) == PT_SELECT     || (x) == PT_UNION \
-    || (x) == PT_DBLINK_TABLE \
     || (x) == PT_DIFFERENCE || (x) == PT_INTERSECTION)
 
 #define PT_IS_CLASSOID_NAME(x) \
@@ -3259,6 +3258,12 @@ struct pt_json_table_info
   bool is_correlated;
 };
 
+typedef struct host_vars_info
+{
+  int count;
+  int *index;
+} PT_HOST_VAR_IDX_INFO;
+
 typedef struct pt_dblink_info
 {
   PT_NODE *conn;		/* name for DBLINK */
@@ -3269,6 +3274,7 @@ typedef struct pt_dblink_info
   PT_NODE *cols;		/* column definition  */
   PT_NODE *pushed_pred;		/* pushed predicate from main query */
   PARSER_VARCHAR *rewritten;	/* rewritten query string for dblink */
+  PT_HOST_VAR_IDX_INFO host_vars;	/* host variable index info for rewritten query */
   bool is_name;			/*  */
 } PT_DBLINK_INFO;
 

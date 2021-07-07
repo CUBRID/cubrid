@@ -6453,6 +6453,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
   QFILE_LIST_ID *list_id;
   bool mvcc_select_lock_needed = false;
   int error_code = NO_ERROR;
+  DBLINK_HOST_VARS host_vars;
 
   if (curr_spec->pruning_type == DB_PARTITIONED_CLASS && !curr_spec->pruned)
     {
@@ -6718,14 +6719,15 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	}
       break;
     case TARGET_DBLINK:
+      host_vars.count = curr_spec->s.dblink_node.host_var_count;
+      host_vars.index = curr_spec->s.dblink_node.host_var_index;
       error_code =
 	scan_open_dblink_scan (thread_p, s_id,
 			       curr_spec->single_fetch, scan_op_type,
 			       curr_spec->s.dblink_node.conn_url,
 			       curr_spec->s.dblink_node.conn_user,
 			       curr_spec->s.dblink_node.conn_password,
-			       curr_spec->s.dblink_node.conn_sql,
-			       vd, val_list, curr_spec->s.dblink_node.dblink_regu_list_pred, curr_spec->where_pred);
+			       curr_spec->s.dblink_node.conn_sql, vd, val_list, &host_vars, curr_spec->where_pred);
 
       if (error_code != NO_ERROR)
 	{

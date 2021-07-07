@@ -4723,7 +4723,9 @@ mq_check_rewrite_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
 	    }
 	}
 
-      if (is_union_translation == false && from && from->info.spec.derived_table_type == PT_IS_SUBQUERY)
+      if (is_union_translation == false && from
+	  && (from->info.spec.derived_table_type == PT_IS_SUBQUERY
+	      || from->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE))
 	{
 	  (void) mq_copypush_sargable_terms (parser, select_statement, from);
 	}

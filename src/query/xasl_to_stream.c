@@ -4952,6 +4952,17 @@ xts_process_dblink_spec_type (char *ptr, const DBLINK_SPEC_TYPE * dblink_spec)
     }
   ptr = or_pack_int (ptr, offset);
 
+  ptr = or_pack_int (ptr, dblink_spec->host_var_count);
+  if (dblink_spec->host_var_count > 0)
+    {
+      offset = xts_save_int_array (dblink_spec->host_var_index, dblink_spec->host_var_count);
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+    }
+  ptr = or_pack_int (ptr, offset);
+
   offset = xts_save_string (dblink_spec->conn_url);
   if (offset == ER_FAILED)
     {
@@ -6791,8 +6802,13 @@ xts_sizeof_dblink_spec_type (const DBLINK_SPEC_TYPE * dblink_spec)
 {
   int size = 0;
 
-  size += (PTR_SIZE		/* dblink_regu_list */
+  size += (PTR_SIZE		/* dblink_regu_list_pred */
+	   + PTR_SIZE		/* dblink_regu_list_rest */
+	   + OR_INT_SIZE	/* host_var_count */
+	   + PTR_SIZE		/* host_var_index */
 	   + PTR_SIZE		/* conn_rul */
+	   + PTR_SIZE		/* conn_user */
+	   + PTR_SIZE		/* conn_password */
 	   + PTR_SIZE);		/* conn_sql */
 
   return size;

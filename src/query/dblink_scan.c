@@ -334,9 +334,9 @@ dblink_make_date_time_tz (T_CCI_U_TYPE utype, DB_VALUE * value_p, T_CCI_DATE_TZ 
 }
 
 static int
-dblink_bind_param (DBLINK_SCAN_INFO * scan_info, VAL_DESCR * vd)
+dblink_bind_param (DBLINK_SCAN_INFO * scan_info, VAL_DESCR * vd, DBLINK_HOST_VARS * host_vars)
 {
-  int i, ret;
+  int i, n, ret;
   T_CCI_PARAM_INFO *param;
   T_CCI_A_TYPE a_type;
   T_CCI_U_TYPE u_type;
@@ -354,11 +354,12 @@ dblink_bind_param (DBLINK_SCAN_INFO * scan_info, VAL_DESCR * vd)
 
   unsigned char type;
 
-  for (i = 0; i < vd->dbval_cnt; i++)
+  for (n = 0; n < host_vars->count; n++)
     {
+      i = host_vars->index[n];
       value = &vd->dbval_ptr[i].data;
       type = vd->dbval_ptr[i].domain.general_info.type;
-      switch (vd->dbval_ptr[i].domain.general_info.type)
+      switch (type)
 	{
 	case DB_TYPE_INTEGER:
 	  a_type = CCI_A_TYPE_INT;
@@ -462,10 +463,6 @@ dblink_bind_param (DBLINK_SCAN_INFO * scan_info, VAL_DESCR * vd)
       ret = cci_bind_param (scan_info->stmt_handle, i + 1, a_type, value, u_type, 0);
       if (ret < 0)
 	{
-	  if (ret == CCI_ER_BIND_INDEX)
-	    {
-	      break;
-	    }
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "invalid bind param");
 	  return S_ERROR;
 	}
@@ -485,7 +482,7 @@ dblink_bind_param (DBLINK_SCAN_INFO * scan_info, VAL_DESCR * vd)
  */
 int
 dblink_open_scan (DBLINK_SCAN_INFO * scan_info, char *conn_url, char *user_name, char *password,
-		  char *sql_text, VAL_DESCR * vd)
+		  char *sql_text, VAL_DESCR * vd, DBLINK_HOST_VARS * host_vars)
 {
   int ret;
   T_CCI_ERROR err_buf;
@@ -508,7 +505,7 @@ dblink_open_scan (DBLINK_SCAN_INFO * scan_info, char *conn_url, char *user_name,
 
       if (vd && vd->dbval_cnt > 0)
 	{
-	  if (dblink_bind_param (scan_info, vd) < 0)
+	  if (dblink_bind_param (scan_info, vd, host_vars) < 0)
 	    {
 	      return S_ERROR;
 	    }
