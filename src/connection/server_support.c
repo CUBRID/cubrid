@@ -2645,6 +2645,11 @@ css_process_server_server_connect (SOCKET master_fd)
   switch (STATIC_CAST (cubcomm::server_server, request))
     {
     case cubcomm::server_server::CONNECT_ACTIVE_TRAN_TO_PAGE_SERVER:
+      if (!chn.send_int (static_cast < int >(cubcomm::server_server::CONNECT_ACTIVE_TRAN_TO_PAGE_SERVER)))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_PAGESERVER_CONNECTION, 1, chn.get_channel_id ());
+	  break;
+	}
       ps_Gl.set_active_tran_server_connection (std::move (chn));
       break;
     default:

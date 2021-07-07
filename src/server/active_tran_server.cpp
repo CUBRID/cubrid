@@ -247,6 +247,15 @@ active_tran_server::connect_to_page_server (const cubcomm::node &node, const cha
       return ER_NET_PAGESERVER_CONNECTION;
     }
 
+  int exit_code;
+  if (srv_chn.recv_int (exit_code) != css_error_code::NO_ERRORS
+      && exit_code == static_cast<int> (cubcomm::server_server::CONNECT_ACTIVE_TRAN_TO_PAGE_SERVER))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_PAGESERVER_CONNECTION, 1, node.get_host ().c_str ());
+      er_log_debug (ARG_FILE_LINE, "Page server on node %s:%d is not responding to the connection.\n",
+		    node.get_host ().c_str (), node.get_port ());
+      return ER_NET_PAGESERVER_CONNECTION;
+    }
   er_log_debug (ARG_FILE_LINE, "Transaction server successfully connected to the page server. Channel id: %s.\n",
 		srv_chn.get_channel_id ().c_str ());
 
