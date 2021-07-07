@@ -1126,7 +1126,7 @@ pt_set_is_view_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 }				/* pt_set_is_view_spec */
 
 /*
- * pt_set_is_view_spec () -
+ * pt_set_do_not_replace_orderby () -
  *   return:
  *   parser(in):
  *   node(in):
