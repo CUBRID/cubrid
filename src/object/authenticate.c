@@ -8655,6 +8655,31 @@ au_get_dba_user (void)
   return Au_dba_user;
 }
 
+static int
+au_check_owner (DB_VALUE * creator_val)
+{
+  MOP creator;
+  DB_SET *groups;
+  int ret_val = ER_FAILED;
+
+  creator = db_get_object (creator_val);
+
+  if (ws_is_same_object (creator, Au_user) || au_is_dba_group_member (Au_user))
+    {
+      ret_val = NO_ERROR;
+    }
+  else if (au_get_set (Au_user, "groups", &groups) == NO_ERROR)
+    {
+      if (set_ismember (groups, creator_val))
+	{
+	  ret_val = NO_ERROR;
+	}
+      set_free (groups);
+    }
+
+  return ret_val;
+}
+
 /*
  * au_check_serial_authorization - check whether the current user is able to
  *                                 modify serial object or not
@@ -8665,41 +8690,45 @@ int
 au_check_serial_authorization (MOP serial_object)
 {
   DB_VALUE creator_val;
-  MOP creator;
-  DB_SET *groups;
   int ret_val;
 
   ret_val = db_get (serial_object, "owner", &creator_val);
-
   if (ret_val != NO_ERROR || DB_IS_NULL (&creator_val))
     {
       return ret_val;
     }
 
-  creator = db_get_object (&creator_val);
-
-  ret_val = ER_QPROC_CANNOT_UPDATE_SERIAL;
-
-  if (ws_is_same_object (creator, Au_user) || au_is_dba_group_member (Au_user))
-    {
-      ret_val = NO_ERROR;
-    }
-  else if (au_get_set (Au_user, "groups", &groups) == NO_ERROR)
-    {
-      if (set_ismember (groups, &creator_val))
-	{
-	  ret_val = NO_ERROR;
-	}
-      set_free (groups);
-    }
-
+  ret_val = au_check_owner (&creator_val);
   if (ret_val != NO_ERROR)
     {
+      ret_val = ER_QPROC_CANNOT_UPDATE_SERIAL;
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ret_val, 0);
     }
 
   pr_clear_value (&creator_val);
+  return ret_val;
+}
 
+int
+au_check_server_authorization (MOP server_object)
+{
+  DB_VALUE creator_val;
+  int ret_val;
+
+  ret_val = db_get (server_object, "owner", &creator_val);
+  if (ret_val != NO_ERROR || DB_IS_NULL (&creator_val))
+    {
+      return ret_val;
+    }
+
+  ret_val = au_check_owner (&creator_val);
+  if (ret_val != NO_ERROR)
+    {
+      ret_val = ER_DBLINK_CANNOT_UPDATE_SERVER;
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ret_val, 0);
+    }
+
+  pr_clear_value (&creator_val);
   return ret_val;
 }
 
