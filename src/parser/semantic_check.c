@@ -7406,7 +7406,7 @@ pt_check_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_NODE * at
 
   if (do_semantic_check)
     {
-      qry->flag.do_not_replace_orderby = 1;
+      (void) parser_walk_tree (parser, qry, pt_set_do_not_replace_orderby, NULL, NULL, NULL);
       qry = pt_semantic_check (parser, qry);
       if (pt_has_error (parser) || qry == NULL)
 	{

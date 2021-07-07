@@ -386,6 +386,8 @@ extern "C"
   DB_ATTRIBUTE *db_get_attributes_force (DB_OBJECT * obj);
 
   extern PT_NODE *pt_set_is_view_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *dummy, int *continue_walk);
+  extern PT_NODE *pt_set_do_not_replace_orderby (PARSER_CONTEXT * parser, PT_NODE * node, void *dummy,
+						 int *continue_walk);
 
   extern PT_NODE *pt_resolve_star (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * attr);
 
