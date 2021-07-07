@@ -28395,7 +28395,7 @@ pt_fill_conn_info_container(PARSER_CONTEXT *parser,  int buffer_pos, container_1
 static bool pt_ct_check_select (char* p, char *perr_msg)
 {  
    perr_msg[0] = 0x00;
-   while (*p == ' ' || *p == '(')
+   while (*p == ' ' || *p == '(' || *p == '\t' || *p == '\r' || *p == '\n')
      {
         p++;
      }
