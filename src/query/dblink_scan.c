@@ -460,7 +460,7 @@ dblink_bind_param (DBLINK_SCAN_INFO * scan_info, VAL_DESCR * vd, DBLINK_HOST_VAR
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "bind: not supported type");
 	  return S_ERROR;
 	}
-      ret = cci_bind_param (scan_info->stmt_handle, i + 1, a_type, value, u_type, 0);
+      ret = cci_bind_param (scan_info->stmt_handle, n + 1, a_type, value, u_type, 0);
       if (ret < 0)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "invalid bind param");

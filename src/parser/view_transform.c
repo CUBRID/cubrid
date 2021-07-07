@@ -3232,7 +3232,7 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
 
   copy_cnt = -1;
 
-  if (PT_IS_QUERY (new_query)
+  if ((PT_IS_QUERY (new_query) || new_query->node_type == PT_DBLINK_TABLE)
       && (pt_has_analytic (parser, new_query) || PT_SELECT_INFO_IS_FLAGED (new_query, PT_SELECT_INFO_COLS_SCHEMA)
 	  || PT_SELECT_INFO_IS_FLAGED (new_query, PT_SELECT_FULL_INFO_COLS_SCHEMA) || PT_IS_VALUE_QUERY (new_query)))
     {
@@ -3347,7 +3347,8 @@ mq_copypush_sargable_terms (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NOD
       && statement->info.query.q.select.connect_by == NULL
       && (spec->info.spec.derived_table_type == PT_IS_SUBQUERY
 	  || spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
-      && (derived_table = spec->info.spec.derived_table) && PT_IS_QUERY (derived_table)
+      && (derived_table = spec->info.spec.derived_table)
+      && (PT_IS_QUERY (derived_table) || derived_table->node_type == PT_DBLINK_TABLE)
       && !PT_SELECT_INFO_IS_FLAGED (statement, PT_SELECT_INFO_IS_MERGE_QUERY))
     {
       info.type = FIND_ID_INLINE_VIEW;	/* inline view */
