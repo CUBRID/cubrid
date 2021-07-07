@@ -503,7 +503,7 @@ dblink_open_scan (DBLINK_SCAN_INFO * scan_info, char *conn_url, char *user_name,
 	  return S_ERROR;
 	}
 
-      if (vd && vd->dbval_cnt > 0)
+      if (host_vars->count > 0)
 	{
 	  if (dblink_bind_param (scan_info, vd, host_vars) < 0)
 	    {
@@ -748,8 +748,8 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 	  error = dblink_make_date_time_tz (utype, &cci_value, &date_time_tz);
 	  break;
 	default:
-	  ind = -1;
-	  break;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_UNSUPPORTED_TYPE, 0);
+	  return S_ERROR;
 	}
       if (ind == -1)
 	{
