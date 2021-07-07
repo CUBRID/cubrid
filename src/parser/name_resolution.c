@@ -1136,11 +1136,6 @@ pt_set_is_view_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 PT_NODE *
 pt_set_do_not_replace_orderby (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-  if (!node)
-    {
-      return node;
-    }
-
   if (pt_is_query (node))
     {
       node->flag.do_not_replace_orderby = 1;
