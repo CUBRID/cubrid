@@ -3156,7 +3156,7 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
       query->info.dblink_table.pushed_pred = parser_copy_tree_list (parser, term_list);
       save_custom = parser->custom_print;
       parser->custom_print |= PT_CONVERT_RANGE | PT_SUPPRESS_RESOLVED | PT_PRINT_NO_HOST_VAR_INDEX;
-      pushed_pred = pt_print_bytes (parser, query->info.dblink_table.pushed_pred);
+      pushed_pred = pt_print_and_list (parser, query->info.dblink_table.pushed_pred);
 
       /* wrapped query SELECT * FROM */
       rewritten = pt_append_bytes (parser, rewritten, "SELECT * FROM (", 15);
