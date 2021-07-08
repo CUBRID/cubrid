@@ -468,9 +468,10 @@ enum param_id
   PRM_ID_REPLICATION_PARALLEL_COUNT,
 
   PRM_ID_REMOTE_STORAGE,
+  PRM_ID_DUMP_FILE_CACHE,
 
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_REMOTE_STORAGE
+  PRM_LAST_ID = PRM_ID_DUMP_FILE_CACHE
 };
 typedef enum param_id PARAM_ID;
 
