@@ -112,7 +112,7 @@ namespace cublog
     public:
       /* - worker_count: the number of parallel tasks to spin that consume jobs
        */
-      redo_parallel (unsigned a_worker_count, minimum_log_lsa_monitor &a_minimum_log_lsa);
+      redo_parallel (unsigned a_worker_count, minimum_log_lsa_monitor *a_minimum_log_lsa);
 
       redo_parallel (const redo_parallel &) = delete;
       redo_parallel (redo_parallel &&) = delete;
@@ -154,7 +154,7 @@ namespace cublog
 	  using log_lsa_set = std::set<log_lsa>;
 
 	public:
-	  redo_job_queue (minimum_log_lsa_monitor &a_minimum_log_lsa);
+	  redo_job_queue (minimum_log_lsa_monitor *a_minimum_log_lsa);
 	  ~redo_job_queue ();
 
 	  redo_job_queue (redo_job_queue const &) = delete;
@@ -237,10 +237,9 @@ namespace cublog
 	  mutable std::condition_variable m_in_progress_vpids_empty_cv;
 
 	  /* utility class to maintain a minimum log_lsa that is still
-	   * to be processed (consumed); if no job exists in the queue, the
-	   * value is null
+	   * to be processed (consumed); non-owning pointer, can be null
 	   */
-	  minimum_log_lsa_monitor &m_minimum_log_lsa;
+	  minimum_log_lsa_monitor *m_minimum_log_lsa;
       };
 
       /* maintain a bookkeeping of tasks that are still performing work;

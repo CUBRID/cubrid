@@ -153,7 +153,7 @@ namespace cublog
    * redo_parallel::redo_job_queue - definition
    *********************************************************************/
 
-  redo_parallel::redo_job_queue::redo_job_queue (minimum_log_lsa_monitor &a_minimum_log_lsa)
+  redo_parallel::redo_job_queue::redo_job_queue (minimum_log_lsa_monitor *a_minimum_log_lsa)
     : m_produce_queue (new ux_redo_job_deque ())
     , m_consume_queue (new ux_redo_job_deque ())
     , m_queues_empty (true)
@@ -177,9 +177,9 @@ namespace cublog
   redo_parallel::redo_job_queue::push_job (ux_redo_job_base &&job)
   {
     std::lock_guard<std::mutex> lockg (m_produce_queue_mutex);
-    if (m_produce_queue->empty ())
+    if (m_minimum_log_lsa != nullptr && m_produce_queue->empty ())
       {
-	m_minimum_log_lsa.set_for_produce (job->get_log_lsa ());
+	m_minimum_log_lsa->set_for_produce (job->get_log_lsa ());
       }
     m_produce_queue->push_back (std::move (job));
     m_queues_empty = false;
@@ -273,12 +273,15 @@ namespace cublog
 	  m_queues_empty = m_produce_queue->empty () && m_consume_queue->empty ();
 	  notify_queues_empty = m_queues_empty;
 
-	  // lsa's are ever incresing
-	  const log_lsa produce_minimum_log_lsa =
-		  m_produce_queue->empty () ? MAX_LSA : (*m_produce_queue->begin ())->get_log_lsa ();
-	  const log_lsa consume_minimum_log_lsa =
-		  m_consume_queue->empty () ? MAX_LSA : (* m_consume_queue->begin ())->get_log_lsa ();
-	  m_minimum_log_lsa.set_for_produce_and_consume (produce_minimum_log_lsa, consume_minimum_log_lsa);
+	  if (m_minimum_log_lsa != nullptr)
+	    {
+	      // lsa's are ever incresing
+	      const log_lsa produce_minimum_log_lsa =
+		      m_produce_queue->empty () ? MAX_LSA : (*m_produce_queue->begin ())->get_log_lsa ();
+	      const log_lsa consume_minimum_log_lsa =
+		      m_consume_queue->empty () ? MAX_LSA : (* m_consume_queue->begin ())->get_log_lsa ();
+	      m_minimum_log_lsa->set_for_produce_and_consume (produce_minimum_log_lsa, consume_minimum_log_lsa);
+	    }
 	}
 	if (notify_queues_empty)
 	  {
@@ -302,20 +305,23 @@ namespace cublog
 
 	    do_locked_mark_job_in_progress (a_in_progress_lockg, job);
 
-	    const log_lsa consume_minimum_log_lsa =
-		    m_consume_queue->empty () ? MAX_LSA : (* m_consume_queue->begin ())->get_log_lsa ();
-	    // mark transition in one go for consistency
-	    // if:
-	    //  - first the consume is being changed (or even cleared)
-	    //  - then, separately, the in-progress is updated
-	    // the following might happen:
-	    //  - suppose that there is only one job left in the consume queue, everything else is empty
-	    //  - the minimum value for the consume queue would be cleared
-	    //  - at this point, the minimum log lsa will actually be MAX_LSA
-	    //  - while there is actually one more job (that has just been taken out of the consume queue
-	    //    and is to be transferred to the in progress set)
-	    m_minimum_log_lsa.set_for_consume_and_in_progress (
-		    consume_minimum_log_lsa, *m_in_progress_lsas.cbegin ());
+	    if (m_minimum_log_lsa != nullptr)
+	      {
+		const log_lsa consume_minimum_log_lsa =
+			m_consume_queue->empty () ? MAX_LSA : (* m_consume_queue->begin ())->get_log_lsa ();
+		// mark transition in one go for consistency
+		// if:
+		//  - first the consume is being changed (or even cleared)
+		//  - then, separately, the in-progress is updated
+		// the following might happen:
+		//  - suppose that there is only one job left in the consume queue, everything else is empty
+		//  - the minimum value for the consume queue would be cleared
+		//  - at this point, the minimum log lsa will actually be MAX_LSA
+		//  - while there is actually one more job (that has just been taken out of the consume queue
+		//    and is to be transferred to the in progress set)
+		m_minimum_log_lsa->set_for_consume_and_in_progress (
+			consume_minimum_log_lsa, *m_in_progress_lsas.cbegin ());
+	      }
 
 	    return job;
 	  }
@@ -359,10 +365,13 @@ namespace cublog
       assert (log_lsa_it != m_in_progress_lsas.cend ());
       m_in_progress_lsas.erase (log_lsa_it);
 
-      const log_lsa in_progress_minimum_log_lsa = m_in_progress_lsas.empty ()
-	  ? MAX_LSA
-	  : *m_in_progress_lsas.cbegin ();
-      m_minimum_log_lsa.set_for_in_progress (in_progress_minimum_log_lsa);
+      if (m_minimum_log_lsa != nullptr)
+	{
+	  const log_lsa in_progress_minimum_log_lsa = m_in_progress_lsas.empty ()
+	      ? MAX_LSA
+	      : *m_in_progress_lsas.cbegin ();
+	  m_minimum_log_lsa->set_for_in_progress (in_progress_minimum_log_lsa);
+	}
 
       assert (m_in_progress_vpids.size () == m_in_progress_lsas.size ());
     }
@@ -545,7 +554,7 @@ namespace cublog
    * redo_parallel - definition
    *********************************************************************/
 
-  redo_parallel::redo_parallel (unsigned a_worker_count, minimum_log_lsa_monitor &a_minimum_log_lsa)
+  redo_parallel::redo_parallel (unsigned a_worker_count, minimum_log_lsa_monitor *a_minimum_log_lsa)
     : m_task_count { a_worker_count }
     , m_worker_pool (nullptr)
     , m_job_queue { a_minimum_log_lsa }
