@@ -68,7 +68,7 @@ void execute_test (const log_recovery_test_config &a_test_config,
     }
 
   cublog::minimum_log_lsa_monitor minimum_log_lsa;
-  cublog::redo_parallel log_redo_parallel (a_test_config.parallel_count, minimum_log_lsa);
+  cublog::redo_parallel log_redo_parallel (a_test_config.parallel_count, &minimum_log_lsa);
 
   ux_ut_database db_online { new ut_database (a_database_config) };
   ux_ut_database db_recovery { new ut_database (a_database_config) };
@@ -202,7 +202,7 @@ TEST_CASE ("log recovery parallel test: idle status", "[ci]")
   initialize_thread_infrastructure ();
 
   cublog::minimum_log_lsa_monitor minimum_log_lsa;
-  cublog::redo_parallel log_redo_parallel (std::thread::hardware_concurrency (), minimum_log_lsa);
+  cublog::redo_parallel log_redo_parallel (std::thread::hardware_concurrency (), &minimum_log_lsa);
 
   REQUIRE (log_redo_parallel.is_idle ());
   REQUIRE (minimum_log_lsa.get () == MAX_LSA);

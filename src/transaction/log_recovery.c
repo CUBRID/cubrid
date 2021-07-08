@@ -991,7 +991,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
    */
   LOG_CS_EXIT (thread_p);
   // *INDENT-OFF*
-  std::unique_ptr<cublog::minimum_log_lsa_monitor> minimum_log_lsa;
   std::unique_ptr<cublog::redo_parallel> parallel_recovery_redo;
 #if defined(SERVER_MODE)
   {
@@ -999,9 +998,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
     assert (log_recovery_redo_parallel_count >= 0);
     if (log_recovery_redo_parallel_count > 0)
       {
-	minimum_log_lsa.reset (new cublog::minimum_log_lsa_monitor ());
-	parallel_recovery_redo.reset (new cublog::redo_parallel (log_recovery_redo_parallel_count,
-								 *minimum_log_lsa.get ()));
+	parallel_recovery_redo.reset (
+	      new cublog::redo_parallel (log_recovery_redo_parallel_count, nullptr));
       }
   }
 #endif
