@@ -239,6 +239,59 @@ namespace cublog
 
   template <typename T>
   void
+  replicator::read_and_redo_btree_stats (cubthread::entry &thread_entry, LOG_RECTYPE rectype, const log_lsa &rec_lsa,
+					 const T &log_rec)
+  {
+    //
+    // Recovery redo does not apply b-tree stats directly into the b-tree root page. But while replicating on the page
+    // server, we have to update the statistics directly into the root page, because it may be fetched by a transaction
+    // server and stats have to be up-to-date at all times.
+    //
+    // To redo the change directly into the root page, we need to simulate having a redo job on the page and we need
+    // the page VPID. The VPID is obtained from the redo data of the log record. Therefore, the redo data must be read
+    // first, then a special job is created with all required information.
+    //
+
+    // Get redo data and read it
+    LOG_RCV rcv;
+    rcv.length = log_rv_get_log_rec_redo_length<T> (log_rec);
+    if (log_rv_get_log_rec_redo_data (&thread_entry, m_reader, log_rec, rcv, rectype, m_undo_unzip, m_redo_unzip)
+	!= NO_ERROR)
+      {
+	logpb_fatal_error (&thread_entry, true, ARG_FILE_LINE, "replicator::read_and_redo_btree_stats");
+	return;
+      }
+    BTID btid;
+    log_unique_stats stats;
+    const char *datap = rcv.data;
+    OR_GET_BTID (datap, &btid);
+    datap += OR_BTID_ALIGNED_SIZE;
+    stats.num_keys = OR_GET_INT (datap);
+    datap += OR_INT_SIZE;
+    stats.num_oids = OR_GET_INT (datap);
+    datap += OR_INT_SIZE;
+    stats.num_nulls = OR_GET_INT (datap);
+    datap += OR_INT_SIZE;
+    VPID root_vpid = { btid.root_pageid, btid.vfid.volid };
+
+    // Create a job or apply the change immediately
+    if (m_parallel_replication_redo)
+      {
+	auto job = std::make_unique<redo_job_btree_stats> (root_vpid, rec_lsa, stats);
+	m_parallel_replication_redo->add (std::move (job));
+      }
+    else
+      {
+	if (btree_update_root_stats_and_set_lsa (&thread_entry, root_vpid, stats, rec_lsa) != NO_ERROR)
+	  {
+	    logpb_fatal_error (&thread_entry, true, ARG_FILE_LINE, "replicator::read_and_redo_btree_stats");
+	    return;
+	  }
+      }
+  }
+
+  template <typename T>
+  void
   replicator::read_and_redo_record (cubthread::entry &thread_entry, LOG_RECTYPE rectype, const log_lsa &rec_lsa)
   {
     m_reader.advance_when_does_not_fit (sizeof (T));
@@ -258,41 +311,7 @@ namespace cublog
     LOG_RCVINDEX rcvindex = log_rv_get_log_rec_data (log_rec).rcvindex;
     if (rcvindex == RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT)
       {
-	LOG_RCV rcv;
-	rcv.length = log_rv_get_log_rec_redo_length<T> (log_rec);
-	const int err = log_rv_get_log_rec_redo_data (&thread_entry, m_reader, log_rec, rcv, rectype, m_undo_unzip,
-			m_redo_unzip);
-	if (err != NO_ERROR)
-	  {
-	    logpb_fatal_error (&thread_entry, true, ARG_FILE_LINE, "");
-	    return;
-	  }
-	BTID btid;
-	log_unique_stats stats;
-	const char *datap = rcv.data;
-	OR_GET_BTID (datap, &btid);
-	datap += OR_BTID_ALIGNED_SIZE;
-	stats.num_keys = OR_GET_INT (datap);
-	datap += OR_INT_SIZE;
-	stats.num_oids = OR_GET_INT (datap);
-	datap += OR_INT_SIZE;
-	stats.num_nulls = OR_GET_INT (datap);
-	datap += OR_INT_SIZE;
-
-	VPID root_vpid = { btid.root_pageid, btid.vfid.volid };
-
-	if (m_parallel_replication_redo)
-	  {
-	    auto job = std::make_unique<redo_job_btree_stats> (root_vpid, rec_lsa, stats);
-	    m_parallel_replication_redo->add (std::move (job));
-	  }
-	else
-	  {
-	    if (btree_update_root_stats_and_set_lsa (&thread_entry, root_vpid, stats, rec_lsa) != NO_ERROR)
-	      {
-		assert (false);
-	      }
-	  }
+	read_and_redo_btree_stats (thread_entry, rectype, rec_lsa, log_rec);
       }
     else
       {
