@@ -18404,7 +18404,7 @@ pt_print_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_bytes (parser, q, "'", 1);
     }
 
-  if (print_detail)
+  if (p->info.dblink_table.is_name && print_detail)
     {
       q = pt_append_bytes (parser, q, " */ ", 4);
     }
