@@ -23,6 +23,7 @@ set(LIBCAS_SOURCES
   ${BROKER_DIR}/cas_function.c 
   ${BROKER_DIR}/cas_execute.c 
   ${BROKER_DIR}/cas_handle.c 
+  ${BROKER_DIR}/cas_handle_procedure.cpp 
   ${BROKER_DIR}/cas_util.c 
   ${BROKER_DIR}/cas_str_like.c 
   ${BROKER_DIR}/cas_xa.c 
