@@ -7406,7 +7406,6 @@ pt_check_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_NODE * at
 
   if (do_semantic_check)
     {
-      (void) parser_walk_tree (parser, qry, pt_set_do_not_replace_orderby, NULL, NULL, NULL);
       qry = pt_semantic_check (parser, qry);
       if (pt_has_error (parser) || qry == NULL)
 	{
@@ -13473,6 +13472,7 @@ pt_validate_query_spec (PARSER_CONTEXT * parser, PT_NODE * s, DB_OBJECT * c)
 {
   PT_NODE *attrs = NULL;
   int error_code = NO_ERROR;
+  bool do_not_replace_orderby;
 
   assert (parser != NULL && s != NULL && c != NULL);
 
@@ -13491,7 +13491,8 @@ pt_validate_query_spec (PARSER_CONTEXT * parser, PT_NODE * s, DB_OBJECT * c)
       goto error_exit;
     }
 
-  s = parser_walk_tree (parser, s, pt_set_is_view_spec, NULL, NULL, NULL);
+  do_not_replace_orderby = true;
+  s = parser_walk_tree (parser, s, pt_set_is_view_spec, (void *) &do_not_replace_orderby, NULL, NULL);
   assert (s != NULL);
 
   attrs = pt_get_attributes (parser, c);

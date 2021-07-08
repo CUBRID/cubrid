@@ -1126,25 +1126,6 @@ pt_set_is_view_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 }				/* pt_set_is_view_spec */
 
 /*
- * pt_set_do_not_replace_orderby () -
- *   return:
- *   parser(in):
- *   node(in):
- *   arg(in):
- *   continue_walk(in):
- */
-PT_NODE *
-pt_set_do_not_replace_orderby (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
-{
-  if (pt_is_query (node))
-    {
-      node->flag.do_not_replace_orderby = 1;
-    }
-
-  return node;
-}
-
-/*
  * pt_bind_names_post() -  bind names & path expressions of this statement node
  *   return:  node
  *   parser(in): the parser context
