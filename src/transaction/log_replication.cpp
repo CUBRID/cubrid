@@ -37,6 +37,10 @@
 
 namespace cublog
 {
+  // replicate_btree_stats does redo record simulation
+  static void replicate_btree_stats (cubthread::entry &thread_entry, const VPID &root_vpid,
+				     const log_unique_stats &stats, const log_lsa &record_lsa);
+  // a job for replication b-tree stats update
   class redo_job_btree_stats : public redo_parallel::redo_job_base
   {
     public:
@@ -48,20 +52,6 @@ namespace cublog
     private:
       log_unique_stats m_stats;
   };
-
-  redo_job_btree_stats::redo_job_btree_stats (const VPID &vpid, const log_lsa &record_lsa, const log_unique_stats &stats)
-    : redo_parallel::redo_job_base (vpid, record_lsa)
-    , m_stats (stats)
-  {
-  }
-
-  int
-  redo_job_btree_stats::execute (THREAD_ENTRY *thread_p, log_reader &, LOG_ZIP &, LOG_ZIP &)
-  {
-    const int err = btree_update_root_stats_and_set_lsa (thread_p, get_vpid (), m_stats, get_log_lsa ());
-    assert (err == NO_ERROR);
-    return err;
-  }
 
   replicator::replicator (const log_lsa &start_redo_lsa)
     : m_redo_lsa { start_redo_lsa }
@@ -148,7 +138,7 @@ namespace cublog
       }
     else
       {
-	// nothing needs to be done in the synchronous execution scenarion
+	// nothing needs to be done in the synchronous execution scenario
 	// the default/internal implementation of the retire functor used to delete the task
 	// itself; this is now handled by the instantiating entity
       }
@@ -282,11 +272,7 @@ namespace cublog
       }
     else
       {
-	if (btree_update_root_stats_and_set_lsa (&thread_entry, root_vpid, stats, rec_lsa) != NO_ERROR)
-	  {
-	    logpb_fatal_error (&thread_entry, true, ARG_FILE_LINE, "replicator::read_and_redo_btree_stats");
-	    return;
-	  }
+	replicate_btree_stats (thread_entry, root_vpid, stats, rec_lsa);
       }
   }
 
@@ -418,6 +404,35 @@ namespace cublog
 		      a_start_time_msec);
 	return ER_FAILED;
       }
+  }
+
+  void
+  replicate_btree_stats (cubthread::entry &thread_entry, const VPID &root_vpid, const log_unique_stats &stats,
+			 const log_lsa &record_lsa)
+  {
+    PAGE_PTR root_page = log_rv_redo_fix_page (&thread_entry, &root_vpid, RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT);
+    if (root_page == nullptr)
+      {
+	logpb_fatal_error (&thread_entry, true, ARG_FILE_LINE, "cublog::replicate_btree_stats");
+	return;
+      }
+
+    btree_root_update_stats (&thread_entry, root_page, stats);
+    pgbuf_set_lsa (&thread_entry, root_page, &record_lsa);
+    pgbuf_set_dirty_and_free (&thread_entry, root_page);
+  }
+
+  redo_job_btree_stats::redo_job_btree_stats (const VPID &vpid, const log_lsa &record_lsa, const log_unique_stats &stats)
+    : redo_parallel::redo_job_base (vpid, record_lsa)
+    , m_stats (stats)
+  {
+  }
+
+  int
+  redo_job_btree_stats::execute (THREAD_ENTRY *thread_p, log_reader &, LOG_ZIP &, LOG_ZIP &)
+  {
+    replicate_btree_stats (*thread_p, get_vpid (), m_stats, get_log_lsa ());
+    return NO_ERROR;
   }
 
 } // namespace cublog

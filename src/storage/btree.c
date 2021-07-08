@@ -14039,18 +14039,14 @@ exit_on_error:
   return ret;
 }
 
+// btree_root_update_stats () - update stats in the b-tree root page header
+//
+// !! root_page must be a valid unique index b-tree root page
+// !! caller must manage the logging
 int
-btree_update_root_stats_and_set_lsa (THREAD_ENTRY * thread_p, const VPID & root_vpid, const log_unique_stats & stats,
-				     const log_lsa & new_lsa)
+btree_root_update_stats (THREAD_ENTRY * thread_p, PAGE_PTR root_page, const log_unique_stats & stats)
 {
-  int ret = NO_ERROR;
-  PAGE_PTR root_page = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-  if (root_page == NULL)
-    {
-      ASSERT_ERROR_AND_SET (ret);
-      return ret;
-    }
-
+  assert (root_page != NULL);
   (void) pgbuf_check_page_ptype (thread_p, root_page, PAGE_BTREE);
 
   BTREE_ROOT_HEADER *root_header = btree_get_root_header (thread_p, root_page);
@@ -14065,15 +14061,6 @@ btree_update_root_stats_and_set_lsa (THREAD_ENTRY * thread_p, const VPID & root_
   root_header->num_keys = stats.num_keys;
 
   pgbuf_set_dirty (thread_p, root_page, DONT_FREE);
-  log_lsa page_lsa = *pgbuf_get_lsa (root_page);
-  if (page_lsa < new_lsa)
-    {
-      if (pgbuf_set_lsa (thread_p, root_page, &new_lsa) == NULL)
-	{
-	  assert (false);
-	}
-    }
-  return NO_ERROR;
 }
 
 /*
@@ -14088,20 +14075,32 @@ btree_update_root_stats_and_set_lsa (THREAD_ENTRY * thread_p, const VPID & root_
 int
 btree_reflect_global_unique_statistics (THREAD_ENTRY * thread_p, GLOBAL_UNIQUE_STATS * unique_stat_info)
 {
-  VPID root_vpid;
-  int ret = NO_ERROR;
-
   assert (unique_stat_info != NULL);
 
-  root_vpid.pageid = unique_stat_info->btid.root_pageid;
-  root_vpid.volid = unique_stat_info->btid.vfid.volid;
-  ret =
-    btree_update_root_stats_and_set_lsa (thread_p, root_vpid, unique_stat_info->unique_stats,
-					 unique_stat_info->last_log_lsa);
-  if (ret != NO_ERROR)
+  // Fix root page
+  VPID root_vpid
+  {
+  unique_stat_info->btid.root_pageid, unique_stat_info->btid.vfid.volid};
+  PAGE_PTR root_page = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  if (root_page == NULL)
     {
-      ASSERT_ERROR ();
+      int ret;
+      ASSERT_ERROR_AND_SET (ret);
       return ret;
+    }
+
+  // Update stats
+  btree_root_update_stats (thread_p, root_page, unique_stat_info->unique_stats);
+
+  // If the page LSA is less than the stats LSA, also update the page LSA. If page suffered other more recent changes,
+  // the lsa must be left untouched.
+  log_lsa page_lsa = *pgbuf_get_lsa (root_page);
+  if (page_lsa < unique_stat_info->last_log_lsa)
+    {
+      if (pgbuf_set_lsa (thread_p, root_page, &unique_stat_info->last_log_lsa) == NULL)
+	{
+	  assert (false);
+	}
     }
 
   if (prm_get_bool_value (PRM_ID_LOG_UNIQUE_STATS) == true)
