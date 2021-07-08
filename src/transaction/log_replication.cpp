@@ -420,8 +420,8 @@ namespace cublog
   {
   }
 
-  int  redo_job_replication_delay_impl::execute (THREAD_ENTRY *thread_p, log_reader &,
-      LOG_ZIP &, LOG_ZIP &)
+  int
+  redo_job_replication_delay_impl::execute (THREAD_ENTRY *thread_p, log_reader &, LOG_ZIP &, LOG_ZIP &)
   {
     const int res = log_rpl_calculate_replication_delay (thread_p, m_start_time_msec);
     return res;

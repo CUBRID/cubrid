@@ -50,7 +50,6 @@
 #include "regu_var.hpp"
 #include "fault_injection.h"
 #include "dbtype.h"
-#include "scope_exit.hpp"
 #include "thread_manager.hpp"
 
 #include <assert.h>
