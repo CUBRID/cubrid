@@ -26,7 +26,6 @@ project(fake)
 #
 set(FAKE_THREAD_UTILS_SRC
   fake_error_manager.cpp
-  fake_page_server.cpp
   fake_system_parameter.cpp
   fake_thread_entry.cpp
   fake_thread_utils.cpp
@@ -42,7 +41,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${FAKE_THREAD_UTILS_SRC}
   PROPERTIES LANGUAGE CXX
 )
-add_library(fake_thread_utils
+add_library(fake_thread_utils STATIC
   ${FAKE_THREAD_UTILS_SRC}
 )
 target_compile_options(fake_thread_utils PRIVATE

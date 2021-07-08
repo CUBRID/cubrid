@@ -44,15 +44,14 @@ target_include_directories(test_packing PRIVATE
   ${TEST_INCLUDES}
   )
 
-target_link_libraries(test_packing PRIVATE
-  test_common
-  )
 if(UNIX)
   target_link_libraries(test_packing PRIVATE
+    test_common
     cubrid
     )
 elseif(WIN32)
-	target_link_libraries(test_packing PRIVATE
+	target_link_libraries(test_packing PRIVATE 
+    test_common
     cubrid-win-lib
     )
 else()

@@ -64,6 +64,7 @@ class page_server
     void receive_log_prior_list (cubpacking::unpacker &upk);
     void receive_log_page_fetch (cubpacking::unpacker &upk);
     void receive_data_page_fetch (cubpacking::unpacker &upk);
+    void receive_disconnect_request (cubpacking::unpacker &upk);
 
     void on_log_page_read_result (const LOG_PAGE *log_page, int error_code);
     void on_data_page_read_result (const FILEIO_PAGE *page_ptr, int error_code);

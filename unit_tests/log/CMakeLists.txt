@@ -49,6 +49,10 @@ target_include_directories(test_checkpoint_info PRIVATE
 add_dependencies(test_checkpoint_info
   ${CATCH2_TARGET}
   )
+if(WIN32)
+  target_link_libraries(test_checkpoint_info PRIVATE ws2_32)
+endif(WIN32)
+
 #
 # test_meta_log
 #
@@ -153,6 +157,7 @@ add_dependencies(test_prior_sendrecv
 #
 set(TEST_LOG_PAGE_FETCHER_SOURCES
   ${STORAGE_DIR}/async_page_fetcher.cpp
+  dummy_page_server.cpp
   test_main_log_page_fetcher.cpp)
 
 SET_SOURCE_FILES_PROPERTIES(
@@ -231,7 +236,9 @@ target_compile_definitions(test_log_lsa_utils PRIVATE
 target_include_directories(test_log_lsa_utils PRIVATE
   ${TEST_INCLUDES}
   )
-# target_link_libraries(test_log_lsa_utils fake_thread_utils)
+if (WIN32)
+ target_link_libraries(test_log_lsa_utils PRIVATE ws2_32)
+endif ()
 add_dependencies(test_log_lsa_utils
   ${CATCH2_TARGET}
   )
@@ -242,6 +249,7 @@ add_dependencies(test_log_lsa_utils
 
 set(TEST_DATA_PAGE_FETCHER_SOURCES
   ${STORAGE_DIR}/async_page_fetcher.cpp
+  dummy_page_server.cpp
   test_main_data_page_fetcher.cpp)
 
 SET_SOURCE_FILES_PROPERTIES(
@@ -303,7 +311,7 @@ target_compile_definitions(test_log_recovery_parallel PRIVATE
 target_include_directories(test_log_recovery_parallel PRIVATE
   ${TEST_INCLUDES}
   )
-#target_link_libraries(test_log_recovery_parallel PRIVATE test_common)
+target_link_libraries(test_log_recovery_parallel PRIVATE test_common)
 if(UNIX)
   target_link_libraries(test_log_recovery_parallel PRIVATE cubrid )
 elseif(WIN32)
@@ -311,4 +319,3 @@ elseif(WIN32)
 else()
   message( SEND_ERROR "Recovery only works on UNIX-like/WIN32")
 endif ()
-
