@@ -219,6 +219,7 @@ EXPORTS
     db_is_client_cache_reusable
     db_is_instance
     db_check_single_query
+	db_check_single_query_and_set_error
     db_is_subclass
     db_is_system_class
     db_is_vclass
