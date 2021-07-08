@@ -202,7 +202,7 @@ namespace cubcomm
 
       request_client_server (channel &&chn);
       request_client_server (const request_client_server &) = delete;
-      request_client_server (request_client_server &&other) = delete;
+      request_client_server (request_client_server &&other) = default;
 
       template <typename ... PackableArgs>
       int send (ClientMsgId msgid, const PackableArgs &... args);
