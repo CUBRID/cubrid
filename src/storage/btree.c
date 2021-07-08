@@ -14101,6 +14101,7 @@ btree_reflect_global_unique_statistics (THREAD_ENTRY * thread_p, GLOBAL_UNIQUE_S
 	  assert (false);
 	}
     }
+  pgbuf_unfix (thread_p, root_page);
 
   if (prm_get_bool_value (PRM_ID_LOG_UNIQUE_STATS) == true)
     {
