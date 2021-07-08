@@ -225,6 +225,12 @@ active_tran_server::init_page_server_hosts (const char *db_name)
 int
 active_tran_server::connect_to_page_server (const cubcomm::node &node, const char *db_name)
 {
+  auto ps_conn_error_lambda = [&node] ()
+  {
+    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_PAGESERVER_CONNECTION, 1, node.get_host ().c_str ());
+    return ER_NET_PAGESERVER_CONNECTION;
+  };
+
   assert_is_active_tran_server ();
 
   // connect to page server
@@ -237,21 +243,13 @@ active_tran_server::connect_to_page_server (const cubcomm::node &node, const cha
 				   CMD_SERVER_SERVER_CONNECT);
   if (comm_error_code != css_error_code::NO_ERRORS)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_PAGESERVER_CONNECTION, 1, node.get_host ().c_str ());
-      return ER_NET_PAGESERVER_CONNECTION;
+      return ps_conn_error_lambda ();
     }
 
   if (!srv_chn.send_int (static_cast<int> (cubcomm::server_server::CONNECT_ACTIVE_TRAN_TO_PAGE_SERVER)))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_PAGESERVER_CONNECTION, 1, node.get_host ().c_str ());
-      return ER_NET_PAGESERVER_CONNECTION;
+      return ps_conn_error_lambda ();
     }
-
-  auto ps_conn_error_lambda = [&node] ()
-  {
-    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_PAGESERVER_CONNECTION, 1, node.get_host ().c_str ());
-    return ER_NET_PAGESERVER_CONNECTION;
-  };
 
   int returned_code;
   if (srv_chn.recv_int (returned_code) != css_error_code::NO_ERRORS)
