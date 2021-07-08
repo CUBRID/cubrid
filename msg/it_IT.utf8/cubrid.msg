@@ -1340,7 +1340,7 @@ Controllare il percorso del file della chiave (_keys) e assicurarsi che includa 
 1269 At least one valid page server host is necessary, but no page server could be connected.
 1270 %1$s cannot be executed on a server with remote storage enabled.
 1271 Command cannot be executed on a server with remote storage enabled.
-1272 Error reserved for scalability development.
+1272 Error connecting with the active transaction server at %s.
 1273 Error reserved for scalability development.
 1274 Error reserved for scalability development.
 1275 Error reserved for scalability development.
