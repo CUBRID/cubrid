@@ -7406,7 +7406,6 @@ pt_check_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_NODE * at
 
   if (do_semantic_check)
     {
-      qry->flag.do_not_replace_orderby = 1;
       qry = pt_semantic_check (parser, qry);
       if (pt_has_error (parser) || qry == NULL)
 	{
@@ -7928,6 +7927,7 @@ pt_check_create_view (PARSER_CONTEXT * parser, PT_NODE * stmt)
   PT_NODE *prev_qry;
   const char *name = NULL;
   int attr_count = 0;
+  bool do_not_replace_orderby;
 
   assert (parser != NULL);
 
@@ -7984,7 +7984,9 @@ pt_check_create_view (PARSER_CONTEXT * parser, PT_NODE * stmt)
 
       /* TODO This seems to flag too many queries as view specs because it also traverses the tree to subqueries. It
        * might need a pre_function that returns PT_STOP_WALK for subqueries. */
-      result_stmt = parser_walk_tree (parser, crt_qry, pt_set_is_view_spec, NULL, NULL, NULL);
+      do_not_replace_orderby = true;
+      result_stmt =
+	parser_walk_tree (parser, crt_qry, pt_set_is_view_spec, (void *) &do_not_replace_orderby, NULL, NULL);
       if (result_stmt == NULL)
 	{
 	  assert (false);
@@ -7993,7 +7995,6 @@ pt_check_create_view (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	}
       crt_qry = result_stmt;
 
-      crt_qry->flag.do_not_replace_orderby = 1;
       result_stmt = pt_semantic_check (parser, crt_qry);
       if (pt_has_error (parser))
 	{
@@ -13471,6 +13472,7 @@ pt_validate_query_spec (PARSER_CONTEXT * parser, PT_NODE * s, DB_OBJECT * c)
 {
   PT_NODE *attrs = NULL;
   int error_code = NO_ERROR;
+  bool do_not_replace_orderby;
 
   assert (parser != NULL && s != NULL && c != NULL);
 
@@ -13489,7 +13491,8 @@ pt_validate_query_spec (PARSER_CONTEXT * parser, PT_NODE * s, DB_OBJECT * c)
       goto error_exit;
     }
 
-  s = parser_walk_tree (parser, s, pt_set_is_view_spec, NULL, NULL, NULL);
+  do_not_replace_orderby = true;
+  s = parser_walk_tree (parser, s, pt_set_is_view_spec, (void *) &do_not_replace_orderby, NULL, NULL);
   assert (s != NULL);
 
   attrs = pt_get_attributes (parser, c);
