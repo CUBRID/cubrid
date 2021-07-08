@@ -217,8 +217,6 @@ namespace cubcomm
   void er_log_recv_request (const channel &chn, int msgid, size_t size);
   void er_log_send_fail (const channel &chn, css_error_code err);
   void er_log_recv_fail (const channel &chn, css_error_code err);
-  void er_log_thread_started (const void *instance_ptr, const void *thread_ptr, std::thread::id thread_id);
-  void er_log_thread_finished (const void *instance_ptr, const void *thread_ptr, std::thread::id thread_id);
 }
 
 namespace cubcomm
@@ -282,8 +280,6 @@ namespace cubcomm
 
     m_shutdown = false;
     m_thread = std::thread (&request_server::loop_handle_requests, std::ref (*this));
-
-    er_log_thread_started (this, &m_thread, m_thread.get_id ());
   }
 
   template <typename MsgId>
@@ -318,7 +314,6 @@ namespace cubcomm
 	  }
 	handle_request (message_buffer, message_size);
       }
-    er_log_thread_finished (this, &m_thread, m_thread.get_id ());
   }
 
   template <typename MsgId>

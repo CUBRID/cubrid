@@ -66,27 +66,4 @@ namespace cubcomm
   {
     return er_log_sendrecv_fail ("Receive", chn, err);
   }
-
-  static void
-  er_log_thread_start_or_finish (const void *instance_ptr, const void *thread_ptr, std::thread::id thread_id,
-				 const char *action_str)
-  {
-    if (prm_get_bool_value (PRM_ID_ER_LOG_COMM_REQUEST))
-      {
-	_er_log_debug (ARG_FILE_LINE, "[COMM REQUEST] Thread ptr=%p, id=%d on instance_p=%p %s.\n", thread_ptr,
-		       thread_id, instance_ptr, action_str);
-      }
-  }
-
-  void
-  er_log_thread_started (const void *instance_ptr, const void *thread_ptr, std::thread::id thread_id)
-  {
-    er_log_thread_start_or_finish (instance_ptr, thread_ptr, thread_id, "started");
-  }
-
-  void
-  er_log_thread_finished (const void *instance_ptr, const void *thread_ptr, std::thread::id thread_id)
-  {
-    er_log_thread_start_or_finish (instance_ptr, thread_ptr, thread_id, "finished");
-  }
 }

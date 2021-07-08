@@ -21,12 +21,10 @@ project (request_client_server)
 set (TEST_REQUEST_CS_SOURCES
   ${BASE_DIR}/mem_block.cpp
   ${BASE_DIR}/packer.cpp
-  ${COMMUNICATION_DIR}/request_client_server.cpp
   comm_channel_mock.cpp
   test_main.cpp
   )
 set (TEST_REQUEST_CS_HEADERS
-  ${COMMUNICATION_DIR}/request_client_server.hpp
   comm_channel_mock.hpp
   )
 
