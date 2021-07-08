@@ -963,30 +963,3 @@ or_unpack_value (const char *buf, DB_VALUE *value)
 {
   return nullptr;
 }
-
-namespace cubcomm
-{
-  void
-  er_log_send_request (const channel &chn, int msgid, size_t size)
-  {
-
-  }
-
-  void
-  er_log_recv_request (const channel &chn, int msgid, size_t size)
-  {
-
-  }
-
-  void
-  er_log_send_fail (const channel &chn, css_error_code err)
-  {
-
-  }
-
-  void
-  er_log_recv_fail (const channel &chn, css_error_code err)
-  {
-
-  }
-}
