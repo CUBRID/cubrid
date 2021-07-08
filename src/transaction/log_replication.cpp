@@ -111,7 +111,7 @@ namespace cublog
 	m_minimum_log_lsa.reset (new cublog::minimum_log_lsa_monitor ());
 	// no need to reset with start redo lsa
 
-	m_parallel_replication_redo.reset (new cublog::redo_parallel (replication_parallel, *m_minimum_log_lsa.get ()));
+	m_parallel_replication_redo.reset (new cublog::redo_parallel (replication_parallel, m_minimum_log_lsa.get ()));
       }
 
     // Create the daemon

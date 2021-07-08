@@ -502,6 +502,9 @@ static bool fileio_synchronize_sys_volume (THREAD_ENTRY * thread_p, FILEIO_SYSTE
 static bool fileio_synchronize_volume (THREAD_ENTRY * thread_p, FILEIO_VOLUME_INFO * vol_info_p, APPLY_ARG * arg);
 static int fileio_cache (VOLID volid, const char *vlabel, int vdes, FILEIO_LOCKF_TYPE lockf_type);
 static void fileio_decache (THREAD_ENTRY * thread_p, int vdes);
+static void fileio_dump_cached_file (VOLID volid, int vdes, const char *vlabel);
+static bool fileio_dump_volinfo (THREAD_ENTRY * thread_p, FILEIO_VOLUME_INFO * vol_info_p, APPLY_ARG *);
+static bool fileio_dump_sysvolinfo (THREAD_ENTRY * thread_p, FILEIO_SYSTEM_VOLUME_INFO * sys_volinfo, APPLY_ARG *);
 static VOLID fileio_get_volume_id (int vdes);
 static bool fileio_is_volume_label_equal (THREAD_ENTRY * thread_p, FILEIO_VOLUME_INFO * vol_info_p, APPLY_ARG * arg);
 static int fileio_expand_permanent_volume_info (FILEIO_VOLUME_HEADER * header, int volid);
@@ -2089,6 +2092,60 @@ fileio_close (int vol_fd)
       er_set_with_oserror (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_IO_DISMOUNT_FAIL, 1,
 			   fileio_get_volume_label_by_fd (vol_fd, PEEK));
     }
+}
+
+/*
+ * fileio_cache_dump () - Iterate through all the cached volumes
+ * and dump all the important information about the volume.
+ *    return: void
+ *    thread_p(in) - Thread entry
+ */
+void
+fileio_cache_dump (THREAD_ENTRY * thread_p)
+{
+  APPLY_ARG arg = { 0 };
+  (void) fileio_traverse_system_volume (thread_p, fileio_dump_sysvolinfo, &arg);
+  (void) fileio_traverse_permanent_volume (thread_p, fileio_dump_volinfo, &arg);
+  (void) fileio_traverse_temporary_volume (thread_p, fileio_dump_volinfo, &arg);
+}
+
+/*
+ * fileio_dump_cached_file () - Dump information about given volume.
+ *    return: void
+ *    volid(in):  Volume ID
+ *    vdes(in):   Volume descriptor
+ *    vlabel(in): Volume label
+ */
+static void
+fileio_dump_cached_file (VOLID volid, int vdes, const char *vlabel)
+{
+  _er_log_debug (ARG_FILE_LINE, "Cached volume with volid=%d, vdes=%d, label=%s\n", volid, vdes, vlabel);
+}
+
+/*
+ * fileio_dump_volinfo () - Iterator function to call fileio_dump_volinfo
+ * to print volume information.
+ *    return: false to keep the iteration going
+ *    vdvol_info_p(in): Volume information structure
+ */
+static bool
+fileio_dump_volinfo (THREAD_ENTRY *, FILEIO_VOLUME_INFO * vol_info_p, APPLY_ARG *)
+{
+  fileio_dump_cached_file (vol_info_p->volid, vol_info_p->vdes, vol_info_p->vlabel);
+  return false;
+}
+
+/*
+ * fileio_dump_sysvolinfo () - Iterator function to call fileio_dump_volinfo
+ * to print system volume information.
+ *    return: false to keep the iteration going
+ *    sys_volinfo(in): System volume information structure
+ */
+static bool
+fileio_dump_sysvolinfo (THREAD_ENTRY *, FILEIO_SYSTEM_VOLUME_INFO * sys_volinfo, APPLY_ARG *)
+{
+  fileio_dump_cached_file (sys_volinfo->volid, sys_volinfo->vdes, sys_volinfo->vlabel);
+  return false;
 }
 
 /*
