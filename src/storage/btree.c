@@ -50,6 +50,7 @@
 #include "regu_var.hpp"
 #include "fault_injection.h"
 #include "dbtype.h"
+#include "scope_exit.hpp"
 #include "thread_manager.hpp"
 
 #include <assert.h>
@@ -14038,6 +14039,43 @@ exit_on_error:
   return ret;
 }
 
+int
+btree_update_root_stats_and_set_lsa (THREAD_ENTRY * thread_p, const VPID & root_vpid, const log_unique_stats & stats,
+				     const log_lsa & new_lsa)
+{
+  int ret = NO_ERROR;
+  PAGE_PTR root_page = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  if (root_page == NULL)
+    {
+      ASSERT_ERROR_AND_SET (ret);
+      return ret;
+    }
+
+  (void) pgbuf_check_page_ptype (thread_p, root_page, PAGE_BTREE);
+
+  BTREE_ROOT_HEADER *root_header = btree_get_root_header (thread_p, root_page);
+  assert (root_header != NULL);
+
+  assert (BTREE_IS_UNIQUE (root_header->unique_pk));
+  assert (root_header->num_nulls != -1);
+
+  /* update header information */
+  root_header->num_nulls = stats.num_nulls;
+  root_header->num_oids = stats.num_oids;
+  root_header->num_keys = stats.num_keys;
+
+  pgbuf_set_dirty (thread_p, root_page, DONT_FREE);
+  log_lsa page_lsa = *pgbuf_get_lsa (root_page);
+  if (page_lsa < new_lsa)
+    {
+      if (pgbuf_set_lsa (thread_p, root_page, &new_lsa) == NULL)
+	{
+	  assert (false);
+	}
+    }
+  return NO_ERROR;
+}
+
 /*
  * btree_reflect_global_unique_statistics () - reflects the global statistical information into btree header
  *   return: NO_ERROR
@@ -14048,92 +14086,37 @@ exit_on_error:
  *	 already logged at commit stage.
  */
 int
-btree_reflect_global_unique_statistics (THREAD_ENTRY * thread_p, GLOBAL_UNIQUE_STATS * unique_stat_info,
-					bool only_active_tran)
+btree_reflect_global_unique_statistics (THREAD_ENTRY * thread_p, GLOBAL_UNIQUE_STATS * unique_stat_info)
 {
   VPID root_vpid;
-  PAGE_PTR root = NULL;
-  BTREE_ROOT_HEADER *root_header = NULL;
   int ret = NO_ERROR;
-  LOG_LSA *page_lsa = NULL;
 
-  /* check if unique_stat_info is NULL */
-  if (unique_stat_info == NULL)
-    {
-      assert (false);
-      return ER_FAILED;
-    }
+  assert (unique_stat_info != NULL);
 
-  /* fix the root page */
   root_vpid.pageid = unique_stat_info->btid.root_pageid;
   root_vpid.volid = unique_stat_info->btid.vfid.volid;
-  root = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-  if (root == NULL)
+  ret =
+    btree_update_root_stats_and_set_lsa (thread_p, root_vpid, unique_stat_info->unique_stats,
+					 unique_stat_info->last_log_lsa);
+  if (ret != NO_ERROR)
     {
-      ASSERT_ERROR_AND_SET (ret);
-      goto exit;
+      ASSERT_ERROR ();
+      return ret;
     }
 
-  (void) pgbuf_check_page_ptype (thread_p, root, PAGE_BTREE);
-
-  /* read the root information */
-  root_header = btree_get_root_header (thread_p, root);
-  if (root_header == NULL)
+  if (prm_get_bool_value (PRM_ID_LOG_UNIQUE_STATS) == true)
     {
-      assert (false);
-      ret = ER_FAILED;
-      goto exit;
+      _er_log_debug (ARG_FILE_LINE,
+		     "Reflect unique statistics to index (%d, %d|%d):"
+		     "nulls=%d, oids=%d, keys=%d. LSA=%lld|%d.\n", unique_stat_info->btid.root_pageid,
+		     unique_stat_info->btid.vfid.volid, unique_stat_info->btid.vfid.fileid,
+		     unique_stat_info->unique_stats.num_nulls, unique_stat_info->unique_stats.num_oids,
+		     unique_stat_info->unique_stats.num_keys,
+		     (long long int) unique_stat_info->last_log_lsa.pageid,
+		     (int) unique_stat_info->last_log_lsa.offset);
     }
 
-  if (root_header->num_nulls != -1)
-    {
-      assert_release (BTREE_IS_UNIQUE (root_header->unique_pk));
-
-      if (!only_active_tran || logtb_is_current_active (thread_p))
-	{
-	  /* update header information */
-	  root_header->num_nulls = unique_stat_info->unique_stats.num_nulls;
-	  root_header->num_oids = unique_stat_info->unique_stats.num_oids;
-	  root_header->num_keys = unique_stat_info->unique_stats.num_keys;
-
-	  page_lsa = pgbuf_get_lsa (root);
-	  /* update the page's LSA to the last global unique statistics change that was made at commit, only if it is
-	   * newer than the last change recorded in the page's LSA. */
-	  if (LSA_LT (page_lsa, &unique_stat_info->last_log_lsa))
-	    {
-	      if (pgbuf_set_lsa (thread_p, root, &unique_stat_info->last_log_lsa) == NULL)
-		{
-		  assert (false);
-		  ret = ER_FAILED;
-		  goto exit;
-		}
-	    }
-
-	  /* set the root page as dirty page */
-	  pgbuf_set_dirty (thread_p, root, DONT_FREE);
-
-	  if (prm_get_bool_value (PRM_ID_LOG_UNIQUE_STATS) == true)
-	    {
-	      _er_log_debug (ARG_FILE_LINE,
-			     "Reflect unique statistics to index (%d, %d|%d):"
-			     "nulls=%d, oids=%d, keys=%d. LSA=%lld|%d.\n", unique_stat_info->btid.root_pageid,
-			     unique_stat_info->btid.vfid.volid, unique_stat_info->btid.vfid.fileid,
-			     unique_stat_info->unique_stats.num_nulls, unique_stat_info->unique_stats.num_oids,
-			     unique_stat_info->unique_stats.num_keys,
-			     (long long int) unique_stat_info->last_log_lsa.pageid,
-			     (int) unique_stat_info->last_log_lsa.offset);
-	    }
-	}
-    }
-
-exit:
-
-  if (root != NULL)
-    {
-      pgbuf_unfix_and_init (thread_p, root);
-    }
-
-  return ret;
+  return NO_ERROR;
 }
 
 /*

@@ -37,41 +37,6 @@
 
 namespace cublog
 {
-  int
-  rv_redo_btree_stats (THREAD_ENTRY *thread_p, const VPID &vpid, const LOG_LSA &record_lsa,
-		       const log_unique_stats &stats)
-  {
-    // Simulate what recovery redo would do to apply the changes:
-    //
-    //  1. Fix the page exclusively.
-    //  2. Apply change
-    //  3. Update page LSA
-    //  4. Set dirty and free page.
-    //
-
-    int error_code = NO_ERROR;
-    PAGE_PTR root_page = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-    if (root_page == NULL)
-      {
-	assert (false);	    // I can't fail, can I?
-	return ER_FAILED;
-      }
-
-    // Get the b-tree header and update the stats
-
-    BTREE_ROOT_HEADER *root_header = btree_get_root_header (thread_p, root_page);
-    assert (root_header != nullptr);
-
-    root_header->num_keys = stats.num_keys;
-    root_header->num_oids = stats.num_oids;
-    root_header->num_nulls = stats.num_nulls;
-
-    pgbuf_set_lsa (thread_p, root_page, &record_lsa);
-    pgbuf_set_dirty_and_free (thread_p, root_page);
-
-    return NO_ERROR;
-  }
-
   class redo_job_btree_stats : public redo_parallel::redo_job_base
   {
     public:
@@ -93,7 +58,9 @@ namespace cublog
   int
   redo_job_btree_stats::execute (THREAD_ENTRY *thread_p, log_reader &, LOG_ZIP &, LOG_ZIP &)
   {
-    return rv_redo_btree_stats (thread_p, get_vpid (), get_log_lsa (), m_stats);
+    const int err = btree_update_root_stats_and_set_lsa (thread_p, get_vpid (), m_stats, get_log_lsa ());
+    assert (err == NO_ERROR);
+    return err;
   }
 
   replicator::replicator (const log_lsa &start_redo_lsa)
@@ -321,7 +288,10 @@ namespace cublog
 	  }
 	else
 	  {
-	    rv_redo_btree_stats (&thread_entry, root_vpid, rec_lsa, stats);
+	    if (btree_update_root_stats_and_set_lsa (&thread_entry, root_vpid, stats, rec_lsa) != NO_ERROR)
+	      {
+		assert (false);
+	      }
 	  }
       }
     else

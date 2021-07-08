@@ -682,6 +682,8 @@ extern int btree_update (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * old_ke
 			 MVCC_REC_HEADER * p_mvcc_rec_header);
 extern int btree_reflect_global_unique_statistics (THREAD_ENTRY * thread_p, GLOBAL_UNIQUE_STATS * unique_stat_info,
 						   bool only_active_tran);
+extern int btree_update_root_stats_and_set_lsa (THREAD_ENTRY * thread_p, const VPID & root_vpid,
+						const log_unique_stats & stats, const log_lsa & new_lsa);
 extern int btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, int flag_minkey);
 extern bool btree_multicol_key_is_null (DB_VALUE * key);
 extern int btree_multicol_key_has_null (DB_VALUE * key);
