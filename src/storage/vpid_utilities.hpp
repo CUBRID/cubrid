@@ -56,6 +56,18 @@ namespace std
 	}
     }
   };
+
+  template<>
+  struct hash<VPID>
+  {
+    inline std::size_t operator () (const VPID &val) const noexcept
+    {
+      std::size_t res = 0;
+      res ^= std::hash<short> {} (val.volid) + 0x9e3779b9 + (res << 6) + (res >> 2);
+      res ^= std::hash<int32_t> {} (val.pageid) + 0x9e3779b9 + (res << 6) + (res >> 2);
+      return res;
+    }
+  };
 }
 
 #endif // _VPID_UTILS_HPP_

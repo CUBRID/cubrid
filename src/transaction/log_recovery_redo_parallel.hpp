@@ -25,6 +25,7 @@
 #if defined(SERVER_MODE)
 #include "thread_manager.hpp"
 #include "thread_worker_pool.hpp"
+#include "vpid_utilities.hpp"
 
 #include <atomic>
 #include <condition_variable>
@@ -32,6 +33,18 @@
 #include <mutex>
 #include <set>
 #endif /* SERVER_MODE */
+
+//namespace std
+//{
+//  template<>
+//  struct hash<LOG_LSA>
+//  {
+//    inline std::size_t operator () (const LOG_LSA &val) const noexcept
+//    {
+//      return std::hash<std::int64_t> {} (*reinterpret_cast<const std::int64_t *> (&val));
+//    }
+//  };
+//}
 
 namespace cublog
 {
@@ -158,8 +171,10 @@ namespace cublog
       {
 	  using ux_redo_job_base = std::unique_ptr<redo_job_base>;
 	  using ux_redo_job_deque = std::deque<ux_redo_job_base>;
+	  using vpid_ux_redo_job_deque_map_t = std::unordered_map<vpid, ux_redo_job_deque, std::hash<VPID>>;
 	  using vpid_set = std::set<VPID>;
 	  using log_lsa_set = std::set<log_lsa>;
+	  using log_lsa_vpid_map_t = std::map<log_lsa, vpid>;
 
 	public:
 	  redo_job_queue (minimum_log_lsa_monitor *a_minimum_log_lsa);
@@ -187,9 +202,9 @@ namespace cublog
 	   * flag set to true signals to the callers that no more data is expected
 	   * and, therefore, they can also terminate
 	   */
-	  ux_redo_job_base pop_job (bool &adding_finished);
+	  ux_redo_job_deque pop_job (bool &adding_finished);
 
-	  void notify_job_finished (const ux_redo_job_base &a_job);
+	  void notify_job_deque_finished (const ux_redo_job_deque &a_job_deque);
 
 	  /* wait until all data has been consumed internally; blocking call
 	   */
@@ -216,26 +231,40 @@ namespace cublog
 	   * NOTE: '*_locked_*' functions are supposed to be called from within locked
 	   * areas with respect to the resources they make use of
 	   */
-	  ux_redo_job_base do_locked_find_job_to_consume_and_mark_in_progress (
+	  ux_redo_job_deque do_locked_find_job_to_consume_and_mark_in_progress (
 		  const std::lock_guard<std::mutex> &a_consume_lockg,
 		  const std::lock_guard<std::mutex> &a_in_progress_lockg);
 
 	  /* NOTE: '*_locked_*' functions are supposed to be called from within locked
 	   * areas with respect to the resources they make use of
 	   */
-	  void do_locked_mark_job_in_progress (
+	  void do_locked_mark_job_deque_in_progress (
 		  const std::lock_guard<std::mutex> &a_in_progress_lockg,
-		  const ux_redo_job_base &a_job);
+		  const ux_redo_job_deque &a_job_deque);
 
 	private:
-	  /* two queues are internally managed and take turns at being either
+	  /* two maps of queues are internally managed and take turns at being either
 	   * on the producing or on the consumption side
 	   */
-	  ux_redo_job_deque *m_produce_queue;
-	  mutable std::mutex m_produce_queue_mutex;
-	  ux_redo_job_deque *m_consume_queue;
-	  std::mutex m_consume_queue_mutex;
+	  vpid_ux_redo_job_deque_map_t *m_produce;
+	  /* contains, for each entry in 'm_produce', the log_lsa
+	   * of the first job (aka, the minimum), thus maintaining a parallel bookeeping
+	   * that will allow, on the consume side, to estimate, not precisely, but
+	   * conservatively correct, where consumption is at
+	   */
+	  log_lsa_vpid_map_t m_produce_min_lsa_map;
+	  mutable std::mutex m_produce_mutex;
 
+	  vpid_ux_redo_job_deque_map_t *m_consume;
+	  /* contains, for each entry in the 'm_consume', the log_lsa
+	   * of the first job (aka, the minimum), thus maintaining a parallel bookkeeping
+	   * that will allow, on the consume side, to estimate, not precisely, but
+	   * conservatively correct, where consumtion is at
+	   */
+	  log_lsa_vpid_map_t m_consume_min_lsa_map;
+	  std::mutex m_consume_mutex;
+
+	  // TODO: rename to a more generic name
 	  bool m_queues_empty;
 	  mutable std::condition_variable m_queues_empty_cv;
 
@@ -254,6 +283,7 @@ namespace cublog
 	  /* utility class to maintain a minimum log_lsa that is still
 	   * to be processed (consumed); non-owning pointer, can be null
 	   */
+	  const bool m_monitor_minimum_log_lsa;
 	  minimum_log_lsa_monitor *m_minimum_log_lsa;
       };
 
