@@ -331,17 +331,13 @@ namespace cublog
     if (m_in_progress_vpids.find (consume_min_log_lsa_vpid) == m_in_progress_vpids.cend ())
       {
 	vpid_ux_redo_job_deque_map_t::iterator consume_it = m_consume->find (consume_min_log_lsa_vpid);
-	assert (consume_it != m_consume->end());
+	assert (consume_it != m_consume->end ());
 
 	ux_redo_job_deque ret_job_deq {std::move (consume_it->second)};
 	m_consume->erase (consume_it);
 
 	assert (consume_min_log_lsa_it->first == (*ret_job_deq.cbegin ())->get_log_lsa ());
-	//const ux_redo_job_base &first_job = *ret_job_deq.cbegin ();
-	//const log_lsa &first_aka_minimum_lsa = first_job->get_log_lsa ();
-	//assert (m_consume_min_lsa_map.find (first_aka_minimum_lsa) != m_consume_min_lsa_map.cend ());
-	//m_consume_min_lsa_map.erase (first_aka_minimum_lsa);
-	m_consume_min_lsa_map.erase(consume_min_log_lsa_it);
+	m_consume_min_lsa_map.erase (consume_min_log_lsa_it);
 
 	assert (m_consume->size () == m_consume_min_lsa_map.size ());
 
@@ -402,19 +398,24 @@ namespace cublog
     {
       std::lock_guard<std::mutex> in_progress_lockg (m_in_progress_mutex);
 
-      // all jobs have the same vpid
       const ux_redo_job_base &first_job = *a_job_deque.cbegin ();
-      const auto &first_job_vpid = first_job->get_vpid ();
-      const auto vpid_it = m_in_progress_vpids.find (first_job_vpid);
-      assert (vpid_it != m_in_progress_vpids.cend ());
-      m_in_progress_vpids.erase (vpid_it);
+      // all jobs have the same vpid
+      {
+	const auto &first_job_vpid = first_job->get_vpid ();
+	const auto vpid_it = m_in_progress_vpids.find (first_job_vpid);
+	assert (vpid_it != m_in_progress_vpids.cend ());
+	m_in_progress_vpids.erase (vpid_it);
+      }
       vpid_set_empty = m_in_progress_vpids.empty ();
 
       if (m_monitor_minimum_log_lsa)
 	{
+	  // each job has a different log_lsa but, within a queue, jobs have ever increasing log_lsa's
+	  // so, suffices to only add the first one
 	  const log_lsa &first_job_log_lsa = first_job->get_log_lsa ();
-	  assert (m_in_progress_lsas.find (first_job_log_lsa) != m_in_progress_lsas.cend ());
-	  m_in_progress_lsas.erase (first_job_log_lsa);
+	  const auto log_lsa_it = m_in_progress_lsas.find (first_job_log_lsa);
+	  assert (log_lsa_it != m_in_progress_lsas.cend ());
+	  m_in_progress_lsas.erase (log_lsa_it);
 
 	  const log_lsa &in_progress_minimum_log_lsa = m_in_progress_lsas.empty ()
 	      ? MAX_LSA : *m_in_progress_lsas.cbegin ();
