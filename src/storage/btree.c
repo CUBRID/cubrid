@@ -14042,7 +14042,7 @@ exit_on_error:
 //
 // !! root_page must be a valid unique index b-tree root page
 // !! caller must manage the logging
-int
+void
 btree_root_update_stats (THREAD_ENTRY * thread_p, PAGE_PTR root_page, const log_unique_stats & stats)
 {
   assert (root_page != NULL);
