@@ -182,6 +182,8 @@ hm_srv_handle_free (int h_id)
 
   if (tran_is_in_libcas ())
     {
+      /* just remove from the multimap, the srv_handle is going to be freed here */
+      /* so that h_id doesn't need to be destoryed later */
       procedure_handle_table.remove (current_handle_id, h_id);
     }
   else
