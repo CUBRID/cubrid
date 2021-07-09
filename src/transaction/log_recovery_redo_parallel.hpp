@@ -264,7 +264,6 @@ namespace cublog
 	  log_lsa_vpid_map_t m_consume_min_lsa_map;
 	  std::mutex m_consume_mutex;
 
-	  // TODO: rename to a more generic name
 	  bool m_queues_empty;
 	  mutable std::condition_variable m_queues_empty_cv;
 

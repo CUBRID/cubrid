@@ -74,6 +74,7 @@ namespace cublog
 	{
 	  // can never 'go back in time'
 	  assert (m_values[IN_PROGRESS_IDX] <= a_in_progress_lsa);
+	  exit (-1);
 	}
       m_values[IN_PROGRESS_IDX] = a_in_progress_lsa;
     }
@@ -88,6 +89,7 @@ namespace cublog
       {
 	// can never 'go back in time'
 	assert (m_values[IN_PROGRESS_IDX] <= a_lsa);
+	exit (-1);
       }
     do_set_at (IN_PROGRESS_IDX, a_lsa);
   }
@@ -342,59 +344,59 @@ namespace cublog
     // if that vpid happens to be in progress by another task, there's no other way than to bail out, effectively
     // spin-waiting until that other task would have finished processing entries for the vpid currently
     // with lowest log_lsa; this might happen in situations where there is very high contention on one single vpid
-//    const vpid &vpid_corresponding_min_lsa = m_consume_min_lsa_map.cbegin ()->second;
-//    if (m_in_progress_vpids.find (vpid_corresponding_min_lsa) != m_in_progress_vpids.cend ())
-//      {
-//	// consumer task will have to spin-wait
-//	return ux_redo_job_deque ();
-//      }
-//    vpid_ux_redo_job_deque_map_t::iterator consume_it = m_consume->find (vpid_corresponding_min_lsa);
-
-    vpid_ux_redo_job_deque_map_t::iterator consume_it = m_consume->begin ();
-    for (; consume_it != m_consume->end (); ++consume_it)
-    {
-      // skip all entries still being processed by other tasks
-      // clashes happen when one of the tasks swaps produce <-> consume and
-      // there are other tasks still consuming entries for vpids in the 'old' consume bunch
-      const vpid &it_vpid = consume_it->first;
-      if (m_in_progress_vpids.find ((it_vpid)) == m_in_progress_vpids.cend ())
+    const vpid &vpid_corresponding_min_log_lsa = m_consume_min_lsa_map.cbegin ()->second;
+    if (m_in_progress_vpids.find (vpid_corresponding_min_log_lsa) != m_in_progress_vpids.cend ())
       {
-	ux_redo_job_deque ret_job_deq {std::move (consume_it->second)};
-	m_consume->erase (consume_it);
-
-	const ux_redo_job_base &first_job = *ret_job_deq.cbegin ();
-	const log_lsa &first_aka_minimum_lsa = first_job->get_log_lsa ();
-	assert (m_consume_min_lsa_map.find (first_aka_minimum_lsa) != m_consume_min_lsa_map.cend ());
-	m_consume_min_lsa_map.erase (first_aka_minimum_lsa);
-	assert (m_consume->size () == m_consume_min_lsa_map.size ());
-
-	do_locked_mark_job_deque_in_progress (a_in_progress_lockg, ret_job_deq);
-
-	if (m_monitor_minimum_log_lsa)
-	  {
-	    // mark transition in one go for consistency
-	    // if:
-	    //  - first the consume is being changed (or even cleared)
-	    //  - then, separately, the in-progress is updated
-	    // the following might happen:
-	    //  - suppose that there is only one job left in the consume queue, everything else is empty
-	    //  - the minimum value for the consume queue would be cleared
-	    //  - at this point, the minimum log lsa will actually be MAX_LSA
-	    //  - while there is actually one more job (that has just been taken out of the consume queue
-	    //    and is to be transferred to the in progress set)
-	    const log_lsa &consume_minimum_log_lsa =
-		    m_consume->empty () ? MAX_LSA : m_consume_min_lsa_map.cbegin ()->first;
-	    const log_lsa in_progress_minimum_log_lsa = *m_in_progress_lsas.cbegin ();
-	    m_minimum_log_lsa->set_for_consume_and_in_progress (
-		    consume_minimum_log_lsa, in_progress_minimum_log_lsa);
-	  }
-
-	return ret_job_deq;
+	// consumer task will have to spin-wait
+	return ux_redo_job_deque ();
       }
-    }
+    vpid_ux_redo_job_deque_map_t::iterator consume_it = m_consume->find (vpid_corresponding_min_log_lsa);
+
+//    vpid_ux_redo_job_deque_map_t::iterator consume_it = m_consume->begin ();
+//    for (; consume_it != m_consume->end (); ++consume_it)
+      {
+	// skip all entries still being processed by other tasks
+	// clashes happen when one of the tasks swaps produce <-> consume and
+	// there are other tasks still consuming entries for vpids in the 'old' consume bunch
+//	const vpid &it_vpid = consume_it->first;
+//	if (m_in_progress_vpids.find ((it_vpid)) == m_in_progress_vpids.cend ())
+	  {
+	    ux_redo_job_deque ret_job_deq {std::move (consume_it->second)};
+	    m_consume->erase (consume_it);
+
+	    const ux_redo_job_base &first_job = *ret_job_deq.cbegin ();
+	    const log_lsa &first_aka_minimum_lsa = first_job->get_log_lsa ();
+	    assert (m_consume_min_lsa_map.find (first_aka_minimum_lsa) != m_consume_min_lsa_map.cend ());
+	    m_consume_min_lsa_map.erase (first_aka_minimum_lsa);
+	    assert (m_consume->size () == m_consume_min_lsa_map.size ());
+
+	    do_locked_mark_job_deque_in_progress (a_in_progress_lockg, ret_job_deq);
+
+	    if (m_monitor_minimum_log_lsa)
+	      {
+		// mark transition in one go for consistency
+		// if:
+		//  - first the consume is being changed (or even cleared)
+		//  - then, separately, the in-progress is updated
+		// the following might happen:
+		//  - suppose that there is only one job left in the consume queue, everything else is empty
+		//  - the minimum value for the consume queue would be cleared
+		//  - at this point, the minimum log lsa will actually be MAX_LSA
+		//  - while there is actually one more job (that has just been taken out of the consume queue
+		//    and is to be transferred to the in progress set)
+		const log_lsa &consume_minimum_log_lsa =
+			m_consume->empty () ? MAX_LSA : m_consume_min_lsa_map.cbegin ()->first;
+		const log_lsa in_progress_minimum_log_lsa = *m_in_progress_lsas.cbegin ();
+		m_minimum_log_lsa->set_for_consume_and_in_progress (
+			consume_minimum_log_lsa, in_progress_minimum_log_lsa);
+	      }
+
+	    return ret_job_deq;
+	  }
+      }
 
     // consumer task will have to spin-wait
-    return ux_redo_job_deque ();
+//    return ux_redo_job_deque ();
   }
 
   void
@@ -444,8 +446,8 @@ namespace cublog
 	      ? MAX_LSA : *m_in_progress_lsas.cbegin ();
 	  m_minimum_log_lsa->set_for_in_progress (in_progress_minimum_log_lsa);
 
-          assert (m_in_progress_vpids.size () == m_in_progress_lsas.size ());
-          assert ((vpid_set_empty && lsa_set_empty) || (!vpid_set_empty && !lsa_set_empty));
+	  assert (m_in_progress_vpids.size () == m_in_progress_lsas.size ());
+	  assert ((vpid_set_empty && lsa_set_empty) || (!vpid_set_empty && !lsa_set_empty));
 	}
       lsa_set_empty = m_in_progress_lsas.empty ();
 
