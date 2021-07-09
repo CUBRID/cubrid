@@ -36,6 +36,9 @@ set(LIBCAS_SOURCES
   ${BROKER_DIR}/cas_meta.c
   ${BROKER_DIR}/cas_ssl.c
   )
+set(LIBCAS_HEADERS
+  ${BROKER_DIR}/cas_handle_procedure.hpp
+  )
 
 if(WIN32)
   list(APPEND LIBCAS_SOURCES ${BROKER_DIR}/broker_wsa_init.c)
@@ -46,7 +49,7 @@ SET_SOURCE_FILES_PROPERTIES(
   PROPERTIES LANGUAGE CXX
   )
 
-add_library(cas STATIC ${LIBCAS_SOURCES})
+add_library(cas STATIC ${LIBCAS_SOURCES} ${LIBCAS_HEADERS})
 if(UNIX)
   set_target_properties(cas PROPERTIES COMPILE_FLAGS "-fPIC")
 endif(UNIX)
