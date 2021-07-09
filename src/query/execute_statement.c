@@ -18065,12 +18065,13 @@ get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, const char *server, DB_V
   DB_IDENTIFIER server_obj_id;
   DB_VALUE values[4];
   int au_save, error, cnt;
-  bool is_au_disable = false;
   const char *url_attr_names[4] = { "host", "port", "db_name", "properties" };
 
   cnt = 0;
   t = strchr ((char *) server, '.');	/* FIXME */
   server_name = (t != NULL) ? (t + 1) : (char *) server;
+
+  AU_DISABLE (au_save);		// disable checking authorization
 
   server_class = sm_find_class (CT_DB_SERVER_NAME);
   if (server_class == NULL)
@@ -18087,9 +18088,6 @@ get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, const char *server, DB_V
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, server_name);
       goto error_end;
     }
-
-  AU_DISABLE (au_save);
-  is_au_disable = true;
 
   error = au_check_server_authorization (server_object);
   if (error != NO_ERROR)
@@ -18123,9 +18121,6 @@ get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, const char *server, DB_V
       int port_no;
       char *host, *dbname, *prop;
 
-      AU_ENABLE (au_save);
-      is_au_disable = false;
-
       host = (char *) db_get_string (&(values[0]));
       port_no = db_get_int (&(values[1]));
       dbname = (char *) db_get_string (&(values[2]));
@@ -18144,10 +18139,7 @@ get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, const char *server, DB_V
     }
 
 error_end:
-  if (is_au_disable)
-    {
-      AU_ENABLE (au_save);
-    }
+  AU_ENABLE (au_save);
 
   while (--cnt >= 0)
     {
