@@ -34,18 +34,6 @@
 #include <set>
 #endif /* SERVER_MODE */
 
-//namespace std
-//{
-//  template<>
-//  struct hash<LOG_LSA>
-//  {
-//    inline std::size_t operator () (const LOG_LSA &val) const noexcept
-//    {
-//      return std::hash<std::int64_t> {} (*reinterpret_cast<const std::int64_t *> (&val));
-//    }
-//  };
-//}
-
 namespace cublog
 {
 #if defined(SERVER_MODE)
