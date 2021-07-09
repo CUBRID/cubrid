@@ -47,4 +47,8 @@ class cas_procedure_handle_table
     std::multimap <int, int> srv_handler_map;
 };
 
+/* wrapper functions to use cas_procedure_handle_table at cas_handle.c */
+void cas_procedure_handle_free (cas_procedure_handle_table &handle_table, int current_handle_id, int sp_h_id);
+void cas_procedure_handle_add (cas_procedure_handle_table &handle_table, int current_handle_id, int sp_h_id);
+
 #endif /* _CAS_HANDLE_PROCEDURE_ */

@@ -23,6 +23,7 @@
 /* implemented in transaction_cl.c */
 extern void tran_begin_libcas_function (void);
 extern void tran_end_libcas_function (void);
+extern bool tran_is_in_libcas (void);
 
 /* implemented in cas.c */
 extern void libcas_srv_handle_free (int h_id);
@@ -81,4 +82,34 @@ cas_procedure_handle_table::destroy (int key)
   tran_end_libcas_function ();
 
   srv_handler_map.erase (key);
+}
+
+void
+cas_procedure_handle_free (cas_procedure_handle_table &handle_table, int current_handle_id, int sp_h_id)
+{
+  if (tran_is_in_libcas ())
+    {
+      /* just remove from the multimap, the srv_handle is going to be freed here */
+      /* so that h_id doesn't need to be destoryed later */
+      handle_table.remove (current_handle_id, sp_h_id);
+    }
+  else
+    {
+      /* destory nested query handlers by Server-side JDBC first */
+      handle_table.destroy (sp_h_id);
+    }
+}
+
+void
+cas_procedure_handle_add (cas_procedure_handle_table &handle_table, int current_handle_id, int sp_h_id)
+{
+  if (tran_is_in_libcas ())
+    {
+      /* register handler id created from server-side JDBC */
+      handle_table.add (current_handle_id, sp_h_id);
+    }
+  else
+    {
+      /* do nothing */
+    }
 }

@@ -62,9 +62,6 @@ static int current_handle_count = 0;
 static cas_procedure_handle_table procedure_handle_table;
 static int current_handle_id = -1;	/* it is used for javasp */
 
-/* implemented in transaction_cl.c */
-extern bool tran_is_in_libcas (void);
-
 int
 hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num)
 {
@@ -144,11 +141,8 @@ hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num)
   current_handle_count++;
 #endif
 
-  if (tran_is_in_libcas ())
-    {
-      /* register handler id created from server-side JDBC */
-      procedure_handle_table.add (current_handle_id, new_handle_id);
-    }
+  /* register handler id created from server-side JDBC */
+  cas_procedure_handle_add (procedure_handle_table, current_handle_id, new_handle_id);
 
   return new_handle_id;
 }
@@ -180,18 +174,7 @@ hm_srv_handle_free (int h_id)
       return;
     }
 
-  if (tran_is_in_libcas ())
-    {
-      /* just remove from the multimap, the srv_handle is going to be freed here */
-      /* so that h_id doesn't need to be destoryed later */
-      procedure_handle_table.remove (current_handle_id, h_id);
-    }
-  else
-    {
-      /* destory nested query handlers by Server-side JDBC first */
-      procedure_handle_table.destroy (h_id);
-    }
-
+  cas_procedure_handle_free (procedure_handle_table, current_handle_id, h_id);
   srv_handle_content_free (srv_handle);
   srv_handle_rm_tmp_file (h_id, srv_handle);
 
