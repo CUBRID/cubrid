@@ -6721,13 +6721,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
     case TARGET_DBLINK:
       host_vars.count = curr_spec->s.dblink_node.host_var_count;
       host_vars.index = curr_spec->s.dblink_node.host_var_index;
-      error_code =
-	scan_open_dblink_scan (thread_p, s_id,
-			       curr_spec->single_fetch, scan_op_type,
-			       curr_spec->s.dblink_node.conn_url,
-			       curr_spec->s.dblink_node.conn_user,
-			       curr_spec->s.dblink_node.conn_password,
-			       curr_spec->s.dblink_node.conn_sql, vd, val_list, &host_vars, curr_spec->where_pred);
+      error_code = scan_open_dblink_scan (thread_p, s_id, curr_spec, vd, val_list, &host_vars);
 
       if (error_code != NO_ERROR)
 	{

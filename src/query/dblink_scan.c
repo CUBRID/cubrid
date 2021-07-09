@@ -481,11 +481,15 @@ dblink_bind_param (DBLINK_SCAN_INFO * scan_info, VAL_DESCR * vd, DBLINK_HOST_VAR
  *   sql_text(in)	 : SQL text for dblink
  */
 int
-dblink_open_scan (DBLINK_SCAN_INFO * scan_info, char *conn_url, char *user_name, char *password,
-		  char *sql_text, VAL_DESCR * vd, DBLINK_HOST_VARS * host_vars)
+dblink_open_scan (DBLINK_SCAN_INFO * scan_info, struct access_spec_node *spec,
+		  VAL_DESCR * vd, DBLINK_HOST_VARS * host_vars)
 {
   int ret;
   T_CCI_ERROR err_buf;
+  char *conn_url = spec->s.dblink_node.conn_url;
+  char *user_name = spec->s.dblink_node.conn_user;
+  char *password = spec->s.dblink_node.conn_password;
+  char *sql_text = spec->s.dblink_node.conn_sql;
 
   scan_info->conn_handle = cci_connect_with_url_ex (conn_url, user_name, password, &err_buf);
   if (scan_info->conn_handle < 0)
