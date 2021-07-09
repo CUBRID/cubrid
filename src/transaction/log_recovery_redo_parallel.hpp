@@ -513,7 +513,6 @@ log_rv_redo_record_sync_or_dispatch_async (
 #if defined(SERVER_MODE)
   const LOG_DATA &log_data = log_rv_get_log_rec_data<T> (log_rec);
   const bool need_sync_redo = log_rv_need_sync_redo (rcv_vpid, log_data.rcvindex);
-  assert (log_data.rcvindex != RVDK_UNRESERVE_SECTORS || need_sync_redo);
 
   // once vpid is extracted (or not), and depending on parameters, either dispatch the applying of
   // log redo asynchronously, or invoke synchronously
