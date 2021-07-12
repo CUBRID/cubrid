@@ -460,27 +460,14 @@ log_rv_redo_record_sync_or_dispatch_async (
 #if defined(SERVER_MODE)
   const LOG_DATA &log_data = log_rv_get_log_rec_data<T> (log_rec);
   const bool need_sync_redo = log_rv_need_sync_redo (rcv_vpid, log_data.rcvindex);
-  assert (log_data.rcvindex != RVDK_UNRESERVE_SECTORS || need_sync_redo);
 
   // once vpid is extracted (or not), and depending on parameters, either dispatch the applying of
   // log redo asynchronously, or invoke synchronously
   if (parallel_recovery_redo == nullptr || need_sync_redo)
     {
-      // To apply RVDK_UNRESERVE_SECTORS, one must first wait for all changes in this sector to be redone.
-      // Otherwise, asynchronous jobs skip redoing changes in this sector's pages because they are seen as
-      // deallocated. When the same sector is reserved again, redo is resumed in the sector's pages, but
-      // the pages are not in a consistent state. The current workaround is to wait for all changes to be
-      // finished, including changes in the unreserved sector.
-      if (parallel_recovery_redo != nullptr && log_data.rcvindex == RVDK_UNRESERVE_SECTORS)
-	{
-	  parallel_recovery_redo->wait_for_idle ();
-	}
-#endif
-
       // invoke sync
       log_rv_redo_record_sync<T> (thread_p, log_pgptr_reader, log_rec, rcv_vpid, rcv_lsa, end_redo_lsa, log_rtype,
 				  undo_unzip_support, redo_unzip_support);
-#if defined(SERVER_MODE)
     }
   else
     {
@@ -492,7 +479,10 @@ log_rv_redo_record_sync_or_dispatch_async (
       };
       parallel_recovery_redo->add (std::move (job));
     }
-#endif
+#else // !SERVER_MODE = SA_MODE
+  log_rv_redo_record_sync<T> (thread_p, log_pgptr_reader, log_rec, rcv_vpid, rcv_lsa, end_redo_lsa, log_rtype,
+			      undo_unzip_support, redo_unzip_support);
+#endif // !SERVER_MODE = SA_MODE
 }
 
 #endif // _LOG_RECOVERY_REDO_PARALLEL_HPP_

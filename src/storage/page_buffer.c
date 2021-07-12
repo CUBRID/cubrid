@@ -1808,7 +1808,7 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
 
   ATOMIC_INC_32 (&pgbuf_Pool.monitor.fix_req_cnt, 1);
 
-  if (pgbuf_get_check_page_validation_level (PGBUF_DEBUG_PAGE_VALIDATION_FETCH))
+  if (pgbuf_get_check_page_validation_level (PGBUF_DEBUG_PAGE_VALIDATION_FETCH) && fetch_mode != RECOVERY_PAGE)
     {
       /* Make sure that the page has been allocated (i.e., is a valid page) */
       /* Suppress errors if fetch mode is OLD_PAGE_IF_IN_BUFFER. */

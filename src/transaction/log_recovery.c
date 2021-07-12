@@ -550,8 +550,7 @@ log_rv_need_sync_redo (const vpid & a_rcv_vpid, LOG_RCVINDEX a_rcvindex)
       return true;
     case RVDK_RESERVE_SECTORS:
     case RVDK_UNRESERVE_SECTORS:
-      // When sectors are unreserved, redo ops on these pages are not applied.
-      // Sector reservation is handled synchronously for better control
+      // Sector reservation is handled synchronously for better control; may be changed to async
       return true;
     default:
       return false;
