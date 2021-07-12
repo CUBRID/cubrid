@@ -220,7 +220,7 @@ namespace cublog
   }
 
   redo_parallel::redo_job_queue::ux_redo_job_deque
-  redo_parallel::redo_job_queue::pop_job (bool &out_adding_finished)
+  redo_parallel::redo_job_queue::pop_jobs (bool &out_adding_finished)
   {
     std::lock_guard<std::mutex> consume_lockg (m_consume_mutex);
 
@@ -597,7 +597,7 @@ namespace cublog
     for (; !finished ;)
       {
 	bool adding_finished = false;
-	std::deque<std::unique_ptr<redo_job_base>> job_deque = m_queue.pop_job (adding_finished);
+	std::deque<std::unique_ptr<redo_job_base>> job_deque = m_queue.pop_jobs (adding_finished);
 
 	if (job_deque.empty () && adding_finished)
 	  {

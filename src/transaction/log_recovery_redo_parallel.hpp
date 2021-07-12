@@ -190,7 +190,7 @@ namespace cublog
 	   * flag set to true signals to the callers that no more data is expected
 	   * and, therefore, they can also terminate
 	   */
-	  ux_redo_job_deque pop_job (bool &adding_finished);
+	  ux_redo_job_deque pop_jobs (bool &adding_finished);
 
 	  void notify_job_deque_finished (const ux_redo_job_deque &a_job_deque);
 
