@@ -78,6 +78,7 @@ namespace cublog
   // replicate_btree_stats does redo record simulation
   static void replicate_btree_stats (cubthread::entry &thread_entry, const VPID &root_vpid,
 				     const log_unique_stats &stats, const log_lsa &record_lsa);
+
   // a job for replication b-tree stats update
   class redo_job_btree_stats : public redo_parallel::redo_job_base
   {
@@ -291,15 +292,7 @@ namespace cublog
       }
     BTID btid;
     log_unique_stats stats;
-    const char *datap = rcv.data;
-    OR_GET_BTID (datap, &btid);
-    datap += OR_BTID_ALIGNED_SIZE;
-    stats.num_keys = OR_GET_INT (datap);
-    datap += OR_INT_SIZE;
-    stats.num_oids = OR_GET_INT (datap);
-    datap += OR_INT_SIZE;
-    stats.num_nulls = OR_GET_INT (datap);
-    datap += OR_INT_SIZE;
+    btree_rv_data_get_btid_and_stats (rcv, btid, stats);
     VPID root_vpid = { btid.root_pageid, btid.vfid.volid };
 
     // Create a job or apply the change immediately

@@ -16905,38 +16905,19 @@ btree_rv_util_dump_nleafrec (THREAD_ENTRY * thread_p, FILE * fp, BTID_INT * btid
 int
 btree_rv_update_tran_stats (THREAD_ENTRY * thread_p, const LOG_RCV * recv)
 {
-  char *datap;
-  int num_nulls, num_oids, num_keys;
+  log_unique_stats stats;
   BTID btid;
 
-  assert (recv->length >= (3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE);
+  btree_rv_data_get_btid_and_stats (*recv, btid, stats);
 
-  /* unpack the root statistics */
-  datap = (char *) recv->data;
-
-  OR_GET_BTID (datap, &btid);
-  datap += OR_BTID_ALIGNED_SIZE;
-
-  num_keys = OR_GET_INT (datap);
-  datap += OR_INT_SIZE;
-
-  num_oids = OR_GET_INT (datap);
-  datap += OR_INT_SIZE;
-
-  num_nulls = OR_GET_INT (datap);
-  datap += OR_INT_SIZE;
-
-  if (logtb_tran_update_unique_stats (thread_p, &btid, num_keys, num_oids, num_nulls, false) != NO_ERROR)
+  if (logtb_tran_update_unique_stats (thread_p, &btid, stats.num_keys, stats.num_oids, stats.num_nulls, false)
+      != NO_ERROR)
     {
-      goto error;
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
     }
 
   return NO_ERROR;
-
-error:
-  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-
-  return ER_GENERIC_ERROR;
 }
 
 /*
@@ -22339,26 +22320,10 @@ error:
 int
 btree_rv_undo_global_unique_stats_commit (THREAD_ENTRY * thread_p, const LOG_RCV * recv)
 {
-  char *datap;
-  int num_nulls, num_oids, num_keys;
+  log_unique_stats stats;
   BTID btid;
 
-  assert (recv->length >= (3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE);
-
-  /* unpack the root statistics */
-  datap = (char *) recv->data;
-
-  OR_GET_BTID (datap, &btid);
-  datap += OR_BTID_ALIGNED_SIZE;
-
-  num_nulls = OR_GET_INT (datap);
-  datap += OR_INT_SIZE;
-
-  num_oids = OR_GET_INT (datap);
-  datap += OR_INT_SIZE;
-
-  num_keys = OR_GET_INT (datap);
-  datap += OR_INT_SIZE;
+  btree_rv_data_get_btid_and_stats (*recv, btid, stats);
 
   /* Because this log record is logical, it will be processed even if the B-tree was deleted. If the B-tree was deleted
    * then skip update of unique statistics in global hash. */
@@ -22376,9 +22341,11 @@ btree_rv_undo_global_unique_stats_commit (THREAD_ENTRY * thread_p, const LOG_RCV
       /* This should not happen */
       assert (disk_is_page_sector_reserved (thread_p, btid.vfid.volid, btid.root_pageid) == DISK_VALID);
     }
-  if (logtb_update_global_unique_stats_by_delta (thread_p, &btid, -num_oids, -num_nulls, -num_keys, false) != NO_ERROR)
+  if (logtb_update_global_unique_stats_by_delta (thread_p, &btid, -stats.num_oids, -stats.num_nulls, -stats.num_keys,
+						 false) != NO_ERROR)
     {
-      goto error;
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
     }
 
   if (prm_get_bool_value (PRM_ID_LOG_UNIQUE_STATS))
@@ -22386,16 +22353,12 @@ btree_rv_undo_global_unique_stats_commit (THREAD_ENTRY * thread_p, const LOG_RCV
       _er_log_debug (ARG_FILE_LINE,
 		     "Recover undo unique statistics for index (%d, %d|%d): "
 		     "nulls=%d, oids=%d, keys=%d. LSA=%lld|%d.\n", btid.root_pageid, btid.vfid.volid, btid.vfid.fileid,
-		     num_nulls, num_oids, num_keys, (long long int) log_Gl.unique_stats_table.curr_rcv_rec_lsa.pageid,
+		     stats.num_nulls, stats.num_oids, stats.num_keys,
+		     (long long int) log_Gl.unique_stats_table.curr_rcv_rec_lsa.pageid,
 		     (int) log_Gl.unique_stats_table.curr_rcv_rec_lsa.offset);
     }
 
   return NO_ERROR;
-
-error:
-  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-
-  return ER_GENERIC_ERROR;
 }
 
 /*
@@ -22408,30 +22371,16 @@ error:
 int
 btree_rv_redo_global_unique_stats_commit (THREAD_ENTRY * thread_p, const LOG_RCV * recv)
 {
-  char *datap;
-  int num_nulls, num_oids, num_keys;
+  log_unique_stats stats;
   BTID btid;
 
-  assert (recv->length >= (3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE);
+  btree_rv_data_get_btid_and_stats (*recv, btid, stats);
 
-  /* unpack the root statistics */
-  datap = (char *) recv->data;
-
-  OR_GET_BTID (datap, &btid);
-  datap += OR_BTID_ALIGNED_SIZE;
-
-  num_nulls = OR_GET_INT (datap);
-  datap += OR_INT_SIZE;
-
-  num_oids = OR_GET_INT (datap);
-  datap += OR_INT_SIZE;
-
-  num_keys = OR_GET_INT (datap);
-  datap += OR_INT_SIZE;
-
-  if (logtb_rv_update_global_unique_stats_by_abs (thread_p, &btid, num_oids, num_nulls, num_keys) != NO_ERROR)
+  if (logtb_rv_update_global_unique_stats_by_abs (thread_p, &btid, stats.num_oids, stats.num_nulls, stats.num_keys)
+      != NO_ERROR)
     {
-      goto error;
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
     }
 
   if (prm_get_bool_value (PRM_ID_LOG_UNIQUE_STATS))
@@ -22439,16 +22388,29 @@ btree_rv_redo_global_unique_stats_commit (THREAD_ENTRY * thread_p, const LOG_RCV
       _er_log_debug (ARG_FILE_LINE,
 		     "Recover redo unique statistics for index (%d, %d|%d): "
 		     "nulls=%d, oids=%d, keys=%d. LSA=%lld|%d.\n", btid.root_pageid, btid.vfid.volid, btid.vfid.fileid,
-		     num_nulls, num_oids, num_keys, (long long int) log_Gl.unique_stats_table.curr_rcv_rec_lsa.pageid,
+		     stats.num_nulls, stats.num_oids, stats.num_keys,
+		     (long long int) log_Gl.unique_stats_table.curr_rcv_rec_lsa.pageid,
 		     (int) log_Gl.unique_stats_table.curr_rcv_rec_lsa.offset);
     }
 
   return NO_ERROR;
+}
 
-error:
-  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+void
+btree_rv_data_get_btid_and_stats (const LOG_RCV & rcv, BTID & btid, log_unique_stats & stats)
+{
+  assert (rcv.length >= (3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE);
 
-  return ER_GENERIC_ERROR;
+  const char *datap = rcv.data;
+  OR_GET_BTID (datap, &btid);
+  datap += OR_BTID_ALIGNED_SIZE;
+  stats.num_keys = OR_GET_INT (datap);
+  datap += OR_INT_SIZE;
+  stats.num_oids = OR_GET_INT (datap);
+  datap += OR_INT_SIZE;
+  stats.num_nulls = OR_GET_INT (datap);
+  datap += OR_INT_SIZE;
+  assert ((datap - rcv.data) == (size_t) rcv.length);
 }
 
 /*
