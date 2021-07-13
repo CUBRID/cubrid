@@ -57,13 +57,17 @@ namespace std
     }
   };
 
+  /*
+   * NOTE: based on the implementation of Boost library's 'hash_combine' -
+   * https://www.boost.org/doc/libs/1_55_0/doc/html/hash/combine.html
+   */
   template<>
   struct hash<VPID>
   {
     inline std::size_t operator () (const VPID &val) const noexcept
     {
       std::size_t res = 0;
-      res ^= std::hash<short> {} (val.volid) + 0x9e3779b9 + (res << 6) + (res >> 2);
+      res ^= std::hash<short> {} (val.volid) + 0x9e3779b9;
       res ^= std::hash<int32_t> {} (val.pageid) + 0x9e3779b9 + (res << 6) + (res >> 2);
       return res;
     }

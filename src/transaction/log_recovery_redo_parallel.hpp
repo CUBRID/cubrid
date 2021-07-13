@@ -158,8 +158,12 @@ namespace cublog
       class redo_job_queue final
       {
 	  using ux_redo_job_base = std::unique_ptr<redo_job_base>;
-	  using ux_redo_job_deque = std::deque<ux_redo_job_base>;
-	  using vpid_ux_redo_job_deque_map_t = std::unordered_map<vpid, ux_redo_job_deque, std::hash<VPID>>;
+
+	public:
+	  using redo_job_deque_t = std::deque<ux_redo_job_base>;
+
+	private:
+	  using vpid_redo_job_deque_map_t = std::unordered_map<vpid, redo_job_deque_t, std::hash<VPID>>;
 	  using vpid_set = std::set<VPID>;
 	  using log_lsa_set = std::set<log_lsa>;
 	  using log_lsa_vpid_map_t = std::map<log_lsa, vpid>;
@@ -190,9 +194,9 @@ namespace cublog
 	   * flag set to true signals to the callers that no more data is expected
 	   * and, therefore, they can also terminate
 	   */
-	  ux_redo_job_deque pop_jobs (bool &adding_finished);
+	  redo_job_deque_t pop_jobs (bool &adding_finished);
 
-	  void notify_job_deque_finished (const ux_redo_job_deque &a_job_deque);
+	  void notify_job_deque_finished (const redo_job_deque_t &a_job_deque);
 
 	  /* wait until all data has been consumed internally; blocking call
 	   */
@@ -219,7 +223,7 @@ namespace cublog
 	   * NOTE: '*_locked_*' functions are supposed to be called from within locked
 	   * areas with respect to the resources they make use of
 	   */
-	  ux_redo_job_deque do_locked_find_job_to_consume_and_mark_in_progress (
+	  redo_job_deque_t do_locked_find_job_to_consume_and_mark_in_progress (
 		  const std::lock_guard<std::mutex> &a_consume_lockg,
 		  const std::lock_guard<std::mutex> &a_in_progress_lockg);
 
@@ -228,13 +232,13 @@ namespace cublog
 	   */
 	  void do_locked_mark_job_deque_in_progress (
 		  const std::lock_guard<std::mutex> &a_in_progress_lockg,
-		  const ux_redo_job_deque &a_job_deque);
+		  const redo_job_deque_t &a_job_deque);
 
 	private:
 	  /* two maps of queues are internally managed and take turns at being either
 	   * on the producing or on the consumption side
 	   */
-	  vpid_ux_redo_job_deque_map_t *m_produce;
+	  vpid_redo_job_deque_map_t *m_produce_jobs;
 	  /* contains, for each entry in 'm_produce', the log_lsa
 	   * of the first job (aka, the minimum), thus maintaining a parallel bookeeping
 	   * that will allow, on the consume side, to estimate, not precisely, but
@@ -243,7 +247,7 @@ namespace cublog
 	  log_lsa_vpid_map_t m_produce_min_lsa_map;
 	  mutable std::mutex m_produce_mutex;
 
-	  vpid_ux_redo_job_deque_map_t *m_consume;
+	  vpid_redo_job_deque_map_t *m_consume_jobs;
 	  /* contains, for each entry in the 'm_consume', the log_lsa
 	   * of the first job (aka, the minimum), thus maintaining a parallel bookkeeping
 	   * that will allow, on the consume side, to estimate, not precisely, but
