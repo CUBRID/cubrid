@@ -121,6 +121,7 @@ class log_reader final
     int fetch_page_force_use (THREAD_ENTRY *const thread_p);
 
   private:
+    THREAD_ENTRY *const m_thread_entry = nullptr;
     log_lsa m_lsa = NULL_LSA;
     log_page *m_page;
     char m_area_buffer[IO_MAX_PAGE_SIZE + DOUBLE_ALIGNMENT];
