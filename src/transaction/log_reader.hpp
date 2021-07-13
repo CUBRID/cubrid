@@ -84,18 +84,18 @@ class log_reader final
     template <typename T>
     T reinterpret_copy_and_add_align ();
 
-    /* equivalent to LOG_READ_ALIGN
+    /* equivalent to LOG_READ_ALIGN (safe)
      */
     void align ();
 
-    /* equivalent to LOG_READ_ADD_ALIGN
+    /* equivalent to LOG_READ_ADD_ALIGN (safe)
      */
     void add_align (size_t size);
 
     template <typename T>
     void add_align ();
 
-    /* equivalent to LOG_READ_ADVANCE_WHEN_DOESNT_FIT
+    /* equivalent to LOG_READ_ADVANCE_WHEN_DOESNT_FIT (safe)
      */
     void advance_when_does_not_fit (size_t size);
 
@@ -118,7 +118,8 @@ class log_reader final
   private:
     const char *get_cptr () const;
 
-    int fetch_page_force_use (THREAD_ENTRY *const thread_p);
+//    int fetch_page_force_use (THREAD_ENTRY *const thread_p);
+    int fetch_page_safe_reader (THREAD_ENTRY *const thread_p);
 
   private:
     THREAD_ENTRY *const m_thread_entry = nullptr;
@@ -130,7 +131,7 @@ class log_reader final
 void LOG_READ_ALIGN (THREAD_ENTRY *thread_p, LOG_LSA *lsa, LOG_PAGE *log_pgptr);
 void LOG_READ_ADD_ALIGN (THREAD_ENTRY *thread_p, size_t add, LOG_LSA *lsa, LOG_PAGE *log_pgptr);
 void LOG_READ_ADVANCE_WHEN_DOESNT_FIT (THREAD_ENTRY *thread_p, size_t length, LOG_LSA *lsa,
-				       LOG_PAGE *log_pgptr);
+                                              LOG_PAGE *log_pgptr);
 
 
 /* implementation
