@@ -174,7 +174,7 @@ const log_page *log_reader::get_page () const
 }
 
 // Mock some of the functionality
-log_reader::log_reader () = default; // needed by log_page_fetch_task::execute
+log_reader::log_reader () = default;
 
 PAGE_PTR
 pgbuf_fix_debug (THREAD_ENTRY *thread_p, const VPID *vpid, PAGE_FETCH_MODE fetch_mode, PGBUF_LATCH_MODE request_mode,
