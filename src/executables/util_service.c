@@ -213,6 +213,7 @@ static UTIL_SERVICE_OPTION_MAP_T us_Service_map[] = {
 #define COMMAND_TYPE_TEST       "test"
 #define COMMAND_TYPE_REPLICATION	"replication"
 #define COMMAND_TYPE_REPLICATION_SHORT	"repl"
+#define COMMAND_TYPE_SERVER_TYPE "type"
 
 static UTIL_SERVICE_OPTION_MAP_T us_Command_map[] = {
   {START, COMMAND_TYPE_START, MASK_ALL},
@@ -1130,7 +1131,7 @@ are_all_services_stopped (unsigned int sleep_time, bool check_win_service)
 
 /*
  * check_all_services_status - check all service status and compare with
-			      expected_status, if not meet return false.
+                              expected_status, if not meet return false.
  *
  * return:
  *
@@ -1699,8 +1700,16 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 	      else
 		{
 		  int pid;
-		  const char *args[] = { UTIL_CUBRID_NAME, token, NULL };
-		  status = proc_execute (UTIL_CUBRID_NAME, args, false, false, false, &pid);
+		  if (argc == 3)
+		    {
+		      const char *args[] = { UTIL_CUBRID_NAME, token, argv[1], argv[2], NULL };
+		      status = proc_execute (UTIL_CUBRID_NAME, args, false, false, false, &pid);
+		    }
+		  else
+		    {
+		      const char *args[] = { UTIL_CUBRID_NAME, token, NULL };
+		      status = proc_execute (UTIL_CUBRID_NAME, args, false, false, false, &pid);
+		    }
 
 		  if (status == NO_ERROR && !is_server_running (CHECK_SERVER, token, pid))
 		    {
