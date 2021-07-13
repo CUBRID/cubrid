@@ -46,6 +46,7 @@
 #include "system_parameter.h"
 #include "thread_manager.hpp"
 #include "util_func.h"
+#include <chrono>
 
 static void log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 				LOG_RCVINDEX rcvindex, const VPID * rcv_vpid, LOG_RCV * rcv,
@@ -1005,6 +1006,13 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 #endif
   // *INDENT-ON*
 
+  // prompt after threads/tasks are started but before any work is done
+  fprintf (stdout, "START recovery_redo (any key)? ");
+  fflush (stdout);
+  (void) getc (stdin);
+  fprintf (stdout, "\n");
+  const auto time_start = std::chrono::system_clock::now ();
+
   /*
    * GO FORWARD, redoing records of all transactions including aborted ones.
    *
@@ -1643,11 +1651,22 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
   log_zip_free (redo_unzip_ptr);
 
 #if defined(SERVER_MODE)
-  if (parallel_recovery_redo != nullptr)
-    {
-      parallel_recovery_redo->set_adding_finished ();
-      parallel_recovery_redo->wait_for_termination_and_stop_execution ();
-    }
+  {
+    const auto time_end_main = std::chrono::system_clock::now ();
+    const auto time_dur_main_ms = std::chrono::duration_cast < std::chrono::milliseconds > (time_end_main - time_start);
+    if (parallel_recovery_redo != nullptr)
+      {
+	parallel_recovery_redo->set_adding_finished ();
+	parallel_recovery_redo->wait_for_termination_and_stop_execution ();
+      }
+    const int log_recovery_redo_parallel_count = prm_get_integer_value (PRM_ID_RECOVERY_PARALLEL_COUNT);
+    const auto time_end_async = std::chrono::system_clock::now ();
+    const auto time_dur_async_ms
+      = std::chrono::duration_cast < std::chrono::milliseconds > (time_end_async - time_start);
+    er_log_debug (ARG_FILE_LINE, "recovery_parallel_count= %2d    main= %6lld    async= %6lld (ms)\n",
+		  log_recovery_redo_parallel_count,
+		  (long long) time_dur_main_ms.count (), (long long) time_dur_async_ms.count ());
+  }
 #endif
   LOG_CS_ENTER (thread_p);
 
