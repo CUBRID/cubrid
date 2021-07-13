@@ -213,7 +213,6 @@ static UTIL_SERVICE_OPTION_MAP_T us_Service_map[] = {
 #define COMMAND_TYPE_TEST       "test"
 #define COMMAND_TYPE_REPLICATION	"replication"
 #define COMMAND_TYPE_REPLICATION_SHORT	"repl"
-#define COMMAND_TYPE_SERVER_TYPE "type"
 
 static UTIL_SERVICE_OPTION_MAP_T us_Command_map[] = {
   {START, COMMAND_TYPE_START, MASK_ALL},
