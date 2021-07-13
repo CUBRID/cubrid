@@ -14077,9 +14077,10 @@ btree_reflect_global_unique_statistics (THREAD_ENTRY * thread_p, GLOBAL_UNIQUE_S
   assert (unique_stat_info != NULL);
 
   // Fix root page
-  VPID root_vpid
-  {
-  unique_stat_info->btid.root_pageid, unique_stat_info->btid.vfid.volid};
+  VPID root_vpid = {
+    unique_stat_info->btid.root_pageid,
+    unique_stat_info->btid.vfid.volid
+  };
   PAGE_PTR root_page = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (root_page == NULL)
     {
