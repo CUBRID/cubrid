@@ -71,9 +71,6 @@ static int log_rv_record_modify_internal (THREAD_ENTRY * thread_p, const LOG_RCV
 static int log_rv_undoredo_partial_changes_recursive (THREAD_ENTRY * thread_p, OR_BUF * rcv_buf, RECDES * record,
 						      bool is_undo);
 
-STATIC_INLINE PAGE_PTR log_rv_redo_fix_page (THREAD_ENTRY * thread_p, const VPID * vpid_rcv, LOG_RCVINDEX rcvindex)
-  __attribute__ ((ALWAYS_INLINE));
-
 static void log_rv_simulate_runtime_worker (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void log_rv_end_simulation (THREAD_ENTRY * thread_p);
 static void log_find_unilaterally_largest_undo_lsa (THREAD_ENTRY * thread_p, LOG_LSA & max_undo_lsa);
@@ -3700,7 +3697,7 @@ log_rv_pack_undo_record_changes (char *ptr, int offset_to_data, int old_data_siz
  * vpid_rcv (in) : page identifier
  * rcvindex (in) : recovery index of log record to redo
  */
-STATIC_INLINE PAGE_PTR
+PAGE_PTR
 log_rv_redo_fix_page (THREAD_ENTRY * thread_p, const VPID * vpid_rcv, LOG_RCVINDEX rcvindex)
 {
   PAGE_PTR page = NULL;

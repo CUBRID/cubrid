@@ -72,6 +72,9 @@ namespace cublog
       template <typename T>
       void read_and_redo_record (cubthread::entry &thread_entry, LOG_RECTYPE rectype, const log_lsa &rec_lsa);
       template <typename T>
+      void read_and_redo_btree_stats (cubthread::entry &thread_entry, LOG_RECTYPE rectype, const log_lsa &rec_lsa,
+				      const T &log_rec);
+      template <typename T>
       void calculate_replication_delay_or_dispatch_async (cubthread::entry &thread_entry,
 	  const log_lsa &rec_lsa);
 
@@ -94,14 +97,12 @@ namespace cublog
       /* perf data for processing log redo on the page server - the synchronous part:
        *  - if the infrastructure to apply recovery log redo in parallel is used, it does not
        *    include the calling of the redo function as that part will be
-       *    included in the 'async' couterpart logging
+       *    included in the 'async' counterpart logging
        *  - if the log redo is applied synchronously, these values will include the
        *    effective calling of the redo function
        */
       perfmon_counter_timer_tracker m_perfmon_redo_sync;
   };
-
-  int log_rpl_calculate_replication_delay (THREAD_ENTRY *thread_p, time_t a_start_time_msec);
 }
 
 #endif // !_LOG_REPLICATION_HPP_
