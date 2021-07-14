@@ -310,7 +310,6 @@ static PT_NODE *pt_init_insert_value (PT_NODE * p);
 static PT_NODE *pt_init_kill (PT_NODE * p);
 static PT_NODE *pt_init_vacuum (PT_NODE * p);
 static PT_NODE *pt_init_json_table_column (PT_NODE * p);
-static PT_NODE *pt_init_dblink_table (PT_NODE * p);
 static PARSER_INIT_NODE_FUNC pt_init_func_array[PT_NODE_NUMBER];
 
 static PARSER_VARCHAR *pt_print_alter_index (PARSER_CONTEXT * parser, PT_NODE * p);
@@ -5063,7 +5062,7 @@ pt_init_init_f (void)
   pt_init_func_array[PT_JSON_TABLE] = pt_init_func_null_function;
   pt_init_func_array[PT_JSON_TABLE_NODE] = pt_init_func_null_function;
   pt_init_func_array[PT_JSON_TABLE_COLUMN] = pt_init_json_table_column;
-  pt_init_func_array[PT_DBLINK_TABLE] = pt_init_dblink_table;
+  pt_init_func_array[PT_DBLINK_TABLE] = pt_init_func_null_function;
   pt_init_func_array[PT_CREATE_SERVER] = pt_init_func_null_function;
   pt_init_func_array[PT_DROP_SERVER] = pt_init_func_null_function;
 
@@ -18321,19 +18320,24 @@ pt_move_node (REFPTR (PT_NODE, destp), REFPTR (PT_NODE, srcp))
 static PT_NODE *
 pt_apply_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  if (p->info.dblink_table.is_name)
-    {
-      assert (false);		// Not Yet ctshim_assert
-    }
-  PT_APPLY_WALK (parser, p->info.dblink_table.cols, arg);
-  return p;
-}
+#if 0				// TODO: Exception cases require further review.
+  PT_WALK_ARG *walk = (PT_WALK_ARG *) arg;
 
-static PT_NODE *
-pt_init_dblink_table (PT_NODE * p)
-{
-  memset (&p->info.dblink_table, 0x00, sizeof (PT_DBLINK_INFO));
-  p->info.dblink_table.is_name = true;
+  if ((walk->post_function == free_node_in_tree_post)
+      || (walk->post_function == copy_node_in_tree_post) || (walk->pre_function == copy_node_in_tree_pre))
+#endif
+    {
+      if (p->info.dblink_table.is_name)
+	{
+	  PT_APPLY_WALK (parser, p->info.dblink_table.conn, arg);
+	}
+      PT_APPLY_WALK (parser, p->info.dblink_table.url, arg);
+      PT_APPLY_WALK (parser, p->info.dblink_table.user, arg);
+      PT_APPLY_WALK (parser, p->info.dblink_table.pwd, arg);
+      PT_APPLY_WALK (parser, p->info.dblink_table.qstr, arg);
+    }
+
+  PT_APPLY_WALK (parser, p->info.dblink_table.cols, arg);
   return p;
 }
 
@@ -18341,19 +18345,33 @@ static PARSER_VARCHAR *
 pt_print_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = 0, *r;
+  PT_DBLINK_INFO *pt = &(p->info.dblink_table);
+  bool print_detail = true;
 
   q = pt_append_nulstring (parser, q, "DBLINK(");
 
   if (p->info.dblink_table.is_name)
     {
-      assert (false);		// Not Yet
+      q = pt_append_nulstring (parser, q, p->info.dblink_table.conn->info.name.original);
+
+      if (!pt->url || !pt->user || !pt->pwd)
+	{
+	  print_detail = false;
+	}
+      else
+	{
+	  /* For Query-cache:
+	   * Separate comments have been added 
+	   * for cases where there is no change in the query but information on the server has changed. */
+	  q = pt_append_bytes (parser, q, " /* ", 4);
+	}
     }
-  else
+
+  if (print_detail)
     {
       q = pt_append_bytes (parser, q, "'", 1);
 
       char *t, *s;
-      PT_DBLINK_INFO *pt = &(p->info.dblink_table);
 
       // "cci:CUBRID:{HOST}:{PORT}:{DBNAME}:<user-name>:<password>:{PROPERITIES}"
       s = (char *) pt->url->info.value.data_value.str->bytes;
@@ -18386,6 +18404,11 @@ pt_print_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_bytes (parser, q, "'", 1);
     }
 
+  if (p->info.dblink_table.is_name && print_detail)
+    {
+      q = pt_append_bytes (parser, q, " */ ", 4);
+    }
+
   q = pt_append_bytes (parser, q, ", ", 2);
   if (p->info.dblink_table.qstr)
     {
@@ -18401,12 +18424,26 @@ pt_print_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p)
   return q;
 }
 
-
-
 static PT_NODE *
 pt_apply_create_server (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_WALK (parser, p->info.create_server.server_name, arg);
+#if 0				// TODO: Exception cases require further review.
+  PT_WALK_ARG *walk = (PT_WALK_ARG *) arg;
+
+  if ((walk->post_function == free_node_in_tree_post)
+      || (walk->post_function == copy_node_in_tree_post) || (walk->pre_function == copy_node_in_tree_pre))
+#endif
+    {
+      PT_APPLY_WALK (parser, p->info.create_server.server_name, arg);
+      PT_APPLY_WALK (parser, p->info.create_server.host, arg);
+      PT_APPLY_WALK (parser, p->info.create_server.port, arg);
+      PT_APPLY_WALK (parser, p->info.create_server.dbname, arg);
+      PT_APPLY_WALK (parser, p->info.create_server.user, arg);
+      PT_APPLY_WALK (parser, p->info.create_server.pwd, arg);
+      PT_APPLY_WALK (parser, p->info.create_server.prop, arg);
+      PT_APPLY_WALK (parser, p->info.create_server.comment, arg);
+    }
+
   return p;
 }
 
@@ -18468,7 +18505,16 @@ pt_print_create_server (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_drop_server (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_WALK (parser, p->info.drop_server.server_name, arg);
+#if 0				// TODO: Exception cases require further review.
+  PT_WALK_ARG *walk = (PT_WALK_ARG *) arg;
+
+  if ((walk->post_function == free_node_in_tree_post)
+      || (walk->post_function == copy_node_in_tree_post) || (walk->pre_function == copy_node_in_tree_pre))
+#endif
+    {
+      PT_APPLY_WALK (parser, p->info.drop_server.server_name, arg);
+    }
+
   return p;
 }
 

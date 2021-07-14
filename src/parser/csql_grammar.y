@@ -545,6 +545,7 @@ static void pt_jt_append_column_or_nested_node (PT_NODE * jt_node, PT_NODE * jt_
 
 #define DBLINK_CONN_PARAM_CNT   (6)
 static bool pt_ct_check_fill_connection_info (char *pIn, char *pInfo[], char *perr_msg );
+static bool pt_ct_check_select (char* p, char *perr_msg);
 
 static void pt_value_set_charset_coll (PARSER_CONTEXT *parser,
 				       PT_NODE *node,
@@ -24987,7 +24988,14 @@ dblink_expr
              {
                 PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
 	        if (val)                    
-		  {
+		  {                  
+                        char err_msg[256]; 
+                        
+                        if (pt_ct_check_select($3, err_msg) == false)
+                        {
+                             PT_ERROR (this_parser, val, err_msg);                                
+                        }                        
+
                         val->type_enum = PT_TYPE_CHAR;
                         val->info.value.string_type = ' ';
                         val->info.value.data_value.str =
@@ -28382,4 +28390,25 @@ pt_fill_conn_info_container(PARSER_CONTEXT *parser,  int buffer_pos, container_1
                 assert(0);
                 break;
     }
+}
+
+static bool pt_ct_check_select (char* p, char *perr_msg)
+{  
+   perr_msg[0] = 0x00;
+   while (*p == ' ' || *p == '(' || *p == '\t' || *p == '\r' || *p == '\n')
+     {
+        p++;
+     }
+
+   if(*p)
+   {
+        if( strncasecmp(p, "SELECT", 6) == 0 )
+        {
+                if( p[6] == ' ' || p[6] == '\t' || p[6] == '\r' || p[6] == '\n' )
+                      return true;
+        }
+   }
+
+   sprintf(perr_msg, "Only SELECT statements are supported.");
+   return false;
 }
