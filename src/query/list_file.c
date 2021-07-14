@@ -373,7 +373,7 @@ qfile_list_cache_cleanup (THREAD_ENTRY * thread_p)
 	}
     }
 
-  /* need to sort before traverse */
+  /* it needs to sort before traverse */
   bh_to_sorted_array (bh);
 
   /* traverse for weight ordering, from light weight to heavy weight */
