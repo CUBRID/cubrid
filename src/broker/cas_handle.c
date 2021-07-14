@@ -59,6 +59,9 @@ static int max_handle_id = 0;
 static int current_handle_count = 0;
 #endif
 
+/* implemented in transaction_cl.c */
+extern bool tran_is_in_libcas (void);
+
 static cas_procedure_handle_table procedure_handle_table;
 static int current_handle_id = -1;	/* it is used for javasp */
 
@@ -511,5 +514,12 @@ hm_srv_handle_get_current_count (void)
 void
 hm_set_current_srv_handle (int h_id)
 {
-  current_handle_id = h_id;
+  if (tran_is_in_libcas ())
+    {
+      /* do nothing */
+    }
+  else
+    {
+      current_handle_id = h_id;
+    }
 }
