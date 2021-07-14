@@ -170,7 +170,10 @@ namespace cublog
 	deque = new ux_redo_job_deque ();
       }
 
-    m_empty_vec.resize (a_task_count, true);
+    if (m_monitor_minimum_log_lsa)
+      {
+	m_empty_vec.resize (a_task_count, true);
+      }
   }
 
   redo_parallel::redo_job_queue::~redo_job_queue ()
@@ -453,6 +456,8 @@ namespace cublog
   void
   redo_parallel::redo_job_queue::wait_for_idle () const
   {
+    assert (m_monitor_minimum_log_lsa);
+
     {
       std::unique_lock<std::mutex> empty_ulock (m_empty_mutex);
       m_empty_cv.wait (empty_ulock, [this] ()
@@ -483,6 +488,8 @@ namespace cublog
   bool
   redo_parallel::redo_job_queue::is_idle () const
   {
+    assert (m_monitor_minimum_log_lsa);
+
     std::lock_guard<std::mutex> empty_lockg (m_empty_mutex);
     for (const bool &curr_empty : m_empty_vec)
       {
@@ -516,16 +523,22 @@ namespace cublog
   void
   redo_parallel::redo_job_queue::set_empty_at (unsigned a_index)
   {
-    std::lock_guard<std::mutex> empty_lockg (m_empty_mutex);
-    m_empty_vec[a_index] = true;
-    m_empty_cv.notify_all ();
+    if (m_monitor_minimum_log_lsa)
+      {
+	std::lock_guard<std::mutex> empty_lockg (m_empty_mutex);
+	m_empty_vec[a_index] = true;
+	m_empty_cv.notify_all ();
+      }
   }
 
   void
   redo_parallel::redo_job_queue::set_non_empty_at (unsigned a_index)
   {
-    std::lock_guard<std::mutex> empty_lockg (m_empty_mutex);
-    m_empty_vec[a_index] = false;
+    if (m_monitor_minimum_log_lsa)
+      {
+	std::lock_guard<std::mutex> empty_lockg (m_empty_mutex);
+	m_empty_vec[a_index] = false;
+      }
   }
 
 //  void
