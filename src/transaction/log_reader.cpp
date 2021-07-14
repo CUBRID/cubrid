@@ -32,7 +32,7 @@ int log_reader::set_lsa_and_fetch_page (const log_lsa &lsa, fetch_mode fetch_pag
   m_lsa = lsa;
   if (do_fetch_page)
     {
-      THREAD_ENTRY *const thread_entry = get_thread_entry();
+      THREAD_ENTRY *const thread_entry = get_thread_entry ();
       assert (thread_entry == &cubthread::get_entry ());
       return fetch_page_force_use (thread_entry);
     }
@@ -51,21 +51,21 @@ const log_page *log_reader::get_page () const
 
 void log_reader::align ()
 {
-  THREAD_ENTRY *const thread_entry = get_thread_entry();
+  THREAD_ENTRY *const thread_entry = get_thread_entry ();
   assert (thread_entry == &cubthread::get_entry ());
   LOG_READ_ALIGN (thread_entry, &m_lsa, m_page);
 }
 
 void log_reader::add_align (size_t size)
 {
-  THREAD_ENTRY *const thread_entry = get_thread_entry();
+  THREAD_ENTRY *const thread_entry = get_thread_entry ();
   assert (thread_entry == &cubthread::get_entry ());
   LOG_READ_ADD_ALIGN (thread_entry, size, &m_lsa, m_page);
 }
 
 void log_reader::advance_when_does_not_fit (size_t size)
 {
-  THREAD_ENTRY *const thread_entry = get_thread_entry();
+  THREAD_ENTRY *const thread_entry = get_thread_entry ();
   assert (thread_entry == &cubthread::get_entry ());
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_entry, size, &m_lsa, m_page);
 }
@@ -77,7 +77,7 @@ bool log_reader::does_fit_in_current_page (size_t size) const
 
 void log_reader::copy_from_log (char *dest, size_t length)
 {
-  THREAD_ENTRY *const thread_entry = get_thread_entry();
+  THREAD_ENTRY *const thread_entry = get_thread_entry ();
   assert (thread_entry == &cubthread::get_entry ());
   // will also advance log page if needed
   logpb_copy_from_log (thread_entry, dest, length, &m_lsa, m_page);
@@ -99,7 +99,7 @@ int log_reader::skip (size_t size)
     }
   else
     {
-      THREAD_ENTRY *const thread_entry = get_thread_entry();
+      THREAD_ENTRY *const thread_entry = get_thread_entry ();
       assert (thread_entry == &cubthread::get_entry ());
       while (temp_length > 0)
 	{
@@ -144,49 +144,68 @@ int log_reader::fetch_page_force_use (THREAD_ENTRY *const thread_p)
   return NO_ERROR;
 }
 
-THREAD_ENTRY * log_reader::get_thread_entry()
+//int log_reader::fetch_page_safe_reader (THREAD_ENTRY *const thread_p)
+//{
+//  if (logpb_fetch_page (thread_p, &m_lsa, LOG_CS_FORCE_USE, m_page) != NO_ERROR)
+//    {
+//      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_reader::fetch_page");
+//      return ER_FAILED;
+//    }
+
+//  return NO_ERROR;
+//}
+
+THREAD_ENTRY *log_reader::get_thread_entry ()
 {
   if (m_thread_entry == nullptr)
     {
-      m_thread_entry = &cubthread::get_entry();
+      m_thread_entry = &cubthread::get_entry ();
     }
   return m_thread_entry;
 }
 
 
-void LOG_READ_ALIGN (THREAD_ENTRY *thread_p, LOG_LSA *lsa, LOG_PAGE *log_pgptr)
+void
+LOG_READ_ALIGN (THREAD_ENTRY *thread_p, LOG_LSA *lsa, LOG_PAGE *log_pgptr,
+		log_cs_access_mode cs_access_mode)
 {
   lsa->offset = DB_ALIGN (lsa->offset, DOUBLE_ALIGNMENT);
   while (lsa->offset >= (int) LOGAREA_SIZE)
     {
       assert (log_pgptr != NULL);
       lsa->pageid++;
-      if (logpb_fetch_page (thread_p, lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
+      if (logpb_fetch_page (thread_p, lsa, cs_access_mode, log_pgptr) != NO_ERROR)
 	{
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "LOG_READ_ALIGN");
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "LOG_READ_ALIGN (log_cs_access_mode: %d)",
+			     (int)cs_access_mode);
 	}
       lsa->offset -= LOGAREA_SIZE;
       lsa->offset = DB_ALIGN (lsa->offset, DOUBLE_ALIGNMENT);
     }
 }
 
-void LOG_READ_ADD_ALIGN (THREAD_ENTRY *thread_p, size_t add, LOG_LSA *lsa, LOG_PAGE *log_pgptr)
+void
+LOG_READ_ADD_ALIGN (THREAD_ENTRY *thread_p, size_t add, LOG_LSA *lsa, LOG_PAGE *log_pgptr,
+		    log_cs_access_mode cs_access_mode)
 {
   lsa->offset += add;
-  LOG_READ_ALIGN (thread_p, lsa, log_pgptr);
+  LOG_READ_ALIGN (thread_p, lsa, log_pgptr, cs_access_mode);
 }
 
-void LOG_READ_ADVANCE_WHEN_DOESNT_FIT (THREAD_ENTRY *thread_p, size_t length, LOG_LSA *lsa, LOG_PAGE *log_pgptr)
+void
+LOG_READ_ADVANCE_WHEN_DOESNT_FIT (THREAD_ENTRY *thread_p, size_t length, LOG_LSA *lsa,
+				  LOG_PAGE *log_pgptr, log_cs_access_mode cs_access_mode)
 {
   if (lsa->offset + static_cast < int > (length) >= static_cast < int > (LOGAREA_SIZE))
     {
       assert (log_pgptr != NULL);
       lsa->pageid++;
-      if (logpb_fetch_page (thread_p, lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
+      if (logpb_fetch_page (thread_p, lsa, cs_access_mode, log_pgptr) != NO_ERROR)
 	{
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "LOG_READ_ADVANCE_WHEN_DOESNT_FIT");
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+			     "LOG_READ_ADVANCE_WHEN_DOESNT_FIT (log_cs_access_mode: %d)",
+			     (int)cs_access_mode);
 	}
       lsa->offset = 0;
     }
 }
-

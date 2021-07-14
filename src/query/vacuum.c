@@ -33,6 +33,7 @@
 #include "log_compress.h"
 #include "log_lsa.hpp"
 #include "log_impl.h"
+#include "log_reader.hpp"
 #include "mvcc.h"
 #include "mvcc_table.hpp"
 #include "object_representation.h"
