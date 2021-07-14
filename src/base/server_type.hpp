@@ -19,10 +19,14 @@
 #ifndef _SERVER_TYPE_H_
 #define _SERVER_TYPE_H_
 
+#define COMMDB_SERVER_TYPE_S              "-t"
+#define COMMDB_SERVER_TYPE_L              "--type"
+
 typedef enum
 {
   SERVER_TYPE_TRANSACTION,
   SERVER_TYPE_PAGE,
+  UNKNOWN,
 } SERVER_TYPE;
 
 int init_server_type (const char *db_name);
@@ -30,5 +34,6 @@ void finalize_server_type ();
 SERVER_TYPE get_server_type ();
 
 bool is_tran_server_with_remote_storage ();
+void set_server_type_from_arg (int argc, char **argv);
 
 #endif

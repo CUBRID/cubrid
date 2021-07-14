@@ -28,7 +28,7 @@
 
 #include <string>
 
-static SERVER_TYPE g_server_type = SERVER_TYPE_TRANSACTION;
+static SERVER_TYPE g_server_type = UNKNOWN;
 #if !defined(NDEBUG)
 static bool g_server_type_initialized = false;
 #endif
@@ -52,7 +52,10 @@ SERVER_TYPE get_server_type ()
 int init_server_type (const char *db_name)
 {
   int er_code = NO_ERROR;
-  g_server_type = (SERVER_TYPE) prm_get_integer_value (PRM_ID_SERVER_TYPE);
+  if (g_server_type == UNKNOWN)
+    {
+      g_server_type = (SERVER_TYPE) prm_get_integer_value (PRM_ID_SERVER_TYPE);
+    }
 #if !defined(NDEBUG)
   g_server_type_initialized = true;
 #endif
@@ -102,6 +105,37 @@ bool is_tran_server_with_remote_storage ()
       return ats_Gl.uses_remote_storage ();
     }
   return false;
+}
+
+void set_server_type_from_arg (int argc, char **argv)
+{
+  if (argc < 4)
+    {
+      return;
+    }
+
+  int arg = 0;
+  //check for server type argument
+  for (size_t i = 2; i < argc; i++)
+    {
+      if (arg)
+	{
+	  if (!strcmp (argv[i], "transaction"))
+	    {
+	      g_server_type = SERVER_TYPE_TRANSACTION;
+	      return;
+	    }
+	  if (!strcmp (argv[i], "page"))
+	    {
+	      g_server_type = SERVER_TYPE_PAGE;
+	      return;
+	    }
+	}
+      if (!strcmp (argv[i], COMMDB_SERVER_TYPE_S) || !strcmp (argv[i], COMMDB_SERVER_TYPE_L))
+	{
+	  arg = 1;
+	}
+    }
 }
 
 #else // !SERVER_MODE = SA_MODE

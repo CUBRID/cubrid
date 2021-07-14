@@ -48,6 +48,7 @@
 #include "environment_variable.h"
 #include "boot_sr.h"
 #include "system_parameter.h"
+#include "server_type.hpp"
 #include "perf_monitor.h"
 #include "util_func.h"
 #if defined(WINDOWS)
@@ -348,6 +349,7 @@ main (int argc, char **argv)
     (void) envvar_bindir_file (executable_path, PATH_MAX, binary_name);
     /* save database name */
     database_name = argv[1];
+    set_server_type_from_arg (argc, argv);
 
 #if !defined(WINDOWS)
     hb_set_exec_path (executable_path);
