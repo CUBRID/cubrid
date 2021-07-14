@@ -119,9 +119,13 @@ class log_reader final
     const char *get_cptr () const;
 
     int fetch_page_force_use (THREAD_ENTRY *const thread_p);
+    THREAD_ENTRY * get_thread_entry();
 
   private:
-    THREAD_ENTRY *const m_thread_entry = nullptr;
+    /* internally cached thread entry;
+     * assumption is that the entire execution happens in the same thread
+     */
+    THREAD_ENTRY *m_thread_entry = nullptr;
     log_lsa m_lsa = NULL_LSA;
     log_page *m_page;
     char m_area_buffer[IO_MAX_PAGE_SIZE + DOUBLE_ALIGNMENT];
