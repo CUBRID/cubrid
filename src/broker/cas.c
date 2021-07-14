@@ -1473,6 +1473,7 @@ libcas_get_db_result_set (int h_id)
 void
 libcas_srv_handle_free (int h_id)
 {
+  cas_log_write (0, false, "close_req_handle srv_h_id %d", h_id);
   hm_srv_handle_free (h_id);
 }
 #endif /* !LIBCAS_FOR_JSP */
