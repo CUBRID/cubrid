@@ -2088,6 +2088,16 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	  else
 	    {
 	      strncat (stmt_msg, csql_get_message (CSQL_STAT_COMMITTED_TEXT), LINE_BUFFER_SIZE - 1);
+              if (csql_Is_time_on)
+                {
+                  char time[100];
+
+                  tsc_getticks (&end_tick);
+                  tsc_elapsed_time_usec (&elapsed_time, end_tick, start_tick);
+
+                  sprintf (time, " (%ld.%06ld sec) ", elapsed_time.tv_sec, elapsed_time.tv_usec);
+                  strncat (stmt_msg, time, sizeof (stmt_msg) - strlen (stmt_msg) - 1);
+                }
 	    }
 	}
 
