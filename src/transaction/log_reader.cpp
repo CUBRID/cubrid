@@ -34,7 +34,7 @@ int log_reader::set_lsa_and_fetch_page (const log_lsa &lsa, fetch_mode fetch_pag
     {
       THREAD_ENTRY *const thread_entry = get_thread_entry ();
       assert (thread_entry == &cubthread::get_entry ());
-      return fetch_page_force_use (thread_entry);
+      return fetch_page (thread_entry);
     }
   return NO_ERROR;
 }
@@ -53,21 +53,21 @@ void log_reader::align ()
 {
   THREAD_ENTRY *const thread_entry = get_thread_entry ();
   assert (thread_entry == &cubthread::get_entry ());
-  LOG_READ_ALIGN (thread_entry, &m_lsa, m_page);
+  LOG_READ_ALIGN (thread_entry, &m_lsa, m_page, LOG_CS_SAFE_READER);
 }
 
 void log_reader::add_align (size_t size)
 {
   THREAD_ENTRY *const thread_entry = get_thread_entry ();
   assert (thread_entry == &cubthread::get_entry ());
-  LOG_READ_ADD_ALIGN (thread_entry, size, &m_lsa, m_page);
+  LOG_READ_ADD_ALIGN (thread_entry, size, &m_lsa, m_page, LOG_CS_SAFE_READER);
 }
 
 void log_reader::advance_when_does_not_fit (size_t size)
 {
   THREAD_ENTRY *const thread_entry = get_thread_entry ();
   assert (thread_entry == &cubthread::get_entry ());
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_entry, size, &m_lsa, m_page);
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_entry, size, &m_lsa, m_page, LOG_CS_SAFE_READER);
 }
 
 bool log_reader::does_fit_in_current_page (size_t size) const
@@ -113,7 +113,7 @@ int log_reader::skip (size_t size)
 	      fetch_lsa.pageid = m_lsa.pageid;
 	      fetch_lsa.offset = LOG_PAGESIZE;
 
-	      if (const auto err_fetch_page = fetch_page_force_use (thread_entry) != NO_ERROR)
+	      if (const auto err_fetch_page = fetch_page (thread_entry) != NO_ERROR)
 		{
 		  return err_fetch_page;
 		}
@@ -133,9 +133,9 @@ int log_reader::skip (size_t size)
   return NO_ERROR;
 }
 
-int log_reader::fetch_page_force_use (THREAD_ENTRY *const thread_p)
+int log_reader::fetch_page (THREAD_ENTRY *const thread_p)
 {
-  if (logpb_fetch_page (thread_p, &m_lsa, LOG_CS_FORCE_USE, m_page) != NO_ERROR)
+  if (logpb_fetch_page (thread_p, &m_lsa, LOG_CS_SAFE_READER, m_page) != NO_ERROR)
     {
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_reader::fetch_page");
       return ER_FAILED;
@@ -143,17 +143,6 @@ int log_reader::fetch_page_force_use (THREAD_ENTRY *const thread_p)
 
   return NO_ERROR;
 }
-
-//int log_reader::fetch_page_safe_reader (THREAD_ENTRY *const thread_p)
-//{
-//  if (logpb_fetch_page (thread_p, &m_lsa, LOG_CS_FORCE_USE, m_page) != NO_ERROR)
-//    {
-//      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_reader::fetch_page");
-//      return ER_FAILED;
-//    }
-
-//  return NO_ERROR;
-//}
 
 THREAD_ENTRY *log_reader::get_thread_entry ()
 {

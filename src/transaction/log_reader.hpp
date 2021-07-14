@@ -119,8 +119,7 @@ class log_reader final
   private:
     const char *get_cptr () const;
 
-    int fetch_page_force_use (THREAD_ENTRY *const thread_p);
-//    int fetch_page_safe_reader (THREAD_ENTRY *const thread_p);
+    int fetch_page (THREAD_ENTRY *const thread_p);
     THREAD_ENTRY *get_thread_entry ();
 
   private:
