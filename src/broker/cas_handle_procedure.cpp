@@ -89,9 +89,8 @@ cas_procedure_handle_free (cas_procedure_handle_table &handle_table, int current
 {
   if (tran_is_in_libcas ())
     {
-      /* just remove from the multimap, the srv_handle is going to be freed here */
-      /* so that h_id doesn't need to be destoryed later */
-      handle_table.remove (current_handle_id, sp_h_id);
+      /* it will be removed by srv_handler_map.erase (key) in cas_procedure_handle_table::destroy() */
+      /* do nothing */
     }
   else
     {
