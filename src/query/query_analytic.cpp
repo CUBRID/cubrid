@@ -786,11 +786,7 @@ qdata_finalize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
   /* set count-star aggregate values */
   if (func_p->function == PT_COUNT_STAR)
     {
-#if defined(NDEBUG)
       db_make_bigint (func_p->value, (INT64) func_p->curr_cnt);
-#else
-      db_make_bigint (func_p->value, (INT64) func_p->curr_cnt + (INT64) prm_get_bigint_value (PRM_ID_COUNT_DEBUG));
-#endif
     }
 
   /* process list file for distinct */
