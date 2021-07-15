@@ -127,6 +127,45 @@ str_to_hex_prealloced (const char *src, int src_len, char *dest, int dest_len, H
   dest[src_len * 2] = '\0';
 }
 
+void
+hex_to_str_prealloced (const char *src, int src_len, char *dest, int dest_len, HEX_LETTERCASE lettercase)
+{
+  int val;
+  char base;
+  assert (src != NULL && dest != NULL);
+  assert (dest_len >= (src_len / 2) + 1);
+
+  if (lettercase == HEX_UPPERCASE)
+    {
+      base = 'A' - 10;
+    }
+  else
+    {
+      base = 'a' - 10;
+    }
+
+  while (*src)
+    {
+      if (*src <= '9')
+	val = (*src - '0');
+      else
+	val = (*src - base);
+
+      src++;
+      val = (val << 4);		// is same val *= (val * 16);
+      if (*src <= '9')
+	val |= (*src - '0');
+      else
+	val |= (*src - base);
+
+      *dest = (char) val;
+      src++;
+      dest++;
+    }
+
+  *dest = '\0';
+}
+
 /*
  * str_to_hex() - convert a string to its hexadecimal expreesion string
  *   return:
@@ -696,4 +735,137 @@ crypt_generate_random_bytes (char *dest, int length)
     }
 
   return NO_ERROR;
+}
+
+typedef struct
+{
+  EVP_CIPHER_CTX *ctx;
+  const EVP_CIPHER *cipher_type;
+  unsigned char nonce[16];
+  unsigned char master_key[32];
+} EVP_CHIPER;
+
+int
+init_dblink_cipher (EVP_CHIPER * evp)
+{
+  unsigned char master_key[32] = { 0, };
+  // //TDE_ALGORITHM alg[2] = {TDE_ALGORITHM_AES, TDE_ALGORITHM_ARIA};
+
+  memset (evp->nonce, 7, sizeof (evp->nonce));
+  memcpy (evp->master_key, master_key, sizeof (master_key));
+  sprintf ((char *) evp->master_key, "%s", "121212");
+
+  if ((evp->ctx = EVP_CIPHER_CTX_new ()) == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_INIT_ERR]);
+      return ER_ENCRYPTION_LIB_FAILED;
+    }
+
+  evp->cipher_type = EVP_aes_256_ctr ();
+  // evp->cipher_type = EVP_aria_256_ctr ();
+
+  if (evp->cipher_type == NULL)
+    {
+      EVP_CIPHER_CTX_free (evp->ctx);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_INIT_ERR]);
+      return ER_ENCRYPTION_LIB_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+int
+crypt_dblink_encrypt (const unsigned char *str, int str_len, unsigned char *cipher_buffer)
+{
+  int len;
+  int cipher_len;
+  EVP_CHIPER evp;
+  int err = ER_TDE_ENCRYPTION_ERROR;
+
+  err = init_dblink_cipher (&evp);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  if (EVP_EncryptInit_ex (evp.ctx, evp.cipher_type, NULL, evp.master_key, evp.nonce) != 1)
+    {
+      goto cleanup;
+    }
+
+  if (EVP_EncryptUpdate (evp.ctx, cipher_buffer, &len, str, str_len) != 1)
+    {
+      goto cleanup;
+    }
+  cipher_len = len;
+
+  // Further ciphertext bytes may be written at finalizing (Partial block).
+  if (EVP_EncryptFinal_ex (evp.ctx, cipher_buffer + len, &len) != 1)
+    {
+      goto cleanup;
+    }
+  cipher_len += len;
+
+  // CTR_MODE is stream mode so that there is no need to check,
+  // but check it for safe.
+  assert (cipher_len == str_len);
+
+cleanup:
+  EVP_CIPHER_CTX_free (evp.ctx);
+
+exit:
+  if (err != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_CRYPT_ERR]);
+      return ER_ENCRYPTION_LIB_FAILED;
+    }
+  return err;
+}
+
+int
+crypt_dblink_decrypt (const unsigned char *cipher, int cipher_len, unsigned char *str_buffer)
+{
+  int len;
+  int plain_len;
+  EVP_CHIPER evp;
+  int err = ER_TDE_DECRYPTION_ERROR;
+
+  err = init_dblink_cipher (&evp);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  if (EVP_DecryptInit_ex (evp.ctx, evp.cipher_type, NULL, evp.master_key, evp.nonce) != 1)
+    {
+      goto cleanup;
+    }
+
+  if (EVP_DecryptUpdate (evp.ctx, str_buffer, &len, cipher, cipher_len) != 1)
+    {
+      goto cleanup;
+    }
+  plain_len = len;
+
+  // Further plaintext bytes may be written at finalizing (Partial block).
+  if (EVP_DecryptFinal_ex (evp.ctx, str_buffer + len, &len) != 1)
+    {
+      goto cleanup;
+    }
+  plain_len += len;
+
+  // CTR_MODE is stream mode so that there is no need to check,
+  // but check it for safe.
+  assert (plain_len == cipher_len);
+
+cleanup:
+  EVP_CIPHER_CTX_free (evp.ctx);
+
+exit:
+  if (err != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_CRYPT_ERR]);
+      return ER_ENCRYPTION_LIB_FAILED;
+    }
+  return err;
 }

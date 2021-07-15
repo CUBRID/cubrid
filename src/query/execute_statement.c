@@ -88,6 +88,7 @@
 #include "parser_support.h"
 #include "tz_support.h"
 #include "dbtype.h"
+#include "crypt_opfunc.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -180,6 +181,10 @@ static int do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, P
 static void init_compile_context (PARSER_CONTEXT * parser);
 
 static int do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_upd);
+
+static int get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val);
+static int get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE * decrypt_val);
+void test_ciper_func ();
 
 /*
  * initialize_serial_invariant() - initialize a serial invariant
@@ -17828,8 +17833,8 @@ end:
 
 
 static int
-do_create_server_internal (MOP * server_object, DB_VALUE * port_no, const char **attr_names, char **attr_val,
-			   int attr_cnt)
+do_create_server_internal (MOP * server_object, DB_VALUE * port_no, DB_VALUE * passwd, const char **attr_names,
+			   char **attr_val, int attr_cnt)
 {
   DB_OBJECT *ret_obj = NULL;
   DB_OTMPL *obj_tmpl = NULL;
@@ -17860,6 +17865,13 @@ do_create_server_internal (MOP * server_object, DB_VALUE * port_no, const char *
 
   /* port */
   error = dbt_put_internal (obj_tmpl, "port", port_no);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* password */
+  error = dbt_put_internal (obj_tmpl, "password", passwd);
   if (error != NO_ERROR)
     {
       goto end;
@@ -17911,10 +17923,10 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_OBJECT *server_class = NULL, *server_object = NULL;
   DB_IDENTIFIER server_obj_id;
   DB_VALUE *pval = NULL;
-  DB_VALUE port_no;
+  DB_VALUE port_no, passwd;
   DB_DATA_STATUS data_stat;
-  char *attr_val[7];
-  const char *attr_names[7] = { "link_name", "host", "db_name", "user_name", "password", "properties", "comment" };
+  char *attr_val[6];
+  const char *attr_names[6] = { "link_name", "host", "db_name", "user_name", "properties", "comment" };
 
   int error = NO_ERROR;
   int save;
@@ -17925,6 +17937,7 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   CHECK_MODIFICATION_ERROR ();
 
   memset (attr_val, 0x00, sizeof (attr_val));
+  db_make_null (&passwd);
   db_make_null (&port_no);
   db_make_int (&port_no, 0);
 
@@ -18000,11 +18013,18 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* PASSWORD */
   if (si->pwd != NULL)
     {
+      char *pwd;
       assert (si->pwd->node_type == PT_VALUE);
-      attr_val[4] = (char *) PT_VALUE_GET_BYTES (si->pwd);
-      if (attr_val[4] == NULL)
+      pwd = (char *) PT_VALUE_GET_BYTES (si->pwd);
+      if (pwd == NULL)
 	{
 	  error = ER_FAILED;
+	  goto end;
+	}
+
+      error = get_dblink_password_encrypt (pwd, &passwd);
+      if (error != NO_ERROR)
+	{
 	  goto end;
 	}
     }
@@ -18013,8 +18033,8 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (si->prop != NULL)
     {
       assert (si->prop->node_type == PT_VALUE);
-      attr_val[5] = (char *) PT_VALUE_GET_BYTES (si->prop);
-      if (attr_val[5] == NULL)
+      attr_val[4] = (char *) PT_VALUE_GET_BYTES (si->prop);
+      if (attr_val[4] == NULL)
 	{
 	  error = ER_FAILED;
 	  goto end;
@@ -18025,8 +18045,8 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (si->comment != NULL)
     {
       assert (si->comment->node_type == PT_VALUE);
-      attr_val[6] = (char *) PT_VALUE_GET_BYTES (si->comment);
-      if (attr_val[6] == NULL)
+      attr_val[5] = (char *) PT_VALUE_GET_BYTES (si->comment);
+      if (attr_val[5] == NULL)
 	{
 	  error = ER_FAILED;
 	  goto end;
@@ -18039,7 +18059,7 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   server_object = NULL;
   error =
-    do_create_server_internal (&server_object, &port_no, attr_names, attr_val,
+    do_create_server_internal (&server_object, &port_no, &passwd, attr_names, attr_val,
 			       sizeof (attr_names) / sizeof (attr_names[0]));
   if (error >= 0)
     {
@@ -18053,6 +18073,7 @@ end:
     }
 
   pr_clear_value (&port_no);
+  pr_clear_value (&passwd);
 
   return error;
 }
@@ -18063,9 +18084,11 @@ get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, const char *server, DB_V
   char *server_name, *t;
   DB_OBJECT *server_object, *server_class;
   DB_IDENTIFIER server_obj_id;
-  DB_VALUE values[4];
+  DB_VALUE values[4], pwd_val;
   int au_save, error, cnt;
   const char *url_attr_names[4] = { "host", "port", "db_name", "properties" };
+
+  //test_ciper_func ();                 //////////////////////////////////////////////////////////////////
 
   cnt = 0;
   t = strchr ((char *) server, '.');	/* FIXME */
@@ -18111,7 +18134,13 @@ get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, const char *server, DB_V
       goto error_end;
     }
 
-  error = db_get (server_object, "password", &(out_val[2]));
+  error = db_get (server_object, "password", &pwd_val);
+  if (error < 0)
+    {
+      goto error_end;
+    }
+
+  error = get_dblink_password_decrypt (db_get_string (&pwd_val), &(out_val[2]));
   if (error == NO_ERROR)
     {
       // cci:CUBRID:<host>:<port>:<db_name>:<db_user>:<db_password>:[?<properties>]
@@ -18135,7 +18164,7 @@ get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, const char *server, DB_V
 	  sprintf (dblink_url, dblink_url_fmt_none, host, port_no, dbname);
 	}
 
-      error = db_make_string (&(out_val[0]), dblink_url);
+      error = db_make_string_copy (&(out_val[0]), dblink_url);
     }
 
 error_end:
@@ -18147,4 +18176,127 @@ error_end:
     }
 
   return error;
+}
+
+
+#define MAX_DBLINK_PASSWORD_LEN  (128)
+
+static int
+get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val)
+{
+  int err, length;
+  char cipher[MAX_DBLINK_PASSWORD_LEN + 1], newpwd[MAX_DBLINK_PASSWORD_LEN * 2 + 1];
+
+  db_make_null (encrypt_val);
+  if (!passwd || !*passwd)
+    {
+      return NO_ERROR;
+    }
+
+  length = (int) strlen (passwd);
+  assert (length <= MAX_DBLINK_PASSWORD_LEN);
+
+  err = crypt_dblink_encrypt ((unsigned char *) passwd, length, (unsigned char *) cipher);
+  if (err == NO_ERROR)
+    {
+      str_to_hex_prealloced ((char *) cipher, length, newpwd, sizeof (newpwd), HEX_UPPERCASE);
+      err = db_make_string_copy (encrypt_val, newpwd);
+    }
+
+  return err;
+}
+
+static int
+get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE * decrypt_val)
+{
+  int err, length;
+  char cipher[MAX_DBLINK_PASSWORD_LEN + 1], newpwd[MAX_DBLINK_PASSWORD_LEN + 1];
+
+  db_make_null (decrypt_val);
+  if (!passwd_cipher || !*passwd_cipher)
+    {
+      return NO_ERROR;
+    }
+
+  length = strlen (passwd_cipher);
+  assert (length <= (MAX_DBLINK_PASSWORD_LEN * 2));
+
+  hex_to_str_prealloced (passwd_cipher, length, cipher, sizeof (cipher), HEX_UPPERCASE);
+  err = crypt_dblink_decrypt ((unsigned char *) cipher, (length / 2), (unsigned char *) newpwd);
+  if (err == NO_ERROR)
+    {
+      newpwd[(length / 2)] = '\0';
+      err = db_make_string_copy (decrypt_val, newpwd);
+    }
+
+  return err;
+}
+
+void
+test_ciper_func ()
+{
+  int err, i, loop, buf_len;
+  char buf1[1024], buf2[1024];
+  char *pt, *pt2;
+
+  buf_len = 1024;
+  int len;
+  char tmp[1024];
+  char *tmpx = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ!@#$%%^&*()_-+=;:[]{}(),./?<>";
+
+  DB_VALUE encrypt_val;
+  DB_VALUE decrypt_val;
+
+  srand (time (NULL));
+
+  int flag = 0;
+
+  for (loop = 0; loop < 100; loop++)
+    {
+      len = (rand () % 64) + 1;
+      for (i = 0; i < len; i++)
+	{
+	  tmp[i] = tmpx[rand () % strlen (tmpx)];
+	}
+      tmp[i] = 0x00;
+
+      if (flag != 0)
+	strcpy (tmp, "(euR[JL;1bXX_P&OT!!-Wu");
+
+      pt = tmp;
+
+      memset (buf2, 0x00, sizeof (buf2));
+
+      sprintf ((char *) buf1, "%s", pt);
+
+      buf_len = strlen ((char *) buf1);
+
+      if (buf_len >= 64)
+	buf_len = strlen ((char *) buf1);
+
+      db_make_null (&encrypt_val);
+      db_make_null (&decrypt_val);
+
+      err = get_dblink_password_encrypt (buf1, &encrypt_val);
+      if (err != NO_ERROR)
+	printf ("xxx 1 [%s]\n", tmp);
+
+      pt = (char *) db_get_string (&encrypt_val);
+      len = (int) strlen (pt);
+
+      err = get_dblink_password_decrypt (pt, &decrypt_val);
+      if (err != NO_ERROR)
+	printf ("xxx 2 [%s]\n", tmp);
+
+      pt2 = (char *) db_get_string (&decrypt_val);
+
+      if (strcmp (tmp, pt2) != 0)
+	printf ("xxx 3 \n[%s]\n[%s]\n", tmp, pt2);
+
+      pr_clear_value (&encrypt_val);
+      pr_clear_value (&decrypt_val);
+    }
+
+  printf ("=========\n");
+
 }
