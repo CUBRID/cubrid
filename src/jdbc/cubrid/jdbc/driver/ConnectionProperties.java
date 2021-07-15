@@ -33,6 +33,7 @@ package cubrid.jdbc.driver;
 
 import java.io.UnsupportedEncodingException;
 import java.lang.reflect.Field;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Properties;
@@ -387,6 +388,7 @@ public class ConnectionProperties {
     IntegerConnectionProperty clientCacheSize = new IntegerConnectionProperty(
     		"clientCacheSize", 1, 1, 1024);
     
+    BooleanConnectionProperty holdCursor = new BooleanConnectionProperty("hold_cursor", true);
     public boolean getLogOnException() {
 	return logOnException.getValueAsBoolean();
     }
@@ -452,5 +454,13 @@ public class ConnectionProperties {
     
     public int getClientCacheSize() {
     	return clientCacheSize.getValueAsInteger();
+    }
+
+    public int getHoldCursor() {
+        int holdability = ResultSet.HOLD_CURSORS_OVER_COMMIT;
+        if (holdCursor.getValueAsBoolean() == false) {
+            holdability = ResultSet.CLOSE_CURSORS_AT_COMMIT;
+        }
+        return holdability;
     }
 }
