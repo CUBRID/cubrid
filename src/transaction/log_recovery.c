@@ -3709,7 +3709,7 @@ log_rv_redo_fix_page (THREAD_ENTRY * thread_p, const VPID * vpid_rcv, LOG_RCVIND
   // sector reservation table are applied in parallel with the changes in pages, at times the page may appear to be
   // deallocated (part of an unreserved sector). but the changes were done while the sector was reserved and must be
   // re-applied to get a correct end result.
-  // 
+  //
   // moreover, the sector reservation check is very expensive. running this check on every page fix costs much more
   // than any time gained by skipping redoing changes on deallocated pages.
   //
