@@ -184,7 +184,9 @@ static int do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, boo
 
 static int get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val);
 static int get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE * decrypt_val);
-void test_ciper_func ();
+#ifndef NDEBUG
+void ciper_func_test ();
+#endif
 
 /*
  * initialize_serial_invariant() - initialize a serial invariant
@@ -18088,7 +18090,9 @@ get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, const char *server, DB_V
   int au_save, error, cnt;
   const char *url_attr_names[4] = { "host", "port", "db_name", "properties" };
 
-  //test_ciper_func ();         //////////////////////////////////////////////////////////////////
+#ifndef NDEBUG
+  //ciper_func_test ();         //////////////////////////////////////////////////////////////////
+#endif
 
   cnt = 0;
   t = strchr ((char *) server, '.');	/* FIXME */
@@ -18220,6 +18224,7 @@ get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val)
   err = crypt_dblink_encrypt ((unsigned char *) passwd, length, (unsigned char *) cipher_ptr);
   if (err == NO_ERROR)
     {
+      // byte stream to hex string
       str_to_hex_prealloced ((char *) cipher_ptr, length, newpwd_ptr, buf_size, HEX_UPPERCASE);
       err = db_make_string_copy (encrypt_val, newpwd_ptr);
     }
@@ -18271,11 +18276,12 @@ get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE * decrypt_val)
 	}
     }
 
+  // hex string  to byte stream 
   hex_to_str_prealloced (passwd_cipher, length, cipher_ptr, buf_size, HEX_UPPERCASE);
   err = crypt_dblink_decrypt ((unsigned char *) cipher_ptr, (length >> 1), (unsigned char *) newpwd_ptr);
   if (err == NO_ERROR)
     {
-      newpwd_ptr[(length / 2)] = '\0';
+      newpwd_ptr[(length / 2)] = '\0';	// Do NOT omit this line.
       err = db_make_string_copy (decrypt_val, newpwd_ptr);
     }
 
@@ -18288,14 +18294,13 @@ get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE * decrypt_val)
   return err;
 }
 
+#ifndef NDEBUG
 void
-test_ciper_func ()
+ciper_func_test ()
 {
-  int err, i, loop, buf_len;
+  int err, i, loop;
   char buf1[1024], buf2[1024];
   char *pt, *pt2;
-
-  buf_len = 1024;
   int len;
   char tmp[1024];
   char *tmpx = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ!@#$%%^&*()_-+=;:[]{}(),./?<>";
@@ -18305,8 +18310,6 @@ test_ciper_func ()
 
   srand (time (NULL));
 
-  int flag = 0;
-
   for (loop = 0; loop < 10000; loop++)
     {
       len = (rand () % 64) + 1;
@@ -18315,20 +18318,11 @@ test_ciper_func ()
 	  tmp[i] = tmpx[rand () % strlen (tmpx)];
 	}
       tmp[i] = 0x00;
-
-      if (flag != 0)
-	strcpy (tmp, "(euR[JL;1bXX_P&OT!!-Wu");
-
       pt = tmp;
 
       memset (buf2, 0x00, sizeof (buf2));
 
       sprintf ((char *) buf1, "%s", pt);
-
-      buf_len = strlen ((char *) buf1);
-
-      if (buf_len >= 64)
-	buf_len = strlen ((char *) buf1);
 
       db_make_null (&encrypt_val);
       db_make_null (&decrypt_val);
@@ -18352,7 +18346,5 @@ test_ciper_func ()
       pr_clear_value (&encrypt_val);
       pr_clear_value (&decrypt_val);
     }
-
-  printf ("=========\n");
-
 }
+#endif

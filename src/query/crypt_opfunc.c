@@ -747,7 +747,7 @@ static struct
 {
   unsigned char nonce[16];
   unsigned char master_key[32];
-} evp_cipher = { {0, }, {0, } };
+} evp_cipher = { {0, }, {0, } }; // Do not omit the this initialization settings.
 // *INDENT-ON*
 
 static int
@@ -759,8 +759,8 @@ init_dblink_cipher (EVP_CIPHER_CTX ** ctx, const EVP_CIPHER ** cipher_type)
 
   if (is_init_done == 0)
     {
-      memset (evp_cipher.nonce, 7, sizeof (evp_cipher.nonce));
-      sprintf ((char *) evp_cipher.master_key, "%s", "121212");
+      memset (evp_cipher.nonce, 0x07, sizeof (evp_cipher.nonce));
+      sprintf ((char *) evp_cipher.master_key, "%s", "CUBcubridRID");
 
       is_init_done = 1;
     }
