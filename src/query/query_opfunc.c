@@ -6307,7 +6307,8 @@ qdata_get_single_tuple_from_list_id (THREAD_ENTRY * thread_p, qfile_list_id * li
   int length;
   TP_DOMAIN *domain_p;
   char *ptr;
-  int tuple_count, value_count, i;
+  INT64 tuple_count;
+  int value_count, i;
   QPROC_DB_VALUE_LIST value_list;
   int error_code;
 
