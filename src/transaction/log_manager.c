@@ -1338,7 +1338,16 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
        * System was involved in a crash.
        * Execute the recovery process
        */
-      log_recovery (thread_p, ismedia_crash, stopat);
+      if (!is_tran_server_with_remote_storage ())
+	{
+	  log_recovery (thread_p, ismedia_crash, stopat);
+	}
+      else
+	{
+	  // TODO: do something, but not recovery
+	  //
+	  //  Finish postpones, abort active transactions
+	}
     }
   else
     {
