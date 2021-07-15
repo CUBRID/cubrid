@@ -130,7 +130,6 @@ str_to_hex_prealloced (const char *src, int src_len, char *dest, int dest_len, H
 void
 hex_to_str_prealloced (const char *src, int src_len, char *dest, int dest_len, HEX_LETTERCASE lettercase)
 {
-  int val;
   char base;
   assert (src != NULL && dest != NULL);
   assert (dest_len >= (src_len / 2) + 1);
@@ -144,22 +143,27 @@ hex_to_str_prealloced (const char *src, int src_len, char *dest, int dest_len, H
       base = 'a' - 10;
     }
 
-  while (*src)
+  while (src[0] && src[1])
     {
-      if (*src <= '9')
-	val = (*src - '0');
+      if (src[0] <= '9')
+	{
+	  *dest = (src[0] - '0') << 4;
+	}
       else
-	val = (*src - base);
+	{
+	  *dest = (src[0] - base) << 4;
+	}
 
-      src++;
-      val = (val << 4);		// is same val *= (val * 16);
-      if (*src <= '9')
-	val |= (*src - '0');
+      if (src[1] <= '9')
+	{
+	  *dest |= (src[1] - '0');
+	}
       else
-	val |= (*src - base);
+	{
+	  *dest |= (src[1] - base);
+	}
 
-      *dest = (char) val;
-      src++;
+      src += 2;
       dest++;
     }
 
@@ -737,36 +741,48 @@ crypt_generate_random_bytes (char *dest, int length)
   return NO_ERROR;
 }
 
-typedef struct
+// 
+// *INDENT-OFF*
+static struct
 {
-  EVP_CIPHER_CTX *ctx;
-  const EVP_CIPHER *cipher_type;
   unsigned char nonce[16];
   unsigned char master_key[32];
-} EVP_CHIPER;
+} evp_cipher = { {0, }, {0, } };
+// *INDENT-ON*
 
-int
-init_dblink_cipher (EVP_CHIPER * evp)
+static int
+init_dblink_cipher (EVP_CIPHER_CTX ** ctx, const EVP_CIPHER ** cipher_type)
 {
+  static int is_init_done = 0;
   unsigned char master_key[32] = { 0, };
-  // //TDE_ALGORITHM alg[2] = {TDE_ALGORITHM_AES, TDE_ALGORITHM_ARIA};
+  bool is_aes_algorithm = true;
 
-  memset (evp->nonce, 7, sizeof (evp->nonce));
-  memcpy (evp->master_key, master_key, sizeof (master_key));
-  sprintf ((char *) evp->master_key, "%s", "121212");
+  if (is_init_done == 0)
+    {
+      memset (evp_cipher.nonce, 7, sizeof (evp_cipher.nonce));
+      sprintf ((char *) evp_cipher.master_key, "%s", "121212");
 
-  if ((evp->ctx = EVP_CIPHER_CTX_new ()) == NULL)
+      is_init_done = 1;
+    }
+
+  if ((*ctx = EVP_CIPHER_CTX_new ()) == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_INIT_ERR]);
       return ER_ENCRYPTION_LIB_FAILED;
     }
 
-  evp->cipher_type = EVP_aes_256_ctr ();
-  // evp->cipher_type = EVP_aria_256_ctr ();
-
-  if (evp->cipher_type == NULL)
+  if (is_aes_algorithm)
     {
-      EVP_CIPHER_CTX_free (evp->ctx);
+      *cipher_type = EVP_aes_256_ctr ();
+    }
+  else
+    {
+      *cipher_type = EVP_aria_256_ctr ();
+    }
+
+  if (*cipher_type == NULL)
+    {
+      EVP_CIPHER_CTX_free (*ctx);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_INIT_ERR]);
       return ER_ENCRYPTION_LIB_FAILED;
     }
@@ -777,30 +793,29 @@ init_dblink_cipher (EVP_CHIPER * evp)
 int
 crypt_dblink_encrypt (const unsigned char *str, int str_len, unsigned char *cipher_buffer)
 {
-  int len;
-  int cipher_len;
-  EVP_CHIPER evp;
-  int err = ER_TDE_ENCRYPTION_ERROR;
+  int len, cipher_len, err;
+  EVP_CIPHER_CTX *ctx;
+  const EVP_CIPHER *cipher_type;
 
-  err = init_dblink_cipher (&evp);
+  err = init_dblink_cipher (&ctx, &cipher_type);
   if (err != NO_ERROR)
     {
       return err;
     }
 
-  if (EVP_EncryptInit_ex (evp.ctx, evp.cipher_type, NULL, evp.master_key, evp.nonce) != 1)
+  if (EVP_EncryptInit_ex (ctx, cipher_type, NULL, evp_cipher.master_key, evp_cipher.nonce) != 1)
     {
       goto cleanup;
     }
 
-  if (EVP_EncryptUpdate (evp.ctx, cipher_buffer, &len, str, str_len) != 1)
+  if (EVP_EncryptUpdate (ctx, cipher_buffer, &len, str, str_len) != 1)
     {
       goto cleanup;
     }
   cipher_len = len;
 
   // Further ciphertext bytes may be written at finalizing (Partial block).
-  if (EVP_EncryptFinal_ex (evp.ctx, cipher_buffer + len, &len) != 1)
+  if (EVP_EncryptFinal_ex (ctx, cipher_buffer + len, &len) != 1)
     {
       goto cleanup;
     }
@@ -811,7 +826,7 @@ crypt_dblink_encrypt (const unsigned char *str, int str_len, unsigned char *ciph
   assert (cipher_len == str_len);
 
 cleanup:
-  EVP_CIPHER_CTX_free (evp.ctx);
+  EVP_CIPHER_CTX_free (ctx);
 
 exit:
   if (err != NO_ERROR)
@@ -825,41 +840,40 @@ exit:
 int
 crypt_dblink_decrypt (const unsigned char *cipher, int cipher_len, unsigned char *str_buffer)
 {
-  int len;
-  int plain_len;
-  EVP_CHIPER evp;
-  int err = ER_TDE_DECRYPTION_ERROR;
+  int len, str_len, err;
+  EVP_CIPHER_CTX *ctx;
+  const EVP_CIPHER *cipher_type;
 
-  err = init_dblink_cipher (&evp);
+  err = init_dblink_cipher (&ctx, &cipher_type);
   if (err != NO_ERROR)
     {
       return err;
     }
 
-  if (EVP_DecryptInit_ex (evp.ctx, evp.cipher_type, NULL, evp.master_key, evp.nonce) != 1)
+  if (EVP_DecryptInit_ex (ctx, cipher_type, NULL, evp_cipher.master_key, evp_cipher.nonce) != 1)
     {
       goto cleanup;
     }
 
-  if (EVP_DecryptUpdate (evp.ctx, str_buffer, &len, cipher, cipher_len) != 1)
+  if (EVP_DecryptUpdate (ctx, str_buffer, &len, cipher, cipher_len) != 1)
     {
       goto cleanup;
     }
-  plain_len = len;
+  str_len = len;
 
   // Further plaintext bytes may be written at finalizing (Partial block).
-  if (EVP_DecryptFinal_ex (evp.ctx, str_buffer + len, &len) != 1)
+  if (EVP_DecryptFinal_ex (ctx, str_buffer + len, &len) != 1)
     {
       goto cleanup;
     }
-  plain_len += len;
+  str_len += len;
 
   // CTR_MODE is stream mode so that there is no need to check,
   // but check it for safe.
-  assert (plain_len == cipher_len);
+  assert (str_len == cipher_len);
 
 cleanup:
-  EVP_CIPHER_CTX_free (evp.ctx);
+  EVP_CIPHER_CTX_free (ctx);
 
 exit:
   if (err != NO_ERROR)

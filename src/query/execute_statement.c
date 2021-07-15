@@ -18088,7 +18088,7 @@ get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, const char *server, DB_V
   int au_save, error, cnt;
   const char *url_attr_names[4] = { "host", "port", "db_name", "properties" };
 
-  //test_ciper_func ();                 //////////////////////////////////////////////////////////////////
+  //test_ciper_func ();         //////////////////////////////////////////////////////////////////
 
   cnt = 0;
   t = strchr ((char *) server, '.');	/* FIXME */
@@ -18178,14 +18178,13 @@ error_end:
   return error;
 }
 
-
-#define MAX_DBLINK_PASSWORD_LEN  (128)
-
+#define DBLINK_PASSWORD_BUF_SIZE  (128)
 static int
 get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val)
 {
-  int err, length;
-  char cipher[MAX_DBLINK_PASSWORD_LEN + 1], newpwd[MAX_DBLINK_PASSWORD_LEN * 2 + 1];
+  int err, length, buf_size;
+  char cipher[DBLINK_PASSWORD_BUF_SIZE + 1], newpwd[DBLINK_PASSWORD_BUF_SIZE * 2 + 1];
+  char *cipher_ptr, *newpwd_ptr;
 
   db_make_null (encrypt_val);
   if (!passwd || !*passwd)
@@ -18194,13 +18193,41 @@ get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val)
     }
 
   length = (int) strlen (passwd);
-  assert (length <= MAX_DBLINK_PASSWORD_LEN);
+  if (length <= DBLINK_PASSWORD_BUF_SIZE)
+    {
+      cipher_ptr = cipher;
+      newpwd_ptr = newpwd;
+      buf_size = sizeof (newpwd);
+    }
+  else
+    {
+      buf_size = length * 2 + 1;
+      cipher_ptr = (char *) db_private_alloc (NULL, length + 1);
+      if (!cipher_ptr)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, length + 1);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      newpwd_ptr = (char *) db_private_alloc (NULL, buf_size);
+      if (!newpwd_ptr)
+	{
+	  db_private_free (NULL, cipher_ptr);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+    }
 
-  err = crypt_dblink_encrypt ((unsigned char *) passwd, length, (unsigned char *) cipher);
+  err = crypt_dblink_encrypt ((unsigned char *) passwd, length, (unsigned char *) cipher_ptr);
   if (err == NO_ERROR)
     {
-      str_to_hex_prealloced ((char *) cipher, length, newpwd, sizeof (newpwd), HEX_UPPERCASE);
-      err = db_make_string_copy (encrypt_val, newpwd);
+      str_to_hex_prealloced ((char *) cipher_ptr, length, newpwd_ptr, buf_size, HEX_UPPERCASE);
+      err = db_make_string_copy (encrypt_val, newpwd_ptr);
+    }
+
+  if (cipher_ptr != cipher)
+    {
+      db_private_free (NULL, cipher_ptr);
+      db_private_free (NULL, newpwd_ptr);
     }
 
   return err;
@@ -18209,8 +18236,9 @@ get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val)
 static int
 get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE * decrypt_val)
 {
-  int err, length;
-  char cipher[MAX_DBLINK_PASSWORD_LEN + 1], newpwd[MAX_DBLINK_PASSWORD_LEN + 1];
+  int err, length, buf_size;
+  char cipher[DBLINK_PASSWORD_BUF_SIZE + 1], newpwd[DBLINK_PASSWORD_BUF_SIZE + 1];
+  char *cipher_ptr, *newpwd_ptr;
 
   db_make_null (decrypt_val);
   if (!passwd_cipher || !*passwd_cipher)
@@ -18219,14 +18247,42 @@ get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE * decrypt_val)
     }
 
   length = strlen (passwd_cipher);
-  assert (length <= (MAX_DBLINK_PASSWORD_LEN * 2));
+  if (length <= (DBLINK_PASSWORD_BUF_SIZE * 2))
+    {
+      cipher_ptr = cipher;
+      newpwd_ptr = newpwd;
+      buf_size = sizeof (newpwd);
+    }
+  else
+    {
+      buf_size = length / 2 + 1;
+      cipher_ptr = (char *) db_private_alloc (NULL, buf_size);
+      if (!cipher_ptr)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      newpwd_ptr = (char *) db_private_alloc (NULL, buf_size);
+      if (!newpwd_ptr)
+	{
+	  db_private_free (NULL, cipher_ptr);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+    }
 
-  hex_to_str_prealloced (passwd_cipher, length, cipher, sizeof (cipher), HEX_UPPERCASE);
-  err = crypt_dblink_decrypt ((unsigned char *) cipher, (length / 2), (unsigned char *) newpwd);
+  hex_to_str_prealloced (passwd_cipher, length, cipher_ptr, buf_size, HEX_UPPERCASE);
+  err = crypt_dblink_decrypt ((unsigned char *) cipher_ptr, (length >> 1), (unsigned char *) newpwd_ptr);
   if (err == NO_ERROR)
     {
-      newpwd[(length / 2)] = '\0';
-      err = db_make_string_copy (decrypt_val, newpwd);
+      newpwd_ptr[(length / 2)] = '\0';
+      err = db_make_string_copy (decrypt_val, newpwd_ptr);
+    }
+
+  if (cipher_ptr != cipher)
+    {
+      db_private_free (NULL, cipher_ptr);
+      db_private_free (NULL, newpwd_ptr);
     }
 
   return err;
@@ -18251,7 +18307,7 @@ test_ciper_func ()
 
   int flag = 0;
 
-  for (loop = 0; loop < 100; loop++)
+  for (loop = 0; loop < 10000; loop++)
     {
       len = (rand () % 64) + 1;
       for (i = 0; i < len; i++)
