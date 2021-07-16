@@ -1011,10 +1011,10 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
   // *INDENT-ON*
 
   // prompt after threads/tasks are started but before any work is done
-  fprintf (stdout, "START recovery_redo (any key)? ");
-  fflush (stdout);
-  (void) getc (stdin);
-  fprintf (stdout, "\n");
+  //fprintf (stdout, "START recovery_redo (any key)? ");
+  //fflush (stdout);
+  //(void) getc (stdin);
+  //fprintf (stdout, "\n");
   const auto time_start = std::chrono::system_clock::now ();
 
   /*
