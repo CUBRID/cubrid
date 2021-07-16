@@ -1152,35 +1152,35 @@ perfmon_time_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timediff)
   statvalp = pstat_Global.global_stats + offset;
   ATOMIC_INC_64 (PSTAT_COUNTER_TIMER_COUNT_VALUE (statvalp), 1ULL);
   ATOMIC_INC_64 (PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (statvalp), timediff);
-  do
-    {
-      max_time = ATOMIC_LOAD_64 (PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp));
-      if (max_time >= timediff)
-	{
-	  /* No need to change max_time. */
-	  break;
-	}
-    }
-  while (!ATOMIC_CAS_64 (PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp), max_time, timediff));
+//  do
+//    {
+//      max_time = ATOMIC_LOAD_64 (PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp));
+//      if (max_time >= timediff)
+//	{
+//	  /* No need to change max_time. */
+//	  break;
+//	}
+//    }
+//  while (!ATOMIC_CAS_64 (PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp), max_time, timediff));
   /* Average is not computed here. */
 
-#if defined (SERVER_MODE) || defined (SA_MODE)
-  /* Update local statistic */
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
-  if (pstat_Global.is_watching[tran_index])
-    {
-      assert (pstat_Global.tran_stats[tran_index] != NULL);
-      statvalp = pstat_Global.tran_stats[tran_index] + offset;
-      (*PSTAT_COUNTER_TIMER_COUNT_VALUE (statvalp)) += 1;
-      (*PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (statvalp)) += timediff;
-      max_time = *PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp);
-      if (max_time < timediff)
-	{
-	  (*PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp)) = timediff;
-	}
-    }
-#endif /* SERVER_MODE || SA_MODE */
+//#if defined (SERVER_MODE) || defined (SA_MODE)
+//  /* Update local statistic */
+//  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+//  assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
+//  if (pstat_Global.is_watching[tran_index])
+//    {
+//      assert (pstat_Global.tran_stats[tran_index] != NULL);
+//      statvalp = pstat_Global.tran_stats[tran_index] + offset;
+//      (*PSTAT_COUNTER_TIMER_COUNT_VALUE (statvalp)) += 1;
+//      (*PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (statvalp)) += timediff;
+//      max_time = *PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp);
+//      if (max_time < timediff)
+//	{
+//	  (*PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp)) = timediff;
+//	}
+//    }
+//#endif /* SERVER_MODE || SA_MODE */
 }
 
 /*
@@ -1240,35 +1240,35 @@ perfmon_time_bulk_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timedif
   statvalp = pstat_Global.global_stats + offset;
   ATOMIC_INC_64 (PSTAT_COUNTER_TIMER_COUNT_VALUE (statvalp), count);
   ATOMIC_INC_64 (PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (statvalp), timediff);
-  do
-    {
-      max_time = ATOMIC_LOAD_64 (PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp));
-      if (max_time >= time_per_unit)
-	{
-	  /* No need to change max_time. */
-	  break;
-	}
-    }
-  while (!ATOMIC_CAS_64 (PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp), max_time, time_per_unit));
+//  do
+//    {
+//      max_time = ATOMIC_LOAD_64 (PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp));
+//      if (max_time >= time_per_unit)
+//      {
+//        /* No need to change max_time. */
+//        break;
+//      }
+//    }
+//  while (!ATOMIC_CAS_64 (PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp), max_time, time_per_unit));
   /* Average is not computed here. */
 
-#if defined (SERVER_MODE) || defined (SA_MODE)
-  /* Update local statistic */
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
-  if (pstat_Global.is_watching[tran_index])
-    {
-      assert (pstat_Global.tran_stats[tran_index] != NULL);
-      statvalp = pstat_Global.tran_stats[tran_index] + offset;
-      (*PSTAT_COUNTER_TIMER_COUNT_VALUE (statvalp)) += count;
-      (*PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (statvalp)) += timediff;
-      max_time = *PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp);
-      if (max_time < time_per_unit)
-	{
-	  (*PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp)) = time_per_unit;
-	}
-    }
-#endif /* SERVER_MODE || SA_MODE */
+//#if defined (SERVER_MODE) || defined (SA_MODE)
+//  /* Update local statistic */
+//  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+//  assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
+//  if (pstat_Global.is_watching[tran_index])
+//    {
+//      assert (pstat_Global.tran_stats[tran_index] != NULL);
+//      statvalp = pstat_Global.tran_stats[tran_index] + offset;
+//      (*PSTAT_COUNTER_TIMER_COUNT_VALUE (statvalp)) += count;
+//      (*PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (statvalp)) += timediff;
+//      max_time = *PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp);
+//      if (max_time < time_per_unit)
+//      {
+//        (*PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp)) = time_per_unit;
+//      }
+//    }
+//#endif /* SERVER_MODE || SA_MODE */
 }
 
 /*
