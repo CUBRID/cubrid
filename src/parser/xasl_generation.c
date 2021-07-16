@@ -5287,7 +5287,8 @@ static ACCESS_SPEC_TYPE *
 pt_make_dblink_access_spec (ACCESS_METHOD access,
 			    PRED_EXPR * where_pred,
 			    REGU_VARIABLE_LIST pred_list,
-			    REGU_VARIABLE_LIST attr_list, char *url, char *user, char *password, char *sql)
+			    REGU_VARIABLE_LIST attr_list, char *url, char *user, char *password,
+			    int host_var_count, int *host_var_index, char *sql)
 {
   ACCESS_SPEC_TYPE *spec;
 
@@ -5300,6 +5301,8 @@ pt_make_dblink_access_spec (ACCESS_METHOD access,
       spec->s.dblink_node.conn_user = user;
       spec->s.dblink_node.conn_password = password;
       spec->s.dblink_node.conn_sql = sql;
+      spec->s.dblink_node.host_var_count = host_var_count;
+      spec->s.dblink_node.host_var_index = host_var_index;
     }
 
   return spec;
@@ -12733,13 +12736,44 @@ pt_to_json_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * j
   return access;
 }
 
+static PT_NODE *
+pt_host_vars_count (PARSER_CONTEXT * parser, PT_NODE * term_list, void *arg, int *continue_walk)
+{
+  int *count = (int *) arg;
+
+  if (term_list->node_type == PT_HOST_VAR)
+    {
+      (*count)++;
+    }
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  return term_list;
+}
+
+static PT_NODE *
+pt_host_vars_index (PARSER_CONTEXT * parser, PT_NODE * term_list, void *arg, int *continue_walk)
+{
+  PT_HOST_VAR_IDX_INFO *host_vars = (PT_HOST_VAR_IDX_INFO *) arg;
+
+  if (term_list->node_type == PT_HOST_VAR)
+    {
+      host_vars->index[host_vars->count++] = term_list->info.host_var.index;
+    }
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  return term_list;
+}
+
 static ACCESS_SPEC_TYPE *
 pt_to_dblink_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * dblink_table,
 			      PT_NODE * src_derived_tbl, PT_NODE * where_p)
 {
   ACCESS_SPEC_TYPE *access;
   PT_DBLINK_INFO *pdblink = &(dblink_table->info.dblink_table);
-
+  char *sql;
+  int count = 0;
 
   PRED_EXPR *where = pt_to_pred_expr (parser, where_p);
 
@@ -12767,11 +12801,32 @@ pt_to_dblink_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE *
   regu_attributes_pred =
     pt_to_regu_variable_list (parser, pred_attrs, UNBOX_AS_VALUE, tbl_info->value_list, pred_offsets);
 
+  if (pdblink->rewritten)
+    {
+      sql = (char *) pdblink->rewritten->bytes;
+    }
+  else
+    {
+      sql = (char *) pdblink->qstr->info.value.data_value.str->bytes;
+    }
+
+  if (pdblink->pushed_pred)
+    {
+      parser_walk_tree (parser, pdblink->pushed_pred, pt_host_vars_count, &count, NULL, NULL);
+    }
+
+  pdblink->host_vars.count = 0;
+  if (count > 0)
+    {
+      pdblink->host_vars.index = (int *) parser_alloc (parser, count * sizeof (int));
+      parser_walk_tree (parser, pdblink->pushed_pred, pt_host_vars_index, &pdblink->host_vars, NULL, NULL);
+    }
+
   access = pt_make_dblink_access_spec (access_method, where, regu_attributes_pred, regu_attributes_rest,
 				       (char *) pdblink->url->info.value.data_value.str->bytes,
 				       (char *) pdblink->user->info.value.data_value.str->bytes,
 				       (char *) pdblink->pwd->info.value.data_value.str->bytes,
-				       (char *) pdblink->qstr->info.value.data_value.str->bytes);
+				       pdblink->host_vars.count, pdblink->host_vars.index, (char *) sql);
 
   return access;
 }

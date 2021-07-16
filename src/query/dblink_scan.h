@@ -44,6 +44,12 @@ typedef enum
 struct regu_variable_list_node;
 struct val_list_node;
 
+typedef struct
+{
+  int count;
+  int *index;
+} DBLINK_HOST_VARS;
+
 typedef struct dblink_scan_info DBLINK_SCAN_INFO;
 struct dblink_scan_info
 {
@@ -54,8 +60,8 @@ struct dblink_scan_info
   void *col_info;		/* column information T_CCI_COL_INFO */
 };
 
-extern int dblink_open_scan (DBLINK_SCAN_INFO * scan_info,
-			     char *conn_url, char *user_name, char *password, char *sql_text);
+extern int dblink_open_scan (DBLINK_SCAN_INFO * scan_info, struct access_spec_node *spec,
+			     VAL_DESCR * vd, DBLINK_HOST_VARS * host_vars);
 extern int dblink_close_scan (DBLINK_SCAN_INFO * scan_info);
 extern SCAN_CODE dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list);
 extern SCAN_CODE dblink_scan_reset (DBLINK_SCAN_INFO * scan_info);

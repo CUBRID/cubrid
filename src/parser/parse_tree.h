@@ -779,7 +779,9 @@ enum pt_custom_print
 
   PT_PRINT_USER = (0x1 << 20),
 
-  PT_PRINT_ORIGINAL_BEFORE_CONST_FOLDING = (0x1 << 21)
+  PT_PRINT_ORIGINAL_BEFORE_CONST_FOLDING = (0x1 << 21),
+
+  PT_PRINT_NO_HOST_VAR_INDEX = (0x1 << 22)
 };
 
 /* all statement node types should be assigned their API statement enumeration */
@@ -3259,6 +3261,12 @@ struct pt_json_table_info
   bool is_correlated;
 };
 
+typedef struct host_vars_info
+{
+  int count;
+  int *index;
+} PT_HOST_VAR_IDX_INFO;
+
 typedef struct pt_dblink_info
 {
   PT_NODE *conn;		/* name for DBLINK */
@@ -3267,6 +3275,9 @@ typedef struct pt_dblink_info
   PT_NODE *pwd;
   PT_NODE *qstr;		/* query string */
   PT_NODE *cols;		/* column definition  */
+  PT_NODE *pushed_pred;		/* pushed predicate from main query */
+  PARSER_VARCHAR *rewritten;	/* rewritten query string for dblink */
+  PT_HOST_VAR_IDX_INFO host_vars;	/* host variable index info for rewritten query */
   bool is_name;			/*  */
 } PT_DBLINK_INFO;
 
