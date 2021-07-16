@@ -211,6 +211,8 @@ static bool mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * query, b
 static int pt_check_copypush_subquery (PARSER_CONTEXT * parser, PT_NODE * query);
 static void pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_NODE * term_list,
 			       FIND_ID_TYPE type);
+static int mq_copypush_sargable_terms_dblink (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec,
+					      PT_NODE * new_query, FIND_ID_INFO * infop);
 static int mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec,
 					      PT_NODE * new_query, FIND_ID_INFO * infop);
 static int mq_copypush_sargable_terms (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec);
@@ -3206,6 +3208,68 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
 }
 
 /*
+ * mq_copypush_sargable_terms_dblink() -
+ *   return:
+ *   parser(in):
+ *   statement(in):
+ *   spec(in):
+ *   new_query(in/out):
+ *   infop(in):
+ */
+static int
+mq_copypush_sargable_terms_dblink (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec, PT_NODE * new_query,
+				   FIND_ID_INFO * infop)
+{
+  PT_NODE *term, *new_term, *push_term_list;
+  int push_cnt, copy_cnt;
+  PT_NODE *save_next;
+
+  /* init */
+  push_term_list = NULL;
+  push_cnt = 0;
+  copy_cnt = -1;
+
+  for (term = statement->info.query.q.select.where; term; term = term->next)
+    {
+      if (pt_sargable_term (parser, term, infop) && PT_PUSHABLE_TERM (infop))
+	{
+	  /* copy term */
+	  new_term = parser_copy_tree (parser, term);
+
+	  /* for term, mark as copy-pushed term */
+	  if (term->node_type == PT_EXPR)
+	    {
+	      if (copy_cnt == -1)	/* very the first time */
+		{
+		  copy_cnt = pt_check_copypush_subquery (parser, new_query);
+		}
+
+	      if (copy_cnt == 0)	/* not found not-pushable query */
+		{
+		  PT_EXPR_INFO_SET_FLAG (term, PT_EXPR_INFO_COPYPUSH);
+		}
+
+	      PT_EXPR_INFO_CLEAR_FLAG (new_term, PT_EXPR_INFO_COPYPUSH);
+	    }
+	  push_term_list = parser_append_node (new_term, push_term_list);
+
+	  push_cnt++;
+	}
+    }				/* for (term = ...) */
+
+  if (push_cnt)
+    {
+      /* copy and push term in new_query's search condition */
+      (void) pt_copypush_terms (parser, spec, new_query, push_term_list, infop->type);
+
+      /* free alloced */
+      parser_free_tree (parser, push_term_list);
+    }
+
+  return push_cnt;
+}
+
+/*
  * mq_copypush_sargable_terms_helper() -
  *   return:
  *   parser(in):
@@ -3232,7 +3296,7 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
 
   copy_cnt = -1;
 
-  if ((PT_IS_QUERY (new_query) || new_query->node_type == PT_DBLINK_TABLE)
+  if (PT_IS_QUERY (new_query)
       && (pt_has_analytic (parser, new_query) || PT_SELECT_INFO_IS_FLAGED (new_query, PT_SELECT_INFO_COLS_SCHEMA)
 	  || PT_SELECT_INFO_IS_FLAGED (new_query, PT_SELECT_FULL_INFO_COLS_SCHEMA) || PT_IS_VALUE_QUERY (new_query)))
     {
@@ -3358,7 +3422,14 @@ mq_copypush_sargable_terms (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NOD
       info.in.attr_list = spec->info.spec.as_attr_list;
       info.in.query_list = derived_table;
 
-      push_cnt = mq_copypush_sargable_terms_helper (parser, statement, spec, derived_table, &info);
+      if (derived_table->node_type == PT_DBLINK_TABLE)
+	{
+	  push_cnt = mq_copypush_sargable_terms_dblink (parser, statement, spec, derived_table, &info);
+	}
+      else
+	{
+	  push_cnt = mq_copypush_sargable_terms_helper (parser, statement, spec, derived_table, &info);
+	}
     }
 
   return push_cnt;
