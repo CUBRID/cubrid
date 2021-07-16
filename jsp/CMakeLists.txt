@@ -23,16 +23,6 @@ if(NOT ANT)
   message(FATAL_ERROR "The ANT was not found. check PATH or install ant to build JDBC")
 endif(NOT ANT)
 
-if(EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
-  set(JDBC_VERSION_FILE ${JDBC_DIR}/output/VERSION-DIST)
-  file(STRINGS ${JDBC_VERSION_FILE} JDBC_VERSION_STR)
-
-  set(JDBC_DIST ${JDBC_DIR}/JDBC-${JDBC_VERSION_STR}-cubrid.jar)
-  execute_process(
-    COMMAND ${CMAKE_COMMAND} -E copy ${JDBC_DIST} ${CMAKE_BINARY_DIR}/jsp/lib/cubrid-jdbc-${JDBC_VERSION_STR}.jar
-  )
-endif(EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
-
 # download ivy
 message("Download ivy ...")
 set(IVY_VERSION "2.4.0")
@@ -48,6 +38,21 @@ add_custom_target(jsp_build ALL
   COMMAND ${ANT} dist -buildfile ${CMAKE_SOURCE_DIR}/jsp/build.xml -Dbasedir=. -Dversion=${BUILD_NUMBER} -Dsrc.dir=${JSP_DIR} -Divy.install.dir="${IVY_DIR}"
   COMMENT "Build Java SP Server with Ant ..."
 )
+
+if(EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
+  set(JDBC_VERSION_FILE ${JDBC_DIR}/output/VERSION-DIST)
+  file(STRINGS ${JDBC_VERSION_FILE} JDBC_VERSION_STR)
+
+  set(JDBC_DIST ${JDBC_DIR}/JDBC-${JDBC_VERSION_STR}-cubrid.jar)
+  add_custom_target(copy_jdbc ALL
+    COMMAND ${CMAKE_COMMAND} -E echo "copying ${JDBC_DIST} to ${CMAKE_BINARY_DIR}/jsp/lib/"
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/jsp/lib/
+    COMMAND ${CMAKE_COMMAND} -E copy ${JDBC_DIST} ${CMAKE_BINARY_DIR}/jsp/lib/cubrid-jdbc-${JDBC_VERSION_STR}.jar
+
+    DEPENDS jdbc_build
+  )
+  add_dependencies(jsp_build copy_jdbc)
+endif(EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
 
 install(FILES
   ${CMAKE_CURRENT_BINARY_DIR}/jspserver.jar
