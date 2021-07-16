@@ -4490,7 +4490,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_READ_ONLY_MODE,
    PRM_NAME_READ_ONLY_MODE,
-   (PRM_FOR_SERVER | PRM_FOR_CLIENT),
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_HIDDEN),
    PRM_BOOLEAN,
    &prm_read_only_mode_flag,
    (void *) &prm_read_only_mode_default,
