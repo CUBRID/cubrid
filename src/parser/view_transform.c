@@ -4727,9 +4727,7 @@ mq_check_rewrite_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
     }
 
   from = select_statement->info.query.q.select.from;
-  if (from
-      && (from->next || (from->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
-	  || pt_has_aggregate (parser, select_statement)))
+  if (from && (from->next || pt_has_aggregate (parser, select_statement)))
     {
       /* when translating joins, its important to maintain linearity of the translation. The cross-product of unions is
        * exponential. Therefore, we convert cross-products of unions to cross-products of derived tables. */
