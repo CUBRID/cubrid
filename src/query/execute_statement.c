@@ -88,6 +88,7 @@
 #include "parser_support.h"
 #include "tz_support.h"
 #include "dbtype.h"
+#include "crypt_opfunc.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -180,6 +181,9 @@ static int do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, P
 static void init_compile_context (PARSER_CONTEXT * parser);
 
 static int do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_upd);
+
+static int get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val);
+static int get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE * decrypt_val);
 
 /*
  * initialize_serial_invariant() - initialize a serial invariant
@@ -17828,8 +17832,8 @@ end:
 
 
 static int
-do_create_server_internal (MOP * server_object, DB_VALUE * port_no, const char **attr_names, char **attr_val,
-			   int attr_cnt)
+do_create_server_internal (MOP * server_object, DB_VALUE * port_no, DB_VALUE * passwd, const char **attr_names,
+			   char **attr_val, int attr_cnt)
 {
   DB_OBJECT *ret_obj = NULL;
   DB_OTMPL *obj_tmpl = NULL;
@@ -17860,6 +17864,13 @@ do_create_server_internal (MOP * server_object, DB_VALUE * port_no, const char *
 
   /* port */
   error = dbt_put_internal (obj_tmpl, "port", port_no);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* password */
+  error = dbt_put_internal (obj_tmpl, "password", passwd);
   if (error != NO_ERROR)
     {
       goto end;
@@ -17911,10 +17922,10 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_OBJECT *server_class = NULL, *server_object = NULL;
   DB_IDENTIFIER server_obj_id;
   DB_VALUE *pval = NULL;
-  DB_VALUE port_no;
+  DB_VALUE port_no, passwd;
   DB_DATA_STATUS data_stat;
-  char *attr_val[7];
-  const char *attr_names[7] = { "link_name", "host", "db_name", "user_name", "password", "properties", "comment" };
+  char *attr_val[6];
+  const char *attr_names[6] = { "link_name", "host", "db_name", "user_name", "properties", "comment" };
 
   int error = NO_ERROR;
   int save;
@@ -17925,6 +17936,7 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   CHECK_MODIFICATION_ERROR ();
 
   memset (attr_val, 0x00, sizeof (attr_val));
+  db_make_null (&passwd);
   db_make_null (&port_no);
   db_make_int (&port_no, 0);
 
@@ -18000,11 +18012,18 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* PASSWORD */
   if (si->pwd != NULL)
     {
+      char *pwd;
       assert (si->pwd->node_type == PT_VALUE);
-      attr_val[4] = (char *) PT_VALUE_GET_BYTES (si->pwd);
-      if (attr_val[4] == NULL)
+      pwd = (char *) PT_VALUE_GET_BYTES (si->pwd);
+      if (pwd == NULL)
 	{
 	  error = ER_FAILED;
+	  goto end;
+	}
+
+      error = get_dblink_password_encrypt (pwd, &passwd);
+      if (error != NO_ERROR)
+	{
 	  goto end;
 	}
     }
@@ -18013,8 +18032,8 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (si->prop != NULL)
     {
       assert (si->prop->node_type == PT_VALUE);
-      attr_val[5] = (char *) PT_VALUE_GET_BYTES (si->prop);
-      if (attr_val[5] == NULL)
+      attr_val[4] = (char *) PT_VALUE_GET_BYTES (si->prop);
+      if (attr_val[4] == NULL)
 	{
 	  error = ER_FAILED;
 	  goto end;
@@ -18025,8 +18044,8 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (si->comment != NULL)
     {
       assert (si->comment->node_type == PT_VALUE);
-      attr_val[6] = (char *) PT_VALUE_GET_BYTES (si->comment);
-      if (attr_val[6] == NULL)
+      attr_val[5] = (char *) PT_VALUE_GET_BYTES (si->comment);
+      if (attr_val[5] == NULL)
 	{
 	  error = ER_FAILED;
 	  goto end;
@@ -18039,7 +18058,7 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   server_object = NULL;
   error =
-    do_create_server_internal (&server_object, &port_no, attr_names, attr_val,
+    do_create_server_internal (&server_object, &port_no, &passwd, attr_names, attr_val,
 			       sizeof (attr_names) / sizeof (attr_names[0]));
   if (error >= 0)
     {
@@ -18053,6 +18072,7 @@ end:
     }
 
   pr_clear_value (&port_no);
+  pr_clear_value (&passwd);
 
   return error;
 }
@@ -18063,7 +18083,7 @@ get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, const char *server, DB_V
   char *server_name, *t;
   DB_OBJECT *server_object, *server_class;
   DB_IDENTIFIER server_obj_id;
-  DB_VALUE values[4];
+  DB_VALUE values[4], pwd_val;
   int au_save, error, cnt;
   const char *url_attr_names[4] = { "host", "port", "db_name", "properties" };
 
@@ -18111,7 +18131,13 @@ get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, const char *server, DB_V
       goto error_end;
     }
 
-  error = db_get (server_object, "password", &(out_val[2]));
+  error = db_get (server_object, "password", &pwd_val);
+  if (error < 0)
+    {
+      goto error_end;
+    }
+
+  error = get_dblink_password_decrypt (db_get_string (&pwd_val), &(out_val[2]));
   if (error == NO_ERROR)
     {
       // cci:CUBRID:<host>:<port>:<db_name>:<db_user>:<db_password>:[?<properties>]
@@ -18135,7 +18161,7 @@ get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, const char *server, DB_V
 	  sprintf (dblink_url, dblink_url_fmt_none, host, port_no, dbname);
 	}
 
-      error = db_make_string (&(out_val[0]), dblink_url);
+      error = db_make_string_copy (&(out_val[0]), dblink_url);
     }
 
 error_end:
@@ -18147,4 +18173,116 @@ error_end:
     }
 
   return error;
+}
+
+#define DBLINK_PASSWORD_BUF_SIZE  (128)
+static int
+get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val)
+{
+  int err, length, buf_size;
+  char cipher[DBLINK_PASSWORD_BUF_SIZE + 1], newpwd[DBLINK_PASSWORD_BUF_SIZE * 2 + 1];
+  char *cipher_ptr, *newpwd_ptr;
+
+  db_make_null (encrypt_val);
+  if (!passwd || !*passwd)
+    {
+      return NO_ERROR;
+    }
+
+  length = (int) strlen (passwd);
+  if (length <= DBLINK_PASSWORD_BUF_SIZE)
+    {
+      cipher_ptr = cipher;
+      newpwd_ptr = newpwd;
+      buf_size = sizeof (newpwd);
+    }
+  else
+    {
+      buf_size = length * 2 + 1;
+      cipher_ptr = (char *) db_private_alloc (NULL, length + 1);
+      if (!cipher_ptr)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, length + 1);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      newpwd_ptr = (char *) db_private_alloc (NULL, buf_size);
+      if (!newpwd_ptr)
+	{
+	  db_private_free (NULL, cipher_ptr);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+    }
+
+  err = crypt_dblink_encrypt ((unsigned char *) passwd, length, (unsigned char *) cipher_ptr);
+  if (err == NO_ERROR)
+    {
+      // byte stream to hex string
+      str_to_hex_prealloced ((char *) cipher_ptr, length, newpwd_ptr, buf_size, HEX_UPPERCASE);
+      err = db_make_string_copy (encrypt_val, newpwd_ptr);
+    }
+
+  if (cipher_ptr != cipher)
+    {
+      db_private_free (NULL, cipher_ptr);
+      db_private_free (NULL, newpwd_ptr);
+    }
+
+  return err;
+}
+
+static int
+get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE * decrypt_val)
+{
+  int err, length, buf_size;
+  char cipher[DBLINK_PASSWORD_BUF_SIZE + 1], newpwd[DBLINK_PASSWORD_BUF_SIZE + 1];
+  char *cipher_ptr, *newpwd_ptr;
+
+  db_make_null (decrypt_val);
+  if (!passwd_cipher || !*passwd_cipher)
+    {
+      return NO_ERROR;
+    }
+
+  length = strlen (passwd_cipher);
+  if (length <= (DBLINK_PASSWORD_BUF_SIZE * 2))
+    {
+      cipher_ptr = cipher;
+      newpwd_ptr = newpwd;
+      buf_size = sizeof (newpwd);
+    }
+  else
+    {
+      buf_size = length / 2 + 1;
+      cipher_ptr = (char *) db_private_alloc (NULL, buf_size);
+      if (!cipher_ptr)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      newpwd_ptr = (char *) db_private_alloc (NULL, buf_size);
+      if (!newpwd_ptr)
+	{
+	  db_private_free (NULL, cipher_ptr);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+    }
+
+  // hex string  to byte stream 
+  hex_to_str_prealloced (passwd_cipher, length, cipher_ptr, buf_size, HEX_UPPERCASE);
+  err = crypt_dblink_decrypt ((unsigned char *) cipher_ptr, (length >> 1), (unsigned char *) newpwd_ptr);
+  if (err == NO_ERROR)
+    {
+      newpwd_ptr[(length / 2)] = '\0';	// Do NOT omit this line.
+      err = db_make_string_copy (decrypt_val, newpwd_ptr);
+    }
+
+  if (cipher_ptr != cipher)
+    {
+      db_private_free (NULL, cipher_ptr);
+      db_private_free (NULL, newpwd_ptr);
+    }
+
+  return err;
 }

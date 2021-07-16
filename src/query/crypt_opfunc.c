@@ -127,6 +127,49 @@ str_to_hex_prealloced (const char *src, int src_len, char *dest, int dest_len, H
   dest[src_len * 2] = '\0';
 }
 
+void
+hex_to_str_prealloced (const char *src, int src_len, char *dest, int dest_len, HEX_LETTERCASE lettercase)
+{
+  char base;
+  assert (src != NULL && dest != NULL);
+  assert (dest_len >= (src_len / 2) + 1);
+
+  if (lettercase == HEX_UPPERCASE)
+    {
+      base = 'A' - 10;
+    }
+  else
+    {
+      base = 'a' - 10;
+    }
+
+  while (src[0] && src[1])
+    {
+      if (src[0] <= '9')
+	{
+	  *dest = (src[0] - '0') << 4;
+	}
+      else
+	{
+	  *dest = (src[0] - base) << 4;
+	}
+
+      if (src[1] <= '9')
+	{
+	  *dest |= (src[1] - '0');
+	}
+      else
+	{
+	  *dest |= (src[1] - base);
+	}
+
+      src += 2;
+      dest++;
+    }
+
+  *dest = '\0';
+}
+
 /*
  * str_to_hex() - convert a string to its hexadecimal expreesion string
  *   return:
@@ -696,4 +739,148 @@ crypt_generate_random_bytes (char *dest, int length)
     }
 
   return NO_ERROR;
+}
+
+// 
+// *INDENT-OFF*
+static struct
+{
+  bool          is_aes_algorithm;
+  unsigned char nonce[16];              // See TDE_DK_NONCE_LENGTH in tde.h
+  unsigned char master_key[32];         // See TDE_MASTER_KEY_LENGTH in tde.h
+} evp_cipher = { true, {0, }, {0, } };  // Do not omit the this initialization settings.
+// *INDENT-ON*
+
+static int
+init_dblink_cipher (EVP_CIPHER_CTX ** ctx, const EVP_CIPHER ** cipher_type)
+{
+  static int is_init_done = 0;
+  unsigned char master_key[32] = { 0, };
+
+  if (is_init_done == 0)
+    {
+      memset (evp_cipher.nonce, 0x07, sizeof (evp_cipher.nonce));
+      sprintf ((char *) evp_cipher.master_key, "%s", "CUBRIDcubrid");
+      evp_cipher.is_aes_algorithm = true;
+
+      is_init_done = 1;
+    }
+
+  if ((*ctx = EVP_CIPHER_CTX_new ()) == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_INIT_ERR]);
+      return ER_ENCRYPTION_LIB_FAILED;
+    }
+
+  if (evp_cipher.is_aes_algorithm)
+    {
+      *cipher_type = EVP_aes_256_ctr ();
+    }
+  else
+    {
+      *cipher_type = EVP_aria_256_ctr ();
+    }
+
+  if (*cipher_type == NULL)
+    {
+      EVP_CIPHER_CTX_free (*ctx);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_INIT_ERR]);
+      return ER_ENCRYPTION_LIB_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+int
+crypt_dblink_encrypt (const unsigned char *str, int str_len, unsigned char *cipher_buffer)
+{
+  int len, cipher_len, err;
+  EVP_CIPHER_CTX *ctx;
+  const EVP_CIPHER *cipher_type;
+
+  err = init_dblink_cipher (&ctx, &cipher_type);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  if (EVP_EncryptInit_ex (ctx, cipher_type, NULL, evp_cipher.master_key, evp_cipher.nonce) != 1)
+    {
+      goto cleanup;
+    }
+
+  if (EVP_EncryptUpdate (ctx, cipher_buffer, &len, str, str_len) != 1)
+    {
+      goto cleanup;
+    }
+  cipher_len = len;
+
+  // Further ciphertext bytes may be written at finalizing (Partial block).
+  if (EVP_EncryptFinal_ex (ctx, cipher_buffer + len, &len) != 1)
+    {
+      goto cleanup;
+    }
+  cipher_len += len;
+
+  // CTR_MODE is stream mode so that there is no need to check,
+  // but check it for safe.
+  assert (cipher_len == str_len);
+
+cleanup:
+  EVP_CIPHER_CTX_free (ctx);
+
+exit:
+  if (err != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_CRYPT_ERR]);
+      return ER_ENCRYPTION_LIB_FAILED;
+    }
+  return err;
+}
+
+int
+crypt_dblink_decrypt (const unsigned char *cipher, int cipher_len, unsigned char *str_buffer)
+{
+  int len, str_len, err;
+  EVP_CIPHER_CTX *ctx;
+  const EVP_CIPHER *cipher_type;
+
+  err = init_dblink_cipher (&ctx, &cipher_type);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  if (EVP_DecryptInit_ex (ctx, cipher_type, NULL, evp_cipher.master_key, evp_cipher.nonce) != 1)
+    {
+      goto cleanup;
+    }
+
+  if (EVP_DecryptUpdate (ctx, str_buffer, &len, cipher, cipher_len) != 1)
+    {
+      goto cleanup;
+    }
+  str_len = len;
+
+  // Further plaintext bytes may be written at finalizing (Partial block).
+  if (EVP_DecryptFinal_ex (ctx, str_buffer + len, &len) != 1)
+    {
+      goto cleanup;
+    }
+  str_len += len;
+
+  // CTR_MODE is stream mode so that there is no need to check,
+  // but check it for safe.
+  assert (str_len == cipher_len);
+
+cleanup:
+  EVP_CIPHER_CTX_free (ctx);
+
+exit:
+  if (err != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_CRYPT_ERR]);
+      return ER_ENCRYPTION_LIB_FAILED;
+    }
+  return err;
 }
