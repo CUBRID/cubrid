@@ -745,9 +745,10 @@ crypt_generate_random_bytes (char *dest, int length)
 // *INDENT-OFF*
 static struct
 {
-  unsigned char nonce[16];
-  unsigned char master_key[32];
-} evp_cipher = { {0, }, {0, } }; // Do not omit the this initialization settings.
+  bool          is_aes_algorithm;
+  unsigned char nonce[16];              // See TDE_DK_NONCE_LENGTH in tde.h
+  unsigned char master_key[32];         // See TDE_MASTER_KEY_LENGTH in tde.h
+} evp_cipher = { true, {0, }, {0, } };  // Do not omit the this initialization settings.
 // *INDENT-ON*
 
 static int
@@ -755,12 +756,12 @@ init_dblink_cipher (EVP_CIPHER_CTX ** ctx, const EVP_CIPHER ** cipher_type)
 {
   static int is_init_done = 0;
   unsigned char master_key[32] = { 0, };
-  bool is_aes_algorithm = true;
 
   if (is_init_done == 0)
     {
       memset (evp_cipher.nonce, 0x07, sizeof (evp_cipher.nonce));
-      sprintf ((char *) evp_cipher.master_key, "%s", "CUBcubridRID");
+      sprintf ((char *) evp_cipher.master_key, "%s", "CUBRIDcubrid");
+      evp_cipher.is_aes_algorithm = true;
 
       is_init_done = 1;
     }
@@ -771,7 +772,7 @@ init_dblink_cipher (EVP_CIPHER_CTX ** ctx, const EVP_CIPHER ** cipher_type)
       return ER_ENCRYPTION_LIB_FAILED;
     }
 
-  if (is_aes_algorithm)
+  if (evp_cipher.is_aes_algorithm)
     {
       *cipher_type = EVP_aes_256_ctr ();
     }

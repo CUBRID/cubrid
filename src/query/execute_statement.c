@@ -18091,7 +18091,7 @@ get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, const char *server, DB_V
   const char *url_attr_names[4] = { "host", "port", "db_name", "properties" };
 
 #ifndef NDEBUG
-  //ciper_func_test ();         //////////////////////////////////////////////////////////////////
+  //ciper_func_test ();
 #endif
 
   cnt = 0;
