@@ -1332,7 +1332,8 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
   /*
    * Was the database system shut down or was it involved in a crash ?
    */
-  if (init_emergency == false && (log_Gl.hdr.is_shutdown == false || ismedia_crash == true))
+  if (init_emergency == false && (log_Gl.hdr.is_shutdown == false || ismedia_crash == true)
+      && !is_tran_server_with_remote_storage ())
     {
       /*
        * System was involved in a crash.
