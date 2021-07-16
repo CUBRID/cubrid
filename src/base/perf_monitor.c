@@ -1876,13 +1876,13 @@ perfmon_get_module_type (THREAD_ENTRY * thread_p)
   switch (thread_p->type)
     {
     case TT_WORKER:
+    case TT_RECOVERY:
       return PERF_MODULE_USER;
     case TT_VACUUM_WORKER:
     case TT_VACUUM_MASTER:
       return PERF_MODULE_VACUUM;
     case TT_REPLICATION:
       return PERF_MODULE_REPLICATION;
-    case TT_RECOVERY:
     default:
       return PERF_MODULE_SYSTEM;
     }
