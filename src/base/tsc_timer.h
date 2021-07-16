@@ -27,6 +27,7 @@
 
 #include "porting.h"
 #include "cycle.h"
+#include <chrono>
 
 #define TSC_ADD_TIMEVAL(total, diff) \
 do { \
@@ -44,6 +45,8 @@ union tsc_ticks
 {
   ticks tc;			/* ticks from cycle.h */
   struct timeval tv;		/* microseconds */
+    std::chrono::time_point < std::chrono::system_clock > time_point
+    = std::chrono::time_point < std::chrono::system_clock > ();
 };
 
 /* todo: inline functions */

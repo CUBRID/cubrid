@@ -1401,49 +1401,65 @@ struct perf_utime_tracker
   TSC_TICKS end_tick;
 };
 #define PERF_UTIME_TRACKER_INITIALIZER { false, {0}, {0} }
-#define PERF_UTIME_TRACKER_START(thread_p, track) \
-  do \
-    { \
-      (track)->is_perf_tracking = perfmon_is_perf_tracking (); \
-      if ((track)->is_perf_tracking) tsc_getticks (&(track)->start_tick); \
-    } \
-  while (false)
+
+inline void
+PERF_UTIME_TRACKER_START (THREAD_ENTRY * thread_p, perf_utime_tracker * track)
+{
+  track->is_perf_tracking = perfmon_is_perf_tracking ();
+  if (track->is_perf_tracking)
+    {
+      track->start_tick.time_point = std::chrono::system_clock::now ();
+    }
+}
+
 /* Time trackers - perfmon_time_stat is called. */
-#define PERF_UTIME_TRACKER_TIME(thread_p, track, psid) \
-  do \
-    { \
-      if (!(track)->is_perf_tracking) break; \
-      tsc_getticks (&(track)->end_tick); \
-      perfmon_time_stat (thread_p, psid, tsc_elapsed_utime ((track)->end_tick,  (track)->start_tick)); \
-    } \
-  while (false)
-#define PERF_UTIME_TRACKER_TIME_AND_RESTART(thread_p, track, psid) \
-  do \
-    { \
-      if (!(track)->is_perf_tracking) break; \
-      tsc_getticks (&(track)->end_tick); \
-      perfmon_time_stat (thread_p, psid, tsc_elapsed_utime ((track)->end_tick,  (track)->start_tick)); \
-      (track)->start_tick = (track)->end_tick; \
-    } \
-  while (false)
+inline void
+PERF_UTIME_TRACKER_TIME (THREAD_ENTRY * thread_p, perf_utime_tracker * track, PERF_STAT_ID psid)
+{
+  if (!track->is_perf_tracking)
+    return;
+  track->end_tick.time_point = std::chrono::system_clock::now ();
+  const auto dur = track->end_tick.time_point - track->start_tick.time_point;
+  const uint64_t elapsed_us = std::chrono::duration_cast < std::chrono::nanoseconds > (dur).count ();
+  perfmon_time_stat (thread_p, psid, elapsed_us);
+}
+
+inline void
+PERF_UTIME_TRACKER_TIME_AND_RESTART (THREAD_ENTRY * thread_p, perf_utime_tracker * track, PERF_STAT_ID psid)
+{
+  if (!track->is_perf_tracking)
+    return;
+  track->end_tick.time_point = std::chrono::system_clock::now ();
+  const auto dur = track->end_tick.time_point - track->start_tick.time_point;
+  const uint64_t elapsed_us = std::chrono::duration_cast < std::chrono::nanoseconds > (dur).count ();
+  perfmon_time_stat (thread_p, psid, elapsed_us);
+  track->start_tick = track->end_tick;
+}
+
 /* Bulk time trackers - perfmon_time_bulk_stat is called. */
-#define PERF_UTIME_TRACKER_BULK_TIME(thread_p, track, psid, count) \
-  do \
-    { \
-      if (!(track)->is_perf_tracking) break; \
-      tsc_getticks (&(track)->end_tick); \
-      perfmon_time_bulk_stat (thread_p, psid, tsc_elapsed_utime ((track)->end_tick, (track)->start_tick), count); \
-    } \
-  while (false)
-#define PERF_UTIME_TRACKER_BULK_TIME_AND_RESTART(thread_p, track, psid, count) \
-  do \
-    { \
-      if (!(track)->is_perf_tracking) break; \
-      tsc_getticks (&(track)->end_tick); \
-      perfmon_time_bulk, stat (thread_p, psid, tsc_elapsed_utime ((track)->end_tick,  (track)->start_tick), count); \
-      (track)->start_tick = (track)->end_tick; \
-    } \
-  while (false)
+inline void
+PERF_UTIME_TRACKER_BULK_TIME (THREAD_ENTRY * thread_p, perf_utime_tracker * track, PERF_STAT_ID psid, uint64_t count)
+{
+  if (!track->is_perf_tracking)
+    return;
+  track->end_tick.time_point = std::chrono::system_clock::now ();
+  const auto dur = track->end_tick.time_point - track->start_tick.time_point;
+  const uint64_t elapsed_us = std::chrono::duration_cast < std::chrono::nanoseconds > (dur).count ();
+  perfmon_time_bulk_stat (thread_p, psid, elapsed_us, count);
+}
+
+inline void
+PERF_UTIME_TRACKER_BULK_TIME_AND_RESTART (THREAD_ENTRY * thread_p, perf_utime_tracker * track,
+					  PERF_STAT_ID psid, uint64_t count)
+{
+  if (!track->is_perf_tracking)
+    return;
+  track->end_tick.time_point = std::chrono::system_clock::now ();
+  const auto dur = track->end_tick.time_point - track->start_tick.time_point;
+  const uint64_t elapsed_us = std::chrono::duration_cast < std::chrono::nanoseconds > (dur).count ();
+  perfmon_time_bulk_stat (thread_p, psid, elapsed_us, count);
+  (track)->start_tick = (track)->end_tick;
+}
 
 /* Time accumulators only - perfmon_add_stat is called. */
 /* todo: PERF_UTIME_TRACKER_ADD_TIME is never used and PERF_UTIME_TRACKER_ADD_TIME_AND_RESTART is similar to
