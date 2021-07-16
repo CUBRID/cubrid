@@ -7,6 +7,8 @@ EXPORTS
     cas_default_isolation_level
     cas_default_lock_timeout
     cas_send_result_flag
+    cas_procedure_handle_add
+    cas_procedure_handle_free
     cfg_find_db
     cfg_free_directory
     char_isdigit

@@ -1231,7 +1231,9 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
     }
 #endif /* !LIBCAS_FOR_JSP && !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
+  hm_set_current_srv_handle (srv_handle->id);
   n = db_execute_and_keep_statement (session, stmt_id, &result);
+  hm_set_current_srv_handle (-1);
 
 #ifndef LIBCAS_FOR_JSP
   stmt_type = db_get_statement_type (session, stmt_id);
@@ -1543,10 +1545,11 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 	  goto execute_all_error;
 	}
 #endif /* !LIBCAS_FOR_JSP && !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
-
+      hm_set_current_srv_handle (srv_handle->id);
       SQL_LOG2_EXEC_BEGIN (as_info->cur_sql_log2, stmt_id);
       n = db_execute_and_keep_statement (session, stmt_id, &result);
       SQL_LOG2_EXEC_END (as_info->cur_sql_log2, stmt_id, n);
+      hm_set_current_srv_handle (-1);
 
 #ifndef LIBCAS_FOR_JSP
       update_query_execution_count (as_info, stmt_type);
@@ -1801,9 +1804,11 @@ ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max
 
   stmt_id = srv_handle->q_result->stmt_id;
 
+  hm_set_current_srv_handle (srv_handle->id);
   jsp_set_prepare_call ();
   n = db_execute_and_keep_statement (session, stmt_id, &result);
   jsp_unset_prepare_call ();
+  hm_set_current_srv_handle (-1);
 
 #ifndef LIBCAS_FOR_JSP
   stmt_type = db_get_statement_type (session, stmt_id);
@@ -2286,9 +2291,13 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 	}
 #endif /* !LIBCAS_FOR_JSP && !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
+      hm_set_current_srv_handle (srv_handle->id);
+
       SQL_LOG2_EXEC_BEGIN (as_info->cur_sql_log2, stmt_id);
       res_count = db_execute_and_keep_statement (session, stmt_id, &result);
       SQL_LOG2_EXEC_END (as_info->cur_sql_log2, stmt_id, res_count);
+
+      hm_set_current_srv_handle (-1);
 
       if (stmt_type < 0)
 	{
