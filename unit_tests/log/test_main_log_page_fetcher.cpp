@@ -138,18 +138,21 @@ void test_env::on_receive_log_page (LOG_PAGEID page_id, const LOG_PAGE *log_page
   else
     {
       REQUIRE (error_code != NO_ERROR);
-      REQUIRE (log_page == nullptr);
+      // pointer is never null, internally owned pointer from the caller
+      //REQUIRE (log_page == nullptr);
     }
   g_log_page_fetcher_test_data.page_ids_requested[page_id].is_page_received = true;
-  delete log_page;
+  // do not delete page, it is an internally owned pointer from the caller
 }
 
-int log_reader::set_lsa_and_fetch_page (const log_lsa &lsa, fetch_mode fetch_page_mode)
+int
+logpb_fetch_page (THREAD_ENTRY *thread_p, const LOG_LSA *req_lsa, LOG_CS_ACCESS_MODE access_mode,
+		  LOG_PAGE *log_pgptr)
 {
-  std::unique_lock<std::mutex> lock (g_log_page_fetcher_test_data.map_mutex);
-  if (g_log_page_fetcher_test_data.page_ids_requested[lsa.pageid].require_log_page_valid)
+  std::lock_guard<std::mutex> lock (g_log_page_fetcher_test_data.map_mutex);
+  if (g_log_page_fetcher_test_data.page_ids_requested[req_lsa->pageid].require_log_page_valid)
     {
-      m_lsa = lsa;
+      log_pgptr->hdr.logical_pageid = req_lsa->pageid;
       return NO_ERROR;
     }
   else
@@ -158,23 +161,11 @@ int log_reader::set_lsa_and_fetch_page (const log_lsa &lsa, fetch_mode fetch_pag
     }
 }
 
-const log_page *log_reader::get_page () const
+void
+logpb_fatal_error (THREAD_ENTRY *thread_p, bool log_exit, const char *file_name, const int lineno, const char *fmt,
+		   ...)
 {
-  std::unique_lock<std::mutex> lock (g_log_page_fetcher_test_data.map_mutex);
-  if (g_log_page_fetcher_test_data.page_ids_requested[m_lsa.pageid].require_log_page_valid)
-    {
-      auto logpage = new log_page ();
-      logpage->hdr.logical_pageid = m_lsa.pageid;
-      return logpage;
-    }
-  else
-    {
-      return nullptr;
-    }
 }
-
-// Mock some of the functionality
-log_reader::log_reader () = default;
 
 PAGE_PTR
 pgbuf_fix_debug (THREAD_ENTRY *thread_p, const VPID *vpid, PAGE_FETCH_MODE fetch_mode, PGBUF_LATCH_MODE request_mode,

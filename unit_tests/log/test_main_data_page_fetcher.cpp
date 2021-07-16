@@ -177,18 +177,20 @@ delete_page (PAGE_PTR page_ptr)
 }
 
 // Mock some of the functionality
-log_reader::log_reader () = default; // needed by log_page_fetch_task::execute
 
 int
-log_reader::set_lsa_and_fetch_page (const log_lsa &lsa, fetch_mode fetch_page_mode)
+logpb_fetch_page (THREAD_ENTRY *thread_p, const LOG_LSA *req_lsa, LOG_CS_ACCESS_MODE access_mode,
+		  LOG_PAGE *log_pgptr)
 {
-  return NO_ERROR;
+  assert (false);
+  return 0;
 }
 
-const log_page *
-log_reader::get_page () const
+void
+logpb_fatal_error (THREAD_ENTRY *thread_p, bool log_exit, const char *file_name, const int lineno, const char *fmt,
+		   ...)
 {
-  return nullptr;
+  assert (false);
 }
 
 PAGE_PTR
