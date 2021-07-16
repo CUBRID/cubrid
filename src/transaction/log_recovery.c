@@ -986,6 +986,10 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
   bool is_mvcc_op = false;
   const bool force_each_log_page_fetch = false;
 
+  //assert (pstat_Global.n_watchers == 0);
+  //++pstat_Global.n_watchers;
+  //prm_set_bool_value (PRM_ID_STATS_ON, true);
+
   /* depending on compilation mode and on a system parameter, initialize the
    * infrastructure for parallel log recovery;
    * if infrastructure is not initialized dependent code below works sequentially
