@@ -184,9 +184,6 @@ static int do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, boo
 
 static int get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val);
 static int get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE * decrypt_val);
-#ifndef NDEBUG
-void ciper_func_test ();
-#endif
 
 /*
  * initialize_serial_invariant() - initialize a serial invariant
@@ -18090,10 +18087,6 @@ get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, const char *server, DB_V
   int au_save, error, cnt;
   const char *url_attr_names[4] = { "host", "port", "db_name", "properties" };
 
-#ifndef NDEBUG
-  //ciper_func_test ();
-#endif
-
   cnt = 0;
   t = strchr ((char *) server, '.');	/* FIXME */
   server_name = (t != NULL) ? (t + 1) : (char *) server;
@@ -18293,58 +18286,3 @@ get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE * decrypt_val)
 
   return err;
 }
-
-#ifndef NDEBUG
-void
-ciper_func_test ()
-{
-  int err, i, loop;
-  char buf1[1024], buf2[1024];
-  char *pt, *pt2;
-  int len;
-  char tmp[1024];
-  char *tmpx = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ!@#$%%^&*()_-+=;:[]{}(),./?<>";
-
-  DB_VALUE encrypt_val;
-  DB_VALUE decrypt_val;
-
-  srand (time (NULL));
-
-  for (loop = 0; loop < 10000; loop++)
-    {
-      len = (rand () % 64) + 1;
-      for (i = 0; i < len; i++)
-	{
-	  tmp[i] = tmpx[rand () % strlen (tmpx)];
-	}
-      tmp[i] = 0x00;
-      pt = tmp;
-
-      memset (buf2, 0x00, sizeof (buf2));
-
-      sprintf ((char *) buf1, "%s", pt);
-
-      db_make_null (&encrypt_val);
-      db_make_null (&decrypt_val);
-
-      err = get_dblink_password_encrypt (buf1, &encrypt_val);
-      if (err != NO_ERROR)
-	printf ("xxx 1 [%s]\n", tmp);
-
-      pt = (char *) db_get_string (&encrypt_val);
-      len = (int) strlen (pt);
-
-      err = get_dblink_password_decrypt (pt, &decrypt_val);
-      if (err != NO_ERROR)
-	printf ("xxx 2 [%s]\n", tmp);
-
-      pt2 = (char *) db_get_string (&decrypt_val);
-
-      if (strcmp (tmp, pt2) != 0)
-	printf ("xxx 3 \n[%s]\n[%s]\n", tmp, pt2);
-
-      pr_clear_value (&encrypt_val);
-      pr_clear_value (&decrypt_val);
-    }
-}
-#endif
