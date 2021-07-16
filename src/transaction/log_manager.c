@@ -1332,22 +1332,16 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
   /*
    * Was the database system shut down or was it involved in a crash ?
    */
-  if (init_emergency == false && (log_Gl.hdr.is_shutdown == false || ismedia_crash == true))
+  if (init_emergency == false && (log_Gl.hdr.is_shutdown == false || ismedia_crash == true)
+      && !is_tran_server_with_remote_storage ())
     {
       /*
        * System was involved in a crash.
        * Execute the recovery process
        */
-      if (!is_tran_server_with_remote_storage ())
-	{
-	  log_recovery (thread_p, ismedia_crash, stopat);
-	}
-      else
-	{
-	  // TODO: do something, but not recovery
-	  //
-	  //  Finish postpones, abort active transactions
-	}
+      log_recovery (thread_p, ismedia_crash, stopat);
+
+      // todo: TS with remote storage recovery
     }
   else
     {
