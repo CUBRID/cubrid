@@ -1332,13 +1332,16 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
   /*
    * Was the database system shut down or was it involved in a crash ?
    */
-  if (init_emergency == false && (log_Gl.hdr.is_shutdown == false || ismedia_crash == true))
+  if (init_emergency == false && (log_Gl.hdr.is_shutdown == false || ismedia_crash == true)
+      && !is_tran_server_with_remote_storage ())
     {
       /*
        * System was involved in a crash.
        * Execute the recovery process
        */
       log_recovery (thread_p, ismedia_crash, stopat);
+
+      // todo: TS with remote storage recovery
     }
   else
     {
@@ -1425,7 +1428,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
   logpb_initialize_arv_page_info_table ();
   logpb_initialize_logging_statistics ();
 
-  if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING))
+  if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING) && !is_tran_server_with_remote_storage ())
     {
       BACKGROUND_ARCHIVING_INFO *bg_arv_info;
 
@@ -10014,6 +10017,10 @@ void
 log_remove_log_archive_daemon_init ()
 {
   assert (log_Remove_log_archive_daemon == NULL);
+  if (is_tran_server_with_remote_storage ())
+    {
+      return;	// no archives are created, no need for archive removal
+    }
 
   log_remove_log_archive_daemon_task *daemon_task = new log_remove_log_archive_daemon_task ();
   cubthread::period_function setup_period_function =
