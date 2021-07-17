@@ -4421,6 +4421,7 @@ catalog_update (THREAD_ENTRY * thread_p, RECDES * record_p, OID * class_oid_p)
   DISK_REPR *disk_repr_p = NULL;
   DISK_REPR *old_repr_p = NULL;
   CLS_INFO *class_info_p = NULL;
+  HFID class_hfid;
   OID rep_dir;
   int err;
 
@@ -4499,9 +4500,11 @@ catalog_update (THREAD_ENTRY * thread_p, RECDES * record_p, OID * class_oid_p)
 
   assert (OID_EQ (&rep_dir, &(class_info_p->ci_rep_dir)));
 
-  if (HFID_IS_NULL (&class_info_p->ci_hfid))
+  or_class_hfid (record_p, &(class_hfid));
+
+  if (!HFID_EQ (&class_info_p->ci_hfid, &class_hfid))
     {
-      or_class_hfid (record_p, &(class_info_p->ci_hfid));
+      class_info_p->ci_hfid = class_hfid;
       if (!HFID_IS_NULL (&class_info_p->ci_hfid))
 	{
 	  if (catalog_update_class_info (thread_p, class_oid_p, class_info_p, NULL, false) == NULL)

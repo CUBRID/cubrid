@@ -193,7 +193,7 @@ extern "C"
   extern int db_drop_class (DB_OBJECT * classobj);
   extern int db_drop_class_ex (DB_OBJECT * classobj, bool is_cascade_constraints);
   extern int db_rename_class (DB_OBJECT * classobj, const char *new_name);
-  extern int db_truncate_class (DB_OBJECT * classobj);
+  extern int db_truncate_class (DB_OBJECT * classobj, bool is_cascade);
 
   extern int db_add_index (DB_OBJECT * classobj, const char *attname);
   extern int db_drop_index (DB_OBJECT * classobj, const char *attname);

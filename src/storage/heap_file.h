@@ -585,6 +585,8 @@ extern int heap_get_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, 
 				FILE_TYPE * ftype_out, char **classname_out);
 extern int heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid,
 				  FILE_TYPE ftype, const char *classname_in);
+extern int heap_get_hfid_if_cached (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid_out,
+				    FILE_TYPE * ftype_out, char **classname_out, bool * success);
 extern int heap_compact_pages (THREAD_ENTRY * thread_p, OID * class_oid);
 
 extern void heap_classrepr_dump_all (THREAD_ENTRY * thread_p, FILE * fp, OID * class_oid);
