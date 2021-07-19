@@ -542,6 +542,8 @@ struct log_tdes
 
   log_postpone_cache m_log_postpone_cache;
 
+  bool has_supplemental_log;	/* Checks if supplemental log has been appended within the transaction */
+
   // *INDENT-OFF*
 #if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))
 

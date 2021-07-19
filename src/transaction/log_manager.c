@@ -4738,6 +4738,14 @@ log_append_commit_log_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_L
 static void
 log_append_abort_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * abort_lsa)
 {
+  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0)
+    {
+      if (tdes->has_supplemental_log)
+	{
+	  tdes->has_supplemental_log = false;
+	}
+    }
+
   log_append_donetime_internal (thread_p, tdes, abort_lsa, LOG_ABORT, LOG_PRIOR_LSA_WITHOUT_LOCK);
 }
 
@@ -4929,6 +4937,19 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
       if (is_local_tran)
 	{
 	  LOG_LSA commit_lsa;
+
+	  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0)
+	    {
+	      if (tdes->has_supplemental_log)
+		{
+		  const char *user = tdes->client.get_db_user ();
+		  int length = strlen (user);
+
+		  log_append_supplemental_log (thread_p, LOG_SUPPLEMENTAL_TRAN_USER, length, user);
+
+		  tdes->has_supplemental_log = false;
+		}
+	    }
 
 	  /* To write unlock log before releasing locks for transactional consistencies. When a transaction(T2) which
 	   * is resumed by this committing transaction(T1) commits and a crash happens before T1 completes, transaction
