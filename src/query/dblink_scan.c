@@ -458,13 +458,13 @@ dblink_bind_param (DBLINK_SCAN_INFO * scan_info, VAL_DESCR * vd, DBLINK_HOST_VAR
 	  break;
 	default:
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_UNSUPPORTED_TYPE, 0);
-	  return S_ERROR;
+	  return ER_DBLINK_UNSUPPORTED_TYPE;
 	}
       ret = cci_bind_param (scan_info->stmt_handle, n + 1, a_type, value, u_type, 0);
       if (ret < 0)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_INVALID_BIND_PARAM, 0);
-	  return S_ERROR;
+	  return ER_DBLINK_INVALID_BIND_PARAM;
 	}
     }
 
@@ -496,7 +496,7 @@ dblink_open_scan (DBLINK_SCAN_INFO * scan_info, struct access_spec_node *spec,
     {
       scan_info->stmt_handle = -1;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
-      return S_ERROR;
+      return ER_DBLINK;
     }
   else
     {
@@ -504,14 +504,14 @@ dblink_open_scan (DBLINK_SCAN_INFO * scan_info, struct access_spec_node *spec,
       if (scan_info->stmt_handle < 0)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
-	  return S_ERROR;
+	  return ER_DBLINK;
 	}
 
       if (host_vars->count > 0)
 	{
-	  if (dblink_bind_param (scan_info, vd, host_vars) < 0)
+	  if ((ret = dblink_bind_param (scan_info, vd, host_vars)) < 0)
 	    {
-	      return S_ERROR;
+	      return ret;
 	    }
 	}
 
@@ -519,7 +519,7 @@ dblink_open_scan (DBLINK_SCAN_INFO * scan_info, struct access_spec_node *spec,
       if (ret < 0)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
-	  return S_ERROR;
+	  return ER_DBLINK;
 	}
       else
 	{
@@ -530,7 +530,7 @@ dblink_open_scan (DBLINK_SCAN_INFO * scan_info, struct access_spec_node *spec,
 	    {
 	      /* this can not be reached, something wrong */
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "unknown error");
-	      return S_ERROR;
+	      return ER_DBLINK;
 	    }
 	  scan_info->cursor = CCI_CURSOR_FIRST;
 	}
