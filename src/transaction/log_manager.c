@@ -4639,10 +4639,6 @@ log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA 
     }
 
   LSA_COPY (eot_lsa, &lsa);
-#if !defined(NDEBUG) && 1	//JOOHOK
-  _er_log_debug (ARG_FILE_LINE, "LOG_TYPE : %s , time : %lld, LSA : %lld|%d \n ", log_to_string (iscommitted),
-		 donetime->at_time, LSA_AS_ARGS (eot_lsa));
-#endif
 }
 
 /*
