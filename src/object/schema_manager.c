@@ -15520,7 +15520,7 @@ sm_truncate_using_delete (MOP class_mop)
     }
   else
     {
-      (void) snprintf (delete_query, sizeof (delete_query), "DELETE /*+ RECOMPILE */ FROM [%s];", class_name);
+    
     }
 
 
