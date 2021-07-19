@@ -1201,7 +1201,8 @@ typedef enum
   /* SELECT page header information from heap file instead of record data */
   PT_HINT_SELECT_KEY_INFO = 0x80000000,	/* 1000 0000 0000 0000 0000 0000 0000 0000 */
   /* SELECT key information from index b-tree instead of table record data */
-  PT_HINT_NO_SUPPLEMENTAL_LOG = 0x100000000
+  PT_HINT_NO_SUPPLEMENTAL_LOG = 0x100000000 /* 0001 0000 0000 0000 0000 0000 0000 0000 0000 */
+  /* Used in DML (insert, update, delete) to avoid adding DML supplemental logs that may be duplicated by DDL */
 } PT_HINT_ENUM;
 
 /* Codes for error messages */

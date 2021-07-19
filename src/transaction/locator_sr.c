@@ -12791,6 +12791,9 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
 		  goto exit;
 		}
 
+              /* No supplemental log for insert is appended due to DDL statement */
+              thread_p->no_supplemental_log = true;
+
 	      /* make sure that pruning does not change the given class OID */
 	      COPY_OID (&cls_oid, class_oid);
 	      error =
