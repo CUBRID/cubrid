@@ -451,7 +451,8 @@ log_to_string (LOG_RECTYPE type)
       return "LOG_DUMMY_OVF_RECORD";
     case LOG_DUMMY_GENERIC:
       return "LOG_DUMMY_GENERIC";
-
+    case LOG_SUPPLEMENTAL_INFO:
+      return "LOG_SUPPLEMENTAL_INFO";
     case LOG_SMALLER_LOGREC_TYPE:
     case LOG_LARGER_LOGREC_TYPE:
       break;
@@ -4638,6 +4639,10 @@ log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA 
     }
 
   LSA_COPY (eot_lsa, &lsa);
+#if !defined(NDEBUG) && 1	//JOOHOK
+  _er_log_debug (ARG_FILE_LINE, "LOG_TYPE : %s , time : %lld, LSA : %lld|%d \n ", log_to_string (iscommitted),
+		 donetime->at_time, LSA_AS_ARGS (eot_lsa));
+#endif
 }
 
 /*
@@ -4739,6 +4744,126 @@ static void
 log_append_abort_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * abort_lsa)
 {
   log_append_donetime_internal (thread_p, tdes, abort_lsa, LOG_ABORT, LOG_PRIOR_LSA_WITHOUT_LOCK);
+}
+
+/*
+ * log_append_supplemental_log - append supplemental log record 
+ *
+ * return: nothing
+ *
+ *   rec_type (in): type of supplemental log record .
+ *   length (in) : length of supplemental data length.
+ *   data (in) : supplemental data
+ *   
+ */
+
+void
+log_append_supplemental_log (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE rec_type, int length, const void *data)
+{
+  LOG_PRIOR_NODE *node;
+  LOG_REC_SUPPLEMENT *supplement;
+
+  LOG_TDES *tdes;
+  int tran_index;
+
+  assert (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0);
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tdes = LOG_FIND_TDES (tran_index);
+
+  /*supplement data will be stored at undo data */
+  node =
+    prior_lsa_alloc_and_copy_data (thread_p, LOG_SUPPLEMENTAL_INFO, RV_NOT_DEFINED, NULL, length, (char *) data, 0,
+				   NULL);
+  if (node == NULL)
+    {
+      return;
+    }
+
+  supplement = (LOG_REC_SUPPLEMENT *) node->data_header;
+  supplement->rec_type = rec_type;
+  supplement->length = length;
+
+  prior_lsa_next_record (thread_p, node, tdes);
+}
+
+int
+log_append_supplemental_lsa (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE rec_type, OID * classoid, LOG_LSA * undo_lsa,
+			     LOG_LSA * redo_lsa)
+{
+  int size;
+  char data[OR_OID_SIZE + OR_LOG_LSA_SIZE + OR_LOG_LSA_SIZE];
+
+  assert (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0);
+
+  switch (rec_type)
+    {
+    case LOG_SUPPLEMENT_INSERT:
+      assert (redo_lsa != NULL);
+
+      size = sizeof (OID) + sizeof (LOG_LSA);
+
+      memcpy (data, classoid, sizeof (OID));
+      memcpy (data + sizeof (OID), redo_lsa, sizeof (LOG_LSA));
+      break;
+
+    case LOG_SUPPLEMENT_UPDATE:
+      assert (undo_lsa != NULL && redo_lsa != NULL);
+
+      size = sizeof (OID) + sizeof (LOG_LSA) + sizeof (LOG_LSA);
+
+      memcpy (data, classoid, sizeof (OID));
+      memcpy (data + sizeof (OID), undo_lsa, sizeof (LOG_LSA));
+      memcpy (data + sizeof (OID) + sizeof (LOG_LSA), redo_lsa, sizeof (LOG_LSA));
+      break;
+
+    case LOG_SUPPLEMENT_DELETE:
+      assert (undo_lsa != NULL);
+
+      size = sizeof (OID) + sizeof (LOG_LSA);
+
+      memcpy (data, classoid, sizeof (OID));
+      memcpy (data + sizeof (OID), undo_lsa, sizeof (LOG_LSA));
+      break;
+    }
+
+  log_append_supplemental_log (thread_p, rec_type, size, (void *) data);
+
+  return NO_ERROR;
+}
+
+int
+log_append_supplemental_undo_record (THREAD_ENTRY * thread_p, RECDES * undo_recdes)
+{
+  assert (undo_recdes != NULL);
+  assert (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0);
+
+  LOG_ZIP *zip_undo = NULL;
+  int length = undo_recdes->length;
+  void *data = undo_recdes->data;
+  int min_size_to_compress = 255;
+
+  if (length >= min_size_to_compress)
+    {
+      zip_undo = log_zip_alloc (IO_PAGESIZE);
+      if (zip_undo == NULL)
+	{
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      log_zip (zip_undo, length, data);
+      length = zip_undo->data_length;
+      data = zip_undo->log_data;
+    }
+
+  log_append_supplemental_log (thread_p, LOG_SUPPLEMENT_UNDO_RECORD, length, data);
+
+  if (zip_undo != NULL)
+    {
+      log_zip_free (zip_undo);
+    }
+
+  return NO_ERROR;
 }
 
 /*
@@ -7627,6 +7752,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 	    case LOG_DUMMY_HA_SERVER_STATE:
 	    case LOG_DUMMY_OVF_RECORD:
 	    case LOG_DUMMY_GENERIC:
+	    case LOG_SUPPLEMENTAL_INFO:
 	      break;
 
 	    case LOG_RUN_POSTPONE:
@@ -8058,6 +8184,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 		    case LOG_DUMMY_HA_SERVER_STATE:
 		    case LOG_DUMMY_OVF_RECORD:
 		    case LOG_DUMMY_GENERIC:
+		    case LOG_SUPPLEMENTAL_INFO:
 		      break;
 
 		    case LOG_POSTPONE:
