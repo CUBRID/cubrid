@@ -410,9 +410,9 @@ typedef enum supplement_rec_type
   LOG_SUPPLEMENT_TRAN_USER,
   LOG_SUPPLEMENT_UNDO_RECORD, /*CONTAINS undo raw record */
   LOG_SUPPLEMENT_DDL,
-/* CONTAINS LSA of logs which contain undo, redo raw record 
- * | LOG_REC_HEADER | SUPPLEMENT_REC_TYPE | LENGTH | CLASS OID |  UNDO LSA (sizeof LOG_LSA) | REDO LSA | */
-  LOG_SUPPLEMENT_UPDATE, 
+  /* CONTAINS LSA of logs which contain undo, redo raw record
+   * | LOG_REC_HEADER | SUPPLEMENT_REC_TYPE | LENGTH | CLASS OID |  UNDO LSA (sizeof LOG_LSA) | REDO LSA | */
+  LOG_SUPPLEMENT_UPDATE,
   LOG_SUPPLEMENT_DELETE,
   LOG_SUPPLEMENT_INSERT,
   LOG_SUPPLEMENT_CLASS_OID,
