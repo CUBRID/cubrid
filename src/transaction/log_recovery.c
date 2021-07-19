@@ -1193,8 +1193,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 		PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &timer, PSTAT_RV_MAIN_READ_LOG);
                 log_rv_redo_record_sync_or_dispatch_async<LOG_REC_MVCC_UNDOREDO>
 		  (thread_p, log_pgptr_reader, log_rec_mvcc_undoredo, rcv_lsa, &context.get_end_redo_lsa (), log_rtype,
-		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, force_each_log_page_fetch);
-		PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &timer, PSTAT_RV_MAIN_REDO_OR_PUSH);
+		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, force_each_log_page_fetch, &timer);
+		//PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &timer, PSTAT_RV_MAIN_REDO_OR_PUSH);
                 // *INDENT-ON*
 	      }
 	      break;
@@ -1216,8 +1216,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 		PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &timer, PSTAT_RV_MAIN_READ_LOG);
                 log_rv_redo_record_sync_or_dispatch_async<LOG_REC_UNDOREDO>
 		  (thread_p, log_pgptr_reader, log_rec_undoredo, rcv_lsa, &context.get_end_redo_lsa (), log_rtype,
-		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, force_each_log_page_fetch);
-		PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &timer, PSTAT_RV_MAIN_REDO_OR_PUSH);
+		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, force_each_log_page_fetch, &timer);
+		//PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &timer, PSTAT_RV_MAIN_REDO_OR_PUSH);
                 // *INDENT-ON*
 	      }
 	      break;
@@ -1252,8 +1252,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 		PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &timer, PSTAT_RV_MAIN_READ_LOG);
                 log_rv_redo_record_sync_or_dispatch_async<LOG_REC_MVCC_REDO>
 		  (thread_p, log_pgptr_reader, log_rec_mvcc_redo, rcv_lsa, &context.get_end_redo_lsa (), log_rtype,
-		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, force_each_log_page_fetch);
-		PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &timer, PSTAT_RV_MAIN_REDO_OR_PUSH);
+		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, force_each_log_page_fetch, &timer);
+		//PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &timer, PSTAT_RV_MAIN_REDO_OR_PUSH);
                 // *INDENT-ON*
 	      }
 	      break;
@@ -1279,8 +1279,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 		PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &timer, PSTAT_RV_MAIN_READ_LOG);
                 log_rv_redo_record_sync_or_dispatch_async<LOG_REC_REDO>
 		  (thread_p, log_pgptr_reader, log_rec_redo, rcv_lsa, &context.get_end_redo_lsa (), log_rtype,
-		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, force_each_log_page_fetch);
-		PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &timer, PSTAT_RV_MAIN_REDO_OR_PUSH);
+		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, force_each_log_page_fetch, &timer);
+		//PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &timer, PSTAT_RV_MAIN_REDO_OR_PUSH);
                 // *INDENT-ON*
 	      }
 	      break;
@@ -1323,7 +1323,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 					&rcv_lsa, 0, nullptr, *redo_unzip_ptr);
 		    /* unzip_ptr used here only as a buffer for the underlying logic, the structure's buffer
 		     * will be reallocated downstream if needed */
-		    PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &timer, PSTAT_RV_MAIN_REDO_OR_PUSH);
+		    PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &timer, PSTAT_RV_MAIN_REDO_OR_PUSH_SYNC);
 		  }
 	      }
 	      break;
@@ -1344,8 +1344,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 		PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &timer, PSTAT_RV_MAIN_READ_LOG);
                 log_rv_redo_record_sync_or_dispatch_async<LOG_REC_RUN_POSTPONE>
 		  (thread_p, log_pgptr_reader, log_rec_run_posp, rcv_lsa, &context.get_end_redo_lsa (), log_rtype,
-		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, force_each_log_page_fetch);
-		PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &timer, PSTAT_RV_MAIN_REDO_OR_PUSH);
+		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, force_each_log_page_fetch, &timer);
+		//PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &timer, PSTAT_RV_MAIN_REDO_OR_PUSH);
                 // *INDENT-ON*
 	      }
 	      break;
@@ -1365,8 +1365,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 		PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &timer, PSTAT_RV_MAIN_READ_LOG);
                 log_rv_redo_record_sync_or_dispatch_async<LOG_REC_COMPENSATE>
 		  (thread_p, log_pgptr_reader, log_rec_compensate, rcv_lsa, &context.get_end_redo_lsa (), log_rtype,
-		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, force_each_log_page_fetch);
-		PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &timer, PSTAT_RV_MAIN_REDO_OR_PUSH);
+		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, force_each_log_page_fetch, &timer);
+		//PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &timer, PSTAT_RV_MAIN_REDO_OR_PUSH);
                 // *INDENT-ON*
 	      }
 	      break;

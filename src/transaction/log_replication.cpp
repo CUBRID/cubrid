@@ -226,7 +226,7 @@ namespace cublog
 
     log_rv_redo_record_sync_or_dispatch_async (
 	    &thread_entry, m_reader, log_rec, rec_lsa, nullptr, rectype,
-	    m_undo_unzip, m_redo_unzip, m_parallel_replication_redo, true);
+	    m_undo_unzip, m_redo_unzip, m_parallel_replication_redo, true, nullptr);
   }
 
   template <typename T>
