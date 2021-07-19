@@ -273,6 +273,8 @@ namespace cublog
 //	   */
 	  const bool m_monitor_minimum_log_lsa;
 	  minimum_log_lsa_monitor *m_minimum_log_lsa;
+	  PERF_UTIME_TRACKER m_time_tracker;
+	  THREAD_ENTRY *m_thread_entry;
       };
 
       /* maintain a bookkeeping of tasks that are still performing work;
@@ -546,7 +548,7 @@ log_rv_redo_record_sync_or_dispatch_async (
       if (parallel_recovery_redo != nullptr && log_data.rcvindex == RVDK_UNRESERVE_SECTORS)
 	{
 	  parallel_recovery_redo->wait_for_idle ();
-          //PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, a_timer, PSTAT_RV_MAIN_REDO_OR_PUSH_WAIT_IDLE);
+	  //PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, a_timer, PSTAT_RV_MAIN_REDO_OR_PUSH_WAIT_IDLE);
 	}
 #endif
 

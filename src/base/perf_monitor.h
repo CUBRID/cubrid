@@ -650,6 +650,10 @@ typedef enum
   PSTAT_RV_MAIN_COMMIT_ABORT,
   PSTAT_RV_MAIN_WAIT_FOR_PARALLEL,
   PSTAT_RV_MAIN_FINALIZE,
+  PSTAT_RV_MAIN_REDO_PAR_QUEUE_HASH,
+  PSTAT_RV_MAIN_REDO_PAR_QUEUE_MUTEX_ACQ,
+  PSTAT_RV_MAIN_REDO_PAR_QUEUE_SET_NON_EMPTY,
+  PSTAT_RV_MAIN_REDO_PAR_QUEUE_PUSH,
 
   /* Complex statistics */
   PSTAT_PBX_FIX_COUNTERS,
@@ -1160,10 +1164,10 @@ perfmon_time_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timediff)
 //    {
 //      max_time = ATOMIC_LOAD_64 (PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp));
 //      if (max_time >= timediff)
-//	{
-//	  /* No need to change max_time. */
-//	  break;
-//	}
+//      {
+//        /* No need to change max_time. */
+//        break;
+//      }
 //    }
 //  while (!ATOMIC_CAS_64 (PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp), max_time, timediff));
   /* Average is not computed here. */
@@ -1180,9 +1184,9 @@ perfmon_time_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timediff)
 //      (*PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (statvalp)) += timediff;
 //      max_time = *PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp);
 //      if (max_time < timediff)
-//	{
-//	  (*PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp)) = timediff;
-//	}
+//      {
+//        (*PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp)) = timediff;
+//      }
 //    }
 //#endif /* SERVER_MODE || SA_MODE */
 }

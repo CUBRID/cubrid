@@ -581,6 +581,11 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_RV_MAIN_COMMIT_ABORT, "Log_redo_main_commit_or_abort"),
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_RV_MAIN_WAIT_FOR_PARALLEL, "Log_redo_main_wait_for_parallel"),
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_RV_MAIN_FINALIZE, "Log_redo_main_finalize"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_RV_MAIN_REDO_PAR_QUEUE_HASH, "Log_main_redo_par_queue_hash"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_RV_MAIN_REDO_PAR_QUEUE_MUTEX_ACQ, "Log_main_redo_par_queue_mutex_acq"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_RV_MAIN_REDO_PAR_QUEUE_SET_NON_EMPTY,
+				     "Log_main_redo_par_queue_set_non_empty"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_RV_MAIN_REDO_PAR_QUEUE_PUSH, "Log_main_redo_par_queue_push"),
 
   /* Array type statistics */
   PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_FIX_COUNTERS, "Num_data_page_fix_ext", &f_dump_in_file_Num_data_page_fix_ext,
