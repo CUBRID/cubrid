@@ -452,8 +452,9 @@ enum param_id
   PRM_ID_IGNORE_TRAILING_SPACE,
   PRM_ID_DDL_AUDIT_LOG,
   PRM_ID_DDL_AUDIT_LOG_SIZE,
+  PRM_ID_SUPPLEMENTAL_LOG,
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_DDL_AUDIT_LOG_SIZE
+  PRM_LAST_ID = PRM_ID_SUPPLEMENTAL_LOG
 };
 typedef enum param_id PARAM_ID;
 
