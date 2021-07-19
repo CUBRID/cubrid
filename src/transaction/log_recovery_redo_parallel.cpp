@@ -197,7 +197,7 @@ namespace cublog
   redo_parallel::redo_job_queue::push_job (ux_redo_job_base &&job)
   {
     const vpid &job_vpid = job->get_vpid ();
-    const std::size_t vpid_hash = std::hash<VPID> {} (job_vpid);
+    const std::size_t vpid_hash = m_vpid_hash (job_vpid);
     const std::size_t vec_idx = vpid_hash % m_task_count;
     std::mutex &mtx = m_produce_mutex_vec[vec_idx];
     std::lock_guard<std::mutex> lockg (mtx);

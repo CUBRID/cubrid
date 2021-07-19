@@ -244,6 +244,7 @@ namespace cublog
 	private:
 	  const unsigned m_task_count;
 	  std::vector<ux_redo_job_deque *> m_produce_vec;
+	  std::hash<VPID> m_vpid_hash;
 	  std::vector<std::mutex> m_produce_mutex_vec;
 
 //	  std::map<unsigned, log_lsa> m_produce_index_to_min_lsa_map;
