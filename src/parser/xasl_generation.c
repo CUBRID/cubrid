@@ -18401,7 +18401,6 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
 
       insert->no_logging = (statement->info.insert.hint & PT_HINT_NO_LOGGING);
-      insert->no_supplemental_log = (statement->info.insert.hint & PT_HINT_NO_SUPPLEMENTAL_LOG);
       insert->do_replace = (statement->info.insert.do_replace ? 1 : 0);
 
       if (error >= NO_ERROR && (num_vals + num_default_expr > 0))

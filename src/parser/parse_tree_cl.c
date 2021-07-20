@@ -12424,11 +12424,6 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
 	  b = pt_append_nulstring (parser, b, " USE_SBR");
 	}
 
-      if (p->info.insert.hint & PT_HINT_NO_SUPPLEMENTAL_LOG)
-	{
-	  b = pt_append_nulstring (parser, b, " NO_SUPPLEMENTAL_LOG");
-	}
-
       b = pt_append_nulstring (parser, b, " */ ");
     }
   b = pt_append_nulstring (parser, b, "into ");

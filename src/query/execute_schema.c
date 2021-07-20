@@ -13112,7 +13112,9 @@ do_run_update_query_for_new_notnull_fields (PARSER_CONTEXT * parser, PT_NODE * a
 
   /* Using UPDATE ALL to update the current class and all its children. */
 
-  n = snprintf (q, remaining, "UPDATE /*+ NO_SUPPLEMENTAL_LOG */ ALL [%s] SET ", alter->info.alter.entity_name->info.name.original);
+  n =
+    snprintf (q, remaining, "UPDATE /*+ NO_SUPPLEMENTAL_LOG */ ALL [%s] SET ",
+	      alter->info.alter.entity_name->info.name.original);
   if (n < 0)
     {
       ERROR1 (error, ER_UNEXPECTED, "Building UPDATE statement failed.");
@@ -13200,7 +13202,9 @@ do_run_update_query_for_new_default_expression_fields (PARSER_CONTEXT * parser, 
   query[0] = 0;
 
   /* Using UPDATE ALL to update the current class and all its children. */
-  n = snprintf (q, remaining, "UPDATE /*+ NO_SUPPLEMENTAL_LOG */ ALL [%s] SET ", alter->info.alter.entity_name->info.name.original);
+  n =
+    snprintf (q, remaining, "UPDATE /*+ NO_SUPPLEMENTAL_LOG */ ALL [%s] SET ",
+	      alter->info.alter.entity_name->info.name.original);
   if (n < 0)
     {
       ERROR1 (error, ER_UNEXPECTED, "Building UPDATE statement failed.");

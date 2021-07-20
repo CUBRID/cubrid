@@ -10920,8 +10920,6 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 
   thread_p->no_logging = (bool) insert->no_logging;
 
-  thread_p->no_supplemental_log = (bool) insert->no_supplemental_log;
-
   aptr = xasl->aptr_list;
   val_no = insert->num_vals;
 
