@@ -176,6 +176,22 @@ namespace cublog
       {
 	m_empty_vec.resize (a_task_count, true);
       }
+
+    assert (m_task_count < 256);
+    m_data_volume_count = 100;
+    //const int32_t data_page_size = db_io_page_size();
+    m_page_count_per_data_volume = DB_INT16_MAX + 10; // DB_INT32_MAX % data_page_size + 1;
+    m_task_index_vec.resize(m_data_volume_count * m_page_count_per_data_volume);
+    for (short vol_idx = 0; vol_idx < m_data_volume_count; ++vol_idx)
+      {
+        for (int page_idx = 0; page_idx < m_page_count_per_data_volume; ++page_idx)
+          {
+            const vpid vol_page_id { page_idx, vol_idx };
+            const int32_t hash_value = m_vpid_hash (vol_page_id);
+            m_task_index_vec[vol_idx * m_page_count_per_data_volume + page_idx]
+                = (unsigned char)(hash_value % m_task_count);
+          }
+      }
   }
 
   redo_parallel::redo_job_queue::~redo_job_queue ()
@@ -199,15 +215,18 @@ namespace cublog
   redo_parallel::redo_job_queue::push_job (ux_redo_job_base &&job)
   {
     PERF_UTIME_TRACKER_START (m_thread_entry, &m_time_tracker);
+
     const vpid &job_vpid = job->get_vpid ();
-    const std::size_t vpid_hash = m_vpid_hash (job_vpid);
-    const std::size_t vec_idx = vpid_hash % m_task_count;
+    assert (job_vpid.volid < m_data_volume_count);
+    assert (job_vpid.pageid < m_page_count_per_data_volume);
+    const std::size_t vec_idx = m_task_index_vec[job_vpid.volid * m_page_count_per_data_volume + job_vpid.pageid];
     std::mutex &mtx = m_produce_mutex_vec[vec_idx];
     PERF_UTIME_TRACKER_TIME_AND_RESTART (m_thread_entry, &m_time_tracker, PSTAT_RV_MAIN_REDO_PAR_QUEUE_HASH);
+
     std::lock_guard<std::mutex> lockg (mtx);
     PERF_UTIME_TRACKER_TIME_AND_RESTART (m_thread_entry, &m_time_tracker, PSTAT_RV_MAIN_REDO_PAR_QUEUE_MUTEX_ACQ);
-    ux_redo_job_deque *jobs = m_produce_vec[vec_idx];
 
+    ux_redo_job_deque *jobs = m_produce_vec[vec_idx];
     if (jobs->empty ())
       {
 	// will be empty no more
