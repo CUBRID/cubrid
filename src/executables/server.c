@@ -51,6 +51,7 @@
 #include "server_type.hpp"
 #include "perf_monitor.h"
 #include "util_func.h"
+#include "util_support.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #else /* !defined (WINDOWS) */
@@ -348,8 +349,13 @@ main (int argc, char **argv)
     binary_name = basename (argv[0]);
     (void) envvar_bindir_file (executable_path, PATH_MAX, binary_name);
     /* save database name */
-    database_name = argv[1];
-    set_server_type_from_arg (argc, argv);
+    utility_make_getopt_optstring (server_options_map, short_options_buffer);
+    ret_val = argument_handler (argc, argv, database_name);
+
+    if (ret_val != NO_ERROR)
+      {
+	return ret_val;
+      }
 
 #if !defined(WINDOWS)
     hb_set_exec_path (executable_path);

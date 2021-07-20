@@ -246,7 +246,6 @@ static UTIL_SERVICE_PROPERTY_T us_Property_map[] = {
   {-1, NULL}
 };
 
-
 static const char **Argv;
 static int ha_mode_in_common;
 

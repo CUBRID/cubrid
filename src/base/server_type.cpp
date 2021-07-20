@@ -107,35 +107,50 @@ bool is_tran_server_with_remote_storage ()
   return false;
 }
 
-void set_server_type_from_arg (int argc, char **argv)
+int
+argument_handler (int argc, char **argv, const char *database_name)
 {
-  if (argc < 4)
+  while (true)
     {
-      return;
+      int option_index = 0;
+      int option_key = getopt_long (argc, argv, short_options_buffer, server_options_map, &option_index);
+      if (option_key == -1)
+	{
+	  break;
+	}
+      switch (option_key)
+	{
+	case SERVER_TYPE_SHORT:
+	  if (std::strcmp (optarg, "transaction") == 0)
+	    {
+	      set_server_type (SERVER_TYPE_TRANSACTION);
+	    }
+	  else if (std::strcmp (optarg, "page") == 0)
+	    {
+	      set_server_type (SERVER_TYPE_PAGE);
+	    }
+	  else
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERVER_TYPE_ARGUMENT, 0);	// error that the type is not valid
+	      return ER_INVALID_SERVER_TYPE_ARGUMENT;
+	    }
+	  break;
+	default:
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERVER_OPTION, 1, optarg);	// invalid server option
+	  return ER_INVALID_SERVER_OPTION;
+	}
+    }
+  if (argc - optind == 1)
+    {
+      database_name = argv[optind];
     }
 
-  int arg = 0;
-  //check for server type argument
-  for (size_t i = 2; i < argc; i++)
-    {
-      if (arg)
-	{
-	  if (!strcmp (argv[i], "transaction"))
-	    {
-	      g_server_type = SERVER_TYPE_TRANSACTION;
-	      return;
-	    }
-	  if (!strcmp (argv[i], "page"))
-	    {
-	      g_server_type = SERVER_TYPE_PAGE;
-	      return;
-	    }
-	}
-      if (!strcmp (argv[i], COMMDB_SERVER_TYPE_S) || !strcmp (argv[i], COMMDB_SERVER_TYPE_L))
-	{
-	  arg = 1;
-	}
-    }
+  return NO_ERROR;
+}
+
+void set_server_type (SERVER_TYPE type)
+{
+  g_server_type = type;
 }
 
 #else // !SERVER_MODE = SA_MODE
