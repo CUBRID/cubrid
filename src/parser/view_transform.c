@@ -211,6 +211,8 @@ static bool mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * query, b
 static int pt_check_copypush_subquery (PARSER_CONTEXT * parser, PT_NODE * query);
 static void pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_NODE * term_list,
 			       FIND_ID_TYPE type);
+static int mq_copypush_sargable_terms_dblink (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec,
+					      PT_NODE * new_query, FIND_ID_INFO * infop);
 static int mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec,
 					      PT_NODE * new_query, FIND_ID_INFO * infop);
 static int mq_copypush_sargable_terms (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec);
@@ -2754,6 +2756,10 @@ pt_pushable_query_in_pos (PARSER_CONTEXT * parser, PT_NODE * query, int pos)
 
   switch (query->node_type)
     {
+    case PT_DBLINK_TABLE:
+      pushable = true;
+      break;
+
     case PT_SELECT:
       {
 	CHECK_PUSHABLE_INFO cinfo;
@@ -3105,6 +3111,9 @@ static void
 pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_NODE * term_list, FIND_ID_TYPE type)
 {
   PT_NODE *push_term_list;
+  PARSER_VARCHAR *rewritten = NULL;
+  PARSER_VARCHAR *pushed_pred, *query_str, *col_list;
+  unsigned int save_custom;
 
   if (query == NULL || term_list == NULL)
     {
@@ -3147,6 +3156,45 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
 	    }
 	}
       break;
+    case PT_DBLINK_TABLE:
+      /* copy terms */
+      query->info.dblink_table.pushed_pred = parser_copy_tree_list (parser, term_list);
+      save_custom = parser->custom_print;
+      parser->custom_print |= PT_CONVERT_RANGE | PT_SUPPRESS_RESOLVED | PT_PRINT_NO_HOST_VAR_INDEX;
+      pushed_pred = pt_print_and_list (parser, query->info.dblink_table.pushed_pred);
+
+      /* wrapped query SELECT * FROM */
+      rewritten = pt_append_bytes (parser, rewritten, "SELECT * FROM (", 15);
+      query_str = query->info.dblink_table.qstr->info.value.data_value.str;
+      rewritten = pt_append_varchar (parser, rewritten, query_str);
+
+      /* alias name : '_r' */
+      rewritten = pt_append_bytes (parser, rewritten, ") AS _r", 7);
+
+      if (query->info.dblink_table.cols != NULL)
+	{
+	  /* aliased column list */
+	  rewritten = pt_append_bytes (parser, rewritten, "(", 1);
+	  col_list = pt_print_bytes_l (parser, spec->info.spec.as_attr_list);
+	  rewritten = pt_append_varchar (parser, rewritten, col_list);
+	  rewritten = pt_append_bytes (parser, rewritten, ")", 1);
+	}
+
+      if (pushed_pred != NULL)
+	{
+	  /* where predicate */
+	  rewritten = pt_append_bytes (parser, rewritten, " WHERE ", 7);
+	  rewritten = pt_append_varchar (parser, rewritten, pushed_pred);
+	}
+
+      query->info.dblink_table.rewritten = rewritten;
+
+      parser->custom_print = save_custom;
+
+#if !defined (NDEBUG)
+      printf ("===> rewriting query = %s\n", (char *) rewritten->bytes);
+#endif
+      break;
 
     case PT_UNION:
     case PT_DIFFERENCE:
@@ -3160,6 +3208,57 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
     }				/* switch (query->node_type) */
 
   return;
+}
+
+/*
+ * mq_copypush_sargable_terms_dblink() -
+ *   return:
+ *   parser(in):
+ *   statement(in):
+ *   spec(in):
+ *   new_query(in/out):
+ *   infop(in):
+ */
+static int
+mq_copypush_sargable_terms_dblink (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec, PT_NODE * new_query,
+				   FIND_ID_INFO * infop)
+{
+  PT_NODE *term, *new_term, *push_term_list;
+  int push_cnt, copy_cnt;
+  PT_NODE *save_next;
+
+  /* init */
+  push_term_list = NULL;
+  push_cnt = 0;
+
+  for (term = statement->info.query.q.select.where; term; term = term->next)
+    {
+      if (pt_sargable_term (parser, term, infop) && PT_PUSHABLE_TERM (infop))
+	{
+	  /* copy term */
+	  new_term = parser_copy_tree (parser, term);
+
+	  /* for term, mark as copy-pushed term */
+	  if (term->node_type == PT_EXPR)
+	    {
+	      PT_EXPR_INFO_SET_FLAG (term, PT_EXPR_INFO_COPYPUSH);
+	    }
+	  push_term_list = parser_append_node (new_term, push_term_list);
+
+	  push_cnt++;
+	}
+    }
+
+  if (push_cnt)
+    {
+      /* copy and push term in new_query's search condition */
+      (void) pt_copypush_terms (parser, spec, new_query, push_term_list, infop->type);
+
+      /* free alloced */
+      parser_free_tree (parser, push_term_list);
+    }
+
+  return push_cnt;
 }
 
 /*
@@ -3301,8 +3400,8 @@ mq_copypush_sargable_terms (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NOD
 
   if (statement->node_type == PT_SELECT
       /* never do copy-push optimization for a hierarchical query */
-      && statement->info.query.q.select.connect_by == NULL && spec->info.spec.derived_table_type == PT_IS_SUBQUERY
-      && (derived_table = spec->info.spec.derived_table) && PT_IS_QUERY (derived_table)
+      && statement->info.query.q.select.connect_by == NULL
+      && (derived_table = spec->info.spec.derived_table)
       && !PT_SELECT_INFO_IS_FLAGED (statement, PT_SELECT_INFO_IS_MERGE_QUERY))
     {
       info.type = FIND_ID_INLINE_VIEW;	/* inline view */
@@ -3312,7 +3411,15 @@ mq_copypush_sargable_terms (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NOD
       info.in.attr_list = spec->info.spec.as_attr_list;
       info.in.query_list = derived_table;
 
-      push_cnt = mq_copypush_sargable_terms_helper (parser, statement, spec, derived_table, &info);
+      if (PT_IS_QUERY (derived_table) && (spec->info.spec.derived_table_type == PT_IS_SUBQUERY))
+	{
+	  push_cnt = mq_copypush_sargable_terms_helper (parser, statement, spec, derived_table, &info);
+	}
+      else if (derived_table->node_type == PT_DBLINK_TABLE)
+	{
+	  assert (spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE);
+	  push_cnt = mq_copypush_sargable_terms_dblink (parser, statement, spec, derived_table, &info);
+	}
     }
 
   return push_cnt;
@@ -4630,7 +4737,8 @@ mq_check_rewrite_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
 	      return NULL;
 	    }
 	}
-      else if (from->info.spec.derived_table_type == PT_IS_SUBQUERY)
+      else if (from->info.spec.derived_table_type == PT_IS_SUBQUERY
+	       || from->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
 	{
 	  (void) mq_copypush_sargable_terms (parser, select_statement, from);
 	}
@@ -4647,7 +4755,8 @@ mq_check_rewrite_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
 	    {
 	      from->next = mq_rewrite_vclass_spec_as_derived (parser, select_statement, from->next, NULL);
 	    }
-	  else if (from->next->info.spec.derived_table_type == PT_IS_SUBQUERY)
+	  else if (from->next->info.spec.derived_table_type == PT_IS_SUBQUERY
+		   || from->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
 	    {
 	      (void) mq_copypush_sargable_terms (parser, select_statement, from->next);
 	    }
@@ -4674,7 +4783,9 @@ mq_check_rewrite_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
 	    }
 	}
 
-      if (is_union_translation == false && from && from->info.spec.derived_table_type == PT_IS_SUBQUERY)
+      if (is_union_translation == false && from
+	  && (from->info.spec.derived_table_type == PT_IS_SUBQUERY
+	      || from->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE))
 	{
 	  (void) mq_copypush_sargable_terms (parser, select_statement, from);
 	}
