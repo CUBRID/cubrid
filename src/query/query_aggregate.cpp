@@ -2037,7 +2037,7 @@ qdata_alloc_agg_hvalue (cubthread::entry *thread_p, int func_cnt, cubxasl::aggre
       /* This set is made, because if class is empty, aggregate results should return NULL, except count(*) and count */
       if (agg_p->function == PT_COUNT_STAR || agg_p->function == PT_COUNT)
 	{
-	  db_make_int (value->accumulators[i].value, 0);
+	  db_make_bigint (value->accumulators[i].value, 0);
 	}
     }
 
