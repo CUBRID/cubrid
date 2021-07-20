@@ -162,6 +162,7 @@ namespace cublog
 
 	public:
 	  using ux_redo_job_deque = std::deque<ux_redo_job_base>;
+	  using redo_job_vector = std::vector<ux_redo_job_base>;
 
 	private:
 	  using vpid_ux_redo_job_deque_map_t = std::unordered_map<vpid, ux_redo_job_deque, std::hash<VPID>>;
@@ -195,7 +196,7 @@ namespace cublog
 	   * flag set to true signals to the callers that no more data is expected
 	   * and, therefore, they can also terminate
 	   */
-	  ux_redo_job_deque *pop_jobs (unsigned a_task_idx, bool &out_adding_finished);
+	  redo_job_vector *pop_jobs (unsigned a_task_idx, bool &out_adding_finished);
 
 	  void notify_job_deque_finished (const ux_redo_job_deque &a_job_deque);
 
@@ -243,7 +244,7 @@ namespace cublog
 
 	private:
 	  const unsigned m_task_count;
-	  std::vector<ux_redo_job_deque *> m_produce_vec;
+	  std::vector<redo_job_vector *> m_produce_vec;
 	  std::hash<VPID> m_vpid_hash;
 	  std::vector<std::mutex> m_produce_mutex_vec;
 

@@ -167,9 +167,10 @@ namespace cublog
     , m_time_tracker PERF_UTIME_TRACKER_INITIALIZER
     , m_thread_entry { &cubthread::get_entry () }
   {
-    for (auto &deque : m_produce_vec)
+    for (auto &entry : m_produce_vec)
       {
-	deque = new ux_redo_job_deque ();
+	entry = new redo_job_vector ();
+	entry->reserve (1000000);
       }
 
     if (m_monitor_minimum_log_lsa)
@@ -181,16 +182,16 @@ namespace cublog
     m_data_volume_count = 100;
     //const int32_t data_page_size = db_io_page_size();
     m_page_count_per_data_volume = DB_INT16_MAX + 10; // DB_INT32_MAX % data_page_size + 1;
-    m_task_index_vec.resize(m_data_volume_count * m_page_count_per_data_volume);
+    m_task_index_vec.resize (m_data_volume_count * m_page_count_per_data_volume);
     for (short vol_idx = 0; vol_idx < m_data_volume_count; ++vol_idx)
       {
-        for (int page_idx = 0; page_idx < m_page_count_per_data_volume; ++page_idx)
-          {
-            const vpid vol_page_id { page_idx, vol_idx };
-            const int32_t hash_value = m_vpid_hash (vol_page_id);
-            m_task_index_vec[vol_idx * m_page_count_per_data_volume + page_idx]
-                = (unsigned char)(hash_value % m_task_count);
-          }
+	for (int page_idx = 0; page_idx < m_page_count_per_data_volume; ++page_idx)
+	  {
+	    const vpid vol_page_id { page_idx, vol_idx };
+	    const int32_t hash_value = m_vpid_hash (vol_page_id);
+	    m_task_index_vec[vol_idx * m_page_count_per_data_volume + page_idx]
+	      = (unsigned char) (hash_value % m_task_count);
+	  }
       }
   }
 
@@ -226,7 +227,7 @@ namespace cublog
     std::lock_guard<std::mutex> lockg (mtx);
     PERF_UTIME_TRACKER_TIME_AND_RESTART (m_thread_entry, &m_time_tracker, PSTAT_RV_MAIN_REDO_PAR_QUEUE_MUTEX_ACQ);
 
-    ux_redo_job_deque *jobs = m_produce_vec[vec_idx];
+    redo_job_vector *jobs = m_produce_vec[vec_idx];
     if (jobs->empty ())
       {
 	// will be empty no more
@@ -250,22 +251,27 @@ namespace cublog
     return m_adding_finished.load ();
   }
 
-  redo_parallel::redo_job_queue::ux_redo_job_deque *
+  redo_parallel::redo_job_queue::redo_job_vector *
   redo_parallel::redo_job_queue::pop_jobs (unsigned a_task_idx, bool &out_adding_finished)
   {
     out_adding_finished = false;
 
     std::mutex &mtx = m_produce_mutex_vec[a_task_idx];
     std::lock_guard<std::mutex> lockg (mtx);
-    ux_redo_job_deque *jobs = m_produce_vec[a_task_idx];
-    m_produce_vec[a_task_idx] = new ux_redo_job_deque ();
-
+    redo_job_vector *jobs = m_produce_vec[a_task_idx];
     if (jobs->empty ())
       {
 	out_adding_finished = m_adding_finished.load ();
+	// avoid replacing empty container with new empty container
+	return nullptr;
       }
-
-    return jobs;
+    else
+      {
+	m_produce_vec[a_task_idx] = new redo_job_vector ();
+	m_produce_vec[a_task_idx]->reserve (1000000);
+	//_er_log_debug (ARG_FILE_LINE, "pop_jobs [%d] %d", a_task_idx, jobs->size());
+	return jobs;
+      }
 
 //    std::lock_guard<std::mutex> consume_lockg (m_consume_mutex);
 
@@ -698,16 +704,16 @@ namespace cublog
     for (; !finished ;)
       {
 	bool adding_finished = false;
-	redo_job_queue::ux_redo_job_deque *job_deque = m_queue.pop_jobs (m_task_idx, adding_finished);
+	redo_job_queue::redo_job_vector *jobs = m_queue.pop_jobs (m_task_idx, adding_finished);
 
-	if ((job_deque == nullptr || job_deque->empty ()) && adding_finished)
+	if (jobs == nullptr && adding_finished)
 	  {
 	    m_queue.set_empty_at (m_task_idx);
 	    finished = true;
 	  }
 	else
 	  {
-	    if (job_deque->empty ())
+	    if (jobs == nullptr)
 	      {
 		// TODO: if needed, check if requested to finish ourselves
 
@@ -719,18 +725,18 @@ namespace cublog
 	      }
 	    else
 	      {
+		assert (!jobs->empty ());
 		THREAD_ENTRY *const thread_entry = &context;
-		for (auto &job : *job_deque)
+		for (auto &job : *jobs)
 		  {
 		    job->execute (thread_entry, m_log_pgptr_reader, m_undo_unzip_support, m_redo_unzip_support);
 		  }
 
-		//assert (false);
-		//m_queue.notify_job_deque_finished (job_deque);
+		//m_queue.notify_job_deque_finished (jobs);
 	      }
 	  }
 
-	delete job_deque;
+	delete jobs;
       }
 
     m_task_state_bookkeeping.set_inactive ();
