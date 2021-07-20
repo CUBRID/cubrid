@@ -50,12 +50,16 @@ extern int crypt_md5_buffer_hex (const char *buffer, size_t len, char *resblock)
 extern char *str_to_hex (THREAD_ENTRY * thread_p, const char *src, int src_len, char **dest_p, int *dest_len_p,
 			 HEX_LETTERCASE lettercase);
 extern void str_to_hex_prealloced (const char *src, int src_len, char *dest, int dest_len, HEX_LETTERCASE lettercase);
-extern void hex_to_str_prealloced (const char *src, int src_len, char *dest, int dest_len, HEX_LETTERCASE lettercase);
 
 extern int crypt_generate_random_bytes (char *dest, int length);
 extern void crypt_crc32 (const char *src, int src_len, int *dest);
 
-extern int crypt_dblink_encrypt (const unsigned char *str, int str_len, unsigned char *cipher_buffer);
-extern int crypt_dblink_decrypt (const unsigned char *cipher, int cipher_len, unsigned char *str_buffer);
+extern int crypt_dblink_encrypt (const unsigned char *str, int str_len, unsigned char *cipher_buffer,
+				 unsigned char *mk);
+extern int crypt_dblink_decrypt (const unsigned char *cipher, int cipher_len, unsigned char *str_buffer,
+				 unsigned char *mk);
+
+extern int crypt_dblink_bin_to_str (const char *src, int src_len, char *dest, int dest_len, unsigned char *pk);
+extern int crypt_dblink_str_to_bin (const char *src, int src_len, char *dest, int *dest_len, unsigned char *pk);
 
 #endif

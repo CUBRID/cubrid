@@ -127,49 +127,6 @@ str_to_hex_prealloced (const char *src, int src_len, char *dest, int dest_len, H
   dest[src_len * 2] = '\0';
 }
 
-void
-hex_to_str_prealloced (const char *src, int src_len, char *dest, int dest_len, HEX_LETTERCASE lettercase)
-{
-  char base;
-  assert (src != NULL && dest != NULL);
-  assert (dest_len >= (src_len / 2) + 1);
-
-  if (lettercase == HEX_UPPERCASE)
-    {
-      base = 'A' - 10;
-    }
-  else
-    {
-      base = 'a' - 10;
-    }
-
-  while (src[0] && src[1])
-    {
-      if (src[0] <= '9')
-	{
-	  *dest = (src[0] - '0') << 4;
-	}
-      else
-	{
-	  *dest = (src[0] - base) << 4;
-	}
-
-      if (src[1] <= '9')
-	{
-	  *dest |= (src[1] - '0');
-	}
-      else
-	{
-	  *dest |= (src[1] - base);
-	}
-
-      src += 2;
-      dest++;
-    }
-
-  *dest = '\0';
-}
-
 /*
  * str_to_hex() - convert a string to its hexadecimal expreesion string
  *   return:
@@ -743,26 +700,23 @@ crypt_generate_random_bytes (char *dest, int length)
 
 // 
 // *INDENT-OFF*
+#define DBLINK_MASTER_KEY_SIZE (32)
 static struct
 {
-  bool          is_aes_algorithm;
   unsigned char nonce[16];              // See TDE_DK_NONCE_LENGTH in tde.h
-  unsigned char master_key[32];         // See TDE_MASTER_KEY_LENGTH in tde.h
-} evp_cipher = { true, {0, }, {0, } };  // Do not omit the this initialization settings.
+  unsigned char master_key[DBLINK_MASTER_KEY_SIZE];         // See TDE_MASTER_KEY_LENGTH in tde.h
+} evp_cipher = { {0, }, {0, } };  // Do not omit the this initialization settings.
 // *INDENT-ON*
 
 static int
-init_dblink_cipher (EVP_CIPHER_CTX ** ctx, const EVP_CIPHER ** cipher_type)
+init_dblink_cipher (EVP_CIPHER_CTX ** ctx, const EVP_CIPHER ** cipher_type, bool is_aes_algorithm)
 {
   static int is_init_done = 0;
-  unsigned char master_key[32] = { 0, };
 
   if (is_init_done == 0)
     {
       memset (evp_cipher.nonce, 0x07, sizeof (evp_cipher.nonce));
       sprintf ((char *) evp_cipher.master_key, "%s", "CUBRIDcubrid");
-      evp_cipher.is_aes_algorithm = true;
-
       is_init_done = 1;
     }
 
@@ -772,7 +726,7 @@ init_dblink_cipher (EVP_CIPHER_CTX ** ctx, const EVP_CIPHER ** cipher_type)
       return ER_ENCRYPTION_LIB_FAILED;
     }
 
-  if (evp_cipher.is_aes_algorithm)
+  if (is_aes_algorithm)
     {
       *cipher_type = EVP_aes_256_ctr ();
     }
@@ -792,19 +746,30 @@ init_dblink_cipher (EVP_CIPHER_CTX ** ctx, const EVP_CIPHER ** cipher_type)
 }
 
 int
-crypt_dblink_encrypt (const unsigned char *str, int str_len, unsigned char *cipher_buffer)
+crypt_dblink_encrypt (const unsigned char *str, int str_len, unsigned char *cipher_buffer, unsigned char *mk)
 {
   int len, cipher_len, err;
   EVP_CIPHER_CTX *ctx;
   const EVP_CIPHER *cipher_type;
+  unsigned char master_key[DBLINK_MASTER_KEY_SIZE] = { 0, };	// Do NOT omit this initialize.
+  unsigned char *key;
 
-  err = init_dblink_cipher (&ctx, &cipher_type);
+  err = init_dblink_cipher (&ctx, &cipher_type, ((mk && *mk) ? ((mk[7] & 0x01) == 0x00) : true));
   if (err != NO_ERROR)
     {
       return err;
     }
+  if (mk && *mk)
+    {
+      key = evp_cipher.master_key;
+    }
+  else
+    {
+      strcpy ((char *) master_key, (char *) mk);
+      key = master_key;
+    }
 
-  if (EVP_EncryptInit_ex (ctx, cipher_type, NULL, evp_cipher.master_key, evp_cipher.nonce) != 1)
+  if (EVP_EncryptInit_ex (ctx, cipher_type, NULL, key, evp_cipher.nonce) != 1)
     {
       goto cleanup;
     }
@@ -839,23 +804,34 @@ exit:
 }
 
 int
-crypt_dblink_decrypt (const unsigned char *cipher, int cipher_len, unsigned char *str_buffer)
+crypt_dblink_decrypt (const unsigned char *cipher, int cipher_len, unsigned char *str_buffer, unsigned char *mk)
 {
   int len, str_len, err;
   EVP_CIPHER_CTX *ctx;
   const EVP_CIPHER *cipher_type;
+  unsigned char master_key[DBLINK_MASTER_KEY_SIZE] = { 0, };	// Do NOT omit this initialize.
+  unsigned char *key;
 
-  err = init_dblink_cipher (&ctx, &cipher_type);
+  err = init_dblink_cipher (&ctx, &cipher_type, ((mk && *mk) ? ((mk[7] & 0x01) == 0x00) : true));
   if (err != NO_ERROR)
     {
       return err;
     }
 
-  if (EVP_DecryptInit_ex (ctx, cipher_type, NULL, evp_cipher.master_key, evp_cipher.nonce) != 1)
+  if (mk && *mk)
+    {
+      key = evp_cipher.master_key;
+    }
+  else
+    {
+      strcpy ((char *) master_key, (char *) mk);
+      key = master_key;
+    }
+
+  if (EVP_DecryptInit_ex (ctx, cipher_type, NULL, key, evp_cipher.nonce) != 1)
     {
       goto cleanup;
     }
-
   if (EVP_DecryptUpdate (ctx, str_buffer, &len, cipher, cipher_len) != 1)
     {
       goto cleanup;
@@ -883,4 +859,95 @@ exit:
       return ER_ENCRYPTION_LIB_FAILED;
     }
   return err;
+}
+
+#include "base64.h"
+// *INDENT-OFF*
+#define BYTE_2_HEX(u, b)  (    \
+                (b)[0] = upper_hextable[((unsigned char)(u)) >> 4],     \
+                (b)[1] = upper_hextable[((unsigned char)(u)) & 0x0F]    \
+        )
+
+#define HEX_2_BYTE(h, u) (     \
+                (u) = (((h)[0] <= '9') ? ((h)[0] - '0') << 4 : ((h)[0] - 'A' + 10) << 4),       \
+                (u) |= (((h)[1] <= '9') ? ((h)[1] - '0') :  ((h)[1] - 'A' + 10))                \
+        )
+// *INDENT-ON*
+
+int
+crypt_dblink_bin_to_str (const char *src, int src_len, char *dest, int dest_len, unsigned char *pk)
+{
+  int err, i, pk_len;
+  const char *hextable = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz1234567890";
+  int hextable_mod = (int) strlen (hextable);
+  unsigned char *dest_x = NULL;
+  int dest_len_x = 0;
+
+  assert (src != NULL && dest != NULL);
+
+  err = base64_encode ((unsigned char *) src, src_len, &dest_x, &dest_len_x);
+  if (err != NO_ERROR)
+    {
+      db_private_free (NULL, dest_x);
+      return err;
+    }
+
+  assert (dest_len >= (dest_len_x + 4));
+
+  BYTE_2_HEX (dest_len_x, dest);
+  pk_len = (int) strlen ((char *) pk);
+  BYTE_2_HEX (pk_len, dest + 2);
+  memcpy (dest + 4, pk, pk_len);
+  pk_len += 4;
+  memcpy (dest + pk_len, dest_x, dest_len_x);
+  db_private_free (NULL, dest_x);
+
+  /* Adjust the length so that it is a multiple of 4. */
+  dest_len >>= 2;
+  dest_len <<= 2;
+  for (i = dest_len_x + pk_len; i < dest_len; i++)
+    {
+      dest[i] = hextable[rand () % hextable_mod];
+    }
+  dest[i] = '\0';
+
+  return NO_ERROR;
+}
+
+int
+crypt_dblink_str_to_bin (const char *srcx, int src_len, char *dest, int *dest_len, unsigned char *pk)
+{
+  int err, pk_len;
+  unsigned char *dest_x = NULL;
+
+  char *src = (char *) srcx;
+
+  assert (src && dest && pk && dest_len);
+  assert (src_len >= 5);
+
+  HEX_2_BYTE (src, pk_len);
+  if (pk_len >= src_len)
+    {
+      return ER_FAILED;		//
+    }
+  src_len = pk_len;
+  HEX_2_BYTE (src + 2, pk_len);
+
+  src += 4;
+  memcpy (pk, src, pk_len);
+  pk[pk_len] = '\0';
+
+  src += pk_len;
+  src[src_len] = '\0';
+  err = base64_decode ((unsigned char *) src, src_len, &dest_x, dest_len);
+  if (err != NO_ERROR)
+    {
+      db_private_free (NULL, dest_x);
+      return err;
+    }
+
+  memcpy (dest, dest_x, *dest_len);
+  db_private_free (NULL, dest_x);
+
+  return NO_ERROR;
 }
