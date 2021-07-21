@@ -8865,12 +8865,6 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * class_,
 		}
 	      else
 		{
-		  if (newspec->info.spec.entity_name == NULL)
-		    {
-		      newspec->info.spec.entity_name = spec->info.spec.entity_name;
-		      /* spec will be free later, we don't want the entity_name will be freed */
-		      spec->info.spec.entity_name = NULL;
-		    }
 		  newspec->info.spec.range_var->info.name.original = spec->info.spec.range_var->info.name.original;
 		}
 
