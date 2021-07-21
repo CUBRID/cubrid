@@ -67,6 +67,7 @@ static void register_fatal_signal_handler (int signo);
 static void crash_handler (int signo, siginfo_t * siginfo, void *dummyp);
 #if !defined (NDEBUG)
 static void abort_handler (int signo, siginfo_t * siginfo, void *dummyp);
+static int argument_handler (int argc, char **argv);
 #endif /* !NDEBUG */
 #endif /* WINDOWS */
 
@@ -307,6 +308,69 @@ abort_handler (int signo, siginfo_t * siginfo, void *dummyp)
 #endif /* !NDEBUG */
 #endif /* WINDOWS */
 
+static int
+argument_handler (int argc, char **argv)
+{
+  constexpr char *SERVER_TYPE_LONG = "type";
+  constexpr char SERVER_TYPE_SHORT = 't';
+
+  GETOPT_LONG server_options_map[] = {
+    {SERVER_TYPE_LONG, 1, 0, SERVER_TYPE_SHORT},
+    {nullptr, 0, 0, 0}
+  };
+
+  constexpr int SHORT_OPTIONS_BUFSIZE = 64;
+  char short_options_buffer[SHORT_OPTIONS_BUFSIZE];
+
+  utility_make_getopt_optstring (server_options_map, short_options_buffer);
+  while (true)
+    {
+      int option_index = 0;
+      int option_key = getopt_long (argc, argv, short_options_buffer, server_options_map, &option_index);
+      if (option_key == -1)
+	{
+	  break;
+	}
+      switch (option_key)
+	{
+	case SERVER_TYPE_SHORT:
+	  // *INDENT-ON*
+	  if (std::strcmp (optarg, "transaction") == 0)
+	    {
+	      set_server_type (SERVER_TYPE_TRANSACTION);
+	    }
+	  else if (std::strcmp (optarg, "page") == 0)
+	    {
+	      set_server_type (SERVER_TYPE_PAGE);
+	    }
+          // *INDENT-OFF*
+          else
+            {
+              er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERVER_TYPE_ARGUMENT, 0);	// error that the type is not valid
+              return ER_INVALID_SERVER_TYPE_ARGUMENT;
+            }
+          break;
+        default:
+          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERVER_OPTION, 1, optarg);	// invalid server option
+          return ER_INVALID_SERVER_OPTION;
+        }
+    }
+  if (argc - optind == 1)
+    {
+      database_name = argv[optind];
+    }
+  else if (argc > optind)
+    {
+      er_log_debug(ARG_FILE_LINE, "Argument '%s' is not needed for cub_server", argv[optind + 1]); // exit
+    }
+  else
+    {
+      er_log_debug(ARG_FILE_LINE, "A database-name is missing."); // exit
+    }
+
+  return NO_ERROR;
+}
+
 /*
  * main(): server's main function
  *
@@ -349,9 +413,7 @@ main (int argc, char **argv)
     binary_name = basename (argv[0]);
     (void) envvar_bindir_file (executable_path, PATH_MAX, binary_name);
     /* save database name */
-    utility_make_getopt_optstring (server_options_map, short_options_buffer);
-    ret_val = argument_handler (argc, argv, database_name);
-
+    ret_val = argument_handler (argc, argv);
     if (ret_val != NO_ERROR)
       {
 	return ret_val;

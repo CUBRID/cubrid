@@ -55,6 +55,11 @@ int init_server_type (const char *db_name)
   if (g_server_type == UNKNOWN)
     {
       g_server_type = (SERVER_TYPE) prm_get_integer_value (PRM_ID_SERVER_TYPE);
+      //if no parameter value is provided use transaction as the default type
+      if (g_server_type == UNKNOWN)
+	{
+	  g_server_type = SERVER_TYPE_TRANSACTION;
+	}
     }
 #if !defined(NDEBUG)
   g_server_type_initialized = true;
@@ -105,47 +110,6 @@ bool is_tran_server_with_remote_storage ()
       return ats_Gl.uses_remote_storage ();
     }
   return false;
-}
-
-int
-argument_handler (int argc, char **argv, const char *database_name)
-{
-  while (true)
-    {
-      int option_index = 0;
-      int option_key = getopt_long (argc, argv, short_options_buffer, server_options_map, &option_index);
-      if (option_key == -1)
-	{
-	  break;
-	}
-      switch (option_key)
-	{
-	case SERVER_TYPE_SHORT:
-	  if (std::strcmp (optarg, "transaction") == 0)
-	    {
-	      set_server_type (SERVER_TYPE_TRANSACTION);
-	    }
-	  else if (std::strcmp (optarg, "page") == 0)
-	    {
-	      set_server_type (SERVER_TYPE_PAGE);
-	    }
-	  else
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERVER_TYPE_ARGUMENT, 0);	// error that the type is not valid
-	      return ER_INVALID_SERVER_TYPE_ARGUMENT;
-	    }
-	  break;
-	default:
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERVER_OPTION, 1, optarg);	// invalid server option
-	  return ER_INVALID_SERVER_OPTION;
-	}
-    }
-  if (argc - optind == 1)
-    {
-      database_name = argv[optind];
-    }
-
-  return NO_ERROR;
 }
 
 void set_server_type (SERVER_TYPE type)
