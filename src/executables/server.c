@@ -60,6 +60,8 @@
 #include "log_impl.h"
 #endif /* !defined (WINDOWS) */
 
+
+static int argument_handler (int argc, char **argv);
 #if defined(WINDOWS)
 LONG WINAPI CreateMiniDump (struct _EXCEPTION_POINTERS *pException, char *db_name);
 #else /* WINDOWS */
@@ -67,7 +69,6 @@ static void register_fatal_signal_handler (int signo);
 static void crash_handler (int signo, siginfo_t * siginfo, void *dummyp);
 #if !defined (NDEBUG)
 static void abort_handler (int signo, siginfo_t * siginfo, void *dummyp);
-static int argument_handler (int argc, char **argv);
 #endif /* !NDEBUG */
 #endif /* WINDOWS */
 
@@ -359,13 +360,10 @@ argument_handler (int argc, char **argv)
     {
       database_name = argv[optind];
     }
-  else if (argc > optind)
-    {
-      er_log_debug(ARG_FILE_LINE, "Argument '%s' is not needed for cub_server", argv[optind + 1]); // exit
-    }
   else
     {
-      er_log_debug(ARG_FILE_LINE, "A database-name is missing."); // exit
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+      return ER_FAILED;
     }
 
   return NO_ERROR;
