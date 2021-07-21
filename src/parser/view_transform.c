@@ -3193,7 +3193,7 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
   has_derived_table_inst = pt_has_inst_or_orderby_num_in_where (parser, new_query);
   if (has_derived_table_inst)
     {
-      return push_cnt;
+      return 0;
     }
 
   if (PT_IS_QUERY (new_query)
