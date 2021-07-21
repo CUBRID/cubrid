@@ -41,11 +41,16 @@
 #include "msgcat_set_log.hpp"
 #include "object_representation.h"
 #include "page_buffer.h"
+#include "scope_exit.hpp"
 #include "server_type.hpp"
 #include "slotted_page.h"
 #include "system_parameter.h"
 #include "thread_manager.hpp"
 #include "util_func.h"
+
+#include <sstream>
+#include <vector>
+#include <locale>
 
 static void log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 				LOG_RCVINDEX rcvindex, const VPID * rcv_vpid, LOG_RCV * rcv,
@@ -939,6 +944,11 @@ log_recovery_needs_skip_logical_redo (THREAD_ENTRY * thread_p, TRANID tran_id, L
   return false;
 }
 
+// *INDENT-OFF*
+const cubperf::statset_definition *log_recovery_redo_perf_stat_definition = nullptr;
+cubperf::statset * log_recovery_redo_perf_stat_values = nullptr;
+// *INDENT-ON*
+
 /*
  * log_recovery_redo - SCAN FORWARD REDOING DATA
  *
@@ -1009,6 +1019,46 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
    * during the log_recovery_undo phase
    */
   lsa = context.get_start_redo_lsa ();
+
+  // statistics data initialize
+  //
+  // *INDENT-OFF*
+  const cubperf::statset_definition log_recovery_redo_perf_stat_definition_decl = {
+    cubperf::stat_definition (PERF_STAT_ID_FETCH_PAGE, cubperf::stat_definition::COUNTER_AND_TIMER,
+    "Counter fetch_page", "Timer fetch_page"),
+    cubperf::stat_definition (PERF_STAT_ID_MEASURE_OVERHEAD, cubperf::stat_definition::COUNTER_AND_TIMER,
+    "Counter measure_overhead", "Timer measure_overhead"),
+    cubperf::stat_definition (PERF_STAT_ID_READ_LOG, cubperf::stat_definition::COUNTER_AND_TIMER,
+    "Counter read_log", "Timer read_log"),
+    cubperf::stat_definition (PERF_STAT_ID_REDO_OR_PUSH, cubperf::stat_definition::COUNTER_AND_TIMER,
+    "Counter redo_or_push", "Timer redo_or_push"),
+    cubperf::stat_definition (PERF_STAT_ID_REDO_OR_PUSH_PREP, cubperf::stat_definition::COUNTER_AND_TIMER,
+    "Counter redo_or_push_prep", "Timer redo_or_push_prep"),
+    cubperf::stat_definition (PERF_STAT_ID_REDO_OR_PUSH_DO_SYNC, cubperf::stat_definition::COUNTER_AND_TIMER,
+    "Counter redo_or_push_do_sync", "Timer redo_or_push_do_sync"),
+    cubperf::stat_definition (PERF_STAT_ID_REDO_OR_PUSH_DO_ASYNC, cubperf::stat_definition::COUNTER_AND_TIMER,
+    "Counter redo_or_push_do_async", "Timer redo_or_push_do_async"),
+    cubperf::stat_definition (PERF_STAT_ID_COMMIT_ABORT, cubperf::stat_definition::COUNTER_AND_TIMER,
+    "Counter commit_abort", "Timer commit_abort"),
+    cubperf::stat_definition (PERF_STAT_ID_WAIT_FOR_PARALLEL, cubperf::stat_definition::COUNTER_AND_TIMER,
+    "Counter wait_for_parallel", "Timer wait_for_parallel"),
+    cubperf::stat_definition (PERF_STAT_ID_FINALIZE, cubperf::stat_definition::COUNTER_AND_TIMER,
+    "Counter finalize", "Timer finalize"),
+  };
+  log_recovery_redo_perf_stat_definition = &log_recovery_redo_perf_stat_definition_decl;
+  log_recovery_redo_perf_stat_values = log_recovery_redo_perf_stat_definition->create_statset ();
+  scope_exit <std::function<void (void)>> perf_stat_values_destroy (
+    [&log_recovery_redo_perf_stat_values] ()
+      {
+        if (log_recovery_redo_perf_stat_values != nullptr)
+          {
+            delete log_recovery_redo_perf_stat_values;
+            log_recovery_redo_perf_stat_values = nullptr;
+
+            log_recovery_redo_perf_stat_definition = nullptr;
+          }
+      });
+  // *INDENT-ON*
 
   /* Defense for illegal start_redolsa */
   if ((lsa.offset + (int) sizeof (LOG_RECORD_HEADER)) >= LOGAREA_SIZE)
@@ -1093,6 +1143,13 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 
 	  /* both the page id and the offsset might have changed; page id is changed at the end of the loop */
 	  log_pgptr_reader.set_lsa_and_fetch_page (lsa);
+	  if (log_recovery_redo_perf_stat_values != nullptr)
+	    {
+	      log_recovery_redo_perf_stat_definition->time_and_increment (*log_recovery_redo_perf_stat_values,
+									  PERF_STAT_ID_FETCH_PAGE);
+	      log_recovery_redo_perf_stat_definition->time_and_increment (*log_recovery_redo_perf_stat_values,
+									  PERF_STAT_ID_MEASURE_OVERHEAD);
+	    }
 
 	  {
 	    /* Pointer to log record */
@@ -1169,11 +1226,21 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 		/* Save last MVCC operation LOG_LSA. */
 		LSA_COPY (&log_Gl.hdr.mvcc_op_log_lsa, &rcv_lsa);
 
+		if (log_recovery_redo_perf_stat_values != NULL)
+		  {
+		    log_recovery_redo_perf_stat_definition->time_and_increment (*log_recovery_redo_perf_stat_values,
+										PERF_STAT_ID_READ_LOG);
+		  }
                 // *INDENT-OFF*
                 log_rv_redo_record_sync_or_dispatch_async<LOG_REC_MVCC_UNDOREDO>
 		  (thread_p, log_pgptr_reader, log_rec_mvcc_undoredo, rcv_lsa, &context.get_end_redo_lsa (), log_rtype,
 		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, force_each_log_page_fetch);
                 // *INDENT-ON*
+		if (log_recovery_redo_perf_stat_values != nullptr)
+		  {
+		    log_recovery_redo_perf_stat_definition->time_and_increment (*log_recovery_redo_perf_stat_values,
+										PERF_STAT_ID_REDO_OR_PUSH);
+		  }
 	      }
 	      break;
 
@@ -1191,9 +1258,19 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 		const LOG_REC_UNDOREDO log_rec_undoredo
 		    = log_pgptr_reader.reinterpret_copy_and_add_align<LOG_REC_UNDOREDO> ();
 
+                if (log_recovery_redo_perf_stat_values != nullptr)
+                  {
+                    log_recovery_redo_perf_stat_definition->time_and_increment (*log_recovery_redo_perf_stat_values,
+                                                                                PERF_STAT_ID_READ_LOG);
+                  }
                 log_rv_redo_record_sync_or_dispatch_async<LOG_REC_UNDOREDO>
 		  (thread_p, log_pgptr_reader, log_rec_undoredo, rcv_lsa, &context.get_end_redo_lsa (), log_rtype,
 		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, force_each_log_page_fetch);
+                if (log_recovery_redo_perf_stat_values != nullptr)
+                  {
+                    log_recovery_redo_perf_stat_definition->time_and_increment (*log_recovery_redo_perf_stat_values,
+                                                                                PERF_STAT_ID_REDO_OR_PUSH);
+                  }
                 // *INDENT-ON*
 	      }
 	      break;
@@ -1224,11 +1301,21 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 		/* NOTE: do not update rcv_lsa on the global bookkeeping that is
 		 * relevant for vacuum as vacuum only processes undo data */
 
+		if (log_recovery_redo_perf_stat_values != nullptr)
+		  {
+		    log_recovery_redo_perf_stat_definition->time_and_increment (*log_recovery_redo_perf_stat_values,
+										PERF_STAT_ID_READ_LOG);
+		  }
                 // *INDENT-OFF*
                 log_rv_redo_record_sync_or_dispatch_async<LOG_REC_MVCC_REDO>
 		  (thread_p, log_pgptr_reader, log_rec_mvcc_redo, rcv_lsa, &context.get_end_redo_lsa (), log_rtype,
 		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, force_each_log_page_fetch);
                 // *INDENT-ON*
+		if (log_recovery_redo_perf_stat_values != nullptr)
+		  {
+		    log_recovery_redo_perf_stat_definition->time_and_increment (*log_recovery_redo_perf_stat_values,
+										PERF_STAT_ID_REDO_OR_PUSH);
+		  }
 	      }
 	      break;
 
@@ -1250,10 +1337,20 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 		    logpb_vacuum_reset_log_header_cache (thread_p, &log_Gl.hdr);
 		  }
 
+                if (log_recovery_redo_perf_stat_values != nullptr)
+                  {
+                    log_recovery_redo_perf_stat_definition->time_and_increment (*log_recovery_redo_perf_stat_values,
+                                                                                PERF_STAT_ID_READ_LOG);
+                  }
                 log_rv_redo_record_sync_or_dispatch_async<LOG_REC_REDO>
 		  (thread_p, log_pgptr_reader, log_rec_redo, rcv_lsa, &context.get_end_redo_lsa (), log_rtype,
 		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, force_each_log_page_fetch);
                 // *INDENT-ON*
+		if (log_recovery_redo_perf_stat_values != nullptr)
+		  {
+		    log_recovery_redo_perf_stat_definition->time_and_increment (*log_recovery_redo_perf_stat_values,
+										PERF_STAT_ID_REDO_OR_PUSH);
+		  }
 	      }
 	      break;
 
@@ -1311,10 +1408,20 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 		const LOG_REC_RUN_POSTPONE log_rec_run_posp
 		    = log_pgptr_reader.reinterpret_copy_and_add_align<LOG_REC_RUN_POSTPONE> ();
 
+                if (log_recovery_redo_perf_stat_values != nullptr)
+                  {
+                    log_recovery_redo_perf_stat_definition->time_and_increment (*log_recovery_redo_perf_stat_values,
+                                                                                PERF_STAT_ID_READ_LOG);
+                  }
                 log_rv_redo_record_sync_or_dispatch_async<LOG_REC_RUN_POSTPONE>
 		  (thread_p, log_pgptr_reader, log_rec_run_posp, rcv_lsa, &context.get_end_redo_lsa (), log_rtype,
 		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, force_each_log_page_fetch);
                 // *INDENT-ON*
+		if (log_recovery_redo_perf_stat_values != nullptr)
+		  {
+		    log_recovery_redo_perf_stat_definition->time_and_increment (*log_recovery_redo_perf_stat_values,
+										PERF_STAT_ID_REDO_OR_PUSH);
+		  }
 	      }
 	      break;
 
@@ -1330,10 +1437,20 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 		const LOG_REC_COMPENSATE log_rec_compensate
 		    = log_pgptr_reader.reinterpret_copy_and_add_align<LOG_REC_COMPENSATE> ();
 
+                if (log_recovery_redo_perf_stat_values != nullptr)
+                  {
+                    log_recovery_redo_perf_stat_definition->time_and_increment (*log_recovery_redo_perf_stat_values,
+                                                                                PERF_STAT_ID_READ_LOG);
+                  }
                 log_rv_redo_record_sync_or_dispatch_async<LOG_REC_COMPENSATE>
 		  (thread_p, log_pgptr_reader, log_rec_compensate, rcv_lsa, &context.get_end_redo_lsa (), log_rtype,
 		   *undo_unzip_ptr, *redo_unzip_ptr, parallel_recovery_redo, force_each_log_page_fetch);
                 // *INDENT-ON*
+		if (log_recovery_redo_perf_stat_values != nullptr)
+		  {
+		    log_recovery_redo_perf_stat_definition->time_and_increment (*log_recovery_redo_perf_stat_values,
+										PERF_STAT_ID_REDO_OR_PUSH);
+		  }
 	      }
 	      break;
 
@@ -1494,6 +1611,11 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 	    case LOG_COMMIT:
 	    case LOG_ABORT:
 	      {
+		if (log_recovery_redo_perf_stat_values != nullptr)
+		  {
+		    log_recovery_redo_perf_stat_definition->time_and_increment (*log_recovery_redo_perf_stat_values,
+										PERF_STAT_ID_READ_LOG);
+		  }
 		bool free_tran = false;
 		const int tran_index = logtb_find_tran_index (thread_p, tran_id);
 		LOG_TDES *tdes = nullptr;
@@ -1537,6 +1659,11 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 		if (free_tran == true)
 		  {
 		    logtb_free_tran_index (thread_p, tran_index);
+		  }
+		if (log_recovery_redo_perf_stat_values != nullptr)
+		  {
+		    log_recovery_redo_perf_stat_definition->time_and_increment (*log_recovery_redo_perf_stat_values,
+										PERF_STAT_ID_COMMIT_ABORT);
 		  }
 	      }
 
@@ -1643,6 +1770,11 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
     {
       parallel_recovery_redo->set_adding_finished ();
       parallel_recovery_redo->wait_for_termination_and_stop_execution ();
+      if (log_recovery_redo_perf_stat_values != nullptr)
+	{
+	  log_recovery_redo_perf_stat_definition->time_and_increment (*log_recovery_redo_perf_stat_values,
+								      PERF_STAT_ID_WAIT_FOR_PARALLEL);
+	}
     }
 #endif
   LOG_CS_ENTER (thread_p);
@@ -1670,6 +1802,36 @@ exit:
 #if !defined(NDEBUG)
   log_Gl_recovery_redo_consistency_check.cleanup ();
 #endif
+
+  if (log_recovery_redo_perf_stat_values != nullptr)
+    {
+      log_recovery_redo_perf_stat_definition->time_and_increment (*log_recovery_redo_perf_stat_values,
+                                                                  PERF_STAT_ID_FINALIZE);
+    }
+
+  // statistics data collect & report
+  //
+  // *INDENT-OFF*
+  if (log_recovery_redo_perf_stat_values != nullptr)
+    {
+      std::vector < cubperf::stat_value > perf_stat_results;
+      perf_stat_results.resize (log_recovery_redo_perf_stat_definition->get_value_count (), 0LL);
+      log_recovery_redo_perf_stat_definition->get_stat_values_with_converted_timers<std::chrono::microseconds> (
+            *log_recovery_redo_perf_stat_values, perf_stat_results.data ());
+
+      std::stringstream perf_stat_ss;
+      perf_stat_ss << "Log Recovery Redo statistics:" << std::endl;
+      for (std::size_t perf_stat_idx = 0
+           ; perf_stat_idx < log_recovery_redo_perf_stat_definition->get_value_count (); ++perf_stat_idx)
+        {
+          perf_stat_ss.imbue(std::locale(""));
+          perf_stat_ss << '\t' << log_recovery_redo_perf_stat_definition->get_value_name (perf_stat_idx)
+                       << " μs: " << perf_stat_results[perf_stat_idx] << std::endl;
+        }
+      const std::string perf_stat_str = perf_stat_ss.str ();
+      _er_log_debug (ARG_FILE_LINE, perf_stat_str.c_str ());
+    }
+  // *INDENT-ON*
 
   return;
 }
@@ -3709,7 +3871,7 @@ log_rv_redo_fix_page (THREAD_ENTRY * thread_p, const VPID * vpid_rcv, LOG_RCVIND
   // sector reservation table are applied in parallel with the changes in pages, at times the page may appear to be
   // deallocated (part of an unreserved sector). but the changes were done while the sector was reserved and must be
   // re-applied to get a correct end result.
-  // 
+  //
   // moreover, the sector reservation check is very expensive. running this check on every page fix costs much more
   // than any time gained by skipping redoing changes on deallocated pages.
   //

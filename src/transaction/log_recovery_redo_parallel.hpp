@@ -22,6 +22,8 @@
 #include "log_recovery_redo.hpp"
 #include "log_replication.hpp"
 
+#include "log_recovery_redo_perf.hpp"
+
 #if defined(SERVER_MODE)
 #include "thread_manager.hpp"
 #include "thread_worker_pool.hpp"
@@ -483,6 +485,11 @@ log_rv_redo_record_sync_or_dispatch_async (
 #if defined(SERVER_MODE)
   const LOG_DATA &log_data = log_rv_get_log_rec_data<T> (log_rec);
   const bool need_sync_redo = log_rv_need_sync_redo (rcv_vpid, log_data.rcvindex);
+  if (log_recovery_redo_perf_stat_values != nullptr)
+    {
+      log_recovery_redo_perf_stat_definition->time_and_increment (
+	      *log_recovery_redo_perf_stat_values, PERF_STAT_ID_REDO_OR_PUSH_PREP);
+    }
 
   // once vpid is extracted (or not), and depending on parameters, either dispatch the applying of
   // log redo asynchronously, or invoke synchronously
@@ -491,6 +498,11 @@ log_rv_redo_record_sync_or_dispatch_async (
       // invoke sync
       log_rv_redo_record_sync<T> (thread_p, log_pgptr_reader, log_rec, rcv_vpid, rcv_lsa, end_redo_lsa, log_rtype,
 				  undo_unzip_support, redo_unzip_support);
+      if (log_recovery_redo_perf_stat_values != nullptr)
+	{
+	  log_recovery_redo_perf_stat_definition->time_and_increment (
+		  *log_recovery_redo_perf_stat_values, PERF_STAT_ID_REDO_OR_PUSH_DO_SYNC);
+	}
     }
   else
     {
@@ -501,6 +513,11 @@ log_rv_redo_record_sync_or_dispatch_async (
 	new redo_job_impl_t (rcv_vpid, rcv_lsa, end_redo_lsa, log_rtype, force_each_log_page_fetch)
       };
       parallel_recovery_redo->add (std::move (job));
+      if (log_recovery_redo_perf_stat_values != nullptr)
+	{
+	  log_recovery_redo_perf_stat_definition->time_and_increment (
+		  *log_recovery_redo_perf_stat_values, PERF_STAT_ID_REDO_OR_PUSH_DO_ASYNC);
+	}
     }
 #else // !SERVER_MODE = SA_MODE
   log_rv_redo_record_sync<T> (thread_p, log_pgptr_reader, log_rec, rcv_vpid, rcv_lsa, end_redo_lsa, log_rtype,
