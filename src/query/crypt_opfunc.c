@@ -704,7 +704,7 @@ crypt_generate_random_bytes (char *dest, int length)
 static struct
 {
   unsigned char nonce[16];              // See TDE_DK_NONCE_LENGTH in tde.h
-  unsigned char master_key[DBLINK_MASTER_KEY_SIZE];         // See TDE_MASTER_KEY_LENGTH in tde.h
+  unsigned char master_key[DBLINK_MASTER_KEY_SIZE+1];         // See TDE_MASTER_KEY_LENGTH in tde.h
 } evp_cipher = { {0, }, {0, } };  // Do not omit the this initialization settings.
 // *INDENT-ON*
 
@@ -751,10 +751,10 @@ crypt_dblink_encrypt (const unsigned char *str, int str_len, unsigned char *ciph
   int len, cipher_len, err;
   EVP_CIPHER_CTX *ctx;
   const EVP_CIPHER *cipher_type;
-  unsigned char master_key[DBLINK_MASTER_KEY_SIZE] = { 0, };	// Do NOT omit this initialize.
+  unsigned char master_key[DBLINK_MASTER_KEY_SIZE + 1] = { 0, };	// Do NOT omit this initialize.
   unsigned char *key;
 
-  err = init_dblink_cipher (&ctx, &cipher_type, ((mk && *mk) ? ((mk[7] & 0x01) == 0x00) : true));
+  err = init_dblink_cipher (&ctx, &cipher_type, ((mk && *mk) ? ((mk[13] & 0x01) == 0x00) : true));
   if (err != NO_ERROR)
     {
       return err;
@@ -809,10 +809,10 @@ crypt_dblink_decrypt (const unsigned char *cipher, int cipher_len, unsigned char
   int len, str_len, err;
   EVP_CIPHER_CTX *ctx;
   const EVP_CIPHER *cipher_type;
-  unsigned char master_key[DBLINK_MASTER_KEY_SIZE] = { 0, };	// Do NOT omit this initialize.
+  unsigned char master_key[DBLINK_MASTER_KEY_SIZE + 1] = { 0, };	// Do NOT omit this initialize.
   unsigned char *key;
 
-  err = init_dblink_cipher (&ctx, &cipher_type, ((mk && *mk) ? ((mk[7] & 0x01) == 0x00) : true));
+  err = init_dblink_cipher (&ctx, &cipher_type, ((mk && *mk) ? ((mk[13] & 0x01) == 0x00) : true));
   if (err != NO_ERROR)
     {
       return err;
@@ -875,37 +875,56 @@ exit:
 // *INDENT-ON*
 
 int
-crypt_dblink_bin_to_str (const char *src, int src_len, char *dest, int dest_len, unsigned char *pk)
+crypt_dblink_bin_to_str (const char *src, int src_len, char *dest, int dest_len, unsigned char *pk, long tm)
 {
-  int err, i, pk_len;
+  int err, i, pk_len, idx, even, odd;
   const char *hextable = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz1234567890";
   int hextable_mod = (int) strlen (hextable);
-  unsigned char *dest_x = NULL;
-  int dest_len_x = 0;
+  unsigned char *enc_ptr = NULL;
+  int enc_len = 0;
 
   assert (src != NULL && dest != NULL);
 
-  err = base64_encode ((unsigned char *) src, src_len, &dest_x, &dest_len_x);
+  err = base64_encode ((unsigned char *) src, src_len, &enc_ptr, &enc_len);
   if (err != NO_ERROR)
     {
-      db_private_free (NULL, dest_x);
+      db_private_free (NULL, enc_ptr);
       return err;
     }
 
-  assert (dest_len >= (dest_len_x + 4));
+  assert (dest_len >= (enc_len + 4));
 
-  BYTE_2_HEX (dest_len_x, dest);
+  odd = (tm >> 3) % 15;
+  even = tm % 15;
+  for (i = 0; pk[i]; i++)
+    {
+      pk[i] += ('a' - '0' + odd);
+      if (pk[i + 1] == '\0')
+	{
+	  break;
+	}
+      i++;
+      pk[i] += ('a' - '0' + even);
+    }
+
+  idx = 0;
+  BYTE_2_HEX (enc_len, dest + idx);
+  idx += 2;
+  BYTE_2_HEX ((odd << 4) | even, dest + idx);
+  idx += 2;
   pk_len = (int) strlen ((char *) pk);
-  BYTE_2_HEX (pk_len, dest + 2);
-  memcpy (dest + 4, pk, pk_len);
-  pk_len += 4;
-  memcpy (dest + pk_len, dest_x, dest_len_x);
-  db_private_free (NULL, dest_x);
+  BYTE_2_HEX (pk_len, dest + idx);
+  idx += 2;
+
+  memcpy (dest + idx, pk, pk_len);
+  pk_len += idx;
+  memcpy (dest + pk_len, enc_ptr, enc_len);
+  db_private_free (NULL, enc_ptr);
 
   /* Adjust the length so that it is a multiple of 4. */
   dest_len >>= 2;
   dest_len <<= 2;
-  for (i = dest_len_x + pk_len; i < dest_len; i++)
+  for (i = enc_len + pk_len; i < dest_len; i++)
     {
       dest[i] = hextable[rand () % hextable_mod];
     }
@@ -915,39 +934,54 @@ crypt_dblink_bin_to_str (const char *src, int src_len, char *dest, int dest_len,
 }
 
 int
-crypt_dblink_str_to_bin (const char *srcx, int src_len, char *dest, int *dest_len, unsigned char *pk)
+crypt_dblink_str_to_bin (const char *src, int src_len, char *dest, int *dest_len, unsigned char *pk)
 {
-  int err, pk_len;
-  unsigned char *dest_x = NULL;
-
-  char *src = (char *) srcx;
+  int i, err, pk_len, idx, odd, even;
+  unsigned char *dec_ptr = NULL;
 
   assert (src && dest && pk && dest_len);
-  assert (src_len >= 5);
+  assert (src_len >= 6);
 
-  HEX_2_BYTE (src, pk_len);
+  idx = 0;
+  HEX_2_BYTE (src + idx, pk_len);
+  idx += 2;
   if (pk_len >= src_len)
     {
-      return ER_FAILED;		//
+      return ER_FAILED;
     }
   src_len = pk_len;
-  HEX_2_BYTE (src + 2, pk_len);
 
-  src += 4;
+  HEX_2_BYTE (src + idx, even);
+  idx += 2;
+  odd = even >> 4;
+  even &= 0x0F;
+
+  HEX_2_BYTE (src + idx, pk_len);
+  idx += 2;
+
+  src += idx;
   memcpy (pk, src, pk_len);
   pk[pk_len] = '\0';
 
-  src += pk_len;
-  src[src_len] = '\0';
-  err = base64_decode ((unsigned char *) src, src_len, &dest_x, dest_len);
-  if (err != NO_ERROR)
+  for (i = 0; pk[i]; i++)
     {
-      db_private_free (NULL, dest_x);
-      return err;
+      pk[i] -= ('a' - '0' + odd);
+      if (pk[i + 1] == '\0')
+	{
+	  break;
+	}
+      i++;
+      pk[i] -= ('a' - '0' + even);
     }
 
-  memcpy (dest, dest_x, *dest_len);
-  db_private_free (NULL, dest_x);
+  src += pk_len;
+  err = base64_decode ((unsigned char *) src, src_len, &dec_ptr, dest_len);
+  if (err == NO_ERROR)
+    {
+      memcpy (dest, dec_ptr, *dest_len);
+      err = NO_ERROR;
+    }
 
-  return NO_ERROR;
+  db_private_free (NULL, dec_ptr);
+  return err;
 }

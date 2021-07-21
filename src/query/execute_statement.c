@@ -18198,10 +18198,11 @@ error_end:
 
 
 #define DBLINK_PASSWORD_MAX_LENGTH      (128)
-#define DBLINK_PASSWORD_CONFUSED_LENGTH (12)	// include 4(int) + 1(unsigned char) + 3(parity)
+#define DBLINK_PASSWORD_CONFUSED_LENGTH (6)	// include 4(int) + 1(unsigned char) +  1(unsigned char)
+// Valid data size is the largest multiple of 3 less than or equal to DBLINK_PASSWORD_CIPHER_LENGTH.
 #define DBLINK_PASSWORD_CIPHER_LENGTH   (DBLINK_PASSWORD_MAX_LENGTH + DBLINK_PASSWORD_CONFUSED_LENGTH)
-#define DBLINK_PASSWORD_PAD_LENGTH      (40)	// include 2(length) + 2(length) + 32(str)
-#define DBLINK_PASSWORD_MAX_BUFSIZE  ((int)(DBLINK_PASSWORD_CIPHER_LENGTH * 1.4) + DBLINK_PASSWORD_PAD_LENGTH)
+#define DBLINK_PASSWORD_PAD_LENGTH      (40)	// include 2(length) + 2(mk) + 2(length) + 32(mk)
+#define DBLINK_PASSWORD_MAX_BUFSIZE  ((int)(DBLINK_PASSWORD_CIPHER_LENGTH / 3 * 4) + DBLINK_PASSWORD_PAD_LENGTH)
 
 static int
 get_dblink_password_encrypt (PARSER_CONTEXT * parser, const char *passwd, DB_VALUE * encrypt_val)
@@ -18209,9 +18210,9 @@ get_dblink_password_encrypt (PARSER_CONTEXT * parser, const char *passwd, DB_VAL
   int err, length, buf_size;
   char cipher[DBLINK_PASSWORD_CIPHER_LENGTH + 1], newpwd[DBLINK_PASSWORD_MAX_BUFSIZE + 1];
   char confused[DBLINK_PASSWORD_CIPHER_LENGTH + 1] = { 0, };
+  unsigned char private_key[32];
   struct timeval check_time = { 0, 0 };
   struct tm *lt;
-  unsigned char private_key[32];
 
   db_make_null (encrypt_val);
   if (!passwd || !*passwd)
@@ -18242,8 +18243,9 @@ get_dblink_password_encrypt (PARSER_CONTEXT * parser, const char *passwd, DB_VAL
   err = crypt_dblink_encrypt ((unsigned char *) passwd, length, (unsigned char *) cipher, private_key);
   if (err == NO_ERROR)
     {
-      buf_size = DBLINK_PASSWORD_MAX_BUFSIZE;
-      err = crypt_dblink_bin_to_str (cipher, length, newpwd, buf_size, private_key);
+      err =
+	crypt_dblink_bin_to_str (cipher, length, newpwd, DBLINK_PASSWORD_MAX_BUFSIZE, private_key,
+				 (long) check_time.tv_usec);
       if (err == NO_ERROR)
 	{
 	  // byte stream to hex string   
@@ -18259,7 +18261,7 @@ get_dblink_password_decrypt (PARSER_CONTEXT * parser, const char *passwd_cipher,
 {
   int err, length, new_length;
   char cipher[DBLINK_PASSWORD_CIPHER_LENGTH + 1], newpwd[DBLINK_PASSWORD_CIPHER_LENGTH + 1];
-  unsigned char private_key[32];
+  unsigned char private_key[33];
 
   db_make_null (decrypt_val);
   if (!passwd_cipher || !*passwd_cipher)
@@ -18298,10 +18300,12 @@ get_dblink_password_decrypt (PARSER_CONTEXT * parser, const char *passwd_cipher,
 static int
 shake_4_encrypt (const char *passwd, char *confused, struct timeval *chk_time)
 {
-  int i, pwdlen;
-  int shift;
+  const char *tmpx = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ!@#$%%^&*()_-+=;:[]{}(),./?<>";
+  int i, pwdlen, start;
+  int shift, safe;
   unsigned char *p;
   unsigned char parity;
+  int tmpx_len = (int) strlen (tmpx);
 
   p = (unsigned char *) confused;
   pwdlen = (int) strlen (passwd);
@@ -18313,6 +18317,24 @@ shake_4_encrypt (const char *passwd, char *confused, struct timeval *chk_time)
   *p = (unsigned char) pwdlen;	// pwdlen is less than or equal to DBLINK_PASSWORD_MAX_LENGTH.
   p++;
 
+  safe = pwdlen + 11;		/* 11? int + char + char + some safe */
+  start = 0;
+  if (DBLINK_PASSWORD_CIPHER_LENGTH > safe)
+    {
+      if ((start = (DBLINK_PASSWORD_CIPHER_LENGTH - safe) / 2) > 2)
+	{
+	  start = (chk_time->tv_usec >> 3) % start;
+	}
+    }
+  *p = (unsigned char) start;
+  p++;
+
+  for (i = 0; i < start; i++)
+    {
+      p[i] = tmpx[rand () % tmpx_len];
+    }
+  p += start;
+
   shift %= pwdlen;
   if (shift == 0)
     {
@@ -18323,10 +18345,17 @@ shake_4_encrypt (const char *passwd, char *confused, struct timeval *chk_time)
     {
       p[((i + shift) < pwdlen) ? (i + shift) : ((i + shift) - pwdlen)] = passwd[i];
     }
+
+  shift = ((chk_time->tv_usec & 0x7A5A) % 127) + 1;
+  for (i = 0; i < pwdlen; i++)
+    {
+      p[i] = ((p[i] + shift) < 128) ? (p[i] + shift) : (p[i] + shift - 128);
+    }
+
   p += pwdlen;
 
   pwdlen = p - ((unsigned char *) confused);
-  parity = 0x7F;
+  parity = 0x7C;
   p = (unsigned char *) confused;
   for (i = 0; i < pwdlen; i++)
     {
@@ -18336,12 +18365,23 @@ shake_4_encrypt (const char *passwd, char *confused, struct timeval *chk_time)
 
   /* Adjust the length so that it is a multiple of 3.
    * This is to prevent the '=' character from appearing in the base64 conversion result.  */
+#if defined(FIXED_LENGTH_ENCRYPTION)
+  shift = DBLINK_PASSWORD_CIPHER_LENGTH;
+  if (shift % 3)
+    {
+      shift -= (shift % 3);
+    }
+  while (pwdlen < shift)
+    {
+      p[pwdlen++] = tmpx[rand () % tmpx_len];
+    }
+#else
   while (pwdlen % 3)
     {
       p[pwdlen++] = parity;
     }
+#endif
   p[pwdlen] = '\0';
-
   return pwdlen;
 }
 
@@ -18358,6 +18398,7 @@ reverse_shake_4_decrypt (char *confused, char *passwd)
   p += sizeof (int);
   pwdlen = *p;
   p++;
+  p += (*p + 1);
 
   shift %= pwdlen;
   if (shift == 0)
@@ -18368,11 +18409,18 @@ reverse_shake_4_decrypt (char *confused, char *passwd)
     {
       passwd[i] = p[((i + shift) < pwdlen) ? (i + shift) : ((i + shift) - pwdlen)];
     }
+
+  memcpy (&shift, confused, sizeof (int));
+  shift = ((shift & 0x7A5A) % 127) + 1;
+  for (i = 0; i < pwdlen; i++)
+    {
+      passwd[i] = ((passwd[i] - shift) >= 0) ? (passwd[i] - shift) : (passwd[i] - shift + 128);
+    }
   passwd[pwdlen] = '\0';
   p += pwdlen;
 
   pwdlen = p - ((unsigned char *) confused);
-  parity = 0x7F;
+  parity = 0x7C;
   p = (unsigned char *) confused;
   for (i = 0; i < pwdlen; i++)
     {
@@ -18382,14 +18430,6 @@ reverse_shake_4_decrypt (char *confused, char *passwd)
   if (p[pwdlen] != parity)
     {
       return ER_FAILED;
-    }
-
-  while (++pwdlen % 3)
-    {
-      if (p[pwdlen] != parity)
-	{
-	  return ER_FAILED;
-	}
     }
 
   return NO_ERROR;
@@ -18424,16 +18464,13 @@ ciper_func_test (PARSER_CONTEXT * parser)
 	}
       tmp[i] = 0x00;
 
-      if (len == 128)
-	len = 128;
-
       if (flag)
-	sprintf (tmp, ")");
-
+	{
+	  sprintf (tmp, "love");
+	}
       pt = tmp;
 
       memset (buf2, 0x00, sizeof (buf2));
-
       sprintf ((char *) buf1, "%s", pt);
 
       db_make_null (&encrypt_val);
@@ -18441,7 +18478,9 @@ ciper_func_test (PARSER_CONTEXT * parser)
 
       err = get_dblink_password_encrypt (parser, buf1, &encrypt_val);
       if (err != NO_ERROR)
-	printf ("xxx 1 [%s]\n", tmp);
+	{
+	  printf ("xxx 1 [%s]\n", tmp);
+	}
       else
 	{
 	  pt = (char *) db_get_string (&encrypt_val);
@@ -18450,13 +18489,17 @@ ciper_func_test (PARSER_CONTEXT * parser)
 
 	  err = get_dblink_password_decrypt (parser, pt, &decrypt_val);
 	  if (err != NO_ERROR)
-	    printf ("xxx 2 [%s]\n", tmp);
+	    {
+	      printf ("xxx 2 [%s]\n", tmp);
+	    }
 	  else
 	    {
 	      pt2 = (char *) db_get_string (&decrypt_val);
 
 	      if (strcmp (tmp, pt2) != 0)
-		printf ("xxx 3 \n[%s]\n[%s]\n", tmp, pt2);
+		{
+		  printf ("xxx 3 \n[%s]\n[%s]\n", tmp, pt2);
+		}
 	    }
 	}
 
