@@ -3180,7 +3180,7 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
   PT_NODE *temp;
   int nullable_cnt;		/* nullable terms count */
   PT_NODE *save_next;
-  bool is_afterjoinable;
+  bool is_afterjoinable, has_derived_table_inst;
 
   /* init */
   push_term_list = NULL;
@@ -3188,6 +3188,13 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
   push_correlated_cnt = 0;
 
   copy_cnt = -1;
+
+  /* check inst num in derived table. can not push predicate into subquery having inst num */
+  has_derived_table_inst = pt_has_inst_or_orderby_num_in_where (parser, new_query);
+  if (has_derived_table_inst)
+    {
+      return push_cnt;
+    }
 
   if (PT_IS_QUERY (new_query)
       && (pt_has_analytic (parser, new_query) || PT_SELECT_INFO_IS_FLAGED (new_query, PT_SELECT_INFO_COLS_SCHEMA)
