@@ -18365,22 +18365,11 @@ shake_4_encrypt (const char *passwd, char *confused, struct timeval *chk_time)
 
   /* Adjust the length so that it is a multiple of 3.
    * This is to prevent the '=' character from appearing in the base64 conversion result.  */
-#if defined(FIXED_LENGTH_ENCRYPTION)
-  shift = DBLINK_PASSWORD_CIPHER_LENGTH;
-  if (shift % 3)
-    {
-      shift -= (shift % 3);
-    }
-  while (pwdlen < shift)
-    {
-      p[pwdlen++] = tmpx[rand () % tmpx_len];
-    }
-#else
   while (pwdlen % 3)
     {
       p[pwdlen++] = parity;
     }
-#endif
+
   p[pwdlen] = '\0';
   return pwdlen;
 }
@@ -18427,10 +18416,14 @@ reverse_shake_4_decrypt (char *confused, char *passwd)
       parity += p[i];
     }
 
-  if (p[pwdlen] != parity)
+  do
     {
-      return ER_FAILED;
+      if (p[pwdlen] != parity)
+	{
+	  return ER_FAILED;
+	}
     }
+  while (++pwdlen % 3);
 
   return NO_ERROR;
 }
@@ -18454,7 +18447,7 @@ ciper_func_test (PARSER_CONTEXT * parser)
   printf ("START: ciper_func_test()\n");
   srand (time (NULL));
 
-  for (loop = 0; loop < 100000; loop++)
+  for (loop = 0; loop < 1000000; loop++)
     {
       len = (rand () % 128) + 1;
       //len = 128;

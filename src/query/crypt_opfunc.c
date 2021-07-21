@@ -49,6 +49,7 @@
 #if defined (SERVER_MODE)
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #endif // SERVER_MODE
+#include "base64.h"
 
 #include <openssl/evp.h>
 #include <openssl/sha.h>
@@ -861,7 +862,6 @@ exit:
   return err;
 }
 
-#include "base64.h"
 // *INDENT-OFF*
 #define BYTE_2_HEX(u, b)  (    \
                 (b)[0] = upper_hextable[((unsigned char)(u)) >> 4],     \
